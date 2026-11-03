@@ -16,7 +16,8 @@ The authoritative command reference is the Wave documentation, CLI → *Daemon c
 ## 0. Mental model
 
 - \`wave --daemon <socket>\` starts the daemon (server side). \`wave daemon <subcommand>\` is the client that talks to it. The two never interfere.
-- Every client subcommand connects to the fixed socket \`~/.wave/daemon.sock\` (\`$HOME/.wave/daemon.sock\`); there is no \`--socket\` override, so you are always talking to this machine's daemon for the current user.
+- Every client subcommand connects to the fixed socket \`~/.wave/daemon.sock\` (\`$HOME/.wave/daemon.sock\`); there is no \`--socket\` override, so you are always talking to this machine's daemon for the current user. On Windows the same address is a named pipe (\`\\\\.\\pipe\\wave-daemon-<hash>\`) — both sides derive it from the path, so the client and server always agree; don't hand-craft a pipe name.
+- A failed on-demand start reports the real reason (the child's exit code and the last line of its stderr, which the daemon appends to \`~/.wave/logs/daemon.log\`). An \`EACCES\`/\`ENOENT\` about a *file* socket on Windows means the path was not a pipe — nothing to debug in the models or the workdir.
 - The daemon is **resident**: once started it does not exit when idle. It goes away only when stopped (\`wave daemon stop\`), killed, restarted after a CLI upgrade, or the machine restarts. It is not supervised by pm2/systemd, so it does not come back by itself.
 - Every subcommand except \`stop\` starts a daemon on demand when the socket is absent, then retries. "No daemon is running" is therefore never a problem to work around — just run the command.
 - Sessions are persisted as transcripts under \`~/.wave/projects/<project>/<sessionId>.jsonl\`, so a session can be re-hosted from disk after the daemon restarts.

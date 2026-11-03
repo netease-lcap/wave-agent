@@ -13,8 +13,11 @@
  * All subcommands are non-interactive: results go to stdout, diagnostics to
  * stderr, and every handler calls process.exit() itself (yargs would fall
  * through to the TUI otherwise). Every command connects to the fixed default
- * socket `~/.wave/daemon.sock` — the daemon only runs on remote hosts, so no
- * `--socket` override is offered (spec: daemon-command.md).
+ * socket — `~/.wave/daemon.sock` on POSIX, its named-pipe form on Windows (see
+ * ./socketPath.ts) — and no `--socket` override is offered, so the same commands
+ * address this machine's daemon whether it hosts remote-background sessions or
+ * the local delegation sessions the wave-daemon skill creates
+ * (spec: daemon-command.md).
  *
  * Attach semantics: `initialize {workdir, restoreSessionId}` + `restoreSession`
  * re-attach to a live session in the daemon's in-memory registry, or reload a
@@ -25,9 +28,9 @@
  * must be destroyed via the envelope sessionId returned by `initialize`.
  */
 
-import { execFile, spawn } from "node:child_process";
+import { execFile, spawn, type ChildProcess } from "node:child_process";
+import * as fs from "node:fs";
 import net from "node:net";
-import os from "node:os";
 import path from "node:path";
 import {
   ASK_USER_QUESTION_TOOL_NAME,
@@ -44,14 +47,19 @@ import {
   type ToolPermissionContext,
 } from "wave-agent-sdk";
 import { SocketClient } from "./socketClient.js";
+import {
+  openDaemonLogForChild,
+  readDaemonLogTail,
+  type DaemonLogHandle,
+} from "./daemonLog.js";
 import { worktreeCreationBranch } from "../utils/worktree.js";
 
-/** Fixed default daemon socket (spec: 默认 socket 固定，无 --socket 覆盖). */
-export const DEFAULT_DAEMON_SOCKET = path.join(
-  os.homedir(),
-  ".wave",
-  "daemon.sock",
-);
+/**
+ * Fixed default daemon socket (spec: 默认 socket 固定，无 --socket 覆盖). The
+ * shape is platform-dependent — a file socket on POSIX, a named pipe on Windows —
+ * and both sides derive it from the same function (see ./socketPath.ts).
+ */
+export { DEFAULT_DAEMON_SOCKET } from "./socketPath.js";
 
 const PERMISSION_MODES: PermissionMode[] = [
   "default",
@@ -64,6 +72,16 @@ const PERMISSION_MODES: PermissionMode[] = [
 /** How long to wait for an auto-started daemon's socket to come up (mutable so tests can shorten it). */
 export const daemonStartTimeout = { ms: 10_000 };
 const DAEMON_POLL_INTERVAL_MS = 500;
+
+/**
+ * After the launched daemon has already exited nonzero, how much longer to keep
+ * trying the socket before giving up. Concurrent clients each launch a daemon and
+ * exactly one wins — the loser sees its own child refused ("another daemon is
+ * already listening") while the winner may still be coming up, so this window
+ * lets it join instead of reporting a failure for a daemon that is fine.
+ * (Mutable so tests can shorten it.)
+ */
+export const daemonExitGrace = { ms: 1_500 };
 
 // ── Connection helpers ─────────────────────────────────────────
 
@@ -78,6 +96,12 @@ function connectDaemon(socketPath: string): Promise<SocketClient> {
   });
 }
 
+/** The launched daemon child plus the log handle its stderr was sent to. */
+interface LaunchedDaemon {
+  child: ChildProcess;
+  log: DaemonLogHandle | undefined;
+}
+
 /**
  * Start a wave daemon on demand, detached — the local equivalent of the remote
  * nohup launcher `nohup <wave> --daemon <socket> </dev/null >/dev/null 2>&1 &`
@@ -85,24 +109,64 @@ function connectDaemon(socketPath: string): Promise<SocketClient> {
  * <this script> --daemon <socket>`) with no stdio and unrefs the child so the
  * client exits without waiting; the daemon cleans stale socket files itself on
  * start.
+ *
+ * stderr goes to `~/.wave/logs/daemon.log` rather than to a pipe: the daemon is
+ * resident and outlives this client, and a write to a closed pipe (EPIPE) could
+ * take it down. The file is what makes a failed start diagnosable — the real
+ * cause lives in the dead child's stderr.
  */
-function startDaemon(socketPath: string): void {
+function startDaemon(socketPath: string): LaunchedDaemon {
   const entry = process.argv[1];
   if (!entry) {
     fail("Cannot start the wave daemon: unknown CLI entry path");
   }
+  const log = openDaemonLogForChild();
   const child = spawn(process.execPath, [entry, "--daemon", socketPath], {
     detached: true,
-    stdio: "ignore",
+    stdio: ["ignore", "ignore", log ? log.fd : "ignore"],
   });
+  if (log) {
+    // The child holds its own duplicate of the descriptor.
+    try {
+      fs.closeSync(log.fd);
+    } catch {
+      // Already closed — nothing to hand back to the caller either way.
+    }
+  }
   child.unref();
+  return { child, log };
+}
+
+/**
+ * The client-side failure text for an on-demand start that never became
+ * reachable. When the child exited we report *that* (exit code plus the last line
+ * it wrote to the log); otherwise the daemon is still alive but slow to come up,
+ * and the text keeps the original shape plus the first connect error code.
+ */
+function describeStartFailure(
+  socketPath: string,
+  firstErrorCode: string | undefined,
+  exitCode: number | null | undefined,
+  logTail: string,
+): string {
+  const reason =
+    exitCode === undefined
+      ? `started a daemon but it did not come up${
+          firstErrorCode ? ` (${firstErrorCode})` : ""
+        }`
+      : `the daemon process exited with code ${exitCode}`;
+  return `Cannot connect to daemon socket ${socketPath}: ${reason}${
+    logTail ? ` — ${logTail}` : ""
+  }`;
 }
 
 /**
  * Connect or start the daemon on demand: try the socket, and when the daemon is
  * not running, launch one detached and retry until its socket accepts a
- * connection (or daemonStartTimeout.ms elapses). Exits (nonzero) with the
- * spec'd error when the daemon cannot be started/reached.
+ * connection (or daemonStartTimeout.ms elapses). A child that exits during the
+ * wait fails fast (after a short grace window for the concurrent-start race) and
+ * its own stderr is reported. Exits (nonzero) with the spec'd error when the
+ * daemon cannot be started/reached.
  */
 export async function connectDaemonOrExit(
   socketPath: string,
@@ -110,8 +174,12 @@ export async function connectDaemonOrExit(
   try {
     return await connectDaemon(socketPath);
   } catch (err) {
-    const code = (err as NodeJS.ErrnoException).code;
-    startDaemon(socketPath);
+    const firstErrorCode = (err as NodeJS.ErrnoException).code;
+    const { child, log } = startDaemon(socketPath);
+    let exitCode: number | null | undefined;
+    child.once("exit", (code) => {
+      exitCode = code;
+    });
     const deadline = Date.now() + daemonStartTimeout.ms;
     while (Date.now() < deadline) {
       await sleep(DAEMON_POLL_INTERVAL_MS);
@@ -120,10 +188,29 @@ export async function connectDaemonOrExit(
       } catch {
         // Daemon still coming up — keep polling.
       }
+      if (exitCode !== undefined) {
+        // The process that was supposed to serve this socket is gone. Keep
+        // trying for a moment (another client's daemon may be the one coming
+        // up), then fail immediately instead of waiting out the full timeout.
+        const graceEnd = Date.now() + daemonExitGrace.ms;
+        while (Date.now() < graceEnd) {
+          try {
+            return await connectDaemon(socketPath);
+          } catch {
+            // Nothing listening yet.
+          }
+          await sleep(DAEMON_POLL_INTERVAL_MS);
+        }
+        break;
+      }
     }
     console.error(
-      `Cannot connect to daemon socket ${socketPath}: started a daemon but it did not come up` +
-        (code ? ` (${code})` : ""),
+      describeStartFailure(
+        socketPath,
+        firstErrorCode,
+        exitCode,
+        readDaemonLogTail(log),
+      ),
     );
     process.exit(1);
   }

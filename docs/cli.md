@@ -148,7 +148,7 @@ Windows 上更新时提示「更新将在后台完成」并立即退出当前进
 
 ### 3.3 Daemon 客户端命令 {#daemon-commands}
 
-`wave --daemon <socket>` 在远端主机上以守护进程方式启动 Wave，托管后台 agent 会话（桌面端经 SSH 隧道访问）。与之对应，`wave daemon <子命令>` 是访问该 daemon 的客户端命令组，可在远端主机上（或经 `ssh <host> wave daemon ...`）查看、续聊与审批 daemon 托管的会话，无需打开完整 UI。所有子命令非交互式运行：结果输出到 stdout、诊断输出到 stderr，便于脚本与管道消费。
+`wave --daemon <socket>` 以守护进程方式启动 Wave，托管后台 agent 会话（远端主机上由桌面端经 SSH 隧道访问；本机则是内置 `wave-daemon` 技能把长任务委派给它）。与之对应，`wave daemon <子命令>` 是访问该 daemon 的客户端命令组，可在本机或远端主机上（或经 `ssh <host> wave daemon ...`）查看、续聊与审批 daemon 托管的会话，无需打开完整 UI。所有子命令非交互式运行：结果输出到 stdout、诊断输出到 stderr，便于脚本与管道消费。
 
 ```bash
 # 列出 daemon 当前托管（进程内存中 live）的全部会话：会话 ID、工作目录、状态、消息数
@@ -182,9 +182,9 @@ wave daemon restart
 
 要点：
 
-- 所有子命令固定连接默认 socket（`~/.wave/daemon.sock`），不提供 `--socket` 覆盖参数
+- 所有子命令固定连接默认 socket（`~/.wave/daemon.sock`；Windows 上同一地址是命名管道 `\\.\pipe\wave-daemon-<hash>`，由客户端与服务端各自从该路径推导，无需也无法手工指定），不提供 `--socket` 覆盖参数
 - **语义区分**：`wave --daemon <socket>` 是启动 daemon（服务端），`wave daemon <子命令>` 是访问 daemon（客户端），两者互不干扰
-- daemon 一经拉起即常驻运行（空闲不退出），仅在被 kill / 升级重启 / 机器重启后消失；daemon 未运行时，任一子命令自动以 nohup 方式拉起 daemon 并重试连接，仅当拉起的 daemon 在启动超时内未就绪时才以非零退出码报错退出，不进入 TUI、不挂起
+- daemon 一经拉起即常驻运行（空闲不退出），仅在被 kill / 升级重启 / 机器重启后消失；daemon 未运行时，任一子命令自动以后台进程方式拉起 daemon 并重试连接，仅当拉起的 daemon 在启动超时内未就绪时才以非零退出码报错退出，不进入 TUI、不挂起。拉起失败时错误信息带上 daemon 的退出码与最后一行 stderr（daemon 的 stderr 追加写入 `~/.wave/logs/daemon.log`，可用 `WAVE_LOGS_DIR` 改目录）——不会只剩一个 `ENOENT` 让用户猜
 - `wave daemon list` 仅展示当前 daemon 进程内存中 live 的会话（不扫磁盘索引）；知道 sessionId 时即使不在列表中，也可经 `status` / `send` 重新载入
 - `wave daemon status` 默认只展示最后 1 条消息（消息正文完整不截断，默认值保持输出有界）；`--lines N` 展示最近 N 条，`--lines 0` 只输出 session 头与 `Status:` 行。`status` 始终是「取一次快照、立刻返回」的契约；需要阻塞等到状态变化（生成中 → 空闲，或挂起审批）时用 `wave daemon wait`。`Status:` 与 `wait` 用**同一**空闲判据（无回合、无后台任务/子 agent、无排队消息）：前台回合已结束但后台任务/子 agent 仍在跑的会话显示 `generating`，不会出现「`status` 说 idle、`wait` 却不返回」的矛盾取值
 - `wave daemon wait` 是「盯会话」的正式入口：订阅 daemon 推送的 `loadingChange` 与 `backgroundTasksChange`（后台任务起止）作**唤醒**、醒来读注册表判空闲（不轮询），退出时按 `wave daemon status <id> --lines N` 的同格式把最终快照打到 stdout（`msg=$(wave daemon wait <id>)` 拿到的就是汇报本身），进度提示走 stderr；退出码为契约——`0`=等到空闲、`3`=会话挂起等待权限审批（立刻返回并打印待审批清单，`respond` 后可重新 `wait`）、`1`=错误（daemon 连不上 / sessionId 不存在或在等待期间被销毁 / `--timeout` 到点）。**「空闲」的判据与 `wave -p`（print mode）一致：无进行中的回合、无运行中的后台任务/子 agent、无待处理消息，三项同时成立**——只结束了前台回合、后台任务/子 agent 还在跑的会话**不算空闲**（这是刻意为之：否则会在后台任务还没跑完时就假报「已完成」），因此挂着长跑后台任务的会话（如长期跑着的 dev server）**永远不会空闲**、必须显式传 `--timeout`。调用时已空闲则立即退出 0；`--from-busy` 要求先观察到一次**本会话**的「非空闲」再判空闲（消除紧跟异步 `send` 之后立刻 `wait` 的 stale 快照竞态，运行中的后台任务同样算「忙」）；`--timeout <秒>` 默认无限等待
