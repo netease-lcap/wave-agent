@@ -10,7 +10,8 @@
  * Agent.create + loadUserConfigEnv are stubbed.
  */
 
-import { test as vitestTest, expect, vi, beforeEach, afterEach } from "vitest";
+import { test, expect, vi, beforeEach, afterEach } from "vitest";
+import { EventEmitter } from "node:events";
 import { createInterface } from "readline";
 import { PassThrough } from "stream";
 import * as net from "net";
@@ -27,9 +28,10 @@ import {
   type PermissionDecision,
 } from "wave-agent-sdk";
 
-// Unix-domain sockets are unreliable on Windows (libuv rejects non-"\\.\pipe\"
-// paths with EACCES); the daemon protocol logic is covered on Linux CI.
-const test = process.platform === "win32" ? vitestTest.skip : vitestTest;
+// Socket addresses come from daemonTestSocketPath: a file socket on POSIX, a
+// named pipe on Windows (a non-pipe path cannot be bound there at all). Both are
+// shapes the daemon supports, so this suite runs on either platform.
+import { daemonTestSocketPath } from "../helpers/daemonSocket.js";
 
 // Factory mock: keep the real SDK utils/constants, stub only the entry points.
 vi.mock("wave-agent-sdk", async (importOriginal) => {
@@ -139,16 +141,29 @@ import {
   daemonStopCommand,
   daemonRestartCommand,
   daemonStartTimeout,
+  daemonExitGrace,
   waitPollInterval,
 } from "../../src/daemon/commands.js";
 import { createWorktree, removeWorktree } from "../../src/utils/worktree.js";
+import { daemonLogFile } from "../../src/daemon/daemonLog.js";
+import { isWindowsPipeName } from "../../src/daemon/socketPath.js";
+
+/** Where the on-demand daemon's stderr log lands (WAVE_LOGS_DIR override). */
+const logsDir = path.join(os.tmpdir(), `wave-daemon-logs-${process.pid}`);
 
 /** When set, the spawn mock starts a real daemon here so the retry succeeds. */
 let autoStartSocket: string | undefined;
 let autoStartServer: DaemonServer | undefined;
+/** What the fake `wave --daemon` child does once spawned: write to its stderr —
+ * the log file the parent handed it — and exit with a code. That pair is what
+ * the failure diagnostics report. Unset means "stays alive, says nothing". */
+let fakeDaemonChild: { exitsWith: number; stderr?: string } | undefined;
+
 // Simulate the detached `wave --daemon` child the commands spawn: start a real
 // DaemonServer at autoStartSocket (success path); without one the daemon never
-// comes up (failure path).
+// comes up (failure path). The fake child is an EventEmitter so the client's
+// `exit` listener — the trigger for fast-failing instead of waiting out the
+// whole start timeout — sees a real event.
 vi.mocked(spawn).mockImplementation(() => {
   if (autoStartSocket) {
     const s = new DaemonServer({ socketPath: autoStartSocket });
@@ -156,7 +171,16 @@ vi.mocked(spawn).mockImplementation(() => {
       autoStartServer = s;
     });
   }
-  return { unref: () => {} } as unknown as ChildProcess;
+  const child = new EventEmitter() as unknown as ChildProcess;
+  child.unref = () => {};
+  const behavior = fakeDaemonChild;
+  if (behavior) {
+    // A real child inherits the log fd and writes through it; in-process that fd
+    // is already closed by the parent, so append to the same file by path.
+    if (behavior.stderr) fs.appendFileSync(daemonLogFile(), behavior.stderr);
+    queueMicrotask(() => child.emit("exit", behavior.exitsWith, null));
+  }
+  return child;
 });
 
 function userMsg(id: string, content: string): Message {
@@ -412,10 +436,11 @@ beforeEach(async () => {
   gitLookupError = null;
   vi.mocked(loadUserConfigEnv).mockReturnValue({});
   vi.mocked(Agent.create).mockResolvedValue(createMockAgent());
-  socketPath = path.join(
-    os.tmpdir(),
-    `wave-daemon-test-${process.pid}-${Date.now()}.sock`,
-  );
+  // The auto-start child's stderr goes to a log file under this dir; keep it out
+  // of the real ~/.wave/logs and per-test clean.
+  process.env.WAVE_LOGS_DIR = logsDir;
+  fs.rmSync(logsDir, { recursive: true, force: true });
+  socketPath = daemonTestSocketPath("server");
   server = new DaemonServer({ socketPath });
   await server.start();
 });
@@ -423,15 +448,22 @@ beforeEach(async () => {
 afterEach(async () => {
   stderrWriteSpy.mockRestore();
   daemonStartTimeout.ms = 10_000;
+  daemonExitGrace.ms = 1_500;
   waitPollInterval.ms = 2_000;
   await autoStartServer?.stop();
   autoStartServer = undefined;
   autoStartSocket = undefined;
+  fakeDaemonChild = undefined;
+  delete process.env.WAVE_LOGS_DIR;
+  fs.rmSync(logsDir, { recursive: true, force: true });
   await server.stop();
-  try {
-    fs.unlinkSync(socketPath);
-  } catch {
-    // already gone
+  // A pipe name disappears with its listener; only a file socket leaves a path.
+  if (!isWindowsPipeName(socketPath)) {
+    try {
+      fs.unlinkSync(socketPath);
+    } catch {
+      // already gone
+    }
   }
 });
 
@@ -478,10 +510,7 @@ test("list: prints a padded table of hosted sessions (in-memory registry)", asyn
 });
 
 test("list: auto-starts a daemon on demand and retries when the socket is missing", async () => {
-  const missing = path.join(
-    os.tmpdir(),
-    `wave-daemon-autostart-${process.pid}-${Date.now()}.sock`,
-  );
+  const missing = daemonTestSocketPath("autostart");
   autoStartSocket = missing;
   await expect(daemonListCommand(missing)).rejects.toThrow("exit(0)");
   expect(spawn).toHaveBeenCalledWith(
@@ -495,10 +524,7 @@ test("list: auto-starts a daemon on demand and retries when the socket is missin
 });
 
 test("list: daemon that never comes up after auto-start exits 1 with the spec'd hint", async () => {
-  const missing = path.join(
-    os.tmpdir(),
-    `wave-daemon-missing-${process.pid}-${Date.now()}.sock`,
-  );
+  const missing = daemonTestSocketPath("missing");
   daemonStartTimeout.ms = 200;
   await expect(daemonListCommand(missing)).rejects.toThrow("exit(1)");
   expect(spawn).toHaveBeenCalledWith(
@@ -509,6 +535,72 @@ test("list: daemon that never comes up after auto-start exits 1 with the spec'd 
   expect(stderrText()).toContain(`Cannot connect to daemon socket ${missing}`);
   expect(stderrText()).toContain("started a daemon but it did not come up");
   expect(stderrText()).toContain("(ENOENT)");
+  expect(exitSpy).toHaveBeenCalledWith(1);
+});
+
+test("list: a daemon child that dies fast-fails with its exit code and stderr tail", async () => {
+  const missing = daemonTestSocketPath("child-died");
+  daemonExitGrace.ms = 200;
+  fakeDaemonChild = {
+    exitsWith: 1,
+    stderr:
+      "Error: listen EACCES: permission denied \\\\.\\pipe\\wave-daemon-x\n",
+  };
+
+  const startedAt = Date.now();
+  await expect(daemonListCommand(missing)).rejects.toThrow("exit(1)");
+  // The child is gone — no point waiting out the full start timeout.
+  expect(Date.now() - startedAt).toBeLessThan(5_000);
+
+  // stderr goes to the daemon log (never a pipe the resident daemon could write
+  // into after this client is gone), and the tail is quoted back to the user.
+  expect(spawn).toHaveBeenCalledWith(
+    process.execPath,
+    [process.argv[1], "--daemon", missing],
+    expect.objectContaining({
+      detached: true,
+      stdio: ["ignore", "ignore", expect.any(Number)],
+    }),
+  );
+  expect(fs.readFileSync(daemonLogFile(), "utf8")).toContain("EACCES");
+  expect(stderrText()).toContain(`Cannot connect to daemon socket ${missing}`);
+  expect(stderrText()).toContain("the daemon process exited with code 1");
+  expect(stderrText()).toContain("listen EACCES: permission denied");
+  expect(exitSpy).toHaveBeenCalledWith(1);
+});
+
+test("list: a refused child is not a failure when another daemon comes up", async () => {
+  // Concurrent clients each launch a daemon; exactly one wins. The loser's own
+  // child exits ("another daemon is already listening") while the winner is still
+  // starting — the client must join that daemon instead of reporting a failure.
+  const missing = daemonTestSocketPath("loser");
+  autoStartSocket = missing;
+  fakeDaemonChild = {
+    exitsWith: 1,
+    stderr: "Another wave daemon is already listening on x\n",
+  };
+
+  await expect(daemonListCommand(missing)).rejects.toThrow("exit(0)");
+  expect(stdoutLines()).toEqual(["No sessions"]);
+  expect(exitSpy).toHaveBeenCalledWith(0);
+});
+
+test("list: an unwritable log directory degrades instead of blocking the start", async () => {
+  const missing = daemonTestSocketPath("no-log");
+  fs.mkdirSync(logsDir, { recursive: true });
+  const blocker = path.join(logsDir, "blocked");
+  fs.writeFileSync(blocker, "");
+  // A file where the log directory should be: mkdir fails, the daemon still runs.
+  process.env.WAVE_LOGS_DIR = blocker;
+  daemonStartTimeout.ms = 200;
+
+  await expect(daemonListCommand(missing)).rejects.toThrow("exit(1)");
+  expect(spawn).toHaveBeenCalledWith(
+    process.execPath,
+    [process.argv[1], "--daemon", missing],
+    expect.objectContaining({ stdio: ["ignore", "ignore", "ignore"] }),
+  );
+  expect(stderrText()).toContain("started a daemon but it did not come up");
   expect(exitSpy).toHaveBeenCalledWith(1);
 });
 
@@ -2908,10 +3000,7 @@ test("stop: gracefully stops a running daemon and exits 0 without auto-starting"
 });
 
 test("stop: daemon not running is an idempotent success (never starts one)", async () => {
-  const missing = path.join(
-    os.tmpdir(),
-    `wave-daemon-stop-missing-${process.pid}-${Date.now()}.sock`,
-  );
+  const missing = daemonTestSocketPath("stop-missing");
   await expect(daemonStopCommand(missing)).rejects.toThrow("exit(0)");
   expect(stdoutLines()).toEqual(["Daemon is not running"]);
   expect(exitSpy).toHaveBeenCalledWith(0);
@@ -2945,10 +3034,7 @@ test("restart: gracefully stops the running daemon and starts a fresh one", asyn
 });
 
 test("restart: starts a fresh daemon when none is running", async () => {
-  const missing = path.join(
-    os.tmpdir(),
-    `wave-daemon-restart-missing-${process.pid}-${Date.now()}.sock`,
-  );
+  const missing = daemonTestSocketPath("restart-missing");
   autoStartSocket = missing;
   daemonStartTimeout.ms = 2_000;
   await expect(daemonRestartCommand(missing)).rejects.toThrow("exit(0)");
