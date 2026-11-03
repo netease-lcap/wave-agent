@@ -161,7 +161,9 @@ order: 22
 
 - **SSH 交互式认证**：仅支持 SSH 密钥与 ssh-agent，不支持密码/键盘交互式输入。
 
-- **本地 stdio 模式的生命周期**：本地 `--stdio` 维持现状（随 stdin 关闭/宿主退出而终止），不常驻；仅 daemon（`--daemon`）常驻，且仅面向远端主机。
+- **本地 stdio 模式的生命周期**：本地 `--stdio` 维持现状（随 stdin 关闭/宿主退出而终止），不常驻；仅 daemon（`--daemon`）常驻——它既服务 SSH 远端主机，也服务本机的后台委派会话（`wave daemon` 子命令与 wave-daemon 技能，见 multi-agent/daemon-command.md）。
+
+- **Windows 作为 SSH 远端主机**：远端主机必须是 POSIX（Linux / macOS）——远端 daemon 的启动/探活/重启依赖 `nohup`、`test -S`、`pkill -f` 与登录 shell（`bash/zsh -lic`），且 OpenSSH 无法把 `-L` 转发指向 Windows 命名管道。Windows **本机**可以跑 daemon（那是本机用法、不经 SSH 隧道，见 multi-agent/daemon-command.md「平台适配：默认 socket 的形态」）；Windows 作为**客户端**连 POSIX 远端主机是支持的（本地转发端用 127.0.0.1 TCP 端口）。
 
 - **远程会话的差异/终端/预览面板**：远程会话支持全部三类面板（差异/终端经 ssh 执行、预览经 SSH 端口转发），面板打开/复用可用；本地会话不受影响。
 

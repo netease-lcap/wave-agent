@@ -1,6 +1,7 @@
 /**
- * DaemonServer — JSON-RPC server over a unix socket for remote background
- * sessions (spec: docs/specs/desktop/desktop-remote.md 「SSH 远程后台会话」).
+ * DaemonServer — JSON-RPC server over a local socket (a unix domain socket on
+ * POSIX, a Windows named pipe) for remote background sessions (spec:
+ * docs/specs/desktop/desktop-remote.md 「SSH 远程后台会话」).
  *
  * The desktop app launches `wave --daemon <socket>` on the remote host via
  * nohup/setsid, then tunnels the socket back with `ssh -L`. All connections
@@ -18,6 +19,10 @@ import net from "net";
 import * as fs from "fs";
 import { AgentBridge, type AgentBridgeOptions } from "./agentBridge.js";
 import { JsonRpcConnection } from "./jsonRpcConnection.js";
+import {
+  describeListenError,
+  isWindowsPipeName,
+} from "../daemon/socketPath.js";
 import type { RemoteControlSink } from "../remote/remoteControlSink.js";
 
 export interface DaemonServerOptions {
@@ -98,37 +103,43 @@ export class DaemonServer {
    * unlinked outright; socket files are probe-connected — ECONNREFUSED means
    * no listener (stale → unlink and listen), anything else means a live
    * daemon owns the path (reject).
+   *
+   * A Windows named pipe has no file to go stale: it disappears with its
+   * listener, so the probe/unlink pass is skipped and a name already in use
+   * surfaces as EADDRINUSE from `listen` (translated in `listen`).
    */
   start(): Promise<void> {
     return new Promise((resolve, reject) => {
       const server = this.server;
       if (!server) return resolve();
-      try {
-        const st = fs.statSync(this.socketPath);
-        if (st.isSocket()) {
-          const probe = net.connect(this.socketPath);
-          probe.once("connect", () => {
-            probe.destroy();
-            reject(
-              new Error(
-                `Another wave daemon is already listening on ${this.socketPath}`,
-              ),
-            );
-          });
-          probe.once("error", (err: NodeJS.ErrnoException) => {
-            probe.destroy();
-            if (err.code === "ECONNREFUSED") {
-              fs.unlinkSync(this.socketPath);
-              this.listen(server, resolve, reject);
-            } else {
-              reject(err);
-            }
-          });
-          return;
+      if (!isWindowsPipeName(this.socketPath)) {
+        try {
+          const st = fs.statSync(this.socketPath);
+          if (st.isSocket()) {
+            const probe = net.connect(this.socketPath);
+            probe.once("connect", () => {
+              probe.destroy();
+              reject(
+                new Error(
+                  `Another wave daemon is already listening on ${this.socketPath}`,
+                ),
+              );
+            });
+            probe.once("error", (err: NodeJS.ErrnoException) => {
+              probe.destroy();
+              if (err.code === "ECONNREFUSED") {
+                fs.unlinkSync(this.socketPath);
+                this.listen(server, resolve, reject);
+              } else {
+                reject(err);
+              }
+            });
+            return;
+          }
+          fs.unlinkSync(this.socketPath);
+        } catch {
+          // ENOENT — no stale socket, listen directly.
         }
-        fs.unlinkSync(this.socketPath);
-      } catch {
-        // ENOENT — no stale socket, listen directly.
       }
       this.listen(server, resolve, reject);
     });
@@ -139,9 +150,11 @@ export class DaemonServer {
     resolve: () => void,
     reject: (err: Error) => void,
   ): void {
-    server.once("error", reject);
+    const onError = (err: NodeJS.ErrnoException) =>
+      reject(describeListenError(this.socketPath, err));
+    server.once("error", onError);
     server.listen(this.socketPath, () => {
-      server.removeListener("error", reject);
+      server.removeListener("error", onError);
       resolve();
     });
   }
@@ -174,10 +187,13 @@ export class DaemonServer {
     this.sockets.clear();
     this.server?.close();
     this.server = undefined;
-    try {
-      fs.unlinkSync(this.socketPath);
-    } catch {
-      // Already gone — a stale file is probed/unlinked on next start.
+    // A pipe name disappears with its listener; only a file socket needs unlinking.
+    if (!isWindowsPipeName(this.socketPath)) {
+      try {
+        fs.unlinkSync(this.socketPath);
+      } catch {
+        // Already gone — a stale file is probed/unlinked on next start.
+      }
     }
     try {
       process.exit(0);
