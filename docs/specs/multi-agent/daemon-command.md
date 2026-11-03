@@ -1,6 +1,6 @@
 ---
 name: "Daemon 客户端命令"
-description: "`wave daemon` 子命令组：按需拉起常驻 daemon，创建、查看、阻塞等待空闲、续聊、审批、中断、销毁远端后台会话，并优雅停止/重启 daemon"
+description: "`wave daemon` 子命令组：按需拉起常驻 daemon，创建、查看、阻塞等待空闲、续聊、审批、中断、销毁后台会话，并优雅停止/重启 daemon（默认 socket 在 POSIX 是 unix socket、在 Windows 是命名管道）"
 order: 95
 ---
 
@@ -10,7 +10,7 @@ order: 95
 
 ## 概述
 
-`wave --daemon <socket>` 在远端主机上启动一个 JSON-RPC over unix socket 的 daemon，托管后台 agent 会话（桌面端经 SSH 隧道访问）。目前除了 `--daemon` 启动标志外，没有任何面向用户的 CLI 命令可以查看 daemon 里托管了哪些会话、会话进度如何、或向会话注入消息继续对话——这些能力只存在于 JSON-RPC 协议层，普通用户与脚本无法直接使用。本规格定义 `wave daemon` 子命令组，将已验证的协议流程（创建会话 → attach → 读消息 → 阻塞等待空闲 → 注入消息 → 审批挂起的权限请求 → 中断生成 → 销毁会话 → 优雅停止/重启 daemon 进程）封装为十条命令（`create` / `list` / `status` / `wait` / `send` / `respond` / `abort` / `destroy` / `stop` / `restart`），供用户在远端主机直接执行（或经 `ssh <host> wave daemon ...` 在远端主机上执行）。daemon 一经拉起即常驻（空闲不退出，仅在被 stop/restart 优雅关闭、kill / 升级重启 / 机器重启后消失）——除 `stop` 外，任一子命令连接 socket 失败（daemon 未运行）时自动以 nohup 方式拉起 daemon（`wave --daemon ~/.wave/daemon.sock`）并重试连接，按需即用；`stop` 永不自动拉起，daemon 未运行时幂等成功（restart 未运行时等价于直接拉起）。
+`wave --daemon <socket>` 在主机上启动一个 JSON-RPC over 本机 socket（POSIX：unix domain socket；Windows：命名管道）的 daemon，托管后台 agent 会话（桌面端经 SSH 隧道访问）。目前除了 `--daemon` 启动标志外，没有任何面向用户的 CLI 命令可以查看 daemon 里托管了哪些会话、会话进度如何、或向会话注入消息继续对话——这些能力只存在于 JSON-RPC 协议层，普通用户与脚本无法直接使用。本规格定义 `wave daemon` 子命令组，将已验证的协议流程（创建会话 → attach → 读消息 → 阻塞等待空闲 → 注入消息 → 审批挂起的权限请求 → 中断生成 → 销毁会话 → 优雅停止/重启 daemon 进程）封装为十条命令（`create` / `list` / `status` / `wait` / `send` / `respond` / `abort` / `destroy` / `stop` / `restart`），供用户在远端主机直接执行（或经 `ssh <host> wave daemon ...` 在远端主机上执行）；运行位置不限远端——本机跑 daemon（内置 wave-daemon 技能把长任务委派给后台会话）与远端主机是同一套命令，平台差异只体现在默认 socket 的形态上（见「平台适配：默认 socket 的形态」故事）。daemon 一经拉起即常驻（空闲不退出，仅在被 stop/restart 优雅关闭、kill / 升级重启 / 机器重启后消失）——除 `stop` 外，任一子命令连接 socket 失败（daemon 未运行）时自动以 nohup 方式拉起 daemon（`wave --daemon ~/.wave/daemon.sock`）并重试连接，按需即用；`stop` 永不自动拉起，daemon 未运行时幂等成功（restart 未运行时等价于直接拉起）。
 
 ## 用户场景与测试 _（必填）_
 
@@ -18,7 +18,7 @@ order: 95
 
 作为在远端主机上使用 daemon 的用户，我希望通过 `wave daemon` 子命令组（`create` / `list` / `status` / `wait` / `send` / `respond` / `abort` / `destroy` / `stop` / `restart`）访问 daemon，固定连接默认 socket，以便无需了解 JSON-RPC 协议即可创建、查看、阻塞等待空闲、续聊、审批、中断、销毁与优雅停止/重启后台会话。
 
-**为什么是这个优先级**：这是整个命令组的地基——没有统一的命令入口与 socket 寻址规则，create/list/status/wait/send/respond/abort/destroy/stop/restart 无从谈起；daemon 只监听本地 unix socket、不暴露网络端口，且只允许在远端主机上运行，因此客户端命令一律连接默认 socket（`~/.wave/daemon.sock`），不提供 `--socket` 覆盖参数，避免支持本地转发 socket 等非目标用法。daemon 一经拉起即常驻运行（空闲不退出）：除 `stop` 外任一子命令连接失败时自动以 nohup 方式拉起 daemon（`wave --daemon ~/.wave/daemon.sock`，nohup+重定向使启动器立即返回）并重试连接，按需即用——`stop` 不会拉起 daemon（未运行时幂等成功），`restart` 未运行时等价于直接拉起。
+**为什么是这个优先级**：这是整个命令组的地基——没有统一的命令入口与 socket 寻址规则，create/list/status/wait/send/respond/abort/destroy/stop/restart 无从谈起；daemon 只监听本机 socket、不暴露网络端口，因此客户端命令一律连接默认 socket（POSIX `~/.wave/daemon.sock`；Windows 是同一默认值的管道形态，见「平台适配：默认 socket 的形态」故事），不提供 `--socket` 覆盖参数，避免支持本地转发 socket 等非目标用法。daemon 一经拉起即常驻运行（空闲不退出）：除 `stop` 外任一子命令连接失败时自动以 nohup 方式拉起 daemon（`wave --daemon ~/.wave/daemon.sock`，nohup+重定向使启动器立即返回）并重试连接，按需即用——`stop` 不会拉起 daemon（未运行时幂等成功），`restart` 未运行时等价于直接拉起。
 
 **独立测试**：在远端启动 daemon 后运行 `wave daemon list` 能列出会话；daemon 未运行时运行任一子命令会自动拉起 daemon 并重试连接（成功则命令照常执行，失败则给出明确错误提示）。
 
@@ -29,6 +29,47 @@ order: 95
 3. **假设** 用户运行 `wave daemon list` 时，**当** 命令执行期间没有需要交互的输入，**则** 命令运行完即退出（非交互式），stdout 输出结果、stderr 输出诊断，便于脚本与管道消费。
 4. **假设** 用户误以为 `wave daemon` 与 `wave --daemon <socket>` 相同，**当** 对比两者行为时，**则** `wave --daemon` 启动 daemon（服务端），`wave daemon <子命令>` 访问 daemon（客户端），两者语义不同、互不干扰，帮助文本中明确区分。
 5. **假设** daemon 已拉起、托管的所有会话均已停止且无任何客户端连接（空闲状态持续远超原 60 秒宽限期），**当** 用户查看该 daemon，**则** daemon 必须保持运行不自动退出——进程内存中的会话注册表与挂起状态持续保留；daemon 只在被 kill / 升级重启 / 机器重启后消失，届时下一次子命令连接失败会再次自动拉起（场景 2）。
+
+---
+
+### 用户故事：平台适配——默认 socket 的形态（优先级：P1）
+
+作为在 Windows 本机使用 daemon 的用户（含内置 wave-daemon 技能把长任务委派给后台会话），我希望 daemon 在 Windows 上同样能被按需拉起并常驻，客户端的寻址规则与 POSIX 完全一致（固定默认 socket、无 `--socket` 覆盖、失败即报错），以便同一套命令与技能在两个平台上行为一致、不必为平台准备两套用法。
+
+**为什么是这个优先级**：Windows 上 libuv 只接受 `\\.\pipe\` 形态的监听名——给一个文件系统路径（`C:\Users\<user>\.wave\daemon.sock`）去 `listen` 会直接 `EACCES`，那个 `.sock` 文件根本建不出来。所以现状不是「Windows 上 daemon 慢一点/不稳」，而是「Windows 上 daemon 100% 起不来」：任一子命令自动拉起 → 子进程秒退 → 客户端白等启动超时 → 报一句与真实原因无关的 `(ENOENT)`。而 daemon 已经是「后台任务委派」这条主流程的入口（内置 wave-daemon 技能在 Windows 上同样被挂出来给模型用），Windows 用户是一等公民，这条链必须能跑。**跨仓**：只改本仓（CLI 的 socket 寻址与 daemon 启动），协议与桌面端不变；桌面端连 POSIX 远端主机在 Windows 客户端上本来就能用（本地转发端已改用 127.0.0.1 TCP 端口，见 desktop-remote.md）。
+
+**独立测试**：Windows 上删掉已有 daemon 后运行 `wave daemon list`，验证它自动拉起 daemon 并输出会话列表（不白等超时、不报 `EACCES`）；`wave daemon create` → `status` → `send` → `wait` → `destroy` → `stop` 全链路在 Windows 上跑通，`stop` 后再次 `list` 能重新拉起；在 Windows 上并发起两个 daemon（手工 `wave --daemon <同一管道名>` 两次），验证第二个明确报「已在监听」而不是抛 `EADDRINUSE`；POSIX 上现有 daemon 测试全绿、`~/.wave/daemon.sock` 的文件形态与 stale socket 清理行为逐字不变。
+
+**验收场景**：
+
+1. **假设** 在 POSIX（Linux / macOS）上，**当** daemon 按需拉起或手工 `wave --daemon <path>` 启动时，**则** 默认 socket 仍是文件形态的 `~/.wave/daemon.sock`，行为与今天完全一致：stale socket 探活-清理（`ECONNREFUSED` 即视为无监听者、删除后重新监听）、非 socket 的普通文件直接 unlink、shutdown 时删除 socket 文件——这些一律不因适配 Windows 而改变。
+2. **假设** 在 Windows 上，**当** daemon 启动或任一子命令连接时，**则** 默认 socket 是命名管道 `\\.\pipe\wave-daemon-<摘要>`，其中摘要由默认 socket 路径（家目录派生）稳定派生：同一用户恒定、不同用户/不同家目录不同（管道名是**机器全局命名空间**，本机所有 OS 用户共享 `\\.\pipe\`，因此必须带用户唯一成分；且不能直接拼家目录路径——路径里的 `\` 与 `:` 在管道名中非法）。服务端与客户端经**同一个映射函数**得到同一个名字，不得各写一份常量。
+3. **假设** 在 Windows 上手工 `wave --daemon <path>` 启动，**当** 调用方给出的不是默认值时，**则** 该路径按原样使用（调用方自己给的管道名照用；给出其他文件路径也照用，因此会以真实的 `EACCES` 明确失败而不是被悄悄改名）——映射只作用于「默认 socket 路径」这一处，且服务端与客户端都做同一次映射：调用方把默认路径显式写出来（`wave --daemon ~/.wave/daemon.sock`）时，服务端监听的仍是客户端会去连的那根管道，不会因为「显式传了路径」就落到 `EACCES` 上。
+4. **假设** Windows 上没有 daemon 在跑，**当** 任一子命令首次连接时，**则** 首个连接的失败码与 POSIX 的「socket 文件不存在」同形（`ENOENT`），因此按需拉起与重试逻辑不需要分平台分支，错误文案与退出码也一致。
+5. **假设** Windows 上 daemon 进程被 kill / 机器重启（管道随监听进程消失，不留 stale 文件），**当** daemon 下次启动或子命令连接失败时，**则** 都不需要清理 stale socket（管道无从「残留」）：启动路径跳过探活/unlink，shutdown 路径也不需要删文件；同一台机器上的不同 OS 用户各自派生不同管道名，A 用户的 daemon 不会占用/抢走 B 用户的默认 socket。
+6. **假设** Windows 上已经有一个 daemon 在监听默认管道，**当** 又启动一个（手工 `wave --daemon <同名管道>`，或并发拉起时落后的那一个）时，**则** 启动必须被拒绝并以「另一个 wave daemon 已在监听 <名字>」的明确文案非零退出，不得把 `listen EADDRINUSE` 原样抛给用户（POSIX 侧那句同义文案的等价表达）。
+7. **假设** 在 Windows 上运行 `wave daemon stop` / `restart`，**当** daemon 收到 shutdown 时，**则** 语义与退出码与 POSIX 一致：`shutdown` RPC → 托管会话逐个销毁（转录存盘）→ 监听关闭 → 进程退出；客户端以「连接不再被接受」作为停止完成的判据（不依赖 RPC 响应、不检查文件是否消失），`stop` 在没有 daemon 时仍是幂等 no-op。
+8. **假设** 在 Windows 上，**当** 会话在 daemon 里创建与运行（含 `create --worktree`、`status`、`wait`、`send`、`respond`、`abort`、`destroy`、退出码契约 0/1/3），**则** 行为与 POSIX 逐条一致——协议层本就与平台无关，本次只改传输层的寻址，不得为平台引入行为分叉。
+9. **假设** 用户或模型（wave-daemon 技能）在 Windows 上按技能里的命令行事，**当** 技能文案提到默认 socket 时，**则** 文案必须说明「本机 daemon 的默认 socket 是平台相关的（POSIX `~/.wave/daemon.sock`、Windows 命名管道），但都由命令自己解析、不需要使用者手工填」，不得把 Windows 用户引到一条必然失败的路径上。
+
+---
+
+### 用户故事：按需拉起失败必须给出真实原因（优先级：P1）
+
+作为遇到「daemon 起不来」的用户或 agent，我希望命令报的错里能看到 daemon 进程自己失败的原因（退出码 + stderr 最后一行），并在子进程秒退时立刻失败，以便当场判断是权限、路径、平台还是端口/管道占用，而不是先等满 10 秒、再看到一句与真实原因无关的 `(ENOENT)`。
+
+**为什么是这个优先级**：自动拉起的子进程今天是 `stdio: "ignore"`——真实原因（如 `listen EACCES: permission denied <path>` 的整段堆栈）只存在于一个已经死掉、且没人收 stderr 的进程里；客户端手里只有首连的错误码，于是错误文案变成「started a daemon but it did not come up (ENOENT)」，而 `ENOENT` 其实是「socket 还不存在」这个**已经知道**的事实。再加上「子进程早就退出了」这个信号也没被用上，用户被迫等满启动超时。这条与平台无关（POSIX 上的依赖安装失败、权限、socket 路径不可写同样会被吞掉），Windows 只是最容易撞上的场景；诊断性是可观测性底线，没有它，任何后续的 daemon 故障排查都只能靠猜。
+
+**独立测试**：人为制造 daemon 启动失败（把默认 socket 指向不可写位置 / 让 daemon 启动即抛错 / 在 Windows 上用一个非法监听名），验证子命令的 stderr 错误文案含 daemon 的退出码与 stderr 尾部一行、且在 1-2 秒内失败而非等满启动超时；并发拉起（两个客户端同时失败、各拉一个 daemon）时验证落后那一方不假报失败；日志文件存在且是追加写入、拉起前超阈值会轮换；daemon 正常启动时验证命令输出与退出码与今天一致（不泄漏日志路径到 stdout）。
+
+**验收场景**：
+
+1. **假设** 按需拉起的子进程在启动窗口内非零退出（启动即失败），**当** 客户端发现该退出时，**则** 它必须再给一个短暂撮合窗口（1-2 秒）继续尝试连接——覆盖「两个客户端并发拉起，自己这一个是落后者、而胜者尚未就绪」的情况；窗口内连上即按成功继续，仍然连不上则**立刻**以非零退出码失败，不得等满启动超时（默认 10 秒）。
+2. **假设** 按 1 判定为失败，**当** 命令打印错误时，**则** stderr 的错误文案必须包含：本次要连的 socket 名字、子进程退出码、daemon 自身 stderr 的最后一行（去 ANSI、压成单行）；不得只报首连错误码。
+3. **假设** daemon 进程被按需拉起，**当** 它的 stderr 需要留存时，**则** 必须重定向到日志文件（`~/.wave/logs/daemon.log`，追加写入；拉起前若超过约 1 MB 则轮换为 `daemon.log.1`，只轮换一代），客户端读它的尾部来构造 2 的错误文案——**不得**用管道常连父子进程的 stderr：常驻 daemon 活得比客户端久，父进程退出后再写 stderr 会 EPIPE，可能把常驻进程写死。
+4. **假设** 拉起成功（daemon 正常常驻），**当** 子命令继续执行时，**则** 输出与退出码与今天完全一致：stdout 只承载命令结果，日志路径不出现在任何输出里（仅在 2 的失败文案中出现）。
+5. **假设** 子进程一直存活但到启动超时仍未就绪（如首次运行在装运行时依赖），**当** 命令超时时，**则** 保持既有的超时语义与文案（socket 名字 + 未就绪），并把日志尾部最后一行作为补充信息附在后面；不得因为拿不到「已退出」信号而假报成功。
+6. **假设** 日志目录不可写或无法创建（只读家目录、权限不足），**当** 拉起 daemon 时，**则** 不得因此失败：退化为首连错误码的既有文案（诊断信息变少，但命令与 daemon 都照常工作），日志失败只作为可选诊断能力降级。
 
 ---
 
@@ -231,7 +272,9 @@ order: 95
 ### 边界情况
 
 - **daemon 未运行 / socket 不存在（按需即用）**：除 `stop` 外，任一子命令连接失败时自动以 nohup 方式拉起 daemon（`wave --daemon ~/.wave/daemon.sock`，nohup+重定向分离会话）并重试连接——daemon 一经拉起即常驻（空闲不退出），仅在被 stop/restart 优雅关闭、kill / 升级重启 / 机器重启后消失，届时下一次子命令连接失败会再次自动拉起；拉起的 daemon 在启动超时（默认 10 秒）内仍未就绪时，命令才以非零退出码 + stderr 明确提示退出，不得挂起或进入 TUI。`stop` 不自动拉起（未运行即幂等成功退出 0）；`restart` 未运行时等价于直接拉起。
-- **默认 socket 固定**：所有 `wave daemon` 子命令一律连接 `~/.wave/daemon.sock`，不提供 `--socket` 覆盖参数；命令只在远端主机上运行，不面向本地转发的 socket。
+- **默认 socket 固定，形态随平台**：所有 `wave daemon` 子命令一律连接默认 socket、不提供 `--socket` 覆盖参数；POSIX 是文件形态的 `~/.wave/daemon.sock`，Windows 是命名管道 `\\.\pipe\wave-daemon-<家目录路径派生的摘要>`（管道名是机器全局命名空间，必须带用户唯一成分，且不能直接拼路径——`\` 与 `:` 在管道名中非法）。服务端与客户端共用同一个映射函数。不面向本地转发的 socket；手工 `wave --daemon <path>` 仍按调用方给的名字启动，不做映射。
+- **daemon 宿主平台**：POSIX（Linux / macOS）与 Windows **本机**都支持跑 daemon（内置 wave-daemon 技能把任务委派给本机 daemon 是受支持的用法，两个平台一致）。桌面端的 **SSH 远端主机仍限 POSIX**：OpenSSH 无法把 `-L` 转发指向 Windows 命名管道，且远端的启动/探活/重启依赖 `nohup`、`test -S`、`pkill -f` 与登录 shell（`bash/zsh -lic`）——因此 Windows 只能作为**客户端**连 POSIX 远端主机（这条已支持：本地转发端用 127.0.0.1 TCP 端口），不能作为远端主机被连（见 desktop-remote.md）。
+- **按需拉起的诊断性**：拉起 daemon 时子进程的 stderr 落到 `~/.wave/logs/daemon.log`（追加、拉起前超阈值轮换一代），不用管道常连（常驻 daemon 比客户端活得久，父进程退出后写 stderr 会 EPIPE）。子进程在启动窗口内非零退出时，给 1-2 秒撮合窗口（覆盖并发拉起的胜者尚未就绪）后立即失败，不等满启动超时；失败文案含 socket 名字、子进程退出码与 stderr 最后一行，不得只报首连错误码。日志目录不可写时降级为既有文案、不因此失败。
 - **`wave daemon` 与 `wave --daemon` 语义冲突**：前者是客户端子命令组（create/list/status/wait/send/respond/abort/destroy/stop/restart），后者是服务端启动标志（也是客户端连接失败时自动拉起的后台进程）；帮助文本须写明差异，避免误用。
 - **stop/restart 是优雅关闭，非强杀**：`stop`/`restart` 经协议 `shutdown` 让 daemon 先销毁全部会话（各自存盘收尾）再退出，取代仓库旧的 `daemon:kill` pkill 脚本；停止完成的判定是「socket 消失」而非 shutdown RPC 响应（daemon 销毁会话后即退出，可能来不及应答）。桌面端 SSH 远端 daemon 的升级重启走另一既有机制（ensureRemoteDaemon / killRemoteDaemon，见 desktop-distribution.md「内置 CLI 一致保障」），不受本命令影响。
 - **list 仅反映当前进程内存态**：`list` 展示的是当前 daemon 进程内 live 的会话（`initialize`/`restoreSession` 载入且仍存活），不扫磁盘索引；daemon 重启（被 kill / 升级重启 / 机器重启）后内存清空、列表为空是正常现象。磁盘上的历史会话（含普通 `wave` TUI 创建的）不在列表中，但知道 sessionId 仍可经 `status`/`send` attach（`restoreSession` 重新载入），无需依赖 `list` 找回。

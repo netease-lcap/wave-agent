@@ -1,17 +1,14 @@
-import { test as vitestTest, expect, vi, beforeEach, afterEach } from "vitest";
+import { test, expect, vi, beforeEach, afterEach } from "vitest";
 import { createInterface } from "readline";
 import { PassThrough } from "stream";
 import * as net from "net";
 import * as fs from "fs";
-import * as os from "os";
-import * as path from "path";
 import { Agent, loadUserConfigEnv } from "wave-agent-sdk";
 
-// Unix-domain sockets are unreliable on Windows: libuv rejects binding a
-// non-"\\.\pipe\..." path with EACCES, so every socket-based test fails there.
-// The daemon protocol logic is platform-agnostic and already covered by the
-// blocking Linux CI; the Windows job only checks platform-specific paths.
-const test = process.platform === "win32" ? vitestTest.skip : vitestTest;
+// Addresses come from daemonTestSocketPath: a file socket on POSIX, a named pipe
+// on Windows (a non-pipe path cannot be bound there at all). The daemon supports
+// both shapes, so these tests run on either platform.
+import { daemonTestSocketPath } from "../helpers/daemonSocket.js";
 
 // Mock the Agent SDK
 vi.mock("wave-agent-sdk");
@@ -27,6 +24,7 @@ const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => {
 });
 
 import { DaemonServer } from "../../src/stdio/daemonServer.js";
+import { isWindowsPipeName } from "../../src/daemon/socketPath.js";
 import type { RemoteControlSink } from "../../src/remote/remoteControlSink.js";
 import type { Message } from "wave-agent-sdk";
 
@@ -113,10 +111,7 @@ beforeEach(async () => {
   vi.clearAllMocks();
   vi.mocked(loadUserConfigEnv).mockReturnValue({});
   vi.mocked(Agent.create).mockResolvedValue(createMockAgent());
-  socketPath = path.join(
-    os.tmpdir(),
-    `wave-daemon-test-${process.pid}-${Date.now()}.sock`,
-  );
+  socketPath = daemonTestSocketPath("server");
   server = new DaemonServer({ socketPath });
   await server.start();
 });
@@ -124,10 +119,13 @@ beforeEach(async () => {
 afterEach(async () => {
   stderrWriteSpy.mockRestore();
   await server.stop();
-  try {
-    fs.unlinkSync(socketPath);
-  } catch {
-    // already gone
+  // A pipe name disappears with its listener; only a file socket leaves a path.
+  if (!isWindowsPipeName(socketPath)) {
+    try {
+      fs.unlinkSync(socketPath);
+    } catch {
+      // already gone
+    }
   }
 });
 
@@ -273,7 +271,7 @@ test("pending permission survives disconnect; new connection lists and resolves 
 });
 
 test("stop() closes the listener; new connections are refused", async () => {
-  const localPath = socketPath + "-local";
+  const localPath = daemonTestSocketPath("stop-local");
   const localServer = new DaemonServer({ socketPath: localPath });
   await localServer.start();
   await localServer.stop();
@@ -288,22 +286,27 @@ test("stop() closes the listener; new connections are refused", async () => {
   socket.destroy();
 });
 
-test("start() unlinks a non-socket stale file at the socket path", async () => {
-  const stalePath = socketPath + "-non-socket";
-  fs.writeFileSync(stalePath, "not a socket");
-  const s = new DaemonServer({ socketPath: stalePath });
-  await s.start();
-  const client = connectClient(stalePath);
-  const msgs = await client.send({ id: 1, method: "initialize", params: {} });
-  expect(msgs[0]).toMatchObject({ id: 1 });
-  client.close();
-  await s.stop();
-  try {
-    fs.unlinkSync(stalePath);
-  } catch {
-    // already gone
-  }
-});
+// A named pipe has no directory entry to go stale, so the stale-file cleanup
+// only exists for file sockets.
+test.skipIf(process.platform === "win32")(
+  "start() unlinks a non-socket stale file at the socket path",
+  async () => {
+    const stalePath = daemonTestSocketPath("non-socket");
+    fs.writeFileSync(stalePath, "not a socket");
+    const s = new DaemonServer({ socketPath: stalePath });
+    await s.start();
+    const client = connectClient(stalePath);
+    const msgs = await client.send({ id: 1, method: "initialize", params: {} });
+    expect(msgs[0]).toMatchObject({ id: 1 });
+    client.close();
+    await s.stop();
+    try {
+      fs.unlinkSync(stalePath);
+    } catch {
+      // already gone
+    }
+  },
+);
 
 test("start() rejects when a live daemon already holds the socket", async () => {
   const second = new DaemonServer({ socketPath });
@@ -315,7 +318,7 @@ test("start() rejects when a live daemon already holds the socket", async () => 
 // ── Resident daemon (spec: daemon 常驻，空闲不退出) ─────────────
 
 test("daemon with no sessions and no clients stays alive (no idle auto-exit)", async () => {
-  const localPath = socketPath + "-resident-empty";
+  const localPath = daemonTestSocketPath("resident-empty");
   const s = new DaemonServer({ socketPath: localPath });
   await s.start();
   // A zero-session daemon used to auto-exit after the 60s grace period; it
@@ -330,7 +333,7 @@ test("daemon with no sessions and no clients stays alive (no idle auto-exit)", a
 });
 
 test("daemon stays resident after clients detach and the session settles", async () => {
-  const localPath = socketPath + "-resident-idle";
+  const localPath = daemonTestSocketPath("resident-idle");
   const s = new DaemonServer({ socketPath: localPath });
   await s.start();
   const a = connectClient(localPath);
@@ -390,7 +393,7 @@ async function emitPermissionRequest(client: { lines: string[] }) {
 }
 
 test("fans notifications out to the remote sink beside the local clients", async () => {
-  const localPath = socketPath + "-remote-sink";
+  const localPath = daemonTestSocketPath("remote-sink");
   const sink = createSink();
   const bridgeArg: unknown[] = [];
   const s = new DaemonServer({
@@ -428,7 +431,7 @@ test("fans notifications out to the remote sink beside the local clients", async
 });
 
 test("routes the three remoteControl RPCs to the daemon's sink", async () => {
-  const localPath = socketPath + "-remote-rpc";
+  const localPath = daemonTestSocketPath("remote-rpc");
   const sink = createSink();
   const s = new DaemonServer({
     socketPath: localPath,
@@ -462,7 +465,7 @@ test("routes the three remoteControl RPCs to the daemon's sink", async () => {
 });
 
 test("keeps serving local clients when the remote sink throws", async () => {
-  const localPath = socketPath + "-remote-sink-throws";
+  const localPath = daemonTestSocketPath("remote-sink-throws");
   const sink = createSink({
     sendNotification: vi.fn(() => {
       throw new Error("relay exploded");
@@ -491,7 +494,7 @@ test("keeps serving local clients when the remote sink throws", async () => {
 test("with remote control off the three RPCs report why, instead of hanging", async () => {
   // `daemon-cli` only passes a factory when the switch is on; without one the
   // bridge has no controller and must say so on every remoteControl call.
-  const localPath = socketPath + "-remote-off";
+  const localPath = daemonTestSocketPath("remote-off");
   const s = new DaemonServer({ socketPath: localPath });
   await s.start();
 
@@ -512,7 +515,7 @@ test("with remote control off the three RPCs report why, instead of hanging", as
 });
 
 test("stop() tears the remote sink down with the listener", async () => {
-  const localPath = socketPath + "-remote-stop";
+  const localPath = daemonTestSocketPath("remote-stop");
   const sink = createSink();
   const s = new DaemonServer({
     socketPath: localPath,
@@ -525,7 +528,7 @@ test("stop() tears the remote sink down with the listener", async () => {
 });
 
 test("non-shutdown teardown does not leave the relay link up", async () => {
-  const localPath = socketPath + "-remote-shutdown";
+  const localPath = daemonTestSocketPath("remote-shutdown");
   const sink = createSink();
   const s = new DaemonServer({
     socketPath: localPath,
@@ -544,7 +547,7 @@ test("non-shutdown teardown does not leave the relay link up", async () => {
 // ── Graceful shutdown RPC (spec: wave daemon stop/restart) ─────
 
 test("shutdown RPC destroys sessions, removes the socket and exits", async () => {
-  const localPath = socketPath + "-shutdown";
+  const localPath = daemonTestSocketPath("shutdown");
   const agent = createMockAgent();
   vi.mocked(Agent.create).mockResolvedValue(agent);
   const s = new DaemonServer({ socketPath: localPath });
@@ -559,7 +562,10 @@ test("shutdown RPC destroys sessions, removes the socket and exits", async () =>
   // Every hosted session was destroyed first (transcript flush on destroy).
   expect(agent.destroy).toHaveBeenCalled();
   // The listener is closed and the socket file removed — nothing accepts now.
-  expect(fs.existsSync(localPath)).toBe(false);
+  // (A pipe name is not a path; closing the listener is the whole teardown.)
+  if (!isWindowsPipeName(localPath)) {
+    expect(fs.existsSync(localPath)).toBe(false);
+  }
   await expect(
     new Promise<void>((resolve, reject) => {
       const socket = net.connect(localPath);
