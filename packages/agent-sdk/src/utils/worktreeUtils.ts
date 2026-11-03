@@ -94,6 +94,7 @@ export function getHeadCommit(cwd: string): string {
   return execFileSync("git", ["-C", cwd, "rev-parse", "HEAD"], {
     encoding: "utf8",
     stdio: ["ignore", "pipe", "ignore"],
+    windowsHide: true,
   }).trim();
 }
 
@@ -153,6 +154,7 @@ export function createWorktree(
       {
         cwd: repoRoot,
         stdio: ["ignore", "pipe", "pipe"],
+        windowsHide: true,
         env: {
           ...process.env,
           GIT_TERMINAL_PROMPT: "0",
@@ -177,6 +179,7 @@ export function createWorktree(
         execFileSync("git", ["worktree", "add", worktreePath, branchName], {
           cwd: repoRoot,
           stdio: ["ignore", "pipe", "pipe"],
+          windowsHide: true,
           env: {
             ...process.env,
             GIT_TERMINAL_PROMPT: "0",
@@ -208,6 +211,7 @@ export function createWorktree(
         execFileSync("git", ["fetch", "origin", branchNameOnly], {
           cwd: repoRoot,
           stdio: ["ignore", "pipe", "pipe"],
+          windowsHide: true,
           env: {
             ...process.env,
             GIT_TERMINAL_PROMPT: "0",
@@ -220,6 +224,7 @@ export function createWorktree(
           {
             cwd: repoRoot,
             stdio: ["ignore", "pipe", "pipe"],
+            windowsHide: true,
             env: {
               ...process.env,
               GIT_TERMINAL_PROMPT: "0",
@@ -244,6 +249,7 @@ export function createWorktree(
             {
               cwd: repoRoot,
               stdio: ["ignore", "pipe", "pipe"],
+              windowsHide: true,
               env: {
                 ...process.env,
                 GIT_TERMINAL_PROMPT: "0",
@@ -672,6 +678,7 @@ export function removeWorktree(info: WorktreeInfo): void {
     execFileSync("git", ["worktree", "remove", "--force", info.path], {
       cwd: repoRoot,
       stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true,
     });
     // git exits 0 even when it did not delete the directory: on Windows it
     // cannot remove the directory symlinks/junctions that pnpm's node_modules
@@ -717,6 +724,7 @@ export function removeWorktree(info: WorktreeInfo): void {
       execFileSync("git", ["worktree", "prune"], {
         cwd: repoRoot,
         stdio: ["ignore", "pipe", "pipe"],
+        windowsHide: true,
       });
     } catch {
       // Ignore errors
@@ -744,6 +752,7 @@ export function removeWorktree(info: WorktreeInfo): void {
     execFileSync("git", ["branch", "-D", info.branch], {
       cwd: repoRoot,
       stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true,
     });
   } catch {
     // Ignore errors
@@ -827,6 +836,7 @@ export function countWorktreeChanges(
       {
         encoding: "utf8",
         stdio: ["ignore", "pipe", "ignore"],
+        windowsHide: true,
       },
     );
     const changedFiles = statusOutput
@@ -849,6 +859,7 @@ export function countWorktreeChanges(
       {
         encoding: "utf8",
         stdio: ["ignore", "pipe", "ignore"],
+        windowsHide: true,
       },
     );
     const commits = parseInt(revListOutput.trim(), 10) || 0;

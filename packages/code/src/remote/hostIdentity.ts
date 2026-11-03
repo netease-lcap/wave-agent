@@ -122,6 +122,7 @@ function readWindowsMachineId(): string | undefined {
       encoding: "utf8",
       timeout: READ_TIMEOUT_MS,
       stdio: ["ignore", "pipe", "ignore"],
+      windowsHide: true,
     },
   );
   return /MachineGuid\s+REG_SZ\s+(\S+)/.exec(output)?.[1];

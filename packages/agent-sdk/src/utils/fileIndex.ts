@@ -173,6 +173,7 @@ export async function getAllFiles(workdir: string): Promise<string[]> {
     const child = spawn(rgBinary, rgArgs, {
       cwd: workdir,
       stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true,
     });
 
     let stdout = "";

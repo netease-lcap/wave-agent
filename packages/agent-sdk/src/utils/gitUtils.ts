@@ -35,6 +35,7 @@ export function getGitRepoRoot(cwd: string): string {
       cwd,
       encoding: "utf8",
       stdio: ["ignore", "pipe", "ignore"],
+      windowsHide: true,
     }).trim();
   } catch {
     return cwd;
@@ -52,6 +53,7 @@ export function getGitCommonDir(cwd: string): string {
       cwd,
       encoding: "utf8",
       stdio: ["ignore", "pipe", "ignore"],
+      windowsHide: true,
     }).trim();
     return path.resolve(cwd, commonDir);
   } catch {
@@ -70,6 +72,7 @@ export function getGitMainRepoRoot(cwd: string): string {
       cwd,
       encoding: "utf8",
       stdio: ["ignore", "pipe", "ignore"],
+      windowsHide: true,
     }).trim();
     const lines = output.split("\n");
     if (lines.length > 0 && lines[0].startsWith("worktree ")) {
@@ -287,6 +290,7 @@ export function hasUncommittedChanges(cwd: string): boolean {
       cwd,
       encoding: "utf8",
       stdio: ["ignore", "pipe", "ignore"],
+      windowsHide: true,
     }).trim();
     return status.length > 0;
   } catch {
@@ -307,6 +311,7 @@ export function hasNewCommits(cwd: string, baseBranch?: string): boolean {
       cwd,
       encoding: "utf8",
       stdio: ["ignore", "pipe", "ignore"],
+      windowsHide: true,
     }).trim();
     return log.length > 0;
   } catch {

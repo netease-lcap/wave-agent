@@ -1440,6 +1440,7 @@ export class AgentBridge {
       cwd: workdir,
       encoding: "utf8" as const,
       stdio: ["ignore", "pipe", "pipe"] as ["ignore", "pipe", "pipe"],
+      windowsHide: true,
     };
     let branchesRaw: string;
     try {

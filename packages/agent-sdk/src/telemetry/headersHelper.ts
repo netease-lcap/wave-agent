@@ -150,6 +150,7 @@ function runHelperCommand(
       child = spawn(shell, [shellFlag, finalCommand], {
         stdio: ["ignore", "pipe", "pipe"],
         cwd: options.cwd ?? process.cwd(),
+        windowsHide: true,
         env: { ...process.env, ...options.env },
       });
     } catch (error) {

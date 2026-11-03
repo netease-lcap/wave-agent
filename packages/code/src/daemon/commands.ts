@@ -1277,7 +1277,7 @@ export interface DestroyOptions {
 /** Run one git command and return trimmed stdout (rejects on git failure). */
 function runGit(cwd: string, args: string[]): Promise<string> {
   return new Promise((resolve, reject) => {
-    execFile("git", args, { cwd }, (err, stdout) => {
+    execFile("git", args, { cwd, windowsHide: true }, (err, stdout) => {
       if (err) reject(err);
       else resolve(stdout.trim());
     });

@@ -258,6 +258,9 @@ export async function executeCommand(
     const childProcess: ChildProcess = spawn(shell, [shellFlag, finalCommand], {
       stdio: ["pipe", "pipe", "pipe"],
       cwd: spawnCwd,
+      // No-op off Windows. The desktop main process has no console, so without
+      // this every hook spawn gets a visible console window allocated.
+      windowsHide: true,
       env: {
         ...process.env, // Environment variables from process.env
         ...("env" in context ? context.env || {} : {}), // Additional environment variables from configuration (if ExtendedHookExecutionContext)
