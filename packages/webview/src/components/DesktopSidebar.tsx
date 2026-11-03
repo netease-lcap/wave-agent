@@ -232,8 +232,12 @@ export interface DesktopSidebarProps {
   onToggleArtifacts?: () => void;
 }
 
+/** 分组标题只显示目录名（不是完整路径）。两种分隔符都要认：本机直接打开的
+ *  目录是系统原生拼写（Windows 反斜杠），而 worktree 会话的 workdir 是
+ *  `git worktree list` 输出的仓库根（Windows 上是正斜杠），只按 `/` 切会让
+ *  反斜杠那条把整条路径漏到标题里。 */
 const dirName = (workdir: string): string =>
-  workdir.split("/").filter(Boolean).pop() ?? workdir;
+  workdir.split(/[\\/]/).filter(Boolean).pop() ?? workdir;
 
 // A group is identified by (host, workdir) — the same directory may exist on
 // the local machine and on an SSH host, and those are distinct groups (spec

@@ -974,6 +974,33 @@ describe("DesktopApp", () => {
       ).toHaveTextContent("b");
     });
 
+    it("shows only the directory name for a native Windows path", () => {
+      // 回归：直接打开的目录是系统原生拼写（反斜杠），worktree 会话的 workdir
+      // 却是 `git worktree list` 的 `C:/…` 形态；标题两种拼写都只留目录名，
+      // 不能把整条路径漏进来。
+      const windowsWorkdir = "C:\\Users\\foo\\gitlab\\codechat";
+      renderDesktopApp();
+      sendCommand("desktopWorkdirState", {
+        workdir: windowsWorkdir,
+        recentWorkdirs: [windowsWorkdir],
+      });
+      sendCommand("setInitialState", { messages: [] });
+      sendCommand("desktopSessionTree", {
+        groups: [
+          {
+            host: "local",
+            workdir: windowsWorkdir,
+            sessions: [session("s1", "hello")],
+          },
+        ],
+      });
+
+      const name = screen
+        .getByTestId(`desktop-session-group-local:${windowsWorkdir}`)
+        .querySelector(".desktop-session-group-name") as HTMLElement;
+      expect(name.textContent).toBe("codechat");
+    });
+
     it("renders a worktree session under its repo root group", () => {
       renderDesktopApp();
       // Worktree session active: current workdir is the worktree path,
