@@ -1955,6 +1955,13 @@
   background: rgba(255, 255, 255, 0.12);
   color: var(--cc-text-primary);
 }
+/* 「在文件树中显示」的那一次高亮（spec「文件面板工作区目录树」场景 8）：桌面端的
+   `--vscode-focusBorder` 是用户拍过板的灰环（去蓝），落在本来就是灰底的选中行上
+   几乎看不出来；这一次性提示改用产品自己的链接蓝 token（浅/深各有一档，
+   `--cc-text-link`），1.2s 后由组件摘掉，不构成新的稳态选中色。 */
+[data-host="desktop"] .file-tree-row--revealed {
+  outline-color: var(--cc-text-link, #2f5edb);
+}
 [data-host="desktop"] .file-tree-icon,
 [data-host="desktop"] .file-tree-caret {
   color: var(--cc-text-secondary);

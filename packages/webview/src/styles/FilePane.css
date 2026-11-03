@@ -589,6 +589,14 @@
   color: var(--vscode-list-activeSelectionForeground, inherit);
 }
 
+/* 「在文件树中显示」命中后的一次高亮（spec「文件面板工作区目录树」场景 8）：
+   目标行本来就是选中态，底色再变也读不出来，所以用一圈强调色描边闪一下——
+   1.2s 后类名由组件摘掉（时长见 FileTree 的 REVEAL_FLASH_MS）。 */
+.file-tree-row--revealed {
+  outline: 2px solid var(--vscode-focusBorder, #007fd4);
+  outline-offset: -2px;
+}
+
 .file-tree-caret {
   flex: none;
   width: 10px;

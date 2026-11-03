@@ -677,21 +677,6 @@ export const FilePane: React.FC<FilePaneProps> = ({
     requestDir(treeRoot);
   }, [treeRoot, treeVisible, requestDir]);
 
-  // 「在文件树中显示」: expand every ancestor inside the root, then scroll.
-  const revealActiveInTree = useCallback(() => {
-    const path = fileView?.path;
-    if (!path || !treeRoot) return;
-    if (!isUnder(path, treeRoot)) return;
-    const ancestors = ancestorsWithin(path, treeRoot);
-    setExpanded((prev) => {
-      const next = new Set(prev);
-      for (const dir of ancestors) next.add(dir);
-      return next;
-    });
-    for (const dir of ancestors) requestDir(dir);
-    setRevealTick((tick) => tick + 1);
-  }, [fileView?.path, treeRoot, requestDir]);
-
   // Opening a file keeps the tree honest without a click: its ancestors are
   // expanded (and listed) so the row shows up selected (scenario 6's first half).
   useEffect(() => {
@@ -842,6 +827,32 @@ export const FilePane: React.FC<FilePaneProps> = ({
     },
     [onOpenFileInPanel],
   );
+
+  // 「在文件树中显示」只对**树能画出来的**文件有意义：行不在工作根之下就永远
+  // 不会出现在树里，露一个点了没反应的入口比不露更让人困惑（场景 15，与场景 3
+  // 「不可用要写明原因」同一取向）。判据与 revealActiveInTree 里的守卫同源。
+  const canRevealInTree =
+    !!treeRoot && !!fileView?.path && isUnder(fileView.path, treeRoot);
+
+  // 「在文件树中显示」: expand every ancestor inside the root and let the tree
+  // scroll + flash the row (scenario 8) — 行本来就是选中态，没有那次闪烁时
+  // 「本来就看得见」和「刚刚定位过去」在画面上完全相同。
+  const revealActiveInTree = useCallback(() => {
+    const path = fileView?.path;
+    if (!path || !treeRoot) return;
+    if (!isUnder(path, treeRoot)) return;
+    // 筛选框有字时树画的是命中列表、目标行根本不在画面上：先清筛选再定位，
+    // 否则展开只作用在没被画出来的行上（场景 16）。
+    if (searchFilter) handleFilterChange("");
+    const ancestors = ancestorsWithin(path, treeRoot);
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      for (const dir of ancestors) next.add(dir);
+      return next;
+    });
+    for (const dir of ancestors) requestDir(dir);
+    setRevealTick((tick) => tick + 1);
+  }, [fileView?.path, treeRoot, requestDir, searchFilter, handleFilterChange]);
 
   // Listen for the host's file suggestions reply (same channel as @ mention).
   // Routing is by requestId (request correlation), not message.paneId.
@@ -1473,7 +1484,10 @@ export const FilePane: React.FC<FilePaneProps> = ({
               </button>
             </Tooltip>
           )}
-          {showFile && activeFile && treeRoot && !treeDeferred && (
+          {/* 「在文件树中显示」（场景 8）：只在树真能画出这一行时出现——工作根
+              之外的文件（/tmp 里的临时图、换过根的会话）点了也没有任何去处，
+              所以不给入口（场景 15）。 */}
+          {showFile && activeFile && !treeDeferred && canRevealInTree && (
             <Tooltip text="在文件树中显示" position="bottom">
               <button
                 type="button"
