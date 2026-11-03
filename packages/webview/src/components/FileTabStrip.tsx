@@ -1,6 +1,7 @@
 import React, {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -32,6 +33,29 @@ export interface FileTabStripProps {
 
 type MenuState = { fileId: string; x: number; y: number } | null;
 
+/** 右键菜单在视口边上的最小留白。 */
+const MENU_VIEWPORT_MARGIN = 8;
+
+/**
+ * 把点出来的菜单塞进视口：默认落在指针右下方，右侧/下方放不下就翻到指针
+ * 另一侧，最后再夹一次边保证不出界（窗口比菜单还窄时优先保住左上留白）。
+ */
+function clampMenuPosition(
+  point: { x: number; y: number },
+  size: { width: number; height: number },
+): { left: number; top: number } {
+  const maxLeft = window.innerWidth - size.width - MENU_VIEWPORT_MARGIN;
+  const maxTop = window.innerHeight - size.height - MENU_VIEWPORT_MARGIN;
+  let left = point.x;
+  let top = point.y;
+  if (left > maxLeft) left = point.x - size.width;
+  if (top > maxTop) top = point.y - size.height;
+  return {
+    left: Math.max(MENU_VIEWPORT_MARGIN, Math.min(left, maxLeft)),
+    top: Math.max(MENU_VIEWPORT_MARGIN, Math.min(top, maxTop)),
+  };
+}
+
 /**
  * The file panel's own tab strip (spec desktop-file-panel.md「文件面板已打开文件
  * 的标签」). It sits *inside* the single first-level file tab, so panel-kind tabs
@@ -55,6 +79,12 @@ export const FileTabStrip: React.FC<FileTabStripProps> = ({
   const stripRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const [menu, setMenu] = useState<MenuState>(null);
+  /** 右键菜单的落点（`position: fixed` 的 left/top，视口坐标）。先按点击点渲染，
+   *  `useLayoutEffect` 量到真实尺寸后再翻转/夹边 —— 都在同一帧 paint 之前完成，
+   *  所以不会看到「先弹错位置再跳过去」。 */
+  const [menuPos, setMenuPos] = useState<{ left: number; top: number } | null>(
+    null,
+  );
   const [overflowing, setOverflowing] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
   const [hiddenIds, setHiddenIds] = useState<string[]>([]);
@@ -141,6 +171,20 @@ export const FileTabStrip: React.FC<FileTabStripProps> = ({
     onClickOutside: () => setMenu(null),
   });
 
+  // 量一次菜单尺寸再落位：菜单宽度钉死 200，高度随行数变，视口右下角放不下时
+  // 要翻到指针另一侧。用 layout effect（不是 effect）是为了在 paint 前改完，
+  // 用户看不到中间那帧「按原始点击点画出来的」菜单。
+  useLayoutEffect(() => {
+    if (!menu || !menuRef.current) return;
+    const rect = menuRef.current.getBoundingClientRect();
+    setMenuPos(
+      clampMenuPosition(
+        { x: menu.x, y: menu.y },
+        { width: rect.width, height: rect.height },
+      ),
+    );
+  }, [menu]);
+
   const hiddenFiles = hiddenIds
     .map((id) => files.find((f) => f.id === id))
     .filter((f): f is OpenFileTab => !!f);
@@ -181,11 +225,14 @@ export const FileTabStrip: React.FC<FileTabStripProps> = ({
               onClick={() => onActivate(file.id)}
               onContextMenu={(event) => {
                 event.preventDefault();
+                // `clientX/clientY` 是视口坐标，只有挂到 body 上的 fixed 弹层才能
+                // 直接拿它当 left/top 用（见下面 portal 的注释）。
                 setMenu({
                   fileId: file.id,
                   x: event.clientX,
                   y: event.clientY,
                 });
+                setMenuPos({ left: event.clientX, top: event.clientY });
               }}
               onKeyDown={(event) => {
                 if (event.key === "Delete" || event.key === "Backspace") {
@@ -328,33 +375,48 @@ export const FileTabStrip: React.FC<FileTabStripProps> = ({
             )}
         </div>
       )}
-      {menu && (
-        <div
-          ref={menuRef}
-          className="file-tab-menu"
-          data-testid="file-tab-menu"
-          role="menu"
-          style={{ top: menu.y, left: menu.x }}
-        >
-          {[
-            ["关闭", onClose],
-            ["关闭其他", onCloseOthers],
-            ["关闭右侧", onCloseRight],
-            ["全部关闭", onCloseAll],
-          ].map(([label, action]) => (
-            <button
-              key={label as string}
-              type="button"
-              role="menuitem"
-              className="file-tab-menu-item"
-              data-testid="file-tab-menu-item"
-              onClick={() => runMenuAction(action as (fileId: string) => void)}
-            >
-              {label as string}
-            </button>
-          ))}
-        </div>
-      )}
+      {menu &&
+        menuPos &&
+        createPortal(
+          // 坐标基准必须与坐标系一致：`clientX/clientY` 是视口坐标，而菜单若留在
+          // 标签带里，`position: absolute` 的包含块是最近的定位祖先
+          // `.preview-pane-body`（position: relative，面板在窗口右侧）。那样
+          // 1374 = 面板左边 669 + clientX 705 —— 菜单整整偏出一个面板的宽度，
+          // 弹到窗口最右侧甚至屏幕外。挂到 body 上用 `position: fixed`，视口坐标
+          // 才真正是视口坐标（与上面「更多文件」菜单同一套做法）。
+          <div
+            ref={menuRef}
+            className="file-tab-menu"
+            data-testid="file-tab-menu"
+            role="menu"
+            style={{
+              position: "fixed",
+              left: menuPos.left,
+              top: menuPos.top,
+            }}
+          >
+            {[
+              ["关闭", onClose],
+              ["关闭其他", onCloseOthers],
+              ["关闭右侧", onCloseRight],
+              ["全部关闭", onCloseAll],
+            ].map(([label, action]) => (
+              <button
+                key={label as string}
+                type="button"
+                role="menuitem"
+                className="file-tab-menu-item"
+                data-testid="file-tab-menu-item"
+                onClick={() =>
+                  runMenuAction(action as (fileId: string) => void)
+                }
+              >
+                {label as string}
+              </button>
+            ))}
+          </div>,
+          document.body,
+        )}
     </div>
   );
 };
