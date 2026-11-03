@@ -462,7 +462,7 @@ CodeWave IDE 的遥测走 OpenTelemetry 标准，客户端侧有**三条互不�
 - **`onUsagesChange` 回调**：每次 AI 调用与消息压缩完成后触发，推送当前会话累计的用量数组，适合实时同步到自建平台。
 - **`get usages()` 方法**：随时按需读取同一份数据，适合定时取数、生成报表或与外部监控系统对接。
 
-接口定义与用法见 [SDK 文档 - 回调系统](/sdk#agent-callbacks-interface)，数据范围与边界见[功能规格说明：用量追踪](/specs/enterprise/usage-tracking-callback)。
+回调与类型定义见 [Agent SDK](/sdk)（源码开放、JSDoc 完善，直接读 `packages/agent-sdk/src` 即可），数据范围与边界见[功能规格说明：用量追踪](/specs/enterprise/usage-tracking-callback)。
 
 ### 6. 隐私与治理 {#telemetry-privacy}
 
