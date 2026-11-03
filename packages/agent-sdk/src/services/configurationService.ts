@@ -1067,29 +1067,37 @@ export class ConfigurationService {
    * capability the picker needs to label them (vision). `supportsVision` is
    * resolved per model through the same declarative `capabilities` field the
    * agent itself reads, so the badge cannot drift from runtime behavior.
+   *
+   * `models` 存在时它才是清单的全集：`model` 标量存的是**模型名**，而平台侧
+   * 改别名动的就是 `models` 的键，改名后旧名字只剩在 `~/.wave/settings.json`
+   * 的 `model` 里——再补进清单就是同一个模型的第二行（PM 3506021669882624）。
+   * 目录为空时（只配了 `WAVE_MODEL` / 单一模型的 CLI 用法）照旧收标量，否则
+   * 连当前模型都会被删干净。
    */
   getConfiguredModels(): ConfiguredModel[] {
     const models = new Set<string>();
+    const catalog = new Set(Object.keys(this.liveConfiguration?.models ?? {}));
+
+    const addSelectable = (name: string | undefined): void => {
+      if (!name) return;
+      // 有目录就只认目录里的名字，失效的旧名字不进清单。
+      if (catalog.size > 0 && !catalog.has(name)) return;
+      models.add(name);
+    };
 
     // Add current model from options or environment (settings snapshot > OS env)
-    const currentModel =
+    addSelectable(
       this.options.model ||
-      (this.liveEnvSnapshot.WAVE_MODEL ?? process.env.WAVE_MODEL);
-    if (currentModel) {
-      models.add(currentModel);
-    }
+        (this.liveEnvSnapshot.WAVE_MODEL ?? process.env.WAVE_MODEL),
+    );
 
     // Persisted model from settings (includes remote-merged)
-    if (this.liveConfiguration?.model) {
-      models.add(this.liveConfiguration.model);
-    }
+    addSelectable(this.liveConfiguration?.model);
 
     // Add models from merged configuration
-    if (this.liveConfiguration?.models) {
-      Object.keys(this.liveConfiguration.models).forEach((model) => {
-        models.add(model);
-      });
-    }
+    catalog.forEach((model) => {
+      models.add(model);
+    });
 
     return Array.from(models).map((name) => ({
       name,
