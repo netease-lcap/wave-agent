@@ -2686,7 +2686,7 @@ test("destroy: --remove-worktree resolves the worktree via git and removes it be
   expect(execFile).toHaveBeenCalledWith(
     "git",
     ["rev-parse", "--show-toplevel"],
-    { cwd: "/test/workdir" },
+    { cwd: "/test/workdir", windowsHide: true },
     expect.any(Function),
   );
   // …and what is checked out there is never asked for: `branch --show-current`
@@ -2772,7 +2772,7 @@ test("destroy: --remove-worktree anchors on the recorded creation workdir, not t
   expect(execFile).toHaveBeenCalledWith(
     "git",
     ["rev-parse", "--show-toplevel"],
-    { cwd: "/repo/main/.wave/worktrees/feature-x" },
+    { cwd: "/repo/main/.wave/worktrees/feature-x", windowsHide: true },
     expect.any(Function),
   );
   expect(vi.mocked(removeWorktree)).toHaveBeenCalledWith(
