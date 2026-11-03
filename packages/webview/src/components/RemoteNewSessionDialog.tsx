@@ -20,6 +20,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useHostMessage } from "../utils/useHostMessage";
+import { splitWorkdir } from "../utils/workdirPath";
 import { DirectoryBrowser } from "./DirectoryBrowser";
 import "../styles/ConfigurationDialog.css";
 import "../styles/DesktopApp.css";
@@ -304,33 +305,41 @@ const RemoteNewSessionDialog: React.FC<RemoteNewSessionDialogProps> = ({
                     data-testid="remote-new-session-recents"
                   >
                     <div className="desktop-workdir-menu-label">最近目录</div>
-                    {recents.map((dir) => (
-                      <div
-                        key={dir}
-                        className="desktop-workdir-menu-item"
-                        role="button"
-                        tabIndex={0}
-                        title={dir}
-                        onClick={() => chooseWorkdir(dir)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" || e.key === " ") {
-                            e.preventDefault();
-                            chooseWorkdir(dir);
-                          }
-                        }}
-                        data-testid="remote-new-session-recent-item"
-                      >
-                        <span className="codicon codicon-folder"></span>
-                        <span className="desktop-workdir-menu-path">
-                          <span className="desktop-workdir-menu-name">
-                            {dir.split("/").filter(Boolean).pop() || dir}
+                    {recents.map((dir) => {
+                      // 两行式条目，与桌面端最近目录同一份拆分规则：远控的
+                      // Windows 主机上目录是系统原生拼写（`C:\Users\…`），只按
+                      // `/` 切会把整条路径漏进目录名那行。
+                      const { name, parent } = splitWorkdir(dir);
+                      return (
+                        <div
+                          key={dir}
+                          className="desktop-workdir-menu-item"
+                          role="button"
+                          tabIndex={0}
+                          title={dir}
+                          onClick={() => chooseWorkdir(dir)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              chooseWorkdir(dir);
+                            }
+                          }}
+                          data-testid="remote-new-session-recent-item"
+                        >
+                          <span className="codicon codicon-folder"></span>
+                          <span className="desktop-workdir-menu-path">
+                            <span className="desktop-workdir-menu-name">
+                              {name}
+                            </span>
+                            {parent && (
+                              <span className="desktop-workdir-menu-parent">
+                                {parent}
+                              </span>
+                            )}
                           </span>
-                          <span className="desktop-workdir-menu-parent">
-                            {dir.slice(0, dir.lastIndexOf("/"))}
-                          </span>
-                        </span>
-                      </div>
-                    ))}
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
                 <div className="configuration-field">

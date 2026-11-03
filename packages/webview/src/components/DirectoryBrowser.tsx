@@ -22,18 +22,68 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useHostMessage } from "../utils/useHostMessage";
 import "../styles/DesktopApp.css";
 
-/** Join a normalized absolute path with a child name. */
-export const joinPath = (base: string, child: string): string =>
-  `${base.replace(/\/+$/, "")}/${child}`;
+/**
+ * 路径按**机器自己的拼写**处理：宿主 `listDirectories` 回的是 `realpath` 结果，
+ * 远端是 Windows 时是系统原生的 `C:\Users\…`，macOS/Linux 时是 `/home/…`。
+ * 只认 `/` 会让面包屑退化成「一整条路径」、点它跳到盘根、`…` 上级也跳错地方
+ * （见 workdirPath.ts 同一条教训）。
+ */
 
-/** Parent of a normalized absolute path; '/' has no parent. */
-export const parentOf = (p: string): string => {
-  const norm = p.replace(/\/+$/, "");
-  if (!norm || norm === "/") return "/";
-  const idx = norm.lastIndexOf("/");
-  if (idx <= 0) return "/";
-  return norm.slice(0, idx);
+/** 根：POSIX 的 `/`，或 Windows 的盘根 `C:\` / `C:/`。 */
+const isRootPath = (p: string): boolean => {
+  const norm = p.replace(/[\\/]+$/, "");
+  return norm === "" || /^[A-Za-z]:$/.test(norm);
 };
+
+/** Join a path with a child name, keeping the parent's separator style. */
+export const joinPath = (base: string, child: string): string => {
+  const trimmed = base.replace(/[\\/]+$/, "");
+  const sep =
+    /^[A-Za-z]:/.test(base) && base.includes("\\") && !base.includes("/")
+      ? "\\"
+      : "/";
+  return `${trimmed}${sep}${child}`;
+};
+
+/** Parent of an absolute path; a root has no parent. */
+export const parentOf = (p: string): string => {
+  if (isRootPath(p)) return p;
+  const norm = p.replace(/[\\/]+$/, "");
+  const cut = Math.max(norm.lastIndexOf("/"), norm.lastIndexOf("\\"));
+  if (cut <= 0) return "/";
+  const parent = norm.slice(0, cut);
+  // Windows 盘根要留住分隔符：`C:` 不是一条路径。
+  return /^[A-Za-z]:$/.test(parent) ? norm.slice(0, cut + 1) : parent;
+};
+
+/** Breadcrumb segments of `path`, each carrying the path it navigates to. */
+const crumbsOf = (path: string): { label: string; target: string }[] => {
+  const drive = /^([A-Za-z]:)/.exec(path);
+  const sep = drive && path.includes("\\") && !path.includes("/") ? "\\" : "/";
+  const body = drive ? path.slice(2) : path;
+  const segments = body.split(/[\\/]/).filter(Boolean);
+  if (!drive) {
+    const out = [{ label: "/", target: "/" }];
+    let acc = "";
+    for (const seg of segments) {
+      acc += `/${seg}`;
+      out.push({ label: seg, target: acc });
+    }
+    return out;
+  }
+  const root = `${drive[1]}${sep}`;
+  const out = [{ label: root, target: root }];
+  let acc = root;
+  for (const seg of segments) {
+    acc = acc.endsWith(sep) ? `${acc}${seg}` : `${acc}${sep}${seg}`;
+    out.push({ label: seg, target: acc });
+  }
+  return out;
+};
+
+/** 输入框里可直接跳转的绝对路径：`/…`、`~…`，或 Windows 的 `C:\…` / `C:/…`。 */
+const isAbsolutePathInput = (p: string): boolean =>
+  p.startsWith("/") || p.startsWith("~") || /^[A-Za-z]:[\\/]/.test(p);
 
 export interface DirectoryBrowserProps {
   /** host→webview 回复消息的 command 名（requestId 匹配）。 */
@@ -129,10 +179,9 @@ export const DirectoryBrowser: React.FC<DirectoryBrowserProps> = ({
     }
   }, [selectedIndex]);
 
-  // Breadcrumb segments of the current path: ['/', 'home', 'user', 'project'].
-  const crumbs = currentPath.startsWith("/")
-    ? ["/", ...currentPath.split("/").filter(Boolean)]
-    : currentPath.split("/").filter(Boolean);
+  // Breadcrumb segments of the current path, each with its navigation target
+  // (`/home/alice` → `/`, `home`, `alice`; Windows `C:\Users\a` → `C:\`, …).
+  const crumbs = crumbsOf(currentPath);
 
   // Live filter over the single-level directory list (case-insensitive
   // substring). The keyword also highlights matches.
@@ -177,12 +226,12 @@ export const DirectoryBrowser: React.FC<DirectoryBrowserProps> = ({
 
   /**
    * Enter-without-selection on the filter input. Only an absolute-path-shaped
-   * value (`/…` or `~…`) jumps straight to that path; a bare keyword is just
-   * the live filter and does nothing here.
+   * value (`/…`, `~…`, or a Windows `C:\…`) jumps straight to that path; a bare
+   * keyword is just the live filter and does nothing here.
    */
   const submitFilterInput = useCallback(() => {
     const p = filterKeyword.trim();
-    if (!p || !(p.startsWith("/") || p.startsWith("~"))) return;
+    if (!p || !isAbsolutePathInput(p)) return;
     onSelect(p);
   }, [filterKeyword, onSelect]);
 
@@ -200,29 +249,25 @@ export const DirectoryBrowser: React.FC<DirectoryBrowserProps> = ({
         className="desktop-remote-browser-crumbs"
         data-testid="desktop-remote-browser-crumbs"
       >
-        {crumbs.map((seg, i) => {
-          const target =
-            seg === "/" ? "/" : `/${crumbs.slice(1, i + 1).join("/")}`;
-          return (
-            <span
-              key={`${seg}-${i}`}
-              className={`desktop-remote-browser-crumb${i === crumbs.length - 1 ? " active" : ""}`}
-              tabIndex={0}
-              onClick={() => requestList(target)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault();
-                  requestList(target);
-                } else if (e.key === "Escape") {
-                  e.preventDefault();
-                  onClose();
-                }
-              }}
-            >
-              {seg}
-            </span>
-          );
-        })}
+        {crumbs.map(({ label, target }, i) => (
+          <span
+            key={`${label}-${i}`}
+            className={`desktop-remote-browser-crumb${i === crumbs.length - 1 ? " active" : ""}`}
+            tabIndex={0}
+            onClick={() => requestList(target)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                requestList(target);
+              } else if (e.key === "Escape") {
+                e.preventDefault();
+                onClose();
+              }
+            }}
+          >
+            {label}
+          </span>
+        ))}
       </div>
       {loading ? (
         <div className="desktop-remote-browser-status">加载中…</div>
@@ -242,7 +287,7 @@ export const DirectoryBrowser: React.FC<DirectoryBrowserProps> = ({
         </div>
       ) : (
         <div className="desktop-remote-browser-list" role="listbox">
-          {currentPath !== "/" && (
+          {!isRootPath(currentPath) && (
             <div
               className="desktop-remote-browser-item"
               role="option"
