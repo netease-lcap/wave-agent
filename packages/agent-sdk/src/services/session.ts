@@ -502,6 +502,59 @@ export async function sessionExistsAnywhere(
 }
 
 /**
+ * 会话**创建时**的工作目录，取自转录头部的 `{"type":"metadata","workdir":…}`
+ * 行（`createSession` 只在创建那一刻写一次，此后只追加不重写——会话内 `cd`、
+ * EnterWorktree、以及换一个 cwd 的客户端重新托管，都不会改它）。
+ *
+ * 给「手上的 cwd 未必是这个会话的目录」的重托管路径用（daemon 重启后
+ * `status`/`send` attach、宿主自己的索引过期）：这些调用方只有 session id 是
+ * 可信的，目录只能问转录。先按 `workdir` 的 project 目录找文件，找不到再跨
+ * project 目录扫一遍——与 `loadSessionFromJsonl` 的查找口径一致，所以「能载入
+ * 的会话」在这里也一定问得到目录。
+ *
+ * 尽力而为：会话不存在、无元数据头（老转录）、文件读不了、甚至 id 根本不是
+ * UUID（`generateSessionFilename` 会拒绝，重托管一条乱写的 id 是正常输入）——
+ * 一律返回 `undefined`，由调用方决定退回自己的 cwd，绝不把 attach 变成失败。
+ *
+ * @param sessionId - UUID session identifier
+ * @param workdir - 调用方已知的目录（作为查找起点，不是答案）
+ * @param sessionType - Type of session ("main" or "subagent", defaults to "main")
+ * @returns 创建时记录的工作目录；问不到时为 undefined
+ */
+export async function readSessionWorkdir(
+  sessionId: string,
+  workdir: string,
+  sessionType: "main" | "subagent" = "main",
+): Promise<string | undefined> {
+  try {
+    let filePath = await generateSessionFilePath(
+      sessionId,
+      workdir,
+      sessionType,
+    );
+
+    try {
+      await fs.access(filePath);
+    } catch {
+      const fallback = await findSessionFileAcrossProjects(
+        sessionId,
+        sessionType,
+      );
+      if (!fallback) {
+        return undefined;
+      }
+      filePath = fallback;
+    }
+
+    const header = await new JsonlHandler().readMetadata(filePath);
+    return header?.workdir;
+  } catch {
+    // 问不到就是问不到：这张是「有没有」的问题，不是「对不对」的问题。
+    return undefined;
+  }
+}
+
+/**
  * Load session data from JSONL file (new approach)
  *
  * @param sessionId - UUID session identifier

@@ -34,6 +34,7 @@ import {
   listAllSessions,
   loadSessionFromJsonl,
   sessionExistsAnywhere,
+  readSessionWorkdir,
 } from "../../src/services/session.js";
 import type { Message } from "../../src/types/index.js";
 import type { TranscriptSnapshot } from "../../src/services/sessionEntries.js";
@@ -578,6 +579,83 @@ describe("Session resume: cross-directory listing & restore", () => {
 
       expect(session).toBeNull();
       expect(mockJsonlHandler.read).not.toHaveBeenCalled();
+    });
+  });
+
+  // 重托管（daemon 重启后 attach、宿主索引过期）时手上只有 session id 是可信的，
+  // 会话属于哪个目录只能问转录头部的 metadata 行。
+  describe("readSessionWorkdir", () => {
+    it("returns the workdir recorded in the transcript header", async () => {
+      const fs = await import("fs");
+      const sessionId = randomUUID();
+      vi.mocked(fs.promises.access).mockResolvedValue(undefined);
+      mockJsonlHandler.readMetadata.mockResolvedValue({
+        workdir: "/repo/.wave/worktrees/feature-x",
+      });
+
+      await expect(readSessionWorkdir(sessionId, "/elsewhere")).resolves.toBe(
+        "/repo/.wave/worktrees/feature-x",
+      );
+      expect(mockJsonlHandler.readMetadata).toHaveBeenCalledWith(
+        join(SESSION_DIR, "mock-workdir", `${sessionId}.jsonl`),
+      );
+    });
+
+    it("finds a session recorded in another project dir", async () => {
+      const fs = await import("fs");
+      const sessionId = randomUUID();
+      vi.mocked(fs.promises.access)
+        .mockRejectedValueOnce(enoent()) // 调用方给的 project 目录里没有
+        .mockResolvedValueOnce(undefined); // 跨目录扫描命中
+      vi.mocked(fs.promises.readdir).mockResolvedValueOnce([
+        "other-project",
+      ] as unknown as Awaited<ReturnType<typeof fs.promises.readdir>>);
+      mockJsonlHandler.readMetadata.mockResolvedValue({
+        workdir: "/repo/.wave/worktrees/feature-x",
+      });
+
+      await expect(readSessionWorkdir(sessionId, "/elsewhere")).resolves.toBe(
+        "/repo/.wave/worktrees/feature-x",
+      );
+      expect(mockJsonlHandler.readMetadata).toHaveBeenCalledWith(
+        join(SESSION_DIR, "other-project", `${sessionId}.jsonl`),
+      );
+    });
+
+    it("is undefined for a legacy transcript without a metadata header", async () => {
+      const fs = await import("fs");
+      vi.mocked(fs.promises.access).mockResolvedValue(undefined);
+      mockJsonlHandler.readMetadata.mockResolvedValue(null);
+
+      await expect(
+        readSessionWorkdir(randomUUID(), "/mock/workdir"),
+      ).resolves.toBeUndefined();
+    });
+
+    it("is undefined when the session exists in no project dir", async () => {
+      const fs = await import("fs");
+      vi.mocked(fs.promises.access).mockRejectedValue(enoent());
+      vi.mocked(fs.promises.readdir).mockResolvedValueOnce([
+        "other-project",
+      ] as unknown as Awaited<ReturnType<typeof fs.promises.readdir>>);
+
+      await expect(
+        readSessionWorkdir(randomUUID(), "/mock/workdir"),
+      ).resolves.toBeUndefined();
+      expect(mockJsonlHandler.readMetadata).not.toHaveBeenCalled();
+    });
+
+    it("is undefined for an id that is not a UUID instead of failing the attach", async () => {
+      // `generateSessionFilename` rejects malformed ids; a re-host of a
+      // hand-typed id must still degrade to "no recorded workdir" so the
+      // caller reports its own "session not found" instead of this error.
+      mockJsonlHandler.generateSessionFilename.mockImplementation(() => {
+        throw new Error("Invalid session ID format: ghost");
+      });
+
+      await expect(
+        readSessionWorkdir("ghost", "/mock/workdir"),
+      ).resolves.toBeUndefined();
     });
   });
 

@@ -41,6 +41,7 @@ import {
   rememberRecentWorkdir,
   forgetRecentWorkdir,
   setSessionCustomTitle,
+  readSessionWorkdir,
   searchFiles,
   generateRandomName,
   getDefaultRemoteBranch,
@@ -97,7 +98,7 @@ import {
   realpathSync,
   statSync,
 } from "node:fs";
-import { mkdir, open, readFile, writeFile } from "node:fs/promises";
+import { mkdir, open, readFile, stat, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { basename, dirname, extname, join } from "node:path";
 import {
@@ -873,7 +874,12 @@ export class AgentBridge {
     const options: AgentOptions = {
       callbacks,
       logger,
-      workdir: params.workdir,
+      // Only a restore can name a directory other than the caller's, and the
+      // lookup must stay off the fresh-session path: hosts expect
+      // `Agent.create` to be under way as soon as `initialize` is entered.
+      workdir: params.restoreSessionId
+        ? await this.restoreWorkdirFor(params, params.restoreSessionId)
+        : params.workdir,
       restoreSessionId: params.restoreSessionId,
       apiKey: params.apiKey,
       baseURL: params.baseURL,
@@ -899,16 +905,15 @@ export class AgentBridge {
 
     // Record where the session was created (see SessionEntry.createdWorkdir).
     // A fresh session's initialize workdir IS the creation dir. A from-disk
-    // re-attach (the daemon was restarted — killed / CLI 升级重启 / reboot —
-    // then status/send re-hosts the session) instead passes the re-attaching
-    // client's cwd — the transcript header (`{"type":"metadata","workdir":...}`, append-only since session
-    // creation) restores the original value when the agent's transcript is
-    // readable; otherwise the client cwd is the best available anchor.
+    // re-attach was already anchored on the session's own directory by
+    // `restoreWorkdirFor` when the agent was created just above, so the agent's
+    // transcript is the recorded one: the header read here confirms it and
+    // supplies the creation branch.
     let createdWorkdir: string;
     let transcriptBranch: string | undefined;
     if (params.restoreSessionId) {
       const header = await readTranscriptHeader(agent.sessionFilePath);
-      createdWorkdir = header.workdir ?? params.workdir ?? agent.currentWorkdir;
+      createdWorkdir = header.workdir ?? agent.currentWorkdir;
       transcriptBranch = header.gitBranch;
     } else {
       createdWorkdir = params.workdir ?? agent.currentWorkdir;
@@ -930,6 +935,44 @@ export class AgentBridge {
     });
 
     return this.initializeReply(agent, createdWorkdir, worktree);
+  }
+
+  /**
+   * The directory a session being restored belongs to.
+   *
+   * `initialize`'s `workdir` is the **client's** directory, not the session's.
+   * For a fresh session the two are the same by definition, but a from-disk
+   * re-attach (daemon restarted — killed / CLI 升级重启 / reboot — then
+   * `status`/`send`/`wait` re-hosts the session) sends whatever cwd the
+   * re-attaching client happens to run in. Anchoring the agent there silently
+   * drops the session's own directory: a `create --worktree` session keeps the
+   * cwd of whoever attached first, its next turn (and its Bash tool) runs in the
+   * host repo instead of the worktree, and `destroy --remove-worktree` then
+   * resolves the wrong tree.
+   *
+   * The transcript's `metadata` header records the creation dir and is
+   * append-only (a Bash `cd`, an EnterWorktree and a re-host from another cwd
+   * all leave it alone), so it wins whenever it is readable **and** the
+   * directory still exists. A directory that is gone (worktree deleted by hand,
+   * project moved) is reported and the caller's directory is used instead —
+   * degenerate, but it is the only anchor left and must not abort the attach.
+   */
+  private async restoreWorkdirFor(
+    params: InitializeParams,
+    restoreSessionId: string,
+  ): Promise<string | undefined> {
+    const callerWorkdir = params.workdir ?? process.cwd();
+    const recorded = await readSessionWorkdir(restoreSessionId, callerWorkdir);
+    if (!recorded || recorded === callerWorkdir) {
+      return params.workdir;
+    }
+    if (!(await isDirectory(recorded))) {
+      logger?.warn(
+        `Session ${restoreSessionId} was created in ${recorded}, which no longer exists; restoring it in ${callerWorkdir} instead`,
+      );
+      return params.workdir;
+    }
+    return recorded;
   }
 
   /**
@@ -3392,6 +3435,15 @@ async function readTextFileSafe(filePath: string): Promise<string> {
       return "";
     }
     throw error;
+  }
+}
+
+/** Whether `path` exists and is a directory (a missing path simply answers false). */
+async function isDirectory(dirPath: string): Promise<boolean> {
+  try {
+    return (await stat(dirPath)).isDirectory();
+  } catch {
+    return false;
   }
 }
 
