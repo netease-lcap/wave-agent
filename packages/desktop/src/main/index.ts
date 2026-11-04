@@ -454,9 +454,10 @@ function createWindow(): void {
   win.on("leave-full-screen", () => host?.notifyFullScreen(win.isFullScreen()));
 
   // Crash/freeze forensics (spec「桌面端渲染进程崩溃与卡死恢复」). Two evidence
-  // streams that only make sense together: a memory curve every minute, and JS
-  // stack samples during a freeze. Neither reloads anything — recovery is the
-  // user's choice in the dialog (see crashRecovery.ts).
+  // streams that only make sense together: a memory reading every minute (silent
+  // — it surfaces only in the crash log's `lastMemory=`), and JS stack samples
+  // during a freeze. Neither reloads anything — recovery is the user's choice in
+  // the dialog (see crashRecovery.ts).
   const memorySampler = createMemorySampler({
     // Message volume rides along so the curve can answer "is the heap driven by
     // conversation length?" (6-week sessions keep the UI display stream, and

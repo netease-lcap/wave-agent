@@ -4,8 +4,11 @@
  *
  * Why: the black-screen incident *might* be the V8 heap giving up under the
  * full message history (the crash stack is a GC write-barrier stall). A single
- * snapshot cannot prove or exclude that — what we need is a curve: does the
- * renderer's working set climb for hours before the crash?
+ * snapshot cannot prove or exclude that, so the reading is taken continuously —
+ * but **silently**: it is not appended to desktop.log every minute. The one place
+ * these numbers surface is the crash log's `lastMemory=`, i.e. the moment they
+ * are actually worth reading (a minute-by-minute curve in the log was pure
+ * noise once the display-side rewrite landed).
  *
  * A MB number alone does not name a cause, so every reading carries the
  * message volume next to it. That count is whatever the renderer reports
@@ -18,17 +21,16 @@
  * flat while messages grow is evidence against it.
  *
  * Units: Electron reports `workingSetSize` / `peakWorkingSetSize` in **KB**;
- * the log prints MB because that is the number a human compares to the
+ * the crash log prints MB because that is the number a human compares to the
  * "2 GB heap" mental model.
  */
 
 import { app } from "electron";
-import { hostLog, type HostLogLevel } from "./hostLog";
+import { hostLog } from "./hostLog";
 
 export const MEMORY_SAMPLE_INTERVAL_MS = 60_000;
 
 export type MemoryLog = {
-  block: (level: HostLogLevel, lines: string[]) => void;
   warn: (...args: unknown[]) => void;
 };
 
@@ -99,15 +101,16 @@ export function formatSessionLine(stat: SessionMessageStat): string {
 }
 
 /**
- * One log entry per sample: memory lines carry the pane totals (= what a single
+ * One reading per sample: memory lines carry the pane totals (= what a single
  * "is the heap driven by conversation length?" read needs), then one line per
- * pane attributes the volume when several panes are open.
+ * pane attributes the volume when several panes are open. The joined result is
+ * what `lastLine()` hands to the crash log; nothing is written on a timer.
  *
  * One assistant turn can carry dozens of blocks (text + every tool call/output
  * in full), so the block total is the sharper growth signal of the two. Both
  * numbers are the renderer's own report (`desktopReportMessageStats`): the host
  * keeps no message list to count (spec ui/message-rendering-system.md「宿主不
- * 保留消息内容，用的时候现取」场景 8), and the curve is about that process's
+ * 保留消息内容，用的时候现取」场景 8), and the reading is about that process's
  * heap anyway.
  */
 export function formatMemoryBlock(
@@ -166,8 +169,8 @@ export function createMemorySampler(
       log.warn("[desktop] renderer memory sample failed:", error);
       return;
     }
-    // Before the window's renderer exists there is no Tab entry — say nothing
-    // rather than logging an empty reading every minute.
+    // Before the window's renderer exists there is no Tab entry — keep the last
+    // reading empty rather than recording a meaningless `lastMemory`.
     if (samples.length === 0) return;
     let stats: readonly SessionMessageStat[] = [];
     try {
@@ -177,7 +180,6 @@ export function createMemorySampler(
       log.warn("[desktop] message volume sample failed:", error);
     }
     const lines = formatMemoryBlock(samples, stats);
-    log.block("INFO", lines);
     last = lines.join("; ");
   };
 

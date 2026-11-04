@@ -157,10 +157,10 @@ export const BRANCH_LIST_LOADING_DELAY_MS = 300;
 
 /**
  * Coalescing window for `desktopReportMessageStats` — the renderer telling the
- * desktop host how much conversation it is holding for the memory curve
- * (memorySampler.ts samples once a minute). Streaming changes the list on every
- * delta, so the window folds those bursts into one report carrying the latest
- * count.
+ * desktop host how much conversation it is holding for the renderer memory
+ * reading (memorySampler.ts samples once a minute). Streaming changes the list on
+ * every delta, so the window folds those bursts into one report carrying the
+ * latest count.
  */
 const MESSAGE_STATS_REPORT_INTERVAL_MS = 5000;
 

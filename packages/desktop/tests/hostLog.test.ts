@@ -53,8 +53,8 @@ describe("hostLog", () => {
   });
 
   it("should not leave a blank line after a single-line block", () => {
-    // Renderer memory readings are one-line blocks; a stray trailing newline
-    // put an empty line between every reading in desktop.log.
+    // A one-line block (e.g. the crash log's memory reading) must not get a
+    // stray trailing newline that puts an empty line after every entry.
     hostLog.block("INFO", ["renderer memory pid=1 workingSet=1MB peak=2MB"]);
 
     const text = fs.appendFileSync.mock.calls[0][1] as string;
