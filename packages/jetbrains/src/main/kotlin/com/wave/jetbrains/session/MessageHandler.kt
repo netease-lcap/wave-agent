@@ -1326,9 +1326,9 @@ class MessageHandler(
      *
      * **对话模型**选择不在回包里（经底栏模型选择器走宿主 RPC）；补全模型
      * （顶层 `completionModel`）是配置文件里的用户偏好键，故在回包里（见
-     * spec ui/code-completion.md 故事 4）。服务端地址的用户偏好
-     * （`env.WAVE_SERVER_URL`）属于回包；宿主的 `authStatusResponse.serverUrl`
-     * 仍单独下发（由 CLI 的 getAuthStatus 解析）。
+     * spec ui/code-completion.md 故事 4）。服务端地址不是用户偏好键：设置页
+     * 不提供该入口（唯一入口是 `env.WAVE_SERVER_URL`），宿主的
+     * `authStatusResponse.serverUrl` 单独下发（由 CLI 的 getAuthStatus 解析）。
      */
     private suspend fun configurationDataJson(): JsonObject {
         val prefs = try {
@@ -1342,7 +1342,6 @@ class MessageHandler(
             prefs["contextLength"]?.let { put("contextLength", it) }
             prefs["autoMemoryEnabled"]?.let { put("autoMemoryEnabled", it) }
             prefs["autoMemoryFrequency"]?.let { put("autoMemoryFrequency", it) }
-            prefs["serverUrl"]?.let { put("serverUrl", it) }
             // 补全模型 / 开关（顶层 completionModel / completionEnabled，spec
             // ui/code-completion.md 故事 4–5）：与对话模型不同，它们是配置文件里的
             // 用户偏好键，故随本回包走。
@@ -1379,7 +1378,6 @@ class MessageHandler(
             data["contextLength"]?.let { put("contextLength", it) }
             data["autoMemoryEnabled"]?.let { put("autoMemoryEnabled", it) }
             data["autoMemoryFrequency"]?.let { put("autoMemoryFrequency", it) }
-            data["serverUrl"]?.let { put("serverUrl", it) }
             // 补全模型：空串视作未提供（省略键 = 不改该键）；否则「清空下拉」会被
             // 翻译成写一个空模型名（与回读侧同一判据）。
             data["completionModel"]

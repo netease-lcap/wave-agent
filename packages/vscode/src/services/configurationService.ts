@@ -14,8 +14,6 @@ export interface ConfigurationData {
   autoMemoryEnabled?: boolean;
   /** Auto-memory extraction turn frequency, 1–100 */
   autoMemoryFrequency?: number;
-  /** Wave 服务端地址（落 `env.WAVE_SERVER_URL`）。 */
-  serverUrl?: string;
   /**
    * 行内补全使用的模型（settings.json 顶层 `completionModel`，未设置时回退快速
    * 模型）；候选清单与对话模型同源（经 `getConfiguredModels` 拉取）。
@@ -37,14 +35,14 @@ export interface ConfigurationData {
 
 /**
  * 设置页配置载荷：**只有用户偏好**（AI 回复语言 / 上下文长度 / 自动记忆开关与
- * 频率 / 服务端地址 / 补全模型与补全开关），落点唯一为用户级 `~/.wave/settings.json`。
+ * 频率 / 补全模型与补全开关），落点唯一为用户级 `~/.wave/settings.json`。
  *
  * **对话模型**选择不属于这里：它经底栏模型选择器走 `getConfiguredModels` /
  * `setModel`（会话级 RPC）。补全模型是**配置文件里的一个用户偏好键**（顶层
  * `completionModel`，见 spec ui/code-completion.md 故事 4），故走本载荷——它的
  * 候选清单才复用 `getConfiguredModels`。
- * 服务端地址的用户偏好落点（`env.WAVE_SERVER_URL`）属于这里；宿主的
- * `authStatusResponse.serverUrl` 仍单独下发（由 CLI 的 `getAuthStatus` 解析）。
+ * 服务端地址同样不属于这里：设置页不提供该入口（唯一入口是 `env.WAVE_SERVER_URL`），
+ * 宿主的 `authStatusResponse.serverUrl` 单独下发（由 CLI 的 `getAuthStatus` 解析）。
  *
  * 用户偏好经共享 CLI 进程（即**会话所在进程**，VS Code Remote/SSH 下是远端机器
  * 上的该文件）的 `getUserSettings` / `updateUserSettings` 读写，SDK 侧热重载在
@@ -117,8 +115,6 @@ function pickUserPreferences(
     patch.autoMemoryEnabled = configData.autoMemoryEnabled;
   if (typeof configData.autoMemoryFrequency === "number")
     patch.autoMemoryFrequency = configData.autoMemoryFrequency;
-  if (typeof configData.serverUrl === "string")
-    patch.serverUrl = configData.serverUrl;
   // 补全模型 / 开关：空串视作未提供（与回读侧同一判据），否则会把「清空下拉」
   // 翻译成写一个空模型名（见 SDK `nonEmptyString` 的注释）。
   if (typeof configData.completionModel === "string") {

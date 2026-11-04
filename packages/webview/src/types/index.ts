@@ -1126,11 +1126,6 @@ export interface ConfigurationData {
   /** Auto-memory extraction turn frequency, 1–100 */
   autoMemoryFrequency?: number;
   /**
-   * Wave 服务端地址（落 `env.WAVE_SERVER_URL`）。设置页「全局设置」的「服务端地址」
-   * 输入框读写该键（spec core/agent-config.md「配置服务端地址」）。
-   */
-  serverUrl?: string;
-  /**
    * 行内补全使用的模型（settings.json 顶层 `completionModel`）。未设置时回退到
    * 快速模型（spec ui/code-completion.md 故事 4 场景 1）；下拉的未设置态用显式项
    * 「未设置（跟随快速模型）」表达。

@@ -3,7 +3,7 @@
  *
  * 落点唯一 = 用户级 `~/.wave/settings.json`（`getUserConfigPaths()[0]`）：
  * 三端（VS Code 扩展 / JetBrains 插件 / 桌面端）设置页保存的 AI 回复语言、
- * 上下文长度、自动记忆开关/轮次、服务端地址都写这个文件，由 SDK 的实时重载
+ * 上下文长度、自动记忆开关/轮次都写这个文件，由 SDK 的实时重载
  * （LiveConfigManager）在各会话下一轮开始时生效——不经 `AgentOptions`
  * 覆盖层下发（覆盖层优先级高于 settings.json，会永久遮蔽实时配置，
  * 见 docs/specs/core/agent-config.md「设置实时重载」「分层职责」）。
@@ -11,10 +11,10 @@
  * 上下文长度的键 = `env.WAVE_MAX_INPUT_TOKENS`（全局默认，K×1000 落盘、
  * 回读按同一换算），UI 与线协议都传 K 值。
  *
- * 服务端地址的键 = `env.WAVE_SERVER_URL`（SDK 既有键，解析链
- * `options.serverUrl > process.env.WAVE_SERVER_URL > DEFAULT_SERVER_URL`；
- * settings `env` 的值经 `setEnvironmentVars` 特例镜像到 `process.env`，
- * 见 docs/specs/core/agent-config.md 边界说明「服务端地址的落点」）。
+ * **服务端地址不在这里**：设置页不提供该入口，唯一入口是 `env.WAVE_SERVER_URL`
+ * （手改配置文件或 OS 环境变量；解析链 `options.serverUrl > process.env
+ * .WAVE_SERVER_URL > DEFAULT_SERVER_URL`，镜像机制见
+ * docs/specs/core/agent-config.md 边界说明「服务端地址不经设置页配置」）。
  *
  * 行内补全的键 = 顶层 `completionModel` / `completionEnabled`（与 `model` 同一层，
  * 解析链见 `ConfigurationService.resolveModelConfig`；补全模型另有
@@ -56,12 +56,6 @@ export const MAX_INPUT_TOKENS_ENV_KEY = "WAVE_MAX_INPUT_TOKENS";
  */
 export const DISABLE_AUTO_MEMORY_ENV_KEY = "WAVE_DISABLE_AUTO_MEMORY";
 export const AUTO_MEMORY_FREQUENCY_ENV_KEY = "WAVE_AUTO_MEMORY_FREQUENCY";
-
-/**
- * 服务端地址的 env 键（SDK 既有键，见文件头与
- * `ConfigurationService.setEnvironmentVars` 的镜像特例）。
- */
-export const SERVER_URL_ENV_KEY = "WAVE_SERVER_URL";
 
 /**
  * 补全模型的 env 键（`WAVE_COMPLETION_MODEL`）。顶层 `completionModel` 优先，
@@ -168,8 +162,6 @@ function toSettings(data: Record<string, unknown>): UserPreferenceSettings {
   if (typeof data.autoMemoryFrequency === "number") {
     settings.autoMemoryFrequency = data.autoMemoryFrequency;
   }
-  const serverUrl = nonEmptyString(env[SERVER_URL_ENV_KEY]);
-  if (serverUrl !== undefined) settings.serverUrl = serverUrl;
   // 补全模型 / 开关落顶层键（与 `model` 同一层，spec ui/code-completion 故事 4/5）。
   const completionModel = nonEmptyString(data.completionModel);
   if (completionModel !== undefined) settings.completionModel = completionModel;
@@ -245,7 +237,6 @@ export function readUserPreferenceView(
     contextLength: "default",
     autoMemoryEnabled: "default",
     autoMemoryFrequency: "default",
-    serverUrl: "default",
     completionModel: "default",
     completionEnabled: "default",
     nextEditEnabled: "default",
@@ -304,18 +295,6 @@ export function readUserPreferenceView(
   if (autoMemoryFrequency) {
     values.autoMemoryFrequency = autoMemoryFrequency.value;
     sources.autoMemoryFrequency = autoMemoryFrequency.source;
-  }
-
-  // 服务端地址的落点 = `env.WAVE_SERVER_URL`，来源只可能是 user / env / default——
-  // 不归因 remote（远端托管配置本身取自该地址，不存在「组织下发服务端地址」的闭环，
-  // 见 spec core/agent-config.md 边界说明「服务端地址的落点」）。
-  const serverUrl = selectPreference<string>([
-    ["user", user.serverUrl],
-    ["env", nonEmptyString(env[SERVER_URL_ENV_KEY])],
-  ]);
-  if (serverUrl) {
-    values.serverUrl = serverUrl.value;
-    sources.serverUrl = serverUrl.source;
   }
 
   // 补全模型的落点 = 顶层 `completionModel`（或 `env.WAVE_COMPLETION_MODEL`），
@@ -380,22 +359,17 @@ export async function updateUserPreferenceSettings(
   const hasContextLength = patch.contextLength !== undefined;
   const hasEnabled = patch.autoMemoryEnabled !== undefined;
   const hasFrequency = patch.autoMemoryFrequency !== undefined;
-  // 空串视作未提供（与回读侧 `nonEmptyString` 同一判据）：写进去会在
-  // `process.env` 镜像里遮蔽 OS 环境变量（解析链用 `||` 回落到默认值），而回读侧
-  // 又按「未设置」展示 ⇒ 显示值与生效值分叉。省略键 = 不改该键。
-  const serverUrl = nonEmptyString(patch.serverUrl);
   const hasCompletionEnabled = patch.completionEnabled !== undefined;
   const hasNextEditEnabled = patch.nextEditEnabled !== undefined;
   const hasKnowledgeBase = patch.enableKnowledgeBase !== undefined;
-  // 补全模型与 serverUrl 同一判据：空串 = 未提供（省略键 = 不改该键，UI 也没有
-  // 删键语义），避免把「清空下拉」翻译成写一个空模型名。
+  // 空串视作未提供（省略键 = 不改该键，UI 也没有删键语义），避免把
+  // 「清空下拉」翻译成写一个空模型名。
   const completionModel = nonEmptyString(patch.completionModel);
   if (
     !hasLanguage &&
     !hasContextLength &&
     !hasEnabled &&
     !hasFrequency &&
-    serverUrl === undefined &&
     !hasCompletionEnabled &&
     !hasNextEditEnabled &&
     !hasKnowledgeBase &&
@@ -425,13 +399,7 @@ export async function updateUserPreferenceSettings(
     data.autoMemoryFrequency = patch.autoMemoryFrequency;
   }
 
-  // 服务端地址落 `env.WAVE_SERVER_URL`（既有键）：原样写入，不做归一/清理
-  // （格式校验在设置页，见 spec 边界说明「服务端地址的落点」）。
-  if (serverUrl !== undefined) {
-    const env = asEnvBlock(data.env);
-    env[SERVER_URL_ENV_KEY] = serverUrl;
-    data.env = env;
-  }
+  // 服务端地址不在用户偏好子集内（设置页不提供入口，见文件头），故不在此落盘。
 
   // 补全模型 / 开关落顶层键（与 `model` 同层）。
   if (completionModel !== undefined) data.completionModel = completionModel;
