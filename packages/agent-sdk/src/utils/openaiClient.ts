@@ -3,6 +3,7 @@ import {
   ChatCompletionCreateParamsStreaming,
   ChatCompletionChunk,
   ChatCompletion,
+  Responses,
 } from "openai/resources.js";
 import { GatewayConfig } from "../types/config.js";
 import { logger } from "./globalLogger.js";
@@ -11,6 +12,10 @@ import { serializeError } from "./errorUtils.js";
 const MAX_RETRIES = 10;
 const BASE_DELAY_MS = 500;
 const MAX_DELAY_MS = 32000;
+
+const CHAT_COMPLETIONS_PATH = "/chat/completions";
+/** Responses endpoint — the only one some models accept function tools on. */
+const RESPONSES_PATH = "/responses";
 
 function getRetryDelay(
   attempt: number,
@@ -34,6 +39,21 @@ type CreateParams =
   | ChatCompletionCreateParamsNonStreaming
   | ChatCompletionCreateParamsStreaming;
 
+type CreateResponsesParams =
+  | Responses.ResponseCreateParamsNonStreaming
+  | Responses.ResponseCreateParamsStreaming;
+
+/**
+ * What a request body may carry that the transport itself reads: the model name
+ * (for retry logging) and `stream` (shapes the return value). Everything else is
+ * passed through to the endpoint untouched.
+ */
+interface RequestBody {
+  model?: string;
+  stream?: boolean;
+  [key: string]: unknown;
+}
+
 interface APIResponse<T> {
   data: T;
   response: Response;
@@ -56,45 +76,72 @@ export class OpenAIClient {
           P extends ChatCompletionCreateParamsStreaming
             ? AsyncIterable<ChatCompletionChunk>
             : ChatCompletion
-        > => {
-          const responsePromise = this._create(params, options);
-          const promise = responsePromise.then(
-            (res) => res.data,
-          ) as unknown as APIPromise<
-            P extends ChatCompletionCreateParamsStreaming
-              ? AsyncIterable<ChatCompletionChunk>
-              : ChatCompletion
-          >;
-          promise.withResponse = () =>
-            responsePromise as Promise<
-              APIResponse<
-                P extends ChatCompletionCreateParamsStreaming
-                  ? AsyncIterable<ChatCompletionChunk>
-                  : ChatCompletion
-              >
-            >;
-          // Prevent unhandled rejection if only withResponse() is used
-          promise.catch((e) => {
-            if (!(e instanceof Error && e.name === "AbortError")) {
-              logger.error("Unhandled OpenAI promise rejection:", e);
-            }
-          });
-          return promise;
-        },
+        > =>
+          this.toAPIPromise(
+            this._create(
+              CHAT_COMPLETIONS_PATH,
+              params as unknown as RequestBody,
+              options,
+            ),
+          ),
       },
     };
   }
 
-  private async _create<P extends CreateParams>(
-    params: P,
+  /**
+   * The Responses API. Same transport as `chat.completions` (retry loop, session
+   * header, SSE reader) with a different path and a different response shape —
+   * models past GPT-5.4 only accept function tools here (see
+   * services/responsesApi.ts for when this endpoint is actually chosen).
+   */
+  get responses() {
+    return {
+      create: <P extends CreateResponsesParams>(
+        params: P,
+        options?: { signal?: AbortSignal },
+      ): APIPromise<
+        P extends Responses.ResponseCreateParamsStreaming
+          ? AsyncIterable<Responses.ResponseStreamEvent>
+          : Responses.Response
+      > =>
+        this.toAPIPromise(
+          this._create(
+            RESPONSES_PATH,
+            params as unknown as RequestBody,
+            options,
+          ),
+        ),
+    };
+  }
+
+  /**
+   * Wrap a transport promise in the SDK-shaped `APIPromise`: awaiting it yields
+   * the body, `withResponse()` yields the body plus headers.
+   */
+  private toAPIPromise<T>(
+    responsePromise: Promise<APIResponse<unknown>>,
+  ): APIPromise<T> {
+    const promise = responsePromise.then(
+      (res) => res.data,
+    ) as unknown as Promise<T> & {
+      withResponse?: () => Promise<APIResponse<T>>;
+    };
+    promise.withResponse = () => responsePromise as Promise<APIResponse<T>>;
+    const apiPromise = promise as APIPromise<T>;
+    // Prevent unhandled rejection if only withResponse() is used
+    apiPromise.catch((e) => {
+      if (!(e instanceof Error && e.name === "AbortError")) {
+        logger.error("Unhandled OpenAI promise rejection:", e);
+      }
+    });
+    return apiPromise;
+  }
+
+  private async _create(
+    path: string,
+    params: RequestBody,
     options?: { signal?: AbortSignal },
-  ): Promise<
-    APIResponse<
-      P extends ChatCompletionCreateParamsStreaming
-        ? AsyncIterable<ChatCompletionChunk>
-        : ChatCompletion
-    >
-  > {
+  ): Promise<APIResponse<unknown>> {
     const {
       baseURL,
       apiKey,
@@ -103,7 +150,7 @@ export class OpenAIClient {
       fetchOptions,
       fetch: customFetch,
     } = this.config;
-    const url = `${baseURL}/chat/completions`;
+    const url = `${baseURL}${path}`;
     const headers = {
       "Content-Type": "application/json",
       ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
@@ -149,25 +196,10 @@ export class OpenAIClient {
 
       if (response.ok) {
         if (params.stream) {
-          return {
-            data: this.streamChatCompletion(response),
-            response,
-          } as unknown as APIResponse<
-            P extends ChatCompletionCreateParamsStreaming
-              ? AsyncIterable<ChatCompletionChunk>
-              : ChatCompletion
-          >;
-        } else {
-          const data = await response.json();
-          return {
-            data,
-            response,
-          } as unknown as APIResponse<
-            P extends ChatCompletionCreateParamsStreaming
-              ? AsyncIterable<ChatCompletionChunk>
-              : ChatCompletion
-          >;
+          return { data: this.streamSSE(response), response };
         }
+        const data = await response.json();
+        return { data, response };
       }
 
       let responseText = "";
@@ -210,9 +242,12 @@ export class OpenAIClient {
     throw lastError;
   }
 
-  private async *streamChatCompletion(
-    response: Response,
-  ): AsyncIterable<ChatCompletionChunk> {
+  /**
+   * Read a `data:`-framed SSE body. Both endpoints stream in this envelope; only
+   * the payload inside changes, so the parser stays protocol-agnostic and the
+   * callers cast.
+   */
+  private async *streamSSE(response: Response): AsyncIterable<unknown> {
     const reader = response.body?.getReader();
     if (!reader) return;
 
@@ -238,7 +273,7 @@ export class OpenAIClient {
 
           try {
             const json = JSON.parse(data);
-            yield json as ChatCompletionChunk;
+            yield json;
           } catch (e) {
             logger.error("Failed to parse stream chunk", {
               error: e instanceof Error ? e.message : String(e),

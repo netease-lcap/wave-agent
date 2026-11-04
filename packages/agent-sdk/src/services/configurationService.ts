@@ -749,8 +749,9 @@ export class ConfigurationService {
     // `disableThinkingOptions`, because extended thinking is disqualified for a
     // latency-critical call.
     const completionModelSource =
-      resolvedCompletionModel &&
-      this.liveConfiguration?.models?.[resolvedCompletionModel];
+      (resolvedCompletionModel &&
+        this.liveConfiguration?.models?.[resolvedCompletionModel]) ||
+      undefined;
     const completionModelOptions = completionModelSource
       ? {
           ...completionModelSource.options,
@@ -762,6 +763,14 @@ export class ConfigurationService {
       Object.keys(completionModelOptions).length > 0
     ) {
       baseConfig.completionModelOptions = completionModelOptions;
+    }
+
+    // Capabilities follow their own model, not the agent's: completion runs on
+    // `completionModel`, so it must read that entry's declaration (spec
+    // core/responses-api.md 边界情况 8).
+    if (completionModelSource?.capabilities) {
+      baseConfig.completionModelCapabilities =
+        completionModelSource.capabilities;
     }
 
     baseConfig.completionEnabled =
@@ -779,9 +788,14 @@ export class ConfigurationService {
     // Resolve fast model generation params from models[fastModel].options.
     // Set on baseConfig before the modelSpecificConfig spread so it isn't overwritten.
     const fastModelSource =
-      resolvedFastModel && this.liveConfiguration?.models?.[resolvedFastModel];
+      (resolvedFastModel &&
+        this.liveConfiguration?.models?.[resolvedFastModel]) ||
+      undefined;
     if (fastModelSource && fastModelSource.options) {
       baseConfig.fastModelOptions = fastModelSource.options;
+    }
+    if (fastModelSource?.capabilities) {
+      baseConfig.fastModelCapabilities = fastModelSource.capabilities;
     }
 
     // Resolve fast-model disable-thinking params from models[fastModel].disableThinkingOptions

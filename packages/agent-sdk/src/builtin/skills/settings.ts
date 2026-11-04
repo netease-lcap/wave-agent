@@ -731,6 +731,7 @@ Wave needs to know whether a model supports certain features. Instead of guessin
 
 - \`vision\` (default: \`true\`): Whether the model can accept image inputs. When \`false\`, images are stripped and replaced with text placeholders — and, if \`WAVE_VISION_MODEL\` is set, the built-in \`vision\` subagent becomes available so this model can delegate image recognition.
 - \`promptCaching\` (default: \`false\`): Whether the model supports ephemeral prompt caching (e.g., Anthropic's \`cache_control\` markers). When \`true\`, Wave injects cache markers on the system prompt and last user message.
+- \`responsesApi\` (default: \`false\`): Whether this model's requests must go to the **Responses API** (\`/v1/responses\`) instead of Chat Completions. Set it for models that only accept function tools there: from GPT-5.4 onward, Chat Completions allows tools only together with \`reasoning_effort: "none"\`, and a model with no \`none\` tier rejects every tool-bearing request with \`400 ... Tool calling requires the Responses API\` (e.g. \`gpt-6.1-sol\`, GPT-6 Astra). Model names are never matched, so a new model needs only this one line — no Wave upgrade. Values in \`options\` keep their Chat Completions spelling: \`reasoning_effort\` is sent as \`reasoning.effort\`, \`verbosity\` as \`text.verbosity\`, \`response_format\` as \`text.format\`, and \`max_tokens\`/\`max_completion_tokens\` as \`max_output_tokens\`; every other key is passed through verbatim.
 
 \`\`\`json
 {
@@ -745,6 +746,14 @@ Wave needs to know whether a model supports certain features. Instead of guessin
       "capabilities": {
         "vision": false,
         "promptCaching": false
+      }
+    },
+    "gpt-6.1-sol": {
+      "capabilities": {
+        "responsesApi": true
+      },
+      "options": {
+        "reasoning_effort": "high"
       }
     }
   }

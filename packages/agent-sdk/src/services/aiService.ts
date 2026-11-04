@@ -5,6 +5,7 @@ import {
   ChatCompletionMessageParam,
   ChatCompletionFunctionTool,
   ChatCompletionChunk,
+  Responses,
 } from "openai/resources.js";
 import { OpenAIClient } from "../utils/openaiClient.js";
 import { logger } from "../utils/globalLogger.js";
@@ -24,8 +25,18 @@ import {
   extendUsageWithCacheMetrics,
   type ClaudeChatCompletionContentPartText,
 } from "../utils/cacheControlUtils.js";
-import { supportsPromptCaching } from "../utils/modelCapabilities.js";
+import {
+  supportsPromptCaching,
+  supportsResponsesApi,
+} from "../utils/modelCapabilities.js";
 import { DEFAULT_WAVE_MAX_OUTPUT_TOKENS } from "../utils/constants.js";
+import {
+  buildResponsesRequest,
+  parseResponsesResult,
+  processResponsesStream,
+  requestResponsesText,
+  type AgentToolChoice,
+} from "./responsesApi.js";
 
 import * as os from "os";
 import * as fs from "fs";
@@ -54,7 +65,8 @@ interface DebugData {
   processedMessages?: ChatCompletionMessageParam[];
   createParams?:
     | ChatCompletionCreateParamsNonStreaming
-    | ChatCompletionCreateParamsStreaming;
+    | ChatCompletionCreateParamsStreaming
+    | Record<string, unknown>;
   tools?: ChatCompletionFunctionTool[];
 }
 
@@ -391,6 +403,115 @@ export async function callAgent(
         createParams.tool_choice = "auto";
       } else {
         createParams.tool_choice = options.toolChoice;
+      }
+    }
+
+    // Endpoint choice is declared per model, never inferred from the name: from
+    // GPT-5.4 on, Chat Completions only accepts function tools together with
+    // `reasoning_effort: "none"`, and the GPT-6 generation has no `none` tier at
+    // all (spec core/responses-api.md). Everything above this line still speaks
+    // Chat Completions; the transport translates.
+    if (supportsResponsesApi(modelConfig.capabilities)) {
+      // Built from `openaiModelConfig` rather than `createParams` so the
+      // transport-owned keys (messages/tools) cannot leak into the body twice.
+      // `tool_choice` is taken from `createParams` because the forced-tool
+      // demotion above must carry over.
+      const responsesBody = buildResponsesRequest({
+        model: openaiModelConfig.model,
+        messages: openaiMessages,
+        tools: processedTools,
+        toolChoice: createParams.tool_choice as AgentToolChoice | undefined,
+        params: openaiModelConfig as unknown as Record<string, unknown>,
+        stream: isStreaming,
+      });
+      createParams = responsesBody as unknown as
+        | ChatCompletionCreateParamsNonStreaming
+        | ChatCompletionCreateParamsStreaming;
+
+      const requestResponsesStreaming = async (): Promise<CallAgentResult> => {
+        const { data: stream, response } = await openai.responses
+          .create(
+            {
+              ...responsesBody,
+              stream: true,
+            } as unknown as Responses.ResponseCreateParamsStreaming,
+            { signal: abortSignal },
+          )
+          .withResponse();
+
+        const responseHeaders: Record<string, string> = {};
+        (response.headers as Headers).forEach((value: string, key: string) => {
+          responseHeaders[key] = value;
+        });
+
+        const result = await processResponsesStream(stream, {
+          onContentDelta,
+          onToolUpdate,
+          onReasoningDelta,
+          abortSignal,
+        });
+        if (Object.keys(responseHeaders).length > 0) {
+          result.response_headers = responseHeaders;
+        }
+        return result;
+      };
+
+      const requestResponsesNonStreaming =
+        async (): Promise<CallAgentResult> => {
+          const { data: response, response: rawResponse } =
+            await openai.responses
+              .create(
+                {
+                  ...responsesBody,
+                  stream: false,
+                } as unknown as Responses.ResponseCreateParamsNonStreaming,
+                { signal: abortSignal },
+              )
+              .withResponse();
+
+          const result: CallAgentResult = {
+            ...parseResponsesResult(response),
+          };
+          const responseHeaders: Record<string, string> = {};
+          (rawResponse.headers as Headers).forEach(
+            (value: string, key: string) => {
+              responseHeaders[key] = value;
+            },
+          );
+          if (Object.keys(responseHeaders).length > 0) {
+            result.response_headers = responseHeaders;
+          }
+          return result;
+        };
+
+      try {
+        if (!isStreaming) {
+          return await requestResponsesNonStreaming();
+        }
+        return await requestResponsesStreaming();
+      } catch (error) {
+        // Same mid-body fallback as the Chat Completions path below: the retry
+        // loop only covers the phase before response headers arrive, so a body
+        // that dies mid-stream is re-issued without streaming (they are
+        // endpoints apart but the reasoning is identical).
+        if (
+          abortSignal?.aborted ||
+          (error as Error | undefined)?.name === "AbortError"
+        ) {
+          throw error;
+        }
+
+        logger.warn(
+          "Streaming response failed mid-body, retrying non-streaming (Responses API)",
+          {
+            model: model || modelConfig.model,
+            error: error instanceof Error ? error.message : String(error),
+          },
+        );
+
+        const result = await requestResponsesNonStreaming();
+        result.stream_fallback = true;
+        return result;
       }
     }
 
@@ -961,6 +1082,35 @@ export async function processWebContent(
   });
 
   try {
+    const webContentPrompt = buildWebContentPrompt(content, prompt);
+
+    // This path always serves `fastModel` when a caller passes one (both call
+    // sites do), so the endpoint follows *that* model's declaration, not the
+    // agent model's (spec core/responses-api.md 边界情况 8).
+    if (
+      supportsResponsesApi(
+        options.model
+          ? modelConfig.fastModelCapabilities
+          : modelConfig.capabilities,
+      )
+    ) {
+      const { content: text, usage: responsesUsage } =
+        await requestResponsesText({
+          client: openai,
+          model: openaiModelConfig.model,
+          systemPrompt: WEB_CONTENT_SYSTEM_PROMPT,
+          userContent: webContentPrompt,
+          params: openaiModelConfig as unknown as Record<string, unknown>,
+          abortSignal,
+        });
+      if (!text.trim()) {
+        throw new Error(
+          "Failed to process web content: Empty response from AI",
+        );
+      }
+      return { content: text.trim(), usage: responsesUsage };
+    }
+
     const response = await openai.chat.completions.create(
       {
         ...openaiModelConfig,
@@ -971,7 +1121,7 @@ export async function processWebContent(
           },
           {
             role: "user",
-            content: buildWebContentPrompt(content, prompt),
+            content: webContentPrompt,
           },
         ],
       },
@@ -1111,7 +1261,34 @@ export async function getCompletion(
     snippet.text,
   ]);
 
+  const userContent = [
+    ...contextLines,
+    ...(snippetLines.length > 0
+      ? ["<code_definitions>", ...snippetLines, "</code_definitions>"]
+      : []),
+    "<code_before_cursor>",
+    prefix,
+    "</code_before_cursor>",
+    "<code_after_cursor>",
+    suffix,
+    "</code_after_cursor>",
+  ].join("\n");
+
   try {
+    // Endpoint follows the model that actually serves completion
+    // (`completionModel`), not the agent model (spec core/responses-api.md 边界情况 8).
+    if (supportsResponsesApi(modelConfig.completionModelCapabilities)) {
+      const { content } = await requestResponsesText({
+        client: openai,
+        model: openaiModelConfig.model,
+        systemPrompt: CODE_COMPLETION_SYSTEM_PROMPT,
+        userContent,
+        params: openaiModelConfig as unknown as Record<string, unknown>,
+        abortSignal,
+      });
+      return { text: content.trim(), model: completionModel };
+    }
+
     const response = await openai.chat.completions.create(
       {
         ...openaiModelConfig,
@@ -1122,18 +1299,7 @@ export async function getCompletion(
           },
           {
             role: "user",
-            content: [
-              ...contextLines,
-              ...(snippetLines.length > 0
-                ? ["<code_definitions>", ...snippetLines, "</code_definitions>"]
-                : []),
-              "<code_before_cursor>",
-              prefix,
-              "</code_before_cursor>",
-              "<code_after_cursor>",
-              suffix,
-              "</code_after_cursor>",
-            ].join("\n"),
+            content: userContent,
           },
         ],
       },
@@ -1335,18 +1501,33 @@ export async function getNextEdit(
   ].join("\n");
 
   try {
-    const response = await openai.chat.completions.create(
-      {
-        ...openaiModelConfig,
-        messages: [
-          { role: "system", content: NEXT_EDIT_SYSTEM_PROMPT },
-          { role: "user", content: userContent },
-        ],
-      },
-      { signal: abortSignal },
-    );
+    // Next edit shares the completion model, so it shares its endpoint
+    // declaration too (spec core/responses-api.md 边界情况 8).
+    let raw: string;
+    if (supportsResponsesApi(modelConfig.completionModelCapabilities)) {
+      const { content } = await requestResponsesText({
+        client: openai,
+        model: openaiModelConfig.model,
+        systemPrompt: NEXT_EDIT_SYSTEM_PROMPT,
+        userContent,
+        params: openaiModelConfig as unknown as Record<string, unknown>,
+        abortSignal,
+      });
+      raw = content;
+    } else {
+      const response = await openai.chat.completions.create(
+        {
+          ...openaiModelConfig,
+          messages: [
+            { role: "system", content: NEXT_EDIT_SYSTEM_PROMPT },
+            { role: "user", content: userContent },
+          ],
+        },
+        { signal: abortSignal },
+      );
+      raw = response.choices[0]?.message?.content ?? "";
+    }
 
-    const raw = response.choices[0]?.message?.content ?? "";
     const suggestion = parseNextEditAnswer(raw, region, excerpt);
     // Line numbers only: the answer's text is the user's own code, and the
     // content question ("why did it say nothing") is answered by whether the
