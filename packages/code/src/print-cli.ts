@@ -10,7 +10,7 @@ import {
   type WorktreeSession,
 } from "wave-agent-sdk";
 import { displayUsageSummary } from "./utils/usageSummary.js";
-import { removeWorktree } from "./utils/worktree.js";
+import { describeWorktreeSurvival, removeWorktree } from "./utils/worktree.js";
 import {
   drainStdout,
   installStdoutGuard,
@@ -300,8 +300,14 @@ export async function startPrintCli(options: PrintCliOptions): Promise<void> {
           );
         }
         diag("\nDeleting worktree ...\n");
-        await removeWorktree(worktreeSession);
-        diag("Done.\n");
+        // "Done." only when it is: removal is best-effort, and a surviving
+        // directory (with its branch kept for it) needs the cleanup commands
+        // printed rather than a success line over the leftovers.
+        diag(
+          (await removeWorktree(worktreeSession))
+            ? "Done.\n"
+            : `\n${describeWorktreeSurvival(worktreeSession)}\n`,
+        );
       } catch (error) {
         // Never block print-mode exit on worktree cleanup failures
         diag(`\n⚠️ Skipping worktree removal: ${(error as Error).message}\n`);
@@ -376,8 +382,11 @@ export async function startPrintCli(options: PrintCliOptions): Promise<void> {
             );
           }
           diag("\nDeleting worktree ...\n");
-          await removeWorktree(worktreeSession);
-          diag("Done.\n");
+          diag(
+            (await removeWorktree(worktreeSession))
+              ? "Done.\n"
+              : `\n${describeWorktreeSurvival(worktreeSession)}\n`,
+          );
         } catch (error) {
           diag(`\n⚠️ Skipping worktree removal: ${(error as Error).message}\n`);
         }

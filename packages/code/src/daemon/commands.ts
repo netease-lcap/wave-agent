@@ -52,7 +52,10 @@ import {
   readDaemonLogTail,
   type DaemonLogHandle,
 } from "./daemonLog.js";
-import { worktreeCreationBranch } from "../utils/worktree.js";
+import {
+  describeWorktreeSurvival,
+  worktreeCreationBranch,
+} from "../utils/worktree.js";
 
 /**
  * Fixed default daemon socket (spec: 默认 socket 固定，无 --socket 覆盖). The
@@ -1487,13 +1490,43 @@ async function resolveWorktreeForRemoval(
 }
 
 /**
+ * Report a worktree that removal left on disk.
+ *
+ * Two things must be true at once: the session IS destroyed (so this cannot read
+ * as a failed command), and the leftover directory must be visible without
+ * digging through `~/.wave/logs/daemon.log` (which is where `removeWorktree`
+ * puts its only trace of it). Stderr carries the warning and the manual cleanup
+ * commands, because the branch is deliberately kept for the leftover checkout.
+ */
+function reportSurvivingWorktree(worktree: {
+  path: string;
+  branch: string;
+  repoRoot: string;
+}): void {
+  console.error(describeWorktreeSurvival(worktree));
+}
+
+/**
  * Destroy a hosted session (protocol destroy, idempotent — a session not in
  * the daemon's in-memory registry is a harmless no-op). Unlike status / send /
  * abort there is no attach step: destroy is a pure registry operation keyed by
  * the envelope sessionId, so unknown sessions succeed without touching disk.
+ *
  * With --remove-worktree the session's git worktree is resolved from its
- * sessionCwd (getSessionInfo) and removed via protocol removeWorktree
- * first, then the session is destroyed.
+ * sessionCwd (getSessionInfo) and validated **first** — the refusals (not a
+ * repository / this is the main working tree) must leave the session intact —
+ * but the session is destroyed **before** the worktree directory is removed.
+ * The order is the fix for issue #2763: the session's own processes (a Bash
+ * shell, a test runner, `node --watch`) hold the worktree as their cwd, and
+ * Windows refuses to delete a directory a live process sits in — so removing it
+ * first "succeeded" in the report while the directory and its branch were still
+ * there. `agent.destroy()` kills those processes; only then is the directory
+ * deletable. On POSIX both orders work, which is exactly why this went unnoticed.
+ *
+ * The worktree line reports what happened, not what was attempted: `removeWorktree`
+ * is best-effort, so a surviving directory (and the branch kept for it) is
+ * reported on stderr with the commands that finish the job instead of a
+ * "Removed worktree" line for something that is still on disk.
  */
 export async function daemonDestroyCommand(
   socketPath: string,
@@ -1503,31 +1536,53 @@ export async function daemonDestroyCommand(
   let client: SocketClient | undefined;
   try {
     client = await connectDaemonOrExit(socketPath);
+    // Resolve before destroying: both refusals inside mean "do nothing at
+    // all", and a session that is already gone cannot be resolved any more.
+    let worktree:
+      | Awaited<ReturnType<typeof resolveWorktreeForRemoval>>
+      | undefined;
     if (options.removeWorktree) {
       const info = (await client.request(
         "getSessionInfo",
         undefined,
         sessionId,
       )) as { sessionCwd: string; worktreeBranch?: string };
-      const wt = await resolveWorktreeForRemoval(
+      worktree = await resolveWorktreeForRemoval(
         info.sessionCwd,
         info.worktreeBranch,
-      );
-      await client.request("removeWorktree", {
-        path: wt.path,
-        branch: wt.branch,
-        repoRoot: wt.repoRoot,
-        hookBased: wt.hookBased,
-      });
-      // An empty branch means nothing could name the branch the worktree was
-      // created on — the worktree is gone and every branch was kept, which the
-      // caller must be able to see rather than guess at.
-      console.log(
-        `Removed worktree: ${wt.path} (branch: ${wt.branch || "none deleted"})`,
       );
     }
     await client.request("destroy", undefined, sessionId);
     console.log(`Destroyed session: ${sessionId}`);
+    if (worktree) {
+      try {
+        // `removed` is undefined when talking to a daemon from before it
+        // reported an outcome (the daemon outlives CLI upgrades): then the old
+        // unconditional line is all this client can honestly say.
+        const reply = (await client.request("removeWorktree", {
+          path: worktree.path,
+          branch: worktree.branch,
+          repoRoot: worktree.repoRoot,
+          hookBased: worktree.hookBased,
+        })) as { removed?: boolean } | undefined;
+        if (reply?.removed === false) {
+          reportSurvivingWorktree(worktree);
+        } else {
+          // An empty branch means nothing could name the branch the worktree
+          // was created on — the worktree is gone and every branch was kept,
+          // which the caller must be able to see rather than guess at.
+          console.log(
+            `Removed worktree: ${worktree.path} (branch: ${worktree.branch || "none deleted"})`,
+          );
+        }
+      } catch (err) {
+        // The session is already gone, so reporting a failed `destroy` here
+        // would send the caller to retry something that cannot succeed (the id
+        // no longer resolves). Say what is true and how to finish by hand.
+        console.error(`Worktree removal failed: ${(err as Error).message}`);
+        reportSurvivingWorktree(worktree);
+      }
+    }
   } catch (err) {
     fail(`wave daemon destroy failed: ${(err as Error).message}`);
   } finally {

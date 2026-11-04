@@ -11,9 +11,13 @@ vi.mock("ink", () => ({
   }),
 }));
 
-vi.mock("../src/utils/worktree.js", () => ({
-  removeWorktree: vi.fn(),
-}));
+// Only the removal itself is stubbed: the survival wording is pure text, and
+// stubbing it would let the output assertions below pass vacuously.
+vi.mock("../src/utils/worktree.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../src/utils/worktree.js")>();
+  return { ...actual, removeWorktree: vi.fn() };
+});
 
 vi.mock("../src/utils/logger.js", () => ({
   cleanupLogs: vi.fn().mockResolvedValue(undefined),
@@ -56,6 +60,9 @@ describe("startCli", () => {
       } as unknown as ReturnType<typeof render>;
     });
 
+    // Removal succeeded, so the cleanup line stays quiet in this suite's output.
+    vi.mocked(removeWorktree).mockResolvedValueOnce(true);
+
     await expect(startCli({ worktreeSession })).rejects.toThrow(
       "process.exit called",
     );
@@ -89,6 +96,8 @@ describe("startCli", () => {
       hasNewCommits: false,
       isNew: true,
     };
+    // Removal succeeded, which is what "Done." is allowed to mean.
+    vi.mocked(removeWorktree).mockResolvedValueOnce(true);
 
     // Mock render to call onExit with true (Remove worktree)
     vi.mocked(render).mockImplementationOnce((element: unknown) => {
@@ -109,6 +118,60 @@ describe("startCli", () => {
 
     expect(stdoutSpy).toHaveBeenCalledWith("\nDeleting worktree ...\n");
     expect(stdoutSpy).toHaveBeenCalledWith("Done.\n");
+
+    chdirSpy.mockRestore();
+    exitSpy.mockRestore();
+    consoleErrorSpy.mockRestore();
+    stdoutSpy.mockRestore();
+  });
+
+  it("reports a surviving worktree instead of claiming it was removed", async () => {
+    const chdirSpy = vi.spyOn(process, "chdir").mockImplementation(() => {});
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => {
+      throw new Error("process.exit called");
+    });
+    const stdoutSpy = vi
+      .spyOn(process.stdout, "write")
+      .mockImplementation(() => true);
+
+    const worktreeSession = {
+      name: "test",
+      path: "/repo/root.worktrees/test",
+      branch: "worktree-test",
+      repoRoot: "/repo/root",
+      hasUncommittedChanges: false,
+      hasNewCommits: false,
+      isNew: true,
+    };
+    // Best-effort removal that failed: the directory and its branch are still
+    // there, so "Done." would be a lie (issue #2763).
+    vi.mocked(removeWorktree).mockResolvedValueOnce(false);
+
+    vi.mocked(render).mockImplementationOnce((element: unknown) => {
+      const { onExit } = (
+        element as { props: { onExit: (shouldRemove: boolean) => void } }
+      ).props;
+      return {
+        unmount: vi.fn(),
+        waitUntilExit: async () => {
+          onExit(true);
+        },
+      } as unknown as ReturnType<typeof render>;
+    });
+
+    await expect(startCli({ worktreeSession })).rejects.toThrow(
+      "process.exit called",
+    );
+
+    const out = stdoutSpy.mock.calls.map((call) => String(call[0])).join("");
+    expect(out).toContain(
+      "Worktree directory survived at /repo/root.worktrees/test",
+    );
+    expect(out).toContain("git -C /repo/root branch -D worktree-test");
+    expect(out).not.toContain("Done.");
 
     chdirSpy.mockRestore();
     exitSpy.mockRestore();

@@ -12,10 +12,14 @@ vi.mock("../src/utils/usageSummary.js", async (importOriginal) => {
 // Mock the Agent SDK
 vi.mock("wave-agent-sdk");
 
-// Mock worktree removal so tests never run real git commands
-vi.mock("../src/utils/worktree.js", () => ({
-  removeWorktree: vi.fn(),
-}));
+// Mock worktree removal so tests never run real git commands. The survival
+// wording is pure text with no side effects, so it stays real — stubbing it
+// would let the output assertions below pass without checking anything.
+vi.mock("../src/utils/worktree.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../src/utils/worktree.js")>();
+  return { ...actual, removeWorktree: vi.fn() };
+});
 
 // Mock process.exit - use a simple mock that doesn't throw
 const mockExit = vi.spyOn(process, "exit").mockImplementation(() => {
@@ -636,6 +640,8 @@ test("startPrintCli removes clean worktree after destroy", async () => {
   vi.mocked(Agent.create).mockResolvedValue(mockAgent as unknown as Agent);
   vi.mocked(hasUncommittedChanges).mockReturnValue(false);
   vi.mocked(hasNewCommits).mockReturnValue(false);
+  // The removal actually happened, so "Done." is the honest line.
+  vi.mocked(removeWorktree).mockResolvedValueOnce(true);
 
   const worktreeSession = {
     name: "feat",
@@ -670,6 +676,53 @@ test("startPrintCli removes clean worktree after destroy", async () => {
   expect(
     stdoutSpy.mock.calls.some((call) => String(call[0]).includes("Done.")),
   ).toBe(true);
+  expect(mockExit).toHaveBeenCalledWith(0);
+
+  stdoutSpy.mockRestore();
+});
+
+test("startPrintCli reports a surviving worktree instead of claiming success", async () => {
+  const mockAgent = {
+    sendMessage: vi.fn(),
+    destroy: vi.fn(),
+    abortMessage: vi.fn(),
+    setWorktreeSession: vi.fn(),
+    usages: [],
+    sessionFilePath: "/mock/session.json",
+  };
+  vi.mocked(Agent.create).mockResolvedValue(mockAgent as unknown as Agent);
+  vi.mocked(hasUncommittedChanges).mockReturnValue(false);
+  vi.mocked(hasNewCommits).mockReturnValue(false);
+  // Removal is best-effort: the directory (and its branch, kept on purpose) is
+  // still there, so "Done." would be a lie — issue #2763.
+  vi.mocked(removeWorktree).mockResolvedValueOnce(false);
+
+  const stdoutSpy = vi
+    .spyOn(process.stdout, "write")
+    .mockImplementation(() => true);
+
+  await startPrintCli({
+    message: "test",
+    worktreeSession: {
+      name: "feat",
+      path: "/repo/.wave/worktrees/feat",
+      repoRoot: "/repo",
+      branch: "worktree-feat",
+      isNew: true,
+      hasUncommittedChanges: false,
+      hasNewCommits: false,
+    },
+    workdir: "/repo/.wave/worktrees/feat",
+    originalCwd: "/repo",
+  });
+
+  const out = stdoutSpy.mock.calls.map((call) => String(call[0])).join("");
+  expect(out).toContain(
+    "Worktree directory survived at /repo/.wave/worktrees/feat",
+  );
+  expect(out).toContain("git -C /repo branch -D worktree-feat");
+  expect(out).not.toContain("Done.");
+  // Print mode's own exit code reports the run, not the cleanup.
   expect(mockExit).toHaveBeenCalledWith(0);
 
   stdoutSpy.mockRestore();
@@ -778,6 +831,8 @@ test("startPrintCli skips path validation and delegates removal for hook-based w
   vi.mocked(Agent.create).mockResolvedValue(mockAgent as unknown as Agent);
   vi.mocked(hasUncommittedChanges).mockReturnValue(false);
   vi.mocked(hasNewCommits).mockReturnValue(false);
+  // The hook did its job, so this case keeps the plain success line.
+  vi.mocked(removeWorktree).mockResolvedValueOnce(true);
 
   const hookBasedSession = {
     name: "feat",
@@ -821,6 +876,7 @@ test("startPrintCli removes clean worktree after destroy on sendMessage error", 
   const consoleErrorSpy = vi
     .spyOn(console, "error")
     .mockImplementation(() => {});
+  vi.mocked(removeWorktree).mockResolvedValueOnce(true);
 
   const stdoutSpy = vi
     .spyOn(process.stdout, "write")

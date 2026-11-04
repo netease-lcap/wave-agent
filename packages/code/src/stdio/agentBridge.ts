@@ -1731,12 +1731,18 @@ export class AgentBridge {
     return getWorktreeChanges(params.path, params.baseBranch);
   }
 
+  /**
+   * `removed` answers "is the directory gone", not "did we ask": removal is
+   * best-effort and leaves the directory (and its branch) behind when git and
+   * the fs fallback both fail — the one thing a caller may not do is print a
+   * success line for that. Callers that ignore it are unaffected.
+   */
   private async removeWorktreeSession(params: {
     path: string;
     branch: string;
     repoRoot: string;
     hookBased?: boolean;
-  }): Promise<{ ok: true }> {
+  }): Promise<{ ok: true; removed: boolean }> {
     // Hook-based worktrees are owned by the WorktreeRemove hook; the git-root
     // containment check does not apply to them.
     if (!params.hookBased) {
@@ -1753,7 +1759,7 @@ export class AgentBridge {
     // removeWorktree is best-effort/idempotent: already-removed worktrees or
     // branches only log, never throw. Hook-based worktrees go through the
     // WorktreeRemove hook inside removeWorktree.
-    await removeWorktree({
+    const removed = await removeWorktree({
       name: "",
       path: params.path,
       branch: params.branch,
@@ -1763,7 +1769,7 @@ export class AgentBridge {
       isNew: false,
       hookBased: params.hookBased,
     });
-    return { ok: true };
+    return { ok: true, removed };
   }
 
   private async getSessionInfo(sessionId?: string): Promise<{
