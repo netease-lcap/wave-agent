@@ -2,13 +2,13 @@
  * 从转录（session JSONL）里读一页消息。
  *
  * 为什么需要它：内存里的列表从最近一次压缩开始，压缩之前的历史只在转录里。
- * 用户上翻时要能一段段读到那里（spec ui/message-rendering-system.md「首屏一页，
- * 上翻按需取更早」），读完只活在页面那一侧，不回填内存。
+ * 首屏要按条数填满、用户上翻时要能一段段读到那里（spec
+ * ui/message-rendering-system.md「首屏一页，上翻按需取更早」），读完只活在页面
+ * 那一侧，不回填内存。
  *
- * 做法是**从文件末尾按字节块往回读**，不是从头顺序流：
- *
- * - 首屏之后的一页：往回读到锚点，再收满一页就停，成本是 O(锚点之后的字节)；
- * - 判断「还有没有更早」：读到锚点再多看一行，不读整份文件。
+ * 做法是**从文件末尾按字节块往回读**，不是从头顺序流：一页就是「往回读到锚点，
+ * 再收满一页就停」，成本是 O(锚点之后的字节)；「还有没有更早」由同一趟读页带回
+ * （收满时多遇到一行），不需要再扫一遍文件。
  *
  * 没有索引，所以「读一页的成本与锚点位置同阶」是这套方案接受的代价。不因此额外
  * 维护索引：转录是 append-only 的，索引的失效判据比它省下的字节更难写对。
@@ -220,27 +220,6 @@ async function skipToAnchor(
 
 export interface ReadTranscriptPageOptions {
   chunkBytes?: number;
-}
-
-/** 转录里 `id` 之前还有没有消息；锚点找不到时按「有」处理（宁可多问一次）。 */
-export async function hasTranscriptBefore(
-  filePath: string,
-  id: string,
-  options: ReadTranscriptPageOptions = {},
-): Promise<boolean> {
-  const cursor = await createCursor(
-    filePath,
-    options.chunkBytes ?? DEFAULT_CHUNK_BYTES,
-  );
-  try {
-    if (!(await skipToAnchor(cursor, id))) return true;
-    return (await cursor.nextMessage()) !== undefined;
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
-    throw error;
-  } finally {
-    await cursor.close();
-  }
 }
 
 /**

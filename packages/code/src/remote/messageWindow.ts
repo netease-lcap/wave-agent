@@ -10,9 +10,10 @@
  *
  * The list itself lives in the SDK: it starts at the last compaction, and the
  * remote page takes a `limit`-sized tail of it because of the relay's frame
- * budget. What is left here is the one rule a misreading caller cannot notice
- * on its own — a malformed parameter must fail instead of silently widening
- * into a full read.
+ * budget (a compacted session's tail is filled up to `limit` from the
+ * transcript, so the cap is a message count, not a byte range). What is left
+ * here is the one rule a misreading caller cannot notice on its own — a
+ * malformed parameter must fail instead of silently widening into a full read.
  *
  * Described in docs/specs/remote/remote-channel.md (§5 白名单与增量拉取).
  */
