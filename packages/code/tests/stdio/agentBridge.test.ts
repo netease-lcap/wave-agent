@@ -1770,7 +1770,7 @@ test("destroy destroys the agent", async () => {
   expect(mockAgent.destroy).toHaveBeenCalled();
   // `destroy` answers with an object now (see the worktree cases below); a call
   // that asks for no worktree removal is otherwise exactly the call it was.
-  expect(reply).toEqual({ worktreeRemoved: false });
+  expect(reply).toEqual({ worktreeRemoved: false, worktreeRemoval: "none" });
   expect(removeWorktree).not.toHaveBeenCalled();
 });
 
@@ -1782,7 +1782,7 @@ test("destroy with unknown sessionId is a no-op", async () => {
 
   const result = await bridge.handleRequest("destroy", {}, "unknown-session");
 
-  expect(result).toEqual({ worktreeRemoved: false });
+  expect(result).toEqual({ worktreeRemoved: false, worktreeRemoval: "none" });
   expect(removeWorktree).not.toHaveBeenCalled();
 });
 
@@ -1797,6 +1797,13 @@ const DERIVED_WORKTREE = {
   repoRoot: REPO_ROOT,
   hookBased: false,
 };
+
+/** Removal runs in the background by design (it is minute-scale on Windows:
+ *  `git worktree remove` cannot delete pnpm's junctions, so it falls back to a
+ *  recursive `fs.rmSync`). Tests wait for the removal itself, never for the
+ *  reply — the reply deliberately does not wait for it. */
+const settleWorktreeRemoval = (): Promise<unknown> =>
+  vi.waitFor(() => expect(removeWorktree).toHaveBeenCalled());
 
 test("destroy removes the session's worktree, after the agent is destroyed", async () => {
   const { bridge } = createBridge();
@@ -1837,11 +1844,47 @@ test("destroy removes the session's worktree, after the agent is destroyed", asy
       hookBased: false,
     }),
   );
+  // The reply goes out before the removal finishes and says so; the caller must
+  // read `pending` as "still running", never as "failed".
+  expect(reply).toEqual({ worktreeRemoved: false, worktreeRemoval: "pending" });
+  await settleWorktreeRemoval();
   // The ordering is the point: the agent's cwd is the worktree, and destroying
   // it flushes the transcript through that path. Removing the directory first
   // makes that save fail ENOENT and drops the trailing messages.
   expect(order).toEqual(["agent.destroy", "removeWorktree"]);
-  expect(reply).toEqual({ worktreeRemoved: true });
+});
+
+test("destroy replies without waiting for the worktree removal to finish", async () => {
+  const { bridge } = createBridge();
+  vi.mocked(Agent.create).mockResolvedValue(createMockAgent());
+  vi.mocked(deriveWorktreeInfo).mockReturnValue(DERIVED_WORKTREE);
+  // Never settles: a real removal takes minutes on Windows (node_modules is a
+  // pnpm junction tree `.git worktree remove` cannot delete). Holding the reply
+  // hostage to it is exactly what made every phone-side delete report the remote
+  // page's 20s timeout while the session was already gone.
+  let finishRemoval: (() => void) | undefined;
+  vi.mocked(removeWorktree).mockImplementationOnce(
+    () =>
+      new Promise<void>((resolve) => {
+        finishRemoval = resolve;
+      }),
+  );
+
+  const init = await bridge.handleRequest("initialize", {
+    workdir: DERIVED_WORKTREE.path,
+  });
+  const sessionId = (init as { sessionId: string }).sessionId;
+  const reply = await bridge.handleRequest(
+    "destroy",
+    { removeWorktree: true },
+    sessionId,
+  );
+
+  expect(reply).toEqual({ worktreeRemoved: false, worktreeRemoval: "pending" });
+  await vi.waitFor(() => expect(removeWorktree).toHaveBeenCalled());
+  // Let the background removal settle so it cannot leak into the next test.
+  finishRemoval?.();
+  await Promise.resolve();
 });
 
 test("destroy still destroys the session when no worktree can be located", async () => {
@@ -1862,30 +1905,44 @@ test("destroy still destroys the session when no worktree can be located", async
   expect(mockAgent.destroy).toHaveBeenCalled();
   expect(removeWorktree).not.toHaveBeenCalled();
   // Not an error: the session is gone, the reply just says the directory stayed.
-  expect(reply).toEqual({ worktreeRemoved: false });
+  expect(reply).toEqual({ worktreeRemoved: false, worktreeRemoval: "none" });
 });
 
-test("destroy reports worktreeRemoved: false when the directory survives removal", async () => {
+test("destroy logs a surviving worktree without failing the delete", async () => {
   const { bridge } = createBridge();
-  vi.mocked(Agent.create).mockResolvedValue(createMockAgent());
-  vi.mocked(deriveWorktreeInfo).mockReturnValue(DERIVED_WORKTREE);
-  // removeWorktree is best-effort: a surviving directory (git + fs fallback both
-  // failed, or a hook-based worktree with no WorktreeRemove hook) must not be
-  // reported as removed.
-  vi.mocked(existsSync).mockReturnValue(true);
+  const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
+  try {
+    vi.mocked(Agent.create).mockResolvedValue(createMockAgent());
+    vi.mocked(deriveWorktreeInfo).mockReturnValue(DERIVED_WORKTREE);
+    // removeWorktree is best-effort: a surviving directory (git + fs fallback
+    // both failed, or a hook-based worktree with no WorktreeRemove hook) must
+    // not be reported as removed — but the reply has already gone out by then,
+    // so the fact is logged instead of returned.
+    vi.mocked(existsSync).mockReturnValue(true);
 
-  const init = await bridge.handleRequest("initialize", {
-    workdir: DERIVED_WORKTREE.path,
-  });
-  const sessionId = (init as { sessionId: string }).sessionId;
-  const reply = await bridge.handleRequest(
-    "destroy",
-    { removeWorktree: true },
-    sessionId,
-  );
+    const init = await bridge.handleRequest("initialize", {
+      workdir: DERIVED_WORKTREE.path,
+    });
+    const sessionId = (init as { sessionId: string }).sessionId;
+    const reply = await bridge.handleRequest(
+      "destroy",
+      { removeWorktree: true },
+      sessionId,
+    );
 
-  expect(removeWorktree).toHaveBeenCalled();
-  expect(reply).toEqual({ worktreeRemoved: false });
+    expect(reply).toEqual({
+      worktreeRemoved: false,
+      worktreeRemoval: "pending",
+    });
+    await vi.waitFor(() =>
+      expect(warnSpy.mock.calls.map((c) => c[0]).join(" ")).toContain(
+        "survived removal",
+      ),
+    );
+    expect(removeWorktree).toHaveBeenCalled();
+  } finally {
+    warnSpy.mockRestore();
+  }
 });
 
 // ── which branch destroy deletes ─────────────────────────────────
@@ -1911,6 +1968,7 @@ test("destroy deletes the branch the worktree was created on, not one checked ou
   const sessionId = (init as { sessionId: string }).sessionId;
   await bridge.handleRequest("destroy", { removeWorktree: true }, sessionId);
 
+  await settleWorktreeRemoval();
   expect(removeWorktree).toHaveBeenCalledWith(
     expect.objectContaining({ branch: "worktree-login" }),
   );
@@ -1957,6 +2015,7 @@ test("destroy deletes no branch when neither a snapshot nor the path layout can 
     const sessionId = (init as { sessionId: string }).sessionId;
     await bridge.handleRequest("destroy", { removeWorktree: true }, sessionId);
 
+    await settleWorktreeRemoval();
     expect(removeWorktree).toHaveBeenCalledWith(
       expect.objectContaining({ path: worktreePath, branch: "" }),
     );
@@ -2020,6 +2079,7 @@ test("destroy uses the branch recorded at creation when the session is re-attach
 
     await bridge.handleRequest("destroy", { removeWorktree: true }, sessionId);
 
+    await settleWorktreeRemoval();
     expect(removeWorktree).toHaveBeenCalledWith(
       expect.objectContaining({ branch: "feat" }),
     );
@@ -2051,6 +2111,7 @@ test("destroy uses the worktree's own branch for a fresh session created inside 
   const sessionId = (init as { sessionId: string }).sessionId;
   await bridge.handleRequest("destroy", { removeWorktree: true }, sessionId);
 
+  await settleWorktreeRemoval();
   expect(removeWorktree).toHaveBeenCalledWith(
     expect.objectContaining({ branch: "feat" }),
   );
@@ -3548,7 +3609,7 @@ test("destroy without agent is a no-op", async () => {
   const { bridge } = createBridge();
   // Don't initialize — agent is undefined
   const result = await bridge.handleRequest("destroy", {});
-  expect(result).toEqual({ worktreeRemoved: false });
+  expect(result).toEqual({ worktreeRemoved: false, worktreeRemoval: "none" });
   expect(removeWorktree).not.toHaveBeenCalled();
 });
 

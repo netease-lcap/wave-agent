@@ -448,6 +448,56 @@ describe("remote page session delete", () => {
     ).toHaveTextContent("工作树没跟着删掉");
   });
 
+  it("says the worktree is still being deleted in the background", () => {
+    const { vscode } = openPage({
+      waiting: [],
+      running: [],
+      worktrees: ["session-2"],
+    });
+
+    const card = openDeleteConfirm("session-2");
+    const asked = vscode.postMessage.mock.calls
+      .map((call) => call[0] as Record<string, unknown>)
+      .find((message) => message.command === "getSessionWorktreeChanges");
+    act(() => {
+      sendHostMessage({
+        command: "sessionWorktreeChanges",
+        requestId: asked?.requestId as string,
+        sessionId: "session-2",
+        changes: { files: 0, commits: 0 },
+      });
+    });
+
+    vscode.postMessage.mockClear();
+    act(() => {
+      fireEvent.click(within(card).getByTestId("confirm-dialog-confirm"));
+    });
+    const requestId = (vscode.postMessage.mock.calls
+      .map((call) => call[0] as Record<string, unknown>)
+      .find((message) => message.command === "deleteSession")?.requestId ??
+      "") as string;
+
+    act(() => {
+      sendHostMessage({
+        command: "sessionDeleted",
+        requestId,
+        sessionId: "session-2",
+        ok: true,
+        worktreeRemoved: false,
+        worktreeRemoval: "pending",
+      });
+    });
+
+    // 「正在后台删」不是失败，也不能说成「没跟着删掉」——否则用户会去手动清一个
+    // 正在被删的目录（spec 场景 11 的三档文案）。
+    expect(
+      screen.getByTestId("remote-session-deleted-banner"),
+    ).toHaveTextContent("工作树正在后台删除");
+    expect(
+      screen.getByTestId("remote-session-deleted-banner"),
+    ).not.toHaveTextContent("没跟着删掉");
+  });
+
   it("keeps the card open with the error when the delete is refused", () => {
     const { vscode } = openPage();
 

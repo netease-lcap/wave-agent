@@ -1439,10 +1439,11 @@ export interface PrefillPromptMessage extends HostToWebviewMessageBase {
 
 /** Reply to `deleteSession`（远控 Web 页「会话」列表的行级删除）。
  *
- *  `worktreeRemoved` 是本条回复唯一的新事实：电脑侧定位不到那条会话的工作树时
- *  **会话照样删掉**，只是工作树没跟着删——页面据此说「会话已删除，工作树没动」，
- *  而不是把一次「删了一半」报成彻底失败（spec remote/remote-web.md「手机端的会话列表
- *  与删除」场景 8）。 */
+ *  `worktreeRemoval` 是「工作树现在有没有删完」：`pending` = 目录**正在后台删**，
+ *  回执不等它（Windows 上带 node_modules 的工作树是分钟级，等它只会让每次删除都
+ *  报 20 秒假超时）；`none` = 这次没带 `removeWorktree`，或电脑侧定位不到工作树。
+ *  后者配合 `worktreeRemoved: false` 才是「确实没跟着删掉」——两者含义不同，页面
+ *  必须分开措辞（spec remote/remote-web.md「手机端的会话列表与删除」场景 8 / 11）。 */
 export interface SessionDeletedMessage extends HostToWebviewMessageBase {
   command: "sessionDeleted";
   requestId: string;
@@ -1450,6 +1451,8 @@ export interface SessionDeletedMessage extends HostToWebviewMessageBase {
   ok: boolean;
   /** 只有当请求带了 `removeWorktree` 且真的删掉了目录时才是 true。 */
   worktreeRemoved?: boolean;
+  /** 工作树是否还在后台删（老电脑不认识这个字段 ⇒ 一律按 `none` 读）。 */
+  worktreeRemoval?: "none" | "pending";
   error?: string;
 }
 

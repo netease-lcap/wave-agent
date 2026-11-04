@@ -2882,7 +2882,10 @@
       //    「已删除」横幅由页面自己显示。没有这一拍，返回对话页会停在一条已经不
       //    存在的会话上，发什么都报「Session not found」；
       // 3. 电脑侧定位不到工作树时**会话照删**，`worktreeRemoved: false` 只是把
-      //    「工作树没跟着删掉」这个事实告诉页面（spec 场景 8）。
+      //    「工作树没跟着删掉」这个事实告诉页面（spec 场景 8）；而
+      //    `worktreeRemoval: "pending"` 是另一件事——目录**正在后台删**，回执不等
+      //    它删完（Windows 上带 node_modules 的工作树是分钟级，等它就是一删一个
+      //    20 秒假超时）。两者都原样透传给页面，由页面分开措辞。
       case "deleteSession": {
         var deletingId = msg.sessionId || sessionId;
         request(
@@ -2907,6 +2910,10 @@
                 sessionId: deletingId,
                 ok: true,
                 worktreeRemoved: !!(result && result.worktreeRemoved),
+                worktreeRemoval:
+                  result && result.worktreeRemoval === "pending"
+                    ? "pending"
+                    : "none",
               });
               if (wasCurrent) {
                 // Re-pick whatever is still live and repaint behind the list — the

@@ -1080,15 +1080,33 @@ export class AgentBridge {
    * a removal that threw — the caller only ever needs to know whether the
    * directory is gone.
    *
-   * The return shape grew from `null` to `{worktreeRemoved}`; callers that pass
-   * no params (the CLI's own `wave daemon destroy`) read nothing and are
-   * unaffected. The CLI's `--remove-worktree` keeps its own client-side path
-   * (getSessionInfo + removeWorktree + destroy) — deliberately unchanged.
+   * **The worktree removal is not awaited** (2026-11-04). The reply goes out
+   * once the registry entry is gone and `agent.destroy()` has settled; removing
+   * the directory then runs in the background and the reply says
+   * `worktreeRemoval: "pending"`. Reason: the remote page times every request
+   * out at 20s (`REQUEST_TIMEOUT_MS` in `remote/shim.js`), while deleting a
+   * worktree that contains `node_modules` on Windows is a **minute-scale**
+   * operation — `git worktree remove` cannot delete pnpm's junctions (it exits
+   * 0 and leaves the directory), so it falls back to a recursive `fs.rmSync`.
+   * Awaiting that made every phone-side delete report a timeout even though the
+   * session was already gone. The desktop host has always worked this way
+   * (`handleDeleteSession` fire-and-forgets both steps and refreshes the UI
+   * immediately). The ordering above still holds: the background removal hangs
+   * off `agent.destroy()`'s promise, it is not concurrent with it.
+   *
+   * The return shape grew from `null` to `{worktreeRemoved}` to
+   * `{worktreeRemoved, worktreeRemoval}`; callers that pass no params (the
+   * CLI's own `wave daemon destroy`) read nothing and are unaffected. The CLI's
+   * `--remove-worktree` keeps its own client-side path (getSessionInfo +
+   * removeWorktree + destroy) — deliberately unchanged.
    */
   private async destroy(
     sessionId?: string,
     params?: { removeWorktree?: boolean },
-  ): Promise<{ worktreeRemoved: boolean }> {
+  ): Promise<{
+    worktreeRemoved: boolean;
+    worktreeRemoval: "none" | "pending";
+  }> {
     let createdWorkdir: string | undefined;
     let createdWorktreeBranch: string | undefined;
     if (sessionId) {
@@ -1123,14 +1141,38 @@ export class AgentBridge {
       }
     }
 
-    let worktreeRemoved = false;
-    if (params?.removeWorktree === true && createdWorkdir) {
-      worktreeRemoved = await this.removeSessionWorktree(
-        createdWorkdir,
-        createdWorktreeBranch,
-      );
+    let worktreeRemoval: "none" | "pending" = "none";
+    if (
+      params?.removeWorktree === true &&
+      createdWorkdir &&
+      // fs-only and cheap (no git): deciding "is there a worktree at all" before
+      // the reply is what keeps `none` honest for plain sessions instead of
+      // reporting a removal that was never going to happen.
+      deriveWorktreeInfo(createdWorkdir)
+    ) {
+      // Backgrounded, not awaited: see the note above. The `.then` is the
+      // ordering guarantee — `removeSessionWorktree` starts only once
+      // `agent.destroy()` (awaited above) settled.
+      worktreeRemoval = "pending";
+      void this.removeSessionWorktree(createdWorkdir, createdWorktreeBranch)
+        .then((removed) => {
+          if (!removed) {
+            logger.warn(
+              `destroy: session ${sessionId ?? "(none)"} deleted, but its ` +
+                `worktree at ${createdWorkdir} survived removal`,
+            );
+          }
+        })
+        .catch((e: unknown) => {
+          logger.warn(
+            `destroy: background worktree removal failed for ` +
+              `${createdWorkdir}: ${(e as Error).message}`,
+          );
+        });
     }
-    return { worktreeRemoved };
+    // Pending means "the directory may still be there when this reply lands, and
+    // that is not a failure" — the caller must not read it as "removal failed".
+    return { worktreeRemoved: false, worktreeRemoval };
   }
 
   /**
