@@ -67,11 +67,12 @@
  *   is the page's, so no `Service-Worker-Allowed` header is needed.
  *
  * `--zip` additionally packs all of those into `dist/remote-page.zip` with
- * `index.html` at the archive root — the exact shape codechat's Ops upload route
- * takes (`POST /api/ops/remote-page` unpacks it into file-center objects under
+ * `index.html` at the archive root — the exact shape the publish API takes
+ * (`POST /api/publish/remote-page` unpacks it into file-center objects under
  * `codechat/remote/`, served back at `${origin}/remote/`). Handing the zip over
- * is still a manual step on the Ops side (admin-only, writes live objects); this
- * repo only produces it. `remote/zip.mjs` is the writer — no dependency.
+ * is still a manual, token-authenticated step (`Authorization: Bearer
+ * $PUBLISH_TOKEN`; see `.wave/skills/ops-upload`); this repo only produces it.
+ * `remote/zip.mjs` is the writer — no dependency.
  *
  * Usage:
  *   node packages/webview/remote/build.mjs                 # production (minified)

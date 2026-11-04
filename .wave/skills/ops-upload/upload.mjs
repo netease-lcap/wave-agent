@@ -1,21 +1,32 @@
 #!/usr/bin/env node
 /**
- * 桌面端安装包 / 文档包 / 远控 Web 页 → CodeChat 运营平台的产物上传脚本。
+ * 桌面端安装包 / 文档包 / 远控 Web 页 / 插件市场快照 → CodeChat 制品发布接口。
  *
- * 三条产物线，一个脚本（`--type` 选）：
- *   - 桌面端（`--type desktop`，默认）：`/api/ops/downloads/chunked/*` 的**分片直传**。
- *     为什么用脚本而不是浏览器：生产 codechat-ops 是多副本，分片会话存在服务端进程内存 +
- *     本 pod 的 os.tmpdir()，靠 ingress 的 cookie 亲和（`codechat-ops-route`）固定落到同一
- *     pod。该 cookie 对**任何**请求都会下发，脚本自己收一次即可；而浏览器走 HTTP/2 复用单条
- *     连接，连接级抖动会一次性打死所有在飞请求（2026-09-20 生产实测 3/3 失败）。node fetch
- *     是 HTTP/1.1、每片独立连接，同一套分片参数下 20 片 + 3 次 complete 全部一次成功。
- *   - 文档包（`--type docs`）：`/api/ops/docs/upload` 的**单次 multipart**（2026-10-19 起）。
- *     文档包只有 1–3MB，服务端一次收包、解包、逐文件传 file-center（`codechat/docs/`），
- *     不写下载项台账、也没有跨请求的会话状态 ⇒ 既不分片，也不需要亲和 cookie。
- *   - 远控 Web 页（`--type remote`）：`/api/ops/remote-page/upload` 的**单次 multipart**
+ * 四条产物线，一个脚本（`--type` 选）。**所有请求都打 `/api/publish/*`，鉴权只有一把
+ * `Authorization: Bearer $PUBLISH_TOKEN` 静态令牌**（issue #2750）：
+ *   - 运营端旧接口（`ops` 命名空间下的 downloads / docs / plugin-market / remote-page 四条）
+ *     与「下载管理 / 制品管理」页面已整条删除，线上 404；邮箱密码换 JWT 的登录链路同时作废。
+ *   - 同一份路径与语义在两种部署下逐字一致，**只换 host**：SaaS 用 ops 域名（neteasecc.*），
+ *     私有化用客户企业端域名。企业端在 SaaS 下不挂这组接口（404）。
+ *
+ *   - 桌面端（`--type desktop`，默认）：`POST /api/publish/desktop/init` →
+ *     逐片 `POST /api/publish/desktop/:uploadId/chunk/:index` →
+ *     `POST /api/publish/desktop/:uploadId/complete`（**分片**，20MiB 一片由服务端下发）。
+ *     为什么用脚本而不是浏览器：分片会话存在服务端**进程内存 + 本 pod 的 os.tmpdir()**，
+ *     副本数 >1 时靠 ingress 的 cookie 亲和（`codechat-ops-route`）固定落到同一 pod。而浏览器
+ *     走 HTTP/2 复用单条连接，连接级抖动会一次性打死所有在飞请求（2026-09-20 生产实测 3/3
+ *     失败）；node fetch 是 HTTP/1.1、每片独立连接，同一套分片参数下全部一次成功。
+ *   - 文档包（`--type docs`）：`POST /api/publish/docs` 的**单次 multipart**（字段 `archive`）。
+ *     服务端一次收包、解包、逐文件传 file-center（`codechat/docs/`，入口 `index.html` 最后写），
+ *     不写台账、没有跨请求的会话状态 ⇒ 既不分片，也不需要亲和 cookie。
+ *   - 远控 Web 页（`--type remote`）：`POST /api/publish/remote-page` 的**单次 multipart**
  *     （字段 `zip`），落到 file-center `codechat/remote/`，企业端 `/remote/` 立即可见。
- *     2026-10-19 前它是独立脚本 upload-remote-page.mjs，现并入本脚本统一出口：
- *     同一份环境表、同一份凭证、同一套登录/重试/退出码。
+ *   - 插件市场（`--type plugin-market`）：`POST /api/publish/plugin-market` 的**单次 multipart**
+ *     （字段 `zip`），内容寻址落 `codechat/wave-plugins-official/<sha>.zip` + 覆写 `latest.txt`。
+ *
+ * 另有两条台账动作（发布页下线后，回退只能走这里）：
+ *   - `--list`：`GET /api/publish/desktop` 读台账（桌面端安装包的发布记录）；
+ *   - `--delete <id>`：`DELETE /api/publish/desktop/:id` 删一条记录 = 回退一个桌面版本。
  *
  * 零第三方依赖（Node 20+ 内置 fetch/FormData/Blob/fs；远控页的包清单校验借用系统 unzip，
  * 没有 unzip 时只跳过校验、不阻断上传）。
@@ -23,9 +34,10 @@
  * 用法：
  *   node .wave/skills/ops-upload/upload.mjs \
  *     --file /tmp/wave-desktop-1.2.6/CodeWave.IDE-1.2.6-arm64.dmg \
- *     --version 1.2.6 --platform mac-dmg --channel stable --type desktop
+ *     --version 1.2.6 --platform mac-dmg --channels stable,beta --type desktop
  *   node .wave/skills/ops-upload/upload.mjs --file docs-1.3.0.tar.gz --type docs
  *   node .wave/skills/ops-upload/upload.mjs --type remote --env test
+ *   node .wave/skills/ops-upload/upload.mjs --list
  *
  * 退出码：0 = 成功（含 --dry-run）；1 = 失败。
  */
@@ -40,9 +52,18 @@ import { ENV_BASES, ENV_SITES } from "./envs.mjs";
 
 const ROOT = path.resolve(import.meta.dirname, "../../..");
 
-/** 三环境上传面共用 envs.mjs 那一张表；`--base` 只留作兜底/冒烟（例如指向临时环境）。 */
+/** 三环境共用 envs.mjs 那一张表；`--base` 指向私有化环境（客户企业端域名）或临时环境。 */
 const DEFAULT_BASE = ENV_BASES.prod;
-const DEFAULT_CREDENTIALS = path.join(os.homedir(), ".wave", "neteasecc.json");
+/**
+ * 发布令牌文件（按环境分别存放）。形如：
+ *   { "prod": "…", "test": "…", "drill": "…", "https://客户企业端": "…", "default": "…" }
+ * 取值顺序：`--token` > 环境变量 `PUBLISH_TOKEN` > 本文件。值绝不打印。
+ */
+const DEFAULT_TOKEN_FILE = path.join(
+  os.homedir(),
+  ".wave",
+  "publish-token.json",
+);
 /** 远控页默认取 `pack:remote` 的产物 */
 const DEFAULT_REMOTE_ZIP = path.join(
   ROOT,
@@ -61,21 +82,36 @@ const REQUIRED_EXT = {
   "plugin-market": [".zip"],
 };
 
-/** multipart 分片字段名（后端 multer `chunkUpload.single('chunk')`） */
+/**
+ * 发布接口的公共前缀。SaaS 挂在 ops 域名、私有化挂在企业端域名，**路径逐字一致**——
+ * 同一份命令只换 host（issue #2750 的核心承诺）。
+ */
+const PUBLISH_PREFIX = "/api/publish";
+const DESKTOP_INIT_PATH = `${PUBLISH_PREFIX}/desktop/init`;
+/** 台账：`GET` 读列表 / `DELETE /:id` 回退一条记录（发布页下线后的唯一入口） */
+const DESKTOP_LEDGER_PATH = `${PUBLISH_PREFIX}/desktop`;
+const desktopChunkPath = (uploadId, index) =>
+  `${PUBLISH_PREFIX}/desktop/${uploadId}/chunk/${index}`;
+const desktopCompletePath = (uploadId) =>
+  `${PUBLISH_PREFIX}/desktop/${uploadId}/complete`;
+const desktopRowPath = (id) =>
+  `${PUBLISH_PREFIX}/desktop/${encodeURIComponent(id)}`;
+
+/** multipart 分片字段名（服务端 `singleFileParser('chunk')`） */
 const CHUNK_FIELD = "chunk";
-/** 分片会话丢失的响应文案，来源 backend-ops/src/routes/downloads.ts */
+/** 分片会话丢失的响应文案，来源 packages/shared/src/publish/router.ts */
 const SESSION_LOST_TEXT = "上传会话不存在或已过期";
 
-/** 文档包上传端点与 multipart 字段名，来源 backend-ops/src/routes/docs.ts（单次、不分片） */
-const DOCS_UPLOAD_PATH = "/api/ops/docs/upload";
+/** 文档包上传端点与 multipart 字段名（单次、不分片） */
+const DOCS_UPLOAD_PATH = `${PUBLISH_PREFIX}/docs`;
 const DOCS_ARCHIVE_FIELD = "archive";
 
-/** 远控页上传端点与 multipart 字段名，来源 backend-ops/src/routes/remotePage.ts（单次） */
-const REMOTE_UPLOAD_PATH = "/api/ops/remote-page/upload";
+/** 远控页上传端点与 multipart 字段名（单次） */
+const REMOTE_UPLOAD_PATH = `${PUBLISH_PREFIX}/remote-page`;
 const REMOTE_ZIP_FIELD = "zip";
 
-/** 插件市场端点/字段/落地前缀，来源 backend-ops/src/routes/pluginMarket.ts（单次、内容寻址） */
-const PLUGIN_MARKET_UPLOAD_PATH = "/api/ops/plugin-market/upload";
+/** 插件市场端点/字段/落地前缀（单次、内容寻址） */
+const PLUGIN_MARKET_UPLOAD_PATH = `${PUBLISH_PREFIX}/plugin-market`;
 const PLUGIN_MARKET_ZIP_FIELD = "zip";
 const PLUGIN_MARKET_FILE_PREFIX = "codechat/wave-plugins-official";
 /** 收端准入：zip 根必须含这个文件条目 */
@@ -83,7 +119,12 @@ const PLUGIN_MARKET_MANIFEST = ".wave-plugin/marketplace.json";
 /** 线上版本指针（企业端 ingress 精确 rewrite 到 latest.txt，返回纯文本 sha，no-cache） */
 const PLUGIN_MARKET_LATEST_PATH = "/wave-plugins-official/latest";
 
-/** 以下四个常量与前端 frontend-ops/src/views/Downloads.tsx 对齐 */
+/** 单文件上限（服务端 ARCHIVE_MAX_BYTES，docs / plugin-market / remote-page 共用） */
+const ARCHIVE_MAX_BYTES = 100 * 1024 * 1024;
+/** 令牌最短长度，与服务端 PUBLISH_TOKEN_MIN_LENGTH 同口径 */
+const MIN_TOKEN_LENGTH = 16;
+
+/** 重试参数：每片最多 5 次尝试、400ms 起指数退避（上限 4s） */
 const MAX_ATTEMPTS = 5;
 const RETRY_BASE_MS = 400;
 const RETRY_MAX_MS = 4000;
@@ -106,6 +147,7 @@ class UploadError extends Error {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const mb = (bytes) => `${(bytes / 1024 / 1024).toFixed(2)}MB`;
+const home = (p) => p.replace(os.homedir(), "~");
 
 /** 可重试：无响应（网络中断/超时）、5xx、429。业务 4xx 不重试（重试只会重复失败） */
 function isRetryable(err) {
@@ -125,6 +167,7 @@ function isSessionLost(err) {
 /**
  * 发一次请求并解析 JSON。网络层异常统一转成 kind='net' 的 UploadError——
  * 默认的 fetch 异常只给一句 "fetch failed"，真实原因在 err.cause 里。
+ * 回传 headers（取亲和 cookie 用）。
  */
 async function request(
   url,
@@ -162,7 +205,7 @@ async function request(
       body: msg,
     });
   }
-  return { status: res.status, json, text };
+  return { status: res.status, json, text, headers: res.headers };
 }
 
 /** 使用同样的重试策略跑一个请求工厂；onRetry 用于打印退避提示 */
@@ -181,55 +224,109 @@ async function withRetry(label, send, log) {
   }
 }
 
+/**
+ * 失败的统一口径：**先给 HTTP 状态，再给「这种情况是什么」**。旧技能把 404 一律解释成
+ * 「该环境还没部署这个端点」，新契约下 404 的含义已经换了（见各条提示），别再猜。
+ */
+function explainFailure(label, err) {
+  const status = err instanceof UploadError ? err.status : null;
+  console.error(
+    `\n✗ ${label}失败：${err instanceof UploadError ? err.message : err?.stack || err}`,
+  );
+  console.error(
+    `  HTTP 状态：${status === null ? "无响应（网络层失败）" : status}`,
+  );
+  if (status === 401) {
+    console.error(
+      "  提示：401 = 发布令牌错/缺失。服务端只认静态令牌 `Authorization: Bearer $PUBLISH_TOKEN`，" +
+        "不认任何登录态 JWT；核对 --token / PUBLISH_TOKEN / 令牌文件里该环境的值。",
+    );
+  } else if (status === 503) {
+    console.error(
+      "  提示：503 = 该部署没配 PUBLISH_TOKEN（后端 env，至少 16 位），制品发布接口当前不可用——" +
+        "这不是令牌填错，要运维补环境变量后重启后端。",
+    );
+  } else if (status === 404) {
+    console.error(
+      "  提示：404 = 这组接口在该 host 上不存在。旧运营端上传接口（`ops` 命名空间那四条）已整条删除，" +
+        "所以要么 host 打错（SaaS=ops 域名 / 私有化=客户企业端域名，路径都是 /api/publish/*），" +
+        "要么该环境后端还没部署这版代码。别再往「单个端点没上线」上猜。",
+    );
+  } else if (status === 502) {
+    console.error(
+      "  提示：502 = 服务端写 file-center 失败（或整包中途失败已回滚），重跑同一条命令通常可解。",
+    );
+  } else if (status === 413) {
+    console.error(
+      "  提示：413 = 请求体超过网关上限。安装包必须走分片；文档包/插件市场/远控页单文件上限 100MiB。",
+    );
+  } else if (err instanceof UploadError && err.kind === "net") {
+    console.error(
+      "  提示：网络层失败已按前端口径重试过；每片是独立 HTTP/1.1 连接，先确认 host 可达。",
+    );
+  }
+}
+
 // ─── 参数 ──────────────────────────────────────────────────────────────────
 
 const USAGE = `用法：node upload.mjs --type <desktop|docs|remote|plugin-market> [选项]
+       node upload.mjs --list
+       node upload.mjs --delete <台账 id> [--confirm-prod]
 
 必需：
-  --file <路径>          要上传的本地文件（远控页可省略，默认取 pack:remote 产物）
+  --file <路径>          要上传的本地文件（远控页可省略，默认取 pack:remote 产物；
+                         --list / --delete 不需要）
 
 桌面端（--type desktop，默认）：
-  --version <X.Y.Z>      版本号（后端按它作 fileKey 与落库版本）
+  --version <X.Y.Z>      版本号（服务端按它作 fileKey 与落库版本）
   --platform <平台>      ${PLATFORMS.join(" | ")}
-  --channel <通道>       ${CHANNELS.join(" | ")}（默认 stable）
+  --channels <通道>      ${CHANNELS.join(" | ")}，可用逗号多选（如 stable,beta）：一次落两条记录、
+                         安装包只传一次。默认 stable
+  --channel <通道>       --channels 的单值写法（可重复），保留兼容
 
 文档包（--type docs）：
   不传 --version / --platform / --channel（文件名须 .tar.gz 或 .zip）
-  走 POST /api/ops/docs/upload 的单次 multipart（字段 archive），不进分片链路
+  走 POST ${DOCS_UPLOAD_PATH} 的单次 multipart（字段 archive），不进分片链路
 
 远控 Web 页（--type remote）：
   不传 --version / --platform / --channel（文件名须 .zip，根层要有 index.html）
-  走 POST /api/ops/remote-page/upload 的单次 multipart（字段 zip）
+  走 POST ${REMOTE_UPLOAD_PATH} 的单次 multipart（字段 zip）
 
 插件市场（--type plugin-market）：
   不传 --version / --platform / --channel（文件名须 .zip）
   上 wave-plugins-official 整树快照，zip 根须含 ${PLUGIN_MARKET_MANIFEST}
-  走 POST /api/ops/plugin-market/upload 的单次 multipart（字段 zip）；落成
+  走 POST ${PLUGIN_MARKET_UPLOAD_PATH} 的单次 multipart（字段 zip）；落成
   ${PLUGIN_MARKET_FILE_PREFIX}/<sha256>.zip 并覆写 latest.txt
 
-  --confirm-prod         传生产时必须显式加上（防止手滑）
+台账（发布页已下线，回退只能走这里）：
+  --list                 读发布台账（GET ${DESKTOP_LEDGER_PATH}）
+  --delete <id>          删一条台账记录 = 回退一个桌面版本；file_key 仍被另一通道引用时
+                         只删行、不删 file-center 对象
+
+鉴权 / 环境：
+  --token <令牌>         发布令牌；也可用环境变量 PUBLISH_TOKEN
+  --token-file <路径>    令牌文件（默认 ${home(DEFAULT_TOKEN_FILE)}），按环境分键
+  --env <环境>           目标环境：${Object.keys(ENV_BASES).join(" / ")}（默认 prod）
+  --base <URL>           直接指定地址（与 --env 二选一）：私有化环境必须用它 +
+                         该环境令牌（私有化没有 --env 预设）
+  --confirm-prod         对生产做写操作（上传远控页/插件市场、删除台账）时必须显式加上
 
 其它：
   --type <desktop|docs|remote|plugin-market>
                          上传类型（默认 desktop）
-  --env <环境>           目标环境：${Object.keys(ENV_BASES).join(" / ")}（默认 prod）
-  --base <URL>           直接指定平台地址（与 --env 二选一，兜底/冒烟用）
-  --credentials <路径>   凭证文件（默认 ~/.wave/neteasecc.json）
   --dry-run              只做验证、绝不写入：
                            桌面端 = init + 第一片，不调 complete；
-                           文档包 = 只登录（单次请求，没有「只传一片」的中间态）；
-                           远控页 = 预检（包形状 / 本次构建 / 线上版本），不发上传；
-                           插件市场 = 预检（manifest / 本地 sha / 线上 latest），不发上传
+                           文档包 / 远控页 / 插件市场 = 令牌校验 + 本地预检，不发上传
   --check                同 --dry-run（远控页时代的旧名，保留兼容）
   -h, --help             显示本帮助`;
 
 function parseArgs(argv) {
   const opts = {
     type: "desktop",
-    channel: "stable",
+    channels: [],
     base: DEFAULT_BASE,
     baseGiven: false,
-    credentials: DEFAULT_CREDENTIALS,
+    tokenFile: DEFAULT_TOKEN_FILE,
     dryRun: false,
   };
   for (let i = 0; i < argv.length; i++) {
@@ -250,7 +347,10 @@ function parseArgs(argv) {
         opts.platform = next();
         break;
       case "--channel":
-        opts.channel = next();
+        opts.channels.push(next());
+        break;
+      case "--channels":
+        opts.channels.push(...next().split(","));
         break;
       case "--type":
         opts.type = next();
@@ -262,8 +362,18 @@ function parseArgs(argv) {
         opts.base = next();
         opts.baseGiven = true;
         break;
-      case "--credentials":
-        opts.credentials = next();
+      case "--token":
+        opts.token = next();
+        break;
+      case "--token-file":
+      case "--credentials": // 旧名（邮箱密码凭证文件时代），留一层兼容
+        opts.tokenFile = next();
+        break;
+      case "--list":
+        opts.list = true;
+        break;
+      case "--delete":
+        opts.deleteId = next();
         break;
       case "--dry-run":
       case "--check": // 远控页独立脚本时代的旧名，等价于 --dry-run
@@ -276,6 +386,7 @@ function parseArgs(argv) {
       case "--help":
         console.log(USAGE);
         process.exit(0);
+        break;
       default:
         die(`未知参数：${a}\n\n${USAGE}`);
     }
@@ -290,9 +401,6 @@ function die(message) {
 
 function validate(opts) {
   if (!TYPES.includes(opts.type)) die(`--type 只能是 ${TYPES.join(" / ")}`);
-  // 远控页默认取 pack:remote 的产物，不必每次手写 --file
-  if (!opts.file && opts.type === "remote") opts.file = DEFAULT_REMOTE_ZIP;
-  if (!opts.file) die(`缺少 --file\n\n${USAGE}`);
   if (opts.env !== undefined) {
     if (!Object.hasOwn(ENV_BASES, opts.env)) {
       die(`--env 只能是 ${Object.keys(ENV_BASES).join(" / ")}`);
@@ -300,6 +408,21 @@ function validate(opts) {
     if (opts.baseGiven) die("--env 与 --base 只能二选一");
     opts.base = ENV_BASES[opts.env];
   }
+  opts.base = opts.base.replace(/\/+$/, "");
+
+  // 台账动作不需要产物文件，先收口
+  if (opts.list || opts.deleteId) {
+    if (opts.list && opts.deleteId) die("--list 与 --delete 只能二选一");
+    if (opts.file) die("--list / --delete 不接受 --file");
+    if (opts.deleteId && opts.env === "prod" && !opts.confirmProd) {
+      die("删生产台账行 = 回退线上版本，必须显式加 --confirm-prod");
+    }
+    return;
+  }
+
+  // 远控页默认取 pack:remote 的产物，不必每次手写 --file
+  if (!opts.file && opts.type === "remote") opts.file = DEFAULT_REMOTE_ZIP;
+  if (!opts.file) die(`缺少 --file\n\n${USAGE}`);
   if (!fs.existsSync(opts.file)) {
     die(
       opts.type === "remote" && opts.file === DEFAULT_REMOTE_ZIP
@@ -316,10 +439,21 @@ function validate(opts) {
     if (!opts.version) die("桌面端必须传 --version");
     if (!PLATFORMS.includes(opts.platform))
       die(`--platform 只能是 ${PLATFORMS.join(" / ")}`);
-    if (!CHANNELS.includes(opts.channel))
-      die(`--channel 只能是 ${CHANNELS.join(" / ")}`);
+    // 去空、按服务端固定顺序（stable, beta）排列 —— 台账与响应里的 channels 就是这个顺序
+    const picked = [
+      ...new Set(opts.channels.map((c) => c.trim()).filter(Boolean)),
+    ];
+    const bad = picked.filter((c) => !CHANNELS.includes(c));
+    if (bad.length)
+      die(
+        `--channels 只能是 ${CHANNELS.join(" / ")}（收到 ${bad.join(", ")}）`,
+      );
+    opts.channels = CHANNELS.filter((c) => picked.includes(c));
+    if (opts.channels.length === 0) opts.channels = ["stable"];
   } else if (opts.platform || opts.version) {
     die(`--type ${opts.type} 不接受 --platform / --version`);
+  } else if (opts.channels.length) {
+    die(`--type ${opts.type} 不接受 --channel / --channels`);
   }
   // 托管类产物（远控页 / 插件市场）打错环境不报错、对象静默写进别处，且一传就对用户生效，
   // 多一道闸（桌面端/文档包历史上没有这道，保持原样）
@@ -339,58 +473,89 @@ function validate(opts) {
       `文件扩展名与类型不符：${path.basename(opts.file)} 需要 ${required.join(" 或 ")}`,
     );
   }
+  // 单次 multipart 的产物先按服务端上限挡一次，别白传 100MB 才拿到 400
+  if (opts.type !== "desktop" && stat.size > ARCHIVE_MAX_BYTES) {
+    die(
+      `文件 ${mb(stat.size)} 超过服务端单文件上限 ${mb(ARCHIVE_MAX_BYTES)}（100MiB）`,
+    );
+  }
   opts.fileSize = stat.size;
   opts.fileName = path.basename(opts.file);
-  opts.base = opts.base.replace(/\/+$/, "");
 }
 
-// ─── 凭证 / 亲和 cookie ────────────────────────────────────────────────────
+// ─── 发布令牌 ──────────────────────────────────────────────────────────────
 
-/** 读凭证；只回传值，调用方绝不允许打印它们 */
-function readCredentials(credentialsPath) {
+/** 令牌文件里可能命中本次目标的键，按优先级排列 */
+function tokenLookupKeys(opts) {
+  const keys = [];
+  if (opts.env) keys.push(opts.env);
+  else {
+    const name = Object.keys(ENV_BASES).find((n) => ENV_BASES[n] === opts.base);
+    if (name) keys.push(name);
+  }
+  // 私有化环境：没有 --env 预设，只能按显式 --base 存（整条地址或 host 都认）
+  keys.push(opts.base);
+  try {
+    keys.push(new URL(opts.base).host);
+  } catch {
+    /* base 不是合法 URL 时跳过 */
+  }
+  keys.push("default");
+  return [...new Set(keys)];
+}
+
+/**
+ * 解析发布令牌：`--token` > 环境变量 `PUBLISH_TOKEN` > 令牌文件。
+ * **令牌值绝不打印**，只回传来源描述，方便核对「这次用的是哪个环境的令牌」。
+ */
+function resolveToken(opts) {
+  if (opts.token) return { token: opts.token.trim(), source: "--token" };
+  const fromEnv = (process.env.PUBLISH_TOKEN || "").trim();
+  if (fromEnv) return { token: fromEnv, source: "环境变量 PUBLISH_TOKEN" };
+
+  const shown = home(opts.tokenFile);
   let raw;
   try {
-    raw = fs.readFileSync(credentialsPath, "utf8");
+    raw = fs.readFileSync(opts.tokenFile, "utf8");
   } catch (err) {
-    die(`读取凭证文件失败：${credentialsPath}（${err.code}）`);
+    die(
+      `没有可用的发布令牌：未传 --token、环境变量 PUBLISH_TOKEN 为空，且读不到令牌文件 ${shown}（${err.code}）。\n` +
+        `  文件形状（按环境分键）：{ "prod": "…", "test": "…", "drill": "…", "https://客户企业端": "…" }`,
+    );
   }
   let parsed;
   try {
     parsed = JSON.parse(raw);
   } catch {
-    die(`凭证文件不是合法 JSON：${credentialsPath}`);
+    die(`令牌文件不是合法 JSON：${shown}`);
   }
-  if (!parsed.email || !parsed.password)
-    die(`凭证文件缺少 email / password 字段：${credentialsPath}`);
-  return { email: parsed.email, password: parsed.password };
+  if (typeof parsed?.token === "string" && parsed.token.trim()) {
+    return { token: parsed.token.trim(), source: `${shown}（token 键）` };
+  }
+  for (const key of tokenLookupKeys(opts)) {
+    const value = parsed?.[key];
+    if (typeof value === "string" && value.trim()) {
+      return { token: value.trim(), source: `${shown}（${key}）` };
+    }
+  }
+  die(
+    `令牌文件 ${shown} 里没有本次目标的键。\n` +
+      `  试过的键：${tokenLookupKeys(opts).join(" / ")}；` +
+      `私有化环境按 --base 的地址或 host 存，或直接传 --token / 设 PUBLISH_TOKEN。`,
+  );
 }
 
-async function login(base, creds) {
-  const res = await fetch(`${base}/api/auth/login`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email: creds.email, password: creds.password }),
-    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-  });
-  const text = await res.text();
-  if (!res.ok) {
-    let msg = text.slice(0, 200);
-    try {
-      msg = JSON.parse(text).error || msg;
-    } catch {
-      /* 保留原文 */
-    }
-    die(`登录失败（HTTP ${res.status}）：${msg}`);
+/** 令牌形状先挡一次：太短的一定不对，别拿它去换一句含义模糊的 401 */
+function assertTokenShape(token, source) {
+  if (token.length < MIN_TOKEN_LENGTH) {
+    die(
+      `发布令牌太短（${token.length} 位，来源 ${source}）：服务端要求至少 ${MIN_TOKEN_LENGTH} 位，` +
+        `多半是占位符或复制截断了。`,
+    );
   }
-  let json;
-  try {
-    json = JSON.parse(text);
-  } catch {
-    die("登录成功但响应不是合法 JSON");
-  }
-  if (!json.token) die("登录响应缺少 token 字段");
-  return json.token;
 }
+
+// ─── 亲和 cookie / 台账 ────────────────────────────────────────────────────
 
 /** 从 set-cookie 里摘出亲和 cookie 的完整键值对（值不回显，只用于回传） */
 function pickAffinityCookie(headers) {
@@ -406,73 +571,96 @@ function pickAffinityCookie(headers) {
 }
 
 /**
- * 亲和 cookie 是分片直传的硬前提：不带它会被 LB 打到别的 pod，随机 404「上传会话不存在或已过期」。
- * ingress 对任意请求都回 Set-Cookie（实测未鉴权请求也回），所以随便打一次就能拿到。
+ * 读发布台账。这一条请求同时承担三件事：
+ *   1. 验证令牌（401/503/404 在启动阶段就说清楚，不等传完几百 MB 才发现）；
+ *   2. 收下 ingress 下发的亲和 cookie（分片直传的硬前提）；
+ *   3. `--list` 与上传后的对照。
  */
-async function acquireAffinityCookie(base) {
-  const res = await fetch(`${base}/api/ops/downloads`, {
-    method: "GET",
-    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-  });
-  await res.arrayBuffer().catch(() => {});
-  return pickAffinityCookie(res.headers);
+async function fetchLedger(opts, token) {
+  return withRetry(
+    "台账",
+    () =>
+      request(`${opts.base}${DESKTOP_LEDGER_PATH}`, {
+        method: "GET",
+        headers: { Authorization: `Bearer ${token}` },
+      }),
+    console.log,
+  );
 }
 
-// ─── 分片直传 ──────────────────────────────────────────────────────────────
-
-function initBody(opts) {
-  const body = {
-    // 2026-10-19 起后端不再读 type（分片链路只服务桌面端，多传会被忽略）；
-    // 留着是为了兼容还没升级的旧 pod。
-    type: opts.type,
-    fileName: opts.fileName,
-    fileSize: opts.fileSize,
-  };
-  if (opts.type === "desktop") {
-    body.version = opts.version;
-    body.platform = opts.platform;
-    // 通道字段存在两代契约，必须同时发：**线上生产跑的是旧代，只读单数 `channel`**，
-    // 收到 `channels` 数组会静默忽略并回落默认值 stable（2026-09-21 实测：`channel:"bogus"`
-    // → 400「未知的通道」，而 `channels:["bogus"]` → 201 被无视，于是 `--channel beta`
-    // 把包传进了正式通道）。新代后端读 `channels ?? channel`，两个都给即可同时兼容。
-    body.channel = opts.channel;
-    body.channels = [opts.channel];
-  }
-  return body;
-}
+// ─── 入口 ──────────────────────────────────────────────────────────────────
 
 async function main() {
   const opts = parseArgs(process.argv.slice(2));
   validate(opts);
 
-  const credsPathShown = opts.credentials.replace(os.homedir(), "~");
+  const { token, source } = resolveToken(opts);
+  assertTokenShape(token, source);
+
   console.log(
     `平台地址   ${opts.base}${opts.env ? `（--env ${opts.env}）` : ""}`,
   );
+  if (opts.list || opts.deleteId) {
+    console.log(
+      `动作       ${opts.list ? "读发布台账" : "删除台账行（回退）"}`,
+    );
+  } else {
+    console.log(
+      `上传类型   ${opts.type}${opts.type === "desktop" ? ` / ${opts.platform} / ${opts.channels.join(",")}` : ""}`,
+    );
+    console.log(`文件       ${opts.file}（${mb(opts.fileSize)}）`);
+    if (opts.type === "desktop") console.log(`版本号     ${opts.version}`);
+  }
   console.log(
-    `上传类型   ${opts.type}${opts.type === "desktop" ? ` / ${opts.platform} / ${opts.channel}` : ""}`,
+    `发布令牌   已加载（来源 ${source}，长度 ${token.length}，值不显示）`,
   );
-  console.log(`文件       ${opts.file}（${mb(opts.fileSize)}）`);
-  if (opts.type === "desktop") console.log(`版本号     ${opts.version}`);
-  console.log(`凭证       ${credsPathShown}`);
-  console.log(`模式       ${describeMode(opts)}`);
+  if (!opts.list && !opts.deleteId)
+    console.log(`模式       ${describeMode(opts)}`);
   console.log();
 
-  const creds = readCredentials(opts.credentials);
-  if (opts.type === "docs") return await uploadDocs(opts, creds);
-  if (opts.type === "remote") return await uploadRemotePage(opts, creds);
-  if (opts.type === "plugin-market")
-    return await uploadPluginMarket(opts, creds);
-  return await uploadDesktop(opts, creds);
+  let ledger;
+  try {
+    ledger = await fetchLedger(opts, token);
+  } catch (err) {
+    explainFailure("发布接口连通性", err);
+    return 1;
+  }
+  console.log(
+    `发布接口   ${DESKTOP_LEDGER_PATH} 可读（台账 ${ledger.json?.desktopDownloads?.length ?? 0} 条）`,
+  );
+
+  const cookie = pickAffinityCookie(ledger.headers);
+  const authHeaders = { Authorization: `Bearer ${token}` };
+  if (cookie) authHeaders.Cookie = cookie;
+
+  if (opts.list) return await listLedger(opts, ledger.json);
+  if (opts.deleteId)
+    return await deleteLedgerRow(opts, authHeaders, token, ledger.json);
+
+  if (opts.type === "desktop") {
+    // 亲和 cookie 只影响桌面端分片（会话在 init 那个 pod 的内存与临时目录里）。
+    // 副本数 >1 且没带 cookie ⇒ 随机 404 会话不存在；只告警不阻断：两端部署清单目前都是
+    // replicas: 1，而私有化环境的 ingress 未必原样下发这个 cookie。
+    console.log(
+      cookie
+        ? `亲和 cookie ${AFFINITY_COOKIE_NAME} 已获取（长度 ${cookie.length}，值不显示）`
+        : `⚠️ 未取到 ${AFFINITY_COOKIE_NAME} 亲和 cookie：副本数 >1 时会被 LB 打到别的 pod，分片可能随机 404（会话丢失会自动整轮重启，最多 ${MAX_ROUNDS} 轮）`,
+    );
+    return await uploadDesktop(opts, authHeaders);
+  }
+  if (opts.type === "docs") return await uploadDocs(opts, authHeaders);
+  if (opts.type === "remote")
+    return await uploadRemotePage(opts, authHeaders, cookie);
+  return await uploadPluginMarket(opts, authHeaders);
 }
 
 /** `模式` 那行的文案：--dry-run 对四种产物的「不写」含义各不相同 */
 function describeMode(opts) {
   if (!opts.dryRun) return "正式上传";
   if (opts.type === "docs")
-    return "DRY-RUN（只登录，不发上传：文档包是单次请求）";
+    return "DRY-RUN（令牌校验 + 本地预检，不发上传：文档包是单次请求）";
   if (opts.type === "remote") {
-    return "DRY-RUN（预检：包形状 / 登录 / 上传前线上版本，不发上传）";
+    return "DRY-RUN（预检：包形状 / 令牌 / 上传前线上版本，不发上传）";
   }
   if (opts.type === "plugin-market") {
     return "DRY-RUN（预检：manifest / 本地 sha / 线上 latest，不发上传）";
@@ -480,32 +668,104 @@ function describeMode(opts) {
   return "DRY-RUN（只传第一片，绝不调 complete）";
 }
 
+// ─── 台账：列表 / 删除（回退） ─────────────────────────────────────────────
+
+function listLedger(opts, json) {
+  const rows = json?.desktopDownloads ?? [];
+  console.log();
+  if (rows.length === 0) {
+    console.log("台账为空（这个环境还没通过发布接口传过桌面端安装包）。");
+    return 0;
+  }
+  for (const d of rows) {
+    console.log(
+      `${String(d.version ?? "?").padEnd(12)} ${String(d.platform ?? "?").padEnd(8)} ${String(d.channel ?? "?").padEnd(7)} ${mb(Number(d.fileSize) || 0).padStart(10)}  ${d.fileName ?? "(无)"}`,
+    );
+    console.log(
+      `  id ${d.id ?? "(无)"}  sha512 ${String(d.sha512 ?? "(无)").slice(0, 16)}…  上传人 ${d.uploaderEmail ?? "(无)"}  ${d.createdAt ?? ""}`,
+    );
+    console.log(`  ${d.downloadUrl ?? "(无下载地址)"}`);
+  }
+  console.log(
+    `\n共 ${rows.length} 条。回退一条：node upload.mjs --delete <id>（生产要加 --confirm-prod）。`,
+  );
+  console.log(
+    `台账里的上传人恒为 ops-api（令牌没有身份），追人看发布记录/工单，不要看这个字段。`,
+  );
+  return 0;
+}
+
+async function deleteLedgerRow(opts, headers, token, json) {
+  const rows = json?.desktopDownloads ?? [];
+  const row = rows.find((d) => d.id === opts.deleteId);
+  if (!row) {
+    die(
+      `台账里没有 id=${opts.deleteId} 的记录（该环境共 ${rows.length} 条，先用 --list 看）。`,
+    );
+  }
+  console.log(
+    `\n将删除：${row.version} / ${row.platform} / ${row.channel} / ${row.fileName}（${row.downloadUrl}）`,
+  );
+  if (opts.dryRun) {
+    console.log(
+      "\nDRY-RUN：未发起删除。删除会同时回退下载页/feed 到上一版本（file_key 仍被另一通道引用时只删行）。",
+    );
+    return 0;
+  }
+  try {
+    const { status } = await withRetry(
+      "删除",
+      () =>
+        request(`${opts.base}${desktopRowPath(opts.deleteId)}`, {
+          method: "DELETE",
+          headers,
+        }),
+      console.log,
+    );
+    console.log(`删除 ${status}`);
+  } catch (err) {
+    explainFailure("删除台账行", err);
+    return 1;
+  }
+  try {
+    const after = await fetchLedger(opts, token);
+    const still = (after.json?.desktopDownloads ?? []).some(
+      (d) => d.id === opts.deleteId,
+    );
+    console.log(
+      still
+        ? "⚠️ 删除后台账里仍有这条记录，别当成成功"
+        : `已从台账移除；该环境现在 ${after.json?.desktopDownloads?.length ?? 0} 条记录。`,
+    );
+    console.log("下载页 / feed 的读路径会立刻反映（企业端按版本取最新一行）。");
+  } catch (err) {
+    console.log(`删除后排账失败（删除本身可能已成功）：${err.message}`);
+  }
+  return 0;
+}
+
 // ─── 文档包（单次 multipart） ──────────────────────────────────────────────
 
 /**
- * 文档包上传：一个请求把整包交给 `/api/ops/docs/upload`，服务端解包后逐文件传 file-center。
+ * 文档包上传：一个请求把整包交给 `/api/publish/docs`，服务端解包后逐文件传 file-center。
  *
  * 与桌面端的两处关键差别：
  *   - **不分片、不带亲和 cookie**：服务端没有跨请求的会话状态，请求落到哪个 pod 都一样。
- *   - **不写下载项台账**：文档站永远只有「最新版」一个状态，传完**没有可回读的记录**
- *     （`GET /api/ops/downloads` 里不再有 docs 行）——判据只有 201 与响应里的
+ *   - **不写台账**：文档站永远只有「最新版」一个状态，传完**没有可回读的记录**
+ *     （`GET /api/publish/desktop` 里没有 docs 行）——判据只有 201 与响应里的
  *     `fileCount` / `fileKeys`，以及企业端 `/docs/` 上的对象。
  *
  * 失败可以直接重跑：服务端中途失败会回滚本次已传对象，整包重传本身是幂等覆盖。
  */
-async function uploadDocs(opts, creds) {
-  const token = await login(opts.base, creds);
-  console.log("登录成功（token 不显示）");
+async function uploadDocs(opts, headers) {
   console.log(
     `端点       POST ${DOCS_UPLOAD_PATH}（单次 multipart，字段 ${DOCS_ARCHIVE_FIELD}）`,
   );
 
   if (opts.dryRun) {
     console.log(
-      `\nDRY-RUN：文档包是单次 multipart 上传，请求发出即写对象（没有「只传一片」的中间态）⇒ 不发起上传。`,
-    );
-    console.log(
-      `准备好的请求：${opts.fileName}（${mb(opts.fileSize)}）→ ${DOCS_UPLOAD_PATH}`,
+      `\nDRY-RUN：令牌可用、本地包合法（${mb(opts.fileSize)}）；文档包是单次 multipart，` +
+        `请求发出即整站覆盖（没有「只传一片」的中间态）⇒ 不发起上传。`,
     );
     return 0;
   }
@@ -522,7 +782,7 @@ async function uploadDocs(opts, creds) {
         form.append(DOCS_ARCHIVE_FIELD, new Blob([buffer]), opts.fileName);
         return request(`${opts.base}${DOCS_UPLOAD_PATH}`, {
           method: "POST",
-          headers: { Authorization: `Bearer ${token}` },
+          headers,
           body: form,
         });
       },
@@ -538,21 +798,11 @@ async function uploadDocs(opts, creds) {
     console.log("\n完成。响应：");
     console.log(JSON.stringify(json, null, 2));
     console.log(
-      `\n文档站不入下载项台账 ⇒ 没有可回读的记录；核验看企业端 /docs/ 上的对象（见技能「二、文档站包」）。`,
+      `\n文档站不入台账 ⇒ 没有可回读的记录；核验看企业端 /docs/ 上的对象（见技能「二、文档站包」）。`,
     );
     return 0;
   } catch (err) {
-    console.error(
-      `\n✗ 文档包上传失败：${err instanceof UploadError ? err.message : err?.stack || err}`,
-    );
-    console.error(
-      `  HTTP 状态：${err instanceof UploadError && err.status !== null ? err.status : "无响应（网络层失败）"}`,
-    );
-    if (err instanceof UploadError && err.status === 404) {
-      console.error(
-        `  提示：404 通常意味着该环境后端还没部署 /api/ops/docs/upload（2026-10-19 新增的端点），不是脚本或压缩包的问题。`,
-      );
-    }
+    explainFailure("文档包上传", err);
     console.error(
       `  提示：服务端中途失败会回滚本次已传对象；重跑同一条命令即可（整包重传是幂等覆盖）。`,
     );
@@ -617,7 +867,7 @@ async function probeRemoteLive(envName) {
 }
 
 /**
- * 远控页上传：一个请求把 zip 交给 `/api/ops/remote-page/upload`（multipart 字段 `zip`），
+ * 远控页上传：一个请求把 zip 交给 `/api/publish/remote-page`（multipart 字段 `zip`），
  * 服务端解包后逐文件传 file-center `codechat/remote/`（入口 `index.html` 最后写）。
  *
  * 与另外两条的差别（全部保留自 upload-remote-page.mjs，2026-10-19 并入本脚本）：
@@ -627,7 +877,7 @@ async function probeRemoteLive(envName) {
  *   - **`--env prod` 必须 `--confirm-prod`**：打错环境不报错，对象会静默写进别处。
  *   - **成功判据 = 201 + fileKeys 数量 = 产物文件数**（不再有 version.txt 指针）。
  */
-async function uploadRemotePage(opts, creds) {
+async function uploadRemotePage(opts, headers, cookie) {
   // ── 预检 1：包形状（纯本地） ──
   const names = zipNames(opts.file);
   const ageSec = Math.round(
@@ -661,24 +911,12 @@ async function uploadRemotePage(opts, creds) {
   if (opts.env) await probeRemoteLive(opts.env);
   else console.log("线上构建   （--base 模式跳过访问面探测）");
 
-  // ── 登录 + 亲和 cookie（其余端点单请求无状态，这里沿用远控页一直以来的做法） ──
-  const token = await login(opts.base, creds);
-  console.log("登录成功（token 不显示）");
-  const cookie = await acquireAffinityCookie(opts.base);
-  console.log(
-    cookie
-      ? `亲和 cookie ${AFFINITY_COOKIE_NAME} 已获取（长度 ${cookie.length}，值不显示）`
-      : `⚠️ 未取到 ${AFFINITY_COOKIE_NAME} 亲和 cookie（多副本下请求可能被拒）`,
-  );
-
   if (opts.dryRun) {
-    console.log("\nDRY-RUN：预检通过，未发起上传。");
+    console.log("\nDRY-RUN：令牌可用、预检通过，未发起上传。");
     return 0;
   }
 
   const buffer = await fs.promises.readFile(opts.file);
-  const headers = { Authorization: `Bearer ${token}` };
-  if (cookie) headers.Cookie = cookie;
   const startedAt = Date.now();
   try {
     const { status, json } = await withRetry(
@@ -712,17 +950,17 @@ async function uploadRemotePage(opts, creds) {
     } else {
       console.log(`响应体：${JSON.stringify(json).slice(0, 200)}`);
     }
+    if (!cookie) {
+      console.log(
+        `（本次未带 ${AFFINITY_COOKIE_NAME} cookie —— 远控页是单请求，落在哪个 pod 都一样）`,
+      );
+    }
     console.log(
       `\n完成。手机端刷新即取新构建（入口 no-cache）；回滚账看上方「线上构建」。`,
     );
     return 0;
   } catch (err) {
-    console.error(
-      `\n✗ 远控页上传失败：${err instanceof UploadError ? err.message : err?.stack || err}`,
-    );
-    console.error(
-      `  HTTP 状态：${err instanceof UploadError && err.status !== null ? err.status : "无响应（网络层失败）"}`,
-    );
+    explainFailure("远控页上传", err);
     console.error(
       `  提示：整包重传是幂等覆盖，重跑同一条命令即可；回滚只能另打一份覆盖同名文件（没有删除接口）。`,
     );
@@ -755,7 +993,7 @@ async function probePluginMarketLatest(envName) {
 
 /**
  * 插件市场上传：把 wave-plugins-official 的**整树快照 zip** 交给
- * `/api/ops/plugin-market/upload`（multipart 字段 `zip`）。
+ * `/api/publish/plugin-market`（multipart 字段 `zip`）。
  *
  * 与另外三条的差别：
  *   - **内容寻址**：服务端按 zip 全文 sha256 落 `codechat/wave-plugins-official/<sha>.zip`，
@@ -764,7 +1002,7 @@ async function probePluginMarketLatest(envName) {
  *   - **不写台账、没有删除/回滚接口**：回滚 = 拿旧 zip 重传一次（旧 sha 对象永不清理）。
  *   - **`--env prod` 必须 `--confirm-prod`**：一传就对全体用户生效，且打错环境不报错。
  */
-async function uploadPluginMarket(opts, creds) {
+async function uploadPluginMarket(opts, headers) {
   // ── 预检 1：包形状（收端准入条件，纯本地） ──
   const names = zipNames(opts.file);
   if (names) {
@@ -796,11 +1034,8 @@ async function uploadPluginMarket(opts, creds) {
     );
   }
 
-  const token = await login(opts.base, creds);
-  console.log("登录成功（token 不显示）");
-
   if (opts.dryRun) {
-    console.log("\nDRY-RUN：预检通过，未发起上传。");
+    console.log("\nDRY-RUN：令牌可用、预检通过，未发起上传。");
     return 0;
   }
 
@@ -817,7 +1052,7 @@ async function uploadPluginMarket(opts, creds) {
         );
         return request(`${opts.base}${PLUGIN_MARKET_UPLOAD_PATH}`, {
           method: "POST",
-          headers: { Authorization: `Bearer ${token}` },
+          headers,
           body: form,
         });
       },
@@ -850,17 +1085,7 @@ async function uploadPluginMarket(opts, creds) {
     );
     return 0;
   } catch (err) {
-    console.error(
-      `\n✗ 插件市场上传失败：${err instanceof UploadError ? err.message : err?.stack || err}`,
-    );
-    console.error(
-      `  HTTP 状态：${err instanceof UploadError && err.status !== null ? err.status : "无响应（网络层失败）"}`,
-    );
-    if (err instanceof UploadError && err.status === 404) {
-      console.error(
-        `  提示：404 通常意味着该环境后端还没部署 ${PLUGIN_MARKET_UPLOAD_PATH}，不是压缩包的问题。`,
-      );
-    }
+    explainFailure("插件市场上传", err);
     console.error(
       `  提示：{sha}.zip 内容寻址、同包重传幂等；重跑同一条命令即可。`,
     );
@@ -870,55 +1095,26 @@ async function uploadPluginMarket(opts, creds) {
 
 // ─── 桌面端（分片直传） ────────────────────────────────────────────────────
 
-/** 桌面端安装包：init → 逐片 chunk → complete（分片会话靠亲和 cookie 固定到同一 pod）。 */
-async function uploadDesktop(opts, creds) {
-  const cookie = await acquireAffinityCookie(opts.base);
-  if (!cookie)
-    die(
-      `未取到 ${AFFINITY_COOKIE_NAME} 亲和 cookie —— 无它会被 LB 打到别的 pod，分片随机 404`,
-    );
-  console.log(
-    `亲和 cookie ${AFFINITY_COOKIE_NAME} 已获取（长度 ${cookie.length}，值不显示）`,
-  );
-  const authHeaders = { Cookie: cookie };
+/** 本地文件的 sha512（base64）——与服务端 complete 回传的 `sha512` 同编码，可直接比 */
+async function sha512Base64(file) {
+  const hash = crypto.createHash("sha512");
+  for await (const chunk of fs.createReadStream(file)) hash.update(chunk);
+  return hash.digest("base64");
+}
 
-  const token = await login(opts.base, creds);
-  authHeaders.Authorization = `Bearer ${token}`;
-  console.log("登录成功（token 不显示）");
-
+/** 桌面端安装包：init → 逐片 chunk → complete（分片会话靠 cookie 亲和固定到同一 pod）。 */
+async function uploadDesktop(opts, headers) {
   const fh = await fs.promises.open(opts.file, "r");
   const state = { chunk: null, totalChunks: null, uploadId: null };
   try {
-    const result = await uploadRounds(opts, authHeaders, fh, state);
+    const result = await uploadRounds(opts, headers, fh, state);
     console.log(
       opts.dryRun
         ? "\nDRY-RUN 摘要（未调用 complete）："
         : "\n完成。complete 响应：",
     );
     console.log(JSON.stringify(result, null, 2));
-    if (result.desktopDownloads?.length) {
-      for (const d of result.desktopDownloads)
-        console.log(
-          `  ${d.version} ${d.channel} ${d.fileName} → ${d.downloadUrl}`,
-        );
-    }
-    // 落库通道必须等于 --channel：旧代后端会**静默忽略**它不认识的通道字段并回落
-    // stable，HTTP 却照样 2xx —— 只看状态码会把「传 beta 落到正式通道」当成成功
-    // （2026-09-21 实测如此）。这里把它当硬失败，别再静默成功。
-    if (
-      !opts.dryRun &&
-      opts.type === "desktop" &&
-      result.desktopDownloads?.length
-    ) {
-      const landed = [
-        ...new Set(result.desktopDownloads.map((d) => d.channel)),
-      ];
-      if (!landed.includes(opts.channel))
-        die(
-          `请求落库通道 ${opts.channel}，服务端实际写成 ${landed.join(" / ")}；` +
-            `记录已生成，需人工清理（见 initBody 里两代通道字段的注释）`,
-        );
-    }
+
     if (opts.dryRun) {
       console.log(
         `\nDRY-RUN：已在第 1 片之后停止，**未调用 complete** ⇒ 未写库、未生成用户可见记录。`,
@@ -926,12 +1122,49 @@ async function uploadDesktop(opts, creds) {
       console.log(
         `临时会话 uploadId=${state.uploadId} 只存在于服务端内存（TTL 2h 后自动清理分片）。`,
       );
+      return 0;
     }
+
+    // ── 回包字段核对：落库通道、大小、sha512（base64，与本地可直接比） ──
+    const landed = [...new Set(result.channels ?? [])].sort();
+    const asked = [...opts.channels].sort();
+    if (landed.join(",") !== asked.join(",")) {
+      console.error(
+        `✗ 请求落库通道 ${asked.join("/")}，服务端实际写成 ${landed.join("/") || "(空)"} —— 先别当成成功`,
+      );
+      return 1;
+    }
+    if (result.version !== opts.version || result.platform !== opts.platform) {
+      console.error(
+        `✗ 落库版本/平台与请求不一致：请求 ${opts.version}/${opts.platform}，服务端 ${result.version}/${result.platform}`,
+      );
+      return 1;
+    }
+    if (result.sizeBytes !== undefined && result.sizeBytes !== opts.fileSize) {
+      console.error(
+        `✗ 服务端记录的大小 ${result.sizeBytes} 与本地 ${opts.fileSize} 不一致`,
+      );
+      return 1;
+    }
+    const localSha = await sha512Base64(opts.file);
+    if (result.sha512 && result.sha512 !== localSha) {
+      console.error(
+        `✗ sha512 不一致：\n  本地   ${localSha}\n  服务端 ${result.sha512}\n  上传的字节与本地文件不同，别当成成功`,
+      );
+      return 1;
+    }
+    console.log(
+      `\n字段核对   ✅ version/platform/channels/size/sha512 全部一致（sha512 ${localSha.slice(0, 16)}…）`,
+    );
+    console.log(`台账 id    ${(result.ids ?? []).join(", ") || "(未返回)"}`);
+    console.log(`下载地址   ${result.downloadUrl ?? "(未返回)"}`);
+    console.log(
+      `\n下一步：客户端是否真能更新看企业端 feed（见技能「一、桌面端三件套」验证要点第 4 步）；` +
+        `回退一条记录用 --list / --delete <id>。`,
+    );
     return 0;
   } catch (err) {
-    console.error(
-      `\n✗ 上传失败：${err instanceof UploadError ? err.message : err?.stack || err}`,
-    );
+    explainFailure("上传", err);
     if (state.chunk !== null)
       console.error(
         `  失败位置：第 ${state.chunk}/${state.totalChunks} 片（uploadId=${state.uploadId}）`,
@@ -940,15 +1173,6 @@ async function uploadDesktop(opts, creds) {
       console.error(
         `  失败位置：complete（uploadId=${state.uploadId}，全 ${state.totalChunks} 片已传完）`,
       );
-    console.error(
-      `  HTTP 状态：${err instanceof UploadError && err.status !== null ? err.status : "无响应（网络层失败）"}`,
-    );
-    console.error(`  亲和 cookie：已携带（长度 ${cookie.length}）`);
-    if (err instanceof UploadError && err.kind === "net") {
-      console.error(
-        "  提示：网络层失败已按前端同款策略重试过；每片是独立 HTTP/1.1 连接，与浏览器的连接级中断不同。",
-      );
-    }
     return 1;
   } finally {
     await fh.close();
@@ -971,28 +1195,41 @@ async function uploadRounds(opts, headers, fh, state) {
   }
 }
 
+/** init 请求体：新契约只认 `channels` 数组（一次可发两通道，安装包只传一次） */
+function initBody(opts) {
+  return {
+    platform: opts.platform,
+    version: opts.version,
+    fileName: opts.fileName,
+    fileSize: opts.fileSize,
+    channels: opts.channels,
+  };
+}
+
 async function uploadOnce(opts, headers, fh, state) {
   const init = await withRetry(
     "init",
     async () => {
-      const { json } = await request(
-        `${opts.base}/api/ops/downloads/chunked/init`,
-        {
-          method: "POST",
-          headers: { ...headers, "Content-Type": "application/json" },
-          body: JSON.stringify(initBody(opts)),
-        },
-      );
+      const { json } = await request(`${opts.base}${DESKTOP_INIT_PATH}`, {
+        method: "POST",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify(initBody(opts)),
+      });
       return json;
     },
     console.log,
   );
 
   const { uploadId, chunkSize, totalChunks } = init;
+  if (!uploadId || !chunkSize || !totalChunks) {
+    throw new UploadError(
+      `init 回包缺字段（uploadId/chunkSize/totalChunks）：${JSON.stringify(init).slice(0, 200)}`,
+    );
+  }
   state.uploadId = uploadId;
   state.totalChunks = totalChunks;
   console.log(
-    `init ok：uploadId=${uploadId} chunkSize=${mb(chunkSize)} totalChunks=${totalChunks}`,
+    `init ok：uploadId=${uploadId} chunkSize=${mb(chunkSize)} totalChunks=${totalChunks}（通道 ${opts.channels.join(",")}）`,
   );
 
   const limit = opts.dryRun ? 1 : totalChunks;
@@ -1013,10 +1250,11 @@ async function uploadOnce(opts, headers, fh, state) {
           // 每次尝试重建请求体：FormData/Blob 不复用（与前端一致）
           const form = new FormData();
           form.append(CHUNK_FIELD, new Blob([chunk]), `chunk-${i}`);
-          return request(
-            `${opts.base}/api/ops/downloads/chunked/${uploadId}/${i}`,
-            { method: "POST", headers, body: form },
-          );
+          return request(`${opts.base}${desktopChunkPath(uploadId, i)}`, {
+            method: "POST",
+            headers,
+            body: form,
+          });
         },
         console.log,
       );
@@ -1038,13 +1276,14 @@ async function uploadOnce(opts, headers, fh, state) {
       chunkSize,
       totalChunks,
       uploadedChunks: limit,
+      channels: opts.channels,
     };
 
   state.chunk = null;
   const { status, json } = await withRetry(
     "complete",
     () =>
-      request(`${opts.base}/api/ops/downloads/chunked/${uploadId}/complete`, {
+      request(`${opts.base}${desktopCompletePath(uploadId)}`, {
         method: "POST",
         headers,
       }),
