@@ -395,9 +395,9 @@ export class DesktopHost {
   private everReceivedMessage = new WeakSet<StdioAgent>();
   /**
    * Per-pane message volume as reported by the renderer (`desktopReportMessageStats`),
-   * sampled onto the renderer memory curve (memorySampler.ts). The host has no
-   * array of its own to count any more, and the renderer's heap is what the
-   * curve is about — so the number comes from the process that holds it.
+   * sampled alongside the renderer memory reading (memorySampler.ts). The host has
+   * no array of its own to count any more, and the renderer's heap is what the
+   * reading is about — so the number comes from the process that holds it.
    */
   private reportedMessageStats = new Map<string, MessageStats>();
   /**
@@ -813,13 +813,13 @@ export class DesktopHost {
   }
 
   /**
-   * Conversation volume each pane's **renderer** is holding, sampled onto the
-   * memory curve (memorySampler.ts).
+   * Conversation volume each pane's **renderer** is holding, sampled alongside
+   * the renderer memory reading (memorySampler.ts).
    *
    * Reported by the webview (`desktopReportMessageStats`) on every list change:
    * this host keeps no messages of its own (spec ui/message-rendering-system.md
    * 「宿主不保留消息内容，用的时候现取」), so it has nothing to count — and the
-   * curve is about the renderer's heap anyway. A pane that has not reported yet
+   * reading is about the renderer's heap anyway. A pane that has not reported yet
    * is left out (its count is unknown, not zero).
    */
   getMessageStats(): SessionMessageStat[] {

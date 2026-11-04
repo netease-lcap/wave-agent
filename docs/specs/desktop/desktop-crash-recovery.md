@@ -1,12 +1,12 @@
 ---
 name: "桌面端渲染进程崩溃与卡死恢复"
-description: "CodeWave IDE 桌面端渲染进程崩溃/卡死的自愈入口、现场取证（minidump、JS 调用栈采样、renderer 内存曲线）与一键导出诊断包"
+description: "CodeWave IDE 桌面端渲染进程崩溃/卡死的自愈入口、现场取证（minidump、JS 调用栈采样、崩溃前 renderer 内存读数）与一键导出诊断包"
 order: 95
 ---
 
 # 功能规格说明：桌面端渲染进程崩溃与卡死恢复
 
-> 真实事故驱动：用户（macOS ARM64）连续运行约 53 小时后界面**整片黑屏**、任务仍在后台正常运行，系统留下 `EXC_BREAKPOINT (SIGTRAP)`、Thread 0 为 `CrRendererMain`、栈顶在 `cppgc::internal::WriteBarrier::DijkstraMarkingBarrierRangeSlow` 的崩溃报告——渲染进程在 V8 堆/GC 的 native 代码里崩了。她只能强杀重开，崩溃现场（转储、JS 栈、内存曲线、日志）全部丢失，事后无法定位。本规格只解决「崩了之后用户怎么办 + 我们能拿到什么证据」，不解决该 native 崩溃本身。
+> 真实事故驱动：用户（macOS ARM64）连续运行约 53 小时后界面**整片黑屏**、任务仍在后台正常运行，系统留下 `EXC_BREAKPOINT (SIGTRAP)`、Thread 0 为 `CrRendererMain`、栈顶在 `cppgc::internal::WriteBarrier::DijkstraMarkingBarrierRangeSlow` 的崩溃报告——渲染进程在 V8 堆/GC 的 native 代码里崩了。她只能强杀重开，崩溃现场（转储、JS 栈、内存读数、日志）全部丢失，事后无法定位。本规格只解决「崩了之后用户怎么办 + 我们能拿到什么证据」，不解决该 native 崩溃本身。
 >
 > 黑屏的视觉成因：窗口本身还活着，`backgroundColor: "#1e1e1e"` 铺满整片深色——渲染进程一旦消失，用户看到的就是一片深色空窗。所以恢复入口**不能**放在渲染进程里，只能是主进程的原生对话框。
 
@@ -69,26 +69,29 @@ order: 95
 
 ---
 
-### 用户故事：renderer 内存曲线（优先级：P2）
+### 用户故事：renderer 内存读数（优先级：P2）
 
-作为维护者，我希望应用持续记录渲染进程的内存占用**并同时记录它承载的消息量**，以便判断黑屏是否是「会话历史把 renderer 堆撑爆」——而不是只有一堆 MB 数字对不上因果。
+作为维护者，我希望应用在后台持续记录渲染进程的内存占用**并同时记录它承载的消息量**，以便判断黑屏是否是「会话历史把 renderer 堆撑爆」——而不是只有一堆 MB 数字对不上因果。
 
-**为什么是这个优先级**：单一快照无法证实也无法排除内存压力；只有曲线能回答「崩溃前内存是否一路攀升」。而 MB 数字单独看没有因果——必须和「这个 pane 有多少条消息、多少个 block」一起看，才能看出「堆涨的时候条数是不是也在涨」。
+**为什么是这个优先级**：单一快照无法证实也无法排除内存压力；而崩溃那一刻渲染进程已经消失，事后调用 `app.getAppMetrics()` 取不到它，所以读数必须在此前就持续记录。MB 数字单独看没有因果——必须和「这个 pane 有多少条消息、多少个 block」一起看，才能判断堆涨是不是被会话长度驱动的。
 
-**独立测试**：假时钟驱动内存采样器，验证启动即采一次、之后每 `60000ms` 一次，只取 `type === "Tab"` 的进程，KB 换算为 MB（保留一位小数），窗口销毁后定时器被清除；用假消息列表验证条数与 block 总数的换算；在真实 host 上验证只统计「界面上有 pane 在显示」的会话。
+**记录是静默的**：读数不按分钟写进 `desktop.log`（那是纯噪音，也曾在日志里淹没真正的事件），唯一的出口是崩溃日志的 `lastMemory=`。
+
+**独立测试**：假时钟驱动内存采样器，验证启动即采一次、之后每 `60000ms` 一次，只取 `type === "Tab"` 的进程，KB 换算为 MB（保留一位小数），窗口销毁后定时器被清除；验证正常采样期间不产生任何日志行（只有崩溃路径读 `lastLine()`）；用假消息列表验证条数与 block 总数的换算；在真实 host 上验证只统计「界面上有 pane 在显示」的会话。
 
 **验收场景**：
 
 1. **假设**主窗口已创建，**当**开始记录内存，**则**必须立即读一次 `app.getAppMetrics()`，之后每 `60000ms` 读一次。
-2. **假设** `getAppMetrics()` 返回多条记录，**当**写日志，**则**只取 `type === "Tab"`（渲染进程）的条目，一行一个进程，含 `pid`、`workingSet`、`peak`，单位 MB（Electron 原始单位为 KB）。
-3. **假设**界面上有 pane 绑定了会话，**当**写这条内存日志，**则**每个渲染进程行必须同时带该窗口所有 pane 的消息总数与 block 总数（`messages=<n> blocks=<n>`），并另起一行按 pane 给出明细：`pane=`、`session=`、`messages=`、`blocks=` 与该会话最新上下文用量 `tokens=`（压缩只折叠 API 上下文，`tokens` 平稳而条数/block 数持续上涨即「展示侧无界」的判据）。
-4. **假设**尚无 pane 绑定会话，**当**采样，**则**只写内存行、不写计数（不得写 `messages=0` 冒充「没有消息」）。
-5. **假设**尚无渲染进程条目（窗口尚未加载），**当**采样，**则**不写空日志。
+2. **假设** `getAppMetrics()` 返回多条记录，**当**形成读数，**则**只取 `type === "Tab"`（渲染进程）的条目，一行一个进程，含 `pid`、`workingSet`、`peak`，单位 MB（Electron 原始单位为 KB）。
+3. **假设**界面上有 pane 绑定了会话，**当**形成读数，**则**每个渲染进程行必须同时带该窗口所有 pane 的消息总数与 block 总数（`messages=<n> blocks=<n>`），并另起一行按 pane 给出明细：`pane=`、`session=`、`messages=`、`blocks=` 与该会话最新上下文用量 `tokens=`（压缩只折叠 API 上下文，`tokens` 平稳而条数/block 数持续上涨即「展示侧无界」的判据）。
+4. **假设**尚无 pane 绑定会话，**当**采样，**则**只记内存行、不记计数（不得写 `messages=0` 冒充「没有消息」）。
+5. **假设**尚无渲染进程条目（窗口尚未加载），**当**采样，**则**不产生读数（`lastMemory` 保持为空）。
 6. **假设**窗口关闭，**当**渲染进程随之消失，**则**必须清除定时器，不得继续对一个不存在的进程采样。
-7. **假设** `getAppMetrics()` 抛错，**当**采样，**则**记一条 WARN，下一轮继续（不得让一次失败停掉整条曲线）。
-8. **假设**消息量统计抛错，**当**采样，**则**仍写出内存行并记一条 WARN——内存读数不得因为计数失败而丢失。
-9. **假设**某个会话的 agent 已不被任何 pane 显示（后台会话），**当**统计消息量，**则**不得计入：它的消息从未推给渲染进程，计进去会让曲线与 renderer 堆脱钩。
+7. **假设** `getAppMetrics()` 抛错，**当**采样，**则**记一条 WARN，下一轮继续（不得让一次失败停掉整条读数链）。
+8. **假设**消息量统计抛错，**当**采样，**则**仍保留内存读数并记一条 WARN——内存读数不得因为计数失败而丢失。
+9. **假设**某个会话的 agent 已不被任何 pane 显示（后台会话），**当**统计消息量，**则**不得计入：它的消息从未推给渲染进程，计进去会让读数与 renderer 堆脱钩。
 10. **假设**崩溃发生，**当**写崩溃日志，**则** `lastMemory` 必须沿用同一份采样结果（含计数），使崩溃那一刻的内存与消息量同时可见。
+11. **假设**采样正常进行，**当**没有发生卡死或崩溃，**则** `desktop.log` 不得出现周期性的内存/消息量日志行——读数只随崩溃日志输出。例外只有场景 7/8 的 WARN（采样/统计失败本身是事件）。
 
 > **本条只做可观测。** 用户访谈（很少截图 ⇒ 排除 base64 图片；单个对话用了约 6 周、一直在压缩）＋ 代码核查指向：压缩只折叠发给模型的上下文（`this.messages`），展示侧过去永保留全量历史，而桌面端 `setInitialState` 把整份列表原样推给渲染进程、没有切片 ⇒ 嫌疑人是「消息条数 + tool 输出全文」。**是否裁剪展示侧 / 给 webview 加窗口是行为变更，需要产品拍板，属独立议题**，不在本规格范围内（见「非目标」）。该议题已另立并落地（`ui/message-rendering-system.md`「内存只装压缩后的上下文，更早的历史按页从转录取」）：列表口径收敛到最近一次压缩，首屏只推一页、更早的内容上翻时按页从转录读回，因此上面的读法在新版本里口径要跟着换（见本条最后一行）。
 
@@ -138,7 +141,7 @@ order: 95
 - **崩溃后用户直接关窗**：走既有 `before-quit` → `host.dispose()`（受 5 秒超时约束），正在运行的任务随之结束；本特性不改变该语义，只是让用户在弹窗里还有别的选择。
 - **转储目录随环境变化**：`crashDumps` 跟随 userData（dev 实例是 `wave-desktop-dev`），日志目录随 `WAVE_LOGS_DIR`；两者都由启动日志如实写出，不写死路径。
 - **从未崩溃过**：minidump 目录可能不存在或为空；导出时必须跳过而不是报错。
-- **原生 GC 卡死无栈可采**：若渲染进程卡在 native 代码（如本次的 `cppgc` 写屏障）里，帧内 JS 可能完全不动，采样拿不到栈——此时证据只剩内存曲线 + 崩溃转储，日志必须如实写明「未采到栈」。
+- **原生 GC 卡死无栈可采**：若渲染进程卡在 native 代码（如本次的 `cppgc` 写屏障）里，帧内 JS 可能完全不动，采样拿不到栈——此时证据只剩最后一次内存读数 + 崩溃转储，日志必须如实写明「未采到栈」。
 - **同一崩溃的多个信号**：`unresponsive` → `render-process-gone` → `did-fail-load` 可能接连到达；闩锁保证只弹一个框，且崩溃前先 flush 采样。
 - **窗口在对话框期间被销毁**：不再对该窗口弹窗、不再调用其 `webContents`。
 - **渲染进程被系统回收（`memory-eviction`）/ 被强杀（`killed`）**：按崩溃同样处理（无 dump），日志里的 `reason` 区分它们。
@@ -150,8 +153,8 @@ order: 95
 - **主动杀渲染进程「自愈」**：不在卡死时 `forcefullyCrashRenderer()` 强行重启渲染进程——那会连正在进行的渲染任务与会话状态一起丢掉。
 - **上传崩溃报告 / 接入崩溃平台**：无后端、隐私未拍板；转储只留在本地，由用户通过「导出日志」带出。
 - **zip 格式**：不引入 zip 依赖；`.tar.gz` 在 macOS Finder 与 Windows 10+ 右键解压均可直接打开。
-- **该 native 崩溃（`cppgc` 写屏障）本身的修复**：本规格只提供自愈入口与取证能力，根因另案分析（需要收集到转储与内存曲线之后再定位）。
-- **裁剪会话展示侧 / 给 webview 加消息窗口**：内存曲线指向「展示侧无界」这一嫌疑，但收缩列表口径、给 `setInitialState` 加分页或给 webview 加虚拟窗口都是**行为变更**（会影响用户看到的历史、压缩语义、恢复与搜索），需要产品拍板，属后续独立议题。本规格只落地计数，不动任何裁剪行为。
+- **该 native 崩溃（`cppgc` 写屏障）本身的修复**：本规格只提供自愈入口与取证能力，根因另案分析（需要收集到转储与内存读数之后再定位）。
+- **裁剪会话展示侧 / 给 webview 加消息窗口**：内存读数指向「展示侧无界」这一嫌疑，但收缩列表口径、给 `setInitialState` 加分页或给 webview 加虚拟窗口都是**行为变更**（会影响用户看到的历史、压缩语义、恢复与搜索），需要产品拍板，属后续独立议题。本规格只落地计数，不动任何裁剪行为。
 - **修改 webview / CLI / agent-sdk 行为**：全部改动限于 `packages/desktop` 主进程。
 
 ## 取证日志格式（用于事后阅读 `desktop.log`）
@@ -159,8 +162,6 @@ order: 95
 ```text
 [2026-10-22T07:41:02.113Z] [INFO] [desktop] crash evidence dirs dumps=/Users/x/Library/Application Support/CodeWave IDE/Crashpad logs=/Users/x/.wave/logs
 [2026-10-22T07:41:02.114Z] [WARN] [desktop] previous run left a crash dump id=3a1b… date=2026-10-20T04:11:31.000Z dir=/Users/x/Library/Application Support/CodeWave IDE/Crashpad
-[2026-10-22T07:42:00.001Z] [INFO] renderer memory pid=41337 workingSet=812.4MB peak=1204.9MB messages=1842 blocks=9310
-session messages pane=pane-1 session=3f2a… messages=1842 blocks=9310 tokens=152000
 [2026-10-22T09:14:07.532Z] [WARN] [desktop] renderer unresponsive url=file:///…/webview/index.html
 [2026-10-22T09:14:22.538Z] [WARN] renderer unresponsive: JS stack samples (every 1000ms, up to 15000ms) window=main url=file:///…/webview/index.html
 <9> at renderMessageList (chat.js:191:22)
@@ -170,4 +171,4 @@ Total Samples: 14
 [2026-10-22T09:14:24.010Z] [ERROR] [desktop] renderer process gone reason=crashed exitCode=133 url=file:///…/webview/index.html lastMemory=renderer memory pid=41337 workingSet=2981.2MB peak=3022.8MB messages=1842 blocks=9310; session messages pane=pane-1 session=3f2a… messages=1842 blocks=9310 tokens=152000
 ```
 
-读法：`tokens`（API 上下文，压缩后会回落）与 `messages`/`blocks`（展示侧）并排看——列表口径收缩到压缩边界之前它是只增不减的，前者平稳而后者持续上涨就是「压缩折叠了上下文、但渲染进程扛着全量展示侧」的证据；两者一起涨则说明上下文本身也在膨胀。口径收缩之后 `messages` 会停在「摘要 + 压缩保留轮次 + 其后新增」附近，此时它再涨说明的是「用户又往上翻了页」或「压缩之后又聊了很多」，与内存压力解耦，要看的换成 `renderer memory` 那一项。
+读法：内存与消息量只在崩溃日志的 `lastMemory=` 里出现一次，所以先看那一行——`tokens`（API 上下文，压缩后会回落）与 `messages`/`blocks`（展示侧）并排看。列表口径收缩到压缩边界之前它是只增不减的，前者平稳而后者持续上涨就是「压缩折叠了上下文、但渲染进程扛着全量展示侧」的证据；两者一起涨则说明上下文本身也在膨胀。口径收缩之后 `messages` 会停在「摘要 + 压缩保留轮次 + 其后新增」附近，此时它再涨说明的是「用户又往上翻了页」或「压缩之后又聊了很多」，与内存压力解耦，要看的换成 `lastMemory` 里的 `workingSet`/`peak` 本身。

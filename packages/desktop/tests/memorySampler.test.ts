@@ -8,6 +8,7 @@ import {
   MEMORY_SAMPLE_INTERVAL_MS,
   type SessionMessageStat,
 } from "../src/main/memorySampler.js";
+import { hostLog } from "../src/main/hostLog.js";
 
 const processMetric = (
   type: Electron.ProcessMetric["type"],
@@ -60,7 +61,7 @@ describe("memorySampler", () => {
   });
 
   it("samples immediately, then every interval, and stops on demand", () => {
-    const log = { block: vi.fn(), warn: vi.fn() };
+    const log = { warn: vi.fn() };
     const getMetrics = vi.fn(() => [
       processMetric("Tab", 111, 1024 * 300, 1024 * 512),
     ]);
@@ -70,10 +71,6 @@ describe("memorySampler", () => {
     // First reading right away: a crash in the first minute must still have a
     // memory number next to it.
     expect(getMetrics).toHaveBeenCalledTimes(1);
-    expect(log.block).toHaveBeenCalledTimes(1);
-    expect(log.block.mock.calls[0][1]).toEqual([
-      "renderer memory pid=111 workingSet=300MB peak=512MB",
-    ]);
     expect(sampler.lastLine()).toBe(
       "renderer memory pid=111 workingSet=300MB peak=512MB",
     );
@@ -86,8 +83,26 @@ describe("memorySampler", () => {
     expect(getMetrics).toHaveBeenCalledTimes(2);
   });
 
-  it("says nothing when there is no renderer process yet", () => {
-    const log = { block: vi.fn(), warn: vi.fn() };
+  it("stays silent between readings — only the crash log reads them", () => {
+    vi.mocked(app.getAppMetrics).mockReturnValue([
+      processMetric("Tab", 111, 1024 * 300, 1024 * 512),
+    ]);
+    const block = vi.spyOn(hostLog, "block");
+
+    const sampler = createMemorySampler();
+    sampler.start();
+    vi.advanceTimersByTime(MEMORY_SAMPLE_INTERVAL_MS * 3);
+    sampler.stop();
+
+    // A per-minute line in desktop.log is noise; the numbers surface through
+    // `lastLine()` on the crash path instead.
+    expect(block).not.toHaveBeenCalled();
+    expect(sampler.lastLine()).toContain("workingSet=300MB");
+    block.mockRestore();
+  });
+
+  it("keeps no reading when there is no renderer process yet", () => {
+    const log = { warn: vi.fn() };
     const sampler = createMemorySampler({
       log,
       getMetrics: () => [processMetric("Browser", 222, 1024, 1024)],
@@ -96,7 +111,7 @@ describe("memorySampler", () => {
     sampler.start();
     sampler.stop();
 
-    expect(log.block).not.toHaveBeenCalled();
+    expect(log.warn).not.toHaveBeenCalled();
     expect(sampler.lastLine()).toBeUndefined();
   });
 
@@ -104,18 +119,20 @@ describe("memorySampler", () => {
     vi.mocked(app.getAppMetrics).mockReturnValue([
       processMetric("Tab", 999, 1024 * 700, 1024 * 800),
     ]);
-    const log = { block: vi.fn(), warn: vi.fn() };
+    const log = { warn: vi.fn() };
 
-    createMemorySampler({ log }).start();
+    const sampler = createMemorySampler({ log });
+    sampler.start();
+    sampler.stop();
 
     expect(app.getAppMetrics).toHaveBeenCalled();
-    expect(log.block.mock.calls[0][1]).toEqual([
+    expect(sampler.lastLine()).toBe(
       "renderer memory pid=999 workingSet=700MB peak=800MB",
-    ]);
+    );
   });
 
   it("keeps running when getAppMetrics throws", () => {
-    const log = { block: vi.fn(), warn: vi.fn() };
+    const log = { warn: vi.fn() };
     const getMetrics = vi.fn(() => {
       throw new Error("metrics unavailable");
     });
@@ -134,7 +151,7 @@ describe("memorySampler", () => {
   });
 
   it("carries the message volume on the memory line", () => {
-    const log = { block: vi.fn(), warn: vi.fn() };
+    const log = { warn: vi.fn() };
     const sampler = createMemorySampler({
       log,
       getMetrics: () => [processMetric("Tab", 111, 1024 * 2048, 1024 * 4096)],
@@ -147,13 +164,14 @@ describe("memorySampler", () => {
     sampler.start();
     sampler.stop();
 
-    expect(log.block.mock.calls[0][1]).toEqual([
-      "renderer memory pid=111 workingSet=2048MB peak=4096MB messages=2342 blocks=12110",
-      "session messages pane=pane-1 session=s1 messages=1842 blocks=9310 tokens=152000",
-      "session messages pane=pane-2 session=s2 messages=500 blocks=2800 tokens=98000",
-    ]);
-    // The crash log's lastMemory must carry the same correlation.
-    expect(sampler.lastLine()).toContain("messages=2342 blocks=12110");
+    // The crash log's lastMemory must carry the memory ↔ volume correlation.
+    expect(sampler.lastLine()).toBe(
+      [
+        "renderer memory pid=111 workingSet=2048MB peak=4096MB messages=2342 blocks=12110",
+        "session messages pane=pane-1 session=s1 messages=1842 blocks=9310 tokens=152000",
+        "session messages pane=pane-2 session=s2 messages=500 blocks=2800 tokens=98000",
+      ].join("; "),
+    );
   });
 
   it("omits counts when no pane is bound yet", () => {
@@ -162,8 +180,8 @@ describe("memorySampler", () => {
     ).toEqual(["renderer memory pid=1 workingSet=10MB peak=20MB"]);
   });
 
-  it("still logs the memory reading when the volume getter throws", () => {
-    const log = { block: vi.fn(), warn: vi.fn() };
+  it("keeps the memory reading when the volume getter throws", () => {
+    const log = { warn: vi.fn() };
     const sampler = createMemorySampler({
       log,
       getMetrics: () => [processMetric("Tab", 111, 1024, 1024)],
@@ -179,8 +197,8 @@ describe("memorySampler", () => {
       "[desktop] message volume sample failed:",
       expect.any(Error),
     );
-    expect(log.block.mock.calls[0][1]).toEqual([
+    expect(sampler.lastLine()).toBe(
       "renderer memory pid=111 workingSet=1MB peak=1MB",
-    ]);
+    );
   });
 });
