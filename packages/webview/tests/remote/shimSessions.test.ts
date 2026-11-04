@@ -2623,6 +2623,52 @@ describe("remote page session list actions", () => {
     });
   });
 
+  test("passes the pending worktree removal through so the page can say it is still running", async () => {
+    const { page } = await openPage();
+
+    page.api.postMessage({
+      command: "deleteSession",
+      sessionId: "s-new",
+      removeWorktree: true,
+      requestId: "del-pending",
+    });
+    await flush();
+    // 电脑侧不等目录删完就回执（Windows 上那是分钟级）；页面必须看到这件事，
+    // 否则只能把它读成「工作树没删掉」。
+    await page.answer("destroy", {
+      worktreeRemoved: false,
+      worktreeRemoval: "pending",
+    });
+    await page.answer("listDaemonSessions", { sessions: [SESSIONS[0]] });
+
+    expect(lastPosted(page)).toMatchObject({
+      command: "sessionDeleted",
+      requestId: "del-pending",
+      ok: true,
+      worktreeRemoval: "pending",
+    });
+  });
+
+  test("reads an older computer's reply without worktreeRemoval as none", async () => {
+    const { page } = await openPage();
+
+    page.api.postMessage({
+      command: "deleteSession",
+      sessionId: "s-new",
+      removeWorktree: true,
+      requestId: "del-legacy",
+    });
+    await flush();
+    await page.answer("destroy", { worktreeRemoved: false });
+    await page.answer("listDaemonSessions", { sessions: [SESSIONS[0]] });
+
+    expect(lastPosted(page)).toMatchObject({
+      command: "sessionDeleted",
+      requestId: "del-legacy",
+      worktreeRemoval: "none",
+    });
+  });
+
   test("re-picks a live session after the current one is deleted, without navigating the page", async () => {
     const { page } = await openPage();
 

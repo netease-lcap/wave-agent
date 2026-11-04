@@ -180,11 +180,14 @@ export const RemoteSessionListPage: React.FC<RemoteSessionListPageProps> = ({
       }
       setPendingDelete(null);
       setDeletedNotice(
-        // 工作树没跟着删掉不是失败（会话确实删了），但也不是全做完了——说清楚，
-        // 而不是把「删了一半」报成彻底成功或彻底失败（spec 场景 8）。
-        request.isWorktree && message.worktreeRemoved === false
-          ? "已删除（工作树没跟着删掉，可在电脑上手动清理）"
-          : "已删除",
+        // 工作树那一档都不是失败（会话确实删了），但「正在后台删」与「没跟着删掉」
+        // 必须分开说：前者说成失败会让用户去手动清一个正在被删的目录，后者说成
+        // 干净利落的「已删除」会让用户以为工作树已经没了（spec 场景 8 / 11）。
+        request.isWorktree && message.worktreeRemoval === "pending"
+          ? "已删除（工作树正在后台删除）"
+          : request.isWorktree && message.worktreeRemoved === false
+            ? "已删除（工作树没跟着删掉，可在电脑上手动清理）"
+            : "已删除",
       );
     }
   });
