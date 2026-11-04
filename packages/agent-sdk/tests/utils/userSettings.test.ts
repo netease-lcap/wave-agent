@@ -4,8 +4,8 @@
  * - 写入是读-改-写：只覆盖偏好键，其余顶层键与 `env` 其它键原样保留
  * - 文件缺失/损坏只影响回读（返回空对象），但**绝不覆盖**用户文件（写入报错）
  *
- * 见 docs/specs/core/agent-config.md「设置实时重载」场景 4/7、「IDE 插件配置
- * 入口」场景 3/6 与「配置服务端地址」故事。
+ * 见 docs/specs/core/agent-config.md「设置实时重载」场景 4/7 与「IDE 插件配置
+ * 入口」场景 3/6。
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -28,7 +28,6 @@ import { existsSync, mkdirSync, readFileSync } from "fs";
 import { atomicWriteFile } from "../../src/utils/atomicWrite.js";
 import {
   MAX_INPUT_TOKENS_ENV_KEY,
-  SERVER_URL_ENV_KEY,
   contextLengthToMaxInputTokens,
   maxInputTokensToContextLength,
   readUserPreferenceSettings,
@@ -92,7 +91,7 @@ describe("userSettings", () => {
       expect(mockRead).not.toHaveBeenCalled();
     });
 
-    it("读回偏好键，上下文长度按 K 展示、服务端地址取自 env.WAVE_SERVER_URL", () => {
+    it("读回偏好键，上下文长度按 K 展示", () => {
       seedFile({
         model: "m1",
         language: "English",
@@ -100,7 +99,6 @@ describe("userSettings", () => {
         autoMemoryFrequency: 7,
         env: {
           WAVE_MAX_INPUT_TOKENS: "128000",
-          WAVE_SERVER_URL: "https://example.test",
           OTHER: "keep",
         },
       });
@@ -110,19 +108,17 @@ describe("userSettings", () => {
         contextLength: 128,
         autoMemoryEnabled: false,
         autoMemoryFrequency: 7,
-        serverUrl: "https://example.test",
       });
     });
 
-    it("env.WAVE_SERVER_URL 缺失/空串/非字符串都按未设置处理", () => {
-      seedFile({ env: { WAVE_MAX_INPUT_TOKENS: "128000" } });
+    it("env.WAVE_SERVER_URL 不进入用户偏好（设置页不提供该入口）", () => {
+      seedFile({
+        env: {
+          WAVE_MAX_INPUT_TOKENS: "128000",
+          WAVE_SERVER_URL: "https://example.test",
+        },
+      });
       expect(readUserPreferenceSettings(FILE)).toEqual({ contextLength: 128 });
-
-      seedFile({ env: { WAVE_SERVER_URL: "" } });
-      expect(readUserPreferenceSettings(FILE)).toEqual({});
-
-      seedFile({ env: { WAVE_SERVER_URL: 42 } });
-      expect(readUserPreferenceSettings(FILE)).toEqual({});
     });
 
     it("损坏的 JSON → 空对象（读失败不阻塞设置页渲染）", () => {
@@ -161,7 +157,6 @@ describe("userSettings", () => {
             contextLength: "default",
             autoMemoryEnabled: "default",
             autoMemoryFrequency: "default",
-            serverUrl: "default",
           },
         },
       );
@@ -182,7 +177,6 @@ describe("userSettings", () => {
           contextLength: "default",
           autoMemoryEnabled: "default",
           autoMemoryFrequency: "default",
-          serverUrl: "default",
         },
       });
     });
@@ -210,7 +204,6 @@ describe("userSettings", () => {
           contextLength: "user",
           autoMemoryEnabled: "user",
           autoMemoryFrequency: "user",
-          serverUrl: "default",
         },
       });
     });
@@ -229,7 +222,6 @@ describe("userSettings", () => {
           contextLength: "remote",
           autoMemoryEnabled: "default",
           autoMemoryFrequency: "default",
-          serverUrl: "default",
         },
       });
       expect(
@@ -245,7 +237,6 @@ describe("userSettings", () => {
           contextLength: "user",
           autoMemoryEnabled: "default",
           autoMemoryFrequency: "default",
-          serverUrl: "default",
         },
       });
       mockExists.mockReturnValue(false);
@@ -262,7 +253,6 @@ describe("userSettings", () => {
           contextLength: "env",
           autoMemoryEnabled: "default",
           autoMemoryFrequency: "default",
-          serverUrl: "default",
         },
       });
     });
@@ -282,7 +272,6 @@ describe("userSettings", () => {
           contextLength: "default",
           autoMemoryEnabled: "remote",
           autoMemoryFrequency: "default",
-          serverUrl: "default",
         },
       });
 
@@ -305,7 +294,6 @@ describe("userSettings", () => {
           contextLength: "default",
           autoMemoryEnabled: "remote",
           autoMemoryFrequency: "default",
-          serverUrl: "default",
         },
       });
     });
@@ -334,7 +322,6 @@ describe("userSettings", () => {
           contextLength: "default",
           autoMemoryEnabled: "user",
           autoMemoryFrequency: "user",
-          serverUrl: "default",
         },
       });
     });
@@ -356,7 +343,6 @@ describe("userSettings", () => {
           contextLength: "default",
           autoMemoryEnabled: "user",
           autoMemoryFrequency: "default",
-          serverUrl: "default",
         },
       });
       mockExists.mockReturnValue(false);
@@ -375,7 +361,6 @@ describe("userSettings", () => {
           contextLength: "default",
           autoMemoryEnabled: "env",
           autoMemoryFrequency: "default",
-          serverUrl: "default",
         },
       });
       expect(
@@ -391,7 +376,6 @@ describe("userSettings", () => {
           contextLength: "default",
           autoMemoryEnabled: "default",
           autoMemoryFrequency: "default",
-          serverUrl: "default",
         },
       });
     });
@@ -411,7 +395,6 @@ describe("userSettings", () => {
           contextLength: "default",
           autoMemoryEnabled: "default",
           autoMemoryFrequency: "remote",
-          serverUrl: "default",
         },
       });
       // 用户文件没有该顶层键时才轮到 Remote 的 env 路径（非正数的机器 env 被忽略）
@@ -433,7 +416,6 @@ describe("userSettings", () => {
           contextLength: "default",
           autoMemoryEnabled: "default",
           autoMemoryFrequency: "remote",
-          serverUrl: "default",
         },
       });
       expect(
@@ -449,7 +431,6 @@ describe("userSettings", () => {
           contextLength: "default",
           autoMemoryEnabled: "default",
           autoMemoryFrequency: "env",
-          serverUrl: "default",
         },
       });
     });
@@ -474,74 +455,6 @@ describe("userSettings", () => {
           contextLength: "env",
           autoMemoryEnabled: "default",
           autoMemoryFrequency: "default",
-          serverUrl: "default",
-        },
-      });
-    });
-
-    it("服务端地址的来源只有 user / env / default（Remote 不参与归因）", () => {
-      // 用户文件 env 键有值 → user（机器环境变量被盖过）
-      seedFile({ env: { WAVE_SERVER_URL: "https://from-file.test" } });
-      expect(
-        readUserPreferenceView(null, FILE, {
-          WAVE_SERVER_URL: "https://from-os-env.test",
-        }),
-      ).toEqual({
-        values: { serverUrl: "https://from-file.test" },
-        sources: {
-          completionModel: "default",
-          completionEnabled: "default",
-          nextEditEnabled: "default",
-          enableKnowledgeBase: "default",
-          language: "default",
-          contextLength: "default",
-          autoMemoryEnabled: "default",
-          autoMemoryFrequency: "default",
-          serverUrl: "user",
-        },
-      });
-
-      // 用户文件没有该键才轮到机器环境变量 → env
-      mockExists.mockReturnValue(false);
-      expect(
-        readUserPreferenceView(null, FILE, {
-          WAVE_SERVER_URL: "https://from-os-env.test",
-        }),
-      ).toEqual({
-        values: { serverUrl: "https://from-os-env.test" },
-        sources: {
-          completionModel: "default",
-          completionEnabled: "default",
-          nextEditEnabled: "default",
-          enableKnowledgeBase: "default",
-          language: "default",
-          contextLength: "default",
-          autoMemoryEnabled: "default",
-          autoMemoryFrequency: "default",
-          serverUrl: "env",
-        },
-      });
-
-      // Remote 的 env 键也不认（远端托管配置本身取自该地址，无「组织下发」闭环）
-      seedFile({});
-      expect(
-        readUserPreferenceView(
-          { env: { WAVE_SERVER_URL: "https://from-remote.test" } },
-          FILE,
-          {},
-        ),
-      ).toEqual({
-        values: {},
-        sources: {
-          completionModel: "default",
-          completionEnabled: "default",
-          nextEditEnabled: "default",
-          enableKnowledgeBase: "default",
-          language: "default",
-          contextLength: "default",
-          autoMemoryEnabled: "default",
-          autoMemoryFrequency: "default",
-          serverUrl: "default",
         },
       });
     });
@@ -584,41 +497,6 @@ describe("userSettings", () => {
         autoMemoryEnabled: false,
         autoMemoryFrequency: 12,
       });
-    });
-
-    it("服务端地址落 env.WAVE_SERVER_URL（原样写入，env 其它键原样保留）", async () => {
-      seedFile({ env: { KEEP: "1" }, language: "Chinese" });
-
-      const result = await updateUserPreferenceSettings(
-        { serverUrl: "https://codechat.codewave-test.163yun.com" },
-        FILE,
-      );
-
-      expect(writtenJson()).toEqual({
-        env: {
-          KEEP: "1",
-          [SERVER_URL_ENV_KEY]: "https://codechat.codewave-test.163yun.com",
-        },
-        language: "Chinese",
-      });
-      expect(result).toEqual({
-        language: "Chinese",
-        serverUrl: "https://codechat.codewave-test.163yun.com",
-      });
-    });
-
-    it("空串/空白服务端地址视作未提供：不落盘、不遮蔽 OS 环境变量", async () => {
-      seedFile({ env: { WAVE_SERVER_URL: "https://kept.test" } });
-
-      const result = await updateUserPreferenceSettings(
-        { serverUrl: "" },
-        FILE,
-      );
-      expect(mockWrite).not.toHaveBeenCalled();
-      expect(result).toEqual({ serverUrl: "https://kept.test" });
-
-      await updateUserPreferenceSettings({ serverUrl: "   " }, FILE);
-      expect(mockWrite).not.toHaveBeenCalled();
     });
 
     it("未提供的键保持文件现值（部分更新不丢另一端设置）", async () => {

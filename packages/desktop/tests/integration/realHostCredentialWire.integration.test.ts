@@ -325,7 +325,6 @@ describe("real host · 凭据链路下线后的真实 stdio 报文", () => {
         contextLength: "default",
         autoMemoryEnabled: "default",
         autoMemoryFrequency: "default",
-        serverUrl: "default",
         completionModel: "default",
         completionEnabled: "default",
         nextEditEnabled: "default",

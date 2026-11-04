@@ -2525,7 +2525,6 @@ test("getUserSettings 回包 = 生效值 + 每键来源层", async () => {
       contextLength: "user",
       autoMemoryEnabled: "default",
       autoMemoryFrequency: "user",
-      serverUrl: "default",
       completionModel: "default",
       completionEnabled: "default",
       nextEditEnabled: "default",
@@ -2546,7 +2545,6 @@ test("getUserSettings 回包 = 生效值 + 每键来源层", async () => {
       contextLength: "user",
       autoMemoryEnabled: "default",
       autoMemoryFrequency: "user",
-      serverUrl: "default",
       completionModel: "default",
       completionEnabled: "default",
       nextEditEnabled: "default",
@@ -2564,14 +2562,12 @@ test("updateUserSettings writes the patch and returns the read-back values", asy
     values: {
       language: "English",
       contextLength: 128,
-      serverUrl: "https://codechat.example.com",
     },
     sources: {
       language: "user",
       contextLength: "user",
       autoMemoryEnabled: "default",
       autoMemoryFrequency: "default",
-      serverUrl: "user",
       completionModel: "default",
       completionEnabled: "default",
       nextEditEnabled: "default",
@@ -2583,7 +2579,6 @@ test("updateUserSettings writes the patch and returns the read-back values", asy
   const patch = {
     language: "English",
     contextLength: 128,
-    serverUrl: "https://codechat.example.com",
   };
   const result = await bridge.handleRequest("updateUserSettings", patch);
 
@@ -2595,13 +2590,11 @@ test("updateUserSettings writes the patch and returns the read-back values", asy
   expect(result).toEqual({
     language: "English",
     contextLength: 128,
-    serverUrl: "https://codechat.example.com",
     preferenceSources: {
       language: "user",
       contextLength: "user",
       autoMemoryEnabled: "default",
       autoMemoryFrequency: "default",
-      serverUrl: "user",
       completionModel: "default",
       completionEnabled: "default",
       nextEditEnabled: "default",
@@ -2621,7 +2614,6 @@ test("updateUserSettings 写完后显式重载本进程内全部会话（不依�
       contextLength: "default",
       autoMemoryEnabled: "default",
       autoMemoryFrequency: "default",
-      serverUrl: "default",
       completionModel: "default",
       completionEnabled: "default",
       nextEditEnabled: "default",
@@ -2654,7 +2646,6 @@ test("空载荷（无差异保存）既不落盘也不重载", async () => {
       contextLength: "default",
       autoMemoryEnabled: "default",
       autoMemoryFrequency: "default",
-      serverUrl: "default",
       completionModel: "default",
       completionEnabled: "default",
       nextEditEnabled: "default",

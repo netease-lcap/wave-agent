@@ -227,7 +227,9 @@ export interface WaveConfiguration {
  * 设置页读写的用户偏好子集（落点 = 用户级 `~/.wave/settings.json`；读写实现见
  * `utils/userSettings.ts`）。三端（VSCE / JetBrains / desktop）设置页与 CLI 的
  * `getUserSettings` / `updateUserSettings` RPC 共用这一形状；`contextLength` 单位
- * 为 K（落盘换算为 `env.WAVE_MAX_INPUT_TOKENS`）。
+ * 为 K（落盘换算为 `env.WAVE_MAX_INPUT_TOKENS`）。**服务端地址不在其中**——设置页
+ * 不提供该入口，唯一入口是 `env.WAVE_SERVER_URL`（手改配置文件或 OS 环境变量，
+ * 见 spec core/agent-config.md 边界说明「服务端地址不经设置页配置」）。
  */
 export interface UserPreferenceSettings {
   /** AI 回复语言（settings.json 顶层 `language`，如 zh-CN / en-US）。 */
@@ -238,8 +240,6 @@ export interface UserPreferenceSettings {
   autoMemoryEnabled?: boolean;
   /** 自动记忆提取的轮次频率（1–100）。 */
   autoMemoryFrequency?: number;
-  /** Wave 服务端地址（settings.json 的 `env.WAVE_SERVER_URL`，如 https://…）。 */
-  serverUrl?: string;
   /**
    * 行内补全使用的模型（settings.json 顶层 `completionModel`）。未设置时回退
    * 快速模型（spec ui/code-completion 故事 4）。

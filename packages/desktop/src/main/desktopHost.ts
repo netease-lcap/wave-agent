@@ -6653,12 +6653,6 @@ export class DesktopHost {
     if (typeof configData.autoMemoryFrequency === "number") {
       patch.autoMemoryFrequency = configData.autoMemoryFrequency;
     }
-    // 服务端地址（落会话进程用户级 settings.json 的 `env.WAVE_SERVER_URL`）；
-    // 与 configStore 里用于拼更新 feed 的本地缓存 serverUrl 是同一概念的不同落点，
-    // 后者由 getAuthStatus 写入、不经本载荷。
-    if (typeof configData.serverUrl === "string") {
-      patch.serverUrl = configData.serverUrl;
-    }
     // 补全模型 / 开关（顶层 `completionModel` / `completionEnabled`，spec
     // ui/code-completion.md 故事 4–5）：与对话模型不同，它们是**配置文件里的用户
     // 偏好键**，故走本载荷（对话模型经底栏模型选择器的 setModel 会话级 RPC）。空串

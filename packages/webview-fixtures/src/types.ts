@@ -173,8 +173,8 @@ export interface AttachedImage {
  * 设置页配置载荷：**只有用户偏好键**（落 `~/.wave/settings.json`）。
  *
  * 模型选择（`model` / `fastModel`）不属于这里——它经底栏模型选择器走
- * `getConfiguredModels` / `setModel`。服务端地址虽为 SDK 既有状态，但其用户偏好
- * 落点（`env.WAVE_SERVER_URL`）可从设置页编辑，故 `serverUrl` 属于这里；宿主的
+ * `getConfiguredModels` / `setModel`。服务端地址同样不属于这里：设置页不提供该
+ * 入口（唯一入口是 `env.WAVE_SERVER_URL`，见 spec core/agent-config.md）；宿主的
  * `authStatusResponse.serverUrl` 仍单独下发（由 CLI 的 `getAuthStatus` 解析）。
  */
 export interface ConfigurationData {
@@ -185,8 +185,6 @@ export interface ConfigurationData {
   autoMemoryEnabled?: boolean;
   /** Auto-memory extraction turn frequency, 1–100 */
   autoMemoryFrequency?: number;
-  /** Wave 服务端地址（落 `env.WAVE_SERVER_URL`）。 */
-  serverUrl?: string;
   /**
    * 行内补全使用的模型（settings.json 顶层 `completionModel`）。未设置时回退快速
    * 模型（spec ui/code-completion.md 故事 4）；候选清单与对话模型同源。
