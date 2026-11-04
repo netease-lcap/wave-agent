@@ -1,6 +1,6 @@
 ---
 name: ops-upload
-description: 往 CodeChat 制品发布接口发产物（SaaS=ops 域名 / 私有化=客户企业端域名，路径恒为 `/api/publish/*`，静态令牌鉴权；test / drill / prod 三个环境，四条产物线共用一个脚本 upload.mjs）：桌面端三件套（dmg / mac.zip / exe，取 CI 的 Release 后 `--type desktop` 分片直传 → sha512 + feed 核验）、文档站包（本地 docs:pack 出包 → `--type docs` 单次上传 → 企业端 /docs/ 验对象）、远控 Web 页（pack:remote 出包 → `--type remote` 单次上传）、wave 官方插件市场快照（`--type plugin-market` 内容寻址 + latest 指针），外加台账读写（`--list` / `--delete` 回退版本）。当用户要求「上传/发布桌面端」「发 beta」「发/传文档站」「发/构建/传远控页（远端页、手机页面、web 端）」「发插件市场」「回滚版本」，或询问制品发布接口、发布令牌、发布台账时使用。
+description: 往 CodeChat 制品发布接口发产物（两种部署都打企业端域名，路径恒为 `/api/publish/*`，静态令牌鉴权；test / drill / prod 三个环境，四条产物线共用一个脚本 upload.mjs）：桌面端三件套（dmg / mac.zip / exe，取 CI 的 Release 后 `--type desktop` 分片直传 → sha512 + feed 核验）、文档站包（本地 docs:pack 出包 → `--type docs` 单次上传 → 企业端 /docs/ 验对象）、远控 Web 页（pack:remote 出包 → `--type remote` 单次上传）、wave 官方插件市场快照（`--type plugin-market` 内容寻址 + latest 指针），外加台账读写（`--list` / `--delete` 回退版本）。当用户要求「上传/发布桌面端」「发 beta」「发/传文档站」「发/构建/传远控页（远端页、手机页面、web 端）」「发插件市场」「回滚版本」，或询问制品发布接口、发布令牌、发布台账时使用。
 allowed-tools:
   - Bash
 ---
@@ -20,13 +20,13 @@ allowed-tools:
 
 ## 环境与鉴权（先看这段）
 
-| 环境     | 发布接口 host                                | 企业端（访问面）                            | 什么时候用                                                 |
-| -------- | -------------------------------------------- | ------------------------------------------- | ---------------------------------------------------------- |
-| **prod** | `https://neteasecc.codewave.163.com`         | `https://codechat.codewave.163.com`         | **默认**。「上传/发布」「给 tester 测」「发 beta」都是这个 |
-| test     | `https://neteasecc.codewave-test.163yun.com` | `https://codechat.codewave-test.163yun.com` | **仅当用户当次明确点名「测试环境」**                       |
-| drill    | `https://neteasecc.lcap.hadri.163yun.com`    | `https://codechat.lcap.hadri.163yun.com`    | 演练环境（hadri），用户点名时用                            |
+| 环境     | 地址（发布接口 = 访问面，同一个域名）       | 什么时候用                                                 |
+| -------- | ------------------------------------------- | ---------------------------------------------------------- |
+| **prod** | `https://codechat.codewave.163.com`         | **默认**。「上传/发布」「给 tester 测」「发 beta」都是这个 |
+| test     | `https://codechat.codewave-test.163yun.com` | **仅当用户当次明确点名「测试环境」**                       |
+| drill    | `https://codechat.lcap.hadri.163yun.com`    | 演练环境（hadri），用户点名时用                            |
 
-- **SaaS 下上传入口只在 ops 域名**：企业端同路径是 404（客户可见的域名上不开写通道）。**私有化反过来**——没有运营端，这组接口由客户的企业端承载。
+- **两种部署都打企业端域名**：CodeChat 的 `/api/publish/*` 写入口跟着读入口走（2026-11-04 起），SaaS 与私有化都挂在企业端，运维只需要记一本地址。运营端 `neteasecc.*` **不再挂**这组接口（同路径 404）——只有还没升级到该版本镜像的环境，才需要 `--base` 指向运营端过渡。
 - **路径逐字一致，只换 host**：同一份命令在两种部署下都能用。**私有化没有 `--env` 预设**（那是客户自己的域名），必须 `--base https://<客户企业端>` + 该环境的令牌。
 - ⚠️ 打错环境**不会报错**：对象会静默写进另一个环境。脚本会把解析出的地址打印在第一行，动手前先核一遍。（`--base <URL>` 仍保留，和 `--env` 二选一。）
 - **托管类产物要求 `--confirm-prod`**：`--type remote` / `--type plugin-market` 传 prod、以及**删生产台账行**时必须显式加这个开关（一传就对用户生效、打错环境不报错）；桌面端/文档包的历史命令不带它，保持原样。
@@ -150,7 +150,7 @@ printf '%s' '企业本期额度已用尽' | python3 -c "import sys;print(''.join
 # \u4F01\u4E1A\u672C\u671F\u989D\u5EA6\u5DF2\u7528\u5C3D
 ```
 
-**4. feed 端到端核对（必做）**：上面第 1 步读的是**运营平台库里的记录**；客户端（electron-updater）实际读的不是它，而是**企业端后端按 electron-builder 格式动态生成的 feed yml**。feed 的基地址就**是客户端配置里的 `serverUrl` 本身**——桌面端把它缓存下来**只为拼 feed URL**（见 `packages/desktop/src/main/updateAutoUpdater.ts` 的 `feedUrlFor`），所以要拿值为准就去读该环境客户端的 `serverUrl`：设置页「服务端地址」/ `~/.wave/settings.json` 的 `env.WAVE_SERVER_URL` / 桌面端 `userData/wave-desktop.json` 里的 `serverUrl` 缓存。**⚠️ 别拿发布接口的 host（ops 域名）去请求 feed 路径，会 404**（见「坑」）。
+**4. feed 端到端核对（必做）**：上面第 1 步读的是**运营平台库里的记录**；客户端（electron-updater）实际读的不是它，而是**企业端后端按 electron-builder 格式动态生成的 feed yml**。feed 的基地址就**是客户端配置里的 `serverUrl` 本身**——桌面端把它缓存下来**只为拼 feed URL**（见 `packages/desktop/src/main/updateAutoUpdater.ts` 的 `feedUrlFor`），所以要拿值为准就去读该环境客户端的 `serverUrl`：设置页「服务端地址」/ `~/.wave/settings.json` 的 `env.WAVE_SERVER_URL` / 桌面端 `userData/wave-desktop.json` 里的 `serverUrl` 缓存。feed 与发布接口现在是**同一个域名**（2026-11-04 起），不再有「两个域名」那层坑。
 
 - 端点（`serverUrl` 下，**无鉴权**）：beta = `…/api/downloads/desktop-beta/{mac|win}/…`，stable 去掉 `-beta` = `…/api/downloads/desktop/{mac|win}/…`。**mac 用 `latest-mac.yml`（对应 zip 更新包）、win 用 `latest.yml`（对应 exe 安装包）**；dmg 不参与自动更新 feed。
 - 期望：`200` + `version:` 等于本次上传的版本 + `files[0].sha512`（base64）与本地文件 `hashlib.sha512(...).digest()` 的 base64 **一致** + `size` 等于本地字节数 + `path`/`url` 指向该环境的 file-center。
@@ -174,19 +174,19 @@ print('size  match =', size == str(len(data)))
 PY
 ```
 
-**拿错域名的两个反例**（2026-09-22 实测原文，省下一个人 10 分钟）：
+**域名只有一个了，别再按「两个域名」排查**（2026-11-04 起发布接口与访问面同域，都在企业端）：
 
 ```bash
-# ① 用发布接口的 host（ops 域名）请求 feed 路径
-curl -s "https://neteasecc.codewave.163.com/api/downloads/desktop-beta/mac/latest-mac.yml"
-# {"error":"Not found"}   ← 404
+# 发布接口与 feed 用同一个 host，都对
+curl -s "https://codechat.codewave-test.163yun.com/api/downloads/desktop-beta/mac/latest-mac.yml"
 
-# ② 反过来用企业端域名请求发布接口
-curl -s -o /dev/null -w '%{http_code}\n' "https://codechat.codewave.163.com/api/publish/desktop"
-# 404（SaaS 下企业端不挂发布接口）
+# 仍会 404 的只有两种情况
+#   ① host 打错（不是该环境的**企业端**域名）：{"error":"Not found"}
+#   ② 该环境跑的还是 2026-11-04 之前的镜像（那时发布接口只挂运营端）
+#      → 临时用 --base https://neteasecc.<环境> 指向运营端，等发版后再切回
 ```
 
-两边都是 `404 {"error":"Not found"}` 这个形状，**错误码/错误串都不指向真正的原因（域名打错了）**，别指望 HTTP 状态帮你定位。（别把这里的 404 跟真正的 `401 Invalid publish token` 混起来：`401` 只在发布接口那个 host 上、令牌不对时出现，见「令牌」那节的三态表。）
+运营端 `neteasecc.*` 已不再挂这组接口（2026-11-04 起全仓只有企业端一个写面），旧地址只当「环境还没升级镜像」时的过渡兜底；产物读路径全在企业端，传完在同一个域名上验证，不用在两本地址之间来回切。
 
 ## 二、文档站包
 
@@ -387,9 +387,9 @@ node .wave/skills/ops-upload/upload.mjs \
 ## 坑
 
 - **不要用浏览器上传桌面端包**：2026-09-20 生产实测 3/3 被浏览器侧的**连接层中断**打死（`ERR_NETWORK_CHANGED` / `ERR_ABORTED`，断点每次不同）；服务端侧到达的分片全 200、全落同一 pod、失败那片**从未出现在服务端日志里**，即断在浏览器 ↔ ingress 之间，根因未定位。所以本技能的上传路径只有分片直传脚本。（何况运营端上传页已经整条下线，现在也没得点。）
-- **旧运营端上传接口已整条删除，看到 404 别再猜「环境没部署单点」**：`ops` 命名空间下那四条（downloads 分片/列表/删除、docs、plugin-market、remote-page 各一条 upload）与新路径 `/api/publish/*` 是两条不同的路，前者现在一律 404。404 只有两种原因：host 打错（SaaS=ops 域名 / 私有化=企业端域名）或该环境后端还没部署这版代码。
+- **旧运营端上传接口已整条删除，看到 404 别再猜「环境没部署单点」**：`ops` 命名空间下那四条（downloads 分片/列表/删除、docs、plugin-market、remote-page 各一条 upload）与新路径 `/api/publish/*` 是两条不同的路，前者现在一律 404。404 只有两种原因：host 打错（两种部署都必须是**企业端域名**）或该环境后端还是 2026-11-04 之前的镜像（那时这组接口只挂运营端）。
 - **环境别搞混**：三个环境见开头那张表，统一用 `--env prod|test|drill`（默认 prod）。**只有用户当次明确点名才用 test / drill**。打错域名**不报错**，会静默写到另一个环境（脚本第一行会打印地址，先看一眼）。
-- **别把发布接口的 host 当 feed 域名**：**上传 / 回读走发布接口那个 host（`--env` 解析出的），客户端只读的 feed 走企业端域名**（feed 基地址 = 客户端 `serverUrl`，见「验证要点」第 4 步），两者是两个域名。打错**都不会告诉你"你用错域名了"**：实测拿 ops 域名请求 feed 路径回 `404 {"error":"Not found"}`，反过来拿企业端域名请求 `/api/publish/desktop` 在 SaaS 下也是 404 —— 是**网关不认识这条路**，跟发布会话丢失的 404 也不是一回事。企业端域名易变、且是外部拥有（变了我们不会收到通知），**别写死**——按「验证要点」第 4 步的方式取 `serverUrl`；2026-09-22 实测值为 prod `codechat.codewave.163.com` / test `codechat.codewave-test.163yun.com`，仅供参考。
+- **发布接口与 feed 现在同域**（2026-11-04 起，都在企业端）：历史上两者是两个域名（发布走 ops、feed 走企业端），那套「拿错域名两个方向都 404」的坑已经不存在。**但「`--env` 解析出的地址」与「客户端实际用的 `serverUrl`」仍可能不是同一个值**——feed 基地址只认客户端缓存下来的 `serverUrl`（见「验证要点」第 4 步），核 feed 时按第 4 步取，别把脚本打印的地址当 feed 域名硬凑；企业端域名是外部拥有的、可能变，**别写死**。
 - **无 cookie 直传 = 随机 404（只对桌面端分片成立）**：多副本 + 分片会话只在 init 那个 pod 的内存与临时目录里，必须带 `codechat-ops-route` 亲和 cookie。脚本自己取一次就够（ingress 对任意请求都下发），但**手搓 curl 直传时必须自己带上**。文档包/插件市场/远控页是单次请求、服务端无会话状态 ⇒ 不需要这个 cookie，别把它当成「所有上传的通用前提」。
 - **覆盖只按 `(version, platform, channel)` 三元组**：三元组相同即覆盖旧记录（`fileKey` 相同、file-center 幂等覆盖），重传安全；**版本号必须与 `--version` 一致**。stable / beta 互不覆盖 —— 也就是说往 `stable` 传一个「环境里本来只在 beta 出现过的版本」会**新增一行**（实测：1.1.7 原本只有 beta 行，传 stable 后变成两行），feed 仍按版本取最新、不会因此降级。
 - **文件名与 `platform` 段以接口返回为准**：现行 canonical 名是 `codewave-ide.dmg` / `codewave-ide-mac.zip` / `codewave-ide-setup.exe`（服务端按 `platform` 定名，**不是**你上传时的原始文件名），`platform` 段为 `mac-dmg` / `mac-zip` / `win-exe`；历史行还留着上一代命名 `codechat-desktop.*`。核对时直接比字段，别靠拼字符串匹配。
