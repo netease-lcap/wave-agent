@@ -210,6 +210,32 @@ export function resolveFilePathMatch(match: FilePathMatch): string {
 export const fileLinkHtml = (displayText: string): string =>
   `<a href="#" class="file-path-link">${escapeHtml(displayText)}</a>`;
 
+/** 图片语法降级链的标记类：点击路由据此放行「相对路径按 workdir 拼绝对」。 */
+export const MARKDOWN_IMAGE_LINK_CLASS = "md-image-link";
+
+/**
+ * markdown 图片语法里的 src 是不是**页面自己取得到**的地址
+ * （spec ui/markdown-images.md）：只有 `data:` / `blob:` / `http(s):` 三种。
+ * 其余（相对路径、盘符、POSIX 绝对、`file:`）都是本地文件——页面的 origin 不是
+ * 会话工作目录（桌面端页面自己是 `file://…/webview/`、插件端是
+ * `vscode-webview://`、远控页是站点根），塞进 `<img src>` 的结局必然是一个破
+ * 图标，桌面 CSP 还只放行 `self data: https:`。
+ */
+export const isPageLoadableImageSrc = (src: string): boolean =>
+  /^(?:data|blob|https?):/i.test(src);
+
+/**
+ * 图片语法降级成的路径链接（spec 同上）：**不产出 `<img>`**，改产出与其它路径
+ * 通道同一个可点击元素，点击路由因此完全复用（容器 → 宿主打开 / 按需取图）。
+ * 可见文本仍是路径原文——可点击目标的真实标识要写在脸上；作者写的 alt 落到
+ * `title` 上，悬停仍能读到「这是改前还是改后」。
+ */
+export const imagePathLinkHtml = (path: string, alt: string): string => {
+  const label = alt.trim();
+  const title = label ? ` title="${escapeHtml(label)}"` : "";
+  return `<a href="#" class="file-path-link ${MARKDOWN_IMAGE_LINK_CLASS}"${title}>${escapeHtml(path)}</a>`;
+};
+
 // 正文右剥兜底（整串匹配失败后从右往左剥离非路径字符）用的字符判定。
 // 刻意保持 ASCII-only 而不同步放宽后的 SEG：含中文的合法路径在整串匹配
 // （SEG 已含 \p{L} 等）阶段即被识别，不会落到此处；落到此处的是路径后
@@ -372,8 +398,10 @@ export function linkifyCodeBlockPaths(
 
 /** 剥离文本内已生成的路径链接标签（用于 markdown 链接 label 内防嵌套 <a>）。 */
 export function stripFilePathLinks(html: string): string {
+  // 图片降级链（`md-image-link`）可能带 title，故 class 之后不锚定到 `">`：
+  // 不剥掉它会在 `[![alt](a.png)](url)` 里留下嵌套 `<a>`（无效 HTML）。
   return html.replace(
-    /<a href="#" class="file-path-link">([\s\S]*?)<\/a>/g,
+    /<a href="#" class="file-path-link[^"]*"[^>]*>([\s\S]*?)<\/a>/g,
     "$1",
   );
 }

@@ -17,13 +17,17 @@ import {
   detectFilePathToken,
   escapeHtml,
   fileLinkHtml,
+  imagePathLinkHtml,
   isMarkdownPath,
+  isPageLoadableImageSrc,
   linkifyFilePathText,
+  MARKDOWN_IMAGE_LINK_CLASS,
   resolveFilePathMatch,
   stripFilePathLinks,
   windowsPathInlineExtension,
   type FilePathLinkMode,
 } from "../utils/filePathLinks";
+import { attachBrokenImageFallback } from "../utils/brokenImageFallback";
 import { marked } from "marked";
 
 // ... (existing imports)
@@ -470,7 +474,8 @@ const splitErrorContent = (content: string): ErrorPart[] => {
   return parts;
 };
 
-const createMessageMarkdownRenderer = (
+// 导出供测试直接按档位渲染（`off` / `images` 这两档没有组件侧的入口）。
+export const createMessageMarkdownRenderer = (
   // 四条路径通道的档位（见 `FilePathLinkMode`）。默认 `"all"`：远控页也是全开
   // ——路径在那里不是「打不开」，而是「点了就地看内容」（spec
   // remote/remote-web.md「点消息里的文件路径看内容」），图片 / 文本的分流在
@@ -582,6 +587,26 @@ const createMessageMarkdownRenderer = (
   renderer.text = (text: string) =>
     // 正文纯文本通道：绝对路径 → 链接；其余文本按原转义形式原样保留
     linkifyFilePathText(decodeHtmlEntities(text), pathLinkMode);
+  // markdown 图片语法（spec ui/markdown-images.md）：只有页面自己取得到的地址
+  // （`data:` / `blob:` / `http(s):`）继续走 marked 默认实现产出 `<img>`；其余
+  // 一律是本地路径，页面加载不了——桌面端页面自己是 `file://…/webview/`、插件端
+  // 是 `vscode-webview://`、远控页是站点根，三种 origin 都不可能解析出会话工作
+  // 目录里的文件，DOMPurify 还会把 `file:` 与盘符写法的 src 整条剥掉。原样塞进
+  // `<img src>` 的结局就是「破图标 + alt 文本」：图看不到，文件在哪也不知道。
+  // 因此降级成**路径链接**（与其它路径通道同一个元素，点击路由完全复用，
+  // 相对路径由 handleContentClick 按 workdir 拼绝对），alt 落到 `title`。
+  const defaultImage = marked.Renderer.prototype.image;
+  renderer.image = (href: string, title: string | null, text: string) => {
+    if (isPageLoadableImageSrc(href)) {
+      return defaultImage.call(renderer, href, title, text);
+    }
+    const path = decodeHtmlEntities(href).trim();
+    const alt = decodeHtmlEntities(text);
+    // src 为空（`![]()` 一类写法）时没有可点的目标：保留 alt 纯文本，不造死链接。
+    if (!path) return escapeHtml(alt);
+    if (pathLinkMode === "off") return escapeHtml(path);
+    return imagePathLinkHtml(path, alt);
+  };
   // 链接角色（用户 2026-09-10 规则）：按「显示文本本身的含义」区分两种链接——
   //   ① 描述性链接（查看预览、参考文档、发送邮件、联系我们…）与所在正文同为
   //      UI 角色，不加类；
@@ -1050,16 +1075,25 @@ export const Message: React.FC<MessageProps> = React.memo(
       const fileLink = target?.closest?.("a.file-path-link");
       if (fileLink) {
         e.preventDefault();
-        const parsed = detectFilePathToken(fileLink.textContent || "");
-        if (parsed) {
-          const resolved = resolveFilePathMatch(parsed);
+        const text = fileLink.textContent || "";
+        const parsed = detectFilePathToken(text);
+        // 其它通道生成的链接文案必然是绝对路径，识别不出就什么都不做是它们的
+        // 既有语义。**图片语法降级链**（spec ui/markdown-images.md 场景 1）是唯一
+        // 的例外：模型写的相对路径（`screenshots/before.png`）本身就该按会话
+        // workdir 拼绝对。没有 workdir 时按原样交给宿主（宿主按自己的 cwd 解析）。
+        const resolved = parsed
+          ? resolveFilePathMatch(parsed)
+          : fileLink.classList.contains(MARKDOWN_IMAGE_LINK_CLASS)
+            ? (toAbsoluteFilePath(text, workdir) ?? text)
+            : null;
+        if (resolved) {
           // 远控 Web 页没有编辑器也没有文件面板，但它有两条按需读取通道：
           // 图片走取图、其余走取文本（见 showRemoteFilePreview）。分流只按
           // 扩展名，判型在宿主侧。
           if (isRemotePageHost()) {
             showRemoteFilePreview(resolved);
           } else {
-            openFile(resolved, parsed.startLine, parsed.endLine);
+            openFile(resolved, parsed?.startLine, parsed?.endLine);
           }
         }
         return;
@@ -1083,6 +1117,10 @@ export const Message: React.FC<MessageProps> = React.memo(
           key={index}
           className="message-content-container"
           onClick={handleContentClick}
+          // 破图兜底（spec ui/markdown-images.md 场景 12-14）：正文是
+          // dangerouslySetInnerHTML，只能靠容器上的捕获阶段监听接住 <img> 的
+          // error（error 不冒泡）。
+          ref={attachBrokenImageFallback}
         >
           {parsed.elements.map((element, elIndex) =>
             element.type === "mermaid" ? (
