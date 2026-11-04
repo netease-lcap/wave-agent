@@ -965,6 +965,14 @@ button.reasoning-header {
   height: auto;
 }
 
+/* 破图兜底降级出来的文字（specs/ui/markdown-images.md 第二则用户故事）：图片
+   加载失败后就地换成 alt / 文件名，用弱化的行内文字呈现，读起来是「这里本来有
+   张图」而不是正文的一部分。 */
+.markdown-content .md-image-broken {
+  color: var(--vscode-descriptionForeground, #8c8f94);
+  font-style: italic;
+}
+
 /* Markdown Tables 的滚动容器：Message.tsx 的 renderer.table 把默认表格再包一层
    .md-table-scroll，宽表由此在自身区域内横向滚动。
    放在共用层（而不是某一宿主的密度层）是因为它兜的是「内容会不会丢」——对话列
