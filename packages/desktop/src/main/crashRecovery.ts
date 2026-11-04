@@ -346,6 +346,11 @@ export function attachCrashRecovery(
  * freeze on an already broken window. Skipping the quit events is safe because
  * the `wave --stdio` children exit on stdin EOF (the same guarantee the
  * force-quit path relies on); the crash/log evidence is already on disk.
+ *
+ * The accepted cost: `exit()` also skips the shutdown step that reaps
+ * `crashpad-handler`, so this path (and 「退出」 in the recovery dialog) can leave
+ * that orphan behind. `scripts/install.mjs` reaps it before copying, so it can
+ * never wedge an install.
  */
 function relaunchApp(log: RecoveryLog): void {
   log?.warn("[desktop] relaunching app after renderer failure");
