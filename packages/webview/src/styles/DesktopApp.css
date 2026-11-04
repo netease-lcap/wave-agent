@@ -59,6 +59,9 @@
 .sidebar-window-row--mac-drag {
   -webkit-app-region: drag;
   user-select: none;
+  /* 光标由系统接管：`-webkit-app-region: drag` 区域不接收指针事件，CSS cursor
+     在该区域内实测无效（macOS 真机 2026-11 验证，显示系统箭头）。不要在这里
+     再写 cursor: grab —— 它不会生效，只会让人以为手型是设计选择。 */
   /* 无假圆点的真机形态：内容起点让出系统红绿灯区（侧栏 padding 12px +
      本行 padding-left 72px = 按钮盒左缘 84px，与预览形态同一落位）。若 mac 实机
      红绿灯实际位置有偏差，改这一个数值即可微调。 */
@@ -88,6 +91,43 @@
   user-select: none;
   align-self: stretch;
   flex: 0 0 76px;
+}
+
+/* macOS 隐藏标题栏 + 对话区只有一个分屏：整条对话顶栏就是窗口拖拽区
+   （spec「macOS 隐藏标题栏」场景 9）——同一个分屏没有可重排的兄弟，顶栏在这里
+   承载的是「移动窗口」，与侧边栏窗口行同一种手势。两个及以上分屏时不加这个类：
+   那时顶栏被 DesktopShell 设为 HTML5 draggable 的分屏重排手柄，而 app-region
+   drag 会吞掉（子）元素的指针事件，两种手势无法共存。
+   光标不在这里指定：drag 区域的光标由系统接管，CSS cursor 实测无效（macOS 真机
+   2026-11 验证，显示系统箭头）。 */
+.chat-header--window-drag {
+  -webkit-app-region: drag;
+  user-select: none;
+}
+
+/* 拖拽区里的交互元素必须解除 drag 才能点击（Electron 拖拽区吞掉子元素指针事件，
+   同 .sidebar-window-row button）。标题不是交互元素，留在拖拽区内继续可拖。
+   两个浮层是保险：桌面端暂时不在顶栏渲染「更多」/会话下拉，但它们是 header 的
+   子节点，一旦渲染就会被拖拽区吞掉点击。 */
+.chat-header--window-drag button,
+.chat-header--window-drag input,
+.chat-header--window-drag [role="button"],
+.chat-header--window-drag .session-list-popup,
+.chat-header--window-drag .more-menu {
+  -webkit-app-region: no-drag;
+}
+
+/* 不可改名的标题是纯展示：不显示文本编辑光标（I-beam 竖杠会被误读成「这里可以
+   编辑」）。可改名时 .header-title-editable 的 cursor: text 优先。多分屏下顶栏是
+   重排把手，标题跟随把手手型（下面一条特异性更高，覆盖这一条）。 */
+.chat-header .header-title:not(.header-title-editable) {
+  cursor: default;
+}
+
+.desktop-pane[data-draggable="true"]
+  .chat-header
+  .header-title:not(.header-title-editable) {
+  cursor: grab;
 }
 
 .window-controls {

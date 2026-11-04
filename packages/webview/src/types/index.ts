@@ -932,6 +932,13 @@ export interface ChatHeaderProps {
    *  ~76px for the system traffic lights and make that band a window drag
    *  region (spec「macOS 隐藏标题栏」场景 3). */
   macTrafficSpacer?: boolean;
+  /**
+   * macOS hidden-titlebar + 对话区只有一个分屏：整条顶栏即窗口拖拽区
+   * （spec「macOS 隐藏标题栏」场景 9）。多个分屏时不传——那时顶栏是分屏重排的
+   * 拖拽手柄，两种手势互斥（Electron 的 app-region drag 会吞掉指针事件，
+   * 与 HTML5 draggable 不能共存），按分屏数量二选一。
+   */
+  windowDrag?: boolean;
   /** Extra actions at the right edge of the button row (desktop pane close). */
   headerActions?: React.ReactNode;
   /**
