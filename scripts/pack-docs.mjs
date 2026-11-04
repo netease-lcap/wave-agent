@@ -21,7 +21,6 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
-const distDir = join(root, "docs/.vitepress/dist");
 const reuseScreenshots = process.argv.includes("--reuse-screenshots");
 
 const { version } = JSON.parse(
@@ -29,12 +28,22 @@ const { version } = JSON.parse(
 );
 const outFile = join(root, `docs-${version}.tar.gz`);
 
+// Windows 上 pnpm 是 `pnpm.cmd` 垫片，而 Node ≥ 20 起拒绝在不起 shell 的情况下直接
+// spawn `.cmd`/`.bat`（CVE-2024-27980 的修法）⇒ 只有 pnpm 这一个命令走 shell。
+// tar / gzip 是真实可执行文件，保持不起 shell：开 shell 会把参数拼成一行，路径就得自己
+// 管引号。参数都是本文里的字面量（`run`/`docs:screenshots`/`exec vitepress build docs`），
+// 拼成一条命令是安全的，也避开了「shell + 参数数组」的 DEP0190 警告。
 function run(command, args, env = {}) {
-  execFileSync(command, args, {
+  const options = {
     cwd: root,
     env: { ...process.env, ...env },
     stdio: "inherit",
-  });
+  };
+  if (process.platform === "win32" && command === "pnpm") {
+    execFileSync([command, ...args].join(" "), { ...options, shell: true });
+    return;
+  }
+  execFileSync(command, args, options);
 }
 
 if (!reuseScreenshots) {
@@ -48,15 +57,21 @@ run("pnpm", ["exec", "vitepress", "build", "docs"], { DOCS_BASE: "/docs/" });
 
 // dist 下全是待托管文件，`-C` 进去打 `.`，压缩包根目录即站点根目录。
 //
+// 这里一律用**相对路径**（cwd 已经是 root）：Windows 上的 GNU tar（Git Bash 那份）会把
+// `-czf C:\…\docs-1.5.1.tar.gz` 里的盘符当成远程主机，报
+// `Cannot connect to C: resolve failed`；相对路径两个平台的 tar 都认。
+//
 // `--no-xattrs` 不是可选项：macOS 生成的文件带 `com.apple.provenance` 等扩展属性，
 // bsdtar 会把它们写成每个成员一条 pax 扩展头（`SCHILY.xattr.*`）。这些头本身只有几十
 // 字节，但平台侧的 tar 解包器会把它们实体化成 `._<原文件名>` 的 AppleDouble 文件，于是
 // 一次 937 个文件的包在 file-center 落成近 1900 个对象（其中一半是 `._*` 垃圾）。GNU tar
 // 也认这个开关，两个平台都能用。下面的自检就是防它回来。
-run("tar", ["-czf", outFile, "--no-xattrs", "-C", distDir, "."]);
+const outName = `docs-${version}.tar.gz`;
+const distRel = "docs/.vitepress/dist";
+run("tar", ["-czf", outName, "--no-xattrs", "-C", distRel, "."]);
 
 // 自检：压缩包里不得再有 xattr 扩展头（否则上传后又会出现 `._*` 对象）。
-const rawArchive = execFileSync("gzip", ["-dc", outFile], {
+const rawArchive = execFileSync("gzip", ["-dc", outName], {
   maxBuffer: 1 << 30,
 }).toString("latin1");
 const xattrHeaders = rawArchive.split("SCHILY.xattr").length - 1;
