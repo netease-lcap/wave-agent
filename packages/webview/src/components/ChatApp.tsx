@@ -590,6 +590,14 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     sidebarCollapsed &&
     isLeftmostChatHeader &&
     !fullScreen;
+  // macOS 隐藏标题栏 + 对话区只有一个分屏：整条顶栏空白即窗口拖拽区
+  // （spec「macOS 隐藏标题栏」场景 9）。两个及以上分屏时顶栏是分屏重排的拖拽
+  // 手柄（DesktopShell 给 .chat-header 挂 HTML5 draggable），两种手势互斥——
+  // Electron 的 app-region drag 会吞掉指针事件，故按分屏数量二选一。
+  const windowDragHeader =
+    isMacHiddenTitlebar() &&
+    isLeftmostChatHeader &&
+    (host?.panes?.length ?? 0) <= 1;
   // The pane's effective host ('local' or an SSH host name): a pane-bound
   // session's host (authoritative `desktopPanes` push) wins; the single-pane
   // layout reads the host-level current host. Remote sessions run the whole
@@ -5565,6 +5573,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
       <ChatHeader
         leading={collapsedLeading(expandBtn)}
         macTrafficSpacer={macTrafficSpacer}
+        windowDrag={windowDragHeader}
         onNewSession={isRemotePage ? handleRemoteNewSession : handleClearChat}
         // 禁用态只属于插件端那个原地清空语义（见 inPlaceGuard）；远控页重绑为
         // 「在远端机器上另起一条会话」，忙时不置灰。

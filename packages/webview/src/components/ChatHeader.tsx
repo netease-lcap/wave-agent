@@ -39,6 +39,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
   panelToggle,
   leading,
   macTrafficSpacer = false,
+  windowDrag = false,
   headerActions,
   onRenameSession,
 }) => {
@@ -103,7 +104,10 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
   };
 
   return (
-    <div className="chat-header" data-testid="chat-header">
+    <div
+      className={`chat-header${windowDrag ? " chat-header--window-drag" : ""}`}
+      data-testid="chat-header"
+    >
       {/* macOS 隐藏标题栏 + 侧边栏收起：最左端让给系统红绿灯，该段为窗口
           拖拽区（spec「macOS 隐藏标题栏」场景 3）。 */}
       {macTrafficSpacer && (

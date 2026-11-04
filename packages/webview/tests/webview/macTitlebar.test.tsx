@@ -554,3 +554,45 @@ describe("settings full-page: traffic lights hand to the settings nav (real macO
     expect(querySettingsBack()).not.toBeNull();
   });
 });
+
+// 单分屏窗口拖拽（spec「macOS 隐藏标题栏」场景 9）：对话区只有一个分屏时，顶栏
+// 空白即窗口拖拽区；出现第二个分屏后顶栏改作分屏重排手柄，两者互斥（app-region
+// drag 会吞指针事件，与 HTML5 draggable 不能共存）。Windows/Linux 保持原生标题栏，
+// 顶栏不变。
+describe("sole-pane window drag region (real macOS)", () => {
+  it("marks the header as a window drag region when only one pane exists", () => {
+    window.waveHostType = "desktop";
+    window.wavePlatform = "darwin";
+    renderDesktopChat([{ paneId: "pane-1" }]);
+
+    expect(
+      screen
+        .getByTestId("chat-header")
+        .classList.contains("chat-header--window-drag"),
+    ).toBe(true);
+  });
+
+  it("leaves the header a reorder handle once a second pane exists", () => {
+    window.waveHostType = "desktop";
+    window.wavePlatform = "darwin";
+    renderDesktopChat([{ paneId: "pane-1" }, { paneId: "pane-2" }]);
+
+    // Two panes → two headers, both reorder handles; none is a window drag region.
+    expect(document.querySelectorAll(".chat-header")).toHaveLength(2);
+    expect(document.querySelectorAll(".chat-header--window-drag")).toHaveLength(
+      0,
+    );
+  });
+
+  it("renders no window drag region on Windows/Linux (native title bar kept)", () => {
+    window.waveHostType = "desktop";
+    window.wavePlatform = "win32";
+    renderDesktopChat([{ paneId: "pane-1" }]);
+
+    expect(
+      screen
+        .getByTestId("chat-header")
+        .classList.contains("chat-header--window-drag"),
+    ).toBe(false);
+  });
+});
