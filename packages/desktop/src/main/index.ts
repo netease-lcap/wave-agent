@@ -28,6 +28,7 @@ import { DEEP_LINK_SCHEME, findDeepLink } from "./deepLink";
 import { startLocalCrashReporter } from "./crashReporter";
 import { attachCrashRecovery } from "./crashRecovery";
 import { createMemorySampler } from "./memorySampler";
+import { createQuitHandler } from "./quitHandler";
 import { JS_CALL_STACKS_DOCUMENT_POLICY } from "./unresponsiveSampler";
 import {
   attachContextMenu,
@@ -385,25 +386,27 @@ if (!gotLock) {
     }
   });
 
+  // Never fire-and-forget the dispose: quitting before the destroy RPC reaches
+  // the agent would orphan the wave --stdio child (the other half of the fix is
+  // stdioServer's stdin-EOF self-exit). The handler holds the quit, awaits
+  // dispose bounded by a timeout, then finishes through `app.quit()` rather
+  // than `app.exit()` — the ordinary sequence also reaps crashpad-handler,
+  // which `exit()` strands as an orphan (see quitHandler.ts).
+  const handleQuit = createQuitHandler({
+    dispose: () => (host ? host.dispose() : Promise.resolve()),
+    quit: () => app.quit(),
+    exit: (code) => app.exit(code),
+    onDisposeError: (error) => {
+      hostLog.error("[desktop] host dispose failed during quit:", error);
+    },
+  });
+
   app.on("before-quit", (event) => {
-    // Never fire-and-forget the dispose: quitting before the destroy RPC
-    // reaches the agent would orphan the wave --stdio child (the other half
-    // of the fix is stdioServer's stdin-EOF self-exit). Hold the quit, await
-    // dispose bounded by a timeout, then exit explicitly. app.exit() skips the
-    // quit events, so this handler can't re-enter.
-    if (quitting) return;
-    quitting = true;
+    // Nothing to dispose yet (quit during startup): let Electron finish.
     if (!host) return;
-    event.preventDefault();
-    void Promise.race([
-      host.dispose(),
-      new Promise((resolve) => setTimeout(resolve, SHUTDOWN_TIMEOUT_MS)),
-    ]).finally(() => app.exit(0));
+    handleQuit(event);
   });
 }
-
-const SHUTDOWN_TIMEOUT_MS = 5_000;
-let quitting = false;
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({

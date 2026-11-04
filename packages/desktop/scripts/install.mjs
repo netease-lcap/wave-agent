@@ -30,7 +30,11 @@ function runPnpm(args, cwd) {
   // On Windows, pnpm is pnpm.cmd; spawn it via the shell as a string command
   // (array + shell:true would trigger the DEP0190 warning).
   const r = isWin
-    ? spawnSync(`pnpm.cmd ${args.join(" ")}`, { stdio: "inherit", shell: true, cwd })
+    ? spawnSync(`pnpm.cmd ${args.join(" ")}`, {
+        stdio: "inherit",
+        shell: true,
+        cwd,
+      })
     : spawnSync("pnpm", args, { stdio: "inherit", cwd });
   if (r.status !== 0) process.exit(r.status ?? 1);
 }
@@ -58,10 +62,7 @@ const ELECTRON_BUILDER_NS_UUID = "50e065bc-3134-11e6-9bab-38c9862bdaf3";
  *  implemented inline so this script stays dependency-free. */
 function uuidV5(name, namespaceHex) {
   const ns = Buffer.from(namespaceHex.replace(/-/g, ""), "hex");
-  const digest = createHash("sha1")
-    .update(ns)
-    .update(name, "utf8")
-    .digest();
+  const digest = createHash("sha1").update(ns).update(name, "utf8").digest();
   digest[6] = (digest[6] & 0x0f) | 0x50; // version 5
   digest[8] = (digest[8] & 0x3f) | 0x80; // variant RFC 4122
   const hex = digest.toString("hex");
@@ -126,14 +127,79 @@ runPnpm(["build"], repoDir);
 console.log("[desktop:install] Packaging app dir…");
 if (isMac) {
   runPnpm(
-    ["-F", "wave-desktop", "exec", "electron-builder", "--dir", "--config.mac.identity=null"],
+    [
+      "-F",
+      "wave-desktop",
+      "exec",
+      "electron-builder",
+      "--dir",
+      "--config.mac.identity=null",
+    ],
     repoDir,
   );
 } else {
   runPnpm(
-    ["-F", "wave-desktop", "exec", "electron-builder", "--dir", "--config.npmRebuild=false"],
+    [
+      "-F",
+      "wave-desktop",
+      "exec",
+      "electron-builder",
+      "--dir",
+      "--config.npmRebuild=false",
+    ],
     repoDir,
   );
+}
+
+/**
+ * Windows: Electron's crashpad handler (`CodeWave IDE.exe
+ * --type=crashpad-handler`) is reaped by the ordinary quit sequence only. A
+ * hard `app.exit()` — still used by the crash-recovery dialogs — strands it as
+ * an orphan, and Windows has no "child dies with its parent" rule. The orphan
+ * keeps a handle on the install directory, so the copy below fails with EPERM
+ * and blames an app that is not running.
+ *
+ * Three guards, because the query itself carries both literals:
+ * - the process name must be the app's own exe (otherwise this very
+ *   `powershell`/`bash` command line matches its own search terms),
+ * - its command line must carry the crashpad switch *and* point inside the
+ *   install dir, and
+ * - its parent must be gone — that is what makes it an orphan; a running app's
+ *   handler is left alone.
+ */
+function reapOrphanedCrashpadHandlers(installDir) {
+  const psLiteral = (value) => `'${value.replace(/'/g, "''")}'`;
+  // `WAVE_INSTALL_DIR` may carry a trailing separator; a bare basename would
+  // then be empty and the substring match would miss. Normalize once.
+  const resolvedDir = path.resolve(installDir);
+  const appExe = `${path.basename(resolvedDir)}.exe`;
+  const script = [
+    `$dir = ${psLiteral(resolvedDir)}`,
+    `$exe = ${psLiteral(appExe)}`,
+    "$orphans = @(Get-CimInstance Win32_Process | Where-Object {",
+    "  $_.Name -eq $exe -and",
+    "  $_.CommandLine -and",
+    "  $_.CommandLine.Contains('--type=crashpad-handler') -and",
+    "  $_.CommandLine.Contains($dir) -and",
+    "  -not (Get-Process -Id $_.ParentProcessId -ErrorAction SilentlyContinue)",
+    "})",
+    "foreach ($p in $orphans) {",
+    "  Stop-Process -Id $p.ProcessId -Force -ErrorAction SilentlyContinue",
+    "  Write-Output $p.ProcessId",
+    "}",
+  ].join("\n");
+  const r = spawnSync("powershell", ["-NoProfile", "-Command", script], {
+    encoding: "utf8",
+  });
+  const pids = (r.stdout ?? "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (pids.length > 0) {
+    console.log(
+      `[desktop:install] Reaped orphaned crashpad handler(s): ${pids.join(", ")}`,
+    );
+  }
 }
 
 // 3. Copy over the installed app
@@ -156,6 +222,7 @@ if (isWin) {
     console.error(`Expected app dir not found: ${src}`);
     process.exit(1);
   }
+  reapOrphanedCrashpadHandlers(dest);
   // Remove stale files first (mirror of rsync --delete). Windows locks a
   // running exe, so a locked CodeWave IDE.exe fails here — tell the user to quit.
   try {
