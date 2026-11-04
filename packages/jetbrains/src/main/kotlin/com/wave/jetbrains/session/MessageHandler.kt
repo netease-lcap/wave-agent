@@ -273,8 +273,8 @@ class MessageHandler(
                     // 「配置变更不再需要重建会话」场景 1–2）。模型经底栏模型选择器
                     // 走宿主 RPC、服务地址随 authStatusResponse 下发，都不落宿主存储。
                     writeUserSettings(data)
-                    // 设置页保存结果经宿主通知提示（spec「设置页反馈语义」）
-                    IdeService.showInfo(project, "保存成功")
+                    // 成功**不弹提示**（spec「设置页反馈语义」）：即时提交下控件的
+                    // 新状态就是回执，逐次弹「保存成功」只会淹掉失败提示。
                     // 回发新配置刷新设置页展示值（用户偏好经 CLI 回读）
                     postConfigurationResponse()
                     postMessage("configurationUpdated", JsonObject(emptyMap()))
@@ -282,7 +282,14 @@ class MessageHandler(
                     postMessage("scrollToBottom", JsonObject(emptyMap()))
                 } catch (e: Exception) {
                     LOG.warn("updateConfiguration failed: ${e.message}", e)
-                    IdeService.showError(project, "保存失败：${e.message}")
+                    // 失败提示要**具名**（spec「设置页反馈语义」）：即时提交没有保存
+                    // 动作可回溯，光说「保存失败」用户不知道是哪个控件没生效。**不给
+                    // 「打开设置文件」之类的动作**：失败原因是权限/磁盘/远端连接，打开
+                    // 那份文件帮不上忙，真正的补救是界面已回滚到生效值（2026-11-04 拍板）。
+                    IdeService.showError(
+                        project,
+                        "设置未写入「${describeUserPreferencePatch(data)}」：${e.message}",
+                    )
                     postMessage("configurationError", buildJsonObject {
                         put("error", "Failed to save configuration: ${e.message}")
                     })

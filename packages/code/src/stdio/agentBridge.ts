@@ -301,6 +301,10 @@ function direntType(parentDir: string, dirent: Dirent): "dir" | "file" | null {
 
 export class AgentBridge {
   private sessions = new Map<string, SessionEntry>();
+  /** 用户偏好写盘的串行队列（`updateUserSettings`）：stdio 请求是并发处理的，而写盘
+   * 是「同步读 → await 异步写」的读-改-写，两笔并发写会互相覆盖（丢键）。见该方法
+   * 的注释与 spec core/agent-config.md「设置页控件的保存时机」场景 9。 */
+  private userSettingsWriteQueue: Promise<unknown> = Promise.resolve();
   /** Pending approval requests, keyed by requestId. Stored with the resolve +
    * context so a re-attached client can list and respond to them (daemon mode:
    * approvals outlive any single connection). */
@@ -1956,15 +1960,25 @@ export class AgentBridge {
   private async updateUserSettings(
     patch: UserPreferenceSettings,
   ): Promise<UserPreferenceSettingsView> {
-    await updateUserPreferenceSettings(patch);
-    if (!Object.values(patch).every((value) => value === undefined)) {
-      await Promise.all(
-        [...this.sessions.values()].map((entry) =>
-          entry.agent.reloadConfiguration(),
-        ),
-      );
-    }
-    return this.userSettingsView();
+    // 串行执行（spec core/agent-config.md「设置页控件的保存时机」场景 9）：
+    // `updateUserPreferenceSettings` 是「同步读 → await 异步写」的读-改-写，而 stdio
+    // 请求是并发处理的（`jsonRpcConnection` 的 line 回调不 await `handleLine`）。设置页
+    // 改成「改一下就写一次」之后，快速连拨两个开关就是两笔并发写：后一笔读到的是前
+    // 一笔落盘之前的文件，前一笔的键会被整包覆盖掉。排队即可，代价是一次写盘的时长。
+    const write = this.userSettingsWriteQueue.then(async () => {
+      await updateUserPreferenceSettings(patch);
+      if (!Object.values(patch).every((value) => value === undefined)) {
+        await Promise.all(
+          [...this.sessions.values()].map((entry) =>
+            entry.agent.reloadConfiguration(),
+          ),
+        );
+      }
+      return this.userSettingsView();
+    });
+    // 队列本身不因某一次失败而断掉：错误交给本次调用方（原 promise）回给宿主。
+    this.userSettingsWriteQueue = write.catch(() => undefined);
+    return write;
   }
 
   /**

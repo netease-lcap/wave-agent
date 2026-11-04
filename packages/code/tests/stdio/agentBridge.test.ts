@@ -2663,6 +2663,78 @@ test("空载荷（无差异保存）既不落盘也不重载", async () => {
   expect(agent.reloadConfiguration).not.toHaveBeenCalled();
 });
 
+test("并发写入串行执行：后一笔等前一笔落盘完成（读-改-写不互相覆盖）", async () => {
+  // stdio 请求是并发处理的（jsonRpcConnection 不 await handleLine），而
+  // updateUserPreferenceSettings 是「同步读 → await 异步写」的读-改-写：两笔并发
+  // 写会各自基于同一份旧文件内容落盘，后写的那笔把前一键覆盖掉。CLI 侧据此排队
+  // （spec core/agent-config.md「设置页控件的保存时机」场景 9）。
+  const events: string[] = [];
+  vi.mocked(updateUserPreferenceSettings).mockImplementation(async (patch) => {
+    const key = Object.keys(patch)[0];
+    events.push(`start:${key}`);
+    await new Promise((resolve) =>
+      setTimeout(resolve, key === "language" ? 20 : 0),
+    );
+    events.push(`end:${key}`);
+    return patch;
+  });
+  vi.mocked(readUserPreferenceView).mockReturnValue({
+    values: {},
+    sources: {
+      language: "default",
+      contextLength: "default",
+      autoMemoryEnabled: "default",
+      autoMemoryFrequency: "default",
+      completionModel: "default",
+      completionEnabled: "default",
+      nextEditEnabled: "default",
+      enableKnowledgeBase: "default",
+    },
+  });
+  const { bridge } = createBridge();
+
+  await Promise.all([
+    bridge.handleRequest("updateUserSettings", { language: "English" }),
+    bridge.handleRequest("updateUserSettings", { contextLength: 128 }),
+  ]);
+
+  // 慢的那笔（language，20ms）必须先整笔完成，第二笔才开始。
+  expect(events).toEqual([
+    "start:language",
+    "end:language",
+    "start:contextLength",
+    "end:contextLength",
+  ]);
+});
+
+test("某一笔写盘失败不会让后续写入永久挂住（队列不断链）", async () => {
+  vi.mocked(updateUserPreferenceSettings)
+    .mockRejectedValueOnce(new Error("disk is read-only"))
+    .mockResolvedValueOnce({ language: "English" });
+  vi.mocked(readUserPreferenceView).mockReturnValue({
+    values: { language: "English" },
+    sources: {
+      language: "user",
+      contextLength: "default",
+      autoMemoryEnabled: "default",
+      autoMemoryFrequency: "default",
+      completionModel: "default",
+      completionEnabled: "default",
+      nextEditEnabled: "default",
+      enableKnowledgeBase: "default",
+    },
+  });
+  const { bridge } = createBridge();
+
+  await expect(
+    bridge.handleRequest("updateUserSettings", { contextLength: 128 }),
+  ).rejects.toThrow("disk is read-only");
+  // 失败的那笔把错误交给调用方，队列本身继续可用。
+  await expect(
+    bridge.handleRequest("updateUserSettings", { language: "English" }),
+  ).resolves.toMatchObject({ language: "English" });
+});
+
 // ── Plugin handlers ──────────────────────────────────────────────
 
 function mockPluginCore(instance: Record<string, unknown>) {

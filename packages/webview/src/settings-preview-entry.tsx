@@ -40,7 +40,10 @@ const root = ReactDOM.createRoot(document.getElementById("root")!);
 function SettingsPreview() {
   const [configurationData, setConfigurationData] =
     useState<ConfigurationData | null>(null);
-  const [saving, setSaving] = useState(false);
+  // 写盘失败回执：设置页据此把乐观改动回滚（spec agent-config「设置页控件的保存时机」）。
+  const [configurationError, setConfigurationError] = useState<
+    string | undefined
+  >(undefined);
   const [workdir, setWorkdir] = useState<string | undefined>(undefined);
   // Ref mirror for the once-registered message listener below (its closure only
   // sees the initial value otherwise): the projectSettings reply is stamped with
@@ -101,11 +104,13 @@ function SettingsPreview() {
         break;
       case "configurationResponse":
         setConfigurationData(msg.configurationData as ConfigurationData);
-        setSaving(false);
+        setConfigurationError(undefined);
         break;
       case "configurationError":
-        // 保存失败也复位 saving（按钮重新可用）；错误提示由宿主全局 toast 给出。
-        setSaving(false);
+        // 写盘失败：把错误交给设置页回滚到上一次生效值；错误提示由宿主全局 toast 给出。
+        setConfigurationError(
+          typeof msg.error === "string" ? msg.error : "保存失败",
+        );
         break;
       case "agentsContentResponse":
         if (msg.scope === "project") {
@@ -149,7 +154,6 @@ function SettingsPreview() {
     <SettingsPage
       configurationData={configurationData}
       onSave={(data) => {
-        setSaving(true);
         vscode.postMessage({
           command: "updateConfiguration",
           configurationData: data,
@@ -176,7 +180,7 @@ function SettingsPreview() {
       }}
       agentsSaving={agentsSaving}
       workdir={workdir}
-      saving={saving}
+      configurationError={configurationError}
       initialNav={initialNav}
       vscode={vscode}
       projectSettings={projectSettings}

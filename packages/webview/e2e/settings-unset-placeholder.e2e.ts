@@ -15,32 +15,28 @@ import {
  * ① 文件里**没有**某个用户偏好键时，四个控件都必须用「未设置」表达系统默认，
  *    而不是显示一个编造出来的真实值（语言下拉显式项、两个数字输入留空 + 灰字
  *    占位符；自动记忆开关刻意不做占位态——真实默认就是「开」，三态开关更难用）；
- * ② 保存载荷**只含用户改过的字段**：一个字都没改 ⇒ 空载荷（不把未设置的键钉进
- *    settings.json，因此系统环境里的 WAVE_MAX_INPUT_TOKENS 不会被随手保存钉成
- *    200000）；只改语言 ⇒ 其余键不出现在报文里。
+ * ② 写盘载荷**只含用户改过的字段**：设置页没有「保存」按钮（2026-11-04 拍板，
+ *    见 spec agent-config「设置页控件的保存时机」），每个控件在改动发生时提交自己
+ *    那一键——一个字都没改 ⇒ 一条报文都不发（不把未设置的键钉进 settings.json，
+ *    因此系统环境里的 WAVE_MAX_INPUT_TOKENS 不会被「进页面看一眼」钉成 200000）；
+ *    只改语言 ⇒ 其它键不出现在报文里。
  *
  * 分层：宿主/CLI 侧「未提供的键保持文件中现值」由真 host 层
  * （packages/desktop/tests/integration/realHostCredentialWire.integration.test.ts）
  * 验证；本文件只锁 webview 这一跳（真 bundle、真 DOM、真 postMessage）。
  */
 
-/** 基础设置区块的「保存」（全局设置视图内唯一的保存按钮）。 */
-function globalSaveButton(webviewPage: Page) {
-  return webviewPage.getByRole("button", { name: "保存", exact: true });
-}
-
-/** 最后一次发给 host 的 updateConfiguration 载荷。 */
-async function lastSavePayload(
+/** 全部 updateConfiguration 报文（每个控件一条，各带自己那一键）。 */
+async function allSavePayloads(
   webviewPage: Page,
-): Promise<Record<string, unknown> | undefined> {
+): Promise<Record<string, unknown>[]> {
   const sent = await sentToHost<SettingsSentMessage>(webviewPage);
-  const saves = sent.filter((m) => m.command === "updateConfiguration");
-  return saves[saves.length - 1]?.configurationData as
-    | Record<string, unknown>
-    | undefined;
+  return sent
+    .filter((m) => m.command === "updateConfiguration")
+    .map((m) => m.configurationData as Record<string, unknown>);
 }
 
-test.describe("设置页未设置态与保存载荷（文件里没有这些键）", () => {
+test.describe("设置页未设置态与写盘载荷（文件里没有这些键）", () => {
   test("四个控件的未设置显示态：语言「未设置（默认：中文）」、两个数字输入留空 + 占位符、开关仍是「开」", async ({
     webviewPage,
   }) => {
@@ -68,15 +64,17 @@ test.describe("设置页未设置态与保存载荷（文件里没有这些键�
     await expect(frequency).toHaveAttribute("placeholder", "默认 1 轮");
   });
 
-  test("一个字都没改就保存 → 载荷为空（不把未设置的键写进文件）", async ({
+  test("一个字都没改 → 一条写盘报文都没有（不把未设置的键写进文件）", async ({
     webviewPage,
   }) => {
     await openSettings(webviewPage, { configurationData: {} });
 
-    await globalSaveButton(webviewPage).click();
+    // 页面上根本没有「保存」按钮可点，等着看有没有别的东西偷偷写盘。
+    await expect(
+      webviewPage.getByRole("button", { name: "保存", exact: true }),
+    ).toHaveCount(0);
 
-    // 空载荷 = 不改任何键（宿主/CLI 侧「未提供的键保持文件中现值」）。
-    expect(await lastSavePayload(webviewPage)).toEqual({});
+    expect(await allSavePayloads(webviewPage)).toEqual([]);
   });
 
   test("只改语言 → 载荷只有 language，其余键不出现", async ({
@@ -85,9 +83,8 @@ test.describe("设置页未设置态与保存载荷（文件里没有这些键�
     await openSettings(webviewPage, { configurationData: {} });
 
     await webviewPage.getByLabel("AI 回复语言").selectOption("en-US");
-    await globalSaveButton(webviewPage).click();
 
-    expect(await lastSavePayload(webviewPage)).toEqual({ language: "en-US" });
+    expect(await allSavePayloads(webviewPage)).toEqual([{ language: "en-US" }]);
   });
 
   test("只填上下文长度（语言保持未设置）→ 载荷只有 contextLength", async ({
@@ -95,20 +92,22 @@ test.describe("设置页未设置态与保存载荷（文件里没有这些键�
   }) => {
     await openSettings(webviewPage, { configurationData: {} });
 
+    // 打字途中不写盘，失焦才写（数字输入的提交时机）
     await webviewPage.getByLabel("上下文长度").fill("128");
-    await globalSaveButton(webviewPage).click();
+    expect(await allSavePayloads(webviewPage)).toEqual([]);
+    await webviewPage.getByLabel("上下文长度").blur();
 
-    expect(await lastSavePayload(webviewPage)).toEqual({ contextLength: 128 });
+    expect(await allSavePayloads(webviewPage)).toEqual([
+      { contextLength: 128 },
+    ]);
   });
 
-  test("文件已有值但没动过 → 载荷同样为空（无差异保存不写文件）", async ({
+  test("文件已有值但没动过 → 同样一条报文都不发（不写文件）", async ({
     webviewPage,
   }) => {
     await openSettings(webviewPage);
 
-    await globalSaveButton(webviewPage).click();
-
-    expect(await lastSavePayload(webviewPage)).toEqual({});
+    expect(await allSavePayloads(webviewPage)).toEqual([]);
   });
 
   test("个性化：只拨开关 → 载荷只有 autoMemoryEnabled（轮次仍处未设置态不写）", async ({
@@ -121,13 +120,11 @@ test.describe("设置页未设置态与保存载荷（文件里没有这些键�
     await webviewPage
       .locator('.settings-switch:has(input[aria-label="开启自动记忆"])')
       .click();
-    await webviewPage
-      .getByRole("button", { name: "保存", exact: true })
-      .click();
 
-    expect(await lastSavePayload(webviewPage)).toEqual({
-      autoMemoryEnabled: false,
-    });
+    // 拨动即写；轮次仍处未设置态，不随这条报文上送。
+    await expect
+      .poll(() => allSavePayloads(webviewPage))
+      .toEqual([{ autoMemoryEnabled: false }]);
   });
 
   test("保存回包后展示值随文件刷新（写过值就不再显示未设置态）", async ({
@@ -136,7 +133,6 @@ test.describe("设置页未设置态与保存载荷（文件里没有这些键�
     await openSettings(webviewPage, { configurationData: {} });
 
     await webviewPage.getByLabel("AI 回复语言").selectOption("en-US");
-    await globalSaveButton(webviewPage).click();
     // host 回发写入后的用户偏好（language 键现在存在了）。
     await simulateHostMessage(webviewPage, {
       command: "configurationResponse",

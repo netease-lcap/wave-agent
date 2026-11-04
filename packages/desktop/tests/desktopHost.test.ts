@@ -2896,8 +2896,9 @@ describe("user preference save path and rebuild timing", () => {
     // 本地存储键（服务地址），故本地存储保持为空。
     expect(store.getConfiguration()).toEqual({});
     // 回执立即给出：toast + configurationResponse 带会话进程读回的值。
+    // 成功静默：即时提交没有提示（spec「设置页反馈语义」）。
     expect(shownToasts().filter((t) => t.message === "保存成功")).toHaveLength(
-      1,
+      0,
     );
     expect(
       sent("configurationResponse").at(-1)!.configurationData,
@@ -2950,8 +2951,9 @@ describe("user preference save path and rebuild timing", () => {
     expect(Object.keys(rpcParams("updateUserSettings")[0] as object)).toEqual(
       [],
     );
+    // 成功静默：即时提交没有提示（spec「设置页反馈语义」）。
     expect(shownToasts().filter((t) => t.message === "保存成功")).toHaveLength(
-      1,
+      0,
     );
     // 回执照发（末尾一条；首次是启动时的窗口级推送）
     expect(
@@ -2987,8 +2989,9 @@ describe("user preference save path and rebuild timing", () => {
     expect(rpcParams("updateUserSettings")).toHaveLength(2);
     expect(agent.updateConfig).not.toHaveBeenCalled();
     expect(agent.abortMessage).not.toHaveBeenCalled();
+    // 两次提交、两条都静默（成功不产生任何 toast）。
     expect(shownToasts().filter((t) => t.message === "保存成功")).toHaveLength(
-      2,
+      0,
     );
   });
 
@@ -4616,7 +4619,7 @@ describe("misc commands", () => {
     expect(sent("mcpServersResponse")).toHaveLength(0);
   });
 
-  it("updateConfiguration success surfaces a 保存成功 toast", async () => {
+  it("updateConfiguration success stays silent (no toast at all)", async () => {
     const { host } = await readyHost();
 
     await host.handleWebviewMessage({
@@ -4624,10 +4627,14 @@ describe("misc commands", () => {
       configurationData: { language: "English" },
     });
 
-    expect(shownToasts().some((t) => t.message === "保存成功")).toBe(true);
+    // 即时提交下控件的新状态就是回执：成功一条提示都不弹（spec「设置页反馈
+    // 语义」），否则连续改几个开关就会被「保存成功」刷屏、淹没失败提示。
+    expect(
+      shownToasts().filter((t) => t.message.includes("保存")),
+    ).toHaveLength(0);
   });
 
-  it("updateConfiguration failure surfaces a 保存失败 toast with the reason", async () => {
+  it("updateConfiguration failure names the key and carries no action", async () => {
     const { host } = await readyHost();
     // 保存路径不再经 updateConfig 重建会话，失败来自用户偏好落盘（settings.json）。
     const restore = failRpc("updateUserSettings", "disk full");
@@ -4640,9 +4647,12 @@ describe("misc commands", () => {
       restore();
     }
 
-    expect(shownToasts().some((t) => t.message.startsWith("保存失败："))).toBe(
-      true,
-    );
+    // 具名（哪个键没写进去）但**不带动作**：失败原因是权限/磁盘/远端连接，打开
+    // settings.json 帮不上忙，真正的补救是界面回滚到生效值（2026-11-04 拍板）。
+    const toast = shownToasts().find((t) => t.type === "error");
+    expect(toast?.message).toBe("设置未写入「AI 回复语言」：disk full");
+    expect(toast?.actionLabel).toBeUndefined();
+    expect(toast?.action).toBeUndefined();
   });
 
   it("setAgentsContent success surfaces a 保存成功 toast and replies agentsContentSaved ok", async () => {

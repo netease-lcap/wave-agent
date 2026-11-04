@@ -16,4 +16,5 @@ export * from "./subagents.js";
 export * from "./telemetry.js";
 export * from "./toolLimits.js";
 export * from "./tools.js";
+export * from "./userPreferences.js";
 export * from "./workflowLimits.js";

@@ -124,7 +124,7 @@ test.describe("被组织配置覆盖的键：显示生效值 + 置灰 + 「由�
     await expect(webviewPage.getByText("系统环境变量")).toHaveCount(0);
   });
 
-  test("被覆盖的键改不动 → 保存载荷里不出现它", async ({ webviewPage }) => {
+  test("被覆盖的键改不动 → 写盘报文里不出现它", async ({ webviewPage }) => {
     await openSettings(webviewPage, {
       configurationData: {
         language: "en-US",
@@ -133,16 +133,15 @@ test.describe("被组织配置覆盖的键：显示生效值 + 置灰 + 「由�
       },
     });
 
-    // 置灰的 language 收不到用户操作；只改上下文长度。
+    // 置灰的 language 收不到用户操作；只改上下文长度（失焦提交）。
     await webviewPage.getByLabel("上下文长度").fill("128");
-    await webviewPage
-      .getByRole("button", { name: "保存", exact: true })
-      .click();
+    await webviewPage.getByLabel("上下文长度").blur();
 
     const sent = await sentToHost<SettingsSentMessage>(webviewPage);
     const saves = sent.filter((m) => m.command === "updateConfiguration");
-    expect(saves[saves.length - 1]?.configurationData).toEqual({
-      contextLength: 128,
-    });
+    // 每条报文只带一个键，且绝不带被托管的那一个。
+    expect(saves.map((m) => m.configurationData)).toEqual([
+      { contextLength: 128 },
+    ]);
   });
 });

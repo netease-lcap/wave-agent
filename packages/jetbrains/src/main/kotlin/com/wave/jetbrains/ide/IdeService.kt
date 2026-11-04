@@ -15,10 +15,7 @@ import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.vfs.VirtualFile
 import com.wave.jetbrains.util.Edt
 import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonPrimitive
-import kotlinx.serialization.json.put
 import java.awt.Desktop
 import java.io.File
 import java.nio.file.Files
@@ -181,9 +178,9 @@ object IdeService {
     }
 
     /**
-     * showInfo — mirrors VSCE showInformationMessage (messageHandler.ts settings save /
-     * delete feedback): a balloon notification with [NotificationType.INFORMATION].
-     * 设置页保存/删除成功反馈统一经宿主通知（spec「设置页反馈语义」）。
+     * showInfo — mirrors VSCE showInformationMessage（**只给显式动作**的结果：AGENTS.md
+     * 的「保存」、插件的安装/卸载/删除）。设置页的开关/下拉是即时提交的隐式写入，
+     * 成功一律静默（spec「设置页反馈语义」，与桌面端一致）。
      */
     fun showInfo(project: Project, message: String) {
         try {
@@ -196,6 +193,7 @@ object IdeService {
             LOG.warn("showInfo notification failed: ${e.message}")
         }
     }
+
 
     /**
      * uploadFilesToArtifacts — mirrors VSCE fileService.uploadFilesToArtifacts.

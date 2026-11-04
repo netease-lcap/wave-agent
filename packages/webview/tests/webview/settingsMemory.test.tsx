@@ -60,15 +60,6 @@ function renderMemoryView(options?: {
   return { onSave };
 }
 
-/** 定位「自动记忆规则」区块，避开同视图 AGENTS.md 的保存按钮。 */
-function memorySaveButton(): HTMLButtonElement {
-  const heading = screen.getByRole("heading", { name: "自动记忆规则" });
-  const section = heading.closest("section") as HTMLElement;
-  return within(section).getByRole("button", {
-    name: "保存",
-  }) as HTMLButtonElement;
-}
-
 function memorySwitch(): HTMLInputElement {
   return screen.getByLabelText("开启自动记忆") as HTMLInputElement;
 }
@@ -106,7 +97,7 @@ describe("SettingsPage 个性化「自动记忆规则」：按配置回填与保
     expect(memoryFrequencyInput().placeholder).toBe("默认 1 轮");
   });
 
-  it("关掉开关 + 改轮次后保存：载荷只带这两个字段（不把其余配置整体上送）", () => {
+  it("关掉开关 + 改轮次：两个控件各写自己那一键（不把其余配置整体上送）", () => {
     const { onSave } = renderMemoryView({
       configurationData: {
         language: "en-US",
@@ -116,31 +107,33 @@ describe("SettingsPage 个性化「自动记忆规则」：按配置回填与保
       },
     });
 
+    // 拨动即写
     fireEvent.click(memorySwitch());
-    fireEvent.change(memoryFrequencyInput(), { target: { value: "5" } });
-    fireEvent.click(memorySaveButton());
+    expect(onSave).toHaveBeenCalledWith({ autoMemoryEnabled: false });
 
-    // diff 载荷（spec 场景 8）：只有真正改动过的字段上送，未改的 language /
-    // contextLength 不出现在报文里（省略键 = 不改该键）。
-    expect(onSave).toHaveBeenCalledWith({
-      autoMemoryEnabled: false,
-      autoMemoryFrequency: 5,
-    });
+    // 轮次打字途中不写，失焦才写
+    fireEvent.change(memoryFrequencyInput(), { target: { value: "5" } });
+    expect(onSave).toHaveBeenCalledTimes(1);
+    fireEvent.blur(memoryFrequencyInput());
+
+    // diff 载荷（spec 场景 8）：只有改动过的那一个键上送，未改的 language /
+    // contextLength / 另一键都不出现在报文里（省略键 = 不改该键）。
+    expect(onSave).toHaveBeenCalledTimes(2);
+    expect(onSave).toHaveBeenLastCalledWith({ autoMemoryFrequency: 5 });
   });
 
-  it("未设置 + 一个字都没改 → 载荷为空（不把未设置的键钉进 settings.json）", () => {
+  it("未设置 + 一个字都没改 → 一次都不写盘（不把未设置的键钉进 settings.json）", () => {
     const { onSave } = renderMemoryView({ configurationData: {} });
 
-    fireEvent.click(memorySaveButton());
-
-    expect(onSave).toHaveBeenCalledWith({});
+    expect(onSave).not.toHaveBeenCalled();
   });
 
-  it("只改轮次（开关保持默认「开」）→ 载荷只有 autoMemoryFrequency", () => {
+  it("只改轮次（开关保持默认「开」）→ 失焦时只写 autoMemoryFrequency", () => {
     const { onSave } = renderMemoryView({ configurationData: {} });
 
     fireEvent.change(memoryFrequencyInput(), { target: { value: "3" } });
-    fireEvent.click(memorySaveButton());
+    expect(onSave).not.toHaveBeenCalled();
+    fireEvent.blur(memoryFrequencyInput());
 
     expect(onSave).toHaveBeenCalledWith({ autoMemoryFrequency: 3 });
   });
@@ -213,21 +206,20 @@ describe("ChatApp 保存路径：自动记忆偏好真的离开 webview（#2115 
 
     await act(async () => {
       fireEvent.click(memorySwitch());
-      fireEvent.change(memoryFrequencyInput(), { target: { value: "5" } });
     });
     await act(async () => {
-      fireEvent.click(memorySaveButton());
+      fireEvent.change(memoryFrequencyInput(), { target: { value: "5" } });
+      fireEvent.blur(memoryFrequencyInput());
     });
 
-    const saved = vscode.postMessage.mock.calls.find(
+    const saved = vscode.postMessage.mock.calls.filter(
       (call) => call[0]?.command === "updateConfiguration",
     );
-    expect(saved).toBeDefined();
-    // #2115 的回归点就在这一行：修复前载荷里根本没有这两个键。
-    expect(saved?.[0].configurationData).toMatchObject({
-      autoMemoryEnabled: false,
-      autoMemoryFrequency: 5,
-    });
+    // #2115 的回归点就在这里：修复前载荷里根本没有这两个键。现在每个控件在改动
+    // 发生时各自发一条只含自己那一键的报文（没有整页「保存」）。
+    const payloads = saved.map((call) => call[0].configurationData);
+    expect(payloads).toContainEqual({ autoMemoryEnabled: false });
+    expect(payloads).toContainEqual({ autoMemoryFrequency: 5 });
   });
 });
 
@@ -286,7 +278,7 @@ describe("SettingsPage 自动记忆规则：被组织配置覆盖时置灰", () 
     expect(memoryFrequencyInput()).toBeEnabled();
 
     fireEvent.change(memoryFrequencyInput(), { target: { value: "9" } });
-    fireEvent.click(memorySaveButton());
+    fireEvent.blur(memoryFrequencyInput());
 
     // 被覆盖的开关不出现在载荷里（控件禁用，用户改不动），只有轮次上送
     expect(onSave).toHaveBeenCalledWith({ autoMemoryFrequency: 9 });
@@ -325,9 +317,8 @@ describe("SettingsPage 自动记忆规则：被组织配置覆盖时置灰", () 
     expect(within(row).getByText(ENV_SOURCE_HINT)).toBeInTheDocument();
     expect(within(row).queryByText("由组织配置管理")).not.toBeInTheDocument();
 
-    // 用户在此打开并保存 = 写入用户级 settings.json，优先级高于 OS 环境变量。
+    // 用户在此打开 = 立即写入用户级 settings.json，优先级高于 OS 环境变量。
     fireEvent.click(memorySwitch());
-    fireEvent.click(memorySaveButton());
     expect(onSave).toHaveBeenCalledWith({ autoMemoryEnabled: true });
   });
 

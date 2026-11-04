@@ -69,13 +69,13 @@ export interface OpenSettingsOptions {
   height?: number;
   /**
    * 挂载后回 `configurationResponse`（默认 true）。settings entry 挂载时会发
-   * `getConfiguration`，不回包表单一直停在未加载态（保存按钮禁用）。
+   * `getConfiguration`，不回包表单一直停在未加载态（偏好控件全部置灰）。
    */
   configuration?: boolean;
   /**
    * 回给设置页的配置数据（默认 `{ language: "zh-CN", contextLength: 200 }` =
    * 两个键都已设置）。传 `{}` 模拟「全新安装：settings.json 里没有这些键」，
-   * 用于验证未设置态的占位符表达与「省略键 = 不改该键」的保存载荷。
+   * 用于验证未设置态的占位符表达与「省略键 = 不改该键」的写盘载荷。
    */
   configurationData?: Record<string, unknown>;
   /** 模拟 host 下发 `settingsState`（直选某视图 / 设定 workdir）。 */
