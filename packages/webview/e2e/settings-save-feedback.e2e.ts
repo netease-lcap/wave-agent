@@ -7,21 +7,22 @@ import {
 } from "./utils/settingsHarness.js";
 
 /**
- * Regression（设置页保存反馈，2026-09-09 拍板「走宿主全局 toast」）：
+ * Regression（设置页写盘反馈，2026-09-09 拍板「走宿主全局 toast」+ 2026-11-04
+ * 拍板「用户偏好即时提交、无保存按钮」）：
  *
  * 设置页此前自己渲染页面内提示（`.settings-save-message` 内联灰字，全局设置 /
- * 个性化 / AGENTS.md 三处）。拍板后改为：保存结果的用户可见反馈由宿主（桌面
+ * 个性化 / AGENTS.md 三处）。拍板后改为：写盘结果的用户可见反馈由宿主（桌面
  * showToast / VSCE showInformationMessage / JB IdeService.showInfo）给出，webview
- * 只负责 ①发出正确的保存消息 ②维护「保存中」禁用态并在 host 回包后复位，
- * **不再渲染任何页面内提示**。本文件驱动真实 settings.js bundle 覆盖这三件事，
- * 同时补 AGENTS.md「键入 → 保存」的请求载荷（G8）。
+ * 只负责 ①发出正确的写盘消息 ②（仅 AGENTS.md 整文件写入）维护「保存中」禁用态并
+ * 在 host 回包后复位，**不再渲染任何页面内提示**。本文件驱动真实 settings.js
+ * bundle 覆盖这两件事，同时补 AGENTS.md「键入 → 保存」的请求载荷（G8）。
  *
  * 断言口径：
- * - 载荷 = 发给 host 的 `updateConfiguration` / `setAgentsContent` 消息内容；
- * - 无页面内提示 = 旧类名 `.settings-save-message` 不存在，且 `.settings-actions`
- *   容器里只有按钮文本（旧实现把提示文字追加在该容器内）；
- * - 复位 = 回 `configurationResponse` / `configurationError` / `agentsContentSaved`
- *   后保存按钮与文本区重新可用。
+ * - 载荷 = 发给 host 的 `updateConfiguration`（每个控件一条，只含该键）/
+ *   `setAgentsContent` 消息内容；
+ * - 无页面内提示 = 旧类名 `.settings-save-message` 不存在；
+ * - 复位 = 回 `configurationError` 后界面回滚到上一次生效值、`agentsContentSaved`
+ *   后文本区与保存按钮重新可用（偏好键没有「保存中」态：写盘是乐观显示）。
  */
 
 /** 保存区块（按小标题定位，避免同一视图内多个 `.settings-actions` 撞车）。 */
@@ -31,66 +32,61 @@ function saveSection(webviewPage: Page, heading: string): Locator {
     .filter({ has: webviewPage.getByRole("heading", { name: heading }) });
 }
 
-/** 该保存区块内不得出现自建提示（旧实现的内联灰字 + 追加在动作行里的文案）。 */
+/** 该区块内不得出现自建提示（旧实现的内联灰字 + 追加在动作行里的文案）。 */
 async function expectNoInlineSaveHint(section: Locator, actionText: string) {
   await expect(section.locator(".settings-save-message")).toHaveCount(0);
   // 旧实现把提示文字追加在保存按钮所在的动作行内：无提示时该行只有按钮文本
   await expect(section.locator(".settings-actions")).toHaveText(actionText);
 }
 
-test.describe("设置页保存反馈（settings tab）", () => {
-  test("全局设置保存：发出 updateConfiguration 载荷、无页面内提示、回包后复位", async ({
+test.describe("设置页写盘反馈（settings tab）", () => {
+  test("全局设置：改语言/上下文各自即时发一条只含该键的 updateConfiguration，无页面内提示", async ({
     webviewPage,
   }) => {
     await openSettings(webviewPage);
 
-    const saveButton = webviewPage.getByRole("button", {
-      name: "保存",
-      exact: true,
-    });
-    await expect(saveButton).toBeEnabled();
+    // 没有「保存」按钮（2026-11-04 拍板，spec agent-config「设置页控件的保存时机」）
+    await expect(
+      webviewPage.getByRole("button", { name: "保存", exact: true }),
+    ).toHaveCount(0);
+
     await webviewPage.getByLabel("AI 回复语言").selectOption("en-US");
-    await webviewPage.getByLabel("上下文长度").fill("300");
+    await expect
+      .poll(async () => {
+        const sent = await sentToHost<{
+          command?: string;
+          configurationData?: Record<string, unknown>;
+        }>(webviewPage);
+        return sent
+          .filter((m) => m.command === "updateConfiguration")
+          .map((m) => m.configurationData);
+      })
+      .toEqual([{ language: "en-US" }]);
 
-    await saveButton.click();
-
-    // 发送「保存中」禁用态：host 未回包前不得再次点击
-    await expect(saveButton).toBeDisabled();
-
-    const saved = await sentToHost<{
-      command?: string;
-      configurationData?: Record<string, unknown>;
-    }>(webviewPage);
-    const request = saved.find((m) => m.command === "updateConfiguration");
-    expect(request?.configurationData).toMatchObject({
-      language: "en-US",
-      contextLength: 300,
-    });
+    // 数字输入：打字途中不写盘，失焦才写
+    const contextLength = webviewPage.getByLabel("上下文长度");
+    await contextLength.fill("300");
+    await contextLength.blur();
+    await expect
+      .poll(async () => {
+        const sent = await sentToHost<{
+          command?: string;
+          configurationData?: Record<string, unknown>;
+        }>(webviewPage);
+        return sent
+          .filter((m) => m.command === "updateConfiguration")
+          .map((m) => m.configurationData);
+      })
+      .toEqual([{ language: "en-US" }, { contextLength: 300 }]);
 
     // 页面内无自建提示（反馈由宿主全局 toast 承担）
-    await expectNoInlineSaveHint(saveSection(webviewPage, "基础设置"), "保存");
-
-    // 成功回包：saving 复位（按钮重新可用）
-    await simulateHostMessage(webviewPage, {
-      command: "configurationResponse",
-      configurationData: { language: "en-US", contextLength: 300 },
-    });
-    await expect(saveButton).toBeEnabled();
-    await expectNoInlineSaveHint(saveSection(webviewPage, "基础设置"), "保存");
-
-    // 失败回包（configurationError）：同样复位，且不出现页面内错误文案
-    await saveButton.click();
-    await expect(saveButton).toBeDisabled();
-    await simulateHostMessage(webviewPage, {
-      command: "configurationError",
-      error: "Failed to save configuration: boom",
-    });
-    await expect(saveButton).toBeEnabled();
-    await expect(webviewPage.getByText(/保存失败|保存出错/)).toHaveCount(0);
-    await expectNoInlineSaveHint(saveSection(webviewPage, "基础设置"), "保存");
+    await expect(
+      saveSection(webviewPage, "基础设置").locator(".settings-save-message"),
+    ).toHaveCount(0);
+    await expect(webviewPage.getByText(/保存成功/)).toHaveCount(0);
   });
 
-  test("个性化保存：自动记忆开关与轮次进入 updateConfiguration 载荷并复位", async ({
+  test("个性化：自动记忆开关拨动即写、轮次失焦写；失败回执后回滚、无页面内错误文案", async ({
     webviewPage,
   }) => {
     await openSettings(webviewPage);
@@ -105,41 +101,37 @@ test.describe("设置页保存反馈（settings tab）", () => {
       .locator(".settings-switch-slider")
       .click();
     await expect(toggle).not.toBeChecked();
-    await webviewPage.getByLabel("触发记忆提取会话轮次").fill("5");
 
-    const saveButton = webviewPage.getByRole("button", {
-      name: "保存",
-      exact: true,
-    });
-    await saveButton.click();
-    await expect(saveButton).toBeDisabled();
+    const frequency = webviewPage.getByLabel("触发记忆提取会话轮次");
+    await frequency.fill("5");
+    await frequency.blur();
 
-    const saved = await sentToHost<{
+    const sent = await sentToHost<{
       command?: string;
       configurationData?: Record<string, unknown>;
     }>(webviewPage);
-    const request = saved.find((m) => m.command === "updateConfiguration");
-    // 关闭态（false）必须真的随载荷下发——#2115「关了还在记忆」的回归点
-    expect(request?.configurationData).toMatchObject({
-      autoMemoryEnabled: false,
-      autoMemoryFrequency: 5,
-    });
+    // 关闭态（false）必须真的随报文下发——#2115「关了还在记忆」的回归点；
+    // 每个控件只管自己那一键（diff 语义：未改的键不出现）。
+    expect(
+      sent
+        .filter((m) => m.command === "updateConfiguration")
+        .map((m) => m.configurationData),
+    ).toEqual([{ autoMemoryEnabled: false }, { autoMemoryFrequency: 5 }]);
 
-    await expectNoInlineSaveHint(
-      saveSection(webviewPage, "自动记忆规则"),
-      "保存",
-    );
+    await expect(
+      saveSection(webviewPage, "自动记忆规则").locator(
+        ".settings-save-message",
+      ),
+    ).toHaveCount(0);
 
-    // 失败回包也要复位（旧实现失败时会留下内联错误文字）
+    // 失败回执（configurationError）：界面回滚到上一次生效值（宿主不回
+    // configurationResponse 就表示没写进文件），且不出现任何页面内错误文案。
     await simulateHostMessage(webviewPage, {
       command: "configurationError",
       error: "Failed to save configuration: boom",
     });
-    await expect(saveButton).toBeEnabled();
-    await expectNoInlineSaveHint(
-      saveSection(webviewPage, "自动记忆规则"),
-      "保存",
-    );
+    await expect(toggle).toBeChecked();
+    await expect(webviewPage.getByText(/保存失败|保存出错/)).toHaveCount(0);
   });
 
   test("AGENTS.md：键入用户级内容后保存，发出 setAgentsContent（scope user）", async ({

@@ -233,6 +233,8 @@ describe("real host · 凭据链路下线后的真实 stdio 报文", () => {
       autoMemoryEnabled: false,
       autoMemoryFrequency: 5,
     });
+    // 成功静默（spec「设置页反馈语义」）：即时提交下控件的新状态就是回执，
+    // 写盘成功不弹任何提示。
     expect(
       ctx.messages
         .slice(mark)
@@ -241,7 +243,7 @@ describe("real host · 凭据链路下线后的真实 stdio 报文", () => {
             m.command === "showToast" &&
             JSON.stringify(m.toast).includes("保存成功"),
         ),
-    ).toBe(true);
+    ).toBe(false);
 
     // 落点是**会话进程**的 HOME（远端即远端机器上的该文件），上下文长度落在
     // env.WAVE_MAX_INPUT_TOKENS（K×1000）。CLI 启动时已自建该文件（插件市场

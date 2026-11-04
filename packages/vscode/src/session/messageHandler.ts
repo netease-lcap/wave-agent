@@ -20,6 +20,7 @@ import type {
 import {
   PLUGIN_CHANGE_PENDING_MESSAGE,
   PLUGIN_RELOADED_MESSAGE,
+  describeUserPreferencePatch,
 } from "wave-agent-sdk/host";
 
 /**
@@ -760,9 +761,9 @@ export class MessageHandler {
       // 用户偏好写入用户级 settings.json，由 SDK 实时重载在**下一轮对话**生效；
       // 保存不重建会话（spec agent-config「设置实时重载」/「配置变更的构造期
       // 副作用与重建」场景 1–2）：回执与界面刷新不等待任何重建。
-      // 设置页保存结果经宿主原生通知提示（spec「设置页反馈语义」，webview 不再
-      // 渲染页面内提示）；configurationResponse 仍回发以刷新设置页展示值。
-      vscode.window.showInformationMessage("保存成功");
+      // 成功**不弹提示**（spec「设置页反馈语义」）：即时提交下控件的新状态就是
+      // 回执，逐次弹「保存成功」只会淹掉失败提示。configurationResponse 仍回发
+      // 以刷新设置页展示值。
       this.context.postSettingsMessage({ command: "configurationUpdated" });
       this.context.postSettingsMessage({
         command: "configurationResponse",
@@ -771,12 +772,29 @@ export class MessageHandler {
     } catch (error) {
       console.error("Failed to save settings configuration:", error);
       const message = error instanceof Error ? error.message : String(error);
-      vscode.window.showErrorMessage(`保存失败：${message}`);
+      this.reportConfigurationFailure(configData, message);
       this.context.postSettingsMessage({
         command: "configurationError",
         error: "Failed to save configuration: " + error,
       });
     }
+  }
+
+  /**
+   * 用户偏好写盘失败的原生通知：**具名**（spec「设置页反馈语义」）。即时提交
+   * 没有「保存」动作可回溯，光说「保存失败」用户不知道是哪一项没写进去——所以
+   * 文案带键名（一次写入只含一个键）。**不给「打开设置文件」之类的 action**：
+   * 失败原因是权限/磁盘/远端连接，打开那份文件帮不上忙，真正的补救是界面已经
+   * 回滚到生效值（2026-11-04 拍板）。
+   */
+  private reportConfigurationFailure(
+    configData: unknown,
+    message: string,
+  ): void {
+    const label = describeUserPreferencePatch(
+      (configData ?? {}) as Record<string, unknown>,
+    );
+    vscode.window.showErrorMessage(`设置未写入「${label}」：${message}`);
   }
 
   /** AGENTS.md settings UI: fetch user/project memory file content (settings tab). */
@@ -2222,9 +2240,8 @@ export class MessageHandler {
       // 同 settings 路由：用户偏好经用户级 settings.json 实时重载生效，保存不
       // 重建会话（spec agent-config「配置变更不再需要重建会话」场景 1–2）。
 
-      // 设置页保存结果经宿主原生通知提示（spec「设置页反馈语义」；chat 路由与
-      // settings 路由同语义，避免双 switch 漂移）
-      vscode.window.showInformationMessage("保存成功");
+      // 成功**不弹提示**（spec「设置页反馈语义」；chat 路由与 settings 路由
+      // 同语义，避免双 switch 漂移）：即时提交下控件的新状态就是回执。
       this.context.postMessage(
         { command: "configurationUpdated" },
         viewType,
@@ -2239,7 +2256,7 @@ export class MessageHandler {
     } catch (error) {
       console.error(`Failed to update ${viewType} configuration:`, error);
       const message = error instanceof Error ? error.message : String(error);
-      vscode.window.showErrorMessage(`保存失败：${message}`);
+      this.reportConfigurationFailure(configData, message);
       this.context.postMessage(
         {
           command: "configurationError",

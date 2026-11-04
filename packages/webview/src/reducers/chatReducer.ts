@@ -36,7 +36,6 @@ export const initialState: ChatState = {
   // Dialog state
   activeDialog: null,
   configurationData: undefined,
-  configurationLoading: false,
   configurationError: undefined,
   projectSettings: undefined,
   // Mirror of the last accepted projectSettings reply: the value plus the
@@ -214,23 +213,16 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
         isAuthenticated: action.payload,
         initialized: true,
       };
-    case "SET_CONFIGURATION_LOADING":
-      return {
-        ...state,
-        configurationLoading: action.payload,
-      };
     case "SET_CONFIGURATION_ERROR":
       return {
         ...state,
         configurationError: action.payload,
-        configurationLoading: false,
       };
     case "SET_CONFIGURATION_DATA":
       return {
         ...state,
         configurationData: action.payload,
         configurationError: undefined,
-        configurationLoading: false,
       };
     case "SET_PROJECT_SETTINGS":
       return {
@@ -295,7 +287,6 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
         permissionMode: action.payload.permissionMode || state.permissionMode,
         attachedImages: action.payload.attachedImages || [],
         sessionsLoading: false,
-        configurationLoading: false,
         initialized: true,
         // 权威快照落地（预填提示词的写入闸门，见 ChatState 注释）。
         initialStateReceived: true,

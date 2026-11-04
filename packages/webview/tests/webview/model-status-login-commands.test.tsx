@@ -194,7 +194,8 @@ describe("Model, Status, and Login Commands", () => {
       const navItem = screen.getByRole("button", { name: /全局设置/ });
       expect(navItem).toHaveClass("is-active");
 
-      // 可编辑：语言下拉 + 上下文长度输入 + 保存按钮，当前值回填
+      // 可编辑：语言下拉 + 上下文长度输入，当前值回填（没有「保存」按钮，
+      // 每个控件在改动发生时自己提交，见 spec agent-config「设置页控件的保存时机」）
       const langSelect =
         document.querySelector<HTMLSelectElement>(".settings-select");
       expect(langSelect).toBeInTheDocument();
@@ -204,16 +205,13 @@ describe("Model, Status, and Login Commands", () => {
       );
       expect(contextInput).toBeInTheDocument();
       expect(contextInput?.value).toBe("200");
-      expect(document.querySelector(".settings-save-btn")).toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: "保存" }),
+      ).not.toBeInTheDocument();
 
-      // 修改语言并保存 → updateConfiguration RPC
+      // 选中语言即写 → updateConfiguration RPC
       await act(async () => {
         fireEvent.change(langSelect!, { target: { value: "en-US" } });
-      });
-      await act(async () => {
-        fireEvent.click(
-          document.querySelector(".settings-save-btn") as HTMLButtonElement,
-        );
       });
       expect(mockVscode.postMessage).toHaveBeenCalledWith(
         expect.objectContaining({

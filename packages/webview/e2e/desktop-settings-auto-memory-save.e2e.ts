@@ -67,6 +67,19 @@ function memorySection(page: Page) {
   });
 }
 
+/** 全部同类报文（即时提交后每个控件各发一条，见 spec「设置页控件的保存时机」）。 */
+function postedMessages(page: Page, command: string): Promise<unknown[]> {
+  return page.evaluate(
+    (expected) =>
+      (
+        (
+          window as unknown as { getTestMessages?: () => unknown[] }
+        ).getTestMessages?.() ?? []
+      ).filter((m) => (m as { command?: string }).command === expected),
+    command,
+  );
+}
+
 function postedMessage(page: Page, command: string): Promise<unknown> {
   return page.evaluate(
     (expected) =>
@@ -80,7 +93,7 @@ function postedMessage(page: Page, command: string): Promise<unknown> {
 }
 
 test.describe("桌面设置页「个性化 → 自动记忆规则」保存路径", () => {
-  test("关掉开关 + 改轮次后保存：updateConfiguration 载荷带出两个字段", async ({
+  test("关掉开关 + 改轮次：两个控件各自即时发出 updateConfiguration", async ({
     webviewPage,
   }) => {
     const injector = await bootDesktop(webviewPage, {
@@ -102,7 +115,13 @@ test.describe("桌面设置页「个性化 → 自动记忆规则」保存路径
 
     const section = memorySection(webviewPage);
     const toggle = section.locator('input[aria-label="开启自动记忆"]');
+    const frequency = section.locator(
+      'input[aria-label="触发记忆提取会话轮次"]',
+    );
     await expect(toggle).toBeChecked();
+
+    // 打开设置页之后的报文不再关心，从用户的真实动作开始记录。
+    await injector.clearMessageLog();
 
     // 开关的 checkbox 本体是 opacity:0 的隐藏 input，交互点在样式化的外层
     // .settings-switch（与 settings-project-toggle.e2e.ts 一致）。
@@ -110,22 +129,24 @@ test.describe("桌面设置页「个性化 → 自动记忆规则」保存路径
       .locator('.settings-switch:has(input[aria-label="开启自动记忆"])')
       .click();
     await expect(toggle).not.toBeChecked();
-    await section.locator('input[aria-label="触发记忆提取会话轮次"]').fill("5");
-
-    await injector.clearMessageLog();
-    await section.getByRole("button", { name: "保存" }).click();
+    // 设置页没有「保存」按钮：拨动即写、轮次在失焦时写。
+    await frequency.fill("6");
+    await frequency.blur();
 
     await expect
-      .poll(() => postedMessage(webviewPage, "updateConfiguration"))
-      .toEqual({
-        command: "updateConfiguration",
-        // diff 载荷（spec agent-config 场景 8）：只有真正改动过的两个字段上送，
-        // 未改的 language 不出现在报文里（省略键 = 不改该键）。
-        configurationData: {
-          autoMemoryEnabled: false,
-          autoMemoryFrequency: 5,
+      .poll(() => postedMessages(webviewPage, "updateConfiguration"))
+      .toEqual([
+        // 每个控件只管自己那一键（spec agent-config 场景 8 的 diff 语义 +
+        // 「设置页控件的保存时机」）：未改的 language 不出现在任何报文里。
+        {
+          command: "updateConfiguration",
+          configurationData: { autoMemoryEnabled: true },
         },
-      });
+        {
+          command: "updateConfiguration",
+          configurationData: { autoMemoryFrequency: 6 },
+        },
+      ]);
 
     // 保存路径只落盘 + 回执（PR-2）：不得因保存触发任何会话重建或插件重载——
     // 真 host 若要重建会先弹确认框并等用户回执，故「没有确认框、没有

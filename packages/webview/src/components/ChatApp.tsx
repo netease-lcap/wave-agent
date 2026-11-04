@@ -2546,7 +2546,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         toastId: toast.id,
         action: toast.action,
       });
-      // 动作语义在宿主（聚焦后台会话）——回传后即关闭 toast。
+      // 动作语义在宿主（目前只有「聚焦后台会话」）——回传后即关闭 toast。
       setToasts((prev) => prev.filter((t) => t.id !== toast.id));
     },
     [postToHost],
@@ -3165,14 +3165,13 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     dispatch({ type: "HIDE_DIALOG" });
   }, []);
 
-  // 设置页保存配置（全局设置/个性化视图）：经 updateConfiguration RPC 写回，
-  // 保存期间 configurationLoading=true 禁用保存按钮；host 回发
-  // configurationResponse / configurationError 后落定复位（saving=false）。
-  // 保存结果 toast 由宿主全局提示，设置页不渲染页面内反馈（见 spec
+  // 设置页提交用户偏好（全局设置 / 个性化）：**没有保存按钮**，每个控件改动时
+  // 自己提交自己那一键，这里只负责转发 updateConfiguration。失败回执
+  // （configurationError）由设置页用于回滚；成功/失败 toast 由宿主全局提示，
+  // 设置页不渲染页面内反馈（见 spec agent-config「设置页控件的保存时机」与
   // desktop-settings「设置页反馈语义」）。
   const handleConfigurationSave = useCallback(
     (configData: ConfigurationData) => {
-      dispatch({ type: "SET_CONFIGURATION_LOADING", payload: true });
       vscode.postMessage({
         command: "updateConfiguration",
         configurationData: configData,
@@ -5261,7 +5260,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
       onSaveAgentsContent={handleSaveAgentsContent}
       agentsSaving={agentsSaving}
       workdir={settingsWorkdir}
-      saving={state.configurationLoading}
+      configurationError={state.configurationError}
       initialNav={settingsNav}
       vscode={vscode}
       projectSettings={state.projectSettings}

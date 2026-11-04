@@ -1259,10 +1259,9 @@ describe("MessageHandler settings tab", () => {
     // 用户偏好落用户级 ~/.wave/settings.json，由 SDK 实时重载在下一轮对话生效：
     // 保存不重建会话（spec agent-config「配置变更不再需要重建会话」场景 1）。
     expect(context.updateAllSessionsConfig).not.toHaveBeenCalled();
-    // 保存结果经宿主原生通知提示（spec「设置页反馈语义」）
-    expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
-      "保存成功",
-    );
+    // 成功静默（spec「设置页反馈语义」）：即时提交下控件的新状态就是回执，
+    // 逐次弹「保存成功」会淹掉失败提示。
+    expect(vscode.window.showInformationMessage).not.toHaveBeenCalled();
     const commands = (
       context.postSettingsMessage as ReturnType<typeof vi.fn>
     ).mock.calls.map((call) => (call[0] as { command: string }).command);
@@ -1959,7 +1958,7 @@ describe("MessageHandler settings tab", () => {
 
   // 保存「失败」半边此前无覆盖：saveConfiguration 抛错时必须给用户可见反馈，
   // 且要把 configurationError 回发给设置页（而非静默停在内联提示状态）。
-  test("updateConfiguration save failure shows an error toast and replies configurationError", async () => {
+  test("updateConfiguration failure names the key and carries no action", async () => {
     const session = createReadySession();
     const { handler, context, configService } = createReadyHandler(session);
     configService.saveConfiguration.mockRejectedValue(new Error("boom"));
@@ -1969,8 +1968,10 @@ describe("MessageHandler settings tab", () => {
       configurationData: { language: "en-US" },
     });
 
+    // 具名（哪一项没写进去），但**不带 action**：失败原因是权限/磁盘/远端连接，
+    // 打开 settings.json 帮不上忙（2026-11-04 拍板）。
     expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
-      "保存失败：boom",
+      "设置未写入「AI 回复语言」：boom",
     );
     expect(vscode.window.showInformationMessage).not.toHaveBeenCalled();
     const commands = (
@@ -2206,7 +2207,7 @@ describe("MessageHandler chat-route configuration toasts", () => {
     vi.clearAllMocks();
   });
 
-  test("updateConfiguration shows a success toast and nudges the chat webview", async () => {
+  test("updateConfiguration stays silent on success and nudges the chat webview", async () => {
     const session = createReadySession();
     const { handler, context, configService } = createReadyHandler(session);
 
@@ -2225,9 +2226,8 @@ describe("MessageHandler chat-route configuration toasts", () => {
     // （spec core/agent-config.md「配置变更不再需要重建会话」场景 1–2）——插件变更
     // 同样不再重建（等用户敲 /reload-plugins，见 plugin.md「插件变更的就地重载」）。
     expect(context.updateAllSessionsConfig).not.toHaveBeenCalled();
-    expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
-      "保存成功",
-    );
+    // 成功静默（spec「设置页反馈语义」）：控件的新状态本身就是回执。
+    expect(vscode.window.showInformationMessage).not.toHaveBeenCalled();
     expect(vscode.window.showErrorMessage).not.toHaveBeenCalled();
     const commands = (
       context.postMessage as ReturnType<typeof vi.fn>
@@ -2242,7 +2242,7 @@ describe("MessageHandler chat-route configuration toasts", () => {
     ]);
   });
 
-  test("updateConfiguration save failure shows an error toast and posts configurationError", async () => {
+  test("updateConfiguration save failure names the key and posts configurationError", async () => {
     const session = createReadySession();
     const { handler, context, configService } = createReadyHandler(session);
     configService.saveConfiguration.mockRejectedValue(new Error("boom"));
@@ -2256,7 +2256,7 @@ describe("MessageHandler chat-route configuration toasts", () => {
     );
 
     expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
-      "保存失败：boom",
+      "设置未写入「AI 回复语言」：boom",
     );
     expect(vscode.window.showInformationMessage).not.toHaveBeenCalled();
     const errors = sentPosts(context)("configurationError");

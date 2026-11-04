@@ -509,7 +509,9 @@ export type UpdateChannel = "stable" | "beta";
 /** Action a toast's button triggers when clicked (host-side semantics). Only
  *  一种语义：「聚焦后台会话」（后台会话确认 toast 的「查看」按钮）。更新下载/重启
  *  早已由账户卡片 S0–S6 按钮状态机接管，未登录 GitHub 下载页的 toast 也随
- *  updateChecker 一并删除（2026-09-09/2026-09-10 拍板），故动作变体只剩这一种。 */
+ *  updateChecker 一并删除（2026-09-09/2026-09-10 拍板），故动作变体只剩这一种。
+ *  设置写盘失败**不带动作**：失败原因是权限/磁盘/远端连接，打开 settings.json
+ *  帮不上忙，真正的补救是界面已经回滚到生效值（2026-11-04 拍板）。 */
 export type ToastAction = {
   type: "focusSession";
   host: string;
@@ -1034,7 +1036,6 @@ export interface ChatState {
     | "remoteNewSession"
     | null;
   configurationData?: ConfigurationData;
-  configurationLoading: boolean;
   configurationError?: string;
   // Project-scoped settings (read from .wave/settings.json merged config via
   // stdio RPC). Holds the merged enabledPlugins map for the 项目设置 view.
@@ -1253,7 +1254,6 @@ export type ChatAction =
     }
   | { type: "HIDE_DIALOG" }
   | { type: "SET_AUTHENTICATED"; payload: boolean }
-  | { type: "SET_CONFIGURATION_LOADING"; payload: boolean }
   | { type: "SET_CONFIGURATION_ERROR"; payload: string | undefined }
   | { type: "SET_CONFIGURATION_DATA"; payload: ConfigurationData }
   | {

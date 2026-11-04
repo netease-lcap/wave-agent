@@ -64,7 +64,7 @@ test.describe("设置页「代码补全 / 补全模型」（真 settings bundle�
     ).toEqual(["removed-model", "qwen2.5-coder", "gemini-3-flash"]);
   });
 
-  test("改模型 + 关开关 → 一次 updateConfiguration 带两个顶层键", async ({
+  test("改模型 + 关开关 → 各自立刻提交，两次 updateConfiguration 各带一个键", async ({
     webviewPage,
   }) => {
     await openSettings(webviewPage, { configurationData: READY_CONFIGURATION });
@@ -83,25 +83,26 @@ test.describe("设置页「代码补全 / 补全模型」（真 settings bundle�
     await webviewPage
       .locator('.settings-switch:has(input[aria-label="代码补全"])')
       .click();
-    await webviewPage.getByRole("button", { name: "保存" }).click();
 
+    // 设置页没有「保存」按钮：每个控件在改动发生时只提交自己那一键
+    // （spec agent-config「设置页控件的保存时机」）。
     await expect
       .poll(async () => {
         const messages = await sentToHost<{
           command?: string;
           configurationData?: Record<string, unknown>;
         }>(webviewPage);
-        return messages.find((m) => m.command === "updateConfiguration")
-          ?.configurationData;
+        return messages
+          .filter((m) => m.command === "updateConfiguration")
+          .map((m) => m.configurationData);
       })
-      .toEqual({
-        // 与语言/上下文长度同一个载荷（diff 语义：只有真改动过的键出现）
-        completionModel: "qwen2.5-coder",
-        completionEnabled: false,
-      });
+      .toEqual([
+        { completionModel: "qwen2.5-coder" },
+        { completionEnabled: false },
+      ]);
   });
 
-  test("未设置态：下拉首项为「未设置（跟随快速模型）」、开关默认开、不关不动时保存不写键", async ({
+  test("未设置态：下拉首项为「未设置（跟随快速模型）」、开关默认开、没动过就一条都不发", async ({
     webviewPage,
   }) => {
     await openSettings(webviewPage, { configurationData: {} });
@@ -113,22 +114,14 @@ test.describe("设置页「代码补全 / 补全模型」（真 settings bundle�
     );
     await expect(completionSwitch(webviewPage)).toBeChecked();
 
-    await webviewPage.getByRole("button", { name: "保存" }).click();
-
+    // 「省略键 = 不改该键」：未设置态 + 开关没被拨动 → 一条写盘报文都没有
+    // （不把默认「开」钉进文件）。
     await expect
       .poll(async () => {
         const messages = await sentToHost<{ command?: string }>(webviewPage);
-        return messages.some((m) => m.command === "updateConfiguration");
+        return messages.filter((m) => m.command === "updateConfiguration");
       })
-      .toBe(true);
-    const save = (
-      await sentToHost<{
-        command?: string;
-        configurationData?: Record<string, unknown>;
-      }>(webviewPage)
-    ).find((m) => m.command === "updateConfiguration");
-    // 「省略键 = 不改该键」：未设置态 + 开关没被拨动 → 空载荷（不把默认「开」钉进文件）
-    expect(save?.configurationData).toEqual({});
+      .toEqual([]);
   });
 
   test("下一步编辑建议：缺省关闭，拨开后只提交 nextEditEnabled 一个键", async ({
@@ -146,7 +139,6 @@ test.describe("设置页「代码补全 / 补全模型」（真 settings bundle�
     await webviewPage
       .locator('.settings-switch:has(input[aria-label="下一步编辑建议"])')
       .click();
-    await webviewPage.getByRole("button", { name: "保存" }).click();
 
     await expect
       .poll(async () => {

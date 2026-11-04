@@ -53,6 +53,7 @@ import {
   StdioAgent,
   NotificationRouter,
   MESSAGE_PAGE_SIZE,
+  describeUserPreferencePatch,
 } from "wave-agent-sdk/host";
 import { StdioClient } from "./stdio/stdioClient";
 import type { JsonRpcClient } from "./stdio/jsonRpcClient";
@@ -6577,9 +6578,10 @@ export class DesktopHost {
         this.currentHost,
         configData,
       );
-      // 设置页保存成功经全局 toast 提示（spec「设置页反馈语义」，webview 不再
-      // 渲染页面内提示）；configurationResponse 仍回发以刷新设置页展示值。
-      this.showToast({ message: "保存成功", type: "success" });
+      // 成功**不弹任何提示**（spec「设置页反馈语义」）：控件翻到新状态本身就是
+      // 回执，而即时提交下一次交互可能只隔几百毫秒——每次改动弹一条「保存成功」
+      // 会把唯一有信息量的失败提示淹掉。configurationResponse 仍回发以刷新设置页
+      // 展示值（对比生效视图，纠正被组织配置覆盖的键）。
       this.postMessage({ command: "configurationUpdated" });
       this.postMessage({
         command: "configurationResponse",
@@ -6593,8 +6595,18 @@ export class DesktopHost {
     } catch (error) {
       console.error("[DesktopHost] Failed to save configuration:", error);
       const message = error instanceof Error ? error.message : String(error);
-      this.showToast({ message: `保存失败：${message}`, type: "error" });
-      // configurationError 仅用于复位 webview 的保存中状态（按钮重新可用）。
+      // 失败提示要**具名**（spec「设置页反馈语义」）：即时提交没有保存动作可
+      // 回溯，光说「保存失败」用户不知道是哪个控件没生效。键名取共享标签表
+      // （一次写入只含一个键）。**不给「打开设置文件」之类的按钮**：失败原因是
+      // 权限/磁盘/远端连接，打开那份文件帮不上忙，真正的补救是界面已经回滚到
+      // 生效值（2026-11-04 拍板）。
+      this.showToast({
+        message: `设置未写入「${describeUserPreferencePatch(
+          configData as Record<string, unknown>,
+        )}」：${message}`,
+        type: "error",
+      });
+      // configurationError 仅用于复位 webview 的提交中状态（控件重新可用）。
       this.postMessage({
         command: "configurationError",
         error: `Failed to save configuration: ${error}`,

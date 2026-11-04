@@ -73,10 +73,6 @@ function contextLengthInput(): HTMLInputElement {
   return screen.getByLabelText("上下文长度") as HTMLInputElement;
 }
 
-function saveButton(): HTMLButtonElement {
-  return screen.getByRole("button", { name: "保存" }) as HTMLButtonElement;
-}
-
 describe("SettingsPage「AI 回复语言」行（未设置时显示 ≡ 生效）", () => {
   it("settings.json 未设置 language 时选中「未设置（默认：中文）」，其默认值与 SDK 兜底同语言", () => {
     renderGlobalView({ configurationData: {} });
@@ -143,58 +139,82 @@ describe("SettingsPage「上下文长度」行（未设置时用占位符显示�
   });
 });
 
-describe("SettingsPage 全局设置保存载荷：只写改动过的字段（省略键 = 不改该键）", () => {
+describe("SettingsPage 即时提交：改动发生时只写那一个键（省略键 = 不改该键）", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it("一个字都没改（两个键都未设置）→ 载荷为空，不得把键钉进文件", () => {
+  it("没有任何改动 → 一次都不写盘（不存在「随手保存一次」把键钉进文件）", () => {
     const { onSave } = renderGlobalView({ configurationData: {} });
 
-    fireEvent.click(saveButton());
-
-    // 空载荷 = 不改任何键：系统环境里已有的 WAVE_MAX_INPUT_TOKENS 因此不会被
-    // 「进设置页随手保存一次」钉成 200000（spec agent-config 场景 8）。
-    expect(onSave).toHaveBeenCalledWith({});
+    expect(onSave).not.toHaveBeenCalled();
   });
 
-  it("只改语言 → 载荷只有 language，其余键不出现", () => {
+  it("改语言 → 选中即写，载荷只有 language", () => {
     const { onSave } = renderGlobalView({ configurationData: {} });
 
     fireEvent.change(languageSelect(), { target: { value: "en-US" } });
-    fireEvent.click(saveButton());
 
+    expect(onSave).toHaveBeenCalledTimes(1);
     expect(onSave).toHaveBeenCalledWith({ language: "en-US" });
   });
 
-  it("只填上下文长度（语言保持未设置）→ 载荷只有 contextLength", () => {
+  it("上下文长度：打字途中不写盘，失焦才写一次（不把输入途中的值当真实值）", () => {
     const { onSave } = renderGlobalView({ configurationData: {} });
 
-    fireEvent.change(contextLengthInput(), { target: { value: "128" } });
-    fireEvent.click(saveButton());
+    const input = contextLengthInput();
+    fireEvent.change(input, { target: { value: "1" } });
+    fireEvent.change(input, { target: { value: "12" } });
+    fireEvent.change(input, { target: { value: "128" } });
+    expect(onSave).not.toHaveBeenCalled();
 
+    fireEvent.blur(input);
+
+    expect(onSave).toHaveBeenCalledTimes(1);
     expect(onSave).toHaveBeenCalledWith({ contextLength: 128 });
   });
 
-  it("文件已有值但没动过 → 载荷为空（无差异保存不写文件）", () => {
-    const { onSave } = renderGlobalView({
-      configurationData: { language: "zh-CN", contextLength: 200 },
-    });
+  it("上下文长度：回车同样提交一次，输入法组合中的回车不算", () => {
+    const { onSave } = renderGlobalView({ configurationData: {} });
 
-    fireEvent.click(saveButton());
+    const input = contextLengthInput();
+    fireEvent.change(input, { target: { value: "256" } });
+    fireEvent.keyDown(input, { key: "Enter", isComposing: true });
+    expect(onSave).not.toHaveBeenCalled();
 
-    expect(onSave).toHaveBeenCalledWith({});
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(onSave).toHaveBeenCalledWith({ contextLength: 256 });
   });
 
-  it("把已写过的值清空后保存 → 等同「不改该键」（不提供清除/恢复默认）", () => {
+  it("值没变（与文件里一致）→ 不写盘", () => {
     const { onSave } = renderGlobalView({
       configurationData: { language: "zh-CN", contextLength: 200 },
     });
 
-    fireEvent.change(contextLengthInput(), { target: { value: "" } });
-    fireEvent.click(saveButton());
+    fireEvent.blur(contextLengthInput());
 
-    expect(onSave).toHaveBeenCalledWith({});
+    expect(onSave).not.toHaveBeenCalled();
+  });
+
+  it("把已写过的值清空后失焦 → 等同「不改该键」（不提供清除/恢复默认）", () => {
+    const { onSave } = renderGlobalView({
+      configurationData: { language: "zh-CN", contextLength: 200 },
+    });
+
+    const input = contextLengthInput();
+    fireEvent.change(input, { target: { value: "" } });
+    fireEvent.blur(input);
+
+    expect(onSave).not.toHaveBeenCalled();
+  });
+
+  it("设置页没有「保存」按钮（设置页不再有整页提交这个动作）", () => {
+    renderGlobalView({ configurationData: {} });
+
+    expect(
+      screen.queryByRole("button", { name: "保存" }),
+    ).not.toBeInTheDocument();
   });
 });
 
@@ -329,87 +349,101 @@ describe("SettingsPage 全局设置视图区块拆分（2026-09-08 拍板：主�
   });
 });
 
-describe("SettingsPage 保存进行中按钮禁用（2026-09-09 拍板：保存结果反馈改走宿主全局 toast，设置页不渲染页面内提示）", () => {
-  function renderWithSaving(saving: boolean) {
-    return render(
-      <SettingsPage
-        configurationData={{ language: "zh-CN" }}
-        onSave={() => {}}
-        onClose={() => {}}
-        userAgentsContent={null}
-        projectAgentsContent={null}
-        onLoadAgentsContent={() => {}}
-        saving={saving}
-      />,
-    );
+describe("SettingsPage 失败回滚与回执不回拨（spec「设置页控件的保存时机」场景 5–7）", () => {
+  const baseProps = {
+    onClose: () => {},
+    userAgentsContent: null,
+    projectAgentsContent: null,
+    onLoadAgentsContent: () => {},
+  };
+
+  function kbSwitch(): HTMLInputElement {
+    return screen.getByLabelText("企业知识库") as HTMLInputElement;
   }
 
-  it("保存期间（saving=true）「保存」按钮禁用，宿主回包后复位可用", () => {
-    const { rerender } = renderWithSaving(false);
+  it("拨动开关即刻回写并同步显示（乐观更新，不需要任何提交按钮）", () => {
+    const onSave = vi.fn();
+    render(
+      <SettingsPage configurationData={{}} onSave={onSave} {...baseProps} />,
+    );
 
-    expect(screen.getByRole("button", { name: "保存" })).toBeEnabled();
-    // 点击保存 → 模拟 host 保存中（saving=true）→ 回包（saving=false）
-    fireEvent.click(screen.getByRole("button", { name: "保存" }));
-    rerender(
-      <SettingsPage
-        configurationData={{ language: "zh-CN" }}
-        onSave={() => {}}
-        onClose={() => {}}
-        userAgentsContent={null}
-        projectAgentsContent={null}
-        onLoadAgentsContent={() => {}}
-        saving={true}
-      />,
-    );
-    expect(screen.getByRole("button", { name: "保存" })).toBeDisabled();
-    rerender(
-      <SettingsPage
-        configurationData={{ language: "zh-CN" }}
-        onSave={() => {}}
-        onClose={() => {}}
-        userAgentsContent={null}
-        projectAgentsContent={null}
-        onLoadAgentsContent={() => {}}
-        saving={false}
-      />,
-    );
-    expect(screen.getByRole("button", { name: "保存" })).toBeEnabled();
-    // 成功/失败提示由宿主全局 toast 呈现，设置页不渲染页面内文字
-    expect(screen.queryByText("保存成功")).not.toBeInTheDocument();
-    expect(screen.queryByText(/保存失败/)).not.toBeInTheDocument();
+    expect(kbSwitch().checked).toBe(false);
+    fireEvent.click(kbSwitch());
+
+    expect(kbSwitch().checked).toBe(true);
+    expect(onSave).toHaveBeenCalledWith({ enableKnowledgeBase: true });
   });
 
-  it("保存中切换导航项后回包，页面内亦无残留提示（反馈不落页面、与导航无关）", () => {
-    const { rerender } = renderWithSaving(false);
+  it("写盘失败（configurationError）→ 回滚到上一次生效值", () => {
+    const onSave = vi.fn();
+    const { rerender } = render(
+      <SettingsPage configurationData={{}} onSave={onSave} {...baseProps} />,
+    );
 
-    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    fireEvent.click(kbSwitch());
+    expect(kbSwitch().checked).toBe(true);
+
+    // 宿主写盘失败：回发 configurationError，且不回发 configurationResponse
+    // （configurationData 仍是写盘前那份）。
     rerender(
       <SettingsPage
-        configurationData={{ language: "zh-CN" }}
-        onSave={() => {}}
-        onClose={() => {}}
-        userAgentsContent={null}
-        projectAgentsContent={null}
-        onLoadAgentsContent={() => {}}
-        saving={true}
+        configurationData={{}}
+        onSave={onSave}
+        configurationError="disk is read-only"
+        {...baseProps}
       />,
     );
 
-    // 保存进行中切到「个性化」，再回包（saving=false）：无任何残留提示
-    fireEvent.click(screen.getByRole("button", { name: "个性化" }));
+    expect(kbSwitch().checked).toBe(false);
+  });
+
+  it("回执带回旧值也不回拨：本次挂载内改过的键以本地乐观值为准", () => {
+    const onSave = vi.fn();
+    const { rerender } = render(
+      <SettingsPage configurationData={{}} onSave={onSave} {...baseProps} />,
+    );
+
+    fireEvent.click(kbSwitch());
+    // 滞后回执：宿主带回的是写盘前的旧值（这正是客户看到的「自动关闭」路径）。
+    rerender(
+      <SettingsPage
+        configurationData={{ enableKnowledgeBase: false }}
+        onSave={onSave}
+        {...baseProps}
+      />,
+    );
+
+    expect(kbSwitch().checked).toBe(true);
+  });
+
+  it("正在输入、尚未提交的草稿不被任何回执冲掉", () => {
+    const onSave = vi.fn();
+    const { rerender } = render(
+      <SettingsPage configurationData={{}} onSave={onSave} {...baseProps} />,
+    );
+
+    fireEvent.change(contextLengthInput(), { target: { value: "128" } });
+    expect(onSave).not.toHaveBeenCalled();
+
     rerender(
       <SettingsPage
         configurationData={{ language: "zh-CN" }}
-        onSave={() => {}}
-        onClose={() => {}}
-        userAgentsContent={null}
-        projectAgentsContent={null}
-        onLoadAgentsContent={() => {}}
-        saving={false}
+        onSave={onSave}
+        {...baseProps}
       />,
     );
-    expect(screen.queryByText("保存成功")).not.toBeInTheDocument();
-    expect(screen.queryByText(/保存失败/)).not.toBeInTheDocument();
+
+    expect(contextLengthInput().value).toBe("128");
+  });
+
+  it("配置尚未回包（configurationData 为 null）→ 偏好控件全部置灰", () => {
+    render(
+      <SettingsPage configurationData={null} onSave={vi.fn()} {...baseProps} />,
+    );
+
+    expect(kbSwitch().disabled).toBe(true);
+    expect(languageSelect().disabled).toBe(true);
+    expect(contextLengthInput().disabled).toBe(true);
   });
 });
 
@@ -508,7 +542,7 @@ describe("SettingsPage 被组织配置覆盖的键：显示生效值 + 置灰 + 
     });
 
     fireEvent.change(contextLengthInput(), { target: { value: "128" } });
-    fireEvent.click(saveButton());
+    fireEvent.blur(contextLengthInput());
 
     expect(onSave).toHaveBeenCalledWith({ contextLength: 128 });
   });
@@ -534,7 +568,7 @@ describe("SettingsPage 被组织配置覆盖的键：显示生效值 + 置灰 + 
 
     // 置灰的控件收不到用户操作；只改上下文长度
     fireEvent.change(contextLengthInput(), { target: { value: "128" } });
-    fireEvent.click(saveButton());
+    fireEvent.blur(contextLengthInput());
 
     expect(onSave).toHaveBeenCalledWith({ contextLength: 128 });
   });
@@ -637,7 +671,7 @@ describe("SettingsPage「代码补全 / 补全模型」两行（spec ui/code-com
     expect(onLoadConfiguredModels).toHaveBeenCalledTimes(2);
   });
 
-  it("只改补全模型 → 载荷只有 completionModel", () => {
+  it("只改补全模型 → 立刻只写 completionModel", () => {
     const { onSave } = renderGlobalView({
       configurationData: {},
       configuredModels: ["qwen2.5-coder"],
@@ -646,16 +680,14 @@ describe("SettingsPage「代码补全 / 补全模型」两行（spec ui/code-com
     fireEvent.change(completionSelect(), {
       target: { value: "qwen2.5-coder" },
     });
-    fireEvent.click(saveButton());
 
     expect(onSave).toHaveBeenCalledWith({ completionModel: "qwen2.5-coder" });
   });
 
-  it("关闭补全开关 → 载荷只有 completionEnabled: false", () => {
+  it("关闭补全开关 → 立刻只写 completionEnabled: false", () => {
     const { onSave } = renderGlobalView({ configurationData: {} });
 
     fireEvent.click(completionSwitch());
-    fireEvent.click(saveButton());
 
     expect(onSave).toHaveBeenCalledWith({ completionEnabled: false });
   });
@@ -663,9 +695,7 @@ describe("SettingsPage「代码补全 / 补全模型」两行（spec ui/code-com
   it("两个补全键都未设置且没动过 → 载荷为空（不把默认值钉进文件）", () => {
     const { onSave } = renderGlobalView({ configurationData: {} });
 
-    fireEvent.click(saveButton());
-
-    expect(onSave).toHaveBeenCalledWith({});
+    expect(onSave).not.toHaveBeenCalled();
   });
 
   it("补全开关已显式关闭时，重新打开也写一次（默认开 ≠ 已是文件里的值）", () => {
@@ -675,7 +705,6 @@ describe("SettingsPage「代码补全 / 补全模型」两行（spec ui/code-com
 
     expect(completionSwitch().checked).toBe(false);
     fireEvent.click(completionSwitch());
-    fireEvent.click(saveButton());
 
     expect(onSave).toHaveBeenCalledWith({ completionEnabled: true });
   });
@@ -738,11 +767,9 @@ describe("SettingsPage 补全两行的宿主门禁（spec ui/code-completion.md 
       },
     });
 
-    fireEvent.click(saveButton());
-
     // 前一条渲染门禁已让两个控件不存在、状态无从改动，这里是第三层：载荷侧也
     // 不生成这两个键，防止将来有别的入口预填草稿后「看不见的行也在写键」。
-    expect(onSave).toHaveBeenCalledWith({});
+    expect(onSave).not.toHaveBeenCalled();
   });
 
   it("远端网页宿主：同样不渲染两行、不拉候选", () => {
@@ -806,11 +833,10 @@ describe("SettingsPage「企业知识库」行（顶层 enableKnowledgeBase，�
     expect(kbSwitch().checked).toBe(true);
   });
 
-  it("打开后保存 → 载荷只有该键", () => {
+  it("拨到开 → 立刻只写该键", () => {
     const { onSave } = renderGlobalView({ configurationData: {} });
 
     fireEvent.click(kbSwitch());
-    fireEvent.click(saveButton());
 
     expect(onSave).toHaveBeenCalledWith({ enableKnowledgeBase: true });
   });
@@ -820,18 +846,15 @@ describe("SettingsPage「企业知识库」行（顶层 enableKnowledgeBase，�
       configurationData: { enableKnowledgeBase: true },
     });
 
-    fireEvent.click(saveButton());
-
-    expect(onSave).toHaveBeenCalledWith({});
+    expect(onSave).not.toHaveBeenCalled();
   });
 
-  it("关掉 → 载荷写显式 false（不删键）", () => {
+  it("关掉 → 立刻写显式 false（不删键）", () => {
     const { onSave } = renderGlobalView({
       configurationData: { enableKnowledgeBase: true },
     });
 
     fireEvent.click(kbSwitch());
-    fireEvent.click(saveButton());
 
     expect(onSave).toHaveBeenCalledWith({ enableKnowledgeBase: false });
   });

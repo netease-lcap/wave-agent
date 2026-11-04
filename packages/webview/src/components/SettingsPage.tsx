@@ -5,13 +5,16 @@
  * 经 updateConfiguration 写回，与旧设置弹窗一致；设置页只针对当前项目，
  * 删除项目切换按钮与 4 个管理视图的项目分组卡片；2026-09-04 拍板：
  * 「个性化」AGENTS.md 一并恢复可编辑 + 独立保存，写回对应文件):
- * - 全局设置 (global): 「基础设置」= AI 回复语言下拉 + 上下文长度输入 + 保存
- *   （走 stdio updateConfiguration）；「桌面端设置」区块 = 主题 + 接收 Beta 版
+ * - 全局设置 (global): 「基础设置」= AI 回复语言下拉 + 上下文长度输入
+ *   + 补全两行 + 企业知识库开关（**改一下就写一次**，没有「保存」按钮——2026-11-04
+ *   拍板，见 spec agent-config「设置页控件的保存时机」：开关/下拉选中即写，数字与
+ *   文本失焦或回车时写）；「桌面端设置」区块 = 主题 + 接收 Beta 版
  *   更新（仅桌面端渲染，host 直连 configStore 通道即时生效，无保存按钮；
  *   2026-09-08 拍板从「基础设置」拆出）
  * - 项目设置 (project): SDD 内置插件开关（唯一交互控件，即时启停插件）
  * - 个性化 (personalization): AGENTS.md 可编辑（用户级/项目级文本区 + 独立保存，
- *   经 setAgentsContent RPC 写回对应文件）+ 自动记忆开关/轮次输入 + 保存
+ *   经 setAgentsContent RPC 写回对应文件——整文件写入，故保留显式保存按钮）
+ *   + 自动记忆开关/轮次输入（同样即时提交）
  * - 钩子 (hooks): 用户级/项目级双 tab，按来源平铺展示已配置命令
  * - MCP 服务 (mcp): 用户级/项目级双 tab，服务器列表 + 连接状态 + 连接/断开
  * - 子代理 (subagents) / 技能 (skills): agent 定义与技能列表，内容自
@@ -26,7 +29,7 @@
  * theme tokens; no Element Plus dependency is used.
  */
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ConfigurationData,
   ThemeSource,
@@ -68,10 +71,10 @@ export interface SettingsPageProps {
    *  解析后回传）。桌面端「接收 Beta 版更新」开关的可用性靠它判断：无地址 =
    *  未接入企业服务，置灰并提示「登录后可接收测试版更新」。 */
   serverUrl?: string;
-  /** 保存配置（全局设置 / 个性化视图的保存按钮触发）。**只带用户真正改动过的
-   *  字段**（diff 载荷）：未改动的键、仍处于「未设置」态的键都不出现——宿主与
-   *  CLI RPC 把「省略键」当作「不改该键」（spec agent-config 边界说明「省略键 =
-   *  不改该键」）。 */
+  /** 提交用户偏好（**没有「保存」按钮**：每个控件在改动发生时自己提交自己那一键，
+   *  见 spec agent-config「设置页控件的保存时机」）。载荷只带**本次改动过的字段**
+   *  （通常是单键）——未改动的键、仍处于「未设置」态的键都不出现，宿主与 CLI RPC
+   *  把「省略键」当作「不改该键」（spec 边界说明「省略键 = 不改该键」）。 */
   onSave?: (data: ConfigurationData) => void;
   /** 主题偏好（仅桌面端传入；未传入 = 插件端，不渲染「桌面端设置」区块与
    *  主题行）。选择即时生效（onThemeChange 触发 host setThemeSource），
@@ -87,9 +90,10 @@ export interface SettingsPageProps {
   onUpdateChannelChange?: (channel: UpdateChannel) => void;
   /** 关闭设置页（desktop 返回会话视图 / 标签页关闭） */
   onClose: () => void;
-  /** 保存进行中标记（host 回包前为 true，用于禁用保存按钮；保存结果反馈由
-   *  宿主全局 toast 提示，本组件不渲染页面内自建提示——2026-09-09 拍板） */
-  saving?: boolean;
+  /** 写盘失败回执（宿主 `configurationError`）。设置页据此把乐观改动**回滚**到
+   *  上一次生效值（spec agent-config「设置页控件的保存时机」场景 5）；用户的成功 /
+   *  失败反馈统一由宿主全局 toast 给出，本组件不渲染页面内自建提示（2026-09-09 拍板）。 */
+  configurationError?: string;
   /** 用户级 AGENTS.md 内容（null=尚未加载） */
   userAgentsContent: string | null;
   /** 项目级 AGENTS.md 内容（按当前项目） */
@@ -156,9 +160,9 @@ type AgentsScope = "user" | "project";
  * 占位符；开关不做占位态（它的真实默认就是「开」，三态开关更难用）。草稿用
  * `""` 表示未设置，与「设置成某个值」区分开。
  *
- * 保存时只把**用户真正改动过的字段**放进载荷（省略键 = 不改该键）：未改动的、
+ * 写盘时只把**用户真正改动过的那一个键**放进载荷（省略键 = 不改该键）：未改动的、
  * 仍处于未设置态的一律不写，因此系统环境里已有的 `WAVE_MAX_INPUT_TOKENS` 不会
- * 被「随手保存一次」钉成 200000（见同名边界说明）。把已写过的值清空等同
+ * 被「进设置页看一眼」钉成 200000（见同名边界说明）。把已写过的值清空等同
  * 「不改该键」——不提供「清除 / 恢复默认」按钮（载荷没有删键语义）。
  */
 export const UNSET_OPTION_LABEL = "未设置（默认：中文）";
@@ -182,12 +186,6 @@ export const CONTEXT_LENGTH_PLACEHOLDER = "跟随模型配置（默认 200K）";
 export const AUTO_MEMORY_FREQUENCY_PLACEHOLDER = "默认 1 轮";
 /** 生效值来自机器环境变量时的行内说明（可编辑，保存后写入用户级 settings.json）。 */
 export const ENV_SOURCE_HINT = "当前值来自系统环境变量；保存后以本页设置为准";
-
-/** 未设置态（空草稿）一律不写；与初始值相同也不写。 */
-function changedString(current: string, initial?: string): string | undefined {
-  if (current.trim() === "") return undefined;
-  return current === (initial ?? "") ? undefined : current;
-}
 
 /** 未设置态（空草稿）一律不写；与初始值相同也不写（非数字视为未改动）。 */
 function changedNumber(current: string, initial?: number): number | undefined {
@@ -270,7 +268,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
   updateChannel,
   onUpdateChannelChange,
   onClose,
-  saving = false,
+  configurationError,
   userAgentsContent,
   projectAgentsContent,
   onLoadAgentsContent,
@@ -303,7 +301,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
 
   // 用户偏好草稿（configurationData 回填后同步）。`""` = 未设置（settings.json
   // 里没有该键）——此时控件显示系统默认（占位符 /「未设置（默认：中文）」项），
-  // 保存时不写该键（见文件顶部 UNSET 说明与 spec agent-config 场景 7–8）。
+  // 提交时不写该键（见文件顶部 UNSET 说明与 spec agent-config 场景 7–8）。
   const [language, setLanguage] = useState("");
   const [contextLength, setContextLength] = useState("");
   const [autoMemoryFrequency, setAutoMemoryFrequency] = useState("");
@@ -323,7 +321,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
   // 没有代码编辑器、补全从不触发，在那里摆一个开关等于承诺一个不会发生的功能
   // （spec ui/code-completion.md 边界情况「补全设置行的宿主范围」）。本组件为四端
   // 共用，门禁必须按宿主**能力位**判定，不得依赖「桌面端不渲染设置页」这类隐含
-  // 前提。三处用法都必须过这个判据——渲染、进视图拉候选、保存载荷——否则会出现
+  // 前提。三处用法都必须过这个判据——渲染、进视图拉候选、提交载荷——否则会出现
   // 「看不见的行也在写键」。
   const completionsSupported = !isDesktopHost() && !isRemotePageHost();
   // 主题偏好（仅桌面端有值）：选择即生效（onThemeChange 已即时上送 host），
@@ -343,26 +341,84 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
   const [userContent, setUserContent] = useState("");
   const [projectContent, setProjectContent] = useState("");
 
-  // 配置数据变化时同步表单草稿（文件里没有的键 → 未设置态，不编造默认值）
+  // 配置数据变化时同步表单草稿（文件里没有的键 → 未设置态，不编造默认值）。
+  //
+  // 但「改一下就写一次」之后，回包不再只是初始值——每一次写盘都会带回一份配置，
+  // 拿它无条件覆盖界面就会把用户刚拨的开关拨回去（客户反馈的「自动关闭」正是这条
+  // 路径），也会冲掉正在输入的数字。三个 ref 划清边界（spec「设置页控件的保存
+  // 时机」场景 5–7）：
+  //  - pendingKeys：正在输入、尚未提交的键（数字/文本还没失焦）——任何回包都不覆盖；
+  //  - touchedKeys：本次挂载内已提交过的键——界面以本地乐观值为准，回包不回拨；
+  //  - committedValues：每个键最后提交出去的值，作为下一次「真的变了吗」的比较基准
+  //    （回执可能还没到，不能拿回包里的旧值当基准，否则「拨回原位」会被判成没改而
+  //    漏掉写盘，界面与文件就此分叉）。
+  const pendingKeysRef = useRef<Set<UserPreferenceKey>>(new Set());
+  const touchedKeysRef = useRef<Set<UserPreferenceKey>>(new Set());
+  const committedValuesRef = useRef<
+    Map<UserPreferenceKey, string | number | boolean>
+  >(new Map());
+  // 首次回包整表回填；之后只补用户没碰过的键（别的端或外部编辑改了文件时仍如实显示）。
+  const hydratedRef = useRef(false);
+
+  /**
+   * 用配置回填草稿；force = 无条件覆盖（首次加载 / 写盘失败回滚）。
+   * 依赖只有「稳定的 setState + ref」：用 useCallback 固定下来，两个 effect 才好
+   * 把它列进依赖（否则回包一到就会因为函数身份变化而漏跑/多跑）。
+   */
+  const hydrateDrafts = useCallback(
+    (data: ConfigurationData, force: boolean) => {
+      const canWrite = (key: UserPreferenceKey) =>
+        force ||
+        (!pendingKeysRef.current.has(key) && !touchedKeysRef.current.has(key));
+      if (canWrite("language")) setLanguage(data.language ?? "");
+      if (canWrite("contextLength")) {
+        setContextLength(
+          data.contextLength === undefined ? "" : String(data.contextLength),
+        );
+      }
+      if (canWrite("autoMemoryEnabled")) {
+        setAutoMemoryEnabled(data.autoMemoryEnabled ?? true);
+      }
+      if (canWrite("autoMemoryFrequency")) {
+        setAutoMemoryFrequency(
+          data.autoMemoryFrequency === undefined
+            ? ""
+            : String(data.autoMemoryFrequency),
+        );
+      }
+      if (canWrite("completionModel")) {
+        setCompletionModel(data.completionModel ?? "");
+      }
+      if (canWrite("completionEnabled")) {
+        setCompletionEnabled(data.completionEnabled ?? true);
+      }
+      if (canWrite("nextEditEnabled")) {
+        setNextEditEnabled(data.nextEditEnabled ?? false);
+      }
+      if (canWrite("enableKnowledgeBase")) {
+        setEnableKnowledgeBase(data.enableKnowledgeBase ?? false);
+      }
+    },
+    [],
+  );
+
   useEffect(() => {
     if (!configurationData) return;
-    setLanguage(configurationData.language ?? "");
-    setContextLength(
-      configurationData.contextLength === undefined
-        ? ""
-        : String(configurationData.contextLength),
-    );
-    setAutoMemoryEnabled(configurationData.autoMemoryEnabled ?? true);
-    setAutoMemoryFrequency(
-      configurationData.autoMemoryFrequency === undefined
-        ? ""
-        : String(configurationData.autoMemoryFrequency),
-    );
-    setCompletionModel(configurationData.completionModel ?? "");
-    setCompletionEnabled(configurationData.completionEnabled ?? true);
-    setNextEditEnabled(configurationData.nextEditEnabled ?? false);
-    setEnableKnowledgeBase(configurationData.enableKnowledgeBase ?? false);
-  }, [configurationData]);
+    const first = !hydratedRef.current;
+    hydratedRef.current = true;
+    hydrateDrafts(configurationData, first);
+  }, [configurationData, hydrateDrafts]);
+
+  // 写盘失败：回滚到上一次生效值。宿主失败时不回发 configurationResponse，因此
+  // `configurationData` 仍是写盘前的那份——强制整表回填正好等于撤销本次乐观改动，
+  // 界面不会停在「界面是开、文件里是关」的分叉态。
+  useEffect(() => {
+    if (!configurationError || !configurationData) return;
+    pendingKeysRef.current.clear();
+    touchedKeysRef.current.clear();
+    committedValuesRef.current.clear();
+    hydrateDrafts(configurationData, true);
+  }, [configurationError, configurationData, hydrateDrafts]);
 
   // 窗口级广播 desktopThemeSource 同步主题选中态（启动时 host 推一次 + 用户切换时）
   useEffect(() => {
@@ -489,72 +545,78 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
     })),
   ];
 
-  // 保存类操作反馈统一由宿主全局 toast 提示（2026-09-09 拍板，见
-  // desktop-settings「设置页反馈语义」），本组件不生成/渲染任何
-  // 页面内提示文字；「保存中…」由外层 saving / agentsSaving 驱动按钮禁用。
+  // 提交类操作的反馈统一由宿主全局 toast 提示（2026-09-09 拍板，见
+  // desktop-settings「设置页反馈语义」），本组件不生成/渲染任何页面内提示文字。
   //
-  // 载荷只带**用户真正改动过**的字段（diff 语义）：没改的、仍处于未设置态的键
-  // 都不出现，宿主/CLI 把「省略键」当作「不改该键」（spec 场景 8 与边界说明
-  // 「省略键 = 不改该键」）——所以「一个字都没改就点保存」不会把任何键写进
-  // settings.json（否则会把系统环境里的 WAVE_MAX_INPUT_TOKENS 钉成 200000）。
-  const handleSaveGlobal = () => {
-    if (!configurationData || !onSave) return;
-    const patch: ConfigurationData = {};
-    const languagePatch = changedString(language, configurationData.language);
-    if (languagePatch !== undefined) patch.language = languagePatch;
-    const contextPatch = changedNumber(
-      contextLength,
-      configurationData.contextLength,
-    );
-    if (contextPatch !== undefined) patch.contextLength = contextPatch;
-    // 补全模型（顶层键）：未设置态/未改动不写该键（「清空下拉」= 不改该键，载荷
-    // 没有删键语义，spec agent-config 边界说明）；补全开关无占位态，比较基准是它
-    // **显示的初始值**（未设置时显示默认「开」）。不渲染这两行的宿主不进载荷——
-    // 状态从未被动过、正常情况下也不会产生差异，但「看不见的控件不写键」应由判据
-    // 保证，而不是靠「它恰好没变」这条隐含前提。
-    if (completionsSupported) {
-      const completionModelPatch = changedString(
-        completionModel,
-        configurationData.completionModel,
-      );
-      if (completionModelPatch !== undefined) {
-        patch.completionModel = completionModelPatch;
-      }
-      if (completionEnabled !== (configurationData.completionEnabled ?? true)) {
-        patch.completionEnabled = completionEnabled;
-      }
-      if (nextEditEnabled !== (configurationData.nextEditEnabled ?? false)) {
-        patch.nextEditEnabled = nextEditEnabled;
-      }
-    }
-    // 企业知识库开关：与补全两行不同，它在三端都渲染（知识库不是编辑器专属
-    // 能力），所以不受上面的宿主门禁约束；比较基准同样是它**显示的初始值**
-    // （未设置时显示默认「关」），没拨动过就不写这个键。
-    if (
-      enableKnowledgeBase !== (configurationData.enableKnowledgeBase ?? false)
-    ) {
-      patch.enableKnowledgeBase = enableKnowledgeBase;
-    }
-    onSave(patch);
+  // 设置页**没有「保存」按钮**（spec agent-config「设置页控件的保存时机」）：开关与
+  // 下拉在选中那一刻就把**自己那一键**送出去，数字与文本在失焦或回车时送出——载荷
+  // 仍是 diff 语义（省略键 = 不改该键），所以这里没有「整页算 diff」这一步。比较基准
+  // 取「该键最后一次提交出去的值」而不是回包里的值：回执可能还没到，拿旧值比较会把
+  // 「拨回原位」判成没改、漏掉写盘，界面与文件就此分叉。
+  const baseString = (key: UserPreferenceKey, fallback: string): string => {
+    const committed = committedValuesRef.current.get(key);
+    return typeof committed === "string" ? committed : fallback;
+  };
+  const baseNumber = (
+    key: UserPreferenceKey,
+    fallback?: number,
+  ): number | undefined => {
+    const committed = committedValuesRef.current.get(key);
+    return typeof committed === "number" ? committed : fallback;
+  };
+  const baseBoolean = (key: UserPreferenceKey, fallback: boolean): boolean => {
+    const committed = committedValuesRef.current.get(key);
+    return typeof committed === "boolean" ? committed : fallback;
   };
 
-  const handleSaveMemory = () => {
-    if (!configurationData || !onSave) return;
-    const patch: ConfigurationData = {};
-    // 开关无占位态：比较基准是它**显示的初始值**（未设置时显示默认「开」），
-    // 因此「未设置 + 没碰它」不写该键，只有真被拨动过才写。
-    if (autoMemoryEnabled !== (configurationData.autoMemoryEnabled ?? true)) {
-      patch.autoMemoryEnabled = autoMemoryEnabled;
-    }
-    const frequencyPatch = changedNumber(
-      autoMemoryFrequency,
-      configurationData.autoMemoryFrequency,
-    );
-    if (frequencyPatch !== undefined) {
-      patch.autoMemoryFrequency = frequencyPatch;
-    }
-    onSave(patch);
+  /** 写出一个键（乐观显示由各控件的 setState 先完成）。 */
+  const commitValue = (
+    key: UserPreferenceKey,
+    value: string | number | boolean,
+  ) => {
+    committedValuesRef.current.set(key, value);
+    touchedKeysRef.current.add(key);
+    pendingKeysRef.current.delete(key);
+    onSave?.({ [key]: value } as ConfigurationData);
   };
+
+  /** 开关：拨动即写；拨回最后一次提交的值 = 文件里已经是它，不产生写盘。 */
+  const commitToggle = (
+    key: UserPreferenceKey,
+    next: boolean,
+    fallback: boolean,
+  ) => {
+    if (next === baseBoolean(key, fallback)) return;
+    commitValue(key, next);
+  };
+
+  /** 下拉：选中即写；「未设置」项（空串）= 保持未设置，不写该键。 */
+  const commitSelect = (
+    key: UserPreferenceKey,
+    next: string,
+    fallback: string,
+  ) => {
+    if (next === "" || next === baseString(key, fallback)) return;
+    commitValue(key, next);
+  };
+
+  /** 数字输入：失焦或回车时提交一次（边打字边写会把输入途中的 2 当成真实值）。 */
+  const commitNumber = (
+    key: UserPreferenceKey,
+    draft: string,
+    fallback?: number,
+  ) => {
+    const next = changedNumber(draft, baseNumber(key, fallback));
+    if (next !== undefined) commitValue(key, next);
+  };
+
+  /** 输入框统一的提交时机：失焦或回车（输入法组合中的 Enter 不算提交）。 */
+  const submitOnBlurOrEnter = (submit: () => void) => ({
+    onBlur: submit,
+    onKeyDown: (event: React.KeyboardEvent<HTMLInputElement>) => {
+      if (event.key === "Enter" && !event.nativeEvent.isComposing) submit();
+    },
+  });
 
   const handleSaveAgents = () => {
     if (!onSaveAgentsContent) return;
@@ -660,7 +722,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                         testId="settings-select-language"
                         label="AI 回复语言"
                         value={language}
-                        disabled={orgManaged("language")}
+                        disabled={!configurationData || orgManaged("language")}
                         options={[
                           ...(language === ""
                             ? [{ value: "", label: UNSET_OPTION_LABEL }]
@@ -668,7 +730,14 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                           { value: "zh-CN", label: "中文" },
                           { value: "en-US", label: "English" },
                         ]}
-                        onChange={setLanguage}
+                        onChange={(next) => {
+                          setLanguage(next);
+                          commitSelect(
+                            "language",
+                            next,
+                            configurationData?.language ?? "",
+                          );
+                        }}
                       />
                     </div>
                   </div>
@@ -704,16 +773,29 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                         step={16}
                         placeholder={CONTEXT_LENGTH_PLACEHOLDER}
                         value={contextLength}
-                        disabled={orgManaged("contextLength")}
-                        onChange={(e) => setContextLength(e.target.value)}
+                        disabled={
+                          !configurationData || orgManaged("contextLength")
+                        }
+                        onChange={(e) => {
+                          // 只改本地草稿：打字途中不写盘，失焦或回车才提交一次
+                          pendingKeysRef.current.add("contextLength");
+                          setContextLength(e.target.value);
+                        }}
+                        {...submitOnBlurOrEnter(() =>
+                          commitNumber(
+                            "contextLength",
+                            contextLength,
+                            configurationData?.contextLength,
+                          ),
+                        )}
                       />
                       <span>K</span>
                     </div>
                   </div>
                   {/* 代码补全两行（spec ui/code-completion.md 故事 4–5）：开关是行内
                       补全的总闸（缺省为开、不做占位态），模型是补全专用模型（未设置时
-                      跟随快速模型）。二者与上面的语言/上下文长度共用本卡片的
-                      「保存」按钮与 diff 载荷——同一份用户偏好、同一份落点。
+                      跟随快速模型）。二者与上面的语言/上下文长度同属一份用户偏好、
+                      同一个落点：各自在改动发生时只提交自己那一键（diff 载荷）。
                       候选清单与对话模型同源，进本视图时拉一次。
                       只在本宿主真的提供补全时才渲染（桌面端/远端网页没有编辑器，
                       见上面的 completionsSupported 与 spec 边界情况「补全设置行的
@@ -733,9 +815,16 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                               type="checkbox"
                               aria-label="代码补全"
                               checked={completionEnabled}
-                              onChange={(e) =>
-                                setCompletionEnabled(e.target.checked)
-                              }
+                              disabled={!configurationData}
+                              onChange={(e) => {
+                                const next = e.target.checked;
+                                setCompletionEnabled(next);
+                                commitToggle(
+                                  "completionEnabled",
+                                  next,
+                                  configurationData?.completionEnabled ?? true,
+                                );
+                              }}
                             />
                             <span className="settings-switch-slider"></span>
                           </label>
@@ -754,9 +843,16 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                               type="checkbox"
                               aria-label="下一步编辑建议"
                               checked={nextEditEnabled}
-                              onChange={(e) =>
-                                setNextEditEnabled(e.target.checked)
-                              }
+                              disabled={!configurationData}
+                              onChange={(e) => {
+                                const next = e.target.checked;
+                                setNextEditEnabled(next);
+                                commitToggle(
+                                  "nextEditEnabled",
+                                  next,
+                                  configurationData?.nextEditEnabled ?? false,
+                                );
+                              }}
                             />
                             <span className="settings-switch-slider"></span>
                           </label>
@@ -788,8 +884,16 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                             testId="settings-select-completion-model"
                             label="补全模型"
                             value={completionModel}
+                            disabled={!configurationData}
                             options={completionModelOptions}
-                            onChange={setCompletionModel}
+                            onChange={(next) => {
+                              setCompletionModel(next);
+                              commitSelect(
+                                "completionModel",
+                                next,
+                                configurationData?.completionModel ?? "",
+                              );
+                            }}
                           />
                         </div>
                       </div>
@@ -813,25 +917,24 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                           type="checkbox"
                           aria-label="企业知识库"
                           checked={enableKnowledgeBase}
-                          disabled={orgManaged("enableKnowledgeBase")}
-                          onChange={(e) =>
-                            setEnableKnowledgeBase(e.target.checked)
+                          disabled={
+                            !configurationData ||
+                            orgManaged("enableKnowledgeBase")
                           }
+                          onChange={(e) => {
+                            const next = e.target.checked;
+                            setEnableKnowledgeBase(next);
+                            commitToggle(
+                              "enableKnowledgeBase",
+                              next,
+                              configurationData?.enableKnowledgeBase ?? false,
+                            );
+                          }}
                         />
                         <span className="settings-switch-slider"></span>
                       </label>
                     </div>
                   </div>
-                </div>
-                <div className="settings-actions">
-                  <button
-                    type="button"
-                    className="settings-save-btn"
-                    disabled={!configurationData || saving}
-                    onClick={handleSaveGlobal}
-                  >
-                    保存
-                  </button>
                 </div>
               </section>
               {/* 「桌面端设置」区块（仅桌面端渲染，见 spec desktop-settings
@@ -1032,8 +1135,18 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                         type="checkbox"
                         aria-label="开启自动记忆"
                         checked={autoMemoryEnabled}
-                        disabled={orgManaged("autoMemoryEnabled")}
-                        onChange={(e) => setAutoMemoryEnabled(e.target.checked)}
+                        disabled={
+                          !configurationData || orgManaged("autoMemoryEnabled")
+                        }
+                        onChange={(e) => {
+                          const next = e.target.checked;
+                          setAutoMemoryEnabled(next);
+                          commitToggle(
+                            "autoMemoryEnabled",
+                            next,
+                            configurationData?.autoMemoryEnabled ?? true,
+                          );
+                        }}
                       />
                       <span className="settings-switch-slider"></span>
                     </label>
@@ -1063,22 +1176,25 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                         max={100}
                         placeholder={AUTO_MEMORY_FREQUENCY_PLACEHOLDER}
                         value={autoMemoryFrequency}
-                        disabled={orgManaged("autoMemoryFrequency")}
-                        onChange={(e) => setAutoMemoryFrequency(e.target.value)}
+                        disabled={
+                          !configurationData ||
+                          orgManaged("autoMemoryFrequency")
+                        }
+                        onChange={(e) => {
+                          pendingKeysRef.current.add("autoMemoryFrequency");
+                          setAutoMemoryFrequency(e.target.value);
+                        }}
+                        {...submitOnBlurOrEnter(() =>
+                          commitNumber(
+                            "autoMemoryFrequency",
+                            autoMemoryFrequency,
+                            configurationData?.autoMemoryFrequency,
+                          ),
+                        )}
                       />
                       <span>轮</span>
                     </div>
                   </div>
-                </div>
-                <div className="settings-actions">
-                  <button
-                    type="button"
-                    className="settings-save-btn"
-                    disabled={!configurationData || saving}
-                    onClick={handleSaveMemory}
-                  >
-                    保存
-                  </button>
                 </div>
               </section>
             </div>
