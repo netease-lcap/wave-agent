@@ -215,6 +215,12 @@ export interface DesktopPaneInfo {
   paneId: string;
   sessionId?: string;
   host: string;
+  /**
+   * 主机的显示名（`Ubuntu (WSL)`、SSH 主机名、`本地`），由宿主下发 —— 渲染端不得
+   * 解析 `host` 里的任何内部编码（WSL 主机的 id 形如 `wsl:<发行版名>`）。
+   * 缺省 = 旧宿主，渲染端回落 `host`。见 `desktop/desktop-wsl.md` 场景 17。
+   */
+  hostLabel?: string;
   width: number;
   row: number;
   /**
@@ -263,8 +269,25 @@ export interface DesktopSessionEntry {
 
 export interface DesktopSessionGroup {
   host: string;
+  /** 主机显示名（见 `DesktopPaneInfo.hostLabel`）。缺省回落 `host`。 */
+  hostLabel?: string;
   workdir: string;
   sessions: DesktopSessionEntry[];
+}
+
+/**
+ * One selectable host in the picker, in display order. The host owns the order
+ * (本地 → WSL 发行版 → SSH 主机) and the labels; the renderer groups by `kind`
+ * and must not derive anything from `id` (WSL ids are `wsl:<发行版名>`).
+ * See `desktop/desktop-wsl.md` scenario 1/2.
+ */
+export interface DesktopHostOption {
+  id: string;
+  label: string;
+  kind: "local" | "ssh" | "wsl";
+  /** 不可选（目前只有 WSL 1 发行版）——菜单置灰，`hint` 作为原因文案。 */
+  disabled?: boolean;
+  hint?: string;
 }
 
 /** One desktop pane's git branch state, pushed via `desktopGitBranches`. */
@@ -1072,6 +1095,11 @@ export interface DesktopWorkdirStateMessage extends HostToWebviewMessageBase {
   workdir?: string;
   host: string;
   hosts: string[];
+  /**
+   * 主机选择器的完整选项（含显示名与分组顺序，见 `DesktopHostOption`）。
+   * 缺省 = 旧宿主：渲染端按 `local` + `hosts` 自行拼出「本地 / SSH 主机」两组。
+   */
+  hostOptions?: DesktopHostOption[];
   recentWorkdirs: string[];
 }
 

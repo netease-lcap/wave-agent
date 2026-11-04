@@ -605,7 +605,15 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   const paneHost = paneId
     ? host?.panes?.find((p) => p.paneId === paneId)?.host
     : undefined;
+  /** Display name of the same host, from the host — never derived from `paneHost`. */
+  const paneHostLabel = paneId
+    ? host?.panes?.find((p) => p.paneId === paneId)?.hostLabel
+    : undefined;
   const effectiveHost = paneHost ?? host?.host ?? "local";
+  /** Label for the picker trigger; the selector falls back to the id when absent. */
+  const effectiveHostLabel =
+    paneHostLabel ??
+    host?.hostOptions?.find((o) => o.id === effectiveHost)?.label;
   const effectiveHostRef = useRef(effectiveHost);
   // 文件面板目录树的根、差异面板的数据源 = 会话的**工作根**（`.wave/rules/
   // workdir.md`）：起点是会话打开时的目录，agent 用 EnterWorktree 切进工作树时
@@ -5129,6 +5137,8 @@ export const ChatApp: React.FC<ChatAppProps> = ({
                     <DesktopHostSelector
                       host={effectiveHost}
                       hosts={host.hosts}
+                      hostOptions={host.hostOptions}
+                      hostLabel={effectiveHostLabel}
                       onSelectHost={host.onSelectHost}
                       onAddHost={host.onAddHost}
                     />

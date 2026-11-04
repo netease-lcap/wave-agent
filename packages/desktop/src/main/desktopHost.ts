@@ -92,9 +92,23 @@ import {
   readRemoteFile,
   ensureRemoteDaemon,
   connectRemoteDaemon,
+  ensureRemoteCliUpToDate,
+  getRemoteHomeDir,
   REMOTE_FILE_MAX_LINES,
   REMOTE_FILE_MAX_BYTES,
 } from "./remoteCli";
+import {
+  assertWslDistroReady,
+  buildWslCliSpawnSpec,
+  hostDisplayLabel,
+  isWslHost,
+  isWslSupportedPlatform,
+  listWslDistros,
+  parseWslHostId,
+  wslHostId,
+  wslUncPath,
+  type WslDistro,
+} from "./wslHosts";
 import type {
   ToastAction,
   UpdateToast,
@@ -102,10 +116,12 @@ import type {
   AccountApiQuotaInfo,
   ArtifactGalleryItem,
   ArtifactShareMode,
+  DesktopHostOption,
   FileTreeEntry,
 } from "wave-webview-fixtures";
 import { execFile, type ChildProcess } from "child_process";
 import { promisify } from "util";
+import { hostLog } from "./hostLog";
 import { type SessionMessageStat, type MessageStats } from "./memorySampler";
 import {
   parseCloneDeepLink,
@@ -422,6 +438,21 @@ export class DesktopHost {
   private configRecreateTail: Promise<unknown> = Promise.resolve();
   /** Pending host selected in each pane's new-session workdir picker. */
   private hostState = new Map<string, string>();
+  /**
+   * This machine's WSL distros, as of the last probe (spec
+   * docs/specs/desktop/desktop-wsl.md). Cached because `pushWorkdirState` is
+   * synchronous and called from a dozen paths, while `wsl.exe --list` is a
+   * process spawn; refreshed when the webview comes up (the list is stable for
+   * the life of a launch) and re-pushed afterwards. Empty on non-Windows.
+   */
+  private wslDistros: WslDistro[] = [];
+  /**
+   * Recent workdirs last pushed per host. Re-pushing the picker (the WSL probe
+   * landing) must not re-read them from the host — that round trip runs
+   * `ensureClientFor`, which would dial a host that is down/reconnecting.
+   */
+  private pushedRecentWorkdirs = new Map<string, string[]>();
+
   // Split panes, ordered left→right. Each pane binds at most one agent (none
   // in the new-session state); the focused pane receives sidebar clicks and
   // the 新对话 action. Always at least one pane.
@@ -449,6 +480,7 @@ export class DesktopHost {
   private workflowRuns = new Map<string, SerializableWorkflowRun[]>(); // keyed by paneId
   private sessionTree: Array<{
     host: string;
+    hostLabel: string;
     workdir: string;
     sessions: Array<{
       sessionId: string;
@@ -1225,13 +1257,64 @@ export class DesktopHost {
   }
 
   private pushWorkdirState(host: string, recentWorkdirs: string[]): void {
+    this.pushedRecentWorkdirs.set(host, recentWorkdirs);
     this.postMessage({
       command: "desktopWorkdirState",
       workdir: this.workdir,
       host,
       hosts: parseSshConfigHosts(),
+      // Ordered option list for the picker: 本地 → WSL 发行版 → SSH 主机 (spec
+      // docs/specs/desktop/desktop-wsl.md 场景 1). `hosts` stays as the plain
+      // ssh list for older renderers; the labels live host-side so the trigger,
+      // the menu and the sidebar groups can never disagree (场景 17).
+      hostOptions: this.hostOptions(),
       recentWorkdirs,
     });
+  }
+
+  /**
+   * Selectable hosts in display order. WSL 1 distros are listed but disabled
+   * (场景 2): the session runs a Linux Node inside the distro, which WSL 1
+   * cannot be relied on to provide — hiding them outright would look like a
+   * missing install.
+   */
+  private hostOptions(): DesktopHostOption[] {
+    const options: DesktopHostOption[] = [
+      { id: LOCAL_HOST, label: hostDisplayLabel(LOCAL_HOST), kind: "local" },
+    ];
+    for (const distro of this.wslDistros) {
+      const id = wslHostId(distro.name);
+      options.push({
+        id,
+        label: hostDisplayLabel(id),
+        kind: "wsl",
+        ...(distro.version === 2
+          ? {}
+          : { disabled: true, hint: "WSL 1：不支持" }),
+      });
+    }
+    for (const host of parseSshConfigHosts()) {
+      options.push({ id: host, label: host, kind: "ssh" });
+    }
+    return options;
+  }
+
+  /** Probe the distro list, then re-push the picker state with it. */
+  private async refreshWslDistros(): Promise<void> {
+    if (!isWslSupportedPlatform()) {
+      this.wslDistros = [];
+      return;
+    }
+    this.wslDistros = await listWslDistros();
+    // Re-push through `pushWorkdirState` directly (not `sendWorkdirState`): the
+    // latter re-reads the recents from the host, which would dial a host that is
+    // unreachable or mid-reconnect just to refresh a picker list.
+    const host = this.currentHost;
+    this.pushWorkdirState(
+      host,
+      this.pushedRecentWorkdirs.get(host) ??
+        this.configStore.getRecentWorkdirsForHost(host),
+    );
   }
 
   /**
@@ -1345,10 +1428,105 @@ export class DesktopHost {
     return this.initPromise;
   }
 
-  /** Ensure the shared stdio client for a host exists (local or remote). */
+  /** Ensure the shared stdio client for a host exists (local, WSL or remote). */
   private ensureClientFor(host: string): Promise<void> {
     if (host === LOCAL_HOST) return this.ensureClient();
+    const distro = parseWslHostId(host);
+    if (distro) return this.ensureWslClient(host, distro);
     return this.ensureRemoteHostClient(host);
+  }
+
+  /**
+   * WSL distro host (spec: docs/specs/desktop/desktop-wsl.md). The distro lives
+   * on this machine, so the transport is a plain stdio child spawned through
+   * `wsl.exe` — no daemon, no `ssh -N -L` tunnel, and the distro's
+   * `127.0.0.1` is already this machine's `localhost`. Everything above the
+   * transport (JSON-RPC, notification routing, session index) is identical to
+   * the ssh path, which is why the CLI provisioning below reuses
+   * `ensureRemoteCliUpToDate` unchanged: only the process carrying the command
+   * differs.
+   *
+   * The client entry lives in `remoteHosts` (keyed by host id) so `clientFor` /
+   * `utilityClientFor` / `dispose` need no new branch. Closing it (distro shut
+   * down with `wsl --shutdown`, machine sleep) drops the entry and the pool
+   * agents bound to it — the next access respawns the distro's CLI and the
+   * session is restored from its transcript, so nothing is ever deleted.
+   */
+  private ensureWslClient(host: string, distro: string): Promise<void> {
+    const existing = this.remoteHosts.get(host);
+    if (existing) return existing.initPromise;
+
+    const entry: {
+      client: JsonRpcClient | null;
+      router: NotificationRouter | null;
+      tunnel: ChildProcess | null;
+      initPromise: Promise<void>;
+    } = {
+      client: null,
+      router: null,
+      tunnel: null,
+      initPromise: Promise.resolve(),
+    };
+    this.remoteHosts.set(host, entry);
+
+    entry.initPromise = (async () => {
+      await assertWslDistroReady(distro);
+      const homeDir = await getRemoteHomeDir(host);
+      const { binaryPath } = await ensureRemoteCliUpToDate(
+        host,
+        loadBundledCliSource(),
+        homeDir,
+      );
+      const spawnSpec = await buildWslCliSpawnSpec(distro, binaryPath);
+      // `shell: false`: wsl.exe takes the distro command as a plain argv array;
+      // routing it through cmd.exe would re-split the quoted login-shell
+      // command line.
+      const client = new StdioClient(
+        spawnSpec.file,
+        spawnSpec.args,
+        undefined,
+        (line) => hostLog.warn("[wsl-stdio]", line),
+        { shell: false },
+      );
+      const router = new NotificationRouter(client);
+      router.registerGlobal("authUrl", (params) => {
+        const p = params as { url?: string };
+        // Same-machine: the callback server on the distro's 127.0.0.1 is
+        // reachable as this machine's localhost, so the URL opens as-is — no
+        // port forward (unlike the ssh path's handleRemoteAuthUrl).
+        if (p?.url) {
+          void shell
+            .openExternal(p.url)
+            .catch((error) => this.reportExternalOpenFailure(error));
+        }
+      });
+      router.attach();
+      entry.client = client;
+      entry.router = router;
+      client.onClosed(() => this.onWslClientClosed(host, distro));
+    })();
+
+    entry.initPromise.catch(() => {
+      // Allow retry after a failed init (distro started later, node installed…).
+      this.remoteHosts.delete(host);
+    });
+    return entry.initPromise;
+  }
+
+  /**
+   * The distro's CLI child died. Unlike ssh there is nothing to redial — the
+   * distro either runs or does not — so drop the entry (the next access
+   * respawns) and release the agents bound to it. Sessions themselves are
+   * untouched: their transcripts are on disk and the sidebar keeps showing
+   * them (spec 场景 15).
+   */
+  private onWslClientClosed(host: string, distro: string): void {
+    if (this.disposed) return;
+    this.remoteHosts.delete(host);
+    this.dropHostAgents(host);
+    this.showToast({
+      message: `WSL 发行版「${distro}」连接已断开，重新打开该会话将自动重连`,
+    });
   }
 
   /**
@@ -1958,24 +2136,30 @@ export class DesktopHost {
   private pushPanes(): void {
     this.postMessage({
       command: "desktopPanes",
-      panes: this.panes.map((p) => ({
-        paneId: p.paneId,
-        sessionId: p.agent?.sessionId,
-        host: p.agent
+      panes: this.panes.map((p) => {
+        const host = p.agent
           ? this.hostForAgent(p.agent)
-          : (this.hostState.get(p.paneId) ?? LOCAL_HOST),
-        width: p.width,
-        row: p.row ?? 0,
-        // 「这条会话有没有产生过消息」的唯一权威口径：渲染端据此区分「新会话」与
-        // 「被 /rewind 打回第一条（或 /clear）后列表为空的老会话」——后者不能再走
-        // 新会话规则（建 worktree、另开会话），见 `hasMessageContent`。
-        hasContent: p.agent ? this.hasMessageContent(p.agent) : false,
-        // 文件面板目录树的根、差异面板与 `@` 搜索的锚点：会话的工作根 ——
-        // 起点是会话目录，agent 用 EnterWorktree/ExitWorktree 切工作树时随之
-        // 切换，但 bash `cd` 不改变它（见 rules/workdir.md）。
-        sessionCwd: p.agent ? this.sessionRootOf(p.agent) : undefined,
-        workspaceRoot: p.agent ? this.workspaceRootOf(p.agent) : undefined,
-      })),
+          : (this.hostState.get(p.paneId) ?? LOCAL_HOST);
+        return {
+          paneId: p.paneId,
+          sessionId: p.agent?.sessionId,
+          host,
+          // Display form of the same host (WSL distros read as「Ubuntu (WSL)」).
+          // Shipped alongside the raw id so the renderer never has to parse one.
+          hostLabel: hostDisplayLabel(host),
+          width: p.width,
+          row: p.row ?? 0,
+          // 「这条会话有没有产生过消息」的唯一权威口径：渲染端据此区分「新会话」与
+          // 「被 /rewind 打回第一条（或 /clear）后列表为空的老会话」——后者不能再走
+          // 新会话规则（建 worktree、另开会话），见 `hasMessageContent`。
+          hasContent: p.agent ? this.hasMessageContent(p.agent) : false,
+          // 文件面板目录树的根、差异面板与 `@` 搜索的锚点：会话的工作根 ——
+          // 起点是会话目录，agent 用 EnterWorktree/ExitWorktree 切工作树时随之
+          // 切换，但 bash `cd` 不改变它（见 rules/workdir.md）。
+          sessionCwd: p.agent ? this.sessionRootOf(p.agent) : undefined,
+          workspaceRoot: p.agent ? this.workspaceRootOf(p.agent) : undefined,
+        };
+      }),
       rowHeights:
         this.topRowHeight != null
           ? [this.topRowHeight, 1 - this.topRowHeight]
@@ -3485,6 +3669,9 @@ export class DesktopHost {
     );
     this.sessionTree = sortedGroups.map(({ host, workdir, sorted }) => ({
       host,
+      // Sidebar group header: 「Ubuntu (WSL)」 rather than the raw host id
+      // (spec docs/specs/desktop/desktop-wsl.md 场景 16/17).
+      hostLabel: hostDisplayLabel(host),
       workdir,
       sessions: sorted.map((s) => {
         const agent = this.agents.get(this.agentKey(s.host, s.sessionId));
@@ -4416,6 +4603,20 @@ export class DesktopHost {
       // only released when the session is deleted (scenario 18).
       case "desktopForwardPort": {
         const host = (msg.host as string) || this.hostForPane(pid);
+        const distro = parseWslHostId(host);
+        if (distro) {
+          // Same machine: WSL2 forwards the distro's loopback ports to Windows
+          // localhost, so this machine's browser/iframe reaches them directly.
+          // No tunnel, no rewrite (spec docs/specs/desktop/desktop-wsl.md 场景 11).
+          this.postMessage({
+            command: "desktopForwardPortResult",
+            paneId: pid,
+            requestId: msg.requestId,
+            url: msg.url as string,
+            originalUrl: msg.url as string,
+          });
+          break;
+        }
         try {
           const result = await this.portForwardManager.acquire(
             host,
@@ -5289,9 +5490,11 @@ export class DesktopHost {
         }
         break;
 
-      // Local sessions only: leave the panel and open in the OS default app.
+      // Leave the panel and open in the OS default app. WSL sessions reach
+      // their files through the `\\wsl.localhost\` share; ssh 远端 remains
+      // local-session-only (its paths exist on another machine).
       case "desktopOpenFileExternal":
-        await this.handleOpenPath(msg.path as string);
+        await this.handleOpenPath(msg.path as string, this.hostForPane(pid));
         break;
 
       case "openExternal": {
@@ -5391,6 +5594,10 @@ export class DesktopHost {
       }
       await this.pushInitialState();
       this.refreshSessionTree();
+      // WSL distros (spec docs/specs/desktop/desktop-wsl.md 场景 1): fire and
+      // forget — the picker must not wait on a `wsl.exe` spawn. The list is
+      // re-pushed through sendWorkdirState once it lands.
+      void this.refreshWslDistros().catch(() => {});
 
       // Account usage poll: keep the sidebar card's 套餐用量/API 额度 fresh.
       this.startAccountPolling();
@@ -5493,9 +5700,27 @@ export class DesktopHost {
    * workdir state so the picker shows that host's recents (spec scenario 1).
    */
   private async handleSelectHost(host: string): Promise<void> {
-    if (host !== LOCAL_HOST && !parseSshConfigHosts().includes(host)) {
+    if (
+      host !== LOCAL_HOST &&
+      !isWslHost(host) &&
+      !parseSshConfigHosts().includes(host)
+    ) {
       this.showToast({ message: `未知主机：${host}` });
       return;
+    }
+    if (isWslHost(host)) {
+      // A distro may have been uninstalled since the list was probed — refuse
+      // the switch rather than letting the failure surface at agent spawn.
+      const distro = parseWslHostId(host) ?? "";
+      if (
+        !this.wslDistros.some(
+          (d) => d.name.toLowerCase() === distro.toLowerCase(),
+        )
+      ) {
+        this.showToast({ message: `WSL 发行版「${distro}」不可用` });
+        void this.refreshWslDistros();
+        return;
+      }
     }
     const pid = this.focusedPaneId;
     const active = this.agentForPane(pid);
@@ -5609,7 +5834,7 @@ export class DesktopHost {
     path: string,
   ): Promise<void> {
     if (host === LOCAL_HOST || !path) return;
-    if (!parseSshConfigHosts().includes(host)) {
+    if (!isWslHost(host) && !parseSshConfigHosts().includes(host)) {
       this.showToast({ message: `未知主机：${host}` });
       return;
     }
@@ -7824,10 +8049,15 @@ export class DesktopHost {
     }
   }
 
-  private async handleOpenPath(filePath: string): Promise<void> {
+  private async handleOpenPath(filePath: string, host: string): Promise<void> {
     if (!filePath) return;
     try {
-      const err = await shell.openPath(filePath);
+      // A WSL session's path is POSIX and means nothing to a Windows API — the
+      // distro filesystem is reachable through the `\\wsl.localhost\` share, so
+      // hand the OS that form instead.
+      const distro = parseWslHostId(host);
+      const target = (distro && wslUncPath(distro, filePath)) || filePath;
+      const err = await shell.openPath(target);
       if (err) {
         this.pushSystemMessage(`打开文件失败: ${err}`);
       }

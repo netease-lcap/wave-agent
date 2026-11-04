@@ -29,6 +29,7 @@ vi.mock("fs", () => ({
 import {
   resolveRemoteWaveBinary,
   readRemoteFile,
+  getRemoteHomeDir,
   REMOTE_FILE_MAX_LINES,
   REMOTE_FILE_MAX_BYTES,
   REMOTE_NODE_MIN_MAJOR,
@@ -158,6 +159,51 @@ describe("resolveRemoteWaveBinary (fixed pushed-shim path)", () => {
     const info = await resolveRemoteWaveBinary("prod", SOURCE, HOME);
     expect(info.nodeVersion).toBe("v22.23.2");
     expect(info.binaryPath).toBe(remoteCliShimPath(HOME));
+  });
+
+  /**
+   * `-lic` runs an INTERACTIVE login shell, so its rc/motd output lands in
+   * stdout before the command's own answer. A real Ubuntu WSL user's first
+   * login of the day prints exactly this (verified on Ubuntu-24.04); the ssh
+   * path can hit the same when the shell prints a banner.
+   */
+  const LOGIN_BANNER =
+    'To run a command as administrator (user "root"), use "sudo <command>".\n' +
+    'See "man sudo_root" for details.\n\n';
+
+  it("reads the node version past a login-shell banner", async () => {
+    stubExec([LOGIN_SHELL, { stdout: `${LOGIN_BANNER}v22.23.4\n` }]);
+    const info = await resolveRemoteWaveBinary("prod", SOURCE, HOME);
+    expect(info.nodeVersion).toBe("v22.23.4");
+  });
+
+  it("never mistakes a distro release number in a banner for a node version", async () => {
+    // "Ubuntu 24.04.5" must not read as node 24 — only `vX.Y.Z` counts.
+    stubExec([LOGIN_SHELL, { stdout: "Welcome to Ubuntu 24.04.5 LTS\n" }]);
+    await expect(resolveRemoteWaveBinary("prod", SOURCE, HOME)).rejects.toThrow(
+      "Node.js 版本过低（未检测到版本",
+    );
+  });
+
+  it("reads the bundle hash and $HOME past a login-shell banner", async () => {
+    stubExec([
+      LOGIN_SHELL,
+      { stdout: `${LOGIN_BANNER}v22.23.4\n` },
+      { stdout: `${LOGIN_BANNER}${BUNDLE_HASH}\n` },
+    ]);
+    // Hash parsed → bytes match → nothing pushed.
+    await expect(
+      ensureRemoteCliUpToDate("prod", SOURCE, HOME),
+    ).resolves.toEqual({
+      binaryPath: remoteCliShimPath(HOME),
+      upgraded: false,
+    });
+    expect(h.spawn).not.toHaveBeenCalled();
+  });
+
+  it("reads the remote $HOME past a login-shell banner", async () => {
+    stubExec([LOGIN_SHELL, { stdout: `${LOGIN_BANNER}/home/user\n` }]);
+    await expect(getRemoteHomeDir("prod")).resolves.toBe("/home/user");
   });
 
   it("throws an actionable error when node is missing", async () => {
@@ -408,6 +454,27 @@ describe("readRemoteFile", () => {
       LOGIN_SHELL,
       {
         stdout: `${OSC1337_PREFIX}WAVE_REMOTE_FILE_V1\ntype=text\nmime=text/plain\ntotal=1\ntruncated=0\n${base64("hi\n")}\n`,
+      },
+    ]);
+    const result = await readRemoteFile("prod", "/home/user/a.md");
+    expect(result).toEqual({
+      type: "text",
+      mime: "text/plain",
+      totalLines: 1,
+      truncated: false,
+      contentBase64: base64("hi\n"),
+    });
+  });
+
+  it("skips a login-shell banner before the V1 header", async () => {
+    // WSL first-login banner (and any shell that prints an rc banner) precedes
+    // the payload on stdout; the header is the anchor, not line 0.
+    stubExec([
+      LOGIN_SHELL,
+      {
+        stdout:
+          'To run a command as administrator (user "root"), use "sudo <command>".\n' +
+          `See "man sudo_root" for details.\n\nWAVE_REMOTE_FILE_V1\ntype=text\nmime=text/plain\ntotal=1\ntruncated=0\n${base64("hi\n")}\n`,
       },
     ]);
     const result = await readRemoteFile("prod", "/home/user/a.md");

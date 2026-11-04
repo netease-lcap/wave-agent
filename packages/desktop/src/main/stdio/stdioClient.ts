@@ -45,6 +45,7 @@ export class StdioClient extends JsonRpcClient {
     args: string[] = [],
     env?: Record<string, string>,
     onStderr?: StderrHandler,
+    options: { shell?: boolean } = {},
   ) {
     super();
     this.onStderr = onStderr;
@@ -56,13 +57,16 @@ export class StdioClient extends JsonRpcClient {
     // behaviour: Node (since the CVE-2024-27980 patch) refuses to spawn
     // `.cmd`/`.bat` without a shell, and with `shell: true` the executable
     // must be pre-quoted so a path containing spaces is not split.
+    // `options.shell: false` pins a native executable to direct spawning — the
+    // WSL host runs `wsl.exe`, which must receive its distro command as a plain
+    // argv array (cmd.exe would re-split the quoted login-shell command line).
     const isScript = /\.(mjs|js|cjs)$/i.test(binaryPath);
     const command = isScript ? process.execPath : binaryPath;
     const spawnArgs = isScript ? [binaryPath, ...args] : args;
     const spawnEnv = isScript
       ? { ...process.env, ...env, ELECTRON_RUN_AS_NODE: "1" }
       : { ...process.env, ...env };
-    const shell = !isScript && process.platform === "win32";
+    const shell = options.shell ?? (!isScript && process.platform === "win32");
     const spawnCommand =
       shell && process.platform === "win32" ? `"${command}"` : command;
     this.proc = spawn(spawnCommand, spawnArgs, {

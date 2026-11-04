@@ -323,11 +323,17 @@ export interface DesktopPane {
   paneId: string;
   sessionId?: string;
   /**
-   * Host this pane is bound to ('local' or an SSH host name), pushed via
-   * `desktopPanes`. Drives per-pane remote behavior (panels off, localhost
-   * links to the system browser).
+   * Host this pane is bound to ('local', an SSH host name, or `wsl:<distro>`),
+   * pushed via `desktopPanes`. Drives per-pane remote behavior (panels off,
+   * localhost links to the system browser).
    */
   host?: string;
+  /**
+   * Display name of the same host (`Ubuntu (WSL)`, an SSH host name, 本地), from
+   * the host — the renderer must never parse `host`'s internal encoding.
+   * Absent (old host) = fall back to `host`.
+   */
+  hostLabel?: string;
   /**
    * Width ratio across the pane row (0–1), maintained by the host. Absent
    * means the pane takes an equal share of the row.
@@ -389,12 +395,34 @@ export type RenameSessionHandler = (
 
 // Desktop host support — injected when running inside packages/desktop (Electron).
 // window.waveHostType === 'desktop' selects the DesktopApp root in index.tsx.
+
+/**
+ * One selectable host in the picker. The desktop host owns the order, the labels
+ * and the disabled flag; the renderer groups consecutive entries by `kind` and
+ * never derives anything from `id` (WSL ids are `wsl:<distro>`).
+ */
+export interface DesktopHostOption {
+  id: string;
+  label: string;
+  kind: "local" | "ssh" | "wsl";
+  /** Not selectable (WSL 1 distros today) — rendered disabled with `hint` as the reason. */
+  disabled?: boolean;
+  hint?: string;
+}
+
 export interface DesktopHostProps {
   type: "desktop";
-  /** Current host: 'local' or an SSH host name (the focused pane's host). */
+  /** Current host: 'local', an SSH host name, or `wsl:<distro>` (the focused pane's host). */
   host: string;
-  /** All selectable hosts: 'local' + parsed ~/.ssh/config top-level Host names. */
+  /** All selectable SSH hosts: 'local' + parsed ~/.ssh/config top-level Host names. */
   hosts: string[];
+  /**
+   * Full picker option list in display order (本地 → WSL 发行版 → SSH 主机),
+   * with labels, groups and the disabled flag owned by the host
+   * (spec desktop/desktop-wsl.md scenarios 1/2). Absent (old host) = build the
+   * 本地 + SSH 主机 groups from `host`/`hosts`.
+   */
+  hostOptions?: DesktopHostOption[];
   workdir?: string;
   recentWorkdirs: string[];
   onSelectWorkdir: () => void;
@@ -467,6 +495,8 @@ export interface DesktopHostProps {
 export interface DesktopSessionGroup {
   /** Host the group's sessions run on ('local' or an SSH host name) — the group key is (host, workdir). */
   host: string;
+  /** Display name for the group header (`Ubuntu (WSL)`, an SSH host name). Absent = fall back to `host`. */
+  hostLabel?: string;
   workdir: string;
   sessions: DesktopSessionEntry[];
 }
@@ -552,10 +582,15 @@ export interface UpdateToast {
 // every workdir/host change (message command: 'desktopWorkdirState').
 export interface DesktopWorkdirState {
   workdir?: string;
-  /** Current host ('local' or an SSH host name) — the focused pane's host. */
+  /** Current host ('local', an SSH host name, or `wsl:<distro>`) — the focused pane's host. */
   host: string;
   /** All selectable hosts: 'local' + parsed ~/.ssh/config top-level Host names. */
   hosts: string[];
+  /**
+   * Full picker option list (order/labels/groups/disabled) supplied by the host;
+   * absent = old host, the picker rebuilds 本地 + SSH 主机 from `host`/`hosts`.
+   */
+  hostOptions?: DesktopHostOption[];
   recentWorkdirs: string[];
 }
 

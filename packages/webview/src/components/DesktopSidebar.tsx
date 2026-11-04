@@ -905,9 +905,9 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                 {group.host !== "local" && (
                   <span
                     className="desktop-session-group-host"
-                    title={group.host}
+                    title={group.hostLabel ?? group.host}
                   >
-                    {group.host}
+                    {group.hostLabel ?? group.host}
                   </span>
                 )}
               </button>
