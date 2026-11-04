@@ -28,3 +28,17 @@ export function supportsPromptCaching(
 export function supportsVision(capabilities?: ModelCapabilities): boolean {
   return capabilities?.vision ?? true;
 }
+
+/**
+ * Determines whether a model's requests must go to the Responses API instead of
+ * Chat Completions.
+ * Opt-in and explicit: no model name is ever matched, so a new model becomes
+ * usable by declaring the capability, not by shipping a Wave release.
+ * @param capabilities - Declarative model capabilities
+ * @returns True only when responsesApi is explicitly enabled (default: false)
+ */
+export function supportsResponsesApi(
+  capabilities?: ModelCapabilities,
+): boolean {
+  return capabilities?.responsesApi ?? false;
+}

@@ -21,6 +21,17 @@ export interface ModelCapabilities {
   vision?: boolean;
   /** Whether the model supports prompt caching (ephemeral cache_control markers). Default: false. */
   promptCaching?: boolean;
+  /**
+   * Whether this model must be called through the Responses API (`/v1/responses`)
+   * instead of Chat Completions. Default: false.
+   *
+   * Declared, never inferred from the model name: from GPT-5.4 on, Chat
+   * Completions only allows function tools with `reasoning_effort: "none"`, and
+   * the GPT-6 generation has no `none` tier at all — those models are unusable
+   * in Wave until their requests go to the Responses endpoint
+   * (spec core/responses-api.md).
+   */
+  responsesApi?: boolean;
 }
 
 /**
@@ -52,6 +63,16 @@ export interface ModelConfig {
   /** Fast model generation params (resolved from models[fastModel].options) */
   fastModelOptions?: Record<string, unknown>;
   /**
+   * Capabilities of the fast model, resolved from `models[fastModel].capabilities`.
+   *
+   * `capabilities` above belongs to the **agent** model, but a request can run on
+   * a different one (`processWebContent` is always called with `fastModel`), so
+   * anything that must hold per model — picking the API endpoint above all — has
+   * to read the capabilities of the model that will actually serve the request
+   * (spec core/responses-api.md 边界情况 8).
+   */
+  fastModelCapabilities?: ModelCapabilities;
+  /**
    * Fast-model-only disable-thinking params passed through verbatim
    * (e.g. `{ thinking: { type: "disabled" } }`). Applied only in fast-model
    * scenarios (webFetch content processing, `model: fastModel` subagents),
@@ -71,6 +92,8 @@ export interface ModelConfig {
    * extended thinking is disqualified for a latency-critical call).
    */
   completionModelOptions?: Record<string, unknown>;
+  /** Capabilities of the completion model, resolved from `models[completionModel].capabilities`. */
+  completionModelCapabilities?: ModelCapabilities;
   /** Whether inline code completion is enabled. Unset follows the default (enabled). */
   completionEnabled?: boolean;
   /**
