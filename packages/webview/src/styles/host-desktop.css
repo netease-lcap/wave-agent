@@ -3012,15 +3012,34 @@
   outline: none;
 }
 /* 1023 skill 契约（`common-components.md` §Question-option card composition）：
-   键盘焦点是**独立的 2px 环 + 2px 外扩**、色取选中指示器色（action-primary），
+   键盘焦点是**独立的 2px 环**、色取选中指示器色（action-primary），
    不再把自身描边染成焦点色（那是旧口径，会和 hover/选中描边抢同一支笔）。
    鼠标点击（`:focus` 而不是 `:focus-visible`）不出现这个框 —— 上面那条 outline:none
-   已覆盖；卡片本身仍保留 pointer 光标。 */
+   已覆盖；卡片本身仍保留 pointer 光标。
+
+   1104 评论（`label.option-item.selected`「键盘选中的边框线无法完整展示」）：
+   环原来画在**盒外**（`outline-offset: 2px`），而卡片活在一个
+   `overflow-y: auto` 的滚动容器 `.options-list` 里 —— 一轴非 visible 时另一轴也按
+   auto 裁，四个方向都裁；容器边又和首/末卡片贴合（实测上缘 / 左缘余量 0px），
+   所以环的上、左（滚到底时还有下）被切掉。
+   试过「把裁剪盒向外扩 4px（负 margin + 等量 padding）」：环是完整了，但列表盒
+   因此比父级高 4px，`.confirmation-body` 的 `scrollHeight` 多出 4px ⇒ 多出一条
+   外层滚动条（多选那题上肉眼可见）。所以改为**内描边**（她 1104 提的方案）：
+   `outline-offset` 取负 ⇒ 环落在卡片内侧，全程在盒内 ⇒ 任何 overflow 容器都裁不到，
+   容器与卡片几何一律不动（列表内衬回到 base 的 `0 4px 0 0`）。
+   档位（逐值为浏览器实测的可见像素排布，当前取 -2px：她要看压住描边那一档）：
+     -4px → 描边 1px + 空档 1px + 环 2px（环读作独立的一道）
+     -3px → 描边 1px + 环 2px，**无空档**，描边仍在
+     -2px → 环压住卡片自身描边（描边看不见），等效给卡片换一道 2px 深描边（当前）
+     -1px → 环骑在盒边上，外侧那 1px 被容器裁掉，左右/上下不对称（不推荐）
+   唯一的代价：环不再是「向外 2px 外扩」，而是「向内」；宽度、颜色、
+   只给键盘这三条契约口径不变。 */
 [data-host="desktop"] .option-item:focus-visible {
   outline: 2px solid
     var(--cc-action-primary, var(--vscode-focusBorder, #1f2329));
-  outline-offset: 2px;
+  outline-offset: -2px;
 }
+
 [data-host="desktop"] .other-text-input:focus,
 [data-host="desktop"] .feedback-textarea:focus {
   outline: none;
