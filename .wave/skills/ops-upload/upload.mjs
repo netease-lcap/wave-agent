@@ -6,8 +6,9 @@
  * `Authorization: Bearer $PUBLISH_TOKEN` 静态令牌**（issue #2750）：
  *   - 运营端旧接口（`ops` 命名空间下的 downloads / docs / plugin-market / remote-page 四条）
  *     与「下载管理 / 制品管理」页面已整条删除，线上 404；邮箱密码换 JWT 的登录链路同时作废。
- *   - 同一份路径与语义在两种部署下逐字一致，**只换 host**：SaaS 用 ops 域名（neteasecc.*），
- *     私有化用客户企业端域名。企业端在 SaaS 下不挂这组接口（404）。
+ *   - 同一份路径与语义在两种部署下逐字一致，**只换 host**：两种部署都打**企业端域名**
+ *     （写入口跟着读入口走，2026-11-04 起）；私有化就是客户自己的企业端域名。
+ *     运营端（neteasecc.*）不再挂这组接口（同路径 404），脚本也不再默认用。
  *
  *   - 桌面端（`--type desktop`，默认）：`POST /api/publish/desktop/init` →
  *     逐片 `POST /api/publish/desktop/:uploadId/chunk/:index` →
@@ -83,8 +84,8 @@ const REQUIRED_EXT = {
 };
 
 /**
- * 发布接口的公共前缀。SaaS 挂在 ops 域名、私有化挂在企业端域名，**路径逐字一致**——
- * 同一份命令只换 host（issue #2750 的核心承诺）。
+ * 发布接口的公共前缀。两种部署都挂在**企业端域名**（写入口跟着读入口走，2026-11-04 起），
+ * **路径逐字一致** —— 同一份命令只换 host（issue #2750 的核心承诺）。
  */
 const PUBLISH_PREFIX = "/api/publish";
 const DESKTOP_INIT_PATH = `${PUBLISH_PREFIX}/desktop/init`;
@@ -249,8 +250,9 @@ function explainFailure(label, err) {
   } else if (status === 404) {
     console.error(
       "  提示：404 = 这组接口在该 host 上不存在。旧运营端上传接口（`ops` 命名空间那四条）已整条删除，" +
-        "所以要么 host 打错（SaaS=ops 域名 / 私有化=客户企业端域名，路径都是 /api/publish/*），" +
-        "要么该环境后端还没部署这版代码。别再往「单个端点没上线」上猜。",
+        "所以要么 host 打错（两种部署都是**企业端域名**，路径 /api/publish/*），" +
+        "要么该环境后端还没部署这版代码（2026-11-04 之前的镜像只在运营端挂这组接口，" +
+        "此时用 --base https://neteasecc.<环境> 临时指向运营端）。别再往「单个端点没上线」上猜。",
     );
   } else if (status === 502) {
     console.error(
