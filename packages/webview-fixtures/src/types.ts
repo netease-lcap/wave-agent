@@ -282,7 +282,7 @@ export type StreamingStage = "start" | "streaming" | "end";
 // ---- The contract union. Every case mirrors a `case` in ChatApp.tsx's
 // handleMessage switch (plus host-only commands consumed outside the switch:
 // desktopPanes/desktopSessionTree/desktopWorkdirState in DesktopApp.tsx,
-// mcpServersResponse in McpDialog.tsx, historyResponse in HistorySearchPopup,
+// mcpServersResponse in SettingsMcpView.tsx, historyResponse in HistorySearchPopup,
 // desktopThemeChange in ChatApp). ----
 
 export interface HostToWebviewMessageBase {
@@ -1406,8 +1406,9 @@ export interface ConfiguredModelsMessage extends HostToWebviewMessageBase {
 }
 
 /** Full MCP server status push (connect/disconnect refresh). Snapshot
- *  semantics, not reply-to: McpDialog / SettingsMcpView render-time filter by
- *  each server's own `scope` field, so no attribution key beyond paneId. */
+ *  semantics, not reply-to: SettingsMcpView renders every server it is given
+ *  and groups by each server's own `scope` field, so no attribution key beyond
+ *  paneId. */
 export interface McpServersUpdateMessage extends HostToWebviewMessageBase {
   command: "mcpServersUpdate";
   servers: unknown[];

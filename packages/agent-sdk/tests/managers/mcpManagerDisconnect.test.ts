@@ -24,6 +24,7 @@ interface Harness {
 async function makeHarness(
   ignoreEof: boolean,
   pushes: McpServerStatus[][],
+  extraEnv: Record<string, string> = {},
 ): Promise<Harness> {
   const dir = join(tmpdir(), `mcp-disconnect-${process.pid}-${Date.now()}`);
   await fs.mkdir(dir, { recursive: true });
@@ -35,7 +36,7 @@ async function makeHarness(
           type: "stdio",
           command: process.execPath,
           args: [SERVER_SCRIPT],
-          env: { IGNORE_EOF: ignoreEof ? "1" : "0" },
+          env: { IGNORE_EOF: ignoreEof ? "1" : "0", ...extraEnv },
         },
       },
     }),
@@ -47,6 +48,15 @@ async function makeHarness(
   });
   await manager.initialize(dir, true); // auto-connect
   return { manager, dir };
+}
+
+function isAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 async function waitForStatus(
@@ -150,4 +160,45 @@ describe("McpManager disconnect (real stdio child)", () => {
       await fs.rm(dir, { recursive: true, force: true });
     }
   });
+
+  // Issue #2758: a real MCP server is a tree (`uvx → uv → server → python`), and
+  // signalling only the direct child leaves the actual server running forever.
+  // Windows has no process groups, so nothing but an explicit tree kill reaches
+  // the descendants — assert on a real grandchild rather than on the call.
+  it.skipIf(process.platform !== "win32")(
+    "reaps the whole process tree the server spawned",
+    async () => {
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      const pushes: McpServerStatus[][] = [];
+      const pidFile = join(
+        tmpdir(),
+        `mcp-grandchild-${process.pid}-${Date.now()}.pid`,
+      );
+      const { manager, dir } = await makeHarness(true, pushes, {
+        GRANDCHILD_PID_FILE: pidFile,
+      });
+      try {
+        await waitForStatus(manager, "weather", "connected");
+        let grandchildPid = 0;
+        await vi.waitFor(async () => {
+          grandchildPid = Number(await fs.readFile(pidFile, "utf8"));
+          expect(grandchildPid).toBeGreaterThan(0);
+        });
+        expect(isAlive(grandchildPid)).toBe(true);
+
+        // Teardown (Agent.destroy → McpManager.cleanup) must take the grandchild
+        // down too; nothing else will ever reference it.
+        await manager.cleanup();
+
+        await vi.waitFor(() => expect(isAlive(grandchildPid)).toBe(false), {
+          timeout: 5000,
+          interval: 50,
+        });
+      } finally {
+        await manager.cleanup();
+        await fs.rm(pidFile, { force: true });
+        await fs.rm(dir, { recursive: true, force: true });
+      }
+    },
+  );
 });

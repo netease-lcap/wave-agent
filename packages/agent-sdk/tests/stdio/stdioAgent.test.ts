@@ -248,6 +248,67 @@ describe("StdioAgent", () => {
     expect(client.dispose).not.toHaveBeenCalled();
   });
 
+  // Issue #2758: the host drops its StdioAgent reference right after calling
+  // destroy(), so a refusal here is not just a lost request — it leaves a live
+  // Agent (and its MCP process tree) nobody can address again. The refusal is
+  // transient by design (a config reload in flight), so it must be retried
+  // rather than silently swallowed.
+  it("destroy retries a refusal instead of giving up on the session", async () => {
+    const { agent, client } = createAgent();
+    client.request.mockResolvedValue({
+      sessionId: "session-123",
+      currentWorkdir: "/w",
+      permissionMode: "default",
+      latestTotalTokens: 0,
+    });
+    await agent.initialize({ workdir: "/w" });
+    client.request.mockClear();
+    client.request
+      .mockRejectedValueOnce(
+        new Error("session session-123 is being reconfigured"),
+      )
+      .mockResolvedValueOnce({});
+
+    vi.useFakeTimers();
+    try {
+      const destroying = agent.destroy();
+      await vi.advanceTimersByTimeAsync(500);
+      await expect(destroying).resolves.toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
+
+    expect(client.request).toHaveBeenCalledTimes(2);
+  });
+
+  it("destroy gives up loudly when the refusal never clears", async () => {
+    const { agent, client } = createAgent();
+    client.request.mockResolvedValue({
+      sessionId: "session-123",
+      currentWorkdir: "/w",
+      permissionMode: "default",
+      latestTotalTokens: 0,
+    });
+    await agent.initialize({ workdir: "/w" });
+    client.request.mockClear();
+    client.request.mockRejectedValue(
+      new Error("session session-123 is being reconfigured"),
+    );
+
+    vi.useFakeTimers();
+    try {
+      // A silent give-up is the thing that leaks: the caller must learn the
+      // session is still alive.
+      const destroying = expect(agent.destroy()).rejects.toThrow(
+        /being reconfigured/,
+      );
+      await vi.advanceTimersByTimeAsync(15_000);
+      await destroying;
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   // ── sendMessage ────────────────────────────────────────────
 
   it("sends sendMessage with text, images, force, and sessionId", async () => {

@@ -2546,6 +2546,31 @@ export class DesktopHost {
   }
 
   /**
+   * Destroy a session agent, reporting a teardown that never completed.
+   *
+   * `StdioAgent.destroy()` already retries the engine's "is being reconfigured"
+   * refusal (config-reload rebuild in progress) and throws only if the retry
+   * window runs out. By then the reference is gone everywhere — pool, router,
+   * and for a delete also the sidebar index — so the only thing left to do is
+   * say it out loud instead of hiding a process tree that nothing can reap
+   * (issue #2758; spec ecosystem/mcp.md 边界情况「销毁请求被拒必须有兜底」).
+   */
+  private async destroyAgent(
+    agent: StdioAgent,
+    context: string,
+  ): Promise<void> {
+    try {
+      await agent.destroy();
+    } catch (error) {
+      console.error(
+        `[DesktopHost] ${context}: destroy did not complete (${
+          error instanceof Error ? error.message : String(error)
+        }) — its process tree may outlive the app`,
+      );
+    }
+  }
+
+  /**
    * Remove a spawned-but-unbound agent from the pool and destroy it. The
    * shared stdio client survives (other sessions may still use it); the
    * router entry dies with the agent.
@@ -2564,9 +2589,7 @@ export class DesktopHost {
         // Client may already be gone; best-effort
       }
     }
-    await agent.destroy().catch(() => {
-      /* best-effort */
-    });
+    await this.destroyAgent(agent, "discardAgent");
   }
 
   /**
@@ -3769,9 +3792,7 @@ export class DesktopHost {
     // dispose the shared stdio client, so the connection stays alive for
     // removeWorktree to reuse.
     const destroyPromise = target
-      ? target.destroy().catch(() => {
-          /* best-effort */
-        })
+      ? this.destroyAgent(target, `delete session ${sessionId}`)
       : Promise.resolve();
 
     this.configStore.removeSession(sessionId);

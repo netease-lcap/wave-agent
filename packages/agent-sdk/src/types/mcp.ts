@@ -88,5 +88,19 @@ export interface McpServerStatus {
    */
   instructions?: string;
   lastConnected?: number;
+  /**
+   * Tool snapshot from this server's last successful connection, read from the
+   * machine-local display cache (`~/.wave/mcp-tools-cache.json`). Lazy dial
+   * means a fresh conversation has no process and no tool list; the panel still
+   * has to say what the server brings.
+   *
+   * Display only — never a source of tool declarations or calls (spec
+   * ecosystem/mcp.md 场景 15), which is why only name/description are carried.
+   * Absent when the config changed since the snapshot (the old tools are no
+   * longer trustworthy) or when the server never connected on this machine.
+   */
+  toolsFromCache?: Array<{ name: string; description?: string }>;
+  /** When `toolsFromCache` was captured (ms since epoch). */
+  toolsCachedAt?: number;
   error?: string;
 }

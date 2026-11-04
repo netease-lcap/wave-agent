@@ -206,6 +206,17 @@ export interface StdioAgentCallbacks {
 
 // ── StdioAgent ───────────────────────────────────────────────────
 
+/**
+ * `AgentBridge.destroy` refuses (rather than racing) while a config-reload
+ * rebuild owns the session: "Session X is being reconfigured (config reload in
+ * progress), retry shortly". That window is bounded, so the request is worth
+ * retrying — and the message is the only signal the refusal travels with.
+ */
+function isRetryableDestroyRefusal(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.includes("is being reconfigured");
+}
+
 export class StdioAgent {
   // ── Cached state (synchronous access) ──
   public sessionId: string | undefined;
@@ -301,16 +312,40 @@ export class StdioAgent {
     return result;
   }
 
+  /**
+   * Tear the session's agent down in the engine.
+   *
+   * "Best effort" only covers a peer that is already gone — then the agent (and
+   * everything it spawned) died with it. A refusal from a *live* engine is a
+   * different thing: `AgentBridge.destroy` refuses while a config-reload rebuild
+   * owns the session, and every caller of this method has already dropped its
+   * own reference to the agent (pool entry, router entry, sidebar index), so
+   * accepting the refusal leaves a live agent — and its MCP process tree —
+   * unreachable until the process exits (issue #2758; spec ecosystem/mcp.md
+   * 边界情况「销毁请求被拒必须有兜底」). Retry across the rebuild window, then
+   * throw so the host can log the leak instead of hiding it.
+   */
   async destroy(): Promise<void> {
     if (this.sessionId) {
       this.router.unregister(this.sessionId);
     }
-    try {
-      await this.client.request("destroy", undefined, this.sessionId);
-    } catch {
-      // Process may have already exited; best-effort
-    }
     // NOTE: do NOT dispose the shared client — other sessions may still use it
+    const deadline = Date.now() + 10_000;
+    let delay = 250;
+    for (;;) {
+      try {
+        await this.client.request("destroy", undefined, this.sessionId);
+        return;
+      } catch (error) {
+        if (!isRetryableDestroyRefusal(error)) {
+          // Process may have already exited; best-effort
+          return;
+        }
+        if (Date.now() > deadline) throw error;
+        await new Promise((resolve) => setTimeout(resolve, delay));
+        delay = Math.min(delay * 2, 2000);
+      }
+    }
   }
 
   async restoreSession(sessionId: string): Promise<void> {

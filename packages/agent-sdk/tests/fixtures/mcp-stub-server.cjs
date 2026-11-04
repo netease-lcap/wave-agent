@@ -5,7 +5,24 @@
 // Env knobs:
 //   IGNORE_EOF=1  keep running after stdin EOF (stubborn server that must be
 //                 signalled/killed instead of exiting on its own)
+//   GRANDCHILD_PID_FILE=<path>  spawn a long-lived child process and write its
+//                 pid there — models `uvx → uv → server`, where killing only the
+//                 direct child leaves the real server running
+//   NO_TOOLS=1    `tools/list` returns an empty list (a server whose tool set
+//                 shrank to nothing must overwrite, not keep, its cached list)
 const readline = require("readline");
+
+const grandchildPidFile = process.env.GRANDCHILD_PID_FILE;
+if (grandchildPidFile) {
+  const { spawn } = require("child_process");
+  const fs = require("fs");
+  const grandchild = spawn(
+    process.execPath,
+    ["-e", "setInterval(() => {}, 1000)"],
+    { stdio: "ignore" },
+  );
+  fs.writeFileSync(grandchildPidFile, String(grandchild.pid));
+}
 
 const rl = readline.createInterface({
   input: process.stdin,
@@ -37,19 +54,17 @@ rl.on("line", (line) => {
         },
       });
     } else if (msg.method === "tools/list") {
-      send({
-        jsonrpc: "2.0",
-        id: msg.id,
-        result: {
-          tools: [
-            {
-              name: "echo",
-              description: "echo back the input",
-              inputSchema: { type: "object", properties: {} },
-            },
-          ],
-        },
-      });
+      const tools =
+        process.env.NO_TOOLS === "1"
+          ? []
+          : [
+              {
+                name: "echo",
+                description: "echo back the input",
+                inputSchema: { type: "object", properties: {} },
+              },
+            ];
+      send({ jsonrpc: "2.0", id: msg.id, result: { tools } });
     } else {
       send({ jsonrpc: "2.0", id: msg.id, result: {} });
     }

@@ -18,6 +18,13 @@ import { entrypointOf } from "../telemetry/attributes.js";
 import { detectMcpActivity } from "../telemetry/toolActivity.js";
 import type { ToolPlugin, ToolResult, ToolContext } from "../tools/types.js";
 import { Container } from "../utils/container.js";
+import { killProcessTree } from "../utils/killProcessTree.js";
+import {
+  mcpConfigFingerprint,
+  mcpToolsCacheKey,
+  readMcpToolsCache,
+  saveCachedTools,
+} from "../utils/mcpToolsCache.js";
 import { truncateMcpInstructions } from "../utils/mcpInstructions.js";
 import type { ConfigurationService } from "../services/configurationService.js";
 import type {
@@ -33,6 +40,16 @@ interface McpConnection {
   client: Client;
   transport: Transport;
   process: null; // StdioClientTransport manages process internally
+}
+
+/**
+ * pid of the process a transport spawned, for stdio transports only (http/sse
+ * have none). Read *before* closing: once the direct child (`uvx`) is gone its
+ * children are re-parented and can no longer be reached from this pid.
+ */
+function transportPid(transport: Transport): number | undefined {
+  const pid = (transport as { pid?: unknown }).pid;
+  return typeof pid === "number" && pid > 0 ? pid : undefined;
 }
 
 export interface McpManagerCallbacks {
@@ -147,6 +164,18 @@ export class McpManager {
   private reconnectAttempts: Map<string, number> = new Map();
   /** Explicit disconnectServer teardowns currently in flight */
   private disconnecting: Set<string> = new Set();
+  /**
+   * Servers the *user* disconnected. Lazy dial must not undo that decision
+   * (spec ecosystem/mcp.md「手动断开不得被自动重连撤销」); only an explicit
+   * `connectMcpServer()` clears it.
+   */
+  private userDisconnected: Set<string> = new Set();
+  /** Servers lazy dial already attempted, so a failure isn't retried every turn. */
+  private autoDialAttempted: Set<string> = new Set();
+  /** Lazy dials currently in flight (one per server, so turns don't double-dial). */
+  private pendingDials: Set<string> = new Set();
+  /** Set by `cleanup()`: a destroyed manager never spawns another process. */
+  private destroyed: boolean = false;
 
   constructor(
     private container: Container,
@@ -171,6 +200,14 @@ export class McpManager {
 
   /**
    * Initialize MCP manager with working directory and optionally auto-connect
+   *
+   * `autoConnect` (eager connect at create time) is legacy: it spawns one server
+   * process tree per Agent, which a host that pools Agents per session (desktop,
+   * daemon, IM bridge) pays for every conversation it ever opens. Agents are
+   * initialized with `false` and dial on the first turn
+   * (`connectPendingServers()`) instead — see spec ecosystem/mcp.md「按需连接 MCP
+   * 服务器」. Config reading is separate (`loadConfig()`), so the caller can make
+   * the server list visible without spawning anything.
    */
   async initialize(
     workdir: string,
@@ -224,6 +261,88 @@ export class McpManager {
     }
   }
 
+  /**
+   * Servers still waiting for their first dial in this session.
+   */
+  private pendingDialTargets(): string[] {
+    const targets: string[] = [];
+    for (const name of this.servers.keys()) {
+      if (this.connections.has(name)) continue;
+      if (this.pendingDials.has(name)) continue;
+      if (this.disconnecting.has(name)) continue;
+      if (this.userDisconnected.has(name)) continue;
+      if (this.autoDialAttempted.has(name)) continue;
+      targets.push(name);
+    }
+    return targets;
+  }
+
+  /**
+   * Start a lazy dial for the turn, or do nothing at all.
+   *
+   * The turn path calls this instead of `connectPendingServers()` directly: when
+   * no server needs dialing (nothing configured, everything already connected or
+   * already attempted) it returns `undefined` and the turn proceeds without the
+   * extra `await` — a turn that does not use MCP must be indistinguishable from
+   * one built before lazy dial existed. The decision is synchronous on purpose;
+   * the config is read at `Agent.create()` (`loadConfig()`), and a manager that
+   * somehow never loaded it still falls through to the async path below.
+   */
+  beginPendingDials(): Promise<void> | undefined {
+    if (this.destroyed) return undefined;
+    if (this.config && this.pendingDialTargets().length === 0) return undefined;
+    return this.connectPendingServers();
+  }
+
+  /**
+   * Dial every server that still needs it, before the turn builds its tool
+   * config (spec ecosystem/mcp.md「按需连接 MCP 服务器」场景 1-4).
+   *
+   * Only servers that were never dialed in this session are picked up: a
+   * server that already failed is left in `error` rather than costing every
+   * later turn another dial timeout and another spawned tree, and a server the
+   * user disconnected stays down. Already-connected servers are untouched.
+   *
+   * Never throws: a failure is a server status, not a turn failure.
+   */
+  async connectPendingServers(): Promise<void> {
+    if (this.destroyed) return;
+    // `.mcp.json` / `~/.wave/mcp.json` may not have been read yet (initialize()
+    // with autoConnect=false still loads them, but a manager created by a test
+    // double or a host path that skipped initialize must not dial blindly).
+    try {
+      await this.ensureConfigLoaded();
+    } catch (error) {
+      logger?.warn("MCP config load failed before lazy dial:", error);
+      return;
+    }
+    if (this.destroyed) return;
+
+    const targets = this.pendingDialTargets();
+    if (targets.length === 0) return;
+
+    await Promise.all(
+      targets.map(async (name) => {
+        this.autoDialAttempted.add(name);
+        this.pendingDials.add(name);
+        try {
+          const connected = await this.connectServer(name);
+          if (connected) {
+            logger?.debug(`MCP server ${name} connected on first use`);
+          } else {
+            logger?.warn(
+              `MCP server ${name} failed to connect on first use; it stays disconnected until an explicit connect`,
+            );
+          }
+        } catch (error) {
+          logger?.warn(`MCP lazy dial failed for ${name}:`, error);
+        } finally {
+          this.pendingDials.delete(name);
+        }
+      }),
+    );
+  }
+
   async ensureConfigLoaded(): Promise<McpConfig | null> {
     if (!this.config) {
       return this.loadConfig();
@@ -246,6 +365,7 @@ export class McpManager {
       // Neither file exists: preserve the original null contract (constructor-
       // provided servers may still be present in this.config).
       if (!userConfig && !projectConfig) {
+        await this.hydrateToolsCache();
         return this.config;
       }
 
@@ -320,6 +440,7 @@ export class McpManager {
         }
       }
 
+      await this.hydrateToolsCache();
       return this.config;
     } catch (error) {
       // Only log error if it's not a "file not found" error
@@ -328,6 +449,62 @@ export class McpManager {
       }
       return null;
     }
+  }
+
+  /**
+   * Attach the last-known tool snapshot to servers that are not connected
+   * (spec ecosystem/mcp.md 场景 10-11).
+   *
+   * Runs on every config load, so a server whose command/args/env/url (or
+   * workdir) changed loses its snapshot — the fingerprint no longer matches,
+   * and the old tools are no longer trustworthy. A live connection owns the
+   * truth: `tools` already holds the real list and `rememberTools()` keeps the
+   * snapshot in step with it.
+   */
+  private async hydrateToolsCache(): Promise<void> {
+    const cache = await readMcpToolsCache();
+    for (const [name, server] of Array.from(this.servers.entries())) {
+      if (this.connections.has(name)) continue;
+      const entry =
+        cache.servers[
+          mcpToolsCacheKey(
+            name,
+            mcpConfigFingerprint(server.config, this.workdir),
+          )
+        ];
+      const toolsFromCache = entry?.tools;
+      const toolsCachedAt = entry?.cachedAt;
+      if (
+        server.toolsFromCache === toolsFromCache &&
+        server.toolsCachedAt === toolsCachedAt
+      ) {
+        continue;
+      }
+      this.servers.set(name, { ...server, toolsFromCache, toolsCachedAt });
+    }
+  }
+
+  /**
+   * Persist a server's tool snapshot after a successful connection
+   * (scenario 13: an empty list *overwrites* — a server that now exposes no
+   * tools must not keep advertising the old ones).
+   */
+  private async rememberTools(name: string, tools: McpTool[]): Promise<void> {
+    const server = this.servers.get(name);
+    if (!server) return;
+    const entry = await saveCachedTools({
+      name,
+      fingerprint: mcpConfigFingerprint(server.config, this.workdir),
+      workdir: this.workdir,
+      tools,
+      configuredNames: this.servers.keys(),
+    });
+    const current = this.servers.get(name) ?? server;
+    this.servers.set(name, {
+      ...current,
+      toolsFromCache: entry.tools,
+      toolsCachedAt: entry.cachedAt,
+    });
   }
 
   /**
@@ -566,7 +743,11 @@ export class McpManager {
   }
 
   // Real MCP connection implementation
-  async connectServer(name: string): Promise<boolean> {
+  //
+  // `manual` marks a user-initiated connect (settings page / `/mcp` / CLI), the
+  // only way to override a previous explicit disconnect. Everything else —
+  // lazy dial, auto-reconnect — must respect that decision.
+  async connectServer(name: string, manual = false): Promise<boolean> {
     const server = this.servers.get(name);
     if (!server) return false;
 
@@ -578,12 +759,26 @@ export class McpManager {
     // a fresh process the user asked to stop.
     if (this.disconnecting.has(name)) return false;
 
+    // A destroyed manager must never spawn another process (spec
+    // ecosystem/mcp.md 边界情况「拨号与销毁竞态」): the Agent's teardown already
+    // ran, so nothing would ever reap what we spawn here.
+    if (this.destroyed) return false;
+
+    if (manual) {
+      this.userDisconnected.delete(name);
+    } else if (this.userDisconnected.has(name)) {
+      return false;
+    }
+
     this.updateServerStatus(name, { status: "connecting" });
 
+    // Declared outside `try` so a failure *after* the process was spawned (a
+    // handshake or `listTools()` that throws) still tears the process down
+    // instead of leaving an orphan tree nothing points at.
+    let transport: Transport | undefined;
+    let client: Client | undefined;
+
     try {
-      // Create transport - it will manage the process
-      let transport: Transport;
-      let client: Client;
       let tools: McpTool[] = [];
       // Server-level usage notes from `initialize`; part of the connection's
       // handshake, so it is read once here rather than re-requested later.
@@ -776,6 +971,12 @@ export class McpManager {
         );
       }
 
+      // Both are assigned on every path that gets here (the branches above
+      // either set them or throw); binding them to consts lets the closures
+      // below — onerror / onclose — see non-optional values.
+      const connectedClient: Client = client;
+      const connectedTransport: Transport = transport;
+
       // Handle transport errors (e.g. SSE stream disconnected)
       // The SDK auto-reconnects for transient SSE errors, so we use
       // "reconnecting" status instead of "error". We then poll listTools()
@@ -791,7 +992,7 @@ export class McpManager {
             error: error.message,
           });
           // Poll to detect when the SDK's auto-reconnect succeeds
-          this.pollReconnectRecovery(name, client);
+          this.pollReconnectRecovery(name, connectedClient);
         } else {
           logger?.error(`MCP Server ${name} transport error:`, error);
           this.updateServerStatus(name, {
@@ -825,10 +1026,28 @@ export class McpManager {
 
       // Store connection
       this.connections.set(name, {
-        client,
-        transport,
+        client: connectedClient,
+        transport: connectedTransport,
         process: null,
       });
+
+      // The dial outlived the Agent it was dialing for (spec
+      // ecosystem/mcp.md「拨号与销毁竞态」): `cleanup()` can cancel timers but
+      // cannot see a handshake in flight, so the ownership check has to happen
+      // here — whatever this dial produced must be reaped immediately, or it
+      // becomes a process tree nobody owns.
+      if (this.destroyed) {
+        logger?.debug(
+          `MCP server ${name} connected after its owner was destroyed; closing it`,
+        );
+        this.connections.delete(name);
+        await this.closeConnection(name, {
+          client: connectedClient,
+          transport: connectedTransport,
+        });
+        this.updateServerStatus(name, { status: "disconnected" });
+        return false;
+      }
 
       // Update status
       this.updateServerStatus(name, {
@@ -840,10 +1059,21 @@ export class McpManager {
         lastConnected: Date.now(),
         error: undefined,
       });
+      // Refresh the display snapshot the panel falls back to while this server
+      // is not dialed (spec ecosystem/mcp.md 场景 13).
+      await this.rememberTools(name, tools);
 
       return true;
     } catch (error) {
       logger?.error(`Failed to connect to MCP server ${name}:`, error);
+      // The process may already be spawned (a handshake or `listTools()` that
+      // threw after `connect()`), and nothing else will ever reference it —
+      // tear it down here rather than leaking a tree per failed dial.
+      if (transport) {
+        await this.closeConnection(name, { client, transport }).catch(() => {
+          /* best-effort */
+        });
+      }
       // updateServerStatus will trigger the callback
       this.updateServerStatus(name, {
         status: "error",
@@ -851,6 +1081,50 @@ export class McpManager {
       });
       return false;
     }
+  }
+
+  /**
+   * Close a connection and make sure its whole process tree is gone.
+   *
+   * The MCP SDK's stdio `close()` only ends stdin and signals the **direct**
+   * child, so `uvx → uv → server → python×2` can lose its root and leave the
+   * rest running (spec ecosystem/mcp.md 边界情况「断开后整树终止」). On Windows
+   * the tree kill has to come first: once `uvx` is gone, its children are
+   * re-parented and `taskkill /PID <pid> /T /F` has no tree left to walk.
+   */
+  private async closeConnection(
+    name: string,
+    connection: { client?: Client; transport: Transport },
+  ): Promise<void> {
+    const pid = transportPid(connection.transport);
+
+    const close = async () => {
+      try {
+        await connection.client?.close();
+      } catch (error) {
+        logger?.debug(`Error closing MCP client ${name}:`, error);
+      }
+      try {
+        await connection.transport.close();
+      } catch (error) {
+        logger?.debug(`Error closing MCP transport ${name}:`, error);
+      }
+    };
+
+    // Concurrent with the close, not before it: the taskkill lands while the
+    // direct child is still alive (the ordering Windows needs), and the SDK's
+    // own post-exit wait overlaps it instead of adding to it.
+    const kill = pid
+      ? killProcessTree(pid, "SIGKILL").then((result) => {
+          if (result === "failed") {
+            logger?.warn(
+              `MCP server ${name}: could not terminate process tree rooted at ${pid}`,
+            );
+          }
+        })
+      : Promise.resolve();
+
+    await Promise.all([kill, close()]);
   }
 
   /**
@@ -868,6 +1142,9 @@ export class McpManager {
 
     const timer = setTimeout(() => {
       this.reconnectTimers.delete(name);
+      // The Agent was torn down while this backoff was pending — reconnecting
+      // would spawn a tree with no owner.
+      if (this.destroyed) return;
       logger?.debug(`Auto-reconnecting MCP server: ${name}`);
       this.connectServer(name)
         .then((success) => {
@@ -899,6 +1176,7 @@ export class McpManager {
     const delay = 3000; // Match SDK's reconnection delay
     for (let i = 0; i < maxAttempts; i++) {
       await new Promise((r) => setTimeout(r, delay));
+      if (this.destroyed) return;
       const serverStatus = this.servers.get(name);
       if (serverStatus?.status !== "reconnecting") {
         return; // Status changed by onclose or user action — stop polling
@@ -923,6 +1201,7 @@ export class McpManager {
           lastConnected: Date.now(),
           error: undefined,
         });
+        await this.rememberTools(name, tools);
         this.reconnectAttempts.delete(name);
         return;
       } catch {
@@ -975,10 +1254,11 @@ export class McpManager {
     // Mark before closing so transport.onclose knows this is an expected,
     // user-initiated teardown and must not schedule an auto-reconnect.
     this.disconnecting.add(name);
+    // Remember the decision: a later turn's lazy dial must not resurrect it.
+    this.userDisconnected.add(name);
     try {
-      // Close client connection and transport
-      await connection.client.close();
-      await connection.transport.close();
+      // Close the client/transport *and* the whole process tree it spawned.
+      await this.closeConnection(name, connection);
 
       // Remove connection (transport.onclose may already have done so)
       if (this.connections.get(name) === connection) {
@@ -1217,16 +1497,32 @@ export class McpManager {
     }
   }
 
-  // Cleanup all connections
+  /**
+   * Tear every connection down and make this manager permanently inert.
+   *
+   * Idempotent by contract (spec ecosystem/mcp.md 边界情况「销毁必须先于引用丢弃、
+   * 且回收不得被前置失败阻断」): the callers drop their own reference to the Agent
+   * before/while the teardown runs, so a second call — or a call after a partial
+   * failure — has to be harmless rather than throwing.
+   */
   async cleanup(): Promise<void> {
+    // Inert first: nothing below may spawn a process, and an in-flight dial (see
+    // connectServer's post-connect check) will close what it produced.
+    this.destroyed = true;
     // Cancel all pending reconnect timers
     for (const name of this.reconnectTimers.keys()) {
       this.cancelReconnect(name);
     }
-    const disconnectPromises = Array.from(this.connections.keys()).map((name) =>
-      this.disconnectServer(name),
+    const names = Array.from(this.connections.keys());
+    await Promise.all(
+      names.map((name) =>
+        this.disconnectServer(name).catch((error) => {
+          logger?.warn(`MCP server ${name} teardown failed:`, error);
+          return false;
+        }),
+      ),
     );
-    await Promise.all(disconnectPromises);
+    this.pendingDials.clear();
   }
 
   // ========== Tools Registry Methods ==========

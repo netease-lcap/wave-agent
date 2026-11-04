@@ -63,6 +63,31 @@ describe("Agent destroy teardown", () => {
     expect(unsubAuth).toHaveBeenCalledTimes(1);
   });
 
+  // Issue #2758: hosts drop their own reference to the Agent before/as they
+  // call destroy(), so a teardown that aborts early leaves an unreachable Agent
+  // holding a live MCP process tree. A failed transcript flush must therefore
+  // only warn — never skip the resource cleanup (spec ecosystem/mcp.md 边界情况
+  // 「销毁必须先于引用丢弃、且回收不得被前置失败阻断」).
+  it("destroy() still tears down MCP when the transcript flush throws", async () => {
+    const agent = await Agent.create({
+      apiKey: "test-key",
+      workdir: "/tmp/test-destroy-flush-failure",
+    });
+    const internals = agent as unknown as {
+      messageManager: { saveSession: () => Promise<void> };
+      mcpManager: { cleanup: () => Promise<void> };
+    };
+    vi.spyOn(internals.messageManager, "saveSession").mockRejectedValue(
+      new Error("transcript write failed"),
+    );
+    const cleanup = vi.spyOn(internals.mcpManager, "cleanup");
+
+    await expect(agent.destroy()).resolves.toBeUndefined();
+
+    expect(internals.messageManager.saveSession).toHaveBeenCalledTimes(1);
+    expect(cleanup).toHaveBeenCalledTimes(1);
+  });
+
   it("destroy() clears the DI container so per-agent services are released", async () => {
     const agent = await Agent.create({
       apiKey: "test-key",

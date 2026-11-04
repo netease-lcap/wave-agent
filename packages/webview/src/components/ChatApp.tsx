@@ -20,7 +20,6 @@ import { RewindPopup } from "./RewindPopup";
 import type { RewindCheckpoint } from "./RewindPopup";
 import { ToastStack } from "./ToastStack";
 import { BtwPanel } from "./BtwPanel";
-import McpDialog from "./McpDialog";
 import StatusDialog from "./StatusDialog";
 import BackgroundTaskManager from "./BackgroundTaskManager";
 import WorkflowManager from "./WorkflowManager";
@@ -5410,9 +5409,6 @@ export const ChatApp: React.FC<ChatAppProps> = ({
           showProject
           onClose={handleResumeClose}
         />
-      )}
-      {state.activeDialog === "mcp" && (
-        <McpDialog vscode={vscode} onClose={handleDialogClose} />
       )}
       {state.activeDialog === "status" && (
         <StatusDialog

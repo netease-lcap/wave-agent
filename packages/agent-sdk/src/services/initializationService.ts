@@ -132,10 +132,17 @@ export class InitializationService {
       // Don't throw error to prevent app startup failure
     }
 
-    // Initialize MCP servers with auto-connect
+    // Register — but do not dial — the MCP servers. The server list has to be
+    // complete right after create (the `/mcp` panel and the settings page read
+    // it), while the process spawn waits for the first turn that needs it:
+    // `AIManager.sendAIMessage` → `connectPendingServers()`. A host that pools
+    // Agents per session (desktop, daemon, IM bridge) would otherwise pay one
+    // ~130 MB process tree per conversation it ever opens (spec
+    // ecosystem/mcp.md「按需连接 MCP 服务器」, issue #2758).
     try {
       const phaseStart = performance.now();
-      await mcpManager.initialize(workdir, true);
+      await mcpManager.initialize(workdir, false);
+      await mcpManager.loadConfig();
       if (lspManager instanceof LspManager) {
         await lspManager.initialize(workdir);
       }

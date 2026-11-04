@@ -1850,6 +1850,22 @@ ${question}`;
     let myGeneration = this.turnGeneration;
     this.setIsLoading(true);
 
+    // Lazy MCP dial (spec ecosystem/mcp.md「按需连接 MCP 服务器」场景 2): the
+    // servers were registered at `Agent.create()` but not spawned, because a
+    // pooled Agent per session would otherwise cost one ~130 MB process tree per
+    // conversation the host ever opens (issue #2758). Start the dial alongside
+    // the rest of the turn's preparation and join it before the tool config is
+    // built, so a turn that ends up calling MCP tools can already see them.
+    // `undefined` when there is nothing to dial: such a turn must not gain an
+    // extra yield point over one built before lazy dial existed.
+    const mcp = this.mcpManager;
+    const mcpDial =
+      mcp && typeof mcp.beginPendingDials === "function"
+        ? mcp.beginPendingDials()?.catch((error: unknown) => {
+            logger?.warn("MCP lazy dial failed:", error);
+          })
+        : undefined;
+
     outer: while (true) {
       let shouldRestart = false;
 
@@ -2027,6 +2043,12 @@ ${question}`;
           };
 
           logger?.debug("modelConfig in sendAIMessage", this.getModelConfig());
+
+          // Join the lazy MCP dial before the tool config is derived, so this
+          // turn's request carries the MCP tools the dial just brought up.
+          // `mcpDial` is undefined when nothing needed dialing — then this is a
+          // no-op, not an extra yield point.
+          if (mcpDial) await mcpDial;
 
           const { toolsConfig, toolNames, reachableToolPlugins } =
             this.resolveFilteredTools();
