@@ -62,6 +62,12 @@ import { Container } from "../utils/container.js";
 // hasFileBeenRead can still answer for every file read this session.
 const RECENT_FILE_READS_CACHE_LIMIT = 100;
 const RECENT_FILE_READS_CONTENT_LIMIT = 10;
+/**
+ * 首屏补齐最多读几轮转录。正常一两轮就填满（与内存尾部重复的保留轮次只在第一轮
+ * 出现，去掉后补几条就够）；这道上限只兜底「一整轮全被去重」这种病态情况，
+ * 保证首屏读盘次数有界——剩下的留给上翻。
+ */
+const FIRST_PAGE_FILL_ROUNDS = 4;
 
 export interface MessageManagerCallbacks {
   onSessionIdChange?: (sessionId: string) => void;
@@ -1196,9 +1202,9 @@ export class MessageManager {
    * - `limit` → the newest `limit` (first screen)
    * - `before` → the page just above that id (上翻取更早)
    *
-   * 内存里的列表从最近一次压缩开始，压缩之前的历史只在转录里，所以「上翻」和
-   * 「首屏还有没有更早」这两件要读盘（`utils/transcriptPage.ts`）。读出来的页
-   * **不写回内存**：它只活在页面那一侧，模型上下文一个字节都不变
+   * 内存里的列表从最近一次压缩开始，压缩之前的历史只在转录里，所以「首屏补齐」
+   * 和「上翻」这两件要读盘（`utils/transcriptPage.ts`）。读出来的页**不写回
+   * 内存**：它只活在页面那一侧，模型上下文一个字节都不变
    * （spec ui/message-rendering-system.md「内存只装压缩后的上下文，更早的历史
    * 按页从转录取」）。
    *
@@ -1225,14 +1231,7 @@ export class MessageManager {
     const limit = window.limit ?? MESSAGE_PAGE_SIZE;
 
     if (!window.before) {
-      // 首屏：内存尾部一页；内存放得下整份时才需要问转录还有没有更早。
-      const page = takeTailFromMemory(list, limit);
-      if (page.length < list.length) return { messages: page, hasMore: true };
-      const earliest = page[0]?.id;
-      return {
-        messages: page,
-        hasMore: earliest ? await this.hasTranscriptBefore(earliest) : false,
-      };
+      return this.readFirstPage(limit);
     }
 
     // 上翻：锚点之上一段先在内存里取（那是刚刚显示过的那部分），不够再接转录。
@@ -1289,10 +1288,93 @@ export class MessageManager {
     };
   }
 
-  /** 转录里 `id` 之前还有没有消息；没有转录文件时为 false。 */
-  private async hasTranscriptBefore(id: string): Promise<boolean> {
-    const { hasTranscriptBefore } = await import("../utils/transcriptPage.js");
-    return hasTranscriptBefore(this.transcriptPath, id);
+  /**
+   * 首屏那一页：内存尾部 + 从转录往前补齐到 `limit` 条
+   * （spec ui/message-rendering-system.md「首屏按条数填满，压缩边界不截断这一页」）。
+   *
+   * 「内存尾部一页」只对没压缩过的会话等于最近一页：压缩过的会话内存里只剩摘要块
+   * 加保留的轮次，可能只有几条，直接发出去用户就只看到压缩块那一小段。所以不足一
+   * 页时继续从转录取更早的，把这页填满——压缩之前的历史因此直接出现在首屏。
+   *
+   * 三条规矩与上翻一致：
+   *
+   * - **按 id 去重**：压缩保留的轮次在转录里排在摘要块**之前**，与内存尾部是同一
+   *   批消息，不去重就会在摘要块两边各显示一遍。
+   * - **页首带 id**：补出来的页首要能当上翻的锚点。
+   * - **不写回内存**：补进来的只进这一页，`this.messages` 一个字节都不变（模型上
+   *   下文也不变）。
+   *
+   * 读盘失败或锚点丢失时退回「内存这一页 + 还有更早」：首屏宁可少几条，也不回
+   * 空表，剩下的留给上翻再试。
+   */
+  private async readFirstPage(limit: number): Promise<MessageWindowResult> {
+    const list = this.messages;
+    const page = takeTailFromMemory(list, limit);
+    // 内存比一页长：这一页就是内存尾部，上面肯定还有。
+    if (page.length < list.length) return { messages: page, hasMore: true };
+
+    // 内存装得下整份，但「整份」可能只是压缩后的上下文（摘要块 + 保留轮次）。
+    const earliest = page[0]?.id;
+    if (!earliest) return { messages: page, hasMore: false };
+
+    const seen = new Set(page.map((message) => message.id));
+    let older: Message[] = [];
+    let before = earliest;
+    for (let round = 0; round < FIRST_PAGE_FILL_ROUNDS; round++) {
+      const room = limit - page.length - older.length;
+      // 内存正好装一页（`room === 0`）：这一页不用补，读一条只为回答「还有没有
+      // 更早」——不把探到的这条加进页里，页大小仍是 `limit`。
+      const probe = room <= 0;
+      let read: MessageWindowResult;
+      try {
+        read = await this.readOlderPage({ before, limit: probe ? 1 : room });
+      } catch {
+        // 读盘抖动：退回内存这一页，上翻时再试（首屏任何时候都不给空表）。
+        return { messages: [...older, ...page], hasMore: true };
+      }
+      if (read.anchorLost) {
+        // 锚点在转录里找不到（旧会话、被 rewind 裁掉）：按「可能还有」处理——
+        // 判成「到顶」这段历史就再也翻不出来，上翻重试还有机会。
+        return { messages: [...older, ...page], hasMore: true };
+      }
+      if (probe) {
+        return {
+          messages: [...older, ...page],
+          hasMore: read.messages.length > 0,
+        };
+      }
+      if (read.messages.length === 0) {
+        // 转录到头了，这就是这条会话的第一条。
+        return {
+          messages: [...older, ...page],
+          hasMore: read.hasMore === true,
+        };
+      }
+      // 压缩保留的轮次在转录里排在摘要块之前，与内存尾部重复：按 id 去掉。
+      const fresh = read.messages.filter(
+        (message) => !message.id || !seen.has(message.id),
+      );
+      for (const message of fresh) {
+        if (message.id) seen.add(message.id);
+      }
+      older = [...fresh, ...older];
+      const next = read.messages[0].id;
+      if (
+        page.length + older.length >= limit ||
+        read.hasMore !== true ||
+        !next
+      ) {
+        // 填满了 / 转录到头了 / 页首没有 id 当锚点了：剩下的交给上翻。
+        // 判断「还有更早」用这一趟读页自带的那一位，不另外再扫一遍文件。
+        return {
+          messages: [...older, ...page],
+          hasMore: read.hasMore === true,
+        };
+      }
+      before = next;
+    }
+    // 轮次上限兜底（正常一两轮就填满）：剩下的留给上翻。
+    return { messages: [...older, ...page], hasMore: true };
   }
 
   /**
