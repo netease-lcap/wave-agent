@@ -25,6 +25,16 @@ const TABS: SettingsTabDef[] = [
   { key: "plugin", label: "插件 MCP" },
 ];
 
+/**
+ * A server that has not been dialed in this conversation still gets a tool list
+ * from the machine-local snapshot (`toolsFromCache`) — shown as cached, never
+ * as "connected". Only for a server that is really down: "reconnecting" still
+ * holds its live tools, and "connected" has the real ones in `toolCount`.
+ */
+const hasCachedTools = (server: McpServerStatus): boolean =>
+  (server.status === "disconnected" || server.status === "error") &&
+  !!server.toolsFromCache;
+
 export interface SettingsMcpViewProps {
   /** Host 消息桥（ChatApp desktop 分支 / settings-preview-entry 传入） */
   vscode?: { postMessage: (msg: unknown) => void };
@@ -168,6 +178,11 @@ const SettingsMcpView: React.FC<SettingsMcpViewProps> = ({
           {server.toolCount !== undefined && server.status === "connected" && (
             <span className="mcp-tool-count">{server.toolCount} tools</span>
           )}
+          {hasCachedTools(server) && (
+            <span className="mcp-tool-count">
+              {server.toolsFromCache?.length} tools
+            </span>
+          )}
         </div>
         {configLabel(server) && (
           <div className="mcp-server-meta mcp-server-meta--break">
@@ -175,6 +190,16 @@ const SettingsMcpView: React.FC<SettingsMcpViewProps> = ({
           </div>
         )}
         {server.error && <div className="mcp-server-error">{server.error}</div>}
+        {hasCachedTools(server) && (
+          <div className="mcp-server-last-connected">
+            工具来自缓存
+            {server.toolsCachedAt
+              ? ` · 上次连接 ${new Date(
+                  server.toolsCachedAt,
+                ).toLocaleTimeString()}`
+              : ""}
+          </div>
+        )}
         {server.lastConnected && (
           <div className="mcp-server-last-connected">
             最近连接: {new Date(server.lastConnected).toLocaleTimeString()}

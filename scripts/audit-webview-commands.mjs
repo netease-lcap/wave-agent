@@ -36,8 +36,14 @@
 
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const ROOT = new URL("..", import.meta.url).pathname;
+// `new URL("..", import.meta.url).pathname` keeps the leading slash that a
+// file:// URL carries, so on Windows it yields "/C:/repo/" and the `join` below
+// turns it into "C:\C:\repo\packages/webview/src" — the script died with
+// scandir ENOENT on every Windows checkout (the CI job is Linux, so it never
+// showed). fileURLToPath drops that slash and gives a native path on both.
+const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const WEBVIEW_SRC = join(ROOT, "packages/webview/src");
 
 // ────────────────────────────────────────────────────────────────────────────

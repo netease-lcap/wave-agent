@@ -1364,11 +1364,25 @@ export class Agent {
       this.logger?.warn(`SessionEnd hooks failed: ${(error as Error).message}`);
     }
 
-    await this.messageManager.saveSession();
-    // Flush point: the transcript is about to be left behind for other
-    // processes to list, so re-append the metadata entries at EOF. Must come
-    // after saveSession (which returns early when nothing is unsaved).
-    await this.messageManager.reAppendSessionMetadata();
+    // Flush the transcript, but never let a failed flush abort the teardown:
+    // the callers (desktop host, AgentBridge, IM bridge) drop their own
+    // reference to this Agent before/as they call destroy(), so anything beyond
+    // this point that throws leaves a live Agent — and its MCP process tree —
+    // unreachable, to be reaped only by process exit (issue #2758). Spec
+    // ecosystem/mcp.md 边界情况「销毁必须先于引用丢弃、且回收不得被前置失败阻断」.
+    try {
+      await this.messageManager.saveSession();
+      // Flush point: the transcript is about to be left behind for other
+      // processes to list, so re-append the metadata entries at EOF. Must come
+      // after saveSession (which returns early when nothing is unsaved).
+      await this.messageManager.reAppendSessionMetadata();
+    } catch (error) {
+      this.logger?.warn(
+        `Session transcript flush failed during destroy (teardown continues): ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
     this.abortAIMessage(); // This will abort tools including Agent tool (subagents)
     this.abortBashCommand();
     this.abortSlashCommand();
@@ -1579,9 +1593,12 @@ export class Agent {
     return this.mcpManager.getAllServers();
   }
 
-  /** Connect MCP server */
+  /**
+   * Connect MCP server (a user action — the only path allowed to override a
+   * previous explicit disconnect; see `McpManager.connectServer`).
+   */
   public async connectMcpServer(serverName: string): Promise<boolean> {
-    return await this.mcpManager.connectServer(serverName);
+    return await this.mcpManager.connectServer(serverName, true);
   }
 
   /** Disconnect MCP server */

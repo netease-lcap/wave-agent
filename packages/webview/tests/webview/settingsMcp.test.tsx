@@ -272,4 +272,29 @@ describe("SettingsPage MCP 服务选项卡视图（用户/项目/插件 Tab）",
       screen.getByText("用户级配置存于 ~/.wave/mcp.json，全局可用"),
     ).toBeInTheDocument();
   });
+
+  // Lazy dial (spec ecosystem/mcp.md 场景 10): a server nobody dialed still has
+  // a tool list to show — from the local snapshot — and must say it is cached
+  // instead of passing it off as a live connection.
+  it("未拨号时用缓存快照展示工具数并标明来源", async () => {
+    const cachedServer: McpServerStatus = {
+      name: "weather",
+      config: { command: "uvx", args: ["mcp-weather"] },
+      scope: "user",
+      status: "disconnected",
+      toolsFromCache: [{ name: "get_forecast" }, { name: "get_alerts" }],
+      toolsCachedAt: new Date(2026, 0, 2, 3, 4, 5).getTime(),
+    };
+    renderSettingsPage();
+    sendHostMessage(fixtures.mcpServersResponse([cachedServer]));
+
+    expect(await screen.findByText("weather")).toBeInTheDocument();
+    expect(screen.getByText("2 tools")).toBeInTheDocument();
+    expect(screen.getByText(/工具来自缓存/)).toBeInTheDocument();
+    expect(screen.getByText(/上次连接/)).toBeInTheDocument();
+    // Still disconnected — no "断开" affordance pretending it is live.
+    expect(
+      screen.queryByRole("button", { name: "断开" }),
+    ).not.toBeInTheDocument();
+  });
 });

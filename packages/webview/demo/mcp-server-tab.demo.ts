@@ -1,115 +1,88 @@
 import { test, expect } from "../e2e/utils/webviewTestHarness.js";
+import {
+  openSettings,
+  simulateHostMessage,
+  waitForSentCommand,
+} from "../e2e/utils/settingsHarness.js";
 import { screenshotWebp } from "../e2e/utils/screenshot.js";
 
-test.describe("MCP Server Dialog Demo", () => {
-  test("should show MCP server dialog with configured servers", async ({
+/**
+ * 设置页「MCP 服务」截图与态验证（spec ecosystem/mcp）。
+ *
+ * `/mcp` 不再唤起聊天区弹窗（2026-08-29 起改为打开设置页并选中本选项卡），
+ * 旧的 `McpDialog` 已删除；因此这里走 settings.js 独立 bundle（settingsHarness），
+ * 而不是 chat bundle 的 `showDialog(mcp)`。截图文件名沿用 `spec-mcp-server-tab`，
+ * docs/vsce.md 的插图不做改动。
+ */
+
+const SERVERS = [
+  {
+    name: "jira",
+    scope: "user",
+    config: { command: "npx", args: ["-y", "@mcp/server-jira"] },
+    status: "connected",
+    toolCount: 8,
+    capabilities: ["tools"],
+    lastConnected: Date.now() - 60_000,
+  },
+  {
+    name: "postgres",
+    scope: "user",
+    config: {
+      command: "uvx",
+      args: [
+        "mcp-server-postgres",
+        "--connection-string",
+        "postgresql://localhost:5432/nebula",
+      ],
+    },
+    status: "error",
+    toolCount: 0,
+    error: "Authentication failed: invalid token",
+    capabilities: ["tools"],
+  },
+  {
+    // 本轮还没拨号（按需连接）：工具列表来自本机快照，界面标明来源
+    name: "ddg-search",
+    scope: "user",
+    config: { command: "uvx", args: ["duckduckgo-mcp-server"] },
+    status: "disconnected",
+    toolCount: 0,
+    toolsFromCache: [{ name: "search" }, { name: "fetch_content" }],
+    toolsCachedAt: Date.now() - 3_600_000,
+    capabilities: ["tools"],
+  },
+];
+
+test.describe("MCP 服务设置页 Demo", () => {
+  test("shows configured servers, statuses and the cached-tools hint", async ({
     webviewPage,
   }) => {
-    // 1. Open the MCP server management dialog via showDialog
-    await webviewPage.evaluate(() => {
-      window.simulateExtensionMessage({
-        command: "showDialog",
-        dialogType: "mcp",
-      });
-    });
-
-    // Verify dialog is visible
+    await openSettings(webviewPage, { settingsState: { nav: "mcp" } });
     await expect(
-      webviewPage.getByText("MCP 服务器", { exact: true }),
+      webviewPage.getByRole("heading", { name: "MCP 服务" }),
     ).toBeVisible();
 
-    // 2. Simulate receiving MCP servers list
-    await webviewPage.evaluate(() => {
-      window.postMessage(
-        {
-          command: "mcpServersResponse",
-          servers: [
-            {
-              name: "jira",
-              config: {
-                command: "npx",
-                args: ["-y", "@mcp/server-jira"],
-                env: {
-                  JIRA_API_TOKEN: "your-token-here",
-                  JIRA_BASE_URL: "https://nebula-tech.atlassian.net",
-                },
-              },
-              status: "connected",
-              toolCount: 8,
-              capabilities: ["tools"],
-              lastConnected: Date.now() - 60000,
-            },
-            {
-              name: "postgres",
-              config: {
-                command: "uvx",
-                args: [
-                  "mcp-server-postgres",
-                  "--connection-string",
-                  "postgresql://localhost:5432/nebula",
-                ],
-              },
-              status: "connected",
-              toolCount: 5,
-              capabilities: ["tools"],
-              lastConnected: Date.now() - 120000,
-            },
-            {
-              name: "github",
-              config: {
-                command: "npx",
-                args: ["-y", "@modelcontextprotocol/server-github"],
-                env: { GITHUB_PERSONAL_ACCESS_TOKEN: "ghp_xxxxxxxxxxxx" },
-              },
-              status: "disconnected",
-              toolCount: 0,
-              capabilities: [],
-            },
-            {
-              name: "sentry",
-              config: {
-                url: "https://mcp.sentry.io/sse",
-              },
-              status: "error",
-              toolCount: 0,
-              error: "Authentication failed: invalid token",
-              capabilities: [],
-            },
-          ],
-        },
-        "*",
-      );
+    await simulateHostMessage(webviewPage, {
+      command: "mcpServersResponse",
+      servers: SERVERS,
     });
 
-    // Verify all four servers are visible
     await expect(webviewPage.getByText("jira", { exact: true })).toBeVisible();
-    await expect(
-      webviewPage.getByText("github", { exact: true }),
-    ).toBeVisible();
-    await expect(
-      webviewPage.getByText("sentry", { exact: true }),
-    ).toBeVisible();
-    await expect(
-      webviewPage.getByText("postgres", { exact: true }),
-    ).toBeVisible();
-
-    // Verify connected server shows tool count
-    await expect(webviewPage.getByText("5 tools")).toBeVisible();
-
-    // Verify error server shows error message
+    await expect(webviewPage.getByText("8 tools")).toBeVisible();
     await expect(
       webviewPage.getByText("Authentication failed: invalid token"),
     ).toBeVisible();
-
-    // Verify connect button for disconnected server (two servers are not connected)
+    // 连接（未连接/出错）与断开（已连接）两种动作各有一个
     await expect(
       webviewPage.getByRole("button", { name: "连接" }).first(),
     ).toBeVisible();
-
-    // Verify disconnect button for connected server
     await expect(
       webviewPage.getByRole("button", { name: "断开" }).first(),
     ).toBeVisible();
+    // 未拨号的服务器展示上次的工具快照，并标明不是实时结果
+    await expect(webviewPage.getByText("2 tools")).toBeVisible();
+    await expect(webviewPage.getByText(/工具来自缓存/)).toBeVisible();
 
     await screenshotWebp(
       webviewPage,
@@ -117,87 +90,61 @@ test.describe("MCP Server Dialog Demo", () => {
     );
   });
 
-  test("should show empty state when no MCP servers configured", async ({
+  test("shows the empty state for a scope without servers", async ({
     webviewPage,
   }) => {
-    // 1. Open the MCP server management dialog
-    await webviewPage.evaluate(() => {
-      window.simulateExtensionMessage({
-        command: "showDialog",
-        dialogType: "mcp",
-      });
+    await openSettings(webviewPage, { settingsState: { nav: "mcp" } });
+
+    await simulateHostMessage(webviewPage, {
+      command: "mcpServersResponse",
+      servers: [],
     });
 
-    // 2. Simulate empty servers list
-    await webviewPage.evaluate(() => {
-      window.postMessage(
-        {
-          command: "mcpServersResponse",
-          servers: [],
-        },
-        "*",
-      );
-    });
-
-    // Verify empty state message
-    await expect(webviewPage.getByText("未配置 MCP 服务器")).toBeVisible();
+    await expect(webviewPage.getByText("用户级 MCP暂无内容")).toBeVisible();
     await expect(
-      webviewPage.locator("code", { hasText: ".mcp.json" }),
+      webviewPage.getByText(/用户级配置存于 ~\/\.wave\/mcp\.json/),
     ).toBeVisible();
   });
 
-  test("should handle connect/disconnect actions", async ({ webviewPage }) => {
-    // 1. Open the MCP server management dialog
-    await webviewPage.evaluate(() => {
-      window.simulateExtensionMessage({
-        command: "showDialog",
-        dialogType: "mcp",
-      });
-    });
+  test("connect button asks the host and the row follows the new status", async ({
+    webviewPage,
+  }) => {
+    await openSettings(webviewPage, { settingsState: { nav: "mcp" } });
 
-    // 2. Simulate servers list
-    await webviewPage.evaluate(() => {
-      window.postMessage(
+    await simulateHostMessage(webviewPage, {
+      command: "mcpServersResponse",
+      servers: [
         {
-          command: "mcpServersResponse",
-          servers: [
-            {
-              name: "jira",
-              config: { command: "npx", args: ["-y", "@mcp/server-jira"] },
-              status: "disconnected",
-              toolCount: 0,
-              capabilities: [],
-            },
-          ],
+          name: "jira",
+          scope: "user",
+          config: { command: "npx", args: ["-y", "@mcp/server-jira"] },
+          status: "disconnected",
+          toolCount: 0,
+          capabilities: [],
         },
-        "*",
-      );
+      ],
     });
 
-    // 3. Click connect button
     await webviewPage.getByRole("button", { name: "连接" }).click();
+    const request = await waitForSentCommand(webviewPage, "connectMcpServer");
+    expect(request.serverName).toBe("jira");
 
-    // 4. Simulate the backend response after connection
-    await webviewPage.evaluate(() => {
-      window.postMessage(
+    // host 拨号成功后推回新状态
+    await simulateHostMessage(webviewPage, {
+      command: "mcpServersResponse",
+      servers: [
         {
-          command: "mcpServersResponse",
-          servers: [
-            {
-              name: "jira",
-              config: { command: "npx", args: ["-y", "@mcp/server-jira"] },
-              status: "connected",
-              toolCount: 5,
-              capabilities: ["tools"],
-              lastConnected: Date.now(),
-            },
-          ],
+          name: "jira",
+          scope: "user",
+          config: { command: "npx", args: ["-y", "@mcp/server-jira"] },
+          status: "connected",
+          toolCount: 5,
+          capabilities: ["tools"],
+          lastConnected: Date.now(),
         },
-        "*",
-      );
+      ],
     });
 
-    // Verify status changed to connected and disconnect button appears
     await expect(
       webviewPage.getByRole("button", { name: "断开" }),
     ).toBeVisible();

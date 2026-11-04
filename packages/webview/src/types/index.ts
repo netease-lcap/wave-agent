@@ -1027,7 +1027,6 @@ export interface ChatState {
   workdir?: string;
   // Dialog state
   activeDialog:
-    | "mcp"
     | "status"
     | "tasks"
     | "workflows"
@@ -1199,13 +1198,6 @@ export interface SelectionInfo {
   lineCount: number;
   selectedText: string;
   isEmpty: boolean;
-}
-
-/**
- * Props for the MCP server settings dialog component
- */
-export interface McpDialogProps {
-  onClose: () => void;
 }
 
 /**

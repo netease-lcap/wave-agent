@@ -369,13 +369,24 @@ describe("Hook Blocking Error Behavior (User Story 2)", () => {
         ),
       ).toBe(true);
 
-      // …but the queued message drove the *second* model call: the hook's
-      // continuation did not get a turn of its own. (Extra calls after this are
-      // the auto-memory extraction fork, which never sees the user's text.)
-      const queuedCallIndex = mockCallAgent.mock.calls.findIndex((call) =>
-        JSON.stringify(call[0]?.messages).includes("想取消"),
-      );
-      expect(queuedCallIndex).toBe(1);
+      // …but the queued message drove the next turn: the hook's continuation did
+      // not get a model call of its own. A continuation call would be one whose
+      // *last* message is the hook's stderr; the auto-memory extraction fork can
+      // legitimately land between the two turns (it never sees the user's text
+      // and appends its own prompt last), so an absolute call index is not the
+      // invariant — "no call ends on the hook's reason" is.
+      const continuationCalls = mockCallAgent.mock.calls.filter((call) => {
+        const messages = call[0]?.messages ?? [];
+        return JSON.stringify(messages[messages.length - 1]).includes(
+          "又一次循环",
+        );
+      });
+      expect(continuationCalls).toHaveLength(0);
+      expect(
+        mockCallAgent.mock.calls.some((call) =>
+          JSON.stringify(call[0]?.messages).includes("想取消"),
+        ),
+      ).toBe(true);
     });
   });
 });

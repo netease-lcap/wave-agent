@@ -157,6 +157,26 @@ export const McpManager: React.FC<McpManagerProps> = ({
               </Text>
             </Box>
           )}
+          {/* Not dialed yet (lazy dial): the tool list comes from the local
+              snapshot of the last successful connection, and says so. */}
+          {selectedServer.status !== "connected" &&
+            selectedServer.toolsFromCache && (
+              <Box>
+                <Text>
+                  <Text color="blue">Tools:</Text>{" "}
+                  {selectedServer.toolsFromCache.length} tools{" "}
+                  <Text color="gray" dimColor>
+                    (cached
+                    {selectedServer.toolsCachedAt
+                      ? ` · last connected ${formatTime(
+                          selectedServer.toolsCachedAt,
+                        )}`
+                      : ""}
+                    )
+                  </Text>
+                </Text>
+              </Box>
+            )}
           {selectedServer.capabilities && (
             <Box>
               <Text>
@@ -269,6 +289,12 @@ export const McpManager: React.FC<McpManagerProps> = ({
             {server.name}
             {server.status === "connected" && server.toolCount && (
               <Text color="green"> · {server.toolCount} tools</Text>
+            )}
+            {server.status !== "connected" && server.toolsFromCache && (
+              <Text color="gray" dimColor>
+                {" "}
+                · {server.toolsFromCache.length} tools (cached)
+              </Text>
             )}
           </Text>
           {index === state.selectedIndex && (
