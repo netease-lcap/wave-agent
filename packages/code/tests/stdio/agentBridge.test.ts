@@ -1820,6 +1820,7 @@ test("destroy removes the session's worktree, after the agent is destroyed", asy
   vi.mocked(existsSync).mockReturnValue(false);
   vi.mocked(removeWorktree).mockImplementation(async () => {
     order.push("removeWorktree");
+    return true;
   });
 
   const init = await bridge.handleRequest("initialize", {
@@ -1862,10 +1863,10 @@ test("destroy replies without waiting for the worktree removal to finish", async
   // pnpm junction tree `.git worktree remove` cannot delete). Holding the reply
   // hostage to it is exactly what made every phone-side delete report the remote
   // page's 20s timeout while the session was already gone.
-  let finishRemoval: (() => void) | undefined;
+  let finishRemoval: ((removed: boolean) => void) | undefined;
   vi.mocked(removeWorktree).mockImplementationOnce(
     () =>
-      new Promise<void>((resolve) => {
+      new Promise<boolean>((resolve) => {
         finishRemoval = resolve;
       }),
   );
@@ -1883,7 +1884,7 @@ test("destroy replies without waiting for the worktree removal to finish", async
   expect(reply).toEqual({ worktreeRemoved: false, worktreeRemoval: "pending" });
   await vi.waitFor(() => expect(removeWorktree).toHaveBeenCalled());
   // Let the background removal settle so it cannot leak into the next test.
-  finishRemoval?.();
+  finishRemoval?.(true);
   await Promise.resolve();
 });
 
@@ -4635,14 +4636,18 @@ test("getWorktreeChanges rejects a missing path", async () => {
 
 test("removeWorktree calls removeWorktree with correct session", async () => {
   const { bridge } = createBridge();
+  vi.mocked(removeWorktree).mockResolvedValueOnce(true);
 
   const result = (await bridge.handleRequest("removeWorktree", {
     path: "/repo/.wave/worktrees/feat",
     branch: "worktree-feat",
     repoRoot: "/repo",
-  })) as { ok: true };
+  })) as { ok: true; removed: boolean };
 
   expect(result.ok).toBe(true);
+  // `removed` is the "is the directory gone" answer, passed straight through:
+  // a caller that prints an outcome must not have to assume success.
+  expect(result.removed).toBe(true);
   expect(removeWorktree).toHaveBeenCalledWith({
     name: "",
     path: "/repo/.wave/worktrees/feat",
@@ -4652,6 +4657,22 @@ test("removeWorktree calls removeWorktree with correct session", async () => {
     hasNewCommits: false,
     isNew: false,
   });
+});
+
+test("removeWorktree reports a surviving directory as not removed", async () => {
+  const { bridge } = createBridge();
+  // What the real removeWorktree answers when git and the fs fallback both
+  // fail: the directory is still there and its branch was kept.
+  vi.mocked(removeWorktree).mockResolvedValueOnce(false);
+
+  const result = (await bridge.handleRequest("removeWorktree", {
+    path: "/repo/.wave/worktrees/feat",
+    branch: "worktree-feat",
+    repoRoot: "/repo",
+  })) as { ok: true; removed: boolean };
+
+  // Removal is still best-effort and never throws — only the verdict changes.
+  expect(result).toEqual({ ok: true, removed: false });
 });
 
 test("removeWorktree delegates to removeWorktree (best-effort)", async () => {

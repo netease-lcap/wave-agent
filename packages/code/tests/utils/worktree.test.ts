@@ -9,6 +9,7 @@ import {
   removeWorktree,
   validateWorktreeSlug,
   worktreeCreationBranch,
+  worktreeRemoveRetry,
 } from "../../src/utils/worktree.js";
 import { logger } from "../../src/utils/logger.js";
 import {
@@ -124,6 +125,10 @@ describe("worktree utils", () => {
     git.handler = () => ({ stdout: "", stderr: "" });
     // The branch `removeWorktree`'s fixtures were created on.
     git.branches = new Set(["worktree-my-feat"]);
+    // Retries are two extra attempts on the fs fallback; zero the waits so the
+    // failure cases do not spend a second sleeping (the attempt count itself is
+    // asserted below).
+    worktreeRemoveRetry.delaysMs = [0, 0];
     // Default: neither settings.local.json nor .worktreeinclude exist
     vi.mocked(fs.promises.readFile).mockRejectedValue(enoent());
     vi.mocked(fs.promises.writeFile).mockResolvedValue(undefined);
@@ -716,7 +721,9 @@ describe("worktree utils", () => {
       // git removed the directory successfully
       vi.mocked(fs.existsSync).mockReturnValue(false);
 
-      await removeWorktree(session);
+      // The return value answers "is the directory gone" — a caller that
+      // reports the outcome to a user prints it instead of assuming success.
+      expect(await removeWorktree(session)).toBe(true);
 
       expect(gitCallsWith(["worktree", "remove", "--force"])).toHaveLength(1);
       expect(gitCallsWith(["branch", "-D", "worktree-my-feat"])).toHaveLength(
@@ -822,6 +829,44 @@ describe("worktree utils", () => {
       warnSpy.mockRestore();
     });
 
+    it("should retry the fs fallback while a just-exited process still holds the directory", async () => {
+      // Windows releases a directory handle asynchronously: the first rmSync can
+      // fail with EPERM while the process that had the worktree as its cwd is
+      // still exiting (issue #2763). The retry is what turns that into a
+      // success instead of an orphaned directory.
+      let attempts = 0;
+      vi.mocked(fs.rmSync).mockImplementation(() => {
+        attempts++;
+        if (attempts < 3) {
+          throw Object.assign(new Error("EPERM: operation not permitted"), {
+            code: "EPERM",
+          });
+        }
+      });
+      git.handler = (_cmd, args) => {
+        if (args[0] === "rev-parse") {
+          return { stdout: "worktree-my-feat\n", stderr: "" };
+        }
+        if (args[0] === "worktree" && args[1] === "remove") {
+          throw gitError("Filename too long", "");
+        }
+        return { stdout: "", stderr: "" };
+      };
+      // Gone by the time the removal gives up retrying.
+      vi.mocked(fs.existsSync).mockReturnValue(false);
+
+      expect(await removeWorktree(session)).toBe(true);
+
+      // One attempt plus the configured retries, not a single shot.
+      expect(vi.mocked(fs.rmSync)).toHaveBeenCalledTimes(
+        1 + worktreeRemoveRetry.delaysMs.length,
+      );
+      // The directory is gone, so its branch still goes away.
+      expect(gitCallsWith(["branch", "-D", "worktree-my-feat"])).toHaveLength(
+        1,
+      );
+    });
+
     it("should keep the branch when the directory survived both removal attempts", async () => {
       const loggerSpy = vi.spyOn(logger, "error").mockImplementation(() => {});
       const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
@@ -844,8 +889,7 @@ describe("worktree utils", () => {
         "node_modules",
       ] as unknown as Awaited<ReturnType<typeof fs.readdirSync>>);
 
-      await removeWorktree(session);
-
+      expect(await removeWorktree(session)).toBe(false);
       expect(loggerSpy.mock.calls[0][0]).toContain(
         "Failed to remove worktree or branch",
       );
@@ -948,11 +992,15 @@ describe("worktree utils", () => {
       };
       // Still there after git returned 0; gone once fs.rmSync deleted it
       vi.mocked(fs.existsSync).mockReturnValueOnce(true).mockReturnValue(false);
+      // Stated explicitly: earlier cases leave a throwing implementation behind
+      // (`clearAllMocks` keeps implementations), and this case is about a
+      // fallback that works on its first attempt.
+      vi.mocked(fs.rmSync).mockImplementation(() => {});
       vi.mocked(fs.readdirSync).mockReturnValue([
         "node_modules",
       ] as unknown as Awaited<ReturnType<typeof fs.readdirSync>>);
 
-      await removeWorktree(session);
+      expect(await removeWorktree(session)).toBe(true);
 
       const rmCalls = vi.mocked(fs.rmSync).mock.calls;
       expect(rmCalls).toHaveLength(1);
@@ -1063,8 +1111,12 @@ describe("worktree utils", () => {
       const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
       vi.mocked(loadMergedWaveConfig).mockReturnValue({ hooks: undefined });
       vi.mocked(executeWorktreeRemoveHook).mockResolvedValue(false);
+      // Nothing deleted it, so the directory is still there.
+      vi.mocked(fs.existsSync).mockReturnValue(true);
 
-      await removeWorktree({ ...session, hookBased: true });
+      // The hook — not wave — owns the directory, so the filesystem is the only
+      // honest answer to "was it removed".
+      expect(await removeWorktree({ ...session, hookBased: true })).toBe(false);
 
       expect(warnSpy.mock.calls[0][0]).toContain(
         "No WorktreeRemove hook configured, hook-based worktree left at",

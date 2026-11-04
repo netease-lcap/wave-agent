@@ -3,7 +3,7 @@ import { render } from "ink";
 import { ensureRuntimeDeps } from "wave-agent-sdk";
 import { App } from "./components/App.js";
 import { cleanupLogs } from "./utils/logger.js";
-import { removeWorktree } from "./utils/worktree.js";
+import { describeWorktreeSurvival, removeWorktree } from "./utils/worktree.js";
 import { BaseAppProps } from "./types.js";
 
 export interface CliOptions extends BaseAppProps {
@@ -96,8 +96,14 @@ export async function startCli(options: CliOptions): Promise<void> {
     if (shouldRemoveWorktree && worktreeSession) {
       process.stdout.write("\nDeleting worktree ...\n");
       process.chdir(worktreeSession.repoRoot);
-      await removeWorktree(worktreeSession);
-      process.stdout.write("Done.\n");
+      // "Done." only when it is: removal is best-effort, and a surviving
+      // directory (with its branch kept for it) needs the cleanup commands
+      // printed rather than a success line over the leftovers.
+      process.stdout.write(
+        (await removeWorktree(worktreeSession))
+          ? "Done.\n"
+          : `\n${describeWorktreeSurvival(worktreeSession)}\n`,
+      );
     }
 
     process.exit(0);

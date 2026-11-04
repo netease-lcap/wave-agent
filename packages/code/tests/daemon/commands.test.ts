@@ -23,6 +23,7 @@ import {
   Agent,
   hasWorktreeCreateHook,
   loadUserConfigEnv,
+  validateWorktreeRemovalPath,
   type AgentCallbacks,
   type Message,
   type PermissionDecision,
@@ -2844,11 +2845,27 @@ test("create: bare --worktree auto-generates the worktree name", async () => {
 
 // ── destroy --remove-worktree ──────────────────────────────────
 
-test("destroy: --remove-worktree resolves the worktree via git and removes it before destroying", async () => {
+test("destroy: --remove-worktree destroys the session before removing its worktree", async () => {
   gitTopLevel = "/repo/main/.wave/worktrees/feature-x";
   // What `git branch --show-current` would say inside the worktree. Removal
   // must not care: the branch to delete is the one the worktree was created on.
   gitBranch = "feature-x";
+  // The order is the point (issue #2763): the session's own child processes
+  // keep the worktree as their cwd, and Windows will not delete a directory a
+  // live process sits in — so the directory may only go once agent.destroy()
+  // has killed them.
+  const order: string[] = [];
+  vi.mocked(Agent.create).mockResolvedValue(
+    createMockAgent({
+      destroy: vi.fn(async () => {
+        order.push("agent.destroy");
+      }),
+    }),
+  );
+  vi.mocked(removeWorktree).mockImplementationOnce(async () => {
+    order.push("removeWorktree");
+    return true;
+  });
   const client = connectClient(socketPath);
   await client.send({ id: 1, method: "initialize", params: {} });
   client.close();
@@ -2858,6 +2875,7 @@ test("destroy: --remove-worktree resolves the worktree via git and removes it be
       removeWorktree: true,
     }),
   ).rejects.toThrow("exit(0)");
+  expect(order).toEqual(["agent.destroy", "removeWorktree"]);
   // git lookups ran against the session's workingDirectory.
   expect(execFile).toHaveBeenCalledWith(
     "git",
@@ -2886,9 +2904,39 @@ test("destroy: --remove-worktree resolves the worktree via git and removes it be
     hookBased: false,
   });
   expect(stdoutLines()).toEqual([
-    "Removed worktree: /repo/main/.wave/worktrees/feature-x (branch: worktree-feature-x)",
     "Destroyed session: test-session-id",
+    "Removed worktree: /repo/main/.wave/worktrees/feature-x (branch: worktree-feature-x)",
   ]);
+  expect(exitSpy).toHaveBeenCalledWith(0);
+});
+
+test("destroy: --remove-worktree reports a surviving directory instead of claiming success", async () => {
+  gitTopLevel = "/repo/main/.wave/worktrees/feature-x";
+  gitBranch = "feature-x";
+  // What the daemon reports when the directory could not be deleted (still
+  // locked, gone read-only, …): the branch is kept on purpose, and the CLI's
+  // job is to say so rather than print "Removed worktree" over the leftovers.
+  vi.mocked(removeWorktree).mockResolvedValueOnce(false);
+  const client = connectClient(socketPath);
+  await client.send({ id: 1, method: "initialize", params: {} });
+  client.close();
+
+  await expect(
+    daemonDestroyCommand(socketPath, "test-session-id", {
+      removeWorktree: true,
+    }),
+  ).rejects.toThrow("exit(0)");
+  // The session is gone, so the command succeeded — but no removal is claimed.
+  expect(stdoutLines()).toEqual(["Destroyed session: test-session-id"]);
+  expect(stderrText()).toContain(
+    "Worktree directory survived at /repo/main/.wave/worktrees/feature-x",
+  );
+  expect(stderrText()).toContain("kept branch worktree-feature-x");
+  // The two commands that actually finish the job, for a human to paste.
+  expect(stderrText()).toContain("rm -rf /repo/main/.wave/worktrees/feature-x");
+  expect(stderrText()).toContain(
+    "git -C /repo/main branch -D worktree-feature-x",
+  );
   expect(exitSpy).toHaveBeenCalledWith(0);
 });
 
@@ -2914,7 +2962,7 @@ test("destroy: --remove-worktree deletes the branch the worktree was created on,
   expect(vi.mocked(removeWorktree)).not.toHaveBeenCalledWith(
     expect.objectContaining({ branch: "main" }),
   );
-  expect(stdoutLines()[0]).toBe(
+  expect(stdoutLines()[1]).toBe(
     "Removed worktree: /repo/main/.wave/worktrees/feature-x (branch: worktree-feature-x)",
   );
 });
@@ -2959,8 +3007,8 @@ test("destroy: --remove-worktree anchors on the recorded creation workdir, not t
     }),
   );
   expect(stdoutLines()).toEqual([
-    "Removed worktree: /repo/main/.wave/worktrees/feature-x (branch: worktree-feature-x)",
     "Destroyed session: test-session-id",
+    "Removed worktree: /repo/main/.wave/worktrees/feature-x (branch: worktree-feature-x)",
   ]);
   expect(exitSpy).toHaveBeenCalledWith(0);
 });
@@ -2987,9 +3035,40 @@ test("destroy: --remove-worktree deletes no branch it cannot name", async () => 
   expect(vi.mocked(removeWorktree)).not.toHaveBeenCalledWith(
     expect.objectContaining({ branch: "someone-elses-branch" }),
   );
-  expect(stdoutLines()[0]).toBe(
+  expect(stdoutLines()[1]).toBe(
     "Removed worktree: /repo/main/linked/feature-x (branch: none deleted)",
   );
+});
+
+test("destroy: --remove-worktree reports a removal error without failing the destroy", async () => {
+  gitTopLevel = "/repo/main/.wave/worktrees/feature-x";
+  gitBranch = "feature-x";
+  // The daemon refuses the path after the session is already gone (a symlinked
+  // worktree, say). The destroy itself succeeded, so exit 1 would tell the
+  // caller to retry something that can never resolve again.
+  vi.mocked(validateWorktreeRemovalPath).mockImplementationOnce(() => {
+    throw new Error(
+      "Refusing to remove worktree outside repo root: /repo/main/.wave/worktrees/feature-x",
+    );
+  });
+  const client = connectClient(socketPath);
+  await client.send({ id: 1, method: "initialize", params: {} });
+  client.close();
+
+  await expect(
+    daemonDestroyCommand(socketPath, "test-session-id", {
+      removeWorktree: true,
+    }),
+  ).rejects.toThrow("exit(0)");
+  expect(stdoutLines()).toEqual(["Destroyed session: test-session-id"]);
+  expect(stderrText()).toContain(
+    "Worktree removal failed: Refusing to remove worktree outside repo root",
+  );
+  // …and the manual way out, since nothing else will clean it up.
+  expect(stderrText()).toContain(
+    "Worktree directory survived at /repo/main/.wave/worktrees/feature-x",
+  );
+  expect(exitSpy).toHaveBeenCalledWith(0);
 });
 
 test("destroy: --remove-worktree refuses to remove the main working tree", async () => {
