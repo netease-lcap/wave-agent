@@ -40,6 +40,12 @@ import {
 } from "./sshHosts";
 import { SocketClient } from "./stdio/socketClient";
 import type { BundledCliSource } from "./stdio/binaryResolver";
+import {
+  buildWslExecSpec,
+  buildWslRawSpec,
+  parseWslHostId,
+  withWslLoginShell,
+} from "./wslHosts";
 
 const execFileAsync = promisify(execFile);
 
@@ -95,7 +101,7 @@ function describeError(error: unknown): string {
  */
 export class RemoteHostUnreachableError extends Error {
   constructor(host: string, cause: unknown) {
-    super(`无法连接主机 ${host}：${describeError(cause)}`);
+    super(`无法连接${hostLabel(host)}：${describeError(cause)}`);
     this.name = "RemoteHostUnreachableError";
   }
 }
@@ -128,50 +134,143 @@ async function remoteCommand(host: string, command: string): Promise<string[]> {
   return buildSshSpawnArgs(host, await withRemoteLoginShell(host, command));
 }
 
+/**
+ * Transport for "run this POSIX command on `host`" — the two host kinds share
+ * every command in this module (node probe, bundle hash, CLI push, file read),
+ * they differ only in the process that carries them: `ssh <host> …` for a
+ * remote machine, `wsl.exe -d <distro> …` for a local distro (spec
+ * docs/specs/desktop/desktop-wsl.md). Login-shell wrapping is identical on both
+ * because the nvm-on-PATH problem is identical.
+ */
+async function hostCommandSpec(
+  host: string,
+  command: string,
+): Promise<{ file: string; args: string[] }> {
+  const distro = parseWslHostId(host);
+  if (distro)
+    return buildWslExecSpec(distro, await withWslLoginShell(distro, command));
+  return { file: "ssh", args: await remoteCommand(host, command) };
+}
+
+/** Run one command on `host` and buffer its output. */
+async function execOnHost(
+  host: string,
+  command: string,
+  options: { timeout?: number; maxBuffer?: number } = {},
+): Promise<{ stdout: string; stderr: string }> {
+  const spec = await hostCommandSpec(host, command);
+  const { stdout, stderr } = await execFileAsync(spec.file, spec.args, options);
+  return { stdout: stdout as string, stderr: stderr as string };
+}
+
+/** Human-readable "where" for error messages: `主机 dev-box 上` / `WSL 发行版「Ubuntu」内`. */
+function hostWhere(host: string): string {
+  const distro = parseWslHostId(host);
+  return distro ? `WSL 发行版「${distro}」内` : `主机 ${host} 上`;
+}
+
+/** The host as a noun for connect-time errors: `主机 dev-box` / `WSL 发行版「Ubuntu」`. */
+function hostLabel(host: string): string {
+  const distro = parseWslHostId(host);
+  return distro ? `WSL 发行版「${distro}」` : `主机 ${host}`;
+}
+
+/**
+ * Last non-empty line of probe output. `-lic` runs an INTERACTIVE login shell,
+ * so the first lines are whatever its rc files print — an Ubuntu WSL user's
+ * first login emits "To run a command as administrator…" and a daily motd
+ * banner, a zsh with shell integration emits OSC markers (stripped above).
+ * Command output is always last, so probes that expect a single value take the
+ * last line instead of assuming the whole stdout is it.
+ */
+function lastMeaningfulLine(text: string): string {
+  const lines = stripAnsiEscapes(text).split("\n");
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i].trim();
+    if (line) return line;
+  }
+  return "";
+}
+
+/**
+ * The node version printed by `node -v`, tolerating the banner lines above it.
+ * The last line is the answer in the normal case; when a version manager appends
+ * its own chatter after it ("Now using node …"), fall back to the last
+ * `vX.Y.Z` anywhere — never to a bare `24.04.5`, which is how the distro's own
+ * banner would masquerade as a Node version. Returns "" when nothing matches.
+ */
+function parseNodeVersion(text: string): string {
+  const last = lastMeaningfulLine(text);
+  if (/^v?\d+\.\d+\.\d+$/.test(last)) return last;
+  const matches = stripAnsiEscapes(text).match(/\bv\d+\.\d+\.\d+\b/g);
+  return matches?.[matches.length - 1] ?? "";
+}
+
+/**
+ * Possessive form for messages that own a thing on the host: `主机 dev-box 的
+ * 远端` / `WSL 发行版「Ubuntu」的`. The ssh wording keeps 远端 because that
+ * machine's filesystem is genuinely elsewhere; a distro's is this machine's.
+ */
+function hostPossessive(host: string): string {
+  const distro = parseWslHostId(host);
+  return distro ? `${hostLabel(host)}的` : `${hostLabel(host)} 的远端`;
+}
+
 /** Probe the remote `node -v`; throws an actionable error when it fails. */
 async function probeRemoteNode(host: string): Promise<string> {
   let stdout: string;
   try {
-    ({ stdout } = await execFileAsync(
-      "ssh",
-      await remoteCommand(host, "node -v"),
-      { timeout: PROBE_TIMEOUT_MS },
-    ));
+    ({ stdout } = await execOnHost(host, "node -v", {
+      timeout: PROBE_TIMEOUT_MS,
+    }));
   } catch {
     throw new Error(
-      `主机 ${host} 上未检测到 Node.js。请先在远端安装 Node.js ≥ ${REMOTE_NODE_MIN_MAJOR}（https://nodejs.org）后重试`,
+      `${hostWhere(host)}未检测到 Node.js。请先安装 Node.js ≥ ${REMOTE_NODE_MIN_MAJOR}（https://nodejs.org）后重试`,
     );
   }
-  const nodeVersion = stripAnsiEscapes(stdout).trim();
+  const nodeVersion = parseNodeVersion(stdout);
   const major = Number(/^v?(\d+)/.exec(nodeVersion)?.[1]);
   if (!major || major < REMOTE_NODE_MIN_MAJOR) {
     throw new Error(
-      `远端 Node.js 版本过低（${nodeVersion}，需要 ≥ ${REMOTE_NODE_MIN_MAJOR}）。请在远端升级 Node.js 后重试`,
+      `${hostWhere(host)}Node.js 版本过低（${nodeVersion || "未检测到版本"}，需要 ≥ ${REMOTE_NODE_MIN_MAJOR}）。请先升级 Node.js 后重试`,
     );
   }
   return nodeVersion;
 }
 
 /**
- * Stream a local stream into a remote command's stdin over the existing ssh
- * channel and await the remote exit code. Used to ship the tarred CLI bundle.
- * The push runs without a login shell (pure file transfer — no node PATH
- * needed); stderr is captured for the error summary.
+ * Stream a local stream into a host command's stdin and await its exit code.
+ * Used to ship the tarred CLI bundle over either transport (ssh channel or
+ * `wsl.exe`). The push runs without a login shell (pure file transfer — no node
+ * PATH needed); stderr is captured for the error summary.
  */
-function sshStreamCommand(
+async function hostStreamCommand(
   host: string,
-  args: string[],
+  command: string,
   input: Readable,
 ): Promise<void> {
+  const distro = parseWslHostId(host);
+  const transport = distro ? "wsl.exe" : "ssh";
+  let spec: { file: string; args: string[] };
+  try {
+    spec = distro
+      ? buildWslRawSpec(distro, command)
+      : // ssh takes the plain command (no login shell): pure file transfer.
+        { file: transport, args: buildSshSpawnArgs(host, command) };
+  } catch (error) {
+    input.destroy();
+    throw new Error(`无法启动 ${transport}：${describeError(error)}`);
+  }
   return new Promise((resolve, reject) => {
     let child: ChildProcess;
     try {
-      child = spawn("ssh", args, {
+      child = spawn(spec.file, spec.args, {
         stdio: ["pipe", "ignore", "pipe"],
         windowsHide: true,
       });
     } catch (error) {
-      reject(new Error(`无法启动 ssh：${describeError(error)}`));
+      input.destroy();
+      reject(new Error(`无法启动 ${transport}：${describeError(error)}`));
       return;
     }
     let stderr = "";
@@ -191,7 +290,7 @@ function sshStreamCommand(
       stderr = (stderr + data.toString()).slice(-2048);
     });
     child.once("error", (error) => {
-      fail(`ssh 传输失败：${describeError(error)}`);
+      fail(`${transport} 传输失败：${describeError(error)}`);
     });
     child.once("exit", (code, signal) => {
       if (settled) return;
@@ -201,11 +300,11 @@ function sshStreamCommand(
         return;
       }
       fail(
-        `ssh 推送失败（code: ${code}, signal: ${signal ?? ""}${stderr.trim() ? `: ${stderr.trim()}` : ""}）`,
+        `${transport} 推送失败（code: ${code}, signal: ${signal ?? ""}${stderr.trim() ? `: ${stderr.trim()}` : ""}）`,
       );
     });
-    // EPIPE when ssh dies before consuming all input — the exit handler above
-    // already settles the promise.
+    // EPIPE when the transport dies before consuming all input — the exit
+    // handler above already settles the promise.
     child.stdin?.on("error", () => {});
     input.on("error", (error) =>
       fail(`推送内容打包失败：${describeError(error)}`),
@@ -255,7 +354,7 @@ async function pushRemoteCliBundle(
     { cwd: source.dir, gzip: false, portable: true },
     [...CLI_BUNDLE_FILES],
   ) as unknown as Readable;
-  await sshStreamCommand(host, buildSshSpawnArgs(host, receive), archive);
+  await hostStreamCommand(host, receive, archive);
 }
 
 /**
@@ -315,12 +414,11 @@ async function getRemoteBundleSha256(
     ) +
     ` ${shellQuote(cliDir)}`;
   try {
-    const { stdout } = await execFileAsync(
-      "ssh",
-      await remoteCommand(host, probe),
-      { timeout: PROBE_TIMEOUT_MS },
-    );
-    const hex = stripAnsiEscapes(stdout).trim();
+    const { stdout } = await execOnHost(host, probe, {
+      timeout: PROBE_TIMEOUT_MS,
+    });
+    // Last line, not the whole stdout: the login shell's banner precedes it.
+    const hex = lastMeaningfulLine(stdout);
     return /^[0-9a-f]{64}$/.test(hex) ? hex : null;
   } catch {
     return null;
@@ -415,18 +513,18 @@ export async function readRemoteFile(
     `printf 'WAVE_REMOTE_FILE_V1\\ntype=text\\nmime=%s\\ntotal=%s\\ntruncated=%s\\n%s\\n' "$mime" "$total" "$truncated" "$(printf '%s' "$content" | base64 | tr -d '\\n')"`;
   try {
     // maxBuffer must cover base64(payload) ≈ 1.37 × file size + headers.
-    const { stdout } = await execFileAsync(
-      "ssh",
-      await remoteCommand(host, command),
-      {
-        timeout: PROBE_TIMEOUT_MS,
-        maxBuffer: 4 * 1024 * 1024,
-      },
-    );
-    const lines = stripAnsiEscapes(stdout).split("\n");
-    if (lines[0] !== "WAVE_REMOTE_FILE_V1") {
+    const { stdout } = await execOnHost(host, command, {
+      timeout: PROBE_TIMEOUT_MS,
+      maxBuffer: 4 * 1024 * 1024,
+    });
+    const all = stripAnsiEscapes(stdout).split("\n");
+    // The login shell's banner/motd precedes the payload — locate the header
+    // instead of assuming line 0 (an Ubuntu WSL user's first login prints it).
+    const start = all.indexOf("WAVE_REMOTE_FILE_V1");
+    if (start < 0) {
       throw new Error("远端返回了无法识别的响应");
     }
+    const lines = all.slice(start);
     const type = lines[1].replace(/^type=/, "") as RemoteFileReadResult["type"];
     const mime = lines[2].replace(/^mime=/, "");
     const totalLines = Number(lines[3].replace(/^total=/, ""));
@@ -471,18 +569,20 @@ export const TUNNEL_READY_TIMEOUT_MS = 10_000;
  */
 export async function getRemoteHomeDir(host: string): Promise<string> {
   try {
-    const { stdout } = await execFileAsync(
-      "ssh",
-      await remoteCommand(host, "echo $HOME"),
-      {
-        timeout: PROBE_TIMEOUT_MS,
-      },
-    );
-    const home = stripAnsiEscapes(stdout).trim();
+    const { stdout } = await execOnHost(host, "echo $HOME", {
+      timeout: PROBE_TIMEOUT_MS,
+    });
+    // Last line: the login shell's banner comes first, `echo $HOME` answers last.
+    const home = lastMeaningfulLine(stdout);
     if (!home) throw new Error("empty");
     return home;
-  } catch {
-    throw new Error(`无法获取主机 ${host} 的远端主目录（$HOME）`);
+  } catch (error) {
+    // Carry the transport's own words: a distro that refuses the probe (Rancher
+    // Desktop's implementation distros reject interactive commands) otherwise
+    // reports a bare "cannot get $HOME" with no way to tell why.
+    throw new Error(
+      `无法获取${hostPossessive(host)}主目录（$HOME）：${describeError(error)}`,
+    );
   }
 }
 

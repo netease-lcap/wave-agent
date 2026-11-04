@@ -76,6 +76,7 @@ export const DesktopApp: React.FC<DesktopAppProps> = ({ vscode }) => {
         recentWorkdirs: message.recentWorkdirs ?? [],
         host: message.host ?? "local",
         hosts: message.hosts ?? [],
+        hostOptions: message.hostOptions,
       });
     } else if (message.command === "desktopSessionTree") {
       sessionTreeRef.current = message.groups ?? [];
@@ -235,7 +236,7 @@ export const DesktopApp: React.FC<DesktopAppProps> = ({ vscode }) => {
     );
   }
 
-  const { workdir, recentWorkdirs, host, hosts } = workdirState;
+  const { workdir, recentWorkdirs, host, hosts, hostOptions } = workdirState;
 
   return (
     // 窗口级 chrome 状态（sidebarCollapsed/fullScreen）单一权威：root、pane
@@ -248,6 +249,7 @@ export const DesktopApp: React.FC<DesktopAppProps> = ({ vscode }) => {
           type: "desktop",
           host,
           hosts,
+          hostOptions,
           workdir,
           recentWorkdirs,
           onSelectWorkdir: handleSelectWorkdir,

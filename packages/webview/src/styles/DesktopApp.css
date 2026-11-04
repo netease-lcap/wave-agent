@@ -1011,6 +1011,25 @@ html[data-theme="dark"] .desktop-session-status-slot {
   background: var(--vscode-list-hoverBackground);
 }
 
+/* 不可选的主机项（WSL 1 发行版）：置灰 + 不响应 hover，右侧给原因文案。
+   加了 aria-disabled 必须同时有视觉差分，否则「禁用」和「启用」像素一致。 */
+.desktop-workdir-menu-item-disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.desktop-workdir-menu-item-disabled:hover {
+  background: transparent;
+}
+
+.desktop-host-item-hint {
+  margin-left: auto;
+  padding-left: 8px;
+  font-size: 11px;
+  opacity: 0.8;
+  white-space: nowrap;
+}
+
 .desktop-workdir-menu-path {
   flex: 1;
   display: flex;

@@ -689,6 +689,24 @@ vi.mock("../src/main/sshHosts", async () => {
   };
 });
 
+// `wsl.exe --list` is a real process spawn — stub the probe so host tests stay
+// offline and the picker list is deterministic (spec
+// docs/specs/desktop/desktop-wsl.md). Everything else in wslHosts (id parsing,
+// labels, UNC mapping) stays real.
+const wslProbe = vi.hoisted(() => ({ distros: [] as unknown[] }));
+vi.mock("../src/main/wslHosts", async () => {
+  const actual = await vi.importActual<typeof import("../src/main/wslHosts")>(
+    "../src/main/wslHosts",
+  );
+  return {
+    ...actual,
+    // WSL only exists on Windows; the stub keeps the picker tests identical on
+    // every CI platform.
+    isWslSupportedPlatform: vi.fn(() => true),
+    listWslDistros: vi.fn(async () => wslProbe.distros),
+  };
+});
+
 import { DesktopHost } from "../src/main/desktopHost";
 import { ConfigStore } from "../src/main/configStore";
 import { HOST_CHANNEL } from "../src/main/channels";
@@ -885,6 +903,7 @@ let consoleSpies: Array<ReturnType<typeof vi.spyOn>> = [];
 const createdHosts: DesktopHost[] = [];
 
 beforeEach(() => {
+  wslProbe.distros.length = 0;
   h.files.clear();
   h.existingPaths.clear();
   h.dirPaths.clear();
@@ -963,6 +982,10 @@ describe("workdir lifecycle", () => {
       workdir: undefined,
       host: "local",
       hosts: [],
+      // The picker's option list ships with every workdir state (spec
+      // docs/specs/desktop/desktop-wsl.md 场景 1); WSL entries only appear
+      // after the probe lands, which never happens inside a unit test.
+      hostOptions: [{ id: "local", label: "本地", kind: "local" }],
       recentWorkdirs: ["/work/b", "/work/a"],
     });
   });
@@ -5290,11 +5313,13 @@ describe("session tree", () => {
     expect(tree?.groups).toEqual([
       {
         host: "local",
+        hostLabel: "本地",
         workdir: "/work/only-index",
         sessions: [expect.objectContaining({ sessionId: "s3" })],
       },
       {
         host: "local",
+        hostLabel: "本地",
         workdir: "/work/a",
         sessions: [
           expect.objectContaining({ sessionId: "s2" }),
@@ -10772,6 +10797,79 @@ describe("SSH remote hosts", () => {
 // ---------------------------------------------------------------------------
 // Remote preview: SSH port forwarding (spec scenarios 15-18)
 // ---------------------------------------------------------------------------
+
+describe("WSL 发行版主机（desktop-wsl.md）", () => {
+  it("webviewReady ships the distros as picker options, WSL 1 disabled", async () => {
+    wslProbe.distros.push(
+      { name: "Ubuntu", version: 2, isDefault: true, running: true },
+      { name: "Legacy", version: 1, isDefault: false, running: false },
+    );
+    const { host, sent } = createHost();
+    await host.handleWebviewMessage({ command: "desktopReady" });
+    await host.handleWebviewMessage({ command: "webviewReady" });
+
+    await vi.waitFor(() => {
+      expect(sent("desktopWorkdirState").at(-1)?.hostOptions).toHaveLength(3);
+    });
+    expect(sent("desktopWorkdirState").at(-1)?.hostOptions).toEqual([
+      { id: "local", label: "本地", kind: "local" },
+      { id: "wsl:Ubuntu", label: "Ubuntu (WSL)", kind: "wsl" },
+      {
+        id: "wsl:Legacy",
+        label: "Legacy (WSL)",
+        kind: "wsl",
+        disabled: true,
+        hint: "WSL 1：不支持",
+      },
+    ]);
+  });
+
+  it("desktopSelectHost refuses a distro that is not installed", async () => {
+    const { host, sent } = await readyHost();
+
+    await host.handleWebviewMessage({
+      command: "desktopSelectHost",
+      host: "wsl:Gone",
+    });
+
+    expect(
+      shownToasts().some((t) => t.message.includes("WSL 发行版「Gone」不可用")),
+    ).toBe(true);
+    // A refused switch never spawns a CLI or inserts a chat message.
+    expect(sent("appendMessage")).toHaveLength(0);
+    expect(sent("desktopWorkdirState").at(-1)?.host).toBe("local");
+    expect(vi.mocked(connectRemoteDaemon)).not.toHaveBeenCalled();
+  });
+
+  it("desktopForwardPort passes a WSL pane's URL through without a tunnel", async () => {
+    const { host, sent } = await readyHost();
+    const fwd = (
+      host as unknown as {
+        portForwardManager: { acquire: ReturnType<typeof vi.fn> };
+      }
+    ).portForwardManager;
+
+    await host.handleWebviewMessage({
+      command: "desktopForwardPort",
+      host: "wsl:Ubuntu",
+      requestId: "r1",
+      url: "http://localhost:5173/app",
+      sessionId: "s1",
+    });
+
+    // WSL2 的 localhost 转发让发行版里的端口在本机就是 localhost（场景 11）。
+    expect(fwd.acquire).not.toHaveBeenCalled();
+    expect(sent("desktopForwardPortResult")).toEqual([
+      {
+        command: "desktopForwardPortResult",
+        paneId: "pane-1",
+        requestId: "r1",
+        url: "http://localhost:5173/app",
+        originalUrl: "http://localhost:5173/app",
+      },
+    ]);
+  });
+});
 
 describe("remote preview port forwarding", () => {
   type HostWithFwd = DesktopHost & {

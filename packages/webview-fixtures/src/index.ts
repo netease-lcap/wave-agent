@@ -422,6 +422,7 @@ export const fixtures: Fixtures = {
     workdir: undefined,
     host: "local",
     hosts: ["local"],
+    hostOptions: [{ id: "local", label: "本地", kind: "local" as const }],
     recentWorkdirs: [],
     ...overrides,
   }),

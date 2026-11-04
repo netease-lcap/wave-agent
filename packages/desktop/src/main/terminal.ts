@@ -12,6 +12,7 @@
 import * as fs from "fs";
 import * as os from "os";
 import { buildSshSpawnArgs, LOCAL_HOST, shellQuote } from "./sshHosts";
+import { parseWslHostId, wslExePath } from "./wslHosts";
 
 export interface TerminalExitInfo {
   exitCode?: number;
@@ -137,6 +138,7 @@ export class TerminalManager {
       COLORTERM: "truecolor",
     };
     try {
+      const distro = parseWslHostId(host);
       const proc =
         host === LOCAL_HOST
           ? pty.spawn(shell.file, shell.args, {
@@ -146,21 +148,34 @@ export class TerminalManager {
               rows,
               env,
             })
-          : // `-t` forces TTY allocation so the PTY's cols/rows and TERM reach
-            // the remote shell. The ssh process itself runs locally — its cwd
-            // is irrelevant (any existing directory works); the real working
-            // directory is applied on the remote side by remoteShellCommand.
-            pty.spawn(
-              "ssh",
-              ["-t", ...buildSshSpawnArgs(host, remoteShellCommand(cwd))],
-              {
+          : distro
+            ? // WSL (spec docs/specs/desktop/desktop-wsl.md 场景 10): let wsl.exe
+              // start the distro's default login shell — `--cd` applies the
+              // session's POSIX cwd inside the distro, which no Windows-side cwd
+              // could express. The PTY runs on this machine, so cols/rows/TERM
+              // reach the distro shell unchanged.
+              pty.spawn(wslExePath(), ["-d", distro, "--cd", cwd], {
                 name: "xterm-256color",
                 cwd: os.homedir(),
                 cols,
                 rows,
                 env,
-              },
-            );
+              })
+            : // `-t` forces TTY allocation so the PTY's cols/rows and TERM reach
+              // the remote shell. The ssh process itself runs locally — its cwd
+              // is irrelevant (any existing directory works); the real working
+              // directory is applied on the remote side by remoteShellCommand.
+              pty.spawn(
+                "ssh",
+                ["-t", ...buildSshSpawnArgs(host, remoteShellCommand(cwd))],
+                {
+                  name: "xterm-256color",
+                  cwd: os.homedir(),
+                  cols,
+                  rows,
+                  env,
+                },
+              );
       const entry: TerminalEntry = {
         proc,
         paneId,
