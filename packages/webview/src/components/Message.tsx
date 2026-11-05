@@ -60,6 +60,11 @@ import { WriteToolPreview } from "./WriteToolPreview";
 import { ArtifactCard } from "./ArtifactCard";
 import { FileToolHeader } from "./FileToolHeader";
 import { MessageActionButton } from "./MessageActionButton";
+import { AssistantMessageActions } from "./AssistantMessageActions";
+import {
+  assistantCopyText,
+  isAssistantReplyStreaming,
+} from "../utils/messageCopyText";
 import { getStageColor, getToolStatusColor } from "../utils/statusColors";
 import { timelineBlockBounds } from "../utils/timelineBlocks";
 import { isDesktopHost, isRemotePageHost } from "../utils/platform";
@@ -1647,6 +1652,14 @@ export const Message: React.FC<MessageProps> = React.memo(
       />
     );
 
+    // 底部动作行（复制）的出现条件与内容（spec: ui/message-rendering-system.md
+    // 「助手消息底部的复制按钮」场景 3/4/7/8）：正文还在往屏幕上写时不出现，
+    // 没有可复制的正文时不出现，用户消息不出现。
+    const copyText =
+      message.role === "assistant" ? assistantCopyText(message) : "";
+    const showCopyActions =
+      copyText.length > 0 && !isAssistantReplyStreaming(message);
+
     // 带圆点的块里第一个 / 最后一个是哪个（见 utils/timelineBlocks）。行上据此
     // 打 `timeline-row--first/--last`，替代样式里原先的 `:first-child` /
     // `:last-child`：消息末尾的 `.message-actions` 按钮（「把本轮转到后台」只在
@@ -1847,6 +1860,17 @@ export const Message: React.FC<MessageProps> = React.memo(
           }
         >
           {rendered}
+          {/* 底部动作行（复制）**落在最后一个带圆点的行里面**，不是 `.message`
+              的兄弟节点：竖线是逐 `.timeline-row::after` 画的，挂在外面会让这行
+              的盒底不再等于消息的盒底，run 内两条消息之间的线就在动作行那里断开
+              （实测断开 26px）。放进行里，行高自己吃下这一行，线跟着覆盖下去。
+              最后一条消息常驻、历史消息悬停才显现（见 Message.css 的三档选择器）。 */}
+          {index === timelineBounds.last && showCopyActions && (
+            <AssistantMessageActions
+              text={copyText}
+              alwaysVisible={isLastMessage}
+            />
+          )}
         </div>
       );
     };
