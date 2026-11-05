@@ -524,9 +524,9 @@ describe("Agent Message Compaction Tests", () => {
     // Get compacted message list
     const messagesAfterCompaction = agent.messages;
 
-    // Verify that the message list now contains the compacted message, the last
-    // 3 messages, and the on-demand-tool notice `Exec` appends by default.
-    expect(messagesAfterCompaction.length).toBe(5);
+    // Verify that the message list now contains the compacted message and the
+    // last 3 messages. Pre-request compaction refreshes from this exact history.
+    expect(messagesAfterCompaction.length).toBe(4);
     const compactedMessage = messagesAfterCompaction[0];
     expect(compactedMessage.role).toBe("assistant");
     expect(compactedMessage.blocks[0].type).toBe("compact");
@@ -549,10 +549,10 @@ describe("Agent Message Compaction Tests", () => {
     // Verify parameters of the second main-loop call
     expect(callAgentCallCount).toBe(3);
 
-    // Verify that messages passed to callAgent include the compacted message plus the 3 preserved messages plus the new message
-    // Plus 1 prepend memory message (system-reminder with AGENTS.md + user memory).
-    // Plus the on-demand-tool notice `Exec` appends by default.
-    expect(messagesPassedToCallAgent.length).toBe(7);
+    // Verify that messages passed to callAgent include the compacted message,
+    // the 3 preserved messages, the new message, and 1 prepend memory message
+    // (system-reminder with AGENTS.md + user memory).
+    expect(messagesPassedToCallAgent.length).toBe(6);
 
     // Verify the structure of messages passed to callAgent
     // The first message should be the compacted message as user role (matching Claude Code's auto-compact)

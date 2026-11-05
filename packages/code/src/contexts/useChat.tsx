@@ -924,7 +924,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         setCurrentModelState(agent.getModelConfig().model || "");
         setConfiguredModels(agent.getConfiguredModels().map((m) => m.name));
         setMaxInputTokens(agent.getMaxInputTokens());
-        setMaxOutputTokens(agent.getMaxOutputTokens());
+        setMaxOutputTokens(agent.getMaxOutputTokens?.() ?? 32_000);
 
         // Get initial MCP servers state
         const initialMcpServers = agent.getMcpServers?.() || [];
