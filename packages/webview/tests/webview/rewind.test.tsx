@@ -38,7 +38,9 @@ describe("Rewind Feature", () => {
     vscode.postMessage.mockClear();
 
     // Click rewind on the first user message (Message 1)
-    const rewindButtons = document.querySelectorAll(".message-action-btn");
+    const rewindButtons = document.querySelectorAll(
+      '[data-testid="rewind-to-message"]',
+    );
     expect(rewindButtons.length).toBeGreaterThanOrEqual(1);
 
     await act(async () => {
@@ -95,7 +97,9 @@ describe("Rewind Feature", () => {
 
     vscode.postMessage.mockClear();
 
-    const rewindButtons = document.querySelectorAll(".message-action-btn");
+    const rewindButtons = document.querySelectorAll(
+      '[data-testid="rewind-to-message"]',
+    );
     await act(async () => {
       fireEvent.click(rewindButtons[0] as HTMLElement);
     });
@@ -134,7 +138,9 @@ describe("Rewind Feature", () => {
     });
 
     // Click rewind on the second user message (Message 2)
-    const rewindButtons = document.querySelectorAll(".message-action-btn");
+    const rewindButtons = document.querySelectorAll(
+      '[data-testid="rewind-to-message"]',
+    );
     expect(rewindButtons.length).toBeGreaterThanOrEqual(2);
 
     await act(async () => {
@@ -210,7 +216,9 @@ describe("Rewind Feature", () => {
     });
 
     // Rewind buttons should only appear on user messages
-    const rewindButtons = document.querySelectorAll(".message-action-btn");
+    const rewindButtons = document.querySelectorAll(
+      '[data-testid="rewind-to-message"]',
+    );
     // Only the single user message should have a rewind button
     expect(rewindButtons).toHaveLength(1);
   });
@@ -252,7 +260,9 @@ describe("Rewind Feature", () => {
 
     // Only the real user message has a rewind button; the background
     // notification (role: user) must not — it is not a rewind checkpoint.
-    const rewindButtons = document.querySelectorAll(".message-action-btn");
+    const rewindButtons = document.querySelectorAll(
+      '[data-testid="rewind-to-message"]',
+    );
     expect(rewindButtons).toHaveLength(1);
   });
 
@@ -281,7 +291,9 @@ describe("Rewind Feature", () => {
     });
 
     // Hook-injected messages are system-generated and not rewind checkpoints
-    const rewindButtons = document.querySelectorAll(".message-action-btn");
+    const rewindButtons = document.querySelectorAll(
+      '[data-testid="rewind-to-message"]',
+    );
     expect(rewindButtons).toHaveLength(1);
   });
 
@@ -307,7 +319,9 @@ describe("Rewind Feature", () => {
       await waitFor(() => {
         expect(screen.getByText("Message 1")).toBeInTheDocument();
       });
-      const buttons = document.querySelectorAll(".message-action-btn");
+      const buttons = document.querySelectorAll(
+        '[data-testid="rewind-to-message"]',
+      );
       expect(buttons.length).toBeGreaterThan(index);
       await act(async () => {
         fireEvent.click(buttons[index] as HTMLElement);

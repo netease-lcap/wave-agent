@@ -7,18 +7,17 @@ import {
   act,
   sendCommand,
 } from "./test-utils";
-import { within } from "@testing-library/react";
 import type { Message, MessageBlock } from "wave-agent-sdk";
 import { BASH_TOOL_NAME } from "wave-agent-sdk/constants";
-import { COPY_FEEDBACK_MS } from "../../src/components/AssistantMessageActions";
+import { COPY_FEEDBACK_MS } from "../../src/components/MessageCopyButton";
 
 /**
- * 助手消息底部的复制按钮（spec: ui/message-rendering-system.md「助手消息底部的
- * 复制按钮」）。
+ * 助手消息右上角的复制按钮（spec: ui/message-rendering-system.md「助手消息的复制
+ * 按钮」）。
  *
  * 这里钉住的是「复制什么」与「什么时候有这个入口」：各文本块按空行拼接的原始
- * Markdown（不含工具参数）、成功后对勾反馈与恢复、最后一条常驻 / 历史悬停、
- * 流式中与无正文时不出现。悬停显隐的几何与三档选择器只能真 Chromium 验，
+ * Markdown（不含工具参数）、成功后对勾反馈与恢复、流式中与无正文时不出现。按钮
+ * 与右上角那组动作按钮共用位置/形状/悬停显隐，那部分几何只能真 Chromium 验，
  * 见 e2e/assistant-message-copy.e2e.ts。
  *
  * 桩的顺序有讲究：`renderChatApp()` 内部会 `userEvent.setup()`，它自己会给
@@ -127,13 +126,8 @@ describe("Assistant message copy button", () => {
     // 场景 5：图标换成对勾、可访问名换成「已复制」，读屏另有 role=status 播报。
     const copiedButton = screen.getByTestId("assistant-copy");
     expect(copiedButton).toHaveAttribute("aria-label", "已复制");
-    expect(copiedButton).toHaveAttribute("data-copied", "true");
     expect(copiedButton.querySelector(".codicon")).toHaveClass("codicon-check");
-    expect(
-      within(screen.getByTestId("assistant-message-actions")).getByRole(
-        "status",
-      ),
-    ).toHaveTextContent("已复制");
+    expect(screen.getByRole("status")).toHaveTextContent("已复制");
 
     act(() => {
       vi.advanceTimersByTime(COPY_FEEDBACK_MS);
@@ -143,12 +137,12 @@ describe("Assistant message copy button", () => {
       "aria-label",
       "复制",
     );
-    expect(screen.getByTestId("assistant-copy")).not.toHaveAttribute(
-      "data-copied",
-    );
+    expect(
+      screen.getByTestId("assistant-copy").querySelector(".codicon"),
+    ).toHaveClass("codicon-copy");
   });
 
-  it("stays visible only on the last message (history relies on hover)", async () => {
+  it("renders on every assistant reply that has text (hover reveals it)", async () => {
     renderChatApp();
     stubClipboard();
 
@@ -159,11 +153,10 @@ describe("Assistant message copy button", () => {
       assistant([{ type: "text", content: "第二轮的回答。" }], "a2"),
     ]);
 
-    const rows = await screen.findAllByTestId("assistant-message-actions");
-    // 场景 1/2：每条有正文的助手消息都有这一行（占位），但只有最后一条常驻。
-    expect(rows).toHaveLength(2);
-    expect(rows[0]).not.toHaveAttribute("data-always-visible");
-    expect(rows[1]).toHaveAttribute("data-always-visible", "true");
+    // 场景 1/2：每条有正文的助手消息都有这颗按钮，位置在右上角那组动作按钮里；
+    // 至于「悬停消息才显出来」，那是 `.message:hover .message-actions` 的 CSS，
+    // jsdom 不跑布局也跑不了 :hover —— 真 Chromium 那侧验。
+    expect(await screen.findAllByTestId("assistant-copy")).toHaveLength(2);
   });
 
   it("is absent while the reply is still streaming", async () => {
@@ -182,9 +175,7 @@ describe("Assistant message copy button", () => {
       expect(screen.getByText("我想想…")).toBeInTheDocument();
     });
     // 场景 3：正文还在往屏幕上写，不给复制入口。
-    expect(screen.queryAllByTestId("assistant-message-actions")).toHaveLength(
-      0,
-    );
+    expect(screen.queryAllByTestId("assistant-copy")).toHaveLength(0);
   });
 
   it("stays hidden while the turn is still running, even after the text settles", async () => {
@@ -216,9 +207,7 @@ describe("Assistant message copy button", () => {
     await waitFor(() => {
       expect(screen.getByText("我先看一眼配置。")).toBeInTheDocument();
     });
-    expect(screen.queryAllByTestId("assistant-message-actions")).toHaveLength(
-      0,
-    );
+    expect(screen.queryAllByTestId("assistant-copy")).toHaveLength(0);
   });
 
   it("comes back once the turn ends, even if a tool block never settled", async () => {
@@ -245,9 +234,7 @@ describe("Assistant message copy button", () => {
       ),
     ]);
 
-    expect(screen.queryAllByTestId("assistant-message-actions")).toHaveLength(
-      0,
-    );
+    expect(screen.queryAllByTestId("assistant-copy")).toHaveLength(0);
 
     act(() => {
       sendCommand("endStreaming");
@@ -255,9 +242,7 @@ describe("Assistant message copy button", () => {
 
     // 场景 3 的反面：回合结束了就给入口——判据是本轮运行态，不是块的 stage。
     await waitFor(() => {
-      expect(screen.getAllByTestId("assistant-message-actions")).toHaveLength(
-        1,
-      );
+      expect(screen.getAllByTestId("assistant-copy")).toHaveLength(1);
     });
   });
 
@@ -286,9 +271,7 @@ describe("Assistant message copy button", () => {
     await waitFor(() => {
       expect(screen.getByText("看下配置")).toBeInTheDocument();
     });
-    expect(screen.queryAllByTestId("assistant-message-actions")).toHaveLength(
-      0,
-    );
+    expect(screen.queryAllByTestId("assistant-copy")).toHaveLength(0);
   });
 
   it("is not rendered for user messages", async () => {
@@ -328,7 +311,7 @@ describe("Assistant message copy button", () => {
 
     // 场景 6：两条路都失败就不给成功反馈。
     expect(button).toHaveAttribute("aria-label", "复制");
-    expect(button).not.toHaveAttribute("data-copied");
+    expect(button.querySelector(".codicon")).toHaveClass("codicon-copy");
   });
 
   /**
@@ -382,10 +365,9 @@ describe("Assistant message copy button", () => {
       expect(flavors["text/plain"]).toBeInstanceOf(Blob);
       expect(flavors["text/html"]).toBeInstanceOf(Blob);
       // 场景 10：成功反馈照旧。
-      expect(screen.getByTestId("assistant-copy")).toHaveAttribute(
-        "data-copied",
-        "true",
-      );
+      expect(
+        screen.getByTestId("assistant-copy").querySelector(".codicon"),
+      ).toHaveClass("codicon-check");
     });
 
     it("falls back to plain text when the rich write is rejected", async () => {
@@ -414,51 +396,9 @@ describe("Assistant message copy button", () => {
       // 场景 11：降级不是失败——纯文本照样写进去，成功反馈照给。
       expect(write).toHaveBeenCalledTimes(1);
       expect(writeText).toHaveBeenCalledWith("结论如上。");
-      expect(screen.getByTestId("assistant-copy")).toHaveAttribute(
-        "data-copied",
-        "true",
-      );
+      expect(
+        screen.getByTestId("assistant-copy").querySelector(".codicon"),
+      ).toHaveClass("codicon-check");
     });
-  });
-
-  it("renders the message time as a semantic <time> element", async () => {
-    renderChatApp();
-    stubClipboard();
-
-    const timestamp = "2025-07-09T10:30:01.000Z";
-    renderMessages([
-      user("第一轮", "u1"),
-      assistant([{ type: "text", content: "第一轮的回答。" }], "a1"),
-    ]);
-
-    const row = await screen.findByTestId("assistant-message-actions");
-    const time = row.querySelector("time");
-    // 场景 4 / 6：语义元素 + 原始时间戳落在 datetime 上（可见文本随本地时区变）。
-    expect(time).not.toBeNull();
-    expect(time).toHaveAttribute("datetime", timestamp);
-    expect(time?.textContent).toMatch(
-      /^(?:\d{4}年)?\d{1,2}月\d{1,2}日 \d{2}:\d{2}$/,
-    );
-  });
-
-  it("omits the time when the message has no timestamp", async () => {
-    renderChatApp();
-    stubClipboard();
-
-    renderMessages([
-      user("第一轮", "u1"),
-      {
-        id: "a1",
-        role: "assistant",
-        // 老数据没有该字段（类型上要求存在，实测为空串/缺失走同一条早退分支）。
-        timestamp: "",
-        blocks: [{ type: "text", content: "没有时间戳的老消息。" }],
-      },
-    ]);
-
-    const row = await screen.findByTestId("assistant-message-actions");
-    // 场景 6：时间缺失时省略时间文本，动作行其余部分照常。
-    expect(row.querySelector("time")).toBeNull();
-    expect(within(row).getByTestId("assistant-copy")).toBeInTheDocument();
   });
 });

@@ -4,7 +4,7 @@ import type { Message, TextBlock } from "../types";
 
 /**
  * 助手消息可以复制走的那部分正文（spec: ui/message-rendering-system.md
- * 「助手消息底部的复制按钮」场景 4）：
+ * 「助手消息的复制按钮」场景 4）：
  *
  * - 只取文本块，按出现顺序**以空行**拼接：模型连着发几段正文时，拼起来才是
  *   用户眼里「这一条回复」；
@@ -22,7 +22,7 @@ export const assistantCopyText = (message: Message): string =>
     .join("\n\n");
 
 /**
- * 助手回复是否还在「往屏幕上写」（底部动作行的出现条件，场景 3）。
+ * 助手回复是否还在「往屏幕上写」（复制入口的出现条件，场景 3）。
  *
  * 两层判据，缺一不可：
  *

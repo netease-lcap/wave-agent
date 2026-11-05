@@ -60,7 +60,7 @@ import { WriteToolPreview } from "./WriteToolPreview";
 import { ArtifactCard } from "./ArtifactCard";
 import { FileToolHeader } from "./FileToolHeader";
 import { MessageActionButton } from "./MessageActionButton";
-import { AssistantMessageActions } from "./AssistantMessageActions";
+import { MessageCopyButton } from "./MessageCopyButton";
 import {
   assistantCopyText,
   isAssistantReplyStreaming,
@@ -1653,21 +1653,30 @@ export const Message: React.FC<MessageProps> = React.memo(
       />
     );
 
-    // 底部动作行（复制）的出现条件与内容（spec: ui/message-rendering-system.md
-    // 「助手消息底部的复制按钮」场景 3/4/7/8）：这一轮还在跑（正文仍在写，或
-    // 正文已落定但本轮的工具还在执行）时不出现，没有可复制的正文时不出现，
-    // 用户消息不出现。「本轮还在跑」只对最后一条有意义——历史消息的轮次早结束。
+    // 复制按钮的出现条件与内容（spec: ui/message-rendering-system.md「助手消息的
+    // 复制按钮」场景 3/4/7/8）：这一轮还在跑（正文仍在写，或正文已落定但本轮的
+    // 工具还在执行）时不出现，没有可复制的正文时不出现，用户消息不出现。「本轮
+    // 还在跑」只对最后一条有意义——历史消息的轮次早结束。
     const copyText =
       message.role === "assistant" ? assistantCopyText(message) : "";
     const showCopyActions =
       copyText.length > 0 &&
       !isAssistantReplyStreaming(message, isTurnRunning && isLastMessage);
 
+    // 右上角动作组三个成员各自的显隐条件（容器在下面统一渲染）。
+    const showRewindAction =
+      !!onRewindToMessage && isRewindTargetMessage(message) && !isQueued;
+    const showBackgroundAction =
+      !!onBackgroundCurrentTask &&
+      isLastMessage &&
+      !isQueued &&
+      hasRunningBackgroundableTool(message);
+
     // 带圆点的块里第一个 / 最后一个是哪个（见 utils/timelineBlocks）。行上据此
     // 打 `timeline-row--first/--last`，替代样式里原先的 `:first-child` /
-    // `:last-child`：消息末尾的 `.message-actions` 按钮（「把本轮转到后台」只在
-    // 工具跑着时出现）也是 `.message` 的子元素，会顶掉 `:last-child`，让竖线
-    // 丢掉收尾规则、画满整行。
+    // `:last-child`：消息末尾的 `.message-actions` 动作组（回滚 / 复制 / 转后台，
+    // 悬停时才有内容）也是 `.message` 的子元素，会顶掉 `:last-child`，让竖线丢掉
+    // 收尾规则、画满整行。
     const timelineBounds = timelineBlockBounds(message.blocks ?? []);
 
     const renderBlock = (block: MessageBlock, index: number) => {
@@ -1863,18 +1872,6 @@ export const Message: React.FC<MessageProps> = React.memo(
           }
         >
           {rendered}
-          {/* 底部动作行（复制）**落在最后一个带圆点的行里面**，不是 `.message`
-              的兄弟节点：竖线是逐 `.timeline-row::after` 画的，挂在外面会让这行
-              的盒底不再等于消息的盒底，run 内两条消息之间的线就在动作行那里断开
-              （实测断开 26px）。放进行里，行高自己吃下这一行，线跟着覆盖下去。
-              最后一条消息常驻、历史消息悬停才显现（见 Message.css 的三档选择器）。 */}
-          {index === timelineBounds.last && showCopyActions && (
-            <AssistantMessageActions
-              text={copyText}
-              timestamp={message.timestamp}
-              alwaysVisible={isLastMessage}
-            />
-          )}
         </div>
       );
     };
@@ -1902,32 +1899,40 @@ export const Message: React.FC<MessageProps> = React.memo(
             onClose={() => setIdePreview(null)}
           />
         )}
-        {/* 回滚入口只在宿主给了处理器时才渲染。远控页也有处理器了（第二批解禁：
+        {/* 右上角动作组：回滚（用户消息）、复制与「把本轮转到后台」（助手消息）
+            共用同一个容器——`MessageActionButton` 只出按钮，容器负责钉在右上角
+            与悬停显隐（`Message.css` 的 `.message-actions`）。三颗是同一类动作，
+            位置、形状、显隐时机完全一致（spec: ui/message-rendering-system.md
+            「助手消息的复制按钮」场景 1/2）。
+
+            回滚入口只在宿主给了处理器时才渲染。远控页也有处理器了（第二批解禁：
             宿主侧就是桌面端那条「截断对话 + 还原电脑侧工作区文件」的链路），所以
-            这里不再区分端 —— 手机上的那次确认由 ChatApp 的对话框负责。 */}
-        {onRewindToMessage && isRewindTargetMessage(message) && !isQueued && (
-          <MessageActionButton
-            icon="history"
-            label="回滚到此消息"
-            testId="rewind-to-message"
-            onClick={() => onRewindToMessage?.(message.id!)}
-          />
+            这里不再区分端 —— 手机上的那次确认由 ChatApp 的对话框负责。
+
+            「把本轮转到后台」只在真的有可后台的工具在跑时出现，且落在最后一条
+            消息上：前台任务只可能挂在正在生成的那一轮里——历史消息里即便残留
+            未收尾的块，也不该给出一个作用对象已经变了的入口。 */}
+        {(showRewindAction || showCopyActions || showBackgroundAction) && (
+          <div className="message-actions">
+            {showRewindAction && (
+              <MessageActionButton
+                icon="history"
+                label="回滚到此消息"
+                testId="rewind-to-message"
+                onClick={() => onRewindToMessage?.(message.id!)}
+              />
+            )}
+            {showCopyActions && <MessageCopyButton text={copyText} />}
+            {showBackgroundAction && (
+              <MessageActionButton
+                icon="tasklist"
+                label="把本轮转到后台"
+                testId="background-current-task"
+                onClick={onBackgroundCurrentTask!}
+              />
+            )}
+          </div>
         )}
-        {/* 「把本轮转到后台」：与回滚按钮同一颗（`MessageActionButton`），只是挂在
-            助手消息上、只在真的有可后台的工具在跑时出现。落在最后一条消息上，是因为
-            前台任务只可能挂在正在生成的那一轮里——历史消息里即便残留未收尾的块，
-            也不该给出一个作用对象已经变了的入口。 */}
-        {onBackgroundCurrentTask &&
-          isLastMessage &&
-          !isQueued &&
-          hasRunningBackgroundableTool(message) && (
-            <MessageActionButton
-              icon="tasklist"
-              label="把本轮转到后台"
-              testId="background-current-task"
-              onClick={onBackgroundCurrentTask}
-            />
-          )}
       </div>
     );
   },
@@ -1937,7 +1942,7 @@ export const Message: React.FC<MessageProps> = React.memo(
       prev.message === next.message &&
       prev.isQueued === next.isQueued &&
       prev.isLastMessage === next.isLastMessage &&
-      // 本轮运行态影响底部复制入口的显隐（场景 3），漏比这一项会让 `endStreaming`
+      // 本轮运行态影响复制入口的显隐（场景 3），漏比这一项会让 `endStreaming`
       // 之后按钮不出现——消息对象本身在这期间没有变，memo 会把它挡在外面。
       prev.isTurnRunning === next.isTurnRunning &&
       prev.onRewindToMessage === next.onRewindToMessage &&

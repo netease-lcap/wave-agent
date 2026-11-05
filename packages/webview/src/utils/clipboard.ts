@@ -31,7 +31,7 @@ export async function copyTextToClipboard(text: string): Promise<boolean> {
 
 /**
  * 带格式地复制：同一段内容的纯文本 + HTML 两份表示（spec: ui/message-rendering-system.md
- * 「助手消息底部的复制按钮」场景 10/11）。
+ * 「助手消息的复制按钮」场景 10/11）。
  *
  * `navigator.clipboard.write` + `ClipboardItem` 是唯一能一次写入多种 flavor 的路径，
  * 但不是处处都有：jsdom、旧宿主、以及某些沙箱页面里 `ClipboardItem` 干脆不存在。
