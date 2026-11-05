@@ -102,6 +102,7 @@ export interface ChatContextType {
   removeQueuedMessageById: (id: string) => boolean;
   latestTotalTokens: number;
   maxInputTokens: number;
+  maxOutputTokens: number;
   // Model functionality
   currentModel: string;
   configuredModels: string[];
@@ -426,6 +427,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   const [messages, setMessages] = useState<Message[]>([]);
   const [latestTotalTokens, setLatestTotalTokens] = useState(0);
   const [maxInputTokens, setMaxInputTokens] = useState(200000);
+  const [maxOutputTokens, setMaxOutputTokens] = useState(32000);
 
   // All message-state updates apply IMMEDIATELY via setMessages — no data-layer
   // throttling (removed 2026-10-15 after observing fully-immediate rendering in
@@ -922,6 +924,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         setCurrentModelState(agent.getModelConfig().model || "");
         setConfiguredModels(agent.getConfiguredModels().map((m) => m.name));
         setMaxInputTokens(agent.getMaxInputTokens());
+        setMaxOutputTokens(agent.getMaxOutputTokens?.() ?? 32_000);
 
         // Get initial MCP servers state
         const initialMcpServers = agent.getMcpServers?.() || [];
@@ -1457,6 +1460,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     permissionMode,
     latestTotalTokens,
     maxInputTokens,
+    maxOutputTokens,
     // 手机侧会话列表的标题材料：`customTitle` 不走 React state（agent 自己存着，
     // 重命名后即刻生效），所以按「取当前值」的函数递给门面。
     customTitle: () => agentRef.current?.customTitle,
@@ -1604,6 +1608,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     removeQueuedMessageById,
     latestTotalTokens,
     maxInputTokens,
+    maxOutputTokens,
     currentModel,
     configuredModels,
     getConfiguredModels,

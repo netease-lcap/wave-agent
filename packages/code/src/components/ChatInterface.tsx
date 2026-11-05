@@ -27,6 +27,7 @@ export const ChatInterface: React.FC = () => {
     sessionId,
     latestTotalTokens,
     maxInputTokens,
+    maxOutputTokens,
     slashCommands,
     hasSlashCommand,
     hooks,
@@ -113,6 +114,7 @@ export const ChatInterface: React.FC = () => {
             hooks={hooks}
             latestTotalTokens={latestTotalTokens}
             maxInputTokens={maxInputTokens}
+            maxOutputTokens={maxOutputTokens}
             showLoginHint={showLoginHint}
           />
         </>

@@ -3,7 +3,7 @@
   "productName": "CodeWave IDE",
   "private": true,
   "description": "Wave code desktop app (Electron)",
-  "version": "1.6.0",
+  "version": "1.6.1",
   "type": "module",
   "main": "./dist/main/index.cjs",
   "engines": {
@@ -49,6 +49,7 @@
     "files": [
       "dist/**",
       "webview/**",
+      "assets/icon.png",
       "package.json"
     ],
     "asar": true,

@@ -161,6 +161,10 @@ export class Agent {
     return this.configurationService.resolveMaxInputTokens();
   }
 
+  public getMaxOutputTokens(): number {
+    return this.configurationService.resolveMaxOutputTokens();
+  }
+
   public getLanguage(): string {
     return this.configurationService.resolveLanguage();
   }

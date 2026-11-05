@@ -64,6 +64,7 @@ export interface InputBoxProps {
   // Token usage
   latestTotalTokens?: number;
   maxInputTokens?: number;
+  maxOutputTokens?: number;
   // Login hint
   showLoginHint?: boolean;
 }
@@ -82,6 +83,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
   hooks = {},
   latestTotalTokens = 0,
   maxInputTokens = 200000,
+  maxOutputTokens = 32000,
   showLoginHint = false,
 }) => {
   const {
@@ -510,6 +512,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
                   <Notifications
                     latestTotalTokens={latestTotalTokens}
                     maxInputTokens={maxInputTokens}
+                    maxOutputTokens={maxOutputTokens}
                     showLoginHint={showLoginHint}
                     pluginHint={pluginHint}
                   />

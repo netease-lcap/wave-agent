@@ -62,6 +62,7 @@ export interface UseRemoteControlOptions {
   permissionMode: PermissionMode;
   latestTotalTokens: number;
   maxInputTokens: number;
+  maxOutputTokens: number;
   /**
    * The title `/rename` sets, read live off the agent — the page's session list
    * labels the row with it (and the page itself may be the one that renamed it).
@@ -194,10 +195,20 @@ export function useRemoteControl(
     if (!sink || !sessionId) return;
     sink.sendNotification(
       "contextUsage",
-      remoteWire.contextUsage(latestTotalTokens, options.maxInputTokens),
+      remoteWire.contextUsage(
+        latestTotalTokens,
+        options.maxInputTokens,
+        options.maxOutputTokens,
+      ),
       sessionId,
     );
-  }, [sink, sessionId, latestTotalTokens, options.maxInputTokens]);
+  }, [
+    sink,
+    sessionId,
+    latestTotalTokens,
+    options.maxInputTokens,
+    options.maxOutputTokens,
+  ]);
 
   // Approvals are announced once, when they appear. The page answers with
   // `permissionResponse`, which the host routes back into the same promise the
@@ -319,6 +330,7 @@ function adapterOf(latest: {
       percentOf(
         latest.current.latestTotalTokens,
         latest.current.maxInputTokens,
+        latest.current.maxOutputTokens,
       ),
     latestTotalTokens: () => latest.current.latestTotalTokens,
     permissionMode: () => latest.current.permissionMode,
