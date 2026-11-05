@@ -857,6 +857,70 @@ describe("AccountCard (desktop sidebar)", () => {
       );
     });
 
+    it("returns focus to the trigger when a keyboard user closes with the trigger itself", () => {
+      renderDesktop();
+      pushAccount({ ...loggedIn, billing: planBilling, apiQuota: apiPlenty });
+      // detail = 0 = 键盘激活。键盘用户 Tab 回按钮、按 Enter 关闭这条路径此前没交还
+      // 焦点：Tooltip 从 disabled 回到 enabled 会把 wrapper 装回来、触发按钮的 DOM
+      // 节点随之重建，焦点落到 body（Tab 顺序回卷到页首）。
+      fireEvent.click(screen.getByTestId("account-usage-btn"), { detail: 0 });
+      expect(screen.getByTestId("account-usage-popover")).toBeInTheDocument();
+      fireEvent.click(screen.getByTestId("account-usage-btn"), { detail: 0 });
+      expect(
+        screen.queryByTestId("account-usage-popover"),
+      ).not.toBeInTheDocument();
+      expect(document.activeElement).toBe(
+        screen.getByTestId("account-usage-btn"),
+      );
+    });
+
+    it("re-measures the anchor when the window resizes while open", () => {
+      // jsdom 没有布局，getBoundingClientRect 恒为 0 —— 打桩成「随窗口高度下移的
+      // 卡片」，模拟用户拖窗口高度。浮层的 fixed bottom 由锚点算出，不重测就会跟
+      // 卡片分家（卡片贴侧栏底部，随窗口高度移动）。
+      let mainTop = 612;
+      const rect = (top: number, height: number) =>
+        ({
+          x: 12,
+          y: top,
+          width: 236,
+          height,
+          top,
+          bottom: top + height,
+          right: 248,
+          left: 12,
+          toJSON: () => ({}),
+        }) as unknown as DOMRect;
+      // 卡片比个人信息行高一些（用量区在上），底边必须低于行顶 —— 否则锚点高度
+      // 算成负数，DOMRect 的 top 会取 min(y, y+height)，把 +4 间隙吃回去.
+      const spy = vi
+        .spyOn(Element.prototype, "getBoundingClientRect")
+        .mockImplementation(function (this: Element): DOMRect {
+          const isRow = this.classList?.contains("account-card-main") === true;
+          return isRow ? rect(mainTop, 52) : rect(mainTop - 60, 120);
+        });
+
+      try {
+        renderDesktop();
+        pushUsage({ ...loggedIn, billing: planBilling, apiQuota: apiPlenty });
+        // 锚点 top = 行顶 + 4；bottom 偏移 = innerHeight − 锚点 top + 4 = innerHeight − 行顶.
+        expect(screen.getByTestId("account-usage-popover").style.bottom).toBe(
+          `${window.innerHeight - mainTop}px`,
+        );
+
+        mainTop = 512;
+        act(() => {
+          window.dispatchEvent(new Event("resize"));
+        });
+        // resize 后卡片下移 100px ⇒ 浮层跟着重算，仍贴行顶（不重测就停在 156px）.
+        expect(screen.getByTestId("account-usage-popover").style.bottom).toBe(
+          `${window.innerHeight - mainTop}px`,
+        );
+      } finally {
+        spy.mockRestore();
+      }
+    });
+
     it("keeps the personal menu and the usage popover mutually exclusive", () => {
       renderDesktop();
       pushUsage({ ...loggedIn, billing: planBilling, apiQuota: apiPlenty });

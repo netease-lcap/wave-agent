@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import type {
   AccountApiQuotaInfo,
   AccountBillingCode,
@@ -293,13 +293,31 @@ export const AccountCard: React.FC<AccountCardProps> = ({
   const hotzoneRef = useRef<HTMLDivElement | null>(null);
   const usageBtnRef = useRef<HTMLButtonElement | null>(null);
   const usagePanelRef = useRef<HTMLDivElement | null>(null);
-  // 焦点交接的台账：浮层是否开过（避免首帧就把焦点抢走）、这次关闭是不是 Esc、
-  // 这次打开是不是键盘触发的（决定 Esc 关闭后要不要把焦点送回按钮）。
+  // 焦点交接的台账：浮层是否开过（避免首帧就把焦点抢走）、这次关闭要不要把焦点
+  // 送回触发按钮、这次打开是不是键盘触发的（决定关闭后要不要真的送回去）。
   const usageOpened = useRef(false);
-  const escapeClosesUsage = useRef(false);
+  const restoreFocusOnClose = useRef(false);
   const usageOpenedByKeyboard = useRef(false);
   // S4 自动弹窗护栏：status 每轮变为 ready 只自动弹一次（离开 ready 复位）。
   const [restartPrompted, setRestartPrompted] = useState(false);
+
+  // 贴个人信息行上方弹出的锚点（菜单与用量浮层共用）：与卡片等宽，底边贴行顶
+  // （+4 抵消固定定位的上移间隙）。侧栏 overflow:hidden 会裁掉 absolute 后代，
+  // 所以两层都用 fixed 逃逸。
+  const measureRowAnchor = useCallback((): DOMRect | null => {
+    const el = cardRef.current;
+    if (!el) return null;
+    const cardRect = el.getBoundingClientRect();
+    const mainEl = el.querySelector<HTMLElement>(".account-card-main");
+    const anchorTop =
+      (mainEl ? mainEl.getBoundingClientRect().top : cardRect.top) + 4;
+    return new DOMRect(
+      cardRect.x,
+      anchorTop,
+      cardRect.width,
+      cardRect.bottom - anchorTop,
+    );
+  }, []);
 
   const isAuthenticated = account?.isAuthenticated === true;
   // 姓名优先完整邮箱（对齐 codechat sidebar-account），无邮箱时回退前缀/「已登录」。
@@ -331,19 +349,32 @@ export const AccountCard: React.FC<AccountCardProps> = ({
     if (!showUsage) return;
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
-        escapeClosesUsage.current = true;
+        restoreFocusOnClose.current = true;
         setShowUsage(false);
       }
     };
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [showUsage]);
+  // 浮层坐标是打开那一刻的快照（`fixed` + `bottom` 全由锚点算出），卡片又贴在
+  // 侧栏底部、随窗口高度上下移动 —— 拖窗口后不重测就与卡片分家。跟随 resize 重测；
+  // 宽度同理（`right` / `width` 都从锚点来）。
+  useEffect(() => {
+    if (!showUsage) return;
+    const handleResize = () => {
+      const anchor = measureRowAnchor();
+      if (anchor) setUsageAnchor(anchor);
+    };
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, [showUsage, measureRowAnchor]);
   // 焦点交接（放在 effect 里而不是事件里）：Tooltip 的 `disabled` 会在开合瞬间
   // 摘掉/装回它那层 span，触发按钮的 DOM 节点随之重建——同步 focus() 打在当时那颗
   // 旧节点上，提交完就丢了。effect 在提交后跑，ref 已指向新节点。
-  // 打开 → 焦点进浮层（dialog 语义）；Esc 关闭 → 交还触发按钮；点外部关闭则把焦点
-  // 留给用户点中的地方，不抢。
-  // 「交还按钮」只对键盘打开的做：鼠标用户按 Esc 时把焦点塞回按钮，会让按钮进入
+  // 打开 → 焦点进浮层（dialog 语义）；Esc / 再按一次触发按钮关闭 → 交还触发按钮
+  // （两条都是键盘路径：Enter/空格 toggle 关闭后焦点原本落到 body，Tab 顺序回卷到
+  // 页首）；点外部关闭则把焦点留给用户点中的地方，不抢。
+  // 「交还按钮」只对键盘打开的做：鼠标用户关闭时把焦点塞回按钮，会让按钮进入
   // :focus 态、顺带把「查看用量」气泡再弹出来——指针早已离开，这条气泡就一直挂着
   // （2026-11-05 实测的残留问题）。鼠标场景焦点落空即可，用户下一步本来就用鼠标。
   useEffect(() => {
@@ -354,12 +385,12 @@ export const AccountCard: React.FC<AccountCardProps> = ({
     }
     if (
       usageOpened.current &&
-      escapeClosesUsage.current &&
+      restoreFocusOnClose.current &&
       usageOpenedByKeyboard.current
     ) {
       usageBtnRef.current?.focus();
     }
-    escapeClosesUsage.current = false;
+    restoreFocusOnClose.current = false;
   }, [showUsage]);
 
   // 未登录：整条登录按钮 + 右侧「更多」按钮（沿用当前基线视觉）。
@@ -469,24 +500,6 @@ export const AccountCard: React.FC<AccountCardProps> = ({
     </Tooltip>
   );
 
-  // 贴个人信息行上方弹出的锚点（菜单与用量浮层共用）：与卡片等宽，底边贴行顶
-  // （+4 抵消固定定位的上移间隙）。侧栏 overflow:hidden 会裁掉 absolute 后代，
-  // 所以两层都用 fixed 逃逸。
-  const measureRowAnchor = (): DOMRect | null => {
-    const el = cardRef.current;
-    if (!el) return null;
-    const cardRect = el.getBoundingClientRect();
-    const mainEl = el.querySelector<HTMLElement>(".account-card-main");
-    const anchorTop =
-      (mainEl ? mainEl.getBoundingClientRect().top : cardRect.top) + 4;
-    return new DOMRect(
-      cardRect.x,
-      anchorTop,
-      cardRect.width,
-      cardRect.bottom - anchorTop,
-    );
-  };
-
   // 个人信息热区：点击开/关纯功能菜单（打开时先收掉用量浮层，两个弹层互斥）。
   const toggleUsageMenu = () => {
     if (!showMenu) {
@@ -507,6 +520,7 @@ export const AccountCard: React.FC<AccountCardProps> = ({
     if (!showUsage) {
       // 键盘激活的 click（Enter / 空格）detail 恒为 0，鼠标点击 ≥ 1。
       usageOpenedByKeyboard.current = event.detail === 0;
+      restoreFocusOnClose.current = false;
       const anchor = measureRowAnchor();
       if (anchor) setUsageAnchor(anchor);
       const planRank =
@@ -523,6 +537,9 @@ export const AccountCard: React.FC<AccountCardProps> = ({
       setShowMenu(false);
       setShowUsage(true);
     } else {
+      // 再点一次触发按钮 = 键盘用户的 toggle 关闭：与 Esc 同样交还焦点
+      // （是否真的交还由 effect 按「这次是不是键盘打开的」把关）。
+      restoreFocusOnClose.current = true;
       setShowUsage(false);
     }
   };
