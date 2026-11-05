@@ -177,6 +177,151 @@ test.describe("Assistant message copy action row", () => {
     await button.focus();
     await expect(button).toHaveCSS("opacity", "1");
   });
+
+  /**
+   * 富文本那条路（场景 10）：真 Chromium 里 `ClipboardItem` 是原生实现，所以这里
+   * 能验证「同一份内容同时交给两种 flavor」，而不是只在 jsdom 里验调用形状。
+   * 桩只截 `navigator.clipboard.write`，不碰系统剪贴板。
+   */
+  test("writes the markdown source and its structure as two clipboard flavors", async ({
+    webviewPage,
+  }) => {
+    const injector = new MessageInjector(webviewPage);
+    await injector.simulateExtensionMessage("setInitialState", {
+      isAuthenticated: true,
+      messages: [],
+      isStreaming: false,
+      sessions: [],
+      permissionMode: "default",
+    });
+    await injector.updateMessages(messages);
+
+    await webviewPage.evaluate(() => {
+      const win = window as unknown as {
+        __flavors: Record<string, string> | null;
+        ClipboardItem?: unknown;
+      };
+      win.__flavors = null;
+      // `page.setContent` 的 about:blank 不是安全上下文，原生 `ClipboardItem` 在那里
+      // 不存在；这里补一个最小的等价物，验证的是「两种 flavor 都被交出去」这件事。
+      win.ClipboardItem = class {
+        constructor(private items: Record<string, Blob>) {}
+        get types() {
+          return Object.keys(this.items);
+        }
+        getType(type: string) {
+          return Promise.resolve(this.items[type]);
+        }
+      };
+      Object.defineProperty(navigator, "clipboard", {
+        value: {
+          write: async (
+            items: { types: string[]; getType: (t: string) => Promise<Blob> }[],
+          ) => {
+            const record: Record<string, string> = {};
+            for (const type of items[0].types) {
+              record[type] = await (await items[0].getType(type)).text();
+            }
+            win.__flavors = record;
+          },
+          writeText: async () => {
+            throw new Error("plain-text path should not be used");
+          },
+        },
+        configurable: true,
+      });
+    });
+
+    // 历史消息的按钮默认隐藏（`pointer-events: none`），先悬停把这一行显出来。
+    const historyMessage = webviewPage.locator(
+      '.message[data-message-id="a1"]',
+    );
+    await historyMessage.hover();
+    await historyMessage.getByTestId("assistant-copy").click();
+
+    // `write` 是异步的，点击返回时那份记录还没落地 —— 等它写进来再读。
+    const flavors = await webviewPage
+      .waitForFunction(
+        () =>
+          (window as unknown as { __flavors: Record<string, string> | null })
+            .__flavors,
+      )
+      .then((handle) => handle.jsonValue());
+    // text/plain 仍是逐字节的 Markdown 源码（场景 4）。
+    expect(flavors?.["text/plain"]).toBe(
+      "## 第一轮回答\n\n改 `app.ts` 就行。\n\n- 第一条\n- 第二条",
+    );
+    // text/html 是同一份内容的结构化渲染，且不带我们的样式类。
+    const html = flavors?.["text/html"] ?? "";
+    expect(html).toContain("<h2");
+    expect(html).toContain("<ul>");
+    expect(html).toContain("<li>第一条</li>");
+    expect(html).not.toMatch(/class=/);
+  });
+
+  /**
+   * 时间戳（spec「助手消息底部的时间戳」）：与按钮同档显隐，落在 `<time datetime>`
+   * 上，位置在行右端。
+   */
+  test("shows the message time on the right of the row, in step with the button", async ({
+    webviewPage,
+  }) => {
+    const injector = new MessageInjector(webviewPage);
+    await injector.simulateExtensionMessage("setInitialState", {
+      isAuthenticated: true,
+      messages: [],
+      isStreaming: false,
+      sessions: [],
+      permissionMode: "default",
+    });
+    await injector.updateMessages(messages);
+
+    const lastTime = webviewPage.locator(
+      '.message[data-message-id="a2"] [data-testid="assistant-message-actions"] time',
+    );
+    await expect(lastTime).toHaveCount(1);
+    // 场景 1：最后一条常驻。
+    await expect(lastTime).toHaveCSS("opacity", "1");
+    // 场景 2/4：datetime 是原始时间戳，可见文本是本地化短格式。
+    await expect(lastTime).toHaveAttribute(
+      "datetime",
+      "2025-07-09T10:30:03.000Z",
+    );
+    await expect(lastTime).toHaveText(
+      /^(?:\d{4}年)?\d{1,2}月\d{1,2}日 \d{2}:\d{2}$/,
+    );
+
+    // 位置：复制按钮之后、贴行右端。
+    const geometry = await webviewPage.evaluate(() => {
+      const message = document.querySelector<HTMLElement>(
+        '.message[data-message-id="a2"]',
+      )!;
+      const row = message.querySelector<HTMLElement>(
+        '[data-testid="assistant-message-actions"]',
+      )!;
+      const btn = row.querySelector<HTMLElement>(
+        '[data-testid="assistant-copy"]',
+      )!;
+      const time = row.querySelector<HTMLElement>("time")!;
+      return {
+        btnRight: btn.getBoundingClientRect().right,
+        timeLeft: time.getBoundingClientRect().left,
+        rowRight: row.getBoundingClientRect().right,
+        timeRight: time.getBoundingClientRect().right,
+      };
+    });
+    expect(geometry.timeLeft).toBeGreaterThan(geometry.btnRight);
+    // 贴右端（留 ≤ 8px 的内边距余量）。
+    expect(geometry.rowRight - geometry.timeRight).toBeLessThanOrEqual(8);
+
+    // 场景 1：历史消息上时间与按钮一起隐藏，悬停一起出现。
+    const historyTime = webviewPage.locator(
+      '.message[data-message-id="a1"] [data-testid="assistant-message-actions"] time',
+    );
+    await expect(historyTime).toHaveCSS("opacity", "0");
+    await webviewPage.locator('.message[data-message-id="a1"]').hover();
+    await expect(historyTime).toHaveCSS("opacity", "1");
+  });
 });
 
 /**

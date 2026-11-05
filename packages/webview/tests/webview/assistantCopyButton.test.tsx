@@ -256,4 +256,135 @@ describe("Assistant message copy button", () => {
     expect(button).toHaveAttribute("aria-label", "复制");
     expect(button).not.toHaveAttribute("data-copied");
   });
+
+  /**
+   * 富文本那条路（场景 10/11）。断言分两层：这里只看「两种 flavor 都被交出去了」，
+   * HTML 长什么样由 messageCopyText.test.ts 单独钉（纯函数，好断言）。
+   */
+  describe("rich-text clipboard", () => {
+    class FakeClipboardItem {
+      constructor(readonly items: Record<string, Blob>) {}
+    }
+
+    const stubRichClipboard = () => {
+      const write = vi.fn().mockResolvedValue(undefined);
+      Object.defineProperty(navigator, "clipboard", {
+        value: { write, writeText: vi.fn().mockResolvedValue(undefined) },
+        configurable: true,
+      });
+      Object.defineProperty(globalThis, "ClipboardItem", {
+        value: FakeClipboardItem,
+        configurable: true,
+      });
+      return write;
+    };
+
+    afterEach(() => {
+      Object.defineProperty(globalThis, "ClipboardItem", {
+        value: undefined,
+        configurable: true,
+      });
+    });
+
+    it("writes text/plain and text/html in one clipboard item", async () => {
+      renderChatApp();
+      const write = stubRichClipboard();
+
+      renderMessages([
+        user("复述", "u1"),
+        assistant([{ type: "text", content: "## 结论\n\n- 甲\n- 乙" }], "a1"),
+      ]);
+
+      const button = await screen.findByTestId("assistant-copy");
+      await act(async () => {
+        fireEvent.click(button);
+      });
+
+      expect(write).toHaveBeenCalledTimes(1);
+      const [items] = write.mock.calls[0] as unknown as [FakeClipboardItem[]];
+      expect(items).toHaveLength(1);
+      const flavors = items[0].items;
+      expect(Object.keys(flavors).sort()).toEqual(["text/html", "text/plain"]);
+      expect(flavors["text/plain"]).toBeInstanceOf(Blob);
+      expect(flavors["text/html"]).toBeInstanceOf(Blob);
+      // 场景 10：成功反馈照旧。
+      expect(screen.getByTestId("assistant-copy")).toHaveAttribute(
+        "data-copied",
+        "true",
+      );
+    });
+
+    it("falls back to plain text when the rich write is rejected", async () => {
+      renderChatApp();
+      const write = vi.fn().mockRejectedValue(new Error("not focused"));
+      const writeText = vi.fn().mockResolvedValue(undefined);
+      Object.defineProperty(navigator, "clipboard", {
+        value: { write, writeText },
+        configurable: true,
+      });
+      Object.defineProperty(globalThis, "ClipboardItem", {
+        value: FakeClipboardItem,
+        configurable: true,
+      });
+
+      renderMessages([
+        user("复述", "u1"),
+        assistant([{ type: "text", content: "结论如上。" }], "a1"),
+      ]);
+
+      const button = await screen.findByTestId("assistant-copy");
+      await act(async () => {
+        fireEvent.click(button);
+      });
+
+      // 场景 11：降级不是失败——纯文本照样写进去，成功反馈照给。
+      expect(write).toHaveBeenCalledTimes(1);
+      expect(writeText).toHaveBeenCalledWith("结论如上。");
+      expect(screen.getByTestId("assistant-copy")).toHaveAttribute(
+        "data-copied",
+        "true",
+      );
+    });
+  });
+
+  it("renders the message time as a semantic <time> element", async () => {
+    renderChatApp();
+    stubClipboard();
+
+    const timestamp = "2025-07-09T10:30:01.000Z";
+    renderMessages([
+      user("第一轮", "u1"),
+      assistant([{ type: "text", content: "第一轮的回答。" }], "a1"),
+    ]);
+
+    const row = await screen.findByTestId("assistant-message-actions");
+    const time = row.querySelector("time");
+    // 场景 4 / 6：语义元素 + 原始时间戳落在 datetime 上（可见文本随本地时区变）。
+    expect(time).not.toBeNull();
+    expect(time).toHaveAttribute("datetime", timestamp);
+    expect(time?.textContent).toMatch(
+      /^(?:\d{4}年)?\d{1,2}月\d{1,2}日 \d{2}:\d{2}$/,
+    );
+  });
+
+  it("omits the time when the message has no timestamp", async () => {
+    renderChatApp();
+    stubClipboard();
+
+    renderMessages([
+      user("第一轮", "u1"),
+      {
+        id: "a1",
+        role: "assistant",
+        // 老数据没有该字段（类型上要求存在，实测为空串/缺失走同一条早退分支）。
+        timestamp: "",
+        blocks: [{ type: "text", content: "没有时间戳的老消息。" }],
+      },
+    ]);
+
+    const row = await screen.findByTestId("assistant-message-actions");
+    // 场景 6：时间缺失时省略时间文本，动作行其余部分照常。
+    expect(row.querySelector("time")).toBeNull();
+    expect(within(row).getByTestId("assistant-copy")).toBeInTheDocument();
+  });
 });

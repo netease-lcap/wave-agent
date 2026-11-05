@@ -199,12 +199,38 @@
 
 /* 三档显现：最后一条消息常驻、历史消息悬停、键盘聚焦到按钮本身。
  * 只有按钮自己拿到焦点才亮 —— 用 `:focus-within` 会让消息里任意链接被聚焦时
- * 也把这颗按钮顺带照亮。 */
+ * 也把这颗按钮顺带照亮。时间戳与按钮同档（spec「助手消息底部的时间戳」场景 1），
+ * 所以它俩共用同一组选择器。 */
 .assistant-message-actions[data-always-visible="true"] .message-copy-btn,
+.assistant-message-actions[data-always-visible="true"] .message-action-time,
 .message:hover .message-copy-btn,
-.message:has(.message-copy-btn:focus) .message-copy-btn {
+.message:hover .message-action-time,
+.message:has(.message-copy-btn:focus) .message-copy-btn,
+.message:has(.message-copy-btn:focus) .message-action-time {
   opacity: 1;
   pointer-events: auto;
+}
+
+/* 行右端的时间：外层 span（Tooltip 的容器）靠 `margin-left: auto` 推到最右侧，
+ * 与左边那颗复制图标撑开这一行，顺带解决「只有一颗图标显得空」的观感。等宽数字
+ * （tabular-nums）避免分钟变化时左右微颤。 */
+.message-action-time-slot {
+  display: flex;
+  align-items: center;
+  margin-left: auto;
+}
+
+.message-action-time {
+  padding: 0 2px;
+  font-size: 11px;
+  line-height: 1;
+  color: var(--vscode-descriptionForeground);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  cursor: default;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s ease;
 }
 
 /* 复制成功的那 1.5s：图标的颜色跟正文里的链接色一档，读起来是「这段文字被拿走了」，

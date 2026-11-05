@@ -1868,6 +1868,7 @@ export const Message: React.FC<MessageProps> = React.memo(
           {index === timelineBounds.last && showCopyActions && (
             <AssistantMessageActions
               text={copyText}
+              timestamp={message.timestamp}
               alwaysVisible={isLastMessage}
             />
           )}

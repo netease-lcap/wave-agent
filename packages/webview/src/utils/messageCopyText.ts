@@ -1,3 +1,5 @@
+import { marked } from "marked";
+import DOMPurify from "dompurify";
 import type { Message, TextBlock } from "../types";
 
 /**
@@ -32,3 +34,54 @@ export const isAssistantReplyStreaming = (message: Message): boolean =>
       (block.type === "text" || block.type === "reasoning") &&
       block.stage === "streaming",
   );
+
+/**
+ * 复制进剪贴板时同时带上的 `text/html`（场景 10）：同一份 Markdown 的结构化渲染。
+ *
+ * 结构与纯文本那份**同源**——都从 `assistantCopyText` 出来，所以两份永远描述同一段
+ * 内容，不会出现「粘到文档里是另一条消息」。样式一律不进来（不加 `class`、不做语法
+ * 高亮）：格式由接收方的编辑器决定，带上我们的样式只会往别人的文档里塞一团外来颜色。
+ *
+ * 标记里可能出现 `<script>` 之类（模型输出也是不可信输入），所以过一道 DOMPurify；
+ * 白名单与消息渲染一致，另加 `<table>` 系与 `<input type="checkbox">`（GFM 任务列表）。
+ */
+export const markdownToClipboardHtml = (markdown: string): string => {
+  if (!markdown.trim()) return "";
+  const parsed = marked.parse(markdown, { gfm: true, breaks: true });
+  if (typeof parsed !== "string") return "";
+  const clean = DOMPurify.sanitize(parsed, {
+    ALLOWED_TAGS: [
+      "p",
+      "br",
+      "strong",
+      "b",
+      "em",
+      "i",
+      "code",
+      "pre",
+      "h1",
+      "h2",
+      "h3",
+      "h4",
+      "h5",
+      "h6",
+      "ul",
+      "ol",
+      "li",
+      "a",
+      "blockquote",
+      "hr",
+      "table",
+      "thead",
+      "tbody",
+      "tr",
+      "th",
+      "td",
+      "del",
+      "input",
+    ],
+    ALLOWED_ATTR: ["href", "title", "align", "type", "checked", "disabled"],
+    ALLOW_DATA_ATTR: false,
+  });
+  return typeof clean === "string" ? clean : "";
+};
