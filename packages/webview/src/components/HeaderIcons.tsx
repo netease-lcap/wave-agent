@@ -773,13 +773,13 @@ export const PanelExpandIcon: React.FC<IconProps> = ({
   </svg>
 );
 
-// 账户卡片用量区显隐按钮（收起态）— 桌面「额度」图标：开口表盘弧 + 内圈刻度环 +
+// 账户卡片用量按钮 — 桌面「额度」图标：开口表盘弧 + 内圈刻度环 +
 // 指针，stroke #565A60 → currentColor。矢量由设计直接给件（2026-10-30 她「替换成
 // 这颗」，源文件 16 画板），这里原样保留几何、16 画板居中放进 24 盒子
 // （`translate(4 4)`，故描边 1.4 与同排图标一致；墨迹 13.48×11.39，与旧版 24 画板
 // 矢量 13.12×13.12 基本齐平）。取代 Figma 13648:3600 那版（整圈 + 实心轴心）；
-// 展开态仍是下面的 ChevronDownIcon，两态各画各的。按钮 24×24 规格由
-// .account-card-collapse-btn 提供，svg 自带 24×24 显示。
+// 2026-11 交互改版后按钮不再有「展开态」，只有这一颗图标。
+// 按钮 24×24 规格由 .account-card-usage-btn 提供，svg 自带 24×24 显示。
 export const QuotaIcon: React.FC<IconProps> = ({
   className = "header-icon",
 }) => (
@@ -1933,5 +1933,45 @@ export const FileCodeIcon: React.FC<
     <path d="M14 2v5a1 1 0 0 0 1 1h5" />
     <path d="m10 13-2 2 2 2" />
     <path d="m14 17 2-2-2-2" />
+  </svg>
+);
+
+/** 生成文件卡片菜单：打开所在文件夹（lucide folder，24 viewBox stroke 2）。 */
+export const FolderIcon: React.FC<IconProps> = ({
+  className = "header-icon",
+}) => (
+  <svg
+    width={16}
+    height={16}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={2}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+  >
+    <path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" />
+  </svg>
+);
+
+/** 提示词模板：一页文档 + 三条正文线（与「快捷指令」框选图标区分开）。 */
+export const TemplateIcon: React.FC<IconProps> = ({
+  className = "header-icon",
+}) => (
+  <svg
+    width={20}
+    height={20}
+    viewBox="0 0 20 20"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={1.4}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+  >
+    <path d="M5 2.5h6.5l3 3V17.5H5z" />
+    <path d="M11.5 2.5v3h3" />
+    <path d="M7.5 9h5M7.5 11.5h5M7.5 14h3" />
   </svg>
 );

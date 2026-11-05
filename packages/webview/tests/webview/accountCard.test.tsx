@@ -45,15 +45,15 @@ function pushAccount(overrides: Record<string, unknown>) {
 }
 
 /**
- * 用量常驻区 2026-11-05 起**默认折叠**：需要断言用量内容的用例先点显隐按钮展开
- * （折叠态本身、以及折叠态预警点由「用量常驻区收起/展开」那组用例覆盖）。
+ * 用量 2026-11 交互改版起**默认收在浮层里**：需要断言用量内容的用例先点个人信息行
+ * 尾部的用量按钮弹出浮层（默认关闭态、预警点由「用量浮层」那组用例覆盖）。
  */
 function expandUsage() {
-  fireEvent.click(screen.getByTestId("account-usage-collapse"));
-  expect(screen.getByTestId("account-card-usage")).toBeInTheDocument();
+  fireEvent.click(screen.getByTestId("account-usage-btn"));
+  expect(screen.getByTestId("account-usage-popover")).toBeInTheDocument();
 }
 
-/** 内容类用例的常见组合：推账户快照 + 展开用量区。 */
+/** 内容类用例的常见组合：推账户快照 + 弹出用量浮层。 */
 function pushUsage(overrides: Record<string, unknown>) {
   pushAccount(overrides);
   expandUsage();
@@ -112,11 +112,9 @@ describe("AccountCard (desktop sidebar)", () => {
       });
 
       expect(
-        screen.queryByTestId("account-card-usage"),
+        screen.queryByTestId("account-usage-popover"),
       ).not.toBeInTheDocument();
-      expect(
-        screen.queryByTestId("account-usage-collapse"),
-      ).not.toBeInTheDocument();
+      expect(screen.queryByTestId("account-usage-btn")).not.toBeInTheDocument();
       expect(
         screen.queryByTestId("account-card-hotzone"),
       ).not.toBeInTheDocument();
@@ -128,7 +126,7 @@ describe("AccountCard (desktop sidebar)", () => {
       renderDesktop();
       pushUsage({ ...loggedIn, billing: planBilling, apiQuota: apiPlenty });
 
-      const usage = screen.getByTestId("account-card-usage");
+      const usage = screen.getByTestId("account-usage-popover");
       expect(usage).toBeInTheDocument();
       const planBlock = screen.getByTestId("account-plan");
       // 「套餐用量」这个称呼由页签承担，块内不再重复一行标题.
@@ -535,7 +533,7 @@ describe("AccountCard (desktop sidebar)", () => {
       pushUsage({ ...loggedIn, billing: null, apiQuota: apiPlenty });
 
       expect(screen.queryByTestId("account-plan")).not.toBeInTheDocument();
-      expect(screen.getByTestId("account-card-usage")).toBeInTheDocument();
+      expect(screen.getByTestId("account-usage-popover")).toBeInTheDocument();
       expect(screen.getByTestId("account-api-quota")).toHaveTextContent(
         "¥8,846.86",
       );
@@ -546,11 +544,9 @@ describe("AccountCard (desktop sidebar)", () => {
       pushAccount({ ...loggedIn, billing: null, apiQuota: null });
 
       expect(
-        screen.queryByTestId("account-card-usage"),
+        screen.queryByTestId("account-usage-popover"),
       ).not.toBeInTheDocument();
-      expect(
-        screen.queryByTestId("account-usage-collapse"),
-      ).not.toBeInTheDocument();
+      expect(screen.queryByTestId("account-usage-btn")).not.toBeInTheDocument();
       // 无用量时个人信息行仍正常.
       expect(screen.getByTestId("account-card-name")).toBeInTheDocument();
     });
@@ -630,40 +626,41 @@ describe("AccountCard (desktop sidebar)", () => {
     });
   });
 
-  describe("用量常驻区默认折叠 / 收起展开 / 折叠态预警点", () => {
-    it("starts collapsed by default, and the collapsed state does not persist across remounts", () => {
+  describe("用量浮层（点击弹出 / 关闭 / 预警点）", () => {
+    it("starts closed by default, and the open state does not persist across remounts", () => {
       const first = renderDesktop();
       pushAccount({ ...loggedIn, billing: planBilling, apiQuota: apiPlenty });
 
-      // 2026-11-05 交互定稿：默认折叠，卡片只露个人信息一行。
+      // 2026-11 交互改版：卡片初始只露个人信息一行，用量收在浮层里。
       expect(
-        screen.queryByTestId("account-card-usage"),
+        screen.queryByTestId("account-usage-popover"),
       ).not.toBeInTheDocument();
-      const toggle = screen.getByTestId("account-usage-collapse");
-      expect(toggle).toHaveAttribute("aria-expanded", "false");
-      expect(toggle).toHaveAttribute("aria-label", "展开用量");
+      const trigger = screen.getByTestId("account-usage-btn");
+      expect(trigger).toHaveAttribute("aria-expanded", "false");
+      expect(trigger).toHaveAttribute("aria-haspopup", "dialog");
+      expect(trigger).toHaveAttribute("aria-label", "查看用量");
 
-      // 展开后重挂（等价于重新打开客户端）⇒ 回到折叠态（「每次都折叠」，不记忆）。
-      fireEvent.click(toggle);
-      expect(screen.getByTestId("account-card-usage")).toBeInTheDocument();
+      // 打开后重挂（等价于重新打开客户端）⇒ 回到关闭态（每次都不展开，不记忆）。
+      fireEvent.click(trigger);
+      expect(screen.getByTestId("account-usage-popover")).toBeInTheDocument();
       first.unmount();
       renderDesktop();
       pushAccount({ ...loggedIn, billing: planBilling, apiQuota: apiPlenty });
       expect(
-        screen.queryByTestId("account-card-usage"),
+        screen.queryByTestId("account-usage-popover"),
       ).not.toBeInTheDocument();
     });
 
-    it("keeps the toggle clean (no dot) when there is no usage alert", () => {
+    it("keeps the trigger clean (no dot) when there is no usage alert", () => {
       renderDesktop();
       pushAccount({ ...loggedIn, billing: planBilling, apiQuota: apiPlenty });
 
       expect(
         screen.queryByTestId("account-usage-alert-dot"),
       ).not.toBeInTheDocument();
-      expect(screen.getByTestId("account-usage-collapse")).toHaveAttribute(
+      expect(screen.getByTestId("account-usage-btn")).toHaveAttribute(
         "aria-label",
-        "展开用量",
+        "查看用量",
       );
     });
 
@@ -687,10 +684,10 @@ describe("AccountCard (desktop sidebar)", () => {
 
       const dot = screen.getByTestId("account-usage-alert-dot");
       expect(dot.classList.contains("is-warning")).toBe(true);
-      // 折叠态读屏带上预警语义。
-      expect(screen.getByTestId("account-usage-collapse")).toHaveAttribute(
+      // 读屏带上预警语义。
+      expect(screen.getByTestId("account-usage-btn")).toHaveAttribute(
         "aria-label",
-        "展开用量（有预警）",
+        "查看用量（有预警）",
       );
     });
 
@@ -710,7 +707,7 @@ describe("AccountCard (desktop sidebar)", () => {
       ).toBe(true);
     });
 
-    it("hides the dot once the usage area is expanded (正文自己表达预警)", () => {
+    it("keeps the dot while the popover is open (开合不让预警状态闪烁)", () => {
       renderDesktop();
       pushAccount({
         ...loggedIn,
@@ -719,70 +716,85 @@ describe("AccountCard (desktop sidebar)", () => {
       });
 
       expect(screen.getByTestId("account-usage-alert-dot")).toBeInTheDocument();
-      fireEvent.click(screen.getByTestId("account-usage-collapse"));
-      expect(screen.getByTestId("account-card-usage")).toBeInTheDocument();
-      expect(
-        screen.queryByTestId("account-usage-alert-dot"),
-      ).not.toBeInTheDocument();
+      fireEvent.click(screen.getByTestId("account-usage-btn"));
+      expect(screen.getByTestId("account-usage-popover")).toBeInTheDocument();
+      expect(screen.getByTestId("account-usage-alert-dot")).toBeInTheDocument();
     });
 
-    it("collapses the usage area on the toggle button and restores it on re-click", () => {
+    it("opens on the trigger and closes on a re-click, keeping the same icon", () => {
       renderDesktop();
       pushUsage({ ...loggedIn, billing: planBilling, apiQuota: apiPlenty });
 
-      const toggle = screen.getByTestId("account-usage-collapse");
-      expect(screen.getByTestId("account-card-usage")).toBeInTheDocument();
-      expect(toggle).toHaveAttribute("aria-label", "收起用量");
-      expect(toggle.querySelector("svg")).not.toBeNull();
+      // 注意：Tooltip 在浮层打开时会摘掉它那层 wrapper，触发按钮的 DOM 节点会重建
+      // ——每次操作后重新查询，别抓着旧节点 click（旧节点已脱离文档）。
+      let trigger = screen.getByTestId("account-usage-btn");
+      expect(screen.getByTestId("account-usage-popover")).toBeInTheDocument();
+      expect(trigger).toHaveAttribute("aria-expanded", "true");
+      expect(trigger.querySelector("svg")).not.toBeNull();
 
-      fireEvent.click(toggle);
+      fireEvent.click(trigger);
       expect(
-        screen.queryByTestId("account-card-usage"),
+        screen.queryByTestId("account-usage-popover"),
       ).not.toBeInTheDocument();
-      // 卡片仅剩个人信息一行；按钮 icon 换官方「额度」矢量.
-      expect(toggle).toHaveAttribute("aria-label", "展开用量");
-      expect(toggle.querySelector("svg")).not.toBeNull();
-
-      fireEvent.click(toggle);
-      expect(screen.getByTestId("account-card-usage")).toBeInTheDocument();
-      expect(toggle).toHaveAttribute("aria-label", "收起用量");
+      trigger = screen.getByTestId("account-usage-btn");
+      expect(trigger).toHaveAttribute("aria-expanded", "false");
+      expect(trigger).toHaveAttribute("aria-label", "查看用量");
+      // 开合只切浮层，按钮图标恒为「额度」矢量.
+      expect(trigger.querySelector("svg")).not.toBeNull();
     });
 
-    it("keeps the collapse state independent of the personal menu (decoupled)", () => {
+    it("closes on outside click and on Esc (Esc returns focus to the trigger)", async () => {
+      renderDesktop();
+      pushUsage({ ...loggedIn, billing: planBilling, apiQuota: apiPlenty });
+
+      // 打开即把焦点交给浮层（dialog 语义）.
+      expect(document.activeElement).toBe(
+        screen.getByTestId("account-usage-popover"),
+      );
+
+      // Outside-click listener 比挂载晚一帧注册（useClickOutside 延迟）。
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      fireEvent.mouseDown(document.body);
+      expect(
+        screen.queryByTestId("account-usage-popover"),
+      ).not.toBeInTheDocument();
+
+      // 再开一次，Esc 关闭并把焦点交还触发按钮.
+      fireEvent.click(screen.getByTestId("account-usage-btn"));
+      expect(screen.getByTestId("account-usage-popover")).toBeInTheDocument();
+      fireEvent.keyDown(document, { key: "Escape" });
+      expect(
+        screen.queryByTestId("account-usage-popover"),
+      ).not.toBeInTheDocument();
+      expect(document.activeElement).toBe(
+        screen.getByTestId("account-usage-btn"),
+      );
+    });
+
+    it("keeps the personal menu and the usage popover mutually exclusive", () => {
       renderDesktop();
       pushUsage({ ...loggedIn, billing: planBilling, apiQuota: apiPlenty });
 
       const hotzone = screen.getByTestId("account-card-hotzone");
-      // 打开菜单（用量区展开可见）.
+
+      // 浮层开着时点热区 ⇒ 菜单打开、浮层收起（同一位置不能叠两层）.
       fireEvent.click(hotzone);
       expect(screen.getByTestId("more-menu")).toBeInTheDocument();
-
-      // 点显隐按钮收起用量区：菜单保持打开不受影响（解耦）.
-      fireEvent.click(screen.getByTestId("account-usage-collapse"));
       expect(
-        screen.queryByTestId("account-card-usage"),
+        screen.queryByTestId("account-usage-popover"),
       ).not.toBeInTheDocument();
-      expect(screen.getByTestId("more-menu")).toBeInTheDocument();
 
-      // 关闭菜单后展开用量区；再开/关菜单不影响显隐.
-      fireEvent.keyDown(document, { key: "Escape" });
+      // 菜单开着时点用量按钮 ⇒ 浮层打开、菜单收起.
+      fireEvent.click(screen.getByTestId("account-usage-btn"));
+      expect(screen.getByTestId("account-usage-popover")).toBeInTheDocument();
       expect(screen.queryByTestId("more-menu")).not.toBeInTheDocument();
-      fireEvent.click(screen.getByTestId("account-usage-collapse"));
-      expect(screen.getByTestId("account-card-usage")).toBeInTheDocument();
-
-      fireEvent.click(hotzone);
-      expect(screen.getByTestId("more-menu")).toBeInTheDocument();
-      expect(screen.getByTestId("account-card-usage")).toBeInTheDocument();
-      fireEvent.click(hotzone);
-      expect(screen.queryByTestId("more-menu")).not.toBeInTheDocument();
-      expect(screen.getByTestId("account-card-usage")).toBeInTheDocument();
     });
   });
 
   describe("个人信息行与纯功能菜单", () => {
     it("opens a pure 4-item menu on the hotzone with aria-expanded, and no usage block inside", () => {
       renderDesktop();
-      pushUsage({ ...loggedIn, billing: planBilling, apiQuota: apiPlenty });
+      pushAccount({ ...loggedIn, billing: planBilling, apiQuota: apiPlenty });
 
       const hotzone = screen.getByTestId("account-card-hotzone");
       expect(hotzone).toHaveAttribute("aria-haspopup", "menu");
@@ -805,16 +817,17 @@ describe("AccountCard (desktop sidebar)", () => {
       expect(screen.getByTestId("more-menu-logout")).toHaveTextContent(
         "退出登录",
       );
-      // 纯功能菜单：不含任何用量信息.
+      // 纯功能菜单：不含任何用量信息（用量只在浮层里）.
       expect(menu.querySelector(".account-usage-section")).toBeNull();
       expect(menu).not.toHaveTextContent("套餐用量");
-      // 菜单开合不影响常驻用量区显隐（解耦）.
-      expect(screen.getByTestId("account-card-usage")).toBeInTheDocument();
+      expect(
+        screen.queryByTestId("account-usage-popover"),
+      ).not.toBeInTheDocument();
     });
 
     it("toggles the menu closed on a second hotzone click and on Esc", () => {
       renderDesktop();
-      pushUsage({ ...loggedIn, billing: planBilling, apiQuota: apiPlenty });
+      pushAccount({ ...loggedIn, billing: planBilling, apiQuota: apiPlenty });
       const hotzone = screen.getByTestId("account-card-hotzone");
 
       fireEvent.click(hotzone);
@@ -830,7 +843,7 @@ describe("AccountCard (desktop sidebar)", () => {
 
     it("closes the menu on outside click and returns focus to the hotzone after item Escape", async () => {
       renderDesktop();
-      pushUsage({ ...loggedIn, billing: planBilling, apiQuota: apiPlenty });
+      pushAccount({ ...loggedIn, billing: planBilling, apiQuota: apiPlenty });
       const hotzone = screen.getByTestId("account-card-hotzone");
 
       fireEvent.click(hotzone);
@@ -867,7 +880,7 @@ describe("AccountCard (desktop sidebar)", () => {
 
     it("opens the settings full-page from the card menu even in the DesktopShell layout", () => {
       const { vscode } = renderDesktop();
-      pushUsage({ ...loggedIn, billing: planBilling, apiQuota: apiPlenty });
+      pushAccount({ ...loggedIn, billing: planBilling, apiQuota: apiPlenty });
       sendCommand("desktopPanes", {
         panes: [{ paneId: "pane-0", sessionId: "s1", host: "local" }],
         focusedPaneId: "pane-0",
@@ -887,7 +900,7 @@ describe("AccountCard (desktop sidebar)", () => {
 
     it("opens the help docs at serverUrl + /docs from the menu", () => {
       const { vscode } = renderDesktop();
-      pushUsage({ ...loggedIn, billing: planBilling, apiQuota: apiPlenty });
+      pushAccount({ ...loggedIn, billing: planBilling, apiQuota: apiPlenty });
       act(() => {
         sendHostMessage(
           fixtures.authStatusResponse({
@@ -910,7 +923,7 @@ describe("AccountCard (desktop sidebar)", () => {
 
     it("posts logout from the card menu", () => {
       const { vscode } = renderDesktop();
-      pushUsage({ ...loggedIn, billing: planBilling, apiQuota: apiPlenty });
+      pushAccount({ ...loggedIn, billing: planBilling, apiQuota: apiPlenty });
 
       vscode.postMessage.mockClear();
       fireEvent.click(screen.getByTestId("account-card-hotzone"));
@@ -924,7 +937,7 @@ describe("AccountCard (desktop sidebar)", () => {
   describe("更新按钮 S0–S6", () => {
     it("hides the update button when no update is available (S0)", () => {
       renderDesktop();
-      pushUsage({ ...loggedIn, billing: planBilling, apiQuota: apiPlenty });
+      pushAccount({ ...loggedIn, billing: planBilling, apiQuota: apiPlenty });
       expect(
         screen.queryByTestId("account-update-btn"),
       ).not.toBeInTheDocument();
