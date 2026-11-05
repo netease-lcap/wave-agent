@@ -66,6 +66,25 @@ export const ipcRenderer = {
   on: vi.fn(),
 };
 
+/**
+ * Tray + nativeImage: the real ones need a desktop session, so the tray
+ * controller takes both as injected dependencies. These stubs exist so the
+ * module's top-level `import { Tray } from "electron"` resolves.
+ */
+export const nativeImage = {
+  createFromPath: vi.fn(() => ({
+    isEmpty: () => false,
+    resize: vi.fn(),
+  })),
+};
+
+export class Tray {
+  setToolTip = vi.fn();
+  setContextMenu = vi.fn();
+  on = vi.fn();
+  destroy = vi.fn();
+}
+
 export const contextBridge = {
   exposeInMainWorld: vi.fn(),
 };

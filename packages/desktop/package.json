@@ -49,6 +49,7 @@
     "files": [
       "dist/**",
       "webview/**",
+      "assets/icon.png",
       "package.json"
     ],
     "asar": true,

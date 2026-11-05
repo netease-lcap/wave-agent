@@ -29,6 +29,7 @@ import { startLocalCrashReporter } from "./crashReporter";
 import { attachCrashRecovery } from "./crashRecovery";
 import { createMemorySampler } from "./memorySampler";
 import { createQuitHandler } from "./quitHandler";
+import { createTrayController, TRAY_ICON_PATH } from "./tray";
 import { JS_CALL_STACKS_DOCUMENT_POLICY } from "./unresponsiveSampler";
 import {
   attachContextMenu,
@@ -179,6 +180,32 @@ if (!app.isPackaged) {
 let mainWindow: BrowserWindow | null = null;
 let host: DesktopHost | null = null;
 
+/**
+ * Windows only: closing the window hides it to the tray, so long-running work
+ * (streaming, tools, terminal PTYs, remote sessions) survives a stray click on
+ * X. It is created lazily on the first close — before that no icon sits in the
+ * tray — and the close is only intercepted when creation succeeded
+ * (see tray.ts / spec「Windows 关闭窗口最小化到托盘」).
+ */
+const trayController = createTrayController({
+  iconPath: path.join(__dirname, TRAY_ICON_PATH),
+  getWindow: () => mainWindow,
+  quit: () => app.quit(),
+});
+
+/**
+ * Brings the window back from minimized or hidden-to-tray. `show()` is what
+ * undoes the tray hiding — `hide()` also removed the window from the taskbar,
+ * and `focus()` alone does not put it back. Used by deep links, a plain second
+ * launch, and crash recovery.
+ */
+function showMainWindow(): void {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
+}
+
 // Session-switch shortcuts (Ctrl+Tab / Ctrl+Shift+Tab, macOS also
 // Cmd+Shift+] / [), 新对话 Cmd+N / 并排新对话 Cmd+Shift+N / 关闭分屏 Cmd+W,
 // and panel-toggle shortcuts — shared by the application menu and
@@ -267,14 +294,8 @@ if (!gotLock) {
    */
   const pendingDeepLinks: string[] = [];
 
-  const focusMainWindow = (): void => {
-    if (!mainWindow) return;
-    if (mainWindow.isMinimized()) mainWindow.restore();
-    mainWindow.focus();
-  };
-
   const routeDeepLink = (url: string): void => {
-    focusMainWindow();
+    showMainWindow();
     if (host) {
       void host.handleDeepLink(url);
       return;
@@ -300,8 +321,9 @@ if (!gotLock) {
       routeDeepLink(url);
       return;
     }
-    // A plain second launch (no link) still just brings the window forward.
-    focusMainWindow();
+    // A plain second launch (no link) still just brings the window forward —
+    // including out of the tray.
+    showMainWindow();
   });
 
   void app.whenReady().then(() => {
@@ -402,6 +424,10 @@ if (!gotLock) {
   });
 
   app.on("before-quit", (event) => {
+    // Any real quit (tray 退出, menu 文件 → 退出, updater's quitAndInstall)
+    // arrives here first: latch it so the window's `close` handler stops
+    // hiding the window to the tray and lets the quit sequence continue.
+    trayController.markQuitting();
     // Nothing to dispose yet (quit during startup): let Electron finish.
     if (!host) return;
     handleQuit(event);
@@ -453,6 +479,15 @@ function createWindow(): void {
   win.on("enter-full-screen", () => host?.notifyFullScreen(win.isFullScreen()));
   win.on("leave-full-screen", () => host?.notifyFullScreen(win.isFullScreen()));
 
+  // Windows: 关闭窗口 = 最小化到托盘 (spec「Windows 关闭窗口最小化到托盘」).
+  // `hide()` instead of letting the window be destroyed keeps the renderer —
+  // and with it every streaming conversation, running tool and terminal PTY —
+  // alive; the app only goes away through the tray menu 退出 / 文件 → 退出,
+  // which latch `quitting` in before-quit so this handler passes them through.
+  // The interception is conditional on a tray icon actually existing: without
+  // one, a hidden window would be unreachable (tray.ts handles that fallback).
+  win.on("close", (event) => trayController.handleClose(event, win));
+
   // Crash/freeze forensics (spec「桌面端渲染进程崩溃与卡死恢复」). Two evidence
   // streams that only make sense together: a memory reading every minute (silent
   // — it surfaces only in the crash log's `lastMemory=`), and JS stack samples
@@ -467,6 +502,11 @@ function createWindow(): void {
   });
   memorySampler.start();
   attachCrashRecovery(win, { lastMemory: () => memorySampler.lastLine() });
+  // The recovery dialog is modal on this window: a window hidden to the tray
+  // would swallow it (the user sees "nothing happened"), so surface the window
+  // before crash recovery gets to ask anything.
+  win.on("unresponsive", showMainWindow);
+  win.webContents.on("render-process-gone", showMainWindow);
 
   attachDesktopShortcutKeys(mainWindow.webContents, menuActions);
   // Right-click: 复制图片 on an image (file panel preview, message image), and on
