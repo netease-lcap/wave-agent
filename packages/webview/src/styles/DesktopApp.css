@@ -413,11 +413,21 @@ html[data-host="desktop"][data-theme="dark"] .desktop-session-group-name {
 }
 
 /* SSH host tag on a remote session group's header (spec 「SSH 远程主机」): a
-   small pill distinguishing remote groups from same-named local ones. */
+   small pill distinguishing remote groups from same-named local ones.
+
+   宽度预算（用户 2026-11-05 反馈：WSL 标签把项目名称挤没了）：
+   组头内容宽 219px（侧栏 260 − 左右 12px 内衬 − 按钮左右 8px），一行里固定
+   花掉 49px（文件夹 15 + 三段 8px 间隙 + chevron 16 与它的 −6px 外边距），
+   剩下 170px 全归「项目名 + 本 pill」。pill 上限原为 40%（content-box 约
+   88px 文字 + 10px 内衬 ≈ 98px），只给项目名留 71px —— 恰好在 14px 字号下
+   差「wave-agent」1px，Windows 更宽的字形则直接把名字切成「wave-ag…」。
+   pill 是次要信息（全文在 title、菜单条目、AccountCard 里都有），所以上限收到
+   30%（≈76px）：项目名可用宽度 71 → 94px，`Ubuntu-24.04 (WSL)` 截成
+   「Ubuntu-24.0…」仍能认出是哪个发行版。 */
 .desktop-session-group-host {
   flex-shrink: 0;
   margin-left: auto;
-  max-width: 40%;
+  max-width: 30%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
