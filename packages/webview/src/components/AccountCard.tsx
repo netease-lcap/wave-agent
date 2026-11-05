@@ -239,15 +239,37 @@ export function apiQuotaRemaining(quota: AccountApiQuotaInfo): number | null {
 }
 
 /**
+ * API 余额能否下「额度已用完」结论：`billing.mode` 是唯一判据（issue #2776）。
+ *
+ * 只有「此刻真的按 API 计费」（`mode = "api"`）或宿主没下发 `billing`（私有化部署，
+ * 只有余额这一维）时，`limit = 0` / 剩余 ≤ 0 才等于「当前不可用」。`mode = "plan"` 下
+ * 后端下发的 `apiQuota.limit = 0` 来自 `checkApiAvailable → TEAM_QUOTA_ZERO`，语义只是
+ * 「此刻若降级到 API 计费会被 402」——只买试用套餐、从未充值 API 的企业团队余额恒为 0，
+ * 拿它反推可用性会给「套餐还剩大半」的账号误报「已用完」。`mode = "blocked"` 的拦截
+ * 结论由 proxy 402 文案承担，余额不再另判。
+ */
+function apiQuotaDecisive(
+  billing: AccountBillingInfo | null | undefined,
+): boolean {
+  return billing == null || billing.mode === "api";
+}
+
+/**
  * API 余额预警级别（交互定稿 v3.1）：剩余 < 限额 20% = "low"（琥珀金额 +
  * 气泡预警）；剩余 ≤ 0 = "exhausted"（错误色 + 强警示）；不限额不参与预警。
+ *
+ * 耗尽属「API 侧结论」，只在 `apiQuotaDecisive` 成立时给（见该函数）；不足 20% 是
+ * 余额充足性提醒、不是拦截结论，套餐模式下同样照给。
  */
 export function apiQuotaWarningLevel(
   quota: AccountApiQuotaInfo,
+  billing?: AccountBillingInfo | null,
 ): "low" | "exhausted" | null {
   const remaining = apiQuotaRemaining(quota);
   if (remaining === null) return null;
-  if (remaining <= 0) return "exhausted";
+  // blocked：套餐与 API 均不可用，结论由 panel 内的 402 文案承担，余额不再另判。
+  if (billing?.mode === "blocked") return null;
+  if (remaining <= 0) return apiQuotaDecisive(billing) ? "exhausted" : null;
   if (remaining < quota.limit! * 0.2) return "low";
   return null;
 }
@@ -255,11 +277,19 @@ export function apiQuotaWarningLevel(
 /**
  * API 余额行内文案（label 已含「余额」语义，金额不再加「剩余」前缀）：
  * 限额且未用完 → 「¥x」；用完 → 「已用完」；不限额 → 「不限额」。
+ *
+ * `mode = "plan"` / `"blocked"` 下剩余 ≤ 0 不读「已用完」（limit = 0 不等于当前不可用，
+ * 见 `apiQuotaDecisive`），只保留数值且封底到 0（不出现负数）。
  */
-export function apiQuotaInlineText(quota: AccountApiQuotaInfo): string {
+export function apiQuotaInlineText(
+  quota: AccountApiQuotaInfo,
+  billing?: AccountBillingInfo | null,
+): string {
   const remaining = apiQuotaRemaining(quota);
   if (remaining === null) return "不限额";
-  if (remaining <= 0) return "已用完";
+  if (remaining <= 0) {
+    return apiQuotaDecisive(billing) ? "已用完" : `¥${formatAmount(0)}`;
+  }
   return `¥${formatAmount(remaining)}`;
 }
 
@@ -367,8 +397,9 @@ export const AccountCard: React.FC<AccountCardProps> = ({
   const expireDate = billingPlan?.expireDate ?? null;
   const conclusion = billing ? planConclusion(billing) : null;
   const showPlanBlock = planUsage !== null || conclusion !== null;
-  // API 余额预警级：null=充足/不限额；"low"=剩余<20%；"exhausted"=剩余≤0。
-  const apiWarning = apiQuota ? apiQuotaWarningLevel(apiQuota) : null;
+  // API 余额预警级：null=充足/不限额；"low"=剩余<20%；"exhausted"=剩余≤0
+  // （仅在真按 API 计费时成立，`mode = "plan"` 的 limit=0 不算用完，见 issue #2776）。
+  const apiWarning = apiQuota ? apiQuotaWarningLevel(apiQuota, billing) : null;
   const hasUsage = showPlanBlock || apiQuota !== null;
   // 两个维度都有才给切换器；只有一维时直接展示那一维（不看 usageTab，避免
   // 数据变化后停在空的维度上）。
@@ -585,7 +616,7 @@ export const AccountCard: React.FC<AccountCardProps> = ({
                   }
                 >
                   <span className="account-usage-value-text">
-                    {apiQuotaInlineText(apiQuota)}
+                    {apiQuotaInlineText(apiQuota, billing)}
                   </span>
                 </span>
               </div>
@@ -597,6 +628,17 @@ export const AccountCard: React.FC<AccountCardProps> = ({
               {apiWarning === "exhausted" && (
                 <div className="account-api-warn is-empty">
                   额度已用完，请联系管理员充值
+                </div>
+              )}
+              {/* blocked：套餐与 API 均不可用，拦截结论在余额维度也给出同一句
+                  proxy 402 文案（issue #2776）——此时余额不宜再自称「已用完」，
+                  两处结论同源（planConclusion），只是一个落在套餐块、一个落在余额块。 */}
+              {billing?.mode === "blocked" && conclusion && (
+                <div
+                  className={`account-plan-conclusion is-${conclusion.tone}`}
+                  data-testid="account-api-conclusion"
+                >
+                  {conclusion.text}
                 </div>
               )}
             </div>

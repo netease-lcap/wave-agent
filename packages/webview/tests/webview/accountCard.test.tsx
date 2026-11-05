@@ -599,7 +599,18 @@ describe("AccountCard (desktop sidebar)", () => {
       renderDesktop();
       pushAccount({
         ...loggedIn,
-        billing: planBilling,
+        // 真按 API 计费（套餐月额度触顶 ⇒ 降级）：只有这个模式下剩余 ≤ 0 才等于「当前用完」.
+        billing: {
+          mode: "api",
+          reason: "month",
+          plan: {
+            monthUsed: 1000,
+            monthLimit: 1000,
+            weekUsed: 60,
+            weekLimit: 500,
+            expireDate: "2027-03-01",
+          },
+        },
         apiQuota: { limit: 1000, used: 1500 },
       });
 
@@ -612,6 +623,94 @@ describe("AccountCard (desktop sidebar)", () => {
       expect(apiRow).toHaveTextContent("额度已用完，请联系管理员充值");
       // 剩余封底 0：不出现负数.
       expect(apiRow).not.toHaveTextContent("¥-");
+    });
+
+    // issue #2776：`apiQuota.limit` 只表示「此刻若降级到 API 计费还能用多少」，
+    // 不是「当前能不能用」——只买试用套餐、从未充值 API 的企业恒得 limit = 0，
+    // 而套餐其实还有额度。判据只能是 `billing.mode`.
+    it("stays silent on the balance tab when mode is plan and limit is 0 (issue #2776)", () => {
+      renderDesktop();
+      pushAccount({
+        ...loggedIn,
+        billing: planBilling,
+        apiQuota: { limit: 0, used: 0 },
+      });
+
+      fireEvent.click(screen.getByTestId("account-usage-tab-api"));
+      const apiRow = screen.getByTestId("account-api-quota");
+      // 不落任何 API 侧结论：既不是「已用完」，也没有红色充值提示 / 错误色.
+      expect(apiRow).not.toHaveTextContent("已用完");
+      expect(apiRow).not.toHaveTextContent("额度已用完，请联系管理员充值");
+      expect(apiRow.querySelector(".account-usage-value.is-empty")).toBeNull();
+      // 只保留数值（封底 0）.
+      expect(apiRow).toHaveTextContent("¥0.00");
+      // 套餐维度不受影响（默认页签仍是套餐，结论行不出现）.
+      expect(
+        screen.queryByTestId("account-plan-conclusion"),
+      ).not.toBeInTheDocument();
+    });
+
+    it("still reads 已用完 when mode is api and the limit is 0（降级后无套餐兜底）", () => {
+      renderDesktop();
+      pushAccount({
+        ...loggedIn,
+        billing: {
+          mode: "api",
+          reason: "enterprise",
+          plan: {
+            monthUsed: 1000,
+            monthLimit: 1000,
+            weekUsed: 60,
+            weekLimit: 500,
+            expireDate: "2027-03-01",
+          },
+        },
+        apiQuota: { limit: 0, used: 0 },
+      });
+
+      fireEvent.click(screen.getByTestId("account-usage-tab-api"));
+      const apiRow = screen.getByTestId("account-api-quota");
+      expect(
+        apiRow.querySelector(".account-usage-value.is-empty"),
+      ).not.toBeNull();
+      expect(apiRow).toHaveTextContent("已用完");
+      expect(apiRow).toHaveTextContent("额度已用完，请联系管理员充值");
+    });
+
+    it("reuses the proxy 402 text inside the balance tab when blocked", () => {
+      renderDesktop();
+      pushAccount({
+        ...loggedIn,
+        billing: { mode: "blocked", code: "TEAM_QUOTA_ZERO" },
+        apiQuota: { limit: 0, used: 0 },
+      });
+
+      fireEvent.click(screen.getByTestId("account-usage-tab-api"));
+      const apiRow = screen.getByTestId("account-api-quota");
+      // 拦截结论沿用 proxy 402 的同一句话，不再自行下「已用完」判定.
+      const conclusion = screen.getByTestId("account-api-conclusion");
+      expect(conclusion).toHaveTextContent(
+        "团队 API 额度已用完，请联系公司管理员充值后使用！",
+      );
+      expect(conclusion.classList.contains("is-error")).toBe(true);
+      expect(apiRow).not.toHaveTextContent("额度已用完，请联系管理员充值");
+      expect(apiRow.querySelector(".account-usage-value.is-empty")).toBeNull();
+    });
+
+    it("keeps 已用完 for a private deployment that sends no billing at all", () => {
+      renderDesktop();
+      pushAccount({
+        ...loggedIn,
+        billing: null,
+        apiQuota: { limit: 0, used: 0 },
+      });
+
+      // 私有化只有余额这一维：缺 billing 时既有规则不变（无套餐兜底 ⇒ 真用完）.
+      const apiRow = screen.getByTestId("account-api-quota");
+      expect(
+        apiRow.querySelector(".account-usage-value.is-empty"),
+      ).not.toBeNull();
+      expect(apiRow).toHaveTextContent("已用完");
     });
   });
 
