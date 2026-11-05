@@ -641,6 +641,13 @@ export interface MessageProps {
    * 正在生成的这一轮，历史消息不该出现一个作用对象已经变了的入口。
    */
   isLastMessage?: boolean;
+  /**
+   * 这一轮是不是还在跑（宿主 `startStreaming` 已到、`endStreaming` 未到），含
+   * 工具执行期。只对最后一条有意义（历史消息的轮次早就结束了），用来压住底部
+   * 复制入口：一次工具调用把正文切成几段时，前一段文本早已落定、工具还在流式
+   * 传输，逐块判定会误判成「写完了」（spec ui/message-rendering-system.md 场景 3）。
+   */
+  isTurnRunning?: boolean;
   workdir?: string;
   /** Desktop host only: open a localhost URL in the preview pane. */
   onOpenPreview?: (url: string) => void;

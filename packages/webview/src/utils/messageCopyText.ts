@@ -24,11 +24,25 @@ export const assistantCopyText = (message: Message): string =>
 /**
  * 助手回复是否还在「往屏幕上写」（底部动作行的出现条件，场景 3）。
  *
- * 只看文本块与推理块的 `stage`，**不看工具块**：被中断的回合会永久留下
+ * 两层判据，缺一不可：
+ *
+ * 1. **正文 / 推理块仍在 `streaming`** —— 字还在往屏幕上落；
+ * 2. **`turnRunning`：这一轮还没结束**（宿主 `startStreaming` 已到、`endStreaming`
+ *    未到）。缺这一层就会出现「模型写完一段话转头去调工具，工具还在流式传输，
+ *    复制按钮已经露出来」——前一段文本块早已落定，逐块判定看不见还在跑的回合，
+ *    用户这时点复制拿到的是半条回答（claude.ai 桌面端 `CopyAction` 也是按
+ *    消息 / 回合是否定型判定，不逐块判）。
+ *
+ * **不拿工具块自己的 `stage` 当「未完成」**：被中断或转到后台的回合会永久留下
  * `stage: "running"` 的工具块（右上角「把本轮转到后台」正是靠这份残留判定的），
- * 把它也算作「未完成」会让这类消息永远没有复制入口。
+ * 把它也算作「未完成」会让这类消息永远没有复制入口。回合运行态是宿主给的、
+ * 会正常收尾的信号，块的 `stage` 不是。
  */
-export const isAssistantReplyStreaming = (message: Message): boolean =>
+export const isAssistantReplyStreaming = (
+  message: Message,
+  turnRunning = false,
+): boolean =>
+  turnRunning ||
   (message.blocks ?? []).some(
     (block) =>
       (block.type === "text" || block.type === "reasoning") &&
