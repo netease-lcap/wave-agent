@@ -153,6 +153,105 @@
   background-color: var(--vscode-button-secondaryHoverBackground);
 }
 
+/* ---- 助手消息底部的动作行（spec: ui/message-rendering-system.md「助手消息底部的
+ * 复制按钮」，对齐 claude.ai 桌面端的 `MessageActions` / `CopyAction`） -------------
+ *
+ * 与上面那组右上角按钮的区别是刻意的：
+ * - 这一行在正文之后的**文档流**里、左对齐，不叠在内容上（它渲染在最后一个
+ *   `.timeline-row` **内部**，所以左基线直接继承那一行的内边距，不需要自己补）；
+ * - 这一行**始终占位**，只在按钮自身上切显隐 —— 布局不会因为悬停而跳（右上角那组
+ *   是 `display: none/flex`，可以接受，因为它是绝对定位、不占位）；
+ * - 按钮默认 `opacity: 0` 且 `pointer-events: none`：看不见就不该能点到（触控设备
+ *   上尤其重要，否则消息底边一按就复制了）。`pointer-events` 不拦焦点，所以键盘
+ *   Tab 仍能进来，由下面的 `:has(:focus)` 显出来。 */
+.assistant-message-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  margin-top: 2px;
+}
+
+.message-copy-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  padding: 2px 4px;
+  font-size: 12px;
+  line-height: 1;
+  color: var(--vscode-descriptionForeground);
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s ease;
+}
+
+.message-copy-btn:hover {
+  color: var(--vscode-foreground);
+  background-color: var(
+    --vscode-toolbar-hoverBackground,
+    rgba(90, 93, 94, 0.31)
+  );
+}
+
+/* 三档显现：最后一条消息常驻、历史消息悬停、键盘聚焦到按钮本身。
+ * 只有按钮自己拿到焦点才亮 —— 用 `:focus-within` 会让消息里任意链接被聚焦时
+ * 也把这颗按钮顺带照亮。时间戳与按钮同档（spec「助手消息底部的时间戳」场景 1），
+ * 所以它俩共用同一组选择器。 */
+.assistant-message-actions[data-always-visible="true"] .message-copy-btn,
+.assistant-message-actions[data-always-visible="true"] .message-action-time,
+.message:hover .message-copy-btn,
+.message:hover .message-action-time,
+.message:has(.message-copy-btn:focus) .message-copy-btn,
+.message:has(.message-copy-btn:focus) .message-action-time {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* 行右端的时间：外层 span（Tooltip 的容器）靠 `margin-left: auto` 推到最右侧，
+ * 与左边那颗复制图标撑开这一行，顺带解决「只有一颗图标显得空」的观感。等宽数字
+ * （tabular-nums）避免分钟变化时左右微颤。 */
+.message-action-time-slot {
+  display: flex;
+  align-items: center;
+  margin-left: auto;
+}
+
+.message-action-time {
+  padding: 0 2px;
+  font-size: 11px;
+  line-height: 1;
+  color: var(--vscode-descriptionForeground);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  cursor: default;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s ease;
+}
+
+/* 复制成功的那 1.5s：图标的颜色跟正文里的链接色一档，读起来是「这段文字被拿走了」，
+ * 而不是「这个按钮被按住了」。 */
+.message-copy-btn[data-copied="true"] {
+  color: var(--vscode-textLink-foreground);
+}
+
+/* 只给读屏播报的状态口：不占位、不可见，但留在无障碍树里。 */
+.message-copy-status {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 .message.assistant .error {
   color: var(--vscode-descriptionForeground);
   font-style: italic;
