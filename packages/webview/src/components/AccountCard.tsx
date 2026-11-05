@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import type {
   AccountApiQuotaInfo,
   AccountBillingCode,
@@ -13,11 +13,11 @@ import { Tooltip } from "./Tooltip";
 // 提供独立更多按钮（交互定稿：热区开纯功能菜单）。
 import {
   ApiInfoIcon,
-  ChevronDownIcon,
   HelpCircleIcon,
   LoadingArcIcon,
   QuotaIcon,
 } from "./HeaderIcons";
+import { useClickOutside } from "../utils/useClickOutside";
 import "../styles/AccountCard.css";
 import "../styles/ConfirmDialog.css";
 
@@ -307,8 +307,10 @@ export const AccountCard: React.FC<AccountCardProps> = ({
   // 个人信息纯功能菜单：热区点击开/关（MoreMenu 把热区排除在 click-outside 外）。
   const [showMenu, setShowMenu] = useState(false);
   const [menuAnchor, setMenuAnchor] = useState<DOMRect | null>(null);
-  // 用量常驻区收起/展开（独立记忆，与菜单开合解耦）。
-  const [usageCollapsed, setUsageCollapsed] = useState(false);
+  // 用量浮层（2026-11 交互改版）：用量区不再就地展开/收起，改为点击个人信息行
+  // 尾部的用量按钮，在卡片上方弹一层浮层（与卡片等宽、贴行顶向上弹）。
+  const [showUsage, setShowUsage] = useState(false);
+  const [usageAnchor, setUsageAnchor] = useState<DOMRect | null>(null);
   // 用量维度（2026-10-09 交互定稿）：套餐未用尽时 API 余额不参与计费，默认停在
   // 「套餐用量」不占版面，想看余额再切过去；两维只有一维可用时无切换器。
   const [usageTab, setUsageTab] = useState<"plan" | "api">("plan");
@@ -319,8 +321,33 @@ export const AccountCard: React.FC<AccountCardProps> = ({
   const moreBtnRef = useRef<HTMLButtonElement | null>(null);
   const cardRef = useRef<HTMLDivElement | null>(null);
   const hotzoneRef = useRef<HTMLDivElement | null>(null);
+  const usageBtnRef = useRef<HTMLButtonElement | null>(null);
+  const usagePanelRef = useRef<HTMLDivElement | null>(null);
+  // 焦点交接的台账：浮层是否开过（避免首帧就把焦点抢走）、这次关闭要不要把焦点
+  // 送回触发按钮、这次打开是不是键盘触发的（决定关闭后要不要真的送回去）。
+  const usageOpened = useRef(false);
+  const restoreFocusOnClose = useRef(false);
+  const usageOpenedByKeyboard = useRef(false);
   // S4 自动弹窗护栏：status 每轮变为 ready 只自动弹一次（离开 ready 复位）。
   const [restartPrompted, setRestartPrompted] = useState(false);
+
+  // 贴个人信息行上方弹出的锚点（菜单与用量浮层共用）：与卡片等宽，底边贴行顶
+  // （+4 抵消固定定位的上移间隙）。侧栏 overflow:hidden 会裁掉 absolute 后代，
+  // 所以两层都用 fixed 逃逸。
+  const measureRowAnchor = useCallback((): DOMRect | null => {
+    const el = cardRef.current;
+    if (!el) return null;
+    const cardRect = el.getBoundingClientRect();
+    const mainEl = el.querySelector<HTMLElement>(".account-card-main");
+    const anchorTop =
+      (mainEl ? mainEl.getBoundingClientRect().top : cardRect.top) + 4;
+    return new DOMRect(
+      cardRect.x,
+      anchorTop,
+      cardRect.width,
+      cardRect.bottom - anchorTop,
+    );
+  }, []);
 
   const isAuthenticated = account?.isAuthenticated === true;
   // 姓名优先完整邮箱（对齐 codechat sidebar-account），无邮箱时回退前缀/「已登录」。
@@ -339,6 +366,62 @@ export const AccountCard: React.FC<AccountCardProps> = ({
     }
     if (updateStatus !== "ready") setRestartPrompted(false);
   }, [updateStatus, updateAvailable, restartPrompted]);
+
+  // 用量浮层关闭路径：点浮层外、按 Esc。触发按钮排除在「外部」之外，再点一次
+  // 即 toggle 关闭（与 MoreMenu 同一套 useClickOutside 口径）。
+  // 必须位于未登录早退之前——React 要求同一组件每次渲染的 hook 数量一致。
+  useClickOutside({
+    refs: [usagePanelRef, usageBtnRef],
+    onClickOutside: () => setShowUsage(false),
+    enabled: showUsage,
+  });
+  useEffect(() => {
+    if (!showUsage) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        restoreFocusOnClose.current = true;
+        setShowUsage(false);
+      }
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [showUsage]);
+  // 浮层坐标是打开那一刻的快照（`fixed` + `bottom` 全由锚点算出），卡片又贴在
+  // 侧栏底部、随窗口高度上下移动 —— 拖窗口后不重测就与卡片分家。跟随 resize 重测；
+  // 宽度同理（`right` / `width` 都从锚点来）。
+  useEffect(() => {
+    if (!showUsage) return;
+    const handleResize = () => {
+      const anchor = measureRowAnchor();
+      if (anchor) setUsageAnchor(anchor);
+    };
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, [showUsage, measureRowAnchor]);
+  // 焦点交接（放在 effect 里而不是事件里）：Tooltip 的 `disabled` 会在开合瞬间
+  // 摘掉/装回它那层 span，触发按钮的 DOM 节点随之重建——同步 focus() 打在当时那颗
+  // 旧节点上，提交完就丢了。effect 在提交后跑，ref 已指向新节点。
+  // 打开 → 焦点进浮层（dialog 语义）；Esc / 再按一次触发按钮关闭 → 交还触发按钮
+  // （两条都是键盘路径：Enter/空格 toggle 关闭后焦点原本落到 body，Tab 顺序回卷到
+  // 页首）；点外部关闭则把焦点留给用户点中的地方，不抢。
+  // 「交还按钮」只对键盘打开的做：鼠标用户关闭时把焦点塞回按钮，会让按钮进入
+  // :focus 态、顺带把「查看用量」气泡再弹出来——指针早已离开，这条气泡就一直挂着
+  // （2026-11-05 实测的残留问题）。鼠标场景焦点落空即可，用户下一步本来就用鼠标。
+  useEffect(() => {
+    if (showUsage) {
+      usageOpened.current = true;
+      usagePanelRef.current?.focus();
+      return;
+    }
+    if (
+      usageOpened.current &&
+      restoreFocusOnClose.current &&
+      usageOpenedByKeyboard.current
+    ) {
+      usageBtnRef.current?.focus();
+    }
+    restoreFocusOnClose.current = false;
+  }, [showUsage]);
 
   // 未登录：整条登录按钮 + 右侧「更多」按钮（沿用当前基线视觉）。
   if (!isAuthenticated) {
@@ -401,6 +484,15 @@ export const AccountCard: React.FC<AccountCardProps> = ({
   // （仅在真按 API 计费时成立，`mode = "plan"` 的 limit=0 不算用完，见 issue #2776）。
   const apiWarning = apiQuota ? apiQuotaWarningLevel(apiQuota, billing) : null;
   const hasUsage = showPlanBlock || apiQuota !== null;
+  // 折叠态预警点（2026-11 交互定稿）：默认折叠后用量预警不再可见，用显隐按钮右上角的
+  // 小圆点把「有情况要看」透出来。严重度取两者中更高的：需人工干预（blocked / 维度
+  // 不可用 / 套餐已到期）与余额耗尽 → 错误色；会自愈（周/月触顶、余额 <20%）→ 琥珀。
+  const usageAlert: "error" | "warning" | null =
+    conclusion?.tone === "error" || apiWarning === "exhausted"
+      ? "error"
+      : conclusion?.tone === "warning" || apiWarning === "low"
+        ? "warning"
+        : null;
   // 两个维度都有才给切换器；只有一维时直接展示那一维（不看 usageTab，避免
   // 数据变化后停在空的维度上）。
   const showUsageTabs = showPlanBlock && apiQuota !== null;
@@ -439,37 +531,68 @@ export const AccountCard: React.FC<AccountCardProps> = ({
     </Tooltip>
   );
 
-  // 个人信息热区：点击开/关纯功能菜单。锚点 = 整张卡片（等宽）+ 个人信息行顶部
-  // （+4 抵消 MoreMenu 固定定位的上移间隙 → 菜单底缘贴行弹出），盖住上方用量区。
+  // 个人信息热区：点击开/关纯功能菜单（打开时先收掉用量浮层，两个弹层互斥）。
   const toggleUsageMenu = () => {
     if (!showMenu) {
-      const el = cardRef.current;
-      if (el) {
-        const cardRect = el.getBoundingClientRect();
-        const mainEl = el.querySelector<HTMLElement>(".account-card-main");
-        const anchorTop =
-          (mainEl ? mainEl.getBoundingClientRect().top : cardRect.top) + 4;
-        setMenuAnchor(
-          new DOMRect(
-            cardRect.x,
-            anchorTop,
-            cardRect.width,
-            cardRect.bottom - anchorTop,
-          ),
-        );
-      }
+      const anchor = measureRowAnchor();
+      if (anchor) setMenuAnchor(anchor);
+      setShowUsage(false);
       setShowMenu(true);
     } else {
       setShowMenu(false);
     }
   };
 
+  // 行尾用量按钮：点击在卡片上方弹出用量浮层（同样先收掉功能菜单）。
+  // 打开时的默认维度（2026-11-05 追加口径）：有预警就停在报警的那一维——
+  // 否则「打开只看到健康的套餐条、预警藏在另一维」，用户得自己找。两维都报
+  // 警时取更严重的那档（错误 > 预警），同档回到套餐；无预警不覆盖用户的选择。
+  const toggleUsagePopover = (event: React.MouseEvent<HTMLButtonElement>) => {
+    if (!showUsage) {
+      // 键盘激活的 click（Enter / 空格）detail 恒为 0，鼠标点击 ≥ 1。
+      usageOpenedByKeyboard.current = event.detail === 0;
+      restoreFocusOnClose.current = false;
+      const anchor = measureRowAnchor();
+      if (anchor) setUsageAnchor(anchor);
+      const planRank =
+        conclusion?.tone === "error"
+          ? 2
+          : conclusion?.tone === "warning"
+            ? 1
+            : 0;
+      const apiRank =
+        apiWarning === "exhausted" ? 2 : apiWarning === "low" ? 1 : 0;
+      if (planRank || apiRank) {
+        setUsageTab(apiRank > planRank ? "api" : "plan");
+      }
+      setShowMenu(false);
+      setShowUsage(true);
+    } else {
+      // 再点一次触发按钮 = 键盘用户的 toggle 关闭：与 Esc 同样交还焦点
+      // （是否真的交还由 effect 按「这次是不是键盘打开的」把关）。
+      restoreFocusOnClose.current = true;
+      setShowUsage(false);
+    }
+  };
+
   return (
     <div className="account-card" ref={cardRef} data-testid="account-card">
-      {hasUsage && !usageCollapsed && (
+      {showUsage && hasUsage && usageAnchor && (
         <div
-          className="account-card-usage-inline"
-          data-testid="account-card-usage"
+          ref={usagePanelRef}
+          className="account-usage-popover"
+          role="dialog"
+          aria-label="用量信息"
+          tabIndex={-1}
+          data-testid="account-usage-popover"
+          style={{
+            position: "fixed",
+            bottom: window.innerHeight - usageAnchor.top + 4,
+            right: Math.max(8, window.innerWidth - usageAnchor.right),
+            width: Math.max(usageAnchor.width, 216),
+            // 向上弹：可用高度就是个人信息行顶以上的空间，超高时浮层内部滚动。
+            maxHeight: Math.max(120, usageAnchor.top - 12),
+          }}
         >
           {/* 两个维度都有 ⇒ 顶部切换器（到期日跟到右侧）；只有一维 ⇒ 不渲染
               切换器，直接展示那一维并在块内保留标题行。 */}
@@ -698,22 +821,32 @@ export const AccountCard: React.FC<AccountCardProps> = ({
           // 1023 评论（她点 `button.account-card-collapse-btn`）：「这里也缺少 hover 提示」
           // —— 与同卡 ⓘ 按钮、侧栏各图标按钮一致，补一颗桌面气泡；文案跟随按钮语义
           // （`aria-label` 同为展开/收起用量），位置 top（卡片在最底部，气泡向上弹）。
-          <Tooltip
-            text={usageCollapsed ? "展开用量" : "收起用量"}
-            position="top"
-          >
+          // 2026-11 交互改版：按钮不再就地展开/收起，改为弹出用量浮层；浮层打开时
+          // 气泡让位（disabled）。
+          <Tooltip text="查看用量" position="top" disabled={showUsage}>
             <button
               type="button"
-              className="account-card-collapse-btn"
-              aria-label={usageCollapsed ? "展开用量" : "收起用量"}
-              aria-expanded={!usageCollapsed}
-              data-testid="account-usage-collapse"
-              // 个人信息菜单打开时点显隐按钮只收起用量区、菜单保持打开（显隐与
-              // 菜单解耦）：阻断 mousedown 冒泡到 MoreMenu 的 click-outside。
+              ref={usageBtnRef}
+              className="account-card-usage-btn"
+              aria-label={usageAlert ? "查看用量（有预警）" : "查看用量"}
+              aria-haspopup="dialog"
+              aria-expanded={showUsage}
+              data-testid="account-usage-btn"
+              // 浮层打开时点按钮只 toggle 浮层；阻断 mousedown 冒泡，避免被
+              // MoreMenu 的 click-outside 当成外部点击。
               onMouseDown={(e) => e.stopPropagation()}
-              onClick={() => setUsageCollapsed((v) => !v)}
+              onClick={toggleUsagePopover}
             >
-              {usageCollapsed ? <QuotaIcon /> : <ChevronDownIcon />}
+              <QuotaIcon />
+              {/* 预警点常驻：浮层关着时它是唯一的预警出口；打开后浮层正文自己
+                  表达预警，点仍保留（状态不随开合闪烁）。 */}
+              {usageAlert && (
+                <span
+                  className={`account-usage-alert-dot is-${usageAlert}`}
+                  aria-hidden="true"
+                  data-testid="account-usage-alert-dot"
+                />
+              )}
             </button>
           </Tooltip>
         )}

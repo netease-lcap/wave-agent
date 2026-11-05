@@ -11,7 +11,7 @@ import { fixtures, type HostToWebviewMessage } from "wave-webview-fixtures";
  *
  * Anchor assertions on **stable semantics**, not icon-implementation details:
  * - Prefer `data-testid` handles (`getByTestId("diff-refresh")`,
- *   `getByTestId("account-usage-collapse")`) over CSS class lookups.
+ *   `getByTestId("account-usage-btn")`) over CSS class lookups.
  * - For icon state, assert the semantic class (`"is-spinning"`) or the
  *   element kind (`svg` exists), never a font-icon class
  *   (`codicon-chevron-up` / `codicon-modifier-spin`) — icons migrate between
