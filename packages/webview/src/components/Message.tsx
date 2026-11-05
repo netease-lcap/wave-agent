@@ -28,6 +28,7 @@ import {
   type FilePathLinkMode,
 } from "../utils/filePathLinks";
 import { attachBrokenImageFallback } from "../utils/brokenImageFallback";
+import { highlightCode } from "../utils/highlight";
 import { marked } from "marked";
 
 // ... (existing imports)
@@ -74,6 +75,8 @@ import {
   type TextPreviewPayload,
 } from "../utils/textPreviewRequest";
 import "../styles/Message.css";
+// 语法高亮调色板与文件面板共用一份（见该文件的说明）。
+import "../styles/code-highlight.css";
 import "../styles/plugin-typography.css";
 
 // Configure marked for VS Code webview context
@@ -479,6 +482,34 @@ const splitErrorContent = (content: string): ErrorPart[] => {
   return parts;
 };
 
+/**
+ * 围栏代码块的正文：先按语言着色，再在着色结果上做 URL / 文件路径链接化。
+ *
+ * 顺序不能反——链接化产出的是 `<a>`，交给 hljs 再扫一遍会把这些标签当代码切碎；
+ * 也不能省掉链接化：代码块里的服务地址与产物路径是既有能力（specs/ui/
+ * markdown-links.md、specs/ui/file-path-links.md），着色不得把它们吞掉。语言
+ * 未注册或没写语言标记时整段退回纯文本（`highlightCode` 返回 null），链接化照常。
+ */
+const highlightCodeBody = (
+  source: string,
+  lang: string,
+  mode: FilePathLinkMode,
+): string => {
+  const highlighted = highlightCode(source, lang);
+  if (highlighted === null) return linkifyPlainText(source, mode);
+  // 按标签把高亮结果切开，只有标签之间那几段是代码文本。文本里的 `<` 已被 hljs
+  // 转义成 `&lt;`，所以这个切分不会被正文干扰；每段先解回原文再链接化，否则
+  // 链接化内部的转义会把 `&amp;` 变成 `&amp;amp;`（屏幕上直接露出实体）。
+  return highlighted
+    .split(/(<[^>]+>)/)
+    .map((part) =>
+      part.startsWith("<")
+        ? part
+        : linkifyPlainText(decodeHtmlEntities(part), mode),
+    )
+    .join("");
+};
+
 // 导出供测试直接按档位渲染（`off` / `images` 这两档没有组件侧的入口）。
 export const createMessageMarkdownRenderer = (
   // 四条路径通道的档位（见 `FilePathLinkMode`）。默认 `"all"`：远控页也是全开
@@ -559,16 +590,23 @@ export const createMessageMarkdownRenderer = (
     // marked 9 默认实现逐字节一致（语言类名 + 去尾换行后补一个换行），只替换
     // <code> 正文；escaped=true 表示正文已是 HTML 原文（当前 marked 不会置位），
     // 保持默认实现。
+    // 语法高亮（specs/ui/message-rendering-system.md「助手消息代码块的语法高亮」）：
+    // 语言标记命中 webview 已注册的那份语言子集时先着色、再在高亮结果上做链接化
+    // （见 highlightCodeBody）；未注册/没写语言标记不猜语言，退回纯文本（与高亮
+    // 上线前完全一致）。着色只加 <span>，代码原文、换行与缩进逐字节不变，`hljs`
+    // 类名与语言类名同在——文件面板那套调色板认的就是这两个类名。
     const html = escaped
       ? defaultCode.call(renderer, code, infostring, true)
       : (() => {
-          const lang = (infostring || "").match(/^\S*/)?.[0];
-          const body = linkifyPlainText(
+          const lang = (infostring || "").match(/^\S*/)?.[0] ?? "";
+          const body = highlightCodeBody(
             code.replace(/\n$/, "") + "\n",
+            lang,
             pathLinkMode,
           );
-          const cls = lang ? ` class="language-${escapeHtml(lang)}"` : "";
-          return `<pre><code${cls}>${body}</code></pre>\n`;
+          return `<pre><code class="hljs${
+            lang ? ` language-${escapeHtml(lang)}` : ""
+          }">${body}</code></pre>\n`;
         })();
     return isDesktopHost() ? html.replace(/^<pre/, `<pre tabindex="0"`) : html;
   };
@@ -741,6 +779,10 @@ const parseMarkdownWithMermaid = (content: string): ParsedMarkdownContent => {
           "td",
           "del",
           "input",
+          // span 只承载语法高亮的 token（renderer.code 的高亮输出）：不在白名单
+          // 时 DOMPurify 会把它们剥掉，屏幕上退回单色代码而单测与走查看不出差异。
+          // 元素本身无脚本语义，属性仍受 ALLOWED_ATTR（class）约束。
+          "span",
         ],
         ALLOWED_ATTR: [
           "href",
