@@ -275,45 +275,116 @@ export function buildWslRawSpec(distro: string, command: string): WslExecSpec {
 }
 
 /**
- * Spawn spec for the session's CLI child. The login shell is used ONCE to
- * resolve node's absolute path (`command -v node`), then the CLI is exec'd
- * directly by that node binary with no shell in between.
+ * Spawn spec for the session's CLI child.
  *
- * Why not `bash -lic 'exec <shim> --stdio'`: an INTERACTIVE login shell writes
- * its rc/motd output to **stdout**, and stdout is the JSON-RPC channel of
- * `--stdio`. A user's first login in a day therefore injects lines like
- * "To run a command as administrator…" into the protocol stream (verified on a
- * real Ubuntu-24.04 distro). Resolving node first keeps the child's stdout
- * byte-clean and drops one process from the tree.
+ * The CLI is exec'd by the distro's own node binary with **no interactive
+ * login shell** in the chain: an INTERACTIVE login shell writes its rc/motd
+ * output to **stdout**, and stdout is the JSON-RPC channel of `--stdio`. A
+ * user's first login in a day therefore injects lines like "To run a command
+ * as administrator…" into the protocol stream (verified on a real Ubuntu-24.04
+ * distro).
+ *
+ * An absolute node path alone is not enough: `wsl.exe -e` starts the process
+ * with the distro's **default** PATH, which contains no node (nvm/fnm only add
+ * their directory from rc files) — and the CLI's children inherit exactly that
+ * PATH. Every `node .wave/hooks/x.mjs`-shaped hook then dies with `/bin/sh:
+ * node: not found`, and so does every bash-tool call spawn'ing node or pnpm.
+ * The same one-shot login-shell probe that resolves node therefore also
+ * captures `$PATH`, injected here by a non-interactive `sh` before exec: the
+ * CLI's environment matches the user's own terminal (which is what the SSH
+ * daemon already gets by being started from a login shell) while stdout stays
+ * byte-clean.
  */
 export async function buildWslCliSpawnSpec(
   distro: string,
   shimPath: string,
 ): Promise<WslExecSpec> {
-  const nodePath = await getWslNodePath(distro);
+  const { nodePath, loginPath } = await getWslNodeEnv(distro);
+  // No login-shell PATH (an exotic rc that clobbers it) → at least the node
+  // directory, which is what every hook/tool needs.
+  const cliPath = loginPath || path.posix.dirname(nodePath);
+  const inner =
+    `PATH=${shellQuote(cliPath)}; export PATH; ` +
+    `exec ${shellQuote(nodePath)} ${shellQuote(shimPath)} --stdio`;
   return {
     file: wslExePath(),
-    args: ["-d", distro, "-e", nodePath, shimPath, "--stdio"],
+    args: ["-d", distro, "-e", "sh", "-c", inner],
   };
 }
 
-/** Per-distro absolute node path, probed once through the login shell. */
-const wslNodePathCache = new Map<string, Promise<string>>();
+/** Marker line that carries the login shell's PATH in the node probe. */
+const PATH_MARKER = "WAVE_WSL_PATH=";
 
-/** Test-only: drop the per-distro node path cache. */
-export function resetWslNodePathCache(): void {
-  wslNodePathCache.clear();
+/**
+ * One-shot login-shell probe: node's absolute path, then the PATH it was found
+ * on. The leading `printf` severs the answer from an rc file's last line when
+ * it has no trailing newline; the marker line keeps the PATH from being
+ * mistaken for the node path.
+ */
+const NODE_ENV_PROBE =
+  `printf '\\n'; command -v node; ` + `printf '\\n${PATH_MARKER}%s\\n' "$PATH"`;
+
+/** Where node lives in the distro, and the login shell's PATH. */
+export interface WslNodeEnv {
+  /** Absolute path of `node` — the CLI is exec'd by it directly. */
+  nodePath: string;
+  /**
+   * The login shell's PATH. Injected into the CLI child so **its** children
+   * (hooks, bash tool, MCP servers) resolve `node`, `pnpm`, … exactly like a
+   * command run in the user's own terminal.
+   */
+  loginPath: string;
 }
 
 /**
- * `node` as an absolute path inside the distro, resolved through the login
- * shell so nvm/volta-style PATH additions are honoured — the same environment
- * the caller's `node -v` probe validated. Throws an actionable error when the
+ * Split the node probe's stdout into its two answers, tolerating whatever an
+ * interactive rc file printed first (Ubuntu's "To run a command as
+ * administrator…" banner, motd, version-manager chatter): the PATH is the last
+ * marker line, the node path is the last absolute path printed before it.
+ */
+export function parseWslNodeEnv(stdout: string): WslNodeEnv {
+  const lines = stdout.split(/\r?\n/);
+  let loginPath = "";
+  let markerIndex = -1;
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i].trim();
+    if (line.startsWith(PATH_MARKER)) {
+      loginPath = line.slice(PATH_MARKER.length).trim();
+      markerIndex = i;
+      break;
+    }
+  }
+  const before = markerIndex >= 0 ? lines.slice(0, markerIndex) : lines;
+  let nodePath = "";
+  for (let i = before.length - 1; i >= 0; i--) {
+    const line = before[i].trim();
+    if (!line) continue;
+    const match = /(?:^|\s)(\/\S*)$/.exec(line);
+    if (match) {
+      nodePath = match[1];
+      break;
+    }
+  }
+  return { nodePath, loginPath };
+}
+
+/** Per-distro node environment, probed once through the login shell. */
+const wslNodeEnvCache = new Map<string, Promise<WslNodeEnv>>();
+
+/** Test-only: drop the per-distro node environment cache. */
+export function resetWslNodePathCache(): void {
+  wslNodeEnvCache.clear();
+}
+
+/**
+ * Resolve node's absolute path **and** the login shell's PATH in one probe, so
+ * nvm/volta-style PATH additions are honoured — the same environment the
+ * caller's `node -v` probe validated. Throws an actionable error when the
  * shell reports no node (the probe passed, so this is a broken PATH, not a
  * missing install).
  */
-export function getWslNodePath(distro: string): Promise<string> {
-  const cached = wslNodePathCache.get(distro);
+export function getWslNodeEnv(distro: string): Promise<WslNodeEnv> {
+  const cached = wslNodeEnvCache.get(distro);
   if (cached) return cached;
   const probe = (async () => {
     const shell = await getWslLoginShell(distro);
@@ -323,24 +394,24 @@ export function getWslNodePath(distro: string): Promise<string> {
       "-e",
       shell,
       "-lic",
-      "command -v node",
+      NODE_ENV_PROBE,
     ]);
-    // The login shell may print banners first; the answer is the last line.
-    const lines = decodeWslOutput(stdout)
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter(Boolean);
-    const nodePath = lines.at(-1) ?? "";
-    if (!nodePath.startsWith("/")) {
+    const nodeEnv = parseWslNodeEnv(decodeWslOutput(stdout));
+    if (!nodeEnv.nodePath.startsWith("/")) {
       throw new Error(
         `WSL 发行版「${distro}」内未找到 node（登录 shell 的 PATH 里没有）。请在发行版内安装 Node.js ≥ 22 后重试`,
       );
     }
-    return nodePath;
+    return nodeEnv;
   })();
-  wslNodePathCache.set(distro, probe);
-  probe.catch(() => wslNodePathCache.delete(distro));
+  wslNodeEnvCache.set(distro, probe);
+  probe.catch(() => wslNodeEnvCache.delete(distro));
   return probe;
+}
+
+/** `node` as an absolute path inside the distro. */
+export async function getWslNodePath(distro: string): Promise<string> {
+  return (await getWslNodeEnv(distro)).nodePath;
 }
 
 /**

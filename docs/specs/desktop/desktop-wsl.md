@@ -42,6 +42,7 @@ order: 24
 18. **假设** 应用运行在 macOS 或 Linux，**当** 用户打开主机选择器，**则** 不得出现「WSL 发行版」分组（WSL 只存在于 Windows）；该平台上其余主机能力与现状完全一致。
 19. **假设** 发行版用户的登录 shell 在启动时输出横幅/每日提示（Ubuntu 首次登录会打印「To run a command as administrator…」与 motd），**当** 应用用 `-lic` 运行预检命令，**则** 每个取值都必须从输出里**定位到答案**（取最后一个非空行 / 匹配 `vX.Y.Z` / 找到 `WAVE_REMOTE_FILE_V1` 表头），不得假定首行即答案；**且** 该横幅不得以任何形式被读成 hosts 主目录、CLI 哈希或 Node 版本。
 20. **假设** 会话的 CLI 子进程通过 `wsl.exe` 启动，**当** 该子进程被拉起，**则** 它必须以**发行版内 node 的绝对路径**直接执行（登录 shell 只用于一次性解析该路径），不得把 CLI 挂在交互式登录 shell 下——交互 shell 的横幅会写进 stdout，而 stdout 就是 `--stdio` 的 JSON-RPC 通道。
+21. **假设** 会话的 CLI 子进程按场景 20 的方式启动，**当** 它运行 hook、bash 工具或 MCP server，**则** 这些子进程继承的 `PATH` 必须与发行版用户**登录 shell** 的 `PATH` 一致（即 `-lic` 下的 `$PATH`），使 `node`、`pnpm` 等工具在其中可解析——hook 不得以 `/bin/sh: node: not found` 失败；该注入必须在非交互 shell 内完成，不得因此把登录 shell 的横幅带进 stdout（场景 19/20 仍然成立）。
 
 ### 边界情况
 
