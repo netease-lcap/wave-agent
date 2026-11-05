@@ -17,6 +17,7 @@ import {
   readUserPreferenceView,
   updateUserPreferenceSettings,
   normalizeEntrypoint,
+  getAutoCompactThreshold,
   readRecentWorkdirs,
   rememberRecentWorkdir,
   forgetRecentWorkdir,
@@ -143,6 +144,7 @@ function createMockAgent(overrides: Record<string, unknown> = {}) {
     currentWorkdir: "/test/workdir",
     latestTotalTokens: 100,
     getMaxInputTokens: vi.fn().mockReturnValue(200000),
+    getMaxOutputTokens: vi.fn().mockReturnValue(32_000),
     messages,
     destroy: vi.fn(),
     restoreSession: vi.fn(),
@@ -198,6 +200,10 @@ function createBridge() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(getAutoCompactThreshold).mockImplementation(
+    (maxInputTokens, maxOutputTokens) =>
+      Math.max(0, maxInputTokens - Math.min(maxOutputTokens, 20_000) - 13_000),
+  );
   // The constructor applies the user-level settings env to process.env —
   // default the mock to an empty env so unrelated tests are unaffected.
   vi.mocked(loadUserConfigEnv).mockReturnValue({});
@@ -657,7 +663,7 @@ test("onLatestTotalTokensChange emits contextUsage notification", async () => {
 
   expect(notifications).toContainEqual({
     method: "contextUsage",
-    params: { percent: 25 },
+    params: { percent: 30 },
     sessionId: "test-session-id",
   });
 });
@@ -1067,7 +1073,7 @@ test("getMessages carries the session's context-usage percentage", async () => {
   const sessionId = (result as { sessionId: string }).sessionId;
   const r = await bridge.handleRequest("getMessages", {}, sessionId);
 
-  expect(r).toMatchObject({ contextUsagePercent: 25 }); // 50000 / 200000
+  expect(r).toMatchObject({ contextUsagePercent: 30 }); // 50000 / 167000
 });
 
 test("getMessages omits contextUsagePercent when the session has no tokens yet", async () => {
@@ -3440,7 +3446,7 @@ test("restoreSession to the live session replays the current contextUsage so the
   expect(mockAgent.restoreSession).not.toHaveBeenCalled();
   expect(notifications).toContainEqual({
     method: "contextUsage",
-    params: { percent: 25 }, // 50000 / 200000 (default getMaxInputTokens)
+    params: { percent: 30 }, // 50000 / 167000 (default auto-compact threshold)
     sessionId,
   });
 });
@@ -3469,7 +3475,7 @@ test("restoreSession to a DIFFERENT session re-emits contextUsage even when the 
   expect(mockAgent.restoreSession).toHaveBeenCalledWith("other-session");
   expect(notifications).toContainEqual({
     method: "contextUsage",
-    params: { percent: 25 }, // 50000 / 200000 (default getMaxInputTokens)
+    params: { percent: 30 }, // 50000 / 167000 (default auto-compact threshold)
     sessionId,
   });
 });

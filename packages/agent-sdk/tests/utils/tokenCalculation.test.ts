@@ -3,6 +3,8 @@ import {
   extractLatestTotalTokens,
   estimateContextTokens,
   roughTokenCountForMessages,
+  getAutoCompactThreshold,
+  estimateRequestOverhead,
 } from "@/utils/tokenCalculation.js";
 import type { Message, Usage } from "@/types/index.js";
 
@@ -19,6 +21,23 @@ function makeMessage(overrides: Partial<Message>): Message {
 // 4 non-CJK chars ≈ 1 token; 2 chars/token for json
 const TEXT_TOKENS = 100;
 const text400 = "a".repeat(400);
+
+describe("auto-compaction threshold", () => {
+  it("reserves the capped summary output and 13k buffer", () => {
+    expect(getAutoCompactThreshold(200_000, 32_000)).toBe(167_000);
+    expect(getAutoCompactThreshold(200_000, 4_096)).toBe(182_904);
+    expect(getAutoCompactThreshold(200_000, 64_000)).toBe(167_000);
+  });
+
+  it("never returns a negative threshold", () => {
+    expect(getAutoCompactThreshold(10_000, 32_000)).toBe(0);
+  });
+
+  it("includes system prompt, tools, and dynamic context overhead", () => {
+    expect(estimateRequestOverhead("abcd", { name: "Read" }, "xy")).toBe(13);
+    expect(estimateRequestOverhead(undefined, undefined)).toBe(0);
+  });
+});
 
 describe("extractLatestTotalTokens", () => {
   it("should return 0 for empty array", () => {

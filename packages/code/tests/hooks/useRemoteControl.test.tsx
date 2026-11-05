@@ -53,6 +53,7 @@ const baseOptions: Omit<UseRemoteControlOptions, "messages"> = {
   permissionMode: "default",
   latestTotalTokens: 0,
   maxInputTokens: 100_000,
+  maxOutputTokens: 32_000,
   customTitle: () => undefined,
   hasRunningBackgroundWork: false,
   hasPendingMessages: false,

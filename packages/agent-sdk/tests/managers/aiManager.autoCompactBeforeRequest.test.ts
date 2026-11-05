@@ -177,7 +177,7 @@ describe("AIManager - pre-request auto compaction", () => {
             getMessages: vi.fn().mockReturnValue(messages),
           }),
         },
-        2000, // maxInputTokens: 1500 anchor + ~2500 estimated tool result > 2000
+        20000, // threshold is 4096 (20k input - 4096 output - 13k buffer)
       ),
       { workdir: "/test", stream: false },
     );
@@ -218,7 +218,7 @@ describe("AIManager - pre-request auto compaction", () => {
             getMessages: vi.fn().mockReturnValue(messages),
           }),
         },
-        2000,
+        100000,
       ),
       { workdir: "/test", stream: false },
     );
@@ -232,8 +232,8 @@ describe("AIManager - pre-request auto compaction", () => {
   });
 
   it("should ignore cache fields — large cache_read with small total_tokens must NOT trigger", async () => {
-    // Under the old formula (total + cache_read) this would fire (150 + 100000
-    // > 2000). With total_tokens-only semantics it must not.
+    // Cache fields are already included in total_tokens semantics and must not
+    // be added a second time.
     const messages = [
       {
         role: "user",
@@ -258,7 +258,7 @@ describe("AIManager - pre-request auto compaction", () => {
             getMessages: vi.fn().mockReturnValue(messages),
           }),
         },
-        2000,
+        100000,
       ),
       { workdir: "/test", stream: false },
     );
@@ -362,7 +362,7 @@ describe("AIManager - pre-request auto compaction", () => {
             type: "tool",
             name: "Read",
             stage: "end",
-            result: "x".repeat(20000),
+            result: "x".repeat(150000),
           },
         ],
       },
@@ -391,13 +391,16 @@ describe("AIManager - pre-request auto compaction", () => {
             }),
           },
         },
-        300,
+        50000,
       ),
       { workdir: "/test", stream: false },
     );
     const compactSpy = vi
       .spyOn(aiManager, "compactConversation")
-      .mockResolvedValue(undefined);
+      .mockImplementation(async () => {
+        // A successful compaction replaces the oversized in-memory history.
+        hasToolResult = false;
+      });
     // First response makes a tool call so the loop iterates again.
     (aiService.callAgent as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       content: "",

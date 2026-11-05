@@ -15,7 +15,7 @@ describe("Notifications Component", () => {
       <Notifications latestTotalTokens={40000} maxInputTokens={200000} />,
     );
 
-    expect(lastFrame()).toContain("20% context");
+    expect(lastFrame()).toContain("24% context");
   });
 
   it("should cap context percentage at 100", () => {

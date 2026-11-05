@@ -28,6 +28,7 @@ import type {
   ToolBlockUpdateCallbackParams,
   ToolPermissionContext,
 } from "wave-agent-sdk";
+import { getAutoCompactThreshold } from "wave-agent-sdk";
 import { toolBlockUpdateForUi } from "../stdio/uiPayload.js";
 
 /**
@@ -45,9 +46,20 @@ type StreamDelta = Parameters<
  * push and its `getSessionInfo` read). 0 when the cap is unknown, so a caller
  * that has one reads a number rather than a special case.
  */
-export function percentOf(tokens: number, maxInputTokens: number): number {
-  if (!maxInputTokens || maxInputTokens <= 0) return 0;
-  return Math.min(100, Math.round((tokens / maxInputTokens) * 100));
+export function percentOf(
+  tokens: number,
+  maxInputTokens: number,
+  maxOutputTokens = 32_000,
+): number {
+  if (!Number.isFinite(maxInputTokens) || maxInputTokens <= 0) return 0;
+  const threshold = getAutoCompactThreshold(
+    maxInputTokens,
+    Number.isFinite(maxOutputTokens) && maxOutputTokens > 0
+      ? maxOutputTokens
+      : 32_000,
+  );
+  if (!Number.isFinite(threshold) || threshold <= 0) return 0;
+  return Math.min(100, Math.round((tokens / threshold) * 100));
 }
 
 /** The shapes both hosts put on the wire, keyed by the method they ride under. */
@@ -95,8 +107,12 @@ export const remoteWire = {
     ...(latestTotalTokens === undefined ? {} : { latestTotalTokens }),
   }),
 
-  contextUsage: (latestTotalTokens: number, maxInputTokens: number) => ({
-    percent: percentOf(latestTotalTokens, maxInputTokens),
+  contextUsage: (
+    latestTotalTokens: number,
+    maxInputTokens: number,
+    maxOutputTokens = 32_000,
+  ) => ({
+    percent: percentOf(latestTotalTokens, maxInputTokens, maxOutputTokens),
   }),
 
   permissionModeChange: (mode: PermissionMode) => ({ mode }),

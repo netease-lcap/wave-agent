@@ -1346,10 +1346,11 @@ export class AgentBridge {
   private emitContextUsage(agent: Agent): void {
     const tokens = agent.latestTotalTokens;
     const max = agent.getMaxInputTokens();
+    const maxOutput = agent.getMaxOutputTokens();
     if (tokens > 0 && max > 0) {
       this.emit(
         "contextUsage",
-        remoteWire.contextUsage(tokens, max),
+        remoteWire.contextUsage(tokens, max, maxOutput),
         agent.sessionId,
       );
     }
@@ -1365,8 +1366,9 @@ export class AgentBridge {
   private contextUsagePercentOf(agent: Agent): number | undefined {
     const tokens = agent.latestTotalTokens;
     const max = agent.getMaxInputTokens();
+    const maxOutput = agent.getMaxOutputTokens();
     if (tokens > 0 && max > 0) {
-      return percentOf(tokens, max);
+      return percentOf(tokens, max, maxOutput);
     }
     return undefined;
   }
@@ -3286,10 +3288,11 @@ export class AgentBridge {
         // so the webview button shows real usage without waiting for a turn —
         // aligned with the CLI, which reads the same callback (spec 场景 5/6).
         const max = ctx.agent?.getMaxInputTokens() ?? 0;
+        const maxOutput = ctx.agent?.getMaxOutputTokens() ?? 0;
         if (max > 0) {
           this.emit(
             "contextUsage",
-            remoteWire.contextUsage(tokens, max),
+            remoteWire.contextUsage(tokens, max, maxOutput),
             ctx.registeredSessionId,
           );
         }
