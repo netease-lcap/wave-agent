@@ -44,6 +44,21 @@ function pushAccount(overrides: Record<string, unknown>) {
   });
 }
 
+/**
+ * 用量常驻区 2026-11-05 起**默认折叠**：需要断言用量内容的用例先点显隐按钮展开
+ * （折叠态本身、以及折叠态预警点由「用量常驻区收起/展开」那组用例覆盖）。
+ */
+function expandUsage() {
+  fireEvent.click(screen.getByTestId("account-usage-collapse"));
+  expect(screen.getByTestId("account-card-usage")).toBeInTheDocument();
+}
+
+/** 内容类用例的常见组合：推账户快照 + 展开用量区。 */
+function pushUsage(overrides: Record<string, unknown>) {
+  pushAccount(overrides);
+  expandUsage();
+}
+
 const loggedIn = {
   user: { id: "u1", email: "alice@example.com" },
 };
@@ -111,7 +126,7 @@ describe("AccountCard (desktop sidebar)", () => {
   describe("用量常驻区（套餐用量 + API 余额）", () => {
     it("常驻区默认停在套餐维度（本周在上、本月在下 + 到期日），余额行不占版面", () => {
       renderDesktop();
-      pushAccount({ ...loggedIn, billing: planBilling, apiQuota: apiPlenty });
+      pushUsage({ ...loggedIn, billing: planBilling, apiQuota: apiPlenty });
 
       const usage = screen.getByTestId("account-card-usage");
       expect(usage).toBeInTheDocument();
@@ -154,7 +169,7 @@ describe("AccountCard (desktop sidebar)", () => {
 
     it("切到余额维度：已用 / 剩余 + ⓘ 说明，到期日随套餐维度隐去", () => {
       renderDesktop();
-      pushAccount({ ...loggedIn, billing: planBilling, apiQuota: apiPlenty });
+      pushUsage({ ...loggedIn, billing: planBilling, apiQuota: apiPlenty });
 
       fireEvent.click(screen.getByTestId("account-usage-tab-api"));
       const apiBlock = screen.getByTestId("account-api-quota");
@@ -191,7 +206,7 @@ describe("AccountCard (desktop sidebar)", () => {
 
     it("两维只有一维可用时不渲染切换器，直接展示那一维", () => {
       renderDesktop();
-      pushAccount({ ...loggedIn, billing: null, apiQuota: apiPlenty });
+      pushUsage({ ...loggedIn, billing: null, apiQuota: apiPlenty });
 
       expect(
         screen.queryByTestId("account-usage-tab-plan"),
@@ -217,7 +232,7 @@ describe("AccountCard (desktop sidebar)", () => {
 
     it("reads 0% (normal tone, empty bar) when a window hits its cap, plus the month conclusion line", () => {
       renderDesktop();
-      pushAccount({
+      pushUsage({
         ...loggedIn,
         billing: {
           mode: "api",
@@ -268,7 +283,7 @@ describe("AccountCard (desktop sidebar)", () => {
 
     it("renders the week conclusion line for a weekly cap", () => {
       renderDesktop();
-      pushAccount({
+      pushUsage({
         ...loggedIn,
         billing: {
           mode: "api",
@@ -292,7 +307,7 @@ describe("AccountCard (desktop sidebar)", () => {
 
     it("draws no bar for the two non-numeric cap states (null = 无额度限制, 0 = 不可用)", () => {
       renderDesktop();
-      pushAccount({
+      pushUsage({
         ...loggedIn,
         billing: {
           mode: "api",
@@ -322,7 +337,7 @@ describe("AccountCard (desktop sidebar)", () => {
 
     it("renders the blocked conclusion without bars (no plan is sent in blocked mode)", () => {
       renderDesktop();
-      pushAccount({
+      pushUsage({
         ...loggedIn,
         billing: { mode: "blocked", code: "USER_QUOTA_ZERO" },
         apiQuota: { limit: 5, used: 5 },
@@ -343,7 +358,7 @@ describe("AccountCard (desktop sidebar)", () => {
 
     it("uses the expiry date in the conclusion for an expired plan, and hides it when never purchased", () => {
       renderDesktop();
-      pushAccount({
+      pushUsage({
         ...loggedIn,
         billing: {
           mode: "api",
@@ -375,7 +390,7 @@ describe("AccountCard (desktop sidebar)", () => {
 
     it("renders the enterprise conclusion line while keeping the personal bars (个人读数不受影响)", () => {
       renderDesktop();
-      pushAccount({
+      pushUsage({
         ...loggedIn,
         billing: {
           mode: "api",
@@ -426,7 +441,7 @@ describe("AccountCard (desktop sidebar)", () => {
         "renders a non-empty conclusion line for the known reason=$reason",
         ({ reason, plan }) => {
           renderDesktop();
-          pushAccount({
+          pushUsage({
             ...loggedIn,
             billing: { mode: "api", reason, plan },
             apiQuota: apiPlenty,
@@ -442,7 +457,7 @@ describe("AccountCard (desktop sidebar)", () => {
         "renders a non-empty error conclusion line for the known code=%s",
         (code) => {
           renderDesktop();
-          pushAccount({
+          pushUsage({
             ...loggedIn,
             billing: { mode: "blocked", code },
             apiQuota: { limit: 5, used: 5 },
@@ -458,7 +473,7 @@ describe("AccountCard (desktop sidebar)", () => {
         const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
         try {
           renderDesktop();
-          pushAccount({
+          pushUsage({
             ...loggedIn,
             billing: {
               mode: "api",
@@ -488,7 +503,7 @@ describe("AccountCard (desktop sidebar)", () => {
         const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
         try {
           renderDesktop();
-          pushAccount({
+          pushUsage({
             ...loggedIn,
             billing: {
               mode: "blocked",
@@ -517,7 +532,7 @@ describe("AccountCard (desktop sidebar)", () => {
 
     it("hides the plan block when the host sent no billing at all", () => {
       renderDesktop();
-      pushAccount({ ...loggedIn, billing: null, apiQuota: apiPlenty });
+      pushUsage({ ...loggedIn, billing: null, apiQuota: apiPlenty });
 
       expect(screen.queryByTestId("account-plan")).not.toBeInTheDocument();
       expect(screen.getByTestId("account-card-usage")).toBeInTheDocument();
@@ -542,7 +557,7 @@ describe("AccountCard (desktop sidebar)", () => {
 
     it("shows 不限额 on the balance tab when the API limit is null", () => {
       renderDesktop();
-      pushAccount({
+      pushUsage({
         ...loggedIn,
         billing: planBilling,
         apiQuota: { limit: null, used: 1153.14 },
@@ -564,7 +579,7 @@ describe("AccountCard (desktop sidebar)", () => {
   describe("余额维度（API 余额面板）", () => {
     it("ⓘ 的 tooltip 说明余额只在套餐耗尽后才参与计费", () => {
       renderDesktop();
-      pushAccount({ ...loggedIn, billing: planBilling, apiQuota: apiPlenty });
+      pushUsage({ ...loggedIn, billing: planBilling, apiQuota: apiPlenty });
       fireEvent.click(screen.getByTestId("account-usage-tab-api"));
 
       const info = screen.getByTestId("api-quota-info");
@@ -577,7 +592,7 @@ describe("AccountCard (desktop sidebar)", () => {
 
     it("warns in amber + 文案 when the balance drops below 20% of the limit", () => {
       renderDesktop();
-      pushAccount({
+      pushUsage({
         ...loggedIn,
         billing: planBilling,
         apiQuota: { limit: 1000, used: 950 },
@@ -597,7 +612,7 @@ describe("AccountCard (desktop sidebar)", () => {
 
     it("reads 已用完 in red with guidance when the balance is exhausted", () => {
       renderDesktop();
-      pushAccount({
+      pushUsage({
         ...loggedIn,
         billing: planBilling,
         apiQuota: { limit: 1000, used: 1500 },
@@ -615,10 +630,105 @@ describe("AccountCard (desktop sidebar)", () => {
     });
   });
 
-  describe("用量常驻区收起/展开", () => {
-    it("collapses the usage area on the toggle button and restores it on re-click", () => {
+  describe("用量常驻区默认折叠 / 收起展开 / 折叠态预警点", () => {
+    it("starts collapsed by default, and the collapsed state does not persist across remounts", () => {
+      const first = renderDesktop();
+      pushAccount({ ...loggedIn, billing: planBilling, apiQuota: apiPlenty });
+
+      // 2026-11-05 交互定稿：默认折叠，卡片只露个人信息一行。
+      expect(
+        screen.queryByTestId("account-card-usage"),
+      ).not.toBeInTheDocument();
+      const toggle = screen.getByTestId("account-usage-collapse");
+      expect(toggle).toHaveAttribute("aria-expanded", "false");
+      expect(toggle).toHaveAttribute("aria-label", "展开用量");
+
+      // 展开后重挂（等价于重新打开客户端）⇒ 回到折叠态（「每次都折叠」，不记忆）。
+      fireEvent.click(toggle);
+      expect(screen.getByTestId("account-card-usage")).toBeInTheDocument();
+      first.unmount();
       renderDesktop();
       pushAccount({ ...loggedIn, billing: planBilling, apiQuota: apiPlenty });
+      expect(
+        screen.queryByTestId("account-card-usage"),
+      ).not.toBeInTheDocument();
+    });
+
+    it("keeps the toggle clean (no dot) when there is no usage alert", () => {
+      renderDesktop();
+      pushAccount({ ...loggedIn, billing: planBilling, apiQuota: apiPlenty });
+
+      expect(
+        screen.queryByTestId("account-usage-alert-dot"),
+      ).not.toBeInTheDocument();
+      expect(screen.getByTestId("account-usage-collapse")).toHaveAttribute(
+        "aria-label",
+        "展开用量",
+      );
+    });
+
+    it("shows an amber dot for self-healing warnings (window cap / balance below 20%)", () => {
+      renderDesktop();
+      pushAccount({
+        ...loggedIn,
+        billing: {
+          mode: "api",
+          reason: "week",
+          plan: {
+            monthUsed: 600,
+            monthLimit: 1000,
+            weekUsed: 500,
+            weekLimit: 500,
+            expireDate: "2027-03-01",
+          },
+        },
+        apiQuota: apiPlenty,
+      });
+
+      const dot = screen.getByTestId("account-usage-alert-dot");
+      expect(dot.classList.contains("is-warning")).toBe(true);
+      // 折叠态读屏带上预警语义。
+      expect(screen.getByTestId("account-usage-collapse")).toHaveAttribute(
+        "aria-label",
+        "展开用量（有预警）",
+      );
+    });
+
+    it("shows a red dot for warnings needing human action, and prefers red when both apply", () => {
+      renderDesktop();
+      // blocked（错误色结论行）+ 余额耗尽（错误色金额）同时成立 ⇒ 红。
+      pushAccount({
+        ...loggedIn,
+        billing: { mode: "blocked", code: "USER_QUOTA_ZERO" },
+        apiQuota: { limit: 1000, used: 1500 },
+      });
+
+      expect(
+        screen
+          .getByTestId("account-usage-alert-dot")
+          .classList.contains("is-error"),
+      ).toBe(true);
+    });
+
+    it("hides the dot once the usage area is expanded (正文自己表达预警)", () => {
+      renderDesktop();
+      pushAccount({
+        ...loggedIn,
+        billing: planBilling,
+        apiQuota: { limit: 1000, used: 950 },
+      });
+
+      expect(screen.getByTestId("account-usage-alert-dot")).toBeInTheDocument();
+      fireEvent.click(screen.getByTestId("account-usage-collapse"));
+      expect(screen.getByTestId("account-card-usage")).toBeInTheDocument();
+      expect(
+        screen.queryByTestId("account-usage-alert-dot"),
+      ).not.toBeInTheDocument();
+    });
+
+    it("collapses the usage area on the toggle button and restores it on re-click", () => {
+      renderDesktop();
+      pushUsage({ ...loggedIn, billing: planBilling, apiQuota: apiPlenty });
 
       const toggle = screen.getByTestId("account-usage-collapse");
       expect(screen.getByTestId("account-card-usage")).toBeInTheDocument();
@@ -640,7 +750,7 @@ describe("AccountCard (desktop sidebar)", () => {
 
     it("keeps the collapse state independent of the personal menu (decoupled)", () => {
       renderDesktop();
-      pushAccount({ ...loggedIn, billing: planBilling, apiQuota: apiPlenty });
+      pushUsage({ ...loggedIn, billing: planBilling, apiQuota: apiPlenty });
 
       const hotzone = screen.getByTestId("account-card-hotzone");
       // 打开菜单（用量区展开可见）.
@@ -672,7 +782,7 @@ describe("AccountCard (desktop sidebar)", () => {
   describe("个人信息行与纯功能菜单", () => {
     it("opens a pure 4-item menu on the hotzone with aria-expanded, and no usage block inside", () => {
       renderDesktop();
-      pushAccount({ ...loggedIn, billing: planBilling, apiQuota: apiPlenty });
+      pushUsage({ ...loggedIn, billing: planBilling, apiQuota: apiPlenty });
 
       const hotzone = screen.getByTestId("account-card-hotzone");
       expect(hotzone).toHaveAttribute("aria-haspopup", "menu");
@@ -704,7 +814,7 @@ describe("AccountCard (desktop sidebar)", () => {
 
     it("toggles the menu closed on a second hotzone click and on Esc", () => {
       renderDesktop();
-      pushAccount({ ...loggedIn, billing: planBilling, apiQuota: apiPlenty });
+      pushUsage({ ...loggedIn, billing: planBilling, apiQuota: apiPlenty });
       const hotzone = screen.getByTestId("account-card-hotzone");
 
       fireEvent.click(hotzone);
@@ -720,7 +830,7 @@ describe("AccountCard (desktop sidebar)", () => {
 
     it("closes the menu on outside click and returns focus to the hotzone after item Escape", async () => {
       renderDesktop();
-      pushAccount({ ...loggedIn, billing: planBilling, apiQuota: apiPlenty });
+      pushUsage({ ...loggedIn, billing: planBilling, apiQuota: apiPlenty });
       const hotzone = screen.getByTestId("account-card-hotzone");
 
       fireEvent.click(hotzone);
@@ -757,7 +867,7 @@ describe("AccountCard (desktop sidebar)", () => {
 
     it("opens the settings full-page from the card menu even in the DesktopShell layout", () => {
       const { vscode } = renderDesktop();
-      pushAccount({ ...loggedIn, billing: planBilling, apiQuota: apiPlenty });
+      pushUsage({ ...loggedIn, billing: planBilling, apiQuota: apiPlenty });
       sendCommand("desktopPanes", {
         panes: [{ paneId: "pane-0", sessionId: "s1", host: "local" }],
         focusedPaneId: "pane-0",
@@ -777,7 +887,7 @@ describe("AccountCard (desktop sidebar)", () => {
 
     it("opens the help docs at serverUrl + /docs from the menu", () => {
       const { vscode } = renderDesktop();
-      pushAccount({ ...loggedIn, billing: planBilling, apiQuota: apiPlenty });
+      pushUsage({ ...loggedIn, billing: planBilling, apiQuota: apiPlenty });
       act(() => {
         sendHostMessage(
           fixtures.authStatusResponse({
@@ -800,7 +910,7 @@ describe("AccountCard (desktop sidebar)", () => {
 
     it("posts logout from the card menu", () => {
       const { vscode } = renderDesktop();
-      pushAccount({ ...loggedIn, billing: planBilling, apiQuota: apiPlenty });
+      pushUsage({ ...loggedIn, billing: planBilling, apiQuota: apiPlenty });
 
       vscode.postMessage.mockClear();
       fireEvent.click(screen.getByTestId("account-card-hotzone"));
@@ -814,7 +924,7 @@ describe("AccountCard (desktop sidebar)", () => {
   describe("更新按钮 S0–S6", () => {
     it("hides the update button when no update is available (S0)", () => {
       renderDesktop();
-      pushAccount({ ...loggedIn, billing: planBilling, apiQuota: apiPlenty });
+      pushUsage({ ...loggedIn, billing: planBilling, apiQuota: apiPlenty });
       expect(
         screen.queryByTestId("account-update-btn"),
       ).not.toBeInTheDocument();

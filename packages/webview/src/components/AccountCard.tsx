@@ -278,7 +278,8 @@ export const AccountCard: React.FC<AccountCardProps> = ({
   const [showMenu, setShowMenu] = useState(false);
   const [menuAnchor, setMenuAnchor] = useState<DOMRect | null>(null);
   // 用量常驻区收起/展开（独立记忆，与菜单开合解耦）。
-  const [usageCollapsed, setUsageCollapsed] = useState(false);
+  // 默认折叠（2026-11 交互改版）：卡片初始只露个人信息一行，想看用量再点右侧显隐按钮展开。
+  const [usageCollapsed, setUsageCollapsed] = useState(true);
   // 用量维度（2026-10-09 交互定稿）：套餐未用尽时 API 余额不参与计费，默认停在
   // 「套餐用量」不占版面，想看余额再切过去；两维只有一维可用时无切换器。
   const [usageTab, setUsageTab] = useState<"plan" | "api">("plan");
@@ -370,6 +371,15 @@ export const AccountCard: React.FC<AccountCardProps> = ({
   // API 余额预警级：null=充足/不限额；"low"=剩余<20%；"exhausted"=剩余≤0。
   const apiWarning = apiQuota ? apiQuotaWarningLevel(apiQuota) : null;
   const hasUsage = showPlanBlock || apiQuota !== null;
+  // 折叠态预警点（2026-11 交互定稿）：默认折叠后用量预警不再可见，用显隐按钮右上角的
+  // 小圆点把「有情况要看」透出来。严重度取两者中更高的：需人工干预（blocked / 维度
+  // 不可用 / 套餐已到期）与余额耗尽 → 错误色；会自愈（周/月触顶、余额 <20%）→ 琥珀。
+  const usageAlert: "error" | "warning" | null =
+    conclusion?.tone === "error" || apiWarning === "exhausted"
+      ? "error"
+      : conclusion?.tone === "warning" || apiWarning === "low"
+        ? "warning"
+        : null;
   // 两个维度都有才给切换器；只有一维时直接展示那一维（不看 usageTab，避免
   // 数据变化后停在空的维度上）。
   const showUsageTabs = showPlanBlock && apiQuota !== null;
@@ -663,7 +673,13 @@ export const AccountCard: React.FC<AccountCardProps> = ({
             <button
               type="button"
               className="account-card-collapse-btn"
-              aria-label={usageCollapsed ? "展开用量" : "收起用量"}
+              aria-label={
+                usageCollapsed
+                  ? usageAlert
+                    ? "展开用量（有预警）"
+                    : "展开用量"
+                  : "收起用量"
+              }
               aria-expanded={!usageCollapsed}
               data-testid="account-usage-collapse"
               // 个人信息菜单打开时点显隐按钮只收起用量区、菜单保持打开（显隐与
@@ -672,6 +688,14 @@ export const AccountCard: React.FC<AccountCardProps> = ({
               onClick={() => setUsageCollapsed((v) => !v)}
             >
               {usageCollapsed ? <QuotaIcon /> : <ChevronDownIcon />}
+              {/* 折叠态预警点：只在折叠且确有预警时出现，展开后由正文自己表达。 */}
+              {usageCollapsed && usageAlert && (
+                <span
+                  className={`account-usage-alert-dot is-${usageAlert}`}
+                  aria-hidden="true"
+                  data-testid="account-usage-alert-dot"
+                />
+              )}
             </button>
           </Tooltip>
         )}

@@ -132,6 +132,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  /* 折叠态预警点（`-alert-dot`）的定位锚。 */
+  position: relative;
   width: 24px;
   height: 24px;
   padding: 0;
@@ -140,6 +142,26 @@
   background: transparent;
   color: var(--vscode-descriptionForeground);
   cursor: pointer;
+}
+
+/* 折叠态预警点：落在仪表盘图标右上角，6px 实心圆，不占布局、不吃点击。
+   琥珀 = 会自愈（周/月触顶、余额 <20%）；红 = 需人工干预（blocked/到期/余额耗尽）。 */
+.account-usage-alert-dot {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.account-usage-alert-dot.is-warning {
+  background: var(--vscode-editorWarning-foreground, #d18616);
+}
+
+.account-usage-alert-dot.is-error {
+  background: var(--vscode-errorForeground, #f14c4c);
 }
 
 .account-card-collapse-btn:hover {
