@@ -7,7 +7,11 @@ import { applyToolImageBudget } from "../utils/toolImageIngest.js";
 import type { ToolImage } from "../utils/toolImageIngest.js";
 import { parseTaskNotificationXml } from "../utils/notificationXml.js";
 import { parsePageCommentEventXml } from "../utils/pageCommentEventXml.js";
-import { estimateContextTokens } from "../utils/tokenCalculation.js";
+import {
+  estimateContextTokens,
+  estimateRequestOverhead,
+  getAutoCompactThreshold,
+} from "../utils/tokenCalculation.js";
 import { estimateTokens } from "../utils/tokenEstimate.js";
 import {
   getTaskReminderTurnCounts,
@@ -726,26 +730,31 @@ export class AIManager {
    */
   private async maybeAutoCompactBeforeRequest(
     abortController: AbortController,
-  ): Promise<void> {
+    requestOverhead = 0,
+  ): Promise<boolean> {
     // Circuit breaker: skip compaction after 3 consecutive failures
     if (this.consecutiveCompactionFailures >= 3) {
       logger?.warn(
         `Skipping compaction: ${this.consecutiveCompactionFailures} consecutive failures`,
       );
-      return;
+      return false;
     }
 
     const messages = this.messageManager.getMessages();
-    if (messages.length === 0) return;
+    if (messages.length === 0) return false;
 
-    const maxTokens = this.getMaxInputTokens();
-    const estimatedTokens = estimateContextTokens(messages);
-    if (estimatedTokens > maxTokens) {
+    const maxInputTokens = this.getMaxInputTokens();
+    const maxOutputTokens = this.configurationService.resolveMaxOutputTokens();
+    const threshold = getAutoCompactThreshold(maxInputTokens, maxOutputTokens);
+    const estimatedTokens = estimateContextTokens(messages) + requestOverhead;
+    if (estimatedTokens >= threshold) {
       logger?.debug(
-        `Estimated context tokens ${estimatedTokens} exceeded ${maxTokens}, compacting before request...`,
+        `Estimated request tokens ${estimatedTokens} reached ${threshold}, compacting before request...`,
       );
       await this.compactConversation({ abortSignal: abortController.signal });
+      return true;
     }
+    return false;
   }
 
   /**
@@ -2007,24 +2016,12 @@ ${question}`;
             });
           }
 
-          // Pre-request auto-compaction: estimate the context about to be sent
-          // and compact BEFORE issuing the request, so an over-limit request
-          // never goes out. Skipped on fork paths (they use runForkLoop).
-          await this.maybeAutoCompactBeforeRequest(abortController);
-
           // Announce MCP servers' own usage notes (persisted meta message) before
           // the snapshot below, so a server that connected mid-session explains
           // itself in the request that can already call it. After compaction, so
           // the announcement is not the content that just got summarized away.
           this.maybeAnnounceMcpInstructions();
           this.maybeAnnounceExecCatalog();
-
-          // Get recent message history
-          const rawMessages = this.messageManager.getMessages();
-          const currentModelConfig = this.getModelConfig();
-          const recentMessages = await convertMessagesForAPI(rawMessages, {
-            supportsVision: supportsVision(currentModelConfig.capabilities),
-          });
 
           // Track if assistant message has been created
           let assistantMessageCreated = false;
@@ -2053,6 +2050,8 @@ ${question}`;
           const { toolsConfig, toolNames, reachableToolPlugins } =
             this.resolveFilteredTools();
 
+          const currentModelConfig = this.getModelConfig();
+
           // Get memory for message-array injection (not system prompt).
           // `omitAgentsMd` subagents start without it — the same saving Claude
           // Code's built-in Explore/Plan get by omitting CLAUDE.md.
@@ -2063,11 +2062,28 @@ ${question}`;
           const mainSystemPrompt =
             await this.buildMainSystemPrompt(reachableToolPlugins);
 
+          // Pre-request auto-compaction uses the final request shape, including
+          // system prompt, tools, and dynamic memory injected into messages.
+          await this.maybeAutoCompactBeforeRequest(
+            abortController,
+            estimateRequestOverhead(
+              mainSystemPrompt,
+              toolsConfig,
+              prependContent,
+            ),
+          );
+
+          // Refresh messages in case compaction replaced the history.
+          const refreshedMessages = await convertMessagesForAPI(
+            this.messageManager.getMessages(),
+            { supportsVision: supportsVision(currentModelConfig.capabilities) },
+          );
+
           // Call AI service with streaming callbacks if enabled
           const callAgentOptions: CallAgentOptions = {
             gatewayConfig: this.getGatewayConfig(),
             modelConfig: this.getModelConfig(),
-            messages: recentMessages,
+            messages: refreshedMessages,
             sessionId: this.messageManager.getSessionId(),
             abortSignal: abortController.signal,
             workdir: this.getCurrentWorkdir(), // Pass working directory

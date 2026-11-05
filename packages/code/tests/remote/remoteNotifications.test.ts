@@ -148,7 +148,9 @@ describe("remoteNotifications", () => {
     // Absent tokens must not become an explicit `undefined` on the frame — the
     // CLI host knows the flag but not always the count.
     expect(remoteWire.loadingChange(false)).toEqual({ loading: false });
-    expect(remoteWire.contextUsage(50_000, 200_000)).toEqual({ percent: 25 });
+    expect(remoteWire.contextUsage(50_000, 200_000)).toEqual({
+      percent: 30,
+    });
     expect(remoteWire.permissionModeChange("plan")).toEqual({ mode: "plan" });
     expect(
       remoteWire.permissionRequest("perm_1", {
@@ -172,11 +174,11 @@ describe("remoteNotifications", () => {
   });
 
   it("should round the context ring's percentage the same way everywhere", () => {
-    expect(percentOf(50_000, 200_000)).toBe(25);
+    expect(percentOf(50_000, 200_000, 32_000)).toBe(30);
     // Capped, so an over-budget session reads 100 rather than growing the ring.
-    expect(percentOf(400_000, 200_000)).toBe(100);
+    expect(percentOf(400_000, 200_000, 32_000)).toBe(100);
     // Unknown cap: a number, not a special case (the read paths return it as-is).
-    expect(percentOf(1_000, 0)).toBe(0);
+    expect(percentOf(1_000, 0, 32_000)).toBe(0);
   });
 
   it("should emit frames the remote channel's own window merges", () => {

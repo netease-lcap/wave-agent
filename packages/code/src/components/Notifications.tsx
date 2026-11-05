@@ -1,9 +1,11 @@
 import React from "react";
 import { Box, Text } from "ink";
+import { percentOf } from "../remote/remoteNotifications.js";
 
 export interface NotificationsProps {
   latestTotalTokens?: number;
   maxInputTokens?: number;
+  maxOutputTokens?: number;
   showLoginHint?: boolean;
   /**
    * 一次性中性提示（插件变更待应用 / 重载完成）。由宿主显式设置并在数秒后清除，
@@ -15,12 +17,13 @@ export interface NotificationsProps {
 export const Notifications: React.FC<NotificationsProps> = ({
   latestTotalTokens = 0,
   maxInputTokens = 200000,
+  maxOutputTokens = 32000,
   showLoginHint = false,
   pluginHint = null,
 }) => {
   const percentage =
     latestTotalTokens > 0
-      ? Math.min(Math.round((latestTotalTokens / maxInputTokens) * 100), 100)
+      ? percentOf(latestTotalTokens, maxInputTokens, maxOutputTokens)
       : 0;
 
   const contextColor =

@@ -52,6 +52,44 @@ export function estimateContextTokens(messages: Message[]): number {
  * Image blocks are ignored (images are stripped before compaction) and file
  * history snapshots live on disk, so their content is not in the context.
  */
+/** Maximum summary output reservation used by Claude Code's auto-compaction. */
+export const COMPACTION_SUMMARY_MAX_OUTPUT_TOKENS = 20_000;
+
+/** Safety buffer between the effective context window and auto-compaction. */
+export const AUTOCOMPACT_BUFFER_TOKENS = 13_000;
+
+/**
+ * Calculate the context budget at which automatic compaction should start.
+ * The ordinary request output limit is also the upper bound for the summary
+ * output reservation, matching Claude Code's effective-window semantics.
+ */
+export function getAutoCompactThreshold(
+  maxInputTokens: number,
+  maxOutputTokens: number,
+): number {
+  return Math.max(
+    0,
+    maxInputTokens -
+      Math.min(maxOutputTokens, COMPACTION_SUMMARY_MAX_OUTPUT_TOKENS) -
+      AUTOCOMPACT_BUFFER_TOKENS,
+  );
+}
+
+/** Estimate fixed request content that is not represented by Message history. */
+export function estimateRequestOverhead(
+  systemPrompt: unknown,
+  tools: unknown,
+  dynamicContext?: unknown,
+): number {
+  let total = 0;
+  for (const value of [systemPrompt, tools, dynamicContext]) {
+    if (value !== undefined && value !== null) {
+      total += estimateTokens(JSON.stringify(value), "json");
+    }
+  }
+  return total;
+}
+
 export function roughTokenCountForMessages(messages: Message[]): number {
   let total = 0;
   for (const message of messages) {
