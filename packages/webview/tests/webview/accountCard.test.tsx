@@ -59,6 +59,59 @@ function pushUsage(overrides: Record<string, unknown>) {
   expandUsage();
 }
 
+/**
+ * jsdom 没有布局，`getBoundingClientRect` 恒为 0 —— 打桩成一张「贴在页面下方、
+ * 随窗口高度移动」的账户卡片：`.account-card-main` 的顶 = `mainTop()`，卡片本身
+ * 比行高（用量区在上）。卡片底边必须低于行顶，否则锚点高度算成负数、`DOMRect`
+ * 的 `top` 会取 `min(y, y + height)`，把 +4 的间隙悄悄吃回去。
+ */
+function stubCardGeometry(
+  mainTop: () => number,
+  { left = 12, width = 236 }: { left?: number; width?: number } = {},
+) {
+  const rect = (top: number, height: number) =>
+    ({
+      x: left,
+      y: top,
+      width,
+      height,
+      top,
+      bottom: top + height,
+      right: left + width,
+      left,
+      toJSON: () => ({}),
+    }) as unknown as DOMRect;
+  return vi
+    .spyOn(Element.prototype, "getBoundingClientRect")
+    .mockImplementation(function (this: Element): DOMRect {
+      const isRow = this.classList?.contains("account-card-main") === true;
+      const top = mainTop();
+      return isRow ? rect(top, 52) : rect(top - 60, 120);
+    });
+}
+
+/**
+ * 把视口尺子打桩成「扣掉经典滚动条」的 client 尺寸（jsdom 里这两个值恒为 0，
+ * 实现会回退到 `innerWidth` / `innerHeight`，所以只有打了桩才量得出差别）。
+ * 用完调返回的清理函数摘掉自有属性，别影响后面的用例。
+ */
+function stubClientViewport(width: number, height: number) {
+  const docEl = document.documentElement;
+  Object.defineProperty(docEl, "clientWidth", {
+    configurable: true,
+    value: width,
+  });
+  Object.defineProperty(docEl, "clientHeight", {
+    configurable: true,
+    value: height,
+  });
+  return () => {
+    // 自有属性影住了 Element.prototype 上的 getter，摘掉即复原。
+    Reflect.deleteProperty(docEl, "clientWidth");
+    Reflect.deleteProperty(docEl, "clientHeight");
+  };
+}
+
 const loggedIn = {
   user: { id: "u1", email: "alice@example.com" },
 };
@@ -807,6 +860,12 @@ describe("AccountCard (desktop sidebar)", () => {
           .getByTestId("account-usage-alert-dot")
           .classList.contains("is-error"),
       ).toBe(true);
+      // 严重度不能只靠颜色（圆点对读屏是 aria-hidden）：红 = 需人工干预，
+      // 琥珀 = 会自愈，两者读屏文案要区分。
+      expect(screen.getByTestId("account-usage-btn")).toHaveAttribute(
+        "aria-label",
+        "查看用量（有预警，需处理）",
+      );
     });
 
     it("keeps the dot while the popover is open (开合不让预警状态闪烁)", () => {
@@ -976,30 +1035,10 @@ describe("AccountCard (desktop sidebar)", () => {
     });
 
     it("re-measures the anchor when the window resizes while open", () => {
-      // jsdom 没有布局，getBoundingClientRect 恒为 0 —— 打桩成「随窗口高度下移的
-      // 卡片」，模拟用户拖窗口高度。浮层的 fixed bottom 由锚点算出，不重测就会跟
-      // 卡片分家（卡片贴侧栏底部，随窗口高度移动）。
+      // 模拟用户拖窗口高度：卡片贴侧栏底部、随窗口高度移动。浮层的 fixed bottom
+      // 由锚点算出，不重测就会跟卡片分家。
       let mainTop = 612;
-      const rect = (top: number, height: number) =>
-        ({
-          x: 12,
-          y: top,
-          width: 236,
-          height,
-          top,
-          bottom: top + height,
-          right: 248,
-          left: 12,
-          toJSON: () => ({}),
-        }) as unknown as DOMRect;
-      // 卡片比个人信息行高一些（用量区在上），底边必须低于行顶 —— 否则锚点高度
-      // 算成负数，DOMRect 的 top 会取 min(y, y+height)，把 +4 间隙吃回去.
-      const spy = vi
-        .spyOn(Element.prototype, "getBoundingClientRect")
-        .mockImplementation(function (this: Element): DOMRect {
-          const isRow = this.classList?.contains("account-card-main") === true;
-          return isRow ? rect(mainTop, 52) : rect(mainTop - 60, 120);
-        });
+      const spy = stubCardGeometry(() => mainTop);
 
       try {
         renderDesktop();
@@ -1019,6 +1058,44 @@ describe("AccountCard (desktop sidebar)", () => {
         );
       } finally {
         spy.mockRestore();
+      }
+    });
+
+    it("never lets the popup cross the viewport top when the row sits near it", () => {
+      // 个人信息行贴近视口顶（小窗口 / 卡片被别的东西顶高）时上方只剩几十像素。
+      // 可用高度留 120px 下限会把这截顶到视口外——露出去的部分用户连滚都滚不到，
+      // 所以下限是 0：锚点 top = 40 ⇒ maxHeight = 40 − 12 = 28。
+      const spy = stubCardGeometry(() => 36);
+
+      try {
+        renderDesktop();
+        pushUsage({ ...loggedIn, billing: planBilling, apiQuota: apiPlenty });
+        expect(
+          screen.getByTestId("account-usage-popover").style.maxHeight,
+        ).toBe("28px");
+      } finally {
+        spy.mockRestore();
+      }
+    });
+
+    it("measures against the client viewport, so a scrollbar does not count", () => {
+      // `fixed` 的坐标基准是初始包含块（扣掉经典滚动条），clientWidth/clientHeight
+      // 才是那把尺子；用 innerWidth 会让浮层右缘多留一条滚动条宽的缝。
+      const restoreViewport = stubClientViewport(860, 600);
+      // 行顶 540 ⇒ 锚点 top 544；卡片右缘 848（离 clientWidth 右缘 12px）。
+      const spy = stubCardGeometry(() => 540, { left: 612 });
+
+      try {
+        renderDesktop();
+        pushUsage({ ...loggedIn, billing: planBilling, apiQuota: apiPlenty });
+        const popover = screen.getByTestId("account-usage-popover");
+        // 12px（按 clientWidth 算），不是 innerWidth − 848 的那条缝。
+        expect(popover.style.right).toBe("12px");
+        // 60px = 600 − 544 + 4，按 clientHeight 算。
+        expect(popover.style.bottom).toBe("60px");
+      } finally {
+        spy.mockRestore();
+        restoreViewport();
       }
     });
 
@@ -1110,6 +1187,52 @@ describe("AccountCard (desktop sidebar)", () => {
       fireEvent.keyDown(logout, { key: "Escape" });
       expect(screen.queryByTestId("more-menu")).not.toBeInTheDocument();
       expect(document.activeElement).toBe(hotzone);
+    });
+
+    it("re-measures the menu anchor when the window resizes while open", () => {
+      // 菜单与用量浮层是同一套 fixed 快照（bottom / right / width 全由锚点算出）：
+      // 卡片贴侧栏底部、随窗口高度上下移动，拖窗口后不重测菜单就与卡片分家。
+      let mainTop = 612;
+      const spy = stubCardGeometry(() => mainTop);
+
+      try {
+        renderDesktop();
+        pushAccount({ ...loggedIn, billing: planBilling, apiQuota: apiPlenty });
+        fireEvent.click(screen.getByTestId("account-card-hotzone"));
+        expect(screen.getByTestId("more-menu").style.bottom).toBe(
+          `${window.innerHeight - mainTop}px`,
+        );
+
+        mainTop = 512;
+        act(() => {
+          window.dispatchEvent(new Event("resize"));
+        });
+        // 不重测就停在 156px（innerHeight − 612），菜单悬在卡片上方 100px。
+        expect(screen.getByTestId("more-menu").style.bottom).toBe(
+          `${window.innerHeight - mainTop}px`,
+        );
+      } finally {
+        spy.mockRestore();
+      }
+    });
+
+    it("measures the menu against the client viewport too", () => {
+      // 菜单与浮层贴的是同一张卡片的右缘、走的是同一把尺子：滚动条宽度不能
+      // 算进取景宽（`MoreMenu` 以前读 `window.innerWidth`）。
+      const restoreViewport = stubClientViewport(860, 600);
+      const spy = stubCardGeometry(() => 540, { left: 612 });
+
+      try {
+        renderDesktop();
+        pushAccount({ ...loggedIn, billing: planBilling, apiQuota: apiPlenty });
+        fireEvent.click(screen.getByTestId("account-card-hotzone"));
+        const menu = screen.getByTestId("more-menu");
+        expect(menu.style.right).toBe("12px");
+        expect(menu.style.bottom).toBe("60px");
+      } finally {
+        spy.mockRestore();
+        restoreViewport();
+      }
     });
 
     it("annotates 设置/退出登录 with the remote host name", () => {
