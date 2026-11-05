@@ -1640,6 +1640,18 @@ describe("remote page shim — healing after a disconnect", () => {
     expect(page.banner()).not.toContain("已停止重试");
   });
 
+  it("points at the machine switcher in the 4001 line — the other machine may be the right one", async () => {
+    const { page } = await connectedPage();
+
+    page.socket().onclose?.({ code: 4001 });
+
+    // 「等待上线」只描述这一条通道：多机器账号里，用户连错机器时它永远等不到。
+    // 这条线上必须同时给出出口（spec「断线自愈」场景 1，2026-11-05 报障：
+    // WSL 与 Windows 各登记一台同名机器，点错后只看到「等待上线」）。
+    expect(page.banner()).toContain("等待上线");
+    expect(page.banner()).toContain("切换电脑");
+  });
+
   it("grows the backoff up to the cap, and any open starts it over", async () => {
     const { page } = await connectedPage();
     const delays: number[] = [];
