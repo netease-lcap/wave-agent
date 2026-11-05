@@ -571,6 +571,7 @@ export const MessageList = forwardRef<
                   onRewindToMessage={onRewindToMessage}
                   onBackgroundCurrentTask={onBackgroundCurrentTask}
                   isLastMessage={row.index === visibleMessages.length - 1}
+                  isTurnRunning={isStreaming === true}
                   workdir={workdir}
                   onOpenPreview={onOpenPreview}
                   onOpenFile={onOpenFile}

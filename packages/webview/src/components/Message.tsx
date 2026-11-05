@@ -841,6 +841,7 @@ export const Message: React.FC<MessageProps> = React.memo(
       onRewindToMessage,
       onBackgroundCurrentTask,
       isLastMessage = false,
+      isTurnRunning = false,
       workdir,
     } = props;
 
@@ -1653,12 +1654,14 @@ export const Message: React.FC<MessageProps> = React.memo(
     );
 
     // 底部动作行（复制）的出现条件与内容（spec: ui/message-rendering-system.md
-    // 「助手消息底部的复制按钮」场景 3/4/7/8）：正文还在往屏幕上写时不出现，
-    // 没有可复制的正文时不出现，用户消息不出现。
+    // 「助手消息底部的复制按钮」场景 3/4/7/8）：这一轮还在跑（正文仍在写，或
+    // 正文已落定但本轮的工具还在执行）时不出现，没有可复制的正文时不出现，
+    // 用户消息不出现。「本轮还在跑」只对最后一条有意义——历史消息的轮次早结束。
     const copyText =
       message.role === "assistant" ? assistantCopyText(message) : "";
     const showCopyActions =
-      copyText.length > 0 && !isAssistantReplyStreaming(message);
+      copyText.length > 0 &&
+      !isAssistantReplyStreaming(message, isTurnRunning && isLastMessage);
 
     // 带圆点的块里第一个 / 最后一个是哪个（见 utils/timelineBlocks）。行上据此
     // 打 `timeline-row--first/--last`，替代样式里原先的 `:first-child` /
@@ -1934,6 +1937,9 @@ export const Message: React.FC<MessageProps> = React.memo(
       prev.message === next.message &&
       prev.isQueued === next.isQueued &&
       prev.isLastMessage === next.isLastMessage &&
+      // 本轮运行态影响底部复制入口的显隐（场景 3），漏比这一项会让 `endStreaming`
+      // 之后按钮不出现——消息对象本身在这期间没有变，memo 会把它挡在外面。
+      prev.isTurnRunning === next.isTurnRunning &&
       prev.onRewindToMessage === next.onRewindToMessage &&
       prev.onBackgroundCurrentTask === next.onBackgroundCurrentTask
     );

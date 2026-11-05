@@ -1,6 +1,6 @@
 import { test, expect } from "./utils/webviewTestHarness.js";
 import { MessageInjector } from "./utils/messageInjector.js";
-import { Message } from "wave-agent-sdk";
+import { BASH_TOOL_NAME, Message } from "wave-agent-sdk";
 
 /**
  * 助手消息底部复制按钮的几何与显隐（spec: ui/message-rendering-system.md
@@ -321,6 +321,58 @@ test.describe("Assistant message copy action row", () => {
     await expect(historyTime).toHaveCSS("opacity", "0");
     await webviewPage.locator('.message[data-message-id="a1"]').hover();
     await expect(historyTime).toHaveCSS("opacity", "1");
+  });
+
+  /**
+   * 场景 3 的第二层判据：这一轮还在跑（正文已落定、工具仍在执行）时不给复制
+   * 入口，回合结束才给。判据是本轮运行态，不是工具块的 `stage`——所以这里让
+   * 工具块**永远**停在 `running`，只在 `endStreaming` 之后期望按钮出现。
+   */
+  test("stays hidden while the turn is still running, and appears once it ends", async ({
+    webviewPage,
+  }) => {
+    const injector = new MessageInjector(webviewPage);
+    await injector.simulateExtensionMessage("setInitialState", {
+      isAuthenticated: true,
+      messages: [],
+      isStreaming: true,
+      sessions: [],
+      permissionMode: "default",
+    });
+    await injector.updateMessages([
+      {
+        id: "u1",
+        role: "user",
+        timestamp: "2025-07-09T10:30:00.000Z",
+        blocks: [{ type: "text", content: "改一下配置。" }],
+      },
+      {
+        id: "a1",
+        role: "assistant",
+        timestamp: "2025-07-09T10:30:01.000Z",
+        blocks: [
+          { type: "text", content: "我先看一眼配置。", stage: "end" },
+          {
+            type: "tool",
+            name: BASH_TOOL_NAME,
+            stage: "running",
+            parameters: JSON.stringify({ command: "cat config.json" }),
+          },
+        ],
+      },
+    ]);
+
+    await expect(webviewPage.getByText("我先看一眼配置。")).toBeVisible();
+    // 正文已经落定，但这一轮没结束：不给复制入口。
+    await expect(
+      webviewPage.locator('[data-testid="assistant-message-actions"]'),
+    ).toHaveCount(0);
+
+    // 回合结束：工具块仍是 `running`（中断 / 后台化留下的那种），入口照常给。
+    await injector.simulateExtensionMessage("endStreaming", {});
+    await expect(
+      webviewPage.locator('[data-testid="assistant-message-actions"]'),
+    ).toHaveCount(1);
   });
 });
 

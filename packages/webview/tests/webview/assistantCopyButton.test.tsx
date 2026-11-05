@@ -187,6 +187,80 @@ describe("Assistant message copy button", () => {
     );
   });
 
+  it("stays hidden while the turn is still running, even after the text settles", async () => {
+    renderChatApp();
+    stubClipboard();
+
+    // 场景 3 的第二层判据：模型写完一段正文、转去调工具。文本块已经落定
+    // （`stage: "end"`），工具还在跑，整轮没结束——只看块的 stage 会在这一刻
+    // 露出复制按钮，用户此时复制到的是半条回答。
+    act(() => {
+      sendCommand("startStreaming");
+    });
+    renderMessages([
+      user("改一下配置", "u1"),
+      assistant(
+        [
+          { type: "text", content: "我先看一眼配置。", stage: "end" },
+          {
+            type: "tool",
+            name: BASH_TOOL_NAME,
+            stage: "running",
+            parameters: JSON.stringify({ command: "cat config.json" }),
+          },
+        ],
+        "a1",
+      ),
+    ]);
+
+    await waitFor(() => {
+      expect(screen.getByText("我先看一眼配置。")).toBeInTheDocument();
+    });
+    expect(screen.queryAllByTestId("assistant-message-actions")).toHaveLength(
+      0,
+    );
+  });
+
+  it("comes back once the turn ends, even if a tool block never settled", async () => {
+    renderChatApp();
+    stubClipboard();
+
+    act(() => {
+      sendCommand("startStreaming");
+    });
+    renderMessages([
+      user("改一下配置", "u1"),
+      assistant(
+        [
+          { type: "text", content: "我改好了。", stage: "end" },
+          // 中断 / 转到后台留下的残留：这一轮已经结束，块却永远是 running。
+          {
+            type: "tool",
+            name: BASH_TOOL_NAME,
+            stage: "running",
+            parameters: JSON.stringify({ command: "npm test" }),
+          },
+        ],
+        "a1",
+      ),
+    ]);
+
+    expect(screen.queryAllByTestId("assistant-message-actions")).toHaveLength(
+      0,
+    );
+
+    act(() => {
+      sendCommand("endStreaming");
+    });
+
+    // 场景 3 的反面：回合结束了就给入口——判据是本轮运行态，不是块的 stage。
+    await waitFor(() => {
+      expect(screen.getAllByTestId("assistant-message-actions")).toHaveLength(
+        1,
+      );
+    });
+  });
+
   it("is absent when the reply has no text to copy", async () => {
     renderChatApp();
     stubClipboard();
