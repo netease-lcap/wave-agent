@@ -3,6 +3,7 @@ import type { RefObject } from "react";
 import { useRovingMenu } from "../utils/useRovingMenu";
 import { useClickOutside } from "../utils/useClickOutside";
 import { isRemotePageHost } from "../utils/platform";
+import { viewportSize } from "../utils/viewport";
 import {
   BellIcon,
   BellRingIcon,
@@ -147,6 +148,9 @@ export const MoreMenu: React.FC<MoreMenuProps> = ({
   onSwitchMachine,
 }) => {
   const menuRef = useRef<HTMLDivElement>(null);
+  // 锚定定位的取景尺寸：扣掉经典滚动条的视口宽高（见 `viewportSize`）——贴卡片
+  // 右缘的菜单不能把滚动条也算进取景宽。
+  const viewport = anchorRect ? viewportSize() : null;
   // Remote-control Web page: 设置 and 登录/退出登录 act on the host (a settings
   // tab webview, a login flow) and this page has neither — clicking them would
   // do nothing at all, so they are not rendered. 企业控制台 / 帮助文档 stay: they
@@ -306,12 +310,12 @@ export const MoreMenu: React.FC<MoreMenuProps> = ({
       className="more-menu"
       data-testid="more-menu"
       style={
-        anchorRect
+        anchorRect && viewport
           ? {
               position: "fixed",
               top: "auto",
-              bottom: window.innerHeight - anchorRect.top + 4,
-              right: Math.max(8, window.innerWidth - anchorRect.right),
+              bottom: viewport.height - anchorRect.top + 4,
+              right: Math.max(8, viewport.width - anchorRect.right),
               left: "auto",
               // 与锚点（账户卡片）等宽，保证菜单项不超出面板；内容不足时以
               // 216px 为下限避免换行局促。

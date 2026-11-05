@@ -18,6 +18,7 @@ import {
   QuotaIcon,
 } from "./HeaderIcons";
 import { useClickOutside } from "../utils/useClickOutside";
+import { viewportSize } from "../utils/viewport";
 import "../styles/AccountCard.css";
 import "../styles/ConfirmDialog.css";
 
@@ -357,6 +358,14 @@ export const AccountCard: React.FC<AccountCardProps> = ({
   const updateAvailable = update?.available === true;
   const updateStatus = update?.status ?? "idle";
 
+  // 菜单的锚点：登录态与用量浮层同源（贴个人信息行顶）；未登录态那颗菜单挂在
+  // 右侧「更多」按钮上，锚点得量那颗按钮自身。resize 重测必须走同一条口径，
+  // 否则窗口一变菜单就跳到另一个位置。
+  const measureMenuAnchor = useCallback((): DOMRect | null => {
+    if (isAuthenticated) return measureRowAnchor();
+    return moreBtnRef.current?.getBoundingClientRect() ?? null;
+  }, [isAuthenticated, measureRowAnchor]);
+
   // S4：宿主推 status="ready" 时自动弹重启确认（稍后/立即重启）。必须位于未
   // 登录早退之前——React 要求同一组件每次渲染的 hook 数量一致。
   useEffect(() => {
@@ -386,18 +395,24 @@ export const AccountCard: React.FC<AccountCardProps> = ({
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [showUsage]);
-  // 浮层坐标是打开那一刻的快照（`fixed` + `bottom` 全由锚点算出），卡片又贴在
-  // 侧栏底部、随窗口高度上下移动 —— 拖窗口后不重测就与卡片分家。跟随 resize 重测；
-  // 宽度同理（`right` / `width` 都从锚点来）。
+  // 菜单与浮层的坐标都是打开那一刻算出的 `fixed` 快照（`bottom` / `right` /
+  // `width` 全由锚点决定），卡片又贴在侧栏底部、随窗口高度上下移动 —— 拖窗口后
+  // 不重测就与卡片分家。两层各自开合（互斥），开着哪个就跟随哪个重测；宽度同理。
   useEffect(() => {
-    if (!showUsage) return;
+    if (!showUsage && !showMenu) return;
     const handleResize = () => {
-      const anchor = measureRowAnchor();
-      if (anchor) setUsageAnchor(anchor);
+      if (showUsage) {
+        const anchor = measureRowAnchor();
+        if (anchor) setUsageAnchor(anchor);
+      }
+      if (showMenu) {
+        const anchor = measureMenuAnchor();
+        if (anchor) setMenuAnchor(anchor);
+      }
     };
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
-  }, [showUsage, measureRowAnchor]);
+  }, [showUsage, showMenu, measureRowAnchor, measureMenuAnchor]);
   // 焦点交接（放在 effect 里而不是事件里）：Tooltip 的 `disabled` 会在开合瞬间
   // 摘掉/装回它那层 span，触发按钮的 DOM 节点随之重建——同步 focus() 打在当时那颗
   // 旧节点上，提交完就丢了。effect 在提交后跑，ref 已指向新节点。
@@ -575,6 +590,9 @@ export const AccountCard: React.FC<AccountCardProps> = ({
     }
   };
 
+  // `fixed` 的取景尺寸：扣掉经典滚动条的视口宽高（见 `viewportSize`）。
+  const { width: viewportWidth, height: viewportHeight } = viewportSize();
+
   return (
     <div className="account-card" ref={cardRef} data-testid="account-card">
       {showUsage && hasUsage && usageAnchor && (
@@ -587,11 +605,13 @@ export const AccountCard: React.FC<AccountCardProps> = ({
           data-testid="account-usage-popover"
           style={{
             position: "fixed",
-            bottom: window.innerHeight - usageAnchor.top + 4,
-            right: Math.max(8, window.innerWidth - usageAnchor.right),
+            bottom: viewportHeight - usageAnchor.top + 4,
+            right: Math.max(8, viewportWidth - usageAnchor.right),
             width: Math.max(usageAnchor.width, 216),
             // 向上弹：可用高度就是个人信息行顶以上的空间，超高时浮层内部滚动。
-            maxHeight: Math.max(120, usageAnchor.top - 12),
+            // 下限取 0 而不是 120——行顶贴着视口顶时（小窗 / 卡片被顶高），
+            // 露在视口外的部分用户连滚都滚不到。
+            maxHeight: Math.max(0, usageAnchor.top - 12),
           }}
         >
           {/* 两个维度都有 ⇒ 顶部切换器（到期日跟到右侧）；只有一维 ⇒ 不渲染
@@ -828,7 +848,15 @@ export const AccountCard: React.FC<AccountCardProps> = ({
               type="button"
               ref={usageBtnRef}
               className="account-card-usage-btn"
-              aria-label={usageAlert ? "查看用量（有预警）" : "查看用量"}
+              // 预警不能只靠颜色：圆点对读屏是 `aria-hidden`，严重度也得进
+              // 文案，否则「红 = 需人工干预 / 琥珀 = 会自愈」这一层信息只剩视觉。
+              aria-label={
+                usageAlert === "error"
+                  ? "查看用量（有预警，需处理）"
+                  : usageAlert === "warning"
+                    ? "查看用量（有预警）"
+                    : "查看用量"
+              }
               aria-haspopup="dialog"
               aria-expanded={showUsage}
               data-testid="account-usage-btn"
