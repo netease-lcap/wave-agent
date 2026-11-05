@@ -293,9 +293,11 @@ export const AccountCard: React.FC<AccountCardProps> = ({
   const hotzoneRef = useRef<HTMLDivElement | null>(null);
   const usageBtnRef = useRef<HTMLButtonElement | null>(null);
   const usagePanelRef = useRef<HTMLDivElement | null>(null);
-  // 焦点交接的台账：浮层是否开过（避免首帧就把焦点抢走）、这次关闭是不是 Esc。
+  // 焦点交接的台账：浮层是否开过（避免首帧就把焦点抢走）、这次关闭是不是 Esc、
+  // 这次打开是不是键盘触发的（决定 Esc 关闭后要不要把焦点送回按钮）。
   const usageOpened = useRef(false);
   const escapeClosesUsage = useRef(false);
+  const usageOpenedByKeyboard = useRef(false);
   // S4 自动弹窗护栏：status 每轮变为 ready 只自动弹一次（离开 ready 复位）。
   const [restartPrompted, setRestartPrompted] = useState(false);
 
@@ -341,16 +343,23 @@ export const AccountCard: React.FC<AccountCardProps> = ({
   // 旧节点上，提交完就丢了。effect 在提交后跑，ref 已指向新节点。
   // 打开 → 焦点进浮层（dialog 语义）；Esc 关闭 → 交还触发按钮；点外部关闭则把焦点
   // 留给用户点中的地方，不抢。
+  // 「交还按钮」只对键盘打开的做：鼠标用户按 Esc 时把焦点塞回按钮，会让按钮进入
+  // :focus 态、顺带把「查看用量」气泡再弹出来——指针早已离开，这条气泡就一直挂着
+  // （2026-11-05 实测的残留问题）。鼠标场景焦点落空即可，用户下一步本来就用鼠标。
   useEffect(() => {
     if (showUsage) {
       usageOpened.current = true;
       usagePanelRef.current?.focus();
       return;
     }
-    if (usageOpened.current && escapeClosesUsage.current) {
-      escapeClosesUsage.current = false;
+    if (
+      usageOpened.current &&
+      escapeClosesUsage.current &&
+      usageOpenedByKeyboard.current
+    ) {
       usageBtnRef.current?.focus();
     }
+    escapeClosesUsage.current = false;
   }, [showUsage]);
 
   // 未登录：整条登录按钮 + 右侧「更多」按钮（沿用当前基线视觉）。
@@ -494,8 +503,10 @@ export const AccountCard: React.FC<AccountCardProps> = ({
   // 打开时的默认维度（2026-11-05 追加口径）：有预警就停在报警的那一维——
   // 否则「打开只看到健康的套餐条、预警藏在另一维」，用户得自己找。两维都报
   // 警时取更严重的那档（错误 > 预警），同档回到套餐；无预警不覆盖用户的选择。
-  const toggleUsagePopover = () => {
+  const toggleUsagePopover = (event: React.MouseEvent<HTMLButtonElement>) => {
     if (!showUsage) {
+      // 键盘激活的 click（Enter / 空格）detail 恒为 0，鼠标点击 ≥ 1。
+      usageOpenedByKeyboard.current = event.detail === 0;
       const anchor = measureRowAnchor();
       if (anchor) setUsageAnchor(anchor);
       const planRank =

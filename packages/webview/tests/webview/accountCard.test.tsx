@@ -774,6 +774,23 @@ describe("AccountCard (desktop sidebar)", () => {
       );
     });
 
+    it("keeps focus off the trigger when a mouse user closes with Esc", () => {
+      renderDesktop();
+      pushAccount({ ...loggedIn, billing: planBilling, apiQuota: apiPlenty });
+      // detail > 0 = 鼠标点击打开。Esc 关闭时不再把焦点塞回按钮——否则按钮进入
+      // :focus 态会顺带弹出「查看用量」气泡，而指针早已离开，这条气泡就一直挂着
+      // （2026-11-05 用户报的「鼠标移开后还展示提示文案」）。
+      fireEvent.click(screen.getByTestId("account-usage-btn"), { detail: 1 });
+      expect(screen.getByTestId("account-usage-popover")).toBeInTheDocument();
+      fireEvent.keyDown(document, { key: "Escape" });
+      expect(
+        screen.queryByTestId("account-usage-popover"),
+      ).not.toBeInTheDocument();
+      expect(document.activeElement).not.toBe(
+        screen.getByTestId("account-usage-btn"),
+      );
+    });
+
     it("opens on the alerting dimension instead of always on 套餐", () => {
       renderDesktop();
       // 套餐健康、余额耗尽 ⇒ 打开即停在余额维度，不让预警藏在另一页签里.
