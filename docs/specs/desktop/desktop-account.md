@@ -16,7 +16,7 @@ order: 75
 
 **为什么是这个优先级**：账户卡片是桌面端侧边栏核心运营入口；把用量从「hover ⓘ 才出明细」升级为「一个能装下完整两维、可随时打开的视图」是账户卡片的核心变化（P1）。**2026-10-09 交互定稿**把原「套餐两根条 + API 余额行平铺」收敛为**维度切换**：套餐未用尽时 API 余额不参与计费、余额为 0 也不影响使用，故默认不占版面，维度切换取代原来的 hover ⓘ 明细气泡（气泡内容即余额维度本体）。
 
-**独立测试**：desktop 登录态下发含 billing/apiQuota 的 `desktopAccountInfo`，**点行尾用量按钮弹出浮层后**验证默认停在**套餐维度**（**本周**在上、**本月**在下两根条 + 各维余量百分比 + `progressbar` role + 到期日），且**不渲染** API 余额块；点页签切到**余额维度**渲染「已用 ¥n / 剩余 ¥N」、套餐块与到期日让位；两维只有一维可用时**不渲染页签**、直接展示那一维（单维保留块内标题行）；切换「不限制（`limit = null`）/ 不可用（`limit = 0`）/ 触顶（`reason = month` / `week`）/ 已到期（`reason = no_plan`）/ 阻断（`mode = blocked`，三个 code）」各态验证条与结论行；table-driven 遍历每个已知 `reason` / `code` 断言结论行文案**非空**，再各给一个**规格外**取值（`reason` 与 `blocked` 的 `code`）断言渲染兜底文案 + 色调、且不再是「什么都不画 / 空文案红框」（见场景 23）；余额维度 ⓘ 的 tooltip 说明余额用途。；再单独走一遍「`billing.mode` × `apiQuota.limit`」交叉矩阵：`plan` + `limit = 0` 静默（不出现「已用完」）、`api` + `limit = 0` 读「已用完」、`blocked` + 耗尽复用 402 文案、`billing` 缺省 + `limit = 0` 仍读「已用完」（见场景 14 / 24）。
+**独立测试**：desktop 登录态下发含 billing/apiQuota 的 `desktopAccountInfo`，**点行尾用量按钮弹出浮层后**验证默认停在**套餐维度**（**本周**在上、**本月**在下两根条 + 各维余量百分比 + `progressbar` role + 到期日），且**不渲染** API 余额块；点页签切到**余额维度**渲染「已用 ¥n / 剩余 ¥N」、套餐块与到期日让位；两维只有一维可用时**不渲染页签**、直接展示那一维（单维保留块内标题行）；切换「不限制（`limit = null`）/ 不可用（`limit = 0`）/ 触顶（`reason = month` / `week`）/ 已到期（`reason = no_plan`）/ 阻断（`mode = blocked`，三个 code）」各态验证条与结论行；table-driven 遍历每个已知 `reason` / `code` 断言结论行文案**非空**，再各给一个**规格外**取值（`reason` 与 `blocked` 的 `code`）断言渲染兜底文案 + 色调、且不再是「什么都不画 / 空文案红框」（见场景 23）；余额维度 ⓘ 的 tooltip 说明余额用途；再单独走一遍「`billing.mode` × `apiQuota.limit`」交叉矩阵：`plan` + `limit = 0` 静默（不出现「已用完」）、`api` + `limit = 0` 读「已用完」、`blocked` + 耗尽复用 402 文案、`billing` 缺省 + `limit = 0` 仍读「已用完」（见场景 14 / 24）。
 
 **验收场景**：
 

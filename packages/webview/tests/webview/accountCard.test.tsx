@@ -644,7 +644,7 @@ describe("AccountCard (desktop sidebar)", () => {
     // 而套餐其实还有额度。判据只能是 `billing.mode`.
     it("stays silent on the balance tab when mode is plan and limit is 0 (issue #2776)", () => {
       renderDesktop();
-      pushAccount({
+      pushUsage({
         ...loggedIn,
         billing: planBilling,
         apiQuota: { limit: 0, used: 0 },
@@ -666,7 +666,7 @@ describe("AccountCard (desktop sidebar)", () => {
 
     it("still reads 已用完 when mode is api and the limit is 0（降级后无套餐兜底）", () => {
       renderDesktop();
-      pushAccount({
+      pushUsage({
         ...loggedIn,
         billing: {
           mode: "api",
@@ -693,7 +693,7 @@ describe("AccountCard (desktop sidebar)", () => {
 
     it("reuses the proxy 402 text inside the balance tab when blocked", () => {
       renderDesktop();
-      pushAccount({
+      pushUsage({
         ...loggedIn,
         billing: { mode: "blocked", code: "TEAM_QUOTA_ZERO" },
         apiQuota: { limit: 0, used: 0 },
@@ -713,7 +713,7 @@ describe("AccountCard (desktop sidebar)", () => {
 
     it("keeps 已用完 for a private deployment that sends no billing at all", () => {
       renderDesktop();
-      pushAccount({
+      pushUsage({
         ...loggedIn,
         billing: null,
         apiQuota: { limit: 0, used: 0 },
@@ -892,11 +892,13 @@ describe("AccountCard (desktop sidebar)", () => {
 
     it("opens on the alerting dimension instead of always on 套餐", () => {
       renderDesktop();
-      // 套餐健康、余额耗尽 ⇒ 打开即停在余额维度，不让预警藏在另一页签里.
+      // 套餐健康、余额不足 20% ⇒ 打开即停在余额维度，不让预警藏在另一页签里.
+      // 用「不足 20%」而不是「耗尽」：issue #2776 起 `mode = "plan"` 下 `limit = 0`
+      // 的「耗尽」不再算当前结论（那只是「此时降级会被 402」），不足 20% 才照给。
       pushAccount({
         ...loggedIn,
         billing: planBilling,
-        apiQuota: { limit: 1000, used: 1000 },
+        apiQuota: { limit: 1000, used: 850 },
       });
       fireEvent.click(screen.getByTestId("account-usage-btn"));
       expect(screen.getByTestId("account-usage-tab-api")).toHaveAttribute(
