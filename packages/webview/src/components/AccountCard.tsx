@@ -491,10 +491,24 @@ export const AccountCard: React.FC<AccountCardProps> = ({
   };
 
   // 行尾用量按钮：点击在卡片上方弹出用量浮层（同样先收掉功能菜单）。
+  // 打开时的默认维度（2026-11-05 追加口径）：有预警就停在报警的那一维——
+  // 否则「打开只看到健康的套餐条、预警藏在另一维」，用户得自己找。两维都报
+  // 警时取更严重的那档（错误 > 预警），同档回到套餐；无预警不覆盖用户的选择。
   const toggleUsagePopover = () => {
     if (!showUsage) {
       const anchor = measureRowAnchor();
       if (anchor) setUsageAnchor(anchor);
+      const planRank =
+        conclusion?.tone === "error"
+          ? 2
+          : conclusion?.tone === "warning"
+            ? 1
+            : 0;
+      const apiRank =
+        apiWarning === "exhausted" ? 2 : apiWarning === "low" ? 1 : 0;
+      if (planRank || apiRank) {
+        setUsageTab(apiRank > planRank ? "api" : "plan");
+      }
       setShowMenu(false);
       setShowUsage(true);
     } else {

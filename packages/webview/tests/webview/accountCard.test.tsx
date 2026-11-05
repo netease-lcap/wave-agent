@@ -245,6 +245,9 @@ describe("AccountCard (desktop sidebar)", () => {
         },
         apiQuota: { limit: 5, used: 5 },
       });
+      // 余额也耗尽是更严重的那一档 ⇒ 浮层默认停在余额维度；本用例看的是套餐条，
+      // 手动切回套餐维度。
+      fireEvent.click(screen.getByTestId("account-usage-tab-plan"));
 
       // 触顶读「0%」、常规色（2026-10-09 交互定稿）：条只表达余量、超用封底到 0，
       // 「哪个窗口用完、现在按什么计费」交给结论行，条上不再单独读「已用尽」+ 琥珀.
@@ -768,6 +771,72 @@ describe("AccountCard (desktop sidebar)", () => {
       ).not.toBeInTheDocument();
       expect(document.activeElement).toBe(
         screen.getByTestId("account-usage-btn"),
+      );
+    });
+
+    it("opens on the alerting dimension instead of always on 套餐", () => {
+      renderDesktop();
+      // 套餐健康、余额耗尽 ⇒ 打开即停在余额维度，不让预警藏在另一页签里.
+      pushAccount({
+        ...loggedIn,
+        billing: planBilling,
+        apiQuota: { limit: 1000, used: 1000 },
+      });
+      fireEvent.click(screen.getByTestId("account-usage-btn"));
+      expect(screen.getByTestId("account-usage-tab-api")).toHaveAttribute(
+        "aria-selected",
+        "true",
+      );
+      expect(screen.getByTestId("account-api-quota")).toBeInTheDocument();
+    });
+
+    it("opens on 套餐 when the plan is the alerting dimension", () => {
+      renderDesktop();
+      pushAccount({
+        ...loggedIn,
+        billing: {
+          mode: "api",
+          reason: "week",
+          plan: {
+            monthUsed: 600,
+            monthLimit: 1000,
+            weekUsed: 500,
+            weekLimit: 500,
+            expireDate: "2027-03-01",
+          },
+        },
+        apiQuota: apiPlenty,
+      });
+      fireEvent.click(screen.getByTestId("account-usage-btn"));
+      expect(screen.getByTestId("account-usage-tab-plan")).toHaveAttribute(
+        "aria-selected",
+        "true",
+      );
+      expect(screen.getByTestId("account-plan")).toBeInTheDocument();
+    });
+
+    it("prefers the more severe dimension when both alert", () => {
+      renderDesktop();
+      // 套餐琥珀（周触顶）+ 余额红（耗尽）⇒ 取红那一维.
+      pushAccount({
+        ...loggedIn,
+        billing: {
+          mode: "api",
+          reason: "week",
+          plan: {
+            monthUsed: 600,
+            monthLimit: 1000,
+            weekUsed: 500,
+            weekLimit: 500,
+            expireDate: "2027-03-01",
+          },
+        },
+        apiQuota: { limit: 1000, used: 1000 },
+      });
+      fireEvent.click(screen.getByTestId("account-usage-btn"));
+      expect(screen.getByTestId("account-usage-tab-api")).toHaveAttribute(
+        "aria-selected",
+        "true",
       );
     });
 
