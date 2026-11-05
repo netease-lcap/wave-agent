@@ -132,6 +132,7 @@ import { TerminalManager } from "./terminal";
 import { PortForwardManager, type AuthCallbackForward } from "./portForward";
 import { HtmlPreviewServer } from "./htmlPreviewServer";
 import { AutoUpdaterService } from "./updateAutoUpdater";
+import { normalizeReleaseNotes, type ReleaseNoteEntry } from "./releaseNotes";
 import { parseVersion, compareVersions } from "./version";
 import { HOST_CHANNEL } from "./channels";
 import type { PanelKind } from "./menu";
@@ -567,6 +568,9 @@ export class DesktopHost {
   private updateState: {
     version: string;
     status: "idle" | "downloading" | "ready";
+    /** 本次更新包含的变更记录，已按「已装版本」过滤并按版本倒序；空则不带
+     *  （spec desktop-distribution.md「更新内容（Release Notes）」场景 5）。 */
+    releaseNotes?: ReleaseNoteEntry[];
   } | null = null;
 
   /**
@@ -1028,6 +1032,11 @@ export class DesktopHost {
             available: true,
             version: this.updateState.version,
             status: this.updateState.status,
+            // 记录随快照一起推（status 每次变化都重新推一次，S4 拿得到）；
+            // 过滤后为空就不带该字段 —— webview 据此不渲染记录块。
+            ...(this.updateState.releaseNotes
+              ? { releaseNotes: this.updateState.releaseNotes }
+              : {}),
           }
         : null,
     });
@@ -7054,13 +7063,36 @@ export class DesktopHost {
         // 检查发现新版本 → S1「更新」按钮。已处于 downloading/ready 时忽略
         // （手动复查不得把下载中/已就绪降级回 idle）。
         if (this.updateState && this.updateState.status !== "idle") return;
-        this.updateState = { version: info.version, status: "idle" };
+        this.updateState = {
+          version: info.version,
+          status: "idle",
+          releaseNotes: normalizeReleaseNotes(
+            info.releaseNotes,
+            app.getVersion(),
+            info.version,
+          ),
+        };
         this.pushAccountInfo();
       },
       // downloading（S3）由 handleDesktopUpdateDownload 在 startDownload 前
       // 置位并推送——electron-updater 无下载开始事件，RPC 路径即唯一入口。
       onUpdateDownloaded: (info) => {
-        this.updateState = { version: info.version, status: "ready" };
+        this.updateState = {
+          version: info.version,
+          status: "ready",
+          // update-downloaded 通常与检查阶段是同一个 UpdateInfo（记录本就在），
+          // 万一这次没带字段，沿用检查阶段**同一版本**的结果——否则 S4 会在唯一
+          // 该展示记录的那一屏上把它丢掉。
+          releaseNotes:
+            normalizeReleaseNotes(
+              info.releaseNotes,
+              app.getVersion(),
+              info.version,
+            ) ??
+            (this.updateState?.version === info.version
+              ? this.updateState.releaseNotes
+              : undefined),
+        };
         this.pushAccountInfo();
       },
       onError: (error) => this.handleAutoUpdaterError(error),

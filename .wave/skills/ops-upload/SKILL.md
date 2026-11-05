@@ -99,17 +99,37 @@ node $S --file "$DIR/CodeWave.IDE.Setup.$V.exe"     --version "$V" --platform wi
 
 **一次可发两条通道**：`--channels stable,beta`（逗号分隔，或重复写 `--channel`）⇒ 服务端落两行台账、安装包只传一次、file-center 只存一份。跑两遍（先 stable 后 beta）仍然安全，覆盖语义不变。发测试环境加 `--env test`、演练加 `--env drill`（默认 `--env prod`）。
 
-| 参数         | 说明                                                                                     |
-| ------------ | ---------------------------------------------------------------------------------------- |
-| `--file`     | 要上传的本地文件（必填）                                                                 |
-| `--version`  | `X.Y.Z`，桌面端必填                                                                      |
-| `--platform` | `mac-dmg` / `mac-zip` / `win-exe`，桌面端必填（决定服务端落库的 canonical 文件名）       |
-| `--channels` | `stable` / `beta` / `stable,beta`，默认 `stable`（`--channel` 是它的单值写法，保留兼容） |
-| `--type`     | `desktop`（默认）/ `docs` / `remote` / `plugin-market`                                   |
-| `--env`      | `prod`（默认）/ `test` / `drill`                                                         |
-| `--base`     | 直接指定地址，与 `--env` 二选一（私有化/兜底）                                           |
-| `--token`    | 发布令牌；不传则依次看 `PUBLISH_TOKEN` 与 `~/.wave/publish-token.json`                   |
-| `--dry-run`  | 只做 init + 第一片，**绝不调 complete**（不写库、不留可见记录），用于冒烟                |
+| 参数                   | 说明                                                                                     |
+| ---------------------- | ---------------------------------------------------------------------------------------- |
+| `--file`               | 要上传的本地文件（必填）                                                                 |
+| `--version`            | `X.Y.Z`，桌面端必填                                                                      |
+| `--platform`           | `mac-dmg` / `mac-zip` / `win-exe`，桌面端必填（决定服务端落库的 canonical 文件名）       |
+| `--channels`           | `stable` / `beta` / `stable,beta`，默认 `stable`（`--channel` 是它的单值写法，保留兼容） |
+| `--release-notes-file` | 该版本的变更记录（markdown），随 init 提交、与通道无关（见下「变更记录」）               |
+| `--type`               | `desktop`（默认）/ `docs` / `remote` / `plugin-market`                                   |
+| `--env`                | `prod`（默认）/ `test` / `drill`                                                         |
+| `--base`               | 直接指定地址，与 `--env` 二选一（私有化/兜底）                                           |
+| `--token`              | 发布令牌；不传则依次看 `PUBLISH_TOKEN` 与 `~/.wave/publish-token.json`                   |
+| `--dry-run`            | 只做 init + 第一片，**绝不调 complete**（不写库、不留可见记录），用于冒烟                |
+
+### 变更记录（`--release-notes-file`，桌面端 S4 展示用）
+
+**来源与发版同源**：CI 在打 `wave-desktop@<version>` tag 时已用同一个脚本生成 GitHub Release 的
+body（`packages/desktop/scripts/release-notes.mjs`，见 `.github/workflows/publish.yml`
+「Generate release notes」）。上传时**别手写**，直接从 Release 的 body 落成文件，保证 Release 与客户端
+S4 看到的是同一份文本：
+
+```bash
+gh release view -R netease-lcap/wave-agent "wave-desktop@$V" --json body -q .body > /tmp/wave-desktop-$V/notes.md
+node $S --file "$DIR/CodeWave.IDE-$V-arm64-mac.zip" --version "$V" --platform mac-zip \
+  --channel stable --release-notes-file "$DIR/notes.md"
+```
+
+- **与通道无关、按版本存一份**：`--channels stable,beta` 一次上传只提交这一份，读的是同一份文本。
+- **三件套各次 init 都带同一个文件**：成本为零，且不依赖「服务端只写非空」这种细节（issue 里的口径是按版本覆盖写，缺省时才不写）。
+- **不带 = 该版本没有记录**：S4 与现状逐字一致，其余流程（检查/下载/重启）不受影响。**别用空文件冒充「有记录」**，脚本会拒收空文件与 >16KB 的文件（feed 里所有版本的记录共用 16KB 预算，超了请收紧生成脚本口径）。
+- ⚠️ **等 vusion/codechat#50 上线后再在正式发布里带这个参数**：init 接口当前还不认识 `releaseNotes`，服务端对未知字段是「忽略」还是「400 拒绝」尚未确认（已在 issue 里问过）。上线前该参数只在 test 环境演练。
+- **上线后要顺手验 feed**：`curl <server>/api/downloads/desktop/win/latest.yml | node -e "const y=require('js-yaml')…"` —— 解析成功且 `releaseNotes` 是**非空数组**、每项 `version`/`note` 都是字符串，才算真通。多行 markdown 一旦被字符串拼进 yml，**所有**客户端的更新检查都会挂（`ERR_UPDATER_INVALID_UPDATE_INFO`）。
 
 ### 验证要点（四路硬证，上传后逐一跑）
 
