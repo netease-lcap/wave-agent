@@ -79,7 +79,9 @@ describe("focusInput with an open dialog", () => {
     // Open the rewind confirmation modal.
     await act(async () => {
       fireEvent.click(
-        document.querySelector(".message-action-btn") as HTMLElement,
+        document.querySelector(
+          '[data-testid="rewind-to-message"]',
+        ) as HTMLElement,
       );
     });
     expect(screen.getByTestId("confirm-dialog-overlay")).toBeInTheDocument();

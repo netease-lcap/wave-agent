@@ -697,7 +697,7 @@ describe("entries that can only fail on the page", () => {
     // 第二批解禁：回滚与桌面同语义（截断对话 + 按 `file_history` 快照还原**电脑
     // 侧**工作区文件），所以按钮留下来，但手机上先问一次 —— 且文案必须点明文件。
     const rewindButton = document.querySelector<HTMLElement>(
-      ".message-action-btn",
+      '[data-testid="rewind-to-message"]',
     );
     expect(rewindButton).not.toBeNull();
 

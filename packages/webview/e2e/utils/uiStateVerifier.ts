@@ -246,7 +246,7 @@ export class UIStateVerifier {
   async clickRewind(index: number) {
     const userMessage = this.userMessages.nth(index);
     await userMessage.hover();
-    const rewindBtn = userMessage.locator(".message-action-btn");
+    const rewindBtn = userMessage.getByTestId("rewind-to-message");
     await rewindBtn.click();
   }
 
