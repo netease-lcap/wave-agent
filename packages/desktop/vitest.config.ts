@@ -11,7 +11,7 @@ export default defineConfig({
     globals: true,
     environment: "node",
     setupFiles: ["./tests/setup.ts"],
-    include: ["tests/**/*.test.ts"],
+    include: ["tests/**/*.test.ts", "tests/**/*.test.mjs"],
     // Real-host integration tests spawn the real `wave --stdio` CLI and a local
     // model server — they run in their own config/job (vitest.integration.config.ts,
     // `pnpm -F wave-desktop run test:realhost`), never in the unit gate.

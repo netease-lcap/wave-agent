@@ -1047,6 +1047,10 @@ export interface AccountUpdateInfo {
   version?: string;
   /** 更新过程状态：idle=未开始/已失败复位；downloading=宿主下载中；ready=已就绪待重启。 */
   status?: "idle" | "downloading" | "ready";
+  /** 本次更新的变更记录（宿主已按「已装版本」过滤 + 按版本倒序，每项一段）。
+   *  缺失 / 空数组 = 没有可展示的记录，S4 不渲染记录块
+   *  （spec desktop-distribution.md「更新内容（Release Notes）」场景 5–6）。 */
+  releaseNotes?: Array<{ version: string; note: string }>;
 }
 
 /**

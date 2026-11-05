@@ -1462,5 +1462,113 @@ describe("AccountCard (desktop sidebar)", () => {
       expect(btn).toHaveTextContent("更新");
       expect(btn).not.toBeDisabled();
     });
+
+    describe("S4 的「本次更新内容」块", () => {
+      /**
+       * 宿主下发的是**已按已装版本过滤、按版本倒序**的数组（desktop-account.md
+       * 「更新按钮状态机」下发规则），webview 只负责按顺序渲染。
+       */
+      const notes = [
+        { version: "1.6.1", note: "- 修复更新按钮卡在下载中\n- 支持侧栏拖拽" },
+        { version: "1.6.0", note: "- 新增变更记录" },
+      ];
+
+      it("renders one version section per entry, new → old, markdown as a list", () => {
+        renderDesktop();
+        pushAccount({
+          ...loggedIn,
+          update: {
+            available: true,
+            version: "1.6.1",
+            status: "ready",
+            releaseNotes: notes,
+          },
+        });
+
+        const sections = screen.getAllByTestId("account-release-note");
+        expect(sections).toHaveLength(2);
+        expect(sections[0]).toHaveTextContent("v1.6.1");
+        expect(sections[0]).toHaveTextContent("修复更新按钮卡在下载中");
+        expect(sections[1]).toHaveTextContent("v1.6.0");
+        expect(sections[1]).toHaveTextContent("新增变更记录");
+        // markdown 渲染成列表（"- " 前缀不留在文本里）。
+        expect(sections[0].querySelectorAll("li")).toHaveLength(2);
+      });
+
+      it("keeps the version header even for a single entry, and renders no clickable links", () => {
+        renderDesktop();
+        pushAccount({
+          ...loggedIn,
+          update: {
+            available: true,
+            version: "1.6.1",
+            status: "ready",
+            releaseNotes: [
+              { version: "1.6.1", note: "- 见 [文档](https://example.com/x)" },
+            ],
+          },
+        });
+
+        const sections = screen.getAllByTestId("account-release-note");
+        expect(sections).toHaveLength(1);
+        expect(sections[0]).toHaveTextContent("v1.6.1");
+        // 白名单不含 `a`：链接文字保留、可点元素不生成（点了会把用户带出应用）。
+        expect(sections[0].querySelector("a")).toBeNull();
+        expect(sections[0]).toHaveTextContent("见 文档");
+      });
+
+      it("skips entries with a blank note and hides the whole block when nothing is left", () => {
+        renderDesktop();
+        pushAccount({
+          ...loggedIn,
+          update: {
+            available: true,
+            version: "1.6.1",
+            status: "ready",
+            releaseNotes: [
+              { version: "1.6.1", note: "- 有内容" },
+              { version: "1.6.0", note: "   " },
+            ],
+          },
+        });
+        expect(screen.getAllByTestId("account-release-note")).toHaveLength(1);
+        expect(screen.queryByText("v1.6.0")).not.toBeInTheDocument();
+
+        pushAccount({
+          ...loggedIn,
+          update: {
+            available: true,
+            version: "1.6.1",
+            status: "ready",
+            releaseNotes: [],
+          },
+        });
+        expect(
+          screen.queryByTestId("account-release-notes"),
+        ).not.toBeInTheDocument();
+        expect(screen.queryByText("本次更新内容")).not.toBeInTheDocument();
+      });
+
+      it("leaves the S4 dialog verbatim unchanged when the host sends no releaseNotes", () => {
+        renderDesktop();
+        pushAccount({
+          ...loggedIn,
+          update: { available: true, version: "1.6.1", status: "ready" },
+        });
+
+        expect(screen.getByText("重启以完成更新")).toBeInTheDocument();
+        expect(
+          screen.getByText(
+            "新版本已就绪，重启后生效。重启会中断正在运行的任务，建议先保存工作。是否立即重启？",
+          ),
+        ).toBeInTheDocument();
+        expect(
+          screen.queryByTestId("account-release-notes"),
+        ).not.toBeInTheDocument();
+        expect(screen.getByTestId("confirm-dialog-confirm")).toHaveTextContent(
+          "立即重启",
+        );
+      });
+    });
   });
 });

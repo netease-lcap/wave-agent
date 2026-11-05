@@ -9,6 +9,8 @@ import type {
 import { MoreMenu } from "./MoreMenu";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { Tooltip } from "./Tooltip";
+import { marked } from "marked";
+import DOMPurify from "dompurify";
 // 未登录态「更多」按钮沿用 0902 第 5 轮问号圆（ailsa 新基线）；已登录态不再
 // 提供独立更多按钮（交互定稿：热区开纯功能菜单）。
 import {
@@ -294,6 +296,58 @@ export function apiQuotaInlineText(
   return `¥${formatAmount(remaining)}`;
 }
 
+/**
+ * 变更记录的白名单：与消息/计划正文同一套 markdown 渲染，但**不含 `a`** ——
+ * spec desktop-account.md「更新按钮状态机」S4 场景 5 要求记录块里没有可点链接
+ * （记录是提交标题的摘要，出现链接基本是误粘贴，且一点就把用户带出应用）。
+ * DOMPurify 默认 `KEEP_CONTENT`，剥掉 `<a>` 但保留其中文字。
+ */
+const RELEASE_NOTE_ALLOWED_TAGS = [
+  "div",
+  "p",
+  "br",
+  "strong",
+  "b",
+  "em",
+  "i",
+  "code",
+  "pre",
+  "ul",
+  "ol",
+  "li",
+  "blockquote",
+  "hr",
+  "del",
+];
+const RELEASE_NOTE_ALLOWED_ATTR = ["title", "align"];
+
+function renderReleaseNoteHtml(note: string): string {
+  return DOMPurify.sanitize(marked.parse(note) as string, {
+    ALLOWED_TAGS: RELEASE_NOTE_ALLOWED_TAGS,
+    ALLOWED_ATTR: RELEASE_NOTE_ALLOWED_ATTR,
+    ALLOW_DATA_ATTR: false,
+  });
+}
+
+/**
+ * 记录块要渲染的条目：宿主已按已装版本过滤并按版本倒序（desktop-account.md
+ * 「更新按钮状态机」下发规则），webview 只再丢「空白 note」——那等于没有记录，
+ * 渲染一个只有版本号的空段没有意义。全部为空时整块不渲染。
+ *
+ * 跨进程边界仍按未知数据校验字段类型：宿主是本仓代码，但快照走 postMessage，
+ * 一条形态不对的项不该让整张卡片崩掉。
+ */
+function visibleReleaseNotes(
+  update: AccountUpdateInfo | null,
+): Array<{ version: string; note: string }> {
+  return (update?.releaseNotes ?? []).filter(
+    (entry) =>
+      typeof entry?.version === "string" &&
+      typeof entry?.note === "string" &&
+      entry.note.trim().length > 0,
+  );
+}
+
 export const AccountCard: React.FC<AccountCardProps> = ({
   account,
   hostLabel,
@@ -357,6 +411,8 @@ export const AccountCard: React.FC<AccountCardProps> = ({
   const update = account?.update ?? null;
   const updateAvailable = update?.available === true;
   const updateStatus = update?.status ?? "idle";
+  // S4 正文下方的「本次更新内容」条目（缺失/全空 → 空数组 → 整块不渲染）。
+  const releaseNotes = visibleReleaseNotes(update);
 
   // 菜单的锚点：登录态与用量浮层同源（贴个人信息行顶）；未登录态那颗菜单挂在
   // 右侧「更多」按钮上，锚点得量那颗按钮自身。resize 重测必须走同一条口径，
@@ -917,7 +973,39 @@ export const AccountCard: React.FC<AccountCardProps> = ({
             onRestartApp?.();
           }}
           onCancel={() => setUpdateDialog(null)}
-        />
+        >
+          {/* 「本次更新内容」（spec desktop-account.md S4 场景 5）：每项一段、
+              版本号段标题从新到旧；即使只有一项也保留版本号段标题——渲染形态
+              只有一种。没有记录时整块不出现，S4 与旧版逐字一致。 */}
+          {releaseNotes.length > 0 && (
+            <div
+              className="account-release-notes"
+              data-testid="account-release-notes"
+            >
+              <div className="account-release-notes-title">本次更新内容</div>
+              <div className="account-release-notes-body">
+                {releaseNotes.map((entry) => (
+                  <section
+                    key={entry.version}
+                    className="account-release-note"
+                    data-testid="account-release-note"
+                  >
+                    <div className="account-release-note-version">
+                      v{entry.version}
+                    </div>
+                    <div
+                      className="account-release-note-body"
+                      // 白名单渲染（无 `a`/无事件属性），见 renderReleaseNoteHtml。
+                      dangerouslySetInnerHTML={{
+                        __html: renderReleaseNoteHtml(entry.note),
+                      }}
+                    />
+                  </section>
+                ))}
+              </div>
+            </div>
+          )}
+        </ConfirmDialog>
       )}
     </div>
   );

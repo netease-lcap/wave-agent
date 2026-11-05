@@ -99,7 +99,7 @@ order: 75
 
 **为什么是这个优先级**：按钮状态机依赖宿主下发 `update.status` 并响应下载/重启命令，涉及 desktop 主进程改动（宿主须把 electron-updater 事件映射为 `update.status` 推送并响应 `desktopUpdateDownload`/`desktopUpdateRestart` 命令）；宿主侧就绪前按钮无数据可渲染，故整体排 P2（在 P1 的用量常驻/菜单稳定后接线）。webview 侧状态机与宿主接线均属本规格验收范围。
 
-**独立测试**：webview 侧下发 `update: { available: true, version: "1.2.0", status: "idle" }`，验证 S1 按钮「更新」→ 点击弹 S2 确认框 → 确认后发 `desktopUpdateDownload` 且按钮进入「正在下载更新…」disabled；模拟宿主把 status 改为 ready，验证自动弹 S4 重启确认（仅一次）、[稍后] 转「重启」按钮、[立即重启] 发 `desktopUpdateRestart`；Esc 关闭 S2 后不下载；status 回退 idle 时按钮恢复「更新」。
+**独立测试**：webview 侧下发 `update: { available: true, version: "1.2.0", status: "idle" }`，验证 S1 按钮「更新」→ 点击弹 S2 确认框 → 确认后发 `desktopUpdateDownload` 且按钮进入「正在下载更新…」disabled；模拟宿主把 status 改为 ready，验证自动弹 S4 重启确认（仅一次）、[稍后] 转「重启」按钮、[立即重启] 发 `desktopUpdateRestart`；Esc 关闭 S2 后不下载；status 回退 idle 时按钮恢复「更新」；ready 快照额外带 `releaseNotes`（数组，含两个版本）时验证 S4 按版本分段渲染「本次更新内容」块（段标题 `vX.Y.Z`、新 → 旧、块内滚动、不撑破按钮区），空数组时不渲染该块，不带该字段时 S4 与现状逐字一致；宿主侧另有用例覆盖归一化（字符串 → 单元素数组、数组按已装版本过滤 + 坏版本号丢弃 + 倒序、过滤后为空不下发）。
 
 **验收场景**：
 
@@ -107,7 +107,7 @@ order: 75
 2. **假设**检测到新版本（`available: true` 且 `status: "idle"`），**当**查看个人信息行，**则**更新按钮显示「更新」（S1），点击进入 S2。
 3. **假设**用户点击「更新」，**当** S2 下载二次确认对话框弹出，**则**标题「更新到新版本」，正文含版本号 `vX.Y.Z` 与「安装完成后由你选择重启时机，不会自动重启客户端」语义，按钮「取消 / 下载更新」；**仅 `Esc` 可关闭**（点对话框外部不关闭）。
 4. **假设**用户在 S2 点击「下载更新」，**当**确认下载，**则** webview 向宿主发送 `desktopUpdateDownload` 命令，更新按钮变为「正在下载更新…」并 **disabled**（防重复下载，点击无反应，S3）。
-5. **假设**宿主将 `update.status` 推送为 `"ready"`，**当** webview 收到新快照，**则**自动弹出「重启以完成更新」确认框（S4），按钮「稍后 / 立即重启」，正文提示「重启会中断正在运行的任务，建议先保存工作」；**不自动重启**；该弹框每轮就绪只自动弹一次（防重复弹窗）。
+5. **假设**宿主将 `update.status` 推送为 `"ready"`，**当** webview 收到新快照，**则**自动弹出「重启以完成更新」确认框（S4），按钮「稍后 / 立即重启」，正文提示「重启会中断正在运行的任务，建议先保存工作」；**不自动重启**；该弹框每轮就绪只自动弹一次（防重复弹窗）。**当**同一快照还带 `releaseNotes`（宿主**已按已装版本过滤、按版本倒序**的数组，来源与口径见 [desktop-distribution.md](./desktop-distribution.md)「更新内容（Release Notes）」），**则**在正文下方渲染「本次更新内容」块：**每一项一段**，段标题为版本号 `vX.Y.Z`，其下是该版本的平铺变更条目（即使只有一项也保留版本号段标题——渲染形态只有一种）；段落之间按数组顺序（新 → 旧）排列，块整体限高滚动（超出对话框可视高度时块内滚动，不得撑高对话框挤坏按钮区）。条目是该版本的 markdown 文本，用仓库已有的 `marked` + `DOMPurify` 渲染，仅允许段落/列表/加粗等轻量语法，**不得渲染可点击链接**（生成的记录本身不含链接与作者）——记录块是纯展示，无可交互元素、无折叠、无「查看全部」。`releaseNotes` 缺失 / 空数组 / 所有项 `note` 为空或仅空白时**不渲染该块**，S4 标题、正文、按钮与交互与无记录时逐字一致。这一屏对齐 Electron 官方的 auto-updater 最佳实践（`update-downloaded` 时把 `releaseNotes` 放进取舍框），不新增状态机步骤。
 6. **假设**用户在 S4 点击「稍后」，**当**对话框关闭，**则**更新按钮文案变为「重启」（S5），期间应用可正常使用；再次点击按钮重新弹出 S4 确认框。
 7. **假设**用户在 S4/S5 点击「立即重启」，**当**确认重启，**则** webview 向宿主发送 `desktopUpdateRestart` 命令，更新状态复位、按钮消失（S6）；是否实际退出安装由宿主处理。
 8. **假设**下载过程中宿主推送 `status: "idle"`（下载失败/取消），**当**按钮状态刷新，**则**按钮恢复「更新」文案与可点状态；重新点击回到 S2 确认流程。
@@ -150,6 +150,11 @@ export interface AccountUpdateInfo {
   available: boolean; // 有新版本
   version?: string; // 新版本号（对话框/按钮 tooltip 文案使用）
   status?: "idle" | "downloading" | "ready"; // 更新过程状态
+  /** 变更记录，宿主已按「已装版本」过滤并按版本倒序（每项一段，见 S4 场景 5）。
+   *  取自 electron-updater 的 `UpdateInfo.releaseNotes`，来源与生成口径见
+   *  desktop-distribution.md「更新内容（Release Notes）」。
+   *  缺失 / 空数组 = 没有可展示的记录，S4 不渲染记录块。 */
+  releaseNotes?: Array<{ version: string; note: string }>;
 }
 
 /** 套餐两根额度条的四个数 + 到期日（codechat `GET /api/v1/account` → `billing.plan`）. */
@@ -212,6 +217,7 @@ export interface DesktopAccountInfoMessage {
 - 无生效套餐、且没有未作废的已到期订单（从未购买，或订单已全部作废）：`billing.plan: null`（套餐块不渲染）；`billing` 与 `apiQuota` 均未下发时用量浮层没有内容、用量按钮不渲染。
 - API 不限额：`apiQuota.limit: null`（共用团队余额）。
 - 无更新：不带 `update` 或 `update.available: false`。
+- `releaseNotes` 由宿主从 electron-updater 的 `UpdateInfo.releaseNotes` **归一化并按已装版本过滤**后下发（generic provider 把 feed `latest*.yml` 里的同名字段原样透传上来）：**数组**形态逐项保留 `compareVersions(parseVersion(item.version), parseVersion(app.getVersion())) > 0` 的项、版本号不可解析的项丢弃、结果按版本倒序；**字符串**形态包装成单元素数组 `[{ version: info.version, note }]`；过滤后为空、缺字段、空串/仅空白一律不下发（webview 按 S4 场景 5 不渲染记录块）。**版本比较只在宿主做**——webview 不认识版本比较，只渲染收到的数组，也不做任何过滤或排序。
 - 账户/用量/结论/更新状态变化时宿主主动推送新快照；轮询失败保留上次成功数据。
 - **宿主只做透传**：`billing` 由 codechat `GET /api/v1/account` 下发，经 CLI `getAccountInfo` → desktopHost `accountCache` 原样带到卡片；宿主**不重算**任何判定或窗口（窗口起点、限额聚合口径都在服务端，客户端一无所知）。
 

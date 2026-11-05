@@ -87,6 +87,34 @@ order: 12
 4. **假设**已登录且开关开启（updateChannel=beta），**当**应用触发更新检查（启动自动/手动），**则**一律查询 beta feed 而非 stable feed；**当**beta feed 不可达或元数据解析失败，**则**按自动更新故事场景 5 错误处理（启动自动检查静默、手动检查提示「检查更新失败，请稍后重试」），不得静默回退 stable feed、不得崩溃。
 5. **假设**已登录且开关关闭（updateChannel=stable），**当**用户手动检查更新且已装版本高于 stable feed 最新版本（曾接收测试版、正式尚未追平），**则**不得降级、不得改查 beta feed，必须提示「正式版发布后将自动更新」而非「当前已是最新版本」；**当** stable feed 最新版本高于已装版本，**则**按自动更新故事场景 1-6 正常进入 S0–S6 升级；启动自动检查在无更新时保持静默。
 
+---
+
+### 用户故事：更新内容（Release Notes）（优先级：P2）
+
+作为桌面端用户，我希望在「重启以完成更新」这一步看到本次更新包含哪些改动，以便在重启打断当前工作之前知道这一版值不值得现在升级。
+
+**为什么是这个优先级**：展示时机对齐 Electron 官方的 auto-updater 最佳实践——`autoUpdater.on('update-downloaded', (event, releaseNotes, releaseName) => dialog.showMessageBox({ message: releaseNotes, detail: '重启以完成更新…' }))`，即**下载完成、重启之前**是用户唯一愿意读一屏文字的时机（原生 `update-available` 事件无任何参数，检查阶段拿不到记录）。更新链路本身已由 P1 故事闭环，记录属于「知情权」增强，故排 P2。
+
+**三个必须写死的约束**（它们决定了本故事的实现边界）：
+
+1. **Electron 只负责「传」，不负责「生成」**：原生 Squirrel.Mac 从更新服务端的 JSON feed 取，electron-updater 从 `latest*.yml` 的 `releaseNotes` 取——Electron 永远不会从 git 里变出 changelog。我们用的是 electron-updater + codechat 生成的 feed，所以记录必须由**发版链路**产出、由**服务端**承载。
+2. **客户端无法解析 git commit**：安装包里既没有 `.git` 也没有版本历史，「把 commit 解析成变更记录」只能发生在**发版时**（CI/脚本），客户端只接收成品数组。
+3. **「上一版是谁」不能由发版动作判断**：我们的版本模型是「每构建 Z+1、三端同号，beta 与正式只靠分发通道区分」（见下文「接收 Beta 版更新」），因此**大量版本只进 beta、永不进 stable**。若按通道取「该通道上一次发布」生成**累积**文本，则同一版本的两个通道是两份不同文本（1.6.1 的 beta 记录 = `1.6.0→1.6.1`，stable 记录 = `1.5.5→1.6.1`），而 ops 上传是 `--channels stable,beta` **一次**提交两条通道，等于要求同一次上传为两个通道传两份内容；且跨度更长的用户（1.4.x 直跳 1.6.1）仍会漏掉窗口之前的改动。⇒ 每个版本**只记自己的增量**（与通道无关，一次生成、任何通道复用同一份），feed 下**最近若干版本组成的数组**，由**客户端**按「已装版本」过滤合并。这条是 electron-updater 的官方形态：`UpdateInfo.releaseNotes` 本就是 `string | Array<{ version, note }>`，generic provider 把 `latest*.yml` 里的同名字段**原样透传**，数组不需要任何私有约定。
+
+**独立测试**：在仓库里跑 `node packages/desktop/scripts/release-notes.mjs --since wave-desktop@<prev> --to wave-desktop@<cur>`，验证输出为平铺 markdown 列表、`chore/docs/style/test` 与 bump 提交被丢弃、前缀与 PR 号被去掉；给 fake feed 塞**数组**形态的 `releaseNotes` 跑宿主 + webview，验证宿主按已装版本过滤、S4 按版本分段渲染；同一份内容改成**字符串**形态，验证宿主包成单元素数组后行为一致；把该字段从 feed 移除，验证 S4 与现状逐字一致、更新全流程不受影响。
+
+**验收场景**：
+
+1. **假设**桌面端发版（`wave-desktop@<version>` tag 已打），**当** CI 构建桌面安装包，**则**必须用 `packages/desktop/scripts/release-notes.mjs` 生成该版本的变更记录：取**上一个 `wave-desktop@*` tag 到当前 tag** 之间的提交（即该版本的增量，**与分发通道无关**——同一次发布同时进 stable 与 beta 时两通道共用这一份文本），**丢弃** `chore` / `docs` / `style` / `test` / `ci` / `build` 类型提交与版本号 bump 提交（`chore: bump …`），其余提交**去掉 `type(scope):` 前缀与尾部 PR 号**后**平铺**为 markdown 列表（不分组、不排序、不加图标、不加作者与链接）；没有任何条目时不产出记录（不得产出一个空文件冒充「有记录」）。脚本必须有单测（提交标题 → 期望输出）。
+2. **假设**同一份生成产物，**当** CI 创建 GitHub Release，**则**必须以它为 Release body（`body_path`），并**停用** `generate_release_notes`——「GitHub Release 正文」与「客户端看到的记录」必须**同源同一份文本**，不得一处手写一处生成。
+3. **假设**安装包上传 codechat，**当** ops 上传三件套，**则**必须把变更记录一并提交给发布接口，由服务端以**版本维度**落发布台账——**不得按平台行（mac-dmg / mac-zip / win-exe）分存**（feed 只取 mac-zip 与 win-exe 两行，按行存会让另一平台读不到），也**不得按通道分存**（版本维度天然共享，同一次 `--channels stable,beta` 上传只提交**一份**记录文本）。
+4. **假设**服务端把记录写进 feed，**当**生成 `latest*.yml`，**则** `releaseNotes` 必须是**数组**（`[{ version, note }, …]`，与 `version`/`files`/`path`/`sha512`/`releaseDate` 同级），由服务端按版本维度**倒序**取**最近 20 个版本**、总长不超过 **16KB**（超出只保留最近若干，静默截断）——不得下发单字符串，也不得只下发目标版本一项；某项本身没有记录（该版本脚本未产出文件）时跳过该项，不得留空串项。
+5. **假设**客户端执行更新检查，**当**收到 electron-updater 的 `update-available` / `update-downloaded`，**则**宿主必须把 `UpdateInfo.releaseNotes` **归一化并按已装版本过滤**后作为 `update.releaseNotes` 随 `desktopAccountInfo` 推送（契约见 [desktop-account.md](./desktop-account.md)「数据契约与命令」）：provider 返回**数组**时逐项保留 `compareVersions(parseVersion(item.version), parseVersion(app.getVersion())) > 0` 的项（复用 `packages/desktop/src/main/version.ts`）、版本号不可解析的项丢弃、按版本倒序排列；provider 返回**字符串**时包装成单元素数组 `[{ version: info.version, note }]`；过滤后为空、或该字段缺失/空串/仅空白时**不下发**。webview 在 S4 重启确认框里渲染（见 [desktop-account.md](./desktop-account.md)「账户卡片 · 更新按钮状态机 S0–S6」场景 5）——**过滤只发生在宿主，webview 不认识版本比较，只渲染收到的数组**。更新链路（检查 → S2 下载 → S4/S5 重启）在任何形态下都一字不变，**不得**因记录缺失或格式不认识而报错、阻塞下载或误判「无更新」。
+6. **假设**用户从某个版本升级，**当** S4 渲染记录，**则**只能看到**比自己已装版本新**的条目，且**中间只进 beta、没进 stable 的版本一并包含**：beta 逐版用户（1.6.0 → 1.6.1）只看到 1.6.1 一条；stable 跳版用户（1.5.5 → 1.6.1，中间 1.5.6 / 1.6.0 只进 beta）看到 1.6.1、1.6.0、1.5.6 三段、**不含** 1.5.5；跨通道用户（先 beta 装 1.6.0、再切回 stable 升 1.6.1）只看到 1.6.1。**不论用户路径如何，「已装版本及更旧」的条目一律不出现，也不出现重复条目。**
+7. **假设**服务端把记录写进 feed，**当**生成 `latest*.yml`，**则**必须经 YAML 序列化写成块标量（记录里的 `:`、`#`、`-`、缩进不得破坏语法）——feed 语法错误会让**所有**客户端的更新检查失败（`ERR_UPDATER_INVALID_UPDATE_INFO`），比没有记录严重得多；服务端上线前必须有 feed 冒烟（拉取 yml 能被 yaml 解析、`releaseNotes` 是非空数组且每项 `version`/`note` 均为字符串），本仓侧也要有一条「缺字段/坏形态（字符串、坏数组、空值）不影响更新」的测试。
+8. **假设**记录由 commit 解析而来，**当**同一功能在发布窗口内被多个 PR 迭代（新增后又调整位置、去掉其中一部分），**则**允许这几条同时出现——记录是**提交摘要**而非成品文案；本故事**不**引入人工覆盖入口（不做 `release-notes/<version>.md` 之类的手写覆盖），需要人工润色的文案另立故事。
+9. **假设**客户端已连接企业服务，**当**展示变更记录，**则**不得为此发起任何额外网络请求（不查 GitHub Releases、不查文档站、不为中间版本按需拉取）——记录随 feed 一次下发，与自动更新故事场景 1「不得再查询 GitHub Releases」一致；未登录（无 serverUrl）用户不检查更新，自然也看不到记录。
+
 ## 边界情况
 
 - **内置 CLI 缺失或损坏**：本地会话的内置 CLI 文件随安装包发布，若缺失或不可执行（安装损坏），应用必须显示重新安装应用的引导信息，不得尝试从网络安装。
@@ -109,6 +137,12 @@ order: 12
 
 - **updateChannel 不进共享配置**：「接收 Beta 版更新」开关持久化于桌面 configStore 顶层（userData/wave-desktop.json，theme 先例），不写入 settings.json、不同步到远程 CLI 或账号级配置；默认 stable。
 
+- **变更记录是提交摘要，不是成品 changelog**：由 squash 后的 commit 标题生成（去前缀、丢 chore/docs/style/test/ci 与 bump），因此同一功能的多次迭代可能同时出现，某条描述的也可能是该版本终态之前的中间行为。它只在 S4 承担「这一版大概改了什么」，不承诺完整性——feed 的数组上限是最近 20 个版本 / 16KB，跨度更长时旧版本的条目被静默截掉；也不替代 GitHub Release 上的 compare 链接。
+
+- **数组里某项没有记录不算异常**：某版本脚本未产出文件（该版本全是 chore 类改动）时只是缺这一项，服务端直接跳过该项；客户端按「已装版本」过滤后可能只剩一两段甚至为空，为空时 S4 不渲染记录块。
+
+- **记录缺失不阻塞任何东西**：codechat 尚未支持该字段时 feed 里就没有 `releaseNotes`，客户端按「更新内容」场景 5 降级——S4 与现状逐字一致，发版、上传、检查、下载、重启全流程不受影响。反方向（feed 里写了语法错误的 YAML）才是真故障，由服务端上线前的 feed 冒烟拦住。
+
 - **未登录不触发更新检查**：无 serverUrl 时，启动自动检查与手动 `checkForUpdates` 均不得执行更新检查（不查 GitHub Releases、不启动 electron-updater），手动检查 toast 提示「登录后可检查更新」；曾用于未登录回退的 checkForUpdate/updateChecker 链路已删除（2026-09-09 拍板）。
 
 - **运行期轮询只查不下载**：轮询与启动自动检查一样是「非手动」检查，发现新版本只置 idle（S1），绝不自动下载/安装（`autoDownload=false` 保持）；间隔为固定常量（首版 1 小时），与启动那次的「只跑一次」检查相互独立（轮询不得让它变成两次启动语义）；定时器生命周期随宿主 dispose 结束。
@@ -124,3 +158,7 @@ order: 12
 - **CI 发布自动上传**：CI 保持 `--publish never` 零改动，安装包由 ops 手动上传 codechat file-center，与 vscode/jetbrains 分发方式一致。
 
 - **更新安装的推迟调度**：重启安装立即执行（quitAndInstall），不做「推迟到下次退出应用」的调度。
+
+- **应用内历史变更记录 / 安装后「新版本内容」弹窗**：只展示「即将安装的这一版」的记录，且只在 S4 那一屏；不做历史版本列表页，也不做安装完成首次启动时的「新版本内容」弹窗（后者需要把记录打包进安装包，与 feed 口径是两条通道）。
+
+- **手写覆盖变更记录**：不提供 `release-notes/<version>.md` 之类的人工覆盖入口，记录一律由提交解析生成（润色文案的需求另立故事）。

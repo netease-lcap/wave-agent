@@ -543,3 +543,85 @@
 .account-api-warn.is-empty {
   color: var(--vscode-errorForeground, #f14c4c);
 }
+
+/* S4 重启确认框里的「本次更新内容」（spec desktop-account.md S4 场景 5）。
+   记录条数量由 feed 决定（最多 20 个版本），因此**列表内部限高内滚**：弹窗本体
+   继续按内容撑开，但按钮行永远不会被长记录挤出视口。 */
+.account-release-notes {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.account-release-notes-title {
+  font-weight: 500;
+  color: var(--vscode-foreground, #bfbfbf);
+}
+
+.account-release-notes-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  /* 内滚上限约 6 条 commit 摘要的高度，再长就滚动（弹窗不跟着长高）。 */
+  max-height: 240px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-top: 8px;
+  padding-right: 4px;
+  border-top: 1px solid var(--vscode-widget-border, #e4e7ed);
+}
+
+.account-release-note {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* 即使只有一项也保留版本号段标题（渲染形态只有一种）。 */
+.account-release-note-version {
+  font-weight: 500;
+  color: var(--vscode-foreground, #bfbfbf);
+}
+
+.account-release-note-body {
+  color: var(--vscode-descriptionForeground, #8c8c8c);
+}
+
+/* markdown 渲染结果落在 <div> 里，去掉首尾多余外边距、压紧列表行距。 */
+.account-release-note-body > :first-child {
+  margin-top: 0;
+}
+
+.account-release-note-body > :last-child {
+  margin-bottom: 0;
+}
+
+.account-release-note-body p {
+  margin: 0;
+}
+
+.account-release-note-body ul,
+.account-release-note-body ol {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.account-release-note-body li {
+  margin: 2px 0;
+}
+
+[data-host="desktop"] .account-release-notes-title {
+  color: var(--cc-text-primary);
+}
+
+[data-host="desktop"] .account-release-notes-body {
+  border-top-color: var(--cc-border-light);
+}
+
+[data-host="desktop"] .account-release-note-version {
+  color: var(--cc-text-regular);
+}
+
+[data-host="desktop"] .account-release-note-body {
+  color: var(--cc-text-secondary);
+}
