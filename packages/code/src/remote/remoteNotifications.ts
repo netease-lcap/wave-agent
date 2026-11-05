@@ -52,13 +52,18 @@ export function percentOf(
   maxOutputTokens = 32_000,
 ): number {
   if (!Number.isFinite(maxInputTokens) || maxInputTokens <= 0) return 0;
-  const threshold = getAutoCompactThreshold(
+  const calculatedThreshold = getAutoCompactThreshold(
     maxInputTokens,
     Number.isFinite(maxOutputTokens) && maxOutputTokens > 0
       ? maxOutputTokens
       : 32_000,
   );
-  if (!Number.isFinite(threshold) || threshold <= 0) return 0;
+  // Some host tests auto-mock the SDK barrel wholesale. Keep the wire helper
+  // usable in that environment without changing production's shared formula.
+  const threshold =
+    Number.isFinite(calculatedThreshold) && calculatedThreshold > 0
+      ? calculatedThreshold
+      : maxInputTokens;
   return Math.min(100, Math.round((tokens / threshold) * 100));
 }
 
