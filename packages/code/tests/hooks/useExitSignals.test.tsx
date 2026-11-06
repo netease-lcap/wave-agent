@@ -10,15 +10,32 @@ type Listener = (...args: unknown[]) => void;
 const EXIT_SIGNALS = new Set(["SIGINT", "SIGTERM", "SIGHUP"]);
 
 /**
+ * The signal a closed terminal sends, where the platform has one. Windows has
+ * no SIGHUP — the hook does not subscribe to it there — so the "a signal
+ * arrives" cases fall back to SIGTERM, which is registered everywhere.
+ */
+const CLOSE_SIGNAL = process.platform === "win32" ? "SIGTERM" : "SIGHUP";
+
+/**
  * Capture the exit-signal registrations instead of installing them.
  *
  * Routing real signals at the test process is not an option — a genuine SIGHUP
- * would kill vitest outright — and ink registers its own handlers on the same
- * events, so intercepting keeps this suite from depending on ink's timing.
- * Non-signal events (`exit`, stream events, ...) go to the real `process.on`,
- * otherwise the bookkeeping would count ink's registrations as ours.
+ * would kill vitest outright. Non-signal events (`exit`, stream events, ...) go
+ * to the real `process.on`, otherwise the bookkeeping would count ink's
+ * registrations as ours.
+ *
+ * `new Ink()` is the wrinkle: it subscribes to `signal-exit`, which registers
+ * the whole fatal-signal list on `process` — SIGHUP included, whether or not
+ * the platform can deliver it. That happens inside the very window being
+ * observed, so the mount itself reads as one of ours; on Windows it is the
+ * *only* SIGHUP registration, which left all three assertions below looking at
+ * ink's leftover handler instead of the hook's (`check-windows`, 2026-11-06).
+ * Mounting one throwaway instance before the spies go up fixes it at the
+ * source: `signal-exit` subscribes only on its first `onExit()`, so the
+ * measured render registers nothing but the hook's own handlers.
  */
 function interceptSignals() {
+  render(<HookTester hook={() => null} />);
   const handlers = new Map<string, Listener>();
   // Bound before the spies replace the methods, so these stay the originals.
   const realOn = process.on.bind(process);
@@ -85,7 +102,7 @@ afterEach(() => {
 });
 
 describe("useExitSignals", () => {
-  it("subscribes to SIGHUP so a closed terminal still unwinds the agent", async () => {
+  it(`subscribes to ${CLOSE_SIGNAL} so a closed terminal still unwinds the agent`, async () => {
     const signals = interceptSignals();
     renderExitSignals(vi.fn());
 
@@ -106,16 +123,16 @@ describe("useExitSignals", () => {
     signals.restore();
   });
 
-  it("invokes the handler when SIGHUP arrives", async () => {
+  it(`invokes the handler when ${CLOSE_SIGNAL} arrives`, async () => {
     const signals = interceptSignals();
     const onExitSignal = vi.fn();
     renderExitSignals(onExitSignal);
 
     await vi.waitFor(() => {
-      expect(signals.handlers.has("SIGHUP")).toBe(true);
+      expect(signals.handlers.has(CLOSE_SIGNAL)).toBe(true);
     });
 
-    signals.fire("SIGHUP");
+    signals.fire(CLOSE_SIGNAL);
     expect(onExitSignal).toHaveBeenCalledTimes(1);
 
     signals.restore();
