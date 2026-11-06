@@ -1,0 +1,106 @@
+/* Syntax-highlight palette (GitHub Dark / VS Code Dark+ style hues) driven by
+   --vscode semantic colors where available, static fallbacks otherwise.
+   挂三处：文件面板的代码视图、远控页预览弹层的代码档（`IdeContextPreview` 的
+   `codePath`）、对话流里的围栏代码块（`Message.tsx` 的 `renderer.code`）——
+   同一份配色，不是三套主题。
+   单独成文件的理由：对话流与文件面板在插件端各自独立加载（VS Code 的 webview
+   里没有文件面板模块），配色若只写在 FilePane.css，消息代码块在那边就没有
+   颜色；两处 import 同一份，谁先加载都不缺。 */
+:is(.file-pane, .ide-context-preview, .markdown-content pre code.hljs)
+  .hljs-comment,
+:is(.file-pane, .ide-context-preview, .markdown-content pre code.hljs)
+  .hljs-quote {
+  color: var(--vscode-descriptionForeground, #6a9955);
+  font-style: italic;
+}
+
+:is(.file-pane, .ide-context-preview, .markdown-content pre code.hljs)
+  .hljs-keyword,
+:is(.file-pane, .ide-context-preview, .markdown-content pre code.hljs)
+  .hljs-selector-tag,
+:is(.file-pane, .ide-context-preview, .markdown-content pre code.hljs)
+  .hljs-literal,
+:is(.file-pane, .ide-context-preview, .markdown-content pre code.hljs)
+  .hljs-type,
+:is(.file-pane, .ide-context-preview, .markdown-content pre code.hljs)
+  .hljs-section,
+:is(.file-pane, .ide-context-preview, .markdown-content pre code.hljs)
+  .hljs-meta {
+  color: #569cd6;
+}
+
+:is(.file-pane, .ide-context-preview, .markdown-content pre code.hljs)
+  .hljs-string,
+:is(.file-pane, .ide-context-preview, .markdown-content pre code.hljs)
+  .hljs-regexp,
+:is(.file-pane, .ide-context-preview, .markdown-content pre code.hljs)
+  .hljs-addition {
+  color: #ce9178;
+}
+
+:is(.file-pane, .ide-context-preview, .markdown-content pre code.hljs)
+  .hljs-number,
+:is(.file-pane, .ide-context-preview, .markdown-content pre code.hljs)
+  .hljs-symbol,
+:is(.file-pane, .ide-context-preview, .markdown-content pre code.hljs)
+  .hljs-bullet {
+  color: #b5cea8;
+}
+
+:is(.file-pane, .ide-context-preview, .markdown-content pre code.hljs)
+  .hljs-title,
+:is(.file-pane, .ide-context-preview, .markdown-content pre code.hljs)
+  .hljs-title.function_,
+:is(.file-pane, .ide-context-preview, .markdown-content pre code.hljs)
+  .hljs-function
+  .hljs-title {
+  color: #dcdcaa;
+}
+
+:is(.file-pane, .ide-context-preview, .markdown-content pre code.hljs)
+  .hljs-attr,
+:is(.file-pane, .ide-context-preview, .markdown-content pre code.hljs)
+  .hljs-attribute,
+:is(.file-pane, .ide-context-preview, .markdown-content pre code.hljs)
+  .hljs-variable,
+:is(.file-pane, .ide-context-preview, .markdown-content pre code.hljs)
+  .hljs-template-variable,
+:is(.file-pane, .ide-context-preview, .markdown-content pre code.hljs)
+  .hljs-name {
+  color: #9cdcfe;
+}
+
+:is(.file-pane, .ide-context-preview, .markdown-content pre code.hljs)
+  .hljs-built_in,
+:is(.file-pane, .ide-context-preview, .markdown-content pre code.hljs)
+  .hljs-builtin-name {
+  color: #4ec9b0;
+}
+
+:is(.file-pane, .ide-context-preview, .markdown-content pre code.hljs)
+  .hljs-tag,
+:is(.file-pane, .ide-context-preview, .markdown-content pre code.hljs)
+  .hljs-selector-id,
+:is(.file-pane, .ide-context-preview, .markdown-content pre code.hljs)
+  .hljs-selector-class,
+:is(.file-pane, .ide-context-preview, .markdown-content pre code.hljs)
+  .hljs-selector-attr,
+:is(.file-pane, .ide-context-preview, .markdown-content pre code.hljs)
+  .hljs-selector-pseudo {
+  color: #d7ba7d;
+}
+
+:is(.file-pane, .ide-context-preview, .markdown-content pre code.hljs)
+  .hljs-deletion {
+  color: #f14c4c;
+}
+
+:is(.file-pane, .ide-context-preview, .markdown-content pre code.hljs)
+  .hljs-emphasis {
+  font-style: italic;
+}
+
+:is(.file-pane, .ide-context-preview, .markdown-content pre code.hljs)
+  .hljs-strong {
+  font-weight: bold;
+}

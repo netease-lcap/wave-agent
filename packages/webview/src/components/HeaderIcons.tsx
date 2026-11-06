@@ -773,13 +773,13 @@ export const PanelExpandIcon: React.FC<IconProps> = ({
   </svg>
 );
 
-// 账户卡片用量区显隐按钮（收起态）— 桌面「额度」图标：开口表盘弧 + 内圈刻度环 +
+// 账户卡片用量按钮 — 桌面「额度」图标：开口表盘弧 + 内圈刻度环 +
 // 指针，stroke #565A60 → currentColor。矢量由设计直接给件（2026-10-30 她「替换成
 // 这颗」，源文件 16 画板），这里原样保留几何、16 画板居中放进 24 盒子
 // （`translate(4 4)`，故描边 1.4 与同排图标一致；墨迹 13.48×11.39，与旧版 24 画板
 // 矢量 13.12×13.12 基本齐平）。取代 Figma 13648:3600 那版（整圈 + 实心轴心）；
-// 展开态仍是下面的 ChevronDownIcon，两态各画各的。按钮 24×24 规格由
-// .account-card-collapse-btn 提供，svg 自带 24×24 显示。
+// 2026-11 交互改版后按钮不再有「展开态」，只有这一颗图标。
+// 按钮 24×24 规格由 .account-card-usage-btn 提供，svg 自带 24×24 显示。
 export const QuotaIcon: React.FC<IconProps> = ({
   className = "header-icon",
 }) => (

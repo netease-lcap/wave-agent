@@ -140,7 +140,7 @@ test.describe("桌面设置页「个性化 → 自动记忆规则」保存路径
         // 「设置页控件的保存时机」）：未改的 language 不出现在任何报文里。
         {
           command: "updateConfiguration",
-          configurationData: { autoMemoryEnabled: true },
+          configurationData: { autoMemoryEnabled: false },
         },
         {
           command: "updateConfiguration",

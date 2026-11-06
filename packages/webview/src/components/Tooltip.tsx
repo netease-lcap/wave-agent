@@ -179,6 +179,14 @@ export const Tooltip: React.FC<TooltipProps> = ({
     setTooltipStyle({ left, top });
   }, [position, gap, anchorRef]);
 
+  // disabled 期间 wrapper 整个不渲染，气泡也就收不到 mouseleave：若这里不主动复位，
+  // 「hover 出气泡 → 打开某个浮层（触发方把 disabled 置 true）→ 关掉浮层」之后，
+  // 气泡会带着旧的 isVisible=true 重新挂回来——此时指针早已离开，再没有 mouseleave
+  // 能收掉它，就成了一条挂在空中、点哪都不消失的提示（账户卡片用量按钮踩过）。
+  useEffect(() => {
+    if (disabled) setIsVisible(false);
+  }, [disabled]);
+
   // When disabled, render children without tooltip wrapper
   if (disabled) {
     return children;

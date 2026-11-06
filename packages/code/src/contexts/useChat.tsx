@@ -1485,8 +1485,10 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     renameSession: (title) => agentRef.current?.renameSession(title),
     compact: (instructions) => compact(instructions),
     slashCommands: () => agentRef.current?.getSlashCommands() ?? [],
-    // 手机页取首屏尾段 / 补差都读 agent 手上那份列表（压缩后的上下文）；它这一侧
-    // 不提供上翻，所以不会带来 `before` 锚点。
+    // 手机页取数都读 agent 手上那份列表（压缩后的上下文）：首屏尾段（`limit`）、
+    // 重连补差（`since`）、滚到顶往回翻（`before` + `limit`）三种窗口原样交给
+    // SDK，切片与 `hasMore` / `anchorLost` 都由它判。分页是 2026-11-06 起远控页
+    // 也有的能力，所以这里不能只认前两种。
     messagePage: (window) =>
       agentRef.current?.getMessagePage(window) ??
       Promise.resolve({ messages: [] }),
