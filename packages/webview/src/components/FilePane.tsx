@@ -32,6 +32,7 @@ import { ConversationFileList } from "./ConversationFileList";
 import { FileEditor } from "./fileEditor/FileEditor";
 import {
   CommentIcon,
+  CopyContentIcon,
   CopyPathIcon,
   RevealInTreeIcon,
   TreeToggleIcon,
@@ -1142,6 +1143,33 @@ export const FilePane: React.FC<FilePaneProps> = ({
     onSaveDraft?.(draftRef.current);
   }, [onSaveDraft]);
 
+  // 复制文件内容（spec desktop-file-panel.md 场景 23–25）。对齐 Claude 桌面端
+  // 文件查看器的 `Copy file contents`：
+  //   - 编辑态复制**编辑器当前值**（含未保存修改），不是磁盘上的旧内容；
+  //   - markdown 复制源文本，图片没有内容可复制（走「复制图片」右键）；
+  //   - 截断展示的文件只复制已加载部分，成功提示里说清楚，免得用户以为拿到了全量。
+  const canCopyContent =
+    showFile &&
+    !!fileView &&
+    !!fileView.content &&
+    !fileView.error &&
+    !fileView.imageBase64;
+  const handleCopyContent = useCallback(async () => {
+    const text = editing ? draftRef.current : fileView?.content;
+    if (text === undefined) return;
+    const ok = await copyTextToClipboard(text);
+    if (!ok) {
+      onToast?.("复制失败，请手动复制", "error");
+      return;
+    }
+    onToast?.(
+      fileView?.truncated && !editing
+        ? "内容已复制（文件已截断，仅复制已加载内容）"
+        : "内容已复制",
+      "success",
+    );
+  }, [editing, fileView?.content, fileView?.truncated, onToast]);
+
   // Inline line comments — the same entries as the diff pane: right-clicking a
   // line (or selecting several, then clicking the button that follows the
   // selection) opens a box under that line or range, and the submitted comment
@@ -1570,6 +1598,31 @@ export const FilePane: React.FC<FilePaneProps> = ({
                 </button>
               </Tooltip>
             )}
+          {/* 复制文件内容（spec 场景 23–25，对齐 Claude 桌面端 `Copy file contents`）：
+              与「复制路径」并列的两颗独立按钮；图片、读取中/失败、空文件都没有内容
+              可复制，因此不出现（图片的复制走「复制图片」右键）。 */}
+          {canCopyContent && fileView && (
+            <Tooltip text="复制文件内容" position="bottom">
+              <button
+                type="button"
+                className="preview-pane-button"
+                aria-label="复制文件内容"
+                data-testid="file-copy-content"
+                onClick={() => {
+                  void handleCopyContent();
+                }}
+              >
+                {isDesktopHost() ? (
+                  <CopyContentIcon className="preview-pane-icon" />
+                ) : (
+                  <i
+                    className="codicon codicon-clippy preview-pane-icon"
+                    aria-hidden="true"
+                  />
+                )}
+              </button>
+            </Tooltip>
+          )}
           {/* 复制路径：原来的复制按钮在工具条合并那次被删掉，规格场景仍有这条
               （spec desktop-file-panel.md 场景 8）。 */}
           {showFile && activeFile && (
