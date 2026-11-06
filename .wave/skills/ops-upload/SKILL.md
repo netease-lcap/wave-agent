@@ -128,7 +128,7 @@ node $S --file "$DIR/CodeWave.IDE-$V-arm64-mac.zip" --version "$V" --platform ma
 - **与通道无关、按版本存一份**：`--channels stable,beta` 一次上传只提交这一份，读的是同一份文本。
 - **三件套各次 init 都带同一个文件**：成本为零，且不依赖「服务端只写非空」这种细节（issue 里的口径是按版本覆盖写，缺省时才不写）。
 - **不带 = 该版本没有记录**：S4 与现状逐字一致，其余流程（检查/下载/重启）不受影响。**别用空文件冒充「有记录」**，脚本会拒收空文件与 >16KB 的文件（feed 里所有版本的记录共用 16KB 预算，超了请收紧生成脚本口径）。
-- ⚠️ **等 vusion/codechat#50 上线后再在正式发布里带这个参数**：init 接口当前还不认识 `releaseNotes`，服务端对未知字段是「忽略」还是「400 拒绝」尚未确认（已在 issue 里问过）。上线前该参数只在 test 环境演练。
+- **服务端已支持**（vusion/codechat#50，`d4db5d2` 已在 main）：按版本 upsert 到 `desktop_release_notes`、feed 输出 `releaseNotes` 数组。企业端版本较老时该字段被**忽略**（init 路由逐字段读请求体，未知字段一律 400 不了），只表现为 feed 里没有记录。
 - **上线后要顺手验 feed**：`curl <server>/api/downloads/desktop/win/latest.yml | node -e "const y=require('js-yaml')…"` —— 解析成功且 `releaseNotes` 是**非空数组**、每项 `version`/`note` 都是字符串，才算真通。多行 markdown 一旦被字符串拼进 yml，**所有**客户端的更新检查都会挂（`ERR_UPDATER_INVALID_UPDATE_INFO`）。
 
 ### 验证要点（四路硬证，上传后逐一跑）
