@@ -127,7 +127,7 @@ function buildChildAIManager({ withLocalQueue }: { withLocalQueue: boolean }) {
   child.register("ConfigurationService", {
     resolveGatewayConfig: vi.fn().mockReturnValue(mockGatewayConfig),
     resolveModelConfig: vi.fn().mockReturnValue(mockModelConfig),
-    resolveMaxInputTokens: vi.fn().mockReturnValue(96000),
+    resolveContextWindow: vi.fn().mockReturnValue(96000),
     resolveAutoMemoryEnabled: vi.fn().mockReturnValue(true),
     resolveLanguage: vi.fn().mockReturnValue(undefined),
   });

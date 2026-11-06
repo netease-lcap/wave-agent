@@ -101,7 +101,7 @@ export interface ChatContextType {
   recallQueuedMessage: () => QueuedMessage | null;
   removeQueuedMessageById: (id: string) => boolean;
   latestTotalTokens: number;
-  maxInputTokens: number;
+  contextWindow: number;
   maxOutputTokens: number;
   // Model functionality
   currentModel: string;
@@ -202,6 +202,23 @@ export interface ChatContextType {
 }
 
 const ChatContext = createContext<ChatContextType | null>(null);
+
+/**
+ * Handoff for the agent teardown that React unmount can only *start*.
+ *
+ * A React effect cleanup is synchronous: it cannot await `Agent.destroy()`,
+ * whose teardown (bash process trees, MCP children, LSP, async work drain) is
+ * async. `cli.tsx` used to call `process.exit(0)` the moment `waitUntilExit()`
+ * resolved, which cut that teardown short — the detached bash process group
+ * never received its SIGTERM and survived as an orphan. The promise is parked
+ * here so the exit path can await it before exiting.
+ */
+let pendingAgentDestroy: Promise<void> | null = null;
+
+/** The in-flight teardown started by the unmount cleanup, if any. */
+export function getPendingAgentDestroy(): Promise<void> | null {
+  return pendingAgentDestroy;
+}
 
 export const useChat = () => {
   const context = useContext(ChatContext);
@@ -426,7 +443,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [latestTotalTokens, setLatestTotalTokens] = useState(0);
-  const [maxInputTokens, setMaxInputTokens] = useState(200000);
+  const [contextWindow, setContextWindow] = useState(200000);
   const [maxOutputTokens, setMaxOutputTokens] = useState(32000);
 
   // All message-state updates apply IMMEDIATELY via setMessages — no data-layer
@@ -923,7 +940,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         setWorkingDirectory(agent.currentWorkdir);
         setCurrentModelState(agent.getModelConfig().model || "");
         setConfiguredModels(agent.getConfiguredModels().map((m) => m.name));
-        setMaxInputTokens(agent.getMaxInputTokens());
+        setContextWindow(agent.getContextWindow());
         setMaxOutputTokens(agent.getMaxOutputTokens?.() ?? 32_000);
 
         // Get initial MCP servers state
@@ -1033,16 +1050,23 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   useEffect(() => {
     return () => {
       if (agentRef.current) {
+        const agent = agentRef.current;
         try {
           // Display usage summary before cleanup
-          const usages = agentRef.current.usages;
-          const sessionFilePath = agentRef.current.sessionFilePath;
+          const usages = agent.usages;
+          const sessionFilePath = agent.sessionFilePath;
           displayUsageSummary(usages, sessionFilePath);
         } catch {
           // Silently ignore usage summary errors during cleanup
         }
 
-        agentRef.current.destroy();
+        // Park the promise instead of dropping it: the exit path in `cli.tsx`
+        // awaits it before `process.exit()` so the teardown actually runs
+        // (see `pendingAgentDestroy`). Failures are swallowed so a broken
+        // teardown cannot turn a clean exit into an unhandled rejection.
+        pendingAgentDestroy = agent.destroy().catch((error: unknown) => {
+          logger.warn("Agent teardown failed during exit:", error);
+        });
       }
     };
   }, []);
@@ -1459,7 +1483,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     isLoading,
     permissionMode,
     latestTotalTokens,
-    maxInputTokens,
+    contextWindow,
     maxOutputTokens,
     // 手机侧会话列表的标题材料：`customTitle` 不走 React state（agent 自己存着，
     // 重命名后即刻生效），所以按「取当前值」的函数递给门面。
@@ -1485,8 +1509,10 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     renameSession: (title) => agentRef.current?.renameSession(title),
     compact: (instructions) => compact(instructions),
     slashCommands: () => agentRef.current?.getSlashCommands() ?? [],
-    // 手机页取首屏尾段 / 补差都读 agent 手上那份列表（压缩后的上下文）；它这一侧
-    // 不提供上翻，所以不会带来 `before` 锚点。
+    // 手机页取数都读 agent 手上那份列表（压缩后的上下文）：首屏尾段（`limit`）、
+    // 重连补差（`since`）、滚到顶往回翻（`before` + `limit`）三种窗口原样交给
+    // SDK，切片与 `hasMore` / `anchorLost` 都由它判。分页是 2026-11-06 起远控页
+    // 也有的能力，所以这里不能只认前两种。
     messagePage: (window) =>
       agentRef.current?.getMessagePage(window) ??
       Promise.resolve({ messages: [] }),
@@ -1607,7 +1633,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     recallQueuedMessage,
     removeQueuedMessageById,
     latestTotalTokens,
-    maxInputTokens,
+    contextWindow,
     maxOutputTokens,
     currentModel,
     configuredModels,

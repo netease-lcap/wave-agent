@@ -74,6 +74,9 @@ const DEFAULT_REMOTE_ZIP = path.join(
 const TYPES = ["desktop", "docs", "remote", "plugin-market"];
 const PLATFORMS = ["mac-dmg", "mac-zip", "win-exe"];
 const CHANNELS = ["stable", "beta"];
+/** 单个版本的变更记录上限：feed 里最近 20 个版本的记录共用一份预算，单版本超了会把
+ *  整份数组挤爆（服务端按 16KB 截断，见 vusion/codechat#50）。 */
+const RELEASE_NOTES_MAX_BYTES = 16 * 1024;
 const REQUIRED_EXT = {
   "mac-dmg": [".dmg"],
   "mac-zip": [".zip"],
@@ -148,6 +151,7 @@ class UploadError extends Error {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const mb = (bytes) => `${(bytes / 1024 / 1024).toFixed(2)}MB`;
+const kb = (bytes) => `${(bytes / 1024).toFixed(1)}KB`;
 const home = (p) => p.replace(os.homedir(), "~");
 
 /** 可重试：无响应（网络中断/超时）、5xx、429。业务 4xx 不重试（重试只会重复失败） */
@@ -285,6 +289,11 @@ const USAGE = `用法：node upload.mjs --type <desktop|docs|remote|plugin-marke
   --channels <通道>      ${CHANNELS.join(" | ")}，可用逗号多选（如 stable,beta）：一次落两条记录、
                          安装包只传一次。默认 stable
   --channel <通道>       --channels 的单值写法（可重复），保留兼容
+  --release-notes-file <路径>
+                         本版本的变更记录（markdown，由
+                         \`node packages/desktop/scripts/release-notes.mjs\` 生成）。
+                         一次上传只提交一份，与通道无关（stable/beta 共用）；不带则
+                         该版本没有记录，客户端 S4 不展示记录块
 
 文档包（--type docs）：
   不传 --version / --platform / --channel（文件名须 .tar.gz 或 .zip）
@@ -354,6 +363,9 @@ function parseArgs(argv) {
       case "--channels":
         opts.channels.push(...next().split(","));
         break;
+      case "--release-notes-file":
+        opts.releaseNotesFile = next();
+        break;
       case "--type":
         opts.type = next();
         break;
@@ -401,6 +413,27 @@ function die(message) {
   process.exit(1);
 }
 
+/** 变更记录的本地预检。内容随 init 一并提交，服务端按**版本维度**存一份并写进 feed 的
+ *  `releaseNotes` 数组（vusion/codechat#50）；与分发通道无关，同一次
+ *  `--channels stable,beta` 只传这一份。 */
+function readReleaseNotes(file) {
+  if (!fs.existsSync(file)) die(`变更记录文件不存在：${file}`);
+  if (!fs.statSync(file).isFile()) die(`变更记录不是普通文件：${file}`);
+  const text = fs.readFileSync(file, "utf8").trim();
+  if (!text) {
+    die(
+      `变更记录为空：${file}\n没有条目就别传这个参数（不要用空文件冒充「有记录」）`,
+    );
+  }
+  const bytes = Buffer.byteLength(text, "utf8");
+  if (bytes > RELEASE_NOTES_MAX_BYTES) {
+    die(
+      `变更记录 ${kb(bytes)} 超过单版本上限 ${kb(RELEASE_NOTES_MAX_BYTES)}：feed 里所有版本的记录共用一份预算，请收紧生成脚本的过滤口径`,
+    );
+  }
+  return text;
+}
+
 function validate(opts) {
   if (!TYPES.includes(opts.type)) die(`--type 只能是 ${TYPES.join(" / ")}`);
   if (opts.env !== undefined) {
@@ -416,6 +449,9 @@ function validate(opts) {
   if (opts.list || opts.deleteId) {
     if (opts.list && opts.deleteId) die("--list 与 --delete 只能二选一");
     if (opts.file) die("--list / --delete 不接受 --file");
+    if (opts.releaseNotesFile) {
+      die("--list / --delete 不接受 --release-notes-file");
+    }
     if (opts.deleteId && opts.env === "prod" && !opts.confirmProd) {
       die("删生产台账行 = 回退线上版本，必须显式加 --confirm-prod");
     }
@@ -452,8 +488,13 @@ function validate(opts) {
       );
     opts.channels = CHANNELS.filter((c) => picked.includes(c));
     if (opts.channels.length === 0) opts.channels = ["stable"];
-  } else if (opts.platform || opts.version) {
-    die(`--type ${opts.type} 不接受 --platform / --version`);
+    if (opts.releaseNotesFile) {
+      opts.releaseNotes = readReleaseNotes(opts.releaseNotesFile);
+    }
+  } else if (opts.platform || opts.version || opts.releaseNotesFile) {
+    die(
+      `--type ${opts.type} 不接受 --platform / --version / --release-notes-file`,
+    );
   } else if (opts.channels.length) {
     die(`--type ${opts.type} 不接受 --channel / --channels`);
   }
@@ -611,7 +652,14 @@ async function main() {
       `上传类型   ${opts.type}${opts.type === "desktop" ? ` / ${opts.platform} / ${opts.channels.join(",")}` : ""}`,
     );
     console.log(`文件       ${opts.file}（${mb(opts.fileSize)}）`);
-    if (opts.type === "desktop") console.log(`版本号     ${opts.version}`);
+    if (opts.type === "desktop") {
+      console.log(`版本号     ${opts.version}`);
+      console.log(
+        opts.releaseNotes
+          ? `变更记录   ${opts.releaseNotes.split("\n").length} 条（${mb(Buffer.byteLength(opts.releaseNotes, "utf8"))}，随 init 提交）`
+          : "变更记录   未提供（该版本不展示记录块）",
+      );
+    }
   }
   console.log(
     `发布令牌   已加载（来源 ${source}，长度 ${token.length}，值不显示）`,
@@ -1205,6 +1253,9 @@ function initBody(opts) {
     fileName: opts.fileName,
     fileSize: opts.fileSize,
     channels: opts.channels,
+    // 只有 ops 显式给了记录才带这个字段 —— 服务端支持该字段（vusion/codechat#50）
+    // 之前不带，老服务端收到未知字段的行为无需赌。
+    ...(opts.releaseNotes ? { releaseNotes: opts.releaseNotes } : {}),
   };
 }
 

@@ -58,7 +58,7 @@ describe("Agent - No Parameters Tool Handling", () => {
     container.register("ConfigurationService", {
       resolveGatewayConfig: () => agent.getGatewayConfig(),
       resolveModelConfig: () => agent.getModelConfig(),
-      resolveMaxInputTokens: () => agent.getMaxInputTokens(),
+      resolveContextWindow: () => agent.getContextWindow(),
       resolveMaxOutputTokens: () => 4096,
       resolveAutoMemoryEnabled: () => true,
       resolveLanguage: () => agent.getLanguage(),

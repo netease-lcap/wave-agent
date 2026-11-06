@@ -402,6 +402,40 @@ describe("OpenAIClient", () => {
       expect(mockFetch).toHaveBeenCalledTimes(1);
     });
 
+    it("carries the non-2xx response headers on the thrown error (quota readings)", async () => {
+      // 402 阻断 / 429 的额度读数就在错误响应的头上：错误对象不带 headers 的话，
+      // 宿主在「被拦下」这一刻反而看不到余量（spec: desktop-account「额度响应头」）。
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: false,
+        status: 402,
+        statusText: "Payment Required",
+        headers: new Headers({
+          "x-codechat-quota-status": "rejected",
+          "x-codechat-quota-code": "USER_QUOTA_ZERO",
+        }),
+        text: async () => JSON.stringify({ error: { message: "quota" } }),
+      });
+
+      const client = new OpenAIClient({
+        baseURL: "https://api.openai.com/v1",
+        apiKey: "test-key",
+        fetch: mockFetch,
+      });
+
+      const error = (await client.chat.completions
+        .create({
+          model: "gpt-4",
+          messages: [{ role: "user", content: "hi" }],
+        })
+        .catch((e: unknown) => e)) as Error & { headers?: Headers };
+
+      expect(error.headers?.get("x-codechat-quota-status")).toBe("rejected");
+      expect(error.headers?.get("x-codechat-quota-code")).toBe(
+        "USER_QUOTA_ZERO",
+      );
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    });
+
     it("should retry on 500 status code and eventually succeed", async () => {
       const mockFetch = vi
         .fn()

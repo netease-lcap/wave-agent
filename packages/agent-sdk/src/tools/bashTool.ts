@@ -12,7 +12,6 @@ import {
 } from "../utils/tempDir.js";
 import { resolveShellPath } from "../utils/shellResolver.js";
 import { toPosixPath, toWindowsPath } from "../utils/path.js";
-import { stripAnsiColors } from "../utils/stringUtils.js";
 import { WindowsStreamDecoder } from "../utils/encoding.js";
 import { killProcessTree } from "../utils/killProcessTree.js";
 import { processToolResult } from "../utils/toolResultStorage.js";
@@ -637,21 +636,23 @@ The working directory persists between commands. Try to maintain your current wo
       // that buffers until EOF (`tail -n`, `| head`, redirection), so live
       // output would rarely show anything — see the "输出在命令结束时一次性下发"
       // story in docs/specs/core/bash-tools.md.
+      // ANSI 转义序列原样保留：颜色是命令作者刻意给出的可读性信息，由 UI 渲染
+      // 成颜色（见 specs/ui/message-rendering-system.md「Bash 工具输出的终端
+      // 颜色」），所以收流处不剥离——写入转录、发给模型、交给宿主的都是同一份
+      // 带色原文（与 Claude Code 对齐）。纯文本出口才剥。
       child.stdout?.on("data", (data) => {
         if (!isAborted && !isBackgrounded && !runInBackground) {
-          const chunk = stripAnsiColors(
-            stdoutDecoder ? stdoutDecoder.push(data) : data.toString(),
-          );
-          outputBuffer += chunk;
+          outputBuffer += stdoutDecoder
+            ? stdoutDecoder.push(data)
+            : data.toString();
         }
       });
 
       child.stderr?.on("data", (data) => {
         if (!isAborted && !isBackgrounded && !runInBackground) {
-          const chunk = stripAnsiColors(
-            stderrDecoder ? stderrDecoder.push(data) : data.toString(),
-          );
-          errorBuffer += chunk;
+          errorBuffer += stderrDecoder
+            ? stderrDecoder.push(data)
+            : data.toString();
         }
       });
 

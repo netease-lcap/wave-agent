@@ -48,7 +48,7 @@ order: 90
 
 当使用启用缓存的模型（Claude 或其他如 Gemini/DeepSeek 等返回缓存 token 的模型）时，开发者需要准确的 token 追踪，以了解请求的实际上下文占用和 token 使用。
 
-**为什么是这个优先级**：wave 走 OpenAI 兼容接口（OpenAI SDK + 网关），该格式下 `total_tokens` 已包含缓存命中 token（`prompt_tokens = 缓存命中 + 未命中`）。若再将 `cache_read_input_tokens` / `cache_creation_input_tokens` 叠加进 `latestTotalTokens`，会造成缓存命中双重计数——缓存命中通常占上下文绝大部分，导致 UI 显示接近或超过 `maxInputTokens`（"100% context"）而实际上下文远未到阈值，与压缩判断（仅用 `total_tokens`）口径不一致。缓存字段仍从 usage 中提取并保留（供成本分析等用途），但 `latestTotalTokens` 展示不含它们。
+**为什么是这个优先级**：wave 走 OpenAI 兼容接口（OpenAI SDK + 网关），该格式下 `total_tokens` 已包含缓存命中 token（`prompt_tokens = 缓存命中 + 未命中`）。若再将 `cache_read_input_tokens` / `cache_creation_input_tokens` 叠加进 `latestTotalTokens`，会造成缓存命中双重计数——缓存命中通常占上下文绝大部分，导致 UI 显示接近或超过 `contextWindow`（"100% context"）而实际上下文远未到阈值，与压缩判断（仅用 `total_tokens`）口径不一致。缓存字段仍从 usage 中提取并保留（供成本分析等用途），但 `latestTotalTokens` 展示不含它们。
 
 **独立测试**：可以通过使用任何启用缓存的模型进行缓存请求并验证显示的 token 计数为 `total_tokens`（不叠加 `cache_read_input_tokens` / `cache_creation_input_tokens`）来完整测试。
 

@@ -29,6 +29,9 @@ const SHIM = readFileSync(
 
 type Frame = Record<string, unknown>;
 
+/** 远控页一页的条数（`remote/shim.js` 的 `CONFIG.firstPageLimit` 默认值）。 */
+const PAGE_LIMIT = 60;
+
 const SESSIONS = [
   {
     sessionId: "s-old",
@@ -259,11 +262,15 @@ async function answerRereads(socket: FakeSocket, requests: Frame[] = []) {
  * asks for these — the adapter only pushes the *changes* — so a harness that
  * stayed silent would leave those reads to time out and put a warning on the
  * suite's stderr.
+ *
+ * `firstPage` is what the machine answers the snapshot's `getMessages` with —
+ * 上翻的开关就挂在它的 `hasMore` 上，所以需要「还有更早」的用例从这里给。
  */
 async function openPage(
   search = "?host=h-1",
   permissionMode = "default",
   family: Frame = {},
+  firstPage: Frame = { messages: [SEED] },
 ) {
   const page = startPage(search);
   await flush();
@@ -279,7 +286,7 @@ async function openPage(
     ...info,
   });
   const pull = await page.answer("getMessages", {
-    messages: [SEED],
+    ...firstPage,
     ...(typeof contextUsagePercent === "number" ? { contextUsagePercent } : {}),
   });
   await page.answer("listPendingPermissions", { requests: [] });
@@ -639,10 +646,11 @@ describe("remote page shim", () => {
     const pull = await page.answer("getMessages", { messages: [SEED] });
     expect(pull.sessionId).toBe("s-new");
     // The first page is sized by the frame BUDGET, not by "300 looks like
-    // enough": at the measured 5.7 KB/message 100 messages ≈ 0.57 MB already
-    // sits at the 512 KiB budget, and the relay drops an over-buffer frame
+    // enough": at the measured 5.7 KB/message a page of 60 ≈ 0.34 MB stays
+    // inside the 512 KiB budget, so it arrives whole — a page over that budget
+    // gets trimmed by the machine, and the relay drops an over-buffer frame
     // without an error.
-    expect(pull.params).toEqual({ limit: 100 });
+    expect(pull.params).toEqual({ limit: PAGE_LIMIT });
 
     await page.answer("listPendingPermissions", { requests: [] });
 
@@ -831,7 +839,7 @@ describe("remote page shim", () => {
     expect(pull.sessionId).toBe("s-old");
     // A switch re-reads from scratch: the window the page held belongs to the
     // session it just left.
-    expect(pull.params).toEqual({ limit: 100 });
+    expect(pull.params).toEqual({ limit: PAGE_LIMIT });
 
     await page.answer("listPendingPermissions", { requests: [] });
     expect(lastPosted(page)).toMatchObject({
@@ -2334,7 +2342,7 @@ describe("remote page shim", () => {
     const pulls = page.socket.framesFor("getMessages");
     const pull = pulls[pulls.length - 1];
     expect(pull.sessionId).toBe("s-created");
-    expect(pull.params).toEqual({ limit: 100 });
+    expect(pull.params).toEqual({ limit: PAGE_LIMIT });
     await page.answer("getMessages", { messages: [] });
     await page.answer("listPendingPermissions", { requests: [] });
     await flush();
@@ -2807,6 +2815,243 @@ describe("remote page session list actions", () => {
       command: "sessionWorktreeChanges",
       requestId: "wt-2",
       changes: null,
+    });
+  });
+});
+
+describe("remote page shim — 上翻取更早", () => {
+  /**
+   * spec `remote/remote-web.md`「手机上往上翻更早的消息」+ `ui/message-rendering-system.md`
+   * 「首屏一页，上翻按需取更早」：协议本身与其余三端一模一样（`loadEarlierMessages` →
+   * 宿主读一页 → `earlierMessages`），这一侧多出来的一步是**影子列表要接住取回的页**
+   * ——整表重发（`resync`）发的是这份影子列表，不接住就等于一次结构变化把用户翻出来
+   * 的历史冲掉。
+   */
+  const EARLIER = { id: "m0", role: "assistant", blocks: [] };
+  const NEXT = { id: "m2", role: "assistant", blocks: [] };
+
+  function lastOf(page: { posted: Frame[] }, command: string) {
+    const found = page.posted.filter((message) => message.command === command);
+    return found[found.length - 1];
+  }
+
+  /** 首屏那一页说「还有更早」的页面。 */
+  function openWithEarlier() {
+    return openPage(
+      "?host=h-1",
+      "default",
+      {},
+      {
+        messages: [SEED],
+        hasMore: true,
+      },
+    );
+  }
+
+  test("首屏那次读的 hasMore 随快照下发，缺省就是翻不动", async () => {
+    const { page } = await openWithEarlier();
+    expect(lastOf(page, "setInitialState")).toMatchObject({ hasEarlier: true });
+
+    // 老机器（或极端回包）不带 hasMore：开关保持关闭。降级方向是「翻不动」，
+    // 绝不出现空白页，也绝不猜着要一页（场景 10）。
+    const { page: old } = await openPage();
+    expect(lastOf(old, "setInitialState")).toMatchObject({ hasEarlier: false });
+  });
+
+  test("滚到顶要一页：锚点是已加载的第一条，回来的一页接进影子列表", async () => {
+    const { page } = await openWithEarlier();
+    const sent = page.requests("getMessages");
+
+    page.api.postMessage({
+      command: "loadEarlierMessages",
+      before: "m1",
+      requestId: "earlier-1",
+    });
+    await flush();
+
+    // 与其余三端同一条窗口参数：`before` 是当前已加载的第一条，一页 100 条。
+    const ask =
+      page.socket.framesFor("getMessages")[page.requests("getMessages") - 1];
+    expect(page.requests("getMessages")).toBe(sent + 1);
+    expect(ask.params).toEqual({ before: "m1", limit: PAGE_LIMIT });
+
+    await page.answer("getMessages", {
+      messages: [EARLIER],
+      hasMore: true,
+    });
+    expect(lastOf(page, "earlierMessages")).toMatchObject({
+      requestId: "earlier-1",
+      messages: [{ id: "m0" }],
+      hasMore: true,
+    });
+
+    // 结构变化只发无内容的信号，页面用 `since` 补差后**整表**下发——那份表必须
+    // 已经包含翻出来的 m0，否则用户翻过的历史会被冲掉（场景 8）。
+    page.socket.receive({
+      method: "messagesChange",
+      params: {},
+      sessionId: "s-new",
+    });
+    await flush();
+    const delta = await page.answer("getMessages", { messages: [NEXT] });
+    expect(delta.params).toMatchObject({ since: "m1" });
+    expect(lastOf(page, "updateMessages")).toMatchObject({
+      messages: [{ id: "m0" }, { id: "m1" }, { id: "m2" }],
+      hasEarlier: true,
+    });
+  });
+
+  test("回包说没有更早：开关关上，后续整表重发也不再打开", async () => {
+    const { page } = await openWithEarlier();
+
+    page.api.postMessage({
+      command: "loadEarlierMessages",
+      before: "m1",
+      requestId: "earlier-1",
+    });
+    await flush();
+    await page.answer("getMessages", { messages: [EARLIER], hasMore: false });
+
+    expect(lastOf(page, "earlierMessages")).toMatchObject({
+      requestId: "earlier-1",
+      messages: [{ id: "m0" }],
+      hasMore: false,
+    });
+
+    page.socket.receive({
+      method: "messagesChange",
+      params: {},
+      sessionId: "s-new",
+    });
+    await flush();
+    await page.answer("getMessages", { messages: [] });
+    expect(lastOf(page, "updateMessages")).toMatchObject({
+      messages: [{ id: "m0" }, { id: "m1" }],
+      hasEarlier: false,
+    });
+  });
+
+  test("要不到一页就回空页并收手，不新增页内提示", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { page } = await openWithEarlier();
+    const banner = document.getElementById("remote-status")?.textContent ?? "";
+
+    page.api.postMessage({
+      command: "loadEarlierMessages",
+      before: "m1",
+      requestId: "earlier-2",
+    });
+    await flush();
+    // 机器侧对「连一条都装不进单帧预算」的答案是 `-32603`，链路断开也是这一类。
+    await page.refuse(
+      "getMessages",
+      "getMessages: the answer is larger than the remote channel's frame budget",
+    );
+
+    expect(lastOf(page, "earlierMessages")).toMatchObject({
+      requestId: "earlier-2",
+      messages: [],
+      hasMore: false,
+    });
+    // 与其余三端「失败回空页、停止再要」同形：不弹条、不动已渲染内容。
+    expect(document.getElementById("remote-status")?.textContent ?? "").toBe(
+      banner,
+    );
+    // 影子列表原样，下一次整表重发仍是首屏那一页。
+    page.socket.receive({
+      method: "messagesChange",
+      params: {},
+      sessionId: "s-new",
+    });
+    await flush();
+    await page.answer("getMessages", { messages: [] });
+    expect(lastOf(page, "updateMessages")).toMatchObject({
+      messages: [{ id: "m1" }],
+      hasEarlier: true,
+    });
+    // 失败只留在日志里（不进页面），但仍要看得到它失败过。
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining("上翻取更早失败"),
+    );
+    warn.mockRestore();
+  });
+
+  test("锚点没了就说 anchorLost，不要当成「到底」", async () => {
+    const { page } = await openWithEarlier();
+
+    page.api.postMessage({
+      command: "loadEarlierMessages",
+      before: "gone",
+      requestId: "earlier-3",
+    });
+    await flush();
+    await page.answer("getMessages", {
+      messages: [],
+      hasMore: false,
+      anchorLost: true,
+    });
+
+    expect(lastOf(page, "earlierMessages")).toMatchObject({
+      requestId: "earlier-3",
+      messages: [],
+      hasMore: false,
+      anchorLost: true,
+    });
+    // 开关与影子列表都不动：判错「到底」这段历史就再也翻不出来（场景 7）。
+    page.socket.receive({
+      method: "messagesChange",
+      params: {},
+      sessionId: "s-new",
+    });
+    await flush();
+    await page.answer("getMessages", { messages: [] });
+    expect(lastOf(page, "updateMessages")).toMatchObject({
+      messages: [{ id: "m1" }],
+      hasEarlier: true,
+    });
+  });
+
+  test("切会话丢掉回看深度，在飞的那一页也不能接进新会话", async () => {
+    const { page } = await openWithEarlier();
+
+    page.api.postMessage({
+      command: "loadEarlierMessages",
+      before: "m1",
+      requestId: "earlier-4",
+    });
+    await flush();
+
+    // 用户在那一页回来之前切走了。
+    page.api.postMessage({ command: "restoreSession", sessionId: "s-old" });
+    await flush();
+    await page.answer("listDaemonSessions", { sessions: SESSIONS });
+    await page.answer("getSessionInfo", {
+      sessionId: "s-old",
+      permissionMode: "default",
+    });
+    // 新会话的首屏：一页、没有更早（场景 9：深度不跨会话累积）。那条上翻请求还挂在
+    // 最前面没答，所以这里按「最新一条」答，而不是按 `answer` 的「最早一条」。
+    const pulls = page.socket.framesFor("getMessages");
+    const pull = pulls[pulls.length - 1];
+    answerOn(page.socket, "getMessages", {
+      messages: [{ id: "old-1", role: "user", blocks: [] }],
+    });
+    await flush();
+    await page.answer("listPendingPermissions", { requests: [] });
+    await page.answer("getWorkflowRuns", { runs: [] });
+    expect(pull?.params).toEqual({ limit: PAGE_LIMIT });
+    expect(lastOf(page, "setInitialState")).toMatchObject({
+      messages: [{ id: "old-1" }],
+      hasEarlier: false,
+    });
+
+    // 迟到的那一页（最前面那条没答的请求）：回一个空页让页面的「正在加载」收起来，
+    // 绝不上屏。
+    await page.answer("getMessages", { messages: [EARLIER], hasMore: true });
+    expect(lastOf(page, "earlierMessages")).toMatchObject({
+      requestId: "earlier-4",
+      messages: [],
+      hasMore: false,
     });
   });
 });

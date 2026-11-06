@@ -94,6 +94,14 @@ class WaveSession(
     /** Public entry so other components (PermissionFlow, MessageHandler) can push to the webview. */
     fun postMessage(command: String, payload: JsonObject) = postMessageFn(command, payload)
 
+    /**
+     * 首启进度文案 → 面板加载态下方那一行（spec ui/stdio-transport.md「首次启动的
+     * 进度文案」）。旁路：面板已经关掉、推不出去都不影响启动，也不参与任何完成条件。
+     */
+    private fun postStartupStage(text: String) {
+        runCatching { postMessage("loadingStage", buildJsonObject { put("text", text) }) }
+    }
+
     // ── Throttle: streaming content (16ms leading+trailing) ───────
     private val streamMutex = Mutex()
     private var streamTimer: Job? = null
@@ -109,7 +117,10 @@ class WaveSession(
         isInitializing = true
         return try {
             val backend = WaveBackendService.getInstance(project)
-            val (client, router) = backend.ensureClient()
+            // 首启进度文案（spec ui/stdio-transport.md「首次启动的进度文案」）：
+            // 下载 / 安装运行时、同步 CLI 都由 backend 在 spawn 前阻塞发生，CLI 自装
+            // 工具依赖在 spawn 后几百毫秒上报，两段都从这里落到面板加载态下方那一行。
+            val (client, router) = backend.ensureClient { text -> postStartupStage(text) }
             val a = StdioAgent(client, router, this)
             agent = a
             backend.registerSession(this)

@@ -63,7 +63,7 @@ export interface InputBoxProps {
   >;
   // Token usage
   latestTotalTokens?: number;
-  maxInputTokens?: number;
+  contextWindow?: number;
   maxOutputTokens?: number;
   // Login hint
   showLoginHint?: boolean;
@@ -82,7 +82,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
   hasSlashCommand = () => false,
   hooks = {},
   latestTotalTokens = 0,
-  maxInputTokens = 200000,
+  contextWindow = 200000,
   maxOutputTokens = 32000,
   showLoginHint = false,
 }) => {
@@ -511,7 +511,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
                   />
                   <Notifications
                     latestTotalTokens={latestTotalTokens}
-                    maxInputTokens={maxInputTokens}
+                    contextWindow={contextWindow}
                     maxOutputTokens={maxOutputTokens}
                     showLoginHint={showLoginHint}
                     pluginHint={pluginHint}

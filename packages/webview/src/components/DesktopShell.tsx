@@ -49,6 +49,8 @@ interface DesktopShellProps {
    * 更新按钮状态机 S0–S6」）. */
   onDownloadUpdate?: () => void;
   onRestartApp?: () => void;
+  /** 打开用量浮层时向宿主核对一次用量（spec desktop-account.md「用量刷新时机」）。 */
+  onRefreshAccountUsage?: () => void;
   /** Batch 2 settings full-page: rendered over the pane rows when open. */
   settingsOpen?: boolean;
   onCloseSettings?: () => void;
@@ -121,6 +123,7 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({
   account,
   onDownloadUpdate,
   onRestartApp,
+  onRefreshAccountUsage,
   settingsOpen = false,
   settingsPage,
   sessionBoardOpen = false,
@@ -752,6 +755,7 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({
         account={account}
         onDownloadUpdate={onDownloadUpdate}
         onRestartApp={onRestartApp}
+        onRefreshAccountUsage={onRefreshAccountUsage}
         hostLabel={focusedHost}
         sessionTree={host.sessionTree}
         currentSessionId={focusedSessionId}

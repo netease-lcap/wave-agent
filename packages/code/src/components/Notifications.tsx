@@ -4,7 +4,7 @@ import { percentOf } from "../remote/remoteNotifications.js";
 
 export interface NotificationsProps {
   latestTotalTokens?: number;
-  maxInputTokens?: number;
+  contextWindow?: number;
   maxOutputTokens?: number;
   showLoginHint?: boolean;
   /**
@@ -16,14 +16,14 @@ export interface NotificationsProps {
 
 export const Notifications: React.FC<NotificationsProps> = ({
   latestTotalTokens = 0,
-  maxInputTokens = 200000,
+  contextWindow = 200000,
   maxOutputTokens = 32000,
   showLoginHint = false,
   pluginHint = null,
 }) => {
   const percentage =
     latestTotalTokens > 0
-      ? percentOf(latestTotalTokens, maxInputTokens, maxOutputTokens)
+      ? percentOf(latestTotalTokens, contextWindow, maxOutputTokens)
       : 0;
 
   const contextColor =

@@ -176,4 +176,34 @@ describe("binaryResolver (bundled CLI only)", () => {
 
     await expect(ensureCliUpToDate("1.0.0")).resolves.toBe(entry());
   });
+
+  it("fires the copy callback only when the copy really happens", async () => {
+    // The callback drives the startup progress line (spec
+    // ui/stdio-transport.md「首次启动的进度文案」场景 3): a cache hit must stay
+    // silent, an install/upgrade may say「正在同步 Wave CLI…」.
+    seedBundledCli("1.0.0");
+    const onCopy = vi.fn();
+    await ensureCliUpToDate("1.0.0", onCopy);
+    expect(onCopy).toHaveBeenCalledTimes(1);
+
+    // Second resolve on the same (already copied) runtime dir is a cache hit.
+    _resetCacheForTesting();
+    const onCacheHit = vi.fn();
+    await ensureCliUpToDate("1.0.0", onCacheHit);
+    expect(onCacheHit).not.toHaveBeenCalled();
+  });
+
+  it("never fires the copy callback on the WAVE_CLI_PATH dev override", async () => {
+    process.env.WAVE_CLI_PATH = "/dev/wave-code.js";
+    memFs.set("/dev/wave-code.js", "dev shim");
+    const onCopy = vi.fn();
+
+    try {
+      await ensureCliUpToDate("1.0.0", onCopy);
+    } finally {
+      delete process.env.WAVE_CLI_PATH;
+    }
+
+    expect(onCopy).not.toHaveBeenCalled();
+  });
 });

@@ -157,8 +157,8 @@ export class Agent {
     );
   }
 
-  public getMaxInputTokens(): number {
-    return this.configurationService.resolveMaxInputTokens();
+  public getContextWindow(): number {
+    return this.configurationService.resolveContextWindow();
   }
 
   public getMaxOutputTokens(): number {
@@ -975,11 +975,11 @@ export class Agent {
   private resolveAndValidateConfig(): void {
     // Resolve configuration from constructor args and environment variables (including settings.json)
     const gatewayConfig = this.getGatewayConfig();
-    const maxInputTokens = this.getMaxInputTokens();
+    const contextWindow = this.getContextWindow();
 
     // Validate resolved configuration
     configValidator.validateGatewayConfig(gatewayConfig);
-    configValidator.validateMaxInputTokens(maxInputTokens);
+    configValidator.validateContextWindow(contextWindow);
   }
 
   /** Private initialization method, handles async initialization logic */

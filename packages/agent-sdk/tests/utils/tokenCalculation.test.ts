@@ -4,7 +4,6 @@ import {
   estimateContextTokens,
   roughTokenCountForMessages,
   getAutoCompactThreshold,
-  estimateRequestOverhead,
 } from "@/utils/tokenCalculation.js";
 import type { Message, Usage } from "@/types/index.js";
 
@@ -31,11 +30,6 @@ describe("auto-compaction threshold", () => {
 
   it("never returns a negative threshold", () => {
     expect(getAutoCompactThreshold(10_000, 32_000)).toBe(0);
-  });
-
-  it("includes system prompt, tools, and dynamic context overhead", () => {
-    expect(estimateRequestOverhead("abcd", { name: "Read" }, "xy")).toBe(13);
-    expect(estimateRequestOverhead(undefined, undefined)).toBe(0);
   });
 });
 

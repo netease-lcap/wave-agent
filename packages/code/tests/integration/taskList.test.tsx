@@ -67,7 +67,7 @@ describe("TaskList Integration", () => {
       getSlashCommands: vi.fn().mockReturnValue([]),
       getHooksByScope: vi.fn().mockReturnValue(Promise.resolve({})),
       getGatewayConfig: vi.fn().mockReturnValue({ baseURL: "" }),
-      getMaxInputTokens: vi.fn(() => 128000),
+      getContextWindow: vi.fn(() => 128000),
       getModelConfig: vi.fn().mockReturnValue({
         model: "test-model",
         fastModel: "test-fast-model",

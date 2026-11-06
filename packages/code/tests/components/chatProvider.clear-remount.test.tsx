@@ -50,7 +50,7 @@ function createMockAgent() {
     getPermissionMode: () => "default",
     getModelConfig: () => ({ model: "test-model", fastModel: "" }),
     getConfiguredModels: () => [],
-    getMaxInputTokens: () => 200000,
+    getContextWindow: () => 200000,
     getMcpServers: () => [],
     getSlashCommands: () => [],
     getHooksByScope: async () => ({}),

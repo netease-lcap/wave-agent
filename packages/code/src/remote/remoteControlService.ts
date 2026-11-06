@@ -696,7 +696,7 @@ export class RemoteControlService implements RemoteControlController {
       // Not even one message fits: there is nothing to send that the phone
       // could render, and an empty list would only make it re-ask forever.
       if (kept > 0) {
-        this.send(pageFrame(replyId, page, kept));
+        this.send(pageFrame(replyId, page, kept, kept < page.messages.length));
         return;
       }
     }
@@ -859,13 +859,19 @@ function pageFrame(
   replyId: number | string,
   page: MessagePage,
   count: number,
+  droppedEarlier = false,
 ): RelayEnvelope {
+  // 裁掉的是**最早**那几条，所以只要真裁过，「更早的还在」就必然成立——哪怕
+  // 宿主那一页说的 `hasMore: false`（上翻取到这条会话最早那一页时正是如此）。
+  // 不在这里改这个字段，页面会照着 false 把上翻开关关掉，被裁掉的几条就再也
+  // 翻不回来了；页大小因此只能是「大概几条」，**条数永远不是终止判据**。
+  const rest = droppedEarlier ? { ...page.rest, hasMore: true } : page.rest;
   return {
     id: replyId,
     method: "result",
     params: {
       result: {
-        ...page.rest,
+        ...rest,
         messages: page.messages.slice(-count),
       },
     },

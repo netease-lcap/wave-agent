@@ -388,10 +388,17 @@ export class RemoteControlCliHost implements RemoteControlHost {
     messages: Message[];
     contextUsagePercent: number;
     reset?: boolean;
+    anchorLost?: boolean;
+    hasMore?: boolean;
   }> {
     const contextUsagePercent = this.session.contextUsagePercent();
     const window: MessageWindow = {};
     if (typeof p.since === "string") window.since = p.since;
+    // 上翻取更早的锚点（spec ui/message-rendering-system.md「首屏一页，上翻按需
+    // 取更早」，远控页自 2026-11-06 起也翻）。少这一行，`{before, limit}` 会被当成
+    // 「只要一页尾巴」——回的是同一段尾部、`hasMore` 仍是 true，页面每次滚到顶都
+    // 白要一次，永远翻不动。
+    if (typeof p.before === "string") window.before = p.before;
     if (p.limit !== undefined) window.limit = Number(p.limit);
 
     let normalized: MessageWindow | undefined;

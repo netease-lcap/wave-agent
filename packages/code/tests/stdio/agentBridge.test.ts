@@ -143,7 +143,7 @@ function createMockAgent(overrides: Record<string, unknown> = {}) {
     sessionId: "test-session-id",
     currentWorkdir: "/test/workdir",
     latestTotalTokens: 100,
-    getMaxInputTokens: vi.fn().mockReturnValue(200000),
+    getContextWindow: vi.fn().mockReturnValue(200000),
     getMaxOutputTokens: vi.fn().mockReturnValue(32_000),
     messages,
     destroy: vi.fn(),
@@ -201,8 +201,8 @@ function createBridge() {
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(getAutoCompactThreshold).mockImplementation(
-    (maxInputTokens, maxOutputTokens) =>
-      Math.max(0, maxInputTokens - Math.min(maxOutputTokens, 20_000) - 13_000),
+    (contextWindow, maxOutputTokens) =>
+      Math.max(0, contextWindow - Math.min(maxOutputTokens, 20_000) - 13_000),
   );
   // The constructor applies the user-level settings env to process.env —
   // default the mock to an empty env so unrelated tests are unaffected.
@@ -828,6 +828,27 @@ test("onMcpServersChange emits mcpServersChange notification", async () => {
   expect(notifications).toContainEqual({
     method: "mcpServersChange",
     params: { servers },
+    sessionId: "test-session-id",
+  });
+});
+
+test("onQuotaHeaders relays the raw header map as a quotaHeaders notification", async () => {
+  const { bridge, notifications } = createBridge();
+  vi.mocked(Agent.create).mockResolvedValue(createMockAgent());
+
+  await bridge.handleRequest("initialize", {});
+  const callbacks = vi.mocked(Agent.create).mock.calls[0][0]
+    .callbacks as AgentCallbacks;
+
+  const headers = {
+    "x-codechat-quota-status": "allowed_warning",
+    "x-codechat-quota-weekly-utilization": "82",
+  };
+  callbacks.onQuotaHeaders!(headers);
+
+  expect(notifications).toContainEqual({
+    method: "quotaHeaders",
+    params: { headers },
     sessionId: "test-session-id",
   });
 });

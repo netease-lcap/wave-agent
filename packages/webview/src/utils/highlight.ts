@@ -114,4 +114,24 @@ for (const name of REGISTERED_LANGUAGES) {
   hljs.registerLanguage(name, MODULES[name]);
 }
 
+/**
+ * 一段代码 → 高亮后的内层 HTML（token 的 `<span class="hljs-*">`）。
+ *
+ * 两个失败口都返回 `null`，由调用方回退成转义后的纯文本：语言没注册（围栏标记
+ * 写的是 `lua` / `tex` 这类本页没装的语言）与高亮抛错。高亮是锦上添花，读不到
+ * 内容才是事故——消息里的围栏代码块（Message.tsx）与文件面板共用这层判断，
+ * 只是前者还要在高亮结果上继续做链接化。
+ */
+export const highlightCode = (
+  code: string,
+  language: string | undefined,
+): string | null => {
+  if (!language || !hljs.getLanguage(language)) return null;
+  try {
+    return hljs.highlight(code, { language, ignoreIllegals: true }).value;
+  } catch {
+    return null;
+  }
+};
+
 export default hljs;

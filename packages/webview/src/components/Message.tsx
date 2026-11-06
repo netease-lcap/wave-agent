@@ -12,6 +12,7 @@ import {
   linkifyPlainText,
   stripTrailingUrlPunct,
 } from "../utils/linkifyPlainText";
+import { linkifyAnsiText } from "../utils/ansiText";
 import {
   decodeHtmlEntities,
   detectFilePathToken,
@@ -28,6 +29,8 @@ import {
   type FilePathLinkMode,
 } from "../utils/filePathLinks";
 import { attachBrokenImageFallback } from "../utils/brokenImageFallback";
+import { highlightCode } from "../utils/highlight";
+import { copyTextToClipboard } from "../utils/clipboard";
 import { marked } from "marked";
 
 // ... (existing imports)
@@ -74,6 +77,8 @@ import {
   type TextPreviewPayload,
 } from "../utils/textPreviewRequest";
 import "../styles/Message.css";
+// 语法高亮调色板与文件面板共用一份（见该文件的说明）。
+import "../styles/code-highlight.css";
 import "../styles/plugin-typography.css";
 
 // Configure marked for VS Code webview context
@@ -479,6 +484,71 @@ const splitErrorContent = (content: string): ErrorPart[] => {
   return parts;
 };
 
+/**
+ * 围栏代码块的正文：先按语言着色，再在着色结果上做 URL / 文件路径链接化。
+ *
+ * 顺序不能反——链接化产出的是 `<a>`，交给 hljs 再扫一遍会把这些标签当代码切碎；
+ * 也不能省掉链接化：代码块里的服务地址与产物路径是既有能力（specs/ui/
+ * markdown-links.md、specs/ui/file-path-links.md），着色不得把它们吞掉。语言
+ * 未注册或没写语言标记时整段退回纯文本（`highlightCode` 返回 null），链接化照常。
+ */
+const highlightCodeBody = (
+  source: string,
+  lang: string,
+  mode: FilePathLinkMode,
+): string => {
+  const highlighted = highlightCode(source, lang);
+  if (highlighted === null) return linkifyPlainText(source, mode);
+  // 按标签把高亮结果切开，只有标签之间那几段是代码文本。文本里的 `<` 已被 hljs
+  // 转义成 `&lt;`，所以这个切分不会被正文干扰；每段先解回原文再链接化，否则
+  // 链接化内部的转义会把 `&amp;` 变成 `&amp;amp;`（屏幕上直接露出实体）。
+  return highlighted
+    .split(/(<[^>]+>)/)
+    .map((part) =>
+      part.startsWith("<")
+        ? part
+        : linkifyPlainText(decodeHtmlEntities(part), mode),
+    )
+    .join("");
+};
+
+/** 代码块复制成功后图标与文案停留多久（spec: 代码块复制按钮场景 5）。 */
+export const CODE_COPY_FEEDBACK_MS = 1500;
+
+/**
+ * 代码块右上角复制按钮的点击落地（spec: ui/message-rendering-system.md「助手
+ * 消息代码块的复制按钮」场景 4-6）。
+ *
+ * 这块 DOM 是净化后的 HTML 字符串、不是 React 树，所以反馈直接改 DOM：图标在
+ * `codicon-copy` / `codicon-check` 之间换，可访问名与 title 换成「已复制」，
+ * 1.5s 后自己回来。块被虚拟列表卸载后不再回写（`isConnected` 兜底）。
+ *
+ * 复制的是 `pre` 的 textContent，去掉末尾那一个换行——围栏末尾的换行不属于
+ * 代码本身，粘进编辑器会多出一个空行。高亮与链接化都不改变可见文本，因此
+ * 这里拿到的就是代码原文（含缩进、内部空行与行尾空格）。
+ */
+async function copyCodeBlockText(button: Element): Promise<void> {
+  const text = (
+    button.closest(".md-code-block")?.querySelector("pre")?.textContent ?? ""
+  ).replace(/\n$/, "");
+  if (!text) return;
+  const ok = await copyTextToClipboard(text);
+  if (!ok) return;
+  const icon = button.querySelector(".codicon");
+  const paint = (copied: boolean) => {
+    button.classList.toggle("is-copied", copied);
+    const label = copied ? "已复制" : "复制代码";
+    button.setAttribute("aria-label", label);
+    button.setAttribute("title", label);
+    icon?.classList.toggle("codicon-copy", !copied);
+    icon?.classList.toggle("codicon-check", copied);
+  };
+  paint(true);
+  window.setTimeout(() => {
+    if (button.isConnected) paint(false);
+  }, CODE_COPY_FEEDBACK_MS);
+}
+
 // 导出供测试直接按档位渲染（`off` / `images` 这两档没有组件侧的入口）。
 export const createMessageMarkdownRenderer = (
   // 四条路径通道的档位（见 `FilePathLinkMode`）。默认 `"all"`：远控页也是全开
@@ -559,18 +629,35 @@ export const createMessageMarkdownRenderer = (
     // marked 9 默认实现逐字节一致（语言类名 + 去尾换行后补一个换行），只替换
     // <code> 正文；escaped=true 表示正文已是 HTML 原文（当前 marked 不会置位），
     // 保持默认实现。
-    const html = escaped
-      ? defaultCode.call(renderer, code, infostring, true)
-      : (() => {
-          const lang = (infostring || "").match(/^\S*/)?.[0];
-          const body = linkifyPlainText(
-            code.replace(/\n$/, "") + "\n",
-            pathLinkMode,
-          );
-          const cls = lang ? ` class="language-${escapeHtml(lang)}"` : "";
-          return `<pre><code${cls}>${body}</code></pre>\n`;
-        })();
-    return isDesktopHost() ? html.replace(/^<pre/, `<pre tabindex="0"`) : html;
+    // 语法高亮（specs/ui/message-rendering-system.md「助手消息代码块的语法高亮」）：
+    // 语言标记命中 webview 已注册的那份语言子集时先着色、再在高亮结果上做链接化
+    // （见 highlightCodeBody）；未注册/没写语言标记不猜语言，退回纯文本（与高亮
+    // 上线前完全一致）。着色只加 <span>，代码原文、换行与缩进逐字节不变，`hljs`
+    // 类名与语言类名同在——文件面板那套调色板认的就是这两个类名。
+    if (escaped) return defaultCode.call(renderer, code, infostring, true);
+    const lang = (infostring || "").match(/^\S*/)?.[0] ?? "";
+    const body = highlightCodeBody(
+      code.replace(/\n$/, "") + "\n",
+      lang,
+      pathLinkMode,
+    );
+    const pre = `<pre${
+      isDesktopHost() ? ' tabindex="0"' : ""
+    }><code class="hljs${
+      lang ? ` language-${escapeHtml(lang)}` : ""
+    }">${body}</code></pre>`;
+    // 代码块右上角的复制按钮（specs/ui/message-rendering-system.md「助手消息
+    // 代码块的复制按钮」）：注入的是原生 button，点击由容器上的事件委托接住
+    // （见 handleContentClick）——这块 DOM 是 dangerouslySetInnerHTML 生成的，
+    // 挂不了 React 事件。空块（去掉围栏后没有可见字符）不给入口。
+    // 复制的内容从 DOM 取（`pre` 的 textContent）：高亮只加行内 <span>、链接化
+    // 只把 URL / 路径包进 <a>，两者的可见文本都与原文逐字节一致，所以不必把原文
+    // 再写进属性（那会让 HTML 体积翻倍，还要为 data-* 放宽净化白名单）。
+    // 外层 div 是定位用的：按钮绝对定位在它右上角，不随 pre 的横向滚动移动。
+    const copyButton = code.trim()
+      ? '<button class="md-code-copy" type="button" title="复制代码" aria-label="复制代码"><span class="codicon codicon-copy" aria-hidden="true"></span></button>'
+      : "";
+    return `<div class="md-code-block">${copyButton}${pre}</div>\n`;
   };
   renderer.codespan = (text: string) => {
     const url = extractClickableUrl(text);
@@ -741,6 +828,15 @@ const parseMarkdownWithMermaid = (content: string): ParsedMarkdownContent => {
           "td",
           "del",
           "input",
+          // span 只承载语法高亮的 token（renderer.code 的高亮输出）：不在白名单
+          // 时 DOMPurify 会把它们剥掉，屏幕上退回单色代码而单测与走查看不出差异。
+          // 元素本身无脚本语义，属性仍受 ALLOWED_ATTR（class）约束。
+          "span",
+          // button 只承载代码块右上角的复制按钮（renderer.code 注入，点击由
+          // 容器上的事件委托接管）：不在白名单时 DOMPurify 会把按钮整个剥掉，
+          // 屏幕上没有入口而单测与走查看不出差异（同上面 span / div 的陷阱）。
+          // 属性仍受 ALLOWED_ATTR 约束，无脚本语义。
+          "button",
         ],
         ALLOWED_ATTR: [
           "href",
@@ -1078,6 +1174,15 @@ export const Message: React.FC<MessageProps> = React.memo(
     // natively via the openFile RPC — same channel as Read/Write tool headers.
     const handleContentClick = (e: React.MouseEvent) => {
       const target = e.target as Element | null;
+      // 代码块右上角的复制按钮（spec ui/message-rendering-system.md「助手消息
+      // 代码块的复制按钮」）：注入的按钮不是 React 节点，点击靠这里的事件委托
+      // 接住。先于链接判定——按钮不在链接里，但代码块里的 URL 链接是它的兄弟。
+      const copyButton = target?.closest?.("button.md-code-copy");
+      if (copyButton) {
+        e.preventDefault();
+        void copyCodeBlockText(copyButton);
+        return;
+      }
       const fileLink = target?.closest?.("a.file-path-link");
       if (fileLink) {
         e.preventDefault();
@@ -1194,7 +1299,10 @@ export const Message: React.FC<MessageProps> = React.memo(
               <div
                 className="bash-command-output"
                 tabIndex={isDesktopHost() ? 0 : undefined}
-                dangerouslySetInnerHTML={{ __html: linkifyPlainText(result) }}
+                // 命令输出不剥 ANSI（specs/core/bash-tools.md「ANSI 颜色
+                // 代码」）：颜色在这里渲染成 ansi-* 样式，其余终端控制序列
+                // 丢弃，链接化仍在可见文本上做。
+                dangerouslySetInnerHTML={{ __html: linkifyAnsiText(result) }}
               />
             </div>
           );

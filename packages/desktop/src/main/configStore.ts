@@ -31,7 +31,7 @@ export interface DesktopConfigData {
    * `getUserSettings` / `updateUserSettings` RPC），**不写入**本存储。
    */
   language?: string;
-  /** 用户偏好：上下文长度（K 值，16–1000），落 `env.WAVE_MAX_INPUT_TOKENS`。 */
+  /** 用户偏好：上下文长度（K 值，16–1000），落 `env.WAVE_CONTEXT_WINDOW`。 */
   contextLength?: number;
   /** 用户偏好：是否开启自动记忆提取。 */
   autoMemoryEnabled?: boolean;

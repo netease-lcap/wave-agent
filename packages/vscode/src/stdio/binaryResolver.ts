@@ -25,6 +25,7 @@ import { createHash } from "crypto";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
+import { recordStartupStage } from "./startupStage";
 
 let cachedPath: string | undefined;
 let extensionPath: string | undefined;
@@ -119,6 +120,9 @@ function prepareCli(): string {
       fileHash(runtimeBundle);
 
   if (needCopy) {
+    // 首次安装 / 升级（spec ui/stdio-transport.md「首次启动的进度文案」）：这次
+    // 拷贝发生在聊天面板挂载之前，所以先记进宿主缓存，等 webviewReady 补发。
+    recordStartupStage("syncingCli");
     fs.mkdirSync(cliInstallDir(), { recursive: true });
     // Replace the CLI files only — the downloaded runtime dependencies live in
     // the shared ~/.wave/cli dir, so an upgrade never forces re-downloading
