@@ -78,13 +78,13 @@ function mockMsgManager(overrides = {}) {
 
 function makeContainer(
   overrides: Record<string, unknown> = {},
-  maxInputTokens = 96000,
+  contextWindow = 96000,
 ) {
   const c = new Container();
   c.register("ConfigurationService", {
     resolveGatewayConfig: vi.fn().mockReturnValue(mockGatewayConfig),
     resolveModelConfig: vi.fn().mockReturnValue(mockModelConfig),
-    resolveMaxInputTokens: vi.fn().mockReturnValue(maxInputTokens),
+    resolveContextWindow: vi.fn().mockReturnValue(contextWindow),
     resolveMaxOutputTokens: vi.fn().mockReturnValue(4096),
     resolveAutoMemoryEnabled: vi.fn().mockReturnValue(true),
     resolveLanguage: vi.fn().mockReturnValue(undefined),
@@ -142,7 +142,7 @@ describe("AIManager - pre-request auto compaction", () => {
     vi.clearAllMocks();
   });
 
-  it("should compact BEFORE the request when the estimated context exceeds maxInputTokens", async () => {
+  it("should compact BEFORE the request when the estimated context exceeds contextWindow", async () => {
     // Anchor usage total = 1500, plus a large tool result message after it.
     const messages = [
       {
@@ -195,7 +195,7 @@ describe("AIManager - pre-request auto compaction", () => {
     );
   });
 
-  it("should NOT compact when the estimated context is under maxInputTokens", async () => {
+  it("should NOT compact when the estimated context is under contextWindow", async () => {
     const messages = [
       {
         role: "user",
@@ -229,6 +229,121 @@ describe("AIManager - pre-request auto compaction", () => {
     await aiManager.sendAIMessage();
 
     expect(compactSpy).not.toHaveBeenCalled();
+  });
+
+  it("should NOT add system prompt / tool schema / injected memory on top of the usage anchor", async () => {
+    // Regression: the estimate used to add an estimated fixed overhead for the
+    // system prompt, tool schema and injected memory on top of the last
+    // response's total_tokens. OpenAI-compatible usage already contains all of
+    // them, so the same tokens were counted twice and compaction fired long
+    // before the usage ring reached 100% (≈31k tokens of overhead in this repo
+    // moved the trigger from ~95% to ~81% of a 200k window).
+    const messages = [
+      {
+        role: "user",
+        blocks: [{ type: "text", content: "hello" }],
+      },
+      {
+        role: "assistant",
+        blocks: [{ type: "text", content: "hi" }],
+        usage: {
+          prompt_tokens: 1000,
+          completion_tokens: 500,
+          total_tokens: 1500,
+        },
+      },
+    ];
+    // Each of these alone would cross threshold (100000 - 4096 - 13000 =
+    // 82904) if added to the 1500-token anchor.
+    const hugeToolSchema = [
+      {
+        type: "function",
+        function: {
+          name: "Read",
+          description: "x".repeat(200_000),
+          parameters: { type: "object", properties: {} },
+        },
+      },
+    ];
+    const hugePrepend = "y".repeat(200_000);
+    const aiManager = new AIManager(
+      makeContainer(
+        {
+          MessageManager: mockMsgManager({
+            getMessages: vi.fn().mockReturnValue(messages),
+            getMemoryForInjection: vi
+              .fn()
+              .mockResolvedValue({ prependContent: hugePrepend }),
+          }),
+          ToolManager: {
+            getToolsConfig: vi.fn().mockReturnValue(hugeToolSchema),
+            getTools: vi.fn().mockReturnValue([]),
+            list: vi.fn().mockReturnValue([]),
+            isConcurrencySafe: vi.fn().mockReturnValue(true),
+            execute: vi.fn().mockResolvedValue({ success: true, content: "r" }),
+          },
+        },
+        100000,
+      ),
+      { workdir: "/test", stream: false },
+    );
+    const compactSpy = vi
+      .spyOn(aiManager, "compactConversation")
+      .mockResolvedValue(undefined);
+
+    await aiManager.sendAIMessage();
+
+    expect(compactSpy).not.toHaveBeenCalled();
+    expect(aiService.callAgent).toHaveBeenCalledTimes(1);
+  });
+
+  it("should keep the first request (no usage anchor) a pure character estimate", async () => {
+    // Strict Claude Code parity: a session with no usage yet does not get the
+    // fixed request content added either — the estimate is the character
+    // count of the messages, and a genuinely over-limit first request is
+    // caught by the 413 / context-length path.
+    const messages = [
+      {
+        role: "user",
+        blocks: [{ type: "text", content: "hello" }],
+      },
+    ];
+    const hugeToolSchema = [
+      {
+        type: "function",
+        function: {
+          name: "Read",
+          description: "x".repeat(200_000),
+          parameters: { type: "object", properties: {} },
+        },
+      },
+    ];
+    const aiManager = new AIManager(
+      makeContainer(
+        {
+          MessageManager: mockMsgManager({
+            getMessages: vi.fn().mockReturnValue(messages),
+          }),
+          ToolManager: {
+            getToolsConfig: vi.fn().mockReturnValue(hugeToolSchema),
+            getTools: vi.fn().mockReturnValue([]),
+            list: vi.fn().mockReturnValue([]),
+            isConcurrencySafe: vi.fn().mockReturnValue(true),
+            execute: vi.fn().mockResolvedValue({ success: true, content: "r" }),
+          },
+        },
+        100000,
+      ),
+      { workdir: "/test", stream: false },
+    );
+    const compactSpy = vi
+      .spyOn(aiManager, "compactConversation")
+      .mockResolvedValue(undefined);
+
+    await aiManager.sendAIMessage();
+
+    expect(compactSpy).not.toHaveBeenCalled();
+    expect(aiService.callAgent).toHaveBeenCalledTimes(1);
   });
 
   it("should ignore cache fields — large cache_read with small total_tokens must NOT trigger", async () => {

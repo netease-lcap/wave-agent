@@ -124,7 +124,7 @@ describe("SubagentManager - Session Functionality", () => {
     container.register("ConfigurationService", {
       resolveGatewayConfig: () => mockGatewayConfig,
       resolveModelConfig: () => mockModelConfig,
-      resolveMaxInputTokens: () => 1000,
+      resolveContextWindow: () => 1000,
       resolveAutoMemoryEnabled: () => true,
       resolveLanguage: () => undefined,
     });

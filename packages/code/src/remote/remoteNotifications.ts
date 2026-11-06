@@ -48,12 +48,12 @@ type StreamDelta = Parameters<
  */
 export function percentOf(
   tokens: number,
-  maxInputTokens: number,
+  contextWindow: number,
   maxOutputTokens = 32_000,
 ): number {
-  if (!Number.isFinite(maxInputTokens) || maxInputTokens <= 0) return 0;
+  if (!Number.isFinite(contextWindow) || contextWindow <= 0) return 0;
   const calculatedThreshold = getAutoCompactThreshold(
-    maxInputTokens,
+    contextWindow,
     Number.isFinite(maxOutputTokens) && maxOutputTokens > 0
       ? maxOutputTokens
       : 32_000,
@@ -63,7 +63,7 @@ export function percentOf(
   const threshold =
     Number.isFinite(calculatedThreshold) && calculatedThreshold > 0
       ? calculatedThreshold
-      : maxInputTokens;
+      : contextWindow;
   return Math.min(100, Math.round((tokens / threshold) * 100));
 }
 
@@ -114,10 +114,10 @@ export const remoteWire = {
 
   contextUsage: (
     latestTotalTokens: number,
-    maxInputTokens: number,
+    contextWindow: number,
     maxOutputTokens = 32_000,
   ) => ({
-    percent: percentOf(latestTotalTokens, maxInputTokens, maxOutputTokens),
+    percent: percentOf(latestTotalTokens, contextWindow, maxOutputTokens),
   }),
 
   permissionModeChange: (mode: PermissionMode) => ({ mode }),

@@ -41,7 +41,14 @@ export interface AgentOptions {
   fastModel?: string;
   /** Vision-capable model used by the builtin vision subagent (resolved from WAVE_VISION_MODEL env var). */
   visionModel?: string;
-  maxInputTokens?: number;
+  /**
+   * The model's context window in tokens — the total budget shared by input
+   * and output of a single request, not an input-only ceiling. It is the base
+   * the auto-compaction threshold derives from (window − summary output
+   * reservation − safety buffer) and the denominator of the usage percentage
+   * shown in the UI. Nothing validates requests against it directly.
+   */
+  contextWindow?: number;
   maxTokens?: number;
   /**
    * Per-session override for the inline completion model (defaults to the fast

@@ -2918,7 +2918,7 @@ describe("user preference save path and rebuild timing", () => {
     }
 
     // 用户偏好整体经 updateUserSettings 写入会话所在进程（远端即远端机器上的
-    // ~/.wave/settings.json），进程内转换 K↔env.WAVE_MAX_INPUT_TOKENS。
+    // ~/.wave/settings.json），进程内转换 K↔env.WAVE_CONTEXT_WINDOW。
     expect(rpcParams("updateUserSettings")).toEqual([readBack]);
     // 不重建任何会话：不下发覆盖层、不中止排队消息、不动流式状态。
     expect(agent.updateConfig).not.toHaveBeenCalled();
@@ -2953,7 +2953,7 @@ describe("user preference save path and rebuild timing", () => {
     }
 
     // 宿主不得给缺失键补默认值，否则「省略」会被翻译成一次写入——正是
-    // 「进设置页随手保存一次，把系统环境里的 WAVE_MAX_INPUT_TOKENS 钉成
+    // 「进设置页随手保存一次，把系统环境里的 WAVE_CONTEXT_WINDOW 钉成
     // 200000」的成因（spec agent-config 边界说明「省略键 = 不改该键」）。
     // 断言键集而非仅取值：带 `undefined` 的键在 JSON 序列化时会被丢掉，只比取值
     // 的话「host 里又写回 `configData.contextLength ?? 200`」这类回归看不出来。

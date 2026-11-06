@@ -10,7 +10,7 @@ import SettingsPage, {
 import type { ConfigurationData } from "../../src/types";
 import {
   DEFAULT_LANGUAGE,
-  DEFAULT_WAVE_MAX_INPUT_TOKENS,
+  DEFAULT_WAVE_CONTEXT_WINDOW,
 } from "wave-agent-sdk/dist/utils/constants.js";
 
 /**
@@ -125,10 +125,10 @@ describe("SettingsPage「上下文长度」行（未设置时用占位符显示�
 
     const input = contextLengthInput();
     expect(input.value).toBe("");
-    // 占位符里的 200K 必须来自 SDK 默认（DEFAULT_WAVE_MAX_INPUT_TOKENS = 200000），
+    // 占位符里的 200K 必须来自 SDK 默认（DEFAULT_WAVE_CONTEXT_WINDOW = 200000），
     // 不得各写一份数字（spec agent-config 场景 7）。
     expect(input.placeholder).toBe(
-      `跟随模型配置（默认 ${DEFAULT_WAVE_MAX_INPUT_TOKENS / 1000}K）`,
+      `跟随模型配置（默认 ${DEFAULT_WAVE_CONTEXT_WINDOW / 1000}K）`,
     );
   });
 

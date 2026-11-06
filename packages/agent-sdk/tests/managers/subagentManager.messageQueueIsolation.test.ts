@@ -87,7 +87,7 @@ function buildParentContainer(messageQueue: MessageQueue): Container {
       model: "test-model",
       fastModel: "test-fast-model",
     }),
-    resolveMaxInputTokens: () => 1000,
+    resolveContextWindow: () => 1000,
     resolveAutoMemoryEnabled: () => true,
     resolveLanguage: () => "en",
   });

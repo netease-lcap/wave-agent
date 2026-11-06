@@ -112,7 +112,7 @@ function createHarness({ omitAgentsMd }: { omitAgentsMd?: boolean }) {
       baseURL: "https://test-gateway.com",
     } as GatewayConfig),
     resolveModelConfig: vi.fn().mockReturnValue(MODEL_CONFIG),
-    resolveMaxInputTokens: vi.fn().mockReturnValue(96000),
+    resolveContextWindow: vi.fn().mockReturnValue(96000),
     resolveMaxOutputTokens: vi.fn().mockReturnValue(4096),
     resolveAutoMemoryEnabled: vi.fn().mockReturnValue(false),
     resolveLanguage: vi.fn().mockReturnValue(undefined),

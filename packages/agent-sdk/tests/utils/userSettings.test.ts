@@ -1,6 +1,6 @@
 /**
  * 用户偏好读写（三端设置页保存路径的唯一实现）：
- * - 落点 = 用户级 `~/.wave/settings.json`，K↔`env.WAVE_MAX_INPUT_TOKENS` 换算只在此处
+ * - 落点 = 用户级 `~/.wave/settings.json`，K↔`env.WAVE_CONTEXT_WINDOW` 换算只在此处
  * - 写入是读-改-写：只覆盖偏好键，其余顶层键与 `env` 其它键原样保留
  * - 文件缺失/损坏只影响回读（返回空对象），但**绝不覆盖**用户文件（写入报错）
  *
@@ -27,9 +27,9 @@ vi.mock("../../src/utils/configPaths.js", () => ({
 import { existsSync, mkdirSync, readFileSync } from "fs";
 import { atomicWriteFile } from "../../src/utils/atomicWrite.js";
 import {
-  MAX_INPUT_TOKENS_ENV_KEY,
-  contextLengthToMaxInputTokens,
-  maxInputTokensToContextLength,
+  CONTEXT_WINDOW_ENV_KEY,
+  contextLengthToContextWindow,
+  contextWindowToContextLength,
   readUserPreferenceSettings,
   readUserPreferenceView,
   updateUserPreferenceSettings,
@@ -68,19 +68,19 @@ describe("userSettings", () => {
       expect(userSettingsFilePath()).toBe(FILE);
     });
 
-    it("K 值 ↔ env.WAVE_MAX_INPUT_TOKENS 是同一套换算（K×1000）", () => {
-      expect(contextLengthToMaxInputTokens(200)).toBe(200000);
-      expect(contextLengthToMaxInputTokens(16.4)).toBe(16400);
-      expect(maxInputTokensToContextLength("200000")).toBe(200);
-      expect(maxInputTokensToContextLength("128000")).toBe(128);
+    it("K 值 ↔ env.WAVE_CONTEXT_WINDOW 是同一套换算（K×1000）", () => {
+      expect(contextLengthToContextWindow(200)).toBe(200000);
+      expect(contextLengthToContextWindow(16.4)).toBe(16400);
+      expect(contextWindowToContextLength("200000")).toBe(200);
+      expect(contextWindowToContextLength("128000")).toBe(128);
     });
 
     it("无意义/缺失的 token 值回读为 undefined（不编造上下文长度）", () => {
-      expect(maxInputTokensToContextLength(undefined)).toBeUndefined();
-      expect(maxInputTokensToContextLength("")).toBeUndefined();
-      expect(maxInputTokensToContextLength("abc")).toBeUndefined();
-      expect(maxInputTokensToContextLength("0")).toBeUndefined();
-      expect(maxInputTokensToContextLength("-1000")).toBeUndefined();
+      expect(contextWindowToContextLength(undefined)).toBeUndefined();
+      expect(contextWindowToContextLength("")).toBeUndefined();
+      expect(contextWindowToContextLength("abc")).toBeUndefined();
+      expect(contextWindowToContextLength("0")).toBeUndefined();
+      expect(contextWindowToContextLength("-1000")).toBeUndefined();
     });
   });
 
@@ -98,7 +98,7 @@ describe("userSettings", () => {
         autoMemoryEnabled: false,
         autoMemoryFrequency: 7,
         env: {
-          WAVE_MAX_INPUT_TOKENS: "128000",
+          WAVE_CONTEXT_WINDOW: "128000",
           OTHER: "keep",
         },
       });
@@ -114,7 +114,7 @@ describe("userSettings", () => {
     it("env.WAVE_SERVER_URL 不进入用户偏好（设置页不提供该入口）", () => {
       seedFile({
         env: {
-          WAVE_MAX_INPUT_TOKENS: "128000",
+          WAVE_CONTEXT_WINDOW: "128000",
           WAVE_SERVER_URL: "https://example.test",
         },
       });
@@ -186,7 +186,7 @@ describe("userSettings", () => {
         language: "Chinese",
         autoMemoryEnabled: false,
         autoMemoryFrequency: 3,
-        env: { WAVE_MAX_INPUT_TOKENS: "128000" },
+        env: { WAVE_CONTEXT_WINDOW: "128000" },
       });
       expect(readUserPreferenceView(null, FILE, {})).toEqual({
         values: {
@@ -208,9 +208,9 @@ describe("userSettings", () => {
       });
     });
 
-    it("上下文长度的归因层 = env.WAVE_MAX_INPUT_TOKENS 所在的层（remote > user > 机器 env）", () => {
-      seedFile({ env: { WAVE_MAX_INPUT_TOKENS: "128000" } });
-      const remoteEnv = { env: { WAVE_MAX_INPUT_TOKENS: "256000" } };
+    it("上下文长度的归因层 = env.WAVE_CONTEXT_WINDOW 所在的层（remote > user > 机器 env）", () => {
+      seedFile({ env: { WAVE_CONTEXT_WINDOW: "128000" } });
+      const remoteEnv = { env: { WAVE_CONTEXT_WINDOW: "256000" } };
       expect(readUserPreferenceView(remoteEnv, FILE, {})).toEqual({
         values: { contextLength: 256 },
         sources: {
@@ -225,7 +225,7 @@ describe("userSettings", () => {
         },
       });
       expect(
-        readUserPreferenceView(null, FILE, { WAVE_MAX_INPUT_TOKENS: "64000" }),
+        readUserPreferenceView(null, FILE, { WAVE_CONTEXT_WINDOW: "64000" }),
       ).toEqual({
         values: { contextLength: 128 },
         sources: {
@@ -241,7 +241,7 @@ describe("userSettings", () => {
       });
       mockExists.mockReturnValue(false);
       expect(
-        readUserPreferenceView(null, FILE, { WAVE_MAX_INPUT_TOKENS: "64000" }),
+        readUserPreferenceView(null, FILE, { WAVE_CONTEXT_WINDOW: "64000" }),
       ).toEqual({
         values: { contextLength: 64 },
         sources: {
@@ -439,7 +439,7 @@ describe("userSettings", () => {
       seedFile("{ broken");
       expect(
         readUserPreferenceView({ language: "English" }, FILE, {
-          WAVE_MAX_INPUT_TOKENS: "64000",
+          WAVE_CONTEXT_WINDOW: "64000",
         }),
       ).toEqual({
         values: {
@@ -475,7 +475,7 @@ describe("userSettings", () => {
 
       expect(writtenJson()).toEqual({
         permissions: { allow: ["Bash(ls:*)"], defaultMode: "acceptEdits" },
-        env: { EXISTING: "1", [MAX_INPUT_TOKENS_ENV_KEY]: "200000" },
+        env: { EXISTING: "1", [CONTEXT_WINDOW_ENV_KEY]: "200000" },
         language: "English",
       });
       // 回读值即写入后的完整偏好（保存回执直接用这份刷新展示）

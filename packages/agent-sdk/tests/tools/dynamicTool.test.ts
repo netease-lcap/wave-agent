@@ -48,7 +48,7 @@ describe("Dynamic Tool Definitions", () => {
       container.register("ConfigurationService", {
         resolveGatewayConfig: () => ({}) as unknown as GatewayConfig,
         resolveModelConfig: () => ({}) as unknown as ModelConfig,
-        resolveMaxInputTokens: () => 1000,
+        resolveContextWindow: () => 1000,
         resolveAutoMemoryEnabled: () => true,
         resolveLanguage: () => undefined,
       });

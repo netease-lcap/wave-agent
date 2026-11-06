@@ -890,7 +890,7 @@ describe("remoteSettingsService", () => {
         language: "en",
         autoMemoryEnabled: true,
         autoMemoryFrequency: 5,
-        models: { model: { maxInputTokens: 50 } },
+        models: { model: { contextWindow: 50 } },
         marketplaces: { m1: { source: "url" as const } },
         enabledPlugins: { p1: true },
         enableArtifact: false,
@@ -899,7 +899,7 @@ describe("remoteSettingsService", () => {
         language: "ja",
         autoMemoryEnabled: false,
         autoMemoryFrequency: 10,
-        models: { model: { maxInputTokens: 100 } },
+        models: { model: { contextWindow: 100 } },
         marketplaces: { m2: { source: "url" as const } },
         enabledPlugins: { p2: true },
         enableArtifact: true,
@@ -911,7 +911,7 @@ describe("remoteSettingsService", () => {
       expect(result.language).toBe("ja");
       expect(result.autoMemoryEnabled).toBe(false);
       expect(result.autoMemoryFrequency).toBe(10);
-      expect(result.models).toEqual({ model: { maxInputTokens: 100 } });
+      expect(result.models).toEqual({ model: { contextWindow: 100 } });
       // 插件与市场按**键**合并（spec enterprise server-managed-config 场景 5）：
       // 托管层只覆盖同名键，本机独有的键照常保留。
       expect(result.marketplaces).toEqual({
@@ -960,7 +960,7 @@ describe("remoteSettingsService", () => {
         language: "en",
         autoMemoryEnabled: true,
         autoMemoryFrequency: 5,
-        models: { model: { maxInputTokens: 50 } },
+        models: { model: { contextWindow: 50 } },
         marketplaces: { m1: { source: "url" as const } },
         enabledPlugins: { p1: true },
         enableArtifact: false,
@@ -973,7 +973,7 @@ describe("remoteSettingsService", () => {
       expect(result.language).toBe("en");
       expect(result.autoMemoryEnabled).toBe(true);
       expect(result.autoMemoryFrequency).toBe(5);
-      expect(result.models).toEqual({ model: { maxInputTokens: 50 } });
+      expect(result.models).toEqual({ model: { contextWindow: 50 } });
       expect(result.marketplaces).toEqual({ m1: { source: "url" } });
       expect(result.enabledPlugins).toEqual({ p1: true });
       expect(result.enableArtifact).toBe(false);

@@ -12,7 +12,7 @@ describe("Notifications Component", () => {
 
   it("should show context percentage when tokens are consumed", () => {
     const { lastFrame } = render(
-      <Notifications latestTotalTokens={40000} maxInputTokens={200000} />,
+      <Notifications latestTotalTokens={40000} contextWindow={200000} />,
     );
 
     expect(lastFrame()).toContain("24% context");
@@ -20,7 +20,7 @@ describe("Notifications Component", () => {
 
   it("should cap context percentage at 100", () => {
     const { lastFrame } = render(
-      <Notifications latestTotalTokens={500000} maxInputTokens={200000} />,
+      <Notifications latestTotalTokens={500000} contextWindow={200000} />,
     );
 
     expect(lastFrame()).toContain("100% context");

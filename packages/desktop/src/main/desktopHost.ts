@@ -7099,7 +7099,7 @@ export class DesktopHost {
    * 载荷是**部分更新**语义（spec agent-config 边界说明「省略键 = 不改该键」）：
    * 只把设置页真正提供的键放进 RPC patch，未提供的键保持文件中现值——设置页
    * 用「不提供该键」表达「未设置 / 没改」，宿主不得给它补默认值（补默认值会
-   * 把「省略」翻译成一次写入，例如把系统环境里的 WAVE_MAX_INPUT_TOKENS 钉成
+   * 把「省略」翻译成一次写入，例如把系统环境里的 WAVE_CONTEXT_WINDOW 钉成
    * 200000）。CLI 侧 `updateUserPreferenceSettings` 同样按已提供的键读-改-写。
    *
    * 回包是**生效视图**（值 + 来源层）：保存后设置页仍要看到被组织配置覆盖的键

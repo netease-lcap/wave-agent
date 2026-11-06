@@ -67,9 +67,9 @@ export {
   readUserPreferenceView,
   updateUserPreferenceSettings,
   userSettingsFilePath,
-  contextLengthToMaxInputTokens,
-  maxInputTokensToContextLength,
-  MAX_INPUT_TOKENS_ENV_KEY,
+  contextLengthToContextWindow,
+  contextWindowToContextLength,
+  CONTEXT_WINDOW_ENV_KEY,
 } from "./utils/userSettings.js";
 export type {
   UserPreferenceSettings,

@@ -228,7 +228,7 @@ function createMockAgent(
     sessionId: "test-session-id",
     currentWorkdir: "/test/workdir",
     latestTotalTokens: 0,
-    getMaxInputTokens: vi.fn().mockReturnValue(200000),
+    getContextWindow: vi.fn().mockReturnValue(200000),
     messages,
     get isLoading(): boolean {
       return isLoading;

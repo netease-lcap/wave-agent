@@ -52,7 +52,7 @@ describe("Subagent Dynamic Configuration Tests", () => {
     delete process.env.WAVE_MODEL;
     delete process.env.WAVE_FAST_MODEL;
     delete process.env.WAVE_VISION_MODEL;
-    delete process.env.WAVE_MAX_INPUT_TOKENS;
+    delete process.env.WAVE_CONTEXT_WINDOW;
     // Reset and setup loadMergedWaveConfig mock
     vi.mocked(loadMergedWaveConfig).mockReturnValue(null);
     // Point the config loader at paths that cannot exist: no real
@@ -84,7 +84,7 @@ describe("Subagent Dynamic Configuration Tests", () => {
       process.env.WAVE_BASE_URL = "https://parent.url";
       process.env.WAVE_MODEL = "parent-model";
       process.env.WAVE_FAST_MODEL = "parent-fast-model";
-      process.env.WAVE_MAX_INPUT_TOKENS = "40000";
+      process.env.WAVE_CONTEXT_WINDOW = "40000";
 
       // Create parent agent
       agent = await Agent.create({
@@ -127,13 +127,13 @@ describe("Subagent Dynamic Configuration Tests", () => {
       });
 
       expect(subagentAIManager.getModelConfig().model).toBe("parent-model");
-      expect(subagentAIManager.getMaxInputTokens()).toBe(40000);
+      expect(subagentAIManager.getContextWindow()).toBe(40000);
 
       // Update parent environment variables
       process.env.WAVE_API_KEY = "updated-parent-token";
       process.env.WAVE_BASE_URL = "https://updated-parent.url";
       process.env.WAVE_MODEL = "updated-parent-model";
-      process.env.WAVE_MAX_INPUT_TOKENS = "50000";
+      process.env.WAVE_CONTEXT_WINDOW = "50000";
 
       // Verify subagent AIManager gets updated values through parent's dynamic getters
       expect(subagentAIManager.getGatewayConfig()).toMatchObject({
@@ -144,7 +144,7 @@ describe("Subagent Dynamic Configuration Tests", () => {
       expect(subagentAIManager.getModelConfig().model).toBe(
         "updated-parent-model",
       );
-      expect(subagentAIManager.getMaxInputTokens()).toBe(50000);
+      expect(subagentAIManager.getContextWindow()).toBe(50000);
     });
 
     it("should handle subagent-specific model override with dynamic configuration", async () => {
@@ -200,7 +200,7 @@ describe("Subagent Dynamic Configuration Tests", () => {
       expect(modelConfig.fastModel).toBe("parent-fast-model");
 
       // Should inherit token limit from parent (using default since not specified)
-      expect(subagentAIManager.getMaxInputTokens()).toBe(200000); // Default value
+      expect(subagentAIManager.getContextWindow()).toBe(200000); // Default value
 
       // Update parent environment variables
       process.env.WAVE_API_KEY = "updated-parent-token";

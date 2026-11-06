@@ -82,7 +82,7 @@ describe("Agent - Abort Handling", () => {
     container.register("ConfigurationService", {
       resolveGatewayConfig: () => agent.getGatewayConfig(),
       resolveModelConfig: () => agent.getModelConfig(),
-      resolveMaxInputTokens: () => agent.getMaxInputTokens(),
+      resolveContextWindow: () => agent.getContextWindow(),
       resolveMaxOutputTokens: () => 4096,
       resolveAutoMemoryEnabled: () => true,
       resolveLanguage: () => agent.getLanguage(),
@@ -431,7 +431,7 @@ describe("Agent - Abort Handling", () => {
     container.register("ConfigurationService", {
       resolveGatewayConfig: () => testAgent.getGatewayConfig(),
       resolveModelConfig: () => testAgent.getModelConfig(),
-      resolveMaxInputTokens: () => testAgent.getMaxInputTokens(),
+      resolveContextWindow: () => testAgent.getContextWindow(),
       resolveMaxOutputTokens: () => 4096,
       resolveAutoMemoryEnabled: () => true,
       resolveLanguage: () => testAgent.getLanguage(),
@@ -505,7 +505,7 @@ describe("Agent - Abort Handling", () => {
       container.register("ConfigurationService", {
         resolveGatewayConfig: () => testAgent.getGatewayConfig(),
         resolveModelConfig: () => testAgent.getModelConfig(),
-        resolveMaxInputTokens: () => testAgent.getMaxInputTokens(),
+        resolveContextWindow: () => testAgent.getContextWindow(),
         resolveAutoMemoryEnabled: () => true,
         resolveLanguage: () => testAgent.getLanguage(),
         getEnvironmentVars: () =>
@@ -583,7 +583,7 @@ describe("Agent - Abort Handling", () => {
       container.register("ConfigurationService", {
         resolveGatewayConfig: () => testAgent.getGatewayConfig(),
         resolveModelConfig: () => testAgent.getModelConfig(),
-        resolveMaxInputTokens: () => testAgent.getMaxInputTokens(),
+        resolveContextWindow: () => testAgent.getContextWindow(),
         resolveAutoMemoryEnabled: () => true,
         resolveLanguage: () => testAgent.getLanguage(),
         getEnvironmentVars: () =>
@@ -654,7 +654,7 @@ describe("Agent - Abort Handling", () => {
       container.register("ConfigurationService", {
         resolveGatewayConfig: () => testAgent.getGatewayConfig(),
         resolveModelConfig: () => testAgent.getModelConfig(),
-        resolveMaxInputTokens: () => testAgent.getMaxInputTokens(),
+        resolveContextWindow: () => testAgent.getContextWindow(),
         resolveAutoMemoryEnabled: () => true,
         resolveLanguage: () => testAgent.getLanguage(),
         getEnvironmentVars: () =>
@@ -727,7 +727,7 @@ describe("Agent - Abort Handling", () => {
       container.register("ConfigurationService", {
         resolveGatewayConfig: () => testAgent.getGatewayConfig(),
         resolveModelConfig: () => testAgent.getModelConfig(),
-        resolveMaxInputTokens: () => testAgent.getMaxInputTokens(),
+        resolveContextWindow: () => testAgent.getContextWindow(),
         resolveAutoMemoryEnabled: () => true,
         resolveLanguage: () => testAgent.getLanguage(),
         getEnvironmentVars: () =>
@@ -802,7 +802,7 @@ describe("Agent - Abort Handling", () => {
       container.register("ConfigurationService", {
         resolveGatewayConfig: () => testAgent.getGatewayConfig(),
         resolveModelConfig: () => testAgent.getModelConfig(),
-        resolveMaxInputTokens: () => testAgent.getMaxInputTokens(),
+        resolveContextWindow: () => testAgent.getContextWindow(),
         resolveAutoMemoryEnabled: () => true,
         resolveLanguage: () => testAgent.getLanguage(),
         getEnvironmentVars: () =>
@@ -876,7 +876,7 @@ describe("Agent - Abort Handling", () => {
       container.register("ConfigurationService", {
         resolveGatewayConfig: () => testAgent.getGatewayConfig(),
         resolveModelConfig: () => testAgent.getModelConfig(),
-        resolveMaxInputTokens: () => testAgent.getMaxInputTokens(),
+        resolveContextWindow: () => testAgent.getContextWindow(),
         resolveAutoMemoryEnabled: () => true,
         resolveLanguage: () => testAgent.getLanguage(),
         getEnvironmentVars: () =>
@@ -939,7 +939,7 @@ describe("Agent - Abort Handling", () => {
       container.register("ConfigurationService", {
         resolveGatewayConfig: () => testAgent.getGatewayConfig(),
         resolveModelConfig: () => testAgent.getModelConfig(),
-        resolveMaxInputTokens: () => testAgent.getMaxInputTokens(),
+        resolveContextWindow: () => testAgent.getContextWindow(),
         resolveAutoMemoryEnabled: () => true,
         resolveLanguage: () => testAgent.getLanguage(),
         getEnvironmentVars: () =>
@@ -1010,7 +1010,7 @@ describe("Agent - Abort Handling", () => {
       container.register("ConfigurationService", {
         resolveGatewayConfig: () => testAgent.getGatewayConfig(),
         resolveModelConfig: () => testAgent.getModelConfig(),
-        resolveMaxInputTokens: () => testAgent.getMaxInputTokens(),
+        resolveContextWindow: () => testAgent.getContextWindow(),
         resolveAutoMemoryEnabled: () => true,
         resolveLanguage: () => testAgent.getLanguage(),
         getEnvironmentVars: () =>
@@ -1081,7 +1081,7 @@ describe("Agent - Abort Handling", () => {
       container.register("ConfigurationService", {
         resolveGatewayConfig: () => testAgent.getGatewayConfig(),
         resolveModelConfig: () => testAgent.getModelConfig(),
-        resolveMaxInputTokens: () => testAgent.getMaxInputTokens(),
+        resolveContextWindow: () => testAgent.getContextWindow(),
         resolveAutoMemoryEnabled: () => true,
         resolveLanguage: () => testAgent.getLanguage(),
         getEnvironmentVars: () =>
@@ -1144,7 +1144,7 @@ describe("Agent - Abort Handling", () => {
       container.register("ConfigurationService", {
         resolveGatewayConfig: () => testAgent.getGatewayConfig(),
         resolveModelConfig: () => testAgent.getModelConfig(),
-        resolveMaxInputTokens: () => testAgent.getMaxInputTokens(),
+        resolveContextWindow: () => testAgent.getContextWindow(),
         resolveAutoMemoryEnabled: () => true,
         resolveLanguage: () => testAgent.getLanguage(),
         getEnvironmentVars: () =>
@@ -1212,7 +1212,7 @@ describe("Agent - Abort Handling", () => {
       container.register("ConfigurationService", {
         resolveGatewayConfig: () => testAgent.getGatewayConfig(),
         resolveModelConfig: () => testAgent.getModelConfig(),
-        resolveMaxInputTokens: () => testAgent.getMaxInputTokens(),
+        resolveContextWindow: () => testAgent.getContextWindow(),
         resolveAutoMemoryEnabled: () => true,
         resolveLanguage: () => testAgent.getLanguage(),
         getEnvironmentVars: () =>
@@ -1261,7 +1261,7 @@ describe("Agent - Abort Handling", () => {
       container.register("ConfigurationService", {
         resolveGatewayConfig: () => testAgent.getGatewayConfig(),
         resolveModelConfig: () => testAgent.getModelConfig(),
-        resolveMaxInputTokens: () => testAgent.getMaxInputTokens(),
+        resolveContextWindow: () => testAgent.getContextWindow(),
         resolveAutoMemoryEnabled: () => true,
         resolveLanguage: () => testAgent.getLanguage(),
         getEnvironmentVars: () =>
@@ -1330,7 +1330,7 @@ describe("Agent - Abort Handling", () => {
       container.register("ConfigurationService", {
         resolveGatewayConfig: () => testAgent.getGatewayConfig(),
         resolveModelConfig: () => testAgent.getModelConfig(),
-        resolveMaxInputTokens: () => testAgent.getMaxInputTokens(),
+        resolveContextWindow: () => testAgent.getContextWindow(),
         resolveAutoMemoryEnabled: () => true,
         resolveLanguage: () => testAgent.getLanguage(),
         getEnvironmentVars: () =>
@@ -1392,7 +1392,7 @@ describe("Agent - Abort Handling", () => {
       container.register("ConfigurationService", {
         resolveGatewayConfig: () => testAgent.getGatewayConfig(),
         resolveModelConfig: () => testAgent.getModelConfig(),
-        resolveMaxInputTokens: () => testAgent.getMaxInputTokens(),
+        resolveContextWindow: () => testAgent.getContextWindow(),
         resolveAutoMemoryEnabled: () => true,
         resolveLanguage: () => testAgent.getLanguage(),
         getEnvironmentVars: () =>

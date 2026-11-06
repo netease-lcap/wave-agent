@@ -19,7 +19,7 @@ HOME=/tmp/probe-home pnpm run wave            # Linux / macOS（POSIX 下 os.hom
 
 ## 环境变量能改什么
 
-`WAVE_SERVER_URL`（服务端，决定 SSO/网关/远端配置）、`WAVE_API_KEY` / `WAVE_BASE_URL`（网关直连）、`WAVE_MODEL` / `WAVE_FAST_MODEL` / `WAVE_VISION_MODEL` / `WAVE_COMPLETION_MODEL`、`WAVE_MAX_INPUT_TOKENS`、`WAVE_LOGS_DIR`（桌面/vscode 宿主日志目录）、`LOG_FILE`（CLI 日志文件）、`LOG_LEVEL`、`DISABLE_LOGGER_IO=true`（关全部日志 IO，测试里常用）。
+`WAVE_SERVER_URL`（服务端，决定 SSO/网关/远端配置）、`WAVE_API_KEY` / `WAVE_BASE_URL`（网关直连）、`WAVE_MODEL` / `WAVE_FAST_MODEL` / `WAVE_VISION_MODEL` / `WAVE_COMPLETION_MODEL`、`WAVE_CONTEXT_WINDOW`、`WAVE_LOGS_DIR`（桌面/vscode 宿主日志目录）、`LOG_FILE`（CLI 日志文件）、`LOG_LEVEL`、`DISABLE_LOGGER_IO=true`（关全部日志 IO，测试里常用）。
 
 ## 日志在哪
 
