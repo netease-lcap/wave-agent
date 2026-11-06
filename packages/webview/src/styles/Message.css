@@ -865,6 +865,65 @@ button.reasoning-header {
   font-size: inherit;
 }
 
+/* ── 代码块右上角的复制按钮（spec: ui/message-rendering-system.md「助手消息代码
+   块的复制按钮」）──
+   按钮绝对定位在 `.md-code-block` 上：不随 `pre` 的横向滚动移动，也不占代码块
+   高度（虚拟窗口的行高估算不受影响）。显隐与消息右上角那组动作按钮同源——
+   悬停该代码块才淡入；没有 hover 的设备（远控页的手机触控）常显，否则触控
+   用户没有「悬停」这一步，永远拿不到入口。 */
+.md-code-block {
+  position: relative;
+}
+
+.md-code-copy {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: 4px;
+  background-color: var(--vscode-button-secondaryBackground);
+  color: var(--vscode-button-secondaryForeground);
+  cursor: pointer;
+  /* 默认常显：没有 hover 的设备（远控页的手机触控）和认不出 `(hover: hover)`
+     的老运行时都走这一档——宁可常驻一颗按钮，也不能让入口永久消失。 */
+  opacity: 1;
+  transition: opacity 120ms ease-in;
+}
+
+.md-code-copy .codicon {
+  font-size: 14px;
+}
+
+.md-code-copy:hover {
+  background-color: var(--vscode-button-secondaryHoverBackground);
+}
+
+/* 有 hover 的环境（桌面端 / VS Code / JetBrains / 远控页的鼠标档）才改成
+   「悬停代码块才淡入」，与消息右上角那组动作按钮同一个显隐时机。 */
+@media (hover: hover) {
+  .md-code-copy {
+    opacity: 0;
+  }
+
+  .md-code-block:hover .md-code-copy,
+  .md-code-copy:focus-visible {
+    opacity: 1;
+  }
+}
+
+/* 首行为按钮让位：宽代码块本来就能横向滚动，按钮浮在右上角时不该压住首行
+   末尾的几个字符（场景 2）。 */
+.md-code-block pre {
+  padding-right: 44px;
+}
+
 /* Markdown Lists */
 .markdown-content ul,
 .markdown-content ol {
