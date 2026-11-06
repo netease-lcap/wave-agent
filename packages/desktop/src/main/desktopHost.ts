@@ -436,6 +436,15 @@ export class DesktopHost {
    * updateAllSessionsConfig). Chaining makes recreates strictly serial.
    */
   private configRecreateTail: Promise<unknown> = Promise.resolve();
+  /**
+   * How many agent recreations are in flight (see updateAgentConfig). The
+   * bridge removes a session's registry entry while it rebuilds it, so a read
+   * aimed at that session during the rebuild answers "Session not found" — the
+   * same string a session deleted by another client answers. While this is
+   * non-zero, such an error must NOT be read as "the session is gone"
+   * (that would drop a live entry from the sidebar mid-reload).
+   */
+  private configRecreateInFlight = 0;
   /** Pending host selected in each pane's new-session workdir picker. */
   private hostState = new Map<string, string>();
   /**
@@ -1167,7 +1176,7 @@ export class DesktopHost {
     agent: StdioAgent,
     paneId: string,
   ): Promise<void> {
-    const page = await this.pullMessages(agent);
+    const { page } = await this.pullMessages(agent);
     // A failed pull must not arrive as an empty list: the pane would read it as
     // "this conversation is gone" and blank the screen.
     if (!page) return;
@@ -1183,19 +1192,20 @@ export class DesktopHost {
 
   /**
    * 现取一页（默认首屏那一页：最近 `MESSAGE_PAGE_SIZE` 条 + 还有没有更早）。
-   * 调用方用完即弃，宿主不留引用；失败返回 `undefined`，由调用方维持界面现状
-   * （绝不推空列表）。
+   * 调用方用完即弃，宿主不留引用；失败时回 `{ error }`，由调用方维持界面现状
+   * （绝不推空列表）。错误原样带出是因为「会话在托管进程里已经不存在」这一种
+   * 失败要触发清理（见 pushPaneSessionState），与暂时的读失败分开处理。
    */
   private async pullMessages(
     agent: StdioAgent,
     window: MessageWindow = { limit: MESSAGE_PAGE_SIZE },
-  ): Promise<MessageWindowResult | undefined> {
+  ): Promise<{ page?: MessageWindowResult; error?: unknown }> {
     try {
       // 带窗口取数走分页回包（`messages` + `hasMore`）；宿主只转手，不留引用。
-      return (await agent.getMessages(window)) as MessageWindowResult;
+      return { page: (await agent.getMessages(window)) as MessageWindowResult };
     } catch (error) {
       console.warn("[DesktopHost] getMessages failed:", error);
-      return undefined;
+      return { error };
     }
   }
 
@@ -2778,6 +2788,78 @@ export class DesktopHost {
   }
 
   /**
+   * 一条会话在**托管进程**里已经不存在了（手机 / 远控页把它删了，或其它客户端
+   * destroy 了它），但本端 pool 里还挂着它的 agent、会话索引里还留着条目。
+   *
+   * 发现点只有一处：给分屏拉首屏消息时 bridge 回 `Session not found`——pool
+   * 里的 agent 是僵尸，`handleSelectSession` 的「活 agent 直接切」分支因此不会
+   * 走历史会话的恢复路径（那条路本就有「不可恢复即移除条目」的收尾，见
+   * runPaneRestore），点它只会得到一次失败的读 + keepMessages，界面上看不出
+   * 任何反应。这里把桌面端自己删除会话时的**本地善后**补上：条目、草稿、分屏
+   * 绑定一起作废，sole 分屏回落新会话态并 toast 说明。
+   *
+   * 不碰工作树：远控页删除时勾没勾「删除会话与工作树」本地无从得知，工作树的
+   * 删除已经在远端做过（或用户明确没有删），本地再删一次可能删掉正在用的目录。
+   */
+  private async forgetVanishedSession(agent: StdioAgent): Promise<void> {
+    const sessionId = agent.sessionId;
+    if (!sessionId) return;
+    const host = this.hostForAgent(agent);
+    const boundPaneIds = this.panes
+      .filter((p) => p.agent === agent || p.agent?.sessionId === sessionId)
+      .map((p) => p.paneId);
+
+    // 与 handleDeleteSession 同样的两条僵尸引用：Ctrl+Tab 的冻结顺序，以及
+    // 还在路上的恢复（它落地后会把自己重新登记回索引，见 spec「恢复加载期间
+    // 删除会话」）。
+    this.sessionCycleSnapshot = null;
+    this.sessionCycleIndex = -1;
+    for (const pane of this.panes) {
+      if (this.pendingRestores.get(pane.paneId)?.sessionId === sessionId) {
+        this.pendingRestores.delete(pane.paneId);
+      }
+    }
+
+    // 先同步摘掉 pool 里的引用，再解绑分屏：否则 bindAgentToPane 会把僵尸
+    // agent 当「无内容的新会话」再 discard 一次，重复 destroy。
+    for (const [key, a] of this.agents) {
+      if (a === agent) this.agents.delete(key);
+    }
+    this.agentHosts.delete(agent);
+    this.agentWorktreeInfo.delete(agent);
+    try {
+      this.clientFor(host).router.unregister(sessionId);
+    } catch {
+      // Client may already be gone; best-effort
+    }
+
+    this.configStore.removeSession(sessionId);
+    this.inputDrafts.delete(`session:${sessionId}`);
+    this.portForwardManager.releaseSession(sessionId);
+    this.refreshSessionTree();
+    this.showToast({ message: "该会话已被删除，已从会话列表移除" });
+
+    let resetSolePane = false;
+    for (const paneId of boundPaneIds) {
+      this.terminalManager.killForPane(paneId);
+      if (this.panes.length > 1) {
+        this.handleClosePane(paneId);
+      } else {
+        this.bindAgentToPane(paneId, null);
+        resetSolePane = true;
+      }
+    }
+    // destroy 慢（transcript 落盘、子代理 / MCP 清理），后台跑；解绑已经在
+    // 上面做完，不会挡住下面的回落推送。
+    void this.destroyAgent(agent, `forget vanished session ${sessionId}`);
+    // sole 分屏回落新会话态（关闭多出来的分屏时 handleClosePane 自己会推
+    // panes，不需要再补一刀）。
+    if (resetSolePane) {
+      await this.handleNewSession(boundPaneIds[0], true);
+    }
+  }
+
+  /**
    * Detach every agent of a host from the pool WITHOUT destroying it — the
    * session keeps running on the remote daemon (真后台) and is re-attached
    * through a fresh tunnel on the next access. Pane bindings are released to
@@ -3539,7 +3621,8 @@ export class DesktopHost {
     const pullTarget = pending ? undefined : agent;
     // 首屏只取一页（spec「首屏一页，上翻按需取更早」）：更早的内容由页面滚到顶时
     // 用 `loadEarlierMessages` 一页页往前面接。
-    const page = pullTarget ? await this.pullMessages(pullTarget) : undefined;
+    const pulled = pullTarget ? await this.pullMessages(pullTarget) : undefined;
+    const page = pulled?.page;
     let messages = pullTarget ? page?.messages : pending ? undefined : [];
     let hasEarlier = page?.hasMore === true;
     // The pane binding may have changed while the pull was in flight (a restore
@@ -3547,6 +3630,24 @@ export class DesktopHost {
     // the pushed message is self-consistent; the pending entry is also resolved
     // here so a stale overlay can never clobber a completed restore.
     const current = this.agentForPane(paneId);
+    // 会话在托管进程里已经不存在（手机 / 远控页把这条删了，或其它客户端
+    // destroy 了它）：pool 里那个 agent 是僵尸，这条会话的条目与分屏绑定都得
+    // 作废——否则每次点它都只是「读消息失败 → keepMessages」，界面看不出任何
+    // 反应，条目还永远留在侧边栏。清理后由下面的新会话推送收尾。
+    if (
+      pullTarget &&
+      pullTarget === current &&
+      pulled?.error !== undefined &&
+      !this.configRecreateInFlight &&
+      this.isUnrecoverableSessionError(
+        pulled.error instanceof Error
+          ? pulled.error.message
+          : String(pulled.error),
+      )
+    ) {
+      await this.forgetVanishedSession(pullTarget);
+      return;
+    }
     // The pull came from an agent this pane no longer shows: sending that list
     // would paint the incoming conversation with the outgoing one's history.
     // Leave the list out (keepMessages) instead — the rebind that won the race
@@ -6966,43 +7067,53 @@ export class DesktopHost {
     // 桌面不再下发任何会话级配置：应用级设置（模型经底栏模型选择器 / 用户偏好经
     // 用户级 settings.json + 实时重载）各有独立通路（spec「分层职责」）。这里只做
     // 重建，让 agent 重新走一遍初始化（如登录后换 SSO 配置）。
-    for (const [oldSid, agent] of [...this.agents]) {
-      const wasStreaming = agent.isStreaming;
-      try {
-        await agent.updateConfig({});
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        if (
-          message.startsWith("Session not found") ||
-          message.includes("not found on disk")
-        ) {
-          // The CLI no longer hosts this session (a stale pool entry, or a
-          // session destroyed by an earlier failed recreate). Keep applying to
-          // the remaining healthy sessions — the pane restores a dead session
-          // from disk when it is re-selected. Do NOT surface this as a failed
-          // login/logout: that operation itself already succeeded.
-          console.error(
-            `[DesktopHost] 会话 ${oldSid} 不在 CLI 上，跳过重建:`,
-            error,
-          );
-          continue;
+    //
+    // configRecreateInFlight 覆盖整个窗口：重建期间 bridge 会先摘掉会话的注册表
+    // 项，读到 "Session not found" 是这场重建的一部分，不是「会话已被删除」，
+    // 读消息的失败路径据此不清理侧边栏条目。
+    this.configRecreateInFlight += 1;
+    try {
+      for (const [oldSid, agent] of [...this.agents]) {
+        const wasStreaming = agent.isStreaming;
+        try {
+          await agent.updateConfig({});
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : String(error);
+          if (
+            message.startsWith("Session not found") ||
+            message.includes("not found on disk")
+          ) {
+            // The CLI no longer hosts this session (a stale pool entry, or a
+            // session destroyed by an earlier failed recreate). Keep applying to
+            // the remaining healthy sessions — the pane restores a dead session
+            // from disk when it is re-selected. Do NOT surface this as a failed
+            // login/logout: that operation itself already succeeded.
+            console.error(
+              `[DesktopHost] 会话 ${oldSid} 不在 CLI 上，跳过重建:`,
+              error,
+            );
+            continue;
+          }
+          // Genuine config errors (bad baseURL/model …) still abort the apply so
+          // the caller can report them.
+          throw error;
         }
-        // Genuine config errors (bad baseURL/model …) still abort the apply so
-        // the caller can report them.
-        throw error;
-      }
-      if (agent.sessionId && agent.sessionId !== oldSid) {
-        this.rekeyAgent(agent, agent.sessionId);
-      }
-      if (wasStreaming) {
-        agent.isStreaming = false;
-        const paneId = this.paneIdForAgent(agent);
-        if (paneId) {
-          this.postMessage({ command: "endStreaming", paneId });
+        if (agent.sessionId && agent.sessionId !== oldSid) {
+          this.rekeyAgent(agent, agent.sessionId);
+        }
+        if (wasStreaming) {
+          agent.isStreaming = false;
+          const paneId = this.paneIdForAgent(agent);
+          if (paneId) {
+            this.postMessage({ command: "endStreaming", paneId });
+          }
         }
       }
+      await this.clearQueue();
+    } finally {
+      this.configRecreateInFlight -= 1;
     }
-    await this.clearQueue();
   }
 
   /**
