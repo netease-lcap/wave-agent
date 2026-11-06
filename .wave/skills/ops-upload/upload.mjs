@@ -277,7 +277,7 @@ function explainFailure(label, err) {
 
 const USAGE = `用法：node upload.mjs --type <desktop|docs|remote|plugin-market> [选项]
        node upload.mjs --list
-       node upload.mjs --delete <台账 id> [--confirm-prod]
+       node upload.mjs --delete <台账 id>
 
 必需：
   --file <路径>          要上传的本地文件（远控页可省略，默认取 pack:remote 产物；
@@ -320,7 +320,6 @@ const USAGE = `用法：node upload.mjs --type <desktop|docs|remote|plugin-marke
   --env <环境>           目标环境：${Object.keys(ENV_BASES).join(" / ")}（默认 prod）
   --base <URL>           直接指定地址（与 --env 二选一）：私有化环境必须用它 +
                          该环境令牌（私有化没有 --env 预设）
-  --confirm-prod         对生产做写操作（上传远控页/插件市场、删除台账）时必须显式加上
 
 其它：
   --type <desktop|docs|remote|plugin-market>
@@ -393,9 +392,6 @@ function parseArgs(argv) {
       case "--check": // 远控页独立脚本时代的旧名，等价于 --dry-run
         opts.dryRun = true;
         break;
-      case "--confirm-prod":
-        opts.confirmProd = true;
-        break;
       case "-h":
       case "--help":
         console.log(USAGE);
@@ -452,9 +448,6 @@ function validate(opts) {
     if (opts.releaseNotesFile) {
       die("--list / --delete 不接受 --release-notes-file");
     }
-    if (opts.deleteId && opts.env === "prod" && !opts.confirmProd) {
-      die("删生产台账行 = 回退线上版本，必须显式加 --confirm-prod");
-    }
     return;
   }
 
@@ -497,15 +490,6 @@ function validate(opts) {
     );
   } else if (opts.channels.length) {
     die(`--type ${opts.type} 不接受 --channel / --channels`);
-  }
-  // 托管类产物（远控页 / 插件市场）打错环境不报错、对象静默写进别处，且一传就对用户生效，
-  // 多一道闸（桌面端/文档包历史上没有这道，保持原样）
-  if (
-    ["remote", "plugin-market"].includes(opts.type) &&
-    opts.env === "prod" &&
-    !opts.confirmProd
-  ) {
-    die("传生产必须显式加 --confirm-prod（用户明确说「传生产」才加）");
   }
   const required =
     opts.type === "desktop"
@@ -737,7 +721,7 @@ function listLedger(opts, json) {
     console.log(`  ${d.downloadUrl ?? "(无下载地址)"}`);
   }
   console.log(
-    `\n共 ${rows.length} 条。回退一条：node upload.mjs --delete <id>（生产要加 --confirm-prod）。`,
+    `\n共 ${rows.length} 条。回退一条：node upload.mjs --delete <id>。`,
   );
   console.log(
     `台账里的上传人恒为 ops-api（令牌没有身份），追人看发布记录/工单，不要看这个字段。`,
@@ -924,7 +908,6 @@ async function probeRemoteLive(envName) {
  *   - **页面不发版**：传完企业端 `/remote/` 立即可见，后端不转发、不重建镜像；
  *     但「页面已更新」≠「机器侧已更新」——服务端方法白名单在服务那个会话的进程里。
  *   - **没有删除/回滚接口**：回滚只能另打一份覆盖同名文件；旧 hash 名永不清理。
- *   - **`--env prod` 必须 `--confirm-prod`**：打错环境不报错，对象会静默写进别处。
  *   - **成功判据 = 201 + fileKeys 数量 = 产物文件数**（不再有 version.txt 指针）。
  */
 async function uploadRemotePage(opts, headers, cookie) {
@@ -1050,7 +1033,6 @@ async function probePluginMarketLatest(envName) {
  *     再覆写 `latest.txt` 指向它 ⇒ 同内容重传幂等，「线上是哪份」只由那条指针决定。
  *   - **收端先校验**：zip 根必须含 `.wave-plugin/marketplace.json`（轻校验，不展开内容）。
  *   - **不写台账、没有删除/回滚接口**：回滚 = 拿旧 zip 重传一次（旧 sha 对象永不清理）。
- *   - **`--env prod` 必须 `--confirm-prod`**：一传就对全体用户生效，且打错环境不报错。
  */
 async function uploadPluginMarket(opts, headers) {
   // ── 预检 1：包形状（收端准入条件，纯本地） ──

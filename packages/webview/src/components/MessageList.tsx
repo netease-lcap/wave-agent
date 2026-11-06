@@ -1,5 +1,6 @@
 import React, {
   useEffect,
+  useLayoutEffect,
   useRef,
   useImperativeHandle,
   forwardRef,
@@ -20,6 +21,12 @@ import "../styles/MessageList.css";
 // 从 content box 起算，两者的差就是这一列 10px 的 padding。内核对这个偏移一无所
 // 知，由这里告诉它（与 CSS 里 `.messages-column { padding: 10px }` 同源）。
 const COLUMN_PADDING_PX = 10;
+/**
+ * 正文列宽 = 列宽 − 左右内边距（`.messages-column` 的 10px ×2）− 行内正文自己的
+ * 横向内边距（共 12px，实测：390px 视口 ⇒ 正文 358px；800px 列 ⇒ 768px）。估算
+ * 折行必须按这个宽度算，见 `estimateRowHeight` 的说明。
+ */
+const TEXT_WIDTH_INSET_PX = 32;
 
 // 滚到离顶这么近就要下一页更早的。留一点余量而不是严格的 0：触摸惯性把
 // scrollTop 拉过顶时浏览器会直接 clamp 到 0，那一刻的位移是 0，判定必须能接受
@@ -127,18 +134,48 @@ export const MessageList = forwardRef<
     [visibleMessages],
   );
 
+  /**
+   * 正文列的实际宽度。估算必须按它折行——同一个「62 字/行」的常量在手机列上会
+   * 把正文估矮一半，在桌面列上又估高一倍，两头都要在行第一次被量到时修正几百 px
+   * （实测手机 358px 列：`est 830 → real 1135`）。列宽变了（窗口缩放、面板开合、
+   * 横竖屏）估算也得跟着变，否则未挂载那批行会停在上一个列宽的高度上。
+   */
+  const columnRef = useRef<HTMLDivElement | null>(null);
+  const [textWidth, setTextWidth] = useState<number | undefined>(undefined);
+  useLayoutEffect(() => {
+    const column = columnRef.current;
+    if (!column || typeof ResizeObserver === "undefined") return;
+    const measure = () => {
+      const width = Math.max(
+        0,
+        Math.round(column.getBoundingClientRect().width) - TEXT_WIDTH_INSET_PX,
+      );
+      setTextWidth((prev) => (prev === width ? prev : width));
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(column);
+    return () => observer.disconnect();
+  }, []);
+
   const estimate = useCallback(
-    (index: number) => estimateRowHeight(visibleMessages[index]),
-    [visibleMessages],
+    (index: number) => estimateRowHeight(visibleMessages[index], { textWidth }),
+    [visibleMessages, textWidth],
   );
+
+  /** 行的定位容器，手势期的视觉补偿写在这上面（见 useVirtualRows）。 */
+  const canvasRef = useRef<HTMLDivElement | null>(null);
 
   // 虚拟化内核（自研，见 `src/virtual/`）。它自己管滚动分类、钉底状态、锚点补偿
   // 与阅读位置记录；这里只管「什么时候该钉/松手」和行内渲染。
   const list = useVirtualRows({
     keys,
+    // 估算闭包依赖正文列宽：列宽一变它就是个新闭包，账本里那批「按旧列宽估算」的
+    // 未挂载行跟着重算（见 `estimate` 选项的注释）。
     estimate,
     originOffsetPx: COLUMN_PADDING_PX,
     docKey,
+    canvasRef,
   });
   const {
     containerRef,
@@ -149,6 +186,7 @@ export const MessageList = forwardRef<
     scrollToIndex,
     indexAtOffset,
     rowStart,
+    visualOffset,
     isPinned,
     pin,
     unpin,
@@ -234,7 +272,9 @@ export const MessageList = forwardRef<
       setSticky(null);
       return;
     }
-    const scrollTop = container.scrollTop;
+    // 手势期画布带着视觉偏移，屏幕上真正的视口顶是 `scrollTop - 偏移`；不折算的话
+    // 上翻加载更早一页时粘性条会挑到屏幕外几行以外的那条消息。
+    const scrollTop = container.scrollTop - visualOffset();
     // The DOM only holds the visible window, so the sticky candidate is
     // derived from the data + the offset table. The candidate is the last user
     // message whose top edge sits above the viewport top, i.e. the last user
@@ -266,7 +306,7 @@ export const MessageList = forwardRef<
       return;
     }
     setSticky({ id: rows[candidate].id, text: candidateText });
-  }, [containerRef, indexAtOffset, rowStart]);
+  }, [containerRef, indexAtOffset, rowStart, visualOffset]);
 
   const scrollToMessage = useCallback(
     (id: string) => {
@@ -526,7 +566,7 @@ export const MessageList = forwardRef<
           lives in this inner wrapper (see MessageList.css). Rows resolve
           against it (position: relative), so its offset from the scroll
           surface must stay 0 — the 10px padding is inside it. */}
-      <div className="messages-column">
+      <div className="messages-column" ref={columnRef}>
         {stickyMessage && (
           <div className="sticky-user-wrapper">
             <div className="sticky-user-cap" />
@@ -548,36 +588,43 @@ export const MessageList = forwardRef<
             style={{ height: totalSize }}
             aria-hidden="true"
           />
-          {rows.map((row) => {
-            const message = visibleMessages[row.index];
-            const runClass = timelineRuns.classes[row.index];
-            return (
-              <div
-                key={row.key}
-                data-index={row.index}
-                data-virtual-key={row.key}
-                data-measured-message-id={message.id}
-                ref={measureRow}
-                className={`virtual-row${runClass ? ` ${runClass}` : ""}`}
-                style={{
-                  top: row.start,
-                  paddingBottom: timelineRuns.paddings[row.index],
-                }}
-              >
-                <Message
-                  key={message.id}
-                  message={message}
-                  vscode={vscode}
-                  onRewindToMessage={onRewindToMessage}
-                  onBackgroundCurrentTask={onBackgroundCurrentTask}
-                  isLastMessage={row.index === visibleMessages.length - 1}
-                  workdir={workdir}
-                  onOpenPreview={onOpenPreview}
-                  onOpenFile={onOpenFile}
-                />
-              </div>
-            );
-          })}
+          {/* 行的定位容器。绝对定位、铺满列的 padding box ⇒ 行坐标与直接挂在
+              列上完全一致；手势期内核在这个节点上写 translateY 顶替 scrollTop
+              补偿（见 useVirtualRows 的 commitVisualOffset）。它盖在粘性条之上，
+              所以只让行自己收事件（.virtual-canvas / .virtual-row 的
+              pointer-events）。 */}
+          <div className="virtual-canvas" ref={canvasRef}>
+            {rows.map((row) => {
+              const message = visibleMessages[row.index];
+              const runClass = timelineRuns.classes[row.index];
+              return (
+                <div
+                  key={row.key}
+                  data-index={row.index}
+                  data-virtual-key={row.key}
+                  data-measured-message-id={message.id}
+                  ref={measureRow}
+                  className={`virtual-row${runClass ? ` ${runClass}` : ""}`}
+                  style={{
+                    top: row.start,
+                    paddingBottom: timelineRuns.paddings[row.index],
+                  }}
+                >
+                  <Message
+                    key={message.id}
+                    message={message}
+                    vscode={vscode}
+                    onRewindToMessage={onRewindToMessage}
+                    onBackgroundCurrentTask={onBackgroundCurrentTask}
+                    isLastMessage={row.index === visibleMessages.length - 1}
+                    workdir={workdir}
+                    onOpenPreview={onOpenPreview}
+                    onOpenFile={onOpenFile}
+                  />
+                </div>
+              );
+            })}
+          </div>
         </>
         {/* Compaction hint: blinking cursor + label pinned to the end of the
             message list, independent of isStreaming (auto-compaction runs between

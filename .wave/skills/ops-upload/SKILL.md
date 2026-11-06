@@ -29,7 +29,6 @@ allowed-tools:
 - **两种部署都打企业端域名**：CodeChat 的 `/api/publish/*` 写入口跟着读入口走（2026-11-04 起），SaaS 与私有化都挂在企业端，运维只需要记一本地址。运营端 `neteasecc.*` **不再挂**这组接口（同路径 404）——只有还没升级到该版本镜像的环境，才需要 `--base` 指向运营端过渡。
 - **路径逐字一致，只换 host**：同一份命令在两种部署下都能用。**私有化没有 `--env` 预设**（那是客户自己的域名），必须 `--base https://<客户企业端>` + 该环境的令牌。
 - ⚠️ 打错环境**不会报错**：对象会静默写进另一个环境。脚本会把解析出的地址打印在第一行，动手前先核一遍。（`--base <URL>` 仍保留，和 `--env` 二选一。）
-- **托管类产物要求 `--confirm-prod`**：`--type remote` / `--type plugin-market` 传 prod、以及**删生产台账行**时必须显式加这个开关（一传就对用户生效、打错环境不报错）；桌面端/文档包的历史命令不带它，保持原样。
 
 ### 令牌（`PUBLISH_TOKEN`）
 
@@ -270,10 +269,9 @@ node $S --type remote --env test --dry-run
 
 # 正式上传（--file 可省，默认取 packages/webview/remote/dist/remote-page.zip）
 node $S --type remote --env test
-node $S --type remote --env prod --confirm-prod
+node $S --type remote --env prod
 ```
 
-- **`--env prod` 必须加 `--confirm-prod`**：打错环境不报错、对象静默写进别处，多一道闸（只有远控页与插件市场有这道闸）。
 - **成功判据**：`201` + `fileKeys` 数量 = **产物文件数**（整包重传是幂等覆盖，重跑同一条命令安全）。脚本会把数量与包内文件数比对，不一致会告警。
 - **不再有版本标签**：上传接口只收 zip，不写 `version.txt` —— 那个指针既不参与任何判定、也不跟内容绑定。想知道传的是哪份构建，看入口页自己带的 `wave-remote-config`（构建期注入的 `version` + 构建 sha，`--dry-run` 会同时打印**本次构建**与**线上当前版本**，报告里直接抄）。
 - **没有删除接口** ⇒ 回滚只能另打一份覆盖同名文件，或让 SRE 删 file-center 对象；**旧 hash 名永不清理**，别拿「旧名 404」当判据。
@@ -337,10 +335,9 @@ node $S --type plugin-market --file $PKG --env test --dry-run
 
 # 正式上传
 node $S --type plugin-market --file $PKG --env test
-node $S --type plugin-market --file $PKG --env prod --confirm-prod
+node $S --type plugin-market --file $PKG --env prod
 ```
 
-- **`--env prod` 必须 `--confirm-prod`**：一传就对全体用户生效，且打错环境不报错。
 - **预检直接给结论**：`本次 sha`（= 落地 key）+ `线上指针`（回滚账）；两者相同会明确写「内容没变」。
 - 单次 multipart（字段 `zip`），快照体积 ~0.5–3MB，远小于网关上限。
 
@@ -362,7 +359,7 @@ node $S --type plugin-market --file $PKG --env prod --confirm-prod
 # 读台账（该环境所有桌面端发布记录，按平台 + 上传时间排序）
 node .wave/skills/ops-upload/upload.mjs --list --env test
 
-# 回退：删一条记录；生产要加 --confirm-prod（先跑 --dry-run 看要删哪条）
+# 回退：删一条记录（先跑 --dry-run 看要删哪条）
 node .wave/skills/ops-upload/upload.mjs --delete <台账 id> --env test --dry-run
 node .wave/skills/ops-upload/upload.mjs --delete <台账 id> --env test
 ```
