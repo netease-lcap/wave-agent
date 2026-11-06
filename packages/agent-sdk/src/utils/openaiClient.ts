@@ -213,9 +213,20 @@ export class OpenAIClient {
 
       const error = new Error(
         `HTTP ${response.status}${response.statusText ? ` ${response.statusText}` : ""}: ${responseText}`,
-      ) as Error & { status?: number; body?: unknown };
+      ) as Error & {
+        status?: number;
+        body?: unknown;
+        /**
+         * 非 2xx 的响应头。额度读数（`x-codechat-quota-*`）在 402 阻断、上游
+         * 429/5xx 上与成功响应同值——「被拦下」这一刻正是用户最需要看到读数的
+         * 时刻，所以错误也必须把头带出去（spec: desktop/desktop-account.md
+         * 「额度响应头」、`utils/quotaHeaders.ts` 的 `quotaHeadersFromError`）。
+         */
+        headers?: Headers;
+      };
       error.status = response.status;
       error.body = responseText;
+      error.headers = response.headers;
 
       const retryableStatus =
         response.status === 429 ||

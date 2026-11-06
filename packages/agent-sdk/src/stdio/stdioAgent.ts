@@ -172,6 +172,9 @@ export interface StdioAgentCallbacks {
   onPlanFileUpdated?: (content: string) => void;
   onLoadingChange?: (loading: boolean) => void;
   onContextUsage?: (percent: number) => void;
+  /** 额度响应头（`x-codechat-quota-*`，每次模型调用都带），原样透传、不解析
+   *  （spec: docs/specs/desktop/desktop-account.md「额度响应头」）。 */
+  onQuotaHeaders?: (headers: Record<string, string>) => void;
   onCommandRunningChange?: (running: boolean) => void;
   onQueuedMessagesChange?: (messages: QueuedMessage[]) => void;
   onTasksChange?: (tasks: Task[]) => void;
@@ -920,6 +923,11 @@ export class StdioAgent {
       case "contextUsage": {
         const p = params as { percent: number };
         this.callbacks.onContextUsage?.(p.percent);
+        break;
+      }
+      case "quotaHeaders": {
+        const p = params as { headers?: Record<string, string> };
+        if (p.headers) this.callbacks.onQuotaHeaders?.(p.headers);
         break;
       }
       case "commandRunningChange": {

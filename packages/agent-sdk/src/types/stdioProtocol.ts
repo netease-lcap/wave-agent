@@ -255,6 +255,14 @@ export type ServerNotificationMethod =
   | "btwContent"
   | "contextUsage"
   /**
+   * 额度响应头（`x-codechat-quota-*`），来自**每一次**模型调用的响应（成功与
+   * 非 2xx 都带）。Params: `{ headers: Record<string, string> }`，键为小写、
+   * 原样透传，SDK 不解析字段。只在响应里真的出现这批头时发出——一个都没有
+   * （私有化部署 / 自定义网关）就一次都不发，宿主据此不更新、不额外查询
+   * （spec: docs/specs/desktop/desktop-account.md「额度响应头」）。
+   */
+  | "quotaHeaders"
+  /**
    * Startup progress for the loading animation (spec
    * `ui/stdio-transport.md`「首次启动的进度文案」). **Global** — no `sessionId`:
    * the CLI emits it before `initialize` returns, when no session is bound yet,

@@ -1012,6 +1012,30 @@ describe("StdioAgent", () => {
     expect(onAssistantMessageDiscarded).not.toHaveBeenCalled();
   });
 
+  it("quotaHeaders forwards the raw header map to the host", () => {
+    // 额度头是桌面端账户卡片的刷新主源；SDK 层只透传，语义映射在宿主
+    // (spec desktop-account「用量刷新时机」)。
+    const onQuotaHeaders = vi.fn();
+    const { agent } = createAgent({ onQuotaHeaders });
+    const headers = {
+      "x-codechat-quota-status": "allowed",
+      "x-codechat-quota-weekly-used": "12",
+    };
+
+    agent.handleNotification("quotaHeaders", { headers });
+
+    expect(onQuotaHeaders).toHaveBeenCalledWith(headers);
+  });
+
+  it("quotaHeaders without a payload is a no-op", () => {
+    const onQuotaHeaders = vi.fn();
+    const { agent } = createAgent({ onQuotaHeaders });
+
+    agent.handleNotification("quotaHeaders", {});
+
+    expect(onQuotaHeaders).not.toHaveBeenCalled();
+  });
+
   it("assistantContentUpdated forwards params to callback", () => {
     const onAssistantContentUpdated = vi.fn();
     const { agent } = createAgent({ onAssistantContentUpdated });

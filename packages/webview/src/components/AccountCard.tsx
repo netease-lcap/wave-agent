@@ -65,6 +65,11 @@ interface AccountCardProps {
   onDownloadUpdate?: () => void;
   /** 用户确认立即重启（S4 确认后通知宿主安装并重启）。 */
   onRestartApp?: () => void;
+  /**
+   * 打开用量浮层时向宿主核对一次用量（spec desktop-account「用量刷新时机」场景
+   * 4）：只在「收起 → 打开」那一刻发一次，页签切换与重渲染都不再发。
+   */
+  onRefreshUsage?: () => void;
 }
 
 /** Display name: email prefix, falling back to a neutral label. */
@@ -358,6 +363,7 @@ export const AccountCard: React.FC<AccountCardProps> = ({
   onOpenHelpDocs,
   onDownloadUpdate,
   onRestartApp,
+  onRefreshUsage,
 }) => {
   // 个人信息纯功能菜单：热区点击开/关（MoreMenu 把热区排除在 click-outside 外）。
   const [showMenu, setShowMenu] = useState(false);
@@ -638,6 +644,9 @@ export const AccountCard: React.FC<AccountCardProps> = ({
       }
       setShowMenu(false);
       setShowUsage(true);
+      // 一次打开只核对一次（spec「用量刷新时机」场景 4）：页签切换与宿主推送
+      // 重渲染都不会走到这里 —— 这里是唯一「收起 → 打开」的入口。
+      onRefreshUsage?.();
     } else {
       // 再点一次触发按钮 = 键盘用户的 toggle 关闭：与 Esc 同样交还焦点
       // （是否真的交还由 effect 按「这次是不是键盘打开的」把关）。
