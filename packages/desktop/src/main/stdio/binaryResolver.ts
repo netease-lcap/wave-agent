@@ -106,7 +106,7 @@ function fileExists(p: string): boolean {
  * an upgrade never forces re-downloading them. Returns the runtime entry path.
  * @throws Error when the bundled CLI itself is missing (corrupt install).
  */
-function prepareCli(): string {
+function prepareCli(onCopy?: () => void): string {
   const entry = cliEntryPath();
   const bundledEntry = path.join(bundledCliDir(), "bin", "wave-code.js");
   if (!fileExists(bundledEntry)) {
@@ -126,6 +126,9 @@ function prepareCli(): string {
       fileHash(runtimeBundle);
 
   if (needCopy) {
+    // 只在真的要拷的时候上报（spec `ui/stdio-transport.md` 场景 3：缓存全命中
+    // 不得出现「同步」文案）——首次安装 / 应用升级时这里是几十 MB 的拷贝。
+    onCopy?.();
     fs.mkdirSync(cliInstallDir(), { recursive: true });
     // Replace the CLI files only — the downloaded runtime dependencies live in
     // the shared ~/.wave/cli dir, so an upgrade never forces re-downloading
@@ -153,10 +156,13 @@ function fileHash(p: string): string {
 /**
  * Resolve the `wave` CLI for local sessions: WAVE_CLI_PATH override first
  * (development), then the CLI copied from the bundle into `~/.wave/cli/desktop`.
+ * `onCopy` fires only when the copy actually happens (first install / upgrade),
+ * so callers can surface a progress stage without lying on cache hits.
  * @throws Error only when the bundled CLI is missing (corrupt install).
  */
 export async function resolveWaveBinary(
   _targetVersion?: string,
+  onCopy?: () => void,
 ): Promise<string> {
   if (cachedPath) return cachedPath;
 
@@ -166,7 +172,7 @@ export async function resolveWaveBinary(
     return cachedPath;
   }
 
-  cachedPath = prepareCli();
+  cachedPath = prepareCli(onCopy);
   return cachedPath;
 }
 
@@ -177,8 +183,9 @@ export async function resolveWaveBinary(
  */
 export async function ensureCliUpToDate(
   targetVersion?: string,
+  onCopy?: () => void,
 ): Promise<string> {
-  return resolveWaveBinary(targetVersion);
+  return resolveWaveBinary(targetVersion, onCopy);
 }
 
 /** Reset cached path — for testing only. */

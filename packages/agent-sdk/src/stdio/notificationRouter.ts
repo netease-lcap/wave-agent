@@ -57,6 +57,9 @@ const ALL_NOTIFICATION_METHODS: readonly ServerNotificationMethod[] = [
   "compactionContentUpdate",
   "planFileUpdated",
   "backgroundTasksChange",
+  // Global (no sessionId): the CLI's own startup steps, emitted before any
+  // session exists. Delivered to the `registerGlobal` handler.
+  "startupStage",
 ] as const;
 
 export class NotificationRouter {

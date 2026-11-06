@@ -29,6 +29,9 @@ const h = vi.hoisted(() => ({
   // 信封。没登记的按「未打桩」失败返回。
   artifactResponses: new Map<string, unknown>(),
   authUrlHandler: null as ((params: unknown) => void) | null,
+  // Every `router.registerGlobal` handler, by method name — CLI-side notifications
+  // that carry no sessionId (`startupStage`) are delivered through it.
+  globalHandlers: {} as Record<string, ((params: unknown) => void) | undefined>,
   // Shared RPC implementation for the local StdioClient mock and the remote
   // daemon client returned by the connectRemoteDaemon mock — both must answer
   // the same utility methods so auth/worktree/git flows work on every host.
@@ -360,6 +363,7 @@ vi.mock("wave-agent-sdk/host", async (importOriginal) => ({
     unregisterSession = vi.fn();
     registerGlobal = vi.fn(
       (method: string, handler: (params: unknown) => void) => {
+        h.globalHandlers[method] = handler;
         if (method === "authUrl") h.authUrlHandler = handler;
       },
     );
@@ -576,7 +580,11 @@ vi.mock("wave-agent-sdk/host", async (importOriginal) => ({
 
 vi.mock("../src/main/stdio/binaryResolver", () => ({
   resolveWaveBinary: vi.fn(async () => "/mock/wave"),
-  ensureCliUpToDate: vi.fn(async () => "/mock/wave"),
+  // Second arg is the "a copy really happened" callback (progress stage); the
+  // default mock is a cache hit, i.e. it never fires.
+  ensureCliUpToDate: vi.fn(
+    async (_targetVersion?: string, _onCopy?: () => void) => "/mock/wave",
+  ),
   loadBundledCliSource: vi.fn(() => ({
     dir: "/app/root/resources/wave-cli",
     bundleSha256:
@@ -646,7 +654,7 @@ vi.mock("../src/main/remoteCli", async () => {
     ...actual,
     resolveRemoteWaveBinary: vi.fn(async (host: string) => ({
       binaryPath: `/remote/wave-${host}`,
-      nodeVersion: "v22.0.0",
+      runtimePath: `/remote/node-${host}`,
     })),
     ensureRemoteDaemon: vi.fn(
       async (host: string) => `/home/${host}/.wave/daemon.sock`,
@@ -915,6 +923,7 @@ beforeEach(() => {
   h.authStatusResults.length = 0;
   h.authServerUrl = "";
   h.authUrlHandler = null;
+  h.globalHandlers = {};
   h.dirSessions.clear();
   h.allSessions = [];
   h.worktreeResult = null;
@@ -6114,6 +6123,113 @@ describe("session tree", () => {
     expect(
       shownToasts().some((t) => t.message.includes("已从最近列表移除")),
     ).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 首次启动的进度文案 (spec ui/stdio-transport.md「首次启动的进度文案（运行时 /
+// CLI / 工具依赖）」)
+// ---------------------------------------------------------------------------
+
+describe("startup progress line", () => {
+  const indexEntry = (sessionId: string, workdir: string, host?: string) => ({
+    sessionId,
+    title: `Session ${sessionId}`,
+    workdir,
+    cwd: workdir,
+    createdAt: Date.now(),
+    lastActiveAt: Date.now(),
+    ...(host ? { host } : {}),
+  });
+
+  it("pushes remote startup stages to the pane waiting for that host, then clears", async () => {
+    const { host, store, send, sent } = await readyHost();
+    store.upsertSession(indexEntry("rem-1", "/work/remote", "ssh.example"));
+    send.mockClear();
+    vi.mocked(ensureRemoteDaemon).mockImplementationOnce(
+      async (_host, _source, _onNotice, onStage) => {
+        onStage?.("checkingEnvironment");
+        onStage?.("downloadingRuntime");
+        return "/home/ssh.example/.wave/daemon.sock";
+      },
+    );
+
+    await host.handleWebviewMessage({
+      command: "desktopSelectSession",
+      workdir: "/work/remote",
+      sessionId: "rem-1",
+    });
+
+    // One line advancing in place (连接 → 检查环境 → 下载运行时), then a `null`
+    // that ends the stage stream as the restore lands.
+    await vi.waitFor(() => {
+      expect(sent("loadingStage").at(-1)?.text).toBeNull();
+    });
+    const stages = sent("loadingStage");
+    expect(stages.map((s) => s?.text)).toEqual([
+      "正在连接 ssh.example…",
+      "正在检查远端环境…",
+      "正在下载 Node.js 运行时（约 50 MB）…",
+      null,
+    ]);
+    // Stages are host-level, the text is pane-level: everything lands on the one
+    // pane that is currently waiting for this host.
+    const restoringPane = sent("setInitialState")[0]?.paneId;
+    expect(restoringPane).toBeTruthy();
+    expect(stages.every((s) => s?.paneId === restoringPane)).toBe(true);
+  });
+
+  it("shows the CLI-side stages (tool deps) delivered over the stdio channel", async () => {
+    const { host, store, send, sent } = await readyHost();
+    store.upsertSession(indexEntry("hist-1", "/work/a"));
+    send.mockClear();
+    // Real stdio startup takes seconds: hold the restore agent mid-initialize so
+    // the pane is still waiting when the CLI reports its own stage.
+    let releaseInit!: () => void;
+    h.initializeGate = new Promise<void>((r) => {
+      releaseInit = r;
+    });
+
+    const selectPromise = host.handleWebviewMessage({
+      command: "desktopSelectSession",
+      workdir: "/work/a",
+      sessionId: "hist-1",
+    });
+    await vi.waitFor(() => {
+      expect(h.agentInstances).toHaveLength(2);
+    });
+    h.globalHandlers.startupStage?.({ stage: "downloadingToolDeps" });
+
+    h.initializeGate = null;
+    releaseInit();
+    await selectPromise;
+
+    await vi.waitFor(() => {
+      expect(sent("loadingStage").at(-1)?.text).toBeNull();
+    });
+    expect(sent("loadingStage").map((s) => s?.text)).toEqual([
+      "正在下载工具依赖（搜索与图片处理）…",
+      null,
+    ]);
+  });
+
+  it("stays silent when the CLI copy is a cache hit", async () => {
+    const { host, store, send, sent } = await readyHost();
+    store.upsertSession(indexEntry("hist-2", "/work/a"));
+    send.mockClear();
+
+    await host.handleWebviewMessage({
+      command: "desktopSelectSession",
+      workdir: "/work/a",
+      sessionId: "hist-2",
+    });
+
+    // Nothing to report, nothing shown — the 「正在同步 Wave CLI…」 line belongs
+    // to a real copy only (spec 场景 3).
+    await vi.waitFor(() => {
+      expect(sent("setInitialState").at(-1)?.isRestoring).toBe(false);
+    });
+    expect(sent("loadingStage")).toHaveLength(0);
   });
 });
 

@@ -1870,6 +1870,12 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         if (!forThisPane(message)) break;
         dispatch({ type: "END_STREAMING" });
         break;
+      // 首次启动 / 恢复的进度文案（spec ui/stdio-transport.md）：宿主说这一步在
+      // 干什么，加载动画下方就显示什么；`null` = 阶段流结束，立刻清掉。
+      case "loadingStage":
+        if (!forThisPane(message)) break;
+        dispatch({ type: "SET_LOADING_STAGE", payload: message.text });
+        break;
       case "updateSessions": {
         dispatch({ type: "SET_SESSIONS", payload: message.sessions });
         // /btw 面板按会话存在快照里（场景 14），所以非桌面端也要有失效收口：
@@ -5023,7 +5029,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
       className="chat-restoring-overlay"
       data-testid="chat-restoring-overlay"
     >
-      <LoadingLogo />
+      <LoadingLogo stage={state.loadingStage} />
     </div>
   ) : (
     <>
@@ -5034,7 +5040,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
           onLogin={handleLogin}
         />
       ) : showWelcome ? (
-        <LoadingLogo />
+        <LoadingLogo stage={state.loadingStage} />
       ) : (
         <MessageList
           // 按会话 id 重挂载：切换会话是全新上下文，初始加载强制滚到底，

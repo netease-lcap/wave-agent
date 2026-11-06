@@ -41,6 +41,7 @@ import type {
   ConfiguredModel,
   MessageWindow,
   MessageWindowResult,
+  StartupStage,
 } from "wave-agent-sdk/host";
 import {
   EDIT_TOOL_NAME,
@@ -54,6 +55,7 @@ import {
   NotificationRouter,
   MESSAGE_PAGE_SIZE,
   describeUserPreferencePatch,
+  startupStageText,
 } from "wave-agent-sdk/host";
 import { StdioClient } from "./stdio/stdioClient";
 import type { JsonRpcClient } from "./stdio/jsonRpcClient";
@@ -547,6 +549,16 @@ export class DesktopHost {
     { sessionId: string; workdir: string; token: number }
   >();
   private restoreToken = 0;
+  /**
+   * 每个分屏加载态下方那一行进度文案（spec ui/stdio-transport.md「首次启动的进度
+   * 文案」）。paneId → 文案；和 `pendingRestores` 同生共死——恢复结束（完成 / 失败 /
+   * 被更新的选择取代）就清掉，`pushPaneSessionState` 在 `isRestoring` 为假时收口。
+   *
+   * 为什么要存一份而不是只转发：阶段是**主机级**的（同一台主机的连接、运行时、
+   * CLI 只做一次），而文案是**分屏级**的。归属靠这张表 + `hostState` 反查「此刻
+   * 正在等这台主机的分屏」。
+   */
+  private restoreStages = new Map<string, string>();
 
   // Throttling state, per pane so concurrently streaming panes update
   // independently (same cadence as vsce ChatSession).
@@ -1433,7 +1445,13 @@ export class DesktopHost {
       // is decoupled from the GUI version, so no version target is needed.
       let binaryPath: string;
       try {
-        binaryPath = await ensureCliUpToDate();
+        // The copy is content-compared, i.e. usually a no-op — the stage fires
+        // only when it actually happens (first install / app upgrade), so a
+        // cache hit never shows a "syncing" line (spec `ui/stdio-transport.md`
+        // 场景 3).
+        binaryPath = await ensureCliUpToDate(undefined, () =>
+          this.reportStartupStage(LOCAL_HOST, "syncingCli"),
+        );
       } catch (error) {
         this.showToast({
           message: `wave CLI 获取失败：${error instanceof Error ? error.message : String(error)}`,
@@ -1451,6 +1469,7 @@ export class DesktopHost {
             .catch((error) => this.reportExternalOpenFailure(error));
         }
       });
+      this.registerStartupStageHandler(this.router, LOCAL_HOST);
       this.router.attach();
     })();
 
@@ -1461,6 +1480,22 @@ export class DesktopHost {
       this.router = null;
     });
     return this.initPromise;
+  }
+
+  /**
+   * 订阅 CLI 侧的启动阶段（spec ui/stdio-transport.md）：工具依赖下载与「正在启动
+   * 会话…」都发生在任何会话绑定之前，通知不带 sessionId，走全局处理器。
+   * 宿主管不了 CLI 报什么，只负责按主机归属到分屏。
+   */
+  private registerStartupStageHandler(
+    router: NotificationRouter,
+    host: string,
+  ): void {
+    router.registerGlobal("startupStage", (params) => {
+      const stage = (params as { stage?: string })?.stage;
+      if (typeof stage !== "string") return;
+      this.reportStartupStage(host, stage as StartupStage);
+    });
   }
 
   /** Ensure the shared stdio client for a host exists (local, WSL or remote). */
@@ -1505,14 +1540,25 @@ export class DesktopHost {
     this.remoteHosts.set(host, entry);
 
     entry.initPromise = (async () => {
+      // 首次启动的进度文案（spec ui/stdio-transport.md 场景 1）：WSL 用发行版名，
+      // 后面每个阻塞步骤各自报一次，界面上是一行向前推进的文案。
+      this.reportStartupStage(host, "connecting", distro);
       await assertWslDistroReady(distro);
+      this.reportStartupStage(host, "checkingEnvironment");
       const homeDir = await getRemoteHomeDir(host);
-      const { binaryPath } = await ensureRemoteCliUpToDate(
+      // Same provisioning as an ssh host: the managed runtime is pushed in first
+      // (the distro needs no Node.js of its own) and it is what runs the CLI.
+      const { binaryPath, runtimePath } = await ensureRemoteCliUpToDate(
         host,
         loadBundledCliSource(),
         homeDir,
+        (stage) => this.reportStartupStage(host, stage),
       );
-      const spawnSpec = await buildWslCliSpawnSpec(distro, binaryPath);
+      const spawnSpec = await buildWslCliSpawnSpec(
+        distro,
+        binaryPath,
+        runtimePath,
+      );
       // `shell: false`: wsl.exe takes the distro command as a plain argv array;
       // routing it through cmd.exe would re-split the quoted login-shell
       // command line.
@@ -1535,6 +1581,7 @@ export class DesktopHost {
             .catch((error) => this.reportExternalOpenFailure(error));
         }
       });
+      this.registerStartupStageHandler(router, host);
       router.attach();
       entry.client = client;
       entry.router = router;
@@ -1542,7 +1589,8 @@ export class DesktopHost {
     })();
 
     entry.initPromise.catch(() => {
-      // Allow retry after a failed init (distro started later, node installed…).
+      // Allow retry after a failed init (distro started later, runtime download
+      // failed, CLI push failed…).
       this.remoteHosts.delete(host);
     });
     return entry.initPromise;
@@ -1589,6 +1637,9 @@ export class DesktopHost {
     this.remoteHosts.set(host, entry);
 
     entry.initPromise = (async () => {
+      // 首次启动的进度文案（spec ui/stdio-transport.md 场景 1）：ssh 链路每一步
+      // 各自报一次，界面上就是动画下方那一行向前推进的文字。
+      this.reportStartupStage(host, "connecting", host);
       // Remote hosts run THIS app's bundled CLI, pushed over ssh when stale
       // (spec: desktop-distribution.md 「CLI 版本保障」). The upgrade target is the
       // bundled CLI's own wave-code version — decoupled from the GUI version,
@@ -1597,6 +1648,7 @@ export class DesktopHost {
         host,
         loadBundledCliSource(),
         (msg) => this.showToast({ message: msg }),
+        (stage) => this.reportStartupStage(host, stage),
       );
       const { client, tunnel } = await connectRemoteDaemon(host, daemonSocket);
       const router = new NotificationRouter(client);
@@ -1607,6 +1659,7 @@ export class DesktopHost {
         // the browser (spec: SSO 登录 scenario 8).
         if (p?.url) void this.handleRemoteAuthUrl(host, p.url);
       });
+      this.registerStartupStageHandler(router, host);
       router.attach();
       entry.client = client;
       entry.router = router;
@@ -2652,6 +2705,41 @@ export class DesktopHost {
     // the sweep overlay.
     this.pushPanes();
     void this.pushPaneSessionState(paneId);
+  }
+
+  /**
+   * 上报一个启动阶段（spec ui/stdio-transport.md「首次启动的进度文案」）。
+   *
+   * 阶段是**主机级**的（连接、运行时、CLI 同步一台主机只做一次），文案却是
+   * **分屏级**的：只推给此刻正在等这台主机的那几个恢复分屏。用户中途换点别的
+   * 会话时，`pendingRestores` 已经换成新目标，先前那次连接的进度自然落不到当前
+   * 分屏（场景 5：文案归属最新的目标，与加载态同一条归属规则）。
+   */
+  private reportStartupStage(
+    host: string,
+    stage: StartupStage,
+    target?: string,
+  ): void {
+    const text = startupStageText(stage, target);
+    if (!text) return;
+    for (const paneId of this.pendingRestores.keys()) {
+      if ((this.hostState.get(paneId) ?? LOCAL_HOST) !== host) continue;
+      this.setPaneStage(paneId, text);
+    }
+  }
+
+  /**
+   * 推一行阶段文案给分屏；`null` = 这条阶段流结束了（恢复收尾时清，避免文案
+   * 停在最后一步上）。同一个值不重复推。
+   */
+  private setPaneStage(paneId: string, text: string | null): void {
+    if (text === null) {
+      if (!this.restoreStages.delete(paneId)) return;
+    } else {
+      if (this.restoreStages.get(paneId) === text) return;
+      this.restoreStages.set(paneId, text);
+    }
+    this.postMessage({ command: "loadingStage", paneId, text });
   }
 
   /**
@@ -3759,6 +3847,11 @@ export class DesktopHost {
       isAuthenticated: this.lastIsAuthenticated,
       workdir: current?.currentWorkdir,
     });
+
+    // 恢复已经收口（这一次推送里 isRestoring 为假）——启动进度文案到此为止。显式
+    // 清一次，覆盖「最后一步没报成 / 工具依赖失败但加载态还在」的窗口：界面上的
+    // 那行文字不能跟着停在 100% 之前的某一步。
+    if (!pending) this.setPaneStage(paneId, null);
   }
 
   /**

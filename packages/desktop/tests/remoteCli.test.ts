@@ -1,4 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { createHash } from "crypto";
 import { EventEmitter } from "events";
 import { PassThrough, Readable } from "stream";
 
@@ -32,11 +33,20 @@ import {
   getRemoteHomeDir,
   REMOTE_FILE_MAX_LINES,
   REMOTE_FILE_MAX_BYTES,
-  REMOTE_NODE_MIN_MAJOR,
+  MANAGED_RUNTIME_VERSION,
   ensureRemoteCliUpToDate,
   ensureRemoteDaemon,
   killRemoteDaemon,
   remoteCliShimPath,
+  remoteRuntimeDir,
+  remoteRuntimeNodePath,
+  nodePlatformKey,
+  nodeRuntimeTarget,
+  nodeMirrorBase,
+  parseHostPlatform,
+  parseRuntimeMarker,
+  parseSha256Sums,
+  runtimeMarker,
 } from "../src/main/remoteCli";
 import { resetRemoteShellCache, shellQuote } from "../src/main/sshHosts";
 
@@ -49,10 +59,75 @@ const SOURCE = {
 };
 const HOME = "/home/user";
 
+/** The managed node the CLI runs on, derived from HOME. */
+const RUNTIME_NODE = remoteRuntimeNodePath(HOME);
+
 type StubResult = { stdout?: string; error?: Error };
 
 /** Login shell probe (`echo $SHELL`) precedes every remote probe command. */
 const LOGIN_SHELL: StubResult = { stdout: "/bin/bash" };
+
+const PLATFORM_LINE = "WAVE_HOST_PLATFORM_V1 Linux|x86_64|glibc";
+const MARKER_LINE = `WAVE_RUNTIME_MARKER_V1 ${runtimeMarker("linux-x64")}`;
+
+/** Runtime probe answering "glibc linux-x64, runtime already installed". */
+const RUNTIME_INSTALLED: StubResult = {
+  stdout: `${PLATFORM_LINE}\n${MARKER_LINE}\n`,
+};
+
+/** Runtime probe answering "glibc linux-x64, nothing installed yet". */
+const RUNTIME_MISSING: StubResult = { stdout: `${PLATFORM_LINE}\n` };
+
+/**
+ * `-lic` runs an INTERACTIVE login shell, so its rc/motd output lands in
+ * stdout before the command's own answer. A real Ubuntu WSL user's first
+ * login of the day prints exactly this (verified on Ubuntu-24.04); the ssh
+ * path can hit the same when the shell prints a banner.
+ */
+const LOGIN_BANNER =
+  'To run a command as administrator (user "root"), use "sudo <command>".\n' +
+  'See "man sudo_root" for details.\n\n';
+
+const MIRROR = "https://registry.npmmirror.com/-/binary/node";
+const RUNTIME_TARGET = nodeRuntimeTarget("linux-x64");
+const RUNTIME_BASE = `${MIRROR}/v${MANAGED_RUNTIME_VERSION}`;
+
+/** Fake official Node archive + its real sha256, as the mirror would serve it. */
+function nodeArchive() {
+  const bytes = Buffer.from(`fake-node-tarball:${RUNTIME_TARGET.file}`);
+  return {
+    bytes,
+    sha256: createHash("sha256").update(bytes).digest("hex"),
+  };
+}
+
+/**
+ * Stub the mirror endpoints (`<base>/SHASUMS256.txt` + the archive). Anything
+ * else answers 404, which is how a missing mirror path surfaces.
+ */
+function stubMirror(
+  overrides: Record<string, string | Buffer | "404"> = {},
+): void {
+  const { bytes, sha256 } = nodeArchive();
+  const routes: Record<string, string | Buffer | "404"> = {
+    [`${RUNTIME_BASE}/SHASUMS256.txt`]: `${sha256}  ${RUNTIME_TARGET.file}\n`,
+    [`${RUNTIME_BASE}/${RUNTIME_TARGET.file}`]: bytes,
+    ...overrides,
+  };
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (url: string) => {
+      const body = routes[url];
+      if (body === undefined || body === "404") {
+        return new Response("not found", {
+          status: 404,
+          statusText: "Not Found",
+        });
+      }
+      return new Response(body);
+    }),
+  );
+}
 
 /**
  * Queue-driven execFile mock: each call shifts the next stub and invokes the
@@ -103,6 +178,26 @@ const CONNECT_FAIL = new Error("ssh: connect to host failed");
 CONNECT_FAIL.name = "Error";
 
 /**
+ * Fake `wsl.exe` child for the one-shot probes (`getWslLoginShell` reads stdout
+ * then waits for exit). Emitted on the next tick so the caller has subscribed.
+ */
+function makeProbeChild(stdout: string) {
+  const child = new EventEmitter() as EventEmitter & {
+    stdout: EventEmitter;
+    stderr: EventEmitter;
+    kill: ReturnType<typeof vi.fn>;
+  };
+  child.stdout = new EventEmitter();
+  child.stderr = new EventEmitter();
+  child.kill = vi.fn();
+  process.nextTick(() => {
+    child.stdout.emit("data", Buffer.from(stdout));
+    child.emit("exit", 0);
+  });
+  return child;
+}
+
+/**
  * Real stdout pollution from `zsh -lic` without a TTY on the user's remote
  * hosts: iTerm2/WezTerm-style shell integration writes OSC 1337 markers before
  * every command's output. Verified against liuyiqi@matrix 2026-08-15.
@@ -121,6 +216,11 @@ beforeEach(() => {
   h.tarCreate.mockImplementation(() => Readable.from(["tar-bytes"]));
 });
 
+afterEach(() => {
+  vi.unstubAllGlobals();
+  delete process.env.WAVE_NODE_MIRROR;
+});
+
 /** The last remote command passed to the (mocked) `ssh` spawn for the push. */
 function pushCommand(): string {
   const calls = h.spawn.mock.calls;
@@ -128,67 +228,236 @@ function pushCommand(): string {
   return (calls[calls.length - 1][1] as string[]).at(-1) as string;
 }
 
-describe("resolveRemoteWaveBinary (fixed pushed-shim path)", () => {
-  it("returns the fixed shim path + node version when the CLI is installed", async () => {
-    stubExec([
-      LOGIN_SHELL,
-      { stdout: "v22.3.0" }, // node -v
-      { stdout: `${BUNDLE_HASH}\n` }, // remote bundle sha256 == bundled
-    ]);
-    const info = await resolveRemoteWaveBinary("prod", SOURCE, HOME);
-    expect(info).toEqual({
-      binaryPath: remoteCliShimPath(HOME),
-      nodeVersion: "v22.3.0",
+describe("managed Node runtime", () => {
+  it("maps uname output onto Node's official dist keys", () => {
+    expect(parseHostPlatform(`${PLATFORM_LINE}\n`)).toEqual({
+      os: "Linux",
+      arch: "x86_64",
+      libc: "glibc",
     });
-    expect(h.spawn).not.toHaveBeenCalled();
-    // The content probe hashes the pushed bundle at the fixed dir, never PATH.
-    const remoteCmd = (h.execFile.mock.calls[2][1] as string[]).at(
-      -1,
-    ) as string;
-    expect(remoteCmd).toContain("node -e");
-    expect(remoteCmd).toContain(".wave/cli/desktop");
-    expect(remoteCmd).toContain("dist/bundle/wave.mjs");
+    expect(
+      nodePlatformKey({ os: "Linux", arch: "x86_64", libc: "glibc" }),
+    ).toBe("linux-x64");
+    expect(
+      nodePlatformKey({ os: "Linux", arch: "aarch64", libc: "glibc" }),
+    ).toBe("linux-arm64");
+    expect(
+      nodePlatformKey({ os: "Darwin", arch: "arm64", libc: "glibc" }),
+    ).toBe("darwin-arm64");
+    expect(
+      nodePlatformKey({ os: "Darwin", arch: "x86_64", libc: "glibc" }),
+    ).toBe("darwin-x64");
   });
 
-  it("strips OSC shell-integration markers from probe output", async () => {
-    stubExec([
-      LOGIN_SHELL,
-      { stdout: `${OSC1337_PREFIX}v22.23.2\n` },
-      { stdout: `${OSC1337_PREFIX}${BUNDLE_HASH}\n` },
-    ]);
-    const info = await resolveRemoteWaveBinary("prod", SOURCE, HOME);
-    expect(info.nodeVersion).toBe("v22.23.2");
-    expect(info.binaryPath).toBe(remoteCliShimPath(HOME));
+  it("reads the platform line past a login-shell banner", () => {
+    expect(parseHostPlatform(`${LOGIN_BANNER}${PLATFORM_LINE}\n`)).toEqual({
+      os: "Linux",
+      arch: "x86_64",
+      libc: "glibc",
+    });
   });
 
-  /**
-   * `-lic` runs an INTERACTIVE login shell, so its rc/motd output lands in
-   * stdout before the command's own answer. A real Ubuntu WSL user's first
-   * login of the day prints exactly this (verified on Ubuntu-24.04); the ssh
-   * path can hit the same when the shell prints a banner.
-   */
-  const LOGIN_BANNER =
-    'To run a command as administrator (user "root"), use "sudo <command>".\n' +
-    'See "man sudo_root" for details.\n\n';
-
-  it("reads the node version past a login-shell banner", async () => {
-    stubExec([LOGIN_SHELL, { stdout: `${LOGIN_BANNER}v22.23.4\n` }]);
-    const info = await resolveRemoteWaveBinary("prod", SOURCE, HOME);
-    expect(info.nodeVersion).toBe("v22.23.4");
+  it("returns null when the probe carried no platform line", () => {
+    // A distro banner alone must not be mistaken for a platform answer.
+    expect(parseHostPlatform("Welcome to Ubuntu 24.04.5 LTS\n")).toBeNull();
   });
 
-  it("never mistakes a distro release number in a banner for a node version", async () => {
-    // "Ubuntu 24.04.5" must not read as node 24 — only `vX.Y.Z` counts.
-    stubExec([LOGIN_SHELL, { stdout: "Welcome to Ubuntu 24.04.5 LTS\n" }]);
-    await expect(resolveRemoteWaveBinary("prod", SOURCE, HOME)).rejects.toThrow(
-      "Node.js 版本过低（未检测到版本",
+  it("refuses musl hosts: the official Node dist has no musl build", () => {
+    expect(() =>
+      nodePlatformKey({ os: "Linux", arch: "x86_64", libc: "musl" }),
+    ).toThrow("musl");
+  });
+
+  it("refuses platforms Node does not ship", () => {
+    expect(() =>
+      nodePlatformKey({ os: "FreeBSD", arch: "x86_64", libc: "glibc" }),
+    ).toThrow("暂不支持的平台");
+    expect(() =>
+      nodePlatformKey({ os: "Linux", arch: "s390x", libc: "glibc" }),
+    ).toThrow("暂不支持的平台");
+  });
+
+  it("reads the version/platform marker back past a login-shell banner", () => {
+    expect(parseRuntimeMarker(`${LOGIN_BANNER}${MARKER_LINE}\n`)).toBe(
+      runtimeMarker("linux-x64"),
+    );
+    // No marker line at all → nothing installed.
+    expect(parseRuntimeMarker(`${PLATFORM_LINE}\n`)).toBe("");
+  });
+
+  it("picks the archive's checksum out of SHASUMS256.txt", () => {
+    const sums =
+      `${"c".repeat(64)}  other.tar.gz\n` +
+      `${"d".repeat(64)} *${RUNTIME_TARGET.file}\n`;
+    expect(parseSha256Sums(sums, RUNTIME_TARGET.file)).toBe("d".repeat(64));
+    expect(() => parseSha256Sums("", RUNTIME_TARGET.file)).toThrow(
+      "SHASUMS256.txt",
     );
   });
 
-  it("reads the bundle hash and $HOME past a login-shell banner", async () => {
+  it("honours WAVE_NODE_MIRROR and strips its trailing slashes", () => {
+    expect(nodeMirrorBase()).toBe(MIRROR);
+    process.env.WAVE_NODE_MIRROR = "https://mirror.corp/node/";
+    expect(nodeMirrorBase()).toBe("https://mirror.corp/node");
+  });
+
+  it("targets the official POSIX distribution layout", () => {
+    expect(nodeRuntimeTarget("darwin-arm64")).toEqual({
+      file: `node-v${MANAGED_RUNTIME_VERSION}-darwin-arm64.tar.gz`,
+      member: `node-v${MANAGED_RUNTIME_VERSION}-darwin-arm64/bin/node`,
+    });
+  });
+});
+
+describe("resolveRemoteWaveBinary (fixed pushed-shim path)", () => {
+  it("returns the shim path + managed runtime when the CLI is installed", async () => {
+    stubMirror();
+    stubExec([LOGIN_SHELL, RUNTIME_INSTALLED, { stdout: `${BUNDLE_HASH}\n` }]);
+    const info = await resolveRemoteWaveBinary("prod", SOURCE, HOME);
+    expect(info).toEqual({
+      binaryPath: remoteCliShimPath(HOME),
+      runtimePath: RUNTIME_NODE,
+    });
+    // A matching marker means no download at all — not even a HEAD request.
+    expect(h.spawn).not.toHaveBeenCalled();
+    // The first probe asks for the platform and the installed marker together.
+    const probeCmd = (h.execFile.mock.calls[1][1] as string[]).at(-1) as string;
+    expect(probeCmd).toContain("WAVE_HOST_PLATFORM_V1");
+    expect(probeCmd).toContain("uname -m");
+    expect(probeCmd).toContain("musl");
+    // The content probe hashes the pushed bundle with the managed node.
+    const hashCmd = (h.execFile.mock.calls[2][1] as string[]).at(-1) as string;
+    expect(hashCmd).toContain(".wave/runtime/node/bin/node");
+    expect(hashCmd).toContain(".wave/cli/desktop");
+    expect(hashCmd).toContain("dist/bundle/wave.mjs");
+  });
+
+  it("provisions a WSL distro with the managed runtime, never its own node", async () => {
+    // desktop-wsl.md 场景 5/6/20: a distro is no longer a special case — the
+    // runtime is pushed there too, so it needs no Node.js of its own.
+    stubMirror();
+    // Spawn order: the login-shell probe (`sh -c 'printf %s "$SHELL"'`) runs
+    // first, then the tarball push.
+    h.spawn.mockImplementationOnce(() => makeProbeChild("/bin/bash\n"));
+    stubExec([
+      RUNTIME_MISSING, // no marker → install the runtime into the distro
+      { stdout: `v${MANAGED_RUNTIME_VERSION}\n` }, // staged node --version
+      { stdout: "" }, // finalize (marker + .new/.old swap)
+      { stdout: `${BUNDLE_HASH}\n` }, // CLI content probe
+    ]);
+
+    const info = await resolveRemoteWaveBinary("wsl:Ubuntu", SOURCE, HOME);
+
+    expect(info.runtimePath).toBe(RUNTIME_NODE);
+    const receive = pushCommand();
+    expect(receive).toContain(
+      `tar -xzf - -C ${shellQuote(`${remoteRuntimeDir(HOME)}.new`)}`,
+    );
+    expect(receive).toContain(RUNTIME_TARGET.member);
+    // Every command after that runs on the runtime by absolute path: the
+    // distro's own `node` is neither probed nor used.
+    const hashCmd = (h.execFile.mock.calls[3][1] as string[]).at(-1) as string;
+    expect(hashCmd).toContain(".wave/runtime/node/bin/node");
+    expect(hashCmd.startsWith("node ")).toBe(false);
+  });
+
+  it("downloads, verifies and atomically installs the runtime when missing", async () => {
+    stubMirror();
     stubExec([
       LOGIN_SHELL,
-      { stdout: `${LOGIN_BANNER}v22.23.4\n` },
+      RUNTIME_MISSING, // no marker → install
+      { stdout: `v${MANAGED_RUNTIME_VERSION}\n` }, // staged node --version
+      { stdout: "" }, // finalize (marker + .new/.old swap)
+      { stdout: `${BUNDLE_HASH}\n` }, // CLI hash probe
+    ]);
+    const info = await resolveRemoteWaveBinary("prod", SOURCE, HOME);
+    expect(info.runtimePath).toBe(RUNTIME_NODE);
+    expect(h.spawn).toHaveBeenCalledTimes(1);
+    const receive = pushCommand();
+    const stagingDir = `${remoteRuntimeDir(HOME)}.new`;
+    // Only `bin/node` is kept: no npm, no headers, no docs.
+    expect(receive).toContain(`tar -xzf - -C ${shellQuote(stagingDir)}`);
+    expect(receive).toContain(RUNTIME_TARGET.member);
+    // Unquoted fragment: shellQuote wraps the whole path in single quotes.
+    expect(receive).toContain(`${stagingDir}/bin/node`);
+    const finalize = (h.execFile.mock.calls[3][1] as string[]).at(-1) as string;
+    // The marker lands before the swap, so an installed runtime always has one.
+    expect(finalize).toContain(runtimeMarker("linux-x64"));
+    // Staging → live swap with a backup of the previous runtime.
+    expect(finalize).toContain(`${remoteRuntimeDir(HOME)}.new`);
+    expect(finalize).toContain(`${remoteRuntimeDir(HOME)}.old`);
+  });
+
+  it("reinstalls when the marker records a different runtime version", async () => {
+    stubMirror();
+    stubExec([
+      LOGIN_SHELL,
+      {
+        stdout: `${PLATFORM_LINE}\nWAVE_RUNTIME_MARKER_V1 ${JSON.stringify({
+          version: "20.0.0",
+          platform: "linux-x64",
+        })}\n`,
+      },
+      { stdout: `v${MANAGED_RUNTIME_VERSION}\n` },
+      { stdout: "" },
+      { stdout: `${BUNDLE_HASH}\n` },
+    ]);
+    await resolveRemoteWaveBinary("prod", SOURCE, HOME);
+    expect(h.spawn).toHaveBeenCalledTimes(1);
+  });
+
+  it("surfaces the failing mirror URL + WAVE_NODE_MIRROR when the download 404s", async () => {
+    stubMirror({ [`${RUNTIME_BASE}/${RUNTIME_TARGET.file}`]: "404" });
+    stubExec([LOGIN_SHELL, RUNTIME_MISSING]);
+    const pending = resolveRemoteWaveBinary("prod", SOURCE, HOME);
+    await expect(pending).rejects.toThrow("WAVE_NODE_MIRROR");
+    await expect(pending).rejects.toThrow(RUNTIME_TARGET.file);
+    expect(h.spawn).not.toHaveBeenCalled();
+  });
+
+  it("rejects an archive whose bytes do not match the mirror checksum", async () => {
+    stubMirror({
+      [`${RUNTIME_BASE}/SHASUMS256.txt`]: `${"c".repeat(64)}  ${RUNTIME_TARGET.file}\n`,
+    });
+    stubExec([LOGIN_SHELL, RUNTIME_MISSING]);
+    await expect(resolveRemoteWaveBinary("prod", SOURCE, HOME)).rejects.toThrow(
+      "校验失败",
+    );
+    expect(h.spawn).not.toHaveBeenCalled();
+  });
+
+  it("discards the staged runtime when it cannot execute on the host", async () => {
+    stubMirror();
+    stubExec([
+      LOGIN_SHELL,
+      RUNTIME_MISSING,
+      { error: new Error("cannot execute binary file") }, // --version fails
+      { stdout: "" }, // rm -rf staging
+    ]);
+    await expect(resolveRemoteWaveBinary("prod", SOURCE, HOME)).rejects.toThrow(
+      "托管 Node.js 运行时无法执行",
+    );
+    const cleanup = (h.execFile.mock.calls[3][1] as string[]).at(-1) as string;
+    expect(cleanup).toContain("rm -rf");
+    expect(cleanup).toContain(`${remoteRuntimeDir(HOME)}.new`);
+  });
+
+  it("strips OSC shell-integration markers from probe output", async () => {
+    stubMirror();
+    stubExec([
+      LOGIN_SHELL,
+      { stdout: `${OSC1337_PREFIX}${PLATFORM_LINE}\n${MARKER_LINE}\n` },
+      { stdout: `${OSC1337_PREFIX}${BUNDLE_HASH}\n` },
+    ]);
+    const info = await resolveRemoteWaveBinary("prod", SOURCE, HOME);
+    expect(info.runtimePath).toBe(RUNTIME_NODE);
+    expect(info.binaryPath).toBe(remoteCliShimPath(HOME));
+  });
+
+  it("reads the bundle hash past a login-shell banner", async () => {
+    stubExec([
+      LOGIN_SHELL,
+      RUNTIME_INSTALLED,
       { stdout: `${LOGIN_BANNER}${BUNDLE_HASH}\n` },
     ]);
     // Hash parsed → bytes match → nothing pushed.
@@ -196,6 +465,7 @@ describe("resolveRemoteWaveBinary (fixed pushed-shim path)", () => {
       ensureRemoteCliUpToDate("prod", SOURCE, HOME),
     ).resolves.toEqual({
       binaryPath: remoteCliShimPath(HOME),
+      runtimePath: RUNTIME_NODE,
       upgraded: false,
     });
     expect(h.spawn).not.toHaveBeenCalled();
@@ -206,26 +476,18 @@ describe("resolveRemoteWaveBinary (fixed pushed-shim path)", () => {
     await expect(getRemoteHomeDir("prod")).resolves.toBe("/home/user");
   });
 
-  it("throws an actionable error when node is missing", async () => {
-    stubExec([LOGIN_SHELL, { error: CONNECT_FAIL }]);
+  it("throws an actionable error when the host reports no platform", async () => {
+    stubExec([LOGIN_SHELL, { stdout: "Welcome to Ubuntu 24.04.5 LTS\n" }]);
     await expect(resolveRemoteWaveBinary("prod", SOURCE, HOME)).rejects.toThrow(
-      "未检测到 Node.js",
+      "无法识别运行环境",
     );
   });
 
-  it("throws when node is too old", async () => {
-    stubExec([LOGIN_SHELL, { stdout: "v18.0.0" }]);
-    await expect(resolveRemoteWaveBinary("prod", SOURCE, HOME)).rejects.toThrow(
-      `需要 ≥ ${REMOTE_NODE_MIN_MAJOR}`,
-    );
-  });
-
-  it("pushes the bundled CLI (rg self-fetch + tar over ssh) when missing", async () => {
+  it("pushes the bundled CLI (tar over ssh) when missing", async () => {
     stubExec([
       LOGIN_SHELL,
-      { stdout: "v22.0.0" }, // node -v
+      RUNTIME_INSTALLED,
       { error: new Error("no such file") }, // hash probe → missing/corrupt
-      { stdout: "" }, // rg ready probe — already in place
     ]);
     const info = await resolveRemoteWaveBinary("prod", SOURCE, HOME);
     expect(info.binaryPath).toBe(remoteCliShimPath(HOME));
@@ -239,7 +501,7 @@ describe("resolveRemoteWaveBinary (fixed pushed-shim path)", () => {
   it("throws without installing when installIfMissing is false", async () => {
     stubExec([
       LOGIN_SHELL,
-      { stdout: "v22.0.0" },
+      RUNTIME_INSTALLED,
       { error: new Error("no such file") },
     ]);
     await expect(
@@ -253,12 +515,13 @@ describe("ensureRemoteCliUpToDate", () => {
   it("keeps the pushed CLI when the remote bundle bytes match the bundled bytes (scenario 7: unchanged bytes push nothing)", async () => {
     stubExec([
       LOGIN_SHELL,
-      { stdout: "v22.0.0" },
+      RUNTIME_INSTALLED,
       { stdout: `${BUNDLE_HASH}\n` }, // remote sha256 == bundled → up to date
     ]);
     const result = await ensureRemoteCliUpToDate("prod", SOURCE, HOME);
     expect(result).toEqual({
       binaryPath: remoteCliShimPath(HOME),
+      runtimePath: RUNTIME_NODE,
       upgraded: false,
     });
     expect(h.spawn).not.toHaveBeenCalled();
@@ -267,13 +530,13 @@ describe("ensureRemoteCliUpToDate", () => {
   it("pushes via an atomic .new swap when the remote bytes differ (scenario 7: changed bytes push)", async () => {
     stubExec([
       LOGIN_SHELL,
-      { stdout: "v22.0.0" },
+      RUNTIME_INSTALLED,
       { stdout: `${STALE_HASH}\n` }, // bytes differ → sync
-      { stdout: "" }, // rg ready probe
     ]);
     const result = await ensureRemoteCliUpToDate("prod", SOURCE, HOME);
     expect(result).toEqual({
       binaryPath: remoteCliShimPath(HOME),
+      runtimePath: RUNTIME_NODE,
       upgraded: true,
     });
     const cmd = pushCommand();
@@ -296,7 +559,7 @@ describe("ensureRemoteCliUpToDate", () => {
   it("treats a failing content probe as needing a push (corrupt copy)", async () => {
     stubExec([
       LOGIN_SHELL,
-      { stdout: "v22.0.0" },
+      RUNTIME_INSTALLED,
       { error: new Error("segfault") },
     ]);
     const result = await ensureRemoteCliUpToDate("prod", SOURCE, HOME);
@@ -317,11 +580,19 @@ describe("killRemoteDaemon", () => {
 });
 
 describe("ensureRemoteDaemon", () => {
+  // A failed sync logs a warning and notifies; the notice is the contract, so
+  // keep the log out of the run (a green suite must stay quiet).
+  let warn: ReturnType<typeof vi.spyOn>;
+  beforeEach(() => {
+    warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+  });
+  afterEach(() => warn.mockRestore());
+
   it("reuses a live daemon when the CLI bytes match (no push, no restart)", async () => {
     stubExec([
       LOGIN_SHELL,
       { stdout: "/home/user" }, // echo $HOME
-      { stdout: "v22.0.0" }, // node -v
+      RUNTIME_INSTALLED, // runtime probe: already installed
       { stdout: `${BUNDLE_HASH}\n` }, // hash probe == bundle
       { stdout: "" }, // daemon socket probe — alive
     ]);
@@ -340,9 +611,8 @@ describe("ensureRemoteDaemon", () => {
     stubExec([
       LOGIN_SHELL,
       { stdout: "/home/user" },
-      { stdout: "v22.0.0" },
+      RUNTIME_INSTALLED,
       { stdout: `${STALE_HASH}\n` }, // hash probe != bundle → push
-      { stdout: "" }, // rg ready probe
       { stdout: "" }, // pkill old daemon
       { error: new Error("ECONNREFUSED") }, // exit poll — gone
       { error: new Error("ECONNREFUSED") }, // alive check — gone
@@ -357,16 +627,19 @@ describe("ensureRemoteDaemon", () => {
       (c) => (c[1] as string[]).at(-1) as string,
     );
     expect(commands.some((c) => c.includes("pkill"))).toBe(true);
-    expect(commands.some((c) => c.includes("nohup"))).toBe(true);
+    // The daemon is launched through the managed runtime, not the shim's
+    // shebang — a host without a system node has nothing for it to resolve.
+    const launch = commands.find((c) => c.includes("nohup"));
+    expect(launch).toContain(".wave/runtime/node/bin/node");
+    expect(launch).toContain(".wave/cli/desktop/bin/wave-code.js");
   });
 
   it("pushes onto a fresh host (no CLI) and launches the daemon", async () => {
     stubExec([
       LOGIN_SHELL,
       { stdout: "/home/user" },
-      { stdout: "v22.0.0" },
+      RUNTIME_INSTALLED,
       { error: new Error("no such file") }, // hash probe → missing
-      { stdout: "" }, // rg ready probe
       { stdout: "" }, // pkill (nothing to kill)
       { error: new Error("ECONNREFUSED") }, // exit poll — gone
       { error: new Error("ECONNREFUSED") }, // alive check — gone
@@ -381,13 +654,36 @@ describe("ensureRemoteDaemon", () => {
     expect(cmd).toContain("/home/user/.wave/cli/desktop.new");
   });
 
+  it("installs the runtime before pushing the CLI onto a host without node", async () => {
+    stubMirror();
+    stubExec([
+      LOGIN_SHELL,
+      { stdout: "/home/user" },
+      RUNTIME_MISSING, // no runtime yet → download + install
+      { stdout: `v${MANAGED_RUNTIME_VERSION}\n` }, // staged node --version
+      { stdout: "" }, // finalize install
+      { error: new Error("no such file") }, // hash probe → missing CLI
+      { stdout: "" }, // pkill (nothing to kill)
+      { error: new Error("ECONNREFUSED") }, // exit poll — gone
+      { error: new Error("ECONNREFUSED") }, // alive check — gone
+      { stdout: "" }, // nohup start
+      { stdout: "" }, // start poll — alive
+    ]);
+    await expect(ensureRemoteDaemon("prod", SOURCE)).resolves.toBe(
+      "/home/user/.wave/daemon.sock",
+    );
+    // Two pushes: the runtime tarball, then the CLI bundle.
+    expect(h.spawn).toHaveBeenCalledTimes(2);
+    expect(pushCommand()).toContain("/home/user/.wave/cli/desktop.new");
+  });
+
   it("falls back to the running old daemon and notifies when the push fails", async () => {
     h.spawn.mockImplementation(() => makePushChild(1)); // ssh push fails
     const notice = vi.fn();
     stubExec([
       LOGIN_SHELL,
       { stdout: "/home/user" },
-      { stdout: "v22.0.0" },
+      RUNTIME_INSTALLED,
       { stdout: `${STALE_HASH}\n` }, // stale → push attempt fails
       { stdout: "" }, // old daemon still alive → reuse
     ]);
@@ -411,10 +707,10 @@ describe("ensureRemoteDaemon", () => {
     stubExec([
       LOGIN_SHELL,
       { stdout: "/home/user" },
-      { stdout: "v22.0.0" },
+      RUNTIME_INSTALLED,
       { error: new Error("no such file") }, // hash probe → missing
       { error: new Error("ECONNREFUSED") }, // alive check → dead
-      { stdout: "v22.0.0" }, // fallback resolve: node -v
+      RUNTIME_INSTALLED, // fallback resolve: runtime probe
       { error: new Error("no such file") }, // fallback resolve: still no CLI
     ]);
     await expect(ensureRemoteDaemon("prod", SOURCE, notice)).rejects.toThrow(

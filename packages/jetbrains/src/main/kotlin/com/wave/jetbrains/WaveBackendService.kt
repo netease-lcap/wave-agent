@@ -11,6 +11,7 @@ import com.wave.jetbrains.session.WaveSession
 import com.wave.jetbrains.stdio.BinaryResolver
 import com.wave.jetbrains.stdio.NotificationRouter
 import com.wave.jetbrains.stdio.StdioClient
+import com.wave.jetbrains.stdio.StartupStages
 import com.wave.jetbrains.util.Edt
 import com.wave.jetbrains.util.WaveAppLog
 import kotlinx.coroutines.sync.Mutex
@@ -40,6 +41,15 @@ class WaveBackendService(private val project: Project) : Disposable {
     @Volatile
     private var installNotification: Notification? = null
 
+    /**
+     * 当前那次「首次启动」的阶段去处：把 [StartupStages.text] 的结果推给发起启动的
+     * 那个分屏（面板加载态下方那行字）。绑一次就留着——CLI 自装工具依赖（ripgrep /
+     * sharp）上报发生在 spawn 之后几百毫秒，那时 [ensureClient] 早已返回，回调若在
+     * finally 里清掉就整段丢了。
+     */
+    @Volatile
+    private var stageListener: ((String) -> Unit)? = null
+
     private val initMutex = Mutex()
 
     private val sessions = java.util.Collections.synchronizedSet(mutableSetOf<WaveSession>())
@@ -59,26 +69,18 @@ class WaveBackendService(private val project: Project) : Disposable {
         active.forEach { s -> runCatching { s.updateConfig(JsonObject(emptyMap())) } }
     }
 
-    suspend fun ensureClient(): Pair<StdioClient, NotificationRouter> {
+    suspend fun ensureClient(onStage: (String) -> Unit = {}): Pair<StdioClient, NotificationRouter> {
         initMutex.withLock {
             if (sharedClient == null) {
-                BinaryResolver.onInstall = { message ->
-                    Edt.invokeLater {
-                        // Each progress step replaces the previous notification so the
-                        // user sees the latest stage.
-                        installNotification?.expire()
-                        val notification = NotificationGroupManager.getInstance()
-                            .getNotificationGroup("Wave")
-                            .createNotification("CodeWave IDE", message, NotificationType.INFORMATION)
-                        notification.notify(project)
-                        installNotification = notification
-                    }
-                }
+                stageListener = onStage
+                BinaryResolver.onStage = { stage -> reportStage(stage) }
                 try {
-                    // Resolve the bundled CLI (copied to ~/.wave/cli) and execute it
-                    // with the system Node.js — no npm-global wave-code needed.
+                    // Resolve the bundled CLI (copied to ~/.wave/cli) and run it
+                    // on the managed Node.js runtime (~/.wave/runtime/node) —
+                    // no npm-global wave-code, no system Node.js needed. Both
+                    // steps report their stage through BinaryResolver.onStage.
                     val entry = BinaryResolver.resolveWaveBinary()
-                    val node = BinaryResolver.findNode()
+                    val node = BinaryResolver.resolveNode()
                     val c = StdioClient(listOf(node, entry), listOf("--stdio"), BinaryResolver.resolveEnv())
                     val r = NotificationRouter(c)
                     r.attach()
@@ -87,6 +89,12 @@ class WaveBackendService(private val project: Project) : Disposable {
                         if (!url.isNullOrEmpty()) {
                             Edt.invokeLater { BrowserUtil.browse(url) }
                         }
+                    }
+                    // CLI 启动期自装 ripgrep / sharp 的阶段发生在任何会话存在之前，
+                    // 因此不带 sessionId，走全局通道（与 authUrl 同一条路）。
+                    r.registerGlobal("startupStage") { p ->
+                        val stage = p?.jsonObject?.get("stage")?.jsonPrimitive?.content
+                        if (!stage.isNullOrEmpty()) reportStage(stage)
                     }
                     sharedClient = c
                     router = r
@@ -105,11 +113,38 @@ class WaveBackendService(private val project: Project) : Disposable {
                         installNotification?.expire()
                         installNotification = null
                     }
-                    BinaryResolver.onInstall = null
+                    BinaryResolver.onStage = null
                 }
             }
         }
         return sharedClient!! to router!!
+    }
+
+    /**
+     * 一次启动阶段上报（spec ui/stdio-transport.md「首次启动的进度文案」）。
+     *
+     * 两条去处，都只是**旁路**——推不出去、没人消费都不影响启动，也不参与任何完成
+     * 条件：
+     * - 面板：转成文案交给 [stageListener]，显示在加载态下方；
+     * - IDE 通知：只覆盖**宿主自己**的步骤（[HOST_STAGES]）。这几步也可能从设置标签页
+     *   那种没有加载动画的入口触发，那时面板文案无处可显；而 CLI 自装工具依赖是后台
+     *   降级步骤（失败只让 grep / 图片处理降级），为它弹通知只会变成噪声。
+     */
+    private fun reportStage(stage: String) {
+        val text = StartupStages.text(stage) ?: return
+        runCatching { stageListener?.invoke(text) }
+        if (stage in HOST_STAGES) showInstallNotification(text)
+    }
+
+    /** 每条替换上一条：用户看到的是最新阶段，不是一串堆叠的通知。 */
+    private fun showInstallNotification(text: String) {
+        Edt.invokeLater {
+            installNotification?.expire()
+            installNotification = NotificationGroupManager.getInstance()
+                .getNotificationGroup("Wave")
+                .createNotification("CodeWave IDE", text, NotificationType.INFORMATION)
+                .also { it.notify(project) }
+        }
     }
 
     /**
@@ -124,9 +159,17 @@ class WaveBackendService(private val project: Project) : Disposable {
     override fun dispose() {
         runCatching { sharedClient?.close() }
         runCatching { installNotification?.expire() }
+        stageListener = null
     }
 
     companion object {
+        /** 宿主自己的启动步骤（spawn 之前）——只有这些同时弹 IDE 通知。 */
+        private val HOST_STAGES = setOf(
+            StartupStages.DOWNLOADING_RUNTIME,
+            StartupStages.INSTALLING_RUNTIME,
+            StartupStages.SYNCING_CLI,
+        )
+
         fun getInstance(project: Project): WaveBackendService =
             project.getService(WaveBackendService::class.java)
     }

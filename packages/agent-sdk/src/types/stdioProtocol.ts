@@ -192,6 +192,34 @@ export type ClientNotificationMethod = "permissionResponse";
 
 // ── Server → Client notification methods ────────────────────────
 
+/**
+ * One step of the first-start path, reported while the loading animation is on
+ * screen (spec `ui/stdio-transport.md`「首次启动的进度文案」).
+ *
+ * Ids, not copy: the CLI emits `startupStage` notifications carrying one of
+ * these, and every surface renders it through `startupStageText()` so the four
+ * hosts (desktop / VS Code / JetBrains / remote) cannot drift apart. Which of
+ * them a host can actually report is host-shaped — `connecting` /
+ * `checkingEnvironment` / runtime / CLI stages are host-side (only the host
+ * knows its target and transport), while `downloadingToolDeps` and
+ * `startingSession` are the CLI's own startup steps and arrive over the wire.
+ */
+export type StartupStage =
+  /** `connecting` — dialing the host (desktop SSH / WSL only). */
+  | "connecting"
+  /** Probing the target (uname, markers) before deciding what to install. */
+  | "checkingEnvironment"
+  /** Fetching the managed Node.js runtime archive. */
+  | "downloadingRuntime"
+  /** Unpacking, verifying and swapping the runtime into place. */
+  | "installingRuntime"
+  /** Copying / streaming the bundled CLI into `~/.wave/cli/<end>`. */
+  | "syncingCli"
+  /** CLI startup: installing sharp + ripgrep into `~/.wave/cli/node_modules`. */
+  | "downloadingToolDeps"
+  /** CLI is up and about to serve `initialize`. */
+  | "startingSession";
+
 export type ServerNotificationMethod =
   | "userMessageAdded"
   | "assistantMessageAdded"
@@ -234,6 +262,18 @@ export type ServerNotificationMethod =
    * （spec: docs/specs/desktop/desktop-account.md「额度响应头」）。
    */
   | "quotaHeaders"
+  /**
+   * Startup progress for the loading animation (spec
+   * `ui/stdio-transport.md`「首次启动的进度文案」). **Global** — no `sessionId`:
+   * the CLI emits it before `initialize` returns, when no session is bound yet,
+   * so the router hands it to the global handler. Params: `{ stage: StartupStage }`.
+   *
+   * Report-only: it carries no control semantics (nothing waits for it, nothing
+   * is gated on it) and never takes part in a startup/restore completion
+   * condition — a dropped or unhandled `startupStage` changes nothing but the
+   * caption.
+   */
+  | "startupStage"
   /**
    * Structural notice, **content-free** (`{}`). The bridge sends it only on the
    * `restoreSession` re-attach branch — a catch-up for a client whose router

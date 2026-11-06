@@ -56,16 +56,15 @@ import {
   buildWslCliSpawnSpec,
   buildWslRawSpec,
   decodeWslOutput,
-  getWslNodeEnv,
-  getWslNodePath,
+  getWslLoginPath,
   hostDisplayLabel,
   isWslHost,
   isWslSupportedPlatform,
   listWslDistros,
   parseWslDistroList,
   parseWslHostId,
-  parseWslNodeEnv,
-  resetWslNodePathCache,
+  parseWslLoginPath,
+  resetWslLoginPathCache,
   resetWslShellCache,
   wslHostId,
   wslUncPath,
@@ -78,7 +77,7 @@ beforeEach(() => {
   h.spawnCalls.length = 0;
   h.emitError = false;
   resetWslShellCache();
-  resetWslNodePathCache();
+  resetWslLoginPathCache();
 });
 
 /**
@@ -281,62 +280,47 @@ describe("buildWslRawSpec", () => {
   });
 });
 
-describe("parseWslNodeEnv", () => {
-  it("reads the node path and the login shell's PATH from the probe", () => {
+describe("parseWslLoginPath", () => {
+  it("reads the login shell's PATH from the probe", () => {
     expect(
-      parseWslNodeEnv(
-        "\n/home/me/.local/bin/node\nWAVE_WSL_PATH=/home/me/.local/bin:/usr/bin:/bin\n",
-      ),
-    ).toEqual({
-      nodePath: "/home/me/.local/bin/node",
-      loginPath: "/home/me/.local/bin:/usr/bin:/bin",
-    });
+      parseWslLoginPath("\nWAVE_WSL_PATH=/home/me/.local/bin:/usr/bin:/bin\n"),
+    ).toBe("/home/me/.local/bin:/usr/bin:/bin");
   });
 
   it("ignores an rc banner printed before the answer", () => {
     expect(
-      parseWslNodeEnv(
+      parseWslLoginPath(
         'To run a command as administrator (user "root"), use "sudo <command>".\n' +
           'See "man sudo_root" for details.\n\n' +
-          "/home/me/.local/bin/node\n" +
           "WAVE_WSL_PATH=/home/me/.local/bin:/usr/bin\n",
       ),
-    ).toEqual({
-      nodePath: "/home/me/.local/bin/node",
-      loginPath: "/home/me/.local/bin:/usr/bin",
-    });
+    ).toBe("/home/me/.local/bin:/usr/bin");
   });
 
-  it("returns no node path when the shell has no node", () => {
-    // `command -v node` complains on stderr; stdout carries only the marker.
-    expect(parseWslNodeEnv("\nWAVE_WSL_PATH=/usr/bin:/bin\n")).toEqual({
-      nodePath: "",
-      loginPath: "/usr/bin:/bin",
-    });
+  it("returns an empty PATH when the shell printed no marker at all", () => {
+    expect(parseWslLoginPath("/bin/bash: no such file\n")).toBe("");
   });
 });
 
-describe("node env + CLI spawn spec", () => {
+describe("login PATH + CLI spawn spec", () => {
   const BASHRC_BANNER =
     'To run a command as administrator (user "root"), use "sudo <command>".\n' +
     'See "man sudo_root" for details.\n\n';
+  const RUNTIME_NODE = "/home/me/.wave/runtime/node/bin/node";
+  const SHIM = "/home/u/.wave/cli/desktop/bin/wave-code.js";
 
-  it("resolves node and the login shell's PATH in one probe", async () => {
+  it("probes the login shell's PATH and tolerates the first-login banner", async () => {
     // Prime the per-distro shell cache first (every spawn reads h.stdout).
     h.stdout = Buffer.from("/bin/bash\n");
     await expect(withWslLoginShell("Ubuntu", "true")).resolves.toBe(
       "/bin/bash -lic 'true'",
     );
     h.stdout = Buffer.from(
-      `${BASHRC_BANNER}\n/home/liuyiqi02/.local/node/bin/node\n` +
-        "WAVE_WSL_PATH=/home/liuyiqi02/.local/node/bin:/usr/bin:/bin\n",
+      `${BASHRC_BANNER}\nWAVE_WSL_PATH=/home/liuyiqi02/.local/bin:/usr/bin:/bin\n`,
     );
-    await expect(getWslNodeEnv("Ubuntu")).resolves.toEqual({
-      nodePath: "/home/liuyiqi02/.local/node/bin/node",
-      loginPath: "/home/liuyiqi02/.local/node/bin:/usr/bin:/bin",
-    });
-    // `command -v node` under `-lic`: the banners a real first login emits must
-    // not be mistaken for the answer.
+    await expect(getWslLoginPath("Ubuntu")).resolves.toBe(
+      "/home/liuyiqi02/.local/bin:/usr/bin:/bin",
+    );
     const probe = h.spawnCalls.at(-1);
     expect(probe?.args.slice(0, 4)).toEqual([
       "-d",
@@ -344,60 +328,53 @@ describe("node env + CLI spawn spec", () => {
       "-e",
       "/bin/bash",
     ]);
-    expect(probe?.args.at(-1)).toContain("command -v node");
-    await expect(getWslNodePath("Ubuntu")).resolves.toBe(
-      "/home/liuyiqi02/.local/node/bin/node",
-    );
+    expect(probe?.args.at(-1)).toContain("WAVE_WSL_PATH");
+    // Node is never probed: the managed runtime's node is exec'd by absolute
+    // path, so `command -v node` has no business here.
+    expect(probe?.args.at(-1)).not.toContain("command -v node");
   });
 
-  it("caches per distro and rejects a shell that reports no usable path", async () => {
+  it("caches per distro and does not fail when the shell reports no PATH", async () => {
     h.stdout = Buffer.from("\nWAVE_WSL_PATH=/usr/bin:/bin\n");
-    await expect(getWslNodePath("Ubuntu")).rejects.toThrow(
-      "WSL 发行版「Ubuntu」内未找到 node",
-    );
-
-    // The failed probe is not cached: a later attempt re-probes.
-    h.stdout = Buffer.from(
-      "\n/usr/local/bin/node\nWAVE_WSL_PATH=/usr/local/bin:/usr/bin\n",
-    );
-    await expect(getWslNodePath("Ubuntu")).resolves.toBe("/usr/local/bin/node");
-    await getWslNodePath("Ubuntu");
+    await expect(getWslLoginPath("Ubuntu")).resolves.toBe("/usr/bin:/bin");
+    await getWslLoginPath("Ubuntu");
     expect(
-      h.spawnCalls.filter((c) => c.args.at(-1)?.includes("command -v node")),
-    ).toHaveLength(2);
+      h.spawnCalls.filter((c) => c.args.at(-1)?.includes("WAVE_WSL_PATH")),
+    ).toHaveLength(1);
   });
 
-  it("execs node through a non-interactive sh that injects the login PATH", async () => {
+  it("execs the managed runtime, with its bin dir first on PATH", async () => {
     h.stdout = Buffer.from(
-      "\n/usr/local/bin/node\nWAVE_WSL_PATH=/usr/local/bin:/usr/bin:/bin\n",
+      "\nWAVE_WSL_PATH=/home/me/.local/bin:/usr/bin:/bin\n",
     );
-    const spec = await buildWslCliSpawnSpec(
-      "Ubuntu",
-      "/home/u/.wave/cli/desktop/bin/wave-code.js",
-    );
+    const spec = await buildWslCliSpawnSpec("Ubuntu", SHIM, RUNTIME_NODE);
     // No interactive login shell (its motd would land on stdout, which IS the
-    // --stdio channel) — but no bare node either: `wsl.exe -e` hands the child
-    // the distro's default PATH, where the nvm/fnm node is missing, so the
-    // login shell's PATH goes in first and every hook/tool child inherits it.
+    // --stdio channel), and no bare `node`: the managed runtime's absolute path
+    // runs the CLI, its bin dir leads the login shell's PATH (so hooks/tools see
+    // the same node the CLI runs on), and pnpm & friends still resolve.
     expect(spec.args).toEqual([
       "-d",
       "Ubuntu",
       "-e",
       "sh",
       "-c",
-      "PATH='/usr/local/bin:/usr/bin:/bin'; export PATH; " +
-        "exec '/usr/local/bin/node' " +
-        "'/home/u/.wave/cli/desktop/bin/wave-code.js' --stdio",
+      "PATH='/home/me/.wave/runtime/node/bin:/home/me/.local/bin:/usr/bin:/bin'; " +
+        "export PATH; " +
+        `exec '${RUNTIME_NODE}' '${SHIM}' --stdio`,
     ]);
     expect(spec.file).toMatch(/wsl\.exe$/);
   });
 
-  it("falls back to node's own directory when the shell reports no PATH", async () => {
-    h.stdout = Buffer.from("\n/usr/local/bin/node\nWAVE_WSL_PATH=\n");
-    const spec = await buildWslCliSpawnSpec("Ubuntu", "/home/u/wave-code.js");
+  it("falls back to the runtime's own bin dir when the shell reports no PATH", async () => {
+    h.stdout = Buffer.from("\nWAVE_WSL_PATH=\n");
+    const spec = await buildWslCliSpawnSpec(
+      "Ubuntu",
+      "/home/u/wave-code.js",
+      RUNTIME_NODE,
+    );
     expect(spec.args.at(-1)).toBe(
-      "PATH='/usr/local/bin'; export PATH; exec '/usr/local/bin/node' " +
-        "'/home/u/wave-code.js' --stdio",
+      "PATH='/home/me/.wave/runtime/node/bin'; export PATH; " +
+        `exec '${RUNTIME_NODE}' '/home/u/wave-code.js' --stdio`,
     );
   });
 });
