@@ -107,6 +107,55 @@ describe("锚点", () => {
     expect(anchorAt(before, 150)).toEqual({ key: "b", offsetInItem: 50 });
   });
 
+  describe("视口顶那一行还没量过", () => {
+    // 上翻一页插进顶部之后，视口顶落在新一页最后一行身上，而它必然还没进账本。
+    const m = buildRowMetrics(
+      ["z0", "z1", "n0", "n1"],
+      (_k, i) => [50, 50, 72, 72][i],
+    );
+    const measuredOnly = (measured: string[]) => (key: string) =>
+      measured.includes(key);
+
+    it("锚点让给视口里第一行量过的行（用它的起点）", () => {
+      // 视口顶在 60 —— z1 里（未测量，估算 50）。让给 n0 的起点 100。
+      expect(
+        anchorAt(m, 60, {
+          isMeasured: measuredOnly(["n0", "n1"]),
+          viewport: 400,
+        }),
+      ).toEqual({ key: "n0", offsetInItem: -40 });
+    });
+
+    it("量过的行只在视口范围内找", () => {
+      // 视口只有 20px 高，n0 的起点 100 已在视口外 ⇒ 退回原来那一行。
+      expect(
+        anchorAt(m, 60, {
+          isMeasured: measuredOnly(["n0", "n1"]),
+          viewport: 20,
+        }),
+      ).toEqual({ key: "z1", offsetInItem: 10 });
+    });
+
+    it("视口里一行都没量过（首屏刚挂载）：照旧按行内偏移", () => {
+      expect(
+        anchorAt(m, 60, { isMeasured: measuredOnly([]), viewport: 400 }),
+      ).toEqual({ key: "z1", offsetInItem: 10 });
+    });
+
+    it("补偿算的是量过那一行的起点：它自己的高度变化不算，上面的算", () => {
+      // z1 量出真实高度 900（估算只有 50），n0 的起点因此从 100 挪到 950。
+      const after = buildRowMetrics(
+        ["z0", "z1", "n0", "n1"],
+        (_k, i) => [50, 900, 72, 72][i],
+      );
+      const anchor = anchorAt(m, 60, {
+        isMeasured: measuredOnly(["n0", "n1"]),
+        viewport: 400,
+      })!;
+      expect(compensationFor(m, after, anchor)).toBe(850);
+    });
+  });
+
   it("上面插进一行：补偿量正好是插进来的高度", () => {
     const after = buildRowMetrics(
       ["x", "y", "a", "b", "c"],

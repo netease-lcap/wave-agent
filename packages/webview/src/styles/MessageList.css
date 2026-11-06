@@ -14,6 +14,14 @@
   width: 100%;
   background-color: var(--vscode-panel-background);
   position: relative;
+  /* The virtualizer compensates for every geometry change itself (prepended
+     page, streaming growth, width change, restored position). Chromium's own
+     scroll anchoring would compensate a SECOND time for the same sizes — most
+     visibly while an earlier page's rows go estimate → measured above the
+     viewport — and the two add up. Claude Code's engine turns it off for the
+     same reason (`shared-4-CF5qF0Y3.js`, the scroller setup restores the
+     previous value on teardown). */
+  overflow-anchor: none;
 }
 
 /* The conversation column: capped at 800px and centered, mirroring

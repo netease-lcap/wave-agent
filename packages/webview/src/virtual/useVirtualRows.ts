@@ -146,16 +146,24 @@ export function useVirtualRows(options: UseVirtualRowsOptions): VirtualRows {
   /** 触发账本重算的计数器：量出新高度时 +1。 */
   const [measureVersion, setMeasureVersion] = useState(0);
 
-  const metrics = useMemo(
-    () =>
-      buildRowMetrics(
-        keys,
-        (key, index) => sizesRef.current.get(key) ?? estimateRef.current(index),
-      ),
+  /**
+   * 账本，外加「哪些行是实测高度」。两者必须是**同一份快照**：行在挂载的 ref 回调
+   * 里就已经被量到了，`sizesRef` 会抢先一步有值，而账本要到下一次渲染才跟上 ——
+   * 拿 `sizesRef` 判「这行量过没有」，会把一行还没进账本的实测当成已量过，锚点
+   * 就不肯让开（`anchorAt` 的注释解释了让开为什么是必须的）。
+   */
+  const { metrics, measured } = useMemo(() => {
+    const measuredKeys = new Set<string>();
+    const next = buildRowMetrics(keys, (key, index) => {
+      const size = sizesRef.current.get(key);
+      if (size === undefined) return estimateRef.current(index);
+      measuredKeys.add(key);
+      return size;
+    });
+    return { metrics: next, measured: measuredKeys };
     // 估算函数走 ref（每次渲染都是新闭包），所以账本只在「换了一批行」或「量出新高
     // 度」时重算，不跟着渲染次数走。
-    [keys, measureVersion],
-  );
+  }, [keys, measureVersion]);
 
   // 首屏窗口：挂载后两帧内只按 initialWindowBottomPx 往下缓冲，之后放开。
   const [initialPhase, setInitialPhase] = useState(true);
@@ -165,6 +173,8 @@ export function useVirtualRows(options: UseVirtualRowsOptions): VirtualRows {
   const [range, setRange] = useState<RowRange>(EMPTY_RANGE);
 
   const metricsRef = useRef<RowMetrics>(metrics);
+  /** 与 `metricsRef` 成对的「量过的行」快照，随账本一起在布局效应里换。 */
+  const measuredRef = useRef<Set<string>>(measured);
   const anchorRef = useRef<Anchor | undefined>(undefined);
   const savedRef = useRef<SavedPosition | undefined>(
     docKey === undefined ? undefined : savedPositions.get(docKey),
@@ -307,6 +317,21 @@ export function useVirtualRows(options: UseVirtualRowsOptions): VirtualRows {
   }, []);
   const isPinned = useCallback(() => pinnedRef.current, []);
 
+  /**
+   * 记下「视口顶是哪一行的哪个位置」。三个调用点（账本变化后、滚动、容器尺寸变化）
+   * 用同一套判断：视口顶那一行还没量过时，锚点让给视口里第一行量过的行，见
+   * `anchorAt` 的注释。
+   */
+  const captureAnchor = useCallback(() => {
+    const container = containerRef.current;
+    if (!container) return undefined;
+    const measuredKeys = measuredRef.current;
+    return anchorAt(metricsRef.current, container.scrollTop - originOffsetPx, {
+      isMeasured: (key) => measuredKeys.has(key),
+      viewport: viewportHeight(container),
+    });
+  }, [originOffsetPx]);
+
   // 账本变化之后：先按钉底或锚点把视口搬回去，再重算该渲染哪几行。
   useLayoutEffect(() => {
     const container = containerRef.current;
@@ -318,6 +343,7 @@ export function useVirtualRows(options: UseVirtualRowsOptions): VirtualRows {
         previous.total !== next.total ||
         previous.keys !== next.keys);
     metricsRef.current = next;
+    measuredRef.current = measured;
     if (!container) return;
     if (changed) {
       if (pinnedRef.current) {
@@ -340,9 +366,17 @@ export function useVirtualRows(options: UseVirtualRowsOptions): VirtualRows {
     prevScrollTopRef.current = container.scrollTop;
     prevScrollHeightRef.current = container.scrollHeight;
     prevClientHeightRef.current = viewportHeight(container);
-    anchorRef.current = anchorAt(next, container.scrollTop - originOffsetPx);
+    anchorRef.current = captureAnchor();
     flushRange();
-  }, [metrics, flushRange, scrollToEnd, writeScroll, originOffsetPx]);
+  }, [
+    metrics,
+    measured,
+    flushRange,
+    scrollToEnd,
+    writeScroll,
+    captureAnchor,
+    originOffsetPx,
+  ]);
 
   // 滚动：分类 own / clamp / foreign，只有 foreign 改钉状态。
   useEffect(() => {
@@ -381,16 +415,13 @@ export function useVirtualRows(options: UseVirtualRowsOptions): VirtualRows {
       prevScrollTopRef.current = container.scrollTop;
       prevScrollHeightRef.current = container.scrollHeight;
       prevClientHeightRef.current = viewportHeight(container);
-      anchorRef.current = anchorAt(
-        metricsRef.current,
-        container.scrollTop - originOffsetPx,
-      );
+      anchorRef.current = captureAnchor();
       scheduleRange();
     };
 
     container.addEventListener("scroll", handleScroll, { passive: true });
     return () => container.removeEventListener("scroll", handleScroll);
-  }, [originOffsetPx, scheduleRange]);
+  }, [scheduleRange, captureAnchor]);
 
   // 容器尺寸变化（窗口缩放、面板开合）：重算窗口，并把光标位置重新记下来——
   // 行宽变了会全体重新测量，那批补偿依赖锚点，锚点不能是过期的。
@@ -401,15 +432,12 @@ export function useVirtualRows(options: UseVirtualRowsOptions): VirtualRows {
       prevScrollTopRef.current = container.scrollTop;
       prevScrollHeightRef.current = container.scrollHeight;
       prevClientHeightRef.current = viewportHeight(container);
-      anchorRef.current = anchorAt(
-        metricsRef.current,
-        container.scrollTop - originOffsetPx,
-      );
+      anchorRef.current = captureAnchor();
       flushRange();
     });
     observer.observe(container);
     return () => observer.disconnect();
-  }, [originOffsetPx, flushRange]);
+  }, [flushRange, captureAnchor]);
 
   // 首屏窗口两帧后放开。
   useEffect(() => {
