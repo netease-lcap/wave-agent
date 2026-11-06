@@ -512,6 +512,29 @@ const highlightCodeBody = (
     .join("");
 };
 
+/**
+ * Bash 命令行的正文：按 shell 语法着色，**不做链接化**。
+ *
+ * 与围栏代码块共用 `highlightCode`（同一份 hljs 注册表与调色板），但出口不同：
+ * 命令里的地址常常是 shell 语法的一部分（引号、管道、重定向目标），链接化既会
+ * 切碎高亮结构，也会把「点了没反应」变成意外跳转——命令行刻意不生成 `<a>`
+ * （specs/ui/message-rendering-system.md「Bash 工具命令行的语法高亮」场景 5）。
+ *
+ * 命令来自模型，等价于不可信输入，净化只放行 `span` 与 `class`；语言不可用或
+ * 高亮抛错时 `highlightCode` 返回 null，退回转义后的原文（场景 4）。
+ */
+const highlightBashCommandBody = (command: string): string => {
+  const html = highlightCode(command, "bash") ?? escapeHtml(command);
+  const clean = DOMPurify.sanitize(html, {
+    ALLOWED_TAGS: ["span"],
+    ALLOWED_ATTR: ["class"],
+    ALLOW_DATA_ATTR: false,
+    FORBID_ATTR: [],
+    FORBID_TAGS: [],
+  });
+  return typeof clean === "string" ? clean : String(clean);
+};
+
 /** 代码块复制成功后图标与文案停留多久（spec: 代码块复制按钮场景 5）。 */
 export const CODE_COPY_FEEDBACK_MS = 1500;
 
@@ -1279,13 +1302,20 @@ export const Message: React.FC<MessageProps> = React.memo(
       // Only render bash-specific content if we have a valid command and appropriate stage
       if ((stage === "running" || stage === "end") && hasValidCommand) {
         const result = (toolBlock.result || toolBlock.shortResult || "").trim();
+        // 命令按 shell 语法着色（specs/ui/message-rendering-system.md「Bash 工具
+        // 命令行的语法高亮」）：两条入口（AI 调用的 Bash 工具、bash 模式的 `!`
+        // 命令）都落在 renderBashIO，含输出与只有命令两种形态共用这一份 HTML。
+        const commandHtml = highlightBashCommandBody(command);
 
         if (result) {
           // Show both input and output if result is present (even if running)
           return (
             <div className="bash-command-unified" onClick={handleContentClick}>
               <div className="bash-command-input">
-                <span className="bash-command">{command}</span>
+                <span
+                  className="bash-command"
+                  dangerouslySetInnerHTML={{ __html: commandHtml }}
+                />
               </div>
               {/* 输出中的裸 http(s) URL 与文件路径链接化（见
                   specs/ui/markdown-links.md 与 specs/ui/file-path-links.md），
@@ -1310,7 +1340,10 @@ export const Message: React.FC<MessageProps> = React.memo(
           // Show only input if no result yet
           return (
             <div className="bash-command-input">
-              <span className="bash-command">{command}</span>
+              <span
+                className="bash-command"
+                dangerouslySetInnerHTML={{ __html: commandHtml }}
+              />
             </div>
           );
         }

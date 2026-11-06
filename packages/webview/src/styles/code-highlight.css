@@ -1,106 +1,268 @@
 /* Syntax-highlight palette (GitHub Dark / VS Code Dark+ style hues) driven by
    --vscode semantic colors where available, static fallbacks otherwise.
-   挂三处：文件面板的代码视图、远控页预览弹层的代码档（`IdeContextPreview` 的
-   `codePath`）、对话流里的围栏代码块（`Message.tsx` 的 `renderer.code`）——
-   同一份配色，不是三套主题。
+   挂四处：文件面板的代码视图、远控页预览弹层的代码档（`IdeContextPreview` 的
+   `codePath`）、对话流里的围栏代码块（`Message.tsx` 的 `renderer.code`）、
+   Bash 工具的命令行（`Message.tsx` 的 `renderBashIO`）——同一份配色，不是四套
+   主题。命令行与围栏代码块同源：同一份 hljs 注册表、同一套 hljs token 类名，
+   差别只在命令行不链接化、也不带语言类名。
    单独成文件的理由：对话流与文件面板在插件端各自独立加载（VS Code 的 webview
    里没有文件面板模块），配色若只写在 FilePane.css，消息代码块在那边就没有
    颜色；两处 import 同一份，谁先加载都不缺。 */
-:is(.file-pane, .ide-context-preview, .markdown-content pre code.hljs)
+:is(
+    .file-pane,
+    .ide-context-preview,
+    .markdown-content pre code.hljs,
+    .bash-command
+  )
   .hljs-comment,
-:is(.file-pane, .ide-context-preview, .markdown-content pre code.hljs)
+:is(
+    .file-pane,
+    .ide-context-preview,
+    .markdown-content pre code.hljs,
+    .bash-command
+  )
   .hljs-quote {
   color: var(--vscode-descriptionForeground, #6a9955);
   font-style: italic;
 }
 
-:is(.file-pane, .ide-context-preview, .markdown-content pre code.hljs)
+:is(
+    .file-pane,
+    .ide-context-preview,
+    .markdown-content pre code.hljs,
+    .bash-command
+  )
   .hljs-keyword,
-:is(.file-pane, .ide-context-preview, .markdown-content pre code.hljs)
+:is(
+    .file-pane,
+    .ide-context-preview,
+    .markdown-content pre code.hljs,
+    .bash-command
+  )
   .hljs-selector-tag,
-:is(.file-pane, .ide-context-preview, .markdown-content pre code.hljs)
+:is(
+    .file-pane,
+    .ide-context-preview,
+    .markdown-content pre code.hljs,
+    .bash-command
+  )
   .hljs-literal,
-:is(.file-pane, .ide-context-preview, .markdown-content pre code.hljs)
+:is(
+    .file-pane,
+    .ide-context-preview,
+    .markdown-content pre code.hljs,
+    .bash-command
+  )
   .hljs-type,
-:is(.file-pane, .ide-context-preview, .markdown-content pre code.hljs)
+:is(
+    .file-pane,
+    .ide-context-preview,
+    .markdown-content pre code.hljs,
+    .bash-command
+  )
   .hljs-section,
-:is(.file-pane, .ide-context-preview, .markdown-content pre code.hljs)
+:is(
+    .file-pane,
+    .ide-context-preview,
+    .markdown-content pre code.hljs,
+    .bash-command
+  )
   .hljs-meta {
   color: #569cd6;
 }
 
-:is(.file-pane, .ide-context-preview, .markdown-content pre code.hljs)
+:is(
+    .file-pane,
+    .ide-context-preview,
+    .markdown-content pre code.hljs,
+    .bash-command
+  )
   .hljs-string,
-:is(.file-pane, .ide-context-preview, .markdown-content pre code.hljs)
+:is(
+    .file-pane,
+    .ide-context-preview,
+    .markdown-content pre code.hljs,
+    .bash-command
+  )
   .hljs-regexp,
-:is(.file-pane, .ide-context-preview, .markdown-content pre code.hljs)
+:is(
+    .file-pane,
+    .ide-context-preview,
+    .markdown-content pre code.hljs,
+    .bash-command
+  )
   .hljs-addition {
   color: #ce9178;
 }
 
-:is(.file-pane, .ide-context-preview, .markdown-content pre code.hljs)
+:is(
+    .file-pane,
+    .ide-context-preview,
+    .markdown-content pre code.hljs,
+    .bash-command
+  )
   .hljs-number,
-:is(.file-pane, .ide-context-preview, .markdown-content pre code.hljs)
+:is(
+    .file-pane,
+    .ide-context-preview,
+    .markdown-content pre code.hljs,
+    .bash-command
+  )
   .hljs-symbol,
-:is(.file-pane, .ide-context-preview, .markdown-content pre code.hljs)
+:is(
+    .file-pane,
+    .ide-context-preview,
+    .markdown-content pre code.hljs,
+    .bash-command
+  )
   .hljs-bullet {
   color: #b5cea8;
 }
 
-:is(.file-pane, .ide-context-preview, .markdown-content pre code.hljs)
+:is(
+    .file-pane,
+    .ide-context-preview,
+    .markdown-content pre code.hljs,
+    .bash-command
+  )
   .hljs-title,
-:is(.file-pane, .ide-context-preview, .markdown-content pre code.hljs)
+:is(
+    .file-pane,
+    .ide-context-preview,
+    .markdown-content pre code.hljs,
+    .bash-command
+  )
   .hljs-title.function_,
-:is(.file-pane, .ide-context-preview, .markdown-content pre code.hljs)
+:is(
+    .file-pane,
+    .ide-context-preview,
+    .markdown-content pre code.hljs,
+    .bash-command
+  )
   .hljs-function
   .hljs-title {
   color: #dcdcaa;
 }
 
-:is(.file-pane, .ide-context-preview, .markdown-content pre code.hljs)
+:is(
+    .file-pane,
+    .ide-context-preview,
+    .markdown-content pre code.hljs,
+    .bash-command
+  )
   .hljs-attr,
-:is(.file-pane, .ide-context-preview, .markdown-content pre code.hljs)
+:is(
+    .file-pane,
+    .ide-context-preview,
+    .markdown-content pre code.hljs,
+    .bash-command
+  )
   .hljs-attribute,
-:is(.file-pane, .ide-context-preview, .markdown-content pre code.hljs)
+:is(
+    .file-pane,
+    .ide-context-preview,
+    .markdown-content pre code.hljs,
+    .bash-command
+  )
   .hljs-variable,
-:is(.file-pane, .ide-context-preview, .markdown-content pre code.hljs)
+:is(
+    .file-pane,
+    .ide-context-preview,
+    .markdown-content pre code.hljs,
+    .bash-command
+  )
   .hljs-template-variable,
-:is(.file-pane, .ide-context-preview, .markdown-content pre code.hljs)
+:is(
+    .file-pane,
+    .ide-context-preview,
+    .markdown-content pre code.hljs,
+    .bash-command
+  )
   .hljs-name {
   color: #9cdcfe;
 }
 
-:is(.file-pane, .ide-context-preview, .markdown-content pre code.hljs)
+:is(
+    .file-pane,
+    .ide-context-preview,
+    .markdown-content pre code.hljs,
+    .bash-command
+  )
   .hljs-built_in,
-:is(.file-pane, .ide-context-preview, .markdown-content pre code.hljs)
+:is(
+    .file-pane,
+    .ide-context-preview,
+    .markdown-content pre code.hljs,
+    .bash-command
+  )
   .hljs-builtin-name {
   color: #4ec9b0;
 }
 
-:is(.file-pane, .ide-context-preview, .markdown-content pre code.hljs)
+:is(
+    .file-pane,
+    .ide-context-preview,
+    .markdown-content pre code.hljs,
+    .bash-command
+  )
   .hljs-tag,
-:is(.file-pane, .ide-context-preview, .markdown-content pre code.hljs)
+:is(
+    .file-pane,
+    .ide-context-preview,
+    .markdown-content pre code.hljs,
+    .bash-command
+  )
   .hljs-selector-id,
-:is(.file-pane, .ide-context-preview, .markdown-content pre code.hljs)
+:is(
+    .file-pane,
+    .ide-context-preview,
+    .markdown-content pre code.hljs,
+    .bash-command
+  )
   .hljs-selector-class,
-:is(.file-pane, .ide-context-preview, .markdown-content pre code.hljs)
+:is(
+    .file-pane,
+    .ide-context-preview,
+    .markdown-content pre code.hljs,
+    .bash-command
+  )
   .hljs-selector-attr,
-:is(.file-pane, .ide-context-preview, .markdown-content pre code.hljs)
+:is(
+    .file-pane,
+    .ide-context-preview,
+    .markdown-content pre code.hljs,
+    .bash-command
+  )
   .hljs-selector-pseudo {
   color: #d7ba7d;
 }
 
-:is(.file-pane, .ide-context-preview, .markdown-content pre code.hljs)
+:is(
+    .file-pane,
+    .ide-context-preview,
+    .markdown-content pre code.hljs,
+    .bash-command
+  )
   .hljs-deletion {
   color: #f14c4c;
 }
 
-:is(.file-pane, .ide-context-preview, .markdown-content pre code.hljs)
+:is(
+    .file-pane,
+    .ide-context-preview,
+    .markdown-content pre code.hljs,
+    .bash-command
+  )
   .hljs-emphasis {
   font-style: italic;
 }
 
-:is(.file-pane, .ide-context-preview, .markdown-content pre code.hljs)
+:is(
+    .file-pane,
+    .ide-context-preview,
+    .markdown-content pre code.hljs,
+    .bash-command
+  )
   .hljs-strong {
   font-weight: bold;
 }
