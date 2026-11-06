@@ -64,12 +64,13 @@ usage() {
 
 上传范围:
   --only <列表>         只跑其中几条线，逗号分隔：desktop,docs,remote,plugin-market
-                        默认四条全跑（失败的线可以单独重跑，成功的线会自动跳过）
-  --overwrite           已存在也重新覆盖（默认「缺就补、有就跳过」）
+                        默认四条全跑；失败的线可以单独重跑
+  --overwrite           桌面端台账里已有同一份 sha 时也重传（docs / remote / 插件市场
+                        本来就每次整包覆盖，不受这个开关影响）
 
 验证与回退:
-  --dry-run             只做预检：探通接口、校验包与清单、报告「会跳过哪些」，不写任何东西
-  --verify              上传完再核一遍读路径（feed / manifest / /docs/ / /remote/ / latest）
+  --dry-run             只做预检：探通接口、校验包与清单，不写任何东西
+  --verify              上传完再核服务端读路径（下载页 manifest）
   --list                读桌面端发布台账后退出
   --delete <id>         删一条桌面端台账记录（= 回退一个版本）后退出
 
@@ -166,12 +167,6 @@ body() { cat "$BODY_FILE" 2>/dev/null; }
 # 服务端要是把它改成嵌套结构，这里会明显报「解析不出 uploadId」而不是静默出错）
 json_str() { sed -n 's/.*"'"$1"'"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$BODY_FILE" 2>/dev/null | head -1; }
 json_num() { sed -n 's/.*"'"$1"'"[[:space:]]*:[[:space:]]*\([0-9][0-9]*\).*/\1/p' "$BODY_FILE" 2>/dev/null | head -1; }
-
-http_head() { # 只取状态码，不要响应体（用于读路径探测）
-  path="$1"
-  # shellcheck disable=SC2086
-  CODE=$(curl -sS $CURL_OPTS --max-time 60 -o /dev/null -w '%{http_code}' "$BASE$path" 2>/dev/null) || CODE=000
-}
 
 fail_item() {
   FAIL_COUNT=$((FAIL_COUNT + 1))
@@ -374,65 +369,39 @@ upload_multipart() { # $1=kind $2=path $3=field $4=file
     fail_item "$kind" "上传失败 HTTP $CODE $(body)"; return 1
   fi
   OK_COUNT=$((OK_COUNT + 1))
-  info "✓ $kind 已上传（$name）"
+  count=$(json_num fileCount)
+  info "✓ $kind 已上传（$name${count:+，$count 个文件}）"
 }
 
+# 这三条线一律整包覆盖，不做「有就不传」的跳过：它们的读路径由网关直出
+# （ingress → 文件中心），publish-service 探不到真值——/docs 在这里是显式 404，
+# 其余被 SPA fallback 兜成运营台外壳的 200。拿它们当跳过判据只会漏传（线上踩过：
+# 远控页停在上一个版本、日志还报 200）。重传本身幂等，几 MB 的代价远低于漏传。
 upload_docs() { # $1=file
-  if [ "$OVERWRITE" = 0 ]; then
-    http_head /docs/index.html
-    if [ "$CODE" = 200 ]; then
-      SKIP_COUNT=$((SKIP_COUNT + 1))
-      info "跳过 docs（/docs/ 已有内容，--overwrite 可强制覆盖）"
-      return 0
-    fi
-  fi
   upload_multipart docs /api/publish/docs archive "$1"
 }
 
 upload_remote() { # $1=file
-  if [ "$OVERWRITE" = 0 ]; then
-    http_head /remote/index.html
-    if [ "$CODE" = 200 ]; then
-      SKIP_COUNT=$((SKIP_COUNT + 1))
-      info "跳过 remote-page（/remote/ 已有内容，--overwrite 可强制覆盖）"
-      return 0
-    fi
-  fi
   upload_multipart remote-page /api/publish/remote-page zip "$1"
 }
 
 upload_plugin_market() { # $1=file
-  local_sha=$(sha256_hex "$1")
-  if [ -n "$local_sha" ] && [ "$OVERWRITE" = 0 ]; then
-    # latest 指针是纯文本 sha（内容寻址，重传同一份 zip 幂等），所以能直接比
-    http GET /wave-plugins-official/latest
-    if [ "$CODE" = 200 ]; then
-      remote_sha=$(body | tr -d ' \r\n')
-      if [ "$remote_sha" = "$local_sha" ]; then
-        SKIP_COUNT=$((SKIP_COUNT + 1))
-        info "跳过 plugin-market（latest 已是同一份快照 $(printf '%s' "$local_sha" | cut -c1-16)…）"
-        return 0
-      fi
-    fi
-  fi
   upload_multipart plugin-market /api/publish/plugin-market zip "$1"
 }
 
 # ─── 读路径核验 ──────────────────────────────────────────────────────────────
 verify_all() {
-  printf '\n核验读路径\n'
-  http_head /docs/
-  info "/docs/ → $CODE"
-  http_head /remote/
-  info "/remote/ → $CODE"
-  http_head /wave-plugins-official/latest
-  info "/wave-plugins-official/latest → $CODE"
+  printf '\n核验服务端读路径\n'
   http GET /api/downloads/manifest.json
   if [ "$CODE" = 200 ]; then
     info "下载页 manifest → 200 $(sed -n 's/.*"version":"\([^"]*\)".*/当前版本 \1/p' "$BODY_FILE" | head -1)"
   else
     info "下载页 manifest → $CODE $(body)"
   fi
+  # docs / remote / 插件市场的读路径不经过 publish-service，探它就是假红假绿，
+  # 真值只认上面上传接口的 201 + fileCount。线上效果请到客户实际访问域名上
+  # 用浏览器验收：/docs/、/remote/、/wave-plugins-official/latest。
+  info "docs / remote / 插件市场：读路径由网关直出，请用客户访问域名在浏览器验收"
 }
 
 # ─── --list / --delete ───────────────────────────────────────────────────────
@@ -486,7 +455,7 @@ if [ -n "$DELETE_ID" ]; then do_delete; exit 0; fi
 
 printf '\n物料包     %s\n' "$SCRIPT_DIR"
 printf '模式       %s\n' "$([ "$DRY_RUN" = 1 ] && echo '预检（不写入）' || echo '正式上传')"
-printf '覆盖策略   %s\n\n' "$([ "$OVERWRITE" = 1 ] && echo '强制覆盖' || echo '缺就补、有就跳过')"
+printf '覆盖策略   %s\n\n' "$([ "$OVERWRITE" = 1 ] && echo '全部覆盖' || echo 'docs / remote / 插件市场覆盖，桌面端按台账 sha 判重')"
 
 if wants desktop; then
   http GET /api/publish/desktop
@@ -530,7 +499,7 @@ fi
 printf '\n汇总：成功 %s，跳过 %s，失败 %s\n' "$OK_COUNT" "$SKIP_COUNT" "$FAIL_COUNT"
 if [ "$FAIL_COUNT" -gt 0 ]; then
   printf '失败项：%s\n' "$FAILED_ITEMS"
-  printf '\n可以只重跑失败的线（已成功的会自动跳过）：--only <desktop|docs|remote|plugin-market>\n'
+  printf '\n可以只重跑失败的线：--only <desktop|docs|remote|plugin-market>\n'
   exit 1
 fi
 if [ "$DRY_RUN" = 1 ]; then
