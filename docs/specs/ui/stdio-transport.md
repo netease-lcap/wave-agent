@@ -12,7 +12,7 @@ order: 220
 
 编辑器插件（VS Code 扩展、JetBrains 插件等）不在插件宿主进程中运行 Agent 逻辑，而是通过 JSON-RPC 2.0 over stdio 与 `wave --stdio` 子进程通信。本规格覆盖该传输层的完整生命周期：CLI 的解析/运行、JSON-RPC 通信协议、共享进程的多会话路由、以及错误诊断。
 
-**CLI 交付方式**：VSCE 将 wave CLI 内置进扩展包（三件套：`bin/wave-code.js` 版本探测 shim + `package.json` + `dist/bundle/wave.mjs`，合计约 2.9MB），运行时由扩展宿主自身的 Node 运行时（`process.execPath`）直接执行，不依赖客户系统安装 Node.js/npm；JB 插件同样内置三件套进插件包，但运行在 JVM 中、没有宿主 Node，运行时借用客户系统安装的 Node.js（≥ 22）执行内置 CLI。两个客户端均不再依赖 npm 全局安装的 `wave-code` 包，内置 CLI 随各自插件发版更新（运行时按 `dist/bundle/wave.mjs` 的内容字节判定是否刷新用户目录副本，见「内置 CLI 同步」，版本号相同但代码已变也会刷新）。CLI 的 grep 工具依赖 `@vscode/ripgrep`（JS 包装 + 平台 rg 二进制，约 5.2MB）与图片编解码依赖 sharp **不打包**，由 **CLI 自己在启动期**按需从 npmmirror 下载到共享 `~/.wave/cli/node_modules/` 并缓存（两个客户端共享同一 runtime 目录，下载互用，一处装好三处可用）；下载失败**不阻断启动**——grep 报"ripgrep is not available"、超限图片走降级路径，下次启动自动重试（机制见「边界情况 · 运行时依赖按需自装」）。两个客户端均通过同一套 stdio 协议与架构与 `wave --stdio` 通信。
+**CLI 交付方式**：VSCE 将 wave CLI 内置进扩展包（三件套：`bin/wave-code.js` 版本探测 shim + `package.json` + `dist/bundle/wave.mjs`，合计约 2.9MB），运行时由扩展宿主自身的 Node 运行时（`process.execPath`）直接执行，不依赖客户系统安装 Node.js/npm；JB 插件同样内置三件套进插件包，但运行在 JVM 中、没有宿主 Node，运行时**一律使用插件自己管理的托管运行时**——首次启动取一份官方 Node 到 `~/.wave/runtime/node/`，之后长期复用（见「JB 插件自动获取托管 Node 运行时」），不探测客户系统的 Node.js，全程不需要用户自己安装 Node。两个客户端均不再依赖 npm 全局安装的 `wave-code` 包，内置 CLI 随各自插件发版更新（运行时按 `dist/bundle/wave.mjs` 的内容字节判定是否刷新用户目录副本，见「内置 CLI 同步」，版本号相同但代码已变也会刷新）。CLI 的 grep 工具依赖 `@vscode/ripgrep`（JS 包装 + 平台 rg 二进制，约 5.2MB）与图片编解码依赖 sharp **不打包**，由 **CLI 自己在启动期**按需从 npmmirror 下载到共享 `~/.wave/cli/node_modules/` 并缓存（两个客户端共享同一 runtime 目录，下载互用，一处装好三处可用）；下载失败**不阻断启动**——grep 报"ripgrep is not available"、超限图片走降级路径，下次启动自动重试（机制见「边界情况 · 运行时依赖按需自装」）。两个客户端均通过同一套 stdio 协议与架构与 `wave --stdio` 通信。
 
 ### 架构
 
@@ -66,13 +66,13 @@ order: 220
 
 作为 JetBrains 插件用户，我希望插件直接使用随插件发布的内置 wave CLI，以便无需安装 npm 包、无需任何手动配置即可开始使用。
 
-**为什么是这个优先级**：这是整个 stdio 传输层的前提——没有 CLI，插件无法做任何事情。内置方案将 CLI 与插件捆绑发布，消灭了对 npm 全局安装 `wave-code` 的依赖（PATH 查找、`npm install -g` 自动安装/升级、版本检查全部移除）；插件仍借用客户系统的 Node.js（≥ 22）作为运行时执行内置 CLI，无需自带 Node。grep 依赖 rg 不打包，由 CLI 在启动期按需下载并缓存（宿主不代劳，下载失败也不挡启动），避免安装包膨胀，也不让可选能力挡住插件启动。
+**为什么是这个优先级**：这是整个 stdio 传输层的前提——没有 CLI，插件无法做任何事情。内置方案将 CLI 与插件捆绑发布，消灭了对 npm 全局安装 `wave-code` 的依赖（PATH 查找、`npm install -g` 自动安装/升级、版本检查全部移除）。CLI 运行时**一律使用插件自己管理的托管运行时**（`~/.wave/runtime/node/`，固定版本取一次、长期复用，见下一条「JB 插件自动获取托管 Node 运行时」故事）——**不探测客户系统的 Node.js**，因此 PATH 查找、nvm/asdf/volta/fnm 路径差异、登录 shell 差异、Windows `where node` 命中商店存根（0 字节的 `WindowsApps\node.exe`，执行会弹商店）这些环境依赖问题全部消失。插件安装包不塞多平台运行时（jar 会膨胀上百 MB），但用户也不再需要自己装 Node：后端与运维客户的受限开发机上常常没有 Node、也不允许自行安装，把「先装 Node 再重启编辑器」当成前置条件正是此前最大的使用门槛。grep 依赖 rg 不打包，由 CLI 在启动期按需下载并缓存（宿主不代劳，下载失败也不挡启动），避免安装包膨胀，也不让可选能力挡住插件启动。
 
-**独立测试**：在一台未安装 `wave-code` npm 包的机器上安装插件（仅需系统 Node.js ≥ 22），打开聊天面板，验证插件直接运行内置 CLI 并启动子进程；首次启动（启动期自装）后 `~/.wave/cli/node_modules/@vscode/` 下出现下载的 rg 二进制，再次启动不重复下载。
+**独立测试**：在一台未安装 `wave-code` npm 包的机器上安装插件，打开聊天面板，验证插件直接运行内置 CLI 并启动子进程；在**未安装 Node.js** 与**已安装 Node.js 22** 两台机器上分别验证，两者行为完全一致（都使用 `~/.wave/runtime/node/` 下的托管运行时，不出现安装 Node 的提示）；首次启动（启动期自装）后 `~/.wave/cli/node_modules/@vscode/` 下出现下载的 rg 二进制，再次启动不重复下载。
 
 **验收场景**：
 
-1. **假设** 插件已安装且内置 CLI（`resources/wave-cli/bin/wave-code.js` + `package.json` + `dist/bundle/wave.mjs`）随插件 jar/zip 发布，**当**插件初始化时，**则**将内置 CLI 复制到用户可写的 `~/.wave/cli/`（插件安装目录只读），解析到其中的 `bin/wave-code.js` 作为入口，用系统 Node.js 执行 `node <entry> --stdio`，不查找系统 PATH 的 `wave`、不执行 npm。
+1. **假设** 插件已安装且内置 CLI（`resources/wave-cli/bin/wave-code.js` + `package.json` + `dist/bundle/wave.mjs`）随插件 jar/zip 发布，**当**插件初始化时，**则**将内置 CLI 复制到用户可写的 `~/.wave/cli/`（插件安装目录只读），解析到其中的 `bin/wave-code.js` 作为入口，用**托管运行时**（`<runtime>`，见下条故事）执行 `<runtime> <entry> --stdio`，不查找系统 PATH 的 `wave`、不执行 npm、不查找系统 PATH 的 `node`。
 2. **假设** `WAVE_CLI_PATH` 环境变量指向一个存在的工作区构建（开发场景），**当**插件初始化时，**则**优先使用该路径而非内置 CLI，便于本地开发调试。
 3. **假设** 二进制路径已解析成功，**当**同一插件生命周期内再次调用解析时，**则**直接返回缓存的路径，不重复查找、不重复复制。
 4. **假设** 内置 CLI 文件缺失或不可读（安装损坏），**当**插件初始化时，**则**抛出明确错误并提示用户重新安装插件，不尝试从网络安装。
@@ -80,8 +80,29 @@ order: 220
 6. **假设** rg 已下载过（`~/.wave/cli/node_modules/@vscode/` 下存在当前平台的 rg 二进制），**当**插件再次启动 CLI 时，**则**直接复用缓存，不重复下载。
 7. **假设** rg 下载失败（网络不可达、registry 超时等），**当**插件初始化时，**则**CLI 照常启动、不产生初始化错误：本次运行 Grep 工具报"ripgrep is not available"（其余功能不受影响），下次启动自动重试下载——可选依赖不得把插件启动判死。
 8. **假设** 共享 runtime 目录全新（`~/.wave/cli/node_modules/` 不存在）、sharp 与 rg 都需下载，**当** CLI 启动期依次自装这两个依赖时，**则**两个依赖都装上、marker 一次记录两者，且 rg 在**同一次运行的进程内**即可用（Grep 正常工作）——sharp 安装顺带建立的 `node_modules/` 不得让随后对 rg 的可用性探测把本进程的 rg 解析判死。
-9. **假设** 系统未安装 Node.js，**当**插件尝试解析二进制时，**则**抛出明确错误："未检测到 Node.js。请先安装 Node.js (https://nodejs.org)，然后重启编辑器。"——JB 插件借用系统 Node 作为 CLI 运行时，Node 是必需的。
-10. **假设** 系统 Node.js 版本低于 22，**当**插件尝试解析二进制时，**则**抛出明确错误："Node.js 版本过低（当前 vX，需要 >= 22）。请升级 Node.js (https://nodejs.org)，然后重启编辑器。"
+9. **假设** 系统未安装 Node.js、装了 v18、或 `which/where node` 命中的是损坏安装/商店存根，**当**插件尝试解析 CLI 运行时，**则**这些情况**全部不影响结果**：插件不做任何系统 Node 探测，直接用托管运行时（下条故事）执行内置 CLI；不得报「请先安装 Node.js」或「请升级 Node.js」。
+10. **假设** 用户机器上的系统 Node 由 nvm/asdf/volta/fnm 等版本管理器提供（未进入非登录 shell 的 PATH），**当**插件初始化时，**则**同样无需关心——不读登录 shell 环境、不做版本管理器路径推断，行为与没有 Node 的机器完全一致。
+11. **假设** 托管运行时已存在于 `~/.wave/runtime/node/` 且 marker 记录的版本与平台与插件期望一致，**当**插件初始化时，**则**直接复用、不重复下载、不额外执行探测命令——缓存语义与 `~/.wave/cli/node_modules/` 下的 rg/sharp 一致：同一台机器上的 VSCE/JB/桌面端共享同一份。
+12. **假设** 托管运行时取用失败（网络不可达、镜像不提供该平台包、下载被企业代理替换成错误页、解压后无法执行），**当**插件尝试解析运行时，**则**抛出可操作错误：含失败原因、实际请求的完整 URL、以及「隔离网络请把镜像基址指向内部镜像（`WAVE_NODE_MIRROR`）」的指引；不得进入半可用状态，下次启动自动重试。
+
+---
+
+### 用户故事：JB 插件自动获取托管 Node 运行时（优先级：P1）
+
+作为 JetBrains 用户，我希望插件自己管理一份 CLI 运行时，以便我装完插件就能用——不用先去装 Node、不必有劳 IT 审批，也不用担心我机器上的 Node 版本和别人的不一致。
+
+**为什么是这个优先级**：JetBrains 插件跑在 JVM 里，没有宿主 Node 可借用（VSCE 有扩展宿主、桌面端有 Electron），此前只能借用系统 Node.js ≥ 22——而「远端/受限开发机上没有 Node、也不允许装」正是客户投诉的核心场景。这里**刻意不做**「有系统 Node 就用系统 Node、没有才下载」的分级：分级看着省一次流量，实际把 PATH/版本管理器/登录 shell/商店存根/损坏安装这一整类环境差异全部请回来，每种差异都会变成一类现场问题（而且同一份 CLI 在不同人机器上跑在不同 Node 版本上，问题不可复现）。所以**一律用托管运行时**：首次启动取一次（一份 Linux Node 压缩后约 28–52MB，五个平台塞进 jar 就是上百 MB，故不做成内置），之后长期复用、与其它客户端共享同一份。
+
+**独立测试**：在未安装 Node.js 的机器上装插件，打开聊天面板，验证首启自动取到运行时并正常开工（有进度/加载态，不出现「请安装 Node」提示）；关掉编辑器重开，验证不重复下载；`rm -rf ~/.wave/runtime/node` 并断网后重开，验证报出含 URL 与镜像指引的错误、且不进入半可用状态；在一台**已装 Node 22** 的机器上重复首启流程，验证它同样下载并落在 `~/.wave/runtime/node/`（不借用系统 Node）。
+
+**验收场景**：
+
+1. **假设** 插件启动时 `~/.wave/runtime/node/` 不存在或 marker 记录不匹配（**与机器上有没有 Node.js、版本是多少无关**），**当**插件初始化时，**则**按当前平台取一份官方 Node 运行时到 `~/.wave/runtime/node/`，只用其中的 `bin/node`（不带 npm/headers/docs）执行内置 CLI；可取的平台即官方发行物覆盖的六个（`linux-x64`/`linux-arm64`/`darwin-arm64`/`darwin-x64`/`win-x64`/`win-arm64`），其余平台给出可操作错误而不是下载一个跑不起来的东西——**musl（Alpine）特此点名**：官方 Node 根本不发 musl 构建，代码里按 musl 直接报错（提示改用 glibc 发行版或 `WAVE_NODE_PATH`），而不是让 glibc 二进制在 exec 阶段报一句难懂的 loader 错误。
+2. **假设** 运行时版本由插件固定（与 CLI 的 `engines.node >= 22` 对齐，不跟随镜像上的「最新版」），**当**插件初始化时，**则**只取该固定版本；缓存标记（marker）记录版本与平台，任一不符即视为缺失、重新取用。
+3. **假设** 运行时来源默认是公共 npm 镜像（与 rg/sharp 同一镜像域名），**当**需要覆盖（私有化隔离网络指向内部镜像）时，**则**可通过 `WAVE_NODE_MIRROR` 环境变量指定基址；未设置时用默认值，不新增 settings 键。
+4. **假设** 下载完成，**当**插件落盘前校验，**则**必须用镜像同目录的 `SHASUMS256.txt` 做 sha256 比对（真校验，可抓「被代理替换成 HTML 错误页」「下载被截断」），再实际执行 `<runtime> --version` 断言成功（可抓「平台/架构包错」）；任一不过即删除半成品并报错，不得把它当成可用运行时。校验值就在归档旁边，因此「拿不到校验值」不能被当成「跳过校验」的借口。
+5. **假设** `WAVE_NODE_PATH` 指向一个 Node 解释器（企业已有统一管控的运行时、或开发调试想指定自己的构建），**当**插件初始化时，**则**直接用它启动 CLI、不下载；不可执行时报出明确错误。这是唯一的逃生阀——除此之外不做任何自动探测：不读 PATH、不读 nvm/asdf/volta/fnm、不用 IDE 自带的 node（IDE 自带那份的版本随 IDE 升级而变，不是我们验证过的运行时）。
+6. **假设** 同一台机器上多个客户端（VSCE/JB/桌面端）并存，**当**各自需要运行时，**则**共用 `~/.wave/runtime/node/`：先到者写入、后到者复用，并发写入必须由 marker/原子替换保证「要么旧的好件、要么完整的新件」，不得出现被截断的 `bin/node`。
 
 ---
 
@@ -107,20 +128,19 @@ order: 220
 
 作为编辑器插件用户，我希望在 CLI 无法启动时获得明确的错误信息和可操作的修复指引，以便快速解决问题而不是面对晦涩的技术错误。
 
-**为什么是这个优先级**：JB 插件借用系统 Node.js 作为 CLI 运行时，缺失或版本过低时应给出可理解的引导而非晦涩的进程错误；VSCE 内置 CLI 后不再受系统 Node 影响，但子进程启动失败与运行期崩溃仍需清晰诊断。
+**为什么是这个优先级**：JB 插件自己取运行时之后，「机器上没有 Node」不再是错误路径（那是常态，自动兜底即可）；真正需要清晰诊断的是**运行时取用失败**——网络被隔离、镜像不提供该平台包、下载被代理替换成错误页。这类失败若不给出实际请求的 URL 和镜像配置指引，用户与运维只能看到一句「加载失败」，而私有化客户恰恰是最可能踩到它的人。VSCE 内置 CLI 后不受系统 Node 影响，但子进程启动失败与运行期崩溃仍需清晰诊断。
 
-**独立测试**：JB：在一台未安装 Node.js 的 Windows 机器上安装插件，打开聊天面板，验证错误消息明确告知用户需要安装 Node.js。VSCE：删除扩展包内的内置 CLI 文件后打开聊天面板，验证错误提示重新安装扩展。
+**独立测试**：JB：在一台断网的 Windows 机器上安装插件，打开聊天面板，验证错误消息包含实际请求 URL 与镜像配置指引（不出现任何 Node.js 安装/升级指引）。VSCE：删除扩展包内的内置 CLI 文件后打开聊天面板，验证错误提示重新安装扩展。
 
 **验收场景**：
 
 1. **假设** VSCE 内置 CLI 文件缺失或无法用宿主运行时执行（安装损坏），**当**插件尝试启动子进程时，**则**在编辑器通知中显示明确错误，提示重新安装扩展，不涉及任何 Node.js 安装指引。
 2. **假设** VSCE 的 rg 下载失败（网络不可达等），**当**插件初始化时，**则**不显示初始化错误（CLI 照常启动，Grep 报"ripgrep is not available"），下次启动自动重试下载。
-3. **假设** JB 系统未安装 Node.js（`which/where node` 失败，且 nvm、JBR 均无可用 node），**当**插件尝试解析二进制时，**则**抛出明确错误："未检测到 Node.js。请先安装 Node.js (https://nodejs.org)，然后重启编辑器。"，并在编辑器通知中显示该消息。
-4. **假设** JB 系统已安装 Node.js 但版本低于 22，**当**插件尝试解析二进制时，**则**抛出明确错误："Node.js 版本过低（当前 vX，需要 >= 22）。请升级 Node.js (https://nodejs.org)，然后重启编辑器。"，并在编辑器通知中显示该消息。
-5. **假设** JB 内置 CLI 文件缺失或不可读（安装损坏），**当**插件尝试启动子进程时，**则**在编辑器通知中显示明确错误，提示重新安装插件，不尝试从网络安装。
-6. **假设** JB 的 rg 下载失败（网络不可达等），**当**插件初始化时，**则**不显示初始化错误（CLI 照常启动，Grep 报"ripgrep is not available"），下次启动自动重试下载。
-7. **假设** CLI 子进程启动后立即退出（exit code 非 0），**当**插件检测到进程退出时，**则**在编辑器通知中显示错误，包含 stderr 输出（如果有），并建议用户检查 CLI 安装。
-8. **假设** 任何初始化错误发生后，**当**用户查看编辑器输出面板的 Wave 通道时，**则**能看到完整的错误堆栈和上下文信息用于诊断。
+3. **假设** JB 的托管运行时取不到（网络不可达 / 镜像无该平台包 / 校验不通过），**当**插件尝试解析二进制时，**则**在编辑器通知中显示可操作错误：失败原因 + 实际请求的完整 URL + 「隔离网络请把 `WAVE_NODE_MIRROR` 指向内部镜像」的指引；**不得**出现「请先安装 Node.js (nodejs.org)」「请升级 Node.js」这类把成本推回用户的文案。
+4. **假设** JB 内置 CLI 文件缺失或不可读（安装损坏），**当**插件尝试启动子进程时，**则**在编辑器通知中显示明确错误，提示重新安装插件，不尝试从网络安装。
+5. **假设** JB 的 rg 下载失败（网络不可达等），**当**插件初始化时，**则**不显示初始化错误（CLI 照常启动，Grep 报"ripgrep is not available"），下次启动自动重试下载。
+6. **假设** CLI 子进程启动后立即退出（exit code 非 0），**当**插件检测到进程退出时，**则**在编辑器通知中显示错误，包含 stderr 输出（如果有），并建议用户检查 CLI 安装。
+7. **假设** 任何初始化错误发生后，**当**用户查看编辑器输出面板的 Wave 通道时，**则**能看到完整的错误堆栈和上下文信息用于诊断。
 
 ---
 
@@ -290,9 +310,11 @@ order: 220
 
 ### 边界情况
 
-- **Windows spawn 方式**（JB 适用）：JB 插件以 `node <entry> --stdio` 方式执行内置 CLI（入口是 `.js` 脚本，无需 shell），不再 spawn 任何 `npm.cmd`/`wave.cmd` shim，规避 Node.js CVE-2024-27980 补丁后无 shell 拒绝执行 `.cmd` 的限制；`getCliVersion` 探测同样以 `node <entry> -v` 执行。
-- **`getCliVersion` 超时**（JB 适用）：`node <entry> -v` 执行有超时，超时返回 `null`（视为入口损坏，触发重新复制内置 CLI）。
-- **内置 CLI 的宿主运行时**：VSCE 扩展宿主的 `process.execPath` 是有效的 Node 二进制（Electron 扩展宿主运行时），直接以 `process.execPath <bin/wave-code.js> --stdio` 方式 spawn，Windows 上无需 shell、无 `.cmd` 路径注入风险；JB 插件无宿主 Node，以系统 Node.js（`which/where node` → nvm → JBR 逐级查找）执行内置 CLI，Windows 上同样无需 shell。
+- **Windows spawn 方式**（JB 适用）：JB 插件以 `<runtime> <entry> --stdio` 方式执行内置 CLI（`<runtime>` = `~/.wave/runtime/node/` 里的托管运行时，入口是 `.js` 脚本，无需 shell），不再 spawn 任何 `npm.cmd`/`wave.cmd` shim，规避 Node.js CVE-2024-27980 补丁后无 shell 拒绝执行 `.cmd` 的限制；`getCliVersion` 探测同样以 `<runtime> <entry> -v` 执行。
+- **`getCliVersion` 超时**（JB 适用）：`<runtime> <entry> -v` 执行有超时，超时返回 `null`（视为入口损坏，触发重新复制内置 CLI）。
+- **内置 CLI 的宿主运行时**：VSCE 扩展宿主的 `process.execPath` 是有效的 Node 二进制（Electron 扩展宿主运行时），直接以 `process.execPath <bin/wave-code.js> --stdio` 方式 spawn，Windows 上无需 shell、无 `.cmd` 路径注入风险——这是宿主自带的运行时，不是「系统 Node」。JB 插件跑在 JVM 里、没有宿主 Node，运行时解析只有三步：`WAVE_NODE_PATH`（显式覆盖，设了就只用它）→ `~/.wave/runtime/node/`（marker 的版本与平台都匹配即直接使用，不额外执行探测命令）→ 缺失则从镜像取一份官方 Node 到该目录（固定版本，与 CLI 的 `engines.node >= 22` 对齐），校验通过后再以 `<runtime> <entry> --stdio` spawn，Windows 上同样无需 shell。**不读 PATH、不读 nvm/asdf/volta/fnm、不用 IDE 自带的 node**：这些来源的版本与可用性随用户环境与 IDE 升级变化，不是我们验证过的运行时，探测它们只会把环境差异变成现场问题（Windows 上 `where node` 还可能命中 0 字节的商店存根）。托管运行时只保留 `bin/node`（Windows 为 `bin/node.exe`），解压后丢弃 npm/headers/docs，磁盘占用与「下载一份完整 Node 发行包」不同量级。
+- **托管运行时的版本固定与来源**：版本写死在插件里、不做「跟随镜像最新版」的探测——镜像上的最新版可能比插件验证过的版本新，跟内置 CLI 的兼容性没人验证过；升级运行时属于插件发版行为。来源默认与 rg/sharp 同一公共 npm 镜像（`https://registry.npmmirror.com/-/binary/node/<固定版本>/`），`WAVE_NODE_MIRROR` 可覆盖基址以适配私有化内部镜像；私有化客户的镜像可达性由客户自行保障（我们只保证失败时报出实际 URL 与配置项）。
+- **运行时取用的原子性**：下载到临时目录（`node.new`）→ 用镜像的 `SHASUMS256.txt` 做 sha256 判断 + `<runtime> --version` 实跑校验 → 旧运行时挪到 `node.old`、`node.new` 原子 `rename` 到 `~/.wave/runtime/node/`。多条路径并发（多个插件窗口、VSCE/JB 同时初始化）时，先完成者写入、后到者复用；任何中途失败都不得在最终目录留下可被当成「已就绪」的部分文件（marker 只在全部校验通过后写入）。Windows 上正在被占用的 `node.exe` 会让替换 rename 失败，此时必须把 `node.old` 还原回去并报可操作错误，而不是留下半可用目录。
 - **内置 CLI 布局**（VSCE/JB 通用）：内置内容为三件套——`bin/wave-code.js`（版本探测 shim，处理 `-v` 后 import `../dist/bundle/wave.mjs`）、`package.json`、`dist/bundle/wave.mjs`。wave.mjs 运行时经 `createRequire(import.meta.url)` 向上解析 `@vscode/ripgrep-<platform>-<arch>/bin/rg`，因此下载的 rg 必须放在 CLI 目录的 `node_modules/@vscode/` 下；该路径**每次使用时再解析**，不在模块求值期定死——依赖是 CLI 自己在启动期装进来的，晚于模块求值。
 - **可写区复制**（VSCE/JB 通用）：插件安装目录只读，内置 CLI 在首次启动（或版本变更）时复制到用户目录 `~/.wave/cli/`；复制前只删除 `dist/`、入口与 `package.json`，保留 `node_modules/`（运行时依赖缓存，rg 与 sharp），升级插件不会强制重新下载。VSCE 与 JB 共享同一 runtime 目录。
 - **运行时依赖自装与缓存**（rg 与 sharp 同一套机制）：宿主自带的那份 CLI 不带 `node_modules`，两个依赖都由 **CLI 在启动期**按「运行时依赖表」自装到共享 `~/.wave/cli/node_modules/`：按 CLI `package.json` 声明的范围从 npmmirror 取元数据、选范围内容最高版本（semver `maxSatisfying`）→ 逐个下载 tarball 并**校验 registry 的 sha512 完整性** → 解包到临时目录后原子 `rename` 到位（保留 tarball 内的可执行位，rg 二进制必须可执行）→ 全部成功才写 marker。rg 为 `@vscode/ripgrep`（JS 包装）+ `@vscode/ripgrep-<platform>-<arch>`（rg 二进制，无 musl 变体），落点与旧实现相同 ⇒ 已有缓存直接命中、不重复下载。**就绪判定先看文件系统、再看加载**：先在候选 `node_modules` 目录（`requireFn.resolve.paths(name)`，纯路径运算）里确认包目录存在，只有存在时才真正 `require` 加载校验——**绝不拿 `require` 去探测一个尚不存在的包**，因为那次失败的解析会按路径在 Node 内部留下「该包不存在」的进程级缓存，同一进程内包随后落盘也再解析不到（判定假阴性 → 清 marker → 该进程 grep 永久不可用，典型触发序：sharp 先装、其 `node_modules/` 建立后 rg 才被探测）。安装后的加载校验仍走真实 `require`（此时包已在磁盘上，安全），保留「已安装但无法加载」（如平台二进制不匹配）的降级判定。npm 安装的 `wave-code` 自带这两个依赖，第一步即短路、不发生任何下载。

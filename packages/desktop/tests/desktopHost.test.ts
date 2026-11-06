@@ -646,7 +646,7 @@ vi.mock("../src/main/remoteCli", async () => {
     ...actual,
     resolveRemoteWaveBinary: vi.fn(async (host: string) => ({
       binaryPath: `/remote/wave-${host}`,
-      nodeVersion: "v22.0.0",
+      runtimePath: `/remote/node-${host}`,
     })),
     ensureRemoteDaemon: vi.fn(
       async (host: string) => `/home/${host}/.wave/daemon.sock`,

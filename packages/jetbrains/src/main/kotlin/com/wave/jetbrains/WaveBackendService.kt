@@ -75,10 +75,11 @@ class WaveBackendService(private val project: Project) : Disposable {
                     }
                 }
                 try {
-                    // Resolve the bundled CLI (copied to ~/.wave/cli) and execute it
-                    // with the system Node.js — no npm-global wave-code needed.
+                    // Resolve the bundled CLI (copied to ~/.wave/cli) and run it
+                    // on the managed Node.js runtime (~/.wave/runtime/node) —
+                    // no npm-global wave-code, no system Node.js needed.
                     val entry = BinaryResolver.resolveWaveBinary()
-                    val node = BinaryResolver.findNode()
+                    val node = BinaryResolver.resolveNode()
                     val c = StdioClient(listOf(node, entry), listOf("--stdio"), BinaryResolver.resolveEnv())
                     val r = NotificationRouter(c)
                     r.attach()
