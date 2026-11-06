@@ -39,6 +39,7 @@ const ALL_NOTIFICATION_METHODS: readonly ServerNotificationMethod[] = [
   "noticeAdded",
   "loadingChange",
   "contextUsage",
+  "quotaHeaders",
   "commandRunningChange",
   "queuedMessagesChange",
   "tasksChange",

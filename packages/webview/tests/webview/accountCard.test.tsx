@@ -1099,6 +1099,39 @@ describe("AccountCard (desktop sidebar)", () => {
       }
     });
 
+    it("asks the host for one usage check per open (spec「用量刷新时机」场景 4)", () => {
+      // 头是主源；点开浮层时再核对一次全量（到期日 / 企业池 / 余额）。
+      const { vscode } = renderDesktop();
+      pushAccount({ ...loggedIn, billing: planBilling, apiQuota: apiPlenty });
+      vscode.postMessage.mockClear();
+
+      const refreshCalls = () =>
+        vscode.postMessage.mock.calls.filter(
+          ([msg]) =>
+            (msg as { command?: string }).command ===
+            "desktopRefreshAccountUsage",
+        ).length;
+
+      fireEvent.click(screen.getByTestId("account-usage-btn"));
+      expect(screen.getByTestId("account-usage-popover")).toBeInTheDocument();
+      // 一次打开只发一次.
+      expect(refreshCalls()).toBe(1);
+
+      // 页签切换不再发（不是刷新时机）.
+      const tabs = screen.queryAllByRole("tab");
+      if (tabs.length > 1) fireEvent.click(tabs[1]);
+      expect(refreshCalls()).toBe(1);
+
+      // 收起再打开 = 又一次核对.
+      fireEvent.click(screen.getByTestId("account-usage-btn"));
+      expect(
+        screen.queryByTestId("account-usage-popover"),
+      ).not.toBeInTheDocument();
+      expect(refreshCalls()).toBe(1);
+      fireEvent.click(screen.getByTestId("account-usage-btn"));
+      expect(refreshCalls()).toBe(2);
+    });
+
     it("keeps the personal menu and the usage popover mutually exclusive", () => {
       renderDesktop();
       pushUsage({ ...loggedIn, billing: planBilling, apiQuota: apiPlenty });

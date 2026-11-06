@@ -3623,16 +3623,22 @@ describe("account card (desktopAccountInfo)", () => {
     };
   }
 
-  const accountPollField = DesktopHost as unknown as {
-    accountPollIntervalMs: number;
-  };
-
-  /** Shrink the usage poll interval for a test; returns a restore fn. */
-  function setAccountPollInterval(ms: number): () => void {
-    const original = accountPollField.accountPollIntervalMs;
-    accountPollField.accountPollIntervalMs = ms;
-    return () => {
-      accountPollField.accountPollIntervalMs = original;
+  /**
+   * 数一数接下来发生了多少次 `getAccountInfo`（用量核对）：60s 轮询删除后，这条
+   * RPC 只该在「登录 / 切主机 / webview 就绪 / 打开用量浮层」时出现。
+   */
+  function countAccountQueries(): { calls: () => number; restore: () => void } {
+    const orig = h.handleClientRequest;
+    let calls = 0;
+    h.handleClientRequest = (m: string, params?: unknown) => {
+      if (m === "getAccountInfo") calls += 1;
+      return orig(m, params);
+    };
+    return {
+      calls: () => calls,
+      restore: () => {
+        h.handleClientRequest = orig;
+      },
     };
   }
 
@@ -3719,6 +3725,169 @@ describe("account card (desktopAccountInfo)", () => {
       });
     });
     restore();
+  });
+
+  it("额度头驱动卡片：响应里带 x-codechat-quota-* 就推送新读数（spec 场景 1）", async () => {
+    const restoreStub = stubAccountRpc(
+      { id: "u1", email: "alice@example.com" },
+      { billing: planBilling, apiQuota: { limit: null, used: 1 } },
+      true,
+    );
+    const { sent } = await readyHost();
+    await vi.waitFor(() => {
+      expect(sent("desktopAccountInfo").at(-1)).toMatchObject({
+        billing: planBilling,
+      });
+    });
+
+    // 一次模型调用的响应（成功路径）：头里是本次调用前的额度读数。
+    lastAgent().callbacks.onQuotaHeaders({
+      "x-codechat-quota-status": "allowed",
+      "x-codechat-quota-weekly-used": "50",
+      "x-codechat-quota-weekly-limit": "100",
+      "x-codechat-quota-monthly-used": "600",
+      "x-codechat-quota-monthly-limit": "1000",
+      "x-codechat-quota-plan-expire": "2027-03-01",
+    });
+
+    expect(sent("desktopAccountInfo").at(-1)).toMatchObject({
+      isAuthenticated: true,
+      billing: {
+        mode: "plan",
+        plan: {
+          monthUsed: 600,
+          monthLimit: 1000,
+          weekUsed: 50,
+          weekLimit: 100,
+          expireDate: "2027-03-01",
+        },
+      },
+      // 头里没发 api-*（ok_plan 路径不查余额）⇒ 保留上次已知的余额维度。
+      apiQuota: { limit: null, used: 1 },
+    });
+    restoreStub();
+  });
+
+  it("被阻断的错误响应同样刷新读数（spec 场景 2）", async () => {
+    const restoreStub = stubAccountRpc(
+      { id: "u1", email: "alice@example.com" },
+      { billing: planBilling, apiQuota: { limit: 20, used: 2 } },
+      true,
+    );
+    const { sent } = await readyHost();
+    await vi.waitFor(() => {
+      expect(sent("desktopAccountInfo").at(-1)).toMatchObject({
+        billing: planBilling,
+      });
+    });
+
+    // 402 阻断：错误路径的头与成功路径同等对待。
+    lastAgent().callbacks.onQuotaHeaders({
+      "x-codechat-quota-status": "rejected",
+      "x-codechat-quota-code": "USER_QUOTA_ZERO",
+      "x-codechat-quota-api-limit": "20",
+      "x-codechat-quota-api-used": "20",
+    });
+
+    expect(sent("desktopAccountInfo").at(-1)).toMatchObject({
+      billing: { mode: "blocked", code: "USER_QUOTA_ZERO" },
+      apiQuota: { limit: 20, used: 20 },
+    });
+    restoreStub();
+  });
+
+  it("没有额度头 → 不更新、不额外请求（spec 场景 6）", async () => {
+    const restoreStub = stubAccountRpc(
+      { id: "u1", email: "alice@example.com" },
+      { billing: planBilling, apiQuota: { limit: 10, used: 3 } },
+      true,
+    );
+    const { sent } = await readyHost();
+    await vi.waitFor(() => {
+      expect(sent("desktopAccountInfo").at(-1)).toMatchObject({
+        billing: planBilling,
+      });
+    });
+    const pushes = sent("desktopAccountInfo").length;
+    const queries = countAccountQueries();
+
+    // 私有化 / 自定义网关 / 中间层剥掉自定义头：这次响应没有新信息。
+    lastAgent().callbacks.onQuotaHeaders({
+      "content-type": "application/json",
+    });
+
+    expect(sent("desktopAccountInfo")).toHaveLength(pushes);
+    expect(queries.calls()).toBe(0);
+    queries.restore();
+    restoreStub();
+  });
+
+  it("打开用量浮层时核对一次（desktopRefreshAccountUsage，spec 场景 4）", async () => {
+    const account = {
+      billing: planBilling as unknown,
+      apiQuota: { limit: 10, used: 3 } as unknown,
+    };
+    const restoreStub = stubAccountRpc(
+      { id: "u1", email: "alice@example.com" },
+      account,
+      true,
+    );
+    const { host, sent } = await readyHost();
+    await vi.waitFor(() => {
+      expect(sent("desktopAccountInfo").at(-1)).toMatchObject({
+        billing: planBilling,
+      });
+    });
+
+    // 账户接口知道头部看不到的那部分（到期日 / 企业池 / 余额）。
+    account.billing = {
+      mode: "api",
+      reason: "no_plan",
+      plan: { expireDate: "2025-01-01" },
+    };
+    account.apiQuota = { limit: 10, used: 9.5 };
+    const queries = countAccountQueries();
+
+    await host.handleWebviewMessage({ command: "desktopRefreshAccountUsage" });
+
+    expect(queries.calls()).toBe(1);
+    expect(sent("desktopAccountInfo").at(-1)).toMatchObject({
+      billing: {
+        mode: "api",
+        reason: "no_plan",
+        plan: { expireDate: "2025-01-01" },
+      },
+      apiQuota: { limit: 10, used: 9.5 },
+    });
+    queries.restore();
+    restoreStub();
+  });
+
+  it("登录后不再周期性请求账户接口（60s 轮询已删除，spec 场景 5）", async () => {
+    const restoreStub = stubAccountRpc(
+      { id: "u1", email: "alice@example.com" },
+      { billing: planBilling, apiQuota: { limit: null, used: 1 } },
+      true,
+    );
+    const { sent } = await readyHost();
+    await vi.waitFor(() => {
+      expect(sent("desktopAccountInfo").at(-1)).toMatchObject({
+        billing: planBilling,
+      });
+    });
+
+    const queries = countAccountQueries();
+    // 走满两个原来的轮询周期（60s × 2）：刷新源只剩「状态变化 / 响应头 /
+    // 打开浮层核对」，定时器不该再打账户接口。
+    vi.useFakeTimers();
+    try {
+      await vi.advanceTimersByTimeAsync(125_000);
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(queries.calls()).toBe(0);
+    queries.restore();
+    restoreStub();
   });
 
   it("登录进行中再点「登录」不会起第二轮授权（PM 3500343150983424）", async () => {
@@ -3915,10 +4084,11 @@ describe("account card (desktopAccountInfo)", () => {
 
   /**
    * 首次查询恰好失败（远端 daemon 正在被 CLI 升级重启）时，「没查过」仍只是未知
-   * —— 卡片不得回落成未登录；用量轮询会重查未知主机并自愈，否则用户必须手动切一
-   * 次主机才看得到账号。
+   * —— 卡片不得回落成未登录。60s 轮询已删（spec「用量刷新时机」场景 5），自愈改由
+   * 「用户打开的核对」承担：打开用量浮层（`desktopRefreshAccountUsage`）走一次带
+   * 登录态的查询，未知主机就补上，不用手动切一次主机。
    */
-  it("首次查询失败时卡片不回落成未登录，并由轮询自愈", async () => {
+  it("首次查询失败时卡片不回落成未登录，并由「打开浮层的核对」自愈", async () => {
     seedSshConfig("Host prod\n  HostName 10.0.0.1\n");
     const { host, store, send, sent } = createHost();
     store.addRecentWorkdir({ host: "local", path: "/work/a" });
@@ -3947,7 +4117,6 @@ describe("account card (desktopAccountInfo)", () => {
       }
       return orig(m, params);
     };
-    const restoreInterval = setAccountPollInterval(20);
 
     try {
       await host.handleWebviewMessage({ command: "desktopReady" });
@@ -3971,19 +4140,18 @@ describe("account card (desktopAccountInfo)", () => {
         sent("desktopAccountInfo").filter((c) => c.isAuthenticated !== true),
       ).toEqual([]);
 
-      // 轮询重查未知主机 → 卡片自愈为已登录。
-      await vi.waitFor(
-        () => {
-          expect(queries).toBeGreaterThanOrEqual(3);
-          expect(sent("desktopAccountInfo").at(-1)).toMatchObject({
-            isAuthenticated: true,
-          });
-        },
-        { timeout: 3000 },
-      );
+      // 用户打开用量浮层 → 一次核对重查未知主机 → 卡片自愈为已登录。
+      await host.handleWebviewMessage({
+        command: "desktopRefreshAccountUsage",
+      });
+      await vi.waitFor(() => {
+        expect(queries).toBeGreaterThanOrEqual(3);
+        expect(sent("desktopAccountInfo").at(-1)).toMatchObject({
+          isAuthenticated: true,
+        });
+      });
     } finally {
       h.handleClientRequest = orig;
-      restoreInterval();
     }
   });
 });

@@ -133,6 +133,7 @@ import { PortForwardManager, type AuthCallbackForward } from "./portForward";
 import { HtmlPreviewServer } from "./htmlPreviewServer";
 import { AutoUpdaterService } from "./updateAutoUpdater";
 import { normalizeReleaseNotes, type ReleaseNoteEntry } from "./releaseNotes";
+import { usageFromQuotaHeaders } from "./accountUsage";
 import { parseVersion, compareVersions } from "./version";
 import { HOST_CHANNEL } from "./channels";
 import type { PanelKind } from "./menu";
@@ -584,7 +585,10 @@ export class DesktopHost {
 
   /**
    * 账户卡片快照 per host (登录态 + 用量), 跟随聚焦分屏的主机 (spec 场景 8)。
-   * 用量每 60s 轮询一次 (仅登录态)；失败保留上次成功数据 (spec 场景 9)。
+   * 用量有两个刷新源（spec「用量刷新时机」）：每次模型调用响应里的额度头（主源，
+   * 见 `applyQuotaHeaders`）与打开用量浮层时的一次 `getAccountInfo` 核对
+   * （`desktopRefreshAccountUsage`）。**没有定时轮询**（2026-11-06 删除 60s 轮询）。
+   * 刷新失败保留上次成功数据 (spec 场景 9)。
    */
   private accountCache = new Map<
     string,
@@ -601,9 +605,6 @@ export class DesktopHost {
    * 这类同步回包路径服务（设置页展示值走 `getConfiguration` 的实时读取）。
    */
   private userPreferencesByHost = new Map<string, UserPreferenceSettingsView>();
-  /** 60s 账户用量轮询 (spec 场景 8). Static so tests can shrink or disable it. */
-  private static accountPollIntervalMs = 60_000;
-  private accountPollTimer: NodeJS.Timeout | null = null;
   /** 1h 更新检查轮询 (spec desktop-distribution「桌面端自动更新」场景 11): 应用长期
    *  运行也能发现新版本。Static so tests can shrink or disable it. */
   private static updatePollIntervalMs = 60 * 60 * 1000;
@@ -929,10 +930,6 @@ export class DesktopHost {
     this.client = null;
     this.router = null;
     this.initPromise = null;
-    if (this.accountPollTimer) {
-      clearInterval(this.accountPollTimer);
-      this.accountPollTimer = null;
-    }
     if (this.updatePollTimer) {
       clearInterval(this.updatePollTimer);
       this.updatePollTimer = null;
@@ -1072,12 +1069,22 @@ export class DesktopHost {
   }
 
   /**
-   * 拉取一个已登录主机的用量（GET /api/v1/account）。失败保留上次成功数据
+   * 拉取一个已登录主机的用量（GET /api/v1/account）。这是**低频核对**路径
+   * （spec「用量刷新时机」）：只在登录/切主机/webview 就绪/打开用量浮层时调用，
+   * 主源是模型响应头（见 `applyQuotaHeaders`）。失败保留上次成功数据
    * (spec 场景 9)；未登录无用量可拉。若该主机当前聚焦则推送。
    */
   private async refreshUsageForHost(host: string): Promise<void> {
     const prev = this.accountCache.get(host);
-    if (!prev?.isAuthenticated) return;
+    if (!prev) {
+      // 还没查过该主机（升级后第一次接触远端、首次查询恰好撞上 daemon 重启）：
+      // 「未知」不能直接渲染成登录按钮，而 60s 轮询已经删掉——这里先走一次
+      // 带登录态的查询（内含 seedAccountFromAuth + pushAccountInfo +
+      // refreshUsageForHost），让每个「核对」入口都能自愈这条路径。
+      await this.refreshAuthStatus(host);
+      return;
+    }
+    if (!prev.isAuthenticated) return;
     let billing = prev.billing ?? null;
     let apiQuota = prev.apiQuota ?? null;
     try {
@@ -1099,39 +1106,48 @@ export class DesktopHost {
     if (host === this.currentHost) this.pushAccountInfo();
   }
 
+  /**
+   * 模型响应带的额度头 → 账户卡片用量（spec「用量刷新时机」场景 2-6）。
+   * 头是每次调用都在变的读数，所以这是热路径上的主源：不额外发请求、不落盘。
+   * 头里一个 `x-codechat-quota-*` 都没有时 `usageFromQuotaHeaders` 返回 null ——
+   * 不更新、也不算「查询失败」（老服务端/私有化本来就不发这些头）。
+   */
+  private applyQuotaHeaders(
+    host: string,
+    headers: Record<string, string>,
+  ): void {
+    const prev = this.accountCache.get(host);
+    if (!prev?.isAuthenticated) return;
+    const next = usageFromQuotaHeaders(headers, {
+      billing: prev.billing ?? null,
+      apiQuota: prev.apiQuota ?? null,
+    });
+    if (!next) return;
+    this.accountCache.set(host, { ...prev, ...next });
+    if (host === this.currentHost) this.pushAccountInfo();
+  }
+
   /** 聚焦分屏切换后同步账户卡片：推缓存 + 后台刷新用量（auth 由 refreshAuthStatus 处理）。 */
   private syncAccountCard(): void {
     const host = this.currentHost;
     // 缓存里没有该主机的条目 = 「还没查过」，不等于未登录：卡片把缺失渲染成
     // 登录按钮（pushAccountInfo 的 `?? false`），而这条路（点开远端会话 →
-    // bindAgentToPane）不会先查一次该主机，轮询也会跳过未登录条目 ⇒ 左下角
-    // 永久停在登录按钮。改为查一次该主机 —— refreshAuthStatus 内含
-    // seedAccountFromAuth + pushAccountInfo，与 handleSelectHost /
-    // handleFocusPane 同一模式（spec 场景 8：卡片跟随聚焦分屏所属主机）。
+    // bindAgentToPane）不会先查一次该主机 ⇒ 左下角永久停在登录按钮。改为查一次
+    // 该主机 —— refreshAuthStatus 内含 seedAccountFromAuth + pushAccountInfo，与
+    // handleSelectHost / handleFocusPane 同一模式（spec 场景 8：卡片跟随聚焦分屏
+    // 所属主机）。
     if (!this.accountCache.has(host)) {
       void this.refreshAuthStatus(host);
     } else {
       this.pushAccountInfo();
+      // 登录完成 / 切换主机是一次「状态变化」：先推缓存，再取一次用量
+      // （spec「用量刷新时机」场景 5 的三个触发源之一）。打开的浮层若正显示，
+      // 这次核对的回包会直接刷新它。
       void this.refreshUsageForHost(host);
     }
     // 用户偏好按 host 分属不同会话进程（远端有自己的 ~/.wave/settings.json），
     // 切换聚焦后重读，避免用上一个 host 的缓存值回包。
     void this.readUserPreferences(host);
-  }
-
-  /** 每 60s 轮询当前聚焦主机的用量（仅登录态才拉取，spec 场景 8）。 */
-  private startAccountPolling(): void {
-    if (this.accountPollTimer) return;
-    this.accountPollTimer = setInterval(() => {
-      const host = this.currentHost;
-      // 未知条目（首次查询恰好失败，例如远端 daemon 正因 CLI 升级重启）也要
-      // 重查 —— 否则卡片一直停在未登录，只能靠用户手动切一次主机自愈。
-      if (!this.accountCache.has(host)) {
-        void this.refreshAuthStatus(host);
-        return;
-      }
-      void this.refreshUsageForHost(host);
-    }, DesktopHost.accountPollIntervalMs);
   }
 
   /**
@@ -1941,6 +1957,12 @@ export class DesktopHost {
         const paneId = paneIdOf();
         if (paneId)
           this.postMessage({ command: "mcpServersUpdate", paneId, servers });
+      },
+      onQuotaHeaders: (headers: Record<string, string>) => {
+        // 账户卡片的主刷新源：每次模型调用响应都带当时的额度读数
+        // (spec desktop-account「用量刷新时机」)。只在出现这批头时触发，
+        // 没有头的部署（私有化 / 自定义网关）在这里完全静默。
+        this.applyQuotaHeaders(this.hostForAgent(agentRef), headers);
       },
       onNotificationMessageAdded: (params) => {
         // The notification itself is filtered out of the rendered stream (role
@@ -5086,6 +5108,14 @@ export class DesktopHost {
         await this.handleLogout();
         break;
 
+      // -- account card usage ------------------------------------------------
+      case "desktopRefreshAccountUsage":
+        // 打开用量浮层时的一次全量核对 (spec desktop-account「用量刷新时机」
+        // 场景 4)：主源是响应头，这里只是用户主动查看时的兜底 —— 打开一次发一次，
+        // 失败保留上次成功数据（refreshUsageForHost 内部吞错）。
+        await this.refreshUsageForHost(this.currentHost);
+        break;
+
       // -- AGENTS.md (memory files) -------------------------------------------
       case "getAgentsContent":
         await this.handleGetAgentsContent(pid, msg.scope as "user" | "project");
@@ -5708,9 +5738,6 @@ export class DesktopHost {
       // forget — the picker must not wait on a `wsl.exe` spawn. The list is
       // re-pushed through sendWorkdirState once it lands.
       void this.refreshWslDistros().catch(() => {});
-
-      // Account usage poll: keep the sidebar card's 套餐用量/API 额度 fresh.
-      this.startAccountPolling();
 
       // Periodic update check: keep discovering new versions while the app
       // stays running (spec desktop-shell 场景 11). Idempotent — a repeat
