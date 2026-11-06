@@ -1003,10 +1003,40 @@ describe("RemoteControlService", () => {
     ).toBeLessThanOrEqual(REMOTE_MAX_FRAME_BYTES);
   });
 
+  it("should keep the page open when the trim drops its oldest end", async () => {
+    // 上翻取到的是这条会话**最早**那一页时，SDK 会说 `hasMore: false`。这一页
+    // 又被裁掉最老的一段，被裁掉的那几条就正好排在它前面——「还有更早」仍然为
+    // 真。原样透传 false，页面看到就把上翻开关关掉，那几条从此翻不到
+    // （spec remote/remote-web.md「手机上往上翻更早的消息」场景 5）。
+    const all = oversizedMessages(40);
+    const bridge = createBridgeStub({
+      handleRequest: vi.fn(async () => ({ messages: all, hasMore: false })),
+    });
+    await connect(bridge);
+    socket.sent.length = 0;
+
+    socket.deliver({ id: 12, method: "getMessages", params: { before: "m0" } });
+    await vi.waitFor(() => {
+      expect(socket.frames().at(-1)?.method).toBe("result");
+    });
+
+    const frame = socket.frames().at(-1) as {
+      params: {
+        result: { messages: Array<{ id: string }>; hasMore?: boolean };
+      };
+    };
+    expect(frame.params.result.messages.length).toBeLessThan(all.length);
+    expect(frame.params.result.hasMore).toBe(true);
+  });
+
   it("should send a page that already fits untouched", async () => {
     const all = oversizedMessages(2);
     const bridge = createBridgeStub({
-      handleRequest: vi.fn(async () => ({ messages: all, total: all.length })),
+      handleRequest: vi.fn(async () => ({
+        messages: all,
+        total: all.length,
+        hasMore: false,
+      })),
     });
     await connect(bridge);
     socket.sent.length = 0;
@@ -1016,10 +1046,12 @@ describe("RemoteControlService", () => {
       expect(socket.frames().at(-1)?.method).toBe("result");
     });
 
+    // Nothing was dropped, so `hasMore` is the host's answer verbatim — the
+    // "there is more above" override exists only for a trimmed page.
     expect(socket.frames().at(-1)).toEqual({
       id: 10,
       method: "result",
-      params: { result: { messages: all, total: all.length } },
+      params: { result: { messages: all, total: all.length, hasMore: false } },
     });
   });
 

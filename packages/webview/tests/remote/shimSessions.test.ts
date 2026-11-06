@@ -29,6 +29,9 @@ const SHIM = readFileSync(
 
 type Frame = Record<string, unknown>;
 
+/** 远控页一页的条数（`remote/shim.js` 的 `CONFIG.firstPageLimit` 默认值）。 */
+const PAGE_LIMIT = 60;
+
 const SESSIONS = [
   {
     sessionId: "s-old",
@@ -643,10 +646,11 @@ describe("remote page shim", () => {
     const pull = await page.answer("getMessages", { messages: [SEED] });
     expect(pull.sessionId).toBe("s-new");
     // The first page is sized by the frame BUDGET, not by "300 looks like
-    // enough": at the measured 5.7 KB/message 100 messages ≈ 0.57 MB already
-    // sits at the 512 KiB budget, and the relay drops an over-buffer frame
+    // enough": at the measured 5.7 KB/message a page of 60 ≈ 0.34 MB stays
+    // inside the 512 KiB budget, so it arrives whole — a page over that budget
+    // gets trimmed by the machine, and the relay drops an over-buffer frame
     // without an error.
-    expect(pull.params).toEqual({ limit: 100 });
+    expect(pull.params).toEqual({ limit: PAGE_LIMIT });
 
     await page.answer("listPendingPermissions", { requests: [] });
 
@@ -835,7 +839,7 @@ describe("remote page shim", () => {
     expect(pull.sessionId).toBe("s-old");
     // A switch re-reads from scratch: the window the page held belongs to the
     // session it just left.
-    expect(pull.params).toEqual({ limit: 100 });
+    expect(pull.params).toEqual({ limit: PAGE_LIMIT });
 
     await page.answer("listPendingPermissions", { requests: [] });
     expect(lastPosted(page)).toMatchObject({
@@ -2338,7 +2342,7 @@ describe("remote page shim", () => {
     const pulls = page.socket.framesFor("getMessages");
     const pull = pulls[pulls.length - 1];
     expect(pull.sessionId).toBe("s-created");
-    expect(pull.params).toEqual({ limit: 100 });
+    expect(pull.params).toEqual({ limit: PAGE_LIMIT });
     await page.answer("getMessages", { messages: [] });
     await page.answer("listPendingPermissions", { requests: [] });
     await flush();
@@ -2869,7 +2873,7 @@ describe("remote page shim — 上翻取更早", () => {
     const ask =
       page.socket.framesFor("getMessages")[page.requests("getMessages") - 1];
     expect(page.requests("getMessages")).toBe(sent + 1);
-    expect(ask.params).toEqual({ before: "m1", limit: 100 });
+    expect(ask.params).toEqual({ before: "m1", limit: PAGE_LIMIT });
 
     await page.answer("getMessages", {
       messages: [EARLIER],
@@ -3035,7 +3039,7 @@ describe("remote page shim — 上翻取更早", () => {
     await flush();
     await page.answer("listPendingPermissions", { requests: [] });
     await page.answer("getWorkflowRuns", { runs: [] });
-    expect(pull?.params).toEqual({ limit: 100 });
+    expect(pull?.params).toEqual({ limit: PAGE_LIMIT });
     expect(lastOf(page, "setInitialState")).toMatchObject({
       messages: [{ id: "old-1" }],
       hasEarlier: false,
