@@ -7464,6 +7464,71 @@ describe("multi-session parallel (FR-031)", () => {
     });
   });
 
+  it("池中的会话已被远控页删除：点侧边栏自动移除条目并回落新会话", async () => {
+    const { host, store, sent } = await readyHost();
+    const agent1 = seedActiveSession("sess-1");
+    await host.handleWebviewMessage({ command: "newSession" });
+    seedActiveSession("sess-2");
+    // 远控页的删除只发生在持有这条会话的那个进程里（bridge 摘注册表 + destroy），
+    // 桌面端 pool 里这个 agent 随之变成僵尸：任何读都回 "Session not found"。
+    agent1.getMessages.mockRejectedValue(
+      new Error("Session not found: sess-1"),
+    );
+
+    await host.handleWebviewMessage({
+      command: "desktopSelectSession",
+      workdir: "/work/a",
+      sessionId: "sess-1",
+    });
+
+    // 曾经的症状是「点了没反应，还停在新对话页」——条目与分屏绑定都得作废，
+    // 不能留一个永远点不进去、又一直在侧边栏里的僵尸。
+    expect(store.getSessionIndex().some((e) => e.sessionId === "sess-1")).toBe(
+      false,
+    );
+    expect(
+      shownToasts().some((t) => t.message.includes("该会话已被删除")),
+    ).toBe(true);
+    expect(sent("setInitialState").at(-1)?.session?.id).not.toBe("sess-1");
+    expect(agent1.destroy).toHaveBeenCalled();
+    expect(JSON.stringify(sent("desktopSessionTree").at(-1))).not.toContain(
+      "sess-1",
+    );
+  });
+
+  it("配置重建窗口里读会话失败不算「已被删除」（条目保留）", async () => {
+    const { host, store } = await readyHost();
+    const agent1 = seedActiveSession("sess-1");
+    await host.handleWebviewMessage({ command: "newSession" });
+    seedActiveSession("sess-2");
+    // 重建期间 bridge 会先摘掉会话的注册表项，读消息同样回 "Session not
+    // found"，但那是重建的一部分——不能据此把活会话从侧边栏删掉。
+    let releaseUpdate!: () => void;
+    const updateGate = new Promise<void>((resolve) => {
+      releaseUpdate = resolve;
+    });
+    agent1.updateConfig.mockImplementation(() => updateGate);
+    agent1.getMessages.mockRejectedValue(
+      new Error("Session not found: sess-1"),
+    );
+
+    const logout = host.handleWebviewMessage({ command: "logout" });
+    await vi.waitFor(() => expect(agent1.updateConfig).toHaveBeenCalled());
+
+    await host.handleWebviewMessage({
+      command: "desktopSelectSession",
+      workdir: "/work/a",
+      sessionId: "sess-1",
+    });
+
+    expect(store.getSessionIndex().some((e) => e.sessionId === "sess-1")).toBe(
+      true,
+    );
+
+    releaseUpdate();
+    await logout;
+  });
+
   it("desktopSelectSession on the current session is a no-op", async () => {
     const { host, sent } = await readyHost();
     seedActiveSession("sess-1");
