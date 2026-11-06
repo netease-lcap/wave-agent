@@ -114,6 +114,42 @@ describe("Tooltip Component", () => {
     });
   });
 
+  it("drops a hover bubble on disable and does not bring it back on re-enable", async () => {
+    // 触发方在浮层打开时会传 disabled（wrapper 整个不渲染），气泡于是收不到
+    // mouseleave。回到 enabled 时若沿用旧的 isVisible=true，就会在指针早已离开
+    // 的情况下凭空出现一条收不掉的提示——账户卡片的「查看用量」踩过。
+    const view = (disabled: boolean) => (
+      <Tooltip text="tip" disabled={disabled}>
+        <button type="button">anchor</button>
+      </Tooltip>
+    );
+    const { rerender } = render(view(false));
+
+    await act(async () => {
+      fireEvent.mouseEnter(
+        document.querySelector(".tooltip-container") as HTMLElement,
+      );
+    });
+    await waitFor(() => {
+      expect(document.querySelector(".tooltip-box.visible")).not.toBeNull();
+    });
+
+    rerender(view(true));
+    expect(document.querySelector(".tooltip-box")).toBeNull();
+
+    rerender(view(false));
+    expect(document.querySelector(".tooltip-box.visible")).toBeNull();
+    // 再 hover 一次仍能正常出气泡（复位不是把能力关掉）。
+    await act(async () => {
+      fireEvent.mouseEnter(
+        document.querySelector(".tooltip-container") as HTMLElement,
+      );
+    });
+    await waitFor(() => {
+      expect(document.querySelector(".tooltip-box.visible")).not.toBeNull();
+    });
+  });
+
   it('should have role="tooltip" on tooltip elements', async () => {
     renderChatApp();
 

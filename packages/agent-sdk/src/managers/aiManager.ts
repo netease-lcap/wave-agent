@@ -13,6 +13,10 @@ import {
 } from "../utils/tokenCalculation.js";
 import { estimateTokens } from "../utils/tokenEstimate.js";
 import {
+  pickQuotaHeaders,
+  quotaHeadersFromError,
+} from "../utils/quotaHeaders.js";
+import {
   getTaskReminderTurnCounts,
   maybeInjectTaskReminder,
   TASK_REMINDER_CONFIG,
@@ -185,6 +189,12 @@ export interface AIManagerCallbacks {
    * spread in container setup.
    */
   onPlanFileUpdated?: (content: string) => void;
+  /**
+   * 额度响应头 `x-codechat-quota-*`（成功响应与 `APIError.headers` 两条路径都
+   * 取），原样交给宿主；一个头都没有时不触发（spec:
+   * docs/specs/desktop/desktop-account.md「额度响应头」）。
+   */
+  onQuotaHeaders?: (headers: Record<string, string>) => void;
 }
 
 export interface AIManagerOptions {
@@ -2195,6 +2205,12 @@ ${question}`;
             () => aiService.callAgent(callAgentOptions),
           );
 
+          // 额度响应头（codechat proxy 每次调用都会发，spec:
+          // desktop/desktop-account.md「额度响应头」）：原样交给宿主，由它映射成
+          // 账户卡片的读数。头是热路径上的免费输出，这里只做前缀筛选。
+          const quotaHeaders = pickQuotaHeaders(result.response_headers);
+          if (quotaHeaders) this.callbacks?.onQuotaHeaders?.(quotaHeaders);
+
           // Record the token kinds this response consumed, by model — the
           // fleet-level view of cost.
           recordTokenUsage(
@@ -2466,6 +2482,13 @@ ${question}`;
           // No tool calls (or stop conditions) → inner loop done
           break inner;
         } catch (error) {
+          // 错误路径同样带额度头（402 阻断 / 上游 429、5xx），读数照常交给宿主
+          // ——「被限流 / 被阻断」这一刻正是用户最需要看到读数的时刻
+          // （spec: desktop/desktop-account.md「额度响应头」）。
+          const errorQuotaHeaders = quotaHeadersFromError(error);
+          if (errorQuotaHeaders)
+            this.callbacks?.onQuotaHeaders?.(errorQuotaHeaders);
+
           // Log error event
           logOTelEvent(
             "error",

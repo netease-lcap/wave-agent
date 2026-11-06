@@ -8,6 +8,7 @@
 
 import { ensureRuntimeDeps, setTelemetryStdoutProtected } from "wave-agent-sdk";
 import { StdioServer } from "./stdio/stdioServer.js";
+import { reportStartupStage } from "./stdio/startupStage.js";
 import { createRemoteControlSinkFactory } from "./remote/remoteControlSink.js";
 import { logger } from "./utils/logger.js";
 
@@ -64,7 +65,11 @@ export async function startStdioCli(): Promise<void> {
   // answering any RPC (see cli.tsx). Blocking here is what closes the race: the
   // host's `initialize` — and with it the webview's initial state — only lands
   // once a pasted image can be handled. Failures are non-fatal.
-  await ensureRuntimeDeps();
+  //
+  // The ~25MB this can pull is the longest silent stretch of a first launch, so
+  // it is reported (a warm cache reports nothing: `ensureRuntimeDeps` only
+  // fires `onStage` when something is actually missing).
+  await ensureRuntimeDeps({ onStage: reportStartupStage });
   // Registered here (stdio mode only): the interactive CLI keeps Node's
   // default behavior so the terminal shows the crash stack directly.
   process.on("uncaughtException", (error) =>
@@ -79,6 +84,9 @@ export async function startStdioCli(): Promise<void> {
     // same machine — is what serves a paired phone.
     createRemoteSink: createRemoteControlSinkFactory(process.cwd()),
   });
+  // Last startup stage: from here the process is up and what the user is waiting
+  // for is `initialize` (and, on the restore path, the transcript replay).
+  reportStartupStage("startingSession");
   server.start();
 
   // Keep the process alive — readline on stdin handles the event loop.

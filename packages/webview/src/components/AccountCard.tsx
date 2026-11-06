@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import type {
   AccountApiQuotaInfo,
   AccountBillingCode,
@@ -9,15 +9,18 @@ import type {
 import { MoreMenu } from "./MoreMenu";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { Tooltip } from "./Tooltip";
+import { marked } from "marked";
+import DOMPurify from "dompurify";
 // 未登录态「更多」按钮沿用 0902 第 5 轮问号圆（ailsa 新基线）；已登录态不再
 // 提供独立更多按钮（交互定稿：热区开纯功能菜单）。
 import {
   ApiInfoIcon,
-  ChevronDownIcon,
   HelpCircleIcon,
   LoadingArcIcon,
   QuotaIcon,
 } from "./HeaderIcons";
+import { useClickOutside } from "../utils/useClickOutside";
+import { viewportSize } from "../utils/viewport";
 import "../styles/AccountCard.css";
 import "../styles/ConfirmDialog.css";
 
@@ -62,6 +65,11 @@ interface AccountCardProps {
   onDownloadUpdate?: () => void;
   /** 用户确认立即重启（S4 确认后通知宿主安装并重启）。 */
   onRestartApp?: () => void;
+  /**
+   * 打开用量浮层时向宿主核对一次用量（spec desktop-account「用量刷新时机」场景
+   * 4）：只在「收起 → 打开」那一刻发一次，页签切换与重渲染都不再发。
+   */
+  onRefreshUsage?: () => void;
 }
 
 /** Display name: email prefix, falling back to a neutral label. */
@@ -241,8 +249,8 @@ export function apiQuotaRemaining(quota: AccountApiQuotaInfo): number | null {
 /**
  * API 余额能否下「额度已用完」结论：`billing.mode` 是唯一判据（issue #2776）。
  *
- * 只有「此刻真的按 API 计费」（`mode = "api"`）或宿主没下发 `billing`（私有化部署，
- * 只有余额这一维）时，`limit = 0` / 剩余 ≤ 0 才等于「当前不可用」。`mode = "plan"` 下
+ * 只有「此刻真的按 API 计费」（`mode = "api"`）或宿主没下发 `billing`（只下发了余额
+ * 这一维，余额即唯一计费口径）时，`limit = 0` / 剩余 ≤ 0 才等于「当前不可用」。`mode = "plan"` 下
  * 后端下发的 `apiQuota.limit = 0` 来自 `checkApiAvailable → TEAM_QUOTA_ZERO`，语义只是
  * 「此刻若降级到 API 计费会被 402」——只买试用套餐、从未充值 API 的企业团队余额恒为 0，
  * 拿它反推可用性会给「套餐还剩大半」的账号误报「已用完」。`mode = "blocked"` 的拦截
@@ -293,6 +301,58 @@ export function apiQuotaInlineText(
   return `¥${formatAmount(remaining)}`;
 }
 
+/**
+ * 变更记录的白名单：与消息/计划正文同一套 markdown 渲染，但**不含 `a`** ——
+ * spec desktop-account.md「更新按钮状态机」S4 场景 5 要求记录块里没有可点链接
+ * （记录是提交标题的摘要，出现链接基本是误粘贴，且一点就把用户带出应用）。
+ * DOMPurify 默认 `KEEP_CONTENT`，剥掉 `<a>` 但保留其中文字。
+ */
+const RELEASE_NOTE_ALLOWED_TAGS = [
+  "div",
+  "p",
+  "br",
+  "strong",
+  "b",
+  "em",
+  "i",
+  "code",
+  "pre",
+  "ul",
+  "ol",
+  "li",
+  "blockquote",
+  "hr",
+  "del",
+];
+const RELEASE_NOTE_ALLOWED_ATTR = ["title", "align"];
+
+function renderReleaseNoteHtml(note: string): string {
+  return DOMPurify.sanitize(marked.parse(note) as string, {
+    ALLOWED_TAGS: RELEASE_NOTE_ALLOWED_TAGS,
+    ALLOWED_ATTR: RELEASE_NOTE_ALLOWED_ATTR,
+    ALLOW_DATA_ATTR: false,
+  });
+}
+
+/**
+ * 记录块要渲染的条目：宿主已按已装版本过滤并按版本倒序（desktop-account.md
+ * 「更新按钮状态机」下发规则），webview 只再丢「空白 note」——那等于没有记录，
+ * 渲染一个只有版本号的空段没有意义。全部为空时整块不渲染。
+ *
+ * 跨进程边界仍按未知数据校验字段类型：宿主是本仓代码，但快照走 postMessage，
+ * 一条形态不对的项不该让整张卡片崩掉。
+ */
+function visibleReleaseNotes(
+  update: AccountUpdateInfo | null,
+): Array<{ version: string; note: string }> {
+  return (update?.releaseNotes ?? []).filter(
+    (entry) =>
+      typeof entry?.version === "string" &&
+      typeof entry?.note === "string" &&
+      entry.note.trim().length > 0,
+  );
+}
+
 export const AccountCard: React.FC<AccountCardProps> = ({
   account,
   hostLabel,
@@ -303,12 +363,15 @@ export const AccountCard: React.FC<AccountCardProps> = ({
   onOpenHelpDocs,
   onDownloadUpdate,
   onRestartApp,
+  onRefreshUsage,
 }) => {
   // 个人信息纯功能菜单：热区点击开/关（MoreMenu 把热区排除在 click-outside 外）。
   const [showMenu, setShowMenu] = useState(false);
   const [menuAnchor, setMenuAnchor] = useState<DOMRect | null>(null);
-  // 用量常驻区收起/展开（独立记忆，与菜单开合解耦）。
-  const [usageCollapsed, setUsageCollapsed] = useState(false);
+  // 用量浮层（2026-11 交互改版）：用量区不再就地展开/收起，改为点击个人信息行
+  // 尾部的用量按钮，在卡片上方弹一层浮层（与卡片等宽、贴行顶向上弹）。
+  const [showUsage, setShowUsage] = useState(false);
+  const [usageAnchor, setUsageAnchor] = useState<DOMRect | null>(null);
   // 用量维度（2026-10-09 交互定稿）：套餐未用尽时 API 余额不参与计费，默认停在
   // 「套餐用量」不占版面，想看余额再切过去；两维只有一维可用时无切换器。
   const [usageTab, setUsageTab] = useState<"plan" | "api">("plan");
@@ -319,8 +382,33 @@ export const AccountCard: React.FC<AccountCardProps> = ({
   const moreBtnRef = useRef<HTMLButtonElement | null>(null);
   const cardRef = useRef<HTMLDivElement | null>(null);
   const hotzoneRef = useRef<HTMLDivElement | null>(null);
+  const usageBtnRef = useRef<HTMLButtonElement | null>(null);
+  const usagePanelRef = useRef<HTMLDivElement | null>(null);
+  // 焦点交接的台账：浮层是否开过（避免首帧就把焦点抢走）、这次关闭要不要把焦点
+  // 送回触发按钮、这次打开是不是键盘触发的（决定关闭后要不要真的送回去）。
+  const usageOpened = useRef(false);
+  const restoreFocusOnClose = useRef(false);
+  const usageOpenedByKeyboard = useRef(false);
   // S4 自动弹窗护栏：status 每轮变为 ready 只自动弹一次（离开 ready 复位）。
   const [restartPrompted, setRestartPrompted] = useState(false);
+
+  // 贴个人信息行上方弹出的锚点（菜单与用量浮层共用）：与卡片等宽，底边贴行顶
+  // （+4 抵消固定定位的上移间隙）。侧栏 overflow:hidden 会裁掉 absolute 后代，
+  // 所以两层都用 fixed 逃逸。
+  const measureRowAnchor = useCallback((): DOMRect | null => {
+    const el = cardRef.current;
+    if (!el) return null;
+    const cardRect = el.getBoundingClientRect();
+    const mainEl = el.querySelector<HTMLElement>(".account-card-main");
+    const anchorTop =
+      (mainEl ? mainEl.getBoundingClientRect().top : cardRect.top) + 4;
+    return new DOMRect(
+      cardRect.x,
+      anchorTop,
+      cardRect.width,
+      cardRect.bottom - anchorTop,
+    );
+  }, []);
 
   const isAuthenticated = account?.isAuthenticated === true;
   // 姓名优先完整邮箱（对齐 codechat sidebar-account），无邮箱时回退前缀/「已登录」。
@@ -329,6 +417,16 @@ export const AccountCard: React.FC<AccountCardProps> = ({
   const update = account?.update ?? null;
   const updateAvailable = update?.available === true;
   const updateStatus = update?.status ?? "idle";
+  // S4 正文下方的「本次更新内容」条目（缺失/全空 → 空数组 → 整块不渲染）。
+  const releaseNotes = visibleReleaseNotes(update);
+
+  // 菜单的锚点：登录态与用量浮层同源（贴个人信息行顶）；未登录态那颗菜单挂在
+  // 右侧「更多」按钮上，锚点得量那颗按钮自身。resize 重测必须走同一条口径，
+  // 否则窗口一变菜单就跳到另一个位置。
+  const measureMenuAnchor = useCallback((): DOMRect | null => {
+    if (isAuthenticated) return measureRowAnchor();
+    return moreBtnRef.current?.getBoundingClientRect() ?? null;
+  }, [isAuthenticated, measureRowAnchor]);
 
   // S4：宿主推 status="ready" 时自动弹重启确认（稍后/立即重启）。必须位于未
   // 登录早退之前——React 要求同一组件每次渲染的 hook 数量一致。
@@ -339,6 +437,68 @@ export const AccountCard: React.FC<AccountCardProps> = ({
     }
     if (updateStatus !== "ready") setRestartPrompted(false);
   }, [updateStatus, updateAvailable, restartPrompted]);
+
+  // 用量浮层关闭路径：点浮层外、按 Esc。触发按钮排除在「外部」之外，再点一次
+  // 即 toggle 关闭（与 MoreMenu 同一套 useClickOutside 口径）。
+  // 必须位于未登录早退之前——React 要求同一组件每次渲染的 hook 数量一致。
+  useClickOutside({
+    refs: [usagePanelRef, usageBtnRef],
+    onClickOutside: () => setShowUsage(false),
+    enabled: showUsage,
+  });
+  useEffect(() => {
+    if (!showUsage) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        restoreFocusOnClose.current = true;
+        setShowUsage(false);
+      }
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [showUsage]);
+  // 菜单与浮层的坐标都是打开那一刻算出的 `fixed` 快照（`bottom` / `right` /
+  // `width` 全由锚点决定），卡片又贴在侧栏底部、随窗口高度上下移动 —— 拖窗口后
+  // 不重测就与卡片分家。两层各自开合（互斥），开着哪个就跟随哪个重测；宽度同理。
+  useEffect(() => {
+    if (!showUsage && !showMenu) return;
+    const handleResize = () => {
+      if (showUsage) {
+        const anchor = measureRowAnchor();
+        if (anchor) setUsageAnchor(anchor);
+      }
+      if (showMenu) {
+        const anchor = measureMenuAnchor();
+        if (anchor) setMenuAnchor(anchor);
+      }
+    };
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, [showUsage, showMenu, measureRowAnchor, measureMenuAnchor]);
+  // 焦点交接（放在 effect 里而不是事件里）：Tooltip 的 `disabled` 会在开合瞬间
+  // 摘掉/装回它那层 span，触发按钮的 DOM 节点随之重建——同步 focus() 打在当时那颗
+  // 旧节点上，提交完就丢了。effect 在提交后跑，ref 已指向新节点。
+  // 打开 → 焦点进浮层（dialog 语义）；Esc / 再按一次触发按钮关闭 → 交还触发按钮
+  // （两条都是键盘路径：Enter/空格 toggle 关闭后焦点原本落到 body，Tab 顺序回卷到
+  // 页首）；点外部关闭则把焦点留给用户点中的地方，不抢。
+  // 「交还按钮」只对键盘打开的做：鼠标用户关闭时把焦点塞回按钮，会让按钮进入
+  // :focus 态、顺带把「查看用量」气泡再弹出来——指针早已离开，这条气泡就一直挂着
+  // （2026-11-05 实测的残留问题）。鼠标场景焦点落空即可，用户下一步本来就用鼠标。
+  useEffect(() => {
+    if (showUsage) {
+      usageOpened.current = true;
+      usagePanelRef.current?.focus();
+      return;
+    }
+    if (
+      usageOpened.current &&
+      restoreFocusOnClose.current &&
+      usageOpenedByKeyboard.current
+    ) {
+      usageBtnRef.current?.focus();
+    }
+    restoreFocusOnClose.current = false;
+  }, [showUsage]);
 
   // 未登录：整条登录按钮 + 右侧「更多」按钮（沿用当前基线视觉）。
   if (!isAuthenticated) {
@@ -401,6 +561,15 @@ export const AccountCard: React.FC<AccountCardProps> = ({
   // （仅在真按 API 计费时成立，`mode = "plan"` 的 limit=0 不算用完，见 issue #2776）。
   const apiWarning = apiQuota ? apiQuotaWarningLevel(apiQuota, billing) : null;
   const hasUsage = showPlanBlock || apiQuota !== null;
+  // 折叠态预警点（2026-11 交互定稿）：默认折叠后用量预警不再可见，用显隐按钮右上角的
+  // 小圆点把「有情况要看」透出来。严重度取两者中更高的：需人工干预（blocked / 维度
+  // 不可用 / 套餐已到期）与余额耗尽 → 错误色；会自愈（周/月触顶、余额 <20%）→ 琥珀。
+  const usageAlert: "error" | "warning" | null =
+    conclusion?.tone === "error" || apiWarning === "exhausted"
+      ? "error"
+      : conclusion?.tone === "warning" || apiWarning === "low"
+        ? "warning"
+        : null;
   // 两个维度都有才给切换器；只有一维时直接展示那一维（不看 usageTab，避免
   // 数据变化后停在空的维度上）。
   const showUsageTabs = showPlanBlock && apiQuota !== null;
@@ -439,37 +608,76 @@ export const AccountCard: React.FC<AccountCardProps> = ({
     </Tooltip>
   );
 
-  // 个人信息热区：点击开/关纯功能菜单。锚点 = 整张卡片（等宽）+ 个人信息行顶部
-  // （+4 抵消 MoreMenu 固定定位的上移间隙 → 菜单底缘贴行弹出），盖住上方用量区。
+  // 个人信息热区：点击开/关纯功能菜单（打开时先收掉用量浮层，两个弹层互斥）。
   const toggleUsageMenu = () => {
     if (!showMenu) {
-      const el = cardRef.current;
-      if (el) {
-        const cardRect = el.getBoundingClientRect();
-        const mainEl = el.querySelector<HTMLElement>(".account-card-main");
-        const anchorTop =
-          (mainEl ? mainEl.getBoundingClientRect().top : cardRect.top) + 4;
-        setMenuAnchor(
-          new DOMRect(
-            cardRect.x,
-            anchorTop,
-            cardRect.width,
-            cardRect.bottom - anchorTop,
-          ),
-        );
-      }
+      const anchor = measureRowAnchor();
+      if (anchor) setMenuAnchor(anchor);
+      setShowUsage(false);
       setShowMenu(true);
     } else {
       setShowMenu(false);
     }
   };
 
+  // 行尾用量按钮：点击在卡片上方弹出用量浮层（同样先收掉功能菜单）。
+  // 打开时的默认维度（2026-11-05 追加口径）：有预警就停在报警的那一维——
+  // 否则「打开只看到健康的套餐条、预警藏在另一维」，用户得自己找。两维都报
+  // 警时取更严重的那档（错误 > 预警），同档回到套餐；无预警不覆盖用户的选择。
+  const toggleUsagePopover = (event: React.MouseEvent<HTMLButtonElement>) => {
+    if (!showUsage) {
+      // 键盘激活的 click（Enter / 空格）detail 恒为 0，鼠标点击 ≥ 1。
+      usageOpenedByKeyboard.current = event.detail === 0;
+      restoreFocusOnClose.current = false;
+      const anchor = measureRowAnchor();
+      if (anchor) setUsageAnchor(anchor);
+      const planRank =
+        conclusion?.tone === "error"
+          ? 2
+          : conclusion?.tone === "warning"
+            ? 1
+            : 0;
+      const apiRank =
+        apiWarning === "exhausted" ? 2 : apiWarning === "low" ? 1 : 0;
+      if (planRank || apiRank) {
+        setUsageTab(apiRank > planRank ? "api" : "plan");
+      }
+      setShowMenu(false);
+      setShowUsage(true);
+      // 一次打开只核对一次（spec「用量刷新时机」场景 4）：页签切换与宿主推送
+      // 重渲染都不会走到这里 —— 这里是唯一「收起 → 打开」的入口。
+      onRefreshUsage?.();
+    } else {
+      // 再点一次触发按钮 = 键盘用户的 toggle 关闭：与 Esc 同样交还焦点
+      // （是否真的交还由 effect 按「这次是不是键盘打开的」把关）。
+      restoreFocusOnClose.current = true;
+      setShowUsage(false);
+    }
+  };
+
+  // `fixed` 的取景尺寸：扣掉经典滚动条的视口宽高（见 `viewportSize`）。
+  const { width: viewportWidth, height: viewportHeight } = viewportSize();
+
   return (
     <div className="account-card" ref={cardRef} data-testid="account-card">
-      {hasUsage && !usageCollapsed && (
+      {showUsage && hasUsage && usageAnchor && (
         <div
-          className="account-card-usage-inline"
-          data-testid="account-card-usage"
+          ref={usagePanelRef}
+          className="account-usage-popover"
+          role="dialog"
+          aria-label="用量信息"
+          tabIndex={-1}
+          data-testid="account-usage-popover"
+          style={{
+            position: "fixed",
+            bottom: viewportHeight - usageAnchor.top + 4,
+            right: Math.max(8, viewportWidth - usageAnchor.right),
+            width: Math.max(usageAnchor.width, 216),
+            // 向上弹：可用高度就是个人信息行顶以上的空间，超高时浮层内部滚动。
+            // 下限取 0 而不是 120——行顶贴着视口顶时（小窗 / 卡片被顶高），
+            // 露在视口外的部分用户连滚都滚不到。
+            maxHeight: Math.max(0, usageAnchor.top - 12),
+          }}
         >
           {/* 两个维度都有 ⇒ 顶部切换器（到期日跟到右侧）；只有一维 ⇒ 不渲染
               切换器，直接展示那一维并在块内保留标题行。 */}
@@ -698,22 +906,40 @@ export const AccountCard: React.FC<AccountCardProps> = ({
           // 1023 评论（她点 `button.account-card-collapse-btn`）：「这里也缺少 hover 提示」
           // —— 与同卡 ⓘ 按钮、侧栏各图标按钮一致，补一颗桌面气泡；文案跟随按钮语义
           // （`aria-label` 同为展开/收起用量），位置 top（卡片在最底部，气泡向上弹）。
-          <Tooltip
-            text={usageCollapsed ? "展开用量" : "收起用量"}
-            position="top"
-          >
+          // 2026-11 交互改版：按钮不再就地展开/收起，改为弹出用量浮层；浮层打开时
+          // 气泡让位（disabled）。
+          <Tooltip text="查看用量" position="top" disabled={showUsage}>
             <button
               type="button"
-              className="account-card-collapse-btn"
-              aria-label={usageCollapsed ? "展开用量" : "收起用量"}
-              aria-expanded={!usageCollapsed}
-              data-testid="account-usage-collapse"
-              // 个人信息菜单打开时点显隐按钮只收起用量区、菜单保持打开（显隐与
-              // 菜单解耦）：阻断 mousedown 冒泡到 MoreMenu 的 click-outside。
+              ref={usageBtnRef}
+              className="account-card-usage-btn"
+              // 预警不能只靠颜色：圆点对读屏是 `aria-hidden`，严重度也得进
+              // 文案，否则「红 = 需人工干预 / 琥珀 = 会自愈」这一层信息只剩视觉。
+              aria-label={
+                usageAlert === "error"
+                  ? "查看用量（有预警，需处理）"
+                  : usageAlert === "warning"
+                    ? "查看用量（有预警）"
+                    : "查看用量"
+              }
+              aria-haspopup="dialog"
+              aria-expanded={showUsage}
+              data-testid="account-usage-btn"
+              // 浮层打开时点按钮只 toggle 浮层；阻断 mousedown 冒泡，避免被
+              // MoreMenu 的 click-outside 当成外部点击。
               onMouseDown={(e) => e.stopPropagation()}
-              onClick={() => setUsageCollapsed((v) => !v)}
+              onClick={toggleUsagePopover}
             >
-              {usageCollapsed ? <QuotaIcon /> : <ChevronDownIcon />}
+              <QuotaIcon />
+              {/* 预警点常驻：浮层关着时它是唯一的预警出口；打开后浮层正文自己
+                  表达预警，点仍保留（状态不随开合闪烁）。 */}
+              {usageAlert && (
+                <span
+                  className={`account-usage-alert-dot is-${usageAlert}`}
+                  aria-hidden="true"
+                  data-testid="account-usage-alert-dot"
+                />
+              )}
             </button>
           </Tooltip>
         )}
@@ -756,7 +982,39 @@ export const AccountCard: React.FC<AccountCardProps> = ({
             onRestartApp?.();
           }}
           onCancel={() => setUpdateDialog(null)}
-        />
+        >
+          {/* 「本次更新内容」（spec desktop-account.md S4 场景 5）：每项一段、
+              版本号段标题从新到旧；即使只有一项也保留版本号段标题——渲染形态
+              只有一种。没有记录时整块不出现，S4 与旧版逐字一致。 */}
+          {releaseNotes.length > 0 && (
+            <div
+              className="account-release-notes"
+              data-testid="account-release-notes"
+            >
+              <div className="account-release-notes-title">本次更新内容</div>
+              <div className="account-release-notes-body">
+                {releaseNotes.map((entry) => (
+                  <section
+                    key={entry.version}
+                    className="account-release-note"
+                    data-testid="account-release-note"
+                  >
+                    <div className="account-release-note-version">
+                      v{entry.version}
+                    </div>
+                    <div
+                      className="account-release-note-body"
+                      // 白名单渲染（无 `a`/无事件属性），见 renderReleaseNoteHtml。
+                      dangerouslySetInnerHTML={{
+                        __html: renderReleaseNoteHtml(entry.note),
+                      }}
+                    />
+                  </section>
+                ))}
+              </div>
+            </div>
+          )}
+        </ConfirmDialog>
       )}
     </div>
   );

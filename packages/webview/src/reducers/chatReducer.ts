@@ -20,6 +20,7 @@ export const initialState: ChatState = {
   isStreaming: false,
   isCompacting: false,
   isRestoring: false,
+  loadingStage: null,
   isCommandRunning: false,
   shouldClearInput: false,
   sessions: [],
@@ -116,6 +117,14 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
       return {
         ...state,
         isCompacting: action.payload,
+      };
+    case "SET_LOADING_STAGE":
+      // 同值不换新对象：阶段文案会在同一步骤里被重复推（例如连接阶段每换一个
+      // 目标都重报一次），无谓的重渲染没有意义。
+      if (state.loadingStage === action.payload) return state;
+      return {
+        ...state,
+        loadingStage: action.payload,
       };
     case "INPUT_CLEARED":
       return {
@@ -265,6 +274,10 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
         // Same for the desktop restore overlay: each host push carries the
         // current restore state, defaulting to "not restoring".
         isRestoring: action.payload.isRestoring ?? false,
+        // 进度文案跟着加载态生灭：没有加载态就没有承载它的位置，留着会让下一次
+        // 加载态一冒头就顶着上一轮的旧文案（宿主忘了清也能自愈）。
+        loadingStage:
+          (action.payload.isRestoring ?? false) ? state.loadingStage : null,
         sessions: action.payload.sessions || state.sessions || [],
         // Re-pin from the same-snapshot messages: hosts re-push the session
         // object without firstMessage on pane/webview re-init.

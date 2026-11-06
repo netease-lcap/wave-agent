@@ -3358,6 +3358,13 @@ export class AgentBridge {
       onMcpServersChange: (servers: McpServerStatus[]) => {
         this.emit("mcpServersChange", { servers }, ctx.registeredSessionId);
       },
+      onQuotaHeaders: (headers: Record<string, string>) => {
+        // 额度响应头（codechat proxy 每次模型调用都发，spec:
+        // desktop/desktop-account.md「额度响应头」）：桌面端宿主据此刷新账户卡片的
+        // 用量读数，是 60s 轮询删除后的主要刷新源。原样透传 —— 字段解析与映射都
+        // 在消费方。不进 remoteWire：远程页不渲染账户卡片。
+        this.emit("quotaHeaders", { headers }, ctx.registeredSessionId);
+      },
       onNotificationMessageAdded: (params) => {
         // The LAST matching message, not the first: one task can notify more
         // than once under the same task id (a workflow warns about its size

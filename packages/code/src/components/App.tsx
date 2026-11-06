@@ -1,9 +1,10 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useCallback } from "react";
 import { useInput } from "ink";
 import { ChatInterface } from "./ChatInterface.js";
 import { ChatProvider } from "../contexts/useChat.js";
 import { AppProvider } from "../contexts/useAppConfig.js";
 import { WorktreeExitPrompt } from "./WorktreeExitPrompt.js";
+import { useExitSignals } from "../hooks/useExitSignals.js";
 import {
   hasUncommittedChanges,
   hasNewCommits,
@@ -58,18 +59,11 @@ const ChatWithExitPrompt: React.FC<{
     }
   });
 
-  useEffect(() => {
-    const onSigInt = () => handleSignal();
-    const onSigTerm = () => handleSignal();
-
-    process.on("SIGINT", onSigInt);
-    process.on("SIGTERM", onSigTerm);
-
-    return () => {
-      process.off("SIGINT", onSigInt);
-      process.off("SIGTERM", onSigTerm);
-    };
-  }, [handleSignal]);
+  // Terminal close / outside kill: the worktree prompt still applies, because
+  // the same uncommitted-changes check has to run for an exit nobody typed.
+  useExitSignals(() => {
+    void handleSignal();
+  });
 
   if (isExiting && worktreeStatus) {
     return (
@@ -115,6 +109,12 @@ const AppWithProviders: React.FC<AppWithProvidersProps> = ({
       return true;
     }
   });
+
+  // An outside kill or a terminal close never reaches `useInput` — it arrives
+  // as a signal, or on macOS as nothing at all. With a worktree, the prompt
+  // component owns that handler (it has uncommitted changes to check first), so
+  // this registration stays out of the way.
+  useExitSignals(() => onExit(false), !worktreeSession);
 
   if (worktreeSession) {
     return (

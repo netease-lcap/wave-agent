@@ -41,6 +41,7 @@ import type {
   ConfiguredModel,
   MessageWindow,
   MessageWindowResult,
+  StartupStage,
 } from "wave-agent-sdk/host";
 import {
   EDIT_TOOL_NAME,
@@ -54,6 +55,7 @@ import {
   NotificationRouter,
   MESSAGE_PAGE_SIZE,
   describeUserPreferencePatch,
+  startupStageText,
 } from "wave-agent-sdk/host";
 import { StdioClient } from "./stdio/stdioClient";
 import type { JsonRpcClient } from "./stdio/jsonRpcClient";
@@ -132,6 +134,8 @@ import { TerminalManager } from "./terminal";
 import { PortForwardManager, type AuthCallbackForward } from "./portForward";
 import { HtmlPreviewServer } from "./htmlPreviewServer";
 import { AutoUpdaterService } from "./updateAutoUpdater";
+import { normalizeReleaseNotes, type ReleaseNoteEntry } from "./releaseNotes";
+import { usageFromQuotaHeaders } from "./accountUsage";
 import { parseVersion, compareVersions } from "./version";
 import { HOST_CHANNEL } from "./channels";
 import type { PanelKind } from "./menu";
@@ -436,6 +440,15 @@ export class DesktopHost {
    * updateAllSessionsConfig). Chaining makes recreates strictly serial.
    */
   private configRecreateTail: Promise<unknown> = Promise.resolve();
+  /**
+   * How many agent recreations are in flight (see updateAgentConfig). The
+   * bridge removes a session's registry entry while it rebuilds it, so a read
+   * aimed at that session during the rebuild answers "Session not found" — the
+   * same string a session deleted by another client answers. While this is
+   * non-zero, such an error must NOT be read as "the session is gone"
+   * (that would drop a live entry from the sidebar mid-reload).
+   */
+  private configRecreateInFlight = 0;
   /** Pending host selected in each pane's new-session workdir picker. */
   private hostState = new Map<string, string>();
   /**
@@ -536,6 +549,16 @@ export class DesktopHost {
     { sessionId: string; workdir: string; token: number }
   >();
   private restoreToken = 0;
+  /**
+   * 每个分屏加载态下方那一行进度文案（spec ui/stdio-transport.md「首次启动的进度
+   * 文案」）。paneId → 文案；和 `pendingRestores` 同生共死——恢复结束（完成 / 失败 /
+   * 被更新的选择取代）就清掉，`pushPaneSessionState` 在 `isRestoring` 为假时收口。
+   *
+   * 为什么要存一份而不是只转发：阶段是**主机级**的（同一台主机的连接、运行时、
+   * CLI 只做一次），而文案是**分屏级**的。归属靠这张表 + `hostState` 反查「此刻
+   * 正在等这台主机的分屏」。
+   */
+  private restoreStages = new Map<string, string>();
 
   // Throttling state, per pane so concurrently streaming panes update
   // independently (same cadence as vsce ChatSession).
@@ -567,11 +590,17 @@ export class DesktopHost {
   private updateState: {
     version: string;
     status: "idle" | "downloading" | "ready";
+    /** 本次更新包含的变更记录，已按「已装版本」过滤并按版本倒序；空则不带
+     *  （spec desktop-distribution.md「更新内容（Release Notes）」场景 5）。 */
+    releaseNotes?: ReleaseNoteEntry[];
   } | null = null;
 
   /**
    * 账户卡片快照 per host (登录态 + 用量), 跟随聚焦分屏的主机 (spec 场景 8)。
-   * 用量每 60s 轮询一次 (仅登录态)；失败保留上次成功数据 (spec 场景 9)。
+   * 用量有两个刷新源（spec「用量刷新时机」）：每次模型调用响应里的额度头（主源，
+   * 见 `applyQuotaHeaders`）与打开用量浮层时的一次 `getAccountInfo` 核对
+   * （`desktopRefreshAccountUsage`）。**没有定时轮询**（2026-11-06 删除 60s 轮询）。
+   * 刷新失败保留上次成功数据 (spec 场景 9)。
    */
   private accountCache = new Map<
     string,
@@ -588,9 +617,6 @@ export class DesktopHost {
    * 这类同步回包路径服务（设置页展示值走 `getConfiguration` 的实时读取）。
    */
   private userPreferencesByHost = new Map<string, UserPreferenceSettingsView>();
-  /** 60s 账户用量轮询 (spec 场景 8). Static so tests can shrink or disable it. */
-  private static accountPollIntervalMs = 60_000;
-  private accountPollTimer: NodeJS.Timeout | null = null;
   /** 1h 更新检查轮询 (spec desktop-distribution「桌面端自动更新」场景 11): 应用长期
    *  运行也能发现新版本。Static so tests can shrink or disable it. */
   private static updatePollIntervalMs = 60 * 60 * 1000;
@@ -916,10 +942,6 @@ export class DesktopHost {
     this.client = null;
     this.router = null;
     this.initPromise = null;
-    if (this.accountPollTimer) {
-      clearInterval(this.accountPollTimer);
-      this.accountPollTimer = null;
-    }
     if (this.updatePollTimer) {
       clearInterval(this.updatePollTimer);
       this.updatePollTimer = null;
@@ -1028,6 +1050,11 @@ export class DesktopHost {
             available: true,
             version: this.updateState.version,
             status: this.updateState.status,
+            // 记录随快照一起推（status 每次变化都重新推一次，S4 拿得到）；
+            // 过滤后为空就不带该字段 —— webview 据此不渲染记录块。
+            ...(this.updateState.releaseNotes
+              ? { releaseNotes: this.updateState.releaseNotes }
+              : {}),
           }
         : null,
     });
@@ -1054,12 +1081,22 @@ export class DesktopHost {
   }
 
   /**
-   * 拉取一个已登录主机的用量（GET /api/v1/account）。失败保留上次成功数据
+   * 拉取一个已登录主机的用量（GET /api/v1/account）。这是**低频核对**路径
+   * （spec「用量刷新时机」）：只在登录/切主机/webview 就绪/打开用量浮层时调用，
+   * 主源是模型响应头（见 `applyQuotaHeaders`）。失败保留上次成功数据
    * (spec 场景 9)；未登录无用量可拉。若该主机当前聚焦则推送。
    */
   private async refreshUsageForHost(host: string): Promise<void> {
     const prev = this.accountCache.get(host);
-    if (!prev?.isAuthenticated) return;
+    if (!prev) {
+      // 还没查过该主机（升级后第一次接触远端、首次查询恰好撞上 daemon 重启）：
+      // 「未知」不能直接渲染成登录按钮，而 60s 轮询已经删掉——这里先走一次
+      // 带登录态的查询（内含 seedAccountFromAuth + pushAccountInfo +
+      // refreshUsageForHost），让每个「核对」入口都能自愈这条路径。
+      await this.refreshAuthStatus(host);
+      return;
+    }
+    if (!prev.isAuthenticated) return;
     let billing = prev.billing ?? null;
     let apiQuota = prev.apiQuota ?? null;
     try {
@@ -1081,39 +1118,48 @@ export class DesktopHost {
     if (host === this.currentHost) this.pushAccountInfo();
   }
 
+  /**
+   * 模型响应带的额度头 → 账户卡片用量（spec「用量刷新时机」场景 2-6）。
+   * 头是每次调用都在变的读数，所以这是热路径上的主源：不额外发请求、不落盘。
+   * 头里一个 `x-codechat-quota-*` 都没有时 `usageFromQuotaHeaders` 返回 null ——
+   * 不更新、也不算「查询失败」（老服务端/私有化本来就不发这些头）。
+   */
+  private applyQuotaHeaders(
+    host: string,
+    headers: Record<string, string>,
+  ): void {
+    const prev = this.accountCache.get(host);
+    if (!prev?.isAuthenticated) return;
+    const next = usageFromQuotaHeaders(headers, {
+      billing: prev.billing ?? null,
+      apiQuota: prev.apiQuota ?? null,
+    });
+    if (!next) return;
+    this.accountCache.set(host, { ...prev, ...next });
+    if (host === this.currentHost) this.pushAccountInfo();
+  }
+
   /** 聚焦分屏切换后同步账户卡片：推缓存 + 后台刷新用量（auth 由 refreshAuthStatus 处理）。 */
   private syncAccountCard(): void {
     const host = this.currentHost;
     // 缓存里没有该主机的条目 = 「还没查过」，不等于未登录：卡片把缺失渲染成
     // 登录按钮（pushAccountInfo 的 `?? false`），而这条路（点开远端会话 →
-    // bindAgentToPane）不会先查一次该主机，轮询也会跳过未登录条目 ⇒ 左下角
-    // 永久停在登录按钮。改为查一次该主机 —— refreshAuthStatus 内含
-    // seedAccountFromAuth + pushAccountInfo，与 handleSelectHost /
-    // handleFocusPane 同一模式（spec 场景 8：卡片跟随聚焦分屏所属主机）。
+    // bindAgentToPane）不会先查一次该主机 ⇒ 左下角永久停在登录按钮。改为查一次
+    // 该主机 —— refreshAuthStatus 内含 seedAccountFromAuth + pushAccountInfo，与
+    // handleSelectHost / handleFocusPane 同一模式（spec 场景 8：卡片跟随聚焦分屏
+    // 所属主机）。
     if (!this.accountCache.has(host)) {
       void this.refreshAuthStatus(host);
     } else {
       this.pushAccountInfo();
+      // 登录完成 / 切换主机是一次「状态变化」：先推缓存，再取一次用量
+      // （spec「用量刷新时机」场景 5 的三个触发源之一）。打开的浮层若正显示，
+      // 这次核对的回包会直接刷新它。
       void this.refreshUsageForHost(host);
     }
     // 用户偏好按 host 分属不同会话进程（远端有自己的 ~/.wave/settings.json），
     // 切换聚焦后重读，避免用上一个 host 的缓存值回包。
     void this.readUserPreferences(host);
-  }
-
-  /** 每 60s 轮询当前聚焦主机的用量（仅登录态才拉取，spec 场景 8）。 */
-  private startAccountPolling(): void {
-    if (this.accountPollTimer) return;
-    this.accountPollTimer = setInterval(() => {
-      const host = this.currentHost;
-      // 未知条目（首次查询恰好失败，例如远端 daemon 正因 CLI 升级重启）也要
-      // 重查 —— 否则卡片一直停在未登录，只能靠用户手动切一次主机自愈。
-      if (!this.accountCache.has(host)) {
-        void this.refreshAuthStatus(host);
-        return;
-      }
-      void this.refreshUsageForHost(host);
-    }, DesktopHost.accountPollIntervalMs);
   }
 
   /**
@@ -1167,7 +1213,7 @@ export class DesktopHost {
     agent: StdioAgent,
     paneId: string,
   ): Promise<void> {
-    const page = await this.pullMessages(agent);
+    const { page } = await this.pullMessages(agent);
     // A failed pull must not arrive as an empty list: the pane would read it as
     // "this conversation is gone" and blank the screen.
     if (!page) return;
@@ -1183,19 +1229,20 @@ export class DesktopHost {
 
   /**
    * 现取一页（默认首屏那一页：最近 `MESSAGE_PAGE_SIZE` 条 + 还有没有更早）。
-   * 调用方用完即弃，宿主不留引用；失败返回 `undefined`，由调用方维持界面现状
-   * （绝不推空列表）。
+   * 调用方用完即弃，宿主不留引用；失败时回 `{ error }`，由调用方维持界面现状
+   * （绝不推空列表）。错误原样带出是因为「会话在托管进程里已经不存在」这一种
+   * 失败要触发清理（见 pushPaneSessionState），与暂时的读失败分开处理。
    */
   private async pullMessages(
     agent: StdioAgent,
     window: MessageWindow = { limit: MESSAGE_PAGE_SIZE },
-  ): Promise<MessageWindowResult | undefined> {
+  ): Promise<{ page?: MessageWindowResult; error?: unknown }> {
     try {
       // 带窗口取数走分页回包（`messages` + `hasMore`）；宿主只转手，不留引用。
-      return (await agent.getMessages(window)) as MessageWindowResult;
+      return { page: (await agent.getMessages(window)) as MessageWindowResult };
     } catch (error) {
       console.warn("[DesktopHost] getMessages failed:", error);
-      return undefined;
+      return { error };
     }
   }
 
@@ -1398,7 +1445,13 @@ export class DesktopHost {
       // is decoupled from the GUI version, so no version target is needed.
       let binaryPath: string;
       try {
-        binaryPath = await ensureCliUpToDate();
+        // The copy is content-compared, i.e. usually a no-op — the stage fires
+        // only when it actually happens (first install / app upgrade), so a
+        // cache hit never shows a "syncing" line (spec `ui/stdio-transport.md`
+        // 场景 3).
+        binaryPath = await ensureCliUpToDate(undefined, () =>
+          this.reportStartupStage(LOCAL_HOST, "syncingCli"),
+        );
       } catch (error) {
         this.showToast({
           message: `wave CLI 获取失败：${error instanceof Error ? error.message : String(error)}`,
@@ -1416,6 +1469,7 @@ export class DesktopHost {
             .catch((error) => this.reportExternalOpenFailure(error));
         }
       });
+      this.registerStartupStageHandler(this.router, LOCAL_HOST);
       this.router.attach();
     })();
 
@@ -1426,6 +1480,22 @@ export class DesktopHost {
       this.router = null;
     });
     return this.initPromise;
+  }
+
+  /**
+   * 订阅 CLI 侧的启动阶段（spec ui/stdio-transport.md）：工具依赖下载与「正在启动
+   * 会话…」都发生在任何会话绑定之前，通知不带 sessionId，走全局处理器。
+   * 宿主管不了 CLI 报什么，只负责按主机归属到分屏。
+   */
+  private registerStartupStageHandler(
+    router: NotificationRouter,
+    host: string,
+  ): void {
+    router.registerGlobal("startupStage", (params) => {
+      const stage = (params as { stage?: string })?.stage;
+      if (typeof stage !== "string") return;
+      this.reportStartupStage(host, stage as StartupStage);
+    });
   }
 
   /** Ensure the shared stdio client for a host exists (local, WSL or remote). */
@@ -1470,14 +1540,25 @@ export class DesktopHost {
     this.remoteHosts.set(host, entry);
 
     entry.initPromise = (async () => {
+      // 首次启动的进度文案（spec ui/stdio-transport.md 场景 1）：WSL 用发行版名，
+      // 后面每个阻塞步骤各自报一次，界面上是一行向前推进的文案。
+      this.reportStartupStage(host, "connecting", distro);
       await assertWslDistroReady(distro);
+      this.reportStartupStage(host, "checkingEnvironment");
       const homeDir = await getRemoteHomeDir(host);
-      const { binaryPath } = await ensureRemoteCliUpToDate(
+      // Same provisioning as an ssh host: the managed runtime is pushed in first
+      // (the distro needs no Node.js of its own) and it is what runs the CLI.
+      const { binaryPath, runtimePath } = await ensureRemoteCliUpToDate(
         host,
         loadBundledCliSource(),
         homeDir,
+        (stage) => this.reportStartupStage(host, stage),
       );
-      const spawnSpec = await buildWslCliSpawnSpec(distro, binaryPath);
+      const spawnSpec = await buildWslCliSpawnSpec(
+        distro,
+        binaryPath,
+        runtimePath,
+      );
       // `shell: false`: wsl.exe takes the distro command as a plain argv array;
       // routing it through cmd.exe would re-split the quoted login-shell
       // command line.
@@ -1500,6 +1581,7 @@ export class DesktopHost {
             .catch((error) => this.reportExternalOpenFailure(error));
         }
       });
+      this.registerStartupStageHandler(router, host);
       router.attach();
       entry.client = client;
       entry.router = router;
@@ -1507,7 +1589,8 @@ export class DesktopHost {
     })();
 
     entry.initPromise.catch(() => {
-      // Allow retry after a failed init (distro started later, node installed…).
+      // Allow retry after a failed init (distro started later, runtime download
+      // failed, CLI push failed…).
       this.remoteHosts.delete(host);
     });
     return entry.initPromise;
@@ -1554,6 +1637,9 @@ export class DesktopHost {
     this.remoteHosts.set(host, entry);
 
     entry.initPromise = (async () => {
+      // 首次启动的进度文案（spec ui/stdio-transport.md 场景 1）：ssh 链路每一步
+      // 各自报一次，界面上就是动画下方那一行向前推进的文字。
+      this.reportStartupStage(host, "connecting", host);
       // Remote hosts run THIS app's bundled CLI, pushed over ssh when stale
       // (spec: desktop-distribution.md 「CLI 版本保障」). The upgrade target is the
       // bundled CLI's own wave-code version — decoupled from the GUI version,
@@ -1562,6 +1648,7 @@ export class DesktopHost {
         host,
         loadBundledCliSource(),
         (msg) => this.showToast({ message: msg }),
+        (stage) => this.reportStartupStage(host, stage),
       );
       const { client, tunnel } = await connectRemoteDaemon(host, daemonSocket);
       const router = new NotificationRouter(client);
@@ -1572,6 +1659,7 @@ export class DesktopHost {
         // the browser (spec: SSO 登录 scenario 8).
         if (p?.url) void this.handleRemoteAuthUrl(host, p.url);
       });
+      this.registerStartupStageHandler(router, host);
       router.attach();
       entry.client = client;
       entry.router = router;
@@ -1922,6 +2010,12 @@ export class DesktopHost {
         const paneId = paneIdOf();
         if (paneId)
           this.postMessage({ command: "mcpServersUpdate", paneId, servers });
+      },
+      onQuotaHeaders: (headers: Record<string, string>) => {
+        // 账户卡片的主刷新源：每次模型调用响应都带当时的额度读数
+        // (spec desktop-account「用量刷新时机」)。只在出现这批头时触发，
+        // 没有头的部署（私有化 / 自定义网关）在这里完全静默。
+        this.applyQuotaHeaders(this.hostForAgent(agentRef), headers);
       },
       onNotificationMessageAdded: (params) => {
         // The notification itself is filtered out of the rendered stream (role
@@ -2614,6 +2708,41 @@ export class DesktopHost {
   }
 
   /**
+   * 上报一个启动阶段（spec ui/stdio-transport.md「首次启动的进度文案」）。
+   *
+   * 阶段是**主机级**的（连接、运行时、CLI 同步一台主机只做一次），文案却是
+   * **分屏级**的：只推给此刻正在等这台主机的那几个恢复分屏。用户中途换点别的
+   * 会话时，`pendingRestores` 已经换成新目标，先前那次连接的进度自然落不到当前
+   * 分屏（场景 5：文案归属最新的目标，与加载态同一条归属规则）。
+   */
+  private reportStartupStage(
+    host: string,
+    stage: StartupStage,
+    target?: string,
+  ): void {
+    const text = startupStageText(stage, target);
+    if (!text) return;
+    for (const paneId of this.pendingRestores.keys()) {
+      if ((this.hostState.get(paneId) ?? LOCAL_HOST) !== host) continue;
+      this.setPaneStage(paneId, text);
+    }
+  }
+
+  /**
+   * 推一行阶段文案给分屏；`null` = 这条阶段流结束了（恢复收尾时清，避免文案
+   * 停在最后一步上）。同一个值不重复推。
+   */
+  private setPaneStage(paneId: string, text: string | null): void {
+    if (text === null) {
+      if (!this.restoreStages.delete(paneId)) return;
+    } else {
+      if (this.restoreStages.get(paneId) === text) return;
+      this.restoreStages.set(paneId, text);
+    }
+    this.postMessage({ command: "loadingStage", paneId, text });
+  }
+
+  /**
    * Background half of startPaneRestore: connect the host, spawn + restore the
    * agent, then activate it in the pane. Every step re-checks the restore
    * token — a newer selection, activation or pane close supersedes this
@@ -2775,6 +2904,78 @@ export class DesktopHost {
       }
     }
     await this.destroyAgent(agent, "discardAgent");
+  }
+
+  /**
+   * 一条会话在**托管进程**里已经不存在了（手机 / 远控页把它删了，或其它客户端
+   * destroy 了它），但本端 pool 里还挂着它的 agent、会话索引里还留着条目。
+   *
+   * 发现点只有一处：给分屏拉首屏消息时 bridge 回 `Session not found`——pool
+   * 里的 agent 是僵尸，`handleSelectSession` 的「活 agent 直接切」分支因此不会
+   * 走历史会话的恢复路径（那条路本就有「不可恢复即移除条目」的收尾，见
+   * runPaneRestore），点它只会得到一次失败的读 + keepMessages，界面上看不出
+   * 任何反应。这里把桌面端自己删除会话时的**本地善后**补上：条目、草稿、分屏
+   * 绑定一起作废，sole 分屏回落新会话态并 toast 说明。
+   *
+   * 不碰工作树：远控页删除时勾没勾「删除会话与工作树」本地无从得知，工作树的
+   * 删除已经在远端做过（或用户明确没有删），本地再删一次可能删掉正在用的目录。
+   */
+  private async forgetVanishedSession(agent: StdioAgent): Promise<void> {
+    const sessionId = agent.sessionId;
+    if (!sessionId) return;
+    const host = this.hostForAgent(agent);
+    const boundPaneIds = this.panes
+      .filter((p) => p.agent === agent || p.agent?.sessionId === sessionId)
+      .map((p) => p.paneId);
+
+    // 与 handleDeleteSession 同样的两条僵尸引用：Ctrl+Tab 的冻结顺序，以及
+    // 还在路上的恢复（它落地后会把自己重新登记回索引，见 spec「恢复加载期间
+    // 删除会话」）。
+    this.sessionCycleSnapshot = null;
+    this.sessionCycleIndex = -1;
+    for (const pane of this.panes) {
+      if (this.pendingRestores.get(pane.paneId)?.sessionId === sessionId) {
+        this.pendingRestores.delete(pane.paneId);
+      }
+    }
+
+    // 先同步摘掉 pool 里的引用，再解绑分屏：否则 bindAgentToPane 会把僵尸
+    // agent 当「无内容的新会话」再 discard 一次，重复 destroy。
+    for (const [key, a] of this.agents) {
+      if (a === agent) this.agents.delete(key);
+    }
+    this.agentHosts.delete(agent);
+    this.agentWorktreeInfo.delete(agent);
+    try {
+      this.clientFor(host).router.unregister(sessionId);
+    } catch {
+      // Client may already be gone; best-effort
+    }
+
+    this.configStore.removeSession(sessionId);
+    this.inputDrafts.delete(`session:${sessionId}`);
+    this.portForwardManager.releaseSession(sessionId);
+    this.refreshSessionTree();
+    this.showToast({ message: "该会话已被删除，已从会话列表移除" });
+
+    let resetSolePane = false;
+    for (const paneId of boundPaneIds) {
+      this.terminalManager.killForPane(paneId);
+      if (this.panes.length > 1) {
+        this.handleClosePane(paneId);
+      } else {
+        this.bindAgentToPane(paneId, null);
+        resetSolePane = true;
+      }
+    }
+    // destroy 慢（transcript 落盘、子代理 / MCP 清理），后台跑；解绑已经在
+    // 上面做完，不会挡住下面的回落推送。
+    void this.destroyAgent(agent, `forget vanished session ${sessionId}`);
+    // sole 分屏回落新会话态（关闭多出来的分屏时 handleClosePane 自己会推
+    // panes，不需要再补一刀）。
+    if (resetSolePane) {
+      await this.handleNewSession(boundPaneIds[0], true);
+    }
   }
 
   /**
@@ -3539,7 +3740,8 @@ export class DesktopHost {
     const pullTarget = pending ? undefined : agent;
     // 首屏只取一页（spec「首屏一页，上翻按需取更早」）：更早的内容由页面滚到顶时
     // 用 `loadEarlierMessages` 一页页往前面接。
-    const page = pullTarget ? await this.pullMessages(pullTarget) : undefined;
+    const pulled = pullTarget ? await this.pullMessages(pullTarget) : undefined;
+    const page = pulled?.page;
     let messages = pullTarget ? page?.messages : pending ? undefined : [];
     let hasEarlier = page?.hasMore === true;
     // The pane binding may have changed while the pull was in flight (a restore
@@ -3547,6 +3749,24 @@ export class DesktopHost {
     // the pushed message is self-consistent; the pending entry is also resolved
     // here so a stale overlay can never clobber a completed restore.
     const current = this.agentForPane(paneId);
+    // 会话在托管进程里已经不存在（手机 / 远控页把这条删了，或其它客户端
+    // destroy 了它）：pool 里那个 agent 是僵尸，这条会话的条目与分屏绑定都得
+    // 作废——否则每次点它都只是「读消息失败 → keepMessages」，界面看不出任何
+    // 反应，条目还永远留在侧边栏。清理后由下面的新会话推送收尾。
+    if (
+      pullTarget &&
+      pullTarget === current &&
+      pulled?.error !== undefined &&
+      !this.configRecreateInFlight &&
+      this.isUnrecoverableSessionError(
+        pulled.error instanceof Error
+          ? pulled.error.message
+          : String(pulled.error),
+      )
+    ) {
+      await this.forgetVanishedSession(pullTarget);
+      return;
+    }
     // The pull came from an agent this pane no longer shows: sending that list
     // would paint the incoming conversation with the outgoing one's history.
     // Leave the list out (keepMessages) instead — the rebind that won the race
@@ -3627,6 +3847,11 @@ export class DesktopHost {
       isAuthenticated: this.lastIsAuthenticated,
       workdir: current?.currentWorkdir,
     });
+
+    // 恢复已经收口（这一次推送里 isRestoring 为假）——启动进度文案到此为止。显式
+    // 清一次，覆盖「最后一步没报成 / 工具依赖失败但加载态还在」的窗口：界面上的
+    // 那行文字不能跟着停在 100% 之前的某一步。
+    if (!pending) this.setPaneStage(paneId, null);
   }
 
   /**
@@ -4976,6 +5201,14 @@ export class DesktopHost {
         await this.handleLogout();
         break;
 
+      // -- account card usage ------------------------------------------------
+      case "desktopRefreshAccountUsage":
+        // 打开用量浮层时的一次全量核对 (spec desktop-account「用量刷新时机」
+        // 场景 4)：主源是响应头，这里只是用户主动查看时的兜底 —— 打开一次发一次，
+        // 失败保留上次成功数据（refreshUsageForHost 内部吞错）。
+        await this.refreshUsageForHost(this.currentHost);
+        break;
+
       // -- AGENTS.md (memory files) -------------------------------------------
       case "getAgentsContent":
         await this.handleGetAgentsContent(pid, msg.scope as "user" | "project");
@@ -5598,9 +5831,6 @@ export class DesktopHost {
       // forget — the picker must not wait on a `wsl.exe` spawn. The list is
       // re-pushed through sendWorkdirState once it lands.
       void this.refreshWslDistros().catch(() => {});
-
-      // Account usage poll: keep the sidebar card's 套餐用量/API 额度 fresh.
-      this.startAccountPolling();
 
       // Periodic update check: keep discovering new versions while the app
       // stays running (spec desktop-shell 场景 11). Idempotent — a repeat
@@ -6966,43 +7196,53 @@ export class DesktopHost {
     // 桌面不再下发任何会话级配置：应用级设置（模型经底栏模型选择器 / 用户偏好经
     // 用户级 settings.json + 实时重载）各有独立通路（spec「分层职责」）。这里只做
     // 重建，让 agent 重新走一遍初始化（如登录后换 SSO 配置）。
-    for (const [oldSid, agent] of [...this.agents]) {
-      const wasStreaming = agent.isStreaming;
-      try {
-        await agent.updateConfig({});
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        if (
-          message.startsWith("Session not found") ||
-          message.includes("not found on disk")
-        ) {
-          // The CLI no longer hosts this session (a stale pool entry, or a
-          // session destroyed by an earlier failed recreate). Keep applying to
-          // the remaining healthy sessions — the pane restores a dead session
-          // from disk when it is re-selected. Do NOT surface this as a failed
-          // login/logout: that operation itself already succeeded.
-          console.error(
-            `[DesktopHost] 会话 ${oldSid} 不在 CLI 上，跳过重建:`,
-            error,
-          );
-          continue;
+    //
+    // configRecreateInFlight 覆盖整个窗口：重建期间 bridge 会先摘掉会话的注册表
+    // 项，读到 "Session not found" 是这场重建的一部分，不是「会话已被删除」，
+    // 读消息的失败路径据此不清理侧边栏条目。
+    this.configRecreateInFlight += 1;
+    try {
+      for (const [oldSid, agent] of [...this.agents]) {
+        const wasStreaming = agent.isStreaming;
+        try {
+          await agent.updateConfig({});
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : String(error);
+          if (
+            message.startsWith("Session not found") ||
+            message.includes("not found on disk")
+          ) {
+            // The CLI no longer hosts this session (a stale pool entry, or a
+            // session destroyed by an earlier failed recreate). Keep applying to
+            // the remaining healthy sessions — the pane restores a dead session
+            // from disk when it is re-selected. Do NOT surface this as a failed
+            // login/logout: that operation itself already succeeded.
+            console.error(
+              `[DesktopHost] 会话 ${oldSid} 不在 CLI 上，跳过重建:`,
+              error,
+            );
+            continue;
+          }
+          // Genuine config errors (bad baseURL/model …) still abort the apply so
+          // the caller can report them.
+          throw error;
         }
-        // Genuine config errors (bad baseURL/model …) still abort the apply so
-        // the caller can report them.
-        throw error;
-      }
-      if (agent.sessionId && agent.sessionId !== oldSid) {
-        this.rekeyAgent(agent, agent.sessionId);
-      }
-      if (wasStreaming) {
-        agent.isStreaming = false;
-        const paneId = this.paneIdForAgent(agent);
-        if (paneId) {
-          this.postMessage({ command: "endStreaming", paneId });
+        if (agent.sessionId && agent.sessionId !== oldSid) {
+          this.rekeyAgent(agent, agent.sessionId);
+        }
+        if (wasStreaming) {
+          agent.isStreaming = false;
+          const paneId = this.paneIdForAgent(agent);
+          if (paneId) {
+            this.postMessage({ command: "endStreaming", paneId });
+          }
         }
       }
+      await this.clearQueue();
+    } finally {
+      this.configRecreateInFlight -= 1;
     }
-    await this.clearQueue();
   }
 
   /**
@@ -7054,13 +7294,36 @@ export class DesktopHost {
         // 检查发现新版本 → S1「更新」按钮。已处于 downloading/ready 时忽略
         // （手动复查不得把下载中/已就绪降级回 idle）。
         if (this.updateState && this.updateState.status !== "idle") return;
-        this.updateState = { version: info.version, status: "idle" };
+        this.updateState = {
+          version: info.version,
+          status: "idle",
+          releaseNotes: normalizeReleaseNotes(
+            info.releaseNotes,
+            app.getVersion(),
+            info.version,
+          ),
+        };
         this.pushAccountInfo();
       },
       // downloading（S3）由 handleDesktopUpdateDownload 在 startDownload 前
       // 置位并推送——electron-updater 无下载开始事件，RPC 路径即唯一入口。
       onUpdateDownloaded: (info) => {
-        this.updateState = { version: info.version, status: "ready" };
+        this.updateState = {
+          version: info.version,
+          status: "ready",
+          // update-downloaded 通常与检查阶段是同一个 UpdateInfo（记录本就在），
+          // 万一这次没带字段，沿用检查阶段**同一版本**的结果——否则 S4 会在唯一
+          // 该展示记录的那一屏上把它丢掉。
+          releaseNotes:
+            normalizeReleaseNotes(
+              info.releaseNotes,
+              app.getVersion(),
+              info.version,
+            ) ??
+            (this.updateState?.version === info.version
+              ? this.updateState.releaseNotes
+              : undefined),
+        };
         this.pushAccountInfo();
       },
       onError: (error) => this.handleAutoUpdaterError(error),

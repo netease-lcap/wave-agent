@@ -679,6 +679,159 @@ button.reasoning-header {
   color: var(--vscode-textLink-activeForeground);
 }
 
+/* ---- 终端颜色（ANSI SGR）----
+   命令输出不剥转义序列（specs/core/bash-tools.md「ANSI 颜色代码」），由
+   utils/ansiText.ts 渲染成 ansi-fg-* / ansi-bg-* / ansi-bold 等类。命名色跟随
+   宿主主题（VS Code 注入 --vscode-terminal-ansi*），桌面端与远控页取 VS Code
+   默认暗色调色板作为回退；扩展色（256 / truecolor）由渲染器写成 inline style。
+   变量挂在 :root 上：同一条渲染通道也用在消息列表之外（后台任务面板）。 */
+:root {
+  --ansi-black: var(--vscode-terminal-ansiBlack, #000000);
+  --ansi-red: var(--vscode-terminal-ansiRed, #cd3131);
+  --ansi-green: var(--vscode-terminal-ansiGreen, #0dbc79);
+  --ansi-yellow: var(--vscode-terminal-ansiYellow, #e5e510);
+  --ansi-blue: var(--vscode-terminal-ansiBlue, #2472c8);
+  --ansi-magenta: var(--vscode-terminal-ansiMagenta, #bc3fbc);
+  --ansi-cyan: var(--vscode-terminal-ansiCyan, #11a8cd);
+  --ansi-white: var(--vscode-terminal-ansiWhite, #e5e5e5);
+  --ansi-bright-black: var(--vscode-terminal-ansiBrightBlack, #666666);
+  --ansi-bright-red: var(--vscode-terminal-ansiBrightRed, #f14c4c);
+  --ansi-bright-green: var(--vscode-terminal-ansiBrightGreen, #23d18b);
+  --ansi-bright-yellow: var(--vscode-terminal-ansiBrightYellow, #f5f543);
+  --ansi-bright-blue: var(--vscode-terminal-ansiBrightBlue, #3b8eea);
+  --ansi-bright-magenta: var(--vscode-terminal-ansiBrightMagenta, #d670d6);
+  --ansi-bright-cyan: var(--vscode-terminal-ansiBrightCyan, #29b8db);
+  --ansi-bright-white: var(--vscode-terminal-ansiBrightWhite, #e5e5e5);
+}
+
+.ansi-fg-black {
+  color: var(--ansi-black);
+}
+.ansi-fg-red {
+  color: var(--ansi-red);
+}
+.ansi-fg-green {
+  color: var(--ansi-green);
+}
+.ansi-fg-yellow {
+  color: var(--ansi-yellow);
+}
+.ansi-fg-blue {
+  color: var(--ansi-blue);
+}
+.ansi-fg-magenta {
+  color: var(--ansi-magenta);
+}
+.ansi-fg-cyan {
+  color: var(--ansi-cyan);
+}
+.ansi-fg-white {
+  color: var(--ansi-white);
+}
+.ansi-fg-bright-black {
+  color: var(--ansi-bright-black);
+}
+.ansi-fg-bright-red {
+  color: var(--ansi-bright-red);
+}
+.ansi-fg-bright-green {
+  color: var(--ansi-bright-green);
+}
+.ansi-fg-bright-yellow {
+  color: var(--ansi-bright-yellow);
+}
+.ansi-fg-bright-blue {
+  color: var(--ansi-bright-blue);
+}
+.ansi-fg-bright-magenta {
+  color: var(--ansi-bright-magenta);
+}
+.ansi-fg-bright-cyan {
+  color: var(--ansi-bright-cyan);
+}
+.ansi-fg-bright-white {
+  color: var(--ansi-bright-white);
+}
+
+.ansi-bg-black {
+  background-color: var(--ansi-black);
+}
+.ansi-bg-red {
+  background-color: var(--ansi-red);
+}
+.ansi-bg-green {
+  background-color: var(--ansi-green);
+}
+.ansi-bg-yellow {
+  background-color: var(--ansi-yellow);
+}
+.ansi-bg-blue {
+  background-color: var(--ansi-blue);
+}
+.ansi-bg-magenta {
+  background-color: var(--ansi-magenta);
+}
+.ansi-bg-cyan {
+  background-color: var(--ansi-cyan);
+}
+.ansi-bg-white {
+  background-color: var(--ansi-white);
+}
+.ansi-bg-bright-black {
+  background-color: var(--ansi-bright-black);
+}
+.ansi-bg-bright-red {
+  background-color: var(--ansi-bright-red);
+}
+.ansi-bg-bright-green {
+  background-color: var(--ansi-bright-green);
+}
+.ansi-bg-bright-yellow {
+  background-color: var(--ansi-bright-yellow);
+}
+.ansi-bg-bright-blue {
+  background-color: var(--ansi-bright-blue);
+}
+.ansi-bg-bright-magenta {
+  background-color: var(--ansi-bright-magenta);
+}
+.ansi-bg-bright-cyan {
+  background-color: var(--ansi-bright-cyan);
+}
+.ansi-bg-bright-white {
+  background-color: var(--ansi-bright-white);
+}
+
+.ansi-bold {
+  font-weight: 600;
+}
+.ansi-dim {
+  opacity: 0.7;
+}
+.ansi-italic {
+  font-style: italic;
+}
+.ansi-underline {
+  text-decoration: underline;
+}
+.ansi-strike {
+  text-decoration: line-through;
+}
+/* 反显（SGR 7）：前景背景对调。主题不一定提供 terminal-background，回落必须是
+   不透明底色——回落成 transparent 会让文字与底色同色，整段看起来是一块空白。 */
+.ansi-inverse {
+  background-color: var(--vscode-terminal-foreground, #cccccc);
+  color: var(
+    --vscode-terminal-background,
+    var(--vscode-editor-background, #1f1f1f)
+  );
+}
+
+/* 有色片段里的链接跟随该片段的颜色（否则整段还是一片链接蓝）。 */
+.bash-command-output [class*="ansi-fg-"] a {
+  color: inherit;
+}
+
 .lsp-output {
   padding: 4px 8px;
   background-color: var(--vscode-textCodeBlock-background);
@@ -863,6 +1016,65 @@ button.reasoning-header {
   padding: 0;
   border: none;
   font-size: inherit;
+}
+
+/* ── 代码块右上角的复制按钮（spec: ui/message-rendering-system.md「助手消息代码
+   块的复制按钮」）──
+   按钮绝对定位在 `.md-code-block` 上：不随 `pre` 的横向滚动移动，也不占代码块
+   高度（虚拟窗口的行高估算不受影响）。显隐与消息右上角那组动作按钮同源——
+   悬停该代码块才淡入；没有 hover 的设备（远控页的手机触控）常显，否则触控
+   用户没有「悬停」这一步，永远拿不到入口。 */
+.md-code-block {
+  position: relative;
+}
+
+.md-code-copy {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: 4px;
+  background-color: var(--vscode-button-secondaryBackground);
+  color: var(--vscode-button-secondaryForeground);
+  cursor: pointer;
+  /* 默认常显：没有 hover 的设备（远控页的手机触控）和认不出 `(hover: hover)`
+     的老运行时都走这一档——宁可常驻一颗按钮，也不能让入口永久消失。 */
+  opacity: 1;
+  transition: opacity 120ms ease-in;
+}
+
+.md-code-copy .codicon {
+  font-size: 14px;
+}
+
+.md-code-copy:hover {
+  background-color: var(--vscode-button-secondaryHoverBackground);
+}
+
+/* 有 hover 的环境（桌面端 / VS Code / JetBrains / 远控页的鼠标档）才改成
+   「悬停代码块才淡入」，与消息右上角那组动作按钮同一个显隐时机。 */
+@media (hover: hover) {
+  .md-code-copy {
+    opacity: 0;
+  }
+
+  .md-code-block:hover .md-code-copy,
+  .md-code-copy:focus-visible {
+    opacity: 1;
+  }
+}
+
+/* 首行为按钮让位：宽代码块本来就能横向滚动，按钮浮在右上角时不该压住首行
+   末尾的几个字符（场景 2）。 */
+.md-code-block pre {
+  padding-right: 44px;
 }
 
 /* Markdown Lists */

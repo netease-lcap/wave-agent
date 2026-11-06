@@ -23,9 +23,26 @@ vi.mock("../src/utils/logger.js", () => ({
   cleanupLogs: vi.fn().mockResolvedValue(undefined),
 }));
 
+/**
+ * Stands in for the teardown the unmount cleanup parks on the module.
+ *
+ * `null` means "no agent was ever created", which is the shape most cases here
+ * have; the exit-ordering test below swaps in a promise it controls.
+ */
+const pendingDestroy = vi.hoisted(() => ({
+  promise: null as Promise<void> | null,
+}));
+
+vi.mock("../src/contexts/useChat.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../src/contexts/useChat.js")>();
+  return { ...actual, getPendingAgentDestroy: () => pendingDestroy.promise };
+});
+
 describe("startCli", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    pendingDestroy.promise = null;
   });
 
   it("should call process.chdir to repoRoot before removing worktree", async () => {
@@ -33,6 +50,11 @@ describe("startCli", () => {
     const consoleErrorSpy = vi
       .spyOn(console, "error")
       .mockImplementation(() => {});
+    // The removal path writes progress to stdout; keep it out of the suite
+    // output (`testing.md`: a green run must stay quiet).
+    const stdoutSpy = vi
+      .spyOn(process.stdout, "write")
+      .mockImplementation(() => true);
     const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => {
       throw new Error("process.exit called");
     });
@@ -73,6 +95,7 @@ describe("startCli", () => {
     chdirSpy.mockRestore();
     exitSpy.mockRestore();
     consoleErrorSpy.mockRestore();
+    stdoutSpy.mockRestore();
   });
 
   it("shows deleting progress and done messages when removing worktree", async () => {
@@ -193,6 +216,39 @@ describe("startCli", () => {
     expect(removeWorktree).not.toHaveBeenCalled();
     consoleErrorSpy.mockRestore();
     exitSpy.mockRestore();
+  });
+
+  it("waits for the agent teardown before exiting", async () => {
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => {
+      throw new Error("process.exit called");
+    });
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+
+    // A teardown that is still running: `process.exit` must not overtake it,
+    // otherwise the detached bash process trees that `Agent.destroy()` was
+    // about to signal survive as orphans.
+    let finishTeardown!: () => void;
+    pendingDestroy.promise = new Promise<void>((resolve) => {
+      finishTeardown = resolve;
+    });
+
+    const cliRun = startCli({});
+    const settled = vi.fn();
+    void cliRun.then(settled, settled);
+
+    // Flush the awaits ahead of the teardown wait (render / waitUntilExit).
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(settled).not.toHaveBeenCalled();
+    expect(exitSpy).not.toHaveBeenCalled();
+
+    finishTeardown();
+    await expect(cliRun).rejects.toThrow("process.exit called");
+    expect(exitSpy).toHaveBeenCalledWith(0);
+
+    exitSpy.mockRestore();
+    consoleErrorSpy.mockRestore();
   });
 
   it("logs and exits with code 1 when cleanup fails", async () => {

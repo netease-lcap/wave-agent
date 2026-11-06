@@ -284,6 +284,37 @@ test("getMessages shares the daemon's window semantics", async () => {
   });
 });
 
+test("getMessages passes the scroll-up anchor through as `before`", async () => {
+  // 前台 CLI 会话同样服务远控页的「上滑翻更早」（spec
+  // ui/message-rendering-system.md「首屏一页，上翻按需取更早」）。参数少透传
+  // 一个 `before`，读数的语义就从「往回翻一页」变成「再读一次尾部」：页面接不上
+  // 更早的页、`hasMore` 却一直是 true，于是每次滚到顶都要一次、永远翻不动。
+  const messages = [
+    message("m0", "user", "oldest"),
+    message("m1", "assistant", "old"),
+    message("m2", "user", "newest"),
+  ];
+  const seen: MessageWindow[] = [];
+  const messagePage = async (
+    window: MessageWindow,
+  ): Promise<MessageWindowResult> => {
+    seen.push(window);
+    return window.before === "m1"
+      ? { messages: [messages[0]], hasMore: false }
+      : { messages: [] };
+  };
+  const host = new RemoteControlCliHost(makeSession({ messagePage }));
+
+  await expect(
+    host.handleRequest("getMessages", { before: "m1", limit: 100 }),
+  ).resolves.toEqual({
+    messages: [messages[0]],
+    hasMore: false,
+    contextUsagePercent: 0,
+  });
+  expect(seen).toEqual([{ before: "m1", limit: 100 }]);
+});
+
 test("getMessages rejects a malformed limit as invalid params", async () => {
   const host = new RemoteControlCliHost(
     makeSession({

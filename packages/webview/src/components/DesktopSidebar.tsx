@@ -188,6 +188,8 @@ export interface DesktopSidebarProps {
    * 更新按钮状态机 S0–S6」）. */
   onDownloadUpdate?: () => void;
   onRestartApp?: () => void;
+  /** 打开用量浮层时向宿主核对一次用量（spec desktop-account.md「用量刷新时机」）。 */
+  onRefreshAccountUsage?: () => void;
   /**
    * Host the focused pane runs on ('local' or an SSH host name). Labels the
    * more menu's 登录/退出登录 entry so it names the auth subject it acts on.
@@ -267,6 +269,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
   account,
   onDownloadUpdate,
   onRestartApp,
+  onRefreshAccountUsage,
   hostLabel,
   sessionTree,
   currentSessionId,
@@ -936,6 +939,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
           onOpenHelpDocs={onOpenHelpDocs}
           onDownloadUpdate={onDownloadUpdate}
           onRestartApp={onRestartApp}
+          onRefreshUsage={onRefreshAccountUsage}
         />
       )}
       {pendingDelete && (

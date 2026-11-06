@@ -29,6 +29,9 @@ const h = vi.hoisted(() => ({
   // 信封。没登记的按「未打桩」失败返回。
   artifactResponses: new Map<string, unknown>(),
   authUrlHandler: null as ((params: unknown) => void) | null,
+  // Every `router.registerGlobal` handler, by method name — CLI-side notifications
+  // that carry no sessionId (`startupStage`) are delivered through it.
+  globalHandlers: {} as Record<string, ((params: unknown) => void) | undefined>,
   // Shared RPC implementation for the local StdioClient mock and the remote
   // daemon client returned by the connectRemoteDaemon mock — both must answer
   // the same utility methods so auth/worktree/git flows work on every host.
@@ -360,6 +363,7 @@ vi.mock("wave-agent-sdk/host", async (importOriginal) => ({
     unregisterSession = vi.fn();
     registerGlobal = vi.fn(
       (method: string, handler: (params: unknown) => void) => {
+        h.globalHandlers[method] = handler;
         if (method === "authUrl") h.authUrlHandler = handler;
       },
     );
@@ -576,7 +580,11 @@ vi.mock("wave-agent-sdk/host", async (importOriginal) => ({
 
 vi.mock("../src/main/stdio/binaryResolver", () => ({
   resolveWaveBinary: vi.fn(async () => "/mock/wave"),
-  ensureCliUpToDate: vi.fn(async () => "/mock/wave"),
+  // Second arg is the "a copy really happened" callback (progress stage); the
+  // default mock is a cache hit, i.e. it never fires.
+  ensureCliUpToDate: vi.fn(
+    async (_targetVersion?: string, _onCopy?: () => void) => "/mock/wave",
+  ),
   loadBundledCliSource: vi.fn(() => ({
     dir: "/app/root/resources/wave-cli",
     bundleSha256:
@@ -646,7 +654,7 @@ vi.mock("../src/main/remoteCli", async () => {
     ...actual,
     resolveRemoteWaveBinary: vi.fn(async (host: string) => ({
       binaryPath: `/remote/wave-${host}`,
-      nodeVersion: "v22.0.0",
+      runtimePath: `/remote/node-${host}`,
     })),
     ensureRemoteDaemon: vi.fn(
       async (host: string) => `/home/${host}/.wave/daemon.sock`,
@@ -915,6 +923,7 @@ beforeEach(() => {
   h.authStatusResults.length = 0;
   h.authServerUrl = "";
   h.authUrlHandler = null;
+  h.globalHandlers = {};
   h.dirSessions.clear();
   h.allSessions = [];
   h.worktreeResult = null;
@@ -3623,16 +3632,22 @@ describe("account card (desktopAccountInfo)", () => {
     };
   }
 
-  const accountPollField = DesktopHost as unknown as {
-    accountPollIntervalMs: number;
-  };
-
-  /** Shrink the usage poll interval for a test; returns a restore fn. */
-  function setAccountPollInterval(ms: number): () => void {
-    const original = accountPollField.accountPollIntervalMs;
-    accountPollField.accountPollIntervalMs = ms;
-    return () => {
-      accountPollField.accountPollIntervalMs = original;
+  /**
+   * 数一数接下来发生了多少次 `getAccountInfo`（用量核对）：60s 轮询删除后，这条
+   * RPC 只该在「登录 / 切主机 / webview 就绪 / 打开用量浮层」时出现。
+   */
+  function countAccountQueries(): { calls: () => number; restore: () => void } {
+    const orig = h.handleClientRequest;
+    let calls = 0;
+    h.handleClientRequest = (m: string, params?: unknown) => {
+      if (m === "getAccountInfo") calls += 1;
+      return orig(m, params);
+    };
+    return {
+      calls: () => calls,
+      restore: () => {
+        h.handleClientRequest = orig;
+      },
     };
   }
 
@@ -3719,6 +3734,169 @@ describe("account card (desktopAccountInfo)", () => {
       });
     });
     restore();
+  });
+
+  it("额度头驱动卡片：响应里带 x-codechat-quota-* 就推送新读数（spec 场景 1）", async () => {
+    const restoreStub = stubAccountRpc(
+      { id: "u1", email: "alice@example.com" },
+      { billing: planBilling, apiQuota: { limit: null, used: 1 } },
+      true,
+    );
+    const { sent } = await readyHost();
+    await vi.waitFor(() => {
+      expect(sent("desktopAccountInfo").at(-1)).toMatchObject({
+        billing: planBilling,
+      });
+    });
+
+    // 一次模型调用的响应（成功路径）：头里是本次调用前的额度读数。
+    lastAgent().callbacks.onQuotaHeaders({
+      "x-codechat-quota-status": "allowed",
+      "x-codechat-quota-weekly-used": "50",
+      "x-codechat-quota-weekly-limit": "100",
+      "x-codechat-quota-monthly-used": "600",
+      "x-codechat-quota-monthly-limit": "1000",
+      "x-codechat-quota-plan-expire": "2027-03-01",
+    });
+
+    expect(sent("desktopAccountInfo").at(-1)).toMatchObject({
+      isAuthenticated: true,
+      billing: {
+        mode: "plan",
+        plan: {
+          monthUsed: 600,
+          monthLimit: 1000,
+          weekUsed: 50,
+          weekLimit: 100,
+          expireDate: "2027-03-01",
+        },
+      },
+      // 头里没发 api-*（ok_plan 路径不查余额）⇒ 保留上次已知的余额维度。
+      apiQuota: { limit: null, used: 1 },
+    });
+    restoreStub();
+  });
+
+  it("被阻断的错误响应同样刷新读数（spec 场景 2）", async () => {
+    const restoreStub = stubAccountRpc(
+      { id: "u1", email: "alice@example.com" },
+      { billing: planBilling, apiQuota: { limit: 20, used: 2 } },
+      true,
+    );
+    const { sent } = await readyHost();
+    await vi.waitFor(() => {
+      expect(sent("desktopAccountInfo").at(-1)).toMatchObject({
+        billing: planBilling,
+      });
+    });
+
+    // 402 阻断：错误路径的头与成功路径同等对待。
+    lastAgent().callbacks.onQuotaHeaders({
+      "x-codechat-quota-status": "rejected",
+      "x-codechat-quota-code": "USER_QUOTA_ZERO",
+      "x-codechat-quota-api-limit": "20",
+      "x-codechat-quota-api-used": "20",
+    });
+
+    expect(sent("desktopAccountInfo").at(-1)).toMatchObject({
+      billing: { mode: "blocked", code: "USER_QUOTA_ZERO" },
+      apiQuota: { limit: 20, used: 20 },
+    });
+    restoreStub();
+  });
+
+  it("没有额度头 → 不更新、不额外请求（spec 场景 6）", async () => {
+    const restoreStub = stubAccountRpc(
+      { id: "u1", email: "alice@example.com" },
+      { billing: planBilling, apiQuota: { limit: 10, used: 3 } },
+      true,
+    );
+    const { sent } = await readyHost();
+    await vi.waitFor(() => {
+      expect(sent("desktopAccountInfo").at(-1)).toMatchObject({
+        billing: planBilling,
+      });
+    });
+    const pushes = sent("desktopAccountInfo").length;
+    const queries = countAccountQueries();
+
+    // 私有化 / 自定义网关 / 中间层剥掉自定义头：这次响应没有新信息。
+    lastAgent().callbacks.onQuotaHeaders({
+      "content-type": "application/json",
+    });
+
+    expect(sent("desktopAccountInfo")).toHaveLength(pushes);
+    expect(queries.calls()).toBe(0);
+    queries.restore();
+    restoreStub();
+  });
+
+  it("打开用量浮层时核对一次（desktopRefreshAccountUsage，spec 场景 4）", async () => {
+    const account = {
+      billing: planBilling as unknown,
+      apiQuota: { limit: 10, used: 3 } as unknown,
+    };
+    const restoreStub = stubAccountRpc(
+      { id: "u1", email: "alice@example.com" },
+      account,
+      true,
+    );
+    const { host, sent } = await readyHost();
+    await vi.waitFor(() => {
+      expect(sent("desktopAccountInfo").at(-1)).toMatchObject({
+        billing: planBilling,
+      });
+    });
+
+    // 账户接口知道头部看不到的那部分（到期日 / 企业池 / 余额）。
+    account.billing = {
+      mode: "api",
+      reason: "no_plan",
+      plan: { expireDate: "2025-01-01" },
+    };
+    account.apiQuota = { limit: 10, used: 9.5 };
+    const queries = countAccountQueries();
+
+    await host.handleWebviewMessage({ command: "desktopRefreshAccountUsage" });
+
+    expect(queries.calls()).toBe(1);
+    expect(sent("desktopAccountInfo").at(-1)).toMatchObject({
+      billing: {
+        mode: "api",
+        reason: "no_plan",
+        plan: { expireDate: "2025-01-01" },
+      },
+      apiQuota: { limit: 10, used: 9.5 },
+    });
+    queries.restore();
+    restoreStub();
+  });
+
+  it("登录后不再周期性请求账户接口（60s 轮询已删除，spec 场景 5）", async () => {
+    const restoreStub = stubAccountRpc(
+      { id: "u1", email: "alice@example.com" },
+      { billing: planBilling, apiQuota: { limit: null, used: 1 } },
+      true,
+    );
+    const { sent } = await readyHost();
+    await vi.waitFor(() => {
+      expect(sent("desktopAccountInfo").at(-1)).toMatchObject({
+        billing: planBilling,
+      });
+    });
+
+    const queries = countAccountQueries();
+    // 走满两个原来的轮询周期（60s × 2）：刷新源只剩「状态变化 / 响应头 /
+    // 打开浮层核对」，定时器不该再打账户接口。
+    vi.useFakeTimers();
+    try {
+      await vi.advanceTimersByTimeAsync(125_000);
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(queries.calls()).toBe(0);
+    queries.restore();
+    restoreStub();
   });
 
   it("登录进行中再点「登录」不会起第二轮授权（PM 3500343150983424）", async () => {
@@ -3915,10 +4093,11 @@ describe("account card (desktopAccountInfo)", () => {
 
   /**
    * 首次查询恰好失败（远端 daemon 正在被 CLI 升级重启）时，「没查过」仍只是未知
-   * —— 卡片不得回落成未登录；用量轮询会重查未知主机并自愈，否则用户必须手动切一
-   * 次主机才看得到账号。
+   * —— 卡片不得回落成未登录。60s 轮询已删（spec「用量刷新时机」场景 5），自愈改由
+   * 「用户打开的核对」承担：打开用量浮层（`desktopRefreshAccountUsage`）走一次带
+   * 登录态的查询，未知主机就补上，不用手动切一次主机。
    */
-  it("首次查询失败时卡片不回落成未登录，并由轮询自愈", async () => {
+  it("首次查询失败时卡片不回落成未登录，并由「打开浮层的核对」自愈", async () => {
     seedSshConfig("Host prod\n  HostName 10.0.0.1\n");
     const { host, store, send, sent } = createHost();
     store.addRecentWorkdir({ host: "local", path: "/work/a" });
@@ -3947,7 +4126,6 @@ describe("account card (desktopAccountInfo)", () => {
       }
       return orig(m, params);
     };
-    const restoreInterval = setAccountPollInterval(20);
 
     try {
       await host.handleWebviewMessage({ command: "desktopReady" });
@@ -3971,19 +4149,18 @@ describe("account card (desktopAccountInfo)", () => {
         sent("desktopAccountInfo").filter((c) => c.isAuthenticated !== true),
       ).toEqual([]);
 
-      // 轮询重查未知主机 → 卡片自愈为已登录。
-      await vi.waitFor(
-        () => {
-          expect(queries).toBeGreaterThanOrEqual(3);
-          expect(sent("desktopAccountInfo").at(-1)).toMatchObject({
-            isAuthenticated: true,
-          });
-        },
-        { timeout: 3000 },
-      );
+      // 用户打开用量浮层 → 一次核对重查未知主机 → 卡片自愈为已登录。
+      await host.handleWebviewMessage({
+        command: "desktopRefreshAccountUsage",
+      });
+      await vi.waitFor(() => {
+        expect(queries).toBeGreaterThanOrEqual(3);
+        expect(sent("desktopAccountInfo").at(-1)).toMatchObject({
+          isAuthenticated: true,
+        });
+      });
     } finally {
       h.handleClientRequest = orig;
-      restoreInterval();
     }
   });
 });
@@ -5950,6 +6127,113 @@ describe("session tree", () => {
 });
 
 // ---------------------------------------------------------------------------
+// 首次启动的进度文案 (spec ui/stdio-transport.md「首次启动的进度文案（运行时 /
+// CLI / 工具依赖）」)
+// ---------------------------------------------------------------------------
+
+describe("startup progress line", () => {
+  const indexEntry = (sessionId: string, workdir: string, host?: string) => ({
+    sessionId,
+    title: `Session ${sessionId}`,
+    workdir,
+    cwd: workdir,
+    createdAt: Date.now(),
+    lastActiveAt: Date.now(),
+    ...(host ? { host } : {}),
+  });
+
+  it("pushes remote startup stages to the pane waiting for that host, then clears", async () => {
+    const { host, store, send, sent } = await readyHost();
+    store.upsertSession(indexEntry("rem-1", "/work/remote", "ssh.example"));
+    send.mockClear();
+    vi.mocked(ensureRemoteDaemon).mockImplementationOnce(
+      async (_host, _source, _onNotice, onStage) => {
+        onStage?.("checkingEnvironment");
+        onStage?.("downloadingRuntime");
+        return "/home/ssh.example/.wave/daemon.sock";
+      },
+    );
+
+    await host.handleWebviewMessage({
+      command: "desktopSelectSession",
+      workdir: "/work/remote",
+      sessionId: "rem-1",
+    });
+
+    // One line advancing in place (连接 → 检查环境 → 下载运行时), then a `null`
+    // that ends the stage stream as the restore lands.
+    await vi.waitFor(() => {
+      expect(sent("loadingStage").at(-1)?.text).toBeNull();
+    });
+    const stages = sent("loadingStage");
+    expect(stages.map((s) => s?.text)).toEqual([
+      "正在连接 ssh.example…",
+      "正在检查远端环境…",
+      "正在下载 Node.js 运行时（约 50 MB）…",
+      null,
+    ]);
+    // Stages are host-level, the text is pane-level: everything lands on the one
+    // pane that is currently waiting for this host.
+    const restoringPane = sent("setInitialState")[0]?.paneId;
+    expect(restoringPane).toBeTruthy();
+    expect(stages.every((s) => s?.paneId === restoringPane)).toBe(true);
+  });
+
+  it("shows the CLI-side stages (tool deps) delivered over the stdio channel", async () => {
+    const { host, store, send, sent } = await readyHost();
+    store.upsertSession(indexEntry("hist-1", "/work/a"));
+    send.mockClear();
+    // Real stdio startup takes seconds: hold the restore agent mid-initialize so
+    // the pane is still waiting when the CLI reports its own stage.
+    let releaseInit!: () => void;
+    h.initializeGate = new Promise<void>((r) => {
+      releaseInit = r;
+    });
+
+    const selectPromise = host.handleWebviewMessage({
+      command: "desktopSelectSession",
+      workdir: "/work/a",
+      sessionId: "hist-1",
+    });
+    await vi.waitFor(() => {
+      expect(h.agentInstances).toHaveLength(2);
+    });
+    h.globalHandlers.startupStage?.({ stage: "downloadingToolDeps" });
+
+    h.initializeGate = null;
+    releaseInit();
+    await selectPromise;
+
+    await vi.waitFor(() => {
+      expect(sent("loadingStage").at(-1)?.text).toBeNull();
+    });
+    expect(sent("loadingStage").map((s) => s?.text)).toEqual([
+      "正在下载工具依赖（搜索与图片处理）…",
+      null,
+    ]);
+  });
+
+  it("stays silent when the CLI copy is a cache hit", async () => {
+    const { host, store, send, sent } = await readyHost();
+    store.upsertSession(indexEntry("hist-2", "/work/a"));
+    send.mockClear();
+
+    await host.handleWebviewMessage({
+      command: "desktopSelectSession",
+      workdir: "/work/a",
+      sessionId: "hist-2",
+    });
+
+    // Nothing to report, nothing shown — the 「正在同步 Wave CLI…」 line belongs
+    // to a real copy only (spec 场景 3).
+    await vi.waitFor(() => {
+      expect(sent("setInitialState").at(-1)?.isRestoring).toBe(false);
+    });
+    expect(sent("loadingStage")).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // /resume disk session picker (desktop-sessions.md「跨客户端会话来源」)
 // ---------------------------------------------------------------------------
 
@@ -7462,6 +7746,71 @@ describe("multi-session parallel (FR-031)", () => {
     expect(sent("setInitialState").at(-1)).toMatchObject({
       session: { id: "sess-1" },
     });
+  });
+
+  it("池中的会话已被远控页删除：点侧边栏自动移除条目并回落新会话", async () => {
+    const { host, store, sent } = await readyHost();
+    const agent1 = seedActiveSession("sess-1");
+    await host.handleWebviewMessage({ command: "newSession" });
+    seedActiveSession("sess-2");
+    // 远控页的删除只发生在持有这条会话的那个进程里（bridge 摘注册表 + destroy），
+    // 桌面端 pool 里这个 agent 随之变成僵尸：任何读都回 "Session not found"。
+    agent1.getMessages.mockRejectedValue(
+      new Error("Session not found: sess-1"),
+    );
+
+    await host.handleWebviewMessage({
+      command: "desktopSelectSession",
+      workdir: "/work/a",
+      sessionId: "sess-1",
+    });
+
+    // 曾经的症状是「点了没反应，还停在新对话页」——条目与分屏绑定都得作废，
+    // 不能留一个永远点不进去、又一直在侧边栏里的僵尸。
+    expect(store.getSessionIndex().some((e) => e.sessionId === "sess-1")).toBe(
+      false,
+    );
+    expect(
+      shownToasts().some((t) => t.message.includes("该会话已被删除")),
+    ).toBe(true);
+    expect(sent("setInitialState").at(-1)?.session?.id).not.toBe("sess-1");
+    expect(agent1.destroy).toHaveBeenCalled();
+    expect(JSON.stringify(sent("desktopSessionTree").at(-1))).not.toContain(
+      "sess-1",
+    );
+  });
+
+  it("配置重建窗口里读会话失败不算「已被删除」（条目保留）", async () => {
+    const { host, store } = await readyHost();
+    const agent1 = seedActiveSession("sess-1");
+    await host.handleWebviewMessage({ command: "newSession" });
+    seedActiveSession("sess-2");
+    // 重建期间 bridge 会先摘掉会话的注册表项，读消息同样回 "Session not
+    // found"，但那是重建的一部分——不能据此把活会话从侧边栏删掉。
+    let releaseUpdate!: () => void;
+    const updateGate = new Promise<void>((resolve) => {
+      releaseUpdate = resolve;
+    });
+    agent1.updateConfig.mockImplementation(() => updateGate);
+    agent1.getMessages.mockRejectedValue(
+      new Error("Session not found: sess-1"),
+    );
+
+    const logout = host.handleWebviewMessage({ command: "logout" });
+    await vi.waitFor(() => expect(agent1.updateConfig).toHaveBeenCalled());
+
+    await host.handleWebviewMessage({
+      command: "desktopSelectSession",
+      workdir: "/work/a",
+      sessionId: "sess-1",
+    });
+
+    expect(store.getSessionIndex().some((e) => e.sessionId === "sess-1")).toBe(
+      true,
+    );
+
+    releaseUpdate();
+    await logout;
   });
 
   it("desktopSelectSession on the current session is a no-op", async () => {

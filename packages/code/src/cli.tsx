@@ -2,9 +2,50 @@ import React from "react";
 import { render } from "ink";
 import { ensureRuntimeDeps } from "wave-agent-sdk";
 import { App } from "./components/App.js";
+import { getPendingAgentDestroy } from "./contexts/useChat.js";
 import { cleanupLogs } from "./utils/logger.js";
 import { describeWorktreeSurvival, removeWorktree } from "./utils/worktree.js";
 import { BaseAppProps } from "./types.js";
+
+/**
+ * Upper bound on waiting for `Agent.destroy()` after the UI is gone.
+ *
+ * The teardown is bounded on its own side (its async-work drain has a timeout),
+ * but a wedged MCP child or LSP server must not turn closing the window into a
+ * process that never exits. Past this point the orphan risk is accepted in
+ * exchange for a terminal that actually comes back.
+ */
+const AGENT_DESTROY_TIMEOUT_MS = 5_000;
+
+/**
+ * Await the teardown that the unmount cleanup started.
+ *
+ * React effect cleanups are synchronous, so unmounting only *begins*
+ * `Agent.destroy()`; without this wait, `process.exit()` below terminates the
+ * process while the bash process trees, MCP children and LSP servers that
+ * `destroy()` was about to signal are still alive. Detached bash children then
+ * outlive their parent as launchd-reparented orphans.
+ */
+async function awaitAgentDestroy(): Promise<void> {
+  const pending = getPendingAgentDestroy();
+  if (!pending) return;
+
+  let timeoutHandle: NodeJS.Timeout | undefined;
+  const timeout = new Promise<void>((resolve) => {
+    timeoutHandle = setTimeout(() => {
+      console.warn(
+        "Agent teardown timed out; exiting without waiting further.",
+      );
+      resolve();
+    }, AGENT_DESTROY_TIMEOUT_MS);
+  });
+
+  try {
+    await Promise.race([pending, timeout]);
+  } finally {
+    if (timeoutHandle) clearTimeout(timeoutHandle);
+  }
+}
 
 export interface CliOptions extends BaseAppProps {
   restoreSessionId?: string;
@@ -40,8 +81,13 @@ export async function startCli(options: CliOptions): Promise<void> {
 
   // Continue with ink-based UI for normal mode
   let shouldRemoveWorktree = false;
+  let isExiting = false;
 
   const handleExit = (shouldRemove: boolean) => {
+    // A single close can arrive twice (SIGHUP plus the TTY-revocation poll, or
+    // an outside kill racing the keypress). Only the first one may unmount.
+    if (isExiting) return;
+    isExiting = true;
     shouldRemoveWorktree = shouldRemove;
     unmount();
   };
@@ -82,6 +128,10 @@ export async function startCli(options: CliOptions): Promise<void> {
 
   // Wait for the app to finish unmounting
   await waitUntilExit();
+
+  // ...which only *started* the agent teardown. Let it finish before exiting,
+  // otherwise the bash trees it was about to signal survive as orphans.
+  await awaitAgentDestroy();
 
   try {
     // Clean up old log files

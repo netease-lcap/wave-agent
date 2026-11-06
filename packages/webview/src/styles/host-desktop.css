@@ -1645,7 +1645,7 @@
    用户裁决：进度条浅色按稿配色+高度、深色配色维持第 6 轮；显隐按钮改
    32×32。改动全部 [data-host=desktop] 限定（插件端不受影响）。
    0908 第 3 轮：显隐按钮随账户热区统一 30×30 / r8（原 32/r6）。 */
-[data-host="desktop"] .account-card-collapse-btn {
+[data-host="desktop"] .account-card-usage-btn {
   width: 30px;
   height: 30px;
   /* 功能 icon-button hover 底色圆角：与账户热区/侧栏选项统一 r8 */
@@ -1678,7 +1678,7 @@
 [data-host="desktop"] .account-usage-row .account-usage-value-text {
   font-weight: 500;
 }
-/* 账户卡用量区（`.account-card-usage-inline` = 套餐用量 / 百分比 / API 余额 /
+/* 账户卡用量区（`.account-usage-popover` 内的套餐用量 / 百分比 / API 余额 /
    金额）字号**统一 12px**（契约 design-system.md:66 的 compact metadata 档）：
    0916 曾按评论④「字号都大一号」把四段文字抬到 14px/20px，随后设计师改判
    「还是改回来，都用 12px」→ 四段文字回到 base 的 12px（不再覆盖字号，行高
@@ -2646,6 +2646,14 @@
   font-weight: 500;
   opacity: 1;
   color: #6c7076;
+}
+/* 主机菜单的分组标题带一颗远程图标：「SSH 主机」标题行与「本地」行同构，
+   组内主机名缩进到与标题文字齐平（8 padding + 16 图标 + 8 gap = 32px）。 */
+[data-host="desktop"] .desktop-host-menu-label {
+  gap: 8px;
+}
+[data-host="desktop"] .desktop-host-menu-items .desktop-workdir-menu-item {
+  padding-left: 32px;
 }
 
 /* 下拉内「添加主机…」展开的 inline 输入行（走查评论 div.desktop-host-add：
@@ -4548,7 +4556,7 @@
     .desktop-session-more-btn,
     .desktop-session-group-header,
     .account-card-more-btn,
-    .account-card-collapse-btn,
+    .account-card-usage-btn,
     .header-button:not(.active),
     .desktop-pane-close,
     .write-preview-open,
@@ -4566,7 +4574,7 @@
     .desktop-session-more-btn,
     .desktop-session-group-header,
     .account-card-more-btn,
-    .account-card-collapse-btn,
+    .account-card-usage-btn,
     .header-button:not(.active),
     .desktop-pane-close,
     .write-preview-open,
@@ -4588,7 +4596,7 @@
     .desktop-session-more-btn,
     .desktop-session-group-header,
     .account-card-more-btn,
-    .account-card-collapse-btn,
+    .account-card-usage-btn,
     .header-button:not(.active),
     .desktop-pane-close,
     .write-preview-open,
@@ -4606,7 +4614,7 @@
     .desktop-session-more-btn,
     .desktop-session-group-header,
     .account-card-more-btn,
-    .account-card-collapse-btn,
+    .account-card-usage-btn,
     .header-button:not(.active),
     .desktop-pane-close,
     .write-preview-open,
@@ -4819,7 +4827,7 @@
     .desktop-sidebar-new-chat,
     .desktop-session-more-btn,
     .account-api-info-btn,
-    .account-card-collapse-btn,
+    .account-card-usage-btn,
     .session-board-back,
     /* 弹层（她追加授权：「弹层里的按钮和选项也一起继承页面字体」）
        —— 作用域 / 安装 / 新建市场 / 管理市场四个弹层穷举后的全部按钮类 */

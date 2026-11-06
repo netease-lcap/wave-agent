@@ -4,33 +4,44 @@
  * on a remote host is THIS app's bundled CLI (resources/wave-cli), pushed over
  * the existing ssh channel — it no longer depends on the remote npm registry or
  * the npm `wave-code` package (whose latest may lag behind the GUI's built-in
- * CLI, the 404 root cause this replaces). One-shot ssh probes run node presence
- * and a content check (sha256 of the remote `dist/bundle/wave.mjs`); when the
- * remote copy is missing/corrupt or its bytes differ from the bundled bundle,
- * the CLI files (bin/wave-code.js + dist/bundle/wave.mjs + package.json) are
- * tarred locally and streamed over ssh stdin into a sibling `.new` dir, then
- * atomically swapped into the fixed remote dir `~/.wave/cli/desktop` (mirrors
- * the local runtime copy, so the shim resolves ../package.json and wave.mjs
- * finds the shared @vscode/ripgrep under `~/.wave/cli/node_modules`). The sync
- * judge is content bytes, not a version string — GUI-only releases can ship new
- * bytes without bumping the bundled version. Runtime dependencies (ripgrep,
- * sharp) are installed by the remote CLI itself on startup — no npm on the
- * remote host is needed, and a failed download only degrades the affected tool.
- * Every failure surfaces an actionable message — nothing retries indefinitely.
+ * CLI, the 404 root cause this replaces). One-shot ssh probes run a content
+ * check (sha256 of the remote `dist/bundle/wave.mjs`); when the remote copy is
+ * missing/corrupt or its bytes differ from the bundled bundle, the CLI files
+ * (bin/wave-code.js + dist/bundle/wave.mjs + package.json) are tarred locally
+ * and streamed over ssh stdin into a sibling `.new` dir, then atomically swapped
+ * into the fixed remote dir `~/.wave/cli/desktop` (mirrors the local runtime
+ * copy, so the shim resolves ../package.json and wave.mjs finds the shared
+ * @vscode/ripgrep under `~/.wave/cli/node_modules`). The sync judge is content
+ * bytes, not a version string — GUI-only releases can ship new bytes without
+ * bumping the bundled version. Runtime dependencies (ripgrep, sharp) are
+ * installed by the remote CLI itself on startup — no npm on the remote host is
+ * needed, and a failed download only degrades the affected tool. Every failure
+ * surfaces an actionable message — nothing retries indefinitely.
  *
- * All probes run through the user's login shell (`withRemoteLoginShell`):
- * nvm-style version managers expose node only in interactive rc files, which a
- * plain `ssh host 'cmd'` never loads. Pure file-transfer commands (tar push)
- * need no login shell and skip it.
+ * The remote host is NOT assumed to have a Node.js: the desktop app runs its
+ * local CLI on its own `process.execPath`, which a bare ssh target has no
+ * equivalent of. So the same channel also carries a Wave-managed runtime
+ * (`~/.wave/runtime/node`, official Node tarball from the npm mirror, see
+ * [ensureRemoteRuntime]); every remote process — the CLI push's sha256 probe,
+ * the daemon liveness probe, the daemon itself — is launched through it. The
+ * CLI shim's shebang is never used on a remote host.
+ *
+ * All probes run through the user's login shell (`withRemoteLoginShell`): nvm-
+ * style version managers expose their directories only in interactive rc files,
+ * which a plain `ssh host 'cmd'` never loads — that still matters for the user's
+ * own tooling (a WSL distro's login shell `$PATH` is likewise captured for the
+ * CLI child, though node itself always comes from the managed runtime).
+ * Pure file-transfer commands (tar push) need no login shell and skip it.
  */
 
 import { execFile, spawn, type ChildProcess } from "child_process";
+import { createHash } from "crypto";
 import { promisify } from "util";
 import * as fs from "fs";
 import * as net from "net";
 import * as os from "os";
 import * as path from "path";
-import type { Readable } from "stream";
+import { Readable } from "stream";
 import { c as createTarStream } from "tar";
 import {
   buildSshSpawnArgs,
@@ -40,6 +51,7 @@ import {
 } from "./sshHosts";
 import { SocketClient } from "./stdio/socketClient";
 import type { BundledCliSource } from "./stdio/binaryResolver";
+import type { StartupStage } from "wave-agent-sdk/host";
 import {
   buildWslExecSpec,
   buildWslRawSpec,
@@ -49,7 +61,20 @@ import {
 
 const execFileAsync = promisify(execFile);
 
-export const REMOTE_NODE_MIN_MAJOR = 22;
+/**
+ * The Node version Wave ships to hosts without one (spec:
+ * docs/specs/ui/stdio-transport.md 「托管 Node 运行时」). Pinned, not "latest
+ * ≥ 22": the runtime must be reproducible across reconnects and machines, and a
+ * marker match is what skips the download. Bumping this constant is the only
+ * way an installed runtime gets replaced.
+ */
+export const MANAGED_RUNTIME_VERSION = "22.14.0";
+const DEFAULT_NODE_MIRROR = "https://registry.npmmirror.com/-/binary/node";
+/** Records the installed runtime's {version, platform} next to `bin/node`. */
+const RUNTIME_MARKER_FILE = ".wave-runtime.json";
+/** A Node tarball is ~50MB — slow links need far more headroom than a probe. */
+const RUNTIME_DOWNLOAD_TIMEOUT_MS = 10 * 60_000;
+
 const PROBE_TIMEOUT_MS = 15_000;
 
 /** Files of the bundled CLI pushed to remote hosts (mirror of the local copy). */
@@ -77,9 +102,10 @@ export function remoteCliShimPath(homeDir: string): string {
 }
 
 export interface RemoteCliInfo {
-  /** Absolute path to the `wave` binary on the remote host. */
+  /** Absolute path to the `wave` entry script on the remote host. */
   binaryPath: string;
-  nodeVersion: string;
+  /** Node used to run it — the managed runtime's `node` on every host kind. */
+  runtimePath: string;
 }
 
 /** stderr noise emitted by `bash/zsh -i` without a TTY — skip, not an error. */
@@ -193,20 +219,6 @@ function lastMeaningfulLine(text: string): string {
 }
 
 /**
- * The node version printed by `node -v`, tolerating the banner lines above it.
- * The last line is the answer in the normal case; when a version manager appends
- * its own chatter after it ("Now using node …"), fall back to the last
- * `vX.Y.Z` anywhere — never to a bare `24.04.5`, which is how the distro's own
- * banner would masquerade as a Node version. Returns "" when nothing matches.
- */
-function parseNodeVersion(text: string): string {
-  const last = lastMeaningfulLine(text);
-  if (/^v?\d+\.\d+\.\d+$/.test(last)) return last;
-  const matches = stripAnsiEscapes(text).match(/\bv\d+\.\d+\.\d+\b/g);
-  return matches?.[matches.length - 1] ?? "";
-}
-
-/**
  * Possessive form for messages that own a thing on the host: `主机 dev-box 的
  * 远端` / `WSL 发行版「Ubuntu」的`. The ssh wording keeps 远端 because that
  * machine's filesystem is genuinely elsewhere; a distro's is this machine's.
@@ -216,26 +228,366 @@ function hostPossessive(host: string): string {
   return distro ? `${hostLabel(host)}的` : `${hostLabel(host)} 的远端`;
 }
 
-/** Probe the remote `node -v`; throws an actionable error when it fails. */
-async function probeRemoteNode(host: string): Promise<string> {
-  let stdout: string;
+// ── Managed Node runtime ─────────────────────────────────────────
+//
+// A bare ssh target and a JVM plugin host have no `process.execPath` to borrow
+// (unlike the desktop app and the VS Code extension, which both run the CLI on
+// their own binary), and requiring a system Node ≥ 22 was the single biggest
+// deployment obstacle for backend/ops customers. So Wave ships its own: the
+// official Node tarball for the host's platform, fetched from the same npm
+// mirror as the rest of the runtime deps (ripgrep/sharp), verified against the
+// mirror's SHASUMS256.txt, unpacked to `~/.wave/runtime/node` with ONLY
+// `bin/node` kept (no npm, no headers, no docs — nothing the CLI needs) and
+// stamped with a marker so the next connect skips the download entirely.
+
+/**
+ * Base URL the Node tarballs come from (`<base>/v<version>/<file>` plus
+ * `<base>/v<version>/SHASUMS256.txt`). Overridable so a private deployment can
+ * point every host at an internal mirror without touching the hosts
+ * themselves.
+ */
+export function nodeMirrorBase(): string {
+  const override = process.env.WAVE_NODE_MIRROR?.trim();
+  return (override || DEFAULT_NODE_MIRROR).replace(/\/+$/, "");
+}
+
+/** Remote runtime dir: `~/.wave/runtime/node` (only `bin/node` is kept). */
+export function remoteRuntimeDir(homeDir: string): string {
+  return path.posix.join(homeDir, ".wave", "runtime", "node");
+}
+
+/** The managed `node` binary — what the CLI and every remote script run on. */
+export function remoteRuntimeNodePath(homeDir: string): string {
+  return path.posix.join(remoteRuntimeDir(homeDir), "bin", "node");
+}
+
+export interface HostPlatform {
+  /** `uname -s` verbatim (e.g. Linux, Darwin). */
+  os: string;
+  /** `uname -m` verbatim (e.g. x86_64, aarch64). */
+  arch: string;
+  /** `musl` when the host links musl (Alpine), else `glibc`. */
+  libc: string;
+}
+
+/**
+ * Markers the runtime probe prints ahead of its payloads. Like
+ * WAVE_REMOTE_FILE_V1 they are located by name rather than by position — the
+ * login shell's banner and `bash -i`'s job-control noise precede them.
+ */
+const HOST_PLATFORM_MARKER = "WAVE_HOST_PLATFORM_V1";
+const RUNTIME_MARKER = "WAVE_RUNTIME_MARKER_V1";
+
+/** Parse the `WAVE_HOST_PLATFORM_V1 <os>|<arch>|<libc>` probe line. */
+export function parseHostPlatform(text: string): HostPlatform | null {
+  const line = stripAnsiEscapes(text)
+    .split("\n")
+    .reverse()
+    .find((candidate) => candidate.trim().startsWith(HOST_PLATFORM_MARKER));
+  if (!line) return null;
+  const [os, arch, libc] = line
+    .trim()
+    .slice(HOST_PLATFORM_MARKER.length)
+    .trim()
+    .split("|");
+  if (!os || !arch) return null;
+  return { os, arch, libc: libc || "glibc" };
+}
+
+/**
+ * Map a host's uname pair onto Node's official dist key. Only the four targets
+ * the desktop app itself ships for exist; anything else gets an actionable
+ * error rather than a download that cannot work. musl is called out
+ * specifically because the official dist has NO musl build at all (the mirror
+ * carries no unofficial/musl path), so an Alpine host cannot be served by a
+ * download and a silent glibc fallback would only die later at exec with a
+ * cryptic dynamic-loader error.
+ */
+export function nodePlatformKey(platform: HostPlatform): string {
+  const osName =
+    platform.os === "Darwin"
+      ? "darwin"
+      : platform.os === "Linux"
+        ? "linux"
+        : "";
+  // `uname -m` says aarch64 on Linux and arm64 on macOS; Node's dist key is
+  // arm64 on both, so Linux ARM hosts would otherwise be rejected outright.
+  const arch =
+    platform.arch === "x86_64"
+      ? "x64"
+      : platform.arch === "aarch64"
+        ? "arm64"
+        : platform.arch;
+  if (!osName || (arch !== "x64" && arch !== "arm64")) {
+    throw new Error(
+      `暂不支持的平台（${platform.os} ${platform.arch}），无法自动获取托管 Node.js 运行时。请反馈该平台以便补充支持`,
+    );
+  }
+  if (platform.libc === "musl") {
+    throw new Error(
+      `暂不支持 musl libc 的 ${platform.os}（${platform.arch}）：官方 Node.js 不提供 musl 构建，无法自动获取托管运行时。请改用 glibc 发行版，或在主机上手动安装 Node.js ≥ ${MANAGED_RUNTIME_VERSION} 后反馈`,
+    );
+  }
+  return `${osName}-${arch}`;
+}
+
+interface NodeRuntimeTarget {
+  /** Archive name on the mirror (e.g. node-v22.14.0-linux-x64.tar.gz). */
+  file: string;
+  /** Member inside the archive that becomes `<runtime>/bin/node`. */
+  member: string;
+}
+
+/**
+ * Official Node POSIX distribution layout: `<top dir>/bin/node`.
+ * `.tar.gz`, not the smaller `.tar.xz`: the desktop must be able to unpack it
+ * itself on a machine without `xz` (macOS), and Node has no built-in xz
+ * decoder — gzip is universal and the transfer goes over ssh anyway.
+ */
+export function nodeRuntimeTarget(platformKey: string): NodeRuntimeTarget {
+  const top = `node-v${MANAGED_RUNTIME_VERSION}-${platformKey}`;
+  return { file: `${top}.tar.gz`, member: `${top}/bin/node` };
+}
+
+/** Marker body written after a successful install; compared verbatim. */
+export function runtimeMarker(platformKey: string): string {
+  return JSON.stringify({
+    version: MANAGED_RUNTIME_VERSION,
+    platform: platformKey,
+  });
+}
+
+/** Marker body read back from the host ("" when the file is absent). */
+export function parseRuntimeMarker(text: string): string {
+  const line = stripAnsiEscapes(text)
+    .split("\n")
+    .reverse()
+    .find((candidate) => candidate.trim().startsWith(RUNTIME_MARKER));
+  return line ? line.trim().slice(RUNTIME_MARKER.length).trim() : "";
+}
+
+/** sha256 for `file` from an official `SHASUMS256.txt` body. */
+export function parseSha256Sums(text: string, file: string): string {
+  for (const raw of text.split("\n")) {
+    const match = /^([0-9a-f]{64})\s+\*?(.+)$/.exec(raw.trim());
+    if (match && match[2].trim() === file) return match[1];
+  }
+  throw new Error(`镜像的 SHASUMS256.txt 中没有 ${file} 的校验值`);
+}
+
+/** Fetch a mirror URL into memory (the CDN redirect is followed). */
+async function fetchNodeMirror(url: string): Promise<Buffer> {
+  const response = await fetch(url, {
+    signal: AbortSignal.timeout(RUNTIME_DOWNLOAD_TIMEOUT_MS),
+  });
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status} ${response.statusText}`);
+  }
+  return Buffer.from(await response.arrayBuffer());
+}
+
+function runtimeDownloadError(url: string, cause: unknown): Error {
+  return new Error(
+    `获取托管 Node.js 运行时失败：${describeError(cause)}。下载地址 ${url}；` +
+      `若当前网络无法访问默认镜像，可把环境变量 WAVE_NODE_MIRROR 指向内部镜像（当前 ${nodeMirrorBase()}）后重试`,
+  );
+}
+
+/**
+ * Download the pinned Node archive and verify it against the mirror's own
+ * checksum list. The bytes cross a network and land on a customer host that
+ * will execute them, so an unverified download is not acceptable — and
+ * SHASUMS256.txt is served next to the archive, so the real hash is always
+ * available (no need to trust a byte count or an HTTPS promise alone).
+ */
+async function downloadNodeRuntime(target: NodeRuntimeTarget): Promise<Buffer> {
+  const base = `${nodeMirrorBase()}/v${MANAGED_RUNTIME_VERSION}`;
+  const sumsUrl = `${base}/SHASUMS256.txt`;
+  const archiveUrl = `${base}/${target.file}`;
+  let sums: string;
   try {
-    ({ stdout } = await execOnHost(host, "node -v", {
-      timeout: PROBE_TIMEOUT_MS,
-    }));
+    sums = (await fetchNodeMirror(sumsUrl)).toString("utf8");
+  } catch (error) {
+    throw runtimeDownloadError(sumsUrl, error);
+  }
+  const expected = parseSha256Sums(sums, target.file);
+  let archive: Buffer;
+  try {
+    archive = await fetchNodeMirror(archiveUrl);
+  } catch (error) {
+    throw runtimeDownloadError(archiveUrl, error);
+  }
+  const actual = createHash("sha256").update(archive).digest("hex");
+  if (actual !== expected) {
+    throw new Error(
+      `托管 Node.js 运行时校验失败（${target.file}）：期望 sha256 ${expected}，实际 ${actual}。请检查镜像完整性（${archiveUrl}）`,
+    );
+  }
+  return archive;
+}
+
+/** Startup progress callback (spec: docs/specs/ui/stdio-transport.md). */
+export type StartupStageReporter = (stage: StartupStage) => void;
+
+/**
+ * Report a startup stage without ever letting the reporter break the install:
+ * the text is a progress hint, and a host that cannot deliver it (window gone,
+ * pane closed) must not fail a 50 MB runtime push.
+ */
+function notifyStage(
+  reporter: StartupStageReporter | undefined,
+  stage: StartupStage,
+): void {
+  try {
+    reporter?.(stage);
   } catch {
+    // Report-only — never fatal.
+  }
+}
+
+/**
+ * Probe the host's platform AND the installed runtime marker in one round trip
+ * (an ssh round trip is the expensive unit here). musl is sniffed by the
+ * dynamic loader's presence: `ldd` is a shell wrapper on glibc and absent on
+ * musl, so it cannot answer the question.
+ */
+async function probeRuntimeState(
+  host: string,
+  markerPath: string,
+): Promise<{ platform: HostPlatform; marker: string }> {
+  const command =
+    `printf '%s\\n' "${HOST_PLATFORM_MARKER} $(uname -s)|$(uname -m)|$(if [ -f /lib/ld-musl-x86_64.so.1 ] || [ -f /lib/ld-musl-aarch64.so.1 ]; then echo musl; else echo glibc; fi)"; ` +
+    `printf '%s\\n' "${RUNTIME_MARKER} $(cat ${shellQuote(markerPath)} 2>/dev/null)"`;
+  const { stdout } = await execOnHost(host, command, {
+    timeout: PROBE_TIMEOUT_MS,
+  });
+  const platform = parseHostPlatform(stdout);
+  if (!platform) {
     throw new Error(
-      `${hostWhere(host)}未检测到 Node.js。请先安装 Node.js ≥ ${REMOTE_NODE_MIN_MAJOR}（https://nodejs.org）后重试`,
+      `${hostWhere(host)}无法识别运行环境（uname 输出：${lastMeaningfulLine(stdout) || "空"}）`,
     );
   }
-  const nodeVersion = parseNodeVersion(stdout);
-  const major = Number(/^v?(\d+)/.exec(nodeVersion)?.[1]);
-  if (!major || major < REMOTE_NODE_MIN_MAJOR) {
+  return { platform, marker: parseRuntimeMarker(stdout) };
+}
+
+/**
+ * Download, ship and install the managed runtime, then swap it in. Same
+ * `.new`/`.old` atomic swap as the CLI bundle: extract into a staging dir, keep
+ * only `bin/node`, VERIFY IT RUNS on the host — the sha256 proves the bytes
+ * crossed intact, only an exec proves the binary matches the host's libc and
+ * CPU — then rename into place. A failed push leaves the previous runtime
+ * untouched, so a running daemon keeps working.
+ */
+async function pushRemoteRuntime(
+  host: string,
+  homeDir: string,
+  platformKey: string,
+  onStage?: StartupStageReporter,
+): Promise<void> {
+  const target = nodeRuntimeTarget(platformKey);
+  // Only reached when the marker does not match, i.e. the download really
+  // happens — a warm host never reports this (no false "downloading" text).
+  notifyStage(onStage, "downloadingRuntime");
+  const archive = await downloadNodeRuntime(target);
+  notifyStage(onStage, "installingRuntime");
+  const runtimeDir = remoteRuntimeDir(homeDir);
+  const stagingDir = `${runtimeDir}.new`;
+  const backupDir = `${runtimeDir}.old`;
+  const stagingNode = path.posix.join(stagingDir, "bin", "node");
+  const member = path.posix.join(stagingDir, target.member);
+  const receive =
+    `rm -rf ${shellQuote(stagingDir)}; ` +
+    `mkdir -p ${shellQuote(path.posix.join(stagingDir, "bin"))}; ` +
+    `tar -xzf - -C ${shellQuote(stagingDir)} ${shellQuote(target.member)} || exit 3; ` +
+    // Bundles built on Windows carry no executable bit; the runtime is exec'd
+    // directly, so set it explicitly rather than trusting the archive.
+    `chmod +x ${shellQuote(member)} || exit 4; ` +
+    `mv ${shellQuote(member)} ${shellQuote(stagingNode)} || exit 5; ` +
+    `rm -rf ${shellQuote(path.posix.join(stagingDir, target.member.split("/")[0]))}`;
+  await hostStreamCommand(host, receive, Readable.from([archive]));
+
+  const discard = async () => {
+    try {
+      await execOnHost(host, `rm -rf ${shellQuote(stagingDir)}`, {
+        timeout: PROBE_TIMEOUT_MS,
+      });
+    } catch {
+      // Best effort — a leftover `.new` is wiped by the next push anyway.
+    }
+  };
+
+  let versionOutput = "";
+  try {
+    ({ stdout: versionOutput } = await execOnHost(
+      host,
+      `${shellQuote(stagingNode)} --version`,
+      { timeout: PROBE_TIMEOUT_MS },
+    ));
+  } catch (error) {
+    await discard();
     throw new Error(
-      `${hostWhere(host)}Node.js 版本过低（${nodeVersion || "未检测到版本"}，需要 ≥ ${REMOTE_NODE_MIN_MAJOR}）。请先升级 Node.js 后重试`,
+      `${hostWhere(host)}托管 Node.js 运行时无法执行（${describeError(error)}）。请反馈该主机平台（${platformKey}）以便补充支持`,
     );
   }
-  return nodeVersion;
+  const reported = lastMeaningfulLine(versionOutput);
+  if (reported !== `v${MANAGED_RUNTIME_VERSION}`) {
+    await discard();
+    throw new Error(
+      `${hostWhere(host)}托管 Node.js 运行时版本异常（期望 v${MANAGED_RUNTIME_VERSION}，实际 ${reported || "无输出"}）`,
+    );
+  }
+
+  // The marker is written INTO the staging dir before the swap, so a runtime
+  // that is installed is always a runtime with a marker — no window where the
+  // next connect sees `bin/node` but no marker (and redownloads 50MB).
+  const finalize =
+    `printf '%s' ${shellQuote(runtimeMarker(platformKey))} > ${shellQuote(path.posix.join(stagingDir, RUNTIME_MARKER_FILE))} || exit 6; ` +
+    `rm -rf ${shellQuote(backupDir)}; ` +
+    `mv ${shellQuote(runtimeDir)} ${shellQuote(backupDir)} 2>/dev/null || true; ` +
+    `mv ${shellQuote(stagingDir)} ${shellQuote(runtimeDir)} || exit 7; ` +
+    `rm -rf ${shellQuote(backupDir)}`;
+  try {
+    await execOnHost(host, finalize, { timeout: PROBE_TIMEOUT_MS });
+  } catch (error) {
+    await discard();
+    throw new Error(`安装托管 Node.js 运行时失败（${describeError(error)}）`);
+  }
+}
+
+/**
+ * Ensure the host has the managed runtime and return the absolute `node` path.
+ * One rule for every host kind — SSH remote and local WSL distro alike: this is
+ * the node that runs the host's one-shot probes, the daemon and the CLI, and
+ * what the host itself has (nothing, an old Node, an nvm-managed one) is never
+ * consulted (spec docs/specs/desktop/desktop-wsl.md 场景 6/20). A marker
+ * matching {pinned version, host platform} short-circuits, so the download
+ * happens only on first use, after a Wave upgrade that bumps
+ * [MANAGED_RUNTIME_VERSION], or when the host platform changed.
+ */
+async function ensureRemoteRuntime(
+  host: string,
+  homeDir: string,
+  onStage?: StartupStageReporter,
+): Promise<string> {
+  const markerPath = path.posix.join(
+    remoteRuntimeDir(homeDir),
+    RUNTIME_MARKER_FILE,
+  );
+  const { platform, marker } = await probeRuntimeState(host, markerPath);
+  const platformKey = nodePlatformKey(platform);
+  if (marker !== runtimeMarker(platformKey)) {
+    await pushRemoteRuntime(host, homeDir, platformKey, onStage);
+  }
+  return remoteRuntimeNodePath(homeDir);
+}
+
+/**
+ * A node path → shell-safe. The bare `node` fallback only applies to the daemon
+ * helpers' optional argument (a caller that resolved no runtime); every resolved
+ * host path is absolute.
+ */
+function nodeCommand(runtimePath?: string): string {
+  return runtimePath ? shellQuote(runtimePath) : "node";
 }
 
 /**
@@ -358,13 +710,13 @@ async function pushRemoteCliBundle(
 }
 
 /**
- * Resolve a runnable wave CLI on the remote host. The binary path is now the
- * fixed runtime shim `~/.wave/cli/desktop/bin/wave-code.js` (never a PATH
- * global install). Ensures Node ≥ 22, then returns the existing CLI when
- * present. With `installIfMissing` (the default), a missing CLI triggers the
- * full install (bundle push); with it false the missing case throws an
- * actionable error — the daemon fallback passes false so a failed sync never
- * double-installs within one connection.
+ * Resolve a runnable wave CLI on the remote host. The binary path is the fixed
+ * runtime shim `~/.wave/cli/desktop/bin/wave-code.js` (never a PATH global
+ * install) and it is run by the managed runtime — the returned [RemoteCliInfo]
+ * carries both so no caller has to re-derive them. With `installIfMissing` (the
+ * default), a missing CLI triggers the full install (bundle push); with it
+ * false the missing case throws an actionable error — the daemon fallback
+ * passes false so a failed sync never double-installs within one connection.
  */
 export async function resolveRemoteWaveBinary(
   host: string,
@@ -372,37 +724,39 @@ export async function resolveRemoteWaveBinary(
   homeDir: string,
   installIfMissing = true,
 ): Promise<RemoteCliInfo> {
-  const nodeVersion = await probeRemoteNode(host);
+  const runtimePath = await ensureRemoteRuntime(host, homeDir);
   const binaryPath = remoteCliShimPath(homeDir);
-  const current = await getRemoteBundleSha256(host, homeDir);
-  if (current) return { binaryPath, nodeVersion };
+  const current = await getRemoteBundleSha256(host, homeDir, runtimePath);
+  if (current) return { binaryPath, runtimePath };
   if (!installIfMissing) {
     throw new Error(
       `远端未安装 wave CLI（${binaryPath}）。重新连接主机会自动重试推送`,
     );
   }
   await pushRemoteCliBundle(host, source, homeDir);
-  return { binaryPath, nodeVersion };
+  return { binaryPath, runtimePath };
 }
 
 /**
  * Remote `dist/bundle/wave.mjs` sha256 — null when the probe fails (missing/
  * corrupt CLI files or an ssh error). Mirrors the local content check: callers
  * treat null as "needs sync" rather than crashing. The remote file can only be
- * hashed remotely, so the probe reuses the remote node (guaranteed ≥ 22 by
- * [probeRemoteNode]) instead of the shim's `-v` — an unchanged version number
- * is not trusted as "same CLI" (GUI-only releases can ship new bytes without
- * bumping the bundled version, spec: desktop-distribution.md 「内置 CLI 一致保障」 scenarios
- * 3/7). Verifies all three bundle files exist (a `-v`-able shim + package.json
- * + wave.mjs) before hashing, so a partial copy is treated as needing sync.
+ * hashed remotely, so the probe runs a small script on `runtimePath` (the
+ * managed runtime — the shim's `-v` would execute the CLI, and an unchanged
+ * version number is not trusted as "same CLI" anyway: GUI-only releases can
+ * ship new bytes without bumping the bundled version, spec:
+ * desktop-distribution.md 「内置 CLI 一致保障」 scenarios 3/7). Verifies all three bundle
+ * files exist (a `-v`-able shim + package.json + wave.mjs) before hashing, so a
+ * partial copy is treated as needing sync.
  */
 async function getRemoteBundleSha256(
   host: string,
   homeDir: string,
+  runtimePath?: string,
 ): Promise<string | null> {
   const cliDir = remoteCliDir(homeDir);
   const probe =
-    `node -e ` +
+    `${nodeCommand(runtimePath)} -e ` +
     shellQuote(
       "const fs=require('fs'),crypto=require('crypto');" +
         "const dir=process.argv[1];" +
@@ -427,33 +781,39 @@ async function getRemoteBundleSha256(
 
 export interface RemoteCliUpToDateResult {
   binaryPath: string;
+  /** Node that runs the CLI on the host (see [RemoteCliInfo.runtimePath]). */
+  runtimePath: string;
   /** True when the CLI was (re)installed by this call. */
   upgraded: boolean;
 }
 
 /**
  * Ensure the remote CLI at ~/.wave/cli/desktop matches the bundled CLI's bytes
- * (spec: desktop-distribution.md 「内置 CLI 一致保障」 scenarios 3/6/7). The probe hashes
- * the remote `dist/bundle/wave.mjs`; a null result (missing/corrupt) or a hash
- * differing from `source.bundleSha256` triggers the atomic bundle push. GUI
- * upgrades that ship an unchanged bundle compare equal and push nothing
- * (scenario 7); GUI-only releases with changed bytes but an unchanged version
- * still push. The caller decides what to do about the still-running old daemon.
+ * (spec: desktop-distribution.md 「内置 CLI 一致保障」 scenarios 3/6/7). The managed
+ * runtime is resolved first; it is what runs both the hash probe and — later —
+ * the CLI itself, on every host kind. A null hash
+ * (missing/corrupt) or one differing from `source.bundleSha256` triggers the
+ * atomic bundle push. GUI upgrades that ship an unchanged bundle compare equal
+ * and push nothing (scenario 7); GUI-only releases with changed bytes but an
+ * unchanged version still push. The caller decides what to do about the
+ * still-running old daemon.
  */
 export async function ensureRemoteCliUpToDate(
   host: string,
   source: BundledCliSource,
   homeDir: string,
+  onStage?: StartupStageReporter,
 ): Promise<RemoteCliUpToDateResult> {
   const binaryPath = remoteCliShimPath(homeDir);
-  await probeRemoteNode(host);
-  const current = await getRemoteBundleSha256(host, homeDir);
+  const runtimePath = await ensureRemoteRuntime(host, homeDir, onStage);
+  const current = await getRemoteBundleSha256(host, homeDir, runtimePath);
   if (current !== null && current === source.bundleSha256) {
-    return { binaryPath, upgraded: false };
+    return { binaryPath, runtimePath, upgraded: false };
   }
   // current is null (corrupt/missing) or differs from the bundled bytes → sync.
+  notifyStage(onStage, "syncingCli");
   await pushRemoteCliBundle(host, source, homeDir);
-  return { binaryPath, upgraded: true };
+  return { binaryPath, runtimePath, upgraded: true };
 }
 
 /** Cap for the file panel's remote read: first N lines / bytes are enough. */
@@ -550,8 +910,8 @@ export async function readRemoteFile(
 
 // ── Remote daemon (后台模式) ─────────────────────────────────────
 //
-// 远端 daemon = `nohup wave --daemon <socket>` 常驻进程（nohup+重定向使 ssh
-// 只等启动器 fork 即返回，见 specs「SSH 远程主机」）。桌面端通过
+// 远端 daemon = `nohup <托管运行时> <shim> --daemon <socket>` 常驻进程（nohup+
+// 重定向使 ssh 只等启动器 fork 即返回，见 specs「SSH 远程主机」）。桌面端通过
 // `ssh -N -L` 转发后复用同一套 JSON-RPC 客户端，因此断线重连只换传输层，
 // 会话与挂起审批都在 daemon 进程里存活。本地转发端在 POSIX 是 unix socket、
 // Windows 是 127.0.0.1 的 TCP 端口（Windows OpenSSH 无法 bind 本地 unix
@@ -603,19 +963,24 @@ export function localDaemonSocketPath(host: string): string {
  * True when the remote daemon socket exists AND accepts a probe connection.
  * `test -S` alone can't tell a live daemon from a stale socket left by a
  * crashed one — the daemon would never be relaunched. Probe with node's
- * `net.connect` (node is required to run wave anyway): connect → alive,
- * failure/refused → dead, and `ensureRemoteDaemon` relaunches (the daemon
- * cleans the stale socket itself on start).
+ * `net.connect` on the host's runtime (`runtimePath`, i.e. the managed node;
+ * omitted only when the caller has none yet, which falls back to a PATH node):
+ * connect → alive, failure/refused → dead, and `ensureRemoteDaemon` relaunches
+ * (the daemon cleans the stale socket itself on start).
  */
 export async function remoteDaemonAlive(
   host: string,
   socketPath: string,
+  runtimePath?: string,
 ): Promise<boolean> {
   const probeScript = `const s=require('net').connect(${JSON.stringify(socketPath)});s.on('connect',()=>process.exit(0));s.on('error',()=>process.exit(1));setTimeout(()=>process.exit(1),3000)`;
   try {
     await execFileAsync(
       "ssh",
-      await remoteCommand(host, `node -e ${shellQuote(probeScript)}`),
+      await remoteCommand(
+        host,
+        `${nodeCommand(runtimePath)} -e ${shellQuote(probeScript)}`,
+      ),
       {
         timeout: PROBE_TIMEOUT_MS,
       },
@@ -627,30 +992,35 @@ export async function remoteDaemonAlive(
 }
 
 /**
- * Launch the remote daemon detached: `nohup <binary> --daemon <socket>
- * </dev/null >/dev/null 2>&1 &`. nohup + the redirects detach the process from
- * the ssh session and make ssh return immediately after the launcher forks —
- * the daemon keeps running when the tunnel/desktop app goes away.
+ * Launch the remote daemon detached: `nohup <runtime> <entry> --daemon <socket>
+ * </dev/null >/dev/null 2>&1 &`. The runtime is passed explicitly instead of
+ * relying on the shim's shebang: on a host without a system node the shebang
+ * resolves nothing, and the managed runtime is the only guaranteed interpreter.
+ * nohup + the redirects detach the process from the ssh session and make ssh
+ * return immediately after the launcher forks — the daemon keeps running when
+ * the tunnel/desktop app goes away.
  */
 export async function startRemoteDaemon(
   host: string,
+  runtimePath: string,
   binaryPath: string,
   socketPath: string,
 ): Promise<void> {
-  const command = `nohup ${shellQuote(binaryPath)} --daemon ${shellQuote(socketPath)} </dev/null >/dev/null 2>&1 &`;
+  const command = `nohup ${nodeCommand(runtimePath)} ${shellQuote(binaryPath)} --daemon ${shellQuote(socketPath)} </dev/null >/dev/null 2>&1 &`;
   await execFileAsync("ssh", await remoteCommand(host, command), {
     timeout: PROBE_TIMEOUT_MS,
   });
 }
 
-/** Poll `test -S` until the daemon socket appears (or the start timeout elapses). */
+/** Poll the socket probe until the daemon appears (or the start timeout elapses). */
 export async function waitForRemoteDaemon(
   host: string,
   socketPath: string,
+  runtimePath?: string,
 ): Promise<void> {
   const deadline = Date.now() + DAEMON_START_TIMEOUT_MS;
   while (Date.now() < deadline) {
-    if (await remoteDaemonAlive(host, socketPath)) return;
+    if (await remoteDaemonAlive(host, socketPath, runtimePath)) return;
     await new Promise((resolve) =>
       setTimeout(resolve, DAEMON_POLL_INTERVAL_MS),
     );
@@ -679,14 +1049,15 @@ export async function killRemoteDaemon(
   );
 }
 
-/** Poll remoteDaemonAlive until the daemon is gone (or the start timeout elapses). */
+/** Poll the socket probe until the daemon is gone (or the start timeout elapses). */
 export async function waitForRemoteDaemonExit(
   host: string,
   socketPath: string,
+  runtimePath?: string,
 ): Promise<void> {
   const deadline = Date.now() + DAEMON_START_TIMEOUT_MS;
   while (Date.now() < deadline) {
-    if (!(await remoteDaemonAlive(host, socketPath))) return;
+    if (!(await remoteDaemonAlive(host, socketPath, runtimePath))) return;
     await new Promise((resolve) =>
       setTimeout(resolve, DAEMON_POLL_INTERVAL_MS),
     );
@@ -697,33 +1068,31 @@ export async function waitForRemoteDaemonExit(
 /**
  * Ensure a wave daemon runs on `host` backed by THIS app's bundled CLI (spec:
  * desktop-distribution.md 「内置 CLI 一致保障」):
- * 1. ensureRemoteCliUpToDate — push the bundled CLI over ssh when the remote
- *    copy (~/.wave/cli/desktop) is missing, corrupt, or its bytes differ from
- *    the bundled `dist/bundle/wave.mjs` (decoupled from the GUI version). Sync
- *    failures surface via onNotice and fall back to the existing install; the
- *    next reconnect retries.
+ * 1. ensureRemoteCliUpToDate — resolve/install the managed runtime, then push
+ *    the bundled CLI over ssh when the remote copy (~/.wave/cli/desktop) is
+ *    missing, corrupt, or its bytes differ from the bundled
+ *    `dist/bundle/wave.mjs` (decoupled from the GUI version). Failures surface
+ *    via onNotice and fall back to whatever install already exists; the next
+ *    reconnect retries.
  * 2. After a successful sync, the still-running old daemon executes pre-sync
  *    code — it MUST be restarted or the sync never takes effect. Kill it and
  *    wait for its socket to release before relaunching.
- * 3. Reuse a live daemon, else launch one detached and wait for its socket.
- *    Returns the remote daemon socket path to forward.
+ * 3. Reuse a live daemon, else launch one detached through the managed runtime
+ *    and wait for its socket. Returns the remote daemon socket path to forward.
  */
 export async function ensureRemoteDaemon(
   host: string,
   source: BundledCliSource,
   onNotice?: (message: string) => void,
+  onStage?: StartupStageReporter,
 ): Promise<string> {
+  notifyStage(onStage, "checkingEnvironment");
   const homeDir = await getRemoteHomeDir(host);
   const socketPath = remoteDaemonSocketPath(homeDir);
 
-  let binaryPath: string | undefined;
-  let upgraded = false;
+  let info: RemoteCliUpToDateResult | undefined;
   try {
-    ({ binaryPath, upgraded } = await ensureRemoteCliUpToDate(
-      host,
-      source,
-      homeDir,
-    ));
+    info = await ensureRemoteCliUpToDate(host, source, homeDir, onStage);
   } catch (error) {
     console.warn(
       `[remoteCli] ${host} wave CLI 同步失败，继续使用现有安装:`,
@@ -734,16 +1103,32 @@ export async function ensureRemoteDaemon(
     );
   }
 
-  if (upgraded) {
+  if (info?.upgraded) {
     await killRemoteDaemon(host, socketPath);
-    await waitForRemoteDaemonExit(host, socketPath);
+    await waitForRemoteDaemonExit(host, socketPath, info.runtimePath);
   }
 
-  if (await remoteDaemonAlive(host, socketPath)) return socketPath;
-  binaryPath ??= (await resolveRemoteWaveBinary(host, source, homeDir, false))
-    .binaryPath;
-  await startRemoteDaemon(host, binaryPath, socketPath);
-  await waitForRemoteDaemon(host, socketPath);
+  if (info) {
+    if (await remoteDaemonAlive(host, socketPath, info.runtimePath))
+      return socketPath;
+  } else if (await remoteDaemonAlive(host, socketPath)) {
+    // Sync failed, but a daemon from an earlier connect is still serving —
+    // reuse it rather than failing the whole connection over a transient
+    // sync error.
+    return socketPath;
+  }
+
+  // No live daemon: resolve the CLI (no second install attempt — a failed sync
+  // must not double-install within one connection), then launch it.
+  const resolved =
+    info ?? (await resolveRemoteWaveBinary(host, source, homeDir, false));
+  await startRemoteDaemon(
+    host,
+    resolved.runtimePath,
+    resolved.binaryPath,
+    socketPath,
+  );
+  await waitForRemoteDaemon(host, socketPath, resolved.runtimePath);
   return socketPath;
 }
 

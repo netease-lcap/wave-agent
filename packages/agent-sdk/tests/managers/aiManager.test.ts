@@ -233,6 +233,58 @@ describe("AIManager", () => {
     expect(aiService.callAgent).toHaveBeenCalled();
   });
 
+  it("forwards the x-codechat-quota-* headers of a successful call to the host", async () => {
+    vi.mocked(aiService.callAgent).mockImplementationOnce(async () => ({
+      content: "Test response",
+      usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
+      tool_calls: [],
+      response_headers: {
+        "x-codechat-quota-status": "allowed_warning",
+        "x-codechat-quota-weekly-utilization": "82",
+        "x-unrelated-header": "ignored",
+      },
+    }));
+    const onQuotaHeaders = vi.fn();
+    const manager = new AIManager(container, {
+      workdir: "/test/workdir",
+      stream: false,
+      callbacks: { onQuotaHeaders },
+    });
+
+    await manager.sendAIMessage();
+
+    expect(onQuotaHeaders).toHaveBeenCalledWith({
+      "x-codechat-quota-status": "allowed_warning",
+      "x-codechat-quota-weekly-utilization": "82",
+    });
+  });
+
+  it("forwards quota headers carried by an error response (402 / 429)", async () => {
+    // 402 阻断和上游 429/5xx 的错误响应同样带额度头——「被拦下」这一刻正是
+    // 用户最需要看到读数的时刻（spec: desktop/desktop-account.md 场景 10）。
+    vi.mocked(aiService.callAgent).mockImplementationOnce(async () => {
+      throw Object.assign(new Error("weekly quota exceeded"), {
+        headers: new Headers({
+          "x-codechat-quota-status": "rejected",
+          "x-codechat-quota-code": "weekly_limit",
+        }),
+      });
+    });
+    const onQuotaHeaders = vi.fn();
+    const manager = new AIManager(container, {
+      workdir: "/test/workdir",
+      stream: false,
+      callbacks: { onQuotaHeaders },
+    });
+
+    await manager.sendAIMessage();
+
+    expect(onQuotaHeaders).toHaveBeenCalledWith({
+      "x-codechat-quota-status": "rejected",
+      "x-codechat-quota-code": "weekly_limit",
+    });
+  });
+
   it("does not send disableThinkingOptions in the agent loop", async () => {
     await aiManager.sendAIMessage();
     const options = vi.mocked(aiService.callAgent).mock.calls[0][0];

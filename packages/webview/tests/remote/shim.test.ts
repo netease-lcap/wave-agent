@@ -27,6 +27,8 @@ const ENTERPRISE_URL = "https://codechat.example.com/remote/?host=host-1";
 const LOGIN_PREFIX = "/login?redirect=";
 /** The one navigation every unusable-credential path ends with. */
 const LOGIN_HOP = `${LOGIN_PREFIX}${encodeURIComponent("/remote/?host=host-1")}`;
+/** 远控页一页的条数（`remote/shim.js` 的 `CONFIG.firstPageLimit` 默认值）。 */
+const PAGE_LIMIT = 60;
 
 class FakeSocket {
   url: string;
@@ -968,7 +970,7 @@ describe("remote page shim — talking to the host", () => {
     ]);
     expect(
       page.requests().find((frame) => frame.method === "getMessages")?.params,
-    ).toEqual({ limit: 100 });
+    ).toEqual({ limit: PAGE_LIMIT });
     // The whole point: `params.result` is what reached the page. Reading
     // `frame.result` left every reply `undefined`, so this object arrived with
     // no sessions and no messages — the page then showed "电脑侧还没有正在跑的
