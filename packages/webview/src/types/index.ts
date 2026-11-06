@@ -1032,6 +1032,12 @@ export interface ChatState {
   // the target session and shows the sweep loading animation over the message
   // + input area while the host connects and replays the transcript.
   isRestoring: boolean;
+  /**
+   * 加载态下方那一行进度文案（spec ui/stdio-transport.md「首次启动的进度文案」）。
+   * `null` = 没有阶段在进行（或这次启动的每一步都太快、全部低于显示阈值）。
+   * 由宿主推 `loadingStage` 决定，webview 只显示、不拼装。
+   */
+  loadingStage: string | null;
   isCommandRunning: boolean;
   shouldClearInput: boolean;
   sessions: SessionMetadata[];
@@ -1271,6 +1277,11 @@ export type ChatAction =
   | { type: "START_STREAMING" }
   | { type: "END_STREAMING" }
   | { type: "SET_COMPACTING"; payload: boolean }
+  | {
+      /** 首次启动 / 恢复的进度文案；`null` 清空（阶段流结束，加载态可能还在）。 */
+      type: "SET_LOADING_STAGE";
+      payload: string | null;
+    }
   | { type: "INPUT_CLEARED" }
   | { type: "SET_SESSIONS"; payload: SessionMetadata[] }
   | { type: "SET_SESSION_STATUS"; payload: SessionListStatus }

@@ -71,21 +71,23 @@ object ManagedRuntime {
      * Absolute path of the `node` executable that runs the bundled CLI.
      *
      * Resolution order: `WAVE_NODE_PATH` → an installed runtime whose marker
-     * matches {[VERSION], current platform} → download + install. [onProgress]
-     * receives user-facing stage messages (the IDE shows them as notifications)
-     * and is invoked only when something actually has to be fetched.
+     * matches {[VERSION], current platform} → download + install. [onStage]
+     * receives [StartupStages] ids (the panel shows them under the loading
+     * animation, spec ui/stdio-transport.md「首次启动的进度文案」) and is invoked
+     * only when something actually has to be fetched — a cached runtime reports
+     * nothing, so the user never reads "正在下载" for a step that never ran.
      *
      * @throws StdioClientException with an actionable message on any failure —
      * never a half-usable state, and never asking the user to install Node.
      */
-    fun nodePath(onProgress: (String) -> Unit = {}): String {
+    fun nodePath(onStage: (String) -> Unit = {}): String {
         cached?.let { return it }
-        val resolved = resolveNode(onProgress)
+        val resolved = resolveNode(onStage)
         cached = resolved
         return resolved
     }
 
-    private fun resolveNode(onProgress: (String) -> Unit): String {
+    private fun resolveNode(onStage: (String) -> Unit): String {
         System.getenv("WAVE_NODE_PATH")?.takeIf { it.isNotBlank() }?.let { override ->
             val file = File(override)
             if (!file.canExecute()) {
@@ -101,7 +103,7 @@ object ManagedRuntime {
         if (markerFile().readTextOrNull()?.trim() == markerBody(platform) && installed.canExecute()) {
             return installed.path
         }
-        install(platform, onProgress)
+        install(platform, onStage)
         return installed.path
     }
 
@@ -281,10 +283,13 @@ object ManagedRuntime {
      * runtime untouched and a half-written `bin/node` can never be observed by
      * a concurrent client.
      */
-    private fun install(platform: String, onProgress: (String) -> Unit) {
+    private fun install(platform: String, onStage: (String) -> Unit) {
         val target = archiveTarget(platform)
-        onProgress("正在获取托管 Node.js 运行时（Node.js $VERSION，${target.archive}）…")
+        onStage(StartupStages.DOWNLOADING_RUNTIME)
         val bytes = download(target)
+        // 下载完就进解压 + 校验 + 原子替换，这一段也有几十秒（慢磁盘 / 杀毒扫描），
+        // 不说一句用户会以为下载还没完。
+        onStage(StartupStages.INSTALLING_RUNTIME)
 
         val live = runtimeDir()
         val staging = File(live.parentFile, "${live.name}.new")

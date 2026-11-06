@@ -22,6 +22,10 @@ import {
   PLUGIN_RELOADED_MESSAGE,
   describeUserPreferencePatch,
 } from "wave-agent-sdk/host";
+import {
+  clearStartupStageText,
+  peekStartupStageText,
+} from "../stdio/startupStage";
 
 /**
  * 插件变更提示里的显示名：优先用 RPC 回包里的 name（install/update 返回
@@ -2280,6 +2284,17 @@ export class MessageHandler {
     windowId?: string,
   ): Promise<void> {
     const session = this.context.getChatSession(viewType || "tab", windowId);
+    // 补发宿主缓存的那条启动阶段（spec ui/stdio-transport.md「首次启动的进度
+    // 文案」）：CLI 自装依赖、宿主拷 CLI 都可能在这个面板挂载之前就报过了，那时
+    // 推出去没人收——现在面板在了，加载动画下方该显示的是最后一步。
+    const startupStage = peekStartupStageText();
+    if (startupStage) {
+      this.context.postMessage(
+        { command: "loadingStage", text: startupStage },
+        viewType,
+        windowId,
+      );
+    }
     if (!session.agent) {
       await this.context.initializeAgent(viewType || "tab", windowId);
     }
@@ -2374,6 +2389,10 @@ export class MessageHandler {
         windowId,
       );
     }
+
+    // 初始状态已送达 = 这条启动阶段流结束（webview 侧的 setInitialState 也会
+    // 自己清一次；这里清的是宿主缓存，别让下一个挂载的面板看到过期的文案）。
+    clearStartupStageText();
   }
 
   private async handleSlashCommandsRequest(

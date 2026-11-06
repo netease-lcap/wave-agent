@@ -82,6 +82,7 @@ import {
   isSandboxRuntimeOnDisk,
   resetSandboxRuntime,
 } from "./sandboxRuntime.js";
+import type { StartupStage } from "../types/stdioProtocol.js";
 
 /** npm registry mirror for China users (same choice as the ripgrep download). */
 export const RUNTIME_DEPS_REGISTRY = "https://registry.npmmirror.com";
@@ -495,6 +496,15 @@ export interface RuntimeDepsOptions {
    * the sandbox never pays its 12MB.
    */
   includeSandbox?: boolean;
+  /**
+   * Called once, right before this batch starts downloading, with
+   * `"downloadingToolDeps"` — the CLI's startup path relays it to the host so
+   * the loading animation can say what the ~25MB is for. Never called when the
+   * batch is already satisfied (a warm cache must not claim it is downloading
+   * anything, spec `ui/stdio-transport.md` 场景 3). Report-only: the callback's
+   * outcome is ignored, and throwing from it must not abort the install.
+   */
+  onStage?: (stage: StartupStage) => void;
 }
 
 const inFlight = new Map<string, Promise<RuntimeDepsResult>>();
@@ -563,6 +573,11 @@ async function runInstall(
   }
 
   const installDir = path.join(cliHome, "node_modules");
+  // Past this point something is genuinely missing, so the batch is about to hit
+  // the network. Report it before the first await — the host's loading animation
+  // is what this caption is for, and it must appear while the download runs, not
+  // after (spec ui/stdio-transport.md 场景 4).
+  notifyStage(options, "downloadingToolDeps");
   // One dependency failing must not skip the others: they degrade independently
   // (a broken image codec has nothing to do with grep).
   const failures: string[] = [];
@@ -643,6 +658,22 @@ async function runInstall(
 function fail(failures: string[], reason: string): void {
   logWarn(`[Wave] ${reason}`);
   failures.push(reason);
+}
+
+/**
+ * Forward a startup stage to the caller's observer. Report-only: a throwing
+ * observer (a host whose write failed, say) must not turn a cosmetic caption
+ * into a failed install.
+ */
+function notifyStage(
+  options: RuntimeDepsOptions | undefined,
+  stage: StartupStage,
+): void {
+  try {
+    options?.onStage?.(stage);
+  } catch {
+    // Ignored on purpose — see the doc comment.
+  }
 }
 
 /** Forget the memoised outcome, and the settled results (tests). */

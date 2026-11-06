@@ -611,6 +611,25 @@ export interface EnsureUIResetMessage extends HostToWebviewMessageBase {
   command: "ensureUIReset";
 }
 
+/**
+ * 首次启动 / 会话恢复的进度文案（spec `ui/stdio-transport.md`「首次启动的进度
+ * 文案」）：加载动画下方那一行「正在下载 Node.js 运行时…」。
+ *
+ * 宿主决定文案（阶段 id → 文案的映射在宿主与 CLI 共用的常量表里），webview 只
+ * 负责显示，不做文案拼装——它不知道这台机器是本地、SSH 还是 WSL。
+ *
+ * `text: null` = 这条阶段流结束了，文案立刻消失：加载态可能还在（工具依赖下载
+ * 失败就是这种情况——只降级、不阻断启动），所以清空必须能独立于加载态下发。
+ *
+ * 广播语义（非请求-响应）：后到覆盖先到，消费侧不需要过期判断——晚到的阶段本来
+ * 就是更新的事实，阶段之间也没有并列关系（同一时刻只有一行）。归属靠 base 的
+ * `paneId`：桌面端只推给此刻正在等这个连接的恢复分屏。
+ */
+export interface LoadingStageMessage extends HostToWebviewMessageBase {
+  command: "loadingStage";
+  text: string | null;
+}
+
 export interface UpdateSessionsMessage extends HostToWebviewMessageBase {
   command: "updateSessions";
   sessions: SessionMetadata[];
@@ -1571,6 +1590,7 @@ export type HostToWebviewMessage =
   | StartStreamingMessage
   | EndStreamingMessage
   | EnsureUIResetMessage
+  | LoadingStageMessage
   | UpdateSessionsMessage
   | UpdateCurrentSessionMessage
   | SessionRenamedMessage

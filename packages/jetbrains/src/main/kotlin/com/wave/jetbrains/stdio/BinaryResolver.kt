@@ -34,8 +34,14 @@ object BinaryResolver {
     private val isWindows = System.getProperty("os.name").lowercase().startsWith("win")
     private val lookupCmd = if (isWindows) "where" else "which"
 
-    /** Optional callback invoked when the bundled CLI is copied. */
-    var onInstall: ((String) -> Unit)? = null
+    /**
+     * Optional callback invoked with a [StartupStages] id whenever this resolver
+     * (or [ManagedRuntime] on its behalf) has to copy or download something —
+     * the panel turns it into the one line under the loading animation
+     * (spec ui/stdio-transport.md「首次启动的进度文案」). Nothing is reported
+     * when everything is already on disk.
+     */
+    var onStage: ((String) -> Unit)? = null
 
     /**
      * Resolve the runtime CLI entry (`~/.wave/cli/jetbrains/bin/wave-code.js`),
@@ -71,7 +77,7 @@ object BinaryResolver {
      * probe here on purpose: one runtime, one version, reproducible everywhere.
      * Result cached for the IDE session.
      */
-    fun resolveNode(): String = ManagedRuntime.nodePath { onInstall?.invoke(it) }
+    fun resolveNode(): String = ManagedRuntime.nodePath { onStage?.invoke(it) }
 
     // ------------------------------------------------------------------
     // Bundled CLI → ~/.wave/cli/jetbrains
@@ -108,7 +114,7 @@ object BinaryResolver {
                 resourceHash("wave-cli/dist/bundle/wave.mjs") != fileHash(runtimeBundle)
 
         if (needCopy) {
-            onInstall?.invoke("正在准备内置 wave CLI…")
+            onStage?.invoke(StartupStages.SYNCING_CLI)
             // Replace the CLI files only — the runtime dependencies the CLI
             // installed live in the shared ~/.wave/cli dir, so an upgrade never
             // forces re-downloading them.
