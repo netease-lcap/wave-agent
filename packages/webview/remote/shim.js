@@ -93,12 +93,15 @@
      * process — the list has no other rule for what the page may open. */
     sessionId: query.get("session") || PAGE_CONFIG.sessionId || "",
     /**
-     * 首屏尾段：只取最近这一段，不取整条线程（长会话能到 13 MB）。**没有更早可
-     * 翻**——拉到顶就是这条会话在手机上的起点，页面不发请求、也不提示。
+     * 一页的条数：首屏尾段与往上翻的每一页都用它（spec `remote/remote-web.md`
+     * 「手机上往上翻更早的消息」、`ui/message-rendering-system.md`「首屏一页，上翻
+     * 按需取更早」）。
      *
-     * 为什么是 100：按实测 5.7 KB/条，100 条约 0.57 MB，而中继的每订阅者缓冲是
-     * 1 MiB，超出的帧**被静默丢弃**（不报错）。机器侧对超预算的回包还会从最早一条
-     * 开始丢，所以这个数是一个经济性取值，真正的保证在机器侧。
+     * 为什么不取整条线程：长会话能到 13 MB。为什么是 100：按实测 5.7 KB/条，100 条
+     * 约 0.57 MB，而中继的每订阅者缓冲是 1 MiB，超出的帧**被静默丢弃**（不报错）。
+     * 机器侧对超预算的回包还会从最早一条开始丢，所以这个数是一个经济性取值，真正的
+     * 保证在机器侧——一页被裁短只说明这条会话的单条更大，**不等于翻不动**：还有没有
+     * 更早由宿主回包的 `hasMore` 说（见 `hasEarlier`）。
      */
     firstPageLimit:
       Number(query.get("limit")) > 0
@@ -305,8 +308,14 @@
   var pending = {};
   var outbox = [];
   var warned = {};
-  /** 这一页看过的当前会话内容：首屏尾段，之后只靠 `since` 增量往后补。 */
+  /** 这一页看过的当前会话内容：首屏尾段，之后只靠 `since` 增量往后补；上翻取回的页接在最前面。 */
   var messages = [];
+  /**
+   * 「已加载内容之前还有更早的吗」——页面顶部上翻开关的唯一判据。值始终来自宿主
+   * 的回包（首屏那次 `getMessages` 的 `hasMore`，以及每一页上翻的回包），**不按条数
+   * 猜**：一页被帧预算裁短不代表到底（spec `remote/remote-web.md` 场景 5）。
+   */
+  var hasEarlier = false;
   /** The serving process's live sessions, as the shared session list renders them. */
   var sessions = [];
   var sessionId = CONFIG.sessionId;
@@ -1351,7 +1360,7 @@
     fatal = "";
     connectedOnce = false;
     streaming = false;
-    messages = [];
+    resetMessages();
     sessions = [];
     shownApprovals = {};
     pending = {};
@@ -1894,9 +1903,18 @@
         // Two shapes: the full array (a host snapshot) and the content-free
         // signal the remote path sends instead. The signal is the norm here —
         // 13 MB of displayMessages must never reach the phone.
+        //
+        // 这条通道上机器侧**只发**那个无内容的信号（`remoteControlService`
+        // 「结构变化只发信号」），整份数组是别的宿主才有的形态。所以这一支拿不到
+        // 「还有更早」的真值，原样带上一次读到的那个值：猜错的代价是多要一页（按 id
+        // 去重后列表不变），而在这里擅自关掉开关会让已经翻过的历史再也翻不回来。
         if (Array.isArray(p.messages)) {
           messages = p.messages;
-          post({ command: "updateMessages", messages: messages });
+          post({
+            command: "updateMessages",
+            messages: messages,
+            hasEarlier: hasEarlier,
+          });
         } else if (p.full) {
           // The signal that stands in for a frame too large to send. It may
           // have been an approval request (those carry the command and the
@@ -2017,6 +2035,16 @@
 
   // ── Snapshot / reconciliation (§5 of the issue) ──────────────────
 
+  /**
+   * 丢掉这一页看的那份内容。`hasEarlier` 与它同生共死：影子列表清空之后，
+   * 「还有更早」就没有锚点可依，留着它只会让页面拿一个不存在的 id 去要一页。
+   * 除了换机器那一次，调用点后面都紧跟 `pullSnapshot()`，它会把两个值一起重读。
+   */
+  function resetMessages() {
+    messages = [];
+    hasEarlier = false;
+  }
+
   /** 首屏：一条会话的尾段（最近 `firstPageLimit` 条），加上此刻等着审批的卡。 */
   function pullSnapshot() {
     // Nothing to ask: `boot` already put the reason on screen (not logged in,
@@ -2052,7 +2080,13 @@
       })
       .then(function (result) {
         if (token !== pullToken) return null;
-        if (result) messages = result.messages || [];
+        if (result) {
+          messages = result.messages || [];
+          // 首屏那一页也带「还有更早」，与其余三端同一条判据。缺省（老机器、或一条
+          // 一页都装不下的极端回包）就是「翻不动」——降级方向绝不出现空白页
+          // （`remote-web.md` 场景 10）。
+          hasEarlier = result.hasMore === true;
+        }
         // The context ring lives outside the reducer (the webview keeps it in
         // its own state), so it is posted rather than folded into the snapshot;
         // every `getMessages` reply carries the percent, which is why no extra
@@ -2082,6 +2116,9 @@
         post({
           command: "setInitialState",
           messages: messages,
+          // 整表下发，所以上翻开关跟着这份列表一起说（缺省 = 老机器，页面不提供
+          // 上翻）。上翻取回的页已经在 `messages` 里，深度与开关一起保留。
+          hasEarlier: hasEarlier,
           // Read off `getSessionInfo`, not assumed: an empty todo list, a quiet
           // queue or "not compacting" in the snapshot must mean the machine
           // *said so*, not that this build cannot ask (scenario 26). Absent
@@ -2166,7 +2203,14 @@
         if (result.reset) return pullSnapshot();
         var later = result.messages || [];
         for (var i = 0; i < later.length; i++) messages.push(later[i]);
-        post({ command: "updateMessages", messages: messages });
+        // 这一份是**整表**（影子列表里也放着上翻取回的页），所以上翻开关随它一起
+        // 重述：不带上它，一次结构变化就会把用户翻出来的历史关掉
+        // （`remote-web.md` 场景 8）。
+        post({
+          command: "updateMessages",
+          messages: messages,
+          hasEarlier: hasEarlier,
+        });
         // Same reply, same rule as the snapshot's: the percent rides every
         // `getMessages` answer, so a reconnect realigns the ring with the
         // delta it was already pulling — no read of its own.
@@ -2835,6 +2879,81 @@
         });
         return;
 
+      // 上翻取更早（spec `remote/remote-web.md`「手机上往上翻更早的消息」）：与其余
+      // 三端同一条协议，页面要一页、宿主读一页、原样回一页，`hasMore` / `anchorLost`
+      // 也从机器的回包照抄（那边的 `getMessages({before, limit})` 就是同一个窗口参数，
+      // 白名单本来就放行 `getMessages`）。
+      //
+      // 唯一与三端不同的地方是**影子列表要接住这一页**：这一侧的整表重发（`resync`）
+      // 把 `messages` 整份发下去，不接住就等于一次结构变化把用户翻出来的历史冲掉
+      // （场景 8）。
+      //
+      // 失败（链路断开 / 那一页连一条都装不进单帧预算 → 机器侧 `-32603`）回一个空页 +
+      // `hasMore: false`：与其余三端「失败回空页、停止再要」同形，页面不新增提示条，
+      // 下一次滚到顶再试（场景 6）。
+      case "loadEarlierMessages": {
+        var earlierBefore = typeof msg.before === "string" ? msg.before : "";
+        var earlierRequestId = msg.requestId;
+        // 没有锚点就没有可问的东西：页面只在列表非空时开口。
+        if (!earlierBefore) return;
+        // 会话在请求在飞的时候换了（切会话、删除、换机器）：那一页描述的是上一份内容，
+        // 既不能接进新会话的影子列表，也不能让页面的「正在加载」一直转下去。
+        var earlierToken = pullToken;
+        request("getMessages", {
+          before: earlierBefore,
+          limit: CONFIG.firstPageLimit,
+        })
+          .then(function (result) {
+            // 视图已经换了一份内容（切会话 / 删除 / 换机器）：那一页属于上一份，
+            // 不接进影子列表，回一个空页让页面的「正在加载」收起来——降级方向是
+            // 「翻不动」，绝不把上一份的历史接进新会话（场景 10）。
+            if (earlierToken !== pullToken) {
+              post({
+                command: "earlierMessages",
+                requestId: earlierRequestId,
+                messages: [],
+                hasMore: false,
+              });
+              return;
+            }
+            var page = (result && result.messages) || [];
+            var more = !!(result && result.hasMore === true);
+            // 锚点在转录里没了（rewind / 截断 / 换会话）：页与开关都别动，只把
+            // `anchorLost` 交给页面——它换下一个已知 id 重试（场景 7）。
+            var lost = !!(result && result.anchorLost === true);
+            if (page.length && !lost) {
+              // 影子列表按 id 去重：它会被整份发下去（`resync` / 快照不含这一步，
+              // 但整表重发是 `SET_MESSAGES`，不做去重），同一页到两次就会在列表里
+              // 出现两条一样的消息。
+              var known = {};
+              for (var k = 0; k < messages.length; k++)
+                known[messages[k].id] = true;
+              var older = [];
+              for (var j = 0; j < page.length; j++)
+                if (!known[page[j].id]) older.push(page[j]);
+              messages = older.concat(messages);
+              hasEarlier = more;
+            }
+            post({
+              command: "earlierMessages",
+              requestId: earlierRequestId,
+              messages: lost ? [] : page,
+              hasMore: more,
+              ...(lost ? { anchorLost: true } : {}),
+            });
+          })
+          .catch(function (err) {
+            warnOnce("earlier", "上翻取更早失败：" + err.message);
+            post({
+              command: "earlierMessages",
+              requestId: earlierRequestId,
+              messages: [],
+              hasMore: false,
+            });
+          });
+        return;
+      }
+
       case "restoreSession": {
         // "Show me that conversation in this view" — answered **locally**, which
         // is the whole point of the phone being a control surface. The machine's
@@ -2854,7 +2973,8 @@
         }
         sessionId = target.id;
         picked = true;
-        messages = [];
+        // 回看深度不跨会话累积（`remote-web.md` 场景 9）：换会话就从首屏一页重来。
+        resetMessages();
         // Re-pull instead of asking the machine to switch: the target is already
         // live, so its tail and its pending approvals come through the same
         // `getMessages` + `listPendingPermissions` path a cold start uses.
@@ -2904,7 +3024,7 @@
             if (wasCurrent) {
               // The conversation is about to stop existing: drop the window now so
               // a re-pull cannot show the tail of a session that is already gone.
-              messages = [];
+              resetMessages();
             }
             return loadSessions().then(function () {
               post({ command: "updateSessions", sessions: sessions });
@@ -3518,7 +3638,7 @@
             // else on the computer moves.
             sessionId = result.sessionId;
             picked = true;
-            messages = [];
+            resetMessages();
             pullSnapshot();
             // 把用户选的那个目录记进机器侧的最近目录（spec
             // core/recent-workdirs.md）：记的是 `msg.workdir`——worktree 时它是
@@ -3593,7 +3713,7 @@
           .then(function (result) {
             sessionId = result.sessionId;
             picked = true;
-            messages = [];
+            resetMessages();
             pullSnapshot();
             post({
               command: "resumeDiskSessionResult",
