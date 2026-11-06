@@ -63,6 +63,6 @@ export const CONFIG_ERRORS = {
     "Agent configuration requires model. Provide via constructor or WAVE_MODEL environment variable.",
   MISSING_FAST_MODEL:
     "Agent configuration requires fastModel. Provide via constructor or WAVE_FAST_MODEL environment variable.",
-  INVALID_WAVE_MAX_INPUT_TOKENS: "Token limit must be a positive integer.",
+  INVALID_WAVE_CONTEXT_WINDOW: "Context window must be a positive integer.",
   EMPTY_BASE_URL: "Base URL cannot be empty string.",
 } as const;

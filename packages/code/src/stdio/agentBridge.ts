@@ -1345,7 +1345,7 @@ export class AgentBridge {
    */
   private emitContextUsage(agent: Agent): void {
     const tokens = agent.latestTotalTokens;
-    const max = agent.getMaxInputTokens();
+    const max = agent.getContextWindow();
     const maxOutput = agent.getMaxOutputTokens?.() ?? 32_000;
     if (tokens > 0 && max > 0) {
       this.emit(
@@ -1365,7 +1365,7 @@ export class AgentBridge {
    */
   private contextUsagePercentOf(agent: Agent): number | undefined {
     const tokens = agent.latestTotalTokens;
-    const max = agent.getMaxInputTokens();
+    const max = agent.getContextWindow();
     const maxOutput = agent.getMaxOutputTokens?.() ?? 32_000;
     if (tokens > 0 && max > 0) {
       return percentOf(tokens, max, maxOutput);
@@ -3287,7 +3287,7 @@ export class AgentBridge {
         // request (fresh total) and on session restore (the persisted total),
         // so the webview button shows real usage without waiting for a turn —
         // aligned with the CLI, which reads the same callback (spec 场景 5/6).
-        const max = ctx.agent?.getMaxInputTokens() ?? 0;
+        const max = ctx.agent?.getContextWindow() ?? 0;
         const maxOutput = ctx.agent?.getMaxOutputTokens?.() ?? 32_000;
         if (max > 0) {
           this.emit(
@@ -3357,6 +3357,13 @@ export class AgentBridge {
       },
       onMcpServersChange: (servers: McpServerStatus[]) => {
         this.emit("mcpServersChange", { servers }, ctx.registeredSessionId);
+      },
+      onQuotaHeaders: (headers: Record<string, string>) => {
+        // 额度响应头（codechat proxy 每次模型调用都发，spec:
+        // desktop/desktop-account.md「额度响应头」）：桌面端宿主据此刷新账户卡片的
+        // 用量读数，是 60s 轮询删除后的主要刷新源。原样透传 —— 字段解析与映射都
+        // 在消费方。不进 remoteWire：远程页不渲染账户卡片。
+        this.emit("quotaHeaders", { headers }, ctx.registeredSessionId);
       },
       onNotificationMessageAdded: (params) => {
         // The LAST matching message, not the first: one task can notify more

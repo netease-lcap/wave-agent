@@ -31,8 +31,12 @@ export function extractLatestTotalTokens(
  * Anchors on the most recent message carrying real usage (the last API
  * response): that response's total_tokens (OpenAI-compatible semantics —
  * already includes cache hits) plus a rough character-based estimate for
- * every message added after it. Falls back to a pure character estimate
- * when no usage anchor exists yet (e.g. the first request of a session).
+ * every message added after it. The usage already covers the system prompt,
+ * tool schema and injected dynamic context, so those must never be added
+ * again as a fixed request overhead — doing so counts the same tokens twice
+ * and triggers compaction well before the usage indicator reaches 100%.
+ * Falls back to a pure character estimate when no usage anchor exists yet
+ * (e.g. the first request of a session).
  */
 export function estimateContextTokens(messages: Message[]): number {
   for (let i = messages.length - 1; i >= 0; i--) {
@@ -60,34 +64,21 @@ export const AUTOCOMPACT_BUFFER_TOKENS = 13_000;
 
 /**
  * Calculate the context budget at which automatic compaction should start.
- * The ordinary request output limit is also the upper bound for the summary
- * output reservation, matching Claude Code's effective-window semantics.
+ * The context window is shared by a request's input and output, so the
+ * summary output reservation is subtracted from it first; the ordinary
+ * request output limit is the upper bound for that reservation, matching
+ * Claude Code's effective-window semantics.
  */
 export function getAutoCompactThreshold(
-  maxInputTokens: number,
+  contextWindow: number,
   maxOutputTokens: number,
 ): number {
   return Math.max(
     0,
-    maxInputTokens -
+    contextWindow -
       Math.min(maxOutputTokens, COMPACTION_SUMMARY_MAX_OUTPUT_TOKENS) -
       AUTOCOMPACT_BUFFER_TOKENS,
   );
-}
-
-/** Estimate fixed request content that is not represented by Message history. */
-export function estimateRequestOverhead(
-  systemPrompt: unknown,
-  tools: unknown,
-  dynamicContext?: unknown,
-): number {
-  let total = 0;
-  for (const value of [systemPrompt, tools, dynamicContext]) {
-    if (value !== undefined && value !== null) {
-      total += estimateTokens(JSON.stringify(value), "json");
-    }
-  }
-  return total;
 }
 
 export function roughTokenCountForMessages(messages: Message[]): number {

@@ -142,13 +142,20 @@ export function buildApplicationMenuTemplate(
         // macOS fileMenu = Close Window (Cmd+W) — keep the item so the window
         // can still be closed from the menu, but strip the accelerator (an
         // explicit '' overrides the role default) so 关闭分屏 is the sole
-        // Cmd+W claimant. Windows/Linux fileMenu = Quit.
+        // Cmd+W claimant. Windows/Linux fileMenu = Quit, and the quit gets an
+        // explicit Ctrl+Q: Electron's `quit` role carries no accelerator on
+        // Windows (Linux's default happens to be Ctrl+Q), which left Windows
+        // users with no keyboard way out once 关闭 = 最小化到托盘 made Alt+F4
+        // hide the window instead of quitting. Ctrl+Q matches Claude Code
+        // Desktop's 文件 → Quit. Deliberately NOT `CmdOrCtrl+Q`: on macOS the
+        // app menu's `quit` role already owns Cmd+Q, and this menu is the
+        // macOS Close Window branch anyway.
         ...(isMac
           ? ([
               { role: "close", accelerator: "", label: "关闭窗口" },
             ] as MenuItemConstructorOptions[])
           : ([
-              { role: "quit", label: "退出" },
+              { role: "quit", accelerator: "Ctrl+Q", label: "退出" },
             ] as MenuItemConstructorOptions[])),
       ],
     },

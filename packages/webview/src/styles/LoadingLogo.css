@@ -5,9 +5,35 @@
 .loading-logo-container {
   flex: 1;
   display: flex;
+  /* 进度文案在标记正下方、和标记一起居中（不要让它落到容器底部）。 */
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 16px;
   min-height: 0;
+}
+
+/* 首次启动 / 恢复的进度文案（spec ui/stdio-transport.md）。单行、居中、超长
+   截断：主机名可能很长，但它是解释「为什么慢」的线索，不是撑开布局的内容。 */
+.loading-stage {
+  max-width: min(80%, 420px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  line-height: 18px;
+  text-align: center;
+  color: var(--vscode-descriptionForeground, #9d9d9d);
+  animation: loading-stage-fade-in 160ms ease-out;
+}
+
+@keyframes loading-stage-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 /* Desktop session-restore overlay: covers the whole message + input area while
@@ -88,5 +114,8 @@
   }
   .loading-logo-light {
     display: none;
+  }
+  .loading-stage {
+    animation-duration: 0.01ms;
   }
 }

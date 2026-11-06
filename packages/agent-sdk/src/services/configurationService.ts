@@ -40,7 +40,7 @@ import {
   type ConfiguredModel,
 } from "../types/index.js";
 import {
-  DEFAULT_WAVE_MAX_INPUT_TOKENS,
+  DEFAULT_WAVE_CONTEXT_WINDOW,
   DEFAULT_WAVE_MAX_OUTPUT_TOKENS,
   DEFAULT_SERVER_URL,
   DEFAULT_LANGUAGE,
@@ -829,24 +829,25 @@ export class ConfigurationService {
   }
 
   /**
-   * Resolves token limit with fallbacks
-   * Resolution priority: override > options > models[model].maxInputTokens > env (from settings.json) > process.env > default
-   * @param constructorLimit - Token limit override (optional)
-   * @param model - Model to resolve per-model maxInputTokens for (optional; falls back to the resolved agent model chain)
-   * @returns Resolved token limit
+   * Resolves the model's context window (input + output budget of one
+   * request; not an input-only ceiling) with fallbacks.
+   * Resolution priority: override > options > models[model].contextWindow > env (from settings.json) > process.env > default
+   * @param override - Context window override (optional)
+   * @param model - Model to resolve per-model contextWindow for (optional; falls back to the resolved agent model chain)
+   * @returns Resolved context window in tokens
    */
-  resolveMaxInputTokens(constructorLimit?: number, model?: string): number {
+  resolveContextWindow(override?: number, model?: string): number {
     // If override value provided, use it
-    if (constructorLimit !== undefined) {
-      return constructorLimit;
+    if (override !== undefined) {
+      return override;
     }
 
     // If options value provided, use it
-    if (this.options.maxInputTokens !== undefined) {
-      return this.options.maxInputTokens;
+    if (this.options.contextWindow !== undefined) {
+      return this.options.contextWindow;
     }
 
-    // Per-model config (models[X].maxInputTokens). Resolve the model with the
+    // Per-model config (models[X].contextWindow). Resolve the model with the
     // same chain as resolveModelConfig: caller > options > currentConfiguration > env.
     const resolvedModel =
       model ||
@@ -855,23 +856,23 @@ export class ConfigurationService {
       (this.liveEnvSnapshot.WAVE_MODEL ?? process.env.WAVE_MODEL);
     const modelConfig =
       resolvedModel && this.liveConfiguration?.models?.[resolvedModel];
-    if (modelConfig && modelConfig.maxInputTokens !== undefined) {
-      return modelConfig.maxInputTokens;
+    if (modelConfig && modelConfig.contextWindow !== undefined) {
+      return modelConfig.contextWindow;
     }
 
     // Try env (settings.json snapshot) first, then process.env
-    const envMaxInputTokens =
-      this.liveEnvSnapshot.WAVE_MAX_INPUT_TOKENS ??
-      process.env.WAVE_MAX_INPUT_TOKENS;
-    if (envMaxInputTokens) {
-      const parsed = parseInt(envMaxInputTokens, 10);
+    const envContextWindow =
+      this.liveEnvSnapshot.WAVE_CONTEXT_WINDOW ??
+      process.env.WAVE_CONTEXT_WINDOW;
+    if (envContextWindow) {
+      const parsed = parseInt(envContextWindow, 10);
       if (!isNaN(parsed)) {
         return parsed;
       }
     }
 
     // Use default
-    return DEFAULT_WAVE_MAX_INPUT_TOKENS;
+    return DEFAULT_WAVE_CONTEXT_WINDOW;
   }
 
   /**

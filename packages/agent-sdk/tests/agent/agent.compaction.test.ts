@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { Agent } from "@/agent.js";
 import * as aiService from "@/services/aiService.js";
 import { Message } from "@/types/index.js";
-import { DEFAULT_WAVE_MAX_INPUT_TOKENS } from "@/utils/constants.js";
+import { DEFAULT_WAVE_CONTEXT_WINDOW } from "@/utils/constants.js";
 import { ChatCompletionMessageParam } from "openai/resources.js";
 import { MessageManager } from "@/managers/messageManager.js";
 import { generateMessageId } from "@/utils/messageOperations.js";
@@ -17,8 +17,8 @@ describe("Agent Message Compaction Tests", () => {
     // Disable auto-memory to prevent extra callAgent calls from background tasks
     vi.stubEnv("WAVE_DISABLE_AUTO_MEMORY", "1");
 
-    // Clear WAVE_MAX_INPUT_TOKENS to use default 128000 for compaction threshold
-    delete process.env.WAVE_MAX_INPUT_TOKENS;
+    // Clear WAVE_CONTEXT_WINDOW to use default 128000 for compaction threshold
+    delete process.env.WAVE_CONTEXT_WINDOW;
 
     // Create Agent instance with required parameters
     agent = await Agent.create({
@@ -95,7 +95,7 @@ describe("Agent Message Compaction Tests", () => {
   it("should trigger compaction before the request when the estimated context exceeds the limit", async () => {
     // Create message history whose last response usage exceeds the limit —
     // the pre-request estimate anchors on it and compacts before sending.
-    const messages = generateMessages(8, DEFAULT_WAVE_MAX_INPUT_TOKENS + 6000);
+    const messages = generateMessages(8, DEFAULT_WAVE_CONTEXT_WINDOW + 6000);
 
     // Add a new user message to trigger AI call
     const newUserMessage: Message = {
@@ -241,7 +241,7 @@ describe("Agent Message Compaction Tests", () => {
 
   it("should handle compaction errors gracefully", async () => {
     // Create message history whose last response usage exceeds the limit
-    const messages = generateMessages(10, DEFAULT_WAVE_MAX_INPUT_TOKENS + 6000);
+    const messages = generateMessages(10, DEFAULT_WAVE_CONTEXT_WINDOW + 6000);
 
     // Add a new user message to trigger AI call
     const newUserMessage: Message = {
@@ -324,7 +324,7 @@ describe("Agent Message Compaction Tests", () => {
     // last response usage so the pre-request estimate triggers compaction
     const initialMessages = generateMessages(
       15,
-      DEFAULT_WAVE_MAX_INPUT_TOKENS + 6000,
+      DEFAULT_WAVE_CONTEXT_WINDOW + 6000,
     );
 
     // Insert a compaction message at position 9 (representing previous compaction)
@@ -384,7 +384,7 @@ describe("Agent Message Compaction Tests", () => {
         usage: {
           prompt_tokens: 50000,
           completion_tokens: 20000,
-          total_tokens: DEFAULT_WAVE_MAX_INPUT_TOKENS + 6000, // Exceed default limit to trigger compaction
+          total_tokens: DEFAULT_WAVE_CONTEXT_WINDOW + 6000, // Exceed default limit to trigger compaction
         },
       };
     });
@@ -460,7 +460,7 @@ describe("Agent Message Compaction Tests", () => {
 
   it("should send compacted message plus subsequent messages to callAgent", async () => {
     // Create 10 pairs of messages (20 messages) with over-limit last usage
-    const messages = generateMessages(10, DEFAULT_WAVE_MAX_INPUT_TOKENS + 6000);
+    const messages = generateMessages(10, DEFAULT_WAVE_CONTEXT_WINDOW + 6000);
 
     // Add the first user message to trigger compaction
     const firstUserMessage: Message = {
@@ -576,7 +576,7 @@ describe("Agent Message Compaction Tests", () => {
 
   it("should save session before compaction to preserve original messages", async () => {
     // Create message history whose last response usage exceeds the limit
-    const messages = generateMessages(8, DEFAULT_WAVE_MAX_INPUT_TOKENS + 6000);
+    const messages = generateMessages(8, DEFAULT_WAVE_CONTEXT_WINDOW + 6000);
 
     // Add a new user message to trigger AI call
     const newUserMessage: Message = {
@@ -652,7 +652,7 @@ describe("Agent Message Compaction Tests", () => {
 
   it("should skip compaction after 3 consecutive failures (circuit breaker)", async () => {
     // Create message history whose last response usage exceeds the limit
-    const messages = generateMessages(8, DEFAULT_WAVE_MAX_INPUT_TOKENS + 6000);
+    const messages = generateMessages(8, DEFAULT_WAVE_CONTEXT_WINDOW + 6000);
 
     // Add a new user message to trigger AI call
     const newUserMessage: Message = {
@@ -687,7 +687,7 @@ describe("Agent Message Compaction Tests", () => {
         usage: {
           prompt_tokens: 50000,
           completion_tokens: 20000,
-          total_tokens: DEFAULT_WAVE_MAX_INPUT_TOKENS + 6000,
+          total_tokens: DEFAULT_WAVE_CONTEXT_WINDOW + 6000,
         },
       };
     });
@@ -712,7 +712,7 @@ describe("Agent Message Compaction Tests", () => {
   });
 
   it("should reset circuit breaker counter on successful compaction", async () => {
-    const messages = generateMessages(8, DEFAULT_WAVE_MAX_INPUT_TOKENS + 6000);
+    const messages = generateMessages(8, DEFAULT_WAVE_CONTEXT_WINDOW + 6000);
     const newUserMessage: Message = {
       id: generateMessageId(),
       role: "user",
@@ -747,7 +747,7 @@ describe("Agent Message Compaction Tests", () => {
         usage: {
           prompt_tokens: 50000,
           completion_tokens: 20000,
-          total_tokens: DEFAULT_WAVE_MAX_INPUT_TOKENS + 6000,
+          total_tokens: DEFAULT_WAVE_CONTEXT_WINDOW + 6000,
         },
       };
     });
@@ -797,7 +797,7 @@ describe("Agent Message Compaction Tests", () => {
         usage: {
           prompt_tokens: 50000,
           completion_tokens: 20000,
-          total_tokens: DEFAULT_WAVE_MAX_INPUT_TOKENS + 6000,
+          total_tokens: DEFAULT_WAVE_CONTEXT_WINDOW + 6000,
         },
       };
     });
@@ -830,10 +830,7 @@ describe("Agent Message Compaction Tests", () => {
 
   describe("Background Tasks in Compact Context", () => {
     it("should render killed status with description and id", async () => {
-      const messages = generateMessages(
-        8,
-        DEFAULT_WAVE_MAX_INPUT_TOKENS + 6000,
-      );
+      const messages = generateMessages(8, DEFAULT_WAVE_CONTEXT_WINDOW + 6000);
       const newUserMessage: Message = {
         id: generateMessageId(),
         role: "user",
@@ -868,10 +865,7 @@ describe("Agent Message Compaction Tests", () => {
     });
 
     it("should render running status with duplicate warning", async () => {
-      const messages = generateMessages(
-        8,
-        DEFAULT_WAVE_MAX_INPUT_TOKENS + 6000,
-      );
+      const messages = generateMessages(8, DEFAULT_WAVE_CONTEXT_WINDOW + 6000);
       const newUserMessage: Message = {
         id: generateMessageId(),
         role: "user",
@@ -910,10 +904,7 @@ describe("Agent Message Compaction Tests", () => {
     });
 
     it("should include outputPath for running tasks", async () => {
-      const messages = generateMessages(
-        8,
-        DEFAULT_WAVE_MAX_INPUT_TOKENS + 6000,
-      );
+      const messages = generateMessages(8, DEFAULT_WAVE_CONTEXT_WINDOW + 6000);
       const newUserMessage: Message = {
         id: generateMessageId(),
         role: "user",
@@ -948,10 +939,7 @@ describe("Agent Message Compaction Tests", () => {
     });
 
     it("should render completed status with stdout delta", async () => {
-      const messages = generateMessages(
-        8,
-        DEFAULT_WAVE_MAX_INPUT_TOKENS + 6000,
-      );
+      const messages = generateMessages(8, DEFAULT_WAVE_CONTEXT_WINDOW + 6000);
       const newUserMessage: Message = {
         id: generateMessageId(),
         role: "user",
@@ -987,10 +975,7 @@ describe("Agent Message Compaction Tests", () => {
     });
 
     it("should render failed status with stderr delta", async () => {
-      const messages = generateMessages(
-        8,
-        DEFAULT_WAVE_MAX_INPUT_TOKENS + 6000,
-      );
+      const messages = generateMessages(8, DEFAULT_WAVE_CONTEXT_WINDOW + 6000);
       const newUserMessage: Message = {
         id: generateMessageId(),
         role: "user",
@@ -1028,10 +1013,7 @@ describe("Agent Message Compaction Tests", () => {
     });
 
     it("should truncate delta text to 500 characters", async () => {
-      const messages = generateMessages(
-        8,
-        DEFAULT_WAVE_MAX_INPUT_TOKENS + 6000,
-      );
+      const messages = generateMessages(8, DEFAULT_WAVE_CONTEXT_WINDOW + 6000);
       const newUserMessage: Message = {
         id: generateMessageId(),
         role: "user",
@@ -1074,10 +1056,7 @@ describe("Agent Message Compaction Tests", () => {
     });
 
     it("should include outputPath for completed and failed tasks", async () => {
-      const messages = generateMessages(
-        8,
-        DEFAULT_WAVE_MAX_INPUT_TOKENS + 6000,
-      );
+      const messages = generateMessages(8, DEFAULT_WAVE_CONTEXT_WINDOW + 6000);
       const newUserMessage: Message = {
         id: generateMessageId(),
         role: "user",
@@ -1125,10 +1104,7 @@ describe("Agent Message Compaction Tests", () => {
     });
 
     it("should render multiple agents with mixed statuses", async () => {
-      const messages = generateMessages(
-        8,
-        DEFAULT_WAVE_MAX_INPUT_TOKENS + 6000,
-      );
+      const messages = generateMessages(8, DEFAULT_WAVE_CONTEXT_WINDOW + 6000);
       const newUserMessage: Message = {
         id: generateMessageId(),
         role: "user",
@@ -1187,10 +1163,7 @@ describe("Agent Message Compaction Tests", () => {
     });
 
     it("should exclude shell tasks from background tasks section", async () => {
-      const messages = generateMessages(
-        8,
-        DEFAULT_WAVE_MAX_INPUT_TOKENS + 6000,
-      );
+      const messages = generateMessages(8, DEFAULT_WAVE_CONTEXT_WINDOW + 6000);
       const newUserMessage: Message = {
         id: generateMessageId(),
         role: "user",
@@ -1243,10 +1216,7 @@ describe("Agent Message Compaction Tests", () => {
     });
 
     it("should not include background tasks section when no agents exist", async () => {
-      const messages = generateMessages(
-        8,
-        DEFAULT_WAVE_MAX_INPUT_TOKENS + 6000,
-      );
+      const messages = generateMessages(8, DEFAULT_WAVE_CONTEXT_WINDOW + 6000);
       const newUserMessage: Message = {
         id: generateMessageId(),
         role: "user",

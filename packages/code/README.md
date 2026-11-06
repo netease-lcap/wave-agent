@@ -42,8 +42,9 @@ export WAVE_FAST_MODEL="MiniMax-M2.7-highspeed"
 ### Optional Environment Variables
 
 ```bash
-# Token limit (optional, defaults to 96000)
-export WAVE_MAX_INPUT_TOKENS="96000"
+# Context window in tokens — the input + output budget of one request
+# (optional, defaults to 200000)
+export WAVE_CONTEXT_WINDOW="200000"
 ```
 
 ## Usage

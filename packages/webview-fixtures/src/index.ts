@@ -43,6 +43,7 @@ import type {
   EarlierMessagesMessage,
   StartStreamingMessage,
   EndStreamingMessage,
+  LoadingStageMessage,
   CompactionStateChangeMessage,
   CompactionContentUpdateMessage,
   BtwResponseMessage,
@@ -150,6 +151,10 @@ export interface Fixtures {
   endStreaming: (
     overrides?: Overrides<EndStreamingMessage>,
   ) => EndStreamingMessage;
+  loadingStage: (
+    text: string | null,
+    overrides?: Overrides<LoadingStageMessage>,
+  ) => LoadingStageMessage;
   compactionStateChange: (
     isCompacting: boolean,
     overrides?: Overrides<CompactionStateChangeMessage>,
@@ -349,6 +354,12 @@ export const fixtures: Fixtures = {
 
   endStreaming: (overrides = {}) => ({
     command: "endStreaming",
+    ...overrides,
+  }),
+
+  loadingStage: (text, overrides = {}) => ({
+    command: "loadingStage",
+    text,
     ...overrides,
   }),
 

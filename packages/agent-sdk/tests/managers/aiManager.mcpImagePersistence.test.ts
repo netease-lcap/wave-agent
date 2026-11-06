@@ -134,7 +134,7 @@ function createAIManager(modelConfig: ModelConfig) {
       baseURL: "https://test-gateway.com",
     } as GatewayConfig),
     resolveModelConfig: vi.fn().mockReturnValue(modelConfig),
-    resolveMaxInputTokens: vi.fn().mockReturnValue(96000),
+    resolveContextWindow: vi.fn().mockReturnValue(96000),
     resolveMaxOutputTokens: vi.fn().mockReturnValue(4096),
     resolveAutoMemoryEnabled: vi.fn().mockReturnValue(true),
     resolveLanguage: vi.fn().mockReturnValue(undefined),

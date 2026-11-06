@@ -57,6 +57,8 @@ import {
   treeFits,
 } from "../utils/fileTreeLayout";
 import "../styles/FilePane.css";
+// 语法高亮调色板与对话流的代码块共用一份（块高亮本身在下方 renderCodeHighlight）。
+import "../styles/code-highlight.css";
 
 /**
  * Debounce for the panel search requests. Shorter than the message input's:

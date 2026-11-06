@@ -227,7 +227,7 @@ export interface WaveConfiguration {
  * 设置页读写的用户偏好子集（落点 = 用户级 `~/.wave/settings.json`；读写实现见
  * `utils/userSettings.ts`）。三端（VSCE / JetBrains / desktop）设置页与 CLI 的
  * `getUserSettings` / `updateUserSettings` RPC 共用这一形状；`contextLength` 单位
- * 为 K（落盘换算为 `env.WAVE_MAX_INPUT_TOKENS`）。**服务端地址不在其中**——设置页
+ * 为 K（落盘换算为 `env.WAVE_CONTEXT_WINDOW`）。**服务端地址不在其中**——设置页
  * 不提供该入口，唯一入口是 `env.WAVE_SERVER_URL`（手改配置文件或 OS 环境变量，
  * 见 spec core/agent-config.md 边界说明「服务端地址不经设置页配置」）。
  */

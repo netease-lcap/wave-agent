@@ -8,7 +8,7 @@
  * 覆盖层下发（覆盖层优先级高于 settings.json，会永久遮蔽实时配置，
  * 见 docs/specs/core/agent-config.md「设置实时重载」「分层职责」）。
  *
- * 上下文长度的键 = `env.WAVE_MAX_INPUT_TOKENS`（全局默认，K×1000 落盘、
+ * 上下文长度的键 = `env.WAVE_CONTEXT_WINDOW`（全局默认，K×1000 落盘、
  * 回读按同一换算），UI 与线协议都传 K 值。
  *
  * **服务端地址不在这里**：设置页不提供该入口，唯一入口是 `env.WAVE_SERVER_URL`
@@ -47,7 +47,7 @@ import type {
 export type { UserPreferenceSettings };
 
 /** 上下文长度在 settings.json 中的落点（全局默认，spec 边界说明「上下文长度的落点」）。 */
-export const MAX_INPUT_TOKENS_ENV_KEY = "WAVE_MAX_INPUT_TOKENS";
+export const CONTEXT_WINDOW_ENV_KEY = "WAVE_CONTEXT_WINDOW";
 
 /**
  * 自动记忆的 env 键，与 `ConfigurationService.resolveAutoMemoryEnabledFrom` /
@@ -79,7 +79,7 @@ export interface UserPreferenceView {
  */
 function envContextLength(raw: unknown): number | undefined {
   return typeof raw === "string"
-    ? maxInputTokensToContextLength(raw)
+    ? contextWindowToContextLength(raw)
     : undefined;
 }
 
@@ -109,17 +109,23 @@ function selectPreference<T>(
   return undefined;
 }
 
-/** UI 的 K 值 → settings.json 的 token 数（K×1000）。 */
-export function contextLengthToMaxInputTokens(contextLengthK: number): number {
+/**
+ * 两个单位别混：`contextWindow` 是窗口的 **token 数**（如 200000，落
+ * `env.WAVE_CONTEXT_WINDOW`）；`contextLength` 是同一个值的 **K 值**
+ * （如 200），只活在 UI 与线协议里。下面两个函数是二者唯一的换算口。
+ *
+ * UI 的 K 值 → settings.json 的 token 数（K×1000）。
+ */
+export function contextLengthToContextWindow(contextLengthK: number): number {
   return Math.round(contextLengthK * 1000);
 }
 
 /** settings.json 的 token 数 → UI 的 K 值（回读按同一换算）。 */
-export function maxInputTokensToContextLength(
-  maxInputTokens: string | undefined,
+export function contextWindowToContextLength(
+  contextWindow: string | undefined,
 ): number | undefined {
-  if (maxInputTokens === undefined) return undefined;
-  const parsed = Number.parseInt(maxInputTokens, 10);
+  if (contextWindow === undefined) return undefined;
+  const parsed = Number.parseInt(contextWindow, 10);
   if (!Number.isFinite(parsed) || parsed <= 0) return undefined;
   return Math.round(parsed / 1000);
 }
@@ -149,10 +155,10 @@ function asEnvBlock(value: unknown): Record<string, unknown> {
 
 function toSettings(data: Record<string, unknown>): UserPreferenceSettings {
   const env = asEnvBlock(data.env);
-  const rawMax = env[MAX_INPUT_TOKENS_ENV_KEY];
+  const rawMax = env[CONTEXT_WINDOW_ENV_KEY];
   const settings: UserPreferenceSettings = {};
   if (typeof data.language === "string") settings.language = data.language;
-  const contextLength = maxInputTokensToContextLength(
+  const contextLength = contextWindowToContextLength(
     typeof rawMax === "string" ? rawMax : undefined,
   );
   if (contextLength !== undefined) settings.contextLength = contextLength;
@@ -203,7 +209,7 @@ export function readUserPreferenceSettings(
  * 读取**生效**用户偏好及其来源层。
  *
  * 优先级与各 resolve 链一致（只按**进程级可达**的层归因）：Remote 组织下发
- * （顶层键，以及其 `env` 的 `WAVE_MAX_INPUT_TOKENS` / `WAVE_DISABLE_AUTO_MEMORY` /
+ * （顶层键，以及其 `env` 的 `WAVE_CONTEXT_WINDOW` / `WAVE_DISABLE_AUTO_MEMORY` /
  * `WAVE_AUTO_MEMORY_FREQUENCY`）> 用户级文件（同样两种落点）> 机器环境变量
  * （`process.env`）> 默认。Remote 胜出与 `mergeRemoteSettings` 的「标量远程赢、
  * env 逐键远程赢」一致（remoteSettingsService.ts）。
@@ -253,13 +259,13 @@ export function readUserPreferenceView(
     sources.language = language.source;
   }
 
-  // 上下文长度的归因层 = `env.WAVE_MAX_INPUT_TOKENS` 这个 env key 所在的层
+  // 上下文长度的归因层 = `env.WAVE_CONTEXT_WINDOW` 这个 env key 所在的层
   // （不是「模型配置」那层：模型自带上限时以模型配置为准是 SDK 既有行为，
   // 设置页那一行可见说明已交代）。
   const contextLength = selectPreference<number>([
-    ["remote", envContextLength(remoteEnv[MAX_INPUT_TOKENS_ENV_KEY])],
+    ["remote", envContextLength(remoteEnv[CONTEXT_WINDOW_ENV_KEY])],
     ["user", user.contextLength],
-    ["env", envContextLength(env[MAX_INPUT_TOKENS_ENV_KEY])],
+    ["env", envContextLength(env[CONTEXT_WINDOW_ENV_KEY])],
   ]);
   if (contextLength) {
     values.contextLength = contextLength.value;
@@ -385,8 +391,8 @@ export async function updateUserPreferenceSettings(
     Number.isFinite(patch.contextLength)
   ) {
     const env = asEnvBlock(data.env);
-    env[MAX_INPUT_TOKENS_ENV_KEY] = String(
-      contextLengthToMaxInputTokens(patch.contextLength),
+    env[CONTEXT_WINDOW_ENV_KEY] = String(
+      contextLengthToContextWindow(patch.contextLength),
     );
     data.env = env;
   }

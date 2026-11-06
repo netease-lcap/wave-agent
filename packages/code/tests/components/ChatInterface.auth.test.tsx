@@ -61,7 +61,7 @@ describe("ChatInterface login hint", () => {
     remountKey: 0,
     requestRemount: vi.fn(),
     latestTotalTokens: 0,
-    maxInputTokens: 0,
+    contextWindow: 0,
     mcpServers: [],
     slashCommands: [],
     hasSlashCommand: vi.fn(),

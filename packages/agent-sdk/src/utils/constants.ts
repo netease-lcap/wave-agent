@@ -29,7 +29,8 @@ export const USER_MEMORY_FILE = path.join(DATA_DIRECTORY, "AGENTS.md");
 /**
  * AI related constants
  */
-export const DEFAULT_WAVE_MAX_INPUT_TOKENS = 200000; // Default token limit
+/** Default context window: the input + output budget of one request (aligned with Claude Code). */
+export const DEFAULT_WAVE_CONTEXT_WINDOW = 200000;
 export const DEFAULT_WAVE_MAX_OUTPUT_TOKENS = 32000; // Default output token limit (aligned with Claude Code)
 
 /**

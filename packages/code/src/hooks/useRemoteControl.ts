@@ -61,7 +61,7 @@ export interface UseRemoteControlOptions {
   isLoading: boolean;
   permissionMode: PermissionMode;
   latestTotalTokens: number;
-  maxInputTokens: number;
+  contextWindow: number;
   maxOutputTokens: number;
   /**
    * The title `/rename` sets, read live off the agent — the page's session list
@@ -197,7 +197,7 @@ export function useRemoteControl(
       "contextUsage",
       remoteWire.contextUsage(
         latestTotalTokens,
-        options.maxInputTokens,
+        options.contextWindow,
         options.maxOutputTokens,
       ),
       sessionId,
@@ -206,7 +206,7 @@ export function useRemoteControl(
     sink,
     sessionId,
     latestTotalTokens,
-    options.maxInputTokens,
+    options.contextWindow,
     options.maxOutputTokens,
   ]);
 
@@ -329,7 +329,7 @@ function adapterOf(latest: {
     contextUsagePercent: () =>
       percentOf(
         latest.current.latestTotalTokens,
-        latest.current.maxInputTokens,
+        latest.current.contextWindow,
         latest.current.maxOutputTokens,
       ),
     latestTotalTokens: () => latest.current.latestTotalTokens,

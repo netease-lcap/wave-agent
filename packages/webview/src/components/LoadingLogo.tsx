@@ -4,10 +4,21 @@
  *
  * Uses the standalone dark W mark (no red rect), matching the loading demo.
  * The sweep overlay uses clip-path + brightness(3) + screen blend.
+ *
+ * Optionally carries one line of progress text under the mark (spec
+ * `ui/stdio-transport.md`「首次启动的进度文案」): the host reports what the
+ * startup is doing right now, so a 30-second runtime download does not read as
+ * a frozen window.
  */
 
-import React from "react";
+import React, { useEffect, useState } from "react";
 import "../styles/LoadingLogo.css";
+
+/**
+ * 「分支加载中」同一阈值口径：一步做得快就干脆不说，免得文案闪一下。
+ * 见 spec ui/stdio-transport.md 场景 4。
+ */
+const STAGE_REVEAL_DELAY_MS = 300;
 
 // Standalone W mark paths (60x60 viewBox, no background rect).
 const W_PATH_1 =
@@ -29,7 +40,38 @@ const WMark: React.FC<{ size: number }> = ({ size }) => (
   </svg>
 );
 
-const LoadingLogo: React.FC = () => (
+/**
+ * 一行进度文案，带 300ms 显示阈值。
+ *
+ * 语义（spec ui/stdio-transport.md 场景 4）：
+ * - 第一个阶段要持续满 300ms 才现身——缓存全命中的启动不该闪一下字；
+ * - 一旦现过身，后续阶段**立刻换字**，不重新计时。否则两个相邻的慢阶段之间
+ *   会先空白 300ms 再出现，看起来像闪断（用户已经在看进度，不该被藏起来）；
+ * - `null` 立即清空：阶段流结束时文案必须和加载态一起消失，不能停在最后一步。
+ */
+const LoadingStageText: React.FC<{ text?: string | null }> = ({ text }) => {
+  const [shown, setShown] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!text) {
+      setShown(null);
+      return;
+    }
+    // 已经现过身：立刻换字（下面的定时器随后写入同一个值，无副作用）。
+    setShown((current) => (current === null ? current : text));
+    const timer = setTimeout(() => setShown(text), STAGE_REVEAL_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [text]);
+
+  if (!shown) return null;
+  return (
+    <div className="loading-stage" data-testid="loading-stage" title={shown}>
+      {shown}
+    </div>
+  );
+};
+
+const LoadingLogo: React.FC<{ stage?: string | null }> = ({ stage }) => (
   <div className="loading-logo-container">
     <div className="loading-logo">
       <div className="loading-logo-base">
@@ -39,6 +81,7 @@ const LoadingLogo: React.FC = () => (
         <WMark size={48} />
       </div>
     </div>
+    <LoadingStageText text={stage} />
   </div>
 );
 

@@ -131,7 +131,7 @@ describe("AIManager plan file refresh", () => {
     container.register("ConfigurationService", {
       resolveGatewayConfig: vi.fn().mockReturnValue({}),
       resolveModelConfig: vi.fn().mockReturnValue({ model: "gpt-4" }),
-      resolveMaxInputTokens: vi.fn().mockReturnValue(1000),
+      resolveContextWindow: vi.fn().mockReturnValue(1000),
       resolveMaxOutputTokens: vi.fn().mockReturnValue(4096),
       resolveAutoMemoryEnabled: vi.fn().mockReturnValue(false),
       resolveLanguage: vi.fn().mockReturnValue(undefined),

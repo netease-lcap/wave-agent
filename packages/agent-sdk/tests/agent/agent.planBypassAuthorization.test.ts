@@ -24,7 +24,7 @@ function mockConfigurationService(defaultMode: string) {
         model: "test-model",
         fastModel: "test-fast-model",
       }),
-      resolveMaxInputTokens: vi.fn().mockReturnValue(100000),
+      resolveContextWindow: vi.fn().mockReturnValue(100000),
       getEnvironmentVars: vi.fn().mockReturnValue({}),
       resolveAutoMemoryEnabled: vi.fn().mockReturnValue(true),
       getTelemetrySettings: vi.fn().mockReturnValue({}),

@@ -1,6 +1,6 @@
 {
   "env": {
-    "WAVE_MAX_INPUT_TOKENS": "200000"
+    "WAVE_CONTEXT_WINDOW": "200000"
   },
   "permissions": {
     "defaultMode": "bypassPermissions",

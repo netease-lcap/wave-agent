@@ -79,7 +79,7 @@ describe("SubagentManager Consistency", () => {
         model: "claude-3-5-sonnet",
         fastModel: "claude-3-haiku",
       }),
-      resolveMaxInputTokens: () => 200000,
+      resolveContextWindow: () => 200000,
       resolveAutoMemoryEnabled: () => true,
       resolveLanguage: () => undefined,
     });

@@ -29,7 +29,7 @@ Wave uses several environment variables to control its core functionality. Varia
 | \`WAVE_MODEL\` | The primary AI model to use for the agent. The top-level \`model\` scalar wins over it. | - (no built-in default: the session's model comes from the \`model\` key, the model picker or the server configuration) |
 | \`WAVE_FAST_MODEL\` | The fast AI model to use for quick tasks (subagent summaries, WebFetch content processing, inline completion). The top-level \`fastModel\` scalar wins over it. | - (no built-in default; the first model call fails with \`MISSING_FAST_MODEL\` when nothing provides one) |
 | \`WAVE_VISION_MODEL\` | Vision-capable model used by the built-in \`vision\` subagent for image recognition. The built-in \`vision\` subagent is available only when this is set **and** the main model declares \`models[<model>].capabilities.vision: false\`; otherwise it is not registered (and cannot be spawned by name). Useful when the main model is fast but non-vision (e.g. DeepSeek). | - (not registered) |
-| \`WAVE_MAX_INPUT_TOKENS\` | Maximum number of input tokens allowed. Overridden per-model by \`models[<model>].maxInputTokens\`. | \`200000\` |
+| \`WAVE_CONTEXT_WINDOW\` | The model's context window in tokens — the total budget **shared by one request's input and output**, not an input-only ceiling. Nothing rejects a request by comparing input to it; it is the base the auto-compaction threshold derives from (\`window − min(maxOutputTokens, 20000) − 13000\`) and the denominator of the usage percentage shown in the UI. Overridden per-model by \`models[<model>].contextWindow\`. | \`200000\` |
 | \`WAVE_MAX_OUTPUT_TOKENS\` | Maximum number of output tokens allowed. | \`32000\` |
 | \`WAVE_DISABLE_AUTO_MEMORY\` | Set to \`1\` or \`true\` to disable the auto-memory feature. | \`false\` |
 | \`WAVE_AUTO_MEMORY_FREQUENCY\` | Auto memory update frequency. \`1\` = every turn, \`2\` = every 2 turns, etc. | \`1\` |
@@ -710,20 +710,20 @@ Generation parameters are nested under the \`options\` field within each model's
   - \`type\`: \`"enabled"\` or \`"disabled"\`.
   - \`budget_tokens\`: Maximum tokens to use for thinking.
 
-## Per-Model Input Context Window
+## Per-Model Context Window
 
-Set \`maxInputTokens\` at the top level of a model entry (not inside \`options\`) to define that model's input context window. It overrides the global \`WAVE_MAX_INPUT_TOKENS\`, so compaction thresholds and usage display follow each model's own value:
+Set \`contextWindow\` at the top level of a model entry (not inside \`options\`) to define that model's context window — the input + output budget of a single request, not an input-only limit. It overrides the global \`WAVE_CONTEXT_WINDOW\`, so compaction thresholds and usage display follow each model's own value:
 
 \`\`\`json
 {
   "models": {
-    "deepseek-v4-flash": { "maxInputTokens": 200000 },
-    "kimi-k3": { "maxInputTokens": 131072 }
+    "deepseek-v4-flash": { "contextWindow": 200000 },
+    "kimi-k3": { "contextWindow": 131072 }
   }
 }
 \`\`\`
 
-Resolution priority: constructor > \`options\` > \`models[<model>].maxInputTokens\` > \`WAVE_MAX_INPUT_TOKENS\` > default. Subagents (\`fastModel\`/\`visionModel\`) resolve against the model they actually use.
+Resolution priority: constructor > \`options\` > \`models[<model>].contextWindow\` > \`WAVE_CONTEXT_WINDOW\` > default. Subagents (\`fastModel\`/\`visionModel\`) resolve against the model they actually use.
 
 ## Model Capabilities
 
@@ -790,7 +790,7 @@ Set the model for the main conversation and the fast model used by lightweight t
     "WAVE_MODEL": "gemini-3-flash",
     "WAVE_FAST_MODEL": "gemini-2.5-flash",
     "WAVE_VISION_MODEL": "qwen-vl-max",
-    "WAVE_MAX_INPUT_TOKENS": "100000",
+    "WAVE_CONTEXT_WINDOW": "100000",
     "WAVE_MAX_OUTPUT_TOKENS": "4096"
   }
 }
@@ -1224,7 +1224,7 @@ For detailed hook configuration, see [HOOKS.md](\${WAVE_SKILL_DIR}/HOOKS.md).
 ### 2. Environment Variables
 Set environment variables that will be available to all tools and hooks. Common \`WAVE_*\` variables include:
 - \`WAVE_MODEL\`, \`WAVE_FAST_MODEL\`: Model selection
-- \`WAVE_MAX_INPUT_TOKENS\`, \`WAVE_MAX_OUTPUT_TOKENS\`: Token limits
+- \`WAVE_CONTEXT_WINDOW\`, \`WAVE_MAX_OUTPUT_TOKENS\`: Token limits
 - \`WAVE_API_KEY\`, \`WAVE_BASE_URL\`: API configuration
 
 For detailed configuration, see [ENV.md](\${WAVE_SKILL_DIR}/ENV.md).
@@ -1252,7 +1252,7 @@ For detailed permission configuration and available permission modes, see [PERMI
 \`\`\`
 
 ### 4. Model Configuration
-Define which AI models Wave should use and set model-specific parameters like \`temperature\`, \`reasoning_effort\`, and \`thinking\`. You can also configure model selection and token limits via environment variables in the \`env\` field.
+Define which AI models Wave should use and set model-specific parameters like \`temperature\`, \`reasoning_effort\`, and \`thinking\`. You can also configure model selection, the context window and the output limit via environment variables in the \`env\` field.
 For detailed model configuration, see [MODELS.md](\${WAVE_SKILL_DIR}/MODELS.md).
 \`\`\`json
 {
@@ -1348,7 +1348,7 @@ You can ask me to:
 - "How do I create a custom skill?"
 - "How do I define a new subagent?"
 - "How do I create a custom slash command?"
-- "How do I set max input tokens?"
+- "How do I set the context window (or max input tokens)?"
 - "How do I change the model?"
 - "How do I create a Wave plugin?"
 - "How do I set up a plugin marketplace?"

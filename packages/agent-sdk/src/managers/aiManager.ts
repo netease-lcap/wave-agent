@@ -9,10 +9,13 @@ import { parseTaskNotificationXml } from "../utils/notificationXml.js";
 import { parsePageCommentEventXml } from "../utils/pageCommentEventXml.js";
 import {
   estimateContextTokens,
-  estimateRequestOverhead,
   getAutoCompactThreshold,
 } from "../utils/tokenCalculation.js";
 import { estimateTokens } from "../utils/tokenEstimate.js";
+import {
+  pickQuotaHeaders,
+  quotaHeadersFromError,
+} from "../utils/quotaHeaders.js";
 import {
   getTaskReminderTurnCounts,
   maybeInjectTaskReminder,
@@ -186,6 +189,12 @@ export interface AIManagerCallbacks {
    * spread in container setup.
    */
   onPlanFileUpdated?: (content: string) => void;
+  /**
+   * 额度响应头 `x-codechat-quota-*`（成功响应与 `APIError.headers` 两条路径都
+   * 取），原样交给宿主；一个头都没有时不触发（spec:
+   * docs/specs/desktop/desktop-account.md「额度响应头」）。
+   */
+  onQuotaHeaders?: (headers: Record<string, string>) => void;
 }
 
 export interface AIManagerOptions {
@@ -376,11 +385,11 @@ export class AIManager {
     );
   }
 
-  public getMaxInputTokens(): number {
+  public getContextWindow(): number {
     // Pass the resolved model (including fastModel/visionModel/override
     // resolution) so subagents using a different model get that model's
-    // per-model maxInputTokens instead of the main model's value.
-    return this.configurationService.resolveMaxInputTokens(
+    // per-model contextWindow instead of the main model's value.
+    return this.configurationService.resolveContextWindow(
       undefined,
       this.getModelConfig().model,
     );
@@ -721,16 +730,19 @@ export class AIManager {
    * Pre-request auto-compaction check (aligned with Claude Code's
    * autoCompactIfNeeded). Runs before every API request is issued: estimates
    * the context that is about to be sent (last response's total_tokens plus
-   * character estimates for newer messages) and compacts first when it
-   * exceeds maxInputTokens, so over-limit requests are never sent. Only
-   * total_tokens is used — under OpenAI-compatible usage it already includes
-   * cache hits; adding cache fields would double-count and fire early.
+   * character estimates for newer messages) and compacts first once it
+   * crosses the auto-compaction threshold — the context window minus the
+   * summary output reservation minus a safety buffer, not the window itself.
+   * The reservation matters because the compaction call is itself a request
+   * whose input plus declared max_tokens must fit the same shared window.
+   * Only total_tokens is used — under OpenAI-compatible usage it already
+   * includes cache hits, the system prompt, the tool schema and injected
+   * memory; adding any of those on top would double-count and fire early.
    * Fork paths (compaction / auto-memory) never reach here: they run in
    * runForkLoop, not sendAIMessage.
    */
   private async maybeAutoCompactBeforeRequest(
     abortController: AbortController,
-    requestOverhead = 0,
   ): Promise<boolean> {
     // Circuit breaker: skip compaction after 3 consecutive failures
     if (this.consecutiveCompactionFailures >= 3) {
@@ -743,10 +755,10 @@ export class AIManager {
     const messages = this.messageManager.getMessages();
     if (messages.length === 0) return false;
 
-    const maxInputTokens = this.getMaxInputTokens();
+    const contextWindow = this.getContextWindow();
     const maxOutputTokens = this.configurationService.resolveMaxOutputTokens();
-    const threshold = getAutoCompactThreshold(maxInputTokens, maxOutputTokens);
-    const estimatedTokens = estimateContextTokens(messages) + requestOverhead;
+    const threshold = getAutoCompactThreshold(contextWindow, maxOutputTokens);
+    const estimatedTokens = estimateContextTokens(messages);
     if (estimatedTokens >= threshold) {
       logger?.debug(
         `Estimated request tokens ${estimatedTokens} reached ${threshold}, compacting before request...`,
@@ -2062,16 +2074,12 @@ ${question}`;
           const mainSystemPrompt =
             await this.buildMainSystemPrompt(reachableToolPlugins);
 
-          // Pre-request auto-compaction uses the final request shape, including
-          // system prompt, tools, and dynamic memory injected into messages.
-          await this.maybeAutoCompactBeforeRequest(
-            abortController,
-            estimateRequestOverhead(
-              mainSystemPrompt,
-              toolsConfig,
-              prependContent,
-            ),
-          );
+          // Pre-request auto-compaction estimates the context about to be sent
+          // from the last response's usage plus newer messages only. That
+          // usage already contains the system prompt, tool schema and injected
+          // memory, so they must not be added again (see
+          // estimateContextTokens).
+          await this.maybeAutoCompactBeforeRequest(abortController);
 
           // Refresh messages in case compaction replaced the history.
           const refreshedMessages = await convertMessagesForAPI(
@@ -2196,6 +2204,12 @@ ${question}`;
             this.telemetryContext,
             () => aiService.callAgent(callAgentOptions),
           );
+
+          // 额度响应头（codechat proxy 每次调用都会发，spec:
+          // desktop/desktop-account.md「额度响应头」）：原样交给宿主，由它映射成
+          // 账户卡片的读数。头是热路径上的免费输出，这里只做前缀筛选。
+          const quotaHeaders = pickQuotaHeaders(result.response_headers);
+          if (quotaHeaders) this.callbacks?.onQuotaHeaders?.(quotaHeaders);
 
           // Record the token kinds this response consumed, by model — the
           // fleet-level view of cost.
@@ -2468,6 +2482,13 @@ ${question}`;
           // No tool calls (or stop conditions) → inner loop done
           break inner;
         } catch (error) {
+          // 错误路径同样带额度头（402 阻断 / 上游 429、5xx），读数照常交给宿主
+          // ——「被限流 / 被阻断」这一刻正是用户最需要看到读数的时刻
+          // （spec: desktop/desktop-account.md「额度响应头」）。
+          const errorQuotaHeaders = quotaHeadersFromError(error);
+          if (errorQuotaHeaders)
+            this.callbacks?.onQuotaHeaders?.(errorQuotaHeaders);
+
           // Log error event
           logOTelEvent(
             "error",
