@@ -832,6 +832,27 @@ test("onMcpServersChange emits mcpServersChange notification", async () => {
   });
 });
 
+test("onQuotaHeaders relays the raw header map as a quotaHeaders notification", async () => {
+  const { bridge, notifications } = createBridge();
+  vi.mocked(Agent.create).mockResolvedValue(createMockAgent());
+
+  await bridge.handleRequest("initialize", {});
+  const callbacks = vi.mocked(Agent.create).mock.calls[0][0]
+    .callbacks as AgentCallbacks;
+
+  const headers = {
+    "x-codechat-quota-status": "allowed_warning",
+    "x-codechat-quota-weekly-utilization": "82",
+  };
+  callbacks.onQuotaHeaders!(headers);
+
+  expect(notifications).toContainEqual({
+    method: "quotaHeaders",
+    params: { headers },
+    sessionId: "test-session-id",
+  });
+});
+
 // ── canUseTool permission flow ───────────────────────────────────
 
 test("canUseTool emits permissionRequest and resolves when permissionResponse received", async () => {

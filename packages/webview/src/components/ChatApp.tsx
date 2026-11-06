@@ -2686,6 +2686,13 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     vscode.postMessage({ command: "desktopUpdateRestart" });
   }, [vscode]);
 
+  // 用量刷新（spec desktop-account「用量刷新时机」场景 4）：头是主源，打开用量
+  // 浮层时再向账户接口核对一次全量（到期日 / 企业池 / 余额）。一次打开只发一次，
+  // 由 AccountCard 在「收起 → 打开」那一刻调用。
+  const handleRefreshAccountUsage = useCallback(() => {
+    vscode.postMessage({ command: "desktopRefreshAccountUsage" });
+  }, [vscode]);
+
   // Batch 2 settings full-page (desktop): close returns to the conversation
   // view; the next 设置 click re-opens it (spec 场景 1/11). The AGENTS.md
   // editor contents are re-fetched on open so unsaved edits are discarded.
@@ -5818,6 +5825,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
             onLogout={handleLogout}
             onDownloadUpdate={handleDownloadUpdate}
             onRestartApp={handleRestartApp}
+            onRefreshAccountUsage={handleRefreshAccountUsage}
             account={accountInfo}
             settingsOpen={settingsOpen}
             onCloseSettings={handleCloseSettings}

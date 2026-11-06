@@ -198,4 +198,14 @@ export interface AgentCallbacks
    * already-open plan panel; it is not emitted for other files.
    */
   onPlanFileUpdated?: (content: string) => void;
+  /**
+   * 额度响应头（`x-codechat-quota-*`）——**每次模型调用的响应**都会带的一组
+   * 读数，成功响应与非 2xx（402 阻断 / 上游 429、5xx）都带。原样透传、不解析：
+   * 字段集合由服务端定，语义映射在消费方（spec:
+   * docs/specs/desktop/desktop-account.md「额度响应头」）。
+   *
+   * 只在响应里真的出现这批头时触发；一个头都没有（私有化部署 / 自定义网关）
+   * 则一次都不触发，消费方据此不更新、也不额外查询。
+   */
+  onQuotaHeaders?: (headers: Record<string, string>) => void;
 }

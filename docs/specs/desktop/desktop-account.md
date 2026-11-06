@@ -1,6 +1,6 @@
 ---
 name: "桌面端账户卡片"
-description: "CodeWave IDE 桌面端侧边栏账户卡片：套餐用量/API 余额双维度用量浮层（点击行尾用量按钮向上弹出 + 预警点）、个人信息行纯功能菜单、应用更新按钮状态机 S0–S6，含 desktopAccountInfo 数据契约"
+description: "CodeWave IDE 桌面端侧边栏账户卡片：套餐用量/API 余额双维度用量浮层（点击行尾用量按钮向上弹出 + 预警点）、用量刷新时机（模型响应头 x-codechat-quota-* 驱动 + 打开浮层时核对，已删 60 秒轮询）、个人信息行纯功能菜单、应用更新按钮状态机 S0–S6，含 desktopAccountInfo 数据契约"
 order: 75
 ---
 
@@ -71,6 +71,29 @@ order: 75
 
 ---
 
+### 用户故事：账户卡片 · 用量刷新时机（响应头驱动 + 打开浮层时核对）（优先级：P2）
+
+作为桌面端用户，我希望**用量数字在我真正消耗额度的时刻刷新**——每次模型调用的响应里就带着当时的额度读数，卡片（含收起态的预警点）因此当场变色；我点开用量浮层时，客户端再向账户接口核对一次全量状态（套餐到期日、企业池、余额），以便我不必等一分钟的定时轮询、也不会在私有化部署下被客户端每分钟白打一次恒返回空对象的接口。
+
+**为什么是这个优先级**：这是**数据刷新链路**的改造（配额仍然由既有故事渲染，本故事不改任何展示口径），排在展示与交互定稿之后。**2026-11-06 定稿（A 形态）**：服务端（codechat issue #51）已在 proxy 每次模型调用上发出 `x-codechat-quota-*` 头（数值就是闸口那一次 `getBillingVerdict` 的结果，**零额外查询**），故「每次调用都在变」的读数改由响应头搭载；`GET /api/v1/account` 保留但**降频到「点开用量浮层时核对一次」**，**60 秒定时轮询删除**——它在私有化下每分钟打一次恒返回 `{}` 的接口，而真正的变化时刻本来就有响应可搭载。已接受的代价：共享 API 余额被同事消耗时，最长到下次打开浮层才发现（预警点在本人发起调用时立即跟上）。
+
+**独立测试**：给宿主喂一组带 `x-codechat-quota-*` 的响应头，验证 `desktopAccountInfo` 随之推送且 `billing` / `apiQuota` 按映射表（见「额度响应头」小节）更新——table-driven 覆盖 plan / api（含 `no_plan` 只有到期日）/ blocked / 只有 `api-*`（只更新余额维度）/ 一个头都没有五类，以及 `limit` 三态解码（`unlimited` → `null`、`unavailable` → `0`、数字原样）与 `api-limit` 的两态（`unlimited` → `null`、`0` → 已用完）；喂一组头缺失或数值不可解析的响应，验证**不推送、不请求、不错写成 0**；模拟 402（`code` + 头）与上游 429/5xx（错误响应同样带头）两条错误路径，验证读数照常刷新；用 fake timers 断言登录后**不再有**任何周期性 `getAccountInfo` 请求（删轮询）；webview 侧点开浮层验证发出**一次** `desktopRefreshAccountUsage`、且收起再打开会再发一次。
+
+**验收场景**：
+
+1. **假设**用户在会话里发起一次模型调用，**当**该次调用的响应带 `x-codechat-quota-*` 头，**则**宿主把头顶层的读数映射成新的 `billing` / `apiQuota` 并推送 `desktopAccountInfo`——卡片收起态下预警点立刻跟上（用的还是既有判定：结论行 tone / 余额不足 20% / 已用完），浮层开着时两根条与结论行当场更新；用户无需任何额外操作。
+2. **假设**响应是**非 2xx**（proxy 402 阻断、上游 429 被限流、5xx），**当**错误响应同样带头，**则**读数**照常刷新**（402 当场变「被阻断」结论行 + 红档预警点；429/5xx 也刷新余量）——错误路径的头与成功路径**同等对待**，不能只看成功响应。
+3. **假设**头里的读数是「本次调用**前**」的快照（流式响应在首字节前就把头发完、扣费在流结束后），**当**客户端渲染，**则**不得据此反推本次消耗、不得把「读数与上次相同」当成「这次没计费」，也不得自行 +1 或做任何补偿；下一次调用会用新的快照把差异补上。
+4. **假设**用户在浮层收起态点开用量按钮，**当**浮层打开，**则** webview 向宿主发**一次** `desktopRefreshAccountUsage`，宿主调 `getAccountInfo` 做一次全量核对（套餐两根条、到期日、结论行、企业池、API 余额）并推送；**一次打开只发一次**（不随渲染反复发、不因页签切换再发）；核对失败时**保留上次成功显示**，不弹错、不清空（与既有「失败保留」口径一致）。
+5. **假设**登录态发生变化（登录 / 登出 / 切换主机）或宿主首次拿到账户数据，**当**状态变化，**则**照旧推送 `desktopAccountInfo`；**此后没有任何周期性请求**——刷新的触发源只有三个：**账户状态变化的推送**、**每次带额度头的响应**、**打开浮层时的那一次核对**（60 秒定时轮询删除，见边界情况）。
+6. **假设**响应里**没有任何** `x-codechat-quota-*` 头（私有化部署、自定义网关、中间层剥掉了不认识的响应头、或对端根本不是 codechat），**当**收到该响应，**则**不更新**任何**用量数据、**不触发**任何额外查询，已有数据保持不变；用量区仍按「有没有用量数据」渲染（`billing` / `apiQuota` 双缺 = 不渲染，见上一故事场景 22）——客户端**不判部署模式**，「没有头」就是「这次没有新信息」，不等于「0 额度 / 不限额 / 被阻断」。
+7. **假设**头解析：`limit` 三态解码为 `unlimited → null`（不限制）、`unavailable → 0`（该维度不可用）、数字原样；`api-limit` **只有两态**（`unlimited → null`、数字原样 —— API 余额是充值制，`0` 就是「已用完」，与套餐侧的 `0` 语义不同）；**数值不可解析（非数字、负数、空串）时该项按「没给」处理**（不更新、不错写成 0，避免把健康的账号渲染成「已用尽」）。
+8. **假设**头里**没有** `api-*` 三个字段（`ok_plan` 路径故意不发：套餐可用时不查 `api_quotas`，没有数字可发），**当**映射 `apiQuota`，**则**保留上次已知的 `apiQuota`、不清空——否则正停在余额维度的用户会被下一次套餐计费调用的响应把余额行挤掉（`apiQuota` 从此只在「打开浮层核对」与「头里确实给了 `api-*`」两种时机变化）。
+9. **假设**同一份 `billing` 既来自响应头也来自账户接口，**当**两者先后写入，**则**后到的覆盖先到的、不做新旧比较也不打时间戳——两者数值同源（服务端 proxy 闸口与账户卡片共用 `getBillingVerdict` 同一份判定），差异只可能是「一次调用的时间差」；客户端**不得**为了对齐两者而额外请求。
+10. **假设**该响应同时带 `x-codechat-quota-utilization` / `-surpassed-threshold` / `x-codechat-quota-status`，**当**渲染预警，**则**仍按浮层既有的「剩余 < 限额 20%」自算，**不**改用头里的阈值——同一件事只有一套阈值，避免头（0.8）与浮层（20%）两处算法给出不同档位；`claim` / `reset` / `weekly-reset` / `monthly-reset` 当前**只解析、不渲染**（重置时刻与「哪个窗口用完」由到期日与结论行承担，见故事一场景 4–7）。
+
+---
+
 ### 用户故事：账户卡片 · 个人信息行与纯功能菜单（优先级：P1）
 
 作为桌面端用户，我希望点击头像/姓名热区弹出**纯功能菜单**（设置/企业控制台/帮助文档/退出登录），菜单贴着个人信息行向上弹出、与卡片等宽，再次点击热区或失焦/Esc 可收起，以便操作账户相关功能且不被用量信息干扰。
@@ -137,7 +160,13 @@ order: 75
 
 - **远程主机**：个人信息菜单「设置 / 退出登录」标注主机名；用量与登录态跟随聚焦分屏所属主机。
 
-- **用量轮询失败**：保留上次成功显示。
+- **用量数据刷新失败**：打开浮层时的核对请求失败（网络错误 / 超时 / 服务端 5xx）或推送写不进去时，**保留上次成功显示**——不清空、不弹错、不把卡片降级成「没有用量」；下一次带头的响应或下一次开浮层再补上。
+
+- **60 秒轮询已删除**（2026-11-06，A 形态）：不再有任何周期性的 `GET /api/v1/account`。刷新只剩三个触发源——账户状态变化的推送、每次带 `x-codechat-quota-*` 的响应、打开用量浮层时的一次核对（场景 5）。收益：私有化部署不再每分钟打一次恒返回 `{}` 的接口；代价（已接受）：共享 API 余额被同事消耗时，最长到下次打开浮层才发现。
+
+- **额度头是热路径上的免费输出**：头里的数字全部来自 proxy 那一次 `getBillingVerdict`（零额外 DB 查询），故客户端**不得**因为「头不全」就去补一次账户接口请求——头缺什么就只更新它给了的那几个字段（场景 7、8），也不得为解析头新增任何定时器或后台任务。
+
+- **头的值一律纯 ASCII 英文标识**（`month` / `unlimited` / `EXPIRED_NO_API` 等），中文文案由客户端映射；服务端新增的未知 `reason` / `code` 取值仍走上一故事场景 23 的兜底文案，不得静默（两端不同机发布，头与会话接口同一个风险面）。
 
 - **私有化部署整块不下发**（2026-11-06 对齐 codechat 定稿）：codechat `GET /api/v1/account` 在私有化（`SAAS_MODE` 非 `true`，**未设置即私有化**，判定入口是 codechat 的 `deploymentMode.ts`）下**恒返回空对象 `{}`**——`billing` / `plan` / `apiQuota` 一个都不给（三块数据全由套餐订单 / API 充值订单 / `api_quotas` 派生，私有化不部署运营端、这些数据不存在）。客户端以「**`billing` 与 `apiQuota` 双缺**」为「本部署没有额度体系」的信号：用量按钮整颗不渲染、不出现任何额度结论行，且**不得**解释成 0 额度 / blocked / 不限额三者中的任何一个。判据为什么是「双缺」而不是 codechat spec 措辞里的「缺 `billing` 为唯一信号」：本规格的场景 14 / 17 / 24 明确支持「宿主只下发余额维度」这一契约形态（`billing` 缺、`apiQuota` 在 ⇒ 只展示余额），而私有化两者**都**缺，两条口径在私有化下结论一致、不冲突。桌面端**拿不到部署模式字段**（`saasMode` 只随企业端登录响应与权限目录下发，wave 的 `getAuthStatus` 只回 `isAuthenticated` / `user`），因此客户端**不做**任何「是不是私有化」的判断，只按「有没有用量数据」渲染；SaaS 下非 active 成员（待审核 / 已拒绝 / 已禁用 / ops_admin）同样是空对象，走同一条路径。
 
@@ -221,7 +250,49 @@ export interface DesktopAccountInfoMessage {
 - 无更新：不带 `update` 或 `update.available: false`。
 - `releaseNotes` 由宿主从 electron-updater 的 `UpdateInfo.releaseNotes` **归一化并按已装版本过滤**后下发（generic provider 把 feed `latest*.yml` 里的同名字段原样透传上来）：**数组**形态逐项保留 `compareVersions(parseVersion(item.version), parseVersion(app.getVersion())) > 0` 的项、版本号不可解析的项丢弃、结果按版本倒序；**字符串**形态包装成单元素数组 `[{ version: info.version, note }]`；过滤后为空、缺字段、空串/仅空白一律不下发（webview 按 S4 场景 5 不渲染记录块）。**版本比较只在宿主做**——webview 不认识版本比较，只渲染收到的数组，也不做任何过滤或排序。
 - 账户/用量/结论/更新状态变化时宿主主动推送新快照；轮询失败保留上次成功数据。
-- **宿主只做透传**：`billing` 由 codechat `GET /api/v1/account` 下发，经 CLI `getAccountInfo` → desktopHost `accountCache` 原样带到卡片；宿主**不重算**任何判定或窗口（窗口起点、限额聚合口径都在服务端，客户端一无所知）。
+- **宿主只做透传**：`billing` 有两个来源，都是服务端同一份判定（proxy 闸口与账户卡片共用 `getBillingVerdict`）——① codechat `GET /api/v1/account` 下发，经 CLI `getAccountInfo` → desktopHost `accountCache` 原样带到卡片（只在打开浮层时核对一次）；② 模型响应头 `x-codechat-quota-*`，由宿主按下方「额度响应头」小节映射成同一份契约。宿主**不重算**任何判定或窗口（窗口起点、限额聚合口径都在服务端，客户端一无所知）。
+
+### 额度响应头 `x-codechat-quota-*`（模型调用响应 → 宿主输入）
+
+模型调用的响应（proxy 转发）在**每次调用**上带一组额度头，数值即该次闸口判定的结果。19 个字段（缺失 = 本维度没有数据，不得用 `0` 或 `rejected` 表达）：
+
+| 头                                             | 取值                                                                  | 说明                                                                                |
+| ---------------------------------------------- | --------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| `x-codechat-quota-status`                      | `allowed` / `allowed_warning` / `rejected`                            | 有快照即恒发。本规格只用来判断「这次带了额度头」；预警档位仍按浮层自算（场景 10）   |
+| `x-codechat-quota-claim`                       | `weekly` / `monthly` / `enterprise` / `api` / `none`                  | 代表性限额（哪一池最可能先触顶）。只解析、不渲染                                    |
+| `x-codechat-quota-reset`                       | unix 秒                                                               | 代表限额的重置时刻；`claim` 为 `api` / `enterprise` / `none` 时省略。只解析、不渲染 |
+| `x-codechat-quota-weekly-used`                 | 数字                                                                  | 本自然周已用积分                                                                    |
+| `x-codechat-quota-weekly-limit`                | 数字 / `unlimited` / `unavailable`                                    | 三态：`null`→不限制、`0`→该维度不可用、正数→限额                                    |
+| `x-codechat-quota-weekly-reset`                | unix 秒                                                               | 本窗口重置时刻（下周一 00:00，北京时间）。只解析、不渲染                            |
+| `x-codechat-quota-weekly-utilization`          | `0`–`1`（4 位小数）                                                   | 该维限额为正数时才发。只解析、不渲染                                                |
+| `x-codechat-quota-weekly-surpassed-threshold`  | `0.8`                                                                 | 越过 80% 才发。只解析、不渲染                                                       |
+| `x-codechat-quota-monthly-used`                | 数字                                                                  | 本滚动月已用积分                                                                    |
+| `x-codechat-quota-monthly-limit`               | 数字 / `unlimited` / `unavailable`                                    | 同周三态                                                                            |
+| `x-codechat-quota-monthly-reset`               | unix 秒                                                               | 本窗口重置时刻。只解析、不渲染                                                      |
+| `x-codechat-quota-monthly-utilization`         | `0`–`1`（4 位小数）                                                   | 限额为正数时才发。只解析、不渲染                                                    |
+| `x-codechat-quota-monthly-surpassed-threshold` | `0.8`                                                                 | 越过 80% 才发。只解析、不渲染                                                       |
+| `x-codechat-quota-plan-expire`                 | `YYYY-MM-DD`                                                          | 有生效套餐（或仅剩已到期订单）时才发                                                |
+| `x-codechat-quota-reason`                      | `month` / `week` / `enterprise` / `no_plan` / `dimension_unavailable` | 降级原因，只在判定走 API 时下发                                                     |
+| `x-codechat-quota-code`                        | `EXPIRED_NO_API` / `USER_QUOTA_ZERO` / `TEAM_QUOTA_ZERO`              | 402 阻断码                                                                          |
+| `x-codechat-quota-api-status`                  | `allowed` / `rejected`                                                | 只在判定走 API 时下发（`ok_plan` 路径不查 `api_quotas`，三个 `api-*` 一个都不发）   |
+| `x-codechat-quota-api-used`                    | 数字                                                                  | 同上                                                                                |
+| `x-codechat-quota-api-limit`                   | 数字 / `unlimited`                                                    | 充值制：`0` 就是「已用完」（与套餐侧 `0` 语义不同）                                 |
+
+**映射（只在宿主做一次，webview 认原契约）**：
+
+| 头里有什么                                       | → `billing`                                                                                                         | → `apiQuota`                         |
+| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------- | ------------------------------------ |
+| `-code`（或 `status = rejected`）                | `{ mode: "blocked", code }`（`code` 未知时原样透传，webview 走上一故事场景 23 的兜底文案）                          | 有 `api-*` 则按右边更新              |
+| `-reason`                                        | `{ mode: "api", reason, plan }`：两根条四数齐 ⇒ 四数 + 到期日；只有 `plan-expire` ⇒ `{ expireDate }`；都缺 ⇒ `null` | 同上                                 |
+| 无 `-reason`、无 `-code`，两根条在               | `{ mode: "plan", plan: 四数 + 到期日 }`                                                                             | 通常不下发（`ok_plan` 不发 `api-*`） |
+| 无 `-reason`、无 `-code`、无两根条，只有 `api-*` | **不下发**（webview 走「只下发余额维度」形态，见上一故事场景 17 / 24）                                              | 按 `api-*` 更新                      |
+| 一个头都没有                                     | 不动                                                                                                                | 不动                                 |
+
+- `apiQuota` 由 `api-limit`（`unlimited`→`null`）+ `api-used` 组装；`-api-*` 缺省时**保留上次值**（场景 8）。
+- `blocked` 快照在服务端结构上**可能仍带两根条四数**（`quotaFromVerdict` 的 `base` 对 blocked 也生效），但 webview 的 `blocked` 分支本来不画条（故事一场景 8），故映射时**丢弃**——不为此扩张契约。
+- **时序**：流式响应在首字节前设头 ⇒ 头里是「本次调用前」的读数；非流式与 402 / 上游错误路径同值。客户端不得据此反推本次消耗（场景 3）。
+- **私有化不发任何头**：服务端私有化短路路径根本不生成快照，因此一个 `x-codechat-quota-*` 都不发（不是发 0、也不发 `rejected`）——与 `GET /api/v1/account` 恒返回 `{}` 同源。客户端以「这次没有头」处理（场景 6），**不判部署模式**。
+- **传递链（实现约束）**：agent-sdk 在每次请求返回后从响应头筛出这批字段（成功响应取 `response.headers`；错误响应取 **SDK 自己抛出的 HTTP 错误对象上的 `.headers`** —— 这一层必须把响应头挂到错误上，否则 402/429 的读数会在热路径上丢掉），经 CLI → stdio 通知送到 desktopHost，由宿主一处映射。VS Code / JetBrains 宿主当前不消费该通知（它们没有本规格的账户卡片）。
 
 ### 套餐额度条计算（按余量计）
 
@@ -236,9 +307,18 @@ barPercent(used, limit) = max(0, round((1 − used / limit) × 100))    // limit
 
 - `desktopUpdateDownload`（webview → host）：用户确认 S2 后通知宿主开始下载。
 - `desktopUpdateRestart`（webview → host）：用户在 S4/S5 选择立即重启后通知宿主安装并重启。
+- `desktopRefreshAccountUsage`（webview → host）：**打开用量浮层时发一次**，宿主据此调 `getAccountInfo` 核对全量用量（套餐两根条 + 到期日 + 结论行 + 企业池 + API 余额）并推送新的 `desktopAccountInfo`；失败保留上次成功数据。这是取代 60 秒轮询的主动核对时机（见「用量刷新时机」故事场景 4）。桌面端专属命令（`desktop` 前缀），只需注册桌面端路由。
 - **宿主接线**：webview 侧 S0–S6 状态机调用上述两个命令；宿主（desktopHost.ts）把 electron-updater 事件映射为 `update.status` 随 `desktopAccountInfo` 推送并响应两命令；toast 更新链路不提供（`autoDownload=false`，下载仅在 S2 确认后启动）。触发检查的时机（启动自动 / 手动 / 运行期固定间隔轮询，见 [desktop-distribution.md](./desktop-distribution.md)「桌面端自动更新」场景 11）不改变状态机语义——任一时机发现新版本都只置 idle（S1）。降级边界见 [desktop-distribution.md](./desktop-distribution.md)「桌面端自动更新」故事场景 5。
 
+- **用量侧接线**：`desktopHost` 消费 stdio 的额度头通知（映射成 `billing` / `apiQuota`，见「额度响应头」小节）、响应 `desktopRefreshAccountUsage`，并**删除**原有的 `accountPollIntervalMs` / `accountPollTimer` / `startAccountPolling` 及其在 `webviewReady` 时的启动分支（2026-11-06）。账户状态变化时（登录 / 登出 / 切换主机）仍主动推送快照。
+
 ## 非目标（明确排除）
+
+- **不做本地用量推算**：不从响应头反推本次调用的消耗、不在客户端记账或做「+1 / −1」补偿，也不引入「读数没变 = 没计费」这类推断（场景 3）。额度变化一律以服务端下一次给数为准。
+
+- **不改预警阈值口径**：头里的 `utilization` / `surpassed-threshold` / `status` 不接管渲染判据，预警档位仍按浮层既有的「剩余 < 限额 20%」一套算法（场景 10）——同一件事不能有两套阈值。
+
+- **不新增推送通道**：不引入 WebSocket / SSE 之类的额度推送，也不把 60 秒轮询换个名字装回来；刷新靠「带头的响应 + 打开浮层时核对」两条既有链路（场景 5）。
 
 - **账户卡片的通知语义**：账户卡片不含 toast/通知语义（信息类 toast 自动消失、带操作按钮 toast 不自动消失等通知行为由会话/后台通知故事承载，桌面端更新提醒由「更新按钮状态机」全权接管）。
 
