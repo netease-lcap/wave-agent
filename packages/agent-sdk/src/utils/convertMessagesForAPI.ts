@@ -128,11 +128,13 @@ export async function convertMessagesForAPI(
           if (toolBlock.id && toolBlock.stage === "end") {
             completedToolIds.add(toolBlock.id);
 
-            // Always add a proper tool message to satisfy tool_call_id pairing
+            // Always add a proper tool message to satisfy tool_call_id pairing.
+            // 工具结果原样交给模型（不剥 ANSI，与转录、UI 同一份文本）——完全
+            // 对齐 Claude Code，见 specs/core/bash-tools.md「ANSI 颜色代码」。
             recentMessages.unshift({
               tool_call_id: toolBlock.id,
               role: "tool",
-              content: stripAnsiColors(toolBlock.result || ""),
+              content: toolBlock.result || "",
             });
 
             // If there are images, also prepare a user message with image content

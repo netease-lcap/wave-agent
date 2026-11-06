@@ -223,24 +223,26 @@ export class BackgroundTaskManager {
     const stderrDecoder =
       process.platform === "win32" ? new WindowsStreamDecoder() : null;
 
+    // ANSI 转义序列原样保留（命令输出、日志文件、交给宿主的文本都是同一份带
+    // 色原文，颜色由 UI 渲染；见 specs/core/bash-tools.md「ANSI 颜色代码」）。
     const onStdout = (data: Buffer | string) => {
-      const stripped = stripAnsiColors(
-        stdoutDecoder ? stdoutDecoder.push(data as Buffer) : data.toString(),
-      );
-      shell.stdout += stripped;
+      const chunk = stdoutDecoder
+        ? stdoutDecoder.push(data as Buffer)
+        : data.toString();
+      shell.stdout += chunk;
       if (logStream.writable) {
-        logStream.write(stripped);
+        logStream.write(chunk);
       }
       this.notifyTasksChange();
     };
 
     const onStderr = (data: Buffer | string) => {
-      const stripped = stripAnsiColors(
-        stderrDecoder ? stderrDecoder.push(data as Buffer) : data.toString(),
-      );
-      shell.stderr += stripped;
+      const chunk = stderrDecoder
+        ? stderrDecoder.push(data as Buffer)
+        : data.toString();
+      shell.stderr += chunk;
       if (logStream.writable) {
-        logStream.write(stripped);
+        logStream.write(chunk);
       }
       this.notifyTasksChange();
     };
@@ -365,10 +367,10 @@ export class BackgroundTaskManager {
 
     // Write initial output to log file
     if (initialStdout) {
-      logStream.write(stripAnsiColors(initialStdout));
+      logStream.write(initialStdout);
     }
     if (initialStderr) {
-      logStream.write(stripAnsiColors(initialStderr));
+      logStream.write(initialStderr);
     }
 
     const shell: BackgroundShell = {
@@ -395,23 +397,19 @@ export class BackgroundTaskManager {
       process.platform === "win32" ? new WindowsStreamDecoder() : null;
 
     child.stdout?.on("data", (data) => {
-      const stripped = stripAnsiColors(
-        stdoutDecoder ? stdoutDecoder.push(data) : data.toString(),
-      );
-      shell.stdout += stripped;
+      const chunk = stdoutDecoder ? stdoutDecoder.push(data) : data.toString();
+      shell.stdout += chunk;
       if (logStream.writable) {
-        logStream.write(stripped);
+        logStream.write(chunk);
       }
       this.notifyTasksChange();
     });
 
     child.stderr?.on("data", (data) => {
-      const stripped = stripAnsiColors(
-        stderrDecoder ? stderrDecoder.push(data) : data.toString(),
-      );
-      shell.stderr += stripped;
+      const chunk = stderrDecoder ? stderrDecoder.push(data) : data.toString();
+      shell.stderr += chunk;
       if (logStream.writable) {
-        logStream.write(stripped);
+        logStream.write(chunk);
       }
       this.notifyTasksChange();
     });
@@ -521,7 +519,7 @@ export class BackgroundTaskManager {
     // the text; once a task reaches a terminal state the snapshot already
     // carries the final output.
     if (!stdout && task.status === "running" && task.outputPath) {
-      stdout = stripAnsiColors(readTailTextSync(task.outputPath));
+      stdout = readTailTextSync(task.outputPath);
     }
 
     // Apply regex filter if provided

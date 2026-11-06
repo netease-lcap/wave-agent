@@ -18,6 +18,7 @@ import WorkflowRunProgress, {
   formatDuration,
   formatTime,
 } from "./WorkflowRunProgress";
+import { ansiToHtml } from "../utils/ansiText";
 import "../styles/ConfigurationDialog.css";
 
 interface BackgroundTaskOutput {
@@ -325,13 +326,19 @@ const BackgroundTaskManager: React.FC<
                       whiteSpace: "pre-wrap",
                       margin: 0,
                     }}
-                  >
-                    {loadingOutput
-                      ? "加载中..."
-                      : output
-                        ? getLastLines(output.stdout, 20) || "(无输出)"
-                        : "(无输出)"}
-                  </pre>
+                    // 命令输出里的 ANSI 原样保留（specs/core/bash-tools.md
+                    // 「ANSI 颜色代码」），这里按可见文本渲染：转义序列变成
+                    // 颜色，其余控制序列丢弃，否则屏幕上会是一堆 `ESC[31m`。
+                    dangerouslySetInnerHTML={{
+                      __html: ansiToHtml(
+                        loadingOutput
+                          ? "加载中..."
+                          : output
+                            ? getLastLines(output.stdout, 20) || "(无输出)"
+                            : "(无输出)",
+                      ),
+                    }}
+                  />
                   {output && output.stderr && (
                     <>
                       <div
@@ -359,9 +366,12 @@ const BackgroundTaskManager: React.FC<
                           whiteSpace: "pre-wrap",
                           margin: 0,
                         }}
-                      >
-                        {getLastLines(output.stderr, 20)}
-                      </pre>
+                        // stderr 同样保留命令自己输出的颜色；外层红色是默认色，
+                        // 带色片段（`ansi-*`）会覆盖它。
+                        dangerouslySetInnerHTML={{
+                          __html: ansiToHtml(getLastLines(output.stderr, 20)),
+                        }}
+                      />
                     </>
                   )}
                 </div>

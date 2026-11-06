@@ -12,6 +12,7 @@ import {
   linkifyPlainText,
   stripTrailingUrlPunct,
 } from "../utils/linkifyPlainText";
+import { linkifyAnsiText } from "../utils/ansiText";
 import {
   decodeHtmlEntities,
   detectFilePathToken,
@@ -1298,7 +1299,10 @@ export const Message: React.FC<MessageProps> = React.memo(
               <div
                 className="bash-command-output"
                 tabIndex={isDesktopHost() ? 0 : undefined}
-                dangerouslySetInnerHTML={{ __html: linkifyPlainText(result) }}
+                // 命令输出不剥 ANSI（specs/core/bash-tools.md「ANSI 颜色
+                // 代码」）：颜色在这里渲染成 ansi-* 样式，其余终端控制序列
+                // 丢弃，链接化仍在可见文本上做。
+                dangerouslySetInnerHTML={{ __html: linkifyAnsiText(result) }}
               />
             </div>
           );
