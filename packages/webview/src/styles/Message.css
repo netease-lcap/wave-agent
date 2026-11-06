@@ -125,11 +125,9 @@
   top: 8px;
 }
 
-/* 悬停才出现：用户消息上的回滚、助手消息上的复制 / 「转后台」共用同一条规则——
- * 三颗是同一类动作（spec: task-background-execution.md 场景 6、
- * ui/message-rendering-system.md「助手消息的复制按钮」场景 1/2），位置、形状、
- * 显隐方式都不该因为挂在哪种角色上而不同。复制那颗第一版做在消息底部、给最后
- * 一条常驻，结果每条中间消息都多出一整行空白——2026-11-05 收回到这里。
+/* 悬停才出现：用户消息上的回滚、助手消息上的「转后台」共用同一条规则——
+ * 两颗是同一类动作（spec: task-background-execution.md 场景 6），位置、形状、
+ * 显隐方式都不该因为挂在哪种角色上而不同。
  * 触控档（手机 / 远控页）也是这条：`:hover` 在那里由 tap 建立（粘滞 hover），
  * 点一下消息就出按钮、再点按钮才生效。曾经试过在触控档常显（`@media (hover: none)`
  * 里 `display: flex`），代价是页面上永远挂着这些按钮、还压在内容上——2026-11-01
@@ -153,19 +151,6 @@
 
 .message-action-btn:hover {
   background-color: var(--vscode-button-secondaryHoverBackground);
-}
-
-/* 只给读屏播报的状态口：不占位、不可见，但留在无障碍树里。 */
-.message-copy-status {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  margin: -1px;
-  padding: 0;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-  white-space: nowrap;
-  border: 0;
 }
 
 .message.assistant .error {
