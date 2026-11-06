@@ -403,4 +403,143 @@ test.describe("Virtualized message list demo", () => {
       `[growth-direction] scrollHeight=${s.scrollHeight} estimate=${estimateTotal} scrollTop=${s.scrollTop} gap=${s.bottomGap.toFixed(2)} rows=${s.rowCount}`,
     );
   });
+
+  /**
+   * 上翻取回的一页接在列表前面之后，用户刚才看的那一行必须还在原处
+   * （spec `ui/message-rendering-system.md` 验收场景 3）。
+   *
+   * 最坏的形状是「新一页的最后一行是个大块」：上翻一页插进来之后，视口顶正好落在
+   * 新一页最后一行身上，而那一行必然还没进账本（高度只是估算）。锚点如果照着
+   * 「视口顶落在这行的第几 px」取，等它真被量出来（120 行代码块：估算 ~1200、
+   * 实测 ~2.2k）整块内容会平移，而补偿只算锚点**上方**那些行 —— 差额原样留在屏幕
+   * 上，实测 1046px，用户看到的就是「上滑时整个定位突变」。
+   */
+  for (const tail of ["小消息", "120 行代码块"] as const) {
+    test(`earlier page prepended (尾巴是${tail}): the row under the reader stays put`, async ({
+      webviewPage,
+    }) => {
+      await webviewPage.setViewportSize({ width: 390, height: 844 });
+      const injector = new MessageInjector(webviewPage);
+      await injector.simulateExtensionMessage("setInitialState", {
+        isAuthenticated: true,
+        messages: [],
+        isStreaming: false,
+        sessions: [],
+        permissionMode: "default",
+      });
+      // 已加载的这一页用 `n` 前缀，它的第一行 `nu0` 就是「用户正在读的那一行」。
+      await injector.simulateExtensionMessage("updateMessages", {
+        messages: buildMessages(60, "n"),
+        hasEarlier: true,
+      });
+      await injector.endStreaming();
+      await webviewPage.waitForFunction(() => {
+        const c = document.getElementById("messagesContainer") as HTMLElement;
+        return c.scrollHeight - c.scrollTop - c.clientHeight <= 2;
+      });
+
+      // 一屏一屏往上滚到顶：既让 `nu0` 挂载并量出来（真实用户也是这样过来的），
+      // 也把「取更早」的请求发出去。
+      for (let i = 0; i < 60; i++) {
+        const atTop = await webviewPage.evaluate(() => {
+          const c = document.getElementById("messagesContainer") as HTMLElement;
+          c.scrollTop = Math.max(0, c.scrollTop - 300);
+          return c.scrollTop <= 0;
+        });
+        await webviewPage.waitForTimeout(40);
+        if (atTop) break;
+      }
+      const request = (await webviewPage
+        .waitForFunction(
+          () =>
+            (
+              window as unknown as {
+                getTestMessages: () => Record<string, unknown>[];
+              }
+            )
+              .getTestMessages()
+              .filter((m) => m.command === "loadEarlierMessages")
+              .pop(),
+          undefined,
+          { timeout: 5000 },
+        )
+        .then((handle) => handle.jsonValue())) as { requestId: string };
+
+      const readMarker = () =>
+        webviewPage.evaluate(() => {
+          const c = document.getElementById("messagesContainer") as HTMLElement;
+          const row = c.querySelector<HTMLElement>(
+            '[data-measured-message-id="nu0"]',
+          );
+          return {
+            rectTop: row ? row.getBoundingClientRect().top : null,
+            scrollTop: c.scrollTop,
+            scrollHeight: c.scrollHeight,
+          };
+        });
+      const before = await readMarker();
+      expect(before.rectTop).not.toBeNull();
+
+      // 早一页：尾巴按用例取样（最后那一行就是页面的边界行）。
+      const earlier = buildMessages(59, "e");
+      earlier.push({
+        id: "etail",
+        role: "assistant",
+        timestamp: "2026-01-01T00:00:00.000Z",
+        blocks: [
+          {
+            type: "text",
+            content:
+              tail === "120 行代码块"
+                ? `长输出：\n\n\`\`\`ts\n${Array.from(
+                    { length: 120 },
+                    (_, n) => `const value_${n} = compute(${n});`,
+                  ).join("\n")}\n\`\`\``
+                : "回答：好的，我来看一下。\n\n再加两行让它有点高度。",
+          },
+        ],
+      });
+      await webviewPage.evaluate(
+        ({ messages, requestId }) => {
+          window.simulateExtensionMessage({
+            command: "earlierMessages",
+            requestId,
+            messages,
+            hasMore: false,
+          } as unknown as Record<string, unknown>);
+        },
+        {
+          messages: earlier as unknown as Record<string, unknown>[],
+          requestId: request.requestId,
+        },
+      );
+
+      // 等账本收敛：新一页的行挂载 → 量出真实高度 → 逐个补偿，直到 scrollTop 与
+      // scrollHeight 连续两次采样都不再动。
+      let settled = { scrollTop: -1, scrollHeight: -1 };
+      for (let i = 0; i < 80; i++) {
+        const now = await webviewPage.evaluate(() => {
+          const c = document.getElementById("messagesContainer") as HTMLElement;
+          return { scrollTop: c.scrollTop, scrollHeight: c.scrollHeight };
+        });
+        if (
+          now.scrollTop === settled.scrollTop &&
+          now.scrollHeight === settled.scrollHeight
+        )
+          break;
+        settled = now;
+        await webviewPage.waitForTimeout(60);
+      }
+
+      const after = await readMarker();
+      // 新一页确实接上了（不是「根本没插进去所以没动」）。
+      expect(after.scrollHeight - before.scrollHeight).toBeGreaterThan(1000);
+      expect(after.rectTop).not.toBeNull();
+      // 就这一条：`nu0` 上沿在屏幕上不许动，一个像素都不许。
+      expect(Math.abs(after.rectTop! - before.rectTop!)).toBeLessThanOrEqual(1);
+      console.log(
+        `[earlier-prepend ${tail}] rectTop ${before.rectTop?.toFixed(1)} → ${after.rectTop?.toFixed(1)}, scrollTop ${before.scrollTop.toFixed(1)} → ${after.scrollTop.toFixed(1)}, scrollHeight ${before.scrollHeight} → ${after.scrollHeight}`,
+      );
+    });
+  }
 });

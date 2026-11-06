@@ -128,15 +128,52 @@ export function rangeFor(
   return { start, end };
 }
 
-/** 视口顶的锚点；空列表返回 undefined。 */
+export interface AnchorOptions {
+  /** 这一行有没有实测高度。缺省当成「都有」。 */
+  isMeasured?: (key: string) => boolean;
+  /**
+   * 视口高度：另找一个「量过的行」当锚点时，只在这个范围内找。缺省不设限。
+   */
+  viewport?: number;
+}
+
+/**
+ * 视口顶的锚点；空列表返回 undefined。
+ *
+ * 锚点默认是「视口顶落在哪一行、落在这行的第几 px」。**但这一行还没量过时，行内
+ * 偏移指不进内容**：它的高度此刻只是估算，等真被量出来（差几百 px 是常态），行内
+ * 那一段会整块平移，而补偿只算锚点**上方**那些行（锚点自己的变化按定义不算），差
+ * 额原样留在屏幕上。上滑翻页每次都踩这个坑——新一页插在顶部之后，视口顶刚好落在
+ * 新一页最后一行的身上，而那一行必然还没量过，于是用户正在读的那一行被它的估算
+ * 误差顶走（实测：早一页尾巴是 120 行代码块 ⇒ 位移 1046px）。
+ *
+ * 所以这一行没量过时，锚点退到**视口里第一行量过的行**的起点：起点的位置只受它
+ * 上方那些行影响，不受自己高度影响，补偿因此是精确的，屏幕上已有的内容一寸不动。
+ * 视口里一行量过的都没有（首屏刚挂载）就照旧用视口顶那一行——那时没有「原先的
+ * 位置」可保，按行内偏移呈现反而自然。
+ */
 export function anchorAt(
   metrics: RowMetrics,
   scrollTop: number,
+  options: AnchorOptions = {},
 ): Anchor | undefined {
   const index = rowAtOffset(metrics, scrollTop);
   if (index < 0) return undefined;
+  const containing = metrics.keys[index];
+  const { isMeasured, viewport } = options;
+  if (isMeasured && !isMeasured(containing)) {
+    const limit = scrollTop + (viewport ?? Number.POSITIVE_INFINITY);
+    for (let i = index + 1; i < metrics.keys.length; i++) {
+      if (metrics.offsets[i] > limit) break;
+      if (isMeasured(metrics.keys[i]))
+        return {
+          key: metrics.keys[i],
+          offsetInItem: scrollTop - metrics.offsets[i],
+        };
+    }
+  }
   return {
-    key: metrics.keys[index],
+    key: containing,
     offsetInItem: scrollTop - metrics.offsets[index],
   };
 }
