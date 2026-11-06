@@ -203,6 +203,23 @@ export interface ChatContextType {
 
 const ChatContext = createContext<ChatContextType | null>(null);
 
+/**
+ * Handoff for the agent teardown that React unmount can only *start*.
+ *
+ * A React effect cleanup is synchronous: it cannot await `Agent.destroy()`,
+ * whose teardown (bash process trees, MCP children, LSP, async work drain) is
+ * async. `cli.tsx` used to call `process.exit(0)` the moment `waitUntilExit()`
+ * resolved, which cut that teardown short — the detached bash process group
+ * never received its SIGTERM and survived as an orphan. The promise is parked
+ * here so the exit path can await it before exiting.
+ */
+let pendingAgentDestroy: Promise<void> | null = null;
+
+/** The in-flight teardown started by the unmount cleanup, if any. */
+export function getPendingAgentDestroy(): Promise<void> | null {
+  return pendingAgentDestroy;
+}
+
 export const useChat = () => {
   const context = useContext(ChatContext);
   if (!context) {
@@ -1033,16 +1050,23 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   useEffect(() => {
     return () => {
       if (agentRef.current) {
+        const agent = agentRef.current;
         try {
           // Display usage summary before cleanup
-          const usages = agentRef.current.usages;
-          const sessionFilePath = agentRef.current.sessionFilePath;
+          const usages = agent.usages;
+          const sessionFilePath = agent.sessionFilePath;
           displayUsageSummary(usages, sessionFilePath);
         } catch {
           // Silently ignore usage summary errors during cleanup
         }
 
-        agentRef.current.destroy();
+        // Park the promise instead of dropping it: the exit path in `cli.tsx`
+        // awaits it before `process.exit()` so the teardown actually runs
+        // (see `pendingAgentDestroy`). Failures are swallowed so a broken
+        // teardown cannot turn a clean exit into an unhandled rejection.
+        pendingAgentDestroy = agent.destroy().catch((error: unknown) => {
+          logger.warn("Agent teardown failed during exit:", error);
+        });
       }
     };
   }, []);
