@@ -219,7 +219,7 @@ docker run --rm -e CODECHAT_BASE=https://<企业端域名> -e PUBLISH_TOKEN=<令
 \`\`\`
 
 - 部署时由 chart 的 Job 注入这两个变量并跑 \`--verify\`；手动预检用 \`--dry-run\`（零写入）。
-- 四条产线一次传完，重复执行安全（已传的自动跳过）；单条重跑：\`--only desktop,docs\`。
+- 四条产线一次传完，重复执行安全（docs / remote / 插件市场整包覆盖，桌面端按台账 sha 判重）；单条重跑：\`--only desktop,docs\`。
 - 包内 \`release-notes.md\` 非空时，桌面端上传会一并提交本版本变更记录（客户端「重启以完成更新」里展示）。
 - 退出码：0 全部成功、1 有失败项、2 环境/配置错。
 EOF
@@ -349,14 +349,23 @@ codechat-artifacts-<YYYYMMDD>-desktop<ver>/
 ./upload-all.sh --base https://<客户企业端域名>              # 令牌缺省时静默交互输入
 ./upload-all.sh --base https://... --dry-run                 # 只预检，零写入
 ./upload-all.sh --base https://... --only desktop,docs       # 单线重跑
-./upload-all.sh --base https://... --overwrite               # 强制重传（默认缺就补、有就跳过）
-./upload-all.sh --base https://... --verify                  # 传完探四条读路径
+./upload-all.sh --base https://... --overwrite               # 桌面端台账有同一份 sha 也重传
+./upload-all.sh --base https://... --verify                  # 传完核服务端读路径（下载页 manifest）
 ./upload-all.sh --base https://... --list                    # 桌面端台账
 ./upload-all.sh --base https://... --delete <id>             # 回退一条台账记录
 ```
 
-- 默认幂等：桌面端按台账 `version+platform+channel+sha512` 比；docs / remote 探
-  `/docs/index.html`、`/remote/index.html`；插件市场比 `latest` 指针的 sha256。
+- 判重口径：**只有桌面端按台账 `version+platform+channel+sha512` 比**（那是真 API，
+  比的是内容）；docs / remote / 插件市场一律整包覆盖，不做「有就不传」的跳过。
+  原因是这三条的读路径由网关直出（ingress → 文件中心），`--base` 打的那台
+  publish-service 根本探不到真值：`/docs` 前缀它是**显式 404**，`/remote/`、
+  `/wave-plugins-official/latest` 被 SPA fallback 兜成运营台外壳的 200。
+  拿这种响应当判据只会漏传，线上已经踩过：远控页停在上一个版本（1.5.1 对 1.6.1）、
+  日志里还写着 `/remote/ → 200`，而真传成功的 docs 反倒被报成 `/docs/ → 404`。
+  重传幂等、两个包才几 MB，代价远低于漏传。
+- 静态物料传成功了看什么：上传接口的 `201` + 响应体里的 `fileCount`（日志会打
+  「已上传（xxx.zip，N 个文件）」）。线上效果只能在客户实际访问域名上用浏览器看
+  `/docs/`、`/remote/`、`/wave-plugins-official/latest`。
 - 变更记录：包根 `release-notes.md` 非空时，在桌面端 init 请求里带 `releaseNotes`
   （预检会打印「变更记录 N 条」）。空文件/缺失就不带这个字段 —— 老服务端逐字段读请求体、
   未知字段一律忽略，所以带上也不会 400，只是存不下来。
@@ -398,9 +407,11 @@ codechat-artifacts-<YYYYMMDD>-desktop<ver>/
    `upload-all.sh` 有可执行位，`release-notes.md` 存在（内容非空，或为空表示本版本无记录）；
 2. docs / remote 两个包根层是 `index.html`，plugin-market 根层有 `.wave-plugin/marketplace.json`；
 3. 可达的私有化环境：`./upload-all.sh --base https://<企业端地址> --dry-run` 能识别到六条物料
-   （三个桌面平台各一条 + 其余三条）且预检里打印「变更记录 N 条」，正式跑后 `--verify` 四条读路径全 200；
+   （三个桌面平台各一条 + 其余三条）且预检里打印「变更记录 N 条」，正式跑后 `--verify` 的下载页
+   manifest 是本版本，三条静态物料在客户访问域名上能打开（`/docs/`、`/remote/`、
+   `/wave-plugins-official/latest` —— publish-service 探不到它们，别拿它的状态码当验收）；
    传完 `--base …/latest.yml` 里该版本能看到 `releaseNotes`（客户环境 codechat 含变更记录支持时）；
-4. 同一份包第二遍：全部跳过、退出码 0；
+4. 同一份包第二遍：桌面端按台账跳过、docs / remote / 插件市场整包重传，退出码 0；
 5. 出包过程**不出现**需要手工预构建的报错；
 6. （走镜像时）`docker buildx imagetools inspect <镜像>` 能看到 `linux/amd64` 与 `linux/arm64`
    两个平台；`--no-push` 出的 oci tar 能 `docker load` 起来，`docker run … --dry-run` 识别到六条物料。
