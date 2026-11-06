@@ -281,11 +281,15 @@ node $S --type remote --env prod --confirm-prod
 
 ### 核验
 
-一条 `curl` 就够：`index.html` 里 `wave-remote-config` 的 `version` / `sha`（带 `-dirty` 表示打包时工作区有改动），外加它引用的 hash 名对不对得上本地 `dist/`：
+一条 `curl` 就够：`index.html` 里 `wave-remote-config` 的 `version` / `sha`（带 `-dirty` 表示打包时工作区有改动），外加它引用的 hash 名对不对得上本地 `dist/`。**必须带 cache-buster**——裸 URL 会命中 CDN 边缘那份旧入口（见下面的缓存条目）：
 
 ```bash
-curl -s "https://codechat.codewave-test.163yun.com/remote/" | grep -o "wave-remote-config[^>]*"
+curl -s "https://codechat.codewave-test.163yun.com/remote/?cb=$RANDOM" | grep -o "wave-remote-config[^>]*"
 # 期望 version/sha = 本次构建，入口引用的 chat.<hash>.js / shim.<hash>.js 与 dist/ 同名
+
+# 新 hash 名的资源对象是立刻可取的（它们不经过入口那层缓存），逐个核 200
+curl -s -o /dev/null -w "%{http_code} %{size_download}B\n" \
+  "https://codechat.codewave-test.163yun.com/remote/shim.<hash>.js"
 ```
 
 ### 收尾报告要素
@@ -298,7 +302,8 @@ curl -s "https://codechat.codewave-test.163yun.com/remote/" | grep -o "wave-remo
 - **合并后补传常是「内容一字不差」**：分支期传一版 → squash 合 main 重打包，zip 可能与合并前同 sha256、文件 hash 全同 ⇒ 照旧重打包重传，但报告里点明「内容没变」。
 - **别用任何外挂标签证明内容**：从前的 `version.txt` 只是上传时给的字符串，实测出现过「包里的两半来自不同构建、标签却指向更晚的提交」；现在它已下线，判据只剩入口引用的 hash 名与本地 `dist/` 是否一致。
 - `/remote/<子路径>` = **404**（通用条先命中并 rewrite 到不存在的对象），不兜到入口页；页面只用 `?query` 做深链，无影响。
-- 缓存分档：入口 `no-cache`、带 hash 的资源 `immutable`；**manifest.json 与两个 PNG 实测是 `no-cache`**（更像按扩展名清单分档），功能无损。手机吃不到新版时先看入口：入口 `no-cache` ⇒ 刷新即重新校验并指向新 hash 名。
+- 缓存分档：入口 `no-cache`、带 hash 的资源 `immutable`；**manifest.json 与两个 PNG 实测是 `no-cache`**（更像按扩展名清单分档），功能无损。
+- **入口 `no-cache` 拦不住 CDN 边缘**（2026-11-06 实测，纠正了此前「刷新即重新校验」的说法）：`no-cache` 只是让**浏览器**每次向边缘校验，边缘自己是按 `x-swift-cachetime: 3600`（响应头可见，配 `age` 计数）缓存入口页的，不与 origin 重新校验。prod 传完 b88a4a63 之后，裸 `/remote/` 连续多请求仍是 `x-cache: HIT TCP_MEM_HIT` + 旧的 `last-modified` / 旧 sha，同一时刻加 `?cb=<rand>` 立刻拿到新 sha ⇒ ① 判断「传上去没有」一律用 cache-buster 打 origin；② 手机吃到新版要等**它连的那个边缘节点**过期（≤1 小时，各节点独立）；③ 页脚/入口显示旧 sha 不一定是传失败。带 hash 名的资源不受这层影响（新名字天然是新对象，旧名也永不清理）。
 - 真机验收某条新能力前，**先确认本机服务进程跑的是含这条改动的构建**（本机 CLI npm link 到主 checkout ⇒ 那里 pull + build 后重启 daemon），否则只会看到「指令没有回执」。
 
 ## 四、wave 官方插件市场
