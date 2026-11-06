@@ -61,11 +61,15 @@ describe("BackgroundTaskManager.getOutput — log-file tail fallback", () => {
     );
   });
 
-  it("strips ANSI colors from the file tail", () => {
+  it("keeps ANSI colors from the file tail", () => {
+    // 命令输出不剥 ANSI（见 specs/core/bash-tools.md「ANSI 颜色代码」）：
+    // 读日志尾部与内存缓冲、转录、UI 看到的是同一份带色原文。
     readTailTextSyncMock.mockReturnValue("\u001b[31mred line\u001b[0m\n");
     manager.addTask(subagentTask({ outputPath: "/tmp/task.log" }));
 
-    expect(manager.getOutput("task_1")?.stdout).toBe("red line\n");
+    expect(manager.getOutput("task_1")?.stdout).toBe(
+      "\u001b[31mred line\u001b[0m\n",
+    );
   });
 
   it("degrades to the in-memory value when the file is unreadable", () => {
