@@ -30,7 +30,10 @@ import {
 } from "./session/messageHandler";
 import { StdioClient } from "./stdio/stdioClient";
 import { NotificationRouter } from "wave-agent-sdk/host";
+import type { StartupStage } from "wave-agent-sdk/host";
+import { startupStageText } from "wave-agent-sdk/host";
 import { ensureCliUpToDate, setExtensionPath } from "./stdio/binaryResolver";
+import { recordStartupStage } from "./stdio/startupStage";
 import { hostLog } from "./hostLog";
 
 export class ChatProvider implements vscode.WebviewViewProvider {
@@ -195,6 +198,18 @@ export class ChatProvider implements vscode.WebviewViewProvider {
         if (p.url) {
           vscode.env.openExternal(vscode.Uri.parse(p.url));
         }
+      });
+      // CLI 侧启动阶段（下载工具依赖、启动会话）同样是没有 sessionId 的全局通知
+      // （spec ui/stdio-transport.md「首次启动的进度文案」）：转成一行文字推给界面，
+      // 并记进宿主缓存——它常常早于 webview 挂载，那时推出去没人收。
+      this.notificationRouter.registerGlobal("startupStage", (params) => {
+        const stage = (params as { stage?: string })?.stage;
+        if (typeof stage !== "string") return;
+        recordStartupStage(stage as StartupStage);
+        this.webviewManager.postMessage({
+          command: "loadingStage",
+          text: startupStageText(stage as StartupStage),
+        });
       });
 
       // 用户偏好（语言/上下文长度/自动记忆）落点为用户级 ~/.wave/settings.json，

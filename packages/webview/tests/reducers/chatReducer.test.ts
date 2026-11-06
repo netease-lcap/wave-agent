@@ -1254,6 +1254,65 @@ describe("chatReducer", () => {
 
       expect(state.isRestoring).toBe(false);
     });
+
+    it("SET_INITIAL_STATE keeps the loading stage while still restoring", () => {
+      // 恢复还没落地：加载态没结束，文案得留着（宿主会在后续阶段覆盖它）。
+      const state = chatReducer(
+        {
+          ...initialState,
+          isRestoring: true,
+          loadingStage: "正在同步 Wave CLI…",
+        },
+        {
+          type: "SET_INITIAL_STATE",
+          payload: {
+            messages: [],
+            sessions: [],
+            configurationData: {},
+            pendingConfirmations: [],
+            isStreaming: false,
+            isRestoring: true,
+          },
+        },
+      );
+
+      expect(state.loadingStage).toBe("正在同步 Wave CLI…");
+    });
+
+    it("SET_INITIAL_STATE drops a stale loading stage once the startup is over", () => {
+      // 首启文案只属于这次启动：快照落地（非恢复态）就必须清掉，否则界面重挂载
+      // 时会把上一次启动的「正在下载…」当成现在正在发生的事（场景 6）。
+      const state = chatReducer(
+        {
+          ...initialState,
+          isRestoring: false,
+          loadingStage: "正在下载工具依赖（搜索与图片处理）…",
+        },
+        {
+          type: "SET_INITIAL_STATE",
+          payload: {
+            messages: [],
+            sessions: [],
+            configurationData: {},
+            pendingConfirmations: [],
+            isStreaming: false,
+          },
+        },
+      );
+
+      expect(state.loadingStage).toBeNull();
+    });
+
+    it("SET_LOADING_STAGE 同值不换 state（避免无意义重渲染）", () => {
+      const state = { ...initialState, loadingStage: "正在启动会话…" };
+
+      expect(
+        chatReducer(state, {
+          type: "SET_LOADING_STAGE",
+          payload: "正在启动会话…",
+        }),
+      ).toBe(state);
+    });
   });
 
   describe("theme state", () => {

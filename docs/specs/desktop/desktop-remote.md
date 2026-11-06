@@ -121,7 +121,7 @@ order: 22
 
 ## 边界情况
 
-- **远端不探测 Node.js**：连接远程主机时既不跑 `node -v`、也不读登录 shell 的 PATH——远端未装 Node、版本低于 22、由 nvm 管理、或装了却不可执行，一律不影响连接：应用总是推送匹配远端平台的托管运行时并用它启动 daemon（见 [desktop-distribution.md](./desktop-distribution.md)「远端主机无需预装 Node」）。仅当桌面端取不到该运行时（无网 / 镜像无该平台包 / 校验不通过）时，才向用户显示可操作的错误（含失败原因、实际请求的 URL 与 `WAVE_NODE_MIRROR` 指引），而**不得**回退到远端已有的系统 Node——那会把「我们验证过的运行时」换成「版本未知、能否执行未知」的一份。
+- **远端不探测 Node.js**：连接远程主机时既不跑 `node -v`、也不读登录 shell 的 PATH——远端未装 Node、版本低于 22、由 nvm 管理、或装了却不可执行，一律不影响连接：应用总是推送匹配远端平台的托管运行时并用它启动 daemon（见 [desktop-distribution.md](./desktop-distribution.md)「远端主机无需预装 Node」）。仅当桌面端取不到该运行时（无网 / 镜像无该平台包 / 校验不通过）时，才向用户显示可操作的错误（含失败原因、实际请求的 URL 与 `WAVE_NODE_MIRROR` 指引），而**不得**回退到远端已有的系统 Node——那会把「我们验证过的运行时」换成「版本未知、能否执行未知」的一份。首次连接（含下载并推送运行时、同步 CLI）期间的进度文案属跨客户端口径，见 [stdio-transport.md](../ui/stdio-transport.md)「首次启动的进度文案」；它在桌面端显示于恢复动画下方（[desktop-sessions.md](./desktop-sessions.md) 场景 9）。
 
 - **远端 rg 自取失败只降级、不阻断**：rg/sharp 由远端 CLI 在启动期自己从 npmmirror 取（既有机制），远端无出网或 registry 不可达时 daemon 照常启动——Grep 报「ripgrep is not available」、超限图片走降级路径，网络恢复后下次启动自动补齐；不得为此弹初始化错误、不得把连接判死、不得无限重试。这与运行时走 ssh 推送是两条独立的出网侧（见 [desktop-distribution.md](./desktop-distribution.md)「运行时的出网侧与 rg 不同」）。
 

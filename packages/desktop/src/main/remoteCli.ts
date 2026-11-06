@@ -51,6 +51,7 @@ import {
 } from "./sshHosts";
 import { SocketClient } from "./stdio/socketClient";
 import type { BundledCliSource } from "./stdio/binaryResolver";
+import type { StartupStage } from "wave-agent-sdk/host";
 import {
   buildWslExecSpec,
   buildWslRawSpec,
@@ -425,6 +426,25 @@ async function downloadNodeRuntime(target: NodeRuntimeTarget): Promise<Buffer> {
   return archive;
 }
 
+/** Startup progress callback (spec: docs/specs/ui/stdio-transport.md). */
+export type StartupStageReporter = (stage: StartupStage) => void;
+
+/**
+ * Report a startup stage without ever letting the reporter break the install:
+ * the text is a progress hint, and a host that cannot deliver it (window gone,
+ * pane closed) must not fail a 50 MB runtime push.
+ */
+function notifyStage(
+  reporter: StartupStageReporter | undefined,
+  stage: StartupStage,
+): void {
+  try {
+    reporter?.(stage);
+  } catch {
+    // Report-only — never fatal.
+  }
+}
+
 /**
  * Probe the host's platform AND the installed runtime marker in one round trip
  * (an ssh round trip is the expensive unit here). musl is sniffed by the
@@ -462,9 +482,14 @@ async function pushRemoteRuntime(
   host: string,
   homeDir: string,
   platformKey: string,
+  onStage?: StartupStageReporter,
 ): Promise<void> {
   const target = nodeRuntimeTarget(platformKey);
+  // Only reached when the marker does not match, i.e. the download really
+  // happens — a warm host never reports this (no false "downloading" text).
+  notifyStage(onStage, "downloadingRuntime");
   const archive = await downloadNodeRuntime(target);
+  notifyStage(onStage, "installingRuntime");
   const runtimeDir = remoteRuntimeDir(homeDir);
   const stagingDir = `${runtimeDir}.new`;
   const backupDir = `${runtimeDir}.old`;
@@ -542,6 +567,7 @@ async function pushRemoteRuntime(
 async function ensureRemoteRuntime(
   host: string,
   homeDir: string,
+  onStage?: StartupStageReporter,
 ): Promise<string> {
   const markerPath = path.posix.join(
     remoteRuntimeDir(homeDir),
@@ -550,7 +576,7 @@ async function ensureRemoteRuntime(
   const { platform, marker } = await probeRuntimeState(host, markerPath);
   const platformKey = nodePlatformKey(platform);
   if (marker !== runtimeMarker(platformKey)) {
-    await pushRemoteRuntime(host, homeDir, platformKey);
+    await pushRemoteRuntime(host, homeDir, platformKey, onStage);
   }
   return remoteRuntimeNodePath(homeDir);
 }
@@ -776,14 +802,16 @@ export async function ensureRemoteCliUpToDate(
   host: string,
   source: BundledCliSource,
   homeDir: string,
+  onStage?: StartupStageReporter,
 ): Promise<RemoteCliUpToDateResult> {
   const binaryPath = remoteCliShimPath(homeDir);
-  const runtimePath = await ensureRemoteRuntime(host, homeDir);
+  const runtimePath = await ensureRemoteRuntime(host, homeDir, onStage);
   const current = await getRemoteBundleSha256(host, homeDir, runtimePath);
   if (current !== null && current === source.bundleSha256) {
     return { binaryPath, runtimePath, upgraded: false };
   }
   // current is null (corrupt/missing) or differs from the bundled bytes → sync.
+  notifyStage(onStage, "syncingCli");
   await pushRemoteCliBundle(host, source, homeDir);
   return { binaryPath, runtimePath, upgraded: true };
 }
@@ -1056,13 +1084,15 @@ export async function ensureRemoteDaemon(
   host: string,
   source: BundledCliSource,
   onNotice?: (message: string) => void,
+  onStage?: StartupStageReporter,
 ): Promise<string> {
+  notifyStage(onStage, "checkingEnvironment");
   const homeDir = await getRemoteHomeDir(host);
   const socketPath = remoteDaemonSocketPath(homeDir);
 
   let info: RemoteCliUpToDateResult | undefined;
   try {
-    info = await ensureRemoteCliUpToDate(host, source, homeDir);
+    info = await ensureRemoteCliUpToDate(host, source, homeDir, onStage);
   } catch (error) {
     console.warn(
       `[remoteCli] ${host} wave CLI 同步失败，继续使用现有安装:`,
