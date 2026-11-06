@@ -9,7 +9,6 @@ import { parseTaskNotificationXml } from "../utils/notificationXml.js";
 import { parsePageCommentEventXml } from "../utils/pageCommentEventXml.js";
 import {
   estimateContextTokens,
-  estimateRequestOverhead,
   getAutoCompactThreshold,
 } from "../utils/tokenCalculation.js";
 import { estimateTokens } from "../utils/tokenEstimate.js";
@@ -724,13 +723,13 @@ export class AIManager {
    * character estimates for newer messages) and compacts first when it
    * exceeds maxInputTokens, so over-limit requests are never sent. Only
    * total_tokens is used — under OpenAI-compatible usage it already includes
-   * cache hits; adding cache fields would double-count and fire early.
+   * cache hits, the system prompt, the tool schema and injected memory;
+   * adding any of those on top would double-count and fire early.
    * Fork paths (compaction / auto-memory) never reach here: they run in
    * runForkLoop, not sendAIMessage.
    */
   private async maybeAutoCompactBeforeRequest(
     abortController: AbortController,
-    requestOverhead = 0,
   ): Promise<boolean> {
     // Circuit breaker: skip compaction after 3 consecutive failures
     if (this.consecutiveCompactionFailures >= 3) {
@@ -746,7 +745,7 @@ export class AIManager {
     const maxInputTokens = this.getMaxInputTokens();
     const maxOutputTokens = this.configurationService.resolveMaxOutputTokens();
     const threshold = getAutoCompactThreshold(maxInputTokens, maxOutputTokens);
-    const estimatedTokens = estimateContextTokens(messages) + requestOverhead;
+    const estimatedTokens = estimateContextTokens(messages);
     if (estimatedTokens >= threshold) {
       logger?.debug(
         `Estimated request tokens ${estimatedTokens} reached ${threshold}, compacting before request...`,
@@ -2062,16 +2061,12 @@ ${question}`;
           const mainSystemPrompt =
             await this.buildMainSystemPrompt(reachableToolPlugins);
 
-          // Pre-request auto-compaction uses the final request shape, including
-          // system prompt, tools, and dynamic memory injected into messages.
-          await this.maybeAutoCompactBeforeRequest(
-            abortController,
-            estimateRequestOverhead(
-              mainSystemPrompt,
-              toolsConfig,
-              prependContent,
-            ),
-          );
+          // Pre-request auto-compaction estimates the context about to be sent
+          // from the last response's usage plus newer messages only. That
+          // usage already contains the system prompt, tool schema and injected
+          // memory, so they must not be added again (see
+          // estimateContextTokens).
+          await this.maybeAutoCompactBeforeRequest(abortController);
 
           // Refresh messages in case compaction replaced the history.
           const refreshedMessages = await convertMessagesForAPI(
