@@ -15,8 +15,24 @@ import type { Message as MessageType } from "wave-agent-sdk/types";
 /** 一行短文本加上下留白。 */
 const BASE_HEIGHT = 34;
 const LINE_HEIGHT = 22;
-/** 800px 列宽下正文一行的字符数（中文按两格算，见 visualLength）。 */
-const CHARS_PER_LINE = 62;
+/**
+ * 正文列的默认宽度：`.messages-column` 的 800px 上限减去左右各 16px 内边距。
+ * 估算必须按**实际列宽**折行——同一个 62 字/行的常量在手机列（358px）上会把
+ * 正文估矮一半，在桌面列（768px）上又估高一倍，两头都会在行第一次被量到时产生
+ * 几百 px 的账本跳变（实测手机上 `est 830 → real 1135`）。代价见本文件末尾。
+ */
+const DEFAULT_TEXT_WIDTH = 768;
+/**
+ * 一个「视觉字符」占多少 px：正文 13px 字号，中文一个字 13px 记 2 格（见
+ * `visualLength`），所以一格 6.5px。CC 那侧是同一个东西（`charsPerLine =
+ * 断点宽度 / 7.5`，`c1c1ec7b9-fHtdZ7Yb.js` 的 `X5`），只是字体不同所以除数不同。
+ *
+ * 实测（真 Chromium，`p` 元素 13px/20px）：358px 列 ⇒ 55 视觉字符/行、768px 列
+ * ⇒ 118，与本式一致。
+ */
+const VISUAL_CHAR_PX = 6.5;
+/** 再窄也至少按这么多字折，免得极窄列把估算抬到不可用的高度。 */
+const MIN_CHARS_PER_LINE = 8;
 /**
  * 代码围栏的行高：代码块是 12px/18px（`.markdown-code` 那一套），比正文的
  * 14px/22px 矮一档，而且一行就是一行的像素——不按正文的 62 字折行去猜。按正文
@@ -48,22 +64,42 @@ function visualLength(text: string): number {
   return length;
 }
 
-function textHeight(content: string): number {
+/** 正文列宽对应的「每行几个视觉字符」。 */
+function charsPerLine(textWidth: number): number {
+  return Math.max(MIN_CHARS_PER_LINE, Math.floor(textWidth / VISUAL_CHAR_PX));
+}
+
+function textHeight(content: string, perLine: number): number {
   // 围栏内按行数、围栏外按字符折行：两类文字不是同一套排版。
-  let proseLength = 0;
+  //
+  // 正文必须**逐段**折行再相加，不能把整块的字符数攒起来一次性除以每行字数：
+  // 段末那一行的余数会被下一段「借走」，段数越多估得越矮。六段各占三行的回答，
+  // 攒起来算只有十四行（少四行 ≈ 88px），而它下一行的定位正是按这个账本走的。
+  let proseLines = 0;
+  let paragraph = 0;
   let codeLines = 0;
   let codeBlocks = 0;
   let inFence = false;
+  const flush = () => {
+    if (paragraph > 0) proseLines += Math.ceil(paragraph / perLine);
+    paragraph = 0;
+  };
   for (const line of content.split("\n")) {
     if (FENCE_LINE.test(line)) {
+      flush();
       if (!inFence) codeBlocks += 1;
       inFence = !inFence;
       continue;
     }
-    if (inFence) codeLines += 1;
-    else proseLength += visualLength(line);
+    if (inFence) {
+      codeLines += 1;
+      continue;
+    }
+    const visual = visualLength(line);
+    if (visual === 0) flush();
+    else paragraph += visual;
   }
-  const proseLines = Math.ceil(proseLength / CHARS_PER_LINE);
+  flush();
   return (
     proseLines * LINE_HEIGHT +
     codeBlocks * CODE_BLOCK_PADDING +
@@ -71,7 +107,16 @@ function textHeight(content: string): number {
   );
 }
 
-export function estimateRowHeight(message: MessageType): number {
+export interface EstimateRowHeightOptions {
+  /** 正文列的实际宽度（px）。缺省按桌面 800px 列算。 */
+  textWidth?: number;
+}
+
+export function estimateRowHeight(
+  message: MessageType,
+  options: EstimateRowHeightOptions = {},
+): number {
+  const perLine = charsPerLine(options.textWidth ?? DEFAULT_TEXT_WIDTH);
   const blocks = message.blocks;
   if (!blocks || blocks.length === 0) return BASE_HEIGHT;
 
@@ -82,7 +127,7 @@ export function estimateRowHeight(message: MessageType): number {
       case "text": {
         const content = block.content || "";
         if (!content.trim()) continue;
-        height += textHeight(content);
+        height += textHeight(content, perLine);
         break;
       }
       case "reasoning":
@@ -100,7 +145,7 @@ export function estimateRowHeight(message: MessageType): number {
         height +=
           block.level === "error"
             ? ERROR_HEIGHT
-            : textHeight(block.content || "");
+            : textHeight(block.content || "", perLine);
         break;
       case "image":
         height += IMAGE_HEIGHT;
@@ -110,7 +155,7 @@ export function estimateRowHeight(message: MessageType): number {
         break;
       default:
         // 没见过的块：按一段文本的保守值算，挂载后马上被实测纠正。
-        height += textHeight(JSON.stringify(block));
+        height += textHeight(JSON.stringify(block), perLine);
     }
     counted += 1;
   }

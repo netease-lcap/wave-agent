@@ -40,8 +40,9 @@ describe("estimateRowHeight", () => {
 
   it("围栏外的文字仍按正文折行，两块各算各的", () => {
     const long = "这是一段很长的正文。".repeat(20);
+    const proseOnly = estimateRowHeight(text(long)) - 34;
     expect(estimateRowHeight(text(`${long}\n\n${fence(10)}`))).toBe(
-      34 + Math.ceil((long.length * 2) / 62) * 22 + 8 + 10 * 18,
+      34 + proseOnly + 8 + 10 * 18,
     );
   });
 
@@ -54,5 +55,60 @@ describe("estimateRowHeight", () => {
       ]),
     );
     expect(two).toBe(one + 22 + 6);
+  });
+});
+
+/**
+ * 折行必须按**实际列宽**算：同一个「每行多少字」的常量在手机列上会把正文估矮
+ * 一半、在桌面列上估高一倍，而估矮的那几百 px 会在行第一次被量到时一次性纠正——
+ * 用户看到的正是「上滑时定位突然变了」。
+ */
+describe("estimateRowHeight 按列宽折行", () => {
+  /** 中文一字两格，所以 n 个汉字 = 2n 个视觉字符。 */
+  const cjk = (n: number) => "字".repeat(n);
+  /** 手机列：390px 视口 ⇒ 正文 358px ⇒ 每行 55 个视觉字符（358 / 6.5）。 */
+  const PHONE_TEXT_WIDTH = 358;
+  const DESKTOP_TEXT_WIDTH = 768;
+
+  it("手机列把同一段正文折得比桌面列多", () => {
+    const message = text(cjk(60)); // 120 视觉字符
+    expect(estimateRowHeight(message, { textWidth: PHONE_TEXT_WIDTH })).toBe(
+      34 + 3 * 22,
+    );
+    expect(estimateRowHeight(message, { textWidth: DESKTOP_TEXT_WIDTH })).toBe(
+      34 + 2 * 22,
+    );
+  });
+
+  it("358px 列正好在 55 个视觉字符处折行", () => {
+    expect(
+      estimateRowHeight(text(cjk(27)), { textWidth: PHONE_TEXT_WIDTH }),
+    ).toBe(34 + 22);
+    expect(
+      estimateRowHeight(text(cjk(28)), { textWidth: PHONE_TEXT_WIDTH }),
+    ).toBe(34 + 2 * 22);
+  });
+
+  it("逐段折行：上一段段末的余数不会借给下一段", () => {
+    const paragraph = cjk(30); // 60 视觉字符 ⇒ 55/行 ⇒ 每段两行
+    const sixParagraphs = Array.from({ length: 6 }, () => paragraph).join(
+      "\n\n",
+    );
+    const oneLongParagraph = cjk(30 * 6);
+    expect(
+      estimateRowHeight(text(sixParagraphs), { textWidth: PHONE_TEXT_WIDTH }),
+    ).toBe(34 + 6 * 2 * 22);
+    // 同等字符数挤在一段里只要 7 行：整块攒起来再除，段数越多就估得越矮。
+    expect(
+      estimateRowHeight(text(oneLongParagraph), {
+        textWidth: PHONE_TEXT_WIDTH,
+      }),
+    ).toBe(34 + Math.ceil(360 / 55) * 22);
+  });
+
+  it("极窄列也有下限，不会把每行字数算成 0", () => {
+    expect(estimateRowHeight(text(cjk(10)), { textWidth: 1 })).toBe(
+      34 + Math.ceil(20 / 8) * 22,
+    );
   });
 });

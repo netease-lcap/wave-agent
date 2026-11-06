@@ -167,17 +167,34 @@
   flex-shrink: 0;
 }
 
+/* Positioning container for the rows: absolutely positioned, covering the
+   column's padding box — so a row's `top`/`left`/`right` resolve exactly as they
+   did against `.messages-column` itself, and the canvas adds no height to the
+   flex column (the spacer alone carries it). Its one job is to be the node the
+   kernel translates during a touch gesture, which is how a height change above
+   the viewport gets compensated without writing `scrollTop` mid-fling (a write
+   there interrupts iOS momentum and reads back stale). */
+.virtual-canvas {
+  position: absolute;
+  inset: 0;
+  /* It sits above the sticky bar in paint order; only the rows themselves
+     should take hit-testing, everything else falls through. */
+  pointer-events: none;
+}
+
 .virtual-row {
   position: absolute;
   top: 0;
-  /* Absolute rows resolve against the column's padding box, so left: 0 +
-     width: 100% would cover the column's 10px padding and butt against
+  /* Absolute rows resolve against the canvas' padding box (= the column's), so
+     left: 0 + width: 100% would cover the column's 10px padding and butt against
      the column edges whenever the pane is narrower than the 800px column.
      Inset both sides instead so rows stay inside the padding, matching the
      input area's 10px gutters. */
   left: 10px;
   right: 10px;
   box-sizing: border-box;
+  /* `.virtual-canvas` is pointer-events: none; rows bring their own back. */
+  pointer-events: auto;
 }
 
 /* User messages span the full column (prototype quiet bar); the previous
