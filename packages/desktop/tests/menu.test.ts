@@ -512,7 +512,7 @@ describe("buildApplicationMenuTemplate", () => {
       (item) => item.label === "文件",
     );
     expect(winFileMenu?.submenu).toMatchObject([
-      { role: "quit", label: "退出" },
+      { role: "quit", label: "退出", accelerator: "Ctrl+Q" },
     ]);
     const macFileMenu = buildApplicationMenuTemplate(actions, true).find(
       (item) => item.label === "文件",
@@ -520,6 +520,22 @@ describe("buildApplicationMenuTemplate", () => {
     expect(macFileMenu?.submenu).toMatchObject([
       { role: "close", accelerator: "", label: "关闭窗口" },
     ]);
+  });
+
+  it("gives 退出 the Ctrl+Q accelerator off macOS only (a real accelerator, aligned with Claude Code Desktop)", () => {
+    // Why it matters: Windows' 关闭 = 最小化到托盘 makes Alt+F4 hide the
+    // window, so without Ctrl+Q there is no keyboard way to quit at all.
+    const quitItem = (isMac: boolean) =>
+      buildApplicationMenuTemplate(actions, isMac)
+        .flatMap((item) => (Array.isArray(item.submenu) ? item.submenu : []))
+        .find((item) => item.role === "quit");
+    expect(quitItem(false)).toMatchObject({ accelerator: "Ctrl+Q" });
+    // Informational accelerators (`registerAccelerator: false`) are display-only;
+    // this one must actually fire when pressed.
+    expect(quitItem(false)?.registerAccelerator).toBeUndefined();
+    // macOS quits through the app menu's `quit` role (Cmd+Q) — the template must
+    // not claim Ctrl+Q there.
+    expect(quitItem(true)).toBeUndefined();
   });
 
   it("关闭分屏 is the only Cmd+W claimant in the whole menu", () => {
