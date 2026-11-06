@@ -1,27 +1,33 @@
 ---
 name: ops-artifacts
-description: 打「私有化离线物料包」——把四类静态物料（桌面端安装包 / 文档站 / 远控页 / 插件市场快照）连同 upload-all.sh 打成单个 tar.gz 交 SRE。没有打包脚本：按本技能给出的 bash 步骤在出包机上逐步执行（前置 fixtures build、docs 截图、docs:pack、pack:remote、插件市场 zip 全由这些步骤自己搞定）。当用户要求「打私有化物料包」「离线包」「交付包」「artifacts 包」「给 SRE 的 tar.gz」，或询问离线交付/物料包结构/upload-all.sh 时使用。上传单个产物线用 ops-upload 技能。
+description: 打「私有化离线物料包」——把四类静态物料（桌面端安装包 / 文档站 / 远控页 / 插件市场快照）连同 upload-all.sh 组装成 bundle，再打成多架构 Docker 镜像推到内网 harbor（仅私有化，SaaS 不部署；镜像怎么在集群里跑归 qingzhou chart，不归本技能）。交付物只有镜像，不再出 tar.gz 包。没有出包脚本：按本技能给出的 bash 步骤在出包机上逐步执行（前置 fixtures build、docs 截图、docs:pack、pack:remote、插件市场 zip 全由这些步骤自己搞定）；镜像构建这段固定步骤在 build-image.sh。当用户要求「打私有化物料包」「离线包」「交付包」「artifacts 包」「私有化镜像」「物料镜像」，或询问离线交付/物料包结构/upload-all.sh/多架构镜像时使用。上传单个产物线用 ops-upload 技能。
 allowed-tools:
   - Bash
 ---
 
-# 私有化离线物料包（四类静态物料 → 一个 tar.gz）
+# 私有化离线物料包（四类静态物料 → 多架构镜像）
 
-客户集群**不出网**，CodeChat 镜像里也不含这四类物料。所以物料在出包机这边凑齐、打成一个包，
-SRE 在客户环境里 `tar -xzf` 后跑一条 `./upload-all.sh --base <企业端域名>` 就传完。
-包结构与上传契约由 **CodeChat 服务端**定义（它那边 `docs/specs/ops-publish-api.md`），
+客户集群**不出网**，CodeChat 镜像里也不含这四类物料。所以物料在出包机这边凑成一个 bundle，
+再打成容器镜像推内网 harbor —— 客户环境里由 chart 起一次性 Job，容器自己把四类物料推上去。
+bundle 结构与上传契约由 **CodeChat 服务端**定义（它那边 `docs/specs/ops-publish-api.md`），
 这里只负责按契约生产 —— 结构、字段名、枚举值都不要"优化"。
 
-**没有打包脚本**：出包由你按下面的步骤直接跑 bash 完成。仓里唯一的脚本是
-`.wave/skills/ops-artifacts/upload-all.sh`，它要**原样拷进包**（SRE 机器上不一定有 node/python/jq，
-交付路径上不能只有 node 版实现）。
+**交付物只有镜像**：不再打 tar.gz 交付包，组装出来的 `$WORK/bundle/$BUNDLE` 目录直接喂给 `build-image.sh`。
+
+**出包没有脚本**：由你按下面的步骤直接跑 bash 完成（每一步的判断是智能的：取哪个 tag、缺哪些平台、
+截图齐不齐）。仓里的脚本只有三个，各自解决「固定且易错」的那一段：
+
+- `upload-all.sh` —— 批量上传器，**原样拷进 bundle**（容器里只有 curl + coreutils，没有 node/python/jq）。
+- `build-image.sh` —— 多架构镜像构建 + 推 harbor（第 7 节），只在出包机跑。
+- `entrypoint.sh` —— 镜像内的容器入口，随镜像分发，不单独交给人。
 
 ## 一句话流程
 
 ```
 gh release download（桌面端三件套）
 docs:pack（文档站）→ pack:remote（远控页）→ 上游仓整树打 zip（插件市场）
-→ 组装 + MANIFEST.tsv + sha256sums.txt + README.md + upload-all.sh → tar -czf → dist/artifacts/
+→ 组装成 bundle（MANIFEST.tsv + sha256sums.txt + README.md + upload-all.sh + release-notes.md）
+→ build-image.sh → 多架构镜像推 harbor（第 7 节）
 ```
 
 ## 0. 先定变量（在 wave-agent 仓库根）
@@ -34,8 +40,7 @@ CHANNELS=stable                                   # 或 stable,beta（服务端�
 WORK=/tmp/wave-artifacts-$VER                     # 固定路径：重跑时复用已下的 350MB
 DL=$WORK/dl
 BUNDLE=codechat-artifacts-$(date +%Y%m%d)-desktop$VER
-OUT=$PWD/dist/artifacts                            # 已 gitignored
-mkdir -p "$DL" "$OUT" "$WORK/bundle/$BUNDLE/artifacts"/{desktop,docs,remote,plugin-market}
+mkdir -p "$DL" "$WORK/bundle/$BUNDLE/artifacts"/{desktop,docs,remote,plugin-market}
 
 # macOS 没有 sha256sum：所有取 sha256 的地方都用这个函数，别直接写 sha256sum
 sha_of() { if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | cut -d' ' -f1; else shasum -a 256 "$1" | cut -d' ' -f1; fi; }
@@ -77,8 +82,13 @@ MACZIP=$(ls "$DL"/*[Mm][Aa][Cc]*.zip 2>/dev/null | head -1)
 ## 2. 文档站包（两个前置：fixtures dist + gitignored 截图）
 
 ```bash
-# 2a. fixtures 没 build 时，demo 的 type-check 直接报 Cannot find module 'wave-webview-fixtures'
-[ -f packages/webview-fixtures/dist/index.js ] || pnpm -F wave-webview-fixtures build
+# 2a. 前置 dist：demo 的 type-check 直接 import 这两个包的 dist，dist 过期时报的是一堆看着
+#     莫名其妙的 TS 错（2026-11-06 实测：fixtures 缺 releaseNotes → TS2339、sdk 缺
+#     DEFAULT_WAVE_CONTEXT_WINDOW → TS2305，都不是真代码问题）。判据不是「dist 在不在」
+#     而是「src 有没有比 dist 新」。
+need_build() { [ ! -d "$1/dist" ] || [ -n "$(find "$1/src" -newer "$1/dist" -name '*.ts*' -print -quit)" ]; }
+need_build packages/webview-fixtures && pnpm -F wave-webview-fixtures build
+need_build packages/agent-sdk      && pnpm -F wave-agent-sdk build
 
 # 2b. 截图（docs/public/screenshots/ 是 gitignored 的构建产物）：按 docs 实际引用的文件名逐张查，
 #     比「目录非空」准 —— 缺一张就会让 vitepress 在「未解析 import」上炸。
@@ -171,46 +181,52 @@ PMZIP="wave-plugins-official-$(sha_of "$PLUGZIP" | cut -c 1-12).zip"
 cp "$PLUGZIP" "$B/artifacts/plugin-market/$PMZIP"
 printf 'plugin-market\tplugin-market/%s\t\t\t\t%s\n' "$PMZIP" "$(sha_of "$B/artifacts/plugin-market/$PMZIP")" >> "$B/MANIFEST.tsv"
 
-# 上传器随包分发，必须有可执行位
+# 上传器随镜像分发，必须有可执行位
 cp .wave/skills/ops-artifacts/upload-all.sh "$B/" && chmod 755 "$B/upload-all.sh"
 
-# 整包校验（相对包根路径，解包后在包目录里 sha256sum -c 能过）
+# 变更记录：本版本相对**上一个 wave-desktop@* tag** 的增量，客户端「重启以完成更新」里展示。
+# 没有它，私有化客户点了重启也看不到「本次更新内容」（不影响更新本身）。
+# 「上一个版本」的取法与 `publish.yml` 逐字一致（按版本号排序的上一条 tag，**不是**
+# git describe —— tag 不都在同一条祖先链上，describe 会跳过版本）：
+# 出包前先 `git fetch --tags`。首个版本取不到上一版时脚本不产出文件，这里补一个空文件占位 ——
+# Dockerfile 的 COPY 需要它，upload-all.sh 见到空文件就不提交 releaseNotes。
+PREV=$(git tag --sort=-v:refname --list 'wave-desktop@*' | grep -v "^${TAG}$" | head -1) || true
+node packages/desktop/scripts/release-notes.mjs --since "${PREV:-}" --to "$TAG" --out "$B/release-notes.md" || true
+[ -f "$B/release-notes.md" ] || : > "$B/release-notes.md"
+
+# 整包校验（相对包根路径，在 bundle 目录里 sha256sum -c 能过）
 (cd "$B" && find artifacts -type f | sort | while read -r f; do printf '%s  %s\n' "$(sha_of "$f")" "$f"; done > sha256sums.txt)
 ```
 
-包内 `README.md`（读它的人已经解过压、站在包目录里，所以只讲「在这儿跑哪条命令」，不要写 `tar -xzf`）：
+bundle 里的 `README.md`（随镜像分发，得 `docker run --rm <镜像> cat README.md` 才看得到；
+讲清怎么喂环境变量、退出码是什么，别再写「解压后跑」那套）：
 
 ```bash
 cat > "$B/README.md" <<EOF
-# CodeChat 离线物料包（桌面端 $VER）
+# CodeChat 离线物料镜像（桌面端 $VER）
 
-四类产物都在当前目录下的 \`artifacts/\`：桌面端安装包 / 文档站 / 远控页 / 插件市场快照。
+四类产物在容器内 \`/artifacts/artifacts/\`：桌面端安装包 / 文档站 / 远控页 / 插件市场快照。
 
 - 桌面端 $VER
 - 文档站 $(basename "$DOCS" | sed 's/^docs-//; s/\.tar\.gz$//')（版本取自 wave-agent 仓 package.json，与桌面端不同步属正常）
 
-## 上传
+## 用法
 
-在当前目录执行：
+容器只吃两个环境变量，其余参数原样透传给 upload-all.sh：
 
 \`\`\`bash
-./upload-all.sh --base https://<客户企业端域名>
+docker run --rm -e CODECHAT_BASE=https://<企业端域名> -e PUBLISH_TOKEN=<令牌> <镜像> --dry-run
 \`\`\`
 
-执行后会提示输入发布令牌（找交付要，不回显、不落盘）。四条产线一次传完，末尾打印汇总；
-重复执行安全（已传的自动跳过），有失败项按提示重跑那一条即可。
-
-只想跑其中几条：\`--only desktop,docs\`；先探一遍不写入：\`--dry-run\`；传完核读路径：\`--verify\`。
-回退一个桌面端版本：\`--list\` 找到 id 后 \`--delete <id>\`。
+- 部署时由 chart 的 Job 注入这两个变量并跑 \`--verify\`；手动预检用 \`--dry-run\`（零写入）。
+- 四条产线一次传完，重复执行安全（已传的自动跳过）；单条重跑：\`--only desktop,docs\`。
+- 包内 \`release-notes.md\` 非空时，桌面端上传会一并提交本版本变更记录（客户端「重启以完成更新」里展示）。
+- 退出码：0 全部成功、1 有失败项、2 环境/配置错。
 EOF
 ```
 
-打包（`--no-xattrs` 不是可选项，见坑 5；`mv` 跨设备会自动退回拷贝+删源，不会 EXDEV）：
-
-```bash
-(cd "$WORK/bundle" && tar -czf "$BUNDLE.tar.gz" --no-xattrs "$BUNDLE")
-mv "$WORK/bundle/$BUNDLE.tar.gz" "$OUT/"
-```
+到这里 `$B` 就是完整的 bundle —— **它直接就是镜像的构建输入**（`build-image.sh` 吃这个目录），
+不再打 tar 包。物料是原样进镜像层的，所以 macOS 扩展属性那条坑只剩 docs 包还沾（见坑 5）。
 
 ## 6. 自检（出包机上必跑，别跳）
 
@@ -218,26 +234,99 @@ mv "$WORK/bundle/$BUNDLE.tar.gz" "$OUT/"
 cd "$B"
 sha256sum -c sha256sums.txt 2>/dev/null || shasum -a 256 -c sha256sums.txt   # macOS 用后者
 awk -F'\t' 'NF!=6{print "✗ 列数不是 6: "$0}' MANIFEST.tsv                     # 必须无输出
-tar -tzf "$OUT/$BUNDLE.tar.gz" | head -3                                      # 首层是 $BUNDLE/…
-ls -l "$OUT/$BUNDLE.tar.gz"                                                   # ~350MB（有桌面端时）
+find artifacts -type f | wc -l                                                # 六条物料
+wc -c < release-notes.md                                                      # 变更记录字节数（0 = 本版本无记录）
+du -sh "$B"                                                                   # ~350MB（有桌面端时）
 ```
 
-然后给用户这三行：
+然后给用户这几行：
 
 ```
-物料包  $OUT/$BUNDLE.tar.gz
-交付    tar -xzf <包名> && cd <包名名> && ./upload-all.sh --base https://<客户企业端域名>
+bundle  $WORK/bundle/$BUNDLE（镜像的构建输入，不再打 tar）
+镜像    harbor.cloud.netease.com/qzlowcode/codechat-artifacts:<ver>-<YYYYMMDDHHmm>-multi
+自查    docker buildx imagetools inspect <镜像>
 直传    node .wave/skills/ops-upload/upload.mjs --type <desktop|docs|remote|plugin-market> …（本机可达时）
 ```
 
-## 包结构（服务端契约，逐字保留）
+## 7. Docker 镜像（多架构，**仅私有化**）
+
+bundle 打成多架构镜像推到内网 harbor：物料 + `upload-all.sh` + `release-notes.md` + `entrypoint.sh`
+进镜像，部署后容器自己把四类物料推进 CodeChat，SRE 不用碰文件、不用输令牌。
+
+**本技能到「镜像推到 harbor」为止**：镜像怎么在客户集群里跑（chart 里的一次性 Job、用什么域名、
+多副本亲和）是 qingzhou-lowcode 那边的事，别在这里展开，也别在技能里抄现成环境的值。
+
+**SaaS 环境永远不部署这个镜像**：SaaS 的物料由我们直接传（走 `ops-upload`）。这条硬约束由 chart 侧
+的渲染条件保证，镜像本身不做区分。
+
+### 7a. 构建并推送（走脚本，别手拼命令）
+
+```bash
+./.wave/skills/ops-artifacts/build-image.sh "$WORK/bundle/$BUNDLE"
+# → harbor.cloud.netease.com/qzlowcode/codechat-artifacts:<物料版本>-<YYYYMMDDHHmm>-multi
+#   例：1.6.1-202611061529-multi（amd64 + arm64）
+```
+
+**tag 里的时间戳不能省**，也别手工改回纯版本号：物料版本（桌面端 tag）≠ 物料内容版本 —— 同一份 1.6.1 里
+docs 包的版本号来自仓库 `package.json`（与桌面端不同步）、远控页和插件市场快照每次重打都是新的。用纯版本号
+就会出现「tag 没变、内容变了」：harbor 上被覆盖（丢掉可追溯），客户节点上 `imagePullPolicy: IfNotPresent`
+不会重拉（**静默用旧物料**）。**物料重打就出新 tag**，一个 tag 只对应一次构建。
+
+可选参数：`--tag <tag>`（完整 tag，默认按上面规则自动拼）、`--registry <host/project>`、
+`--platforms`（默认 `linux/amd64,linux/arm64`，**必须是双架构**）、`--no-push`
+（只构建成本地 `<bundle>.oci.tar` 并打印 manifest list 里的 arch，不碰 registry ——
+第一次接新构建机、或怀疑多架构链路时先这样验一遍，别拿真 tag 试）。
+
+推送前先 `docker login harbor.cloud.netease.com`，脚本会查 `~/.docker/config.json` 提前拦下没登录的情况。
+
+脚本内部就五步（每步的原因都写在脚本注释里，改之前先读）：注册 QEMU binfmt（`binfmt_misc` 是内核态，
+**WSL 重启 / 换构建机就丢**，所以每次装，用内网 harbor 同款镜像）→ 建一次性 docker-container builder
+（本机默认 `docker` driver 不支持多平台）→ 把 bundle + `Dockerfile` + `entrypoint.sh` 拼成临时 context
+（**不往 bundle 里加文件**，它要打 tar 交出去，包结构是服务端契约）→ `buildx build` 双架构直接推 registry
+（多架构不能 `--load`）→ 删 builder 与 context（`trap` 兜住失败路径）。
+
+体积：物料是架构无关的静态文件，两个平台的 `COPY` 层 digest 相同、harbor 里 blob 复用，
+**真正翻倍的只有 alpine + curl 那一层（~15MB）** —— 多架构几乎不增加存储和推拉时间。
+
+### 7b. 镜像的对外契约（重点看 7a，这里只列构建完要自查的）
+
+- 容器只吃两个环境变量：`CODECHAT_BASE`（企业端地址）与 `PUBLISH_TOKEN`（发布令牌），其余参数原样
+  透传给 `upload-all.sh`。令牌只从 env / Secret 注入，**绝不进镜像层**，也不回显、不落盘。
+- `entrypoint.sh` 先轮询 `<base>/health` 再上传（容器可能比企业端起得早），然后
+  `exec upload-all.sh --base "$CODECHAT_BASE" "$@"` —— **退出码就是结果**：`0` 全部成功、`1` 有失败项、
+  `2` 环境/配置错（缺 `CODECHAT_BASE` / `PUBLISH_TOKEN`）。
+- 镜像里就是 §5 组装出来的那份 bundle **原样**（`MANIFEST.tsv` / `sha256sums.txt` / `release-notes.md` /
+  `artifacts/` 四类 / `upload-all.sh`），落在 `/artifacts/`，不额外加工。
+
+构建完先在本地验一遍（只读、零写入）：
+
+```bash
+./.wave/skills/ops-artifacts/build-image.sh "$WORK/bundle/$BUNDLE" --no-push
+docker load -i "$WORK/bundle/$BUNDLE.oci.tar"
+docker run --rm -e CODECHAT_BASE=<可达的企业端地址> -e PUBLISH_TOKEN=<令牌> <镜像> --dry-run
+```
+
+`--dry-run` 打印「将上传 / 跳过」四条线的预检结果 —— 等于在真部署前验一遍镜像里的物料和网络通路。
+
+### 7c. 构建的坑
+
+**多架构的三个参数不能省**：`--provenance=false`（否则 manifest list 多一条 attestation，老客户端
+pull 会迷路）、`--oci-mediatypes=false`（用 Docker v2 schema2 的 manifest list，OCI index 兼容更差），
+以及 binfmt 必须先注册（不注册时 arm64 的 `apk add` 直接 exec format error）。与 qingzhou 公共 CI
+脚本 `build_image()`（`gitlab-ci-send-message.sh`）的参数逐字一致，可对照。`build-image.sh` 已全带上，
+别手拼 `docker buildx build` 把它们漏掉。
+
+## bundle 结构（服务端契约，逐字保留）
+
+镜像里就是这份目录原样（容器内路径 `/artifacts/`）：
 
 ```
 codechat-artifacts-<YYYYMMDD>-desktop<ver>/
-  README.md            包内说明：站在这层目录里跑哪条命令
+  README.md            说明：这个镜像怎么喂环境变量、退出码是什么
   upload-all.sh        POSIX sh 批量上传器（只依赖 curl + coreutils）
   MANIFEST.tsv         tab 分隔六列：kind / 相对路径 / 版本 / 平台 / 通道 / sha256
   sha256sums.txt       整包校验（sha256sum -c 可过）
+  release-notes.md     本版本变更记录（桌面端 init 一并提交；空文件 = 本版本无记录）
   artifacts/
     desktop/<安装包>            ← Release 的 .exe / .dmg / 含 mac 的 .zip
     docs/<docs-<ver>.tar.gz>    ← docs:pack，包根层即 index.html
@@ -248,8 +337,13 @@ codechat-artifacts-<YYYYMMDD>-desktop<ver>/
 - `kind` 枚举：`desktop` / `docs` / `remote-page` / `plugin-market`（`upload-all.sh` 按它分派）。
 - `MANIFEST.tsv` 的列顺序与行内字段都不许改：`upload-all.sh` 的 `read` 与它逐列对应。
 - 桌面端版本号来自 tag；文档包版本号来自 `package.json`，两者不同步是正常的。
+- `release-notes.md` 不在 `MANIFEST.tsv` 里（它不是物料，是随 init 提交的元数据），也不进
+  `sha256sums.txt`；它由 `upload-all.sh` 在 desktop init 时读。三个平台行共用同一份文本 ——
+  服务端按**版本**存一份，与通道、平台无关。
+- 服务端对 docs / remote / plugin-market 的单次 multipart 上限是 **100MiB**（桌面端走分片不受限），
+  这三个包别往里塞大文件。
 
-## upload-all.sh 的行为（交付出去的那份）
+## upload-all.sh 的行为（随镜像分发的那份）
 
 ```bash
 ./upload-all.sh --base https://<客户企业端域名>              # 令牌缺省时静默交互输入
@@ -263,11 +357,16 @@ codechat-artifacts-<YYYYMMDD>-desktop<ver>/
 
 - 默认幂等：桌面端按台账 `version+platform+channel+sha512` 比；docs / remote 探
   `/docs/index.html`、`/remote/index.html`；插件市场比 `latest` 指针的 sha256。
+- 变更记录：包根 `release-notes.md` 非空时，在桌面端 init 请求里带 `releaseNotes`
+  （预检会打印「变更记录 N 条」）。空文件/缺失就不带这个字段 —— 老服务端逐字段读请求体、
+  未知字段一律忽略，所以带上也不会 400，只是存不下来。
+  想给**已经传过的版本**补记录，得带 `--overwrite` 重传（否则台账判定「已存在」直接跳过，
+  走不到 init）；服务端按版本 upsert，三个平台行重复提交同一份文本无害。
 - 退出码 `0` = 全部成功（含跳过），`1` = 有失败项（末尾列失败项与单线重跑命令）。
 - 错误态别猜：`401` 令牌错；`503` 该部署没配 `PUBLISH_TOKEN`（找运维补 env）；
   `404` 打错地址（`--base` 必须是企业端域名）。Git Bash 撞 schannel 吊销检查用
   `CURL_OPTS=--ssl-no-revoke`。
-- 改了这个脚本就在包目录里 `./upload-all.sh --base https://<可达环境> --dry-run` 自查一遍
+- 改了这个脚本就在 bundle 目录里 `./upload-all.sh --base https://<可达环境> --dry-run` 自查一遍
   （零写入，能识别出六条物料即正确）。
 
 ## 坑（都在这一步踩过，别退回去）
@@ -280,28 +379,36 @@ codechat-artifacts-<YYYYMMDD>-desktop<ver>/
    正文里举例提到的 `/home/u/repo/docs/public/screenshots/x.webp` 会被当成缺图（2026-11-05 实测误报，
    害得白跑一遍 118 个 demo 又报错退出）—— 只认 Markdown 图片和 `<img src>` 两种引用语法。
 4. **桌面端三件套约 350MB**，`gh release download` 十分钟量级 —— 固定 `$WORK`，失败重跑复用。
-5. **`--no-xattrs` 不是可选项**：macOS 的扩展属性会在服务端解成 `._*` 垃圾对象（一次 700+ 文件翻倍）。
-   总包与 `pack-docs.mjs` 都带；`pack-docs.mjs` 自己还会自检 `SCHILY.xattr` 扩展头。
+5. **`--no-xattrs` 只剩 docs 包还沾**：物料是原样进镜像层的，不再打总包 tar，所以 macOS 扩展属性
+   → 服务端 `._*` 垃圾对象这条只在 `docs-*.tar.gz` 上还有 —— `pack-docs.mjs` 已经带了它并自检
+   `SCHILY.xattr` 扩展头，别自己另打一份。
 6. **别把 350MB 的包一遍遍读进内存算 hash**：用 `sha_of`（`sha256sum` / `shasum` 都是流式的），
    别自己写循环 `$(cat file | ...)` 那类写法。
 7. **macOS 没有 `sha256sum`**：一律走 `sha_of`；`sha256sum -c` 回退 `shasum -a 256 -c`。
 8. **WSL 上常常没有 `zip` / `unzip`**（2026-11-05 实测 `zip: command not found`）：插件市场用 python3 打，
    校验也用 python3 读 zip 名单，别依赖 `unzip -l`。
 9. **`docs-*.tar.gz` 是中间产物**：装进包后删掉仓库根那份（`rm docs-*.tar.gz`），它虽 gitignored 但会一直堆着。
+10. **binfmt 注册不持久**：`binfmt_misc` 是内核态，WSL 重启 / 换机器就没了，所以 `build-image.sh`
+    每次都注册一遍（幂等）。手动拼 `buildx build` 前也要先 `--install all`，否则 arm64 的
+    `apk add` 直接 `exec format error`。其余构建参数坑见 7c。
 
 ## 验收（出包机上跑一遍）
 
-1. 产出单个 tar.gz，解包后 `artifacts/` 四类齐全，`MANIFEST.tsv` 六列、`sha256sums.txt` 能
-   `sha256sum -c` 全过，`upload-all.sh` 有可执行位；
+1. `$B` 下 `artifacts/` 四类齐全，`MANIFEST.tsv` 六列、`sha256sums.txt` 能 `sha256sum -c` 全过，
+   `upload-all.sh` 有可执行位，`release-notes.md` 存在（内容非空，或为空表示本版本无记录）；
 2. docs / remote 两个包根层是 `index.html`，plugin-market 根层有 `.wave-plugin/marketplace.json`；
 3. 可达的私有化环境：`./upload-all.sh --base https://<企业端地址> --dry-run` 能识别到六条物料
-   （三个桌面平台各一条 + 其余三条），正式跑后 `--verify` 四条读路径全 200；
+   （三个桌面平台各一条 + 其余三条）且预检里打印「变更记录 N 条」，正式跑后 `--verify` 四条读路径全 200；
+   传完 `--base …/latest.yml` 里该版本能看到 `releaseNotes`（客户环境 codechat 含变更记录支持时）；
 4. 同一份包第二遍：全部跳过、退出码 0；
-5. 出包过程**不出现**需要手工预构建的报错。
+5. 出包过程**不出现**需要手工预构建的报错；
+6. （走镜像时）`docker buildx imagetools inspect <镜像>` 能看到 `linux/amd64` 与 `linux/arm64`
+   两个平台；`--no-push` 出的 oci tar 能 `docker load` 起来，`docker run … --dry-run` 识别到六条物料。
 
 ## 与本仓其它技能的关系
 
-- **本技能**：出包（生产物料 + 打包），终点是「交给 SRE 的一个 tar.gz」。
+- **本技能**：出包（生产物料 + 组装 bundle + 打成多架构镜像）。终点就是**一个推到 harbor 的镜像**
+  （不再出 tar.gz）；镜像怎么在客户集群里跑归 qingzhou-lowcode 的 chart，不在本技能。
 - **`ops-upload`**：把单条产物线传到**本机可达**的环境（`upload.mjs --type …`，分片直传、台账、
-  令牌查表都在那边）。日常发版走它；私有化交付走出包 + `upload-all.sh`。
+  令牌查表都在那边）。日常发版走它；私有化交付走本技能的镜像。
 - **`ide-plugin-publish`**：IDE 插件上 marketplace，与物料包无关。

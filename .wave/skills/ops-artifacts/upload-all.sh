@@ -26,6 +26,7 @@ LC_ALL=C
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 ARTIFACT_DIR="$SCRIPT_DIR/artifacts"
 MANIFEST="$SCRIPT_DIR/MANIFEST.tsv"
+NOTES_FILE="$SCRIPT_DIR/release-notes.md"
 
 BASE=""
 TOKEN="${PUBLISH_TOKEN:-}"
@@ -43,6 +44,10 @@ OK_COUNT=0
 SKIP_COUNT=0
 FAIL_COUNT=0
 FAILED_ITEMS=""
+# 变更记录（release-notes.md）转义成 JSON 字符串体后的内容；空串 = 本版本没有记录。
+RELEASE_NOTES_BODY=""
+RELEASE_NOTES_COUNT=0
+RELEASE_NOTES_BYTES=0
 
 usage() {
   cat <<'EOF'
@@ -67,6 +72,11 @@ usage() {
   --verify              上传完再核一遍读路径（feed / manifest / /docs/ / /remote/ / latest）
   --list                读桌面端发布台账后退出
   --delete <id>         删一条桌面端台账记录（= 回退一个版本）后退出
+
+变更记录（桌面端）:
+  包根 release-notes.md 若存在且非空，会在 desktop init 时随请求提交（按版本存，
+  与通道无关，客户端「重启以完成更新」里展示）。空文件/缺失 = 本版本没有记录，
+  不提交该字段，其余行为不变。
 
 环境变量:
   CURL_OPTS             追加给 curl 的参数（Git Bash 撞证书吊销检查时用 --ssl-no-revoke）
@@ -194,10 +204,40 @@ sha256_hex() {
   printf ''
 }
 
+# ─── 变更记录（release-notes.md）─────────────────────────────────────────────
+# 出包时生成、随镜像分发（见 .wave/skills/ops-artifacts/SKILL.md 步骤 5）。桌面端 init 时
+# 一并提交，服务端按**版本**维度存进台账，feed（latest*.yml）里带出去，客户端「重启以完成
+# 更新」里展示（vusion/codechat#50）。
+#
+# 文件 → 能直接塞进 JSON 字符串体的**单行**文本（不含外层引号）：`\` 与 `"` 转义、去掉
+# CR、tab 换成空格、行间换行变字面 `\n`。只依赖 tr/sed —— 容器里没有 node/python/jq。
+# 注意两个 sed 的顺序：先转义内容，再给除最后一行外的每行末尾加 `\n` 两个字符，最后 tr
+# 把真换行删掉合成一行。
+json_escape_file() {
+  tr -d '\r' < "$1" | tr '\t' ' ' \
+    | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' \
+    | sed -e '$!s/$/\\n/' | tr -d '\n'
+}
+
+load_release_notes() {
+  [ -f "$NOTES_FILE" ] || return 0
+  [ -s "$NOTES_FILE" ] || return 0
+  RELEASE_NOTES_BODY=$(json_escape_file "$NOTES_FILE")
+  [ -n "$RELEASE_NOTES_BODY" ] || return 0
+  RELEASE_NOTES_BYTES=$(file_size "$NOTES_FILE")
+  RELEASE_NOTES_COUNT=$(grep -c '' "$NOTES_FILE" 2>/dev/null || printf '0')
+}
+
 # ─── 预检：令牌 / 接口可用性 ─────────────────────────────────────────────────
 preflight() {
   printf '目标部署   %s\n' "$BASE"
   printf '发布令牌   已提供（长度 %s，值不显示）\n' "${#TOKEN}"
+
+  if [ -n "$RELEASE_NOTES_BODY" ]; then
+    printf '变更记录   %s 条（%s 字节，随 desktop init 提交）\n' "$RELEASE_NOTES_COUNT" "$RELEASE_NOTES_BYTES"
+  else
+    printf '变更记录   无（release-notes.md 缺失或为空 ⇒ 客户端不显示「本次更新内容」）\n'
+  fi
 
   if [ "$LIST" = 1 ] || [ -n "$DELETE_ID" ]; then return 0; fi
 
@@ -263,10 +303,16 @@ upload_desktop() { # $1=version $2=platform $3=channels(csv) $4=file
     return 0
   fi
 
-  # init：通道传成 JSON 数组，与服务端 parseChannels 的两种入参都兼容
+  # init：通道传成 JSON 数组，与服务端 parseChannels 的两种入参都兼容。
+  # 变更记录也在这里提交（三个平台行共用同一份文本，服务端按 version 存一份）——老服务端
+  # 逐字段读请求体、未知字段一律忽略，所以带上不会报错，只是存不下来。
   channels_json=$(printf '%s' "$channels" | sed 's/[^,]*/"&"/g')
-  init_body=$(printf '{"platform":"%s","version":"%s","fileName":"%s","fileSize":%s,"channels":[%s]}' \
-    "$platform" "$version" "$name" "$size" "$channels_json")
+  notes_field=""
+  if [ -n "$RELEASE_NOTES_BODY" ]; then
+    notes_field=$(printf ',"releaseNotes":"%s"' "$RELEASE_NOTES_BODY")
+  fi
+  init_body=$(printf '{"platform":"%s","version":"%s","fileName":"%s","fileSize":%s,"channels":[%s]%s}' \
+    "$platform" "$version" "$name" "$size" "$channels_json" "$notes_field")
   http POST /api/publish/desktop/init -H 'Content-Type: application/json' -d "$init_body"
   if [ "$CODE" != 201 ] && [ "$CODE" != 200 ]; then
     fail_item "desktop/$platform $version" "init 失败 HTTP $CODE $(body)"; return 1
@@ -430,6 +476,7 @@ curl_err() { [ -s "$TMP/curl.err" ] && printf '
 ' ' ')"; }
 
 # ─── 主流程 ──────────────────────────────────────────────────────────────────
+load_release_notes
 preflight
 
 if [ "$LIST" = 1 ]; then do_list; exit 0; fi
