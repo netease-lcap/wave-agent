@@ -134,15 +134,23 @@ test.describe("Desktop batch 2 feature screenshots", () => {
     );
 
     // 2. 账户卡片（v3）：注入套餐用量 + API 额度（登录态；apiQuota 用团队余额
-    //    模式 limit:null，显示本人累计消耗金额）。用量概要常驻卡片顶部，无需
-    //    点击展开。
+    //    模式 limit:null，显示本人累计消耗金额）。用量自 2026-11 交互改版起收在
+    //    个人信息行尾按钮弹出的浮层里（卡片默认只剩个人信息一行），要点开按钮
+    //    才拍得到——浮层开着时「查看用量」气泡让位，截图不挂悬停提示。
     await signInAccountCard(injector);
     await expect(webviewPage.getByTestId("account-card")).toBeVisible();
+    await webviewPage.getByTestId("account-usage-btn").click();
+    await expect(
+      webviewPage.getByTestId("account-usage-popover"),
+    ).toBeVisible();
     await expect(webviewPage.getByText("套餐用量")).toBeVisible();
     await screenshotWebp(
       webviewPage,
       "../../docs/public/screenshots/desktop-account-card.webp",
     );
+    // 收起浮层：下一步要点个人信息行热区开功能菜单，两层互斥，留着只会互相抢。
+    await webviewPage.keyboard.press("Escape");
+    await expect(webviewPage.getByTestId("account-usage-popover")).toBeHidden();
 
     // 3. 设置页 - 全局设置：个人信息行热区 → 更多菜单 → 设置 → 全页设置。
     //    先下发用户偏好（真源 = 会话进程的用户级 settings.json）：常规配置态，
