@@ -100,7 +100,12 @@ export class BackgroundTaskManager {
           }
         });
 
-        const forceKillTimer = setTimeout(() => {
+        // Deliberately *not* unref'd: the most common caller is `cleanup()`
+        // during `Agent.destroy()`, i.e. the process is on its way out. An
+        // unref'd timer does not keep the event loop alive, so the forced kill
+        // would never fire and a shell that ignored SIGTERM would outlive its
+        // parent as an orphan. One extra second of lifetime is cheap.
+        setTimeout(() => {
           if (child.killed) return;
           void killProcessTree(pid, "SIGKILL").then((outcome) => {
             if (outcome !== "failed" || child.killed) return;
@@ -111,7 +116,6 @@ export class BackgroundTaskManager {
             }
           });
         }, 1000);
-        forceKillTimer.unref();
       } catch (error: unknown) {
         logger.error("Error stopping background task:", error);
         try {
