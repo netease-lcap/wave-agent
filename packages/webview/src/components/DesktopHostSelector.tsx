@@ -3,6 +3,7 @@ import React, {
   useRef,
   useEffect,
   useCallback,
+  useLayoutEffect,
   useMemo,
 } from "react";
 import { useRovingMenu } from "../utils/useRovingMenu";
@@ -37,6 +38,50 @@ const GROUP_LABEL: Record<"ssh" | "wsl", string> = {
 type MenuRow =
   | { kind: "header"; label: string }
   | { kind: "option"; option: DesktopHostOption; itemIndex: number };
+
+/** Option rows only — what the menu splits its groups into. */
+type OptionRow = Extract<MenuRow, { kind: "option" }>;
+
+/** One menu group: a fixed header label (null for 本地) plus its scrollable items. */
+interface MenuBlock {
+  label: string | null;
+  rows: OptionRow[];
+}
+
+/**
+ * Split the height left over for the group lists (spec 场景 26). Every group
+ * starts at its natural height; the overflow is taken from the LONGEST group
+ * first, so a 4-row WSL 发行版 group keeps every row while the 80-host SSH 主机
+ * group is the one that scrolls. The equal share (`available / groups`) is the
+ * stop line — with several over-long groups nobody is squeezed out of sight.
+ *
+ * (`flex-shrink: 1` on the groups would do the opposite: it shrinks in
+ * proportion to content height, i.e. it crushes the small group to a few pixels.)
+ */
+const fairShareHeights = (naturals: number[], available: number): number[] => {
+  const caps = naturals.slice();
+  let deficit = caps.reduce((sum, natural) => sum + natural, 0) - available;
+  if (deficit <= 0) return caps;
+  const floor = Math.max(0, Math.floor(available / caps.length));
+  const byNaturalDesc = caps
+    .map((natural, index) => ({ natural, index }))
+    .sort((a, b) => b.natural - a.natural);
+  for (const { index } of byNaturalDesc) {
+    if (deficit <= 0) break;
+    const cut = Math.min(caps[index] - floor, deficit);
+    if (cut <= 0) continue;
+    caps[index] -= cut;
+    deficit -= cut;
+  }
+  // 多组同时超长、连均分额都放不下：剩下的缺口均摊（每组仍 ≥ 0）。
+  if (deficit > 0) {
+    const each = Math.ceil(deficit / caps.length);
+    for (let i = 0; i < caps.length; i += 1) {
+      caps[i] = Math.max(0, caps[i] - each);
+    }
+  }
+  return caps;
+};
 
 /**
  * Host dropdown at the top-left of the message input (desktop host, new-session
@@ -162,6 +207,127 @@ export const DesktopHostSelector: React.FC<DesktopHostSelectorProps> = ({
   const current = options.find((o) => o.id === host);
   const triggerText = isLocal ? "本地" : (hostLabel ?? current?.label ?? host);
 
+  // 菜单切成「本地」+「每个主机分组」若干块：块里的**分组标题固定**，只有组内
+  // 的具体主机条目滚动（规格 scene 26：上百台主机时用户滚到哪儿都还看得见
+  // 「本地」和「SSH 主机」这类标题，也不必滚到底才找得到「添加主机…」）。
+  // 只钉排在第一位的「本地」：useRovingMenu 用 querySelectorAll(itemSelector)
+  // [index] 定位条目，DOM 顺序必须与 itemIndex 一致，把非首项挪到最前会让方向
+  // 键落到错的条目上（宿主给的顺序本来就是「本地」在最前）。
+  const blocks = useMemo(() => {
+    const out: MenuBlock[] = [];
+    for (const row of rows) {
+      if (row.kind === "header") out.push({ label: row.label, rows: [] });
+      else if (out.length === 0) out.push({ label: null, rows: [row] });
+      else out[out.length - 1].rows.push(row);
+    }
+    return out;
+  }, [rows]);
+  const pinnedBlock = blocks[0]?.label === null ? blocks[0] : null;
+  const scrollBlocks = pinnedBlock ? blocks.slice(1) : blocks;
+
+  // 每个分组条目区的高度上限，按上面 fairShareHeights 算（与 scrollBlocks 同序）。
+  // 只有一组时留空，交给 flex 自己分配。
+  const [itemCaps, setItemCaps] = useState<number[]>([]);
+  // 窗口尺寸变了上限也跟着变（.desktop-host-menu 是 min(340px, 40vh)）。
+  const [resizeTick, setResizeTick] = useState(0);
+  useEffect(() => {
+    if (!open) return;
+    const onResize = () => setResizeTick((tick) => tick + 1);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, [open]);
+
+  useLayoutEffect(() => {
+    if (!open) {
+      setItemCaps((prev) => (prev.length === 0 ? prev : []));
+      return;
+    }
+    const menu =
+      menuRef.current?.querySelector<HTMLElement>(".desktop-host-menu");
+    if (!menu) return;
+    const lists = Array.from(
+      menu.querySelectorAll<HTMLElement>(".desktop-host-menu-items"),
+    );
+    // 单组（只有 SSH 主机，或只有 WSL 发行版）：flex 的 1 1 auto 就够，不必量。
+    if (lists.length < 2) {
+      setItemCaps((prev) => (prev.length === 0 ? prev : []));
+      return;
+    }
+    const style = getComputedStyle(menu);
+    const padding =
+      parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
+    // 用计算出来的 max-height 而不是 clientHeight：后者会被上一次分配的上限
+    // 反噬（量出来正好等于当前内容高），窗口尺寸变化后重算就会越算越小。菜单是
+    // content-box，max-height 已经不含内边距；border-box 时才需要再扣。
+    const cap = parseFloat(style.maxHeight);
+    const border =
+      parseFloat(style.borderTopWidth) + parseFloat(style.borderBottomWidth);
+    const inner =
+      style.boxSizing === "border-box" ? cap - padding - border : cap;
+    // 菜单里除「分组条目区」以外的固定件：本地行、分组标题、分隔线、添加入口
+    // （展开后是输入行）。它们都不参与分配，先扣掉。
+    let chrome = 0;
+    for (const child of Array.from(menu.children)) {
+      if (child.classList.contains("desktop-host-menu-group")) {
+        const label = child.querySelector(":scope > .desktop-host-menu-label");
+        chrome += label instanceof HTMLElement ? label.offsetHeight : 0;
+      } else {
+        chrome += (child as HTMLElement).offsetHeight;
+      }
+    }
+    // scrollHeight 是各组的自然高度（与当前被压成多少无关）。
+    const available = inner - chrome;
+    // jsdom / 未布局时量不到高度，别把上限算成 0 把条目压没。
+    if (!(available > 0)) {
+      setItemCaps((prev) => (prev.length === 0 ? prev : []));
+      return;
+    }
+    const caps = fairShareHeights(
+      lists.map((list) => list.scrollHeight),
+      available,
+    );
+    setItemCaps((prev) =>
+      prev.length === caps.length && prev.every((v, i) => v === caps[i])
+        ? prev
+        : caps,
+    );
+  }, [open, adding, scrollBlocks, resizeTick]);
+
+  const renderOption = (row: OptionRow) => (
+    <div
+      key={row.option.id}
+      className={`desktop-workdir-menu-item${
+        row.option.disabled ? " desktop-workdir-menu-item-disabled" : ""
+      }`}
+      role="option"
+      aria-selected={row.option.id === host}
+      aria-disabled={row.option.disabled ? true : undefined}
+      {...getItemProps(row.itemIndex)}
+      title={row.option.disabled ? row.option.hint : row.option.label}
+      data-testid={
+        row.option.kind === "local" ? "desktop-host-local" : "desktop-host-item"
+      }
+      data-host-id={row.option.id}
+      data-host-kind={row.option.kind}
+    >
+      {/* 只有「本地」那一行带图标（与触发键同款，见下）；具体主机名不再各带一颗
+          ——远程图标挪到分组标题「SSH 主机」前面，标题行和「本地」行一样是
+          「一颗图标 + 文字」，主机名缩进到与标题文字对齐。 */}
+      {row.option.kind === "local" && (
+        // 1030 评论（她点 `span.codicon.codicon-device-desktop`，指「这里」
+        // 为触发键上那颗 `svg.desktop-host-icon`）：「这个图标和一下一致」——
+        // 菜单里「本地」原来画 codicon-device-desktop 字体字形，与收起态触发键
+        // 的官方 `ContextLocalIcon` 不是一套；这里换成同一颗 svg（同一个
+        // `desktop-host-icon` 类 → 同 16×16 盒、同色、同几何）。
+        <ContextLocalIcon className="desktop-host-icon" />
+      )}
+      <span className="desktop-workdir-menu-name">{row.option.label}</span>
+      {row.option.disabled && row.option.hint && (
+        <span className="desktop-host-item-hint">{row.option.hint}</span>
+      )}
+    </div>
+  );
+
   return (
     <div className="desktop-host-container" ref={menuRef}>
       <div
@@ -193,60 +359,52 @@ export const DesktopHostSelector: React.FC<DesktopHostSelectorProps> = ({
       </div>
       {open && (
         <div
-          className="desktop-workdir-menu"
+          className="desktop-workdir-menu desktop-host-menu"
           role="listbox"
           data-testid="desktop-host-menu"
         >
-          {rows.map((row) =>
-            row.kind === "header" ? (
-              <div
-                key={`group-${row.label}`}
-                className="desktop-workdir-menu-label"
-              >
-                {row.label}
-              </div>
-            ) : (
-              <div
-                key={row.option.id}
-                className={`desktop-workdir-menu-item${
-                  row.option.disabled
-                    ? " desktop-workdir-menu-item-disabled"
-                    : ""
-                }`}
-                role="option"
-                aria-selected={row.option.id === host}
-                aria-disabled={row.option.disabled ? true : undefined}
-                {...getItemProps(row.itemIndex)}
-                title={row.option.disabled ? row.option.hint : row.option.label}
-                data-testid={
-                  row.option.kind === "local"
-                    ? "desktop-host-local"
-                    : "desktop-host-item"
-                }
-                data-host-id={row.option.id}
-                data-host-kind={row.option.kind}
-              >
-                {row.option.kind === "local" ? (
-                  // 1030 评论（她点 `span.codicon.codicon-device-desktop`，指「这里」
-                  // 为触发键上那颗 `svg.desktop-host-icon`）：「这个图标和一下一致」——
-                  // 菜单里「本地」原来画 codicon-device-desktop 字体字形，与收起态触发键
-                  // 的官方 `ContextLocalIcon` 不是一套；这里换成同一颗 svg（同一个
-                  // `desktop-host-icon` 类 → 同 16×16 盒、同色、同几何）。
-                  <ContextLocalIcon className="desktop-host-icon" />
-                ) : (
-                  <span className="codicon codicon-remote"></span>
-                )}
-                <span className="desktop-workdir-menu-name">
-                  {row.option.label}
-                </span>
-                {row.option.disabled && row.option.hint && (
-                  <span className="desktop-host-item-hint">
-                    {row.option.hint}
-                  </span>
-                )}
-              </div>
-            ),
+          {/* 菜单四段：顶部「本地」、每个分组的分组标题（如「SSH 主机」）与
+              底部「添加主机…」都固定，只有分组内的具体主机条目滚动。上百台
+              主机时本地/标题/添加入口都常驻（规格 scene 26）。 */}
+          {pinnedBlock && (
+            <div className="desktop-host-menu-pinned">
+              {pinnedBlock.rows.map(renderOption)}
+              {scrollBlocks.length > 0 && (
+                <div className="desktop-workdir-menu-separator" />
+              )}
+            </div>
           )}
+          {scrollBlocks.map((block, index) => (
+            <div
+              className={`desktop-host-menu-group${
+                itemCaps[index] === undefined
+                  ? ""
+                  : " desktop-host-menu-group-capped"
+              }`}
+              key={block.label ?? "ungrouped"}
+            >
+              {block.label && (
+                <div className="desktop-workdir-menu-label desktop-host-menu-label">
+                  {/* 远程图标跟着分组标题走（原来每台主机前面各一颗）：这样
+                      「SSH 主机」标题行与「本地」行都是「一颗图标 + 文字」。 */}
+                  <span className="codicon codicon-remote"></span>
+                  {block.label}
+                </div>
+              )}
+              <div
+                className="desktop-host-menu-items"
+                // 多组时按组分配高度（上面的 useLayoutEffect）：够用的组保持自然
+                // 高度，吃不下的那组才滚动，短的一组不会被长的顶没。
+                style={
+                  itemCaps[index] === undefined
+                    ? undefined
+                    : { maxHeight: itemCaps[index] }
+                }
+              >
+                {block.rows.map(renderOption)}
+              </div>
+            </div>
+          ))}
           <div className="desktop-workdir-menu-separator" />
           {adding ? (
             <div className="desktop-host-add" data-testid="desktop-host-add">

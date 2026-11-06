@@ -50,6 +50,112 @@ describe("desktop selector keyboard accessibility", () => {
     expect(addItem).toHaveProperty("tabIndex", -1);
   });
 
+  it("host menu icons: 本地 keeps its icon, the remote glyph sits on the SSH 主机 group label", () => {
+    const { vscode } = renderDesktopApp();
+    sendCommand("desktopWorkdirState", {
+      host: "local",
+      hosts: ["prod", "stage"],
+      recentWorkdirs: [],
+    });
+    sendCommand("setInitialState", { messages: [] });
+    vscode.postMessage.mockClear();
+
+    fireEvent.click(screen.getByTestId("desktop-host"));
+    const menu = screen.getByTestId("desktop-host-menu");
+
+    // 具体主机名不再各带一颗图标：图标只在「本地」行与分组标题行上（用户口径：
+    // 把主机名前面那颗图标挪到「SSH 主机」前面，跟「本地」保持一致）。
+    for (const item of screen.getAllByTestId("desktop-host-item")) {
+      expect(item.querySelector(".codicon")).toBeNull();
+    }
+    const label = menu.querySelector(".desktop-host-menu-label");
+    expect(label?.textContent).toBe("SSH 主机");
+    expect(label?.querySelector(".codicon-remote")).not.toBeNull();
+    expect(
+      screen
+        .getByTestId("desktop-host-local")
+        .querySelector(".desktop-host-icon"),
+    ).not.toBeNull();
+  });
+
+  it("host menu icons: the WSL 发行版 group follows the same rule as SSH 主机", () => {
+    const { vscode } = renderDesktopApp();
+    sendCommand("desktopWorkdirState", {
+      host: "local",
+      hosts: ["prod"],
+      hostOptions: [
+        { id: "local", label: "本地", kind: "local" },
+        { id: "wsl:Ubuntu-24.04", label: "Ubuntu-24.04", kind: "wsl" },
+        { id: "wsl:Debian", label: "Debian", kind: "wsl" },
+        { id: "prod", label: "prod", kind: "ssh" },
+      ],
+      recentWorkdirs: [],
+    });
+    sendCommand("setInitialState", { messages: [] });
+    vscode.postMessage.mockClear();
+
+    fireEvent.click(screen.getByTestId("desktop-host"));
+    const menu = screen.getByTestId("desktop-host-menu");
+
+    // 两个分组标题行都只有一颗图标（同一颗 codicon-remote），具体条目行一颗都不带。
+    const labels = menu.querySelectorAll(".desktop-host-menu-label");
+    expect(Array.from(labels).map((l) => l.textContent)).toEqual([
+      "WSL 发行版",
+      "SSH 主机",
+    ]);
+    for (const label of labels) {
+      expect(label.querySelectorAll(".codicon-remote")).toHaveLength(1);
+    }
+    for (const item of screen.getAllByTestId("desktop-host-item")) {
+      expect(item.querySelector(".codicon")).toBeNull();
+    }
+  });
+
+  it("host menu: no WSL distro installed → no WSL 发行版 group at all", () => {
+    // 宿主在下发 hostOptions 时已经把「本机一台发行版都没装 / wsl.exe 不可用」
+    // 过滤成「没有 wsl 项」（desktop-wsl.md 场景 1）。webview 不得自己补一个空
+    // 分组或占位文案——那会让没装 WSL 的用户以为哪里坏了。
+    const { vscode } = renderDesktopApp();
+    sendCommand("desktopWorkdirState", {
+      host: "local",
+      hosts: ["prod"],
+      hostOptions: [
+        { id: "local", label: "本地", kind: "local" },
+        { id: "prod", label: "prod", kind: "ssh" },
+      ],
+      recentWorkdirs: [],
+    });
+    sendCommand("setInitialState", { messages: [] });
+    vscode.postMessage.mockClear();
+
+    fireEvent.click(screen.getByTestId("desktop-host"));
+    const menu = screen.getByTestId("desktop-host-menu");
+
+    const labels = menu.querySelectorAll(".desktop-host-menu-label");
+    expect(Array.from(labels).map((l) => l.textContent)).toEqual(["SSH 主机"]);
+    expect(screen.queryByText("WSL 发行版")).toBeNull();
+  });
+
+  it("host menu: with neither WSL nor SSH, only 本地 and 添加主机… remain", () => {
+    const { vscode } = renderDesktopApp();
+    sendCommand("desktopWorkdirState", {
+      host: "local",
+      hosts: [],
+      hostOptions: [{ id: "local", label: "本地", kind: "local" }],
+      recentWorkdirs: [],
+    });
+    sendCommand("setInitialState", { messages: [] });
+    vscode.postMessage.mockClear();
+
+    fireEvent.click(screen.getByTestId("desktop-host"));
+    const menu = screen.getByTestId("desktop-host-menu");
+
+    expect(menu.querySelectorAll(".desktop-host-menu-label")).toHaveLength(0);
+    expect(menu.querySelectorAll(".desktop-host-menu-items")).toHaveLength(0);
+    expect(screen.getByTestId("desktop-host-local")).toBeInTheDocument();
+    expect(screen.getByTestId("desktop-host-add-entry")).toBeInTheDocument();
+  });
+
   it("opens with focus on the first item which is activatable right away", async () => {
     const { vscode } = renderDesktopApp();
     sendCommand("desktopWorkdirState", {

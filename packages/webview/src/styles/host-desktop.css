@@ -2647,6 +2647,14 @@
   opacity: 1;
   color: #6c7076;
 }
+/* 主机菜单的分组标题带一颗远程图标：「SSH 主机」标题行与「本地」行同构，
+   组内主机名缩进到与标题文字齐平（8 padding + 16 图标 + 8 gap = 32px）。 */
+[data-host="desktop"] .desktop-host-menu-label {
+  gap: 8px;
+}
+[data-host="desktop"] .desktop-host-menu-items .desktop-workdir-menu-item {
+  padding-left: 32px;
+}
 
 /* 下拉内「添加主机…」展开的 inline 输入行（走查评论 div.desktop-host-add：
    激活后输入行大小应与上方选项行一致）。
