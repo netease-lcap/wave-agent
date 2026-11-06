@@ -55,6 +55,32 @@ async function openFileFromMessage(
 }
 
 /**
+ * 页面里装一个剪贴板探针。headless 的 http 页面不是安全上下文，
+ * `navigator.clipboard` 整个不存在，面板会退回 `execCommand("copy")` —— 那条路
+ * 的结果读不回来。所以先挂一个 `writeText`，把写进去的文本留在 window 上供断言：
+ * 走的仍是面板自己的复制链路，只是终点从系统剪贴板换成了这个函数。
+ */
+async function installClipboardProbe(page: import("@playwright/test").Page) {
+  await page.evaluate(() => {
+    const scope = window as unknown as { __copied?: string | null };
+    scope.__copied = null;
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: {
+        writeText: async (text: string) => {
+          scope.__copied = text;
+        },
+      },
+    });
+  });
+}
+
+const readCopiedText = (page: import("@playwright/test").Page) =>
+  page.evaluate(
+    () => (window as unknown as { __copied?: string | null }).__copied ?? null,
+  );
+
+/**
  * Generate a real PNG data URL inside the page context so the screenshot shows
  * an actually-rendered image (the fixed data: scheme), not a broken <img>.
  */
@@ -600,6 +626,72 @@ test.describe("Desktop file panel", () => {
       webviewPage.locator(".file-pane-truncated-hint"),
     ).toBeVisible();
     await expect(webviewPage.getByTestId("file-pane-edit")).toHaveCount(0);
+  });
+
+  // spec 场景 23–24：「复制文件内容」把面板里的完整内容写进剪贴板，与「复制路径」
+  // 是两颗按钮；真正读一次系统剪贴板，而不是只断言提示文案。
+  test("copy-file-contents writes the whole file to the clipboard", async ({
+    webviewPage,
+  }) => {
+    const injector = new MessageInjector(webviewPage);
+    await webviewPage.setViewportSize({ width: 1280, height: 720 });
+    const codePath = `${DIR_A}/src/components/Login.tsx`;
+    await setupReadMessage(injector, codePath);
+    await openFileFromMessage(webviewPage, injector);
+
+    const content = "export const alpha = 1;\nexport const beta = 2;\n";
+    await injector.simulateExtensionMessage("desktopFileContent", {
+      fileView: {
+        path: codePath,
+        host: "local",
+        loading: false,
+        content,
+        contentHash: "hash-1",
+        editable: true,
+        truncated: false,
+        totalLines: 2,
+      },
+    });
+
+    await installClipboardProbe(webviewPage);
+    const copyContent = webviewPage.getByTestId("file-copy-content");
+    await expect(copyContent).toBeVisible();
+    // 与「复制路径」并列但互不替代。
+    await expect(webviewPage.getByTestId("file-copy-path")).toBeVisible();
+
+    await copyContent.click();
+    await expect(
+      webviewPage.getByText("内容已复制", { exact: true }),
+    ).toBeVisible();
+    expect(await readCopiedText(webviewPage)).toBe(content);
+  });
+
+  // 场景 24：截断的文件只复制已加载部分，提示里说清楚。
+  test("a truncated file copies the loaded part and says so", async ({
+    webviewPage,
+  }) => {
+    const injector = new MessageInjector(webviewPage);
+    await webviewPage.setViewportSize({ width: 1280, height: 720 });
+    const logPath = `${DIR_A}/logs/big.log`;
+    await setupReadMessage(injector, logPath);
+    await openFileFromMessage(webviewPage, injector);
+    await injector.simulateExtensionMessage("desktopFileContent", {
+      fileView: {
+        path: logPath,
+        host: "local",
+        loading: false,
+        content: "line 1\nline 2\n",
+        truncated: true,
+        totalLines: 2001,
+      },
+    });
+
+    await installClipboardProbe(webviewPage);
+    await webviewPage.getByTestId("file-copy-content").click();
+    await expect(
+      webviewPage.getByText("内容已复制（文件已截断，仅复制已加载内容）"),
+    ).toBeVisible();
+    expect(await readCopiedText(webviewPage)).toBe("line 1\nline 2\n");
   });
 
   // 场景 4：同名文件的标签只追加「最短可区分目录后缀」，整条路径不进标签
