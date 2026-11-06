@@ -244,8 +244,8 @@ export function apiQuotaRemaining(quota: AccountApiQuotaInfo): number | null {
 /**
  * API 余额能否下「额度已用完」结论：`billing.mode` 是唯一判据（issue #2776）。
  *
- * 只有「此刻真的按 API 计费」（`mode = "api"`）或宿主没下发 `billing`（私有化部署，
- * 只有余额这一维）时，`limit = 0` / 剩余 ≤ 0 才等于「当前不可用」。`mode = "plan"` 下
+ * 只有「此刻真的按 API 计费」（`mode = "api"`）或宿主没下发 `billing`（只下发了余额
+ * 这一维，余额即唯一计费口径）时，`limit = 0` / 剩余 ≤ 0 才等于「当前不可用」。`mode = "plan"` 下
  * 后端下发的 `apiQuota.limit = 0` 来自 `checkApiAvailable → TEAM_QUOTA_ZERO`，语义只是
  * 「此刻若降级到 API 计费会被 402」——只买试用套餐、从未充值 API 的企业团队余额恒为 0，
  * 拿它反推可用性会给「套餐还剩大半」的账号误报「已用完」。`mode = "blocked"` 的拦截
