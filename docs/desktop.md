@@ -330,9 +330,9 @@ _产品下载页面_
 
 **自动压缩 (Auto-Compact)**
 
-- 每次 AI 响应后监控 token 使用量（含 cache 读取/写入 tokens）
-- 当总 token 数超过 `getMaxInputTokens()` 时，自动触发压缩流程
-- 使用快速模型（fastModel）生成对话摘要，max_tokens: 8192，temperature: 0.1
+- 每次 AI 响应后记录 token 使用量（仅 `total_tokens`，缓存命中已含其中）
+- 请求发出前按「最近一次响应的 `total_tokens` + 其后新增消息」估算上下文，达到自动压缩阈值（`contextWindow − min(maxOutputTokens, 20000) − 13000`）时先压缩再发
+- 使用快速模型（fastModel）生成对话摘要，`max_tokens` 取全局输出上限，temperature: 0.1
 - 压缩前从消息中剥离图片以降低 token 消耗
 - 按 API round 边界分组消息，保留最后 2 个 API round，避免拆分 tool_use/tool_result 对
 - 被压缩的消息替换为 compress 块（类型为 compress，内容为摘要文本）

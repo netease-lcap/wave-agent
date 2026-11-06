@@ -246,7 +246,7 @@ describe("real host · 凭据链路下线后的真实 stdio 报文", () => {
     ).toBe(false);
 
     // 落点是**会话进程**的 HOME（远端即远端机器上的该文件），上下文长度落在
-    // env.WAVE_MAX_INPUT_TOKENS（K×1000）。CLI 启动时已自建该文件（插件市场
+    // env.WAVE_CONTEXT_WINDOW（K×1000）。CLI 启动时已自建该文件（插件市场
     // 引导），故此处的写入是「改动既有文件」，watcher 门禁场景见 SDK 单测。
     const settingsFile = path.join(REALHOST_HOME, ".wave", "settings.json");
     const settings = JSON.parse(fs.readFileSync(settingsFile, "utf-8")) as {
@@ -258,7 +258,7 @@ describe("real host · 凭据链路下线后的真实 stdio 报文", () => {
     expect(settings.language).toBe("en-US");
     expect(settings.autoMemoryEnabled).toBe(false);
     expect(settings.autoMemoryFrequency).toBe(5);
-    expect(settings.env?.WAVE_MAX_INPUT_TOKENS).toBe("200000");
+    expect(settings.env?.WAVE_CONTEXT_WINDOW).toBe("200000");
 
     // 不重建会话：同一 sessionId 继续服务（保存只落盘，不 destroy + create）。
     expect(ctx.paneSessionId("pane-1")).toBe(sessionBefore);
@@ -282,13 +282,13 @@ describe("real host · 凭据链路下线后的真实 stdio 报文", () => {
 
   it("文件里没有这些键时：空载荷保存不新建键（不被钉住），生效值仍是 SDK 默认 zh-CN", async () => {
     // 回包是**生效视图**（本 PR 起回带 preferenceSources）：机器环境里若预设了
-    // WAVE_MAX_INPUT_TOKENS / WAVE_COMPLETION_MODEL，「未设置态」的前提就不成立
+    // WAVE_CONTEXT_WINDOW / WAVE_COMPLETION_MODEL，「未设置态」的前提就不成立
     // （生效值/来源来自 env 而非文件，开发机上很常见）。本用例要验的是「文件里
     // 没有键」这一形态，所以先把该层钉成未提供，否则结果随开发者机器的环境变量
     // 漂移（CI 干净、本机可能已设）。
-    const savedMaxInputTokens = process.env.WAVE_MAX_INPUT_TOKENS;
+    const savedContextWindow = process.env.WAVE_CONTEXT_WINDOW;
     const savedCompletionModel = process.env.WAVE_COMPLETION_MODEL;
-    delete process.env.WAVE_MAX_INPUT_TOKENS;
+    delete process.env.WAVE_CONTEXT_WINDOW;
     delete process.env.WAVE_COMPLETION_MODEL;
     try {
       await openProject(dirA);
@@ -307,7 +307,7 @@ describe("real host · 凭据链路下线后的真实 stdio 报文", () => {
       expect(before.language).toBeUndefined();
       expect(before.autoMemoryEnabled).toBeUndefined();
       expect(before.autoMemoryFrequency).toBeUndefined();
-      expect(before.env?.WAVE_MAX_INPUT_TOKENS).toBeUndefined();
+      expect(before.env?.WAVE_CONTEXT_WINDOW).toBeUndefined();
 
       // 设置页初始值以该文件为**落点**（本 PR 起生效值可能来自更高层，回包附
       // `preferenceSources` 标出来源层）：没有任何层提供 ⇒ 回包里没有这些字段
@@ -334,7 +334,7 @@ describe("real host · 凭据链路下线后的真实 stdio 报文", () => {
       });
 
       // 「一个字都没改就点保存」在真机上就是空载荷（webview 的 diff 载荷语义）：
-      // 任何键都不得被写进文件——系统环境里已设的 WAVE_MAX_INPUT_TOKENS 因而不会
+      // 任何键都不得被写进文件——系统环境里已设的 WAVE_CONTEXT_WINDOW 因而不会
       // 被这次保存钉成 200000（spec agent-config 边界说明「省略键 = 不改该键」）。
       await readBack(() =>
         ctx.host.handleWebviewMessage({
@@ -352,7 +352,7 @@ describe("real host · 凭据链路下线后的真实 stdio 报文", () => {
       expect(after.language).toBeUndefined();
       expect(after.autoMemoryEnabled).toBeUndefined();
       expect(after.autoMemoryFrequency).toBeUndefined();
-      expect(after.env?.WAVE_MAX_INPUT_TOKENS).toBeUndefined();
+      expect(after.env?.WAVE_CONTEXT_WINDOW).toBeUndefined();
       // 保存不重建会话（同一 sessionId 继续服务）。
       expect(ctx.paneSessionId("pane-1")).toBe(sessionBefore);
       expect(requests(readWire()).map((r) => r.method)).not.toContain(
@@ -372,10 +372,10 @@ describe("real host · 凭据链路下线后的真实 stdio 报文", () => {
       );
       expect(model.sawRequest("Always respond in zh-CN")).toBe(true);
     } finally {
-      if (savedMaxInputTokens === undefined) {
-        delete process.env.WAVE_MAX_INPUT_TOKENS;
+      if (savedContextWindow === undefined) {
+        delete process.env.WAVE_CONTEXT_WINDOW;
       } else {
-        process.env.WAVE_MAX_INPUT_TOKENS = savedMaxInputTokens;
+        process.env.WAVE_CONTEXT_WINDOW = savedContextWindow;
       }
       if (savedCompletionModel === undefined) {
         delete process.env.WAVE_COMPLETION_MODEL;
@@ -420,12 +420,12 @@ describe("real host · 凭据链路下线后的真实 stdio 报文", () => {
   });
 
   it("机器环境变量提供的上下文长度按生效值回给设置页，并标明来源层 env", async () => {
-    // 企业机器上预设的 WAVE_MAX_INPUT_TOKENS：用户级 settings.json 里没有这个键，
+    // 企业机器上预设的 WAVE_CONTEXT_WINDOW：用户级 settings.json 里没有这个键，
     // 生效值来自机器环境变量。设置页必须显示**生效值**（64K）并标明来源层，否则
     // 「显示值与生效值分叉」（spec 场景 8 与边界说明「用户偏好的层与来源」）。
     // 会话进程从宿主 process.env 继承（StdioClient 合并 process.env），所以在这里
     // 设值即可——必须在第一个 CLI 子进程 spawn 之前。
-    process.env.WAVE_MAX_INPUT_TOKENS = "64000";
+    process.env.WAVE_CONTEXT_WINDOW = "64000";
     try {
       await openProject(dirA);
 
@@ -443,9 +443,9 @@ describe("real host · 凭据链路下线后的真实 stdio 报文", () => {
       const file = JSON.parse(fs.readFileSync(settingsFile, "utf-8")) as {
         env?: Record<string, string>;
       };
-      expect(file.env?.WAVE_MAX_INPUT_TOKENS).toBeUndefined();
+      expect(file.env?.WAVE_CONTEXT_WINDOW).toBeUndefined();
     } finally {
-      delete process.env.WAVE_MAX_INPUT_TOKENS;
+      delete process.env.WAVE_CONTEXT_WINDOW;
     }
   });
 

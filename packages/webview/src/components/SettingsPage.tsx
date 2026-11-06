@@ -161,7 +161,7 @@ type AgentsScope = "user" | "project";
  * `""` 表示未设置，与「设置成某个值」区分开。
  *
  * 写盘时只把**用户真正改动过的那一个键**放进载荷（省略键 = 不改该键）：未改动的、
- * 仍处于未设置态的一律不写，因此系统环境里已有的 `WAVE_MAX_INPUT_TOKENS` 不会
+ * 仍处于未设置态的一律不写，因此系统环境里已有的 `WAVE_CONTEXT_WINDOW` 不会
  * 被「进设置页看一眼」钉成 200000（见同名边界说明）。把已写过的值清空等同
  * 「不改该键」——不提供「清除 / 恢复默认」按钮（载荷没有删键语义）。
  */
@@ -745,7 +745,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                     <div className="settings-row-copy">
                       <h3>上下文长度</h3>
                       <p>设置新对话默认可以使用的最大上下文长度</p>
-                      {/* 可见说明：该值落在全局 env.WAVE_MAX_INPUT_TOKENS，当前
+                      {/* 可见说明：该值落在全局 env.WAVE_CONTEXT_WINDOW，当前
                           模型自带上下文上限时会以模型配置为准（spec agent-config
                           边界说明「上下文长度的落点」）——避免被误解为设置失效。 */}
                       <p className="settings-row-hint">
@@ -759,10 +759,10 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                       )}
                     </div>
                     <div className="settings-number-control">
-                      {/* 未设置态：文件里没有 env.WAVE_MAX_INPUT_TOKENS 时留空 +
+                      {/* 未设置态：文件里没有 env.WAVE_CONTEXT_WINDOW 时留空 +
                           placeholder 显示系统默认（跟随模型配置；SDK 兜底
                           200000 = 200K），保存时不写该键——系统环境里已设的
-                          WAVE_MAX_INPUT_TOKENS 因而不被「随手保存」钉住。
+                          WAVE_CONTEXT_WINDOW 因而不被「随手保存」钉住。
                           被组织配置覆盖时显示的是**生效值**并置灰（不可编辑）。 */}
                       <input
                         className="settings-number-input"

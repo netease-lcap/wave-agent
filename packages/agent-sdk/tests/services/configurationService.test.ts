@@ -32,7 +32,7 @@ import {
 } from "../../src/services/configurationService.js";
 import { atomicWriteFile } from "../../src/utils/atomicWrite.js";
 import {
-  DEFAULT_WAVE_MAX_INPUT_TOKENS,
+  DEFAULT_WAVE_CONTEXT_WINDOW,
   DEFAULT_LANGUAGE,
 } from "../../src/utils/constants.js";
 import type { WaveConfiguration } from "../../src/types/configuration.js";
@@ -226,7 +226,7 @@ describe("ConfigurationService", () => {
         env: { VAR1: "user", VAR2: "user" },
         permissions: { allow: ["rule-user"], defaultMode: "default" },
         models: {
-          model1: { options: { temperature: 0.1 }, maxInputTokens: 500 },
+          model1: { options: { temperature: 0.1 }, contextWindow: 500 },
           model2: { options: { temperature: 0.2 } },
         },
       };
@@ -237,7 +237,7 @@ describe("ConfigurationService", () => {
         env: { VAR2: "project", VAR3: "project" },
         permissions: { allow: ["rule-project"], defaultMode: "acceptEdits" },
         models: {
-          model1: { options: { temperature: 0.5 }, maxInputTokens: 1000 },
+          model1: { options: { temperature: 0.5 }, contextWindow: 1000 },
           model2: { options: { temperature: 0.8 } },
         },
       };
@@ -311,7 +311,7 @@ describe("ConfigurationService", () => {
       // Verify models (merged with precedence)
       expect(result?.models?.["model1"]).toEqual({
         options: { temperature: 0.5 },
-        maxInputTokens: 1000,
+        contextWindow: 1000,
       });
       expect(result?.models?.["model2"]).toEqual({
         options: { reasoning_effort: "high" },
@@ -747,7 +747,7 @@ describe("ConfigurationService", () => {
           "gpt-4o-mini": {
             model: "should-be-stripped",
             fastModel: "should-be-stripped",
-            maxInputTokens: 999,
+            contextWindow: 999,
             defaultMode: "default",
             options: { temperature: 0.3 },
           },
@@ -1010,34 +1010,34 @@ describe("ConfigurationService", () => {
     });
   });
 
-  describe("resolveMaxInputTokens", () => {
-    const originalEnv = process.env.WAVE_MAX_INPUT_TOKENS;
+  describe("resolveContextWindow", () => {
+    const originalEnv = process.env.WAVE_CONTEXT_WINDOW;
 
     beforeEach(() => {
-      delete process.env.WAVE_MAX_INPUT_TOKENS;
+      delete process.env.WAVE_CONTEXT_WINDOW;
     });
 
     afterEach(() => {
       if (originalEnv !== undefined) {
-        process.env.WAVE_MAX_INPUT_TOKENS = originalEnv;
+        process.env.WAVE_CONTEXT_WINDOW = originalEnv;
       }
     });
 
     it("should return default", () => {
-      expect(configService.resolveMaxInputTokens()).toBe(
-        DEFAULT_WAVE_MAX_INPUT_TOKENS,
+      expect(configService.resolveContextWindow()).toBe(
+        DEFAULT_WAVE_CONTEXT_WINDOW,
       );
     });
 
     it("should resolve from internal env", () => {
-      configService.setEnvironmentVars({ WAVE_MAX_INPUT_TOKENS: "5000" });
-      expect(configService.resolveMaxInputTokens()).toBe(5000);
+      configService.setEnvironmentVars({ WAVE_CONTEXT_WINDOW: "5000" });
+      expect(configService.resolveContextWindow()).toBe(5000);
     });
 
     it("should resolve from per-model config for the resolved model, beating env", async () => {
       const config = {
         model: "kimi-k3",
-        models: { "kimi-k3": { maxInputTokens: 131072 } },
+        models: { "kimi-k3": { contextWindow: 131072 } },
       };
       mockExistsSync.mockReturnValue(true);
       mockReadFileSync.mockReturnValue(JSON.stringify(config));
@@ -1046,8 +1046,8 @@ describe("ConfigurationService", () => {
       delete process.env.WAVE_MODEL;
       try {
         await configService.loadMergedConfiguration(tempDir);
-        configService.setEnvironmentVars({ WAVE_MAX_INPUT_TOKENS: "300000" });
-        expect(configService.resolveMaxInputTokens()).toBe(131072);
+        configService.setEnvironmentVars({ WAVE_CONTEXT_WINDOW: "300000" });
+        expect(configService.resolveContextWindow()).toBe(131072);
       } finally {
         if (origModel !== undefined) process.env.WAVE_MODEL = origModel;
         else delete process.env.WAVE_MODEL;
@@ -1056,7 +1056,7 @@ describe("ConfigurationService", () => {
 
     it("should resolve per-model config from env WAVE_MODEL when config has no model field", async () => {
       const config = {
-        models: { "env-model": { maxInputTokens: 88888 } },
+        models: { "env-model": { contextWindow: 88888 } },
       };
       mockExistsSync.mockReturnValue(true);
       mockReadFileSync.mockReturnValue(JSON.stringify(config));
@@ -1065,7 +1065,7 @@ describe("ConfigurationService", () => {
       process.env.WAVE_MODEL = "env-model";
       try {
         await configService.loadMergedConfiguration(tempDir);
-        expect(configService.resolveMaxInputTokens()).toBe(88888);
+        expect(configService.resolveContextWindow()).toBe(88888);
       } finally {
         if (origModel !== undefined) process.env.WAVE_MODEL = origModel;
         else delete process.env.WAVE_MODEL;
@@ -1076,8 +1076,8 @@ describe("ConfigurationService", () => {
       const config = {
         model: "deepseek-v4-flash",
         models: {
-          "deepseek-v4-flash": { maxInputTokens: 200000 },
-          "kimi-k3": { maxInputTokens: 131072 },
+          "deepseek-v4-flash": { contextWindow: 200000 },
+          "kimi-k3": { contextWindow: 131072 },
         },
       };
       mockExistsSync.mockReturnValue(true);
@@ -1087,7 +1087,7 @@ describe("ConfigurationService", () => {
       delete process.env.WAVE_MODEL;
       try {
         await configService.loadMergedConfiguration(tempDir);
-        expect(configService.resolveMaxInputTokens(undefined, "kimi-k3")).toBe(
+        expect(configService.resolveContextWindow(undefined, "kimi-k3")).toBe(
           131072,
         );
       } finally {
@@ -1096,20 +1096,20 @@ describe("ConfigurationService", () => {
       }
     });
 
-    it("should prioritize options.maxInputTokens over per-model config", async () => {
+    it("should prioritize options.contextWindow over per-model config", async () => {
       const config = {
         model: "kimi-k3",
-        models: { "kimi-k3": { maxInputTokens: 131072 } },
+        models: { "kimi-k3": { contextWindow: 131072 } },
       };
       mockExistsSync.mockReturnValue(true);
       mockReadFileSync.mockReturnValue(JSON.stringify(config));
 
       await configService.loadMergedConfiguration(tempDir);
-      configService.setOptions({ maxInputTokens: 400000 });
-      expect(configService.resolveMaxInputTokens()).toBe(400000);
+      configService.setOptions({ contextWindow: 400000 });
+      expect(configService.resolveContextWindow()).toBe(400000);
     });
 
-    it("should fall back to env when the model has no maxInputTokens", async () => {
+    it("should fall back to env when the model has no contextWindow", async () => {
       const config = {
         model: "plain-model",
         models: { "plain-model": {} },
@@ -1121,8 +1121,8 @@ describe("ConfigurationService", () => {
       delete process.env.WAVE_MODEL;
       try {
         await configService.loadMergedConfiguration(tempDir);
-        configService.setEnvironmentVars({ WAVE_MAX_INPUT_TOKENS: "5000" });
-        expect(configService.resolveMaxInputTokens()).toBe(5000);
+        configService.setEnvironmentVars({ WAVE_CONTEXT_WINDOW: "5000" });
+        expect(configService.resolveContextWindow()).toBe(5000);
       } finally {
         if (origModel !== undefined) process.env.WAVE_MODEL = origModel;
         else delete process.env.WAVE_MODEL;
@@ -1265,7 +1265,7 @@ describe("ConfigurationService", () => {
       language: "English",
       autoMemoryEnabled: false,
       autoMemoryFrequency: 9,
-      env: { WAVE_MAX_INPUT_TOKENS: "128000" },
+      env: { WAVE_CONTEXT_WINDOW: "128000" },
     };
 
     beforeEach(async () => {
@@ -1283,9 +1283,7 @@ describe("ConfigurationService", () => {
 
       expect(configService.resolveLanguage()).toBe("English");
       expect(configService.resolveAutoMemoryEnabled()).toBe(false);
-      expect(configService.getEnvSnapshot().WAVE_MAX_INPUT_TOKENS).toBe(
-        "128000",
-      );
+      expect(configService.getEnvSnapshot().WAVE_CONTEXT_WINDOW).toBe("128000");
     });
 
     it("inside a turn: resolve chain reads the snapshot, not a mid-turn reload", () => {
@@ -1294,18 +1292,16 @@ describe("ConfigurationService", () => {
           language: "Chinese",
           autoMemoryEnabled: true,
           autoMemoryFrequency: 5,
-          env: { WAVE_MAX_INPUT_TOKENS: "64000" },
+          env: { WAVE_CONTEXT_WINDOW: "64000" },
         },
-        env: { WAVE_MAX_INPUT_TOKENS: "64000" },
+        env: { WAVE_CONTEXT_WINDOW: "64000" },
       }));
 
       expect(configService.resolveLanguage()).toBe("Chinese");
       expect(configService.resolveAutoMemoryEnabled()).toBe(true);
       expect(configService.resolveAutoMemoryFrequency()).toBe(5);
-      expect(configService.resolveMaxInputTokens()).toBe(64000);
-      expect(configService.getEnvSnapshot().WAVE_MAX_INPUT_TOKENS).toBe(
-        "64000",
-      );
+      expect(configService.resolveContextWindow()).toBe(64000);
+      expect(configService.getEnvSnapshot().WAVE_CONTEXT_WINDOW).toBe("64000");
     });
 
     it("the auto-memory safe zone reads the live value, not the turn snapshot", () => {

@@ -44,7 +44,7 @@ describe("Agent subagent accessors", () => {
     delete process.env.WAVE_BASE_URL;
     delete process.env.WAVE_MODEL;
     delete process.env.WAVE_FAST_MODEL;
-    delete process.env.WAVE_MAX_INPUT_TOKENS;
+    delete process.env.WAVE_CONTEXT_WINDOW;
     // Reset and setup loadMergedWaveConfig mock
     vi.mocked(loadMergedWaveConfig).mockReturnValue(null);
     // Point the config loader at paths that cannot exist: no real

@@ -21,7 +21,7 @@ order: 70
 
 **验收场景**：
 
-1. **假设**估算的上下文 token 数超过 `getMaxInputTokens()`，**当**发送下一个 API 请求前执行检查时，**则**代理必须识别要压缩的消息并在请求发出前触发压缩
+1. **假设**估算的上下文 token 数达到自动压缩阈值，**当**发送下一个 API 请求前执行检查时，**则**代理必须识别要压缩的消息并在请求发出前触发压缩
 2. **假设**消息被识别用于压缩，**当**总结完成时，**则**原始消息必须被 `compress` 块替换，后跟旧消息列表的最后 2 个 API 轮次
 3. **假设**存在 `compress` 块，**当**向 API 发送消息时，**则**它必须被转换为 **user** 消息（匹配 Claude Code 的自动压缩行为）
 
@@ -31,14 +31,14 @@ order: 70
 
 作为 AI 代理，我希望在发送 API 请求之前基于估算的上下文大小判断是否压缩，而不是在响应返回后才发现超限，以便超限请求永远不会真正发出。
 
-**为什么是这个优先级**：当前实现是在每次 API 响应返回后检查该次响应的 `usage`，超限时才压缩——判断慢一拍，导致输入超过 `maxInputTokens` 的请求真实发出（可能直接撞上模型 context length / 413 错误）。对齐 Claude Code 的 proactive 机制：请求前用「上次响应的真实 usage + 其后新增消息的估算」预测本次请求的上下文大小，超过阈值先压缩再发。
+**为什么是这个优先级**：当前实现是在每次 API 响应返回后检查该次响应的 `usage`，超限时才压缩——判断慢一拍，导致输入超过 `contextWindow` 的请求真实发出（可能直接撞上模型 context length / 413 错误）。对齐 Claude Code 的 proactive 机制：请求前用「上次响应的真实 usage + 其后新增消息的估算」预测本次请求的上下文大小，超过阈值先压缩再发。
 
 **独立测试**：模拟一次巨大工具输出后，验证下一次请求发出前即触发压缩（而非等响应返回）；模拟 fork 路径（压缩、auto-memory 提取），验证不触发自动压缩；验证压缩完成后同一轮循环内不再重复触发。
 
 **验收场景**：
 
 1. **假设**存在上次 API 响应的 `usage`，**当**构造本次请求前执行上下文估算时，**则**估算值 = 上次响应的 `total_tokens` + 上次响应之后新增消息的字符估算（CJK 感知，与 `estimateTokens` 一致）
-2. **假设**估算的上下文 token 数超过 `getMaxInputTokens()`，**当**发送请求前检查时，**则**必须触发压缩，超限请求不得发出
+2. **假设**估算的上下文 token 数达到自动压缩阈值，**当**发送请求前检查时，**则**必须触发压缩，超阈值请求不得发出
 3. **假设**估算的上下文 token 数未超过阈值，**当**发送请求前检查时，**则**请求正常发出，不触发压缩
 4. **假设**agent 循环中一轮工具调用结束、下一轮请求将要发出，**当**发送请求前检查时，**则**每次请求前（包括工具调用后的后续轮次）都必须重新估算并检查
 5. **假设**当前请求是压缩 fork 或 auto-memory 提取等 fork 路径，**当**发送请求前检查时，**则**必须跳过自动压缩判断（fork 继承完整历史，触发压缩会造成递归死锁）
@@ -51,13 +51,13 @@ order: 70
 
 作为 AI 代理，我希望自动压缩的判断只依据 `total_tokens`（已包含缓存命中 token），不再叠加 `cache_read_input_tokens` 和 `cache_creation_input_tokens`，以便上下文占用度量准确，压缩不会过早触发。
 
-**为什么是这个优先级**：wave 走 OpenAI 兼容接口（OpenAI SDK + 网关），该格式下 `prompt_tokens = 缓存命中 + 未命中`、`total_tokens = prompt_tokens + completion_tokens`，缓存命中已计入 `total_tokens`（DeepSeek 官方文档明确 `prompt_tokens` 等于 `prompt_cache_hit_tokens + prompt_cache_miss_tokens`）。原实现把 `prompt_tokens_details.cached_tokens` 规范化后与 `total_tokens` 相加，造成缓存命中双重计数——缓存命中通常占上下文绝大部分，导致压缩过早触发（实际上下文远未到 `maxInputTokens` 就压缩）。该加法源自 Anthropic 原生格式（其 `input_tokens` 不含缓存字段），与 wave 实际使用的 OpenAI 兼容格式错配。
+**为什么是这个优先级**：wave 走 OpenAI 兼容接口（OpenAI SDK + 网关），该格式下 `prompt_tokens = 缓存命中 + 未命中`、`total_tokens = prompt_tokens + completion_tokens`，缓存命中已计入 `total_tokens`（DeepSeek 官方文档明确 `prompt_tokens` 等于 `prompt_cache_hit_tokens + prompt_cache_miss_tokens`）。原实现把 `prompt_tokens_details.cached_tokens` 规范化后与 `total_tokens` 相加，造成缓存命中双重计数——缓存命中通常占上下文绝大部分，导致压缩过早触发（实际上下文远未到 `contextWindow` 就压缩）。该加法源自 Anthropic 原生格式（其 `input_tokens` 不含缓存字段），与 wave 实际使用的 OpenAI 兼容格式错配。
 
 **独立测试**：构造含 `cache_read_input_tokens`（大值）和 `cache_creation_input_tokens` 的 usage，验证压缩判断仅使用 `total_tokens`，缓存字段不参与判断；验证 `latestTotalTokens` 展示语义同样仅使用 `total_tokens`（与压缩判断口径一致，缓存字段不参与展示）。
 
 **验收场景**：
 
-1. **假设**响应的 `usage` 包含 `total_tokens`、`cache_read_input_tokens`、`cache_creation_input_tokens`，**当**判断是否超过 `getMaxInputTokens()` 时，**则**只使用 `total_tokens`（OpenAI 兼容格式下已含缓存命中），缓存字段不得叠加
+1. **假设**响应的 `usage` 包含 `total_tokens`、`cache_read_input_tokens`、`cache_creation_input_tokens`，**当**判断是否达到自动压缩阈值时，**则**只使用 `total_tokens`（OpenAI 兼容格式下已含缓存命中），缓存字段不得叠加
 2. **假设**响应仅含 `cache_read_input_tokens`（缓存命中极大）而 `total_tokens` 远低于阈值，**当**判断是否触发压缩时，**则**不得触发压缩
 3. **假设**`usage` 中 `total_tokens` 未超阈值但叠加缓存字段后超过，**当**判断是否触发压缩时，**则**不得触发压缩
 4. **假设**`latestTotalTokens` 展示（CLI / webview 的 token 用量显示），**当**展示 token 使用量时，**则**同样只使用 `total_tokens`，缓存字段不叠加——与压缩触发判断口径一致，避免 UI 显示"100% context"而压缩迟迟不触发
@@ -244,18 +244,18 @@ order: 70
 
 **为什么是这个优先级**：阈值口径与估算口径必须一起成立。阈值侧要为 compaction summary 与安全余量预留空间；估算侧必须以最近一次响应的 usage 为锚点——OpenAI 兼容口径的 `total_tokens` 已经包含 system prompt、工具 schema、动态注入上下文，只在锚点之上叠加其后新增消息。若再额外叠加一份固定开销，同一份内容被算两遍，压缩触发点会明显早于上下文用量指示器的 100%（默认配置下固定开销约 3 万 token，相当于把触发点从用量环 95% 以上前移到 81% 左右，用户看到的就是「环还远不到 100% 就压缩了」）。这两点是自动压缩可信度的基础。
 
-**独立测试**：设置 `maxInputTokens=200000` 和默认最大输出 token `32000`，构造包含历史消息与 usage 锚点的请求，验证自动压缩阈值为 `200000 - min(32000, 20000) - 13000 = 167000`；再分别改变最大输出与上下文窗口，验证阈值同步变化；最后在锚点不变的前提下追加一份很大的 system prompt 与工具 schema，验证估算值不变（不得把固定开销叠加到 usage 之上）。
+**独立测试**：设置 `contextWindow=200000` 和默认最大输出 token `32000`，构造包含历史消息与 usage 锚点的请求，验证自动压缩阈值为 `200000 - min(32000, 20000) - 13000 = 167000`；再分别改变最大输出与上下文窗口，验证阈值同步变化；最后在锚点不变的前提下追加一份很大的 system prompt 与工具 schema，验证估算值不变（不得把固定开销叠加到 usage 之上）。
 
 **验收场景**：
 
-1. **假设**会话的 `maxInputTokens` 为 200000、最大输出 token 为 32000，**当**计算自动压缩阈值时，**则**必须先预留 `min(32000, 20000)=20000` 个 compaction summary 输出 token，再预留 13000 个自动压缩安全余量，阈值为 167000
-2. **假设**最大输出 token 小于 20000，**当**计算自动压缩阈值时，**则** compaction summary 预留必须使用实际最大输出 token，而不是固定扣除 20000；阈值为 `maxInputTokens - maxOutputTokens - 13000`
+1. **假设**会话的 `contextWindow` 为 200000、最大输出 token 为 32000，**当**计算自动压缩阈值时，**则**必须先预留 `min(32000, 20000)=20000` 个 compaction summary 输出 token，再预留 13000 个自动压缩安全余量，阈值为 167000
+2. **假设**最大输出 token 小于 20000，**当**计算自动压缩阈值时，**则** compaction summary 预留必须使用实际最大输出 token，而不是固定扣除 20000；阈值为 `contextWindow - maxOutputTokens - 13000`
 3. **假设**最大输出 token 大于 20000，**当**计算自动压缩阈值时，**则** compaction summary 预留最多只能是 20000；阈值不得因普通请求的更大输出上限继续降低
-4. **假设**模型配置的 `maxInputTokens` 为其他值（包括按模型覆盖的值），**当**执行自动压缩判断时，**则**必须对该模型使用同样的「context window - summary reservation - 13000」公式，不得写死 200000
+4. **假设**模型配置的 `contextWindow` 为其他值（包括按模型覆盖的值），**当**执行自动压缩判断时，**则**必须对该模型使用同样的「context window - summary reservation - 13000」公式，不得写死 200000
 5. **假设**对话中已有带 usage 的响应，**当**请求即将发出、估算是否达到自动压缩阈值时，**则**必须以最近一次响应 usage 的 `total_tokens` 为锚点，只叠加该响应之后新增消息的估算值；system prompt、工具名称与 schema、动态上下文已包含在该 usage 内，不得再把它们作为固定开销额外相加
 6. **假设**usage 锚点不变而 system prompt 或工具 schema 明显变大（例如注入项目规则、开启更多工具），**当**执行自动压缩检查时，**则**估算值不得随之增大，也不得因此提前压缩；这类内容的变化只通过下一次真实 usage 反映
 7. **假设**估算值达到或超过自动压缩阈值，**当**进入下一次模型请求前执行检查时，**则**必须先完成自动压缩，原始超阈值请求不得发出
-8. **假设**估算值低于自动压缩阈值，**当**进入下一次模型请求前执行检查时，**则**不得仅因为消息历史接近 `maxInputTokens`、或因为 system prompt 与工具 schema 很大而提前压缩
+8. **假设**估算值低于自动压缩阈值，**当**进入下一次模型请求前执行检查时，**则**不得仅因为消息历史接近 `contextWindow`、或因为 system prompt 与工具 schema 很大而提前压缩
 9. **假设**当前请求属于 compaction fork 或 auto-memory 等 fork 路径，**当**执行阈值检查时，**则**必须跳过自动压缩，避免递归压缩；现有压缩熔断器、手动 `/compact` 和压缩后上下文恢复行为保持不变
 
 ---
@@ -266,17 +266,17 @@ order: 70
 
 **为什么是这个优先级**：自动压缩阈值与用量指示器使用不同分母会造成明显的产品误导——默认配置下达到 167k 时用量仍只显示约 84%，但系统已经开始压缩。CLI、webview、宿主和远控必须共享同一口径。
 
-**独立测试**：设置 `maxInputTokens=200000`、最大输出 token 为 32000，验证 Wave 各端在 `latestTotalTokens=167000` 时均显示 100%，在 83500 时均显示 50%，在超过 167000 时均保持 100%；压缩后更新 `latestTotalTokens`，验证各端显示按新值重新计算。
+**独立测试**：设置 `contextWindow=200000`、最大输出 token 为 32000，验证 Wave 各端在 `latestTotalTokens=167000` 时均显示 100%，在 83500 时均显示 50%，在超过 167000 时均保持 100%；压缩后更新 `latestTotalTokens`，验证各端显示按新值重新计算。
 
 **验收场景**：
 
-1. **假设**`maxInputTokens=200000`、最大输出 token 为 32000，**当**计算 context usage 百分比时，**则**所有展示必须使用 `200000 - min(32000, 20000) - 13000 = 167000` 作为分母
+1. **假设**`contextWindow=200000`、最大输出 token 为 32000，**当**计算 context usage 百分比时，**则**所有展示必须使用 `200000 - min(32000, 20000) - 13000 = 167000` 作为分母
 2. **假设**`latestTotalTokens=83500` 且阈值为 167000，**当**各端刷新 context usage 时，**则**必须显示 50%（按统一的四舍五入规则）
 3. **假设**`latestTotalTokens=167000`，**当**各端刷新 context usage 时，**则**必须显示 100%
 4. **假设**`latestTotalTokens` 超过自动压缩阈值，**当**各端刷新 context usage 时，**则**百分比必须钳制为 100%，不得显示超过 100%
-5. **假设**模型或配置改变了 `maxInputTokens` 或最大输出 token，**当**重新计算 context usage 时，**则**必须使用该模型当前生效的自动压缩阈值，不得继续使用 200000 或旧阈值
+5. **假设**模型或配置改变了 `contextWindow` 或最大输出 token，**当**重新计算 context usage 时，**则**必须使用该模型当前生效的自动压缩阈值，不得继续使用 200000 或旧阈值
 6. **假设**压缩完成并产生新的 `latestTotalTokens`，**当**宿主、webview、CLI 或远控刷新状态时，**则**必须按新的 token 数和当前自动压缩阈值重新计算，不能沿用压缩前百分比
-7. **假设**context usage 改为以自动压缩阈值为分母，**当**实际 API 请求和自动压缩判断执行时，**则**`maxInputTokens` 仍表示原始 input context 配置值，不能把显示阈值当成 API context window
+7. **假设**context usage 改为以自动压缩阈值为分母，**当**实际 API 请求和自动压缩判断执行时，**则**`contextWindow` 仍表示模型原始窗口配置值（输入与输出共享的总预算），不能把显示阈值当成窗口本身
 
 ---
 
@@ -334,7 +334,7 @@ order: 70
 - **API 轮次边界**：压缩绝对不能将 tool_use/tool_result 对分割在压缩边界两侧
 - **fork 循环无文本输出**：达到最大轮次（3 轮）或 fork 请求抛异常（用户中止除外）即判定压缩失败，计入熔断器；压缩无 fallback 降级路径（快速模型稳定性不足，且 fork 失败多为上下文本身不可恢复）
 - **模型将工具调用语法作为文本输出**：不做内容级拦截，原样透传（与 Claude Code 一致的已知限制——Claude Code 依靠 agent loop 在协议层拒绝真实工具调用，对文本中的乱码双方均不拦截）
-- **自动压缩阈值**：阈值为 `maxInputTokens - min(maxOutputTokens, 20000) - 13000`；其中 `maxOutputTokens` 取当前会话实际生效的最大输出 token 配置，且阈值不得低于 0
+- **自动压缩阈值**：阈值为 `contextWindow - min(maxOutputTokens, 20000) - 13000`；其中 `maxOutputTokens` 取当前会话实际生效的最大输出 token 配置，且阈值不得低于 0
 - **固定请求开销不重复计入**：最近一次响应的 usage（OpenAI 兼容口径的 `total_tokens`）已经包含 system prompt、工具名称与 schema、动态注入上下文以及缓存命中，请求前估算以此为锚点、只叠加其后新增消息的估算值，禁止再把固定开销额外相加（同一份内容算两遍会让触发点远早于用量指示器的 100%）。固定内容的变化由下一次真实 usage 反映，估算侧不做补偿；无法精确 tokenizer 时允许对新增消息使用统一近似估算
 - **无上次响应的 usage 锚点**：会话第一轮请求（或清空后）尚无真实 usage，请求前估算退化为纯字符估算（全部消息按 `estimateTokens` 计算），不得因缺失锚点而跳过检查，也不得用 system prompt / 工具 schema 的估算去补足缺失的固定开销（对齐 Claude Code：首轮超限由下面的「请求前估算偏差」兜底）
 - **请求前估算偏差**：估算可能低于真实 token 数，真实超限由 413 / context length 错误路径兜底；不引入响应后主动压缩检查

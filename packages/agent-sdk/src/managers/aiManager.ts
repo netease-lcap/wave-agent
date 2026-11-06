@@ -375,11 +375,11 @@ export class AIManager {
     );
   }
 
-  public getMaxInputTokens(): number {
+  public getContextWindow(): number {
     // Pass the resolved model (including fastModel/visionModel/override
     // resolution) so subagents using a different model get that model's
-    // per-model maxInputTokens instead of the main model's value.
-    return this.configurationService.resolveMaxInputTokens(
+    // per-model contextWindow instead of the main model's value.
+    return this.configurationService.resolveContextWindow(
       undefined,
       this.getModelConfig().model,
     );
@@ -720,11 +720,14 @@ export class AIManager {
    * Pre-request auto-compaction check (aligned with Claude Code's
    * autoCompactIfNeeded). Runs before every API request is issued: estimates
    * the context that is about to be sent (last response's total_tokens plus
-   * character estimates for newer messages) and compacts first when it
-   * exceeds maxInputTokens, so over-limit requests are never sent. Only
-   * total_tokens is used — under OpenAI-compatible usage it already includes
-   * cache hits, the system prompt, the tool schema and injected memory;
-   * adding any of those on top would double-count and fire early.
+   * character estimates for newer messages) and compacts first once it
+   * crosses the auto-compaction threshold — the context window minus the
+   * summary output reservation minus a safety buffer, not the window itself.
+   * The reservation matters because the compaction call is itself a request
+   * whose input plus declared max_tokens must fit the same shared window.
+   * Only total_tokens is used — under OpenAI-compatible usage it already
+   * includes cache hits, the system prompt, the tool schema and injected
+   * memory; adding any of those on top would double-count and fire early.
    * Fork paths (compaction / auto-memory) never reach here: they run in
    * runForkLoop, not sendAIMessage.
    */
@@ -742,9 +745,9 @@ export class AIManager {
     const messages = this.messageManager.getMessages();
     if (messages.length === 0) return false;
 
-    const maxInputTokens = this.getMaxInputTokens();
+    const contextWindow = this.getContextWindow();
     const maxOutputTokens = this.configurationService.resolveMaxOutputTokens();
-    const threshold = getAutoCompactThreshold(maxInputTokens, maxOutputTokens);
+    const threshold = getAutoCompactThreshold(contextWindow, maxOutputTokens);
     const estimatedTokens = estimateContextTokens(messages);
     if (estimatedTokens >= threshold) {
       logger?.debug(

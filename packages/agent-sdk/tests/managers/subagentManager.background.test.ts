@@ -144,7 +144,7 @@ describe("SubagentManager - Backgrounding Coverage", () => {
         model: "test-model",
         fastModel: "test-fast-model",
       }),
-      resolveMaxInputTokens: () => 1000,
+      resolveContextWindow: () => 1000,
       resolveAutoMemoryEnabled: () => true,
       resolveLanguage: () => "en",
     });
@@ -620,7 +620,7 @@ describe("SubagentManager - Backgrounding Coverage", () => {
         model: "test-model",
         fastModel: "test-fast-model",
       }),
-      resolveMaxInputTokens: () => 1000,
+      resolveContextWindow: () => 1000,
       resolveAutoMemoryEnabled: () => true,
       resolveLanguage: () => "en",
     });
@@ -685,7 +685,7 @@ describe("SubagentManager - Backgrounding Coverage", () => {
         model: "test-model",
         fastModel: "test-fast-model",
       }),
-      resolveMaxInputTokens: () => 1000,
+      resolveContextWindow: () => 1000,
       resolveAutoMemoryEnabled: () => true,
       resolveLanguage: () => "en",
     });

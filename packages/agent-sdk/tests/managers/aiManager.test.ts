@@ -168,7 +168,7 @@ describe("AIManager", () => {
       setOptions: vi.fn(),
       resolveGatewayConfig: vi.fn().mockReturnValue(mockGatewayConfig),
       resolveModelConfig: vi.fn().mockReturnValue(mockModelConfig),
-      resolveMaxInputTokens: vi.fn().mockReturnValue(96000),
+      resolveContextWindow: vi.fn().mockReturnValue(96000),
       resolveMaxOutputTokens: vi.fn().mockReturnValue(4096),
       resolveAutoMemoryEnabled: vi.fn().mockReturnValue(true),
       resolveLanguage: vi.fn().mockReturnValue(undefined),
@@ -264,7 +264,7 @@ describe("AIManager", () => {
         ...mockModelConfig,
         disableThinkingOptions: { thinking: { type: "disabled" } },
       }),
-      resolveMaxInputTokens: vi.fn().mockReturnValue(96000),
+      resolveContextWindow: vi.fn().mockReturnValue(96000),
       resolveMaxOutputTokens: vi.fn().mockReturnValue(4096),
       resolveAutoMemoryEnabled: vi.fn().mockReturnValue(true),
       resolveLanguage: vi.fn().mockReturnValue(undefined),
@@ -322,7 +322,7 @@ describe("AIManager", () => {
       container.register("ConfigurationService", {
         resolveGatewayConfig: vi.fn().mockReturnValue(mockGatewayConfig),
         resolveModelConfig: vi.fn().mockReturnValue(mockModelConfig),
-        resolveMaxInputTokens: vi.fn().mockReturnValue(96000),
+        resolveContextWindow: vi.fn().mockReturnValue(96000),
         resolveMaxOutputTokens: vi.fn().mockReturnValue(4096),
         resolveAutoMemoryEnabled: vi.fn().mockReturnValue(true),
         resolveLanguage: vi.fn().mockReturnValue("Chinese"),
@@ -390,7 +390,7 @@ describe("AIManager", () => {
       container.register("ConfigurationService", {
         resolveGatewayConfig: vi.fn().mockReturnValue(mockGatewayConfig),
         resolveModelConfig: vi.fn().mockReturnValue(mockModelConfig),
-        resolveMaxInputTokens: vi.fn().mockReturnValue(96000),
+        resolveContextWindow: vi.fn().mockReturnValue(96000),
         resolveMaxOutputTokens: vi.fn().mockReturnValue(4096),
         resolveAutoMemoryEnabled: vi.fn().mockReturnValue(true),
         resolveLanguage: () => realConfigService.resolveLanguage(),
@@ -441,7 +441,7 @@ describe("AIManager", () => {
       container.register("ConfigurationService", {
         resolveGatewayConfig: vi.fn().mockReturnValue(mockGatewayConfig),
         resolveModelConfig: vi.fn().mockReturnValue(mockModelConfig),
-        resolveMaxInputTokens: vi.fn().mockReturnValue(96000),
+        resolveContextWindow: vi.fn().mockReturnValue(96000),
         resolveMaxOutputTokens: vi.fn().mockReturnValue(4096),
         resolveAutoMemoryEnabled: vi.fn().mockReturnValue(true),
         resolveLanguage: vi.fn().mockReturnValue(undefined),
@@ -488,7 +488,7 @@ describe("AIManager", () => {
       container.register("ConfigurationService", {
         resolveGatewayConfig: vi.fn().mockReturnValue(mockGatewayConfig),
         resolveModelConfig: vi.fn().mockReturnValue(mockModelConfig),
-        resolveMaxInputTokens: vi.fn().mockReturnValue(96000),
+        resolveContextWindow: vi.fn().mockReturnValue(96000),
         resolveMaxOutputTokens: vi.fn().mockReturnValue(4096),
         resolveAutoMemoryEnabled: vi.fn().mockReturnValue(true),
         resolveLanguage: vi.fn().mockReturnValue("Spanish"),
@@ -744,7 +744,7 @@ describe("AIManager", () => {
       container.register("ConfigurationService", {
         resolveGatewayConfig: vi.fn().mockReturnValue(mockGatewayConfig),
         resolveModelConfig: vi.fn().mockReturnValue(mockModelConfig),
-        resolveMaxInputTokens: vi.fn().mockReturnValue(96000),
+        resolveContextWindow: vi.fn().mockReturnValue(96000),
         resolveMaxOutputTokens: vi.fn().mockReturnValue(4096),
         resolveAutoMemoryEnabled: vi.fn().mockReturnValue(true),
         resolveLanguage: vi.fn().mockReturnValue(undefined),
@@ -812,7 +812,7 @@ describe("AIManager", () => {
       container.register("ConfigurationService", {
         resolveGatewayConfig: vi.fn().mockReturnValue(mockGatewayConfig),
         resolveModelConfig: vi.fn().mockReturnValue(mockModelConfig),
-        resolveMaxInputTokens: vi.fn().mockReturnValue(96000),
+        resolveContextWindow: vi.fn().mockReturnValue(96000),
         resolveMaxOutputTokens: vi.fn().mockReturnValue(4096),
         resolveAutoMemoryEnabled: vi.fn().mockReturnValue(true),
         resolveLanguage: vi.fn().mockReturnValue(undefined),
@@ -878,7 +878,7 @@ describe("AIManager", () => {
       container.register("ConfigurationService", {
         resolveGatewayConfig: vi.fn().mockReturnValue(mockGatewayConfig),
         resolveModelConfig: vi.fn().mockReturnValue(mockModelConfig),
-        resolveMaxInputTokens: vi.fn().mockReturnValue(96000),
+        resolveContextWindow: vi.fn().mockReturnValue(96000),
         resolveMaxOutputTokens: vi.fn().mockReturnValue(4096),
         resolveAutoMemoryEnabled: vi.fn().mockReturnValue(true),
         resolveLanguage: vi.fn().mockReturnValue(undefined),
@@ -941,7 +941,7 @@ describe("AIManager", () => {
       container.register("ConfigurationService", {
         resolveGatewayConfig: vi.fn().mockReturnValue(mockGatewayConfig),
         resolveModelConfig: vi.fn().mockReturnValue(mockModelConfig),
-        resolveMaxInputTokens: vi.fn().mockReturnValue(96000),
+        resolveContextWindow: vi.fn().mockReturnValue(96000),
         resolveMaxOutputTokens: vi.fn().mockReturnValue(4096),
         resolveAutoMemoryEnabled: vi.fn().mockReturnValue(true),
         resolveLanguage: vi.fn().mockReturnValue(undefined),
@@ -991,7 +991,7 @@ describe("AIManager", () => {
       container.register("ConfigurationService", {
         resolveGatewayConfig: vi.fn().mockReturnValue(mockGatewayConfig),
         resolveModelConfig: vi.fn().mockReturnValue(mockModelConfig),
-        resolveMaxInputTokens: vi.fn().mockReturnValue(96000),
+        resolveContextWindow: vi.fn().mockReturnValue(96000),
         resolveMaxOutputTokens: vi.fn().mockReturnValue(4096),
         resolveAutoMemoryEnabled: vi.fn().mockReturnValue(false),
         resolveLanguage: vi.fn().mockReturnValue(undefined),
@@ -1233,7 +1233,7 @@ describe("AIManager", () => {
       container.register("ConfigurationService", {
         resolveGatewayConfig: vi.fn().mockReturnValue(mockGatewayConfig),
         resolveModelConfig: vi.fn().mockReturnValue(mockModelConfig),
-        resolveMaxInputTokens: vi.fn().mockReturnValue(96000),
+        resolveContextWindow: vi.fn().mockReturnValue(96000),
         resolveMaxOutputTokens: vi.fn().mockReturnValue(4096),
         resolveAutoMemoryEnabled: vi.fn().mockReturnValue(true),
         resolveLanguage: vi.fn().mockReturnValue(undefined),
@@ -1288,7 +1288,7 @@ describe("AIManager", () => {
       container.register("ConfigurationService", {
         resolveGatewayConfig: vi.fn().mockReturnValue(mockGatewayConfig),
         resolveModelConfig: vi.fn().mockReturnValue(mockModelConfig),
-        resolveMaxInputTokens: vi.fn().mockReturnValue(96000),
+        resolveContextWindow: vi.fn().mockReturnValue(96000),
         resolveMaxOutputTokens: vi.fn().mockReturnValue(4096),
         resolveAutoMemoryEnabled: vi.fn().mockReturnValue(true),
         resolveLanguage: vi.fn().mockReturnValue(undefined),
@@ -1355,7 +1355,7 @@ describe("AIManager", () => {
       container.register("ConfigurationService", {
         resolveGatewayConfig: vi.fn().mockReturnValue(mockGatewayConfig),
         resolveModelConfig: vi.fn().mockReturnValue(mockModelConfig),
-        resolveMaxInputTokens: vi.fn().mockReturnValue(96000),
+        resolveContextWindow: vi.fn().mockReturnValue(96000),
         resolveMaxOutputTokens: vi.fn().mockReturnValue(4096),
         resolveAutoMemoryEnabled: vi.fn().mockReturnValue(true),
         resolveLanguage: vi.fn().mockReturnValue(undefined),
@@ -1422,7 +1422,7 @@ describe("AIManager", () => {
       container.register("ConfigurationService", {
         resolveGatewayConfig: vi.fn().mockReturnValue(mockGatewayConfig),
         resolveModelConfig: vi.fn().mockReturnValue(mockModelConfig),
-        resolveMaxInputTokens: vi.fn().mockReturnValue(96000),
+        resolveContextWindow: vi.fn().mockReturnValue(96000),
         resolveMaxOutputTokens: vi.fn().mockReturnValue(4096),
         resolveAutoMemoryEnabled: vi.fn().mockReturnValue(true),
         resolveLanguage: vi.fn().mockReturnValue(undefined),
@@ -1489,7 +1489,7 @@ describe("AIManager", () => {
       container.register("ConfigurationService", {
         resolveGatewayConfig: vi.fn().mockReturnValue(mockGatewayConfig),
         resolveModelConfig: vi.fn().mockReturnValue(mockModelConfig),
-        resolveMaxInputTokens: vi.fn().mockReturnValue(96000),
+        resolveContextWindow: vi.fn().mockReturnValue(96000),
         resolveMaxOutputTokens: vi.fn().mockReturnValue(4096),
         resolveAutoMemoryEnabled: vi.fn().mockReturnValue(true),
         resolveLanguage: vi.fn().mockReturnValue(undefined),
@@ -1572,7 +1572,7 @@ describe("AIManager", () => {
       container.register("ConfigurationService", {
         resolveGatewayConfig: vi.fn().mockReturnValue(mockGatewayConfig),
         resolveModelConfig: vi.fn().mockReturnValue(mockModelConfig),
-        resolveMaxInputTokens: vi.fn().mockReturnValue(96000),
+        resolveContextWindow: vi.fn().mockReturnValue(96000),
         resolveMaxOutputTokens: vi.fn().mockReturnValue(4096),
         resolveAutoMemoryEnabled: vi.fn().mockReturnValue(false),
         resolveLanguage: vi.fn().mockReturnValue(undefined),
@@ -1727,7 +1727,7 @@ describe("AIManager", () => {
       container.register("ConfigurationService", {
         resolveGatewayConfig: vi.fn().mockReturnValue(mockGatewayConfig),
         resolveModelConfig: vi.fn().mockReturnValue(mockModelConfig),
-        resolveMaxInputTokens: vi.fn().mockReturnValue(96000),
+        resolveContextWindow: vi.fn().mockReturnValue(96000),
         resolveMaxOutputTokens: vi.fn().mockReturnValue(4096),
         resolveAutoMemoryEnabled: vi.fn().mockReturnValue(false),
         resolveLanguage: vi.fn().mockReturnValue(undefined),
@@ -1809,7 +1809,7 @@ describe("AIManager", () => {
       container.register("ConfigurationService", {
         resolveGatewayConfig: vi.fn().mockReturnValue(mockGatewayConfig),
         resolveModelConfig: vi.fn().mockReturnValue(mockModelConfig),
-        resolveMaxInputTokens: vi.fn().mockReturnValue(96000),
+        resolveContextWindow: vi.fn().mockReturnValue(96000),
         resolveMaxOutputTokens: vi.fn().mockReturnValue(4096),
         resolveAutoMemoryEnabled: vi.fn().mockReturnValue(false),
         resolveLanguage: vi.fn().mockReturnValue(undefined),

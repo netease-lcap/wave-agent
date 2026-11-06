@@ -107,7 +107,7 @@ describe("SubagentManager - instance additional directories inheritance", () => 
     container.register("ConfigurationService", {
       resolveGatewayConfig: () => mockGatewayConfig,
       resolveModelConfig: () => mockModelConfig,
-      resolveMaxInputTokens: () => 1000,
+      resolveContextWindow: () => 1000,
       resolveAutoMemoryEnabled: () => true,
       resolveLanguage: () => undefined,
     });

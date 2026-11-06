@@ -147,7 +147,7 @@ describe("Subagent Plan Mode Integration", () => {
         fastModel: "test-fast-model",
         permissionMode: "plan",
       }),
-      resolveMaxInputTokens: () => 100000,
+      resolveContextWindow: () => 100000,
       resolveAutoMemoryEnabled: () => true,
       resolveLanguage: () => undefined,
     });

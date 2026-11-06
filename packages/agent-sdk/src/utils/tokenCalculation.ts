@@ -64,16 +64,18 @@ export const AUTOCOMPACT_BUFFER_TOKENS = 13_000;
 
 /**
  * Calculate the context budget at which automatic compaction should start.
- * The ordinary request output limit is also the upper bound for the summary
- * output reservation, matching Claude Code's effective-window semantics.
+ * The context window is shared by a request's input and output, so the
+ * summary output reservation is subtracted from it first; the ordinary
+ * request output limit is the upper bound for that reservation, matching
+ * Claude Code's effective-window semantics.
  */
 export function getAutoCompactThreshold(
-  maxInputTokens: number,
+  contextWindow: number,
   maxOutputTokens: number,
 ): number {
   return Math.max(
     0,
-    maxInputTokens -
+    contextWindow -
       Math.min(maxOutputTokens, COMPACTION_SUMMARY_MAX_OUTPUT_TOKENS) -
       AUTOCOMPACT_BUFFER_TOKENS,
   );

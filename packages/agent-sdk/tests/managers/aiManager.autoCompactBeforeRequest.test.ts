@@ -78,13 +78,13 @@ function mockMsgManager(overrides = {}) {
 
 function makeContainer(
   overrides: Record<string, unknown> = {},
-  maxInputTokens = 96000,
+  contextWindow = 96000,
 ) {
   const c = new Container();
   c.register("ConfigurationService", {
     resolveGatewayConfig: vi.fn().mockReturnValue(mockGatewayConfig),
     resolveModelConfig: vi.fn().mockReturnValue(mockModelConfig),
-    resolveMaxInputTokens: vi.fn().mockReturnValue(maxInputTokens),
+    resolveContextWindow: vi.fn().mockReturnValue(contextWindow),
     resolveMaxOutputTokens: vi.fn().mockReturnValue(4096),
     resolveAutoMemoryEnabled: vi.fn().mockReturnValue(true),
     resolveLanguage: vi.fn().mockReturnValue(undefined),
@@ -142,7 +142,7 @@ describe("AIManager - pre-request auto compaction", () => {
     vi.clearAllMocks();
   });
 
-  it("should compact BEFORE the request when the estimated context exceeds maxInputTokens", async () => {
+  it("should compact BEFORE the request when the estimated context exceeds contextWindow", async () => {
     // Anchor usage total = 1500, plus a large tool result message after it.
     const messages = [
       {
@@ -195,7 +195,7 @@ describe("AIManager - pre-request auto compaction", () => {
     );
   });
 
-  it("should NOT compact when the estimated context is under maxInputTokens", async () => {
+  it("should NOT compact when the estimated context is under contextWindow", async () => {
     const messages = [
       {
         role: "user",

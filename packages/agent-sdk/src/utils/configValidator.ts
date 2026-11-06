@@ -59,32 +59,32 @@ export class ConfigValidator {
   }
 
   /**
-   * Validates token limit value
-   * @param maxInputTokens - Token limit to validate
+   * Validates a context window value (a positive integer, in tokens)
+   * @param contextWindow - Context window to validate
    * @throws ConfigurationError if invalid
    */
-  static validateMaxInputTokens(maxInputTokens: number): void {
-    if (typeof maxInputTokens !== "number") {
+  static validateContextWindow(contextWindow: number): void {
+    if (typeof contextWindow !== "number") {
       throw new ConfigurationError(
-        CONFIG_ERRORS.INVALID_WAVE_MAX_INPUT_TOKENS,
-        "maxInputTokens",
-        maxInputTokens,
+        CONFIG_ERRORS.INVALID_WAVE_CONTEXT_WINDOW,
+        "contextWindow",
+        contextWindow,
       );
     }
 
-    if (!Number.isInteger(maxInputTokens)) {
+    if (!Number.isInteger(contextWindow)) {
       throw new ConfigurationError(
-        CONFIG_ERRORS.INVALID_WAVE_MAX_INPUT_TOKENS,
-        "maxInputTokens",
-        maxInputTokens,
+        CONFIG_ERRORS.INVALID_WAVE_CONTEXT_WINDOW,
+        "contextWindow",
+        contextWindow,
       );
     }
 
-    if (maxInputTokens <= 0) {
+    if (contextWindow <= 0) {
       throw new ConfigurationError(
-        CONFIG_ERRORS.INVALID_WAVE_MAX_INPUT_TOKENS,
-        "maxInputTokens",
-        maxInputTokens,
+        CONFIG_ERRORS.INVALID_WAVE_CONTEXT_WINDOW,
+        "contextWindow",
+        contextWindow,
       );
     }
   }
@@ -96,5 +96,5 @@ export class ConfigValidator {
  */
 export const configValidator = {
   validateGatewayConfig: ConfigValidator.validateGatewayConfig,
-  validateMaxInputTokens: ConfigValidator.validateMaxInputTokens,
+  validateContextWindow: ConfigValidator.validateContextWindow,
 };

@@ -168,7 +168,7 @@ describe("AIManager - compactConversation", () => {
     container.register("ConfigurationService", {
       resolveGatewayConfig: vi.fn().mockReturnValue(mockGatewayConfig),
       resolveModelConfig: vi.fn().mockReturnValue(mockModelConfig),
-      resolveMaxInputTokens: vi.fn().mockReturnValue(96000),
+      resolveContextWindow: vi.fn().mockReturnValue(96000),
       resolveMaxOutputTokens: vi.fn().mockReturnValue(4096),
       resolveAutoMemoryEnabled: vi.fn().mockReturnValue(false),
       resolveLanguage: vi.fn().mockReturnValue("en"),
