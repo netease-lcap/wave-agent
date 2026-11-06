@@ -41,6 +41,8 @@ import {
   connectRemoteDaemon,
   connectRemoteDaemonSocket,
   connectRemoteDaemonTcp,
+  remoteRuntimeNodePath,
+  runtimeMarker,
   DAEMON_START_TIMEOUT_MS,
   DAEMON_POLL_INTERVAL_MS,
 } from "../src/main/remoteCli";
@@ -50,6 +52,17 @@ import { buildSshTunnelArgs } from "../src/main/sshHosts";
 type StubResult = { stdout?: string; error?: Error };
 const LOGIN_SHELL: StubResult = { stdout: "/bin/bash" };
 const SOCKET_MISSING = new Error("no such socket");
+
+const HOME = "/home/alice";
+/** The managed runtime the CLI and every remote probe run on. */
+const RUNTIME_NODE = remoteRuntimeNodePath(HOME);
+
+/** Runtime probe answering "glibc linux-x64, runtime already installed". */
+const RUNTIME_INSTALLED: StubResult = {
+  stdout:
+    `WAVE_HOST_PLATFORM_V1 Linux|x86_64|glibc\n` +
+    `WAVE_RUNTIME_MARKER_V1 ${runtimeMarker("linux-x64")}\n`,
+};
 
 /** Queue-driven execFile mock; when the queue runs dry, `dry` decides. */
 function stubExec(results: StubResult[], dry: "success" | "fail" = "success") {
@@ -176,14 +189,29 @@ describe("remoteDaemonAlive", () => {
     expect(remoteCmd).toContain(".connect(");
     expect(remoteCmd).toContain("/home/alice/.wave/daemon.sock");
   });
+
+  it("runs the probe on the managed runtime when one is resolved", async () => {
+    stubExec([LOGIN_SHELL, { stdout: "" }]);
+    await remoteDaemonAlive(
+      "prod",
+      "/home/alice/.wave/daemon.sock",
+      RUNTIME_NODE,
+    );
+    const remoteCmd = (h.execFile.mock.calls[1][1] as string[]).at(
+      -1,
+    ) as string;
+    // Unquoted substring check: the login-shell wrapper re-quotes everything.
+    expect(remoteCmd).toContain(".wave/runtime/node/bin/node");
+  });
 });
 
 describe("startRemoteDaemon", () => {
-  it("launches nohup detached with redirects so ssh returns", async () => {
+  it("launches the shim on the managed runtime, detached", async () => {
     stubExec([LOGIN_SHELL, { stdout: "" }]);
     await startRemoteDaemon(
       "prod",
-      "/usr/local/bin/wave",
+      RUNTIME_NODE,
+      "/home/alice/.wave/cli/desktop/bin/wave-code.js",
       "/home/alice/.wave/daemon.sock",
     );
     const remoteCmd = (h.execFile.mock.calls[1][1] as string[]).at(
@@ -192,7 +220,7 @@ describe("startRemoteDaemon", () => {
     // The login-shell wrapper re-quotes the whole command, so the inner
     // shellQuote literals appear escaped — build the expectation the same way.
     const expected = `/bin/bash -lic ${shellQuote(
-      `nohup ${shellQuote("/usr/local/bin/wave")} --daemon ${shellQuote("/home/alice/.wave/daemon.sock")} </dev/null >/dev/null 2>&1 &`,
+      `nohup ${shellQuote(RUNTIME_NODE)} ${shellQuote("/home/alice/.wave/cli/desktop/bin/wave-code.js")} --daemon ${shellQuote("/home/alice/.wave/daemon.sock")} </dev/null >/dev/null 2>&1 &`,
     )}`;
     expect(remoteCmd).toBe(expected);
   });
@@ -246,8 +274,8 @@ describe("ensureRemoteDaemon", () => {
   it("returns the socket path without launching when the daemon already runs", async () => {
     stubExec([
       LOGIN_SHELL, // login shell probe
-      { stdout: "/home/alice" }, // echo $HOME
-      { stdout: "v22.0.0" }, // node -v
+      { stdout: HOME }, // echo $HOME
+      RUNTIME_INSTALLED, // runtime probe → already installed
       { stdout: `${BUNDLE_HASH}\n` }, // hash probe == bundle → no push
       { stdout: "" }, // probe ok
     ]);
@@ -260,14 +288,13 @@ describe("ensureRemoteDaemon", () => {
     expect(h.spawn).not.toHaveBeenCalled();
   });
 
-  it("launches nohup with the pushed shim when the daemon is missing", async () => {
+  it("launches nohup with the pushed shim on the managed runtime when the daemon is missing", async () => {
     stubExec([
       LOGIN_SHELL, // login shell probe
-      { stdout: "/home/alice" }, // echo $HOME
-      { stdout: "v22.0.0" }, // node -v
+      { stdout: HOME }, // echo $HOME
+      RUNTIME_INSTALLED, // runtime probe → already installed
       { stdout: `${BUNDLE_HASH}\n` }, // hash probe == bundle → no push
       { error: SOCKET_MISSING }, // probe → not alive
-      { stdout: "" }, // rg ready probe (needed to boot the CLI)
       { stdout: "" }, // nohup launch
       { stdout: "" }, // probe → alive
     ]);
@@ -279,7 +306,7 @@ describe("ensureRemoteDaemon", () => {
     const launch = commands.find((c) => c.includes("nohup"));
     expect(launch).toBe(
       `/bin/bash -lic ${shellQuote(
-        `nohup ${shellQuote(SHIM)} --daemon ${shellQuote("/home/alice/.wave/daemon.sock")} </dev/null >/dev/null 2>&1 &`,
+        `nohup ${shellQuote(RUNTIME_NODE)} ${shellQuote(SHIM)} --daemon ${shellQuote("/home/alice/.wave/daemon.sock")} </dev/null >/dev/null 2>&1 &`,
       )}`,
     );
   });

@@ -1491,12 +1491,18 @@ export class DesktopHost {
     entry.initPromise = (async () => {
       await assertWslDistroReady(distro);
       const homeDir = await getRemoteHomeDir(host);
-      const { binaryPath } = await ensureRemoteCliUpToDate(
+      // Same provisioning as an ssh host: the managed runtime is pushed in first
+      // (the distro needs no Node.js of its own) and it is what runs the CLI.
+      const { binaryPath, runtimePath } = await ensureRemoteCliUpToDate(
         host,
         loadBundledCliSource(),
         homeDir,
       );
-      const spawnSpec = await buildWslCliSpawnSpec(distro, binaryPath);
+      const spawnSpec = await buildWslCliSpawnSpec(
+        distro,
+        binaryPath,
+        runtimePath,
+      );
       // `shell: false`: wsl.exe takes the distro command as a plain argv array;
       // routing it through cmd.exe would re-split the quoted login-shell
       // command line.
@@ -1526,7 +1532,8 @@ export class DesktopHost {
     })();
 
     entry.initPromise.catch(() => {
-      // Allow retry after a failed init (distro started later, node installed…).
+      // Allow retry after a failed init (distro started later, runtime download
+      // failed, CLI push failed…).
       this.remoteHosts.delete(host);
     });
     return entry.initPromise;

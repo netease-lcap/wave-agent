@@ -6,15 +6,13 @@ import java.nio.charset.Charset
 import java.security.MessageDigest
 import java.util.HexFormat
 
-/** Minimum Node.js major version required by `wave --stdio`. */
-private const val MIN_NODE_MAJOR = 22
-
 /**
  * Resolves the `wave` CLI for local sessions. The CLI 三件套
  * (`bin/wave-code.js` + `package.json` + `dist/bundle/wave.mjs`) is bundled
  * inside the plugin jar, copied to the user-writable `~/.wave/cli/jetbrains`
- * at runtime and executed with the customer's system Node.js (>= 22) — no
- * npm-global `wave-code` package, no version check/upgrade. Whether to copy
+ * at runtime and executed with the Node.js runtime Wave manages for itself
+ * ([ManagedRuntime]) — no npm-global `wave-code` package, no system Node.js
+ * probe, no version check/upgrade of the CLI. Whether to copy
  * is decided by content: the runtime `dist/bundle/wave.mjs` is re-copied
  * only when its sha256 differs from the bundled one — a version string cannot
  * be trusted as "same CLI" (plugin reinstalls and GUI-only releases can ship
@@ -28,8 +26,6 @@ private const val MIN_NODE_MAJOR = 22
 object BinaryResolver {
     @Volatile
     private var cachedEntry: String? = null
-    @Volatile
-    private var cachedNode: String? = null
     @Volatile
     private var cachedLoginPath: String? = null
     @Volatile
@@ -56,9 +52,6 @@ object BinaryResolver {
             ?.takeIf { File(it).exists() }
             ?.let { cachedEntry = it; return it }
 
-        // 0. Node.js >= 22 is required to execute the bundled CLI.
-        checkNodeVersion()
-
         // 1. Copy the bundled CLI into ~/.wave/cli/jetbrains (plugin install
         //    dir is read-only; a changed bundle re-copies but keeps the runtime
         //    dependencies the CLI installed in ~/.wave/cli/node_modules).
@@ -67,63 +60,18 @@ object BinaryResolver {
     }
 
     /**
-     * Resolve the `node` executable used to run the bundled CLI: PATH first,
-     * then nvm, then java.home parent (the JBR Node that ships with some IDEs).
+     * Resolve the `node` that runs the bundled CLI: the managed runtime under
+     * `~/.wave/runtime/node` (downloaded on first use), or `WAVE_NODE_PATH`.
+     *
+     * The JVM gives us nothing to borrow — unlike VS Code's extension host and
+     * the desktop app's Electron, which both hand their own executable to the
+     * CLI — so the plugin prepares its own runtime instead of requiring the
+     * customer to install Node.js ≥ 22 on every machine (spec:
+     * ui/stdio-transport.md「JB 插件自动获取托管 Node 运行时」). No system-node
+     * probe here on purpose: one runtime, one version, reproducible everywhere.
      * Result cached for the IDE session.
      */
-    fun findNode(): String {
-        cachedNode?.let { return it }
-        val node = try {
-            val out = runCommand(lookupCmd, "node")
-            pickExecutableLine(out)
-        } catch (_: Exception) { null } ?: findInNvm("node") ?: findJbrNode()
-        cachedNode = node
-        return node
-    }
-
-    private fun findJbrNode(): String {
-        val javaHome = System.getProperty("java.home")
-        val nodeDir = javaHome?.let { File(it).parent }
-        val candidates: List<File?> = if (isWindows) {
-            listOf(nodeDir?.let { File(it, "node.exe") }, nodeDir?.let { File(it, "node") })
-        } else {
-            listOf(
-                nodeDir?.let { File(it, "node") },
-                nodeDir?.let { File(File(it, ".."), "bin").let { File(it, "node") } },
-            )
-        }
-        candidates.filterNotNull().firstOrNull { it.exists() }?.path?.let { return it }
-        throw StdioClientException(
-            "未检测到 Node.js。请先安装 Node.js (https://nodejs.org)，然后重启编辑器。"
-        )
-    }
-
-    /**
-     * Check that the system Node.js is >= [MIN_NODE_MAJOR].
-     * @throws StdioClientException if the version is below the minimum or cannot be determined.
-     */
-    private fun checkNodeVersion() {
-        val node = findNode()
-        val output = try {
-            runCommandRaw(node, "-v").trim()
-        } catch (e: Exception) {
-            throw StdioClientException(
-                "未检测到 Node.js。请先安装 Node.js (https://nodejs.org)，然后重启编辑器。"
-            )
-        }
-        val match = Regex("^v?(\\d+)").find(output)
-        val major = match?.groupValues?.get(1)?.toIntOrNull()
-        if (major == null) {
-            throw StdioClientException(
-                "无法确定 Node.js 版本（输出: $output）。请安装 Node.js >= $MIN_NODE_MAJOR (https://nodejs.org)，然后重启编辑器。"
-            )
-        }
-        if (major < MIN_NODE_MAJOR) {
-            throw StdioClientException(
-                "Node.js 版本过低（当前 v$major，需要 >= $MIN_NODE_MAJOR）。请升级 Node.js (https://nodejs.org)，然后重启编辑器。"
-            )
-        }
-    }
+    fun resolveNode(): String = ManagedRuntime.nodePath { onInstall?.invoke(it) }
 
     // ------------------------------------------------------------------
     // Bundled CLI → ~/.wave/cli/jetbrains
@@ -253,10 +201,12 @@ object BinaryResolver {
      * so homebrew, nvm, pnpm, and user-customized bin dirs are invisible to
      * `System.getenv("PATH")`. The login shell rebuilds the full PATH.
      *
-     * Result is cached for the IDE session. Returns null if the probe fails.
+     * This is NOT how the runtime is found any more — [resolveNode] always uses
+     * the managed runtime, addressed by absolute path. The login PATH survives
+     * because the CLI's own children (git for the diff/VCS tools, and whatever
+     * the user's hooks call) still need the real PATH.
      *
-     * Uses [runCommandRaw] (not [runCommand]) to avoid infinite recursion:
-     * `runCommand` injects [resolveEnv], which calls this method.
+     * Result is cached for the IDE session. Returns null if the probe fails.
      */
     internal fun resolveLoginShellPath(): String? {
         if (loginPathResolved) return cachedLoginPath
@@ -336,92 +286,7 @@ object BinaryResolver {
     /** Reset caches (testing). */
     fun resetCache() {
         cachedEntry = null
-        cachedNode = null
-    }
-
-    /**
-     * Resolves the nvm-managed node bin directory (`<nvm>/versions/node/<ver>/bin`).
-     *
-     * GUI-launched IDEs on macOS don't inherit the shell PATH, so an nvm-installed
-     * node is invisible to `which`. nvm itself doesn't symlink a stable entry
-     * outside its own tree (the `~/.nvm/versions/node/<ver>/bin` path only exists
-     * once a node version is installed), so we resolve the active version directly
-     * from nvm's own bookkeeping.
-     *
-     * Unix-only; returns null on Windows (this pass only handles Unix nvm).
-     *
-     * @param nvmRoot optional explicit nvm root (testing); defaults to `$NVM_DIR`
-     *                or `~/.nvm`.
-     */
-    internal fun findNvmBinDir(nvmRoot: File? = null): File? {
-        if (isWindows) return null
-        val root = nvmRoot
-            ?: System.getenv("NVM_DIR")?.takeIf { it.isNotEmpty() }?.let { File(it) }
-            ?: File(System.getProperty("user.home"), ".nvm")
-        if (!root.isDirectory) return null
-
-        val versionsDir = File(root, "versions/node")
-        if (!versionsDir.isDirectory) return null
-
-        // Resolve the default alias file to pick the version to use.
-        val defaultAlias = File(root, "alias/default").takeIf { it.isFile }
-            ?.readText()?.trim()?.takeIf { it.isNotEmpty() }
-
-        // A bare version string (optionally `v`-prefixed), e.g. `22` or `v22.14.0`.
-        val versionPrefixRegex = Regex("""^v?\d+(\.\d+)*$""")
-        if (defaultAlias != null && versionPrefixRegex.matches(defaultAlias)) {
-            val prefix = if (defaultAlias.startsWith("v")) defaultAlias else "v$defaultAlias"
-            val match = versionsDir.listFiles { f -> f.isDirectory && f.name.startsWith(prefix) }
-                ?.maxWithOrNull(Comparator { a, b -> compareVersions(a.name, b.name) })
-            match?.let { return File(it, "bin").takeIf { b -> b.isDirectory } }
-            // alias pointed at a version prefix with no installed match → fall through
-        }
-        // `node` / `lts/*` aliases, missing/empty default file, or unmatched prefix:
-        // fall back to the highest installed version.
-        val best = versionsDir.listFiles { f -> f.isDirectory && f.name.startsWith("v") }
-            ?.maxWithOrNull(Comparator { a, b -> compareVersions(a.name, b.name) })
-            ?: return null
-        return File(best, "bin").takeIf { it.isDirectory }
-    }
-
-    /** Locates `name` inside the nvm bin dir, if present. */
-    internal fun findInNvm(name: String, nvmRoot: File? = null): String? {
-        val bin = findNvmBinDir(nvmRoot) ?: return null
-        return File(bin, name).takeIf { it.exists() }?.path
-    }
-
-    /**
-     * Pick the executable line from `which`/`where` output. On Windows `where`
-     * lists the extensionless bash launcher first (e.g. `C:\Program Files\nodejs\npm`)
-     * followed by `npm.cmd` — CreateProcess cannot execute the bash launcher, so
-     * prefer `.cmd`/`.exe`/`.bat` lines. [windows] is injectable for tests.
-     */
-    internal fun pickExecutableLine(lookupOutput: String, windows: Boolean = isWindows): String? {
-        val lines = lookupOutput.lineSequence().map { it.trim() }.filter { it.isNotEmpty() }.toList()
-        if (windows) {
-            lines.firstOrNull {
-                val l = it.lowercase()
-                l.endsWith(".cmd") || l.endsWith(".exe") || l.endsWith(".bat")
-            }?.let { return it }
-        }
-        return lines.firstOrNull()
-    }
-
-    /**
-     * Compares two version strings (e.g. `v22.14.0` vs `v20.19.0`).
-     * Leading `v` is stripped, segments compared numerically; missing/unparseable
-     * segments count as 0. Returns negative/zero/positive like [Comparator].
-     */
-    internal fun compareVersions(a: String, b: String): Int {
-        val sa = a.trimStart('v').split('.').map { it.toIntOrNull() ?: 0 }
-        val sb = b.trimStart('v').split('.').map { it.toIntOrNull() ?: 0 }
-        val n = maxOf(sa.size, sb.size)
-        for (i in 0 until n) {
-            val va = sa.getOrElse(i) { 0 }
-            val vb = sb.getOrElse(i) { 0 }
-            if (va != vb) return va - vb
-        }
-        return 0
+        ManagedRuntime.resetCache()
     }
 
     /**
@@ -451,24 +316,11 @@ object BinaryResolver {
         return proc.inputStream.use { decodeCommandOutput(it.readBytes()) }
     }
 
-    /** Runs a command without injecting [resolveEnv] — used by the login-shell
-     *  PATH probe to avoid infinite recursion. Inherits the parent env as-is. */
+    /** Runs a command with the inherited environment as-is — used by the
+     *  login-shell PATH probe, which must not be given the PATH it produces. */
     private fun runCommandRaw(vararg cmd: String): String {
         val proc = ProcessBuilder(cmd.toList()).apply {
             redirectErrorStream(true)
-        }.start()
-        val out = readProcessOutput(proc)
-        val code = proc.waitFor()
-        if (code != 0) {
-            throw StdioClientException("Command failed (${cmd.joinToString(" ")}): $out")
-        }
-        return out
-    }
-
-    private fun runCommand(vararg cmd: String): String {
-        val proc = ProcessBuilder(cmd.toList()).apply {
-            redirectErrorStream(true)
-            environment().putAll(resolveEnv())
         }.start()
         val out = readProcessOutput(proc)
         val code = proc.waitFor()

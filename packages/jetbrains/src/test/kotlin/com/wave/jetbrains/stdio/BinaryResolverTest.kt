@@ -9,83 +9,20 @@ import java.io.File
 import java.nio.file.Path
 
 /**
- * Tests for the nvm-probing helpers added to [BinaryResolver].
+ * Tests for [BinaryResolver]'s pure helpers.
  *
- * GUI-launched JetBrains IDEs on macOS don't inherit the shell PATH, so an
- * nvm-installed npm/wave is invisible to `which`. These tests cover the nvm
- * root traversal (default-alias resolution + highest-version fallback) and the
- * version comparator, using an injected temp directory instead of the real
- * `~/.nvm`.
+ * Node itself is no longer probed: [BinaryResolver.resolveNode] delegates to the
+ * managed runtime ([ManagedRuntime], covered by `ManagedRuntimeTest`), so what
+ * remains here is the CLI copy location, the login-shell PATH assembly the CLI's
+ * own children still need, and the byte decoding every spawned command goes
+ * through.
  */
 class BinaryResolverTest {
 
     @TempDir
     lateinit var tempDir: Path
 
-    private var nvmCounter = 0
     private var shimCounter = 0
-
-    // ---- findNvmBinDir -------------------------------------------------
-
-    @Test
-    fun `findNvmBinDir with bare numeric default alias resolves matching version`() {
-        // alias/default = "22" → prefix v22 → matches v22.14.0 (not v20.19.0)
-        val nvm = newNvmRoot(defaultAlias = "22")
-        newVersion(nvm, "v22.14.0")
-        newVersion(nvm, "v20.19.0")
-
-        val bin = BinaryResolver.findNvmBinDir(nvm)
-        assertEquals(File(nvm, "versions/node/v22.14.0/bin").absoluteFile, bin?.absoluteFile)
-    }
-
-    @Test
-    fun `findNvmBinDir with full v-prefixed default alias resolves exact version`() {
-        // alias/default = "v22.14.0" → prefix v22.14.0 → matches v22.14.0
-        val nvm = newNvmRoot(defaultAlias = "v22.14.0")
-        newVersion(nvm, "v22.14.0")
-        newVersion(nvm, "v20.19.0")
-
-        val bin = BinaryResolver.findNvmBinDir(nvm)
-        assertEquals(File(nvm, "versions/node/v22.14.0/bin").absoluteFile, bin?.absoluteFile)
-    }
-
-    @Test
-    fun `findNvmBinDir without default file falls back to highest installed version`() {
-        val nvm = newNvmRoot(defaultAlias = null)
-        newVersion(nvm, "v18.20.4")
-        newVersion(nvm, "v22.14.0")
-        newVersion(nvm, "v23.10.0")
-
-        val bin = BinaryResolver.findNvmBinDir(nvm)
-        assertEquals(File(nvm, "versions/node/v23.10.0/bin").absoluteFile, bin?.absoluteFile)
-    }
-
-    @Test
-    fun `findNvmBinDir returns null when nvm root does not exist`() {
-        val missing = File(tempDir.toFile(), "does-not-exist")
-        assertNull(BinaryResolver.findNvmBinDir(missing))
-    }
-
-    @Test
-    fun `findNvmBinDir with non-version alias falls back to highest installed version`() {
-        // alias/default = "node" (an alias, not a bare version) → fallback path
-        val nvm = newNvmRoot(defaultAlias = "node")
-        newVersion(nvm, "v18.20.4")
-        newVersion(nvm, "v22.14.0")
-        newVersion(nvm, "v23.10.0")
-
-        val bin = BinaryResolver.findNvmBinDir(nvm)
-        assertEquals(File(nvm, "versions/node/v23.10.0/bin").absoluteFile, bin?.absoluteFile)
-    }
-
-    // ---- compareVersions -----------------------------------------------
-
-    @Test
-    fun `compareVersions orders versions numerically`() {
-        assertTrue(BinaryResolver.compareVersions("v22.14.0", "v20.19.0") > 0)
-        assertEquals(0, BinaryResolver.compareVersions("v18.20.4", "v18.20.4"))
-        assertTrue(BinaryResolver.compareVersions("v20.19.0", "v23.10.0") < 0)
-    }
 
     // ---- cliInstallDir --------------------------------------------------
 
@@ -145,67 +82,6 @@ class BinaryResolverTest {
             "C:\\Users\\刘一奇\\npm\\wave.cmd",
             BinaryResolver.readProcessOutput(proc)
         )
-    }
-
-    // ---- pickExecutableLine --------------------------------------------
-    //
-    // Customer repro: a default Node.js install on Windows lives at
-    // `C:\Program Files\nodejs`, and `where npm` lists the extensionless
-    // bash launcher FIRST (`...\npm`, then `...\npm.cmd`). CreateProcess
-    // cannot execute the bash launcher, so the npm install/upgrade fails
-    // and the stdio client never initializes.
-
-    @Test
-    fun `pickExecutableLine prefers the cmd line from where output on Windows`() {
-        // `where` emits CRLF line endings.
-        val out = "C:\\Program Files\\nodejs\\npm\r\nC:\\Program Files\\nodejs\\npm.cmd\r\n"
-        assertEquals(
-            "C:\\Program Files\\nodejs\\npm.cmd",
-            BinaryResolver.pickExecutableLine(out, windows = true)
-        )
-    }
-
-    @Test
-    fun `pickExecutableLine prefers an exe line on Windows`() {
-        val out = "C:\\tools\\wave\nC:\\tools\\wave.exe\n"
-        assertEquals("C:\\tools\\wave.exe", BinaryResolver.pickExecutableLine(out, windows = true))
-    }
-
-    @Test
-    fun `pickExecutableLine falls back to first line when no cmd or exe on Windows`() {
-        val out = "C:\\tools\\wave\nC:\\other\\wave\n"
-        assertEquals("C:\\tools\\wave", BinaryResolver.pickExecutableLine(out, windows = true))
-    }
-
-    @Test
-    fun `pickExecutableLine takes the first line off-Windows`() {
-        val out = "/usr/bin/npm\n/usr/local/bin/npm\n"
-        assertEquals("/usr/bin/npm", BinaryResolver.pickExecutableLine(out, windows = false))
-    }
-
-    @Test
-    fun `pickExecutableLine returns null for empty output`() {
-        assertNull(BinaryResolver.pickExecutableLine("", windows = true))
-    }
-
-    // ---- findInNvm -----------------------------------------------------
-
-    @Test
-    fun `findInNvm returns binary path when present, null when absent`() {
-        val nvm = newNvmRoot(defaultAlias = "22")
-        val binDir = newVersion(nvm, "v22.14.0")
-
-        // Present: place a `node` file in the bin dir.
-        val nodeFile = File(binDir, "node").apply { createNewFile() }
-        assertEquals(
-            nodeFile.absolutePath,
-            BinaryResolver.findInNvm("node", nvm)?.let { File(it).absolutePath }
-        )
-
-        // Absent: a different nvm root with no `node` in bin.
-        val nvm2 = newNvmRoot(defaultAlias = "22")
-        newVersion(nvm2, "v22.14.0")
-        assertNull(BinaryResolver.findInNvm("node", nvm2))
     }
 
     // ---- inferGitBashFromGitExe ----------------------------------------
@@ -292,26 +168,5 @@ class BinaryResolverTest {
             System.getProperty("os.name").lowercase().startsWith("win"),
             "Git Bash path inference is Windows-only"
         )
-    }
-
-    /**
-     * Builds a fake nvm root under [tempDir]: `versions/node/` created, and
-     * `alias/default` written with [defaultAlias] when non-null.
-     */
-    private fun newNvmRoot(defaultAlias: String?): File {
-        // Unique subdir per call so two roots with the same alias don't collide.
-        val name = "nvm-${defaultAlias ?: "none"}-${nvmCounter++}"
-        val nvm = File(tempDir.toFile(), name).apply { mkdirs() }
-        File(nvm, "versions/node").mkdirs()
-        if (defaultAlias != null) {
-            File(nvm, "alias").mkdirs()
-            File(nvm, "alias/default").writeText(defaultAlias)
-        }
-        return nvm
-    }
-
-    /** Creates `<nvm>/versions/node/<version>/bin` and returns the bin dir. */
-    private fun newVersion(nvm: File, version: String): File {
-        return File(nvm, "versions/node/$version/bin").apply { mkdirs() }
     }
 }
