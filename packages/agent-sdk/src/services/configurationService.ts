@@ -1114,7 +1114,20 @@ export class ConfigurationService {
       models.add(model);
     });
 
-    return Array.from(models).map((name) => ({
+    // 顺序口径（spec ui/model-selection.md「模型清单与能力标识由宿主下发」场景 5）：
+    // 按模型名字典序、大小写不敏感；当前模型不单独钉顶——钉顶会让每次切换模型
+    // 后第一行变化，扫视位置不稳定，「找模型」反而更难。当前项由选择器的勾选 /
+    // `(current)` 标记与打开时的初始焦点表达。用 codepoint 比较而非 localeCompare，
+    // 避免顺序随 ICU / locale 漂移；sort 是稳定排序，lowercase 相同时保持插入序。
+    // webview 底栏选择器、CLI 的 `/model` 与各宿主设置页读的都是这份清单，一处
+    // 排序即全部一致。
+    const sorted = Array.from(models).sort((a, b) => {
+      const an = a.toLowerCase();
+      const bn = b.toLowerCase();
+      return an < bn ? -1 : an > bn ? 1 : 0;
+    });
+
+    return sorted.map((name) => ({
       name,
       supportsVision: supportsVision(
         this.liveConfiguration?.models?.[name]?.capabilities,

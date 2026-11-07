@@ -1487,6 +1487,31 @@ describe("ConfigurationService", () => {
       }
     });
 
+    it("sorts the model list alphabetically instead of pinning the current model first", async () => {
+      // spec ui/model-selection.md「模型清单与能力标识由宿主下发」场景 5 与 CLI
+      // `/model` 场景 5：清单按模型名字典序（大小写不敏感）排列，当前模型不钉顶
+      // ——钉顶会让每次切换模型后第一行变化，扫视位置不稳定。webview 底栏选择器
+      // 与 CLI `/model` 读的是同一份清单，顺序口径必须一致。
+      const config = {
+        // 当前模型必须是目录里的键：`models` 存在时它就是清单全集，目录外的
+        // `model` 标量会被丢弃（PM 3506021669882624）。
+        model: "Model-c",
+        models: { "model-b": {}, "Model-c": {}, alpha: {} },
+      };
+      mockExistsSync.mockReturnValue(true);
+      mockReadFileSync.mockReturnValue(JSON.stringify(config));
+
+      const origModel = process.env.WAVE_MODEL;
+      delete process.env.WAVE_MODEL;
+      try {
+        await configService.loadMergedConfiguration(tempDir);
+        const models = configService.getConfiguredModels().map((m) => m.name);
+        expect(models).toEqual(["alpha", "model-b", "Model-c"]);
+      } finally {
+        if (origModel !== undefined) process.env.WAVE_MODEL = origModel;
+      }
+    });
+
     it("should label each model with its declared vision capability", async () => {
       // 视觉是 opt-out 语义（未声明 = 支持），选择器的「视觉」标识直接用它，
       // 不另立一套判据。capabilities 只在 models[<name>] 下生效。
