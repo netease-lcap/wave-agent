@@ -11,9 +11,13 @@ export function isTimelineBlock(block: MessageBlock): boolean {
   switch (block.type) {
     case "text":
       return !!block.content && !!block.content.trim();
+    case "reasoning":
+      // 与 Message.renderBlock 的 reasoning 分支同源：网关偶发下发一个只含
+      // "\n" 的 reasoning_content（模型报了 reasoning_tokens 但没给真实文
+      // 本），这种块不渲染，自然也不该占一个时间线圆点。
+      return !!block.content && !!block.content.trim();
     case "compact":
     case "tool":
-    case "reasoning":
       return true;
     default:
       return false;

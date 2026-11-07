@@ -35,6 +35,17 @@ export const ReasoningBlockView: React.FC<ReasoningBlockViewProps> = ({
     return () => clearInterval(timer);
   }, [inProgress]);
 
+  // Defense in depth: Message.renderBlock already skips empty reasoning
+  // blocks before calling this component (the gateway occasionally sends a
+  // reasoning_content of just "\n" — the model reports reasoning_tokens but
+  // gives no real text). Keeping the same guard here means a future call
+  // site that forgets that check still can't render an empty collapsed
+  // shell, matching the CLI's ReasoningDisplay.tsx. Placed after every hook
+  // so the early return never changes hook call order between renders.
+  if (!block.content || !block.content.trim()) {
+    return null;
+  }
+
   let title = "思考";
   if (inProgress) {
     const seconds = Math.max(

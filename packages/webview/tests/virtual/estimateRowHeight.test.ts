@@ -56,6 +56,28 @@ describe("estimateRowHeight", () => {
     );
     expect(two).toBe(one + 22 + 6);
   });
+
+  // 网关偶发只给一个 "\n" 作为 reasoning_content（模型报了 reasoning_tokens
+  // 却没给真实文本）。这种块 Message.renderBlock 不会渲染，估算高度也不该
+  // 替它留空间，否则首屏会凭空多出一段空白，等挂载后再被实测收掉。
+  it("空白 reasoning 块不占高度预算，等同于没有这个块", () => {
+    const withEmptyReasoning = messageOf([
+      { type: "reasoning", content: "\n", stage: "end" },
+    ]);
+    const empty = messageOf([]);
+    expect(estimateRowHeight(withEmptyReasoning)).toBe(
+      estimateRowHeight(empty),
+    );
+  });
+
+  it("有真实内容的 reasoning 块仍按既有高度预算算", () => {
+    const withReasoning = messageOf([
+      { type: "reasoning", content: "thinking it through", stage: "end" },
+    ]);
+    expect(estimateRowHeight(withReasoning)).toBeGreaterThan(
+      estimateRowHeight(messageOf([])),
+    );
+  });
 });
 
 /**

@@ -8,6 +8,39 @@ import type { ReasoningBlock } from "../../src/types";
 const renderContent = (content: string) => <div className="rc">{content}</div>;
 
 describe("ReasoningBlockView", () => {
+  // 网关偶发只给一个 "\n" 作为 reasoning_content（模型报了 reasoning_tokens
+  // 却没给真实文本，见 docs/specs/core/stream-content-updates.md「思考用时
+  // 展示」）。Message.renderBlock 已经在调用这个组件前过滤掉了，这里是第二
+  // 道防线：任何忘记做那层判空的调用方，也不会渲染出一个没有内容的折叠壳。
+  it("renders nothing when content is whitespace-only", () => {
+    const block = {
+      type: "reasoning",
+      content: "\n",
+      stage: "end",
+      startTime: 1000,
+      endTime: 2000,
+    } as ReasoningBlock;
+    const { container } = render(
+      <ReasoningBlockView block={block} renderContent={renderContent} />,
+    );
+
+    expect(container.querySelector(".reasoning-block")).not.toBeInTheDocument();
+  });
+
+  it("renders nothing when content is an empty string", () => {
+    const block = {
+      type: "reasoning",
+      content: "",
+      stage: "streaming",
+      startTime: 1000,
+    } as ReasoningBlock;
+    const { container } = render(
+      <ReasoningBlockView block={block} renderContent={renderContent} />,
+    );
+
+    expect(container.querySelector(".reasoning-block")).not.toBeInTheDocument();
+  });
+
   it("renders content expanded by default", () => {
     const block = {
       type: "reasoning",
