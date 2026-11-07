@@ -778,7 +778,7 @@ export interface DesktopUpdateChannelMessage extends HostToWebviewMessageBase {
 
 /** Action a toast's button triggers when clicked (host-side semantics). Only
  *  一种语义：「聚焦后台会话」（后台会话确认 toast 的「查看」按钮）。更新下载/重启
- *  早已由账户卡片 S0–S6 按钮状态机接管，未登录 GitHub 下载页的 toast 也随
+ *  早已由账户卡片 S0–S3 按钮状态机接管，未登录 GitHub 下载页的 toast 也随
  *  updateChecker 一并删除（2026-09-09/2026-09-10 拍板），故动作变体只剩这一种。
  *  设置写盘失败**不带动作**：失败原因是权限/磁盘/远端连接，打开 settings.json
  *  帮不上忙，真正的补救是界面已经回滚到生效值（2026-11-04 拍板）。 */
@@ -1056,18 +1056,17 @@ export interface AccountApiQuotaInfo {
 
 /**
  * 桌面端应用更新状态（spec desktop-account.md「账户卡片 ·
- * 更新按钮状态机 S0–S6」）。宿主把 electron-updater 事件映射为 status 并随
- * `desktopAccountInfo` 快照下发；webview 侧据此渲染卡片更新按钮与确认对话框。
+ * 更新按钮状态机 S0–S3」）。宿主把 electron-updater 事件映射为快照并随
+ * `desktopAccountInfo` 下发；webview 侧据此渲染卡片更新按钮与重启确认框。
+ * **只有下载完成才下发**：下载中与下载失败都不带该字段（卡片不出现按钮）。
  */
 export interface AccountUpdateInfo {
-  /** 检测到新版本（无更新时宿主可不带 update 或置 false）。 */
+  /** 新版本已下载完成、可重启（下载中宿主不下发）。 */
   available: boolean;
-  /** 新版本号（S2 对话框 / 按钮 tooltip 文案使用）。 */
+  /** 新版本号（宿主从 `UpdateInfo.version` 带回，随快照下发）。 */
   version?: string;
-  /** 更新过程状态：idle=未开始/已失败复位；downloading=宿主下载中；ready=已就绪待重启。 */
-  status?: "idle" | "downloading" | "ready";
   /** 本次更新的变更记录（宿主已按「已装版本」过滤 + 按版本倒序，每项一段）。
-   *  缺失 / 空数组 = 没有可展示的记录，S4 不渲染记录块
+   *  缺失 / 空数组 = 没有可展示的记录，重启确认框不渲染记录块
    *  （spec desktop-distribution.md「更新内容（Release Notes）」场景 5–6）。 */
   releaseNotes?: Array<{ version: string; note: string }>;
 }
@@ -1084,7 +1083,7 @@ export interface DesktopAccountInfoMessage extends HostToWebviewMessageBase {
   /** 套餐两根额度条 + 到期日 + 计费结论；null = 无（未购买/未登录）。 */
   billing?: AccountBillingInfo | null;
   apiQuota?: AccountApiQuotaInfo | null;
-  /** 应用更新状态（S0–S6 按钮状态机输入）；未下发/available=false = 无更新。 */
+  /** 应用更新状态（S0–S3 按钮状态机输入）；未下发/available=false = 无按钮。 */
   update?: AccountUpdateInfo | null;
 }
 

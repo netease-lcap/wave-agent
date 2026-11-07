@@ -1341,100 +1341,60 @@ describe("AccountCard (desktop sidebar)", () => {
     });
   });
 
-  describe("更新按钮 S0–S6", () => {
-    it("hides the update button when no update is available (S0)", () => {
+  describe("更新按钮 S0–S3", () => {
+    it("hides the update button while there is nothing to restart (S0)", () => {
       renderDesktop();
       pushAccount({ ...loggedIn, billing: planBilling, apiQuota: apiPlenty });
       expect(
         screen.queryByTestId("account-update-btn"),
       ).not.toBeInTheDocument();
 
+      // 下载在后台静默进行：宿主此刻不推 update，available:false 同理。
       pushAccount({ ...loggedIn, update: { available: false } });
       expect(
         screen.queryByTestId("account-update-btn"),
       ).not.toBeInTheDocument();
     });
 
-    it("shows 更新 (S1); clicking opens the S2 confirm dialog with the version; Esc cancels without downloading", () => {
+    it("shows 更新 once the download finished, and never pops anything by itself (S1)", () => {
       const { vscode } = renderDesktop();
       pushAccount({
         ...loggedIn,
         billing: planBilling,
         apiQuota: apiPlenty,
-        update: { available: true, version: "1.2.0", status: "idle" },
+        update: { available: true, version: "1.2.0" },
       });
 
       const btn = screen.getByTestId("account-update-btn");
       expect(btn).toHaveTextContent("更新");
-      vscode.postMessage.mockClear();
+      expect(btn).not.toBeDisabled();
+      expect(btn).toHaveAttribute("aria-haspopup", "dialog");
 
-      fireEvent.click(btn);
-      expect(screen.getByText("更新到新版本")).toBeInTheDocument();
-      expect(
-        screen.getByText(/将下载并安装新版本 v1\.2\.0/),
-      ).toBeInTheDocument();
-      expect(screen.getByTestId("confirm-dialog-cancel")).toHaveTextContent(
-        "取消",
-      );
-      expect(screen.getByTestId("confirm-dialog-confirm")).toHaveTextContent(
-        "下载更新",
-      );
-
-      // Esc 关闭 = 取消：不发命令.
-      fireEvent.keyDown(document, { key: "Escape" });
-      expect(screen.queryByText("更新到新版本")).not.toBeInTheDocument();
+      // 下载完成不打扰用户：不弹确认框、不发命令。
+      expect(screen.queryByText("重启以完成更新")).not.toBeInTheDocument();
       expect(vscode.postMessage).not.toHaveBeenCalledWith(
-        expect.objectContaining({ command: "desktopUpdateDownload" }),
+        expect.objectContaining({ command: "desktopUpdateRestart" }),
+      );
+
+      // 重复推送同一就绪快照同样不弹（重启始终由用户点）。
+      pushAccount({
+        ...loggedIn,
+        update: { available: true, version: "1.2.0" },
+      });
+      expect(screen.queryByText("重启以完成更新")).not.toBeInTheDocument();
+      expect(screen.getByTestId("account-update-btn")).toHaveTextContent(
+        "更新",
       );
     });
 
-    it("posts desktopUpdateDownload on S2 confirm; downloading disables the button (S3)", () => {
+    it("opens the S2 restart dialog on click and posts desktopUpdateRestart on 立即重启", () => {
       const { vscode } = renderDesktop();
       pushAccount({
         ...loggedIn,
-        update: { available: true, version: "1.2.0", status: "idle" },
+        update: { available: true, version: "1.2.0" },
       });
-      vscode.postMessage.mockClear();
 
       fireEvent.click(screen.getByTestId("account-update-btn"));
-      fireEvent.click(screen.getByTestId("confirm-dialog-confirm"));
-      expect(vscode.postMessage).toHaveBeenCalledWith(
-        expect.objectContaining({ command: "desktopUpdateDownload" }),
-      );
-      expect(screen.queryByText("更新到新版本")).not.toBeInTheDocument();
-
-      // 宿主推送 downloading：按钮「正在下载」+ 转圈弧 disabled（无省略号）.
-      pushAccount({
-        ...loggedIn,
-        update: { available: true, version: "1.2.0", status: "downloading" },
-      });
-      const btn = screen.getByTestId("account-update-btn");
-      expect(btn).toHaveTextContent("正在下载");
-      expect(btn).not.toHaveTextContent("…");
-      expect(btn.querySelector("svg")).not.toBeNull();
-      expect(btn).toHaveAttribute("aria-busy", "true");
-      expect(btn).toBeDisabled();
-
-      // 下载中点击无反应：不弹框、不发命令.
-      vscode.postMessage.mockClear();
-      fireEvent.click(btn);
-      expect(screen.queryByText("更新到新版本")).not.toBeInTheDocument();
-      expect(vscode.postMessage).not.toHaveBeenCalledWith(
-        expect.objectContaining({ command: "desktopUpdateDownload" }),
-      );
-    });
-
-    it("auto-pops the S4 restart dialog once when status becomes ready; 稍后 turns the button into 重启", () => {
-      renderDesktop();
-      pushAccount({
-        ...loggedIn,
-        update: { available: true, version: "1.2.0", status: "downloading" },
-      });
-
-      pushAccount({
-        ...loggedIn,
-        update: { available: true, version: "1.2.0", status: "ready" },
-      });
       expect(screen.getByText("重启以完成更新")).toBeInTheDocument();
       expect(screen.getByText(/重启会中断正在运行的任务/)).toBeInTheDocument();
       expect(screen.getByTestId("confirm-dialog-cancel")).toHaveTextContent(
@@ -1444,32 +1404,7 @@ describe("AccountCard (desktop sidebar)", () => {
         "立即重启",
       );
 
-      fireEvent.click(screen.getByTestId("confirm-dialog-cancel"));
-      expect(screen.queryByText("重启以完成更新")).not.toBeInTheDocument();
-      expect(screen.getByTestId("account-update-btn")).toHaveTextContent(
-        "重启",
-      );
-
-      // 每轮就绪只自动弹一次：重复推送同一 ready 快照不再弹.
-      pushAccount({
-        ...loggedIn,
-        update: { available: true, version: "1.2.0", status: "ready" },
-      });
-      expect(screen.queryByText("重启以完成更新")).not.toBeInTheDocument();
-    });
-
-    it("re-opens the S4 dialog from the 重启 button and posts desktopUpdateRestart on 立即重启", () => {
-      const { vscode } = renderDesktop();
-      pushAccount({
-        ...loggedIn,
-        update: { available: true, version: "1.2.0", status: "ready" },
-      });
-      // 先稍后.
-      fireEvent.click(screen.getByTestId("confirm-dialog-cancel"));
-
       vscode.postMessage.mockClear();
-      fireEvent.click(screen.getByTestId("account-update-btn"));
-      expect(screen.getByText("重启以完成更新")).toBeInTheDocument();
       fireEvent.click(screen.getByTestId("confirm-dialog-confirm"));
       expect(vscode.postMessage).toHaveBeenCalledWith(
         expect.objectContaining({ command: "desktopUpdateRestart" }),
@@ -1477,26 +1412,25 @@ describe("AccountCard (desktop sidebar)", () => {
       expect(screen.queryByText("重启以完成更新")).not.toBeInTheDocument();
     });
 
-    it("recovers to 更新 when the host pushes idle after a failed download", () => {
+    it("keeps the button after 稍后 closed the dialog, and opens it again on the next click", () => {
       renderDesktop();
       pushAccount({
         ...loggedIn,
-        update: { available: true, version: "1.2.0", status: "downloading" },
+        update: { available: true, version: "1.2.0" },
       });
+
+      fireEvent.click(screen.getByTestId("account-update-btn"));
+      fireEvent.click(screen.getByTestId("confirm-dialog-cancel"));
+      expect(screen.queryByText("重启以完成更新")).not.toBeInTheDocument();
       expect(screen.getByTestId("account-update-btn")).toHaveTextContent(
-        "正在下载",
+        "更新",
       );
 
-      pushAccount({
-        ...loggedIn,
-        update: { available: true, version: "1.2.0", status: "idle" },
-      });
-      const btn = screen.getByTestId("account-update-btn");
-      expect(btn).toHaveTextContent("更新");
-      expect(btn).not.toBeDisabled();
+      fireEvent.click(screen.getByTestId("account-update-btn"));
+      expect(screen.getByText("重启以完成更新")).toBeInTheDocument();
     });
 
-    describe("S4 的「本次更新内容」块", () => {
+    describe("S2 确认框的「本次更新内容」块", () => {
       /**
        * 宿主下发的是**已按已装版本过滤、按版本倒序**的数组（desktop-account.md
        * 「更新按钮状态机」下发规则），webview 只负责按顺序渲染。
@@ -1513,10 +1447,10 @@ describe("AccountCard (desktop sidebar)", () => {
           update: {
             available: true,
             version: "1.6.1",
-            status: "ready",
             releaseNotes: notes,
           },
         });
+        fireEvent.click(screen.getByTestId("account-update-btn"));
 
         const sections = screen.getAllByTestId("account-release-note");
         expect(sections).toHaveLength(2);
@@ -1535,12 +1469,12 @@ describe("AccountCard (desktop sidebar)", () => {
           update: {
             available: true,
             version: "1.6.1",
-            status: "ready",
             releaseNotes: [
               { version: "1.6.1", note: "- 见 [文档](https://example.com/x)" },
             ],
           },
         });
+        fireEvent.click(screen.getByTestId("account-update-btn"));
 
         const sections = screen.getAllByTestId("account-release-note");
         expect(sections).toHaveLength(1);
@@ -1557,13 +1491,13 @@ describe("AccountCard (desktop sidebar)", () => {
           update: {
             available: true,
             version: "1.6.1",
-            status: "ready",
             releaseNotes: [
               { version: "1.6.1", note: "- 有内容" },
               { version: "1.6.0", note: "   " },
             ],
           },
         });
+        fireEvent.click(screen.getByTestId("account-update-btn"));
         expect(screen.getAllByTestId("account-release-note")).toHaveLength(1);
         expect(screen.queryByText("v1.6.0")).not.toBeInTheDocument();
 
@@ -1572,7 +1506,6 @@ describe("AccountCard (desktop sidebar)", () => {
           update: {
             available: true,
             version: "1.6.1",
-            status: "ready",
             releaseNotes: [],
           },
         });
@@ -1582,12 +1515,13 @@ describe("AccountCard (desktop sidebar)", () => {
         expect(screen.queryByText("本次更新内容")).not.toBeInTheDocument();
       });
 
-      it("leaves the S4 dialog verbatim unchanged when the host sends no releaseNotes", () => {
+      it("leaves the dialog verbatim unchanged when the host sends no releaseNotes", () => {
         renderDesktop();
         pushAccount({
           ...loggedIn,
-          update: { available: true, version: "1.6.1", status: "ready" },
+          update: { available: true, version: "1.6.1" },
         });
+        fireEvent.click(screen.getByTestId("account-update-btn"));
 
         expect(screen.getByText("重启以完成更新")).toBeInTheDocument();
         expect(

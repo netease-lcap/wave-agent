@@ -2677,11 +2677,8 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     vscode.postMessage({ command: "logout" });
   }, [vscode]);
 
-  // 更新按钮状态机（交互设计 §4）：S2 确认后通知宿主下载；S4 确认后通知宿主
-  // 安装并重启。宿主随后推回 desktopAccountInfo.update 流转状态。
-  const handleDownloadUpdate = useCallback(() => {
-    vscode.postMessage({ command: "desktopUpdateDownload" });
-  }, [vscode]);
+  // 更新按钮状态机（交互设计 §4）：下载由宿主在后台自动完成，webview 只负责一个
+  // 用户动作——在重启确认框点「立即重启」时通知宿主安装并重启（S3）。
   const handleRestartApp = useCallback(() => {
     vscode.postMessage({ command: "desktopUpdateRestart" });
   }, [vscode]);
@@ -5433,11 +5430,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         />
       )}
       {state.activeDialog === "status" && (
-        <StatusDialog
-          onClose={handleDialogClose}
-          vscode={vscode}
-          isDesktop={isDesktop}
-        />
+        <StatusDialog onClose={handleDialogClose} vscode={vscode} />
       )}
       {state.activeDialog === "tasks" && (
         <BackgroundTaskManager
@@ -5823,7 +5816,6 @@ export const ChatApp: React.FC<ChatAppProps> = ({
             onOpenHelpDocs={handleOpenHelpDocs}
             onLogin={handleLogin}
             onLogout={handleLogout}
-            onDownloadUpdate={handleDownloadUpdate}
             onRestartApp={handleRestartApp}
             onRefreshAccountUsage={handleRefreshAccountUsage}
             account={accountInfo}

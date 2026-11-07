@@ -71,7 +71,7 @@ describe("normalizeReleaseNotes", () => {
     expect(notes).toEqual([{ version: "1.3.0", note: "- 有效" }]);
   });
 
-  it("整段没有可展示条目时返回 undefined（S4 不渲染记录块）", () => {
+  it("整段没有可展示条目时返回 undefined（确认框不渲染记录块）", () => {
     expect(normalizeReleaseNotes(undefined, "1.0.0", "1.1.0")).toBeUndefined();
     expect(normalizeReleaseNotes("", "1.0.0", "1.1.0")).toBeUndefined();
     expect(normalizeReleaseNotes("   ", "1.0.0", "1.1.0")).toBeUndefined();

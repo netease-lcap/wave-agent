@@ -4,14 +4,13 @@
  * electron-builder metadata format (latest-mac.yml / latest.yml), NOT GitHub
  * Releases.
  *
- * The host drives the S0–S6 update button state machine (spec
- * desktop-account.md「账户卡片 · 更新按钮状态机」): a check only
- * *announces* an update (`update-available` → status idle, the card shows the
- * 更新 button); the download starts only after the user confirms in the S2
- * dialog (`startDownload`, which the host precedes by pushing status
- * "downloading"). `update-downloaded` maps to the "ready" push, and errors
- * reset the state to idle so the user can retry — no toasts, no auto-download,
- * no auto-restart.
+ * The host drives the S0–S3 update button state machine (spec
+ * desktop-account.md「账户卡片 · 更新按钮状态机 S0–S3」): a check that finds an
+ * update starts the background download *automatically* (`autoDownload` stays
+ * on) and **silently** — the card shows nothing while downloading
+ * (`update-available` is not pushed), appears as 更新 only once the download
+ * finished (`update-downloaded`), and the user opens it to read the release
+ * notes and confirm 重启. Failures just log — no toasts, no auto-restart.
  */
 
 import { app } from "electron";
@@ -20,12 +19,14 @@ import type { UpdateChannel } from "./configStore";
 import { parseVersion, compareVersions } from "./version";
 
 export interface AutoUpdaterCallbacks {
-  /** A check found a newer version. The download does NOT auto-start — the
-   *  host surfaces the 更新 button (S1) and waits for the user's S2 confirm. */
+  /** A check found a newer version. The download starts on its own and stays
+   *  invisible (S0) — the host only keeps the UpdateInfo for the ready push。 */
   onUpdateAvailable: (info: UpdateInfo) => void;
-  /** The new version finished downloading — the host pushes status "ready". */
+  /** The new version finished downloading — the host pushes the ready snapshot
+   *  that makes the 更新 button appear (S1). */
   onUpdateDownloaded: (info: UpdateInfo) => void;
-  /** The check or background download failed — the host resets to idle (S1). */
+  /** The check or background download failed — 下载中失败对用户不可见（S0），
+   *  宿主只记日志，等下一次检查自动重试。 */
   onError: (error: Error) => void;
 }
 
@@ -70,14 +71,15 @@ export class AutoUpdaterService {
 
   /** Point the generic provider at the codechat feed (stable or beta per the
    *  current updateChannel) and check for updates.
-   *  autoDownload=false: finding an update only announces it (S1 更新 button) —
-   *  the host calls startDownload() once the user confirms in the S2 dialog. */
+   *  autoDownload=true: finding an update downloads it right away, in the
+   *  background and without any UI. The user's only actions are opening the
+   *  更新 button (S1) and confirming 重启 (S2–S3). */
   async checkForUpdates(
     serverUrl: string,
     channel: UpdateChannel = "stable",
   ): Promise<UpdateCheckResult> {
     this.attachListeners();
-    autoUpdater.autoDownload = false;
+    autoUpdater.autoDownload = true;
     autoUpdater.setFeedURL({
       provider: "generic",
       url: feedUrlFor(serverUrl, channel),
@@ -105,13 +107,6 @@ export class AutoUpdaterService {
       console.warn("[AutoUpdater] update check failed:", error);
       return { outcome: "error" };
     }
-  }
-
-  /** Start the background download (S2 确认后). Failures surface via the
-   *  'error' event → the host resets status to idle so the user can retry. */
-  async startDownload(): Promise<void> {
-    this.attachListeners();
-    await autoUpdater.downloadUpdate();
   }
 
   quitAndInstall(): void {

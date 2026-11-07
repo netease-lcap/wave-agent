@@ -13,12 +13,7 @@ import { marked } from "marked";
 import DOMPurify from "dompurify";
 // 未登录态「更多」按钮沿用 0902 第 5 轮问号圆（ailsa 新基线）；已登录态不再
 // 提供独立更多按钮（交互定稿：热区开纯功能菜单）。
-import {
-  ApiInfoIcon,
-  HelpCircleIcon,
-  LoadingArcIcon,
-  QuotaIcon,
-} from "./HeaderIcons";
+import { ApiInfoIcon, HelpCircleIcon, QuotaIcon } from "./HeaderIcons";
 import { useClickOutside } from "../utils/useClickOutside";
 import { viewportSize } from "../utils/viewport";
 import "../styles/AccountCard.css";
@@ -38,10 +33,10 @@ import "../styles/ConfirmDialog.css";
  *  2. 个人信息行（头像 + 姓名热区 + 更新按钮 + 用量显隐按钮）：点击热区开/关
  *     纯功能菜单（设置/企业控制台/帮助文档/退出登录），菜单贴行弹出盖住用量
  *     区、与卡片等宽；再次点击热区或失焦/Esc 收起；
- *  3. 更新按钮 S0–S6 状态机：`available` 时显示「更新」(S1)，点击弹 S2 下载二
- *     次确认 → 发 desktopUpdateDownload、按钮转「正在下载更新…」disabled (S3)；
- *     宿主把 status 推为 "ready" → 自动弹 S4 重启确认（每轮就绪一次）→ 稍后 =
- *     「重启」按钮 (S5)，立即重启发 desktopUpdateRestart (S6)。
+ *  3. 更新按钮 S0–S3 状态机：宿主在后台**静默下载**（下载中/失败都不显示按钮，
+ *     S0）；下载完成才出现「更新」(S1)，点开是「重启以完成更新」确认框——正文
+ *     下方就是本次更新内容，看完点「立即重启」发 desktopUpdateRestart (S2→S3)。
+ *     不自动弹框、不自动重启。
  */
 export interface AccountCardAccount {
   isAuthenticated: boolean;
@@ -61,9 +56,7 @@ interface AccountCardProps {
   onOpenSettings: () => void;
   onOpenEnterpriseConsole: () => void;
   onOpenHelpDocs: () => void;
-  /** 用户确认下载更新（S2 确认后通知宿主开始下载）。 */
-  onDownloadUpdate?: () => void;
-  /** 用户确认立即重启（S4 确认后通知宿主安装并重启）。 */
+  /** 用户确认立即重启（重启确认框点「立即重启」后通知宿主安装并重启，S3）。 */
   onRestartApp?: () => void;
   /**
    * 打开用量浮层时向宿主核对一次用量（spec desktop-account「用量刷新时机」场景
@@ -303,7 +296,7 @@ export function apiQuotaInlineText(
 
 /**
  * 变更记录的白名单：与消息/计划正文同一套 markdown 渲染，但**不含 `a`** ——
- * spec desktop-account.md「更新按钮状态机」S4 场景 5 要求记录块里没有可点链接
+ * spec desktop-account.md「更新按钮状态机」S0–S3 场景 3 要求记录块里没有可点链接
  * （记录是提交标题的摘要，出现链接基本是误粘贴，且一点就把用户带出应用）。
  * DOMPurify 默认 `KEEP_CONTENT`，剥掉 `<a>` 但保留其中文字。
  */
@@ -361,7 +354,6 @@ export const AccountCard: React.FC<AccountCardProps> = ({
   onOpenSettings,
   onOpenEnterpriseConsole,
   onOpenHelpDocs,
-  onDownloadUpdate,
   onRestartApp,
   onRefreshUsage,
 }) => {
@@ -375,10 +367,9 @@ export const AccountCard: React.FC<AccountCardProps> = ({
   // 用量维度（2026-10-09 交互定稿）：套餐未用尽时 API 余额不参与计费，默认停在
   // 「套餐用量」不占版面，想看余额再切过去；两维只有一维可用时无切换器。
   const [usageTab, setUsageTab] = useState<"plan" | "api">("plan");
-  // 更新确认对话框：download = S2 下载二次确认；restart = S4 重启确认。
-  const [updateDialog, setUpdateDialog] = useState<
-    "download" | "restart" | null
-  >(null);
+  // 更新确认对话框（S2）：只有用户点开「更新」按钮才出现——下载在后台静默完成，
+  // 宿主不会主动弹任何东西。
+  const [updateDialog, setUpdateDialog] = useState<"restart" | null>(null);
   const moreBtnRef = useRef<HTMLButtonElement | null>(null);
   const cardRef = useRef<HTMLDivElement | null>(null);
   const hotzoneRef = useRef<HTMLDivElement | null>(null);
@@ -389,8 +380,6 @@ export const AccountCard: React.FC<AccountCardProps> = ({
   const usageOpened = useRef(false);
   const restoreFocusOnClose = useRef(false);
   const usageOpenedByKeyboard = useRef(false);
-  // S4 自动弹窗护栏：status 每轮变为 ready 只自动弹一次（离开 ready 复位）。
-  const [restartPrompted, setRestartPrompted] = useState(false);
 
   // 贴个人信息行上方弹出的锚点（菜单与用量浮层共用）：与卡片等宽，底边贴行顶
   // （+4 抵消固定定位的上移间隙）。侧栏 overflow:hidden 会裁掉 absolute 后代，
@@ -415,9 +404,9 @@ export const AccountCard: React.FC<AccountCardProps> = ({
   const name = account?.user?.email ?? displayNameFor(account?.user);
   const apiQuota = account?.apiQuota ?? null;
   const update = account?.update ?? null;
+  // 宿主只在下载完成后下发 `update`，所以「有 update」即「已就绪可重启」。
   const updateAvailable = update?.available === true;
-  const updateStatus = update?.status ?? "idle";
-  // S4 正文下方的「本次更新内容」条目（缺失/全空 → 空数组 → 整块不渲染）。
+  // 重启确认框正文下方的「本次更新内容」条目（缺失/全空 → 空数组 → 整块不渲染）。
   const releaseNotes = visibleReleaseNotes(update);
 
   // 菜单的锚点：登录态与用量浮层同源（贴个人信息行顶）；未登录态那颗菜单挂在
@@ -427,16 +416,6 @@ export const AccountCard: React.FC<AccountCardProps> = ({
     if (isAuthenticated) return measureRowAnchor();
     return moreBtnRef.current?.getBoundingClientRect() ?? null;
   }, [isAuthenticated, measureRowAnchor]);
-
-  // S4：宿主推 status="ready" 时自动弹重启确认（稍后/立即重启）。必须位于未
-  // 登录早退之前——React 要求同一组件每次渲染的 hook 数量一致。
-  useEffect(() => {
-    if (updateAvailable && updateStatus === "ready" && !restartPrompted) {
-      setRestartPrompted(true);
-      setUpdateDialog("restart");
-    }
-    if (updateStatus !== "ready") setRestartPrompted(false);
-  }, [updateStatus, updateAvailable, restartPrompted]);
 
   // 用量浮层关闭路径：点浮层外、按 Esc。触发按钮排除在「外部」之外，再点一次
   // 即 toggle 关闭（与 MoreMenu 同一套 useClickOutside 口径）。
@@ -579,18 +558,10 @@ export const AccountCard: React.FC<AccountCardProps> = ({
       ? "plan"
       : "api";
 
-  // 更新按钮文案/状态（S1/S3/S5；无更新 = S0 不渲染）。S3 已去掉省略号、「正在下载更新」
-  // 缩为「正在下载」（设计师 2026-09-17）——进行中由转圈弧表达，文案只留最短状态词。
-  const updateLabel =
-    updateStatus === "downloading"
-      ? "正在下载"
-      : updateStatus === "ready"
-        ? "重启"
-        : "更新";
-  const handleUpdateClick = () => {
-    if (updateStatus === "downloading") return;
-    setUpdateDialog(updateStatus === "ready" ? "restart" : "download");
-  };
+  // 更新按钮（S1；无更新 / 后台下载中 / 下载失败 = S0 不渲染）：文案固定「更新」，
+  // 点开是重启确认框（S2）——记录与「立即重启」都在那一屏里。
+  const updateLabel = "更新";
+  const handleUpdateClick = () => setUpdateDialog("restart");
 
   // 余额用途说明钮（2026-10-09）：排在**余额维度的右上角**——与套餐维度的到期日
   // 同一位置，两个维度各占各的右上角信息。放在金额行里会把「剩余」的数字挤得比
@@ -884,21 +855,13 @@ export const AccountCard: React.FC<AccountCardProps> = ({
         {updateAvailable && (
           <button
             type="button"
-            // S5「重启」退回描边样式（不抢主视觉），几何仍按按钮规范；S1/S3 为品牌红实底。
-            className={
-              "account-card-update-btn" +
-              (updateStatus === "ready" ? " is-restart" : "")
-            }
+            // S1「更新」= 品牌红实底的主行动（宿主只在下载完成后才渲染这一态）。
+            className="account-card-update-btn"
             aria-label="应用更新"
-            // 下载中 disabled 防重复下载（S3），同时把进行中语义暴露给读屏。
-            aria-busy={updateStatus === "downloading" || undefined}
+            aria-haspopup="dialog"
             data-testid="account-update-btn"
-            disabled={updateStatus === "downloading"}
             onClick={handleUpdateClick}
           >
-            {updateStatus === "downloading" && (
-              <LoadingArcIcon size={16} ariaLabel={null} />
-            )}
             {updateLabel}
           </button>
         )}
@@ -958,19 +921,6 @@ export const AccountCard: React.FC<AccountCardProps> = ({
           onClose={() => setShowMenu(false)}
         />
       )}
-      {updateDialog === "download" && (
-        <ConfirmDialog
-          title="更新到新版本"
-          description={`将下载并安装新版本${update?.version ? ` v${update.version}` : ""}。安装完成后由你选择重启时机，不会自动重启客户端。是否继续？`}
-          confirmText="下载更新"
-          cancelText="取消"
-          onConfirm={() => {
-            setUpdateDialog(null);
-            onDownloadUpdate?.();
-          }}
-          onCancel={() => setUpdateDialog(null)}
-        />
-      )}
       {updateDialog === "restart" && (
         <ConfirmDialog
           title="重启以完成更新"
@@ -983,9 +933,9 @@ export const AccountCard: React.FC<AccountCardProps> = ({
           }}
           onCancel={() => setUpdateDialog(null)}
         >
-          {/* 「本次更新内容」（spec desktop-account.md S4 场景 5）：每项一段、
+          {/* 「本次更新内容」（spec desktop-account.md S0–S3 场景 3）：每项一段、
               版本号段标题从新到旧；即使只有一项也保留版本号段标题——渲染形态
-              只有一种。没有记录时整块不出现，S4 与旧版逐字一致。 */}
+              只有一种。没有记录时整块不出现，确认框与加记录块之前逐字一致。 */}
           {releaseNotes.length > 0 && (
             <div
               className="account-release-notes"

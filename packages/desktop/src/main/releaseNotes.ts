@@ -3,20 +3,20 @@
  * （`[{ version, note }, …]`，最近若干个版本，服务端倒序，vusion/codechat#50），
  * 宿主按**已装版本**过滤后交给 webview 渲染（spec
  * desktop-distribution.md「更新内容（Release Notes）」场景 5–6、
- * desktop-account.md「更新按钮状态机 S0–S6」场景 5）。
+ * desktop-account.md「更新按钮状态机 S0–S3」场景 3）。
  *
  * 为什么过滤放在宿主而不是 webview：
  * - 版本比较的实现（`parseVersion` / `compareVersions`）本来就住在主进程；
  * - webview 只渲染收到的数组，不需要知道「已装版本是多少」，也不必重复一份比较逻辑。
  *
  * 为什么是数组而不是单值：大量版本只进 beta、永不进 stable。stable 用户跨过若干
- * 只进 beta 的版本时，只有把「比自己新的每个版本的增量」都带到 S4，才看得全
+ * 只进 beta 的版本时，只有把「比自己新的每个版本的增量」都带到 S2 确认框，才看得全
  * 中间的改动；单值只能给出目标版本的增量（详见 desktop-distribution.md 约束 3）。
  *
  * 容错口径：electron-updater 的官方类型是 `string | Array<{ version, note }>` ——
  * 字符串形态包成单元素数组（其他 provider 就是这么给的）；版本号解析不了的项、
  * `note` 为空的项直接丢弃（宁可少展示，也不把别的版本的记录算成本次更新）；
- * 过滤后为空返回 `undefined`，S4 便不渲染记录块。
+ * 过滤后为空返回 `undefined`，S2 确认框便不渲染记录块。
  */
 
 import { compareVersions, parseVersion } from "./version";
@@ -37,7 +37,7 @@ function toEntry(item: unknown): ReleaseNoteEntry | null {
 
 /**
  * `UpdateInfo.releaseNotes` → 只含「比已装版本新」的条目，按版本倒序；
- * 没有任何可展示条目时返回 `undefined`（= 不下发，S4 不渲染记录块）。
+ * 没有任何可展示条目时返回 `undefined`（= 不下发，S2 确认框不渲染记录块）。
  *
  * @param releaseNotes electron-updater 给的原值（未知形态一律忽略）
  * @param installedVersion 当前安装的版本（`app.getVersion()`）
