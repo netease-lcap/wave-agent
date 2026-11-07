@@ -45,9 +45,8 @@ interface DesktopShellProps {
   onLogout: () => void;
   /** 侧边栏底部账户卡片 (desktopAccountInfo push). */
   account?: AccountCardAccount | null;
-  /** 账户卡片更新按钮 S0–S6（spec desktop-account.md「账户卡片 ·
-   * 更新按钮状态机 S0–S6」）. */
-  onDownloadUpdate?: () => void;
+  /** 账户卡片重启确认框的「立即重启」（spec desktop-account.md「账户卡片 ·
+   * 更新按钮状态机 S0–S3」S3）. */
   onRestartApp?: () => void;
   /** 打开用量浮层时向宿主核对一次用量（spec desktop-account.md「用量刷新时机」）。 */
   onRefreshAccountUsage?: () => void;
@@ -121,7 +120,6 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({
   onLogin,
   onLogout,
   account,
-  onDownloadUpdate,
   onRestartApp,
   onRefreshAccountUsage,
   settingsOpen = false,
@@ -753,7 +751,6 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({
         onLogin={onLogin}
         onLogout={onLogout}
         account={account}
-        onDownloadUpdate={onDownloadUpdate}
         onRestartApp={onRestartApp}
         onRefreshAccountUsage={onRefreshAccountUsage}
         hostLabel={focusedHost}

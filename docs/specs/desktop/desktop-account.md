@@ -1,6 +1,6 @@
 ---
 name: "桌面端账户卡片"
-description: "CodeWave IDE 桌面端侧边栏账户卡片：套餐用量/API 余额双维度用量浮层（点击行尾用量按钮向上弹出 + 预警点）、用量刷新时机（模型响应头 x-codechat-quota-* 驱动 + 打开浮层时核对，已删 60 秒轮询）、个人信息行纯功能菜单、应用更新按钮状态机 S0–S6，含 desktopAccountInfo 数据契约"
+description: "CodeWave IDE 桌面端侧边栏账户卡片：套餐用量/API 余额双维度用量浮层（点击行尾用量按钮向上弹出 + 预警点）、用量刷新时机（模型响应头 x-codechat-quota-* 驱动 + 打开浮层时核对，已删 60 秒轮询）、个人信息行纯功能菜单、应用更新按钮状态机 S0–S3（后台静默下载 + 点开「更新」看记录再重启），含 desktopAccountInfo 数据契约"
 order: 75
 ---
 
@@ -116,25 +116,23 @@ order: 75
 
 ---
 
-### 用户故事：账户卡片 · 更新按钮状态机 S0–S6（优先级：P2）
+### 用户故事：账户卡片 · 更新按钮状态机 S0–S3（优先级：P2）
 
-作为桌面端用户，我希望有新版本时在个人信息行右侧出现「更新」按钮，走「下载二次确认 → 下载中禁用 → 就绪自动弹重启确认」状态机，由我决定重启时机，以便在知情的前提下更新应用而不被自动重启打断。
+作为桌面端用户，我希望新版本在后台安静下载好，等我想升级时点开「更新」，先看清这一版改了什么，再决定什么时候重启，以便升级既不打断当前工作，也不用为一次升级多做无谓的点击或看一屏自动弹出的窗口。
 
-**为什么是这个优先级**：按钮状态机依赖宿主下发 `update.status` 并响应下载/重启命令，涉及 desktop 主进程改动（宿主须把 electron-updater 事件映射为 `update.status` 推送并响应 `desktopUpdateDownload`/`desktopUpdateRestart` 命令）；宿主侧就绪前按钮无数据可渲染，故整体排 P2（在 P1 的用量常驻/菜单稳定后接线）。webview 侧状态机与宿主接线均属本规格验收范围。
+**为什么是这个优先级**：按钮状态机依赖宿主下发 `update` 快照并响应重启命令，涉及 desktop 主进程改动（宿主须把 electron-updater 事件映射为快照并响应 `desktopUpdateRestart` 命令）；宿主侧就绪前按钮无数据可渲染，故整体排 P2（在 P1 的用量常驻/菜单稳定后接线）。webview 侧状态机与宿主接线均属本规格验收范围。
 
-**独立测试**：webview 侧下发 `update: { available: true, version: "1.2.0", status: "idle" }`，验证 S1 按钮「更新」→ 点击弹 S2 确认框 → 确认后发 `desktopUpdateDownload` 且按钮进入「正在下载更新…」disabled；模拟宿主把 status 改为 ready，验证自动弹 S4 重启确认（仅一次）、[稍后] 转「重启」按钮、[立即重启] 发 `desktopUpdateRestart`；Esc 关闭 S2 后不下载；status 回退 idle 时按钮恢复「更新」；ready 快照额外带 `releaseNotes`（数组，含两个版本）时验证 S4 按版本分段渲染「本次更新内容」块（段标题 `vX.Y.Z`、新 → 旧、块内滚动、不撑破按钮区），空数组时不渲染该块，不带该字段时 S4 与现状逐字一致；宿主侧另有用例覆盖归一化（字符串 → 单元素数组、数组按已装版本过滤 + 坏版本号丢弃 + 倒序、过滤后为空不下发）。
+**产品口径：后台下载完全静默、重启前保留一次知情与确认（2026-11-06 定稿）**。这一版把更新收成两下：**宿主检查命中即在后台下载，下载中与下载失败都不显示任何按钮**（不转圈、不占位、不弹窗）；**下载完成才出现「更新」按钮**，点开是「重启以完成更新」确认框——正文下面是本次更新内容（release notes），底部「稍后 / 立即重启」，由用户看完再点一下「立即重启」。**不自动弹框、不自动重启**：下载可能在用户专注工作时完成，弹窗会打断；而重启一定要由用户按下。演进：更早的版本要求下载前再确认一次（旧「更新到新版本」对话框），一次更新最少点三下（更新 → 下载更新 → 立即重启）；同日早先的版本改为「下载中显示『正在下载』disabled + 就绪自动弹一次确认框」（一次点击，但会主动打断），最终按本节口径定稿。代价（已接受）：下载中用户看不到任何进度，弱网下也看不到「正在下」的状态，只能等按钮出现；发现即下载，计量网络下会主动吃流量，且没有「先别下」的入口。
+
+**独立测试**：webview 侧（1）`update` 为 `null` / `available: false` 时不渲染按钮；下发 `{ available: true, version, releaseNotes }` 时按钮呈现「更新」且**不自动弹出任何对话框**、不发任何命令；（2）点击按钮弹出「重启以完成更新」确认框（按钮「稍后 / 立即重启」），[稍后] 关闭后按钮仍在并可再次打开，[立即重启] 发 `desktopUpdateRestart`；（3）快照带 `releaseNotes`（数组，含两个版本）时确认框按版本分段渲染「本次更新内容」块（段标题 `vX.Y.Z`、新 → 旧、块内滚动、不撑破按钮区），空数组/缺失时不渲染该块、确认框其余部分逐字不变；宿主侧用例覆盖：`update-available` **不推送**快照（按钮不出现）、`update-downloaded` 才推 `available: true` + 过滤后的 `releaseNotes`、归一化（字符串 → 单元素数组、数组按已装版本过滤 + 坏版本号丢弃 + 倒序、过滤后为空不下发）、下载失败只记日志不推可点状态。
 
 **验收场景**：
 
-1. **假设**无更新（`update.available: false` 或不带 `update`），**当**查看个人信息行，**则**不显示更新按钮（S0）。
-2. **假设**检测到新版本（`available: true` 且 `status: "idle"`），**当**查看个人信息行，**则**更新按钮显示「更新」（S1），点击进入 S2。
-3. **假设**用户点击「更新」，**当** S2 下载二次确认对话框弹出，**则**标题「更新到新版本」，正文含版本号 `vX.Y.Z` 与「安装完成后由你选择重启时机，不会自动重启客户端」语义，按钮「取消 / 下载更新」；**仅 `Esc` 可关闭**（点对话框外部不关闭）。
-4. **假设**用户在 S2 点击「下载更新」，**当**确认下载，**则** webview 向宿主发送 `desktopUpdateDownload` 命令，更新按钮变为「正在下载更新…」并 **disabled**（防重复下载，点击无反应，S3）。
-5. **假设**宿主将 `update.status` 推送为 `"ready"`，**当** webview 收到新快照，**则**自动弹出「重启以完成更新」确认框（S4），按钮「稍后 / 立即重启」，正文提示「重启会中断正在运行的任务，建议先保存工作」；**不自动重启**；该弹框每轮就绪只自动弹一次（防重复弹窗）。**当**同一快照还带 `releaseNotes`（宿主**已按已装版本过滤、按版本倒序**的数组，来源与口径见 [desktop-distribution.md](./desktop-distribution.md)「更新内容（Release Notes）」），**则**在正文下方渲染「本次更新内容」块：**每一项一段**，段标题为版本号 `vX.Y.Z`，其下是该版本的平铺变更条目（即使只有一项也保留版本号段标题——渲染形态只有一种）；段落之间按数组顺序（新 → 旧）排列，块整体限高滚动（超出对话框可视高度时块内滚动，不得撑高对话框挤坏按钮区）。条目是该版本的 markdown 文本，用仓库已有的 `marked` + `DOMPurify` 渲染，仅允许段落/列表/加粗等轻量语法，**不得渲染可点击链接**（生成的记录本身不含链接与作者）——记录块是纯展示，无可交互元素、无折叠、无「查看全部」。`releaseNotes` 缺失 / 空数组 / 所有项 `note` 为空或仅空白时**不渲染该块**，S4 标题、正文、按钮与交互与无记录时逐字一致。这一屏对齐 Electron 官方的 auto-updater 最佳实践（`update-downloaded` 时把 `releaseNotes` 放进取舍框），不新增状态机步骤。
-6. **假设**用户在 S4 点击「稍后」，**当**对话框关闭，**则**更新按钮文案变为「重启」（S5），期间应用可正常使用；再次点击按钮重新弹出 S4 确认框。
-7. **假设**用户在 S4/S5 点击「立即重启」，**当**确认重启，**则** webview 向宿主发送 `desktopUpdateRestart` 命令，更新状态复位、按钮消失（S6）；是否实际退出安装由宿主处理。
-8. **假设**下载过程中宿主推送 `status: "idle"`（下载失败/取消），**当**按钮状态刷新，**则**按钮恢复「更新」文案与可点状态；重新点击回到 S2 确认流程。
-9. **假设**更新按钮处于下载中（disabled），**当**用户点击它，**则**无任何反应，不弹对话框、不发命令。
+1. **假设**无更新、或宿主仍在后台下载、或下载失败，**当**查看个人信息行，**则**不显示更新按钮（S0）：下载中不出现「正在下载」之类的进行中态，也不提供取消入口；下载失败静默，等下一次检查（运行期轮询 / 下次启动）自动重试。
+2. **假设**宿主完成下载（`update.available: true`），**当**查看个人信息行，**则**显示「更新」按钮（S1）——品牌红实底的主行动样式；**不自动弹任何对话框、不抢焦点、不发命令**。
+3. **假设**用户点击「更新」，**当**点击，**则**弹出居中的「重启以完成更新」确认框（S2）：标题「重启以完成更新」，正文提示「新版本已就绪，重启后生效。重启会中断正在运行的任务，建议先保存工作。是否立即重启？」，按钮「稍后 / 立即重启」；**不自动重启**。**当**快照还带 `releaseNotes`（宿主**已按已装版本过滤、按版本倒序**的数组，来源与口径见 [desktop-distribution.md](./desktop-distribution.md)「更新内容（Release Notes）」），**则**在正文下方渲染「本次更新内容」块：**每一项一段**，段标题为版本号 `vX.Y.Z`，其下是该版本的平铺变更条目（即使只有一项也保留版本号段标题——渲染形态只有一种）；段落之间按数组顺序（新 → 旧）排列，块整体限高滚动（超出对话框可视高度时块内滚动，不得撑高对话框挤坏按钮区）。条目是该版本的 markdown 文本，用仓库已有的 `marked` + `DOMPurify` 渲染，仅允许段落/列表/加粗等轻量语法，**不得渲染可点击链接**（生成的记录本身不含链接与作者）——记录块是纯展示，无可交互元素、无折叠、无「查看全部」。`releaseNotes` 缺失 / 空数组 / 所有项 `note` 为空或仅空白时**不渲染该块**，确认框标题、正文、按钮与交互与无记录时逐字一致。这一屏对齐 Electron 官方的 auto-updater 最佳实践（`update-downloaded` 时把 `releaseNotes` 放进取舍框），不新增状态机步骤。
+4. **假设**用户在确认框点击「稍后」（或按 `Esc`、点对话框外部——与「稍后」等价），**当**对话框关闭，**则**按钮保持「更新」，期间应用可正常使用；再次点击按钮重新弹出同一确认框。
+5. **假设**用户点击「立即重启」，**当**确认重启，**则** webview 向宿主发送 `desktopUpdateRestart` 命令，更新状态复位、按钮消失（S3）；是否实际退出安装由宿主处理。这是用户在这次更新里唯一的「执行」点击（连同打开确认框的那一下，共两下）。
 
 ## 边界情况
 
@@ -154,9 +152,9 @@ order: 75
 
 - **`apiQuota.limit` ≠ 可用性**（2026-11-05）：`limit` 只是「此刻若降级到 API 计费还能用多少」，不是「当前能不能用」——`TEAM_QUOTA_ZERO` 下未充值企业恒得 `limit = 0`，而套餐可能还剩大半。故余额维度的「已用完 / 预警色 / 红色充值提示」只在 `billing.mode = "api"` 或 `billing` 缺省（宿主只下发了余额维度）时出现；`mode = "plan"` 一律按数值渲染（封底 0，「¥0.00」），`mode = "blocked"` 改用 proxy 402 文案（面板内 `account-api-conclusion`）。客户端**不得**用 `apiQuota.limit` 反推计费结论（issue #2776）。
 
-- **下载中**：更新按钮 disabled，点击无反应。
+- **下载中**：更新按钮 disabled，点击无反应；不提供取消入口。
 
-- **对话框**：S2 仅 Esc 关闭；S4 稍后后可再次弹确认；均不自动关闭/不自动重启。
+- **对话框**：重启确认框（S2）点对话框外部不关闭，`Esc` / 「稍后」等价；不自动关闭、不自动重启。
 
 - **远程主机**：个人信息菜单「设置 / 退出登录」标注主机名；用量与登录态跟随聚焦分屏所属主机。
 
@@ -174,17 +172,16 @@ order: 75
 
 ### desktopAccountInfo（窗口级推送，无 paneId）
 
-`update?` 字段承载更新按钮状态机输入（S0–S6），完整契约如下：
+`update?` 字段承载更新按钮状态机输入（S0–S3），完整契约如下：
 
 ```ts
 export interface AccountUpdateInfo {
-  available: boolean; // 有新版本
-  version?: string; // 新版本号（对话框/按钮 tooltip 文案使用）
-  status?: "idle" | "downloading" | "ready"; // 更新过程状态
-  /** 变更记录，宿主已按「已装版本」过滤并按版本倒序（每项一段，见 S4 场景 5）。
+  available: boolean; // 新版本已下载完成、可重启（下载中宿主不推快照）
+  version?: string; // 新版本号（宿主从 UpdateInfo.version 带回，随快照下发）
+  /** 变更记录，宿主已按「已装版本」过滤并按版本倒序（每项一段，见场景 3）。
    *  取自 electron-updater 的 `UpdateInfo.releaseNotes`，来源与生成口径见
    *  desktop-distribution.md「更新内容（Release Notes）」。
-   *  缺失 / 空数组 = 没有可展示的记录，S4 不渲染记录块。 */
+   *  缺失 / 空数组 = 没有可展示的记录，确认框不渲染记录块。 */
   releaseNotes?: Array<{ version: string; note: string }>;
 }
 
@@ -238,7 +235,7 @@ export interface DesktopAccountInfoMessage {
   user?: { id: string; email?: string } | null;
   billing?: AccountBillingInfo | null; // 套餐两根条 + 到期日 + 计费结论
   apiQuota?: AccountApiQuotaInfo | null; // { limit: number|null, used }
-  update?: AccountUpdateInfo | null; // 应用更新状态（S0–S6 输入）
+  update?: AccountUpdateInfo | null; // 应用更新状态（非 null = 就绪可重启，S1 起）
 }
 ```
 
@@ -248,7 +245,7 @@ export interface DesktopAccountInfoMessage {
 - 无生效套餐、且没有未作废的已到期订单（从未购买，或订单已全部作废）：`billing.plan: null`（套餐块不渲染）；`billing` 与 `apiQuota` 均未下发时用量浮层没有内容、用量按钮不渲染。
 - API 不限额：`apiQuota.limit: null`（共用团队余额）。
 - 无更新：不带 `update` 或 `update.available: false`。
-- `releaseNotes` 由宿主从 electron-updater 的 `UpdateInfo.releaseNotes` **归一化并按已装版本过滤**后下发（generic provider 把 feed `latest*.yml` 里的同名字段原样透传上来）：**数组**形态逐项保留 `compareVersions(parseVersion(item.version), parseVersion(app.getVersion())) > 0` 的项、版本号不可解析的项丢弃、结果按版本倒序；**字符串**形态包装成单元素数组 `[{ version: info.version, note }]`；过滤后为空、缺字段、空串/仅空白一律不下发（webview 按 S4 场景 5 不渲染记录块）。**版本比较只在宿主做**——webview 不认识版本比较，只渲染收到的数组，也不做任何过滤或排序。
+- `releaseNotes` 由宿主从 electron-updater 的 `UpdateInfo.releaseNotes` **归一化并按已装版本过滤**后下发（generic provider 把 feed `latest*.yml` 里的同名字段原样透传上来）：**数组**形态逐项保留 `compareVersions(parseVersion(item.version), parseVersion(app.getVersion())) > 0` 的项、版本号不可解析的项丢弃、结果按版本倒序；**字符串**形态包装成单元素数组 `[{ version: info.version, note }]`；过滤后为空、缺字段、空串/仅空白一律不下发（webview 按 S2 场景 4 不渲染记录块）。**版本比较只在宿主做**——webview 不认识版本比较，只渲染收到的数组，也不做任何过滤或排序。
 - 账户/用量/结论/更新状态变化时宿主主动推送新快照；轮询失败保留上次成功数据。
 - **宿主只做透传**：`billing` 有两个来源，都是服务端同一份判定（proxy 闸口与账户卡片共用 `getBillingVerdict`）——① codechat `GET /api/v1/account` 下发，经 CLI `getAccountInfo` → desktopHost `accountCache` 原样带到卡片（只在打开浮层时核对一次）；② 模型响应头 `x-codechat-quota-*`，由宿主按下方「额度响应头」小节映射成同一份契约。宿主**不重算**任何判定或窗口（窗口起点、限额聚合口径都在服务端，客户端一无所知）。
 
@@ -305,10 +302,9 @@ barPercent(used, limit) = max(0, round((1 − used / limit) × 100))    // limit
 
 ### 命令契约
 
-- `desktopUpdateDownload`（webview → host）：用户确认 S2 后通知宿主开始下载。
-- `desktopUpdateRestart`（webview → host）：用户在 S4/S5 选择立即重启后通知宿主安装并重启。
+- `desktopUpdateRestart`（webview → host）：用户在重启确认框选择「立即重启」后通知宿主安装并重启（S3）。这是更新流程里唯一由 webview 发出的命令——下载由宿主自己开始，不需要 webview 参与。
 - `desktopRefreshAccountUsage`（webview → host）：**打开用量浮层时发一次**，宿主据此调 `getAccountInfo` 核对全量用量（套餐两根条 + 到期日 + 结论行 + 企业池 + API 余额）并推送新的 `desktopAccountInfo`；失败保留上次成功数据。这是取代 60 秒轮询的主动核对时机（见「用量刷新时机」故事场景 4）。桌面端专属命令（`desktop` 前缀），只需注册桌面端路由。
-- **宿主接线**：webview 侧 S0–S6 状态机调用上述两个命令；宿主（desktopHost.ts）把 electron-updater 事件映射为 `update.status` 随 `desktopAccountInfo` 推送并响应两命令；toast 更新链路不提供（`autoDownload=false`，下载仅在 S2 确认后启动）。触发检查的时机（启动自动 / 手动 / 运行期固定间隔轮询，见 [desktop-distribution.md](./desktop-distribution.md)「桌面端自动更新」场景 11）不改变状态机语义——任一时机发现新版本都只置 idle（S1）。降级边界见 [desktop-distribution.md](./desktop-distribution.md)「桌面端自动更新」故事场景 5。
+- **宿主接线**：宿主（desktopHost.ts）把 electron-updater 事件映射为 `update` 快照随 `desktopAccountInfo` 推送，并响应 `desktopUpdateRestart`。**`autoDownload` 必须保持 electron-updater 的默认开启态**（不得显式置 false）：`update-available` 到达即开始后台下载，但**不推快照**——webview 因此看不到任何「下载中」形态（S0）；`update-downloaded` 才推 `{ available: true, … }`（S1，按钮出现）；下载失败只记日志、不推任何可点状态（S0），等下一次检查自动重试；已就绪后的安装阶段错误不降级。toast 更新链路仍然不提供。触发检查的时机（启动自动 / 手动 / 运行期固定间隔轮询，见 [desktop-distribution.md](./desktop-distribution.md)「桌面端自动更新」场景 11）不改变状态机语义——任一时机发现新版本都在后台自动下载。降级边界见 [desktop-distribution.md](./desktop-distribution.md)「桌面端自动更新」故事场景 5。
 
 - **用量侧接线**：`desktopHost` 消费 stdio 的额度头通知（映射成 `billing` / `apiQuota`，见「额度响应头」小节）、响应 `desktopRefreshAccountUsage`，并**删除**原有的 `accountPollIntervalMs` / `accountPollTimer` / `startAccountPolling` 及其在 `webviewReady` 时的启动分支（2026-11-06）。账户状态变化时（登录 / 登出 / 切换主机）仍主动推送快照。
 

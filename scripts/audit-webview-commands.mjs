@@ -117,7 +117,6 @@ const LEGACY_HOST_CASES = {
  * 分两类：desktop* 前缀自动命中 + 少数非前缀但同样 isDesktop 门控的。
  */
 const DESKTOP_GATED_NON_PREFIX = new Set([
-  "checkForUpdates", // StatusDialog 仅 desktop 渲染（扩展更新走官方市场）
   "newSession", // ChatApp.handleDesktopNewSession（插件端头部的「新对话」= clearChat）
   "setThemeSource", // 设置页主题行仅 desktop 有 UI
   "setUpdateChannel", // 设置页更新通道行仅 desktop 有 UI（#2107；插件端无 updateChannel 字段恒 stable 不渲染）

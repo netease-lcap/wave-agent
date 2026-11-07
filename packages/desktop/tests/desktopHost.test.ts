@@ -595,7 +595,8 @@ vi.mock("../src/main/stdio/binaryResolver", () => ({
 // electron-updater — the auto-update service for logged-in (serverUrl) installs.
 // The on() mock records listeners so tests can fire update-available /
 // update-downloaded / error to assert the host's update.status wiring.
-// (downloading is driven by the desktopUpdateDownload RPC, not an updater event.)
+// (the download runs from update-available with no push at all — only
+// update-downloaded makes the card's 更新 button appear.)
 const auListeners: Record<string, Array<(info: unknown) => void>> = {};
 vi.mock("electron-updater", () => ({
   autoUpdater: {
@@ -3086,19 +3087,7 @@ describe("user preference save path and rebuild timing", () => {
 // update checks (FR-010)
 // ---------------------------------------------------------------------------
 
-describe("checkForUpdates without a serverUrl (logged out)", () => {
-  it("performs no update check and prompts login on a manual check", async () => {
-    const { host } = await readyHost();
-    await host.handleWebviewMessage({ command: "checkForUpdates" });
-
-    expect(autoUpdater.setFeedURL).not.toHaveBeenCalled();
-    expect(autoUpdater.checkForUpdates).not.toHaveBeenCalled();
-    const toasts = shownToasts().filter((n) =>
-      n.message.includes("登录后可检查更新"),
-    );
-    expect(toasts).toHaveLength(1);
-  });
-
+describe("update checks without a serverUrl (logged out)", () => {
   it("stays silent on the automatic startup check when logged out", async () => {
     // 未登录（无 serverUrl）→ 不执行任何更新检查（2026-09-09 拍板），自动检查
     // 静默：既无 toast 也不触碰 electron-updater。
@@ -3106,9 +3095,24 @@ describe("checkForUpdates without a serverUrl (logged out)", () => {
     expect(shownToasts()).toHaveLength(0);
     expect(autoUpdater.checkForUpdates).not.toHaveBeenCalled();
   });
+
+  it("checks nothing when a channel re-check arrives anyway — no trigger, no toast", async () => {
+    // 应用里已没有手动检查入口（status 对话框的按钮已移除）；唯一还带用户反馈的
+    // 触发是设置页的 Beta 开关，而它在未登录时置灰。防御性地直接派发命令也不得
+    // 触碰 electron-updater，且不该凭空冒出一句「登录后可检查更新」。
+    const { host } = await readyHost();
+    await host.handleWebviewMessage({
+      command: "setUpdateChannel",
+      channel: "beta",
+    });
+
+    expect(autoUpdater.setFeedURL).not.toHaveBeenCalled();
+    expect(autoUpdater.checkForUpdates).not.toHaveBeenCalled();
+    expect(shownToasts()).toHaveLength(0);
+  });
 });
 
-describe("checkForUpdates with a configured serverUrl", () => {
+describe("update checks with a configured serverUrl", () => {
   const SERVER = "https://codechat.example.com";
 
   // Like readyHost() but the serverUrl is in place BEFORE webviewReady, so the
@@ -3127,14 +3131,26 @@ describe("checkForUpdates with a configured serverUrl", () => {
     return ctx;
   }
 
-  it("routes the check through electron-updater against the codechat feed", async () => {
+  /** 启动自动检查是异步发起的：等到它真的打过 electron-updater 再断言。 */
+  async function waitForStartupCheck() {
+    await vi.waitFor(() => {
+      expect(autoUpdater.checkForUpdates).toHaveBeenCalled();
+    });
+  }
+
+  /** 触发器只剩自动路径；切换「接收 Beta 版更新」开关会即时重查一次（场景 3）。 */
+  const recheck = (
+    ctx: Awaited<ReturnType<typeof readyHostWithServerUrl>>,
+    channel: "stable" | "beta" = "beta",
+  ) => ctx.host.handleWebviewMessage({ command: "setUpdateChannel", channel });
+
+  it("routes the automatic startup check through electron-updater against the codechat feed", async () => {
     vi.mocked(autoUpdater.checkForUpdates).mockResolvedValue({
       updateInfo: { version: "0.20.0", files: [], path: "wave-0.20.0.dmg" },
       isUpdateAvailable: true,
     } as never);
-    const { host } = await readyHostWithServerUrl();
-
-    await host.handleWebviewMessage({ command: "checkForUpdates" });
+    await readyHostWithServerUrl();
+    await waitForStartupCheck();
 
     expect(autoUpdater.setFeedURL).toHaveBeenCalledWith({
       provider: "generic",
@@ -3142,101 +3158,97 @@ describe("checkForUpdates with a configured serverUrl", () => {
         process.platform === "win32" ? "win" : "mac"
       }/`,
     });
-    expect(autoUpdater.checkForUpdates).toHaveBeenCalled();
     // The electron-updater path is authoritative when logged in — no GitHub fallback.
   });
 
-  it("announces an update via desktopAccountInfo, not a toast (S0 → S1 更新按钮)", async () => {
+  it("keeps the card button-less while the download runs in the background (S0)", async () => {
     vi.mocked(autoUpdater.checkForUpdates).mockResolvedValue({
       updateInfo: { version: "0.20.0", files: [], path: "wave-0.20.0.dmg" },
       isUpdateAvailable: true,
     } as never);
     const ctx = await readyHostWithServerUrl();
+    await waitForStartupCheck();
 
-    await ctx.host.handleWebviewMessage({ command: "checkForUpdates" });
     for (const cb of auListeners["update-available"] ?? []) {
       cb({ version: "0.20.0", files: [], path: "wave-0.20.0.dmg" });
     }
 
-    // 更新按钮状态机输入：idle（S1）。toast 更新链路已删除。
-    const push = ctx.sent("desktopAccountInfo").at(-1);
-    expect(push.update).toEqual({
-      available: true,
-      version: "0.20.0",
-      status: "idle",
-    });
+    // 下载中不推任何可见状态：卡片没有 update → 不出现按钮。也不发 toast。
+    expect(ctx.sent("desktopAccountInfo").at(-1)?.update).toBeNull();
     expect(shownToasts().some((t) => t.message.includes("发现新版本"))).toBe(
       false,
     );
     expect(autoUpdater.quitAndInstall).not.toHaveBeenCalled();
   });
 
-  it("desktopUpdateDownload starts the download and pushes downloading (S2 → S3)", async () => {
+  it("update-downloaded pushes the ready snapshot that makes the 更新 button appear (S0 → S1)", async () => {
     vi.mocked(autoUpdater.checkForUpdates).mockResolvedValue({
       updateInfo: { version: "0.20.0", files: [], path: "wave-0.20.0.dmg" },
       isUpdateAvailable: true,
     } as never);
-    vi.mocked(autoUpdater.downloadUpdate).mockResolvedValue([] as never);
     const ctx = await readyHostWithServerUrl();
+    await waitForStartupCheck();
 
-    await ctx.host.handleWebviewMessage({ command: "checkForUpdates" });
     for (const cb of auListeners["update-available"] ?? []) {
-      cb({ version: "0.20.0" });
+      cb({ version: "0.20.0", releaseNotes: "- 修复更新按钮卡在下载中\n" });
     }
-    expect(ctx.sent("desktopAccountInfo").at(-1)?.update).toMatchObject({
-      status: "idle",
-    });
+    expect(ctx.sent("desktopAccountInfo").at(-1)?.update).toBeNull();
 
-    await ctx.host.handleWebviewMessage({ command: "desktopUpdateDownload" });
-
-    expect(autoUpdater.downloadUpdate).toHaveBeenCalledTimes(1);
-    expect(ctx.sent("desktopAccountInfo").at(-1)?.update).toMatchObject({
-      status: "downloading",
-    });
-    // 重复 desktopUpdateDownload（按钮已 disabled，防御性兜底）不再触发第二次下载。
-    await ctx.host.handleWebviewMessage({ command: "desktopUpdateDownload" });
-    expect(autoUpdater.downloadUpdate).toHaveBeenCalledTimes(1);
-  });
-
-  it("update-downloaded pushes ready; a re-check must not downgrade it (S4)", async () => {
-    vi.mocked(autoUpdater.checkForUpdates).mockResolvedValue({
-      updateInfo: { version: "0.20.0", files: [], path: "wave-0.20.0.dmg" },
-      isUpdateAvailable: true,
-    } as never);
-    vi.mocked(autoUpdater.downloadUpdate).mockResolvedValue([] as never);
-    const ctx = await readyHostWithServerUrl();
-
-    await ctx.host.handleWebviewMessage({ command: "checkForUpdates" });
-    for (const cb of auListeners["update-available"] ?? []) {
-      cb({ version: "0.20.0" });
-    }
-    await ctx.host.handleWebviewMessage({ command: "desktopUpdateDownload" });
+    // update-downloaded 不带记录时，沿用检查阶段同一版本的记录（确认框唯一该
+    // 展示它的那一屏不能丢）。
     for (const cb of auListeners["update-downloaded"] ?? []) {
       cb({ version: "0.20.0", files: [], path: "wave-0.20.0.dmg" });
     }
-    expect(ctx.sent("desktopAccountInfo").at(-1)?.update).toMatchObject({
-      status: "ready",
-    });
-
-    // 下载中/就绪后再查一次更新：ready 不被降级回 idle。
-    await ctx.host.handleWebviewMessage({ command: "checkForUpdates" });
-    for (const cb of auListeners["update-available"] ?? []) {
-      cb({ version: "0.20.0" });
-    }
-    expect(ctx.sent("desktopAccountInfo").at(-1)?.update).toMatchObject({
-      status: "ready",
+    expect(ctx.sent("desktopAccountInfo").at(-1)?.update).toEqual({
+      available: true,
+      version: "0.20.0",
+      releaseNotes: [{ version: "0.20.0", note: "- 修复更新按钮卡在下载中" }],
     });
   });
 
-  it("desktopUpdateRestart resets the state and quits to install (S4/S5 → S6)", async () => {
+  it("a re-check or a repeated update-downloaded must not downgrade the ready state", async () => {
     vi.mocked(autoUpdater.checkForUpdates).mockResolvedValue({
       updateInfo: { version: "0.20.0", files: [], path: "wave-0.20.0.dmg" },
       isUpdateAvailable: true,
     } as never);
     const ctx = await readyHostWithServerUrl();
+    await waitForStartupCheck();
 
-    await ctx.host.handleWebviewMessage({ command: "checkForUpdates" });
     for (const cb of auListeners["update-available"] ?? []) {
+      cb({ version: "0.20.0" });
+    }
+    for (const cb of auListeners["update-downloaded"] ?? []) {
+      cb({ version: "0.20.0", files: [], path: "wave-0.20.0.dmg" });
+    }
+    const readyPush = ctx.sent("desktopAccountInfo").length;
+
+    // 就绪后再查一次（轮询 / 开关重查）：按钮保持出现，且不重复推快照。
+    await recheck(ctx);
+    for (const cb of auListeners["update-available"] ?? []) {
+      cb({ version: "0.20.0" });
+    }
+    for (const cb of auListeners["update-downloaded"] ?? []) {
+      cb({ version: "0.20.0", files: [], path: "wave-0.20.0.dmg" });
+    }
+    expect(ctx.sent("desktopAccountInfo").length).toBe(readyPush);
+    expect(ctx.sent("desktopAccountInfo").at(-1)?.update).toMatchObject({
+      available: true,
+      version: "0.20.0",
+    });
+  });
+
+  it("desktopUpdateRestart resets the state and quits to install (S3)", async () => {
+    vi.mocked(autoUpdater.checkForUpdates).mockResolvedValue({
+      updateInfo: { version: "0.20.0", files: [], path: "wave-0.20.0.dmg" },
+      isUpdateAvailable: true,
+    } as never);
+    const ctx = await readyHostWithServerUrl();
+    await waitForStartupCheck();
+
+    for (const cb of auListeners["update-available"] ?? []) {
+      cb({ version: "0.20.0" });
+    }
+    for (const cb of auListeners["update-downloaded"] ?? []) {
       cb({ version: "0.20.0" });
     }
 
@@ -3248,33 +3260,25 @@ describe("checkForUpdates with a configured serverUrl", () => {
     expect(dialog.showMessageBox).not.toHaveBeenCalled();
   });
 
-  it("a download error resets to idle so the user can retry (场景 8)", async () => {
+  it("a failed download keeps the card button-less and only logs (S0)", async () => {
     vi.mocked(autoUpdater.checkForUpdates).mockResolvedValue({
       updateInfo: { version: "0.20.0", files: [], path: "wave-0.20.0.dmg" },
       isUpdateAvailable: true,
     } as never);
-    vi.mocked(autoUpdater.downloadUpdate).mockResolvedValue([] as never);
     const ctx = await readyHostWithServerUrl();
+    await waitForStartupCheck();
 
-    await ctx.host.handleWebviewMessage({ command: "checkForUpdates" });
     for (const cb of auListeners["update-available"] ?? []) {
       cb({ version: "0.20.0" });
     }
-    await ctx.host.handleWebviewMessage({ command: "desktopUpdateDownload" });
-    expect(ctx.sent("desktopAccountInfo").at(-1)?.update).toMatchObject({
-      status: "downloading",
-    });
-
+    const beforeError = ctx.sent("desktopAccountInfo").length;
     for (const cb of auListeners["error"] ?? []) {
       cb(new Error("download failed"));
     }
 
-    // 回退 idle（版本保留）→ 卡片按钮恢复「更新」可重试；不再弹手动下载页 toast。
-    expect(ctx.sent("desktopAccountInfo").at(-1)?.update).toMatchObject({
-      available: true,
-      version: "0.20.0",
-      status: "idle",
-    });
+    // 失败不推任何可点状态（不推快照、不弹手动下载页 toast），等下次检查重试。
+    expect(ctx.sent("desktopAccountInfo").length).toBe(beforeError);
+    expect(ctx.sent("desktopAccountInfo").at(-1)?.update).toBeNull();
     expect(
       shownToasts().filter((n) => n.message.includes("0.20.0")),
     ).toHaveLength(0);
@@ -3286,8 +3290,8 @@ describe("checkForUpdates with a configured serverUrl", () => {
       isUpdateAvailable: true,
     } as never);
     const ctx = await readyHostWithServerUrl();
+    await waitForStartupCheck();
 
-    await ctx.host.handleWebviewMessage({ command: "checkForUpdates" });
     for (const cb of auListeners["update-available"] ?? []) {
       cb({ version: "0.20.0" });
     }
@@ -3299,7 +3303,8 @@ describe("checkForUpdates with a configured serverUrl", () => {
     }
 
     expect(ctx.sent("desktopAccountInfo").at(-1)?.update).toMatchObject({
-      status: "ready",
+      available: true,
+      version: "0.20.0",
     });
     expect(shownToasts().some((t) => t.message.includes("发现新版本"))).toBe(
       false,
@@ -3308,19 +3313,24 @@ describe("checkForUpdates with a configured serverUrl", () => {
 
   it("runs an automatic check once after the first webviewReady (logged in)", async () => {
     await readyHostWithServerUrl();
-    await vi.waitFor(() => {
-      expect(autoUpdater.checkForUpdates).toHaveBeenCalledTimes(1);
-    });
+    await waitForStartupCheck();
+    expect(autoUpdater.checkForUpdates).toHaveBeenCalledTimes(1);
   });
 
-  it("surfaces a manual check failure via a toast when nothing was announced", async () => {
+  it("a failed startup check is silent; the beta switch surfaces it once", async () => {
     vi.mocked(autoUpdater.checkForUpdates).mockRejectedValue(
       new Error("ECONNREFUSED"),
     );
     const ctx = await readyHostWithServerUrl();
+    await waitForStartupCheck();
 
-    await ctx.host.handleWebviewMessage({ command: "checkForUpdates" });
+    // 自动检查失败静默（场景 5）。
+    expect(
+      shownToasts().filter((n) => n.message.includes("检查更新失败")),
+    ).toHaveLength(0);
 
+    // 唯一带反馈的重查：用户刚拨了「接收 Beta 版更新」开关。
+    await recheck(ctx);
     const toasts = shownToasts().filter((n) =>
       n.message.includes("检查更新失败"),
     );
@@ -3329,19 +3339,54 @@ describe("checkForUpdates with a configured serverUrl", () => {
     vi.mocked(autoUpdater.checkForUpdates).mockResolvedValue(null);
   });
 
-  it('says "already latest" via a toast when the feed has no update', async () => {
+  it('says "already latest" via a toast when the beta switch re-checks and finds nothing', async () => {
     vi.mocked(autoUpdater.checkForUpdates).mockResolvedValue({
       updateInfo: { version: "0.19.7", files: [], path: "wave-0.19.7.dmg" },
       isUpdateAvailable: false,
     } as never);
-    const { host } = await readyHostWithServerUrl();
+    const ctx = await readyHostWithServerUrl();
+    await waitForStartupCheck();
 
-    await host.handleWebviewMessage({ command: "checkForUpdates" });
+    // The one-shot automatic check stays silent on no-update.
+    expect(
+      shownToasts().filter((n) => n.message.includes("已是最新")),
+    ).toHaveLength(0);
 
-    // The one-shot automatic check stays silent on no-update; only the manual
-    // check announces it.
+    // 拨到 beta → 即时重查 → 同版本 → 提示「当前已是最新版本」。
+    await recheck(ctx);
     const toasts = shownToasts().filter((n) => n.message.includes("已是最新"));
     expect(toasts).toHaveLength(1);
+  });
+
+  it("closing the beta switch reports 正式版发布后将自动更新 when the feed lags the installed version", async () => {
+    // app.getVersion() = 0.19.7；stable feed 只到 0.19.0（曾接收测试版、正式未
+    // 追平）→ 不降级、不改查 beta feed，提示等待正式发布（场景 5）。
+    vi.mocked(autoUpdater.checkForUpdates).mockResolvedValue({
+      updateInfo: { version: "0.19.0", files: [], path: "wave-0.19.0.dmg" },
+      isUpdateAvailable: false,
+    } as never);
+    const ctx = createHost();
+    ctx.store.addRecentWorkdir({ host: "local", path: "/work/a" });
+    h.existingPaths.add("/work/a");
+    ctx.store.setConfiguration({ serverUrl: SERVER });
+    ctx.store.setUpdateChannel("beta");
+    await ctx.host.handleWebviewMessage({ command: "desktopReady" });
+    await ctx.host.handleWebviewMessage({
+      command: "desktopSelectRecentWorkdir",
+      path: "/work/a",
+    });
+    await ctx.host.handleWebviewMessage({ command: "webviewReady" });
+    await waitForStartupCheck();
+
+    await recheck(ctx, "stable");
+
+    const toasts = shownToasts().filter((n) =>
+      n.message.includes("正式版发布后将自动更新"),
+    );
+    expect(toasts).toHaveLength(1);
+    expect(shownToasts().some((n) => n.message.includes("已是最新"))).toBe(
+      false,
+    );
   });
 
   it("pane-scoped setInitialState omits the window-level fields", async () => {
@@ -3423,44 +3468,6 @@ describe("checkForUpdates with a configured serverUrl", () => {
       url: `${SERVER}/api/downloads/desktop-beta/${platformDir}/`,
     });
     expect(autoUpdater.checkForUpdates).toHaveBeenCalledTimes(2);
-  });
-
-  it("manual stable check reports 正式版发布后将自动更新 when the feed lags the installed version", async () => {
-    // app.getVersion() = 0.19.7；stable feed 只到 0.19.0（曾接收测试版、正式未
-    // 追平）→ 不降级、不改查 beta feed，提示等待正式发布（spec 场景 5）。
-    vi.mocked(autoUpdater.checkForUpdates).mockResolvedValue({
-      updateInfo: { version: "0.19.0", files: [], path: "wave-0.19.0.dmg" },
-      isUpdateAvailable: false,
-    } as never);
-    const { host } = await readyHostWithServerUrl();
-
-    await host.handleWebviewMessage({ command: "checkForUpdates" });
-
-    const toasts = shownToasts().filter((n) =>
-      n.message.includes("正式版发布后将自动更新"),
-    );
-    expect(toasts).toHaveLength(1);
-    expect(shownToasts().some((n) => n.message.includes("已是最新"))).toBe(
-      false,
-    );
-  });
-
-  it("beta manual check on no-update says 当前已是最新版本", async () => {
-    // beta feed 与已装版本相同（同为 0.19.7）→ 无更新；beta 通道不触发「正式
-    // 版发布后将自动更新」等待提示。
-    vi.mocked(autoUpdater.checkForUpdates).mockResolvedValue({
-      updateInfo: { version: "0.19.7", files: [], path: "wave-0.19.7.dmg" },
-      isUpdateAvailable: false,
-    } as never);
-    const ctx = await readyHostWithServerUrl();
-
-    await ctx.host.handleWebviewMessage({
-      command: "setUpdateChannel",
-      channel: "beta",
-    });
-
-    const toasts = shownToasts().filter((n) => n.message.includes("已是最新"));
-    expect(toasts).toHaveLength(1);
   });
 
   it("setUpdateChannel falls back to stable for malformed input", async () => {

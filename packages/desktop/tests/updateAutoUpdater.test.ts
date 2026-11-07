@@ -179,7 +179,7 @@ describe("AutoUpdaterService.checkForUpdates", () => {
     ).toEqual({ outcome: "error" });
   });
 
-  it("keeps autoDownload off — a check only announces the update (S1), it does not download", async () => {
+  it("keeps electron-updater's automatic download on — a check downloads by itself", async () => {
     vi.mocked(h.checkForUpdates).mockResolvedValue({
       updateInfo: { version: "0.20.0", files: [], path: "wave-0.20.0.dmg" },
       isUpdateAvailable: true,
@@ -192,20 +192,9 @@ describe("AutoUpdaterService.checkForUpdates", () => {
 
     await service.checkForUpdates("https://codechat.example.com");
 
-    expect(h.autoUpdater.autoDownload).toBe(false);
+    // 自动下载交给 electron-updater（发现即下载），宿主不重复调 downloadUpdate。
+    expect(h.autoUpdater.autoDownload).toBe(true);
     expect(h.downloadUpdate).not.toHaveBeenCalled();
-  });
-
-  it("startDownload runs electron-updater downloadUpdate (S2 确认后)", async () => {
-    const service = new AutoUpdaterService({
-      onUpdateAvailable: vi.fn(),
-      onUpdateDownloaded: vi.fn(),
-      onError: vi.fn(),
-    });
-
-    await service.startDownload();
-
-    expect(h.downloadUpdate).toHaveBeenCalledTimes(1);
   });
 });
 

@@ -582,16 +582,23 @@ export class DesktopHost {
   private autoUpdaterService: AutoUpdaterService | null = null;
   /**
    * 更新按钮状态机 (spec desktop-account.md「账户卡片 · 更新按钮状态机
-   * S0–S6」) 的宿主侧状态：electron-updater 事件 → `update.status` 随
-   * desktopAccountInfo 推送。null = 无更新可知 (S0)；status 流转
-   * idle(已发现未下载) → downloading(用户 S2 确认后) → ready(下载完成)。
-   * 下载失败/取消回退 idle (场景 8，可重试)。App-global，不跟随聚焦主机。
+   * S0–S3」) 的宿主侧状态：**只有下载完成才存在**。null = 卡片不出现按钮
+   * (S0：无更新 / 后台下载中 / 下载失败静默等下次检查)；非 null = 已就绪待
+   * 重启 (S1「更新」按钮 → S2 确认框 → S3 复位)。App-global，不跟随聚焦主机。
    */
   private updateState: {
     version: string;
-    status: "idle" | "downloading" | "ready";
     /** 本次更新包含的变更记录，已按「已装版本」过滤并按版本倒序；空则不带
      *  （spec desktop-distribution.md「更新内容（Release Notes）」场景 5）。 */
+    releaseNotes?: ReleaseNoteEntry[];
+  } | null = null;
+  /**
+   * 检查阶段拿到的 UpdateInfo 里与本轮更新有关的信息。下载中卡片不出现任何
+   * 按钮，所以这里不推快照——只留着给 `update-downloaded` 兜底：那次事件万一
+   * 不带 `releaseNotes`，重启确认框就会在唯一该展示记录的那一屏上把它丢掉。
+   */
+  private pendingUpdate: {
+    version: string;
     releaseNotes?: ReleaseNoteEntry[];
   } | null = null;
 
@@ -1043,15 +1050,14 @@ export class DesktopHost {
       user: entry?.user ?? null,
       billing: entry?.billing ?? null,
       apiQuota: entry?.apiQuota ?? null,
-      // 应用更新状态（S0–S6 按钮状态机输入）。App-global：不管侧边栏当前显示
-      // 哪个主机，新版本都属于本机应用本身。
+      // 应用更新状态（S0–S3 按钮状态机输入）。App-global：不管侧边栏当前显示
+      // 哪个主机，新版本都属于本机应用本身。非 null 即「已就绪可重启」——
+      // 后台下载中与下载失败都不带该字段（卡片因此不出现按钮）。
       update: this.updateState
         ? {
             available: true,
             version: this.updateState.version,
-            status: this.updateState.status,
-            // 记录随快照一起推（status 每次变化都重新推一次，S4 拿得到）；
-            // 过滤后为空就不带该字段 —— webview 据此不渲染记录块。
+            // 记录随快照一起推；过滤后为空就不带该字段 —— webview 据此不渲染记录块。
             ...(this.updateState.releaseNotes
               ? { releaseNotes: this.updateState.releaseNotes }
               : {}),
@@ -1165,9 +1171,10 @@ export class DesktopHost {
   /**
    * 每 1h 轮询更新（spec desktop-distribution「桌面端自动更新」场景 11）：应用持续
    * 运行（不退出/不重启）也能发现新版本。复用自动检查路径
-   * handleCheckForUpdates(false) —— 只查不下载不安装（autoDownload=false，
-   * 发现更新只置 idle → S1「更新」按钮），失败与启动自动检查一样静默。与
-   * 启动那次「只跑一次」检查（updateCheckTriggered）相互独立。
+   * handleCheckForUpdates(false) —— 只查，命中后由 electron-updater 自己的
+   * autoDownload 在后台下载（下载中卡片不出现按钮）；已下载时它的 downloadPromise
+   * 是幂等的，重复检查不会重启下载。失败与启动自动检查一样静默。与启动那次
+   * 「只跑一次」检查（updateCheckTriggered）相互独立。
    */
   private startUpdatePolling(): void {
     if (this.updatePollTimer) return;
@@ -5171,14 +5178,6 @@ export class DesktopHost {
         break;
       }
 
-      case "checkForUpdates":
-        await this.handleCheckForUpdates(true);
-        break;
-
-      case "desktopUpdateDownload":
-        await this.handleDesktopUpdateDownload();
-        break;
-
       case "desktopUpdateRestart":
         this.handleDesktopUpdateRestart();
         break;
@@ -7283,47 +7282,48 @@ export class DesktopHost {
     }
   }
 
-  /** Lazily create the electron-updater service bound to the S0–S6 state
-   *  machine: electron-updater events map to `update.status` pushes (no
-   *  toasts — the account-card button owns the whole download/restart flow,
-   *  spec desktop-account.md「账户卡片 · 更新按钮状态机」). */
+  /** Lazily create the electron-updater service bound to the S0–S3 state
+   *  machine: 下载完全在后台进行——`update-available` 不推快照（卡片不出现
+   *  按钮），`update-downloaded` 才推就绪快照（S1「更新」按钮），用户点开
+   *  确认框看记录再点「立即重启」（无 toast，spec desktop-account.md
+   *  「账户卡片 · 更新按钮状态机 S0–S3」）。 */
   private ensureAutoUpdaterService(): AutoUpdaterService {
     if (this.autoUpdaterService) return this.autoUpdaterService;
     this.autoUpdaterService = new AutoUpdaterService({
       onUpdateAvailable: (info) => {
-        // 检查发现新版本 → S1「更新」按钮。已处于 downloading/ready 时忽略
-        // （手动复查不得把下载中/已就绪降级回 idle）。
-        if (this.updateState && this.updateState.status !== "idle") return;
-        this.updateState = {
+        // 下载由 electron-updater 自动开始（autoDownload 开启），下载中卡片
+        // **不出现任何按钮**（S0），所以这里不推快照，只把这一轮的记录留着
+        // 给 update-downloaded 兜底。已就绪时忽略（手动复查不得把就绪降级）。
+        if (this.updateState) return;
+        this.pendingUpdate = {
           version: info.version,
-          status: "idle",
           releaseNotes: normalizeReleaseNotes(
             info.releaseNotes,
             app.getVersion(),
             info.version,
           ),
         };
-        this.pushAccountInfo();
       },
-      // downloading（S3）由 handleDesktopUpdateDownload 在 startDownload 前
-      // 置位并推送——electron-updater 无下载开始事件，RPC 路径即唯一入口。
       onUpdateDownloaded: (info) => {
-        this.updateState = {
-          version: info.version,
-          status: "ready",
-          // update-downloaded 通常与检查阶段是同一个 UpdateInfo（记录本就在），
-          // 万一这次没带字段，沿用检查阶段**同一版本**的结果——否则 S4 会在唯一
-          // 该展示记录的那一屏上把它丢掉。
-          releaseNotes:
-            normalizeReleaseNotes(
-              info.releaseNotes,
-              app.getVersion(),
-              info.version,
-            ) ??
-            (this.updateState?.version === info.version
-              ? this.updateState.releaseNotes
-              : undefined),
-        };
+        const releaseNotes =
+          normalizeReleaseNotes(
+            info.releaseNotes,
+            app.getVersion(),
+            info.version,
+          ) ??
+          (this.pendingUpdate?.version === info.version
+            ? this.pendingUpdate.releaseNotes
+            : undefined);
+        this.pendingUpdate = null;
+        if (this.updateState?.version === info.version) {
+          // 已就绪：只有这一轮补到了记录时才再推一次，避免每次轮询都推快照。
+          if (!this.updateState.releaseNotes && releaseNotes) {
+            this.updateState = { ...this.updateState, releaseNotes };
+            this.pushAccountInfo();
+          }
+          return;
+        }
+        this.updateState = { version: info.version, releaseNotes };
         this.pushAccountInfo();
       },
       onError: (error) => this.handleAutoUpdaterError(error),
@@ -7332,10 +7332,11 @@ export class DesktopHost {
   }
 
   /**
-   * electron-updater 出错。下载失败/取消（S3 中）：回退 idle → 按钮恢复
-   * 「更新」，用户可重新走 S2 下载确认（spec 场景 8，无手动下载页 toast）；
-   * 已就绪 (ready) 后的安装阶段错误不降级（重启由用户决定）；检查失败但尚
-   * 未发现任何更新时静默（手动检查的失败反馈在 handleCheckForUpdates 给）。
+   * electron-updater 出错。下载失败（S0）：下载对用户完全不可见，失败也不推
+   * 任何可点状态——清掉待用信息，等下一次检查（运行期轮询 / 下次启动）自动重试
+   * 即可（spec 场景 1，无手动下载页 toast）；已就绪后的安装阶段错误不降级
+   * （重启时机由用户决定）；检查失败但尚未发现任何更新时静默（手动检查的失败
+   * 反馈在 handleCheckForUpdates 给）。
    */
   private handleAutoUpdaterError(error?: unknown): void {
     console.warn(
@@ -7356,61 +7357,45 @@ export class DesktopHost {
         logError,
       );
     }
-    if (!this.updateState || this.updateState.status === "ready") return;
-    this.updateState = { ...this.updateState, status: "idle" };
-    this.pushAccountInfo();
+    this.pendingUpdate = null;
+    // 已就绪（按钮已在）不降级：避免把已下载好的更新重置掉、让用户白等一轮。
+    if (this.updateState) return;
   }
 
-  /** S2 确认下载（webview desktopUpdateDownload）→ 开始后台下载。 */
-  private async handleDesktopUpdateDownload(): Promise<void> {
-    const serverUrl = this.configStore.getConfiguration().serverUrl;
-    if (!serverUrl) return;
-    if (!this.updateState || this.updateState.status !== "idle") return;
-    this.updateState = { ...this.updateState, status: "downloading" };
-    this.pushAccountInfo();
-    try {
-      await this.ensureAutoUpdaterService().startDownload();
-    } catch (error) {
-      // downloadUpdate rejects in addition to the 'error' event — downgrade
-      // once (idempotent with the event path).
-      console.warn(
-        "[DesktopHost] Update download failed:",
-        error instanceof Error ? error.stack : error,
-      );
-      if (this.updateState?.status === "downloading") {
-        this.updateState = { ...this.updateState, status: "idle" };
-        this.pushAccountInfo();
-      }
-    }
-  }
-
-  /** S4/S5 立即重启（webview desktopUpdateRestart）→ 复位状态 + quitAndInstall。 */
+  /** 立即重启（webview desktopUpdateRestart，S3）→ 复位状态 + quitAndInstall。 */
   private handleDesktopUpdateRestart(): void {
     this.updateState = null;
     this.pushAccountInfo();
     this.autoUpdaterService?.quitAndInstall();
   }
 
-  private async handleCheckForUpdates(manual: boolean): Promise<void> {
+  /**
+   * `notifyUser` = 这次检查要不要把结果说给用户（toast）。
+   * 只有设置页「接收 Beta 版更新」开关的即时重查传 true——那是用户刚做的一个
+   * 动作，需要知道「已是最新 / 正式版还没追平 / 检查失败」；启动自动检查与
+   * 运行期轮询都传 false，全程静默（spec desktop-distribution「桌面端自动更新」
+   * 场景 6/11）。应用里没有任何手动检查入口：状态对话框的「检查更新」按钮已
+   * 不再提供（spec editor/plugin-updates.md）。
+   */
+  private async handleCheckForUpdates(notifyUser: boolean): Promise<void> {
     const serverUrl = this.configStore.getConfiguration().serverUrl;
     const channel = this.configStore.getUpdateChannel();
 
     // Logged in → the codechat feed (stable or beta per the updateChannel) drives
-    // updates via electron-updater. The check only announces an update (S1 更新
-    // button); the download starts after the user confirms in the S2 dialog
-    // (desktopUpdateDownload).
+    // updates via electron-updater. 命中即自动后台下载（下载中卡片无按钮，S0）；
+    // 下载完成才出现「更新」，点开确认框再点「立即重启」（S1–S3）。
     if (serverUrl) {
       const result = await this.ensureAutoUpdaterService().checkForUpdates(
         serverUrl,
         channel,
       );
       if (result.outcome === "update") {
-        // 发现更新 → update-available 事件已把 updateState 置 idle 并推送
-        // （卡片出现「更新」按钮），无需额外处理。
+        // 发现更新 → 下载已在后台开始，卡片此刻不出现任何按钮（S0）；就绪后
+        // 由 update-downloaded 推快照，这里无需额外处理。
         return;
       }
       if (result.outcome === "no-update") {
-        if (!manual) return;
+        if (!notifyUser) return;
         // 已装版本高于 stable feed 最新（切回正式后，正式尚未追平曾接收的
         // 测试版号）→ 提示等待正式发布，不降级、不改查 beta feed（spec
         // desktop-distribution「接收 Beta 版更新」场景 5）；其余情况提示已是最新。
@@ -7428,16 +7413,15 @@ export class DesktopHost {
         }
         return;
       }
-      // outcome === 'error'：检查阶段失败（尚未发现任何更新）——手动检查给
-      // 反馈；自动（启动）检查静默。
-      if (manual) this.showToast({ message: "检查更新失败，请稍后重试" });
+      // outcome === 'error'：检查阶段失败（尚未发现任何更新）——开关重查给
+      // 反馈；自动检查（启动 / 轮询）静默。
+      if (notifyUser) this.showToast({ message: "检查更新失败，请稍后重试" });
       return;
     }
 
     // 未登录（无 serverUrl）：不执行任何更新检查（2026-09-09 拍板，spec
-    // desktop-distribution「桌面端自动更新」场景 2）——启动自动检查静默，手动检查
-    // 引导登录。
-    if (manual) this.showToast({ message: "登录后可检查更新" });
+    // desktop-distribution「桌面端自动更新」场景 2）——启动自动检查静默；这里也
+    // 没有可提示的用户动作（设置页那颗开关在未登录时置灰）。
   }
 
   /** 设置页「接收 Beta 版更新」开关（webview setUpdateChannel）→ 持久化 +
@@ -7453,7 +7437,7 @@ export class DesktopHost {
   /** A toast's button was clicked: focus a background session. The webview
    *  sends the opaque action payload back verbatim, so the host stays the
    *  single source of the action semantics. `ToastAction` 现在只有「聚焦后台
-   *  会话」一种（更新下载/重启走账户卡片 S0–S6 状态机；未登录 GitHub 下载页
+   *  会话」一种（更新/重启走账户卡片 S0–S3 状态机；未登录 GitHub 下载页
    *  toast 已随 updateChecker 删除）。 */
   private handleToastAction(action: ToastAction): void {
     void this.focusSessionFromToast(action.host, action.sessionId);
@@ -7704,8 +7688,8 @@ export class DesktopHost {
         success: true,
         user: result.user,
       });
-      // 登录完成：seed 账户卡片 + 拉用量。登录态进入不弹重启确认（重启确认
-      // 只在 downloading→ready 转变时由 webview 侧触发）。
+      // 登录完成：seed 账户卡片 + 拉用量。登录态进入不弹重启确认（确认框只由
+      // 用户点开「更新」按钮时弹出）。
       await this.afterLogin(host, result.user);
     } catch (error) {
       console.error("[DesktopHost] 登录失败:", error);

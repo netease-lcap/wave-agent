@@ -122,6 +122,36 @@ describe("Model, Status, and Login Commands", () => {
         expect.objectContaining({ command: "abortMessage" }),
       );
     });
+
+    it("状态对话框只展示版本，不提供「检查更新」入口（spec editor/plugin-updates.md）", async () => {
+      const { vscode } = renderChatApp();
+
+      await act(async () => {
+        await typeAndSend("/status");
+      });
+      await act(async () => {
+        sendCommand("statusResponse", {
+          version: "1.2.3",
+          sessionId: "session-abc-123",
+          workdir: "/home/user/project",
+        });
+      });
+
+      const dialog = document.querySelector(
+        ".configuration-dialog",
+      ) as HTMLElement;
+      expect(dialog).toHaveTextContent("1.2.3");
+      // 只读面板：没有任何更新检查入口，也不发 checkForUpdates。
+      expect(screen.queryByText("检查更新")).not.toBeInTheDocument();
+      expect(
+        dialog.querySelectorAll(".configuration-form button"),
+      ).toHaveLength(
+        1, // 只剩底部「关闭」
+      );
+      expect(vscode.postMessage).not.toHaveBeenCalledWith(
+        expect.objectContaining({ command: "checkForUpdates" }),
+      );
+    });
   });
 
   describe("/config command", () => {
