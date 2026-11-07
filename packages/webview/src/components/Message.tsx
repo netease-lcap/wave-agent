@@ -1962,11 +1962,18 @@ export const Message: React.FC<MessageProps> = React.memo(
         }
         case "image":
           return renderImageBlock(block as ImageBlock, index);
-        case "reasoning":
+        case "reasoning": {
+          // 网关有时把 reasoning_content 下发成一个孤零零的 "\n"（模型声明了
+          // reasoning_tokens 却不给真实文本，见 docs/specs/core/stream-content-updates.md
+          // 「思考用时展示」的空块回归）——与 text 分支同口径：trim 后为空就不渲染，
+          // 不留一个没有内容的折叠壳。
+          const reasoningContent = block.content || "";
+          if (!reasoningContent.trim()) return null;
           rendered = renderReasoningBlock(block, index);
           wrap = true;
           dotColor = getStageColor(block.stage);
           break;
+        }
         default:
           return null;
       }

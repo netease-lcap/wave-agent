@@ -105,6 +105,28 @@ describe("timeline dot color by stage", () => {
     expect(doneRow.style.getPropertyValue("--dot-color")).toBe(SUCCEEDED);
   });
 
+  // 网关偶发只给一个 "\n" 作为 reasoning_content（模型报了 reasoning_tokens
+  // 却没给真实文本，见 docs/specs/core/stream-content-updates.md「思考用时
+  // 展示」）。这种块不渲染、不占时间线圆点——与上一条用例对照：同样的 stage，
+  // 唯一差别是 content trim 后是否为空。
+  it("whitespace-only reasoning block renders no timeline row at all", () => {
+    renderChatApp();
+
+    sendCommand("updateMessages", {
+      messages: [
+        {
+          id: "m2b",
+          role: "assistant",
+          timestamp: "2024-01-01T00:00:00.000Z",
+          blocks: [{ type: "reasoning", content: "\n", stage: "end" }],
+        },
+      ],
+    });
+    const message = getLastMessage();
+    expect(message.querySelector(".reasoning-block")).not.toBeInTheDocument();
+    expect(message.querySelectorAll(".timeline-row")).toHaveLength(0);
+  });
+
   it("tool block dot follows tool status: streaming orange / running blue / success green / error red", () => {
     renderChatApp();
 
