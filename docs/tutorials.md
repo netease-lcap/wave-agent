@@ -286,7 +286,7 @@ AI 会把测试结果整理为结构化的测试报告（用例、步骤、结�
 
 ### 1. 连接远程主机 {#cloud-connect}
 
-在新对话里，点工作目录选择器左侧的主机下拉 →「添加主机」，填 `ssh user@hostname -p port` 形式的连接串，连上后点「浏览…」选远端目录即可开始会话。整个 CLI 子进程经 `ssh <host> -- wave --stdio` 在远端执行，读写文件、搜索、bash、git 等工具全部作用在远端文件系统，右侧的终端与差异面板同样跑在远端机器上（体验与 VS Code Remote-SSH 一致）。远端只需要系统 Node.js >= 22：桌面端会经 ssh 推送本机内置的同一份 CLI（按字节比对，不一致才推），远端不必 npm 装包，也不必出网。
+在新对话里，点工作目录选择器左侧的主机下拉 →「添加主机」，填 `ssh user@hostname -p port` 形式的连接串，连上后点「浏览…」选远端目录即可开始会话。整个 CLI 子进程经 `ssh <host> -- wave --stdio` 在远端执行，读写文件、搜索、bash、git 等工具全部作用在远端文件系统，右侧的终端与差异面板同样跑在远端机器上（体验与 VS Code Remote-SSH 一致）。远端**不需要预装 Node.js**，也不必 npm 装包：桌面端会经 ssh 推送本机内置的同一份 CLI（按字节比对，不一致才推），以及与远端平台匹配的 Node 运行时。
 
 ![主机选择器](/screenshots/desktop-ssh-host-selector.webp)
 
