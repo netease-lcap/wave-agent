@@ -1853,11 +1853,37 @@ describe("remote page shim — the second batch", () => {
     page.reply({ inputContent: "上一条输入" });
     await flush();
     // 回执不携带消息列表：页面自己按 messageId 截断，`ok` 是唯一依据。
+    // 但**被回滚那条消息的草稿**必须带回——页面没有宿主草稿通道，它是手机上
+    // 「回滚后改一改再发」的唯一来源（commands/rewind-command.md 场景 9）。
     expect(lastPost(page, "rewindResult")).toMatchObject({
       requestId: "r1",
       messageId: "m10",
       ok: true,
+      inputContent: "上一条输入",
     });
+  });
+
+  it("rewind: an old host that replies without a draft carries no draft field", async () => {
+    const page = await openPage();
+
+    page.post({
+      command: "rewindToMessage",
+      messageId: "m10",
+      requestId: "r3",
+    });
+    await flush();
+    // 老机器的回包没有 `inputContent`：回执里**不带**这个字段，页面据此保持
+    // 输入框原样——写成空串会把用户正在敲的字清掉。
+    page.reply({});
+    await flush();
+
+    const reply = lastPost(page, "rewindResult");
+    expect(reply).toMatchObject({
+      requestId: "r3",
+      messageId: "m10",
+      ok: true,
+    });
+    expect(reply).not.toHaveProperty("inputContent");
   });
 
   it("rewind: a refused rewind says so and does not cut the list", async () => {

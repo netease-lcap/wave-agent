@@ -1814,6 +1814,20 @@ export const ChatApp: React.FC<ChatAppProps> = ({
             type: "TRUNCATE_MESSAGES",
             payload: { messageId: anchor },
           });
+          // 回执里带回的是**被回滚那条消息自己的草稿**（spec
+          // commands/rewind-command.md 场景 9「回滚后改一改再发」）。桌面端与
+          // IDE 端没有这个字段——它们的草稿本来就在宿主手里，随下一次快照按
+          // `inputContent` 回放；远控页没有宿主草稿通道，所以只有它会带来。
+          // 谁带来就落进同一份 `inputContent`（`MessageInput` 按
+          // `renderDraftContent` 把引用标记还原成标签），并像其余三端一样把焦点
+          // 交回输入框。
+          if (typeof message.inputContent === "string") {
+            dispatch({
+              type: "SET_INPUT_CONTENT",
+              payload: { content: message.inputContent },
+            });
+            messageInputRef.current?.focus();
+          }
         }
         break;
       }

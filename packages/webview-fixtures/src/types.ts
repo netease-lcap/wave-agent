@@ -566,17 +566,27 @@ export interface RewindCheckpointsMessage extends HostToWebviewMessageBase {
 
 /** Reply to a `rewindToMessage` request: whether the truncation happened.
  *
- * Truncation is destructive but it carries **no payload** — the webview holds
- * the anchor (`messageId` it asked for) and the list it is displaying, so it
- * cuts its own copy with the same rule the host uses (keep everything before
+ * Truncation is destructive but it carries **no message list** — the webview
+ * holds the anchor (`messageId` it asked for) and the list it is displaying, so
+ * it cuts its own copy with the same rule the host uses (keep everything before
  * the **last** occurrence of `messageId`). Re-sending the list would cost a
  * full snapshot per rewind. `ok: false` means nothing was truncated and the
- * list must be left untouched. */
+ * list must be left untouched.
+ *
+ * `inputContent` is the **rewound message's own draft**, handed back so the
+ * user can edit it and send again (`commands/rewind-command.md` 场景 9). The
+ * desktop host and the IDE hosts do not need it here — they keep the draft
+ * themselves (`inputDrafts` / `inputContent`) and replay it in the next
+ * snapshot. The remote page has no host-draft channel (the shim answers
+ * `updateInputContent` locally: 「草稿只留在本机浏览器里」), so for that host
+ * this field is the only carrier; absent means "the host does not send one"
+ * and the webview leaves the input alone. */
 export interface RewindResultMessage extends HostToWebviewMessageBase {
   command: "rewindResult";
   requestId: string;
   messageId: string;
   ok: boolean;
+  inputContent?: string;
   error?: string;
 }
 

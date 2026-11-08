@@ -3202,14 +3202,25 @@
         // 文件**。页面已在执行前确认过一次（文案写明会撤销电脑侧的文件改动），
         // 所以这里只负责发出去并把结果如实回执——`ok` 是页面切自己那份列表的
         // 唯一依据（回执不携带消息列表）。
+        //
+        // `inputContent` 是那条被回滚消息自己的草稿（`AgentBridge.rewindToMessage`
+        // 的 `target.content`），页面拿它填回输入框「改一改再发」。其余三端不需要
+        // 走回执——草稿本来就在宿主手里（`inputDrafts` / `inputContent`），随下一次
+        // 快照回放；页面没有这条通道（`updateInputContent` 在本地就被应答了），所以
+        // 这一条必须由回执带回（spec commands/rewind-command.md 场景 9）。
         request("rewindToMessage", { messageId: msg.messageId })
-          .then(function () {
-            post({
+          .then(function (result) {
+            var reply = {
               command: "rewindResult",
               requestId: msg.requestId,
               messageId: msg.messageId,
               ok: true,
-            });
+            };
+            // 老机器的回包里没有 `inputContent` 就不带这个字段：页面据此**保持
+            // 输入框原样**，而不是把用户正在敲的字清掉。
+            if (result && typeof result.inputContent === "string")
+              reply.inputContent = result.inputContent;
+            post(reply);
           })
           .catch(function (err) {
             post({

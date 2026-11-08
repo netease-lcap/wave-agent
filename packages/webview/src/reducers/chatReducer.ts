@@ -382,6 +382,11 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
       if (index === -1) return state;
       return { ...state, messages: state.messages.slice(0, index) };
     }
+    case "SET_INPUT_CONTENT":
+      // 宿主刚把被回滚那条消息的草稿交回来（远控页唯一的携带方式，见
+      // ChatAction 注释）。这里只认这一个值，不碰列表：截断由 TRUNCATE_MESSAGES
+      // 单独做，两条回执字段各管一件事。
+      return { ...state, inputContent: action.payload.content };
     case "UPDATE_STREAMING_CONTENT": {
       const { messageId, chunk, stage } = action.payload;
       const messageIndex = state.messages.findIndex((m) => m.id === messageId);
