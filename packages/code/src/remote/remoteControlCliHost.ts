@@ -249,10 +249,19 @@ export class RemoteControlCliHost implements RemoteControlHost {
       decision?: unknown;
     };
     if (typeof p.requestId !== "string" || !p.decision) return;
-    this.session.respondPermission(
-      p.requestId,
-      p.decision as PermissionDecision,
-    );
+    const decision = p.decision as PermissionDecision;
+    this.session.respondPermission(p.requestId, decision);
+    // 不带反馈的拒绝 = 用户在页面上关掉了确认卡（关闭键 / Esc），本轮就此结束：
+    // 与桌面端 / VS Code / JetBrains 的 `denied → abortMessage()`、以及 Claude
+    // Code 的 `cancelAndAbort`（无 feedback 直接 abort 整轮）同一条语义。少了这
+    // 一步，手机上关掉提问弹窗后模型会拿着「用户拒绝了操作」继续往下做，而同一
+    // 张卡在桌面端关掉就停（spec ui/confirm-ui.md 场景 2 / 5、remote-web.md
+    // 场景 24）。**带 message 的拒绝不中断**——那是用户给出理由后拒绝这一次工具
+    // 调用，模型要照反馈继续或改问。
+    const rejectionFeedback = decision.message?.trim();
+    if (decision.behavior === "deny" && !rejectionFeedback) {
+      this.session.abort();
+    }
   }
 
   /**

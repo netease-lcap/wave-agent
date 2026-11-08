@@ -838,6 +838,25 @@ export class AgentBridge {
       if (entry) {
         this.pendingPermissions.delete(p.requestId);
         entry.resolve(p.decision);
+        // 不带反馈的拒绝 = 用户关掉了确认卡（关闭键 / Esc），本轮在用户这边就
+        // 结束：与桌面端 / VS Code / JetBrains 的 `denied → abortMessage()` 是
+        // 同一条语义，也与 Claude Code 的 `cancelAndAbort`（无 feedback 直接
+        // abort 整轮）一致。**带 message 的拒绝不中断**——那是用户给出理由后
+        // 拒绝这一次工具调用，模型要照反馈继续或改问（spec
+        // ui/confirm-ui.md 场景 2 / 5、remote/remote-web.md 场景 24）。
+        // 中断本身不阻塞回包，失败（会话正被重建 / 已销毁）也不影响这次拒绝
+        // 已经生效，因此静默。
+        const rejectionFeedback = p.decision?.message?.trim();
+        if (
+          p.decision?.behavior === "deny" &&
+          !rejectionFeedback &&
+          entry.sessionId
+        ) {
+          const session = this.sessions.get(entry.sessionId);
+          if (session && !session.transitioning) {
+            void session.agent.abortMessage();
+          }
+        }
       }
     }
   }
