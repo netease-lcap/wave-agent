@@ -16,22 +16,33 @@ export interface GatewayConfig {
   sessionId?: string;
 }
 
+/** Wire protocol a model's requests use. See `ModelCapabilities.apiType`. */
+export type ApiType = "chat" | "responses" | "messages";
+
 export interface ModelCapabilities {
   /** Whether the model supports image/vision input. Default: true. */
   vision?: boolean;
   /** Whether the model supports prompt caching (ephemeral cache_control markers). Default: false. */
   promptCaching?: boolean;
   /**
-   * Whether this model must be called through the Responses API (`/v1/responses`)
-   * instead of Chat Completions. Default: false.
+   * Which wire protocol this model's requests use. Default: `"chat"`.
    *
-   * Declared, never inferred from the model name: from GPT-5.4 on, Chat
-   * Completions only allows function tools with `reasoning_effort: "none"`, and
-   * the GPT-6 generation has no `none` tier at all — those models are unusable
-   * in Wave until their requests go to the Responses endpoint
-   * (spec core/responses-api.md).
+   * Declared, never inferred from the model name:
+   * - `"responses"` — OpenAI Responses API (`${baseURL}/responses`). From GPT-5.4
+   *   on, Chat Completions only allows function tools with
+   *   `reasoning_effort: "none"`, and the GPT-6 generation has no `none` tier at
+   *   all — those models are unusable in Wave until their requests go to the
+   *   Responses endpoint (spec core/responses-api.md).
+   * - `"messages"` — native Anthropic Messages API (`${baseURL}/messages`).
+   *   Required for Claude with extended thinking: the OpenAI-compatible layer
+   *   flattens thinking blocks into a plain `reasoning_content` string and drops
+   *   the per-block `signature` Anthropic requires to be replayed verbatim
+   *   (spec core/anthropic-messages-api.md).
+   *
+   * Anything outside the union (a typo, `true`, an empty string) resolves to
+   * `"chat"` with a warning — never silently to some other protocol.
    */
-  responsesApi?: boolean;
+  apiType?: ApiType;
 }
 
 /**

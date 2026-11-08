@@ -1,4 +1,5 @@
 import type { ImageBlock, Message } from "../types/index.js";
+import type { ThinkingBlockData } from "../types/anthropicMessages.js";
 import { imageFileCacheKey, planOutboundImage } from "./imageRewrite.js";
 import { convertImageToBase64 } from "./messageOperations.js";
 import { taskNotificationToXml } from "./notificationXml.js";
@@ -62,6 +63,42 @@ function safeToolArguments(args: string): string {
 export interface ConvertMessagesOptions {
   /** When false, images are stripped and replaced with text placeholders. */
   supportsVision?: boolean;
+  /**
+   * Attach the ordered thinking blocks as `anthropic_thinking` on assistant
+   * messages. Only set when the target endpoint is the native Messages API:
+   * the blocks carry the per-block `signature` that endpoint verifies on replay
+   * (spec core/anthropic-messages-api.md「signature 全链路」). For every other
+   * endpoint the field would be a body key the server rejects.
+   */
+  reasoningSignatures?: boolean;
+}
+
+/**
+ * Collect a turn's reasoning blocks in order, keeping each block's text and
+ * signature together.
+ *
+ * The request body needs them per block, not joined: Anthropic signs each block
+ * individually and rejects a turn whose block boundaries moved. The flattened
+ * `reasoning_content` string stays as it is for the OpenAI-compatible
+ * endpoints; this is the parallel, protocol-specific view.
+ */
+function toThinkingBlocks(message: Message): ThinkingBlockData[] | undefined {
+  const result: ThinkingBlockData[] = [];
+  for (const block of message.blocks) {
+    if (block.type !== "reasoning") continue;
+    if (!block.content || block.content.trim().length === 0) continue;
+    result.push({
+      thinking: block.content,
+      ...(block.signature ? { signature: block.signature } : {}),
+    });
+  }
+  // Redacted blocks carry no text and never entered the block list; they sit on
+  // the message itself so nothing renders for them, and replay after the
+  // visible thinking blocks (order among thinking blocks carries no meaning).
+  for (const data of message.redactedThinking ?? []) {
+    result.push({ thinking: "", redacted: data });
+  }
+  return result.length > 0 ? result : undefined;
 }
 
 /**
@@ -82,6 +119,7 @@ export async function convertMessagesForAPI(
   options?: ConvertMessagesOptions,
 ): Promise<ChatCompletionMessageParam[]> {
   const supportsVision = options?.supportsVision !== false;
+  const reasoningSignatures = options?.reasoningSignatures === true;
   const recentMessages: ChatCompletionMessageParam[] = [];
 
   const startIndex = messages.length - 1;
@@ -284,8 +322,19 @@ export async function convertMessagesForAPI(
       const hasToolCalls = tool_calls && tool_calls.length > 0;
       const hasReasoning =
         reasoning_content && reasoning_content.trim().length > 0;
+      // A turn whose only thinking was redacted has no text at all, so none of
+      // the three checks above see it. It is still a complete, replayable
+      // assistant turn on the Messages endpoint — and only there, which is why
+      // this condition is gated on the flag rather than added unconditionally
+      // (an OpenAI-compatible assistant message with neither content nor
+      // tool_calls is rejected).
+      const thinkingBlocks = reasoningSignatures
+        ? toThinkingBlocks(message)
+        : undefined;
+      const hasRedactedThinking =
+        thinkingBlocks?.some((block) => block.redacted !== undefined) === true;
 
-      if (hasContent || hasToolCalls || hasReasoning) {
+      if (hasContent || hasToolCalls || hasReasoning || hasRedactedThinking) {
         // OpenAI-compatible upstreams reject assistant messages where neither
         // content nor tool_calls is set — a reasoning_content-only message
         // gets stripped and returns 400 "content or tool_calls must be set"
@@ -311,6 +360,7 @@ export async function convertMessagesForAPI(
           // turn's own thinking; in the fallback case it carries the
           // preserved thinking itself (content only holds the note).
           ...(reasoning_content ? { reasoning_content } : {}),
+          ...(thinkingBlocks ? { anthropic_thinking: thinkingBlocks } : {}),
           ...(message.additionalFields ? { ...message.additionalFields } : {}),
         } as ChatCompletionMessageParam;
 

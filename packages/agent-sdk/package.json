@@ -57,6 +57,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sandbox-runtime": "^0.0.81",
+    "@anthropic-ai/sdk": "^1.6.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@opentelemetry/api": "^1.9.0",
     "@opentelemetry/api-logs": "^0.217.0",

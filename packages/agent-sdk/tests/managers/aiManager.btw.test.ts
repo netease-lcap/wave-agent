@@ -424,4 +424,74 @@ describe("AIManager - runBtwFork", () => {
       ).rejects.toThrow("Request was aborted");
     });
   });
+
+  describe("thinking-block replay", () => {
+    // The fork hands its history over as a flat array instead of rebuilding it
+    // from message blocks, so the assistant turn it appends has to carry the
+    // thinking blocks itself — a thinking-enabled tool-use turn replayed
+    // without them is rejected by the Messages endpoint.
+    it("carries the thinking blocks on the assistant turn for a Messages model", async () => {
+      const thinkingBlocks = [
+        { thinking: "I should read the file", signature: "sig-1" },
+      ];
+      callAgentMock
+        .mockResolvedValueOnce({
+          content: undefined,
+          tool_calls: [functionToolCall],
+          reasoning_content: "I should read the file",
+          thinking_blocks: thinkingBlocks,
+          usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+        })
+        .mockResolvedValueOnce({
+          content: "extracted memory",
+          usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+        });
+      mockModelConfig.capabilities = { apiType: "messages" };
+
+      try {
+        await aiManager.runAutoMemoryFork([], "extract memory", {
+          canUseTool: () => false,
+          maxTurns: 2,
+        });
+      } finally {
+        delete mockModelConfig.capabilities;
+      }
+
+      expect(callAgentMock).toHaveBeenCalledTimes(2);
+      const secondCallMessages = callAgentMock.mock.calls[1][0].messages;
+      const assistantTurn = secondCallMessages.find(
+        (message: { role: string; tool_calls?: unknown }) =>
+          message.role === "assistant" && message.tool_calls,
+      );
+      expect(assistantTurn.anthropic_thinking).toEqual(thinkingBlocks);
+    });
+
+    it("never puts anthropic_thinking on the body of another endpoint", async () => {
+      callAgentMock
+        .mockResolvedValueOnce({
+          content: undefined,
+          tool_calls: [functionToolCall],
+          reasoning_content: "thinking",
+          thinking_blocks: [{ thinking: "thinking", signature: "sig-1" }],
+          usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+        })
+        .mockResolvedValueOnce({
+          content: "extracted memory",
+          usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+        });
+
+      await aiManager.runAutoMemoryFork([], "extract memory", {
+        canUseTool: () => false,
+        maxTurns: 2,
+      });
+
+      expect(callAgentMock).toHaveBeenCalledTimes(2);
+      const secondCallMessages = callAgentMock.mock.calls[1][0].messages;
+      const assistantTurn = secondCallMessages.find(
+        (message: { role: string; tool_calls?: unknown }) =>
+          message.role === "assistant" && message.tool_calls,
+      );
+      expect(assistantTurn.anthropic_thinking).toBeUndefined();
+    });
+  });
 });

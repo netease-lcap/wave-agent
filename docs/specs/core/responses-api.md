@@ -1,12 +1,14 @@
 ---
 name: "Responses API 传输"
-description: "按 models.<name>.capabilities.responsesApi 逐模型选择 Responses 端点：参数/工具/消息/流式与用量映射，让只允许 Responses 工具调用的新模型可用"
+description: "按 models.<name>.capabilities.apiType 逐模型选择 Responses 端点：参数/工具/消息/流式与用量映射，让只允许 Responses 工具调用的新模型可用"
 order: 85
 ---
 
 # 功能规格说明：Responses API 传输
 
 **创建日期**：2026-11-04
+
+**字段改名（2026-11-07）**：`capabilities.responsesApi` 布尔改为 `capabilities.apiType` 枚举（`"chat"` 默认 / `"responses"` / `"messages"`），不保留兼容别名；新增的 `"messages"` 取值见 `core/anthropic-messages-api.md`，改名带来的发版顺序约束见该规格的边界情况 2。
 
 ## 用户场景与测试 _（必填）_
 
@@ -16,15 +18,15 @@ order: 85
 
 **为什么是这个优先级**：这是本功能的全部前提。GPT-5.4 之后 Chat Completions 只有 `reasoning_effort: "none"` 才允许 function tools，而这类 6 代模型根本没有 `none` 档（官方模型页写明 "Tool calling requires the Responses API."），两条限制交集为空 → 对 Wave 而言这些模型**结构上不可用**，任何参数调整都绕不过去。
 
-**独立测试**：用声明了 `capabilities.responsesApi: true` 的模型配置发起一次带工具的 agent 调用，断言请求打到 Responses 端点且请求体是 Responses 形状；把声明去掉或改成 `false`，断言请求仍打到 Chat Completions 且请求体与今天逐字段一致。
+**独立测试**：用声明了 `capabilities.apiType: "responses"` 的模型配置发起一次带工具的 agent 调用，断言请求打到 Responses 端点且请求体是 Responses 形状；把声明去掉或改成 `"chat"`，断言请求仍打到 Chat Completions 且请求体与今天逐字段一致。
 
 **验收场景**：
 
-1. **假设** `models["<name>"].capabilities.responsesApi` 为 `true`，**当** agent 主循环发起一轮带工具的请求，**则**该请求走 Responses 端点（`client.responses.create`），请求体为 Responses 形状（`input` + 扁平 `tools`）
-2. **假设**模型未声明 `capabilities.responsesApi`（即默认 `false`），**当** agent 发起请求时，**则**行为与今天完全一致：走 Chat Completions，请求体不新增任何字段
-3. **假设**本轮请求实际使用的模型是覆盖后的 `fastModel` / `visionModel` / 显式指定模型，**当**它与主模型的 `responsesApi` 声明不同时，**则**按**该请求实际使用的模型**的声明选择端点（主模型走 Responses 不影响 fastModel 的子代理请求走 Chat Completions，反之亦然）
-4. **假设**仓库里不存在任何模型名清单、正则或内置默认表，**当**用户把一个新模型写进 `models` 并声明 `responsesApi: true` 时，**则**无需升级 Wave 即可使用
-5. **假设**声明了 `responsesApi: true` 的模型在 Responses 端点返回错误，**当**该错误上抛给用户时，**则**错误文案保留服务端原文，且**不会**静默改用 Chat Completions 重试（一次请求只打一个端点）
+1. **假设** `models["<name>"].capabilities.apiType` 为 `"responses"`，**当** agent 主循环发起一轮带工具的请求，**则**该请求走 Responses 端点（`client.responses.create`），请求体为 Responses 形状（`input` + 扁平 `tools`）
+2. **假设**模型的 `apiType` 未声明或为 `"chat"`（默认），**当** agent 发起请求时，**则**行为与今天完全一致：走 Chat Completions，请求体不新增任何字段
+3. **假设**本轮请求实际使用的模型是覆盖后的 `fastModel` / `visionModel` / 显式指定模型，**当**它与主模型的 `apiType` 不同时，**则**按**该请求实际使用的模型**的 `apiType` 选择端点（主模型走 Responses 不影响 fastModel 的子代理请求走 Chat Completions，反之亦然）
+4. **假设**仓库里不存在任何模型名清单、正则或内置默认表，**当**用户把一个新模型写进 `models` 并声明 `apiType: "responses"` 时，**则**无需升级 Wave 即可使用
+5. **假设**声明了 `apiType: "responses"` 的模型在 Responses 端点返回错误，**当**该错误上抛给用户时，**则**错误文案保留服务端原文，且**不会**静默改用 Chat Completions 重试（一次请求只打一个端点）
 
 ---
 
@@ -112,18 +114,18 @@ order: 85
 
 ### 用户故事：非 agent 调用路径同样跟随声明（优先级：P2）
 
-作为用户，我希望内联补全、next-edit、网页内容处理这三条路径也跟随同一个 `responsesApi` 声明，这样声明过的模型在 Wave 里处处能用——不会出现「主对话能跑、网页内容处理报错」这种按入口分裂的行为。
+作为用户，我希望内联补全、next-edit、网页内容处理这三条路径也跟随同一个 `apiType` 声明，这样声明过的模型在 Wave 里处处能用——不会出现「主对话能跑、网页内容处理报错」这种按入口分裂的行为。
 
-**为什么是这个优先级**：这三条不跑 agent 主循环，用户最常感知的是主对话框，所以排在 P1 之后。但它们都是**同一个模型的其它入口**：主模型声明了 `responsesApi` 而网页内容处理仍打 Chat Completions 时，一旦遇到官方标为 "Chat Completions not supported" 的模型，这条路就直接失败——同一个模型一半能用一半不能用，比整块不支持更难解释。
+**为什么是这个优先级**：这三条不跑 agent 主循环，用户最常感知的是主对话框，所以排在 P1 之后。但它们都是**同一个模型的其它入口**：主模型声明了 `apiType: "responses"` 而网页内容处理仍打 Chat Completions 时，一旦遇到官方标为 "Chat Completions not supported" 的模型，这条路就直接失败——同一个模型一半能用一半不能用，比整块不支持更难解释。
 
-**独立测试**：把当前模型声明为 `responsesApi: true` 后分别触发内联补全、next-edit 与网页内容处理，断言三者请求都打到 Responses 端点且结果与 Chat Completions 下等价；把声明去掉再跑一遍，断言三者回到 Chat Completions。
+**独立测试**：把当前模型声明为 `apiType: "responses"` 后分别触发内联补全、next-edit 与网页内容处理，断言三者请求都打到 Responses 端点且结果与 Chat Completions 下等价；把声明去掉再跑一遍，断言三者回到 Chat Completions。
 
 **验收场景**：
 
-1. **假设**网页内容处理使用的是声明了 `responsesApi` 的模型（未指定 fastModel 时即主模型），**当**发起请求时，**则**走 Responses 端点，纯文本结果与 Chat Completions 下等价
-2. **假设**补全所用的模型（`completionModel`）声明了 `responsesApi`，**当**触发内联补全时，**则**走 Responses 端点，插入的补全文本与 Chat Completions 下等价；模型返回空文本时不渲染任何幽灵文本的规则不变
-3. **假设** next-edit 所用的模型声明了 `responsesApi`，**当**触发建议时，**则**走 Responses 端点，解析出的行区间建议与 Chat Completions 下等价
-4. **假设**这三条路径所用的模型**未声明** `responsesApi`，**当**发起请求时，**则**仍走 Chat Completions，行为与今天完全一致
+1. **假设**网页内容处理使用的是声明了 `apiType: "responses"` 的模型（未指定 fastModel 时即主模型），**当**发起请求时，**则**走 Responses 端点，纯文本结果与 Chat Completions 下等价
+2. **假设**补全所用的模型（`completionModel`）声明了 `apiType: "responses"`，**当**触发内联补全时，**则**走 Responses 端点，插入的补全文本与 Chat Completions 下等价；模型返回空文本时不渲染任何幽灵文本的规则不变
+3. **假设** next-edit 所用的模型声明了 `apiType: "responses"`，**当**触发建议时，**则**走 Responses 端点，解析出的行区间建议与 Chat Completions 下等价
+4. **假设**这三条路径所用的模型 `apiType` 为 `"chat"` 或未声明，**当**发起请求时，**则**仍走 Chat Completions，行为与今天完全一致
 5. **假设**这三条路径的请求本身不带工具、不是流式（都是单次纯文本请求），**当**走 Responses 时，**则**只发送它们需要的字段（模型、`instructions`、`input`、输出上限等），不因「支持 Responses」而引入工具或流式语义
 6. **假设**补全 / next-edit 的开关被关闭，**当**用户触发时，**则**先按开关判断直接返回、不发起任何请求（开关判断先于端点选择）
 7. **假设**会话压缩 / `/compact` fork 用主模型发起，**当**它走 agent 主循环时，**则**按主模型的声明走 Responses（属于主循环路径）
@@ -132,9 +134,9 @@ order: 85
 
 ### 边界情况
 
-- **边界情况 1**：端点选择只有一个来源——逐模型的 `capabilities.responsesApi`（默认 `false`），不存在全局开关、模型名清单、正则或内置默认表。用户换新模型时改一行 `settings.json` 即可，不必等 Wave 发版
+- **边界情况 1**：端点选择只有一个来源——逐模型的 `capabilities.apiType`（默认 `"chat"`），不存在全局开关、模型名清单、正则或内置默认表。用户换新模型时改一行 `settings.json` 即可，不必等 Wave 发版
 - **边界情况 2**：Responses 独有的其它能力（file search、code interpreter、computer use、MCP 托管、image generation、`reasoning.mode: "pro"`、hosted shell、apply patch、tool search）**不在本规格范围**。Wave 只把已有请求翻译过去，不主动索取推理摘要等 Responses-only 内容：主循环发它本来就会发的工具与消息，三条纯文本路径发它们本来就发的两段文本
-- **边界情况 3**：`responsesApi: true` 与 `promptCaching: true` 同时声明不冲突：Responses 下不发 `cache_control`，由服务端自动缓存；不得因此报配置错误
+- **边界情况 3**：`apiType: "responses"` 与 `promptCaching: true` 同时声明不冲突：Responses 下不发 `cache_control`，由服务端自动缓存；不得因此报配置错误
 - **边界情况 4**：`options` 是懂行的人写的配置，Wave 只做上表列出的键名映射，其余键一律原样透传——不丢弃、不改名、不判断端点是接受还是拒绝。用户配错由服务端 400 直接反馈，静默丢弃用户的配置比报错更糟
 - **边界情况 5**：工具结果回填必须用 `call_id`（不是 item 的 `id`），两者用错服务端会拒绝该轮请求
 - **边界情况 6**：`finish_reason` 的映射必须让「输出被上限截断」这一语义成立，否则 `core/ai-error-handling.md` 的自动续写在 Responses 模型上静默失效

@@ -10,7 +10,7 @@
  * generation dropped the `none` tier entirely ("Tool calling requires the
  * Responses API"): those models are structurally unusable in Wave until their
  * requests go here. Which model uses this transport is *declared* —
- * `models[<name>].capabilities.responsesApi` — never guessed from the name
+ * `models[<name>].capabilities.apiType` — never guessed from the name
  * (spec core/responses-api.md).
  *
  * `options` is treated as expert-authored configuration: only the keys whose

@@ -21,7 +21,7 @@ vi.mock("@/utils/openaiClient.js", () => ({
 const RESPONSES_API_MODEL: ModelConfig = {
   model: "gpt-6.1-sol",
   fastModel: "gpt-fast",
-  capabilities: { responsesApi: true },
+  capabilities: { apiType: "responses" },
 };
 
 const CHAT_MODEL: ModelConfig = {
@@ -109,7 +109,7 @@ describe("aiService - Responses API routing", () => {
   });
 
   describe("callAgent", () => {
-    it("uses the Responses endpoint when the model declares responsesApi", async () => {
+    it('uses the Responses endpoint when the model declares apiType: "responses"', async () => {
       mockResponsesCreate.mockReturnValue(nonStreamingResponses("done"));
 
       const result = await callAgent({
@@ -157,7 +157,7 @@ describe("aiService - Responses API routing", () => {
         modelConfig: {
           model: "gpt-6.1-sol",
           fastModel: "gpt-fast",
-          capabilities: { responsesApi: true, promptCaching: true },
+          capabilities: { apiType: "responses", promptCaching: true },
         },
         messages: [{ role: "user", content: "hi" }],
         workdir: "/work",
@@ -172,7 +172,7 @@ describe("aiService - Responses API routing", () => {
       expect(JSON.stringify(body.input)).not.toContain("cache_control");
     });
 
-    it("keeps Chat Completions when the model does not declare responsesApi", async () => {
+    it("keeps Chat Completions when the model does not declare apiType", async () => {
       mockChatCreate.mockReturnValue(nonStreamingChat("hello"));
 
       const result = await callAgent({
@@ -267,7 +267,7 @@ describe("aiService - Responses API routing", () => {
       model: "claude-sonnet-4-5",
       fastModel: "gpt-fast",
       completionModel: "gpt-6.1-sol",
-      completionModelCapabilities: { responsesApi: true },
+      completionModelCapabilities: { apiType: "responses" },
     };
 
     it("sends inline completion over Responses when the completion model declares it", async () => {
@@ -344,7 +344,7 @@ describe("aiService - Responses API routing", () => {
         modelConfig: {
           model: "claude-sonnet-4-5",
           fastModel: "gpt-6.1-sol",
-          fastModelCapabilities: { responsesApi: true },
+          fastModelCapabilities: { apiType: "responses" },
         },
         content: "<html>page</html>",
         prompt: "summarize",
@@ -365,7 +365,7 @@ describe("aiService - Responses API routing", () => {
           modelConfig: {
             model: "claude-sonnet-4-5",
             fastModel: "gpt-6.1-sol",
-            fastModelCapabilities: { responsesApi: true },
+            fastModelCapabilities: { apiType: "responses" },
           },
           content: "<html>page</html>",
           prompt: "summarize",

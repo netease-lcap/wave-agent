@@ -1,7 +1,7 @@
 import { type CallAgentOptions } from "../services/aiService.js";
 import * as aiService from "../services/aiService.js";
 import { convertMessagesForAPI } from "../utils/convertMessagesForAPI.js";
-import { supportsVision } from "../utils/modelCapabilities.js";
+import { resolveApiType, supportsVision } from "../utils/modelCapabilities.js";
 import { persistToolImages } from "../utils/toolImagePersistence.js";
 import { applyToolImageBudget } from "../utils/toolImageIngest.js";
 import type { ToolImage } from "../utils/toolImageIngest.js";
@@ -829,6 +829,8 @@ export class AIManager {
         messagesToCompact,
         {
           supportsVision: supportsVision(modelConfig.capabilities),
+          reasoningSignatures:
+            resolveApiType(modelConfig.capabilities) === "messages",
         },
       );
       const compactPrompt = getCompactPrompt(mergedInstructions);
@@ -1239,6 +1241,12 @@ export class AIManager {
       Array.from(this.readFileState, ([path, entry]) => [path, { ...entry }]),
     );
 
+    // Whether this fork speaks the native Messages protocol. Its history is
+    // handed over as a flat array instead of being rebuilt from blocks, so the
+    // thinking-block signatures have to be carried on the assistant messages
+    // this loop appends itself.
+    const forkApiType = resolveApiType(modelConfig.capabilities);
+
     let totalUsage: ForkLoopResult["usage"];
     let content: string | undefined;
 
@@ -1306,7 +1314,12 @@ export class AIManager {
           role: "assistant",
           content: result.content ?? null,
           tool_calls: functionCalls,
-        });
+          // A thinking-enabled tool-use turn must be replayed with its thinking
+          // blocks; only the Messages endpoint accepts (and needs) the field.
+          ...(forkApiType === "messages" && result.thinking_blocks
+            ? { anthropic_thinking: result.thinking_blocks }
+            : {}),
+        } as ChatCompletionMessageParam);
 
         for (const toolCall of functionCalls) {
           const name = toolCall.function?.name || "";
@@ -1390,6 +1403,8 @@ export class AIManager {
     const modelConfig = this.getModelConfig();
     const historyMessages = await convertMessagesForAPI(messages, {
       supportsVision: supportsVision(modelConfig.capabilities),
+      reasoningSignatures:
+        resolveApiType(modelConfig.capabilities) === "messages",
     });
     // Give the fork a real signal even when the caller has none, so tools
     // (e.g. Bash's foreground path) always receive a well-formed context.
@@ -1515,7 +1530,11 @@ export class AIManager {
     const forkMessages: ChatCompletionMessageParam[] =
       await convertMessagesForAPI(
         hasInProgressMessage ? rawMessages.slice(0, -1) : rawMessages,
-        { supportsVision: supportsVision(modelConfig.capabilities) },
+        {
+          supportsVision: supportsVision(modelConfig.capabilities),
+          reasoningSignatures:
+            resolveApiType(modelConfig.capabilities) === "messages",
+        },
       );
 
     // Mirror the main loop's memory injection so the request prefix matches.
@@ -2084,7 +2103,11 @@ ${question}`;
           // Refresh messages in case compaction replaced the history.
           const refreshedMessages = await convertMessagesForAPI(
             this.messageManager.getMessages(),
-            { supportsVision: supportsVision(currentModelConfig.capabilities) },
+            {
+              supportsVision: supportsVision(currentModelConfig.capabilities),
+              reasoningSignatures:
+                resolveApiType(currentModelConfig.capabilities) === "messages",
+            },
           );
 
           // Call AI service with streaming callbacks if enabled
@@ -2278,6 +2301,17 @@ ${question}`;
           // Handle result content from non-streaming mode
           if (result.content && !createdByStreaming) {
             this.messageManager.appendCurrentMessageContent(result.content);
+          }
+
+          // The Messages endpoint signs each thinking block and verifies those
+          // boundaries on replay, so the per-block signatures have to land on the
+          // turn's reasoning blocks before the message is persisted (spec
+          // core/anthropic-messages-api.md「signature 全链路」). Absent on every
+          // other endpoint.
+          if (result.thinking_blocks && result.thinking_blocks.length > 0) {
+            this.messageManager.attachThinkingSignatures(
+              result.thinking_blocks,
+            );
           }
 
           // Handle usage tracking for agent operations
