@@ -62,8 +62,6 @@ const NATIVE_BUILTINS = [
   "AskUserQuestion",
   "Bash",
   "Edit",
-  "Glob",
-  "Grep",
   "Read",
   "Skill",
   "Write",
