@@ -45,6 +45,15 @@ export interface ToolPromptArgs {
   availableSkills?: SkillMetadata[];
   workdir?: string;
   isSubagent?: boolean;
+  /**
+   * Names of the tools registered in this session.
+   *
+   * A description that hard-codes a tool name goes stale as soon as that tool is
+   * optional: `Grep` and `Glob` are opt-in via `--tools` (spec
+   * `core/fs-tools.md`), so the Bash tool's description has to change with the
+   * registration set rather than assume the default one.
+   */
+  availableTools?: string[];
 }
 
 export interface ToolPlugin {

@@ -16,7 +16,13 @@ import { WindowsStreamDecoder } from "../utils/encoding.js";
 import { killProcessTree } from "../utils/killProcessTree.js";
 import { processToolResult } from "../utils/toolResultStorage.js";
 import { BASH_MAX_OUTPUT_CHARS } from "../constants/toolLimits.js";
-import type { ToolPlugin, ToolResult, ToolContext } from "./types.js";
+import type {
+  ToolPlugin,
+  ToolResult,
+  ToolContext,
+  ToolPromptArgs,
+} from "./types.js";
+import { buildSearchShellPrelude } from "../utils/searchShell.js";
 import {
   BASH_TOOL_NAME,
   GLOB_TOOL_NAME,
@@ -59,6 +65,81 @@ function wrapCommandForCwdTracking(
 
 // Commands that should not be auto-backgrounded on timeout (e.g. sleep should just be killed)
 const DISALLOWED_AUTO_BACKGROUND_COMMANDS = ["sleep"];
+
+/**
+ * Names the search surface this session actually offers.
+ *
+ * The dedicated `Grep` / `Glob` tools are not part of the default tool set
+ * (`core/fs-tools.md`「默认工具集不含搜索工具」); they come back only when
+ * `--tools` names them. The description has to follow, or it would tell the
+ * model to call tools that are not there — or to keep hand-rolling `ls` when
+ * `grep` in Bash is already .gitignore-aware.
+ *
+ * An absent `availableTools` is read as "no dedicated search tools": that is
+ * the default and the shape every current caller has.
+ */
+function searchPromptLines(args?: ToolPromptArgs): {
+  /** The two "how to search" bullets, each ending in a newline. */
+  search: string;
+  /** The bullet explaining what this tool is *not* for (lean prompt). */
+  scope: string;
+  /** The same paragraph as it appears in the full prompt. */
+  scopeLong: string;
+  /** The full prompt's "prefer the dedicated tool" bullet list. */
+  usage: string;
+} {
+  const available = args?.availableTools ?? [];
+  const dedicated = available.some(
+    (name) => name === GLOB_TOOL_NAME || name === GREP_TOOL_NAME,
+  );
+  if (dedicated) {
+    return {
+      search:
+        `- File search: Use ${GLOB_TOOL_NAME} (NOT find or ls)\n` +
+        `- Content search: Use ${GREP_TOOL_NAME} (NOT grep or rg)\n`,
+      scope:
+        "- IMPORTANT: This tool is for terminal operations like git, npm, docker, etc. Avoid running `find`, `grep`, `cat`, `head`, `tail`, `sed`, `awk`, or `echo` commands, unless explicitly instructed or after you have verified that a dedicated tool cannot accomplish your task. Instead, use the dedicated tool — it gives the user a much better experience.",
+      scopeLong:
+        "IMPORTANT: This tool is for terminal operations like git, npm, docker, etc. DO NOT use it for file operations (reading, writing, editing, searching, finding files) - use the specialized tools for this instead.",
+      usage: `  - Avoid using ${BASH_TOOL_NAME} with the \`find\`, \`sed\`, \`awk\`, or \`echo\` commands, unless explicitly instructed or when these commands are truly necessary for the task. Instead, always prefer using the dedicated tools for these commands:
+    - To read files use ${READ_TOOL_NAME} instead of cat, head, tail, or sed
+    - To edit files use ${EDIT_TOOL_NAME} instead of sed or awk
+    - To create files use ${WRITE_TOOL_NAME} instead of cat with heredoc or echo redirection
+    - To search for files use ${GLOB_TOOL_NAME} instead of find or ls
+    - To search the content of files, use ${GREP_TOOL_NAME} instead of grep or rg
+    - Reserve using the ${BASH_TOOL_NAME} exclusively for system commands and terminal operations that require shell execution. If you are unsure and there is a relevant dedicated tool, default to using the dedicated tool and only fallback on using the ${BASH_TOOL_NAME} tool for these if it is absolutely necessary.`,
+    };
+  }
+  return {
+    search:
+      "- File search: Use `find` in Bash (NOT ls)\n" +
+      "- Content search: Use `grep -rn` in Bash (NOT a bare `rg`, and NOT a scan built by hand from ls plus Read)\n",
+    scope:
+      "- IMPORTANT: This tool is for terminal operations like git, npm, docker, etc. Searching is the exception: `grep` and `find` here are already wired to skip .gitignore'd and binary files, so one `grep -rn` beats reading files one by one.",
+    scopeLong:
+      "IMPORTANT: This tool is for terminal operations like git, npm, docker, etc. Searching belongs here in this session — `grep` and `find` are wired to skip .gitignore'd and binary files, so they replace the dedicated search tools. Reading, writing and editing files still go through their own tools.",
+    usage: `  - Avoid using ${BASH_TOOL_NAME} with the \`sed\`, \`awk\`, or \`echo\` commands, unless explicitly instructed or when these commands are truly necessary for the task. Prefer the dedicated tools where they exist:
+    - To read files use ${READ_TOOL_NAME} instead of cat, head, tail, or sed
+    - To edit files use ${EDIT_TOOL_NAME} instead of sed or awk
+    - To create files use ${WRITE_TOOL_NAME} instead of cat with heredoc or echo redirection
+    - To search for files use \`find\` here (NOT ls); for file contents use \`grep -rn\` here (NOT a bare \`rg\`)
+    - Reserve using the ${BASH_TOOL_NAME} exclusively for system commands and terminal operations that require shell execution.`,
+  };
+}
+
+/**
+ * Prepend wave's search shadows to [command] (`utils/searchShell.ts`).
+ *
+ * Every Bash call is a fresh shell, so — unlike Claude Code, which writes one
+ * shell snapshot per session — the prelude goes in per spawn. It sits inside the
+ * command string rather than in front of the spawn so that it also survives the
+ * sandbox wrapper, which runs the command under its own `bash -c`.
+ */
+function withSearchShadows(command: string): string {
+  const prelude = buildSearchShellPrelude();
+  if (!prelude) return command;
+  return `${prelude}\n${command}`;
+}
 
 function isAutobackgroundingAllowed(command: string): boolean {
   const trimmed = command.trim();
@@ -110,23 +191,26 @@ export const bashTool: ToolPlugin = {
       },
     },
   },
-  leanPrompt: `Executes a bash command and returns its output. Each invocation runs in a fresh shell process starting from the project root, and the working directory persists between calls — prefer absolute paths over \`cd\`.
+  leanPrompt: (args?: ToolPromptArgs) => {
+    const search = searchPromptLines(args);
+    return `Executes a bash command and returns its output. Each invocation runs in a fresh shell process starting from the project root, and the working directory persists between calls — prefer absolute paths over \`cd\`.
 
-- File search: Use ${GLOB_TOOL_NAME} (NOT find or ls)
-- Content search: Use ${GREP_TOOL_NAME} (NOT grep or rg)
-- Read files: Use ${READ_TOOL_NAME} (NOT cat/head/tail)
+${search.search}- Read files: Use ${READ_TOOL_NAME} (NOT cat/head/tail)
 - Edit files: Use ${EDIT_TOOL_NAME} (NOT sed/awk)
 - Write files: Use ${WRITE_TOOL_NAME} (NOT echo >/cat <<EOF)
 - Communication: Output text directly (NOT echo/printf)
-- IMPORTANT: This tool is for terminal operations like git, npm, docker, etc. Avoid running \`find\`, \`grep\`, \`cat\`, \`head\`, \`tail\`, \`sed\`, \`awk\`, or \`echo\` commands, unless explicitly instructed or after you have verified that a dedicated tool cannot accomplish your task. Instead, use the dedicated tool — it gives the user a much better experience.
+${search.scope}
 - \`timeout\` is in milliseconds: default ${BASH_DEFAULT_TIMEOUT_MS} (${BASH_DEFAULT_TIMEOUT_MS / 60000} minutes), max ${BASH_MAX_TIMEOUT_MS} (${BASH_MAX_TIMEOUT_MS / 60000} minutes).
 - \`run_in_background\` runs the command detached so you can keep working; you are notified when it finishes. No \`&\` needed.
 - Output over ${BASH_MAX_OUTPUT_CHARS.toLocaleString()} characters is truncated and persisted to a file you can read with the ${READ_TOOL_NAME} tool.
-- Independent commands go in parallel tool calls in one message; dependent ones chain with \`&&\`.`,
-  prompt: () => `
+- Independent commands go in parallel tool calls in one message; dependent ones chain with \`&&\`.`;
+  },
+  prompt: (args?: ToolPromptArgs) => {
+    const search = searchPromptLines(args);
+    return `
 Executes a given bash command with optional timeout, ensuring proper handling and security measures. Each invocation runs in a fresh shell process starting from the project root.
 
-IMPORTANT: This tool is for terminal operations like git, npm, docker, etc. DO NOT use it for file operations (reading, writing, editing, searching, finding files) - use the specialized tools for this instead.
+${search.scopeLong}
 
 Before executing the command, please follow these steps:
 
@@ -150,13 +234,7 @@ Usage notes:
   - It is very helpful if you write a clear, concise description of what this command does in 5-10 words.
   - If the output exceeds ${BASH_MAX_OUTPUT_CHARS.toLocaleString()} characters, output will be truncated and the full output will be persisted to a file you can read with the Read tool.
   - You can use the \`run_in_background\` parameter to run the command in the background, which allows you to continue working while the command runs. You can monitor the output using the ${READ_TOOL_NAME} tool as it becomes available. You do not need to use '&' at the end of the command when using this parameter.
-  - Avoid using ${BASH_TOOL_NAME} with the \`find\`, \`sed\`, \`awk\`, or \`echo\` commands, unless explicitly instructed or when these commands are truly necessary for the task. Instead, always prefer using the dedicated tools for these commands:
-    - To read files use ${READ_TOOL_NAME} instead of cat, head, tail, or sed
-    - To edit files use ${EDIT_TOOL_NAME} instead of sed or awk
-    - To create files use ${WRITE_TOOL_NAME} instead of cat with heredoc or echo redirection
-    - To search for files use ${GLOB_TOOL_NAME} instead of find or ls
-    - To search the content of files, use ${GREP_TOOL_NAME} instead of grep or rg
-    - Reserve using the ${BASH_TOOL_NAME} exclusively for system commands and terminal operations that require shell execution. If you are unsure and there is a relevant dedicated tool, default to using the dedicated tool and only fallback on using the ${BASH_TOOL_NAME} tool for these if it is absolutely necessary.
+${search.usage}
   - When issuing multiple commands:
     - If the commands are independent and can run in parallel, make multiple ${BASH_TOOL_NAME} tool calls in a single message. For example, if you need to run "git status" and "git diff", send a single message with two ${BASH_TOOL_NAME} tool calls in parallel.
     - If the commands depend on each other and must run sequentially, use a single ${BASH_TOOL_NAME} call with '&&' to chain them together (e.g., \`git add . && git commit -m "message" && git push\`). For instance, if one operation must complete before another starts (like mkdir before cp, ${WRITE_TOOL_NAME} before ${BASH_TOOL_NAME} for git operations, or git add before git commit), run these operations sequentially instead.
@@ -186,7 +264,8 @@ Use the gh command via the Bash tool for GitHub-related tasks including working 
 - If you must sleep, keep the duration short (1-5 seconds) to avoid blocking the user.
 
 # CWD management
-The working directory persists between commands. Try to maintain your current working directory throughout the session by using absolute paths and avoiding usage of \`cd\`. You may use \`cd\` if the User explicitly requests it.`,
+The working directory persists between commands. Try to maintain your current working directory throughout the session by using absolute paths and avoiding usage of \`cd\`. You may use \`cd\` if the User explicitly requests it.`;
+  },
   execute: async (
     args: Record<string, unknown>,
     context: ToolContext,
@@ -305,6 +384,10 @@ The working directory persists between commands. Try to maintain your current wo
       }
     }
 
+    // Search shadows are added only now: the permission gate above matches the
+    // command the model wrote, not the prelude wave wraps around it.
+    const shadowed = withSearchShadows(command);
+
     /**
      * Wrap a command for the sandbox when the decision said so.
      *
@@ -345,12 +428,12 @@ The working directory persists between commands. Try to maintain your current wo
         };
       }
 
-      let backgroundCommand = command;
+      let backgroundCommand = shadowed;
       let backgroundOptions:
         | { env?: Record<string, string>; onExit?: () => void }
         | undefined;
       if (sandboxed && sandbox) {
-        const prepared = await sandboxWrap(command);
+        const prepared = await sandboxWrap(shadowed);
         if (!prepared) return sandboxStartError();
         backgroundCommand = prepared.command;
         backgroundOptions = {
@@ -381,10 +464,10 @@ The working directory persists between commands. Try to maintain your current wo
     // Foreground execution (original behavior). The unsandboxed path stays
     // synchronous up to `spawn`: an `await` here would push process startup
     // behind a microtask, which callers (and tests driving fake timers) act on.
-    let foregroundCommand = command;
+    let foregroundCommand = shadowed;
     let foregroundEnv: Record<string, string> | undefined;
     if (sandboxed && sandbox) {
-      const prepared = await sandboxWrap(command);
+      const prepared = await sandboxWrap(shadowed);
       if (!prepared) return sandboxStartError();
       foregroundCommand = prepared.command;
       foregroundEnv = prepared.env;
