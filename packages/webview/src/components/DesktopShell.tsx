@@ -11,6 +11,7 @@ import { DesktopSidebar, SESSION_DRAG_MIME } from "./DesktopSidebar";
 import { ConversationCloseIcon } from "./HeaderIcons";
 import type { AccountCardAccount } from "./AccountCard";
 import type {
+  ChatAppProps,
   DesktopHostProps,
   DesktopPane,
   OpenPaneOptions,
@@ -87,6 +88,13 @@ interface DesktopShellProps {
    * 重挂载后随行下发），写输入框后回调 onPrefillApplied 清 root pending。
    */
   prefillRequest?: PrefillDraftRequest | null;
+  /**
+   * 侧栏「内容命中」跳转的种子（spec desktop/desktop-sessions.md 场景 6）。
+   * 与 prefillRequest 不同，这里**没有** targetPaneId：点击时还不知道会话最终
+   * 落在哪个分屏（宿主按「聚焦分屏」换会话），所以整窗下发、由各 pane 的
+   * ChatApp 自己按 `sessionId === 当前会话` 认领，同一个种子最多被一个实例用。
+   */
+  findSeed?: ChatAppProps["findSeed"];
   /** pane ChatApp 已把预填提示词写入输入框（携带 nonce）。 */
   onPrefillApplied?: (nonce: number) => void;
 }
@@ -142,6 +150,7 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({
   onToggleArtifacts,
   prefillRequest = null,
   onPrefillApplied,
+  findSeed,
 }) => {
   const panes: DesktopPane[] = useMemo(() => host.panes ?? [], [host.panes]);
   const focusedPaneId = host.focusedPaneId ?? panes[0]?.paneId ?? null;
@@ -766,6 +775,7 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({
         onDeleteSession={host.onDeleteSession}
         onRenameSession={host.onRenameSession}
         onRequestWorktreeChanges={host.onRequestWorktreeChanges}
+        onSearchSessionContents={host.onSearchSessionContents}
         sessionBoardActive={sessionBoardActive}
         onToggleSessionBoard={onToggleSessionBoard}
         pluginMarketActive={pluginMarketActive}
@@ -880,6 +890,7 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({
                                     : null
                                 }
                                 onPrefillApplied={onPrefillApplied}
+                                findSeed={findSeed}
                                 headerActions={
                                   panes.length > 1 ? (
                                     <button

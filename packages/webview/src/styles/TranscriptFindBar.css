@@ -1,0 +1,99 @@
+/* 会话内查找浮层（spec ui/transcript-find.md）。
+   零占位：sticky + height: 0，与吸顶用户消息条同一套做法——`.messages-column`
+   是虚拟列表的定位父级，任何有高度的流内元素都会把 spacer 以上撑高，把整张表的
+   绝对坐标推下去。 */
+.transcript-find-slot {
+  position: sticky;
+  top: 10px;
+  height: 0;
+  align-self: stretch;
+  display: flex;
+  justify-content: flex-end;
+  z-index: 30;
+  /* 零高度的槽位不该接住消息区的点击 / 滚轮。 */
+  pointer-events: none;
+}
+
+.transcript-find {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 8px;
+  padding: 5px 6px;
+  border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.35));
+  border-radius: 6px;
+  background: var(--vscode-editorWidget-background, rgba(40, 40, 40, 0.96));
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+}
+
+.transcript-find-input {
+  width: 180px;
+  min-width: 0;
+  padding: 3px 6px;
+  font-family: inherit;
+  font-size: 12px;
+  color: var(--vscode-input-foreground);
+  background: var(--vscode-input-background);
+  border: 1px solid var(--vscode-input-border, rgba(128, 128, 128, 0.4));
+  border-radius: 3px;
+  outline: none;
+}
+
+.transcript-find-input:focus {
+  border-color: var(--vscode-focusBorder, #007fd4);
+}
+
+.transcript-find-count {
+  flex: none;
+  min-width: 54px;
+  font-size: 11px;
+  text-align: right;
+  color: var(--vscode-descriptionForeground, #8b9099);
+  font-variant-numeric: tabular-nums;
+}
+
+.transcript-find-count--error {
+  color: var(--vscode-errorForeground, #f14c4c);
+}
+
+.transcript-find-btn {
+  flex: none;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 5px;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  background: transparent;
+  font-family: inherit;
+  font-size: 11px;
+  color: var(--vscode-foreground);
+  cursor: pointer;
+}
+
+.transcript-find-btn:hover {
+  background: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.2));
+}
+
+.transcript-find-btn.active {
+  background: var(
+    --vscode-inputOption-activeBackground,
+    rgba(0, 127, 212, 0.4)
+  );
+  border-color: var(--vscode-inputOption-activeBorder, #007fd4);
+}
+
+/* 命中高亮：包在已渲染的文本节点上（见 utils/transcriptFind.ts 的
+   wrapTextRange），不动 markdown 结构。 */
+mark.transcript-find-hit {
+  background: var(
+    --vscode-editor-findMatchHighlightBackground,
+    rgba(234, 92, 0, 0.33)
+  );
+  color: inherit;
+}
+
+mark.transcript-find-hit--current {
+  background: var(--vscode-editor-findMatchBackground, rgba(81, 92, 106, 0.7));
+  outline: 1px solid var(--vscode-editor-findMatchBorder, #f38518);
+}

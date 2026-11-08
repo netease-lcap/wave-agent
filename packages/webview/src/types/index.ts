@@ -286,6 +286,18 @@ export interface ChatAppProps {
   prefillRequest?: PrefillDraftRequest | null;
   /** 收到 pane ChatApp 已写入输入框的回执（携带 nonce，root 据此清 pending）。 */
   onPrefillApplied?: (nonce: number) => void;
+  /**
+   * 桌面端：侧栏「内容命中」点进来时要求就地打开查找条并落在指定命中上
+   * （spec desktop/desktop-sessions.md 场景 6）。`sessionId` 决定它归哪个 pane
+   * ——只有当前会话正好是它的实例才把它交给 MessageList，否则会被别的 pane
+   * 拿去在自己的会话里搜一个不属于它的词。
+   */
+  findSeed?: {
+    sessionId: string;
+    query: string;
+    hitIndex: number;
+    nonce: number;
+  };
 }
 
 /**
@@ -465,6 +477,17 @@ export interface DesktopHostProps {
    */
   onRequestWorktreeChanges: (sessionId: string, requestId: string) => void;
   /**
+   * 侧栏会话**正文**搜索（spec desktop-sessions.md「侧栏会话内容搜索」）：
+   * 宿主扫本机转录、用 requestId 相关的 `desktopSessionContentMatches` 回包。
+   * `sessionIds` 是当前被标题搜索与筛选取交集后仍在树上的会话——远端的、
+   * 被筛掉的都不参与（场景 7/10）。
+   */
+  onSearchSessionContents: (
+    query: string,
+    requestId: string,
+    sessionIds: string[],
+  ) => void;
+  /**
    * Open a session in a new pane (Cmd/Ctrl+Click on a sidebar session, or drag
    * one into the chat area). When the session is already shown, the host
    * focuses that pane instead. `opts` picks the target row / insertion gap /
@@ -622,6 +645,12 @@ export interface MessageListProps {
   onLoadEarlier?: (before: string) => void;
   /** 这份列表的文档标识（会话 id）：切走再切回来时按它恢复阅读位置。 */
   docKey?: string;
+  /**
+   * 外部要求就地打开查找条并落在指定命中上（侧栏「内容命中」点进来的一路，
+   * spec desktop/desktop-sessions.md 场景 6）。`nonce` 让「点了两次同一处」也能
+   * 重新触发——只比 query 的话第二次点击不会有任何反应。
+   */
+  initialFind?: { query: string; hitIndex: number; nonce: number };
 }
 
 export interface MessageProps {

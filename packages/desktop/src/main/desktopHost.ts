@@ -138,6 +138,10 @@ import { normalizeReleaseNotes, type ReleaseNoteEntry } from "./releaseNotes";
 import { usageFromQuotaHeaders } from "./accountUsage";
 import { parseVersion, compareVersions } from "./version";
 import { HOST_CHANNEL } from "./channels";
+import {
+  searchSessionContents,
+  selectLocalSessionIds,
+} from "./sessionContentSearch";
 import type { PanelKind } from "./menu";
 
 /**
@@ -505,6 +509,11 @@ export class DesktopHost {
       newCompleted: boolean;
     }>;
   }> = [];
+  /**
+   * 最近一次内容搜索的 requestId。用户接着打字会连发多笔查询（防抖后仍然可能重叠），
+   * 扫描过程中一旦发现自己的 id 已不是最新的就直接放弃，别再读完整库。
+   */
+  private latestContentSearchId = "";
   private pendingConfirmations = new Map<string, PendingConfirmation>();
   /** Agents whose waiting-for-confirmation toast has been shown this wait cycle
    *  (spec「后台会话确认提醒」scenario 4): cleared once the agent has no pending
@@ -601,6 +610,13 @@ export class DesktopHost {
     version: string;
     releaseNotes?: ReleaseNoteEntry[];
   } | null = null;
+
+  /**
+   * 本次退出是更新重启（S4「立即重启」→ quitAndInstall）发起的：用户刚刚在
+   * 对话框里知情确认过，退出保护不再问第二遍（spec desktop-shell.md 边界
+   * 「确认框与更新重启同时到达」）。一次性标记，由退出路径取走。
+   */
+  private updateRestartQuit = false;
 
   /**
    * 账户卡片快照 per host (登录态 + 用量), 跟随聚焦分屏的主机 (spec 场景 8)。
@@ -1036,6 +1052,29 @@ export class DesktopHost {
    */
   notifyFullScreen(fullScreen: boolean): void {
     this.postMessage({ command: "desktopFullScreen", fullScreen });
+  }
+
+  /**
+   * 真正在跑的**本地**会话数：退出确认的判据（spec desktop-shell.md「退出时
+   * 保护运行中的会话」场景 1/6）。
+   *
+   * 取 `agents` 池里的实时运行态而非侧栏树快照——快照是上一次推送的留影，
+   * 「刚结束还没推」「刚启动还没推」都会数错。运行中口径：正在流式生成、正在
+   * 执行工具（两者都在 `isStreaming` 里，工具执行本身属于一个 turn），或正等待
+   * 用户确认。空白会话没有 turn 在跑，自然不计（场景 5）；远端会话跑在远端
+   * daemon 上，退出应用不会打断（场景 6）。同一会话显示在两个分屏时是同一个
+   * agent 对象，只计一次（边界情况「多分屏」）。
+   */
+  countRunningLocalSessions(): number {
+    const waiting = new Set(
+      [...this.pendingConfirmations.values()].map((pending) => pending.agent),
+    );
+    let running = 0;
+    for (const agent of this.agents.values()) {
+      if (this.hostForAgent(agent) !== LOCAL_HOST) continue;
+      if (agent.isStreaming || waiting.has(agent)) running += 1;
+    }
+    return running;
   }
 
   /**
@@ -4385,6 +4424,60 @@ export class DesktopHost {
   }
 
   /**
+   * 侧栏会话内容搜索（spec desktop-sessions.md「侧栏会话内容搜索」）。
+   *
+   * 范围就是侧栏里能点开的那些**本地**会话：会话树的 id 集合是唯一入口，因为
+   * 结果点进去要落到一个真实存在的会话上。远端主机的 transcript 在远端 daemon 的
+   * 盘上，宿主机读不到，混进来只会得到「搜不到」的错觉（场景 9）。
+   *
+   * 不做索引：每次查询现读 transcript（与 Claude 桌面端同一取舍）。`requestId`
+   * 既是回复的归属键，也是扫描中途放弃的判据——用户接着打字时旧查询要尽快退出。
+   */
+  private async handleSearchSessionContents(
+    query: string,
+    requestId: string,
+    requestedIds?: string[],
+  ): Promise<void> {
+    if (typeof requestId !== "string" || !requestId) return;
+    this.latestContentSearchId = requestId;
+    // 只搜本机会话（远端转录在远端 daemon 的盘上）；`requestedIds` 是侧栏当前
+    // 树上剩下的会话（标题搜索 + 筛选取交集），给了就只认它——被筛掉的会话不该
+    // 出现在内容命中里（spec desktop-sessions.md「侧栏会话内容搜索」场景 7/10）。
+    const sessionIds = selectLocalSessionIds(
+      this.sessionTree,
+      requestedIds,
+      LOCAL_HOST,
+    );
+    try {
+      const result = await searchSessionContents(query, {
+        sessionIds,
+        isCancelled: () => this.latestContentSearchId !== requestId,
+      });
+      if (this.latestContentSearchId !== requestId) return;
+      this.postMessage({
+        command: "desktopSessionContentMatches",
+        requestId,
+        query,
+        matches: result.matches,
+        truncated: result.truncated,
+      });
+    } catch (error) {
+      console.error("[DesktopHost] 会话内容搜索失败:", error);
+      // 失败也要回包：不回的话界面的「搜索中」会一直转下去。`failed` 让界面
+      // 说「暂不可用 + 重试」而不是误导成「没有命中」。
+      if (this.latestContentSearchId !== requestId) return;
+      this.postMessage({
+        command: "desktopSessionContentMatches",
+        requestId,
+        query,
+        matches: [],
+        truncated: false,
+        failed: true,
+      });
+    }
+  }
+
+  /**
    * What deleting this session's worktree would destroy — the counts shown in
    * the sidebar's delete confirmation. Inspected on the entry's own host: a
    * remote worktree must be counted remotely (spec 「删除 worktree 会话前提示
@@ -4718,6 +4811,18 @@ export class DesktopHost {
         await this.handleGetWorktreeChanges(
           msg.sessionId as string,
           msg.requestId as string,
+        );
+        break;
+
+      // 侧栏内容搜索（spec desktop-sessions.md「侧栏会话内容搜索」）：搜的是
+      // transcript 文件本身，与会话标题筛选是两条互不相干的通道。
+      case "desktopSearchSessionContents":
+        await this.handleSearchSessionContents(
+          msg.query as string,
+          msg.requestId as string,
+          Array.isArray(msg.sessionIds)
+            ? (msg.sessionIds as string[])
+            : undefined,
         );
         break;
 
@@ -7364,9 +7469,23 @@ export class DesktopHost {
 
   /** 立即重启（webview desktopUpdateRestart，S3）→ 复位状态 + quitAndInstall。 */
   private handleDesktopUpdateRestart(): void {
+    // 用户在确认框里主动点了「立即重启」，就是知情下的强制重启（对话框正文已说明
+    // 会中断正在运行的任务）：宿主照办，不替他再判断一次。
     this.updateState = null;
     this.pushAccountInfo();
+    // 这次退出不再走退出确认框——同一个决定不连问两遍
+    // （spec desktop-shell.md 边界「确认框与更新重启同时到达」）。
+    this.updateRestartQuit = true;
     this.autoUpdaterService?.quitAndInstall();
+  }
+
+  /**
+   * 取走「本次退出由更新重启发起」的标记（一次性）。退出确认据此跳过提问。
+   */
+  consumeUpdateRestartQuit(): boolean {
+    const pending = this.updateRestartQuit;
+    this.updateRestartQuit = false;
+    return pending;
   }
 
   /**

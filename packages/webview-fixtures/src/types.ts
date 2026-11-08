@@ -1122,6 +1122,51 @@ export interface DesktopSessionTreeMessage extends HostToWebviewMessageBase {
   groups: DesktopSessionGroup[];
 }
 
+/**
+ * 侧栏内容搜索的一条命中（spec desktop/desktop-sessions.md「侧栏会话内容搜索」）。
+ *
+ * `snippet` 是截断过的上下文（命中处前后各取一段，换行折成空格），`offset` /
+ * `length` 是命中词在 `snippet` 内的位置，渲染端据此加粗——把关键词交给渲染端自己
+ * 去匹配会让大小写与正则开关下显示错位。
+ */
+export interface SessionContentSnippet {
+  text: string;
+  offset: number;
+  length: number;
+  /** 该会话内的第几个命中（0 起）：点击跳转时用作查找条要落在哪一处。 */
+  hitIndex: number;
+}
+
+/** 一个会话的内容命中汇总：`hitCount` 是全部命中数，`snippets` 只是其中几条。 */
+export interface SessionContentMatch {
+  sessionId: string;
+  hitCount: number;
+  snippets: SessionContentSnippet[];
+}
+
+/**
+ * 侧栏内容搜索的回复。请求是 `desktopSearchSessionContents`
+ * （`{ query, requestId, sessionIds }`），回复按 `requestId` 比对弃旧——用户连续
+ * 输入时会有多笔在途查询。
+ *
+ * 只覆盖**本地**会话：远端主机的转录在远端 daemon 的盘上，宿主机读不到（见 spec
+ * 场景 9）。
+ */
+export interface DesktopSessionContentMatchesMessage
+  extends HostToWebviewMessageBase {
+  command: "desktopSessionContentMatches";
+  requestId: string;
+  query: string;
+  matches: SessionContentMatch[];
+  /** 命中数到上限 / 文件过大没读完时为真（界面提示「结果已截断」）。 */
+  truncated?: boolean;
+  /**
+   * 这次搜索**失败了**（读盘整次失败）。必须与「没有命中」区分开：界面要显示
+   * 「搜索暂不可用」并给重试，而不是静默显示成「无结果」（spec 场景 5）。
+   */
+  failed?: boolean;
+}
+
 export interface DesktopWorkdirStateMessage extends HostToWebviewMessageBase {
   command: "desktopWorkdirState";
   workdir?: string;
@@ -1641,6 +1686,7 @@ export type HostToWebviewMessage =
   | DesktopFullScreenMessage
   | DesktopPanesMessage
   | DesktopSessionTreeMessage
+  | DesktopSessionContentMatchesMessage
   | DesktopWorkdirStateMessage
   | McpServersResponseMessage
   | SubagentConfigurationsResponseMessage
@@ -1764,6 +1810,9 @@ type ReplyAttribution = {
   // 「重连补差 / 整表替换」共用同一份列表，晚到的旧页必须按 requestId 丢弃
   // （否则会把上一页 prepend 到已经翻走的位置上）。
   earlierMessages: "requestId";
+  // 侧栏内容搜索：输入每变一次发一笔查询，晚到的旧结果必须按 requestId 丢弃，
+  // 否则会把上一轮的命中列表贴在新关键词下面。
+  desktopSessionContentMatches: "requestId";
 };
 
 // ---- 编译期断言：注册表中的每条响应命令，union 成员必须必填其归属键。 ----
@@ -1824,6 +1873,7 @@ export const replyAttributionLocked = {
   recentWorkdirsResponse: true,
   imagePreviewResponse: true,
   earlierMessages: true,
+  desktopSessionContentMatches: true,
 } satisfies {
   [C in keyof ReplyAttribution & string]: ReplyAttributionSatisfied[C];
 };

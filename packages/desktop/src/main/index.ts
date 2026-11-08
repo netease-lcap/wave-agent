@@ -9,10 +9,12 @@
 import {
   app,
   BrowserWindow,
+  dialog,
   ipcMain,
   nativeImage,
   session,
   shell,
+  type MessageBoxOptions,
 } from "electron";
 import { execFileSync } from "child_process";
 import * as fs from "fs";
@@ -204,6 +206,43 @@ function showMainWindow(): void {
   if (mainWindow.isMinimized()) mainWindow.restore();
   mainWindow.show();
   mainWindow.focus();
+}
+
+/**
+ * 退出前问一次：还有本地会话在跑时先确认（spec desktop-shell.md「退出时保护
+ * 运行中的会话」）。返回 false = 用户取消，本次退出作废。
+ *
+ * 计数取宿主里 agent 的**实时运行态**，不是侧栏快照；只看本地会话（远端会话
+ * 跑在远端 daemon 上，退出应用不会打断它们）。没有会话在跑时直接放行——常规
+ * 退出不该多一次点击。
+ *
+ * 窗口可能正缩在托盘里或已最小化：先把窗口叫回前台再弹框，否则对话框出现在
+ * 用户看不见的地方（场景 7）。
+ */
+async function confirmQuitWithRunningSessions(): Promise<boolean> {
+  // 更新重启（S4「立即重启」→ quitAndInstall）发起的退出不再问第二遍：用户刚刚
+  // 在对话框里知情确认过会中断任务（spec desktop-shell.md 边界「确认框与更新重启
+  // 同时到达：两者不得同时向用户提问」）。
+  if (host?.consumeUpdateRestartQuit()) return true;
+  const running = host?.countRunningLocalSessions() ?? 0;
+  if (running === 0) return true;
+  showMainWindow();
+  const win = mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined;
+  const options: MessageBoxOptions = {
+    type: "warning",
+    buttons: ["取消", "仍然退出"],
+    // 默认焦点与 Esc 都落在「取消」：一次误按回车不该把正在跑的一轮杀掉
+    // （场景 2）。
+    defaultId: 0,
+    cancelId: 0,
+    noLink: true,
+    message: `还有 ${running} 个会话正在运行`,
+    detail: "退出会中断正在生成的内容、执行中的工具与后台命令。仍要退出吗？",
+  };
+  const { response } = win
+    ? await dialog.showMessageBox(win, options)
+    : await dialog.showMessageBox(options);
+  return response === 1;
 }
 
 // Session-switch shortcuts (Ctrl+Tab / Ctrl+Shift+Tab, macOS also
@@ -421,15 +460,23 @@ if (!gotLock) {
     onDisposeError: (error) => {
       hostLog.error("[desktop] host dispose failed during quit:", error);
     },
+    // 有本地会话在跑时先问一次（spec「退出时保护运行中的会话」）。
+    confirmQuit: () => confirmQuitWithRunningSessions(),
+    // 确认之后才 latch「正在退出」：用户在确认框上点了取消时，这个 latch 若已
+    // 置位，Windows 的「关窗即隐藏到托盘」会失效到下次重启为止。
+    onQuitConfirmed: () => trayController.markQuitting(),
   });
 
   app.on("before-quit", (event) => {
-    // Any real quit (tray 退出, menu 文件 → 退出, updater's quitAndInstall)
-    // arrives here first: latch it so the window's `close` handler stops
-    // hiding the window to the tray and lets the quit sequence continue.
-    trayController.markQuitting();
     // Nothing to dispose yet (quit during startup): let Electron finish.
-    if (!host) return;
+    if (!host) {
+      trayController.markQuitting();
+      return;
+    }
+    // Any real quit (tray 退出, menu 文件 → 退出, updater's quitAndInstall)
+    // arrives here first; handleQuit latches the quitting state (see
+    // onQuitConfirmed) so the window's `close` handler stops hiding the window
+    // to the tray and lets the quit sequence continue.
     handleQuit(event);
   });
 }

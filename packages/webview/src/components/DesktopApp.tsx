@@ -16,6 +16,7 @@ import { useHostMessage } from "../utils/useHostMessage";
 import { withDraftGuard } from "../utils/fileDraftGuard";
 import { useSessionRename } from "../utils/useSessionRename";
 import {
+  ChatAppProps,
   VsCodeApi,
   DesktopWorkdirState,
   DesktopSessionGroup,
@@ -56,6 +57,11 @@ export const DesktopApp: React.FC<DesktopAppProps> = ({ vscode }) => {
   // handler closes over refs, not state, so both messages see fresh values).
   const panesRef = useRef<DesktopPane[]>([]);
   const sessionTreeRef = useRef<DesktopSessionGroup[]>([]);
+  // 侧栏「内容命中」的跳转种子（spec desktop/desktop-sessions.md 场景 6）：
+  // 先进会话、再由 ChatApp 交给自己那一侧的 MessageList 打开查找条落位。
+  // nonce 递增，连点同一处也能重新落位。
+  const [findSeed, setFindSeed] = useState<ChatAppProps["findSeed"]>(undefined);
+  const findSeedNonceRef = useRef(0);
 
   // Panel groups are remembered per session: keep entries for live pane
   // buckets, pane-bound sessions, and sessions still in the sidebar tree —
@@ -172,6 +178,30 @@ export const DesktopApp: React.FC<DesktopAppProps> = ({ vscode }) => {
     [vscode],
   );
 
+  /**
+   * 侧栏内容命中 → 切换到该会话并让它在自己的 pane 里打开查找条、落在这一处。
+   * 顺序不能反：先种下种子再切会话，MessageList 收到新会话的数据时种子已经在
+   * 手上（播种在找不到消息时不记已落位，数据到齐会自动补上）。
+   */
+  const handleOpenSessionFindHit = useCallback(
+    (
+      targetWorkdir: string,
+      sessionId: string,
+      query: string,
+      hitIndex: number,
+    ) => {
+      findSeedNonceRef.current += 1;
+      setFindSeed({
+        sessionId,
+        query,
+        hitIndex,
+        nonce: findSeedNonceRef.current,
+      });
+      handleSelectSession(targetWorkdir, sessionId);
+    },
+    [handleSelectSession],
+  );
+
   const handleDeleteSession = useCallback(
     (sessionId: string) => {
       withDraftGuard(() =>
@@ -187,6 +217,23 @@ export const DesktopApp: React.FC<DesktopAppProps> = ({ vscode }) => {
         command: "desktopGetWorktreeChanges",
         sessionId,
         requestId,
+      });
+    },
+    [vscode],
+  );
+
+  /**
+   * 侧栏「内容命中」：宿主扫本机转录找正文命中的会话与片段。只把**当前树上**
+   * 的本机会话 id 送过去——远端会话的转录在远端 daemon 上（spec 场景 10），
+   * 被筛/搜掉的会话也不该出现在结果里（场景 7）。
+   */
+  const handleSearchSessionContents = useCallback(
+    (query: string, requestId: string, sessionIds: string[]) => {
+      vscode.postMessage({
+        command: "desktopSearchSessionContents",
+        query,
+        requestId,
+        sessionIds,
       });
     },
     [vscode],
@@ -242,9 +289,10 @@ export const DesktopApp: React.FC<DesktopAppProps> = ({ vscode }) => {
     // 窗口级 chrome 状态（sidebarCollapsed/fullScreen）单一权威：root、pane
     // 任何 ChatApp 实例与 DesktopShell/DesktopSidebar 同源读取（不再逐层
     // props 透传 / 各实例留本地副本）。见 DesktopChromeContext.tsx。
-    <DesktopChromeProvider>
+    <DesktopChromeProvider onOpenSessionFindHit={handleOpenSessionFindHit}>
       <ChatApp
         vscode={vscode}
+        findSeed={findSeed}
         host={{
           type: "desktop",
           host,
@@ -264,6 +312,7 @@ export const DesktopApp: React.FC<DesktopAppProps> = ({ vscode }) => {
           onDeleteSession: handleDeleteSession,
           onRenameSession: renameSession,
           onRequestWorktreeChanges: handleRequestWorktreeChanges,
+          onSearchSessionContents: handleSearchSessionContents,
           onOpenPane: handleOpenPane,
           panes,
           rowHeights,

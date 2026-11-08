@@ -388,7 +388,9 @@
   border-radius: 50%;
 }
 
-[data-host="desktop"] .desktop-session-filter-opt.is-on .desktop-session-filter-box {
+[data-host="desktop"]
+  .desktop-session-filter-opt.is-on
+  .desktop-session-filter-box {
   border-color: var(--cc-action-primary, #1f2329);
   background: var(--cc-action-primary, #1f2329);
 }
@@ -402,8 +404,12 @@
    这里把折线拆成两段圆头小棒（::before 短边 / ::after 长边），
    长度 = 线段长 + 描边宽（圆头各外扩半个描边），圆心落在两段中点上；
    坐标以 16 盒的 padding box（14×14、内移 1px）为原点。Light 描边 1.7。 */
-[data-host="desktop"] .desktop-session-filter-opt.is-on .desktop-session-filter-box::before,
-[data-host="desktop"] .desktop-session-filter-opt.is-on .desktop-session-filter-box::after {
+[data-host="desktop"]
+  .desktop-session-filter-opt.is-on
+  .desktop-session-filter-box::before,
+[data-host="desktop"]
+  .desktop-session-filter-opt.is-on
+  .desktop-session-filter-box::after {
   content: "";
   position: absolute;
   height: 1.7px;
@@ -413,7 +419,9 @@
 }
 
 /* 短边 (4,8)→(6.75,10.75)：长 3.89 → 5.59，中点 (4.375, 8.375) */
-[data-host="desktop"] .desktop-session-filter-opt.is-on .desktop-session-filter-box::before {
+[data-host="desktop"]
+  .desktop-session-filter-opt.is-on
+  .desktop-session-filter-box::before {
   width: 5.59px;
   left: 1.58px;
   top: 7.53px;
@@ -421,7 +429,9 @@
 }
 
 /* 长边 (6.75,10.75)→(12,5.5)：长 7.42 → 9.12，中点 (8.375, 7.125) */
-[data-host="desktop"] .desktop-session-filter-opt.is-on .desktop-session-filter-box::after {
+[data-host="desktop"]
+  .desktop-session-filter-opt.is-on
+  .desktop-session-filter-box::after {
   width: 9.12px;
   left: 3.81px;
   top: 6.28px;
@@ -456,7 +466,9 @@
 }
 
 /* 单选点：Light 6 / Dark 7，居中 */
-[data-host="desktop"] .desktop-session-filter-opt.is-on .desktop-session-filter-box--dot::after {
+[data-host="desktop"]
+  .desktop-session-filter-opt.is-on
+  .desktop-session-filter-box--dot::after {
   left: 50%;
   top: 50%;
   width: 6px;
@@ -480,7 +492,9 @@
 }
 
 /* 单选不出对勾的短边 */
-[data-host="desktop"] .desktop-session-filter-opt.is-on .desktop-session-filter-box--dot::before {
+[data-host="desktop"]
+  .desktop-session-filter-opt.is-on
+  .desktop-session-filter-box--dot::before {
   content: none;
 }
 
@@ -529,4 +543,113 @@
 /* 浅色档没有 --cc-action-primary-active，按 0915 约定回落 #111318 */
 [data-host="desktop"] .desktop-session-filter-btn--primary:active {
   background: var(--cc-action-primary-active, #111318);
+}
+
+/* ── 「内容命中」区（spec desktop/desktop-sessions.md「侧栏会话内容搜索」场景 2） ──
+   标题过滤结果在上、正文命中的会话平铺在下，两段之间用 1px 细边 + 小标题分隔；
+   内容命中的会话**不**混进目录分组（它们本来就散落在多个分组里）。
+   本节整体落在 `.desktop-session-tree` 这个唯一的滚动区内，避免侧栏出现第二条
+   滚动轴。 */
+.desktop-content-hits {
+  margin: 8px 4px 0 0;
+  padding: 8px 8px 0;
+  border-top: 1px solid var(--cc-border-lighter, #ebeef5);
+}
+
+.desktop-content-hits-title {
+  margin-bottom: 4px;
+  padding: 0 8px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--vscode-descriptionForeground);
+}
+
+.desktop-content-hits-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px 4px;
+  font-size: 13px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.desktop-content-hits-retry {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--vscode-textLink-foreground);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.desktop-content-hits-retry:hover {
+  text-decoration: underline;
+}
+
+.desktop-content-hits-list,
+.desktop-content-hit-snippets {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.desktop-content-hit {
+  margin-bottom: 4px;
+}
+
+/* 会话标题行：标题可截断，所属目录跟在右侧（场景 2 要求两者都在行内）。 */
+.desktop-content-hit-head {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 2px 8px;
+  font-size: 13px;
+  color: var(--vscode-foreground);
+}
+
+.desktop-content-hit-name {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.desktop-content-hit-dir {
+  flex-shrink: 0;
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground);
+}
+
+/* 片段：一行截断，命中词高亮。整行是按钮——点哪都跳到那条消息。 */
+.desktop-content-hit-snippet {
+  display: block;
+  width: 100%;
+  padding: 4px 8px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--vscode-descriptionForeground);
+  font-size: 12px;
+  line-height: 18px;
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.desktop-content-hit-snippet:hover {
+  background: var(--cc-fill-hover, #eef0f3);
+  color: var(--vscode-foreground);
+}
+
+.desktop-content-hit-mark {
+  background: var(--vscode-editor-findMatchHighlightBackground, #f8d486);
+  color: inherit;
+  border-radius: 2px;
+}
+
+html[data-theme="dark"] .desktop-content-hit-mark {
+  background: rgba(248, 212, 134, 0.3);
+  color: inherit;
 }

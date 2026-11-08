@@ -9,8 +9,19 @@ import React, {
   useState,
 } from "react";
 import { Message } from "./Message";
+import { EMPTY_TRANSCRIPT_FIND, TranscriptFindBar } from "./TranscriptFindBar";
+import type { TranscriptFindState } from "./TranscriptFindBar";
 import { streamingTail } from "../utils/streamingText";
 import { countTimelineBlocks } from "../utils/timelineBlocks";
+import {
+  buildFindRegex,
+  clearFindMarks,
+  countMessageHits,
+  findRanges,
+  FIND_HIT_CLASS,
+  FIND_HIT_CURRENT_CLASS,
+  wrapTextRange,
+} from "../utils/transcriptFind";
 import { estimateRowHeight } from "../virtual/estimateRowHeight";
 import { useVirtualRows } from "../virtual/useVirtualRows";
 import type { MessageListProps } from "../types";
@@ -78,6 +89,7 @@ export const MessageList = forwardRef<
     isLoadingEarlier,
     onLoadEarlier,
     docKey,
+    initialFind,
   },
   ref,
 ) {
@@ -196,6 +208,208 @@ export const MessageList = forwardRef<
   // the imperative handle must not capture a stale render).
   const visibleMessagesRef = useRef(visibleMessages);
   visibleMessagesRef.current = visibleMessages;
+
+  // ---- 会话内查找（spec ui/transcript-find.md）------------------------------
+  // 计数与跳转走消息数据、高亮画在渲染后的文本节点上，两层分开的理由见
+  // `utils/transcriptFind.ts` 的文件头：虚拟列表只挂载可见行，只搜 DOM 会让
+  // 「共几个命中」漏掉整段未挂载的历史。
+  const [find, setFind] = useState<TranscriptFindState & { open: boolean }>({
+    ...EMPTY_TRANSCRIPT_FIND,
+    open: false,
+  });
+
+  const findRegex = useMemo(
+    () =>
+      buildFindRegex(find.query, {
+        caseSensitive: find.caseSensitive,
+        wholeWord: find.wholeWord,
+        regex: find.regex,
+      }),
+    [find.query, find.caseSensitive, find.wholeWord, find.regex],
+  );
+
+  // 命中数按消息对象引用缓存：流式每来一个 chunk 都会换掉尾巴那条消息的对象，
+  // 其余消息的引用不变，于是长会话每次只重算真正变了的那一条。
+  const findHitCacheRef = useRef<{
+    regex: RegExp | null;
+    counts: WeakMap<MessageType, number>;
+  }>({ regex: null, counts: new WeakMap() });
+
+  const findHits = useMemo(() => {
+    const regex = findRegex.regex;
+    if (!find.open || !regex) return [];
+    if (findHitCacheRef.current.regex !== regex) {
+      findHitCacheRef.current = { regex, counts: new WeakMap() };
+    }
+    const counts = findHitCacheRef.current.counts;
+    const hits: Array<{ messageId: string; indexInMessage: number }> = [];
+    for (const message of visibleMessages) {
+      let count = counts.get(message);
+      if (count === undefined) {
+        count = countMessageHits(message, regex);
+        counts.set(message, count);
+      }
+      for (let i = 0; i < count; i++) {
+        hits.push({ messageId: message.id, indexInMessage: i });
+      }
+    }
+    return hits;
+  }, [find.open, findRegex, visibleMessages]);
+
+  const findTotal = findHits.length;
+  // 1-based 的 `current` 永远夹在有效区间里：命中数会随流式增长/查询变化而变，
+  // 越界不作夹取的话，计数会显示成「7/3」。
+  const findCurrentIndex =
+    findTotal === 0 ? -1 : Math.min(Math.max(find.current, 1), findTotal) - 1;
+  const findCurrentHit =
+    findCurrentIndex >= 0 ? findHits[findCurrentIndex] : undefined;
+
+  // 已经滚到过哪一处。只有「查询 / 开关 / 当前序号」变了才允许再动视口——命中
+  // 列表本身每来一个 chunk 都会重算，拿它当触发条件会在流式期间把读者按在原地。
+  const findLocatedRef = useRef("");
+  useEffect(() => {
+    if (!find.open || !findCurrentHit) {
+      findLocatedRef.current = "";
+      return;
+    }
+    const key = [
+      find.query,
+      find.caseSensitive ? 1 : 0,
+      find.wholeWord ? 1 : 0,
+      find.regex ? 1 : 0,
+      findCurrentIndex,
+    ].join("\u0000");
+    if (findLocatedRef.current === key) return;
+    const index = visibleMessagesRef.current.findIndex(
+      (m) => m.id === findCurrentHit.messageId,
+    );
+    // 找不到就**不记**这个 key：侧栏跳进来的种子可能在消息还没恢复时就先到了，
+    // 记下来的话数据到齐后这次落位永远不会补做。
+    if (index < 0) return;
+    findLocatedRef.current = key;
+    // 与点吸顶条同一条路：先松开钉底再落位，否则下一个流式 chunk 立刻把视口
+    // 拽回底部，命中还没看清就被搬走。
+    unpin();
+    scrollToIndex(index, "center", "auto");
+  }, [
+    find.open,
+    find.query,
+    find.caseSensitive,
+    find.wholeWord,
+    find.regex,
+    findCurrentIndex,
+    findCurrentHit,
+    scrollToIndex,
+    unpin,
+  ]);
+
+  /**
+   * Paint the marks over whatever rows are mounted right now.
+   *
+   * No dependency array on purpose: React rebuilds a row's nodes whenever its
+   * markdown changes (every streaming chunk), which drops the marks painted on
+   * the previous frame — the pass has to re-run after each commit or the
+   * highlight flickers off. It is cheap only because it bails out unless the
+   * bar is open, and a frame-throttled rAF keeps a burst of chunks to one pass.
+   */
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    const handle = requestAnimationFrame(() => {
+      clearFindMarks(container);
+      const regex = findRegex.regex;
+      if (!find.open || !regex) return;
+      const current = findCurrentHit;
+      container.querySelectorAll<HTMLElement>(".virtual-row").forEach((row) => {
+        const text = row.textContent ?? "";
+        if (!text) return;
+        const isCurrentRow =
+          !!current && row.dataset.measuredMessageId === current.messageId;
+        findRanges(regex, text).forEach((range, i) => {
+          const isCurrent = isCurrentRow && current?.indexInMessage === i;
+          wrapTextRange(
+            row,
+            range.start,
+            range.length,
+            isCurrent
+              ? `${FIND_HIT_CLASS} ${FIND_HIT_CURRENT_CLASS}`
+              : FIND_HIT_CLASS,
+          );
+        });
+      });
+    });
+    return () => cancelAnimationFrame(handle);
+  });
+
+  const closeFind = useCallback(() => {
+    setFind({ ...EMPTY_TRANSCRIPT_FIND, open: false });
+    // 关掉之后焦点回到正文（场景 5）：留在输入框里的话，下一次键盘滚动会被它吃掉。
+    containerRef.current?.focus();
+  }, [containerRef]);
+
+  const stepFind = useCallback(
+    (delta: number) => {
+      const total = findHits.length;
+      if (total === 0) return;
+      setFind((prev) => {
+        const base = Math.min(Math.max(prev.current || 1, 1), total);
+        const next = ((((base - 1 + delta) % total) + total) % total) + 1;
+        return { ...prev, current: next };
+      });
+    },
+    [findHits],
+  );
+
+  // `Ctrl/Cmd+F` 打开（场景 1）。焦点可能在任何地方（输入框、消息行、工具行），
+  // 所以监听挂在 window 上；文件/预览面板有自己的查找条（spec
+  // desktop-file-panel.md），事件源落在那边时这条不接管，否则会同时开两个。
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target;
+      const inAuxPanel =
+        target instanceof Element &&
+        !!target.closest(
+          '[data-testid="preview-pane"], .file-pane-layout, .file-pane-find',
+        );
+      if (inAuxPanel) return;
+      const accel = event.ctrlKey || event.metaKey;
+      if (accel && event.key.toLowerCase() === "f") {
+        event.preventDefault();
+        setFind((prev) => ({ ...prev, open: true }));
+        return;
+      }
+      if (event.key === "Escape") {
+        setFind((prev) => {
+          if (!prev.open) return prev;
+          return { ...EMPTY_TRANSCRIPT_FIND, open: false };
+        });
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
+  // 换会话就关掉：新会话的命中与旧的关键词无关，留下的高亮还会指向已被卸载的行。
+  useEffect(() => {
+    setFind({ ...EMPTY_TRANSCRIPT_FIND, open: false });
+  }, [docKey]);
+
+  // 侧栏「内容命中」跳进来（spec desktop/desktop-sessions.md 场景 6）：把种子变成
+  // 一次真正的查找。`nonce` 让连点同一处也能重新落位。消息还没到时 `findHits` 为空、
+  // 落位那一步会因为找不到行直接返回且不记 key，等数据到齐后会自己补上。
+  const initialFindNonceRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (!initialFind) return;
+    if (initialFindNonceRef.current === initialFind.nonce) return;
+    initialFindNonceRef.current = initialFind.nonce;
+    setFind((prev) => ({
+      ...prev,
+      open: true,
+      query: initialFind.query,
+      current: initialFind.hitIndex + 1,
+    }));
+  }, [initialFind]);
+
   // 上翻的开关与回调也走 ref：滚动 handler 挂在 effect 里、依赖里没有它们，
   // 直接闭包会读到挂载那一刻的值（hasEarlier 要到首屏回包之后才翻真）。
   const hasEarlierRef = useRef(false);
@@ -561,12 +775,30 @@ export const MessageList = forwardRef<
       id="messagesContainer"
       className={`messages-container${isStreaming ? " streaming" : ""}${isCompacting ? " compacting" : ""} messages-container--virtual`}
       data-testid="messages-container"
+      // 程序性焦点目标（关闭查找条后把焦点还给正文）：-1 不进入 Tab 序列，
+      // 只是让 `focus()` 有落点。
+      tabIndex={-1}
     >
       {/* The scroll surface is the whole pane; the capped, centered column
           lives in this inner wrapper (see MessageList.css). Rows resolve
           against it (position: relative), so its offset from the scroll
           surface must stay 0 — the 10px padding is inside it. */}
       <div className="messages-column" ref={columnRef}>
+        {find.open && (
+          <TranscriptFindBar
+            find={{ ...find, current: findCurrentIndex + 1 }}
+            total={findTotal}
+            error={findRegex.error}
+            onQueryChange={(query) =>
+              setFind((prev) => ({ ...prev, query, current: 1 }))
+            }
+            onStep={stepFind}
+            onToggle={(key) =>
+              setFind((prev) => ({ ...prev, [key]: !prev[key], current: 1 }))
+            }
+            onClose={closeFind}
+          />
+        )}
         {stickyMessage && (
           <div className="sticky-user-wrapper">
             <div className="sticky-user-cap" />
