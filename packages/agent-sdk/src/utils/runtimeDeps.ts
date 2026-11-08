@@ -77,6 +77,11 @@ import {
 import { extractNpmTarball } from "./npmTarball.js";
 import { getRgPath, resetRipgrep, resolveRipgrep } from "./ripgrep.js";
 import {
+  getSearchTools,
+  resetSearchTools,
+  resolveSearchTools,
+} from "./searchTools.js";
+import {
   SANDBOX_RUNTIME_PACKAGE,
   isSandboxRuntimeAvailable,
   isSandboxRuntimeOnDisk,
@@ -194,6 +199,39 @@ const ripgrepDependency: RuntimeDependency = {
 };
 
 /**
+ * 内嵌搜索工具行（`wave-search-tools`）：Bash 工具里 `grep` / `find` 影子背后
+ * 的 ugrep 与 bfs（`core/fs-tools.md`「搜索命令的内嵌化」）。
+ *
+ * 与 ripgrep 行同形：主包无依赖，平台包按 `<platform>-<arch>` 键在
+ * `optionalDependencies` 里，Linux 每个架构只发一份（不算 libc 家族）。
+ *
+ * Windows 另有一条口径：那里唯一的 shell 是 Git Bash，msys 自带的 GNU
+ * grep / findutils 已经等价，所以不注入影子、也不需要这份下载。
+ * `isAvailable` 在 Windows 上直接返回 true —— 它的语义在这里是「这一行不再
+ * 需要下载任何东西」，把整包挡在下载批次之外，而不是「二进制就在手边」。
+ */
+const searchToolsDependency: RuntimeDependency = {
+  name: "wave-search-tools",
+  sharedPackages(entry) {
+    return [{ name: "wave-search-tools", range: entry.version }];
+  },
+  platformPackages(entry, platformKey) {
+    const name = `wave-search-tools-${platformKey}`;
+    const range = entry.optionalDependencies?.[name];
+    if (!range) {
+      throw new Error(`搜索工具不支持当前平台（${platformKey}）：缺 ${name}`);
+    }
+    return [{ name, range }];
+  },
+  libcAwarePlatformKey: false,
+  isAvailable: () =>
+    process.platform === "win32" || getSearchTools() !== undefined,
+  loadsFrom: (requireBase) =>
+    resolveSearchTools(requireFnFor(requireBase)) !== undefined,
+  onInstalled: () => resetSearchTools(),
+};
+
+/**
  * Bash 沙箱运行时行。
  *
  * `@anthropic-ai/sandbox-runtime` 是 12MB 的 vendor 负载（其中 7.3MB 是 Windows
@@ -227,6 +265,7 @@ const sandboxRuntimeDependency: RuntimeDependency = {
 const RUNTIME_DEPENDENCIES: RuntimeDependency[] = [
   sharpDependency,
   ripgrepDependency,
+  searchToolsDependency,
 ];
 
 /** `<home>/.wave/cli` — where hosts copy the CLI into and share downloads. */

@@ -127,6 +127,9 @@ importers:
       turndown:
         specifier: ^7.2.2
         version: 7.2.2
+      wave-search-tools:
+        specifier: ^0.2.0
+        version: 0.2.0
     devDependencies:
       '@types/semver':
         specifier: ^7.7.1
@@ -6811,6 +6814,39 @@ packages:
   w3c-xmlserializer@5.0.0:
     resolution: {integrity: sha512-o8qghlI8NZHU1lLPrpi2+Uq7abh4GGPpYANlalzWxyWteJOCsr/P+oPBA49TOLu5FTZO4d3F9MnWJfiMo4BkmA==}
     engines: {node: '>=18'}
+
+  wave-search-tools-darwin-arm64@0.2.0:
+    resolution: {integrity: sha512-20gTboeKjChQTDBMjTBjofR2R7LYPtRSFQGP5h/MtUjkaivdfM2x2zbEB3Ck39IUIhKXKoRvwAJAqACvrWMNuw==}
+    cpu: [arm64]
+    os: [darwin]
+    hasBin: true
+
+  wave-search-tools-darwin-x64@0.2.0:
+    resolution: {integrity: sha512-DzMFuxS33hPeIPSZg92V9fECCOSDh9PSr/Q7/3abhJvUnzYIQBtdJx6//iHTCleblc6o8EC4Q92cYESSjNeO8g==}
+    cpu: [x64]
+    os: [darwin]
+    hasBin: true
+
+  wave-search-tools-linux-arm64@0.2.0:
+    resolution: {integrity: sha512-wrQV9KvjhEIdnCnjqHoufOrOp9QO0hG7Ma6DCb5qbaLWquJ57545WyAvnTDKNn6tvbNJ3oB9DYde6dEL3+eEuA==}
+    cpu: [arm64]
+    os: [linux]
+    hasBin: true
+
+  wave-search-tools-linux-x64@0.2.0:
+    resolution: {integrity: sha512-PUJZrvLlW6X6s7S4DhfAPKjRIKjF22UEjiZ1QkoS6bmp35Fy7PdNWjfDfdz2+KJ0GASZtAXMk+cPVunqihX+BQ==}
+    cpu: [x64]
+    os: [linux]
+    hasBin: true
+
+  wave-search-tools-win32-x64@0.2.0:
+    resolution: {integrity: sha512-CstzSXeBY2WBhBwnFYxV5bbXsvNchytRWcB54eqbEGc9lRXTdP62A8fTwSj+PyyGsBIQT3aEgGBB1bvSXRDDbg==}
+    cpu: [x64]
+    os: [win32]
+    hasBin: true
+
+  wave-search-tools@0.2.0:
+    resolution: {integrity: sha512-APvf936BS2nu7j88uabGwh6mPAStajN/S5xyuIk1F+g30yODQZH1VsWjTC72OaqdsXE5h+fe9gJwAdTBUWZOFA==}
 
   web-tree-sitter@0.21.0:
     resolution: {integrity: sha512-iJ+QJ6ikN9D9cG7Kh6q3KtAstYFUQbYZ8OjuPEJYWfj2kLrmp5I3C2n6WjE1Y3jvj7nJbkcrJytJGWUEhCxn+g==}
@@ -13922,6 +13958,29 @@ snapshots:
   w3c-xmlserializer@5.0.0:
     dependencies:
       xml-name-validator: 5.0.0
+
+  wave-search-tools-darwin-arm64@0.2.0:
+    optional: true
+
+  wave-search-tools-darwin-x64@0.2.0:
+    optional: true
+
+  wave-search-tools-linux-arm64@0.2.0:
+    optional: true
+
+  wave-search-tools-linux-x64@0.2.0:
+    optional: true
+
+  wave-search-tools-win32-x64@0.2.0:
+    optional: true
+
+  wave-search-tools@0.2.0:
+    optionalDependencies:
+      wave-search-tools-darwin-arm64: 0.2.0
+      wave-search-tools-darwin-x64: 0.2.0
+      wave-search-tools-linux-arm64: 0.2.0
+      wave-search-tools-linux-x64: 0.2.0
+      wave-search-tools-win32-x64: 0.2.0
 
   web-tree-sitter@0.21.0: {}
 

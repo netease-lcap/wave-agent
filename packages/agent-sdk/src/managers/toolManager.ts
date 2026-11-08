@@ -235,8 +235,6 @@ class ToolManager {
       exitPlanModeTool,
       enterPlanModeTool,
       askUserQuestionTool,
-      globTool,
-      grepTool,
       readTool,
       lspTool,
       agentTool,
@@ -249,6 +247,15 @@ class ToolManager {
       exitWorktreeTool,
       workflowTool,
     ];
+
+    // Grep / Glob are not part of the default tool set: content and file search
+    // run through the Bash tool's `grep` / `find` shadows
+    // (core/fs-tools.md「默认工具集不含搜索工具」). Naming either one in `--tools`
+    // is the only way back; `--allowedTools` is a permission allow-list and does
+    // not affect registration.
+    if (this.namesSearchTool()) {
+      builtInTools.push(globTool, grepTool);
+    }
 
     // Artifact is a feature-gated tool: on by default for a logged-in account,
     // opt-in via enableArtifact: true for anyone else, opt-out via false.
@@ -329,6 +336,25 @@ class ToolManager {
   /**
    * Check if a tool should be enabled based on tools configuration and permission rules
    */
+  /**
+   * Whether the caller named `Grep` or `Glob` in the `tools` whitelist.
+   *
+   * These two are the only built-ins that are off unless asked for: search runs
+   * in the Bash tool now (`core/fs-tools.md`), and a session that wants the
+   * structured alternative names it. The check reads the opt-in list directly
+   * rather than going through {@link shouldEnableTool} because that method's
+   * "no list means everything" default is precisely what must not apply here.
+   */
+  private namesSearchTool(): boolean {
+    return (this.tools ?? []).some((name) => {
+      const lower = name.toLowerCase();
+      return (
+        lower === globTool.name.toLowerCase() ||
+        lower === grepTool.name.toLowerCase()
+      );
+    });
+  }
+
   private shouldEnableTool(name: string): boolean {
     const permissionManager =
       this.container.get<PermissionManager>("PermissionManager");
@@ -747,6 +773,12 @@ class ToolManager {
             ...tool.config.function,
           },
         };
+        // What the session can actually reach, so a description never points at
+        // a tool this registry does not hold (`Grep` / `Glob` are opt-in).
+        const promptArgs = {
+          ...options,
+          availableTools: Array.from(this.toolsRegistry.keys()),
+        };
         // Lean mode sends the tool's condensed variant when it declares one; a
         // tool without one keeps its full description, so lean never yields an
         // empty description. Only text changes — schemas, the tool set and
@@ -754,9 +786,9 @@ class ToolManager {
         const lean = leanPromptEnabled ? tool.leanPrompt : undefined;
         if (lean !== undefined) {
           config.function.description =
-            typeof lean === "function" ? lean({ ...options }) : lean;
+            typeof lean === "function" ? lean(promptArgs) : lean;
         } else if (tool.prompt) {
-          config.function.description = tool.prompt({ ...options });
+          config.function.description = tool.prompt(promptArgs);
         }
         return config;
       });
