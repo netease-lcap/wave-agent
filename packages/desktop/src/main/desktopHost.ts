@@ -58,6 +58,7 @@ import {
   startupStageText,
 } from "wave-agent-sdk/host";
 import { StdioClient } from "./stdio/stdioClient";
+import { primeLoginShellEnv } from "./loginShellEnv";
 import type { JsonRpcClient } from "./stdio/jsonRpcClient";
 import {
   ensureCliUpToDate,
@@ -1504,6 +1505,16 @@ export class DesktopHost {
         });
         throw error;
       }
+
+      // The CLI child is spawned with `{ ...process.env }` and every shell
+      // command, MCP server and hook below it inherits that same environment —
+      // so the login-shell probe has to have landed before the very first
+      // spawn (spec `core/bash-tools.md`「登录 shell 环境注入」场景 1/2). It was
+      // fired when the app became ready, so this await normally resolves
+      // instantly; it is bounded by the SDK module's timeout + retry budget
+      // and never rejects — a failure just logs once and the child starts with
+      // the inherited environment (场景 3).
+      await primeLoginShellEnv();
 
       this.client = new StdioClient(binaryPath, ["--stdio"]);
       this.router = new NotificationRouter(this.client);

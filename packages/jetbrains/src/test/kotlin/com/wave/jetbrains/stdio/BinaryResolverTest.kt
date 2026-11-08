@@ -2,7 +2,6 @@ package com.wave.jetbrains.stdio
 
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNull
-import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.io.File
@@ -13,9 +12,10 @@ import java.nio.file.Path
  *
  * Node itself is no longer probed: [BinaryResolver.resolveNode] delegates to the
  * managed runtime ([ManagedRuntime], covered by `ManagedRuntimeTest`), so what
- * remains here is the CLI copy location, the login-shell PATH assembly the CLI's
- * own children still need, and the byte decoding every spawned command goes
- * through.
+ * remains here is the CLI copy location and the byte decoding every spawned
+ * command goes through. The login-shell environment (shell choice, parsing,
+ * whitelist merge) lives in [LoginShellEnv] and is covered by
+ * `LoginShellEnvTest`.
  */
 class BinaryResolverTest {
 
@@ -109,50 +109,6 @@ class BinaryResolverTest {
     fun `inferGitBashFromGitExe returns null for a bare filename`() {
         // No parent dirs to climb.
         assertNull(BinaryResolver.inferGitBashFromGitExe("git.exe"))
-    }
-
-    // ---- buildEnv ------------------------------------------------------
-
-    @Test
-    fun `buildEnv returns empty map when all inputs are null`() {
-        assertEquals(emptyMap<String, String>(), BinaryResolver.buildEnv(null, null))
-    }
-
-    @Test
-    fun `buildEnv includes login shell PATH segments`() {
-        val loginPath = "/opt/homebrew/bin:/usr/local/bin"
-        val env = BinaryResolver.buildEnv(loginPath, currentPath = null)
-        val path = env["PATH"]!!
-        assertTrue(path.contains("/opt/homebrew/bin"))
-        assertTrue(path.contains("/usr/local/bin"))
-    }
-
-    @Test
-    fun `buildEnv puts login path before current path`() {
-        val loginPath = "/opt/homebrew/bin"
-        val currentPath = "/usr/bin"
-        val env = BinaryResolver.buildEnv(loginPath, currentPath)
-        val segments = env["PATH"]!!.split(File.pathSeparator)
-        assertEquals("/opt/homebrew/bin", segments[0])
-        assertEquals("/usr/bin", segments[1])
-    }
-
-    @Test
-    fun `buildEnv uses login path alone when current path is unset`() {
-        val loginPath = "/opt/homebrew/bin"
-        val env = BinaryResolver.buildEnv(loginPath, currentPath = null)
-        assertEquals(loginPath, env["PATH"])
-    }
-
-    @Test
-    fun `buildEnv dedupes repeated segments`() {
-        val env = BinaryResolver.buildEnv(
-            loginPath = "/opt/homebrew/bin:/usr/local/bin",
-            currentPath = "/opt/homebrew/bin:/usr/local/bin",
-        )
-        val segments = env["PATH"]!!.split(File.pathSeparator)
-        assertEquals(1, segments.count { it == "/opt/homebrew/bin" })
-        assertEquals(1, segments.count { it == "/usr/local/bin" })
     }
 
     // ---- helpers -------------------------------------------------------

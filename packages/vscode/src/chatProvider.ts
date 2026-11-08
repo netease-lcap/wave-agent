@@ -33,6 +33,7 @@ import { NotificationRouter } from "wave-agent-sdk/host";
 import type { StartupStage } from "wave-agent-sdk/host";
 import { startupStageText } from "wave-agent-sdk/host";
 import { ensureCliUpToDate, setExtensionPath } from "./stdio/binaryResolver";
+import { adoptLoginPathIntoEnv } from "./stdio/loginPath";
 import { recordStartupStage } from "./stdio/startupStage";
 import { hostLog } from "./hostLog";
 
@@ -180,6 +181,17 @@ export class ChatProvider implements vscode.WebviewViewProvider {
    */
   private async init(): Promise<void> {
     try {
+      // The login-shell probe was fired at activation; wait for it here, before
+      // any binary resolution and before the very first spawn. StdioClient
+      // spawns the CLI with `{ ...process.env }`, and every Bash tool,
+      // background task, `!` command, MCP server and hook below that child
+      // inherits it (spec `core/bash-tools.md`「登录 shell 环境注入」场景 1/2).
+      // Bounded by the SDK module's timeout + retry budget and never rejecting:
+      // a failed probe just logs once and the child starts with the inherited
+      // environment (场景 3). Normally resolves instantly because activation
+      // already started it.
+      await adoptLoginPathIntoEnv();
+
       // Locate the CLI bundled inside the extension (dist/wave-cli).
       setExtensionPath(this.context.extensionPath);
       const binaryPath = await ensureCliUpToDate();

@@ -30,25 +30,6 @@ import { recordStartupStage } from "./startupStage";
 let cachedPath: string | undefined;
 let extensionPath: string | undefined;
 
-/**
- * Decode output of cmd.exe builtins (`where`, `which`). On Chinese Windows
- * those write the system OEM code page (CP936/GBK); decoding GBK bytes as
- * UTF-8 corrupts non-ASCII path segments (`C:\Users\刘一奇\...` → U+FFFD).
- * Try UTF-8 first (covers non-Windows and chcp 65001), fall back to GBK on
- * U+FFFD — same policy as stdioClient.decodeStderr. Exported for reuse
- * (loginPath decodes `where git` output the same way).
- */
-export function decodeCommandOutput(out: string | Buffer): string {
-  const buf = Buffer.isBuffer(out) ? out : Buffer.from(out);
-  const utf8 = buf.toString("utf-8");
-  if (!utf8.includes("\uFFFD")) return utf8;
-  try {
-    return new TextDecoder("gbk").decode(buf);
-  } catch {
-    return utf8;
-  }
-}
-
 /** Set the extension install path (used to locate the bundled CLI). */
 export function setExtensionPath(p: string): void {
   extensionPath = p;
