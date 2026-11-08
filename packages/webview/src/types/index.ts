@@ -1361,6 +1361,16 @@ export type ChatAction =
       payload: { messageId: string };
     }
   | {
+      /** 宿主把**被回滚那条消息自己的草稿**交回来（`rewindResult.inputContent`）。
+       *  桌面端与 IDE 端的草稿本来就在宿主手里、随下一次快照回放，用不到这条；
+       *  远控页没有宿主草稿通道（shim 对 `updateInputContent` 是本地应答），所以
+       *  只能随回执带回。落进 `state.inputContent` 后由 `MessageInput` 按
+       *  `renderDraftContent` 把引用标记还原成标签并聚焦（spec
+       *  commands/rewind-command.md 场景 9）。 */
+      type: "SET_INPUT_CONTENT";
+      payload: { content: string };
+    }
+  | {
       type: "UPDATE_STREAMING_CONTENT";
       payload: { messageId: string; chunk: string; stage: "streaming" | "end" };
     }

@@ -373,6 +373,70 @@ describe("Rewind Feature", () => {
       expect(screen.getByText("Response 2")).toBeInTheDocument();
     });
 
+    it("puts the rewound message back into the input when the host hands it back", async () => {
+      const { vscode } = renderChatApp();
+      const requestId = await requestRewind(vscode, four(), 1);
+
+      act(() => {
+        // 远控页没有宿主草稿通道（shim 对 updateInputContent 是本地应答），
+        // 被回滚那条消息自己的草稿只能随这次回执带回：桌面 / IDE 上本来就有
+        // 的「回滚后改一改再发」动线，页面靠这个字段补上
+        // （spec commands/rewind-command.md 场景 9）。
+        sendCommand("rewindResult", {
+          requestId,
+          messageId: "msg-3",
+          ok: true,
+          inputContent: "Message 2",
+        });
+      });
+
+      await waitFor(() => {
+        expect(screen.getByTestId("message-input").textContent).toBe(
+          "Message 2",
+        );
+      });
+    });
+
+    it("restores reference markers in the handed-back draft as tags, not literal text", async () => {
+      const { vscode } = renderChatApp();
+      const requestId = await requestRewind(vscode, four(), 1);
+
+      act(() => {
+        sendCommand("rewindResult", {
+          requestId,
+          messageId: "msg-3",
+          ok: true,
+          inputContent: "看看 [@file:/fake/project/a.ts] 这个",
+        });
+      });
+
+      // 回填走的是与宿主草稿同一条 `renderDraftContent` 路径：标记还原成标签，
+      // 而不是把 `[@file:…]` 当字面文本写进输入框（那样发出去就不再是引用）。
+      const input = screen.getByTestId("message-input");
+      await waitFor(() => {
+        expect(input.querySelector(".context-tag-container")).not.toBeNull();
+        expect(input.textContent).toContain("看看");
+        expect(input.textContent).not.toContain("[@file:");
+      });
+    });
+
+    it("keeps the input as it was when the host sends no draft back", async () => {
+      const { vscode } = renderChatApp();
+      const requestId = await requestRewind(vscode, four(), 1);
+
+      act(() => {
+        // 桌面 / IDE 的回执不带这个字段（草稿在宿主侧、随下一次快照回放），
+        // 旧宿主的远控回执也没有：输入框必须保持原样，不能凭空被清空。
+        sendCommand("rewindResult", {
+          requestId,
+          messageId: "msg-3",
+          ok: true,
+        });
+      });
+
+      expect(screen.getByTestId("message-input").textContent).toBe("");
+    });
+
     it("drops a reply whose requestId is not the pending one", async () => {
       const { vscode } = renderChatApp();
       await requestRewind(vscode, four(), 1);
