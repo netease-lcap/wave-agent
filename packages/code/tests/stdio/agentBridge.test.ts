@@ -895,6 +895,110 @@ test("canUseTool emits permissionRequest and resolves when permissionResponse re
   expect(decision.behavior).toBe("allow");
 });
 
+// 关掉确认卡（关闭键 / Esc）在线上是一条**不带 message** 的 deny，它在用户这边
+// 就结束这一轮：桌面端 / VS Code / JetBrains 都是 denied → abortMessage，远控
+// 链路少了这一步，手机上关掉提问弹窗后模型会拿着「用户拒绝了」继续往下做
+// （spec ui/confirm-ui.md 场景 2 / 5、remote/remote-web.md 场景 24）。
+test("permissionResponse deny without feedback aborts the session's turn", async () => {
+  const { bridge, notifications } = createBridge();
+  const mockAgent = createMockAgent();
+  vi.mocked(Agent.create).mockResolvedValue(mockAgent);
+
+  await bridge.handleRequest("initialize", {});
+  const canUseTool = vi.mocked(Agent.create).mock.calls[0][0].canUseTool!;
+  const permissionPromise = canUseTool({
+    toolName: "AskUserQuestion",
+    permissionMode: "default",
+  });
+
+  await vi.waitFor(() => {
+    expect(notifications.some((n) => n.method === "permissionRequest")).toBe(
+      true,
+    );
+  });
+  const requestId = (
+    notifications.find((n) => n.method === "permissionRequest")!.params as {
+      requestId: string;
+    }
+  ).requestId;
+
+  bridge.handleNotification("permissionResponse", {
+    requestId,
+    decision: { behavior: "deny" },
+  });
+
+  await expect(permissionPromise).resolves.toEqual({ behavior: "deny" });
+  expect(mockAgent.abortMessage).toHaveBeenCalledTimes(1);
+});
+
+test("permissionResponse deny with feedback only rejects the tool", async () => {
+  const { bridge, notifications } = createBridge();
+  const mockAgent = createMockAgent();
+  vi.mocked(Agent.create).mockResolvedValue(mockAgent);
+
+  await bridge.handleRequest("initialize", {});
+  const canUseTool = vi.mocked(Agent.create).mock.calls[0][0].canUseTool!;
+  const permissionPromise = canUseTool({
+    toolName: "Bash",
+    permissionMode: "default",
+    toolInput: { command: "rm -rf build" },
+  });
+
+  await vi.waitFor(() => {
+    expect(notifications.some((n) => n.method === "permissionRequest")).toBe(
+      true,
+    );
+  });
+  const requestId = (
+    notifications.find((n) => n.method === "permissionRequest")!.params as {
+      requestId: string;
+    }
+  ).requestId;
+
+  bridge.handleNotification("permissionResponse", {
+    requestId,
+    decision: { behavior: "deny", message: "先换成 rm -rf build/out" },
+  });
+
+  await expect(permissionPromise).resolves.toEqual({
+    behavior: "deny",
+    message: "先换成 rm -rf build/out",
+  });
+  expect(mockAgent.abortMessage).not.toHaveBeenCalled();
+});
+
+test("an approval never aborts the session's turn", async () => {
+  const { bridge, notifications } = createBridge();
+  const mockAgent = createMockAgent();
+  vi.mocked(Agent.create).mockResolvedValue(mockAgent);
+
+  await bridge.handleRequest("initialize", {});
+  const canUseTool = vi.mocked(Agent.create).mock.calls[0][0].canUseTool!;
+  const permissionPromise = canUseTool({
+    toolName: "Bash",
+    permissionMode: "default",
+  });
+
+  await vi.waitFor(() => {
+    expect(notifications.some((n) => n.method === "permissionRequest")).toBe(
+      true,
+    );
+  });
+  const requestId = (
+    notifications.find((n) => n.method === "permissionRequest")!.params as {
+      requestId: string;
+    }
+  ).requestId;
+
+  bridge.handleNotification("permissionResponse", {
+    requestId,
+    decision: { behavior: "allow" },
+  });
+
+  await expect(permissionPromise).resolves.toEqual({ behavior: "allow" });
+  expect(mockAgent.abortMessage).not.toHaveBeenCalled();
+});
+
 test("canUseTool stays pending without auto-deny (no timeout)", async () => {
   const { bridge } = createBridge();
   vi.mocked(Agent.create).mockResolvedValue(createMockAgent());

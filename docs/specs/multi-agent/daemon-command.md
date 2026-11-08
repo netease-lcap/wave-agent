@@ -180,7 +180,7 @@ order: 95
 **验收场景**：
 
 1. **假设** 目标会话挂起 Edit/Bash/Write/mcp 等常规工具审批，**当** 用户运行 `wave daemon respond <sessionId> <requestId> --allow` 时，**则** 命令发送 `permissionResponse` 通知（`{requestId, decision:{behavior:"allow"}}`），工具继续执行、会话恢复生成。
-2. **假设** 用户运行 `wave daemon respond <sessionId> <requestId> --deny [--reason "原因"]` 时，**则** 发送 `{behavior:"deny", message}`，工具返回「operation denied」错误结束该工具，会话回到空闲。
+2. **假设** 用户运行 `wave daemon respond <sessionId> <requestId> --deny [--reason "原因"]` 时，**则** 发送 `{behavior:"deny", message}`，工具返回「operation denied」错误结束该工具，会话回到空闲。**带不带 `--reason` 决定这一轮还继不继续**：给了 `--reason` 时只是拒绝这一次工具调用、模型收到这段理由继续（远控页「发送反馈」是同一条语义）；**不给 `--reason` 时等同用户在界面上关掉了确认卡**，daemon 在把拒绝交回工具之后**一并中止本轮**（`agent.abortMessage()`），与桌面端 / VS Code / JetBrains 关闭同一张卡的结果一致（判据见 `ui/confirm-ui.md` 场景 2 / 5，Claude Code 的 `cancelAndAbort` 也是「无 feedback 就 abort 整轮」）。
 3. **假设** 目标会话挂起 EnterPlanMode 审批，**当** 用户运行 `wave daemon respond <sessionId> <requestId> --allow` 时，**则** 命令按工具智能补全为 `{behavior:"allow", newPermissionMode:"plan"}`，与会话的权限模式切换为 plan（与桌面端行为一致，无需用户显式传 `--mode`）。
 4. **假设** 目标会话挂起 AskUserQuestion 审批，**当** 用户运行 `wave daemon respond <sessionId> <requestId> --answer '{"问题":"答案"}'` 时，**则** 发送 `{behavior:"allow", message: JSON.stringify(答案对象)}`，如同桌面端填写答案后确认；若只传 `--allow` 未传 `--answer`，命令报错提示需要提供答案。
 5. **假设** 用户运行 `wave daemon respond <sessionId> <requestId> --allow --rule "Bash(ls)"` 时，**则** 决策附带 `newPermissionRule`，该规则被持久化为允许规则、后续同类调用不再询问（与桌面端「不再询问」语义一致）。

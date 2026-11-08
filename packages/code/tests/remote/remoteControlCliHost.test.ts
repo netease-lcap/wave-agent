@@ -460,6 +460,52 @@ test("a permissionResponse notification settles the matching request", () => {
   expect(session.respondPermission).toHaveBeenCalledTimes(1);
 });
 
+test("closing a confirmation card aborts the turn, not just the tool", () => {
+  // 页面上关掉确认卡（关闭键 / Esc）发的是**不带 message** 的 deny；这一轮在
+  // 用户这边就结束了（spec ui/confirm-ui.md 场景 2 / 5、remote/remote-web.md
+  // 场景 24）：桌面端 / VS Code / JetBrains 在 denied 之后都调 abortMessage，
+  // 少了这一步手机上关掉提问弹窗后模型会拿着「用户拒绝了」继续往下做。
+  const session = makeSession();
+  const host = new RemoteControlCliHost(session);
+
+  host.handleNotification("permissionResponse", {
+    requestId: "r1",
+    decision: { behavior: "deny" },
+  });
+
+  expect(session.respondPermission).toHaveBeenCalledWith("r1", {
+    behavior: "deny",
+  });
+  expect(session.abort).toHaveBeenCalledTimes(1);
+});
+
+test("a rejection carrying feedback only rejects that tool", () => {
+  // 带 message 的拒绝是「用户给了理由再拒」，模型要照反馈继续或改问——不能
+  // 顺手把整轮掐掉（同一条判据也是 Claude Code 里 feedback 为空才 abort 的由来）。
+  const session = makeSession();
+  const host = new RemoteControlCliHost(session);
+
+  host.handleNotification("permissionResponse", {
+    requestId: "r1",
+    decision: { behavior: "deny", message: "换成方案 B 再做" },
+  });
+
+  expect(session.respondPermission).toHaveBeenCalledTimes(1);
+  expect(session.abort).not.toHaveBeenCalled();
+});
+
+test("an approval never aborts", () => {
+  const session = makeSession();
+  const host = new RemoteControlCliHost(session);
+
+  host.handleNotification("permissionResponse", {
+    requestId: "r1",
+    decision: { behavior: "allow" },
+  });
+
+  expect(session.abort).not.toHaveBeenCalled();
+});
+
 test("a whitelisted method this host does not implement says exactly that", async () => {
   // 白名单是**通道级**的（daemon / GUI 子进程 / 前台 CLI 共用一份），宿主实现面
   // 不同：`rewindToMessage` 能过白名单，这条前台会话却没接。答案必须与三种邻居
