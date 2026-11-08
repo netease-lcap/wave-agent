@@ -340,7 +340,7 @@ _侧边栏中该主机的会话：运行中显示转圈、等待确认显示琥�
 - `WAVE_BASE_URL` 填到 `/v1` 这一层；本地服务不校验密钥时也要给 `WAVE_API_KEY` 一个非空值，否则客户端直接报 `Missing credentials`。
 - `WAVE_MODEL` / `WAVE_FAST_MODEL` / `WAVE_VISION_MODEL`：主模型、轻量任务（子代理摘要、网页取内容等）用的快模型、内置 vision 子代理用的读图模型（后者仅在主模型声明 `vision: false` 时才注册）。
 - `WAVE_CONTEXT_WINDOW` 按模型上下文窗口设；需要逐模型不同就写 `models[<模型名>].contextWindow`，压缩阈值与用量显示都按它算。
-- `models[<模型名>].capabilities`：`vision`（能否读图，默认 `true`）、`promptCaching`（是否注入 Anthropic 风格的 `cache_control` 缓存标记，默认 `false`，端点不支持就别开）、`responsesApi`（是否把该模型的请求发到 Responses 端点 `/v1/responses`，默认 `false`——GPT-5.4 之后带工具的请求只允许 `reasoning_effort: "none"`，而没有 `none` 档的模型（如 `gpt-6.1-sol`）会一律返回 400，这类模型必须打开它）；生成参数（`temperature`、`max_tokens` 等）写在同级的 `options` 里，走 Responses 时 Wave 会把这些参数名翻译过去（`reasoning_effort`→`reasoning.effort`、`max_tokens`→`max_output_tokens`、`response_format`→`text.format` 等），其余键原样透传。
+- `models[<模型名>].capabilities`：`vision`（能否读图，默认 `true`）、`promptCaching`（是否注入 Anthropic 风格的 `cache_control` 缓存标记，默认 `false`，端点不支持就别开）、`apiType`（该模型的请求走哪种协议，默认 `"chat"`，可选 `"chat"` / `"responses"` / `"messages"`——`"responses"` 表示发到 Responses 端点 `/v1/responses`：GPT-5.4 之后带工具的请求只允许 `reasoning_effort: "none"`，而没有 `none` 档的模型（如 `gpt-6.1-sol`）会一律返回 400，这类模型必须选它；`"messages"` 表示发到原生 Anthropic Messages 端点 `/v1/messages`：Claude 开扩展思考时必须选它，因为 OpenAI 兼容层会把思考块压成一个字符串并丢掉逐块的 `signature`，而 Messages 端点要求原样回传）；生成参数（`temperature`、`max_tokens` 等）写在同级的 `options` 里，走 Responses 时 Wave 会把这些参数名翻译过去（`reasoning_effort`→`reasoning.effort`、`max_tokens`→`max_output_tokens`、`response_format`→`text.format` 等），其余键原样透传。
 
 改完下一轮对话即生效，无需重启。
 

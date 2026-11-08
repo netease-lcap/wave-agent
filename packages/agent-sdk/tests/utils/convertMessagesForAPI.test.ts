@@ -591,6 +591,146 @@ describe("convertMessagesForAPI", () => {
     );
   });
 
+  it("attaches ordered thinking blocks with signatures when the endpoint is Messages", async () => {
+    const messages: Message[] = [
+      {
+        id: generateMessageId(),
+        role: "user",
+        blocks: [{ type: "text", content: "Explain quantum computing" }],
+        timestamp: new Date().toISOString(),
+      },
+      {
+        id: generateMessageId(),
+        role: "assistant",
+        blocks: [
+          {
+            type: "reasoning",
+            content: "First, define qubits.",
+            signature: "sig-1",
+          },
+          { type: "text", content: "Quantum computing uses qubits." },
+          {
+            type: "reasoning",
+            content: "Then superposition.",
+            signature: "sig-2",
+          },
+        ],
+        // A redacted payload has no text and never enters the block list; it
+        // still has to be replayed verbatim.
+        redactedThinking: ["opaque"],
+        timestamp: new Date().toISOString(),
+      },
+    ];
+
+    const apiMessages = await convertMessagesForAPI(messages, {
+      reasoningSignatures: true,
+    });
+
+    const assistantMessage = apiMessages[1] as ChatCompletionMessageParam & {
+      anthropic_thinking?: unknown;
+      reasoning_content?: string;
+    };
+    expect(assistantMessage.anthropic_thinking).toEqual([
+      { thinking: "First, define qubits.", signature: "sig-1" },
+      { thinking: "Then superposition.", signature: "sig-2" },
+      { thinking: "", redacted: "opaque" },
+    ]);
+    // The flattened string stays as it is for every other endpoint.
+    expect(assistantMessage.reasoning_content).toBe(
+      "First, define qubits.\nThen superposition.",
+    );
+  });
+
+  it("omits unsigned thinking from anthropic_thinking instead of replaying it", async () => {
+    const messages: Message[] = [
+      {
+        id: generateMessageId(),
+        role: "user",
+        blocks: [{ type: "text", content: "hi" }],
+        timestamp: new Date().toISOString(),
+      },
+      {
+        id: generateMessageId(),
+        role: "assistant",
+        blocks: [
+          { type: "reasoning", content: "unsigned" },
+          { type: "text", content: "answer" },
+        ],
+        timestamp: new Date().toISOString(),
+      },
+    ];
+
+    const apiMessages = await convertMessagesForAPI(messages, {
+      reasoningSignatures: true,
+    });
+
+    const assistantMessage = apiMessages[1] as ChatCompletionMessageParam & {
+      anthropic_thinking?: unknown;
+    };
+    expect(assistantMessage.anthropic_thinking).toEqual([
+      { thinking: "unsigned" },
+    ]);
+  });
+
+  it("keeps a turn whose only replayable content is a redacted thinking block", async () => {
+    // A whitespace-only text block is filtered out of `content`, so without the
+    // redacted payload this turn would look empty and be dropped.
+    const messages: Message[] = [
+      {
+        id: generateMessageId(),
+        role: "user",
+        blocks: [{ type: "text", content: "hi" }],
+        timestamp: new Date().toISOString(),
+      },
+      {
+        id: generateMessageId(),
+        role: "assistant",
+        blocks: [{ type: "text", content: "   " }],
+        redactedThinking: ["opaque"],
+        timestamp: new Date().toISOString(),
+      },
+    ];
+
+    const apiMessages = await convertMessagesForAPI(messages, {
+      reasoningSignatures: true,
+    });
+
+    expect(apiMessages).toHaveLength(2);
+    const assistantMessage = apiMessages[1] as ChatCompletionMessageParam & {
+      anthropic_thinking?: unknown;
+    };
+    expect(assistantMessage.anthropic_thinking).toEqual([
+      { thinking: "", redacted: "opaque" },
+    ]);
+  });
+
+  it("never puts anthropic_thinking on a body heading to another endpoint", async () => {
+    const messages: Message[] = [
+      {
+        id: generateMessageId(),
+        role: "user",
+        blocks: [{ type: "text", content: "hi" }],
+        timestamp: new Date().toISOString(),
+      },
+      {
+        id: generateMessageId(),
+        role: "assistant",
+        blocks: [
+          { type: "reasoning", content: "thought", signature: "sig-1" },
+          { type: "text", content: "answer" },
+        ],
+        timestamp: new Date().toISOString(),
+      },
+    ];
+
+    const apiMessages = await convertMessagesForAPI(messages);
+
+    const assistantMessage = apiMessages[1] as ChatCompletionMessageParam & {
+      anthropic_thinking?: unknown;
+    };
+    expect(assistantMessage.anthropic_thinking).toBeUndefined();
+  });
+
   it("should include reasoning-only assistant messages (truncated thinking preserved)", async () => {
     const messages: Message[] = [
       {

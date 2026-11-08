@@ -26,8 +26,8 @@ import {
   type ClaudeChatCompletionContentPartText,
 } from "../utils/cacheControlUtils.js";
 import {
+  resolveApiType,
   supportsPromptCaching,
-  supportsResponsesApi,
 } from "../utils/modelCapabilities.js";
 import { DEFAULT_WAVE_MAX_OUTPUT_TOKENS } from "../utils/constants.js";
 import {
@@ -37,6 +37,17 @@ import {
   requestResponsesText,
   type AgentToolChoice,
 } from "./responsesApi.js";
+import { AnthropicMessagesClient } from "../utils/anthropicMessagesClient.js";
+import {
+  buildMessagesRequest,
+  parseMessagesResult,
+  processMessagesStream,
+  requestMessagesText,
+} from "./anthropicMessagesApi.js";
+import type {
+  AnthropicMessageStreamEvent,
+  ThinkingBlockData,
+} from "../types/anthropicMessages.js";
 
 import * as os from "os";
 import * as fs from "fs";
@@ -246,6 +257,15 @@ export interface CallAgentResult {
     | null;
   response_headers?: Record<string, string>;
   additionalFields?: Record<string, unknown>;
+  /**
+   * Ordered thinking blocks of the turn, thinking text and its signature
+   * separately — the native Messages API signs each block and rejects a replay
+   * that alters or drops the signature (spec
+   * core/anthropic-messages-api.md「signature 全链路」). Absent for every
+   * OpenAI-compatible endpoint, which flattens thinking into
+   * `reasoning_content` and carries no signature at all.
+   */
+  thinking_blocks?: ThinkingBlockData[];
 }
 
 function validateModelConfig(
@@ -409,9 +429,131 @@ export async function callAgent(
     // Endpoint choice is declared per model, never inferred from the name: from
     // GPT-5.4 on, Chat Completions only accepts function tools together with
     // `reasoning_effort: "none"`, and the GPT-6 generation has no `none` tier at
-    // all (spec core/responses-api.md). Everything above this line still speaks
+    // all (spec core/responses-api.md); Claude with extended thinking needs its
+    // native Messages fields, which the OpenAI-compatible layer drops (spec
+    // core/anthropic-messages-api.md). Everything above this line still speaks
     // Chat Completions; the transport translates.
-    if (supportsResponsesApi(modelConfig.capabilities)) {
+    const apiType = resolveApiType(modelConfig.capabilities);
+
+    if (apiType === "messages") {
+      const anthropic = new AnthropicMessagesClient({
+        apiKey: gatewayConfig.apiKey,
+        baseURL: gatewayConfig.baseURL,
+        defaultHeaders: gatewayConfig.defaultHeaders,
+        fetchOptions: gatewayConfig.fetchOptions,
+        fetch: gatewayConfig.fetch,
+      });
+
+      // Built from `openaiModelConfig` rather than `createParams` for the same
+      // reason as the Responses path: transport-owned keys (messages/tools) must
+      // not leak into the body twice. `tool_choice` comes from `createParams`
+      // because the forced-tool demotion above must carry over.
+      const messagesBody = buildMessagesRequest({
+        model: openaiModelConfig.model,
+        systemPrompt,
+        messages,
+        tools: processedTools,
+        toolChoice: createParams.tool_choice as
+          | "auto"
+          | "none"
+          | "required"
+          | { type: "function"; function: { name: string } }
+          | undefined,
+        params: openaiModelConfig as unknown as Record<string, unknown>,
+        stream: isStreaming,
+        supportsCaching: supportsPromptCaching(modelConfig.capabilities),
+      });
+
+      const requestMessagesStreaming = async (): Promise<CallAgentResult> => {
+        const { data: stream, response } = await anthropic.messages
+          .create(
+            {
+              ...messagesBody,
+              model: openaiModelConfig.model,
+              messages: messagesBody.messages as unknown[],
+              max_tokens: openaiModelConfig.max_tokens as number,
+              stream: true,
+            },
+            { signal: abortSignal },
+          )
+          .withResponse();
+
+        const responseHeaders: Record<string, string> = {};
+        (response.headers as Headers).forEach((value: string, key: string) => {
+          responseHeaders[key] = value;
+        });
+
+        return await processMessagesStream(
+          stream as AsyncIterable<AnthropicMessageStreamEvent>,
+          {
+            onContentDelta,
+            onToolUpdate,
+            onReasoningDelta,
+            abortSignal,
+          },
+          responseHeaders,
+        );
+      };
+
+      const requestMessagesNonStreaming =
+        async (): Promise<CallAgentResult> => {
+          const { data: response, response: rawResponse } =
+            await anthropic.messages
+              .create(
+                {
+                  ...messagesBody,
+                  model: openaiModelConfig.model,
+                  messages: messagesBody.messages as unknown[],
+                  max_tokens: openaiModelConfig.max_tokens as number,
+                  stream: false,
+                },
+                { signal: abortSignal },
+              )
+              .withResponse();
+
+          const result: CallAgentResult = {
+            ...parseMessagesResult(response),
+          };
+          const responseHeaders: Record<string, string> = {};
+          (rawResponse.headers as Headers).forEach(
+            (value: string, key: string) => {
+              responseHeaders[key] = value;
+            },
+          );
+          if (Object.keys(responseHeaders).length > 0) {
+            result.response_headers = responseHeaders;
+          }
+          return result;
+        };
+
+      try {
+        if (!isStreaming) {
+          return await requestMessagesNonStreaming();
+        }
+        return await requestMessagesStreaming();
+      } catch (error) {
+        if (
+          abortSignal?.aborted ||
+          (error as Error | undefined)?.name === "AbortError"
+        ) {
+          throw error;
+        }
+
+        logger.warn(
+          "Streaming response failed mid-body, retrying non-streaming (Messages API)",
+          {
+            model: model || modelConfig.model,
+            error: error instanceof Error ? error.message : String(error),
+          },
+        );
+
+        const result = await requestMessagesNonStreaming();
+        result.stream_fallback = true;
+        return result;
+      }
+    }
+
+    if (apiType === "responses") {
       // Built from `openaiModelConfig` rather than `createParams` so the
       // transport-owned keys (messages/tools) cannot leak into the body twice.
       // `tool_choice` is taken from `createParams` because the forced-tool
@@ -1087,13 +1229,13 @@ export async function processWebContent(
     // This path always serves `fastModel` when a caller passes one (both call
     // sites do), so the endpoint follows *that* model's declaration, not the
     // agent model's (spec core/responses-api.md 边界情况 8).
-    if (
-      supportsResponsesApi(
-        options.model
-          ? modelConfig.fastModelCapabilities
-          : modelConfig.capabilities,
-      )
-    ) {
+    const webContentApiType = resolveApiType(
+      options.model
+        ? modelConfig.fastModelCapabilities
+        : modelConfig.capabilities,
+    );
+
+    if (webContentApiType === "responses") {
       const { content: text, usage: responsesUsage } =
         await requestResponsesText({
           client: openai,
@@ -1109,6 +1251,31 @@ export async function processWebContent(
         );
       }
       return { content: text.trim(), usage: responsesUsage };
+    }
+
+    if (webContentApiType === "messages") {
+      const { content: text, usage: messagesUsage } = await requestMessagesText(
+        {
+          client: new AnthropicMessagesClient({
+            apiKey: gatewayConfig.apiKey,
+            baseURL: gatewayConfig.baseURL,
+            defaultHeaders: gatewayConfig.defaultHeaders,
+            fetchOptions: gatewayConfig.fetchOptions,
+            fetch: gatewayConfig.fetch,
+          }),
+          model: openaiModelConfig.model,
+          systemPrompt: WEB_CONTENT_SYSTEM_PROMPT,
+          userContent: webContentPrompt,
+          params: openaiModelConfig as unknown as Record<string, unknown>,
+          abortSignal,
+        },
+      );
+      if (!text.trim()) {
+        throw new Error(
+          "Failed to process web content: Empty response from AI",
+        );
+      }
+      return { content: text.trim(), usage: messagesUsage };
     }
 
     const response = await openai.chat.completions.create(
@@ -1277,9 +1444,31 @@ export async function getCompletion(
   try {
     // Endpoint follows the model that actually serves completion
     // (`completionModel`), not the agent model (spec core/responses-api.md 边界情况 8).
-    if (supportsResponsesApi(modelConfig.completionModelCapabilities)) {
+    const completionApiType = resolveApiType(
+      modelConfig.completionModelCapabilities,
+    );
+
+    if (completionApiType === "responses") {
       const { content } = await requestResponsesText({
         client: openai,
+        model: openaiModelConfig.model,
+        systemPrompt: CODE_COMPLETION_SYSTEM_PROMPT,
+        userContent,
+        params: openaiModelConfig as unknown as Record<string, unknown>,
+        abortSignal,
+      });
+      return { text: content.trim(), model: completionModel };
+    }
+
+    if (completionApiType === "messages") {
+      const { content } = await requestMessagesText({
+        client: new AnthropicMessagesClient({
+          apiKey: gatewayConfig.apiKey,
+          baseURL: gatewayConfig.baseURL,
+          defaultHeaders: gatewayConfig.defaultHeaders,
+          fetchOptions: gatewayConfig.fetchOptions,
+          fetch: gatewayConfig.fetch,
+        }),
         model: openaiModelConfig.model,
         systemPrompt: CODE_COMPLETION_SYSTEM_PROMPT,
         userContent,
@@ -1503,10 +1692,30 @@ export async function getNextEdit(
   try {
     // Next edit shares the completion model, so it shares its endpoint
     // declaration too (spec core/responses-api.md 边界情况 8).
+    const nextEditApiType = resolveApiType(
+      modelConfig.completionModelCapabilities,
+    );
+
     let raw: string;
-    if (supportsResponsesApi(modelConfig.completionModelCapabilities)) {
+    if (nextEditApiType === "responses") {
       const { content } = await requestResponsesText({
         client: openai,
+        model: openaiModelConfig.model,
+        systemPrompt: NEXT_EDIT_SYSTEM_PROMPT,
+        userContent,
+        params: openaiModelConfig as unknown as Record<string, unknown>,
+        abortSignal,
+      });
+      raw = content;
+    } else if (nextEditApiType === "messages") {
+      const { content } = await requestMessagesText({
+        client: new AnthropicMessagesClient({
+          apiKey: gatewayConfig.apiKey,
+          baseURL: gatewayConfig.baseURL,
+          defaultHeaders: gatewayConfig.defaultHeaders,
+          fetchOptions: gatewayConfig.fetchOptions,
+          fetch: gatewayConfig.fetch,
+        }),
         model: openaiModelConfig.model,
         systemPrompt: NEXT_EDIT_SYSTEM_PROMPT,
         userContent,

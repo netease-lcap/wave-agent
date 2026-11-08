@@ -13,6 +13,15 @@ export interface Message {
   usage?: Usage; // Usage data for this message's AI operation (assistant messages only)
   additionalFields?: Record<string, unknown>; // Additional metadata from AI responses
   isMeta?: boolean; // Whether the message is a meta message (hidden from UI)
+  /**
+   * Opaque `redacted_thinking` payloads of this turn, in order.
+   *
+   * Kept off `blocks` on purpose: a redacted block carries no text, so as a
+   * block it would render an empty thinking row, and the user is not meant to
+   * see anything at all. It still has to travel back verbatim with the next
+   * request (spec core/anthropic-messages-api.md 场景「redacted_thinking」).
+   */
+  redactedThinking?: string[];
 }
 
 export type MessageBlock =
@@ -164,6 +173,18 @@ export interface ReasoningBlock {
   stage?: "streaming" | "end";
   startTime?: number; // Unix ms, set when the first reasoning content arrives
   endTime?: number; // Unix ms, set when stage transitions to "end"
+  /**
+   * The signature the native Messages API issued for this block. Only set when
+   * the model was served by that endpoint (spec
+   * core/anthropic-messages-api.md): the endpoint verifies the signature on
+   * replay, so it must travel back verbatim with exactly this block's text.
+   */
+  signature?: string;
+  /**
+   * `redacted_thinking` payload — opaque, never decoded or rendered, replayed
+   * as-is. When set, `content` is empty and `signature` is absent.
+   */
+  redacted?: string;
 }
 
 export interface FileHistoryBlock {

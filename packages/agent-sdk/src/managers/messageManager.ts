@@ -23,6 +23,7 @@ import type {
   ToolBlock,
   InvokedSkillRecord,
 } from "../types/index.js";
+import type { ThinkingBlockData } from "../types/anthropicMessages.js";
 import { getLastApiRounds } from "../utils/groupMessagesByApiRound.js";
 import { join, isAbsolute, relative, resolve } from "path";
 import {
@@ -937,6 +938,131 @@ export class MessageManager {
    */
   public triggerUsageChange(): void {
     this.callbacks.onUsagesChange?.([...this._usages]);
+  }
+
+  /**
+   * Attach the per-block thinking signatures the response carried.
+   *
+   * Streaming appends every thinking delta into ONE reasoning block, but the
+   * Messages endpoint signs each of its own blocks and verifies those boundaries
+   * on replay — so at turn end the single merged block has to be split back into
+   * the blocks the endpoint produced, each with its own signature (spec
+   * core/anthropic-messages-api.md「signature 全链路」场景 3).
+   *
+   * The split is exact because the merged content is the concatenation of the
+   * blocks' text in order. When it is not — the text was transformed somewhere,
+   * or block boundaries moved — the signature cannot be reattached to the right
+   * text, and an unsigned block must never be replayed as `thinking`. Leaving the
+   * blocks unsigned makes the next request drop them, which is what happens on
+   * every OpenAI-compatible endpoint anyway.
+   *
+   * Redacted blocks are the exception: they arrive with no text at all, so they
+   * never came through the stream. They are parked on `Message.redactedThinking`
+   * instead of becoming an empty reasoning block, so nothing renders for them,
+   * yet the replay still carries them verbatim.
+   */
+  public attachThinkingSignatures(thinkingBlocks: ThinkingBlockData[]): void {
+    if (thinkingBlocks.length === 0) return;
+    if (this.messages.length === 0) return;
+
+    const lastMessage = this.messages[this.messages.length - 1];
+    if (lastMessage.role !== "assistant") return;
+
+    const redacted = thinkingBlocks
+      .filter((entry) => entry.redacted)
+      .map((entry) => entry.redacted as string);
+    if (redacted.length > 0) {
+      lastMessage.redactedThinking = [
+        ...(lastMessage.redactedThinking ?? []),
+        ...redacted,
+      ];
+    }
+
+    // Everything below concerns the blocks that did produce visible text.
+    const visibleBlocks = thinkingBlocks.filter((entry) => !entry.redacted);
+    if (visibleBlocks.length === 0) return;
+
+    const reasoningIndexes: number[] = [];
+    lastMessage.blocks.forEach((block, index) => {
+      if (block.type === "reasoning") reasoningIndexes.push(index);
+    });
+
+    const toReasoningBlock = (
+      entry: ThinkingBlockData,
+      timing?: { startTime?: number },
+    ): {
+      type: "reasoning";
+      content: string;
+      stage: "end";
+      startTime?: number;
+      endTime?: number;
+      signature?: string;
+    } => ({
+      type: "reasoning",
+      content: entry.thinking,
+      stage: "end",
+      ...(timing?.startTime !== undefined
+        ? { startTime: timing.startTime, endTime: Date.now() }
+        : {}),
+      ...(entry.signature ? { signature: entry.signature } : {}),
+    });
+
+    if (reasoningIndexes.length === 0) {
+      // Nothing streamed (a non-streamed fallback, or a turn whose thinking was
+      // all redacted) yet the turn must be replayed with its blocks intact.
+      lastMessage.blocks.push(
+        ...(visibleBlocks.map((entry) =>
+          toReasoningBlock(entry),
+        ) as unknown as Message["blocks"][number][]),
+      );
+      return;
+    }
+
+    const firstIndex = reasoningIndexes[0];
+    const firstBlock = lastMessage.blocks[firstIndex];
+    const merged =
+      firstBlock.type === "reasoning" ? (firstBlock.content ?? "") : "";
+    const texts = visibleBlocks.map((entry) => entry.thinking);
+    // Streaming concatenates the deltas with no separator; the non-streamed
+    // fallback joins the blocks with a newline (parseMessagesResult). Both are
+    // the same blocks in the same order, so both are splittable.
+    const rejoinableTexts = [texts.join(""), texts.join("\n")];
+
+    const rejoinable =
+      reasoningIndexes.length === 1 && rejoinableTexts.includes(merged);
+
+    if (rejoinable) {
+      const startTime =
+        firstBlock.type === "reasoning" ? firstBlock.startTime : undefined;
+      const replacements = visibleBlocks.map((entry, index) =>
+        toReasoningBlock(entry, index === 0 ? { startTime } : undefined),
+      ) as unknown as Message["blocks"][number][];
+      lastMessage.blocks.splice(firstIndex, 1, ...replacements);
+      return;
+    }
+
+    if (reasoningIndexes.length === 1 && visibleBlocks.length === 1) {
+      // One block on each side: the signature belongs to that block even if the
+      // text was normalized on the way in.
+      const [entry] = visibleBlocks;
+      const block = lastMessage.blocks[firstIndex];
+      if (block.type !== "reasoning") return;
+      lastMessage.blocks[firstIndex] = {
+        ...block,
+        ...(entry.signature ? { signature: entry.signature } : {}),
+      };
+      return;
+    }
+
+    logger.warn(
+      "Thinking block boundaries do not match the merged reasoning block; their signatures cannot be replayed",
+      {
+        reasoningBlocks: reasoningIndexes.length,
+        thinkingBlocks: visibleBlocks.length,
+        mergedLength: merged.length,
+        rejoinableLengths: rejoinableTexts.map((value) => value.length),
+      },
+    );
   }
 
   /**
