@@ -193,7 +193,7 @@ export const bashTool: ToolPlugin = {
   },
   leanPrompt: (args?: ToolPromptArgs) => {
     const search = searchPromptLines(args);
-    return `Executes a bash command and returns its output. Each invocation runs in a fresh shell process starting from the project root, and the working directory persists between calls — prefer absolute paths over \`cd\`.
+    return `Executes a bash command and returns its output. Each invocation runs in a fresh shell process: the working directory persists between calls, but shell state (environment variables, aliases, functions) does not. Prefer absolute paths over \`cd\`.
 
 ${search.search}- Read files: Use ${READ_TOOL_NAME} (NOT cat/head/tail)
 - Edit files: Use ${EDIT_TOOL_NAME} (NOT sed/awk)
@@ -208,7 +208,7 @@ ${search.scope}
   prompt: (args?: ToolPromptArgs) => {
     const search = searchPromptLines(args);
     return `
-Executes a given bash command with optional timeout, ensuring proper handling and security measures. Each invocation runs in a fresh shell process starting from the project root.
+Executes a given bash command with optional timeout, ensuring proper handling and security measures. Each invocation runs in a fresh shell process: the working directory persists between calls, but shell state (environment variables, aliases, functions) does not.
 
 ${search.scopeLong}
 
@@ -264,7 +264,7 @@ Use the gh command via the Bash tool for GitHub-related tasks including working 
 - If you must sleep, keep the duration short (1-5 seconds) to avoid blocking the user.
 
 # CWD management
-The working directory persists between commands. Try to maintain your current working directory throughout the session by using absolute paths and avoiding usage of \`cd\`. You may use \`cd\` if the User explicitly requests it.`;
+The working directory persists between commands, but shell state (environment variables, aliases, functions) does not. Try to maintain your current working directory throughout the session by using absolute paths and avoiding usage of \`cd\`. You may use \`cd\` if the User explicitly requests it.`;
   },
   execute: async (
     args: Record<string, unknown>,
