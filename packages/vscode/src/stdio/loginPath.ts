@@ -1,158 +1,105 @@
 /**
- * Login-shell PATH adoption for GUI-launched VS Code.
+ * Login-shell environment adoption for GUI-launched VS Code
+ * (spec: docs/specs/core/bash-tools.md「用户故事：登录 shell 环境注入」).
  *
  * VS Code started from Finder/Dock (macOS) or a desktop launcher (Linux)
- * inherits a bare system PATH without the user's nvm/homebrew/pnpm dirs, and
- * on Windows the Git Bash profile (~/.bashrc) is never sourced by the
- * extension host. Both the binary resolver (`which wave`/`which node`/
- * `which npm`) and the shell commands the agent spawns would then fail to
- * find user tools.
+ * inherits a bare environment without the user's nvm/homebrew/pnpm dirs, and on
+ * Windows the Git Bash profile (~/.bashrc) is never sourced by the extension
+ * host. Every non-PATH export of the user's profile (corporate proxy, custom
+ * CA, `SSH_AUTH_SOCK`) is missing for the same reason.
  *
- * Probe the user's login shell once at activation and adopt its PATH into
- * `process.env` — mirrors the desktop app's adoptLoginShellPath() and the
- * JetBrains plugin's BinaryResolver.resolveEnv(). The SDK itself runs every
- * shell command with a plain `-c`; the login PATH is injected once at the
- * host layer, so no per-command login-shell spawn is needed.
+ * The probe itself lives in the SDK (`primeProcessEnvFromLoginShell`), which
+ * owns the whole policy: the whitelist, the PATH merge, the retry budget with
+ * exponential backoff, the Windows "Git Bash + PATH only" rule and the
+ * "never throws" contract. This module is only the extension host's trigger for
+ * it, so the extension and the desktop app cannot drift apart.
+ *
+ * Two callers share one promise:
+ * - `extension.ts` fires it at activation, off the critical path, so the probe
+ *   overlaps with the rest of activation instead of delaying it;
+ * - `ChatProvider.init()` awaits it right before `wave --stdio` is spawned.
+ *   `StdioClient` spawns with `{ ...process.env }`, and every Bash tool,
+ *   background task, `!` command, MCP server and hook below that child inherits
+ *   that same environment — the very first spawn is the one point where the
+ *   environment has to be complete.
+ *
+ * The wait is bounded by the SDK module's own timeout + retry budget (2
+ * attempts, 4s each, 200ms backoff), and the module never throws: a slow,
+ * missing or broken login shell degrades to "keep the inherited environment"
+ * plus one diagnostic line (验收场景 3).
  */
 
-import { execFileSync } from "child_process";
-import * as fs from "fs";
-import * as path from "path";
-import { decodeCommandOutput } from "./binaryResolver";
-
-const PROBE_TIMEOUT_MS = 5000;
+import {
+  primeProcessEnvFromLoginShell,
+  probeLoginShellEnv,
+  _resetLoginShellEnvCacheForTesting,
+  type LoginShellEnvOptions,
+  type LoginShellEnvProbe,
+} from "wave-agent-sdk/host";
+import { hostLog } from "../hostLog";
 
 /**
- * Locate the Git Bash `bash.exe` on Windows (mirrors the agent-sdk shell
- * resolver's resolveWindowsShell):
- *   1. WAVE_GIT_BASH_PATH env var override
- *   2. Infer from `where git`: <git>/cmd/git.exe → <git>/bin/bash.exe
- *   3. Common install paths (Program Files, Program Files (x86),
- *      %LOCALAPPDATA%\Programs\Git)
- * Returns undefined on non-Windows or when no Git Bash can be found.
+ * Same knobs as `primeProcessEnvFromLoginShell` — `target` is what tests point
+ * at a throwaway object so they never mutate the real `process.env`.
  */
-export function resolveGitBashPath(
-  platform: NodeJS.Platform = process.platform,
-): string | undefined {
-  if (platform !== "win32") return undefined;
+export type AdoptLoginShellEnvOptions = LoginShellEnvOptions & {
+  target?: NodeJS.ProcessEnv;
+  attempts?: number;
+  backoffBaseMs?: number;
+};
 
-  // 1. Env var override.
-  if (process.env.WAVE_GIT_BASH_PATH) {
-    return process.env.WAVE_GIT_BASH_PATH;
-  }
-
-  // 2. Infer from `where git`.
-  try {
-    const output = decodeCommandOutput(
-      execFileSync("where", ["git"], {
-        encoding: "buffer",
-        stdio: "pipe",
-        timeout: 3000,
-        windowsHide: true,
-      }),
-    ).trim();
-    const gitExe = output
-      .split("\n")
-      .map((l) => l.trim())
-      .find(Boolean);
-    if (gitExe) {
-      const bashPath = path.win32.resolve(
-        gitExe,
-        "..",
-        "..",
-        "bin",
-        "bash.exe",
-      );
-      if (fs.existsSync(bashPath)) return bashPath;
-    }
-  } catch {
-    // git not on PATH — fall through to common install paths
-  }
-
-  // 3. Common install paths.
-  const candidates = [
-    "C:\\Program Files\\Git\\bin\\bash.exe",
-    "C:\\Program Files (x86)\\Git\\bin\\bash.exe",
-  ];
-  if (process.env.LOCALAPPDATA) {
-    candidates.push(
-      path.win32.join(
-        process.env.LOCALAPPDATA,
-        "Programs",
-        "Git",
-        "bin",
-        "bash.exe",
-      ),
-    );
-  }
-  return candidates.find((p) => fs.existsSync(p));
-}
-
-/** Run a probe command and return the last non-empty stdout line, if any. */
-function probeWithShell(shellPath: string, args: string[]): string | undefined {
-  try {
-    const output = execFileSync(shellPath, args, {
-      encoding: "utf-8",
-      timeout: PROBE_TIMEOUT_MS,
-      stdio: ["ignore", "pipe", "ignore"],
-      windowsHide: true,
-    });
-    return output.trim().split("\n").pop()?.trim() || undefined;
-  } catch {
-    return undefined;
-  }
-}
+let priming: Promise<void> | undefined;
 
 /**
- * Probe the user's login-shell PATH.
+ * Probe the user's login shell once and adopt the whitelisted subset (PATH
+ * merged, other keys only when the host has not set them) into `process.env`.
  *
- * macOS/Linux: `$SHELL` (if set and executable), else /bin/zsh, else
- * /bin/bash, with `-lic 'echo $PATH'` — `-l` sources the profile, `-i` picks
- * up interactive-only PATH additions (e.g. nvm's shell init).
- *
- * Windows: Git Bash `-lic 'cygpath -pw "$PATH"'` — cygpath converts the
- * POSIX-form Git Bash PATH back to Windows form (`;`-separated) so cmd.exe
- * and Node subprocesses can still resolve tools.
- *
- * Returns undefined on failure (shell missing, timeout, non-zero exit); the
- * caller then keeps the inherited environment.
- */
-export function probeLoginPath(
-  platform: NodeJS.Platform = process.platform,
-): string | undefined {
-  if (platform === "win32") {
-    const gitBashPath = resolveGitBashPath(platform);
-    if (!gitBashPath) return undefined;
-    return probeWithShell(gitBashPath, ["-lic", 'cygpath -pw "$PATH"']);
-  }
-
-  const shell = [process.env.SHELL, "/bin/zsh", "/bin/bash"].find(
-    (c) => c && fs.existsSync(c),
-  );
-  if (!shell) return undefined;
-  return probeWithShell(shell, ["-lic", "echo $PATH"]);
-}
-
-let adoptedPath: string | undefined;
-
-/**
- * Probe the login PATH once and inject it into process.env. Safe to call
- * multiple times (the probe result is cached). Never throws — on failure the
- * environment is left untouched and the binary resolver surfaces its usual
- * errors.
+ * Idempotent and synchronous to *start*: repeated calls return the same
+ * promise, so the later `await` from the spawn path never runs a second probe.
+ * The promise never rejects — a failed probe resolves after logging once.
  */
 export function adoptLoginPathIntoEnv(
-  platform: NodeJS.Platform = process.platform,
-): void {
-  if (adoptedPath !== undefined) return;
-  const probed = probeLoginPath(platform);
-  if (probed) {
-    adoptedPath = probed;
-    process.env.PATH = probed;
-  }
+  options: AdoptLoginShellEnvOptions = {},
+): Promise<void> {
+  priming ??= primeProcessEnvFromLoginShell(options)
+    .then(({ adopted, error }) => {
+      if (error !== undefined) {
+        hostLog.warn(
+          "[login-shell] probe failed; keeping the inherited environment:",
+          error,
+        );
+        return;
+      }
+      // Key names only: the values routinely carry proxy credentials and
+      // tokens, and vscode.log is the file users hand to support.
+      hostLog.info(
+        `[login-shell] adopted keys: ${adopted.length > 0 ? adopted.join(", ") : "(none)"}`,
+      );
+    })
+    // The SDK module is documented never to reject; the catch keeps the promise
+    // chain flat anyway, so the spawn path below cannot fail on a probe bug.
+    .catch((thrown: unknown) => {
+      hostLog.warn(
+        "[login-shell] probe threw; keeping the inherited environment:",
+        thrown,
+      );
+    });
+  return priming;
 }
 
-/** Reset the cached adoption — for testing only. */
+/**
+ * Probe the login shell environment without adopting it — a thin delegate, kept
+ * for diagnostics/tests. The result is the SDK probe record, so the PATH is
+ * `probe.env.PATH` (the old PATH-only string this module used to return).
+ */
+export function probeLoginPath(
+  options: LoginShellEnvOptions = {},
+): Promise<LoginShellEnvProbe> {
+  return probeLoginShellEnv(options);
+}
+
+/** Reset the cached adoption (wrapper promise + SDK probe cache) — tests only. */
 export function _resetLoginPathCacheForTesting(): void {
-  adoptedPath = undefined;
+  priming = undefined;
+  _resetLoginShellEnvCacheForTesting();
 }

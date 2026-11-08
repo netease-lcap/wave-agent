@@ -10,11 +10,13 @@ export function activate(context: vscode.ExtensionContext) {
   console.log("Wave AI 聊天扩展已激活！");
 
   // GUI-launched VS Code (Finder/launcher) has a bare system PATH without the
-  // user's nvm/homebrew dirs; on Windows the Git Bash profile is never sourced.
-  // Adopt the login-shell PATH BEFORE any binary resolution / stdio spawn so
-  // `which wave/node/npm` and agent-spawned bash commands find user tools.
-  // Synchronous probe (bounded by a 5s timeout), result cached per activation.
-  adoptLoginPathIntoEnv();
+  // user's nvm/homebrew dirs, and non-PATH profile exports (proxy, custom CA,
+  // `SSH_AUTH_SOCK`) are gone too; on Windows the Git Bash profile is never
+  // sourced. Start adopting the login-shell environment here, before anything
+  // can spawn the CLI — but do NOT await it: activation stays synchronous so a
+  // slow/broken login shell cannot delay command registration. The spawn path
+  // (`ChatProvider.init`) awaits the same promise right before `wave --stdio`.
+  void adoptLoginPathIntoEnv();
 
   // Create a single ChatProvider instance for the extension lifecycle
   try {

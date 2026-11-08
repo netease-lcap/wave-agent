@@ -159,18 +159,24 @@ order: 20
 
 ### 用户故事：登录 shell 环境注入（优先级：P1）
 
-作为 AI 代理，我希望 Bash 工具、后台任务与 bash 模式命令（`!`）执行的命令能拿到用户登录 shell 的完整 PATH（含 nvm、Homebrew 等），且无需每条命令都加载一次用户 profile。
+作为 AI 代理，我希望 Bash 工具、后台任务、bash 模式命令（`!`）、MCP server、hooks、LSP server 与 git 调用都能拿到用户登录 shell 的环境——PATH 以及 shell 配置里 export 的变量（API key、企业代理、自签证书、`SSH_AUTH_SOCK`）——且任何一条命令都不加载用户 profile。
 
-**优先级原因**：GUI 启动的宿主（Finder/Dock 启动的桌面端、VS Code 扩展与 JetBrains 插件）进程 PATH 不完整，且 Windows 上 Git Bash 的 profile 永远不会被 GUI 进程加载；若在 SDK 层每条命令都通过 `-c -l` 加载 profile，首次 login-shell spawn 存在启动开销与输出丢失竞态。登录 PATH 由宿主启动时注入一次，SDK 执行器纯 `-c` 继承即可。
+**优先级原因**：GUI 启动的宿主（Finder/Dock 启动的桌面端、VS Code 扩展与 JetBrains 插件）进程环境不完整：PATH 缺 nvm/Homebrew，shell 配置里除 PATH 之外的 export 全部丢失——表现为 MCP server 找不到 `npx`/`uvx`、`git push` 因缺 `SSH_AUTH_SOCK` 失败、企业代理与自签证书不生效。若在 SDK 层每条命令都用 `-c -l` 加载 profile，则每条命令都付一次 shell 启动与配置执行代价，还会把用户 rc 的输出混进命令结果。因此改为「宿主启动时一次性探测、写入进程环境、所有子进程继承」，SDK 执行器保持纯 `-c`。
 
-**独立测试**：在 agent-sdk 集成测试中执行 `echo $PATH`，验证命令非登录 shell 执行（无 `-l`）且输出与宿主注入的 PATH 一致。
+**独立测试**：用假 HOME 造 `~/.bashrc`（guard 前 export 一个 marker 变量与一个 PATH 目录），断言宿主探测后：(a) marker 在白名单里且被写入进程环境，(b) 不在白名单里的变量不被采纳，(c) 已由宿主显式设置的键不被覆盖、而 `PATH` 按「探测值在前 + 继承值在后 + 去重」合并，(d) 子进程执行 `echo $PATH` 时无 `-l`、不 source profile。
 
 **验收场景**：
 
-1. **假设** 宿主（桌面端、VS Code 扩展、JetBrains 插件）启动，**当** 宿主初始化时，**则** 必须单次探测用户登录 shell 的 PATH（macOS/Linux：登录 shell `-lic 'echo $PATH'`；Windows：Git Bash `-lic 'cygpath -pw "$PATH"'`）并注入 wave 进程环境——Bash 工具、后台任务与 bash 模式命令通过继承获得该 PATH，且每条命令都以纯 `-c` 执行，不得为每条命令 spawn 登录 shell（`-c -l`）。
-2. **假设** 登录 shell PATH 探测成功，**当** 执行任意 shell 命令时，**则** 子进程的 PATH 必须包含登录 shell 中的路径（如 nvm/Homebrew/Git Bash）。
-3. **假设** 登录 shell PATH 探测失败（超时、shell 缺失、Git Bash 未安装等），**当** 执行 shell 命令时，**则** 命令必须正常执行并回退到继承环境（探测失败不阻塞、不报错）。
-4. **假设** 同一会话内执行多条命令，**当** 每条命令启动时，**则** 不得重新加载用户 profile——PATH 来自宿主启动时的一次注入。
+1. **假设** 宿主（桌面端、VS Code 扩展、JetBrains 插件）启动，**当** 开始探测用户登录 shell 环境时，**则** 探测必须**异步**进行：桌面端窗口与首屏、VS Code 激活后的可用性、JB 的工具窗口都不得等待探测完成，探测不得写在模块加载/激活的同步路径上（现状桌面端在主进程模块顶层同步 `execFileSync`，最坏会阻塞启动 5 秒）。
+2. **假设** 探测在 macOS/Linux 上执行，**当** 读取登录 shell 环境时，**则** 必须取**完整环境**而非只取 PATH：`<shell> -l -i -c 'echo "<起始标记>"; env -0 && echo "<结束标记>" || env'` 形式，优先按 NUL 分割解析，`env -0` 不可用时退化为按行解析并记录退化标记。
+3. **假设** 需要选定用于探测的 shell，**当** 决定用哪个 shell 时，**则** 顺序必须是：`$SHELL`（绝对路径且可执行）→ `/bin/zsh`（存在且 `~/.zshrc` 存在）→ `/bin/bash`（存在且 `~/.bashrc` 存在）→ 第一个存在的 `/bin/zsh`/`/bin/bash`/`/bin/sh`；不得硬编码某一种 shell（否则 Linux 上只装 bash 的用户探测必失败）。
+4. **假设** 探测成功，**当** 把结果写入宿主进程环境时，**则** 必须「白名单 + 不覆盖」：只写入白名单内的键，且只在该键当前未设置时写入（宿主或用户显式配置优先）。白名单至少覆盖 `PATH`、`SSH_AUTH_SOCK`、`WAVE_SHELL`、`WAVE_GIT_BASH_PATH`、代理类（`HTTP_PROXY`/`HTTPS_PROXY`/`ALL_PROXY`/`NO_PROXY` 及大写形式）、证书信任类（`NODE_EXTRA_CA_CERTS`、`SSL_CERT_FILE`、`SSL_CERT_DIR`、`REQUESTS_CA_BUNDLE`、`CURL_CA_BUNDLE`、`GIT_SSL_CAINFO`）；**不得**把用户 shell 配置里的全部变量灌进宿主进程（`NODE_OPTIONS`、`LD_PRELOAD`、`DYLD_*`、`GIT_*` 会改变 Electron / 扩展宿主自身的行为）。唯一例外是 `PATH`：宿主进程几乎必然已继承一个不完整的 `PATH`，严格「已设置即跳过」会让登录 PATH 永远进不来，因此 `PATH` 必须合并——探测值在前、继承值在后、按分隔符去重（Windows 上键名大小写不敏感，更新已存在的那个键而不是新增一个）。
+5. **假设** 启动用于探测的 shell 子进程，**当** 构造它自身的环境时，**则** 必须是最小环境（`HOME`/`PATH`/`SHELL`/`USER`/`SSH_AUTH_SOCK` 加 locale 与 display 类变量），并附加防噪变量 `DISABLE_AUTO_UPDATE=true`、`ZSH_DISABLE_COMPFIX=true`、`SSH_ASKPASS_REQUIRE=never`、`DBUS_SESSION_BUS_ADDRESS=disabled:`，避免登录 shell 的自动更新、补全自检、askpass 弹窗拖慢或阻塞探测。
+6. **假设** 解析探测输出，**当** 生成最终变量集合时，**则** 必须丢弃 `PWD`、`OLDPWD`、`SHLVL`、`_` 与本故事场景 5 的防噪变量；退化为按行解析时还必须丢弃值可能含换行的键，避免跨行污染。
+7. **假设** 探测失败（超时、shell 缺失、输出不可解析、Git Bash 未安装等），**当** 继续运行宿主时，**则** 必须先按上限重试（带指数退避），仍失败则降级为「只采纳 PATH」或维持继承环境，并记录一次诊断日志；任何失败都不得阻塞宿主启动、不得弹错误、不得让会话不可用。预算口径三个宿主统一：单次探测超时 4 秒、最多 2 次尝试、退避 200ms 起（最坏约 8.4 秒），宿主等待探测落地的上界与之一致——再紧会把慢配置（冷网络挂载上的 nvm）误杀，再松会让挂住的 profile 明显拖慢首个会话。
+8. **假设** 环境已注入，**当** Bash 工具、后台任务、`!` 命令、MCP server、hooks、LSP server 或 git 调用启动子进程时，**则** 它们都必须能解析到登录 shell 里的工具与变量——这些路径只继承进程环境（不经 shell），因此注入必须发生在宿主进程层，而不是某一条工具执行路径里。
+9. **假设** 任意一条 shell 命令执行，**当** 该命令启动时，**则** 都必须以纯 `-c` 执行：不得为单条命令 spawn 登录 shell（`-c -l`）、不得 source 用户 profile；因此用户 shell 里的 alias、函数与 `shopt` 选项对命令不生效（这是有意的取舍，换来每条命令零额外启动开销、结果不被 rc 输出污染）。
+10. **假设** 运行在 Windows 上，**当** 探测环境时，**则** 沿用 Git Bash `-lic 'cygpath -pw "$PATH"'` 只采纳 PATH 并转回 Windows 原生形式；本期不要求 Windows 全量采纳环境变量（Git Bash 的变量语义与 Windows 原生进程不一致）。
 
 ---
 
@@ -216,5 +222,7 @@ order: 20
 - 代理具有在目标环境中执行 bash 命令所需的权限。
 - 在 Linux/macOS 上，系统必须显式解析 bash 或 zsh 作为执行 shell；`/bin/sh` 可能是 dash 或 POSIX 模式 bash，不保证兼容 bashism。
 - 在 Windows 上，用户已安装 Git for Windows（提供 Git Bash）。
+- 「命令环境」与「CLI 运行时解析」是两件事：宿主采纳登录 shell 环境只影响子进程的可执行文件与变量解析，不改变内置/托管 Node 运行时的选取——后者不读登录 shell（见 [stdio-transport.md](../ui/stdio-transport.md) 场景 10），两者不冲突。
+- 登录 shell 环境的探测每个宿主进程只做一次（失败按上限重试），不随会话、不随命令重复。
 - `PermissionManager` 将在任何命令实际执行之前处理安全检查。
 - 代理被指示在适当时优先使用专用工具（Read、Write 等）而非通用 bash 命令；内容搜索与文件名匹配在默认工具集下没有专用工具，直接使用 Bash 里的 `grep` / `find`。

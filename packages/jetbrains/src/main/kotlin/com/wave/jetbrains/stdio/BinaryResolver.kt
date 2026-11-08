@@ -1,10 +1,17 @@
 package com.wave.jetbrains.stdio
 
+import com.wave.jetbrains.util.WaveAppLog
 import java.io.File
 import java.io.FileOutputStream
 import java.nio.charset.Charset
 import java.security.MessageDigest
 import java.util.HexFormat
+import java.util.UUID
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.TimeoutException
 
 /**
  * Resolves the `wave` CLI for local sessions. The CLI 三件套
@@ -26,10 +33,50 @@ import java.util.HexFormat
 object BinaryResolver {
     @Volatile
     private var cachedEntry: String? = null
+
+    /**
+     * The one login-shell environment probe of this IDE process. It yields a
+     * process-wide environment delta (not per-project or per-session state), so
+     * every project and every spawn shares the same result.
+     */
     @Volatile
-    private var cachedLoginPath: String? = null
-    @Volatile
-    private var loginPathResolved = false
+    private var probe: CompletableFuture<Map<String, String>>? = null
+
+    /** Single-threaded and daemon: one background probe, never holds the JVM open. */
+    private val probeExecutor: ExecutorService = Executors.newSingleThreadExecutor { r ->
+        Thread(r, "wave-login-shell-probe").apply { isDaemon = true }
+    }
+
+    /** Drains the probe child's stdout — must not share [probeExecutor], which is blocked waiting for it. */
+    private val probeReaderExecutor: ExecutorService = Executors.newCachedThreadPool { r ->
+        Thread(r, "wave-login-shell-probe-reader").apply { isDaemon = true }
+    }
+
+    /**
+     * Probe budget, shared by all three hosts (the SDK module used by desktop and
+     * VS Code hard-codes the same numbers — keep them in step):
+     * one attempt gets 4s, two attempts plus backoff make ~8.4s worst case, and
+     * that is also the longest a CLI spawn waits ([PROBE_AWAIT_MS]).
+     */
+    private const val PROBE_TIMEOUT_MS = 4_000L
+
+    /** Reading the drained output after the child exited — it is already in memory by then. */
+    private const val READ_TIMEOUT_MS = 1_000L
+
+    /**
+     * Retries stay at two: a transient spawn/timeout failure gets one more
+     * chance, while a missing shell or unparseable output fails identically on
+     * the retry. The bound is what keeps the background thread short-lived.
+     */
+    private const val PROBE_MAX_ATTEMPTS = 2
+    private const val PROBE_RETRY_BACKOFF_MS = 200L
+
+    /**
+     * How long a CLI spawn may wait for the probe: the full probe budget, so the
+     * wait cannot cut off an attempt that is still within its own timeout (it
+     * usually finished during IDE startup, so this costs nothing).
+     */
+    private const val PROBE_AWAIT_MS = 9_000L
 
     private val isWindows = System.getProperty("os.name").lowercase().startsWith("win")
     private val lookupCmd = if (isWindows) "where" else "which"
@@ -161,91 +208,213 @@ object BinaryResolver {
     }
 
     // ------------------------------------------------------------------
-    // Environment for spawned processes (login-shell PATH)
+    // Environment for spawned processes (login-shell environment)
     // ------------------------------------------------------------------
 
     /**
-     * Environment variables to inject into spawned `node` processes.
+     * Environment delta to inject into the spawned `wave --stdio` child — and
+     * thereby into everything the CLI spawns (`Bash` tool commands, background
+     * tasks, MCP servers, hooks, git, LSP servers, nothing of which goes through
+     * a shell): the user's login-shell environment, adopted by whitelist +
+     * no-overwrite (see [LoginShellEnv.adopt]; spec core/bash-tools.md
+     * 「用户故事：登录 shell 环境注入」).
      *
-     * GUI-launched IDEs inherit a minimal launchd PATH and never source the
-     * shell profile, so homebrew, nvm, pnpm, and user-customized bin dirs are
-     * invisible to `System.getenv("PATH")`. We inject the login-shell PATH,
-     * which rebuilds the full PATH (so the CLI child can resolve tools like
-     * git). Returns an empty map when there's nothing to inject.
+     * Waits for the background probe started at project startup
+     * ([warmupLoginShellEnv]) for at most [PROBE_AWAIT_MS]. If the probe is still
+     * running or failed, the delta is empty and the child keeps the inherited
+     * environment — the same degradation as before, plus one diagnostic log line.
+     * Never throws: a missing login-shell environment must not make a session
+     * unusable.
      */
-    fun resolveEnv(): Map<String, String> = buildEnv(resolveLoginShellPath())
-
-    /**
-     * Assembles a deduped, ordered PATH: login-shell PATH first (the
-     * comprehensive set — homebrew, nvm, pnpm, user customizations), then the
-     * inherited PATH as a base. Split out from [resolveEnv] so it can be
-     * unit-tested with synthetic inputs. [currentPath] defaults to the live
-     * env so production callers don't need to pass it, while tests can inject
-     * a fixed value (or null to simulate unset).
-     */
-    internal fun buildEnv(
-        loginPath: String? = null,
-        currentPath: String? = System.getenv("PATH"),
-    ): Map<String, String> {
-        val segments = linkedSetOf<String>()
-        loginPath
-            ?.takeIf { it.isNotEmpty() }
-            ?.split(File.pathSeparator)
-            ?.forEach { if (it.isNotEmpty()) segments.add(it) }
-        currentPath
-            ?.takeIf { it.isNotEmpty() }
-            ?.split(File.pathSeparator)
-            ?.forEach { if (it.isNotEmpty()) segments.add(it) }
-        if (segments.isEmpty()) return emptyMap()
-        return mapOf("PATH" to segments.joinToString(File.pathSeparator))
+    fun resolveEnv(): Map<String, String> {
+        val probed = awaitProbedEnv()
+        if (probed.isEmpty()) return emptyMap()
+        val adopted = LoginShellEnv.adopt(probed, System.getenv(), isWindows)
+        if (adopted.isNotEmpty()) {
+            // Key names only — values here commonly carry proxy credentials.
+            WaveAppLog.info("login-shell env adopted: ${adopted.keys.sorted().joinToString(", ")}")
+        }
+        return adopted
     }
 
     /**
-     * Spawns the user's login shell once and captures the PATH it produces
-     * after sourcing the profile (login + interactive). GUI-launched IDEs
-     * inherit a minimal launchd PATH and never source `~/.zprofile`/`~/.zshrc`,
-     * so homebrew, nvm, pnpm, and user-customized bin dirs are invisible to
-     * `System.getenv("PATH")`. The login shell rebuilds the full PATH.
-     *
-     * This is NOT how the runtime is found any more — [resolveNode] always uses
-     * the managed runtime, addressed by absolute path. The login PATH survives
-     * because the CLI's own children (git for the diff/VCS tools, and whatever
-     * the user's hooks call) still need the real PATH.
-     *
-     * Result is cached for the IDE session. Returns null if the probe fails.
+     * Start the login-shell environment probe in the background. Called from
+     * [LoginShellEnvStartupActivity] right after a project opens, so the probe
+     * (up to [PROBE_TIMEOUT_MS] per attempt) runs while the IDE is still busy and
+     * has normally finished long before the first session spawns. Idempotent,
+     * non-blocking, never throws, never reports to the UI.
      */
-    internal fun resolveLoginShellPath(): String? {
-        if (loginPathResolved) return cachedLoginPath
-        loginPathResolved = true
-        if (isWindows) {
-            // Windows: GUI-launched IDEs never source the Git Bash profile, so
-            // bash commands would miss PATH additions from ~/.bashrc. Probe the
-            // login PATH once and convert it back to Windows form via cygpath
-            // so cmd.exe and Node subprocesses can still resolve tools.
-            val gitBash = resolveGitBashPath() ?: return null
-            cachedLoginPath = try {
-                val out = runCommandRaw(gitBash, "-lic", "cygpath -pw \"\$PATH\"")
-                out.lineSequence().map { it.trim() }.lastOrNull { it.isNotEmpty() }
-            } catch (_: Exception) {
+    fun warmupLoginShellEnv() {
+        probeFuture()
+    }
+
+    private fun probeFuture(): CompletableFuture<Map<String, String>> {
+        probe?.let { return it }
+        synchronized(this) {
+            probe?.let { return it }
+            return CompletableFuture
+                .supplyAsync({ probeLoginShellEnv() }, probeExecutor)
+                .also { probe = it }
+        }
+    }
+
+    private fun awaitProbedEnv(): Map<String, String> {
+        return try {
+            probeFuture().get(PROBE_AWAIT_MS, TimeUnit.MILLISECONDS)
+        } catch (e: TimeoutException) {
+            WaveAppLog.warn(
+                "login-shell env probe still running after ${PROBE_AWAIT_MS}ms — " +
+                    "spawning with the inherited environment"
+            )
+            emptyMap()
+        } catch (e: Exception) {
+            // The probe logs its own failure; a broken future stays silent here.
+            emptyMap()
+        }
+    }
+
+    /**
+     * Probe the login shell for its **full** environment, not just PATH
+     * (spec scenario 2). Returns an empty map on failure — never throws, so the
+     * background task can only ever degrade.
+     */
+    private fun probeLoginShellEnv(): Map<String, String> {
+        var backoff = PROBE_RETRY_BACKOFF_MS
+        var lastError: String? = null
+        for (attempt in 1..PROBE_MAX_ATTEMPTS) {
+            val result = try {
+                if (isWindows) probeWindowsLoginPath() else probePosixLoginEnv()
+            } catch (e: Exception) {
+                lastError = e.toString()
                 null
             }
-            return cachedLoginPath
+            if (!result.isNullOrEmpty()) return result
+            if (attempt < PROBE_MAX_ATTEMPTS) {
+                try {
+                    Thread.sleep(backoff)
+                } catch (_: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                    break
+                }
+                backoff *= 2
+            }
         }
-        val shell = System.getenv("SHELL")
-            ?.takeIf { it.isNotEmpty() && File(it).exists() }
-            ?: listOf("/bin/zsh", "/bin/bash").firstOrNull { File(it).exists() }
-            ?: return null
-        cachedLoginPath = try {
-            // -l: login (sources profile), -i: interactive (sources rc, where
-            // nvm/brew/pnpm init usually live), -c: run command and exit.
-            // Take the last non-empty line in case rc files print banners.
-            val out = runCommandRaw(shell, "-lic", "echo \$PATH")
-            out.lineSequence().map { it.trim() }.lastOrNull { it.isNotEmpty() }
-        } catch (_: Exception) {
+        WaveAppLog.warn(
+            "login-shell env probe failed after $PROBE_MAX_ATTEMPTS attempt(s), " +
+                "falling back to the inherited environment" + (lastError?.let { ": $it" } ?: "")
+        )
+        return emptyMap()
+    }
+
+    /**
+     * macOS/Linux probe: one login + interactive shell run that prints its whole
+     * environment. `-l` sources the profile, `-i` picks up interactive-only
+     * exports (nvm/pnpm/brew init usually live in the rc file).
+     *
+     * The markers make the output independent of whatever the rc files print
+     * (banners, compinit warnings, "no job control in this shell"), and `env -0`
+     * keeps multi-line values intact — where it is unsupported the `|| env`
+     * branch prints the same variables line-separated instead.
+     */
+    private fun probePosixLoginEnv(): Map<String, String>? {
+        val shell = LoginShellEnv.selectPosixShell(System.getenv("SHELL"), homeDir())
+        if (shell == null) {
+            WaveAppLog.warn(
+                "login-shell env probe: no shell found (\$SHELL, /bin/zsh, /bin/bash, /bin/sh all unusable)"
+            )
+            return null
+        }
+        val nonce = "WAVE_LOGIN_SHELL_" + UUID.randomUUID().toString().replace("-", "")
+        val endMarker = "${nonce}_END"
+        val command = "echo \"$nonce\"; env -0 && echo \"$endMarker\" || env"
+        val output = runProbe(
+            listOf(shell, "-l", "-i", "-c", command),
+            LoginShellEnv.buildProbeEnv(System.getenv()),
+            replaceEnv = true,
+        ) ?: return null
+        val parsed = LoginShellEnv.parseProbeEnv(output, nonce, endMarker)
+        if (parsed == null) {
+            WaveAppLog.warn("login-shell env probe: $shell printed no start marker, output unparseable")
+            return null
+        }
+        if (!parsed.nulDelimited) {
+            WaveAppLog.info("login-shell env probe: `env -0` unavailable in $shell, parsed line-separated output")
+        }
+        return LoginShellEnv.sanitizeProbedEnv(parsed.env).ifEmpty { null }
+    }
+
+    /**
+     * Windows probe, unchanged in shape: Git Bash `-lic 'cygpath -pw "$PATH"'`,
+     * PATH only, converted back to native Windows form (spec scenario 11 — Git
+     * Bash's variable semantics do not match native Windows processes, so full
+     * adoption is out of scope here).
+     */
+    private fun probeWindowsLoginPath(): Map<String, String>? {
+        val gitBash = resolveGitBashPath() ?: run {
+            WaveAppLog.warn("login-shell env probe: Git Bash not found")
+            return null
+        }
+        val output = runProbe(
+            listOf(gitBash, "-lic", "cygpath -pw \"\$PATH\""),
+            LoginShellEnv.NOISE_ENV,
+            replaceEnv = false,
+        ) ?: return null
+        val path = output.lineSequence().map { it.trim() }.lastOrNull { it.isNotEmpty() }
+        // `cygpath -pw` always emits `;`-separated Windows form; anything else is
+        // an error message from the shell, which must not become the PATH.
+        if (path.isNullOrEmpty() || ';' !in path) return null
+        return mapOf("PATH" to path)
+    }
+
+    /**
+     * Run a probe child and return its combined stdout/stderr, or null on spawn
+     * failure / timeout.
+     *
+     * [replaceEnv] decides whether [env] *replaces* the inherited environment
+     * (POSIX: the minimal probe environment of spec scenario 5) or is only
+     * overlaid on it (Windows, where `bash.exe` needs `SYSTEMROOT` and friends to
+     * start at all).
+     *
+     * stdout is drained on another thread: an environment dump can exceed the
+     * pipe buffer, and `waitFor` would then deadlock against a blocked child.
+     */
+    private fun runProbe(cmd: List<String>, env: Map<String, String>, replaceEnv: Boolean): String? {
+        val process = try {
+            ProcessBuilder(cmd).apply {
+                redirectErrorStream(true)
+                if (replaceEnv) environment().clear()
+                environment().putAll(env)
+            }.start()
+        } catch (e: Exception) {
+            WaveAppLog.warn("login-shell env probe: cannot start ${cmd.firstOrNull()}: $e")
+            return null
+        }
+        // An interactive shell may wait for input while stdin stays an open pipe.
+        runCatching { process.outputStream.close() }
+        val reader = CompletableFuture.supplyAsync(
+            { process.inputStream.use { decodeCommandOutput(it.readBytes()) } },
+            probeReaderExecutor,
+        )
+        return try {
+            if (!process.waitFor(PROBE_TIMEOUT_MS, TimeUnit.MILLISECONDS)) {
+                process.destroyForcibly()
+                reader.cancel(true)
+                WaveAppLog.warn("login-shell env probe: ${cmd.firstOrNull()} timed out after ${PROBE_TIMEOUT_MS}ms")
+                null
+            } else {
+                reader.get(READ_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+            }
+        } catch (e: Exception) {
+            process.destroyForcibly()
+            reader.cancel(true)
+            WaveAppLog.warn("login-shell env probe: reading output of ${cmd.firstOrNull()} failed: $e")
             null
         }
-        return cachedLoginPath
     }
+
+    /** `$HOME` when set, else the JVM's `user.home` — the login shell itself uses the former. */
+    private fun homeDir(): String? =
+        System.getenv("HOME")?.takeIf { it.isNotEmpty() } ?: System.getProperty("user.home")
 
     /**
      * Locate the Git Bash `bash.exe` on Windows (mirrors the agent-sdk shell
@@ -292,6 +461,7 @@ object BinaryResolver {
     /** Reset caches (testing). */
     fun resetCache() {
         cachedEntry = null
+        probe = null
         ManagedRuntime.resetCache()
     }
 
@@ -323,7 +493,8 @@ object BinaryResolver {
     }
 
     /** Runs a command with the inherited environment as-is — used by the
-     *  login-shell PATH probe, which must not be given the PATH it produces. */
+     *  Git Bash lookup (`where git`), which must not be given a PATH built from
+     *  its own result. */
     private fun runCommandRaw(vararg cmd: String): String {
         val proc = ProcessBuilder(cmd.toList()).apply {
             redirectErrorStream(true)

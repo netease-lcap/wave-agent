@@ -24,4 +24,5 @@ export * from "../constants/index.js";
 export * from "../stdio/index.js";
 export * from "../types/index.js";
 export * from "../utils/errorUtils.js";
+export * from "../utils/loginShellEnv.js";
 export * from "../utils/messageWindow.js";

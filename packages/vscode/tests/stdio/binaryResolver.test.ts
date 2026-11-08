@@ -42,7 +42,6 @@ vi.mock("os", () => ({
 import {
   resolveWaveBinary,
   ensureCliUpToDate,
-  decodeCommandOutput,
   setExtensionPath,
   cliInstallDir,
   _resetCacheForTesting,
@@ -162,17 +161,5 @@ describe("binaryResolver (bundled CLI only)", () => {
     seedBundledCli("1.0.0");
 
     await expect(ensureCliUpToDate()).resolves.toBe(entry());
-  });
-
-  it("decodeCommandOutput falls back to GBK on U+FFFD", () => {
-    // GBK (CP936) bytes of `刘一奇` — cmd.exe output on Chinese Windows.
-    const gbk = Buffer.from([0xc1, 0xf5, 0xd2, 0xbb, 0xc6, 0xe6]);
-    expect(decodeCommandOutput(gbk)).toBe("刘一奇");
-  });
-
-  it("decodeCommandOutput keeps valid UTF-8 untouched", () => {
-    expect(decodeCommandOutput("C:\\Users\\wave.cmd")).toBe(
-      "C:\\Users\\wave.cmd",
-    );
   });
 });

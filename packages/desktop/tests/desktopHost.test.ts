@@ -355,8 +355,12 @@ vi.mock("../src/main/stdio/stdioClient", () => ({
 
 vi.mock("wave-agent-sdk/host", async (importOriginal) => ({
   // Spread the real host surface — desktopHost also takes shared literals from
-  // this entry; only the two RPC classes are replaced.
+  // this entry; only the two RPC classes and the login-shell probe are
+  // replaced.
   ...(await importOriginal<Record<string, unknown>>()),
+  // The login-shell probe spawns a real shell and rewrites process.env; the
+  // host awaits it before spawning the CLI, so stub it as a no-op here.
+  primeProcessEnvFromLoginShell: vi.fn(async () => ({ adopted: [] })),
   NotificationRouter: class {
     attach = vi.fn();
     registerSession = vi.fn();

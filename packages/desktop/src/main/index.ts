@@ -16,14 +16,13 @@ import {
   shell,
   type MessageBoxOptions,
 } from "electron";
-import { execFileSync } from "child_process";
-import * as fs from "fs";
 import * as path from "path";
 import { pathToFileURL } from "url";
 import { hostLog } from "./hostLog";
 import { WEBVIEW_CHANNEL } from "./channels";
 import { ConfigStore } from "./configStore";
 import { DesktopHost } from "./desktopHost";
+import { primeLoginShellEnv } from "./loginShellEnv";
 import { isLocalhostUrl } from "./isLocalhostUrl";
 import { attachNavigationGuards } from "./navigationGuard";
 import { DEEP_LINK_SCHEME, findDeepLink } from "./deepLink";
@@ -40,116 +39,6 @@ import {
   updateMenuState,
   type DesktopMenuActions,
 } from "./menu";
-
-/**
- * GUI-launched apps (Finder/Spotlight) get a bare system PATH without the
- * user's nvm/homebrew dirs, so `which wave`/`which npm`/`which node` all fail
- * and the binary resolver breaks. Probe the user's login shell once and adopt
- * its PATH; child processes inherit it via `...process.env` spreads.
- */
-function resolveGitBashPath(): string | undefined {
-  // Priority (mirrors the agent-sdk shell resolver):
-  // 1. WAVE_GIT_BASH_PATH env var
-  if (process.env.WAVE_GIT_BASH_PATH) {
-    return process.env.WAVE_GIT_BASH_PATH;
-  }
-  // 2. Infer from `where git`: <git>/cmd/git.exe → <git>/bin/bash.exe
-  try {
-    const gitExe = execFileSync("where", ["git"], {
-      encoding: "utf-8",
-      stdio: "pipe",
-      timeout: 3000,
-      windowsHide: true,
-    })
-      .trim()
-      .split(/\r?\n/)
-      .find((line) => line.trim());
-    if (gitExe) {
-      const bashPath = path.win32.resolve(
-        gitExe,
-        "..",
-        "..",
-        "bin",
-        "bash.exe",
-      );
-      if (fs.existsSync(bashPath)) {
-        return bashPath;
-      }
-    }
-  } catch {
-    // not installed via git
-  }
-  // 3. Common install paths
-  const candidates = [
-    "C:\\Program Files\\Git\\bin\\bash.exe",
-    "C:\\Program Files (x86)\\Git\\bin\\bash.exe",
-  ];
-  if (process.env.LOCALAPPDATA) {
-    candidates.push(
-      path.win32.join(
-        process.env.LOCALAPPDATA,
-        "Programs",
-        "Git",
-        "bin",
-        "bash.exe",
-      ),
-    );
-  }
-  return candidates.find((p) => fs.existsSync(p));
-}
-
-function adoptLoginShellPath(): void {
-  if (process.platform === "win32") {
-    // Git Bash: GUI-launched processes never source the profile, so bash
-    // commands would miss PATH additions from ~/.bashrc. Probe the login PATH
-    // once and convert it back to Windows form via cygpath so cmd.exe and
-    // Node subprocesses can still resolve tools.
-    const gitBashPath = resolveGitBashPath();
-    if (!gitBashPath) return;
-    try {
-      // execFileSync, NOT execSync: with execSync the command goes through
-      // cmd.exe which would expand `$PATH` BEFORE bash sources the profile,
-      // defeating the whole probe.
-      const probed = execFileSync(
-        gitBashPath,
-        ["-lic", 'cygpath -pw "$PATH"'],
-        {
-          encoding: "utf-8",
-          timeout: 5000,
-          stdio: ["ignore", "pipe", "ignore"],
-          windowsHide: true,
-        },
-      )
-        .trim()
-        .split("\n")
-        .pop()
-        ?.trim();
-      if (probed) process.env.PATH = probed;
-    } catch {
-      // keep the default PATH — the resolver will surface its usual errors
-    }
-    return;
-  }
-  try {
-    // execFileSync, NOT execSync: with execSync the command goes through
-    // /bin/sh -c which would expand `$PATH` BEFORE zsh sources .zshrc,
-    // defeating the whole probe.
-    const probed = execFileSync("/bin/zsh", ["-lic", "echo $PATH"], {
-      encoding: "utf-8",
-      timeout: 5000,
-      stdio: ["ignore", "pipe", "ignore"],
-    })
-      .trim()
-      .split("\n")
-      .pop()
-      ?.trim();
-    if (probed) process.env.PATH = probed;
-  } catch {
-    // keep the default PATH — the resolver will surface its usual errors
-  }
-}
-
-adoptLoginShellPath();
 
 // Host-side error logging: the wave --stdio children already write cli.log via
 // the CLI logger; these handlers cover the Electron main process itself
@@ -366,6 +255,14 @@ if (!gotLock) {
   });
 
   void app.whenReady().then(() => {
+    // Login-shell environment probe (spec `core/bash-tools.md`「登录 shell 环境
+    // 注入」): fired here, fire-and-forget, so it overlaps with the CLI binary
+    // sync instead of blocking launch — no window, frame or session waits for
+    // it. `DesktopHost.ensureClient()` awaits the same promise right before it
+    // spawns `wave --stdio`, which is the one place that needs the environment
+    // complete (and by then it has almost always settled).
+    void primeLoginShellEnv();
+
     registerDeepLinkProtocol();
 
     // `collectJavaScriptCallStack()` (the freeze sampler) refuses to hand out

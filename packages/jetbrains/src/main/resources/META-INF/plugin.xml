@@ -32,6 +32,11 @@
              document listener never registers, and no edit ever enters the trajectory. -->
         <postStartupActivity
             implementation="com.wave.jetbrains.nextEdit.NextEditStartupActivity"/>
+        <!-- Login-shell environment probe (spec core/bash-tools.md「登录 shell 环境注入」):
+             started here so it runs in the background during IDE startup instead of on
+             the first session spawn, which then only waits for it with a bounded timeout. -->
+        <postStartupActivity
+            implementation="com.wave.jetbrains.stdio.LoginShellEnvStartupActivity"/>
         <!-- The single chat panel renders as the side-bar Wave tool window content (cannot be
              closed; its title comes from toolWindow.title). ExitPlanMode plans render in a
              separate editor-area tab (WavePlanFileEditorProvider serves WavePlanVirtualFile),
