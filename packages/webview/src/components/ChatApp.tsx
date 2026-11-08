@@ -303,6 +303,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   onOpenPluginMarketFromPane,
   prefillRequest,
   onPrefillApplied,
+  findSeed,
 }) => {
   const [state, dispatch] = useReducer(chatReducer, initialState);
   const [queueEditWarning, setQueueEditWarning] = useState<string | null>(null);
@@ -5081,6 +5082,17 @@ export const ChatApp: React.FC<ChatAppProps> = ({
           workdir={state.workdir}
           onOpenPreview={openPreviewHandler}
           onOpenFile={handleOpenFile}
+          // 侧栏「内容命中」点进来：只有种子属于这个实例正在看的会话才交下去，
+          // 否则会拿别人的关键词在本会话里搜一遍（宿主的种子是窗口级的）。
+          initialFind={
+            findSeed && findSeed.sessionId === state.currentSession?.id
+              ? {
+                  query: findSeed.query,
+                  hitIndex: findSeed.hitIndex,
+                  nonce: findSeed.nonce,
+                }
+              : undefined
+          }
         />
       )}
 
@@ -5854,6 +5866,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
             onToggleArtifacts={handleToggleArtifacts}
             prefillRequest={pendingPrefill}
             onPrefillApplied={handlePrefillApplied}
+            findSeed={findSeed}
           />
           {dialogs}
         </>

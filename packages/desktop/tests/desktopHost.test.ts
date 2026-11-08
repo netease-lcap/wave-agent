@@ -3260,6 +3260,54 @@ describe("update checks with a configured serverUrl", () => {
     expect(dialog.showMessageBox).not.toHaveBeenCalled();
   });
 
+  it("desktopUpdateRestart installs right away even with sessions running, and skips the quit confirm", async () => {
+    vi.mocked(autoUpdater.checkForUpdates).mockResolvedValue({
+      updateInfo: { version: "0.20.0", files: [], path: "wave-0.20.0.dmg" },
+      isUpdateAvailable: true,
+    } as never);
+    const ctx = await readyHostWithServerUrl();
+    const agent = seedConversation(lastAgent(), "sess-1");
+    agent.isStreaming = true;
+    await waitForStartupCheck();
+    for (const cb of auListeners["update-available"] ?? []) {
+      cb({ version: "0.20.0" });
+    }
+    for (const cb of auListeners["update-downloaded"] ?? []) {
+      cb({ version: "0.20.0" });
+    }
+
+    await ctx.host.handleWebviewMessage({ command: "desktopUpdateRestart" });
+
+    // 用户在确认框里点的「立即重启」就是知情下的强制重启：宿主照办，不再等会话结束。
+    expect(autoUpdater.quitAndInstall).toHaveBeenCalledTimes(1);
+    expect(ctx.sent("desktopAccountInfo").at(-1)?.update).toBeNull();
+    // 同一次退出不再走退出确认框（一次性的标记，取走即清）。
+    expect(ctx.host.consumeUpdateRestartQuit()).toBe(true);
+    expect(ctx.host.consumeUpdateRestartQuit()).toBe(false);
+  });
+
+  it("counts only local running sessions (远端会话不算退出确认的判据)", async () => {
+    const { host } = await readyHostWithServerUrl();
+    const local = seedConversation(lastAgent(), "sess-1");
+    local.isStreaming = true;
+    expect(host.countRunningLocalSessions()).toBe(1);
+
+    // 远端 host 上的会话在远端 daemon 里跑：退出/重启都不会打断它。
+    seedSshConfig("Host prod\n  HostName 10.0.0.1\n");
+    await host.handleWebviewMessage({
+      command: "desktopSelectRemotePath",
+      host: "prod",
+      path: "/remote/repo",
+    });
+    await vi.waitFor(() => expect(h.closedHandlers).toHaveLength(1));
+    const remote = lastAgent();
+    remote.isStreaming = true;
+
+    expect(host.countRunningLocalSessions()).toBe(1);
+    local.isStreaming = false;
+    expect(host.countRunningLocalSessions()).toBe(0);
+  });
+
   it("a failed download keeps the card button-less and only logs (S0)", async () => {
     vi.mocked(autoUpdater.checkForUpdates).mockResolvedValue({
       updateInfo: { version: "0.20.0", files: [], path: "wave-0.20.0.dmg" },

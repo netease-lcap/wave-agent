@@ -54,6 +54,7 @@ import type {
   McpConfigPathsResponseMessage,
   DesktopPanesMessage,
   DesktopSessionTreeMessage,
+  DesktopSessionContentMatchesMessage,
   DesktopWorkdirStateMessage,
   DesktopTogglePanelMessage,
   DesktopPanelKind,
@@ -195,6 +196,9 @@ export interface Fixtures {
   desktopSessionTree: (
     overrides?: Overrides<DesktopSessionTreeMessage>,
   ) => DesktopSessionTreeMessage;
+  desktopSessionContentMatches: (
+    overrides?: Overrides<DesktopSessionContentMatchesMessage>,
+  ) => DesktopSessionContentMatchesMessage;
   desktopWorkdirState: (
     overrides?: Overrides<DesktopWorkdirStateMessage>,
   ) => DesktopWorkdirStateMessage;
@@ -425,6 +429,14 @@ export const fixtures: Fixtures = {
   desktopSessionTree: (overrides = {}) => ({
     command: "desktopSessionTree",
     groups: [],
+    ...overrides,
+  }),
+
+  desktopSessionContentMatches: (overrides = {}) => ({
+    command: "desktopSessionContentMatches",
+    requestId: "content-search-1",
+    query: "",
+    matches: [],
     ...overrides,
   }),
 

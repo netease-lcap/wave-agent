@@ -283,6 +283,27 @@ const mockDesktopApiJs = `
                     reply();
                 }
             }
+            // 侧栏会话正文搜索（spec desktop-sessions.md「侧栏会话内容搜索」）：
+            // 真宿主去扫 ~/.wave/projects 的 jsonl，浏览器里没有盘可扫，按用例预置
+            // 的命中回答（默认空）。回包必须原样带回 requestId + query——webview 按
+            // requestId 弃旧、按 query 认领，少了任一项就会被丢掉。
+            if (message && message.command === 'desktopSearchSessionContents') {
+                const hits = window.__contentSearchMatches || [];
+                const reply = () => deliver({
+                    command: 'desktopSessionContentMatches',
+                    requestId: message.requestId,
+                    query: message.query,
+                    matches: hits,
+                    truncated: !!window.__contentSearchTruncated,
+                    failed: !!window.__contentSearchFailed,
+                });
+                // 真宿主扫盘要时间；要观察「正在搜索会话内容…」的用例先扣住应答。
+                if (window.__deferContentSearch) {
+                    window.__flushContentSearch = reply;
+                } else {
+                    reply();
+                }
+            }
             window.dispatchEvent(new CustomEvent('vscode-message', { detail: message }));
         },
         setState: (state) => {},

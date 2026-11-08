@@ -22,6 +22,7 @@ import {
 import { useRovingMenu } from "../utils/useRovingMenu";
 import { useClickOutside } from "../utils/useClickOutside";
 import { useHostMessage } from "../utils/useHostMessage";
+import type { SessionContentMatch } from "wave-webview-fixtures";
 import {
   worktreeDeleteWarning,
   WORKTREE_DELETE_CHECKING,
@@ -55,6 +56,26 @@ export const SESSION_DRAG_MIME = "application/x-wave-session";
  * wedged host in bounded time.
  */
 export const WORKTREE_CHANGES_TIMEOUT_MS = 8000;
+
+/**
+ * 正文搜索的关键词下限与防抖（spec desktop-sessions.md「侧栏会话内容搜索」场景
+ * 1）。单字符几乎命中每一条会话，扫一遍全部转录只为给出一屏无用的结果；300ms
+ * 让「边打字边扫盘」变成「停下才扫」。
+ */
+export const CONTENT_SEARCH_MIN_CHARS = 2;
+export const CONTENT_SEARCH_DEBOUNCE_MS = 300;
+
+/** 「内容命中」区的四种状态 + 命中数据（spec 场景 5/6/8）。 */
+interface ContentSearchState {
+  /** 这次结果属于哪个关键词：回包只回填关键词语义相同的那一次。 */
+  query: string;
+  matches: SessionContentMatch[];
+  searching: boolean;
+  /** 搜索失败（宿主从没回包 / 读了盘但整次失败）——显示「重试」，不显示「无结果」。 */
+  failed: boolean;
+  /** 触顶（会话数或片段数上限）时提示「结果过多」。 */
+  truncated: boolean;
+}
 
 /** 会话状态看板入口图标（对齐原型 figma/activity.svg）。常态跟随文本色，
  *  看板打开时（is-active）品牌红填充——原型 active 图标 #c1292e。 */
@@ -218,6 +239,17 @@ export interface DesktopSidebarProps {
    * unconfirmable until it arrives.
    */
   onRequestWorktreeChanges: (sessionId: string, requestId: string) => void;
+  /**
+   * 会话**正文**搜索（spec desktop-sessions.md「侧栏会话内容搜索」场景 1）。
+   * 只传当前树上仍在的本机会话 id：远端转录在远端 daemon 上（场景 10），被
+   * 筛/搜掉的会话也不该出现在结果里（场景 7）。回包走 `useHostMessage` 的
+   * `desktopSessionContentMatches`，按 requestId 认领。
+   */
+  onSearchSessionContents: (
+    query: string,
+    requestId: string,
+    sessionIds: string[],
+  ) => void;
   /** Batch 2 会话状态看板: brand-row 活动 button toggles the board view
    *  (spec 场景 1/7). When active the icon renders brand-red (spec 场景 1
    *  highlight state). */
@@ -232,6 +264,25 @@ export interface DesktopSidebarProps {
   artifactsActive?: boolean;
   onToggleArtifacts?: () => void;
 }
+
+/**
+ * 命中片段的高亮：`offset`/`length` 是关键词在**片段文本里**的位置（宿主折叠空白
+ * 之后重新定位过，见 `sessionContentSearch.ts`）。`length` 为 0 表示关键词跨了换行
+ * 折不出来——这时只丢高亮，不丢这一条命中。
+ */
+const highlightSnippet = (snippet: SessionContentMatch["snippets"][number]) => {
+  const { text, offset, length } = snippet;
+  if (length <= 0 || offset < 0 || offset + length > text.length) return text;
+  return (
+    <>
+      {text.slice(0, offset)}
+      <mark className="desktop-content-hit-mark">
+        {text.slice(offset, offset + length)}
+      </mark>
+      {text.slice(offset + length)}
+    </>
+  );
+};
 
 /** 分组标题只显示目录名（不是完整路径）。两种分隔符都要认：本机直接打开的
  *  目录是系统原生拼写（Windows 反斜杠），而 worktree 会话的 workdir 是
@@ -277,6 +328,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
   onDeleteSession,
   onRenameSession,
   onRequestWorktreeChanges,
+  onSearchSessionContents,
   sessionBoardActive = false,
   onToggleSessionBoard,
   pluginMarketActive = false,
@@ -293,6 +345,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
     fullScreen,
     sidebarGroupCollapsed,
     setSidebarGroupCollapsed,
+    openSessionFindHit,
   } = useDesktopChrome();
   // Session awaiting delete confirmation; non-null shows the ConfirmDialog.
   // `checking` = worktree session whose loss summary the host is still counting:
@@ -354,6 +407,102 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
   // 「没找到匹配」。
   const sessionListFiltered =
     searchQuery.trim() !== "" || isSessionFilterActive(sessionFilter);
+
+  // ---- 会话正文搜索（spec desktop-sessions.md「侧栏会话内容搜索」）----------
+  // 标题过滤是即时的、本地算；正文搜索要读磁盘上的转录，必须防抖 + 走宿主。
+  const contentQuery = searchQuery.trim();
+  const contentSearchEnabled = contentQuery.length >= CONTENT_SEARCH_MIN_CHARS;
+  const [contentSearch, setContentSearch] = useState<ContentSearchState | null>(
+    null,
+  );
+  // 在途请求的 requestId。清空关键词 / 改词都让旧的作废：迟到的回包不得回填
+  // （场景 8）。序号自己发、自己比，不复用别的请求命名空间。
+  const contentRequestSeqRef = useRef(0);
+  const contentRequestIdRef = useRef<string | null>(null);
+  // 参与正文搜索的会话：标题/筛选取交集之后仍在树上的本机会话。远端会话的转录
+  // 在远端 daemon 上，宿主读不到，因此不参与也不报错（场景 7/10）。
+  const contentSessionIds = useMemo(() => {
+    const ids: string[] = [];
+    for (const group of visibleSessionTree) {
+      if (group.host !== "local") continue;
+      for (const session of group.sessions) ids.push(session.sessionId);
+    }
+    return ids;
+  }, [visibleSessionTree]);
+  // 目录/会话集合变了要重搜，但用 join 出来的字符串当依赖，避免每渲染都换数组
+  // 引用导致 effect 空转；请求本身从 ref 取当前值（effect 闭包不重建）。
+  const contentSessionKey = contentSessionIds.join("\u0000");
+  const contentSessionIdsRef = useRef<string[]>(contentSessionIds);
+  contentSessionIdsRef.current = contentSessionIds;
+
+  useEffect(() => {
+    // 词不够长或已清空：结果区整体消失，在途请求一并作废（场景 8）。
+    if (!contentSearchEnabled) {
+      contentRequestIdRef.current = null;
+      setContentSearch(null);
+      return;
+    }
+    // 立刻进入「正在搜索」而不是等着防抖：否则停手的那一刻屏幕上还挂着上一次
+    // 关键词的结果，看起来像是搜到了不该有的东西（场景 5）。
+    setContentSearch((prev) =>
+      prev && prev.query === contentQuery
+        ? { ...prev, searching: true, failed: false }
+        : {
+            query: contentQuery,
+            matches: [],
+            searching: true,
+            failed: false,
+            truncated: false,
+          },
+    );
+    const requestId = String(++contentRequestSeqRef.current);
+    contentRequestIdRef.current = requestId;
+    const timer = setTimeout(() => {
+      onSearchSessionContents(
+        contentQuery,
+        requestId,
+        contentSessionIdsRef.current,
+      );
+    }, CONTENT_SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [
+    contentSearchEnabled,
+    contentQuery,
+    contentSessionKey,
+    onSearchSessionContents,
+  ]);
+
+  // 回包按 requestId 认领：被作废的请求（改词/清空后迟到的那一次）必须丢掉。
+  useHostMessage((message) => {
+    if (message.command !== "desktopSessionContentMatches") return;
+    if (String(message.requestId) !== contentRequestIdRef.current) return;
+    setContentSearch((prev) =>
+      prev && prev.query === message.query
+        ? {
+            ...prev,
+            matches: message.matches ?? [],
+            truncated: message.truncated === true,
+            searching: false,
+            // 宿主整次失败时给的是「暂不可用 + 重试」，不能显示成「无内容命中」。
+            failed: message.failed === true,
+          }
+        : prev,
+    );
+  });
+
+  const retryContentSearch = () => {
+    if (!contentSearchEnabled) return;
+    const requestId = String(++contentRequestSeqRef.current);
+    contentRequestIdRef.current = requestId;
+    setContentSearch((prev) =>
+      prev ? { ...prev, searching: true, failed: false } : prev,
+    );
+    onSearchSessionContents(
+      contentQuery,
+      requestId,
+      contentSessionIdsRef.current,
+    );
+  };
 
   const beginRename = (sessionId: string) => {
     const session = sessionTree
@@ -505,6 +654,23 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
       next.scrollIntoView({ block: "nearest" });
     }
   };
+
+  // 「内容命中」行需要会话标题与所属目录，而回包只带 sessionId：从**完整**树上
+  // 取，不能用 `visibleSessionTree`——正文命中的会话往往标题不含关键词，按标题
+  // 过滤后它本来就不在过滤结果里，拿过滤结果查不到自己就没法渲染这一行。
+  // 取不到的（会话刚被删）就不渲染行：点进去也没有会话可进。
+  const contentSessionMeta = useMemo(() => {
+    const map = new Map<string, { title: string; workdir: string }>();
+    for (const group of sessionTree) {
+      for (const session of group.sessions) {
+        map.set(session.sessionId, {
+          title: session.title || "新对话",
+          workdir: group.workdir,
+        });
+      }
+    }
+    return map;
+  }, [sessionTree]);
 
   const renderSession = (
     group: DesktopSessionGroup,
@@ -866,14 +1032,19 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
         className="desktop-session-tree"
         data-testid="desktop-session-tree"
       >
-        {visibleSessionTree.length === 0 && sessionListFiltered && (
-          <div
-            className="desktop-session-no-match"
-            data-testid="desktop-session-no-match"
-          >
-            未找到匹配的对话
-          </div>
-        )}
+        {/* 标题段为空且正文也确认没有命中时才说「未找到」：正文命中的会话不在
+            树里（它们是平铺在下方「内容命中」区），此时给这句就是自相矛盾
+            （spec desktop-sessions.md「侧栏会话内容搜索」场景 3）。 */}
+        {visibleSessionTree.length === 0 &&
+          sessionListFiltered &&
+          (contentSearch?.matches.length ?? 0) === 0 && (
+            <div
+              className="desktop-session-no-match"
+              data-testid="desktop-session-no-match"
+            >
+              未找到匹配的对话
+            </div>
+          )}
         {visibleSessionTree.map((group) => {
           const expanded = isExpanded(group);
           return (
@@ -925,6 +1096,99 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
             </div>
           );
         })}
+        {contentSearch && (
+          <div
+            className="desktop-content-hits"
+            data-testid="desktop-content-hits"
+          >
+            <div className="desktop-content-hits-title">内容命中</div>
+            {contentSearch.searching ? (
+              <div
+                className="desktop-content-hits-status"
+                data-testid="desktop-content-hits-searching"
+              >
+                正在搜索会话内容…
+              </div>
+            ) : contentSearch.failed ? (
+              <div
+                className="desktop-content-hits-status"
+                data-testid="desktop-content-hits-error"
+              >
+                <span>内容搜索暂不可用</span>
+                <button
+                  type="button"
+                  className="desktop-content-hits-retry"
+                  data-testid="desktop-content-hits-retry"
+                  onClick={retryContentSearch}
+                >
+                  重试
+                </button>
+              </div>
+            ) : contentSearch.matches.length === 0 ? (
+              <div
+                className="desktop-content-hits-status"
+                data-testid="desktop-content-hits-empty"
+              >
+                无内容命中
+              </div>
+            ) : (
+              <>
+                <ul className="desktop-content-hits-list">
+                  {contentSearch.matches.map((match) => {
+                    const meta = contentSessionMeta.get(match.sessionId);
+                    if (!meta) return null;
+                    return (
+                      <li
+                        key={match.sessionId}
+                        className="desktop-content-hit"
+                        data-testid={`desktop-content-hit-${match.sessionId}`}
+                      >
+                        <div className="desktop-content-hit-head">
+                          <span className="desktop-content-hit-name">
+                            {meta.title}
+                          </span>
+                          <span className="desktop-content-hit-dir">
+                            {dirName(meta.workdir)}
+                          </span>
+                        </div>
+                        <ul className="desktop-content-hit-snippets">
+                          {match.snippets.map((snippet) => (
+                            <li key={snippet.hitIndex}>
+                              <button
+                                type="button"
+                                className="desktop-content-hit-snippet"
+                                data-testid={`desktop-content-hit-${match.sessionId}-${snippet.hitIndex}`}
+                                title="跳到这条消息"
+                                onClick={() =>
+                                  openSessionFindHit(
+                                    meta.workdir,
+                                    match.sessionId,
+                                    contentQuery,
+                                    snippet.hitIndex,
+                                  )
+                                }
+                              >
+                                {highlightSnippet(snippet)}
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      </li>
+                    );
+                  })}
+                </ul>
+                {contentSearch.truncated && (
+                  <div
+                    className="desktop-content-hits-status"
+                    data-testid="desktop-content-hits-truncated"
+                  >
+                    结果过多，仅显示前 {contentSearch.matches.length} 条会话
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )}
       </div>
       {account !== undefined && account !== null && (
         <AccountCard

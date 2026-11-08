@@ -35,6 +35,18 @@ export interface DesktopChromeValue {
   setSidebarGroupCollapsed: (groupKey: string, collapsed: boolean) => void;
   /** macOS 全屏（系统红绿灯隐藏，红绿灯让位收起）。非 macOS 恒 false。 */
   fullScreen: boolean;
+  /**
+   * 侧栏「内容命中」→ 进入该会话并就地打开查找条落在第 `hitIndex` 处
+   * （spec desktop/desktop-sessions.md 场景 6）。走 Context 而不是 props：
+   * 结果列表在 DesktopSidebar 里，而会话种子要交给 DesktopApp 持有的
+   * ChatApp，中间隔着 DesktopShell 两层与本功能无关的组件。
+   */
+  openSessionFindHit: (
+    workdir: string,
+    sessionId: string,
+    query: string,
+    hitIndex: number,
+  ) => void;
 }
 
 const DesktopChromeContext = createContext<DesktopChromeValue>({
@@ -43,6 +55,7 @@ const DesktopChromeContext = createContext<DesktopChromeValue>({
   sidebarGroupCollapsed: {},
   setSidebarGroupCollapsed: () => {},
   fullScreen: false,
+  openSessionFindHit: () => {},
 });
 
 const SIDEBAR_COLLAPSED_KEY = "wave.desktopSidebarCollapsed";
@@ -76,9 +89,11 @@ const readCollapsed = (): boolean => {
   }
 };
 
-export const DesktopChromeProvider: React.FC<{ children: React.ReactNode }> = ({
-  children,
-}) => {
+export const DesktopChromeProvider: React.FC<{
+  children: React.ReactNode;
+  /** 侧栏「内容命中」点击的落点（DesktopApp 拥有会话与分屏，见 value 注释）。 */
+  onOpenSessionFindHit?: DesktopChromeValue["openSessionFindHit"];
+}> = ({ children, onOpenSessionFindHit }) => {
   const [sidebarCollapsed, setSidebarCollapsedState] =
     useState<boolean>(readCollapsed);
   const [sidebarGroupCollapsed, setSidebarGroupCollapsedState] =
@@ -114,6 +129,13 @@ export const DesktopChromeProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   }, []);
 
+  const openSessionFindHit = useCallback(
+    (workdir: string, sessionId: string, query: string, hitIndex: number) => {
+      onOpenSessionFindHit?.(workdir, sessionId, query, hitIndex);
+    },
+    [onOpenSessionFindHit],
+  );
+
   const setSidebarGroupCollapsed = useCallback(
     (groupKey: string, collapsed: boolean) => {
       setSidebarGroupCollapsedState((prev) =>
@@ -132,6 +154,7 @@ export const DesktopChromeProvider: React.FC<{ children: React.ReactNode }> = ({
       sidebarGroupCollapsed,
       setSidebarGroupCollapsed,
       fullScreen,
+      openSessionFindHit,
     }),
     [
       sidebarCollapsed,
@@ -139,6 +162,7 @@ export const DesktopChromeProvider: React.FC<{ children: React.ReactNode }> = ({
       sidebarGroupCollapsed,
       setSidebarGroupCollapsed,
       fullScreen,
+      openSessionFindHit,
     ],
   );
 
