@@ -2617,6 +2617,7 @@
 [data-host="desktop"] .btw-panel,
 [data-host="desktop"] .history-search-popup,
 [data-host="desktop"] .account-usage-popup,
+[data-host="desktop"] .account-usage-popover,
 [data-host="desktop"] .desktop-remote-browser {
   background-color: #ffffff;
   border-color: #ebeef5;
@@ -2625,11 +2626,21 @@
   color: #565a60;
 }
 
-/* 简单菜单容器 padding 统一 8px（base 4px/4px 0 偏挤） */
+/* 简单菜单容器 padding 统一 8px（base 4px/4px 0 偏挤）。
+   1109 评论（`div.account-usage-popover`「卡片要符合下拉菜单的样式规范，比如颜色、
+   阴影、圆角等」）：账户卡用量浮层是 2026-11 改版新做的面（旧名
+   `.account-usage-popup` 已无组件使用），当时没接进这一族，皮肤停在 base 的
+   vscode token —— 底色 `--vscode-menu-background`（浅 #FAFAFD / 深 #1F1F1F）、
+   边框 `--vscode-widget-border`、r8、`0 2px 8px / 36%` 深影、内衬 10px。
+   现按同一份菜单皮肤收口（底色 / 边框 / 圆角 / 阴影见上一条，内衬见本条）；
+   浮层自有的 `overflow-y: auto`、定位与内容排版不动。
+   内衬 10 → 8：内容宽 213 → 217，到期日原本就单行（变宽只会更宽松），
+   浮层高 110.5 → 106.5。 */
 [data-host="desktop"] .more-menu,
 [data-host="desktop"] .panel-toggle-menu,
 [data-host="desktop"] .desktop-session-menu,
-[data-host="desktop"] .desktop-workdir-menu {
+[data-host="desktop"] .desktop-workdir-menu,
+[data-host="desktop"] .account-usage-popover {
   padding: 8px;
 }
 
@@ -2833,11 +2844,22 @@
 [data-host="desktop"][data-theme="dark"] .btw-panel,
 [data-host="desktop"][data-theme="dark"] .history-search-popup,
 [data-host="desktop"][data-theme="dark"] .account-usage-popup,
+[data-host="desktop"][data-theme="dark"] .account-usage-popover,
 [data-host="desktop"][data-theme="dark"] .desktop-remote-browser {
   background-color: var(--cc-bg-overlay);
   border-color: rgba(255, 255, 255, 0.12);
   color: #9a9ea5;
   box-shadow: 0 0 12px rgb(0 0 0 / 40%);
+}
+/* 账户卡用量浮层只接菜单的**皮肤**，不接容器字色（1109）。
+   族规则给菜单项定的 #565A60 / #9A9EA5 会顺着继承改掉浮层里没自带颜色的文字：
+   API 维度的金额 `.account-usage-value-text` 就是靠继承取色，改前与同行
+   「已用 / 剩余」标签同为 `--vscode-foreground`（浅 #202020 / 深 #E5E7E8）。
+   这里把容器字色还原成那个 token —— 浮层内 8 处带文字的节点前后逐值不变。
+   特异性需同时盖过浅色 (0,2,0) 与深色 (0,3,0) 两条族规则，且在文件里位于其后。 */
+[data-host="desktop"] .account-usage-popover,
+[data-host="desktop"][data-theme="dark"] .account-usage-popover {
+  color: var(--vscode-foreground);
 }
 /* 深色下菜单项基础文字：覆盖浅色的 #565A60（含此前已统一的 permission/plus） */
 [data-host="desktop"][data-theme="dark"] .permission-mode-item,

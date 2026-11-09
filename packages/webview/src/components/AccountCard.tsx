@@ -641,7 +641,11 @@ export const AccountCard: React.FC<AccountCardProps> = ({
           data-testid="account-usage-popover"
           style={{
             position: "fixed",
-            bottom: viewportHeight - usageAnchor.top + 4,
+            // 浮层底缘与个人信息行（= 行尾图标按钮的顶）之间留 4px 缝。锚点 top 是
+            // 「行顶 + 4」，故这里取 +8：底缘落在行顶上方 4px。原来取 +4 ⇒ 底缘正好
+            // 压在行顶，浮层与图标按钮贴在一起（1109 评论：「弹窗再上移大概 4px，
+            // 和图标之间有些间距」）。
+            bottom: viewportHeight - usageAnchor.top + 8,
             right: Math.max(8, viewportWidth - usageAnchor.right),
             width: Math.max(usageAnchor.width, 216),
             // 向上弹：可用高度就是个人信息行顶以上的空间，超高时浮层内部滚动。
