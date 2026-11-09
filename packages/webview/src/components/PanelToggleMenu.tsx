@@ -45,6 +45,9 @@ export const PANEL_ITEMS: Array<{
   // 文件面板无快捷键（与 Claude Code Desktop 一致；Ctrl+Shift+F 与 Windows
   // 输入法简繁切换冲突），仅经菜单栏「面板 → 文件」或点击文件路径打开。
   { kind: "file", label: "文件" },
+  // 后台任务面板无快捷键：入口是 `/tasks`、本菜单与菜单栏「面板 → 后台任务」
+  // （spec desktop-right-panel.md「后台任务面板」）。
+  { kind: "tasks", label: "后台任务" },
 ];
 
 /**

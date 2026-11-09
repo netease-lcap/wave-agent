@@ -787,7 +787,8 @@ export type DesktopPanelKind =
   | "diff"
   | "terminal"
   | "file"
-  | "plan";
+  | "plan"
+  | "tasks";
 
 /**
  * One open file inside the file panel's own tab strip (spec

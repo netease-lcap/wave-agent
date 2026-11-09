@@ -1,0 +1,214 @@
+/* Background tasks panel (desktop): list + detail beside the conversation.
+   Reuses the shared preview-pane frame (drag handle / toolbar) from
+   DesktopApp.css; only the内容 of the body is styled here. */
+
+/* The shared .preview-pane-body has no overflow (the iframe-based panels
+   scroll internally); this pane's list scrolls as a whole, so scroll here. */
+[data-host="desktop"] .background-tasks-pane .preview-pane-body {
+  overflow-y: auto;
+}
+
+/* 同上一条（文件 / 差异 / 计划面板的既有规则）：右 pane 底色取「内容面」角色
+   `--cc-bg-inspector`，深色值与原样一致。 */
+[data-host="desktop"] .preview-pane.background-tasks-pane {
+  background: var(--cc-bg-inspector, var(--vscode-panel-background));
+}
+
+.background-tasks-pane-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px 12px;
+  font-size: 13px;
+  color: var(--vscode-foreground);
+}
+
+/* 空态对齐文件 / 计划面板：图标在上、文案在下竖排居中。 */
+[data-host="desktop"]
+  .background-tasks-pane
+  .background-tasks-placeholder-empty {
+  position: absolute;
+  inset: 0;
+  flex-direction: column;
+  gap: 12px;
+  font-size: 14px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.background-tasks-count {
+  flex-shrink: 0;
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.background-tasks-back {
+  font-size: 13px;
+  line-height: 1;
+}
+
+/* ═══ 列表 ═══ */
+
+.background-tasks-group {
+  margin: 4px 0 2px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--vscode-descriptionForeground);
+}
+
+.background-task-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 2px 0;
+  border-bottom: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.16));
+}
+
+.background-task-row-main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: 6px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.background-task-row-main:hover {
+  background: var(--vscode-list-hoverBackground, rgba(128, 128, 128, 0.12));
+}
+
+.background-task-row-head,
+.background-task-detail-head {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+
+.background-task-dot {
+  flex-shrink: 0;
+  font-size: 10px;
+}
+
+.background-task-type {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.background-task-status {
+  flex-shrink: 0;
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.background-task-row-desc {
+  color: var(--vscode-descriptionForeground);
+}
+
+/* 列表行里的命令最多两行：完整命令在详情的命令块里（那里会滚动）。 */
+.background-task-row-command {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground);
+  overflow-wrap: anywhere;
+}
+
+.background-task-row-meta {
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.background-task-stop {
+  flex-shrink: 0;
+  align-self: center;
+  padding: 3px 8px;
+  border: 1px solid
+    var(
+      --vscode-button-border,
+      var(--vscode-panel-border, rgba(128, 128, 128, 0.4))
+    );
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.background-task-stop:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* ═══ 详情 ═══ */
+
+.background-task-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.background-task-detail-desc {
+  color: var(--vscode-descriptionForeground);
+}
+
+.background-task-detail-meta,
+.background-task-detail-path {
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground);
+  overflow-wrap: anywhere;
+}
+
+.background-task-detail-path {
+  font-family: var(--vscode-editor-font-family, monospace);
+}
+
+.background-task-block-title {
+  margin-top: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--vscode-descriptionForeground);
+}
+
+.background-task-block-title--error {
+  color: var(--cc-status-danger, #f48771);
+}
+
+/* 命令块与输出块：各自限高、内部纵向滚动（spec desktop-right-panel.md
+   「后台任务面板」场景 13 —— 与 CC 的 `max-h-[200px] overflow-y-auto` 同口径），
+   长命令 / 持续增长的输出都把面板本身撑不长。 */
+.background-task-command,
+.background-task-output {
+  box-sizing: border-box;
+  max-height: 200px;
+  margin: 0;
+  padding: 8px;
+  border-radius: 6px;
+  background: var(--vscode-textCodeBlock-background, rgba(0, 0, 0, 0.15));
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow: auto;
+  overflow-wrap: anywhere;
+  word-break: break-all;
+}
+
+.background-task-output--error {
+  max-height: 150px;
+  color: var(--cc-status-danger, #f48771);
+}

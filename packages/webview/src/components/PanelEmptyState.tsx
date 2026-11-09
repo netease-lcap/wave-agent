@@ -10,6 +10,7 @@ const PANEL_EMPTY_DESC: Record<DesktopPanelKind, string> = {
   diff: "查看代码改动",
   terminal: "打开终端",
   file: "查看文件内容",
+  tasks: "查看后台任务",
 };
 
 export interface PanelEmptyStateProps {
@@ -22,7 +23,7 @@ export interface PanelEmptyStateProps {
 
 /**
  * Desktop panel empty state (spec「面板空态」): shown when the right-hand panel
- * is expanded but no tab is open. Guides the user through the five panel
+ * is expanded but no tab is open. Guides the user through the panel
  * capabilities — clicking one opens the matching tab, or returns false when
  * the space guard refuses.
  */

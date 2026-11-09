@@ -81,7 +81,8 @@ export type DesktopPanelKind =
   | "diff"
   | "terminal"
   | "file"
-  | "plan";
+  | "plan"
+  | "tasks";
 
 /** State of the desktop file panel, pushed via `desktopFileContent`. */
 export interface FileViewState {

@@ -22,6 +22,7 @@ import { ToastStack } from "./ToastStack";
 import { BtwPanel } from "./BtwPanel";
 import StatusDialog from "./StatusDialog";
 import BackgroundTaskManager from "./BackgroundTaskManager";
+import BackgroundTasksPane from "./BackgroundTasksPane";
 import WorkflowManager from "./WorkflowManager";
 import RemoteNewSessionDialog from "./RemoteNewSessionDialog";
 import RemoteSessionListPage from "./RemoteSessionListPage";
@@ -127,6 +128,7 @@ export const PANEL_LABELS: Record<DesktopPanelKind, string> = {
   diff: "差异",
   terminal: "终端",
   file: "文件",
+  tasks: "后台任务",
 };
 // 上翻时锚点在转录里失效了（rewind / 截断）之后，换下一个已加载 id 重试的次数上限。
 // 三次足够跳过「被裁掉的那几条」，又不至于把一次坏锚点变成一个请求风暴。
@@ -889,6 +891,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     diff: 0,
     terminal: 0,
     file: 0,
+    tasks: 0,
   });
   // Per-open-file id source (f1, f2, …) for the file panel's own tab strip.
   // Restored ids are absorbed into it in the same effect as the tab ids.
@@ -1009,6 +1012,12 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   const togglePanelRef = useRef<(kind: DesktopPanelKind) => void>(() => {});
   const ensureTabRef = useRef<(kind: DesktopPanelKind) => string | null>(
     () => null,
+  );
+  // Same TDZ pattern for the "open this panel" routing: `handleSendMessage` is
+  // declared earlier than `tryOpenPanel`, and a `useCallback` dependency array
+  // is evaluated at call time — referencing it directly there would throw.
+  const tryOpenPanelRef = useRef<(kind: DesktopPanelKind) => boolean>(
+    () => false,
   );
   const panelDisabledRef = useRef<DesktopPanelKind[]>([]);
   const messageInputRef = useRef<MessageInputHandle>(null);
@@ -2972,8 +2981,17 @@ export const ChatApp: React.FC<ChatAppProps> = ({
       // `/tasks` 与 `/workflows`：数据由 shim 补齐（`backgroundTasksChange` /
       // `getSessionInfo.backgroundTasks` 与 `getWorkflowRuns`），所以远端照旧拦截
       // ——这两条是只读弹窗，不需要确认。
+      //
+      // 桌面端例外：后台任务是右侧面板的一个 tab（spec
+      // desktop/desktop-right-panel.md「后台任务面板」），复用面板的单实例 /
+      // 空间守卫 / 逐会话记忆，不再弹居中对话框盖住会话。插件端与远控页没有
+      // 面板机制，保持对话框。
       if (trimmedText === "/tasks") {
-        dispatch({ type: "SHOW_DIALOG", payload: { type: "tasks" } });
+        if (isDesktop) {
+          tryOpenPanelRef.current("tasks");
+        } else {
+          dispatch({ type: "SHOW_DIALOG", payload: { type: "tasks" } });
+        }
         return;
       }
       if (trimmedText === "/workflows" || trimmedText === "/workflows ") {
@@ -3829,8 +3847,8 @@ export const ChatApp: React.FC<ChatAppProps> = ({
 
   // "＋" tab-bar menu: only preview is multi-instance — every click adds a
   // fresh blank tab (its address bar lets the user type a new URL). All other
-  // kinds (plan/diff/terminal/file) are single-instance: open-or-activate the
-  // unique tab, never duplicating.
+  // kinds (plan/diff/terminal/file/tasks) are single-instance: open-or-activate
+  // the unique tab, never duplicating.
   const tryOpenPanel = useCallback(
     (kind: DesktopPanelKind): boolean => {
       if (kind === "preview") {
@@ -3840,6 +3858,10 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     },
     [ensureUniqueTab, addTab],
   );
+
+  useEffect(() => {
+    tryOpenPanelRef.current = tryOpenPanel;
+  }, [tryOpenPanel]);
 
   // Close one tab: removes it from the open set; closing the active tab falls
   // back to its left neighbor (PreviewPane closeTab convention). Browser-tab
@@ -4893,6 +4915,19 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     if (kind === "plan") {
       return <PlanPane content={planContent} {...common} />;
     }
+    if (kind === "tasks") {
+      // 数据与插件端对话框完全同源（`backgroundTasksChange` 推送的同一份
+      // 列表），面板只换承载方式：列表 / 详情两态、运行中分组、停止与输出
+      // 轮询都在组件内部，关 tab 不影响任务本身。
+      return (
+        <BackgroundTasksPane
+          tasks={state.backgroundTasks}
+          workflowRuns={state.workflowRuns}
+          vscode={vscode}
+          {...common}
+        />
+      );
+    }
     return (
       <TerminalPane
         vscode={vscode}
@@ -5496,7 +5531,10 @@ export const ChatApp: React.FC<ChatAppProps> = ({
       {state.activeDialog === "status" && (
         <StatusDialog onClose={handleDialogClose} vscode={vscode} />
       )}
-      {state.activeDialog === "tasks" && (
+      {/* 后台任务：桌面端走右侧面板（上面的 renderPanelSlot），对话框只留给
+          没有面板机制的插件端与远控页（spec desktop-right-panel.md
+          「后台任务面板」）。 */}
+      {state.activeDialog === "tasks" && !isDesktop && (
         <BackgroundTaskManager
           tasks={state.backgroundTasks}
           workflowRuns={state.workflowRuns}
