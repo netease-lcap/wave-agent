@@ -39,7 +39,7 @@ export interface FileSelectorItem {
   type: "file" | "directory" | "agent";
   /** 子代理名（`type === "agent"` 时有值），也是插入正文的名字。 */
   agentName?: string;
-  /** 子代理定义的 description，作为条目的第二行说明。 */
+  /** 子代理定义的 description，接在名字后面同一行显示；超宽截断成一行。 */
   agentDescription?: string;
 }
 

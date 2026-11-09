@@ -118,6 +118,34 @@ describe("FileSelector", () => {
     expect(output).not.toContain("vitest.config.ts"); // Only 5 items shown
   });
 
+  it("keeps a long agent description on the entry's own row", async () => {
+    const agentFiles: FileSelectorItem[] = [
+      {
+        path: "explore",
+        type: "agent",
+        agentName: "explore",
+        agentDescription:
+          "Read-only search agent for locating code: by file pattern, by symbol name, or by answering where a function is defined and which files reference it. Returns conclusions, never edits.",
+      },
+      { path: "src/", type: "directory" },
+    ];
+
+    const { lastFrame, settle } = render(
+      <FileSelector {...mockProps} files={agentFiles} />,
+    );
+    await settle();
+
+    const rows = (lastFrame() ?? "").split("\n");
+    const agentRow = rows.find((row) => row.includes("@explore"));
+    expect(agentRow).toBeDefined();
+    // ONE row: the description is flattened and truncated to the space left on
+    // the entry's row instead of wrapping a second (and third) line.
+    expect(agentRow).toContain("Read-only search agent");
+    expect(agentRow?.endsWith("…")).toBe(true);
+    // Header, the two entries, footer — the bordered box adds one rule.
+    expect(rows.filter((row) => row.trim() !== "").length).toBe(5);
+  });
+
   describe("Tab key functionality", () => {
     it("should trigger onSelect with correct file path when Tab is pressed", async () => {
       const onSelectMock = vi.fn();

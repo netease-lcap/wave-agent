@@ -6,6 +6,7 @@ import {
   selectorReducer,
   type SelectorState,
 } from "../reducers/selectorReducer.js";
+import { toOneLine } from "../utils/oneLine.js";
 
 export interface CommandSelectorProps {
   searchQuery: string;
@@ -140,9 +141,11 @@ export const CommandSelector: React.FC<CommandSelectorProps> = ({
                 {isSelected ? "▶ " : "  "}/{command.id}
               </Text>
               {isSelected && (
-                <Box marginLeft={4}>
-                  <Text color="gray" dimColor>
-                    {command.description}
+                <Box marginLeft={4} minHeight={1}>
+                  {/* One line, always: the slot keeps the menu height stable
+                      whatever the description's length. */}
+                  <Text color="gray" dimColor wrap="truncate">
+                    {toOneLine(command.description ?? "")}
                   </Text>
                 </Box>
               )}

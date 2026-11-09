@@ -275,6 +275,40 @@ describe("SlashCommandsPopup grouping", () => {
     ).toBeInTheDocument();
   });
 
+  it("keeps the row to one line and gives the description to a side tooltip", () => {
+    // 选项恒为一行（`/名字` + 来源标签），描述不出现在行内 —— 否则长短描述会把选项
+    // 撑成不同高度（历史形态：描述两行 clamp，选项 40.6 ↔ ~60）。描述改由右侧气泡
+    // 给出：选中项常显（键盘上下键时没有 hover 可依赖），其余项靠悬停。
+    const commands: Command[] = [
+      { id: "settings", name: "settings", description: "打开设置" },
+      {
+        id: "loop",
+        name: "loop",
+        description: "循环执行",
+        skillSource: "user",
+      },
+    ];
+
+    renderPopup(commands, 0);
+
+    for (const id of ["settings", "loop"]) {
+      const row = screen
+        .getByTestId(`slash-command-${id}`)
+        .querySelector(".slash-command-row");
+      expect(row).not.toBeNull();
+      // 行内只剩名字和（技能命令的）来源标签。
+      expect(within(row as HTMLElement).queryByText("打开设置")).toBeNull();
+      expect(within(row as HTMLElement).queryByText("循环执行")).toBeNull();
+    }
+
+    // 选中项（settings）的气泡可见，未选中项（loop）的不显示。
+    const visibleBubbles = Array.from(
+      document.querySelectorAll(".tooltip-box.visible"),
+    );
+    expect(visibleBubbles).toHaveLength(1);
+    expect(visibleBubbles[0]).toHaveTextContent("打开设置");
+  });
+
   describe("skill source tags", () => {
     it("renders a source tag per skill command", () => {
       const commands: Command[] = [
