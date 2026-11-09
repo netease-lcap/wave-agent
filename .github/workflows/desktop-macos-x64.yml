@@ -130,7 +130,7 @@ jobs:
           echo "version=$(node -p "JSON.parse(require('fs').readFileSync('packages/desktop/package.json','utf8')).version")" >> "$GITHUB_OUTPUT"
 
       - name: Upload installers as artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: codewave-ide-macos-x64-${{ steps.version.outputs.version }}
           path: |
