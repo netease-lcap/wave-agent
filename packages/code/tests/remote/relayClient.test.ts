@@ -15,15 +15,19 @@ import {
   RELAY_CLOSE_BACKPRESSURE,
   RELAY_CLOSE_REPLACED,
   RELAY_CLOSE_UNAVAILABLE,
-  RELAY_MAX_ATTEMPTS,
   RELAY_MAX_BUFFERED_BYTES,
-  RELAY_MAX_UNAVAILABLE_ATTEMPTS,
   RELAY_PING_INTERVAL_MS,
-  RELAY_RETRY_DELAY_MS,
+  RELAY_RETRY_BASE_DELAY_MS,
+  RELAY_RETRY_MAX_DELAY_MS,
+  RELAY_RETRY_WINDOW_MS,
+  type RelayClientOptions,
   type RelaySocket,
 } from "../../src/remote/relayClient.js";
 
 const URL = "wss://relay.example/v1/hosts/ws/h1/subscribe";
+
+/** What the client hands `onRetry` — kept in one place so the mock matches it. */
+type RetryInfo = Parameters<NonNullable<RelayClientOptions["onRetry"]>>[0];
 
 class FakeSocket implements RelaySocket {
   readonly sent: string[] = [];
@@ -69,10 +73,19 @@ describe("RelayClient", () => {
   let onPeerDisconnected: Mock<() => void>;
   let onResyncRequired: Mock<() => void>;
   let onFrame: Mock<(frame: RelayEnvelope) => void>;
+  let onRetry: Mock<(info: RetryInfo) => void>;
   let onFatal: Mock<(reason: string) => void>;
+  /**
+   * Backoff is jittered into `[50%, 100%]` of the schedule, so these assertions
+   * pin `Math.random` to the top of that band: the delay is then exactly the
+   * schedule and the timer arithmetic stays readable. The jitter itself gets its
+   * own test.
+   */
+  let randomSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
     vi.useFakeTimers();
+    randomSpy = vi.spyOn(Math, "random").mockReturnValue(1);
     sockets = [];
     onOpen = vi.fn<() => void>();
     onAuthenticated =
@@ -81,10 +94,12 @@ describe("RelayClient", () => {
     onPeerDisconnected = vi.fn<() => void>();
     onResyncRequired = vi.fn<() => void>();
     onFrame = vi.fn<(frame: RelayEnvelope) => void>();
+    onRetry = vi.fn<(info: RetryInfo) => void>();
     onFatal = vi.fn<(reason: string) => void>();
   });
 
   afterEach(() => {
+    randomSpy.mockRestore();
     vi.useRealTimers();
   });
 
@@ -104,6 +119,7 @@ describe("RelayClient", () => {
       onPeerDisconnected,
       onResyncRequired,
       onFrame,
+      onRetry,
       onFatal,
     });
   }
@@ -260,7 +276,7 @@ describe("RelayClient", () => {
     client.send({ method: "messageDelta", params: { text: "hi" } });
     sockets[0].drop(1006);
 
-    vi.advanceTimersByTime(RELAY_RETRY_DELAY_MS);
+    vi.advanceTimersByTime(RELAY_RETRY_BASE_DELAY_MS);
     const retried = sockets.at(-1)!;
     retried.open();
     retried.deliver(
@@ -286,43 +302,61 @@ describe("RelayClient", () => {
     expect(client.getState()).toBe("closed");
   });
 
-  it("should retry a dropped link up to the budget, then report fatal", () => {
+  it("should keep retrying for the whole window, then report fatal", () => {
     const client = createClient();
     client.start();
 
-    for (let i = 0; i < RELAY_MAX_ATTEMPTS; i++) {
-      sockets.at(-1)!.drop(1006);
-      vi.advanceTimersByTime(RELAY_RETRY_DELAY_MS);
+    // Drop repeatedly, waiting out each scheduled delay. The window is measured
+    // in time, not attempts, so the only thing that ends the loop is the clock.
+    let elapsed = 0;
+    let attempts = 0;
+    while (!onFatal.mock.calls.length) {
+      const socket = sockets.at(-1)!;
+      socket.drop(1006);
+      if (onFatal.mock.calls.length) break;
+      const delay = onRetry.mock.calls.at(-1)![0].delayMs;
+      expect(delay).toBeGreaterThan(0);
+      expect(delay).toBeLessThanOrEqual(RELAY_RETRY_MAX_DELAY_MS);
+      vi.advanceTimersByTime(delay);
+      elapsed += delay;
+      attempts += 1;
+      expect(attempts).toBeLessThan(100);
     }
-    expect(onFatal).not.toHaveBeenCalled();
-    expect(sockets).toHaveLength(RELAY_MAX_ATTEMPTS + 1);
 
-    sockets.at(-1)!.drop(1006);
-    expect(onFatal).toHaveBeenCalledWith(
-      expect.stringContaining("connection lost"),
+    // However many attempts it took, the patience is the window: ten minutes,
+    // which is what lets a routine relay deploy go by without killing the link.
+    expect(elapsed).toBeGreaterThanOrEqual(RELAY_RETRY_WINDOW_MS);
+    expect(elapsed).toBeLessThan(
+      RELAY_RETRY_WINDOW_MS + RELAY_RETRY_MAX_DELAY_MS,
     );
+    expect(attempts).toBeGreaterThan(10);
+    expect(onFatal).toHaveBeenCalledWith(expect.stringContaining("gave up"));
     expect(client.getState()).toBe("closed");
 
-    vi.advanceTimersByTime(RELAY_RETRY_DELAY_MS * 10);
-    expect(sockets).toHaveLength(RELAY_MAX_ATTEMPTS + 1);
+    // And it really stops: no further dials once the window is spent.
+    const dials = sockets.length;
+    vi.advanceTimersByTime(RELAY_RETRY_WINDOW_MS * 2);
+    expect(sockets).toHaveLength(dials);
   });
 
-  it("should give 4001 its own, smaller retry budget", () => {
+  it("should treat 4001 like any other transient failure, on the same window", () => {
     const client = createClient();
     client.start();
 
-    for (let i = 0; i < RELAY_MAX_UNAVAILABLE_ATTEMPTS; i++) {
+    // `4001` used to have a smaller budget of its own, which made "the relay is
+    // not ready yet" a permanent stop after six seconds. It is the same
+    // condition as a dropping relay: wait it out.
+    let attempts = 0;
+    while (!onFatal.mock.calls.length) {
       sockets.at(-1)!.drop(4001);
-      vi.advanceTimersByTime(RELAY_RETRY_DELAY_MS);
+      if (onFatal.mock.calls.length) break;
+      vi.advanceTimersByTime(onRetry.mock.calls.at(-1)![0].delayMs);
+      attempts += 1;
+      expect(attempts).toBeLessThan(100);
     }
-    expect(onFatal).not.toHaveBeenCalled();
 
-    sockets.at(-1)!.drop(4001);
-    expect(onFatal).toHaveBeenCalledWith(
-      expect.stringContaining("unavailable"),
-    );
-    vi.advanceTimersByTime(RELAY_RETRY_DELAY_MS * 10);
-    expect(sockets).toHaveLength(RELAY_MAX_UNAVAILABLE_ATTEMPTS + 1);
+    expect(attempts).toBeGreaterThan(10);
+    expect(onFatal).toHaveBeenCalledWith(expect.stringContaining("gave up"));
   });
 
   it("should step down for good when another process took the channel over", () => {
@@ -337,9 +371,9 @@ describe("RelayClient", () => {
     expect(client.getState()).toBe("closed");
 
     // No retry: retrying here is what made two processes replace each other
-    // every two seconds forever — each successful connect resets the budget, so
-    // neither side ever runs out of it.
-    vi.advanceTimersByTime(RELAY_RETRY_DELAY_MS * 10);
+    // every two seconds forever — each successful handshake starts a fresh
+    // window, so neither side would ever run out of it.
+    vi.advanceTimersByTime(RELAY_RETRY_WINDOW_MS);
     expect(sockets).toHaveLength(1);
 
     client.start();
@@ -355,27 +389,76 @@ describe("RelayClient", () => {
     expect(onFatal).toHaveBeenCalledWith(expect.stringContaining("4003"));
     expect(client.getState()).toBe("closed");
 
-    vi.advanceTimersByTime(RELAY_RETRY_DELAY_MS * 10);
+    vi.advanceTimersByTime(RELAY_RETRY_WINDOW_MS);
     expect(sockets).toHaveLength(1);
 
     client.start();
     expect(sockets).toHaveLength(1);
   });
 
-  it("should reset the retry budget after a successful open", () => {
+  it("should start over only once the handshake completes, not on open", () => {
     const client = createClient();
     client.start();
 
-    for (let i = 0; i < RELAY_MAX_ATTEMPTS - 1; i++) {
+    // Three failed dials: the delay has grown.
+    for (let i = 0; i < 3; i++) {
       sockets.at(-1)!.drop(1006);
-      vi.advanceTimersByTime(RELAY_RETRY_DELAY_MS);
+      vi.advanceTimersByTime(onRetry.mock.calls.at(-1)![0].delayMs);
     }
+    expect(onRetry.mock.calls.at(-1)![0]).toMatchObject({
+      attempt: 3,
+      delayMs: 8_000,
+    });
+
+    // A socket that merely opened is not proof the link works — a relay that
+    // accepts TCP and closes at once would otherwise pin the delay at its first
+    // step (and, with a window, keep it alive forever).
     sockets.at(-1)!.open();
     sockets.at(-1)!.drop(1006);
-    vi.advanceTimersByTime(RELAY_RETRY_DELAY_MS);
+    expect(onRetry.mock.calls.at(-1)![0]).toMatchObject({
+      attempt: 4,
+      delayMs: 16_000,
+    });
 
+    // A completed handshake is: fresh backoff, fresh window.
+    vi.advanceTimersByTime(onRetry.mock.calls.at(-1)![0].delayMs);
+    sockets.at(-1)!.open();
+    sockets
+      .at(-1)!
+      .deliver(JSON.stringify({ type: "auth_ok", role: "host", hostId: "h1" }));
+    sockets.at(-1)!.drop(1006);
+    expect(onRetry.mock.calls.at(-1)![0]).toMatchObject({
+      attempt: 1,
+      delayMs: RELAY_RETRY_BASE_DELAY_MS,
+      remainingMs: RELAY_RETRY_WINDOW_MS,
+    });
     expect(onFatal).not.toHaveBeenCalled();
-    expect(sockets).toHaveLength(RELAY_MAX_ATTEMPTS + 1);
+  });
+
+  it("should spread retries over time instead of dialling in lockstep", () => {
+    // A relay restart drops every machine at the same instant, so an unjittered
+    // schedule makes them all come back at 2s, 4s, 8s … — a thundering herd
+    // aimed at a service that is still recovering. With `Math.random` at the
+    // bottom of the band the same schedule shrinks by half: same growth,
+    // different phase per machine.
+    randomSpy.mockReturnValue(0);
+    const client = createClient();
+    client.start();
+
+    const delays: number[] = [];
+    for (let i = 0; i < 3; i++) {
+      sockets.at(-1)!.drop(1006);
+      const delay = onRetry.mock.calls.at(-1)![0].delayMs;
+      delays.push(delay);
+      vi.advanceTimersByTime(delay);
+    }
+    expect(delays).toEqual([1_000, 2_000, 4_000]);
+
+    // Mid-band is 75% of the schedule, and it never goes below half of it: a
+    // relay that is still restarting is not dialled every second.
+    randomSpy.mockReturnValue(0.5);
+    sockets.at(-1)!.drop(1006);
+    expect(onRetry.mock.calls.at(-1)![0].delayMs).toBe(12_000);
   });
 
   it("should drop a socket that is not draining, and reconnect", () => {
@@ -392,7 +475,7 @@ describe("RelayClient", () => {
     expect(sockets[0].closed?.code).toBe(4008);
     expect(client.getState()).toBe("closed");
 
-    vi.advanceTimersByTime(RELAY_RETRY_DELAY_MS);
+    vi.advanceTimersByTime(RELAY_RETRY_BASE_DELAY_MS);
     expect(sockets).toHaveLength(2);
   });
 
@@ -426,7 +509,7 @@ describe("RelayClient", () => {
     expect(socket.onmessage).toBeNull();
 
     expect(client.getState()).toBe("closed");
-    vi.advanceTimersByTime(RELAY_RETRY_DELAY_MS * 10);
+    vi.advanceTimersByTime(RELAY_RETRY_WINDOW_MS);
     expect(sockets).toHaveLength(1);
     expect(onFatal).not.toHaveBeenCalled();
   });
@@ -447,7 +530,7 @@ describe("RelayClient", () => {
     const first = sockets[0];
     first.open();
     first.drop(1006);
-    vi.advanceTimersByTime(RELAY_RETRY_DELAY_MS);
+    vi.advanceTimersByTime(RELAY_RETRY_BASE_DELAY_MS);
 
     // The stale socket keeps firing after we moved on.
     first.deliver(JSON.stringify({ method: "getMessages", id: 9 }));
@@ -552,7 +635,7 @@ describe("relay control frames", () => {
       expect(onFatal).not.toHaveBeenCalled();
       // Still no reconnect from here: dialling with the same dead token would
       // only produce the same answer, so recovery belongs to the caller.
-      vi.advanceTimersByTime(RELAY_RETRY_DELAY_MS * 10);
+      vi.advanceTimersByTime(RELAY_RETRY_WINDOW_MS);
       expect(sockets).toHaveLength(1);
     },
   );
