@@ -4284,6 +4284,27 @@
   --cc-font-weight-semibold: 600;
 }
 
+/* ═══ 1109 评论：字号 / 行高刻度落到主题入口 ═══
+   设计师点产物卡文案：「参考对话流的文案规范检查这里的字体字号是否绑定变量」。
+   审计发现：全仓 20 处 `var(--cc-font-size-md, 14px)` 这类引用，`--cc-font-size-*`
+   **一个都没有定义** ⇒ 实际渲染全靠 fallback 里的字面值，「绑了变量」只是写法，
+   刻度没有出处可改；行高连引用都没有。
+   契约 conversation-typography.md「实现边界」允许「缺失的角色在实际主题入口建立
+   明确映射」，故在此补刻度，取值与角色表逐条对齐：
+     · sm 12px / 20px —— 辅助信息（时间、数量、依赖等），400
+     · md 14px / 22px —— 阅读正文、表格单元格、工具名/卡片标题
+     · lg 16px / 24px —— H3 级小节标题
+   数值与此前 20 处 fallback 逐字相同（lg 16 / md 14 / sm 12）⇒ 对既有引用零视觉
+   变化，只是让它们真的从一处取值。字重 token 同族，见上一块 `--cc-font-weight-*`。 */
+:root[data-host="desktop"] {
+  --cc-font-size-sm: 12px;
+  --cc-font-size-md: 14px;
+  --cc-font-size-lg: 16px;
+  --cc-line-height-sm: 20px;
+  --cc-line-height-md: 22px;
+  --cc-line-height-lg: 24px;
+}
+
 /* ① 对话流工具名（tool-block header / Write 标题 / 思考标题）：600 */
 [data-host="desktop"] .tool-block,
 [data-host="desktop"] .write-tool-label,
@@ -4995,7 +5016,10 @@
        字体规范，标题也提到 14」）—— 行是 `<button>`，同样不继承页面字体：改前实测
        font-family = Arial、13px，中文文件名会掉到 Arial 上，字号提到 14 也只是
        「大一号的 Arial」，所以字体族一起补进白名单。 */
-    .file-pane-conversation-file-row
+    .file-pane-conversation-file-row,
+    /* 对话里产物卡的动作键（1109 评论：「要符合按钮规范」，含 14px 标签）——
+       `<button>` 同样不继承页面字体，改前实测 `Arial`。 */
+    .message-file-card-toggle
   ) {
   font-family: inherit;
 }
@@ -6769,4 +6793,136 @@
    ⇒ 浅色零变化（截图逐像素 0 差异）。文案色 / 图标 / 间距 / 字号一律不动。仅桌面端。 */
 [data-host="desktop"] .preview-tab-new {
   background: var(--vscode-panel-background);
+}
+
+/* ═══ 1109 评论：产物卡片横向撑满消息列 ═══
+   设计师点 `div.message-file-card.artifact-card`「登录页样式走查报告 / 已发布 · v3」+
+   「在浏览器中打开」：「这里宽度要撑满界面」。
+   改前：base（Message.css:1263 `.message-file-card`）写死 `max-width: 560px`，且该盒是
+   `content-box` ⇒ 渲染宽 560 + 左右内衬 24 + 上下左右描边 2 = 586px，而它所在的
+   `.tool-container` 是 760px（`.messages-column` 上限 800 − 左右内衬 10/10，再经
+   `.timeline-row` 的左内衬 20）⇒ 卡片右边空出 174px，看起来像「半截卡片」。
+   改后：`max-width: none`，卡片按 flex 列的 `align-items: stretch` 吃满 760px。
+   卡内三段（图标 28 固定 / meta `flex: 1 1 auto` + `min-width: 0` 带省略号 /
+   按钮固定）本来就是「中间弹性」的写法，撑满只让标题多出空间、不挤压按钮；
+   高 57.5px、内衬 10/12、圆角 10、描边与颜色一律不动。
+   **只作用在 `.artifact-card`**（该类的唯一使用者就是产物卡），不动
+   `.message-file-card` 这个通用类本身；IDE 端（窄侧栏里 560 本来就够不着）保持原样。 */
+[data-host="desktop"] .message-file-card.artifact-card {
+  max-width: none;
+}
+
+/* ═══ 1109 评论：产物卡「在浏览器中打开」按按钮契约收口 ═══
+   设计师点 `button.message-file-card-toggle`「在浏览器中打开」：「这里要符合按钮规范，
+   和按钮交互样式规范，按钮尺寸可以用第二级的」。
+
+   契约（`references/common-components.md` §Buttons）：桌面动作为 32 高 / 14·22 / 500 /
+   r8 / 12 内衬；「紧凑档 28 高用于密集的行内动作，保留 14px 标签与可用点击区」⇒ 按她
+   的裁定取**第二级 28**（不放 32）。角色属「Secondary (outlined)」一行：透明底 +
+   文字 1 级 + `--cc-border-light` 描边；交互 = hover 出面 `fill-hover`、按下
+   `fill-pressed`，字色始终 1 级；「focus-visible 与选中态分开」⇒ 2px 焦点环外扩 2px。
+   与本仓已收口的次级按钮同族：`.confirm-dialog-btn-cancel`、
+   `.desktop-workdir-guide-action`、`.settings-row-btn`。
+
+   改前（base `Message.css:1317`）：26 高 / r6 / 12px·400（**Arial**，UA 默认字体）/
+   0 8 内衬；描边吃 `--vscode-panel-border`、字色吃 `--vscode-foreground`；
+   hover 只换描边 + 把字变蓝（`--vscode-textLink-foreground`：#0069CC / #4DAAFC），
+   **没有按下态**；键盘焦点用浏览器默认 `outline: auto`（1px 细蓝环），与桌面契约的
+   2px 焦点环不是一套。
+
+   改后：28 高 / 14·22 / r8 / 0 12 内衬；透明底 + `--cc-border-light` 描边 +
+   `--cc-text-primary` 字；hover 出面（深色按本仓中性面约定 8% 白）、按下更实一档
+   （深色 12% 白）、描边与字色在三个状态里都不动；焦点 2px `--cc-border-focus`
+   外扩 2px。按钮宽度 102 → 124（7 个全角字 × 14 = 98 + 内衬 24 + 描边 2），右缘仍
+   贴卡片内衬，卡片高度不变（57.5，仍由中间两行文案决定）。仅桌面端。
+
+   第二轮评论（同上这颗按钮）：「按钮文案不要加粗，字号参考对话流中其他正文的字号」：
+   ① 字重 500 → 400。契约 §Buttons 的 medium(500) 是按钮默认档，但这里按设计师口径
+      让位给正文的字重；按钮内只有七个汉字，不加粗后照样可读。
+   ② 字号不动，因为**已经就是正文值**：同一屏实测 `.message-content p` = 14px / 22px /
+      400，与本按钮的 14 / 22 逐值相同（卡片内的标题 13px、副行 11px 是卡片自己的
+      层级，不算正文）。
+   ③ 盒不变：七个汉字是全角，字宽 = 字号 × 7 = 98，与字重无关 ⇒ 仍 124×28；
+      逐像素差异只落在标签笔画本身（文字覆盖率 −19.5% / −18.1%）。 */
+[data-host="desktop"] .message-file-card-toggle {
+  height: 28px;
+  padding: 0 12px;
+  border-radius: 8px;
+  border: 1px solid var(--cc-border-light, #e4e7ed);
+  background-color: transparent;
+  color: var(--cc-text-primary, var(--vscode-foreground));
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 400;
+}
+
+[data-host="desktop"] .message-file-card-toggle:not(:disabled):hover {
+  background-color: var(--cc-fill-hover, #eef0f3);
+  border-color: var(--cc-border-light, #e4e7ed);
+  color: var(--cc-text-primary, var(--vscode-foreground));
+}
+
+[data-host="desktop"] .message-file-card-toggle:not(:disabled):active {
+  background-color: var(--cc-fill-pressed, #e7e9ed);
+  border-color: var(--cc-border-light, #e4e7ed);
+  color: var(--cc-text-primary, var(--vscode-foreground));
+}
+
+[data-host="desktop"] .message-file-card-toggle:focus-visible {
+  outline: 2px solid var(--cc-border-focus, #2f5edb);
+  outline-offset: 2px;
+}
+
+[data-host="desktop"][data-theme="dark"] .message-file-card-toggle {
+  border-color: var(--cc-border-light, #34393c);
+}
+
+[data-host="desktop"][data-theme="dark"] .message-file-card-toggle:not(:disabled):hover {
+  background-color: rgb(255 255 255 / 8%);
+}
+
+[data-host="desktop"][data-theme="dark"] .message-file-card-toggle:not(:disabled):active {
+  background-color: rgb(255 255 255 / 12%);
+}
+
+/* ═══ 1109 评论：产物卡文案（按钮除外）按对话流角色表落值 ═══
+   设计师点整张产物卡：「参考对话流的文案规范检查这里的字体字号是否绑定变量，
+   按钮除外」。审计结论见主题入口那块刻度注释；这里落两条：
+
+   · 标题 `.message-file-card-name`：base（Message.css:1295）写死 `font-size: 13px`，
+     行高走浏览器默认 `normal`（实测行盒 18.5）。13px 在角色表里只属于**代码**角色
+     （13/20），标题/正文档是 14/22 ⇒ 改为 md 刻度。
+   · 副信息 `.message-file-card-sub`：base（Message.css:1303）写死 `11px`，行高同为
+     `normal`（行盒 15）。角色表「时间、数量、依赖等辅助信息」是 12/20 ⇒ 改为 sm 刻度。
+
+   字体族本来就已经绑好了：这两条规则都没有声明 font-family，卡片也不在
+   `.message-content` 里面（DOM 链是 `.tool-container > .timeline-row > .message`），
+   字体来自 `body { font-family: var(--vscode-font-family) }`（globals.css:4），
+   实测 `-apple-system` 系统栈，编辑器等宽字体没有参与。故不重复声明。
+   字重同理：未声明 ⇒ 继承 400，符合两个角色的 400，也不重复声明。
+
+   几何代价：两行文案盒 35.5 → 44（22 + 2 间距 + 20），卡片高 57.5 → 65.5（+8），
+   卡内按钮 28 仍居中、按钮本身逐值不变；base 一行未改 ⇒ IDE / 插件端仍是 13 / 11。 */
+[data-host="desktop"] .message-file-card-name {
+  font-size: var(--cc-font-size-md, 14px);
+  line-height: var(--cc-line-height-md, 22px);
+}
+
+[data-host="desktop"] .message-file-card-sub {
+  font-size: var(--cc-font-size-sm, 12px);
+  line-height: var(--cc-line-height-sm, 20px);
+}
+
+/* ═══ 1109 评论：产物卡图标块 28 → 44 ═══
+   设计师点 `span.message-file-card-icon`：「这个图标应该是 44px」。
+   改前：base（Message.css:1277）写死 28×28、圆角 8、底色 `--vscode-list-hoverBackground`
+   （浅 #EEF0F3 / 深 #303436）、字形 16×16（`OpenBrowserIcon` 的 svg 写死 16）。
+   改后：块 44×44，其余（圆角 8 / 底色 / 字形尺寸）一律不动 —— 她只点了尺寸。
+   几何：卡片内容区本来就被两行文案撑到 44 高（22 + 2 + 20），图标长大到 44 正好与
+   文案等高 ⇒ **卡片总高 66 不变**（57.5 → 66 是上一轮字号那条带来的）；
+   图标横向多吃 16px，标题起点 526.5 → 542.5（+16）、文案盒 562 → 546；
+   按钮靠右，位置与尺寸都不动。base 一行未改 ⇒ IDE / 插件端仍是 28。 */
+[data-host="desktop"] .message-file-card-icon {
+  width: 44px;
+  height: 44px;
 }
