@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
+import type { Message } from "wave-agent-sdk";
 import { renderChatApp, screen, waitFor, sendCommand, act } from "./test-utils";
 import { MockDataGenerator } from "../fixtures/mockData";
 
@@ -152,5 +153,74 @@ describe("Timeline assistant runs", () => {
     );
     expect(doneRows[0].classList.contains("timeline-row--first")).toBe(true);
     expect(doneRows[1].classList.contains("timeline-row--last")).toBe(true);
+  });
+
+  /**
+   * 一条已经建出来、但还没有任何可渲染块的消息——流式刚开始那一刻的状态。
+   *
+   * codechat 网关上的 Claude 思考明文恒为空（只回 signature），流式期第一个
+   * `thinking_delta` 是空串，SDK 于是在真内容到达前几百毫秒到几秒就先建出一条
+   * `blocks: []` 的助手消息。这种消息若进渲染列表：时间线的收尾规则
+   * （`.timeline-run--end` × `.timeline-row--last`）落在它身上，而它内部没有
+   * `.timeline-row`，前一条真实消息的最后一行于是保持全高线段——连线一路垂到
+   * 列表底部；它自己还占着基础行高与 14px 消息间距。所以它在 `visibleMessages`
+   * 里就被滤掉，连虚拟行都不该有。
+   */
+  function blankAssistant(id: string): Message {
+    return {
+      id,
+      role: "assistant",
+      timestamp: "2024-01-01T00:00:00.000Z",
+      blocks: [],
+    };
+  }
+
+  it("一条还没有块的消息不出外壳，也不吃时间线的收尾", async () => {
+    renderChatApp();
+
+    const messages = [
+      MockDataGenerator.createUserMessage("go", "u1"),
+      MockDataGenerator.createAssistantMessage("first assistant", "a1"),
+      MockDataGenerator.createAssistantMessage("second assistant", "a2"),
+      blankAssistant("blank"),
+    ];
+    act(() => {
+      sendCommand("updateMessages", { messages });
+    });
+    await waitFor(() =>
+      expect(getContainer().querySelector(".virtual-row")).not.toBeNull(),
+    );
+
+    // 一个节点都不出：既没有 `.message` 外壳（连线与底部间距的元凶），也没有
+    // 那一行虚拟行（不占行高、不占消息间距）。
+    expect(messageElement("blank")).toBeNull();
+    expect(rowById("blank")).toBeNull();
+    // 收尾落在最后一条真实消息上，而不是那条空消息上。
+    expect(messageElement("a2")).not.toBeNull();
+    expect(rowById("a2")?.classList.contains("timeline-run--end")).toBe(true);
+    // 段内上一行仍保持 flush（收尾的 14px 间距在 a2 上）。
+    expect(rowById("a1")?.style.paddingBottom).toBe("0px");
+  });
+
+  it("空消息出现在一轮的开头时，也不抢连线段的起始", async () => {
+    renderChatApp();
+
+    const messages = [
+      MockDataGenerator.createUserMessage("go", "u1"),
+      blankAssistant("blank"),
+      MockDataGenerator.createAssistantMessage("first assistant", "a2"),
+      MockDataGenerator.createAssistantMessage("second assistant", "a3"),
+    ];
+    act(() => {
+      sendCommand("updateMessages", { messages });
+    });
+    await waitFor(() =>
+      expect(getContainer().querySelector(".virtual-row")).not.toBeNull(),
+    );
+
+    // 线段从第一条真实消息的圆点开始画，空消息根本没有行。
+    expect(rowById("blank")).toBeNull();
+    expect(rowById("a2")?.classList.contains("timeline-run--start")).toBe(true);
+    expect(rowById("a3")?.classList.contains("timeline-run--end")).toBe(true);
   });
 });
