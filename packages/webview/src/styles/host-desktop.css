@@ -2182,6 +2182,28 @@
   line-height: 22px;
   font-weight: 400;
 }
+/* 「更多文件」项按「快捷指令选项」的排版（评论 1109：「整体选项的高度是 40px，路径和
+   文件名之间的间距是 2px，可以参考快捷指令选项的布局」）。
+   参考值实测（SlashCommandsPopup.css 的 `.slash-command-item`）：整项 40.6 高、上下
+   3px 内衬、名称行 17、描述 `margin-top: 2px` + 12px/15.6 ⇒ **两行字形墨迹之间 2px**。
+   这里按同一观感落成整数：
+   · 整项 40（`min-height` + 两排居中，等于参考里「内衬 + 两排行高」的总高）；
+   · 两排之间行盒 1px —— 名字行剩 3 的上下行距各分一半、目录 14 行盒也留 0.5，
+     合起来字形墨迹之间正好 2px（与参考逐值相同，实测见交接）；
+   · 名字 14/20、目录 12/14 不变，根目录文件只有一排，也在这 40 里居中；
+   · 两排仍是 base 的 flex column，名字那排的超长省略号（`max-width:100%` +
+     `overflow:hidden`）不受影响，目录那排照旧完整可见。 */
+[data-host="desktop"] .file-tab-more-item {
+  box-sizing: border-box;
+  min-height: 40px;
+  padding: 0 8px;
+  gap: 1px;
+  justify-content: center;
+  line-height: 20px;
+}
+[data-host="desktop"] .file-tab-more-item-dir {
+  line-height: 14px;
+}
 [data-host="desktop"] .file-tab-menu-item:hover,
 [data-host="desktop"] .file-tab-more-item:hover {
   background: var(--cc-fill-hover);

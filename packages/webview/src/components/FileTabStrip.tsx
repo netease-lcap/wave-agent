@@ -358,7 +358,9 @@ export const FileTabStrip: React.FC<FileTabStripProps> = ({
                       }}
                     >
                       {/* 两排：名字 / 所在目录。菜单里不需要标签带那段最短后缀 ——
-                          整条目录已经摆在第二排，再叠后缀就成了 `liblib`。 */}
+                          整条目录已经摆在第二排，再叠后缀就成了 `liblib`。
+                          1109 评论「文本的间距边距参考」→ 两排之间取标签带后缀的
+                          4px（见 host-desktop.css 的「更多文件」项块）。 */}
                       <span className="file-tab-more-item-name">
                         {label?.name ?? baseNameOf(file.path)}
                       </span>
