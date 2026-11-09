@@ -28,12 +28,12 @@ import { getRgPath } from "./ripgrep.js";
  *   default).
  * - `--hidden`: include hidden files, matching the Grep tool's `--hidden`.
  * - `-I`: skip binary files, matching rg's silent recursion skip.
- * - `--exclude-dir` / `--exclude` for the VCS names the Grep tool excludes: the
- *   directory form for the usual `.git/`, the file form for a *worktree*, where
- *   `.git` is a pointer file (`gitdir: …`) that `--exclude-dir` leaves behind —
- *   searching from a worktree root would otherwise report `.git:1:gitdir: …`.
- *   ripgrep excludes the name outright (`--glob '!.git'`), so this is what makes
- *   the two agree.
+ * - `--exclude-dir` for the VCS directories the Grep tool excludes. Directory
+ *   form only, exactly like Claude Code's shim: a worktree's `.git` is a pointer
+ *   *file* (`gitdir: …`), so `grep -rn` from a worktree root still reports
+ *   `.git:1:gitdir: …`. ripgrep drops the name outright (`--glob '!.git'`), so
+ *   the two do differ here — kept in step with Claude Code rather than fixed
+ *   unilaterally; see the boundary note in docs/specs/core/bash-tools.md.
  *
  * `find` → bfs, with `-S dfs` to keep traversal order predictable, and
  * `-regextype findutils-default` because bfs's default regex dialect is POSIX
@@ -63,7 +63,7 @@ import { getRgPath } from "./ripgrep.js";
  * *is* GNU find, which is the semantics the find shadow imitates.
  */
 
-/** VCS names the Grep tool excludes; mirrored here so bash matches it. */
+/** VCS directories the Grep tool excludes; mirrored here so bash matches it. */
 const VCS_DIRECTORIES = [".git", ".svn", ".hg", ".bzr", ".jj", ".sl"];
 
 /**
@@ -216,11 +216,10 @@ export function buildSearchShellPrelude(options?: {
           "--ignore-files",
           "--hidden",
           "-I",
-          // Both forms: directories, and the `.git` *file* a worktree has.
-          ...VCS_DIRECTORIES.flatMap((name) => [
-            `--exclude-dir=${name}`,
-            `--exclude=${name}`,
-          ]),
+          // Directory form only, matching Claude Code's shim. A worktree's
+          // `.git` is a pointer *file*, which this leaves searchable — the same
+          // gap Claude Code has, kept deliberately so the two agree.
+          ...VCS_DIRECTORIES.map((name) => `--exclude-dir=${name}`),
         ],
         denyPatterns: GREP_DENY_PATTERNS,
       }),

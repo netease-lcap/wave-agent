@@ -190,7 +190,7 @@ order: 20
 
 **验收场景**：
 
-1. **假设** 运行在受支持平台（macOS/Linux/WSL，以及 Windows 的 Git Bash）且内嵌二进制可用，**当** 执行 `grep -r <pattern> .` 时，**则** 必须使用内嵌 `ugrep`：递归时应用沿途每个 `.gitignore` 的排除规则（不要求是 git 仓库）、跳过二进制文件、排除 `.git` 等 VCS 名字（目录形式与同名文件都排——worktree 里的 `.git` 是 `gitdir:` 指针文件）、输出路径不带 `./` 前缀。
+1. **假设** 运行在受支持平台（macOS/Linux/WSL，以及 Windows 的 Git Bash）且内嵌二进制可用，**当** 执行 `grep -r <pattern> .` 时，**则** 必须使用内嵌 `ugrep`：递归时应用沿途每个 `.gitignore` 的排除规则（不要求是 git 仓库）、跳过二进制文件、按目录排除 `.git` 等 VCS 名字、输出路径不带 `./` 前缀。
 2. **假设** 同名命令出现在 `xargs`、`timeout`、`env`、`find -exec` 里，或出现在新起的 `bash -c` / `zsh -c` 中，**当** 这些位置查不到 shell 函数时，**则** 必须回落到系统同名命令——一次会话里允许同时存在两套 `grep`，这是已知且可接受的差异。
 3. **假设** 系统 PATH 上已经有 `rg`，**当** 注入别名时，**则** 不得覆盖用户的 `rg`；只有系统没有 `rg` 时才注入指向 wave 内置 ripgrep 的别名。
 4. **假设** 命令带有内嵌实现不支持的参数（`grep` 的 `-Z`、`-z`、`--null`、`--config` 等），**当** 执行时，**则** 必须回落系统同名命令，不得报错或静默丢参数。
@@ -219,6 +219,7 @@ order: 20
 - **`find -regex` 的 dialect**：内嵌 `bfs` 固定带 `-regextype findutils-default`，把默认方言对齐成 GNU `find` 的 emacs flavour（`\|` 表示或），因此 `find . -regex '.*\.\(js\|ts\)'` 在两边给出同样的结果；调用方后续再传 `-regextype` 仍以它为准。这份能力来自编译期静态链接的 Oniguruma，随二进制一起分发，不要求用户机器上存在 `libonig`。残留差异只有 alternation 的匹配策略：Oniguruma 取 leftmost-first，POSIX 取 leftmost-longest，当某一分支是另一分支的前缀（`\(ts\|tsx\)`）时结果可能与系统 `find` 不同——把较长的分支写在前面即可，工具不为此改写调用方的模式。
 - **`grep <pattern> <目录>` 不带 `-r`**：`ugrep` 递归是默认行为，因此 `grep needle src/` 会直接给出结果；macOS 的 BSD grep 在同样输入下报 `grep: src: Is a directory` 并返回 2。把它当「必须先加 `-r`」的守卫的脚本，在内嵌实现下会拿到结果而不是错误。
 - **`find -size` 的取整口径**：`bfs` 按 GNU 语义把大小向上取整到单位块（`-size -1k` 只匹配空文件），macOS 的 BSD `find` 不取整（`-size -1k` 匹配所有小于 1024 字节的文件）。`-size 0`、`-size +1k` 这类写法两边一致，其余带单位的小数/负数口径按各自方言解释。
+- **worktree 里的 `.git` 仍然会被搜到**：VCS 名字只按目录排除（`--exclude-dir`），而 worktree 的 `.git` 是内容为 `gitdir: …` 的指针**文件**，因此从 worktree 根执行 `grep -rn` 会多出一行 `./.git:1:gitdir: …`。这是**有意与 Claude Code 对齐**的结果（它的影子同样只传 `--exclude-dir`，最新版实测亦如此），不是遗漏：只有当搜索词命中 `gitdir`、worktree 名或仓库路径时才会现形，输出仅一行；`Grep` 工具的 rg 走 `--glob '!.git'`（按名字整体排除）没有这一条，两者在此处的差异是有意的。
 
 ## 假设
 
