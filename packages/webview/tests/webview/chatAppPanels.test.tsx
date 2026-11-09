@@ -198,8 +198,9 @@ describe("ChatApp desktop panel framework", () => {
 
   it("the empty preview pane (no URL) resizes via the slot's left-edge handle", () => {
     window.waveHostType = "desktop";
-    // jsdom reports 0 rects; pin a container width so the auto-fill stays
-    // positive and the drag can actually widen the panel.
+    // The expectations below are arithmetic on the slot's own width
+    // (round(1024×0.4)), so pin the measurement to 1024 — the real row width
+    // follows the page and would make the numbers unreadable.
     const rectSpy = vi
       .spyOn(Element.prototype, "getBoundingClientRect")
       .mockReturnValue({ width: 1024, right: 1024, left: 0 } as DOMRect);
@@ -230,8 +231,8 @@ describe("ChatApp desktop panel framework", () => {
 
   it("the empty state (expanded, no tabs) resizes via the slot's divider handle (spec 场景 9)", () => {
     window.waveHostType = "desktop";
-    // jsdom reports 0 rects; pin a container width so the auto-fill and the
-    // drag can actually move the panel width.
+    // Same as above: the expected widths are arithmetic on the measured slot
+    // width, so pin it instead of inheriting the page's real width.
     const rectSpy = vi
       .spyOn(Element.prototype, "getBoundingClientRect")
       .mockReturnValue({ width: 1400, right: 1400 } as DOMRect);
@@ -1145,7 +1146,8 @@ describe("session-level panel groups", () => {
     const input = screen.getByTestId("preview-address-input");
     fireEvent.change(input, { target: { value: "localhost:8899/" } });
     fireEvent.keyDown(input, { key: "Enter" });
-    // Guest never became dom-ready in jsdom: the initial src is retargeted.
+    // Until the guest reports `dom-ready` the initial src is retargeted in place
+    // (a plain browser never emits that Electron/VS Code event on its own).
     expect(
       screen
         .getByTestId("preview-pane")

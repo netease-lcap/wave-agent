@@ -2374,7 +2374,8 @@ describe("DesktopApp", () => {
       return result;
     }
 
-    // jsdom reports 0 widths; mock the row/pane rects to give the layout real sizes.
+    // The width the drag logic divides is stated by the test, not inherited from
+    // the page: pin the row's measured rect so the per-pane numbers hold.
     function mockRowWidth(width: number) {
       const row = screen.getByTestId("desktop-pane-row");
       vi.spyOn(row, "getBoundingClientRect").mockReturnValue({
@@ -3516,7 +3517,8 @@ describe("DesktopApp", () => {
       return result;
     }
 
-    // jsdom reports 0 rects; pin real sizes where the layout measures.
+    // The row split is computed from the measured container height, so pin it —
+    // the real height depends on the page and the neighbours in this fixture.
     function mockRowsContainerHeight(height: number) {
       const el = screen.getByTestId("desktop-pane-rows");
       vi.spyOn(el, "getBoundingClientRect").mockReturnValue({
@@ -3888,7 +3890,8 @@ describe("DesktopApp", () => {
         [0.5, 0.5],
         "pane-0",
       );
-      // canAddPane measures the row element; give it a real width (jsdom reports 0).
+      // canAddPane measures the row element; state its width instead of reading
+      // the page's (the drop side is decided against it).
       mockRowRect("desktop-pane-row-1", 300, 300);
       mockPaneRect("pane-1", 0, 400);
       const dataTransfer = makeDataTransfer(

@@ -273,8 +273,9 @@ describe("validateImageFile downsampling", () => {
     const canvas = {
       width: 0,
       height: 0,
-      // Hosts without a 2d context (jsdom without the canvas package) return
-      // null here — the shape of "cannot re-encode".
+      // 缩图要靠 2d context；拿不到时就是「无法重编码」这条路。真实宿主里那是
+      // 老/受限的 WebView，浏览器里 2d context 一定有，所以由这个桩直接给出 null
+      // （`withoutContext`），而不是等某个环境恰好没有。
       getContext: () => (options.withoutContext ? null : { drawImage }),
       toBlob: (callback: (blob: Blob | null) => void, type: string) =>
         callback(

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   renderChatApp,
   screen,
@@ -6,7 +6,19 @@ import {
   act,
   sendCommand,
   fireEvent,
+  pinScrollBoxHeight,
 } from "./test-utils";
+
+/**
+ * 一段真的能撑出溢出的正文：每段一行（markdown 渲染成多个段落）。虚拟列表的
+ * `scrollHeight` 来自它自己的 spacer，所以要「内容比视口高」必须真的写这么长的
+ * 内容，凑不出 0 也没法靠改属性假装。
+ */
+const tallText = (lines: number) =>
+  Array.from(
+    { length: lines },
+    (_, i) => `第 ${i + 1} 行：一段用来撑出真实溢出的正文。`,
+  ).join("\n\n");
 
 const userMsg = (content: string, id: string) => ({
   id,
@@ -22,82 +34,82 @@ const assistantMsg = (content: string, id: string) => ({
   blocks: [{ type: "text", content }],
 });
 
+/** 视口高度（`.messages-container` 在真布局里由外层聊天区给，测试里由我们给）。 */
 const VIEWPORT = 400;
+/** 300px 的差距不够：下面「距底 600 / 100」两条要留出不碰 200px 阈值的余量。 */
+const OVERFLOW_PX = 1200;
+
+let restoreLayout: () => void;
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  // 高度必须在挂载前就位：列表在挂载效应里就会滚到底，挂上之后再钉就晚了。
+  restoreLayout = pinScrollBoxHeight(".messages-container", VIEWPORT);
+});
+
+afterEach(() => {
+  restoreLayout();
+});
+
+const container = () => screen.getByTestId("messages-container");
 
 /**
- * jsdom 不排版，`scrollTop` / `clientHeight` / `scrollHeight` 全是 0。把几何量塞
- * 进容器（重定义属性）后，选择性地派发一次 `scroll`——「内容增长」那条路故意不
- * 派发，用来证明显隐不只靠滚动事件驱动。
+ * 等容器真的溢出到有 `gap` 余地为止（行长从估算变实测要几帧）。没有这一步，
+ * 「停在距底 600px」在短内容上会被浏览器夹回 0，用例就成了假绿。
  */
-function setGeometry(
-  scrollTop: number,
-  scrollHeight: number,
-  { dispatchScroll = true }: { dispatchScroll?: boolean } = {},
-) {
-  const container = screen.getByTestId("messages-container");
-  Object.defineProperty(container, "scrollTop", {
-    value: scrollTop,
-    configurable: true,
-    writable: true,
-  });
-  Object.defineProperty(container, "clientHeight", {
-    value: VIEWPORT,
-    configurable: true,
-    writable: true,
-  });
-  Object.defineProperty(container, "scrollHeight", {
-    value: scrollHeight,
-    configurable: true,
-    writable: true,
-  });
-  if (dispatchScroll) {
-    act(() => {
-      fireEvent.scroll(container);
-    });
-  }
+async function waitForOverflow(minOverflow = OVERFLOW_PX) {
+  const c = container();
+  await waitFor(() =>
+    expect(c.scrollHeight - c.clientHeight).toBeGreaterThan(minOverflow),
+  );
+  return c;
 }
 
+/** 把视口停在「离内容末尾 gapPx」的位置：真滚动位置，夹取交给浏览器。 */
+function parkAtGap(gapPx: number) {
+  const c = container();
+  const maxScroll = c.scrollHeight - c.clientHeight;
+  expect(maxScroll).toBeGreaterThan(gapPx);
+  act(() => {
+    c.scrollTop = maxScroll - gapPx;
+    fireEvent.scroll(c);
+  });
+}
+
+const messages = (extended = false) => [
+  userMsg("问题", "u1"),
+  assistantMsg(tallText(20), "a1"),
+  userMsg("追问", "u2"),
+  assistantMsg(extended ? tallText(52) : tallText(40), "a2"),
+];
+
 async function renderWithMessages() {
-  const scrollTo = vi.fn();
-  window.Element.prototype.scrollTo = scrollTo;
   renderChatApp();
   act(() => {
-    sendCommand("updateMessages", {
-      messages: [
-        userMsg("问题", "u1"),
-        assistantMsg("正在回答", "a1"),
-        userMsg("追问", "u2"),
-        assistantMsg("继续回答", "a2"),
-      ],
-    });
+    sendCommand("updateMessages", { messages: messages() });
   });
-  await waitFor(() =>
-    expect(screen.getByTestId("messages-container")).toBeInTheDocument(),
-  );
-  // 首屏的自动置底会写一次视口，清掉它，后续断言只看用户动作触发的写入。
-  scrollTo.mockClear();
-  return scrollTo;
+  const c = await waitForOverflow();
+  // 程序性置底走的是 Element.scrollTo：实例级 spy（方法照常执行，滚动是真的），
+  // 用来观察「有没有把视口写到底」。首屏那次自动置底已经过去了，不用清。
+  const scrollTo = vi.spyOn(c, "scrollTo");
+  return { container: c, scrollTo };
 }
 
 const jumpButton = () => screen.getByTestId("jump-to-bottom");
 
 describe("回到最新入口", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
   it("视口离开底部 200px 以上时出现，滚回附近后收回", async () => {
     await renderWithMessages();
 
     // 距底 600px：出现，且可被 Tab 聚焦。（滚动侧的判定合并到下一帧）
-    setGeometry(1000, 2000);
+    parkAtGap(600);
     await waitFor(() =>
       expect(jumpButton()).toHaveAttribute("aria-hidden", "false"),
     );
     expect(jumpButton()).toHaveAttribute("tabindex", "0");
 
     // 距底 100px：收回，且退出 Tab 序列。
-    setGeometry(1500, 2000);
+    parkAtGap(100);
     await waitFor(() =>
       expect(jumpButton()).toHaveAttribute("aria-hidden", "true"),
     );
@@ -105,29 +117,30 @@ describe("回到最新入口", () => {
   });
 
   it("点击按钮回到真实底部并恢复跟随", async () => {
-    const scrollTo = await renderWithMessages();
+    const { container: c, scrollTo } = await renderWithMessages();
 
-    setGeometry(1000, 2000);
+    parkAtGap(600);
+    await waitFor(() =>
+      expect(jumpButton()).toHaveAttribute("aria-hidden", "false"),
+    );
     scrollTo.mockClear();
 
     act(() => {
       fireEvent.click(jumpButton());
     });
-    // 滚到内容末尾（scrollHeight − clientHeight）。
-    expect(scrollTo).toHaveBeenCalledWith(
-      expect.objectContaining({ top: 1600 }),
-    );
+    // 滚到内容末尾（scrollHeight − clientHeight）：落点是真实排版量出来的值，
+    // 断言「瞄准的就是内容底」而不是某个写死的数字。
+    const calls = scrollTo.mock.calls;
+    const target = calls[calls.length - 1]?.[0] as ScrollToOptions;
+    const bottom = c.scrollHeight - c.clientHeight;
+    expect(target.behavior).toBe("smooth");
+    expect(Math.abs((target.top ?? 0) - bottom)).toBeLessThanOrEqual(2);
 
     // 跟随已恢复：新内容到达时视口继续被写到底部，而不是停在历史里。
     scrollTo.mockClear();
     act(() => {
       sendCommand("updateMessages", {
-        messages: [
-          userMsg("问题", "u1"),
-          assistantMsg("正在回答", "a1"),
-          userMsg("追问", "u2"),
-          assistantMsg("继续回答，并且多了一段", "a2"),
-        ],
+        messages: messages(true),
       });
     });
     expect(scrollTo).toHaveBeenCalled();
@@ -137,21 +150,16 @@ describe("回到最新入口", () => {
     await renderWithMessages();
 
     // 停在距底 100px：按钮还没出现。
-    setGeometry(1500, 2000);
+    parkAtGap(100);
     expect(jumpButton()).toHaveAttribute("aria-hidden", "true");
 
     // 内容在下方继续长（流式追加），不派发任何 scroll 事件。
-    setGeometry(1500, 2400, { dispatchScroll: false });
     act(() => {
       sendCommand("updateMessages", {
-        messages: [
-          userMsg("问题", "u1"),
-          assistantMsg("正在回答", "a1"),
-          userMsg("追问", "u2"),
-          assistantMsg("继续回答，突然又长了一大段", "a2"),
-        ],
+        messages: messages(true),
       });
     });
+
     expect(jumpButton()).toHaveAttribute("aria-hidden", "false");
   });
 

@@ -343,11 +343,11 @@ describe("File Mention Feature (@)", () => {
       expect(document.querySelectorAll(".suggestion-item").length).toBe(1);
     });
 
-    // Real browsers reset the caret to the start of the input (offset 0) when
-    // focus() runs after the input lost focus to the popup item. jsdom's
-    // focus() keeps the existing selection, so simulate the real post-focus
-    // state directly: selection collapsed inside the input's text node at 0.
-    // With a zero-length range the old getSelection() path computed
+    // The regression: focusing the input after it lost focus to the popup item
+    // puts the caret back at offset 0. Whether the click sequence gets there on
+    // its own depends on how the focus moves land, so state the post-focus
+    // situation directly: a zero-length range collapsed at 0 inside the input's
+    // text node. With a zero-length range the old getSelection() path computed
     // start=end={node, 0} → nothing deleted → the tag landed *before* the '@'.
     const textNode = Array.from(input.childNodes).find(
       (n) => n.nodeType === Node.TEXT_NODE,

@@ -4,10 +4,8 @@ import React from "react";
 import { FilePane, type FilePaneProps } from "../../src/components/FilePane";
 import type { FileViewState } from "../../src/types";
 
-vi.mock("../../src/styles/FilePane.css", () => ({}));
-
-// 编辑器的真实实现在另行构建的 editor.js chunk 里（CodeMirror），jsdom 注入不了；
-// 面板只经 path/initialValue/onChange/onSave 与它打交道，用 textarea 顶上。
+// 编辑器的真实实现在另行构建的 editor.js chunk 里（CodeMirror），单测的模块图里
+// 没有它；面板只经 path/initialValue/onChange/onSave 与它打交道，用 textarea 顶上。
 vi.mock("../../src/components/fileEditor/FileEditor", () => ({
   FileEditor: ({
     path,

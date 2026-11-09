@@ -13,10 +13,10 @@ import {
  * Helper: set contenteditable text, set up selection inside a text node at end,
  * and fire input event.
  *
- * jsdom's Selection API works, but handleSlashCommandSelect/handleFileSelect
- * check `textNode.nodeType === Node.TEXT_NODE` — if selection is on the div
- * itself (nodeType=1), they skip. So we must ensure selection is inside a
- * Text node.
+ * handleSlashCommandSelect/handleFileSelect check `textNode.nodeType ===
+ * Node.TEXT_NODE` — if the selection sits on the div itself (nodeType=1), they
+ * skip. So the helper has to put the selection inside a Text node rather than
+ * rely on whatever range `textContent = …` happens to leave behind.
  */
 async function typeInInput(text: string) {
   const input = screen.getByTestId("message-input");

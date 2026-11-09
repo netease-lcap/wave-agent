@@ -21,24 +21,13 @@ import {
  * 撞成同一个数字，判等直接 return，斜杠弹窗与 `@` 提及的检测整段被吞掉。
  *
  * 为什么这一层能守：缺陷不在请求/回包，而在「请求根本没发出去」，宿主侧
- * （`desktopHost.handleSlashCommandsRequest`）收到的命令永远是空转的；jsdom 里
- * 这条路径可以完整复现（DOM 改写 + 去重），不需要真机。
+ * （`desktopHost.handleSlashCommandsRequest`）收到的命令永远是空转的；而这条路径
+ * （DOM 改写 + 去重）在单测里就能完整复现，不需要真机。
  */
-function mockInnerText(el: HTMLElement) {
-  Object.defineProperty(el, "innerText", {
-    configurable: true,
-    get: () => el.textContent ?? "",
-    set: (value: string) => {
-      el.textContent = value;
-    },
-  });
-}
-
 /** 在输入框末尾打下 text，并把光标留在文本节点末尾（与真实输入一致）。 */
 async function typeAtEnd(text: string) {
   const input = screen.getByTestId("message-input");
   input.focus();
-  mockInnerText(input);
 
   input.textContent = (input.textContent ?? "") + text;
   const range = document.createRange();

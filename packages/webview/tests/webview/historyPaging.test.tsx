@@ -29,8 +29,9 @@ const page = (prefix: string, count: number) =>
   );
 
 /**
- * jsdom 不排版，scrollTop/clientHeight/scrollHeight 全是 0。把几何量塞进容器再
- * 派发一次 scroll，let 滚动处理器看到我们想让它看到的位置。
+ * 用例问的是「读到某个滚动位置时会不会请求上一页」，位置必须精确可控：真排版下
+ * scrollHeight 取决于行内容测量与列宽，凑不出「离顶 10px」这种边界。所以把三个
+ * 几何量钉成给定值再派发一次 scroll，走的仍是组件里那个滚动处理器。
  */
 function scrollTo(scrollTop: number, scrollHeight = 4000, clientHeight = 400) {
   const container = screen.getByTestId("messages-container");

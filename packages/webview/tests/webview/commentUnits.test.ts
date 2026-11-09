@@ -97,9 +97,8 @@ describe("anchors", () => {
    * Make the fixture a genuinely scrollable box.
    *
    * A real browser clamps `scrollTop`/`scrollLeft` back to 0 when the content
-   * fits (jsdom keeps any value you write), so a case that asserts "the scroll
-   * offset is added in" has to give the box something to scroll: shrink it until
-   * the three lines overflow.
+   * fits, so a case that asserts "the scroll offset is added in" has to give the
+   * box something to scroll: shrink it until the three lines overflow.
    */
   function makeScrollable(container: HTMLElement) {
     container.style.overflow = "hidden";

@@ -43,9 +43,8 @@ vi.mock("dompurify", () => ({
   },
 }));
 
-// Mock CSS imports
-// browser mode 里不需要：`vi.mock("*.css")` 会触发 import map 重建，与已预打包的
-// 依赖冲突导致整文件加载失败；jsdom 侧同样不需要（vitest 把样式当空模块）。
+// 样式不做 mock：browser mode 里 `vi.mock("*.css")` 会触发 import map 重建，与已
+// 预打包的依赖冲突、整文件加载失败；样式本身由 vite 正常注入即可。
 
 // ResizeObserver 用真浏览器自带的：虚拟列表靠它盯行高与容器尺寸，桩掉它等于让
 // 「行长高了」「面板开合」这两条路在测试里彻底消失。
@@ -310,10 +309,11 @@ export function sendHostMessage(message: HostToWebviewMessage) {
 /**
  * 点一个「应用不该拦截」的链接，返回应用是否 preventDefault 过。
  *
- * 这类用例断言的是「默认跳转仍在」，而 jsdom 不实现跨文档导航，只会往控制台
- * 打印 `Not implemented: navigation to another Document` 弄脏套件。所以在冒泡到
- * window（React 的处理器挂在更内层，跑到这里时已执行完）的最后一个监听点记下
- * 当时的 defaultPrevented，再自己 preventDefault 兜住这次导航。
+ * 契约是「应用没有取消默认」——只要读出这件事就够了，不需要让默认行为真的发生。
+ * 真浏览器读到 `defaultPrevented === false` 就会照着链接跳走，把测试页面（以及
+ * 后面的用例）一起带走，所以在冒泡到 window 的最后一个监听点（React 的处理器挂在
+ * 更内层，跑到这里时已执行完）记下当时的 `defaultPrevented`，然后自己
+ * `preventDefault()` 取消这次默认导航。
  */
 export function clickKeepingDefaultNavigation(element: Element): boolean {
   let preventedByApp = true;

@@ -5,8 +5,6 @@ import { FilePane, type FilePaneProps } from "../../src/components/FilePane";
 import type { FileViewState, OpenFileTab } from "../../src/types";
 import { pinScrollBoxHeight } from "./test-utils";
 
-vi.mock("../../src/styles/FilePane.css", () => ({}));
-
 /**
  * 面板内多标签 / 查找跳行 / 复制路径（spec desktop-file-panel.md
  * 「文件面板已打开文件的标签」「文件面板内查找与跳行」）。

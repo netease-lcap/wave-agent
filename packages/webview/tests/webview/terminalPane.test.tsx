@@ -334,7 +334,9 @@ describe("TerminalPane", () => {
     delete window.WaveTerminal;
     const vscode = createMockVscode();
     render(<TerminalPane vscode={vscode} width={420} visible={true} />);
-    // The injected script tag never loads in jsdom — fire its error.
+    // The injected `<script src="./terminal.js">` is not part of the test module
+    // graph, and whether/when its request fails is not something to wait for —
+    // fire the error on the tag the component injected.
     await act(async () => {});
     const script = document.head.querySelector('script[src="./terminal.js"]');
     expect(script).not.toBeNull();

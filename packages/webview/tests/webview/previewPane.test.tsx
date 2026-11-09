@@ -149,9 +149,10 @@ const firePickerSubmit = (wv: MockWebview, payload: Record<string, unknown>) =>
 
 // PreviewPane watches its own element with a ResizeObserver so a CSS-driven
 // width change (fullscreen !important / a tab stack turning visible again)
-// re-fits the guest — the controlled `width` prop can't see those. jsdom has
-// no layout and test-utils' shared RO mock swallows callbacks, so capture the
-// instances here and fire size changes manually.
+// re-fits the guest — the controlled `width` prop can't see those. A real RO
+// only reports sizes the layout actually produces, and these cases need a
+// specific one at a specific moment, so capture the instances here and fire the
+// size change by hand.
 class CapturingResizeObserver {
   static instances: CapturingResizeObserver[] = [];
   static reset() {
@@ -1008,7 +1009,8 @@ describe("PreviewPane integration (DesktopApp)", () => {
     expect(body).toHaveClass("preview-fullscreen");
     // 对话列保持挂载、由 CSS 隐藏（`.desktop-chat-main { display:none }`）：
     // 卸载会连坐销毁 <MessageInput>，退出全屏时草稿与滚动位置随之丢失
-    // （spec desktop-preview.md 场景 7）。jsdom 不跑样式，这里只断言没被卸载。
+    // （spec desktop-preview.md 场景 7）。隐藏是否真的生效是样式的事（归 e2e），
+    // 这里锁的是「没被卸载」这条契约。
     expect(body.querySelector(".desktop-chat-main")).not.toBeNull();
     expect(screen.getByTestId("preview-pane")).toBeInTheDocument();
     // The inactive diff tab stays mounted but hidden (content survives).

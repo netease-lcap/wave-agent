@@ -23,8 +23,8 @@ import type { Message } from "wave-agent-sdk/types";
  * 会话消息大纲（spec ui/transcript-outline.md）。
  *
  * 几何部分（间距/隐藏阈值）是纯函数，直接钉；结构性契约（刻度数、预览卡、
- * 点击跳转、注入消息不建刻度）走 jsdom。刻度在真实排版里的位置与宽度留给
- * e2e ——jsdom 不做布局，这里只能断言「有没有、点了会不会滚」。
+ * 点击跳转、注入消息不建刻度）在这里断。刻度的像素位置与宽度留给 e2e ——
+ * 这里只断言「有没有、点了会不会滚」。
  */
 afterEach(() => {
   vi.restoreAllMocks();

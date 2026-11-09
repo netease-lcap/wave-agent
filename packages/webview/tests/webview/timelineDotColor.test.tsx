@@ -6,8 +6,9 @@ import { TOOL_STATUS_COLORS } from "../../src/utils/statusColors";
 import desktopHostCss from "../../src/styles/host-desktop.css?raw";
 
 // 状态色自 F-08 起走语义 token（statusColors.ts 的值是 `var(--cc-state-*, <原 hex>)`），
-// 故这里断言 token 串而不是解析后的色值——CSS 变量在 jsdom 里不解析，断言 hex
-// 只会在 token 层改动时假红/假绿。两档取值由 host-desktop.css 定义：
+// 故这里断言 token 串而不是解析后的色值：组件下发设计 token（而不是写死的色值）本身
+// 就是产品契约，一旦把它换算成具体颜色，断言就锁不住「这个颜色来自设计系统的哪一档
+// token」，token 层改动时只会假红/假绿。两档取值由 host-desktop.css 定义：
 //   浅色档（:root[data-host="desktop"][data-theme="light"]，值 = 原 hex，观感零回归）
 //   深色档（:root[data-host="desktop"][data-theme="dark"]，深色画布上提亮/降饱和）
 // 桌面端深色档相对浅色档的**新契约**（浅色档不变）：

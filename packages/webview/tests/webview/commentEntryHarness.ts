@@ -30,7 +30,7 @@ export function selectLines(firstTestId: string, lastTestId: string): void {
   range.setStartBefore(first);
   range.setEndAfter(last);
   const selection = window.getSelection();
-  if (!selection) throw new Error("jsdom has no Selection");
+  if (!selection) throw new Error("window.getSelection() returned null");
   selection.removeAllRanges();
   selection.addRange(range);
   // The button is computed on mouseup, so the release is part of the gesture.

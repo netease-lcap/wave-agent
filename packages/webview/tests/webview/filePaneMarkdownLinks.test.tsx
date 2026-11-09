@@ -34,9 +34,7 @@ const makeMarkdownView = (
  * default. `fireEvent` hands back the dispatcher's boolean rather than the
  * event, and the two document listeners here run *after* React's delegated
  * handler: the first records the panel's own choice, the second cancels the
- * default so jsdom does not attempt a navigation it cannot perform (its "Not
- * implemented: navigation" notice would otherwise be the loudest line in a
- * green run).
+ * default so the click does not navigate the test page away.
  */
 const clickLink = (text: string): boolean => {
   let preventedByPanel = false;

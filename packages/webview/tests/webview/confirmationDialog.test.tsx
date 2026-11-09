@@ -115,8 +115,8 @@ describe("Confirmation Dialog", () => {
     renderChatApp();
 
     // renderChatApp() focuses the message input on mount; record it as the
-    // pre-dialog focus. (Don't compare against body — jsdom has already
-    // focused the input.)
+    // pre-dialog focus. (Don't compare against body — the input, not body, is
+    // the active element before the dialog opens.)
     const initialFocus = document.activeElement;
 
     await act(async () => {
@@ -1779,8 +1779,8 @@ describe("AskUserQuestion Other input", () => {
         ).toBeInTheDocument();
       });
       const labels = optionLabels();
-      // Opening doesn't move focus, so simulate the keyboard user Tabbing
-      // into the dialog first (jsdom doesn't move focus on fireEvent either).
+      // Opening doesn't move focus, so simulate the keyboard user Tabbing into
+      // the dialog first (a dispatched keydown performs no default focus move).
       act(() => {
         labels[0].focus();
       });
@@ -1793,7 +1793,8 @@ describe("AskUserQuestion Other input", () => {
         expect(document.activeElement).toBe(labels[0]);
       }
       // Tab steps through the option labels in DOM order (the "Other" item is
-      // in the sequence). jsdom does not move focus on Tab, so step manually.
+      // in the sequence). A dispatched keydown never performs the browser's own
+      // Tab focus move, so step manually.
       const other = document.querySelector<HTMLElement>(".other-option")!;
       expect(optionLabels().map((l) => l.dataset.optionIndex)).toEqual([
         "0",
@@ -2186,9 +2187,9 @@ describe("AskUserQuestion 选项区折叠", () => {
       document.querySelectorAll(".question-navigation .confirmation-btn"),
     ).map((b) => b.textContent!.trim());
 
-  // 折叠的视觉结果（选项区真的被 display:none 收掉、弹窗变矮、消息列表拿回空间）
-  // 由 e2e/confirm-collapse.e2e.ts 在真实浏览器里量；jsdom 不解析外部样式表，
-  // 这里只断「状态类 + aria + DOM 归属 + 交互后果」。
+  // 折叠的像素级结果（选项区真的被收掉、弹窗变矮、消息列表拿回空间）属于视觉
+  // 回归，交给 e2e/confirm-collapse.e2e.ts；这里锁的是更稳的那套契约：状态类 +
+  // aria + DOM 归属 + 交互后果。
   it("folds the option area, keeping the question chip, progress bar and nav bar", async () => {
     renderChatApp();
     showAskUser(questions);

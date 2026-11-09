@@ -5,9 +5,6 @@ import {
   orderSlashCommands,
 } from "../../src/components/SlashCommandsPopup";
 
-// Component imports its CSS directly; stub it so jsdom doesn't need to parse styles.
-vi.mock("../../src/styles/SlashCommandsPopup.css", () => ({}));
-
 type Command = {
   id: string;
   name: string;

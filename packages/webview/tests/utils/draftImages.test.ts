@@ -19,8 +19,10 @@ import {
  * 存在 webview 侧的 IndexedDB，草稿里只留 `[@image:<id>]` 标记。这组用例覆盖：
  * 标记形态、按会话隔离、从存储取回、取不到时降级、单会话上限。
  *
- * jsdom 没有 IndexedDB，这里用 fake-indexeddb 提供真实 IDB 语义（另一个文件
- * draftImagesDegrade.test.ts 覆盖「拿不到 IndexedDB」的降级路径）。
+ * 真浏览器自带 IndexedDB，但那是**跨用例共享的**一份持久存储：上一个用例写进去
+ * 的记录会留到下一个用例，断言「按会话隔离」「上限淘汰」时就分不清读到的是自己
+ * 的还是别人剩的。这里用 fake-indexeddb 换一份干净的、语义仍然是真 IDB 的存储
+ * （另一个文件 draftImagesDegrade.test.ts 覆盖字节取不到时的降级路径）。
  */
 const PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUg==";
 const OTHER_PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUg==AAAA";
