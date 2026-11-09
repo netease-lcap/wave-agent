@@ -65,13 +65,20 @@
   opacity: 0.85;
 }
 
-.slash-command-name-row {
+/* 选项内容行（Tooltip 的触发盒）：一行 `/名字` + 来源标签，整行等高。
+   `.tooltip-container` 默认 `inline-flex`（给图标按钮那种「一行一个触发」定的），
+   shrink-to-fit 会让 hover 区只有文字宽 —— 改块级撑满选项内容宽。 */
+.tooltip-container.slash-command-row-wrap {
+  display: block;
+}
+
+.slash-command-row {
   display: flex;
   align-items: center;
   gap: 6px;
   min-width: 0;
-  /* 行盒保底 16px：不同宿主字体行高下，标签（10px 字 + 上下 1px 内边距）
-     垂直居中后底部仍与下方描述行保持间距，不贴/压住描述文字 */
+  /* 行盒保底 16px：不同宿主字体行高下，标签（10px 字 + 上下 1px 内边距）垂直居中后
+     不与行上下边缘相切 */
   min-height: 16px;
 }
 
@@ -103,31 +110,17 @@
   font-weight: 400;
   color: var(--vscode-descriptionForeground);
   line-height: 1.3;
-  /* 名称行（含来源标签）与描述之间的显式留白：上距由 li 内边距匀出，
-     避免标签底边紧贴/叠到描述首行 */
   margin-top: 2px;
 }
 
-/* 设计师 2026-10-09 评论（`div.slash-group` 里的选项）：「描述最多显示两行，末尾处
-   ...省略，hover 可以在气泡中显示全部内容」；同日她裁定范围 —— 「只留桌面」。
-   两行 = 2 × 19.5px 行盒（12px × 1.3），超出的整行裁掉、末行右侧出省略号；气泡由
-   组件侧 Tooltip 给出，且只在真被截断时挂（见 SlashCommandsPopup.tsx 的
-   CommandDescription）。base（插件端）保持自由折行、无省略号 —— 上面那条规则里只有
-   字号/字色/行高，与 main 逐字相同。 */
-[data-host="desktop"] .slash-command-description {
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  overflow: hidden;
-}
-
-/* Tooltip 的容器（Tooltip.css `.tooltip-container`）默认为 inline-flex —— 是给图标按钮
-   那类「一行一个触发」的场景定的。这里的子元素是块级描述 div，若沿用 inline-flex，
-   触发盒宽度会从「撑满整行」变成 shrink-to-fit，折行位置跟着变（两行截断的断点也就
-   变了）。改回块级：触发盒宽度 = 描述原宽，包不包气泡都逐像素一致。
-   选择器带上 `[data-host="desktop"]`（0,3,0）既稳压 Tooltip.css 的 `.tooltip-container`
-   （0,1,0，与两份 CSS 的加载顺序无关），又和上面那条截断规则同属「只留桌面」；
-   插件端下描述不截断 ⇒ Tooltip 是 `disabled` ⇒ 这个包裹层根本不存在。 */
-[data-host="desktop"] .tooltip-container.slash-command-description-wrap {
-  display: block;
+/* 选项内的描述：**只在没有悬停能力的设备**（手机远控页 `hover: none`）才显示 ——
+   那里气泡那条路走不通（`:hover` 只是 tap 的副产物，见 Tooltip 的 `canHover`）。
+   有鼠标/触控板时描述改由右侧气泡给出（悬停或键盘选中，见 SlashCommandsPopup.tsx
+   的 CommandRow），选项恒为一行。
+   这一条替换掉了原来的「描述最多两行」：两行 clamp 只压住了**单条**描述的溢出，选项
+   高度仍在 40.6（一行描述）↔ ~60（两行描述）之间摆动，等于没限住。 */
+@media (hover: hover) {
+  .slash-command-item .slash-command-description {
+    display: none;
+  }
 }

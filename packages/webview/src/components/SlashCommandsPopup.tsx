@@ -1,4 +1,4 @@
-import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import type { SlashCommand } from "../types";
 import { useClickOutside } from "../utils/useClickOutside";
 import { Tooltip } from "./Tooltip";
@@ -68,55 +68,68 @@ export const orderSlashCommands = (commands: SlashCommand[]): SlashCommand[] =>
   groupSlashCommands(commands).flatMap((group) => group.commands);
 
 /**
- * 选项描述：最多两行，超出末尾省略号（截断由 CSS `-webkit-line-clamp` 完成），
- * 被截断时 hover 由气泡给出全文。
+ * 选项 = **一行**（`/名字` + 来源标签），描述不进列表 —— 对齐 CC 桌面端斜杠菜单
+ * （`ccc334009-*.js` 的 `SlashCommandMenuPopupBody`：icon + label + 别名 + 右侧来源
+ * caption，估高 32px；描述只在浮层里出现）。
  *
- * 只在**真的截断**时挂气泡：短描述本来就全在，再弹一个同文案的气泡纯属噪音。
- * 截断判定必须测量（`scrollHeight > clientHeight`），且宽度变化后要重测——弹窗宽度
- * 随内容在 300–400px 间浮动，同一个描述可能一会儿截一会儿不截。
+ * 之前的形态是把描述排在名字行下面、最多两行（`-webkit-line-clamp: 2`，仅桌面端）：
+ * 描述一行时整项 40.6、两行时 ~60，长短混排的列表高度参差，320px 高的弹窗一屏只剩
+ * 5–6 条，而弹窗本身早就限过高了（`SlashCommandsPopup.css` 的 `max-height`）——真
+ * 正失控的是**单项**高度。
  *
- * 「最多两行」这条 CSS 只在桌面上生效（`SlashCommandsPopup.css` 里带
- * `[data-host="desktop"]`，她 1009 裁定「只留桌面」）；组件这里不做宿主判断——插件端下
- * 描述不被裁，量出来就是不截断，Tooltip 走 `disabled` 直接返回原 children（DOM 与之前
- * 逐字相同）。宿主差异只由 CSS 一处表达。
+ * 描述改由两颗入口给出，信息不丢：
+ * 1. 悬停 / **键盘选中**时右侧气泡（`Tooltip` + `forceVisible`）—— 焦点在输入框、
+ *    指针不动，所以选中项必须受控显示，不能只靠 `mouseenter`；
+ * 2. 无悬停能力的设备（手机远控页，`hover: none`）气泡那条路走不通，描述就在选项
+ *    内折行显示（CSS 媒体查询控制，组件不做宿主判断）。
  *
- * 节点用 **callback ref 存进 state**（而不是 `useRef`）：气泡一旦挂上，描述 div 就从
- * `li` 的直接子节点变成 Tooltip 包裹层里的子节点，DOM 节点会被重建。若观察的是
- * `useRef` 抓到的旧节点，卸载后它会报 `scrollHeight/offsetHeight = 0` ⇒ 判定翻回
- * 「未截断」⇒ 包裹层被摘掉 ⇒ 震荡（实测最终停在「没有气泡」那一侧）。挂在 state 上，
- * 节点一换就重跑 effect、把 ResizeObserver 重新指到当前节点，一次收敛。
+ * 无障碍：气泡的 `aria-describedby` 由 Tooltip 挂在触发元素上，读屏能拿到描述。
  */
-const CommandDescription: React.FC<{ text: string }> = ({ text }) => {
-  const [element, setElement] = useState<HTMLDivElement | null>(null);
-  const [isTruncated, setIsTruncated] = useState(false);
-
-  useLayoutEffect(() => {
-    if (!element) return;
-    // +1：浏览器取整与亚像素行高（12px × 1.3）会把「刚好两行」读成 1px 溢出。
-    const measure = () =>
-      setIsTruncated(element.scrollHeight > element.clientHeight + 1);
-    measure();
-    if (typeof ResizeObserver === "undefined") return; // 老引擎：只量这一次
-    const observer = new ResizeObserver(measure);
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, [element, text]);
-
-  return (
+const CommandRow: React.FC<{
+  command: SlashCommand;
+  isSelected: boolean;
+  /** 鼠标是否停在**列表里任意一项**上（见 SlashCommandsPopup 里 `hoveredId` 的注释）。
+   *  为真时选中项不再常显气泡 —— 此刻由 hover 那一项自己出气泡。 */
+  isAnyHovered: boolean;
+  onHoverChange: (id: string | null) => void;
+  onSelect: (command: SlashCommand) => void;
+}> = ({ command, isSelected, isAnyHovered, onHoverChange, onSelect }) => (
+  <li
+    className={`slash-command-item ${isSelected ? "selected" : ""}`}
+    onMouseEnter={() => onHoverChange(command.id)}
+    onMouseLeave={() => onHoverChange(null)}
+    onMouseDown={(e) => {
+      e.preventDefault();
+      onSelect(command);
+    }}
+    data-testid={`slash-command-${command.id}`}
+  >
     <Tooltip
-      text={text}
+      text={command.description}
       multiline
       position="right"
-      disabled={!isTruncated}
       portal
-      className="slash-command-description-wrap"
+      disabled={!command.description}
+      forceVisible={isSelected && !isAnyHovered}
+      className="slash-command-row-wrap"
     >
-      <div className="slash-command-description" ref={setElement}>
-        {text}
+      <div className="slash-command-row">
+        <div className="slash-command-name">/{command.name}</div>
+        {command.skillSource && (
+          <span
+            className={`slash-command-tag slash-command-tag-${command.skillSource}`}
+            data-testid={`slash-command-source-${command.id}`}
+          >
+            {SKILL_SOURCE_LABELS[command.skillSource]}
+          </span>
+        )}
       </div>
     </Tooltip>
-  );
-};
+    {command.description && (
+      <div className="slash-command-description">{command.description}</div>
+    )}
+  </li>
+);
 
 export const SlashCommandsPopup: React.FC<SlashCommandsPopupProps> = ({
   commands,
@@ -127,6 +140,18 @@ export const SlashCommandsPopup: React.FC<SlashCommandsPopupProps> = ({
   position,
 }) => {
   const popupRef = useRef<HTMLDivElement>(null);
+
+  // 鼠标停在哪个选项上。选中项的气泡是常显的（键盘上下键时焦点在输入框，没有 hover
+  // 可依赖），但鼠标停到**别的**选项上时不能两颗气泡一起挂（停在 A、键盘选中 B 就会
+  // 看到 A 和 B 的描述各挂一颗）。规则：鼠标在列表里时只认 hover 那一条，选中项的常
+  // 显气泡让位；鼠标移出后选中项的气泡回来。
+  const [hoveredId, setHoveredId] = useState<string | null>(null);
+
+  // 弹层关掉时必须清掉它：DOM 一卸载，`mouseleave` 就没机会补发，残留一个非空的
+  // `hoveredId` 会让下次打开时选中项的气泡被「有项被悬停」这条规则压住。
+  useEffect(() => {
+    if (!isVisible) setHoveredId(null);
+  }, [isVisible]);
 
   // Handle clicks outside to close popup (listener registered one tick later
   // inside useClickOutside, so a mousedown that opens a nested popup — e.g.
@@ -195,34 +220,15 @@ export const SlashCommandsPopup: React.FC<SlashCommandsPopupProps> = ({
               <ul className="slash-commands-list">
                 {group.commands.map((command) => {
                   displayIndex += 1;
-                  const isSelected = displayIndex === selectedIndex;
                   return (
-                    <li
+                    <CommandRow
                       key={command.id}
-                      className={`slash-command-item ${isSelected ? "selected" : ""}`}
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        onSelect(command);
-                      }}
-                      data-testid={`slash-command-${command.id}`}
-                    >
-                      <div className="slash-command-name-row">
-                        <div className="slash-command-name">
-                          /{command.name}
-                        </div>
-                        {command.skillSource && (
-                          <span
-                            className={`slash-command-tag slash-command-tag-${command.skillSource}`}
-                            data-testid={`slash-command-source-${command.id}`}
-                          >
-                            {SKILL_SOURCE_LABELS[command.skillSource]}
-                          </span>
-                        )}
-                      </div>
-                      {command.description && (
-                        <CommandDescription text={command.description} />
-                      )}
-                    </li>
+                      command={command}
+                      isSelected={displayIndex === selectedIndex}
+                      isAnyHovered={hoveredId !== null}
+                      onHoverChange={setHoveredId}
+                      onSelect={onSelect}
+                    />
                   );
                 })}
               </ul>

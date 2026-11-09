@@ -53,6 +53,16 @@ interface TooltipProps {
    */
   anchorRef?: RefObject<HTMLElement>;
   /**
+   * 受控显示：`true` 时无视 hover 状态直接显示气泡（只在与 hover 自动显示取「或」
+   * 的方向上生效，传 `false` 不会压下 hover）。给**键盘导航**的列表用 —— 焦点在
+   * 输入框、指针没动，`mouseenter` 永远不会来，但用户按上下键时仍要能看到当前项
+   * 的说明（斜杠命令弹层：描述已不在选项里，全靠这颗气泡）。
+   *
+   * 仍然受 `hover: hover` 门控：触屏宿主上 hover 本身是 tap 的副产物，气泡出来
+   * 就收不掉（见 `canHover` 注释），选中项跟随也一样。
+   */
+  forceVisible?: boolean;
+  /**
    * 把气泡挂到 `document.body`（默认 `false` = 留在原地）。
    *
    * 触发元素落在带 `transform` / `overflow` 的容器里时必须开：`transform` 会给
@@ -76,6 +86,7 @@ export const Tooltip: React.FC<TooltipProps> = ({
   keyboardFocusOnly = false,
   anchorRef,
   portal = false,
+  forceVisible = false,
 }) => {
   // 气泡↔触发的间距：桌面端按 skill 的下拉契约收成 4px（design-system.md:142
   // 「poppers carry no arrow、trigger-to-panel gap 4px」，桌面档角标已在
@@ -179,6 +190,10 @@ export const Tooltip: React.FC<TooltipProps> = ({
     setTooltipStyle({ left, top });
   }, [position, gap, anchorRef]);
 
+  // 气泡的显示条件：hover 自动显示，或受控（`forceVisible`）显示；两者都受 `hover:
+  // hover` 门控（触屏上气泡出来就收不掉）。
+  const shown = canHover && (isVisible || forceVisible);
+
   // disabled 期间 wrapper 整个不渲染，气泡也就收不到 mouseleave：若这里不主动复位，
   // 「hover 出气泡 → 打开某个浮层（触发方把 disabled 置 true）→ 关掉浮层」之后，
   // 气泡会带着旧的 isVisible=true 重新挂回来——此时指针早已离开，再没有 mouseleave
@@ -186,6 +201,35 @@ export const Tooltip: React.FC<TooltipProps> = ({
   useEffect(() => {
     if (disabled) setIsVisible(false);
   }, [disabled]);
+
+  // 受控显示（`forceVisible`）翻转时的定位：hover 那条路径在 handleShow 里量，受控
+  // 翻转发生在组件之外，这里补一次。气泡是常驻渲染的（隐藏态只是 opacity 0 +
+  // visibility hidden，仍占布局），所以此刻量得到真实尺寸。
+  useEffect(() => {
+    if (!forceVisible || !canHover) return;
+    const raf = requestAnimationFrame(calculatePosition);
+    return () => cancelAnimationFrame(raf);
+  }, [forceVisible, canHover, calculatePosition]);
+
+  // 显示期间跟随滚动重新定位：`position: fixed` 的气泡不会跟着触发元素走，而滚动
+  // 容器不一定是 window。capture 阶段收得到任意祖先的 scroll（scroll 不冒泡），rAF
+  // 把同一帧内的多次滚动合并成一次测量。斜杠命令弹窗正是要滚的容器——键盘上下键会
+  // `scrollIntoView`，选中项的气泡若原地不动就挂到别的选项上了。
+  useEffect(() => {
+    if (!shown || disabled) return;
+    let raf = 0;
+    const reposition = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(calculatePosition);
+    };
+    window.addEventListener("scroll", reposition, true);
+    window.addEventListener("resize", reposition);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("scroll", reposition, true);
+      window.removeEventListener("resize", reposition);
+    };
+  }, [shown, disabled, calculatePosition]);
 
   // When disabled, render children without tooltip wrapper
   if (disabled) {
@@ -217,7 +261,7 @@ export const Tooltip: React.FC<TooltipProps> = ({
       id={id}
       role="tooltip"
       ref={tooltipRef}
-      className={`tooltip-box tooltip-${position} ${isVisible && canHover ? "visible" : ""} ${multiline ? "tooltip-multiline" : ""}`}
+      className={`tooltip-box tooltip-${position} ${shown ? "visible" : ""} ${multiline ? "tooltip-multiline" : ""}`}
       style={tooltipStyle}
     >
       {text}
