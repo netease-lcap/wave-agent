@@ -226,7 +226,8 @@ test.describe("Desktop panel divider drag (real geometry)", () => {
         );
 
     // Drag to the 202px minimum: entries stack in a single column, DOM order
-    // unchanged (preview, plan, diff, terminal, file).
+    // unchanged. The list below mirrors `PANEL_ITEMS` (PanelToggleMenu.tsx) —
+    // keep it in sync when a panel kind is added there.
     await dragHandle(page, 2000);
     await expect.poll(() => slotWidth(page)).toBeLessThanOrEqual(206);
     near(await slotWidth(page), 202, 4);
@@ -237,6 +238,7 @@ test.describe("Desktop panel divider drag (real geometry)", () => {
       "diff",
       "terminal",
       "file",
+      "tasks",
     ]);
     for (let i = 1; i < narrow.length; i++) {
       near(narrow[i].x, narrow[0].x, 2);
