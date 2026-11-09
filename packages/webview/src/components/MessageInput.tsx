@@ -410,7 +410,18 @@ export const MessageInput = forwardRef<
     content: string;
   } | null>(null);
   const selectionChangeTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const lastSelectionChangePosRef = useRef<number>(0);
+  /**
+   * 上一次检测时的光标偏移，用来跳过「光标没动」的重复检测（`null` = 追踪已
+   * 失效，下一次必须检测）。
+   *
+   * **凡是绕过用户输入直接改写输入框 DOM 的地方，改完都要置 `null`**：会话切换
+   * 回填草稿（`renderDraftContent`）、历史提示词回填、队列消息进入编辑、发送后
+   * 清空。这些路径都不派发 `input` 事件，光标位置也不按用户的输入节奏变化，于是
+   * 偏移量能「撞上」新内容里的同一个数字——切换会话后输入 `/`，偏移仍是上一次的
+   * 1，判等直接 return，斜杠弹窗与 `@` 提及的检测整段被吞掉，界面上毫无反应
+   * （2026-11-09 报障：新对话里输入斜杠没有任何反应，切到别的对话再切回来又恢复）。
+   */
+  const lastSelectionChangePosRef = useRef<number | null>(null);
 
   // Expose focus method to parent component
   useImperativeHandle(ref, () => ({
@@ -571,6 +582,9 @@ export const MessageInput = forwardRef<
     ) {
       inputContentRef.current = inputContent ?? "";
       setMessage(inputContent ?? "");
+      // 内容由宿主回填、未经过用户输入：让光标位置追踪失效，否则新会话里第一次
+      // 输入会撞上旧会话留下的偏移量而被判成「光标没动」，弹窗不再出现。
+      lastSelectionChangePosRef.current = null;
       if (textareaRef.current) {
         // 草稿里带引用标记（`[@file:…]` / `[Selection: …]` / `[@ide:…]` / 图片）
         // 时必须还原成标签——直接写 innerText 会把它们变成纯文本，引用随消息
@@ -628,6 +642,8 @@ export const MessageInput = forwardRef<
       // Set the prompt as the new message
       textareaRef.current.innerText = prompt;
       setMessage(prompt);
+      // DOM 被整体替换（非用户输入），光标追踪随之失效。
+      lastSelectionChangePosRef.current = null;
 
       // Update extension state
       vscode.postMessage({
@@ -660,6 +676,8 @@ export const MessageInput = forwardRef<
 
       // Reset the editor content, then build chip + space + body.
       textareaRef.current.innerHTML = "";
+      // DOM 被重建（非用户输入），光标追踪随之失效。
+      lastSelectionChangePosRef.current = null;
 
       const chip = document.createElement("span");
       chip.className = "queued-edit-chip";
@@ -1509,6 +1527,8 @@ export const MessageInput = forwardRef<
       const clearInput = () => {
         if (!textareaRef.current) return;
         textareaRef.current.innerHTML = "";
+        // 发送后静默清空：下一次从这里开始输入是「新的一次编辑」，光标追踪必须失效。
+        lastSelectionChangePosRef.current = null;
         setMessage("");
         // Clear persisted input content
         vscode.postMessage({
