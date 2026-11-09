@@ -581,6 +581,16 @@
   margin: 2px 0;
 }
 
+/* 「本次更新内容」横向填满弹窗（设计师 2026-11-09：「横向填满弹窗，与立即重启按钮
+   右侧对齐」）。父容器 `.confirm-dialog-message-content` 在桌面端留了 padding-right:
+   28px 给右上角关闭键让位（ConfirmDialog.css:175-181「reserve room for the close
+   control」），而这一块排在描述下方、永远碰不到那颗关闭键 —— 白留的 28px 让分隔线
+   比页脚「立即重启」按钮短一截。⇒ 只把这一块向右抵消 28px：右缘与按钮右缘同为
+   弹窗内衬的内缘（440 − 24 × 2 = 392 宽）。插件端不带 data-host，保持原样。 */
+[data-host="desktop"] .account-release-notes {
+  margin-right: -28px;
+}
+
 [data-host="desktop"] .account-release-notes-title {
   color: var(--cc-text-primary);
 }
