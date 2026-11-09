@@ -515,6 +515,82 @@ describe("AI Service - Streaming", () => {
       });
     });
 
+    it("asks for usage on every streaming request", async () => {
+      mockCreate.mockReturnValue({
+        withResponse: vi.fn().mockResolvedValue({
+          data: (async function* () {
+            yield { choices: [{ delta: {}, finish_reason: "stop" }] };
+          })(),
+          response: { headers: new Map() },
+        }),
+      });
+
+      await callAgent({
+        gatewayConfig: TEST_GATEWAY_CONFIG,
+        modelConfig: TEST_MODEL_CONFIG,
+        messages: [{ role: "user", content: "Test message" }],
+        workdir: "/test/workdir",
+        onContentDelta: () => {},
+      });
+
+      // Without this the stream carries no usage at all, and every usage
+      // consumer degrades silently (spec enterprise/usage-tracking-callback.md
+      // 「流式调用必须显式索要用量」场景 1).
+      expect(mockCreate.mock.calls[0][0].stream_options).toEqual({
+        include_usage: true,
+      });
+    });
+
+    it("passes the user's stream_options through verbatim", async () => {
+      mockCreate.mockReturnValue({
+        withResponse: vi.fn().mockResolvedValue({
+          data: (async function* () {
+            yield { choices: [{ delta: {}, finish_reason: "stop" }] };
+          })(),
+          response: { headers: new Map() },
+        }),
+      });
+
+      await callAgent({
+        gatewayConfig: TEST_GATEWAY_CONFIG,
+        modelConfig: {
+          ...TEST_MODEL_CONFIG,
+          options: { stream_options: { include_usage: false } },
+        },
+        messages: [{ role: "user", content: "Test message" }],
+        workdir: "/test/workdir",
+        onContentDelta: () => {},
+      });
+
+      expect(mockCreate.mock.calls[0][0].stream_options).toEqual({
+        include_usage: false,
+      });
+    });
+
+    it("omits stream_options when the user turned it off with null", async () => {
+      mockCreate.mockReturnValue({
+        withResponse: vi.fn().mockResolvedValue({
+          data: (async function* () {
+            yield { choices: [{ delta: {}, finish_reason: "stop" }] };
+          })(),
+          response: { headers: new Map() },
+        }),
+      });
+
+      await callAgent({
+        gatewayConfig: TEST_GATEWAY_CONFIG,
+        modelConfig: {
+          ...TEST_MODEL_CONFIG,
+          options: { stream_options: null },
+        },
+        messages: [{ role: "user", content: "Test message" }],
+        workdir: "/test/workdir",
+        onContentDelta: () => {},
+      });
+
+      expect(mockCreate.mock.calls[0][0]).not.toHaveProperty("stream_options");
+    });
+
     it("should default to non-streaming when no streaming callbacks provided", async () => {
       mockCreate.mockReturnValue({
         withResponse: vi.fn().mockResolvedValue({
@@ -549,6 +625,8 @@ describe("AI Service - Streaming", () => {
       // Should call create with stream: false (or undefined)
       const callArgs = mockCreate.mock.calls[0][0];
       expect(callArgs.stream).toBeFalsy();
+      // `stream_options` is only legal alongside `stream: true`.
+      expect(callArgs).not.toHaveProperty("stream_options");
     });
 
     it("should enable streaming mode when stream option is true without callbacks", async () => {

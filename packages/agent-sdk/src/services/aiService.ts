@@ -188,6 +188,42 @@ function describeForcedToolChoice(
   return `{type:'function', name:'${toolChoice.function.name}'}`;
 }
 
+/**
+ * A streaming Chat Completions response carries no usage unless the request
+ * asks for it, and every usage consumer (context-occupancy readout,
+ * auto-compaction estimate, turn output budget, `onUsagesChange`, telemetry)
+ * degrades silently when it is missing — so Wave asks by default rather than
+ * trusting the gateway's default behaviour (spec
+ * enterprise/usage-tracking-callback.md「流式调用必须显式索要用量」).
+ *
+ * User configuration wins verbatim: whatever `models[X].options` holds is sent
+ * untouched, and `null` means "do not send the field" for a gateway that
+ * rejects it (the opt-out is spelled `null` because `getModelConfig` deletes
+ * `null` values before they reach this point).
+ */
+function resolveStreamOptions(
+  modelConfig: ModelConfig,
+): Record<string, unknown> | undefined {
+  const configured = modelConfig.options?.stream_options;
+  if (configured === null) return undefined;
+  return (configured ?? { include_usage: true }) as Record<string, unknown>;
+}
+
+/**
+ * Non-streaming body built from the streaming params. `stream_options` is only
+ * legal alongside `stream: true`, so it must not ride along into the
+ * non-streaming fallback that reuses those params.
+ */
+function toNonStreamingParams(
+  params:
+    | ChatCompletionCreateParamsNonStreaming
+    | ChatCompletionCreateParamsStreaming,
+): ChatCompletionCreateParamsNonStreaming {
+  const nonStreaming = { ...params, stream: false as const };
+  delete (nonStreaming as { stream_options?: unknown }).stream_options;
+  return nonStreaming;
+}
+
 export interface CallAgentOptions {
   // Resolved configuration
   gatewayConfig: GatewayConfig;
@@ -392,11 +428,20 @@ export async function callAgent(
       options.stream === true ||
       !!(onContentDelta || onToolUpdate || onReasoningDelta);
 
+    // Asked for on the Chat Completions body only, never on `openaiModelConfig`:
+    // the Messages/Responses bodies spread the model params verbatim, and
+    // neither endpoint understands this key. Non-streaming bodies drop it again
+    // (see toNonStreamingParams).
+    const streamOptions = isStreaming
+      ? resolveStreamOptions(modelConfig)
+      : undefined;
+
     // Prepare API call parameters
     createParams = {
       ...openaiModelConfig,
       messages: openaiMessages,
       stream: isStreaming,
+      ...(streamOptions ? { stream_options: streamOptions } : {}),
     } as
       | ChatCompletionCreateParamsNonStreaming
       | ChatCompletionCreateParamsStreaming;
@@ -767,9 +812,7 @@ export async function callAgent(
     };
 
     if (!isStreaming) {
-      return await requestNonStreaming(
-        createParams as ChatCompletionCreateParamsNonStreaming,
-      );
+      return await requestNonStreaming(toNonStreamingParams(createParams));
     }
 
     try {
@@ -799,10 +842,9 @@ export async function callAgent(
         },
       );
 
-      const result = await requestNonStreaming({
-        ...createParams,
-        stream: false,
-      } as ChatCompletionCreateParamsNonStreaming);
+      const result = await requestNonStreaming(
+        toNonStreamingParams(createParams),
+      );
       result.stream_fallback = true;
       return result;
     }

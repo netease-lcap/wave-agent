@@ -115,6 +115,13 @@ describe("AI Service - streaming body failure falls back to non-streaming", () =
     expect(mockCreate.mock.calls[0][0].stream).toBe(true);
     expect(mockCreate.mock.calls[1][0].stream).toBe(false);
 
+    // The streamed attempt asks for usage; the non-streaming re-issue must not
+    // carry `stream_options`, which is only legal with `stream: true`.
+    expect(mockCreate.mock.calls[0][0].stream_options).toEqual({
+      include_usage: true,
+    });
+    expect(mockCreate.mock.calls[1][0]).not.toHaveProperty("stream_options");
+
     // The fallback result carries the whole answer and the flag that tells the
     // caller to drop what the failed attempt had already streamed.
     expect(result.content).toBe("the full answer");
