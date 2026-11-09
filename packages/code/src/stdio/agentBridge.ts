@@ -60,6 +60,7 @@ import {
   updateUserPreferenceSettings,
   type UserPreferenceSettings,
   type UserPreferenceSettingsView,
+  type AccountCredential,
   type SubagentConfiguration,
   type SkillMetadata,
   type PluginReloadResult,
@@ -2811,18 +2812,75 @@ export class AgentBridge {
   }
 
   // ── Auth (global) ────────────────────────────────────────────
+  /**
+   * 认证状态 + **凭据形态**（spec desktop-account.md「账户卡片 · 认证方式」）。
+   *
+   * `isAuthenticated` 只回答「有没有 SSO token」；宿主据此渲染卡片与发送入口会
+   * 把「key 写在 settings.json 里」的人判成没有凭据（卡片显示登录按钮、输入框
+   * 被锁）。故同一次查询里一并给出 `credential`，优先级与 SDK 的
+   * `resolveGatewayConfig` 对齐：企业账号 > 自定义网关 > 无凭据。
+   */
   private async getAuthStatus(): Promise<{
     isAuthenticated: boolean;
+    credential: AccountCredential;
     user: { id: string; email?: string } | undefined;
     serverUrl: string;
   }> {
     const authService = AuthService.getInstance();
     await authService.checkAndRefreshTokenIfNeeded();
+    const isAuthenticated = authService.isSSOAuthenticated();
     return {
-      isAuthenticated: authService.isSSOAuthenticated(),
+      isAuthenticated,
+      credential: this.resolveCredential(isAuthenticated),
       user: authService.getAuthUser(),
       serverUrl: authService.getServerUrl(),
     };
+  }
+
+  /**
+   * 凭据形态。**判据只有这一处**——消费方（宿主 / webview）不得自己读配置推断。
+   *
+   * 网关层的取值顺序与 `resolveGatewayConfig` 一致：
+   * - 无 SSO：先问一个活着的会话的 `getGatewayConfig()`（与真实请求同源，已合并
+   *   用户 / 项目 / 远端三层 `env`），没有会话时退回「用户级 settings.json 的
+   *   `env`（`loadUserConfigEnv`）→ OS 环境变量」。
+   * - 有 SSO：**不能**用 `getGatewayConfig()`（它此时返回 SSO 凭据），回落的那份
+   *   网关只能从配置层读——卡片要靠它给「退出登录」项写后果。
+   *
+   * 注意 `setEnvironmentVars` 只把 `WAVE_SERVER_URL` 镜像进 `process.env`，网关
+   * 凭据留在会话快照里，所以只看 `process.env` 会把配好的人判成无凭据。
+   */
+  private resolveCredential(isAuthenticated: boolean): AccountCredential {
+    const gateway = isAuthenticated
+      ? this.configuredGatewayCredential()
+      : (this.sessionGatewayCredential() ?? this.configuredGatewayCredential());
+    if (isAuthenticated) {
+      // 企业账号生效中；`gateway` 仅表示「退出登录后会落到的那份」。
+      return gateway ? { kind: "sso", gateway } : { kind: "sso" };
+    }
+    return gateway ? { kind: "gateway", gateway } : { kind: "none" };
+  }
+
+  /** 活着的会话真正解析出来的网关配置（无 SSO 时它就是要发出去的那一份）。 */
+  private sessionGatewayCredential(): { host: string | null } | null {
+    for (const entry of this.sessions.values()) {
+      const gateway = entry.agent.getGatewayConfig();
+      if (gateway.apiKey) return { host: hostOfBaseUrl(gateway.baseURL) };
+    }
+    return null;
+  }
+
+  /**
+   * 配置层的网关凭据：用户级 settings.json 的 `env` 优先于 OS 环境变量（与
+   * `resolveGatewayConfig` 的 `env（settings.json）> process.env` 同序）。
+   */
+  private configuredGatewayCredential(): { host: string | null } | null {
+    const userEnv = loadUserConfigEnv();
+    const pick = (key: "WAVE_API_KEY" | "WAVE_BASE_URL"): string | undefined =>
+      userEnv[key]?.trim() || process.env[key]?.trim() || undefined;
+    const apiKey = pick("WAVE_API_KEY");
+    if (!apiKey) return null;
+    return { host: hostOfBaseUrl(pick("WAVE_BASE_URL")) };
   }
 
   private async getAccountInfo(): Promise<{
@@ -3515,6 +3573,19 @@ function isSessionRecoveryError(error: unknown): boolean {
     message.includes("not found on disk") ||
     message.startsWith("Session not found:")
   );
+}
+
+/**
+ * `baseURL` → 网关主机名（`api.example.com`）。缺省 / 不可解析一律 null（卡片读
+ * 「默认端点」）——这里只做展示，不做任何可用性判断。
+ */
+function hostOfBaseUrl(baseURL: string | undefined): string | null {
+  if (!baseURL) return null;
+  try {
+    return new URL(baseURL).host || null;
+  } catch {
+    return null;
+  }
 }
 
 /** Read a text file, returning "" when it does not exist. */

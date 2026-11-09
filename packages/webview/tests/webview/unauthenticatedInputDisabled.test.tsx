@@ -71,6 +71,42 @@ describe("Unauthenticated input disabled", () => {
     ).toBeUndefined();
   });
 
+  it("配了网关凭据（未登录企业账号）时输入框可编辑：判据是「无可用凭据」而不是「未登录」", () => {
+    const vscode = createMockVscode();
+    renderUnauthenticated(vscode);
+
+    // 宿主下发 credential.kind = "gateway"（CLI 侧解析出 WAVE_API_KEY）。这种人
+    // 能正常发消息，锁住输入框就是「命令行能跑、桌面端卡住」（spec
+    // desktop/desktop-account.md「认证方式」故事 / sso-auth.md 场景 8）。
+    sendExtensionMessage({
+      command: "authStatusResponse",
+      isAuthenticated: false,
+      credential: { kind: "gateway", gateway: { host: "api.example.com" } },
+    });
+
+    const input = screen.getByTestId("message-input");
+    expect(input).toHaveAttribute("contenteditable", "true");
+    expect(input.getAttribute("data-placeholder")).toBe(
+      "/快捷指令，@添加上下文，粘贴图片，Enter发送...",
+    );
+    expect(screen.getByLabelText("添加")).toBeEnabled();
+  });
+
+  it("无凭据（credential.kind = none）时仍禁用", () => {
+    const vscode = createMockVscode();
+    renderUnauthenticated(vscode);
+
+    sendExtensionMessage({
+      command: "authStatusResponse",
+      isAuthenticated: false,
+      credential: { kind: "none" },
+    });
+
+    const input = screen.getByTestId("message-input");
+    expect(input).toHaveAttribute("contenteditable", "false");
+    expect(input.getAttribute("data-placeholder")).toBe("请先登录后再发送消息");
+  });
+
   it("登录后恢复可编辑，占位文案回到默认提示（禁用原因不残留）", () => {
     const vscode = createMockVscode();
     renderUnauthenticated(vscode);

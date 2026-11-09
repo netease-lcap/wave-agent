@@ -213,6 +213,35 @@ describe("WelcomeView render timing", () => {
 });
 
 describe("WelcomeView login entry", () => {
+  it("shows the login hint + button for a plugin host with no usable credential", () => {
+    render(
+      <WelcomeView
+        isAuthenticated={false}
+        credential={{ kind: "none" }}
+        onLogin={() => {}}
+      />,
+    );
+
+    expect(screen.getByTestId("welcome-login-btn")).toBeVisible();
+    expect(screen.getByTestId("welcome-login-hint")).toBeVisible();
+  });
+
+  it("hides the login CTA when the gateway credential is in use (未登录企业账号但能用)", () => {
+    // 配了 WAVE_API_KEY 的人能正常发消息，欢迎页不该把他当「请先登录」推 CTA
+    // （spec desktop/desktop-account.md「认证方式」/ sso-auth.md 场景 5）。
+    render(
+      <WelcomeView
+        isAuthenticated={false}
+        credential={{ kind: "gateway", gateway: { host: "api.example.com" } }}
+        onLogin={() => {}}
+      />,
+    );
+
+    expect(screen.getByTestId("welcome-wordmark")).toBeVisible();
+    expect(screen.queryByTestId("welcome-login-btn")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("welcome-login-hint")).not.toBeInTheDocument();
+  });
+
   it("never shows a login button on the desktop welcome page", () => {
     // Desktop's login entry is the sidebar account card (desktop-app spec),
     // so even an unauthenticated desktop user gets no login button here.

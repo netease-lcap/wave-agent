@@ -117,6 +117,7 @@ import type {
   UpdateToast,
   AccountBillingInfo,
   AccountApiQuotaInfo,
+  AccountCredential,
   ArtifactGalleryItem,
   ArtifactShareMode,
   DesktopHostOption,
@@ -630,6 +631,8 @@ export class DesktopHost {
     string,
     {
       isAuthenticated: boolean;
+      /** 凭据形态（spec desktop-account「认证方式」）：卡片三形态的判据。 */
+      credential?: AccountCredential;
       user?: { id: string; email?: string } | null;
       billing?: AccountBillingInfo | null;
       apiQuota?: AccountApiQuotaInfo | null;
@@ -1087,6 +1090,8 @@ export class DesktopHost {
     this.postMessage({
       command: "desktopAccountInfo",
       isAuthenticated: entry?.isAuthenticated ?? false,
+      // 缺失（还没查过该主机）时不下发：webview 回落 isAuthenticated，与旧行为一致。
+      ...(entry?.credential ? { credential: entry.credential } : {}),
       user: entry?.user ?? null,
       billing: entry?.billing ?? null,
       apiQuota: entry?.apiQuota ?? null,
@@ -1114,12 +1119,15 @@ export class DesktopHost {
     host: string,
     authResult: {
       isAuthenticated: boolean;
+      credential?: AccountCredential;
       user?: { id: string; email?: string } | null;
     },
   ): void {
     const prev = this.accountCache.get(host);
     this.accountCache.set(host, {
       isAuthenticated: authResult.isAuthenticated,
+      // 凭据形态随认证结果一起落地：卡片三形态、发送门控与「退出登录」副标题都读它。
+      credential: authResult.credential ?? prev?.credential,
       user: authResult.user ?? prev?.user ?? null,
       billing: prev?.billing ?? null,
       apiQuota: prev?.apiQuota ?? null,
@@ -3692,16 +3700,19 @@ export class DesktopHost {
     await this.readUserPreferences(this.currentHost);
     const configurationData = this.cachedConfigurationData();
     let isAuthenticated = false;
+    let authCredential: AccountCredential | undefined;
     let authUser: { id: string; email?: string } | undefined;
     try {
       const authResult = (await this.utilityClientFor(this.currentHost).request(
         "getAuthStatus",
       )) as {
         isAuthenticated: boolean;
+        credential?: AccountCredential;
         user?: { id: string; email?: string };
         serverUrl: string;
       };
       isAuthenticated = authResult.isAuthenticated;
+      authCredential = authResult.credential;
       authUser = authResult.user;
       if (authResult.serverUrl) {
         this.configStore.setConfiguration({ serverUrl: authResult.serverUrl });
@@ -3712,6 +3723,7 @@ export class DesktopHost {
       this.postMessage({
         command: "authStatusResponse",
         isAuthenticated: authResult.isAuthenticated,
+        credential: authResult.credential,
         user: authResult.user,
         serverUrl: authResult.serverUrl,
       });
@@ -3726,6 +3738,7 @@ export class DesktopHost {
     // background (the card renders immediately with plan/apiQuota still null).
     this.seedAccountFromAuth(this.currentHost, {
       isAuthenticated,
+      credential: authCredential,
       user: authUser ?? null,
     });
     this.pushAccountInfo();
@@ -3846,6 +3859,7 @@ export class DesktopHost {
         outsideSafeZoneDirectory: p.outsideSafeZoneDirectory,
       }));
 
+    const credential = this.accountCache.get(this.currentHost)?.credential;
     this.postMessage({
       command: "setInitialState",
       paneId,
@@ -3902,6 +3916,9 @@ export class DesktopHost {
       permissionMode: current?.getPermissionMode(),
       queuedMessages: current?.queuedMessages ?? [],
       isAuthenticated: this.lastIsAuthenticated,
+      // 凭据形态（spec desktop-account「认证方式」）：发送入口的禁用判据读它。
+      // 还没查过该主机（accountCache 无条目）时不带 —— webview 回落 isAuthenticated。
+      ...(credential ? { credential } : {}),
       workdir: current?.currentWorkdir,
     });
 
@@ -6013,6 +6030,7 @@ export class DesktopHost {
         "getAuthStatus",
       )) as {
         isAuthenticated: boolean;
+        credential?: AccountCredential;
         user?: { id: string; email?: string };
         serverUrl: string;
       };
@@ -6023,6 +6041,7 @@ export class DesktopHost {
       this.postMessage({
         command: "authStatusResponse",
         isAuthenticated: authResult.isAuthenticated,
+        credential: authResult.credential,
         user: authResult.user,
         serverUrl: authResult.serverUrl,
       });
@@ -7716,6 +7735,7 @@ export class DesktopHost {
         "getAuthStatus",
       )) as {
         isAuthenticated: boolean;
+        credential?: AccountCredential;
         user: { id: string; email?: string } | undefined;
         serverUrl: string;
       };
@@ -7725,6 +7745,7 @@ export class DesktopHost {
       this.postMessage({
         command: "authStatusResponse",
         isAuthenticated: result.isAuthenticated,
+        credential: result.credential,
         user: result.user,
         serverUrl: result.serverUrl,
       });

@@ -4,6 +4,7 @@ import type {
   AccountBillingCode,
   AccountBillingInfo,
   AccountBillingPlanUsage,
+  AccountCredential,
   AccountUpdateInfo,
 } from "wave-webview-fixtures";
 import { MoreMenu } from "./MoreMenu";
@@ -13,7 +14,13 @@ import { marked } from "marked";
 import DOMPurify from "dompurify";
 // 未登录态「更多」按钮沿用 0902 第 5 轮问号圆（ailsa 新基线）；已登录态不再
 // 提供独立更多按钮（交互定稿：热区开纯功能菜单）。
-import { ApiInfoIcon, HelpCircleIcon, QuotaIcon } from "./HeaderIcons";
+import {
+  ApiInfoIcon,
+  GatewayIcon,
+  HelpCircleIcon,
+  QuotaIcon,
+} from "./HeaderIcons";
+import { gatewayHostLabel, resolveCredentialKind } from "../utils/credential";
 import { useClickOutside } from "../utils/useClickOutside";
 import { viewportSize } from "../utils/viewport";
 import "../styles/AccountCard.css";
@@ -39,7 +46,10 @@ import "../styles/ConfirmDialog.css";
  *     不自动弹框、不自动重启。
  */
 export interface AccountCardAccount {
+  /** SSO 登录态。卡片形态**不直接读它**，读 `credential`（见 utils/credential）。 */
   isAuthenticated: boolean;
+  /** 凭据形态（sso / gateway / none）；缺席 = 旧宿主，回落到 isAuthenticated。 */
+  credential?: AccountCredential | null;
   user?: { id: string; email?: string } | null;
   /** 计费结论（套餐两根条 + 到期日 + 降级原因）；null = 无（未登录/未购买）. */
   billing?: AccountBillingInfo | null;
@@ -399,7 +409,14 @@ export const AccountCard: React.FC<AccountCardProps> = ({
     );
   }, []);
 
-  const isAuthenticated = account?.isAuthenticated === true;
+  // 卡片形态由凭据决定（spec「认证方式」故事）：sso = 企业账号（既有登录态）、
+  // gateway = 自定义网关（个人信息行同构、无用量按钮）、none = 无凭据（登录按钮）。
+  const credentialKind = resolveCredentialKind(
+    account?.credential,
+    account?.isAuthenticated === true,
+  );
+  const isAuthenticated = credentialKind === "sso";
+  const isGateway = credentialKind === "gateway";
   // 姓名优先完整邮箱（对齐 codechat sidebar-account），无邮箱时回退前缀/「已登录」。
   const name = account?.user?.email ?? displayNameFor(account?.user);
   const apiQuota = account?.apiQuota ?? null;
@@ -413,9 +430,11 @@ export const AccountCard: React.FC<AccountCardProps> = ({
   // 右侧「更多」按钮上，锚点得量那颗按钮自身。resize 重测必须走同一条口径，
   // 否则窗口一变菜单就跳到另一个位置。
   const measureMenuAnchor = useCallback((): DOMRect | null => {
-    if (isAuthenticated) return measureRowAnchor();
+    // 无凭据形态那颗菜单挂在尾部「更多」按钮上；企业账号与网关形态都挂在个人
+    // 信息行（同一套结构，避免同一张卡片出现两种入口习惯——场景 2）。
+    if (credentialKind !== "none") return measureRowAnchor();
     return moreBtnRef.current?.getBoundingClientRect() ?? null;
-  }, [isAuthenticated, measureRowAnchor]);
+  }, [credentialKind, measureRowAnchor]);
 
   // 用量浮层关闭路径：点浮层外、按 Esc。触发按钮排除在「外部」之外，再点一次
   // 即 toggle 关闭（与 MoreMenu 同一套 useClickOutside 口径）。
@@ -479,8 +498,9 @@ export const AccountCard: React.FC<AccountCardProps> = ({
     restoreFocusOnClose.current = false;
   }, [showUsage]);
 
-  // 未登录：整条登录按钮 + 右侧「更多」按钮（沿用当前基线视觉）。
-  if (!isAuthenticated) {
+  // 无凭据：整条登录按钮 + 右侧「更多」按钮（沿用当前基线视觉）。有网关凭据时
+  // 不走这里——那个人不发「登录」按钮（他本来就能用），走下面的网关形态。
+  if (credentialKind === "none") {
     return (
       <div
         className="account-card account-card--logged-out"
@@ -517,6 +537,7 @@ export const AccountCard: React.FC<AccountCardProps> = ({
             onLogin={onLogin}
             onLogout={onLogout}
             isAuthenticated={false}
+            credential={account?.credential}
             hostLabel={hostLabel}
             anchorRect={menuAnchor}
             triggerRef={moreBtnRef}
@@ -539,7 +560,10 @@ export const AccountCard: React.FC<AccountCardProps> = ({
   // API 余额预警级：null=充足/不限额；"low"=剩余<20%；"exhausted"=剩余≤0
   // （仅在真按 API 计费时成立，`mode = "plan"` 的 limit=0 不算用完，见 issue #2776）。
   const apiWarning = apiQuota ? apiQuotaWarningLevel(apiQuota, billing) : null;
-  const hasUsage = showPlanBlock || apiQuota !== null;
+  // 网关形态不给用量入口：宿主切到网关凭据时缓存里可能还留着上一个身份的
+  // billing / apiQuota（只在 sso 下刷新），不拦就会冒出一颗点开是旧数据的按钮；
+  // 而网关通路本来就没有这两份数据（spec「认证方式」场景 2 / 7）。
+  const hasUsage = isAuthenticated && (showPlanBlock || apiQuota !== null);
   // 折叠态预警点（2026-11 交互定稿）：默认折叠后用量预警不再可见，用显隐按钮右上角的
   // 小圆点把「有情况要看」透出来。严重度取两者中更高的：需人工干预（blocked / 维度
   // 不可用 / 套餐已到期）与余额耗尽 → 错误色；会自愈（周/月触顶、余额 <20%）→ 琥珀。
@@ -833,6 +857,15 @@ export const AccountCard: React.FC<AccountCardProps> = ({
           aria-expanded={showMenu}
           aria-haspopup="menu"
           data-testid="account-card-hotzone"
+          // 网关主机名只进 title（hover 出全文）：卡片可用宽度约 235px，图标位与
+          // 行尾按钮之后只剩约 160px，「自定义网关」+ 域名同行会两段都被 ellipsis
+          // 截断，加第二行则把行高从 30px 抬到约 46px——卡片钉在侧栏底部，长高会
+          // 挤压会话列表，也让两种形态不对称（spec「认证方式」场景 2）。
+          title={
+            isGateway
+              ? `自定义网关 · ${gatewayHostLabel(account?.credential?.gateway)}`
+              : undefined
+          }
           onClick={toggleUsageMenu}
           onKeyDown={(e) => {
             if (e.key === "Enter" || e.key === " ") {
@@ -842,14 +875,23 @@ export const AccountCard: React.FC<AccountCardProps> = ({
           }}
         >
           <span
-            className="account-card-avatar"
+            className={
+              "account-card-avatar" +
+              (isGateway ? " account-card-avatar--gateway" : "")
+            }
             aria-hidden="true"
-            data-testid="account-card-avatar"
+            data-testid={
+              isGateway ? "account-card-gateway" : "account-card-avatar"
+            }
           >
-            {initialFor(name)}
+            {isGateway ? (
+              <GatewayIcon className="account-card-gateway-icon" />
+            ) : (
+              initialFor(name)
+            )}
           </span>
           <span className="account-card-name" data-testid="account-card-name">
-            {name}
+            {isGateway ? "自定义网关" : name}
           </span>
         </div>
         {updateAvailable && (
@@ -915,6 +957,7 @@ export const AccountCard: React.FC<AccountCardProps> = ({
           onLogin={onLogin}
           onLogout={onLogout}
           isAuthenticated
+          credential={account?.credential}
           hostLabel={hostLabel}
           anchorRect={menuAnchor}
           triggerRef={hotzoneRef}

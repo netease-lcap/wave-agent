@@ -6,7 +6,10 @@
  */
 
 // IDE 上下文提及的类别（webview-fixtures 是宿主↔webview 契约的单一来源）
-import type { IdeContextProvider } from "wave-webview-fixtures";
+import type {
+  AccountCredential,
+  IdeContextProvider,
+} from "wave-webview-fixtures";
 // Import message structures and session types from wave-agent-sdk
 import type {
   Message,
@@ -949,6 +952,8 @@ export interface ChatHeaderProps {
   onLogin: () => void;
   onLogout: () => void;
   isAuthenticated: boolean;
+  /** 凭据形态（头部「更多」菜单的三态用，见 utils/credential）。 */
+  credential?: AccountCredential;
   // Desktop host: session new/list buttons live in DesktopSidebar instead.
   hideSessionButtons?: boolean;
   /**
@@ -1084,6 +1089,17 @@ export interface ChatState {
   queuedMessages: QueuedMessage[];
   // Auth state
   isAuthenticated: boolean;
+  /**
+   * 凭据形态（spec desktop/desktop-account.md「账户卡片 · 认证方式」）：
+   * sso / gateway / none 三态，由宿主按 SDK `resolveGatewayConfig` 的同一套优先级
+   * 算出后下发。**webview 不得自己读配置或 env 推断**（组织托管 / 远端下发 / OS
+   * 环境变量三层只有会话进程看得全）。
+   *
+   * 缺席 = 旧版宿主（尚未接线）：消费方一律走 `resolveCredentialKind` /
+   * `hasUsableCredential`（`../utils/credential`）回落到 `isAuthenticated`，
+   * 不要直接读这个字段判「能不能用」。
+   */
+  credential?: AccountCredential;
   // Whether the initial state (incl. auth status) has been received from the
   // backend. The welcome page is withheld until this is true so the login CTA
   // doesn't flash for logged-in users before setInitialState arrives.
@@ -1329,6 +1345,10 @@ export type ChatAction =
     }
   | { type: "HIDE_DIALOG" }
   | { type: "SET_AUTHENTICATED"; payload: boolean }
+  /** 凭据形态更新（authStatusResponse 携带）。与 SET_AUTHENTICATED 分开：登录态
+   *  布尔与凭据形态都来自同一次查询，但网关形态下 isAuthenticated 恒为 false，
+   *  拿它当「形态变了」的触发条件会漏更新。 */
+  | { type: "SET_CREDENTIAL"; payload: AccountCredential | undefined }
   | { type: "SET_CONFIGURATION_ERROR"; payload: string | undefined }
   | { type: "SET_CONFIGURATION_DATA"; payload: ConfigurationData }
   | {
@@ -1374,6 +1394,8 @@ export type ChatAction =
         attachedImages?: AttachedImage[];
         queuedMessages?: QueuedMessage[];
         isAuthenticated?: boolean;
+        /** 凭据形态，与 isAuthenticated 同源同一次查询（缺席 = 旧宿主）。 */
+        credential?: AccountCredential;
         workdir?: string;
         backgroundTasks?: BackgroundTaskSummary[];
         workflowRuns?: SerializableWorkflowRun[];

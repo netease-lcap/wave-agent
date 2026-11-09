@@ -140,7 +140,10 @@ describe("AccountCard (desktop sidebar)", () => {
   describe("未登录态", () => {
     it("renders the login button with a more button when logged out, and posts login on click", () => {
       const { vscode } = renderDesktop();
-      pushAccount({ isAuthenticated: false });
+      // 无凭据 = credential.kind "none"（配了网关凭据的人不发登录按钮，见
+      // accountCardCredential.test.tsx）。旧宿主不下发 credential 时回落到
+      // isAuthenticated，那是另一条用例（同文件「向后兼容」）。
+      pushAccount({ isAuthenticated: false, credential: { kind: "none" } });
 
       const login = screen.getByTestId("account-card-login");
       expect(login).toHaveTextContent("登 录");
@@ -160,6 +163,7 @@ describe("AccountCard (desktop sidebar)", () => {
       renderDesktop();
       pushAccount({
         isAuthenticated: false,
+        credential: { kind: "none" },
         billing: planBilling,
         apiQuota: apiPlenty,
       });

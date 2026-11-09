@@ -50,6 +50,9 @@ export const initialState: ChatState = {
   attachedImages: [],
   // Auth state
   isAuthenticated: false,
+  // 凭据形态：初始未知（undefined = 宿主还没答）。卡片/发送入口用
+  // `resolveCredentialKind` 统一归一，不直接读这里。
+  credential: undefined,
   initialized: false,
   // 只有 SET_INITIAL_STATE 会置真（见 types/index.ts 的同名字段注释）——预填提示词
   // 等它翻转后才写，避免写进「authStatus 已到、快照未到」的半就绪窗口被快照重置。
@@ -222,6 +225,11 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
         isAuthenticated: action.payload,
         initialized: true,
       };
+    case "SET_CREDENTIAL":
+      return {
+        ...state,
+        credential: action.payload,
+      };
     case "SET_CONFIGURATION_ERROR":
       return {
         ...state,
@@ -307,6 +315,11 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
           action.payload.isAuthenticated !== undefined
             ? action.payload.isAuthenticated
             : state.isAuthenticated,
+        // 缺席（旧宿主）保留现值，与上面 isAuthenticated 同一口径。
+        credential:
+          action.payload.credential !== undefined
+            ? action.payload.credential
+            : state.credential,
         workdir:
           action.payload.workdir !== undefined
             ? action.payload.workdir

@@ -729,9 +729,13 @@ class MessageHandler(
             // ── Auth ───────────────────────────────────────────────────
             // VSCE :143/:643 → authStatusResponse { isAuthenticated, user }
             "getAuthStatus" -> {
+                // 凭据形态（spec desktop-account「认证方式」）：原样透传 CLI 算好的
+                // { kind: sso|gateway|none, gateway? }，宿主不自己推断。
+                var credential: JsonElement? = null
                 val (authenticated, user, serverUrl) = try {
                     val res = session.agent?.getAuthStatus()?.jsonObject
                     val url = (res?.get("serverUrl") as? JsonPrimitive)?.contentOrNull ?: ""
+                    credential = res?.get("credential")
                     Triple(
                         res?.get("isAuthenticated")?.jsonPrimitive?.content?.toBoolean() ?: false,
                         res?.get("user"),
@@ -743,6 +747,7 @@ class MessageHandler(
                 }
                 postMessage("authStatusResponse", buildJsonObject {
                     put("isAuthenticated", authenticated)
+                    credential?.let { put("credential", it) }
                     // VSCE sends user: null on failure; send JsonNull to match.
                     put("user", user ?: JsonNull)
                     put("serverUrl", serverUrl)
@@ -1454,12 +1459,16 @@ class MessageHandler(
         // serverUrl 随 authStatusResponse 下发（配置回包不再携带它）：webview 的
         // 「企业控制台 / 帮助文档」按钮读它。
         var isAuthenticated = false
+        // 凭据形态：与 isAuthenticated 同一次查询、原样透传（缺失即旧宿主，webview 回落旧判据）。
+        var credential: JsonElement? = null
         try {
             val auth = session.agent?.getAuthStatus()?.jsonObject
             val url = (auth?.get("serverUrl") as? JsonPrimitive)?.contentOrNull ?: ""
             isAuthenticated = (auth?.get("isAuthenticated") as? JsonPrimitive)?.contentOrNull?.toBoolean() ?: false
+            credential = auth?.get("credential")
             postMessage("authStatusResponse", buildJsonObject {
                 put("isAuthenticated", isAuthenticated)
+                credential?.let { put("credential", it) }
                 put("user", auth?.get("user") ?: JsonNull)
                 put("serverUrl", url)
             })
@@ -1495,6 +1504,7 @@ class MessageHandler(
                 })
             }
             put("isAuthenticated", isAuthenticated)
+            credential?.let { put("credential", it) }
             put("workdir", currentWorkdir())
             put("configurationData", configurationDataJson())
             put("permissionMode", session.permissionMode ?: "default")
