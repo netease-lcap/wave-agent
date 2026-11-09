@@ -25,4 +25,4 @@ minimumReleaseAgeExclude:
   - wave-search-tools-linux-arm64@0.2.0
   - wave-search-tools-linux-x64@0.2.0
   - wave-search-tools-win32-x64@0.2.0
-  - wave-search-tools@0.2.0
+  - wave-search-tools@0.2.0 || 0.3.0

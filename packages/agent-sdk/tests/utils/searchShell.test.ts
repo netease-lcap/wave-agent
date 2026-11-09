@@ -70,19 +70,22 @@ describe("buildSearchShellPrelude", () => {
     expect(prelude).not.toContain("-regex|-regextype");
   });
 
-  it("does not shadow grep or find on Windows", () => {
-    // The only Windows shell is Git Bash, whose msys GNU grep/findutils already
-    // mean what the shadows are trying to reproduce.
+  it("shadows grep on Windows, but never find", () => {
+    // Windows needs the grep shadow as much as macOS: msys ships GNU grep,
+    // which has no .gitignore support, so `dist/`, `node_modules/` and sibling
+    // worktrees all end up in the results. `find` is the opposite case — there
+    // is no Windows bfs and msys find already is GNU find.
     const prelude = buildSearchShellPrelude({
       platform: "win32",
-      tools: { ugrep: "C:\\pkg\\ugrep.exe" },
+      tools: { ugrep: "C:\\pkg\\ugrep.exe", bfs: "C:\\pkg\\bfs.exe" },
       rgPath: "C:\\pkg\\rg.exe",
     })!;
 
-    expect(prelude).not.toContain("function grep {");
+    expect(prelude).toContain("function grep {");
     expect(prelude).not.toContain("function find {");
     expect(prelude).toContain("command -v rg");
     // Windows paths reach bash with forward slashes, which git bash accepts.
+    expect(prelude).toContain("C:/pkg/ugrep.exe");
     expect(prelude).toContain("C:/pkg/rg.exe");
   });
 
