@@ -148,9 +148,14 @@ describe("remaining keyboard accessibility", () => {
       const preview = screen.getByTestId("panel-toggle-item-preview");
       expect(document.activeElement).toBe(preview);
 
-      const kinds = ["preview", "plan", "diff", "terminal", "file"].map(
-        (kind) => screen.getByTestId(`panel-toggle-item-${kind}`),
-      );
+      const kinds = [
+        "preview",
+        "plan",
+        "diff",
+        "terminal",
+        "file",
+        "tasks",
+      ].map((kind) => screen.getByTestId(`panel-toggle-item-${kind}`));
       for (let i = 0; i < kinds.length - 1; i++) {
         fireEvent.keyDown(kinds[i], { key: "ArrowDown" });
         expect(document.activeElement).toBe(kinds[i + 1]);

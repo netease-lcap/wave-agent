@@ -26,7 +26,7 @@ function renderMenu(overrides?: {
 }
 
 describe("PanelToggleMenu", () => {
-  it("renders the five panel items with labels and shortcuts (plan/file have none)", () => {
+  it("renders the six panel items with labels and shortcuts (plan/file/tasks have none)", () => {
     renderMenu();
     expect(screen.getByTestId("panel-toggle-item-preview")).toHaveTextContent(
       "预览",
@@ -45,6 +45,9 @@ describe("PanelToggleMenu", () => {
     const fileItem = screen.getByTestId("panel-toggle-item-file");
     expect(fileItem).toHaveTextContent("文件");
     expect(fileItem.querySelector(".panel-toggle-menu-shortcut")).toBeNull();
+    const tasksItem = screen.getByTestId("panel-toggle-item-tasks");
+    expect(tasksItem).toHaveTextContent("后台任务");
+    expect(tasksItem.querySelector(".panel-toggle-menu-shortcut")).toBeNull();
     expect(
       screen
         .getByTestId("panel-toggle-item-preview")
