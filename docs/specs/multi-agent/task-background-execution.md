@@ -1,6 +1,6 @@
 ---
 name: "任务后台执行"
-description: "`run_in_background` 后台执行、`TaskStop` 终止、Ctrl-B 前台转后台、`/tasks` 列表与完成通知"
+description: "`run_in_background` 后台执行、`TaskStop` 终止、Ctrl-B 前台转后台、`/tasks` 列表与完成通知（桌面端列表承载在右侧面板，见 desktop-right-panel.md）"
 order: 60
 ---
 
@@ -113,7 +113,9 @@ order: 60
 
 ### 用户故事：插件端后台任务管理对话框（优先级：P2）
 
-作为插件端（VS Code 扩展与 JetBrains 插件）用户，我希望能在 IDE 中通过 `/tasks` 命令弹出对话框查看和管理后台任务（shell / 子 agent / 工作流），与 CLI 的 `/tasks` 弹窗体验一致，以便集中监控后台运行的长时间任务、查看输出、必要时终止任务。
+作为插件端（VS Code 扩展与 JetBrains 插件）与远控 Web 页的用户，我希望能在 IDE / 浏览器中通过 `/tasks` 命令弹出对话框查看和管理后台任务（shell / 子 agent / 工作流），与 CLI 的 `/tasks` 弹窗体验一致，以便集中监控后台运行的长时间任务、查看输出、必要时终止任务。
+
+**范围**：桌面端不在此列——桌面端把同一份任务列表承载在右侧面板的一个 tab 里（同一槽位、可折叠、逐会话记忆），入口与 `/tasks` 命令一致，验收见 [desktop-right-panel.md](../desktop/desktop-right-panel.md)「右侧面板 · 后台任务面板」。本故事只约束没有面板机制的宿主（VS Code / JetBrains / 远控 Web）。
 
 **为什么是这个优先级**：插件端以 stdio 子进程方式运行 Agent，目前 `AgentCallbacks.onBackgroundTasksChange` 回调未通过 stdio 协议转发，IDE 完全无法感知后台任务（`run_in_background`、超时自动后台化的任务）。后台任务的结果当前仅在 CLI 可见；IDE 用户无法查看或管理这些任务，与 CLI 体验不一致。
 
@@ -121,7 +123,7 @@ order: 60
 
 **验收场景**：
 
-1. **假设**有后台任务运行，**当**用户在 IDE 输入 `/tasks` 时，**则**弹出对话框列出所有后台任务（运行中/已完成/失败/已终止），每项显示 id、类型、状态、描述/命令、运行时长
+1. **假设**在非桌面端（VS Code / JetBrains / 远控 Web）有后台任务运行，**当**用户输入 `/tasks` 时，**则**弹出对话框列出所有后台任务（运行中/已完成/失败/已终止），每项显示 id、类型、状态、描述/命令、运行时长
 2. **假设**用户在列表中选择某任务，**当**进入详情视图时，**则**显示该任务的 stdout/stderr 输出（末尾若干行）、退出码、日志文件路径
 3. **假设**某任务正在运行，**当**用户点击停止按钮时，**则**任务被终止，列表中该任务状态更新为已终止
 4. **假设**后台任务状态变化（启动/完成/失败/终止），**当**子进程发送 `backgroundTasksChange` 通知时，**则**对话框实时刷新列表

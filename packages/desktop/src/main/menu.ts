@@ -33,7 +33,13 @@ import {
   type WebContents,
 } from "electron";
 
-export type PanelKind = "preview" | "diff" | "terminal" | "file" | "plan";
+export type PanelKind =
+  | "preview"
+  | "diff"
+  | "terminal"
+  | "file"
+  | "plan"
+  | "tasks";
 
 export interface DesktopMenuActions {
   nextSession: () => void;
@@ -260,6 +266,14 @@ export function buildApplicationMenuTemplate(
           type: "checkbox",
           checked: panelChecked.includes("file"),
           click: () => actions.togglePanel("file"),
+        },
+        {
+          // 后台任务面板无快捷键（spec desktop-right-panel.md「后台任务面板」：
+          // 入口是 `/tasks`、面板「＋」菜单与本项）。
+          label: "后台任务",
+          type: "checkbox",
+          checked: panelChecked.includes("tasks"),
+          click: () => actions.togglePanel("tasks"),
         },
       ],
     },

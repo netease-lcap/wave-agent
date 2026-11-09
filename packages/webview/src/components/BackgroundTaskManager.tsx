@@ -1,14 +1,17 @@
 /**
  * BackgroundTaskManager - background task management dialog
  *
- * Opened via the /tasks slash command. Lists background tasks
+ * Opened via the /tasks slash command on the hosts without a right-hand panel
+ * (VS Code / JetBrains / remote web). Lists background tasks
  * (shell/subagent/workflow) with status, and lets the user view
- * output and stop running tasks.
+ * output and stop running tasks. The desktop app shows the same data in a
+ * right-panel tab instead (see BackgroundTasksPane); both surfaces share
+ * `useBackgroundTaskDetail`, so selection / polling / stop semantics can't
+ * drift between them.
  */
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useEffect, useRef } from "react";
 import { useClickOutside } from "../utils/useClickOutside";
-import { useHostMessage } from "../utils/useHostMessage";
 import {
   BackgroundTaskManagerProps,
   BackgroundTaskSummary,
@@ -19,29 +22,11 @@ import WorkflowRunProgress, {
   formatTime,
 } from "./WorkflowRunProgress";
 import { ansiToHtml } from "../utils/ansiText";
+import {
+  getLastLines,
+  useBackgroundTaskDetail,
+} from "../utils/useBackgroundTaskDetail";
 import "../styles/ConfigurationDialog.css";
-
-interface BackgroundTaskOutput {
-  stdout: string;
-  stderr: string;
-  status: string;
-  outputPath?: string;
-  type: string;
-  exitCode?: number;
-}
-
-/**
- * Poll cadence for the selected task's output while it is still running and
- * the detail view is open. The SDK answers with the task's log-file tail for
- * running agent tasks, so this is what makes live progress visible.
- */
-const BACKGROUND_TASK_OUTPUT_POLL_MS = 1500;
-
-const getLastLines = (text: string, count: number): string => {
-  if (!text) return "";
-  const lines = text.split("\n");
-  return lines.slice(Math.max(0, lines.length - count)).join("\n");
-};
 
 const BackgroundTaskManager: React.FC<
   BackgroundTaskManagerProps & {
@@ -50,112 +35,18 @@ const BackgroundTaskManager: React.FC<
     vscode: { postMessage: (msg: unknown) => void };
   }
 > = ({ onClose, tasks, workflowRuns, vscode }) => {
-  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
-  const [output, setOutput] = useState<BackgroundTaskOutput | null>(null);
-  const [loadingOutput, setLoadingOutput] = useState(false);
-  const [stoppingId, setStoppingId] = useState<string | null>(null);
+  const {
+    selectedTask,
+    selectedTaskId,
+    selectedWorkflowRun,
+    output,
+    loadingOutput,
+    stoppingId,
+    selectTask,
+    backToList,
+    handleStop,
+  } = useBackgroundTaskDetail({ tasks, workflowRuns, vscode });
   const dialogRef = useRef<HTMLDivElement>(null);
-  // The (taskId, status) we last requested output for. The refetch below is
-  // keyed on this rather than on `output === null`: the host always answers
-  // with an output object (stdout may be an empty string), so a task first
-  // inspected while running kept its empty reply forever after finishing.
-  const lastOutputRequestRef = useRef<{
-    taskId: string;
-    status: string;
-  } | null>(null);
-
-  const selectedTask = tasks.find((t) => t.id === selectedTaskId) || null;
-
-  /**
-   * The run behind the selected task, when the selected task IS a workflow: a
-   * workflow background task's id is its runId, so the two slices of chat state
-   * join on it directly. A workflow has no text tail to show — the SDK never
-   * points the task at an output file and its own progress is what it reports —
-   * so the run's structured progress (phases, agents, tokens, `log()` lines) is
-   * rendered in place of the output box. Both dialogs render it through the same
-   * component, which is what stops `/tasks` and `/workflows` from disagreeing.
-   *
-   * `null` (the run is gone from the session's list — `/clear`, a resumed
-   * session) falls back to the text output box rather than an empty pane.
-   */
-  const selectedWorkflowRun =
-    selectedTask?.type === "workflow"
-      ? (workflowRuns.find((r) => r.runId === selectedTask.id) ?? null)
-      : null;
-
-  // Fetch output for the selected task, and refetch whenever its status
-  // changes (running → completed/failed/killed) so the terminal output is not
-  // missed by a detail view opened while the task was still running.
-  useEffect(() => {
-    if (!selectedTaskId) {
-      setOutput(null);
-      lastOutputRequestRef.current = null;
-      return;
-    }
-    if (!selectedTask) {
-      return;
-    }
-    const last = lastOutputRequestRef.current;
-    if (
-      last &&
-      last.taskId === selectedTaskId &&
-      last.status === selectedTask.status
-    ) {
-      return;
-    }
-    lastOutputRequestRef.current = {
-      taskId: selectedTaskId,
-      status: selectedTask.status,
-    };
-    setLoadingOutput(true);
-    vscode.postMessage({
-      command: "getBackgroundTaskOutput",
-      taskId: selectedTaskId,
-    });
-  }, [selectedTask, selectedTaskId, vscode]);
-
-  // While the selected task is running, keep re-reading its output on a fixed
-  // cadence: the fetch effect above only fires on transitions (selection /
-  // status change), so live progress would otherwise freeze on the first
-  // snapshot. Stops on terminal status, task switch and unmount.
-  //
-  // A workflow task is the exception: its progress arrives through
-  // `updateWorkflowRuns`, which the host pushes on every progress event, so
-  // polling its (empty) output has nothing to add.
-  const selectedTaskRunning =
-    selectedTask?.status === "running" && !selectedWorkflowRun;
-  useEffect(() => {
-    if (!selectedTaskId || !selectedTaskRunning) {
-      return;
-    }
-    const timer = setInterval(() => {
-      vscode.postMessage({
-        command: "getBackgroundTaskOutput",
-        taskId: selectedTaskId,
-      });
-    }, BACKGROUND_TASK_OUTPUT_POLL_MS);
-    return () => clearInterval(timer);
-  }, [selectedTaskId, selectedTaskRunning, vscode]);
-
-  useHostMessage((message) => {
-    switch (message.command) {
-      case "backgroundTaskOutput":
-        if (message.taskId === selectedTaskId) {
-          setOutput(message.output || null);
-          setLoadingOutput(false);
-        }
-        break;
-      case "backgroundTaskStopped":
-        setStoppingId(null);
-        break;
-    }
-  });
-
-  const handleStop = (taskId: string) => {
-    setStoppingId(taskId);
-    vscode.postMessage({ command: "stopBackgroundTask", taskId });
-  };
-
   // Click-outside close (listener registered one tick later inside the hook,
   // so the click that opened this dialog doesn't immediately close it).
   useClickOutside({
@@ -167,7 +58,7 @@ const BackgroundTaskManager: React.FC<
     const handleEscapeKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         if (selectedTaskId) {
-          setSelectedTaskId(null);
+          backToList();
         } else {
           onClose();
         }
@@ -175,7 +66,7 @@ const BackgroundTaskManager: React.FC<
     };
     document.addEventListener("keydown", handleEscapeKey);
     return () => document.removeEventListener("keydown", handleEscapeKey);
-  }, [onClose, selectedTaskId]);
+  }, [onClose, selectedTaskId, backToList]);
 
   const statusColor = (status: string): string => {
     switch (status) {
@@ -242,6 +133,9 @@ const BackgroundTaskManager: React.FC<
                     </div>
                   )}
                   {selectedTask.command && (
+                    // 与右侧面板同一个口径：命令行自己也限高 + 内部滚动，
+                    // 一行几百字符的命令不把对话框撑长（spec
+                    // desktop-right-panel.md「后台任务面板」场景 13）。
                     <div
                       style={{
                         fontSize: "12px",
@@ -249,6 +143,9 @@ const BackgroundTaskManager: React.FC<
                         fontFamily:
                           "var(--vscode-editor-font-family, monospace)",
                         wordBreak: "break-all",
+                        maxHeight: "200px",
+                        overflow: "auto",
+                        whiteSpace: "pre-wrap",
                       }}
                     >
                       $ {selectedTask.command}
@@ -384,7 +281,7 @@ const BackgroundTaskManager: React.FC<
                   key={task.id}
                   className="mcp-server-item"
                   style={{ cursor: "pointer" }}
-                  onClick={() => setSelectedTaskId(task.id)}
+                  onClick={() => selectTask(task.id)}
                 >
                   <div className="mcp-server-info">
                     <div className="mcp-server-header">
@@ -460,7 +357,7 @@ const BackgroundTaskManager: React.FC<
             {selectedTask && (
               <button
                 type="button"
-                onClick={() => setSelectedTaskId(null)}
+                onClick={backToList}
                 className="configuration-cancel-btn"
               >
                 返回列表

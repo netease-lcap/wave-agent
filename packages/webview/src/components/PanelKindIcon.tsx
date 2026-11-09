@@ -2,11 +2,13 @@ import React from "react";
 import type { DesktopPanelKind } from "../types";
 
 /**
- * 五类面板的官方图标（Figma「CC桌面端组件库」Component 12 · 13561:39702，
- * 类型=预览/计划/差异/终端/文件）。矢量取自 Figma 导出 SVG：
+ * 六类面板的官方图标（Figma「CC桌面端组件库」Component 12 · 13561:39702，
+ * 类型=预览/计划/差异/终端/文件；后台任务不在设计稿里，沿用同一网格与描边参数
+ * 自绘「堆叠层」）。矢量取自 Figma 导出 SVG：
  * 预览 = 地球（fill 挖空型，Union），计划 = 剪贴板，差异 = 文件 + 分割线，
- * 终端 = ">_"，文件 = 右上折角纸页。stroke/fill 均 currentColor，
- * 跟随所在菜单/标签/空态的文本色（light #565A60 / dark #9A9EA5 等）。
+ * 终端 = ">_"，文件 = 右上折角纸页，后台任务 = 三层堆叠（并发在跑的多份任务）。
+ * stroke/fill 均 currentColor，跟随所在菜单/标签/空态的文本色（light #565A60 /
+ * dark #9A9EA5 等）。
  */
 
 const KIND_VIEWBOX: Record<DesktopPanelKind, string> = {
@@ -15,6 +17,7 @@ const KIND_VIEWBOX: Record<DesktopPanelKind, string> = {
   diff: "0 0 16 17", // 设计稿 viewBox 高 17，纵向稍高
   terminal: "0 0 16 16",
   file: "0 0 16 16",
+  tasks: "0 0 16 16",
 };
 
 /** stroke 型图标统一描边参数（Figma 导出原值 1.4 圆头）。 */
@@ -51,6 +54,13 @@ const KIND_PATHS: Record<DesktopPanelKind, string[]> = {
     "M4.5 14.2729H8.20233H11.5C12.6046 14.2729 13.5 13.3775 13.5 12.2729V8.00011V5.30953C13.5 4.91755 13.3466 4.54107 13.0725 4.2608L11.0367 2.17863C10.7544 1.89 10.3678 1.72729 9.96414 1.72729H7.69073H4.5C3.39543 1.72729 2.5 2.62273 2.5 3.7273V8.00011V12.2729C2.5 13.3775 3.39543 14.2729 4.5 14.2729Z",
     "M9.60352 1.84985V4.33057C9.60352 5.15899 10.2751 5.83057 11.1035 5.83057H12.763",
   ],
+  // 后台任务：三层堆叠（同一会话里并发在跑的多份任务），与其余 stroke 图标
+  // 同一描边参数；viewBox 与 16px 网格对齐（顶面菱形 + 两条下沿）。
+  tasks: [
+    "M8 2.2L13.6 5.1L8 8L2.4 5.1L8 2.2Z",
+    "M2.4 8.1L8 11L13.6 8.1",
+    "M2.4 11L8 13.9L13.6 11",
+  ],
 };
 
 export interface PanelKindIconProps {
@@ -61,7 +71,7 @@ export interface PanelKindIconProps {
 }
 
 /**
- * 五类面板类型图标（16px 网格渲染）。预览为 fill 型、其余 stroke 型，
+ * 六类面板类型图标（16px 网格渲染）。预览为 fill 型、其余 stroke 型，
  * 均以 currentColor 着色，父元素 color 即可控制（host-desktop.css 浅深色组）。
  */
 export const PanelKindIcon: React.FC<PanelKindIconProps> = ({
