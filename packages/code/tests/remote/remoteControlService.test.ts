@@ -19,7 +19,8 @@ import {
   RELAY_CLOSE_REPLACED,
   RELAY_CLOSE_UNAVAILABLE,
   RELAY_PING_INTERVAL_MS,
-  RELAY_RETRY_DELAY_MS,
+  RELAY_RETRY_BASE_DELAY_MS,
+  RELAY_RETRY_WINDOW_MS,
   type RelaySocket,
 } from "../../src/remote/relayClient.js";
 
@@ -241,6 +242,46 @@ describe("RemoteControlService", () => {
     );
   });
 
+  it("should ride out a dropped link as `connecting` until the retry window runs out", async () => {
+    const service = await connect(createBridgeStub());
+
+    socket.onclose?.({ code: 1006 });
+
+    // `connecting`, never `error`: the client is already backing off and
+    // dialling again, so calling it an error would send the user hunting for a
+    // fault that is healing itself. The deadline is the part they cannot
+    // otherwise see — this keeps trying for ten minutes, then stops for good.
+    expect(service.getSnapshot()).toMatchObject({
+      state: "connecting",
+      message: expect.stringMatching(
+        /^relay connection lost \(1006\); retrying in \ds \(attempt 1, 10m left\)$/,
+      ),
+    });
+
+    // Each further failure deepens the backoff and spends the window, instead of
+    // running out of attempts after eleven seconds like it used to.
+    vi.advanceTimersByTime(RELAY_RETRY_BASE_DELAY_MS);
+    socket.onclose?.({ code: 1006 });
+    expect(service.getSnapshot().message).toContain("(attempt 2,");
+
+    for (
+      let i = 0;
+      i < 100 && service.getSnapshot().state !== "error";
+      i += 1
+    ) {
+      socket.onclose?.({ code: 1006 });
+      vi.advanceTimersByTime(60_000);
+    }
+
+    // Only now is it worth telling the user something is wrong: the reason, plus
+    // that this is a stop rather than another wait.
+    expect(service.getSnapshot().state).toBe("error");
+    expect(service.getSnapshot().message).toContain("gave up after 10m");
+    expect(onStatusChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ state: "error" }),
+    );
+  });
+
   it("should register again when the relay says the stored identity is gone", async () => {
     const resolveEndpoint = vi.fn<ResolveFn>(async () => defaultResolve());
     const service = await connect(createBridgeStub(), resolveEndpoint);
@@ -324,7 +365,7 @@ describe("RemoteControlService", () => {
     expect(service.getSnapshot().message).toContain("took over remote control");
     // Nothing is scheduled: the process that took the channel over keeps it,
     // instead of the two replacing each other every two seconds.
-    vi.advanceTimersByTime(RELAY_RETRY_DELAY_MS * 10);
+    vi.advanceTimersByTime(RELAY_RETRY_WINDOW_MS);
     expect(service.getSnapshot()).toMatchObject({ state: "error" });
 
     // Dialling again from this entry is an explicit user action, and takes the

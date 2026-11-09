@@ -137,14 +137,38 @@ export function isStaleIdentityError(
   return error !== undefined && RELAY_STALE_IDENTITY_ERRORS.includes(error);
 }
 
-/** Retry cadence. Flat 2s: the relay is a well-known host, not a flaky peer —
- * exponential backoff would only delay a laptop waking from sleep. */
-export const RELAY_RETRY_DELAY_MS = 2_000;
-/** Attempts for an ordinary drop (relay restart, network blip). */
-export const RELAY_MAX_ATTEMPTS = 5;
-/** Separate, smaller budget for `4001`: the host announced itself but had no
- * session ready. Retrying a real outage five times buys nothing. */
-export const RELAY_MAX_UNAVAILABLE_ATTEMPTS = 3;
+/**
+ * Retry cadence: exponential from 2s, doubling, capped at 60s.
+ *
+ * 2s to start keeps the first retry where the old flat cadence put it (a laptop
+ * waking from sleep should not wait out a grown backoff); the 60s ceiling is
+ * what stops a genuinely offline relay from being dialled every second.
+ */
+export const RELAY_RETRY_BASE_DELAY_MS = 2_000;
+export const RELAY_RETRY_MAX_DELAY_MS = 60_000;
+/**
+ * How long a dropped link keeps trying before it gives up and reports `error`.
+ *
+ * This is the number that decides whether the daemon survives a deploy, and it
+ * used to be about eleven seconds (six dials, flat 2s) — shorter than any
+ * realistic restart, so a routine relay release killed every connected machine
+ * for good (2026-11-09: the relay was deployed at 13:50, the host stopped
+ * retrying seconds later, and remote control stayed dead for seven hours until
+ * someone ran `wave remote-control on` by hand). Ten minutes covers a slow
+ * release (image pull, readiness probe, load-balancer drain) with margin while
+ * still being a bound: a link that has not come back in ten minutes is much
+ * more likely facing a real outage than a rollout, and stopping is what makes
+ * `status` say something a human can act on.
+ */
+export const RELAY_RETRY_WINDOW_MS = 10 * 60 * 1000;
+/**
+ * Share of a scheduled wait that is randomized away ("equal jitter": the delay
+ * lands in `[50%, 100%]` of the schedule). A relay restart drops every machine
+ * at the same instant, and an unjittered schedule makes them all dial in
+ * lockstep afterwards; half-random rather than fully-random keeps the backoff
+ * growing instead of letting a still-restarting relay be dialled immediately.
+ */
+export const RELAY_RETRY_JITTER = 0.5;
 /** Idle keepalive. Browsers cannot send WebSocket control pings, and the relay
  * faces the phone anyway, so this is an application-level frame. */
 export const RELAY_PING_INTERVAL_MS = 30_000;
@@ -202,7 +226,23 @@ export interface RelayClientOptions {
    * nothing about that. Nothing is retried from here either way.
    */
   onStaleIdentity?: (info: { error: string }) => void;
-  /** The connection is gone for good — `4003`, or the retry budget ran out. */
+  /**
+   * A dial attempt is over and another is scheduled — reported so the caller can
+   * say *why* the link is down, how long the wait is, and how much of the retry
+   * window is left before it gives up.
+   */
+  onRetry?: (info: {
+    /** What ended the attempt (`relay connection lost (1006)`, …). */
+    reason: string;
+    /** Failed attempts in a row since the last completed handshake. */
+    attempt: number;
+    /** How long until the next dial. */
+    delayMs: number;
+    /** How much of `RELAY_RETRY_WINDOW_MS` is still ahead. */
+    remainingMs: number;
+  }) => void;
+  /** The connection is gone for good — `4003`, a takeover, or the retry window
+   * running out (`RELAY_RETRY_WINDOW_MS`). */
   onFatal?: (reason: string) => void;
 }
 
@@ -211,9 +251,17 @@ export class RelayClient {
   private socket: RelaySocket | undefined;
   private retryTimer: ReturnType<typeof setTimeout> | undefined;
   private pingTimer: ReturnType<typeof setInterval> | undefined;
+  /** Failed dials in a row; drives the backoff curve. Reset by a completed
+   * handshake, never by a socket that merely opened (a relay that accepts TCP
+   * and closes immediately would otherwise pin the delay at its first step). */
   private attempts = 0;
-  private unavailableAttempts = 0;
   private stopped = false;
+  /**
+   * When the current outage started — the first drop since the last completed
+   * handshake. `undefined` while the link is healthy, which is what makes the
+   * retry window a per-outage budget rather than a lifetime one.
+   */
+  private outageStartedAt: number | undefined;
   /** Why the relay refused us, kept so the `4003` that follows can say more. */
   private authError: { error: string } | undefined;
   /**
@@ -375,8 +423,10 @@ export class RelayClient {
     socket.onopen = () => {
       if (this.socket !== socket) return;
       this.state = "open";
-      this.attempts = 0;
-      this.unavailableAttempts = 0;
+      // Neither the attempt counter nor the retry window is cleared here: an
+      // open socket that never completes the handshake is a failing dial, not a
+      // working link. `auth_ok` is where both reset (a relay that accepts TCP
+      // and closes at once would otherwise keep the backoff at its first step).
       // The relay authenticates the runner before it will fan anything out, and
       // it reads the version from the top level of this same frame. Ten seconds
       // without it and the relay closes with `auth_timeout` (4003). This is the
@@ -432,10 +482,11 @@ export class RelayClient {
     if (code === RELAY_CLOSE_UNAVAILABLE && reason === RELAY_CLOSE_REPLACED) {
       // Another process on this machine dialled in and the relay handed the
       // channel over to it. Retrying would take the channel back, and then the
-      // other side would retry too: the two would replace each other every two
-      // seconds, forever — every successful connect resets the retry budget, so
-      // neither ever exceeds it. So this side steps down for good; dialling
-      // again from here is an explicit user action and takes the channel back.
+      // other side would retry too: the two would replace each other for as
+      // long as both stay inside the retry window — and every successful
+      // handshake starts a fresh one, so neither would ever run out. So this
+      // side steps down for good; dialling again from here is an explicit user
+      // action and takes the channel back.
       this.stopped = true;
       this.state = "closed";
       this.options.onFatal?.(
@@ -462,31 +513,58 @@ export class RelayClient {
       return;
     }
 
-    if (code === RELAY_CLOSE_UNAVAILABLE) {
-      this.unavailableAttempts += 1;
-      if (this.unavailableAttempts > RELAY_MAX_UNAVAILABLE_ATTEMPTS) {
-        this.stopped = true;
-        this.state = "closed";
-        this.options.onFatal?.("relay reported the host unavailable (4001)");
-        return;
-      }
-    } else {
-      this.attempts += 1;
-      if (this.attempts > RELAY_MAX_ATTEMPTS) {
-        this.stopped = true;
-        this.state = "closed";
-        this.options.onFatal?.(
-          `relay connection lost${code === undefined ? "" : ` (${code})`}`,
-        );
-        return;
-      }
+    // Everything else — a relay restart, a network blip, sleep/wake, a `4001`
+    // "host not ready yet" — is transient and shares one budget: the retry
+    // window (see `RELAY_RETRY_WINDOW_MS`). 4001 used to have a smaller budget
+    // of its own, but it is the *same* condition from here: the relay exists and
+    // will serve this host once it is ready.
+    this.scheduleRetry(
+      code === undefined
+        ? "relay connection lost"
+        : `relay connection lost (${code})`,
+    );
+  }
+
+  /**
+   * Back off, then dial again — until the retry window runs out.
+   *
+   * The window is per outage: it starts at the first drop after a completed
+   * handshake and is cleared by the next `auth_ok`, so a link that comes back
+   * and drops again gets the full ten minutes each time rather than spending a
+   * lifetime allowance.
+   */
+  private scheduleRetry(reason: string): void {
+    const now = Date.now();
+    this.outageStartedAt ??= now;
+    const elapsed = now - this.outageStartedAt;
+    if (elapsed >= RELAY_RETRY_WINDOW_MS) {
+      this.stopped = true;
+      this.state = "closed";
+      this.options.onFatal?.(
+        `${reason}; gave up after ${String(Math.round(RELAY_RETRY_WINDOW_MS / 60_000))}m`,
+      );
+      return;
     }
 
+    this.attempts += 1;
+    const ceiling = Math.min(
+      RELAY_RETRY_BASE_DELAY_MS * 2 ** Math.min(this.attempts - 1, 16),
+      RELAY_RETRY_MAX_DELAY_MS,
+    );
+    const delayMs = Math.round(
+      ceiling * (1 - RELAY_RETRY_JITTER + Math.random() * RELAY_RETRY_JITTER),
+    );
     this.state = "closed";
+    this.options.onRetry?.({
+      reason,
+      attempt: this.attempts,
+      delayMs,
+      remainingMs: RELAY_RETRY_WINDOW_MS - elapsed,
+    });
     this.retryTimer = setTimeout(() => {
       this.retryTimer = undefined;
       if (!this.stopped) this.connect();
-    }, RELAY_RETRY_DELAY_MS);
+    }, delayMs);
     this.retryTimer.unref?.();
   }
 
@@ -510,15 +588,12 @@ export class RelayClient {
     } catch {
       // Already gone.
     }
+    // A phone that reads slowly is not evidence of an outage, so this drop
+    // neither grows the backoff nor spends the retry window: the link itself is
+    // fine, only its reader is behind.
     this.attempts = 0;
-    this.state = "closed";
-    if (!this.stopped) {
-      this.retryTimer = setTimeout(() => {
-        this.retryTimer = undefined;
-        if (!this.stopped) this.connect();
-      }, RELAY_RETRY_DELAY_MS);
-      this.retryTimer.unref?.();
-    }
+    this.outageStartedAt = undefined;
+    this.scheduleRetry("the subscriber fell behind and the link was dropped");
   }
 
   /**
@@ -532,6 +607,10 @@ export class RelayClient {
       case "auth_ok":
         this.authError = undefined;
         this.authed = true;
+        // The link works, so this is where the schedule starts over: the next
+        // drop gets a fresh backoff curve and a fresh ten minutes.
+        this.attempts = 0;
+        this.outageStartedAt = undefined;
         // Before anything the callback sends: parked frames are older, and the
         // phone has to see them in the order they were produced.
         this.flushOutbox();

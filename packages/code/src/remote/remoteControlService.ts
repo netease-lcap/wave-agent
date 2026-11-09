@@ -482,6 +482,18 @@ export class RemoteControlService implements RemoteControlController {
         if (generation !== this.generation) return;
         this.refreshIdentity(info.error);
       },
+      onRetry: (info) => {
+        if (generation !== this.generation) return;
+        // A drop the client is already healing is `connecting`, never `error`:
+        // there is nothing for the user to fix yet, and calling it an error
+        // sends them hunting for a fault that is fixing itself. What they
+        // cannot guess is the deadline — how long this keeps trying before it
+        // does give up — so that is what the message carries.
+        this.setStatus({
+          state: "connecting",
+          message: `${info.reason}; retrying in ${formatDelay(info.delayMs)} (attempt ${String(info.attempt)}, ${formatWindowLeft(info.remainingMs)} left)`,
+        });
+      },
       onFatal: (message) => {
         if (generation !== this.generation) return;
         this.setStatus({ state: "error", message });
@@ -822,6 +834,21 @@ export class RemoteControlService implements RemoteControlController {
     this.status = status;
     this.options.onStatusChange?.(status);
   }
+}
+
+/** `2s` / `60s` — a wait the user reads, rounded to what the schedule says. */
+function formatDelay(ms: number): string {
+  if (ms < 60_000) return `${String(Math.round(ms / 1000))}s`;
+  return `${String(Math.round(ms / 60_000))}m`;
+}
+
+/**
+ * How much of the retry window is still ahead, rounded **up**: reporting `0m
+ * left` while a dial is still scheduled would read as "already gave up".
+ */
+function formatWindowLeft(ms: number): string {
+  if (ms >= 60_000) return `${String(Math.ceil(ms / 60_000))}m`;
+  return `${String(Math.max(0, Math.round(ms / 1000)))}s`;
 }
 
 function describeRpcError(err: unknown): { code: number; message: string } {
