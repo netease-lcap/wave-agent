@@ -336,9 +336,15 @@ export class AuthService {
   /**
    * Check if the token needs refresh and refresh it if possible.
    * Deduplicates concurrent refresh calls (401 dedup).
+   *
+   * `force` is for the reactive 401/403 path: the local clock thinking the
+   * token is still valid proves nothing about whether the server accepts it
+   * (a token issued by another server environment, or a revoked one, is
+   * "not expired" and still rejected). Callers on that path must ask for a
+   * real refresh instead of trusting `isTokenExpired()`.
    */
-  async checkAndRefreshTokenIfNeeded(): Promise<boolean> {
-    if (!this.isTokenExpired()) return true;
+  async checkAndRefreshTokenIfNeeded(force = false): Promise<boolean> {
+    if (!force && !this.isTokenExpired()) return true;
     // Dedup: if a refresh is already in-flight, reuse the same promise
     if (this._refreshPromise) {
       logger.info(
@@ -378,7 +384,19 @@ export class AuthService {
         }),
       });
       if (response.status === 400 || response.status === 401) {
-        // Refresh token revoked — clear auth
+        // Refresh tokens rotate: when two Wave processes on this machine (the
+        // desktop app, an IDE plugin, a terminal `wave`) refresh at the same
+        // time, exactly one of them wins and the loser gets 400/401 here.
+        // Re-read the disk before treating that as a revocation — if another
+        // process already wrote a different token, adopt it instead of logging
+        // the user out.
+        const latest = this.loadAuth();
+        if (latest.SSO_TOKEN && latest.SSO_TOKEN !== config.SSO_TOKEN) {
+          logger.info(
+            "[Auth] Refresh rejected, but another process already refreshed the token",
+          );
+          return true;
+        }
         logger.info(
           `[Auth] Refresh token rejected (${response.status}), clearing auth`,
         );
@@ -397,6 +415,23 @@ export class AuthService {
       const newExpiresAt = data.expiresIn
         ? Date.now() + data.expiresIn * 1000
         : undefined;
+      // The refresh request was in flight while auth.json may have changed
+      // under us: someone logged out (token keys gone) or another process
+      // refreshed first. Writing in either case would resurrect a session the
+      // user just ended — or clobber the token that actually works.
+      const latest = this.loadAuth();
+      if (latest.SSO_TOKEN && latest.SSO_TOKEN !== config.SSO_TOKEN) {
+        logger.info(
+          "[Auth] Another process refreshed first, keeping its token",
+        );
+        return true;
+      }
+      if (!latest.SSO_REFRESH_TOKEN) {
+        logger.info(
+          "[Auth] Logged out during the refresh, discarding the new token",
+        );
+        return false;
+      }
       this.saveAuth({
         ...config,
         SSO_TOKEN: data.token,
@@ -421,24 +456,32 @@ export class AuthService {
   /**
    * Check if another process has refreshed the token on disk.
    * Returns true if a fresh token was found and loaded.
+   *
+   * Compares the token value rather than the file mtime: a write landing in
+   * the same millisecond as our own read (or a filesystem with coarse
+   * timestamps) leaves the mtime unchanged and would hide a token another
+   * process already refreshed — which then costs a second refresh request
+   * that the rotated refresh token no longer allows.
+   *
+   * `failedToken` is the access token the server just rejected; anything else
+   * on disk counts as someone else's newer token. Without it, any non-empty
+   * token qualifies.
    */
   /** @internal Check if another process has refreshed the token on disk */
-  tryReadRefreshedTokenFromDisk(): boolean {
+  tryReadRefreshedTokenFromDisk(failedToken?: string): boolean {
     try {
       const authPath = this.getAuthPath();
       if (!existsSync(authPath)) return false;
-      const stat = statSync(authPath);
-      if (stat.mtimeMs <= this._authFileMtime) return false;
-      // File was modified by another process — check if token is fresh
       const config = this.loadAuth();
-      if (
-        config.SSO_TOKEN_EXPIRES_AT &&
-        Date.now() < config.SSO_TOKEN_EXPIRES_AT
-      ) {
+      const isDifferent =
+        Boolean(config.SSO_TOKEN) && config.SSO_TOKEN !== failedToken;
+      const isFresh =
+        !config.SSO_TOKEN_EXPIRES_AT ||
+        Date.now() < config.SSO_TOKEN_EXPIRES_AT;
+      if (isDifferent && isFresh) {
         logger.info(
-          `[Auth] Detected token refreshed by another process (auth.json mtime changed)`,
+          "[Auth] Detected token refreshed by another process (on-disk token differs)",
         );
-        this._authFileMtime = stat.mtimeMs;
         return true;
       }
       return false;
@@ -482,8 +525,9 @@ export function createAuthAwareFetch(innerFetch: typeof fetch): typeof fetch {
       logger.info(
         `[Auth] Received ${response.status}, attempting token recovery`,
       );
-      // Try disk refresh first (another process may have refreshed)
-      if (authService.tryReadRefreshedTokenFromDisk()) {
+      // Try disk refresh first (another process may have refreshed) — compare
+      // against the token this request actually carried, which is `freshToken`.
+      if (authService.tryReadRefreshedTokenFromDisk(freshToken)) {
         const retryToken = authService.getSSOToken();
         const retryHeaders = new Headers(init?.headers);
         if (retryToken) {
@@ -493,8 +537,12 @@ export function createAuthAwareFetch(innerFetch: typeof fetch): typeof fetch {
         return innerFetch(input, { ...init, headers: retryHeaders });
       }
 
-      // Try force refresh
-      if (await authService.checkAndRefreshTokenIfNeeded()) {
+      // Force refresh: a 401 means the server rejected the token, whatever the
+      // local expiry says. `refreshToken()` keeps the token on transient
+      // network errors and clears auth when the refresh token itself is
+      // rejected (400/401) — the next request then falls back to
+      // WAVE_API_KEY / WAVE_BASE_URL instead of retrying the same dead token.
+      if (await authService.checkAndRefreshTokenIfNeeded(true)) {
         const retryToken = authService.getSSOToken();
         if (retryToken) {
           const retryHeaders = new Headers(init?.headers);

@@ -58,6 +58,10 @@ order: 10
 1. **假设** `~/.wave/auth.json` 包含有效的 `SSO_TOKEN`，**当** Agent 解析网关配置时，**则**它返回 `{ apiKey: SSO_TOKEN, baseURL: "${WAVE_SERVER_URL}/api/v1" }`，无论 `WAVE_API_KEY` 或 `WAVE_BASE_URL` 设置。
 2. **假设**不存在 `SSO_TOKEN`，**当** Agent 解析网关配置时，**则**它回退到现有行为（读取 `WAVE_API_KEY`/`WAVE_BASE_URL`）。
 3. **假设** `SSO_TOKEN` 存在但 `WAVE_SERVER_URL` 未设置，**当**解析网关配置时，**则**抛出配置错误并附带清晰消息。
+4. **假设** `SSO_TOKEN` 存在且未过期、但服务端以 401/403 拒绝（典型：换过 `WAVE_SERVER_URL` 后 token 与签发环境错位，或 token 被吊销），**当**带该 token 的请求返回 401/403 时，**则**系统**无视本地过期判断**强制用 refresh token 刷新一次并重试；刷新被服务端拒绝（400/401）时清除认证，此后请求回退到 `WAVE_API_KEY`/`WAVE_BASE_URL`（即场景 2），刷新遇到瞬时网络错误时保留现有 token。
+5. **假设**同一台机器上有多个 Wave 进程共享 `~/.wave/auth.json`（桌面端 + IDE 插件 + 终端 CLI + daemon 各自独立进程、同一个 home），**当**其中两个同时 401 并刷新时，**则**refresh token 轮转只让一个成功：判定「是否已被别人刷过」以**磁盘上的 token 值是否不同于自己失败的那个**为准（不看文件 mtime），刷新请求被判 400/401 时先重读磁盘，若已存在不同的有效 token 就复用它并**保持登录**，只有磁盘上仍是同一个失效 token 才清认证。
+6. **假设**刷新请求在途时用户点了退出登录（token 键被删除），**当**刷新响应返回成功时，**则**丢弃这次结果、不写回 `auth.json` —— 否则会把用户刚结束的会话复活。
+7. **假设**用户在用户级 `settings.json` 里同时设置了 `WAVE_SERVER_URL` 和 `WAVE_BASE_URL`/`WAVE_API_KEY`，**当**解析网关配置时，**则**当前选中的分支（SSO 还是直连）连同 `baseURL` 与「是否带 API key」写入 INFO 日志，用户把日志发回来即可判断请求打到哪、带没带凭据。
 
 ---
 
@@ -131,4 +135,6 @@ order: 10
 - **如果浏览器无法打开（无头服务器）会怎样？** 认证服务器保持活动，用户可以手动打开 URL 并粘贴授权码。
 - **如果用户将来在 `auth.json` 中保存额外字段会怎样？** `saveAuth` 方法与现有配置合并，保留非 SSO_TOKEN 字段。
 - **如果 token 过期（JWT 默认 8 小时）会怎样？** 系统在过期前 5 分钟使用存储的 refresh token 主动刷新 token。如果 refresh token 被撤销（400/401），认证被清除，用户必须重新运行 `/login`。在刷新期间的瞬时网络错误中，保留现有 token，重试在下次请求时进行。
+- **如果 token 还没过期、服务端却不认（换过 server 环境、token 被吊销）会怎样？** 「过期判断」只是本地时钟推算，不能代表服务端是否接受——所以请求返回 401/403 时**一律强制刷新**再重试，不看本地 `SSO_TOKEN_EXPIRES_AT`（此前把「无需刷新」误当成「刷新成功」，导致拿同一个死 token 反复重试、也永远降级不到直连）。刷新被拒即清认证，后续请求自动落到 `WAVE_API_KEY`/`WAVE_BASE_URL`；token 文件里没有 `SSO_TOKEN_EXPIRES_AT` 的旧格式同样适用。
+- **用户报「设了 `WAVE_BASE_URL` 却不生效」怎么定位？** 判据只有一条——`auth.json` 里有没有非空 `SSO_TOKEN`。有则 SSO 分支压过一切 base URL（场景 1）；要回退直连必须显式退出登录。当前分支与目标地址记在 INFO 日志里（场景 5），不再靠猜。
 - **如果 SSO 登录超时（5 分钟）会怎样？** 认证服务器关闭并显示错误。用户可以重试 `/login`。
