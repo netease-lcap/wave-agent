@@ -314,16 +314,24 @@ const ConfirmationDialogImpl: React.FC<ConfirmationDialogProps> = ({
   );
 
   const restoreFocus = useCallback(() => {
-    const prev = previousFocusRef.current;
-    if (prev && document.contains(prev) && !dialogRef.current?.contains(prev)) {
-      prev.focus();
-    } else {
+    // 关闭的这一刻输入区还是隐藏的（有待确认弹窗时整块 `display:none`，见
+    // ChatApp 的 `input-area-container`），此刻 `focus()` 会被浏览器直接忽略
+    // ——真机上焦点就停在 <body> 上再也回不来。等 React 把弹窗摘掉、输入区
+    // 重新可见之后再还焦点（spec「确认弹窗焦点圈」场景 4）。
+    requestAnimationFrame(() => {
+      // 队列里紧接着又来了一个确认：焦点归新弹窗管，不去抢。
+      if (dialogRef.current) return;
+      const prev = previousFocusRef.current;
+      if (prev && document.contains(prev)) {
+        prev.focus();
+        return;
+      }
       document
         .querySelector<HTMLElement>(
-          'textarea[data-testid="message-input"], .message-input textarea',
+          '[data-testid="message-input"], .message-input textarea',
         )
         ?.focus();
-    }
+    });
   }, []);
 
   // On mount / when a new confirmation replaces the current one: remember the

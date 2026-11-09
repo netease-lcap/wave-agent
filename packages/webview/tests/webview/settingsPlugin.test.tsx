@@ -180,12 +180,13 @@ async function submitRemoteMarket(input: string): Promise<void> {
   });
 }
 
-/** jsdom 不做布局：只造视图读的那两个边界值（left / right）。 */
+/** 只造视图读的那两个边界值（left / right），其余字段与判定无关。 */
 const edgeRect = (left: number, right: number) => ({ left, right }) as DOMRect;
 
 /** 给「切换条滚进可视区」这条逻辑喂假几何（spec 场景 18）：切换条 = 视口 0–400，
- *  切换项按 `rects`（市场名前缀 → 视口坐标）取值、没列到的一律当 0–100（完整可见）；
- *  `scrollLeft` 在 jsdom 里是只读的 0，这里替它接上可读写、可读回的存取器。 */
+ *  切换项按 `rects`（市场名前缀 → 视口坐标）取值、没列到的一律当 0–100（完整可见）。
+ *  这段几何是钉出来的，切换条本身没有真实溢出，浏览器会把 `scrollLeft` 写回 0——
+ *  所以替它接上能记住写入值的存取器，让「滚到哪个位置」这个状态留得住。 */
 function stubTabStripLayout(
   rects: Record<string, { left: number; right: number }>,
 ) {
@@ -297,8 +298,9 @@ describe("SettingsPage 插件市场视图", () => {
     await mountWithData();
 
     const strip = document.querySelector<HTMLElement>(".settings-tabs")!;
-    // jsdom 不做布局（scrollWidth / clientWidth 恒为 0），这里替切换条给出溢出几何
-    // 再触发 scroll，与真实浏览器中滚动事件驱动的重算路径一致
+    // 这条切换条在真排版里是否溢出取决于市场名与窗口宽度，而用例要的是「溢出
+    // 500px、滚到某处」这几个确定状态：直接把溢出几何钉上去再触发 scroll，走的
+    // 仍是组件里由滚动事件驱动的那次重算
     const scrollTo = async (scrollLeft: number) => {
       Object.defineProperty(strip, "clientWidth", {
         value: 400,
@@ -340,7 +342,8 @@ describe("SettingsPage 插件市场视图", () => {
   it("市场都放得下（切换条无溢出）时两端都不出现渐隐", async () => {
     await mountWithData();
 
-    // 未触发过滚动 → 挂载时的重算已按 jsdom 的 0 溢出得出「两端都没有」
+    // 未触发过滚动 → 挂载时的重算读的是真实几何：这几个市场在窗口里放得下、
+    // 切换条没有溢出，两端都不该出现
     expect(
       screen.queryByTestId("plugins-tabs-fade-start"),
     ).not.toBeInTheDocument();

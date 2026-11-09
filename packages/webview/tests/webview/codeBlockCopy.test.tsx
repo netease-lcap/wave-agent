@@ -119,13 +119,17 @@ describe("fenced code block copy button", () => {
   });
 
   it("gives no success feedback when both clipboard paths fail", async () => {
-    // jsdom 里没有 `document.execCommand`，`copyTextToClipboard` 的降级路径会抛错
-    // 并返回 false —— 这里只让 `navigator.clipboard` 也失败，两条路就都断了。
+    // 真浏览器里 `document.execCommand` 是存在的，只是无用户手势时 `copy` 会返回
+    // false；显式固定成 false，断言就不依赖运行环境的剪贴板权限了。
+    const execCommand = vi
+      .spyOn(document, "execCommand")
+      .mockImplementation(() => false);
     writeText.mockRejectedValue(new Error("denied"));
     const container = renderAssistant("示例：\n\n```js\nlet a = 1;\n```");
     const button = copyButton(container)!;
     fireEvent.click(button);
     await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(execCommand).toHaveBeenCalledWith("copy"));
     expect(button.getAttribute("aria-label")).toBe("复制代码");
     expect(button.classList.contains("is-copied")).toBe(false);
   });

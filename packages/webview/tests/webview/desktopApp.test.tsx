@@ -2,7 +2,6 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   render,
   fireEvent,
-  createEvent,
   screen,
   within,
   act,
@@ -15,8 +14,6 @@ import { BRANCH_LIST_LOADING_DELAY_MS } from "../../src/components/ChatApp";
 import { createMockVscode, sendCommand, fireInput } from "./test-utils";
 import { MockDataGenerator } from "../fixtures/mockData";
 
-vi.mock("../../src/styles/DesktopApp.css", () => ({}));
-
 function renderDesktopApp() {
   const vscode = createMockVscode();
   const result = render(<DesktopApp vscode={vscode} />);
@@ -28,6 +25,45 @@ function renderDesktopApp() {
 afterEach(() => {
   localStorage.clear();
 });
+
+/** The drag payload a sidebar session / pane header seeds on dragstart. */
+function makeDataTransfer(
+  payload?: Record<string, unknown>,
+  mime = "application/x-wave-pane",
+) {
+  const dataTransfer = new DataTransfer();
+  if (payload) dataTransfer.setData(mime, JSON.stringify(payload));
+  return dataTransfer;
+}
+
+/**
+ * Dispatch a real drag event at `el`.
+ *
+ * `fireEvent`/`createEvent` are unusable here: they rebuild `dataTransfer` with
+ * `new window.DataTransfer()` and copy over only the source object's *own*
+ * properties, so a native DataTransfer arrives empty — no `types`, no payload.
+ * Every handler below guards on `dataTransfer.types`, so the drag would silently
+ * do nothing. Dispatching the event ourselves keeps one DataTransfer shared
+ * between the component (which calls setData) and the assertion (which reads it
+ * back), and carries clientX/clientY natively.
+ */
+function fireDrag(
+  el: Element,
+  type: "dragstart" | "dragenter" | "dragover" | "dragleave" | "drop",
+  dataTransfer: DataTransfer,
+  coords: { clientX?: number; clientY?: number } = {},
+) {
+  const event = new DragEvent(type, {
+    bubbles: true,
+    cancelable: true,
+    dataTransfer,
+    ...coords,
+  });
+  act(() => {
+    el.dispatchEvent(event);
+  });
+  return event;
+}
 
 describe("DesktopApp", () => {
   it("should post desktopReady on mount and show loading until workdir state arrives", () => {
@@ -2336,26 +2372,8 @@ describe("DesktopApp", () => {
       return result;
     }
 
-    function makeDataTransfer(
-      payload?: Record<string, unknown>,
-      mime = "application/x-wave-pane",
-    ) {
-      const store: Record<string, string> = {};
-      if (payload) store[mime] = JSON.stringify(payload);
-      return {
-        get types() {
-          return Object.keys(store);
-        },
-        setData: (type: string, value: string) => {
-          store[type] = value;
-        },
-        getData: (type: string) => store[type] ?? "",
-        effectAllowed: "",
-        dropEffect: "",
-      };
-    }
-
-    // jsdom reports 0 widths; mock the row/pane rects to give the layout real sizes.
+    // The width the drag logic divides is stated by the test, not inherited from
+    // the page: pin the row's measured rect so the per-pane numbers hold.
     function mockRowWidth(width: number) {
       const row = screen.getByTestId("desktop-pane-row");
       vi.spyOn(row, "getBoundingClientRect").mockReturnValue({
@@ -2593,7 +2611,7 @@ describe("DesktopApp", () => {
       expect(item).toHaveAttribute("draggable", "true");
 
       const dataTransfer = makeDataTransfer();
-      fireEvent.dragStart(item, { dataTransfer });
+      fireDrag(item, "dragstart", dataTransfer);
       expect(dataTransfer.getData("application/x-wave-session")).toBe(
         JSON.stringify({ workdir: "/work/a", sessionId: "s2" }),
       );
@@ -2972,18 +2990,23 @@ describe("DesktopApp", () => {
       });
     });
 
-    // jsdom lacks DragEvent, so fireEvent's dragOver drops clientX — build
-    // the event manually to pin the pointer position (same pattern as the
-    // pane-reorder drag tests below).
+    // Drag over the row at a pinned pointer x, kept mid-row vertically: a real
+    // browser gives the row a real height, and a `clientY` of 0 lands in the
+    // top edge band — the two-row split drop zone, not the in-row insertion
+    // these cases assert.
     function dragOverRow(
-      dataTransfer: ReturnType<typeof makeDataTransfer>,
+      dataTransfer: DataTransfer,
       clientX: number,
       target?: Element,
     ) {
       const el = target ?? screen.getByTestId("desktop-pane-row");
-      const event = createEvent.dragOver(el, { dataTransfer });
-      Object.defineProperty(event, "clientX", { value: clientX });
-      fireEvent(el, event);
+      const row = screen
+        .getByTestId("desktop-pane-row")
+        .getBoundingClientRect();
+      fireDrag(el, "dragover", dataTransfer, {
+        clientX,
+        clientY: (row.top + row.bottom) / 2,
+      });
     }
 
     it("shows the insertion indicator wherever a dragged session hovers the pane row", () => {
@@ -3043,8 +3066,7 @@ describe("DesktopApp", () => {
       ).toBeInTheDocument();
 
       vscode.postMessage.mockClear();
-      fireEvent.drop(screen.getByTestId("desktop-pane-row"), {
-        dataTransfer,
+      fireDrag(screen.getByTestId("desktop-pane-row"), "drop", dataTransfer, {
         clientX: 405,
       });
 
@@ -3079,8 +3101,7 @@ describe("DesktopApp", () => {
       // Right half of the last pane → boundary past the end, i.e. append.
       dragOverRow(dataTransfer, 700);
       vscode.postMessage.mockClear();
-      fireEvent.drop(screen.getByTestId("desktop-pane-row"), {
-        dataTransfer,
+      fireDrag(screen.getByTestId("desktop-pane-row"), "drop", dataTransfer, {
         clientX: 700,
       });
 
@@ -3105,8 +3126,7 @@ describe("DesktopApp", () => {
       );
       vscode.postMessage.mockClear();
 
-      fireEvent.drop(screen.getByTestId("desktop-pane-row"), {
-        dataTransfer,
+      fireDrag(screen.getByTestId("desktop-pane-row"), "drop", dataTransfer, {
         clientX: 100,
       });
 
@@ -3132,8 +3152,7 @@ describe("DesktopApp", () => {
       );
       vscode.postMessage.mockClear();
 
-      fireEvent.drop(screen.getByTestId("desktop-pane-row"), {
-        dataTransfer,
+      fireDrag(screen.getByTestId("desktop-pane-row"), "drop", dataTransfer, {
         clientX: 100,
       });
 
@@ -3163,24 +3182,20 @@ describe("DesktopApp", () => {
         screen.getByTestId("desktop-pane-pane-2"),
       ).getByTestId("chat-header");
       const dataTransfer = makeDataTransfer();
-      fireEvent.dragStart(header, { dataTransfer });
+      fireDrag(header, "dragstart", dataTransfer);
       expect(dataTransfer.getData("application/x-wave-pane")).toBe(
         JSON.stringify({ paneId: "pane-2" }),
       );
 
       // Left half of pane-0 → insert before it; the indicator shows.
-      // jsdom lacks DragEvent, so fireEvent's dragOver drops clientX —
-      // build the event manually to pin the pointer position.
       const target = screen.getByTestId("desktop-pane-pane-0");
-      const dragOver = createEvent.dragOver(target, { dataTransfer });
-      Object.defineProperty(dragOver, "clientX", { value: 100 });
-      fireEvent(target, dragOver);
+      dragOverRow(dataTransfer, 100, target);
       expect(
         screen.getByTestId("desktop-pane-drop-indicator"),
       ).toBeInTheDocument();
 
       vscode.postMessage.mockClear();
-      fireEvent.drop(target, { dataTransfer, clientX: 100 });
+      fireDrag(target, "drop", dataTransfer, { clientX: 100 });
 
       expect(vscode.postMessage).toHaveBeenCalledWith({
         command: "desktopMovePane",
@@ -3210,15 +3225,13 @@ describe("DesktopApp", () => {
         screen.getByTestId("desktop-pane-pane-1"),
       ).getByTestId("chat-header");
       const dataTransfer = makeDataTransfer();
-      fireEvent.dragStart(header, { dataTransfer });
+      fireDrag(header, "dragstart", dataTransfer);
 
       // Left half of pane-1 → boundary 1, which equals the pane's own index.
       const target = screen.getByTestId("desktop-pane-pane-1");
-      const dragOver = createEvent.dragOver(target, { dataTransfer });
-      Object.defineProperty(dragOver, "clientX", { value: 450 });
-      fireEvent(target, dragOver);
+      dragOverRow(dataTransfer, 450, target);
       vscode.postMessage.mockClear();
-      fireEvent.drop(target, { dataTransfer, clientX: 450 });
+      fireDrag(target, "drop", dataTransfer, { clientX: 450 });
 
       expect(vscode.postMessage).not.toHaveBeenCalledWith(
         expect.objectContaining({ command: "desktopMovePane" }),
@@ -3239,18 +3252,16 @@ describe("DesktopApp", () => {
       expect(header).not.toHaveAttribute("draggable");
 
       const dataTransfer = makeDataTransfer();
-      fireEvent.dragStart(header, { dataTransfer });
+      fireDrag(header, "dragstart", dataTransfer);
       expect(dataTransfer.getData("application/x-wave-pane")).toBe("");
 
-      const dragOver = createEvent.dragOver(pane, { dataTransfer });
-      Object.defineProperty(dragOver, "clientX", { value: 100 });
-      fireEvent(pane, dragOver);
+      dragOverRow(dataTransfer, 100, pane);
       expect(
         screen.queryByTestId("desktop-pane-drop-indicator"),
       ).not.toBeInTheDocument();
 
       vscode.postMessage.mockClear();
-      fireEvent.drop(pane, { dataTransfer, clientX: 100 });
+      fireDrag(pane, "drop", dataTransfer, { clientX: 100 });
       expect(vscode.postMessage).not.toHaveBeenCalledWith(
         expect.objectContaining({ command: "desktopMovePane" }),
       );
@@ -3273,8 +3284,7 @@ describe("DesktopApp", () => {
       // the press began on a button inside it; simulate that sequence.
       fireEvent.mouseDown(toggle);
       const dataTransfer = makeDataTransfer();
-      const dragStart = createEvent.dragStart(header, { dataTransfer });
-      fireEvent(header, dragStart);
+      const dragStart = fireDrag(header, "dragstart", dataTransfer);
 
       expect(dataTransfer.getData("application/x-wave-pane")).toBe("");
       expect(dragStart.defaultPrevented).toBe(true);
@@ -3282,7 +3292,7 @@ describe("DesktopApp", () => {
       // A press on the header body still drags normally.
       fireEvent.mouseDown(header);
       const second = makeDataTransfer();
-      fireEvent.dragStart(header, { dataTransfer: second });
+      fireDrag(header, "dragstart", second);
       expect(second.getData("application/x-wave-pane")).toBe(
         JSON.stringify({ paneId: "pane-1" }),
       );
@@ -3505,26 +3515,8 @@ describe("DesktopApp", () => {
       return result;
     }
 
-    function makeDataTransfer(
-      payload?: Record<string, unknown>,
-      mime = "application/x-wave-pane",
-    ) {
-      const store: Record<string, string> = {};
-      if (payload) store[mime] = JSON.stringify(payload);
-      return {
-        get types() {
-          return Object.keys(store);
-        },
-        setData: (type: string, value: string) => {
-          store[type] = value;
-        },
-        getData: (type: string) => store[type] ?? "",
-        effectAllowed: "",
-        dropEffect: "",
-      };
-    }
-
-    // jsdom reports 0 rects; pin real sizes where the layout measures.
+    // The row split is computed from the measured container height, so pin it —
+    // the real height depends on the page and the neighbours in this fixture.
     function mockRowsContainerHeight(height: number) {
       const el = screen.getByTestId("desktop-pane-rows");
       vi.spyOn(el, "getBoundingClientRect").mockReturnValue({
@@ -3570,19 +3562,13 @@ describe("DesktopApp", () => {
       });
     }
 
-    // jsdom lacks DragEvent, so fireEvent's dragOver drops clientX/clientY —
-    // build the event manually to pin the pointer position.
+    // Drag over `target` at a pinned pointer position.
     function dragOverAt(
       target: Element,
-      dataTransfer: ReturnType<typeof makeDataTransfer>,
+      dataTransfer: DataTransfer,
       pos: { clientX?: number; clientY?: number },
     ) {
-      const event = createEvent.dragOver(target, { dataTransfer });
-      if (pos.clientX !== undefined)
-        Object.defineProperty(event, "clientX", { value: pos.clientX });
-      if (pos.clientY !== undefined)
-        Object.defineProperty(event, "clientY", { value: pos.clientY });
-      fireEvent(target, event);
+      fireDrag(target, "dragover", dataTransfer, pos);
     }
 
     it("renders two rows with a row separator and applies the host row heights", () => {
@@ -3700,7 +3686,7 @@ describe("DesktopApp", () => {
       ).not.toBeInTheDocument();
 
       vscode.postMessage.mockClear();
-      fireEvent.drop(screen.getByTestId("desktop-pane-row"), { dataTransfer });
+      fireDrag(screen.getByTestId("desktop-pane-row"), "drop", dataTransfer);
 
       expect(vscode.postMessage).toHaveBeenCalledWith({
         command: "desktopOpenPane",
@@ -3737,7 +3723,7 @@ describe("DesktopApp", () => {
       );
 
       vscode.postMessage.mockClear();
-      fireEvent.drop(screen.getByTestId("desktop-pane-row"), { dataTransfer });
+      fireDrag(screen.getByTestId("desktop-pane-row"), "drop", dataTransfer);
 
       expect(vscode.postMessage).toHaveBeenCalledWith({
         command: "desktopOpenPane",
@@ -3773,7 +3759,7 @@ describe("DesktopApp", () => {
       );
 
       vscode.postMessage.mockClear();
-      fireEvent.drop(header, { dataTransfer });
+      fireDrag(header, "drop", dataTransfer);
 
       expect(vscode.postMessage).toHaveBeenCalledWith({
         command: "desktopOpenPane",
@@ -3811,7 +3797,7 @@ describe("DesktopApp", () => {
       });
 
       vscode.postMessage.mockClear();
-      fireEvent.drop(screen.getByTestId("desktop-pane-row"), { dataTransfer });
+      fireDrag(screen.getByTestId("desktop-pane-row"), "drop", dataTransfer);
 
       // No newRow split — the drop falls back to an in-row insertion.
       expect(vscode.postMessage).not.toHaveBeenCalledWith(
@@ -3840,7 +3826,7 @@ describe("DesktopApp", () => {
         screen.getByTestId("desktop-pane-pane-1"),
       ).getByTestId("chat-header");
       const dataTransfer = makeDataTransfer();
-      fireEvent.dragStart(header, { dataTransfer });
+      fireDrag(header, "dragstart", dataTransfer);
 
       const target = screen.getByTestId("desktop-pane-pane-0");
       dragOverAt(target, dataTransfer, { clientX: 100, clientY: 590 });
@@ -3849,7 +3835,7 @@ describe("DesktopApp", () => {
       );
 
       vscode.postMessage.mockClear();
-      fireEvent.drop(target, { dataTransfer });
+      fireDrag(target, "drop", dataTransfer);
 
       expect(vscode.postMessage).toHaveBeenCalledWith({
         command: "desktopMovePane",
@@ -3873,7 +3859,7 @@ describe("DesktopApp", () => {
         screen.getByTestId("desktop-pane-pane-0"),
       ).getByTestId("chat-header");
       const dataTransfer = makeDataTransfer();
-      fireEvent.dragStart(header, { dataTransfer });
+      fireDrag(header, "dragstart", dataTransfer);
 
       // Left half of pane-1 (the only second-row pane) → insert before it.
       const target = screen.getByTestId("desktop-pane-pane-1");
@@ -3883,7 +3869,7 @@ describe("DesktopApp", () => {
       ).toBeInTheDocument();
 
       vscode.postMessage.mockClear();
-      fireEvent.drop(target, { dataTransfer });
+      fireDrag(target, "drop", dataTransfer);
 
       expect(vscode.postMessage).toHaveBeenCalledWith({
         command: "desktopMovePane",
@@ -3902,7 +3888,8 @@ describe("DesktopApp", () => {
         [0.5, 0.5],
         "pane-0",
       );
-      // canAddPane measures the row element; give it a real width (jsdom reports 0).
+      // canAddPane measures the row element; state its width instead of reading
+      // the page's (the drop side is decided against it).
       mockRowRect("desktop-pane-row-1", 300, 300);
       mockPaneRect("pane-1", 0, 400);
       const dataTransfer = makeDataTransfer(
@@ -3920,9 +3907,7 @@ describe("DesktopApp", () => {
       ).toBeInTheDocument();
 
       vscode.postMessage.mockClear();
-      fireEvent.drop(screen.getByTestId("desktop-pane-row-1"), {
-        dataTransfer,
-      });
+      fireDrag(screen.getByTestId("desktop-pane-row-1"), "drop", dataTransfer);
 
       expect(vscode.postMessage).toHaveBeenCalledWith({
         command: "desktopOpenPane",
@@ -3975,9 +3960,7 @@ describe("DesktopApp", () => {
       ).toBeInTheDocument();
 
       vscode.postMessage.mockClear();
-      fireEvent.drop(screen.getByTestId("desktop-pane-row-1"), {
-        dataTransfer,
-      });
+      fireDrag(screen.getByTestId("desktop-pane-row-1"), "drop", dataTransfer);
 
       expect(vscode.postMessage).toHaveBeenCalledWith(
         expect.objectContaining({

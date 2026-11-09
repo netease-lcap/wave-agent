@@ -6,7 +6,7 @@
  * 详情里命令行块与输出块各自限高并在内部滚动，关闭最后一个 tab 面板一并收起。
  */
 
-import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
+import { describe, it, expect, afterEach, beforeEach } from "vitest";
 import { render, fireEvent, screen, act } from "@testing-library/react";
 import React from "react";
 import { DesktopApp } from "../../src/components/DesktopApp";
@@ -19,8 +19,6 @@ import {
   fireInput,
 } from "./test-utils";
 import { fixtures } from "wave-webview-fixtures";
-
-vi.mock("../../src/styles/DesktopApp.css", () => ({}));
 
 const runningTask: BackgroundTaskSummary = {
   id: "bg-1",

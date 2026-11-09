@@ -127,7 +127,8 @@ describe("collapse via updateTasks", () => {
 describe("scroll updated task into view", () => {
   it("scrolls the status-changed task to center on updateTasks", async () => {
     const scrollIntoView = vi.fn();
-    // jsdom doesn't implement Element.scrollIntoView
+    // 断言的是「滚了哪一行、用哪个对齐方式」，所以把真实 API 换成可观察的桩：
+    // 让它真的滚一趟只会给测试页面加一段平滑动画，什么也证明不了。
     window.Element.prototype.scrollIntoView = scrollIntoView;
 
     renderChatApp();

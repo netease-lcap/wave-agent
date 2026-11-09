@@ -185,7 +185,7 @@ export const MessageList = forwardRef<
    * 内容列宽度，只给大纲判断「窄到该不该整体隐藏」。与 `textWidth` 是两件事：
    * 那一个是正文折行宽度（量不到就留 undefined，估算用它自己的兜底），这一个
    * 必须**总有个数**——所以 `getBoundingClientRect` 之外用 `offsetWidth` 兜底
-   * （jsdom 不做排版，rect 恒 0，tests/setup.ts 把 offsetWidth 固定成 800）。
+   * （列被隐藏/尚未排版时 rect 恒 0，`offsetWidth` 仍给出布局宽度）。
    */
   const [columnWidth, setColumnWidth] = useState(0);
   useLayoutEffect(() => {
@@ -274,7 +274,7 @@ export const MessageList = forwardRef<
     const container = containerRef.current;
     if (!container) return;
     const measure = () => {
-      // jsdom 里 clientHeight 恒 0，offsetHeight 由 tests/setup.ts 兜底。
+      // 容器被隐藏（如旁路 pane 未激活）时 clientHeight 恒 0，用 offsetHeight 兜底。
       const height = container.clientHeight || container.offsetHeight;
       setListViewportHeight((prev) => (prev === height ? prev : height));
       const column = columnRef.current;

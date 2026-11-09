@@ -96,7 +96,7 @@ const CommandDescription: React.FC<{ text: string }> = ({ text }) => {
     const measure = () =>
       setIsTruncated(element.scrollHeight > element.clientHeight + 1);
     measure();
-    if (typeof ResizeObserver === "undefined") return; // jsdom（单测）无此 API
+    if (typeof ResizeObserver === "undefined") return; // 老引擎：只量这一次
     const observer = new ResizeObserver(measure);
     observer.observe(element);
     return () => observer.disconnect();

@@ -134,8 +134,9 @@ function unitRect(container: HTMLElement, index: number): DOMRect | null {
 
 /**
  * Where the floating comment button goes: just under the end of the selection,
- * or — when the selection has no geometry (jsdom, or a browser that reports
- * nothing) — under the last commented line.
+ * or — when the selection has no geometry (it was collapsed, or the line is
+ * inside a hidden pane and reports no client rects) — under the last commented
+ * line.
  */
 export function selectionAnchor(
   container: HTMLElement | null,

@@ -10,9 +10,6 @@ import React from "react";
 import { DesktopApp } from "../../src/components/DesktopApp";
 import { createMockVscode, sendCommand } from "./test-utils";
 
-vi.mock("../../src/styles/DesktopApp.css", () => ({}));
-vi.mock("../../src/styles/SessionBoard.css", () => ({}));
-
 /**
  * 会话重命名（spec desktop-sessions.md「会话重命名」）：入口是侧边栏会话行
  * 「⋯」菜单里的重命名，打开居中模态（预填当前名称并全选），保存即改写该行。

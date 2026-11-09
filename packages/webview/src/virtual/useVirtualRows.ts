@@ -70,8 +70,8 @@ const TOUCH_STALE_MS = 400;
 const SAVED_DOC_LIMIT = 32;
 
 /**
- * 视口高度。浏览器里 `clientHeight` 是准的（扣掉了横向滚动条），但它被 jsdom
- * 恒定为 0 —— 那里退回 `offsetHeight`，单元测试才能算出窗口。
+ * 视口高度。`clientHeight` 扣掉了横向滚动条，是准的；但它会是 0（首帧、
+ * 容器处于隐藏态），那里退回 `offsetHeight`。
  */
 const viewportHeight = (element: HTMLElement): number =>
   element.clientHeight || element.offsetHeight;
@@ -390,7 +390,7 @@ export function useVirtualRows(options: UseVirtualRowsOptions): VirtualRows {
 
   /**
    * 内容的真实底：`scrollHeight` 含 spacer 之外的东西（压缩提示），比行长总和准；
-   * jsdom 里它恒为 0，退回「按账本算」。两者都取最大值，首帧没有布局时也安全。
+   * 容器被隐藏时它会是 0，退回「按账本算」。两者都取最大值，首帧没有布局时也安全。
    */
   const contentBottom = useCallback(() => {
     const container = containerRef.current;

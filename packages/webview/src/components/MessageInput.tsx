@@ -453,8 +453,9 @@ export const MessageInput = forwardRef<
         if (i > 0) div.appendChild(document.createElement("br"));
         div.appendChild(document.createTextNode(line));
       });
-      // jsdom lacks a real innerText, so fall back to textContent for the
-      // state mirror (only its trim() emptiness check is consumed).
+      // `innerText` is the layout-aware text; the `textContent` fallback
+      // covers engines that don't implement it, and only the state mirror's
+      // trim() emptiness check consumes this value.
       const mirror = div.innerText ?? div.textContent ?? "";
       setMessage(mirror);
       inputContentRef.current = mirror;

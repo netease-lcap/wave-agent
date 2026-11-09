@@ -16,7 +16,7 @@
   "devDependencies": {
     "rimraf": "^6.0.1",
     "typescript": "^7.0.2",
-    "vitest": "^4.1.5",
+    "vitest": "^5.1.0",
     "wave-agent-sdk": "workspace:*"
   }
 }

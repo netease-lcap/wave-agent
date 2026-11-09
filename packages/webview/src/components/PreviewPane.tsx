@@ -303,8 +303,8 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
   // one so two passes can't fight over the zoom factor.
   const fitGenRef = useRef(0);
 
-  // Fallback width for the fit pass when the element reports no size (jsdom /
-  // first paint) — mirror of the controlled `width` prop.
+  // Fallback width for the fit pass when the element reports no size (first
+  // paint, a hidden tab) — mirror of the controlled `width` prop.
   const widthRef = useRef(width);
   widthRef.current = width;
 

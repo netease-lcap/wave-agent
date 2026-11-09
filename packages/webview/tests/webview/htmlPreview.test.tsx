@@ -1,9 +1,9 @@
-import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
+import { describe, it, expect, afterEach, beforeEach } from "vitest";
 import { render, fireEvent, screen, act } from "@testing-library/react";
 import React from "react";
 import { DesktopApp } from "../../src/components/DesktopApp";
 import { prunePanelGroupCache } from "../../src/components/ChatApp";
-import { WRITE_TOOL_NAME } from "wave-agent-sdk";
+import { WRITE_TOOL_NAME } from "wave-agent-sdk/constants";
 import {
   createMockVscode,
   renderChatApp,
@@ -13,8 +13,6 @@ import {
 import { fixtures } from "wave-webview-fixtures";
 import { MockDataGenerator } from "../fixtures/mockData";
 import type { Message } from "wave-agent-sdk";
-
-vi.mock("../../src/styles/DesktopApp.css", () => ({}));
 
 /**
  * Local .html path → preview tab (spec: docs/specs/desktop/desktop-preview.md

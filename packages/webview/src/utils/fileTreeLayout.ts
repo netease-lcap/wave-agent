@@ -28,8 +28,8 @@ export function treeWidthCeiling(available: number): number {
 /**
  * 把目标宽度夹进 [MIN, MAX]，并且不让正文窄于 `CONTENT_MIN_WIDTH`。
  *
- * `available <= 0` 表示还没量到面板宽度（首帧、没有 ResizeObserver 的环境如
- * jsdom）：此时只夹 MIN/MAX，不按「面板 0 宽」把树压成 0。
+ * `available <= 0` 表示还没量到面板宽度（首帧、面板处于隐藏态，以及没有
+ * ResizeObserver 的老引擎）：此时只夹 MIN/MAX，不按「面板 0 宽」把树压成 0。
  */
 export function clampTreeWidth(desired: number, available: number): number {
   const bounded = Math.max(TREE_MIN_WIDTH, Math.min(TREE_MAX_WIDTH, desired));

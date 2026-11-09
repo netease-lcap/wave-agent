@@ -13,7 +13,11 @@ import {
   fixtures,
 } from "./test-utils";
 
-vi.mock("../../src/styles/DesktopApp.css", () => ({}));
+// 变更记录的正文走真 DOMPurify 白名单（「链接文字保留、可点元素不生成」就是这条
+// 白名单的判据），而 browser 的 setup 把它 mock 成了直通。
+vi.unmock("dompurify");
+
+// CSS 不需要 mock（见 test-utils.tsx 的说明；browser mode 下会破坏 import map）。
 
 /**
  * Render the desktop root (workdir picked → sidebar appears) and let the host
@@ -60,10 +64,12 @@ function pushUsage(overrides: Record<string, unknown>) {
 }
 
 /**
- * jsdom 没有布局，`getBoundingClientRect` 恒为 0 —— 打桩成一张「贴在页面下方、
- * 随窗口高度移动」的账户卡片：`.account-card-main` 的顶 = `mainTop()`，卡片本身
- * 比行高（用量区在上）。卡片底边必须低于行顶，否则锚点高度算成负数、`DOMRect`
- * 的 `top` 会取 `min(y, y + height)`，把 +4 的间隙悄悄吃回去。
+ * 把账户卡片钉成「贴在页面下方、随窗口高度移动」的一张：`.account-card-main` 的
+ * 顶 = `mainTop()`，卡片本身比行高（用量区在上）。浮层锚点要算的是「卡片在视口
+ * 某个高度时往哪边翻」，而卡片在真实排版里的位置取决于面板高度与滚动位置（测试
+ * 里没有那一层布局），所以这里给一个可参数化的确定值。卡片底边必须低于行顶，
+ * 否则锚点高度算成负数、`DOMRect` 的 `top` 会取 `min(y, y + height)`，把 +4 的
+ * 间隙悄悄吃回去。
  */
 function stubCardGeometry(
   mainTop: () => number,
@@ -91,8 +97,9 @@ function stubCardGeometry(
 }
 
 /**
- * 把视口尺子打桩成「扣掉经典滚动条」的 client 尺寸（jsdom 里这两个值恒为 0，
- * 实现会回退到 `innerWidth` / `innerHeight`，所以只有打了桩才量得出差别）。
+ * 把视口尺子钉成比 `innerWidth` / `innerHeight` 小的 client 尺寸：实现优先读
+ * documentElement 的 client 尺寸、读不到（0）才回退到窗口内尺寸，两个值不同才
+ * 测得出它读的是哪一个（「扣掉经典滚动条」的那条路）。
  * 用完调返回的清理函数摘掉自有属性，别影响后面的用例。
  */
 function stubClientViewport(width: number, height: number) {

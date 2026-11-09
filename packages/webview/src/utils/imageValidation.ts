@@ -21,11 +21,12 @@
  *      see the constant.
  *
  * Steps 4-5 need a Chromium-family host (desktop Electron / VS Code webview /
- * JetBrains JCEF all qualify). Hosts without the API (e.g. jsdom in unit
- * tests) fall back to the byte-level checks instead of rejecting everything —
- * an oversized image then takes the long way round and reaches the SDK, whose
- * outbound rewrite pass (packages/agent-sdk/src/utils/imageRewrite.ts, via
- * sharp) resizes it, or drops it with a note when no codec is available.
+ * JetBrains JCEF all qualify). A host that lacks either API (an old WebView
+ * without `createImageBitmap`) falls back to the byte-level checks instead of
+ * rejecting everything — an oversized image then takes the long way round and
+ * reaches the SDK, whose outbound rewrite pass
+ * (packages/agent-sdk/src/utils/imageRewrite.ts, via sharp) resizes it, or
+ * drops it with a note when no codec is available.
  */
 import { OUTBOUND_IMAGE_MAX_DIMENSION_PX } from "wave-agent-sdk/constants";
 

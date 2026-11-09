@@ -1,12 +1,9 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 import { render, screen, fireEvent, act } from "@testing-library/react";
 import path from "node:path";
 import React from "react";
 import { DesktopApp } from "../../src/components/DesktopApp";
 import { createMockVscode, sendCommand, setInputText } from "./test-utils";
-
-vi.mock("../../src/styles/DesktopApp.css", () => ({}));
-vi.mock("../../src/styles/SessionBoard.css", () => ({}));
 
 // 与 desktopApp.test.tsx 同构的 DesktopApp 全流程渲染：workdir →
 // 会话树 →（可选）打开「活动」看板。
@@ -165,7 +162,8 @@ describe("会话状态看板（活动）", () => {
     expect(draft).toBe("把重试次数改成 3 次");
 
     // 返回当前会话：输入框重挂载，桌面宿主按 webviewReady 回放快照（inputContent
-    // 取自 inputDrafts）。真实回放由宿主完成，jsdom 里手动补这一步。
+    // 取自 inputDrafts）。回放由宿主完成（webview 这边只负责把 webviewReady 发
+    // 出去），测试里手动补这一步。
     fireEvent.click(screen.getByRole("button", { name: "返回当前会话" }));
     act(() => {
       sendCommand("setInitialState", { messages: [], inputContent: draft });
@@ -210,7 +208,7 @@ describe("会话状态看板（活动）", () => {
     expect(draft).toContain(`[@file:${uploadedPath}]`);
     expect(draft).toContain("这个文件里写的是什么");
 
-    // 返回当前会话：宿主按 inputDrafts 回放快照（jsdom 里手动补这一步）
+    // 返回当前会话：宿主按 inputDrafts 回放快照（测试里手动补这一次回放）
     fireEvent.click(screen.getByRole("button", { name: "返回当前会话" }));
     act(() => {
       sendCommand("setInitialState", { messages: [], inputContent: draft });

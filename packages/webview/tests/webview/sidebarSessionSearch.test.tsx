@@ -1,11 +1,8 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import React from "react";
 import { DesktopApp } from "../../src/components/DesktopApp";
 import { createMockVscode, sendCommand } from "./test-utils";
-
-vi.mock("../../src/styles/DesktopApp.css", () => ({}));
-vi.mock("../../src/styles/SessionBoard.css", () => ({}));
 
 /**
  * 侧栏会话搜索与筛选（spec desktop-sessions.md「侧栏会话搜索与筛选」）：

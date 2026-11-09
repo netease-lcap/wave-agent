@@ -8,6 +8,7 @@ import {
 } from "@testing-library/react";
 import React from "react";
 import { SingleFilePane } from "./filePaneHarness";
+import { pinScrollBoxHeight } from "./test-utils";
 import {
   clearSelection,
   openCommentAt,
@@ -289,12 +290,18 @@ describe("FilePane", () => {
   it("scrolls to the start line when the opener carries one", () => {
     const content =
       Array.from({ length: 60 }, (_, i) => `line ${i + 1}`).join("\n") + "\n";
-    renderPane({ fileView: makeFileView({ content, startLine: 56 }) });
-    // 内容区现在是标签带 / 查找条下面的那一层（.file-pane-scroll），它才是滚动
-    // 容器——标签带和查找条不该跟着正文滚走。
-    const body = document.querySelector(".file-pane-scroll") as HTMLElement;
-    // (56 - 1) * 20 - 20 * 1.5 → the requested line lands ~1.5 lines from the top.
-    expect(body.scrollTop).toBe(1070);
+    // 正文区的高度来自面板外的布局：不先声明，60 行会把滚动盒撑满、落点被夹回 0。
+    const restore = pinScrollBoxHeight(".file-pane-scroll", 100);
+    try {
+      renderPane({ fileView: makeFileView({ content, startLine: 56 }) });
+      // 内容区现在是标签带 / 查找条下面的那一层（.file-pane-scroll），它才是滚动
+      // 容器——标签带和查找条不该跟着正文滚走。
+      const body = document.querySelector(".file-pane-scroll") as HTMLElement;
+      // (56 - 1) * 20 - 20 * 1.5 → the requested line lands ~1.5 lines from the top.
+      expect(body.scrollTop).toBe(1070);
+    } finally {
+      restore();
+    }
   });
 
   it("shows the total-lines truncated hint", () => {

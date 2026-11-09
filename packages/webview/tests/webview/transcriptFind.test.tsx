@@ -16,6 +16,7 @@ import {
   act,
   sendCommand,
   fireEvent,
+  pinMessageListViewport,
 } from "./test-utils";
 
 const userMsg = (content: string, id: string) => ({
@@ -63,6 +64,9 @@ const renderWith = async (messages: unknown[]) => {
   await waitFor(() =>
     expect(screen.getByTestId("messages-container")).toBeInTheDocument(),
   );
+  // 列表只挂视口附近的行，而视口高度来自列表外面的布局：不钉一个，整段历史
+  // 都会留在 DOM 里，「未挂载的行」这条路（本文件最关键的判据）就永远不出现。
+  pinMessageListViewport(screen.getByTestId("messages-container"));
 };
 
 describe("transcript find", () => {
@@ -111,7 +115,12 @@ describe("transcript find", () => {
     );
 
     await renderWith(messages);
-    expect(document.querySelectorAll(".virtual-row").length).toBeLessThan(200);
+    // 视口钉好后列表要重排一次，窗口才从「全部」收缩成当前视口附近那一段。
+    await waitFor(() =>
+      expect(document.querySelectorAll(".virtual-row").length).toBeLessThan(
+        200,
+      ),
+    );
     expect(document.body.textContent).not.toContain("needle");
 
     await openFind();
@@ -122,8 +131,8 @@ describe("transcript find", () => {
         "1/1",
       ),
     );
-    // 未挂载的行画不出高亮（jsdom 没有布局，滚动落不到那里）——恰恰说明计数
-    // 不是从 DOM 数出来的。
+    // 未挂载的行画不出高亮（它根本不在 DOM 里）——恰恰说明计数不是从 DOM
+    // 数出来的。
     expect(hitCount()).toBe(0);
   });
 

@@ -3,7 +3,7 @@ import { render } from "@testing-library/react";
 import React from "react";
 import { Message } from "../../src/components/Message";
 import { createMockVscode } from "./test-utils";
-import { BASH_TOOL_NAME } from "wave-agent-sdk";
+import { BASH_TOOL_NAME } from "wave-agent-sdk/constants";
 import type { Message as MessageType } from "../../src/types";
 
 // 命令输出里的 ANSI 颜色由 UI 渲染成颜色而不是剥掉（见

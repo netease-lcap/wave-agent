@@ -16,9 +16,6 @@ import type {
  * `desktopArtifactShareSave`。测试直接渲染页面并注入这些回包，锚定 testid。
  */
 
-vi.mock("../../src/styles/ArtifactsPage.css", () => ({}));
-vi.mock("../../src/styles/SessionBoard.css", () => ({}));
-
 const SERVER_URL = "https://codechat.test";
 
 interface Harness {

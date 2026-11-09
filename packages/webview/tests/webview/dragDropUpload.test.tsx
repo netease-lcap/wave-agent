@@ -1,4 +1,4 @@
-import { render, fireEvent, waitFor, act } from "@testing-library/react";
+import { render, waitFor, act } from "@testing-library/react";
 import React from "react";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { ChatApp } from "../../src/components/ChatApp";
@@ -38,14 +38,46 @@ function renderPane(paneId: string) {
   };
 }
 
+/**
+ * A real DataTransfer. "Files" is not a MIME you can set: `setData("Files", …)`
+ * is an ordinary type, reported lowercased as "files". A browser reports the
+ * "Files" type only when the transfer actually carries a file item, so a file
+ * drag gets a stand-in file unless the caller provides the real ones.
+ */
+const makeDataTransfer = (types: string[], files: File[] = []) => {
+  const dataTransfer = new DataTransfer();
+  for (const type of types) {
+    if (type !== "Files") dataTransfer.setData(type, "");
+  }
+  const carried = files.length > 0 ? files : [new File(["x"], "x.txt")];
+  if (types.includes("Files")) {
+    for (const file of carried) dataTransfer.items.add(file);
+  }
+  return dataTransfer;
+};
+
+/**
+ * Dispatch a real drag event. `fireEvent` cannot be used: it rebuilds
+ * `dataTransfer` with `new window.DataTransfer()` and copies only the source
+ * object's *own* properties, so a native DataTransfer reaches the component
+ * empty — no `types` (the overlay would never show) and no `files` (the drop
+ * would upload nothing). See the same note in desktopApp.test.tsx.
+ */
+const fireDrag = (
+  el: Element,
+  type: "dragenter" | "dragleave" | "dragover" | "drop",
+  dataTransfer: DataTransfer,
+) =>
+  act(() => {
+    el.dispatchEvent(
+      new DragEvent(type, { bubbles: true, cancelable: true, dataTransfer }),
+    );
+  });
+
 const dragEnter = (container: Element, types: string[] = ["Files"]) =>
-  act(() => {
-    fireEvent.dragEnter(container, { dataTransfer: { types } });
-  });
+  fireDrag(container, "dragenter", makeDataTransfer(types));
 const dragLeave = (container: Element, types: string[] = ["Files"]) =>
-  act(() => {
-    fireEvent.dragLeave(container, { dataTransfer: { types } });
-  });
+  fireDrag(container, "dragleave", makeDataTransfer(types));
 
 describe("Desktop file drag-and-drop upload", () => {
   beforeEach(() => {
@@ -110,11 +142,7 @@ describe("Desktop file drag-and-drop upload", () => {
 
     const file = new File(["hello"], "a.txt", { type: "text/plain" });
     dragEnter(chatContainer);
-    await act(async () => {
-      fireEvent.drop(chatContainer, {
-        dataTransfer: { files: [file] },
-      });
-    });
+    fireDrag(chatContainer, "drop", makeDataTransfer(["Files"], [file]));
     expect(containerHasOverlay(chatContainer)).toBe(false);
 
     await waitFor(() => {

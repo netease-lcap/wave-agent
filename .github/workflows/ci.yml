@@ -97,6 +97,13 @@ jobs:
         if: steps.filter.outputs.code == 'true'
         run: pnpm build
 
+      # wave-webview's unit suite runs in a real Chromium (vitest browser
+      # mode): jsdom does no layout, and the components under test measure
+      # their own geometry. Only that matrix leg needs the browser.
+      - name: Install Playwright Chromium (webview unit tests)
+        if: steps.filter.outputs.code == 'true' && matrix.pkg == 'webview'
+        run: pnpm -F wave-webview exec playwright install --with-deps chromium
+
       - name: Unit tests (shard ${{ matrix.shard }}/2)
         if: steps.filter.outputs.code == 'true'
         run: pnpm -F wave-${{ matrix.pkg }} test:unit --shard=${{ matrix.shard }}/2

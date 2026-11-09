@@ -4,14 +4,13 @@ import React from "react";
 import { FilePane, type FilePaneProps } from "../../src/components/FilePane";
 import type { FileViewState, OpenFileTab } from "../../src/types";
 
-vi.mock("../../src/styles/FilePane.css", () => ({}));
-
 /**
  * 树列的几何行为（spec desktop-file-panel.md「文件面板工作区目录树」场景 1-3）：
  * 正文保底、窄面板自动让位、拖到一半即收起、收起后的左缘拖拽带。
  *
- * 宽度靠桩 `clientWidth` 给（jsdom 没有布局），规则本身的分支值已在
- * `fileTreeLayout.test.ts` 里逐条断言，这里验的是「接进面板后真的照做」。
+ * 宽度靠桩 `clientWidth` 给：用例要的是 380/420 这类阈值附近的值，而面板在真实
+ * 排版里的宽度随窗口与邻居面板走。规则本身的分支值已在 `fileTreeLayout.test.ts`
+ * 里逐条断言，这里验的是「接进面板后真的照做」。
  */
 
 const WORKDIR = "/work/a";
@@ -137,7 +136,8 @@ describe("窄面板自动让位（场景 3）", () => {
     setBodyWidth(380);
     const narrow = renderPane();
     expect(screen.queryByTestId("file-pane-tree-col")).not.toBeInTheDocument();
-    // 只有宽度变了：同一组 props 重新挂载（jsdom 没有 ResizeObserver 可回声）
+    // 只有宽度变了：同一组 props 重新挂载（改 clientWidth 不触发 ResizeObserver，
+    // 重新挂载才会把这套量测再走一遍）
     narrow.unmount();
     setBodyWidth(420);
     renderPane();

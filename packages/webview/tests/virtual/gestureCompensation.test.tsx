@@ -39,7 +39,11 @@ vi.stubGlobal(
 const ROW_HEIGHT = 80;
 const ROW_COUNT = 20;
 const ROW_KEYS = Array.from({ length: ROW_COUNT }, (_, i) => `k${i}`);
-/** 视口由 tests/setup.ts 固定成 600px（容器 offsetHeight）。 */
+/**
+ * 视口 600px：真浏览器没有「offsetHeight 桩」，harness 自己给出可以真的滚的
+ * 尺寸——容器 600px 高 + overflow，spacer 撑出 20 行的内容高。
+ */
+const VIEWPORT_HEIGHT = 600;
 const START_SCROLL = 400;
 const GROWTH = ROW_HEIGHT;
 
@@ -53,18 +57,37 @@ function Harness({
   const canvasRef = useRef<HTMLDivElement | null>(null);
   const rows = useVirtualRows({ keys: ROW_KEYS, estimate, canvasRef });
   useImperativeHandle(apiRef as never, () => rows, [rows]);
+  // 定位与高度照 app 的 MessageList.css 来（canvas 绝对定位铺满列、行绝对定位）：
+  // 只有 spacer 参与流，`scrollHeight` 才等于账本总高。
   return (
-    <div ref={rows.containerRef} data-testid="messages-container">
+    <div
+      ref={rows.containerRef}
+      data-testid="messages-container"
+      style={{
+        height: VIEWPORT_HEIGHT,
+        overflowY: "auto",
+        position: "relative",
+      }}
+    >
       <div className="messages-column">
         <div className="virtual-spacer" style={{ height: rows.totalSize }} />
-        <div className="virtual-canvas" ref={canvasRef}>
+        <div
+          className="virtual-canvas"
+          ref={canvasRef}
+          style={{ position: "absolute", inset: 0 }}
+        >
           {rows.rows.map((row) => (
             <div
               key={row.key}
               data-virtual-key={row.key}
               ref={rows.measureRow}
               className="virtual-row"
-              style={{ top: row.start }}
+              style={{
+                position: "absolute",
+                top: row.start,
+                height: ROW_HEIGHT,
+                width: "100%",
+              }}
             />
           ))}
         </div>
@@ -79,15 +102,6 @@ function mount() {
   const utils = render(<Harness apiRef={apiRef} />);
   const container = utils.getByTestId("messages-container");
   const canvas = container.querySelector(".virtual-canvas") as HTMLElement;
-  // jsdom 的 scrollHeight 恒为 0，内核据此判定「到底」会把每一次滚动都当成钉底。
-  // 让它跟着 spacer 长（= 账本总高），滚动分类才和真浏览器一致。
-  Object.defineProperty(container, "scrollHeight", {
-    configurable: true,
-    get: () => {
-      const spacer = container.querySelector(".virtual-spacer");
-      return spacer ? parseFloat((spacer as HTMLElement).style.height) : 0;
-    },
-  });
   return { ...utils, apiRef, container, canvas };
 }
 
@@ -101,18 +115,6 @@ function scrollUpTo(
     fireEvent.scroll(container);
     apiRef.current?.unpin();
   });
-}
-
-/**
- * 真浏览器的 `scrollTo` 落点会被上下界夹住；jsdom 的桩原样赋值，这里补上夹取，
- * 「折算兑现不了的那一截」才测得出来。
- */
-function clampScrollTo(container: HTMLElement) {
-  container.scrollTo = ((arg: ScrollToOptions | number) => {
-    const top = typeof arg === "number" ? arg : (arg.top ?? 0);
-    const max = container.scrollHeight - container.offsetHeight;
-    container.scrollTop = Math.min(Math.max(0, top), Math.max(0, max));
-  }) as typeof container.scrollTo;
 }
 
 /** 视口上方那一行（下标 1）长高：账本重算，补偿量为 +GROWTH。 */
@@ -190,7 +192,6 @@ describe("手势期补偿走视觉偏移", () => {
 
   it("上滑攒下偏移、再反向下甩：一换方向就折算，别拖到底部变成空白", () => {
     const { container, canvas } = mount();
-    clampScrollTo(container);
 
     // 先向下滚一段（建立「往下」这个方向），再往上滚——上滚时账本变，补偿挂成偏移。
     // 真机上的顺序就是这样：上翻读到更早的内容，偏移攒下来；然后用户掉头往下甩。
@@ -221,7 +222,6 @@ describe("手势期补偿走视觉偏移", () => {
 
   it("自己刚写过 scrollTop，紧接着甩到底：那次写入不能把到界折算挡掉", () => {
     const { container, canvas, apiRef } = mount();
-    clampScrollTo(container);
     const bottom = () => container.scrollHeight - container.offsetHeight;
 
     // 钉底 + 账本变化 ⇒ 内核自己把 scrollTop 写到真底，落进「自己那次滚动」的认领
@@ -254,7 +254,6 @@ describe("手势期补偿走视觉偏移", () => {
 
   it("手上滑再滑到底：一到底就折算，偏移不留到惯性停", () => {
     const { container, canvas, apiRef } = mount();
-    clampScrollTo(container);
 
     scrollUpTo(container, apiRef);
     act(() => {

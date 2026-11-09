@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderChatApp, waitFor, act, sendCommand } from "./test-utils";
-import { ASK_USER_QUESTION_TOOL_NAME } from "wave-agent-sdk";
+import { ASK_USER_QUESTION_TOOL_NAME } from "wave-agent-sdk/constants";
 import type { Message } from "wave-agent-sdk";
 
 describe("AskUserQuestion Newline Support", () => {

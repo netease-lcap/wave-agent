@@ -6,6 +6,7 @@ import {
   act,
   sendCommand,
   waitFor,
+  pinScrollBoxHeight,
 } from "./test-utils";
 import {
   EDIT_TOOL_NAME,
@@ -13,7 +14,7 @@ import {
   WRITE_TOOL_NAME,
   EXIT_PLAN_MODE_TOOL_NAME,
   ASK_USER_QUESTION_TOOL_NAME,
-} from "wave-agent-sdk";
+} from "wave-agent-sdk/constants";
 
 describe("Confirmation Dialog", () => {
   beforeEach(() => {
@@ -114,8 +115,8 @@ describe("Confirmation Dialog", () => {
     renderChatApp();
 
     // renderChatApp() focuses the message input on mount; record it as the
-    // pre-dialog focus. (Don't compare against body — jsdom has already
-    // focused the input.)
+    // pre-dialog focus. (Don't compare against body — the input, not body, is
+    // the active element before the dialog opens.)
     const initialFocus = document.activeElement;
 
     await act(async () => {
@@ -1745,19 +1746,24 @@ describe("AskUserQuestion Other input", () => {
     const optionLabels = () =>
       Array.from(document.querySelectorAll<HTMLElement>(".option-item"));
 
-    it("opens without moving focus; every option is a Tab stop", async () => {
+    it("opens without taking focus; every option is a Tab stop", async () => {
       renderChatApp();
-      // Opening the dialog deliberately does NOT move focus (spec「确认弹窗
-      // 焦点圈」场景 1)：the user may be typing when it pops up and reaches
-      // the options with Tab or a click.
-      const initialFocus = document.activeElement;
+      // Opening the dialog deliberately does NOT put focus inside it (spec
+      // 「确认弹窗焦点圈」场景 1)：the user may be typing when it pops up and
+      // reaches the options with Tab or a click. Where focus lands instead is
+      // not asserted: a real browser leaves focus on <body> after this
+      // re-render, and the only thing the spec forbids is the dialog taking it.
       showAskUser(twoOptionQuestion);
       await waitFor(() => {
         expect(
           document.querySelector(".confirmation-dialog"),
         ).toBeInTheDocument();
       });
-      expect(document.activeElement).toBe(initialFocus);
+      expect(
+        document
+          .querySelector(".confirmation-dialog")!
+          .contains(document.activeElement),
+      ).toBe(false);
       // Every option still holds its own Tab stop (plain Tab traversal,
       // matching Claude's IDE/desktop AskUserQuestion).
       const labels = optionLabels();
@@ -1773,8 +1779,8 @@ describe("AskUserQuestion Other input", () => {
         ).toBeInTheDocument();
       });
       const labels = optionLabels();
-      // Opening doesn't move focus, so simulate the keyboard user Tabbing
-      // into the dialog first (jsdom doesn't move focus on fireEvent either).
+      // Opening doesn't move focus, so simulate the keyboard user Tabbing into
+      // the dialog first (a dispatched keydown performs no default focus move).
       act(() => {
         labels[0].focus();
       });
@@ -1787,7 +1793,8 @@ describe("AskUserQuestion Other input", () => {
         expect(document.activeElement).toBe(labels[0]);
       }
       // Tab steps through the option labels in DOM order (the "Other" item is
-      // in the sequence). jsdom does not move focus on Tab, so step manually.
+      // in the sequence). A dispatched keydown never performs the browser's own
+      // Tab focus move, so step manually.
       const other = document.querySelector<HTMLElement>(".other-option")!;
       expect(optionLabels().map((l) => l.dataset.optionIndex)).toEqual([
         "0",
@@ -2016,7 +2023,7 @@ describe("AskUserQuestion Other input", () => {
       expect(dialog.contains(document.activeElement)).toBe(true);
     });
 
-    it("keeps focus on the pre-dialog element across open and dismiss", async () => {
+    it("returns focus to the pre-dialog element on dismiss", async () => {
       renderChatApp();
       const input = document.querySelector<HTMLElement>(
         '[data-testid="message-input"]',
@@ -2030,10 +2037,11 @@ describe("AskUserQuestion Other input", () => {
           document.querySelector(".confirmation-dialog"),
         ).toBeInTheDocument();
       });
-      // Opening never moved focus (jsdom keeps it on the hidden input; a real
-      // browser drops it to body and restoreFocus's fallback re-focuses the
-      // input on dismiss).
-      expect(document.activeElement).toBe(input);
+      // Opening never takes focus into the dialog. Where it goes in the
+      // meantime is the browser's business (it drops to <body>); what the
+      // user gets back is the input they were typing in, restored on dismiss.
+      const dialogEl = document.querySelector(".confirmation-dialog")!;
+      expect(dialogEl.contains(document.activeElement)).toBe(false);
       act(() => {
         fireEvent.click(document.querySelector(".confirmation-close-btn")!);
       });
@@ -2179,9 +2187,9 @@ describe("AskUserQuestion 选项区折叠", () => {
       document.querySelectorAll(".question-navigation .confirmation-btn"),
     ).map((b) => b.textContent!.trim());
 
-  // 折叠的视觉结果（选项区真的被 display:none 收掉、弹窗变矮、消息列表拿回空间）
-  // 由 e2e/confirm-collapse.e2e.ts 在真实浏览器里量；jsdom 不解析外部样式表，
-  // 这里只断「状态类 + aria + DOM 归属 + 交互后果」。
+  // 折叠的像素级结果（选项区真的被收掉、弹窗变矮、消息列表拿回空间）属于视觉
+  // 回归，交给 e2e/confirm-collapse.e2e.ts；这里锁的是更稳的那套契约：状态类 +
+  // aria + DOM 归属 + 交互后果。
   it("folds the option area, keeping the question chip, progress bar and nav bar", async () => {
     renderChatApp();
     showAskUser(questions);
@@ -2217,65 +2225,82 @@ describe("AskUserQuestion 选项区折叠", () => {
   });
 
   it("keeps answers, Other text, current question and list scroll offset across a fold", async () => {
-    renderChatApp();
-    showAskUser(questions);
-    await waitForDialog();
+    // 列表得真的溢出，scrollTop 才留得住：内容放得下时浏览器会把它夹回 0。
+    // 高度在挂载前就由样式表给（组件挂载后立刻读/写滚动位置）。
+    const restore = pinScrollBoxHeight(".options-list", 100);
+    try {
+      renderChatApp();
+      // Q2 多给几项，选项列表才能长出 100px 的视口。
+      showAskUser([
+        questions[0],
+        {
+          question: "Q2 选择语言？",
+          options: Array.from({ length: 8 }, (_, i) => ({
+            label: `语言 ${i}`,
+          })),
+          multiSelect: false,
+        },
+      ]);
+      await waitForDialog();
 
-    // Q1：选中「其他」并输入自定义答案。
-    act(() => {
-      fireEvent.click(
-        document.querySelector(
-          '.option-item[data-option-index="other"] input',
-        )!,
+      // Q1：选中「其他」并输入自定义答案。
+      act(() => {
+        fireEvent.click(
+          document.querySelector(
+            '.option-item[data-option-index="other"] input',
+          )!,
+        );
+      });
+      const otherInput = (await waitFor(() => {
+        const el =
+          document.querySelector<HTMLTextAreaElement>(".other-text-input");
+        expect(el).toBeInTheDocument();
+        return el!;
+      })) as HTMLTextAreaElement;
+      act(() => {
+        fireEvent.change(otherInput, { target: { value: "自定义回答" } });
+      });
+
+      // 切到 Q2（当前题号 = 1），并给选项列表一个滚动位置。
+      act(() => {
+        fireEvent.click(
+          document.querySelector(
+            '.question-navigation [aria-label="下一个"]',
+          ) as HTMLElement,
+        );
+      });
+      const list = document.querySelector<HTMLElement>(".options-list")!;
+      list.scrollTop = 120;
+
+      act(() => {
+        fireEvent.click(toggle());
+      });
+      act(() => {
+        fireEvent.click(toggle());
+      });
+
+      // 当前题号仍在 Q2。
+      expect(document.querySelector(".question-header-chip")).toHaveTextContent(
+        "Q2 选择语言？",
       );
-    });
-    const otherInput = (await waitFor(() => {
-      const el =
-        document.querySelector<HTMLTextAreaElement>(".other-text-input");
-      expect(el).toBeInTheDocument();
-      return el!;
-    })) as HTMLTextAreaElement;
-    act(() => {
-      fireEvent.change(otherInput, { target: { value: "自定义回答" } });
-    });
-
-    // 切到 Q2（当前题号 = 1），并给选项列表一个滚动位置。
-    act(() => {
-      fireEvent.click(
-        document.querySelector(
-          '.question-navigation [aria-label="下一个"]',
-        ) as HTMLElement,
-      );
-    });
-    const list = document.querySelector<HTMLElement>(".options-list")!;
-    list.scrollTop = 120;
-
-    act(() => {
-      fireEvent.click(toggle());
-    });
-    act(() => {
-      fireEvent.click(toggle());
-    });
-
-    // 当前题号仍在 Q2。
-    expect(document.querySelector(".question-header-chip")).toHaveTextContent(
-      "Q2 选择语言？",
-    );
-    // 列表滚动位置回填（display:none 会丢掉它）。
-    expect(
-      document.querySelector<HTMLElement>(".options-list")!.scrollTop,
-    ).toBe(120);
-    // Q1 的「其他」输入内容仍在（切回 Q1 验证）。
-    act(() => {
-      fireEvent.click(
-        document.querySelector(
-          '.question-navigation [aria-label="上一个"]',
-        ) as HTMLElement,
-      );
-    });
-    expect(
-      document.querySelector<HTMLTextAreaElement>(".other-text-input")!.value,
-    ).toBe("自定义回答");
+      // 列表滚动位置回填（display:none 会丢掉它）。
+      expect(
+        document.querySelector<HTMLElement>(".options-list")!.scrollTop,
+      ).toBe(120);
+      // Q1 的「其他」输入内容仍在（切回 Q1 验证）。
+      act(() => {
+        fireEvent.click(
+          document.querySelector(
+            '.question-navigation [aria-label="上一个"]',
+          ) as HTMLElement,
+        );
+      });
+      expect(
+        document.querySelector<HTMLTextAreaElement>(".other-text-input")!.value,
+      ).toBe("自定义回答");
+    } finally {
+      restore();
+    }
   });
 
   it("drops the folded options from the Tab cycle (wrap goes close → collapse toggle)", async () => {

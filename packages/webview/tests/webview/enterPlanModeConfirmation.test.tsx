@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderChatApp, fireEvent, act, sendCommand } from "./test-utils";
-import { ENTER_PLAN_MODE_TOOL_NAME } from "wave-agent-sdk";
+import { ENTER_PLAN_MODE_TOOL_NAME } from "wave-agent-sdk/constants";
 
 describe("EnterPlanMode Confirmation Dialog", () => {
   beforeEach(() => {

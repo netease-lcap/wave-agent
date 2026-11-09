@@ -177,7 +177,9 @@ describe("fenced code block URL linkification", () => {
       onOpenPreview,
     });
 
-    // 契约是「点完之后浏览器的默认跳转仍在」；helper 兜住 jsdom 不支持的导航。
+    // 契约是「点完之后浏览器的默认跳转仍在」；helper 在冒泡到 window 的最后一个
+    // 监听点记下应用有没有 preventDefault，再取消这次默认跳转——不取消的话真浏览器
+    // 会把测试页面带走。
     const preventedByApp = clickKeepingDefaultNavigation(links()[0]!);
 
     expect(onOpenPreview).not.toHaveBeenCalled();

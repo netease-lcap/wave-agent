@@ -3,7 +3,7 @@ import { render, fireEvent } from "@testing-library/react";
 import React from "react";
 import { Message } from "../../src/components/Message";
 import { createMockVscode, clickKeepingDefaultNavigation } from "./test-utils";
-import { BASH_TOOL_NAME } from "wave-agent-sdk";
+import { BASH_TOOL_NAME } from "wave-agent-sdk/constants";
 import type { Message as MessageType } from "../../src/types";
 
 // bash 命令输出中的裸 http(s) URL 应被链接化（见 specs/ui/markdown-links.md），

@@ -13,8 +13,6 @@ import { convertToMarkdown } from "../../src/utils/messageUtils";
 import { createMockVscode, sendCommand } from "./test-utils";
 import { MockDataGenerator } from "../fixtures/mockData";
 
-vi.mock("../../src/styles/DesktopApp.css", () => ({}));
-
 // Preview panes live in the guest keep-alive layer (spec desktop-right-panel.md
 //「preview guest 跨会话保活」): the shown one carries data-parked="false", the
 // parked ones (other sessions / inactive tabs) are kept alive but hidden.
@@ -138,6 +136,16 @@ function mockGuestMetrics(wv: MockWebview, contentWidth: number) {
   wv.getZoomFactor = vi.fn(() => zoom);
   wv.executeJavaScript = vi.fn(async () => contentWidth);
 }
+/** Pin the width the fit pass measures. It takes the pane element's real
+ * `getBoundingClientRect().width`, and the harness box adds a hairline to the
+ * controlled `width` prop — real CSS makes that 421 for a 420 panel, i.e.
+ * 421/1200 = 0.3508 instead of the intended 0.35. Returns a setter so staged
+ * cases (panel grows, panel shrinks) can move the premise between steps. */
+function pinPaneWidth() {
+  const pane = screen.getByTestId("preview-pane");
+  const rect = vi.spyOn(pane, "getBoundingClientRect");
+  return (width: number) => rect.mockReturnValue({ width } as DOMRect);
+}
 const firePickerSubmit = (wv: MockWebview, payload: Record<string, unknown>) =>
   fireEvent(
     wv,
@@ -149,9 +157,10 @@ const firePickerSubmit = (wv: MockWebview, payload: Record<string, unknown>) =>
 
 // PreviewPane watches its own element with a ResizeObserver so a CSS-driven
 // width change (fullscreen !important / a tab stack turning visible again)
-// re-fits the guest — the controlled `width` prop can't see those. jsdom has
-// no layout and test-utils' shared RO mock swallows callbacks, so capture the
-// instances here and fire size changes manually.
+// re-fits the guest — the controlled `width` prop can't see those. A real RO
+// only reports sizes the layout actually produces, and these cases need a
+// specific one at a specific moment, so capture the instances here and fire the
+// size change by hand.
 class CapturingResizeObserver {
   static instances: CapturingResizeObserver[] = [];
   static reset() {
@@ -586,6 +595,7 @@ describe("PreviewPane", () => {
   describe("overflow auto-fit (spec scenario 7)", () => {
     it("shrinks the guest when the page is wider than the panel", async () => {
       const { wv } = renderPane();
+      pinPaneWidth()(420);
       // Panel 420, content 1200 → zoom 420/1200 = 0.35; at 0.35 the viewport
       // is 1200 so the re-measure fits and the pass stops.
       mockGuestMetrics(wv, 1200);
@@ -615,6 +625,8 @@ describe("PreviewPane", () => {
 
     it("zooms back in when the panel grows wider than the content needs", async () => {
       const { wv, rerenderWithUrl } = renderPane();
+      const setPaneWidth = pinPaneWidth();
+      setPaneWidth(420);
       mockGuestMetrics(wv, 1200);
       fireDomReady(wv);
       fireDidFinishLoad(wv);
@@ -624,12 +636,14 @@ describe("PreviewPane", () => {
       );
 
       // Panel 840 → viewport 840/0.35 = 2400 > 1200: zoom 840/1200 = 0.7.
+      setPaneWidth(840);
       rerenderWithUrl("http://localhost:5173/app", 840);
       await vi.waitFor(() =>
         expect(wv.setZoomFactor).toHaveBeenCalledWith(0.7),
       );
 
       // Panel 1300 ≥ content 1200 → zoom back to exactly 1.
+      setPaneWidth(1300);
       rerenderWithUrl("http://localhost:5173/app", 1300);
       await vi.waitFor(() =>
         expect(wv.setZoomFactor).toHaveBeenLastCalledWith(1),
@@ -641,6 +655,7 @@ describe("PreviewPane", () => {
 
     it("resets to 100% on navigation so a page that fits isn't stuck scaled down", async () => {
       const { wv } = renderPane();
+      pinPaneWidth()(420);
       mockGuestMetrics(wv, 1200);
       fireDomReady(wv);
       fireDidFinishLoad(wv);
@@ -1008,7 +1023,8 @@ describe("PreviewPane integration (DesktopApp)", () => {
     expect(body).toHaveClass("preview-fullscreen");
     // 对话列保持挂载、由 CSS 隐藏（`.desktop-chat-main { display:none }`）：
     // 卸载会连坐销毁 <MessageInput>，退出全屏时草稿与滚动位置随之丢失
-    // （spec desktop-preview.md 场景 7）。jsdom 不跑样式，这里只断言没被卸载。
+    // （spec desktop-preview.md 场景 7）。隐藏是否真的生效是样式的事（归 e2e），
+    // 这里锁的是「没被卸载」这条契约。
     expect(body.querySelector(".desktop-chat-main")).not.toBeNull();
     expect(screen.getByTestId("preview-pane")).toBeInTheDocument();
     // The inactive diff tab stays mounted but hidden (content survives).

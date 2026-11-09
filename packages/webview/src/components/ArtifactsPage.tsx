@@ -473,8 +473,9 @@ const RowActions: React.FC<{
     const measure = measureRef.current;
     if (!cell || !measure) return;
     const check = () => {
-      // 没有布局的环境（jsdom 单测：clientWidth 恒 0）不做判定 —— 按「放得下」
-      // 渲染原样三颗按钮，测试与无布局场景都不会平白把动作藏进菜单。
+      // 还没量到宽度时（首帧、面板处于隐藏态，clientWidth 为 0）不做判定 —— 按
+      // 「放得下」渲染原样三颗按钮，等 ResizeObserver 报出真实宽度再决定要不要
+      // 把动作收进菜单。
       if (!cell.clientWidth) {
         setCompact(false);
         return;

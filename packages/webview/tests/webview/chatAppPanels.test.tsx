@@ -4,7 +4,10 @@ import React from "react";
 import { DesktopApp } from "../../src/components/DesktopApp";
 import { ChatApp, prunePanelGroupCache } from "../../src/components/ChatApp";
 import type { WebviewTagElement } from "../../src/components/PreviewPane";
-import { READ_TOOL_NAME, EXIT_PLAN_MODE_TOOL_NAME } from "wave-agent-sdk";
+import {
+  READ_TOOL_NAME,
+  EXIT_PLAN_MODE_TOOL_NAME,
+} from "wave-agent-sdk/constants";
 import {
   createMockVscode,
   sendCommand,
@@ -17,7 +20,17 @@ import { fixtures } from "wave-webview-fixtures";
 import type { DesktopPaneInfo } from "wave-webview-fixtures";
 import { MockDataGenerator } from "../fixtures/mockData";
 
-vi.mock("../../src/styles/DesktopApp.css", () => ({}));
+/**
+ * Fixture pane width: a single pane filling the row (`flex: 0 1 100%`).
+ *
+ * Panel cases need the chat column wide enough for the panel's space guard
+ * (`CHAT_MAIN_MIN_WIDTH` + `PANEL_MIN_WIDTH` = 562px). A half-width pane in the
+ * 1280px test viewport measures ~510px, so the guard would — correctly — refuse
+ * to open the panel and the case could only pass by measuring a container of
+ * width 0. These cases are about what happens once a panel opens, so the
+ * fixture gives the pane the whole row instead of asserting the guard away.
+ */
+const FULL_PANE_WIDTH = 1;
 
 /**
  * Conversation-level panel framework (FR-039/040/041/042): the header toggle
@@ -195,8 +208,9 @@ describe("ChatApp desktop panel framework", () => {
 
   it("the empty preview pane (no URL) resizes via the slot's left-edge handle", () => {
     window.waveHostType = "desktop";
-    // jsdom reports 0 rects; pin a container width so the auto-fill stays
-    // positive and the drag can actually widen the panel.
+    // The expectations below are arithmetic on the slot's own width
+    // (round(1024×0.4)), so pin the measurement to 1024 — the real row width
+    // follows the page and would make the numbers unreadable.
     const rectSpy = vi
       .spyOn(Element.prototype, "getBoundingClientRect")
       .mockReturnValue({ width: 1024, right: 1024, left: 0 } as DOMRect);
@@ -227,8 +241,8 @@ describe("ChatApp desktop panel framework", () => {
 
   it("the empty state (expanded, no tabs) resizes via the slot's divider handle (spec 场景 9)", () => {
     window.waveHostType = "desktop";
-    // jsdom reports 0 rects; pin a container width so the auto-fill and the
-    // drag can actually move the panel width.
+    // Same as above: the expected widths are arithmetic on the measured slot
+    // width, so pin it instead of inheriting the page's real width.
     const rectSpy = vi
       .spyOn(Element.prototype, "getBoundingClientRect")
       .mockReturnValue({ width: 1400, right: 1400 } as DOMRect);
@@ -864,7 +878,7 @@ describe("session-level panel groups", () => {
             sessionId,
             row: 0,
             host: "local",
-            width: 0.5,
+            width: FULL_PANE_WIDTH,
             ...extra,
           },
         ],
@@ -1142,7 +1156,8 @@ describe("session-level panel groups", () => {
     const input = screen.getByTestId("preview-address-input");
     fireEvent.change(input, { target: { value: "localhost:8899/" } });
     fireEvent.keyDown(input, { key: "Enter" });
-    // Guest never became dom-ready in jsdom: the initial src is retargeted.
+    // Until the guest reports `dom-ready` the initial src is retargeted in place
+    // (a plain browser never emits that Electron/VS Code event on its own).
     expect(
       screen
         .getByTestId("preview-pane")
@@ -1529,7 +1544,7 @@ describe("remote preview port forwarding", () => {
             sessionId: "s1",
             row: 0,
             host: "prod",
-            width: 0.5,
+            width: FULL_PANE_WIDTH,
           },
         ],
         focusedPaneId: "pane-1",
@@ -1920,7 +1935,7 @@ describe("remote preview port forwarding", () => {
             sessionId: "s1",
             row: 0,
             host: "local",
-            width: 0.5,
+            width: FULL_PANE_WIDTH,
           },
         ],
         focusedPaneId: "pane-1",
@@ -1971,7 +1986,7 @@ describe("remote preview port forwarding", () => {
             sessionId: "s2",
             row: 0,
             host: "local",
-            width: 0.5,
+            width: FULL_PANE_WIDTH,
           },
         ],
         focusedPaneId: "pane-1",
@@ -1996,7 +2011,7 @@ describe("remote preview port forwarding", () => {
             sessionId: "s1",
             row: 0,
             host: "prod",
-            width: 0.5,
+            width: FULL_PANE_WIDTH,
           },
         ],
         focusedPaneId: "pane-1",
@@ -2076,7 +2091,7 @@ describe("remote preview port forwarding", () => {
             sessionId: "s2",
             row: 0,
             host: "prod2",
-            width: 0.5,
+            width: FULL_PANE_WIDTH,
           },
         ],
         focusedPaneId: "pane-1",
@@ -2125,7 +2140,7 @@ describe("remote preview port forwarding", () => {
             sessionId: "s1",
             row: 0,
             host: "prod",
-            width: 0.5,
+            width: FULL_PANE_WIDTH,
           },
         ],
         focusedPaneId: "pane-1",
@@ -2337,7 +2352,7 @@ describe("desktop plan panel", () => {
             sessionId: "s1",
             row: 0,
             host: "local",
-            width: 1,
+            width: FULL_PANE_WIDTH,
           },
         ],
         focusedPaneId: "pane-1",
@@ -2442,7 +2457,7 @@ describe("desktop plan panel", () => {
             sessionId: "s1",
             row: 0,
             host: "local",
-            width: 0.5,
+            width: FULL_PANE_WIDTH,
           },
         ],
         focusedPaneId: "pane-1",
@@ -2530,7 +2545,7 @@ describe("desktop plan panel", () => {
               sessionId,
               row: 0,
               host: "local",
-              width: 0.5,
+              width: FULL_PANE_WIDTH,
             },
           ],
           focusedPaneId: "pane-1",
@@ -2556,7 +2571,7 @@ describe("desktop plan panel", () => {
           sessionId: "s1",
           row: 0,
           host: "local",
-          width: 0.5,
+          width: FULL_PANE_WIDTH,
         },
       ],
       focusedPaneId: "pane-1",
@@ -2618,7 +2633,7 @@ describe("desktop plan panel", () => {
               sessionId,
               row: 0,
               host: "local",
-              width: 0.5,
+              width: FULL_PANE_WIDTH,
             },
           ],
           focusedPaneId: "pane-1",
@@ -2651,7 +2666,7 @@ describe("desktop plan panel", () => {
           sessionId: "s1",
           row: 0,
           host: "local",
-          width: 0.5,
+          width: FULL_PANE_WIDTH,
         },
       ],
       focusedPaneId: "pane-1",

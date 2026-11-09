@@ -5,7 +5,7 @@ import {
   READ_TOOL_NAME,
   BASH_TOOL_NAME,
   WRITE_TOOL_NAME,
-} from "wave-agent-sdk";
+} from "wave-agent-sdk/constants";
 
 /**
  * Test tool block error rendering functionality

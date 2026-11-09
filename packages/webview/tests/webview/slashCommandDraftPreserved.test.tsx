@@ -21,25 +21,11 @@ import {
  * 并上报宿主会话记忆（updateInputContent 传剩余文本而非空串）。
  */
 
-// jsdom 未实现 innerText。给 message-input 挂一个实时 getter/setter 模拟
-// 浏览器行为（textContent 是 jsdom 里可写的真实文本），使 MessageInput 内
-// 读 innerText / 写 innerText 的地方与 DOM 保持一致。
-function mockInnerText(el: HTMLElement) {
-  Object.defineProperty(el, "innerText", {
-    configurable: true,
-    get: () => el.textContent ?? "",
-    set: (value: string) => {
-      el.textContent = value;
-    },
-  });
-}
-
 /** 把输入框内容设为 text（光标移到末尾），触发快捷指令检测并等弹窗出现。 */
 async function openSlashPopup(text: string) {
   const { vscode } = renderChatApp();
   const input = screen.getByTestId("message-input");
   input.focus();
-  mockInnerText(input);
 
   input.textContent = text;
   const range = document.createRange();

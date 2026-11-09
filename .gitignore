@@ -7,6 +7,8 @@ build/
 .env*
 coverage/
 .vitest-reports/
+# vitest 5 把 reporter/attachments/截图/trace 统一写到项目根的 .vitest/
+.vitest/
 .DS_Store
 Thumbs.db
 *.tmp

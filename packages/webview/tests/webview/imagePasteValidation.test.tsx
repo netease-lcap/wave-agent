@@ -12,53 +12,15 @@ function bytesFromBase64(base64: string): Uint8Array {
   return bytes;
 }
 
-// jsdom implements neither DataTransfer nor the paste plumbing the component
-// uses, so mirror them minimally (same approach as imageTagConsistency.test.tsx).
-interface MockDataTransferItem {
-  type: string;
-  getAsFile: () => File;
-}
-class MockDataTransfer {
-  private _files: File[] = [];
-  private _items: MockDataTransferItem[] = [];
-  get files(): File[] {
-    return this._files;
-  }
-  get items(): MockDataTransferItem[] & {
-    add: (file: File) => void;
-    length: number;
-  } {
-    const arr = this._items as MockDataTransferItem[] & {
-      add: (file: File) => void;
-      length: number;
-    };
-    arr.add = (file: File) => {
-      this._files.push(file);
-      this._items.push({ type: file.type, getAsFile: () => file });
-    };
-    return arr;
-  }
-  get types(): string[] {
-    return [];
-  }
-  getData() {
-    return "";
-  }
-  setData() {}
-  clearData() {}
-}
-(globalThis as Record<string, unknown>).DataTransfer = MockDataTransfer;
-
+/** Build a real paste event carrying the given files (the browser has both). */
 function createImagePasteEvent(files: File[]): ClipboardEvent {
-  const dataTransfer = new MockDataTransfer();
+  const dataTransfer = new DataTransfer();
   files.forEach((file) => dataTransfer.items.add(file));
-
-  const event = new Event("paste", { bubbles: true, cancelable: true });
-  Object.defineProperty(event, "clipboardData", {
-    value: dataTransfer,
-    configurable: true,
+  return new ClipboardEvent("paste", {
+    bubbles: true,
+    cancelable: true,
+    clipboardData: dataTransfer,
   });
-  return event as ClipboardEvent;
 }
 
 function makeImageFile(bytes: Uint8Array, name: string, type: string): File {

@@ -90,8 +90,9 @@ describe("Message link routing", () => {
 
   it("plugin host: links are not intercepted at all", () => {
     const onOpenPreview = vi.fn();
-    // jsdom only implements same-document (fragment) navigation; clicking
-    // real URLs would trigger its unimplemented cross-document navigation.
+    // The links here are same-document fragments (`#app` / `#docs`), so letting
+    // the default through only moves the page's hash — no navigation away from
+    // the test page. `fireEvent.click` reports whether the default survived.
     const { vscode, localLink, externalLink } = renderMessage({
       onOpenPreview,
       content: "preview [local app](#app) then [docs](#docs)",

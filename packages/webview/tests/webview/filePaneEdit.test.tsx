@@ -4,7 +4,7 @@ import React from "react";
 import { SingleFilePane, type SingleFilePaneProps } from "./filePaneHarness";
 import { DesktopApp } from "../../src/components/DesktopApp";
 import { prunePanelGroupCache } from "../../src/components/ChatApp";
-import { READ_TOOL_NAME, WRITE_TOOL_NAME } from "wave-agent-sdk";
+import { READ_TOOL_NAME, WRITE_TOOL_NAME } from "wave-agent-sdk/constants";
 import type { Message } from "wave-agent-sdk";
 import {
   createMockVscode,
@@ -16,8 +16,8 @@ import { fixtures } from "wave-webview-fixtures";
 import type { FileViewState } from "../../src/types";
 
 // The editor itself is CodeMirror loaded from a separately built chunk
-// (editor.js); jsdom cannot inject it. The panel only talks to it through
-// path/initialValue/onChange/onSave, so a textarea stands in.
+// (editor.js) that the unit suite's module graph never contains. The panel only
+// talks to it through path/initialValue/onChange/onSave, so a textarea stands in.
 vi.mock("../../src/components/fileEditor/FileEditor", () => ({
   FileEditor: ({
     path,
@@ -44,8 +44,6 @@ vi.mock("../../src/components/fileEditor/FileEditor", () => ({
     </div>
   ),
 }));
-
-vi.mock("../../src/styles/DesktopApp.css", () => ({}));
 
 const baseFileView = (
   overrides: Partial<FileViewState> = {},

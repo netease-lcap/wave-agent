@@ -463,6 +463,9 @@ describe("remoteSettingsService", () => {
       (authService.isSSOAuthenticated as Mock).mockReturnValue(true);
       (authService.getSSOToken as Mock).mockReturnValue("token123");
       (authService.getServerUrl as Mock).mockReturnValue("https://server.test");
+      // refresh() only unlinks a cache file that exists; say so explicitly
+      // instead of inheriting whatever the previous test left on the mock.
+      (fs.existsSync as Mock).mockReturnValue(true);
 
       const newSettings = { language: "ko" };
       vi.stubGlobal(

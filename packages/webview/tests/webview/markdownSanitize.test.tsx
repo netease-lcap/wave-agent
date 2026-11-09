@@ -8,7 +8,10 @@ import { EXIT_PLAN_MODE_TOOL_NAME } from "wave-agent-sdk/constants";
 
 // Mermaid is heavy and irrelevant here; stub it out. DOMPurify must stay REAL so
 // these tests exercise the actual sanitize whitelists (`Message.tsx` for message
-// markdown, `ConfirmationDialog.tsx` for the plan body).
+// markdown, `ConfirmationDialog.tsx` for the plan body) — the browser setup mocks
+// it as a passthrough for every other spec, and this is one of the two that have
+// to undo that.
+vi.unmock("dompurify");
 vi.mock("mermaid", () => ({
   default: {
     initialize: vi.fn(),

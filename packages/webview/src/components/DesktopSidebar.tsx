@@ -628,7 +628,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
     }
 
     // Collapsed groups don't render their <ul> at all, so everything matching
-    // here is visible — no layout-based filtering (jsdom has none either).
+    // here is visible — DOM order is visual order, no geometry needed.
     const mains = Array.from(
       tree.querySelectorAll<HTMLElement>("[data-session-main]"),
     );
@@ -727,7 +727,8 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
           try {
             e.dataTransfer.effectAllowed = "copy";
           } catch {
-            // jsdom's DataTransfer polyfill exposes a read-only effectAllowed.
+            // Best-effort: some engines expose `effectAllowed` as read-only,
+            // and a rejected write would abort the dragstart handler.
           }
         }}
         data-testid={`desktop-session-item-${session.sessionId}`}

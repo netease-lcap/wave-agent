@@ -17,7 +17,10 @@
  */
 import { afterEach, describe, expect, it } from "vitest";
 import { act, renderChatApp, screen, sendCommand } from "./test-utils";
-import { BASH_TOOL_NAME, EXIT_PLAN_MODE_TOOL_NAME } from "wave-agent-sdk";
+import {
+  BASH_TOOL_NAME,
+  EXIT_PLAN_MODE_TOOL_NAME,
+} from "wave-agent-sdk/constants";
 
 const PLAN = "## 重构方案\n\n- 步骤一：抽 `src/a.ts`\n- 步骤二";
 

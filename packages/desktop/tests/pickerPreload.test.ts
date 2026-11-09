@@ -5,8 +5,9 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
  * Tests for the guest picker preload. The module is side-effect-only: it
  * registers an ipcRenderer listener on import and announces { type: 'ready' }.
  * Imported once at module scope; each test resets module state via deactivate.
- * sendToHost is NOT cleared between tests so the ready announcement (fired
- * once at import) stays observable — assertions match specific payloads.
+ * Both import-time calls are snapshotted below — vitest 5 clears mock call
+ * records before every test (`clearMocks: true` defaults), so the live mocks
+ * no longer remember what the import did.
  */
 
 const { ipcRenderer } = vi.hoisted(() => ({
@@ -47,6 +48,8 @@ const handler = ipcRenderer.on.mock.calls.find(
   event: unknown,
   msg: { action?: string; palette?: Record<string, string> },
 ) => void;
+/** The one-shot `{ type: "ready" }` announcement, fired during the import. */
+const importTimeCalls = [...ipcRenderer.sendToHost.mock.calls];
 const activate = (palette?: Record<string, string>) =>
   handler(null, { action: "activate", palette });
 const deactivate = () => handler(null, { action: "deactivate" });
@@ -126,7 +129,7 @@ function renderPage() {
 describe("pickerPreload", () => {
   it('announces { type: "ready" } on load', () => {
     expect(
-      ipcRenderer.sendToHost.mock.calls.some(
+      importTimeCalls.some(
         ([channel, payload]) =>
           channel === "wave-picker" && payload && payload.type === "ready",
       ),
@@ -286,10 +289,8 @@ describe("pickerPreload", () => {
   });
 
   it("Enter does not submit while IME is composing (e.g. pinyin)", () => {
-    // sendToHost is intentionally NOT cleared between tests (the ready
-    // handshake test relies on the import-time call), so scope the assertion
-    // to calls made within this test only.
-    ipcRenderer.sendToHost.mockClear();
+    // Mock call records are cleared before every test (vitest 5 default), so
+    // `not.toHaveBeenCalledWith` below only sees this test's own calls.
     const { button } = renderPage();
     activate({ accent: "#ff0000" });
     press(button);

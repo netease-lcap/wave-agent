@@ -4,17 +4,11 @@
  * 回到会话视图、再次点击入口关闭、与插件市场/活动看板互斥。
  */
 
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 import { render, screen, fireEvent, act } from "@testing-library/react";
 import React from "react";
 import { DesktopApp } from "../../src/components/DesktopApp";
 import { createMockVscode, sendCommand } from "./test-utils";
-
-vi.mock("../../src/styles/DesktopApp.css", () => ({}));
-vi.mock("../../src/styles/SessionBoard.css", () => ({}));
-vi.mock("../../src/styles/ArtifactsPage.css", () => ({}));
-vi.mock("../../src/styles/PluginMarketPage.css", () => ({}));
-vi.mock("../../src/styles/SettingsPage.css", () => ({}));
 
 function renderReady() {
   const vscode = createMockVscode();

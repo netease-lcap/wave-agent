@@ -13,45 +13,6 @@ const TINY_PNG_BASE64 =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==";
 const TINY_PNG_DATAURL = `data:image/png;base64,${TINY_PNG_BASE64}`;
 
-// jsdom does not implement DataTransfer; provide a minimal mock that supports
-// both the paste handler's reading pattern (items[i].type, items[i].getAsFile())
-// and the component's internal `new DataTransfer()` + items.add(file) + .files usage.
-interface MockDataTransferItem {
-  type: string;
-  getAsFile: () => File;
-}
-class MockDataTransfer {
-  private _files: File[] = [];
-  private _items: MockDataTransferItem[] = [];
-  get files(): File[] {
-    return this._files;
-  }
-  get items(): MockDataTransferItem[] & {
-    add: (file: File) => void;
-    length: number;
-  } {
-    const arr = this._items as MockDataTransferItem[] & {
-      add: (file: File) => void;
-      length: number;
-    };
-    arr.add = (file: File) => {
-      this._files.push(file);
-      this._items.push({ type: file.type, getAsFile: () => file });
-    };
-    return arr;
-  }
-  get types(): string[] {
-    return [];
-  }
-  getData() {
-    return "";
-  }
-  setData() {}
-  clearData() {}
-}
-// Make DataTransfer available globally so component code can use `new DataTransfer()`
-(globalThis as Record<string, unknown>).DataTransfer = MockDataTransfer;
-
 /**
  * Create a ClipboardEvent with an image file, matching the real paste handler expectations.
  */
@@ -65,17 +26,14 @@ function createImagePasteEvent(filename: string): ClipboardEvent {
   const blob = new Blob([byteArray], { type: "image/png" });
   const file = new File([blob], filename, { type: "image/png" });
 
-  const dataTransfer = new MockDataTransfer();
+  const dataTransfer = new DataTransfer();
   dataTransfer.items.add(file);
 
-  // jsdom does not implement ClipboardEvent constructor; use a generic Event
-  // and attach clipboardData via defineProperty.
-  const event = new Event("paste", { bubbles: true, cancelable: true });
-  Object.defineProperty(event, "clipboardData", {
-    value: dataTransfer,
-    configurable: true,
+  return new ClipboardEvent("paste", {
+    bubbles: true,
+    cancelable: true,
+    clipboardData: dataTransfer,
   });
-  return event as ClipboardEvent;
 }
 
 describe("Image Tag Consistency and Placeholder Flow", () => {

@@ -13,8 +13,6 @@ import {
 } from "./test-utils";
 import { fixtures } from "wave-webview-fixtures";
 
-vi.mock("../../src/styles/DesktopApp.css", () => ({}));
-
 /** Flushes the hook's rAF-deferred initial item focus. */
 const flushOpenFocus = () =>
   new Promise((resolve) => requestAnimationFrame(resolve));

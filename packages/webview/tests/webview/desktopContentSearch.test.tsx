@@ -7,7 +7,7 @@
  * `packages/desktop/tests/sessionContentSearch.test.ts` 里单测。
  */
 
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 import {
   render,
   screen,
@@ -18,9 +18,6 @@ import {
 import React from "react";
 import { DesktopApp } from "../../src/components/DesktopApp";
 import { createMockVscode, sendCommand } from "./test-utils";
-
-vi.mock("../../src/styles/DesktopApp.css", () => ({}));
-vi.mock("../../src/styles/SessionBoard.css", () => ({}));
 
 const userMsg = (content: string, id: string) => ({
   id,

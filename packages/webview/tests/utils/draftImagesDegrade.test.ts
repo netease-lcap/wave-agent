@@ -9,9 +9,13 @@ import { draftImageScopeKey } from "../../src/utils/draftImageStore";
  * 隐私模式、配额满、宿主环境没有 IndexedDB 时，粘贴与发送照常，只是图片不进
  * 持久化草稿——不能抛错、不能卡住输入。
  *
- * 这个文件故意不引入 fake-indexeddb：jsdom 本身没有 IndexedDB，正好就是那条
- * 降级路径（真实 IDB 往返见 draftImages.test.ts）。
+ * 真浏览器是自带 IndexedDB 的，所以这里把它摘掉来复现「存储打不开」：不引入
+ * fake-indexeddb，正是因为要的就是「一个能用的存储都没有」这条路径（真实 IDB
+ * 往返见 draftImages.test.ts）。必须在模块顶层摘——openDb 的句柄是模块级缓存，
+ * 第一个用例打开过之后就没法再假装它不存在了。
  */
+vi.stubGlobal("indexedDB", undefined);
+
 const PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUg==";
 
 const imageChip = (): HTMLElement => {

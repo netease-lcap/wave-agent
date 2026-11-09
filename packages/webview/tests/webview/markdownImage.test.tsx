@@ -200,8 +200,9 @@ describe("markdown 图片：档位 off 退化为纯文本", () => {
 
 describe("markdown 图片：加载失败就地降级（不留破图标）", () => {
   /**
-   * jsdom 不会真的取图，所以「失败」只能手动派发。`error` 不冒泡，但捕获阶段
-   * 依然会经过祖先节点——这正是实现选择容器捕获监听的原因。
+   * 真浏览器会真的去取图，取不到时自己派发 `error`——但什么时候回来（甚至回不回
+   * 来）取决于网络与缓存，用例不能等它。这里手动派发同一条事件。`error` 不冒泡，
+   * 但捕获阶段依然会经过祖先节点——这正是实现选择容器捕获监听的原因。
    */
   function failImage(container: HTMLElement): HTMLImageElement {
     const img = container.querySelector("img");

@@ -64,7 +64,8 @@ describe("Message input dropdown keyboard accessibility", () => {
 
   it("should trigger the hidden file input when pressing Enter on 上传文件", () => {
     renderChatApp();
-    // jsdom has no real file dialog; silence the hidden file input click.
+    // A real click on a file input opens the OS picker, which a test can neither
+    // drive nor dismiss — spy it and assert the menu reached it.
     const clickSpy = vi
       .spyOn(HTMLInputElement.prototype, "click")
       .mockImplementation(() => {});

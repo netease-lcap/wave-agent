@@ -93,8 +93,22 @@ describe("selectedUnitRange", () => {
 });
 
 describe("anchors", () => {
+  /**
+   * Make the fixture a genuinely scrollable box.
+   *
+   * A real browser clamps `scrollTop`/`scrollLeft` back to 0 when the content
+   * fits, so a case that asserts "the scroll offset is added in" has to give the
+   * box something to scroll: shrink it until the three lines overflow.
+   */
+  function makeScrollable(container: HTMLElement) {
+    container.style.overflow = "hidden";
+    container.style.width = "10px";
+    container.style.height = "10px";
+  }
+
   it("converts a client point into the container's content coordinates", () => {
     const { container } = mount();
+    makeScrollable(container);
     container.scrollTop = 40;
     container.scrollLeft = 10;
     container.getBoundingClientRect = () =>
@@ -104,6 +118,7 @@ describe("anchors", () => {
 
   it("falls back to the last commented line when the selection has no rect", () => {
     const { container, line } = mount();
+    makeScrollable(container);
     container.scrollTop = 5;
     container.getBoundingClientRect = () => ({ left: 0, top: 0 }) as DOMRect;
     line(3).getBoundingClientRect = () =>

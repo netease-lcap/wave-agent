@@ -64,7 +64,7 @@ describe("ErrorBoundary", () => {
   it("reloads the page when the way out is taken", () => {
     const reload = vi.fn();
     const original = window.location;
-    // jsdom 的 location 是不可替换的宿主对象，这里换成一个只带 reload 的壳。
+    // jsdom 的 location 可以整个换掉，这里换成一个只带 reload 的壳。
     Object.defineProperty(window, "location", {
       configurable: true,
       value: { reload },

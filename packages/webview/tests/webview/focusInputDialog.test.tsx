@@ -7,7 +7,7 @@ import {
   sendCommand,
 } from "./test-utils";
 import { MockDataGenerator } from "../fixtures/mockData";
-import { EDIT_TOOL_NAME } from "wave-agent-sdk";
+import { EDIT_TOOL_NAME } from "wave-agent-sdk/constants";
 
 // Switching to a side-by-side pane fires `focusInput`. When a confirm/rewind
 // dialog is open in that pane the message input is hidden (display:none during

@@ -1,6 +1,12 @@
 import React from "react";
 import { vi } from "vitest";
-import { render, act, fireEvent, screen } from "@testing-library/react";
+import {
+  render,
+  act,
+  fireEvent,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { VsCodeApi } from "../../src/types";
 import { ChatApp } from "../../src/components/ChatApp";
@@ -37,18 +43,11 @@ vi.mock("dompurify", () => ({
   },
 }));
 
-// Mock CSS imports
-vi.mock("../../src/styles/ChatApp.css", () => ({}));
-vi.mock("../../src/styles/globals.css", () => ({}));
-vi.mock("@vscode/codicons/dist/codicon.css", () => ({}));
+// 样式不做 mock：browser mode 里 `vi.mock("*.css")` 会触发 import map 重建，与已
+// 预打包的依赖冲突、整文件加载失败；样式本身由 vite 正常注入即可。
 
-// Mock ResizeObserver (not available in jsdom)
-class MockResizeObserver {
-  observe() {}
-  unobserve() {}
-  disconnect() {}
-}
-global.ResizeObserver = MockResizeObserver as unknown as typeof ResizeObserver;
+// ResizeObserver 用真浏览器自带的：虚拟列表靠它盯行高与容器尺寸，桩掉它等于让
+// 「行长高了」「面板开合」这两条路在测试里彻底消失。
 
 /**
  * Desktop host parity (spec desktop-split-pane.md「启动即单个分屏」): the real main
@@ -134,6 +133,92 @@ export function renderChatApp(vscode?: VsCodeApi) {
   sendHostMessage(fixtures.authStatusResponse());
   const user = userEvent.setup();
   return { ...result, vscode: mockVscode, user };
+}
+
+/**
+ * Give the message list a real, scrollable viewport.
+ *
+ * `.messages-container` gets its height from the chat layout around it, and
+ * Testing Library renders the app into a bare container: leave it alone and the
+ * list either has nothing to scroll (no scroll position is ever reachable) or
+ * grows as tall as its own content (nothing is virtualized, every row stays in
+ * the DOM). The test states the viewport the layout would have given it.
+ */
+export function pinMessageListViewport(
+  container: HTMLElement,
+  height = 600,
+): HTMLElement {
+  // `flex: none` first: `.messages-container` is a flex item with
+  // `flex: 1 1 0%`, and a non-auto flex-basis replaces `height` as the item's
+  // main size — without it the element stays as tall as all its rows.
+  container.style.flex = "none";
+  container.style.height = `${height}px`;
+  container.style.overflowY = "auto";
+  return container;
+}
+
+/**
+ * Declare a scroll box's height *before* it mounts, and return a restore.
+ *
+ * A scroll container takes its height from the layout around it (`flex: 1 1 0%`
+ * inside a full-height pane). Testing Library renders the component into a bare
+ * container with none of that, so the box grows as tall as its content, and a
+ * programmatic `scrollTop` write is clamped straight back to 0 — which is what
+ * several cases assert on. A stylesheet rule is the only way to have the height
+ * in place before the first layout: the component scrolls from a mount effect,
+ * so pinning the node after `render()` is already too late.
+ */
+export function pinScrollBoxHeight(
+  selector: string,
+  height: number,
+): () => void {
+  const style = document.createElement("style");
+  style.textContent = `${selector} {
+    height: ${height}px !important;
+    flex: none !important;
+    overflow-y: auto !important;
+  }`;
+  document.head.appendChild(style);
+  return () => style.remove();
+}
+
+/**
+ * Scroll the message list until message `id`'s row top sits `pastTop` px above
+ * the fold, then dispatch a scroll event so the list recomputes whatever it
+ * derives from the scroll position (sticky candidate, outline highlight, ...).
+ *
+ * Row heights are whatever the content measures, so the offset is read back
+ * from the row rather than assumed: park at the content top first (the row may
+ * be far outside the current window, and only windowed rows are in the DOM),
+ * take its offset in the list's own coordinate space, and scroll there.
+ *
+ * Returns the row, for assertions about where it ended up.
+ */
+export async function scrollRowAboveFold(
+  container: HTMLElement,
+  id: string,
+  pastTop = 24,
+): Promise<HTMLElement> {
+  act(() => {
+    container.scrollTop = 0;
+    fireEvent.scroll(container);
+  });
+  const row = await waitFor(() => {
+    const found = container.querySelector<HTMLElement>(
+      `[data-measured-message-id="${id}"]`,
+    );
+    if (!found) throw new Error(`row ${id} is not rendered`);
+    return found;
+  });
+  const rowStart =
+    row.getBoundingClientRect().top -
+    container.getBoundingClientRect().top +
+    container.scrollTop;
+  act(() => {
+    container.scrollTop = rowStart + pastTop;
+    fireEvent.scroll(container);
+  });
+  return row;
 }
 
 /**
@@ -224,10 +309,11 @@ export function sendHostMessage(message: HostToWebviewMessage) {
 /**
  * 点一个「应用不该拦截」的链接，返回应用是否 preventDefault 过。
  *
- * 这类用例断言的是「默认跳转仍在」，而 jsdom 不实现跨文档导航，只会往控制台
- * 打印 `Not implemented: navigation to another Document` 弄脏套件。所以在冒泡到
- * window（React 的处理器挂在更内层，跑到这里时已执行完）的最后一个监听点记下
- * 当时的 defaultPrevented，再自己 preventDefault 兜住这次导航。
+ * 契约是「应用没有取消默认」——只要读出这件事就够了，不需要让默认行为真的发生。
+ * 真浏览器读到 `defaultPrevented === false` 就会照着链接跳走，把测试页面（以及
+ * 后面的用例）一起带走，所以在冒泡到 window 的最后一个监听点（React 的处理器挂在
+ * 更内层，跑到这里时已执行完）记下当时的 `defaultPrevented`，然后自己
+ * `preventDefault()` 取消这次默认导航。
  */
 export function clickKeepingDefaultNavigation(element: Element): boolean {
   let preventedByApp = true;
@@ -248,10 +334,11 @@ export function clickKeepingDefaultNavigation(element: Element): boolean {
  * Set text on a contenteditable message input, then fire the input event so the
  * React handler picks up the value.
  *
- * `innerText` comes from the prototype polyfill in `tests/setup.ts` (mapped to
- * `textContent`), so do **not** redefine it on the element: a per-element
- * `innerText` pin keeps returning the old text after the DOM changes (e.g. the
- * input settling on another session's draft), which hides real state.
+ * `innerText` is a real property in a real browser, so write `textContent` and
+ * let the component read whatever it reads — do **not** redefine `innerText` on
+ * the element: a per-element pin keeps returning the old text after the DOM
+ * changes (e.g. the input settling on another session's draft), which hides the
+ * real state.
  */
 export async function setInputText(element: HTMLElement, text: string) {
   element.textContent = text;
