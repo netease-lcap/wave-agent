@@ -42,7 +42,7 @@ export interface UpdateCheckResult {
 }
 
 /** codechat 更新 feed 目录：stable = `/api/downloads/desktop/{platform}/`，
- *  beta = `/api/downloads/desktop-beta/{platform}/`（依赖 codechat #33）。 */
+ *  beta = `/api/downloads/desktop-beta/{platform}/`（codechat #33，v1.2.0 起已上线）。 */
 export function feedUrlFor(
   serverUrl: string,
   channel: UpdateChannel = "stable",

@@ -1,7 +1,7 @@
 /**
  * 变更记录（Release Notes）的归一化：feed 的 `releaseNotes` 是**数组**
- * （`[{ version, note }, …]`，最近若干个版本，服务端倒序，vusion/codechat#50），
- * 宿主按**已装版本**过滤后交给 webview 渲染（spec
+ * （`[{ version, note }, …]`，最近若干个版本，服务端倒序，vusion/codechat#50，
+ * v1.6.6 起已上线），宿主按**已装版本**过滤后交给 webview 渲染（spec
  * desktop-distribution.md「更新内容（Release Notes）」场景 5–6、
  * desktop-account.md「更新按钮状态机 S0–S3」场景 3）。
  *
