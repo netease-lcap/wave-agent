@@ -1075,19 +1075,37 @@ html[data-theme="dark"] .desktop-session-status-slot {
   opacity: 0.6;
 }
 
+/* 移除按钮（✕）：默认隐去，只在指针停到该选项行、或键盘把焦点移到这一行 / 这颗
+   按钮上时出现（设计师 2026-11-09 点 `button.desktop-workdir-menu-remove`：
+   「关闭按钮 hover 选项再出现」）。原来它常驻 0.5 透明度 —— 最近打开项是两行
+   路径，右侧一直挂着一颗灰 ✕，三四条连排时就是一片噪点。
+   显隐只动 opacity：按钮盒仍是 20×20、位置与行宽一律不变（隐藏态也不关
+   `pointer-events`，指针进入行内即刻显形，不存在「点不到」的死角）。 */
 .desktop-workdir-menu-remove {
   border: none;
   background: transparent;
   cursor: pointer;
   color: var(--vscode-foreground);
-  opacity: 0.5;
+  opacity: 0;
   padding: 2px;
   display: flex;
   align-items: center;
   flex-shrink: 0;
+  transition: opacity 120ms ease;
 }
 
-.desktop-workdir-menu-remove:hover {
+/* 出现的第一档取 0.5 —— 与原来常驻的那档同值，所以「悬停行」的观感与改前一致；
+   指针压到 ✕ 自己身上再提到 1。
+   键盘可达性：`:focus-visible` 让方向键 / Tab 过来时同样显形，否则焦点会停在一颗
+   看不见的按钮上（行内的 :focus-visible 与按钮自己的都要写：roving 焦点落在行上，
+   Tab 可以直接落到按钮上）。 */
+.desktop-workdir-menu-item:hover .desktop-workdir-menu-remove,
+.desktop-workdir-menu-item:focus-visible .desktop-workdir-menu-remove {
+  opacity: 0.5;
+}
+
+.desktop-workdir-menu-item .desktop-workdir-menu-remove:hover,
+.desktop-workdir-menu-item .desktop-workdir-menu-remove:focus-visible {
   opacity: 1;
 }
 
