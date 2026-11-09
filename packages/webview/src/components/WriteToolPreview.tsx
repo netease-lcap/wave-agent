@@ -1,6 +1,7 @@
-import React from "react";
+import React, { useRef } from "react";
 import { ExternalLinkIcon } from "./HeaderIcons";
 import { FileToolHeader } from "./FileToolHeader";
+import { Tooltip } from "./Tooltip";
 import type { ToolBlock } from "../types";
 import { toRelativePath } from "../utils/messageUtils";
 import { isDesktopHost, isRemotePageHost } from "../utils/platform";
@@ -20,6 +21,7 @@ export const WriteToolPreview: React.FC<WriteToolPreviewProps> = ({
   workdir,
   onOpenFile,
 }) => {
+  const openBtnRef = useRef<HTMLButtonElement>(null);
   let filePath = "";
   let content: string | null = null;
   try {
@@ -55,6 +57,24 @@ export const WriteToolPreview: React.FC<WriteToolPreviewProps> = ({
     />
   );
 
+  // 悬停提示（设计师 1109 评论：「图标的操作hover上去都应该有个提示」——这颗
+  // 之前一个提示都没有，只有 `aria-label`）。桌面端用自绘 `Tooltip`：锚点用
+  // `anchorRef` 直接指按钮本身，包裹层靠 CSS `display: contents` 不生成盒子
+  // ——按钮是 `position: absolute`（Message.css `.write-preview-open`），包裹层
+  // 一旦有盒子就成了它的包含块，按钮会跑到盒子内衬里。插件端保持原样（不包裹、
+  // 不加 title，零改动）。
+  const openButton = (
+    <button
+      ref={openBtnRef}
+      className="write-preview-open"
+      aria-label="打开预览"
+      data-testid="write-preview-open"
+      onClick={openFile}
+    >
+      <ExternalLinkIcon className="write-preview-open-icon" />
+    </button>
+  );
+
   if (content === null) {
     return <div className="write-tool-preview">{header}</div>;
   }
@@ -78,14 +98,18 @@ export const WriteToolPreview: React.FC<WriteToolPreviewProps> = ({
         {canOpenFile && (
           <>
             <div className="write-preview-scrim" />
-            <button
-              className="write-preview-open"
-              aria-label="打开预览"
-              data-testid="write-preview-open"
-              onClick={openFile}
-            >
-              <ExternalLinkIcon className="write-preview-open-icon" />
-            </button>
+            {isDesktopHost() ? (
+              <Tooltip
+                text="打开预览"
+                position="bottom"
+                className="icon-action-tooltip"
+                anchorRef={openBtnRef}
+              >
+                {openButton}
+              </Tooltip>
+            ) : (
+              openButton
+            )}
           </>
         )}
       </div>

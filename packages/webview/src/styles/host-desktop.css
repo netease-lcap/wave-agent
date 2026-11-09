@@ -1148,6 +1148,97 @@
   border-radius: 12px;
 }
 
+/* mermaid 块圆角并入上面这一族（评论 1109：「圆角要和其他带边框的块保持
+   一致」）。对话流里带 1px 描边、有底色的块实测：markdown pre 12px、
+   write-preview-box 12px、diff-viewer-container 12px、表格 12px；
+   mermaid-renderer 还是 base 的 6px（MermaidRenderer.css:4），是这一族里唯一
+   的例外。
+   容器自身 `overflow: hidden`（同在 MermaidRenderer.css:5），标签带与图表区
+   会被裁进圆角内，所以只改外框一处即可：内部 .mermaid-tabs、.mermaid-preview
+   实测圆角都是 0，不用跟着动。 */
+[data-host="desktop"] .mermaid-renderer {
+  border-radius: 12px;
+}
+
+/* ── mermaid 块的两段标签改成设置页页签那一套（评论 1109：点 `div.mermaid-tabs`
+   的「预览 / 源码」→「这里的 tab 参考设置（用户级 / 项目级）这种感觉的，选项不要
+   有背景色的变化，注意文字居中」）──
+   参考实测（设置页「技能」视图的 `.settings-tabs`，浅深两档同值）：
+   · 条：`gap: 18px`、下边框 1px、自身透明底；
+   · 页签 `.settings-tab`：14px / 22px / 400（选中 500）、左右内衬 2px、
+     `justify-content: center`，**任何状态底色都透明**；
+   · 选中：字色升到 1 级（`--vscode-foreground`），底部 3px 高亮条走 `::after`
+     （`bottom: -1px` 压住条本身的 1px 下边框，`border-radius: 1.5px 1.5px 0 0`）。
+   base（`MermaidRenderer.css:15-49`）与之相悖：页签 12px / 内衬 8·16、选中态铺
+   `--vscode-tab-activeBackground`、hover 铺 `--vscode-tab-hoverBackground`，
+   文字靠左内衬定位。这里按参考逐条改过来：底色全部去掉、字号 14/22、水平内衬
+   收到 2px 让文字居中且高亮条与文字同宽、hover 只提字色。
+   标签带自身的底色她第二轮点了（对齐 bash 命令区，见下面那条规则）；1px 下边框
+   保留 —— 参考块里命令区与输出区只靠底色分层、没有分隔线，这条线要不要一并去掉
+   等她点名。 */
+[data-host="desktop"] .mermaid-tabs {
+  gap: 18px;
+  padding: 0 16px;
+  /* 标签带底色对齐工具块命令区（评论 1109：点 `div.mermaid-tabs`「背景色和」+
+     点 `div.bash-command-input`「这里保持一致」）。
+     参考实测 `.bash-command-input`：浅 #F0F2F5、深 #25292B，取值走
+     `--vscode-chat-requestBubbleBackground`（同一个 token，两端天然同色）。
+     改前这里是 base 的 `--vscode-editorGroupHeader-tabsBackground`：
+     浅 #FAFAFD（与块底 #FFFFFF 只差 Δ5,5,2）、深 #181818（块底 #18181B，Δ0,2,3）
+     —— 等于没有带子。 */
+  background: var(--vscode-chat-requestBubbleBackground);
+}
+
+[data-host="desktop"] .mermaid-tabs .tab-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 2px;
+  border-bottom: none;
+  background: transparent;
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 400;
+  text-align: center;
+  color: var(--vscode-descriptionForeground);
+}
+
+/* 悬停只提字色，不铺底色（参考里 `.settings-tab` 没有 hover 底色） */
+[data-host="desktop"] .mermaid-tabs .tab-button:hover {
+  background: transparent;
+  color: var(--vscode-foreground);
+}
+
+[data-host="desktop"] .mermaid-tabs .tab-button.active {
+  background: transparent;
+  color: var(--vscode-foreground);
+  font-weight: 500;
+}
+
+/* 选中高亮条：与设置页 tab 同款（3px、压住 1px 下边框、上两角 1.5px） */
+[data-host="desktop"] .mermaid-tabs .tab-button.active::after {
+  position: absolute;
+  right: 0;
+  bottom: -1px;
+  left: 0;
+  height: 3px;
+  border-radius: 1.5px 1.5px 0 0;
+  background: var(--vscode-foreground);
+  content: "";
+}
+
+/* 源码视图底色跟块底走（评论 1109：点 `pre.source-code`「这里背景色也应该是
+   纯白」）。改前 base 给的是 `--vscode-textCodeBlock-background`：浅 #F7F8FA
+   （块底 #FFFFFF）、深 #1B1D1E（块底 #181A1B）—— 一条比块底更灰的底，看上去
+   像嵌了一块代码块。改成 `--vscode-editor-background`（就是块底那个 token）：
+   浅档实测纯白 #FFFFFF，深档 #181A1B，与预览页底色完全一致。
+   `.mermaid-source` 包裹层与里面的 `pre.source-code` 两处都声明了同一个底色
+   （base 两条规则），一起换掉，避免外层留着灰底露出一圈边。 */
+[data-host="desktop"] .mermaid-source,
+[data-host="desktop"] .mermaid-source .source-code {
+  background: var(--vscode-editor-background);
+}
+
 /* 行内 code（非 pre 内）背景加深：light #eef0f3 / dark 8% 白 */
 [data-host="desktop"] .markdown-content :not(pre) > code {
   background-color: #eef0f3;
@@ -2182,6 +2273,35 @@
   line-height: 22px;
   font-weight: 400;
 }
+/* 「更多文件」项按「快捷指令选项」的排版（评论 1109：「整体选项的高度是 40px，路径和
+   文件名之间的间距是 2px，可以参考快捷指令选项的布局」）。
+   参考值实测（SlashCommandsPopup.css 的 `.slash-command-item`）：整项 40.6 高、上下
+   3px 内衬、名称行 17、描述 `margin-top: 2px` + 12px/15.6 ⇒ **两行字形墨迹之间 2px**。
+   这里按同一观感落成整数：
+   · 整项 40（`min-height` + 两排居中，等于参考里「内衬 + 两排行高」的总高）；
+   · 两排之间行盒 1px —— 名字行剩 3 的上下行距各分一半、目录 14 行盒也留 0.5，
+     合起来字形墨迹之间正好 2px（与参考逐值相同，实测见交接）；
+   · 名字 14/20、目录 12/14 不变；
+   · 两排仍是 base 的 flex column，名字那排的超长省略号（`max-width:100%` +
+     `overflow:hidden`）不受影响，目录那排照旧完整可见。 */
+[data-host="desktop"] .file-tab-more-item {
+  box-sizing: border-box;
+  min-height: 40px;
+  padding: 0 8px;
+  gap: 1px;
+  justify-content: center;
+  line-height: 20px;
+}
+[data-host="desktop"] .file-tab-more-item-dir {
+  line-height: 14px;
+}
+/* 没有目录的项（根目录下的文件）只有一排 ⇒ 按单行项回到 28 高（评论 1109 第三轮：
+   「没有路径的时候，就是单行，选项高度是 28px 才对」）。3 + 22 + 3 = 28，这一排由
+   上面的 `justify-content: center` 居中；行高也回到单行项的 22。 */
+[data-host="desktop"] .file-tab-more-item:not(:has(.file-tab-more-item-dir)) {
+  min-height: 28px;
+  line-height: 22px;
+}
 [data-host="desktop"] .file-tab-menu-item:hover,
 [data-host="desktop"] .file-tab-more-item:hover {
   background: var(--cc-fill-hover);
@@ -2588,6 +2708,7 @@
 [data-host="desktop"] .btw-panel,
 [data-host="desktop"] .history-search-popup,
 [data-host="desktop"] .account-usage-popup,
+[data-host="desktop"] .account-usage-popover,
 [data-host="desktop"] .desktop-remote-browser {
   background-color: #ffffff;
   border-color: #ebeef5;
@@ -2596,11 +2717,21 @@
   color: #565a60;
 }
 
-/* 简单菜单容器 padding 统一 8px（base 4px/4px 0 偏挤） */
+/* 简单菜单容器 padding 统一 8px（base 4px/4px 0 偏挤）。
+   1109 评论（`div.account-usage-popover`「卡片要符合下拉菜单的样式规范，比如颜色、
+   阴影、圆角等」）：账户卡用量浮层是 2026-11 改版新做的面（旧名
+   `.account-usage-popup` 已无组件使用），当时没接进这一族，皮肤停在 base 的
+   vscode token —— 底色 `--vscode-menu-background`（浅 #FAFAFD / 深 #1F1F1F）、
+   边框 `--vscode-widget-border`、r8、`0 2px 8px / 36%` 深影、内衬 10px。
+   现按同一份菜单皮肤收口（底色 / 边框 / 圆角 / 阴影见上一条，内衬见本条）；
+   浮层自有的 `overflow-y: auto`、定位与内容排版不动。
+   内衬 10 → 8：内容宽 213 → 217，到期日原本就单行（变宽只会更宽松），
+   浮层高 110.5 → 106.5。 */
 [data-host="desktop"] .more-menu,
 [data-host="desktop"] .panel-toggle-menu,
 [data-host="desktop"] .desktop-session-menu,
-[data-host="desktop"] .desktop-workdir-menu {
+[data-host="desktop"] .desktop-workdir-menu,
+[data-host="desktop"] .account-usage-popover {
   padding: 8px;
 }
 
@@ -2804,11 +2935,22 @@
 [data-host="desktop"][data-theme="dark"] .btw-panel,
 [data-host="desktop"][data-theme="dark"] .history-search-popup,
 [data-host="desktop"][data-theme="dark"] .account-usage-popup,
+[data-host="desktop"][data-theme="dark"] .account-usage-popover,
 [data-host="desktop"][data-theme="dark"] .desktop-remote-browser {
   background-color: var(--cc-bg-overlay);
   border-color: rgba(255, 255, 255, 0.12);
   color: #9a9ea5;
   box-shadow: 0 0 12px rgb(0 0 0 / 40%);
+}
+/* 账户卡用量浮层只接菜单的**皮肤**，不接容器字色（1109）。
+   族规则给菜单项定的 #565A60 / #9A9EA5 会顺着继承改掉浮层里没自带颜色的文字：
+   API 维度的金额 `.account-usage-value-text` 就是靠继承取色，改前与同行
+   「已用 / 剩余」标签同为 `--vscode-foreground`（浅 #202020 / 深 #E5E7E8）。
+   这里把容器字色还原成那个 token —— 浮层内 8 处带文字的节点前后逐值不变。
+   特异性需同时盖过浅色 (0,2,0) 与深色 (0,3,0) 两条族规则，且在文件里位于其后。 */
+[data-host="desktop"] .account-usage-popover,
+[data-host="desktop"][data-theme="dark"] .account-usage-popover {
+  color: var(--vscode-foreground);
 }
 /* 深色下菜单项基础文字：覆盖浅色的 #565A60（含此前已统一的 permission/plus） */
 [data-host="desktop"][data-theme="dark"] .permission-mode-item,
@@ -4142,6 +4284,27 @@
   --cc-font-weight-semibold: 600;
 }
 
+/* ═══ 1109 评论：字号 / 行高刻度落到主题入口 ═══
+   设计师点产物卡文案：「参考对话流的文案规范检查这里的字体字号是否绑定变量」。
+   审计发现：全仓 20 处 `var(--cc-font-size-md, 14px)` 这类引用，`--cc-font-size-*`
+   **一个都没有定义** ⇒ 实际渲染全靠 fallback 里的字面值，「绑了变量」只是写法，
+   刻度没有出处可改；行高连引用都没有。
+   契约 conversation-typography.md「实现边界」允许「缺失的角色在实际主题入口建立
+   明确映射」，故在此补刻度，取值与角色表逐条对齐：
+     · sm 12px / 20px —— 辅助信息（时间、数量、依赖等），400
+     · md 14px / 22px —— 阅读正文、表格单元格、工具名/卡片标题
+     · lg 16px / 24px —— H3 级小节标题
+   数值与此前 20 处 fallback 逐字相同（lg 16 / md 14 / sm 12）⇒ 对既有引用零视觉
+   变化，只是让它们真的从一处取值。字重 token 同族，见上一块 `--cc-font-weight-*`。 */
+:root[data-host="desktop"] {
+  --cc-font-size-sm: 12px;
+  --cc-font-size-md: 14px;
+  --cc-font-size-lg: 16px;
+  --cc-line-height-sm: 20px;
+  --cc-line-height-md: 22px;
+  --cc-line-height-lg: 24px;
+}
+
 /* ① 对话流工具名（tool-block header / Write 标题 / 思考标题）：600 */
 [data-host="desktop"] .tool-block,
 [data-host="desktop"] .write-tool-label,
@@ -4853,7 +5016,10 @@
        字体规范，标题也提到 14」）—— 行是 `<button>`，同样不继承页面字体：改前实测
        font-family = Arial、13px，中文文件名会掉到 Arial 上，字号提到 14 也只是
        「大一号的 Arial」，所以字体族一起补进白名单。 */
-    .file-pane-conversation-file-row
+    .file-pane-conversation-file-row,
+    /* 对话里产物卡的动作键（1109 评论：「要符合按钮规范」，含 14px 标签）——
+       `<button>` 同样不继承页面字体，改前实测 `Arial`。 */
+    .message-file-card-toggle
   ) {
   font-family: inherit;
 }
@@ -4907,6 +5073,26 @@
    特异性 (0,3,0) 稳压 base 的 `.tooltip-box.visible` (0,2,0)，与加载顺序无关。 */
 [data-host="desktop"] .tooltip-box.visible {
   transition-delay: 0.1s;
+}
+
+/* ═══ 1109 评论：「图标的操作hover上去都应该有个提示，比如回滚到此消息按钮」══════
+   消息流里每颗**只有图标**的动作都挂同一条悬停提示：上面那条 `.tooltip-box` 皮肤
+   （桌面端 12px / 8px 圆角 / 4px 间距 / 100ms 延时）。落地位置三处：
+     · 回滚到此消息、把本轮转到后台 —— `MessageActionButton` 早就包着 `<Tooltip>`；
+     · 写文件块右上角「打开预览」—— 原来**一个提示都没有**（只有 aria-label）；
+     · mermaid 右上角「全屏查看」——原来只有原生 `title`，桌面端 webview 里那层系统
+       提示看不到（1029 同一条判据，见 `CodeCommentEntry`）；
+     · 代码块右上角「复制代码」——同一类问题，但那块 DOM 是 dangerouslySetInnerHTML
+       生成的、挂不上 React，改由 `DelegatedTooltip` 委托接住（那条气泡复用同一组
+       `.tooltip-box` 类名，皮肤不会分叉）。
+   包裹层 `display: contents` 故意不生成盒子：
+     ① 「打开预览」按钮是 `position: absolute`（Message.css `.write-preview-open`）——
+        包裹层一旦有盒子就成了它的包含块，按钮会从块右上角跑到包裹层内衬里；
+     ② 另外两颗虽然是普通 flex 子项，也用同一条规则，好让「包之前 / 包之后」的布局盒
+        逐像素不变，不必为「包裹层占不占位」再分一档。
+   代价：包裹层没有盒子可量，三处的 `Tooltip` 都显式传了 `anchorRef` 指按钮本身。 */
+[data-host="desktop"] .icon-action-tooltip {
+  display: contents;
 }
 
 /* ═══ 1009 评论：插件市场作用域弹窗的选项状态重排（仅桌面端）══════════════════
@@ -6607,4 +6793,138 @@
    ⇒ 浅色零变化（截图逐像素 0 差异）。文案色 / 图标 / 间距 / 字号一律不动。仅桌面端。 */
 [data-host="desktop"] .preview-tab-new {
   background: var(--vscode-panel-background);
+}
+
+/* ═══ 1109 评论：产物卡片横向撑满消息列 ═══
+   设计师点 `div.message-file-card.artifact-card`「登录页样式走查报告 / 已发布 · v3」+
+   「在浏览器中打开」：「这里宽度要撑满界面」。
+   改前：base（Message.css:1263 `.message-file-card`）写死 `max-width: 560px`，且该盒是
+   `content-box` ⇒ 渲染宽 560 + 左右内衬 24 + 上下左右描边 2 = 586px，而它所在的
+   `.tool-container` 是 760px（`.messages-column` 上限 800 − 左右内衬 10/10，再经
+   `.timeline-row` 的左内衬 20）⇒ 卡片右边空出 174px，看起来像「半截卡片」。
+   改后：`max-width: none`，卡片按 flex 列的 `align-items: stretch` 吃满 760px。
+   卡内三段（图标 28 固定 / meta `flex: 1 1 auto` + `min-width: 0` 带省略号 /
+   按钮固定）本来就是「中间弹性」的写法，撑满只让标题多出空间、不挤压按钮；
+   高 57.5px、内衬 10/12、圆角 10、描边与颜色一律不动。
+   **只作用在 `.artifact-card`**（该类的唯一使用者就是产物卡），不动
+   `.message-file-card` 这个通用类本身；IDE 端（窄侧栏里 560 本来就够不着）保持原样。 */
+[data-host="desktop"] .message-file-card.artifact-card {
+  max-width: none;
+}
+
+/* ═══ 1109 评论：产物卡「在浏览器中打开」按按钮契约收口 ═══
+   设计师点 `button.message-file-card-toggle`「在浏览器中打开」：「这里要符合按钮规范，
+   和按钮交互样式规范，按钮尺寸可以用第二级的」。
+
+   契约（`references/common-components.md` §Buttons）：桌面动作为 32 高 / 14·22 / 500 /
+   r8 / 12 内衬；「紧凑档 28 高用于密集的行内动作，保留 14px 标签与可用点击区」⇒ 按她
+   的裁定取**第二级 28**（不放 32）。角色属「Secondary (outlined)」一行：透明底 +
+   文字 1 级 + `--cc-border-light` 描边；交互 = hover 出面 `fill-hover`、按下
+   `fill-pressed`，字色始终 1 级；「focus-visible 与选中态分开」⇒ 2px 焦点环外扩 2px。
+   与本仓已收口的次级按钮同族：`.confirm-dialog-btn-cancel`、
+   `.desktop-workdir-guide-action`、`.settings-row-btn`。
+
+   改前（base `Message.css:1317`）：26 高 / r6 / 12px·400（**Arial**，UA 默认字体）/
+   0 8 内衬；描边吃 `--vscode-panel-border`、字色吃 `--vscode-foreground`；
+   hover 只换描边 + 把字变蓝（`--vscode-textLink-foreground`：#0069CC / #4DAAFC），
+   **没有按下态**；键盘焦点用浏览器默认 `outline: auto`（1px 细蓝环），与桌面契约的
+   2px 焦点环不是一套。
+
+   改后：28 高 / 14·22 / r8 / 0 12 内衬；透明底 + `--cc-border-light` 描边 +
+   `--cc-text-primary` 字；hover 出面（深色按本仓中性面约定 8% 白）、按下更实一档
+   （深色 12% 白）、描边与字色在三个状态里都不动；焦点 2px `--cc-border-focus`
+   外扩 2px。按钮宽度 102 → 124（7 个全角字 × 14 = 98 + 内衬 24 + 描边 2），右缘仍
+   贴卡片内衬，卡片高度不变（57.5，仍由中间两行文案决定）。仅桌面端。
+
+   第二轮评论（同上这颗按钮）：「按钮文案不要加粗，字号参考对话流中其他正文的字号」：
+   ① 字重 500 → 400。契约 §Buttons 的 medium(500) 是按钮默认档，但这里按设计师口径
+      让位给正文的字重；按钮内只有七个汉字，不加粗后照样可读。
+   ② 字号不动，因为**已经就是正文值**：同一屏实测 `.message-content p` = 14px / 22px /
+      400，与本按钮的 14 / 22 逐值相同（卡片内的标题 13px、副行 11px 是卡片自己的
+      层级，不算正文）。
+   ③ 盒不变：七个汉字是全角，字宽 = 字号 × 7 = 98，与字重无关 ⇒ 仍 124×28；
+      逐像素差异只落在标签笔画本身（文字覆盖率 −19.5% / −18.1%）。 */
+[data-host="desktop"] .message-file-card-toggle {
+  height: 28px;
+  padding: 0 12px;
+  border-radius: 8px;
+  border: 1px solid var(--cc-border-light, #e4e7ed);
+  background-color: transparent;
+  color: var(--cc-text-primary, var(--vscode-foreground));
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 400;
+}
+
+[data-host="desktop"] .message-file-card-toggle:not(:disabled):hover {
+  background-color: var(--cc-fill-hover, #eef0f3);
+  border-color: var(--cc-border-light, #e4e7ed);
+  color: var(--cc-text-primary, var(--vscode-foreground));
+}
+
+[data-host="desktop"] .message-file-card-toggle:not(:disabled):active {
+  background-color: var(--cc-fill-pressed, #e7e9ed);
+  border-color: var(--cc-border-light, #e4e7ed);
+  color: var(--cc-text-primary, var(--vscode-foreground));
+}
+
+[data-host="desktop"] .message-file-card-toggle:focus-visible {
+  outline: 2px solid var(--cc-border-focus, #2f5edb);
+  outline-offset: 2px;
+}
+
+[data-host="desktop"][data-theme="dark"] .message-file-card-toggle {
+  border-color: var(--cc-border-light, #34393c);
+}
+
+[data-host="desktop"][data-theme="dark"]
+  .message-file-card-toggle:not(:disabled):hover {
+  background-color: rgb(255 255 255 / 8%);
+}
+
+[data-host="desktop"][data-theme="dark"]
+  .message-file-card-toggle:not(:disabled):active {
+  background-color: rgb(255 255 255 / 12%);
+}
+
+/* ═══ 1109 评论：产物卡文案（按钮除外）按对话流角色表落值 ═══
+   设计师点整张产物卡：「参考对话流的文案规范检查这里的字体字号是否绑定变量，
+   按钮除外」。审计结论见主题入口那块刻度注释；这里落两条：
+
+   · 标题 `.message-file-card-name`：base（Message.css:1295）写死 `font-size: 13px`，
+     行高走浏览器默认 `normal`（实测行盒 18.5）。13px 在角色表里只属于**代码**角色
+     （13/20），标题/正文档是 14/22 ⇒ 改为 md 刻度。
+   · 副信息 `.message-file-card-sub`：base（Message.css:1303）写死 `11px`，行高同为
+     `normal`（行盒 15）。角色表「时间、数量、依赖等辅助信息」是 12/20 ⇒ 改为 sm 刻度。
+
+   字体族本来就已经绑好了：这两条规则都没有声明 font-family，卡片也不在
+   `.message-content` 里面（DOM 链是 `.tool-container > .timeline-row > .message`），
+   字体来自 `body { font-family: var(--vscode-font-family) }`（globals.css:4），
+   实测 `-apple-system` 系统栈，编辑器等宽字体没有参与。故不重复声明。
+   字重同理：未声明 ⇒ 继承 400，符合两个角色的 400，也不重复声明。
+
+   几何代价：两行文案盒 35.5 → 44（22 + 2 间距 + 20），卡片高 57.5 → 65.5（+8），
+   卡内按钮 28 仍居中、按钮本身逐值不变；base 一行未改 ⇒ IDE / 插件端仍是 13 / 11。 */
+[data-host="desktop"] .message-file-card-name {
+  font-size: var(--cc-font-size-md, 14px);
+  line-height: var(--cc-line-height-md, 22px);
+}
+
+[data-host="desktop"] .message-file-card-sub {
+  font-size: var(--cc-font-size-sm, 12px);
+  line-height: var(--cc-line-height-sm, 20px);
+}
+
+/* ═══ 1109 评论：产物卡图标块 28 → 44 ═══
+   设计师点 `span.message-file-card-icon`：「这个图标应该是 44px」。
+   改前：base（Message.css:1277）写死 28×28、圆角 8、底色 `--vscode-list-hoverBackground`
+   （浅 #EEF0F3 / 深 #303436）、字形 16×16（`OpenBrowserIcon` 的 svg 写死 16）。
+   改后：块 44×44，其余（圆角 8 / 底色 / 字形尺寸）一律不动 —— 她只点了尺寸。
+   几何：卡片内容区本来就被两行文案撑到 44 高（22 + 2 + 20），图标长大到 44 正好与
+   文案等高 ⇒ **卡片总高 66 不变**（57.5 → 66 是上一轮字号那条带来的）；
+   图标横向多吃 16px，标题起点 526.5 → 542.5（+16）、文案盒 562 → 546；
+   按钮靠右，位置与尺寸都不动。base 一行未改 ⇒ IDE / 插件端仍是 28。 */
+[data-host="desktop"] .message-file-card-icon {
+  width: 44px;
+  height: 44px;
 }

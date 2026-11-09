@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import mermaid from "mermaid";
+import { Tooltip } from "./Tooltip";
 import { isDarkTheme } from "../utils/theme";
+import { isDesktopHost } from "../utils/platform";
 import "../styles/MermaidRenderer.css";
 
 interface MermaidRendererProps {
@@ -215,6 +217,11 @@ export const MermaidRenderer: React.FC<MermaidRendererProps> = ({
   const [svgContent, setSvgContent] = useState<string>("");
   const [isFullscreen, setIsFullscreen] = useState(false);
   const mermaidRef = useRef<HTMLDivElement>(null);
+  // 悬停提示的锚点（设计师 1109：「图标的操作hover上去都应该有个提示」）：桌面端
+  // 这颗全屏按钮的提示从原生 `title` 换成自绘 `Tooltip`，包裹层 `display: contents`
+  // 没有盒子可量，所以锚点直接指按钮本身（见 `.icon-action-tooltip`）。
+  const fullscreenBtnRef = useRef<HTMLButtonElement>(null);
+  const desktop = isDesktopHost();
   const renderTimeoutRef = useRef<NodeJS.Timeout>();
   const cleanedContent = useRef<string>("");
   const lastRenderedContent = useRef<string>(""); // Track what was last rendered
@@ -384,6 +391,20 @@ export const MermaidRenderer: React.FC<MermaidRendererProps> = ({
   }, [svgContent]);
 
   const renderPreviewTab = () => {
+    // 全屏那颗图标按钮：桌面端提示交给自绘气泡，`title` 只留给插件端宿主
+    // （原生标题在桌面端 webview 里看不到，留着还会和我们那颗双弹）。
+    const fullscreenButton = (
+      <button
+        ref={fullscreenBtnRef}
+        onClick={() => setIsFullscreen(true)}
+        className="action-button"
+        title={desktop ? undefined : "全屏查看"}
+        aria-label="全屏查看"
+      >
+        <i className="codicon codicon-screen-full"></i>
+      </button>
+    );
+
     if (error) {
       return (
         <div className="mermaid-error">
@@ -409,13 +430,18 @@ export const MermaidRenderer: React.FC<MermaidRendererProps> = ({
       <div className="mermaid-preview">
         {svgContent && (
           <div className="mermaid-actions">
-            <button
-              onClick={() => setIsFullscreen(true)}
-              className="action-button"
-              title="全屏查看"
-            >
-              <i className="codicon codicon-screen-full"></i>
-            </button>
+            {desktop ? (
+              <Tooltip
+                text="全屏查看"
+                position="bottom"
+                className="icon-action-tooltip"
+                anchorRef={fullscreenBtnRef}
+              >
+                {fullscreenButton}
+              </Tooltip>
+            ) : (
+              fullscreenButton
+            )}
           </div>
         )}
         <div

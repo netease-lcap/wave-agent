@@ -1047,18 +1047,20 @@ describe("AccountCard (desktop sidebar)", () => {
       try {
         renderDesktop();
         pushUsage({ ...loggedIn, billing: planBilling, apiQuota: apiPlenty });
-        // 锚点 top = 行顶 + 4；bottom 偏移 = innerHeight − 锚点 top + 4 = innerHeight − 行顶.
+        // 锚点 top = 行顶 + 4；bottom 偏移 = innerHeight − 锚点 top + 8
+        // = innerHeight − 行顶 + 4（底缘落在行顶上方 4px，与图标按钮之间留缝）.
         expect(screen.getByTestId("account-usage-popover").style.bottom).toBe(
-          `${window.innerHeight - mainTop}px`,
+          `${window.innerHeight - mainTop + 4}px`,
         );
 
         mainTop = 512;
         act(() => {
           window.dispatchEvent(new Event("resize"));
         });
-        // resize 后卡片下移 100px ⇒ 浮层跟着重算，仍贴行顶（不重测就停在 156px）.
+        // resize 后卡片下移 100px ⇒ 浮层跟着重算，与行顶的 4px 缝保持不变
+        // （不重测就停在原处、跟卡片分家）.
         expect(screen.getByTestId("account-usage-popover").style.bottom).toBe(
-          `${window.innerHeight - mainTop}px`,
+          `${window.innerHeight - mainTop + 4}px`,
         );
       } finally {
         spy.mockRestore();
@@ -1095,8 +1097,8 @@ describe("AccountCard (desktop sidebar)", () => {
         const popover = screen.getByTestId("account-usage-popover");
         // 12px（按 clientWidth 算），不是 innerWidth − 848 的那条缝。
         expect(popover.style.right).toBe("12px");
-        // 60px = 600 − 544 + 4，按 clientHeight 算。
-        expect(popover.style.bottom).toBe("60px");
+        // 64px = 600 − 544 + 8（底缘再上抬 4px，与图标按钮之间留缝），按 clientHeight 算。
+        expect(popover.style.bottom).toBe("64px");
       } finally {
         spy.mockRestore();
         restoreViewport();
