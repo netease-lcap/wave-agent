@@ -60,9 +60,33 @@ jobs:
       - name: Build wave-code dist
         run: pnpm -F wave-code build
 
-      # `--x64` 覆盖 package.json 里 mac.target 的 arch（arm64）：electron-builder
-      # 以命令行架构为准。产物名随之带 `-x64` 后缀，与正式 arm64 包不重名。
-      #
+      # `--x64` 不足以覆盖 package.json 里 mac.target 写死的 `arch: ["arm64"]`
+      # （2026-11-09 run 42605610734 实测：命令行 --x64 仍打出 -arm64.dmg）。
+      # 所以在包目录内生成一份临时 config，把 mac.target 换成 x64，用 `--config`
+      # 顶掉 package.json 的 build —— 正式发版配置一个字不动。config 与
+      # package.json 同目录，afterPack / extraResources / directories 的相对路径
+      # 解析结果不变。
+      - name: Generate x64 builder config
+        run: |
+          node -e '
+            const fs = require("node:fs");
+            const build = JSON.parse(
+              fs.readFileSync("packages/desktop/package.json", "utf8"),
+            ).build;
+            build.mac.target = [
+              { target: "dmg", arch: ["x64"] },
+              { target: "zip", arch: ["x64"] },
+            ];
+            fs.writeFileSync(
+              "packages/desktop/electron-builder.x64.json",
+              JSON.stringify(build, null, 2),
+            );
+          '
+
+      # 与 `dist` 脚本的前半段等价（syncWebview + bundleCli + tsup）。
+      - name: Compile desktop app
+        run: pnpm -F wave-desktop run compile
+
       # 签名 + 公证与正式版同一套凭证（Developer ID 证书不区分架构）。APPLE_API_KEY
       # 必须是 .p8 的**路径**：@electron/notarize 原样透传给 `notarytool --key`。
       #
@@ -75,7 +99,8 @@ jobs:
           printf '%s' "$APPLE_API_KEY_CONTENT" > "$HOME/private_keys/AuthKey_$APPLE_API_KEY_ID.p8"
           chmod 600 "$HOME/private_keys/AuthKey_$APPLE_API_KEY_ID.p8"
           APPLE_API_KEY="$HOME/private_keys/AuthKey_$APPLE_API_KEY_ID.p8" \
-            pnpm -F wave-desktop run dist -- --mac --x64 --publish never
+            pnpm -F wave-desktop exec electron-builder \
+              --mac --config ./electron-builder.x64.json --publish never
         env:
           CSC_LINK: ${{ secrets.CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
@@ -83,8 +108,8 @@ jobs:
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
 
-      # 守住「打出来的真是 x64」：`--x64` 与配置里的 arch 列表万一不生效，
-      # 这里会让本次构建红掉，而不是把一个 arm64 包当 Intel 包发出去。
+      # 守住「打出来的真是 x64」：config 覆盖万一失效，这里会让本次构建红掉，
+      # 而不是把一个 arm64 包当 Intel 包发出去。
       - name: Verify the bundle is x64 and correctly signed
         run: |
           set -euo pipefail
@@ -95,7 +120,7 @@ jobs:
           fi
           file "$APP/Contents/MacOS/"* | tee /tmp/wave-arch.txt
           if ! grep -q 'x86_64' /tmp/wave-arch.txt; then
-            echo "::error::产物不是 x86_64：--x64 未生效"; exit 1
+            echo "::error::产物不是 x86_64：x64 config 未生效"; exit 1
           fi
           codesign --verify --deep --strict --verbose=2 "$APP"
 
