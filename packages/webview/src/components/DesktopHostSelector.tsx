@@ -277,7 +277,8 @@ export const DesktopHostSelector: React.FC<DesktopHostSelectorProps> = ({
     }
     // scrollHeight 是各组的自然高度（与当前被压成多少无关）。
     const available = inner - chrome;
-    // jsdom / 未布局时量不到高度，别把上限算成 0 把条目压没。
+    // 还没量到高度时（首帧、菜单隐在触发层下方未布局），别把上限算成 0
+    // 把条目压没。
     if (!(available > 0)) {
       setItemCaps((prev) => (prev.length === 0 ? prev : []));
       return;

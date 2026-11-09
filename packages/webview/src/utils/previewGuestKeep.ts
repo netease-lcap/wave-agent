@@ -170,8 +170,8 @@ export function reportLiveGuests(
 }
 
 /**
- * 测试隔离：台账是模块级状态（与 sessionUiStore 同级），同一个 jsdom 进程里跨用例
- * 存活，用例之间要清空。
+ * 测试隔离：台账是模块级状态（与 sessionUiStore 同级），同一个测试文件里的
+ * 用例共用一个页面，它会跨用例存活，用例之间要清空。
  */
 export function resetParkedGroups(): void {
   parked = [];

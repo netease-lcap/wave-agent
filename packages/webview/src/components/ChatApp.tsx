@@ -979,8 +979,9 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   const handleDragOver = useCallback((e: React.DragEvent) => {
     if (!isFileDragEvent(e)) return;
     e.preventDefault();
-    // Visual "copy" cursor hint. jsdom's DataTransferPolyfill exposes
-    // dropEffect as read-only, so guard for the test environment.
+    // Visual "copy" cursor hint. Some engines expose `dropEffect` as read-only
+    // (older WebViews / third-party DataTransfer shims) and a rejected write
+    // would abort the whole drop handler, so the write stays guarded.
     try {
       e.dataTransfer.dropEffect = "copy";
     } catch {

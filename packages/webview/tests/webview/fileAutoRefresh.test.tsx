@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
+import { describe, it, expect, afterEach, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import React from "react";
 import { DesktopApp } from "../../src/components/DesktopApp";
@@ -17,8 +17,6 @@ import {
   pathsMatch,
 } from "../../src/utils/fileAutoRefresh";
 import type { Message } from "wave-agent-sdk";
-
-vi.mock("../../src/styles/DesktopApp.css", () => ({}));
 
 /** Build a minimal assistant message carrying one Write/Edit tool block. */
 const messageWithTool = (

@@ -60,9 +60,9 @@ interface TreeRow {
 }
 
 /**
- * `[data-tree-path="…"]` for a path that may hold quotes or backslashes —
- * jsdom ships no `CSS.escape`, and escaping those two is enough inside a quoted
- * attribute selector.
+ * `[data-tree-path="…"]` for a path that may hold quotes or backslashes.
+ * Those two are the only characters that can break out of a quoted attribute
+ * selector, so escaping them by hand keeps the lookup free of `CSS.escape`.
  */
 const treePathSelector = (path: string) =>
   `[data-tree-path="${path.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"]`;

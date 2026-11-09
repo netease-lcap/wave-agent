@@ -341,7 +341,8 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({
         try {
           e.dataTransfer.effectAllowed = "move";
         } catch {
-          // jsdom's DataTransfer polyfill exposes a read-only effectAllowed.
+          // Best-effort: some engines expose `effectAllowed` as read-only, and
+          // a rejected write would abort the whole dragstart handler.
         }
       };
       const onDragEnd = () => {
@@ -424,7 +425,8 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({
       try {
         e.dataTransfer.dropEffect = "move";
       } catch {
-        // jsdom's DataTransfer polyfill exposes a read-only dropEffect.
+        // Best-effort: some engines expose `dropEffect` as read-only, and a
+        // rejected write would abort the whole dragover handler.
       }
       const rowPanes = panes.filter((p) => (p.row === 1 ? 1 : 0) === row);
       const pane = rowPanes[index];
@@ -448,7 +450,8 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({
       try {
         e.dataTransfer.dropEffect = "move";
       } catch {
-        // jsdom's DataTransfer polyfill exposes a read-only dropEffect.
+        // Best-effort: some engines expose `dropEffect` as read-only, and a
+        // rejected write would abort the whole dragover handler.
       }
       setDropZone(null);
       showDropIndicator(
@@ -516,7 +519,8 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({
       try {
         e.dataTransfer.dropEffect = "copy";
       } catch {
-        // jsdom's DataTransfer polyfill exposes a read-only dropEffect.
+        // Best-effort: some engines expose `dropEffect` as read-only, and a
+        // rejected write would abort the whole dragover handler.
       }
       const rowPanes = panes.filter((p) => (p.row === 1 ? 1 : 0) === row);
       for (let i = 0; i < rowPanes.length; i += 1) {

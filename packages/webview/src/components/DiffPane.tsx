@@ -342,7 +342,7 @@ export const DiffPane: React.FC<DiffPaneProps> = ({
     const el = asideRef.current;
     if (!el) return;
     const measure = (available: number) => {
-      if (available <= 0) return; // jsdom / pre-layout: keep the default
+      if (available <= 0) return; // 还没量到宽度（首帧、面板隐藏）：保持默认
       setNarrow(available < DIFF_TREE_WIDTH + DIFF_MIN_DIFF_WIDTH);
     };
     measure(el.getBoundingClientRect().width || width);
@@ -371,7 +371,7 @@ export const DiffPane: React.FC<DiffPaneProps> = ({
     if (!path) return;
     pendingScrollRef.current = null;
     const el = fileRefs.current.get(path);
-    // jsdom has no layout and no scrollIntoView.
+    // 受限 WebView 未必实现 scrollIntoView，有才调。
     if (el && typeof el.scrollIntoView === "function")
       el.scrollIntoView({ block: "start" });
   }, [expandedPath]);

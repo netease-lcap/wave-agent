@@ -96,8 +96,8 @@ export const Tooltip: React.FC<TooltipProps> = ({
   // 直接不启动气泡。信息不丢：触发元素都有 `aria-label`。
   //
   // 判据取 `hover: hover`（只有确实能悬停才显示）而不是 `hover: none` —— 环境不报这两
-  // 个特性时（jsdom、部分老浏览器）按「能显示」处理，保持既有行为。能力变化（触屏笔记本
-  // 接上鼠标）也跟着重新判定。
+  // 个特性时（老浏览器、没有 matchMedia 的嵌入环境）按「能显示」处理，保持既有行为。能力
+  // 变化（触屏笔记本接上鼠标）也跟着重新判定。
   const [canHover, setCanHover] = useState(
     () =>
       typeof window === "undefined" ||

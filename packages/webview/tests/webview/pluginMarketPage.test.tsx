@@ -5,16 +5,11 @@
  * 两处入口渲染同一视图。
  */
 
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 import { render, screen, fireEvent, act } from "@testing-library/react";
 import React from "react";
 import { DesktopApp } from "../../src/components/DesktopApp";
 import { createMockVscode, sendCommand } from "./test-utils";
-
-vi.mock("../../src/styles/DesktopApp.css", () => ({}));
-vi.mock("../../src/styles/SessionBoard.css", () => ({}));
-vi.mock("../../src/styles/PluginMarketPage.css", () => ({}));
-vi.mock("../../src/styles/SettingsPage.css", () => ({}));
 
 // 与 sessionBoard.test.tsx 同构的 DesktopApp 全流程渲染：workdir → 会话树。
 function renderReady(groups: unknown) {

@@ -20,7 +20,17 @@ import { fixtures } from "wave-webview-fixtures";
 import type { DesktopPaneInfo } from "wave-webview-fixtures";
 import { MockDataGenerator } from "../fixtures/mockData";
 
-vi.mock("../../src/styles/DesktopApp.css", () => ({}));
+/**
+ * Fixture pane width: a single pane filling the row (`flex: 0 1 100%`).
+ *
+ * Panel cases need the chat column wide enough for the panel's space guard
+ * (`CHAT_MAIN_MIN_WIDTH` + `PANEL_MIN_WIDTH` = 562px). A half-width pane in the
+ * 1280px test viewport measures ~510px, so the guard would — correctly — refuse
+ * to open the panel and the case could only pass by measuring a container of
+ * width 0. These cases are about what happens once a panel opens, so the
+ * fixture gives the pane the whole row instead of asserting the guard away.
+ */
+const FULL_PANE_WIDTH = 1;
 
 /**
  * Conversation-level panel framework (FR-039/040/041/042): the header toggle
@@ -868,7 +878,7 @@ describe("session-level panel groups", () => {
             sessionId,
             row: 0,
             host: "local",
-            width: 0.5,
+            width: FULL_PANE_WIDTH,
             ...extra,
           },
         ],
@@ -1534,7 +1544,7 @@ describe("remote preview port forwarding", () => {
             sessionId: "s1",
             row: 0,
             host: "prod",
-            width: 0.5,
+            width: FULL_PANE_WIDTH,
           },
         ],
         focusedPaneId: "pane-1",
@@ -1925,7 +1935,7 @@ describe("remote preview port forwarding", () => {
             sessionId: "s1",
             row: 0,
             host: "local",
-            width: 0.5,
+            width: FULL_PANE_WIDTH,
           },
         ],
         focusedPaneId: "pane-1",
@@ -1976,7 +1986,7 @@ describe("remote preview port forwarding", () => {
             sessionId: "s2",
             row: 0,
             host: "local",
-            width: 0.5,
+            width: FULL_PANE_WIDTH,
           },
         ],
         focusedPaneId: "pane-1",
@@ -2001,7 +2011,7 @@ describe("remote preview port forwarding", () => {
             sessionId: "s1",
             row: 0,
             host: "prod",
-            width: 0.5,
+            width: FULL_PANE_WIDTH,
           },
         ],
         focusedPaneId: "pane-1",
@@ -2081,7 +2091,7 @@ describe("remote preview port forwarding", () => {
             sessionId: "s2",
             row: 0,
             host: "prod2",
-            width: 0.5,
+            width: FULL_PANE_WIDTH,
           },
         ],
         focusedPaneId: "pane-1",
@@ -2130,7 +2140,7 @@ describe("remote preview port forwarding", () => {
             sessionId: "s1",
             row: 0,
             host: "prod",
-            width: 0.5,
+            width: FULL_PANE_WIDTH,
           },
         ],
         focusedPaneId: "pane-1",
@@ -2342,7 +2352,7 @@ describe("desktop plan panel", () => {
             sessionId: "s1",
             row: 0,
             host: "local",
-            width: 1,
+            width: FULL_PANE_WIDTH,
           },
         ],
         focusedPaneId: "pane-1",
@@ -2447,7 +2457,7 @@ describe("desktop plan panel", () => {
             sessionId: "s1",
             row: 0,
             host: "local",
-            width: 0.5,
+            width: FULL_PANE_WIDTH,
           },
         ],
         focusedPaneId: "pane-1",
@@ -2535,7 +2545,7 @@ describe("desktop plan panel", () => {
               sessionId,
               row: 0,
               host: "local",
-              width: 0.5,
+              width: FULL_PANE_WIDTH,
             },
           ],
           focusedPaneId: "pane-1",
@@ -2561,7 +2571,7 @@ describe("desktop plan panel", () => {
           sessionId: "s1",
           row: 0,
           host: "local",
-          width: 0.5,
+          width: FULL_PANE_WIDTH,
         },
       ],
       focusedPaneId: "pane-1",
@@ -2623,7 +2633,7 @@ describe("desktop plan panel", () => {
               sessionId,
               row: 0,
               host: "local",
-              width: 0.5,
+              width: FULL_PANE_WIDTH,
             },
           ],
           focusedPaneId: "pane-1",
@@ -2656,7 +2666,7 @@ describe("desktop plan panel", () => {
           sessionId: "s1",
           row: 0,
           host: "local",
-          width: 0.5,
+          width: FULL_PANE_WIDTH,
         },
       ],
       focusedPaneId: "pane-1",

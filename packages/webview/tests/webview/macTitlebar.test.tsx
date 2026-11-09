@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, afterEach } from "vitest";
 import { render, fireEvent, screen, act } from "@testing-library/react";
 import React from "react";
 import { DesktopApp } from "../../src/components/DesktopApp";
@@ -8,8 +8,6 @@ import { isMacHiddenTitlebar } from "../../src/utils/platform";
 import { createMockVscode, sendHostMessage, sendCommand } from "./test-utils";
 import { fixtures } from "wave-webview-fixtures";
 import { MockDataGenerator } from "../fixtures/mockData";
-
-vi.mock("../../src/styles/DesktopApp.css", () => ({}));
 
 /**
  * macOS 隐藏标题栏（spec「macOS 隐藏标题栏」）：仅在真实 Electron desktop +

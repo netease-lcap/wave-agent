@@ -1,12 +1,9 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 import { render, screen, fireEvent, act } from "@testing-library/react";
 import path from "node:path";
 import React from "react";
 import { DesktopApp } from "../../src/components/DesktopApp";
 import { createMockVscode, sendCommand, setInputText } from "./test-utils";
-
-vi.mock("../../src/styles/DesktopApp.css", () => ({}));
-vi.mock("../../src/styles/SessionBoard.css", () => ({}));
 
 // 与 desktopApp.test.tsx 同构的 DesktopApp 全流程渲染：workdir →
 // 会话树 →（可选）打开「活动」看板。

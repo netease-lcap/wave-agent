@@ -14,8 +14,6 @@ import { BRANCH_LIST_LOADING_DELAY_MS } from "../../src/components/ChatApp";
 import { createMockVscode, sendCommand, fireInput } from "./test-utils";
 import { MockDataGenerator } from "../fixtures/mockData";
 
-vi.mock("../../src/styles/DesktopApp.css", () => ({}));
-
 function renderDesktopApp() {
   const vscode = createMockVscode();
   const result = render(<DesktopApp vscode={vscode} />);

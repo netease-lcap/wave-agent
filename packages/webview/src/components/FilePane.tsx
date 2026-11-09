@@ -619,7 +619,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const [revealTick, setRevealTick] = useState(0);
   const [treeDragWidth, setTreeDragWidth] = useState<number | null>(null);
   // 面板正文区的宽度：树宽上限、以及「还有没有并排余地」都看它（场景 2/3）。
-  // 0 = 还没量到（首帧、jsdom 这类没有布局的环境），规则里当成「宽度未知」。
+  // 0 = 还没量到（首帧、面板处于隐藏态），规则里当成「宽度未知」。
   const [bodyWidth, setBodyWidth] = useState(0);
 
   useEffect(() => {
