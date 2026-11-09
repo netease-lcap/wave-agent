@@ -15,18 +15,35 @@ const cryptoShim = requireFromHere.resolve("./tests/shims/crypto-browser.ts");
  * made every layout assertion measure the stub instead of the component, so
  * the whole suite now runs where the APIs are real.
  *
- * The suite is split by what a spec actually needs:
+ * The suite is split by what a spec actually needs, not by taste:
  *  - `browser` (the default): every DOM spec.
- *  - `jsdom`: the specs that need node built-ins (`node:vm`/`node:fs` — the
- *    remote-page shims and the source-reading guards) *and* a DOM. Holding
- *    them in jsdom keeps node polyfills out of the browser project. The error
- *    boundary joins them for one case: it asserts a navigation side effect
- *    (`location.reload`), and a real browser's `location` is unforgeable —
- *    jsdom lets the spec swap the whole location object.
+ *  - `node`: the remote-page specs that build their own `vm` context around a
+ *    shipped script (`remote/sw.js`) or just read a file and assert on its
+ *    source. They never touch `document`, so a DOM environment is pure
+ *    overhead — `environment: 'node'` is what the Vitest docs recommend for
+ *    exactly this shape.
+ *  - `jsdom`: the specs that need a DOM *and* node built-ins. Two shapes:
+ *    (a) the ones that load the shipped `remote/shim.js` and drive it through a
+ *    stub WebSocket plus a jsdom `window` — that fake host is the design, not a
+ *    shortcut: the cases are frame misattribution (another session's frames, a
+ *    switch that overtakes an in-flight reply), which needs the relay to stay a
+ *    stub and the shim's `location.replace` to stay a no-op (a real browser
+ *    would navigate the test iframe away);
+ *    (b) `settingsGlobal`, whose import chain reaches `os.homedir` through the
+ *    SDK's constants (`Module "os" has been externalized` is what the browser
+ *    project says if you move it back), and `errorBoundary` for one case: it
+ *    asserts a navigation side effect (`location.reload`) and a real browser's
+ *    `location` is unforgeable, while a real `location.reload()` inside browser
+ *    mode hangs the run (vitest#6439) — jsdom lets the spec swap the object.
  */
-const NODE_SPECS = ["tests/remote/**/*.test.ts"];
+const REMOTE_SPECS = ["tests/remote/**/*.test.ts"];
+/** Remote-page specs that need nothing but Node — no DOM at all. */
+const NODE_SPECS = [
+  "tests/remote/sw.test.ts",
+  "tests/remote/remotePageZoomGuard.test.ts",
+];
 const JSDOM_SPECS = [
-  ...NODE_SPECS,
+  ...REMOTE_SPECS,
   "tests/webview/settingsGlobal.test.tsx",
   "tests/webview/errorBoundary.test.tsx",
 ];
@@ -42,9 +59,17 @@ export default defineConfig({
     projects: [
       {
         test: {
+          name: "node",
+          environment: "node",
+          include: NODE_SPECS,
+        },
+      },
+      {
+        test: {
           name: "jsdom",
           environment: "jsdom",
           include: JSDOM_SPECS,
+          exclude: [...NODE_SPECS, "**/node_modules/**"],
           setupFiles: ["tests/setup.jsdom.ts"],
           // Node 25+ ships its own experimental localStorage accessor on
           // globalThis; vitest then skips installing jsdom's working Storage
@@ -61,7 +86,8 @@ export default defineConfig({
         test: {
           name: "browser",
           include: ["tests/**/*.test.ts", "tests/**/*.test.tsx"],
-          exclude: [...NODE_SPECS, ...JSDOM_SPECS, "node_modules"],
+          // `JSDOM_SPECS` already covers every `tests/remote/**` spec (node + jsdom).
+          exclude: [...JSDOM_SPECS, "node_modules"],
           setupFiles: ["tests/setup.browser.ts"],
           // jsdom's `window.innerWidth` is a constant 1024; a real browser's
           // default viewport instead pushes the panes into their narrow-layout
