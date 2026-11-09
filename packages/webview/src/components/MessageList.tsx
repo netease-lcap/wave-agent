@@ -12,7 +12,7 @@ import { Message } from "./Message";
 import { EMPTY_TRANSCRIPT_FIND, TranscriptFindBar } from "./TranscriptFindBar";
 import type { TranscriptFindState } from "./TranscriptFindBar";
 import { streamingTail } from "../utils/streamingText";
-import { countTimelineBlocks } from "../utils/timelineBlocks";
+import { countTimelineBlocks, rendersNothing } from "../utils/timelineBlocks";
 import {
   buildFindRegex,
   clearFindMarks,
@@ -132,10 +132,21 @@ export const MessageList = forwardRef<
 
   // Filter out user messages with isMeta (hidden from the list). Both the
   // sticky computation and the virtualizer index this filtered list.
+  //
+  // 渲染不出任何节点的消息也在这里滤掉（判据见 utils/timelineBlocks 的
+  // rendersNothing）——这里是唯一的入口，一个 filter 同时解决三件事：
+  // 不再有空的 `.message` 外壳、不再有占位/占底部间距的虚拟行、时间线 run 的
+  // 起止规则自然落在真实消息上（空行既接不到 `--end` 也不会把线截断）。
+  //
+  // 流式刚开始那一刻就出现这种消息：codechat 网关上的 Claude 思考明文恒为空
+  // （只回 signature），第一个 `thinking_delta` 是空串，SDK 于是在真内容到达前
+  // 几百毫秒到几秒就先建出一条 `blocks: []` 的助手消息。它拿到真内容后自然
+  // 回到列表里。
   const visibleMessages = useMemo(() => {
     const out: MessageType[] = [];
     for (const msg of messages) {
       if (msg.role === "user" && msg.isMeta) continue;
+      if (rendersNothing(msg)) continue;
       out.push(msg);
     }
     return out;

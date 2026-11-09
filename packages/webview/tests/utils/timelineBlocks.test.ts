@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { MessageBlock } from "../../src/types";
+import type { Message } from "wave-agent-sdk/types";
 import {
   countTimelineBlocks,
   isTimelineBlock,
+  rendersNothing,
   timelineBlockBounds,
 } from "../../src/utils/timelineBlocks";
 
@@ -82,5 +84,84 @@ describe("countTimelineBlocks / timelineBlockBounds", () => {
 
     expect(countTimelineBlocks(blocks)).toBe(0);
     expect(timelineBlockBounds(blocks)).toEqual({ first: -1, last: -1 });
+  });
+});
+
+/**
+ * `rendersNothing` 是「整条消息都不渲染」的判据，Message（不出 `.message`
+ * 外壳）、MessageList（对时间线 run 透明）与 estimateRowHeight（不占行高）
+ * 共用同一份——三处各写一份就会出现「外壳没了但行高还在」这类偏差。
+ */
+describe("rendersNothing", () => {
+  const messageOf = (
+    blocks: MessageBlock[],
+    role: "user" | "assistant" = "assistant",
+  ) => ({ id: "m", role, timestamp: "", blocks }) as unknown as Message;
+
+  it("empty / whitespace-only blocks render nothing", () => {
+    expect(rendersNothing(messageOf([]))).toBe(true);
+    expect(
+      rendersNothing(
+        messageOf([
+          { type: "text", content: "  \n" },
+          { type: "reasoning", content: "", stage: "end" },
+        ] as unknown as MessageBlock[]),
+      ),
+    ).toBe(true);
+  });
+
+  it("non-rendering block types (file_history / task_notification) don't count", () => {
+    expect(
+      rendersNothing(
+        messageOf([
+          { type: "file_history", ...{} },
+          { type: "task_notification" },
+        ] as unknown as MessageBlock[]),
+      ),
+    ).toBe(true);
+  });
+
+  it("blocks that always render make it non-empty", () => {
+    expect(
+      rendersNothing(
+        messageOf([{ type: "tool", id: "t1" }] as unknown as MessageBlock[]),
+      ),
+    ).toBe(false);
+    expect(
+      rendersNothing(
+        messageOf([
+          { type: "compact", content: "summary" },
+        ] as unknown as MessageBlock[]),
+      ),
+    ).toBe(false);
+    // notice 是一条给用户看的通知行（hook 的循环进度等），不能被当作空消息吞掉。
+    expect(
+      rendersNothing(
+        messageOf([
+          { type: "notice", level: "info", content: "🔄 第 3 轮" },
+        ] as unknown as MessageBlock[]),
+      ),
+    ).toBe(false);
+  });
+
+  it("an image block only renders on assistant messages that actually have an image", () => {
+    const image = { type: "image", imageUrls: ["data:image/png;base64,AA"] };
+    expect(
+      rendersNothing(
+        messageOf([image] as unknown as MessageBlock[], "assistant"),
+      ),
+    ).toBe(false);
+    // 用户消息上的图片块不渲染（图片走正文里的 [imageN] 标签）。
+    expect(
+      rendersNothing(messageOf([image] as unknown as MessageBlock[], "user")),
+    ).toBe(true);
+    expect(
+      rendersNothing(
+        messageOf(
+          [{ type: "image", imageUrls: [] }] as unknown as MessageBlock[],
+          "assistant",
+        ),
+      ),
+    ).toBe(true);
   });
 });
