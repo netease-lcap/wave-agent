@@ -9,6 +9,11 @@ import React, {
   useState,
 } from "react";
 import { Message } from "./Message";
+import { TranscriptOutline } from "./TranscriptOutline";
+import {
+  OUTLINE_QUESTION_LIMIT,
+  type TranscriptOutlineItem,
+} from "../utils/transcriptOutline";
 import { EMPTY_TRANSCRIPT_FIND, TranscriptFindBar } from "./TranscriptFindBar";
 import type { TranscriptFindState } from "./TranscriptFindBar";
 import { streamingTail } from "../utils/streamingText";
@@ -115,10 +120,14 @@ export const MessageList = forwardRef<
   const earlierPendingRef = useRef(false);
 
   // The most-recent user message that has scrolled above the viewport top; pinned
-  // at the top of the list as a context hint (设计稿 2236-3792).
+  // at the top of the list as a context hint (设计稿 2236-3792). `index` is the
+  // same candidate the 大纲 uses to highlight its current tick — both read this
+  // one value, so the sticky bar and the outline can never point at two
+  // different rounds.
   const [stickyMessage, setStickyMessage] = useState<{
     id: string;
     text: string;
+    index: number;
   } | null>(null);
   // Mirror of stickyMessage for computeSticky's pre-comparison. computeSticky
   // runs on every messages update (each streaming chunk) and from the scroll
@@ -133,6 +142,7 @@ export const MessageList = forwardRef<
   const stickyRef = useRef<{
     id: string;
     text: string;
+    index: number;
   } | null>(null);
 
   // Filter out user messages with isMeta (hidden from the list). Both the
@@ -170,6 +180,27 @@ export const MessageList = forwardRef<
    */
   const columnRef = useRef<HTMLDivElement | null>(null);
   const [textWidth, setTextWidth] = useState<number | undefined>(undefined);
+  /**
+   * 内容列宽度，只给大纲判断「窄到该不该整体隐藏」。与 `textWidth` 是两件事：
+   * 那一个是正文折行宽度（量不到就留 undefined，估算用它自己的兜底），这一个
+   * 必须**总有个数**——所以 `getBoundingClientRect` 之外用 `offsetWidth` 兜底
+   * （jsdom 不做排版，rect 恒 0，tests/setup.ts 把 offsetWidth 固定成 800）。
+   */
+  const [columnWidth, setColumnWidth] = useState(0);
+  useLayoutEffect(() => {
+    const column = columnRef.current;
+    if (!column) return;
+    const measure = () => {
+      const width =
+        Math.round(column.getBoundingClientRect().width) || column.offsetWidth;
+      setColumnWidth((prev) => (prev === width ? prev : width));
+    };
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(column);
+    return () => observer.disconnect();
+  }, []);
   useLayoutEffect(() => {
     const column = columnRef.current;
     if (!column || typeof ResizeObserver === "undefined") return;
@@ -224,6 +255,43 @@ export const MessageList = forwardRef<
   // the imperative handle must not capture a stale render).
   const visibleMessagesRef = useRef(visibleMessages);
   visibleMessagesRef.current = visibleMessages;
+
+  /**
+   * 滚动容器的可视高度，只给大纲算刻度间距与垂直居中位置。内核自己有视口
+   * 高度（`viewportHeight` 在 useVirtualRows 里是个局部函数），但它不外露，
+   * 而且这里要的是「React 能跟着变化重渲染」的那一份。
+   */
+  const [listViewportHeight, setListViewportHeight] = useState(0);
+  /**
+   * 内容列左边缘相对滚动容器的距离 —— 800px 列居中后左侧那片留白。大纲的刻度
+   * 就住在这里（对齐 Codex：目录与消息列之间要有间距，不贴着气泡画）；留白不
+   * 够时大纲整体不显示，见 `shouldShowOutline`。列宽封顶后列本身不再变宽，所以
+   * 必须观察**容器**，只看列是测不出窗口变宽的。
+   */
+  const [columnInset, setColumnInset] = useState(0);
+  useLayoutEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    const measure = () => {
+      // jsdom 里 clientHeight 恒 0，offsetHeight 由 tests/setup.ts 兜底。
+      const height = container.clientHeight || container.offsetHeight;
+      setListViewportHeight((prev) => (prev === height ? prev : height));
+      const column = columnRef.current;
+      // 容器不横向滚动（overflow-x: hidden），rect 之差就是列左侧的留白。
+      const inset = column
+        ? Math.round(
+            column.getBoundingClientRect().left -
+              container.getBoundingClientRect().left,
+          )
+        : 0;
+      setColumnInset((prev) => (prev === inset ? prev : inset));
+    };
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, [containerRef]);
 
   // ---- 会话内查找（spec ui/transcript-find.md）------------------------------
   // 计数与跳转走消息数据、高亮画在渲染后的文本节点上，两层分开的理由见
@@ -484,18 +552,47 @@ export const MessageList = forwardRef<
     return { classes, paddings };
   }, [visibleMessages]);
 
+  /**
+   * 大纲的刻度数据（spec ui/transcript-outline.md）：一条**带文本**的用户消息
+   * = 一个刻度。判据复用 `stickyAnchorText`——「哪些消息能当锚点」只允许有这
+   * 一份定义，否则吸顶条认它、大纲不认它这种分叉迟早会出现。
+   *
+   * 刻度只带问题、不带助手回答（spec 场景 5）：卡片里只放一条消息的文本，两段
+   * 内容在这么小的一块地方只会显得重复。
+   */
+  const outlineItems = useMemo((): TranscriptOutlineItem[] => {
+    const items: TranscriptOutlineItem[] = [];
+    for (let index = 0; index < visibleMessages.length; index++) {
+      const message = visibleMessages[index];
+      if (message.role !== "user") continue;
+      const question = stickyAnchorText(message);
+      if (!question) continue;
+      items.push({
+        id: message.id,
+        index,
+        question: question.slice(0, OUTLINE_QUESTION_LIMIT),
+      });
+    }
+    return items;
+  }, [visibleMessages]);
+
   const computeSticky = useCallback(() => {
     const container = containerRef.current;
     // setSticky compares against stickyRef (synced from stickyMessage every
     // render) and skips the state update entirely when the computed value is
     // unchanged — see the stickyRef comment. This keeps the sticky computation
     // off React's nested-passive-update accounting on the streaming hot path.
-    const setSticky = (next: { id: string; text: string } | null) => {
+    const setSticky = (
+      next: { id: string; text: string; index: number } | null,
+    ) => {
       const prev = stickyRef.current;
       const same =
         prev === null
           ? next === null
-          : next !== null && prev.id === next.id && prev.text === next.text;
+          : next !== null &&
+            prev.id === next.id &&
+            prev.text === next.text &&
+            prev.index === next.index;
       if (!same) setStickyMessage(next);
     };
     if (!container) {
@@ -535,7 +632,11 @@ export const MessageList = forwardRef<
       setSticky(null);
       return;
     }
-    setSticky({ id: rows[candidate].id, text: candidateText });
+    setSticky({
+      id: rows[candidate].id,
+      text: candidateText,
+      index: candidate,
+    });
   }, [containerRef, indexAtOffset, rowStart, visualOffset]);
 
   const scrollToMessage = useCallback(
@@ -851,6 +952,17 @@ export const MessageList = forwardRef<
           lives in this inner wrapper (see MessageList.css). Rows resolve
           against it (position: relative), so its offset from the scroll
           surface must stay 0 — the 10px padding is inside it. */}
+      {/* 左边缘的刻度大纲（spec ui/transcript-outline.md）。零高度、粘在滚动
+          面上，住在内容列左侧的留白里；不是列的子元素（列 overflow-x: clip
+          会把越出列的刻度裁掉）。 */}
+      <TranscriptOutline
+        items={outlineItems}
+        activeId={stickyMessage?.id}
+        columnWidth={columnWidth}
+        columnInset={columnInset}
+        viewportHeight={listViewportHeight}
+        onJump={scrollToMessage}
+      />
       <div className="messages-column" ref={columnRef}>
         {find.open && (
           <TranscriptFindBar
