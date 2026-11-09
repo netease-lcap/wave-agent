@@ -18,12 +18,20 @@
 
 import React from "react";
 import { CodewaveLogo } from "./CodewaveLogo";
+import type { AccountCredential } from "wave-webview-fixtures";
+import { hasUsableCredential } from "../utils/credential";
 
 export interface WelcomeViewProps {
   /** Desktop renders the designer wordmark; plugin hosts render the classic W mark. */
   isDesktop?: boolean;
   /** Host-reported SSO auth state (setInitialState). */
   isAuthenticated: boolean;
+  /**
+   * 凭据形态（spec desktop/desktop-account.md「认证方式」）。配了 WAVE_API_KEY
+   * 却没登录企业账号的人**能**正常发消息，欢迎页不该给他推「请登录」CTA
+   * （sso-auth.md 场景 5）。缺席 = 旧宿主，回落到 isAuthenticated。
+   */
+  credential?: AccountCredential | null;
   /** Fires the host login flow (identical to the 更多 menu's 登录 item). */
   onLogin: () => void;
 }
@@ -48,13 +56,15 @@ const WaveLogo: React.FC<{ size?: number }> = ({ size = 20 }) => (
 const WelcomeView: React.FC<WelcomeViewProps> = ({
   isDesktop = false,
   isAuthenticated,
+  credential,
   onLogin,
 }) => {
   // Login UI is plugin-host-only (desktop logs in via the sidebar account card) and only
   // relevant when the user is not authenticated. plugin hosts have no direct-connect
   // config anymore, so an unauthenticated plugin-host user must be nudged to log in
   // (spec sso-auth「插件端更多菜单与欢迎页」场景 5).
-  const showLogin = !isDesktop && !isAuthenticated;
+  const showLogin =
+    !isDesktop && !hasUsableCredential(credential, isAuthenticated);
 
   return (
     <div

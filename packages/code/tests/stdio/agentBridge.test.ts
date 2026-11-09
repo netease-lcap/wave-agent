@@ -178,6 +178,8 @@ function createMockAgent(overrides: Record<string, unknown> = {}) {
     isCommandRunning: false,
     queuedMessages: [],
     getBackgroundTasks: vi.fn().mockReturnValue([]),
+    // 凭据形态（spec desktop-account「认证方式」）：没有凭据的默认形态。
+    getGatewayConfig: vi.fn().mockReturnValue({}),
     ...overrides,
   };
   return agent as unknown as Agent;
@@ -212,6 +214,10 @@ beforeEach(() => {
 afterEach(() => {
   stderrWriteSpy.mockRestore();
   delete process.env.WAVE_SERVER_URL;
+  // 凭据形态会读 OS 环境里的网关凭据（settings.json `env` 的下一层），
+  // 逐条删干净，避免用例之间互相污染。
+  delete process.env.WAVE_API_KEY;
+  delete process.env.WAVE_BASE_URL;
 });
 
 // ── initialize ───────────────────────────────────────────────────
@@ -2555,6 +2561,8 @@ test("getAuthStatus returns auth state", async () => {
 
   expect(result).toEqual({
     isAuthenticated: true,
+    // 企业账号形态；本机没有配置网关凭据 ⇒ 不带 gateway。
+    credential: { kind: "sso" },
     user: { id: "user-1", email: "test@test.com" },
     serverUrl: "https://codechat.codewave.163.com",
   });
@@ -2587,7 +2595,134 @@ test("getAuthStatus refreshes a stale-but-refreshable token before reporting", a
   expect(checkAndRefreshTokenIfNeeded).toHaveBeenCalled();
   expect(result).toEqual({
     isAuthenticated: true,
+    credential: { kind: "sso" },
     user: { id: "user-1", email: "test@test.com" },
+    serverUrl: "https://codechat.codewave.163.com",
+  });
+});
+
+/** 未登录企业账号（= 只看网关凭据的那条分支）。 */
+function mockLoggedOutAuth() {
+  vi.mocked(AuthService.getInstance).mockReturnValue({
+    isSSOAuthenticated: vi.fn().mockReturnValue(false),
+    getAuthUser: vi.fn().mockReturnValue(undefined),
+    getServerUrl: vi.fn().mockReturnValue("https://codechat.codewave.163.com"),
+    checkAndRefreshTokenIfNeeded: vi.fn().mockResolvedValue(false),
+  } as unknown as AuthService);
+}
+
+test("getAuthStatus reports a gateway credential from settings.json env", async () => {
+  // 没登录企业账号但配了 WAVE_API_KEY：这个人能正常干活，宿主不能把他判成
+  // 「无凭据」（spec desktop/desktop-account.md「认证方式」）。
+  const { bridge } = createBridge();
+  mockLoggedOutAuth();
+  vi.mocked(loadUserConfigEnv).mockReturnValue({
+    WAVE_API_KEY: "sk-test",
+    WAVE_BASE_URL: "https://api.example.com/v1",
+  });
+
+  const result = await bridge.handleRequest("getAuthStatus", {});
+
+  expect(result).toEqual({
+    isAuthenticated: false,
+    credential: { kind: "gateway", gateway: { host: "api.example.com" } },
+    serverUrl: "https://codechat.codewave.163.com",
+  });
+});
+
+test("getAuthStatus reads the gateway credential from the OS environment when settings.json has none", async () => {
+  const { bridge } = createBridge();
+  mockLoggedOutAuth();
+  process.env.WAVE_API_KEY = "sk-os";
+  process.env.WAVE_BASE_URL = "https://os-gateway.example.com";
+
+  const result = await bridge.handleRequest("getAuthStatus", {});
+
+  expect(result).toEqual({
+    isAuthenticated: false,
+    credential: {
+      kind: "gateway",
+      gateway: { host: "os-gateway.example.com" },
+    },
+    serverUrl: "https://codechat.codewave.163.com",
+  });
+});
+
+test("getAuthStatus reports host null when only the key is configured (默认端点)", async () => {
+  const { bridge } = createBridge();
+  mockLoggedOutAuth();
+  vi.mocked(loadUserConfigEnv).mockReturnValue({ WAVE_API_KEY: "sk-test" });
+
+  const result = await bridge.handleRequest("getAuthStatus", {});
+
+  expect(result).toEqual({
+    isAuthenticated: false,
+    credential: { kind: "gateway", gateway: { host: null } },
+    serverUrl: "https://codechat.codewave.163.com",
+  });
+});
+
+test("getAuthStatus reports no credential when neither SSO nor a gateway key exists", async () => {
+  const { bridge } = createBridge();
+  mockLoggedOutAuth();
+
+  const result = await bridge.handleRequest("getAuthStatus", {});
+
+  expect(result).toEqual({
+    isAuthenticated: false,
+    credential: { kind: "none" },
+    serverUrl: "https://codechat.codewave.163.com",
+  });
+});
+
+test("getAuthStatus keeps the configured gateway as the post-logout fallback under SSO", async () => {
+  // 双凭据：卡片仍是企业账号形态，但「退出登录」项要靠这份 gateway 说明退出后
+  // 会落到哪里（不经过「无凭据」中间态）。
+  const { bridge } = createBridge();
+  vi.mocked(AuthService.getInstance).mockReturnValue({
+    isSSOAuthenticated: vi.fn().mockReturnValue(true),
+    getAuthUser: vi
+      .fn()
+      .mockReturnValue({ id: "user-1", email: "test@test.com" }),
+    getServerUrl: vi.fn().mockReturnValue("https://codechat.codewave.163.com"),
+    checkAndRefreshTokenIfNeeded: vi.fn().mockResolvedValue(true),
+  } as unknown as AuthService);
+  vi.mocked(loadUserConfigEnv).mockReturnValue({
+    WAVE_API_KEY: "sk-test",
+    WAVE_BASE_URL: "https://api.example.com/v1",
+  });
+
+  const result = await bridge.handleRequest("getAuthStatus", {});
+
+  expect(result).toMatchObject({
+    isAuthenticated: true,
+    credential: { kind: "sso", gateway: { host: "api.example.com" } },
+  });
+});
+
+test("getAuthStatus prefers the live session's gateway config over the settings layer", async () => {
+  // 会话进程解析出来的那份与真实请求同源（已合并用户 / 项目 / 远端三层 env），
+  // 只用 settings.json 判会把「配置在下发层」的人判错。
+  const { bridge } = createBridge();
+  mockLoggedOutAuth();
+  vi.mocked(Agent.create).mockResolvedValue(
+    createMockAgent({
+      getGatewayConfig: vi.fn().mockReturnValue({
+        apiKey: "sk-session",
+        baseURL: "https://session-gateway.example.com/v1",
+      }),
+    }),
+  );
+  await bridge.handleRequest("initialize", { workdir: REPO_ROOT });
+
+  const result = await bridge.handleRequest("getAuthStatus", {});
+
+  expect(result).toEqual({
+    isAuthenticated: false,
+    credential: {
+      kind: "gateway",
+      gateway: { host: "session-gateway.example.com" },
+    },
     serverUrl: "https://codechat.codewave.163.com",
   });
 });

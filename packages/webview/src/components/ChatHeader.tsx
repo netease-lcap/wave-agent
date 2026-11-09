@@ -28,6 +28,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
   onLogin,
   onLogout,
   isAuthenticated,
+  credential,
   hideSessionButtons = false,
   sessionSwitchButton = false,
   onOpenSessionPage,
@@ -300,6 +301,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
           onLogin={onLogin}
           onLogout={onLogout}
           isAuthenticated={isAuthenticated}
+          credential={credential}
           pushNotifications={pushNotifications}
           onSwitchMachine={onSwitchMachine}
           onClose={() => setShowMoreMenu(false)}

@@ -32,6 +32,11 @@ import LoadingLogo from "./LoadingLogo";
 import { SidebarExpandIcon, CloseIcon } from "./HeaderIcons";
 import { useDesktopChrome } from "./DesktopChromeContext";
 import { useHostMessage } from "../utils/useHostMessage";
+import {
+  credentialAfterLogin,
+  credentialAfterLogout,
+  hasUsableCredential,
+} from "../utils/credential";
 import { useSessionRename } from "../utils/useSessionRename";
 import { DesktopHostSelector } from "./DesktopHostSelector";
 import { DesktopShell } from "./DesktopShell";
@@ -2105,6 +2110,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
             attachedImages: message.attachedImages,
             queuedMessages: message.queuedMessages,
             isAuthenticated: message.isAuthenticated,
+            credential: message.credential,
             workdir: message.workdir,
             // Hosts (VSCE messageHandler / Desktop desktopHost) include the
             // running background tasks + workflow runs in the snapshot so a
@@ -2157,11 +2163,16 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         if (myPane !== undefined) break;
         setAccountInfo({
           isAuthenticated: message.isAuthenticated === true,
+          credential: message.credential,
           user: message.user ?? null,
           billing: message.billing ?? null,
           apiQuota: message.apiQuota ?? null,
           update: message.update ?? null,
         });
+        // 发送入口的禁用判据读 `state.credential`（reducer），账户快照是桌面端
+        // 凭据变化最频繁的那条推送（切聚焦主机 / 登录 / 退出 / 又点了一次刷新）
+        // —— 只写卡片状态会让输入框停在旧凭据上。
+        dispatch({ type: "SET_CREDENTIAL", payload: message.credential });
         break;
       case "desktopTogglePanel":
         if (!forThisPane(message)) break;
@@ -2333,11 +2344,16 @@ export const ChatApp: React.FC<ChatAppProps> = ({
           type: "SET_AUTHENTICATED",
           payload: message.isAuthenticated || false,
         });
+        // 凭据形态与登录态同源（CLI getAuthStatus）。单独立一个 action：网关形态
+        // 下 isAuthenticated 恒为 false，用登录态变化当触发条件会漏掉「两种都是
+        // false、但形态从无凭据变成网关」的那次切换。
+        dispatch({ type: "SET_CREDENTIAL", payload: message.credential });
         // The account card mirrors the host's per-host auth state; the user
         // came along with the response (desktop host forwards it).
         setAccountInfo((prev) => ({
           ...(prev ?? { isAuthenticated: false }),
           isAuthenticated: message.isAuthenticated === true,
+          credential: message.credential,
           user: message.user ?? prev?.user ?? null,
         }));
         // 服务地址来自 CLI 的 getAuthStatus（宿主只缓存/转发）：企业控制台 /
@@ -2380,8 +2396,15 @@ export const ChatApp: React.FC<ChatAppProps> = ({
       case "loginResponse":
         if (message.success) {
           dispatch({ type: "SET_AUTHENTICATED", payload: true });
+          // 登录成功即企业账号形态（SSO 在 `resolveGatewayConfig` 里恒优先）。
+          // 不能只置 isAuthenticated：状态里可能还留着登录前的 `gateway`，而
+          // 归一函数优先读 credential，卡片会停在网关形态。`gateway` 照旧带上
+          // ——它现在是「退出登录后会落到的那份」。
+          const nextCredential = credentialAfterLogin(state.credential);
+          dispatch({ type: "SET_CREDENTIAL", payload: nextCredential });
           setAccountInfo((prev) => ({
             isAuthenticated: true,
+            credential: nextCredential,
             user: message.user ?? prev?.user ?? null,
             billing: prev?.billing ?? null,
             apiQuota: prev?.apiQuota ?? null,
@@ -2391,9 +2414,16 @@ export const ChatApp: React.FC<ChatAppProps> = ({
       case "logoutResponse":
         if (message.success) {
           dispatch({ type: "SET_AUTHENTICATED", payload: false });
+          // 落到网关形态还是无凭据，取决于本机有没有网关凭据 —— `sso` 形态的
+          // `credential.gateway` 正是「退出后会用的那份」（宿主随后推送的真值
+          // 会覆盖这次预测）。不能留着旧的 `sso`：那一帧会渲染成「已登录但没
+          // 名字」的空壳（spec「认证方式」场景 4：不经过无凭据中间态）。
+          const nextCredential = credentialAfterLogout(state.credential);
+          dispatch({ type: "SET_CREDENTIAL", payload: nextCredential });
           // 登出即清空用量 —— host 随后会推 desktopAccountInfo 全量快照。
           setAccountInfo({
             isAuthenticated: false,
+            credential: nextCredential,
             user: null,
             billing: null,
             apiQuota: null,
@@ -3265,8 +3295,15 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   // 快捷指令/权限模式按钮置灰）；禁用原因只写在输入框占位文案里——不新增提示行、
   // 不在输入区放登录按钮、不写「请去某处登录」的指路文案（登录入口用户自己能看见：
   // 插件端欢迎页 / 桌面左侧账户卡）。
-  const unauthenticated = !state.isAuthenticated;
-  const inputDisabledReason = unauthenticated
+  // 「无可用凭据」而不是「未登录」：配了 WAVE_API_KEY 却没登录企业账号的用户能
+  // 正常发消息（网关形态），用 isAuthenticated 反推会把这个人的输入框锁死——
+  // 命令行还能跑、桌面端卡住的那类失效（spec desktop/desktop-account.md
+  // 「认证方式」故事；sso-auth.md 场景 8）。文案不变。
+  const noUsableCredential = !hasUsableCredential(
+    state.credential,
+    state.isAuthenticated,
+  );
+  const inputDisabledReason = noUsableCredential
     ? "请先登录后再发送消息"
     : host?.type === "desktop" && !effectiveWorkdir
       ? "请先选择项目目录"
@@ -5049,6 +5086,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         <WelcomeView
           isDesktop={isDesktop}
           isAuthenticated={state.isAuthenticated}
+          credential={state.credential}
           onLogin={handleLogin}
         />
       ) : showWelcome ? (
@@ -5636,6 +5674,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         onLogin={handleLogin}
         onLogout={handleLogout}
         isAuthenticated={state.isAuthenticated}
+        credential={state.credential}
         // Desktop: 会话新建/历史按钮回归 DesktopSidebar（revert #2021 移除
         // 聊天顶栏「历史对话」跨目录弹窗入口后，顶栏不再渲染会话按钮）。
         // Remote Web page: 「历史对话」同口径隐藏、改单个「会话」入口；

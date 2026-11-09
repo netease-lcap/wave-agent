@@ -766,6 +766,8 @@ export interface SetInitialStateMessage extends HostToWebviewMessageBase {
    *  —— 缺席时 webview 保留自己手里的那一份（不清空）。 */
   sessionStatus?: SessionListStatus;
   isAuthenticated: boolean;
+  /** 凭据形态（同 `authStatusResponse.credential`）；缺失 = 旧宿主，回落 isAuthenticated。 */
+  credential?: AccountCredential;
   workdir?: string;
 }
 
@@ -961,6 +963,13 @@ export interface UpdateNoticeBlockMessage extends HostToWebviewMessageBase {
 export interface AuthStatusResponseMessage extends HostToWebviewMessageBase {
   command: "authStatusResponse";
   isAuthenticated: boolean;
+  /**
+   * 凭据形态（spec desktop-account.md「认证方式」）。发送入口禁用判据、欢迎页
+   * 登录 CTA 都读它——**「有没有 SSO token」不等于「有没有凭据」**：key 写在
+   * `settings.json` 的 `env` 里同样能发消息。缺失 = 旧宿主，消费方回落
+   * `isAuthenticated`（见 sso-auth.md 场景 5 / 8）。
+   */
+  credential?: AccountCredential;
   /** Authenticated account (desktop host forwards it for the account card). */
   user?: { id: string; email?: string } | null;
   /**
@@ -1082,13 +1091,41 @@ export interface AccountUpdateInfo {
 }
 
 /**
+ * 当前生效的凭据形态（spec desktop-account.md「账户卡片 · 认证方式」）。
+ *
+ * 由 CLI 侧按 SDK `resolveGatewayConfig` 的同一套优先级算出：**企业账号（SSO
+ * token）> 自定义网关（`WAVE_API_KEY`，`WAVE_BASE_URL` 可选）> 无凭据**。webview
+ * 与宿主**都不得**自己读配置文件或 env 推断——组织托管 / 远端下发 / OS 环境变量
+ * 这三层只有会话进程看得全。
+ */
+export type AccountCredentialKind = "sso" | "gateway" | "none";
+
+export interface AccountCredential {
+  /** 当前生效的那一份。`sso` 与 `gateway` 都算「有可用凭据」。 */
+  kind: AccountCredentialKind;
+  /**
+   * 已配置的自定义网关（`host` = `baseURL` 的 host；null = 只配了 key、`baseURL`
+   * 缺省 ⇒ 走 SDK 默认端点）。
+   *
+   * - `kind: "gateway"` 时它就是当前生效的网关；
+   * - `kind: "sso"` 且存在时，它是**退出登录后会落到的那份**（卡片据此在「退出
+   *   登录」项上写明后果）；
+   * - null / 缺失 = 本机没有网关凭据（`kind: "none"` 时必然如此）。
+   */
+  gateway?: { host: string | null } | null;
+}
+
+/**
  * 桌面侧边栏账户卡片快照 (spec desktop-account.md「账户卡片」). Window-global like
  * showToast — the sidebar renders on the root webview instance only, so the
  * host never pane-tags it. Auth/usage follow the focused pane's host.
  */
 export interface DesktopAccountInfoMessage extends HostToWebviewMessageBase {
   command: "desktopAccountInfo";
+  /** SSO 登录态（= `credential.kind === "sso"`）。保留兼容；卡片/门控读 `credential`。 */
   isAuthenticated: boolean;
+  /** 凭据形态；缺失 = 旧宿主，消费方回落 `isAuthenticated`。 */
+  credential?: AccountCredential;
   user?: { id: string; email?: string } | null;
   /** 套餐两根额度条 + 到期日 + 计费结论；null = 无（未购买/未登录）。 */
   billing?: AccountBillingInfo | null;

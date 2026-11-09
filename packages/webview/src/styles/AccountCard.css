@@ -218,6 +218,14 @@
   font-size: 14px;
 }
 
+/* 自定义网关形态：图标位沿用头像的 24px 圆形与配色，只是内容从首字母换成网关
+   图标。盒子尺寸一个像素都不动——行业高与卡片总高必须与账号形态一致
+   （spec desktop-account.md「认证方式」场景 2 的几何断言）。 */
+.account-card-avatar--gateway .account-card-gateway-icon {
+  width: 16px;
+  height: 16px;
+}
+
 /* 未登录态「更多」按钮。 */
 .account-card-more-btn {
   flex-shrink: 0;
