@@ -28,7 +28,12 @@ import { getRgPath } from "./ripgrep.js";
  *   default).
  * - `--hidden`: include hidden files, matching the Grep tool's `--hidden`.
  * - `-I`: skip binary files, matching rg's silent recursion skip.
- * - `--exclude-dir` for the VCS directories the Grep tool excludes.
+ * - `--exclude-dir` / `--exclude` for the VCS names the Grep tool excludes: the
+ *   directory form for the usual `.git/`, the file form for a *worktree*, where
+ *   `.git` is a pointer file (`gitdir: …`) that `--exclude-dir` leaves behind —
+ *   searching from a worktree root would otherwise report `.git:1:gitdir: …`.
+ *   ripgrep excludes the name outright (`--glob '!.git'`), so this is what makes
+ *   the two agree.
  *
  * `find` → bfs, with `-S dfs` to keep traversal order predictable, and
  * `-regextype findutils-default` because bfs's default regex dialect is POSIX
@@ -58,7 +63,7 @@ import { getRgPath } from "./ripgrep.js";
  * *is* GNU find, which is the semantics the find shadow imitates.
  */
 
-/** VCS directories the Grep tool excludes; mirrored here so bash matches it. */
+/** VCS names the Grep tool excludes; mirrored here so bash matches it. */
 const VCS_DIRECTORIES = [".git", ".svn", ".hg", ".bzr", ".jj", ".sl"];
 
 /**
@@ -211,7 +216,11 @@ export function buildSearchShellPrelude(options?: {
           "--ignore-files",
           "--hidden",
           "-I",
-          ...VCS_DIRECTORIES.map((dir) => `--exclude-dir=${dir}`),
+          // Both forms: directories, and the `.git` *file* a worktree has.
+          ...VCS_DIRECTORIES.flatMap((name) => [
+            `--exclude-dir=${name}`,
+            `--exclude=${name}`,
+          ]),
         ],
         denyPatterns: GREP_DENY_PATTERNS,
       }),
