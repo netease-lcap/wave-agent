@@ -1,4 +1,4 @@
-import { createRequire } from "node:module";
+import { resolveFromAnchors } from "./cliHome.js";
 import { isPackageOnDisk } from "./packageOnDisk.js";
 
 /**
@@ -46,11 +46,14 @@ export function resolveRipgrep(requireFn: NodeRequire): string | undefined {
  * Path to the ripgrep binary, or `undefined` when grep is unavailable (the Grep
  * tool reports it, file search throws its own error). Memoised once resolved —
  * callers on a hot path pay a string check after that.
+ *
+ * Looked up through both anchors (`cliHome.ts`): an install that cannot see the
+ * wrapper from its own position still finds the downloaded copy.
  */
 export function getRgPath(): string | undefined {
   if (!resolutionAttempted) {
     resolutionAttempted = true;
-    cached = resolveRipgrep(createRequire(import.meta.url));
+    cached = resolveFromAnchors(resolveRipgrep);
   }
   return cached;
 }

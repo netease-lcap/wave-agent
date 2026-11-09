@@ -2,7 +2,6 @@ import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { pathToFileURL } from "node:url";
 import { gzipSync } from "node:zlib";
 import {
   afterAll,
@@ -66,8 +65,8 @@ vi.mock("../../src/utils/sandboxRuntime.js", async (importOriginal) => {
 import {
   __resetRuntimeDepsForTesting,
   ensureRuntimeDeps,
-  isManagedCliInstall,
   RUNTIME_DEPS_REGISTRY,
+  RUNTIME_DEPENDENCY_RANGES,
   verifyIntegrity,
 } from "../../src/utils/runtimeDeps.js";
 
@@ -88,7 +87,6 @@ const TEST_ROOT = path.join(
 );
 let cliHome: string;
 let installDir: string;
-let moduleUrl: string;
 let cliHomeCounter = 0;
 let warnSpy: MockInstance<typeof console.warn>;
 
@@ -446,29 +444,12 @@ function seedMuslDetectLibc(): void {
   );
 }
 
-function writeCliPackageJson(dependencies: Record<string, string>): void {
-  const endDir = path.join(cliHome, "desktop");
-  fs.mkdirSync(path.join(endDir, "dist", "bundle"), { recursive: true });
-  fs.writeFileSync(
-    path.join(endDir, "package.json"),
-    JSON.stringify({ name: "wave-code", dependencies }),
-  );
-  moduleUrl = pathToFileURL(
-    path.join(endDir, "dist", "bundle", "wave.mjs"),
-  ).href;
-}
-
 beforeEach(() => {
   // Failures are logged, not printed: assertions read `result.reason`.
   warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
   fs.rmSync(TEST_ROOT, { recursive: true, force: true });
   cliHome = path.join(TEST_ROOT, `home-${++cliHomeCounter}`);
   installDir = path.join(cliHome, "node_modules");
-  writeCliPackageJson({
-    sharp: SHARP_RANGE,
-    "@vscode/ripgrep": RG_RANGE,
-    "@anthropic-ai/sandbox-runtime": SANDBOX_RUNTIME_RANGE,
-  });
   __resetRuntimeDepsForTesting();
   probe.processor = undefined;
   probe.reset.mockClear();
@@ -489,7 +470,6 @@ describe("ensureRuntimeDeps", () => {
     const registry = registryWithSharp();
 
     const result = await ensureRuntimeDeps({
-      moduleUrl: moduleUrl,
       cliHome: cliHome,
       fetchImpl: registry.fetchImpl,
     });
@@ -535,11 +515,40 @@ describe("ensureRuntimeDeps", () => {
     );
   });
 
+  it("installs a platform build that carries libvips inside itself", async () => {
+    // sharp publishes `@img/sharp-libvips-<key>` only for Linux/darwin; the
+    // Windows build puts `libvips-42.dll` inside `@img/sharp-win32-<arch>` and
+    // there is no `@img/sharp-libvips-win32-*` package at all. Requiring the
+    // pair unconditionally failed *every* Windows install with
+    // "缺 @img/sharp-libvips-win32-x64" — the codec stayed unavailable forever.
+    const registry = registryWithSharp({
+      optionalDependencies: { [`@img/sharp-${PLATFORM_KEY_MUSL}`]: "0.35.4" },
+    });
+
+    const result = await ensureRuntimeDeps({
+      cliHome: cliHome,
+      fetchImpl: registry.fetchImpl,
+    });
+
+    expect(result).toEqual({ available: true });
+    expect(warnSpy).not.toHaveBeenCalled();
+    expect(
+      fs.existsSync(path.join(installDir, `@img/sharp-${PLATFORM_KEY_MUSL}`)),
+    ).toBe(true);
+    expect(
+      fs.existsSync(
+        path.join(installDir, `@img/sharp-libvips-${PLATFORM_KEY_MUSL}`),
+      ),
+    ).toBe(false);
+    expect(registry.urls.some((url) => url.includes("sharp-libvips"))).toBe(
+      false,
+    );
+  });
+
   it("takes the platform key from detect-libc, including the glibc branch", async () => {
     const registry = registryWithSharp({ musl: false });
 
     const result = await ensureRuntimeDeps({
-      moduleUrl: moduleUrl,
       cliHome: cliHome,
       fetchImpl: registry.fetchImpl,
     });
@@ -561,12 +570,10 @@ describe("ensureRuntimeDeps", () => {
     seedMuslDetectLibc();
     const registry = fakeRegistry();
     addRipgrep(registry);
-    writeCliPackageJson({ "@vscode/ripgrep": RG_RANGE });
     probe.processor = (() => ({})) as unknown as SharpFactory; // sharp already there
     rgProbe.path = undefined;
 
     const result = await ensureRuntimeDeps({
-      moduleUrl: moduleUrl,
       cliHome: cliHome,
       fetchImpl: registry.fetchImpl,
     });
@@ -611,11 +618,9 @@ describe("ensureRuntimeDeps", () => {
     // A broken image codec download must not cost the user grep as well.
     const registry = registryWithSharp({ omit: "sharp" });
     addRipgrep(registry);
-    writeCliPackageJson({ sharp: SHARP_RANGE, "@vscode/ripgrep": RG_RANGE });
     rgProbe.path = undefined;
 
     const result = await ensureRuntimeDeps({
-      moduleUrl: moduleUrl,
       cliHome: cliHome,
       fetchImpl: registry.fetchImpl,
     });
@@ -632,7 +637,6 @@ describe("ensureRuntimeDeps", () => {
     probe.processor = (() => ({})) as unknown as SharpFactory;
 
     const result = await ensureRuntimeDeps({
-      moduleUrl: moduleUrl,
       cliHome: cliHome,
       fetchImpl: registry.fetchImpl,
     });
@@ -651,7 +655,6 @@ describe("ensureRuntimeDeps", () => {
     addSandboxRuntime(registry);
     rgProbe.path = undefined; // a host copy starts with neither of the two
     const options = {
-      moduleUrl: moduleUrl,
       cliHome: cliHome,
       fetchImpl: registry.fetchImpl,
     };
@@ -703,7 +706,6 @@ describe("ensureRuntimeDeps", () => {
     const registry = registryWithSharp();
     addRipgrep(registry);
     const options = {
-      moduleUrl: moduleUrl,
       cliHome: cliHome,
       fetchImpl: registry.fetchImpl,
     };
@@ -718,29 +720,20 @@ describe("ensureRuntimeDeps", () => {
     expect(fs.existsSync(path.join(installDir, "sharp"))).toBe(true);
   });
 
-  it("refuses to install for a CLI that is not under the shared cli home", async () => {
+  it("installs even when the CLI's own layout cannot resolve the packages", async () => {
+    // The shape of a pnpm global install: the bundle sits in a prefix where no
+    // hoisted `node_modules` reaches it. The lookups fall back to the cli home
+    // (`cliHome.ts`), so the download is what makes grep work — the installer
+    // must not refuse this layout any more.
     const registry = registryWithSharp();
-    const foreign = pathToFileURL(
-      path.join(
-        os.tmpdir(),
-        "npm-prefix",
-        "wave-code",
-        "dist",
-        "bundle",
-        "wave.mjs",
-      ),
-    ).href;
 
     const result = await ensureRuntimeDeps({
-      moduleUrl: foreign,
       cliHome: cliHome,
       fetchImpl: registry.fetchImpl,
     });
 
-    expect(result.available).toBe(false);
-    expect(result.reason).toContain("--omit=optional");
-    expect(registry.urls).toEqual([]);
-    expect(fs.existsSync(installDir)).toBe(false);
+    expect(result.available).toBe(true);
+    expect(fs.existsSync(path.join(installDir, "sharp"))).toBe(true);
   });
 
   it("fails without throwing when a download does not match its digest", async () => {
@@ -753,7 +746,6 @@ describe("ensureRuntimeDeps", () => {
     });
 
     const result = await ensureRuntimeDeps({
-      moduleUrl: moduleUrl,
       cliHome: cliHome,
       fetchImpl: registry.fetchImpl,
     });
@@ -769,7 +761,6 @@ describe("ensureRuntimeDeps", () => {
     const registry = registryWithSharp({ omit: "semver" });
 
     const result = await ensureRuntimeDeps({
-      moduleUrl: moduleUrl,
       cliHome: cliHome,
       fetchImpl: registry.fetchImpl,
     });
@@ -783,7 +774,6 @@ describe("ensureRuntimeDeps", () => {
   it("treats an installed-but-unusable batch as failed without downloading again", async () => {
     const first = registryWithSharp();
     await ensureRuntimeDeps({
-      moduleUrl: moduleUrl,
       cliHome: cliHome,
       fetchImpl: first.fetchImpl,
     });
@@ -793,7 +783,6 @@ describe("ensureRuntimeDeps", () => {
     probe.processor = undefined;
     const second = fakeRegistry();
     const result = await ensureRuntimeDeps({
-      moduleUrl: moduleUrl,
       cliHome: cliHome,
       fetchImpl: second.fetchImpl,
     });
@@ -803,28 +792,12 @@ describe("ensureRuntimeDeps", () => {
     expect(second.urls).toEqual([]);
   });
 
-  it("reports a CLI whose package.json declares no sharp range", async () => {
-    writeCliPackageJson({});
-    const registry = registryWithSharp();
-
-    const result = await ensureRuntimeDeps({
-      moduleUrl: moduleUrl,
-      cliHome: cliHome,
-      fetchImpl: registry.fetchImpl,
-    });
-
-    expect(result.available).toBe(false);
-    expect(result.reason).toContain("sharp");
-    expect(registry.urls).toEqual([]);
-  });
-
   it("reports a platform sharp has no build for", async () => {
     const registry = registryWithSharp({
       optionalDependencies: { "@img/sharp-darwin-arm64": "0.35.4" },
     });
 
     const result = await ensureRuntimeDeps({
-      moduleUrl: moduleUrl,
       cliHome: cliHome,
       fetchImpl: registry.fetchImpl,
     });
@@ -846,7 +819,6 @@ describe("ensureRuntimeDeps", () => {
     });
 
     const result = await ensureRuntimeDeps({
-      moduleUrl: moduleUrl,
       cliHome: cliHome,
       fetchImpl: registry.fetchImpl,
     });
@@ -863,12 +835,10 @@ describe("ensureRuntimeDeps", () => {
 
     const [first, second] = await Promise.all([
       ensureRuntimeDeps({
-        moduleUrl: moduleUrl,
         cliHome: cliHome,
         fetchImpl: registry.fetchImpl,
       }),
       ensureRuntimeDeps({
-        moduleUrl: moduleUrl,
         cliHome: cliHome,
         fetchImpl: registry.fetchImpl,
       }),
@@ -883,16 +853,18 @@ describe("ensureRuntimeDeps", () => {
   });
 });
 
-describe("isManagedCliInstall", () => {
-  it("accepts paths inside the cli home and rejects everything else", () => {
-    expect(isManagedCliInstall(moduleUrl, cliHome)).toBe(true);
-    expect(
-      isManagedCliInstall(
-        pathToFileURL(path.join(cliHome, "..", "other", "wave.mjs")).href,
-        cliHome,
-      ),
-    ).toBe(false);
-    expect(isManagedCliInstall("not-a-url", cliHome)).toBe(false);
+describe("runtime dependency declarations", () => {
+  it("keeps every row's range equal to the SDK manifest's", () => {
+    // packages/agent-sdk/package.json is what `npm i wave-agent-sdk` installs
+    // from, while the installer resolves from the row's own range — a row added
+    // or bumped in one place only would download a version the SDK does not
+    // ship with.
+    const manifest = JSON.parse(
+      fs.readFileSync(new URL("../../package.json", import.meta.url), "utf-8"),
+    ) as { dependencies?: Record<string, string> };
+    for (const [name, range] of Object.entries(RUNTIME_DEPENDENCY_RANGES)) {
+      expect(manifest.dependencies?.[name]).toBe(range);
+    }
   });
 });
 

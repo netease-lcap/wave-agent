@@ -29,7 +29,7 @@
  * yet", the installer calls {@link resetImageProcessor} after it drops files on
  * disk so the next turn can pick them up.
  */
-import { createRequire } from "node:module";
+import { resolveFromAnchors } from "./cliHome.js";
 import { logger } from "./globalLogger.js";
 import { isPackageOnDisk } from "./packageOnDisk.js";
 
@@ -113,7 +113,7 @@ export function resolveSharp(requireFn: NodeRequire): SharpFactory | undefined {
 export function getImageProcessor(): SharpFactory | undefined {
   if (!resolutionAttempted) {
     resolutionAttempted = true;
-    cached = resolveSharp(createRequire(import.meta.url));
+    cached = resolveFromAnchors(resolveSharp);
   }
   return cached;
 }

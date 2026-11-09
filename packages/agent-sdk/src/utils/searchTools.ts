@@ -1,4 +1,4 @@
-import { createRequire } from "node:module";
+import { resolveFromAnchors } from "./cliHome.js";
 import { isPackageOnDisk } from "./packageOnDisk.js";
 
 /**
@@ -76,7 +76,7 @@ export function resolveSearchTools(
 export function getSearchTools(): SearchToolPaths | undefined {
   if (!resolutionAttempted) {
     resolutionAttempted = true;
-    cached = resolveSearchTools(createRequire(import.meta.url));
+    cached = resolveFromAnchors(resolveSearchTools);
   }
   return cached;
 }
