@@ -267,3 +267,87 @@ describe("AutoUpdaterService events and quitAndInstall", () => {
     expect(h.quitAndInstall).toHaveBeenCalledWith(true, true);
   });
 });
+
+// spec desktop-distribution「桌面端自动更新」场景 12：Intel macOS 构建是手动
+// 旁路产物，feed 里的 mac 包只有 arm64 一份 —— 它必须完全不碰 feed。
+describe("AutoUpdaterService on Intel macOS builds", () => {
+  const originalPlatform = process.platform;
+  const originalArch = process.arch;
+
+  function setPlatformArch(platform: string, arch: string): void {
+    Object.defineProperty(process, "platform", {
+      value: platform,
+      configurable: true,
+    });
+    Object.defineProperty(process, "arch", {
+      value: arch,
+      configurable: true,
+    });
+  }
+
+  afterEach(() => {
+    Object.defineProperty(process, "platform", {
+      value: originalPlatform,
+      configurable: true,
+    });
+    Object.defineProperty(process, "arch", {
+      value: originalArch,
+      configurable: true,
+    });
+  });
+
+  it('skips the feed and reports "no-update" on darwin x64', async () => {
+    setPlatformArch("darwin", "x64");
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const service = new AutoUpdaterService({
+      onUpdateAvailable: vi.fn(),
+      onUpdateDownloaded: vi.fn(),
+      onError: vi.fn(),
+    });
+
+    const outcome = await service.checkForUpdates(
+      "https://codechat.example.com",
+    );
+
+    expect(outcome).toEqual({ outcome: "no-update" });
+    expect(h.checkForUpdates).not.toHaveBeenCalled();
+    expect(h.setFeedURL).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it("still checks for updates on darwin arm64", async () => {
+    setPlatformArch("darwin", "arm64");
+    vi.mocked(h.checkForUpdates).mockResolvedValue({
+      updateInfo: { version: "0.20.0", files: [], path: "wave-0.20.0.dmg" },
+      isUpdateAvailable: true,
+    } as never);
+    const service = new AutoUpdaterService({
+      onUpdateAvailable: vi.fn(),
+      onUpdateDownloaded: vi.fn(),
+      onError: vi.fn(),
+    });
+
+    expect(
+      await service.checkForUpdates("https://codechat.example.com"),
+    ).toEqual({ outcome: "update", feedVersion: "0.20.0" });
+    expect(h.checkForUpdates).toHaveBeenCalledTimes(1);
+  });
+
+  it("still checks for updates on win32 x64", async () => {
+    setPlatformArch("win32", "x64");
+    vi.mocked(h.checkForUpdates).mockResolvedValue({
+      updateInfo: { version: "0.20.0", files: [], path: "wave-0.20.0.exe" },
+      isUpdateAvailable: true,
+    } as never);
+    const service = new AutoUpdaterService({
+      onUpdateAvailable: vi.fn(),
+      onUpdateDownloaded: vi.fn(),
+      onError: vi.fn(),
+    });
+
+    expect(
+      await service.checkForUpdates("https://codechat.example.com"),
+    ).toEqual({ outcome: "update", feedVersion: "0.20.0" });
+    expect(h.checkForUpdates).toHaveBeenCalledTimes(1);
+  });
+});

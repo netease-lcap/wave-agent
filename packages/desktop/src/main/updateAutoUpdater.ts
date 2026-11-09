@@ -52,6 +52,17 @@ export function feedUrlFor(
   return `${serverUrl.replace(/\/+$/, "")}/api/downloads/${bucket}/${platform}/`;
 }
 
+/** Intel macOS 构建（darwin + x64）是手动旁路产物：feed 里的 mac 更新包只有
+ *  arm64 一份，electron-updater 又不区分架构，替换后应用在 Intel 机器上直接
+ *  起不来。所以这条构建完全不查更新（spec desktop-distribution「跨平台分发」
+ *  场景 3 / 「桌面端自动更新」场景 12）。 */
+export function updateChecksDisabled(
+  platform: NodeJS.Platform = process.platform,
+  arch: string = process.arch,
+): boolean {
+  return platform === "darwin" && arch === "x64";
+}
+
 export class AutoUpdaterService {
   private listenersAttached = false;
 
@@ -78,6 +89,16 @@ export class AutoUpdaterService {
     serverUrl: string,
     channel: UpdateChannel = "stable",
   ): Promise<UpdateCheckResult> {
+    // Intel macOS 构建是手动旁路产物（spec desktop-distribution「跨平台分发」
+    // 场景 3）：feed 里的 mac 更新包只有 arm64 一份，electron-updater 不区分
+    // 架构 —— 拉下来替换后 Intel 机器上的应用直接起不来。因此这条构建完全不
+    // 碰 feed，也不会出现「更新」按钮（「桌面端自动更新」场景 12）。
+    if (updateChecksDisabled()) {
+      console.warn(
+        "[AutoUpdater] Intel macOS (x64) build — update checks disabled",
+      );
+      return { outcome: "no-update" };
+    }
     this.attachListeners();
     autoUpdater.autoDownload = true;
     autoUpdater.setFeedURL({

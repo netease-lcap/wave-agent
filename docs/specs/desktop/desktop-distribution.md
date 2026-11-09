@@ -1,6 +1,6 @@
 ---
 name: "桌面端分发与更新"
-description: "CodeWave IDE 桌面端的分发与升级：内置 CLI 的随包发布与远端同步（按字节判等）、macOS/Windows 打包、自动更新状态与外置 feed、Beta 版通道"
+description: "CodeWave IDE 桌面端的分发与升级：内置 CLI 的随包发布与远端同步（按字节判等）、macOS（arm64 + Intel x64 手动旁路）/Windows 打包、自动更新状态与外置 feed、Beta 版通道"
 order: 12
 ---
 
@@ -52,16 +52,18 @@ order: 12
 
 ### 用户故事：跨平台分发（优先级：P2）
 
-作为团队，我希望 desktop 应用能打包为 macOS（arm64）和 Windows 安装包，以便覆盖主要用户平台。
+作为团队，我希望 desktop 应用能打包为 macOS（arm64，外加按需手动构建的 Intel x64）和 Windows 安装包，以便覆盖主要用户平台，同时用一条成本最小的旁路照顾极少数仍在用 Intel Mac 的用户。
 
-**为什么是这个优先级**：分发能力决定功能是否能到达用户。
+**为什么是这个优先级**：分发能力决定功能是否能到达用户。Intel Mac 用户极少，不值得为他们把正式产物改成 universal 包（体积翻倍，所有 arm64 用户都要多下载），也不值得把 x64 塞进发版链路（feed、发布台账、release notes 全按单架构假设设计）。因此 x64 是**手动触发的旁路构建**：`workflow_dispatch` 起一次，产物只留在 CI artifact，由需要的人自行下载安装，不占版本号、不进 feed、不生成 Release。
 
-**独立测试**：在 CI 或本地分别打出 macOS arm64 与 Windows 包，安装后验证启动与会话功能。
+**独立测试**：在 CI 或本地分别打出 macOS arm64 与 Windows 包，安装后验证启动与会话功能；手动触发一次 x64 构建，验证产物为 x64 架构、只出现在 artifact 里（Release / 发布台账无新增），安装后能正常起会话。
 
 **验收场景**：
 
 1. **假设**配置了 electron-builder，**当**执行打包命令，**则**必须生成 macOS arm64 与 Windows 安装产物。
 2. **假设**应用依赖 native node 模块，**当**在 macOS 上打包 Windows 产物失败，**则**必须先通过 CI matrix 调研解决，再实现打包流程。
+3. **假设**需要一份 Intel Mac 安装包，**当**维护者手动触发 x64 构建 workflow，**则**必须在 macOS runner 上打出 x64 的 `.dmg`（签名 + 公证与 arm64 同一套凭证），产物**只作为 CI artifact 提供下载**——不得上传 GitHub Release、不得提交 codechat 发布台账与 feed，也不得改动 `publish.yml` 现有发布行为。
+4. **假设**用户拿到的是 x64 构建，**当**应用运行，**则**内置 CLI、终端等原生能力必须与 arm64 版行为一致（CLI 由 Electron 内置 Node 运行，node-pty 按目标架构加载自身 prebuilds），不得出现「装得上但启动即崩」。
 
 ---
 
@@ -86,6 +88,7 @@ order: 12
 9. **假设**构建安装包（mac/win），**当**electron-builder 打包完成，**则**产物 `resources/app-update.yml` 必须存在（afterPack 写入 `updaterCacheDirName`）——electron-updater 下载前会读取该文件（`configOnDisk`），缺失时下载阶段抛 ENOENT 并降级为下载页提示（修复：构建未声明 publish 配置时 electron-builder 不生成该文件）。
 10. **假设**用户在 S2 重启确认框选「立即重启」或点击「重启」按钮后再确认，**当** webview 下发 `desktopUpdateRestart` 命令，**则**宿主必须立即复位更新状态并推送（按钮消失，S3）后调用 quitAndInstall 退出并安装新版本（Windows 静默安装 + `--force-run` 装完自动重启，不再弹二次确认对话框）。重启安装前应用即将退出，无需任何 toast/加载态反馈——按钮消失即反馈（toast 加载链路已随 2026-09-03 裁决删除）。
 11. **假设**应用已登录企业版且持续运行（不退出、不重启），**当**运行期跨过固定的检查间隔（首版 1 小时），**则**宿主必须再次自动触发更新检查（与启动自动检查同一路径：按当前 updateChannel 查对应 feed，见场景 1；未登录按场景 2 不执行检查，静默）；该轮询只负责「查」，命中后仍自动开始后台下载（场景 3，下载中卡片无按钮），**不得自动安装/自动重启**——重启仍由用户在确认框里点（S1–S3）；轮询检查失败按场景 5 静默处理（等同启动自动检查），不影响后续轮询；应用退出（dispose）后必须停止轮询，不得留下悬挂定时器。轮询是启动自动检查的重复，两者行为一致（无任何用户反馈），提示只出现在场景 6 的开关重查上。
+12. **假设**应用是 macOS Intel x64 构建（手动旁路构建，见「跨平台分发」场景 3），**当**触发任何更新检查（启动自动检查 / 运行期轮询 / 「接收 Beta 版更新」开关重查），**则**必须直接返回「无更新」且**不得**向 feed 发起任何请求（不调 `setFeedURL`、不调 electron-updater 的 `checkForUpdates`）——feed 里的 mac 更新包只有 arm64 一份，electron-updater 不区分架构，拉下来替换后 Intel 机器上的应用会直接起不来。判定只落在宿主（`updateAutoUpdater.ts`），webview 与账户卡片状态机不受影响（永远收不到就绪推送），x64 用户升级只能重新拿一份 x64 包。
 
 ---
 
@@ -165,13 +168,17 @@ order: 12
 
 - **记录缺失不阻塞任何东西**：feed 里没有 `releaseNotes` 时（老版本 codechat、私有化实例未跟版到 v1.6.6、或该版本本来没产出记录），客户端按「更新内容」场景 3 降级——确认框与加记录块之前逐字一致，发版、上传、检查、下载、重启全流程不受影响。反方向（feed 里写了语法错误的 YAML）才是真故障，由服务端改动该字段时的 feed 冒烟拦住。
 
+- **Intel x64 不参与自动更新**：x64 是手动旁路构建（见「跨平台分发」场景 3），feed 中 mac 只有 arm64 包且 electron-updater 不区分架构，因此宿主在 `darwin + x64` 上直接短路更新检查（不请求 feed，见「桌面端自动更新」场景 12）。代价是 x64 用户看不到任何「更新」入口——有意为之：宁可让用户手动重拿包，也不能让他们升级到一个无法启动的版本。
+
 - **未登录不触发更新检查**：无 serverUrl 时，启动自动检查与运行期轮询均不得执行更新检查（不查 GitHub Releases、不启动 electron-updater），且应用里没有任何手动触发入口（状态对话框的「检查更新」按钮已不提供）；曾用于未登录回退的 checkForUpdate/updateChecker 链路已删除（2026-09-09 拍板）。
 
 - **运行期轮询只查不安装**：轮询与启动自动检查同源（都由宿主自己发起、都不给用户反馈），发现新版本即自动后台下载（与启动那次同一条路径，`autoDownload` 保持默认开启），但**绝不自动安装/自动重启**——重启是用户唯一必须点的下一步；间隔为固定常量（首版 1 小时），与启动那次的「只跑一次」检查相互独立（轮询不得让它变成两次启动语义）；定时器生命周期随宿主 dispose 结束。
 
 ## 非目标（明确排除）
 
-- **Linux 打包**：首版仅 macOS（arm64）与 Windows。
+- **Linux 打包**：首版仅 macOS（arm64；Intel x64 仅手动旁路构建）与 Windows。
+
+- **Intel x64 进发布链路**：x64 产物不进 GitHub Release、不进 codechat 发布台账与 feed、不参与自动更新（见「跨平台分发」场景 3 与「桌面端自动更新」场景 12）。
 
 - **Windows 更新包签名校验**：Windows 安装包未签名，electron-updater 对未签名当前应用不校验更新签名（与现分发一致，SmartScreen 警告不在自动更新范围解决）。
 
