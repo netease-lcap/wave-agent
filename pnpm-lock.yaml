@@ -152,15 +152,9 @@ importers:
       '@anthropic-ai/sandbox-runtime':
         specifier: ^0.0.81
         version: 0.0.81
-      '@vscode/ripgrep':
-        specifier: ^1.18.0
-        version: 1.18.0
       qrcode:
         specifier: ^1.5.4
         version: 1.5.4
-      sharp:
-        specifier: ^0.35.4
-        version: 0.35.4(@types/node@25.9.4)
     devDependencies:
       '@types/qrcode':
         specifier: ^1.5.6
