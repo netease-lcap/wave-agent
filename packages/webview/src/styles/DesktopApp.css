@@ -423,7 +423,24 @@ html[data-host="desktop"][data-theme="dark"] .desktop-session-group-name {
    差「wave-agent」1px，Windows 更宽的字形则直接把名字切成「wave-ag…」。
    pill 是次要信息（全文在 title、菜单条目、AccountCard 里都有），所以上限收到
    30%（≈76px）：项目名可用宽度 71 → 94px，`Ubuntu-24.04 (WSL)` 截成
-   「Ubuntu-24.0…」仍能认出是哪个发行版。 */
+   「Ubuntu-24.0…」仍能认出是哪个发行版。
+
+   ── 1109 两条并列评论（尺寸改自模型下拉的「视觉」徽标）──────────────────
+   ① `span.desktop-session-group-host`「my-server」：「这里标签的尺寸样式参考」
+   ② `span.model-picker-vision`「视觉」：「参考这个标签，但是颜色用蓝色字浅蓝色背景的」
+   ⇒ 尺寸/排版整组对齐「视觉」徽标（`ModelPicker.css:245` 桌面档实测）：
+     字号 11 / 行高 18 / 内衬 0 6 / 圆角 8 —— 改前本 pill 是 10 / 行高继承 22 /
+     内衬 0 5 / 圆角 8，实测盒 59.17×22，改后落到 18 高（组头 30 高、align-items
+     center，行高变了不动整行）。
+   ⇒ 配色**不照抄**它那套品牌红（`#C1292E` 字 + 8% 底），按她「蓝字 + 浅蓝底」取
+     `--cc-text-link`（Figma 链接蓝：浅 #2F5EDB / 深 #4DAAFC），底色复用同一份
+     已有配方（`host-desktop.css:2596` 预览区选中键那一组，1029 她裁决过的）：
+     浅色 = 链接蓝 10% 混白（#EAEFFB）、深色 = 链接蓝 18% 混透明（压在侧栏
+     #181A1B 上合成 #223444）。实测对比度：浅 4.87:1、深 5.16:1，都过 AA 4.5
+     （改前是白字实心蓝底 5.39 / 5.83，弱了但仍达标）。
+   ⇒ 只动几何与配色：`max-width: 30%` 宽度预算 / 省略号 / `margin-left: auto`
+     全部保留。代价 = 字号 10→11 后同样 65.7px 上限里能显示的字更少，
+     `Ubuntu (WSL)` 这类长标签截得更早（比改前少约 1 个字）。 */
 .desktop-session-group-host {
   flex-shrink: 0;
   margin-left: auto;
@@ -431,12 +448,20 @@ html[data-host="desktop"][data-theme="dark"] .desktop-session-group-name {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 400;
-  padding: 0 5px;
+  line-height: 18px;
+  padding: 0 6px;
   border-radius: 8px;
-  background: var(--vscode-badge-background);
-  color: var(--vscode-badge-foreground);
+  /* 浅色档直接落在基础规则上（本题只有桌面端渲染这个 class；万一个别环境没
+     写 data-theme，也不会掉成透明底 + 继承字色），深色档在下面覆盖。 */
+  background: color-mix(in srgb, var(--cc-text-link, #2f5edb) 10%, #fff);
+  color: var(--cc-text-link, #2f5edb);
+}
+
+html[data-host="desktop"][data-theme="dark"] .desktop-session-group-host {
+  background: color-mix(in srgb, var(--cc-text-link, #4daafc) 18%, transparent);
+  color: var(--cc-text-link, #4daafc);
 }
 
 .desktop-session-items {
