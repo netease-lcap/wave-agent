@@ -252,6 +252,8 @@ export const fixtures: Fixtures = {
   authStatusResponse: (overrides = {}) => ({
     command: "authStatusResponse",
     isAuthenticated: true,
+    // 默认 = 企业账号（与 isAuthenticated: true 同义），已有用例据此不变。
+    credential: { kind: "sso" },
     ...overrides,
   }),
 
@@ -459,6 +461,7 @@ export const fixtures: Fixtures = {
   desktopAccountInfo: (overrides = {}) => ({
     command: "desktopAccountInfo",
     isAuthenticated: true,
+    credential: { kind: "sso" },
     user: { id: "user-1", email: "alice@example.com" },
     billing: null,
     apiQuota: null,

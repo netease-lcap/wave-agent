@@ -324,7 +324,14 @@ describe("resolveRemoteWaveBinary (fixed pushed-shim path)", () => {
     const probeCmd = (h.execFile.mock.calls[1][1] as string[]).at(-1) as string;
     expect(probeCmd).toContain("WAVE_HOST_PLATFORM_V1");
     expect(probeCmd).toContain("uname -m");
-    expect(probeCmd).toContain("musl");
+    // glibc answers for itself first: the musl loader is only a fallback
+    // signal, because Ubuntu's musl/musl-tools packages drop
+    // /lib/ld-musl-x86_64.so.1 onto an ordinary glibc machine — sniffing that
+    // file alone refused a stock Ubuntu-24.04 distro outright.
+    expect(probeCmd).toContain("getconf GNU_LIBC_VERSION");
+    expect(probeCmd.indexOf("getconf GNU_LIBC_VERSION")).toBeLessThan(
+      probeCmd.indexOf("ld-musl"),
+    );
     // The content probe hashes the pushed bundle with the managed node.
     const hashCmd = (h.execFile.mock.calls[2][1] as string[]).at(-1) as string;
     expect(hashCmd).toContain(".wave/runtime/node/bin/node");

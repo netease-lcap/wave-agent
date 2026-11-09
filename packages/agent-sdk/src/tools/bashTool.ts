@@ -113,11 +113,11 @@ function searchPromptLines(args?: ToolPromptArgs): {
   return {
     search:
       "- File search: Use `find` in Bash (NOT ls)\n" +
-      "- Content search: Use `grep -rn` in Bash (NOT a bare `rg`, and NOT a scan built by hand from ls plus Read)\n",
+      "- Content search: Use `grep -rn` in Bash (NOT a bare `rg`, and NOT a scan built by hand from ls plus Read) — content search already skips .gitignore'd and binary files\n",
     scope:
-      "- IMPORTANT: This tool is for terminal operations like git, npm, docker, etc. Searching is the exception: `grep` and `find` here are already wired to skip .gitignore'd and binary files, so one `grep -rn` beats reading files one by one.",
+      "- IMPORTANT: This tool is for terminal operations like git, npm, docker, etc. Searching is the exception: `grep -rn` here is already wired to skip .gitignore'd and binary files, so one `grep -rn` beats reading files one by one.",
     scopeLong:
-      "IMPORTANT: This tool is for terminal operations like git, npm, docker, etc. Searching belongs here in this session — `grep` and `find` are wired to skip .gitignore'd and binary files, so they replace the dedicated search tools. Reading, writing and editing files still go through their own tools.",
+      "IMPORTANT: This tool is for terminal operations like git, npm, docker, etc. Searching belongs here in this session — `grep` is wired to skip .gitignore'd and binary files, so it replaces the dedicated `Grep` tool. Reading, writing and editing files still go through their own tools.",
     usage: `  - Avoid using ${BASH_TOOL_NAME} with the \`sed\`, \`awk\`, or \`echo\` commands, unless explicitly instructed or when these commands are truly necessary for the task. Prefer the dedicated tools where they exist:
     - To read files use ${READ_TOOL_NAME} instead of cat, head, tail, or sed
     - To edit files use ${EDIT_TOOL_NAME} instead of sed or awk

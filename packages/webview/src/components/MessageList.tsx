@@ -10,10 +10,15 @@ import React, {
 } from "react";
 import { Message } from "./Message";
 import { DelegatedTooltip } from "./DelegatedTooltip";
+import { TranscriptOutline } from "./TranscriptOutline";
+import {
+  OUTLINE_QUESTION_LIMIT,
+  type TranscriptOutlineItem,
+} from "../utils/transcriptOutline";
 import { EMPTY_TRANSCRIPT_FIND, TranscriptFindBar } from "./TranscriptFindBar";
 import type { TranscriptFindState } from "./TranscriptFindBar";
 import { streamingTail } from "../utils/streamingText";
-import { countTimelineBlocks } from "../utils/timelineBlocks";
+import { countTimelineBlocks, rendersNothing } from "../utils/timelineBlocks";
 import {
   buildFindRegex,
   clearFindMarks,
@@ -44,6 +49,11 @@ const TEXT_WIDTH_INSET_PX = 32;
 // scrollTop 拉过顶时浏览器会直接 clamp 到 0，那一刻的位移是 0，判定必须能接受
 // 「已经在顶部」这个状态本身。
 const EARLIER_TRIGGER_PX = 160;
+
+// 离内容末尾超过这么远就浮出「回到最新」入口。与参考物（Claude 桌面端的
+// jump-to-latest）同档：比「已离开底部」的个位数阈值宽得多——这里问的是「远到
+// 需要一个入口了吗」，不是「还要不要跟着新内容走」。
+const JUMP_TO_BOTTOM_THRESHOLD_PX = 200;
 
 /**
  * The text this row contributes to the sticky bar — empty when it cannot be an
@@ -111,10 +121,14 @@ export const MessageList = forwardRef<
   const earlierPendingRef = useRef(false);
 
   // The most-recent user message that has scrolled above the viewport top; pinned
-  // at the top of the list as a context hint (设计稿 2236-3792).
+  // at the top of the list as a context hint (设计稿 2236-3792). `index` is the
+  // same candidate the 大纲 uses to highlight its current tick — both read this
+  // one value, so the sticky bar and the outline can never point at two
+  // different rounds.
   const [stickyMessage, setStickyMessage] = useState<{
     id: string;
     text: string;
+    index: number;
   } | null>(null);
   // Mirror of stickyMessage for computeSticky's pre-comparison. computeSticky
   // runs on every messages update (each streaming chunk) and from the scroll
@@ -129,14 +143,26 @@ export const MessageList = forwardRef<
   const stickyRef = useRef<{
     id: string;
     text: string;
+    index: number;
   } | null>(null);
 
   // Filter out user messages with isMeta (hidden from the list). Both the
   // sticky computation and the virtualizer index this filtered list.
+  //
+  // 渲染不出任何节点的消息也在这里滤掉（判据见 utils/timelineBlocks 的
+  // rendersNothing）——这里是唯一的入口，一个 filter 同时解决三件事：
+  // 不再有空的 `.message` 外壳、不再有占位/占底部间距的虚拟行、时间线 run 的
+  // 起止规则自然落在真实消息上（空行既接不到 `--end` 也不会把线截断）。
+  //
+  // 流式刚开始那一刻就出现这种消息：codechat 网关上的 Claude 思考明文恒为空
+  // （只回 signature），第一个 `thinking_delta` 是空串，SDK 于是在真内容到达前
+  // 几百毫秒到几秒就先建出一条 `blocks: []` 的助手消息。它拿到真内容后自然
+  // 回到列表里。
   const visibleMessages = useMemo(() => {
     const out: MessageType[] = [];
     for (const msg of messages) {
       if (msg.role === "user" && msg.isMeta) continue;
+      if (rendersNothing(msg)) continue;
       out.push(msg);
     }
     return out;
@@ -155,6 +181,27 @@ export const MessageList = forwardRef<
    */
   const columnRef = useRef<HTMLDivElement | null>(null);
   const [textWidth, setTextWidth] = useState<number | undefined>(undefined);
+  /**
+   * 内容列宽度，只给大纲判断「窄到该不该整体隐藏」。与 `textWidth` 是两件事：
+   * 那一个是正文折行宽度（量不到就留 undefined，估算用它自己的兜底），这一个
+   * 必须**总有个数**——所以 `getBoundingClientRect` 之外用 `offsetWidth` 兜底
+   * （jsdom 不做排版，rect 恒 0，tests/setup.ts 把 offsetWidth 固定成 800）。
+   */
+  const [columnWidth, setColumnWidth] = useState(0);
+  useLayoutEffect(() => {
+    const column = columnRef.current;
+    if (!column) return;
+    const measure = () => {
+      const width =
+        Math.round(column.getBoundingClientRect().width) || column.offsetWidth;
+      setColumnWidth((prev) => (prev === width ? prev : width));
+    };
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(column);
+    return () => observer.disconnect();
+  }, []);
   useLayoutEffect(() => {
     const column = columnRef.current;
     if (!column || typeof ResizeObserver === "undefined") return;
@@ -209,6 +256,43 @@ export const MessageList = forwardRef<
   // the imperative handle must not capture a stale render).
   const visibleMessagesRef = useRef(visibleMessages);
   visibleMessagesRef.current = visibleMessages;
+
+  /**
+   * 滚动容器的可视高度，只给大纲算刻度间距与垂直居中位置。内核自己有视口
+   * 高度（`viewportHeight` 在 useVirtualRows 里是个局部函数），但它不外露，
+   * 而且这里要的是「React 能跟着变化重渲染」的那一份。
+   */
+  const [listViewportHeight, setListViewportHeight] = useState(0);
+  /**
+   * 内容列左边缘相对滚动容器的距离 —— 800px 列居中后左侧那片留白。大纲的刻度
+   * 就住在这里（对齐 Codex：目录与消息列之间要有间距，不贴着气泡画）；留白不
+   * 够时大纲整体不显示，见 `shouldShowOutline`。列宽封顶后列本身不再变宽，所以
+   * 必须观察**容器**，只看列是测不出窗口变宽的。
+   */
+  const [columnInset, setColumnInset] = useState(0);
+  useLayoutEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    const measure = () => {
+      // jsdom 里 clientHeight 恒 0，offsetHeight 由 tests/setup.ts 兜底。
+      const height = container.clientHeight || container.offsetHeight;
+      setListViewportHeight((prev) => (prev === height ? prev : height));
+      const column = columnRef.current;
+      // 容器不横向滚动（overflow-x: hidden），rect 之差就是列左侧的留白。
+      const inset = column
+        ? Math.round(
+            column.getBoundingClientRect().left -
+              container.getBoundingClientRect().left,
+          )
+        : 0;
+      setColumnInset((prev) => (prev === inset ? prev : inset));
+    };
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, [containerRef]);
 
   // ---- 会话内查找（spec ui/transcript-find.md）------------------------------
   // 计数与跳转走消息数据、高亮画在渲染后的文本节点上，两层分开的理由见
@@ -469,18 +553,47 @@ export const MessageList = forwardRef<
     return { classes, paddings };
   }, [visibleMessages]);
 
+  /**
+   * 大纲的刻度数据（spec ui/transcript-outline.md）：一条**带文本**的用户消息
+   * = 一个刻度。判据复用 `stickyAnchorText`——「哪些消息能当锚点」只允许有这
+   * 一份定义，否则吸顶条认它、大纲不认它这种分叉迟早会出现。
+   *
+   * 刻度只带问题、不带助手回答（spec 场景 5）：卡片里只放一条消息的文本，两段
+   * 内容在这么小的一块地方只会显得重复。
+   */
+  const outlineItems = useMemo((): TranscriptOutlineItem[] => {
+    const items: TranscriptOutlineItem[] = [];
+    for (let index = 0; index < visibleMessages.length; index++) {
+      const message = visibleMessages[index];
+      if (message.role !== "user") continue;
+      const question = stickyAnchorText(message);
+      if (!question) continue;
+      items.push({
+        id: message.id,
+        index,
+        question: question.slice(0, OUTLINE_QUESTION_LIMIT),
+      });
+    }
+    return items;
+  }, [visibleMessages]);
+
   const computeSticky = useCallback(() => {
     const container = containerRef.current;
     // setSticky compares against stickyRef (synced from stickyMessage every
     // render) and skips the state update entirely when the computed value is
     // unchanged — see the stickyRef comment. This keeps the sticky computation
     // off React's nested-passive-update accounting on the streaming hot path.
-    const setSticky = (next: { id: string; text: string } | null) => {
+    const setSticky = (
+      next: { id: string; text: string; index: number } | null,
+    ) => {
       const prev = stickyRef.current;
       const same =
         prev === null
           ? next === null
-          : next !== null && prev.id === next.id && prev.text === next.text;
+          : next !== null &&
+            prev.id === next.id &&
+            prev.text === next.text &&
+            prev.index === next.index;
       if (!same) setStickyMessage(next);
     };
     if (!container) {
@@ -520,7 +633,11 @@ export const MessageList = forwardRef<
       setSticky(null);
       return;
     }
-    setSticky({ id: rows[candidate].id, text: candidateText });
+    setSticky({
+      id: rows[candidate].id,
+      text: candidateText,
+      index: candidate,
+    });
   }, [containerRef, indexAtOffset, rowStart, visualOffset]);
 
   const scrollToMessage = useCallback(
@@ -562,6 +679,42 @@ export const MessageList = forwardRef<
     },
     [isPinned, pin, scrollToEnd],
   );
+
+  /**
+   * 「回到最新」入口的显示判据：视口底到内容末尾的距离。取 200px 与参考物
+   * （Claude 桌面端的 jump-to-latest）同档——比「已离开底部」的个位数阈值宽得多，
+   * 因为这里问的不是「要不要继续跟随」，而是「读者离末尾是不是已经远到需要一个
+   * 入口」。离得近就收回，免得这颗按钮在正常阅读时一直晃。
+   *
+   * 判据只能读几何，不能读钉底状态：钉底在用户一上翻就松手，可内容还在继续长，
+   * 「松手了」并不等于「离末尾很远」。
+   */
+  const [showJumpToBottom, setShowJumpToBottom] = useState(false);
+  // `updateJumpToBottom` runs on every scroll event and every content change;
+  // the ref keeps those calls from scheduling a render when nothing changed.
+  const showJumpToBottomRef = useRef(false);
+
+  const updateJumpToBottom = useCallback(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    // 手势期画布带着 `translateY`（见 `visualOffset`）：屏幕上内容底比
+    // `scrollHeight - scrollTop` 读出来的低这一截，不补上的话手指刚往上拖一点
+    // 就会因为「补偿量还没折算回 scrollTop」而误判成离末尾更近。
+    const distance =
+      container.scrollHeight -
+      (container.scrollTop - visualOffset()) -
+      container.clientHeight;
+    const next = distance > JUMP_TO_BOTTOM_THRESHOLD_PX;
+    if (next === showJumpToBottomRef.current) return;
+    showJumpToBottomRef.current = next;
+    setShowJumpToBottom(next);
+  }, [containerRef, visualOffset]);
+
+  const jumpToBottom = useCallback(() => {
+    // 与「用户自己发消息」同一条路：先重新钉上再滚，否则滚到底之前到来的流式
+    // chunk 会按旧的松手状态把视口留在原地，用户看到的是「点了一下没反应」。
+    followToBottom("smooth", true);
+  }, [followToBottom]);
 
   // Expose ONE explicit "bring me to the bottom" request to the parent (host
   // commands: confirmation shown, pane/session bound, after rewind, settings
@@ -617,6 +770,10 @@ export const MessageList = forwardRef<
       !isInitialLoad && isNewMessage && visibleTail?.role === "user",
     );
     computeSticky();
+    // 内容增长不会派发滚动事件（流式追加、压缩提示出现、行高从估算变实测），
+    // 所以「回到最新」入口的显隐必须在这里也读一次几何——只挂 scroll 会让
+    // 「读者停在远处、下面又长了一大段」这种情况一直不更新。
+    updateJumpToBottom();
   }, [
     messages,
     // Derived from `messages`, listed because the tail judgement now reads the
@@ -627,6 +784,7 @@ export const MessageList = forwardRef<
     followToBottom,
     computeSticky,
     containerRef,
+    updateJumpToBottom,
   ]);
 
   // Re-pin to the true bottom after async content finishes loading (image
@@ -670,14 +828,25 @@ export const MessageList = forwardRef<
       load(first);
     };
 
+    // 显隐要读 scrollHeight / clientHeight（一次布局读）。滚动一帧可能派发多次
+    // 事件，合并到下一帧只读一次，也别让读数落在这次事件的渲染中途。
+    let jumpRaf = 0;
     const handleScroll = () => {
       maybeRequestEarlier();
       computeSticky();
+      if (jumpRaf !== 0) return;
+      jumpRaf = requestAnimationFrame(() => {
+        jumpRaf = 0;
+        updateJumpToBottom();
+      });
     };
 
     container.addEventListener("scroll", handleScroll, { passive: true });
-    return () => container.removeEventListener("scroll", handleScroll);
-  }, [computeSticky, containerRef]);
+    return () => {
+      container.removeEventListener("scroll", handleScroll);
+      if (jumpRaf !== 0) cancelAnimationFrame(jumpRaf);
+    };
+  }, [computeSticky, containerRef, updateJumpToBottom]);
 
   // Does this gesture belong to a region INSIDE the list that scrolls
   // vertically on its own? Tool output, the diff view, reasoning, the write
@@ -784,6 +953,17 @@ export const MessageList = forwardRef<
           lives in this inner wrapper (see MessageList.css). Rows resolve
           against it (position: relative), so its offset from the scroll
           surface must stay 0 — the 10px padding is inside it. */}
+      {/* 左边缘的刻度大纲（spec ui/transcript-outline.md）。零高度、粘在滚动
+          面上，住在内容列左侧的留白里；不是列的子元素（列 overflow-x: clip
+          会把越出列的刻度裁掉）。 */}
+      <TranscriptOutline
+        items={outlineItems}
+        activeId={stickyMessage?.id}
+        columnWidth={columnWidth}
+        columnInset={columnInset}
+        viewportHeight={listViewportHeight}
+        onJump={scrollToMessage}
+      />
       <div className="messages-column" ref={columnRef}>
         {find.open && (
           <TranscriptFindBar
@@ -875,6 +1055,30 @@ export const MessageList = forwardRef<
             )}
           </div>
         )}
+        {/* 「回到最新」入口（spec: 离开底部时的「回到最新」入口）。挂在内层正文
+            列的末尾：这一层是 sticky 且零高度，所以它贴的是滚动的视口底而不是内
+            容底，也不给任何一行加高度——出现/收回都不会让列表跳动一下。 */}
+        <div
+          className="jump-to-bottom-layer"
+          data-visible={showJumpToBottom}
+          data-testid="jump-to-bottom-layer"
+        >
+          <div className="jump-to-bottom-fade" aria-hidden="true" />
+          <button
+            type="button"
+            className="jump-to-bottom-button"
+            data-testid="jump-to-bottom"
+            aria-label="回到最新"
+            title="回到最新"
+            // 收回时既不接点击也不占 Tab 序列，但节点留着做淡出（display: none
+            // 会把过渡吃掉）。
+            aria-hidden={!showJumpToBottom}
+            tabIndex={showJumpToBottom ? 0 : -1}
+            onClick={jumpToBottom}
+          >
+            <span className="codicon codicon-arrow-down" aria-hidden="true" />
+          </button>
+        </div>
       </div>
       {/* 正文里 `dangerouslySetInnerHTML` 生成的那几颗图标按钮（代码块右上角
           「复制代码」）挂不上 React 的 `<Tooltip>`，提示走这份委托版；它自己

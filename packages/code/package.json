@@ -1,6 +1,6 @@
 {
   "name": "wave-code",
-  "version": "1.6.0",
+  "version": "1.6.1",
   "description": "CLI-based code assistant powered by AI, built with React and Ink",
   "repository": {
     "type": "git",
@@ -42,9 +42,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sandbox-runtime": "^0.0.81",
-    "@vscode/ripgrep": "^1.18.0",
-    "qrcode": "^1.5.4",
-    "sharp": "^0.35.4"
+    "qrcode": "^1.5.4"
   },
   "devDependencies": {
     "@types/qrcode": "^1.5.6",

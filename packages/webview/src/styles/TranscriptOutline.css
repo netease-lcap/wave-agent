@@ -1,0 +1,110 @@
+/* 会话消息大纲（spec `ui/transcript-outline.md`）。
+   Rail 是滚动面（`.messages-container`）的直接子元素、内容列之外：刻度要住在
+   800px 列左侧的留白里（对齐 Codex —— 目录与消息列之间得有一段距离，不是贴着
+   气泡画），而列自己 `overflow-x: clip`，住在列里的刻度一往左越过列的内边距就
+   被裁掉。零高度的粘性锚点钉住视口，真正的一列刻度是它内部绝对定位的那块，
+   垂直居中由 TSX 按实测视口高写内联 top。 */
+.outline-rail {
+  position: sticky;
+  top: 0;
+  height: 0;
+  /* 低于吸顶用户消息条（20）：两者在视口顶部附近不该互相遮挡，刻度也不该压在
+     吸顶条之上。 */
+  z-index: 15;
+}
+
+.outline-ticks {
+  position: absolute;
+  /* 距滚动面左边缘的固定距离：留在窗口左边缘一侧的页边白里（与 Codex 一致，
+     约 20px）。真正决定「能不能显示」的是列左侧留白够不够，见
+     `OUTLINE_MIN_GUTTER_PX`。 */
+  left: 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  transform: translateY(-50%);
+}
+
+/* 刻度按钮：视觉上是 2px 的短横（约 20px 长，对齐 Codex 桌面端的稿子），盒子
+   留 8px 高（OUTLINE_TICK_BOX_PX）好点中。 */
+.outline-tick {
+  position: relative;
+  display: block;
+  width: 20px;
+  min-height: 8px;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  appearance: none;
+}
+
+.outline-tick::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 20px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--vscode-descriptionForeground);
+  opacity: 0.45;
+  transform: translateY(-50%);
+  transition:
+    width 0.12s ease,
+    opacity 0.12s ease,
+    background-color 0.12s ease;
+}
+
+.outline-tick:hover::before {
+  opacity: 1;
+}
+
+.outline-tick:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: 1px;
+  border-radius: 2px;
+}
+
+/* 「当前这一轮」：更长更实（会略微越出按钮宽度，那是刻意的指向感），与吸顶条
+   指的是同一条用户消息。 */
+.outline-tick--active::before {
+  width: 32px;
+  height: 3px;
+  background: var(--vscode-foreground);
+  opacity: 1;
+}
+
+.outline-card {
+  position: absolute;
+  left: calc(100% + 6px);
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  padding: 8px 10px;
+  border: 1px solid var(--vscode-dropdown-border);
+  border-radius: 6px;
+  background-color: var(--vscode-dropdown-background);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  /* 宽度由 TSX 按列宽夹取（内联 maxWidth），这里只兜一个上限与不换行塌缩。 */
+  width: 280px;
+  box-sizing: border-box;
+  text-align: left;
+  pointer-events: none;
+  z-index: 21;
+}
+
+/* 卡片里只有这一条消息的文本：最多 3 行，超出截断（spec 场景 5）。 */
+.outline-card-question {
+  color: var(--vscode-foreground);
+  font-size: 12px;
+  line-height: 1.5;
+  font-weight: 600;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: break-word;
+}

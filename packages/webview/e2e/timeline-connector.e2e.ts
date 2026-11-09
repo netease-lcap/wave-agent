@@ -183,6 +183,92 @@ test.describe("Timeline connector geometry demo", () => {
   });
 
   /**
+   * 一条已经建出来、但还没有任何块的消息（流式刚开始那一刻，`blocks: []`）
+   * 不能占位。
+   *
+   * codechat 网关上的 Claude 思考明文恒为空（只回 signature），流式期第一个
+   * `thinking_delta` 是空串，SDK 于是在真内容到达前几百毫秒到几秒就先建出这条
+   * 助手消息。它若渲染出空 `.message` 外壳：收尾规则（`.timeline-row--last`
+   * 那一段只画到圆点中心）落在它身上，而它内部没有 `.timeline-row`，前一条
+   * 真实消息的最后一行于是保持全高线段——用户看到一条线一直连到列表底部、
+   * 底部却没有块；那一行还占着行高与间距，底部凭空多出空白。
+   */
+  test("a message without any block leaves no row and no dangling connector", async ({
+    webviewPage,
+  }) => {
+    const injector = new MessageInjector(webviewPage);
+
+    const messages: Message[] = [
+      {
+        id: "u1",
+        role: "user",
+        timestamp: "2025-07-09T10:30:00.000Z",
+        blocks: [{ type: "text", content: "A question." }],
+      },
+      {
+        id: "a1",
+        role: "assistant",
+        timestamp: "2025-07-09T10:30:01.000Z",
+        blocks: [{ type: "text", content: "First assistant message." }],
+      },
+      {
+        id: "a2",
+        role: "assistant",
+        timestamp: "2025-07-09T10:30:02.000Z",
+        blocks: [{ type: "text", content: "Second assistant message." }],
+      },
+      {
+        id: "blank",
+        role: "assistant",
+        timestamp: "2025-07-09T10:30:03.000Z",
+        blocks: [],
+      },
+    ];
+
+    await injector.simulateExtensionMessage("setInitialState", {
+      isAuthenticated: true,
+      messages: [],
+      isStreaming: true,
+      sessions: [],
+      permissionMode: "default",
+    });
+    await injector.updateMessages(messages);
+    await injector.startStreaming();
+    await webviewPage.waitForSelector(".virtual-row.timeline-run--end");
+
+    const geo = await webviewPage.evaluate(() => {
+      const px = (v: string) => (v && v.endsWith("px") ? parseFloat(v) : NaN);
+      const endRow = document.querySelector<HTMLElement>(
+        ".virtual-row.timeline-run--end",
+      )!;
+      const rows = Array.from(
+        endRow.querySelectorAll<HTMLElement>(".timeline-row"),
+      );
+      // 收尾类落在一条内部没有 `.timeline-row` 的行上时（本用例修的正是这个），
+      // 这里读不到末行——用 null 兜住，让下面第一条断言报出「收尾落在谁身上」，
+      // 而不是在 evaluate 里抛 TypeError。
+      const lastRow = rows[rows.length - 1] ?? null;
+      const after = lastRow ? getComputedStyle(lastRow, "::after") : null;
+      return {
+        rowIds: Array.from(
+          document.querySelectorAll<HTMLElement>("[data-measured-message-id]"),
+        ).map((row) => row.getAttribute("data-measured-message-id")),
+        endId: endRow.getAttribute("data-measured-message-id"),
+        lastRowHeight: lastRow ? lastRow.getBoundingClientRect().height : 0,
+        lastSegmentHeight: after ? px(after.height) : NaN,
+      };
+    });
+
+    // 空消息连虚拟行都不存在：既不占行高，也不占消息间的 14px 间距，更没有
+    // `.message` 外壳。收尾落在最后一条真实消息上。
+    expect(geo.rowIds).not.toContain("blank");
+    expect(geo.endId).toBe("a2");
+    // 收尾段只到圆点中心（base 档 18px），不会垂到行底。
+    expect(geo.lastSegmentHeight).toBeCloseTo(18, 0);
+    expect(geo.lastSegmentHeight).toBeLessThan(geo.lastRowHeight);
+  });
+
+  /**
    * 一条消息**后加入**一段 run 时，连线不能断。
    *
    * run 的行间距（段内 0 / 段末 14px）是行自己的 padding-bottom，也就是行高的一

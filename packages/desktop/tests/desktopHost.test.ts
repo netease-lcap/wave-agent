@@ -3733,6 +3733,41 @@ describe("account card (desktopAccountInfo)", () => {
     restore();
   });
 
+  it("forwards a gateway credential to both the account card and authStatusResponse", async () => {
+    // 凭据形态由 CLI 算（spec desktop-account「认证方式」），宿主只透传：卡片形态
+    // 与发送入口判据都读它 —— 漏掉这一跳，配了 WAVE_API_KEY 的人会被渲染成
+    // 「未登录 + 登录按钮」。
+    const credential = {
+      kind: "gateway",
+      gateway: { host: "api.example.com" },
+    };
+    const orig = h.handleClientRequest;
+    h.handleClientRequest = (m: string, params?: unknown) => {
+      if (m === "getAuthStatus")
+        return {
+          isAuthenticated: false,
+          credential,
+          serverUrl: h.authServerUrl,
+        };
+      if (m === "getAccountInfo") return { billing: null, apiQuota: null };
+      return orig(m, params);
+    };
+
+    const { sent } = await readyHost();
+
+    await vi.waitFor(() => {
+      expect(sent("desktopAccountInfo").at(-1)).toMatchObject({
+        isAuthenticated: false,
+        credential,
+      });
+    });
+    expect(sent("authStatusResponse").at(-1)).toMatchObject({
+      isAuthenticated: false,
+      credential,
+    });
+    h.handleClientRequest = orig;
+  });
+
   it("keeps the last successful usage when the getAccountInfo RPC fails (spec 场景 9)", async () => {
     const restoreStub = stubAccountRpc(
       { id: "u1", email: "alice@example.com" },

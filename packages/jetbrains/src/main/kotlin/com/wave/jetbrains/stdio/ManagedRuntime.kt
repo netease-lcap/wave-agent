@@ -167,14 +167,38 @@ object ManagedRuntime {
     }
 
     /**
-     * musl sniffing: `ldd` is a shell wrapper on glibc and absent on musl, so
-     * the dynamic loader's own file is the reliable signal.
+     * musl sniffing. A musl loader file alone proves nothing: Ubuntu/Debian's
+     * `musl` + `musl-tools` packages (installed by anyone cross-compiling) drop
+     * `/lib/ld-musl-x86_64.so.1` onto an ordinary glibc machine, and reading
+     * that as Alpine refused the whole IDE host. The system is musl only when a
+     * musl loader is present and NO glibc loader is — glibc's loader lives at a
+     * distro-dependent path (Debian/Ubuntu under the triple dir, Fedora/RHEL in
+     * /lib64, Arch under /usr/lib symlinked from /lib).
      */
     private fun detectMusl(): Boolean {
         if (!System.getProperty("os.name").lowercase().startsWith("linux")) return false
-        return File("/lib/ld-musl-x86_64.so.1").exists() ||
-            File("/lib/ld-musl-aarch64.so.1").exists()
+        return isMuslLoaders { path -> File(path).exists() }
     }
+
+    /** Loader-file decision behind [detectMusl], injectable for tests. */
+    internal fun isMuslLoaders(exists: (String) -> Boolean): Boolean {
+        if (MUSL_LOADERS.none(exists)) return false
+        return GLIBC_LOADERS.none(exists)
+    }
+
+    private val MUSL_LOADERS = listOf(
+        "/lib/ld-musl-x86_64.so.1",
+        "/lib/ld-musl-aarch64.so.1",
+    )
+
+    private val GLIBC_LOADERS = listOf(
+        "/lib64/ld-linux-x86-64.so.2",
+        "/lib/ld-linux-x86-64.so.2",
+        "/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2",
+        "/lib64/ld-linux-aarch64.so.1",
+        "/lib/ld-linux-aarch64.so.1",
+        "/lib/aarch64-linux-gnu/ld-linux-aarch64.so.1",
+    )
 
     internal data class ArchiveTarget(
         /** File name on the mirror, e.g. `node-v22.14.0-linux-x64.tar.gz`. */

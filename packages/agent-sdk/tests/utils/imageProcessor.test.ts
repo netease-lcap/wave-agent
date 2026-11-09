@@ -132,7 +132,9 @@ describe("getImageProcessor", () => {
 
     const processor = getImageProcessor();
     expect(processor).toBe(fakeSharp);
-    expect(probe.createRequireCalls).toBe(1);
+    // Both anchors are built up front (the module's own position, then the cli
+    // home); the first one answers, so only one `require` runs.
+    expect(probe.createRequireCalls).toBe(2);
     expect(probe.requireCalls).toBe(1);
   });
 
@@ -147,12 +149,13 @@ describe("getImageProcessor", () => {
 
     expect(getImageProcessor()).toBeUndefined();
     expect(getImageProcessor()).toBeUndefined();
-    expect(probe.requireCalls).toBe(1);
+    // One attempt per anchor, and the miss is memoised for the process.
+    expect(probe.requireCalls).toBe(2);
 
     // The installer drops sharp on disk mid-process and asks for a re-resolve.
     resetImageProcessor();
     expect(getImageProcessor()).toBeUndefined();
-    expect(probe.requireCalls).toBe(2);
+    expect(probe.requireCalls).toBe(4);
 
     // Once sharp is usable again, the process picks it up.
     probe.fail = false;

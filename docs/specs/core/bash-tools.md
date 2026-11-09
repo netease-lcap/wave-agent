@@ -190,11 +190,11 @@ order: 20
 
 **验收场景**：
 
-1. **假设** 运行在 macOS/Linux/WSL 且内嵌二进制可用，**当** 执行 `grep -r <pattern> .` 时，**则** 必须使用内嵌 `ugrep`：递归时应用沿途每个 `.gitignore` 的排除规则（不要求是 git 仓库）、跳过二进制文件、输出路径不带 `./` 前缀。
+1. **假设** 运行在受支持平台（macOS/Linux/WSL，以及 Windows 的 Git Bash）且内嵌二进制可用，**当** 执行 `grep -r <pattern> .` 时，**则** 必须使用内嵌 `ugrep`：递归时应用沿途每个 `.gitignore` 的排除规则（不要求是 git 仓库）、跳过二进制文件、按目录排除 `.git` 等 VCS 名字、输出路径不带 `./` 前缀。
 2. **假设** 同名命令出现在 `xargs`、`timeout`、`env`、`find -exec` 里，或出现在新起的 `bash -c` / `zsh -c` 中，**当** 这些位置查不到 shell 函数时，**则** 必须回落到系统同名命令——一次会话里允许同时存在两套 `grep`，这是已知且可接受的差异。
 3. **假设** 系统 PATH 上已经有 `rg`，**当** 注入别名时，**则** 不得覆盖用户的 `rg`；只有系统没有 `rg` 时才注入指向 wave 内置 ripgrep 的别名。
 4. **假设** 命令带有内嵌实现不支持的参数（`grep` 的 `-Z`、`-z`、`--null`、`--config` 等），**当** 执行时，**则** 必须回落系统同名命令，不得报错或静默丢参数。
-5. **假设** 运行在 Windows 的 Git Bash 上，**当** 执行 `grep` / `find` 时，**则** 必须使用 msys 自带的 GNU 版本（不注入 ugrep/bfs），`rg` 仍按场景 3 注入。
+5. **假设** 运行在 Windows 的 Git Bash 上，**当** 执行 `grep` 时，**则** 必须使用内嵌 `ugrep`（Windows 平台包只发 ugrep）：msys 自带的是 GNU grep，没有 `.gitignore` 概念，`dist/`、`node_modules`、并行的 worktree 都会被扫进来，仓库根一次 `grep -r` 实测比内嵌 ugrep 慢两个数量级且结果多出几倍；**当** 执行 `find` 时，**则** 必须使用 msys 自带的 GNU find（bfs 没有 Windows 构建，而 msys 的 find 本身就是 GNU 语义，正是 `find` 影子要复现的那一套）；`rg` 仍按场景 3 注入。
 6. **假设** 注入生效，**当** 命令结束时，**则** 退出码语义必须保持命令本身的语义（无匹配为 1）；注入不得改变 `$?`，也不得影响 heredoc、重定向、管道与 `set -e`。
 7. **假设** 内嵌二进制缺失（下载失败、私有化环境未携带、平台不支持），**当** 执行任意搜索命令时，**则** 必须静默回落系统命令并照常完成，不得返回「二进制未安装」之类的失败。
 
@@ -215,7 +215,11 @@ order: 20
 - **Windows 路径转换**：在 Windows 上使用 Git Bash 时，临时 CWD 文件路径必须从 Windows 路径（`C:\Users\...`）转换为 POSIX 路径（`C:/Users/...`），否则 Bash 会将反斜杠视为转义字符导致路径损坏、临时文件泄漏到项目目录中；反向转换同样必要——`pwd -P` 输出的 POSIX 路径（`/c/Users/...`）必须转换回原生 Windows 路径后再校验与回调。
 - **Git Bash 未安装**：Windows 上未检测到 Git Bash 时，必须返回错误而非静默降级到 cmd.exe。
 - **搜索命令的退出码差异**：内嵌 `grep` 在「只命中被 `.gitignore` 忽略的文件」时退出码是 1（与「没匹配到」同一语义），系统 `grep` 在同一情形下是 0。依赖 `grep -q` 做门禁的脚本（例如部署前检查某个 key 是否泄漏到构建产物）在 Bash 工具里执行与在终端执行可能得到相反结论；工具不为此额外提示，输出与退出码原样透出。
+- **Windows 上 `grep` 影子的残留差异**：`ugrep` 的 Windows 构建无法用 `exec -a` 改写 `argv[0]`（Windows 创建进程时 `argv[0]` 恒为可执行文件路径），影子里的 `exec -a grep` 在 Git Bash 上是空操作，`ugrep` 以自身模式运行——BRE 口径由固定注入的 `-G` 保证，输出本就是 `file:line:内容` 形态，`-q`/`-l`/`-v`/`-i`/`-E`/`-c`/`-o`/`-A` 与退出码 0/1/2 实测一致。残留差异两处：路径分隔符可能混用（参数前缀保留正斜杠、子路径为反斜杠，如 `packages/agent-sdk/src\tools\bashTool.ts`），错误消息前缀是 `ugrep:` 而非 `grep:`（解析 stderr 字样的脚本会看到不同文本）。
 - **`find -regex` 的 dialect**：内嵌 `bfs` 固定带 `-regextype findutils-default`，把默认方言对齐成 GNU `find` 的 emacs flavour（`\|` 表示或），因此 `find . -regex '.*\.\(js\|ts\)'` 在两边给出同样的结果；调用方后续再传 `-regextype` 仍以它为准。这份能力来自编译期静态链接的 Oniguruma，随二进制一起分发，不要求用户机器上存在 `libonig`。残留差异只有 alternation 的匹配策略：Oniguruma 取 leftmost-first，POSIX 取 leftmost-longest，当某一分支是另一分支的前缀（`\(ts\|tsx\)`）时结果可能与系统 `find` 不同——把较长的分支写在前面即可，工具不为此改写调用方的模式。
+- **`grep <pattern> <目录>` 不带 `-r`**：`ugrep` 递归是默认行为，因此 `grep needle src/` 会直接给出结果；macOS 的 BSD grep 在同样输入下报 `grep: src: Is a directory` 并返回 2。把它当「必须先加 `-r`」的守卫的脚本，在内嵌实现下会拿到结果而不是错误。
+- **`find -size` 的取整口径**：`bfs` 按 GNU 语义把大小向上取整到单位块（`-size -1k` 只匹配空文件），macOS 的 BSD `find` 不取整（`-size -1k` 匹配所有小于 1024 字节的文件）。`-size 0`、`-size +1k` 这类写法两边一致，其余带单位的小数/负数口径按各自方言解释。
+- **worktree 里的 `.git` 仍然会被搜到**：VCS 名字只按目录排除（`--exclude-dir`），而 worktree 的 `.git` 是内容为 `gitdir: …` 的指针**文件**，因此从 worktree 根执行 `grep -rn` 会多出一行 `./.git:1:gitdir: …`。这是**有意与 Claude Code 对齐**的结果（它的影子同样只传 `--exclude-dir`，最新版实测亦如此），不是遗漏：只有当搜索词命中 `gitdir`、worktree 名或仓库路径时才会现形，输出仅一行；`Grep` 工具的 rg 走 `--glob '!.git'`（按名字整体排除）没有这一条，两者在此处的差异是有意的。
 
 ## 假设
 

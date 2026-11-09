@@ -86,8 +86,27 @@ CLI 用户需要在 CLI 应用退出时查看按模型分类的总 token 用量�
 
 ---
 
+### 用户故事：流式调用必须显式索要用量（优先级：P1）
+
+SDK 用户在主对话、上下文压缩、子代理等所有流式调用上都能拿到真实 token 用量，而不是依赖上游的默认行为。
+
+**为什么是这个优先级**：Chat Completions 的流式响应默认不带 usage，上游要收到 `stream_options.include_usage` 才会在流尾补一帧 usage。不发这个参数时，上下文占用百分比、自动压缩的估算基数、turn 输出预算、`onUsagesChange` 回调与 telemetry 全部静默降级（不报错，只是数值缺失），所以它必须由 Wave 主动声明，不能寄希望于网关自己给。
+
+**独立测试**：用请求体快照断言流式请求带 `stream_options: { include_usage: true }`、非流式请求不带，以及用户显式配置（含关闭）优先生效。
+
+**验收场景**：
+
+1. **假设** 主对话 / 压缩 / 子代理发起流式 Chat Completions 请求，**当** 检查请求体，**则** 带 `stream_options: { include_usage: true }`
+2. **假设** 这次请求不是流式（非流式调用，或流式中途断连后的非流式重发），**当** 检查请求体，**则** 不带 `stream_options`——该字段只在 `stream: true` 时合法
+3. **假设** 用户在 `models[<id>].options.stream_options` 写了自定义值，**当** 发起流式请求，**则** 原样透传用户的值，不被默认值覆盖
+4. **假设** 用户把 `models[<id>].options.stream_options` 显式设为 `null`，**当** 发起流式请求，**则** 不带该字段（给不支持它的网关留出口）
+5. **假设** 请求走 Responses 或 Anthropic Messages 端点，**当** 检查请求体，**则** 不出现 `stream_options`——这两个端点各自在响应流里自带 usage（`response.completed` / `message_start` + `message_delta`）
+
+---
+
 ### 边界情况
 
+- 当上游网关拒收 `stream_options`（严格实现返回 400）时会怎样？（用户可在 `models[<id>].options` 里写 `stream_options: null` 关掉；SDK 不做「400 后剥参重发」的静默兜底）
 - 当 onUsagesChange 回调抛出错误或失败时会怎样？（错误被记录，SDK 继续正常操作不中断）
 - 当 API 调用失败或中止时系统如何处理用量追踪？（失败操作不进行用量追踪，因为未消耗 AI 服务）
 - 会话消息存储满或写保护时会怎样？

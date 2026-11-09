@@ -109,7 +109,7 @@ describe("timeline dot color by stage", () => {
   // 却没给真实文本，见 docs/specs/core/stream-content-updates.md「思考用时
   // 展示」）。这种块不渲染、不占时间线圆点——与上一条用例对照：同样的 stage，
   // 唯一差别是 content trim 后是否为空。
-  it("whitespace-only reasoning block renders no timeline row at all", () => {
+  it("whitespace-only reasoning block renders no message element at all", () => {
     renderChatApp();
 
     sendCommand("updateMessages", {
@@ -122,9 +122,13 @@ describe("timeline dot color by stage", () => {
         },
       ],
     });
-    const message = getLastMessage();
-    expect(message.querySelector(".reasoning-block")).not.toBeInTheDocument();
-    expect(message.querySelectorAll(".timeline-row")).toHaveLength(0);
+    // 这种块渲染不出任何节点，整条消息不进列表（visibleMessages 的过滤）：
+    // 既没有 `.message` 外壳，也没有任何 `.timeline-row`。
+    const container = document.querySelector(
+      '[data-testid="messages-container"]',
+    )!;
+    expect(container.querySelectorAll(".message")).toHaveLength(0);
+    expect(container.querySelectorAll(".timeline-row")).toHaveLength(0);
   });
 
   it("tool block dot follows tool status: streaming orange / running blue / success green / error red", () => {

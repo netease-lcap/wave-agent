@@ -15,21 +15,16 @@ const userMsg = (content: string, id: string) => ({
   blocks: [{ type: "text", content }],
 });
 
-// A background task notification: user role but NO text block, so it renders
-// no .user-content and must never become the sticky candidate.
-const notifMsg = (id: string) => ({
+// A user-role row that renders but carries NO text block (here a notice line, the
+// one non-text block that still produces a row — a `task_notification` one is
+// filtered out of the list entirely, see `rendersNothing`). It must never become
+// the sticky candidate, and scrolling past it must not clear the bar.
+const textlessMsg = (id: string) => ({
   id,
   role: "user" as const,
   timestamp: "2025-01-01T00:00:00.000Z",
   blocks: [
-    {
-      type: "task_notification" as const,
-      taskId: "task_1",
-      taskType: "shell" as const,
-      status: "completed" as const,
-      summary: "Command completed with exit code 0",
-      outputFile: "/tmp/task.log",
-    },
+    { type: "notice" as const, level: "info" as const, content: "🔄 第 3 轮" },
   ],
 });
 
@@ -189,14 +184,14 @@ describe("sticky user message", () => {
     expect(document.querySelector(".sticky-user-content")).toBeInTheDocument();
   });
 
-  it("keeps the bar when a text-less notification user message scrolls past", async () => {
+  it("keeps the bar when a text-less user message scrolls past", async () => {
     renderChatApp();
     act(() => {
       sendCommand("updateMessages", {
         messages: [
           userMsg("第一条问题", "u1"),
           userMsg("第二条问题", "u2"),
-          notifMsg("n3"),
+          textlessMsg("n3"),
           userMsg("第四条问题", "u4"),
         ],
       });
@@ -206,7 +201,7 @@ describe("sticky user message", () => {
     );
 
     // scrollTop 200 → u1 (10..90), u2 (90..170) are above the fold and n3
-    // (170..250) tops the viewport; the notification has no text, so the bar
+    // (170..250) tops the viewport; that row carries no text block, so the bar
     // must stay on u2 ("第二条问题") instead of vanishing (regression: it used
     // to clear the sticky state).
     fakeGeometryAndScroll(200);
@@ -233,7 +228,7 @@ describe("sticky user message", () => {
       sendCommand("updateMessages", {
         messages: [
           userMsg("第一条问题", "u1"),
-          notifMsg("n2"),
+          textlessMsg("n2"),
           userMsg("第三条问题", "u3"),
         ],
       });
@@ -243,7 +238,8 @@ describe("sticky user message", () => {
     );
 
     // scrollTop 200 → u1 (10..90) and n2 (90..170) are above the fold, u3
-    // (170..250) tops the viewport; the newest text-bearing user is u3.
+    // (170..250) tops the viewport; the newest text-bearing user is u3, and the
+    // text-less n2 in between never becomes the candidate.
     fakeGeometryAndScroll(200);
     await waitFor(() => {
       expect(screen.getByTestId("sticky-user-message")).toHaveTextContent(

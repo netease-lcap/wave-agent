@@ -64,7 +64,7 @@ export type ThemeSource = "system" | "light" | "dark";
 
 /** 桌面端更新通道 — 设置页「全局设置」「接收 Beta 版更新」开关（仅桌面端 UI）。
  *  stable = codechat 正式 feed（`/api/downloads/desktop/{mac|win}/`）；
- *  beta = 测试 feed（`/api/downloads/desktop-beta/{mac|win}/`，依赖 codechat #33）。 */
+ *  beta = 测试 feed（`/api/downloads/desktop-beta/{mac|win}/`，codechat #33，v1.2.0 起已上线）。 */
 export type UpdateChannel = "stable" | "beta";
 
 /**

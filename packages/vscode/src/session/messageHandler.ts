@@ -8,7 +8,10 @@ import { FileService } from "../services/fileService";
 import { SessionService } from "../services/sessionService";
 import { PluginService } from "../services/pluginService";
 import { IdeContextService } from "../services/ideContextService";
-import type { IdeContextProvider } from "wave-webview-fixtures";
+import type {
+  AccountCredential,
+  IdeContextProvider,
+} from "wave-webview-fixtures";
 import type { StdioClient } from "../stdio/stdioClient";
 import type {
   Scope,
@@ -2303,21 +2306,26 @@ export class MessageHandler {
     const configurationData = await this.configService.loadConfiguration();
     const sessions = await this.sessionService.getSessionsList();
     let isAuthenticated = false;
+    // 凭据形态（spec desktop-account「认证方式」）：发送入口与欢迎页 CTA 的判据。
+    let credential: AccountCredential | undefined;
     try {
       const authResult = (await this.utilityClient.request(
         "getAuthStatus",
       )) as {
         isAuthenticated: boolean;
+        credential?: AccountCredential;
         user?: { id: string; email?: string };
         serverUrl: string;
       };
       isAuthenticated = authResult.isAuthenticated;
+      credential = authResult.credential;
       // 服务地址随认证响应下发（配置回包不再携带它）：webview 的「企业控制台 /
       // 帮助文档」按钮读 authStatusResponse.serverUrl。
       this.context.postMessage(
         {
           command: "authStatusResponse",
           isAuthenticated: authResult.isAuthenticated,
+          credential: authResult.credential,
           user: authResult.user,
           serverUrl: authResult.serverUrl,
         },
@@ -2368,6 +2376,7 @@ export class MessageHandler {
         permissionMode: session.agent?.getPermissionMode(),
         queuedMessages: session.messageQueue,
         isAuthenticated,
+        ...(credential ? { credential } : {}),
         workdir: session.agent?.currentWorkdir,
       },
       viewType,
@@ -2577,6 +2586,7 @@ export class MessageHandler {
     try {
       const result = (await this.utilityClient.request("getAuthStatus")) as {
         isAuthenticated: boolean;
+        credential?: AccountCredential;
         user: { id: string; email?: string } | undefined;
         serverUrl: string;
       };
@@ -2584,6 +2594,7 @@ export class MessageHandler {
         {
           command: "authStatusResponse",
           isAuthenticated: result.isAuthenticated,
+          credential: result.credential,
           user: result.user,
           serverUrl: result.serverUrl,
         },

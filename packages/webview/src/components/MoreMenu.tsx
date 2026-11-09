@@ -15,6 +15,8 @@ import {
   SettingsGearIcon,
 } from "./HeaderIcons";
 import type { PushNotificationControl } from "../types";
+import type { AccountCredential } from "wave-webview-fixtures";
+import { gatewayHostLabel, resolveCredentialKind } from "../utils/credential";
 import "../styles/MoreMenu.css";
 
 /** One roving item: what it says, what it does, how it is dressed. */
@@ -34,6 +36,16 @@ interface MoreMenuProps {
   onLogout: () => void;
   onClose: () => void;
   isAuthenticated: boolean;
+  /**
+   * 凭据形态（spec desktop/desktop-account.md「认证方式」）。缺席 = 旧宿主，
+   * 回落到 `isAuthenticated`：企业账号 = 4 项菜单，其余 = 无凭据形态。
+   *
+   * 网关形态的菜单是 3 项（设置 / 帮助文档↗ / ─── / 登录企业账号）——没有「企业
+   * 控制台」（那是企业账号专属，网关形态下没有对应的运营端身份），也没有「退出
+   * 登录」（没有登录可退）；企业账号且本机另有网关凭据时，「退出登录」项带副标题
+   * 说明退出后会落到那份凭据（不是断网）。
+   */
+  credential?: AccountCredential | null;
   /**
    * Label of the auth subject this menu's 登录/退出登录 entry acts on —
    * set by the desktop host to the focused pane's host (e.g. 'lyq.u',
@@ -141,6 +153,7 @@ export const MoreMenu: React.FC<MoreMenuProps> = ({
   onLogout,
   onClose,
   isAuthenticated,
+  credential,
   hostLabel,
   triggerRef,
   anchorRect,
@@ -168,6 +181,14 @@ export const MoreMenu: React.FC<MoreMenuProps> = ({
   const handleEnterprise = () => onOpenEnterpriseConsole();
   const handleHelpDocs = () => onOpenHelpDocs();
   const authLabelSuffix = hostLabel ? `（${hostLabel}）` : "";
+  const credentialKind = resolveCredentialKind(credential, isAuthenticated);
+  // 网关形态下「登录企业账号」是唯一能改变凭据的动作，单独进一类。
+  const isGateway = credentialKind === "gateway";
+  // 双凭据时的后果说明：「退出登录」不是断网，而是落到本机配的那份网关凭据。
+  const logoutSubtitle =
+    credentialKind === "sso" && credential?.gateway
+      ? `退出后使用自定义网关 ${gatewayHostLabel(credential.gateway)}`
+      : undefined;
 
   // Web Push switch — remote page only. Only one of the two shapes renders:
   // an actionable 通知 entry while the browser can hold a subscription, or a
@@ -216,20 +237,26 @@ export const MoreMenu: React.FC<MoreMenuProps> = ({
             ),
           },
         ]),
-    {
-      id: "more-menu-enterprise",
-      className: "more-menu-item--between",
-      run: handleEnterprise,
-      content: (
-        <>
-          <span className="more-menu-item-leading">
-            <HouseIcon className="more-menu-item-icon" />
-            <span>企业控制台</span>
-          </span>
-          <ExternalLinkIcon className="more-menu-item-icon" />
-        </>
-      ),
-    },
+    // 企业控制台是企业账号专属：网关形态下没有对应的运营端身份，不渲染
+    // （spec「认证方式」场景 3）。远控页照旧——那是 URL 型入口，与凭据无关。
+    ...(isGateway && !remotePage
+      ? []
+      : [
+          {
+            id: "more-menu-enterprise",
+            className: "more-menu-item--between",
+            run: handleEnterprise,
+            content: (
+              <>
+                <span className="more-menu-item-leading">
+                  <HouseIcon className="more-menu-item-icon" />
+                  <span>企业控制台</span>
+                </span>
+                <ExternalLinkIcon className="more-menu-item-icon" />
+              </>
+            ),
+          },
+        ]),
     {
       id: "more-menu-help-docs",
       className: "more-menu-item--between",
@@ -247,29 +274,59 @@ export const MoreMenu: React.FC<MoreMenuProps> = ({
     ...(remotePage
       ? []
       : [
-          isAuthenticated
+          credentialKind === "sso"
             ? {
                 id: "more-menu-logout",
-                className: "more-menu-item--danger",
+                // 带副标题时条目要长高：两行文本塞不进 24px 的定高条目。
+                className: logoutSubtitle
+                  ? "more-menu-item--danger more-menu-item--stacked"
+                  : "more-menu-item--danger",
                 separator: true,
                 run: onLogout,
-                content: (
+                content: logoutSubtitle ? (
+                  <>
+                    <LogOutIcon className="more-menu-item-icon" />
+                    <span className="more-menu-item-text">
+                      <span>退出登录{authLabelSuffix}</span>
+                      <span
+                        className="more-menu-item-subtitle"
+                        // 菜单最宽也不过 216px：副标题按单行省略，全文放 title。
+                        title={logoutSubtitle}
+                        data-testid="more-menu-logout-subtitle"
+                      >
+                        {logoutSubtitle}
+                      </span>
+                    </span>
+                  </>
+                ) : (
                   <>
                     <LogOutIcon className="more-menu-item-icon" />
                     <span>退出登录{authLabelSuffix}</span>
                   </>
                 ),
               }
-            : {
-                id: "more-menu-login",
-                run: onLogin,
-                content: (
-                  <>
-                    <LogOutIcon className="more-menu-item-icon" />
-                    <span>登录{authLabelSuffix}</span>
-                  </>
-                ),
-              },
+            : credentialKind === "gateway"
+              ? {
+                  id: "more-menu-login-sso",
+                  separator: true,
+                  run: onLogin,
+                  content: (
+                    <>
+                      <LogOutIcon className="more-menu-item-icon" />
+                      <span>登录企业账号{authLabelSuffix}</span>
+                    </>
+                  ),
+                }
+              : {
+                  id: "more-menu-login",
+                  run: onLogin,
+                  content: (
+                    <>
+                      <LogOutIcon className="more-menu-item-icon" />
+                      <span>登录{authLabelSuffix}</span>
+                    </>
+                  ),
+                },
         ]),
   ];
 

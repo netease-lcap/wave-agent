@@ -6877,11 +6877,13 @@
   border-color: var(--cc-border-light, #34393c);
 }
 
-[data-host="desktop"][data-theme="dark"] .message-file-card-toggle:not(:disabled):hover {
+[data-host="desktop"][data-theme="dark"]
+  .message-file-card-toggle:not(:disabled):hover {
   background-color: rgb(255 255 255 / 8%);
 }
 
-[data-host="desktop"][data-theme="dark"] .message-file-card-toggle:not(:disabled):active {
+[data-host="desktop"][data-theme="dark"]
+  .message-file-card-toggle:not(:disabled):active {
   background-color: rgb(255 255 255 / 12%);
 }
 

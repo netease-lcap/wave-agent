@@ -1,4 +1,4 @@
-import { createRequire } from "node:module";
+import { resolveFromAnchors } from "./cliHome.js";
 import { isPackageOnDisk } from "./packageOnDisk.js";
 
 /**
@@ -21,9 +21,12 @@ import { isPackageOnDisk } from "./packageOnDisk.js";
 
 /** The binaries this platform ships, keyed by the command they back. */
 export interface SearchToolPaths {
-  /** ugrep — shadows `grep` on macOS / Linux / WSL. */
+  /** ugrep — shadows `grep` on every platform, Windows included. */
   ugrep?: string;
-  /** bfs — shadows `find` on macOS / Linux / WSL. */
+  /**
+   * bfs — shadows `find` on macOS / Linux / WSL. Never Windows: the package
+   * ships ugrep only there, because msys `find` already is GNU find.
+   */
   bfs?: string;
 }
 
@@ -42,8 +45,13 @@ let resolutionAttempted = false;
  *
  * The existence probe runs before the require — see {@link isPackageOnDisk}
  * for why asking Node to resolve an absent package poisons that path for the
- * rest of the process. The package resolves its own platform package from the
- * *consumer's* location, which is why the same [requireFn] is handed through.
+ * rest of the process.
+ *
+ * `resolveSearchTools()` takes no argument: since 0.3.0 the package resolves its
+ * own platform package from its own directory, the way `@vscode/ripgrep` does,
+ * so pnpm's nested layout (`.pnpm/wave-search-tools@<v>/node_modules/...`) works
+ * as well as a flat npm install. [requireFn] therefore only has to reach the
+ * wrapper itself.
  */
 export function resolveSearchTools(
   requireFn: NodeRequire,
@@ -51,10 +59,10 @@ export function resolveSearchTools(
   if (!isPackageOnDisk(requireFn, PACKAGE)) return undefined;
   try {
     const loaded = requireFn(PACKAGE) as {
-      resolveSearchTools?: (fn: NodeRequire) => SearchToolPaths | null;
+      resolveSearchTools?: () => SearchToolPaths | null;
     };
     if (typeof loaded?.resolveSearchTools !== "function") return undefined;
-    return loaded.resolveSearchTools(requireFn) ?? undefined;
+    return loaded.resolveSearchTools() ?? undefined;
   } catch {
     return undefined;
   }
@@ -68,7 +76,7 @@ export function resolveSearchTools(
 export function getSearchTools(): SearchToolPaths | undefined {
   if (!resolutionAttempted) {
     resolutionAttempted = true;
-    cached = resolveSearchTools(createRequire(import.meta.url));
+    cached = resolveFromAnchors(resolveSearchTools);
   }
   return cached;
 }

@@ -606,6 +606,12 @@ export class ConfigurationService {
       const authAwareFetch = createAuthAwareFetch(
         baseFetch as typeof globalThis.fetch,
       ) as ClientOptions["fetch"];
+      // Observability for "I set WAVE_BASE_URL but requests still fail": the
+      // SSO branch silently wins over the direct one, so say which branch ran
+      // and where the requests go. Never print the token itself.
+      logger.info(
+        `[Gateway] mode=sso baseURL=${serverUrl}/api/v1 (SSO token present; WAVE_BASE_URL/WAVE_API_KEY ignored)`,
+      );
       return {
         apiKey: ssoToken,
         baseURL: `${serverUrl}/api/v1`,
@@ -670,6 +676,14 @@ export class ConfigurationService {
       ...this.options.defaultHeaders,
       ...defaultHeaders,
     };
+
+    // Counterpart of the SSO log above: the direct branch is what a user who
+    // set WAVE_BASE_URL + WAVE_API_KEY expects, but an empty/absent key still
+    // leaves the request unauthenticated — mirror the same 401 the server
+    // gives for a bad token, so the log has to tell the two apart.
+    logger.info(
+      `[Gateway] mode=direct baseURL=${resolvedBaseURL ?? "(unset)"} hasApiKey=${Boolean(resolvedApiKey)}`,
+    );
 
     return {
       apiKey: resolvedApiKey,

@@ -3,15 +3,16 @@
  *
  * ## Why this exists
  *
- * Three dependencies live here: `sharp` (the image codec behind outbound image
+ * Four dependencies live here: `sharp` (the image codec behind outbound image
  * resizing, ~19MB unpacked), `@vscode/ripgrep` (the search binary behind the
- * Grep tool, ~5MB with its platform package) and `@anthropic-ai/sandbox-runtime`
- * (the Bash sandbox, ~12MB of vendored binaries). All three are too big to ship
- * in every host bundle and useless to users who never send an image, run a
- * search or enable the sandbox. The first two are installed on every launch; the
- * sandbox row is opt-in per call (`includeSandbox`) so it is only fetched once
- * the user has actually turned the sandbox on. Two of the three ways of getting
- * the CLI can simply use npm:
+ * Grep tool, ~5MB with its platform package), `wave-search-tools` (the ugrep /
+ * bfs binaries that shadow `grep` / `find` inside the Bash tool) and
+ * `@anthropic-ai/sandbox-runtime` (the Bash sandbox, ~12MB of vendored
+ * binaries). All of them are too big to ship in every host bundle and useless
+ * to users who never send an image, run a search or enable the sandbox. The
+ * first three are installed on every launch; the sandbox row is opt-in per call
+ * (`includeSandbox`) so it is only fetched once the user has actually turned the
+ * sandbox on. Two of the three ways of getting the CLI can simply use npm:
  *
  * | how the CLI was installed | where the dependencies come from | what this does |
  * | --- | --- | --- |
@@ -32,8 +33,11 @@
  * ~/.wave/cli/node_modules/          <- shared by all three hosts, survives CLI upgrades
  *   sharp/  semver/  detect-libc/  @img/colour/
  *   @img/sharp-<key>/                key = linux-x64 | linuxmusl-x64 | darwin-arm64 | win32-x64
- *   @img/sharp-libvips-<key>/        must stay a sibling of the above: its .node has
- *                                    rpath `$ORIGIN/../../sharp-libvips-<key>/lib`
+ *   @img/sharp-libvips-<key>/        Linux/darwin only. Must stay a sibling of the
+ *                                    above: its .node has rpath
+ *                                    `$ORIGIN/../../sharp-libvips-<key>/lib`. Windows
+ *                                    has no such package — its DLLs are inside
+ *                                    `@img/sharp-win32-<arch>`. Neither does wasm.
  *   @vscode/ripgrep/                 the wrapper (ESM, no dependencies of its own)
  *   @vscode/ripgrep-<platform>-<arch>/  holds bin/rg, published with the exec bit
  *   @anthropic-ai/sandbox-runtime/    only when the sandbox was turned on; keyed
@@ -44,8 +48,21 @@
  *                                       batch completed
  * ```
  *
- * Node resolves the modules from `~/.wave/cli/<end>/dist/bundle/wave.mjs` by
- * walking up, which lands on this `node_modules`.
+ * Lookups do not rely on that walk-up alone: `utils/cliHome.ts` probes the
+ * module's own position first and this `node_modules` second, so an install
+ * whose layout hides transitive dependencies (a pnpm global install,
+ * `npm --install-strategy=nested`) still finds what was downloaded here.
+ *
+ * ## Where the version ranges come from
+ *
+ * Each row carries its own {@link RuntimeDependency.range}; no `package.json` is
+ * read at runtime. The manifest lookup this replaced could only ever see the
+ * CLI's manifest — a host copies just `bin`, `dist` and `package.json` — so a
+ * row added on the SDK side found no range at all, was skipped with a one-line
+ * warning, and the feature silently degraded. That is how the Windows grep
+ * shadow never installed. `packages/agent-sdk/package.json` remains the
+ * authority for what `npm i wave-agent-sdk` pulls in, and a test keeps each
+ * row's range equal to it.
  *
  * ## Why detect-libc decides the platform key
  *
@@ -63,11 +80,10 @@
  */
 import { createHash } from "node:crypto";
 import * as fs from "node:fs";
-import * as os from "node:os";
 import * as path from "node:path";
 import { createRequire } from "node:module";
-import { fileURLToPath } from "node:url";
 import { maxSatisfying } from "semver";
+import { cliHomeDir } from "./cliHome.js";
 import { logWarn, logger } from "./globalLogger.js";
 import {
   getImageProcessor,
@@ -119,8 +135,18 @@ interface VersionMeta {
  * keeps this generic: a second row is a row, not a second implementation.
  */
 interface RuntimeDependency {
-  /** npm package declared in the CLI's package.json. */
+  /** npm package this row installs. */
   name: string;
+  /**
+   * Version range to resolve against the registry.
+   *
+   * Kept here rather than read from a `package.json` at runtime: a host copies
+   * only the CLI's `bin`/`dist`/`package.json`, and the row lives in the SDK —
+   * so a manifest lookup found either nothing (the CLI copy) or the wrong
+   * owner's declaration, and the row was skipped with a warning. The SDK's own
+   * `dependencies` remains the authoritative range; a test keeps the two equal.
+   */
+  range: string;
   /** Packages needed on every platform (the JS side). */
   sharedPackages(entry: VersionMeta): PackageRequest[];
   /** Packages for the native build of [platformKey]. */
@@ -143,6 +169,7 @@ interface RuntimeDependency {
 
 const sharpDependency: RuntimeDependency = {
   name: "sharp",
+  range: "^0.35.4",
   sharedPackages(entry) {
     const requests: PackageRequest[] = [
       { name: "sharp", range: entry.version },
@@ -158,14 +185,24 @@ const sharpDependency: RuntimeDependency = {
     // Platform builds are pinned exactly in sharp's optionalDependencies —
     // including the libvips version, which no other field carries.
     const optional = entry.optionalDependencies ?? {};
-    return ["@img/sharp", "@img/sharp-libvips"].map((prefix) => {
-      const name = `${prefix}-${platformKey}`;
-      const range = optional[name];
-      if (!range) {
-        throw new Error(`sharp 不支持当前平台（${platformKey}）：缺 ${name}`);
-      }
-      return { name, range };
-    });
+    const native = `@img/sharp-${platformKey}`;
+    const nativeRange = optional[native];
+    if (!nativeRange) {
+      throw new Error(`sharp 不支持当前平台（${platformKey}）：缺 ${native}`);
+    }
+    const requests: PackageRequest[] = [{ name: native, range: nativeRange }];
+    // libvips is a *separate* package only where the platform links it
+    // dynamically: Linux/darwin publish `@img/sharp-libvips-<key>` and the
+    // .node's rpath is `$ORIGIN/../../sharp-libvips-<key>/lib`. Windows bundles
+    // the DLLs inside `@img/sharp-win32-<arch>` (`libvips-42.dll` sits next to
+    // the .node) and sharp publishes no `@img/sharp-libvips-win32-*` at all.
+    // Demanding both halves unconditionally made every Windows install fail
+    // with "缺 @img/sharp-libvips-win32-x64"; the same holds for the wasm
+    // builds. So follow what sharp actually declares instead of the pairing.
+    const libvips = `@img/sharp-libvips-${platformKey}`;
+    const libvipsRange = optional[libvips];
+    if (libvipsRange) requests.push({ name: libvips, range: libvipsRange });
+    return requests;
   },
   isAvailable: () => getImageProcessor() !== undefined,
   loadsFrom: (requireBase) =>
@@ -180,6 +217,7 @@ const sharpDependency: RuntimeDependency = {
  */
 const ripgrepDependency: RuntimeDependency = {
   name: "@vscode/ripgrep",
+  range: "^1.18.0",
   sharedPackages(entry) {
     return [{ name: "@vscode/ripgrep", range: entry.version }];
   },
@@ -205,13 +243,15 @@ const ripgrepDependency: RuntimeDependency = {
  * 与 ripgrep 行同形：主包无依赖，平台包按 `<platform>-<arch>` 键在
  * `optionalDependencies` 里，Linux 每个架构只发一份（不算 libc 家族）。
  *
- * Windows 另有一条口径：那里唯一的 shell 是 Git Bash，msys 自带的 GNU
- * grep / findutils 已经等价，所以不注入影子、也不需要这份下载。
- * `isAvailable` 在 Windows 上直接返回 true —— 它的语义在这里是「这一行不再
- * 需要下载任何东西」，把整包挡在下载批次之外，而不是「二进制就在手边」。
+ * Windows 也走这一行，但平台包只发 ugrep：msys 自带的 GNU grep 没有
+ * `.gitignore` 概念（仓库根一次 `grep -r` 会把 `dist/`、`node_modules/`、并行
+ * worktree 全扫进来，实测约 52 秒、文件数多 4 倍），所以 `grep` 影子照样要接；
+ * `find` 不接——bfs 没有 Windows 构建，而 msys 的 find 本身就是 GNU find，
+ * 正是 `find` 影子要复现的那一套。
  */
 const searchToolsDependency: RuntimeDependency = {
   name: "wave-search-tools",
+  range: "^0.3.0",
   sharedPackages(entry) {
     return [{ name: "wave-search-tools", range: entry.version }];
   },
@@ -224,8 +264,7 @@ const searchToolsDependency: RuntimeDependency = {
     return [{ name, range }];
   },
   libcAwarePlatformKey: false,
-  isAvailable: () =>
-    process.platform === "win32" || getSearchTools() !== undefined,
+  isAvailable: () => getSearchTools() !== undefined,
   loadsFrom: (requireBase) =>
     resolveSearchTools(requireFnFor(requireBase)) !== undefined,
   onInstalled: () => resetSearchTools(),
@@ -245,6 +284,7 @@ const searchToolsDependency: RuntimeDependency = {
  */
 const sandboxRuntimeDependency: RuntimeDependency = {
   name: SANDBOX_RUNTIME_PACKAGE,
+  range: "^0.0.81",
   sharedPackages(entry) {
     // 四个 JS 依赖来自它自己的 ranges，它加/减一个依赖不需要改这里。
     return [
@@ -268,57 +308,22 @@ const RUNTIME_DEPENDENCIES: RuntimeDependency[] = [
   searchToolsDependency,
 ];
 
-/** `<home>/.wave/cli` — where hosts copy the CLI into and share downloads. */
-function defaultCliHome(): string {
-  return path.join(os.homedir(), ".wave", "cli");
-}
-
 /**
- * Whether this code runs from a CLI copy under the shared cli home.
+ * The packages this installer knows how to fetch, with the range each one is
+ * resolved at.
  *
- * An npm-installed CLI (bundle under `<prefix>/lib/node_modules/wave-code/...`)
- * must not self-install: Node would never look in `~/.wave/cli/node_modules`
- * from there, and writing into a global npm prefix may lack permissions and
- * gets pruned by the next `npm install`. Such a setup either already has the
- * dependencies (the normal case) or degrades with an actionable warning.
+ * Exported for the test that keeps every range equal to the one
+ * `packages/agent-sdk/package.json` declares — that manifest is what
+ * `npm i wave-agent-sdk` installs from, so drifting apart would mean fetching a
+ * version the SDK itself does not ship with.
  */
-export function isManagedCliInstall(
-  moduleUrl: string,
-  cliHome = defaultCliHome(),
-): boolean {
-  let file: string;
-  try {
-    file = fileURLToPath(moduleUrl);
-  } catch {
-    return false;
-  }
-  const relative = path.relative(cliHome, file);
-  return (
-    relative !== "" && !relative.startsWith("..") && !path.isAbsolute(relative)
+export const RUNTIME_DEPENDENCY_RANGES: Record<string, string> =
+  Object.fromEntries(
+    RUNTIME_DEPENDENCIES.map((dependency) => [
+      dependency.name,
+      dependency.range,
+    ]),
   );
-}
-
-/** Nearest `package.json` upwards from [from] that declares [dependency]. */
-function findEntryPackageJson(
-  from: string,
-  dependency: string,
-): { range: string } | undefined {
-  let dir = path.dirname(from);
-  for (;;) {
-    try {
-      const parsed = JSON.parse(
-        fs.readFileSync(path.join(dir, "package.json"), "utf-8"),
-      ) as { dependencies?: Record<string, string> };
-      const range = parsed.dependencies?.[dependency];
-      if (range) return { range };
-    } catch {
-      // Unreadable or absent — keep walking towards the filesystem root.
-    }
-    const parent = path.dirname(dir);
-    if (parent === dir) return undefined;
-    dir = parent;
-  }
-}
 
 async function downloadBuffer(
   url: string,
@@ -525,7 +530,6 @@ function readMarker(installDir: string): Record<string, string> {
 }
 
 export interface RuntimeDepsOptions {
-  moduleUrl?: string;
   fetchImpl?: typeof fetch;
   cliHome?: string;
   /**
@@ -596,19 +600,10 @@ async function runInstall(
   dependencies: RuntimeDependency[],
 ): Promise<RuntimeDepsResult> {
   const fetchImpl = options?.fetchImpl ?? fetch;
-  const moduleUrl = options?.moduleUrl ?? import.meta.url;
-  const cliHome = options?.cliHome ?? defaultCliHome();
+  const cliHome = options?.cliHome ?? cliHomeDir();
 
   if (dependencies.every((dependency) => dependency.isAvailable())) {
     return { available: true };
-  }
-
-  if (!isManagedCliInstall(moduleUrl, cliHome)) {
-    const reason =
-      "当前 wave CLI 不是 ~/.wave/cli 下的副本，无法自动安装运行时依赖" +
-      "（sharp / ripgrep）；请重装 wave-code（不要使用 --omit=optional）";
-    logWarn(`[Wave] ${reason}`);
-    return { available: false, reason };
   }
 
   const installDir = path.join(cliHome, "node_modules");
@@ -623,18 +618,10 @@ async function runInstall(
   for (const dependency of dependencies) {
     if (dependency.isAvailable()) continue;
     try {
-      const entry = findEntryPackageJson(
-        fileURLToPath(moduleUrl),
-        dependency.name,
-      );
-      if (!entry) {
-        fail(failures, `找不到声明 ${dependency.name} 依赖范围的 package.json`);
-        continue;
-      }
       // A batch that completed but still will not load is a platform problem
       // (wrong libc, unsupported CPU). Downloading ~19MB again on every launch
       // would not fix it, so report instead.
-      if (readMarker(installDir)[dependency.name] === entry.range) {
+      if (readMarker(installDir)[dependency.name] === dependency.range) {
         fail(
           failures,
           `${dependency.name} 已安装但无法加载（平台 ${runtimePlatformKey(
@@ -647,7 +634,7 @@ async function runInstall(
 
       const meta = await resolveVersion(
         dependency.name,
-        entry.range,
+        dependency.range,
         fetchImpl,
       );
       const platformKey = await installDependency(
@@ -657,8 +644,9 @@ async function runInstall(
         fetchImpl,
       );
 
-      // Verify through the cli home itself: the only require base that proves
-      // the layout works for the bundle that will load it.
+      // Verify through the cli home itself: that is the anchor the lookups fall
+      // back to (`cliHome.ts`), so a package that resolves here is one the
+      // running process will actually see.
       if (!dependency.loadsFrom(cliHome)) {
         fs.rmSync(path.join(installDir, MARKER_FILE), { force: true });
         fail(
@@ -671,7 +659,7 @@ async function runInstall(
       fs.writeFileSync(
         path.join(installDir, MARKER_FILE),
         `${JSON.stringify(
-          { ...readMarker(installDir), [dependency.name]: entry.range },
+          { ...readMarker(installDir), [dependency.name]: dependency.range },
           null,
           2,
         )}\n`,

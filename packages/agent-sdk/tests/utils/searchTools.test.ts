@@ -106,6 +106,18 @@ describe("resolveSearchTools", () => {
       fs.rmSync(root, { recursive: true, force: true });
     }
   });
+
+  it("asks the package to resolve itself (0.3.0 knows its own pnpm layout)", () => {
+    // 0.2.x expected the consumer's require, which cannot see the platform
+    // package pnpm nests under the wrapper — every pnpm install silently kept
+    // the system grep. The argument is gone in 0.3.0; passing one would mean the
+    // SDK still thinks the answer depends on the caller's layout.
+    const resolve = vi.fn(() => ({ ugrep: "/nested/ugrep" }));
+    const { requireFn } = fakeRequire({ resolveSearchTools: resolve });
+
+    expect(resolveSearchTools(requireFn)).toEqual({ ugrep: "/nested/ugrep" });
+    expect(resolve).toHaveBeenCalledWith();
+  });
 });
 
 describe("getSearchTools", () => {

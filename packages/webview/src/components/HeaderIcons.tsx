@@ -1804,6 +1804,29 @@ export const HelpCircleIcon: React.FC<IconProps> = ({
   </svg>
 );
 
+/** 账户卡片·自定义网关形态的头像位图标（lucide server，24 viewBox stroke 2）：
+ *  网关 = 用户自己配的模型服务端点，与「企业账号」（首字母头像）区分开。 */
+export const GatewayIcon: React.FC<IconProps> = ({
+  className = "header-icon",
+}) => (
+  <svg
+    width={16}
+    height={16}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={2}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+  >
+    <rect width="20" height="8" x="2" y="2" rx="2" ry="2" />
+    <rect width="20" height="8" x="2" y="14" rx="2" ry="2" />
+    <path d="M6 6h.01" />
+    <path d="M6 18h.01" />
+  </svg>
+);
+
 /** 账户更多-退出登录（lucide log-out，24 viewBox stroke 2） */
 export const LogOutIcon: React.FC<IconProps> = ({
   className = "header-icon",

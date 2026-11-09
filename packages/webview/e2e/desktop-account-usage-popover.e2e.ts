@@ -6,9 +6,10 @@ import { MessageInjector } from "./utils/messageInjector.js";
  * Real-browser geometry of the desktop account card's usage popover. jsdom has
  * no layout at all (`getBoundingClientRect` is all zeros, `maxHeight` can only
  * be asserted against a stubbed anchor), so the three things that actually
- * matter visually are verified here: the popup hugs the personal-info row, it
- * keeps the card's width and right edge, and it re-measures itself when the
- * window is resized instead of drifting away from the card.
+ * matter visually are verified here: the popup parks just above the personal-info
+ * row (a 4px gap, see `POPOVER_GAP`), it keeps the card's width and right edge,
+ * and it re-measures itself when the window is resized instead of drifting away
+ * from the card.
  */
 
 const DIR_A = "/Users/dev/projects/wave-agent";
@@ -53,9 +54,20 @@ async function measure(webviewPage: Page): Promise<Geometry> {
   return { card, row, pop };
 }
 
-/** 浮层底边贴个人信息行顶、宽度与右缘跟卡片对齐（留 1.5px 亚像素余量）。 */
-function expectHuggingCard({ card, row, pop }: Geometry) {
-  expect(Math.abs(pop.y + pop.height - row.y)).toBeLessThan(1.5);
+/**
+ * 浮层底边停在个人信息行顶**上方 4px**（与行尾那颗图标按钮之间留一条缝，设计师
+ * 1109 评论「弹窗再上移大概 4px」）、宽度与右缘跟卡片对齐（留 1.5px 亚像素余量）。
+ */
+const POPOVER_GAP = 4;
+
+/** 浮层底边与个人信息行顶之间的实际缝宽（见 `POPOVER_GAP`）。 */
+function gapToRow({ row, pop }: Geometry): number {
+  return row.y - (pop.y + pop.height);
+}
+
+function expectHuggingCard(geometry: Geometry) {
+  const { card, pop } = geometry;
+  expect(Math.abs(gapToRow(geometry) - POPOVER_GAP)).toBeLessThan(1.5);
   expect(Math.abs(pop.width - card.width)).toBeLessThan(1.5);
   expect(Math.abs(pop.x + pop.width - (card.x + card.width))).toBeLessThan(1.5);
 }
@@ -90,7 +102,7 @@ test.describe("Desktop account usage popover geometry", () => {
     await expect
       .poll(async () => {
         const g = await measure(webviewPage);
-        return Math.abs(g.pop.y + g.pop.height - g.row.y);
+        return Math.abs(gapToRow(g) - POPOVER_GAP);
       })
       .toBeLessThan(1.5);
 

@@ -60,6 +60,32 @@
   color: var(--vscode-errorForeground, #f14c4c);
 }
 
+/* 「退出登录」带后果副标题（企业账号 + 本机另有网关凭据）：两行文本，条目由定高
+ * 24px 改为随内容长高——否则副标题会溢出条目、压到下一条（spec
+ * desktop-account.md「认证方式」场景 4）。 */
+.more-menu-item--stacked {
+  height: auto;
+  padding-top: 4px;
+  padding-bottom: 4px;
+}
+
+.more-menu-item-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.more-menu-item-subtitle {
+  overflow: hidden;
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 14px;
+  color: var(--vscode-descriptionForeground, rgba(128, 128, 128, 0.9));
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .more-menu-item--danger:hover {
   background-color: var(--vscode-list-hoverBackground);
   color: var(--vscode-errorForeground, #f14c4c);

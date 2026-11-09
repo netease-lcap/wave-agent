@@ -306,6 +306,32 @@ describe("MessageHandler MCP handlers", () => {
     expect(vscode.window.showInformationMessage).not.toHaveBeenCalled();
   });
 
+  // 凭据形态（spec desktop-account「认证方式」）：插件端与桌面端读同一份契约，
+  // 漏转发会让「配了 WAVE_API_KEY 但没登录」的人看到登录 CTA 且输入框被锁。
+  test("webviewReady forwards the credential from getAuthStatus", async () => {
+    const session = createReadySession();
+    const { handler, context, utilityClient } = createReadyHandler(session);
+    const credential = {
+      kind: "gateway",
+      gateway: { host: "api.example.com" },
+    };
+    utilityClient.request.mockResolvedValue({
+      isAuthenticated: false,
+      credential,
+      serverUrl: "https://console.example.com",
+    });
+
+    await handler.handleMessage({ command: "webviewReady" }, "tab");
+
+    const authPosts = sentPosts(context)("authStatusResponse");
+    expect(authPosts[authPosts.length - 1]).toMatchObject({
+      isAuthenticated: false,
+      credential,
+    });
+    const states = sentPosts(context)("setInitialState");
+    expect(states[states.length - 1]).toMatchObject({ credential });
+  });
+
   // Regression: serverUrl 必须随 authStatusResponse 下发（配置回包不再承载它）——
   // 空值会让 webview 的「企业控制台 / 帮助文档」按钮静默失效。
   test("webviewReady pushes the fresh serverUrl from getAuthStatus", async () => {
