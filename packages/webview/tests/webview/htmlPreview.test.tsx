@@ -3,7 +3,7 @@ import { render, fireEvent, screen, act } from "@testing-library/react";
 import React from "react";
 import { DesktopApp } from "../../src/components/DesktopApp";
 import { prunePanelGroupCache } from "../../src/components/ChatApp";
-import { WRITE_TOOL_NAME } from "wave-agent-sdk";
+import { WRITE_TOOL_NAME } from "wave-agent-sdk/constants";
 import {
   createMockVscode,
   renderChatApp,

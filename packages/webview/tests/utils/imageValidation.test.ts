@@ -77,6 +77,13 @@ describe("validateImageFile", () => {
   });
 
   it("accepts valid PNG / JPEG / GIF / WebP files, byte-for-byte", async () => {
+    // 这几个字节只有 PNG 那一个真能被浏览器解码（JPEG/GIF/WebP 是只保留头尾标记
+    // 的最小片段）。本用例验的是「魔数 + 尾标记判过之后原样放行、不重新编码」，
+    // 解码交给下面专门的两条，所以这里给一个能成功的解码器。
+    vi.stubGlobal(
+      "createImageBitmap",
+      vi.fn().mockResolvedValue({ width: 1, height: 1, close: vi.fn() }),
+    );
     const png = makeFile(TINY_PNG_BYTES, "a.png", "image/png");
     const jpeg = makeFile(TINY_JPEG_BYTES, "a.jpg", "image/jpeg");
     const gif = makeFile(TINY_GIF_BYTES, "a.gif", "image/gif");
@@ -186,6 +193,9 @@ describe("validateImageFile", () => {
   });
 
   it("falls back to byte checks when the host has no image decoder", async () => {
+    // 真浏览器都有 `createImageBitmap`，而这条分支问的是「宿主没有解码器时还
+    // 能不能靠字节判据收下图片」，所以把解码器摘掉。
+    vi.stubGlobal("createImageBitmap", undefined);
     expect(
       (globalThis as Record<string, unknown>).createImageBitmap,
     ).toBeUndefined();

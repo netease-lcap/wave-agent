@@ -4,7 +4,7 @@ import React from "react";
 import { SingleFilePane, type SingleFilePaneProps } from "./filePaneHarness";
 import { DesktopApp } from "../../src/components/DesktopApp";
 import { prunePanelGroupCache } from "../../src/components/ChatApp";
-import { READ_TOOL_NAME, WRITE_TOOL_NAME } from "wave-agent-sdk";
+import { READ_TOOL_NAME, WRITE_TOOL_NAME } from "wave-agent-sdk/constants";
 import type { Message } from "wave-agent-sdk";
 import {
   createMockVscode,

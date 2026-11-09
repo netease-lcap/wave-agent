@@ -6,7 +6,7 @@ import {
   WRITE_TOOL_NAME,
   EDIT_TOOL_NAME,
   BASH_TOOL_NAME,
-} from "wave-agent-sdk";
+} from "wave-agent-sdk/constants";
 
 describe("Tool Display Visual Test", () => {
   beforeEach(() => {

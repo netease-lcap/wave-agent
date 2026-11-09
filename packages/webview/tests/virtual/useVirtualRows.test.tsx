@@ -6,7 +6,8 @@ import {
   type VirtualRows,
 } from "../../src/virtual/useVirtualRows";
 
-// jsdom 没有 ResizeObserver；内核用它盯行高与容器尺寸，这里给个空实现。
+// ResizeObserver 只在真浏览器里存在；这里的 harness 不渲染行（用估计值当账本），
+// 内核挂它只是为了盯行高与容器尺寸，空实现足够。
 vi.stubGlobal(
   "ResizeObserver",
   class {
@@ -16,7 +17,10 @@ vi.stubGlobal(
   },
 );
 
-/** 行高固定的 20 行，总量 2000px；测试视口由 tests/setup.ts 固定为 600px。 */
+/**
+ * 行高固定的 20 行，总量 2000px；视口 600px —— harness 自己给出可滚的真实尺寸
+ * （容器 600px 高 + overflow，spacer 撑出总高），滚动位置才是真的。
+ */
 const rowKeys = (prefix: string) =>
   Array.from({ length: 20 }, (_, i) => `${prefix}-${i}`);
 const ROW_HEIGHT = 100;
@@ -39,10 +43,18 @@ function Harness({
     docKey,
   });
   useImperativeHandle(apiRef as never, () => rows, [rows]);
-  return <div ref={rows.containerRef} data-testid="messages-container" />;
+  return (
+    <div
+      ref={rows.containerRef}
+      data-testid="messages-container"
+      style={{ height: VIEWPORT, overflowY: "auto", position: "relative" }}
+    >
+      <div style={{ height: rows.totalSize }} />
+    </div>
+  );
 }
 
-/** 用户真的滚了一下：写 scrollTop 再派发 scroll（jsdom 不会自己派发）。 */
+/** 用户真的滚了一下：写 scrollTop 再派发 scroll（合成滚动不会自带事件）。 */
 function userScroll(container: HTMLElement, top: number) {
   container.scrollTop = top;
   container.dispatchEvent(new Event("scroll"));

@@ -4,7 +4,10 @@ import React from "react";
 import { DesktopApp } from "../../src/components/DesktopApp";
 import { ChatApp, prunePanelGroupCache } from "../../src/components/ChatApp";
 import type { WebviewTagElement } from "../../src/components/PreviewPane";
-import { READ_TOOL_NAME, EXIT_PLAN_MODE_TOOL_NAME } from "wave-agent-sdk";
+import {
+  READ_TOOL_NAME,
+  EXIT_PLAN_MODE_TOOL_NAME,
+} from "wave-agent-sdk/constants";
 import {
   createMockVscode,
   sendCommand,

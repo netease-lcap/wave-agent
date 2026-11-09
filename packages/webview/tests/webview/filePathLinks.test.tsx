@@ -4,7 +4,7 @@ import React from "react";
 import { Message } from "../../src/components/Message";
 import { createMockVscode } from "./test-utils";
 import { MockDataGenerator } from "../fixtures/mockData";
-import { BASH_TOOL_NAME } from "wave-agent-sdk";
+import { BASH_TOOL_NAME } from "wave-agent-sdk/constants";
 import type { Message as MessageType } from "../../src/types";
 
 // Mermaid is heavy and irrelevant here; stub it out (same pattern as

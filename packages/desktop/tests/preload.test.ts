@@ -3,11 +3,19 @@ import { contextBridge, ipcRenderer } from "electron";
 import { WEBVIEW_CHANNEL, HOST_CHANNEL } from "../src/main/channels";
 import "../src/main/preload";
 
+/**
+ * `preload.ts` is side-effect only: it calls into `electron` exactly once, at
+ * import time. Vitest 5 cleared those calls before every test by default
+ * (`clearMocks: true`), so snapshot them right after the import — otherwise
+ * every assertion below reads an empty call list.
+ */
+const exposedCalls = [...vi.mocked(contextBridge.exposeInMainWorld).mock.calls];
+const ipcOnCalls = [...vi.mocked(ipcRenderer.on).mock.calls];
+const sendSyncCalls = [...vi.mocked(ipcRenderer.sendSync).mock.calls];
+
 describe("preload", () => {
   function exposedApi() {
-    const call = vi
-      .mocked(contextBridge.exposeInMainWorld)
-      .mock.calls.find(([key]) => key === "acquireVsCodeApi");
+    const call = exposedCalls.find(([key]) => key === "acquireVsCodeApi");
     expect(call).toBeDefined();
     const factory = call![1] as () => {
       postMessage: (message: unknown) => void;
@@ -30,26 +38,20 @@ describe("preload", () => {
   });
 
   it("exposes waveHostType as desktop", () => {
-    expect(contextBridge.exposeInMainWorld).toHaveBeenCalledWith(
-      "waveHostType",
-      "desktop",
-    );
+    expect(exposedCalls).toContainEqual(["waveHostType", "desktop"]);
   });
 
   it("exposes the host platform for the hidden-titlebar layout", () => {
-    expect(contextBridge.exposeInMainWorld).toHaveBeenCalledWith(
-      "wavePlatform",
-      process.platform,
-    );
+    expect(exposedCalls).toContainEqual(["wavePlatform", process.platform]);
   });
 
   it("forwards host messages into the page via window.postMessage", () => {
     const postMessage = vi.fn();
     vi.stubGlobal("window", { postMessage });
 
-    const listener = vi
-      .mocked(ipcRenderer.on)
-      .mock.calls.find(([channel]) => channel === HOST_CHANNEL)?.[1];
+    const listener = ipcOnCalls.find(
+      ([channel]) => channel === HOST_CHANNEL,
+    )?.[1];
     expect(listener).toBeDefined();
     (listener as (event: unknown, message: unknown) => void)(
       {},
@@ -64,6 +66,6 @@ describe("preload", () => {
   });
 
   it("queries the initial theme synchronously to seed <html data-theme> (FR-019)", () => {
-    expect(ipcRenderer.sendSync).toHaveBeenCalledWith("wave:get-initial-theme");
+    expect(sendSyncCalls).toContainEqual(["wave:get-initial-theme"]);
   });
 });

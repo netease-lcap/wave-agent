@@ -37,9 +37,10 @@ const metaUserMsg = (content: string, id: string) => ({
 });
 
 /**
- * jsdom does not do layout, so scrollTop/clientHeight/scrollHeight are all 0.
- * Fake the geometry by redefining those properties on the container, then
- * dispatch a scroll event so MessageList's scroll handler records the position.
+ * The list's pin/follow judgement reads four numbers off the scroll box
+ * (scrollTop/clientHeight/scrollHeight). These specs assert that judgement, not
+ * the browser's layout, so they pin those four numbers directly and dispatch a
+ * scroll event so MessageList's scroll handler records the position.
  */
 function setGeometryAndScroll(
   scrollTop: number,
@@ -73,8 +74,9 @@ describe("auto-scroll follow during streaming", () => {
   });
 
   it("keeps following when content above the viewport shrinks (e.g. reasoning collapse) without a user scroll-up", async () => {
-    // Programmatic scrolls go through the virtualizer → Element.scrollTo
-    // (polyfilled in tests/setup.ts); spy on it to observe auto-follow.
+    // Programmatic scrolls go through the virtualizer → Element.scrollTo;
+    // replace it so the auto-follow calls are observable (the geometry below
+    // is injected too, so a real scroll would not land anywhere meaningful).
     const scrollTo = vi.fn();
     window.Element.prototype.scrollTo = scrollTo;
 
@@ -316,8 +318,8 @@ describe("auto-scroll follow during streaming", () => {
   /**
    * Regions that scroll on their own inside the list (tool output, reasoning,
    * diff, write preview, capped user content). They are recognized from layout
-   * — a max-height + overflow-y that really overflows — so jsdom needs the
-   * geometry faked the same way the container's is.
+   * — a max-height + overflow-y that really overflows — so the injected region
+   * has to answer the same three numbers the classifier reads.
    */
   function addNestedScroller(scrollTop: number, scrollHeight = 800) {
     const container = screen.getByTestId("messages-container");

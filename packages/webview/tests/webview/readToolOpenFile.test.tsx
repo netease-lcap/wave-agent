@@ -7,7 +7,7 @@ import {
   waitFor,
 } from "./test-utils";
 import { MockDataGenerator } from "../fixtures/mockData";
-import { READ_TOOL_NAME } from "wave-agent-sdk";
+import { READ_TOOL_NAME } from "wave-agent-sdk/constants";
 
 describe("Read tool header click → openFile with line range", () => {
   beforeEach(() => {

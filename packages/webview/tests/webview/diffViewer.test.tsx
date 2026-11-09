@@ -1,11 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderChatApp, sendCommand } from "./test-utils";
+import type { Message } from "wave-agent-sdk";
 import {
-  Message,
   EDIT_TOOL_NAME,
   WRITE_TOOL_NAME,
   READ_TOOL_NAME,
-} from "wave-agent-sdk";
+} from "wave-agent-sdk/constants";
 
 describe("Diff Viewer", () => {
   beforeEach(() => {

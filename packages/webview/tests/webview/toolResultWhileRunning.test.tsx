@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderChatApp, sendCommand } from "./test-utils";
-import { BASH_TOOL_NAME, LSP_TOOL_NAME } from "wave-agent-sdk";
+import { BASH_TOOL_NAME, LSP_TOOL_NAME } from "wave-agent-sdk/constants";
 
 describe("Tool Result While Running", () => {
   beforeEach(() => {

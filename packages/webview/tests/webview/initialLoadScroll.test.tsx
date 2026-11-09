@@ -51,11 +51,8 @@ function setGeometryAndScroll(
 /**
  * Initial-load scrolling + async-content re-pin.
  * MessageList scrolls programmatically through the virtualizer, which ends in
- * Element.scrollTo (polyfilled in tests/setup.ts); these tests spy on it.
- * jsdom does no layout (scrollTop/clientHeight/scrollHeight are 0), so the
- * "near bottom" check is always true there; these tests assert the parts that
- * are deterministic regardless: the initial forced 'auto' scroll, and the
- * re-pin triggered by async content loads.
+ * Element.scrollTo; these tests replace it to observe the calls (the list
+ * geometry is injected here, so the real scroll positions are not the subject).
  */
 describe("initial load scroll + async-content re-pin", () => {
   beforeEach(() => {

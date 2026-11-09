@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach, beforeEach, vi } from "vitest";
+import { describe, it, expect, afterEach, vi } from "vitest";
 import {
   renderChatApp,
   screen,
@@ -6,6 +6,8 @@ import {
   act,
   sendCommand,
   fireEvent,
+  pinMessageListViewport,
+  scrollRowAboveFold,
 } from "./test-utils";
 import { MockDataGenerator } from "../fixtures/mockData";
 import {
@@ -66,12 +68,11 @@ describe("transcriptOutline geometry", () => {
   });
 });
 
-describe("transcript outline (jsdom)", () => {
+describe("transcript outline", () => {
   /**
-   * jsdom 不做排版，`getBoundingClientRect` 恒返回全 0 —— 而大纲的显隐判据正是
-   * 「内容列左侧的留白够不够」，全 0 等于「窗口和列一样宽」，大纲会正确地不
-   * 显示。所以这里给两个盒子造一份几何：`containerWidth` 宽的滚动面上居中放
-   * 一个 `columnWidth` 宽的列，其余元素维持 jsdom 的 0。
+   * 大纲的显隐判据是「内容列左侧的留白够不够」，而真浏览器里这份留白本来就
+   * 存在（1280 宽的窗口里居中放一个 800 宽的列）。只有「窗口不比列宽出多少」
+   * 这条路需要造一副几何：把两个盒子换成指定宽度的假 rect。
    */
   function stubColumnGeometry(containerWidth = 1200, columnWidth = 800): void {
     const rect = (left: number, width: number): DOMRect =>
@@ -96,8 +97,6 @@ describe("transcript outline (jsdom)", () => {
       },
     );
   }
-
-  beforeEach(() => stubColumnGeometry());
 
   it("renders one tick per user message", async () => {
     renderChatApp();
@@ -180,7 +179,11 @@ describe("transcript outline (jsdom)", () => {
     await waitFor(() =>
       expect(screen.getByTestId("transcript-outline")).toBeInTheDocument(),
     );
-    const container = screen.getByTestId("messages-container");
+    // 视口高度来自列表外面的布局：不钉一个，六轮内容撑不开容器，点了也不会滚。
+    const container = pinMessageListViewport(
+      screen.getByTestId("messages-container"),
+      200,
+    );
     const ticks = screen.getAllByTestId("outline-tick");
 
     fireEvent.click(ticks[4]);
@@ -195,12 +198,14 @@ describe("transcript outline (jsdom)", () => {
     await waitFor(() =>
       expect(screen.getByTestId("transcript-outline")).toBeInTheDocument(),
     );
-    const container = screen.getByTestId("messages-container");
+    const container = pinMessageListViewport(
+      screen.getByTestId("messages-container"),
+      200,
+    );
 
-    act(() => {
-      container.scrollTop = 300;
-      fireEvent.scroll(container);
-    });
+    // 「问题 1」压到折线以上：吸顶条的候选就是它，大纲的当前项必须跟着走。
+    // 落点由真实行高算出，不假设「一轮多高」。
+    await scrollRowAboveFold(container, "u1");
 
     await waitFor(() => {
       const active = document.querySelector(".outline-tick--active");

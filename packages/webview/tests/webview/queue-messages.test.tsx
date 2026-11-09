@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import {
   renderChatApp,
   screen,
@@ -6,58 +6,8 @@ import {
   sendCommand,
   fireInput,
   within,
+  waitFor,
 } from "./test-utils";
-
-/**
- * jsdom does no layout, so `scrollWidth`/`clientWidth` are always 0 and the
- * component's "only tooltip the entries whose text is actually clipped" gate
- * can never fire. Simulate a row of fixed width whose content grows with the
- * character count, so only long entries read as truncated.
- */
-const ROW_WIDTH = 240;
-const CHAR_WIDTH = 8;
-
-const elementWidthDescriptors = {
-  scrollWidth: Object.getOwnPropertyDescriptor(
-    Element.prototype,
-    "scrollWidth",
-  ),
-  clientWidth: Object.getOwnPropertyDescriptor(
-    Element.prototype,
-    "clientWidth",
-  ),
-};
-
-function stubTextTruncationMeasurement() {
-  const isItemText = (el: Element) => el.classList.contains("queued-item-text");
-  Object.defineProperty(Element.prototype, "clientWidth", {
-    configurable: true,
-    get(this: Element) {
-      return isItemText(this) ? ROW_WIDTH : 0;
-    },
-  });
-  Object.defineProperty(Element.prototype, "scrollWidth", {
-    configurable: true,
-    get(this: Element) {
-      return isItemText(this)
-        ? (this.textContent?.length ?? 0) * CHAR_WIDTH
-        : 0;
-    },
-  });
-}
-
-function restoreTextTruncationMeasurement() {
-  Object.defineProperty(
-    Element.prototype,
-    "scrollWidth",
-    elementWidthDescriptors.scrollWidth!,
-  );
-  Object.defineProperty(
-    Element.prototype,
-    "clientWidth",
-    elementWidthDescriptors.clientWidth!,
-  );
-}
 
 /**
  * Helper: set contenteditable text and fire input event
@@ -81,12 +31,6 @@ function itemText(id: string): string {
 describe("Message Queuing", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-  });
-
-  afterEach(() => {
-    // Only stubbed by the truncation test; re-installing the jsdom getters is
-    // a no-op for every other test.
-    restoreTextTruncationMeasurement();
   });
 
   it("should queue messages when streaming and process them after streaming ends", async () => {
@@ -321,8 +265,7 @@ describe("Message Queuing", () => {
     expect(itemText("q2")).toBe("normal message");
   });
 
-  it("should wrap only truncated items in a Tooltip showing the full text", () => {
-    stubTextTruncationMeasurement();
+  it("should wrap only truncated items in a Tooltip showing the full text", async () => {
     renderChatApp();
 
     sendCommand("startStreaming");
@@ -343,11 +286,30 @@ describe("Message Queuing", () => {
         .querySelector(".queued-message-list-header") as HTMLElement,
     );
 
+    // 截断与否是真浏览器量出来的（`scrollWidth > clientWidth`）：容器默认
+    // 最宽 800px，这句 47 字的文案放得下，得先把它收窄到真装不下。组件在
+    // ResizeObserver 回调里重量，收窄后等它把长条目包上气泡。
+    const list = screen.getByTestId("queued-message-list");
+    list.style.width = "240px";
+    list.style.maxWidth = "240px";
+
     // The truncated item is wrapped: the Tooltip container (.tooltip-container)
     // contains the item and a role="tooltip" box carrying the full text.
-    const item = screen.getByTestId("queued-item-q1");
+    const item = await waitFor(() => {
+      const el = screen.getByTestId("queued-item-q1");
+      expect(el.closest(".tooltip-container")).not.toBeNull();
+      return el;
+    });
     const container = item.closest(".tooltip-container") as HTMLElement;
-    expect(container).not.toBeNull();
+    // 气泡在悬停前是 `visibility: hidden`（默认不进可访问树），先确认包上了、
+    // 全文在，再悬停一次确认它真的露出来。
+    expect(
+      within(container).getByRole("tooltip", { hidden: true }),
+    ).toHaveTextContent("A very long queued message that needs a tooltip");
+    fireEvent.mouseEnter(container);
+    await waitFor(() => {
+      expect(within(container).getByRole("tooltip")).toBeVisible();
+    });
     expect(within(container).getByRole("tooltip")).toHaveTextContent(
       "A very long queued message that needs a tooltip",
     );

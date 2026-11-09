@@ -6,7 +6,7 @@ import {
   act,
   sendCommand,
 } from "./test-utils";
-import { BASH_TOOL_NAME } from "wave-agent-sdk";
+import { BASH_TOOL_NAME } from "wave-agent-sdk/constants";
 
 describe("Bash Permission Fix", () => {
   beforeEach(() => {

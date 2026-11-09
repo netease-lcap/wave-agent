@@ -3,7 +3,7 @@ import { render } from "@testing-library/react";
 import React from "react";
 import { Message } from "../../src/components/Message";
 import { createMockVscode } from "./test-utils";
-import { BASH_TOOL_NAME } from "wave-agent-sdk";
+import { BASH_TOOL_NAME } from "wave-agent-sdk/constants";
 import type { Message as MessageType } from "../../src/types";
 
 // Bash 工具命令行的语法高亮（specs/ui/message-rendering-system.md「Bash 工具

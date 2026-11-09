@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { render } from "@testing-library/react";
 import React from "react";
-import { WRITE_TOOL_NAME, BASH_TOOL_NAME } from "wave-agent-sdk";
+import { WRITE_TOOL_NAME, BASH_TOOL_NAME } from "wave-agent-sdk/constants";
 import { Message } from "../../src/components/Message";
 import { WriteToolPreview } from "../../src/components/WriteToolPreview";
 import { MockDataGenerator } from "../fixtures/mockData";

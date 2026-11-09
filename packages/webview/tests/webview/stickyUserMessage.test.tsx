@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   renderChatApp,
   screen,
@@ -6,6 +6,8 @@ import {
   act,
   sendCommand,
   fireEvent,
+  pinMessageListViewport,
+  scrollRowAboveFold,
 } from "./test-utils";
 
 const userMsg = (content: string, id: string) => ({
@@ -29,38 +31,37 @@ const textlessMsg = (id: string) => ({
 });
 
 /**
- * The sticky candidate is computed from the virtual list's offset table (see
- * computeSticky): every row measures the stubbed 80px (tests/setup.ts) and the
- * list's coordinate origin is the column's 10px padding, so message N occupies
- * [10 + N*80, 90 + N*80). Fake the container geometry, set scrollTop inside the
- * row you want at the fold, then dispatch a scroll event so the list
- * recomputes.
+ * The viewport the list scrolls in.
+ *
+ * The app chrome around the list is not what these cases are about — pin a
+ * small one so a handful of messages already overflow it. The sticky
+ * computation only reads `scrollTop` against the row offsets, so how tall the
+ * window is changes nothing but how much filler a case needs below its target.
  */
-function fakeGeometryAndScroll(scrollTop: number) {
-  const container = screen.getByTestId("messages-container");
-  Object.defineProperty(container, "scrollTop", {
-    value: scrollTop,
-    configurable: true,
-    writable: true,
-  });
-  Object.defineProperty(container, "clientHeight", {
-    value: 400,
-    configurable: true,
-    writable: true,
-  });
-  Object.defineProperty(container, "scrollHeight", {
-    value: 2000,
-    configurable: true,
-    writable: true,
-  });
-  act(() => {
-    fireEvent.scroll(container);
-  });
+const VIEWPORT_HEIGHT = 200;
+
+function showList(): HTMLElement {
+  return pinMessageListViewport(
+    screen.getByTestId("messages-container"),
+    VIEWPORT_HEIGHT,
+  );
 }
+
+/**
+ * Trailing messages. Scrolling a row above the fold only stays put when there
+ * is something below it to fill the rest of the viewport — otherwise the write
+ * is clamped and the row never crosses the fold at all.
+ */
+const filler = (count: number): ReturnType<typeof userMsg>[] =>
+  Array.from({ length: count }, (_, i) => userMsg(`充实内容 ${i}`, `f${i}`));
 
 describe("sticky user message", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   it("has no sticky header before scrolling", async () => {
@@ -84,6 +85,7 @@ describe("sticky user message", () => {
           userMsg("第一条问题", "u1"),
           userMsg("第二条问题", "u2"),
           userMsg("第三条问题", "u3"),
+          ...filler(4),
         ],
       });
     });
@@ -91,16 +93,16 @@ describe("sticky user message", () => {
       expect(screen.getByTestId("messages-container")).toBeInTheDocument(),
     );
 
-    // scrollTop 200 → u3 (170..250) tops the viewport; u1 (10..90) and u2
-    // (90..170) are above the fold; the last one above is u3.
-    fakeGeometryAndScroll(200);
+    // 第三条的上沿压到折线之上：前两条早已在折线以上，候选就是"最后一个在
+    // 折线之上的用户消息"——第三条。
+    const container = showList();
+    await scrollRowAboveFold(container, "u3");
 
     await waitFor(() => {
-      expect(screen.getByTestId("sticky-user-message")).toBeInTheDocument();
+      expect(screen.getByTestId("sticky-user-message")).toHaveTextContent(
+        "第三条问题",
+      );
     });
-    expect(screen.getByTestId("sticky-user-message")).toHaveTextContent(
-      "第三条问题",
-    );
   });
 
   it("switches the pinned message as scroll position changes", async () => {
@@ -111,6 +113,7 @@ describe("sticky user message", () => {
           userMsg("第一条问题", "u1"),
           userMsg("第二条问题", "u2"),
           userMsg("第三条问题", "u3"),
+          ...filler(4),
         ],
       });
     });
@@ -118,9 +121,9 @@ describe("sticky user message", () => {
       expect(screen.getByTestId("messages-container")).toBeInTheDocument(),
     );
 
-    // scrollTop 100 → u2 (90..170) tops the viewport; u1 is above the fold,
-    // u3 is below it → the candidate is u2.
-    fakeGeometryAndScroll(100);
+    // 只把第二条压过折线：第三条还在视口里（折线以下），候选是第二条。
+    const container = showList();
+    await scrollRowAboveFold(container, "u2");
     await waitFor(() => {
       expect(screen.getByTestId("sticky-user-message")).toHaveTextContent(
         "第二条问题",
@@ -132,8 +135,6 @@ describe("sticky user message", () => {
     renderChatApp();
     act(() => {
       sendCommand("updateMessages", {
-        // 行数要够多，跳转目标才可能真的落在视口中间：行高 80 + 视口 400 时，
-        // 只有目标行的上沿离内容顶超过 (400-80)/2 才有「居中」可言。
         messages: Array.from({ length: 20 }, (_, i) =>
           userMsg(`问题 ${i}`, `u${i}`),
         ),
@@ -142,28 +143,38 @@ describe("sticky user message", () => {
     await waitFor(() =>
       expect(screen.getByTestId("messages-container")).toBeInTheDocument(),
     );
-    // scrollTop 300 → u3 (250..330) tops the fold; the candidate is u3.
-    fakeGeometryAndScroll(300);
+
+    const container = showList();
+    const row = await scrollRowAboveFold(container, "u3");
     await waitFor(() =>
       expect(screen.getByTestId("sticky-user-message")).toHaveTextContent(
         "问题 3",
       ),
     );
 
-    // Programmatic scrolls go through Element.scrollTo (polyfilled in
-    // tests/setup.ts); replace it with a spy to observe the jump.
-    const scrollTo = vi.fn();
-    window.Element.prototype.scrollTo = scrollTo;
+    // 跳转走 `container.scrollTo`：让它真滚（spy 只是旁听），然后把结论读成
+    // 「那条消息是不是落到了视口中间」——比断言一个算出来的像素值更像用户看到
+    // 的东西。
+    const scrollTo = vi.spyOn(Element.prototype, "scrollTo");
     act(() => {
       fireEvent.click(screen.getByTestId("sticky-user-message"));
     });
-    expect(scrollTo).toHaveBeenCalledWith({
-      // u3 上沿 10 + 3*80 = 250，再往回退 (视口 400 - 行高 80) / 2 = 160。
-      top: 90,
-      // 瞬时落位，不是平滑：平滑跳转逐帧推进期间，进入视口的行会被首次测量，
-      // 虚拟列表的尺寸补偿会把它拽回记录中的偏移（仍是底部）从而取消跳转
-      // ——流式时表现为「点了吸顶条没反应」。见 MessageList.scrollToMessage。
-      behavior: "auto",
+
+    const target = scrollTo.mock.calls[0]?.[0] as ScrollToOptions;
+    // 瞬时落位，不是平滑：平滑跳转逐帧推进期间，进入视口的行会被首次测量，
+    // 虚拟列表的尺寸补偿会把它拽回记录中的偏移（仍是底部）从而取消跳转
+    // ——流式时表现为「点了吸顶条没反应」。见 MessageList.scrollToMessage。
+    expect(target.behavior).toBe("auto");
+
+    await waitFor(() => {
+      const viewport = container.getBoundingClientRect();
+      const rect = row.getBoundingClientRect();
+      // 容差来自账面行高与实测行高的估算差：居中落点用的是账本里的尺寸。
+      expect(
+        Math.abs(
+          rect.top + rect.height / 2 - (viewport.top + viewport.height / 2),
+        ),
+      ).toBeLessThan(12);
     });
   });
 
@@ -171,13 +182,18 @@ describe("sticky user message", () => {
     renderChatApp();
     act(() => {
       sendCommand("updateMessages", {
-        messages: [userMsg("第一条问题", "u1"), userMsg("第二条问题", "u2")],
+        messages: [
+          userMsg("第一条问题", "u1"),
+          userMsg("第二条问题", "u2"),
+          ...filler(4),
+        ],
       });
     });
     await waitFor(() =>
       expect(screen.getByTestId("messages-container")).toBeInTheDocument(),
     );
-    fakeGeometryAndScroll(700);
+    const container = showList();
+    await scrollRowAboveFold(container, "u2");
     await waitFor(() =>
       expect(screen.getByTestId("sticky-user-message")).toBeInTheDocument(),
     );
@@ -193,6 +209,7 @@ describe("sticky user message", () => {
           userMsg("第二条问题", "u2"),
           textlessMsg("n3"),
           userMsg("第四条问题", "u4"),
+          ...filler(4),
         ],
       });
     });
@@ -200,21 +217,18 @@ describe("sticky user message", () => {
       expect(screen.getByTestId("messages-container")).toBeInTheDocument(),
     );
 
-    // scrollTop 200 → u1 (10..90), u2 (90..170) are above the fold and n3
-    // (170..250) tops the viewport; that row carries no text block, so the bar
-    // must stay on u2 ("第二条问题") instead of vanishing (regression: it used
-    // to clear the sticky state).
-    fakeGeometryAndScroll(200);
-
+    // 没有正文的那一行压过折线时，吸顶条必须停在它上面最近的一条有正文的
+    // 用户消息（第二条），而不是整条消失（回归：以前会清空吸顶状态）。
+    const container = showList();
+    await scrollRowAboveFold(container, "n3");
     await waitFor(() => {
       expect(screen.getByTestId("sticky-user-message")).toHaveTextContent(
         "第二条问题",
       );
     });
 
-    // Once the text-bearing u4 (250..330) also scrolls past, it becomes the
-    // candidate.
-    fakeGeometryAndScroll(300);
+    // 有正文的第四条也压过折线后，候选换成它。
+    await scrollRowAboveFold(container, "u4");
     await waitFor(() => {
       expect(screen.getByTestId("sticky-user-message")).toHaveTextContent(
         "第四条问题",
@@ -230,6 +244,7 @@ describe("sticky user message", () => {
           userMsg("第一条问题", "u1"),
           textlessMsg("n2"),
           userMsg("第三条问题", "u3"),
+          ...filler(4),
         ],
       });
     });
@@ -237,10 +252,9 @@ describe("sticky user message", () => {
       expect(screen.getByTestId("messages-container")).toBeInTheDocument(),
     );
 
-    // scrollTop 200 → u1 (10..90) and n2 (90..170) are above the fold, u3
-    // (170..250) tops the viewport; the newest text-bearing user is u3, and the
-    // text-less n2 in between never becomes the candidate.
-    fakeGeometryAndScroll(200);
+    // 第三条压过折线后，候选是它自己；中间那条没有正文的第二条从来不是候选。
+    const container = showList();
+    await scrollRowAboveFold(container, "u3");
     await waitFor(() => {
       expect(screen.getByTestId("sticky-user-message")).toHaveTextContent(
         "第三条问题",
@@ -261,18 +275,22 @@ describe("sticky user message", () => {
     renderChatApp();
     act(() => {
       sendCommand("updateMessages", {
-        messages: [
-          assistantMsg("工具阶段 0", "a0"),
-          assistantMsg("工具阶段 1", "a1"),
-          assistantMsg("工具阶段 2", "a2"),
-        ],
+        messages: Array.from({ length: 10 }, (_, i) =>
+          assistantMsg(`工具阶段 ${i}`, `a${i}`),
+        ),
       });
     });
     await waitFor(() =>
       expect(screen.getByTestId("messages-container")).toBeInTheDocument(),
     );
 
-    fakeGeometryAndScroll(1300);
+    const container = showList();
+    act(() => {
+      // 滚到内容末尾：视口顶落在列表中间，若吸顶逻辑认错了行这里就会露出来。
+      container.scrollTop = container.scrollHeight;
+      fireEvent.scroll(container);
+    });
+    await waitFor(() => expect(container.scrollTop).toBeGreaterThan(0));
     expect(screen.queryByTestId("sticky-user-message")).toBeNull();
     expect(document.querySelector(".sticky-user-wrapper")).toBeNull();
   });

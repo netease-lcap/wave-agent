@@ -13,7 +13,11 @@ import {
   fixtures,
 } from "./test-utils";
 
-vi.mock("../../src/styles/DesktopApp.css", () => ({}));
+// 变更记录的正文走真 DOMPurify 白名单（「链接文字保留、可点元素不生成」就是这条
+// 白名单的判据），而 browser 的 setup 把它 mock 成了直通。
+vi.unmock("dompurify");
+
+// CSS 不需要 mock（见 test-utils.tsx 的说明；browser mode 下会破坏 import map）。
 
 /**
  * Render the desktop root (workdir picked → sidebar appears) and let the host

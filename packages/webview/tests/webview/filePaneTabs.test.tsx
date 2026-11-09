@@ -3,6 +3,7 @@ import { render, fireEvent, screen, act } from "@testing-library/react";
 import React from "react";
 import { FilePane, type FilePaneProps } from "../../src/components/FilePane";
 import type { FileViewState, OpenFileTab } from "../../src/types";
+import { pinScrollBoxHeight } from "./test-utils";
 
 vi.mock("../../src/styles/FilePane.css", () => ({}));
 
@@ -285,6 +286,8 @@ describe("文件面板内查找与跳行（spec 场景 1-9）", () => {
   });
 
   it("跳行：合法行号滚到那一行，越界给范围提示（场景 7/8）", () => {
+    // 正文区高度来自面板外的布局：不先声明，80 行会把滚动盒撑满，跳行落点被夹回 0。
+    const restore = pinScrollBoxHeight(".file-pane-scroll", 200);
     const { container } = renderPane({
       files: [
         openFile(
@@ -295,20 +298,24 @@ describe("文件面板内查找与跳行（spec 场景 1-9）", () => {
         ),
       ],
     });
-    fireEvent.click(screen.getByTestId("file-pane-find-trigger"));
-    const goto = screen.getByTestId("file-pane-goto-input");
+    try {
+      fireEvent.click(screen.getByTestId("file-pane-find-trigger"));
+      const goto = screen.getByTestId("file-pane-goto-input");
 
-    fireEvent.change(goto, { target: { value: "999" } });
-    fireEvent.keyDown(goto, { key: "Enter" });
-    expect(screen.getByTestId("file-pane-goto-error")).toHaveTextContent(
-      "有效范围 1-80",
-    );
+      fireEvent.change(goto, { target: { value: "999" } });
+      fireEvent.keyDown(goto, { key: "Enter" });
+      expect(screen.getByTestId("file-pane-goto-error")).toHaveTextContent(
+        "有效范围 1-80",
+      );
 
-    fireEvent.change(goto, { target: { value: "60" } });
-    fireEvent.keyDown(goto, { key: "Enter" });
-    expect(screen.queryByTestId("file-pane-goto-error")).toBeNull();
-    const body = container.querySelector(".file-pane-scroll") as HTMLElement;
-    expect(body.scrollTop).toBeGreaterThan(0);
+      fireEvent.change(goto, { target: { value: "60" } });
+      fireEvent.keyDown(goto, { key: "Enter" });
+      expect(screen.queryByTestId("file-pane-goto-error")).toBeNull();
+      const body = container.querySelector(".file-pane-scroll") as HTMLElement;
+      expect(body.scrollTop).toBeGreaterThan(0);
+    } finally {
+      restore();
+    }
   });
 
   it("markdown/图片这类没有行概念的视图不打开查找（场景 6）", () => {

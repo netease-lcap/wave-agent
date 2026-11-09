@@ -33,7 +33,7 @@ import { fixtures } from "wave-webview-fixtures";
 import { MockDataGenerator } from "../fixtures/mockData";
 import { Message } from "../../src/components/Message";
 import { WriteToolPreview } from "../../src/components/WriteToolPreview";
-import { BASH_TOOL_NAME, READ_TOOL_NAME } from "wave-agent-sdk";
+import { BASH_TOOL_NAME, READ_TOOL_NAME } from "wave-agent-sdk/constants";
 import type { Message as MessageType, ToolBlock } from "../../src/types";
 
 const ABSOLUTE_PATH = "/home/user/project/src/styles/QueuedMessageList.css";

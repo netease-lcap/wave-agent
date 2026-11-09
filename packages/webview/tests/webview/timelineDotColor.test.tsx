@@ -1,9 +1,9 @@
-import { readFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
 import { describe, it, expect, beforeEach } from "vitest";
 import { renderChatApp, sendCommand } from "./test-utils";
 import { TOOL_STATUS_COLORS } from "../../src/utils/statusColors";
+// The stylesheet is read as text rather than through node:fs, so this guard
+// runs in the same browser project as the rest of the suite.
+import desktopHostCss from "../../src/styles/host-desktop.css?raw";
 
 // 状态色自 F-08 起走语义 token（statusColors.ts 的值是 `var(--cc-state-*, <原 hex>)`），
 // 故这里断言 token 串而不是解析后的色值——CSS 变量在 jsdom 里不解析，断言 hex
@@ -214,10 +214,6 @@ describe("timeline dot color by stage", () => {
 // 未定义的 token → 静默回落 fallback；CSS 删了 token → 桌面端配色失去主题分档）
 // 都会让这条守卫变红，避免「两边各自漂移、只靠字面 hex 断言看不出来」。
 describe("statusColors ↔ host-desktop.css 状态色 token 契约", () => {
-  const CSS_PATH = resolve(
-    dirname(fileURLToPath(import.meta.url)),
-    "../../src/styles/host-desktop.css",
-  );
   const LIGHT_SELECTOR = ':root[data-host="desktop"][data-theme="light"]';
   const DARK_SELECTOR = ':root[data-host="desktop"][data-theme="dark"]';
 
@@ -259,11 +255,8 @@ describe("statusColors ↔ host-desktop.css 状态色 token 契约", () => {
         "--cc-state-idle",
       ]),
     );
-    const light = declarationsOf(
-      readFileSync(CSS_PATH, "utf8"),
-      LIGHT_SELECTOR,
-    );
-    const dark = declarationsOf(readFileSync(CSS_PATH, "utf8"), DARK_SELECTOR);
+    const light = declarationsOf(desktopHostCss, LIGHT_SELECTOR);
+    const dark = declarationsOf(desktopHostCss, DARK_SELECTOR);
     for (const token of referencedTokens) {
       expect(light.get(token), `浅色档缺少 ${token}`).toBeTruthy();
       expect(dark.get(token), `深色档缺少 ${token}`).toBeTruthy();
@@ -273,7 +266,7 @@ describe("statusColors ↔ host-desktop.css 状态色 token 契约", () => {
   it("桌面端深色档与浅色档分档（状态色不沿用浅色值）", () => {
     // 深色档存在的意义就是「不沿用浅色值」：若某 token 两档同值，说明深色档
     // 没接上（回退成 F-08 之前的行为），这里直接失败。
-    const css = readFileSync(CSS_PATH, "utf8");
+    const css = desktopHostCss;
     const light = declarationsOf(css, LIGHT_SELECTOR);
     const dark = declarationsOf(css, DARK_SELECTOR);
     for (const token of referencedTokens) {
