@@ -9,6 +9,10 @@
   align-self: stretch;
   display: flex;
   justify-content: flex-end;
+  /* 槽位是 height: 0 的零占位层，flex 默认的 align-items: stretch 会把浮层本体
+     压成 0 高（只剩 padding 与描边，12px），输入框与按钮就从胶囊上下沿溢出来。
+     按内容高度落在顶部，胶囊才真的把里面的控件包住。 */
+  align-items: flex-start;
   z-index: 30;
   /* 零高度的槽位不该接住消息区的点击 / 滚轮。 */
   pointer-events: none;
