@@ -538,8 +538,9 @@ export const CODE_COPY_FEEDBACK_MS = 1500;
  * 消息代码块的复制按钮」场景 4-6）。
  *
  * 这块 DOM 是净化后的 HTML 字符串、不是 React 树，所以反馈直接改 DOM：图标在
- * `codicon-copy` / `codicon-check` 之间换，可访问名与 title 换成「已复制」，
- * 1.5s 后自己回来。块被虚拟列表卸载后不再回写（`isConnected` 兜底）。
+ * `codicon-copy` / `codicon-check` 之间换，可访问名与悬停提示（桌面端 `data-tip`、
+ * 插件端 `title`）换成「已复制」，1.5s 后自己回来。块被虚拟列表卸载后不再回写
+ * （`isConnected` 兜底）。
  *
  * 复制的是 `pre` 的 textContent，去掉末尾那一个换行——围栏末尾的换行不属于
  * 代码本身，粘进编辑器会多出一个空行。高亮与链接化都不改变可见文本，因此
@@ -557,7 +558,13 @@ async function copyCodeBlockText(button: Element): Promise<void> {
     button.classList.toggle("is-copied", copied);
     const label = copied ? "已复制" : "复制代码";
     button.setAttribute("aria-label", label);
-    button.setAttribute("title", label);
+    // 提示文案跟着反馈一起换：桌面端走 `data-tip`（自绘气泡），插件端仍是原生
+    // `title`。只写当前宿主那一条，另一条留着就会变成第二层提示。
+    if (isDesktopHost()) {
+      button.setAttribute("data-tip", label);
+    } else {
+      button.setAttribute("title", label);
+    }
     icon?.classList.toggle("codicon-copy", !copied);
     icon?.classList.toggle("codicon-check", copied);
   };
@@ -672,8 +679,15 @@ export const createMessageMarkdownRenderer = (
     // 只把 URL / 路径包进 <a>，两者的可见文本都与原文逐字节一致，所以不必把原文
     // 再写进属性（那会让 HTML 体积翻倍，还要为 data-* 放宽净化白名单）。
     // 外层 div 是定位用的：按钮绝对定位在它右上角，不随 pre 的横向滚动移动。
+    // 悬停提示（设计师 1109 评论：「图标的操作hover上去都应该有个提示」）：这块
+    // DOM 挂不上 React，统一气泡走 `<DelegatedTooltip>`（见该文件），这里只写
+    // `data-tip` 给它认。插件端的原生宿主本来就有原生 title 提示 —— 桌面端 webview
+    // 里那层系统提示看不到（1029 同一条判据，见 CodeCommentEntry），所以两个宿主
+    // 各写各的属性，互不影响。
     const copyButton = code.trim()
-      ? '<button class="md-code-copy" type="button" title="复制代码" aria-label="复制代码"><span class="codicon codicon-copy" aria-hidden="true"></span></button>'
+      ? `<button class="md-code-copy" type="button" ${
+          isDesktopHost() ? 'data-tip="复制代码"' : 'title="复制代码"'
+        } aria-label="复制代码"><span class="codicon codicon-copy" aria-hidden="true"></span></button>`
       : "";
     return `<div class="md-code-block">${copyButton}${pre}</div>\n`;
   };
@@ -873,6 +887,12 @@ const parseMarkdownWithMermaid = (content: string): ParsedMarkdownContent => {
           // 仍受默认 URL 校验约束。
           "aria-label",
           "tabindex",
+          // 悬停提示的文案载体（1109 评论「图标的操作hover上去都应该有个提示」）：
+          // 代码块右上角那颗复制按钮在桌面端写 `data-tip`、交给
+          // `<DelegatedTooltip>` 画气泡。`ALLOW_DATA_ATTR` 是整体开关（关着是为了
+          // 不让模型在正文里塞任意 data-*），所以按老规矩往里点名单条，不整批放开。
+          // 属性本身无脚本语义，仍受默认 URL 校验约束。
+          "data-tip",
         ],
         ALLOW_DATA_ATTR: false,
         FORBID_ATTR: [],

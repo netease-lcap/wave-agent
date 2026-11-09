@@ -5051,6 +5051,26 @@
   transition-delay: 0.1s;
 }
 
+/* ═══ 1109 评论：「图标的操作hover上去都应该有个提示，比如回滚到此消息按钮」══════
+   消息流里每颗**只有图标**的动作都挂同一条悬停提示：上面那条 `.tooltip-box` 皮肤
+   （桌面端 12px / 8px 圆角 / 4px 间距 / 100ms 延时）。落地位置三处：
+     · 回滚到此消息、把本轮转到后台 —— `MessageActionButton` 早就包着 `<Tooltip>`；
+     · 写文件块右上角「打开预览」—— 原来**一个提示都没有**（只有 aria-label）；
+     · mermaid 右上角「全屏查看」——原来只有原生 `title`，桌面端 webview 里那层系统
+       提示看不到（1029 同一条判据，见 `CodeCommentEntry`）；
+     · 代码块右上角「复制代码」——同一类问题，但那块 DOM 是 dangerouslySetInnerHTML
+       生成的、挂不上 React，改由 `DelegatedTooltip` 委托接住（那条气泡复用同一组
+       `.tooltip-box` 类名，皮肤不会分叉）。
+   包裹层 `display: contents` 故意不生成盒子：
+     ① 「打开预览」按钮是 `position: absolute`（Message.css `.write-preview-open`）——
+        包裹层一旦有盒子就成了它的包含块，按钮会从块右上角跑到包裹层内衬里；
+     ② 另外两颗虽然是普通 flex 子项，也用同一条规则，好让「包之前 / 包之后」的布局盒
+        逐像素不变，不必为「包裹层占不占位」再分一档。
+   代价：包裹层没有盒子可量，三处的 `Tooltip` 都显式传了 `anchorRef` 指按钮本身。 */
+[data-host="desktop"] .icon-action-tooltip {
+  display: contents;
+}
+
 /* ═══ 1009 评论：插件市场作用域弹窗的选项状态重排（仅桌面端）══════════════════
    她 2026-10-10 在本轮报告后给出三条裁定：
      ① **「收窄到只桌面端」** —— 前四条（去灰底 / 未选中补描边 / 禁用 not-allowed）我先前

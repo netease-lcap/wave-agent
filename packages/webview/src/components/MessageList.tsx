@@ -9,6 +9,7 @@ import React, {
   useState,
 } from "react";
 import { Message } from "./Message";
+import { DelegatedTooltip } from "./DelegatedTooltip";
 import { EMPTY_TRANSCRIPT_FIND, TranscriptFindBar } from "./TranscriptFindBar";
 import type { TranscriptFindState } from "./TranscriptFindBar";
 import { streamingTail } from "../utils/streamingText";
@@ -875,6 +876,10 @@ export const MessageList = forwardRef<
           </div>
         )}
       </div>
+      {/* 正文里 `dangerouslySetInnerHTML` 生成的那几颗图标按钮（代码块右上角
+          「复制代码」）挂不上 React 的 `<Tooltip>`，提示走这份委托版；它自己
+          portal 到 body，放在列表根节点下只为「一个聊天窗一份」。 */}
+      <DelegatedTooltip />
     </div>
   );
 });
