@@ -1148,6 +1148,97 @@
   border-radius: 12px;
 }
 
+/* mermaid 块圆角并入上面这一族（评论 1109：「圆角要和其他带边框的块保持
+   一致」）。对话流里带 1px 描边、有底色的块实测：markdown pre 12px、
+   write-preview-box 12px、diff-viewer-container 12px、表格 12px；
+   mermaid-renderer 还是 base 的 6px（MermaidRenderer.css:4），是这一族里唯一
+   的例外。
+   容器自身 `overflow: hidden`（同在 MermaidRenderer.css:5），标签带与图表区
+   会被裁进圆角内，所以只改外框一处即可：内部 .mermaid-tabs、.mermaid-preview
+   实测圆角都是 0，不用跟着动。 */
+[data-host="desktop"] .mermaid-renderer {
+  border-radius: 12px;
+}
+
+/* ── mermaid 块的两段标签改成设置页页签那一套（评论 1109：点 `div.mermaid-tabs`
+   的「预览 / 源码」→「这里的 tab 参考设置（用户级 / 项目级）这种感觉的，选项不要
+   有背景色的变化，注意文字居中」）──
+   参考实测（设置页「技能」视图的 `.settings-tabs`，浅深两档同值）：
+   · 条：`gap: 18px`、下边框 1px、自身透明底；
+   · 页签 `.settings-tab`：14px / 22px / 400（选中 500）、左右内衬 2px、
+     `justify-content: center`，**任何状态底色都透明**；
+   · 选中：字色升到 1 级（`--vscode-foreground`），底部 3px 高亮条走 `::after`
+     （`bottom: -1px` 压住条本身的 1px 下边框，`border-radius: 1.5px 1.5px 0 0`）。
+   base（`MermaidRenderer.css:15-49`）与之相悖：页签 12px / 内衬 8·16、选中态铺
+   `--vscode-tab-activeBackground`、hover 铺 `--vscode-tab-hoverBackground`，
+   文字靠左内衬定位。这里按参考逐条改过来：底色全部去掉、字号 14/22、水平内衬
+   收到 2px 让文字居中且高亮条与文字同宽、hover 只提字色。
+   标签带自身的底色她第二轮点了（对齐 bash 命令区，见下面那条规则）；1px 下边框
+   保留 —— 参考块里命令区与输出区只靠底色分层、没有分隔线，这条线要不要一并去掉
+   等她点名。 */
+[data-host="desktop"] .mermaid-tabs {
+  gap: 18px;
+  padding: 0 16px;
+  /* 标签带底色对齐工具块命令区（评论 1109：点 `div.mermaid-tabs`「背景色和」+
+     点 `div.bash-command-input`「这里保持一致」）。
+     参考实测 `.bash-command-input`：浅 #F0F2F5、深 #25292B，取值走
+     `--vscode-chat-requestBubbleBackground`（同一个 token，两端天然同色）。
+     改前这里是 base 的 `--vscode-editorGroupHeader-tabsBackground`：
+     浅 #FAFAFD（与块底 #FFFFFF 只差 Δ5,5,2）、深 #181818（块底 #18181B，Δ0,2,3）
+     —— 等于没有带子。 */
+  background: var(--vscode-chat-requestBubbleBackground);
+}
+
+[data-host="desktop"] .mermaid-tabs .tab-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 2px;
+  border-bottom: none;
+  background: transparent;
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 400;
+  text-align: center;
+  color: var(--vscode-descriptionForeground);
+}
+
+/* 悬停只提字色，不铺底色（参考里 `.settings-tab` 没有 hover 底色） */
+[data-host="desktop"] .mermaid-tabs .tab-button:hover {
+  background: transparent;
+  color: var(--vscode-foreground);
+}
+
+[data-host="desktop"] .mermaid-tabs .tab-button.active {
+  background: transparent;
+  color: var(--vscode-foreground);
+  font-weight: 500;
+}
+
+/* 选中高亮条：与设置页 tab 同款（3px、压住 1px 下边框、上两角 1.5px） */
+[data-host="desktop"] .mermaid-tabs .tab-button.active::after {
+  position: absolute;
+  right: 0;
+  bottom: -1px;
+  left: 0;
+  height: 3px;
+  border-radius: 1.5px 1.5px 0 0;
+  background: var(--vscode-foreground);
+  content: "";
+}
+
+/* 源码视图底色跟块底走（评论 1109：点 `pre.source-code`「这里背景色也应该是
+   纯白」）。改前 base 给的是 `--vscode-textCodeBlock-background`：浅 #F7F8FA
+   （块底 #FFFFFF）、深 #1B1D1E（块底 #181A1B）—— 一条比块底更灰的底，看上去
+   像嵌了一块代码块。改成 `--vscode-editor-background`（就是块底那个 token）：
+   浅档实测纯白 #FFFFFF，深档 #181A1B，与预览页底色完全一致。
+   `.mermaid-source` 包裹层与里面的 `pre.source-code` 两处都声明了同一个底色
+   （base 两条规则），一起换掉，避免外层留着灰底露出一圈边。 */
+[data-host="desktop"] .mermaid-source,
+[data-host="desktop"] .mermaid-source .source-code {
+  background: var(--vscode-editor-background);
+}
+
 /* 行内 code（非 pre 内）背景加深：light #eef0f3 / dark 8% 白 */
 [data-host="desktop"] .markdown-content :not(pre) > code {
   background-color: #eef0f3;
