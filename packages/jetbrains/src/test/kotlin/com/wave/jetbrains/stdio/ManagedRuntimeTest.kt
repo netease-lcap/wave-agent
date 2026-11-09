@@ -77,6 +77,38 @@ class ManagedRuntimeTest {
     }
 
     @Test
+    fun `musl detection is not fooled by a musl loader on a glibc system`() {
+        // Ubuntu/Debian's musl + musl-tools packages (cross-compiling tools)
+        // put /lib/ld-musl-x86_64.so.1 on a perfectly ordinary glibc machine.
+        // Reading that file as Alpine refused the host outright, so the glibc
+        // loader's presence has to settle the question.
+        val ubuntuWithMuslTools = setOf(
+            "/lib/ld-musl-x86_64.so.1",
+            "/lib64/ld-linux-x86-64.so.2",
+        )
+        assertFalse(ManagedRuntime.isMuslLoaders(ubuntuWithMuslTools::contains))
+        // Alpine: the musl loader and nothing glibc-shaped.
+        assertTrue(
+            ManagedRuntime.isMuslLoaders(setOf("/lib/ld-musl-x86_64.so.1")::contains),
+        )
+        // Minimal images carry neither loader; assume glibc, like the desktop.
+        assertFalse(ManagedRuntime.isMuslLoaders(emptySet<String>()::contains))
+        // Non-x86 distro layouts count too (Fedora/RHEL, Arch, Debian arm64).
+        for (glibcLoader in listOf(
+            "/lib/ld-linux-x86-64.so.2",
+            "/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2",
+            "/lib64/ld-linux-aarch64.so.1",
+            "/lib/aarch64-linux-gnu/ld-linux-aarch64.so.1",
+        )) {
+            assertFalse(
+                ManagedRuntime.isMuslLoaders(
+                    setOf("/lib/ld-musl-aarch64.so.1", glibcLoader)::contains,
+                ),
+            )
+        }
+    }
+
+    @Test
     fun `platformKey rejects unsupported os and arch`() {
         val os = assertThrows(StdioClientException::class.java) {
             ManagedRuntime.platformKey("FreeBSD", "amd64", musl = false)
