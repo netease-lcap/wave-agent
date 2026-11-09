@@ -119,9 +119,9 @@ describe("Streaming Messages", () => {
       ],
     });
 
-    // Empty content should not render .message-content div
-    const lastMsg = getLastMessage();
-    expect(lastMsg.querySelector(".message-content")).toBeNull();
+    // Empty content renders nothing, so the whole message stays out of the list
+    // (no `.message` shell, hence no `.message-content` either).
+    expect(getMessages()).toHaveLength(0);
 
     // Send actual content
     sendCommand("updateMessages", {
@@ -147,9 +147,8 @@ describe("Streaming Messages", () => {
         },
       ],
     });
-    // Empty content should not render .message-content div
-    const lastMsgAgain = getLastMessage();
-    expect(lastMsgAgain.querySelector(".message-content")).toBeNull();
+    // Back to nothing to render: the row disappears again.
+    expect(getMessages()).toHaveLength(0);
 
     // End streaming
     sendCommand("endStreaming");
