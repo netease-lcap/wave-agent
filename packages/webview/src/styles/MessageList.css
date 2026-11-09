@@ -236,3 +236,82 @@
 .messages-container--virtual .timeline-run--single .timeline-row::after {
   display: none;
 }
+
+/* ---------- 「回到最新」入口 ---------- */
+/* 视口离内容末尾超过 200px 时浮在消息区底部居中（spec: 离开底部时的「回到最
+   新」入口）。这一层挂在内层正文列的末尾，必须是 sticky（不是 absolute）才贴
+   视口底而不是跟着内容走；高度 0 让它不占布局——出现/收回都不挪动任何一行。 */
+.jump-to-bottom-layer {
+  position: sticky;
+  bottom: 0;
+  height: 0;
+  width: 100%;
+  align-self: stretch;
+  z-index: 25;
+  /* 整层不接事件（滚动、点击都交给内容），只有显示中的按钮自己收。 */
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.18s ease;
+}
+
+.jump-to-bottom-layer[data-visible="true"] {
+  opacity: 1;
+}
+
+/* 底部渐隐：下方还有内容时正文在视口底淡出，按钮才浮得起来。左右各外扩
+   10px 抵消列的 padding，渐变与列同宽而不是嵌在里面。 */
+.jump-to-bottom-fade {
+  position: absolute;
+  left: -10px;
+  right: -10px;
+  bottom: 0;
+  height: 56px;
+  background: linear-gradient(
+    to bottom,
+    transparent,
+    var(--vscode-panel-background)
+  );
+}
+
+.jump-to-bottom-button {
+  position: absolute;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid var(--vscode-widget-border);
+  border-radius: 50%;
+  background-color: var(
+    --vscode-editorWidget-background,
+    var(--vscode-panel-background)
+  );
+  color: var(--vscode-foreground);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+  cursor: pointer;
+  pointer-events: none;
+}
+
+.jump-to-bottom-layer[data-visible="true"] .jump-to-bottom-button {
+  pointer-events: auto;
+}
+
+.jump-to-bottom-button:hover {
+  background-color: var(
+    --vscode-toolbar-hoverBackground,
+    var(--vscode-editorWidget-background)
+  );
+}
+
+.jump-to-bottom-button:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: 2px;
+}
+
+.jump-to-bottom-button .codicon {
+  font-size: 16px;
+}

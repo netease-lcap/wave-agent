@@ -44,6 +44,11 @@ const TEXT_WIDTH_INSET_PX = 32;
 // 「已经在顶部」这个状态本身。
 const EARLIER_TRIGGER_PX = 160;
 
+// 离内容末尾超过这么远就浮出「回到最新」入口。与参考物（Claude 桌面端的
+// jump-to-latest）同档：比「已离开底部」的个位数阈值宽得多——这里问的是「远到
+// 需要一个入口了吗」，不是「还要不要跟着新内容走」。
+const JUMP_TO_BOTTOM_THRESHOLD_PX = 200;
+
 /**
  * The text this row contributes to the sticky bar — empty when it cannot be an
  * anchor at all: assistant rows, injected `isMeta` user rows (reminders, rules,
@@ -573,6 +578,42 @@ export const MessageList = forwardRef<
     [isPinned, pin, scrollToEnd],
   );
 
+  /**
+   * 「回到最新」入口的显示判据：视口底到内容末尾的距离。取 200px 与参考物
+   * （Claude 桌面端的 jump-to-latest）同档——比「已离开底部」的个位数阈值宽得多，
+   * 因为这里问的不是「要不要继续跟随」，而是「读者离末尾是不是已经远到需要一个
+   * 入口」。离得近就收回，免得这颗按钮在正常阅读时一直晃。
+   *
+   * 判据只能读几何，不能读钉底状态：钉底在用户一上翻就松手，可内容还在继续长，
+   * 「松手了」并不等于「离末尾很远」。
+   */
+  const [showJumpToBottom, setShowJumpToBottom] = useState(false);
+  // `updateJumpToBottom` runs on every scroll event and every content change;
+  // the ref keeps those calls from scheduling a render when nothing changed.
+  const showJumpToBottomRef = useRef(false);
+
+  const updateJumpToBottom = useCallback(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    // 手势期画布带着 `translateY`（见 `visualOffset`）：屏幕上内容底比
+    // `scrollHeight - scrollTop` 读出来的低这一截，不补上的话手指刚往上拖一点
+    // 就会因为「补偿量还没折算回 scrollTop」而误判成离末尾更近。
+    const distance =
+      container.scrollHeight -
+      (container.scrollTop - visualOffset()) -
+      container.clientHeight;
+    const next = distance > JUMP_TO_BOTTOM_THRESHOLD_PX;
+    if (next === showJumpToBottomRef.current) return;
+    showJumpToBottomRef.current = next;
+    setShowJumpToBottom(next);
+  }, [containerRef, visualOffset]);
+
+  const jumpToBottom = useCallback(() => {
+    // 与「用户自己发消息」同一条路：先重新钉上再滚，否则滚到底之前到来的流式
+    // chunk 会按旧的松手状态把视口留在原地，用户看到的是「点了一下没反应」。
+    followToBottom("smooth", true);
+  }, [followToBottom]);
+
   // Expose ONE explicit "bring me to the bottom" request to the parent (host
   // commands: confirmation shown, pane/session bound, after rewind, settings
   // saved). It is a request, not an order — a user who scrolled up to read
@@ -627,6 +668,10 @@ export const MessageList = forwardRef<
       !isInitialLoad && isNewMessage && visibleTail?.role === "user",
     );
     computeSticky();
+    // 内容增长不会派发滚动事件（流式追加、压缩提示出现、行高从估算变实测），
+    // 所以「回到最新」入口的显隐必须在这里也读一次几何——只挂 scroll 会让
+    // 「读者停在远处、下面又长了一大段」这种情况一直不更新。
+    updateJumpToBottom();
   }, [
     messages,
     // Derived from `messages`, listed because the tail judgement now reads the
@@ -637,6 +682,7 @@ export const MessageList = forwardRef<
     followToBottom,
     computeSticky,
     containerRef,
+    updateJumpToBottom,
   ]);
 
   // Re-pin to the true bottom after async content finishes loading (image
@@ -680,14 +726,25 @@ export const MessageList = forwardRef<
       load(first);
     };
 
+    // 显隐要读 scrollHeight / clientHeight（一次布局读）。滚动一帧可能派发多次
+    // 事件，合并到下一帧只读一次，也别让读数落在这次事件的渲染中途。
+    let jumpRaf = 0;
     const handleScroll = () => {
       maybeRequestEarlier();
       computeSticky();
+      if (jumpRaf !== 0) return;
+      jumpRaf = requestAnimationFrame(() => {
+        jumpRaf = 0;
+        updateJumpToBottom();
+      });
     };
 
     container.addEventListener("scroll", handleScroll, { passive: true });
-    return () => container.removeEventListener("scroll", handleScroll);
-  }, [computeSticky, containerRef]);
+    return () => {
+      container.removeEventListener("scroll", handleScroll);
+      if (jumpRaf !== 0) cancelAnimationFrame(jumpRaf);
+    };
+  }, [computeSticky, containerRef, updateJumpToBottom]);
 
   // Does this gesture belong to a region INSIDE the list that scrolls
   // vertically on its own? Tool output, the diff view, reasoning, the write
@@ -885,6 +942,30 @@ export const MessageList = forwardRef<
             )}
           </div>
         )}
+        {/* 「回到最新」入口（spec: 离开底部时的「回到最新」入口）。挂在内层正文
+            列的末尾：这一层是 sticky 且零高度，所以它贴的是滚动的视口底而不是内
+            容底，也不给任何一行加高度——出现/收回都不会让列表跳动一下。 */}
+        <div
+          className="jump-to-bottom-layer"
+          data-visible={showJumpToBottom}
+          data-testid="jump-to-bottom-layer"
+        >
+          <div className="jump-to-bottom-fade" aria-hidden="true" />
+          <button
+            type="button"
+            className="jump-to-bottom-button"
+            data-testid="jump-to-bottom"
+            aria-label="回到最新"
+            title="回到最新"
+            // 收回时既不接点击也不占 Tab 序列，但节点留着做淡出（display: none
+            // 会把过渡吃掉）。
+            aria-hidden={!showJumpToBottom}
+            tabIndex={showJumpToBottom ? 0 : -1}
+            onClick={jumpToBottom}
+          >
+            <span className="codicon codicon-arrow-down" aria-hidden="true" />
+          </button>
+        </div>
       </div>
     </div>
   );
