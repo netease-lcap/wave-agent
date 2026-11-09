@@ -446,17 +446,34 @@ function notifyStage(
 }
 
 /**
+ * Decide glibc vs musl on the host. The bare presence of a musl loader is NOT
+ * proof of a musl system: Ubuntu/Debian's `musl` + `musl-tools` packages
+ * (installed by anyone cross-compiling) drop `/lib/ld-musl-x86_64.so.1` onto a
+ * perfectly ordinary glibc machine. Reading that file as "Alpine" refused the
+ * whole host with `暂不支持 musl libc` — the reported symptom on a stock
+ * Ubuntu-24.04 distro.
+ *
+ * `getconf GNU_LIBC_VERSION` is glibc answering about itself (musl's getconf
+ * does not know the variable and prints nothing on stdout), so it is asked
+ * first; the loader file is only consulted when getconf cannot answer, and
+ * glibc is the default when neither does (macOS, minimal images). `ldd` cannot
+ * answer at all: it is a wrapper on glibc and absent on musl.
+ */
+const LIBC_PROBE =
+  "if getconf GNU_LIBC_VERSION >/dev/null 2>&1; then echo glibc; " +
+  "elif [ -e /lib/ld-musl-x86_64.so.1 ] || [ -e /lib/ld-musl-aarch64.so.1 ]; then echo musl; " +
+  "else echo glibc; fi";
+
+/**
  * Probe the host's platform AND the installed runtime marker in one round trip
- * (an ssh round trip is the expensive unit here). musl is sniffed by the
- * dynamic loader's presence: `ldd` is a shell wrapper on glibc and absent on
- * musl, so it cannot answer the question.
+ * (an ssh round trip is the expensive unit here).
  */
 async function probeRuntimeState(
   host: string,
   markerPath: string,
 ): Promise<{ platform: HostPlatform; marker: string }> {
   const command =
-    `printf '%s\\n' "${HOST_PLATFORM_MARKER} $(uname -s)|$(uname -m)|$(if [ -f /lib/ld-musl-x86_64.so.1 ] || [ -f /lib/ld-musl-aarch64.so.1 ]; then echo musl; else echo glibc; fi)"; ` +
+    `printf '%s\\n' "${HOST_PLATFORM_MARKER} $(uname -s)|$(uname -m)|$(${LIBC_PROBE})"; ` +
     `printf '%s\\n' "${RUNTIME_MARKER} $(cat ${shellQuote(markerPath)} 2>/dev/null)"`;
   const { stdout } = await execOnHost(host, command, {
     timeout: PROBE_TIMEOUT_MS,
