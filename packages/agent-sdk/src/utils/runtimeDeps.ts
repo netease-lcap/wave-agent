@@ -205,10 +205,11 @@ const ripgrepDependency: RuntimeDependency = {
  * 与 ripgrep 行同形：主包无依赖，平台包按 `<platform>-<arch>` 键在
  * `optionalDependencies` 里，Linux 每个架构只发一份（不算 libc 家族）。
  *
- * Windows 另有一条口径：那里唯一的 shell 是 Git Bash，msys 自带的 GNU
- * grep / findutils 已经等价，所以不注入影子、也不需要这份下载。
- * `isAvailable` 在 Windows 上直接返回 true —— 它的语义在这里是「这一行不再
- * 需要下载任何东西」，把整包挡在下载批次之外，而不是「二进制就在手边」。
+ * Windows 也走这一行，但平台包只发 ugrep：msys 自带的 GNU grep 没有
+ * `.gitignore` 概念（仓库根一次 `grep -r` 会把 `dist/`、`node_modules/`、并行
+ * worktree 全扫进来，实测约 52 秒、文件数多 4 倍），所以 `grep` 影子照样要接；
+ * `find` 不接——bfs 没有 Windows 构建，而 msys 的 find 本身就是 GNU find，
+ * 正是 `find` 影子要复现的那一套。
  */
 const searchToolsDependency: RuntimeDependency = {
   name: "wave-search-tools",
@@ -224,8 +225,7 @@ const searchToolsDependency: RuntimeDependency = {
     return [{ name, range }];
   },
   libcAwarePlatformKey: false,
-  isAvailable: () =>
-    process.platform === "win32" || getSearchTools() !== undefined,
+  isAvailable: () => getSearchTools() !== undefined,
   loadsFrom: (requireBase) =>
     resolveSearchTools(requireFnFor(requireBase)) !== undefined,
   onInstalled: () => resetSearchTools(),

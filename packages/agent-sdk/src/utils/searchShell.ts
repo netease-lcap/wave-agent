@@ -46,9 +46,16 @@ import { getRgPath } from "./ripgrep.js";
  * Two ways a shadow declines and runs the system command instead: the caller
  * passed a flag the binary cannot honour faithfully (the grep deny list —
  * `--null`, `--filter`, `--config` and friends), or the binary is not where the
- * package promised it (a half-finished install). Windows gets no shadow at all.
- * Falling back is always silent: a search that loses .gitignore semantics still
- * returns results (scenario 7).
+ * package promised it (a half-finished install). Falling back is always silent:
+ * a search that loses .gitignore semantics still returns results (scenario 7).
+ *
+ * ## Windows
+ *
+ * `grep` is shadowed there too: msys ships GNU grep, which has no `.gitignore`
+ * concept at all, so a repo-root `grep -r` drags in `dist/`, `node_modules/` and
+ * every sibling worktree (measured: ~52s and 4× the files versus ugrep's 0.3s).
+ * Windows packs ugrep only — bfs has no Windows build, and msys `find` already
+ * *is* GNU find, which is the semantics the find shadow imitates.
  */
 
 /** VCS directories the Grep tool excludes; mirrored here so bash matches it. */
@@ -107,7 +114,14 @@ function shadowFunction(options: {
   name: string;
   binaryPath: string;
   platform: NodeJS.Platform;
-  /** argv[0] the binary dispatches on (`ugrep` reads it; bfs ignores it). */
+  /**
+   * argv[0] the binary dispatches on (`ugrep` reads it; bfs ignores it).
+   *
+   * Inert on Windows: `exec -a` cannot override argv[0] for a native binary
+   * (Windows sets it to the executable path), so ugrep runs in its own mode
+   * there. The injected `-G` is what keeps the regex dialect identical, and
+   * ugrep's default output is already `file:line:content`.
+   */
   argv0: string;
   prependArgs: string[];
   denyPatterns: string[];
@@ -159,11 +173,11 @@ function rgFunction(rgPath: string, platform: NodeJS.Platform): string {
  * Build the prelude prepended to every Bash tool command, or `undefined` when
  * this platform / install gets no shadows at all.
  *
- * Windows is deliberately excluded from the `grep` / `find` shadows: the only
- * Windows shell is Git Bash, whose msys GNU `grep` and `findutils` already match
- * the semantics these shadows are trying to reproduce, so injecting a second
- * implementation would only add a layer the model cannot see
- * (`fs-tools.md`, 「搜索命令的内嵌化」). `rg` is still offered there.
+ * Both shadows follow what the platform package actually ships rather than a
+ * per-platform policy: `grep` is shadowed wherever a ugrep resolved (Windows
+ * included — its msys grep has no `.gitignore` support), `find` wherever a bfs
+ * did (never Windows; msys `find` already is GNU find). `rg` is offered on every
+ * platform.
  *
  * All inputs are injectable so the shape of the generated script can be tested
  * per platform without a real install.
@@ -182,41 +196,42 @@ export function buildSearchShellPrelude(options?: {
   const rgPath = options && "rgPath" in options ? options.rgPath : getRgPath();
 
   const parts: string[] = [];
-  if (platform !== "win32") {
-    // `unalias` first: an alias defined by `BASH_ENV` would otherwise win over
-    // the function (bash expands aliases before looking up functions).
-    if (tools?.ugrep) {
-      parts.push(
-        "unalias grep 2>/dev/null || true",
-        shadowFunction({
-          name: "grep",
-          binaryPath: tools.ugrep,
-          platform,
-          argv0: "grep",
-          prependArgs: [
-            "-G",
-            "--ignore-files",
-            "--hidden",
-            "-I",
-            ...VCS_DIRECTORIES.map((dir) => `--exclude-dir=${dir}`),
-          ],
-          denyPatterns: GREP_DENY_PATTERNS,
-        }),
-      );
-    }
-    if (tools?.bfs) {
-      parts.push(
-        "unalias find 2>/dev/null || true",
-        shadowFunction({
-          name: "find",
-          binaryPath: tools.bfs,
-          platform,
-          argv0: "bfs",
-          prependArgs: ["-S", "dfs", "-regextype", "findutils-default"],
-          denyPatterns: [],
-        }),
-      );
-    }
+  // `unalias` first: an alias defined by `BASH_ENV` would otherwise win over
+  // the function (bash expands aliases before looking up functions).
+  if (tools?.ugrep) {
+    parts.push(
+      "unalias grep 2>/dev/null || true",
+      shadowFunction({
+        name: "grep",
+        binaryPath: tools.ugrep,
+        platform,
+        argv0: "grep",
+        prependArgs: [
+          "-G",
+          "--ignore-files",
+          "--hidden",
+          "-I",
+          ...VCS_DIRECTORIES.map((dir) => `--exclude-dir=${dir}`),
+        ],
+        denyPatterns: GREP_DENY_PATTERNS,
+      }),
+    );
+  }
+  // Windows never resolves a bfs (the platform package ships ugrep only), so
+  // the guard is documentation as much as safety: there, msys `find` already is
+  // GNU find, and `bfs` has no Windows build to prefer over it.
+  if (tools?.bfs && platform !== "win32") {
+    parts.push(
+      "unalias find 2>/dev/null || true",
+      shadowFunction({
+        name: "find",
+        binaryPath: tools.bfs,
+        platform,
+        argv0: "bfs",
+        prependArgs: ["-S", "dfs", "-regextype", "findutils-default"],
+        denyPatterns: [],
+      }),
+    );
   }
   if (rgPath) parts.push(rgFunction(rgPath, platform));
 
