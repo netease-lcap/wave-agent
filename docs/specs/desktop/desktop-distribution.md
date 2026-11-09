@@ -129,7 +129,7 @@ order: 12
 4. **假设**服务端把记录写进 feed，**当**生成 `latest*.yml`，**则** `releaseNotes` 必须是**数组**（`[{ version, note }, …]`，与 `version`/`files`/`path`/`sha512`/`releaseDate` 同级），由服务端按版本维度**倒序**取**最近 20 个版本**、总长不超过 **16KB**（超出只保留最近若干，静默截断）——不得下发单字符串，也不得只下发目标版本一项；某项本身没有记录（该版本脚本未产出文件）时跳过该项，不得留空串项。
 5. **假设**客户端执行更新检查，**当**收到 electron-updater 的 `update-available` / `update-downloaded`，**则**宿主必须把 `UpdateInfo.releaseNotes` **归一化并按已装版本过滤**后作为 `update.releaseNotes` 随 `desktopAccountInfo` 推送（契约见 [desktop-account.md](./desktop-account.md)「数据契约与命令」）：provider 返回**数组**时逐项保留 `compareVersions(parseVersion(item.version), parseVersion(app.getVersion())) > 0` 的项（复用 `packages/desktop/src/main/version.ts`）、版本号不可解析的项丢弃、按版本倒序排列；provider 返回**字符串**时包装成单元素数组 `[{ version: info.version, note }]`；过滤后为空、或该字段缺失/空串/仅空白时**不下发**。webview 在重启确认框里渲染（见 [desktop-account.md](./desktop-account.md)「账户卡片 · 更新按钮状态机 S0–S3」场景 3）——**过滤只发生在宿主，webview 不认识版本比较，只渲染收到的数组**。更新链路（检查 → 自动下载 → 就绪确认框 → 重启）在任何形态下都一字不变，**不得**因记录缺失或格式不认识而报错、阻塞下载或误判「无更新」。
 6. **假设**用户从某个版本升级，**当** S2 重启确认框渲染记录，**则**只能看到**比自己已装版本新**的条目，且**中间只进 beta、没进 stable 的版本一并包含**：beta 逐版用户（1.6.0 → 1.6.1）只看到 1.6.1 一条；stable 跳版用户（1.5.5 → 1.6.1，中间 1.5.6 / 1.6.0 只进 beta）看到 1.6.1、1.6.0、1.5.6 三段、**不含** 1.5.5；跨通道用户（先 beta 装 1.6.0、再切回 stable 升 1.6.1）只看到 1.6.1。**不论用户路径如何，「已装版本及更旧」的条目一律不出现，也不出现重复条目。**
-7. **假设**服务端把记录写进 feed，**当**生成 `latest*.yml`，**则**必须经 YAML 序列化写成块标量（记录里的 `:`、`#`、`-`、缩进不得破坏语法）——feed 语法错误会让**所有**客户端的更新检查失败（`ERR_UPDATER_INVALID_UPDATE_INFO`），比没有记录严重得多；服务端上线前必须有 feed 冒烟（拉取 yml 能被 yaml 解析、`releaseNotes` 是非空数组且每项 `version`/`note` 均为字符串），本仓侧也要有一条「缺字段/坏形态（字符串、坏数组、空值）不影响更新」的测试。
+7. **假设**服务端把记录写进 feed，**当**生成 `latest*.yml`，**则**必须经 YAML 序列化写成块标量（记录里的 `:`、`#`、`-`、缩进不得破坏语法）——feed 语法错误会让**所有**客户端的更新检查失败（`ERR_UPDATER_INVALID_UPDATE_INFO`），比没有记录严重得多；服务端已支持该字段（vusion/codechat #50，v1.6.6 起，线上 feed 实测带 `releaseNotes` 数组），feed 冒烟作为服务端每次改动该字段时的验收项（拉取 yml 能被 yaml 解析、`releaseNotes` 是非空数组且每项 `version`/`note` 均为字符串），本仓侧也要有一条「缺字段/坏形态（字符串、坏数组、空值）不影响更新」的测试。
 8. **假设**记录由 commit 解析而来，**当**同一功能在发布窗口内被多个 PR 迭代（新增后又调整位置、去掉其中一部分），**则**允许这几条同时出现——记录是**提交摘要**而非成品文案；本故事**不**引入人工覆盖入口（不做 `release-notes/<version>.md` 之类的手写覆盖），需要人工润色的文案另立故事。
 9. **假设**客户端已连接企业服务，**当**展示变更记录，**则**不得为此发起任何额外网络请求（不查 GitHub Releases、不查文档站、不为中间版本按需拉取）——记录随 feed 一次下发，与自动更新故事场景 1「不得再查询 GitHub Releases」一致；未登录（无 serverUrl）用户不检查更新，自然也看不到记录。
 
@@ -155,7 +155,7 @@ order: 12
 
 - **远端运行时依赖由远端 CLI 自取**：远端 CLI 不带 `node_modules`，rg/sharp 由远端 CLI 在启动期自己从 npmmirror 下载到共享 `~/.wave/cli/node_modules/`——只需远端出网（运行时由桌面端推送，与远端系统 Node 无关），**不再要求远端安装 npm**（旧机制在远端执行 `npm install --prefix ~/.wave/cli`）；server 无出网时 CLI 推送不受影响（走 ssh），daemon 照常启动、仅 grep 与超限图片降级，恢复网络后下次启动自动补齐。**远端 daemon 是长驻进程**（桌面端复用存活的 daemon，仅在内置 CLI 字节变化时重启），因此一次误判会粘住整个 daemon 生命周期：就绪判定必须诚实——判定为「已安装但无法加载」时，包要么真的不在磁盘上，要么真的加载不起来。
 
-- **desktop-beta feed 依赖 codechat 通道**：beta feed（`/api/downloads/desktop-beta/{mac|win}/`）由 vusion/codechat #33 提供；codechat 侧通道上线前，开启「接收 Beta 版更新」后的检查按自动更新故事场景 5 错误处理（启动静默、手动提示检查失败），不得静默回退 stable feed 或崩溃。
+- **desktop-beta feed 依赖 codechat 通道**：beta feed（`/api/downloads/desktop-beta/{mac|win}/`）由 vusion/codechat #33 提供，自 codechat v1.2.0 起已上线（线上 `desktop-beta/{win|mac}/latest.yml` 实测 200，且与 stable feed 通道隔离）；通道不可用时（私有化实例未跟版、或企业未开通下载管理），开启「接收 Beta 版更新」后的检查仍按自动更新故事场景 5 错误处理（启动静默、手动提示检查失败），不得静默回退 stable feed 或崩溃。
 
 - **updateChannel 不进共享配置**：「接收 Beta 版更新」开关持久化于桌面 configStore 顶层（userData/wave-desktop.json，theme 先例），不写入 settings.json、不同步到远程 CLI 或账号级配置；默认 stable。
 
@@ -163,7 +163,7 @@ order: 12
 
 - **数组里某项没有记录不算异常**：某版本脚本未产出文件（该版本全是 chore 类改动）时只是缺这一项，服务端直接跳过该项；客户端按「已装版本」过滤后可能只剩一两段甚至为空，为空时 S2 确认框不渲染记录块。
 
-- **记录缺失不阻塞任何东西**：codechat 尚未支持该字段时 feed 里就没有 `releaseNotes`，客户端按「更新内容」场景 3 降级——确认框与加记录块之前逐字一致，发版、上传、检查、下载、重启全流程不受影响。反方向（feed 里写了语法错误的 YAML）才是真故障，由服务端上线前的 feed 冒烟拦住。
+- **记录缺失不阻塞任何东西**：feed 里没有 `releaseNotes` 时（老版本 codechat、私有化实例未跟版到 v1.6.6、或该版本本来没产出记录），客户端按「更新内容」场景 3 降级——确认框与加记录块之前逐字一致，发版、上传、检查、下载、重启全流程不受影响。反方向（feed 里写了语法错误的 YAML）才是真故障，由服务端改动该字段时的 feed 冒烟拦住。
 
 - **未登录不触发更新检查**：无 serverUrl 时，启动自动检查与运行期轮询均不得执行更新检查（不查 GitHub Releases、不启动 electron-updater），且应用里没有任何手动触发入口（状态对话框的「检查更新」按钮已不提供）；曾用于未登录回退的 checkForUpdate/updateChecker 链路已删除（2026-09-09 拍板）。
 
