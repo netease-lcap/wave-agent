@@ -2190,7 +2190,7 @@
    · 整项 40（`min-height` + 两排居中，等于参考里「内衬 + 两排行高」的总高）；
    · 两排之间行盒 1px —— 名字行剩 3 的上下行距各分一半、目录 14 行盒也留 0.5，
      合起来字形墨迹之间正好 2px（与参考逐值相同，实测见交接）；
-   · 名字 14/20、目录 12/14 不变，根目录文件只有一排，也在这 40 里居中；
+   · 名字 14/20、目录 12/14 不变；
    · 两排仍是 base 的 flex column，名字那排的超长省略号（`max-width:100%` +
      `overflow:hidden`）不受影响，目录那排照旧完整可见。 */
 [data-host="desktop"] .file-tab-more-item {
@@ -2203,6 +2203,13 @@
 }
 [data-host="desktop"] .file-tab-more-item-dir {
   line-height: 14px;
+}
+/* 没有目录的项（根目录下的文件）只有一排 ⇒ 按单行项回到 28 高（评论 1109 第三轮：
+   「没有路径的时候，就是单行，选项高度是 28px 才对」）。3 + 22 + 3 = 28，这一排由
+   上面的 `justify-content: center` 居中；行高也回到单行项的 22。 */
+[data-host="desktop"] .file-tab-more-item:not(:has(.file-tab-more-item-dir)) {
+  min-height: 28px;
+  line-height: 22px;
 }
 [data-host="desktop"] .file-tab-menu-item:hover,
 [data-host="desktop"] .file-tab-more-item:hover {
