@@ -27,16 +27,17 @@ describe("buildSearchShellPrelude", () => {
 
     // -G keeps GNU BRE semantics (`\|` is alternation); the rest reproduces what
     // the Grep tool asks ripgrep for: gitignore, hidden files, no binaries, and
-    // the VCS names excluded — both the directory form and the file form, the
-    // latter because a worktree's `.git` is a `gitdir:` pointer *file*.
+    // the VCS dirs excluded — directory form only, matching Claude Code's shim.
     expect(prelude).toContain("'-G'");
     expect(prelude).toContain("'--ignore-files'");
     expect(prelude).toContain("'--hidden'");
     expect(prelude).toContain("'-I'");
     expect(prelude).toContain("'--exclude-dir=.git'");
     expect(prelude).toContain("'--exclude-dir=.svn'");
-    expect(prelude).toContain("'--exclude=.git'");
-    expect(prelude).toContain("'--exclude=.svn'");
+    // Not `--exclude=`: that would also drop the `.git` pointer *file* a worktree
+    // has, which Claude Code leaves searchable. Aligned on purpose, not an
+    // oversight — see docs/specs/core/bash-tools.md「边界情况」.
+    expect(prelude).not.toContain("'--exclude=.git'");
   });
 
   it("falls back to the system grep for flags ugrep cannot honour", () => {
