@@ -5,6 +5,7 @@ import {
   selectorReducer,
   type SelectorState,
 } from "../reducers/selectorReducer.js";
+import { toOneLine } from "../utils/oneLine.js";
 
 export type { FileSelectorItem };
 
@@ -119,15 +120,25 @@ export const FileSelector: React.FC<FileSelectorProps> = ({
 
           return (
             <Box key={fileItem.path}>
-              <Text
-                color={isSelected ? "black" : "white"}
-                backgroundColor={isSelected ? "cyan" : undefined}
-              >
-                {isSelected ? "▶ " : "  "}
-                {fileItem.agentName ? `@${fileItem.agentName}` : fileItem.path}
-              </Text>
+              {/* The name keeps its width; the description gives way. */}
+              <Box flexShrink={0}>
+                <Text
+                  color={isSelected ? "black" : "white"}
+                  backgroundColor={isSelected ? "cyan" : undefined}
+                >
+                  {isSelected ? "▶ " : "  "}
+                  {fileItem.agentName
+                    ? `@${fileItem.agentName}`
+                    : fileItem.path}
+                </Text>
+              </Box>
               {fileItem.agentDescription && (
-                <Text dimColor> {fileItem.agentDescription}</Text>
+                <Box flexShrink={1}>
+                  <Text dimColor wrap="truncate">
+                    {" "}
+                    {toOneLine(fileItem.agentDescription)}
+                  </Text>
+                </Box>
               )}
             </Box>
           );
