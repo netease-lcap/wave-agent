@@ -29,27 +29,5 @@
   },
   "enabledPlugins": {
     "sdd@builtin": true
-  },
-  "hooks": {
-    "WorktreeCreate": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node \"$WAVE_PROJECT_DIR/.wave/hooks/worktree-create.mjs\""
-          }
-        ]
-      }
-    ],
-    "WorktreeRemove": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node \"$WAVE_PROJECT_DIR/.wave/hooks/worktree-remove.mjs\""
-          }
-        ]
-      }
-    ]
   }
 }
