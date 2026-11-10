@@ -7,6 +7,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { basename, dirname, join, relative, resolve } from "path";
 
 const readdir = vi.fn();
 const stat = vi.fn();
@@ -23,6 +24,10 @@ const { searchSessionContents, selectLocalSessionIds } = await import(
 const SESSION_A = "11111111-1111-4111-8111-111111111111";
 const SESSION_B = "22222222-2222-4222-8222-222222222222";
 
+/** 转录根目录与 mock 键都用 `path` 拼：`check-windows` 上两者必须是同一套分隔符。 */
+const SESSION_DIR = resolve("/projects");
+const sessionFile = (sessionId: string) => join("a", `${sessionId}.jsonl`);
+
 const line = (blocks: unknown[], extra: Record<string, unknown> = {}) =>
   JSON.stringify({
     id: "m1",
@@ -34,18 +39,17 @@ const line = (blocks: unknown[], extra: Record<string, unknown> = {}) =>
 
 const setupFiles = (files: Record<string, string>) => {
   readdir.mockImplementation(async (dir: string) => {
-    if (dir === "/projects") {
+    if (dir === SESSION_DIR) {
       // 顶层是项目目录名，不是文件。
-      return [...new Set(Object.keys(files).map((f) => f.split("/")[0]))];
+      return [...new Set(Object.keys(files).map((f) => dirname(f)))];
     }
-    const name = dir.split("/").pop() as string;
-    const prefix = `${name}/`;
+    const dirName = basename(dir);
     return Object.keys(files)
-      .filter((f) => f.startsWith(prefix))
-      .map((f) => f.slice(prefix.length));
+      .filter((f) => dirname(f) === dirName)
+      .map((f) => basename(f));
   });
   readFile.mockImplementation(async (file: string) => {
-    const key = file.replace("/projects/", "");
+    const key = relative(SESSION_DIR, file);
     if (!(key in files)) throw new Error("ENOENT");
     return files[key];
   });
@@ -55,7 +59,7 @@ const setupFiles = (files: Record<string, string>) => {
 const search = (query: string, ids: string[] = [SESSION_A, SESSION_B]) =>
   searchSessionContents(query, {
     sessionIds: new Set(ids),
-    sessionDir: "/projects",
+    sessionDir: SESSION_DIR,
   });
 
 describe("searchSessionContents", () => {
@@ -65,7 +69,7 @@ describe("searchSessionContents", () => {
 
   it("命中正文、思考与工具输出，并给出片段与总数", async () => {
     setupFiles({
-      [`a/${SESSION_A}.jsonl`]: [
+      [sessionFile(SESSION_A)]: [
         line([{ type: "text", content: "先看 webview 的状态" }]),
         line([{ type: "reasoning", content: "webview 需要改" }]),
         line([
@@ -93,8 +97,8 @@ describe("searchSessionContents", () => {
 
   it("只认本地会话 id，其余文件读了也不算", async () => {
     setupFiles({
-      [`a/${SESSION_A}.jsonl`]: line([{ type: "text", content: "needle" }]),
-      [`a/${SESSION_B}.jsonl`]: line([{ type: "text", content: "needle" }]),
+      [sessionFile(SESSION_A)]: line([{ type: "text", content: "needle" }]),
+      [sessionFile(SESSION_B)]: line([{ type: "text", content: "needle" }]),
     });
 
     const result = await search("needle", [SESSION_A]);
@@ -106,7 +110,7 @@ describe("searchSessionContents", () => {
 
   it("reserved 条目与坏行不贡献命中", async () => {
     setupFiles({
-      [`a/${SESSION_A}.jsonl`]: [
+      [sessionFile(SESSION_A)]: [
         JSON.stringify({ type: "metadata", keyword: "needle" }),
         JSON.stringify({ type: "custom-title", customTitle: "needle" }),
         "{ this is not json",
@@ -121,7 +125,7 @@ describe("searchSessionContents", () => {
 
   it("子串不区分大小写，多处命中计入同一会话", async () => {
     setupFiles({
-      [`a/${SESSION_A}.jsonl`]: line([
+      [sessionFile(SESSION_A)]: line([
         { type: "text", content: "Alpha alpha ALPHA" },
       ]),
     });
@@ -135,7 +139,7 @@ describe("searchSessionContents", () => {
 
   it("片段截断上下文并把换行折成空格", async () => {
     setupFiles({
-      [`a/${SESSION_A}.jsonl`]: line([
+      [sessionFile(SESSION_A)]: line([
         {
           type: "text",
           content: `${"前".repeat(80)}\n\n第一行\n第二行 needle 尾巴${"后".repeat(80)}`,
@@ -162,12 +166,12 @@ describe("searchSessionContents", () => {
 
   it("已取消的查询不读文件", async () => {
     setupFiles({
-      [`a/${SESSION_A}.jsonl`]: line([{ type: "text", content: "needle" }]),
+      [sessionFile(SESSION_A)]: line([{ type: "text", content: "needle" }]),
     });
 
     const result = await searchSessionContents("needle", {
       sessionIds: new Set([SESSION_A]),
-      sessionDir: "/projects",
+      sessionDir: SESSION_DIR,
       isCancelled: () => true,
     });
 
@@ -177,7 +181,7 @@ describe("searchSessionContents", () => {
 
   it("缺席的会话文件与读失败都不会让整次搜索失败", async () => {
     setupFiles({
-      [`a/${SESSION_A}.jsonl`]: line([{ type: "text", content: "needle" }]),
+      [sessionFile(SESSION_A)]: line([{ type: "text", content: "needle" }]),
     });
     readFile.mockImplementation(async (file: string) => {
       if (file.includes(SESSION_A))
