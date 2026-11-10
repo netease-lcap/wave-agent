@@ -124,14 +124,11 @@ test.describe("Desktop 任务/多Agent/工作流 screenshots", () => {
     );
   });
 
-  test("2.6 4) 后台任务管理对话框", async ({ webviewPage }) => {
+  test("2.6 4) 后台任务面板", async ({ webviewPage }) => {
     const injector = new MessageInjector(webviewPage);
-    await webviewPage.setViewportSize({ width: 960, height: 720 });
+    await webviewPage.setViewportSize({ width: 1280, height: 720 });
     await setup(webviewPage, injector);
 
-    await injector.simulateExtensionMessage("showDialog", {
-      dialogType: "tasks",
-    });
     await injector.simulateExtensionMessage("updateBackgroundTasks", {
       tasks: [
         {
@@ -169,9 +166,12 @@ test.describe("Desktop 任务/多Agent/工作流 screenshots", () => {
         },
       ],
     });
-    await expect(
-      webviewPage.getByTestId("background-task-manager"),
-    ).toBeVisible();
+    // 桌面端的后台任务是右侧面板里的一个 tab（spec desktop/desktop-right-panel.md
+    // 「后台任务面板」）；对话框只留给没有面板机制的插件端与远控页。
+    await webviewPage.getByTestId("panel-toggle-btn").click();
+    await webviewPage.getByTestId("panel-empty-item-tasks").click();
+    await expect(webviewPage.getByTestId("tasks-pane")).toBeVisible();
+    await expect(webviewPage.getByTestId("tasks-pane-row-bt-1")).toBeVisible();
     await screenshotWebp(
       webviewPage,
       "../../docs/public/screenshots/desktop-background-tasks.webp",
