@@ -136,6 +136,17 @@ describe("worktreeUtils", () => {
       expect(() => worktreeUtils.validateWorktreeName("foo/")).toThrow();
       expect(() => worktreeUtils.validateWorktreeName("foo//bar")).toThrow();
     });
+
+    it("rejects the reserved ephemeral prefix", () => {
+      // The stale-worktree sweep deletes `sa-*` worktrees, so a user-chosen
+      // name in that namespace would be garbage-collected out from under them.
+      expect(() =>
+        worktreeUtils.validateWorktreeName("sa-swift-fox-123"),
+      ).toThrow('the "sa-" prefix is reserved');
+      expect(() => worktreeUtils.validateWorktreeName("sa-mine")).toThrow(
+        'the "sa-" prefix is reserved',
+      );
+    });
   });
 
   describe("generateWorktreeName", () => {
@@ -143,6 +154,50 @@ describe("worktreeUtils", () => {
       const name = worktreeUtils.generateWorktreeName();
       expect(typeof name).toBe("string");
       expect(name).toMatch(/^[a-z]+-[a-z]+-\d{3}$/);
+    });
+
+    it("does not produce the reserved ephemeral prefix", () => {
+      for (let i = 0; i < 50; i++) {
+        expect(worktreeUtils.generateWorktreeName()).not.toMatch(/^sa-/);
+      }
+    });
+  });
+
+  describe("generateEphemeralWorktreeName", () => {
+    it("prefixes the name so the sweep can recognise it", () => {
+      const name = worktreeUtils.generateEphemeralWorktreeName();
+      expect(name).toMatch(/^sa-[a-z]+-[a-z]+-\d{3}$/);
+      expect(worktreeUtils.isEphemeralWorktreeName(name)).toBe(true);
+    });
+  });
+
+  describe("isEphemeralWorktreeName", () => {
+    it("accepts only the exact ephemeral shape", () => {
+      expect(worktreeUtils.isEphemeralWorktreeName("sa-swift-fox-123")).toBe(
+        true,
+      );
+    });
+
+    it("rejects user-facing and malformed names", () => {
+      for (const name of [
+        "swift-fox-123", // pre-prefix ephemeral / EnterWorktree auto name
+        "sa-swift-fox", // no digits
+        "sa-swift-fox-1234", // digits are exactly three
+        "sa-swift-fox-123/extra", // never nested
+        "SA-swift-fox-123",
+        "sa_mine-1",
+        "narrow-quiet-glacier", // session worktree auto name
+      ]) {
+        expect(worktreeUtils.isEphemeralWorktreeName(name)).toBe(false);
+      }
+    });
+  });
+
+  describe("worktreeBranchName", () => {
+    it("prefixes with worktree-", () => {
+      expect(worktreeUtils.worktreeBranchName("my-feature")).toBe(
+        "worktree-my-feature",
+      );
     });
   });
 

@@ -10,6 +10,7 @@ import {
   hasWorktreeCreateHook,
   executeWorktreeCreateHook,
   executeWorktreeRemoveHook,
+  EPHEMERAL_WORKTREE_PREFIX,
 } from "wave-agent-sdk";
 import { logger } from "./logger.js";
 
@@ -62,6 +63,14 @@ export function validateWorktreeSlug(name: string): void {
   if (name.length > MAX_WORKTREE_SLUG_LENGTH) {
     throw new Error(
       `Invalid worktree name: "${name}" must be ${MAX_WORKTREE_SLUG_LENGTH} characters or fewer (got ${name.length})`,
+    );
+  }
+  // `sa-` belongs to wave's own ephemeral worktrees (subagent isolation), which
+  // the startup sweep deletes once they go stale — a user's worktree must never
+  // live in that namespace.
+  if (name.split("/")[0].startsWith(EPHEMERAL_WORKTREE_PREFIX)) {
+    throw new Error(
+      `Invalid worktree name: "${name}" must not start with "${EPHEMERAL_WORKTREE_PREFIX}" (reserved for wave-managed temporary worktrees)`,
     );
   }
   for (const segment of name.split("/")) {

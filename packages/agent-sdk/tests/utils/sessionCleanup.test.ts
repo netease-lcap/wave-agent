@@ -9,6 +9,7 @@ import {
 } from "../../src/utils/sessionCleanup.js";
 import { SESSION_DIR } from "../../src/services/session.js";
 import { loadMergedWaveConfig } from "../../src/services/configurationService.js";
+import { cleanupStaleEphemeralWorktrees } from "../../src/utils/worktreeCleanup.js";
 
 vi.mock("fs", () => ({
   existsSync: vi.fn(),
@@ -40,6 +41,10 @@ vi.mock("../../src/utils/configPaths.js", () => ({
     "/mock/project/settings.local.json",
     "/mock/project/settings.json",
   ]),
+}));
+
+vi.mock("../../src/utils/worktreeCleanup.js", () => ({
+  cleanupStaleEphemeralWorktrees: vi.fn(),
 }));
 
 // Dirent-shaped stand-in for fs.readdir withFileTypes results
@@ -227,6 +232,7 @@ describe("runSessionCleanupInBackground", () => {
   beforeEach(() => {
     vi.mocked(loadMergedWaveConfig).mockReset();
     vi.mocked(fs.readdir).mockReset();
+    vi.mocked(cleanupStaleEphemeralWorktrees).mockReset();
   });
 
   it("is a no-op in test environment", () => {
@@ -235,7 +241,7 @@ describe("runSessionCleanupInBackground", () => {
     expect(loadMergedWaveConfig).not.toHaveBeenCalled();
   });
 
-  it("runs cleanup at most once per process", async () => {
+  it("runs cleanup at most once per process and sweeps worktrees with the same period", async () => {
     const oldEnv = process.env.NODE_ENV;
     process.env.NODE_ENV = "development";
     vi.mocked(loadMergedWaveConfig).mockReturnValue(null);
@@ -243,14 +249,31 @@ describe("runSessionCleanupInBackground", () => {
     vi.mocked(fs.readdir).mockResolvedValue(
       [] as unknown as Awaited<ReturnType<typeof fs.readdir>>,
     );
+    vi.mocked(cleanupStaleEphemeralWorktrees).mockResolvedValue({
+      removed: 0,
+      errors: 0,
+    });
 
     try {
-      runSessionCleanupInBackground("/mock/workdir");
+      runSessionCleanupInBackground("/mock/workdir", "sa-swift-fox-123");
       runSessionCleanupInBackground("/mock/other");
 
       await vi.waitFor(() => {
         expect(loadMergedWaveConfig).toHaveBeenCalledTimes(1);
       });
+      // The sweep runs after the session-file pass, so wait for it rather than
+      // for the config read that precedes both.
+      await vi.waitFor(() => {
+        expect(cleanupStaleEphemeralWorktrees).toHaveBeenCalledTimes(1);
+      });
+      expect(loadMergedWaveConfig).toHaveBeenCalledTimes(1);
+      // Same resolved period as the session files, and the worktree this
+      // session lives in is handed over so the sweep can spare it.
+      expect(cleanupStaleEphemeralWorktrees).toHaveBeenCalledWith(
+        "/mock/workdir",
+        DEFAULT_CLEANUP_PERIOD_DAYS,
+        "sa-swift-fox-123",
+      );
     } finally {
       process.env.NODE_ENV = oldEnv;
     }

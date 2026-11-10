@@ -17,6 +17,11 @@ order: 160
 - **`cleanupPeriodDays: 0`**：跳过清理（永不删除会话文件），防止 cutoff=now 误删全部历史
 - **配置范围**：user → project → local 三 scope 合并（last-wins），与其他 scalar 配置（language/model 等）模式一致
 
+### 2026-11-10 范围扩展（用户拍板）
+
+- **同一个保留期也管陈旧临时 worktree**：同一次启动后台清理里顺带清掉超期且无改动的子代理临时 worktree（`isolation: worktree` 的产物）。行为规格（哪些算临时、几道安全闸门）写在 [CLI Worktree](../multi-agent/worktree.md) 的「陈旧临时 worktree 的自动清理」，本节只负责保留期与守卫
+- **守卫完全复用**：`cleanupPeriodDays: 0` 跳过、配置损坏/校验失败跳过、每进程一次、任何失败只记日志不抛异常
+
 ## 用户场景与测试 _（必填）_
 
 ### 用户故事：过期会话文件后台清理（优先级：P1，对齐 Claude Code）

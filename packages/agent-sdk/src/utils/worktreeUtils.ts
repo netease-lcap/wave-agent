@@ -39,6 +39,14 @@ export function validateWorktreeName(name: string): void {
       `Invalid worktree name: must be ${MAX_LENGTH} characters or fewer (got ${name.length})`,
     );
   }
+  // The `sa-` namespace belongs to wave's own ephemeral worktrees, which the
+  // startup sweep deletes once they go stale — a user-chosen name there would
+  // be garbage-collected out from under them.
+  if (name.split("/")[0].startsWith(EPHEMERAL_WORKTREE_PREFIX)) {
+    throw new Error(
+      `Invalid worktree name "${name}": the "${EPHEMERAL_WORKTREE_PREFIX}" prefix is reserved for wave-managed temporary worktrees`,
+    );
+  }
   for (const segment of name.split("/")) {
     if (segment === "." || segment === "..") {
       throw new Error(
@@ -54,37 +62,88 @@ export function validateWorktreeName(name: string): void {
 }
 
 /**
- * Generate a random worktree name.
+ * Reserved name prefix for *ephemeral* worktrees — the ones wave creates for a
+ * subagent's `isolation: worktree` and that nobody asked for by name.
+ *
+ * The stale-worktree sweep (`utils/worktreeCleanup.ts`) deletes worktrees by
+ * name, so "wave created this and may clean it up" must be distinguishable
+ * from "the user asked for this and owns it". Shape alone cannot do it:
+ * `EnterWorktree` without a name and the subagent isolation path both used
+ * `generateWorktreeName()`, so an auto-named *user session* looked exactly
+ * like a throwaway one. Hence a dedicated prefix, which
+ * `validateWorktreeName` refuses for user-chosen names.
+ */
+export const EPHEMERAL_WORKTREE_PREFIX = "sa-";
+
+/**
+ * `sa-<adjective>-<noun>-<three digits>`. Anchored and list-free on purpose:
+ * this is the only thing standing between the sweep and a user's worktree.
+ */
+const EPHEMERAL_WORKTREE_NAME_PATTERN = /^sa-[a-z]+-[a-z]+-\d{3}$/;
+
+const WORKTREE_NAME_ADJECTIVES = [
+  "swift",
+  "calm",
+  "bold",
+  "keen",
+  "bright",
+  "cool",
+  "deep",
+  "fair",
+  "gentle",
+  "grand",
+];
+
+const WORKTREE_NAME_NOUNS = [
+  "fox",
+  "owl",
+  "hawk",
+  "wolf",
+  "bear",
+  "lynx",
+  "pike",
+  "kite",
+  "dove",
+  "stag",
+];
+
+function randomWorktreeName(prefix: string): string {
+  const adj =
+    WORKTREE_NAME_ADJECTIVES[
+      Math.floor(Math.random() * WORKTREE_NAME_ADJECTIVES.length)
+    ];
+  const noun =
+    WORKTREE_NAME_NOUNS[Math.floor(Math.random() * WORKTREE_NAME_NOUNS.length)];
+  const num = Math.floor(Math.random() * 900) + 100;
+  return `${prefix}${adj}-${noun}-${num}`;
+}
+
+/**
+ * Generate a random worktree name for a user-facing session worktree.
  */
 export function generateWorktreeName(): string {
-  const adjectives = [
-    "swift",
-    "calm",
-    "bold",
-    "keen",
-    "bright",
-    "cool",
-    "deep",
-    "fair",
-    "gentle",
-    "grand",
-  ];
-  const nouns = [
-    "fox",
-    "owl",
-    "hawk",
-    "wolf",
-    "bear",
-    "lynx",
-    "pike",
-    "kite",
-    "dove",
-    "stag",
-  ];
-  const adj = adjectives[Math.floor(Math.random() * adjectives.length)];
-  const noun = nouns[Math.floor(Math.random() * nouns.length)];
-  const num = Math.floor(Math.random() * 900) + 100;
-  return `${adj}-${noun}-${num}`;
+  return randomWorktreeName("");
+}
+
+/**
+ * Generate a name for an ephemeral (auto-cleaned) worktree. Callers are the
+ * subagent isolation path only; user-facing flows keep `generateWorktreeName`.
+ */
+export function generateEphemeralWorktreeName(): string {
+  return randomWorktreeName(EPHEMERAL_WORKTREE_PREFIX);
+}
+
+/**
+ * True when `name` is a well-formed ephemeral worktree name — i.e. the sweep in
+ * `worktreeCleanup.ts` may delete it once it is stale and clean.
+ */
+export function isEphemeralWorktreeName(name: string): boolean {
+  return EPHEMERAL_WORKTREE_NAME_PATTERN.test(name);
+}
+
+/** Branch `createWorktree` gives a worktree it creates. */
+export function worktreeBranchName(name: string): string {
+  return `worktree-${name}`;
 }
 
 /**
@@ -121,7 +180,7 @@ export function createWorktree(
   const originalHeadCommit = getHeadCommit(cwd);
 
   const worktreePath = path.join(repoRoot, ".wave", "worktrees", name);
-  const branchName = `worktree-${name}`;
+  const branchName = worktreeBranchName(name);
   const useHead = options?.baseRef === "head";
   const baseBranch = useHead ? "HEAD" : getDefaultRemoteBranch(cwd);
 

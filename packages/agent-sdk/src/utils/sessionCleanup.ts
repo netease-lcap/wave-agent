@@ -7,6 +7,9 @@
  * deletes them, then removes project directories left empty. Auto-memory
  * (`memory/` subdirectories) is never touched.
  *
+ * The same retention period also governs stale ephemeral worktrees — see
+ * `runSessionCleanupInBackground` and `utils/worktreeCleanup.ts`.
+ *
  * Retention is configurable via settings `cleanupPeriodDays` (default 30).
  * `0` disables cleanup. If settings are corrupt or fail validation while the
  * user explicitly set `cleanupPeriodDays`, cleanup is skipped entirely — the
@@ -23,6 +26,7 @@ import {
   validateConfigurationObject,
 } from "../services/configurationService.js";
 import { getProjectConfigPaths, getUserConfigPaths } from "./configPaths.js";
+import { cleanupStaleEphemeralWorktrees } from "./worktreeCleanup.js";
 
 /** Default retention period in days (Claude Code DEFAULT_CLEANUP_PERIOD_DAYS). */
 export const DEFAULT_CLEANUP_PERIOD_DAYS = 30;
@@ -139,8 +143,18 @@ export async function cleanupOldSessionFiles(
  * Kick off session cleanup in the background, once per process. Fire-and-forget:
  * never throws, never blocks agent startup. In test environments cleanup is a
  * no-op (same convention as the other startup cleanups in session.ts).
+ *
+ * Besides expired session files this also sweeps stale ephemeral worktrees
+ * (`utils/worktreeCleanup.ts`), because that sweep shares both the retention
+ * period and every guard below — one knob, one startup, one "once per process".
+ *
+ * @param activeWorktreeName Name of the worktree this session was opened in
+ *   (`-w` / desktop worktree sessions), which the sweep must never delete.
  */
-export function runSessionCleanupInBackground(workdir: string): void {
+export function runSessionCleanupInBackground(
+  workdir: string,
+  activeWorktreeName?: string,
+): void {
   if (process.env.NODE_ENV === "test") return;
   if (cleanupScheduled) return;
   cleanupScheduled = true;
@@ -164,6 +178,24 @@ export function runSessionCleanupInBackground(workdir: string): void {
       if (result.errors > 0) {
         logger.warn(
           `Session cleanup: encountered ${result.errors} error(s) while cleaning session files`,
+        );
+      }
+
+      // Reported separately from the session-file counts so a worktree that a
+      // running subagent is still using never reads as "session cleanup broke".
+      const worktrees = await cleanupStaleEphemeralWorktrees(
+        workdir,
+        periodDays,
+        activeWorktreeName,
+      );
+      if (worktrees.removed > 0) {
+        logger.debug(
+          `Stale worktree cleanup: removed ${worktrees.removed} temporary worktree(s)`,
+        );
+      }
+      if (worktrees.errors > 0) {
+        logger.warn(
+          `Stale worktree cleanup: ${worktrees.errors} worktree(s) could not be removed (left in place)`,
         );
       }
     } catch (error) {
