@@ -7050,3 +7050,63 @@
   background: rgba(255, 255, 255, 0.08);
   color: #ffffff;
 }
+
+/* ── mermaid「全屏查看」图标键 ────────────────────────────────────────────────
+   评论 1110（点 `div.mermaid-actions`「全屏查看」）：「这里也改，也是改图标粗细
+   圆角，交互样式」——与上一颗「打开预览」（.write-preview-open）同一套口径，也就是
+   同屏「代码块复制键」那一档：24×24 图标键、圆角 8、无描边、透明底，hover 只换
+   底色与字色，颜色切换瞬时。
+
+   改前这颗是「壳 + 键」两层：外层 .mermaid-actions 自带底色 / 1px 描边 / 投影 /
+   圆角 4 / 内衬 2（28 见方），里层 .action-button 是 4px 内衬 + 14px 字体图标 = 22
+   见方、圆角 3，且 `transition: all .2s` 会把换色拖成 200ms、`:active` 还会往下
+   掉 1px。这里把壳收成纯定位容器（揭示用的 opacity 过渡保留在壳上），键按复制键
+   那一档收口。
+
+   定位不动（top/right 仍是 8px）：盒 22→24 后图标中心沿对角线外移 2px，与上一颗
+   「打开预览」盒 22→24 时中心外移 1px 是同一处理（设计师未要求补偿）。
+   插件端（`.codicon-screen-full` + 22 实块 + 圆角 3）不动。 */
+[data-host="desktop"] .mermaid-actions {
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: var(--cc-radius-md, 8px);
+  box-shadow: none;
+}
+[data-host="desktop"] .mermaid-actions .action-button {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: var(--cc-radius-md, 8px);
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* 换色瞬时：只有壳的 opacity 过渡（揭示范畴），按下也不再位移 */
+  transition: none;
+}
+[data-host="desktop"] .mermaid-actions .action-button:active {
+  transform: none;
+}
+[data-host="desktop"] .mermaid-actions .action-button svg {
+  width: 16px;
+  height: 16px;
+  display: block;
+}
+[data-host="desktop"][data-theme="light"] .mermaid-actions .action-button {
+  color: #565a60;
+}
+[data-host="desktop"][data-theme="light"]
+  .mermaid-actions
+  .action-button:hover {
+  background: #eef0f3;
+  color: #1f2329;
+}
+[data-host="desktop"][data-theme="dark"] .mermaid-actions .action-button {
+  color: #9a9ea5;
+}
+[data-host="desktop"][data-theme="dark"] .mermaid-actions .action-button:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #ffffff;
+}

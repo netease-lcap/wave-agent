@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import mermaid from "mermaid";
 import { Tooltip } from "./Tooltip";
+import { FullscreenExpandIcon } from "./HeaderIcons";
 import { isDarkTheme } from "../utils/theme";
 import { isDesktopHost } from "../utils/platform";
 import "../styles/MermaidRenderer.css";
@@ -393,6 +394,9 @@ export const MermaidRenderer: React.FC<MermaidRendererProps> = ({
   const renderPreviewTab = () => {
     // 全屏那颗图标按钮：桌面端提示交给自绘气泡，`title` 只留给插件端宿主
     // （原生标题在桌面端 webview 里看不到，留着还会和我们那颗双弹）。
+    // 图标同理按宿主二选一：桌面端换成与工具条同档线宽（1.4 描边）的线性矢量，
+    // 插件端仍是 `codicon-screen-full` 字体字形（评论 1110：「这里也改，也是改
+    // 图标粗细圆角，交互样式」）。
     const fullscreenButton = (
       <button
         ref={fullscreenBtnRef}
@@ -401,7 +405,11 @@ export const MermaidRenderer: React.FC<MermaidRendererProps> = ({
         title={desktop ? undefined : "全屏查看"}
         aria-label="全屏查看"
       >
-        <i className="codicon codicon-screen-full"></i>
+        {desktop ? (
+          <FullscreenExpandIcon className="action-button-icon" />
+        ) : (
+          <i className="codicon codicon-screen-full"></i>
+        )}
       </button>
     );
 

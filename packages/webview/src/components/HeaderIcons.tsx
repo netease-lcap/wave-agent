@@ -120,6 +120,66 @@ export const OpenPreviewArrowIcon: React.FC<IconProps> = ({
   </svg>
 );
 
+/**
+ * mermaid「全屏查看」的四角外扩箭头（⤢ 的线性版），**桌面端**专用，与文件面板
+ * 工具条那套官方矢量同一档线宽（16 盒 / 线宽 1.4 / 圆头圆角 / `currentColor`）。
+ *
+ * 设计师 2026-11-10 预览评论（`div.mermaid-actions` 里的「全屏查看」）：「这里也改，
+ * 也是改图标粗细圆角，交互样式」——上一颗是 codicon 字体图标
+ * `codicon-screen-full`（14px 字号，实心尖角），和刚统一成 1.4 描边的箭头 / 复制
+ * 图标并排时明显更重。
+ *
+ * 几何直接取设计师 2026-11-10 给件 `全屏.svg`（同一轮她又补：「图标参考或者用这个，
+ * 现在圆角太尖」——我先前按直角 L 画的那版，拐角只有 `stroke-linejoin: round` 的
+ * 一点点圆，官方件是**半径 2 的圆弧拐角**，四个括号各自 `V → 圆弧 → H`）。
+ * 原稿 `stroke="#565A60"` → `currentColor`（颜色随按钮走）。墨迹 13.19px 见方
+ * （中心线 2.107→13.893 加半个线宽），与两纸复制 14.0 同档。
+ *
+ * 只在桌面端替换（`MermaidRenderer` 里按 `isDesktopHost()` 二选一），插件端仍是
+ * `codicon-screen-full`，与改动前逐像素一致。
+ */
+export const FullscreenExpandIcon: React.FC<IconProps> = ({
+  className = "action-button-icon",
+}) => (
+  <svg
+    width={16}
+    height={16}
+    viewBox="0 0 16 16"
+    fill="none"
+    className={className}
+    aria-hidden="true"
+  >
+    <path
+      d="M2.10742 5.75V4.25C2.10742 3.14543 3.00285 2.25 4.10742 2.25H5.60742"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M13.8926 10.25L13.8926 11.75C13.8926 12.8546 12.9971 13.75 11.8926 13.75L10.3926 13.75"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M13.8926 5.75V4.25C13.8926 3.14543 12.9971 2.25 11.8926 2.25H10.3926"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M2.10742 10.25L2.10742 11.75C2.10742 12.8546 3.00285 13.75 4.10742 13.75L5.60742 13.75"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
+
 export const InfoIcon: React.FC<IconProps> = ({
   className = "header-icon",
 }) => (
