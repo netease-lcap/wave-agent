@@ -6373,6 +6373,59 @@ describe("startup progress line", () => {
     });
     expect(sent("loadingStage")).toHaveLength(0);
   });
+
+  it("pushes host stages to a NEW-session pane too, and ends the line when the branch query lands", async () => {
+    // 新会话里首次连一台远程主机：分支查询在等这次连接（隧道 + 运行时 + CLI），
+    // 新会话的输入卡上就只有「分支加载中…」那一行——阶段文案也落到那里（spec
+    // ui/stdio-transport.md 场景 9）。
+    seedSshConfig("Host prod\n  HostName 10.0.0.1\n");
+    const { host, store, send, sent } = await readyHost();
+    store.addRecentWorkdir({ host: "prod", path: "/remote/repo" });
+    send.mockClear();
+    vi.mocked(ensureRemoteDaemon).mockImplementationOnce(
+      async (_host, _source, _onNotice, onStage) => {
+        onStage?.("checkingEnvironment");
+        return "/home/prod/.wave/daemon.sock";
+      },
+    );
+
+    await host.handleWebviewMessage({
+      command: "desktopSelectHost",
+      host: "prod",
+    });
+
+    // 这个分屏没有在恢复（没有 pendingRestore），照样是「此刻在等这台主机的人」。
+    await vi.waitFor(() => {
+      expect(sent("loadingStage").at(-1)?.text).toBeNull();
+    });
+    expect(sent("loadingStage").map((s) => s?.text)).toEqual([
+      "正在连接 prod…",
+      "正在检查远端环境…",
+      null,
+    ]);
+    expect(sent("loadingStage").every((s) => s?.paneId === "pane-1")).toBe(
+      true,
+    );
+
+    // CLI 侧阶段（工具依赖 / 启动会话）是在客户端连上之后才到线上的：文案重新出现…
+    h.globalHandlers.startupStage?.({ stage: "downloadingToolDeps" });
+    expect(sent("loadingStage").at(-1)?.text).toBe(
+      "正在下载工具依赖（搜索与图片处理）…",
+    );
+
+    // …分支查询回包 = 那一行的等待结束，文案跟着它一起收（不留到下一次查询）。
+    h.branchesResult = { branches: ["main"], current: "main" };
+    await host.handleWebviewMessage({
+      command: "desktopListGitBranches",
+      workdir: "/remote/repo",
+      paneId: "pane-1",
+    });
+    expect(sent("desktopGitBranches").at(-1)).toMatchObject({
+      workdir: "/remote/repo",
+      result: { current: "main" },
+    });
+    expect(sent("loadingStage").at(-1)?.text).toBeNull();
+  });
 });
 
 // ---------------------------------------------------------------------------

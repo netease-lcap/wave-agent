@@ -567,15 +567,19 @@ export class DesktopHost {
   >();
   private restoreToken = 0;
   /**
-   * 每个分屏加载态下方那一行进度文案（spec ui/stdio-transport.md「首次启动的进度
-   * 文案」）。paneId → 文案；和 `pendingRestores` 同生共死——恢复结束（完成 / 失败 /
-   * 被更新的选择取代）就清掉，`pushPaneSessionState` 在 `isRestoring` 为假时收口。
+   * 每个分屏那一行进度文案（spec ui/stdio-transport.md「首次启动的进度文案」）。
+   * paneId → 文案。
    *
    * 为什么要存一份而不是只转发：阶段是**主机级**的（同一台主机的连接、运行时、
    * CLI 只做一次），而文案是**分屏级**的。归属靠这张表 + `hostState` 反查「此刻
-   * 正在等这台主机的分屏」。
+   * 绑在这台主机上的分屏」。
+   *
+   * 文案有两个落点（同一份值）：恢复中分屏由扫光动画下方那行用，新会话分屏由
+   * 「分支加载中…」那一行用。所以**生灭也跟着两个落点**：恢复走
+   * `pushPaneSessionState` 的收口（`isRestoring` 为假时清），新会话走
+   * `handleListGitBranches` 回包与 `ensureClientFor` 的连接收口。
    */
-  private restoreStages = new Map<string, string>();
+  private paneStages = new Map<string, string>();
 
   // Throttling state, per pane so concurrently streaming panes update
   // independently (same cadence as vsce ChatSession).
@@ -1569,12 +1573,28 @@ export class DesktopHost {
     });
   }
 
-  /** Ensure the shared stdio client for a host exists (local, WSL or remote). */
+  /**
+   * Ensure the shared stdio client for a host exists (local, WSL or remote).
+   *
+   * 连接收口就是这台主机阶段流的终点（spec ui/stdio-transport.md 场景 9）：所有
+   * 等它的人（分支查询、目录浏览、恢复、起会话）都从这条 promise 上醒来，所以清
+   * 文案也挂在这里，而不是每个调用点各清一次。**不改返还的 promise**：旁挂一个
+   * then 去清，等它的人拿到的还是原来那条链（多包一层 async 会让紧随其后的代码
+   * 多让出一个微任务，启动期的时序因此变过）。
+   */
   private ensureClientFor(host: string): Promise<void> {
-    if (host === LOCAL_HOST) return this.ensureClient();
-    const distro = parseWslHostId(host);
-    if (distro) return this.ensureWslClient(host, distro);
-    return this.ensureRemoteHostClient(host);
+    const ready =
+      host === LOCAL_HOST
+        ? this.ensureClient()
+        : (() => {
+            const distro = parseWslHostId(host);
+            return distro
+              ? this.ensureWslClient(host, distro)
+              : this.ensureRemoteHostClient(host);
+          })();
+    const settle = () => this.clearPaneStagesForHost(host);
+    void ready.then(settle, settle);
+    return ready;
   }
 
   /**
@@ -2783,9 +2803,13 @@ export class DesktopHost {
    * 上报一个启动阶段（spec ui/stdio-transport.md「首次启动的进度文案」）。
    *
    * 阶段是**主机级**的（连接、运行时、CLI 同步一台主机只做一次），文案却是
-   * **分屏级**的：只推给此刻正在等这台主机的那几个恢复分屏。用户中途换点别的
-   * 会话时，`pendingRestores` 已经换成新目标，先前那次连接的进度自然落不到当前
-   * 分屏（场景 5：文案归属最新的目标，与加载态同一条归属规则）。
+   * **分屏级**的：只推给此刻绑在这台主机上的分屏，别的分屏（另一台主机）收不到。
+   * 用户中途换点别的会话时，`pendingRestores` 已经换成新目标，先前那次连接的进度
+   * 自然落不到当前分屏（场景 5：文案归属最新的目标，与加载态同一条归属规则）。
+   *
+   * 两个落点共用这条流（场景 2 / 9）：恢复中的分屏显示在扫光动画下方，新会话分屏
+   * 显示在「分支加载中…」那一行——后者也在等同一个连接（分支查询要先等主机连上），
+   * 只说「分支加载中」等于把几十秒的连接/安装时间说成了 git 的错。
    */
   private reportStartupStage(
     host: string,
@@ -2794,24 +2818,37 @@ export class DesktopHost {
   ): void {
     const text = startupStageText(stage, target);
     if (!text) return;
-    for (const paneId of this.pendingRestores.keys()) {
-      if ((this.hostState.get(paneId) ?? LOCAL_HOST) !== host) continue;
-      this.setPaneStage(paneId, text);
+    for (const pane of this.panes) {
+      if ((this.hostState.get(pane.paneId) ?? LOCAL_HOST) !== host) continue;
+      this.setPaneStage(pane.paneId, text);
     }
   }
 
   /**
-   * 推一行阶段文案给分屏；`null` = 这条阶段流结束了（恢复收尾时清，避免文案
-   * 停在最后一步上）。同一个值不重复推。
+   * 推一行阶段文案给分屏；`null` = 这条阶段流结束了（收口时清，避免文案停在
+   * 最后一步上）。同一个值不重复推。
    */
   private setPaneStage(paneId: string, text: string | null): void {
     if (text === null) {
-      if (!this.restoreStages.delete(paneId)) return;
+      if (!this.paneStages.delete(paneId)) return;
     } else {
-      if (this.restoreStages.get(paneId) === text) return;
-      this.restoreStages.set(paneId, text);
+      if (this.paneStages.get(paneId) === text) return;
+      this.paneStages.set(paneId, text);
     }
     this.postMessage({ command: "loadingStage", paneId, text });
+  }
+
+  /**
+   * 一台主机的连接收口 = 这条阶段流的终点：把这台主机下**没在恢复**的分屏文案清掉。
+   * 恢复中的分屏不在这里清（它的流跟着恢复走，由 `pushPaneSessionState` 收口）——
+   * 提前清会让扫光动画下方那行提前空掉。
+   */
+  private clearPaneStagesForHost(host: string): void {
+    for (const pane of this.panes) {
+      if ((this.hostState.get(pane.paneId) ?? LOCAL_HOST) !== host) continue;
+      if (this.pendingRestores.has(pane.paneId)) continue;
+      this.setPaneStage(pane.paneId, null);
+    }
   }
 
   /**
@@ -4465,6 +4502,13 @@ export class DesktopHost {
         paneId,
         result: null,
       });
+    } finally {
+      // 这次等待结束 = 「分支加载中…」那一行上阶段文案的终点（spec
+      // ui/stdio-transport.md 场景 9）：不留到下一次查询冒出来。恢复中的分屏由
+      // 恢复自己收口（它还盖着扫光动画，文案另有归属）。
+      if (paneId && !this.pendingRestores.has(paneId)) {
+        this.setPaneStage(paneId, null);
+      }
     }
   }
 
