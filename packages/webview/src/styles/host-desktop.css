@@ -1130,6 +1130,22 @@
   text-decoration: none;
 }
 
+/* 深色 · 命令输出的 ANSI 三色降饱和（设计师 2026-11-10：「桌面的深色饱和度
+   太高了，特别是 Login layout tests passed / deprecated… / a11y label missing
+   这块」）。base 的 `--ansi-*` 取 VS Code 默认暗色终端调色板（绿 `#0dbc79`
+   S 93% / 黄 `#e5e510` S 93% / 红 `#cd3131` S 76%），压在 `--cc-bg-code`
+   `#1b1d1e` 上是「荧光屏」观感；这里只换深色档的这三支，色相不动，把饱和度
+   压到 40–55%，数值都是本主题既有色：
+   · 绿 = `--cc-color-success` 深色档 `#83d6a0`（S 39%，对底色 9.74）
+   · 黄 = 语法调色板的 tag 档 `#d7ba7d`（S 42%，9.03）
+   · 红 = `--cc-color-danger-hover` 深色档 `#fd7175`（S 54%，6.89）
+   蓝（`ℹ …`）未点名、保持原样；浅色档与插件端不吃这条规则。 */
+[data-host="desktop"][data-theme="dark"] .bash-command-output {
+  --ansi-green: #83d6a0;
+  --ansi-yellow: #d7ba7d;
+  --ansi-red: #fd7175;
+}
+
 /* Write 工具块：Figma 标题 14px/600、路径 13px Menlo #2F5EDB 无下划线、
    文件统计 12px #6C7076（base 13px/600、12px 蓝虚线链接、11px 统计） */
 [data-host="desktop"] .write-tool-label {
