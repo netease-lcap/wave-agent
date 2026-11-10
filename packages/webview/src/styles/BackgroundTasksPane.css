@@ -2,9 +2,17 @@
    Reuses the shared preview-pane frame (drag handle / toolbar) from
    DesktopApp.css; only the内容 of the body is styled here. */
 
-/* The shared .preview-pane-body has no overflow (the iframe-based panels
-   scroll internally); this pane's list scrolls as a whole, so scroll here. */
-[data-host="desktop"] .background-tasks-pane .preview-pane-body {
+/* 这个 pane 的 body 用的是自己的类名 `background-tasks-pane-body`（不是文件 / 计划
+   pane 的 `.preview-pane-body`），所以滚动要挂在它身上：早先这条规则写成
+   `.background-tasks-pane .preview-pane-body`，选择器一次都没命中 —— 任务多到超出
+   面板时列表被 `.preview-pane-inner` 的 overflow:hidden 直接裁掉、滚轮无效，
+   最后几条永远看不到（2026-11-10 用 18 条任务的 mock 量到：body clientHeight
+   1338 / 容器 811、滚动条不出现）。
+   另外 `preview-pane-body` 那边靠 `flex:1; min-height:0` 才被容器压住高度，
+   这里要自己补，否则 body 会被内容撑高、overflow 也不产生滚动。 */
+[data-host="desktop"] .background-tasks-pane .background-tasks-pane-body {
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
 }
 
