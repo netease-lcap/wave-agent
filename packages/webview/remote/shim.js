@@ -2031,6 +2031,10 @@
         return;
       case "sessionIdChange":
         sessionId = p.sessionId;
+        // 就地换会话（机器侧 `restoreSession` 那条路径，不重画快照）：消息与
+        // 列表各有自己的通道，基准目录没有，不在这里补一次，工具标题就按上一条
+        // 会话的目录相对化。
+        postWorkdir();
         return;
       default:
         warnOnce(
@@ -2168,6 +2172,20 @@
             worktrees: worktreeSessionIds,
           },
           queuedMessages: (state && state.queuedMessages) || [],
+          // 工具标题里那条文件路径的**相对化基准**（webview 侧
+          // `toRelativePath(file_path, workdir)`，见
+          // `packages/webview/src/utils/messageUtils.ts`）。以前这一端从不给这个
+          // 值，页面便落到「没有 workdir → 原样显示绝对路径」那一支：同一条 Read
+          // 在电脑上是 `src/foo.ts`、在手机上是 `/repo/src/foo.ts`。
+          //
+          // 取的是「不动」的那个 —— 注册表的 `sessionCwd`（`toSessionMetadata`
+          // 放在 `workdir` 上），与 `@file` 拼接（`joinWorkdir`）、会话列表同一份
+          // 事实。不用「会动」的 `currentWorkdir`：那条通道（`workdirChange`）没有
+          // 映射到这一页，而这里只拿它**相对化绝对路径**做显示、不解析任何相对
+          // 路径 —— bash 里 `cd` 漂移不会让屏幕上的路径指错文件。会话换绑会换
+          // sessionId，之后照例从 `sessionIdChange` 补发（见 `postWorkdir`）。
+          // 取不到目录就不设字段（老机器 / 刚删光会话），页面回落绝对路径。
+          workdir: workdirOf(sessionId) || undefined,
           // The relay authenticated this page with the machine's own
           // credential; there is no separate phone login to satisfy.
           isAuthenticated: true,
@@ -2796,10 +2814,37 @@
     return list;
   }
 
+  /**
+   * 一条会话的目录 —— 注册表里的 `sessionCwd`（`toSessionMetadata` 把它放在
+   * `workdir` 上），也就是 workdir 三兄弟里「不动」的那个：`@file` 拼接
+   * （`joinWorkdir`）、工具的标题路径相对化（快照的 `workdir` / `updateWorkdir`）
+   * 都读它，一处取值，不会两种口径。查不到会话（列表还没读到、或那条会话已经
+   * 结束）返回空串，调用方据此保持原样。
+   */
+  function workdirOf(id) {
+    var entry = currentSession(sessions, id);
+    var dir = entry && entry.workdir;
+    return typeof dir === "string" ? dir : "";
+  }
+
+  /**
+   * 把基准目录告诉页面（`state.workdir`）。
+   *
+   * webview 的 read/write/edit 标题在这一端也会相对化（`messageUtils.ts` 的
+   * `toRelativePath(filePath, workdir)`），基准就是它；没有这个值，同一条 Read
+   * 在电脑上是 `src/foo.ts`、在手机上是整条绝对路径。首屏随 `setInitialState`
+   * 一起下发，换会话但不重画快照的路径（`sessionIdChange`）单独补一次。
+   * 取不到目录不发：页面回落到绝对路径，与这一页拿到这个值之前一样。
+   */
+  function postWorkdir() {
+    var dir = workdirOf(sessionId);
+    if (!dir) return;
+    post({ command: "updateWorkdir", workdir: dir });
+  }
+
   /** 会话列表里那条会话的工作目录（条目上叫 `workdir`，见 `toSessionMetadata`）。 */
   function joinWorkdir(relativePath) {
-    var entry = currentSession(sessions, sessionId);
-    var dir = entry && entry.workdir;
+    var dir = workdirOf(sessionId);
     if (!dir) return relativePath;
     var sep = dir.indexOf("\\") >= 0 ? "\\" : "/";
     return dir.replace(/[\\/]+$/, "") + sep + relativePath;

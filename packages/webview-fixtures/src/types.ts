@@ -447,6 +447,14 @@ export interface UpdatePermissionModeMessage extends HostToWebviewMessageBase {
 
 export interface UpdateWorkdirMessage extends HostToWebviewMessageBase {
   command: "updateWorkdir";
+  /**
+   * 这条会话的工作目录，webview 用它把 read/write/edit 标题里的绝对路径相对化
+   * （`utils/messageUtils.ts` 的 `toRelativePath`），也用它解析正文里点到的
+   * 相对路径。桌面端发「会动」的那个（`onWorkdirChange`，bash 里 `cd` 会漂）；
+   * 远控 Web 页发注册表的 `sessionCwd`（「不动」的那个，与 `@file` 拼接同一份
+   * 事实）—— 这一端只拿它相对化**绝对**路径做显示，`cd` 漂移不会指错文件。
+   * 缺省（老宿主 / 刚删光会话）：页面回落为原样显示绝对路径。
+   */
   workdir?: string;
 }
 
