@@ -2152,6 +2152,42 @@ describe("DesktopApp", () => {
           screen.getByTestId("desktop-worktree-controls"),
         ).toBeInTheDocument();
       });
+
+      it("shows the host's startup stage in that line while the first connect is what it waits for", () => {
+        // 首次连一台远程主机（或本机首次启动）：分支查询等的是连接本身，
+        // 于是宿主上报的阶段文案就落在这同一行（spec ui/stdio-transport.md 场景 9）。
+        renderDesktopApp();
+        openNewSession("/work/a", ["/work/a"]);
+
+        act(() => {
+          sendCommand("loadingStage", { text: "正在连接 prod…" });
+          vi.advanceTimersByTime(BRANCH_LIST_LOADING_DELAY_MS);
+        });
+        expect(
+          screen.getByTestId("desktop-branches-loading"),
+        ).toHaveTextContent("正在连接 prod…");
+
+        // 阶段推进就地换字（不重新等阈值、不新增行）。
+        act(() => {
+          sendCommand("loadingStage", {
+            text: "正在下载 Node.js 运行时（约 50 MB）…",
+          });
+        });
+        expect(
+          screen.getByTestId("desktop-branches-loading"),
+        ).toHaveTextContent("正在下载 Node.js 运行时（约 50 MB）…");
+
+        // 连接收口（宿主给 null）：这一行退回原本的分支加载文案，位置不变。
+        act(() => {
+          sendCommand("loadingStage", { text: null });
+        });
+        expect(
+          screen.getByTestId("desktop-branches-loading"),
+        ).toHaveTextContent("分支加载中");
+        expect(
+          screen.getByTestId("desktop-branches-loading"),
+        ).not.toHaveTextContent("正在下载 Node.js 运行时");
+      });
     });
 
     it("selects a branch from the dropdown", () => {

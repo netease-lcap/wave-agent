@@ -5405,11 +5405,16 @@ export const ChatApp: React.FC<ChatAppProps> = ({
                         onWorktreeChange={setWorktreeChecked}
                       />
                     ) : branchesLoading ? (
+                      // 分支查询在等的是「主机连上」（首次连远程主机要建隧道、推
+                      // 运行时与 CLI，几十秒），所以宿主报了阶段进度就照它说，别
+                      // 把这段等待说成 git 的事（spec ui/stdio-transport.md 场景 9）。
+                      // 位置、行数、高度都不变：文案换字而已；宿主收口时给 null，
+                      // 这一行退回「分支加载中…」。
                       <div
                         className="desktop-branches-loading"
                         data-testid="desktop-branches-loading"
                       >
-                        分支加载中…
+                        {state.loadingStage ?? "分支加载中…"}
                       </div>
                     ) : null}
                   </>
