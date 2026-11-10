@@ -93,7 +93,8 @@ export interface SessionIndexEntry {
   worktree?: {
     path: string;
     branch: string;
-    baseBranch: string;
+    /** Absent for a session recovered from disk (the base branch is unknown). */
+    baseBranch?: string;
     repoRoot: string;
     hookBased?: boolean;
   };

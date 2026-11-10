@@ -217,6 +217,17 @@ const h = vi.hoisted(() => ({
   // StdioAgent takes it from the reply; the mock has no JSON-RPC, so it reads
   // it from here instead.
   sessionRepoRootReply: undefined as string | undefined,
+  // The `worktree` record the CLI's initialize reply carries for the next
+  // spawned agent (present when the session root is a linked git worktree).
+  // The real StdioAgent takes it from the reply; the mock reads it from here.
+  sessionWorktreeReply: undefined as
+    | {
+        path: string;
+        branch?: string;
+        repoRoot: string;
+        hookBased?: boolean;
+      }
+    | undefined,
   // Multi-agent pool: each StdioAgent instance gets a unique sessionId so the
   // host's agents Map keys don't collapse (FR-031).
   agentCounter: 0,
@@ -379,6 +390,9 @@ vi.mock("wave-agent-sdk/host", async (importOriginal) => ({
     sessionCwd: string | undefined;
     workspaceRoot: string | undefined;
     sessionRepoRoot: string | undefined;
+    sessionWorktree:
+      | { path: string; branch?: string; repoRoot: string; hookBased?: boolean }
+      | undefined;
     latestTotalTokens = 0;
     /**
      * CLI 侧的显示流 —— `getMessages` 的取数源。宿主对消息内容零状态（spec
@@ -405,6 +419,14 @@ vi.mock("wave-agent-sdk/host", async (importOriginal) => ({
         sessionCwd?: string;
         workspaceRoot?: string;
         sessionRepoRoot?: string;
+        sessionWorktree?:
+          | {
+              path: string;
+              branch?: string;
+              repoRoot: string;
+              hookBased?: boolean;
+            }
+          | undefined;
         sessionId?: string;
       },
       params: { workdir?: string },
@@ -413,6 +435,7 @@ vi.mock("wave-agent-sdk/host", async (importOriginal) => ({
       this.sessionCwd = params.workdir;
       this.workspaceRoot = params.workdir;
       this.sessionRepoRoot = h.sessionRepoRootReply;
+      this.sessionWorktree = h.sessionWorktreeReply;
       this.sessionId = `sess-${++h.agentCounter}`;
       if (h.initializeGate) await h.initializeGate;
     });
@@ -948,6 +971,7 @@ beforeEach(() => {
   h.forgetRecentWorkdirError = null;
   h.initializeGate = null;
   h.sessionRepoRootReply = undefined;
+  h.sessionWorktreeReply = undefined;
   h.agentCounter = 0;
   h.closedHandlers.length = 0;
   h.pendingPermissionRequests = [];
@@ -6500,6 +6524,58 @@ describe("/resume disk sessions", () => {
       expect(sent("desktopSessionTree").at(-1)?.groups).toEqual([
         expect.objectContaining({ workdir: "/repo" }),
       ]);
+    });
+  });
+
+  it("records the worktree of a resumed session so deleting it removes that worktree", async () => {
+    const { host, store } = await readyHost();
+    const worktreePath = "/repo/.wave/worktrees/feat";
+    h.existingPaths.add(worktreePath);
+    h.sessionRepoRootReply = "/repo";
+    // The CLI derives the full record from the session root; a session this app
+    // never created has no index entry to take it from.
+    h.sessionWorktreeReply = {
+      path: worktreePath,
+      branch: "worktree-feat",
+      repoRoot: "/repo",
+      hookBased: false,
+    };
+
+    await host.handleWebviewMessage({
+      command: "desktopResumeSession",
+      sessionId: "cli-wt-2",
+      workdir: worktreePath,
+    });
+
+    await vi.waitFor(() => {
+      const entry = store
+        .getSessionIndex()
+        .find((e) => e.sessionId === "cli-wt-2");
+      expect(entry?.worktree).toEqual({
+        path: worktreePath,
+        branch: "worktree-feat",
+        repoRoot: "/repo",
+        hookBased: false,
+      });
+    });
+
+    // Deleting the conversation must take the checkout with it — same path as a
+    // session this app created itself.
+    await host.handleWebviewMessage({
+      command: "desktopDeleteSession",
+      sessionId: "cli-wt-2",
+    });
+
+    await vi.waitFor(() => {
+      expect(h.clientRequests).toContainEqual({
+        method: "removeWorktree",
+        params: {
+          path: worktreePath,
+          branch: "worktree-feat",
+          repoRoot: "/repo",
+          hookBased: false,
+        },
+      });
     });
   });
 

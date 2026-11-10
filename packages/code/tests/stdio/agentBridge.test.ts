@@ -297,7 +297,16 @@ test("initialize reports the repo root for a session created in a linked worktre
 
   const result = (await bridge.handleRequest("initialize", {
     workdir: worktreePath,
-  })) as { sessionCwd: string; repoRoot?: string };
+  })) as {
+    sessionCwd: string;
+    repoRoot?: string;
+    worktree?: {
+      path: string;
+      branch?: string;
+      repoRoot: string;
+      hookBased?: boolean;
+    };
+  };
 
   // A worktree conversation belongs to the repo it was forked from; the CLI
   // derives it from the session root so a host without an index entry (a
@@ -305,6 +314,38 @@ test("initialize reports the repo root for a session created in a linked worktre
   expect(deriveWorktreeInfo).toHaveBeenCalledWith(worktreePath);
   expect(result.sessionCwd).toBe(worktreePath);
   expect(result.repoRoot).toBe(REPO_ROOT);
+  // The full record travels too: that host has no creation record of its own,
+  // and deleting the conversation must still remove the checkout and the branch
+  // it was created on (not the worktree's current HEAD).
+  expect(result.worktree).toEqual({
+    path: worktreePath,
+    branch: "worktree-feat",
+    repoRoot: REPO_ROOT,
+    hookBased: false,
+  });
+});
+
+test("initialize omits the branch of a hook-based worktree", async () => {
+  const { bridge } = createBridge();
+  const worktreePath = path.join(REPO_ROOT, ".wave", "worktrees", "feat");
+  vi.mocked(deriveWorktreeInfo).mockReturnValueOnce({
+    path: worktreePath,
+    branch: "wave-worktree-feat",
+    repoRoot: REPO_ROOT,
+    hookBased: true,
+  });
+  vi.mocked(Agent.create).mockResolvedValue(
+    createMockAgent({ currentWorkdir: worktreePath }),
+  );
+
+  const result = (await bridge.handleRequest("initialize", {
+    workdir: worktreePath,
+  })) as { worktree?: { branch?: string; hookBased?: boolean } };
+
+  // Removal of a hook-based worktree belongs to the WorktreeRemove hook, so
+  // there is no branch for the host to delete — it must not be handed one.
+  expect(result.worktree?.hookBased).toBe(true);
+  expect(result.worktree?.branch).toBeUndefined();
 });
 
 test("initialize omits the repo root when the session root is not a worktree", async () => {

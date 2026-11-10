@@ -184,7 +184,12 @@ interface PendingConfirmation {
 interface WorktreeInfo {
   path: string;
   branch: string;
-  baseBranch: string;
+  /**
+   * Branch the worktree was created from. Absent for a session this app did not
+   * create (a `/resume` pick): the engine knows the tree and its branch, not the
+   * base, so the change check falls back to the repo's default branch.
+   */
+  baseBranch?: string;
   repoRoot: string;
   hookBased?: boolean;
 }
@@ -4015,9 +4020,19 @@ export class DesktopHost {
       .getSessionIndex()
       .find((e) => e.sessionId === sessionId);
     // An agent without worktree context must never clobber the persisted
-    // worktree info of an existing entry.
+    // worktree info of an existing entry. `sessionWorktree` is the last resort
+    // for a session this app never created — a `/resume` pick off disk, which
+    // has no entry until now: without it, deleting that conversation would
+    // leave its worktree and branch on disk (and its confirmation would not
+    // mention them). A hook-based tree names no branch (its removal belongs to
+    // the `WorktreeRemove` hook), so it is recorded as an empty one.
+    const engineWorktree = agent.sessionWorktree;
     const worktreeInfo =
-      this.agentWorktreeInfo.get(agent) ?? existing?.worktree;
+      this.agentWorktreeInfo.get(agent) ??
+      existing?.worktree ??
+      (engineWorktree
+        ? { ...engineWorktree, branch: engineWorktree.branch ?? "" }
+        : undefined);
     // Worktree sessions group under the original repo root (workdir) while the
     // agent's actual working directory (cwd) stays the worktree path (FR-024).
     // `sessionRepoRoot` covers the sessions this app has no worktree record for
