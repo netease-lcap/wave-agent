@@ -291,7 +291,13 @@
     var(--vscode-panel-background)
   );
   color: var(--vscode-foreground);
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+  /* 浮层阴影走 token（设计师 2026-11-10：「阴影用变量，可以用浅一些的」）。
+     桌面端取 `--cc-shadow-popover` —— 契约 design-system.md:118 给它的角色就是
+     「Menus, popovers and desktop Tooltips」，也是仓库里唯一为桌面端定义过的浅档
+     浮层阴影（浅色 0 0 12px 12%；原来这里是 0 2px 10px 35%，明显压重）。
+     插件端这套 `--cc-*` token 不存在（只有 desktop 的 host-desktop.css 定义），
+     回落到原来那条字面值 ⇒ IDE / 插件端逐像素不变。 */
+  box-shadow: var(--cc-shadow-popover, 0 2px 10px rgba(0, 0, 0, 0.35));
   cursor: pointer;
   pointer-events: none;
 }
@@ -314,4 +320,43 @@
 
 .jump-to-bottom-button .codicon {
   font-size: 16px;
+}
+
+/* 桌面端那颗下箭头（`ScrollToBottomArrowIcon`，几何照 composer 发送箭头）。
+   静止色沿用原来 codicon 拿到的 `--vscode-icon-foreground`，观感不变；悬停与
+   按下两档在下方桌面块里跟按钮正文一起提到一级字色。 */
+.jump-to-bottom-icon {
+  display: block;
+  color: var(--vscode-icon-foreground);
+}
+
+/* ── 「回到最新」按钮：桌面端按「线形按钮」的交互口径（设计师 2026-11-09 点
+   `button.jump-to-bottom-button`：「现在 hover 是变透明，希望参考线形按钮的交互
+   样式来处理」）。改前 hover 取 `--vscode-toolbar-hoverBackground` =
+   rgba(0, 0, 0, .12)（深色 rgba(90, 93, 94, .31)）—— 那是一层带 alpha 的覆盖色，
+   它把按钮原本不透明的面换掉，下面那条 56px 渐隐与正文就透上来，观感即「变透明」。
+   契约 common-components.md:19（Secondary outlined：hover fill-hover / pressed
+   fill-pressed / keep text-primary）：这里换成实心面，按下再深一档；字形另写一条
+   是因为 globals.css:64-72 的 `.codicon { color: var(--vscode-icon-foreground) }`
+   是直接声明，会盖掉从按钮继承下来的颜色，不显式指到字形就提不亮。几何（34×34、
+   circle、1px 边框、投影）、显隐逻辑、焦点环一律不动；插件端不带 data-host，仍是
+   上面那套原样规则。 */
+[data-host="desktop"] .jump-to-bottom-button:hover {
+  background-color: var(--cc-fill-hover);
+  color: var(--cc-text-primary);
+}
+
+[data-host="desktop"] .jump-to-bottom-button:hover .codicon,
+[data-host="desktop"] .jump-to-bottom-button:hover .jump-to-bottom-icon {
+  color: var(--cc-text-primary);
+}
+
+[data-host="desktop"] .jump-to-bottom-button:active {
+  background-color: var(--cc-fill-pressed);
+  color: var(--cc-text-primary);
+}
+
+[data-host="desktop"] .jump-to-bottom-button:active .codicon,
+[data-host="desktop"] .jump-to-bottom-button:active .jump-to-bottom-icon {
+  color: var(--cc-text-primary);
 }

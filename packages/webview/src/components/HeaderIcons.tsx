@@ -276,6 +276,42 @@ export const SendArrowIcon: React.FC<IconProps> = ({
   </svg>
 );
 
+// 「回到最新」圆钮的下箭头 —— 与上面 composer 发送箭头同一套几何（设计师
+// 2026-11-10 点 `span.codicon.codicon-arrow-down`：「图标的大小粗细可以参考」
+// `svg.ai-send-icon`）。盒 16×16 / viewBox 18 / stroke 1.5 —— 渲染笔画
+// 1.5 × 16/18 = 1.333，与发送箭头完全同档 —— 圆头圆角；形状就是发送箭头上下
+// 翻转（chevron `M3.75 9L9 14.25L14.25 9` + 杆 `M9 3.75V14.25`）。
+// 换掉原来那颗 codicon 字形的原因：字形墨迹实测 10.5 × 12、笔画约 1.5，比发送
+// 箭头（墨迹 10 × 10、笔画 1.333）略大略粗，而且字体字形没法单独调笔画。
+// 只在桌面端用（见 MessageList.tsx），插件端仍是 codicon。
+export const ScrollToBottomArrowIcon: React.FC<IconProps> = ({
+  className = "jump-to-bottom-icon",
+}) => (
+  <svg
+    width={16}
+    height={16}
+    viewBox="0 0 18 18"
+    fill="none"
+    className={className}
+    aria-hidden="true"
+  >
+    <path
+      d="M3.75 9L9 14.25L14.25 9"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M9 3.75V14.25"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
+
 // 模型选择器的「图标档」图标（1023 评论：「模型可以用类似大脑那种图标」）。
 // 形状取 Lucide `brain`（24 网格、原生 stroke 2），按 icon.md 的笔画补偿法塞进
 // 16px 盒：`viewBox 0 0 16 16` + `scale(2/3)` + `strokeWidth 2.1`

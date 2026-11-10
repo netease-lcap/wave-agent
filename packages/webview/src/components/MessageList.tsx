@@ -10,6 +10,8 @@ import React, {
 } from "react";
 import { Message } from "./Message";
 import { DelegatedTooltip } from "./DelegatedTooltip";
+import { ScrollToBottomArrowIcon } from "./HeaderIcons";
+import { isDesktopHost } from "../utils/platform";
 import { TranscriptOutline } from "./TranscriptOutline";
 import {
   OUTLINE_QUESTION_LIMIT,
@@ -1181,7 +1183,14 @@ export const MessageList = forwardRef<
             tabIndex={showJumpToBottom ? 0 : -1}
             onClick={jumpToBottom}
           >
-            <span className="codicon codicon-arrow-down" aria-hidden="true" />
+            {/* 桌面端用与 composer 发送箭头同几何的下箭头（设计师 2026-11-10：
+                「图标的大小粗细可以参考」`svg.ai-send-icon`）；插件端保留原
+                codicon 字形，与本轮其它改动一样不动宿主端。 */}
+            {isDesktopHost() ? (
+              <ScrollToBottomArrowIcon />
+            ) : (
+              <span className="codicon codicon-arrow-down" aria-hidden="true" />
+            )}
           </button>
         </div>
       </div>
