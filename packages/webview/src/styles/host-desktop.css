@@ -6953,3 +6953,45 @@
   width: 44px;
   height: 44px;
 }
+
+/* ═══ 1109 评论：图标块试作「浅蓝底（半透明）+ 蓝图标」 ═══
+   设计师点 `span.message-file-card-icon`：「可以用浅蓝色背景，带透明度那种，加蓝色
+   图标，看看效果」。
+   落法：底色 = 链接蓝按透明度叠在卡片面上（不动 base 的 `--vscode-list-hoverBackground`
+   绑定，只用桌面端覆盖），图标 = 同一个蓝 ⇒ 底与图标同源、换主题自动跟随。
+   浅色取 `--cc-text-link` #2F5EDB 的 12%（合成 #E8EDFA）；深色同一 token（#4DAAFC）
+   取 18%（合成 #223343，深色面亮度低，同透明度会看不见，故高一档）。
+   比例用局部变量 `--artifact-icon-tint`，调深调浅只改这一个数。 */
+[data-host="desktop"] .message-file-card-icon {
+  --artifact-icon-tint: 12%;
+  background: color-mix(
+    in srgb,
+    var(--cc-text-link) var(--artifact-icon-tint),
+    transparent
+  );
+  color: var(--cc-text-link);
+}
+
+[data-host="desktop"][data-theme="dark"] .message-file-card-icon {
+  --artifact-icon-tint: 18%;
+}
+
+/* ═══ 1109 评论：产物卡圆角 10 → 12，与对话流「带边框块」一族对齐 ═══
+   设计师两条评论：点 `div.message-file-card.artifact-card`「圆角」+ 点同一页
+   `pre`（代码块）「和这里保持一起」。
+   实测同一页这一族全是 12px：`.markdown-content pre` / `.write-preview-box` /
+   `.mermaid-renderer` / `.markdown-content table` = 12，产物卡还是 base 的 10
+   （Message.css:1270）—— 是这一族里唯一的例外，所以对齐到 12。
+   按钮不跟：它按按钮契约 compact 档 r8（common-components.md §Buttons），
+   与卡片圆角是两套语义。 */
+[data-host="desktop"] .message-file-card {
+  border-radius: 12px;
+}
+
+/* 图标块圆角一起加大（她：「这里圆角也加大一些 一起协调一下」）：
+   8px 是在 28 的块上定的比例（28.6%）；块长到 44 后同一档只剩 18.2%，块越大
+   越显得方。取 12 既与卡片同档，又把比例拉回 27.3% ≈ 原来的观感。 */
+[data-host="desktop"] .message-file-card-icon {
+  border-radius: 12px;
+}
+
