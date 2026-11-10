@@ -1,13 +1,12 @@
 import {
   renderChatApp,
   screen,
-  waitFor,
   act,
   sendCommand,
   fireInput,
   fireEvent,
 } from "./test-utils";
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
 /**
  * Helper: type text into the contenteditable message input and set up
@@ -37,7 +36,7 @@ async function typeInInput(text: string) {
 async function waitForFileSuggestionRequest(
   vscode: ReturnType<typeof renderChatApp>["vscode"],
 ): Promise<string> {
-  await waitFor(
+  await vi.waitFor(
     () => {
       expect(vscode.postMessage).toHaveBeenCalledWith(
         expect.objectContaining({ command: "requestFileSuggestions" }),
@@ -54,6 +53,24 @@ async function waitForFileSuggestionRequest(
 }
 
 describe("File Mention Feature (@)", () => {
+  // The @ dropdown request is debounced (200ms) after the selection change, so
+  // every case's real subject is "eventually the suggestion request goes out".
+  // Freeze the clock and let Vitest drive it (`nextTimerAsync` chains the
+  // debounce timer to the state update back to back). Only the timer APIs are
+  // faked: the tree is a real ChatApp under real Chromium, so rAF and layout
+  // must keep running. `vi.waitFor` (not Testing Library's) advances a fake
+  // clock — RTL's only does that when a `jest` global exists.
+  beforeEach(() => {
+    vi.useFakeTimers({
+      toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval"],
+    });
+    vi.setTimerTickMode("nextTimerAsync");
+  });
+  afterEach(async () => {
+    await vi.runOnlyPendingTimersAsync();
+    vi.useRealTimers();
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -102,7 +119,7 @@ describe("File Mention Feature (@)", () => {
     });
 
     // Wait for suggestions to render
-    await waitFor(() => {
+    await vi.waitFor(() => {
       const dropdown = document.querySelector(".file-suggestion-dropdown");
       expect(dropdown).toBeInTheDocument();
     });
@@ -150,7 +167,7 @@ describe("File Mention Feature (@)", () => {
     });
 
     // Wait for suggestion to render
-    await waitFor(() => {
+    await vi.waitFor(() => {
       const items = document.querySelectorAll(".suggestion-item");
       expect(items.length).toBe(1);
     });
@@ -181,7 +198,7 @@ describe("File Mention Feature (@)", () => {
     // requestId actually left the webview (the helper's .pop() would otherwise
     // keep returning the first call).
     let freshReqId = staleReqId;
-    await waitFor(() => {
+    await vi.waitFor(() => {
       const calls = (vscode.postMessage.mock.calls as unknown[][]).map(
         (c) => c[0] as { command: string; requestId?: string },
       );
@@ -234,7 +251,7 @@ describe("File Mention Feature (@)", () => {
         requestId: freshReqId,
       });
     });
-    await waitFor(() => {
+    await vi.waitFor(() => {
       expect(
         document.querySelector(".file-suggestion-dropdown"),
       ).toBeInTheDocument();
@@ -270,7 +287,7 @@ describe("File Mention Feature (@)", () => {
       });
     });
 
-    await waitFor(() => {
+    await vi.waitFor(() => {
       expect(document.querySelectorAll(".suggestion-item").length).toBe(1);
     });
 
@@ -294,7 +311,7 @@ describe("File Mention Feature (@)", () => {
 
     // The tag must be inserted on the first click (previously the input stayed
     // "@src" because the selection was no longer inside the input's text node).
-    await waitFor(() => {
+    await vi.waitFor(() => {
       expect(input.querySelector(".context-tag")).toBeInTheDocument();
     });
     const tag = input.querySelector(".context-tag")!;
@@ -339,7 +356,7 @@ describe("File Mention Feature (@)", () => {
       });
     });
 
-    await waitFor(() => {
+    await vi.waitFor(() => {
       expect(document.querySelectorAll(".suggestion-item").length).toBe(1);
     });
 
@@ -363,7 +380,7 @@ describe("File Mention Feature (@)", () => {
       fireEvent.click(document.querySelector(".suggestion-item")!);
     });
 
-    await waitFor(() => {
+    await vi.waitFor(() => {
       expect(input.querySelector(".context-tag")).toBeInTheDocument();
     });
 

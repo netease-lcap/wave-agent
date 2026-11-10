@@ -1,13 +1,12 @@
 import {
   renderChatApp,
   screen,
-  waitFor,
   fireEvent,
   act,
   sendCommand,
   fireInput,
 } from "./test-utils";
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { parseMentions } from "../../src/utils/messageUtils";
 import { renderDraftContent } from "../../src/utils/inputDraft";
 
@@ -41,7 +40,7 @@ async function typeInInput(text: string) {
 async function waitForFileSuggestionRequest(
   vscode: ReturnType<typeof renderChatApp>["vscode"],
 ): Promise<string> {
-  await waitFor(
+  await vi.waitFor(
     () => {
       expect(vscode.postMessage).toHaveBeenCalledWith(
         expect.objectContaining({ command: "requestFileSuggestions" }),
@@ -101,6 +100,24 @@ function selectSuggestionByLabel(label: string) {
 }
 
 describe("Agent Mention (@子代理)", () => {
+  // The @ dropdown request is debounced (200ms) after the selection change, so
+  // every case's real subject is "eventually the suggestion request goes out".
+  // Freeze the clock and let Vitest drive it (`nextTimerAsync` chains the
+  // debounce timer to the state update back to back). Only the timer APIs are
+  // faked: the tree is a real ChatApp under real Chromium, so rAF and layout
+  // must keep running. `vi.waitFor` (not Testing Library's) advances a fake
+  // clock — RTL's only does that when a `jest` global exists.
+  beforeEach(() => {
+    vi.useFakeTimers({
+      toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval"],
+    });
+    vi.setTimerTickMode("nextTimerAsync");
+  });
+  afterEach(async () => {
+    await vi.runOnlyPendingTimersAsync();
+    vi.useRealTimers();
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -118,7 +135,7 @@ describe("Agent Mention (@子代理)", () => {
       });
     });
 
-    await waitFor(() => {
+    await vi.waitFor(() => {
       expect(suggestionItems().length).toBeGreaterThanOrEqual(2);
     });
 
@@ -150,7 +167,7 @@ describe("Agent Mention (@子代理)", () => {
       });
     });
 
-    await waitFor(() => {
+    await vi.waitFor(() => {
       const names = suggestionItems()
         .map((item) => item.getAttribute("data-agent-name"))
         .filter(Boolean);
@@ -170,12 +187,12 @@ describe("Agent Mention (@子代理)", () => {
       });
     });
 
-    await waitFor(() => {
+    await vi.waitFor(() => {
       expect(suggestionItems().length).toBeGreaterThan(0);
     });
     selectSuggestionByLabel("Explore");
 
-    await waitFor(() => {
+    await vi.waitFor(() => {
       expect(
         document.querySelector(
           '[data-testid="message-input"] [data-agent-name="Explore"]',

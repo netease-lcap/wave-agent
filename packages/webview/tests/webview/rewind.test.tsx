@@ -6,6 +6,7 @@ import {
   fireEvent,
   act,
   sendCommand,
+  transcriptText,
 } from "./test-utils";
 import { MockDataGenerator } from "../fixtures/mockData";
 import type { Message } from "wave-agent-sdk";
@@ -31,7 +32,7 @@ describe("Rewind Feature", () => {
 
     // Verify messages are displayed
     await waitFor(() => {
-      expect(screen.getByText("Message 1")).toBeInTheDocument();
+      expect(transcriptText()).toContain("Message 1");
     });
 
     // Clear message log to track new commands
@@ -92,7 +93,7 @@ describe("Rewind Feature", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("Message 1")).toBeInTheDocument();
+      expect(transcriptText()).toContain("Message 1");
     });
 
     vscode.postMessage.mockClear();
@@ -134,7 +135,7 @@ describe("Rewind Feature", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("Message 1")).toBeInTheDocument();
+      expect(transcriptText()).toContain("Message 1");
     });
 
     // Click rewind on the second user message (Message 2)
@@ -184,14 +185,13 @@ describe("Rewind Feature", () => {
       });
     });
 
-    // Verify Message 2 and Response 2 are removed from the messages list
-    // (queryByText must be scoped to messages-container because the input box
-    //  now contains 'Message 2' via inputContent)
-    const messagesContainer = document.querySelector(".messages-container")!;
+    // Verify Message 2 and Response 2 are removed from the transcript
+    // (scoped to the transcript: the input box now contains 'Message 2' via
+    //  inputContent, and the sticky header may pin a second copy)
     await waitFor(() => {
-      expect(screen.getByText("Message 1")).toBeInTheDocument();
-      expect(messagesContainer.textContent).not.toContain("Message 2");
-      expect(messagesContainer.textContent).not.toContain("Response 2");
+      expect(transcriptText()).toContain("Message 1");
+      expect(transcriptText()).not.toContain("Message 2");
+      expect(transcriptText()).not.toContain("Response 2");
     });
 
     // Verify input box has 'Message 2'
@@ -212,7 +212,7 @@ describe("Rewind Feature", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("User message")).toBeInTheDocument();
+      expect(transcriptText()).toContain("User message");
     });
 
     // Rewind buttons should only appear on user messages
@@ -255,7 +255,7 @@ describe("Rewind Feature", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("User message")).toBeInTheDocument();
+      expect(transcriptText()).toContain("User message");
     });
 
     // Only the real user message has a rewind button; the background
@@ -287,7 +287,7 @@ describe("Rewind Feature", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("User message")).toBeInTheDocument();
+      expect(transcriptText()).toContain("User message");
     });
 
     // Hook-injected messages are system-generated and not rewind checkpoints
@@ -317,7 +317,9 @@ describe("Rewind Feature", () => {
         sendCommand("updateMessages", { messages });
       });
       await waitFor(() => {
-        expect(screen.getByText("Message 1")).toBeInTheDocument();
+        expect(
+          document.querySelectorAll('[data-testid="rewind-to-message"]').length,
+        ).toBeGreaterThan(index);
       });
       const buttons = document.querySelectorAll(
         '[data-testid="rewind-to-message"]',
@@ -347,11 +349,10 @@ describe("Rewind Feature", () => {
         });
       });
 
-      const container = document.querySelector(".messages-container")!;
       await waitFor(() => {
-        expect(container.textContent).toContain("Message 1");
-        expect(container.textContent).not.toContain("Message 2");
-        expect(container.textContent).not.toContain("Response 2");
+        expect(transcriptText()).toContain("Message 1");
+        expect(transcriptText()).not.toContain("Message 2");
+        expect(transcriptText()).not.toContain("Response 2");
       });
     });
 
@@ -369,8 +370,8 @@ describe("Rewind Feature", () => {
       });
 
       // Nothing was truncated on disk, so the visible list must stay whole.
-      expect(screen.getByText("Message 2")).toBeInTheDocument();
-      expect(screen.getByText("Response 2")).toBeInTheDocument();
+      expect(transcriptText()).toContain("Message 2");
+      expect(transcriptText()).toContain("Response 2");
     });
 
     it("puts the rewound message back into the input when the host hands it back", async () => {
@@ -451,7 +452,7 @@ describe("Rewind Feature", () => {
         });
       });
 
-      expect(screen.getByText("Message 2")).toBeInTheDocument();
+      expect(transcriptText()).toContain("Message 2");
     });
 
     it("keeps the list when a snapshot arrives with keepMessages", async () => {
@@ -483,9 +484,9 @@ describe("Rewind Feature", () => {
       });
 
       await waitFor(() => {
-        expect(screen.getByText("Message 1")).toBeInTheDocument();
+        expect(transcriptText()).toContain("Message 1");
       });
-      expect(screen.queryByText("Message 2")).not.toBeInTheDocument();
+      expect(transcriptText()).not.toContain("Message 2");
     });
   });
 });

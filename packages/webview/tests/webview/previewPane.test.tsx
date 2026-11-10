@@ -593,6 +593,28 @@ describe("PreviewPane", () => {
   });
 
   describe("overflow auto-fit (spec scenario 7)", () => {
+    // The fit pass is deliberately slow in production: a 150ms effect timer, a
+    // 250ms "let the guest layout settle" delay, then up to 4 rounds of 180ms.
+    // These cases assert the *outcome* of that pass, so on real timers each one
+    // spends 400-600ms sleeping through timers nobody is testing.
+    //
+    // Freeze the clock and let Vitest drive it: `nextTimerAsync` fires chained
+    // timers back to back, which is the shape of a pass that settles
+    // (vitest.dev/guide/mocking/timers#tick-modes). Note this only works
+    // because the cases below assert outcomes — the number of measurement calls
+    // is race-dependent (the effect timer and `did-finish-load` can both start
+    // a pass), so it is deliberately not asserted anywhere.
+    beforeEach(() => {
+      vi.useFakeTimers();
+      vi.setTimerTickMode("nextTimerAsync");
+    });
+    afterEach(async () => {
+      // Testing Library's rule: drain what is still pending before handing the
+      // clock back, or a straggler from this case fires inside the next one.
+      await vi.runOnlyPendingTimersAsync();
+      vi.useRealTimers();
+    });
+
     it("shrinks the guest when the page is wider than the panel", async () => {
       const { wv } = renderPane();
       pinPaneWidth()(420);
@@ -605,9 +627,9 @@ describe("PreviewPane", () => {
       await vi.waitFor(() =>
         expect(wv.setZoomFactor).toHaveBeenCalledWith(0.35),
       );
-      await vi.waitFor(() =>
-        expect(wv.executeJavaScript).toHaveBeenCalledTimes(2),
-      );
+      // Converged: exactly one zoom was ever set. (How many times the fit pass
+      // measured on the way there is race-dependent — two passes can overlap —
+      // so the number of `executeJavaScript` calls is not part of the contract.)
       expect(wv.setZoomFactor.mock.calls).toEqual([[0.35]]);
     });
 
@@ -617,9 +639,7 @@ describe("PreviewPane", () => {
       fireDomReady(wv);
       fireDidFinishLoad(wv);
 
-      await vi.waitFor(() =>
-        expect(wv.executeJavaScript).toHaveBeenCalledTimes(1),
-      );
+      await vi.waitFor(() => expect(wv.executeJavaScript).toHaveBeenCalled());
       expect(wv.setZoomFactor).not.toHaveBeenCalled();
     });
 
@@ -678,9 +698,7 @@ describe("PreviewPane", () => {
       await vi.waitFor(() =>
         expect(wv.setZoomFactor).toHaveBeenCalledWith(0.3),
       );
-      await vi.waitFor(() =>
-        expect(wv.executeJavaScript).toHaveBeenCalledTimes(2),
-      );
+      // Clamped to the floor and converged there: one zoom, then no more.
       expect(wv.setZoomFactor.mock.calls).toEqual([[0.3]]);
     });
 

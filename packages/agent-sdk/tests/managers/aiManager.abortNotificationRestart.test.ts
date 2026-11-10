@@ -149,6 +149,18 @@ function buildHarness(loadingCalls: boolean[]) {
   return { aiManager, messageQueue, messageManager };
 }
 
+/**
+ * 冲刷一轮事件循环。
+ *
+ * 「abort 后不许重启」是 fire-and-forget 的否定性契约：`sendPromise` resolve
+ * 时，同一批逻辑里排下的续跑 microtask 可能还没轮到，`vi.waitFor` 首检即满足
+ * 就等于什么都没证明。先让它有机会发生，再看次数是否仍为 1。
+ */
+const settleTurnLoop = async () => {
+  await new Promise((resolve) => setImmediate(resolve));
+  await new Promise((resolve) => setImmediate(resolve));
+};
+
 describe("AIManager abort with queued notification", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -185,6 +197,7 @@ describe("AIManager abort with queued notification", () => {
     // notification in and restart itself (that would resurrect the turn the
     // user just interrupted and spawn a second, uninterruptible agent loop).
     await sendPromise;
+    await settleTurnLoop();
     await vi.waitFor(() => expect(mockCallAgent).toHaveBeenCalledTimes(1));
 
     // The notification stays queued for the next user-initiated turn.

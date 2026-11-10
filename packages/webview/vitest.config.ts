@@ -1,4 +1,5 @@
 import { createRequire } from "node:module";
+import { availableParallelism } from "node:os";
 import { playwright } from "@vitest/browser-playwright";
 import { defineConfig } from "vitest/config";
 
@@ -48,6 +49,26 @@ const JSDOM_SPECS = [
   "tests/webview/errorBoundary.test.tsx",
 ];
 
+/**
+ * 并发上限，只作用于 `browser` 项目。
+ *
+ * 在 browser mode 里 `maxWorkers` 不是"起几个进程"，而是**同时打开的 tab 数**
+ * ——我们只有一个 chromium 实例，所以它就是"多少个页面同时连这一个 Vite dev
+ * server"（每个页面持有一份完整模块图 + DOM + 组件树）。
+ *
+ * 16 核实测（202 个文件的全量）：默认的 15 每次都有文件抛
+ * `Failed to run the test … Cannot connect to the server in 60 seconds`；
+ * 12 / 10 同样必挂；**8 三次里挂一次**；6 与 4 稳定在 25s 左右。
+ * 所以拐点在 8~10，取 6 留出余量。
+ *
+ * 小机器（CI 的 4 核 runner）沿用 vitest 自己的默认 `availableParallelism - 1`
+ * = 3：那边的瓶颈是核数而不是页面数，把 PR 门禁调得更激进没有收益。
+ */
+const BROWSER_MAX_WORKERS = Math.min(
+  6,
+  Math.max(1, availableParallelism() - 1),
+);
+
 export default defineConfig({
   test: {
     globals: true,
@@ -86,6 +107,13 @@ export default defineConfig({
         test: {
           name: "browser",
           include: ["tests/**/*.test.ts", "tests/**/*.test.tsx"],
+          maxWorkers: BROWSER_MAX_WORKERS,
+          // Vitest refuses to schedule projects with different `maxWorkers`
+          // in the same group ("Provide unique 'sequence.groupOrder' for
+          // them"), so the browser project runs as its own group. node/jsdom
+          // keep the default 0 and therefore keep vitest's own default
+          // concurrency.
+          sequence: { groupOrder: 1 },
           // `JSDOM_SPECS` already covers every `tests/remote/**` spec (node + jsdom).
           exclude: [...JSDOM_SPECS, "node_modules"],
           setupFiles: ["tests/setup.browser.ts"],

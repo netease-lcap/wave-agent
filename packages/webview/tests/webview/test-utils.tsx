@@ -10,6 +10,10 @@ import {
 import userEvent from "@testing-library/user-event";
 import type { VsCodeApi } from "../../src/types";
 import { ChatApp } from "../../src/components/ChatApp";
+import {
+  INPUT_DRAFT_DEBOUNCE_MS,
+  SELECTION_CHANGE_DEBOUNCE_MS,
+} from "../../src/components/MessageInput";
 import { fixtures, type HostToWebviewMessage } from "wave-webview-fixtures";
 
 /**
@@ -357,14 +361,31 @@ export async function fireInput(
 ) {
   await act(async () => {
     fireEvent.input(element, options);
-    // Try to advance timers if fake timers are enabled (flushes 150ms debounce in handleSelectionChange)
+    // Advance past the input debounces when fake timers are on: the selection
+    // change (which drives the @ / slash dropdowns) is 200ms and the draft
+    // report is 150ms, so the longer one is what makes a dropdown request
+    // actually fire. On real timers this throws and is skipped.
     try {
-      await vi.advanceTimersByTimeAsync(150);
+      await vi.advanceTimersByTimeAsync(
+        Math.max(SELECTION_CHANGE_DEBOUNCE_MS, INPUT_DRAFT_DEBOUNCE_MS),
+      );
     } catch {
       // Fake timers not enabled, skip
     }
   });
 }
+
+/**
+ * Text of the transcript body, for "the list does / does not contain X" checks.
+ *
+ * The sticky header re-renders the currently pinned user message into
+ * `.sticky-user-wrapper` — a sibling of the body container `.virtual-canvas`
+ * with byte-identical text. So a page-wide `getByText(<user message>)` matches
+ * one node or two depending on the scroll position, and the assertion flips
+ * with layout timing. Scope transcript assertions to the body instead.
+ */
+export const transcriptText = () =>
+  document.querySelector(".virtual-canvas")?.textContent ?? "";
 
 // Re-export the shared fixture factory so tests can build contract-anchored
 // host payloads (e.g. subagentConfigurationsResponse).

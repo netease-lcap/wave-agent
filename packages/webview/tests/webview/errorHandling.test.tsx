@@ -7,6 +7,7 @@ import {
   act,
   sendCommand,
   setInputText,
+  transcriptText,
 } from "./test-utils";
 import { MockDataGenerator } from "../fixtures/mockData";
 import type { Message } from "wave-agent-sdk";
@@ -56,7 +57,7 @@ describe("Error Message Display", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("Hello")).toBeInTheDocument();
+      expect(transcriptText()).toContain("Hello");
     });
 
     // Now show an error
@@ -86,7 +87,7 @@ describe("Error Message Display", () => {
         screen.getByText("An error occurred while processing your request"),
       ).toBeInTheDocument();
     });
-    expect(screen.getByText("Hello")).toBeInTheDocument();
+    expect(transcriptText()).toContain("Hello");
     expect(screen.getByText("Hi there!")).toBeInTheDocument();
   });
 

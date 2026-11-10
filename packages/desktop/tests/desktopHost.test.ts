@@ -756,6 +756,11 @@ import {
   REMOTE_FILE_MAX_BYTES,
   RemoteHostUnreachableError,
 } from "../src/main/remoteCli";
+import {
+  backoffForFailure,
+  IDLE_BACKOFF_MS,
+  PRESENCE_POLL_MS,
+} from "../src/main/sshReconnect";
 
 // ---------------------------------------------------------------------------
 // helpers
@@ -10375,6 +10380,19 @@ function treeSessions(tree: Record<string, unknown> | undefined) {
 }
 
 describe("SSH remote hosts", () => {
+  /**
+   * A negative assertion ("it never dials again") is only worth something if
+   * the window outlasts the tick the loop *would* have scheduled. Every delay
+   * in the reconnect sequence is scaled by `reconnectTimeScale`, so derive the
+   * window from the constant that produces that tick. A fixed 300ms stops
+   * covering it the day a constant grows — the test then stays green without
+   * observing anything.
+   */
+  const sleepForTick = (ms: number) =>
+    new Promise((resolve) =>
+      setTimeout(resolve, ms * DesktopHost.reconnectTimeScale + 100),
+    );
+
   it("desktopSelectHost with an unknown host is rejected with a toast", async () => {
     const { host, sent } = await readyHost();
     const statesBefore = sent("desktopWorkdirState").length;
@@ -11239,7 +11257,8 @@ describe("SSH remote hosts", () => {
       () => expect(vi.mocked(connectRemoteDaemon)).toHaveBeenCalledTimes(4),
       { timeout: 3000 },
     );
-    await new Promise((resolve) => setTimeout(resolve, 300));
+    // The last idle step is the widest one the loop could still take.
+    await sleepForTick(Math.max(...IDLE_BACKOFF_MS));
     expect(vi.mocked(connectRemoteDaemon)).toHaveBeenCalledTimes(4);
   });
 
@@ -11291,7 +11310,9 @@ describe("SSH remote hosts", () => {
     powerMonitor.__setIdleState("locked");
     h.closedHandlers[0]();
 
-    await new Promise((resolve) => setTimeout(resolve, 300));
+    // One full presence poll: if the park were broken, the dial happens
+    // within this window instead of never.
+    await sleepForTick(PRESENCE_POLL_MS);
     expect(vi.mocked(connectRemoteDaemon)).toHaveBeenCalledTimes(1);
 
     // Somebody is back — the sequence dials on its own.
@@ -11327,7 +11348,8 @@ describe("SSH remote hosts", () => {
       const rows = sent("appendMessage").map((m) => JSON.stringify(m));
       expect(rows.some((r) => r.includes("无法自动恢复"))).toBe(true);
     });
-    await new Promise((resolve) => setTimeout(resolve, 300));
+    // A retry here would be the next failure backoff after the refused one.
+    await sleepForTick(backoffForFailure(1));
     // Initial connect + the one refused attempt: no further dialing.
     expect(vi.mocked(connectRemoteDaemon)).toHaveBeenCalledTimes(2);
   });

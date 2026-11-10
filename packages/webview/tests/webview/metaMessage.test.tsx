@@ -1,5 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { renderChatApp, screen, act, sendCommand } from "./test-utils";
+import {
+  renderChatApp,
+  screen,
+  act,
+  sendCommand,
+  transcriptText,
+} from "./test-utils";
 
 describe("Meta Message Hiding", () => {
   beforeEach(() => {
@@ -38,7 +44,7 @@ describe("Meta Message Hiding", () => {
     });
 
     // Regular user message should be visible
-    expect(screen.getByText("Hello")).toBeInTheDocument();
+    expect(transcriptText()).toContain("Hello");
     // Assistant message should be visible
     expect(screen.getByText("Hi there")).toBeInTheDocument();
     // Meta message should NOT be visible
@@ -71,7 +77,7 @@ describe("Meta Message Hiding", () => {
       });
     });
 
-    expect(screen.getByText("Visible message 1")).toBeInTheDocument();
+    expect(transcriptText()).toContain("Visible message 1");
     expect(screen.getByText("Visible message 2")).toBeInTheDocument();
   });
 
@@ -114,7 +120,7 @@ describe("Meta Message Hiding", () => {
     });
 
     expect(screen.queryByText("Meta 1")).not.toBeInTheDocument();
-    expect(screen.getByText("Real message")).toBeInTheDocument();
+    expect(transcriptText()).toContain("Real message");
     expect(screen.queryByText("Meta 2")).not.toBeInTheDocument();
     expect(screen.getByText("Response")).toBeInTheDocument();
   });
@@ -138,6 +144,6 @@ describe("Meta Message Hiding", () => {
       });
     });
 
-    expect(screen.getByText("Explicit non-meta")).toBeInTheDocument();
+    expect(transcriptText()).toContain("Explicit non-meta");
   });
 });

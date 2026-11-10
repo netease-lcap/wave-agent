@@ -65,6 +65,7 @@ Always use `pnpm` as the package manager.
   - **Run a single test file**: `pnpm -F <package-name> test <path/to/test>` (e.g., `pnpm -F wave-agent-sdk test tests/tools/bashTool.test.ts`)
   - **Caution**: for `agent-sdk` and `code`, `pnpm test` includes `tests/integration/` + `*.integration.test.ts` files that hit real external dependencies (git/spawn/hook/filesystem — no real LLM calls; AI paths are mocked). Use `test:unit` to skip them.
 - **Testing Framework**: Vitest.
+- **Don't run the full suite unless asked.** Default to `pnpm -F <pkg> test <path/to/test>`; widen to a package's `test:unit` only for cross-cutting changes (shared helper, config, several files) and say why. Whole-repo runs need the user to ask for it.
 
 Test layers, ordered fast→slow (the PR gate runs unit tests only; the rest are post-merge — the screenshot/demo row is not a gate anywhere, it executes solely as part of the docs-site deploy in `pages.yml`):
 
