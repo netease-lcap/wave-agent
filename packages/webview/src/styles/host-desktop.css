@@ -283,9 +283,34 @@
    4 模式的统一中性色规则见下方 composer 区） */
 
 /* 焦点 pane 顶部指示条：桌面端中性边框色（淡化活动指示的视觉突兀，
-   避免与 codechat 全白会话区冲突）。 */
+   避免与 codechat 全白会话区冲突）。
+
+   2026-11-10 配色调整（设计师「选中的颜色可以再优化一下，比如浅色用再深一点的
+   灰，深色是再浅一点」）：原来取 `--vscode-widget-border`，浅 `#E4E7ED` / 深
+   `#34393C`，它其实就是本主题的「细分割线」档（`--cc-border-light`），压在会话
+   头面（浅 `#F7F8FB` / 深 `#181A1B`）上只有 1.17 / 1.49 的对比度 —— 浅色那边几乎
+   看不出有选中。
+   现在沿本主题的边框阶梯往上跨：浅色跨过 `--cc-border`（`#DCDFE6`，ΔE 仅 2.85，
+   肉眼基本看不出）取到第一档看得见的灰，深色同样跨到 `#414649`（ΔE 5.76）。
+   这两档正好就是桌面端「强控制边界」`--cc-field-border` 的两主题取值
+   （浅 `#C5C9CE` / 深 `#414649`，对比度 1.57 / 1.83），所以直接绑这个既有 token，
+   不自造十六进制；`--vscode-widget-border` 留作兜底，插件端不受影响（本规则带
+   `[data-host="desktop"]`）。 */
 [data-host="desktop"] .desktop-pane--focused::before {
-  background: var(--vscode-widget-border, rgba(128, 128, 128, 0.5));
+  background: var(
+    --cc-field-border,
+    var(--vscode-widget-border, rgba(128, 128, 128, 0.5))
+  );
+}
+
+/* 只有一个 pane（= 只有一个会话，没有并排的第二个）时，这条 2px「当前聚焦的是
+   哪个 pane」的指示条没有区分对象，直接不画（设计师 2026-11-10 点 `.chat-header`
+   「只有一个会话时，上面的选中条可以不出现」）。判据复用 pane 自己的排序把手信号：
+   `DesktopShell.tsx:873` 只在 `panes.length > 1` 时给 `.desktop-pane` 挂
+   `data-draggable="true"`（唯一 pane 上连属性都没有），所以这里不需要新增状态。
+   两个 pane 及以上时行为完全不变 —— 焦点那条依旧只出现在聚焦的那个 pane 顶上。 */
+[data-host="desktop"] .desktop-pane--focused:not([data-draggable="true"])::before {
+  display: none;
 }
 
 /* ── AI 对话框（composer）：对齐 codechat 规格 ─────────────────── */
