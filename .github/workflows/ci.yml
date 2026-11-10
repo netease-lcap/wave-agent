@@ -97,9 +97,25 @@ jobs:
         if: steps.filter.outputs.code == 'true'
         run: pnpm build
 
+      # Downloading Chromium is the biggest source of variance in this job:
+      # 15-25s when the CDN is fast, 80-270s when it is not (observed across
+      # 10 PR runs), and each of the two shards pays it. Keyed on the webview
+      # package.json, which is what pins @playwright/test — a version bump
+      # changes the key. A stale cache is harmless: playwright installs into a
+      # version-named subdirectory of this folder, so it just downloads anew.
+      - name: Cache Playwright browsers
+        if: steps.filter.outputs.code == 'true' && matrix.pkg == 'webview'
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('packages/webview/package.json') }}
+
       # wave-webview's unit suite runs in a real Chromium (vitest browser
       # mode): jsdom does no layout, and the components under test measure
       # their own geometry. Only that matrix leg needs the browser.
+      # `--with-deps` stays on even on a cache hit: it only skips the browser
+      # download (already cached), while the apt step keeps the run honest if
+      # the runner image ever drops a shared library.
       - name: Install Playwright Chromium (webview unit tests)
         if: steps.filter.outputs.code == 'true' && matrix.pkg == 'webview'
         run: pnpm -F wave-webview exec playwright install --with-deps chromium
@@ -487,6 +503,16 @@ jobs:
       - name: Build
         if: steps.filter.outputs.code == 'true'
         run: pnpm build
+
+      # Same browser cache as the PR-tier `check` job (identical key, so the two
+      # share entries): the e2e run downloads it once and reuses it until
+      # @playwright/test is bumped.
+      - name: Cache Playwright browsers
+        if: steps.filter.outputs.code == 'true'
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('packages/webview/package.json') }}
 
       - name: Install Playwright Chromium
         if: steps.filter.outputs.code == 'true'
