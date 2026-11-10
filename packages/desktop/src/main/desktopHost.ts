@@ -1057,6 +1057,7 @@ export class DesktopHost {
   reportExternalOpenFailure(error: unknown): void {
     this.showToast({
       message: `打开外部链接失败：${error instanceof Error ? error.message : String(error)}`,
+      type: "error",
     });
   }
 
@@ -1486,7 +1487,10 @@ export class DesktopHost {
       });
     } catch (error) {
       if (error instanceof RemoteHostUnreachableError) {
-        this.showToast({ message: `无法连接主机 ${host}，最近目录已保留` });
+        this.showToast({
+          message: `无法连接主机 ${host}，最近目录已保留`,
+          type: "error",
+        });
         return;
       }
       // 旧版机器：没有这个方法，只能清本地那份。
@@ -1520,6 +1524,7 @@ export class DesktopHost {
       } catch (error) {
         this.showToast({
           message: `wave CLI 获取失败：${error instanceof Error ? error.message : String(error)}`,
+          type: "error",
         });
         throw error;
       }
@@ -1738,7 +1743,7 @@ export class DesktopHost {
       const daemonSocket = await ensureRemoteDaemon(
         host,
         loadBundledCliSource(),
-        (msg) => this.showToast({ message: msg }),
+        (msg) => this.showToast({ message: msg, type: "info" }),
         (stage) => this.reportStartupStage(host, stage),
       );
       const { client, tunnel } = await connectRemoteDaemon(host, daemonSocket);
@@ -2389,6 +2394,7 @@ export class DesktopHost {
       .catch((error) => {
         this.showToast({
           message: `连接主机 ${host} 失败：${error instanceof Error ? error.message : String(error)}`,
+          type: "error",
         });
       });
   }
@@ -2457,7 +2463,10 @@ export class DesktopHost {
     if (newRow && !hasSecondRow) {
       // Split the single row into two; the new pane is alone in its fresh row.
       if (!this.canSplitRows()) {
-        this.showToast({ message: "窗口高度不足，无法拆分为两行" });
+        this.showToast({
+          message: "窗口高度不足，无法拆分为两行",
+          type: "info",
+        });
         return null;
       }
       if (newRow === "above")
@@ -2487,6 +2496,7 @@ export class DesktopHost {
             message: hasSecondRow
               ? "窗口宽度不足，无法添加更多分屏"
               : "空间不足，无法添加更多分屏",
+            type: "info",
           });
           return null;
         }
@@ -2616,7 +2626,10 @@ export class DesktopHost {
     if (wantsSplit) {
       if (this.panes.length <= 1) return;
       if (!this.canSplitRows()) {
-        this.showToast({ message: "窗口高度不足，无法拆分为两行" });
+        this.showToast({
+          message: "窗口高度不足，无法拆分为两行",
+          type: "info",
+        });
         return;
       }
       const targetRow = newRow != null ? (newRow === "above" ? 0 : 1) : toRow!;
@@ -2947,6 +2960,7 @@ export class DesktopHost {
         this.refreshSessionTree();
         this.showToast({
           message: "会话记录在磁盘上不存在或已损坏，无法恢复，已从列表移除",
+          type: "error",
         });
       } else if (!silent) {
         this.pushSystemMessage(`恢复会话失败: ${errorMessage}`, paneId);
@@ -3546,6 +3560,7 @@ export class DesktopHost {
     } catch (error) {
       this.showToast({
         message: `初始化失败：${error instanceof Error ? error.message : String(error)}`,
+        type: "error",
       });
     }
   }
@@ -4452,6 +4467,7 @@ export class DesktopHost {
       } catch (error) {
         this.showToast({
           message: `初始化失败：${error instanceof Error ? error.message : String(error)}`,
+          type: "error",
         });
         return;
       }
@@ -4685,7 +4701,7 @@ export class DesktopHost {
         // Webview-side local validations (pane/panel min-size refusals, preview
         // URL checks) route through the same global toast so desktop hints share
         // one presentation with host failures instead of a second hint style.
-        this.showToast({ message: msg.text as string });
+        this.showToast({ message: msg.text as string, type: "info" });
         break;
 
       case "desktopAddHost":
@@ -6046,6 +6062,7 @@ export class DesktopHost {
       console.error("[DesktopHost] 初始化智能体失败:", error);
       this.showToast({
         message: `初始化失败：${error instanceof Error ? error.message : String(error)}。可通过侧边栏切换工作目录重试，或重启应用`,
+        type: "error",
       });
     }
   }
@@ -6135,7 +6152,7 @@ export class DesktopHost {
       !isWslHost(host) &&
       !parseSshConfigHosts().includes(host)
     ) {
-      this.showToast({ message: `未知主机：${host}` });
+      this.showToast({ message: `未知主机：${host}`, type: "error" });
       return;
     }
     if (isWslHost(host)) {
@@ -6147,7 +6164,10 @@ export class DesktopHost {
           (d) => d.name.toLowerCase() === distro.toLowerCase(),
         )
       ) {
-        this.showToast({ message: `WSL 发行版「${distro}」不可用` });
+        this.showToast({
+          message: `WSL 发行版「${distro}」不可用`,
+          type: "error",
+        });
         void this.refreshWslDistros();
         return;
       }
@@ -6192,6 +6212,7 @@ export class DesktopHost {
       .catch((error) => {
         this.showToast({
           message: `连接主机 ${host} 失败：${error instanceof Error ? error.message : String(error)}`,
+          type: "error",
         });
       });
     this.sendWorkdirState();
@@ -6214,6 +6235,7 @@ export class DesktopHost {
     } catch (error) {
       this.showToast({
         message: error instanceof Error ? error.message : String(error),
+        type: "error",
       });
       return;
     }
@@ -6242,12 +6264,13 @@ export class DesktopHost {
       .catch((error) => {
         this.showToast({
           message: `连接主机 ${name} 失败：${error instanceof Error ? error.message : String(error)}`,
+          type: "error",
         });
       });
     // Notices surface as a window-global toast — pushing them as chat messages
     // would flip the pane out of the new-session picker state and hide the
     // host/workdir selectors.
-    this.showToast({ message: `已添加主机：${name}` });
+    this.showToast({ message: `已添加主机：${name}`, type: "success" });
     this.sendWorkdirState();
     // Same as handleSelectHost: the pane layout must carry the new host or the
     // selector never leaves the old one.
@@ -6265,7 +6288,7 @@ export class DesktopHost {
   ): Promise<void> {
     if (host === LOCAL_HOST || !path) return;
     if (!isWslHost(host) && !parseSshConfigHosts().includes(host)) {
-      this.showToast({ message: `未知主机：${host}` });
+      this.showToast({ message: `未知主机：${host}`, type: "error" });
       return;
     }
     let exists: boolean;
@@ -6276,11 +6299,14 @@ export class DesktopHost {
       // the path doesn't exist (desktop-remote.md「远端主机不可达时不得删除会
       // 话/最近目录」).
       if (!(error instanceof RemoteHostUnreachableError)) throw error;
-      this.showToast({ message: `无法连接主机 ${host}，目录未校验` });
+      this.showToast({
+        message: `无法连接主机 ${host}，目录未校验`,
+        type: "error",
+      });
       return;
     }
     if (!exists) {
-      this.showToast({ message: `远端目录不存在：${path}` });
+      this.showToast({ message: `远端目录不存在：${path}`, type: "error" });
       return;
     }
     this.hostState.set(this.focusedPaneId, host);
@@ -6355,12 +6381,18 @@ export class DesktopHost {
       // drop the user's recently-used directories (desktop-sessions.md「远端主
       // 机不可达时不得删除会话/最近目录」).
       if (!(error instanceof RemoteHostUnreachableError)) throw error;
-      this.showToast({ message: `无法连接主机 ${h}，最近目录已保留` });
+      this.showToast({
+        message: `无法连接主机 ${h}，最近目录已保留`,
+        type: "error",
+      });
       return;
     }
     if (!exists) {
       await this.forgetRecentDir(h, dir);
-      this.showToast({ message: `目录不存在：${dir}，已从最近列表移除` });
+      this.showToast({
+        message: `目录不存在：${dir}，已从最近列表移除`,
+        type: "error",
+      });
       return;
     }
     await this.activateWorkdir({ host: h, dir });
@@ -6398,6 +6430,7 @@ export class DesktopHost {
         console.error("[DesktopHost] Deep link failed:", error);
         this.showToast({
           message: `打开链接失败：${formatGitError(error)}`,
+          type: "error",
         });
       }),
     );
@@ -6411,6 +6444,7 @@ export class DesktopHost {
     } catch (error) {
       this.showToast({
         message: `无法打开链接：${error instanceof Error ? error.message : String(error)}`,
+        type: "error",
       });
       return;
     }
@@ -6464,6 +6498,7 @@ export class DesktopHost {
     } catch (error) {
       this.showToast({
         message: `登录失败：${error instanceof Error ? error.message : String(error)}`,
+        type: "error",
       });
       return false;
     }
@@ -6520,7 +6555,10 @@ export class DesktopHost {
     if (!win) return undefined;
     const dirName = repoDirectoryName(repo);
     if (!dirName) {
-      this.showToast({ message: `无法从仓库地址推导目录名：${repo}` });
+      this.showToast({
+        message: `无法从仓库地址推导目录名：${repo}`,
+        type: "error",
+      });
       return undefined;
     }
     for (;;) {
@@ -6559,6 +6597,7 @@ export class DesktopHost {
     } catch (error) {
       this.showToast({
         message: `准备 git 凭据失败：${error instanceof Error ? error.message : String(error)}`,
+        type: "error",
       });
       return undefined;
     }
@@ -6580,7 +6619,10 @@ export class DesktopHost {
     target: string,
     helper: string,
   ): Promise<void> {
-    this.showToast({ message: `正在克隆 ${path.basename(target)}…` });
+    this.showToast({
+      message: `正在克隆 ${path.basename(target)}…`,
+      type: "info",
+    });
     try {
       await execFileAsync(
         "git",
@@ -6612,7 +6654,10 @@ export class DesktopHost {
       } catch (cleanupError) {
         console.warn("[DesktopHost] Failed to clean up", target, cleanupError);
       }
-      this.showToast({ message: `克隆失败：${formatGitError(error)}` });
+      this.showToast({
+        message: `克隆失败：${formatGitError(error)}`,
+        type: "error",
+      });
       return;
     }
 
@@ -6663,6 +6708,7 @@ export class DesktopHost {
       // desktop-sessions.md「跨客户端会话来源」场景 4).
       this.showToast({
         message: `无法读取会话列表：${error instanceof Error ? error.message : String(error)}`,
+        type: "error",
       });
       this.postMessage({
         command: "desktopResumeSessions",
@@ -6704,11 +6750,15 @@ export class DesktopHost {
       // 达时不得删除会话」).
       this.showToast({
         message: `无法连接主机 ${host}，会话未切换，可稍后重试`,
+        type: "error",
       });
       return;
     }
     if (!exists) {
-      this.showToast({ message: `该会话的目录已不存在：${workdir}` });
+      this.showToast({
+        message: `该会话的目录已不存在：${workdir}`,
+        type: "error",
+      });
       return;
     }
 
@@ -6793,6 +6843,7 @@ export class DesktopHost {
         }
         this.showToast({
           message: `无法连接主机 ${host}，会话已保留，可稍后重试`,
+          type: "error",
         });
         return;
       }
@@ -6822,6 +6873,7 @@ export class DesktopHost {
             : entry.worktree
               ? `worktree 目录不存在：${targetDir}，已从会话列表移除`
               : `目录不存在：${workdir}，已从最近列表与会话列表移除`,
+          type: "error",
         });
         return;
       }
@@ -7482,12 +7534,13 @@ export class DesktopHost {
           message: `${PLUGIN_RELOADED_MESSAGE}部分插件加载失败：${result.failures
             .map((failure) => `${failure.path}: ${failure.error}`)
             .join("；")}`,
+          type: "error",
         });
         return;
       }
-      this.showToast({ message: PLUGIN_RELOADED_MESSAGE });
+      this.showToast({ message: PLUGIN_RELOADED_MESSAGE, type: "info" });
     } catch (error) {
-      this.showToast({ message: `插件重载失败: ${error}` });
+      this.showToast({ message: `插件重载失败: ${error}`, type: "error" });
     }
   }
 
@@ -7622,6 +7675,13 @@ export class DesktopHost {
         // 已装版本高于 stable feed 最新（切回正式后，正式尚未追平曾接收的
         // 测试版号）→ 提示等待正式发布，不降级、不改查 beta feed（spec
         // desktop-distribution「接收 Beta 版更新」场景 5）；其余情况提示已是最新。
+        //
+        // 这两条与下面的「检查更新失败」都是**用户刚拨完开关**的回执，2026-11-10
+        // 设计师预览评论（锚点 `span.settings-switch-slider`）：「已是最新版本那个
+        // 提示用蓝色的信息提示」，随后「可以一起改」⇒ 三条按语义声明 type：告知型
+        // 两条 info（蓝色 soft 底 + ⓘ）、失败 error（红色 soft 底 + ×）。改前三条
+        // 都是缺省中性面（默认浮层底、不画图标）。语义皮肤在 webview 侧
+        // （host-desktop.css 的 .toast--info / .toast--error），宿主只声明语义。
         const installed = parseVersion(app.getVersion());
         const feed = parseVersion(result.feedVersion ?? "");
         if (
@@ -7630,15 +7690,20 @@ export class DesktopHost {
           feed &&
           compareVersions(feed, installed) < 0
         ) {
-          this.showToast({ message: "正式版发布后将自动更新" });
+          this.showToast({ message: "正式版发布后将自动更新", type: "info" });
         } else {
-          this.showToast({ message: "当前已是最新版本" });
+          this.showToast({ message: "当前已是最新版本", type: "info" });
         }
         return;
       }
       // outcome === 'error'：检查阶段失败（尚未发现任何更新）——开关重查给
       // 反馈；自动检查（启动 / 轮询）静默。
-      if (notifyUser) this.showToast({ message: "检查更新失败，请稍后重试" });
+      if (notifyUser) {
+        this.showToast({
+          message: "检查更新失败，请稍后重试",
+          type: "error",
+        });
+      }
       return;
     }
 
@@ -7990,7 +8055,7 @@ export class DesktopHost {
       });
       return result.plugins;
     } catch (error) {
-      this.showToast({ message: `获取插件列表失败: ${error}` });
+      this.showToast({ message: `获取插件列表失败: ${error}`, type: "error" });
       return null;
     }
   }
@@ -8012,10 +8077,13 @@ export class DesktopHost {
     const scope = params.scope ? String(params.scope) : "user";
     switch (method) {
       case "installPlugin":
-        this.showToast({ message: `已安装「${name}」（作用域：${scope}）` });
+        this.showToast({
+          message: `已安装「${name}」（作用域：${scope}）`,
+          type: "success",
+        });
         break;
       case "uninstallPlugin":
-        this.showToast({ message: `已卸载「${name}」` });
+        this.showToast({ message: `已卸载「${name}」`, type: "success" });
         break;
       case "updatePlugin": {
         const version = hit?.version ?? hit?.latestVersion;
@@ -8023,11 +8091,15 @@ export class DesktopHost {
           message: version
             ? `已更新「${name}」至 v${version}`
             : `已更新「${name}」`,
+          type: "success",
         });
         break;
       }
       case "setPluginScope":
-        this.showToast({ message: `已更新「${name}」的作用域：${scope}` });
+        this.showToast({
+          message: `已更新「${name}」的作用域：${scope}`,
+          type: "success",
+        });
         break;
       default:
         break;
@@ -8051,7 +8123,7 @@ export class DesktopHost {
       // （docs/specs/ecosystem/plugin.md「插件变更的就地重载」）。
       this.notifyPluginChange();
     } catch (error) {
-      this.showToast({ message: `插件操作失败: ${error}` });
+      this.showToast({ message: `插件操作失败: ${error}`, type: "error" });
     }
   }
 
@@ -8071,7 +8143,7 @@ export class DesktopHost {
         workdir,
       });
     } catch (error) {
-      this.showToast({ message: `获取项目设置失败: ${error}` });
+      this.showToast({ message: `获取项目设置失败: ${error}`, type: "error" });
     }
   }
 
@@ -8095,7 +8167,7 @@ export class DesktopHost {
         hooks: result.hooks,
       });
     } catch (error) {
-      this.showToast({ message: `获取钩子配置失败: ${error}` });
+      this.showToast({ message: `获取钩子配置失败: ${error}`, type: "error" });
     }
   }
 
@@ -8119,7 +8191,7 @@ export class DesktopHost {
         mcpServers: result.mcpServers,
       });
     } catch (error) {
-      this.showToast({ message: `获取 MCP 配置失败: ${error}` });
+      this.showToast({ message: `获取 MCP 配置失败: ${error}`, type: "error" });
     }
   }
 
@@ -8150,7 +8222,7 @@ export class DesktopHost {
       // 就地生效（spec builtin-sdd-plugin /「插件变更的就地重载」）。
       this.notifyPluginChange();
     } catch (error) {
-      this.showToast({ message: `修改项目设置失败: ${error}` });
+      this.showToast({ message: `修改项目设置失败: ${error}`, type: "error" });
     }
   }
 
@@ -8188,7 +8260,7 @@ export class DesktopHost {
         ...(refreshed ? { refreshed: true } : {}),
       });
     } catch (error) {
-      this.showToast({ message: `获取市场列表失败: ${error}` });
+      this.showToast({ message: `获取市场列表失败: ${error}`, type: "error" });
     }
   }
 
@@ -8232,14 +8304,18 @@ export class DesktopHost {
       await this.handleListMarketplaces();
       await this.handleListPlugins();
       if (method === "addMarketplace") {
-        this.showToast({ message: `已添加市场「${result?.name ?? ""}」` });
+        this.showToast({
+          message: `已添加市场「${result?.name ?? ""}」`,
+          type: "success",
+        });
       } else if (method === "removeMarketplace") {
         this.showToast({
           message: `已移除市场「${String(params.name ?? "")}」`,
+          type: "success",
         });
       }
     } catch (error) {
-      this.showToast({ message: `市场操作失败: ${error}` });
+      this.showToast({ message: `市场操作失败: ${error}`, type: "error" });
     }
   }
 
@@ -8264,12 +8340,13 @@ export class DesktopHost {
           updated > 0
             ? `${marketLabel}已更新 ${updated} 个插件`
             : `${marketLabel}已是最新`,
+        type: "success",
       });
       // 批量更新同属插件变更：只有真的升级了插件才产生「待应用」信号
       // （spec plugin「插件变更的就地重载」场景 1）。
       if (updated > 0) this.notifyPluginChange();
     } catch (error) {
-      this.showToast({ message: `更新市场失败: ${error}` });
+      this.showToast({ message: `更新市场失败: ${error}`, type: "error" });
     }
   }
 
@@ -9031,7 +9108,7 @@ export class DesktopHost {
         }
         // Bare /plan outside plan mode: mode switched; the Plan pane opens on
         // its own once ExitPlanMode delivers content via showConfirmation.
-        this.showToast({ message: "已启用规划模式" });
+        this.showToast({ message: "已启用规划模式", type: "success" });
         return;
       }
 
@@ -9048,6 +9125,7 @@ export class DesktopHost {
       console.error("[DesktopHost] /plan 处理失败:", error);
       this.showToast({
         message: `执行 /plan 失败: ${error instanceof Error ? error.message : String(error)}`,
+        type: "error",
       });
     }
   }

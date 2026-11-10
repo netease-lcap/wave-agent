@@ -40,6 +40,16 @@ const rounds = (count: number): Message[] =>
     round(`问题 ${i}`, `回答 ${i}`, i),
   ).flat();
 
+/**
+ * 大纲的「当前这一轮」。
+ *
+ * 语义始终挂在 `aria-current` 上（读屏要靠它），但那条深色**只在操作期画**
+ * ——静止的一列短横上留一笔深色会被读成「被选中的东西」（1110 第 15 轮）。
+ * 所以「高亮是谁」这类断言读 `aria-current`，视觉那笔另用一条用例断。
+ */
+const currentTick = (): HTMLElement | null =>
+  document.querySelector('[data-testid="outline-tick"][aria-current="true"]');
+
 describe("transcriptOutline geometry", () => {
   it("needs at least two user messages", () => {
     expect(shouldShowOutline(800, 200, 0)).toBe(false);
@@ -190,7 +200,7 @@ describe("transcript outline", () => {
     await waitFor(() => expect(container.scrollTop).toBeGreaterThan(0));
   });
 
-  it("highlights the round whose question is the topmost one on screen", async () => {
+  it("marks the round whose question is the topmost one on screen", async () => {
     renderChatApp();
     act(() => {
       sendCommand("updateMessages", { messages: rounds(6) });
@@ -209,16 +219,14 @@ describe("transcript outline", () => {
     await scrollRowAboveFold(container, "u1");
 
     await waitFor(() => {
-      const active = document.querySelector(".outline-tick--active");
-      expect(active).not.toBeNull();
-      expect(active?.getAttribute("aria-label")).toBe("问题 1");
+      expect(currentTick()?.getAttribute("aria-label")).toBe("问题 1");
       expect(screen.getByTestId("sticky-user-message")).toHaveTextContent(
         "问题 1",
       );
     });
   });
 
-  it("highlights the clicked tick, not the round before it", async () => {
+  it("marks the clicked tick, not the round before it", async () => {
     renderChatApp();
     act(() => {
       sendCommand("updateMessages", { messages: rounds(6) });
@@ -233,16 +241,15 @@ describe("transcript outline", () => {
     const ticks = screen.getAllByTestId("outline-tick");
 
     // 落位把目标放在视口中间，上一轮的问题此时往往还在视口里 —— 光靠可见判据
-    // 算出来的会是上一轮。点击是显式意图，被点的那一条必须自己变高亮（场景 6）。
+    // 算出来的会是上一轮。点击是显式意图，被点的那一条必须自己成为当前项（场景 6）。
     fireEvent.click(ticks[4]);
     await waitFor(() => expect(container.scrollTop).toBeGreaterThan(0));
     await waitFor(() => {
-      const active = document.querySelector(".outline-tick--active");
-      expect(active?.getAttribute("aria-label")).toBe("问题 4");
+      expect(currentTick()?.getAttribute("aria-label")).toBe("问题 4");
     });
   });
 
-  it("hands the highlight back to the scroll judgement once the reader scrolls", async () => {
+  it("hands the judgement back to the scroll position once the reader scrolls", async () => {
     renderChatApp();
     act(() => {
       sendCommand("updateMessages", { messages: rounds(6) });
@@ -257,29 +264,21 @@ describe("transcript outline", () => {
     const ticks = screen.getAllByTestId("outline-tick");
     fireEvent.click(ticks[4]);
     await waitFor(() =>
-      expect(
-        document
-          .querySelector(".outline-tick--active")
-          ?.getAttribute("aria-label"),
-      ).toBe("问题 4"),
+      expect(currentTick()?.getAttribute("aria-label")).toBe("问题 4"),
     );
 
-    // 用户再滚一次（这里滚回顶部）：钉住释放，高亮回到滚动判据 —— 屏幕上是
-    // 「问题 0」，它就该亮。
+    // 用户再滚一次（这里滚回顶部）：钉住释放，当前项回到滚动判据 —— 屏幕上是
+    // 「问题 0」，它就该是当前项。
     act(() => {
       container.scrollTop = 0;
       fireEvent.scroll(container);
     });
     await waitFor(() =>
-      expect(
-        document
-          .querySelector(".outline-tick--active")
-          ?.getAttribute("aria-label"),
-      ).toBe("问题 0"),
+      expect(currentTick()?.getAttribute("aria-label")).toBe("问题 0"),
     );
   });
 
-  it("shows no highlight when no question is on screen", async () => {
+  it("marks no round when no question is on screen", async () => {
     // 一轮带大段工具输出式的长回答：滚进它的正文中间时，屏里一条用户消息都
     // 没有，此时不得高亮任何刻度（也不退回吸顶那条）。
     const messages = [
@@ -303,18 +302,45 @@ describe("transcript outline", () => {
       200,
     );
 
-    // 先确认顶部确实亮着「问题 0」，再滚进长回答中间，避免「一上来就没高亮」
+    // 先确认顶部确实标着「问题 0」，再滚进长回答中间，避免「一上来就没当前项」
     // 这种状态下测试假绿。
     await scrollRowAboveFold(container, "u0", 8);
     await waitFor(() =>
-      expect(
-        document
-          .querySelector(".outline-tick--active")
-          ?.getAttribute("aria-label"),
-      ).toBe("问题 0"),
+      expect(currentTick()?.getAttribute("aria-label")).toBe("问题 0"),
     );
 
     await scrollRowAboveFold(container, "a0", 200);
+    await waitFor(() => expect(currentTick()).toBeNull());
+  });
+
+  it("only paints the current tick while the pointer is on the rail", async () => {
+    renderChatApp();
+    act(() => {
+      sendCommand("updateMessages", { messages: rounds(6) });
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId("transcript-outline")).toBeInTheDocument(),
+    );
+    const container = pinMessageListViewport(
+      screen.getByTestId("messages-container"),
+      200,
+    );
+    await scrollRowAboveFold(container, "u1");
+
+    await waitFor(() => expect(currentTick()).not.toBeNull());
+    // 静止态整列不画那一笔深色：一列短横里单独一条深色会被读成「被选中的东西」。
+    expect(document.querySelector(".outline-tick--active")).toBeNull();
+
+    // 指针进到刻度列里才画出来。
+    fireEvent.mouseEnter(currentTick()!);
+    await waitFor(() =>
+      expect(currentTick()!.className).toContain("outline-tick--active"),
+    );
+
+    // 离开整列（容器的 mouseleave）才收回：指针跨过两条刻度之间的缝不能让它闪。
+    fireEvent.mouseLeave(
+      screen.getByTestId("transcript-outline").querySelector(".outline-ticks")!,
+    );
     await waitFor(() =>
       expect(document.querySelector(".outline-tick--active")).toBeNull(),
     );

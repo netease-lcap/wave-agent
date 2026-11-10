@@ -58,6 +58,12 @@
   --cc-action-primary: #1f2329; /* 炭黑（wave 现值） */
   --cc-action-primary-hover: #34383f;
   --cc-action-primary-text: #ffffff;
+  /* 次级实底（安静灰面）：消息动作键「回滚 / 转后台」那两颗的底色。深色档一直有
+     这一枚（#232526 = 浮层面），浅色档此前只把 `--vscode-button-secondaryBackground`
+     直接写成字面 #f0f0f1 —— 两侧结构不对称，值也就没有语义可依。补上浅色档的同名
+     token，取值 = 原来的字面值（零视觉变化），桥接改为消费它。 */
+  --cc-action-secondary: #f0f0f1;
+
   /* 边框 */
   --cc-border: #dcdfe6; /* 强边界（composer/输入框） */
   --cc-border-light: #e4e7ed; /* quiet lines（面板分隔） */
@@ -72,11 +78,10 @@
      var(--cc-action-primary)。此前浅色档未定义本角色，只有深色档有，
      于是 --vscode-focusBorder 桥接在浅色取不到值。 */
   --cc-border-focus: var(--cc-action-primary);
-
   /* 桥接：组件消费的 host token → 语义值（值与上版字面一致，浅色零回归） */
   --vscode-button-background: var(--cc-action-primary);
   --vscode-button-hoverBackground: var(--cc-action-primary-hover);
-  --vscode-button-secondaryBackground: #f0f0f1;
+  --vscode-button-secondaryBackground: var(--cc-action-secondary);
   --vscode-button-secondaryForeground: var(--cc-action-primary);
   --vscode-button-secondaryHoverBackground: var(--cc-fill-pressed);
   --vscode-chat-requestBubbleBackground: var(--cc-fill);
@@ -283,9 +288,34 @@
    4 模式的统一中性色规则见下方 composer 区） */
 
 /* 焦点 pane 顶部指示条：桌面端中性边框色（淡化活动指示的视觉突兀，
-   避免与 codechat 全白会话区冲突）。 */
+   避免与 codechat 全白会话区冲突）。
+
+   2026-11-10 配色调整（设计师「选中的颜色可以再优化一下，比如浅色用再深一点的
+   灰，深色是再浅一点」）：原来取 `--vscode-widget-border`，浅 `#E4E7ED` / 深
+   `#34393C`，它其实就是本主题的「细分割线」档（`--cc-border-light`），压在会话
+   头面（浅 `#F7F8FB` / 深 `#181A1B`）上只有 1.17 / 1.49 的对比度 —— 浅色那边几乎
+   看不出有选中。
+   现在沿本主题的边框阶梯往上跨：浅色跨过 `--cc-border`（`#DCDFE6`，ΔE 仅 2.85，
+   肉眼基本看不出）取到第一档看得见的灰，深色同样跨到 `#414649`（ΔE 5.76）。
+   这两档正好就是桌面端「强控制边界」`--cc-field-border` 的两主题取值
+   （浅 `#C5C9CE` / 深 `#414649`，对比度 1.57 / 1.83），所以直接绑这个既有 token，
+   不自造十六进制；`--vscode-widget-border` 留作兜底，插件端不受影响（本规则带
+   `[data-host="desktop"]`）。 */
 [data-host="desktop"] .desktop-pane--focused::before {
-  background: var(--vscode-widget-border, rgba(128, 128, 128, 0.5));
+  background: var(
+    --cc-field-border,
+    var(--vscode-widget-border, rgba(128, 128, 128, 0.5))
+  );
+}
+
+/* 只有一个 pane（= 只有一个会话，没有并排的第二个）时，这条 2px「当前聚焦的是
+   哪个 pane」的指示条没有区分对象，直接不画（设计师 2026-11-10 点 `.chat-header`
+   「只有一个会话时，上面的选中条可以不出现」）。判据复用 pane 自己的排序把手信号：
+   `DesktopShell.tsx:873` 只在 `panes.length > 1` 时给 `.desktop-pane` 挂
+   `data-draggable="true"`（唯一 pane 上连属性都没有），所以这里不需要新增状态。
+   两个 pane 及以上时行为完全不变 —— 焦点那条依旧只出现在聚焦的那个 pane 顶上。 */
+[data-host="desktop"] .desktop-pane--focused:not([data-draggable="true"])::before {
+  display: none;
 }
 
 /* ── AI 对话框（composer）：对齐 codechat 规格 ─────────────────── */
@@ -1103,6 +1133,22 @@
 [data-host="desktop"] .bash-command-output a {
   color: #2f5edb;
   text-decoration: none;
+}
+
+/* 深色 · 命令输出的 ANSI 三色降饱和（设计师 2026-11-10：「桌面的深色饱和度
+   太高了，特别是 Login layout tests passed / deprecated… / a11y label missing
+   这块」）。base 的 `--ansi-*` 取 VS Code 默认暗色终端调色板（绿 `#0dbc79`
+   S 93% / 黄 `#e5e510` S 93% / 红 `#cd3131` S 76%），压在 `--cc-bg-code`
+   `#1b1d1e` 上是「荧光屏」观感；这里只换深色档的这三支，色相不动，把饱和度
+   压到 40–55%，数值都是本主题既有色：
+   · 绿 = `--cc-color-success` 深色档 `#83d6a0`（S 39%，对底色 9.74）
+   · 黄 = 语法调色板的 tag 档 `#d7ba7d`（S 42%，9.03）
+   · 红 = `--cc-color-danger-hover` 深色档 `#fd7175`（S 54%，6.89）
+   蓝（`ℹ …`）未点名、保持原样；浅色档与插件端不吃这条规则。 */
+[data-host="desktop"][data-theme="dark"] .bash-command-output {
+  --ansi-green: #83d6a0;
+  --ansi-yellow: #d7ba7d;
+  --ansi-red: #fd7175;
 }
 
 /* Write 工具块：Figma 标题 14px/600、路径 13px Menlo #2F5EDB 无下划线、
@@ -2407,22 +2453,33 @@
    + `--cc-text-secondary` 字。0917 那版按「中性计数徽标」做成填充块
    （`--cc-fill` 底 + `--cc-text-regular` 字）——那个配方是给**带数字的计数**用的，
    这颗是主体标签（本地 / 宿主名），描边档更轻、也不抢右侧路径的注意力。
-   几何保持原样：盒高仍 20px（`border-box` + `line-height:18` 让 1px 描边收进盒内，
-   不会把 20 撑成 22），文字左缘距盒缘仍是 6px（`padding:0 5px` + 1px 描边），
-   宽度仍 36px、与路径的间距（gap 8 + margin-right 6 = 14px）都没动。
    对比度：浅色 #6C7076 压工具栏白底 **4.98:1**、深色 #A0A5A8 压 #181A1B 约 5.4:1
    （12px 文字都过 AA 4.5；0917 当时否掉 secondary 是因为那时底色是 #F0F2F5，
-   压在填充块上只有 4.44:1 —— 换成描边后底是白的，这条理由不再成立）。 */
+   压在填充块上只有 4.44:1 —— 换成描边后底是白的，这条理由不再成立）。
+
+   1110 评论（同一条）：点「本地」说「这个标签的尺寸、字体大小，参考」，参照物点的是
+   模型选择里的 `span.model-picker-vision`「视觉」；点「视觉」那条补「然后后面的标题
+   往前移动，和标签距离 8px」。⇒ 只取参照物的**尺寸与字号**，不搬它的色（那是品牌红 +
+   红底，见 ModelPicker.css，与本标签无关）：
+     · 字号 12 → 11px、盒高 20 → 18px（= 参照物 34×18；`border-box` 里 1px 描边
+       + `line-height:16` 刚好 18，描边仍收在盒内不撑高）；
+     · 圆角 4 → 8px（与参照物同档，两枚标签成一家）；
+     · 文字左缘距盒缘保持 6px（`padding:0 5px` + 1px 描边 = 参照物的 6px 内衬），
+       宽度因此仍是 34px，与参照物等宽；
+     · 与右侧路径的间距 14 → **8px**：去掉旧的 `margin-right:6px`，让工具条容器自己
+       的 `gap:8px`（DesktopApp.css `.preview-pane-toolbar`）成为唯一来源——那 6px 是
+       0917 叠在 gap 上的一次「额外留白」，她这次要求的就是 8。 */
 [data-host="desktop"] .file-pane-host {
-  font-size: 12px;
-  line-height: 18px;
+  font-size: 11px;
+  line-height: 16px;
   padding: 0 5px;
+  margin-right: 0;
   border: 1px solid var(--cc-border-light);
-  border-radius: 4px;
+  border-radius: 8px;
   background: transparent;
   color: var(--cc-text-secondary);
   box-sizing: border-box;
-  height: 20px;
+  height: 18px;
 }
 
 /* ═══ 0917 评论：「这里面有很明显的分割线，根据 skill 结合其他下拉菜单优化这个
@@ -6927,4 +6984,145 @@
 [data-host="desktop"] .message-file-card-icon {
   width: 44px;
   height: 44px;
+}
+
+/* ═══ 1109 评论：图标块试作「浅蓝底（半透明）+ 蓝图标」 ═══
+   设计师点 `span.message-file-card-icon`：「可以用浅蓝色背景，带透明度那种，加蓝色
+   图标，看看效果」。
+   落法：底色 = 链接蓝按透明度叠在卡片面上（不动 base 的 `--vscode-list-hoverBackground`
+   绑定，只用桌面端覆盖），图标 = 同一个蓝 ⇒ 底与图标同源、换主题自动跟随。
+   浅色取 `--cc-text-link` #2F5EDB 的 12%（合成 #E8EDFA）；深色同一 token（#4DAAFC）
+   取 18%（合成 #223343，深色面亮度低，同透明度会看不见，故高一档）。
+   比例用局部变量 `--artifact-icon-tint`，调深调浅只改这一个数。 */
+[data-host="desktop"] .message-file-card-icon {
+  --artifact-icon-tint: 12%;
+  background: color-mix(
+    in srgb,
+    var(--cc-text-link) var(--artifact-icon-tint),
+    transparent
+  );
+  color: var(--cc-text-link);
+}
+
+[data-host="desktop"][data-theme="dark"] .message-file-card-icon {
+  --artifact-icon-tint: 18%;
+}
+
+/* ═══ 1109 评论：产物卡圆角 10 → 12，与对话流「带边框块」一族对齐 ═══
+   设计师两条评论：点 `div.message-file-card.artifact-card`「圆角」+ 点同一页
+   `pre`（代码块）「和这里保持一起」。
+   实测同一页这一族全是 12px：`.markdown-content pre` / `.write-preview-box` /
+   `.mermaid-renderer` / `.markdown-content table` = 12，产物卡还是 base 的 10
+   （Message.css:1270）—— 是这一族里唯一的例外，所以对齐到 12。
+   按钮不跟：它按按钮契约 compact 档 r8（common-components.md §Buttons），
+   与卡片圆角是两套语义。 */
+[data-host="desktop"] .message-file-card {
+  border-radius: 12px;
+}
+
+/* 图标块圆角一起加大（她：「这里圆角也加大一些 一起协调一下」）：
+   8px 是在 28 的块上定的比例（28.6%）；块长到 44 后同一档只剩 18.2%，块越大
+   越显得方。取 12 既与卡片同档，又把比例拉回 27.3% ≈ 原来的观感。 */
+[data-host="desktop"] .message-file-card-icon {
+  border-radius: 12px;
+}
+
+
+/* ═══ 1110 评论：Write 预览「打开预览」键交互样式参照代码块复制键 ═══
+   设计师同一轮第二条（锚点 `button.write-preview-open`）：「尺寸选A，交互样式也
+   参照复制键」。参照物 = 本文件末尾「代码块复制键」那段（`[data-host="desktop"]
+   .md-code-copy`），它的取值又来自右侧面板工具条的 24×24 图标键。
+   该键改前是 base `Message.css:497` 的一档：22×22 / r4 / 1px 面板描边 / 实底
+   （浅 rgba(0,0,0,.12)、深 rgba(90,93,94,.31)，来自 `--vscode-toolbar-hoverBackground`）
+   ——尺寸、圆角、描边、底、hover 五处都不与复制键同族。
+   这里逐值对齐复制键：24×24 / r8（`--cc-radius-md`）/ 无描边 / 透明底；字色 =
+   图标灰（浅 #565A60 / 深 #9A9EA5），hover 面 = 浅 #EEF0F3 / 深 8% 白，hover 字色
+   = 1 级（浅 #1F2329 / 深 #FFFFFF）。
+   定位不动（仍是 `top/right: 5px`，`Message.css` 里那条 `position: absolute`）：
+   盒子从 22 长到 24、锚点同侧，图标中心因此向外让 1px，与复制键当初 22→24 时
+   同样的处理口径（那边 top/right 也一直保持 6px 没改）。
+   显隐与过渡不动：仍只在悬停预览框时淡入（`opacity 0.15s` 只作用于透明度），
+   底色与字色同参照物一样瞬时切换。
+   两个主题档都只认 `data-theme`（与复制键、与工具条图标键三处同构）。 */
+[data-host="desktop"] .write-preview-open {
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: var(--cc-radius-md, 8px);
+  background: transparent;
+}
+
+[data-host="desktop"][data-theme="light"] .write-preview-open {
+  color: #565a60;
+}
+[data-host="desktop"][data-theme="light"] .write-preview-open:hover {
+  background: #eef0f3;
+  color: #1f2329;
+}
+[data-host="desktop"][data-theme="dark"] .write-preview-open {
+  color: #9a9ea5;
+}
+[data-host="desktop"][data-theme="dark"] .write-preview-open:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #ffffff;
+}
+
+/* ── mermaid「全屏查看」图标键 ────────────────────────────────────────────────
+   评论 1110（点 `div.mermaid-actions`「全屏查看」）：「这里也改，也是改图标粗细
+   圆角，交互样式」——与上一颗「打开预览」（.write-preview-open）同一套口径，也就是
+   同屏「代码块复制键」那一档：24×24 图标键、圆角 8、无描边、透明底，hover 只换
+   底色与字色，颜色切换瞬时。
+
+   改前这颗是「壳 + 键」两层：外层 .mermaid-actions 自带底色 / 1px 描边 / 投影 /
+   圆角 4 / 内衬 2（28 见方），里层 .action-button 是 4px 内衬 + 14px 字体图标 = 22
+   见方、圆角 3，且 `transition: all .2s` 会把换色拖成 200ms、`:active` 还会往下
+   掉 1px。这里把壳收成纯定位容器（揭示用的 opacity 过渡保留在壳上），键按复制键
+   那一档收口。
+
+   定位不动（top/right 仍是 8px）：盒 22→24 后图标中心沿对角线外移 2px，与上一颗
+   「打开预览」盒 22→24 时中心外移 1px 是同一处理（设计师未要求补偿）。
+   插件端（`.codicon-screen-full` + 22 实块 + 圆角 3）不动。 */
+[data-host="desktop"] .mermaid-actions {
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: var(--cc-radius-md, 8px);
+  box-shadow: none;
+}
+[data-host="desktop"] .mermaid-actions .action-button {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: var(--cc-radius-md, 8px);
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* 换色瞬时：只有壳的 opacity 过渡（揭示范畴），按下也不再位移 */
+  transition: none;
+}
+[data-host="desktop"] .mermaid-actions .action-button:active {
+  transform: none;
+}
+[data-host="desktop"] .mermaid-actions .action-button svg {
+  width: 16px;
+  height: 16px;
+  display: block;
+}
+[data-host="desktop"][data-theme="light"] .mermaid-actions .action-button {
+  color: #565a60;
+}
+[data-host="desktop"][data-theme="light"]
+  .mermaid-actions
+  .action-button:hover {
+  background: #eef0f3;
+  color: #1f2329;
+}
+[data-host="desktop"][data-theme="dark"] .mermaid-actions .action-button {
+  color: #9a9ea5;
+}
+[data-host="desktop"][data-theme="dark"] .mermaid-actions .action-button:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #ffffff;
 }

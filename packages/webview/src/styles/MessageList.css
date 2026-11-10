@@ -291,7 +291,13 @@
     var(--vscode-panel-background)
   );
   color: var(--vscode-foreground);
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+  /* 浮层阴影走 token（设计师 2026-11-10：「阴影用变量，可以用浅一些的」）。
+     桌面端取 `--cc-shadow-popover` —— 契约 design-system.md:118 给它的角色就是
+     「Menus, popovers and desktop Tooltips」，也是仓库里唯一为桌面端定义过的浅档
+     浮层阴影（浅色 0 0 12px 12%；原来这里是 0 2px 10px 35%，明显压重）。
+     插件端这套 `--cc-*` token 不存在（只有 desktop 的 host-desktop.css 定义），
+     回落到原来那条字面值 ⇒ IDE / 插件端逐像素不变。 */
+  box-shadow: var(--cc-shadow-popover, 0 2px 10px rgba(0, 0, 0, 0.35));
   cursor: pointer;
   pointer-events: none;
 }
@@ -314,4 +320,130 @@
 
 .jump-to-bottom-button .codicon {
   font-size: 16px;
+}
+
+/* 桌面端那颗下箭头（`ScrollToBottomArrowIcon`，几何照 composer 发送箭头）。
+   静止色沿用原来 codicon 拿到的 `--vscode-icon-foreground`，观感不变；悬停与
+   按下两档在下方桌面块里跟按钮正文一起提到一级字色。 */
+.jump-to-bottom-icon {
+  display: block;
+  color: var(--vscode-icon-foreground);
+}
+
+/* 流式中的三点（只有桌面端会渲染出来，见 MessageList.tsx）。默认不显示：
+   非流式、以及所有插件端宿主都保持原来那颗下箭头。 */
+.jump-to-bottom-dots {
+  display: none;
+}
+
+/* ── 「回到最新」按钮：桌面端按「线形按钮」的交互口径（设计师 2026-11-09 点
+   `button.jump-to-bottom-button`：「现在 hover 是变透明，希望参考线形按钮的交互
+   样式来处理」）。改前 hover 取 `--vscode-toolbar-hoverBackground` =
+   rgba(0, 0, 0, .12)（深色 rgba(90, 93, 94, .31)）—— 那是一层带 alpha 的覆盖色，
+   它把按钮原本不透明的面换掉，下面那条 56px 渐隐与正文就透上来，观感即「变透明」。
+   契约 common-components.md:19（Secondary outlined：hover fill-hover / pressed
+   fill-pressed / keep text-primary）：这里换成实心面，按下再深一档；字形另写一条
+   是因为 globals.css:64-72 的 `.codicon { color: var(--vscode-icon-foreground) }`
+   是直接声明，会盖掉从按钮继承下来的颜色，不显式指到字形就提不亮。几何（34×34、
+   circle、1px 边框、投影）、显隐逻辑、焦点环一律不动；插件端不带 data-host，仍是
+   上面那套原样规则。 */
+[data-host="desktop"] .jump-to-bottom-button:hover {
+  background-color: var(--cc-fill-hover);
+  color: var(--cc-text-primary);
+}
+
+[data-host="desktop"] .jump-to-bottom-button:hover .codicon,
+[data-host="desktop"] .jump-to-bottom-button:hover .jump-to-bottom-icon {
+  color: var(--cc-text-primary);
+}
+
+[data-host="desktop"] .jump-to-bottom-button:active {
+  background-color: var(--cc-fill-pressed);
+  color: var(--cc-text-primary);
+}
+
+[data-host="desktop"] .jump-to-bottom-button:active .codicon,
+[data-host="desktop"] .jump-to-bottom-button:active .jump-to-bottom-icon {
+  color: var(--cc-text-primary);
+}
+
+/* ── 「回到最新」按钮：AI 还在输出时的三点 loading（设计师 2026-11-10 点
+   `button.jump-to-bottom-button`：「这个按钮在 AI 还在思考输出的时候，如果出现
+   了，箭头显示为三个点的loading动效，鼠标hover上去变成箭头，提示用户AI还在输出」）。
+   口径：流式中（`data-streaming="true"`）= 三点；hover / 键盘 focus-visible =
+   箭头（把「点了回到最新」这个动作露出来）。非流式始终箭头，与改前逐像素一致。
+
+   几何（第二轮，设计师 2026-11-10「动效可不可以在活泼一些，三个点之间距离再大一点」）：
+   **间距 2 → 4px**（中心距 = 点径 + 4）。盒高恰是点径，比箭头（16×16）矮，但按钮内容
+   居中、且 34px 圆钮两侧各余 7px，故切换时钮内既无裁切也没有任何位移。点色沿用箭头的
+   `--vscode-icon-foreground`，hover 时那两颗字形一起提亮（上面两条规则已覆盖
+   `.jump-to-bottom-icon`）。
+
+   第三轮（设计师 2026-11-10「现在跳动的幅度太大了，感觉三个点不居中了，可以小一点，
+   再检查下三个点是否是正圆，圆圈可以再大一点点」）两处收口：
+   ① **位移改成对称 ±1px**（原来 `0 → -3px` 只往上跳）：三点的墨迹中心原本会整体上浮
+   最多 3px（实测 6 个相位 `724.6…722.5`），肉眼就是「不居中」；改成以按钮中线为轴
+   `+1px ⇄ -1px` 后，起伏仍在，但重心始终压在中线上（实测摆动 1.7px、偏移 +0.2px）。
+   ② **点径 4 → 5px**，让圆边落在整设备像素上（2 倍屏 10 个设备像素），正圆在栅格上确定。
+
+   第四轮（设计师 2026-11-10「太大了可以再小一点」）：点径 **5 → 4.5px**。
+   4.5px 在 2 倍屏是 9 个设备像素、墨迹盒实测 18/18 都是 `9×9`（长宽比 1.00），
+   圆心只偏 0.1px；三点盒 `21.5×4.5`，仍在 34px 圆钮内居中、零位移。
+   不再往回调到 4px（8 个设备像素）——她要的是「比 5 小一点」，而 4px 正是她上一轮
+   嫌小的那一档。 */
+[data-host="desktop"] .jump-to-bottom-button[data-streaming="true"] .jump-to-bottom-icon {
+  display: none;
+}
+
+[data-host="desktop"] .jump-to-bottom-button[data-streaming="true"] .jump-to-bottom-dots {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--vscode-icon-foreground);
+}
+
+[data-host="desktop"] .jump-to-bottom-dots i {
+  width: 4.5px;
+  height: 4.5px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: jumpToBottomDotPulse 0.9s cubic-bezier(0.34, 1.4, 0.64, 1) infinite;
+}
+
+[data-host="desktop"] .jump-to-bottom-dots i:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+[data-host="desktop"] .jump-to-bottom-dots i:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+@keyframes jumpToBottomDotPulse {
+  0%,
+  100% {
+    transform: translateY(1px);
+    opacity: 0.4;
+  }
+  40% {
+    transform: translateY(-1px);
+    opacity: 1;
+  }
+}
+
+/* hover / 键盘聚焦 ⇒ 切回下箭头（键盘用户没有 hover，只能靠 focus-visible）。 */
+[data-host="desktop"] .jump-to-bottom-button[data-streaming="true"]:hover .jump-to-bottom-icon,
+[data-host="desktop"] .jump-to-bottom-button[data-streaming="true"]:focus-visible .jump-to-bottom-icon {
+  display: block;
+}
+
+[data-host="desktop"] .jump-to-bottom-button[data-streaming="true"]:hover .jump-to-bottom-dots,
+[data-host="desktop"] .jump-to-bottom-button[data-streaming="true"]:focus-visible .jump-to-bottom-dots {
+  display: none;
+}
+
+/* 系统开了「减少动态效果」就停在静止的三点上（形状仍在表达「还在输出」）。 */
+@media (prefers-reduced-motion: reduce) {
+  [data-host="desktop"] .jump-to-bottom-dots i {
+    animation: none;
+  }
 }

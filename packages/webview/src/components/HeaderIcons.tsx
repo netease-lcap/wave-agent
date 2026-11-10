@@ -74,6 +74,52 @@ export const ExternalLinkIcon: React.FC<IconProps> = ({
   </svg>
 );
 
+/**
+ * 「打开预览」的斜向箭头（↗），**桌面端**专用，与文件面板工具条那套官方矢量
+ * 同一档线宽（16 盒 / 线宽 1.4 / 圆头圆角 / `currentColor`）。
+ *
+ * 设计师 2026-11-10 预览评论（`button.write-preview-open`）：「现在两张纸可以，
+ * 这里也改，图标的粗细要保持一致」——上面那颗 `ExternalLinkIcon` 是 Figma 里导出
+ * 的**实心**字形（`fill` 无描边、尖角），和刚统一成 1.4 描边的复制图标并排时明显
+ * 更重；这里按同一套描边参数重画同形的箭头。
+ *
+ * 尺寸：与改前的实心箭头**同墨迹**（9.2px 见方，中心线 4.1→11.9 加半个线宽）——
+ * 设计师 2026-11-10 看了 9.2 / 10.6 / 12.2 / 14.0 四档后裁「尺寸选 A」，所以只换
+ * 线宽与端点，不动大小。（注：线宽固定 1.4 时图形越小「笔画 / 图形」比越大，这一档
+ * 相对更显重一点；若之后要往文件面板那批官方图标的墨迹习惯靠，`CommentIcon` 12.4 /
+ * 两纸复制 14.0 是另外两档。）
+ *
+ * 只在桌面端替换（`WriteToolPreview` 里按 `isDesktopHost()` 二选一），插件端仍是
+ * `ExternalLinkIcon`，与改动前逐像素一致。
+ */
+export const OpenPreviewArrowIcon: React.FC<IconProps> = ({
+  className = "write-preview-open-icon",
+}) => (
+  <svg
+    width={16}
+    height={16}
+    viewBox="0 0 16 16"
+    fill="none"
+    className={className}
+    aria-hidden="true"
+  >
+    <path
+      d="M4.1 11.9L11.9 4.1"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M6.3 4.1H11.9V9.7"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
+
 export const InfoIcon: React.FC<IconProps> = ({
   className = "header-icon",
 }) => (
@@ -268,6 +314,42 @@ export const SendArrowIcon: React.FC<IconProps> = ({
     />
     <path
       d="M9 14.25V3.75"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
+
+// 「回到最新」圆钮的下箭头 —— 与上面 composer 发送箭头同一套几何（设计师
+// 2026-11-10 点 `span.codicon.codicon-arrow-down`：「图标的大小粗细可以参考」
+// `svg.ai-send-icon`）。盒 16×16 / viewBox 18 / stroke 1.5 —— 渲染笔画
+// 1.5 × 16/18 = 1.333，与发送箭头完全同档 —— 圆头圆角；形状就是发送箭头上下
+// 翻转（chevron `M3.75 9L9 14.25L14.25 9` + 杆 `M9 3.75V14.25`）。
+// 换掉原来那颗 codicon 字形的原因：字形墨迹实测 10.5 × 12、笔画约 1.5，比发送
+// 箭头（墨迹 10 × 10、笔画 1.333）略大略粗，而且字体字形没法单独调笔画。
+// 只在桌面端用（见 MessageList.tsx），插件端仍是 codicon。
+export const ScrollToBottomArrowIcon: React.FC<IconProps> = ({
+  className = "jump-to-bottom-icon",
+}) => (
+  <svg
+    width={16}
+    height={16}
+    viewBox="0 0 18 18"
+    fill="none"
+    className={className}
+    aria-hidden="true"
+  >
+    <path
+      d="M3.75 9L9 14.25L14.25 9"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M9 3.75V14.25"
       stroke="currentColor"
       strokeWidth="1.5"
       strokeLinecap="round"
@@ -1179,6 +1261,86 @@ export const MaximizeIcon: React.FC<IconProps> = ({
         fill="currentColor"
       />
     </g>
+  </svg>
+);
+
+/**
+ * 「回滚到此消息」的官方矢量（设计给件 `回滚.svg`，2026-11-10 第 22 轮）：逆时针回转的
+ * 开口圆 + 左上一个小折角。给件是**实心**字形（`fill`、无描边），与同组另外两颗
+ * （`跳转.svg` / `后台.svg` 都是 1.4 描边）不同 —— 但同组按钮里它与「转后台」那颗并排
+ * 出现，所以盒、线宽口径不参与，只把 `#565A60` 换成 `currentColor`，让
+ * `.message-action-btn svg` 那条规则继续把它钉在图标灰上。
+ *
+ * 只换字形：16×16 盒、按钮几何、tooltip 文案都不动。第 23 轮起三端统一用这颗（设计师
+ * 「这个是各个端都同步的吧」→ 裁定「只换图标、盒不动」）：盒各随自己的 CSS —— 桌面端
+ * 24×24·r8、插件端与远控页仍是 base 的 26×22·r4。
+ */
+export const RewindIcon: React.FC<IconProps> = ({
+  className = "header-icon",
+}) => (
+  <svg
+    width={16}
+    height={16}
+    viewBox="0 0 16 16"
+    fill="none"
+    className={className}
+    aria-hidden="true"
+  >
+    <path
+      d="M8 1.08398C11.8196 1.08417 14.916 4.18027 14.916 8C14.9156 11.8192 11.8194 14.9158 8 14.916C4.48152 14.916 1.57877 12.2882 1.14248 8.88858C1.09129 8.48938 1.41781 8.15593 1.82027 8.15331C2.21244 8.15083 2.52928 8.4648 2.58983 8.85227C2.99932 11.4724 5.26524 13.4777 8 13.4777C10.9303 13.4775 13.3238 11.1753 13.4707 8.2814L13.4777 8C13.4777 5.06944 11.1756 2.67595 8.2814 2.52932L8 2.52226C6.13887 2.52226 4.49552 3.45144 3.50565 4.87029H4.55662C4.95379 4.87029 5.27575 5.19226 5.27575 5.58943C5.27575 5.9866 4.95379 6.30857 4.55662 6.30857H1.86969C1.43582 6.30843 1.08412 5.95673 1.08398 5.52286V2.83593C1.08398 2.43877 1.40595 2.1168 1.80312 2.1168C2.20029 2.1168 2.52226 2.43877 2.52226 2.83593V3.77797C3.78705 2.13943 5.76999 1.08398 8 1.08398Z"
+      fill="currentColor"
+    />
+  </svg>
+);
+
+/**
+ * 「把本轮转到后台」的官方矢量（设计给件 `跳转.svg`，2026-11-10 第 19 轮）：
+ * 监视器外框 + 座底线 + 框内右向箭头，与右侧面板「后台任务」入口那颗同一套外形。
+ *
+ * 只换字形，不动盒子：16×16 / 线宽 1.4 / 圆头圆角 / `currentColor`（取色由
+ * `.message-action-btn svg` 那条规则钉到 `--vscode-icon-foreground`，与它顶掉的
+ * `codicon-tasklist` 字体字形同色）。第 23 轮起三端统一用这颗，盒各随自己的 CSS
+ * （桌面端 24×24·r8 / 插件端 26×22·r4）—— 字形 16×16 与 codicon 的内容盒同尺寸，
+ * 换它不改变非桌面端的按钮几何。
+ */
+export const JumpToBackgroundIcon: React.FC<IconProps> = ({
+  className = "header-icon",
+}) => (
+  <svg
+    width={16}
+    height={16}
+    viewBox="0 0 16 16"
+    fill="none"
+    className={className}
+    aria-hidden="true"
+  >
+    <path
+      d="M12 11.7273L3.99999 11.7273C2.89543 11.7273 2 10.8318 2 9.72726V3.72729C2 2.62272 2.89543 1.72729 4 1.72729L12 1.7273C13.1046 1.7273 14 2.62273 14 3.7273V9.72729C14 10.8319 13.1046 11.7273 12 11.7273Z"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M5.43164 14.2954H10.568"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M8.40723 8.8877L10.5677 6.72719L8.40712 4.56668"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M5.43164 6.72729H10.1151"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
   </svg>
 );
 

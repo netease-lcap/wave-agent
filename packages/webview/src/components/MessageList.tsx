@@ -10,6 +10,8 @@ import React, {
 } from "react";
 import { Message } from "./Message";
 import { DelegatedTooltip } from "./DelegatedTooltip";
+import { ScrollToBottomArrowIcon } from "./HeaderIcons";
+import { isDesktopHost } from "../utils/platform";
 import { TranscriptOutline } from "./TranscriptOutline";
 import {
   OUTLINE_QUESTION_LIMIT,
@@ -727,6 +729,61 @@ export const MessageList = forwardRef<
     });
   }, [containerRef, indexAtOffset, rowStart, visualOffset]);
 
+  /**
+   * 落在滚动面里的用户消息（给大纲的「在视口内」提色用，spec 场景 14）。
+   *
+   * 判据是**纯几何**：行区间与滚动面相交即算。它与「当前这一轮是哪个」（场景 4
+   * 的判据，只要一条、用来画前景色）是两个粒度：那边回答「读者读到哪一轮了」，
+   * 这边回答「屏幕上现在摆着哪几轮」，所以这里给的是一整份集合。走偏移表而不是
+   * DOM：虚拟列表只挂了一窗行，DOM 里读不到的行不等于不在视口里。
+   */
+  const [visibleOutlineIds, setVisibleOutlineIds] = useState<readonly string[]>(
+    [],
+  );
+  const visibleOutlineIdsRef = useRef<readonly string[]>([]);
+
+  const computeVisibleOutlineIds = useCallback(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    // 手势期画布带视觉偏移，屏幕上真正的视口顶是 `scrollTop - 偏移`（同 computeSticky）。
+    const top = container.scrollTop - visualOffset();
+    const bottom = top + container.clientHeight;
+    const rows = visibleMessagesRef.current;
+    const ids: string[] = [];
+    // 跨在视口顶上的那一行也要算：`indexAtOffset` 给的是「第一个顶边 >= top 的
+    // 行」，它的前一行往往正被从中间切开、有一半露在视口里。
+    let index = indexAtOffset(top);
+    index = index < 0 ? 0 : Math.max(0, index - 1);
+    for (let i = index; i < rows.length; i++) {
+      const start = rowStart(i);
+      // 偏移表是单调的：这一行的顶已经落到视口底之下，后面的都不用看了。
+      if (start >= bottom) break;
+      const row = rows[i];
+      if (row.role !== "user") continue;
+      // 行底 = 下一行的起点；末行没有下一行，按「延伸到内容末尾」处理。
+      const end =
+        i + 1 < rows.length ? rowStart(i + 1) : Number.POSITIVE_INFINITY;
+      if (end <= top) continue;
+      if (!row.id) continue;
+      if (!stickyAnchorText(row)) continue;
+      ids.push(row.id);
+    }
+    // 值没变就别 setState：本函数挂在滚动与内容增长两处，逐次新建数组会让
+    // 整棵树跟着重渲染（流式期尤其贵）。
+    const prev = visibleOutlineIdsRef.current;
+    if (prev.length === ids.length && prev.every((id, k) => id === ids[k])) {
+      return;
+    }
+    visibleOutlineIdsRef.current = ids;
+    setVisibleOutlineIds(ids);
+  }, [containerRef, indexAtOffset, rowStart, visualOffset]);
+
+  // 容器高度（分屏拖动、窗口缩放）也会改变「视口里有哪几条」，而这条路径不派发
+  // 滚动事件。
+  useEffect(() => {
+    computeVisibleOutlineIds();
+  }, [computeVisibleOutlineIds, listViewportHeight]);
+
   const scrollToMessage = useCallback(
     (id: string) => {
       const container = containerRef.current;
@@ -864,6 +921,9 @@ export const MessageList = forwardRef<
       !isInitialLoad && isNewMessage && visibleTail?.role === "user",
     );
     computeSticky();
+    // 行高从估算变实测、上方补了一页，都会在不派发滚动事件的情况下改变「谁在
+    // 视口里」，所以这一份也要在内容变化时对一次账。
+    computeVisibleOutlineIds();
     // 内容增长不会派发滚动事件（流式追加、压缩提示出现、行高从估算变实测），
     // 所以「回到最新」入口的显隐必须在这里也读一次几何——只挂 scroll 会让
     // 「读者停在远处、下面又长了一大段」这种情况一直不更新。
@@ -877,6 +937,7 @@ export const MessageList = forwardRef<
     isStreaming,
     followToBottom,
     computeSticky,
+    computeVisibleOutlineIds,
     containerRef,
     updateJumpToBottom,
   ]);
@@ -939,6 +1000,7 @@ export const MessageList = forwardRef<
         setPinnedOutlineId(null);
       }
       computeSticky();
+      computeVisibleOutlineIds();
       if (jumpRaf !== 0) return;
       jumpRaf = requestAnimationFrame(() => {
         jumpRaf = 0;
@@ -951,7 +1013,12 @@ export const MessageList = forwardRef<
       container.removeEventListener("scroll", handleScroll);
       if (jumpRaf !== 0) cancelAnimationFrame(jumpRaf);
     };
-  }, [computeSticky, containerRef, updateJumpToBottom]);
+  }, [
+    computeSticky,
+    computeVisibleOutlineIds,
+    containerRef,
+    updateJumpToBottom,
+  ]);
 
   // Does this gesture belong to a region INSIDE the list that scrolls
   // vertically on its own? Tool output, the diff view, reasoning, the write
@@ -1064,6 +1131,7 @@ export const MessageList = forwardRef<
       <TranscriptOutline
         items={outlineItems}
         activeId={outlineActive}
+        visibleIds={visibleOutlineIds}
         columnWidth={columnWidth}
         columnInset={columnInset}
         viewportHeight={listViewportHeight}
@@ -1179,9 +1247,31 @@ export const MessageList = forwardRef<
             // 会把过渡吃掉）。
             aria-hidden={!showJumpToBottom}
             tabIndex={showJumpToBottom ? 0 : -1}
+            // 流式中（AI 还在输出）箭头让位给三个点的 loading；取值交给 CSS。
+            data-streaming={isStreaming ? "true" : "false"}
             onClick={jumpToBottom}
           >
-            <span className="codicon codicon-arrow-down" aria-hidden="true" />
+            {/* 桌面端用与 composer 发送箭头同几何的下箭头（设计师 2026-11-10：
+                「图标的大小粗细可以参考」`svg.ai-send-icon`）；插件端保留原
+                codicon 字形，与本轮其它改动一样不动宿主端。
+
+                流式中（`data-streaming="true"`）额外挂一层三点：这一轮还在输出，
+                按钮只是「等它说完」的指示；鼠标悬停（或键盘聚焦）才切回下箭头，
+                把「点了会回到最新」这个动作露出来（设计师 2026-11-10：「箭头显示
+                为三个点的 loading 动效，鼠标 hover 上去变成箭头」）。三点只在这个
+                桌面分支里渲染，插件端仍是上面那颗 codicon，DOM 与样式都不受影响。 */}
+            {isDesktopHost() ? (
+              <>
+                <span className="jump-to-bottom-dots" aria-hidden="true">
+                  <i />
+                  <i />
+                  <i />
+                </span>
+                <ScrollToBottomArrowIcon />
+              </>
+            ) : (
+              <span className="codicon codicon-arrow-down" aria-hidden="true" />
+            )}
           </button>
         </div>
       </div>
