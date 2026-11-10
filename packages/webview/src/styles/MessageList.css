@@ -330,6 +330,12 @@
   color: var(--vscode-icon-foreground);
 }
 
+/* 流式中的三点（只有桌面端会渲染出来，见 MessageList.tsx）。默认不显示：
+   非流式、以及所有插件端宿主都保持原来那颗下箭头。 */
+.jump-to-bottom-dots {
+  display: none;
+}
+
 /* ── 「回到最新」按钮：桌面端按「线形按钮」的交互口径（设计师 2026-11-09 点
    `button.jump-to-bottom-button`：「现在 hover 是变透明，希望参考线形按钮的交互
    样式来处理」）。改前 hover 取 `--vscode-toolbar-hoverBackground` =
@@ -359,4 +365,77 @@
 [data-host="desktop"] .jump-to-bottom-button:active .codicon,
 [data-host="desktop"] .jump-to-bottom-button:active .jump-to-bottom-icon {
   color: var(--cc-text-primary);
+}
+
+/* ── 「回到最新」按钮：AI 还在输出时的三点 loading（设计师 2026-11-10 点
+   `button.jump-to-bottom-button`：「这个按钮在 AI 还在思考输出的时候，如果出现
+   了，箭头显示为三个点的loading动效，鼠标hover上去变成箭头，提示用户AI还在输出」）。
+   口径：流式中（`data-streaming="true"`）= 三点；hover / 键盘 focus-visible =
+   箭头（把「点了回到最新」这个动作露出来）。非流式始终箭头，与改前逐像素一致。
+
+   几何（第二轮，设计师 2026-11-10「动效可不可以在活泼一些，三个点之间距离再大一点」）：
+   点径 4px + **间距 2 → 4px** ⇒ 三点盒 `20×4`（中心距 8）。盒比箭头（16×16）宽 4px，
+   但按钮内容居中、且 34px 圆钮两侧各余 7px，故切换时钮内既无裁切也没有任何位移。
+   点色沿用箭头的 `--vscode-icon-foreground`，hover 时那两颗字形一起提亮（上面两条
+   规则已覆盖 `.jump-to-bottom-icon`）。
+
+   动效也从「纯透明度呼吸」换成**上浮波浪**：`translateY(0 → -3px)` + 透明度
+   `0.4 → 1`，周期 `1.1s → 0.9s`、错峰 `0.14s → 0.15s`，并给曲线一点回弹
+   （`cubic-bezier(.34,1.4,.64,1)`，>1 的 Y2 让它到顶时轻轻一顿）。三点交替起伏
+   比单纯明暗更「活」，也更容易在余光里看出来。 */
+[data-host="desktop"] .jump-to-bottom-button[data-streaming="true"] .jump-to-bottom-icon {
+  display: none;
+}
+
+[data-host="desktop"] .jump-to-bottom-button[data-streaming="true"] .jump-to-bottom-dots {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--vscode-icon-foreground);
+}
+
+[data-host="desktop"] .jump-to-bottom-dots i {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: jumpToBottomDotPulse 0.9s cubic-bezier(0.34, 1.4, 0.64, 1) infinite;
+}
+
+[data-host="desktop"] .jump-to-bottom-dots i:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+[data-host="desktop"] .jump-to-bottom-dots i:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+@keyframes jumpToBottomDotPulse {
+  0%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.4;
+  }
+  40% {
+    transform: translateY(-3px);
+    opacity: 1;
+  }
+}
+
+/* hover / 键盘聚焦 ⇒ 切回下箭头（键盘用户没有 hover，只能靠 focus-visible）。 */
+[data-host="desktop"] .jump-to-bottom-button[data-streaming="true"]:hover .jump-to-bottom-icon,
+[data-host="desktop"] .jump-to-bottom-button[data-streaming="true"]:focus-visible .jump-to-bottom-icon {
+  display: block;
+}
+
+[data-host="desktop"] .jump-to-bottom-button[data-streaming="true"]:hover .jump-to-bottom-dots,
+[data-host="desktop"] .jump-to-bottom-button[data-streaming="true"]:focus-visible .jump-to-bottom-dots {
+  display: none;
+}
+
+/* 系统开了「减少动态效果」就停在静止的三点上（形状仍在表达「还在输出」）。 */
+@media (prefers-reduced-motion: reduce) {
+  [data-host="desktop"] .jump-to-bottom-dots i {
+    animation: none;
+  }
 }

@@ -1247,13 +1247,28 @@ export const MessageList = forwardRef<
             // 会把过渡吃掉）。
             aria-hidden={!showJumpToBottom}
             tabIndex={showJumpToBottom ? 0 : -1}
+            // 流式中（AI 还在输出）箭头让位给三个点的 loading；取值交给 CSS。
+            data-streaming={isStreaming ? "true" : "false"}
             onClick={jumpToBottom}
           >
             {/* 桌面端用与 composer 发送箭头同几何的下箭头（设计师 2026-11-10：
                 「图标的大小粗细可以参考」`svg.ai-send-icon`）；插件端保留原
-                codicon 字形，与本轮其它改动一样不动宿主端。 */}
+                codicon 字形，与本轮其它改动一样不动宿主端。
+
+                流式中（`data-streaming="true"`）额外挂一层三点：这一轮还在输出，
+                按钮只是「等它说完」的指示；鼠标悬停（或键盘聚焦）才切回下箭头，
+                把「点了会回到最新」这个动作露出来（设计师 2026-11-10：「箭头显示
+                为三个点的 loading 动效，鼠标 hover 上去变成箭头」）。三点只在这个
+                桌面分支里渲染，插件端仍是上面那颗 codicon，DOM 与样式都不受影响。 */}
             {isDesktopHost() ? (
-              <ScrollToBottomArrowIcon />
+              <>
+                <span className="jump-to-bottom-dots" aria-hidden="true">
+                  <i />
+                  <i />
+                  <i />
+                </span>
+                <ScrollToBottomArrowIcon />
+              </>
             ) : (
               <span className="codicon codicon-arrow-down" aria-hidden="true" />
             )}
