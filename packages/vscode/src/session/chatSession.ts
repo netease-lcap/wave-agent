@@ -11,6 +11,7 @@ import type {
   McpServerStatus,
   ToolBlockUpdateCallbackParams,
   NoticeLevel,
+  BtwAskOptions,
 } from "wave-agent-sdk/host";
 import { StdioClient } from "../stdio/stdioClient";
 import {
@@ -654,11 +655,14 @@ export class ChatSession {
     // 回滚到一个很早的消息时，整份列表正是首屏不该再构造一遍的那份东西。
   }
 
-  public async askBtw(question: string): Promise<string> {
+  public async askBtw(
+    question: string,
+    options?: BtwAskOptions,
+  ): Promise<string> {
     if (!this.agent) {
       throw new Error("智能体未初始化");
     }
-    return await this.agent.askBtw(question);
+    return await this.agent.askBtw(question, options);
   }
 
   public async destroy() {

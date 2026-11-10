@@ -51,6 +51,9 @@ test.describe("Product Spec: /btw side question", () => {
 
     // Panel shows the answer, chat history stays untouched
     await expect(
+      webviewPage.locator('[data-testid="btw-turn-question"]'),
+    ).toContainText("乐观锁的实现思路是什么？");
+    await expect(
       webviewPage.locator('[data-testid="btw-panel-answer"]'),
     ).toBeVisible();
     await expect(
@@ -85,12 +88,95 @@ test.describe("Product Spec: /btw side question", () => {
       webviewPage.locator('[data-testid="btw-panel"]'),
     ).toBeVisible();
     await expect(
-      webviewPage.locator('[data-testid="btw-panel-answer"]'),
+      webviewPage.locator('[data-testid="btw-panel-empty"]'),
     ).toContainText("用法：/btw <你的问题>");
 
     await elementScreenshotWebp(
       webviewPage.locator('[data-testid="btw-panel"]'),
       "../../docs/public/screenshots/spec-btw-usage.webp",
+    );
+  });
+
+  test("should capture the /btw panel with a follow-up round", async ({
+    webviewPage,
+  }) => {
+    const injector = new MessageInjector(webviewPage);
+
+    await injector.simulateExtensionMessage("setInitialState", {
+      messages: [],
+      isStreaming: false,
+      sessions: [],
+      isAuthenticated: true,
+      permissionMode: "default",
+    });
+
+    await injector.updateMessages([
+      MockDataGenerator.createUserMessage("帮我看下 PaymentService 的并发问题"),
+      MockDataGenerator.createAssistantMessage(
+        "我已经分析了 PaymentService 的代码，发现 `processPayment` 方法中存在竞态条件，建议改用乐观锁...",
+      ),
+    ]);
+    await injector.endStreaming();
+
+    // Round 1 — asked from the main input (`/btw <question>`).
+    await webviewPage.focus('[data-testid="message-input"]');
+    await webviewPage.keyboard.type("/btw 乐观锁的实现思路是什么？");
+    await webviewPage.keyboard.press("Enter");
+    await webviewPage.waitForFunction(() => {
+      const msgs = window.getTestMessages ? window.getTestMessages() : [];
+      return msgs.some((m) => m.command === "askBtw");
+    });
+    await injector.simulateExtensionMessage("btwResponse", {
+      question: "乐观锁的实现思路是什么？",
+      answer:
+        "**乐观锁**：读取不加锁，更新时用 `version` 校验数据有没有被改过（受影响行数为 0 就重试）。省掉悲观锁的阻塞成本，适合读多写少。",
+    });
+    await expect(
+      webviewPage.locator('[data-testid="btw-panel-answer"]'),
+    ).toContainText("乐观锁");
+
+    // Round 2 — asked from the panel input, which is what makes it a side chat.
+    await webviewPage.focus('[data-testid="btw-panel-input"]');
+    await webviewPage.keyboard.type("那版本号和 CAS 该选哪个？");
+    await webviewPage.keyboard.press("Enter");
+    await webviewPage.waitForFunction(() => {
+      const msgs = window.getTestMessages ? window.getTestMessages() : [];
+      return msgs.filter((m) => m.command === "askBtw").length >= 2;
+    });
+
+    // The follow-up carries the finished round as history (no re-explaining).
+    const followUp = await webviewPage.evaluate(() => {
+      const msgs = window.getTestMessages ? window.getTestMessages() : [];
+      const asks = msgs.filter((m) => m.command === "askBtw");
+      return asks[asks.length - 1] as unknown as {
+        requestId?: string;
+        history?: unknown[];
+      };
+    });
+    expect(followUp.history).toEqual([
+      {
+        question: "乐观锁的实现思路是什么？",
+        answer: expect.stringContaining("乐观锁"),
+      },
+    ]);
+
+    await injector.simulateExtensionMessage("btwResponse", {
+      requestId: followUp.requestId,
+      question: "那版本号和 CAS 该选哪个？",
+      answer:
+        "两者是同一件事的两种写法：**版本号**（业务表自带 `version` 字段，直观，跨表要定版本挂谁身上）和 **CAS**（只比对被改的值，省字段但有 ABA 问题）。表能加字段就选版本号，存量表改不动再退到 CAS。",
+    });
+
+    await expect(webviewPage.locator('[data-testid="btw-turn"]')).toHaveCount(
+      2,
+    );
+    await expect(
+      webviewPage.locator('[data-testid="btw-panel-input"]'),
+    ).toHaveAttribute("placeholder", "继续提问，Enter 发送");
+
+    await screenshotWebp(
+      webviewPage,
+      "../../docs/public/screenshots/spec-btw-followup.webp",
     );
   });
 });

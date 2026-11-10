@@ -10,6 +10,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -55,7 +56,7 @@ interface AgentCallbacks {
     fun onWorkdirChange(workdir: String) {}
     fun onPermissionRequest(requestId: String, context: JsonElement?) {}
     fun onNotificationMessageAdded(message: JsonObject) {}
-    fun onBtwContent(question: String, content: String, type: String) {}
+    fun onBtwContent(question: String, content: String, type: String, requestId: String?) {}
     fun onError(message: String) {}
 }
 
@@ -174,6 +175,7 @@ class StdioAgent(
                     o?.get("question")?.jsonPrimitive?.content ?: "",
                     o?.get("content")?.jsonPrimitive?.content ?: "",
                     o?.get("type")?.jsonPrimitive?.content ?: "",
+                    o?.get("requestId")?.jsonPrimitive?.contentOrNull,
                 )
             }
             "compactBlockAdded" -> callbacks.onCompactBlockAdded(
@@ -366,8 +368,22 @@ class StdioAgent(
         return result?.jsonObject?.get("inputContent")?.jsonPrimitive?.content ?: ""
     }
 
-    suspend fun askBtw(question: String): String =
-        client.request("askBtw", buildJsonObject { put("question", question) }, sessionId)?.jsonPrimitive?.content ?: ""
+    /**
+     * `/btw` side question. `history` carries the earlier side-chat turns and
+     * `requestId` is echoed back on every `btwContent` notification so the
+     * webview can attribute chunks to the turn that asked (spec
+     * commands/btw-command.md「Webview 端继续提问」).
+     */
+    suspend fun askBtw(question: String, history: JsonElement?, requestId: String?): String =
+        client.request(
+            "askBtw",
+            buildJsonObject {
+                put("question", question)
+                history?.let { put("history", it) }
+                requestId?.let { put("requestId", it) }
+            },
+            sessionId,
+        )?.jsonPrimitive?.content ?: ""
 
     suspend fun listRewindCheckpoints(): JsonElement =
         client.request("listRewindCheckpoints", sessionId = sessionId) ?: JsonObject(emptyMap())

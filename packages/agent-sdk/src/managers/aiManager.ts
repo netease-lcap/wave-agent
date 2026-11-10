@@ -1,5 +1,6 @@
 import { type CallAgentOptions } from "../services/aiService.js";
 import * as aiService from "../services/aiService.js";
+import type { BtwHistoryTurn } from "../types/btw.js";
 import { convertMessagesForAPI } from "../utils/convertMessagesForAPI.js";
 import { resolveApiType, supportsVision } from "../utils/modelCapabilities.js";
 import { persistToolImages } from "../utils/toolImagePersistence.js";
@@ -1503,12 +1504,19 @@ export class AIManager {
    * stripped so the fork starts from the last completed request prefix. Tools
    * are never executed — the wrapped question instructs the model to answer
    * directly; an attempted tool call is surfaced as an error string.
+   *
+   * `history` carries the earlier side-chat turns (spec commands/btw-command.md
+   * 「Webview 端继续提问」): they are appended as ordinary user/assistant
+   * messages *after* the main-conversation prefix, so follow-up questions can
+   * refer back to earlier answers while the prefix that hits the prompt cache
+   * stays byte-identical.
    */
   async runBtwFork(
     question: string,
     abortSignal?: AbortSignal,
     onContent?: (content: string) => void,
     onReasoning?: (content: string) => void,
+    history?: BtwHistoryTurn[],
   ): Promise<{ content?: string; error?: string }> {
     const modelConfig = this.getModelConfig();
     const gatewayConfig = this.getGatewayConfig();
@@ -1548,7 +1556,15 @@ export class AIManager {
     }
 
     // Wrap the question with the side-question instructions (verbatim
-    // Claude Code sideQuestion.ts) so the model answers directly.
+    // Claude Code sideQuestion.ts) so the model answers directly. The first
+    // turn keeps the original wording byte-for-byte; a follow-up swaps the
+    // "one-off" line (which would contradict the history we are about to
+    // append) for a note pointing at the earlier turns.
+    const isFollowUp = (history?.length ?? 0) > 0;
+    const followUpConstraint = isFollowUp
+      ? `- This is a follow-up in a side chat: the earlier side questions and their answers appear above as ordinary messages — use them to resolve what "it/that/this" refers to, and do not re-answer what was already answered
+- This response is still a single turn - do not call tools or promise any action`
+      : `- This is a one-off response - there will be no follow-up turns`;
     const wrappedQuestion = `<system-reminder>This is a side question from the user. You must answer this question directly in a single response.
 
 IMPORTANT CONTEXT:
@@ -1559,7 +1575,7 @@ IMPORTANT CONTEXT:
 
 CRITICAL CONSTRAINTS:
 - You have NO tools available - you cannot read files, run commands, search, or take any actions
-- This is a one-off response - there will be no follow-up turns
+${followUpConstraint}
 - You can ONLY provide information based on what you already know from the conversation context
 - NEVER say things like "Let me try...", "I'll now...", "Let me check...", or promise to take any action
 - If you don't know the answer, say so - do not offer to look it up or investigate
@@ -1567,6 +1583,13 @@ CRITICAL CONSTRAINTS:
 Simply answer the question with the information you have.</system-reminder>
 
 ${question}`;
+
+    // Earlier side-chat turns sit between the main-conversation prefix and the
+    // new question: the cacheable prefix is unchanged, only the suffix grows.
+    for (const turn of history ?? []) {
+      forkMessages.push({ role: "user", content: turn.question });
+      forkMessages.push({ role: "assistant", content: turn.answer });
+    }
     forkMessages.push({ role: "user", content: wrappedQuestion });
 
     const { toolsConfig, reachableToolPlugins } = this.resolveFilteredTools();

@@ -1032,6 +1032,52 @@ describe("remote page shim", () => {
     });
   });
 
+  test("carries the follow-up history and the requestId across the bridge", async () => {
+    const { page } = await openPage();
+
+    // 多轮追问（spec「Webview 端继续提问」）：页面生成的历史与 requestId 必须
+    // 原样到宿主，回执与流式增量再把 requestId 带回来——面板靠它归位。
+    page.api.postMessage({
+      command: "askBtw",
+      question: "那明天呢",
+      requestId: "btw-2",
+      history: [{ question: "今天几号", answer: "10 月 20 日" }],
+    });
+    await flush();
+
+    expect(page.socket.framesFor("askBtw")[0].params).toEqual({
+      question: "那明天呢",
+      requestId: "btw-2",
+      history: [{ question: "今天几号", answer: "10 月 20 日" }],
+    });
+
+    page.socket.receive({
+      method: "btwContent",
+      params: {
+        question: "那明天呢",
+        requestId: "btw-2",
+        content: "10 月 21",
+        type: "content",
+      },
+      sessionId: "s-new",
+    });
+    expect(lastPosted(page)).toEqual({
+      command: "btwStream",
+      question: "那明天呢",
+      requestId: "btw-2",
+      type: "content",
+      content: "10 月 21",
+    });
+
+    await page.answer("askBtw", "**10 月 21 日**");
+    expect(lastPosted(page)).toEqual({
+      command: "btwResponse",
+      question: "那明天呢",
+      requestId: "btw-2",
+      answer: "**10 月 21 日**",
+    });
+  });
+
   test("a /btw the machine cannot run ends on screen instead of loading forever", async () => {
     const { page } = await openPage();
 

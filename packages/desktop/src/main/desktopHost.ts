@@ -42,6 +42,7 @@ import type {
   MessageWindow,
   MessageWindowResult,
   StartupStage,
+  BtwHistoryTurn,
 } from "wave-agent-sdk/host";
 import {
   EDIT_TOOL_NAME,
@@ -2115,6 +2116,7 @@ export class DesktopHost {
             command: "btwStream",
             paneId,
             question: params.question,
+            requestId: params.requestId,
             content: params.content,
             type: params.type,
           });
@@ -4758,7 +4760,12 @@ export class DesktopHost {
         break;
 
       case "askBtw":
-        await this.handleAskBtw(msg.question as string, pid);
+        await this.handleAskBtw(
+          msg.question as string,
+          msg.requestId as string | undefined,
+          msg.history as BtwHistoryTurn[] | undefined,
+          pid,
+        );
         break;
 
       case "confirmationResponse":
@@ -7063,7 +7070,12 @@ export class DesktopHost {
     }
   }
 
-  private async handleAskBtw(question: string, paneId?: string): Promise<void> {
+  private async handleAskBtw(
+    question: string,
+    requestId?: string,
+    history?: BtwHistoryTurn[],
+    paneId?: string,
+  ): Promise<void> {
     const pid = paneId ?? this.focusedPaneId;
     const agent = this.agentForPane(pid);
     if (!agent) {
@@ -7071,16 +7083,18 @@ export class DesktopHost {
         command: "btwError",
         paneId: pid,
         question,
+        requestId,
         error: "智能体未初始化",
       });
       return;
     }
     try {
-      const answer = await agent.askBtw(question);
+      const answer = await agent.askBtw(question, { requestId, history });
       this.postMessage({
         command: "btwResponse",
         paneId: pid,
         question,
+        requestId,
         answer,
       });
     } catch (error) {
@@ -7089,6 +7103,7 @@ export class DesktopHost {
         command: "btwError",
         paneId: pid,
         question,
+        requestId,
         error: error instanceof Error ? error.message : String(error),
       });
     }

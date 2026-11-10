@@ -138,6 +138,8 @@ const label = ▍ // ← 建议给出 formatPrice({ cents: amount, currency }, "
 
 <figure><img src="/screenshots/spec-btw-panel.webp" alt="旁路提问面板" /><figcaption>旁路提问面板</figcaption></figure>
 
+<figure><img src="/screenshots/spec-btw-followup.webp" alt="侧聊里继续追问" /><figcaption>侧聊里继续追问：此前几轮问答留在面板里</figcaption></figure>
+
 <figure><img src="/screenshots/spec-btw-usage.webp" alt="旁路提问使用提示" /><figcaption>旁路提问使用提示</figcaption></figure>
 
 </div>

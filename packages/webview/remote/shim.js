@@ -2001,18 +2001,24 @@
       case "planFileUpdated":
         post({ command: "planFileUpdated", content: p.content });
         return;
-      case "btwContent":
+      case "btwContent": {
         // `/btw` 的流式增量（spec「Web 页也能用 /btw 旁路提问」场景 3）。宿主的
-        // 通知叫 `btwContent`、字段是 `{question, content, type}`；页面这一侧沿用
-        // 插件端 / 桌面端那条 `btwStream`（字段名一致），面板按 `question` 判归属 ——
-        // 少了 question，切会话后迟到的增量会画进新问题的面板里。
-        post({
+        // 通知叫 `btwContent`、字段是 `{question, content, type, requestId}`；页面这
+        // 一侧沿用插件端 / 桌面端那条 `btwStream`（字段名一致），面板按 `requestId`
+        // 判归属（旧宿主没回填时退回 question —— 少了 question 或 requestId，切会话
+        // 后迟到的增量会画进新问题的面板里）。
+        var stream = {
           command: "btwStream",
           question: typeof p.question === "string" ? p.question : "",
           type: p.type,
           content: p.content,
-        });
+        };
+        if (typeof p.requestId === "string" && p.requestId) {
+          stream.requestId = p.requestId;
+        }
+        post(stream);
         return;
+      }
       case "permissionRequest":
         // The whole reason this page exists: an approval that arrived while the
         // user was away has to be answerable from the phone — but only in the
@@ -3153,25 +3159,38 @@
       // 面板靠它判定「这块内容属于我还开着的那个问题」。
       case "askBtw": {
         var btwQuestion = typeof msg.question === "string" ? msg.question : "";
-        request("askBtw", { question: btwQuestion })
+        // 多轮追问（spec「Webview 端继续提问」）：历史与 requestId 原样过桥——
+        // 页面这一侧才是它们的生产者，中继只管照搬。
+        var btwParams = { question: btwQuestion };
+        if (Array.isArray(msg.history) && msg.history.length > 0) {
+          btwParams.history = msg.history;
+        }
+        if (typeof msg.requestId === "string" && msg.requestId) {
+          btwParams.requestId = msg.requestId;
+        }
+        request("askBtw", btwParams)
           .then(function (result) {
-            post({
+            var done = {
               command: "btwResponse",
               question: btwQuestion,
               answer: typeof result === "string" ? result : "",
-            });
+            };
+            if (btwParams.requestId) done.requestId = btwParams.requestId;
+            post(done);
           })
           .catch(function (err) {
             // 宿主侧没接这个方法时说清「这台电脑上的会话不支持」，其余按传输
             // 失败说；两种情况面板都会显示出来，不停在加载中。
-            post({
+            var failed = {
               command: "btwError",
               question: btwQuestion,
               error:
                 err && err.code === HOST_UNSUPPORTED
                   ? "这台电脑上的会话还不支持附带提问"
                   : "附带提问失败：" + ((err && err.message) || err),
-            });
+            };
+            if (btwParams.requestId) failed.requestId = btwParams.requestId;
+            post(failed);
           });
         return;
       }
