@@ -425,6 +425,9 @@ export class MessageManager {
           filePath,
           this.workdir,
           this.loadedNestedMemoryPaths,
+          // A memory file the model already read on its own is in context
+          // already — injecting it again would duplicate it in the request.
+          (candidate) => this.hasFileBeenRead(candidate),
         )),
       );
     }

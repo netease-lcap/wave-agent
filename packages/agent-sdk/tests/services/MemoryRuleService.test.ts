@@ -9,10 +9,20 @@ vi.mock("fs", () => ({
 }));
 
 // Only the worktree probe is stubbed; everything else keeps the real builtin so
-// the logger and other importers behave normally.
+// the logger and other importers behave normally. `realpathSync` stands in for
+// the OS call: fixture paths do not exist on disk, and the worktree probe
+// verifies the gitdir backlink through it.
 vi.mock("node:fs", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:fs")>();
-  return { ...actual, statSync: vi.fn(), readFileSync: vi.fn() };
+  return {
+    ...actual,
+    statSync: vi.fn(),
+    lstatSync: vi.fn(),
+    readFileSync: vi.fn(),
+    realpathSync: Object.assign((p: string) => p, {
+      native: (p: string) => p,
+    }),
+  };
 });
 
 describe("MemoryRuleService", () => {
@@ -197,9 +207,21 @@ invalid yaml
           code: "ENOENT",
         });
       });
+      vi.mocked(nodeFs.lstatSync).mockImplementation(
+        () =>
+          ({ isFile: () => true }) as unknown as ReturnType<
+            typeof nodeFs.lstatSync
+          >,
+      );
       vi.mocked(nodeFs.readFileSync).mockImplementation((p) => {
-        if (String(p) === worktreeGitfile) return `gitdir: ${checkoutGitDir}\n`;
-        throw Object.assign(new Error(`ENOENT: ${String(p)}`), {
+        const requested = String(p);
+        if (requested === worktreeGitfile) return `gitdir: ${checkoutGitDir}\n`;
+        // The worktree probe reads both files of the git link chain.
+        if (requested === path.join(checkoutGitDir, "commondir"))
+          return "../..\n";
+        if (requested === path.join(checkoutGitDir, "gitdir"))
+          return `${worktreeGitfile}\n`;
+        throw Object.assign(new Error(`ENOENT: ${requested}`), {
           code: "ENOENT",
         });
       });

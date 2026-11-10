@@ -3,14 +3,27 @@ import fsPromises from "node:fs/promises";
 import * as nodeFs from "node:fs";
 import * as path from "node:path";
 import { findNestedMemoryFiles } from "@/utils/nestedMemory.js";
-import { resetWorktreePathCache } from "@/utils/worktreePaths.js";
+import {
+  normalizePathForComparison,
+  resetWorktreePathCache,
+} from "@/utils/worktreePaths.js";
 
 vi.mock("node:fs/promises");
 
-// Passthrough except for the two probes the worktree mapping uses.
+// Passthrough except for the probes the worktree mapping uses. `realpathSync`
+// stands in for the OS call: fixture paths do not exist on disk, and the
+// mapping verifies a worktree's backlink through it.
 vi.mock("node:fs", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:fs")>();
-  return { ...actual, statSync: vi.fn(), readFileSync: vi.fn() };
+  return {
+    ...actual,
+    statSync: vi.fn(),
+    lstatSync: vi.fn(),
+    readFileSync: vi.fn(),
+    realpathSync: Object.assign((p: string) => p, {
+      native: (p: string) => p,
+    }),
+  };
 });
 
 // The walk resolves its inputs with `path.resolve`, which on Windows prepends
@@ -21,6 +34,16 @@ const ELSEWHERE = path.resolve("/elsewhere");
 
 /** A fixture path under the project root, in the platform's own form. */
 const at = (...segments: string[]) => path.join(WORKDIR, ...segments);
+
+/** The two files of a worktree's git link chain, both plain files. */
+function givenChainFilesArePlain(): void {
+  vi.mocked(nodeFs.lstatSync).mockImplementation(
+    () =>
+      ({ isFile: () => true }) as unknown as ReturnType<
+        typeof nodeFs.lstatSync
+      >,
+  );
+}
 
 function mockFiles(files: Record<string, string>) {
   vi.mocked(fsPromises.readFile).mockImplementation(async (filePath) => {
@@ -100,9 +123,12 @@ describe("findNestedMemoryFiles", () => {
       [at("packages/AGENTS.md")]: "packages memory",
       [at("packages/foo/AGENTS.md")]: "foo memory",
     });
+    // The dedup set is keyed by the lexical path
+    // (`normalizePathForComparison`), so a file already injected is skipped
+    // even when this walk spells it differently.
     const loaded = new Set([
-      at("packages/AGENTS.md"),
-      at("packages/CLAUDE.md"),
+      normalizePathForComparison(at("packages/AGENTS.md")),
+      normalizePathForComparison(at("packages/CLAUDE.md")),
     ]);
 
     const memories = await findNestedMemoryFiles(
@@ -119,13 +145,51 @@ describe("findNestedMemoryFiles", () => {
     );
   });
 
-  it("records injected files in the dedup set", async () => {
+  it("does not inject the same file twice when it is reached twice", async () => {
     mockFiles({ [at("packages/foo/AGENTS.md")]: "foo memory" });
     const loaded = new Set<string>();
 
-    await findNestedMemoryFiles(at("packages/foo/a.ts"), WORKDIR, loaded);
+    const first = await findNestedMemoryFiles(
+      at("packages/foo/a.ts"),
+      WORKDIR,
+      loaded,
+    );
+    const second = await findNestedMemoryFiles(
+      at("packages/foo/a.ts"),
+      WORKDIR,
+      loaded,
+    );
 
-    expect(loaded.has(at("packages/foo/AGENTS.md"))).toBe(true);
+    expect(first).toEqual([
+      { path: at("packages/foo/AGENTS.md"), content: "foo memory" },
+    ]);
+    expect(second).toEqual([]);
+  });
+
+  it("skips a memory file the model already read itself", async () => {
+    // Claude Code's `memoryFilesToAttachments` checks `readFileState` before
+    // attaching: a file already in the model's context (it Read the file) must
+    // not be pushed again.
+    mockFiles({
+      [at("packages/AGENTS.md")]: "packages memory",
+      [at("packages/CLAUDE.md")]: "packages legacy memory",
+      [at("packages/foo/AGENTS.md")]: "foo memory",
+    });
+    const read = new Set([at("packages/AGENTS.md")]);
+
+    const memories = await findNestedMemoryFiles(
+      at("packages/foo/a.ts"),
+      WORKDIR,
+      new Set(),
+      (candidate) => read.has(candidate),
+    );
+
+    expect(memories.map((m) => m.path)).toEqual([at("packages/foo/AGENTS.md")]);
+    // A file already in context must not fall through to CLAUDE.md either.
+    expect(fsPromises.readFile).not.toHaveBeenCalledWith(
+      at("packages/AGENTS.md"),
+      "utf-8",
+    );
   });
 
   it("ignores a file outside the project", async () => {
@@ -186,6 +250,8 @@ describe("findNestedMemoryFiles", () => {
     // each directory back) is what keeps nested memory alive there.
     const worktree = path.join(WORKDIR, ".wave", "worktrees", "wt");
     const worktreeGitfile = path.join(worktree, ".git");
+    const worktreeGitDir = path.join(WORKDIR, ".git", "worktrees", "wt");
+    givenChainFilesArePlain();
     vi.mocked(nodeFs.statSync).mockImplementation((p) => {
       if (String(p) === worktreeGitfile) {
         return {
@@ -197,10 +263,17 @@ describe("findNestedMemoryFiles", () => {
       });
     });
     vi.mocked(nodeFs.readFileSync).mockImplementation((p) => {
-      if (String(p) === worktreeGitfile) {
-        return `gitdir: ${path.join(WORKDIR, ".git", "worktrees", "wt")}\n`;
+      const requested = String(p);
+      if (requested === worktreeGitfile) {
+        return `gitdir: ${worktreeGitDir}\n`;
       }
-      throw Object.assign(new Error(`ENOENT: ${String(p)}`), {
+      if (requested === path.join(worktreeGitDir, "commondir")) {
+        return "../..\n";
+      }
+      if (requested === path.join(worktreeGitDir, "gitdir")) {
+        return `${worktreeGitfile}\n`;
+      }
+      throw Object.assign(new Error(`ENOENT: ${requested}`), {
         code: "ENOENT",
       });
     });
@@ -220,5 +293,64 @@ describe("findNestedMemoryFiles", () => {
         content: "worktree package memory",
       },
     ]);
+  });
+
+  it("never injects another checkout's root memory when the path cannot be mapped", async () => {
+    // The mapping above only fires when the walk recognises the worktree as
+    // related to this session's workdir. When it does not (a different spelling
+    // of the same directory, a symlinked entry point), the walk falls back to
+    // crawling the raw path — and would reach the worktree root, whose memory
+    // file is a second copy of the root memory already loaded eagerly. The
+    // guard has to drop that directory without dropping its children.
+    const worktree = path.join(WORKDIR, ".wave", "worktrees", "wt");
+    const worktreeGitfile = path.join(worktree, ".git");
+    const elsewhereGitDir = path.join(ELSEWHERE, ".git", "worktrees", "wt");
+    givenChainFilesArePlain();
+    vi.mocked(nodeFs.statSync).mockImplementation((p) => {
+      if (String(p) === worktreeGitfile) {
+        return {
+          isFile: () => true,
+        } as unknown as ReturnType<typeof nodeFs.statSync>;
+      }
+      throw Object.assign(new Error(`ENOENT: ${String(p)}`), {
+        code: "ENOENT",
+      });
+    });
+    vi.mocked(nodeFs.readFileSync).mockImplementation((p) => {
+      const requested = String(p);
+      if (requested === worktreeGitfile) {
+        // Points at a checkout this session's workdir is not part of.
+        return `gitdir: ${elsewhereGitDir}\n`;
+      }
+      if (requested === path.join(elsewhereGitDir, "commondir"))
+        return "../..\n";
+      if (requested === path.join(elsewhereGitDir, "gitdir")) {
+        return `${worktreeGitfile}\n`;
+      }
+      throw Object.assign(new Error(`ENOENT: ${requested}`), {
+        code: "ENOENT",
+      });
+    });
+    mockFiles({
+      [path.join(worktree, "AGENTS.md")]: "worktree root memory",
+      [path.join(worktree, "packages", "AGENTS.md")]: "worktree package memory",
+    });
+
+    const memories = await findNestedMemoryFiles(
+      path.join(worktree, "packages", "a.ts"),
+      WORKDIR,
+      new Set(),
+    );
+
+    expect(memories).toEqual([
+      {
+        path: path.join(worktree, "packages", "AGENTS.md"),
+        content: "worktree package memory",
+      },
+    ]);
+    expect(fsPromises.readFile).not.toHaveBeenCalledWith(
+      path.join(worktree, "AGENTS.md"),
+      "utf-8",
+    );
   });
 });
