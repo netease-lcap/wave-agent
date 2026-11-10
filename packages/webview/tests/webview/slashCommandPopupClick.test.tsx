@@ -94,11 +94,12 @@ describe("鼠标点击快捷指令打开二级弹层（回归）", () => {
   it("/btw：点击列表项后弹层打开，且不被同一次 mousedown 关闭", async () => {
     await clickSlashItem("/btw", "slash-command-btw");
 
-    // 空问题只回用法提示，不打扰宿主：面板给出用法即可。
+    // 空问题只回用法提示，不打扰宿主：面板给出用法即可（空态是
+    // `btw-panel-empty`，答案区只在真有轮次时才渲染）。
     await waitFor(() => {
       expect(screen.getByTestId("btw-panel")).toBeInTheDocument();
     });
-    expect(screen.getByTestId("btw-panel-answer").textContent).toContain(
+    expect(screen.getByTestId("btw-panel-empty").textContent).toContain(
       "用法：/btw",
     );
   });

@@ -16,7 +16,7 @@
  * the link / the button in every other host, so a guard that over-reaches breaks
  * a test here rather than shipping.
  */
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { render, fireEvent } from "@testing-library/react";
 import React from "react";
 import {
@@ -35,6 +35,7 @@ import { Message } from "../../src/components/Message";
 import { WriteToolPreview } from "../../src/components/WriteToolPreview";
 import { BASH_TOOL_NAME, READ_TOOL_NAME } from "wave-agent-sdk/constants";
 import type { Message as MessageType, ToolBlock } from "../../src/types";
+import { sessionUi } from "../../src/utils/sessionUiStore";
 
 const ABSOLUTE_PATH = "/home/user/project/src/styles/QueuedMessageList.css";
 
@@ -143,6 +144,12 @@ const HOST_ONLY_COMMANDS = new Set([
   "remoteControl",
   "updateConfiguration",
 ]);
+
+// 侧聊存在会话级快照里（sessionUi 是模块级单例），上一个用例留下的轮次会让
+// 下一个用例的 `/btw` 直接带着旧轮次打开、空态不再渲染——每个用例从干净状态起。
+beforeEach(() => {
+  sessionUi.prune(new Set());
+});
 
 afterEach(() => {
   delete window.waveRemotePage;
@@ -760,10 +767,10 @@ describe("entries that can only fail on the page", () => {
     expect(postsOf(vscode).filter((p) => p.command === "sendMessage")).toEqual(
       [],
     );
-    expect(postsOf(vscode)).toContainEqual({
-      command: "askBtw",
-      question: "今天几号",
-    });
+    // requestId 由 webview 生成、用于把回包归到具体那一轮，断言时忽略它。
+    expect(postsOf(vscode)).toContainEqual(
+      expect.objectContaining({ command: "askBtw", question: "今天几号" }),
+    );
 
     // 面板与宿主无关，照常挂在输入区上方。
     expect(screen.getByTestId("btw-panel")).toBeInTheDocument();
