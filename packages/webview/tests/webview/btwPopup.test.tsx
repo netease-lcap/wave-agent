@@ -10,6 +10,7 @@ import {
   sendHostMessage,
 } from "./test-utils";
 import { fixtures } from "wave-webview-fixtures";
+import { sessionUi } from "../../src/utils/sessionUiStore";
 
 /** A minimal SessionMetadata for conversation-switch tests. */
 function session(id: string) {
@@ -56,9 +57,28 @@ async function sendText(text: string) {
   return vscode;
 }
 
+/** 每一次 askBtw 的 payload（按发出顺序）。 */
+function askBtwPayloads(vscode: ReturnType<typeof renderChatApp>["vscode"]) {
+  return vscode.postMessage.mock.calls
+    .map(([message]) => message)
+    .filter((message) => message.command === "askBtw");
+}
+
+/** 在面板输入框里键入一句追问并回车发送。 */
+function followUpInPanel(text: string) {
+  const input = screen.getByTestId("btw-panel-input");
+  fireEvent.change(input, { target: { value: text } });
+  act(() => {
+    fireEvent.keyDown(screen.getByTestId("btw-panel-input"), { key: "Enter" });
+  });
+}
+
 describe("/btw Popup", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // 侧聊现在存在会话级快照里（sessionUi 是模块级单例），上一个用例留下的
+    // 在途轮次会按 question 抢走本用例的回包归属，用例之间必须清干净。
+    sessionUi.prune(new Set());
   });
 
   it("sends an askBtw RPC instead of a message and shows the loading panel", async () => {
@@ -190,7 +210,7 @@ describe("/btw Popup", () => {
     });
   });
 
-  it("close button hides the panel and a late reply is dropped", async () => {
+  it("close button only hides the panel: the in-flight answer still lands and shows up on reopen", async () => {
     const vscode = await sendText("/btw what is the weather?");
 
     act(() => {
@@ -198,7 +218,8 @@ describe("/btw Popup", () => {
     });
     expect(screen.queryByTestId("btw-panel")).not.toBeInTheDocument();
 
-    // Reply arriving after close must not resurrect the panel
+    // Closing hides, it does not cancel nor forget (spec「Webview 端继续提问」
+    // 场景 7): the reply landing afterwards is kept for the conversation.
     act(() => {
       sendCommand("btwResponse", {
         question: "what is the weather?",
@@ -206,6 +227,15 @@ describe("/btw Popup", () => {
       });
     });
     expect(screen.queryByTestId("btw-panel")).not.toBeInTheDocument();
+
+    // Reopening with a bare /btw brings the finished turn back, input ready.
+    await typeInInput("/btw");
+    act(() => {
+      fireEvent.click(screen.getByTestId("send-btn"));
+    });
+    const answers = screen.getAllByTestId("btw-panel-answer");
+    expect(answers).toHaveLength(1);
+    expect(answers[0].textContent).toContain("Sunny");
     expect(vscode.postMessage).not.toHaveBeenCalledWith(
       expect.objectContaining({ command: "sendMessage" }),
     );
@@ -433,6 +463,172 @@ describe("/btw Popup", () => {
       fixtures.setInitialState({ session: session("session-a") }),
     );
     expect(screen.queryByTestId("btw-panel")).not.toBeInTheDocument();
+  });
+
+  it("asks a follow-up from the panel and replays the finished turns as history", async () => {
+    const { vscode } = renderChatApp();
+    await typeInInput("/btw first?");
+    act(() => {
+      fireEvent.click(screen.getByTestId("send-btn"));
+    });
+    act(() => {
+      sendCommand("btwResponse", { question: "first?", answer: "one" });
+    });
+
+    followUpInPanel("second?");
+
+    // 两轮都在面板里，头部标题跟着最新一问走
+    expect(screen.getAllByTestId("btw-turn")).toHaveLength(2);
+    expect(screen.getByTestId("btw-panel-question").textContent).toBe(
+      "second?",
+    );
+    expect(screen.getByTestId("btw-panel-loading")).toBeInTheDocument();
+
+    // 首轮不带历史；追问把此前**已完成**的轮次带上（对齐 CC 的 btw_history）
+    const asks = askBtwPayloads(vscode);
+    expect(asks).toHaveLength(2);
+    expect(asks[0].history).toBeUndefined();
+    expect(asks[1]).toMatchObject({
+      question: "second?",
+      history: [{ question: "first?", answer: "one" }],
+    });
+    // requestId 逐轮不同：重复问同一句时回包也分得清
+    expect(typeof asks[0].requestId).toBe("string");
+    expect(asks[1].requestId).not.toBe(asks[0].requestId);
+    expect(vscode.postMessage).not.toHaveBeenCalledWith(
+      expect.objectContaining({ command: "sendMessage" }),
+    );
+  });
+
+  it("sends at most the last 10 finished turns as history", async () => {
+    const { vscode } = renderChatApp();
+    await typeInInput("/btw q1");
+    act(() => {
+      fireEvent.click(screen.getByTestId("send-btn"));
+    });
+    for (let i = 1; i <= 11; i++) {
+      act(() => {
+        sendCommand("btwResponse", { question: `q${i}`, answer: `a${i}` });
+      });
+      if (i < 11) followUpInPanel(`q${i + 1}`);
+    }
+    followUpInPanel("q12");
+
+    const asks = askBtwPayloads(vscode);
+    expect(asks).toHaveLength(12);
+    expect(asks[11].history).toHaveLength(10);
+    expect(asks[11].history[0]).toEqual({ question: "q2", answer: "a2" });
+    expect(asks[11].history[9]).toEqual({ question: "q11", answer: "a11" });
+    // 面板里 11 轮已完成 + 第 12 轮在等答案
+    expect(screen.getAllByTestId("btw-panel-answer")).toHaveLength(11);
+  });
+
+  it("keeps an in-flight turn out of the history it sends", async () => {
+    const { vscode } = renderChatApp();
+    await typeInInput("/btw first?");
+    act(() => {
+      fireEvent.click(screen.getByTestId("send-btn"));
+    });
+
+    // 主输入框的 /btw 在面板已开时追加一轮，而不是重置（spec 场景 8）
+    await typeInInput("/btw second?");
+    act(() => {
+      fireEvent.click(screen.getByTestId("send-btn"));
+    });
+
+    const asks = askBtwPayloads(vscode);
+    expect(asks).toHaveLength(2);
+    // 第一轮还在途，不能当作历史发出去
+    expect(asks[1].history).toBeUndefined();
+    expect(screen.getAllByTestId("btw-panel-loading")).toHaveLength(2);
+  });
+
+  it("routes a reply to its own turn by requestId even when the question repeats", async () => {
+    const { vscode } = renderChatApp();
+    await typeInInput("/btw same question");
+    act(() => {
+      fireEvent.click(screen.getByTestId("send-btn"));
+    });
+    await typeInInput("/btw same question");
+    act(() => {
+      fireEvent.click(screen.getByTestId("send-btn"));
+    });
+
+    const [first, second] = askBtwPayloads(vscode);
+    expect(second.requestId).not.toBe(first.requestId);
+
+    act(() => {
+      sendCommand("btwResponse", {
+        question: "same question",
+        requestId: second.requestId,
+        answer: "second answer",
+      });
+    });
+
+    // 只有第二轮完成，第一轮仍在途
+    expect(screen.getAllByTestId("btw-panel-loading")).toHaveLength(1);
+    expect(screen.getByTestId("btw-panel-answer").textContent).toContain(
+      "second answer",
+    );
+  });
+
+  it("clear empties the side chat and drops the replies that were in flight", async () => {
+    await sendText("/btw first?");
+    expect(screen.getByTestId("btw-panel-loading")).toBeInTheDocument();
+
+    act(() => {
+      fireEvent.click(screen.getByTestId("btw-panel-clear"));
+    });
+
+    // 面板留着、轮次清空、焦点回到输入框（spec 场景 6）
+    expect(screen.getByTestId("btw-panel")).toBeInTheDocument();
+    expect(screen.queryByTestId("btw-turn")).not.toBeInTheDocument();
+    expect(screen.getByTestId("btw-panel-empty")).toBeInTheDocument();
+    expect(screen.getByTestId("btw-panel-input")).toHaveFocus();
+
+    // 清空之后迟到的那一轮无处可落
+    act(() => {
+      sendCommand("btwResponse", { question: "first?", answer: "late" });
+    });
+    expect(screen.queryByTestId("btw-panel-answer")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("btw-turn")).not.toBeInTheDocument();
+  });
+
+  it("switches the input placeholder, disables it while thinking, and keeps Shift+Enter from sending", async () => {
+    const { vscode } = renderChatApp();
+    await typeInInput("/btw");
+    act(() => {
+      fireEvent.click(screen.getByTestId("send-btn"));
+    });
+
+    // 空态先给用法提示 + 首问占位（发送方式写在占位文案里：面板没有发送键）
+    expect(screen.getByTestId("btw-panel-input")).toHaveAttribute(
+      "placeholder",
+      "问个临时问题，Enter 发送",
+    );
+
+    followUpInPanel("first?");
+
+    expect(screen.getByTestId("btw-panel-input")).toHaveAttribute(
+      "placeholder",
+      "继续提问，Enter 发送",
+    );
+    expect(screen.getByTestId("btw-panel-input")).toBeDisabled();
+    expect(screen.queryByTestId("btw-panel-send")).not.toBeInTheDocument();
+
+    act(() => {
+      sendCommand("btwResponse", { question: "first?", answer: "one" });
+    });
+
+    const input = screen.getByTestId("btw-panel-input");
+    fireEvent.change(input, { target: { value: "draft line" } });
+    act(() => {
+      fireEvent.keyDown(screen.getByTestId("btw-panel-input"), {
+        key: "Enter",
+        shiftKey: true,
+      });
+    });
+    expect(askBtwPayloads(vscode)).toHaveLength(1);
   });
 
   it("selecting /btw in the slash popup inserts the prefix without sending", async () => {

@@ -514,8 +514,34 @@ describe("StdioAgent", () => {
     expect(result).toBe("**Sunny** weather");
   });
 
-  // ── removeQueuedMessage ────────────────────────────────────
+  it("forwards the follow-up history and requestId when given", async () => {
+    const { agent, client } = createAgent();
+    client.request.mockResolvedValue({
+      sessionId: "session-123",
+      currentWorkdir: "/w",
+      permissionMode: "default",
+      latestTotalTokens: 0,
+    });
+    await agent.initialize({ workdir: "/w" });
+    client.request.mockResolvedValue("And sunny again");
 
+    await agent.askBtw("And tomorrow?", {
+      history: [{ question: "weather?", answer: "Sunny" }],
+      requestId: "btw-1",
+    });
+
+    expect(client.request).toHaveBeenCalledWith(
+      "askBtw",
+      {
+        question: "And tomorrow?",
+        history: [{ question: "weather?", answer: "Sunny" }],
+        requestId: "btw-1",
+      },
+      "session-123",
+    );
+  });
+
+  // ── removeQueuedMessage ────────────────────────────────────
   it("sends deleteQueuedMessage with index and sessionId", async () => {
     const { agent, client } = createAgent();
     client.request.mockResolvedValue({

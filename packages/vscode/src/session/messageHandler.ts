@@ -19,6 +19,7 @@ import type {
   PermissionDecision,
   RemoteControlSnapshot,
   ConfiguredModel,
+  BtwHistoryTurn,
 } from "wave-agent-sdk/host";
 import {
   PLUGIN_CHANGE_PENDING_MESSAGE,
@@ -329,7 +330,13 @@ export class MessageHandler {
         await this.handleSetModel(msg.model as string, viewType, windowId);
         break;
       case "askBtw":
-        await this.handleAskBtw(msg.question as string, viewType, windowId);
+        await this.handleAskBtw(
+          msg.question as string,
+          msg.requestId as string | undefined,
+          msg.history as BtwHistoryTurn[] | undefined,
+          viewType,
+          windowId,
+        );
         break;
       case "requestHistory":
         await this.handleRequestHistory(
@@ -1574,16 +1581,19 @@ export class MessageHandler {
 
   private async handleAskBtw(
     question: string,
+    requestId?: string,
+    history?: BtwHistoryTurn[],
     viewType?: "sidebar" | "tab" | "window",
     windowId?: string,
   ) {
     const session = this.context.getChatSession(viewType || "tab", windowId);
     try {
-      const answer = await session.askBtw(question);
+      const answer = await session.askBtw(question, { requestId, history });
       this.context.postMessage(
         {
           command: "btwResponse",
           question,
+          requestId,
           answer,
         },
         viewType,
@@ -1595,6 +1605,7 @@ export class MessageHandler {
         {
           command: "btwError",
           question,
+          requestId,
           error: error instanceof Error ? error.message : String(error),
         },
         viewType,

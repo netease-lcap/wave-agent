@@ -49,6 +49,7 @@ import type {
   MessageThreadSummary,
   UserImage,
 } from "../types/index.js";
+import type { BtwAskOptions, BtwHistoryTurn } from "../types/btw.js";
 import type { RpcClient } from "./rpcClient.js";
 import type { NotificationRouter } from "./notificationRouter.js";
 import type { HostEntrypoint } from "../constants/telemetry.js";
@@ -204,6 +205,8 @@ export interface StdioAgentCallbacks {
     question: string;
     content: string;
     type: "thinking" | "content";
+    /** Echoed back so the host can attribute the chunk to the turn that asked. */
+    requestId?: string;
   }) => void;
 }
 
@@ -439,10 +442,19 @@ export class StdioAgent {
     )) as { inputContent: string };
   }
 
-  async askBtw(question: string): Promise<string> {
+  async askBtw(question: string, options?: BtwAskOptions): Promise<string> {
+    const params: {
+      question: string;
+      history?: BtwHistoryTurn[];
+      requestId?: string;
+    } = { question };
+    if (options?.history && options.history.length > 0) {
+      params.history = options.history;
+    }
+    if (options?.requestId) params.requestId = options.requestId;
     return (await this.client.request(
       "askBtw",
-      { question },
+      params,
       this.sessionId,
     )) as string;
   }
@@ -1007,6 +1019,7 @@ export class StdioAgent {
           question: string;
           content: string;
           type: "thinking" | "content";
+          requestId?: string;
         };
         if (p) this.callbacks.onBtwContent?.(p);
         break;

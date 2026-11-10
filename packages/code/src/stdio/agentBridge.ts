@@ -21,6 +21,7 @@ import {
   type AgentOptions,
   type BackgroundTask,
   type BackgroundTaskSummary,
+  type BtwHistoryTurn,
   type SerializableWorkflowRun,
   type Message,
   type PermissionDecision,
@@ -441,7 +442,12 @@ export class AgentBridge {
       case "bang":
         return this.bang(p.command as string, sessionId);
       case "askBtw":
-        return this.askBtw(p.question as string, sessionId);
+        return this.askBtw(
+          p.question as string,
+          sessionId,
+          p.history as BtwHistoryTurn[] | undefined,
+          p.requestId as string | undefined,
+        );
       case "abortMessage":
         return this.abortMessage(sessionId);
       case "clearMessages":
@@ -2102,7 +2108,12 @@ export class AgentBridge {
     return null;
   }
 
-  private async askBtw(question: string, sessionId?: string): Promise<string> {
+  private async askBtw(
+    question: string,
+    sessionId?: string,
+    history?: BtwHistoryTurn[],
+    requestId?: string,
+  ): Promise<string> {
     const entry = this.requireSession(sessionId);
     return entry.agent.askBtw(
       question,
@@ -2110,11 +2121,15 @@ export class AgentBridge {
       // Stream partial content to the client so webview hosts can render the
       // answer incrementally (thinking and content travel on separate
       // channels so the panel can drop thinking text once content starts).
+      // `requestId` is echoed back so the host can attribute the chunk to the
+      // side-chat turn that asked (spec commands/btw-command.md「Webview 端继续
+      // 提问」: repeated questions within one session are otherwise
+      // indistinguishable).
       (content) => {
         if (sessionId) {
           this.emit(
             "btwContent",
-            { question, content, type: "content" },
+            { question, requestId, content, type: "content" },
             sessionId,
           );
         }
@@ -2123,11 +2138,12 @@ export class AgentBridge {
         if (sessionId) {
           this.emit(
             "btwContent",
-            { question, content, type: "thinking" },
+            { question, requestId, content, type: "thinking" },
             sessionId,
           );
         }
       },
+      history,
     );
   }
 

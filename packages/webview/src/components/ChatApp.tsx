@@ -110,6 +110,7 @@ import type {
   RemoteForwardRef,
   DiffSelection,
   BtwPanelState,
+  BtwTurn,
 } from "../utils/sessionUiStore";
 import {
   parkGroup,
@@ -204,21 +205,74 @@ const hasRunningBackgroundTask = (tasks: BackgroundTaskSummary[]): boolean =>
   tasks.some((t) => t.status === "running");
 
 /**
- * 一个流式分片折进 /btw 面板（spec commands/btw-command.md 场景 6）：思考分片先
- * 累积着实时显示，首个 content 分片一到就丢掉思考阶段累积的文本、只留内容（用户
+ * 侧聊历史窗口：每次追问只带最近这么多轮**已完成**的问答（spec
+ * commands/btw-command.md「Webview 端继续提问」场景 3/4）。与 Claude Code 桌面端
+ * 的 `btw_history` 同口径——面板里保留全部轮次，发出去的只有这截。
+ */
+const BTW_HISTORY_LIMIT = 10;
+
+/** 一次旁路提问的请求标识：回包/流式分片按它归位（重复问同一句也分得清）。 */
+function makeBtwRequestId(): string {
+  return `btw-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+/** 本轮之后要随请求发出的历史（跳过在途轮与失败轮）。 */
+function btwHistory(turns: BtwTurn[]): { question: string; answer: string }[] {
+  return turns
+    .filter(
+      (turn) => !turn.loading && !turn.failed && turn.answer.trim().length > 0,
+    )
+    .slice(-BTW_HISTORY_LIMIT)
+    .map((turn) => ({ question: turn.question, answer: turn.answer }));
+}
+
+/**
+ * 这条回包属于哪一轮：优先按 requestId（新宿主逐跳回填）；宿主没回填时退回
+ * 「在途 + 问题文本相同」——已发布的旧版 CLI/中继仍走这一条，不能让它们的回包
+ * 无处可落。
+ */
+function matchesBtwReply(
+  turn: BtwTurn,
+  requestId: string | undefined,
+  question: string,
+): boolean {
+  if (requestId) return turn.requestId === requestId;
+  return turn.loading && turn.question === question;
+}
+
+/**
+ * 一个流式分片折进对应的那一轮（spec commands/btw-command.md 场景 6）：思考分片
+ * 先累积着实时显示，首个 content 分片一到就丢掉思考阶段累积的文本、只留内容（用户
  * 决定：思考阶段结束后不再显示思考内容）。
  */
 function applyBtwChunk(
-  panel: BtwPanelState,
+  turns: BtwTurn[],
+  requestId: string | undefined,
+  question: string,
   content: string,
   type?: string,
-): BtwPanelState {
-  if (type === "content") {
-    const base = panel.contentStarted ? panel.answer : "";
-    return { ...panel, contentStarted: true, answer: base + content };
-  }
-  if (panel.contentStarted) return panel;
-  return { ...panel, answer: panel.answer + content };
+): BtwTurn[] {
+  return turns.map((turn) => {
+    if (!matchesBtwReply(turn, requestId, question)) return turn;
+    if (type === "content") {
+      const base = turn.contentStarted ? turn.answer : "";
+      return { ...turn, contentStarted: true, answer: base + content };
+    }
+    if (turn.contentStarted) return turn;
+    return { ...turn, answer: turn.answer + content };
+  });
+}
+
+/** 把一条回包折进它所属的那一轮（找不到就原样返回）。 */
+function applyBtwReply(
+  turns: BtwTurn[],
+  requestId: string | undefined,
+  question: string,
+  patch: (turn: BtwTurn) => BtwTurn,
+): BtwTurn[] {
+  return turns.map((turn) =>
+    matchesBtwReply(turn, requestId, question) ? patch(turn) : turn,
+  );
 }
 
 /**
@@ -691,6 +745,10 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   );
   const [btwStateKey, setBtwStateKey] = useState(btwKey);
   const btwKeyRef = useRef(btwKey);
+  // 追问要读「此前已完成的那几轮」来拼历史，而提出问题的回调（主输入框的
+  // `/btw`、面板输入框）可能在一次提交里连着触发：读 ref 避免拿到过期的 state。
+  const btwPanelRef = useRef(btwPanel);
+  btwPanelRef.current = btwPanel;
   // Desktop remote sessions: port-forward failure shown in the empty-preview
   // stub with a retry entry (scenario 16). Null = no error. Restored from the
   // session's cached group so a pane rebinding away and back keeps the error.
@@ -1330,31 +1388,33 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     // only the root can take the reply (see the rationale above).
     return !rowsVisibleRef.current;
   };
-  // /btw 回包的归属路由（spec commands/btw-command.md 场景 14）：回包只带
-  // `question`，归属会话按它反查——在途那条可能在用户切走之后才回来，它得落回
-  // 自己那个会话的快照，而不是屏幕上的这一个。落到当前会话走本地 setState（回写
-  // effect 负责入快照），落到别的会话直接 patch 快照。
-  // 查不到归属但本实例还没有会话身份（宿主尚未绑会话）时，就地作用在本地镜像上：
-  // 那时不存在「切到别的会话」，也就无所谓归属，保持旧行为。
+  // /btw 回包的归属路由（spec commands/btw-command.md「Webview 端继续提问」）：
+  // 回包带 requestId，归属会话按它反查——在途的那轮可能在用户切走之后才回来，
+  // 它得落回自己那个会话的快照，而不是屏幕上的这一个。落到当前会话走本地
+  // setState（回写 effect 负责入快照），落到别的会话直接 patch 快照。
+  // 宿主没回填 requestId 时退回「在途 + 问题文本相同」（老版本宿主）。
+  // 查不到归属时按「就是屏幕上的这份」处理：可能快照还没写进那一条 loading 轮，
+  // 而 fold 只动匹配的轮次，误伤不了别的侧聊。
   const routeBtwReply = (
+    requestId: string | undefined,
     question: string,
-    fold: (panel: BtwPanelState) => BtwPanelState,
+    fold: (turns: BtwTurn[]) => BtwTurn[],
   ) => {
-    const owner = sessionUi.keyByBtwQuestion(question);
-    if (!owner) {
+    const owner = sessionUi.keyByBtwReply(requestId, question);
+    if (!owner || owner === btwKeyRef.current) {
+      // 归属就是这个会话（或快照还没来得及写、暂时查不到）：作用在本地镜像上，
+      // 回写 effect 负责入快照。fold 只动匹配的轮次，所以查不到归属时也不会
+      // 误伤屏幕上的别的侧聊。
       setBtwPanel((panel) =>
-        !btwKeyRef.current && panel?.loading && panel.question === question
-          ? fold(panel)
-          : panel,
+        panel ? { ...panel, turns: fold(panel.turns) } : panel,
       );
       return;
     }
-    if (owner === btwKeyRef.current) {
-      setBtwPanel((panel) => (panel ? fold(panel) : panel));
-      return;
-    }
     const cached = sessionUi.get(owner)?.btwPanel;
-    if (cached) sessionUi.patch(owner, { btwPanel: fold(cached) });
+    if (cached)
+      sessionUi.patch(owner, {
+        btwPanel: { ...cached, turns: fold(cached.turns) },
+      });
   };
   // 上翻取更早（spec ui/message-rendering-system.md「首屏一页，上翻按需取更早」）：
   // 「还有没有更早」由宿主的回包决定，页面只负责在滚到顶时开口要、把回来的一页接在
@@ -1860,9 +1920,11 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         // content is kept (user decision: thinking is not shown after the
         // thinking phase ends). 归属见 routeBtwReply——在途请求可能在用户切走
         // 之后才流完，它照旧往自己那个会话的快照里写，切回来连同流式尾部一起恢复。
-        routeBtwReply(message.question, (panel) =>
+        routeBtwReply(message.requestId, message.question, (turns) =>
           applyBtwChunk(
-            panel,
+            turns,
+            message.requestId,
+            message.question,
             typeof message.content === "string" ? message.content : "",
             message.type,
           ),
@@ -1871,21 +1933,26 @@ export const ChatApp: React.FC<ChatAppProps> = ({
       }
       case "btwResponse":
         if (!forThisPane(message)) break;
-        // 迟到回包落在它所属的会话上；找不到归属（面板被手动关掉、或从没发起）
-        // 就整条丢弃（场景 10）。
-        routeBtwReply(message.question, (panel) => ({
-          ...panel,
-          answer: message.answer ?? "",
-          loading: false,
-        }));
+        // 迟到回包落在它所属的轮次上；找不到归属（侧聊被清空、或从没发起）
+        // 就整条丢弃（「继续提问」场景 6）。
+        routeBtwReply(message.requestId, message.question, (turns) =>
+          applyBtwReply(turns, message.requestId, message.question, (turn) => ({
+            ...turn,
+            answer: message.answer ?? "",
+            loading: false,
+          })),
+        );
         break;
       case "btwError":
         if (!forThisPane(message)) break;
-        routeBtwReply(message.question, (panel) => ({
-          ...panel,
-          answer: `(API error: ${message.error ?? "unknown"})`,
-          loading: false,
-        }));
+        routeBtwReply(message.requestId, message.question, (turns) =>
+          applyBtwReply(turns, message.requestId, message.question, (turn) => ({
+            ...turn,
+            answer: `(API error: ${message.error ?? "unknown"})`,
+            loading: false,
+            failed: true,
+          })),
+        );
         break;
       // Test-only handlers
       case "startStreaming":
@@ -2890,6 +2957,45 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     setArtifactsOpen(false);
   }, []);
 
+  /**
+   * 提出一轮旁路提问（spec commands/btw-command.md「Webview 端继续提问」）。
+   * 主输入框的 `/btw <问题>` 与面板输入框共用这一条路径：把这一轮以 loading
+   * 状态压进面板 → 立刻落进会话快照（首个流式分片按 requestId 必须查得到）→
+   * 带上此前**已完成**的最近 10 轮作为历史发给宿主。
+   */
+  const askBtw = useCallback(
+    (rawQuestion: string) => {
+      const question = rawQuestion.trim();
+      if (!question) return;
+      const previousTurns = btwPanelRef.current?.turns ?? [];
+      const requestId = makeBtwRequestId();
+      const turn: BtwTurn = {
+        requestId,
+        question,
+        answer: "",
+        loading: true,
+        contentStarted: false,
+        failed: false,
+      };
+      const panel: BtwPanelState = {
+        turns: [...previousTurns, turn],
+        visible: true,
+        draft: "",
+      };
+      setBtwPanel(panel);
+      if (btwKeyRef.current)
+        sessionUi.patch(btwKeyRef.current, { btwPanel: panel });
+      const history = btwHistory(previousTurns);
+      postToHost({
+        command: "askBtw",
+        question,
+        requestId,
+        ...(history.length > 0 ? { history } : {}),
+      });
+    },
+    [postToHost],
+  );
+
   const handleSendMessage = useCallback(
     (
       text: string,
@@ -3067,30 +3173,21 @@ export const ChatApp: React.FC<ChatAppProps> = ({
       // /btw side question — answered out-of-band via askBtw, never enters the chat.
       // Not behind `interceptHostLocalCommand`: the panel is this component's own UI,
       // so the remote page serves it too (route: shim → bridge `askBtw`).
+      // 带问题 = 在已有侧聊之上追问一轮；裸 `/btw` = 打开面板（没有轮次时显示用法
+      // 说明，可直接在面板输入框里问）——见 spec「Webview 端继续提问」场景 7/8。
       if (trimmedText === "/btw" || trimmedText.startsWith("/btw ")) {
         const question = trimmedText.slice("/btw".length).trim();
         if (!question) {
-          // Code span keeps `<your question>` from being parsed as an HTML tag.
-          setBtwPanel({
-            question: "",
-            answer: "`用法：/btw <你的问题>`",
-            loading: false,
-            contentStarted: false,
-          });
+          const current = btwPanelRef.current;
+          const opened: BtwPanelState = current
+            ? { ...current, visible: true }
+            : { turns: [], visible: true, draft: "" };
+          setBtwPanel(opened);
+          if (btwKeyRef.current)
+            sessionUi.patch(btwKeyRef.current, { btwPanel: opened });
           return;
         }
-        const panel: BtwPanelState = {
-          question,
-          answer: "",
-          loading: true,
-          contentStarted: false,
-        };
-        // 立刻落进会话快照（不等回写 effect）：本地的「这条在途」判据就是快照里
-        // 那条 loading 的面板（keyByBtwQuestion），首个流式分片必须查得到。
-        setBtwPanel(panel);
-        if (btwKeyRef.current)
-          sessionUi.patch(btwKeyRef.current, { btwPanel: panel });
-        postToHost({ command: "askBtw", question });
+        askBtw(question);
         return;
       }
       // /plan — host-local command (CLI Ink overlay / IDE plan preview /
@@ -3156,6 +3253,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
       paneId,
       gitBranches,
       onOpenPluginMarketFromPane,
+      askBtw,
     ],
   );
 
@@ -3601,14 +3699,33 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     [isRemotePage, postToHost],
   );
 
-  // Close the /btw panel of the conversation on screen. 面板置 null 就是「这条不再
-  // 在途」的判据，于是迟到的流式增量与最终回答都无处可落（场景 10，与切走不同：
-  // 切走只是隐去，切回来还能看到）。别的会话在途的那份不受影响——它们各存各的。
+  // 关闭（关闭按钮 / Esc）只是隐去面板：在途请求继续、答案照常落回这个会话，
+  // 再打开（裸 `/btw`）就能看到完整历史（spec「Webview 端继续提问」场景 7）。
+  // 要清掉整段侧聊用 handleBtwClear——它删掉轮次，此后迟到的回包按 requestId
+  // 查不到归属，自然丢弃。
   const handleBtwClose = useCallback(() => {
-    if (btwKeyRef.current)
-      sessionUi.patch(btwKeyRef.current, { btwPanel: null });
-    setBtwPanel(null);
+    const panel = btwPanelRef.current;
+    if (panel) {
+      const hidden: BtwPanelState = { ...panel, visible: false };
+      setBtwPanel(hidden);
+      if (btwKeyRef.current)
+        sessionUi.patch(btwKeyRef.current, { btwPanel: hidden });
+    }
     messageInputRef.current?.focus();
+  }, []);
+
+  // 「清空侧聊」：移除全部轮次，面板留着（焦点回到面板输入框），下一问从零开始。
+  const handleBtwClear = useCallback(() => {
+    const cleared: BtwPanelState = { turns: [], visible: true, draft: "" };
+    setBtwPanel(cleared);
+    if (btwKeyRef.current)
+      sessionUi.patch(btwKeyRef.current, { btwPanel: cleared });
+  }, []);
+
+  // 面板输入框的草稿随会话保留（切走再回来还写着），所以它进会话快照而不是组件
+  // 本地 state。写快照这步不必另做——上面的回写 effect 以 btwPanel 为依赖。
+  const handleBtwDraftChange = useCallback((draft: string) => {
+    setBtwPanel((panel) => (panel ? { ...panel, draft } : panel));
   }, []);
 
   // Preview fullscreen is conversation-scoped: switching to another
@@ -5308,11 +5425,13 @@ export const ChatApp: React.FC<ChatAppProps> = ({
                 />
               }
               btwPopup={
-                btwPanel ? (
+                btwPanel?.visible ? (
                   <BtwPanel
-                    question={btwPanel.question}
-                    answer={btwPanel.answer}
-                    isLoading={btwPanel.loading}
+                    turns={btwPanel.turns}
+                    draft={btwPanel.draft}
+                    onDraftChange={handleBtwDraftChange}
+                    onSubmit={askBtw}
+                    onClear={handleBtwClear}
                     onClose={handleBtwClose}
                   />
                 ) : undefined

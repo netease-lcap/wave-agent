@@ -37,6 +37,7 @@ import type {
   UserImage,
 } from "./types/index.js";
 import type { HookEvent, HookEventConfig } from "./types/hooks.js";
+import type { BtwHistoryTurn } from "./types/btw.js";
 import type {
   MessageWindow,
   MessageWindowResult,
@@ -1469,6 +1470,9 @@ export class Agent {
    *
    * @param question - The side question to ask
    * @param abortSignal - Optional signal to abort the pending request
+   * @param history - Earlier side-chat turns (follow-up questions); see
+   *   `BtwHistoryTurn`. Appended after the main-conversation prefix so the
+   *   prompt cache still matches.
    * @returns Promise that resolves to the AI's answer
    */
   public async askBtw(
@@ -1476,6 +1480,7 @@ export class Agent {
     abortSignal?: AbortSignal,
     onContent?: (content: string) => void,
     onReasoning?: (content: string) => void,
+    history?: BtwHistoryTurn[],
   ): Promise<string> {
     this.assertNotDestroyed();
     const result = await this.aiManager.runBtwFork(
@@ -1483,6 +1488,7 @@ export class Agent {
       abortSignal,
       onContent,
       onReasoning,
+      history,
     );
     return result.content ?? result.error ?? "No response received";
   }

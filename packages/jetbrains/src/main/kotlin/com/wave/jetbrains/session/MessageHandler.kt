@@ -349,7 +349,11 @@ class MessageHandler(
             }
             "askBtw" -> {
                 val question = msg["question"]?.jsonPrimitive?.content ?: return
-                handleAskBtw(question)
+                handleAskBtw(
+                    question,
+                    msg["history"],
+                    msg["requestId"]?.jsonPrimitive?.contentOrNull,
+                )
             }
 
             // ── Prompt history ─────────────────────────────────────────
@@ -1113,19 +1117,23 @@ class MessageHandler(
         }
     }
 
-    // ── /btw side question: answer out-of-band, echo the question so the webview
-    // can match the reply against its in-flight panel (dropping stale replies) ──
-    private suspend fun handleAskBtw(question: String) {
+    // ── /btw side question: answer out-of-band, echo the question (and the
+    // requestId) so the webview can match the reply against the in-flight turn
+    // and drop stale ones (spec commands/btw-command.md「Webview 端继续提问」）──
+    private suspend fun handleAskBtw(question: String, history: JsonElement?, requestId: String?) {
         try {
-            val answer = session.agent?.askBtw(question) ?: throw StdioClientException("智能体未初始化")
+            val answer = session.agent?.askBtw(question, history, requestId)
+                ?: throw StdioClientException("智能体未初始化")
             postMessage("btwResponse", buildJsonObject {
                 put("question", question)
+                requestId?.let { put("requestId", it) }
                 put("answer", answer)
             })
         } catch (e: StdioClientException) {
             LOG.warn("askBtw failed: ${e.message}", e)
             postMessage("btwError", buildJsonObject {
                 put("question", question)
+                requestId?.let { put("requestId", it) }
                 put("error", e.message ?: "unknown")
             })
         }

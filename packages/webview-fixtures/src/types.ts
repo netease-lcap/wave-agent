@@ -594,6 +594,9 @@ export interface RewindResultMessage extends HostToWebviewMessageBase {
 export interface BtwStreamMessage extends HostToWebviewMessageBase {
   command: "btwStream";
   question: string;
+  /** Echo of the `askBtw` request that produced this chunk (see spec
+   *  commands/btw-command.md「Webview 端继续提问」). */
+  requestId?: string;
   type?: string;
   content?: string;
 }
@@ -601,12 +604,14 @@ export interface BtwStreamMessage extends HostToWebviewMessageBase {
 export interface BtwResponseMessage extends HostToWebviewMessageBase {
   command: "btwResponse";
   question: string;
+  requestId?: string;
   answer?: string;
 }
 
 export interface BtwErrorMessage extends HostToWebviewMessageBase {
   command: "btwError";
   question: string;
+  requestId?: string;
   error?: unknown;
 }
 
@@ -1784,7 +1789,9 @@ type ReplyAttribution = {
   hooksResponse: "scope";
   // 一次性查询：历史弹窗 debounce 连续查询，requestId 比对弃旧回复。
   historyResponse: "requestId";
-  // 问题文本作键：btw 面板比对 in-flight question，晚到的旧回复即弃。
+  // 问题文本作键（宿主一定会回填）；同一会话重复问同一句时，回包上另带
+  // 可选的 requestId 精确区分，webview 优先按它归位（spec
+  // commands/btw-command.md「Webview 端继续提问」）。
   btwStream: "question";
   btwResponse: "question";
   btwError: "question";

@@ -233,6 +233,56 @@ describe("AIManager - runBtwFork", () => {
     });
   });
 
+  describe("follow-up history", () => {
+    const earlierTurns = [
+      { question: "How is the weather?", answer: "Sunny." },
+    ];
+
+    it("should put the earlier side turns between the prefix and the new question", async () => {
+      await aiManager.runBtwFork(
+        "And tomorrow?",
+        undefined,
+        undefined,
+        undefined,
+        earlierTurns,
+      );
+
+      const messages = callAgentMock.mock.calls[0][0].messages;
+      expect(messages.slice(-3)).toEqual([
+        { role: "user", content: "How is the weather?" },
+        { role: "assistant", content: "Sunny." },
+        expect.objectContaining({ role: "user" }),
+      ]);
+      expect(messages[messages.length - 1].content).toContain("And tomorrow?");
+    });
+
+    it("should swap the one-off line for the follow-up constraint", async () => {
+      await aiManager.runBtwFork(
+        "And tomorrow?",
+        undefined,
+        undefined,
+        undefined,
+        earlierTurns,
+      );
+
+      const wrapped = callAgentMock.mock.calls[0][0].messages.at(-1).content;
+      // 首轮那句 one-off 与历史自相矛盾，追问轮必须换掉
+      expect(wrapped).not.toContain("This is a one-off response");
+      expect(wrapped).toContain("This is a follow-up in a side chat");
+      expect(wrapped).toContain("do not call tools or promise any action");
+    });
+
+    it("should keep the first-turn wording byte for byte so the cache prefix holds", async () => {
+      await aiManager.runBtwFork("How is the weather?");
+
+      const wrapped = callAgentMock.mock.calls[0][0].messages.at(-1).content;
+      expect(wrapped).toContain(
+        "- This is a one-off response - there will be no follow-up turns",
+      );
+      expect(wrapped).not.toContain("This is a follow-up in a side chat");
+    });
+  });
+
   describe("in-progress message handling", () => {
     it("should strip a streaming in-progress assistant message before conversion", async () => {
       const completed = {

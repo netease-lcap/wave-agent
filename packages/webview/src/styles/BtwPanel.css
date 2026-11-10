@@ -11,7 +11,9 @@
   max-width: 600px;
   min-width: 200px;
   box-sizing: border-box;
-  max-height: 300px;
+  /* 多轮追问之后内容更高：给足一屏，让「问题气泡 + 一段答案」通常完整可见，
+     再长才进内部滚动；窄窗口按视口高度收。 */
+  max-height: min(420px, 60vh);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -130,4 +132,116 @@
 .btw-panel-answer ol {
   padding-left: 20px;
   margin: 0 0 8px 0;
+}
+
+/* ── 多轮追问（spec commands/btw-command.md「Webview 端继续提问」）───────────
+
+   面板结构：头部 / 轮次列表（内部滚动，撑满剩余高度）/ 输入行。 */
+.btw-panel-turns {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.btw-panel-empty {
+  /* 面板里还没有任何一轮时的用法说明（spec「附带提问」场景 3）。 */
+  padding: 4px 0;
+  color: var(--vscode-descriptionForeground);
+  font-size: 13px;
+}
+
+.btw-turn {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* 用户提的那一句靠右，像一枚气泡：与答案在视觉上分开，多轮时一眼能扫。
+   底色在两套主题下都太接近面板底色，所以再给一道描边。 */
+.btw-turn-question {
+  align-self: flex-end;
+  max-width: 85%;
+  padding: 4px 10px;
+  border: 1px solid var(--vscode-dropdown-border);
+  border-radius: 10px;
+  background-color: var(--vscode-input-background, rgba(127, 127, 127, 0.12));
+  color: var(--vscode-foreground);
+  font-size: 14px;
+  line-height: 22px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  user-select: text;
+}
+
+/* 轮次里的答案沿用面板原有的正文样式，但不再自己撑最大高度——滚动归
+   .btw-panel-turns。 */
+.btw-turn .btw-panel-answer {
+  padding: 0;
+  overflow: visible;
+}
+
+.btw-turn .btw-panel-loading {
+  padding: 0;
+}
+
+.btw-panel-input-row {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--vscode-dropdown-border);
+  background-color: var(--vscode-editor-background);
+}
+
+.btw-panel-input {
+  flex: 1;
+  min-width: 0;
+  min-height: 20px;
+  max-height: 120px;
+  padding: 4px 6px;
+  border: 1px solid var(--vscode-dropdown-border);
+  border-radius: 4px;
+  background-color: var(--vscode-input-background);
+  color: var(--vscode-input-foreground);
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 22px;
+  resize: none;
+  outline: none;
+}
+
+.btw-panel-input:focus {
+  border-color: var(--vscode-focusBorder);
+}
+
+/* 禁用态给得出「现在不能发」的线索，而不只是「点了没反应」
+   （.wave/rules 的禁用态约定）。 */
+.btw-panel-input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btw-panel-icon-btn {
+  display: flex;
+  align-items: center;
+  padding: 2px;
+  border: none;
+  border-radius: 3px;
+  background: none;
+  color: var(--vscode-descriptionForeground);
+  cursor: pointer;
+}
+
+.btw-panel-icon-btn:hover {
+  background-color: var(--vscode-toolbar-hoverBackground);
+  color: var(--vscode-foreground);
+}
+
+.btw-panel-icon {
+  width: 14px;
+  height: 14px;
 }

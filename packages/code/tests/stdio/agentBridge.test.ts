@@ -1846,6 +1846,50 @@ test("askBtw emits btwContent notifications for thinking and content chunks", as
   });
 });
 
+test("askBtw forwards the follow-up history and stamps the requestId on every notification", async () => {
+  const { bridge, notifications } = createBridge();
+  const history = [{ question: "what is 2+2?", answer: "4" }];
+  const mockAgent = createMockAgent({
+    askBtw: vi
+      .fn()
+      .mockImplementation(
+        async (
+          _question: string,
+          _signal: AbortSignal | undefined,
+          onContent?: (content: string) => void,
+        ) => {
+          onContent?.("answer chunk");
+          return "side answer";
+        },
+      ),
+  });
+  vi.mocked(Agent.create).mockResolvedValue(mockAgent);
+
+  const result = await bridge.handleRequest("initialize", {});
+  const sessionId = (result as { sessionId: string }).sessionId;
+  const r = await bridge.handleRequest(
+    "askBtw",
+    { question: "and 3+3?", history, requestId: "btw-2" },
+    sessionId,
+  );
+
+  // 历史走第 5 个参数（第 2 个是 abortSignal，桥这一层不给）
+  expect(vi.mocked(mockAgent.askBtw).mock.calls[0][0]).toBe("and 3+3?");
+  expect(vi.mocked(mockAgent.askBtw).mock.calls[0][4]).toEqual(history);
+  // 流式增量带上 requestId，多轮之后面板才分得清是哪一轮的
+  expect(notifications).toContainEqual({
+    method: "btwContent",
+    params: {
+      question: "and 3+3?",
+      content: "answer chunk",
+      type: "content",
+      requestId: "btw-2",
+    },
+    sessionId,
+  });
+  expect(r).toBe("side answer");
+});
+
 test("rewindToMessage truncates at the position the SDK found and returns its text", async () => {
   const { bridge } = createBridge();
   const mockAgent = createMockAgent({

@@ -720,7 +720,10 @@ describe("MessageHandler MCP handlers", () => {
       "tab",
     );
 
-    expect(session.askBtw).toHaveBeenCalledWith("weather?");
+    expect(session.askBtw).toHaveBeenCalledWith("weather?", {
+      requestId: undefined,
+      history: undefined,
+    });
     const posted = (context.postMessage as ReturnType<typeof vi.fn>).mock
       .calls[0][0] as {
       command: string;
@@ -730,6 +733,37 @@ describe("MessageHandler MCP handlers", () => {
     expect(posted.command).toBe("btwResponse");
     expect(posted.question).toBe("weather?");
     expect(posted.answer).toBe("**Sunny** weather");
+  });
+
+  // 多轮追问（spec commands/btw-command.md「Webview 端继续提问」）：历史原样下传，
+  // requestId 逐跳回填，面板才能把答案放回对应那一轮。
+  test("askBtw forwards the follow-up history and echoes the requestId back", async () => {
+    const session = createMockSession();
+    (session.askBtw as ReturnType<typeof vi.fn>).mockResolvedValue(
+      "And sunny again",
+    );
+
+    const { handler, context } = createHandler(session);
+    const history = [{ question: "weather?", answer: "Sunny" }];
+    await handler.handleMessage(
+      {
+        command: "askBtw",
+        question: "and tomorrow?",
+        requestId: "btw-2",
+        history,
+      },
+      "tab",
+    );
+
+    expect(session.askBtw).toHaveBeenCalledWith("and tomorrow?", {
+      requestId: "btw-2",
+      history,
+    });
+    const posted = (context.postMessage as ReturnType<typeof vi.fn>).mock
+      .calls[0][0] as { command: string; question: string; requestId?: string };
+    expect(posted.command).toBe("btwResponse");
+    expect(posted.question).toBe("and tomorrow?");
+    expect(posted.requestId).toBe("btw-2");
   });
 
   test("askBtw posts btwError when session.askBtw rejects", async () => {

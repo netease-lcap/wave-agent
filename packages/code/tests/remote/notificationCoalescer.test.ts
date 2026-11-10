@@ -197,6 +197,48 @@ describe("NotificationCoalescer", () => {
     ]);
   });
 
+  it("should keep two in-flight rounds of the same question apart by requestId", () => {
+    const c = createCoalescer();
+    // 多轮追问之后同一句话可以同时在途两次（主输入框连发两次相同的 `/btw …`）：
+    // 只按 question 合并会把两轮的增量揉进同一帧，落到一遍面板上。
+    c.push(
+      "btwContent",
+      {
+        question: "今天几号",
+        requestId: "btw-1",
+        content: "一",
+        type: "content",
+      },
+      "s1",
+    );
+    c.push(
+      "btwContent",
+      {
+        question: "今天几号",
+        requestId: "btw-2",
+        content: "二",
+        type: "content",
+      },
+      "s1",
+    );
+    vi.advanceTimersByTime(REMOTE_FRAME_WINDOW_MS);
+
+    expect(written[0].map((frame) => frame.params)).toEqual([
+      {
+        question: "今天几号",
+        requestId: "btw-1",
+        type: "content",
+        content: "一",
+      },
+      {
+        question: "今天几号",
+        requestId: "btw-2",
+        type: "content",
+        content: "二",
+      },
+    ]);
+  });
+
   it("should merge compaction summary deltas into one frame", () => {
     // 压缩尾部与主对话同族：`content` 是纯增量（消费端拼接，手机只渲染最后 30
     // 个字符）。不合并的话一次压缩在手机上产生的帧数与一整轮主对话相当。

@@ -57,21 +57,40 @@ export interface ProjectSettingsSnapshot {
 }
 
 /**
- * `/btw` 旁路提问面板的状态（spec commands/btw-command.md 场景 14）。
+ * 侧聊里的一轮问答（spec commands/btw-command.md「Webview 端继续提问」）。
  *
- * 面板属于**发起它的那个对话**：切走只是隐去，切回来原样恢复——包括还在
- * `loading` 的那种（后台请求不中断，流式尾部接着更新）。所以它必须留在会话快照
- * 里，而不是组件本地 useState。`loading` 同时是「这条还在途」的判据：回包按
- * `question` 反查归属会话（见 keyByBtwQuestion），手动关闭把面板置 null 即让迟到
- * 回包无处可落（场景 10）。
+ * 追问是**无状态重放**：每轮都是一次独立的一轮 fork，宿主把此前已完成的轮次
+ * 作为历史随请求带上，SDK 把它们接在主对话前缀之后。所以面板只需要按顺序
+ * 攒住每一轮，不需要维持一个长会话对象。
  */
-export interface BtwPanelState {
+export interface BtwTurn {
+  /** 该轮请求的标识：回包/流式分片按它归位（重复问同一句也分得清）。 */
+  requestId: string;
   question: string;
   answer: string;
-  /** 请求在途（含流式输出中）：面板显示「正在回答」+ 流式尾部。 */
+  /** 该轮请求在途（含流式输出中）。 */
   loading: boolean;
   /** 已收到首个 content 分片，此后交给内容的文本覆盖思考阶段的累积。 */
   contentStarted: boolean;
+  /** 该轮以错误收尾（答案位置是错误文案，不进入后续历史）。 */
+  failed: boolean;
+}
+
+/**
+ * `/btw` 侧聊面板的状态（spec commands/btw-command.md 场景 10/14 与
+ * 「Webview 端继续提问」）。
+ *
+ * 面板属于**发起它的那个对话**：切走只是隐去，切回来原样恢复——包括还在
+ * `loading` 的那轮（后台请求不中断，流式尾部接着更新）。所以它必须留在会话快照
+ * 里，而不是组件本地 useState。关闭只是 `visible = false`（请求继续、内容保留），
+ * 「清空侧聊」才把 `turns` 清空（此后迟到的回包按 requestId 查不到归属，自然丢弃）。
+ */
+export interface BtwPanelState {
+  turns: BtwTurn[];
+  /** 面板是否显示。关闭/打开只切这个，内容不动。 */
+  visible: boolean;
+  /** 面板输入框里的草稿（随会话保留，切走再回来还在）。 */
+  draft: string;
 }
 
 /** 单个会话的 UI 状态快照。新字段按「折叠状态（80db706b）/ 预览 URL（#2049）
@@ -248,15 +267,28 @@ class SessionUiStore {
   }
 
   /**
-   * 按 /btw 问题文本反查**在途**请求的归属会话键（`btwStream` / `btwResponse` /
-   * `btwError` 回包只带 question，不带 session）。查不到 = 该问题已被手动关闭
-   * （面板置 null）或从未发起，回包一律丢弃。切走对话时仍在途的那条照样查得到——
-   * 它的答案落回自己所属的会话，切回来即可见（spec 场景 14）。
+   * 按回包的归属键反查**在途**轮次的会话键（`btwStream` / `btwResponse` /
+   * `btwError` 回包不带 session）。优先 requestId；宿主没回填时退回「在途 + 问题
+   * 文本相同」——已发布的旧版 CLI / 远控中继仍走这一条。
+   *
+   * 查不到 = 该轮已被「清空侧聊」清掉或从未发起，回包一律丢弃。切走对话时仍在途
+   * 的那条照样查得到——它的答案落回自己所属的会话，切回来即可见
+   * （spec commands/btw-command.md「Webview 端继续提问」场景 6/10）。
    */
-  keyByBtwQuestion(question: string): SessionUiKey | undefined {
+  keyByBtwReply(
+    requestId: string | undefined,
+    question: string,
+  ): SessionUiKey | undefined {
     for (const [key, state] of this.cache) {
-      const panel = state.btwPanel;
-      if (panel?.loading && panel.question === question) return key;
+      const turns = state.btwPanel?.turns;
+      if (!turns) continue;
+      const hit = turns.some((turn) => {
+        if (!turn.loading) return false;
+        return requestId
+          ? turn.requestId === requestId
+          : turn.question === question;
+      });
+      if (hit) return key;
     }
     return undefined;
   }

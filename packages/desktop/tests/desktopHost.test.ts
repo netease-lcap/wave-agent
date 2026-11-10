@@ -5504,10 +5504,34 @@ describe("misc commands", () => {
       command: "askBtw",
       question: "weather?",
     });
-    expect(lastAgent().askBtw).toHaveBeenCalledWith("weather?");
+    expect(lastAgent().askBtw).toHaveBeenCalledWith("weather?", {
+      requestId: undefined,
+      history: undefined,
+    });
     expect(sent("btwResponse")[0]).toMatchObject({
       question: "weather?",
       answer: "**Sunny** weather",
+    });
+  });
+
+  it("askBtw forwards the follow-up history and echoes the requestId back", async () => {
+    const { host, sent } = await readyHost();
+    const history = [{ question: "weather?", answer: "Sunny" }];
+    await host.handleWebviewMessage({
+      command: "askBtw",
+      question: "and tomorrow?",
+      requestId: "btw-2",
+      history,
+    });
+
+    expect(lastAgent().askBtw).toHaveBeenCalledWith("and tomorrow?", {
+      requestId: "btw-2",
+      history,
+    });
+    // 回包带 requestId：多轮之后面板靠它把答案放回对应那一轮
+    expect(sent("btwResponse")[0]).toMatchObject({
+      question: "and tomorrow?",
+      requestId: "btw-2",
     });
   });
 

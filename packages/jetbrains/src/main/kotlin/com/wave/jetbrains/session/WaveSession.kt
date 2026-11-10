@@ -428,9 +428,10 @@ class WaveSession(
         if (msg != null) postMessage("appendMessage", buildJsonObject { put("message", msg) })
     }
 
-    override fun onBtwContent(question: String, content: String, type: String) {
+    override fun onBtwContent(question: String, content: String, type: String, requestId: String?) {
         postMessage("btwStream", buildJsonObject {
             put("question", question)
+            requestId?.let { put("requestId", it) }
             put("content", content)
             put("type", type)
         })

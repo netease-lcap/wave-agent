@@ -93,7 +93,9 @@ function mergeSpec(method: string, params: unknown): MergeSpec | undefined {
     }
     return {
       field: "content",
-      key: `b\u0000${p.question}\u0000${typeof p.type === "string" ? p.type : ""}`,
+      // 归属键里有 requestId：多轮追问之后同一个问题可以同时在途两次（从主输入框
+      // 连发两次 `/btw 同样的话`），只按 question 合并会把两轮的增量揉成一团。
+      key: `b\u0000${typeof p.requestId === "string" ? p.requestId : ""}\u0000${p.question}\u0000${typeof p.type === "string" ? p.type : ""}`,
     };
   }
 
