@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { SkillManager } from "../../src/managers/skillManager.js";
 import { Container } from "../../src/utils/container.js";
 import { readdir, stat } from "fs/promises";
+import * as path from "path";
 import { parseSkillFile } from "../../src/utils/skillParser.js";
 
 vi.mock("fs/promises");
@@ -109,5 +110,63 @@ describe("SkillManager Symlink Support", () => {
     // Verify that broken-symlink and file-symlink were ignored
     expect(names).not.toContain("broken-symlink");
     expect(names).not.toContain("file-symlink");
+  });
+
+  it("should skip dot-prefixed entries (installer staging directories)", async () => {
+    vi.mocked(readdir).mockImplementation(async (path) => {
+      if (path === "/test/personal/skills") {
+        return [
+          {
+            name: "real-skill",
+            isDirectory: () => true,
+            isSymbolicLink: () => false,
+          },
+          // What an installer unpacks into before renaming it into place.
+          {
+            name: ".real-skill.install-4f1c9a",
+            isDirectory: () => true,
+            isSymbolicLink: () => false,
+          },
+        ] as unknown as Awaited<ReturnType<typeof readdir>>;
+      }
+      return [] as unknown as Awaited<ReturnType<typeof readdir>>;
+    });
+
+    vi.mocked(stat).mockImplementation(
+      async () =>
+        ({ isFile: () => true, isDirectory: () => true }) as unknown as Awaited<
+          ReturnType<typeof stat>
+        >,
+    );
+
+    vi.mocked(parseSkillFile).mockImplementation(
+      () =>
+        ({
+          isValid: true,
+          skillMetadata: {
+            name: "real-skill",
+            description: "desc",
+            type: "personal",
+            skillPath: "/test/personal/skills/real-skill",
+          },
+          content: "content",
+          frontmatter: {},
+          validationErrors: [],
+        }) as unknown as ReturnType<typeof parseSkillFile>,
+    );
+
+    await skillManager.initialize();
+
+    expect(skillManager.getAvailableSkills().map((s) => s.name)).toEqual([
+      "real-skill",
+    ]);
+    // The staging directory is not even probed for a half-written SKILL.md.
+    expect(vi.mocked(parseSkillFile).mock.calls.map(([p]) => p)).not.toContain(
+      path.join(
+        "/test/personal/skills",
+        ".real-skill.install-4f1c9a",
+        "SKILL.md",
+      ),
+    );
   });
 });

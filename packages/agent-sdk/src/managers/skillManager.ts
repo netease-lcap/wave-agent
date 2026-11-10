@@ -2,7 +2,12 @@ import { readdir, stat, rm } from "fs/promises";
 import { join } from "path";
 import { homedir } from "os";
 import { EventEmitter } from "events";
-import { FileWatcherService } from "../services/fileWatcher.js";
+import {
+  DEFAULT_IGNORED_MATCHERS,
+  FileWatcherService,
+  isDotEntry,
+  type FileWatcherConfig,
+} from "../services/fileWatcher.js";
 import type {
   SkillManagerOptions,
   SkillMetadata,
@@ -29,6 +34,46 @@ import { Container } from "../utils/container.js";
 import { logger } from "../utils/globalLogger.js";
 
 /**
+ * Watcher options for skill hot reload.
+ *
+ * Skill roots are the one place in the product where **other processes**
+ * install into a directory we watch: installers unpack into a staging
+ * directory (`.lazy-recipes.install-<uuid>`) and `rename()` it into place.
+ *
+ * On Windows native `fs.watch` holds a handle per watched directory, and
+ * renaming a directory that has a watched *descendant* fails with `EPERM`
+ * (verified on a real machine with chokidar 4.0.3: renaming a staging dir
+ * that contains a subdirectory fails, one that contains only files succeeds;
+ * chokidar upstream calls this unfixable — paulmillr/chokidar#1380). It is a
+ * property of *native* watching only: inotify/FSEvents register the subtree
+ * without opening per-directory descriptors, so macOS and Linux are fine.
+ *
+ * Two mitigations, both applied here:
+ *  - never watch inside dot-prefixed entries (`isDotEntry`): the staging
+ *    directory is dot-named by convention, so it is never touched;
+ *  - on Windows, poll instead of using native events (`usePolling`): no
+ *    directory handles at all, which also covers the staging names that are
+ *    not dot-prefixed and the "rename the existing skill away" upgrade path.
+ *    Polling a skills tree is cheap once the walk is bounded (`depth: 2`) and
+ *    junk trees are ignored (measured ~1% of one core for 40 skills / 280
+ *    entries at a 1s interval, on par with native watching). The price is
+ *    latency: it takes ~2s to notice an installed or edited skill there.
+ *
+ * `depth: 2` is root → `<skill>/` → one nested level: enough to see
+ * `<skill>/SKILL.md` and to notice a skill being replaced or removed, without
+ * walking a skill that ships a large asset tree.
+ */
+export function skillWatcherOptions(): Partial<FileWatcherConfig> {
+  return {
+    depth: 2,
+    ignored: [...DEFAULT_IGNORED_MATCHERS, isDotEntry],
+    ...(process.platform === "win32"
+      ? { usePolling: true, pollInterval: 1000 }
+      : {}),
+  };
+}
+
+/**
  * Manages skill discovery and loading
  */
 export class SkillManager extends EventEmitter {
@@ -48,6 +93,13 @@ export class SkillManager extends EventEmitter {
    *  chaining them keeps the last completed scan in sync with the newest disk
    *  state instead of letting an older snapshot win a race. */
   private refreshChain: Promise<void> = Promise.resolve();
+  /** Coalesces a burst of watcher events into a single rescan. Installing or
+   *  upgrading a skill unpacks dozens of files in a few hundred ms; without
+   *  this, every event queued its own full rescan on refreshChain (queued, not
+   *  merged) and the last one could land seconds after the install finished.
+   *  Same 300 ms window Claude Code uses in its skill change detector. */
+  private static readonly RELOAD_DEBOUNCE_MS = 300;
+  private reloadTimer: ReturnType<typeof setTimeout> | null = null;
   private fileWatcher: FileWatcherService | null = null;
   private watchEnabled: boolean;
 
@@ -168,7 +220,7 @@ export class SkillManager extends EventEmitter {
       await this.fileWatcher.cleanup();
     }
 
-    this.fileWatcher = new FileWatcherService(logger);
+    this.fileWatcher = new FileWatcherService(logger, skillWatcherOptions());
 
     const pathsToWatch = [
       this.personalSkillsPath,
@@ -182,29 +234,45 @@ export class SkillManager extends EventEmitter {
     logger?.debug(`Setting up skill watcher for: ${pathsToWatch.join(", ")}`);
 
     for (const pathToWatch of pathsToWatch) {
-      await this.fileWatcher.watchFile(pathToWatch, async (event) => {
+      await this.fileWatcher.watchFile(pathToWatch, (event) => {
         if (
           event.path.endsWith("SKILL.md") ||
           event.type === "delete" ||
           event.type === "create"
         ) {
           logger?.debug(
-            `Skill change detected (${event.type}): ${event.path}. Refreshing skills...`,
+            `Skill change detected (${event.type}): ${event.path}. Scheduling skill refresh...`,
           );
-          try {
-            await this.refreshSkills();
-          } catch (error) {
-            logger?.error("Failed to refresh skills after change:", error);
-          }
+          this.scheduleRefresh();
         }
       });
     }
   }
 
   /**
+   * Debounce a watcher-driven rescan: each event pushes the window out, so a
+   * burst costs exactly one rescan once it settles.
+   */
+  private scheduleRefresh(): void {
+    if (this.reloadTimer) {
+      clearTimeout(this.reloadTimer);
+    }
+    this.reloadTimer = setTimeout(() => {
+      this.reloadTimer = null;
+      this.refreshSkills().catch((error) => {
+        logger?.error("Failed to refresh skills after change:", error);
+      });
+    }, SkillManager.RELOAD_DEBOUNCE_MS);
+  }
+
+  /**
    * Cleanup resources
    */
   async destroy(): Promise<void> {
+    if (this.reloadTimer) {
+      clearTimeout(this.reloadTimer);
+      this.reloadTimer = null;
+    }
     if (this.fileWatcher) {
       await this.fileWatcher.cleanup();
       this.fileWatcher = null;
@@ -416,7 +484,13 @@ export class SkillManager extends EventEmitter {
   }
 
   /**
-   * Find all directories that could contain skills
+   * Find all directories that could contain skills.
+   *
+   * Dot-prefixed entries are skipped: they are never skills (a skill name
+   * can't start with `.`), and an installer's staging directory
+   * (`.lazy-recipes.install-<uuid>`) that is being unpacked right now would
+   * otherwise be probed for a half-written SKILL.md. Same rule the hot-reload
+   * watcher applies, so discovery and watching agree on what a skill is.
    */
   private async findSkillDirectories(skillsPath: string): Promise<string[]> {
     const directories: string[] = [];
@@ -425,6 +499,9 @@ export class SkillManager extends EventEmitter {
       const entries = await readdir(skillsPath, { withFileTypes: true });
 
       for (const entry of entries) {
+        if (isDotEntry(entry.name)) {
+          continue;
+        }
         const fullPath = join(skillsPath, entry.name);
         if (entry.isDirectory()) {
           directories.push(fullPath);

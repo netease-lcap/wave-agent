@@ -267,7 +267,7 @@ describe("FileWatcherService", () => {
     ).rejects.toThrow("Persistent failure");
   });
 
-  it("should pass depth and ignored to chokidar config", async () => {
+  it("should pass depth and working ignored matchers to chokidar config", async () => {
     const mockWatcher = {
       add: vi.fn(),
       on: vi.fn().mockReturnThis(),
@@ -279,13 +279,67 @@ describe("FileWatcherService", () => {
 
     await service.watchFile("/test/file.txt", () => {});
 
-    expect(chokidar.watch).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({
-        depth: 5,
-        ignored: ["**/node_modules/**", "**/.git/**", "**/*.swp", "**/*~"],
-      }),
+    const options = vi.mocked(chokidar.watch).mock.calls[0][1] as {
+      depth: number;
+      ignored: unknown[];
+    };
+    expect(options.depth).toBe(5);
+
+    // chokidar 4 has no glob support, so the defaults must be predicates that
+    // actually match — a string such as "**/node_modules/**" matches nothing.
+    const isIgnored = (filePath: string) =>
+      options.ignored.some((matcher) =>
+        typeof matcher === "function"
+          ? (matcher as (p: string) => boolean)(filePath)
+          : matcher instanceof RegExp
+            ? matcher.test(filePath)
+            : matcher === filePath,
+      );
+
+    // chokidar asks about the directory itself while walking, so pruning the
+    // basename is enough — nothing below it is ever visited.
+    expect(isIgnored("/test/skills/node_modules")).toBe(true);
+    expect(isIgnored("/test/skills/my-skill/SKILL.md")).toBe(false);
+    expect(isIgnored("/test/skills/my-skill2")).toBe(false);
+    expect(isIgnored("/test/skills/my-skill/SKILL.md.swp")).toBe(true);
+    expect(isIgnored("/test/skills/my-skill/SKILL.md~")).toBe(true);
+    // A watched config file lives under a dot directory but is not itself a
+    // dot entry — the shared defaults must keep watching it.
+    expect(isIgnored("/home/user/.wave/settings.json")).toBe(false);
+  });
+
+  it("should poll only when asked to", async () => {
+    const mockWatcher = {
+      add: vi.fn(),
+      on: vi.fn().mockReturnThis(),
+      close: vi.fn(),
+    };
+    vi.mocked(chokidar.watch).mockImplementation(
+      () => mockWatcher as unknown as chokidar.FSWatcher,
     );
+
+    const nativeService = new FileWatcherService(mockLogger, {});
+    await nativeService.watchFile("/test/native.txt", () => {});
+    await nativeService.cleanup();
+    expect(chokidar.watch).toHaveBeenLastCalledWith(
+      expect.anything(),
+      expect.objectContaining({ usePolling: false }),
+    );
+
+    vi.mocked(chokidar.watch).mockClear();
+    const pollingService = new FileWatcherService(mockLogger, {
+      usePolling: true,
+      pollInterval: 1000,
+    });
+    await pollingService.watchFile("/test/polled.txt", () => {});
+    expect(chokidar.watch).toHaveBeenLastCalledWith(
+      expect.anything(),
+      expect.objectContaining({ usePolling: true, interval: 1000 }),
+    );
+    expect(pollingService.getWatcherStatus("/test/polled.txt")?.method).toBe(
+      "polling",
+    );
+    await pollingService.cleanup();
   });
 
   it("should pass custom depth and ignored to chokidar config", async () => {
@@ -298,9 +352,10 @@ describe("FileWatcherService", () => {
       () => mockWatcher as unknown as chokidar.FSWatcher,
     );
 
+    const customIgnored = /(^|[\\/])dist([\\/]|$)/;
     const customService = new FileWatcherService(mockLogger, {
       depth: 10,
-      ignored: ["**/dist/**"],
+      ignored: [customIgnored],
     });
 
     await customService.watchFile("/test/file.txt", () => {});
@@ -309,7 +364,7 @@ describe("FileWatcherService", () => {
       expect.anything(),
       expect.objectContaining({
         depth: 10,
-        ignored: ["**/dist/**"],
+        ignored: [customIgnored],
       }),
     );
 

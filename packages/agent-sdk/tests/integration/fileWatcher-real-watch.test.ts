@@ -16,6 +16,7 @@ import {
   FileWatcherService,
   type FileWatchEvent,
 } from "../../src/services/fileWatcher.js";
+import { skillWatcherOptions } from "../../src/managers/skillManager.js";
 import { longFormTempDir } from "../helpers/tempDir.js";
 
 /** Poll for `count` events; real fs events have no deterministic latency. */
@@ -29,6 +30,24 @@ async function waitForEvents(
     if (Date.now() - start > timeoutMs) {
       throw new Error(
         `Timed out waiting for ${count} watcher events (got ${events.length}: ${JSON.stringify(events)})`,
+      );
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+}
+
+/** Poll until an event matching `predicate` arrives; real fs events have no
+ *  deterministic latency. */
+async function waitForEventMatching(
+  events: FileWatchEvent[],
+  predicate: (event: FileWatchEvent) => boolean,
+  timeoutMs = 10_000,
+): Promise<void> {
+  const start = Date.now();
+  while (!events.some(predicate)) {
+    if (Date.now() - start > timeoutMs) {
+      throw new Error(
+        `Timed out waiting for a matching watcher event (got ${JSON.stringify(events)})`,
       );
     }
     await new Promise((resolve) => setTimeout(resolve, 50));
@@ -113,6 +132,77 @@ describe("FileWatcherService with real chokidar", () => {
 
     expect(events[0].type).toBe("create");
     fs.rmSync(rawDir, { recursive: true, force: true });
+  });
+
+  /**
+   * Regression for #2864. Skills are the one watched tree that other
+   * processes install into: the installer unpacks into a staging directory
+   * and `rename()`s it into place, and an upgrade renames the installed
+   * directory away. On Windows native `fs.watch` holds a handle per watched
+   * directory and renaming a directory with a *watched descendant* fails with
+   * `EPERM`, so the observed install returned "unexpected failure"
+   * (`skillWatcherOptions` explains the two mitigations).
+   *
+   * Uses its own root (not `dir`, which the shared service already watches)
+   * so that no other watcher's handles can influence the renames.
+   */
+  it("never blocks an installer's staging-dir rename", async () => {
+    const rootBase = fs.mkdtempSync(
+      path.join(longFormTempDir(), "wave-skill-watch-"),
+    );
+    const skillsRoot = path.join(rootBase, "skills");
+    fs.mkdirSync(skillsRoot);
+
+    const skillService = new FileWatcherService(undefined, {
+      ...skillWatcherOptions(),
+      // Keep the test fast: the skill watcher polls at 1s in production.
+      stabilityThreshold: 100,
+      pollInterval: 200,
+    });
+    const events: FileWatchEvent[] = [];
+    await skillService.watchFile(skillsRoot, (event) => events.push(event));
+    await new Promise((resolve) => setTimeout(resolve, 600));
+
+    try {
+      // What an installer unpacks before renaming it into place: a nested
+      // directory is what makes the rename fail under native watching.
+      const staging = path.join(skillsRoot, ".lazy-recipes.install-1b2c3d");
+      fs.mkdirSync(path.join(staging, "scripts"), { recursive: true });
+      fs.writeFileSync(
+        path.join(staging, "SKILL.md"),
+        "---\nname: lazy\n---\n",
+      );
+      fs.writeFileSync(path.join(staging, "scripts", "run.sh"), "echo hi\n");
+      // A native watcher needs a moment to attach a handle to the new
+      // subtree — exactly the window in which the install used to fail.
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+
+      expect(() =>
+        fs.renameSync(staging, path.join(skillsRoot, "lazy-recipes")),
+      ).not.toThrow();
+
+      // The skill landing is still picked up by hot reload.
+      await waitForEventMatching(events, (event) =>
+        event.path.endsWith("lazy-recipes"),
+      );
+
+      // Upgrading an installed skill renames a directory that has
+      // subdirectories — the same EPERM, one level up.
+      const installed = path.join(skillsRoot, "installed-skill");
+      fs.mkdirSync(path.join(installed, "scripts"), { recursive: true });
+      fs.writeFileSync(
+        path.join(installed, "SKILL.md"),
+        "---\nname: installed\n---\n",
+      );
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+
+      expect(() =>
+        fs.renameSync(installed, path.join(skillsRoot, "installed-skill.old")),
+      ).not.toThrow();
+    } finally {
+      await skillService.cleanup();
+      fs.rmSync(rootBase, { recursive: true, force: true });
+    }
   });
 
   it("exposes watcher status once active", async () => {

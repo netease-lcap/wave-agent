@@ -63,6 +63,42 @@ function isWithin(filePath: string, root: string): boolean {
   );
 }
 
+/**
+ * One entry of chokidar's `ignored` list. chokidar 4 dropped glob support: a
+ * string matcher is compared for exact path equality, so a pattern such as
+ * `"**\/node_modules/**"` matches nothing at all. Keep predicates here and
+ * match on the last path segment.
+ */
+export type IgnoredMatcher = string | RegExp | ((filePath: string) => boolean);
+
+function basenameOf(filePath: string): string {
+  const parts = filePath.split(/[\\/]/);
+  return parts[parts.length - 1] ?? "";
+}
+
+/** vim swap files, `foo~` backup copies, Sublime's `.subl*` temp files. */
+const SWAP_FILE_RE = /\.sw[px]$|~$|\.subl.*\.tmp$/;
+
+/**
+ * Never descend into these, whoever is watching: dependency trees and editor
+ * scratch files produce no events anyone cares about, but they cost a watcher
+ * per directory — and on Windows each of those handles is a directory rename
+ * away from EPERM (see skillWatcherOptions in skillManager).
+ */
+export const DEFAULT_IGNORED_MATCHERS: IgnoredMatcher[] = [
+  (filePath: string) => basenameOf(filePath) === "node_modules",
+  (filePath: string) => SWAP_FILE_RE.test(basenameOf(filePath)),
+];
+
+/**
+ * Dot-prefixed entries are scratch, not payload: `.git`, `.DS_Store`, and the
+ * `.lazy-recipes.install-<uuid>` staging directories installers unpack into
+ * before renaming them into place. Matched by basename only, so a watched root
+ * that itself lives under a dot directory (`~/.wave/skills`) is unaffected.
+ */
+export const isDotEntry = (filePath: string): boolean =>
+  basenameOf(filePath).startsWith(".");
+
 export interface FileWatchEvent {
   type: "change" | "create" | "delete" | "rename";
   path: string;
@@ -74,10 +110,15 @@ export interface FileWatcherConfig {
   stabilityThreshold: number; // Chokidar awaitWriteFinish delay (ms)
   pollInterval: number; // Chokidar polling interval (ms)
   maxRetries: number; // Default: 3
-  fallbackPolling: boolean; // Default: false
+  fallbackPolling: boolean; // Default: false — used only after a watcher error
+  /** Poll instead of using native events from the start. Native `fs.watch`
+   *  holds a handle per watched directory on Windows, which makes renaming
+   *  that directory tree fail with EPERM; a caller whose tree is written by
+   *  other processes (skill installers) opts into polling to avoid it. */
+  usePolling: boolean; // Default: false
   ignoreTempFiles: boolean; // Default: true
   depth: number; // default: 5
-  ignored: string[]; // default: ['**/node_modules/**', '**/.git/**', '**/*.swp', '**/*~']
+  ignored: IgnoredMatcher[]; // default: DEFAULT_IGNORED_MATCHERS
 }
 
 export interface FileWatcherStatus {
@@ -116,9 +157,10 @@ export class FileWatcherService extends EventEmitter {
       pollInterval: 100,
       maxRetries: 3,
       fallbackPolling: false,
+      usePolling: false,
       ignoreTempFiles: true,
       depth: 5,
-      ignored: ["**/node_modules/**", "**/.git/**", "**/*.swp", "**/*~"],
+      ignored: DEFAULT_IGNORED_MATCHERS,
       ...config,
     };
   }
@@ -197,7 +239,7 @@ export class FileWatcherService extends EventEmitter {
       method:
         entry.errorCount > 0
           ? "failed"
-          : entry.config.fallbackPolling
+          : entry.config.fallbackPolling || entry.config.usePolling
             ? "polling"
             : "native",
       errorCount: entry.errorCount,
@@ -252,7 +294,7 @@ export class FileWatcherService extends EventEmitter {
             stabilityThreshold: entry.config.stabilityThreshold,
             pollInterval: entry.config.pollInterval,
           },
-          usePolling: entry.config.fallbackPolling,
+          usePolling: entry.config.usePolling || entry.config.fallbackPolling,
           interval: entry.config.pollInterval,
         });
 

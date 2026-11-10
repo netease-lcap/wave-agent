@@ -39,7 +39,15 @@ import { BASH_TOOL_NAME } from "../../src/constants/tools.js";
 import type { PermissionManager } from "../../src/managers/permissionManager.js";
 
 vi.mock("fs/promises");
-vi.mock("../../src/services/fileWatcher.js");
+// Only the service class is mocked; the ignore predicates it is handed are
+// plain functions, so keep the real ones (an auto-mock turns them into stubs
+// that ignore nothing).
+vi.mock("../../src/services/fileWatcher.js", async () => {
+  const actual = await vi.importActual<
+    typeof import("../../src/services/fileWatcher.js")
+  >("../../src/services/fileWatcher.js");
+  return { ...actual, FileWatcherService: vi.fn() };
+});
 vi.mock("../../src/utils/skillParser.js", async () => {
   const actual = await vi.importActual("../../src/utils/skillParser.js");
   return {
@@ -1202,6 +1210,53 @@ describe("SkillManager", () => {
       expect(FileWatcherService).not.toHaveBeenCalled();
     });
 
+    it("should build the watcher with the skill options (#2864)", async () => {
+      const originalPlatform = process.platform;
+      Object.defineProperty(process, "platform", { value: "win32" });
+      try {
+        const manager = new SkillManager(container, {
+          workdir: "/test/workdir",
+          watch: true,
+        });
+        vi.mocked(readdir).mockResolvedValue([]);
+
+        await manager.initialize();
+
+        const options = vi.mocked(FileWatcherService).mock.calls[0][1];
+        // Nothing deeper than <root>/<skill>/<entry> is worth walking.
+        expect(options?.depth).toBe(2);
+        // Installer staging directories are dot-prefixed and must never be
+        // watched: a watched descendant makes the installer's rename() fail
+        // with EPERM on Windows.
+        const ignored = (options?.ignored ?? []) as Array<
+          string | RegExp | ((p: string) => boolean)
+        >;
+        const isIgnored = (filePath: string) =>
+          ignored.some((matcher) =>
+            typeof matcher === "function"
+              ? matcher(filePath)
+              : matcher instanceof RegExp
+                ? matcher.test(filePath)
+                : matcher === filePath,
+          );
+        expect(
+          isIgnored(path.join("/test", "skills", ".lazy-recipes.install-1")),
+        ).toBe(true);
+        expect(isIgnored(path.join("/test", "skills", "lazy-recipes"))).toBe(
+          false,
+        );
+        // Windows keeps no directory handles at all, so any external
+        // installer/upgrader can rename freely.
+        expect(options).toEqual(
+          expect.objectContaining({ usePolling: true, pollInterval: 1000 }),
+        );
+      } finally {
+        Object.defineProperty(process, "platform", {
+          value: originalPlatform,
+        });
+      }
+    });
+
     it("should refresh skills and update slash commands when a change is detected", async () => {
       const manager = new SkillManager(container, {
         workdir: "/test/workdir",
@@ -1245,21 +1300,63 @@ describe("SkillManager", () => {
         validationErrors: [],
       } as unknown as ReturnType<typeof parseSkillFile>);
 
-      // Trigger the callback
-      await onEventCallback({
+      // Trigger the callback. The rescan is debounced, so it lands after the
+      // coalescing window instead of when the callback returns.
+      onEventCallback({
         type: "change",
         path: "/test/workdir/.wave/skills/new-skill/SKILL.md",
         timestamp: Date.now(),
       });
 
+      await vi.waitFor(() =>
+        expect(manager.getAvailableSkills()).toHaveLength(1),
+      );
+
       // Check if skills were refreshed
       const skills = manager.getAvailableSkills();
-      expect(skills).toHaveLength(1);
       expect(skills[0].name).toBe("new-skill");
 
       // Check if slash commands were updated
       const commands = slashCommandManager.getCommands();
       expect(commands.find((c) => c.id === "new-skill")).toBeDefined();
+    });
+
+    it("should coalesce a burst of watcher events into a single rescan", async () => {
+      const manager = new SkillManager(container, {
+        workdir: "/test/workdir",
+        watch: true,
+      });
+      vi.mocked(readdir).mockResolvedValue([]);
+      await manager.initialize();
+
+      const rescans = vi.fn();
+      manager.on("refreshed", rescans);
+
+      const onEventCallback = mockFileWatcher.watchFile.mock.calls[0][1];
+
+      vi.useFakeTimers();
+      try {
+        // An installing/upgrading skill unpacks dozens of files at once.
+        for (let i = 0; i < 5; i++) {
+          onEventCallback({
+            type: "create",
+            path: `/test/workdir/.wave/skills/skill-${i}/SKILL.md`,
+            timestamp: Date.now(),
+          });
+        }
+        expect(rescans).not.toHaveBeenCalled();
+
+        await vi.advanceTimersByTimeAsync(300);
+        expect(rescans).toHaveBeenCalledTimes(1);
+
+        // Nothing was queued behind the debounce window.
+        await vi.advanceTimersByTimeAsync(1000);
+        expect(rescans).toHaveBeenCalledTimes(1);
+      } finally {
+        vi.useRealTimers();
+      }
+
+      await manager.destroy();
     });
 
     it("should cleanup watcher when destroyed", async () => {
@@ -1323,12 +1420,17 @@ describe("SkillManager", () => {
       // Get the file watcher callback
       const onEventCallback = mockFileWatcher.watchFile.mock.calls[0][1];
 
-      // Trigger refreshSkills via file watcher (simulating a SKILL.md change)
-      await onEventCallback({
+      // Trigger refreshSkills via file watcher (simulating a SKILL.md change).
+      // The rescan is debounced — wait for it instead of for the callback.
+      const refreshed = new Promise<void>((resolve) => {
+        manager.once("refreshed", () => resolve());
+      });
+      onEventCallback({
         type: "change",
         path: "/test/workdir/.wave/skills/some-skill/SKILL.md",
         timestamp: Date.now(),
       });
+      await refreshed;
 
       // Plugin skills should still be available after refresh
       skills = manager.getAvailableSkills();
@@ -1379,13 +1481,17 @@ describe("SkillManager", () => {
           .find((s) => s.name === "commit-skills:commit-push-mr"),
       ).toBeUndefined();
 
-      // 磁盘刷新（文件监视器触发）后仍不应出现。
+      // 磁盘刷新（文件监视器触发）后仍不应出现。刷新是去抖的，等它真正跑完。
       const onEventCallback = mockFileWatcher.watchFile.mock.calls[0][1];
-      await onEventCallback({
+      const refreshed = new Promise<void>((resolve) => {
+        manager.once("refreshed", () => resolve());
+      });
+      onEventCallback({
         type: "change",
         path: "/test/workdir/.wave/skills/some-skill/SKILL.md",
         timestamp: Date.now(),
       });
+      await refreshed;
 
       expect(
         manager
