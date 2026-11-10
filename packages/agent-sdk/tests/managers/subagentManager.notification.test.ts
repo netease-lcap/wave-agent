@@ -96,6 +96,19 @@ describe("SubagentManager - Notification Deduplication", () => {
     });
   });
 
+  /**
+   * 冲刷一轮事件循环（同 `tests/telemetry/events.test.ts` 的 `settleEmits`）。
+   *
+   * 通知是 fire-and-forget：`enqueueNotification` 之后不再 await，所以紧跟在
+   * 「它发生过」之后断 `toHaveBeenCalledTimes(1)`，只能证明此刻恰好 1 条 ——
+   * 同一批逻辑里追加的第二条还没轮到。冲刷之后，次数断言才是在证明
+   * 「没有第二条」。
+   */
+  const settleNotifications = async () => {
+    await new Promise((resolve) => setImmediate(resolve));
+    await new Promise((resolve) => setImmediate(resolve));
+  };
+
   it("should enqueue exactly ONE completion notification for backgroundInstance path", async () => {
     const enqueueSpy = vi.spyOn(messageQueue, "enqueueNotification");
 
@@ -127,8 +140,10 @@ describe("SubagentManager - Notification Deduplication", () => {
 
     await subagentManager.executeAgent(instance, "test prompt");
 
-    // Wait for async operations to settle
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    // 不要用固定睡眠：机器忙时通知可能还没发出来，次数仍是 0 ⇒ 假红。
+    // 等那条通知真的发生，交给 vitest 判超时，再冲刷一轮事件循环。
+    await vi.waitFor(() => expect(enqueueSpy).toHaveBeenCalled());
+    await settleNotifications();
 
     // Should enqueue exactly one notification, not two
     expect(enqueueSpy).toHaveBeenCalledTimes(1);
@@ -176,8 +191,10 @@ describe("SubagentManager - Notification Deduplication", () => {
       subagentManager.executeAgent(instance, "test prompt"),
     ).rejects.toThrow("Build failed");
 
-    // Wait for async operations to settle
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    // 不要用固定睡眠：机器忙时通知可能还没发出来，次数仍是 0 ⇒ 假红。
+    // 等那条通知真的发生，交给 vitest 判超时，再冲刷一轮事件循环。
+    await vi.waitFor(() => expect(enqueueSpy).toHaveBeenCalled());
+    await settleNotifications();
 
     // Should enqueue exactly one error notification, not two
     expect(enqueueSpy).toHaveBeenCalledTimes(1);
@@ -221,8 +238,10 @@ describe("SubagentManager - Notification Deduplication", () => {
       true,
     );
 
-    // Wait for the background async IIFE to complete
+    // 后台 IIFE 是 fire-and-forget：`waitFor(called)` 首检即满足就返回，
+    // 同一批逻辑里追加的第二条还没跑，「恰好 1 条」这半句就没被证明。
     await vi.waitFor(() => expect(enqueueSpy).toHaveBeenCalled());
+    await settleNotifications();
 
     // Should enqueue exactly one notification, not two
     expect(enqueueSpy).toHaveBeenCalledTimes(1);
@@ -267,8 +286,9 @@ describe("SubagentManager - Notification Deduplication", () => {
       true,
     );
 
-    // Wait for the background async IIFE to complete with error
+    // 同上：先等通知发生，再冲刷事件循环，「没有第二条」才是被证明过的。
     await vi.waitFor(() => expect(enqueueSpy).toHaveBeenCalled());
+    await settleNotifications();
 
     // Should enqueue exactly one error notification, not two
     expect(enqueueSpy).toHaveBeenCalledTimes(1);

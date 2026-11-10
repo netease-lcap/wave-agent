@@ -1,13 +1,12 @@
 import {
   renderChatApp,
   screen,
-  waitFor,
   act,
   fireEvent,
   fireInput,
   sendCommand,
 } from "./test-utils";
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
   assembleIdeContextBlocks,
   ideContextMarker,
@@ -39,7 +38,7 @@ async function typeInInput(text: string) {
 async function waitForFileSuggestionRequest(
   vscode: ReturnType<typeof renderChatApp>["vscode"],
 ): Promise<string> {
-  await waitFor(
+  await vi.waitFor(
     () => {
       expect(vscode.postMessage).toHaveBeenCalledWith(
         expect.objectContaining({ command: "requestFileSuggestions" }),
@@ -92,7 +91,7 @@ async function openMentionDropdown(
       ],
     });
   });
-  await waitFor(() => {
+  await vi.waitFor(() => {
     expect(dropdownTitles().length).toBeGreaterThan(0);
   });
 }
@@ -110,7 +109,7 @@ async function selectSuggestion(label: string) {
   act(() => {
     fireEvent.keyDown(input, { key: "Enter", code: "Enter" });
   });
-  await waitFor(() => {
+  await vi.waitFor(() => {
     expect(
       document.querySelector(
         '[data-testid="message-input"] [data-ide-context]',
@@ -120,6 +119,24 @@ async function selectSuggestion(label: string) {
 }
 
 describe("IDE 上下文提及", () => {
+  // The @ dropdown request is debounced (200ms) after the selection change, so
+  // every case's real subject is "eventually the suggestion request goes out".
+  // Freeze the clock and let Vitest drive it (`nextTimerAsync` chains the
+  // debounce timer to the state update back to back). Only the timer APIs are
+  // faked: the tree is a real ChatApp under real Chromium, so rAF and layout
+  // must keep running. `vi.waitFor` (not Testing Library's) advances a fake
+  // clock — RTL's only does that when a `jest` global exists.
+  beforeEach(() => {
+    vi.useFakeTimers({
+      toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval"],
+    });
+    vi.setTimerTickMode("nextTimerAsync");
+  });
+  afterEach(async () => {
+    await vi.runOnlyPendingTimersAsync();
+    vi.useRealTimers();
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -152,7 +169,7 @@ describe("IDE 上下文提及", () => {
       fireEvent.click(screen.getByTestId("send-btn"));
     });
 
-    const request = await waitFor(() => {
+    const request = await vi.waitFor(() => {
       const call = lastRequest(vscode, "requestIdeContext");
       expect(call).toBeDefined();
       return call;
@@ -172,7 +189,7 @@ describe("IDE 上下文提及", () => {
       });
     });
 
-    const sent = await waitFor(() => {
+    const sent = await vi.waitFor(() => {
       const call = lastRequest(vscode, "sendMessage");
       expect(call).toBeDefined();
       return call;
@@ -190,7 +207,7 @@ describe("IDE 上下文提及", () => {
       fireEvent.click(screen.getByTestId("send-btn"));
     });
 
-    const request = await waitFor(() => {
+    const request = await vi.waitFor(() => {
       const call = lastRequest(vscode, "requestIdeContext");
       expect(call).toBeDefined();
       return call;
@@ -205,7 +222,7 @@ describe("IDE 上下文提及", () => {
       });
     });
 
-    const sent = await waitFor(() => {
+    const sent = await vi.waitFor(() => {
       const call = lastRequest(vscode, "sendMessage");
       expect(call).toBeDefined();
       return call;
@@ -232,7 +249,7 @@ describe("IDE 上下文提及", () => {
       });
     });
 
-    const chip = await waitFor(() => {
+    const chip = await vi.waitFor(() => {
       const element = document.querySelector(
         '[data-testid="messages-container"] [data-path="ide:terminal"]',
       );
@@ -248,7 +265,7 @@ describe("IDE 上下文提及", () => {
       fireEvent.click(chip);
     });
 
-    const dialog = await waitFor(() => {
+    const dialog = await vi.waitFor(() => {
       const element = screen.getByRole("dialog");
       expect(element).toBeInTheDocument();
       return element;
@@ -263,7 +280,7 @@ describe("IDE 上下文提及", () => {
     act(() => {
       fireEvent.keyDown(document, { key: "Escape", code: "Escape" });
     });
-    await waitFor(() => {
+    await vi.waitFor(() => {
       expect(screen.queryByRole("dialog")).toBeNull();
     });
   });
@@ -291,7 +308,7 @@ describe("IDE 上下文提及", () => {
           ],
         });
       });
-      await waitFor(() => {
+      await vi.waitFor(() => {
         expect(dropdownTitles()).toContain("main.ts");
       });
       expect(dropdownTitles()).not.toContain("Terminal");

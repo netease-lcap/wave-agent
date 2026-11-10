@@ -1,8 +1,7 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   renderChatApp,
   screen,
-  waitFor,
   fireEvent,
   act,
   sendCommand,
@@ -42,8 +41,22 @@ async function typeInInput(text: string) {
 }
 
 describe("Slash Commands", () => {
+  // The dropdown request is debounced (200ms) after the selection change, so
+  // every case's real subject is "eventually the popup shows up". Freeze the
+  // clock and let Vitest drive it (`nextTimerAsync` chains the debounce timer
+  // to the state update back to back). Only the timer APIs are faked: the tree
+  // is a real ChatApp under real Chromium, so rAF/layout must keep running.
+  // `vi.waitFor` (not Testing Library's) advances a fake clock; RTL's does not.
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.useFakeTimers({
+      toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval"],
+    });
+    vi.setTimerTickMode("nextTimerAsync");
+  });
+  afterEach(async () => {
+    await vi.runOnlyPendingTimersAsync();
+    vi.useRealTimers();
   });
 
   it("should insert slash command with a space when selected via Enter", async () => {
@@ -56,7 +69,7 @@ describe("Slash Commands", () => {
     await typeInInput("/");
 
     // Verify requestSlashCommands was sent (debounced 150ms)
-    await waitFor(
+    await vi.waitFor(
       () => {
         expect(vscode.postMessage).toHaveBeenCalledWith(
           expect.objectContaining({ command: "requestSlashCommands" }),
@@ -74,7 +87,7 @@ describe("Slash Commands", () => {
     });
 
     // Verify popup is visible
-    await waitFor(() => {
+    await vi.waitFor(() => {
       expect(screen.getByTestId("slash-commands-popup")).toBeInTheDocument();
     });
 
@@ -84,14 +97,14 @@ describe("Slash Commands", () => {
     });
 
     // Verify popup is closed
-    await waitFor(() => {
+    await vi.waitFor(() => {
       expect(
         screen.queryByTestId("slash-commands-popup"),
       ).not.toBeInTheDocument();
     });
 
     // Verify input content (should be "/init" with trailing space in textContent)
-    await waitFor(() => {
+    await vi.waitFor(() => {
       expect(input.textContent?.trim()).toBe("/init");
     });
     expect(input.textContent).toBe("/init ");
@@ -108,7 +121,7 @@ describe("Slash Commands", () => {
     await typeInInput("/");
 
     // Wait for requestSlashCommands
-    await waitFor(
+    await vi.waitFor(
       () => {
         expect(vscode.postMessage).toHaveBeenCalledWith(
           expect.objectContaining({ command: "requestSlashCommands" }),
@@ -125,7 +138,7 @@ describe("Slash Commands", () => {
     });
 
     // Wait for popup
-    await waitFor(() => {
+    await vi.waitFor(() => {
       expect(screen.getByTestId("slash-commands-popup")).toBeInTheDocument();
     });
 
@@ -135,7 +148,7 @@ describe("Slash Commands", () => {
     });
 
     // Verify content
-    await waitFor(() => {
+    await vi.waitFor(() => {
       expect(input.textContent?.trim()).toBe("hello /init");
     });
     expect(input.textContent).toBe("hello /init ");
@@ -149,7 +162,7 @@ describe("Slash Commands", () => {
 
     await typeInInput("/");
 
-    await waitFor(
+    await vi.waitFor(
       () => {
         expect(vscode.postMessage).toHaveBeenCalledWith(
           expect.objectContaining({ command: "requestSlashCommands" }),
@@ -165,7 +178,7 @@ describe("Slash Commands", () => {
       ],
     });
 
-    await waitFor(() => {
+    await vi.waitFor(() => {
       expect(screen.getByTestId("slash-commands-popup")).toBeInTheDocument();
     });
 
@@ -175,13 +188,13 @@ describe("Slash Commands", () => {
     });
 
     // Verify popup is closed
-    await waitFor(() => {
+    await vi.waitFor(() => {
       expect(
         screen.queryByTestId("slash-commands-popup"),
       ).not.toBeInTheDocument();
     });
 
-    await waitFor(() => {
+    await vi.waitFor(() => {
       expect(input.textContent?.trim()).toBe("/init");
     });
     expect(input.textContent).toBe("/init ");
@@ -195,7 +208,7 @@ describe("Slash Commands", () => {
 
     await typeInInput("/");
 
-    await waitFor(
+    await vi.waitFor(
       () => {
         expect(vscode.postMessage).toHaveBeenCalledWith(
           expect.objectContaining({ command: "requestSlashCommands" }),
@@ -211,7 +224,7 @@ describe("Slash Commands", () => {
       ],
     });
 
-    await waitFor(() => {
+    await vi.waitFor(() => {
       expect(screen.getByTestId("slash-commands-popup")).toBeInTheDocument();
     });
 
@@ -222,13 +235,13 @@ describe("Slash Commands", () => {
     });
 
     // Verify popup is closed
-    await waitFor(() => {
+    await vi.waitFor(() => {
       expect(
         screen.queryByTestId("slash-commands-popup"),
       ).not.toBeInTheDocument();
     });
 
-    await waitFor(() => {
+    await vi.waitFor(() => {
       expect(input.textContent?.trim()).toBe("/init");
     });
     expect(input.textContent).toBe("/init ");
@@ -242,7 +255,7 @@ describe("Slash Commands", () => {
 
     await typeInInput("/");
 
-    await waitFor(
+    await vi.waitFor(
       () => {
         expect(vscode.postMessage).toHaveBeenCalledWith(
           expect.objectContaining({ command: "requestSlashCommands" }),
@@ -257,7 +270,7 @@ describe("Slash Commands", () => {
       ],
     });
 
-    await waitFor(() => {
+    await vi.waitFor(() => {
       expect(screen.getByTestId("slash-commands-popup")).toBeInTheDocument();
     });
 
@@ -278,7 +291,7 @@ describe("Slash Commands", () => {
       fireEvent.mouseDown(cmdItem);
     });
 
-    await waitFor(() => {
+    await vi.waitFor(() => {
       expect(
         screen.queryByTestId("slash-commands-popup"),
       ).not.toBeInTheDocument();
@@ -286,7 +299,7 @@ describe("Slash Commands", () => {
 
     // The skill command must be inserted on the first click (currently the input
     // stays '/').
-    await waitFor(() => {
+    await vi.waitFor(() => {
       expect(input.textContent?.trim()).toBe("/init");
     });
     expect(input.textContent).toBe("/init ");
@@ -300,7 +313,7 @@ describe("Slash Commands", () => {
 
     await typeInInput("/plugin");
 
-    await waitFor(
+    await vi.waitFor(
       () => {
         expect(vscode.postMessage).toHaveBeenCalledWith(
           expect.objectContaining({ command: "requestSlashCommands" }),
@@ -320,7 +333,7 @@ describe("Slash Commands", () => {
       ],
     });
 
-    await waitFor(() => {
+    await vi.waitFor(() => {
       expect(screen.getByTestId("slash-commands-popup")).toBeInTheDocument();
     });
 
@@ -340,7 +353,7 @@ describe("Slash Commands", () => {
     });
 
     // 不再弹窗：/plugin 唤起设置页并选中「插件市场」选项卡（对齐 /mcp、/skills）。
-    await waitFor(() => {
+    await vi.waitFor(() => {
       const call = vscode.postMessage.mock.calls.find(
         (c) => c[0]?.command === "openSettings",
       );
@@ -348,7 +361,7 @@ describe("Slash Commands", () => {
     });
 
     // Popup closed and input cleared.
-    await waitFor(() => {
+    await vi.waitFor(() => {
       expect(
         screen.queryByTestId("slash-commands-popup"),
       ).not.toBeInTheDocument();
@@ -366,7 +379,7 @@ describe("Slash Commands", () => {
 
     await typeInInput("/my-view");
 
-    await waitFor(
+    await vi.waitFor(
       () => {
         expect(vscode.postMessage).toHaveBeenCalledWith(
           expect.objectContaining({ command: "requestSlashCommands" }),
@@ -386,7 +399,7 @@ describe("Slash Commands", () => {
       ],
     });
 
-    await waitFor(() => {
+    await vi.waitFor(() => {
       expect(screen.getByTestId("slash-commands-popup")).toBeInTheDocument();
     });
 
@@ -394,7 +407,7 @@ describe("Slash Commands", () => {
       fireEvent.keyDown(input, { key: "Enter" });
     });
 
-    await waitFor(() => {
+    await vi.waitFor(() => {
       expect(vscode.postMessage).toHaveBeenCalledWith(
         expect.objectContaining({ command: "sendMessage", text: "/my-view" }),
       );
@@ -412,7 +425,7 @@ describe("Slash Commands", () => {
     // Type '/h'
     await typeInInput("/h");
 
-    await waitFor(
+    await vi.waitFor(
       () => {
         expect(vscode.postMessage).toHaveBeenCalledWith(
           expect.objectContaining({ command: "requestSlashCommands" }),
@@ -426,7 +439,7 @@ describe("Slash Commands", () => {
       commands: [{ id: "help", name: "help", description: "Show help" }],
     });
 
-    await waitFor(() => {
+    await vi.waitFor(() => {
       expect(screen.getByTestId("slash-commands-popup")).toBeInTheDocument();
     });
 

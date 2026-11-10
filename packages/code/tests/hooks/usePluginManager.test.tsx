@@ -264,6 +264,12 @@ describe("usePluginManager", () => {
       await vi.waitFor(() => {
         expect(lastValue?.state.isLoading).toBe(false);
       });
+      // 打开插件管理器的后台刷新也会重读列表（spec「市场清单自动刷新与插件升级
+      // 解耦」场景 11）。先等挂载期那两次落定：否则下面那个 `=== 2` 只是「此刻
+      // 恰好数到 2」的取样巧合，删掉安装后的 `refresh()` 它照样绿。
+      await vi.waitFor(() => {
+        expect(mockPluginCore.listMarketplaces).toHaveBeenCalledTimes(2);
+      });
 
       mockPluginCore.installPlugin.mockResolvedValue(undefined);
 
@@ -274,7 +280,8 @@ describe("usePluginManager", () => {
           "my-plugin@my-marketplace",
           "user",
         );
-        expect(mockPluginCore.listMarketplaces).toHaveBeenCalledTimes(2);
+        // 安装动作**额外**重读一次（挂载期那两次上面已经等过了）。
+        expect(mockPluginCore.listMarketplaces).toHaveBeenCalledTimes(3);
       });
     });
   });
@@ -291,6 +298,10 @@ describe("usePluginManager", () => {
       await vi.waitFor(() => {
         expect(lastValue?.state.isLoading).toBe(false);
       });
+      // 同上：先等挂载期（含后台刷新）那两次重读落定。
+      await vi.waitFor(() => {
+        expect(mockPluginCore.listMarketplaces).toHaveBeenCalledTimes(2);
+      });
 
       mockPluginCore.uninstallPlugin.mockResolvedValue(undefined);
 
@@ -300,7 +311,8 @@ describe("usePluginManager", () => {
         expect(mockPluginCore.uninstallPlugin).toHaveBeenCalledWith(
           "my-plugin@my-marketplace",
         );
-        expect(mockPluginCore.listMarketplaces).toHaveBeenCalledTimes(2);
+        // 卸载动作**额外**重读一次（挂载期那两次上面已经等过了）。
+        expect(mockPluginCore.listMarketplaces).toHaveBeenCalledTimes(3);
       });
     });
   });

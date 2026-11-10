@@ -161,6 +161,11 @@ export interface MessageInputHandle {
   uploadFiles: (files: FileList | File[]) => void;
 }
 
+/** 选区变化（@ 提及、斜杠命令下拉）的防抖：用户停下不光标了才去问宿主。 */
+export const SELECTION_CHANGE_DEBOUNCE_MS = 200;
+/** 输入草稿上报宿主的防抖。 */
+export const INPUT_DRAFT_DEBOUNCE_MS = 150;
+
 export const MessageInput = forwardRef<
   MessageInputHandle,
   MessageInputPropsWithCompress
@@ -1825,7 +1830,7 @@ export const MessageInput = forwardRef<
         requestSlashCommands(slashCommandState.filterText);
       }
       selectionChangeTimerRef.current = null;
-    }, 200);
+    }, SELECTION_CHANGE_DEBOUNCE_MS);
   }, [
     detectAtMention,
     detectSlashCommand,
@@ -1885,7 +1890,7 @@ export const MessageInput = forwardRef<
           content: serializeInputDraft(target, draftScopeKey),
         });
         inputContentTimerRef.current = null;
-      }, 150);
+      }, INPUT_DRAFT_DEBOUNCE_MS);
 
       // Debounced selection change detection (for @mention and /command)
       handleSelectionChange();

@@ -7,16 +7,11 @@
  * `packages/desktop/tests/sessionContentSearch.test.ts` 里单测。
  */
 
-import { describe, it, expect } from "vitest";
-import {
-  render,
-  screen,
-  fireEvent,
-  waitFor,
-  act,
-} from "@testing-library/react";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { render, screen, fireEvent, act } from "@testing-library/react";
 import React from "react";
 import { DesktopApp } from "../../src/components/DesktopApp";
+import { CONTENT_SEARCH_DEBOUNCE_MS } from "../../src/components/DesktopSidebar";
 import { createMockVscode, sendCommand } from "./test-utils";
 
 const userMsg = (content: string, id: string) => ({
@@ -85,19 +80,45 @@ const searchBox = () =>
 const typeQuery = (value: string) =>
   fireEvent.change(searchBox(), { target: { value } });
 
-const isIdle = () => new Promise((resolve) => setTimeout(resolve, 420));
+/** Past the search debounce, with a little headroom — the cases below assert
+ * that a *short* query stayed silent, so the window has to have really elapsed. */
+const flushDebounce = () =>
+  vi.advanceTimersByTimeAsync(CONTENT_SEARCH_DEBOUNCE_MS + 50);
 
 describe("侧栏会话内容搜索", () => {
+  // Every case's assertion is the *outcome* of the 300ms content-search
+  // debounce, so on real timers each one sleeps through it. Freeze the clock
+  // and let Vitest drive it: `nextTimerAsync` fires chained timers back to back
+  // (vitest.dev/guide/mocking/timers#tick-modes).
+  //
+  // `toFake` is limited to the timers: the tree is a real `DesktopApp` under
+  // real Chromium, and rAF/`performance` (virtual-list windows, tooltip
+  // placement, layout measurement) must keep running for real.
+  //
+  // `vi.waitFor` (not Testing Library's) is required under fake timers: RTL's
+  // only advances a fake clock when a `jest` global exists, so it would poll
+  // forever on the frozen clock.
+  beforeEach(() => {
+    vi.useFakeTimers({
+      toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval"],
+    });
+    vi.setTimerTickMode("nextTimerAsync");
+  });
+  afterEach(async () => {
+    await vi.runOnlyPendingTimersAsync();
+    vi.useRealTimers();
+  });
+
   it("关键词不足 2 个字符不发请求，够长才防抖后发一次（不送远端会话）", async () => {
     const vscode = renderApp();
 
     typeQuery("池");
-    await isIdle();
+    await flushDebounce();
     expect(contentRequests(vscode)).toHaveLength(0);
     expect(screen.queryByTestId("desktop-content-hits")).toBeNull();
 
     typeQuery("连接池");
-    await waitFor(() => expect(contentRequests(vscode)).toHaveLength(1));
+    await vi.waitFor(() => expect(contentRequests(vscode)).toHaveLength(1));
     const request = contentRequests(vscode)[0];
     expect(request.query).toBe("连接池");
     // 远端的会话不参与正文搜索（场景 10）。
@@ -112,7 +133,7 @@ describe("侧栏会话内容搜索", () => {
       screen.getByTestId("desktop-content-hits-searching").textContent,
     ).toContain("正在搜索会话内容");
 
-    await waitFor(() => expect(contentRequests(vscode)).toHaveLength(1));
+    await vi.waitFor(() => expect(contentRequests(vscode)).toHaveLength(1));
     const { requestId } = contentRequests(vscode)[0];
     act(() => {
       sendCommand("desktopSessionContentMatches", {
@@ -152,7 +173,7 @@ describe("侧栏会话内容搜索", () => {
     });
 
     typeQuery("连接池");
-    await waitFor(() => expect(contentRequests(vscode)).toHaveLength(1));
+    await vi.waitFor(() => expect(contentRequests(vscode)).toHaveLength(1));
     const { requestId } = contentRequests(vscode)[0];
     act(() => {
       sendCommand("desktopSessionContentMatches", {
@@ -178,7 +199,7 @@ describe("侧栏会话内容搜索", () => {
     expect(select).toMatchObject({ workdir: "/work/a", sessionId: "s1" });
 
     // 查找条以该关键词打开，并且落在第 2 处（hitIndex 是 0 起）。
-    await waitFor(() =>
+    await vi.waitFor(() =>
       expect(screen.getByTestId("transcript-find-count").textContent).toBe(
         "2/2",
       ),
@@ -191,7 +212,7 @@ describe("侧栏会话内容搜索", () => {
   it("清空关键词：结果区整体消失，迟到的回包不回填", async () => {
     const vscode = renderApp();
     typeQuery("连接池");
-    await waitFor(() => expect(contentRequests(vscode)).toHaveLength(1));
+    await vi.waitFor(() => expect(contentRequests(vscode)).toHaveLength(1));
     const { requestId } = contentRequests(vscode)[0];
 
     typeQuery("");
@@ -216,7 +237,7 @@ describe("侧栏会话内容搜索", () => {
   it("搜索失败给「内容搜索暂不可用」并能重试，不静默成「无结果」", async () => {
     const vscode = renderApp();
     typeQuery("连接池");
-    await waitFor(() => expect(contentRequests(vscode)).toHaveLength(1));
+    await vi.waitFor(() => expect(contentRequests(vscode)).toHaveLength(1));
     const { requestId } = contentRequests(vscode)[0];
 
     act(() => {
@@ -234,7 +255,7 @@ describe("侧栏会话内容搜索", () => {
     expect(screen.queryByTestId("desktop-content-hits-empty")).toBeNull();
 
     fireEvent.click(screen.getByTestId("desktop-content-hits-retry"));
-    await waitFor(() => expect(contentRequests(vscode)).toHaveLength(2));
+    await vi.waitFor(() => expect(contentRequests(vscode)).toHaveLength(2));
   });
 
   it("标题全无命中但正文有命中时，不显示「未找到匹配的对话」", async () => {
@@ -242,7 +263,7 @@ describe("侧栏会话内容搜索", () => {
     typeQuery("连接池配置");
     expect(screen.getByTestId("desktop-session-no-match")).toBeTruthy();
 
-    await waitFor(() => expect(contentRequests(vscode)).toHaveLength(1));
+    await vi.waitFor(() => expect(contentRequests(vscode)).toHaveLength(1));
     const { requestId } = contentRequests(vscode)[0];
     act(() => {
       sendCommand("desktopSessionContentMatches", {

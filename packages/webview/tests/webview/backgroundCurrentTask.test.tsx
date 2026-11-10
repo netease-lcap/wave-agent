@@ -6,6 +6,7 @@ import {
   fireEvent,
   act,
   sendCommand,
+  transcriptText,
 } from "./test-utils";
 import { MockDataGenerator } from "../fixtures/mockData";
 import type { Message } from "wave-agent-sdk";
@@ -126,7 +127,7 @@ describe("Background current task button", () => {
     ]);
 
     await waitFor(() => {
-      expect(screen.getByText("never mind")).toBeInTheDocument();
+      expect(transcriptText()).toContain("never mind");
     });
     expect(
       screen.queryByTestId("background-current-task"),

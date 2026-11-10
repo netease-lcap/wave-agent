@@ -18,7 +18,7 @@ import "../styles/LoadingLogo.css";
  * 「分支加载中」同一阈值口径：一步做得快就干脆不说，免得文案闪一下。
  * 见 spec ui/stdio-transport.md 场景 4。
  */
-const STAGE_REVEAL_DELAY_MS = 300;
+export const STAGE_REVEAL_DELAY_MS = 300;
 
 // Standalone W mark paths (60x60 viewBox, no background rect).
 const W_PATH_1 =

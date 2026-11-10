@@ -9,15 +9,15 @@
  * 断言锚在 `data-testid="loading-stage"`（语义句柄）而不是样式类；文案本身取自宿主
  * 下发的那一行，webview 不拼装——所以这里喂的就是宿主会喂的字符串。
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   renderChatApp,
   screen,
-  waitFor,
   act,
   sendHostMessage,
   fixtures,
 } from "./test-utils";
+import { STAGE_REVEAL_DELAY_MS } from "../../src/components/LoadingLogo";
 
 const DOWNLOADING_RUNTIME = "正在下载 Node.js 运行时（约 50 MB）…";
 const INSTALLING_RUNTIME = "正在安装 Node.js 运行时…";
@@ -33,6 +33,18 @@ function restoring() {
 }
 
 describe("首次启动的进度文案", () => {
+  // Each case's whole subject is a 300ms reveal threshold, so on real timers
+  // they sleep through it. Freeze the clock and drive it explicitly: the
+  // 299ms/300ms boundary becomes asserted instead of merely outrun.
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setTimerTickMode("nextTimerAsync");
+  });
+  afterEach(async () => {
+    await vi.runOnlyPendingTimersAsync();
+    vi.useRealTimers();
+  });
+
   it("阶段持续不满 300ms 时不出现，超过阈值才现身", async () => {
     renderChatApp();
     restoring();
@@ -44,7 +56,12 @@ describe("首次启动的进度文案", () => {
     // 同步渲染一帧之后立刻断言：阈值还没到，字不该闪出来（场景 4）。
     expect(stage()).not.toBeInTheDocument();
 
-    await waitFor(() => expect(stage()).toBeInTheDocument());
+    // 差 1ms 到阈值仍在藏，跨过去才现身——边界来自组件自己的常量。
+    await vi.advanceTimersByTimeAsync(STAGE_REVEAL_DELAY_MS - 1);
+    expect(stage()).not.toBeInTheDocument();
+
+    await vi.advanceTimersByTimeAsync(1);
+    expect(stage()).toBeInTheDocument();
     expect(stage()).toHaveTextContent(DOWNLOADING_RUNTIME);
   });
 
@@ -54,7 +71,7 @@ describe("首次启动的进度文案", () => {
     act(() => {
       sendHostMessage(fixtures.loadingStage(DOWNLOADING_RUNTIME));
     });
-    await waitFor(() => expect(stage()).toBeInTheDocument());
+    await vi.waitFor(() => expect(stage()).toBeInTheDocument());
 
     act(() => {
       sendHostMessage(fixtures.loadingStage(INSTALLING_RUNTIME));
@@ -69,7 +86,7 @@ describe("首次启动的进度文案", () => {
     act(() => {
       sendHostMessage(fixtures.loadingStage(DOWNLOADING_TOOL_DEPS));
     });
-    await waitFor(() => expect(stage()).toBeInTheDocument());
+    await vi.waitFor(() => expect(stage()).toBeInTheDocument());
 
     act(() => {
       sendHostMessage(fixtures.loadingStage(null));
