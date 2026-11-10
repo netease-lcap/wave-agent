@@ -7011,3 +7011,42 @@
   border-radius: 12px;
 }
 
+
+/* ═══ 1110 评论：Write 预览「打开预览」键交互样式参照代码块复制键 ═══
+   设计师同一轮第二条（锚点 `button.write-preview-open`）：「尺寸选A，交互样式也
+   参照复制键」。参照物 = 本文件末尾「代码块复制键」那段（`[data-host="desktop"]
+   .md-code-copy`），它的取值又来自右侧面板工具条的 24×24 图标键。
+   该键改前是 base `Message.css:497` 的一档：22×22 / r4 / 1px 面板描边 / 实底
+   （浅 rgba(0,0,0,.12)、深 rgba(90,93,94,.31)，来自 `--vscode-toolbar-hoverBackground`）
+   ——尺寸、圆角、描边、底、hover 五处都不与复制键同族。
+   这里逐值对齐复制键：24×24 / r8（`--cc-radius-md`）/ 无描边 / 透明底；字色 =
+   图标灰（浅 #565A60 / 深 #9A9EA5），hover 面 = 浅 #EEF0F3 / 深 8% 白，hover 字色
+   = 1 级（浅 #1F2329 / 深 #FFFFFF）。
+   定位不动（仍是 `top/right: 5px`，`Message.css` 里那条 `position: absolute`）：
+   盒子从 22 长到 24、锚点同侧，图标中心因此向外让 1px，与复制键当初 22→24 时
+   同样的处理口径（那边 top/right 也一直保持 6px 没改）。
+   显隐与过渡不动：仍只在悬停预览框时淡入（`opacity 0.15s` 只作用于透明度），
+   底色与字色同参照物一样瞬时切换。
+   两个主题档都只认 `data-theme`（与复制键、与工具条图标键三处同构）。 */
+[data-host="desktop"] .write-preview-open {
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: var(--cc-radius-md, 8px);
+  background: transparent;
+}
+
+[data-host="desktop"][data-theme="light"] .write-preview-open {
+  color: #565a60;
+}
+[data-host="desktop"][data-theme="light"] .write-preview-open:hover {
+  background: #eef0f3;
+  color: #1f2329;
+}
+[data-host="desktop"][data-theme="dark"] .write-preview-open {
+  color: #9a9ea5;
+}
+[data-host="desktop"][data-theme="dark"] .write-preview-open:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #ffffff;
+}

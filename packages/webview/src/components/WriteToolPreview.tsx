@@ -1,5 +1,5 @@
 import React, { useRef } from "react";
-import { ExternalLinkIcon } from "./HeaderIcons";
+import { ExternalLinkIcon, OpenPreviewArrowIcon } from "./HeaderIcons";
 import { FileToolHeader } from "./FileToolHeader";
 import { Tooltip } from "./Tooltip";
 import type { ToolBlock } from "../types";
@@ -63,6 +63,9 @@ export const WriteToolPreview: React.FC<WriteToolPreviewProps> = ({
   // ——按钮是 `position: absolute`（Message.css `.write-preview-open`），包裹层
   // 一旦有盒子就成了它的包含块，按钮会跑到盒子内衬里。插件端保持原样（不包裹、
   // 不加 title，零改动）。
+  // 图标（设计师 2026-11-10 评论：「图标的粗细要保持一致」）——桌面端换成与复制
+  // 图标同一档 1.4 描边的箭头（`OpenPreviewArrowIcon`），外框仍是 16×16、墨迹尺寸
+  // 与改前那颗实心箭头一致，只把「粗细」拉齐；插件端保留原实心字形零改动。
   const openButton = (
     <button
       ref={openBtnRef}
@@ -71,7 +74,11 @@ export const WriteToolPreview: React.FC<WriteToolPreviewProps> = ({
       data-testid="write-preview-open"
       onClick={openFile}
     >
-      <ExternalLinkIcon className="write-preview-open-icon" />
+      {isDesktopHost() ? (
+        <OpenPreviewArrowIcon className="write-preview-open-icon" />
+      ) : (
+        <ExternalLinkIcon className="write-preview-open-icon" />
+      )}
     </button>
   );
 

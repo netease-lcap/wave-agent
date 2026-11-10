@@ -74,6 +74,52 @@ export const ExternalLinkIcon: React.FC<IconProps> = ({
   </svg>
 );
 
+/**
+ * 「打开预览」的斜向箭头（↗），**桌面端**专用，与文件面板工具条那套官方矢量
+ * 同一档线宽（16 盒 / 线宽 1.4 / 圆头圆角 / `currentColor`）。
+ *
+ * 设计师 2026-11-10 预览评论（`button.write-preview-open`）：「现在两张纸可以，
+ * 这里也改，图标的粗细要保持一致」——上面那颗 `ExternalLinkIcon` 是 Figma 里导出
+ * 的**实心**字形（`fill` 无描边、尖角），和刚统一成 1.4 描边的复制图标并排时明显
+ * 更重；这里按同一套描边参数重画同形的箭头。
+ *
+ * 尺寸：与改前的实心箭头**同墨迹**（9.2px 见方，中心线 4.1→11.9 加半个线宽）——
+ * 设计师 2026-11-10 看了 9.2 / 10.6 / 12.2 / 14.0 四档后裁「尺寸选 A」，所以只换
+ * 线宽与端点，不动大小。（注：线宽固定 1.4 时图形越小「笔画 / 图形」比越大，这一档
+ * 相对更显重一点；若之后要往文件面板那批官方图标的墨迹习惯靠，`CommentIcon` 12.4 /
+ * 两纸复制 14.0 是另外两档。）
+ *
+ * 只在桌面端替换（`WriteToolPreview` 里按 `isDesktopHost()` 二选一），插件端仍是
+ * `ExternalLinkIcon`，与改动前逐像素一致。
+ */
+export const OpenPreviewArrowIcon: React.FC<IconProps> = ({
+  className = "write-preview-open-icon",
+}) => (
+  <svg
+    width={16}
+    height={16}
+    viewBox="0 0 16 16"
+    fill="none"
+    className={className}
+    aria-hidden="true"
+  >
+    <path
+      d="M4.1 11.9L11.9 4.1"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M6.3 4.1H11.9V9.7"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
+
 export const InfoIcon: React.FC<IconProps> = ({
   className = "header-icon",
 }) => (
