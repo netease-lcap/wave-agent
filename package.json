@@ -45,20 +45,20 @@
     "prepare": "husky"
   },
   "devDependencies": {
-    "@types/node": "^22.0.0",
-    "@vitest/coverage-v8": "^5.1.0",
+    "@types/node": "catalog:node22",
+    "@vitest/coverage-v8": "catalog:",
     "husky": "^9.1.7",
     "lint-staged": "^16.1.5",
     "medium-zoom": "^1.1.0",
     "oxlint": "^1.79.0",
     "prettier": "3.6.2",
-    "tsx": "^4.20.4",
-    "typescript": "^7.0.2",
+    "tsx": "catalog:",
+    "typescript": "catalog:",
     "vitepress": "^1.6.4",
     "vitepress-plugin-llms": "^1.14.0",
-    "vitest": "^5.1.0"
+    "vitest": "catalog:"
   },
-  "packageManager": "pnpm@11.9.0",
+  "packageManager": "pnpm@12.18.0",
   "engines": {
     "node": ">=22"
   },

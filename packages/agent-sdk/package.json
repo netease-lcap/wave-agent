@@ -87,9 +87,9 @@
   "devDependencies": {
     "@types/semver": "^7.7.1",
     "@types/turndown": "^5.0.6",
-    "@vitest/coverage-v8": "^5.1.0",
+    "@vitest/coverage-v8": "catalog:",
     "rimraf": "^6.1.2",
-    "vitest": "^5.1.0"
+    "vitest": "catalog:"
   },
   "engines": {
     "node": ">=22"

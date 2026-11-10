@@ -19,7 +19,8 @@ This is a pnpm monorepo focused on AI-powered development tools.
 
 ### Key Dependencies
 
-- **Node >= 22 required** (`engines` in package.json, pnpm 11 via `packageManager`).
+- **Node >= 22 required** (`engines` in package.json, pnpm 12 via `packageManager`).
+- **工具链版本统一走 catalog**：`typescript` / `vitest` / `@vitest/coverage-v8` / `tsx` 声明在 `pnpm-workspace.yaml` 的 `catalog:`，各包 package.json 写 `"catalog:"`；`@types/node` 分 `catalog:node22`（根，对齐 `engines.node`）和 `catalog:node25`（desktop / vscode / webview，跟随各自运行时）。升级只改 catalog 一处 —— 不要在单个 package.json 里写死这些版本，`catalogMode: prefer` 会让 `pnpm add` 自动沿用 catalog 版本。
 - `packages/code` depends on `packages/agent-sdk`.
 - `packages/vscode` depends on `packages/agent-sdk` and `packages/webview`.
 - `packages/jetbrains` consumes the `packages/webview` build output.

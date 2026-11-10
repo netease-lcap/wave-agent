@@ -65,7 +65,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: ~/.cache/setup-pnpm
-          key: pnpm-setup-v5-${{ runner.os }}-${{ runner.arch }}-11.9.0
+          key: pnpm-setup-v5-${{ runner.os }}-${{ runner.arch }}-12.18.0
 
       - name: Add cached pnpm to PATH
         if: steps.pnpm-cache.outputs.cache-hit == 'true'
@@ -89,7 +89,7 @@ jobs:
         if: steps.pnpm-cache.outputs.cache-hit != 'true'
         uses: pnpm/action-setup@v5
         with:
-          version: 11.9.0
+          version: 12.18.0
           dest: ~/.cache/setup-pnpm
           run_install: false
 
