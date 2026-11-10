@@ -26,3 +26,19 @@ minimumReleaseAgeExclude:
   - wave-search-tools-linux-x64@0.2.0
   - wave-search-tools-win32-x64@0.2.0
   - wave-search-tools@0.2.0 || 0.3.0
+# 工具链版本统一到 catalog：升级 vitest / typescript / tsx 只改这里一处，
+# 各包 package.json 写 `"vitest": "catalog:"`。catalogMode: prefer 让 `pnpm add`
+# 也优先落到 catalog 版本，避免新包又写一份独立范围把版本漂开。
+catalog:
+  typescript: ^7.0.2
+  vitest: ^5.1.0
+  "@vitest/coverage-v8": ^5.1.0
+  tsx: ^4.20.4
+catalogs:
+  # @types/node 刻意分层：根锁 22 对齐 engines.node >= 22，三个端跟随各自运行时
+  # （Electron / VS Code 的 Node 版本更新）。合并成一份会让端侧丢掉新 API 类型。
+  node22:
+    "@types/node": ^22.0.0
+  node25:
+    "@types/node": ^25.0.1
+catalogMode: prefer
