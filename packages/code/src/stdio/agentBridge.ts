@@ -875,6 +875,12 @@ export class AgentBridge {
     currentWorkdir: string;
     sessionCwd: string;
     repoRoot?: string;
+    worktree?: {
+      path: string;
+      branch?: string;
+      repoRoot: string;
+      hookBased: boolean;
+    };
     permissionMode: PermissionMode;
     latestTotalTokens: number;
   }> {
@@ -884,7 +890,12 @@ export class AgentBridge {
     if (params.restoreSessionId) {
       const live = this.sessions.get(params.restoreSessionId);
       if (live) {
-        return this.initializeReply(live.agent, live.createdWorkdir);
+        return this.initializeReply(
+          live.agent,
+          live.createdWorkdir,
+          deriveWorktreeInfo(live.createdWorkdir),
+          live.createdWorktreeBranch,
+        );
       }
     }
 
@@ -964,7 +975,12 @@ export class AgentBridge {
       createdWorktreeBranch,
     });
 
-    return this.initializeReply(agent, createdWorkdir, worktree);
+    return this.initializeReply(
+      agent,
+      createdWorkdir,
+      worktree,
+      createdWorktreeBranch,
+    );
   }
 
   /**
@@ -1060,12 +1076,20 @@ export class AgentBridge {
     // Derived once by the caller: this reply and the creation-branch snapshot
     // both need it, and it reads config files.
     worktree = deriveWorktreeInfo(sessionCwd),
+    /** Branch the worktree was created on — what removal may delete. */
+    createdBranch?: string,
   ): {
     sessionId: string;
     currentWorkdir: string;
     sessionCwd: string;
     workspaceRoot: string;
     repoRoot?: string;
+    worktree?: {
+      path: string;
+      branch?: string;
+      repoRoot: string;
+      hookBased: boolean;
+    };
     permissionMode: PermissionMode;
     latestTotalTokens: number;
   } {
@@ -1079,6 +1103,19 @@ export class AgentBridge {
       // tree, `@` search).
       workspaceRoot: agent.workspaceRoot,
       ...(worktree ? { repoRoot: worktree.repoRoot } : {}),
+      // The full record, not just the root: a host with no creation record of
+      // its own (a `/resume` pick off disk) has nothing else to remove the
+      // checkout and its branch with when the user deletes that session.
+      ...(worktree
+        ? {
+            worktree: {
+              path: worktree.path,
+              ...(createdBranch ? { branch: createdBranch } : {}),
+              repoRoot: worktree.repoRoot,
+              hookBased: worktree.hookBased,
+            },
+          }
+        : {}),
       permissionMode: agent.getPermissionMode(),
       latestTotalTokens: agent.latestTotalTokens,
     };

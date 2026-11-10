@@ -111,6 +111,22 @@ export interface InitializeResult {
    * over `sessionCwd` as a grouping key.
    */
   repoRoot?: string;
+  /**
+   * The worktree this session was created in, when it was: what a host needs to
+   * remove the checkout and its branch later. Present only for worktree
+   * sessions — same derivation and same fields as `listDaemonSessions` rows.
+   *
+   * `branch` is the branch the worktree was **created** on (what removal may
+   * delete), not the worktree's current HEAD — an in-session `git checkout`
+   * moves that to a branch the user owns. It is absent for a hook-based
+   * worktree, whose removal belongs to the `WorktreeRemove` hook.
+   */
+  worktree?: {
+    path: string;
+    branch?: string;
+    repoRoot: string;
+    hookBased?: boolean;
+  };
   permissionMode: PermissionMode;
   latestTotalTokens: number;
 }
@@ -255,6 +271,13 @@ export class StdioAgent {
    * picked off disk (`/resume`) has none.
    */
   public sessionRepoRoot: string | undefined;
+  /**
+   * The worktree this session was created in, as the engine derived it from the
+   * session root. Hosts that keep their own worktree record (the desktop index)
+   * use this as the fallback for a session they never created — a `/resume`
+   * pick off disk — so deleting that session still removes its worktree.
+   */
+  public sessionWorktree: InitializeResult["worktree"] | undefined;
   public latestTotalTokens = 0;
   /**
    * Context-usage percentage reported with the most recent getMessages pull.
@@ -308,6 +331,7 @@ export class StdioAgent {
     // relocations).
     this.workspaceRoot = result.workspaceRoot ?? this.sessionCwd;
     this.sessionRepoRoot = result.repoRoot;
+    this.sessionWorktree = result.worktree;
     this.permissionMode = result.permissionMode;
     this.latestTotalTokens = result.latestTotalTokens;
     // A fresh session has no usage yet; don't let a previous session's

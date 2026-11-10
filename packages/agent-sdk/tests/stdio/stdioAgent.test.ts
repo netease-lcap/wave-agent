@@ -156,6 +156,35 @@ describe("StdioAgent", () => {
     expect(agent.sessionRepoRoot).toBe("/workspace");
   });
 
+  it("caches the worktree the session was created in (hosts without their own record)", async () => {
+    const { agent, client } = createAgent();
+    // A `/resume` pick off disk: the host has no worktree record of its own, so
+    // the reply is the only place the tree and the branch to delete come from.
+    client.request.mockResolvedValue({
+      sessionId: "session-123",
+      currentWorkdir: "/workspace/.wave/worktrees/feat",
+      sessionCwd: "/workspace/.wave/worktrees/feat",
+      repoRoot: "/workspace",
+      worktree: {
+        path: "/workspace/.wave/worktrees/feat",
+        branch: "worktree-feat",
+        repoRoot: "/workspace",
+        hookBased: false,
+      },
+      permissionMode: "default",
+      latestTotalTokens: 0,
+    });
+
+    await agent.initialize({ workdir: "/workspace", restoreSessionId: "s-1" });
+
+    expect(agent.sessionWorktree).toEqual({
+      path: "/workspace/.wave/worktrees/feat",
+      branch: "worktree-feat",
+      repoRoot: "/workspace",
+      hookBased: false,
+    });
+  });
+
   it("caches the reply's workspace root, which may differ from the session root", async () => {
     const { agent, client } = createAgent();
     // A session restored while it was working in a worktree: the workspace is
@@ -204,6 +233,9 @@ describe("StdioAgent", () => {
 
     expect(agent.sessionCwd).toBe("/workspace");
     expect(agent.sessionRepoRoot).toBeUndefined();
+    // An older CLI has no worktree record to offer; the host must read that as
+    // "not a worktree I can clean up", never guess one.
+    expect(agent.sessionWorktree).toBeUndefined();
   });
 
   // ── destroy ────────────────────────────────────────────────
