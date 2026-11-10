@@ -2448,22 +2448,33 @@
    + `--cc-text-secondary` 字。0917 那版按「中性计数徽标」做成填充块
    （`--cc-fill` 底 + `--cc-text-regular` 字）——那个配方是给**带数字的计数**用的，
    这颗是主体标签（本地 / 宿主名），描边档更轻、也不抢右侧路径的注意力。
-   几何保持原样：盒高仍 20px（`border-box` + `line-height:18` 让 1px 描边收进盒内，
-   不会把 20 撑成 22），文字左缘距盒缘仍是 6px（`padding:0 5px` + 1px 描边），
-   宽度仍 36px、与路径的间距（gap 8 + margin-right 6 = 14px）都没动。
    对比度：浅色 #6C7076 压工具栏白底 **4.98:1**、深色 #A0A5A8 压 #181A1B 约 5.4:1
    （12px 文字都过 AA 4.5；0917 当时否掉 secondary 是因为那时底色是 #F0F2F5，
-   压在填充块上只有 4.44:1 —— 换成描边后底是白的，这条理由不再成立）。 */
+   压在填充块上只有 4.44:1 —— 换成描边后底是白的，这条理由不再成立）。
+
+   1110 评论（同一条）：点「本地」说「这个标签的尺寸、字体大小，参考」，参照物点的是
+   模型选择里的 `span.model-picker-vision`「视觉」；点「视觉」那条补「然后后面的标题
+   往前移动，和标签距离 8px」。⇒ 只取参照物的**尺寸与字号**，不搬它的色（那是品牌红 +
+   红底，见 ModelPicker.css，与本标签无关）：
+     · 字号 12 → 11px、盒高 20 → 18px（= 参照物 34×18；`border-box` 里 1px 描边
+       + `line-height:16` 刚好 18，描边仍收在盒内不撑高）；
+     · 圆角 4 → 8px（与参照物同档，两枚标签成一家）；
+     · 文字左缘距盒缘保持 6px（`padding:0 5px` + 1px 描边 = 参照物的 6px 内衬），
+       宽度因此仍是 34px，与参照物等宽；
+     · 与右侧路径的间距 14 → **8px**：去掉旧的 `margin-right:6px`，让工具条容器自己
+       的 `gap:8px`（DesktopApp.css `.preview-pane-toolbar`）成为唯一来源——那 6px 是
+       0917 叠在 gap 上的一次「额外留白」，她这次要求的就是 8。 */
 [data-host="desktop"] .file-pane-host {
-  font-size: 12px;
-  line-height: 18px;
+  font-size: 11px;
+  line-height: 16px;
   padding: 0 5px;
+  margin-right: 0;
   border: 1px solid var(--cc-border-light);
-  border-radius: 4px;
+  border-radius: 8px;
   background: transparent;
   color: var(--cc-text-secondary);
   box-sizing: border-box;
-  height: 20px;
+  height: 18px;
 }
 
 /* ═══ 0917 评论：「这里面有很明显的分割线，根据 skill 结合其他下拉菜单优化这个
