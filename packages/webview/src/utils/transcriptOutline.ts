@@ -52,8 +52,11 @@ export const OUTLINE_VERTICAL_RESERVE_PX = 160;
  * 节距固定意味着条数一多就一定会超出刻度条的上限：列高 = 8 + 10(n−1)，上限
  * 654 时 n = 66 起出滚动箭头（见下方 `OUTLINE_RAIL_ARROW_SLOT_PX`）。
  */
-/** 常态短横：宽 8px、高 2px。 */
-export const OUTLINE_TICK_LINE_W_PX = 8;
+/**
+ * 常态短横：宽 6px、高 2px（设计师 1110 第 15 轮：「短的那条也再短一点点」，
+ * 8 → 6）。
+ */
+export const OUTLINE_TICK_LINE_W_PX = 6;
 export const OUTLINE_TICK_LINE_H_PX = 2;
 /** hover 后的最大宽度（渐变结束值）。 */
 export const OUTLINE_TICK_HOVER_W_PX = 24;
@@ -73,7 +76,7 @@ export const OUTLINE_TICK_GAP_PX = OUTLINE_TICK_PITCH_PX - OUTLINE_TICK_BOX_PX;
  * 变化」）：悬停时不止那一条变宽，上下相邻的几条按距离递减，形成一个围绕指针的
  * 渐变簇——指针在刻度间移动时每条只走一档，宽度 transition 于是连续流动。
  *
- * 取值 = 从最宽 24 到常态 8 的三等分：24 / 19 / 13，第 3 格起回到 8。
+ * 取值 = 从最宽 24 到常态 6 的递减档：24 / 19 / 13，第 3 格起回到常态（6 或长档 10）。
  * 只变宽度、不动节距与左缘对齐，所以整列仍是「一竖列短线」，不是散点。
  */
 export const OUTLINE_TICK_RIPPLE_W_PX = [
@@ -85,12 +88,14 @@ export const OUTLINE_TICK_RIPPLE_W_PX = [
 /**
  * 未选中刻度「一长一短」的节奏（设计师 1110：「把没选中的刻度做成一长一短，和
  * Codex 有点区分；短就用现在的长度，长在短和选中态之间」，随后「长的部分宽度
- * 减少 4px」）。
+ * 减少 4px」，再随后「一长一短刻度长的那条再短一点」，第 15 轮「短的那条也再短
+ * 一点点」）。
  *
- * 偶数格 = 长（**12**，原 16；短 8 与选中 24 之间略偏短的一档），奇数格 = 短（8）。
- * 整列于是读成一条「长短相间」的标尺，而不是 Codex 那种等长的梳齿。
+ * 偶数格 = 长（**10**，16 → 12 → 10），奇数格 = 短（**6**，8 → 6）。
+ * 两次收短的方向一致：整列的总墨迹越短，越不容易把注意力从正文拽走（长短差
+ * 10 − 6 = 4px，比例上仍读得出相间）。
  */
-export const OUTLINE_TICK_ALT_LONG_W_PX = 12;
+export const OUTLINE_TICK_ALT_LONG_W_PX = 10;
 
 /**
  * 某个刻度该画多宽。

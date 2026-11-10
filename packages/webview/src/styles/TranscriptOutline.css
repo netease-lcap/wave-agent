@@ -23,10 +23,10 @@
 
 .outline-ticks {
   position: absolute;
-  /* 距滚动面左边缘的固定距离：留在窗口左边缘一侧的页边白里（与 Codex 一致，
-     约 20px）。真正决定「能不能显示」的是列左侧留白够不够，见
-     `OUTLINE_MIN_GUTTER_PX`。 */
-  left: 20px;
+  /* 距滚动面左边缘的固定距离（设计师 1110：「到最左侧边缘间距是 12px」，20 → 12）。
+     留在窗口左边缘一侧的页边白里（与 Codex 一致）。真正决定「能不能显示」的是列
+     左侧留白够不够，见 `OUTLINE_MIN_GUTTER_PX`。 */
+  left: 12px;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
@@ -108,7 +108,14 @@
    （`justify-content: flex-start` + 零内衬）；与刻度之间再留 8px 空白（她：「距离
    刻度再远一点」，见 OUTLINE_RAIL_ARROW_SLOT_PX = 20 + 8）。只在溢出时渲染，到
    顶/到底的那一支换成禁用档的**颜色**（不用 opacity 造灰）但仍占位，避免刻度列
-   随箭头出现消失上下跳。 */
+   随箭头出现消失上下跳。
+
+   常态不画（设计师 1110 第 15 轮：「上下翻动的箭头 hover 上去后再显示，做个显隐
+   效果」）—— 静止的一列短横里不该常驻两支箭头，它俩是「这一列还能翻」的提示，
+   指针进到刻度列里时才需要。显隐用 `opacity` + 0.18s 过渡（不是 `display`，也不是
+   `visibility`）：盒子始终在布局里占位，所以整列的高度、垂直居中、刻度的位置在
+   浮现/隐去时一个像素都不动；键盘 `:focus-visible` 也把那一支点亮，不然 tab 过来
+   会落在一个看不见的按钮上。 */
 .outline-scroll-btn {
   display: flex;
   align-items: center;
@@ -121,8 +128,18 @@
   /* 颜色全部落在既有的 --cc-text-* 档位上（浅/深各一档），非桌面宿主回落到
      --vscode-* 同名机制。 */
   color: var(--cc-text-secondary, var(--vscode-descriptionForeground));
+  opacity: 0;
+  transition: opacity 0.18s ease;
   cursor: pointer;
   appearance: none;
+}
+
+/* 指针在刻度列里（含两支箭头与上下相邻的空白）时浮现。用容器的 `:hover` 而不是
+   箭头自己的：20px 见方的两个小目标，指到才现的话很难撞上；整列 24px 宽的一条带
+   都是「我要翻它」的意图区。 */
+.outline-ticks:hover .outline-scroll-btn,
+.outline-scroll-btn:focus-visible {
+  opacity: 1;
 }
 
 .outline-scroll-btn--up {
@@ -163,9 +180,10 @@
 }
 
 /* 刻度按钮：命中盒 24 宽 × 8 高（盒高 = OUTLINE_TICK_BOX_PX）。可见的只是中间
-   那条 8×2 的短横（见 ::before）：常态 8 宽，hover 时宽度渐变到 24（设计师 1110
-   口径「hover 上去以后才有宽度梯度变化，最宽 24px」，对齐 Codex）；命中盒按最宽
-   状态留尺寸，hover 时盒子不变、只有短横在长，所以指针不会因为变宽而抖出 hover。 */
+   那条 6×2 / 10×2 的短横（见 ::before）：常态走「一长一短」，hover 时宽度渐变到
+   24（设计师 1110 口径「hover 上去以后才有宽度梯度变化，最宽 24px」，对齐 Codex）；
+   命中盒按最宽状态留尺寸，hover 时盒子不变、只有短横在长，所以指针不会因为变宽
+   而抖出 hover。 */
 .outline-tick {
   position: relative;
   display: block;
@@ -184,20 +202,39 @@
   position: absolute;
   left: 0;
   top: 50%;
-  /* 常态 8×2（OUTLINE_TICK_LINE_W_PX / _H_PX）。宽度由组件按「距悬停几格」写进
+  /* 常态 6×2（OUTLINE_TICK_LINE_W_PX / _H_PX）。宽度由组件按「距悬停几格」写进
      `--outline-tick-w`（hover 涟漪，见 outlineTickWidth）：指针落在刻度上时，
-     它自己 24、上下各 19 / 13、再远回 8，靠下面的 transition 连续流动。 */
-  width: var(--outline-tick-w, 8px);
+     它自己 24、上下各 19 / 13、再远回一长一短的 10 / 6，靠下面的 transition
+     连续流动。 */
+  width: var(--outline-tick-w, 6px);
   height: 2px;
   border-radius: 1px;
   /* 常态 = 既有「禁用档」文字色（浅 #BEC1C6 / 深 #62686B）：不再用
      `--vscode-descriptionForeground × 0.45` 拼一个不存在的中间色，浅色档也因此
-     从 VS Code 的原始值落到桌面端的设计变量上。非桌面宿主回落到 --vscode-*。 */
-  background: var(--cc-text-disabled, var(--vscode-descriptionForeground));
+     从 VS Code 的原始值落到桌面端的设计变量上。非桌面宿主回落到 --vscode-*。
+     深色档由 `.outline-ticks` 上的 `--outline-tick-idle` 覆写压暗（见下方注释）。 */
+  background: var(
+    --outline-tick-idle,
+    var(--cc-text-disabled, var(--vscode-descriptionForeground))
+  );
   transform: translateY(-50%);
   transition:
     width 0.12s ease,
     background-color 0.12s ease;
+}
+
+/* 深色档常态再压暗一档（设计师 1110：「默认状态颜色整体再暗一些不要那么抢眼」）。
+   深色面上原取值是禁用档文字色 `#62686B`，对消息区底色 `#111314`（实测 computed，
+   不是 #181A1B —— 那是导航面）的对比度 3.29 —— 一列几十条时是左留白里最亮的东西；
+   这里落到边框档 `--cc-border` `#414649`（对比度 1.95），与面板细线同族，退成一层
+   rail 纹理。文字色阶再往下没有了（禁用档已是最深的一档），所以这一档只能取自边框
+   色阶。
+   实现走**变量**（不是再加一条 `::before` 规则）：两段属性选择器 + 类 + 伪元素的
+   特异性 (0,3,1) 会盖掉后面的 `--in-view` / `--active`（(0,1,1) / (0,2,1)），把
+   hover、在视口内、当前这一轮一起压成同一个灰 —— 实测过。
+   浅色档不动（白面上「更暗」= 更显眼，与「别抢眼」相反）。 */
+[data-host="desktop"][data-theme="dark"] .outline-ticks {
+  --outline-tick-idle: var(--cc-border, var(--vscode-descriptionForeground));
 }
 
 /* hover：那条自己换成「次要文字」档（= 原描述色的满不透明形态）。 */
@@ -208,7 +245,7 @@
 /* 「这一刻就在眼前」的那几轮：指针移开之后宽度回到一长一短的节奏，但如果这条
    消息此刻正落在滚动面里，颜色留深一档——不然整列只剩节奏，读者没法从刻度上看
    出「我现在读到的这几轮」在哪（设计师 1110）。与 hover 同色、**不动宽度**：
-   宽度只归节奏（长 12 / 短 8）与悬停涟漪，颜色只归状态。
+   宽度只归节奏（长 10 / 短 6）与悬停涟漪，颜色只归状态。
    必须写在 `.outline-tick::before` 之后（特异性相同，靠顺序取胜）。 */
 .outline-tick--in-view::before {
   background: var(--cc-text-secondary, var(--vscode-descriptionForeground));
@@ -221,7 +258,7 @@
 }
 
 /* 「当前这一轮」：**只靠颜色**区分，宽度也回到一长一短的节奏（设计师 1110：
-   「选中的那条宽度也收回默认」）——于是整列的宽度只剩两种来源：节奏（12/8）与
+   「选中的那条宽度也收回默认」）——于是整列的宽度只剩两种来源：节奏（10/6）与
    悬停涟漪（24/19/13），选中不再占用第三种宽度。
    `:hover` 那一档必须一起写：`:hover::before` 的特异性比 `--active::before` 高，
    不并上来的话指针一压到这一条，它就会从前景色掉回次要档、比周围的提色刻度还浅。 */

@@ -286,6 +286,9 @@ export function TranscriptOutline({
         ref={ticksRef}
         role="navigation"
         aria-label="消息大纲"
+        // 「离开整列」才算离开：清了 hover 就等于撤掉这一轮的「选中态」，所以
+        // 指针跨过两条刻度之间的 2px 缝、或从刻度挪到箭头，都不能让它闪一下。
+        onMouseLeave={() => setHoveredId(null)}
         style={{
           // 刻度列垂直居中：上下各留 OUTLINE_VERTICAL_RESERVE_PX / 2，首/末
           // 刻度的预览卡因此不会溢出视口（见 transcriptOutline 的常量注释）。
@@ -327,13 +330,18 @@ export function TranscriptOutline({
           onScroll={handleScroll}
         >
           {items.map((item, index) => {
-            const active = item.id === activeId;
+            // 「选中态」（前景色那一条）**只属于操作期**：指针压在刻度列上、或正在
+            // 翻动刻度条时才画。鼠标一离开整列就回到「只有一长一短 + 在视口内提色」
+            // 的静止形态——设计师 1110 第 15 轮：「鼠标离开后不应该还有选中态（就是
+            // 最深的那条）」。之前它是常住的（滚动跟随 + 点击钉住都会留下一条深色），
+            // 一列短横里那一笔就成了「被选中的东西」，读者会去找它代表什么。
+            const isCurrent = item.id === activeId;
+            const active = isCurrent && operating;
             // 在视口里：颜色提到悬停档（宽度不动，仍走一长一短）。但**只在没在
             // 操作刻度条时**才提——操作期间整列只该有两处高亮（悬停的那簇 + 当前
             // 这一轮），否则「我现在读到哪儿」的提示会和「哪几条在屏幕里」混成一片，
             // 看不出指针带着的是哪一条。松手后 0.42s（蒙层收起的同时）这里回到提色。
-            const inView =
-              !active && !operating && visibleIdList.includes(item.id);
+            const inView = !operating && visibleIdList.includes(item.id);
             // hover 涟漪 + 未选中「一长一短」：宽度只写进 CSS 变量，真正画线的
             // 是 `::before`（见 CSS）。
             const distance =
@@ -348,7 +356,9 @@ export function TranscriptOutline({
                 }`}
                 data-testid="outline-tick"
                 data-message-id={item.id}
-                aria-current={active ? "true" : undefined}
+                // 语义上的「当前这一轮」始终标出来（读屏要靠它），只是**不画**：
+                // 视觉上的选中态见上面的 `active`。
+                aria-current={isCurrent ? "true" : undefined}
                 aria-label={item.question}
                 style={
                   {
@@ -356,7 +366,6 @@ export function TranscriptOutline({
                   } as React.CSSProperties
                 }
                 onMouseEnter={() => setHoveredId(item.id)}
-                onMouseLeave={() => setHoveredId(null)}
                 onFocus={() => setHoveredId(item.id)}
                 onBlur={() => setHoveredId(null)}
                 onClick={() => onJump(item.id)}
