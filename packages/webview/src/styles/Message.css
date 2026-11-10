@@ -153,6 +153,42 @@
   background-color: var(--vscode-button-secondaryHoverBackground);
 }
 
+/* 桌面端把这两颗收成「功能图标键」那一档：24×24 正方形 + 圆角 8 —— 与代码块复制键、
+   mermaid 动作键同一套几何（设计师 2026-11-10 第 20 轮：「图标尺寸和圆角参考其他功能
+   图标，现在甚至不是正方形」）。改前是 26×22 + 圆角 4：宽比高多 4px，靠内衬 2/4 撑出来的
+   非正方形盒子。与那两颗的唯一差别是这里保留实底与 1px 描边 —— 它压在当前轮正文的
+   右上角，透明底会跟正文糊在一起（同一条评论：「但是这里需要有背景色和描边」）。
+   底色 / 描边 / 字色都走 token：`--cc-action-secondary`（浅 #F0F0F1、深 #232526）、
+   `--cc-border-light`、`--cc-action-primary`，无字面色。
+   插件端不动：仍是 26×22 + 圆角 4（它不在桌面语义层里，`:root[data-host="desktop"]`
+   的桥接取不到 --cc-*）。 */
+[data-host="desktop"] .message-action-btn {
+  box-sizing: border-box;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border-radius: var(--cc-radius-md, 8px);
+}
+
+/* 桌面端把这组的右缘贴到内容右缘（设计师 2026-11-10 第 21 轮：「这两个图标都移到最
+   右侧，现在有点错位」）。改前 `right: 8px` 是相对各自 `.message` 量的，虽然两颗算出来
+   x 相同（1227.5），但比正文换行线 / 用户气泡右缘（1235.5）缩进 8px，看起来没贴住右边；
+   现在 `right: 0`，两颗的右缘正好落在内容右缘上。
+   只动水平：`top` 保持助手那颗 8px / 回滚那颗 -12px（2026-11-01 定的定位取舍）。
+   插件端仍是 `right: 8px`。 */
+[data-host="desktop"] .message-actions {
+  right: 0;
+}
+
+/* 两颗消息动作键换成自绘矢量后，颜色仍跟原来的字体字形走：`.codicon` 自带
+   `--vscode-icon-foreground`（globals.css），内联 svg 默认继承按钮的文字色，
+   会亮一档 —— 这条把两者拉回同一个值。三端共用（桌面端 / 插件端 / 远控页），
+   所以不带 host 前缀。 */
+.message-action-btn svg {
+  color: var(--vscode-icon-foreground);
+  flex-shrink: 0;
+}
+
 .message.assistant .error {
   color: var(--vscode-descriptionForeground);
   font-style: italic;

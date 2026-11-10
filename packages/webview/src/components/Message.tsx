@@ -63,6 +63,7 @@ import { WriteToolPreview } from "./WriteToolPreview";
 import { ArtifactCard } from "./ArtifactCard";
 import { FileToolHeader } from "./FileToolHeader";
 import { MessageActionButton } from "./MessageActionButton";
+import { JumpToBackgroundIcon, RewindIcon } from "./HeaderIcons";
 import { getStageColor, getToolStatusColor } from "../utils/statusColors";
 import { timelineBlockBounds } from "../utils/timelineBlocks";
 import { isDesktopHost, isRemotePageHost } from "../utils/platform";
@@ -2068,6 +2069,12 @@ export const Message: React.FC<MessageProps> = React.memo(
             {showRewindAction && (
               <MessageActionButton
                 icon="history"
+                // 官方矢量（设计师 1110 第 22 轮：「回滚的那个按钮图标用这个 回滚.svg」
+                // → 第 23 轮裁定「只换图标、盒不动」）：三端（桌面端 / 插件端 / 远控页）
+                // 统一用这颗逆时针回转箭头；盒仍各随自己的 CSS —— 桌面端 24×24·r8、
+                // 插件端保持 base 的 26×22·r4。字形 16×16 与 codicon 的内容盒同尺寸，
+                // 换它不改变插件端的按钮几何。
+                iconSvg={<RewindIcon className="message-action-icon" />}
                 label="回滚到此消息"
                 testId="rewind-to-message"
                 onClick={() => onRewindToMessage?.(message.id!)}
@@ -2076,6 +2083,10 @@ export const Message: React.FC<MessageProps> = React.memo(
             {showBackgroundAction && (
               <MessageActionButton
                 icon="tasklist"
+                // 官方矢量（设计师 1110 第 19 轮：「这个图标用 跳转.svg」）：监视器 +
+                // 右向箭头，与面板「后台任务」那颗同一套外形。第 23 轮同样放开到三端
+                // （「只换图标、盒不动」）。
+                iconSvg={<JumpToBackgroundIcon className="message-action-icon" />}
                 label="把本轮转到后台"
                 testId="background-current-task"
                 onClick={onBackgroundCurrentTask!}

@@ -58,6 +58,12 @@
   --cc-action-primary: #1f2329; /* 炭黑（wave 现值） */
   --cc-action-primary-hover: #34383f;
   --cc-action-primary-text: #ffffff;
+  /* 次级实底（安静灰面）：消息动作键「回滚 / 转后台」那两颗的底色。深色档一直有
+     这一枚（#232526 = 浮层面），浅色档此前只把 `--vscode-button-secondaryBackground`
+     直接写成字面 #f0f0f1 —— 两侧结构不对称，值也就没有语义可依。补上浅色档的同名
+     token，取值 = 原来的字面值（零视觉变化），桥接改为消费它。 */
+  --cc-action-secondary: #f0f0f1;
+
   /* 边框 */
   --cc-border: #dcdfe6; /* 强边界（composer/输入框） */
   --cc-border-light: #e4e7ed; /* quiet lines（面板分隔） */
@@ -72,11 +78,10 @@
      var(--cc-action-primary)。此前浅色档未定义本角色，只有深色档有，
      于是 --vscode-focusBorder 桥接在浅色取不到值。 */
   --cc-border-focus: var(--cc-action-primary);
-
   /* 桥接：组件消费的 host token → 语义值（值与上版字面一致，浅色零回归） */
   --vscode-button-background: var(--cc-action-primary);
   --vscode-button-hoverBackground: var(--cc-action-primary-hover);
-  --vscode-button-secondaryBackground: #f0f0f1;
+  --vscode-button-secondaryBackground: var(--cc-action-secondary);
   --vscode-button-secondaryForeground: var(--cc-action-primary);
   --vscode-button-secondaryHoverBackground: var(--cc-fill-pressed);
   --vscode-chat-requestBubbleBackground: var(--cc-fill);

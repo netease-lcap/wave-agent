@@ -18,12 +18,17 @@ import "../styles/Message.css";
 export const MessageActionButton: React.FC<{
   /** codicon 名，不含 `codicon-` 前缀（如 `history`、`tasklist`）。 */
   icon: string;
+  /**
+   * 自绘矢量：给了就用它顶掉 codicon 字体字形。三端共用这一颗按钮，盒各随自己的
+   * CSS —— 桌面端 24×24·r8、插件端与远控页仍是 base 的 26×22·r4。
+   */
+  iconSvg?: React.ReactNode;
   /** 唯一的可读文案：既是 tooltip，也是无障碍名称。 */
   label: string;
   onClick: () => void;
   /** 供测试定位；同一个页面上可能不止一颗。 */
   testId?: string;
-}> = ({ icon, label, onClick, testId }) => (
+}> = ({ icon, iconSvg, label, onClick, testId }) => (
   <Tooltip text={label} position="bottom">
     <button
       className="message-action-btn"
@@ -31,7 +36,7 @@ export const MessageActionButton: React.FC<{
       data-testid={testId}
       onClick={onClick}
     >
-      <i className={`codicon codicon-${icon}`}></i>
+      {iconSvg ?? <i className={`codicon codicon-${icon}`}></i>}
     </button>
   </Tooltip>
 );
