@@ -190,7 +190,7 @@ describe("transcript outline", () => {
     await waitFor(() => expect(container.scrollTop).toBeGreaterThan(0));
   });
 
-  it("highlights the round the sticky bar is showing", async () => {
+  it("highlights the round whose question is the topmost one on screen", async () => {
     renderChatApp();
     act(() => {
       sendCommand("updateMessages", { messages: rounds(6) });
@@ -203,18 +203,120 @@ describe("transcript outline", () => {
       200,
     );
 
-    // 「问题 1」压到折线以上：吸顶条的候选就是它，大纲的当前项必须跟着走。
-    // 落点由真实行高算出，不假设「一轮多高」。
+    // 「问题 1」压到折线以上但仍留在视口里：它就是屏幕上最靠上的那条用户消息，
+    // 大纲的当前项必须是它（判据见 spec 场景 4：可见优先，而不是「滚出顶部的
+    // 最近一条」）。落点由真实行高算出，不假设「一轮多高」。
     await scrollRowAboveFold(container, "u1");
 
     await waitFor(() => {
       const active = document.querySelector(".outline-tick--active");
       expect(active).not.toBeNull();
-      // 与吸顶条同一个候选：大纲的当前项必须就是吸顶条显示的那条消息。
       expect(active?.getAttribute("aria-label")).toBe("问题 1");
       expect(screen.getByTestId("sticky-user-message")).toHaveTextContent(
         "问题 1",
       );
     });
+  });
+
+  it("highlights the clicked tick, not the round before it", async () => {
+    renderChatApp();
+    act(() => {
+      sendCommand("updateMessages", { messages: rounds(6) });
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId("transcript-outline")).toBeInTheDocument(),
+    );
+    const container = pinMessageListViewport(
+      screen.getByTestId("messages-container"),
+      200,
+    );
+    const ticks = screen.getAllByTestId("outline-tick");
+
+    // 落位把目标放在视口中间，上一轮的问题此时往往还在视口里 —— 光靠可见判据
+    // 算出来的会是上一轮。点击是显式意图，被点的那一条必须自己变高亮（场景 6）。
+    fireEvent.click(ticks[4]);
+    await waitFor(() => expect(container.scrollTop).toBeGreaterThan(0));
+    await waitFor(() => {
+      const active = document.querySelector(".outline-tick--active");
+      expect(active?.getAttribute("aria-label")).toBe("问题 4");
+    });
+  });
+
+  it("hands the highlight back to the scroll judgement once the reader scrolls", async () => {
+    renderChatApp();
+    act(() => {
+      sendCommand("updateMessages", { messages: rounds(6) });
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId("transcript-outline")).toBeInTheDocument(),
+    );
+    const container = pinMessageListViewport(
+      screen.getByTestId("messages-container"),
+      200,
+    );
+    const ticks = screen.getAllByTestId("outline-tick");
+    fireEvent.click(ticks[4]);
+    await waitFor(() =>
+      expect(
+        document
+          .querySelector(".outline-tick--active")
+          ?.getAttribute("aria-label"),
+      ).toBe("问题 4"),
+    );
+
+    // 用户再滚一次（这里滚回顶部）：钉住释放，高亮回到滚动判据 —— 屏幕上是
+    // 「问题 0」，它就该亮。
+    act(() => {
+      container.scrollTop = 0;
+      fireEvent.scroll(container);
+    });
+    await waitFor(() =>
+      expect(
+        document
+          .querySelector(".outline-tick--active")
+          ?.getAttribute("aria-label"),
+      ).toBe("问题 0"),
+    );
+  });
+
+  it("shows no highlight when no question is on screen", async () => {
+    // 一轮带大段工具输出式的长回答：滚进它的正文中间时，屏里一条用户消息都
+    // 没有，此时不得高亮任何刻度（也不退回吸顶那条）。
+    const messages = [
+      MockDataGenerator.createUserMessage("问题 0", "u0"),
+      MockDataGenerator.createAssistantMessage(
+        "很长的回答。".repeat(400),
+        "a0",
+      ),
+      MockDataGenerator.createUserMessage("问题 1", "u1"),
+      MockDataGenerator.createAssistantMessage("回答 1", "a1"),
+    ];
+    renderChatApp();
+    act(() => {
+      sendCommand("updateMessages", { messages });
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId("transcript-outline")).toBeInTheDocument(),
+    );
+    const container = pinMessageListViewport(
+      screen.getByTestId("messages-container"),
+      200,
+    );
+
+    // 先确认顶部确实亮着「问题 0」，再滚进长回答中间，避免「一上来就没高亮」
+    // 这种状态下测试假绿。
+    await scrollRowAboveFold(container, "u0", 8);
+    await waitFor(() =>
+      expect(
+        document
+          .querySelector(".outline-tick--active")
+          ?.getAttribute("aria-label"),
+      ).toBe("问题 0"),
+    );
+
+    await scrollRowAboveFold(container, "a0", 200);
+    await waitFor(() =>
+      expect(document.querySelector(".outline-tick--active")).toBeNull(),
+    );
   });
 });

@@ -56,6 +56,13 @@ const EARLIER_TRIGGER_PX = 160;
 const JUMP_TO_BOTTOM_THRESHOLD_PX = 200;
 
 /**
+ * 点击大纲刻度后「高亮钉住」的松开容差。落位之后目标行首次被测量会带来几十 px
+ * 的补偿，那不是用户在滚；滚轮/触控一旦把视口挪出这个范围，才认为用户重新接管
+ * 了滚动判据（spec `ui/transcript-outline.md` 场景 6）。
+ */
+const OUTLINE_PIN_TOLERANCE_PX = 24;
+
+/**
  * The text this row contributes to the sticky bar — empty when it cannot be an
  * anchor at all: assistant rows, injected `isMeta` user rows (reminders, rules,
  * hook context) and user rows with no text block (task notifications).
@@ -145,6 +152,28 @@ export const MessageList = forwardRef<
     text: string;
     index: number;
   } | null>(null);
+
+  /**
+   * 大纲当前项的**滚动判据**结果（spec `ui/transcript-outline.md` 场景 4）：视口内
+   * **可见**的最靠上的那条用户消息。它与上面的吸顶候选刻意不同源 —— 吸顶条回答
+   * 「这一屏属于哪一轮」（可能是已经滚出屏幕的那条），大纲回答「哪一轮的问题正
+   * 出现在你屏幕上」，所以同一时刻两者可以指向不同轮次。屏里一条用户消息都没有
+   * 时这里是 null，大纲不亮任何刻度。
+   */
+  const [outlineActiveId, setOutlineActiveId] = useState<string | null>(null);
+  // 与 stickyRef 同理：computeSticky 跑在每次流式 chunk 上，值没变就不调度 setState。
+  const outlineActiveRef = useRef<string | null>(null);
+
+  /**
+   * 点击刻度后的高亮钉住（场景 6）。点击是「我要看这一轮」的显式意图：落位把目标
+   * 放在视口中间之后，上一轮的问题往往仍在视口里，按可见判据算出来的还是上一轮。
+   * 这里临时覆盖滚动判据，直到用户再次滚动。`scrollTop` 记的是落位后的实际落点，
+   * 用来分辨「这一下滚动是我们自己写的」。
+   */
+  const [pinnedOutlineId, setPinnedOutlineId] = useState<string | null>(null);
+  const pinnedOutlineRef = useRef<{ id: string; scrollTop: number } | null>(
+    null,
+  );
 
   // Filter out user messages with isMeta (hidden from the list). Both the
   // sticky computation and the virtualizer index this filtered list.
@@ -577,6 +606,27 @@ export const MessageList = forwardRef<
     return items;
   }, [visibleMessages]);
 
+  /**
+   * 大纲的高亮项：点击钉住优先（场景 6），否则用滚动判据（场景 4）。钉住的目标
+   * 已经不在刻度列表里（rewind 截断、换会话）时直接回落到滚动判据，不留一个指向
+   * 空气的高亮。
+   */
+  const outlineActive = useMemo(() => {
+    if (
+      pinnedOutlineId &&
+      outlineItems.some((item) => item.id === pinnedOutlineId)
+    ) {
+      return pinnedOutlineId;
+    }
+    return outlineActiveId ?? undefined;
+  }, [pinnedOutlineId, outlineActiveId, outlineItems]);
+
+  // 换会话（含同一分屏切到另一条会话）时不留上一会话的钉住高亮（场景 12）。
+  useEffect(() => {
+    pinnedOutlineRef.current = null;
+    setPinnedOutlineId(null);
+  }, [docKey]);
+
   const computeSticky = useCallback(() => {
     const container = containerRef.current;
     // setSticky compares against stickyRef (synced from stickyMessage every
@@ -596,8 +646,15 @@ export const MessageList = forwardRef<
             prev.index === next.index;
       if (!same) setStickyMessage(next);
     };
+    // 大纲的滚动判据同样要去重：它跟着 computeSticky 一起跑在流式热路径上。
+    const setOutlineActive = (next: string | null) => {
+      if (outlineActiveRef.current === next) return;
+      outlineActiveRef.current = next;
+      setOutlineActiveId(next);
+    };
     if (!container) {
       setSticky(null);
+      setOutlineActive(null);
       return;
     }
     // 手势期画布带着视觉偏移，屏幕上真正的视口顶是 `scrollTop - 偏移`；不折算的话
@@ -609,9 +666,39 @@ export const MessageList = forwardRef<
     // message at or before the item currently at the top of the viewport (which
     // is itself a candidate only when its top edge is strictly above the fold).
     const at = indexAtOffset(scrollTop);
+    const rows = visibleMessagesRef.current;
+
+    // ── 大纲的当前项（spec 场景 4）：视口内**可见**的最靠上的用户消息 ──
+    // 从「含视口顶那一行」往下扫，碰到的第一条带文本用户消息就是答案：它的顶部
+    // 可能已经越过视口顶（那更该算作可见），也可能刚进入视口。扫到某一行的起点
+    // 越过视口底就停——后面的行还没露出来。视口里一条用户消息都没有（正在读某
+    // 一轮的长回答、大段工具输出）时给 null：**不亮任何刻度**，也不退回吸顶那条，
+    // 因为高亮只标记屏幕上看得见的那一轮。
+    const viewportPx = container.clientHeight || container.offsetHeight;
+    const bottomEdge = scrollTop + viewportPx;
+    // 局部名不叫 outlineActive：那是上面 memo 的名字（钉住 + 滚动判据的合成）。
+    let visibleQuestionId: string | null = null;
+    if (at >= 0) {
+      // 最后一行没有「下一行的起点」可读，用内容底兜底（滚到底时它确实在视口里）。
+      const atBottom =
+        at + 1 < rows.length ? rowStart(at + 1) : container.scrollHeight;
+      if (atBottom > scrollTop) {
+        for (let i = at; i < rows.length; i++) {
+          if (rowStart(i) >= bottomEdge) break;
+          const row = rows[i];
+          if (row.role !== "user") continue;
+          if (row.id && stickyAnchorText(row)) {
+            visibleQuestionId = row.id;
+            break;
+          }
+        }
+      }
+    }
+    setOutlineActive(visibleQuestionId);
+
+    // ── 吸顶条：滚出视口顶的最近一条用户消息（与大纲是两个判据） ──
     let idx = at;
     if (at >= 0 && rowStart(at) >= scrollTop) idx = at - 1;
-    const rows = visibleMessagesRef.current;
     let candidate = -1;
     let candidateText = "";
     while (idx >= 0) {
@@ -658,6 +745,13 @@ export const MessageList = forwardRef<
       // moved 71px and then snapped back). An instant jump lands in one write,
       // so there is nothing left to cancel.
       scrollToIndex(index, "center", "auto");
+      // 点击的刻度必须自己变成高亮（spec 场景 6）：落位在视口中间之后，上一轮的
+      // 问题往往仍在视口里，按可见判据算出来的还是上一轮 —— 那正是「点了却亮上
+      // 一条」。所以这里临时钉住它，直到用户再次滚动（松开判据在 scroll 监听里）。
+      // 记下落位后的实际 scrollTop（含被上下界夹取的部分），让那次程序性滚动
+      // 不会被当成用户滚动。
+      pinnedOutlineRef.current = { id, scrollTop: container.scrollTop };
+      setPinnedOutlineId(id);
     },
     [containerRef, scrollToIndex, unpin],
   );
@@ -833,6 +927,17 @@ export const MessageList = forwardRef<
     let jumpRaf = 0;
     const handleScroll = () => {
       maybeRequestEarlier();
+      // 用户一滚，点击带来的高亮就交还给滚动判据（场景 6）。比较的是落位后的
+      // 实际落点：容差吃掉「目标行首次被测量」带来的几十 px 补偿，否则一次点击
+      // 会被自己的补偿判成「用户滚了」而立刻丢掉高亮。
+      const pin = pinnedOutlineRef.current;
+      if (
+        pin &&
+        Math.abs(container.scrollTop - pin.scrollTop) > OUTLINE_PIN_TOLERANCE_PX
+      ) {
+        pinnedOutlineRef.current = null;
+        setPinnedOutlineId(null);
+      }
       computeSticky();
       if (jumpRaf !== 0) return;
       jumpRaf = requestAnimationFrame(() => {
@@ -958,7 +1063,7 @@ export const MessageList = forwardRef<
           会把越出列的刻度裁掉）。 */}
       <TranscriptOutline
         items={outlineItems}
-        activeId={stickyMessage?.id}
+        activeId={outlineActive}
         columnWidth={columnWidth}
         columnInset={columnInset}
         viewportHeight={listViewportHeight}
