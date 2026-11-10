@@ -1037,6 +1037,32 @@ The canonical key is \`plugin-name@marketplace-name\`; a plugin with no marketpl
 
 \`enabledPlugins\` and \`marketplaces\` are read by the plugin subsystem, not by the settings live reload: a hand edit of these two keys takes effect when the plugins are next (re)loaded — a new session, \`Agent.reloadPlugins()\`, or an install/enable action in the marketplace UI. An organization push of either key is applied in place, without a restart.
 
+### Built-in Plugins
+
+Some plugins ship inside Wave itself instead of coming from a marketplace. They are **off by default** and use the reserved marketplace segment \`builtin\` as their key:
+
+\`\`\`json
+{
+  "enabledPlugins": {
+    "sdd@builtin": true
+  }
+}
+\`\`\`
+
+The plain-name form (\`"sdd": true\`) does **not** work for these — it resolves to no marketplace, so nothing loads (and, since \`@builtin\` is a well-formed \`name@marketplace\` key, misspelling it this way produces no warning either). A marketplace plugin with the same name still wins; built-in plugins load last, at the lowest priority.
+
+Built-in plugins are not listed in \`~/.wave/plugins/installed_plugins.json\`, are not installed or updated over the network, and are not tied to a registered marketplace.
+
+#### \`sdd\` — Spec-First Workflow
+
+The one built-in plugin today is \`sdd\`. Enabling it adds:
+
+- a \`SessionStart\` hook that injects the spec-first workflow guidance (update the spec before the code) into every session's context
+- the \`specify\` skill, which creates or updates spec files under \`docs/specs/\` (falling back to \`specs/\`)
+- an allow rule for \`Bash(node *spec-count.js*)\`, so the bundled spec validator runs without a permission prompt
+
+**Enable it per project, not globally.** Its whole purpose is to gate work on that project's own spec directory, and the hook fires in *every* session the scope covers — so \`"sdd@builtin": true\` belongs in \`<workdir>/.wave/settings.json\` (or \`settings.local.json\`), not in \`~/.wave/settings.json\`. In a user-scope enable it would inject spec-first instructions into unrelated repositories that have no specs directory at all.
+
 ### \`\${WAVE_PLUGIN_ROOT}\` Placeholder
 
 Plugin skills, hooks, MCP servers, and LSP servers can reference their parent plugin's directory using \`\${WAVE_PLUGIN_ROOT}\`. Wave substitutes this placeholder with the plugin's absolute directory path at load time, and also injects \`WAVE_PLUGIN_ROOT\` as an environment variable into spawned processes. Inside a skill this works both in the body and in \`allowed-tools\` rules; \`\${WAVE_SKILL_DIR}\` works in the same two places and resolves to the skill's own directory.
