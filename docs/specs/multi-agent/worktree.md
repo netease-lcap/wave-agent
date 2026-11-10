@@ -293,6 +293,29 @@ order: 90
 
 ---
 
+### 用户故事：陈旧临时 worktree 的自动清理（优先级：P1，对齐 Claude Code）
+
+作为长期使用子代理隔离的开发者，我希望进程被意外终止后残留的临时 worktree 能按保留期自动清理，以便 `.wave/worktrees/` 不会在一次 Ctrl+C 之后无限堆积。
+
+**为什么是这个优先级**：子代理的临时 worktree 只在子代理收尾时删除，而收尾是进程内逻辑——Ctrl+C、崩溃、宿主强杀都会跳过它，留下一份完整 checkout（含 `node_modules`）和一条临时分支。这是当前 `.wave/worktrees/` 唯一会无主增长的来源，每次泄漏的磁盘代价远高于会话记录。Claude Code 有等价的 `cleanupStaleAgentWorktrees`（按保留期扫描，只清自己创建的临时 worktree）。
+
+**独立测试**：在一个仓库里造出若干子代理临时 worktree：一个干净且 mtime 超期、一个有未提交改动、一个有未推送提交、一个 mtime 较新、一个是当前会话正在使用的。触发启动清理，验证只有第一个被删除（目录与 `worktree-<name>` 分支都没了），其余全部保留；再放一个用户自己命名的 worktree（干净、超期），验证它不会被删。
+
+**验收场景**：
+
+1. **假设** `.wave/worktrees/` 下存在 wave 为子代理隔离创建的临时 worktree（名称带保留前缀 `sa-`），且 mtime 早于保留期 cutoff，**当**会话启动触发后台清理，**则**该 worktree 目录与其临时分支 `worktree-<name>` 必须被删除，并执行一次 `git worktree prune` 清掉残留元数据
+2. **假设** worktree 里有未提交改动（含未跟踪的新文件）或存在未推送的提交，**当**清理执行，**则**必须保留——里面可能是子代理尚未合并的产出
+3. **假设** worktree 是用户自己创建或命名的（CLI `-w`、`EnterWorktree`、桌面端新建 worktree 会话、daemon 后台会话），**当**清理执行，**则**无论多旧、多干净都不得删除——用户会话的工作树不是 wave 的临时产物
+4. **假设** worktree 的 mtime 晚于 cutoff，**当**清理执行，**则**必须保留（mtime 反映最后活动时间；恢复被复用的临时 worktree 时刷新 mtime，避免刚恢复就被判陈旧）
+5. **假设**当前会话本身就跑在某个 worktree 里（CLI `-w` / `EnterWorktree`），**当**清理执行，**则**必须跳过该 worktree
+6. **假设**用户未设置 `cleanupPeriodDays`，**当**清理执行，**则**保留期为默认 30 天；为 `0` 时跳过清理（与[会话文件保留清理](../core/session-retention.md)共用同一个配置与同一套守卫：settings 损坏、或校验失败而该键被显式设置时整体跳过）
+7. **假设**某个 worktree 的判定命令失败（git 报错、目录不可读、git 已不认这个 worktree），**当**清理执行，**则**必须跳过它而不是强删——判不清里面有什么就不动
+8. **假设**清理过程中任一步出错，**当**执行结束，**则**只记 warn/debug 日志，不得抛异常或阻塞 Agent 启动
+9. **假设** worktree 由 `WorktreeCreate` hook 创建（hook-based，路径由 hook 决定、可能不在 `.wave/worktrees/` 下），**当**清理执行，**则**不在清理范围内——其删除归 `WorktreeRemove` hook
+10. **假设**子代理临时 worktree 的名称形如 `sa-<形容词>-<名词>-<三位数字>`，**当**用户在 `-w` / `EnterWorktree` / 桌面端输入 worktree 名称，**则**该前缀属于保留命名空间，用户不能用它命名自己的 worktree
+
+---
+
 ### 边界情况
 
 - **当 worktree 目录已存在时会发生什么？** 系统应该报错或询问是否重用。
@@ -302,6 +325,7 @@ order: 90
 - **当 stdio RPC 传入的 git-based worktree 路径为符号链接或逃逸 repo root 时会发生什么？** 删除被拒绝并返回 RPC 错误，hook 不触发；hook-based worktree 跳过该 containment 校验（hook 拥有路径）。
 - **当 worktree 内 checkout 了别的分支时删除会发生什么？** 只删除该 worktree 自己的临时分支 `worktree-<name>`，checkout 的那条分支与它的提交保留（对齐 Claude Code）；hook-based worktree 的删除由 hook 脚本自行决定。
 - **当用户在会话内手动 `git worktree remove` 删除当前 worktree 目录时会发生什么？** 会话工作目录在下一次工具调用时自动回退到主仓库（原始 cwd），spawn 工具恢复可用，工具结果包含一次性回退提示；WorktreeRemove hook 不补触发（与 Claude Code 一致；该场景针对 git-based worktree，hook-based worktree 由 hook 负责删除、不存在 wave 侧的 git 移除）。
+- **当后台清理撞上另一个进程正在用的临时 worktree 时会发生什么？** 由 mtime 与「工作区干净 + 无未推送提交」两道闸门兜住：正在被使用的 worktree 要么最近有改动，要么里面有内容，不会被判为陈旧。
 
 ## 假设
 
@@ -314,4 +338,6 @@ order: 90
 - WorktreeCreate hook 的 JSON 输入包含官方公共字段（`session_id`、`transcript_path`、`cwd`、`hook_event_name`）与 `name`（worktree 名）。
 - 删除后台会话（stdio RPC）的 git-based worktree 前会校验路径：拒绝符号链接或解析后位于 repo root 之外的路径；hook-based worktree 跳过该校验（hook 拥有路径，repoRoot 为兜底值）。
 - 手动删除当前 worktree 目录不触发 WorktreeRemove hook（与 Claude Code 一致）；会话通过 cwd 失效检测 + 自动回退到主仓库 + 一次性工具提示恢复，回退时清除已失效的 worktree 会话状态。
-- 子代理的 worktree 隔离（`isolation: worktree` / `Agent` 工具参数，见 [子代理](subagent.md)）复用本节同一套创建与删除语义：hook 优先、git 兜底、复制 `settings.local.json` 与 `.worktreeinclude`、只删 `worktree-<name>`；区别只在「无改动自动删、有改动保留并回报」，不做 CLI 退出对话框与定时清扫。
+- 子代理的 worktree 隔离（`isolation: worktree` / `Agent` 工具参数，见 [子代理](subagent.md)）复用本节同一套创建与删除语义：hook 优先、git 兜底、复制 `settings.local.json` 与 `.worktreeinclude`、只删 `worktree-<name>`；区别在「无改动自动删、有改动保留并回报」，不做 CLI 退出对话框。收尾被跳过时残留的临时 worktree 由启动后台清理兜底（见「陈旧临时 worktree 的自动清理」）。
+- 临时 worktree 的名称前缀 `sa-` 是保留命名空间，用来把「wave 自动创建、可自动清理」与「用户要的、永不自动删除」两类 worktree 区分开；用户会话的 worktree 名称生成规则（`adjective-adjective-noun`）与临时 worktree 的（`sa-adjective-noun-NNN`）因此不会撞形。
+- 陈旧 worktree 清理与[会话文件保留清理](../core/session-retention.md)同源：同一个 `cleanupPeriodDays`、同一处启动后台触发、同一套「每进程一次」与配置损坏即跳过守卫。

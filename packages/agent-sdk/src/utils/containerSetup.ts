@@ -321,7 +321,9 @@ export function setupAgentContainer(
     });
   // Global session retention cleanup (cleanupPeriodDays, default 30 days).
   // Once per process; reads settings itself since config isn't loaded yet.
-  runSessionCleanupInBackground(workdir);
+  // It also sweeps stale ephemeral worktrees, which is why it needs the
+  // worktree this session was opened in (if any) to leave it alone.
+  runSessionCleanupInBackground(workdir, options.worktreeName);
   const reversionManager = new ReversionManager(container);
   container.register("ReversionManager", reversionManager);
 

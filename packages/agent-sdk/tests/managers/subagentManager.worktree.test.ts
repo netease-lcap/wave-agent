@@ -10,7 +10,7 @@ const worktreeMocks = vi.hoisted(() => ({
   countWorktreeChanges: vi.fn(),
   performPostCreationSetup: vi.fn(),
   getHeadCommit: vi.fn(),
-  generateWorktreeName: vi.fn(),
+  generateEphemeralWorktreeName: vi.fn(),
   getGitMainRepoRoot: vi.fn(),
   resolveGitDir: vi.fn(),
   hasWorktreeCreateHook: vi.fn(),
@@ -27,7 +27,7 @@ vi.mock("../../src/utils/worktreeUtils.js", () => ({
   countWorktreeChanges: worktreeMocks.countWorktreeChanges,
   performPostCreationSetup: worktreeMocks.performPostCreationSetup,
   getHeadCommit: worktreeMocks.getHeadCommit,
-  generateWorktreeName: worktreeMocks.generateWorktreeName,
+  generateEphemeralWorktreeName: worktreeMocks.generateEphemeralWorktreeName,
 }));
 
 vi.mock("../../src/utils/gitUtils.js", () => ({
@@ -92,9 +92,9 @@ const WORKTREE_PATH = path.join(
   REPO_ROOT,
   ".wave",
   "worktrees",
-  "swift-fox-123",
+  "sa-swift-fox-123",
 );
-const WORKTREE_BRANCH = "worktree-swift-fox-123";
+const WORKTREE_BRANCH = "worktree-sa-swift-fox-123";
 const HOOK_WORKTREE_PATH = path.resolve("/fake/hook-worktree");
 
 const config: SubagentConfiguration = {
@@ -129,7 +129,9 @@ describe("SubagentManager worktree isolation", () => {
     worktreeMocks.messageManagerOptions.length = 0;
     worktreeMocks.permissionManagerOptions.length = 0;
 
-    worktreeMocks.generateWorktreeName.mockReturnValue("swift-fox-123");
+    worktreeMocks.generateEphemeralWorktreeName.mockReturnValue(
+      "sa-swift-fox-123",
+    );
     worktreeMocks.getGitMainRepoRoot.mockReturnValue(REPO_ROOT);
     worktreeMocks.resolveGitDir.mockReturnValue(path.join(REPO_ROOT, ".git"));
     worktreeMocks.hasWorktreeCreateHook.mockReturnValue(false);
@@ -137,7 +139,7 @@ describe("SubagentManager worktree isolation", () => {
     worktreeMocks.getHeadCommit.mockReturnValue("worktree-base-head");
     worktreeMocks.performPostCreationSetup.mockResolvedValue(undefined);
     worktreeMocks.createWorktree.mockReturnValue({
-      name: "swift-fox-123",
+      name: "sa-swift-fox-123",
       path: WORKTREE_PATH,
       branch: WORKTREE_BRANCH,
       repoRoot: REPO_ROOT,
@@ -168,7 +170,7 @@ describe("SubagentManager worktree isolation", () => {
     );
 
     expect(worktreeMocks.createWorktree).toHaveBeenCalledWith(
-      "swift-fox-123",
+      "sa-swift-fox-123",
       REPO_ROOT,
       { baseRef: "fresh" },
     );
@@ -291,7 +293,7 @@ describe("SubagentManager worktree isolation", () => {
 
   it("keeps a pre-existing worktree even when it is clean", async () => {
     worktreeMocks.createWorktree.mockReturnValue({
-      name: "swift-fox-123",
+      name: "sa-swift-fox-123",
       path: WORKTREE_PATH,
       branch: WORKTREE_BRANCH,
       repoRoot: REPO_ROOT,

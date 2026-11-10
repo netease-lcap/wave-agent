@@ -102,6 +102,9 @@ vi.mock("wave-agent-sdk", () => ({
   hasWorktreeCreateHook: vi.fn(),
   executeWorktreeCreateHook: vi.fn(),
   executeWorktreeRemoveHook: vi.fn(),
+  // Real value: the CLI-side name validation rejects this reserved prefix, and
+  // the point of the test is the rejection, not the string itself.
+  EPHEMERAL_WORKTREE_PREFIX: "sa-",
 }));
 
 function gitCallsWith(fragments: string[]) {
@@ -1191,6 +1194,16 @@ describe("worktree utils", () => {
       expect(() => validateWorktreeSlug("trailing/")).toThrow(
         "segment must be non-empty",
       );
+    });
+
+    it("should reject the reserved ephemeral prefix", () => {
+      // `sa-*` worktrees are swept by the startup cleanup once stale, so a
+      // user must not be able to name one into that namespace.
+      expect(() => validateWorktreeSlug("sa-swift-fox-123")).toThrow(
+        "reserved for wave-managed temporary worktrees",
+      );
+      expect(() => validateWorktreeSlug("sa-mine")).toThrow("reserved");
+      expect(() => validateWorktreeSlug("my-feature")).not.toThrow();
     });
   });
 

@@ -37,7 +37,7 @@ import { supportsVision } from "../utils/modelCapabilities.js";
 import {
   countWorktreeChanges,
   createWorktree,
-  generateWorktreeName,
+  generateEphemeralWorktreeName,
   getHeadCommit,
   performPostCreationSetup,
   removeWorktree,
@@ -686,9 +686,13 @@ export class SubagentManager {
    * Create the temporary worktree an isolated subagent runs in. Mirrors
    * EnterWorktree: `WorktreeCreate` hook first (replace semantics, path from
    * the hook's stdout), git otherwise.
+   *
+   * The `sa-` name prefix is what marks the worktree as wave's own throwaway:
+   * cleanup of a subagent that never reaches `finalizeWorktree` (Ctrl+C, crash,
+   * host kill) finds it by that prefix alone — see utils/worktreeCleanup.ts.
    */
   private async createSubagentWorktree(): Promise<SubagentWorktreeState> {
-    const name = generateWorktreeName();
+    const name = generateEphemeralWorktreeName();
     const hookConfiguration = this.hookManager?.getConfiguration();
 
     if (hasWorktreeCreateHook(hookConfiguration)) {
