@@ -2008,6 +2008,41 @@ describe("remote page shim", () => {
     expect(lastOf(page, "updateQueue")).toBeUndefined();
   });
 
+  // ── 基准目录 ───────────────────────────────────────────────────
+  //
+  // webview 把 read/write/edit 标题里的 `file_path` 相对化
+  // （`src/utils/messageUtils.ts` 的 `toRelativePath(filePath, workdir)`），基准
+  // 就是它手里的 `state.workdir`。这一端过去从不给这个值，页面便落到「没有
+  // workdir → 原样显示绝对路径」那一支 —— 同一条 Read 在电脑上是 `src/foo.ts`，
+  // 在手机上是整条绝对路径（spec ui/message-rendering-system.md「工具文件路径
+  // 相对化显示」）。取的是注册表的 `sessionCwd`，与 `@file` 拼接同一份事实。
+
+  test("首屏快照把这条会话的目录一并交给页面", async () => {
+    const { page } = await openPage();
+
+    // s-new 是最近活跃的那条，注册表里带着它的 `sessionCwd`。
+    expect(lastOf(page, "setInitialState")).toMatchObject({
+      workdir: SESSIONS[1].sessionCwd,
+    });
+  });
+
+  test("就地换会话不重画快照，基准目录得单独补一次", async () => {
+    const { page } = await openPage();
+    page.posted.length = 0;
+
+    page.socket.receive({
+      method: "sessionIdChange",
+      params: { sessionId: "s-old" },
+    });
+    await flush();
+
+    // 不补这一下，工具标题会继续按上一条会话的目录相对化。
+    expect(lastOf(page, "updateWorkdir")).toEqual({
+      command: "updateWorkdir",
+      workdir: SESSIONS[0].sessionCwd,
+    });
+  });
+
   test("a state read that lands after a switch cannot repaint the new conversation", async () => {
     // The guard in `refreshSessionState`: the request names the session it was
     // asked for, and a reader who moved on before the reply landed must not be
