@@ -7578,6 +7578,13 @@ export class DesktopHost {
         // 已装版本高于 stable feed 最新（切回正式后，正式尚未追平曾接收的
         // 测试版号）→ 提示等待正式发布，不降级、不改查 beta feed（spec
         // desktop-distribution「接收 Beta 版更新」场景 5）；其余情况提示已是最新。
+        //
+        // 这两条与下面的「检查更新失败」都是**用户刚拨完开关**的回执，2026-11-10
+        // 设计师预览评论（锚点 `span.settings-switch-slider`）：「已是最新版本那个
+        // 提示用蓝色的信息提示」，随后「可以一起改」⇒ 三条按语义声明 type：告知型
+        // 两条 info（蓝色 soft 底 + ⓘ）、失败 error（红色 soft 底 + ×）。改前三条
+        // 都是缺省中性面（默认浮层底、不画图标）。语义皮肤在 webview 侧
+        // （host-desktop.css 的 .toast--info / .toast--error），宿主只声明语义。
         const installed = parseVersion(app.getVersion());
         const feed = parseVersion(result.feedVersion ?? "");
         if (
@@ -7586,15 +7593,20 @@ export class DesktopHost {
           feed &&
           compareVersions(feed, installed) < 0
         ) {
-          this.showToast({ message: "正式版发布后将自动更新" });
+          this.showToast({ message: "正式版发布后将自动更新", type: "info" });
         } else {
-          this.showToast({ message: "当前已是最新版本" });
+          this.showToast({ message: "当前已是最新版本", type: "info" });
         }
         return;
       }
       // outcome === 'error'：检查阶段失败（尚未发现任何更新）——开关重查给
       // 反馈；自动检查（启动 / 轮询）静默。
-      if (notifyUser) this.showToast({ message: "检查更新失败，请稍后重试" });
+      if (notifyUser) {
+        this.showToast({
+          message: "检查更新失败，请稍后重试",
+          type: "error",
+        });
+      }
       return;
     }
 
