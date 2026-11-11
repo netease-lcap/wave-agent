@@ -10,6 +10,7 @@ pnpm -F wave-vscode run test:e2e:completion -- --build  # 先重编扩展（含 
 ```
 
 - 编辑器可执行文件用 `WAVE_E2E_VSCODE` 指定；不设时脚本按候选路径找（macOS 的 app 路径、`/usr/share/code/code`、`/usr/local/bin/code`），一个都没有就退出——Linux 上通常要自己下 tarball 再指过去。
+- 版本必须满足 `packages/vscode/package.json` 的 `engines.vscode`：发行版仓库自带的旧版会**静默拒载**扩展（宿主日志只有一句 `Extension is not compatible with Code <ver>. Extension requires: <range>.`），现象是扩展宿主里没有 `wave-code.*` 命令、spec 报 `extension … is not loaded` ⇒ 下个满足版本的 tarball 指 `WAVE_E2E_VSCODE`，不要动系统包。
 - 脚本自己开临时 `--user-data-dir` + 临时工作区，并带 `--disable-extensions`：已装扩展（尤其 `GitHub.copilot-chat`，它也注册 inline provider）不会干扰断言；内置 TypeScript 语言服务仍在，跨文件用例靠它解析 import。
 - 断言口径：VS Code 没有读取 inline suggestion 的扩展 API，`editor.action.inlineSuggest.commit` 是唯一可观测钩子 ⇒ 只断言「接受后文档变了」，ghost text 渲染本身验不到。
 - 排查：`runTests` 的 stdout 里有扩展日志（含 `[completion-e2e] editor focus state:` 一行，能看出焦点在不在编辑器）；跨文件用例故意重试 3 次（模型有随机性），失败先看它第一步的 `executeDefinitionProvider` 过没过——那步红说明宿主根本采不到片段，跟模型无关。

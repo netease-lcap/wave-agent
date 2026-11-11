@@ -6,16 +6,8 @@
 // host's IDE reads (`IdeContextService`) — a real terminal, a real diagnostics
 // producer, no model. Keeping them apart lets either run alone.
 const path = require("node:path");
-const Mocha = require("mocha");
+const { runSpec } = require("./harness.cjs");
 
-exports.run = async function run() {
-  const mocha = new Mocha({ ui: "tdd", timeout: 180000, color: true });
-  mocha.addFile(path.join(__dirname, "specs", "ideContext.spec.cjs"));
-  await new Promise((resolve, reject) => {
-    mocha.run((failures) =>
-      failures
-        ? reject(new Error(`${failures} ide-context test(s) failed`))
-        : resolve(),
-    );
-  });
+exports.run = function run() {
+  return runSpec(path.join(__dirname, "specs", "ideContext.spec.cjs"));
 };
