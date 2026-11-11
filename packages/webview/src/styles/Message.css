@@ -393,13 +393,27 @@
   overflow-y: auto;
 }
 
+/* 思考块的头部在生成中与结束后必须**同高**：生成中是「标题 + 尾部」、结束后是
+   「标题 + 折叠箭头」，尾部消失、箭头出现只改变横向内容，行高恒定 18px（与
+   `.tool-block` 同口径）。否则生成结束的那一刻整行高矮变一次，它上方工具块里的
+   可点路径会跟着移位，点下去落到别的东西上。 */
 .reasoning-header {
   display: flex;
   align-items: center;
   gap: 6px;
+  height: 18px;
+  line-height: 18px;
+  white-space: nowrap;
+  overflow: hidden;
   margin-bottom: 4px;
   cursor: pointer;
   user-select: none;
+}
+
+/* 生成中的头部是惰性的（不带折叠箭头、不是 button、没有 aria-expanded）：
+   生成期间不让展开，指针也不该给出可点的暗示。 */
+.reasoning-header--static {
+  cursor: default;
 }
 
 /* F-11（WCAG 2.1.1 / 4.1.2）：折叠标题由 <div onClick> 改为
@@ -426,14 +440,29 @@ button.reasoning-header {
 }
 
 .reasoning-title {
+  flex-shrink: 0;
   font-size: 13px;
   font-weight: 600;
   color: var(--vscode-editor-foreground);
 }
 
+/* 生成中的尾部：与工具块 `.compact-params` 同一观感（11px、次要色、跟在标题
+   后面同一行）。不换行、超宽则在尾部裁掉，宽度变化不影响行高。 */
+.reasoning-tail {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 11px;
+  font-weight: normal;
+  line-height: 18px;
+  color: var(--vscode-descriptionForeground);
+}
+
 .reasoning-chevron {
   width: 16px;
   height: 16px;
+  flex-shrink: 0;
   color: var(--vscode-descriptionForeground);
   transition: transform 0.15s ease;
 }

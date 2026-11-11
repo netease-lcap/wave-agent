@@ -1,5 +1,6 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { QueueChevronIcon } from "./HeaderIcons";
+import { streamingTail } from "../utils/streamingText";
 import type { ReasoningBlock } from "../types";
 
 interface ReasoningBlockViewProps {
@@ -11,21 +12,16 @@ export const ReasoningBlockView: React.FC<ReasoningBlockViewProps> = ({
   block,
   renderContent,
 }) => {
-  // Reasoning that is already finished on mount (e.g. loaded from history) starts
-  // collapsed; an in-progress block starts expanded and auto-collapses on finish.
-  const [collapsed, setCollapsed] = useState(block.stage === "end");
-  const prevStageRef = useRef(block.stage);
+  // Always starts collapsed — streaming or loaded from history. While reasoning
+  // is being generated the block is a single fixed-height line (title + tail,
+  // no expand affordance), so growing content never changes the row height and
+  // never pushes the rows above it (tools with clickable paths) around. The
+  // user's expand/collapse choice only exists once the block has finished, and
+  // it is never overridden afterwards.
+  const [collapsed, setCollapsed] = useState(true);
 
-  // Auto-collapse once when reasoning finishes (stage transitions from non-'end' to 'end').
-  useEffect(() => {
-    if (prevStageRef.current !== "end" && block.stage === "end") {
-      setCollapsed(true);
-    }
-    prevStageRef.current = block.stage;
-  }, [block.stage]);
-
-  const inProgress =
-    block.stage !== "end" && typeof block.startTime === "number";
+  const streaming = block.stage === "streaming";
+  const inProgress = streaming && typeof block.startTime === "number";
   const [now, setNow] = useState(() => Date.now());
 
   // While reasoning is in progress, tick every second to grow the elapsed counter.
@@ -65,24 +61,45 @@ export const ReasoningBlockView: React.FC<ReasoningBlockViewProps> = ({
     }
   }
 
-  return (
-    <div className="reasoning-block">
-      {/* F-11（WCAG 2.1.1 / 4.1.2）：折叠标题原为 <div onClick>，无 role /
-          tabIndex / aria-expanded，键盘不可达。改为 button 后自带角色与
-          Enter/Space 激活、暴露 aria-expanded；外观由 Message.css 的
-          button.reasoning-header 复位 UA 样式保持原样，默认折叠策略不变。 */}
-      <button
-        type="button"
-        className="reasoning-header"
-        aria-expanded={!collapsed}
-        onClick={() => setCollapsed((c) => !c)}
-      >
-        <span className="reasoning-dot" />
-        <span className="reasoning-title">{title}</span>
+  // Same tail shape as tool blocks' compactParams (last 30 chars, newlines
+  // flattened). It exists only while streaming: once the block ends the line
+  // shrinks back to title + chevron at the same fixed height.
+  const tail = streaming ? streamingTail(block.content) : "";
+
+  const header = (
+    <>
+      <span className="reasoning-dot" />
+      <span className="reasoning-title">{title}</span>
+      {tail ? <span className="reasoning-tail">{tail}</span> : null}
+      {!streaming && (
         <QueueChevronIcon
           className={`reasoning-chevron${collapsed ? "" : " expanded"}`}
         />
-      </button>
+      )}
+    </>
+  );
+
+  return (
+    <div className="reasoning-block">
+      {/* Streaming header is inert on purpose: no chevron, not a button, no
+          aria-expanded. Only a finished block is togglable (F-11 / WCAG
+          2.1.1 / 4.1.2: a button gets Enter/Space for free and exposes
+          aria-expanded; Message.css resets its UA styling so the
+          appearance matches the original div). */}
+      {streaming ? (
+        <div className="reasoning-header reasoning-header--static">
+          {header}
+        </div>
+      ) : (
+        <button
+          type="button"
+          className="reasoning-header"
+          aria-expanded={!collapsed}
+          onClick={() => setCollapsed((c) => !c)}
+        >
+          {header}
+        </button>
+      )}
       {!collapsed && (
         <div className="reasoning-content">
           {renderContent(block.content || "")}
