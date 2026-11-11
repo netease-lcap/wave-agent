@@ -1,5 +1,11 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { render, fireEvent, screen, act } from "@testing-library/react";
+import {
+  render,
+  fireEvent,
+  screen,
+  act,
+  waitFor,
+} from "@testing-library/react";
 import React from "react";
 import { FilePane, type FilePaneProps } from "../../src/components/FilePane";
 import type { FileViewState, OpenFileTab } from "../../src/types";
@@ -208,24 +214,30 @@ describe("文件面板内查找与跳行（spec 场景 1-9）", () => {
     expect(screen.queryByTestId("file-pane-find")).toBeNull();
   });
 
-  it("输入关键字给出命中数，并把命中的文本标成高亮（场景 2）", () => {
+  it("输入关键字给出命中数，并把命中的文本标成高亮（场景 2）", async () => {
     const { container } = renderPane({
       files: [openFile("f1", "/work/a/src/app.ts", CONTENT)],
     });
+    await screen.findByTestId("file-pane-line-1");
     fireEvent.keyDown(window, { key: "f", ctrlKey: true });
     fireEvent.change(screen.getByTestId("file-pane-find-input"), {
       target: { value: "two" },
     });
     expect(screen.getByTestId("file-pane-find-count")).toHaveTextContent("1/1");
-    const hits = container.querySelectorAll(".file-pane-find-hit");
-    expect(hits).toHaveLength(1);
-    expect(hits[0]).toHaveTextContent("two");
+    // 命中是代码视图里的 mark 装饰：随下一次视图更新画上去。
+    await waitFor(() =>
+      expect(container.querySelectorAll(".file-pane-find-hit")).toHaveLength(1),
+    );
+    expect(container.querySelector(".file-pane-find-hit")).toHaveTextContent(
+      "two",
+    );
   });
 
-  it("回车 / Shift+回车在命中之间跳，并跟着滚到那一行（场景 2/3）", () => {
+  it("回车 / Shift+回车在命中之间跳，并跟着滚到那一行（场景 2/3）", async () => {
     const { container } = renderPane({
       files: [openFile("f1", "/work/a/src/app.ts", CONTENT)],
     });
+    await screen.findByTestId("file-pane-line-1");
     fireEvent.keyDown(window, { key: "f", ctrlKey: true });
     const input = screen.getByTestId("file-pane-find-input");
     fireEvent.change(input, { target: { value: "alpha" } });
@@ -233,18 +245,21 @@ describe("文件面板内查找与跳行（spec 场景 1-9）", () => {
 
     fireEvent.keyDown(input, { key: "Enter" });
     expect(screen.getByTestId("file-pane-find-count")).toHaveTextContent("2/3");
-    expect(
-      container.querySelectorAll(".file-pane-find-hit--current"),
-    ).toHaveLength(1);
+    await waitFor(() =>
+      expect(
+        container.querySelectorAll(".file-pane-find-hit--current"),
+      ).toHaveLength(1),
+    );
 
     fireEvent.keyDown(input, { key: "Enter", shiftKey: true });
     expect(screen.getByTestId("file-pane-find-count")).toHaveTextContent("1/3");
   });
 
-  it("区分大小写 / 全词 / 正则三个开关（场景 4）", () => {
+  it("区分大小写 / 全词 / 正则三个开关（场景 4）", async () => {
     const { container } = renderPane({
       files: [openFile("f1", "/work/a/src/app.ts", "Alpha\nalpha\nbeta\n")],
     });
+    await screen.findByTestId("file-pane-line-1");
     fireEvent.keyDown(window, { key: "f", ctrlKey: true });
     const input = screen.getByTestId("file-pane-find-input");
     fireEvent.change(input, { target: { value: "alpha" } });
@@ -266,9 +281,11 @@ describe("文件面板内查找与跳行（spec 场景 1-9）", () => {
     fireEvent.click(screen.getByTestId("file-pane-find-word"));
     fireEvent.click(screen.getByTestId("file-pane-find-regex"));
     fireEvent.change(input, { target: { value: "a\\w+" } });
-    expect(
-      container.querySelectorAll(".file-pane-find-hit").length,
-    ).toBeGreaterThan(0);
+    await waitFor(() =>
+      expect(
+        container.querySelectorAll(".file-pane-find-hit").length,
+      ).toBeGreaterThan(0),
+    );
   });
 
   it("非法正则给出可读提示、不崩（场景 3）", () => {
@@ -283,7 +300,7 @@ describe("文件面板内查找与跳行（spec 场景 1-9）", () => {
     );
   });
 
-  it("跳行：合法行号滚到那一行，越界给范围提示（场景 7/8）", () => {
+  it("跳行：合法行号滚到那一行，越界给范围提示（场景 7/8）", async () => {
     // 正文区高度来自面板外的布局：不先声明，80 行会把滚动盒撑满，跳行落点被夹回 0。
     const restore = pinScrollBoxHeight(".file-pane-scroll", 200);
     const { container } = renderPane({
@@ -297,6 +314,7 @@ describe("文件面板内查找与跳行（spec 场景 1-9）", () => {
       ],
     });
     try {
+      await screen.findByTestId("file-pane-line-1");
       fireEvent.click(screen.getByTestId("file-pane-find-trigger"));
       const goto = screen.getByTestId("file-pane-goto-input");
 
@@ -309,8 +327,11 @@ describe("文件面板内查找与跳行（spec 场景 1-9）", () => {
       fireEvent.change(goto, { target: { value: "60" } });
       fireEvent.keyDown(goto, { key: "Enter" });
       expect(screen.queryByTestId("file-pane-goto-error")).toBeNull();
-      const body = container.querySelector(".file-pane-scroll") as HTMLElement;
-      expect(body.scrollTop).toBeGreaterThan(0);
+      await waitFor(() => {
+        const scroller = container.querySelector<HTMLElement>(".cm-scroller");
+        expect(scroller).not.toBeNull();
+        expect(scroller!.scrollTop).toBeGreaterThan(0);
+      });
     } finally {
       restore();
     }

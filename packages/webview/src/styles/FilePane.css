@@ -134,65 +134,50 @@
   white-space: nowrap;
 }
 
-/* Code view: one row per line; the gutter is sticky so long lines scroll
-   horizontally under it. The whole body is the scroll container. It is also the
-   positioning context for the comment entries (the button that follows a
-   selection, the right-click menu) — they are absolutely placed in content
-   coordinates, so they scroll with the text they belong to. */
+/* Code view: CodeMirror owns the surface (the read-only viewer and the editor
+   share one chunk and one 20px line rhythm), so this block only lays it out. It
+   stays the positioning context for the comment entries — the button that
+   follows a selection and the right-click menu are placed in content
+   coordinates, measured against this box. */
 .file-pane-code {
   position: relative;
-  flex: 1;
-  min-width: max-content;
-  padding-bottom: 12px;
-}
-
-.file-pane-line {
   display: flex;
-  align-items: flex-start;
-  min-height: 20px;
-  line-height: 20px;
-  font-family: var(
-    --vscode-editor-font-family,
-    "SF Mono",
-    Monaco,
-    "Courier New",
-    monospace
-  );
-  font-size: 12px;
-  white-space: pre;
+  flex: 1;
+  flex-direction: column;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
 }
 
+/* 只读代码视图里正文的高度归 CodeMirror 自己滚（.cm-scroller），外层不再兼作
+   滚动容器，否则会出现两条滚动条。 */
+.file-pane-body--code-view .file-pane-scroll {
+  overflow: hidden;
+}
+
+.file-pane-view-host {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* Line numbers live in the gutter (`.cm-gutters`, `user-select: none`) and the
+   jump-to range paints a line background; both are CodeMirror decorations now,
+   so no per-row markup lives here. */
+
+/* 跳转区间只是「提示这段是这次 read 到的」，所以取淡色（8% 正文色的做法同 Claude
+   桌面端），跟选区那种强底色拉开权重；选区一出现这条带子就整体撤掉（见
+   createReadOnlyCodeView 的 lineField），两种底色不同屏。它也只铺正文列，
+   不进行号单元格。 */
 .file-pane-line--active {
-  background: var(--vscode-editor-selectionBackground, rgba(38, 79, 120, 0.35));
+  background: color-mix(in srgb, currentColor 8%, transparent);
 }
 
-.file-pane-line-no {
-  position: sticky;
-  left: 0;
-  flex-shrink: 0;
-  /* As wide as this file's own last line number (the code view sets
-     --file-pane-line-no-digits), so a short file's numbers sit against the
-     panel's left edge instead of parking an empty three-digit gutter. Every row
-     reads the same variable, so the code column stays a straight edge; change
-     files and the column only widens when the line count actually needs it.
-     Nothing is reserved for a comment button either — the entries are the
-     right-click menu and the selection chip (spec「文件面板评论」场景 1/2).
-     The 8px padding is applied on top of `min-width` (content-box), so it is
-     not part of the calc. */
-  min-width: calc(var(--file-pane-line-no-digits, 3) * 1ch);
-  padding: 0 8px;
-  text-align: right;
-  color: var(--vscode-editorLineNumber-foreground, #858585);
-  background: var(--vscode-sideBar-background, var(--vscode-panel-background));
-  user-select: none;
-}
-
-.file-pane-line--active .file-pane-line-no {
-  background: var(--vscode-editor-selectionBackground, rgba(38, 79, 120, 0.35));
-}
-
-.file-pane-line-code {
-  padding-right: 24px;
+/* The inline comment box's slot: a block widget CodeMirror inserts after the
+   commented line, so the box pushes the following lines down (and scrolls with
+   them) instead of covering them. Empty until React portals the box in. */
+.file-pane-comment-slot:empty {
+  display: none;
 }
 
 /* The code column is as wide as the longest line; cap the comment box so a
@@ -202,13 +187,16 @@
   margin-left: 24px;
 }
 
+/* 截断说明：面板底部一行次要色小字（对齐 Claude 桌面端文件查看器的
+   `text-footnote text-muted`）。它挂在正文滚动区之外，所以滚不滚都在、也不参与
+   代码区的全选；不涂底色、不是通栏横幅、不报行数 —— 它是「可能没看全」的脚注，
+   不是告警。 */
 .file-pane-truncated-hint {
-  flex: 1;
-  min-width: max-content;
-  padding: 8px 16px;
+  flex: none;
+  padding: 6px 16px;
   font-size: 12px;
+  line-height: 1.4;
   color: var(--vscode-descriptionForeground, #999);
-  background: var(--vscode-editor-selectionBackground, rgba(38, 79, 120, 0.2));
 }
 
 /* Markdown files reuse the message markdown look, padded for the panel. */

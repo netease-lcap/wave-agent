@@ -32,6 +32,10 @@ export interface CodeCommentEntryState {
   menuRef: React.RefObject<HTMLDivElement>;
   closeMenu: () => void;
   clearChip: () => void;
+  /** Re-anchor the floating button against the live selection. Views whose
+   *  container does not itself scroll (the CodeMirror code surface) call this
+   *  when the text scrolls under the button. */
+  syncChip: () => void;
   /** Spread on that same container element. */
   containerProps: {
     onContextMenu: (event: React.MouseEvent<HTMLDivElement>) => void;
@@ -66,19 +70,20 @@ export function useCodeCommentEntry({
     onClickOutside: closeMenu,
   });
 
+  const syncChip = useCallback(() => {
+    const container = containerRef.current;
+    const range = selectedUnitRange(container);
+    const point = range ? selectionAnchor(container, range) : null;
+    setChip(range && point ? { ...range, ...point } : null);
+  }, []);
+
   // Browsers report a vanishing selection (click elsewhere, Esc, Ctrl+A) through
   // selectionchange; without this the floating button would outlive its text.
   useEffect(() => {
     if (!enabled) return;
-    const sync = () => {
-      const container = containerRef.current;
-      const range = selectedUnitRange(container);
-      const point = range ? selectionAnchor(container, range) : null;
-      setChip(range && point ? { ...range, ...point } : null);
-    };
-    document.addEventListener("selectionchange", sync);
-    return () => document.removeEventListener("selectionchange", sync);
-  }, [enabled]);
+    document.addEventListener("selectionchange", syncChip);
+    return () => document.removeEventListener("selectionchange", syncChip);
+  }, [enabled, syncChip]);
 
   // A view that stops offering comments (switching to an image, entering the
   // editor) must not leave a stale menu or button behind.
@@ -148,6 +153,7 @@ export function useCodeCommentEntry({
     menuRef,
     closeMenu,
     clearChip,
+    syncChip,
     containerProps: { onContextMenu, onMouseUp },
   };
 }
