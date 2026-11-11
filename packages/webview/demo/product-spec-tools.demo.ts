@@ -183,6 +183,9 @@ test.describe("Product Specification Screenshots - Tools", () => {
       "msg_user_bash",
     );
     await injector.updateMessages([bashUserMessage, bashMessage]);
+    // Bash 工具块跑完默认收起（spec ui/message-rendering-system.md「Bash 工具块
+    // 默认收起」）：这张图要展示命令 + 输出，先点开折叠行。
+    await webviewPage.click(".bash-tool-header");
     await webviewPage.waitForSelector(".bash-command-unified");
     await screenshotWebp(
       webviewPage,

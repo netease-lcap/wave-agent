@@ -70,7 +70,7 @@ order: 245
 
 ## 用户故事：bash 命令输出中的 URL 可点击（优先级：P1）
 
-作为用户，我希望 bash 命令输出（`.bash-command-output`）中的 http(s) URL 被解析为可点击链接，且点击行为与消息文本链接一致（desktop 上 localhost 链接在预览面板打开、其余链接用系统浏览器，IDE 上按原生链接处理），以便运行本地服务或查看命令日志时直接点击访问，无需手动复制。
+作为用户，我希望 bash 命令输出（`.bash-command-output`）中的 http(s) URL 被解析为可点击链接，且点击行为与消息文本链接一致（desktop 上 localhost 链接在预览面板打开、其余链接用系统浏览器，IDE 上按原生链接处理），以便运行本地服务或查看命令日志时直接点击访问，无需手动复制。（该输出区随 Bash 工具块一起折叠，已结束且成功的块默认收起——见 [消息渲染](message-rendering-system.md)「Bash 工具块默认收起」——展开后链接照旧可点。）
 
 **为什么是这个优先级**：运行 `python -m http.server`、`npm run dev` 等命令时，输出中的 `http://localhost:8000/` 类地址是高频操作目标；当前 bash 输出为纯文本、不可点击，用户只能复制粘贴。
 

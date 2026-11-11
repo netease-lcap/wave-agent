@@ -4728,7 +4728,10 @@
 [data-host="desktop"] .bash-command-output:focus-visible,
 [data-host="desktop"] .write-preview-scroll:focus-visible,
 [data-host="desktop"] .md-table-scroll:focus-visible,
-[data-host="desktop"] .reasoning-header:focus-visible {
+[data-host="desktop"] .reasoning-header:focus-visible,
+/* Bash 工具行的折叠入口（specs/ui/message-rendering-system.md「Bash 工具块默认
+   收起」场景 2）：键盘可达，焦点环沿用同一套 2px 语义色。 */
+[data-host="desktop"] .bash-tool-header:focus-visible {
   outline: 2px solid var(--cc-border-focus, #a0a5a8);
   outline-offset: 1px;
   border-radius: 4px;
