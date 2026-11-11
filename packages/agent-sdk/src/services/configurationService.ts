@@ -406,10 +406,18 @@ export class ConfigurationService {
     workdir: string,
   ): Promise<ConfigurationLoadResult> {
     try {
-      // Use the merged configuration function (this loads user and project configs internally)
+      // Local layers (user → project → local settings.local.json). `null` from
+      // loadMergedWaveConfig means "not one configuration file exists", which is
+      // a normal state (fresh machine, a user who just deleted
+      // ~/.wave/settings.json) — it is NOT a state without configuration. The
+      // managed (remote) layer is a layer of its own, so it is merged whether or
+      // not a local file exists; gating it behind "at least one local file"
+      // silently dropped every managed setting (model, models catalog, env,
+      // permissions, hooks, enabledPlugins, feature switches) on such machines.
       const mergedConfig = loadMergedWaveConfig(workdir);
+      const remoteSettings = getRemoteSettingsSync();
 
-      if (!mergedConfig) {
+      if (!mergedConfig && !remoteSettings) {
         // Still set system environment variables even if no config is found
         const env = { WAVE_PROJECT_DIR: workdir };
         this.setEnvironmentVars(env);
@@ -423,23 +431,42 @@ export class ConfigurationService {
         };
       }
 
-      // Comprehensive validation
-      const validation = this.validateConfiguration(mergedConfig);
+      // Validate the local layers first, so a broken local file still fails the
+      // whole load (unchanged behaviour).
+      let warnings: string[] = [];
+      if (mergedConfig) {
+        const validation = this.validateConfiguration(mergedConfig);
 
-      if (!validation.isValid) {
-        return {
-          configuration: null,
-          success: false,
-          error: `Merged configuration validation failed: ${validation.errors.join(", ")}`,
-          warnings: validation.warnings,
-        };
+        if (!validation.isValid) {
+          return {
+            configuration: null,
+            success: false,
+            error: `Merged configuration validation failed: ${validation.errors.join(", ")}`,
+            warnings: validation.warnings,
+          };
+        }
+        warnings = validation.warnings;
       }
 
       // Merge remote settings (highest priority: Remote > Local > Project > User)
-      const remoteSettings = getRemoteSettingsSync();
-      const finalConfig = remoteSettings
-        ? mergeRemoteSettings(mergedConfig, remoteSettings)
-        : mergedConfig;
+      let finalConfig: WaveConfiguration = mergedConfig ?? {};
+      if (remoteSettings) {
+        const candidate = mergeRemoteSettings(finalConfig, remoteSettings);
+        // Validate again *after* the managed layer is in: that structure comes
+        // from the server too and has to clear the same bar as local files. A
+        // malformed payload is dropped (with a warning) instead of failing the
+        // load — the client keeps working on what the local layers provide.
+        const remoteValidation = this.validateConfiguration(candidate);
+        if (remoteValidation.isValid) {
+          finalConfig = candidate;
+          warnings = remoteValidation.warnings;
+        } else {
+          warnings = [
+            ...warnings,
+            `Managed settings ignored: ${remoteValidation.errors.join(", ")}`,
+          ];
+        }
+      }
 
       // Success case
       this.currentConfiguration = finalConfig;
@@ -456,7 +483,7 @@ export class ConfigurationService {
         configuration: finalConfig,
         success: true,
         sourcePath: "merged configuration",
-        warnings: validation.warnings,
+        warnings,
       };
     } catch (error) {
       return {

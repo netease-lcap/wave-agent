@@ -22,6 +22,20 @@ vi.mock("../../src/utils/atomicWrite.js", async (importOriginal) => {
   return { ...actual, atomicWriteFile: vi.fn(actual.atomicWriteFile) };
 });
 
+// `getRemoteSettingsSync` is the managed (remote) layer. Default it to "no
+// managed settings" (the real one reads a process-level cache populated by the
+// network fetch), and let individual cases opt in.
+vi.mock(
+  "../../src/services/remoteSettingsService.js",
+  async (importOriginal) => {
+    const actual =
+      await importOriginal<
+        typeof import("../../src/services/remoteSettingsService.js")
+      >();
+    return { ...actual, getRemoteSettingsSync: vi.fn(() => null) };
+  },
+);
+
 import {
   ConfigurationService,
   validateEnvironmentConfig,
@@ -30,6 +44,7 @@ import {
   loadWaveConfigFromFile,
   loadUserConfigEnv,
 } from "../../src/services/configurationService.js";
+import { getRemoteSettingsSync } from "../../src/services/remoteSettingsService.js";
 import { atomicWriteFile } from "../../src/utils/atomicWrite.js";
 import {
   DEFAULT_WAVE_CONTEXT_WINDOW,
@@ -54,6 +69,8 @@ describe("ConfigurationService", () => {
 
     mockExistsSync.mockReset();
     mockReadFileSync.mockReset();
+    vi.mocked(getRemoteSettingsSync).mockReset();
+    vi.mocked(getRemoteSettingsSync).mockReturnValue(null);
   });
 
   afterEach(async () => {
@@ -191,6 +208,68 @@ describe("ConfigurationService", () => {
       expect(result.warnings).toContain(
         "No configuration files found in user or project directories",
       );
+    });
+
+    it("applies managed settings even when no local configuration file exists", async () => {
+      // The state that used to drop the whole managed layer: a machine where
+      // ~/.wave/settings.json was never created (or was deleted) and the project
+      // has no .wave/settings.json either. "No local file" is not "no config".
+      mockExistsSync.mockReturnValue(false);
+      vi.mocked(getRemoteSettingsSync).mockReturnValue({
+        model: "deepseek-flash",
+        models: { "deepseek-flash": {}, "glm-5": {} },
+        env: { WAVE_MODEL: "deepseek-flash" },
+        permissions: { allow: ["Bash(git status)"] },
+        enabledPlugins: { "sdd@builtin": true },
+      });
+
+      const result = await configService.loadMergedConfiguration(tempDir);
+
+      expect(result.success).toBe(true);
+      expect(result.configuration?.model).toBe("deepseek-flash");
+      expect(result.configuration?.models).toHaveProperty("deepseek-flash");
+      expect(result.configuration?.env?.WAVE_MODEL).toBe("deepseek-flash");
+      expect(result.configuration?.env?.WAVE_PROJECT_DIR).toBe(tempDir);
+      expect(result.configuration?.permissions?.allow).toEqual([
+        "Bash(git status)",
+      ]);
+      expect(result.configuration?.enabledPlugins).toEqual({
+        "sdd@builtin": true,
+      });
+    });
+
+    it("drops a malformed managed payload instead of failing the load", async () => {
+      mockExistsSync.mockReturnValue(false);
+      // A non-string env value fails validateEnvironmentConfig — the same bar a
+      // local settings.json has to clear.
+      vi.mocked(getRemoteSettingsSync).mockReturnValue({
+        env: { BROKEN: 123 },
+      } as unknown as WaveConfiguration);
+
+      const result = await configService.loadMergedConfiguration(tempDir);
+
+      expect(result.success).toBe(true);
+      expect(result.configuration?.env).toEqual({
+        WAVE_PROJECT_DIR: tempDir,
+      });
+      expect(
+        result.warnings?.some((w) => w.startsWith("Managed settings ignored")),
+      ).toBe(true);
+    });
+
+    it("keeps managed settings winning over local configuration files", async () => {
+      mockExistsSync.mockReturnValue(true);
+      mockReadFileSync.mockReturnValue(
+        JSON.stringify({ model: "local-model" }),
+      );
+      vi.mocked(getRemoteSettingsSync).mockReturnValue({
+        model: "remote-model",
+      });
+
+      const result = await configService.loadMergedConfiguration(tempDir);
+
+      expect(result.success).toBe(true);
+      expect(result.configuration?.model).toBe("remote-model");
     });
 
     it("should return error on invalid configuration", async () => {
