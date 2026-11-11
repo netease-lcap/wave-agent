@@ -1,7 +1,6 @@
 import type { ToolPlugin, ToolResult, ToolContext } from "./types.js";
 import { SKILL_TOOL_NAME } from "../constants/tools.js";
 import { GENERAL_PURPOSE_SUBAGENT_TYPE } from "../constants/subagents.js";
-import type { SkillMetadata } from "../types/skills.js";
 import { logger } from "../utils/globalLogger.js";
 import {
   countToolBlocks,
@@ -13,6 +12,14 @@ import {
  */
 const SKILL_TOOL_DESCRIPTION =
   "Execute a skill within the main conversation. When users ask you to perform tasks, check if any of the available skills match. Skills provide specialized capabilities and domain knowledge.";
+
+/**
+ * The description is a **constant**: the available-skill list is announced as a
+ * meta message instead (`utils/skillListing.ts`), because the skill set changes
+ * mid-session (watcher refresh, plugin reload, subtree discovery) and inlining
+ * it here would rewrite `tools[]` — the cached prefix — on every such change.
+ */
+const SKILL_TOOL_PROMPT = `${SKILL_TOOL_DESCRIPTION} Do not invoke the same skill repeatedly if it has already been called with the same arguments. The skills available in this session are listed in a system message; pass one of those names as \`skill_name\`.`;
 
 export const skillTool: ToolPlugin = {
   name: SKILL_TOOL_NAME,
@@ -39,60 +46,7 @@ export const skillTool: ToolPlugin = {
     },
   },
 
-  leanPrompt: (args?: {
-    availableSkills?: SkillMetadata[];
-    isSubagent?: boolean;
-  }) => {
-    let availableSkills = args?.availableSkills?.filter(
-      (skill) => !skill.disableModelInvocation,
-    );
-
-    if (args?.isSubagent) {
-      availableSkills = availableSkills?.filter(
-        (skill) => skill.context !== "fork",
-      );
-    }
-
-    const base = `Execute a skill within the main conversation. Do not invoke the same skill repeatedly if it has already been called with the same arguments.`;
-
-    if (!availableSkills || availableSkills.length === 0) {
-      return `${base} No skills are currently available.`;
-    }
-
-    const skillList = availableSkills
-      .map(
-        (skill) => `• **${skill.name}** (${skill.type}): ${skill.description}`,
-      )
-      .join("\n");
-
-    return `${base}\n\nAvailable skills:\n${skillList}`;
-  },
-  prompt: (args?: {
-    availableSkills?: SkillMetadata[];
-    isSubagent?: boolean;
-  }) => {
-    let availableSkills = args?.availableSkills?.filter(
-      (skill) => !skill.disableModelInvocation,
-    );
-
-    if (args?.isSubagent) {
-      availableSkills = availableSkills?.filter(
-        (skill) => skill.context !== "fork",
-      );
-    }
-
-    if (!availableSkills || availableSkills.length === 0) {
-      return `${SKILL_TOOL_DESCRIPTION} No skills are currently available.`;
-    }
-
-    const skillList = availableSkills
-      .map(
-        (skill) => `• **${skill.name}** (${skill.type}): ${skill.description}`,
-      )
-      .join("\n");
-
-    return `${SKILL_TOOL_DESCRIPTION} Do not invoke the same skill repeatedly if it has already been called with the same arguments.\n\nAvailable skills:\n${skillList}`;
-  },
+  prompt: () => SKILL_TOOL_PROMPT,
 
   execute: async (
     args: Record<string, unknown>,

@@ -3,6 +3,7 @@ import { ToolManager } from "@/managers/toolManager.js";
 import { Container } from "@/utils/container.js";
 import { artifactTool } from "@/tools/artifactTool.js";
 import { execTool } from "@/tools/execTool.js";
+import { SKILL_TOOL_NAME } from "@/constants/tools.js";
 
 const { isLeanPromptEnabled } = vi.hoisted(() => ({
   isLeanPromptEnabled: vi.fn(() => false),
@@ -57,9 +58,13 @@ describe("lean prompt mode", () => {
     // one is the failure mode this guards: lean mode is opt-in per tool, and a
     // new built-in that ships without `leanPrompt` would quietly stay verbose.
     const manager = createManager();
+    // `Skill` is the deliberate exception: its full description is already two
+    // sentences — the skill list it used to carry is announced as a meta message
+    // per turn (`utils/skillListing.ts`), so there is nothing left to condense.
+    const exempt = new Set([SKILL_TOOL_NAME]);
     const missing = manager
       .list()
-      .filter((tool) => tool.leanPrompt === undefined)
+      .filter((tool) => tool.leanPrompt === undefined && !exempt.has(tool.name))
       .map((tool) => tool.name);
 
     expect(missing).toEqual([]);

@@ -73,15 +73,15 @@ When to use: creating a new file, or fully replacing one you've already ${READ_T
       };
     }
 
+    const resolvedPath = resolvePath(filePath, context.workdir);
+
     // Trigger conditional rule loading for this file. Resolved like the write
-    // itself so rule matching never depends on a relative path's base.
-    context.messageManager?.triggerFileRead(
-      resolvePath(filePath, context.workdir),
-    );
+    // itself so rule matching never depends on a relative path's base. Subtree
+    // skill discovery rides the same event: work has reached this directory.
+    context.messageManager?.triggerFileRead(resolvedPath);
+    context.messageManager?.triggerSkillDiscovery(resolvedPath);
 
     try {
-      const resolvedPath = resolvePath(filePath, context.workdir);
-
       // Check if file already exists
       let originalContent = "";
       let isExistingFile = false;

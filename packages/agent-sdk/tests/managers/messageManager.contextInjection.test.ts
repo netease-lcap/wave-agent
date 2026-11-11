@@ -438,4 +438,42 @@ describe("MessageManager context injection and file reads", () => {
       expect(fsPromises.readFile).not.toHaveBeenCalled();
     });
   });
+
+  describe("subtree skill trigger queue", () => {
+    it("hands the paths back and clears them", () => {
+      messageManager.triggerSkillDiscovery("packages/foo/src/a.ts");
+
+      expect(messageManager.consumeSkillDiscoveryTriggers()).toEqual([
+        path.resolve(workdir, "packages/foo/src/a.ts"),
+      ]);
+      // Drained, so a turn never rediscovers what it just did.
+      expect(messageManager.consumeSkillDiscoveryTriggers()).toEqual([]);
+    });
+
+    it("keeps an absolute path as it is", () => {
+      const absolute = path.resolve("/elsewhere/pkg/a.ts");
+
+      messageManager.triggerSkillDiscovery(absolute);
+
+      expect(messageManager.consumeSkillDiscoveryTriggers()).toEqual([
+        absolute,
+      ]);
+    });
+
+    it("records a path once however often it is triggered", () => {
+      const absolute = path.resolve("/elsewhere/pkg/a.ts");
+
+      messageManager.triggerSkillDiscovery(absolute);
+      messageManager.triggerSkillDiscovery(absolute);
+
+      // One Read of one file must not turn into two probes of the same tree.
+      expect(messageManager.consumeSkillDiscoveryTriggers()).toEqual([
+        absolute,
+      ]);
+    });
+
+    it("returns nothing when no file operation happened", () => {
+      expect(messageManager.consumeSkillDiscoveryTriggers()).toEqual([]);
+    });
+  });
 });

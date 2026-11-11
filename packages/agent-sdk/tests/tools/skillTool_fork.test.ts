@@ -102,7 +102,10 @@ describe("skillTool fork", () => {
     expect(formatted).toBe("fork-skill");
   });
 
-  it("should not include fork info in prompt", async () => {
+  it("names no skill and no fork annotation in prompt", async () => {
+    // The description is a constant now: the skill set (and therefore any fork
+    // annotation) is announced as a meta message per turn, so the prompt must
+    // stay identical whatever the skills look like.
     const mockSkills = [
       {
         name: "fork-skill",
@@ -116,8 +119,9 @@ describe("skillTool fork", () => {
 
     const prompt = skillTool.prompt?.({ availableSkills: mockSkills });
 
-    expect(prompt).toContain("fork-skill");
+    expect(prompt).not.toContain("fork-skill");
     expect(prompt).not.toContain("[fork: general-purpose]");
+    expect(prompt).toContain("listed in a system message");
   });
 
   it("should execute skill in fork context", async () => {

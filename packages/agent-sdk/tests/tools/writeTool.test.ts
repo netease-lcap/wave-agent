@@ -5,6 +5,7 @@ import { writeTool } from "@/tools/writeTool.js";
 import { TaskManager } from "@/services/taskManager.js";
 import { readFile, writeFile, mkdir, stat } from "fs/promises";
 import type { ToolContext } from "@/tools/types.js";
+import type { MessageManager } from "@/managers/messageManager.js";
 import { Container } from "@/utils/container.js";
 
 // Write routes through the atomic writer. Forward it to the mocked
@@ -641,6 +642,56 @@ describe("writeTool", () => {
 
       expect(result.success).toBe(true);
       expect(result.content).toContain("File created");
+    });
+  });
+
+  describe("Subtree skill trigger", () => {
+    it("records the file it is about to write, so its directory gets probed", async () => {
+      const triggerSkillDiscovery = vi.fn();
+      vi.mocked(readFile).mockRejectedValue(new Error("ENOENT"));
+      vi.mocked(mkdir).mockResolvedValue(undefined);
+      vi.mocked(writeFile).mockResolvedValue(undefined);
+
+      await writeTool.execute(
+        { file_path: "/test/workdir/packages/api/x.ts", content: "x" },
+        {
+          ...mockContext,
+          readFileState: new Map(),
+          messageManager: {
+            triggerFileRead: vi.fn(),
+            triggerSkillDiscovery,
+          } as unknown as MessageManager,
+        },
+      );
+
+      // Work has reached that directory, so a `<dir>/.wave/skills` next to the
+      // file becomes interesting.
+      expect(triggerSkillDiscovery).toHaveBeenCalledWith(
+        path.resolve("/test/workdir/packages/api/x.ts"),
+      );
+    });
+
+    it("resolves a relative path before recording it", async () => {
+      const triggerSkillDiscovery = vi.fn();
+      vi.mocked(readFile).mockRejectedValue(new Error("ENOENT"));
+      vi.mocked(mkdir).mockResolvedValue(undefined);
+      vi.mocked(writeFile).mockResolvedValue(undefined);
+
+      await writeTool.execute(
+        { file_path: "packages/api/x.ts", content: "x" },
+        {
+          ...mockContext,
+          readFileState: new Map(),
+          messageManager: {
+            triggerFileRead: vi.fn(),
+            triggerSkillDiscovery,
+          } as unknown as MessageManager,
+        },
+      );
+
+      expect(triggerSkillDiscovery).toHaveBeenCalledWith(
+        path.resolve("/test/workdir/packages/api/x.ts"),
+      );
     });
   });
 });

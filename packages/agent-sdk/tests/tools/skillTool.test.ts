@@ -187,37 +187,42 @@ describe("skillTool", () => {
     expect(result.error).toBe("Test error");
   });
 
-  it("should provide dynamic prompt with available skills", async () => {
-    // Mock some skills for the prompt
-    const mockSkills = [
-      {
-        name: "test-skill",
-        type: "personal" as const,
-        description: "Test skill",
-        skillPath: "/path/to/test",
-      },
-      {
-        name: "another-skill",
-        type: "project" as const,
-        description: "Another skill",
-        skillPath: "/path/to/another",
-      },
-    ];
+  it("keeps the description a constant, whatever the skill set is", () => {
+    const prompt = skillTool.prompt?.({
+      availableSkills: [
+        {
+          name: "test-skill",
+          type: "personal" as const,
+          description: "Test skill",
+          skillPath: "/path/to/test",
+        },
+        {
+          name: "another-skill",
+          type: "project" as const,
+          description: "Another skill",
+          skillPath: "/path/to/another",
+        },
+      ],
+    });
 
-    const prompt = skillTool.prompt?.({ availableSkills: mockSkills });
-
-    expect(prompt).toContain("Available skills:");
-    expect(prompt).toContain("test-skill");
-    expect(prompt).toContain("another-skill");
+    // The list lives in a meta message (`utils/skillListing.ts`): the skill set
+    // changes mid-session and this text sits in the cached `tools[]` prefix, so
+    // inlining it would drop that prefix on every refresh.
+    expect(prompt).not.toContain("test-skill");
+    expect(prompt).not.toContain("another-skill");
+    expect(prompt).toContain("listed in a system message");
     expect(prompt).toContain(
       "Do not invoke the same skill repeatedly if it has already been called with the same arguments.",
     );
   });
 
-  it("should handle empty skills list in prompt", async () => {
+  it("says the same thing when no skill is available", () => {
     const prompt = skillTool.prompt?.({ availableSkills: [] });
 
-    expect(prompt).toContain("No skills are currently available");
+    // "There are no skills" is a statement about the session, so it belongs to
+    // the listing message — a description cannot say both "none" and "here they
+    // are" without changing shape as the set changes.
+    expect(prompt).toBe(skillTool.prompt?.());
     expect(prompt).toContain(
       "Execute a skill within the main conversation. When users ask you to perform tasks, check if any of the available skills match. Skills provide specialized capabilities and domain knowledge.",
     );
