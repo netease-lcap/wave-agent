@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { Agent } from "@/agent.js";
+import { withoutAnnouncements } from "../../helpers/announcements.js";
 import * as aiService from "@/services/aiService.js";
 import { HookManager } from "@/managers/hookManager.js";
 import type { MessageBlock } from "@/types/messaging.js";
@@ -100,8 +101,10 @@ describe("Hook Non-Blocking Error Behavior (User Story 3)", () => {
       // Verify AI service was called since error was non-blocking
       expect(mockCallAgent).toHaveBeenCalled();
 
-      // Verify message handling: should have user message, error block, and assistant response
-      const messages = agent.messages;
+      // Verify message handling: should have user message, error block, and
+      // assistant response. The host's per-turn announcements (skill list, tool
+      // catalog) are stripped — they are meta traffic, not the hook contract.
+      const messages = withoutAnnouncements(agent.messages);
       expect(messages).toHaveLength(3);
 
       // First message: user prompt
@@ -188,8 +191,9 @@ describe("Hook Non-Blocking Error Behavior (User Story 3)", () => {
       // Verify AI service was called since errors were non-blocking
       expect(mockCallAgent).toHaveBeenCalled();
 
-      // Should have: user message, injected context, assistant message with error blocks, and assistant response
-      const messages = agent.messages;
+      // Should have: user message, injected context, assistant message with error
+      // blocks, and assistant response. Announcements are stripped.
+      const messages = withoutAnnouncements(agent.messages);
       expect(messages).toHaveLength(4);
 
       // User messages: original + injected context

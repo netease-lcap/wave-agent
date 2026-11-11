@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { Agent } from "@/agent.js";
+import { withoutAnnouncements } from "../../helpers/announcements.js";
 import * as aiService from "@/services/aiService.js";
 import { HookManager } from "@/managers/hookManager.js";
 import type { MessageBlock } from "@/types/messaging.js";
@@ -81,18 +82,17 @@ describe("Hook Success Behavior (User Story 1)", () => {
       // FR-016: System MUST validate UserPromptSubmit success by checking that
       // agent.sendMessage() results in agent.messages containing two user role messages,
       // where the second message contains the hook stdout content
-      const messages = agent.messages;
-      // user message + injected context + on-demand-tool notice + assistant
-      // response. `Exec` is on by default, so the host appends the notice as a
-      // meta message before the first request.
-      expect(messages).toHaveLength(4);
+      const messages = withoutAnnouncements(agent.messages);
+      // user message + injected context + assistant response. The host's own
+      // per-turn announcements (skill list, on-demand tool catalog) are stripped:
+      // they are meta traffic, not part of the hook contract pinned here.
+      expect(messages).toHaveLength(3);
 
       // Find user messages - should have original prompt and injected context.
       // The injected one carries `isMeta: true` (hook feedback is hidden from the
-      // UI, visible to the model), which is asserted below; the notice at index 2
-      // is meta as well.
+      // UI, visible to the model), which is asserted below.
       const userMessages = messages.filter((msg) => msg.role === "user");
-      expect(userMessages).toHaveLength(3);
+      expect(userMessages).toHaveLength(2);
 
       // First user message should be original prompt
       const firstUserBlock = userMessages[0].blocks?.[0];
@@ -145,7 +145,7 @@ describe("Hook Success Behavior (User Story 1)", () => {
       await agent.sendMessage("test prompt");
 
       // Verify no context injection
-      const messages = agent.messages;
+      const messages = withoutAnnouncements(agent.messages);
       const userMessages = messages.filter(
         (msg) => msg.role === "user" && msg.isMeta !== true,
       );
@@ -159,9 +159,9 @@ describe("Hook Success Behavior (User Story 1)", () => {
           : undefined,
       ).toBe("test prompt");
 
-      // Total messages should be user + notice + assistant: no injected context,
-      // and the on-demand-tool notice `Exec` appends by default.
-      expect(messages).toHaveLength(3);
+      // Total messages should be user + assistant: no injected context, and the
+      // host's per-turn announcements are stripped.
+      expect(messages).toHaveLength(2);
     });
   });
 
