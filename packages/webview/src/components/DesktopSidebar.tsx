@@ -511,6 +511,37 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
     setRenameTarget({ sessionId, title: session?.title || "新对话" });
   };
   const treeRef = useRef<HTMLDivElement | null>(null);
+
+  // 1111 评论（点 `.desktop-session-tree`）：「在对话内容过多触发滚动时，在创作集
+  // 下方这个模块顶部出现一条分割线，触发滚动时才出现」。
+  //
+  // ⇒ 这条线是「能滚才画」：内容不溢出（也就不可能滚动）时不画，画不画与滚到哪
+  // 无关。所以判据是 overscan 量而不是 scrollTop —— sessionListScrollable 只表示
+  // 「可滚动区确实比容器高」，滚动位置不参与（滚回顶部线仍在）。
+  //
+  // 三个触发源都要挂：容器尺寸变（窗口拉高/拉矮）、内容变（切分组展开收起、搜索
+  // 过滤、新会话增删）、系统缩放/字体变化。MutationObserver 只看 childList：会话标
+  // 题更新走文字节点变化，那是 characterData，加进来在流式重命名时会白跑，而标题
+  // 改文字不改高度、不影响可滚动性。
+  const [sessionListScrollable, setSessionListScrollable] = useState(false);
+  useEffect(() => {
+    const tree = treeRef.current;
+    if (!tree) return;
+    const sync = () =>
+      // 1px 容差：亚像素高度取整后 scrollHeight 可能比 clientHeight 大 1 却滚不动
+      setSessionListScrollable(tree.scrollHeight - tree.clientHeight > 1);
+    sync();
+    const resizeObserver = new ResizeObserver(sync);
+    resizeObserver.observe(tree);
+    const mutationObserver = new MutationObserver(sync);
+    mutationObserver.observe(tree, { childList: true, subtree: true });
+    window.addEventListener("resize", sync);
+    return () => {
+      resizeObserver.disconnect();
+      mutationObserver.disconnect();
+      window.removeEventListener("resize", sync);
+    };
+  }, []);
   // Modifier key label for the side-by-side hints, same platform branch as the
   // click handlers below (Cmd on macOS / Ctrl elsewhere).
   const modKeyLabel = isMacPlatform() ? "Cmd" : "Ctrl";
@@ -1027,10 +1058,16 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
           <span>创作集</span>
         </button>
       )}
+      {/* 1111 评论：会话列表真能滚时，在模块顶边画一条通栏分割线（判据见上面
+          sessionListScrollable 的注释）。线放在滚动容器之外，滚动内容被容器裁在
+          它下方，所以线不会被滚动的行盖住；通栏靠 margin 抵消侧栏的左右内衬。 */}
+      {sessionListScrollable && (
+        <div className="desktop-session-tree-divider" aria-hidden="true" />
+      )}
       <div
         ref={treeRef}
         onKeyDown={handleTreeKeyDown}
-        className="desktop-session-tree"
+        className={`desktop-session-tree${sessionListScrollable ? " is-scrollable" : ""}`}
         data-testid="desktop-session-tree"
       >
         {/* 标题段为空且正文也确认没有命中时才说「未找到」：正文命中的会话不在

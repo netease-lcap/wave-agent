@@ -311,6 +311,43 @@ html[data-theme="dark"] .desktop-sidebar-new-chat.is-active {
   scrollbar-gutter: stable;
 }
 
+/* 1111 评论（点 `.desktop-session-tree`）：「在对话内容过多触发滚动时，在创作集下方
+   这个模块顶部出现一条分割线，触发滚动时才出现」；随后补两条口径：「宽度和用户信息
+   上方分割线保持一致」→「这个分割线的宽度，做通栏的，左边也不要留边距」。
+   ⇒ 判据是「这个模块真能滚」（`.is-scrollable`，由 DesktopSidebar 的
+   scrollHeight/clientHeight 探测挂上，见 `.desktop-session-tree-divider`），不是
+   滚到哪 —— 会话少、不需要滚动时创作集与列表之间只有留白、没有线；一旦溢出，线
+   常驻在模块顶边，滚回顶部也不消失。
+   ⇒ 通栏 = 从侧栏左缘 0 拉到右缘（含 12px 内衬），所以线是侧栏列里的一个独立元素
+   而不是滚动容器的 border-top：容器从 `.desktop-sidebar` 的 12px 内衬之后才开始，
+   挂在容器上的边框永远留出左边那 12px。用 `margin: 0 -12px` 抵消内衬即通栏。
+   ⇒ 线高 1px 由这条元素占用，列表因此下移 1px ⇒ `.is-scrollable` 把滚动容器的
+   `padding-top` 从 4 收到 3 抵掉：行/组头相对窗口的 y 与改前逐值相同（实测首行
+   rect.top 改前改后都是 4px，可滚动行程 sh − ch 也都是 147）。
+   为什么不用伪元素/阴影：`inset box-shadow` 画在背景层、会被滚动内容盖住；
+   `sticky` 伪元素虽压在最上层，却会和滚到顶那行字的字头重叠、线糊在字形上。
+   本条元素在滚动容器**之外**，滚动内容被容器裁在它下方，线永远是干净的 1px。 */
+[data-host="desktop"] .desktop-session-tree-divider {
+  flex: 0 0 1px;
+  height: 1px;
+  /* 通栏：抵消 .desktop-sidebar 的左右 12px 内衬 */
+  margin: 0 -12px;
+  /* 与侧栏里另外两条 1px 长细边（侧栏右边框、账户卡上方那条）同档：深色 = panel-border
+     #34393C，浅色再覆盖到 #EBEEF5（那两条也是这么分两档写的，见 host-desktop.css
+     「侧栏右边框」「账户区分隔线」两处）。实测两档都逐值相同：
+     浅 rgb(235,238,245) / 深 rgb(52,57,60)。 */
+  background: var(--vscode-panel-border, rgba(128, 128, 128, 0.2));
+}
+
+[data-host="desktop"][data-theme="light"] .desktop-session-tree-divider {
+  background: #ebeef5;
+}
+
+[data-host="desktop"] .desktop-session-tree.is-scrollable {
+  /* 抵掉上面那条 1px 线占的高度，首行位置不动 */
+  padding-top: 3px;
+}
+
 .desktop-session-group-header {
   display: flex;
   align-items: center;
