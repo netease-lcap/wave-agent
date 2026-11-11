@@ -324,8 +324,11 @@ Usage:
       }
 
       // A successful read may pull in the memory files of its ancestor
-      // directories (see `collectNestedMemoryFiles`); only Read triggers this.
+      // directories (see `collectNestedMemoryFiles`) and the skills that live
+      // next to them (`<dir>/.wave/skills`); only Read triggers the former,
+      // while Read/Write/Edit all trigger the latter.
       context.messageManager?.triggerNestedMemory(actualFilePath);
+      context.messageManager?.triggerSkillDiscovery(actualFilePath);
 
       // Check if file is empty
       if (fileContent.length === 0) {

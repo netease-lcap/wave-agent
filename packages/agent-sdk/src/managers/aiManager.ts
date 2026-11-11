@@ -24,6 +24,11 @@ import {
 } from "../utils/taskReminder.js";
 import { getChangedFilesReminder } from "../utils/fileChangeReminder.js";
 import {
+  buildSkillListingAnnouncement,
+  collectSkillListingState,
+  DEFAULT_SKILL_LISTING_CHAR_BUDGET,
+} from "../utils/skillListing.js";
+import {
   buildAgentMentionReminder,
   parseAgentMentions,
 } from "../utils/agentMentions.js";
@@ -1118,6 +1123,89 @@ export class AIManager {
   }
 
   /**
+   * Announce the available-skill list as a meta message.
+   *
+   * The list is deliberately not in the `Skill` tool description: the skill set
+   * changes mid-session (watcher refresh, plugin reload, subtree discovery) and
+   * the description sits in the cached `tools[]` prefix, so inlining it would
+   * rewrite that prefix on every change. See `utils/skillListing.ts` for the
+   * marker/hash protocol that keeps this from re-announcing every turn.
+   */
+  private maybeAnnounceSkillListing(): void {
+    const skillManager = this.skillManager;
+    if (!skillManager) return;
+
+    let skills;
+    try {
+      skills = skillManager.getAvailableSkills();
+    } catch {
+      // Not initialized yet: an absent list must not read as "no skills".
+      return;
+    }
+
+    // Same visibility rules the inline description used to apply: a skill the
+    // model may not invoke is not listed, and a fork-context skill is not
+    // offered to a subagent (it would need a subagent of its own).
+    const eligible = skills.filter(
+      (skill) =>
+        !skill.disableModelInvocation &&
+        (!this.subagentType || skill.context !== "fork"),
+    );
+
+    // The listing is a directory, not content: ~2% of the window keeps it small
+    // against the conversation, with a floor so small-window models still get a
+    // usable list.
+    const charBudget = Math.max(
+      DEFAULT_SKILL_LISTING_CHAR_BUDGET,
+      Math.floor(this.getContextWindow() * 4 * 0.02),
+    );
+
+    const text = buildSkillListingAnnouncement(
+      collectSkillListingState(this.messageManager.getMessages()),
+      eligible,
+      charBudget,
+    );
+    if (!text) return;
+
+    this.messageManager.addUserMessage({
+      content: wrapInSystemReminder(text),
+      isMeta: true,
+    });
+  }
+
+  /**
+   * Resolve the subtree paths recorded by Read/Write/Edit into skill roots and
+   * load whatever they hold.
+   *
+   * Runs before the listing announcement so a skill discovered in this turn is
+   * in the list carried by this turn's request — otherwise it would take one
+   * extra round-trip to become visible, and a model that just walked into a
+   * subsystem should see that subsystem's skills immediately.
+   */
+  private async maybeDiscoverNestedSkills(): Promise<void> {
+    const skillManager = this.skillManager;
+    const consumeTriggers = this.messageManager.consumeSkillDiscoveryTriggers;
+    // Both ends of the trigger queue are optional from the turn loop's point of
+    // view: a manager double, or a host assembling its own message sink, has no
+    // queue to drain. Same rule as the other announcement channels — a feature
+    // that is not wired up must not take the turn down.
+    if (
+      !skillManager ||
+      typeof skillManager.discoverNestedSkills !== "function" ||
+      typeof consumeTriggers !== "function"
+    ) {
+      return;
+    }
+    const filePaths = consumeTriggers.call(this.messageManager);
+    if (filePaths.length === 0) return;
+    try {
+      await skillManager.discoverNestedSkills(filePaths);
+    } catch (error) {
+      logger?.warn("Failed to discover subtree skills:", error);
+    }
+  }
+
+  /**
    * Persist "the user named this subagent" as a meta message, next to the task /
    * changed-files reminders and for the same reason: it belongs in the cached
    * prefix, not in a payload rebuilt per model call.
@@ -2069,6 +2157,12 @@ ${question}`;
               isMeta: true,
             });
           }
+
+          // Subtree skills reached by this turn's file operations, then the
+          // skill list itself — both before the snapshot below, so a skill
+          // discovered now lands in the request that can already use it.
+          await this.maybeDiscoverNestedSkills();
+          this.maybeAnnounceSkillListing();
 
           // Announce MCP servers' own usage notes (persisted meta message) before
           // the snapshot below, so a server that connected mid-session explains

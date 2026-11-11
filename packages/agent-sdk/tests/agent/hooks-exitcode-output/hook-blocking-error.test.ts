@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { Agent } from "@/agent.js";
+import { withoutAnnouncements } from "../../helpers/announcements.js";
 import * as aiService from "@/services/aiService.js";
 import { HookManager } from "@/managers/hookManager.js";
 import type { MessageBlock } from "@/types/messaging.js";
@@ -264,8 +265,10 @@ describe("Hook Blocking Error Behavior (User Story 2)", () => {
       expect(mockCallAgent).toHaveBeenCalledTimes(2);
 
       // FR-021: System MUST validate Stop hook blocking behavior by checking that
-      // agent.messages contains a user role message with stderr content
-      const messages = agent.messages;
+      // agent.messages contains a user role message with stderr content. The
+      // host's per-turn announcements are stripped so the stderr message stays
+      // the second *conversation* message.
+      const messages = withoutAnnouncements(agent.messages);
       expect(messages.length).toBeGreaterThanOrEqual(2);
 
       // Should have user messages (original prompt + Stop hook error message)

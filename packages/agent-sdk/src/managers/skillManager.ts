@@ -18,6 +18,7 @@ import type {
   SkillInvocationContext,
 } from "../types/index.js";
 import { parseSkillFile, formatSkillError } from "../utils/skillParser.js";
+import { findNestedSkillRoots } from "../utils/nestedSkills.js";
 import { substituteDirectoryPlaceholders } from "../utils/directoryPlaceholders.js";
 import { substituteCommandParameters } from "../utils/commandArgumentParser.js";
 import {
@@ -87,6 +88,13 @@ export class SkillManager extends EventEmitter {
   private skillContent = new Map<string, Skill>();
   private pluginSkillMetadata = new Map<string, SkillMetadata>();
   private pluginSkillContent = new Map<string, Skill>();
+  /** Subtree skills, discovered from file operations (see `discoverNestedSkills`). */
+  private nestedSkillMetadata = new Map<string, SkillMetadata>();
+  private nestedSkillContent = new Map<string, Skill>();
+  /** Skill roots discovered from a subtree; watched like the eager roots. */
+  private nestedSkillRoots = new Set<string>();
+  /** Every `<dir>/<config>/skills` path probed this session — hits *and* misses. */
+  private probedSkillDirs = new Set<string>();
   private initialized = false;
   /** Serializes full rescans (initialize / file-watcher events / deleteSkill
    *  convergence). Overlapping scans over the shared caches must not interleave:
@@ -189,6 +197,17 @@ export class SkillManager extends EventEmitter {
       nextContent.set(name, skill);
     });
 
+    // Restore subtree and plugin skills. Neither can be rediscovered by a
+    // rescan: subtree roots come from file operations (recorded in
+    // `nestedSkillRoots`), plugin skills from a process that already handed them
+    // over. Re-seeding them keeps a watcher-driven refresh from dropping them.
+    this.nestedSkillMetadata.forEach((metadata, name) => {
+      nextMetadata.set(name, metadata);
+    });
+    this.nestedSkillContent.forEach((skill, name) => {
+      nextContent.set(name, skill);
+    });
+
     // Restore plugin skills
     this.pluginSkillMetadata.forEach((metadata, name) => {
       nextMetadata.set(name, metadata);
@@ -229,24 +248,36 @@ export class SkillManager extends EventEmitter {
       join(this.workdir, ".wave", "skills"),
       join(this.workdir, ".claude", "skills"),
       join(this.workdir, ".agents", "skills"),
+      ...Array.from(this.nestedSkillRoots),
     ];
 
     logger?.debug(`Setting up skill watcher for: ${pathsToWatch.join(", ")}`);
 
     for (const pathToWatch of pathsToWatch) {
-      await this.fileWatcher.watchFile(pathToWatch, (event) => {
-        if (
-          event.path.endsWith("SKILL.md") ||
-          event.type === "delete" ||
-          event.type === "create"
-        ) {
-          logger?.debug(
-            `Skill change detected (${event.type}): ${event.path}. Scheduling skill refresh...`,
-          );
-          this.scheduleRefresh();
-        }
-      });
+      await this.watchRoot(pathToWatch);
     }
+  }
+
+  /**
+   * Watch one skill root for changes. `FileWatcherService.watchFile` adds a
+   * callback to an existing watcher instead of starting a second one, so a
+   * subtree root discovered mid-session can call this without disturbing the
+   * eager roots.
+   */
+  private async watchRoot(root: string): Promise<void> {
+    if (!this.fileWatcher) return;
+    await this.fileWatcher.watchFile(root, (event) => {
+      if (
+        event.path.endsWith("SKILL.md") ||
+        event.type === "delete" ||
+        event.type === "create"
+      ) {
+        logger?.debug(
+          `Skill change detected (${event.type}): ${event.path}. Scheduling skill refresh...`,
+        );
+        this.scheduleRefresh();
+      }
+    });
   }
 
   /**
@@ -263,6 +294,111 @@ export class SkillManager extends EventEmitter {
         logger?.error("Failed to refresh skills after change:", error);
       });
     }, SkillManager.RELOAD_DEBOUNCE_MS);
+  }
+
+  /**
+   * Load skills from the subtree directories the agent's file operations have
+   * reached (see `utils/nestedSkills.ts`), and merge them into the visible set.
+   *
+   * Startup discovery scans one level deep by design (see
+   * `discoverSkillCollection`); this is how a monorepo subsystem's skills become
+   * visible without walking the whole tree up front. Merge order gives the more
+   * specific context the last word: a subtree skill overrides a same-named
+   * project/personal skill, while builtin and plugin skills keep their names — a
+   * directory on disk must not quietly shadow a product skill, and plugin names
+   * are namespaced anyway.
+   *
+   * Serialized with the full rescans (`refreshChain`): both write the same
+   * caches, and a refresh swaps in a snapshot built from its own scratch map.
+   *
+   * @param filePaths Absolute paths the agent just read, wrote or edited.
+   * @returns Whether the visible skill set changed.
+   */
+  public async discoverNestedSkills(filePaths: string[]): Promise<boolean> {
+    if (!this.initialized || filePaths.length === 0) return false;
+    const run = this.refreshChain.then(() =>
+      this.performNestedDiscovery(filePaths),
+    );
+    // Keep the chain's own errors from poisoning later rescans; the caller still
+    // sees this run's rejection.
+    this.refreshChain = run.then(
+      () => {},
+      () => {},
+    );
+    return run;
+  }
+
+  private async performNestedDiscovery(filePaths: string[]): Promise<boolean> {
+    const roots: string[] = [];
+    for (const filePath of filePaths) {
+      try {
+        roots.push(
+          ...(await findNestedSkillRoots(
+            filePath,
+            this.workdir,
+            this.probedSkillDirs,
+          )),
+        );
+      } catch (error) {
+        logger?.warn(
+          `Failed to probe subtree skills above ${filePath}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
+    const newRoots = roots.filter((root) => !this.nestedSkillRoots.has(root));
+    if (newRoots.length === 0) return false;
+
+    let changed = false;
+    for (const root of newRoots) {
+      this.nestedSkillRoots.add(root);
+      const collection: SkillCollection = {
+        type: "project",
+        basePath: root,
+        skills: new Map(),
+        errors: [],
+      };
+      await this.scanSkillPath(root, collection);
+      for (const error of collection.errors) {
+        logger?.warn(`Skill error in ${error.skillPath}: ${error.message}`);
+      }
+      for (const [name, metadata] of collection.skills) {
+        const existing = this.skillMetadata.get(name);
+        if (existing?.type === "builtin" || existing?.pluginName) {
+          logger?.debug(
+            `Subtree skill '${name}' from ${root} ignored: ${existing.pluginName ? `plugin '${existing.pluginName}'` : "a builtin skill"} already owns that name`,
+          );
+          continue;
+        }
+        const skill = this.skillContent.get(name);
+        if (!skill) continue;
+        this.nestedSkillMetadata.set(name, metadata);
+        this.nestedSkillContent.set(name, skill);
+        this.skillMetadata.set(name, metadata);
+        changed = true;
+      }
+    }
+
+    if (changed) {
+      this.emit("refreshed", Array.from(this.skillMetadata.values()));
+    }
+
+    // Watch even when nothing was added: an empty root can gain skills later,
+    // and the watcher is what surfaces that without waiting for another file
+    // operation in the subtree.
+    for (const root of newRoots) {
+      try {
+        await this.watchRoot(root);
+      } catch (error) {
+        logger?.warn(
+          `Failed to watch subtree skill root ${root}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
+
+    logger?.debug(
+      `Discovered ${newRoots.length} subtree skill root(s) (${changed ? "skill set changed" : "no new skills"}): ${newRoots.join(", ")}`,
+    );
+    return changed;
   }
 
   /**

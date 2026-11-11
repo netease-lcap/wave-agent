@@ -1,5 +1,4 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { SkillManager } from "../../src/managers/skillManager.js";
 import { skillTool } from "../../src/tools/skillTool.js";
 import { SubagentManager } from "../../src/managers/subagentManager.js";
 import { agentTool } from "../../src/tools/agentTool.js";
@@ -13,33 +12,26 @@ describe("Dynamic Tool Definitions", () => {
   beforeEach(() => {});
 
   describe("Skill Tool", () => {
-    it("should dynamically reflect skills added after tool creation", async () => {
-      const skillManager = new SkillManager(container, {
-        workdir: "/test/workdir",
-      });
-
-      // Mock initialization to avoid fs calls
-      (skillManager as unknown as { initialized: boolean }).initialized = true;
-
+    it("keeps its description out of the changing skill set", () => {
       const tool = skillTool;
 
-      // Initially no skills
+      // The skill list is deliberately *not* dynamic here: it is announced as a
+      // meta message per turn (`utils/skillListing.ts`), because this text lives
+      // in the cached `tools[]` prefix and a refresh would drop that prefix.
       const promptNoSkills = tool.prompt?.({ availableSkills: [] });
-      expect(promptNoSkills).toContain("No skills are currently available");
+      expect(promptNoSkills).not.toContain("test-skill");
 
-      // Add a skill
-      const mockSkills = [
-        {
-          name: "test-skill",
-          type: "personal" as const,
-          description: "Test skill",
-          skillPath: "/path/to/test",
-        },
-      ];
-
-      // Tool prompt should now reflect the new skill
-      const promptWithSkills = tool.prompt?.({ availableSkills: mockSkills });
-      expect(promptWithSkills).toContain("test-skill");
+      const promptWithSkills = tool.prompt?.({
+        availableSkills: [
+          {
+            name: "test-skill",
+            type: "personal" as const,
+            description: "Test skill",
+            skillPath: "/path/to/test",
+          },
+        ],
+      });
+      expect(promptWithSkills).toBe(promptNoSkills);
     });
   });
 

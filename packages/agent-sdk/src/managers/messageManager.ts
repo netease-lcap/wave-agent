@@ -168,6 +168,7 @@ export class MessageManager {
   private loadedRuleIds: Set<string> = new Set(); // IDs of conditional rules already injected as meta messages
   private pendingNestedMemoryTriggers: Set<string> = new Set(); // Absolute paths read since the last nested-memory scan
   private loadedNestedMemoryPaths: Set<string> = new Set(); // Nested memory files already injected (session-scoped, never evicted)
+  private pendingSkillDiscoveryTriggers: Set<string> = new Set(); // Absolute paths operated on since the last subtree-skill scan
   private recentFileReads: Map<string, { content: string; timestamp: number }> =
     new Map(); // Track file read contents
   private invokedSkills: Map<string, InvokedSkillRecord> = new Map(); // Track invoked skills
@@ -405,6 +406,36 @@ export class MessageManager {
     this.pendingNestedMemoryTriggers.add(
       isAbsolute(filePath) ? filePath : resolve(this.workdir, filePath),
     );
+  }
+
+  /**
+   * Record an absolute path the agent just read, wrote or edited, whose ancestor
+   * directories may hold subtree skills (`<dir>/.wave/skills`, and its `.claude`
+   * / `.agents` siblings).
+   *
+   * Separate from `triggerFileRead` because the consumers differ: rule matching
+   * wants every path including `@`-mentions, while the subtree skill walk wants
+   * only paths the agent actually operated on, and needs the ancestor chain
+   * (the same split `triggerNestedMemory` makes).
+   */
+  public triggerSkillDiscovery(filePath: string): void {
+    this.pendingSkillDiscoveryTriggers.add(
+      isAbsolute(filePath) ? filePath : resolve(this.workdir, filePath),
+    );
+  }
+
+  /**
+   * Take the paths recorded since the last call and clear the set.
+   *
+   * Resolving them into skill roots (`findNestedSkillRoots`) stays with the
+   * caller: that walk is session-scoped filesystem state and belongs next to the
+   * skill manager, not in the message manager.
+   */
+  public consumeSkillDiscoveryTriggers(): string[] {
+    if (this.pendingSkillDiscoveryTriggers.size === 0) return [];
+    const filePaths = Array.from(this.pendingSkillDiscoveryTriggers);
+    this.pendingSkillDiscoveryTriggers.clear();
+    return filePaths;
   }
 
   /**

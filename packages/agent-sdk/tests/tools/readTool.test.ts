@@ -901,6 +901,7 @@ describe("readTool", () => {
       return {
         triggerFileRead: vi.fn(),
         triggerNestedMemory,
+        triggerSkillDiscovery: vi.fn(),
       } as unknown as MessageManager;
     }
 
@@ -947,6 +948,7 @@ describe("readTool", () => {
           messageManager: {
             triggerFileRead,
             triggerNestedMemory,
+            triggerSkillDiscovery: vi.fn(),
           } as unknown as MessageManager,
         },
       );
@@ -1009,6 +1011,89 @@ describe("readTool", () => {
 
       expect(second.metadata?.type).toBe("file_unchanged");
       expect(triggerNestedMemory).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("Subtree skill trigger", () => {
+    function buildMessageManager(
+      triggerSkillDiscovery: ReturnType<typeof vi.fn>,
+    ) {
+      return {
+        triggerFileRead: vi.fn(),
+        triggerNestedMemory: vi.fn(),
+        triggerSkillDiscovery,
+      } as unknown as MessageManager;
+    }
+
+    it("records the file it just read, so the directories above it get probed", async () => {
+      const triggerSkillDiscovery = vi.fn();
+
+      const result = await readTool.execute(
+        { file_path: "subdir/nested.txt" },
+        {
+          ...testContext,
+          messageManager: buildMessageManager(triggerSkillDiscovery),
+        },
+      );
+
+      // A failing read must not look like a successful one just because the
+      // trigger is fire-and-forget.
+      expect(result.success).toBe(true);
+      // Resolved, like the read itself: the walk needs absolute ancestors.
+      expect(triggerSkillDiscovery).toHaveBeenCalledWith(
+        "/test/workdir/subdir/nested.txt",
+      );
+    });
+
+    it("does not record a read that failed", async () => {
+      const triggerSkillDiscovery = vi.fn();
+
+      await readTool.execute(
+        { file_path: "/test/workdir/missing.txt" },
+        {
+          ...testContext,
+          messageManager: buildMessageManager(triggerSkillDiscovery),
+        },
+      );
+
+      expect(triggerSkillDiscovery).not.toHaveBeenCalled();
+    });
+
+    it("does not record a deduplicated read", async () => {
+      const triggerSkillDiscovery = vi.fn();
+      const readFileState = new Map<
+        string,
+        {
+          mtime: number;
+          hash: string;
+          source: "read";
+          offset?: number;
+          limit?: number;
+        }
+      >();
+      const filePath = "/test/workdir/small.txt";
+
+      await readTool.execute(
+        { file_path: filePath },
+        {
+          ...testContext,
+          readFileState,
+          messageManager: buildMessageManager(triggerSkillDiscovery),
+        },
+      );
+      triggerSkillDiscovery.mockClear();
+
+      await readTool.execute(
+        { file_path: filePath },
+        {
+          ...testContext,
+          readFileState,
+          messageManager: buildMessageManager(triggerSkillDiscovery),
+        },
+      );
+
+      // Nothing new reached that directory, so nothing new can be discovered.
+      expect(triggerSkillDiscovery).not.toHaveBeenCalled();
     });
   });
 });

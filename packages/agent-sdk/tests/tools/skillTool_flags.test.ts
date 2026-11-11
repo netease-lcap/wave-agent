@@ -18,7 +18,7 @@ describe("skillTool flags", () => {
   });
 
   describe("prompt filtering", () => {
-    it("should filter out skills with disableModelInvocation: true", () => {
+    it("names no skill at all, whatever its invocation flag says", () => {
       const mockSkills: SkillMetadata[] = [
         {
           name: "visible-skill",
@@ -38,25 +38,12 @@ describe("skillTool flags", () => {
 
       const prompt = skillTool.prompt?.({ availableSkills: mockSkills });
 
-      expect(prompt).toContain("visible-skill");
+      // The description is a constant; the flag decides what the per-turn listing
+      // mentions instead (`aiManager.skillListing.test.ts`, "leaves out skills
+      // the model may not invoke").
+      expect(prompt).not.toContain("visible-skill");
       expect(prompt).not.toContain("hidden-skill");
-    });
-
-    it("should show no skills if all are disabled for model invocation", () => {
-      const mockSkills: SkillMetadata[] = [
-        {
-          name: "hidden-skill",
-          type: "personal",
-          description: "Hidden skill",
-          skillPath: "/path/2",
-          disableModelInvocation: true,
-        },
-      ];
-
-      const prompt = skillTool.prompt?.({ availableSkills: mockSkills });
-
-      expect(prompt).toContain("No skills are currently available");
-      expect(prompt).not.toContain("hidden-skill");
+      expect(prompt).toContain("listed in a system message");
     });
   });
 
