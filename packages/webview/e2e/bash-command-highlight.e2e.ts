@@ -47,9 +47,6 @@ async function seed(page: import("@playwright/test").Page) {
     permissionMode: "default",
   });
   await injector.updateMessages(messages);
-  // 已结束的块默认收起，命令正文要点开折叠行才在 DOM 里（spec
-  // ui/message-rendering-system.md「Bash 工具块默认收起」）。
-  await page.click(".bash-tool-header");
   await page.waitForSelector(".bash-command .hljs-built_in");
 }
 

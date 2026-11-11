@@ -58,7 +58,6 @@ import type {
 import { DiffViewer } from "./DiffViewer";
 import { MermaidRenderer } from "./MermaidRenderer";
 import { ReasoningBlockView } from "./ReasoningBlockView";
-import { BashToolView } from "./BashToolView";
 import { CompactBlockView } from "./CompactBlockView";
 import { WriteToolPreview } from "./WriteToolPreview";
 import { ArtifactCard } from "./ArtifactCard";
@@ -1402,23 +1401,16 @@ export const Message: React.FC<MessageProps> = React.memo(
         </div>
       ) : null;
 
-      // Bash 工具：命令 + 输出默认收起，只留一行（specs/ui/message-rendering-
-      // system.md「Bash 工具块默认收起」）。折叠状态得逐块持有，所以这里交给
-      // 子组件，`renderToolBlock` 本身在 map 里、不能放 hook。
+      // For Bash tools, add the bash-specific content below the header
       if (toolBlock.name === BASH_TOOL_NAME) {
         const bashContent = renderBashIO(toolBlock);
         if (bashContent || errorContent) {
           return (
-            <BashToolView
-              key={index}
-              block={toolBlock}
-              summary={compactInfo}
-              body={bashContent}
-              error={errorContent}
-              // `!` bash 模式落在用户消息里（parameters 是裸命令串）：命令是用
-              // 户自己敲的，收起只会多一次点击（spec 场景 5）。
-              collapsible={message.role !== "user"}
-            />
+            <div key={index} className="tool-container">
+              {toolHeader}
+              {bashContent}
+              {errorContent}
+            </div>
           );
         }
       }
@@ -2094,9 +2086,7 @@ export const Message: React.FC<MessageProps> = React.memo(
                 // 官方矢量（设计师 1110 第 19 轮：「这个图标用 跳转.svg」）：监视器 +
                 // 右向箭头，与面板「后台任务」那颗同一套外形。第 23 轮同样放开到三端
                 // （「只换图标、盒不动」）。
-                iconSvg={
-                  <JumpToBackgroundIcon className="message-action-icon" />
-                }
+                iconSvg={<JumpToBackgroundIcon className="message-action-icon" />}
                 label="把本轮转到后台"
                 testId="background-current-task"
                 onClick={onBackgroundCurrentTask!}
