@@ -265,6 +265,33 @@ describe("AIManager mid-turn notification injection (background-task-notificatio
     expect(queue.hasNotifications()).toBe(false);
   });
 
+  it("leaves the queue alone on the turn's first request", async () => {
+    const { aiManager, queue, messageManager } = buildHarness();
+
+    // A notification left over from an earlier aborted turn: it must not be
+    // folded into the FIRST request of the next turn — draining it there is
+    // what would lose it entirely if that turn is aborted before its request
+    // lands, and it is the turn-end path that turns a pending notification
+    // into a turn of its own.
+    queue.enqueueNotification(NOTIFICATION_XML);
+
+    const requests: Array<Array<{ role: string; content: unknown }>> = [];
+    callAgentMock.mockImplementation(
+      async (options: { messages: (typeof requests)[0] }) => {
+        requests.push(options.messages);
+        return textResponse();
+      },
+    );
+
+    await aiManager.sendAIMessage();
+
+    expect(JSON.stringify(requests[0])).not.toContain("bg-1");
+    // Delivered by the turn-end drain as its own follow-up turn, exactly once.
+    expect(JSON.stringify(requests[1])).toContain("<task-id>bg-1</task-id>");
+    expect(messageManager.addNotificationMessage).toHaveBeenCalledTimes(1);
+    expect(queue.hasNotifications()).toBe(false);
+  });
+
   it("does not inject while the model ends the turn — the turn-end path owns it", async () => {
     const { aiManager, queue, messageManager } = buildHarness();
 

@@ -2221,12 +2221,24 @@ ${question}`;
           // a task that finished while this turn's tools were running lands in
           // the request about to be sent, so the model can act on it inside the
           // same turn instead of waiting for the turn to end (spec:
-          // core/background-task-notification「注入时机」). Reaching this point
-          // already implies the previous hop produced tool calls, so a
-          // notification can never extend a turn on its own. Abort is checked
-          // first — injecting into an aborted turn would resurrect it, and
-          // leaving the notification queued keeps it for the next turn.
+          // core/background-task-notification「注入时机」).
+          //
+          // `turnDepth > turnOffset` is the whole gate: it says this turn has
+          // already made at least one request, i.e. the hop we are in was
+          // entered from an in-turn continuation (`continue inner` after tool
+          // calls / a truncation retry), so the notification rides a request
+          // that was going out anyway and can never extend the turn on its own.
+          // On a turn's FIRST request the queue must be left alone: there the
+          // notification would be the thing triggering work, which is the
+          // turn-end path's job — and draining it early would lose it
+          // altogether when that first turn is aborted before its request even
+          // lands (agent.abort.test.ts pins this).
+          //
+          // Abort is checked too: injecting into an aborted turn would
+          // resurrect it, and leaving the notification queued keeps it for the
+          // next turn.
           if (
+            turnDepth > turnOffset &&
             !abortController.signal.aborted &&
             !toolAbortController.signal.aborted
           ) {
