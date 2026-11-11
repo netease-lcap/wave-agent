@@ -723,6 +723,56 @@ export class ConfigurationService {
   }
 
   /**
+   * Picker order for model names: codepoint compare, case-insensitive. The one
+   * ordering rule shared by the catalog fallback below and
+   * {@link getConfiguredModels}, so "the list's first entry" cannot mean two
+   * different models depending on who asks.
+   */
+  private compareModelNames(a: string, b: string): number {
+    const an = a.toLowerCase();
+    const bn = b.toLowerCase();
+    return an < bn ? -1 : an > bn ? 1 : 0;
+  }
+
+  /** Keys of `models`, already in picker order. */
+  private sortedCatalogNames(): string[] {
+    return Object.keys(this.liveConfiguration?.models ?? {}).sort((a, b) =>
+      this.compareModelNames(a, b),
+    );
+  }
+
+  /**
+   * The agent model name: override > options > merged configuration (`model`
+   * scalar, possibly remote-merged) > env (`WAVE_MODEL` from the settings
+   * snapshot > OS), falling back to the catalog's first entry when none of
+   * them names one.
+   *
+   * The fallback is what makes a deployment that only ships a model list
+   * usable. The picker already painted that first entry as its default (the
+   * page falls back to `models[0]` when `currentModel` is missing), so without
+   * it the UI showed a model name and the first turn died with "requires
+   * model" (spec core/agent-config.md「没有指定模型时回退到清单第一项」). It
+   * only resolves a *name* — nothing is persisted, so the user's first real
+   * pick still wins (spec ui/model-selection.md「生效范围与持久化」).
+   *
+   * Every caller that reads per-model configuration (`models[<name>]`, e.g.
+   * {@link resolveContextWindow}) has to resolve the name through here too:
+   * looking it up under the empty chain would silently drop the fallback
+   * model's contextWindow / capabilities / disableThinkingOptions.
+   */
+  private resolveAgentModelName(model?: string): string | undefined {
+    const explicit =
+      model ||
+      this.options.model ||
+      this.liveConfiguration?.model ||
+      (this.liveEnvSnapshot.WAVE_MODEL ?? process.env.WAVE_MODEL);
+    // Empty catalog means there is nothing to fall back to: the missing-model
+    // error stays (this covers "some models are configured, none is chosen",
+    // not "no model exists at all").
+    return explicit || this.sortedCatalogNames()[0];
+  }
+
+  /**
    * Resolves model configuration with fallbacks
    * Resolution priority: override > options > env (from settings.json) > process.env > default
    * @param model - Agent model override (optional)
@@ -737,14 +787,12 @@ export class ConfigurationService {
     permissionMode?: PermissionMode,
     visionModel?: string,
   ): ModelConfig {
-    // Resolve agent model: override > options > currentConfiguration (settings.json model, possibly remote-merged) > process.env
+    // Resolve agent model: override > options > currentConfiguration (settings.json model, possibly remote-merged) > process.env,
+    // then the `models` catalog's first entry when none of them names one
+    // (`resolveAgentModelName`).
     // Priority: user's explicit model field > admin's env.WAVE_MODEL default.
     // If admin wants hard enforcement, they set the `model` scalar field (overwrites local in mergeRemoteSettings).
-    const resolvedAgentModel =
-      model ||
-      this.options.model ||
-      this.liveConfiguration?.model ||
-      (this.liveEnvSnapshot.WAVE_MODEL ?? process.env.WAVE_MODEL);
+    const resolvedAgentModel = this.resolveAgentModelName(model);
 
     // Resolve fast model: override > options > settings.json `fastModel` > env
     // (WAVE_FAST_MODEL from settings.json env / machine env). The settings.json
@@ -888,13 +936,10 @@ export class ConfigurationService {
       return this.options.contextWindow;
     }
 
-    // Per-model config (models[X].contextWindow). Resolve the model with the
-    // same chain as resolveModelConfig: caller > options > currentConfiguration > env.
-    const resolvedModel =
-      model ||
-      this.options.model ||
-      this.liveConfiguration?.model ||
-      (this.liveEnvSnapshot.WAVE_MODEL ?? process.env.WAVE_MODEL);
+    // Per-model config (models[X].contextWindow). Resolve the model through the
+    // same chain as resolveModelConfig — including its catalog fallback, or the
+    // fallback model's own ceiling would be looked up under an empty name.
+    const resolvedModel = this.resolveAgentModelName(model);
     const modelConfig =
       resolvedModel && this.liveConfiguration?.models?.[resolvedModel];
     if (modelConfig && modelConfig.contextWindow !== undefined) {
@@ -1141,11 +1186,12 @@ export class ConfigurationService {
       models.add(name);
     };
 
-    // Add current model from options or environment (settings snapshot > OS env)
-    addSelectable(
-      this.options.model ||
-        (this.liveEnvSnapshot.WAVE_MODEL ?? process.env.WAVE_MODEL),
-    );
+    // Add current model from options or environment (settings snapshot > OS env).
+    // Resolved through the shared chain so the list's default entry and the
+    // model actually used stay the same thing (spec core/agent-config.md
+    // 「没有指定模型时回退到清单第一项」场景 3). A fallback name is always a
+    // catalog key, so `addSelectable` cannot introduce a duplicate row.
+    addSelectable(this.resolveAgentModelName());
 
     // Persisted model from settings (includes remote-merged)
     addSelectable(this.liveConfiguration?.model);
@@ -1160,13 +1206,13 @@ export class ConfigurationService {
     // 后第一行变化，扫视位置不稳定，「找模型」反而更难。当前项由选择器的勾选 /
     // `(current)` 标记与打开时的初始焦点表达。用 codepoint 比较而非 localeCompare，
     // 避免顺序随 ICU / locale 漂移；sort 是稳定排序，lowercase 相同时保持插入序。
+    // 比较规则只有 `compareModelNames` 一处（catalog 兜底也读它）——两边各写一份
+    // 会让「清单第一项」有两个答案。
     // webview 底栏选择器、CLI 的 `/model` 与各宿主设置页读的都是这份清单，一处
     // 排序即全部一致。
-    const sorted = Array.from(models).sort((a, b) => {
-      const an = a.toLowerCase();
-      const bn = b.toLowerCase();
-      return an < bn ? -1 : an > bn ? 1 : 0;
-    });
+    const sorted = Array.from(models).sort((a, b) =>
+      this.compareModelNames(a, b),
+    );
 
     return sorted.map((name) => ({
       name,

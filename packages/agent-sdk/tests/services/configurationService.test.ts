@@ -722,6 +722,114 @@ describe("ConfigurationService", () => {
       expect(resolved.options?.temperature).toBe(0.5);
       expect(resolved.options?.reasoning_effort).toBe("high");
     });
+
+    // spec core/agent-config.md「没有指定模型时回退到清单第一项」.
+    // A deployment that only ships a `models` catalog names no model anywhere;
+    // the picker still paints the list's first entry, so the agent has to use
+    // that same entry instead of failing the first turn.
+    describe("catalog fallback", () => {
+      const withoutEnvModel = async (run: () => Promise<void>) => {
+        const originalModel = process.env.WAVE_MODEL;
+        delete process.env.WAVE_MODEL;
+        try {
+          await run();
+        } finally {
+          if (originalModel === undefined) delete process.env.WAVE_MODEL;
+          else process.env.WAVE_MODEL = originalModel;
+        }
+      };
+
+      it("falls back to the catalog's first entry when nothing names a model", async () => {
+        await withoutEnvModel(async () => {
+          mockExistsSync.mockReturnValue(true);
+          mockReadFileSync.mockReturnValue(
+            JSON.stringify({
+              models: {
+                "kimi-k3": { options: { temperature: 0.2 } },
+                "deepseek-flash": { options: { temperature: 0.9 } },
+                "glm-5": {},
+              },
+            }),
+          );
+          await configService.loadMergedConfiguration(tempDir);
+
+          const resolved = configService.resolveModelConfig();
+          // Picker order is codepoint, case-insensitive:
+          // deepseek-flash < glm-5 < kimi-k3.
+          expect(resolved.model).toBe("deepseek-flash");
+          // The fallback name must reach the per-model block too, otherwise
+          // the model runs without its declared options.
+          expect(resolved.options?.temperature).toBe(0.9);
+        });
+      });
+
+      it("keeps an explicit model ahead of the catalog fallback", async () => {
+        await withoutEnvModel(async () => {
+          mockExistsSync.mockReturnValue(true);
+          mockReadFileSync.mockReturnValue(
+            JSON.stringify({
+              model: "glm-5",
+              models: { "deepseek-flash": {}, "glm-5": {} },
+            }),
+          );
+          await configService.loadMergedConfiguration(tempDir);
+
+          expect(configService.resolveModelConfig().model).toBe("glm-5");
+        });
+      });
+
+      it("keeps the missing-model error when the catalog is empty", async () => {
+        await withoutEnvModel(async () => {
+          mockExistsSync.mockReturnValue(true);
+          mockReadFileSync.mockReturnValue(
+            JSON.stringify({ fastModel: "some-fast" }),
+          );
+          await configService.loadMergedConfiguration(tempDir);
+
+          // Nothing to fall back to: the error path stays (spec scenario 5).
+          expect(configService.resolveModelConfig().model).toBeUndefined();
+        });
+      });
+
+      it("applies the fallback model's own context window", async () => {
+        await withoutEnvModel(async () => {
+          mockExistsSync.mockReturnValue(true);
+          mockReadFileSync.mockReturnValue(
+            JSON.stringify({
+              models: {
+                "deepseek-flash": { contextWindow: 64000 },
+                "kimi-k3": { contextWindow: 200000 },
+              },
+            }),
+          );
+          await configService.loadMergedConfiguration(tempDir);
+
+          // The per-model lookup resolves the name through the same chain;
+          // reading it under an empty name would fall through to the default
+          // window and skew the usage percentage (spec scenario 4).
+          expect(configService.resolveContextWindow()).toBe(64000);
+        });
+      });
+
+      it("is not persisted to settings", async () => {
+        await withoutEnvModel(async () => {
+          mockExistsSync.mockReturnValue(true);
+          mockReadFileSync.mockReturnValue(
+            JSON.stringify({ models: { "deepseek-flash": {} } }),
+          );
+          await configService.loadMergedConfiguration(tempDir);
+
+          expect(configService.resolveModelConfig().model).toBe(
+            "deepseek-flash",
+          );
+          // Reading the fallback must not write a `model` key: the user never
+          // picked one (spec scenario 2).
+          expect(
+            configService.getCurrentConfiguration()?.model,
+          ).toBeUndefined();
+        });
+      });
+    });
   });
 
   describe("resolveModelConfig — fastModel scalar", () => {
