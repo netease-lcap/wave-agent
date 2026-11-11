@@ -17,7 +17,7 @@ Claude AI 的实现把消息文本中的文件路径识别限定在行内代码�
 - **行内代码通道**：反引号整串。识别要求 ≥1 斜杠 + 点扩展名（`/etc/nginx/nginx.conf`、`/home/u/repo/src/foo.ts`、`C:\proj\x.ts` 等），支持 `:N`（单行）与 `:N-M`（行区间）行号后缀。
 - **正文纯文本通道**：仅识别绝对路径形式（POSIX `/…`、`~/…`、Windows `C:\…`、`file:///…`），且要求点扩展名（`/home/u/repo/src/index.ts` 可点击，`/etc/hosts`、`/var/log/syslog` 这类无扩展名路径不识别）。
 - **围栏代码块通道**：代码块内按空白分词，逐 token 采用行内代码通道的规则（≥1 斜杠 + 点扩展名、支持 `:N` / `:N-M`），token 首尾的引号与标点不进入路径。mermaid 代码块（渲染为图表）不在其中。
-- **bash 输出通道**：bash 工具块的输出区（`.bash-command-output`）是终端风格纯文本，不走 markdown；其中按空白分词，逐 token 采用与围栏代码块相同的规则。该区域同时保留既有的裸 URL 链接化（两者互不干扰，见 [markdown 链接](markdown-links.md)）。
+- **bash 输出通道**：bash 工具块的输出区（`.bash-command-output`）是终端风格纯文本，不走 markdown；其中按空白分词，逐 token 采用与围栏代码块相同的规则。该区域同时保留既有的裸 URL 链接化（两者互不干扰，见 [markdown 链接](markdown-links.md)）。输出区随 Bash 工具块一起折叠：已结束且成功的块默认收起，规则见 [消息渲染](message-rendering-system.md)「Bash 工具块默认收起」，展开后上述规则照旧。
 
 **相对路径（`src/main.ts`、`./x.ts`、`../x.ts`）四条通道一律不识别**，保持普通文本/代码原文，与 Claude AI `barePath`（要求 `/`、`~/`、盘符开头）一致；裸文件名（`Report.md`、`index.ts`）同样不识别。
 

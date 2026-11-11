@@ -22,6 +22,7 @@ import React from "react";
 import {
   act,
   createMockVscode,
+  expandBashRow,
   fireInput,
   renderChatApp,
   screen,
@@ -303,6 +304,9 @@ describe("file paths on the remote-control Web page", () => {
     const { container } = showMessage(
       bashToolMessage(`wrote ${ABSOLUTE_PATH}\n`),
     );
+    // 已结束的块默认收起，输出要点开折叠行才在 DOM 里（spec
+    // ui/message-rendering-system.md「Bash 工具块默认收起」）。
+    expandBashRow(container);
 
     const output = container.querySelector(".bash-command-output");
     expect(output).not.toBeNull();
