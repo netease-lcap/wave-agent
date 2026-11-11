@@ -745,6 +745,7 @@ vi.mock("../src/main/wslHosts", async () => {
 
 import { DesktopHost } from "../src/main/desktopHost";
 import { ConfigStore } from "../src/main/configStore";
+import { setSshConnections } from "../src/main/sshHosts";
 import { HOST_CHANNEL } from "../src/main/channels";
 import { shell, dialog, nativeTheme, powerMonitor } from "electron";
 import { autoUpdater } from "electron-updater";
@@ -984,6 +985,9 @@ beforeEach(() => {
   htmlPreviewMock.acquire.mockClear();
   htmlPreviewMock.release.mockClear();
   htmlPreviewMock.dispose.mockClear();
+  // sshHosts 的连接库是模块级注册表：上一个用例装进去的条目不能漏到下一条
+  // （每条用例的 DesktopHost 构造时会按自己的 store 重新装一次）。
+  setSshConnections([]);
   vi.clearAllMocks();
   for (const key of Object.keys(auListeners)) delete auListeners[key];
   nativeTheme.__reset();
@@ -1030,6 +1034,8 @@ describe("workdir lifecycle", () => {
       // after the probe lands, which never happens inside a unit test.
       hostOptions: [{ id: "local", label: "本地", kind: "local" }],
       recentWorkdirs: ["/work/b", "/work/a"],
+      // 连接库条目随之一起下发（「添加主机…」的编辑弹窗要回填每个字段）。
+      sshConnections: [],
     });
   });
 
@@ -3320,13 +3326,15 @@ describe("update checks with a configured serverUrl", () => {
   });
 
   it("counts only local running sessions (远端会话不算退出确认的判据)", async () => {
+    // 连接条目在构造时一次性载入（升级导入 + 应用自有的连接库），所以 config
+    // 里的主机必须在建宿主之前就位。
+    seedSshConfig("Host prod\n  HostName 10.0.0.1\n");
     const { host } = await readyHostWithServerUrl();
     const local = seedConversation(lastAgent(), "sess-1");
     local.isStreaming = true;
     expect(host.countRunningLocalSessions()).toBe(1);
 
     // 远端 host 上的会话在远端 daemon 里跑：退出/重启都不会打断它。
-    seedSshConfig("Host prod\n  HostName 10.0.0.1\n");
     await host.handleWebviewMessage({
       command: "desktopSelectRemotePath",
       host: "prod",
@@ -10552,6 +10560,101 @@ describe("SSH remote hosts", () => {
     expect(clear?.paneId).toBe("pane-1");
   });
 
+  it("desktopSelectHost opens a session on the new host's default directory", async () => {
+    // 新对话切到远程主机后，分屏不能停在「显示了远端目录、却没有会话」的半残状态：
+    // 斜杠命令弹层要过 agent 取命令（没有会话 → 列表空 → 弹层不出现），直接发送
+    // 消息则被「请先选择工作目录」拦下。切主机把空白 agent 解绑之后必须在默认目录
+    // 上补一个，与本地新对话的状态一致（spec scenario 23）。
+    seedSshConfig("Host prod\n  HostName 10.0.0.1\n");
+    const { host, store, sent } = await readyHost(); // 本地会话 /work/a
+    store.addRecentWorkdir({ host: "prod", path: "/remote/repo" });
+    const before = h.agentInstances.length;
+
+    await host.handleWebviewMessage({
+      command: "desktopSelectHost",
+      host: "prod",
+    });
+
+    // 建会话是异步的（切主机本身不等远端），等它落到分屏上。
+    await vi.waitFor(() => {
+      const panes = sent("desktopPanes").at(-1) as {
+        panes: Array<{ sessionId?: string; host: string }>;
+      };
+      expect(panes.panes[0]).toMatchObject({ host: "prod" });
+      expect(panes.panes[0].sessionId).toBeDefined();
+    });
+    expect(h.agentInstances).toHaveLength(before + 1);
+    expect(lastAgent().initialize).toHaveBeenCalledWith(
+      expect.objectContaining({ workdir: "/remote/repo" }),
+    );
+
+    // 用户就在这个状态下输入 `/`：命令列表必须非空，否则弹层不出现。
+    await host.handleWebviewMessage({
+      command: "requestSlashCommands",
+      filterText: "",
+    });
+    await vi.waitFor(() => {
+      const reply = sent("slashCommandsResponse").at(-1) as {
+        commands?: unknown[];
+      };
+      expect(reply.commands?.length ?? 0).toBeGreaterThan(0);
+    });
+  });
+
+  it("desktopSelectHost leaves the picker alone when the host has no recent directory", async () => {
+    // 没有默认目录时无处开会话，分屏就停在「选择工作目录…」——不得为了让 `/` 有行
+    // 可用而凭空建一个没有目录的会话。
+    seedSshConfig("Host prod\n  HostName 10.0.0.1\n");
+    const { host, sent } = await readyHost();
+    const before = h.agentInstances.length;
+    const authBefore = sent("authStatusResponse").length;
+
+    await host.handleWebviewMessage({
+      command: "desktopSelectHost",
+      host: "prod",
+    });
+
+    // 登录态重查是切主机那条链上建会话之前的最后一步：等到它就等于等链跑完。
+    await vi.waitFor(() => {
+      expect(sent("authStatusResponse").length).toBeGreaterThan(authBefore);
+    });
+    expect(h.agentInstances).toHaveLength(before);
+    expect(sent("updateWorkdir").at(-1)).toMatchObject({
+      paneId: "pane-1",
+      workdir: undefined,
+    });
+  });
+
+  it("desktopSelectHost drops the auto session when the user switches host again mid-spawn", async () => {
+    // 自动建会话期间用户又换了主机（或绑了别的会话）：刚 spawn 的空会话必须丢弃，
+    // 不得把它绑到分屏上抢走用户的视图。
+    seedSshConfig("Host prod\n  HostName 10.0.0.1\n");
+    const { host, store } = await readyHost();
+    store.addRecentWorkdir({ host: "prod", path: "/remote/repo" });
+    let releaseGate = () => {};
+    h.initializeGate = new Promise<void>((resolve) => (releaseGate = resolve));
+    const before = h.agentInstances.length;
+
+    await host.handleWebviewMessage({
+      command: "desktopSelectHost",
+      host: "prod",
+    });
+    await vi.waitFor(() => {
+      expect(h.agentInstances).toHaveLength(before + 1);
+    });
+    const prodAgent = lastAgent();
+
+    await host.handleWebviewMessage({
+      command: "desktopSelectHost",
+      host: "local",
+    });
+    releaseGate();
+
+    await vi.waitFor(() => {
+      expect(prodAgent.destroy).toHaveBeenCalled();
+    });
+  });
+
   it("desktopSelectHost re-pushes the pane layout so the webview host label refreshes", async () => {
     // The webview derives a pane's host from the authoritative `desktopPanes`
     // push, not from desktopWorkdirState — a stale pane layout keeps the host
@@ -10685,63 +10788,87 @@ describe("SSH remote hosts", () => {
     expect(released.destroy).toHaveBeenCalledTimes(1);
   });
 
-  it("desktopAddHost appends the block, auto-selects the new host and eagerly connects", async () => {
-    const { host, sent } = createHost();
+  it("desktopSaveSshConnection stores the entry, auto-selects it and eagerly connects", async () => {
+    const { host, store, sent } = createHost();
+    const configBefore = h.files.get(sshConfigPath());
 
     await host.handleWebviewMessage({
-      command: "desktopAddHost",
-      connectionString: "ssh user@newhost -p 2222",
+      command: "desktopSaveSshConnection",
+      input: { host: "user@newhost", port: "2222" },
+      requestId: "req-1",
     });
 
-    const config = h.files.get(sshConfigPath()) as string;
-    expect(config).toContain("\nHost newhost\n    User user\n    Port 2222\n");
+    const saved = store.getSshConnections();
+    expect(saved).toHaveLength(1);
+    // 名称留空时默认取主机栏（场景 5）。
+    expect(saved[0]).toMatchObject({
+      name: "user@newhost",
+      host: "user@newhost",
+      port: 2222,
+    });
+    // 应用的连接库是唯一存储：用户的 ~/.ssh/config 一个字节都不动（场景 5/12）。
+    expect(h.files.get(sshConfigPath())).toBe(configBefore);
+    // 成功回执带上新条目的 id，弹窗据此关闭。
+    expect(sent("desktopSshConnectionResult").at(-1)).toMatchObject({
+      requestId: "req-1",
+      id: saved[0].id,
+      ok: true,
+    });
     // The success notice is a window-global toast — never a chat message, or the
     // new-session picker (host/workdir selectors) would be hidden by the
     // visible-message state the append would create.
     expect(
-      shownToasts().some((t) => t.message.includes("已添加主机：newhost")),
+      shownToasts().some((t) => t.message.includes("已添加主机：user@newhost")),
     ).toBe(true);
     expect(sent("appendMessage")).toHaveLength(0);
     await vi.waitFor(() => {
       expect(vi.mocked(connectRemoteDaemon)).toHaveBeenCalledWith(
-        "newhost",
+        saved[0].id,
         expect.any(String),
       );
     });
     expect(sent("desktopWorkdirState").at(-1)).toMatchObject({
       command: "desktopWorkdirState",
-      host: "newhost",
-      hosts: ["newhost"],
+      host: saved[0].id,
+      hosts: [saved[0].id],
+      sshConnections: [
+        expect.objectContaining({ id: saved[0].id, host: "user@newhost" }),
+      ],
     });
   });
 
-  it("desktopAddHost surfaces an eager-connect failure as a toast, not a chat message", async () => {
+  it("desktopSaveSshConnection surfaces an eager-connect failure as a toast, not a chat message", async () => {
     vi.mocked(connectRemoteDaemon).mockRejectedValueOnce(
       new Error("tunnel down"),
     );
-    const { host, sent } = createHost();
+    const { host, store, sent } = createHost();
 
     await host.handleWebviewMessage({
-      command: "desktopAddHost",
-      connectionString: "ssh user@newhost -p 2222",
+      command: "desktopSaveSshConnection",
+      input: { host: "user@newhost", port: "2222" },
+      requestId: "req-2",
     });
 
+    const saved = store.getSshConnections();
     await vi.waitFor(() => {
       expect(
-        shownToasts().some((t) => t.message.includes("连接主机 newhost 失败")),
+        shownToasts().some((t) =>
+          t.message.includes(`连接主机 ${saved[0].id} 失败`),
+        ),
       ).toBe(true);
     });
     expect(sent("appendMessage")).toHaveLength(0);
   });
 
-  it("desktopAddHost also re-queries the auth status on the auto-selected host", async () => {
+  it("desktopSaveSshConnection also re-queries the auth status on the auto-selected host", async () => {
     const { host, sent } = createHost();
-    h.authStatusResults = [true, true]; // webview-ready 本地 + newhost 都 logged in
+    h.authStatusResults = [true, true]; // webview-ready 本地 + 新主机都 logged in
 
     await host.handleWebviewMessage({ command: "webviewReady" });
     await host.handleWebviewMessage({
-      command: "desktopAddHost",
-      connectionString: "ssh user@newhost -p 2222",
+      command: "desktopSaveSshConnection",
+      input: { host: "user@newhost", port: "2222" },
+      requestId: "req-3",
     });
 
     await vi.waitFor(() => {
@@ -10750,19 +10877,100 @@ describe("SSH remote hosts", () => {
     });
   });
 
-  it("desktopAddHost with an unparsable connection string reports the error and keeps the host", async () => {
+  it("desktopSaveSshConnection with an invalid host reports the error and stores nothing", async () => {
+    const { host, store, sent } = await readyHost();
+
+    await host.handleWebviewMessage({
+      command: "desktopSaveSshConnection",
+      input: { host: "ssh://user@host" },
+      requestId: "req-4",
+    });
+
+    expect(sent("desktopSshConnectionResult").at(-1)).toMatchObject({
+      requestId: "req-4",
+      ok: false,
+      error: "去掉 ssh:// 前缀，只填 user@hostname",
+    });
+    expect(store.getSshConnections()).toEqual([]);
+    expect(sent("appendMessage")).toHaveLength(0);
+    expect(sent("desktopWorkdirState").at(-1)).toMatchObject({ host: "local" });
+  });
+
+  it("desktopSaveSshConnection edits an entry in place and keeps the pane bound to it", async () => {
+    seedSshConfig("Host prod\n  HostName 10.0.0.1\n");
+    const { host, store, sent } = await readyHost();
+    await host.handleWebviewMessage({
+      command: "desktopSelectHost",
+      host: "prod",
+    });
+
+    await host.handleWebviewMessage({
+      command: "desktopSaveSshConnection",
+      input: { id: "prod", name: "生产机", host: "prod", port: "2200" },
+      requestId: "req-5",
+    });
+
+    // 改名 + 改端口都落在同一条上：id 不变，绑定关系因此不丢（场景 30）。
+    expect(store.getSshConnections()).toEqual([
+      { id: "prod", name: "生产机", host: "prod", port: 2200 },
+    ]);
+    expect(sent("desktopSshConnectionResult").at(-1)).toMatchObject({
+      requestId: "req-5",
+      id: "prod",
+      ok: true,
+    });
+    // 面板标签跟着新名称走，且没有把分屏踢回本地（编辑不重连）。
+    expect(sent("desktopPanes").at(-1)?.panes[0]).toMatchObject({
+      host: "prod",
+      hostLabel: "生产机",
+    });
+    expect(sent("desktopWorkdirState").at(-1)).toMatchObject({
+      host: "prod",
+      hostOptions: expect.arrayContaining([
+        expect.objectContaining({ id: "prod", label: "生产机", kind: "ssh" }),
+      ]),
+    });
+  });
+
+  it("desktopDeleteSshConnection removes the entry and keeps its recents", async () => {
+    seedSshConfig("Host prod\n  HostName 10.0.0.1\n");
+    const { host, store, sent } = await readyHost();
+    store.addRecentWorkdir({ host: "prod", path: "/remote/repo" });
+
+    await host.handleWebviewMessage({
+      command: "desktopDeleteSshConnection",
+      id: "prod",
+      requestId: "req-6",
+    });
+
+    expect(store.getSshConnections()).toEqual([]);
+    expect(sent("desktopSshConnectionResult").at(-1)).toMatchObject({
+      requestId: "req-6",
+      id: "prod",
+      ok: true,
+    });
+    // 最近目录与会话索引不清（主机可能只是被临时移除，场景 31）。
+    expect(store.getRecentWorkdirsForHost("prod")).toContain("/remote/repo");
+    expect(sent("desktopWorkdirState").at(-1)).toMatchObject({
+      hosts: [],
+      sshConnections: [],
+    });
+  });
+
+  it("desktopDeleteSshConnection on an unknown id replies with an error", async () => {
     const { host, sent } = await readyHost();
 
     await host.handleWebviewMessage({
-      command: "desktopAddHost",
-      connectionString: "ssh -i key.pem user@host",
+      command: "desktopDeleteSshConnection",
+      id: "ssh-gone",
+      requestId: "req-7",
     });
 
-    expect(
-      shownToasts().some((t) => t.message.includes("无法解析连接串")),
-    ).toBe(true);
-    expect(sent("appendMessage")).toHaveLength(0);
-    expect(sent("desktopWorkdirState").at(-1)).toMatchObject({ host: "local" });
+    expect(sent("desktopSshConnectionResult").at(-1)).toMatchObject({
+      requestId: "req-7",
+      ok: false,
+      error: "该连接已不存在",
+    });
   });
 
   it("desktopSelectRemotePath validates the directory and activates a remote session", async () => {

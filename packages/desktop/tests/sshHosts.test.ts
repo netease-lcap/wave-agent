@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 const h = vi.hoisted(() => ({
   files: new Map<string, string>(),
@@ -26,11 +26,16 @@ vi.mock("fs", () => ({
 import {
   LOCAL_HOST,
   SSH_BASE_OPTIONS,
-  parseSshConfigHosts,
-  parseConnectionString,
-  addSshHost,
   buildSshSpawnArgs,
   buildSshTunnelArgs,
+  findSshConnection,
+  getSshConnections,
+  isSshConnectionId,
+  newSshConnectionId,
+  parseSshConfigHosts,
+  setSshConnections,
+  validateSshConnectionInput,
+  type SshConnection,
 } from "../src/main/sshHosts";
 
 const CONFIG = "/mock-home/.ssh/config";
@@ -94,97 +99,146 @@ describe("parseSshConfigHosts", () => {
   });
 });
 
-describe("parseConnectionString", () => {
-  it("parses user@hostname", () => {
-    expect(parseConnectionString("ssh dev@myhost")).toEqual({
-      host: "myhost",
-      hostName: "myhost",
-      user: "dev",
-    });
+describe("connection library registry", () => {
+  afterEach(() => {
+    // 模块级注册表：每个用例自己装自己那一份，别漏到下一条用例里。
+    setSshConnections([]);
   });
 
-  it("parses hostname with optional leading ssh", () => {
-    expect(parseConnectionString("myhost")).toEqual({
-      host: "myhost",
-      hostName: "myhost",
-    });
-    expect(parseConnectionString("ssh myhost")).toEqual({
-      host: "myhost",
-      hostName: "myhost",
-    });
+  it("installs and reads back entries (defensively copied)", () => {
+    const entry = { id: "ssh-1", name: "生产机", host: "prod" };
+    setSshConnections([entry]);
+    expect(getSshConnections()).toEqual([entry]);
+    // 调用方改自己那份不能影响注册表（ssh argv 依赖它的稳定性）。
+    getSshConnections()[0].host = "tampered";
+    expect(findSshConnection("ssh-1")?.host).toBe("prod");
   });
 
-  it("parses -p port", () => {
-    expect(parseConnectionString("ssh user@host -p 2222")).toEqual({
-      host: "host",
-      hostName: "host",
-      user: "user",
-      port: 2222,
-    });
+  it("resolves ids, not hosts: an unknown id is not a connection", () => {
+    setSshConnections([{ id: "ssh-1", name: "生产机", host: "prod" }]);
+    expect(isSshConnectionId("ssh-1")).toBe(true);
+    expect(isSshConnectionId("prod")).toBe(false);
+    expect(isSshConnectionId(LOCAL_HOST)).toBe(false);
+    expect(findSshConnection("nope")).toBeUndefined();
   });
 
-  it("strips brackets from IPv6 targets but keeps them for HostName", () => {
-    expect(parseConnectionString("ssh user@[2001:db8::1] -p 22")).toEqual({
-      host: "2001:db8::1",
-      hostName: "[2001:db8::1]",
-      user: "user",
-      port: 22,
-    });
-  });
-
-  it("returns null for empty input", () => {
-    expect(parseConnectionString("")).toBeNull();
-    expect(parseConnectionString("   ")).toBeNull();
-  });
-
-  it("returns null for unsupported options", () => {
-    expect(parseConnectionString("ssh -i key.pem user@host")).toBeNull();
-    expect(parseConnectionString("ssh -v user@host")).toBeNull();
-  });
-
-  it("returns null for multiple targets", () => {
-    expect(parseConnectionString("ssh host1 host2")).toBeNull();
-  });
-
-  it("returns null when -p is missing its value", () => {
-    expect(parseConnectionString("ssh user@host -p")).toBeNull();
-  });
-
-  it("returns null for a bare user@", () => {
-    expect(parseConnectionString("ssh user@")).toBeNull();
+  it("generates distinct ids", () => {
+    const ids = new Set(Array.from({ length: 50 }, () => newSshConnectionId()));
+    expect(ids.size).toBe(50);
   });
 });
 
-describe("addSshHost", () => {
-  it("appends a Host block to an existing config", () => {
-    h.files.set(CONFIG, "Host prod\n  HostName 10.0.0.1\n");
-    const name = addSshHost("ssh deploy@newhost -p 2222", CONFIG);
-    expect(name).toBe("newhost");
-    expect(h.files.get(CONFIG)).toContain(
-      "\nHost newhost\n    User deploy\n    Port 2222\n",
+describe("validateSshConnectionInput", () => {
+  const noConnections: SshConnection[] = [];
+
+  it("accepts user@hostname and defaults the name to the host", () => {
+    expect(
+      validateSshConnectionInput({ host: " dev@box " }, noConnections),
+    ).toEqual({
+      ok: true,
+      value: { id: undefined, name: "dev@box", host: "dev@box" },
+    });
+  });
+
+  it("accepts a ~/.ssh/config alias, including one with a colon", () => {
+    expect(
+      validateSshConnectionInput({ host: "prod-alias" }, noConnections).ok,
+    ).toBe(true);
+    expect(
+      validateSshConnectionInput({ host: "corp:prod" }, noConnections).ok,
+    ).toBe(true);
+  });
+
+  it("keeps the explicit name and trims it", () => {
+    const result = validateSshConnectionInput(
+      { name: "  生产机  ", host: "prod" },
+      noConnections,
     );
+    expect(result.ok && result.value.name).toBe("生产机");
   });
 
-  it("creates the config file on demand", () => {
-    const name = addSshHost("ssh myhost", CONFIG);
-    expect(name).toBe("myhost");
-    expect(h.files.get(CONFIG)).toContain("Host myhost\n");
-  });
-
-  it("refuses to duplicate an existing top-level host", () => {
-    h.files.set(CONFIG, "Host myhost\n  HostName 10.0.0.1\n");
-    expect(() => addSshHost("ssh myhost", CONFIG)).toThrow("已存在");
-  });
-
-  it("throws on an unparsable connection string", () => {
-    expect(() => addSshHost("ssh -i key.pem user@host", CONFIG)).toThrow(
-      "无法解析",
+  it("parses the port from a string and drops an empty one", () => {
+    const withPort = validateSshConnectionInput(
+      { host: "prod", port: "2222" },
+      noConnections,
     );
+    expect(withPort.ok && withPort.value.port).toBe(2222);
+    const empty = validateSshConnectionInput(
+      { host: "prod", port: "  " },
+      noConnections,
+    );
+    expect(empty.ok && "port" in empty.value).toBe(false);
   });
 
-  it("writes no HostName option when the name is the hostname", () => {
-    addSshHost("ssh plainhost", CONFIG);
-    expect(h.files.get(CONFIG)).not.toContain("HostName");
+  it("rejects an empty host", () => {
+    expect(validateSshConnectionInput({ host: "   " }, noConnections)).toEqual({
+      ok: false,
+      error: "请填写主机（user@hostname 或 ~/.ssh/config 里的别名）",
+    });
+  });
+
+  it("rejects an ssh:// URL and tells the user what to type instead", () => {
+    expect(
+      validateSshConnectionInput({ host: "ssh://dev@box" }, noConnections),
+    ).toEqual({ ok: false, error: "去掉 ssh:// 前缀，只填 user@hostname" });
+  });
+
+  it("rejects a port written into the host field", () => {
+    expect(
+      validateSshConnectionInput({ host: "box:2222" }, noConnections),
+    ).toEqual({
+      ok: false,
+      error: "端口请填到端口栏，主机栏只填主机或别名",
+    });
+    expect(
+      validateSshConnectionInput({ host: "dev@box:2222" }, noConnections).ok,
+    ).toBe(false);
+  });
+
+  it("allows IPv6-looking hosts (a single trailing :digits is not the only shape)", () => {
+    expect(
+      validateSshConnectionInput({ host: "fe80::1" }, noConnections).ok,
+    ).toBe(true);
+    expect(
+      validateSshConnectionInput({ host: "[2001:db8::1]:22" }, noConnections)
+        .ok,
+    ).toBe(true);
+  });
+
+  it("rejects whitespace, a leading dash, and characters ssh would misread", () => {
+    expect(
+      validateSshConnectionInput({ host: "my host" }, noConnections),
+    ).toEqual({ ok: false, error: "主机栏不能包含空格" });
+    expect(
+      validateSshConnectionInput({ host: "-oProxyCommand=x" }, noConnections),
+    ).toEqual({ ok: false, error: "主机栏不能以 - 开头" });
+    expect(
+      validateSshConnectionInput({ host: "box;reboot" }, noConnections),
+    ).toEqual({
+      ok: false,
+      error: "主机名只能包含字母、数字、. - _ : @ 等字符",
+    });
+  });
+
+  it("rejects a port outside 1–65535", () => {
+    for (const port of ["0", "65536", "22.5", "abc"]) {
+      expect(
+        validateSshConnectionInput({ host: "prod", port }, noConnections),
+      ).toEqual({ ok: false, error: "端口必须是 1–65535 的数字" });
+    }
+  });
+
+  it("rejects a second entry with the same host, but not the entry being edited", () => {
+    const existing: SshConnection[] = [
+      { id: "ssh-1", name: "生产机", host: "prod" },
+    ];
+    expect(validateSshConnectionInput({ host: "prod" }, existing)).toEqual({
+      ok: false,
+      error: "已有使用该主机的连接：生产机",
+    });
+    expect(
+      validateSshConnectionInput({ id: "ssh-1", host: "prod" }, existing).ok,
+    ).toBe(true);
   });
 });
 
@@ -195,6 +249,44 @@ describe("buildSshSpawnArgs", () => {
       "prod",
       "/path/to/wave --stdio",
     ]);
+  });
+
+  it("resolves the saved entry's port and key into the argv", () => {
+    setSshConnections([
+      {
+        id: "ssh-1",
+        name: "生产机",
+        host: "dev@prod",
+        port: 2222,
+        identityFile: "~/.ssh/prod_ed25519",
+      },
+    ]);
+    try {
+      expect(buildSshSpawnArgs("ssh-1", "/path/to/wave --stdio")).toEqual([
+        ...SSH_BASE_OPTIONS,
+        "-p",
+        "2222",
+        "-i",
+        "~/.ssh/prod_ed25519",
+        "dev@prod",
+        "/path/to/wave --stdio",
+      ]);
+    } finally {
+      setSshConnections([]);
+    }
+  });
+
+  it("passes an alias through untouched so ssh resolves it from the user's config", () => {
+    setSshConnections([{ id: "ssh-2", name: "别名", host: "prod-alias" }]);
+    try {
+      expect(buildSshSpawnArgs("ssh-2", "cmd")).toEqual([
+        ...SSH_BASE_OPTIONS,
+        "prod-alias",
+        "cmd",
+      ]);
+    } finally {
+      setSshConnections([]);
+    }
   });
 });
 
@@ -219,6 +311,25 @@ describe("buildSshTunnelArgs", () => {
       "/tmp/wave-daemon-prod.sock:/home/u/.wave/daemon.sock",
       "prod",
     ]);
+  });
+
+  it("finds the tunnel target through the same entry resolution", () => {
+    setSshConnections([
+      { id: "ssh-1", name: "生产机", host: "prod-alias", port: 2200 },
+    ]);
+    try {
+      const args = buildSshTunnelArgs(
+        "ssh-1",
+        "127.0.0.1:5000",
+        "/home/u/d.sock",
+      );
+      expect(args.slice(-3)).toEqual(["-p", "2200", "prod-alias"]);
+      // 转发目标仍在最后：ssh 只把 hostname 之后的东西当远端命令，端口/密钥
+      // 必须排在 hostname **之前**（否则会被当成远端命令的一部分）。
+      expect(args[args.length - 1]).toBe("prod-alias");
+    } finally {
+      setSshConnections([]);
+    }
   });
 
   it("keeps ServerAlive probes tight enough to detect a half-open tunnel after sleep", () => {

@@ -1114,6 +1114,34 @@ html[data-theme="dark"] .desktop-session-status-slot {
   white-space: nowrap;
 }
 
+/* SSH 条目行的「编辑连接」按钮：与最近打开行的 ✕ 同一套显隐（常驻盒、默认
+   opacity 0，指针停到行上或键盘焦点落在行/按钮上才显形）——几十条连接挨着
+   排时不至于每个主机名旁边都挂一颗灰图标。 */
+.desktop-host-item-edit {
+  margin-left: auto;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: var(--vscode-foreground);
+  opacity: 0;
+  padding: 2px;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  transition: opacity 120ms ease;
+}
+
+.desktop-workdir-menu-item:hover .desktop-host-item-edit,
+.desktop-workdir-menu-item:focus-visible .desktop-host-item-edit,
+.desktop-host-item-edit:focus-visible {
+  opacity: 0.5;
+}
+
+.desktop-host-item-edit:hover,
+.desktop-host-item-edit:focus-visible {
+  opacity: 1;
+}
+
 .desktop-workdir-menu-path {
   flex: 1;
   display: flex;
@@ -1280,10 +1308,8 @@ html[data-theme="dark"] .desktop-session-status-slot {
 }
 
 /* Inline add-host / remote-path input inside the dropdown menu. */
-.desktop-host-add {
-  padding: 4px 8px;
-}
-
+/* 远程目录浏览器 footer 的路径输入框（主机下拉里的同名 inline 输入行已随
+   「添加主机…」改成模态表单而去掉，字段样式仍是同一份）。 */
 .desktop-host-add-input {
   width: 100%;
   box-sizing: border-box;

@@ -1,9 +1,13 @@
 /**
- * SSH host support for remote development (spec: docs/specs/desktop/desktop-remote.md
- * 「SSH 远程主机」). Host discovery mirrors VS Code Remote-SSH: hosts are the
- * top-level `Host` block names in ~/.ssh/config (wildcard patterns skipped);
- * connection parameters are resolved by ssh itself at spawn time. 「添加主机…」
- * writes a new Host block into ~/.ssh/config.
+ * SSH support for remote development (spec: docs/specs/desktop/desktop-remote.md
+ * 「SSH 远程主机」). Hosts are the desktop app's own **connection entries**
+ * (`SshConnection`, stored in wave-desktop.json) — mirrors Claude Code desktop:
+ * the picker lists those entries, 「添加主机…」 fills them in through a form, and
+ * `~/.ssh/config` is never written. An entry's `host` field may be a
+ * `user@hostname` target or a plain alias from `~/.ssh/config`, in which case
+ * ssh itself resolves the rest of the connection parameters at spawn time
+ * (spec scenario 33). `parseSshConfigHosts` survives only for the one-time
+ * upgrade import of the pre-existing hosts (spec scenario 32).
  */
 
 import { execFile } from "child_process";
@@ -40,8 +44,10 @@ export function getSshConfigPath(): string {
 /**
  * Parse the top-level `Host` block names from an ssh config. Wildcard entries
  * (`Host *`, `Host *.example.com`) are patterns, not concrete hosts, so they
- * are skipped. Returns [] when the file is missing or unreadable (spec
- * scenario 12 — the picker then shows only 本地 + 添加主机…).
+ * are skipped. Returns [] when the file is missing or unreadable.
+ *
+ * Only used by the one-time upgrade import (spec scenario 32) — the picker's
+ * host list is the saved connection entries, not this file.
  */
 export function parseSshConfigHosts(
   configPath: string = getSshConfigPath(),
@@ -71,92 +77,160 @@ export function parseSshConfigHosts(
   return hosts;
 }
 
-export interface ParsedConnection {
-  /** Host block name and ssh target (brackets stripped from IPv6 literals). */
+/**
+ * One saved SSH connection — the picker's unit of remote host management
+ * (spec 「SSH 远程主机」场景 5). `id` is the host identity used everywhere else
+ * in the app (pane host, session index, recent workdirs), so renaming or
+ * re-pointing an entry never orphans the sessions bound to it; `host` is what
+ * gets handed to ssh.
+ */
+export interface SshConnection {
+  id: string;
+  /** Display name (falls back to `host` when the user leaves it empty). */
+  name: string;
+  /** `user@hostname`, a bare hostname, or a `~/.ssh/config` alias. */
   host: string;
-  /** Hostname as typed (IPv6 keeps its brackets for the HostName option). */
-  hostName?: string;
-  user?: string;
+  /** Explicit port; unset = ssh decides (22 or the config file). */
   port?: number;
+  /** Private key path; unset = ssh config / ssh-agent decides. */
+  identityFile?: string;
+}
+
+/** Fields the connection form submits (id absent = create). */
+export interface SshConnectionInput {
+  id?: string;
+  name?: string;
+  host?: string;
+  port?: number | string;
+  identityFile?: string;
+}
+
+/** Normalized form values, ready to be stored under `id`. */
+export interface SshConnectionDraft {
+  id?: string;
+  name: string;
+  host: string;
+  port?: number;
+  identityFile?: string;
 }
 
 /**
- * Parse a VS Code Remote-SSH style connection string: `ssh user@hostname -p
- * port`. The leading `ssh ` is optional. Returns null for anything else —
- * unsupported options, multiple targets, or a missing target.
+ * The installed entry list. `desktopHost` installs it on boot and after every
+ * create/update/delete, so the ssh argv builders below can resolve an entry's
+ * port/key without threading the store through every call site (terminal,
+ * port forwarding, remote CLI, login-shell probe).
  */
-export function parseConnectionString(input: string): ParsedConnection | null {
-  const s = input.trim();
-  if (!s) return null;
-  let rest = s;
-  const sshPrefix = /^ssh\s+/i.exec(s);
-  if (sshPrefix) rest = s.slice(sshPrefix[0].length);
-  const tokens = rest.split(/\s+/);
-  let target: string | undefined;
+let installedConnections: SshConnection[] = [];
+
+export function setSshConnections(connections: SshConnection[]): void {
+  installedConnections = connections.map((connection) => ({ ...connection }));
+}
+
+export function getSshConnections(): SshConnection[] {
+  return installedConnections.map((connection) => ({ ...connection }));
+}
+
+export function findSshConnection(id: string): SshConnection | undefined {
+  return installedConnections.find((connection) => connection.id === id);
+}
+
+/** Is `id` one of the saved SSH connection entries (vs local / WSL)? */
+export function isSshConnectionId(id: string): boolean {
+  return installedConnections.some((connection) => connection.id === id);
+}
+
+/** Stable, collision-free id for a newly created entry. */
+export function newSshConnectionId(): string {
+  return `ssh-${Date.now().toString(36)}-${Math.random()
+    .toString(36)
+    .slice(2, 8)}`;
+}
+
+const HOST_CHARS = /^[A-Za-z0-9._:@[\]%~-]+$/;
+
+/**
+ * Validate the connection form (spec scenario 29). The renderer runs the same
+ * rules for its inline hints; this one is authoritative — the host never stores
+ * an entry the form could not have produced.
+ */
+export function validateSshConnectionInput(
+  input: SshConnectionInput,
+  existing: SshConnection[] = installedConnections,
+): { ok: true; value: SshConnectionDraft } | { ok: false; error: string } {
+  const host = (input.host ?? "").trim();
+  if (!host) {
+    return {
+      ok: false,
+      error: "请填写主机（user@hostname 或 ~/.ssh/config 里的别名）",
+    };
+  }
+  if (/^ssh:\/\//i.test(host)) {
+    return { ok: false, error: "去掉 ssh:// 前缀，只填 user@hostname" };
+  }
+  if (/\s/.test(host)) {
+    return { ok: false, error: "主机栏不能包含空格" };
+  }
+  // `host:2222` 这种「端口写在主机栏」的写法要挡掉（端口有独立输入框）。别名
+  // 自身含冒号、以及 IPv6（`fe80::1` / `[::1]`）都不是这个形状：单冒号后跟全
+  // 数字才算。
+  if (/^(?:[^:@\s]+@)?[^:\s]+:\d+$/.test(host)) {
+    return { ok: false, error: "端口请填到端口栏，主机栏只填主机或别名" };
+  }
+  if (host.startsWith("-")) {
+    return { ok: false, error: "主机栏不能以 - 开头" };
+  }
+  if (!HOST_CHARS.test(host)) {
+    return {
+      ok: false,
+      error: "主机名只能包含字母、数字、. - _ : @ 等字符",
+    };
+  }
+  const rawPort = input.port;
   let port: number | undefined;
-  for (let i = 0; i < tokens.length; i++) {
-    const t = tokens[i];
-    if (!t) continue;
-    if (t === "-p") {
-      const v = tokens[i + 1];
-      if (v && /^\d+$/.test(v)) {
-        port = Number(v);
-        i++;
-        continue;
-      }
-      return null;
+  if (rawPort !== undefined && rawPort !== null && `${rawPort}`.trim() !== "") {
+    const parsed = Number(`${rawPort}`.trim());
+    if (!Number.isInteger(parsed) || parsed < 1 || parsed > 65535) {
+      return { ok: false, error: "端口必须是 1–65535 的数字" };
     }
-    if (t.startsWith("-")) return null; // unsupported option
-    if (target === undefined) {
-      target = t;
-    } else {
-      return null; // multiple targets
-    }
+    port = parsed;
   }
-  if (!target) return null;
-  const at = target.lastIndexOf("@");
-  const user = at >= 0 ? target.slice(0, at) : undefined;
-  const hostPart = at >= 0 ? target.slice(at + 1) : target;
-  const host = hostPart.replace(/^\[|\]$/g, "");
-  if (!host) return null;
-  return { host, hostName: hostPart, user, port };
+  const duplicate = existing.find(
+    (connection) =>
+      connection.id !== input.id && connection.host.trim() === host,
+  );
+  if (duplicate) {
+    return {
+      ok: false,
+      error: `已有使用该主机的连接：${duplicate.name || duplicate.host}`,
+    };
+  }
+  const identityFile = (input.identityFile ?? "").trim() || undefined;
+  return {
+    ok: true,
+    value: {
+      id: input.id,
+      name: (input.name ?? "").trim() || host,
+      host,
+      ...(port === undefined ? {} : { port }),
+      ...(identityFile === undefined ? {} : { identityFile }),
+    },
+  };
 }
 
 /**
- * Append a new Host block to ~/.ssh/config (creating the file on demand, spec
- * scenario 12). Refuses when a top-level Host block with the same name already
- * exists — never overwrite or duplicate (spec scenario 5). Returns the host
- * name written.
+ * ssh argv for a host id: the entry's port/key first, then the target. Ids
+ * without an entry (WSL distros never come here; a legacy binding whose entry
+ * was deleted may) degrade to the id itself, which is what ssh used to receive
+ * before entries existed.
  */
-export function addSshHost(
-  connectionString: string,
-  configPath: string = getSshConfigPath(),
-): string {
-  const parsed = parseConnectionString(connectionString);
-  if (!parsed) {
-    throw new Error("无法解析连接串，请使用 ssh user@hostname -p port 格式");
-  }
-  const name = parsed.host;
-  if (parseSshConfigHosts(configPath).includes(name)) {
-    throw new Error(`主机 ${name} 已存在于 ~/.ssh/config，未做修改`);
-  }
-  const optionLines: string[] = [];
-  if (parsed.hostName !== name)
-    optionLines.push(`    HostName ${parsed.hostName}`);
-  if (parsed.user) optionLines.push(`    User ${parsed.user}`);
-  if (parsed.port) optionLines.push(`    Port ${parsed.port}`);
-  const block = `\nHost ${name}\n${optionLines.join("\n")}\n`;
-  fs.mkdirSync(path.dirname(configPath), { recursive: true });
-  let existing = "";
-  try {
-    existing = fs.readFileSync(configPath, "utf-8");
-  } catch {
-    // new file — the block itself starts with a leading newline, so it reads
-    // cleanly when appended to the empty file.
-  }
-  if (existing && !existing.endsWith("\n")) existing += "\n";
-  fs.writeFileSync(configPath, existing + block, "utf-8");
-  return name;
+function sshTargetArgs(hostId: string): string[] {
+  const connection = findSshConnection(hostId);
+  if (!connection) return [hostId];
+  const args: string[] = [];
+  if (connection.port !== undefined) args.push("-p", String(connection.port));
+  if (connection.identityFile) args.push("-i", connection.identityFile);
+  args.push(connection.host);
+  return args;
 }
 
 /**
@@ -171,7 +245,7 @@ export function buildSshSpawnArgs(
   host: string,
   remoteCommand: string,
 ): string[] {
-  return [...SSH_BASE_OPTIONS, host, remoteCommand];
+  return [...SSH_BASE_OPTIONS, ...sshTargetArgs(host), remoteCommand];
 }
 
 /**
@@ -208,7 +282,7 @@ export function buildSshTunnelArgs(
     "-N",
     "-L",
     `${localForward}:${remoteSocketPath}`,
-    host,
+    ...sshTargetArgs(host),
   ];
 }
 

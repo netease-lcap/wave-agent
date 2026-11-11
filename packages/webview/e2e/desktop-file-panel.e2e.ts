@@ -281,9 +281,128 @@ test.describe("Desktop file panel", () => {
     });
 
     await expect(webviewPage.locator(".file-pane-code")).toBeVisible();
+    // 截断说明是面板底部一行次要色小字（对齐 Claude 桌面端文件查看器），不报行数、
+    // 不涂底色、也不在正文顶部——正文高度因此一点都不被它挤走。
+    const hint = webviewPage.locator(".file-pane-truncated-hint");
+    await expect(hint).toBeVisible();
+    await expect(hint).toHaveText("文件较大，末尾内容可能缺失");
+    await expect(hint).not.toContainText("320"); // 不报总行数
+    const hintBox = await hint.boundingBox();
+    const codeBox = await webviewPage.locator(".file-pane-code").boundingBox();
+    expect(hintBox!.height).toBeLessThan(32); // 一行字，不是横幅
+    expect(hintBox!.y).toBeGreaterThanOrEqual(codeBox!.y + codeBox!.height - 1); // 在正文之下
+    const hintBackground = await hint.evaluate(
+      (el) => getComputedStyle(el).backgroundColor,
+    );
+    expect(hintBackground).toBe("rgba(0, 0, 0, 0)"); // 脚注没有底色
+    // 跳跃区间是 17 行的淡底色带子；它只铺正文列，不进行号单元格。
+    const band = webviewPage.locator(".cm-line.file-pane-line--active");
+    await expect(band).toHaveCount(17); // startLine 13 → endLine 29
     await expect(
-      webviewPage.locator(".file-pane-truncated-hint"),
-    ).toBeVisible();
+      webviewPage.locator(".cm-gutters .file-pane-line--active"),
+    ).toHaveCount(0);
+    // 带子和选区不同屏：全选后带子整体撤掉，再点回正文（落下光标）它就回来。
+    const scroller = await webviewPage.locator(".cm-scroller").boundingBox();
+    await webviewPage.mouse.click(scroller!.x + 150, scroller!.y + 100);
+    await webviewPage.keyboard.press("ControlOrMeta+a");
+    await expect(band).toHaveCount(0);
+    await webviewPage.mouse.click(scroller!.x + 150, scroller!.y + 100);
+    await expect(band).toHaveCount(17);
+  });
+
+  // spec desktop-file-panel.md「文件面板只读查看器的选区与全选」场景 1：客户反馈
+  // 的那条——只读正文以前是一堆普通 DOM 行，`Ctrl+A` 走整页选区，把工具条路径、
+  // 标签名、截断提示一起圈进去。这里在真 chunk（editor.js）上按一次真实快捷键。
+  test("select-all stays inside the file, not the panel chrome", async ({
+    webviewPage,
+  }) => {
+    const injector = new MessageInjector(webviewPage);
+    await webviewPage.setViewportSize({ width: 1280, height: 720 });
+    const codePath = `${DIR_A}/src/app.ts`;
+    await setupReadMessage(injector, codePath);
+    await openFileFromMessage(webviewPage, injector);
+
+    const code = "const a = 1;\nconst b = 2;";
+    await injector.simulateExtensionMessage("desktopFileContent", {
+      fileView: {
+        path: codePath,
+        host: "local",
+        loading: false,
+        content: `${code}\n`,
+        truncated: true,
+        totalLines: 9,
+      },
+    });
+
+    const viewer = webviewPage.getByTestId("file-pane-viewer");
+    await expect(viewer).toContainText("const b = 2;");
+    // 焦点在代码区里，才是在「读这份文件」的上下文里按全选。
+    await viewer.click();
+    await webviewPage.keyboard.press("ControlOrMeta+a");
+
+    const selected = await webviewPage.evaluate(
+      () => window.getSelection()?.toString() ?? "",
+    );
+    // 选区恰好是文件内容：行号在 gutter 里，路径/标签名/截断提示都不进来。
+    expect(selected).toBe(code);
+    expect(selected).not.toContain("src/app.ts");
+    expect(selected).not.toContain("app.ts");
+    expect(selected).not.toContain("末尾内容可能缺失"); // 截断说明在滚动区之外
+  });
+
+  // 长文件里 CodeMirror 只渲染视口内的行，`window.getSelection()` 因此只报得出
+  // **已渲染**那部分；用户真正拿到的文本来自复制事件（编辑器按自己的文档序列化
+  // 整段选区）。这条用例守的是「全选 + 复制 = 整份文件」这个可交付口径，而不是
+  // DOM 选区字符串。
+  test("select-all + copy yields the whole file, not just the rendered lines", async ({
+    webviewPage,
+  }) => {
+    const injector = new MessageInjector(webviewPage);
+    await webviewPage.setViewportSize({ width: 1280, height: 720 });
+    const codePath = `${DIR_A}/src/big.ts`;
+    await setupReadMessage(injector, codePath);
+    await openFileFromMessage(webviewPage, injector);
+
+    const code = Array.from(
+      { length: 200 },
+      (_, i) => `const v${i + 1} = ${i + 1};`,
+    ).join("\n");
+    await injector.simulateExtensionMessage("desktopFileContent", {
+      fileView: {
+        path: codePath,
+        host: "local",
+        loading: false,
+        content: `${code}\n`,
+      },
+    });
+
+    const viewer = webviewPage.getByTestId("file-pane-viewer");
+    await expect(viewer).toContainText("const v1 = 1;");
+
+    // 复制探针：读复制事件里已经写好的 clipboardData（编辑器在冒泡之前填好），
+    // 这就是用户按 Ctrl+C 拿到的东西。
+    await webviewPage.evaluate(() => {
+      const scope = window as unknown as { __copied?: string | null };
+      scope.__copied = null;
+      document.addEventListener("copy", (event) => {
+        scope.__copied =
+          (event as ClipboardEvent).clipboardData?.getData("text/plain") ?? "";
+        event.preventDefault();
+      });
+    });
+
+    await viewer.click();
+    await webviewPage.keyboard.press("ControlOrMeta+a");
+    await webviewPage.keyboard.press("ControlOrMeta+c");
+    const copied = await webviewPage.evaluate(
+      () =>
+        (window as unknown as { __copied?: string | null }).__copied ?? null,
+    );
+
+    // 先证明这条用例确实落在「DOM 里只有一部分行」的情形上，否则它什么也没守住。
+    const rendered = await webviewPage.locator(".cm-line").count();
+    expect(rendered).toBeLessThan(200);
+    expect(copied).toBe(code);
   });
 
   // spec desktop-file-panel.md「文件面板评论」场景 8：块评论按钮长在块左缘之外的
@@ -596,8 +715,13 @@ test.describe("Desktop file panel", () => {
       status: "saved",
       contentHash: "hash-2",
     });
-    await expect(webviewPage.locator(".cm-content")).toHaveCount(0);
-    await expect(webviewPage.locator(".file-pane-code")).toBeVisible();
+    // 宿主回 saved → 退出编辑态、回到只读视图（同一个 CodeMirror chunk 的只读
+    // 面，所以「编辑区没了」看的是它的 testid，不是 `.cm-content` 这个类），
+    // 正文换成保存后的内容，并提示已保存。
+    await expect(webviewPage.locator(".file-pane-editor")).toHaveCount(0);
+    await expect(webviewPage.getByTestId("file-pane-viewer")).toContainText(
+      "export const beta = 2;",
+    );
     await expect(webviewPage.getByText("已保存")).toBeVisible();
   });
 
@@ -623,7 +747,7 @@ test.describe("Desktop file panel", () => {
     });
 
     await expect(
-      webviewPage.locator(".file-pane-truncated-hint"),
+      webviewPage.getByTestId("file-pane-truncated-hint"),
     ).toBeVisible();
     await expect(webviewPage.getByTestId("file-pane-edit")).toHaveCount(0);
   });

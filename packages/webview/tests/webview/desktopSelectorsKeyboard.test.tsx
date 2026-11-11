@@ -62,9 +62,14 @@ describe("desktop selector keyboard accessibility", () => {
     const menu = screen.getByTestId("desktop-host-menu");
 
     // 具体主机名不再各带一颗图标：图标只在「本地」行与分组标题行上（用户口径：
-    // 把主机名前面那颗图标挪到「SSH 主机」前面，跟「本地」保持一致）。
+    // 把主机名前面那颗图标挪到「SSH 主机」前面，跟「本地」保持一致）。只看行的
+    // 直接子节点——行尾「编辑连接」按钮里那颗是操作入口的图标，不是主机图标。
     for (const item of screen.getAllByTestId("desktop-host-item")) {
-      expect(item.querySelector(".codicon")).toBeNull();
+      expect(
+        Array.from(item.children).filter((child) =>
+          child.classList.contains("codicon"),
+        ),
+      ).toEqual([]);
     }
     const label = menu.querySelector(".desktop-host-menu-label");
     expect(label?.textContent).toBe("SSH 主机");
@@ -105,7 +110,11 @@ describe("desktop selector keyboard accessibility", () => {
       expect(label.querySelectorAll(".codicon-remote")).toHaveLength(1);
     }
     for (const item of screen.getAllByTestId("desktop-host-item")) {
-      expect(item.querySelector(".codicon")).toBeNull();
+      expect(
+        Array.from(item.children).filter((child) =>
+          child.classList.contains("codicon"),
+        ),
+      ).toEqual([]);
     }
   });
 
@@ -306,11 +315,12 @@ describe("desktop selector keyboard accessibility", () => {
     expect(document.activeElement).toBe(screen.getByTestId("desktop-host"));
   });
 
-  it("opens the add-host input from the keyboard and submits with Enter", () => {
+  it("opens the connection form from the keyboard and saves with Enter", () => {
     const { vscode } = renderDesktopApp();
     sendCommand("desktopWorkdirState", {
       host: "local",
       hosts: [],
+      sshConnections: [],
       recentWorkdirs: [],
     });
     sendCommand("setInitialState", { messages: [] });
@@ -321,17 +331,24 @@ describe("desktop selector keyboard accessibility", () => {
     addItem.focus();
     fireEvent.keyDown(addItem, { key: "Enter" });
 
-    const input = screen.getByPlaceholderText("ssh user@hostname -p port");
-    fireEvent.change(input, {
-      target: { value: "ssh user@example.com -p 2222" },
-    });
-    fireEvent.keyDown(input, { key: "Enter" });
-
-    expect(vscode.postMessage).toHaveBeenCalledWith({
-      command: "desktopAddHost",
-      connectionString: "ssh user@example.com -p 2222",
-    });
+    // 「添加主机…」不再展开 inline 输入行，而是打开连接表单（模态）。
     expect(screen.queryByTestId("desktop-host-menu")).not.toBeInTheDocument();
+    const hostInput = screen.getByTestId("desktop-ssh-host");
+    fireEvent.change(hostInput, { target: { value: "user@example.com" } });
+    fireEvent.change(screen.getByTestId("desktop-ssh-port"), {
+      target: { value: "2222" },
+    });
+    fireEvent.keyDown(hostInput, { key: "Enter" });
+
+    expect(vscode.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        command: "desktopSaveSshConnection",
+        input: expect.objectContaining({
+          host: "user@example.com",
+          port: "2222",
+        }),
+      }),
+    );
   });
 
   it("workdir trigger opens the menu with Enter and recent items are Tab-focusable", () => {

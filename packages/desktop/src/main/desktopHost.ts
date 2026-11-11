@@ -75,9 +75,15 @@ import {
 } from "./configStore";
 import {
   LOCAL_HOST,
+  findSshConnection,
+  getSshConnections,
+  isSshConnectionId,
+  newSshConnectionId,
   parseSshConfigHosts,
-  addSshHost,
-  getSshConfigPath,
+  setSshConnections as installSshConnections,
+  validateSshConnectionInput,
+  type SshConnection,
+  type SshConnectionInput,
 } from "./sshHosts";
 import {
   FlapTracker,
@@ -854,6 +860,34 @@ export class DesktopHost {
     // resume mark to hold the first dial until the network is back (spec
     // scenarios 5/6).
     powerMonitor.on("resume", this.onSystemResume);
+    // 连接库要在任何 ssh 调用之前就位：sshHosts 按 id 解析端口/私钥。
+    this.loadSshConnections();
+  }
+
+  /**
+   * Load the saved SSH connection entries, and once — on the first launch after
+   * upgrading — import the hosts the old build used to read from
+   * `~/.ssh/config` (spec scenario 32).
+   *
+   * Imported entries reuse the alias as their `id`: that alias is what旧版本
+   * wrote into pane bindings, the session index and the recent-workdir list, so
+   * the sessions of an upgrading user stay attached instead of turning into
+   * 「主机已删除」. After this the file is never read again — the app manages its
+   * own library and leaves the user's ssh config alone.
+   */
+  private loadSshConnections(): void {
+    let connections = this.configStore.getSshConnections();
+    if (!this.configStore.getSshConnectionsMigrated()) {
+      const known = new Set(connections.map((connection) => connection.id));
+      for (const alias of parseSshConfigHosts()) {
+        if (known.has(alias)) continue;
+        connections.push({ id: alias, name: alias, host: alias });
+      }
+      // 条目与迁移标记必须同一次落盘：标记先落而条目没落，下次启动就不会再
+      // 导入，这些主机名会永久消失。
+      this.configStore.setSshConnections(connections, true);
+    }
+    installSshConnections(connections);
   }
 
   setMainWindow(win: BrowserWindow): void {
@@ -1371,16 +1405,22 @@ export class DesktopHost {
 
   private pushWorkdirState(host: string, recentWorkdirs: string[]): void {
     this.pushedRecentWorkdirs.set(host, recentWorkdirs);
+    const connections = getSshConnections();
     this.postMessage({
       command: "desktopWorkdirState",
       workdir: this.workdir,
       host,
-      hosts: parseSshConfigHosts(),
+      // SSH 主机 id 列表（不含「本地」，渲染端的旧回退路径自己补）：SSH 那边
+      // 就是连接库条目的 id（spec desktop-remote.md 场景 1/5；老版本这里是
+      // `~/.ssh/config` 的 Host 名）。
+      hosts: connections.map((connection) => connection.id),
       // Ordered option list for the picker: 本地 → WSL 发行版 → SSH 主机 (spec
-      // docs/specs/desktop/desktop-wsl.md 场景 1). `hosts` stays as the plain
-      // ssh list for older renderers; the labels live host-side so the trigger,
-      // the menu and the sidebar groups can never disagree (场景 17).
+      // docs/specs/desktop/desktop-wsl.md 场景 1). The labels live host-side so
+      // the trigger, the menu and the sidebar groups can never disagree (场景 17).
       hostOptions: this.hostOptions(),
+      // 完整条目供连接弹窗编辑（name/host/port/key）：菜单只需要 label，
+      // 表单要能回填每个字段，所以在列表之外再下发一份。
+      sshConnections: connections,
       recentWorkdirs,
     });
   }
@@ -1406,8 +1446,10 @@ export class DesktopHost {
           : { disabled: true, hint: "WSL 1：不支持" }),
       });
     }
-    for (const host of parseSshConfigHosts()) {
-      options.push({ id: host, label: host, kind: "ssh" });
+    // SSH 主机 = 连接库条目（顺序即添加顺序），显示名用条目名，`host` 是交给
+    // ssh 的目标（可以是 `~/.ssh/config` 别名）。
+    for (const connection of getSshConnections()) {
+      options.push({ id: connection.id, label: connection.name, kind: "ssh" });
     }
     return options;
   }
@@ -1419,9 +1461,17 @@ export class DesktopHost {
       return;
     }
     this.wslDistros = await listWslDistros();
-    // Re-push through `pushWorkdirState` directly (not `sendWorkdirState`): the
-    // latter re-reads the recents from the host, which would dial a host that is
-    // unreachable or mid-reconnect just to refresh a picker list.
+    this.repushHostState();
+  }
+
+  /**
+   * Re-push the picker state (host list, labels, recents) **without dialing a
+   * host**: `sendWorkdirState` re-reads the recents from the machine, which
+   * would connect to a host that is unreachable or mid-reconnect just to
+   * refresh a list. Used after a WSL probe and after the SSH connection library
+   * changes.
+   */
+  private repushHostState(): void {
     const host = this.currentHost;
     this.pushWorkdirState(
       host,
@@ -2335,9 +2385,10 @@ export class DesktopHost {
           paneId: p.paneId,
           sessionId: p.agent?.sessionId,
           host,
-          // Display form of the same host (WSL distros read as「Ubuntu (WSL)」).
-          // Shipped alongside the raw id so the renderer never has to parse one.
-          hostLabel: hostDisplayLabel(host),
+          // Display form of the same host (WSL distros read as「Ubuntu (WSL)」,
+          // a deleted connection is marked as such). Shipped alongside the raw
+          // id so the renderer never has to parse one.
+          hostLabel: this.displayLabelForHost(host),
           width: p.width,
           row: p.row ?? 0,
           // 「这条会话有没有产生过消息」的唯一权威口径：渲染端据此区分「新会话」与
@@ -3225,7 +3276,7 @@ export class DesktopHost {
           host,
           state,
           "unrecoverable",
-          "主机已从配置中移除",
+          "该主机的连接条目已被删除",
         );
         return;
       }
@@ -3472,11 +3523,13 @@ export class DesktopHost {
     }
   }
 
-  /** The host was edited out of `~/.ssh/config` while we were retrying. */
+  /**
+   * The host was deleted from the connection library while we were retrying
+   * (spec scenario 31：删除后停止自动重连). A renamed/re-pointed entry keeps its
+   * id, so editing never trips this.
+   */
   private reconnectHostStillConfigured(host: string): boolean {
-    const configPath = getSshConfigPath();
-    if (!fs.existsSync(configPath)) return true;
-    return parseSshConfigHosts(configPath).includes(host);
+    return isSshConnectionId(host);
   }
 
   /** Failures that retrying cannot fix (scenario 13). */
@@ -4027,9 +4080,9 @@ export class DesktopHost {
     );
     this.sessionTree = sortedGroups.map(({ host, workdir, sorted }) => ({
       host,
-      // Sidebar group header: 「Ubuntu (WSL)」 rather than the raw host id
-      // (spec docs/specs/desktop/desktop-wsl.md 场景 16/17).
-      hostLabel: hostDisplayLabel(host),
+      // Sidebar group header: 「Ubuntu (WSL)」 / the connection name rather than
+      // the raw host id (spec docs/specs/desktop/desktop-wsl.md 场景 16/17).
+      hostLabel: this.displayLabelForHost(host),
       workdir,
       sessions: sorted.map((s) => {
         const agent = this.agents.get(this.agentKey(s.host, s.sessionId));
@@ -4704,8 +4757,18 @@ export class DesktopHost {
         this.showToast({ message: msg.text as string, type: "info" });
         break;
 
-      case "desktopAddHost":
-        await this.handleAddHost(msg.connectionString as string);
+      case "desktopSaveSshConnection":
+        await this.handleSaveSshConnection(
+          (msg.input ?? {}) as SshConnectionInput,
+          msg.requestId as string,
+        );
+        break;
+
+      case "desktopDeleteSshConnection":
+        await this.handleDeleteSshConnection(
+          msg.id as string,
+          msg.requestId as string,
+        );
         break;
 
       case "desktopSelectRemotePath":
@@ -6142,16 +6205,57 @@ export class DesktopHost {
   }
 
   /**
-   * Pick a host for the focused pane's new-session workdir picker. Only
-   * hosts from ~/.ssh/config (or 本地) are accepted; switching host re-sends
-   * workdir state so the picker shows that host's recents (spec scenario 1).
+   * 切到某台主机后，若分屏还停在「新对话」状态，就在这台主机的默认目录上把会话建起来
+   * （spec desktop/desktop-remote.md 场景 28）。
+   *
+   * 判据是分屏**没有 agent**。主机的最近目录只是选择器里的默认值，宿主这边并没有
+   * 会话，于是分屏处在半残状态：工作目录显示着远端路径，输入 `/` 却拿不到命令
+   * （斜杠弹层要过 agent 取命令，见 handleSlashCommandsRequest），直接发送消息会被
+   * 「请先选择工作目录」拦下。本地新对话没这个问题——它绑着一个空白 agent；切主机把
+   * 空白 agent 解绑之后补一个，两个入口就一致了：命令弹层、直接发送、`@` 文件搜索
+   * 都立即可用。
+   *
+   * 失败静默：主机不可达时连接本身已有 toast，这里再推系统消息反而会把分屏踢出
+   * 「新对话」状态（`pushSystemMessage` 算作会话内容），让用户连目录都选不了。
+   */
+  private async openDefaultSessionOnHost(
+    paneId: string,
+    host: string,
+  ): Promise<void> {
+    if (this.agentForPane(paneId) || this.pendingRestores.has(paneId)) return;
+    // 目录取本机缓存那份（不额外发 RPC）：切主机本身已经在拉远端那份 recents，
+    // 这里再要一次除了多一次往返，还会在隧道刚断开时把「空闲后不再重连」的重连
+    // 序列又踢起来。会话一旦激活，`workdir` 就由那个 agent 决定（activateAgentInPane
+    // → sendWorkdirState），选择器显示的就是实际工作的目录，不会与这里分叉。
+    const dir = this.configStore.getRecentWorkdirsForHost(host)[0];
+    if (!dir) return;
+    try {
+      const agent = await this.spawnAgent({ host, workdir: dir });
+      // 建会话期间用户又切了主机、绑了别的会话、开始恢复、或把焦点移到了别的分屏
+      // → 丢弃这次的空会话，绝不抢用户当前的视图与焦点。
+      if (
+        (this.hostState.get(paneId) ?? LOCAL_HOST) !== host ||
+        this.focusedPaneId !== paneId ||
+        this.agentForPane(paneId) ||
+        this.pendingRestores.has(paneId)
+      ) {
+        await this.discardAgent(agent);
+        return;
+      }
+      await this.activateAgentInPane(paneId, agent);
+    } catch {
+      // 见上：静默。
+    }
+  }
+
+  /**
+   * Pick a host for the focused pane's new-session workdir picker. Only 本地,
+   * a WSL distro, or one of the saved SSH connections is accepted; switching
+   * host re-sends workdir state so the picker shows that host's recents (spec
+   * scenario 1).
    */
   private async handleSelectHost(host: string): Promise<void> {
-    if (
-      host !== LOCAL_HOST &&
-      !isWslHost(host) &&
-      !parseSshConfigHosts().includes(host)
-    ) {
+    if (host !== LOCAL_HOST && !isWslHost(host) && !isSshConnectionId(host)) {
       this.showToast({ message: `未知主机：${host}`, type: "error" });
       return;
     }
@@ -6208,7 +6312,12 @@ export class DesktopHost {
     // host's 登录 button. Failures surface as a system message, the picker
     // updates immediately.
     this.ensureClientFor(host)
-      .then(() => this.refreshAuthStatus(host))
+      .then(async () => {
+        await this.refreshAuthStatus(host);
+        // 连上之后把「新对话」状态收尾：在该主机的默认目录上建会话，否则分屏会停在
+        // 「显示了目录却没有会话」的半残状态（见 openDefaultSessionOnHost）。
+        await this.openDefaultSessionOnHost(pid, host);
+      })
       .catch((error) => {
         this.showToast({
           message: `连接主机 ${host} 失败：${error instanceof Error ? error.message : String(error)}`,
@@ -6222,59 +6331,142 @@ export class DesktopHost {
   }
 
   /**
-   * VSC-style 添加主机…: append a Host block to ~/.ssh/config from an
-   * `ssh user@hostname -p port` connection string, then auto-select the new
-   * host (spec scenario 5 — the picker refreshes and the new host becomes the
-   * current one). The eager client establishment makes auth failures surface
-   * immediately instead of at the first agent spawn.
+   * 连接库保存（新建与编辑同一条命令，spec 场景 5/29/30）。
+   *
+   * 表单能拼出的东西宿主才存：渲染端也做一遍校验，但那只是为了即时提示，最终
+   * 裁决在这里（`validateSshConnectionInput`）。新建成功后自动选中该主机
+   * （场景 5：条目出现即成为当前主机）；编辑只改下次连接用的参数，绑定关系、
+   * 会话、最近目录一概不动（场景 30）。
    */
-  private async handleAddHost(connectionString: string): Promise<void> {
-    let name: string;
-    try {
-      name = addSshHost(connectionString);
-    } catch (error) {
-      this.showToast({
-        message: error instanceof Error ? error.message : String(error),
-        type: "error",
+  private async handleSaveSshConnection(
+    input: SshConnectionInput,
+    requestId: string,
+  ): Promise<void> {
+    const reply = (ok: boolean, id?: string, error?: string): void => {
+      this.postMessage({
+        command: "desktopSshConnectionResult",
+        requestId,
+        id,
+        ok,
+        error,
       });
+    };
+    const existing = this.configStore.getSshConnections();
+    const result = validateSshConnectionInput(input, existing);
+    if (!result.ok) {
+      // 失败留在弹窗里就地显示，连接库与会话都不变。
+      reply(false, input.id, result.error);
       return;
     }
-    const pid = this.focusedPaneId;
-    const active = this.agentForPane(pid);
-    // Same as handleSelectHost: a bound content-less agent must not pin the
-    // pane to its old host — release it so the new host takes effect.
-    if (active && !this.hasMessageContent(active)) {
-      this.bindAgentToPane(pid, null);
-      this.pushPaneSessionState(pid);
+    const draft = result.value;
+    // id 不在库里（别处删掉了）按新建处理：不凭空复活一个已删除的条目。
+    const editedId =
+      draft.id && existing.some((c) => c.id === draft.id)
+        ? draft.id
+        : undefined;
+    const entry: SshConnection = {
+      id: editedId ?? newSshConnectionId(),
+      name: draft.name,
+      host: draft.host,
+      ...(draft.port === undefined ? {} : { port: draft.port }),
+      ...(draft.identityFile === undefined
+        ? {}
+        : { identityFile: draft.identityFile }),
+    };
+    this.configStore.setSshConnections(
+      editedId
+        ? existing.map((c) => (c.id === editedId ? entry : c))
+        : [...existing, entry],
+    );
+    // `setSshConnections` 落盘失败只打日志（不能让一次写盘异常打挂主进程），
+    // 所以回读确认真的存进去了：写失败必须报错且保持原条目不变
+    // （spec 边界「连接库写入失败」）。
+    const saved = this.configStore.getSshConnections();
+    const persisted = saved.some(
+      (c) =>
+        c.id === entry.id &&
+        c.name === entry.name &&
+        c.host === entry.host &&
+        c.port === entry.port &&
+        c.identityFile === entry.identityFile,
+    );
+    if (!persisted) {
+      reply(false, input.id, "保存失败：连接库未能写入磁盘");
+      return;
     }
-    this.hostState.set(pid, name);
-    // Same as handleSelectHost: with no bound agent the pane is still the
-    // new-session picker, so clear the previous host's workdir from both the
-    // host-side state and the webview (desktop-remote.md「SSH 远程主机」scenario 23).
-    if (!this.agentForPane(pid)) {
-      this.workdir = undefined;
-      this.postMessage({
-        command: "updateWorkdir",
-        paneId: pid,
-        workdir: undefined,
-      });
-    }
-    this.ensureClientFor(name)
-      .then(() => this.refreshAuthStatus(name))
-      .catch((error) => {
-        this.showToast({
-          message: `连接主机 ${name} 失败：${error instanceof Error ? error.message : String(error)}`,
-          type: "error",
-        });
-      });
+    installSshConnections(saved);
+    reply(true, entry.id);
     // Notices surface as a window-global toast — pushing them as chat messages
     // would flip the pane out of the new-session picker state and hide the
     // host/workdir selectors.
-    this.showToast({ message: `已添加主机：${name}`, type: "success" });
-    this.sendWorkdirState();
-    // Same as handleSelectHost: the pane layout must carry the new host or the
-    // selector never leaves the old one.
+    this.showToast({
+      message: editedId
+        ? `已保存主机：${entry.name}`
+        : `已添加主机：${entry.name}`,
+      type: "success",
+    });
+    if (!editedId) {
+      // 场景 5：保存后新条目立即出现在列表并被选中；连接与鉴权状态一起走
+      // （失败原因由 handleSelectHost 自己 toast）。
+      await this.handleSelectHost(entry.id);
+      return;
+    }
+    // 编辑不重连当前连接：端口/私钥改动对下一次连接生效（含断线重连，
+    // 场景 30），这里只把新名称与新列表推给界面。
+    this.repushHostState();
     this.pushPanes();
+  }
+
+  /**
+   * 删除连接条目（spec 场景 31）。绑定该主机的分屏不销毁会话、会话索引与
+   * 该主机的最近目录也不清理——主机可能只是被临时移除，重新添加回来即可接上；
+   * 自动重连由 `reconnectHostStillConfigured` 直接停掉（条目不在了）。
+   */
+  private async handleDeleteSshConnection(
+    id: string,
+    requestId: string,
+  ): Promise<void> {
+    const reply = (ok: boolean, error?: string): void => {
+      this.postMessage({
+        command: "desktopSshConnectionResult",
+        requestId,
+        id,
+        ok,
+        error,
+      });
+    };
+    const existing = this.configStore.getSshConnections();
+    const next = existing.filter((connection) => connection.id !== id);
+    if (next.length === existing.length) {
+      reply(false, "该连接已不存在");
+      return;
+    }
+    this.configStore.setSshConnections(next);
+    installSshConnections(next);
+    const saved = this.configStore.getSshConnections();
+    if (saved.some((connection) => connection.id === id)) {
+      reply(false, "删除失败：连接库未能写入磁盘");
+      return;
+    }
+    reply(true);
+    this.repushHostState();
+    // 分屏与侧栏的 hostLabel 由 `displayLabelForHost` 现算：重推一次布局，绑在
+    // 该主机上的分屏立刻显示「连接已删除」。
+    this.pushPanes();
+    this.refreshSessionTree();
+  }
+
+  /**
+   * 主机显示名：连接条目的名称；已删除的条目在 id 后标「连接已删除」，让绑在
+   * 它上面的分屏与侧栏分组看得出这台主机不能用了（spec 场景 31）。
+   */
+  private displayLabelForHost(host: string): string {
+    const connection = findSshConnection(host);
+    if (connection) return connection.name;
+    if (host === LOCAL_HOST || isWslHost(host)) {
+      return hostDisplayLabel(host);
+    }
+    return `${host}（连接已删除）`;
   }
 
   /**
@@ -6287,7 +6479,7 @@ export class DesktopHost {
     path: string,
   ): Promise<void> {
     if (host === LOCAL_HOST || !path) return;
-    if (!isWslHost(host) && !parseSshConfigHosts().includes(host)) {
+    if (!isWslHost(host) && !isSshConnectionId(host)) {
       this.showToast({ message: `未知主机：${host}`, type: "error" });
       return;
     }

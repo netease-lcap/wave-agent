@@ -1,5 +1,7 @@
 import "@testing-library/jest-dom/vitest";
 import { vi } from "vitest";
+import { createCodeEditor } from "../src/components/fileEditor/createCodeEditor";
+import { createReadOnlyCodeView } from "../src/components/fileEditor/createReadOnlyCodeView";
 
 /**
  * Browser-mode setup: everything the real Chromium environment still needs —
@@ -37,3 +39,10 @@ vi.mock("dompurify", () => ({
 // A few specs still write `globalThis.global` (node spelling). There is no
 // `global` in a browser; alias it so those assertions keep working.
 (globalThis as unknown as Record<string, unknown>).global = globalThis;
+
+// The file panel reaches CodeMirror through a lazily injected desktop-only chunk
+// (`./editor.js`), which this dev server never builds. Wiring the chunk's own
+// source into the global stands in for that <script> tag: the specs drive the
+// same editor the desktop host ships, without a bundling step. Loading is still
+// asynchronous (one promise hop), so specs that touch the code surface await it.
+window.WaveEditor = { createCodeEditor, createReadOnlyCodeView };

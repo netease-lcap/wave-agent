@@ -101,9 +101,7 @@ test.describe("Desktop SSH remote sessions (mocked)", () => {
     );
   });
 
-  test("add-host entry expands to a connection-string input", async ({
-    webviewPage,
-  }) => {
+  test("add-host entry opens the connection form", async ({ webviewPage }) => {
     const injector = new MessageInjector(webviewPage);
     await webviewPage.setViewportSize({ width: 1280, height: 720 });
     await injector.simulateExtensionMessage("desktopWorkdirState", {
@@ -124,17 +122,19 @@ test.describe("Desktop SSH remote sessions (mocked)", () => {
     ]);
     await injector.simulateExtensionMessage("setInitialState", initialState);
 
-    // Open the host menu and expand 添加主机… into the connection-string input.
+    // Open the host menu and let 添加主机… open the connection form (对齐 CC 桌面端：
+    // 名称 / 主机 / 端口 / 私钥四个字段，存进应用自己的连接库).
     await webviewPage.getByTestId("desktop-host").click();
     await webviewPage.getByTestId("desktop-host-add-entry").click();
-    await expect(webviewPage.getByTestId("desktop-host-add")).toBeVisible();
-    await webviewPage
-      .getByTestId("desktop-host-add")
-      .locator("input")
-      .fill("ssh deploy@dev-server -p 2222");
     await expect(
-      webviewPage.getByTestId("desktop-host-add").locator("input"),
-    ).toHaveValue("ssh deploy@dev-server -p 2222");
+      webviewPage.getByTestId("desktop-ssh-connection-dialog"),
+    ).toBeVisible();
+    await webviewPage.getByTestId("desktop-ssh-name").fill("开发机");
+    await webviewPage.getByTestId("desktop-ssh-host").fill("deploy@dev-server");
+    await webviewPage.getByTestId("desktop-ssh-port").fill("2222");
+    await expect(webviewPage.getByTestId("desktop-ssh-host")).toHaveValue(
+      "deploy@dev-server",
+    );
 
     await screenshotWebp(
       webviewPage,

@@ -103,6 +103,16 @@ async function waitForSearchRequest(
   return call.requestId as string;
 }
 
+/** Line numbers CodeMirror renders in the gutter for the current viewport. The
+ *  gutter also carries a zero-height element it measures its width with — that
+ *  one is not a line number. */
+function gutterNumbers(root: ParentNode): string[] {
+  return Array.from(root.querySelectorAll(".cm-lineNumbers .cm-gutterElement"))
+    .filter((el) => el.getBoundingClientRect().height > 0)
+    .map((el) => el.textContent ?? "")
+    .filter((text) => text !== "");
+}
+
 function renderPane(
   options: {
     fileView?: FileViewState | null;
@@ -248,80 +258,160 @@ describe("FilePane", () => {
     expect(code?.querySelector("span.hljs-keyword")).not.toBeNull();
   });
 
-  it("renders code files as numbered lines", () => {
+  it("renders code files as numbered lines", async () => {
     const { container } = renderPane();
-    const lines = container.querySelectorAll(".file-pane-line");
+    const first = await screen.findByTestId("file-pane-line-1");
+    const lines = container.querySelectorAll(".cm-line");
     expect(lines).toHaveLength(2);
-    expect(lines[0].querySelector(".file-pane-line-no")?.textContent).toBe("1");
-    expect(
-      lines[0].querySelector(".file-pane-line-code")?.textContent,
-    ).toContain("const a = 1");
-    expect(lines[1].querySelector(".file-pane-line-no")?.textContent).toBe("2");
-    expect(
-      lines[1].querySelector(".file-pane-line-code")?.textContent,
-    ).toContain("const b = 2");
+    // 行号在 CodeMirror 的 gutter 里（`user-select: none` —— 全选永远圈不到）。
+    expect(gutterNumbers(container)).toEqual(["1", "2"]);
+    expect(first.textContent).toBe("const a = 1;");
+    expect(screen.getByTestId("file-pane-line-2").textContent).toBe(
+      "const b = 2;",
+    );
   });
 
-  it("syntax-highlights code lines with hljs spans", () => {
-    const { container } = renderPane();
-    expect(
-      container.querySelector(".file-pane-line-code span.hljs-keyword"),
-    ).not.toBeNull();
+  it("syntax-highlights code lines with tokens", async () => {
+    renderPane();
+    const line = await screen.findByTestId("file-pane-line-1");
+    // `HighlightStyle` 生成的是哈希类名（`ͼb` 这种），断言只能落在形状上：
+    // 这一行被切成了多个 token span，文本本身没被改动。
+    expect(line.querySelectorAll("span").length).toBeGreaterThan(0);
+    expect(line.textContent).toBe("const a = 1;");
   });
 
-  it("marks the requested line range as active", () => {
-    const { container } = renderPane({
+  it("marks the requested line range as active", async () => {
+    renderPane({
       fileView: makeFileView({ startLine: 1, endLine: 1 }),
     });
-    const lines = container.querySelectorAll(".file-pane-line");
-    expect(lines[0].classList.contains("file-pane-line--active")).toBe(true);
-    expect(lines[1].classList.contains("file-pane-line--active")).toBe(false);
+    const first = await screen.findByTestId("file-pane-line-1");
+    expect(first.classList.contains("file-pane-line--active")).toBe(true);
+    expect(
+      screen
+        .getByTestId("file-pane-line-2")
+        .classList.contains("file-pane-line--active"),
+    ).toBe(false);
   });
 
-  it("marks every line from startLine on when endLine is absent", () => {
-    const { container } = renderPane({
+  it("drops the jump-to band while text is selected, and brings it back", async () => {
+    // 两种底色不同屏：区间高亮是「这次 read 到哪几行」的淡提示，选区是强底色。
+    // 同屏并存时读起来像「只选中了一半」，所以有非空选区就把带子整体撤掉
+    // （Claude 桌面端的文件查看器就是这么做的），选区清掉再回来。
+    renderPane({
+      fileView: makeFileView({ startLine: 1, endLine: 1 }),
+    });
+    const band = () =>
+      screen
+        .getByTestId("file-pane-line-1")
+        .classList.contains("file-pane-line--active");
+    await waitFor(() => expect(band()).toBe(true));
+
+    const viewer = screen.getByTestId("file-pane-viewer");
+    viewer.focus();
+    act(() => {
+      document.execCommand("selectAll");
+    });
+    await waitFor(() => expect(band()).toBe(false));
+
+    // 清掉选区的方式与用户一致：在正文里再点一下（落下光标），而不是把 DOM 选区
+    // 拿空——后者 CodeMirror 收不到「编辑器内的选区变成光标」，状态里的选区还在。
+    act(() => {
+      const range = document.createRange();
+      range.setStart(screen.getByTestId("file-pane-line-1"), 0);
+      range.collapse(true);
+      const sel = window.getSelection()!;
+      sel.removeAllRanges();
+      sel.addRange(range);
+    });
+    await waitFor(() => expect(band()).toBe(true));
+  });
+
+  it("marks every line from startLine on when endLine is absent", async () => {
+    renderPane({
       fileView: makeFileView({ startLine: 2 }),
     });
-    const lines = container.querySelectorAll(".file-pane-line");
-    expect(lines[0].classList.contains("file-pane-line--active")).toBe(false);
-    expect(lines[1].classList.contains("file-pane-line--active")).toBe(true);
+    const second = await screen.findByTestId("file-pane-line-2");
+    expect(second.classList.contains("file-pane-line--active")).toBe(true);
+    expect(
+      screen
+        .getByTestId("file-pane-line-1")
+        .classList.contains("file-pane-line--active"),
+    ).toBe(false);
   });
 
-  it("scrolls to the start line when the opener carries one", () => {
+  it("scrolls to the start line when the opener carries one", async () => {
     const content =
       Array.from({ length: 60 }, (_, i) => `line ${i + 1}`).join("\n") + "\n";
     // 正文区的高度来自面板外的布局：不先声明，60 行会把滚动盒撑满、落点被夹回 0。
     const restore = pinScrollBoxHeight(".file-pane-scroll", 100);
     try {
       renderPane({ fileView: makeFileView({ content, startLine: 56 }) });
-      // 内容区现在是标签带 / 查找条下面的那一层（.file-pane-scroll），它才是滚动
-      // 容器——标签带和查找条不该跟着正文滚走。
-      const body = document.querySelector(".file-pane-scroll") as HTMLElement;
-      // (56 - 1) * 20 - 20 * 1.5 → the requested line lands ~1.5 lines from the top.
-      expect(body.scrollTop).toBe(1070);
+      const line = await screen.findByTestId("file-pane-line-56");
+      // 滚动归 CodeMirror 自己的 .cm-scroller：落点是「请求的行贴着可视区顶部
+      // 往下两行」，所以断言行为（行的位置），不是像素算式。
+      await waitFor(() => {
+        const scroller = document.querySelector<HTMLElement>(".cm-scroller");
+        expect(scroller).not.toBeNull();
+        expect(scroller!.scrollTop).toBeGreaterThan(1000);
+      });
+      const scroller = document.querySelector<HTMLElement>(".cm-scroller")!;
+      const offset =
+        line.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
+      expect(offset).toBeGreaterThanOrEqual(0);
+      expect(offset).toBeLessThan(80);
     } finally {
       restore();
     }
   });
 
-  it("shows the total-lines truncated hint", () => {
-    const content =
-      Array.from({ length: 2000 }, (_, i) => `line ${i + 1}`).join("\n") + "\n";
-    const { container } = renderPane({
-      fileView: makeFileView({ content, truncated: true, totalLines: 2001 }),
+  it("keeps 全选 inside the file: Ctrl+A selects the code, nothing else", async () => {
+    // 客户反馈的那条：只读正文是普通 DOM 行时，全选是整页选区，把工具栏路径、
+    // 标签带、截断提示一起圈进去。桌面端「全选」走的正是这条编辑命令（Edit 菜单
+    // 的 `role: selectAll`），所以这里也用它——与那个快捷键等价。
+    const content = "const a = 1;\nconst b = 2;\n";
+    renderPane({
+      fileView: makeFileView({
+        content,
+        path: "/work/a/src/app.ts",
+        truncated: true,
+        totalLines: 9,
+      }),
+      workdir: "/work/a",
     });
-    expect(
-      container.querySelector(".file-pane-truncated-hint")?.textContent,
-    ).toBe("文件共 2001 行，仅显示前 2000 行");
+    const viewer = await screen.findByTestId("file-pane-viewer");
+    viewer.focus();
+    act(() => {
+      document.execCommand("selectAll");
+    });
+    // 选区就是这份文件的文字，一行不多一行不少（行号在 gutter 里，不进选区）。
+    expect(window.getSelection()?.toString()).toBe(content.replace(/\n$/, ""));
+    const selected = window.getSelection()?.toString() ?? "";
+    expect(selected).not.toContain("src/app.ts"); // 工具栏路径
+    expect(selected).not.toContain("app.ts"); // 标签名
+    expect(selected).not.toContain("末尾内容可能缺失"); // 截断说明
   });
 
-  it("shows the generic truncated hint when total lines are unknown", () => {
-    const { container } = renderPane({
-      fileView: makeFileView({ truncated: true }),
+  it("gives the truncation note as a footnote under the code, without line counts", () => {
+    // 对齐 Claude 桌面端文件查看器：底部一行次要色小字（`text-footnote
+    // text-muted`），不报行数、不涂底色，也不在正文顶部 / 滚动区里 —— 早先是正文
+    // 顶部的一条通栏横幅「文件共 N 行，仅显示前 N 行」。
+    const content = "line 1\nline 2\n";
+    const { rerenderWith } = renderPane({
+      fileView: makeFileView({ content, truncated: true, totalLines: 2001 }),
     });
-    expect(
-      container.querySelector(".file-pane-truncated-hint")?.textContent,
-    ).toBe("文件较大，内容已截断");
+    const hint = screen.getByTestId("file-pane-truncated-hint");
+    expect(hint.textContent).toBe("文件较大，末尾内容可能缺失");
+    // 不报行数：文案里既没有总行数（2001）也没有已加载行数（2），一个数字都没有。
+    expect(hint.textContent).not.toMatch(/\d/);
+    // 在正文滚动区之外：不跟着正文滚走，也不会被代码区的全选圈进去。
+    expect(hint.closest(".file-pane-scroll")).toBeNull();
+    expect(hint.closest(".file-pane-code")).toBeNull();
+    // 宿主没有给出总行数时是同一条说明（不再分「共 N 行」与「内容已截断」两种）。
+    rerenderWith(makeFileView({ content, truncated: true }));
+    expect(screen.getAllByTestId("file-pane-truncated-hint")).toHaveLength(1);
+    expect(screen.getByTestId("file-pane-truncated-hint").textContent).toBe(
+      "文件较大，末尾内容可能缺失",
+    );
   });
 
   it("shows 本地 for local files and the host name for remote ones", () => {
@@ -369,20 +459,23 @@ describe("FilePane", () => {
   });
 
   describe("line comments", () => {
-    it("renders no comment affordance without a comment sink", () => {
+    it("renders no comment affordance without a comment sink", async () => {
       const { container } = renderPane({
         fileView: makeFileView({ content: "a\nb\n" }),
       });
+      // 先等代码视图挂上，否则「没有 data-comment-unit」只是一句尚未渲染的废话。
+      await screen.findByTestId("file-pane-line-1");
       // No commentable units and no toolbar fallback (spec 场景 9).
       expect(container.querySelector("[data-comment-unit]")).toBeNull();
       expect(screen.queryByTestId("file-pane-comment")).not.toBeInTheDocument();
     });
 
-    it("gives every rendered line a comment entry, with no button in the gutter", () => {
+    it("gives every rendered line a comment entry, with no button in the gutter", async () => {
       renderPane({
         fileView: makeFileView({ content: "a\nb\n" }),
         onAddComment: vi.fn(),
       });
+      await screen.findByTestId("file-pane-line-1");
       expect(screen.getByTestId("file-pane-line-1")).toHaveAttribute(
         "data-comment-unit",
         "1",
@@ -402,15 +495,16 @@ describe("FilePane", () => {
       );
     });
 
-    it("appends the comment with path, line number and line content", () => {
+    it("appends the comment with path, line number and line content", async () => {
       const onAddComment = vi.fn();
       renderPane({
         fileView: makeFileView({ content: "const a = 1;\nconst b = 2;\n" }),
         workdir: "/work/a",
         onAddComment,
       });
+      await screen.findByTestId("file-pane-line-2");
       openCommentAt("file-pane-line-2");
-      const box = screen.getByTestId("line-comment-box");
+      const box = await screen.findByTestId("line-comment-box");
       expect(box.querySelector(".line-comment-box-tag")).toHaveTextContent(
         "src/app.ts",
       );
@@ -423,48 +517,64 @@ describe("FilePane", () => {
       );
       // The box closes and the comment is not kept in the pane — only the
       // chat input has it (spec「文件面板行评论」场景 2).
-      expect(screen.queryByTestId("line-comment-box")).not.toBeInTheDocument();
+      await waitFor(() =>
+        expect(
+          screen.queryByTestId("line-comment-box"),
+        ).not.toBeInTheDocument(),
+      );
     });
 
-    it("submits with Enter and closes without submitting on Escape", () => {
+    it("submits with Enter and closes without submitting on Escape", async () => {
       const onAddComment = vi.fn();
       renderPane({
         fileView: makeFileView({ content: "a\nb\n" }),
         onAddComment,
       });
+      await screen.findByTestId("file-pane-line-1");
       openCommentAt("file-pane-line-1");
-      const input = screen.getByTestId("line-comment-input");
+      const input = await screen.findByTestId("line-comment-input");
       fireEvent.change(input, { target: { value: "first" } });
       fireEvent.keyDown(input, { key: "Enter" });
       expect(onAddComment).toHaveBeenCalledTimes(1);
 
       openCommentAt("file-pane-line-1");
+      await screen.findByTestId("line-comment-input");
       fireEvent.change(screen.getByTestId("line-comment-input"), {
         target: { value: "dropped" },
       });
       fireEvent.keyDown(screen.getByTestId("line-comment-input"), {
         key: "Escape",
       });
-      expect(screen.queryByTestId("line-comment-box")).not.toBeInTheDocument();
+      await waitFor(() =>
+        expect(
+          screen.queryByTestId("line-comment-box"),
+        ).not.toBeInTheDocument(),
+      );
       expect(onAddComment).toHaveBeenCalledTimes(1);
     });
 
-    it("discards the open box and its draft when the panel switches files", () => {
+    it("discards the open box and its draft when the panel switches files", async () => {
       const { rerenderWith } = renderPane({
         fileView: makeFileView({ content: "a\nb\n" }),
         onAddComment: vi.fn(),
       });
+      await screen.findByTestId("file-pane-line-1");
       openCommentAt("file-pane-line-1");
+      await screen.findByTestId("line-comment-input");
       fireEvent.change(screen.getByTestId("line-comment-input"), {
         target: { value: "半截草稿" },
       });
       rerenderWith(
         makeFileView({ path: "/work/a/src/other.ts", content: "x\ny\n" }),
       );
-      expect(screen.queryByTestId("line-comment-box")).not.toBeInTheDocument();
+      await waitFor(() =>
+        expect(
+          screen.queryByTestId("line-comment-box"),
+        ).not.toBeInTheDocument(),
+      );
     });
 
-    it("comments the selected lines as a range when the selection is used", () => {
+    it("comments the selected lines as a range when the selection is used", async () => {
       const onAddComment = vi.fn();
       renderPane({
         fileView: makeFileView({
@@ -473,6 +583,7 @@ describe("FilePane", () => {
         workdir: "/work/a",
         onAddComment,
       });
+      await screen.findByTestId("file-pane-line-3");
       selectLines("file-pane-line-2", "file-pane-line-3");
 
       const chip = screen.getByTestId("code-comment-chip");
@@ -480,7 +591,7 @@ describe("FilePane", () => {
       fireEvent.click(chip);
 
       // The box opens under the last commented line and says which range it is.
-      expect(screen.getByTestId("line-comment-input")).toHaveAttribute(
+      expect(await screen.findByTestId("line-comment-input")).toHaveAttribute(
         "placeholder",
         "评论第 2–3 行…",
       );
@@ -493,36 +604,39 @@ describe("FilePane", () => {
       );
     });
 
-    it("drops the selection button once the selection is gone", () => {
+    it("drops the selection button once the selection is gone", async () => {
       renderPane({
         fileView: makeFileView({ content: "a\nb\n" }),
         onAddComment: vi.fn(),
       });
+      await screen.findByTestId("file-pane-line-2");
       selectLines("file-pane-line-1", "file-pane-line-2");
       expect(screen.getByTestId("code-comment-chip")).toBeInTheDocument();
       clearSelection("file-pane-line-2");
       expect(screen.queryByTestId("code-comment-chip")).toBeNull();
     });
 
-    it("keeps the native menu inside the comment box", () => {
+    it("keeps the native menu inside the comment box", async () => {
       renderPane({
         fileView: makeFileView({ content: "a\nb\n" }),
         onAddComment: vi.fn(),
       });
+      await screen.findByTestId("file-pane-line-1");
       openCommentAt("file-pane-line-1");
-      const input = screen.getByTestId("line-comment-input");
+      const input = await screen.findByTestId("line-comment-input");
       fireEvent.contextMenu(input);
       // Copy/paste has to work in the textarea, so no 「添加评论」 menu here.
       expect(screen.queryByTestId("code-comment-menu")).toBeNull();
     });
 
-    it("has a toolbar button that comments the current line and explains when it cannot", () => {
+    it("has a toolbar button that comments the current line and explains when it cannot", async () => {
       const onAddComment = vi.fn();
       renderPane({
         fileView: makeFileView({ content: "a\nb\n" }),
         workdir: "/work/a",
         onAddComment,
       });
+      await screen.findByTestId("file-pane-line-2");
       const trigger = screen.getByTestId("file-pane-comment");
       // Nothing has been pointed at yet (spec 场景 3).
       expect(trigger).toBeDisabled();

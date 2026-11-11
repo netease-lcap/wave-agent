@@ -12,11 +12,6 @@ import { Message } from "./Message";
 import { DelegatedTooltip } from "./DelegatedTooltip";
 import { ScrollToBottomArrowIcon } from "./HeaderIcons";
 import { isDesktopHost } from "../utils/platform";
-import { TranscriptOutline } from "./TranscriptOutline";
-import {
-  OUTLINE_QUESTION_LIMIT,
-  type TranscriptOutlineItem,
-} from "../utils/transcriptOutline";
 import { EMPTY_TRANSCRIPT_FIND, TranscriptFindBar } from "./TranscriptFindBar";
 import type { TranscriptFindState } from "./TranscriptFindBar";
 import { streamingTail } from "../utils/streamingText";
@@ -56,13 +51,6 @@ const EARLIER_TRIGGER_PX = 160;
 // jump-to-latest）同档：比「已离开底部」的个位数阈值宽得多——这里问的是「远到
 // 需要一个入口了吗」，不是「还要不要跟着新内容走」。
 const JUMP_TO_BOTTOM_THRESHOLD_PX = 200;
-
-/**
- * 点击大纲刻度后「高亮钉住」的松开容差。落位之后目标行首次被测量会带来几十 px
- * 的补偿，那不是用户在滚；滚轮/触控一旦把视口挪出这个范围，才认为用户重新接管
- * 了滚动判据（spec `ui/transcript-outline.md` 场景 6）。
- */
-const OUTLINE_PIN_TOLERANCE_PX = 24;
 
 /**
  * The text this row contributes to the sticky bar — empty when it cannot be an
@@ -130,10 +118,7 @@ export const MessageList = forwardRef<
   const earlierPendingRef = useRef(false);
 
   // The most-recent user message that has scrolled above the viewport top; pinned
-  // at the top of the list as a context hint (设计稿 2236-3792). `index` is the
-  // same candidate the 大纲 uses to highlight its current tick — both read this
-  // one value, so the sticky bar and the outline can never point at two
-  // different rounds.
+  // at the top of the list as a context hint (设计稿 2236-3792).
   const [stickyMessage, setStickyMessage] = useState<{
     id: string;
     text: string;
@@ -154,28 +139,6 @@ export const MessageList = forwardRef<
     text: string;
     index: number;
   } | null>(null);
-
-  /**
-   * 大纲当前项的**滚动判据**结果（spec `ui/transcript-outline.md` 场景 4）：视口内
-   * **可见**的最靠上的那条用户消息。它与上面的吸顶候选刻意不同源 —— 吸顶条回答
-   * 「这一屏属于哪一轮」（可能是已经滚出屏幕的那条），大纲回答「哪一轮的问题正
-   * 出现在你屏幕上」，所以同一时刻两者可以指向不同轮次。屏里一条用户消息都没有
-   * 时这里是 null，大纲不亮任何刻度。
-   */
-  const [outlineActiveId, setOutlineActiveId] = useState<string | null>(null);
-  // 与 stickyRef 同理：computeSticky 跑在每次流式 chunk 上，值没变就不调度 setState。
-  const outlineActiveRef = useRef<string | null>(null);
-
-  /**
-   * 点击刻度后的高亮钉住（场景 6）。点击是「我要看这一轮」的显式意图：落位把目标
-   * 放在视口中间之后，上一轮的问题往往仍在视口里，按可见判据算出来的还是上一轮。
-   * 这里临时覆盖滚动判据，直到用户再次滚动。`scrollTop` 记的是落位后的实际落点，
-   * 用来分辨「这一下滚动是我们自己写的」。
-   */
-  const [pinnedOutlineId, setPinnedOutlineId] = useState<string | null>(null);
-  const pinnedOutlineRef = useRef<{ id: string; scrollTop: number } | null>(
-    null,
-  );
 
   // Filter out user messages with isMeta (hidden from the list). Both the
   // sticky computation and the virtualizer index this filtered list.
@@ -212,27 +175,6 @@ export const MessageList = forwardRef<
    */
   const columnRef = useRef<HTMLDivElement | null>(null);
   const [textWidth, setTextWidth] = useState<number | undefined>(undefined);
-  /**
-   * 内容列宽度，只给大纲判断「窄到该不该整体隐藏」。与 `textWidth` 是两件事：
-   * 那一个是正文折行宽度（量不到就留 undefined，估算用它自己的兜底），这一个
-   * 必须**总有个数**——所以 `getBoundingClientRect` 之外用 `offsetWidth` 兜底
-   * （列被隐藏/尚未排版时 rect 恒 0，`offsetWidth` 仍给出布局宽度）。
-   */
-  const [columnWidth, setColumnWidth] = useState(0);
-  useLayoutEffect(() => {
-    const column = columnRef.current;
-    if (!column) return;
-    const measure = () => {
-      const width =
-        Math.round(column.getBoundingClientRect().width) || column.offsetWidth;
-      setColumnWidth((prev) => (prev === width ? prev : width));
-    };
-    measure();
-    if (typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(measure);
-    observer.observe(column);
-    return () => observer.disconnect();
-  }, []);
   useLayoutEffect(() => {
     const column = columnRef.current;
     if (!column || typeof ResizeObserver === "undefined") return;
@@ -287,43 +229,6 @@ export const MessageList = forwardRef<
   // the imperative handle must not capture a stale render).
   const visibleMessagesRef = useRef(visibleMessages);
   visibleMessagesRef.current = visibleMessages;
-
-  /**
-   * 滚动容器的可视高度，只给大纲算刻度间距与垂直居中位置。内核自己有视口
-   * 高度（`viewportHeight` 在 useVirtualRows 里是个局部函数），但它不外露，
-   * 而且这里要的是「React 能跟着变化重渲染」的那一份。
-   */
-  const [listViewportHeight, setListViewportHeight] = useState(0);
-  /**
-   * 内容列左边缘相对滚动容器的距离 —— 800px 列居中后左侧那片留白。大纲的刻度
-   * 就住在这里（对齐 Codex：目录与消息列之间要有间距，不贴着气泡画）；留白不
-   * 够时大纲整体不显示，见 `shouldShowOutline`。列宽封顶后列本身不再变宽，所以
-   * 必须观察**容器**，只看列是测不出窗口变宽的。
-   */
-  const [columnInset, setColumnInset] = useState(0);
-  useLayoutEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-    const measure = () => {
-      // 容器被隐藏（如旁路 pane 未激活）时 clientHeight 恒 0，用 offsetHeight 兜底。
-      const height = container.clientHeight || container.offsetHeight;
-      setListViewportHeight((prev) => (prev === height ? prev : height));
-      const column = columnRef.current;
-      // 容器不横向滚动（overflow-x: hidden），rect 之差就是列左侧的留白。
-      const inset = column
-        ? Math.round(
-            column.getBoundingClientRect().left -
-              container.getBoundingClientRect().left,
-          )
-        : 0;
-      setColumnInset((prev) => (prev === inset ? prev : inset));
-    };
-    measure();
-    if (typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(measure);
-    observer.observe(container);
-    return () => observer.disconnect();
-  }, [containerRef]);
 
   // ---- 会话内查找（spec ui/transcript-find.md）------------------------------
   // 计数与跳转走消息数据、高亮画在渲染后的文本节点上，两层分开的理由见
@@ -584,51 +489,6 @@ export const MessageList = forwardRef<
     return { classes, paddings };
   }, [visibleMessages]);
 
-  /**
-   * 大纲的刻度数据（spec ui/transcript-outline.md）：一条**带文本**的用户消息
-   * = 一个刻度。判据复用 `stickyAnchorText`——「哪些消息能当锚点」只允许有这
-   * 一份定义，否则吸顶条认它、大纲不认它这种分叉迟早会出现。
-   *
-   * 刻度只带问题、不带助手回答（spec 场景 5）：卡片里只放一条消息的文本，两段
-   * 内容在这么小的一块地方只会显得重复。
-   */
-  const outlineItems = useMemo((): TranscriptOutlineItem[] => {
-    const items: TranscriptOutlineItem[] = [];
-    for (let index = 0; index < visibleMessages.length; index++) {
-      const message = visibleMessages[index];
-      if (message.role !== "user") continue;
-      const question = stickyAnchorText(message);
-      if (!question) continue;
-      items.push({
-        id: message.id,
-        index,
-        question: question.slice(0, OUTLINE_QUESTION_LIMIT),
-      });
-    }
-    return items;
-  }, [visibleMessages]);
-
-  /**
-   * 大纲的高亮项：点击钉住优先（场景 6），否则用滚动判据（场景 4）。钉住的目标
-   * 已经不在刻度列表里（rewind 截断、换会话）时直接回落到滚动判据，不留一个指向
-   * 空气的高亮。
-   */
-  const outlineActive = useMemo(() => {
-    if (
-      pinnedOutlineId &&
-      outlineItems.some((item) => item.id === pinnedOutlineId)
-    ) {
-      return pinnedOutlineId;
-    }
-    return outlineActiveId ?? undefined;
-  }, [pinnedOutlineId, outlineActiveId, outlineItems]);
-
-  // 换会话（含同一分屏切到另一条会话）时不留上一会话的钉住高亮（场景 12）。
-  useEffect(() => {
-    pinnedOutlineRef.current = null;
-    setPinnedOutlineId(null);
-  }, [docKey]);
-
   const computeSticky = useCallback(() => {
     const container = containerRef.current;
     // setSticky compares against stickyRef (synced from stickyMessage every
@@ -648,15 +508,8 @@ export const MessageList = forwardRef<
             prev.index === next.index;
       if (!same) setStickyMessage(next);
     };
-    // 大纲的滚动判据同样要去重：它跟着 computeSticky 一起跑在流式热路径上。
-    const setOutlineActive = (next: string | null) => {
-      if (outlineActiveRef.current === next) return;
-      outlineActiveRef.current = next;
-      setOutlineActiveId(next);
-    };
     if (!container) {
       setSticky(null);
-      setOutlineActive(null);
       return;
     }
     // 手势期画布带着视觉偏移，屏幕上真正的视口顶是 `scrollTop - 偏移`；不折算的话
@@ -670,35 +523,7 @@ export const MessageList = forwardRef<
     const at = indexAtOffset(scrollTop);
     const rows = visibleMessagesRef.current;
 
-    // ── 大纲的当前项（spec 场景 4）：视口内**可见**的最靠上的用户消息 ──
-    // 从「含视口顶那一行」往下扫，碰到的第一条带文本用户消息就是答案：它的顶部
-    // 可能已经越过视口顶（那更该算作可见），也可能刚进入视口。扫到某一行的起点
-    // 越过视口底就停——后面的行还没露出来。视口里一条用户消息都没有（正在读某
-    // 一轮的长回答、大段工具输出）时给 null：**不亮任何刻度**，也不退回吸顶那条，
-    // 因为高亮只标记屏幕上看得见的那一轮。
-    const viewportPx = container.clientHeight || container.offsetHeight;
-    const bottomEdge = scrollTop + viewportPx;
-    // 局部名不叫 outlineActive：那是上面 memo 的名字（钉住 + 滚动判据的合成）。
-    let visibleQuestionId: string | null = null;
-    if (at >= 0) {
-      // 最后一行没有「下一行的起点」可读，用内容底兜底（滚到底时它确实在视口里）。
-      const atBottom =
-        at + 1 < rows.length ? rowStart(at + 1) : container.scrollHeight;
-      if (atBottom > scrollTop) {
-        for (let i = at; i < rows.length; i++) {
-          if (rowStart(i) >= bottomEdge) break;
-          const row = rows[i];
-          if (row.role !== "user") continue;
-          if (row.id && stickyAnchorText(row)) {
-            visibleQuestionId = row.id;
-            break;
-          }
-        }
-      }
-    }
-    setOutlineActive(visibleQuestionId);
-
-    // ── 吸顶条：滚出视口顶的最近一条用户消息（与大纲是两个判据） ──
+    // ── 吸顶条：滚出视口顶的最近一条用户消息 ──
     let idx = at;
     if (at >= 0 && rowStart(at) >= scrollTop) idx = at - 1;
     let candidate = -1;
@@ -729,61 +554,6 @@ export const MessageList = forwardRef<
     });
   }, [containerRef, indexAtOffset, rowStart, visualOffset]);
 
-  /**
-   * 落在滚动面里的用户消息（给大纲的「在视口内」提色用，spec 场景 14）。
-   *
-   * 判据是**纯几何**：行区间与滚动面相交即算。它与「当前这一轮是哪个」（场景 4
-   * 的判据，只要一条、用来画前景色）是两个粒度：那边回答「读者读到哪一轮了」，
-   * 这边回答「屏幕上现在摆着哪几轮」，所以这里给的是一整份集合。走偏移表而不是
-   * DOM：虚拟列表只挂了一窗行，DOM 里读不到的行不等于不在视口里。
-   */
-  const [visibleOutlineIds, setVisibleOutlineIds] = useState<readonly string[]>(
-    [],
-  );
-  const visibleOutlineIdsRef = useRef<readonly string[]>([]);
-
-  const computeVisibleOutlineIds = useCallback(() => {
-    const container = containerRef.current;
-    if (!container) return;
-    // 手势期画布带视觉偏移，屏幕上真正的视口顶是 `scrollTop - 偏移`（同 computeSticky）。
-    const top = container.scrollTop - visualOffset();
-    const bottom = top + container.clientHeight;
-    const rows = visibleMessagesRef.current;
-    const ids: string[] = [];
-    // 跨在视口顶上的那一行也要算：`indexAtOffset` 给的是「第一个顶边 >= top 的
-    // 行」，它的前一行往往正被从中间切开、有一半露在视口里。
-    let index = indexAtOffset(top);
-    index = index < 0 ? 0 : Math.max(0, index - 1);
-    for (let i = index; i < rows.length; i++) {
-      const start = rowStart(i);
-      // 偏移表是单调的：这一行的顶已经落到视口底之下，后面的都不用看了。
-      if (start >= bottom) break;
-      const row = rows[i];
-      if (row.role !== "user") continue;
-      // 行底 = 下一行的起点；末行没有下一行，按「延伸到内容末尾」处理。
-      const end =
-        i + 1 < rows.length ? rowStart(i + 1) : Number.POSITIVE_INFINITY;
-      if (end <= top) continue;
-      if (!row.id) continue;
-      if (!stickyAnchorText(row)) continue;
-      ids.push(row.id);
-    }
-    // 值没变就别 setState：本函数挂在滚动与内容增长两处，逐次新建数组会让
-    // 整棵树跟着重渲染（流式期尤其贵）。
-    const prev = visibleOutlineIdsRef.current;
-    if (prev.length === ids.length && prev.every((id, k) => id === ids[k])) {
-      return;
-    }
-    visibleOutlineIdsRef.current = ids;
-    setVisibleOutlineIds(ids);
-  }, [containerRef, indexAtOffset, rowStart, visualOffset]);
-
-  // 容器高度（分屏拖动、窗口缩放）也会改变「视口里有哪几条」，而这条路径不派发
-  // 滚动事件。
-  useEffect(() => {
-    computeVisibleOutlineIds();
-  }, [computeVisibleOutlineIds, listViewportHeight]);
-
   const scrollToMessage = useCallback(
     (id: string) => {
       const container = containerRef.current;
@@ -802,13 +572,6 @@ export const MessageList = forwardRef<
       // moved 71px and then snapped back). An instant jump lands in one write,
       // so there is nothing left to cancel.
       scrollToIndex(index, "center", "auto");
-      // 点击的刻度必须自己变成高亮（spec 场景 6）：落位在视口中间之后，上一轮的
-      // 问题往往仍在视口里，按可见判据算出来的还是上一轮 —— 那正是「点了却亮上
-      // 一条」。所以这里临时钉住它，直到用户再次滚动（松开判据在 scroll 监听里）。
-      // 记下落位后的实际 scrollTop（含被上下界夹取的部分），让那次程序性滚动
-      // 不会被当成用户滚动。
-      pinnedOutlineRef.current = { id, scrollTop: container.scrollTop };
-      setPinnedOutlineId(id);
     },
     [containerRef, scrollToIndex, unpin],
   );
@@ -921,9 +684,6 @@ export const MessageList = forwardRef<
       !isInitialLoad && isNewMessage && visibleTail?.role === "user",
     );
     computeSticky();
-    // 行高从估算变实测、上方补了一页，都会在不派发滚动事件的情况下改变「谁在
-    // 视口里」，所以这一份也要在内容变化时对一次账。
-    computeVisibleOutlineIds();
     // 内容增长不会派发滚动事件（流式追加、压缩提示出现、行高从估算变实测），
     // 所以「回到最新」入口的显隐必须在这里也读一次几何——只挂 scroll 会让
     // 「读者停在远处、下面又长了一大段」这种情况一直不更新。
@@ -937,7 +697,6 @@ export const MessageList = forwardRef<
     isStreaming,
     followToBottom,
     computeSticky,
-    computeVisibleOutlineIds,
     containerRef,
     updateJumpToBottom,
   ]);
@@ -988,19 +747,7 @@ export const MessageList = forwardRef<
     let jumpRaf = 0;
     const handleScroll = () => {
       maybeRequestEarlier();
-      // 用户一滚，点击带来的高亮就交还给滚动判据（场景 6）。比较的是落位后的
-      // 实际落点：容差吃掉「目标行首次被测量」带来的几十 px 补偿，否则一次点击
-      // 会被自己的补偿判成「用户滚了」而立刻丢掉高亮。
-      const pin = pinnedOutlineRef.current;
-      if (
-        pin &&
-        Math.abs(container.scrollTop - pin.scrollTop) > OUTLINE_PIN_TOLERANCE_PX
-      ) {
-        pinnedOutlineRef.current = null;
-        setPinnedOutlineId(null);
-      }
       computeSticky();
-      computeVisibleOutlineIds();
       if (jumpRaf !== 0) return;
       jumpRaf = requestAnimationFrame(() => {
         jumpRaf = 0;
@@ -1013,12 +760,7 @@ export const MessageList = forwardRef<
       container.removeEventListener("scroll", handleScroll);
       if (jumpRaf !== 0) cancelAnimationFrame(jumpRaf);
     };
-  }, [
-    computeSticky,
-    computeVisibleOutlineIds,
-    containerRef,
-    updateJumpToBottom,
-  ]);
+  }, [computeSticky, containerRef, updateJumpToBottom]);
 
   // Does this gesture belong to a region INSIDE the list that scrolls
   // vertically on its own? Tool output, the diff view, reasoning, the write
@@ -1125,18 +867,6 @@ export const MessageList = forwardRef<
           lives in this inner wrapper (see MessageList.css). Rows resolve
           against it (position: relative), so its offset from the scroll
           surface must stay 0 — the 10px padding is inside it. */}
-      {/* 左边缘的刻度大纲（spec ui/transcript-outline.md）。零高度、粘在滚动
-          面上，住在内容列左侧的留白里；不是列的子元素（列 overflow-x: clip
-          会把越出列的刻度裁掉）。 */}
-      <TranscriptOutline
-        items={outlineItems}
-        activeId={outlineActive}
-        visibleIds={visibleOutlineIds}
-        columnWidth={columnWidth}
-        columnInset={columnInset}
-        viewportHeight={listViewportHeight}
-        onJump={scrollToMessage}
-      />
       <div className="messages-column" ref={columnRef}>
         {find.open && (
           <TranscriptFindBar

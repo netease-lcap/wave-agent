@@ -65,7 +65,7 @@ allowed-tools:
 
 ## 一、桌面端三件套
 
-**不用本地构建**：CI 已把产物传到 GitHub Release，下载后直接上传。
+**不用本地构建**：CI 已把产物传到 GitHub Release，下载后直接上传（Windows exe 上传前先本地签名，见下）。
 
 ### 发布前检查（每次都做）
 
@@ -77,6 +77,7 @@ allowed-tools:
    ls /tmp/wave-desktop-<version>
    ```
    资产名随 electron-builder 的命名规则变，**以 `ls` 实际输出为准**（2026-09-20 实测为 `CodeWave.IDE-<v>-arm64.dmg` / `CodeWave.IDE-<v>-arm64-mac.zip` / `CodeWave.IDE.Setup.<v>.exe`）。
+4. **（仅 Windows exe）上传前先签名**：Release 上那份是未签名的，用 `windows-sign` 技能的 `sign <文件>` 签本地副本（Windows 直连；Linux/macOS 自动 SSH 到一台配好的 Windows 机器签完取回）。**签完的字节就是最终发布物，只上传管控台，不需要回传 GitHub**。签名会改字节与大小 ⇒ 后面核 `sha512` / `size` 一律用**签名后**的本地文件算，与 Release 上那份不同是正常的；签完别再改文件（签名会失效）。
 
 ### 上传（分片直传）
 
@@ -92,7 +93,7 @@ S=.wave/skills/ops-upload/upload.mjs
 node $S --file "$DIR/CodeWave.IDE-$V-arm64.dmg"     --version "$V" --platform mac-dmg --channel stable
 # macOS 更新包
 node $S --file "$DIR/CodeWave.IDE-$V-arm64-mac.zip" --version "$V" --platform mac-zip --channel stable
-# Windows 安装包
+# Windows 安装包（先按上面第 4 步签名，--file 就是签名后那份）
 node $S --file "$DIR/CodeWave.IDE.Setup.$V.exe"     --version "$V" --platform win-exe --channel stable
 ```
 
