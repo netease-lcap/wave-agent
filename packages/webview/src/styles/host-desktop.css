@@ -4362,10 +4362,17 @@
   --cc-line-height-lg: 24px;
 }
 
-/* ① 对话流工具名（tool-block header / Write 标题 / 思考标题）：600 */
+/* ① 对话流工具名（tool-block header / Write 标题 / 思考标题）：600 + md 字号
+   字号必须和字重一起在这里统一。原先这里只设了字重，字号靠各自规则：
+   Write 标题（.write-tool-label）与思考标题（.reasoning-title）都有 14px
+   覆写，而所有通用工具行（Bash / Glob / Grep / Agent / mcp__* …）走的
+   .tool-block 停在 base 的 13px —— 同一段回答里就出现「Bash 比 Read/Write
+   小一号」（用户 2026-11-11 反馈）。基准对齐 --cc-font-size-md，插件端
+   base 13px 本来一致，不受影响。 */
 [data-host="desktop"] .tool-block,
 [data-host="desktop"] .write-tool-label,
 [data-host="desktop"] .reasoning-title {
+  font-size: var(--cc-font-size-md, 14px);
   font-weight: var(--cc-font-weight-semibold, 600);
 }
 
