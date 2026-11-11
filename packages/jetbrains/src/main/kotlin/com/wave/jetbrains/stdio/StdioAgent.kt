@@ -55,6 +55,12 @@ interface AgentCallbacks {
     fun onMcpServersChange(servers: JsonElement?) {}
     fun onWorkdirChange(workdir: String) {}
     fun onPermissionRequest(requestId: String, context: JsonElement?) {}
+    /**
+     * 这条请求已经被**别处**答完了（手机上那一页 / 另一个宿主窗口）：撤掉还开着
+     * 的那张卡，不再回包。请求只有一份、卡却每个客户端各挂一份，见 spec
+     * ui/confirm-ui.md「同一条审批只有一份，谁答都算数」。
+     */
+    fun onPermissionResolved(requestId: String) {}
     fun onNotificationMessageAdded(message: JsonObject) {}
     fun onBtwContent(question: String, content: String, type: String, requestId: String?) {}
     fun onError(message: String) {}
@@ -168,6 +174,9 @@ class StdioAgent(
                     o?.get("context"),
                 )
             }
+            "permissionResolved" -> callbacks.onPermissionResolved(
+                params?.jsonObject?.get("requestId")?.jsonPrimitive?.content ?: ""
+            )
             "notificationMessageAdded" -> callbacks.onNotificationMessageAdded(params?.jsonObject ?: JsonObject(emptyMap()))
             "btwContent" -> {
                 val o = params?.jsonObject

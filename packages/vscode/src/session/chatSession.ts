@@ -40,7 +40,14 @@ export interface ChatSessionCallbacks {
   onWorkdirChange: (workdir: string) => void;
   onToolPermissionRequest: (
     context: ToolPermissionContext,
-  ) => Promise<PermissionDecision>;
+    requestId: string,
+  ) => Promise<PermissionDecision | undefined>;
+  /**
+   * 这条请求已经被**别处**答完了（手机上那一页 / 另一个宿主窗口）：宿主撤掉
+   * 还开着的那张卡，不再回包。见 spec ui/confirm-ui.md「同一条审批只有一份，
+   * 谁答都算数」。
+   */
+  onToolPermissionResolved?: (requestId: string) => void;
   onError: (error: unknown) => void;
   onMcpServersChange?: (servers: McpServerStatus[]) => void;
   // Incremental update callbacks for streaming optimization
@@ -98,7 +105,10 @@ export class ChatSession {
   public pendingConfirmations: Map<
     string,
     {
-      resolve: (decision: PermissionDecision) => void;
+      /** `undefined` = 这条请求已经被别处答完了，本端不再回包。 */
+      resolve: (decision?: PermissionDecision) => void;
+      /** 机器侧的请求 id：`permissionResolved` 按它找到这张卡。 */
+      requestId: string;
       toolName: string;
       confirmationType: string;
       toolInput: unknown;
@@ -250,9 +260,18 @@ export class ChatSession {
           }
         },
         onPermissionRequest: (requestId, context) => {
-          this.callbacks.onToolPermissionRequest(context).then((decision) => {
-            this.agent?.sendPermissionResponse(requestId, decision);
-          });
+          this.callbacks
+            .onToolPermissionRequest(context, requestId)
+            .then((decision) => {
+              // `undefined` = 别处（手机那页）答完了：那条 `permissionResponse`
+              // 已经由答话方发过，这里再发一次只会是一条 requestId 已消失的帧。
+              if (decision) {
+                this.agent?.sendPermissionResponse(requestId, decision);
+              }
+            });
+        },
+        onPermissionResolved: (requestId) => {
+          this.callbacks.onToolPermissionResolved?.(requestId);
         },
         onBtwContent: (params) => {
           this.callbacks.onBtwContent?.(params);

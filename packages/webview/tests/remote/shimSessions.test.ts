@@ -718,6 +718,36 @@ describe("remote page shim", () => {
     });
   });
 
+  test("another conversation's answer re-reads the waiting markers", async () => {
+    const { page } = await openPage();
+    page.socket.receive({
+      method: "permissionRequest",
+      params: { requestId: "r1", context: { toolName: "Bash" } },
+      sessionId: "s-old",
+    });
+    expect(lastPosted(page)).toMatchObject({
+      command: "updateSessionStatus",
+      waiting: ["s-old"],
+    });
+
+    // 别条会话的卡本来就没弹（上面那条口径），要收的是列表上的「待确认」标记。
+    // 就地删 id 答不了「这个会话还有没有别的请求」，所以重读一次。
+    const readsBefore = page.requests("listPendingPermissions");
+    page.socket.receive({
+      method: "permissionResolved",
+      params: { requestId: "r1" },
+      sessionId: "s-old",
+    });
+    await flush();
+    expect(page.requests("listPendingPermissions")).toBe(readsBefore + 1);
+
+    await page.answer("listPendingPermissions", { requests: [] });
+    expect(lastPosted(page)).toMatchObject({
+      command: "updateSessionStatus",
+      waiting: [],
+    });
+  });
+
   test("a snapshot keeps another conversation's approval out of the card queue", async () => {
     const { page } = await openPage();
 
@@ -744,6 +774,53 @@ describe("remote page shim", () => {
         (message) => message.command === "updateSessionStatus",
       ),
     ).toContainEqual(expect.objectContaining({ waiting: ["s-old", "s-new"] }));
+  });
+
+  test("a request answered elsewhere takes its card down", async () => {
+    const { page } = await openPage();
+    page.socket.receive({
+      method: "permissionRequest",
+      params: BASH_PENDING,
+      sessionId: "s-new",
+    });
+    expect(lastPosted(page)).toMatchObject({
+      command: "showConfirmation",
+      confirmationId: BASH_PENDING.requestId,
+    });
+
+    // Answered on the computer (the desktop window, or another host): the request
+    // is one, the cards are one per client, so the machine says which one is gone
+    // and this page takes only that card down.
+    page.socket.receive({
+      method: "permissionResolved",
+      params: { requestId: BASH_PENDING.requestId },
+      sessionId: "s-new",
+    });
+    expect(lastPosted(page)).toMatchObject({
+      command: "hideConfirmation",
+      confirmationId: BASH_PENDING.requestId,
+    });
+  });
+
+  test("a card the machine no longer waits on is taken down by the re-read", async () => {
+    const { page } = await openPage();
+    page.socket.receive({
+      method: "permissionRequest",
+      params: BASH_PENDING,
+      sessionId: "s-new",
+    });
+    expect(lastPosted(page)).toMatchObject({ command: "showConfirmation" });
+
+    // 链路断过一段时间、又连回来：断开期间答掉的那条通知已经丢了，只有重读
+    // 待审批能说「它已经不在」（spec remote/remote-web.md 场景 17）—— 卡不能
+    // 就这么挂在页面上。
+    const next = await reconnect(page.socket);
+    await answerRereads(next, []);
+    expect(
+      page.posted.filter((message) => message.command === "hideConfirmation"),
+    ).toEqual([
+      expect.objectContaining({ confirmationId: BASH_PENDING.requestId }),
+    ]);
   });
 
   test("the session list hears who is waiting and who is running", async () => {

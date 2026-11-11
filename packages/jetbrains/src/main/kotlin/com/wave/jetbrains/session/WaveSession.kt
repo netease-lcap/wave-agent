@@ -35,7 +35,7 @@ import kotlinx.serialization.json.put
 data class PendingConfirmation(
     val confirmationId: String,
     val requestId: String,
-    val deferred: kotlinx.coroutines.CompletableDeferred<JsonObject>,
+    val deferred: kotlinx.coroutines.CompletableDeferred<JsonObject?>,
     val toolName: String,
     val confirmationType: String,
     val toolInput: JsonElement? = null,
@@ -440,6 +440,12 @@ class WaveSession(
     override fun onPermissionRequest(requestId: String, context: JsonElement?) {
         scope.launch {
             PermissionFlow.handle(project, this@WaveSession, requestId, context)
+        }
+    }
+
+    override fun onPermissionResolved(requestId: String) {
+        scope.launch {
+            PermissionFlow.resolveElsewhere(this@WaveSession, requestId)
         }
     }
 

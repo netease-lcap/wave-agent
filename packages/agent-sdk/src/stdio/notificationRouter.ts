@@ -50,6 +50,7 @@ const ALL_NOTIFICATION_METHODS: readonly ServerNotificationMethod[] = [
   "workspaceRootChange",
   "notificationMessageAdded",
   "permissionRequest",
+  "permissionResolved",
   "authUrl",
   "btwContent",
   "compactBlockAdded",

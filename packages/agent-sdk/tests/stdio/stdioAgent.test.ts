@@ -1372,6 +1372,15 @@ describe("StdioAgent", () => {
     expect(onPermissionRequest).toHaveBeenCalledWith("req-1", context);
   });
 
+  it("permissionResolved forwards the settled requestId to callback", () => {
+    const onPermissionResolved = vi.fn();
+    const { agent } = createAgent({ onPermissionResolved });
+
+    agent.handleNotification("permissionResolved", { requestId: "req-1" });
+
+    expect(onPermissionResolved).toHaveBeenCalledWith("req-1");
+  });
+
   // ── Callbacks are optional ─────────────────────────────────
 
   it("does not throw when callback is not provided", () => {
@@ -1386,6 +1395,7 @@ describe("StdioAgent", () => {
         requestId: "r1",
         context: {},
       });
+      agent.handleNotification("permissionResolved", { requestId: "r1" });
     }).not.toThrow();
   });
 });

@@ -1892,6 +1892,12 @@
     // absorbed, not rendered (see `markWaiting`).
     if (frameSessionId && frameSessionId !== sessionId) {
       if (method === "permissionRequest") markWaiting(frameSessionId);
+      // 别条会话的请求被答掉了：卡本来就没弹（上面那条口径），要收的是会话列表
+      // 上的「待确认」标记 —— 它正是「读是进程级的、弹是会话级的」里承接别条会话
+      // 的那一半。重读一次而不是就地删 id：一个会话可能同时挂着不止一条请求
+      // （并行工具调用），标记的判据是「这个会话还有没有待审批」，只有读能回答。
+      // 审批是人的节奏，这一次读不会成为流量负担。
+      if (method === "permissionResolved") refreshPending();
       return;
     }
 
@@ -2028,6 +2034,19 @@
         if (!belongsToCurrentSession(p)) return;
         markWaiting(frameSessionId || sessionId);
         showApproval(p);
+        return;
+      case "permissionResolved":
+        // 这条请求已经不是待审批了：**别处**答掉了（电脑上那张卡、另一个宿主
+        // 窗口），或是本页自己刚答的。审批卡是每个客户端各挂一份的（本页那份是
+        // `shownApprovals`），请求却只有一份 —— 答复在电脑上发生，这里只能靠这
+        // 条通知收卡，否则用户在电脑上答完、再拿起手机会看到一张已经答过的卡
+        // （spec ui/confirm-ui.md「同一条审批只有一份，谁答都算数」）。
+        // `confirmationId` 就用 requestId：本页的卡拿它当 id（`confirmationOf`）。
+        // 本页刚答过的那条走进来是常态（那一帧先出海、回程才到），此时
+        // `shownApprovals` 里已经没有它，post 出去的那条撤卡在页面上也是空操作。
+        if (typeof p.requestId !== "string" || !p.requestId) return;
+        delete shownApprovals[p.requestId];
+        post({ command: "hideConfirmation", confirmationId: p.requestId });
         return;
       case "sessionIdChange":
         sessionId = p.sessionId;
@@ -2443,25 +2462,46 @@
    * card carries no notion of which conversation asked (spec scenario 1/2).
    *
    * `force` forgets what this shim believed was up: a page that re-mounted reset
-   * its own list, so "already shown" is no longer true.
+   * its own list, so "already shown" is no longer true. It does **not** forget
+   * what was up *before this read* — the ids still have to be compared against
+   * the reply, or a card the user answered on the computer while the phone slept
+   * would stay on the page (see the收卡 note below).
    */
   function refreshPending(force) {
-    if (force) shownApprovals = {};
     return request("listPendingPermissions", {})
       .then(function (result) {
         var requests = (result && result.requests) || [];
+        // 上一轮贴过的卡（先记下来，`force` 之后 `shownApprovals` 会被清空）。
+        var previouslyShown = {};
+        for (var shown in shownApprovals) previouslyShown[shown] = true;
+        if (force) shownApprovals = {};
         // The reply is the truth *now*, so the wait set is rewritten rather than
         // appended to: a request the user answered on the computer (or one that
         // went away with its session) only disappears in this read — the marker
         // goes with it on the next one (spec scenario 4).
         waitingSessionIds = [];
+        var stillPending = {};
         for (var i = 0; i < requests.length; i++) {
           var owner = requests[i].sessionId;
           if (owner && waitingSessionIds.indexOf(owner) === -1)
             waitingSessionIds.push(owner);
           if (!belongsToCurrentSession(requests[i])) continue;
+          stillPending[requests[i].requestId] = true;
           if (shownApprovals[requests[i].requestId]) continue;
           showApproval(requests[i]);
+        }
+        // 这次读里已经**不在**待审批表里的卡：撤掉。
+        //
+        // 收卡有两条路，缺一不可：实时那条是 `permissionResolved` 通知，但它是
+        // 「转换」——链路断开、页面在后台被冻结的那段时间里到的帧全丢；读是
+        // 「状态」，所以每次重读顺带把已经不在表里的卡收掉，覆盖「用户在电脑上
+        // 答完、手机隔了一会儿才亮屏」那条路（spec remote/remote-web.md 场景 17 /
+        // 18：回前台与重连都要重读待审批）。只收本页自己贴过的那几条
+        // （`previouslyShown`）：别条会话的请求本来就没成卡。
+        for (var known in previouslyShown) {
+          if (stillPending[known]) continue;
+          delete shownApprovals[known];
+          post({ command: "hideConfirmation", confirmationId: known });
         }
         postSessionStatus();
       })

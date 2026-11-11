@@ -2392,6 +2392,34 @@ describe("permission confirmations", () => {
     });
     expect(lastAgent().sendPermissionResponse).not.toHaveBeenCalled();
   });
+
+  // 用户从桌面端开了远程控制、在手机上把审批点完：请求只有一份，卡却每个
+  // 客户端各挂一份，别处答掉之后本端这张必须撤（spec ui/confirm-ui.md
+  // 「同一条审批只有一份，谁答都算数」）。不撤的话回到桌面端就是一叠已经答过
+  // 的卡，点它只会发一条 requestId 已消失的 permissionResponse。
+  it("a request answered elsewhere drops the local dialog without replying", async () => {
+    const { sent } = await readyHost();
+    const confirmationId = await triggerPermission(sent);
+
+    lastAgent().callbacks.onPermissionResolved("req-1");
+
+    expect(sent("hideConfirmation")).toEqual([
+      expect.objectContaining({ confirmationId }),
+    ]);
+    // 答复已经由答话的那一处发过，本端不能再发一条。
+    expect(lastAgent().sendPermissionResponse).not.toHaveBeenCalled();
+    // 卡片所在的 pane 收到撤卡指令（webview 按 paneId 过滤归属）。
+    expect(sent("hideConfirmation")[0].paneId).toBeDefined();
+  });
+
+  it("permissionResolved for an unknown request is a no-op", async () => {
+    const { sent } = await readyHost();
+    await triggerPermission(sent);
+
+    lastAgent().callbacks.onPermissionResolved("another-request");
+
+    expect(sent("hideConfirmation")).toHaveLength(0);
+  });
 });
 
 // ---------------------------------------------------------------------------
