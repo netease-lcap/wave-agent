@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import { execFileSync } from "child_process";
+import { execFileSyncHidden } from "./execFileHidden.js";
 
 export const WINDOWS_GIT_BASH_PATHS = [
   "C:\\Program Files\\Git\\bin\\bash.exe",
@@ -67,11 +67,10 @@ function inferGitBashFromGit(): string | undefined {
   // 2. Fallback: where.exe git
   if (!gitExe) {
     try {
-      const result = execFileSync("where", ["git"], {
+      const result = execFileSyncHidden("where", ["git"], {
         stdio: "pipe",
         encoding: "utf8",
         timeout: 3000,
-        windowsHide: true,
       }).trim();
       // where.exe may return multiple lines; take the first non-empty one.
       gitExe = result.split(/\r?\n/).find((line) => line.trim()) || undefined;

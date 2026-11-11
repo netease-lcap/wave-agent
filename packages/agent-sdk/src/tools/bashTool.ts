@@ -511,6 +511,11 @@ The working directory persists between commands, but shell state (environment va
         shell: shellPath,
         stdio: ["ignore", "pipe", "pipe"],
         detached: true,
+        // No-op in combination with `detached`: Windows ignores CREATE_NO_WINDOW
+        // whenever DETACHED_PROCESS is set, so a console window cannot be
+        // suppressed from this option — that would need ConPTY or
+        // `Start-Process -WindowStyle Hidden`. Kept as harmless intent.
+        windowsHide: true,
         cwd: context.workdir,
         env: {
           ...process.env,

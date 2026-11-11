@@ -33,17 +33,35 @@ const h = vi.hoisted(() => ({
   transientMarker: null as null | string,
 }));
 
-vi.mock("node:child_process", async () => {
-  const { promisify } = await import("node:util");
-  const execFileMock = Object.assign(vi.fn(), {
-    [promisify.custom]: (file: string, args: string[]) => {
+vi.mock("node:child_process", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:child_process")>();
+  // workspaceDiff runs git through the SDK's execFileAsyncHidden, which wraps
+  // `execFile` and builds `{ stdout, stderr }` out of the callback's second and
+  // third arguments — so the fake answers in node's real three-argument shape.
+  // Everything else stays real: importing the SDK's barrel evaluates
+  // `promisify(exec)` in markdownParser, which must not blow up.
+  const execFileMock = vi.fn(
+    (
+      file: string,
+      args: string[],
+      _opts: unknown,
+      cb?: (err: unknown, stdout?: string, stderr?: string) => void,
+    ) => {
       // The diff service always shells out to git — never ssh. It runs on the
       // host that owns the repository (spec desktop-sessions.md scenario 14).
-      if (file !== "git") throw new Error(`unexpected executable: ${file}`);
-      return Promise.resolve({ stdout: h.gitHandler(args.slice(2)) });
+      if (file !== "git") {
+        cb?.(new Error(`unexpected executable: ${file}`));
+        return {};
+      }
+      try {
+        cb?.(null, h.gitHandler(args.slice(2)), "");
+      } catch (error) {
+        cb?.(error);
+      }
+      return {};
     },
-  });
-  return { execFile: execFileMock };
+  );
+  return { ...actual, execFile: execFileMock };
 });
 
 vi.mock("node:fs", async () => {

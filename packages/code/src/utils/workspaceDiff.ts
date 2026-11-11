@@ -9,14 +9,12 @@
  * connection handshakes for a single panel refresh.
  */
 
-import { execFile } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { promisify } from "node:util";
+import { execFileAsyncHidden } from "wave-agent-sdk";
 
 // Never execFileSync: the shared `wave --stdio` process handles every desktop
 // session, so a synchronous git call would freeze them all (see utils/worktree).
-const execFileAsync = promisify(execFile);
 
 export type WorkspaceFileStatus =
   | "added"
@@ -97,7 +95,7 @@ const GIT_BUFFER = 16 * 1024 * 1024;
 
 /** Run git in `cwd` and return stdout. */
 async function git(cwd: string, args: string[]): Promise<string> {
-  const { stdout } = await execFileAsync("git", ["-C", cwd, ...args], {
+  const { stdout } = await execFileAsyncHidden("git", ["-C", cwd, ...args], {
     encoding: "utf-8" as const,
     maxBuffer: GIT_BUFFER,
   });

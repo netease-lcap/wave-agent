@@ -1,8 +1,7 @@
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
 import * as path from "node:path";
 import * as fs from "node:fs";
 import {
+  execFileAsyncHidden,
   getDefaultRemoteBranch,
   getGitMainRepoRoot,
   performPostCreationSetup,
@@ -17,7 +16,6 @@ import { logger } from "./logger.js";
 // Never use execFileSync here: the shared `wave --stdio` process handles all
 // desktop sessions, so a synchronous git call (especially a multi-second
 // recursive worktree delete or a network fetch) freezes every session.
-const execFileAsync = promisify(execFile);
 
 export interface WorktreeSession {
   name: string;
@@ -100,10 +98,14 @@ export function validateWorktreeSlug(name: string): void {
  */
 export async function listWorktrees(cwd: string): Promise<string[]> {
   try {
-    const { stdout } = await execFileAsync(
+    const { stdout } = await execFileAsyncHidden(
       "git",
       ["worktree", "list", "--porcelain"],
-      { cwd },
+      // Explicit for type determinism, not a fix: `execFile` already defaults
+      // `encoding` to 'utf8', so omitting it would also yield a string. Naming
+      // it picks the `{ stdout: string }` overload of `execFileAsyncHidden`
+      // instead of leaving the reader to know that default.
+      { cwd, encoding: "utf8" },
     );
 
     const worktreePaths = stdout
@@ -213,7 +215,7 @@ async function createWorktreeInternal(
 
   try {
     // Create worktree and branch
-    await execFileAsync(
+    await execFileAsyncHidden(
       "git",
       ["worktree", "add", "-b", branchName, worktreePath, resolvedBaseBranch],
       {
@@ -236,7 +238,7 @@ async function createWorktreeInternal(
     if (stderr.includes("already exists")) {
       // If branch already exists, try to add worktree without -b
       try {
-        await execFileAsync(
+        await execFileAsyncHidden(
           "git",
           ["worktree", "add", worktreePath, branchName],
           {
@@ -266,10 +268,10 @@ async function createWorktreeInternal(
       // Base branch not fetched yet — try fetching then retrying
       const branchNameOnly = resolvedBaseBranch.split("/").pop()!;
       try {
-        await execFileAsync("git", ["fetch", "origin", branchNameOnly], {
+        await execFileAsyncHidden("git", ["fetch", "origin", branchNameOnly], {
           cwd: repoRoot,
         });
-        await execFileAsync(
+        await execFileAsyncHidden(
           "git",
           [
             "worktree",
@@ -295,7 +297,7 @@ async function createWorktreeInternal(
       } catch {
         // Fetch or retry failed — fall back to HEAD
         try {
-          await execFileAsync(
+          await execFileAsyncHidden(
             "git",
             ["worktree", "add", "-b", branchName, worktreePath, "HEAD"],
             {
@@ -643,10 +645,14 @@ export async function getWorktreeChanges(
 ): Promise<WorktreeChanges | null> {
   let files: number;
   try {
-    const { stdout } = await execFileAsync("git", ["status", "--porcelain"], {
-      cwd: worktreePath,
-      encoding: "utf8",
-    });
+    const { stdout } = await execFileAsyncHidden(
+      "git",
+      ["status", "--porcelain"],
+      {
+        cwd: worktreePath,
+        encoding: "utf8",
+      },
+    );
     files = stdout.split("\n").filter((line) => line.trim().length > 0).length;
   } catch {
     return null;
@@ -655,7 +661,7 @@ export async function getWorktreeChanges(
   let commits = 0;
   try {
     const base = baseBranch ?? getDefaultRemoteBranch(worktreePath);
-    const { stdout } = await execFileAsync(
+    const { stdout } = await execFileAsyncHidden(
       "git",
       ["rev-list", "--count", `${base}..HEAD`],
       { cwd: worktreePath, encoding: "utf8" },
@@ -727,7 +733,7 @@ export async function removeWorktree(
 
   // Remove worktree
   try {
-    await execFileAsync(
+    await execFileAsyncHidden(
       "git",
       ["worktree", "remove", "--force", session.path],
       {
@@ -774,7 +780,7 @@ export async function removeWorktree(
     // git removes worktree metadata before the working directory; prune any
     // leftovers in case git failed before deleting them.
     try {
-      await execFileAsync("git", ["worktree", "prune"], {
+      await execFileAsyncHidden("git", ["worktree", "prune"], {
         cwd: repoRoot,
       });
     } catch {
@@ -821,7 +827,7 @@ export async function removeWorktree(
     return true;
   }
   try {
-    await execFileAsync("git", ["branch", "-D", session.branch], {
+    await execFileAsyncHidden("git", ["branch", "-D", session.branch], {
       cwd: repoRoot,
     });
   } catch {
@@ -868,7 +874,7 @@ async function branchExists(
   branch: string,
 ): Promise<boolean> {
   try {
-    const { stdout } = await execFileAsync(
+    const { stdout } = await execFileAsyncHidden(
       "git",
       ["branch", "--list", "--format=%(refname:short)", branch],
       { cwd: repoRoot, encoding: "utf8" },

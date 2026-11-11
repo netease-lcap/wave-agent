@@ -22,24 +22,26 @@ const { git } = vi.hoisted(() => {
 });
 
 vi.mock("node:child_process", async () => {
-  const { promisify } = await import("node:util");
-  const execFile = vi.fn(() => {
-    throw new Error("execFile must only be used via util.promisify");
-  });
-  // worktreeUtils wraps execFile with util.promisify, which prefers the
-  // promisify.custom symbol — mirror node's { stdout, stderr } result shape.
-  (execFile as unknown as Record<PropertyKey, unknown>)[promisify.custom] = (
-    cmd: string,
-    args: string[],
-    opts?: unknown,
-  ): Promise<GitResult> => {
-    git.calls.push({ cmd, args, opts });
-    try {
-      return Promise.resolve(git.handler(cmd, args, opts));
-    } catch (error) {
-      return Promise.reject(error);
-    }
-  };
+  // execFileAsyncHidden drives this through node native callback shape —
+  // (error, stdout, stderr). Answering with one merged object instead hides
+  // exactly the shape mismatch that once shipped a bare-stdout regression.
+  const execFile = vi.fn(
+    (
+      cmd: string,
+      args: string[],
+      opts: unknown,
+      cb?: (err: unknown, stdout?: string, stderr?: string) => void,
+    ) => {
+      git.calls.push({ cmd, args, opts });
+      try {
+        const res: GitResult = git.handler(cmd, args, opts);
+        cb?.(null, res.stdout, res.stderr);
+      } catch (error) {
+        cb?.(error);
+      }
+      return {};
+    },
+  );
   return { execFile, execFileSync: vi.fn() };
 });
 

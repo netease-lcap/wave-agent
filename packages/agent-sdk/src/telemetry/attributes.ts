@@ -12,7 +12,7 @@
  */
 
 import type { Attributes } from "@opentelemetry/api";
-import { execFileSync } from "node:child_process";
+import { execFileSyncHidden } from "../utils/execFileHidden.js";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -188,12 +188,11 @@ export function getRepositoryAttributes(
 
   let attributes: Attributes | undefined;
   try {
-    const remote = execFileSync("git", ["remote", "get-url", "origin"], {
+    const remote = execFileSyncHidden("git", ["remote", "get-url", "origin"], {
       cwd: workdir,
       encoding: "utf8",
       stdio: ["ignore", "pipe", "ignore"],
       timeout: 2_000,
-      windowsHide: true,
     }).trim();
     if (remote) {
       attributes = repositoryAttributesFromRemote(remote);

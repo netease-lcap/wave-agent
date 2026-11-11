@@ -1,6 +1,6 @@
 import * as path from "node:path";
 import * as fsSync from "node:fs";
-import { execFileSync } from "node:child_process";
+import { execFileSyncHidden } from "./execFileHidden.js";
 
 /**
  * Check if a directory is a git repository
@@ -31,11 +31,10 @@ export function isGitRepository(dirPath: string): string {
  */
 export function getGitRepoRoot(cwd: string): string {
   try {
-    return execFileSync("git", ["rev-parse", "--show-toplevel"], {
+    return execFileSyncHidden("git", ["rev-parse", "--show-toplevel"], {
       cwd,
       encoding: "utf8",
       stdio: ["ignore", "pipe", "ignore"],
-      windowsHide: true,
     }).trim();
   } catch {
     return cwd;
@@ -49,12 +48,15 @@ export function getGitRepoRoot(cwd: string): string {
  */
 export function getGitCommonDir(cwd: string): string {
   try {
-    const commonDir = execFileSync("git", ["rev-parse", "--git-common-dir"], {
-      cwd,
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"],
-      windowsHide: true,
-    }).trim();
+    const commonDir = execFileSyncHidden(
+      "git",
+      ["rev-parse", "--git-common-dir"],
+      {
+        cwd,
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "ignore"],
+      },
+    ).trim();
     return path.resolve(cwd, commonDir);
   } catch {
     return getGitRepoRoot(cwd);
@@ -68,12 +70,15 @@ export function getGitCommonDir(cwd: string): string {
  */
 export function getGitMainRepoRoot(cwd: string): string {
   try {
-    const output = execFileSync("git", ["worktree", "list", "--porcelain"], {
-      cwd,
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"],
-      windowsHide: true,
-    }).trim();
+    const output = execFileSyncHidden(
+      "git",
+      ["worktree", "list", "--porcelain"],
+      {
+        cwd,
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "ignore"],
+      },
+    ).trim();
     const lines = output.split("\n");
     if (lines.length > 0 && lines[0].startsWith("worktree ")) {
       return lines[0].substring("worktree ".length).trim();
@@ -286,11 +291,10 @@ export function ensureWaveRuntimeFilesExcluded(cwd: string): void {
  */
 export function hasUncommittedChanges(cwd: string): boolean {
   try {
-    const status = execFileSync("git", ["status", "--porcelain"], {
+    const status = execFileSyncHidden("git", ["status", "--porcelain"], {
       cwd,
       encoding: "utf8",
       stdio: ["ignore", "pipe", "ignore"],
-      windowsHide: true,
     }).trim();
     return status.length > 0;
   } catch {
@@ -307,11 +311,10 @@ export function hasUncommittedChanges(cwd: string): boolean {
 export function hasNewCommits(cwd: string, baseBranch?: string): boolean {
   try {
     const range = baseBranch ? `${baseBranch}..HEAD` : "@{u}..HEAD";
-    const log = execFileSync("git", ["log", range, "--oneline"], {
+    const log = execFileSyncHidden("git", ["log", range, "--oneline"], {
       cwd,
       encoding: "utf8",
       stdio: ["ignore", "pipe", "ignore"],
-      windowsHide: true,
     }).trim();
     return log.length > 0;
   } catch {

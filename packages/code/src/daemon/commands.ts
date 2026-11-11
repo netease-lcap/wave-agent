@@ -28,7 +28,7 @@
  * must be destroyed via the envelope sessionId returned by `initialize`.
  */
 
-import { execFile, spawn, type ChildProcess } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import * as fs from "node:fs";
 import net from "node:net";
 import path from "node:path";
@@ -36,6 +36,7 @@ import {
   ASK_USER_QUESTION_TOOL_NAME,
   ENTER_PLAN_MODE_TOOL_NAME,
   EXIT_PLAN_MODE_TOOL_NAME,
+  execFileHidden,
   getGitMainRepoRoot,
   getMessageContent,
   hasWorktreeCreateHook,
@@ -126,6 +127,12 @@ function startDaemon(socketPath: string): LaunchedDaemon {
   const log = openDaemonLogForChild();
   const child = spawn(process.execPath, [entry, "--daemon", socketPath], {
     detached: true,
+    // No-op here, kept for intent only: `windowsHide` reaches the child as
+    // CREATE_NO_WINDOW, which Windows ignores when DETACHED_PROCESS is also
+    // set — and `detached` is exactly that. The daemon's console window (if it
+    // ever shows one) cannot be suppressed from here; that needs ConPTY,
+    // `Start-Process -WindowStyle Hidden`, or a native CreateProcess call.
+    windowsHide: true,
     stdio: ["ignore", "ignore", log ? log.fd : "ignore"],
   });
   if (log) {
@@ -1425,7 +1432,7 @@ export interface DestroyOptions {
 /** Run one git command and return trimmed stdout (rejects on git failure). */
 function runGit(cwd: string, args: string[]): Promise<string> {
   return new Promise((resolve, reject) => {
-    execFile("git", args, { cwd, windowsHide: true }, (err, stdout) => {
+    execFileHidden("git", args, { cwd }, (err, stdout) => {
       if (err) reject(err);
       else resolve(stdout.trim());
     });
