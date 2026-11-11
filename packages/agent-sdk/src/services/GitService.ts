@@ -1,7 +1,4 @@
-import { execFile } from "child_process";
-import { promisify } from "util";
-
-const execFileAsync = promisify(execFile);
+import { execFileAsyncHidden } from "../utils/execFileHidden.js";
 
 export class GitService {
   private getTimeout(): number {
@@ -20,7 +17,7 @@ export class GitService {
    */
   async isGitAvailable(): Promise<boolean> {
     try {
-      await execFileAsync("git", ["--version"]);
+      await execFileAsyncHidden("git", ["--version"]);
       return true;
     } catch {
       return false;
@@ -59,7 +56,7 @@ export class GitService {
 
     try {
       const refArgs = ref ? ["-b", ref] : ["--depth", "1"];
-      await execFileAsync("git", ["clone", ...refArgs, url, targetPath], {
+      await execFileAsyncHidden("git", ["clone", ...refArgs, url, targetPath], {
         env: { ...process.env, LC_ALL: "C" },
         timeout: this.getTimeout(),
       });
@@ -86,7 +83,7 @@ export class GitService {
       );
     }
     try {
-      await execFileAsync(
+      await execFileAsyncHidden(
         "git",
         ["-C", targetPath, "checkout", "--detach", sha],
         {
@@ -114,7 +111,7 @@ export class GitService {
       );
     }
     try {
-      await execFileAsync("git", ["-C", targetPath, "pull"], {
+      await execFileAsyncHidden("git", ["-C", targetPath, "pull"], {
         env: { ...process.env, LC_ALL: "C" },
         timeout: this.getTimeout(),
       });

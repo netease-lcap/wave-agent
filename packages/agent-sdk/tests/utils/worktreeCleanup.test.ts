@@ -57,33 +57,34 @@ const moduleMocks = vi.hoisted(() => ({
 }));
 
 vi.mock("node:child_process", async () => {
-  const { promisify } = await import("node:util");
-  const execFile = vi.fn(() => {
-    throw new Error("execFile must only be used via util.promisify");
-  });
-  // Mirror node's promisified { stdout, stderr } result shape.
-  (execFile as unknown as Record<PropertyKey, unknown>)[promisify.custom] = (
-    cmd: string,
-    args: string[],
-    opts?: { cwd?: string },
-  ) => {
-    git.calls.push({ args, cwd: opts?.cwd });
-    if (args.includes("status")) {
-      if (git.failStatus) return Promise.reject(new Error("git status failed"));
-      return Promise.resolve({ stdout: git.status, stderr: "" });
-    }
-    if (args.includes("rev-list")) {
-      if (git.failUnpushed) {
-        return Promise.reject(new Error("git rev-list failed"));
+  // execFileAsyncHidden answers through node native callback shape —
+  // (error, stdout, stderr) — so the fake must speak it too.
+  const execFile = vi.fn(
+    (
+      cmd: string,
+      args: string[],
+      opts: { cwd?: string } | undefined,
+      cb?: (err: unknown, stdout?: string, stderr?: string) => void,
+    ) => {
+      git.calls.push({ args, cwd: opts?.cwd });
+      const done = (res: { stdout: string; stderr: string }) =>
+        cb?.(null, res.stdout, res.stderr);
+      const fail = (message: string) => cb?.(new Error(message), "", message);
+      if (args.includes("status")) {
+        if (git.failStatus) fail("git status failed");
+        else done({ stdout: git.status, stderr: "" });
+      } else if (args.includes("rev-list")) {
+        if (git.failUnpushed) fail("git rev-list failed");
+        else done({ stdout: git.unpushed, stderr: "" });
+      } else if (args.includes("prune")) {
+        if (git.failPrune) fail("git prune failed");
+        else done({ stdout: "", stderr: "" });
+      } else {
+        done({ stdout: "", stderr: "" });
       }
-      return Promise.resolve({ stdout: git.unpushed, stderr: "" });
-    }
-    if (args.includes("prune")) {
-      if (git.failPrune) return Promise.reject(new Error("git prune failed"));
-      return Promise.resolve({ stdout: "", stderr: "" });
-    }
-    return Promise.resolve({ stdout: "", stderr: "" });
-  };
+      return {};
+    },
+  );
   return { execFile, execFileSync: vi.fn() };
 });
 

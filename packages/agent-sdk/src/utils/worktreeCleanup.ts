@@ -27,10 +27,9 @@
  * also left alone — `git worktree prune` is what cleans up that bookkeeping.
  */
 
-import { execFile } from "node:child_process";
 import { existsSync, promises as fs } from "node:fs";
 import * as path from "node:path";
-import { promisify } from "node:util";
+import { execFileAsyncHidden } from "./execFileHidden.js";
 import { getGitMainRepoRoot, resolveGitDir } from "./gitUtils.js";
 import { logger } from "./globalLogger.js";
 import { isPathWithin } from "./worktreePaths.js";
@@ -39,8 +38,6 @@ import {
   removeWorktree,
   worktreeBranchName,
 } from "./worktreeUtils.js";
-
-const execFileAsync = promisify(execFile);
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
@@ -187,10 +184,9 @@ async function isCleanAndFullyPushed(worktreePath: string): Promise<boolean> {
  */
 async function runGit(cwd: string, args: string[]): Promise<string | null> {
   try {
-    const { stdout } = await execFileAsync("git", args, {
+    const { stdout } = await execFileAsyncHidden("git", args, {
       cwd,
       encoding: "utf8",
-      windowsHide: true,
       env: {
         ...process.env,
         GIT_TERMINAL_PROMPT: "0",

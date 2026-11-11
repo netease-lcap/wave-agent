@@ -155,6 +155,11 @@ export class BackgroundTaskManager {
       shell: resolveShellPath() ?? true,
       stdio: ["ignore", "pipe", "pipe"],
       detached: true,
+      // No-op in combination with `detached`: Windows ignores CREATE_NO_WINDOW
+      // whenever DETACHED_PROCESS is set, so this does not hide anything. Kept
+      // because it is harmless and a no-op on POSIX; hiding a detached child
+      // would need ConPTY / `Start-Process -WindowStyle Hidden`.
+      windowsHide: true,
       cwd: cwd ?? this.workdir,
       env: {
         ...process.env,

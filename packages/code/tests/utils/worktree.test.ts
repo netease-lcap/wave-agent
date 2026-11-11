@@ -27,7 +27,7 @@ interface GitResult {
   stderr: string;
 }
 
-const { git } = vi.hoisted(() => {
+const { git, resolveGitResult } = vi.hoisted(() => {
   const git = {
     calls: [] as Array<{ cmd: string; args: string[]; opts: unknown }>,
     handler: (): GitResult => ({ stdout: "", stderr: "" }) as GitResult,
@@ -41,40 +41,47 @@ const { git } = vi.hoisted(() => {
     handler: (cmd: string, args: string[], opts: unknown) => GitResult;
     branches: Set<string>;
   };
-  return { git };
-});
 
-vi.mock("node:child_process", async () => {
-  const { promisify } = await import("node:util");
-  const execFile = vi.fn(() => {
-    throw new Error("execFile must only be used via util.promisify");
-  });
-  // worktree.ts wraps execFile with util.promisify, which prefers the
-  // promisify.custom symbol — mirror node's { stdout, stderr } result shape.
-  (execFile as unknown as Record<PropertyKey, unknown>)[promisify.custom] = (
+  // The existence check `removeWorktree` runs before deleting a branch (see
+  // `branchExists`): answer it from `git.branches`, exactly as git would — the
+  // name back when the branch is there, nothing when it is not.
+  const resolveGitResult = (
     cmd: string,
     args: string[],
-    opts?: unknown,
-  ): Promise<GitResult> => {
-    git.calls.push({ cmd, args, opts });
-    // The existence check `removeWorktree` runs before deleting a branch (see
-    // `branchExists`): answer it from `git.branches`, exactly as git would —
-    // the name back when the branch is there, nothing when it is not.
+    opts: unknown,
+  ): GitResult => {
     if (args[0] === "branch" && args[1] === "--list") {
       const name = args[args.length - 1];
-      return Promise.resolve({
-        stdout: git.branches.has(name) ? `${name}\n` : "",
-        stderr: "",
-      });
+      return { stdout: git.branches.has(name) ? `${name}\n` : "", stderr: "" };
     }
-    try {
-      return Promise.resolve(git.handler(cmd, args, opts));
-    } catch (error) {
-      return Promise.reject(error);
-    }
+    return git.handler(cmd, args, opts);
   };
-  return { execFile };
+
+  return { git, resolveGitResult };
 });
+
+vi.mock("node:child_process", () => ({
+  // node's real callback shape: three arguments. `execFileAsyncHidden` builds
+  // its `{ stdout, stderr }` result out of the last two, so a fake that merges
+  // them into one object would test a API that does not exist.
+  execFile: vi.fn(
+    (
+      cmd: string,
+      args: string[],
+      opts: unknown,
+      cb?: (err: unknown, stdout?: string, stderr?: string) => void,
+    ) => {
+      git.calls.push({ cmd, args, opts });
+      try {
+        const result = resolveGitResult(cmd, args, opts);
+        cb?.(null, result.stdout, result.stderr);
+      } catch (error) {
+        cb?.(error);
+      }
+      return {};
+    },
+  ),
+}));
 
 vi.mock("node:fs", () => ({
   existsSync: vi.fn(),
@@ -94,18 +101,47 @@ vi.mock("node:fs", () => ({
   },
 }));
 
-vi.mock("wave-agent-sdk", () => ({
-  getGitMainRepoRoot: vi.fn(),
-  getDefaultRemoteBranch: vi.fn(),
-  performPostCreationSetup: vi.fn(),
-  loadMergedWaveConfig: vi.fn(),
-  hasWorktreeCreateHook: vi.fn(),
-  executeWorktreeCreateHook: vi.fn(),
-  executeWorktreeRemoveHook: vi.fn(),
-  // Real value: the CLI-side name validation rejects this reserved prefix, and
-  // the point of the test is the rejection, not the string itself.
-  EPHEMERAL_WORKTREE_PREFIX: "sa-",
-}));
+// The barrel is replaced wholesale so the SDK runtime never loads; the one
+// piece worktree.ts needs is execFileAsyncHidden — the SDK's hand-written
+// promise wrapper, which must never be replaced by `promisify(execFileHidden)`
+// (that drops `promisify.custom` and resolves stdout alone).
+vi.mock("wave-agent-sdk", async () => {
+  const { execFile } = await import("node:child_process");
+  const execFileAsyncHidden = (
+    cmd: string,
+    args: string[],
+    opts?: unknown,
+  ): Promise<GitResult> =>
+    new Promise((resolve, reject) => {
+      (
+        execFile as unknown as (
+          cmd: string,
+          args: string[],
+          opts: unknown,
+          cb: (err: unknown, stdout?: string, stderr?: string) => void,
+        ) => void
+      )(cmd, args, opts, (err, stdout, stderr) => {
+        if (err) {
+          reject(err);
+          return;
+        }
+        resolve({ stdout: stdout ?? "", stderr: stderr ?? "" });
+      });
+    });
+  return {
+    execFileAsyncHidden,
+    getGitMainRepoRoot: vi.fn(),
+    getDefaultRemoteBranch: vi.fn(),
+    performPostCreationSetup: vi.fn(),
+    loadMergedWaveConfig: vi.fn(),
+    hasWorktreeCreateHook: vi.fn(),
+    executeWorktreeCreateHook: vi.fn(),
+    executeWorktreeRemoveHook: vi.fn(),
+    // Real value: the CLI-side name validation rejects this reserved prefix, and
+    // the point of the test is the rejection, not the string itself.
+    EPHEMERAL_WORKTREE_PREFIX: "sa-",
+  };
+});
 
 function gitCallsWith(fragments: string[]) {
   return git.calls.filter((c) => fragments.every((f) => c.args.includes(f)));
