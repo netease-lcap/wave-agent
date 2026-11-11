@@ -393,7 +393,9 @@ test("host scrollToBottom request does not override the reading position", async
 /**
  * Setup for the two nested-region cases below: a long reasoning block sits in
  * the list (`.reasoning-content` carries a max-height + overflow-y, so it
- * scrolls on its own) with a live stream below it.
+ * scrolls on its own) with a live stream below it. The block is finished and
+ * collapsed by default (see the "思考块全程收起 + 流式尾部" story in
+ * docs/specs/core/stream-content-updates.md), so the case expands it first.
  */
 async function setupNestedScroll(page: Page) {
   const injector = new MessageInjector(page);
@@ -412,6 +414,7 @@ async function setupNestedScroll(page: Page) {
     blocks: [
       {
         type: "reasoning",
+        stage: "end",
         content: `推理过程：${"先看调用方再决定改哪一层。".repeat(120)}`,
       },
     ],
@@ -431,6 +434,12 @@ async function setupNestedScroll(page: Page) {
   });
   await page.waitForTimeout(300);
 
+  // 折叠态没有正文节点；本用例要的是一个自身可纵向滚动的区域，先手动展开。
+  await page.locator(".reasoning-header").first().click();
+  await page.waitForFunction(() => {
+    const c = document.getElementById("messagesContainer") as HTMLElement;
+    return c.scrollHeight - c.scrollTop - c.clientHeight <= 2;
+  });
   const reasoning = page.locator(".reasoning-content").first();
   await reasoning.waitFor();
   // The nested region really does overflow vertically — otherwise the wheel

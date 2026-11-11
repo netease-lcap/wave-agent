@@ -138,10 +138,10 @@ describe("auto-scroll follow during streaming", () => {
     // Programmatic scrolls go through the virtualizer → Element.scrollTo.
     const scrollTo = vi.spyOn(container, "scrollTo");
 
-    // Content above the viewport really shrinks (reasoning block auto-collapse,
-    // streaming-end reflow, image load reflow…): the column gets shorter and the
-    // browser clamps scrollTop downward to keep it in bounds. That raw decrease is
-    // NOT a user scroll-up gesture.
+    // Content above the viewport really shrinks (a reasoning block collapsed by
+    // the reader, streaming-end reflow, image load reflow…): the column gets
+    // shorter and the browser clamps scrollTop downward to keep it in bounds.
+    // That raw decrease is NOT a user scroll-up gesture.
     act(() => {
       sendCommand("updateMessages", { messages: streamedMessages(10) });
     });
