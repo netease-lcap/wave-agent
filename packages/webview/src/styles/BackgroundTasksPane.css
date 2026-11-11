@@ -63,12 +63,53 @@
   color: var(--vscode-descriptionForeground);
 }
 
+/* 1111 评论（点 `.background-task-row`）：「这里，用卡片的形式，间距圆角等也都参考
+   活动的卡片」⇒ 卡片几何全部照抄活动看板的 `.session-card`（SessionBoard.css，实测：
+   padding 12 / radius 12 / 1px #EBEEF5 / 卡间距 8 / hover 阴影 0 2px 8px
+   rgb(31 35 41 / 8%)；深色档 #27292B 底 + 12% 白边、hover 换 8% 白底且无阴影）。
+   原先是「平铺行 + 每行 1px 下边框分隔」，卡片化后行间隔由 list 的 gap 出、行自身的
+   border-bottom 取消。字阶没动（type 13/600、其余 12），只改间距与圆角。
+   结构没动：整张卡就是原本那个 `role="button"` 的 `.background-task-row`（内衬也是
+   可点的），「停止」键仍留在流内、靠 `align-self: center` 停在中线。 */
+.background-tasks-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
 .background-task-row {
+  position: relative;
   display: flex;
   align-items: flex-start;
-  gap: 6px;
-  padding: 2px 0;
-  border-bottom: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.16));
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--cc-border-lighter, #ebeef5);
+  border-radius: 12px;
+  background: var(--cc-bg-panel, #fff);
+}
+
+.background-task-row:hover {
+  box-shadow: 0 2px 8px rgb(31 35 41 / 8%);
+}
+
+/* 深色档与活动卡片逐值相同（12% 白描边 / #27292B 卡面 / hover 8% 白底无阴影）。 */
+[data-host="desktop"][data-theme="dark"] .background-task-row {
+  border-color: rgb(255 255 255 / 12%);
+  background: #27292b;
+}
+
+[data-host="desktop"][data-theme="dark"] .background-task-row:hover {
+  background: rgb(255 255 255 / 8%);
+  box-shadow: none;
+}
+
+/* 卡片自身就是 `role="button"` + `tabIndex=0` 的键盘可达元素，焦点环也照契约来
+   （focus-visible 与选中分离、2px + 外扩 2px）。token `--cc-border-focus` 浅色 = 
+   `--cc-action-primary` #1F2329、深色 = #A0A5A8（「user-approved 焦点环 / 去蓝」）。
+   改前这里只有浏览器默认的 1px auto 蓝环。 */
+[data-host="desktop"] .background-task-row:focus-visible {
+  outline: 2px solid var(--cc-border-focus, #a0a5a8);
+  outline-offset: 2px;
 }
 
 .background-task-row-main {
@@ -77,18 +118,14 @@
   flex-direction: column;
   gap: 2px;
   min-width: 0;
-  padding: 6px;
+  padding: 0;
   border: none;
-  border-radius: 6px;
+  border-radius: 0;
   background: transparent;
   color: inherit;
   font: inherit;
   text-align: left;
   cursor: pointer;
-}
-
-.background-task-row-main:hover {
-  background: var(--vscode-list-hoverBackground, rgba(128, 128, 128, 0.12));
 }
 
 .background-task-row-head,
@@ -159,6 +196,63 @@
 .background-task-stop:disabled {
   opacity: 0.6;
   cursor: default;
+}
+
+/* 1111 评论：「按钮规范也检查一下」⇒ 「停止」按按钮契约收口，与产物卡
+   `.message-file-card-toggle`（1109 已收口的那颗）同一套七条：
+   盒 = compact 28 高 / r8 / 14·22 / 0 12 内衬；角色 = Secondary (outlined) ⇒ 透明底 +
+   `--cc-border-light` 描边 + `--cc-text-primary` 1 级字；交互 = hover `fill-hover`、
+   按下 `fill-pressed`，字与描边三态都不动；焦点 2px `--cc-border-focus` 外扩 2px。
+   深色中性面按本仓家族口径（hover 8% 白 / 按下 12% 白）。
+   契约：`common-components.md` §Buttons「Compact 28px actions … retain 14px labels and
+   a usable hit area」；字重取 400（1109 她裁定 medium 500 让位给正文）。
+   改前（上面的 base 规则，仅 IDE 宿主还在用）实测两档都是：42×25 / r4 / 12px·normal /
+   **Arial**（`<button>` 不继承页面字体）/ 描边吃 `--vscode-button-border` 桥接值 ——
+   浅色档是 #0069CC 品牌蓝、深色档是 7% 白（几乎看不见）；hover 与按下**零变化**；
+   键盘焦点是浏览器默认 1px auto 蓝环。 */
+[data-host="desktop"] .background-task-stop {
+  box-sizing: border-box;
+  height: 28px;
+  padding: 0 12px;
+  border-radius: 8px;
+  border: 1px solid var(--cc-border-light, #e4e7ed);
+  background: transparent;
+  color: var(--cc-text-primary, var(--vscode-foreground));
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 22px;
+}
+
+[data-host="desktop"] .background-task-stop:not(:disabled):hover {
+  background: var(--cc-fill-hover, #eef0f3);
+  border-color: var(--cc-border-light, #e4e7ed);
+  color: var(--cc-text-primary, var(--vscode-foreground));
+}
+
+[data-host="desktop"] .background-task-stop:not(:disabled):active {
+  background: var(--cc-fill-pressed, #e7e9ed);
+  border-color: var(--cc-border-light, #e4e7ed);
+  color: var(--cc-text-primary, var(--vscode-foreground));
+}
+
+[data-host="desktop"] .background-task-stop:focus-visible {
+  outline: 2px solid var(--cc-border-focus, #a0a5a8);
+  outline-offset: 2px;
+}
+
+[data-host="desktop"][data-theme="dark"] .background-task-stop {
+  border-color: var(--cc-border-light, #34393c);
+}
+
+[data-host="desktop"][data-theme="dark"]
+  .background-task-stop:not(:disabled):hover {
+  background: rgb(255 255 255 / 8%);
+}
+
+[data-host="desktop"][data-theme="dark"]
+  .background-task-stop:not(:disabled):active {
+  background: rgb(255 255 255 / 12%);
 }
 
 /* ═══ 详情 ═══ */
