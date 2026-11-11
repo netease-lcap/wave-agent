@@ -20,6 +20,7 @@ import * as path from "path";
 import { Agent } from "../../src/agent.js";
 import * as aiService from "../../src/services/aiService.js";
 import { createMockToolManager } from "../helpers/mockFactories.js";
+import { withoutAnnouncements } from "../helpers/announcements.js";
 
 vi.mock("../../src/services/aiService.js", async (importOriginal) => {
   const actual =
@@ -140,10 +141,13 @@ describe("Streaming message race (interleaved content and tool deltas)", () => {
     );
 
     // Message sequence: user → assistant(text+tool) → tool result → assistant.
-    const roles = agent.messages.map((m) => m.role);
+    // The host's per-turn announcements (skill list, tool catalog) are stripped:
+    // they are meta traffic riding in the same request, not conversation turns.
+    const conversation = withoutAnnouncements(agent.messages);
+    const roles = conversation.map((m) => m.role);
     expect(roles.slice(0, 2)).toEqual(["user", "assistant"]);
 
-    const assistantMessages = agent.messages.filter(
+    const assistantMessages = conversation.filter(
       (m) => m.role === "assistant",
     );
     expect(assistantMessages).toHaveLength(2);
