@@ -291,6 +291,22 @@ export interface DesktopHostOption {
   hint?: string;
 }
 
+/**
+ * 一条本机保存的 SSH 连接（spec desktop/desktop-remote.md 场景 5）。
+ *
+ * `id` 是主机身份（分屏 host、会话索引、最近目录都用它），所以改名或改指向
+ * 不会让它绑定的会话掉线；`host` 才是交给 ssh 的目标，可以是
+ * `user@hostname`，也可以是 `~/.ssh/config` 里的别名。跨进程只下发列表，
+ * 应用从不读写用户自己的 `~/.ssh/config`。
+ */
+export interface DesktopSshConnection {
+  id: string;
+  name: string;
+  host: string;
+  port?: number;
+  identityFile?: string;
+}
+
 /** One desktop pane's git branch state, pushed via `desktopGitBranches`. */
 export interface GitBranchesResult {
   current?: string;
@@ -673,6 +689,22 @@ export interface SessionRenamedMessage extends HostToWebviewMessageBase {
   requestId: string;
   sessionId: string;
   title: string;
+  ok: boolean;
+  error?: string;
+}
+
+/**
+ * 回复「保存 / 删除 SSH 连接」请求（spec desktop/desktop-remote.md 场景 5/29–31）。
+ *
+ * 校验在宿主侧也做一遍（表单能拼出的东西宿主才存），失败原因直接回给弹窗就
+ * 地显示，所以弹窗保持打开；成功时新列表随后由 `desktopWorkdirState` 推下来。
+ */
+export interface DesktopSshConnectionResultMessage
+  extends HostToWebviewMessageBase {
+  command: "desktopSshConnectionResult";
+  requestId: string;
+  /** 保存成功时回带条目 id（新建时宿主生成），删除成功时回带被删的 id。 */
+  id?: string;
   ok: boolean;
   error?: string;
 }
@@ -1228,6 +1260,12 @@ export interface DesktopWorkdirStateMessage extends HostToWebviewMessageBase {
    * 缺省 = 旧宿主：渲染端按 `local` + `hosts` 自行拼出「本地 / SSH 主机」两组。
    */
   hostOptions?: DesktopHostOption[];
+  /**
+   * 本机保存的 SSH 连接条目（连接库）。`hosts` 是它们的 id 列表，保留给旧
+   * 渲染端；弹窗编辑要用到 name/host/port/key 这些字段，所以另发一份完整条目。
+   * 缺省 = 旧宿主（连接库还不存在的版本）。
+   */
+  sshConnections?: DesktopSshConnection[];
   recentWorkdirs: string[];
 }
 
@@ -1699,6 +1737,7 @@ export type HostToWebviewMessage =
   | UpdateSessionsMessage
   | UpdateCurrentSessionMessage
   | SessionRenamedMessage
+  | DesktopSshConnectionResultMessage
   | ShowConfirmationMessage
   | PlanContentMessage
   | PlanFileUpdatedMessage
@@ -1833,6 +1872,10 @@ type ReplyAttribution = {
   // 会话重命名：请求生成 id，回复原样带回（同一会话可反复改名；晚到的旧回复
   // 已被乐观更新消费，必须按 requestId 丢弃）。
   sessionRenamed: "requestId";
+  // 连接库的保存/删除：请求生成 id，回复原样带回（同一个弹窗可反复保存、同一行
+  // 可反复删除，晚到的旧回复必须按 requestId 丢弃，否则会把上一次的失败原因贴回
+  // 已经关掉又重开的弹窗）。
+  desktopSshConnectionResult: "requestId";
   // `/remote-control` 弹窗：打开期间轮询状态、连接/断开后还会再查一次，同一
   // requestId 通道上会有多笔在途请求 —— 只认最新一笔，晚到的旧快照即弃（否则
   // 「刚连上」会被一秒前的 "off" 覆盖回去）。
@@ -1912,6 +1955,7 @@ export const replyAttributionLocked = {
   fileSuggestionsResponse: true,
   ideContextResponse: true,
   sessionRenamed: true,
+  desktopSshConnectionResult: true,
   remoteControlResponse: true,
   rewindResult: true,
   sessionDeleted: true,

@@ -5365,9 +5365,11 @@ export const ChatApp: React.FC<ChatAppProps> = ({
                       host={effectiveHost}
                       hosts={host.hosts}
                       hostOptions={host.hostOptions}
+                      sshConnections={host.sshConnections}
                       hostLabel={effectiveHostLabel}
                       onSelectHost={host.onSelectHost}
-                      onAddHost={host.onAddHost}
+                      onSaveSshConnection={host.onSaveSshConnection}
+                      onDeleteSshConnection={host.onDeleteSshConnection}
                     />
                     <DesktopWorkdirSelector
                       host={effectiveHost}

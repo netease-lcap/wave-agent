@@ -5,7 +5,7 @@ import type {
   UserPreferenceKey,
   UserPreferenceSource,
 } from "wave-agent-sdk/host";
-import { LOCAL_HOST } from "./sshHosts";
+import { LOCAL_HOST, type SshConnection } from "./sshHosts";
 
 /**
  * 桌面本地存储的键。**只剩服务地址**：用户偏好都不落这里——
@@ -122,6 +122,14 @@ interface StoreData {
   /** Disk form: WorkdirRef, or legacy plain strings migrated to {host:'local', path} on load. */
   recentWorkdirs: Array<string | WorkdirRef>;
   sessions: SessionIndexEntry[];
+  /**
+   * Saved SSH connections — the picker's host list (spec desktop-remote.md
+   * 场景 1/5). Entries live here (not in `~/.ssh/config`, which the app never
+   * writes); `host` may be a `user@hostname` target or an ssh config alias.
+   */
+  sshConnections: SshConnection[];
+  /** One-time upgrade import of the old `~/.ssh/config` host list (场景 32). */
+  sshConnectionsMigrated: boolean;
   /** 创作集分类：按账号（邮箱）隔离命名空间。 */
   artifactCategories?: Record<string, ArtifactCategoryRecord>;
 }
@@ -180,6 +188,9 @@ export class ConfigStore {
           typeof parsed.artifactCategories === "object"
             ? parsed.artifactCategories
             : {},
+        // 坏条目跳过、其余照常可用（spec 边界「连接库文件损坏」）。
+        sshConnections: sanitizeSshConnections(parsed.sshConnections),
+        sshConnectionsMigrated: parsed.sshConnectionsMigrated === true,
       };
     } catch {
       // Missing or corrupt file — start fresh (loadWaveConfigFromFile precedent).
@@ -190,6 +201,8 @@ export class ConfigStore {
         recentWorkdirs: [],
         sessions: [],
         artifactCategories: {},
+        sshConnections: [],
+        sshConnectionsMigrated: false,
       };
     }
   }
@@ -344,6 +357,29 @@ export class ConfigStore {
     this.save();
   }
 
+  // ── SSH connection library (desktop-remote 场景 5/30/31) ─────────
+
+  /** 本机保存的 SSH 连接条目（应用自持，不写用户 `~/.ssh/config`）。 */
+  getSshConnections(): SshConnection[] {
+    return this.data.sshConnections.map((c) => ({ ...c }));
+  }
+
+  /**
+   * 整体替换连接库：新增/编辑/删除都走这次写入。`migrated` 传了就同一次落盘
+   * 写下迁移标记 —— 标记先落而条目没落，下次启动不会再导入，用户的旧主机
+   * 名会永久消失。
+   */
+  setSshConnections(connections: SshConnection[], migrated?: boolean): void {
+    this.data.sshConnections = connections.map((c) => ({ ...c }));
+    if (migrated !== undefined) this.data.sshConnectionsMigrated = migrated;
+    this.save();
+  }
+
+  /** 是否已经做过「从 `~/.ssh/config` 一次性导入」的升级动作。 */
+  getSshConnectionsMigrated(): boolean {
+    return this.data.sshConnectionsMigrated;
+  }
+
   // ── Session index (FR-024) ──────────────────────────────────────
 
   getSessionIndex(): SessionIndexEntry[] {
@@ -482,6 +518,49 @@ function normalizeLocalPath(p: string): string {
 /** Type guard for theme preference values loaded from disk. */
 function isThemeSource(value: unknown): value is ThemeSource {
   return value === "system" || value === "light" || value === "dark";
+}
+
+/**
+ * Drop malformed SSH connection entries instead of losing the whole list: one
+ * corrupt record must not make every saved host disappear (spec 边界「连接库
+ * 文件损坏」). Ids are deduped so a hand-edited file cannot create two rows the
+ * picker would render as one host.
+ */
+function sanitizeSshConnections(value: unknown): SshConnection[] {
+  if (!Array.isArray(value)) return [];
+  const out: SshConnection[] = [];
+  const seen = new Set<string>();
+  for (const raw of value) {
+    if (typeof raw !== "object" || raw === null) continue;
+    const entry = raw as Record<string, unknown>;
+    const id = typeof entry.id === "string" ? entry.id.trim() : "";
+    const host = typeof entry.host === "string" ? entry.host.trim() : "";
+    if (!id || !host || seen.has(id)) continue;
+    const name =
+      typeof entry.name === "string" && entry.name.trim()
+        ? entry.name.trim()
+        : host;
+    const port =
+      typeof entry.port === "number" &&
+      Number.isInteger(entry.port) &&
+      entry.port >= 1 &&
+      entry.port <= 65535
+        ? entry.port
+        : undefined;
+    const identityFile =
+      typeof entry.identityFile === "string" && entry.identityFile.trim()
+        ? entry.identityFile.trim()
+        : undefined;
+    seen.add(id);
+    out.push({
+      id,
+      name,
+      host,
+      ...(port === undefined ? {} : { port }),
+      ...(identityFile === undefined ? {} : { identityFile }),
+    });
+  }
+  return out;
 }
 
 /** Type guard for update channel values loaded from disk. */

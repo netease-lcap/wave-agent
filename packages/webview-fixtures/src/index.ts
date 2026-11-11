@@ -448,6 +448,7 @@ export const fixtures: Fixtures = {
     host: "local",
     hosts: ["local"],
     hostOptions: [{ id: "local", label: "本地", kind: "local" as const }],
+    sshConnections: [],
     recentWorkdirs: [],
     ...overrides,
   }),

@@ -168,16 +168,20 @@ test.describe("Desktop host menu height cap", () => {
       menuBox.y + menuBox.height,
     );
 
-    // ── Expanding 添加主机… keeps the input inside the capped menu (it is the
-    // pinned footer row, so the list can still scroll above it) ──
+    // ── 添加主机… opens the connection form as a modal: the menu closes, the
+    // form renders centered and fully on screen (its 主机 field is the first
+    // thing the user types into) ──
     await addEntry.click();
-    const addInput = webviewPage.getByTestId("desktop-host-add");
-    await expect(addInput).toBeVisible();
-    const inputBox = await boxOf(addInput);
-    const menuNow = await boxOf(menu);
-    expect(inputBox.y).toBeGreaterThanOrEqual(menuNow.y);
-    expect(inputBox.y + inputBox.height).toBeLessThanOrEqual(
-      menuNow.y + menuNow.height + 1,
+    await expect(menu).toBeHidden();
+    const dialog = webviewPage.getByTestId("desktop-ssh-connection-dialog");
+    await expect(dialog).toBeVisible();
+    const hostField = webviewPage.getByTestId("desktop-ssh-host");
+    await expect(hostField).toBeVisible();
+    const fieldBox = await boxOf(hostField);
+    const dialogBox = await boxOf(dialog);
+    expect(fieldBox.y).toBeGreaterThanOrEqual(dialogBox.y);
+    expect(fieldBox.y + fieldBox.height).toBeLessThanOrEqual(
+      dialogBox.y + dialogBox.height + 1,
     );
   });
 

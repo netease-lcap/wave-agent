@@ -425,11 +425,35 @@ export interface DesktopHostOption {
   hint?: string;
 }
 
+/**
+ * 本机保存的一条 SSH 连接（spec desktop/desktop-remote.md 场景 5）。
+ *
+ * `id` 是主机身份（分屏、会话索引、最近目录都用它），`host` 才是交给 ssh 的
+ * 目标 —— 可以是 `user@hostname`，也可以是 `~/.ssh/config` 里的别名。连接库
+ * 由宿主维护，应用从不写用户的 ssh 配置文件。
+ */
+export interface DesktopSshConnection {
+  id: string;
+  name: string;
+  host: string;
+  port?: number;
+  identityFile?: string;
+}
+
+/** 连接表单提交的内容（`id` 有值 = 编辑已有条目）。 */
+export interface DesktopSshConnectionInput {
+  id?: string;
+  name?: string;
+  host?: string;
+  port?: number | string;
+  identityFile?: string;
+}
+
 export interface DesktopHostProps {
   type: "desktop";
-  /** Current host: 'local', an SSH host name, or `wsl:<distro>` (the focused pane's host). */
+  /** Current host: 'local', a saved SSH connection id, or `wsl:<distro>` (the focused pane's host). */
   host: string;
-  /** All selectable SSH hosts: 'local' + parsed ~/.ssh/config top-level Host names. */
+  /** All selectable SSH host ids (the saved connections' ids), excluding 本地. */
   hosts: string[];
   /**
    * Full picker option list in display order (本地 → WSL 发行版 → SSH 主机),
@@ -438,16 +462,26 @@ export interface DesktopHostProps {
    * 本地 + SSH 主机 groups from `host`/`hosts`.
    */
   hostOptions?: DesktopHostOption[];
+  /** 连接库的完整条目（表单要回填名称/主机/端口/私钥，菜单只要 label）。 */
+  sshConnections?: DesktopSshConnection[];
   workdir?: string;
   recentWorkdirs: string[];
   onSelectWorkdir: () => void;
   /** `host` scopes the recents lookup to a specific host (defaults to the current one). */
   onSelectRecentWorkdir: (path: string, host?: string) => void;
   onRemoveRecentWorkdir: (path: string, host?: string) => void;
-  /** Switch the focused pane's host (本地 or an SSH host). */
+  /** Switch the focused pane's host (本地 or an SSH connection). */
   onSelectHost: (host: string) => void;
-  /** Add a host from an `ssh user@hostname -p port` connection string (VSC-style). */
-  onAddHost: (connectionString: string) => void;
+  /**
+   * 保存一条 SSH 连接（新建/编辑同一条命令，spec 场景 5/30）。宿主校验后回
+   * `desktopSshConnectionResult`（requestId 比对弃旧）。
+   */
+  onSaveSshConnection: (
+    input: DesktopSshConnectionInput,
+    requestId: string,
+  ) => void;
+  /** 删除一条 SSH 连接（spec 场景 31）；宿主回同一条响应。 */
+  onDeleteSshConnection: (id: string, requestId: string) => void;
   /** Select a remote workdir by absolute path; validated with `test -d` on the host. */
   onSelectRemotePath: (path: string, host: string) => void;
   /**
@@ -608,15 +642,17 @@ export interface UpdateToast {
 // every workdir/host change (message command: 'desktopWorkdirState').
 export interface DesktopWorkdirState {
   workdir?: string;
-  /** Current host ('local', an SSH host name, or `wsl:<distro>`) — the focused pane's host. */
+  /** Current host ('local', a connection id, or `wsl:<distro>`) — the focused pane's host. */
   host: string;
-  /** All selectable hosts: 'local' + parsed ~/.ssh/config top-level Host names. */
+  /** All selectable SSH host ids (the saved connections), 本地 excluded. */
   hosts: string[];
   /**
    * Full picker option list (order/labels/groups/disabled) supplied by the host;
    * absent = old host, the picker rebuilds 本地 + SSH 主机 from `host`/`hosts`.
    */
   hostOptions?: DesktopHostOption[];
+  /** 连接库条目（弹窗表单回填用）；缺省 = 旧宿主，没有编辑能力。 */
+  sshConnections?: DesktopSshConnection[];
   recentWorkdirs: string[];
 }
 
