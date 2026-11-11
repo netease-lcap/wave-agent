@@ -52,8 +52,6 @@ import { TaskManager } from "./services/taskManager.js";
 import type { WorktreeSession } from "./utils/worktreeSession.js";
 import type { RewindCheckpoint } from "./utils/rewindCheckpoints.js";
 import path from "node:path";
-import { parseTaskNotificationXml } from "./utils/notificationXml.js";
-import { parsePageCommentEventXml } from "./utils/pageCommentEventXml.js";
 import { InitializationService } from "./services/initializationService.js";
 import { getCompletion, getNextEdit } from "./services/aiService.js";
 import type {
@@ -766,38 +764,17 @@ export class Agent {
       await this.bashModeManager?.executeCommand(next.content);
       await this.messageManager.saveSession();
     } else if (next.type === "notification") {
-      // Drain all pending notifications and batch them into a single AI turn
+      // Drain all pending notifications and batch them into a single AI turn.
+      // The parse/inject step is shared with the in-turn and turn-end drains
+      // (AIManager.injectTaskNotifications) so all three paths agree on how a
+      // notification becomes a message — including a workflow's `result`,
+      // which is the whole point of its notification: the summary only carries
+      // counts, so dropping it left the model with a headline and no findings.
       const allNotifications = [
         next.content,
         ...this.messageQueue.drainNotifications(),
       ];
-      for (const xml of allNotifications) {
-        const block = parseTaskNotificationXml(xml);
-        if (block) {
-          this.messageManager.addNotificationMessage({
-            taskId: block.taskId,
-            taskType: block.taskType,
-            status: block.status,
-            summary: block.summary,
-            outputFile: block.outputFile,
-            // Same fields as the turn-end drain in aiManager: this path is what
-            // an idle agent takes when a background task reports in, and a
-            // workflow's `result` is the whole point of its notification — the
-            // summary carries counts, not the value the script returned. Dropping
-            // it here left the model with a headline and no findings, so a caller
-            // that awaited a result had to fall back to reading the journal.
-            result: block.result,
-          });
-          continue;
-        }
-        // A page-comment wake-up is not a task: it has no taskId and no
-        // terminal state, and it repeats for as long as the page is watched.
-        // It reaches the model as hidden user text (the same shape hooks use
-        // for injected context) so it can read the threads itself.
-        if (parsePageCommentEventXml(xml)) {
-          this.messageManager.addUserMessage({ content: xml, isMeta: true });
-        }
-      }
+      this.aiManager.injectTaskNotifications(allNotifications);
       await this.aiManager.sendAIMessage({ recursionDepth: 0 });
     } else {
       await this.sendMessage(next.content, next.images);

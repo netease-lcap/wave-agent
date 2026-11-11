@@ -2217,6 +2217,26 @@ ${question}`;
           // estimateContextTokens).
           await this.maybeAutoCompactBeforeRequest(abortController);
 
+          // Background-task notifications are drained at the request boundary:
+          // a task that finished while this turn's tools were running lands in
+          // the request about to be sent, so the model can act on it inside the
+          // same turn instead of waiting for the turn to end (spec:
+          // core/background-task-notification「注入时机」). Reaching this point
+          // already implies the previous hop produced tool calls, so a
+          // notification can never extend a turn on its own. Abort is checked
+          // first — injecting into an aborted turn would resurrect it, and
+          // leaving the notification queued keeps it for the next turn.
+          if (
+            !abortController.signal.aborted &&
+            !toolAbortController.signal.aborted
+          ) {
+            const pendingNotifications =
+              this.getMessageQueue()?.drainNotifications() ?? [];
+            if (pendingNotifications.length > 0) {
+              this.injectTaskNotifications(pendingNotifications);
+            }
+          }
+
           // Refresh messages in case compaction replaced the history.
           const refreshedMessages = await convertMessagesForAPI(
             this.messageManager.getMessages(),
@@ -2694,9 +2714,7 @@ ${question}`;
         const isCurrentlyAborted =
           abortController.signal.aborted || toolAbortController.signal.aborted;
 
-        const messageQueue = this.container.has("MessageQueue")
-          ? this.container.get<MessageQueue>("MessageQueue")
-          : undefined;
+        const messageQueue = this.getMessageQueue();
 
         if (!isCurrentlyAborted) {
           // Record committed snapshots to message history for the final turn
@@ -2756,31 +2774,7 @@ ${question}`;
           messageQueue.hasNotifications() &&
           !isCurrentlyAborted
         ) {
-          const notifications = messageQueue.drainNotifications();
-          for (const notification of notifications) {
-            const block = parseTaskNotificationXml(notification);
-            if (block) {
-              this.messageManager.addNotificationMessage({
-                taskId: block.taskId,
-                taskType: block.taskType,
-                status: block.status,
-                summary: block.summary,
-                outputFile: block.outputFile,
-                result: block.result,
-              });
-              continue;
-            }
-            // Page-comment wake-ups ride the same queue but are not tasks (no
-            // taskId, no terminal state): they land as hidden user text so the
-            // model reads the threads itself. Same handling as the idle path
-            // in Agent.processQueuedMessage.
-            if (parsePageCommentEventXml(notification)) {
-              this.messageManager.addUserMessage({
-                content: notification,
-                isMeta: true,
-              });
-            }
-          }
+          this.injectTaskNotifications(messageQueue.drainNotifications());
           // Re-assert loading state before restarting: if this turn was
           // aborted, abortAIMessage already reset loading to false, and the
           // restart below continues the conversation — the UI must show
@@ -2809,6 +2803,54 @@ ${question}`;
         break outer;
       }
     }
+  }
+
+  /**
+   * Shared MessageQueue, when the container has one. Subagents own a separate
+   * queue (createInstance registers one per subagent), so resolving it through
+   * the container keeps each agent draining only its own notifications.
+   */
+  private getMessageQueue(): MessageQueue | undefined {
+    return this.container.has("MessageQueue")
+      ? this.container.get<MessageQueue>("MessageQueue")
+      : undefined;
+  }
+
+  /**
+   * Write background-task notifications into the message history as hidden
+   * (isMeta) user messages, returning how many landed.
+   *
+   * All three injection points go through here: the request boundary mid-turn,
+   * the end-of-turn drain, and the idle wake-up in Agent.processQueuedMessage.
+   * Callers pass already-drained XML, so injection *is* the consumption step —
+   * the same notification can never be injected twice.
+   */
+  public injectTaskNotifications(xmls: readonly string[]): number {
+    let injected = 0;
+    for (const xml of xmls) {
+      const block = parseTaskNotificationXml(xml);
+      if (block) {
+        this.messageManager.addNotificationMessage({
+          taskId: block.taskId,
+          taskType: block.taskType,
+          status: block.status,
+          summary: block.summary,
+          outputFile: block.outputFile,
+          result: block.result,
+        });
+        injected++;
+        continue;
+      }
+      // Page-comment wake-ups ride the same queue but are not tasks (no
+      // taskId, no terminal state): they land as hidden user text so the model
+      // reads the threads itself. Same handling as the idle path in
+      // Agent.processQueuedMessage.
+      if (parsePageCommentEventXml(xml)) {
+        this.messageManager.addUserMessage({ content: xml, isMeta: true });
+        injected++;
+      }
+    }
+    return injected;
   }
 
   /**
