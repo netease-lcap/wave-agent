@@ -942,6 +942,60 @@ test("canUseTool emits permissionRequest and resolves when permissionResponse re
   expect(decision.behavior).toBe("allow");
 });
 
+// 审批卡是每个客户端各挂一份的，请求只有一份：谁答掉的，别处那张卡就得靠这条
+// 通知撤（spec ui/confirm-ui.md「同一条审批只有一份，谁答都算数」）。没有它，
+// 用户从手机上答完几条回到桌面端，桌面端压着一排已经答过的卡。
+test("permissionResponse emits permissionResolved for every client", async () => {
+  const { bridge, notifications } = createBridge();
+  vi.mocked(Agent.create).mockResolvedValue(createMockAgent());
+
+  await bridge.handleRequest("initialize", {});
+  const canUseTool = vi.mocked(Agent.create).mock.calls[0][0].canUseTool!;
+  const permissionPromise = canUseTool({
+    toolName: "Bash",
+    permissionMode: "default",
+    toolInput: { command: "ls" },
+  });
+
+  await vi.waitFor(() => {
+    expect(notifications.some((n) => n.method === "permissionRequest")).toBe(
+      true,
+    );
+  });
+  const requestId = (
+    notifications.find((n) => n.method === "permissionRequest")!.params as {
+      requestId: string;
+    }
+  ).requestId;
+
+  bridge.handleNotification("permissionResponse", {
+    requestId,
+    decision: { behavior: "allow" },
+  });
+
+  await permissionPromise;
+  await vi.waitFor(() => {
+    expect(notifications.some((n) => n.method === "permissionResolved")).toBe(
+      true,
+    );
+  });
+  const resolved = notifications.find(
+    (n) => n.method === "permissionResolved",
+  )!;
+  expect(resolved.params).toEqual({ requestId });
+  // 会话归属照旧：宿主按 sessionId 路由，撤卡才能落到正确的会话上。
+  expect(resolved.sessionId).toBe("test-session-id");
+
+  // 同一条 requestId 再答一次是未知 id，什么都不发。
+  bridge.handleNotification("permissionResponse", {
+    requestId,
+    decision: { behavior: "deny" },
+  });
+  expect(
+    notifications.filter((n) => n.method === "permissionResolved"),
+  ).toHaveLength(1);
+});
+
 // 关掉确认卡（关闭键 / Esc）在线上是一条**不带 message** 的 deny，它在用户这边
 // 就结束这一轮：桌面端 / VS Code / JetBrains 都是 denied → abortMessage，远控
 // 链路少了这一步，手机上关掉提问弹窗后模型会拿着「用户拒绝了」继续往下做

@@ -422,8 +422,16 @@ export class ChatProvider implements vscode.WebviewViewProvider {
           windowId,
         );
       },
-      onToolPermissionRequest: (context) => {
-        return this.handleToolPermissionRequest(context, viewType, windowId);
+      onToolPermissionRequest: (context, requestId) => {
+        return this.handleToolPermissionRequest(
+          context,
+          requestId,
+          viewType,
+          windowId,
+        );
+      },
+      onToolPermissionResolved: (requestId) => {
+        this.handleToolPermissionResolved(requestId, viewType, windowId);
       },
       onError: (error) => {
         const isConfigError =
@@ -733,9 +741,10 @@ export class ChatProvider implements vscode.WebviewViewProvider {
 
   private async handleToolPermissionRequest(
     context: ToolPermissionContext,
+    requestId: string,
     viewType?: "sidebar" | "tab" | "window",
     windowId?: string,
-  ): Promise<PermissionDecision> {
+  ): Promise<PermissionDecision | undefined> {
     const session = this.getChatSession(viewType || "tab", windowId);
 
     return new Promise((resolve) => {
@@ -759,6 +768,7 @@ export class ChatProvider implements vscode.WebviewViewProvider {
 
       session.pendingConfirmations.set(confirmationId, {
         resolve,
+        requestId,
         toolName: context.toolName,
         confirmationType: confirmationType,
         toolInput: context.toolInput,
@@ -805,6 +815,33 @@ export class ChatProvider implements vscode.WebviewViewProvider {
         windowId,
       );
     });
+  }
+
+  /**
+   * 这条请求已经被**别处**答完了（`permissionResolved`）：撤掉本端的卡。
+   *
+   * 插件端同样能开远程控制（设置页「远程控制」），所以手机上的审批会落到
+   * 同一个 `wave --stdio` 子进程；请求只有一份、卡却每个客户端各挂一份，不在
+   * 这里撤，用户回到编辑器就压着几张已经答过的卡。收尾与本端自己答话
+   * （`messageHandler` 的 `confirmationResponse`）一致，只差没有答复要发：
+   * 删掉待确认记录、撤卡、把那条 promise 用 `undefined` 了结。
+   */
+  private handleToolPermissionResolved(
+    requestId: string,
+    viewType?: "sidebar" | "tab" | "window",
+    windowId?: string,
+  ): void {
+    const session = this.getChatSession(viewType || "tab", windowId);
+    for (const [confirmationId, pending] of session.pendingConfirmations) {
+      if (pending.requestId !== requestId) continue;
+      session.pendingConfirmations.delete(confirmationId);
+      pending.resolve(undefined);
+      this.webviewManager.postMessage(
+        { command: "hideConfirmation", confirmationId },
+        viewType,
+        windowId,
+      );
+    }
   }
 
   private async handleSessionIdChange(

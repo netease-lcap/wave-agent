@@ -723,6 +723,19 @@ export interface ShowConfirmationMessage extends HostToWebviewMessageBase {
   outsideSafeZoneDirectory?: string;
 }
 
+/** 撤销一张还开着的审批卡 —— 那条待审批请求已经被**别处**答完了（手机上那一页、
+ *  另一个宿主窗口），或者它随会话一起没了。宿主侧判据是 CLI 推来的
+ *  `permissionResolved`（同一条请求只有一份，审批卡却每个客户端各挂一份），
+ *  见 spec `ui/confirm-ui.md`「同一条审批只有一份，谁答都算数」。
+ *
+ *  只针对一条请求：webview 按 `confirmationId` 从待确认队列里摘掉那一张，别的
+ *  卡原地不动。收到一条自己队列里没有的 id 是正常情况（本端自己点的批准/拒绝
+ *  已经摘过这张卡，那条通知随即到达），幂等。 */
+export interface HideConfirmationMessage extends HostToWebviewMessageBase {
+  command: "hideConfirmation";
+  confirmationId: string;
+}
+
 /** Desktop /plan display: the host pushes the current plan file contents to
  *  the shared Plan pane (opened on first delivery, like ExitPlanMode plans). */
 export interface PlanContentMessage extends HostToWebviewMessageBase {
@@ -1739,6 +1752,7 @@ export type HostToWebviewMessage =
   | SessionRenamedMessage
   | DesktopSshConnectionResultMessage
   | ShowConfirmationMessage
+  | HideConfirmationMessage
   | PlanContentMessage
   | PlanFileUpdatedMessage
   | ConfigurationResponseMessage

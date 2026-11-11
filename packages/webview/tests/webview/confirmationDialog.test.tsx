@@ -2395,3 +2395,55 @@ describe("AskUserQuestion 选项区折叠", () => {
     expect(toggle()).toHaveAttribute("aria-expanded", "true");
   });
 });
+
+// 别处答掉了这条审批（手机远控页 / 另一个宿主窗口）：宿主推 hideConfirmation，
+// 页面只摘那一张卡。见 spec ui/confirm-ui.md「同一条审批只有一份，谁答都算数」。
+describe("hideConfirmation", () => {
+  function showBash(confirmationId: string, command: string) {
+    return act(async () => {
+      sendCommand("showConfirmation", {
+        confirmationId,
+        toolName: BASH_TOOL_NAME,
+        confirmationType: "命令执行待确认",
+        toolInput: { command },
+      });
+    });
+  }
+
+  it("drops only that card, and the next queued one takes its place", async () => {
+    renderChatApp();
+    await showBash("conf-a", "ls");
+    await showBash("conf-b", "pwd");
+
+    expect(document.querySelector(".confirmation-title")).toHaveTextContent(
+      "命令执行待确认",
+    );
+
+    await act(async () => {
+      sendCommand("hideConfirmation", { confirmationId: "conf-a" });
+    });
+    // 队列里还剩一条：卡还在，只是换成了下一条。
+    expect(document.querySelector(".confirmation-dialog")).toBeInTheDocument();
+    expect(document.querySelector(".confirmation-title")).toHaveTextContent(
+      "命令执行待确认",
+    );
+
+    await act(async () => {
+      sendCommand("hideConfirmation", { confirmationId: "conf-b" });
+    });
+    expect(
+      document.querySelector(".confirmation-dialog"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("ignores an id that is not in the queue (self-answered card)", async () => {
+    renderChatApp();
+    await showBash("conf-a", "ls");
+
+    // 本端自己点的批准/拒绝已经摘过这张卡，通知随后才到 —— 幂等、不误伤。
+    await act(async () => {
+      sendCommand("hideConfirmation", { confirmationId: "conf-unknown" });
+    });
+    expect(document.querySelector(".confirmation-dialog")).toBeInTheDocument();
+  });
+});

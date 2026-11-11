@@ -171,7 +171,8 @@ type PluginMutationMethod =
 type MarketplaceMutationMethod = "addMarketplace" | "removeMarketplace";
 
 interface PendingConfirmation {
-  resolve: (decision: PermissionDecision) => void;
+  /** `undefined` = 这条请求已经被别处答完了（手机那页 / 另一处入口），本端不再回包。 */
+  resolve: (decision?: PermissionDecision) => void;
   /** Remote daemon requestId — used to dedup re-attached snapshots and to
    *  send the response back over the daemon client for re-surfaced entries. */
   requestId: string;
@@ -2197,8 +2198,15 @@ export class DesktopHost {
           context,
           requestId,
         ).then((decision) => {
-          agentRef.sendPermissionResponse(requestId, decision);
+          // `undefined` = 别处（手机那页）答完了：那一条 `permissionResponse`
+          // 已经由答话方发过，这里再发一次只会是一条 requestId 已消失的帧。
+          if (decision) agentRef.sendPermissionResponse(requestId, decision);
         });
+      },
+      // 同一条请求被别处答掉（spec ui/confirm-ui.md「同一条审批只有一份」）：
+      // 撤掉本端那片卡，否则手机上答完几条、回到桌面端就压着几张已经答过的卡。
+      onPermissionResolved: (requestId) => {
+        this.handlePermissionResolved(requestId);
       },
       onBtwContent: (params) => {
         const paneId = paneIdOf();
@@ -3637,7 +3645,7 @@ export class DesktopHost {
     agent: StdioAgent,
     context: ToolPermissionContext,
     requestId: string,
-  ): Promise<PermissionDecision> {
+  ): Promise<PermissionDecision | undefined> {
     return new Promise((resolve) => {
       this.pushPendingConfirmation(agent, context, requestId, resolve);
     });
@@ -3648,7 +3656,7 @@ export class DesktopHost {
     agent: StdioAgent,
     context: ToolPermissionContext,
     requestId: string,
-    resolve: (decision: PermissionDecision) => void,
+    resolve: (decision?: PermissionDecision) => void,
   ): void {
     const confirmationId = `confirmation_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
 
@@ -3762,12 +3770,54 @@ export class DesktopHost {
           req.context,
           req.requestId,
           (decision) => {
-            agent.sendPermissionResponse(req.requestId, decision);
+            // 补读出来的这条到答话时可能已被别处答掉（`permissionResolved`
+            // 会在本端 resolve 成 `undefined`）：那就不再回包。
+            if (decision) agent.sendPermissionResponse(req.requestId, decision);
           },
         );
       }
     } catch (error) {
       console.error("[DesktopHost] 恢复待确认审批失败:", error);
+    }
+  }
+
+  /**
+   * 一条待审批请求已经被**别处**答完了（`permissionResolved`，源头是持有
+   * 会话的那个 `wave --stdio` 进程）：把本端那片卡撤掉。
+   *
+   * 为什么桌面端要在这儿动手：审批卡是每个客户端各挂一份的，请求只有一份。
+   * 用户从桌面端开了远程控制、在手机上把几条审批点完，桌面窗口这边一张都没
+   * 撤——回到电脑前是一叠已经答过的卡，点它只会发一条 requestId 已消失的
+   * `permissionResponse`（桥静默忽略），于是「全部重新点一遍」白点一遍。
+   *
+   * 三条收尾与本端自己答话（`handleConfirmationResponse`）一致，只差没有答复
+   * 要发：删掉待确认记录（顺带让 `listPendingPermissions` 的补读与「后台会话
+   * 确认」toast 的等待周期收尾）、在卡片所在的 pane 里撤卡、把那条 promise 用
+   * `undefined` 了结——答复方已经发过 `permissionResponse`，本端不能再发一次。
+   */
+  private handlePermissionResolved(requestId: string): void {
+    for (const [confirmationId, pending] of this.pendingConfirmations) {
+      if (pending.requestId !== requestId) continue;
+      this.pendingConfirmations.delete(confirmationId);
+      const paneId = this.paneIdForAgent(pending.agent);
+      if (paneId) {
+        this.postMessage({
+          command: "hideConfirmation",
+          paneId,
+          confirmationId,
+        });
+      }
+      pending.resolve(undefined);
+      // The wait cycle ends once the agent has no pending confirmations left —
+      // 与 `handleConfirmationResponse` 同一条口径。
+      if (
+        ![...this.pendingConfirmations.values()].some(
+          (p) => p.agent === pending.agent,
+        )
+      ) {
+        this.confirmationToastAgents.delete(pending.agent);
+      }
+      this.refreshSessionTree();
     }
   }
 

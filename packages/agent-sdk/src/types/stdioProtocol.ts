@@ -246,6 +246,21 @@ export type ServerNotificationMethod =
   | "workspaceRootChange"
   | "notificationMessageAdded"
   | "permissionRequest"
+  /**
+   * 一条待审批请求**不再是待审批**了 —— 有人答了：本机宿主、另一个宿主进程、
+   * 手机上那一页，都是一回事。Params: `{ requestId: string }`。
+   *
+   * 为什么必须有这条：审批卡是**每个客户端各挂一份**的，而请求本身只有一份
+   * （`AgentBridge.pendingPermissions`）。答复在谁手里发生，别处那片卡就只能
+   * 靠这条通知撤——否则用户从手机答完回到电脑前，桌面上还压着那几张卡（点它
+   * 只会发一条 requestId 已消失的 `permissionResponse`，桥静默忽略）。对侧同理：
+   * 电脑上答了，手机那张卡不会自己消失。
+   *
+   * 发点只有一处：桥**每**把一条请求从待审批表里摘掉时都发（含发起方自己收到
+   * 的那一次）——收到方按自己那份卡的 id 过滤，重复撤一张已撤的卡是幂等的。
+   * 客户端因此不需要判「是不是我答的」。
+   */
+  | "permissionResolved"
   | "authUrl"
   | "compactBlockAdded"
   | "compactionStateChange"

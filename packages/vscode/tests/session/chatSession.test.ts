@@ -321,3 +321,68 @@ describe("ChatSession · 取消息不留字段", () => {
     expect(session).not.toHaveProperty("messages");
   });
 });
+
+/**
+ * 审批卡是每个客户端各挂一份的（VS Code 这一份在 `ChatProvider` 的待确认表里），
+ * 请求只有一份：手机上答掉的那几条，本窗口只能靠 `permissionResolved` 撤卡，
+ * 否则用户从手机回来看到一叠已经答过的卡，点它只会发一条 requestId 已消失的
+ * `permissionResponse`（spec ui/confirm-ui.md「同一条审批只有一份，谁答都算数」）。
+ */
+describe("ChatSession · 审批被别处答掉", () => {
+  /** 一个「本端答」或「别处答」的会话：决定由回调什么时候给出。 */
+  async function sessionAnswering(decision: "allow" | "elsewhere") {
+    const { request } = fakeClient();
+    const notify = vi.fn();
+    const cbs: ChatSessionCallbacks = {
+      ...callbacks(),
+      onToolPermissionRequest: vi.fn(async () =>
+        decision === "allow" ? ({ behavior: "allow" } as const) : undefined,
+      ),
+      onToolPermissionResolved: vi.fn(),
+    };
+    const session = new ChatSession("sidebar", undefined, cbs);
+    await session.initialize(
+      undefined,
+      { request, notify } as unknown as StdioClient,
+      fakeRouter() as unknown as NotificationRouter,
+    );
+    return { session, cbs, notify };
+  }
+
+  it("本端答的照常回 permissionResponse", async () => {
+    const { session, notify } = await sessionAnswering("allow");
+
+    session.agent!.handleNotification("permissionRequest", {
+      requestId: "r1",
+      context: { toolName: "Bash" },
+    });
+
+    await vi.waitFor(() => {
+      expect(notify).toHaveBeenCalledWith(
+        "permissionResponse",
+        { requestId: "r1", decision: { behavior: "allow" } },
+        "sess-1",
+      );
+    });
+  });
+
+  it("别处答掉的不回包，撤卡通知转给宿主", async () => {
+    const { session, cbs, notify } = await sessionAnswering("elsewhere");
+
+    session.agent!.handleNotification("permissionRequest", {
+      requestId: "r1",
+      context: { toolName: "Bash" },
+    });
+    session.agent!.handleNotification("permissionResolved", {
+      requestId: "r1",
+    });
+
+    // 撤卡落到宿主（`ChatProvider` 据此给 webview 推 hideConfirmation）。
+    expect(cbs.onToolPermissionResolved).toHaveBeenCalledWith("r1");
+    // 答复已经由答话的那一处发过，本端不能再发一条。
+    await vi.waitFor(() => {
+      expect(cbs.onToolPermissionRequest).toHaveBeenCalled();
+    });
+    expect(notify).not.toHaveBeenCalled();
+  });
+});

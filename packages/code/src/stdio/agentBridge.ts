@@ -845,6 +845,19 @@ export class AgentBridge {
       if (entry) {
         this.pendingPermissions.delete(p.requestId);
         entry.resolve(p.decision);
+        // 这条请求从此不再是待审批 —— 告诉**所有**客户端，不只是答话的这个。
+        // 审批卡是每个客户端各挂一份的（桌面端在 `pendingConfirmations` 里、
+        // 手机那页在 `shownApprovals` 里），而这台机器上的请求只有一份：从手机
+        // 上答掉的那几条，桌面窗口只能靠这条通知撤卡，否则用户从手机回来看到
+        // 一叠已经答过的卡（点它只会发一条 requestId 已消失的 `permissionResponse`，
+        // 上面那个 `if (entry)` 静默忽略）。放在 `resolve` 之后：答复本身先落地，
+        // 撤卡失败/迟到都不影响回合继续（spec ui/confirm-ui.md「同一条审批只有
+        // 一份，谁答都算数」）。
+        this.emit(
+          "permissionResolved",
+          { requestId: p.requestId },
+          entry.sessionId,
+        );
         // 不带反馈的拒绝 = 用户关掉了确认卡（关闭键 / Esc），本轮在用户这边就
         // 结束：与桌面端 / VS Code / JetBrains 的 `denied → abortMessage()` 是
         // 同一条语义，也与 Claude Code 的 `cancelAndAbort`（无 feedback 直接

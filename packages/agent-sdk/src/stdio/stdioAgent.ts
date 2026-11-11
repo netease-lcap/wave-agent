@@ -217,6 +217,13 @@ export interface StdioAgentCallbacks {
     requestId: string,
     context: ToolPermissionContext,
   ) => void;
+  /**
+   * That request is no longer pending — somebody answered it (possibly another
+   * client of the same process: the desktop window, the plugin, the phone) or
+   * it went away with its session. The host drops whatever it is showing for
+   * `requestId`; it must not answer again.
+   */
+  onPermissionResolved?: (requestId: string) => void;
   onBtwContent?: (params: {
     question: string;
     content: string;
@@ -1036,6 +1043,11 @@ export class StdioAgent {
           context: ToolPermissionContext;
         };
         this.callbacks.onPermissionRequest?.(p.requestId, p.context);
+        break;
+      }
+      case "permissionResolved": {
+        const p = params as { requestId: string };
+        this.callbacks.onPermissionResolved?.(p.requestId);
         break;
       }
       case "btwContent": {

@@ -48,7 +48,7 @@ object PermissionFlow {
         }
 
         val confirmationId = "confirmation_${System.currentTimeMillis()}_${counter++}"
-        val deferred = CompletableDeferred<JsonObject>()
+        val deferred = CompletableDeferred<JsonObject?>()
         session.pendingConfirmations[confirmationId] = PendingConfirmation(
             confirmationId = confirmationId,
             requestId = requestId,
@@ -79,10 +79,38 @@ object PermissionFlow {
         }
 
         try {
-            val decision = deferred.await()
+            // null = 这条请求已经被**别处**答完了（`resolveElsewhere`）：答复已经由
+            // 答话方发过，这里再发一次只会是一条 requestId 已消失的帧。
+            val decision = deferred.await() ?: return
             session.agent?.sendPermissionResponse(requestId, decision)
         } catch (e: Exception) {
             LOG.warn("Permission confirmation failed: ${e.message}")
+        }
+    }
+
+    /**
+     * 这条请求已经被**别处**答完了（`permissionResolved`，源头是持有会话的那个
+     * `wave --stdio` 进程）：把本端那张卡撤掉，不再回包。
+     *
+     * 插件端同样能开远程控制，所以手机上的审批会落到同一个子进程；请求只有一份、
+     * 卡却每个客户端各挂一份，不在收卡，用户回到 IDE 就压着几张已经答过的卡。
+     * 收尾与 [resolveConfirmation] 一致，只差没有答复要发：删掉待确认记录、把
+     * deferred 用 null 了结、让 webview 撤卡。
+     */
+    suspend fun resolveElsewhere(session: WaveSession, requestId: String) {
+        if (requestId.isEmpty()) return
+        val ids = session.pendingConfirmations
+            .filterValues { it.requestId == requestId }
+            .keys.toList()
+        for (id in ids) {
+            val pending = session.pendingConfirmations.remove(id) ?: continue
+            pending.deferred.complete(null)
+            Edt.invokeLater {
+                session.postMessage(
+                    "hideConfirmation",
+                    buildJsonObject { put("confirmationId", id) },
+                )
+            }
         }
     }
 

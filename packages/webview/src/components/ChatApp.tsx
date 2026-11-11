@@ -2049,6 +2049,19 @@ export const ChatApp: React.FC<ChatAppProps> = ({
           }
         }, 0);
         break;
+      case "hideConfirmation":
+        // 这条审批已经被**别处**答完了（手机上那一页 / 另一个宿主窗口），
+        // 宿主据此撤掉还开着的那张卡。同一条请求只有一份、审批卡却每个客户端
+        // 各挂一份 —— 不撤的话，用户从手机答完回到桌面端会看到一叠已经答过的卡
+        // （spec ui/confirm-ui.md「同一条审批只有一份，谁答都算数」）。
+        // 本端自己点的批准/拒绝已经摘过这张卡，此时收到一条队列里没有的 id 是
+        // 正常情况（那条通知随后才到），reducer 的过滤天然幂等。
+        if (!forThisPane(message)) break;
+        dispatch({
+          type: "HIDE_CONFIRMATION",
+          payload: message.confirmationId,
+        });
+        break;
       case "planContent":
         // Desktop /plan display: host pushes the current plan file contents
         // to the shared Plan pane (same routing as an ExitPlanMode plan).
