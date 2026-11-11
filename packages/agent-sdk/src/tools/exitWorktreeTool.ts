@@ -3,11 +3,13 @@
  * Mirrors Claude Code's ExitWorktree tool behavior and prompt.
  */
 
+import { existsSync } from "node:fs";
 import type { ToolPlugin, ToolResult, ToolContext } from "./types.js";
 import {
   removeWorktree,
   countWorktreeChanges,
 } from "../utils/worktreeUtils.js";
+import { describeWorktreeRemovalOutcome } from "../utils/worktreeRemoval.js";
 import { EXIT_WORKTREE_TOOL_NAME } from "../constants/tools.js";
 import { logger } from "../utils/globalLogger.js";
 import { executeWorktreeRemoveHook } from "../services/worktreeHooks.js";
@@ -185,6 +187,9 @@ export const exitWorktreeTool: ToolPlugin = {
     ) ?? { changedFiles: 0, commits: 0 };
 
     let hookNote = "";
+    // Set when the removal did not actually happen; `removeWorktree` returns
+    // nothing, so the filesystem is the only witness.
+    let survivalNote = "";
     if (session.hookBased) {
       // Hook-based worktree: delegate removal to the WorktreeRemove hook.
       // wave never runs `git worktree remove` for hook-based worktrees.
@@ -215,6 +220,18 @@ export const exitWorktreeTool: ToolPlugin = {
       }
     } else {
       removeWorktree(worktreeInfo);
+      // Removal refuses rather than throws (locked, an independent repository,
+      // the main working tree, an unreadable pointer) and also gives up when the
+      // directory cannot be deleted. All of those leave the directory in place —
+      // saying "removed" over it is how a user ends up believing a locked
+      // worktree was cleaned up, or reaching for `rm -rf` on a checkout.
+      if (existsSync(worktreePath)) {
+        survivalNote = describeWorktreeRemovalOutcome({
+          worktreePath,
+          repoRoot: session.repoRoot,
+          branch: worktreeBranch ?? "",
+        });
+      }
     }
 
     // Clear session state and restore CWD
@@ -240,6 +257,20 @@ export const exitWorktreeTool: ToolPlugin = {
       discardParts.length > 0
         ? ` Discarded ${discardParts.join(" and ")}.`
         : "";
+
+    if (survivalNote !== "") {
+      // Nothing was deleted (see `survivalNote`), so the counts above were not
+      // discarded — they are still in that directory. Reporting them as
+      // discarded alongside "was not removed" would contradict itself.
+      return {
+        success: false,
+        content:
+          `Exited worktree at ${worktreePath}, but it was not removed.\n` +
+          `${survivalNote}\n` +
+          `Session is now back in ${originalCwd}.`,
+        error: `Worktree at ${worktreePath} was not removed`,
+      };
+    }
 
     return {
       success: true,

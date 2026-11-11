@@ -244,6 +244,43 @@ describe("SubagentManager worktree isolation", () => {
     expect(instance.worktreeSummary).toContain(WORKTREE_PATH);
   });
 
+  it("reports a surviving worktree instead of announcing its removal", async () => {
+    // `removeWorktree` returns nothing and refuses silently (locked, an
+    // independent repository, the main working tree, a pointer it cannot read)
+    // exactly like a failed delete, so "no changes, so the worktree was
+    // removed" used to be printed over a directory that was still on disk.
+    // Point the worktree at a directory that really exists — this package's own
+    // root — and let the real filesystem answer: `removeWorktree` is mocked, so
+    // nothing is ever deleted.
+    const survivingPath = path.resolve(process.cwd());
+    worktreeMocks.createWorktree.mockReturnValue({
+      name: "sa-swift-fox-123",
+      path: survivingPath,
+      branch: WORKTREE_BRANCH,
+      repoRoot: REPO_ROOT,
+      isNew: true,
+      originalHeadCommit: "parent-head",
+    });
+
+    const instance = await manager.createInstance(
+      config,
+      {
+        description: "test",
+        prompt: "do work",
+        subagent_type: "general-purpose",
+        worktreeIsolation: true,
+      },
+      false,
+    );
+
+    const result = await manager.executeAgent(instance, "do work");
+
+    expect(worktreeMocks.removeWorktree).toHaveBeenCalled();
+    expect(result).not.toContain("so the worktree was removed.");
+    expect(result).toContain("the worktree was NOT removed");
+    expect(result).toContain(`Worktree directory survived at ${survivingPath}`);
+  });
+
   it("keeps a dirty worktree and reports its path, branch and changes", async () => {
     worktreeMocks.countWorktreeChanges.mockReturnValue({
       changedFiles: 2,

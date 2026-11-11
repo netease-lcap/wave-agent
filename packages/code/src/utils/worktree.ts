@@ -10,6 +10,15 @@ import {
   executeWorktreeCreateHook,
   executeWorktreeRemoveHook,
   EPHEMERAL_WORKTREE_PREFIX,
+  // The worktree delete core, shared with the SDK's own removal (ExitWorktree,
+  // subagent isolation, the startup sweep) so the two entry points cannot drift
+  // apart again — they used to be independent implementations, one git-first.
+  describeRemovalFailure,
+  describeWorktreeRemovalOutcome,
+  describeWorktreeResidue,
+  detachWorktreePointer,
+  removeWorktreeDirectory,
+  restoreWorktreePointer,
 } from "wave-agent-sdk";
 import { logger } from "./logger.js";
 
@@ -326,26 +335,6 @@ async function createWorktreeInternal(
   }
 }
 
-/**
- * On Windows, prefix an absolute path with the extended-length marker (`\\?\`)
- * so recursive removal bypasses the 260-char MAX_PATH limit. POSIX paths are
- * returned unchanged.
- */
-function toExtendedLengthPath(worktreePath: string): string {
-  if (process.platform !== "win32") {
-    return worktreePath;
-  }
-  const absolute = path.win32.resolve(worktreePath);
-  if (absolute.startsWith("\\\\?\\")) {
-    return absolute;
-  }
-  if (absolute.startsWith("\\\\")) {
-    // UNC path: \\server\share -> \\?\UNC\server\share
-    return `\\\\?\\UNC\\${absolute.slice(2)}`;
-  }
-  return `\\\\?\\${absolute}`;
-}
-
 /** First line of a captured stderr/message, trimmed and length-capped. */
 function firstLine(text: string | undefined, max = 200): string {
   if (!text) return "";
@@ -354,9 +343,13 @@ function firstLine(text: string | undefined, max = 200): string {
 }
 
 /**
- * Summarise why `git worktree remove` failed. execFile rejections carry the
- * exit code and the child's stderr; without them a removal failure is
- * indistinguishable from a MAX_PATH refusal, a locking process, or a git error.
+ * Summarise why a git command failed. execFile rejections carry the exit code
+ * and the child's stderr; without them a failure is indistinguishable from a
+ * missing git, a locked index, or a plain git error.
+ *
+ * Only `git worktree prune` can fail here now — git no longer performs the
+ * delete itself (see `removeWorktree`), so there is no `worktree remove`
+ * stderr left to explain.
  */
 function describeGitFailure(error: unknown): string {
   const e = error as {
@@ -372,39 +365,6 @@ function describeGitFailure(error: unknown): string {
   if (stderr) parts.push(`stderr=${stderr}`);
   if (parts.length === 0) parts.push(`message=${firstLine(e.message)}`);
   return parts.join(" ");
-}
-
-/** Summarise why the `fs.rmSync` fallback failed (code + offending path). */
-function describeFsFailure(error: unknown): string {
-  const e = error as {
-    code?: string;
-    syscall?: string;
-    path?: string;
-    message?: string;
-  };
-  const parts: string[] = [];
-  if (e.code) parts.push(`code=${e.code}`);
-  if (e.syscall) parts.push(`syscall=${e.syscall}`);
-  if (e.path) parts.push(`at=${e.path}`);
-  if (parts.length === 0) parts.push(`message=${firstLine(e.message)}`);
-  return parts.join(" ");
-}
-
-/**
- * Delete the worktree directory with `fs.rmSync`, returning the error when it
- * fails (null on success). Node removes directory symlinks/junctions properly,
- * which is exactly where git gives up on Windows.
- */
-function rmWorktreeDirWithFs(worktreePath: string): unknown | null {
-  try {
-    fs.rmSync(toExtendedLengthPath(worktreePath), {
-      recursive: true,
-      force: true,
-    });
-    return null;
-  } catch (error) {
-    return error;
-  }
 }
 
 /**
@@ -426,38 +386,26 @@ function sleep(ms: number): Promise<void> {
 }
 
 /**
- * `rmWorktreeDirWithFs` with the short retry above. Returns null once the
- * directory is gone (or the deletion reported success), the last error
+ * The shared `removeWorktreeDirectory` with the short retry above. Returns null
+ * once the directory is gone (or the deletion reported success), the last error
  * otherwise. Existence is deliberately not probed here: the caller already
  * decides "did it actually go" from the filesystem, and an extra stat per
  * attempt would only make that harder to reason about.
+ *
+ * The retry lives here rather than in the shared core because how long to wait
+ * for a just-exited process is this entry point's call — the SDK's synchronous
+ * caller deletes once.
  */
 async function rmWorktreeDirWithRetries(
   worktreePath: string,
 ): Promise<unknown | null> {
-  let error = rmWorktreeDirWithFs(worktreePath);
+  let error = removeWorktreeDirectory(worktreePath);
   for (const delayMs of worktreeRemoveRetry.delaysMs) {
     if (!error) return null;
     await sleep(delayMs);
-    error = rmWorktreeDirWithFs(worktreePath);
+    error = removeWorktreeDirectory(worktreePath);
   }
   return error;
-}
-
-/**
- * Describe what is still on disk after a failed removal. Without this a
- * failure log cannot distinguish "directory already gone" from "the whole
- * checkout is still sitting there".
- */
-function probeResidue(worktreePath: string): string {
-  try {
-    if (!fs.existsSync(worktreePath)) return "none";
-    const entries = fs.readdirSync(worktreePath) as string[];
-    const head = entries.slice(0, 5).join(",");
-    return `${entries.length}[${head}${entries.length > 5 ? ",…" : ""}]`;
-  } catch (error) {
-    return `unknown(${(error as { code?: string }).code ?? "error"})`;
-  }
 }
 
 export interface WorktreeChanges {
@@ -682,20 +630,40 @@ export async function getWorktreeChanges(
  *   or `worktreeCreationBranch`) — never the branch that directory happens to
  *   have checked out, which an in-session `git checkout` can change.
  *
- * Removal is best-effort: `git worktree remove --force` deletes the worktree
- * metadata before the working directory, and on Windows its recursive deletion
- * is MAX_PATH-limited — deep paths (e.g. node_modules) can fail with "Filename
- * too long", leaving an orphan directory. When git fails we fall back to
- * fs.rmSync with an extended-length path (bypasses MAX_PATH) and prune stale
- * metadata. The fallback retries a couple of times (`worktreeRemoveRetry`): a
- * directory locked by a process that is only now exiting — the usual Windows
- * case — becomes deletable a moment later. Failures are logged; when the
- * directory still survives, its branch is deliberately kept so the leftover
- * checkout stays reachable through git.
+ * The order is inverted relative to "let git delete it": the worktree's own
+ * `.git` pointer is deleted first, then the directory, and `git worktree prune`
+ * deregisters what is left. That is deliberate.
+ *
+ * git's exit code is not trustworthy for this job. `git worktree remove`
+ * deletes the metadata before the working directory, and on Windows it cannot
+ * recurse over the junctions pnpm's node_modules is made of — it deletes the
+ * files, leaves the skeleton behind and still exits 0; the opposite also
+ * happens (it deregisters, then fails to delete). Either way the directory and
+ * git's records end up disagreeing, which is the "residue + branch still there
+ * + worktree no longer registered" report. So git no longer deletes: the
+ * pointer goes first (a failed delete can then put it back, and git's records
+ * never go stale), the directory is deleted with `fs.rmSync` on an
+ * extended-length path (bypasses MAX_PATH), and `prune` ties up the
+ * registration afterwards.
+ *
+ * The checks git used to make — is this the main working tree, is it
+ * `git worktree lock`ed, does its `.git` really point into this repo — plus the
+ * pointer handling and the delete come from the shared core
+ * (`worktreeRemoval.ts`, exported by `wave-agent-sdk`), which is also what the
+ * SDK's own removal uses (ExitWorktree, subagent isolation, the startup sweep).
+ * One delete core, two calling conventions; they used to be independent
+ * implementations and drifted. What stays here is this package's half: git
+ * calls are async (a synchronous spawn would freeze every session the shared
+ * `wave --stdio` process serves), the delete retries (`worktreeRemoveRetry`)
+ * because Windows releases a just-exited process's directory handle
+ * asynchronously, and the answer is "is the directory gone" rather than nothing.
  *
  * Returns whether the directory is actually gone (not whether the removal was
  * attempted) — a caller that reports the outcome to a user must print it rather
  * than assume success, because every failure mode above is silent by design.
+ * A refusal (locked, `.git` not pointing into this repo, main working tree) is
+ * the same answer as a failed delete: `false`, with the directory and its
+ * branch untouched.
  *
  * The branch is deleted only when `repoRoot` actually has it (`branchExists`),
  * so a name inferred from the path — which no longer depends on how the two
@@ -730,72 +698,96 @@ export async function removeWorktree(
   }
 
   const repoRoot = session.repoRoot;
+  const worktreePath = session.path;
 
-  // Remove worktree
-  try {
-    await execFileAsyncHidden(
-      "git",
-      ["worktree", "remove", "--force", session.path],
-      {
-        cwd: repoRoot,
-      },
+  // Checks git used to make, the Windows reparse-point pass, and the `.git`
+  // detach — all in the shared core, so this path and the SDK's cannot diverge.
+  const detach = detachWorktreePointer({ worktreePath, repoRoot });
+
+  if (detach.status === "refused") {
+    // Nothing was deleted and the directory is still there, so this is a
+    // `false` answer to "is the directory gone" — not a throw.
+    logger.warn(
+      `Removal refused: path=${worktreePath} refusal=${detach.reason} — ${detach.message}`,
     );
-    // git exits 0 even when it did not delete the directory: on Windows it
-    // cannot remove directory symlinks/junctions, which is exactly what pnpm's
-    // node_modules is made of — so it deletes the files, leaves the skeleton
-    // behind and still reports success. Trust the filesystem, not the exit code.
-    if (fs.existsSync(session.path)) {
-      logger.warn(
-        `git worktree remove reported success but the directory survived: ` +
-          `path=${session.path} residue=${probeResidue(session.path)} — ` +
-          `deleting with fs.rmSync instead`,
-      );
-      const rmError = await rmWorktreeDirWithRetries(session.path);
+    return false;
+  }
+
+  if (detach.status === "pointer-stuck") {
+    // Deleting the directory while git still registers it would leave the
+    // dangling entry this design exists to prevent. The shared tail below
+    // reports the surviving directory and returns false.
+    logger.error(
+      `Failed to remove worktree or branch: path=${worktreePath} ` +
+        `stage=unlink(.git) ${detach.reason} ` +
+        `residue=${describeWorktreeResidue(worktreePath)}`,
+    );
+  } else {
+    if (detach.status === "detached") {
+      if (detach.leftover) {
+        // No pointer: a previous cleanup already took it, so git does not know
+        // this directory any more — it is just files.
+        logger.warn(
+          `Worktree .git pointer already gone — deleting the directory as a ` +
+            `plain leftover: path=${worktreePath}`,
+        );
+      }
+      if (detach.reparsePointsUnlinked > 0) {
+        logger.info(
+          `Unlinked ${detach.reparsePointsUnlinked} reparse point(s) before ` +
+            `removing the worktree: path=${worktreePath}`,
+        );
+      }
+
+      const rmError = await rmWorktreeDirWithRetries(worktreePath);
       if (rmError) {
+        // The retries are spent, so this is the final attempt: only now does the
+        // pointer go back. Writing it back between attempts would leave a stray
+        // `.git` behind once a later attempt succeeds.
+        let gitPointerRestored = false;
+        let restoreError: unknown = null;
+        if (detach.pointer !== null) {
+          restoreError = restoreWorktreePointer(
+            worktreePath,
+            detach.pointer.content,
+          );
+          gitPointerRestored = restoreError === null;
+        }
+        // The raw errno next to the translated sentence: the sentence says what
+        // to do about it, the code is what a bug report or a search matches.
+        const errno = (rmError as NodeJS.ErrnoException | undefined)?.code;
+        // Both failures are reported, and neither masks the other: the pointer
+        // went back byte for byte (so git still knows about the directory that
+        // survived) and the reason says what is holding it.
         logger.error(
-          `Failed to remove worktree or branch: path=${session.path} ` +
-            `stage=fs(after git success) ${describeFsFailure(rmError)} ` +
-            `residue=${probeResidue(session.path)}`,
+          `Failed to remove worktree directory: path=${worktreePath} stage=fs` +
+            (typeof errno === "string" ? ` code=${errno}` : "") +
+            ` ${describeRemovalFailure(rmError, detach.reparsePointUnremovable)} ` +
+            `gitPointerRestored=${gitPointerRestored}` +
+            (restoreError === null
+              ? ""
+              : ` restoreError=${firstLine((restoreError as Error)?.message)}`) +
+            ` residue=${describeWorktreeResidue(worktreePath)}`,
           rmError,
         );
       }
     }
-  } catch (error: unknown) {
-    logger.warn(
-      `git worktree remove failed, falling back to fs.rmSync: ${describeGitFailure(error)}`,
-      error,
-    );
-    const rmError = await rmWorktreeDirWithRetries(session.path);
-    if (rmError) {
-      // Removal failures are best-effort, so this line is often the only trace
-      // of an orphaned worktree directory: record which stage failed, why, and
-      // whether anything was left behind.
-      logger.error(
-        `Failed to remove worktree or branch: path=${session.path} stage=fs ` +
-          `${describeFsFailure(rmError)} residue=${probeResidue(session.path)} ` +
-          `git(${describeGitFailure(error)})`,
-        rmError,
-      );
-    }
-    // git removes worktree metadata before the working directory; prune any
-    // leftovers in case git failed before deleting them.
-    try {
-      await execFileAsyncHidden("git", ["worktree", "prune"], {
-        cwd: repoRoot,
-      });
-    } catch {
-      // Ignore errors pruning stale metadata
-    }
+
+    // git's registration deliberately outlives the directory — that is what let
+    // the delete be recoverable — so this is the step that drops it, and it has
+    // to run before `branch -D`, which git refuses for a branch a registered
+    // worktree still has checked out.
+    await pruneWorktreeRegistration(repoRoot, worktreePath);
   }
 
   // The directory, not any exit code, decides whether the removal happened. A
   // surviving directory means its checkout (and any uncommitted work in it) is
   // still on disk, and the branch is the only ref still leading back to it.
-  if (fs.existsSync(session.path)) {
+  if (fs.existsSync(worktreePath)) {
     logger.warn(
       `Worktree directory survived removal — keeping ` +
         `${session.branch || "its branches"} so the leftover checkout stays ` +
-        `reachable: path=${session.path} residue=${probeResidue(session.path)}`,
+        `reachable: path=${worktreePath} residue=${describeWorktreeResidue(worktreePath)}`,
     );
     return false;
   }
@@ -808,7 +800,7 @@ export async function removeWorktree(
   // that must survive. An unknown branch deletes nothing at all.
   if (!session.branch) {
     logger.warn(
-      `No branch recorded for the worktree at ${session.path} — keeping every ` +
+      `No branch recorded for the worktree at ${worktreePath} — keeping every ` +
         `branch rather than deleting the one it had checked out`,
     );
     return true;
@@ -821,7 +813,7 @@ export async function removeWorktree(
   if (!(await branchExists(repoRoot, session.branch))) {
     logger.warn(
       `No branch ${session.branch} in ${repoRoot} — keeping every branch ` +
-        `(the worktree at ${session.path} was not created on it, or it is ` +
+        `(the worktree at ${worktreePath} was not created on it, or it is ` +
         `already gone)`,
     );
     return true;
@@ -837,29 +829,52 @@ export async function removeWorktree(
 }
 
 /**
- * What to tell the user when `removeWorktree` returned `false`: where the
- * directory still is, which branch was kept for it (removal keeps that ref so
- * the leftover checkout stays reachable through git), and the two commands that
- * finish the job by hand.
+ * Drop git's record of a worktree that is no longer on disk.
  *
- * Single-sourced because every CLI entry point that removes a worktree used to
- * print a flat "Done." whether or not anything was deleted — TUI exit, `-p`, and
- * `wave daemon destroy --remove-worktree` (issue #2763). One wording, one place.
+ * `git worktree prune` removes administrative dirs whose worktree has
+ * disappeared — exactly the state this removal leaves behind on purpose (see
+ * `removeWorktree`). A failure only warns: the directory is already gone by
+ * then, so all that is left is a stale entry a later `prune` will drop.
+ */
+async function pruneWorktreeRegistration(
+  repoRoot: string,
+  worktreePath: string,
+): Promise<void> {
+  try {
+    await execFileAsyncHidden("git", ["worktree", "prune"], {
+      cwd: repoRoot,
+    });
+  } catch (error) {
+    logger.warn(
+      `git worktree prune failed after removing a worktree: ` +
+        `path=${worktreePath} ${describeGitFailure(error)}`,
+      error,
+    );
+  }
+}
+
+/**
+ * What to tell the user when `removeWorktree` returned `false`.
+ *
+ * The text itself lives in the shared core
+ * (`describeWorktreeRemovalOutcome`), because `false` does not only mean "the
+ * delete failed": the removal is also refused outright for a `git worktree
+ * lock`ed worktree, a directory that is its own repository, and the main
+ * working tree. Only the first case should be answered with `rm -rf`, and this
+ * signature has no room for the reason — the core therefore probes the
+ * directory instead. Keeping the wrapper means the four callers (TUI exit,
+ * `-p` twice, `wave daemon destroy --remove-worktree`) do not change.
  */
 export function describeWorktreeSurvival(worktree: {
   path: string;
   branch: string;
   repoRoot: string;
 }): string {
-  const branch = worktree.branch ? `branch ${worktree.branch}` : "every branch";
-  return (
-    `Worktree directory survived at ${worktree.path}; kept ${branch} so the ` +
-    `leftover checkout stays reachable\n` +
-    `Clean up manually: rm -rf ${worktree.path}` +
-    (worktree.branch
-      ? ` && git -C ${worktree.repoRoot} branch -D ${worktree.branch}`
-      : "")
-  );
+  return describeWorktreeRemovalOutcome({
+    worktreePath: worktree.path,
+    repoRoot: worktree.repoRoot,
+    branch: worktree.branch,
+  });
 }
 
 /**

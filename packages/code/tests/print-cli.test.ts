@@ -1,5 +1,9 @@
 import { test, expect, vi, afterEach } from "vitest";
-import { Agent, AgentCallbacks } from "wave-agent-sdk";
+import {
+  Agent,
+  AgentCallbacks,
+  describeWorktreeRemovalOutcome,
+} from "wave-agent-sdk";
 
 // Mock displayUsageSummary only — the structured output reads the real
 // aggregation helpers (sumUsage / calculateTokenSummary) from the same module.
@@ -11,6 +15,15 @@ vi.mock("../src/utils/usageSummary.js", async (importOriginal) => {
 
 // Mock the Agent SDK
 vi.mock("wave-agent-sdk");
+
+// The one exception is the worktree-survival wording: it is pure text with no
+// side effects, and the assertions below read the exact words a user is told —
+// the automocked stub returns `undefined`, so it would check nothing.
+const realSdk =
+  await vi.importActual<typeof import("wave-agent-sdk")>("wave-agent-sdk");
+vi.mocked(describeWorktreeRemovalOutcome).mockImplementation(
+  realSdk.describeWorktreeRemovalOutcome,
+);
 
 // Mock worktree removal so tests never run real git commands. The survival
 // wording is pure text with no side effects, so it stays real — stubbing it
@@ -845,6 +858,10 @@ test("startPrintCli skips path validation and delegates removal for hook-based w
     hasNewCommits: false,
   };
 
+  const stdoutSpy = vi
+    .spyOn(process.stdout, "write")
+    .mockImplementation(() => true);
+
   await startPrintCli({
     message: "test",
     worktreeSession: hookBasedSession,
@@ -856,7 +873,12 @@ test("startPrintCli skips path validation and delegates removal for hook-based w
   // validation does not apply, and removal is delegated to removeWorktree.
   expect(validateWorktreeRemovalPath).not.toHaveBeenCalled();
   expect(removeWorktree).toHaveBeenCalledWith(hookBasedSession);
+  expect(
+    stdoutSpy.mock.calls.some((call) => String(call[0]).includes("Done.")),
+  ).toBe(true);
   expect(mockExit).toHaveBeenCalledWith(0);
+
+  stdoutSpy.mockRestore();
 });
 
 test("startPrintCli removes clean worktree after destroy on sendMessage error", async () => {

@@ -69,6 +69,23 @@ const HOST_CLOSURE_ALLOWED = [];
 const HOST_CLOSURE_BUDGET = 200 * 1024;
 
 /**
+ * 把 `target` 挂到 `linkPath` 上（第 3 项检查需要在临时目录里复刻一份依赖树）。
+ *
+ * Windows 上建符号链接要 `SeCreateSymbolicLinkPrivilege`（管理员或开发者模式），
+ * 普通账号直接 `EPERM`——这项检查在 Windows 开发机上就永远跑不起来，而"跑不起来"
+ * 与"跳过"在 CI 眼里是两件事。目录改用 **junction**（`mklink /J` 的 fs 等价物）：
+ * 不需要任何特权，Node 的模块解析对它的行为与目录符号链接一致，而这项检查只关心
+ * "包能不能解析到"，不关心它是不是真的符号链接。非目录（极少）仍然走符号链接。
+ */
+function linkDependency(target, linkPath) {
+  if (process.platform === "win32" && statSync(target).isDirectory()) {
+    symlinkSync(target, linkPath, "junction");
+    return;
+  }
+  symlinkSync(target, linkPath);
+}
+
+/**
  * 逐个入口检查"可选平台包缺席时能否加载"。表=package.json exports 里**有 subpath** 的
  * 那几条（`./stdio` 已收口，只经 `/host` 可达，故不单列——`/host` 会把它一起加载）。
  */
@@ -250,7 +267,7 @@ if (existsSync(distDir)) {
     for (const entry of readdirSync(sdkNodeModules, { withFileTypes: true })) {
       if (entry.name.startsWith(".") || entry.name === "@vscode") continue;
       if (!entry.name.startsWith("@") || !entry.isDirectory()) {
-        symlinkSync(
+        linkDependency(
           path.join(sdkNodeModules, entry.name),
           path.join(nodeModules, entry.name),
         );
@@ -259,7 +276,7 @@ if (existsSync(distDir)) {
       mkdirSync(path.join(nodeModules, entry.name));
       for (const inner of readdirSync(path.join(sdkNodeModules, entry.name))) {
         if (`${entry.name}/${inner}`.startsWith("@vscode/")) continue;
-        symlinkSync(
+        linkDependency(
           path.join(sdkNodeModules, entry.name, inner),
           path.join(nodeModules, entry.name, inner),
         );

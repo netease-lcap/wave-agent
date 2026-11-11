@@ -42,6 +42,7 @@ import {
   performPostCreationSetup,
   removeWorktree,
 } from "../utils/worktreeUtils.js";
+import { describeWorktreeRemovalOutcome } from "../utils/worktreeRemoval.js";
 import { getGitMainRepoRoot, resolveGitDir } from "../utils/gitUtils.js";
 import type { WorktreeSession } from "../utils/worktreeSession.js";
 import {
@@ -890,6 +891,22 @@ export class SubagentManager {
         `Failed to remove subagent worktree ${session.worktreePath}: ${message}`,
       );
       return `[worktree] ran in ${session.worktreePath}${branchSuffix}; no changes, but removing the worktree failed (${message}) — remove it manually.`;
+    }
+    // `removeWorktree` returns nothing and refuses silently (locked, an
+    // independent repository, the main working tree, a pointer it cannot read)
+    // as well as giving up on a failed delete. "No changes, so the worktree was
+    // removed" was printed over all of those, the last time with the directory
+    // and its branch still on disk — so ask the filesystem instead.
+    if (fs.existsSync(session.worktreePath)) {
+      const outcome = describeWorktreeRemovalOutcome({
+        worktreePath: session.worktreePath,
+        repoRoot: session.repoRoot,
+        branch: session.worktreeBranch ?? "",
+      });
+      logger?.warn(
+        `Subagent worktree was not removed — ${session.worktreePath}: ${outcome.replace(/\n/g, " ")}`,
+      );
+      return `[worktree] ran in ${session.worktreePath}${branchSuffix}; no changes, but the worktree was NOT removed. ${outcome}`;
     }
     return `[worktree] ran in ${session.worktreePath}${branchSuffix}; no changes, so the worktree was removed.`;
   }
