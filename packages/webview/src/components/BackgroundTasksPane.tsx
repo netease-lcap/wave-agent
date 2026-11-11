@@ -25,6 +25,7 @@ import WorkflowRunProgress, {
   formatTime,
 } from "./WorkflowRunProgress";
 import { ansiToHtml } from "../utils/ansiText";
+import { TOOL_STATUS_COLORS } from "../utils/statusColors";
 import {
   getLastLines,
   useBackgroundTaskDetail,
@@ -50,14 +51,28 @@ export interface BackgroundTasksPaneProps {
   width: number;
 }
 
-const statusColor = (status: string): string | undefined => {
+/* 1111 评论（点 `.background-task-dot` 与 `.background-task-status`）：「参考活动那里
+   的配色，运行中是蓝色，已完成是绿色，失败是报错，停止是灰色，来统一」⇒ 点和状态文案
+   走同一套**状态语义层** `--cc-state-*`（`utils/statusColors.ts` 的 TOOL_STATUS_COLORS，
+   全站工具块/任务列表/思考块同源，桌面端由 host-desktop.css 给浅/深两档，切主题自动
+   换档）。
+   改前三档是坏的：`--cc-status-running` / `--cc-status-danger` 这两个 token **全仓库
+   从没定义过**（只剩 fallback 生效）⇒ 运行中是 VS Code 图表的青绿 #4EC9B0、失败是粉红
+   #F48771，与产品语义色不是一家；而 completed / killed 干脆返回 undefined，让点和文案
+   各自回落（浅色实测点继承正文近黑 #202020、文案走描述灰 #606060 —— 点和字不同色）。
+   现在四档一一对应：running 蓝 / completed 绿 / failed 红 / killed 灰，四个状态都
+   显式给色，不再有「继承正文色」的半成品。 */
+const statusColor = (status: string): string => {
   switch (status) {
     case "running":
-      return "var(--cc-status-running, #4ec9b0)";
+      return TOOL_STATUS_COLORS.running;
+    case "completed":
+      return TOOL_STATUS_COLORS.success;
     case "failed":
-      return "var(--cc-status-danger, #f48771)";
+      return TOOL_STATUS_COLORS.error;
     default:
-      return undefined;
+      // killed / 未知状态：中性灰，与「无状态历史记录」同一档。
+      return TOOL_STATUS_COLORS.idle;
   }
 };
 

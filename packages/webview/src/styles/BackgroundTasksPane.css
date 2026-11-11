@@ -22,12 +22,36 @@
   background: var(--cc-bg-inspector, var(--vscode-panel-background));
 }
 
+/* ═══ 字号 / 行高 / 字重口径（1111 走查）═══
+   契约 `conversation-typography.md`「文字角色表」+「实现边界：优先复用 --cc-* 既有
+   字号、字体和行高 token」。走查前本文件 14 处字号全是字面量、行高几乎都靠 normal，
+   而主题入口（host-desktop.css :4344）1109 就补好了 `--cc-font-size-sm/md/lg`
+   （12/14/16）、`--cc-line-height-sm/md/lg`（20/22/24）、`--cc-font-weight-*`
+   （400/500/600）—— 一个都没被这个面板引用过，「绑了变量」只是别处的说法。
+   落地映射（左＝角色，右＝本文件实际取值）：
+     · 正文 / 描述 / 空态文案   → md 14 / 22 / 400
+     · 任务标题（type）          → md 14 / 22 / 600（契约「任务标题 14/22 + 沿用组件
+                                   已批准字重」，本组件已批准 600）
+     · 状态 / 计数 / 启动时间 / 详情元信息 → sm 12 / 20 / 400
+     · 分组标签、块标题（「命令:」「输出…」） → sm 12 / 20 / 600（辅助信息档，
+                                   靠 600 与内容拉开层级；契约表单里没有面板分组这一行，
+                                   按「组件自有契约」保持 12/600，只补行高与 token）
+     · 命令行 / 日志路径 / 命令块 / 输出块 → 代码角色 13 / 20 / 400 等宽。
+       `--cc-font-size-*` 刻度里没有 13 这一档，代码角色按契约取 13，落在主题入口已有的
+       `--vscode-editor-font-size`（13px，跟随宿主的编辑器字号设置）；行高 20 复用
+       `--cc-line-height-sm`。
+     · 「停止」键 → md 14 / 22 / 400（已按按钮契约收口，这里只换成 token 引用）
+   不动：`.background-task-dot` 的 10px（● 是装饰字形，不是文字角色）、
+   `.background-tasks-back` 的 13px/line-height 1（返回键只有一枚图标，那两个值撑的是
+   图标盒）。 */
+
 .background-tasks-pane-body {
   display: flex;
   flex-direction: column;
   gap: 4px;
   padding: 10px 12px 12px;
-  font-size: 13px;
+  font-size: var(--cc-font-size-md, 14px);
+  line-height: var(--cc-line-height-md, 22px);
   color: var(--vscode-foreground);
 }
 
@@ -39,13 +63,15 @@
   inset: 0;
   flex-direction: column;
   gap: 12px;
-  font-size: 14px;
+  font-size: var(--cc-font-size-md, 14px);
+  line-height: var(--cc-line-height-md, 22px);
   color: var(--vscode-descriptionForeground);
 }
 
 .background-tasks-count {
   flex-shrink: 0;
-  font-size: 12px;
+  font-size: var(--cc-font-size-sm, 12px);
+  line-height: var(--cc-line-height-sm, 20px);
   color: var(--vscode-descriptionForeground);
 }
 
@@ -56,19 +82,68 @@
 
 /* ═══ 列表 ═══ */
 
+/* 1111 评论：点「运行中」要求「参考这里」——参照物是文件面板的组标题
+   `.file-pane-conversation-files-caption`「当前对话的文件」，实测 14px / 400 / normal
+   （行盒 20）/ #606060。先按「字号」改 12 → 14，随后她补一句「字重也改」，于是 600 → 400，
+   与参照物完全一致（只剩行高：md 成对 token 22，比参照物 normal 的行盒高 2px）。 */
 .background-tasks-group {
   margin: 4px 0 2px;
-  font-size: 12px;
-  font-weight: 600;
+  font-size: var(--cc-font-size-md, 14px);
+  font-weight: var(--cc-font-weight-regular, 400);
+  line-height: var(--cc-line-height-md, 22px);
   color: var(--vscode-descriptionForeground);
 }
 
+/* 1111 评论（点 `.background-task-row`）：「这里，用卡片的形式，间距圆角等也都参考
+   活动的卡片」⇒ 卡片几何全部照抄活动看板的 `.session-card`（SessionBoard.css，实测：
+   padding 12 / radius 12 / 1px #EBEEF5 / 卡间距 8 / hover 阴影 0 2px 8px
+   rgb(31 35 41 / 8%)；深色档 #27292B 底 + 12% 白边、hover 换 8% 白底且无阴影）。
+   原先是「平铺行 + 每行 1px 下边框分隔」，卡片化后行间隔由 list 的 gap 出、行自身的
+   border-bottom 取消。字阶没动（type 13/600、其余 12），只改间距与圆角。
+   结构没动：整张卡就是原本那个 `role="button"` 的 `.background-task-row`（内衬也是
+   可点的），「停止」键仍留在流内、靠 `align-self: center` 停在中线。 */
+.background-tasks-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
 .background-task-row {
+  position: relative;
   display: flex;
   align-items: flex-start;
-  gap: 6px;
-  padding: 2px 0;
-  border-bottom: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.16));
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--cc-border-lighter, #ebeef5);
+  border-radius: 12px;
+  background: var(--cc-bg-panel, #fff);
+}
+
+.background-task-row:hover {
+  box-shadow: 0 2px 8px rgb(31 35 41 / 8%);
+}
+
+/* 深色档：1111 评论「深色模式卡片默认的颜色再深一点」⇒ 卡面 #27292B → #202224
+   （深一档 ≈ 7/255）。参照的活动卡深色仍是 #27292B，本处按她的点名词单独压深；
+   描边 12% 白与 hover 8% 白都不动，所以 hover 仍比默认亮一档、层级感不变。
+   面板底实测 #111314，卡面 #202224 与它差 15/255，仍清晰浮起。 */
+[data-host="desktop"][data-theme="dark"] .background-task-row {
+  border-color: rgb(255 255 255 / 12%);
+  background: #202224;
+}
+
+[data-host="desktop"][data-theme="dark"] .background-task-row:hover {
+  background: rgb(255 255 255 / 8%);
+  box-shadow: none;
+}
+
+/* 卡片自身就是 `role="button"` + `tabIndex=0` 的键盘可达元素，焦点环也照契约来
+   （focus-visible 与选中分离、2px + 外扩 2px）。token `--cc-border-focus` 浅色 = 
+   `--cc-action-primary` #1F2329、深色 = #A0A5A8（「user-approved 焦点环 / 去蓝」）。
+   改前这里只有浏览器默认的 1px auto 蓝环。 */
+[data-host="desktop"] .background-task-row:focus-visible {
+  outline: 2px solid var(--cc-border-focus, #a0a5a8);
+  outline-offset: 2px;
 }
 
 .background-task-row-main {
@@ -77,9 +152,9 @@
   flex-direction: column;
   gap: 2px;
   min-width: 0;
-  padding: 6px;
+  padding: 0;
   border: none;
-  border-radius: 6px;
+  border-radius: 0;
   background: transparent;
   color: inherit;
   font: inherit;
@@ -87,14 +162,46 @@
   cursor: pointer;
 }
 
-.background-task-row-main:hover {
-  background: var(--vscode-list-hoverBackground, rgba(128, 128, 128, 0.12));
-}
-
-.background-task-row-head,
-.background-task-detail-head {
+.background-task-row-head {
   display: flex;
   align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+
+/* 1111 评论（点 `.background-task-row`）：「停止显示在卡片右下角，running 放在右上角，
+   和其他卡片保持一致」⇒ 卡片四角各归其位：状态贴**右上**、停止键贴**右下**。
+   做法：停止键退出 flow（卡本身已是 `position: relative`），`row-main` 因此吃满整宽 ——
+   head 右端就是卡内容右缘，状态自然落右上；正文块单独让出 62px（键宽 54 + 8 缝），
+   不会被按钮压住。
+   ★选择器必须带 `.background-task-row >`：详情页 head 里那颗停止键同名同 class，
+     直接选 `.background-task-stop` 会把它从 head 里拽出来。 */
+[data-host="desktop"] .background-task-row > .background-task-stop {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+}
+
+[data-host="desktop"] .background-task-row-desc,
+[data-host="desktop"] .background-task-row-command,
+[data-host="desktop"] .background-task-row-meta {
+  padding-right: 62px;
+}
+
+/* 极短内容（只有 head 一行）时也保证卡片装得下右下角那颗键。 */
+[data-host="desktop"] .background-task-row-main {
+  min-height: 28px;
+}
+
+.background-task-detail-head {
+  display: flex;
+  /* 1111 评论（点 `.background-task-detail-head`）：「这行居中对齐」⇒ 这一行里有 28 高的
+     「停止」键，`baseline` 会把点/类型/状态三件文字按按钮内部 22 行高的基线去对齐，实测
+     三者中线比行中线偏上 5–6px（dot 153 / type 152 / status 152.5，行中线 158）。
+     改成 `center`：四件元素中线全部落在行中线 158 上。
+     列表行的 `.background-task-row-head` 仍是 `baseline` —— 那三件都是文字，基线对齐才是
+     正确口径，且她的评论只点了详情这一行。 */
+  align-items: center;
   gap: 6px;
   min-width: 0;
 }
@@ -110,33 +217,53 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-weight: 600;
+  font-size: var(--cc-font-size-md, 14px);
+  font-weight: var(--cc-font-weight-semibold, 600);
+  line-height: var(--cc-line-height-md, 22px);
 }
 
 .background-task-status {
   flex-shrink: 0;
-  font-size: 12px;
+  font-size: var(--cc-font-size-sm, 12px);
+  line-height: var(--cc-line-height-sm, 20px);
   color: var(--vscode-descriptionForeground);
 }
 
+/* 1111 评论：「描述只显示一行，超出时省略」⇒ 列表里的描述恒单行 + 尾部省略号。
+   详情页的 `.background-task-detail-desc` 不受影响（那里要读全文，仍按正文 14/22 折行）。
+   `overflow: hidden` 是 ellipsis 生效的前提；元素是 flex item，宽度已被容器 stretch 定死，
+   不需要再补 min-width: 0。
+   1111 评论续：「描述用 12 号字我看看效果」⇒ 字号 14/22 → sm 12/20（与状态、启动时间
+   同一档 token）。她点名的是描述，命令行（代码角色 13/20）本轮没动。 */
 .background-task-row-desc {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: var(--cc-font-size-sm, 12px);
+  line-height: var(--cc-line-height-sm, 20px);
   color: var(--vscode-descriptionForeground);
 }
 
-/* 列表行里的命令最多两行：完整命令在详情的命令块里（那里会滚动）。 */
+/* 1111 评论（点 `span.background-task-row-command`）：「这里还是两行」⇒ 列表里的命令行
+   跟描述一样收成单行 + 尾部省略号（原先 `-webkit-line-clamp: 2` 允许折两行）。
+   完整命令仍在详情的命令块里（`.background-task-command`，会换行、会滚动），这里只做摘要。
+   用 nowrap + ellipsis 而不是 `-webkit-line-clamp: 1`：与描述同一套配方，不需要
+   `-webkit-box` 那三个老属性。`overflow-wrap: anywhere` 随之删掉（nowrap 下它不生效）。
+   代码角色按契约 13/20（原 12/normal）。13 不在 `--cc-font-size-*` 刻度里，取主题入口的
+   `--vscode-editor-font-size`；行高 20 复用 `--cc-line-height-sm`。 */
 .background-task-row-command {
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
   overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
   font-family: var(--vscode-editor-font-family, monospace);
-  font-size: 12px;
+  font-size: var(--vscode-editor-font-size, 13px);
+  line-height: var(--cc-line-height-sm, 20px);
   color: var(--vscode-descriptionForeground);
-  overflow-wrap: anywhere;
 }
 
 .background-task-row-meta {
-  font-size: 12px;
+  font-size: var(--cc-font-size-sm, 12px);
+  line-height: var(--cc-line-height-sm, 20px);
   color: var(--vscode-descriptionForeground);
 }
 
@@ -161,6 +288,63 @@
   cursor: default;
 }
 
+/* 1111 评论：「按钮规范也检查一下」⇒ 「停止」按按钮契约收口，与产物卡
+   `.message-file-card-toggle`（1109 已收口的那颗）同一套七条：
+   盒 = compact 28 高 / r8 / 14·22 / 0 12 内衬；角色 = Secondary (outlined) ⇒ 透明底 +
+   `--cc-border-light` 描边 + `--cc-text-primary` 1 级字；交互 = hover `fill-hover`、
+   按下 `fill-pressed`，字与描边三态都不动；焦点 2px `--cc-border-focus` 外扩 2px。
+   深色中性面按本仓家族口径（hover 8% 白 / 按下 12% 白）。
+   契约：`common-components.md` §Buttons「Compact 28px actions … retain 14px labels and
+   a usable hit area」；字重取 400（1109 她裁定 medium 500 让位给正文）。
+   改前（上面的 base 规则，仅 IDE 宿主还在用）实测两档都是：42×25 / r4 / 12px·normal /
+   **Arial**（`<button>` 不继承页面字体）/ 描边吃 `--vscode-button-border` 桥接值 ——
+   浅色档是 #0069CC 品牌蓝、深色档是 7% 白（几乎看不见）；hover 与按下**零变化**；
+   键盘焦点是浏览器默认 1px auto 蓝环。 */
+[data-host="desktop"] .background-task-stop {
+  box-sizing: border-box;
+  height: 28px;
+  padding: 0 12px;
+  border-radius: 8px;
+  border: 1px solid var(--cc-border-light, #e4e7ed);
+  background: transparent;
+  color: var(--cc-text-primary, var(--vscode-foreground));
+  font-family: inherit;
+  font-size: var(--cc-font-size-md, 14px);
+  font-weight: var(--cc-font-weight-regular, 400);
+  line-height: var(--cc-line-height-md, 22px);
+}
+
+[data-host="desktop"] .background-task-stop:not(:disabled):hover {
+  background: var(--cc-fill-hover, #eef0f3);
+  border-color: var(--cc-border-light, #e4e7ed);
+  color: var(--cc-text-primary, var(--vscode-foreground));
+}
+
+[data-host="desktop"] .background-task-stop:not(:disabled):active {
+  background: var(--cc-fill-pressed, #e7e9ed);
+  border-color: var(--cc-border-light, #e4e7ed);
+  color: var(--cc-text-primary, var(--vscode-foreground));
+}
+
+[data-host="desktop"] .background-task-stop:focus-visible {
+  outline: 2px solid var(--cc-border-focus, #a0a5a8);
+  outline-offset: 2px;
+}
+
+[data-host="desktop"][data-theme="dark"] .background-task-stop {
+  border-color: var(--cc-border-light, #34393c);
+}
+
+[data-host="desktop"][data-theme="dark"]
+  .background-task-stop:not(:disabled):hover {
+  background: rgb(255 255 255 / 8%);
+}
+
+[data-host="desktop"][data-theme="dark"]
+  .background-task-stop:not(:disabled):active {
+  background: rgb(255 255 255 / 12%);
+}
+
 /* ═══ 详情 ═══ */
 
 .background-task-detail {
@@ -171,29 +355,44 @@
 }
 
 .background-task-detail-desc {
+  font-size: var(--cc-font-size-md, 14px);
+  line-height: var(--cc-line-height-md, 22px);
   color: var(--vscode-descriptionForeground);
 }
 
-.background-task-detail-meta,
-.background-task-detail-path {
-  font-size: 12px;
+/* 元信息（启动时间 / 编号等）＝辅助档 12/20；路径是代码角色 13/20 等宽。
+   原先两条并成一条都吃 12/normal，等宽只写在 path 上。 */
+.background-task-detail-meta {
+  font-size: var(--cc-font-size-sm, 12px);
+  line-height: var(--cc-line-height-sm, 20px);
   color: var(--vscode-descriptionForeground);
   overflow-wrap: anywhere;
 }
 
 .background-task-detail-path {
   font-family: var(--vscode-editor-font-family, monospace);
+  font-size: var(--vscode-editor-font-size, 13px);
+  line-height: var(--cc-line-height-sm, 20px);
+  color: var(--vscode-descriptionForeground);
+  overflow-wrap: anywhere;
 }
 
 .background-task-block-title {
   margin-top: 4px;
-  font-size: 12px;
-  font-weight: 600;
+  font-size: var(--cc-font-size-sm, 12px);
+  font-weight: var(--cc-font-weight-semibold, 600);
+  line-height: var(--cc-line-height-sm, 20px);
   color: var(--vscode-descriptionForeground);
 }
 
+/* 1111 评论：「检查这里的字体、色彩使用是否符合规范」⇒ 改前吃的是 `--cc-status-danger`，
+   而这个 token **全仓库从未定义**（和列表状态色那轮挖出的另一个死 token 同一个），
+   实际生效的只有 fallback #f48771 —— VS Code 暗色主题的 ansiBrightRed，放在浅色面上
+   实测 2.46（#fff）/ 2.31（代码块底 #f7f8fa），远低于 AA 4.5。
+   改用语义层 `--cc-state-failed`（= `TOOL_STATUS_COLORS.error`，浅 #D92D20 / 深 #F19B95）：
+   与列表里的 failed 状态同源，浅色 4.83、深色 8.75，两档都过 AA。 */
 .background-task-block-title--error {
-  color: var(--cc-status-danger, #f48771);
+  color: var(--cc-state-failed, #d92d20);
 }
 
 /* 命令块与输出块：各自限高、内部纵向滚动（spec desktop-right-panel.md
@@ -208,8 +407,8 @@
   border-radius: 6px;
   background: var(--vscode-textCodeBlock-background, rgba(0, 0, 0, 0.15));
   font-family: var(--vscode-editor-font-family, monospace);
-  font-size: 12px;
-  line-height: 1.5;
+  font-size: var(--vscode-editor-font-size, 13px);
+  line-height: var(--cc-line-height-sm, 20px);
   white-space: pre-wrap;
   overflow: auto;
   overflow-wrap: anywhere;
@@ -218,5 +417,5 @@
 
 .background-task-output--error {
   max-height: 150px;
-  color: var(--cc-status-danger, #f48771);
+  color: var(--cc-state-failed, #d92d20);
 }

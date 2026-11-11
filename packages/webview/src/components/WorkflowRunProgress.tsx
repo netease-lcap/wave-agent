@@ -16,6 +16,7 @@ import {
   WORKFLOW_SIZE_WARNING_TOKENS,
 } from "wave-agent-sdk/constants";
 import type { SerializableWorkflowRun } from "../types";
+import "../styles/WorkflowRunProgress.css";
 
 export const formatDuration = (ms: number): string => {
   if (ms < 1000) return `${ms}ms`;
@@ -53,18 +54,13 @@ export const workflowStatusColor = (status: string): string => {
   }
 };
 
-const rowStyle: React.CSSProperties = {
-  fontSize: "12px",
-  color: "var(--vscode-descriptionForeground)",
-};
-
-const labelStyle: React.CSSProperties = { color: "#569cd6" };
-
-const sectionTitleStyle: React.CSSProperties = {
-  fontSize: "12px",
-  color: "#4ec9b0",
-  marginBottom: "4px",
-};
+// 2026-11-11 走查（评论点后台任务面板的 workflow 详情）：「这里也检查并修复」。
+// 原来这一整块是内联 style、颜色写死成 VS Code **暗色**调色板（标签 #569cd6 /
+// 段落标题 #4ec9b0 / 错误 #f48771），放到浅色面上分别只有 2.95 / 2.04 / 2.46，
+// 三个都过不了 AA 4.5。改成类名后样式集中在 styles/WorkflowRunProgress.css：
+// 基档（无宿主前缀）逐值保留旧内联值 —— 这个组件还被 /workflows 对话框和插件端
+// 的旧任务弹窗复用，那两处本轮不动，外观必须零变化；桌面端后台任务面板内的
+// 覆写才换 token（见该 CSS 的 `[data-host="desktop"] .background-tasks-pane` 段）。
 
 const WorkflowRunProgress: React.FC<{ run: SerializableWorkflowRun }> = ({
   run,
@@ -77,38 +73,37 @@ const WorkflowRunProgress: React.FC<{ run: SerializableWorkflowRun }> = ({
 
   return (
     <>
-      <div style={rowStyle}>
-        <span style={labelStyle}>Run ID:</span> {run.runId}
+      <div className="workflow-run-row">
+        <span className="workflow-run-label">Run ID:</span> {run.runId}
       </div>
       {run.meta.description && (
-        <div style={rowStyle}>
-          <span style={labelStyle}>Description:</span> {run.meta.description}
+        <div className="workflow-run-row">
+          <span className="workflow-run-label">Description:</span>{" "}
+          {run.meta.description}
         </div>
       )}
-      <div style={rowStyle}>
-        <span style={labelStyle}>Started:</span> {formatTime(run.startTime)}
+      <div className="workflow-run-row">
+        <span className="workflow-run-label">Started:</span>{" "}
+        {formatTime(run.startTime)}
         {run.endTime && (
           <>
             {" | "}
-            <span style={labelStyle}>Ended:</span> {formatTime(run.endTime)}
+            <span className="workflow-run-label">Ended:</span>{" "}
+            {formatTime(run.endTime)}
           </>
         )}
         {" | "}
-        <span style={labelStyle}>Duration:</span> {formatDuration(elapsed)}
+        <span className="workflow-run-label">Duration:</span>{" "}
+        {formatDuration(elapsed)}
       </div>
-      <div style={rowStyle}>
-        <span style={labelStyle}>Agents:</span> {run.totalAgents}
+      <div className="workflow-run-row">
+        <span className="workflow-run-label">Agents:</span> {run.totalAgents}
         {" | "}
-        <span style={labelStyle}>Tokens:</span> {formatTokens(run.totalTokens)}
+        <span className="workflow-run-label">Tokens:</span>{" "}
+        {formatTokens(run.totalTokens)}
       </div>
-      <div
-        style={{
-          ...rowStyle,
-          fontFamily: "var(--vscode-editor-font-family, monospace)",
-          wordBreak: "break-all",
-        }}
-      >
-        <span style={labelStyle}>Script:</span> {run.scriptPath}
+      <div className="workflow-run-row workflow-run-script">
+        <span className="workflow-run-label">Script:</span> {run.scriptPath}
       </div>
       {/* Oversized marker (spec「预算与规模硬上限」场景 7): past the thresholds is
           the human's cue to stop the run, and the model is never told, so the
@@ -119,10 +114,7 @@ const WorkflowRunProgress: React.FC<{ run: SerializableWorkflowRun }> = ({
       {run.sizeWarning && (
         <div
           data-testid="workflow-oversized"
-          style={{
-            ...rowStyle,
-            color: "var(--vscode-editorWarning-foreground, #d18616)",
-          }}
+          className="workflow-run-row workflow-run-oversized"
         >
           <span role="img" aria-label="运行过大">
             ⚠
@@ -135,25 +127,16 @@ const WorkflowRunProgress: React.FC<{ run: SerializableWorkflowRun }> = ({
       )}
 
       {run.error && (
-        <div style={{ ...rowStyle, color: "#f48771", wordBreak: "break-all" }}>
-          <span style={labelStyle}>Error:</span> {run.error}
+        <div className="workflow-run-row workflow-run-error">
+          <span className="workflow-run-label">Error:</span> {run.error}
         </div>
       )}
 
       {failures.length > 0 && (
-        <div style={{ marginTop: "12px" }}>
-          <div style={sectionTitleStyle}>Failures:</div>
+        <div className="workflow-run-section">
+          <div className="workflow-run-section-title">Failures:</div>
           {failures.map((failure, i) => (
-            <div
-              key={i}
-              style={{
-                ...rowStyle,
-                color: "#f48771",
-                marginLeft: "8px",
-                marginBottom: "2px",
-                wordBreak: "break-all",
-              }}
-            >
+            <div key={i} className="workflow-run-row workflow-run-failure">
               {failure}
             </div>
           ))}
@@ -164,18 +147,11 @@ const WorkflowRunProgress: React.FC<{ run: SerializableWorkflowRun }> = ({
           "Logs:" block reads as missing data rather than "nothing happened
           yet". */}
       {run.phases.length > 0 && (
-        <div style={{ marginTop: "12px" }}>
-          <div style={sectionTitleStyle}>Phases:</div>
+        <div className="workflow-run-section">
+          <div className="workflow-run-section-title">Phases:</div>
           {run.phases.map((phase, i) => (
-            <div
-              key={i}
-              style={{
-                ...rowStyle,
-                marginLeft: "8px",
-                marginBottom: "2px",
-              }}
-            >
-              <span style={labelStyle}>{phase.title}</span>
+            <div key={i} className="workflow-run-row workflow-run-phase">
+              <span className="workflow-run-phase-title">{phase.title}</span>
               {" — "}
               {phase.agentCount} agents | {formatTokens(phase.tokens)} tokens |{" "}
               {formatDuration(phase.elapsed)}
@@ -185,24 +161,9 @@ const WorkflowRunProgress: React.FC<{ run: SerializableWorkflowRun }> = ({
       )}
 
       {logs.length > 0 && (
-        <div style={{ marginTop: "12px" }}>
-          <div style={sectionTitleStyle}>Logs:</div>
-          <pre
-            style={{
-              background:
-                "var(--vscode-textCodeBlock-background, rgba(0,0,0,0.15))",
-              padding: "8px",
-              borderRadius: "4px",
-              fontSize: "12px",
-              fontFamily: "var(--vscode-editor-font-family, monospace)",
-              maxHeight: "200px",
-              overflow: "auto",
-              whiteSpace: "pre-wrap",
-              margin: 0,
-            }}
-          >
-            {logs.join("\n")}
-          </pre>
+        <div className="workflow-run-section">
+          <div className="workflow-run-section-title">Logs:</div>
+          <pre className="workflow-run-logs">{logs.join("\n")}</pre>
         </div>
       )}
     </>
