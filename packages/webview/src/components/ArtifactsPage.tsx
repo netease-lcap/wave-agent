@@ -109,6 +109,30 @@ const ARTIFACT_TITLE_MAX = 60;
 /** 分类名不能与默认视图的分组同名（spec 场景 2 的保留名）。 */
 const RESERVED_CATEGORY_NAMES = ["我发布的", "共享给我的", "全部"];
 
+/**
+ * 重命名的**原型期提交占位**：服务端还没有改标题接口（spec「外部依赖」第 8 条），
+ * 所以这里既不读也不发任何东西，只把「异步」这件事先摆进状态机——接口到位后，
+ * 把 `commitRenamePlaceholder` 换成「发宿主命令 + 等回执」即可，`saving` / 失败重试
+ * 两条分支不用重写。
+ *
+ * `mode` 只给测试用：产品路径永远是 `"ok"`（resolve）。导出是为了让用例能确定性地
+ * 演练「保存中」与「保存失败」—— 否则这两条分支没有任何可达入口。接口接上时连同
+ * 这个导出一起删。
+ */
+export const renamePlaceholderSink: { mode: "ok" | "pending" | "fail" } = {
+  mode: "ok",
+};
+
+function commitRenamePlaceholder(): Promise<void> {
+  if (renamePlaceholderSink.mode === "pending") {
+    return new Promise<void>(() => {});
+  }
+  if (renamePlaceholderSink.mode === "fail") {
+    return Promise.reject(new Error("网络错误，请重试"));
+  }
+  return Promise.resolve();
+}
+
 function nextRequestId(): string {
   return `artifact-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
@@ -837,8 +861,9 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({
    *
    * 服务端目前只有发布时能写标题，没有单独的改标题接口（`PATCH /api/frame/{slug}`
    * 还不存在，见 docs/specs/desktop/desktop-artifacts.md「外部依赖」第 8 条）。
-   * 这一版是**交互原型**：只改本页 state，刷新即还原；接口到位后把 commitRename
-   * 里的本地写换成一条宿主命令即可，入口与校验规则不用动。
+   * 这一版是**交互原型**：只改本页 state，刷新即还原；走的是异步状态机
+   * （`saving` + 失败重试），接口到位后把 `commitRenamePlaceholder` 换成宿主命令即可，
+   * 入口与校验规则不用动。
    */
   const [renaming, setRenaming] = useState<{
     slug: string;
@@ -846,9 +871,14 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({
     /** 进入编辑态时的原名字，用来判断「有没有真的改」。 */
     original: string;
     error: string | null;
+    /** 提交中：输入框禁用、只显示进行中态，重复回车不再发第二次。 */
+    saving: boolean;
   } | null>(null);
   // Esc 关掉输入框时也会触发一次 blur，用它区分「主动取消」与「失焦保存」。
   const renameCanceledRef = useRef(false);
+  // 提交序号：Esc / 换一行编辑都会 +1，让在途那次提交的结果作废（不写回列表、
+  // 不吃掉用户后来的输入）。
+  const renameRequestRef = useRef(0);
 
   const [view, setViewState] = useState<ArtifactsView>(readStoredView);
   // 视图切换：同时写回本机偏好（下次进页面沿用）；两个调用点（视图下拉 /
@@ -1189,18 +1219,27 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({
 
   const startRename = useCallback((slug: string, title: string) => {
     renameCanceledRef.current = false;
-    setRenaming({ slug, draft: title, original: title, error: null });
+    // 换一行编辑：上一行在途的提交作废，别把结果写到已经换人的输入框上。
+    renameRequestRef.current += 1;
+    setRenaming({
+      slug,
+      draft: title,
+      original: title,
+      error: null,
+      saving: false,
+    });
   }, []);
 
   const cancelRename = useCallback(() => {
     // 先打标记再退出：setRenaming(null) 卸载 input 会顺带触发一次 blur，
     // commitRename 见到这个标记就当作「主动取消」，不写数据。
     renameCanceledRef.current = true;
+    renameRequestRef.current += 1;
     setRenaming(null);
   }, []);
 
-  const commitRename = useCallback(() => {
-    if (!renaming) return;
+  const commitRename = useCallback(async () => {
+    if (!renaming || renaming.saving) return;
     if (renameCanceledRef.current) {
       renameCanceledRef.current = false;
       return;
@@ -1223,13 +1262,35 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({
       setRenaming(null);
       return;
     }
-    setItems((prev) =>
-      prev.map((item) =>
-        item.slug === renaming.slug ? { ...item, title: nextTitle } : item,
-      ),
-    );
-    setRenaming(null);
-    showToast("已重命名");
+    const request = ++renameRequestRef.current;
+    setRenaming({ ...renaming, saving: true, error: null });
+    try {
+      await commitRenamePlaceholder();
+      // 期间用户按了 Esc 或点开另一行：这次结果作废。
+      if (renameRequestRef.current !== request) return;
+      setItems((prev) =>
+        prev.map((item) =>
+          item.slug === renaming.slug ? { ...item, title: nextTitle } : item,
+        ),
+      );
+      setRenaming(null);
+      // 原型期不能断言「已生效」：接口还没接，刷新列表就还原（spec 外部依赖
+      // 第 8 条）。文案带限定语，避免把一次本页写当成服务端写成功。
+      showToast("已重命名（本页演示，接口未接入）");
+    } catch (error) {
+      if (renameRequestRef.current !== request) return;
+      // spec 场景 9：输入框保持打开、输入不被清空，就地给失败原因；
+      // 原型期的重试入口就是「再按一次回车 / 再失焦一次」。
+      setRenaming((prev) =>
+        prev
+          ? {
+              ...prev,
+              saving: false,
+              error: `保存失败：${error instanceof Error ? error.message : String(error)}`,
+            }
+          : prev,
+      );
+    }
   }, [renaming, showToast]);
 
   const handleRevoked = useCallback((slug: string) => {
@@ -1672,7 +1733,13 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({
           <div className="artifacts-tabs-actions">
             <SearchField
               value={search}
-              onChange={setSearch}
+              // 改搜索词会改变可见行集合，勾选一律清空（spec 分类场景 7 / 搜索
+              // 场景 5：「不允许保留看不见的勾选项」）——与切 tab / 切视图同一口径，
+              // 否则「修改分类」会改到已经被过滤掉的行。
+              onChange={(next) => {
+                setSearch(next);
+                setSelected(new Set());
+              }}
               placeholder="搜索文件名称"
               testId="artifacts-search"
               clearTestId="artifacts-search-clear"
@@ -1833,6 +1900,8 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({
                               autoFocus
                               aria-label="创作名称"
                               aria-invalid={renaming.error ? true : undefined}
+                              aria-busy={renaming.saving || undefined}
+                              disabled={renaming.saving}
                               data-testid={`artifacts-rename-input-${item.slug}`}
                               onChange={(event) =>
                                 setRenaming({
@@ -1853,14 +1922,26 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({
                               }}
                               onBlur={commitRename}
                             />
-                            {renaming.error && (
+                            {/* 进行中与失败共用同一个浮层位置（二选一），
+                                表格行高都不动。 */}
+                            {renaming.saving ? (
                               <span
-                                className="artifacts-rename-error"
-                                role="alert"
-                                data-testid="artifacts-rename-error"
+                                className="artifacts-rename-saving"
+                                role="status"
+                                data-testid="artifacts-rename-saving"
                               >
-                                {renaming.error}
+                                保存中…
                               </span>
+                            ) : (
+                              renaming.error && (
+                                <span
+                                  className="artifacts-rename-error"
+                                  role="alert"
+                                  data-testid="artifacts-rename-error"
+                                >
+                                  {renaming.error}
+                                </span>
+                              )
                             )}
                           </div>
                         ) : (
@@ -2055,6 +2136,9 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({
                   `确定删除分类「${categoryDialog.name ?? ""}」吗？`
           }
           testid="artifacts-category-dialog"
+          // 新建 / 重命名是单字段表单（compact 档 440 宽）；删除确认有多行说明、
+          // 主标题还带分类名，走默认表单档。
+          size={categoryDialog.kind === "delete" ? undefined : "compact"}
           onClose={() => setCategoryDialog(null)}
           footer={
             <>
@@ -2498,6 +2582,12 @@ interface ModalProps {
   onClose: () => void;
   /** 附加在 `.artifacts-modal` 上的类名（宽度等变体），默认不限。 */
   className?: string;
+  /**
+   * 尺寸档位，落到 `data-size`，宽度由 host-desktop.css 按档位给：`compact` = 只有
+   * 一颗输入框的单字段表单（440 宽）。用属性而不是靠 `aria-label`（= 标题文案）
+   * 匹配——标题一改，宽度就不会再静默漂回表单档的 560。
+   */
+  size?: "compact";
 }
 
 const Modal: React.FC<ModalProps> = ({
@@ -2507,6 +2597,7 @@ const Modal: React.FC<ModalProps> = ({
   footer,
   onClose,
   className,
+  size,
 }) => (
   <div className="artifacts-modal-backdrop" onClick={onClose}>
     <div
@@ -2515,6 +2606,7 @@ const Modal: React.FC<ModalProps> = ({
       aria-modal="true"
       aria-label={title}
       data-testid={testid}
+      data-size={size}
       onClick={(event) => event.stopPropagation()}
     >
       <div className="artifacts-modal-header">

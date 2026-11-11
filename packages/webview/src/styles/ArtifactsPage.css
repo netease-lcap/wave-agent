@@ -55,7 +55,10 @@
   gap: 14px;
   overflow: hidden;
   /* 设计师 2026-11-11：内容区到 1280 就不再变宽、整体居中（两侧留白由
-     margin auto 吸收）。窄窗口下照旧铺满，不新增横向滚动。 */
+     margin auto 吸收）。窄窗口下照旧铺满，不新增横向滚动。
+     项目没有全局 border-box，`max-width` 量的是内容盒 —— 不显式切过来，外宽会
+     变成 1280 + 左右内衬 40 = 1320，超过设计稿那个上限。 */
+  box-sizing: border-box;
   max-width: var(--artifacts-content-max);
   margin-inline: auto;
 }
@@ -581,6 +584,12 @@ html[data-host="desktop"][data-theme="dark"] .artifacts-file-icon {
   border-color: #e5484d;
 }
 
+/* 保存中：输入框禁用（不再接受编辑、也不会发第二次），光标给「忙」而不是「禁止」。 */
+.artifacts-rename-input:disabled {
+  opacity: 0.7;
+  cursor: progress;
+}
+
 /* 错误提示浮在输入框下方：表格行高保持稳态，提示出现/消失不让整表跳动。
    名称列默认 overflow: hidden（省略号要用），编辑这一格时才放开；
    同时把这一格抬到后续行之上（各格 sticky 且 z-index:1），否则提示条超出
@@ -601,6 +610,24 @@ html[data-host="desktop"][data-theme="dark"] .artifacts-file-icon {
   background: var(--vscode-editorWidget-background, #ffffff);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
   color: #e5484d;
+  font-size: 12px;
+  line-height: 16px;
+  white-space: nowrap;
+}
+
+/* 保存中的浮层：与错误提示同一个落点（两者互斥，不会叠），只换中性配色 ——
+   进行中不是危险语义。行高同样不动。 */
+.artifacts-rename-saving {
+  position: absolute;
+  left: 20px;
+  top: calc(100% + 4px);
+  z-index: 3;
+  padding: 4px 8px;
+  border: 1px solid var(--vscode-panel-border, rgba(127, 127, 127, 0.35));
+  border-radius: 6px;
+  background: var(--vscode-editorWidget-background, #ffffff);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+  color: var(--vscode-descriptionForeground, #6c6e73);
   font-size: 12px;
   line-height: 16px;
   white-space: nowrap;

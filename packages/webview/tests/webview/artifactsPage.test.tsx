@@ -1,7 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, fireEvent, screen, act, within } from "@testing-library/react";
 import React from "react";
-import { ArtifactsPage } from "../../src/components/ArtifactsPage";
+import {
+  ArtifactsPage,
+  renamePlaceholderSink,
+} from "../../src/components/ArtifactsPage";
 import type {
   ArtifactGalleryItem,
   ArtifactCategory,
@@ -115,6 +118,8 @@ const mine = (
 
 beforeEach(() => {
   vi.unstubAllGlobals();
+  // 重命名的原型占位默认成功；个别用例会临时切到「失败 / 挂起」，用完必须复位。
+  renamePlaceholderSink.mode = "ok";
 });
 
 describe("创作集 · 列表", () => {
@@ -424,6 +429,34 @@ describe("创作集 · 列表", () => {
       "这个分类下还没有文件",
     );
   });
+
+  it("改搜索词会清空勾选：不留「勾了但看不见」的行（分类场景 7 / 搜索场景 5）", () => {
+    const harness = renderPage();
+    answerList(harness, [
+      mine("a", "Pricing Page", { shareMode: "owner" }),
+      mine("b", "报表", { shareMode: "owner" }),
+    ]);
+    switchView("custom");
+
+    // 勾上「Pricing Page」，此时「修改分类」可点。
+    fireEvent.click(screen.getByLabelText("选择 Pricing Page"));
+    expect(screen.getByTestId("artifacts-batch-category")).toBeEnabled();
+
+    // 搜索词把这一行过滤掉：勾选必须一起清掉，否则批量动作会改到看不见的行。
+    fireEvent.change(screen.getByTestId("artifacts-search"), {
+      target: { value: "报表" },
+    });
+    expect(screen.queryByTestId("artifacts-row-a")).not.toBeInTheDocument();
+    expect(screen.getByTestId("artifacts-batch-category")).toBeDisabled();
+
+    // 清空搜索词后那一行回来，但仍是未勾选状态（不是「勾选被藏起来了」）。
+    fireEvent.change(screen.getByTestId("artifacts-search"), {
+      target: { value: "" },
+    });
+    expect(
+      (screen.getByLabelText("选择 Pricing Page") as HTMLInputElement).checked,
+    ).toBe(false);
+  });
 });
 
 describe("创作集 · 视图偏好", () => {
@@ -528,6 +561,13 @@ describe("创作集 · 分类", () => {
     switchView("custom");
     fireEvent.click(screen.getByTestId("artifacts-new-category"));
 
+    // 单字段弹层挂 `data-size="compact"`（host-desktop.css 据此收到 440 宽）。
+    // 宽度靠这个属性而不是 `aria-label` 文案——标题改过一次就把 440 弄丢过一次。
+    expect(screen.getByTestId("artifacts-category-dialog")).toHaveAttribute(
+      "data-size",
+      "compact",
+    );
+
     fireEvent.change(screen.getByTestId("artifacts-category-name"), {
       target: { value: "运营" },
     });
@@ -590,6 +630,8 @@ describe("创作集 · 分类", () => {
     const dialog = screen.getByTestId("artifacts-category-dialog");
     expect(dialog).toHaveTextContent("确定删除分类「运营」吗？");
     expect(dialog).toHaveTextContent("删除后，原分类下的文件将自动移出该分类");
+    // 删除确认有多行说明、标题还带分类名：不挂 compact 档，走默认表单宽。
+    expect(dialog).not.toHaveAttribute("data-size");
     // 不再有「移入哪个分类」的下拉，也不需要先选目标才能删。
     expect(
       screen.queryByTestId("artifacts-category-move-target"),
@@ -822,7 +864,7 @@ describe("创作集 · 重命名", () => {
     expect(screen.queryByTestId("artifacts-open-a")).not.toBeInTheDocument();
   });
 
-  it("回车保存：文件名就地更新、提示「已重命名」，不重新拉列表", () => {
+  it("回车保存：文件名就地更新、提示「已重命名」，不重新拉列表", async () => {
     const harness = renderPage();
     answerList(harness, [mine("a", "旧名字", { shareMode: "owner" })]);
     const listCalls = harness
@@ -832,11 +874,18 @@ describe("创作集 · 重命名", () => {
     openRename("a");
     const input = screen.getByTestId("artifacts-rename-input-a");
     fireEvent.change(input, { target: { value: "  新名字  " } });
-    fireEvent.keyDown(input, { key: "Enter" });
+    // 提交是异步的（接接口后要等回执）：包在 async act 里等它落定。
+    await act(async () => {
+      fireEvent.keyDown(input, { key: "Enter" });
+    });
 
     // 首尾空白被去掉。
     expect(screen.getByTestId("artifacts-open-a")).toHaveTextContent("新名字");
+    // 原型期文案带限定语：不能断言成「服务端已生效」（刷新会还原）。
     expect(screen.getByTestId("artifacts-toast")).toHaveTextContent("已重命名");
+    expect(screen.getByTestId("artifacts-toast")).toHaveTextContent(
+      "接口未接入",
+    );
     expect(
       screen.queryByTestId("artifacts-rename-input-a"),
     ).not.toBeInTheDocument();
@@ -913,18 +962,83 @@ describe("创作集 · 重命名", () => {
     expect(screen.queryByTestId("artifacts-toast")).not.toBeInTheDocument();
   });
 
-  it("失焦保存（接口未就绪前的本地写）", () => {
+  it("失焦保存（接口未就绪前的本地写）", async () => {
     const harness = renderPage();
     answerList(harness, [mine("a", "旧名字", { shareMode: "owner" })]);
 
     openRename("a");
     const input = screen.getByTestId("artifacts-rename-input-a");
     fireEvent.change(input, { target: { value: "失焦保存" } });
-    fireEvent.blur(input);
+    await act(async () => {
+      fireEvent.blur(input);
+    });
 
     expect(screen.getByTestId("artifacts-open-a")).toHaveTextContent(
       "失焦保存",
     );
     expect(screen.getByTestId("artifacts-toast")).toHaveTextContent("已重命名");
+  });
+
+  it("保存中：输入框禁用并显示进行中态，重复回车不会再发一次", async () => {
+    const harness = renderPage();
+    answerList(harness, [mine("a", "旧名字", { shareMode: "owner" })]);
+    // 挂起模式：提交一直不返回，用来观察「进行中」这一帧。
+    renamePlaceholderSink.mode = "pending";
+
+    openRename("a");
+    const input = screen.getByTestId(
+      "artifacts-rename-input-a",
+    ) as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "新名字" } });
+    await act(async () => {
+      fireEvent.keyDown(input, { key: "Enter" });
+    });
+
+    expect(screen.getByTestId("artifacts-rename-saving")).toHaveTextContent(
+      "保存中…",
+    );
+    expect(input).toBeDisabled();
+    expect(input).toHaveAttribute("aria-busy", "true");
+    // 还停在编辑态（没有收起、名字也还没写回列表），也没有「已重命名」提示。
+    expect(screen.getByTestId("artifacts-rename-input-a")).toBeInTheDocument();
+    expect(screen.queryByTestId("artifacts-toast")).not.toBeInTheDocument();
+    // 进行中再按一次回车：被 saving 挡住，不会有第二份提交。
+    await act(async () => {
+      fireEvent.keyDown(input, { key: "Enter" });
+    });
+    expect(screen.getAllByTestId("artifacts-rename-saving")).toHaveLength(1);
+  });
+
+  it("保存失败：输入框留着、输入不被清空、就地给原因，可再次提交重试", async () => {
+    const harness = renderPage();
+    answerList(harness, [mine("a", "旧名字", { shareMode: "owner" })]);
+    renamePlaceholderSink.mode = "fail";
+
+    openRename("a");
+    const input = screen.getByTestId(
+      "artifacts-rename-input-a",
+    ) as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "新名字" } });
+    await act(async () => {
+      fireEvent.keyDown(input, { key: "Enter" });
+    });
+
+    // spec 场景 9：不收起、不清空、就地报原因。
+    expect(screen.getByTestId("artifacts-rename-error")).toHaveTextContent(
+      "保存失败：网络错误，请重试",
+    );
+    expect(input).toHaveValue("新名字");
+    expect(input).toBeEnabled();
+    expect(screen.queryByTestId("artifacts-toast")).not.toBeInTheDocument();
+
+    // 原型期的重试入口就是再提交一次（此处把占位切回成功，模拟网络恢复）。
+    renamePlaceholderSink.mode = "ok";
+    await act(async () => {
+      fireEvent.keyDown(input, { key: "Enter" });
+    });
+    expect(screen.getByTestId("artifacts-open-a")).toHaveTextContent("新名字");
+    expect(
+      screen.queryByTestId("artifacts-rename-error"),
+    ).not.toBeInTheDocument();
   });
 });

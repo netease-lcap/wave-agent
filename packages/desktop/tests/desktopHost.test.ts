@@ -212,6 +212,8 @@ const h = vi.hoisted(() => ({
   // stdio startup so a real webview re-fires webviewReady while the new pane's
   // agent is still mid-spawn and not yet bound to the pane).
   initializeGate: null as Promise<void> | null,
+  // When set, agent.initialize rejects — the spawn failure path (CLI 起不来)。
+  initializeError: null as Error | null,
   // The `repoRoot` the CLI's initialize reply carries for the next spawned
   // agent (set when the session root is a linked git worktree). The real
   // StdioAgent takes it from the reply; the mock has no JSON-RPC, so it reads
@@ -437,6 +439,7 @@ vi.mock("wave-agent-sdk/host", async (importOriginal) => ({
       this.sessionRepoRoot = h.sessionRepoRootReply;
       this.sessionWorktree = h.sessionWorktreeReply;
       this.sessionId = `sess-${++h.agentCounter}`;
+      if (h.initializeError) throw h.initializeError;
       if (h.initializeGate) await h.initializeGate;
     });
     destroy = vi.fn(async () => undefined);
@@ -976,6 +979,7 @@ beforeEach(() => {
   h.machineRecentWorkdirs = null;
   h.forgetRecentWorkdirError = null;
   h.initializeGate = null;
+  h.initializeError = null;
   h.sessionRepoRootReply = undefined;
   h.sessionWorktreeReply = undefined;
   h.agentCounter = 0;
@@ -13752,6 +13756,49 @@ describe("创作集（desktop-artifacts）", () => {
       paneId: "pane-1",
       prompt: "帮我做一个网页小游戏：玩法是【】",
     });
+  });
+
+  it("本机还没选过文件夹：不建对话、不预填，提示先去左侧选目录", async () => {
+    // 不选 workdir（recents 为空）就进页面：`handleNewSession` 会把 pane 退回
+    // 空白新会话态，没有「新对话」可以预填。
+    const { host, sent } = createHost();
+    await host.handleWebviewMessage({ command: "desktopReady" });
+    await host.handleWebviewMessage({ command: "webviewReady" });
+    expect(h.agentInstances).toHaveLength(0);
+
+    await host.handleWebviewMessage({
+      command: "desktopArtifactsNewFromTemplate",
+      prompt: "帮我做一个网页小游戏：玩法是【】",
+    });
+
+    expect(h.agentInstances).toHaveLength(0);
+    // 关键：一个 prompt 都不发 —— 否则它落进当前那个会话的输入框，正是被否掉的
+    // 「填充到当前对话」。
+    expect(sent("prefillPrompt")).toHaveLength(0);
+    expect(shownToasts().map((t) => t.message)).toContain(
+      "请先在左侧选择文件夹，再添加作品",
+    );
+  });
+
+  it("建会话失败：不预填提示词（不落进旧会话），失败原因留在 pane 里", async () => {
+    const { host, sent } = await readyHost();
+    const agentsBefore = h.agentInstances.length;
+    h.initializeError = new Error("CLI 启动失败");
+
+    await host.handleWebviewMessage({
+      command: "desktopArtifactsNewFromTemplate",
+      prompt: "帮我做一个网页小游戏：玩法是【】",
+    });
+
+    // 试过 spawn（实例已构造），但没有激活成功，所以不下发预填。
+    expect(h.agentInstances.length).toBe(agentsBefore + 1);
+    expect(sent("prefillPrompt")).toHaveLength(0);
+    // 原有报错路径不变：pane 里一条系统消息说明失败原因。
+    expect(
+      sent("appendMessage").some((m) =>
+        JSON.stringify(m).includes("新建对话失败"),
+      ),
+    ).toBe(true);
   });
 });
 
