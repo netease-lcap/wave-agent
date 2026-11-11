@@ -6084,6 +6084,14 @@
   --cc-artifacts-form-dialog-width: 440px;
 }
 
+/* 「添加作品」类型选择：560 宽下两张卡各 ~250，7 条提示词逐行换行还装不下全文
+   （设计师 2026-11-06 预览评论：「提示词展示不全，看看能不能调大」）。放宽到 800，
+   两列各 ~370 可以完整展示；其余（24 内衬 / 标题 16 / 网格 8）仍走表单档。 */
+[data-host="desktop"]
+  .artifacts-modal:is([data-testid="artifacts-new-dialog"]) {
+  --cc-artifacts-form-dialog-width: 800px;
+}
+
 /* 头部：去分隔线与 14/18 内衬，标题升到 16/24/600；右侧让出 28px 给关闭控件 */
 [data-host="desktop"]
   .artifacts-modal:is(

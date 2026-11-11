@@ -1,4 +1,5 @@
 import React, {
+  Fragment,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -8,8 +9,10 @@ import React, {
 } from "react";
 import {
   ArtifactsIcon,
+  ChevronDownIcon,
   FileCodeIcon,
   MoreIcon,
+  PencilIcon,
   PlusIcon,
   QueueEditIcon,
   QueueTrashIcon,
@@ -99,6 +102,9 @@ const PUBLISH_AFTER_REVIEW =
   "先在本地做好；每次生成结束后，都给我「继续调整」和「发布为创作（artifact）」两个选项让我选：选「继续调整」就按我的意见改，选「发布为创作（artifact）」才发布，不要自己直接发布。";
 
 const CATEGORY_NAME_MAX = 20;
+
+/** 创作名上限（spec「重命名创作」场景 6）：与发布时的标题口径一致。 */
+const ARTIFACT_TITLE_MAX = 60;
 
 /** 分类名不能与默认视图的分组同名（spec 场景 2 的保留名）。 */
 const RESERVED_CATEGORY_NAMES = ["我发布的", "共享给我的", "全部"];
@@ -267,6 +273,45 @@ export interface ArtifactsPageProps {
 type ArtifactsView = "default" | "custom";
 type DefaultTab = "mine" | "shared";
 
+/**
+ * 视图偏好（「默认视图 / 自定义视图」）的本机记忆（设计师 2026-11-06）：
+ * 视图只是辅助开关，主 tab 是当前视图下的分类；但每次进创作集都从默认档
+ * 起步会打断习惯，故记住上次选的那一档，下次直接落回去。
+ *
+ * 只落在 webview 本机存储：分类与归属是账号级数据、走宿主按账号隔离存，
+ * 这条纯粹是浏览习惯，不值得为它新增一条宿主协议。
+ */
+const VIEW_STORAGE_KEY = "wave-artifacts-view";
+
+/**
+ * 存储不可用时的兜底：原型 artifact 是 `srcdoc` + sandbox iframe（origin 为
+ * null），`localStorage` 一读就抛 SecurityError。没有这层兜底，设计师在预览里
+ * 切到自定义视图、出门再回来就被打回默认视图 —— 看起来就是「没记住我的偏好」。
+ * 只保本次页面会话内的选择（刷新后必然归位，沙箱没有可写的地方）。
+ */
+let memoryView: ArtifactsView | null = null;
+
+function readStoredView(): ArtifactsView {
+  try {
+    // 存储可读时以它为准（即使为空）：模块级 memoryView 会被同一次页面会话里的
+    // 其它用例/页面共享，不能让上一次的选择盖住「本机明确没存过」。
+    return window.localStorage.getItem(VIEW_STORAGE_KEY) === "custom"
+      ? "custom"
+      : "default";
+  } catch {
+    return memoryView ?? "default";
+  }
+}
+
+function writeStoredView(view: ArtifactsView) {
+  memoryView = view;
+  try {
+    window.localStorage.setItem(VIEW_STORAGE_KEY, view);
+  } catch {
+    // 存储不可用（隐私模式 / 配额满 / 沙箱）只丢这次记忆，不阻断浏览。
+  }
+}
+
 interface ConfirmState {
   kind: "revoke";
   slug: string;
@@ -278,6 +323,171 @@ interface CategoryDialogState {
   categoryId?: string;
   name?: string;
 }
+
+/**
+ * 页头右上角「视图」开关的图标（设计师 2026-11-06：两个视图不能共用同一颗
+ * 图标 —— 长得一样就只是装饰，看不出切了哪一档）。两档各给一颗轮廓完全不同
+ * 的图标，切换时跟着变，下拉里也一项一颗：
+ * - 默认视图：表格（外框 + 表头分隔线 + 行）；
+ * - 自定义视图：宫格（2×2 方块），与表格的「横线」轮廓区分开。
+ */
+const DefaultViewIcon: React.FC<{ className?: string }> = ({ className }) => (
+  <svg
+    className={className}
+    width="16"
+    height="16"
+    viewBox="0 0 16 16"
+    fill="none"
+    aria-hidden="true"
+  >
+    <rect
+      x="2"
+      y="2.5"
+      width="12"
+      height="11"
+      rx="1"
+      stroke="currentColor"
+      strokeWidth="1.2"
+    />
+    <path d="M2 6.3h12M2 9.9h12" stroke="currentColor" strokeWidth="1.2" />
+  </svg>
+);
+
+const CustomViewIcon: React.FC<{ className?: string }> = ({ className }) => (
+  <svg
+    className={className}
+    width="16"
+    height="16"
+    viewBox="0 0 16 16"
+    fill="none"
+    aria-hidden="true"
+  >
+    <rect
+      x="2.6"
+      y="2.6"
+      width="4.8"
+      height="4.6"
+      rx="1"
+      stroke="currentColor"
+      strokeWidth="1.2"
+    />
+    <rect
+      x="8.6"
+      y="2.6"
+      width="4.8"
+      height="4.6"
+      rx="1"
+      stroke="currentColor"
+      strokeWidth="1.2"
+    />
+    <rect
+      x="2.6"
+      y="9"
+      width="4.8"
+      height="4.6"
+      rx="1"
+      stroke="currentColor"
+      strokeWidth="1.2"
+    />
+    <rect
+      x="8.6"
+      y="9"
+      width="4.8"
+      height="4.6"
+      rx="1"
+      stroke="currentColor"
+      strokeWidth="1.2"
+    />
+  </svg>
+);
+
+/**
+ * 「视图」下拉（默认视图 / 自定义视图）。
+ *
+ * 设计师 2026-11-06：视图是辅助功能，不该占主切换位 —— 收成页头右上角一颗
+ * 图标键 + 下拉；主 tab 位让给「当前视图下的分类」。菜单皮肤与同页分类「⋯」
+ * 菜单共用（`.desktop-session-menu*`），定位规则同：右对齐触发键 + 夹在视口内。
+ */
+const ViewMenu: React.FC<{
+  anchorRect: DOMRect;
+  triggerRef: React.RefObject<HTMLButtonElement | null>;
+  view: ArtifactsView;
+  onSelect: (view: ArtifactsView) => void;
+  onClose: () => void;
+}> = ({ anchorRect, triggerRef, view, onSelect, onClose }) => {
+  const menuRef = useRef<HTMLDivElement>(null);
+  const options: Array<{
+    value: ArtifactsView;
+    label: string;
+    testId: string;
+    icon: React.ReactNode;
+  }> = [
+    {
+      value: "default",
+      label: "默认视图",
+      testId: "artifacts-view-default",
+      icon: <DefaultViewIcon className="artifacts-view-menu-icon" />,
+    },
+    {
+      value: "custom",
+      label: "自定义视图",
+      testId: "artifacts-view-custom",
+      icon: <CustomViewIcon className="artifacts-view-menu-icon" />,
+    },
+  ];
+  const { getItemProps } = useRovingMenu(menuRef, {
+    itemSelector: ".desktop-session-menu-item",
+    itemCount: options.length,
+    triggerRef,
+    closeOnActivate: true,
+    onRequestClose: onClose,
+    onActivate: (i) => {
+      const option = options[i];
+      if (option) onSelect(option.value);
+    },
+  });
+  useClickOutside({ refs: [menuRef], onClickOutside: onClose });
+
+  const menuWidth = 148;
+  const left = Math.max(
+    8,
+    Math.min(anchorRect.right - menuWidth, window.innerWidth - menuWidth - 8),
+  );
+  return createPortal(
+    <div
+      ref={menuRef}
+      className="desktop-session-menu"
+      role="menu"
+      style={{
+        position: "fixed",
+        top: anchorRect.bottom + 4,
+        left,
+        width: menuWidth,
+      }}
+      data-testid="artifacts-view-menu"
+    >
+      {options.map((option, i) => (
+        <div
+          key={option.value}
+          className="desktop-session-menu-item artifacts-view-menu-item"
+          role="menuitemradio"
+          aria-checked={view === option.value}
+          {...getItemProps(i)}
+          data-testid={option.testId}
+        >
+          {option.icon}
+          <span className="artifacts-view-menu-label">{option.label}</span>
+          {view === option.value && (
+            <span className="artifacts-view-menu-check" aria-hidden="true">
+              ✓
+            </span>
+          )}
+        </div>
+      ))}
+    </div>,
+    document.body,
+  );
+};
 
 /** 分类行的「更多」菜单打开状态：哪一行 + 触发按钮的位置（fixed 定位用）。 */
 interface CategoryMenuState {
@@ -359,12 +569,29 @@ const CategoryItemMenu: React.FC<{
 const RowActionsMenu: React.FC<{
   anchorRect: DOMRect;
   triggerRef: React.RefObject<HTMLButtonElement | null>;
-  items: Array<{ key: string; label: string; testId: string; run: () => void }>;
+  items: Array<{
+    key: string;
+    label: string;
+    testId: string;
+    run: () => void;
+    /** 在该项上方插一条分割线（不算菜单项，不参与 ↑↓ 走查与索引）。 */
+    separatorBefore?: boolean;
+  }>;
   testId: string;
   onClose: () => void;
   /** 面板宽：表格操作列 148（短动作），契约标准面板菜单 200。 */
   width?: number;
-}> = ({ anchorRect, triggerRef, items, testId, onClose, width = 148 }) => {
+  /** 菜单顶部的说明行（只读提示，不算菜单项、不参与 ↑↓ 走查）。 */
+  header?: string;
+}> = ({
+  anchorRect,
+  triggerRef,
+  items,
+  testId,
+  onClose,
+  width = 148,
+  header,
+}) => {
   const menuRef = useRef<HTMLDivElement>(null);
   const { getItemProps } = useRovingMenu(menuRef, {
     itemSelector: ".desktop-session-menu-item",
@@ -399,16 +626,33 @@ const RowActionsMenu: React.FC<{
       }}
       data-testid={testId}
     >
-      {items.map((item, index) => (
+      {header && (
         <div
-          key={item.key}
-          className="desktop-session-menu-item"
-          role="menuitem"
-          {...getItemProps(index)}
-          data-testid={item.testId}
+          className="desktop-session-menu-header"
+          role="presentation"
+          data-testid={`${testId}-header`}
         >
-          <span>{item.label}</span>
+          {header}
         </div>
+      )}
+      {items.map((item, index) => (
+        <Fragment key={item.key}>
+          {item.separatorBefore && (
+            <div
+              className="desktop-session-menu-separator"
+              aria-hidden="true"
+              data-testid={`${item.testId}-separator`}
+            />
+          )}
+          <div
+            className="desktop-session-menu-item"
+            role="menuitem"
+            {...getItemProps(index)}
+            data-testid={item.testId}
+          >
+            <span>{item.label}</span>
+          </div>
+        </Fragment>
       ))}
     </div>,
     document.body,
@@ -588,12 +832,39 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({
   const [authRequired, setAuthRequired] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
-  const [view, setView] = useState<ArtifactsView>("default");
+  /**
+   * 文件名行内重命名（设计师 2026-11-11）。
+   *
+   * 服务端目前只有发布时能写标题，没有单独的改标题接口（`PATCH /api/frame/{slug}`
+   * 还不存在，见 docs/specs/desktop/desktop-artifacts.md「外部依赖」第 8 条）。
+   * 这一版是**交互原型**：只改本页 state，刷新即还原；接口到位后把 commitRename
+   * 里的本地写换成一条宿主命令即可，入口与校验规则不用动。
+   */
+  const [renaming, setRenaming] = useState<{
+    slug: string;
+    draft: string;
+    /** 进入编辑态时的原名字，用来判断「有没有真的改」。 */
+    original: string;
+    error: string | null;
+  } | null>(null);
+  // Esc 关掉输入框时也会触发一次 blur，用它区分「主动取消」与「失焦保存」。
+  const renameCanceledRef = useRef(false);
+
+  const [view, setViewState] = useState<ArtifactsView>(readStoredView);
+  // 视图切换：同时写回本机偏好（下次进页面沿用）；两个调用点（视图下拉 /
+  // 进入自定义视图时清勾选）都走这一份。
+  const setView = useCallback((next: ArtifactsView) => {
+    setViewState(next);
+    writeStoredView(next);
+  }, []);
+  // 视图下拉：null = 收起；非 null = 触发键的 rect（菜单贴着它向下展开）。
+  const [viewMenu, setViewMenu] = useState<DOMRect | null>(null);
+  const viewTriggerRef = useRef<HTMLButtonElement>(null);
   const [defaultTab, setDefaultTab] = useState<DefaultTab>("mine");
   const [activeCategoryId, setActiveCategoryId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  // 「归类到…」下拉：null = 收起；非 null = 触发键的 rect（菜单左缘据此对齐按钮左缘）。
+  // 「修改分类」下拉：null = 收起；非 null = 触发键的 rect（菜单左缘据此对齐按钮左缘）。
   const [batchAnchor, setBatchAnchor] = useState<DOMRect | null>(null);
   const batchTriggerRef = useRef<HTMLButtonElement>(null);
 
@@ -602,7 +873,6 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({
   const [categoryDialog, setCategoryDialog] =
     useState<CategoryDialogState | null>(null);
   const [categoryNameDraft, setCategoryNameDraft] = useState("");
-  const [categoryMoveTarget, setCategoryMoveTarget] = useState<string>("");
   const [categoryError, setCategoryError] = useState<string | null>(null);
   // 分类行「⋯」菜单：哪一行开着 + 触发按钮 rect（fixed 定位）。
   const [categoryMenu, setCategoryMenu] = useState<CategoryMenuState | null>(
@@ -640,6 +910,8 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({
   const pageRef = useRef<HTMLDivElement>(null);
 
   const listRequestRef = useRef<string | null>(null);
+  /** 当前这次列表请求是否来自手动刷新（用于回包后给「刷新成功」提示）。 */
+  const refreshRequestRef = useRef(false);
   const categoriesRequestRef = useRef<string | null>(null);
   const categoriesSaveRequestRef = useRef<string | null>(null);
   const revokeRequestRef = useRef<string | null>(null);
@@ -682,6 +954,7 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({
     (isRefresh = false) => {
       const requestId = nextRequestId();
       listRequestRef.current = requestId;
+      refreshRequestRef.current = isRefresh;
       if (isRefresh) setRefreshing(true);
       else setLoading(true);
       setError(null);
@@ -735,6 +1008,8 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({
         setLoading(false);
         setRefreshing(false);
         if (payload.authRequired) {
+          // 失败分支把刷新标记清掉：下一次（非刷新）成功回包不该再提示。
+          refreshRequestRef.current = false;
           setAuthRequired(true);
           setError(null);
           return;
@@ -742,11 +1017,17 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({
         setAuthRequired(false);
         if (payload.error) {
           // 已渲染的数据不清空（spec 场景 7）：只给出错误与重试。
+          refreshRequestRef.current = false;
           setError(payload.error);
           return;
         }
         setError(null);
         setItems(payload.items ?? []);
+        // 手动刷新成功后在页面顶部给一条轻提示（设计师 2026-11-06）：
+        // 列表原地重排、没有别的可见反馈，不给提示会以为没点上。首次加载、
+        // 登录态翻转等非手动刷新不提示。
+        if (refreshRequestRef.current) showToast("刷新成功");
+        refreshRequestRef.current = false;
         return;
       }
       case "desktopArtifactCategories": {
@@ -837,17 +1118,23 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({
     });
   }, [items, view, defaultTab, activeCategoryId, assignments, search]);
 
-  const categoryCounts = useMemo(() => {
-    const counts: Record<string, number> = {};
-    for (const item of items) {
-      const cat = assignments[item.slug];
-      if (cat) counts[cat] = (counts[cat] ?? 0) + 1;
-    }
-    return counts;
-  }, [items, assignments]);
+  // 「所属分类」列只在自定义视图的「全部」里出现（设计师 2026-11-06）：
+  // 分类 tab 下每行都是同一个分类，再列一遍是重复；默认视图没有分类体系可对照。
+  const showCategoryColumn = view === "custom" && activeCategoryId === null;
+  const categoryNameById = useMemo(() => {
+    const names: Record<string, string> = {};
+    for (const category of categories) names[category.id] = category.name;
+    return names;
+  }, [categories]);
 
-  const emptyText =
-    view === "default"
+  // 搜索无结果和「这个分类本来就没文件」是两件事：前者是筛选没命中，
+  // 文案要指向「相关文件」；分类下没有内容时才说「还没有文件」。
+  const searching = search.trim().length > 0;
+  const emptyText = searching
+    ? view === "custom" && activeCategoryId !== null
+      ? "该分类下暂无相关文件"
+      : "没有找到相关文件"
+    : view === "default"
       ? defaultTab === "mine"
         ? "还没有创作"
         : "还没有人分享给你"
@@ -898,6 +1185,53 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({
     [],
   );
 
+  // ── 文件名重命名（交互原型，见上方 `renaming` 注释） ──────────────────────
+
+  const startRename = useCallback((slug: string, title: string) => {
+    renameCanceledRef.current = false;
+    setRenaming({ slug, draft: title, original: title, error: null });
+  }, []);
+
+  const cancelRename = useCallback(() => {
+    // 先打标记再退出：setRenaming(null) 卸载 input 会顺带触发一次 blur，
+    // commitRename 见到这个标记就当作「主动取消」，不写数据。
+    renameCanceledRef.current = true;
+    setRenaming(null);
+  }, []);
+
+  const commitRename = useCallback(() => {
+    if (!renaming) return;
+    if (renameCanceledRef.current) {
+      renameCanceledRef.current = false;
+      return;
+    }
+    // 换行 / 连续空白折叠成一个空格（spec 边界第 1 条）。
+    const nextTitle = renaming.draft.replace(/\s+/g, " ").trim();
+    if (!nextTitle) {
+      setRenaming({ ...renaming, error: "名称不能为空" });
+      return;
+    }
+    if (nextTitle.length > ARTIFACT_TITLE_MAX) {
+      setRenaming({
+        ...renaming,
+        error: `名称最多 ${ARTIFACT_TITLE_MAX} 个字`,
+      });
+      return;
+    }
+    // 名字没动（只是点开又回车/失焦）：直接收起，不写数据也不给「已重命名」。
+    if (nextTitle === renaming.original) {
+      setRenaming(null);
+      return;
+    }
+    setItems((prev) =>
+      prev.map((item) =>
+        item.slug === renaming.slug ? { ...item, title: nextTitle } : item,
+      ),
+    );
+    setRenaming(null);
+    showToast("已重命名");
+  }, [renaming, showToast]);
+
   const handleRevoked = useCallback((slug: string) => {
     setItems((prev) => prev.filter((item) => item.slug !== slug));
     setSelected((prev) => {
@@ -915,7 +1249,6 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({
   const openCategoryDialog = useCallback((dialog: CategoryDialogState) => {
     setCategoryError(null);
     setCategoryNameDraft(dialog.name ?? "");
-    setCategoryMoveTarget("");
     setCategoryDialog(dialog);
   }, []);
 
@@ -940,20 +1273,12 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({
     if (!categoryDialog) return;
     if (categoryDialog.kind === "delete") {
       const categoryId = categoryDialog.categoryId ?? "";
-      const affected = Object.entries(assignments).filter(
-        ([, value]) => value === categoryId,
-      );
       const nextCategories = categories.filter((c) => c.id !== categoryId);
+      // 设计师 2026-11-06（统一文案）：删分类不再要求先选迁移目标，原分类下的
+      // 文件一律自动移出 —— 即删掉归属，回到「未分类」。
       const nextAssignments = { ...assignments };
-      if (affected.length > 0) {
-        if (!categoryMoveTarget) {
-          setCategoryError("请选择要把这些文件移入的分类");
-          return;
-        }
-        for (const [slug] of affected) {
-          if (categoryMoveTarget === "__none__") delete nextAssignments[slug];
-          else nextAssignments[slug] = categoryMoveTarget;
-        }
+      for (const [slug, value] of Object.entries(nextAssignments)) {
+        if (value === categoryId) delete nextAssignments[slug];
       }
       saveCategories(nextCategories, nextAssignments);
       if (activeCategoryId === categoryId) setActiveCategoryId(null);
@@ -990,7 +1315,6 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({
   }, [
     categoryDialog,
     categoryNameDraft,
-    categoryMoveTarget,
     assignments,
     categories,
     activeCategoryId,
@@ -1014,7 +1338,9 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({
     [assignments, categories, selected, saveCategories, showToast],
   );
 
-  /** 批量条下拉的选项：各分类 + 「移出分类」（沿用原 testid，走查脚本不用改）。 */
+  /** 页头「修改分类」下拉：各分类 + 「移出分类（未分类）」（沿用原 testid，
+   *  走查脚本不用改）。末尾这一项与分类列表之间加分割线（设计师 2026-11-06：
+   *  「此处可以加一个分割线」）—— 它是「退出分类」而不是某一个分类。 */
   const batchMenuItems = useMemo(
     () => [
       ...categories.map((category) => ({
@@ -1025,9 +1351,10 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({
       })),
       {
         key: "remove",
-        label: "移出分类",
+        label: "移出分类（未分类）",
         testId: "artifacts-batch-remove",
         run: () => handleBatchAssign(null),
+        separatorBefore: true,
       },
     ],
     [categories, handleBatchAssign],
@@ -1089,94 +1416,135 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({
       </div>
 
       <div className="artifacts-content">
-        <div className="artifacts-header">
-          <div className="artifacts-header-left">
-            <div className="artifacts-segment" role="tablist">
-              <button
-                type="button"
-                role="tab"
-                aria-selected={view === "default"}
-                className={`artifacts-segment-btn${view === "default" ? " is-active" : ""}`}
-                onClick={() => {
-                  setView("default");
-                  setSelected(new Set());
-                }}
-                data-testid="artifacts-view-default"
-              >
-                默认视图
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={view === "custom"}
-                className={`artifacts-segment-btn${view === "custom" ? " is-active" : ""}`}
-                onClick={() => setView("custom")}
-                data-testid="artifacts-view-custom"
-              >
-                自定义视图
-              </button>
-            </div>
-            {/* 1030 评论（点 `div.artifacts-header-left`「默认视图 / 自定义视图 /
-                新建分类 / 刷新」）：「新建分类和刷新改成图标的形式，hover 显示
-                tooltip 提示」→ 两颗都收成 24×24 图标键，文案搬进自绘气泡
-                （同 DiffPane 的刷新键配方：`Tooltip` + 图标 SVG）。
-                刷新中不再改文案，改为图标原地旋转（`.is-spinning`）+ `aria-busy`，
-                否则一颗图标键靠文字换字表达状态会撑宽整行。 */}
-            {view === "custom" && (
-              <Tooltip text="新建分类" position="bottom">
-                <button
-                  type="button"
-                  className="artifacts-header-icon-btn"
-                  onClick={() => openCategoryDialog({ kind: "create" })}
-                  aria-label="新建分类"
-                  data-testid="artifacts-new-category"
-                >
-                  <PlusIcon className="artifacts-header-icon" />
-                </button>
-              </Tooltip>
-            )}
-            <Tooltip text="刷新" position="bottom">
-              <button
-                type="button"
-                className="artifacts-header-icon-btn"
-                onClick={() => requestList(true)}
-                disabled={refreshing || loading}
-                aria-label="刷新"
-                aria-busy={refreshing}
-                data-testid="artifacts-refresh"
-              >
-                <RefreshIcon
-                  className={`artifacts-header-icon${refreshing ? " is-spinning" : ""}`}
-                />
-              </button>
-            </Tooltip>
+        {/* 页头：与插件市场同形（`h1` + 一句说明），让整页第一眼有标题。
+            设计师 2026-11-06：「顶部最好和插件市场类似，有个主页面的标题和
+            简单介绍文案」。 */}
+        <header className="artifacts-page-header">
+          <div className="artifacts-page-header-text">
+            <h1>创作集</h1>
+            <p>这里有发布和共享给你的作品，随时和团队一起分享创作吧</p>
           </div>
-          <div className="artifacts-header-right">
-            <SearchField
-              value={search}
-              onChange={setSearch}
-              placeholder="按文件名搜索"
-              testId="artifacts-search"
-              clearTestId="artifacts-search-clear"
-            />
+          <div className="artifacts-page-header-actions">
+            {/* 视图是辅助开关（设计师 2026-11-06）：从主切换位收成页头右上角
+                一颗图标键 + 下拉，主 tab 位让给当前视图下的分类。按钮上仍直接
+                显示当前视图名，避免「图标看不出现在在哪一档」。
+                按钮已有文字说明，不再挂 hover tooltip（设计师 2026-11-06：
+                「这个 hover 说明不要」）。 */}
+            <button
+              type="button"
+              ref={viewTriggerRef}
+              className="artifacts-view-btn"
+              aria-haspopup="menu"
+              aria-expanded={viewMenu ? true : undefined}
+              onClick={(event) => {
+                const rect = event.currentTarget.getBoundingClientRect();
+                setViewMenu((prev) => (prev ? null : rect));
+              }}
+              data-testid="artifacts-view-toggle"
+              data-view={view}
+            >
+              {view === "default" ? (
+                <DefaultViewIcon className="artifacts-view-icon" />
+              ) : (
+                <CustomViewIcon className="artifacts-view-icon" />
+              )}
+              <span className="artifacts-view-label">
+                {view === "default" ? "默认视图" : "自定义视图"}
+              </span>
+              <ChevronDownIcon className="artifacts-view-caret" />
+            </button>
+            {viewMenu && (
+              <ViewMenu
+                anchorRect={viewMenu}
+                triggerRef={viewTriggerRef}
+                view={view}
+                onSelect={(next) => {
+                  setView(next);
+                  if (next === "default") setSelected(new Set());
+                }}
+                onClose={() => setViewMenu(null)}
+              />
+            )}
+            {/* 多选动作（设计师 2026-11-06）：「多选操作不在这里出现，统一作为
+                按钮功能，未选时按钮置灰，勾选时激活」—— 原来是列表上方那条
+                「已选 N 项 / 归类到… / 取消选择」批量条，选中才整条冒出来、
+                会把表格往下顶；现在收进页头，一颗「修改分类」常驻、只靠禁用态
+                表达有没有选中，也不显示选中计数。同日再改：「不要取消选择按钮」
+                （清勾选直接点行首方框）、按钮文案两轮演进「归类到… → 移动分组 →
+                修改分类」（末次为准）。
+                只在自定义视图渲染：默认视图没有勾选列，常驻一颗永远置灰的键
+                只是噪声。 */}
+            {view === "custom" && (
+              <>
+                {/* 置灰态补一句 hover 提示（设计师 2026-11-06）：「修改分类 置灰
+                    状态下，hover提示『请先选择文件』」—— 置灰的原因不在按钮上，
+                    不解释一句就只像坏了。勾选后按钮可点、提示自动撤掉
+                    （Tooltip 的 disabled 直接不渲染包装层）。 */}
+                <Tooltip
+                  text="请先选择文件"
+                  position="bottom"
+                  disabled={selected.size > 0}
+                >
+                  <button
+                    type="button"
+                    ref={batchTriggerRef}
+                    className="artifacts-secondary-btn"
+                    disabled={selected.size === 0}
+                    onClick={(event) => {
+                      const rect = event.currentTarget.getBoundingClientRect();
+                      setBatchAnchor((prev) => (prev ? null : rect));
+                    }}
+                    aria-haspopup="menu"
+                    aria-expanded={batchAnchor ? true : undefined}
+                    data-testid="artifacts-batch-category"
+                  >
+                    修改分类
+                  </button>
+                </Tooltip>
+                {/* 1023 评论（点 `div.artifacts-menu`）：「这里下拉要符合规范，且左侧
+                      要和按钮对齐」⇒ 换掉本页自写的 `.artifacts-menu`（r8 / pad 4 /
+                      12px 项 / 右对齐），改用与同页分类行、操作列共用的那一份
+                      `.desktop-session-menu` 皮肤（契约 §Menus：r12 / pad 8 /
+                      `--cc-shadow-popover` / 项 28px·14px·400·r6，hover fill-hover），
+                      并复用同一套定位：左缘对齐触发键、按视口夹边、Esc / 点外关闭。
+                      宽度取契约的标准面板宽 200。 */}
+                {batchAnchor && selected.size > 0 && (
+                  <RowActionsMenu
+                    anchorRect={batchAnchor}
+                    triggerRef={batchTriggerRef}
+                    items={batchMenuItems}
+                    testId="artifacts-batch-menu"
+                    width={200}
+                    header={`已选 ${selected.size} 个文件移至分类…`}
+                    onClose={() => setBatchAnchor(null)}
+                  />
+                )}
+              </>
+            )}
             <button
               type="button"
               className="artifacts-primary-btn"
               onClick={() => setNewOpen(true)}
               data-testid="artifacts-new"
             >
-              新建
+              添加作品
             </button>
           </div>
-        </div>
+        </header>
 
-        <div className="artifacts-body">
-          <aside className="artifacts-nav" data-testid="artifacts-nav">
+        {/* 主 tab：当前视图下的分组 / 分类（设计师 2026-11-06：「主 tab 应该是
+            每个视图下的分类 tab」）。默认视图 = 我发布的 / 共享给我的；自定义
+            视图 = 全部 + 各分类 + 添加分类。横向独占一行、工具条下方，表格随之
+            占满整宽（原来那列 172px 的竖排分类栏已去掉）。 */}
+        <div className="artifacts-tabs-row">
+          <div className="artifacts-tabs" role="tablist">
             {view === "default" ? (
               <>
                 <button
                   type="button"
-                  className={`artifacts-nav-item${defaultTab === "mine" ? " is-active" : ""}`}
+                  role="tab"
+                  aria-selected={defaultTab === "mine"}
+                  className={`artifacts-tab${defaultTab === "mine" ? " is-active" : ""}`}
                   onClick={() => {
                     setDefaultTab("mine");
                     setSelected(new Set());
@@ -1187,7 +1555,9 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({
                 </button>
                 <button
                   type="button"
-                  className={`artifacts-nav-item${defaultTab === "shared" ? " is-active" : ""}`}
+                  role="tab"
+                  aria-selected={defaultTab === "shared"}
+                  className={`artifacts-tab${defaultTab === "shared" ? " is-active" : ""}`}
                   onClick={() => {
                     setDefaultTab("shared");
                     setSelected(new Set());
@@ -1201,7 +1571,9 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({
               <>
                 <button
                   type="button"
-                  className={`artifacts-nav-item${activeCategoryId === null ? " is-active" : ""}`}
+                  role="tab"
+                  aria-selected={activeCategoryId === null}
+                  className={`artifacts-tab${activeCategoryId === null ? " is-active" : ""}`}
                   onClick={() => {
                     setActiveCategoryId(null);
                     setSelected(new Set());
@@ -1211,28 +1583,30 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({
                   全部
                 </button>
                 {categories.map((category) => (
-                  <div key={category.id} className="artifacts-nav-row">
+                  <div key={category.id} className="artifacts-tab-item">
                     <button
                       type="button"
-                      className={`artifacts-nav-item${activeCategoryId === category.id ? " is-active" : ""}`}
+                      role="tab"
+                      aria-selected={activeCategoryId === category.id}
+                      className={`artifacts-tab${activeCategoryId === category.id ? " is-active" : ""}`}
                       onClick={() => {
                         setActiveCategoryId(category.id);
                         setSelected(new Set());
                       }}
                       data-testid={`artifacts-category-${category.id}`}
                     >
-                      {category.name}
-                      <span className="artifacts-nav-count">
-                        {categoryCounts[category.id] ?? 0}
+                      <span className="artifacts-tab-label">
+                        {category.name}
                       </span>
                     </button>
                     {/* 1022 评论：「编辑和删除的交互参考」侧栏会话行 ——
                         两个文字按钮换成一颗「⋯」（`.desktop-session-more-btn`
-                        同款 24×24、行右 8px、hover 淡入），动作收进下拉菜单。 */}
+                        同款 24×24、hover 淡入），动作收进下拉菜单。tab 化之后
+                        「⋯」贴在 tab 右缘，不论是否选中都只在 hover 时出现。 */}
                     <button
                       type="button"
                       ref={getCategoryMoreRef(category.id)}
-                      className="artifacts-nav-more"
+                      className="artifacts-tab-more"
                       title="更多操作"
                       aria-label={`分类「${category.name}」更多操作`}
                       aria-haspopup="menu"
@@ -1240,9 +1614,8 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({
                         categoryMenu?.categoryId === category.id || undefined
                       }
                       // 会话行靠 ←/→ 从行本身进入这个按钮（那里有漫游焦点管理）；
-                      // 创作集导航没有那套漫游 ⇒ 保留 Tab 可达，否则键盘用户
-                      // 完全打不开菜单（旧的两颗文字按钮是 display:none，同样不可达，
-                      // 这里顺带补上）。
+                      // 创作集 tab 没有那套漫游 ⇒ 保留 Tab 可达，否则键盘用户
+                      // 完全打不开菜单。
                       tabIndex={0}
                       onClick={(e) => {
                         e.stopPropagation();
@@ -1255,7 +1628,7 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({
                       }}
                       data-testid={`artifacts-category-more-${category.id}`}
                     >
-                      <MoreIcon className="artifacts-nav-more-icon" />
+                      <MoreIcon className="artifacts-tab-more-icon" />
                     </button>
                     {categoryMenu?.categoryId === category.id && (
                       <CategoryItemMenu
@@ -1282,209 +1655,297 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({
                     )}
                   </div>
                 ))}
+                <Tooltip text="添加分类" position="bottom">
+                  <button
+                    type="button"
+                    className="artifacts-tab-add"
+                    onClick={() => openCategoryDialog({ kind: "create" })}
+                    aria-label="添加分类"
+                    data-testid="artifacts-new-category"
+                  >
+                    <PlusIcon className="artifacts-tab-add-icon" />
+                  </button>
+                </Tooltip>
               </>
             )}
-          </aside>
+          </div>
+          <div className="artifacts-tabs-actions">
+            <SearchField
+              value={search}
+              onChange={setSearch}
+              placeholder="搜索文件名称"
+              testId="artifacts-search"
+              clearTestId="artifacts-search-clear"
+            />
+            {/* 刷新仍收成图标键（1030 评论：hover 出 tooltip；刷新中图标原地
+                旋转 + aria-busy，不改文案以免撑宽整行）。 */}
+            <Tooltip text="刷新" position="bottom">
+              <button
+                type="button"
+                className="artifacts-header-icon-btn"
+                onClick={() => requestList(true)}
+                disabled={refreshing || loading}
+                aria-label="刷新"
+                aria-busy={refreshing}
+                data-testid="artifacts-refresh"
+              >
+                <RefreshIcon
+                  className={`artifacts-header-icon${refreshing ? " is-spinning" : ""}`}
+                />
+              </button>
+            </Tooltip>
+          </div>
+        </div>
 
-          <div className="artifacts-main">
-            {view === "custom" && selected.size > 0 && (
-              <div className="artifacts-batch" data-testid="artifacts-batch">
-                <span>已选 {selected.size} 项</span>
-                {/* 1023 评论（点 `div.artifacts-batch-actions`「归类到… 取消选择」）：
-                    「这里一个用填充按钮，一个用线型按钮，不要出现这种蓝色按钮」
-                    ⇒ 归类到… = 填充主键（action-primary + action-primary-text），
-                    取消选择 = 线型次键（透明底 + border-light + text-primary，
-                    hover fill-hover）；原来那颗蓝色文字链（--vscode-textLink-foreground
-                    浅 #0069CC / 深 #4DAAFC）去掉，本页不再有蓝色按钮。 */}
-                <div className="artifacts-batch-actions">
-                  <button
-                    type="button"
-                    ref={batchTriggerRef}
-                    className="artifacts-primary-btn"
-                    onClick={(event) => {
-                      const rect = event.currentTarget.getBoundingClientRect();
-                      setBatchAnchor((prev) => (prev ? null : rect));
-                    }}
-                    aria-haspopup="menu"
-                    aria-expanded={batchAnchor ? true : undefined}
-                    data-testid="artifacts-batch-assign"
-                  >
-                    归类到…
-                  </button>
-                  <button
-                    type="button"
-                    className="artifacts-secondary-btn"
-                    onClick={() => setSelected(new Set())}
-                  >
-                    取消选择
-                  </button>
-                  {/* 1023 评论（点 `div.artifacts-menu`）：「这里下拉要符合规范，且左侧
-                      要和按钮对齐」⇒ 换掉本页自写的 `.artifacts-menu`（r8 / pad 4 /
-                      12px 项 / 右对齐），改用与同页分类行、操作列共用的那一份
-                      `.desktop-session-menu` 皮肤（契约 §Menus：r12 / pad 8 /
-                      `--cc-shadow-popover` / 项 28px·14px·400·r6，hover fill-hover），
-                      并复用同一套定位：左缘对齐触发键、按视口夹边、Esc / 点外关闭。
-                      宽度取契约的标准面板宽 200。 */}
-                  {batchAnchor && (
-                    <RowActionsMenu
-                      anchorRect={batchAnchor}
-                      triggerRef={batchTriggerRef}
-                      items={batchMenuItems}
-                      testId="artifacts-batch-menu"
-                      width={200}
-                      onClose={() => setBatchAnchor(null)}
-                    />
-                  )}
-                </div>
-              </div>
-            )}
-
-            {authRequired ? (
-              <div className="artifacts-state" data-testid="artifacts-auth">
-                <p>请先登录后再查看创作集。</p>
-                {onLogin && (
-                  <button
-                    type="button"
-                    className="artifacts-primary-btn"
-                    onClick={onLogin}
-                  >
-                    去登录
-                  </button>
-                )}
-              </div>
-            ) : loading ? (
-              <div className="artifacts-state" data-testid="artifacts-loading">
-                加载中…
-              </div>
-            ) : error ? (
-              <div className="artifacts-state" data-testid="artifacts-error">
-                <p>{error}</p>
+        <div className="artifacts-main">
+          {authRequired ? (
+            <div className="artifacts-state" data-testid="artifacts-auth">
+              <p>请先登录后再查看创作集。</p>
+              {onLogin && (
                 <button
                   type="button"
-                  className="artifacts-secondary-btn"
-                  onClick={() => requestList(true)}
+                  className="artifacts-primary-btn"
+                  onClick={onLogin}
                 >
-                  重试
+                  去登录
                 </button>
-              </div>
-            ) : scopeItems.length === 0 ? (
-              <div
-                className="artifacts-state artifacts-state--empty"
-                data-testid="artifacts-empty"
+              )}
+            </div>
+          ) : loading ? (
+            <div className="artifacts-state" data-testid="artifacts-loading">
+              加载中…
+            </div>
+          ) : error ? (
+            <div className="artifacts-state" data-testid="artifacts-error">
+              <p>{error}</p>
+              <button
+                type="button"
+                className="artifacts-secondary-btn"
+                onClick={() => requestList(true)}
               >
-                {/* 设计师 2026-10-23 预览评论（点 div.artifacts-state「还没有创作」）：
+                重试
+              </button>
+            </div>
+          ) : scopeItems.length === 0 ? (
+            <div
+              className="artifacts-state artifacts-state--empty"
+              data-testid="artifacts-empty"
+            >
+              {/* 设计师 2026-10-23 预览评论（点 div.artifacts-state「还没有创作」）：
                     「文案上面加个创作集的图标」，并指定「参考」计划面板空态
                     （div.desktop-panel-placeholder.plan-pane-placeholder-empty）——
                     即图标在上、文案在下、竖排居中，图标 24px、与文案 12px。
                     图标复用侧栏「创作集」入口那一枚（ArtifactsIcon，16 画板、
                     stroke 1.4），颜色随空态的次级字色（currentColor 继承）。 */}
-                <ArtifactsIcon className="artifacts-empty-icon" />
-                <span>{emptyText}</span>
-              </div>
-            ) : (
-              <table className="artifacts-table" data-testid="artifacts-table">
-                <thead>
-                  <tr>
-                    {view === "custom" && (
-                      <th className="artifacts-col-check">
-                        <label className="artifacts-table-check">
-                          <input
-                            type="checkbox"
-                            checked={allSelected}
-                            aria-label="全选"
-                            data-testid="artifacts-select-all"
-                            onChange={(event) => {
-                              if (event.target.checked) {
-                                setSelected(
-                                  new Set(scopeItems.map((item) => item.slug)),
-                                );
-                              } else {
-                                setSelected(new Set());
-                              }
-                            }}
-                          />
-                          <CheckIndicator />
-                        </label>
-                      </th>
-                    )}
-                    <th className="artifacts-col-name">文件名称</th>
-                    <th className="artifacts-col-owner">发布人</th>
-                    <th className="artifacts-col-time">最近发布时间</th>
-                    <th className="artifacts-col-share">分享给</th>
-                    <th className="artifacts-col-actions">操作</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {scopeItems.map((item) => {
-                    const share = shareCell(item);
-                    return (
-                      <tr
-                        key={item.slug}
-                        data-testid={`artifacts-row-${item.slug}`}
+              <ArtifactsIcon className="artifacts-empty-icon" />
+              <span>{emptyText}</span>
+            </div>
+          ) : (
+            <table
+              className={
+                showCategoryColumn
+                  ? "artifacts-table artifacts-table--with-category"
+                  : "artifacts-table"
+              }
+              data-testid="artifacts-table"
+            >
+              <thead>
+                <tr>
+                  {view === "custom" && (
+                    <th className="artifacts-col-check">
+                      <label className="artifacts-table-check">
+                        <input
+                          type="checkbox"
+                          checked={allSelected}
+                          aria-label="全选"
+                          data-testid="artifacts-select-all"
+                          onChange={(event) => {
+                            if (event.target.checked) {
+                              setSelected(
+                                new Set(scopeItems.map((item) => item.slug)),
+                              );
+                            } else {
+                              setSelected(new Set());
+                            }
+                          }}
+                        />
+                        <CheckIndicator />
+                      </label>
+                    </th>
+                  )}
+                  <th className="artifacts-col-name">文件名称</th>
+                  <th className="artifacts-col-owner">发布人</th>
+                  <th className="artifacts-col-time">最近发布时间</th>
+                  <th className="artifacts-col-share">分享给</th>
+                  {showCategoryColumn && (
+                    <th className="artifacts-col-category">所属分类</th>
+                  )}
+                  <th className="artifacts-col-actions">操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                {scopeItems.map((item) => {
+                  const share = shareCell(item);
+                  // 归属可能指向已删除的分类（旧数据），按「未分类」兜底。
+                  const categoryName =
+                    categoryNameById[assignments[item.slug] ?? ""] ?? "未分类";
+                  // 当前账号自己发布的行：邮箱后标「（我）」。宿主的 `rel` 已经
+                  // 区分 mine / shared，不用拿邮箱去比当前账号。
+                  const ownerLabel =
+                    item.rel === "mine"
+                      ? `${item.ownerEmail ?? "—"}（我）`
+                      : (item.ownerEmail ?? "—");
+                  return (
+                    <tr
+                      key={item.slug}
+                      data-testid={`artifacts-row-${item.slug}`}
+                    >
+                      {view === "custom" && (
+                        <td className="artifacts-col-check">
+                          <label className="artifacts-table-check">
+                            <input
+                              type="checkbox"
+                              checked={selected.has(item.slug)}
+                              aria-label={`选择 ${item.title}`}
+                              onChange={() => toggleSelection(item.slug)}
+                            />
+                            <CheckIndicator />
+                          </label>
+                        </td>
+                      )}
+                      <td
+                        className="artifacts-col-name"
+                        data-renaming={
+                          renaming?.slug === item.slug ? "true" : undefined
+                        }
                       >
-                        {view === "custom" && (
-                          <td className="artifacts-col-check">
-                            <label className="artifacts-table-check">
-                              <input
-                                type="checkbox"
-                                checked={selected.has(item.slug)}
-                                aria-label={`选择 ${item.title}`}
-                                onChange={() => toggleSelection(item.slug)}
-                              />
-                              <CheckIndicator />
-                            </label>
-                          </td>
-                        )}
-                        <td className="artifacts-col-name">
-                          <button
-                            type="button"
-                            className="artifacts-file-btn"
-                            title={item.title}
-                            onClick={() => handleOpenInBrowser(item.slug)}
-                            data-testid={`artifacts-open-${item.slug}`}
-                          >
+                        {renaming?.slug === item.slug ? (
+                          /* 编辑态：图标 + 输入框（点开即全选，回车/失焦保存、
+                             Esc 取消）。名称规则见 spec「重命名创作」。 */
+                          <div className="artifacts-file-cell">
                             <FileCodeIcon
                               className="artifacts-file-icon"
                               aria-hidden
                             />
-                            <span className="artifacts-file-name">
-                              {item.title}
-                            </span>
-                          </button>
-                        </td>
-                        <td className="artifacts-col-owner">
-                          <span title={item.ownerEmail ?? ""}>
+                            <input
+                              className="artifacts-rename-input"
+                              value={renaming.draft}
+                              autoFocus
+                              aria-label="创作名称"
+                              aria-invalid={renaming.error ? true : undefined}
+                              data-testid={`artifacts-rename-input-${item.slug}`}
+                              onChange={(event) =>
+                                setRenaming({
+                                  ...renaming,
+                                  draft: event.target.value,
+                                  error: null,
+                                })
+                              }
+                              onFocus={(event) => event.currentTarget.select()}
+                              onKeyDown={(event) => {
+                                if (event.key === "Enter") {
+                                  event.preventDefault();
+                                  commitRename();
+                                } else if (event.key === "Escape") {
+                                  event.preventDefault();
+                                  cancelRename();
+                                }
+                              }}
+                              onBlur={commitRename}
+                            />
+                            {renaming.error && (
+                              <span
+                                className="artifacts-rename-error"
+                                role="alert"
+                                data-testid="artifacts-rename-error"
+                              >
+                                {renaming.error}
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="artifacts-file-cell">
+                            <button
+                              type="button"
+                              className="artifacts-file-btn"
+                              title={item.title}
+                              onClick={() => handleOpenInBrowser(item.slug)}
+                              data-testid={`artifacts-open-${item.slug}`}
+                            >
+                              <FileCodeIcon
+                                className="artifacts-file-icon"
+                                aria-hidden
+                              />
+                              <span className="artifacts-file-name">
+                                {item.title}
+                              </span>
+                            </button>
+                            {/* 只有自有行能改名（共享行没有写权限，不给入口）。 */}
+                            {item.rel === "mine" && (
+                              <button
+                                type="button"
+                                className="artifacts-rename-btn"
+                                title="重命名"
+                                aria-label={`重命名 ${item.title}`}
+                                data-testid={`artifacts-rename-${item.slug}`}
+                                onClick={() =>
+                                  startRename(item.slug, item.title)
+                                }
+                              >
+                                <PencilIcon className="artifacts-rename-icon" />
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </td>
+                      <td className="artifacts-col-owner">
+                        {/* 邮箱过长时只截邮箱，「（我）」不被省略号吃掉。 */}
+                        <span className="artifacts-owner" title={ownerLabel}>
+                          <span className="artifacts-owner-email">
                             {item.ownerEmail ?? "—"}
                           </span>
-                        </td>
-                        <td className="artifacts-col-time">
-                          {formatTime(item.updatedAt)}
-                        </td>
-                        <td className="artifacts-col-share">
+                          {item.rel === "mine" && (
+                            <span className="artifacts-owner-self">（我）</span>
+                          )}
+                        </span>
+                      </td>
+                      <td className="artifacts-col-time">
+                        {formatTime(item.updatedAt)}
+                      </td>
+                      <td className="artifacts-col-share">
+                        <span
+                          className="artifacts-share-text"
+                          title={share.title}
+                        >
+                          {share.text}
+                        </span>
+                      </td>
+                      {showCategoryColumn && (
+                        <td className="artifacts-col-category">
                           <span
-                            className="artifacts-share-text"
-                            title={share.title}
+                            className="artifacts-category-name"
+                            title={categoryName}
                           >
-                            {share.text}
+                            {categoryName}
                           </span>
                         </td>
-                        <RowActions
-                          slug={item.slug}
-                          onCopy={() => handleCopyLink(item.slug)}
-                          onOpen={() => handleOpenInBrowser(item.slug)}
-                          onShare={
-                            item.rel === "mine"
-                              ? () => setShareSlug(item.slug)
-                              : undefined
-                          }
-                        />
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            )}
-          </div>
+                      )}
+                      <RowActions
+                        slug={item.slug}
+                        onCopy={() => handleCopyLink(item.slug)}
+                        onOpen={() => handleOpenInBrowser(item.slug)}
+                        onShare={
+                          item.rel === "mine"
+                            ? () => setShareSlug(item.slug)
+                            : undefined
+                        }
+                      />
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
         </div>
       </div>
 
@@ -1549,13 +2010,14 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({
 
       {newOpen && (
         <Modal
-          title="新建"
+          title="添加作品"
           testid="artifacts-new-dialog"
           onClose={() => setNewOpen(false)}
           footer={null}
+          className="artifacts-modal-wide"
         >
           <p className="artifacts-hint">
-            选择你要创建的类型，跳转到对话页并预填提示词。
+            选择你要创建的类型，可通过预填的提示词修改并进行创作
           </p>
           <div className="artifacts-template-grid">
             {NEW_TEMPLATES.map((template) => (
@@ -1585,10 +2047,12 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({
         <Modal
           title={
             categoryDialog.kind === "create"
-              ? "新建分类"
+              ? "添加分类"
               : categoryDialog.kind === "rename"
                 ? "重命名分类"
-                : "删除分类"
+                : // 设计师 2026-11-06 统一文案：主标题带分类名，副标题说明
+                  // 原分类下的文件会被自动移出（不再让人先选迁移目标）。
+                  `确定删除分类「${categoryDialog.name ?? ""}」吗？`
           }
           testid="artifacts-category-dialog"
           onClose={() => setCategoryDialog(null)}
@@ -1618,40 +2082,7 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({
         >
           {categoryDialog.kind === "delete" ? (
             <div className="artifacts-form">
-              <p>
-                {categoryDialog.name !== undefined
-                  ? `删除分类「${categoryDialog.name}」后不可恢复。`
-                  : "删除分类后不可恢复。"}
-              </p>
-              {(categoryCounts[categoryDialog.categoryId ?? ""] ?? 0) > 0 && (
-                <>
-                  <p>
-                    该分类下有{" "}
-                    {categoryCounts[categoryDialog.categoryId ?? ""] ?? 0}{" "}
-                    个文件，请先把它们移入另一个分类。
-                  </p>
-                  <label className="artifacts-field">
-                    <span>移入</span>
-                    <select
-                      value={categoryMoveTarget}
-                      onChange={(event) =>
-                        setCategoryMoveTarget(event.target.value)
-                      }
-                      data-testid="artifacts-category-move-target"
-                    >
-                      <option value="">请选择分类</option>
-                      {categories
-                        .filter((c) => c.id !== categoryDialog.categoryId)
-                        .map((c) => (
-                          <option key={c.id} value={c.id}>
-                            {c.name}
-                          </option>
-                        ))}
-                      <option value="__none__">移出分类（全部）</option>
-                    </select>
-                  </label>
-                </>
-              )}
+              <p>删除后，原分类下的文件将自动移出该分类</p>
               {categoryError && (
                 <p className="artifacts-form-error">{categoryError}</p>
               )}
@@ -1669,6 +2100,9 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({
                     value={categoryNameDraft}
                     maxLength={CATEGORY_NAME_MAX + 10}
                     autoFocus
+                    // 设计师 2026-11-06：原来输入框下方那行说明（最多 N 个字、
+                    // 名称不能重复）收进输入框里当占位符，弹窗少一行文案。
+                    placeholder={`最多 ${CATEGORY_NAME_MAX} 个字，名称不能重复`}
                     aria-invalid={categoryError ? true : undefined}
                     aria-describedby={
                       categoryError
@@ -1676,8 +2110,21 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({
                         : undefined
                     }
                     onChange={(event) => {
-                      setCategoryNameDraft(event.target.value);
-                      setCategoryError(null);
+                      const value = event.target.value;
+                      setCategoryNameDraft(value);
+                      // 设计师 2026-11-06：「字数在输入时实时校验」——非空就立刻
+                      // 给出超长 / 重名 / 保留名的理由；清空则不提示（空名的提醒
+                      // 留给点「确定」时给，打字途中不刷存在感）。
+                      setCategoryError(
+                        value.trim()
+                          ? validateCategoryName(
+                              value,
+                              categoryDialog?.kind === "rename"
+                                ? categoryDialog.categoryId
+                                : undefined,
+                            )
+                          : null,
+                      );
                     }}
                     onKeyDown={(event) => {
                       if (event.key === "Enter") handleCategorySubmit();
@@ -1695,11 +2142,6 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({
                   </p>
                 )}
               </div>
-              {!categoryError && (
-                <p className="artifacts-hint">
-                  最多 {CATEGORY_NAME_MAX} 个字，名称不能重复。
-                </p>
-              )}
             </div>
           )}
         </Modal>
@@ -2054,6 +2496,8 @@ interface ModalProps {
   children: React.ReactNode;
   footer: React.ReactNode;
   onClose: () => void;
+  /** 附加在 `.artifacts-modal` 上的类名（宽度等变体），默认不限。 */
+  className?: string;
 }
 
 const Modal: React.FC<ModalProps> = ({
@@ -2062,10 +2506,11 @@ const Modal: React.FC<ModalProps> = ({
   children,
   footer,
   onClose,
+  className,
 }) => (
   <div className="artifacts-modal-backdrop" onClick={onClose}>
     <div
-      className="artifacts-modal"
+      className={className ? `artifacts-modal ${className}` : "artifacts-modal"}
       role="dialog"
       aria-modal="true"
       aria-label={title}

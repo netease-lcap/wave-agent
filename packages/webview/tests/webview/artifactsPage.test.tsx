@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, fireEvent, screen, act } from "@testing-library/react";
+import { render, fireEvent, screen, act, within } from "@testing-library/react";
 import React from "react";
 import { ArtifactsPage } from "../../src/components/ArtifactsPage";
 import type {
@@ -18,11 +18,25 @@ import type {
 
 const SERVER_URL = "https://codechat.test";
 
+// 视图偏好落在本机存储里（进页面沿用上次那一档），用例之间必须清掉，
+// 否则前一个用例切到自定义视图会让后一个用例从非默认档起步。
+beforeEach(() => {
+  window.localStorage.clear();
+});
+
+/** 视图是页头右上角的下拉（辅助开关）：先展开菜单再选项。 */
+function switchView(view: "default" | "custom") {
+  fireEvent.click(screen.getByTestId("artifacts-view-toggle"));
+  fireEvent.click(screen.getByTestId(`artifacts-view-${view}`));
+}
+
 interface Harness {
   vscode: { postMessage: ReturnType<typeof vi.fn> };
   onNewFromTemplate: ReturnType<typeof vi.fn>;
   sent: () => Array<Record<string, unknown>>;
   reply: (message: Record<string, unknown>) => void;
+  /** 卸载页面（重新进入创作集 = 重新挂载）。 */
+  unmount: () => void;
 }
 
 function renderPage(
@@ -33,7 +47,7 @@ function renderPage(
 ): Harness {
   const vscode = { postMessage: vi.fn() };
   const onNewFromTemplate = vi.fn();
-  render(
+  const view = render(
     <ArtifactsPage
       onBack={vi.fn()}
       vscode={vscode as never}
@@ -70,7 +84,7 @@ function renderPage(
     assignments: options.assignments ?? {},
   });
 
-  return { vscode, onNewFromTemplate, sent, reply };
+  return { vscode, onNewFromTemplate, sent, reply, unmount: view.unmount };
 }
 
 const answerList = (harness: Harness, items: ArtifactGalleryItem[]) => {
@@ -130,6 +144,30 @@ describe("创作集 · 列表", () => {
       "artifacts-row-new",
       "artifacts-row-old",
     ]);
+  });
+
+  it("发布人列：自己发布的邮箱后标「（我）」，共享给我的行不标", () => {
+    const harness = renderPage();
+    answerList(harness, [
+      mine("m", "我的页面", { ownerEmail: "me@corp.com" }),
+      {
+        slug: "s",
+        title: "别人的页面",
+        rel: "shared",
+        ownerEmail: "bob@corp.com",
+      },
+    ]);
+
+    // 默认视图「我发布的」：自己发布的行带（我）。
+    expect(screen.getByTestId("artifacts-row-m")).toHaveTextContent(
+      "me@corp.com（我）",
+    );
+
+    // 「共享给我的」里发布人是分享者，不带（我）。
+    fireEvent.click(screen.getByTestId("artifacts-tab-shared"));
+    const sharedRow = screen.getByTestId("artifacts-row-s");
+    expect(sharedRow).toHaveTextContent("bob@corp.com");
+    expect(sharedRow.textContent).not.toContain("（我）");
   });
 
   it("「分享给」三档文案：仅自己 / 企业成员（不列人名不带人数）/ 团队成员+最多两位", () => {
@@ -285,6 +323,27 @@ describe("创作集 · 列表", () => {
     expect(harness.sent().length).toBeGreaterThan(before);
   });
 
+  it("手动刷新成功给「刷新成功」提示；首屏加载与失败重试都不提示", () => {
+    const harness = renderPage();
+    // 首屏那次加载不是刷新，不给轻提示。
+    answerList(harness, [mine("a", "首页", { shareMode: "owner" })]);
+    expect(screen.queryByTestId("artifacts-toast")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId("artifacts-refresh"));
+    answerList(harness, [mine("b", "刷新后", { shareMode: "owner" })]);
+    expect(screen.getByTestId("artifacts-toast")).toHaveTextContent("刷新成功");
+
+    // 刷新失败不给成功提示（只保留原有错误态）。
+    fireEvent.click(screen.getByTestId("artifacts-refresh"));
+    const req = lastSent(harness, "desktopArtifactsList");
+    harness.reply({
+      command: "desktopArtifactsList",
+      requestId: req?.requestId,
+      error: "network down",
+    });
+    expect(screen.getByTestId("artifacts-error")).toBeInTheDocument();
+  });
+
   it("文件名搜索按子串过滤（大小写不敏感）", () => {
     const harness = renderPage();
     answerList(harness, [
@@ -328,12 +387,145 @@ describe("创作集 · 列表", () => {
     ).not.toBeInTheDocument();
     expect(document.activeElement).toBe(input);
   });
+
+  it("搜索无结果的空态文案区分「分类下」与「无分类」", () => {
+    const harness = renderPage({
+      categories: [{ id: "cat-1", name: "运营" }],
+      assignments: { a: "cat-1" },
+    });
+    answerList(harness, [mine("a", "Pricing Page", { shareMode: "owner" })]);
+
+    switchView("custom");
+    fireEvent.click(screen.getByTestId("artifacts-category-cat-1"));
+    fireEvent.change(screen.getByTestId("artifacts-search"), {
+      target: { value: "报表" },
+    });
+    expect(screen.getByTestId("artifacts-empty")).toHaveTextContent(
+      "该分类下暂无相关文件",
+    );
+
+    // 「全部」和默认视图都没有具体分类，措辞退回通用说法。
+    fireEvent.click(screen.getByTestId("artifacts-category-all"));
+    expect(screen.getByTestId("artifacts-empty")).toHaveTextContent(
+      "没有找到相关文件",
+    );
+
+    switchView("default");
+    expect(screen.getByTestId("artifacts-empty")).toHaveTextContent(
+      "没有找到相关文件",
+    );
+  });
+
+  it("没有搜索词时分类空态仍是「这个分类下还没有文件」", () => {
+    renderPage({ categories: [{ id: "cat-1", name: "运营" }] });
+    switchView("custom");
+    fireEvent.click(screen.getByTestId("artifacts-category-cat-1"));
+    expect(screen.getByTestId("artifacts-empty")).toHaveTextContent(
+      "这个分类下还没有文件",
+    );
+  });
+});
+
+describe("创作集 · 视图偏好", () => {
+  it("记住上次选的视图：重新进入页面直接落到自定义视图", () => {
+    const first = renderPage();
+    switchView("custom");
+    // 主 tab 已经是当前视图下的分类（不再是我发布的 / 共享给我的）。
+    expect(screen.getByTestId("artifacts-category-all")).toBeInTheDocument();
+    expect(screen.queryByTestId("artifacts-tab-mine")).not.toBeInTheDocument();
+
+    first.unmount();
+    renderPage();
+
+    // 没有点任何开关：挂载即沿用上次那一档。
+    expect(screen.getByTestId("artifacts-view-toggle")).toHaveTextContent(
+      "自定义视图",
+    );
+    expect(screen.getByTestId("artifacts-category-all")).toBeInTheDocument();
+  });
+
+  it("「全部」列表有「所属分类」列：显示分类名，未归类显示「未分类」，分类 tab 下不出现", () => {
+    const harness = renderPage({
+      categories: [{ id: "cat-1", name: "运营" }] as ArtifactCategory[],
+      // b 的归属指向一个已不存在的分类（旧数据），按「未分类」兜底。
+      assignments: { a: "cat-1", b: "cat-gone" },
+    });
+    answerList(harness, [
+      mine("a", "页面 A"),
+      mine("b", "页面 B"),
+      mine("c", "页面 C"),
+    ]);
+    switchView("custom");
+
+    expect(screen.getByText("所属分类")).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId("artifacts-row-a")).getByText("运营"),
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId("artifacts-row-b")).getByText("未分类"),
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId("artifacts-row-c")).getByText("未分类"),
+    ).toBeInTheDocument();
+
+    // 切到分类 tab：每行都同属这个分类，这一列不再重复展示。
+    fireEvent.click(screen.getByTestId("artifacts-category-cat-1"));
+    expect(screen.queryByText("所属分类")).not.toBeInTheDocument();
+  });
+
+  it("存储不可用时（原型 artifact 的沙箱）仍记住本次会话里的视图选择", () => {
+    // sandbox srcdoc iframe（origin null）里 localStorage 一读就抛 SecurityError，
+    // 原来会静默退回默认视图 —— 设计师看到的就是「没记住我的偏好」。
+    const getItem = vi
+      .spyOn(Storage.prototype, "getItem")
+      .mockImplementation(() => {
+        throw new Error("SecurityError");
+      });
+    const setItem = vi
+      .spyOn(Storage.prototype, "setItem")
+      .mockImplementation(() => {
+        throw new Error("SecurityError");
+      });
+
+    const first = renderPage();
+    switchView("custom");
+    expect(screen.getByTestId("artifacts-view-toggle")).toHaveTextContent(
+      "自定义视图",
+    );
+
+    // 关掉创作集再进来（组件重挂载）：本次页面会话内仍是自定义视图。
+    first.unmount();
+    renderPage();
+    expect(screen.getByTestId("artifacts-view-toggle")).toHaveTextContent(
+      "自定义视图",
+    );
+
+    getItem.mockRestore();
+    setItem.mockRestore();
+  });
+
+  it("视图开关的图标随视图切换（两档不共用同一颗图标）", () => {
+    renderPage();
+    const toggle = () => screen.getByTestId("artifacts-view-toggle");
+    const iconMarkup = () => toggle().querySelector("svg")?.innerHTML;
+
+    expect(toggle()).toHaveAttribute("data-view", "default");
+    const defaultIcon = iconMarkup();
+    expect(defaultIcon).toBeTruthy();
+
+    switchView("custom");
+    expect(toggle()).toHaveAttribute("data-view", "custom");
+    expect(iconMarkup()).not.toBe(defaultIcon);
+
+    switchView("default");
+    expect(iconMarkup()).toBe(defaultIcon);
+  });
 });
 
 describe("创作集 · 分类", () => {
   it("自定义视图新增分类 → 写本机存储并自动选中（空态）", () => {
     const harness = renderPage();
-    fireEvent.click(screen.getByTestId("artifacts-view-custom"));
+    switchView("custom");
     fireEvent.click(screen.getByTestId("artifacts-new-category"));
 
     fireEvent.change(screen.getByTestId("artifacts-category-name"), {
@@ -354,7 +546,7 @@ describe("创作集 · 分类", () => {
     const harness = renderPage({
       categories: [{ id: "cat-1", name: "运营" }] as ArtifactCategory[],
     });
-    fireEvent.click(screen.getByTestId("artifacts-view-custom"));
+    switchView("custom");
 
     const cases: Array<[string, string]> = [
       ["运营", "分类名称不能重复"],
@@ -381,7 +573,58 @@ describe("创作集 · 分类", () => {
     }
   });
 
-  it("批量归类到某分类后就地刷新列表", () => {
+  it("删除分类：文案统一，原分类下的文件自动移出（不再要求选迁移目标）", () => {
+    const harness = renderPage({
+      categories: [{ id: "cat-1", name: "运营" }] as ArtifactCategory[],
+      assignments: { a: "cat-1" },
+    });
+    answerList(harness, [
+      mine("a", "页面 A", { shareMode: "owner" }),
+      mine("b", "页面 B", { shareMode: "owner" }),
+    ]);
+    switchView("custom");
+
+    fireEvent.click(screen.getByTestId("artifacts-category-more-cat-1"));
+    fireEvent.click(screen.getByTestId("artifacts-category-menu-delete"));
+
+    const dialog = screen.getByTestId("artifacts-category-dialog");
+    expect(dialog).toHaveTextContent("确定删除分类「运营」吗？");
+    expect(dialog).toHaveTextContent("删除后，原分类下的文件将自动移出该分类");
+    // 不再有「移入哪个分类」的下拉，也不需要先选目标才能删。
+    expect(
+      screen.queryByTestId("artifacts-category-move-target"),
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId("artifacts-category-confirm"));
+
+    const save = lastSent(harness, "desktopArtifactCategoriesSave");
+    expect(save?.categories).toEqual([]);
+    expect(save?.assignments).toEqual({});
+    expect(
+      screen.queryByTestId("artifacts-category-dialog"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("输入时实时校验：超过 20 字立刻提示，改回合规即消失", () => {
+    renderPage();
+    switchView("custom");
+    fireEvent.click(screen.getByTestId("artifacts-new-category"));
+    const input = screen.getByTestId("artifacts-category-name");
+
+    fireEvent.change(input, { target: { value: "a".repeat(21) } });
+    expect(screen.getByTestId("artifacts-category-dialog")).toHaveTextContent(
+      "分类名称最多 20 个字",
+    );
+    expect(input).toHaveAttribute("aria-invalid", "true");
+
+    fireEvent.change(input, { target: { value: "a".repeat(20) } });
+    expect(
+      screen.getByTestId("artifacts-category-dialog"),
+    ).not.toHaveTextContent("分类名称最多 20 个字");
+    expect(input).not.toHaveAttribute("aria-invalid");
+  });
+
+  it("多选动作收在页头：未选置灰、勾选后「修改分类」可点，改完就地刷新列表", () => {
     const harness = renderPage({
       categories: [{ id: "cat-1", name: "运营" }] as ArtifactCategory[],
     });
@@ -389,18 +632,72 @@ describe("创作集 · 分类", () => {
       mine("a", "页面 A", { shareMode: "owner" }),
       mine("b", "页面 B", { shareMode: "owner" }),
     ]);
-    fireEvent.click(screen.getByTestId("artifacts-view-custom"));
+    switchView("custom");
 
+    // 没有批量条、也没有「取消选择」键，只剩页头一颗常驻的「修改分类」，
+    // 未选时置灰（spec 场景 5）。
+    expect(screen.queryByTestId("artifacts-batch")).not.toBeInTheDocument();
+    expect(screen.queryByText("取消选择")).not.toBeInTheDocument();
+    const moveButton = () => screen.getByTestId("artifacts-batch-category");
+    expect(moveButton()).toHaveTextContent("修改分类");
+    expect(moveButton()).toBeDisabled();
+
+    // 勾选后按钮可点；Tooltip 的包装层随禁用态增删，节点会重挂，所以每次重新取。
     fireEvent.click(screen.getByLabelText("选择 页面 A"));
-    expect(screen.getByTestId("artifacts-batch")).toHaveTextContent(
-      "已选 1 项",
-    );
+    expect(moveButton()).toBeEnabled();
 
-    fireEvent.click(screen.getByTestId("artifacts-batch-assign"));
+    fireEvent.click(moveButton());
+    // 菜单顶部是一行只读说明「已选 N 个文件移至分类…」，随勾选数变化，且不参与
+    // ↑↓ 走查（不是 menuitem）—— spec 场景 5。
+    const header = screen.getByTestId("artifacts-batch-menu-header");
+    expect(header).toHaveTextContent("已选 1 个文件移至分类…");
+    expect(header).not.toHaveAttribute("role", "menuitem");
     fireEvent.click(screen.getByTestId("artifacts-batch-cat-1"));
 
     const save = lastSent(harness, "desktopArtifactCategoriesSave");
     expect(save?.assignments).toEqual({ a: "cat-1" });
+    // 归类后分类本身仍在，不能「归完类分类就没了」。tab 只写分类名（设计师
+    // 2026-11-06：不再挂计数角标），计数只出现在删除分类弹窗里。
+    const tab = screen.getByTestId("artifacts-category-cat-1");
+    expect(tab).toHaveTextContent("运营");
+    expect(tab).not.toHaveTextContent("1");
+  });
+
+  it("「修改分类」置灰时 hover 提示「请先选择文件」，勾选后提示撤掉", () => {
+    const harness = renderPage();
+    answerList(harness, [mine("a", "页面 A", { shareMode: "owner" })]);
+    switchView("custom");
+
+    const button = screen.getByTestId("artifacts-batch-category");
+    const container = button.closest(".tooltip-container") as HTMLElement;
+    expect(container).not.toBeNull();
+    // 气泡常驻渲染，隐藏态是 `visibility: hidden`——按 role 查会被可访问性树
+    // 过滤掉（`getByRole` 默认排除 hidden），所以直接取节点、再验 class 翻面。
+    const bubble = container.querySelector(".tooltip-box") as HTMLElement;
+    expect(bubble).toHaveTextContent("请先选择文件");
+    fireEvent.mouseEnter(container);
+    expect(bubble).toHaveClass("visible");
+
+    // 勾选后按钮可点，气泡连同包装层一起撤掉（节点随包装层重挂，重新取）。
+    fireEvent.click(screen.getByLabelText("选择 页面 A"));
+    expect(
+      screen
+        .getByTestId("artifacts-batch-category")
+        .closest(".tooltip-container"),
+    ).toBeNull();
+  });
+
+  it("取消勾选后「修改分类」回到置灰", () => {
+    const harness = renderPage();
+    answerList(harness, [mine("a", "页面 A", { shareMode: "owner" })]);
+    switchView("custom");
+
+    const checkbox = screen.getByLabelText("选择 页面 A");
+    fireEvent.click(checkbox);
+    fireEvent.click(checkbox);
+
+    expect((checkbox as HTMLInputElement).checked).toBe(false);
+    expect(screen.getByTestId("artifacts-batch-category")).toBeDisabled();
   });
 });
 
@@ -487,5 +784,147 @@ describe("创作集 · 分享弹层", () => {
 
     const save = lastSent(harness, "desktopArtifactShareSave");
     expect(save).toMatchObject({ slug: "a", mode: "users", userIds: ["u1"] });
+  });
+});
+
+/**
+ * 文件名行内重命名（spec「重命名创作」）。
+ *
+ * 服务端还没有改标题接口，当前实现是交互原型：只改本页 state，不发命令，
+ * 也因此不重新拉列表。用例锚定 testid，不依赖图标类名。
+ */
+describe("创作集 · 重命名", () => {
+  const openRename = (slug: string) =>
+    fireEvent.click(screen.getByTestId(`artifacts-rename-${slug}`));
+
+  it("自有行有铅笔入口；共享行没有；点开是带原名的输入框", () => {
+    const harness = renderPage();
+    answerList(harness, [
+      mine("a", "旧名字", { shareMode: "owner" }),
+      {
+        slug: "s",
+        title: "同事的页面",
+        rel: "shared",
+        ownerEmail: "peer@corp.com",
+      },
+    ]);
+
+    expect(screen.getByTestId("artifacts-rename-a")).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("artifacts-tab-shared"));
+    expect(screen.queryByTestId("artifacts-rename-s")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId("artifacts-tab-mine"));
+    openRename("a");
+    const input = screen.getByTestId(
+      "artifacts-rename-input-a",
+    ) as HTMLInputElement;
+    expect(input.value).toBe("旧名字");
+    expect(screen.queryByTestId("artifacts-open-a")).not.toBeInTheDocument();
+  });
+
+  it("回车保存：文件名就地更新、提示「已重命名」，不重新拉列表", () => {
+    const harness = renderPage();
+    answerList(harness, [mine("a", "旧名字", { shareMode: "owner" })]);
+    const listCalls = harness
+      .sent()
+      .filter((m) => m.command === "desktopArtifactsList").length;
+
+    openRename("a");
+    const input = screen.getByTestId("artifacts-rename-input-a");
+    fireEvent.change(input, { target: { value: "  新名字  " } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    // 首尾空白被去掉。
+    expect(screen.getByTestId("artifacts-open-a")).toHaveTextContent("新名字");
+    expect(screen.getByTestId("artifacts-toast")).toHaveTextContent("已重命名");
+    expect(
+      screen.queryByTestId("artifacts-rename-input-a"),
+    ).not.toBeInTheDocument();
+    expect(
+      harness.sent().filter((m) => m.command === "desktopArtifactsList").length,
+    ).toBe(listCalls);
+  });
+
+  it("空名就地提示「名称不能为空」，输入框留着不退出", () => {
+    const harness = renderPage();
+    answerList(harness, [mine("a", "旧名字", { shareMode: "owner" })]);
+
+    openRename("a");
+    fireEvent.change(screen.getByTestId("artifacts-rename-input-a"), {
+      target: { value: "   " },
+    });
+    fireEvent.keyDown(screen.getByTestId("artifacts-rename-input-a"), {
+      key: "Enter",
+    });
+
+    expect(screen.getByTestId("artifacts-rename-error")).toHaveTextContent(
+      "名称不能为空",
+    );
+    expect(screen.getByTestId("artifacts-rename-input-a")).toBeInTheDocument();
+    expect(screen.queryByTestId("artifacts-toast")).not.toBeInTheDocument();
+  });
+
+  it("超过 60 字拦下并提示上限，不写回列表", () => {
+    const harness = renderPage();
+    answerList(harness, [mine("a", "旧名字", { shareMode: "owner" })]);
+
+    openRename("a");
+    fireEvent.change(screen.getByTestId("artifacts-rename-input-a"), {
+      target: { value: "长".repeat(61) },
+    });
+    fireEvent.keyDown(screen.getByTestId("artifacts-rename-input-a"), {
+      key: "Enter",
+    });
+
+    expect(screen.getByTestId("artifacts-rename-error")).toHaveTextContent(
+      "名称最多 60 个字",
+    );
+    expect(screen.getByTestId("artifacts-rename-input-a")).toBeInTheDocument();
+  });
+
+  it("Esc 取消：不保存、不回显改动、不出提示", () => {
+    const harness = renderPage();
+    answerList(harness, [mine("a", "旧名字", { shareMode: "owner" })]);
+
+    openRename("a");
+    const input = screen.getByTestId("artifacts-rename-input-a");
+    fireEvent.change(input, { target: { value: "改了一半" } });
+    fireEvent.keyDown(input, { key: "Escape" });
+    // Esc 关掉输入框会顺带触发一次 blur，不能把它当成「失焦保存」。
+    fireEvent.blur(input);
+
+    expect(screen.getByTestId("artifacts-open-a")).toHaveTextContent("旧名字");
+    expect(screen.queryByTestId("artifacts-toast")).not.toBeInTheDocument();
+  });
+
+  it("原样回车（名字没改）：收起输入框，不写数据也不给提示", () => {
+    const harness = renderPage();
+    answerList(harness, [mine("a", "旧名字", { shareMode: "owner" })]);
+
+    openRename("a");
+    fireEvent.keyDown(screen.getByTestId("artifacts-rename-input-a"), {
+      key: "Enter",
+    });
+
+    expect(screen.getByTestId("artifacts-open-a")).toHaveTextContent("旧名字");
+    expect(
+      screen.queryByTestId("artifacts-rename-input-a"),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByTestId("artifacts-toast")).not.toBeInTheDocument();
+  });
+
+  it("失焦保存（接口未就绪前的本地写）", () => {
+    const harness = renderPage();
+    answerList(harness, [mine("a", "旧名字", { shareMode: "owner" })]);
+
+    openRename("a");
+    const input = screen.getByTestId("artifacts-rename-input-a");
+    fireEvent.change(input, { target: { value: "失焦保存" } });
+    fireEvent.blur(input);
+
+    expect(screen.getByTestId("artifacts-open-a")).toHaveTextContent(
+      "失焦保存",
+    );
+    expect(screen.getByTestId("artifacts-toast")).toHaveTextContent("已重命名");
   });
 });

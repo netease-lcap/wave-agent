@@ -730,6 +730,27 @@ html[data-theme="dark"] .desktop-session-status-slot {
   color: var(--vscode-errorForeground, #f14c4c);
 }
 
+/* 菜单顶部的说明行（创作集「修改分类」：已选 N 个文件移至分类…）。
+   只读提示，字号降到 12 走次级色，与下面的可点项拉开层级。 */
+.desktop-session-menu-header {
+  padding: 2px 8px 6px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--cc-text-secondary, var(--vscode-descriptionForeground, #8c8f94));
+  white-space: nowrap;
+}
+
+/* 菜单内分割线（创作集「修改分类」下拉：分类列表 ↔ 移出分类）。
+   与会话菜单同一套皮肤，颜色跟着菜单自身的前景/边框 token 走。 */
+.desktop-session-menu-separator {
+  height: 1px;
+  margin: 4px 0;
+  background: var(
+    --vscode-menu-separatorBackground,
+    var(--cc-border, rgba(128, 128, 128, 0.3))
+  );
+}
+
 /* Drag-or-Cmd/Ctrl hint tooltip (Tooltip.tsx): the tooltip positions against
    the row's hover-highlight container (the li, passed via Tooltip anchorRef),
    so the hint starts at the row's visual right edge. This wrapper span only

@@ -5296,19 +5296,24 @@ export class DesktopHost {
         break;
       }
 
-      // 创作集「新建 → 模板」：把模板提示词预填进**当前选中会话**的输入框。
-      // 这里刻意不建会话——原实现先 `await handleNewSession()` 再 prefill，代价是
-      // ①提示词要等新 agent spawn 完（2-3s）才出现（PM 3500350535448832）；
-      // ②提示词总是落到新对话，而不是用户左侧选中的那个会话（3500351963339008）。
-      // prefillPrompt 走 webview 侧的 pending 重放路径，输入框就绪后写入。
+      // 创作集「添加作品 → 任一类型」：从**一个新对话**开始，再把模板提示词预填进
+      // 那个新对话的输入框。
+      //
+      // 设计师 2026-11-06：「选择任意类型后，默认都从新对话框开始，不要填充到当前
+      // 对话，默认左侧已选的文件夹」。目录因此走 `handleNewSession` 的同一条规则
+      // （最近使用的真实目录 = 左侧选中的文件夹；不跟当前会话的 worktree / bash cd），
+      // 与点侧栏「新对话」完全一致。
+      //
+      // 与更早实现的关系：中间版本是「不建会话、直接 prefill 当前会话」（PM
+      // 3500350535448832 嫌 spawn 慢、3500351963339008 嫌落点不对），本轮被这条
+      // 设计口径取代——提示词仍要等新 agent 起来，所以 spawn 完再下发 prefill；
+      // webview 侧对早到的 prefill 有 pending 重放，不会丢。
       case "desktopArtifactsNewFromTemplate": {
         const prompt = msg.prompt as string;
         if (prompt) {
-          this.postMessage({
-            command: "prefillPrompt",
-            paneId: this.focusedPaneId,
-            prompt,
-          });
+          const paneId = this.focusedPaneId;
+          await this.handleNewSession(paneId);
+          this.postMessage({ command: "prefillPrompt", paneId, prompt });
         }
         break;
       }

@@ -13734,7 +13734,7 @@ describe("创作集（desktop-artifacts）", () => {
     );
   });
 
-  it("模板新建：只把提示词预填进当前会话，不新开会话", async () => {
+  it("模板新建：新开一个对话（目录沿用左侧选中的文件夹）再预填提示词", async () => {
     const { host, sent } = await readyHost();
     const agentsBefore = h.agentInstances.length;
 
@@ -13743,13 +13743,15 @@ describe("创作集（desktop-artifacts）", () => {
       prompt: "帮我做一个网页小游戏：玩法是【】",
     });
 
+    // 设计师 2026-11-06：「选择任意类型后，默认都从新对话框开始，不要填充到
+    // 当前对话，默认左侧已选的文件夹」⇒ 会 spawn 一个新 agent（目录取 recents
+    // 首位，即左侧选中的文件夹），提示词落到这个新对话。
+    expect(h.agentInstances.length).toBe(agentsBefore + 1);
+    expect(lastAgent().currentWorkdir).toBe("/work/a");
     expect(sent("prefillPrompt").at(-1)).toMatchObject({
       paneId: "pane-1",
       prompt: "帮我做一个网页小游戏：玩法是【】",
     });
-    // 不再 spawn 新 agent —— 原实现先建会话再预填，提示词要等 agent 初始化
-    // 2-3s 才出现，而且总是落到新对话（PM 3500350535448832 / 3500351963339008）。
-    expect(h.agentInstances.length).toBe(agentsBefore);
   });
 });
 
