@@ -21,6 +21,7 @@ import {
   DesktopWorkdirState,
   DesktopSessionGroup,
   DesktopPane,
+  DesktopSshConnectionInput,
   OpenPaneOptions,
 } from "../types";
 import "../styles/DesktopApp.css";
@@ -83,6 +84,7 @@ export const DesktopApp: React.FC<DesktopAppProps> = ({ vscode }) => {
         host: message.host ?? "local",
         hosts: message.hosts ?? [],
         hostOptions: message.hostOptions,
+        sshConnections: message.sshConnections,
       });
     } else if (message.command === "desktopSessionTree") {
       sessionTreeRef.current = message.groups ?? [];
@@ -139,9 +141,26 @@ export const DesktopApp: React.FC<DesktopAppProps> = ({ vscode }) => {
     [vscode],
   );
 
-  const handleAddHost = useCallback(
-    (connectionString: string) => {
-      vscode.postMessage({ command: "desktopAddHost", connectionString });
+  // 连接表单的请求-响应对由弹窗自己把守（requestId 精确配对，见
+  // DesktopSshConnectionDialog）：这里只负责把命令发出去。
+  const handleSaveSshConnection = useCallback(
+    (input: DesktopSshConnectionInput, requestId: string) => {
+      vscode.postMessage({
+        command: "desktopSaveSshConnection",
+        input,
+        requestId,
+      });
+    },
+    [vscode],
+  );
+
+  const handleDeleteSshConnection = useCallback(
+    (id: string, requestId: string) => {
+      vscode.postMessage({
+        command: "desktopDeleteSshConnection",
+        id,
+        requestId,
+      });
     },
     [vscode],
   );
@@ -283,7 +302,8 @@ export const DesktopApp: React.FC<DesktopAppProps> = ({ vscode }) => {
     );
   }
 
-  const { workdir, recentWorkdirs, host, hosts, hostOptions } = workdirState;
+  const { workdir, recentWorkdirs, host, hosts, hostOptions, sshConnections } =
+    workdirState;
 
   return (
     // 窗口级 chrome 状态（sidebarCollapsed/fullScreen）单一权威：root、pane
@@ -298,13 +318,15 @@ export const DesktopApp: React.FC<DesktopAppProps> = ({ vscode }) => {
           host,
           hosts,
           hostOptions,
+          sshConnections,
           workdir,
           recentWorkdirs,
           onSelectWorkdir: handleSelectWorkdir,
           onSelectRecentWorkdir: handleSelectRecentWorkdir,
           onRemoveRecentWorkdir: handleRemoveRecentWorkdir,
           onSelectHost: handleSelectHost,
-          onAddHost: handleAddHost,
+          onSaveSshConnection: handleSaveSshConnection,
+          onDeleteSshConnection: handleDeleteSshConnection,
           onSelectRemotePath: handleSelectRemotePath,
           onListRemoteDir: handleListRemoteDir,
           sessionTree: effectiveSessionTree,

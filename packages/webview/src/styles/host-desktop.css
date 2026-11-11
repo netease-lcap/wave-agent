@@ -314,7 +314,8 @@
    `DesktopShell.tsx:873` 只在 `panes.length > 1` 时给 `.desktop-pane` 挂
    `data-draggable="true"`（唯一 pane 上连属性都没有），所以这里不需要新增状态。
    两个 pane 及以上时行为完全不变 —— 焦点那条依旧只出现在聚焦的那个 pane 顶上。 */
-[data-host="desktop"] .desktop-pane--focused:not([data-draggable="true"])::before {
+[data-host="desktop"]
+  .desktop-pane--focused:not([data-draggable="true"])::before {
   display: none;
 }
 
@@ -2866,12 +2867,6 @@
    heights, padding and typography unless separately approved」；契约里建议的
    32 高是表单对话框里的单行档位，这里是 28px 菜单行内的紧凑行。
    同一条规则也覆盖远程目录浏览器 footer 里的同名字段（同一个字段角色）。 */
-[data-host="desktop"] .desktop-host-add {
-  display: flex;
-  align-items: center;
-  min-height: 28px;
-  padding: 0 8px;
-}
 [data-host="desktop"] .desktop-host-add-input {
   box-sizing: border-box;
   height: 26px;
@@ -7026,7 +7021,6 @@
 [data-host="desktop"] .message-file-card-icon {
   border-radius: 12px;
 }
-
 
 /* ═══ 1110 评论：Write 预览「打开预览」键交互样式参照代码块复制键 ═══
    设计师同一轮第二条（锚点 `button.write-preview-open`）：「尺寸选A，交互样式也

@@ -8,25 +8,37 @@ import React, {
 } from "react";
 import { useRovingMenu } from "../utils/useRovingMenu";
 import { ContextLocalIcon, PermCaretIcon } from "./HeaderIcons";
-import type { DesktopHostOption } from "../types";
+import { DesktopSshConnectionDialog } from "./DesktopSshConnectionDialog";
+import type {
+  DesktopHostOption,
+  DesktopSshConnection,
+  DesktopSshConnectionInput,
+} from "../types";
 import "../styles/DesktopApp.css";
 
 export interface DesktopHostSelectorProps {
-  /** Current host id: 'local', an SSH host name, or `wsl:<distro>` (the focused pane's host). */
+  /** Current host id: 'local', a saved SSH connection id, or `wsl:<distro>` (the focused pane's host). */
   host: string;
-  /** Selectable SSH hosts parsed from ~/.ssh/config ('local' is always listed). */
+  /** Selectable SSH host ids (the saved connections' ids; 'local' is always listed). */
   hosts: string[];
   /**
    * Host-owned option list (order, labels, groups, disabled flags). When absent
    * (old host) the menu falls back to 本地 + the `hosts` list.
    */
   hostOptions?: DesktopHostOption[];
+  /** 连接库条目：编辑弹窗要回填名称/主机/端口/私钥；缺省 = 旧宿主，只能选不能编辑。 */
+  sshConnections?: DesktopSshConnection[];
   /** Display name of the current host, when the host supplies one. */
   hostLabel?: string;
   /** Switch the focused pane's host. */
   onSelectHost: (host: string) => void;
-  /** Add a host from an `ssh user@hostname -p port` connection string (VSC-style). */
-  onAddHost: (connectionString: string) => void;
+  /** 保存一条 SSH 连接（新建/编辑），宿主回 `desktopSshConnectionResult`。 */
+  onSaveSshConnection: (
+    input: DesktopSshConnectionInput,
+    requestId: string,
+  ) => void;
+  /** 删除一条 SSH 连接，宿主回同一条响应。 */
+  onDeleteSshConnection: (id: string, requestId: string) => void;
 }
 
 /** Group header text per host kind; `local` never gets a header. */
@@ -91,9 +103,11 @@ const fairShareHeights = (naturals: number[], available: number): number[] => {
  * The entries, their order, their labels and their disabled flags all come from
  * the host as `hostOptions` — this component groups consecutive entries by
  * `kind` and never parses a host id (WSL ids are `wsl:<distro>`). Without that
- * list (old host) it degrades to 本地 + the `hosts` array. 添加主机… expands
- * into an inline connection-string input; adding a host writes ~/.ssh/config in
- * the main process and auto-selects the new host.
+ * list (old host) it degrades to 本地 + the `hosts` array. 添加主机… opens the
+ * connection form (`DesktopSshConnectionDialog`), and each SSH row exposes an
+ * edit affordance that reopens the same form on that entry — saving stores the
+ * entry in the app's own connection library and never touches the user's
+ * `~/.ssh/config` (spec scenario 5).
  *
  * Same dropdown pattern as DesktopWorkdirSelector: relative container, trigger,
  * absolutely-positioned menu expanding UPWARD (bottom:100%) — the input sits at
@@ -104,14 +118,19 @@ export const DesktopHostSelector: React.FC<DesktopHostSelectorProps> = ({
   host,
   hosts,
   hostOptions,
+  sshConnections,
   hostLabel,
   onSelectHost,
-  onAddHost,
+  onSaveSshConnection,
+  onDeleteSshConnection,
 }) => {
-  const [adding, setAdding] = useState(false);
-  const [connectionString, setConnectionString] = useState("");
+  /**
+   * 连接弹窗：`{}` = 新建，`{ id }` = 编辑该条目。弹窗自己发请求并等
+   * `desktopSshConnectionResult`（requestId 精确配对），保存成功即关闭——
+   * 列表随宿主推下来的 `desktopWorkdirState` 更新。
+   */
+  const [editing, setEditing] = useState<{ id?: string } | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
   const triggerRef = useRef<HTMLDivElement>(null);
 
   // Selectable entries. Some mount paths render before the host list arrives
@@ -145,37 +164,29 @@ export const DesktopHostSelector: React.FC<DesktopHostSelectorProps> = ({
 
   const selectHost = useCallback(
     (id: string) => {
-      setAdding(false);
+      setEditing(null);
       if (id !== host) onSelectHost(id);
     },
     [host, onSelectHost],
   );
 
-  const openAdd = useCallback(() => {
-    setAdding(true);
-    setConnectionString("");
-    // The input renders only when `adding` flips true; focus after the menu has
-    // been committed to the DOM.
-    requestAnimationFrame(() => inputRef.current?.focus());
-  }, []);
-
-  // The add-host entry lives at itemIndex === options.length and is only a menu
-  // item while the input is collapsed (when expanded it is replaced by the
-  // input, which takes focus directly).
+  // 添加入口是菜单最后一行（itemIndex === options.length）：点它开连接表单，
+  // 表单是模态，菜单同时收起。
   const addItemIndex = options.length;
 
-  // 添加主机… expands inline with the menu staying open — selection branches
-  // close explicitly (closeOnActivate stays off).
+  // 添加主机… 打开模态表单 — selection branches close explicitly
+  // (closeOnActivate stays off).
   const { open, openMenu, closeReturningFocus, getItemProps } = useRovingMenu(
     menuRef,
     {
       itemSelector: ".desktop-workdir-menu-item",
-      itemCount: options.length + (adding ? 0 : 1),
+      itemCount: options.length + 1,
       triggerRef,
       closeOnActivate: false,
       onActivate: (i) => {
         if (i === addItemIndex) {
-          openAdd();
+          setEditing({});
+          closeReturningFocus();
           return;
         }
         const option = options[i];
@@ -188,20 +199,18 @@ export const DesktopHostSelector: React.FC<DesktopHostSelectorProps> = ({
     },
   );
 
-  const submitAdd = useCallback(() => {
-    const s = connectionString.trim();
-    if (!s) return;
-    setAdding(false);
-    setConnectionString("");
-    onAddHost(s);
-    closeReturningFocus();
-  }, [connectionString, onAddHost, closeReturningFocus]);
+  const openEdit = useCallback(
+    (id: string) => {
+      setEditing({ id });
+      closeReturningFocus();
+    },
+    [closeReturningFocus],
+  );
 
-  // Leaving the menu (any close path, including click-outside in the hook) also
-  // collapses an in-progress add-host input.
-  useEffect(() => {
-    if (!open && adding) setAdding(false);
-  }, [open, adding]);
+  /** 弹窗要编辑的那条：id 找不到（刚被删掉）就当成新建。 */
+  const editingConnection = editing?.id
+    ? sshConnections?.find((connection) => connection.id === editing.id)
+    : undefined;
 
   const isLocal = host === "local";
   const current = options.find((o) => o.id === host);
@@ -292,7 +301,7 @@ export const DesktopHostSelector: React.FC<DesktopHostSelectorProps> = ({
         ? prev
         : caps,
     );
-  }, [open, adding, scrollBlocks, resizeTick]);
+  }, [open, scrollBlocks, resizeTick]);
 
   const renderOption = (row: OptionRow) => (
     <div
@@ -325,6 +334,24 @@ export const DesktopHostSelector: React.FC<DesktopHostSelectorProps> = ({
       <span className="desktop-workdir-menu-name">{row.option.label}</span>
       {row.option.disabled && row.option.hint && (
         <span className="desktop-host-item-hint">{row.option.hint}</span>
+      )}
+      {/* 编辑入口：SSH 条目才有（本地/WSL 不是连接库里的东西）。常驻但默认透明，
+          指针停到这一行、或键盘焦点进到这一行/这颗按钮上才显形——与行内 ✕ 同一
+          套显隐规则；点击不能冒泡成「选中该主机」。 */}
+      {row.option.kind === "ssh" && (
+        <button
+          type="button"
+          className="desktop-host-item-edit"
+          data-testid="desktop-host-edit"
+          aria-label={`编辑连接 ${row.option.label}`}
+          title="编辑连接"
+          onClick={(e) => {
+            e.stopPropagation();
+            openEdit(row.option.id);
+          }}
+        >
+          <span className="codicon codicon-edit"></span>
+        </button>
       )}
     </div>
   );
@@ -407,36 +434,28 @@ export const DesktopHostSelector: React.FC<DesktopHostSelectorProps> = ({
             </div>
           ))}
           <div className="desktop-workdir-menu-separator" />
-          {adding ? (
-            <div className="desktop-host-add" data-testid="desktop-host-add">
-              <input
-                ref={inputRef}
-                className="desktop-host-add-input"
-                placeholder="ssh user@hostname -p port"
-                value={connectionString}
-                onChange={(e) => setConnectionString(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") submitAdd();
-                  else if (e.key === "Escape") {
-                    setAdding(false);
-                    closeReturningFocus();
-                  }
-                }}
-              />
-            </div>
-          ) : (
-            <div
-              className="desktop-workdir-menu-item"
-              role="option"
-              aria-selected={false}
-              {...getItemProps(addItemIndex)}
-              data-testid="desktop-host-add-entry"
-            >
-              <span className="codicon codicon-add"></span>
-              <span>添加主机…</span>
-            </div>
-          )}
+          <div
+            className="desktop-workdir-menu-item"
+            role="option"
+            aria-selected={false}
+            {...getItemProps(addItemIndex)}
+            data-testid="desktop-host-add-entry"
+          >
+            <span className="codicon codicon-add"></span>
+            <span>添加主机…</span>
+          </div>
         </div>
+      )}
+      {editing && (
+        <DesktopSshConnectionDialog
+          // 每条条目一个独立弹窗实例：切换编辑对象时表单必须以新条目重新初始化。
+          key={editing.id ?? "new"}
+          connection={editingConnection}
+          connections={sshConnections ?? []}
+          onSave={onSaveSshConnection}
+          onDelete={onDeleteSshConnection}
+          onCancel={() => setEditing(null)}
+        />
       )}
     </div>
   );
