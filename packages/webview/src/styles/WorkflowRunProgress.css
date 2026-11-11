@@ -1,0 +1,126 @@
+/* WorkflowRunProgress —— 一份进度块，三处渲染：后台任务面板的 workflow 详情、
+   `/workflows` 对话框的详情、插件端旧任务弹窗（BackgroundTaskManager）。
+
+   2026-11-11 走查（评论点后台任务面板那个 workflow 详情：「这里也检查并修复」）。
+   改前整块是内联 style，颜色写死成 VS Code **暗色**调色板：标签 #569cd6、
+   段落标题 #4ec9b0、错误 #f48771、规模提醒 #d18616。压在浅色面上依次是
+   2.95 / 2.04 / 2.46 / 3.12 —— 四个都过不了 AA 4.5。
+   字号也整块锁在 12px 且没有行高（继承面板的 22），Logs 的日志块同样 12px。
+
+   ★ 本文件的**基档（不带宿主前缀的那一半）逐值照抄旧内联值**，不是随手写的
+   默认值：`/workflows` 对话框和插件端旧弹窗复用同一个组件，本轮只被点名了
+   后台任务面板，所以桌面端面板以外的观感必须零变化。
+   新口径全部收在 `[data-host="desktop"] .background-tasks-pane` 下。 */
+
+.workflow-run-row {
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.workflow-run-label {
+  color: #569cd6;
+}
+
+.workflow-run-script {
+  font-family: var(--vscode-editor-font-family, monospace);
+  word-break: break-all;
+}
+
+.workflow-run-section {
+  margin-top: 12px;
+}
+
+.workflow-run-section-title {
+  font-size: 12px;
+  color: #4ec9b0;
+  margin-bottom: 4px;
+}
+
+.workflow-run-oversized {
+  color: var(--vscode-editorWarning-foreground, #d18616);
+}
+
+.workflow-run-error {
+  color: #f48771;
+  word-break: break-all;
+}
+
+.workflow-run-failure {
+  color: #f48771;
+  margin-left: 8px;
+  margin-bottom: 2px;
+  word-break: break-all;
+}
+
+.workflow-run-phase {
+  margin-left: 8px;
+  margin-bottom: 2px;
+}
+
+.workflow-run-phase-title {
+  color: #569cd6;
+}
+
+.workflow-run-logs {
+  background: var(--vscode-textCodeBlock-background, rgba(0, 0, 0, 0.15));
+  padding: 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-family: var(--vscode-editor-font-family, monospace);
+  max-height: 200px;
+  overflow: auto;
+  white-space: pre-wrap;
+  margin: 0;
+}
+
+/* ---- 桌面 · 后台任务面板：接 token ----
+   角色口径同 BackgroundTasksPane.css：行 = 辅助 12/20；Logs = 代码 13/20
+   （`--vscode-editor-font-size` 跟宿主编辑器字号，`--cc-font-size-*` 没有 13 这档）；
+   段落标题跟面板既有的 `.background-task-block-title` 同档（12/20/600 + 描述灰）。 */
+[data-host="desktop"] .background-tasks-pane .workflow-run-row {
+  font-size: var(--cc-font-size-sm, 12px);
+  line-height: var(--cc-line-height-sm, 20px);
+}
+
+/* 字段名用站内强调蓝（浅 5.61 / 深 7.6，两档都过 AA），替换 VS Code 暗色板的
+   #569cd6（浅色面上只有 2.95）。 */
+[data-host="desktop"] .background-tasks-pane .workflow-run-label,
+[data-host="desktop"] .background-tasks-pane .workflow-run-phase-title {
+  color: var(--cc-text-link, #2f5edb);
+}
+
+[data-host="desktop"] .background-tasks-pane .workflow-run-section-title {
+  font-size: var(--cc-font-size-sm, 12px);
+  font-weight: var(--cc-font-weight-semibold, 600);
+  line-height: var(--cc-line-height-sm, 20px);
+  color: var(--vscode-descriptionForeground);
+}
+
+/* 错误 / 失败项 → 语义层 `--cc-state-failed`，与列表状态点、错误输出块同源
+   （浅 #D92D20 4.83 / 深 #F19B95 8.75）。 */
+[data-host="desktop"] .background-tasks-pane .workflow-run-error,
+[data-host="desktop"] .background-tasks-pane .workflow-run-failure {
+  color: var(--cc-state-failed, #d92d20);
+}
+
+/* 规模提醒那一行是**字面信息**（128 agents / 1.4M tokens），按
+   desktop-theme-bridge.md「信号色不自动等于可读文字色：字面信息用既有
+   primary/regular，状态语义交给带标签的图标」——文字回描述灰（6.29 / 7.49），
+   橙色只留在 ⚠ 这个图形上（3.12 ≥ 非文本 3:1）。同 0915-F-03 版本胶囊的旧账。 */
+[data-host="desktop"] .background-tasks-pane .workflow-run-oversized {
+  color: var(--vscode-descriptionForeground);
+}
+
+[data-host="desktop"]
+  .background-tasks-pane
+  .workflow-run-oversized
+  span[role="img"] {
+  color: var(--vscode-editorWarning-foreground, #d18616);
+}
+
+/* 日志块对齐同面板的 `.background-task-output`：代码 13/20、圆角 6（原 4）。 */
+[data-host="desktop"] .background-tasks-pane .workflow-run-logs {
+  border-radius: 6px;
+  font-size: var(--vscode-editor-font-size, 13px);
+  line-height: var(--cc-line-height-sm, 20px);
+}
