@@ -7187,3 +7187,55 @@
   background: rgba(255, 255, 255, 0.08);
   color: #ffffff;
 }
+
+/* ═══ 1111 第 1 轮：斜杠指令弹层按「Menus」下拉列表契约收口 ═══════════
+   设计师 2026-11-11 评论（`div.slash-group`「系统指令 /clear 清空当前会话 …」）：
+   「按照下拉列表的规范优化这个面板」。
+
+   面板皮肤（白面 / 1px #EBEEF5 边框 / r12 / 柔影）在第十三轮那一族里已经跟上了，
+   **没跟上**的是容器内衬与选项行几何：
+   · 容器 base `padding: 0` 而每组 `.slash-group { padding: 8px }` ⇒ 组间是 8+8=16，
+     菜单族其余成员（.more-menu / .panel-toggle-menu / .desktop-session-menu …）都是
+     「容器 8px 内衬 + 元素之间 8px」；这里改成同一套分段，组间 16 → 8。
+   · 选项行 base `padding: 3px 12px; border-radius: 4px`，名字 14px 但 `line-height:
+     normal` ⇒ 行高 22.5，比契约的桌面单行 28 矮 5.5，十行连排时每行几乎相切。
+   · 契约：行 min-height 28 / 水平内衬 0 8px / 圆角 6 / 文字 14px·22px·400。
+     名字行高补到 22 后，28 = 3 + 22 + 3，与族内 `.file-tab-menu-item` 同一配平方式。
+   · 水平内衬由 12 → 8，文字距面板内缘 20 → 16（= 容器 8 + 行 8），与族内菜单项一致；
+     分组标题同步收到 8，保持「标题左缘 = 选项文字左缘」。
+   组标题字色另有一条：base 吃 `--vscode-descriptionForeground`，而浅色档**没有**把这枚
+   变量桥到 `--cc-text-secondary`（原因见 1030 空态那条注释：全局桥会有 3 处控件掉到
+   4.44:1），于是浅色落在宿主注入的 #606060、深色才是 #A0A5A8 —— 同一组件两档不同源。
+   这里按菜单族显式绑 token：浅 #6C7076 / 深 #A0A5A8，压在白面 / #232526 上是
+   4.98:1 与 6.19:1，12px 小字仍过 AA 4.5:1。
+   代价要写明：浅色档的这一行是**唯一**对比度下降的改动（原宿主注入 #606060 是 6.29:1，
+   换 token 后 4.98:1）；换来的是「两档同源、不再随宿主主题漂移」。若更看重那一档对比度，
+   删掉本块最后一条规则的 `color` 一行即可回到 #606060。
+   其余一律不动：面板宽度（min 300 / max 400）、`max-height: 320` 与内部滚动、
+   触发器与面板的贴合位置（面板底边仍压在输入卡片上沿 4px）、来源标签几何、
+   悬停/选中底色（第十三轮已按契约 #EEF0F3 / #E7E9ED、深色 8% / 12% 白）。 */
+[data-host="desktop"] .slash-commands-popup {
+  padding: 8px;
+}
+[data-host="desktop"] .slash-group {
+  padding: 0;
+}
+[data-host="desktop"] .slash-group + .slash-group {
+  margin-top: 8px;
+}
+[data-host="desktop"] .slash-command-item {
+  box-sizing: border-box;
+  min-height: 28px;
+  padding: 0 8px;
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+[data-host="desktop"] .slash-command-name {
+  line-height: 22px;
+}
+[data-host="desktop"] .slash-group-title {
+  padding: 0 8px;
+  color: var(--cc-text-secondary);
+}
