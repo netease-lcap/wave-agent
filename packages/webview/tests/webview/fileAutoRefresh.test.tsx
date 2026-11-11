@@ -56,6 +56,11 @@ const openFilePosts = (vscode: ReturnType<typeof createMockVscode>) =>
 const toolParams = (parameters: string) =>
   JSON.stringify({ file_path: parameters });
 
+/** 只读正文的可见文本。行被 CodeMirror 拆成若干语法 token 的 `<span>`，而
+ *  `getByText` 只拼**直接**文本子节点，所以正文断言读视图自身的文本。 */
+const codeText = () =>
+  (screen.getByTestId("file-pane-viewer").textContent ?? "").trim();
+
 beforeEach(() => {
   prunePanelGroupCache(new Set());
 });
@@ -183,7 +188,7 @@ describe("ChatApp desktop file-panel auto refresh", () => {
       { content: "old content" },
       "/work/a",
     );
-    expect(screen.getByText("old content")).toBeInTheDocument();
+    expect(codeText()).toBe("old content");
     const before = openFilePosts(vscode).length;
 
     sendCommand("updateToolBlock", {
@@ -205,7 +210,7 @@ describe("ChatApp desktop file-panel auto refresh", () => {
       host: "local",
     });
     // Soft refresh: old content stays until the host reply lands.
-    expect(screen.getByText("old content")).toBeInTheDocument();
+    expect(codeText()).toBe("old content");
   });
 
   it("matches a relative tool path against the absolute panel path via workdir", () => {

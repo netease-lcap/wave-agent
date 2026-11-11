@@ -188,6 +188,11 @@ function renderDesktop() {
   return { vscode, unmount: view.unmount };
 }
 
+/** 只读正文的可见文本。CodeMirror 会把一行拆成若干语法 token 的 `<span>`，
+ *  而 `getByText` 只拼**直接**文本子节点，所以在正文上读视图自身的文本。 */
+const codeText = () =>
+  (screen.getByTestId("file-pane-viewer").textContent ?? "").trim();
+
 /**
  * 打开 app.ts 到面板：走目录树（这条用例的消息里没有它的可点路径），宿主的
  * 目录列目录回包由助手代答，最后回一次 desktopFileContent 填内容。
@@ -268,7 +273,7 @@ describe("桌面端面板保存链路", () => {
     window.waveHostType = "desktop";
     const { vscode } = renderDesktop();
     openAppFile();
-    expect(screen.getByText("alpha one")).toBeInTheDocument();
+    expect(codeText()).toBe("alpha one");
 
     enterEdit("alpha two");
     fireEvent.click(screen.getByTestId("file-pane-edit-save"));
@@ -289,7 +294,7 @@ describe("桌面端面板保存链路", () => {
     });
 
     expect(screen.queryByTestId("file-pane-editor")).toBeNull();
-    expect(screen.getByText("alpha two")).toBeInTheDocument();
+    expect(codeText()).toBe("alpha two");
     expect(screen.getByText("已保存")).toBeInTheDocument();
   });
 

@@ -30,6 +30,11 @@ import { CodeCommentEntry } from "./CodeCommentEntry";
 import { CommentChipIcon } from "./CommentChipIcon";
 import { ConversationFileList } from "./ConversationFileList";
 import { FileEditor } from "./fileEditor/FileEditor";
+import { loadEditorLib } from "./fileEditor/editorLoader";
+import {
+  ReadOnlyCodeView,
+  type ReadOnlyCodeViewRef,
+} from "./fileEditor/ReadOnlyCodeView";
 import {
   CommentIcon,
   CopyContentIcon,
@@ -132,77 +137,9 @@ const middleEllipsis = (text: string, max = 48): string => {
 const escapeHtml = (text: string) =>
   text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
-/**
- * Wrap one character range of an already-rendered line in a `<mark>`.
- *
- * The line's HTML is highlight.js output, so the range may span several text
- * nodes; offsets are plain-text offsets, which equal the running lengths of
- * those nodes. Splitting text nodes keeps the surrounding `<span>`s intact —
- * re-splitting an HTML string instead would drop tokens whose `<span>` straddles
- * the match boundary.
- */
-const wrapTextRange = (
-  container: HTMLElement,
-  start: number,
-  length: number,
-  className: string,
-): void => {
-  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
-  const nodes: Text[] = [];
-  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-    nodes.push(node as Text);
-  }
-  const end = start + length;
-  let offset = 0;
-  for (const textNode of nodes) {
-    const nodeStart = offset;
-    const nodeEnd = offset + textNode.data.length;
-    offset = nodeEnd;
-    if (nodeEnd <= start || nodeStart >= end) continue;
-    const from = Math.max(start, nodeStart) - nodeStart;
-    const to = Math.min(end, nodeEnd) - nodeStart;
-    if (to < textNode.data.length) textNode.splitText(to);
-    const target = from > 0 ? textNode.splitText(from) : textNode;
-    const mark = document.createElement("mark");
-    mark.className = className;
-    target.parentNode?.replaceChild(mark, target);
-    mark.appendChild(target);
-  }
-};
-
-/**
- * Split hljs-highlighted HTML into per-line fragments while keeping every
- * line's <span> stack balanced: a token spanning several lines (block comment,
- * template string) would otherwise leak an unclosed span into the next line.
- * Each line closes the open spans at its end and reopens them at its start, so
- * the fragments stay individually valid markup for per-line rendering.
- */
-const splitHighlightedHtml = (html: string): string[] => {
-  const lines: string[] = [];
-  const stack: string[] = [];
-  let current = "";
-  for (const part of html.split(/(<span[^>]*>|<\/span>|\n)/)) {
-    if (!part) continue;
-    if (part === "\n") {
-      lines.push(current + stack.map(() => "</span>").join(""));
-      current = stack.join("");
-      continue;
-    }
-    if (part === "</span>") {
-      current += part;
-      stack.pop();
-      continue;
-    }
-    if (part.startsWith("<span")) {
-      current += part;
-      stack.push(part);
-      continue;
-    }
-    current += part;
-  }
-  if (current || lines.length === 0) lines.push(current);
-  return lines;
-};
+/** The text both the line table and the code surface are built from: the file
+ *  without its final newline, so doc line N is panel line N. */
+const contentText = (content: string) => content.replace(/\n$/, "");
 
 /** Sanitizer whitelist mirrors Message.tsx, plus <span> for hljs highlight classes. */
 const sanitizeFileMarkdown = (html: string): string => {
@@ -402,8 +339,6 @@ export const renderFileMarkdown = (
   return options?.annotateBlocks ? annotateMarkdownBlocks(clean) : clean;
 };
 
-const HIGHLIGHT_LINE_HEIGHT = 20;
-
 /** Per-file find-bar state (spec「文件面板内查找与跳行」). */
 interface FindState {
   open: boolean;
@@ -580,13 +515,21 @@ export const FilePane: React.FC<FilePaneProps> = ({
   onReloadDraft,
   onToast,
 }) => {
-  // PaneShell's body (the whole layout) and the content column's own scroll
-  // container — the tree column scrolls independently, so jumps and find marks
-  // work against the content one.
+  // PaneShell's body (the whole layout) and the code surface's imperative
+  // handle — jumps and find marks work against the latter, whose scroll box is
+  // CodeMirror's own (the tree column scrolls independently).
   // body 用回调 ref：面板挂载时会先渲染占位、再渲染骨架，`useRef` + `[]` 的
   // effect 会永远拿到 null，量宽度（场景 2/3）就一次都跑不起来。
   const [bodyEl, setBodyEl] = useState<HTMLDivElement | null>(null);
-  const contentScrollRef = useRef<HTMLDivElement>(null);
+  const codeViewRef = useRef<ReadOnlyCodeViewRef>(null);
+
+  // 预热桌面端编辑器 chunk：只读正文和编辑态共用它，先拉一次，第一次打开文件
+  // 就不用先看到「正在加载…」。插件端没有这个 chunk（构建时被过滤），也就没有
+  // 文件面板，所以只在桌面宿主预热。
+  useEffect(() => {
+    if (!isDesktopHost()) return;
+    void loadEditorLib().catch(() => {});
+  }, []);
   const toolbarRef = useRef<HTMLDivElement>(null);
   const findInputRef = useRef<HTMLInputElement>(null);
 
@@ -886,35 +829,16 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const [gotoValue, setGotoValue] = useState("");
   const [gotoError, setGotoError] = useState<string | undefined>(undefined);
 
-  // Per-line fragments: syntax-highlighted (balanced spans) or plain text.
-  // `text` is kept alongside `html` because a line comment quotes the source,
-  // not the highlighted markup.
+  // Per-line plain text. Syntax colouring is the code surface's job now (the
+  // CodeMirror chunk, on both the read-only and the editing path); the panel
+  // keeps the text because find matches run over it and a line comment quotes
+  // the source rather than highlighted markup.
   const contentLines = useMemo(() => {
     const content = fileView?.content;
     if (!content) return null;
-    const raw = content.replace(/\n$/, "");
-    const rawLines = raw.split("\n");
-    const ext = (fileView.path.split(".").pop() ?? "").toLowerCase();
-    const language =
-      EXT_LANGUAGE[ext] && hljs.getLanguage(EXT_LANGUAGE[ext])
-        ? EXT_LANGUAGE[ext]
-        : "";
-    let highlighted: string[] | null = null;
-    if (language) {
-      try {
-        highlighted = splitHighlightedHtml(
-          hljs.highlight(raw, { language, ignoreIllegals: true }).value,
-        );
-      } catch {
-        /* fall back to plain text below */
-      }
-    }
-    return rawLines.map((text, i) => ({
-      text,
-      // `&nbsp;` keeps an empty line from collapsing to zero height.
-      html: highlighted?.[i] || escapeHtml(text) || "&nbsp;",
-    }));
-  }, [fileView?.content, fileView?.path]);
+    const raw = contentText(content);
+    return raw.split("\n").map((text) => ({ text }));
+  }, [fileView?.content]);
 
   const relativePath = useMemo(
     () => (fileView ? toRelativePath(fileView.path, workdir) : ""),
@@ -923,21 +847,10 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const isLocal = fileView?.host === "local";
   const markdown = fileView?.content ? isMarkdownPath(fileView.path) : false;
 
-  // Jump to the requested line range on open / file switch.
-  useEffect(() => {
-    const start = fileView?.startLine;
-    const el = contentScrollRef.current;
-    if (!start || !el || !contentLines) return;
-    el.scrollTop = Math.max(
-      0,
-      (start - 1) * HIGHLIGHT_LINE_HEIGHT - HIGHLIGHT_LINE_HEIGHT * 1.5,
-    );
-  }, [fileView?.path, fileView?.startLine, contentLines]);
-
   // ---- 查找：配对与命中（spec「文件面板内查找与跳行」）----------------------
-  // 命中按「行 + 行内起始位置」记录，作用在纯文本上（`contentLines[].text`），
-  // 高亮在渲染后再把 `<mark>` 包进对应的文本节点——这样语法高亮的 <span> 保持
-  // 原样，不必在 HTML 字符串里二次切分（切错一个 span 就会吞掉半屏高亮）。
+  // 命中按「行 + 行内起始位置」记录，作用在纯文本上（`contentLines[].text`）；
+  // 渲染是把这些坐标交给代码视图，由它换成文档偏移再画成 mark 装饰（语法高亮
+  // 归 CodeMirror，不再有「往渲染好的 HTML 文本节点里塞 <mark>」这一步）。
   const searchMatcher = useMemo(() => {
     const query = find.query;
     if (!query) return null;
@@ -979,15 +892,6 @@ export const FilePane: React.FC<FilePaneProps> = ({
   }, [searchMatcher, contentLines]);
 
   const matchCount = matches.length;
-  const hitsByLine = useMemo(() => {
-    const map = new Map<number, typeof matches>();
-    for (const hit of matches) {
-      const list = map.get(hit.line);
-      if (list) list.push(hit);
-      else map.set(hit.line, [hit]);
-    }
-    return map;
-  }, [matches]);
   const currentIndex = find.current;
   const currentMatch = useMemo(() => {
     if (matchCount === 0) return null;
@@ -996,13 +900,15 @@ export const FilePane: React.FC<FilePaneProps> = ({
   }, [matches, matchCount, currentIndex]);
 
   const scrollToLine = useCallback((line: number) => {
-    const el = contentScrollRef.current;
-    if (!el) return;
-    el.scrollTop = Math.max(
-      0,
-      (line - 1) * HIGHLIGHT_LINE_HEIGHT - HIGHLIGHT_LINE_HEIGHT * 2,
-    );
+    codeViewRef.current?.scrollToLine(line);
   }, []);
+
+  // Hits in the panel's own coordinates, with the one the find bar sits on
+  // marked: the code surface paints it with the stronger of the two styles.
+  const findHits = useMemo(
+    () => matches.map((hit) => ({ ...hit, current: hit === currentMatch })),
+    [matches, currentMatch],
+  );
 
   const stepMatch = useCallback(
     (delta: number) => {
@@ -1019,44 +925,6 @@ export const FilePane: React.FC<FilePaneProps> = ({
   useEffect(() => {
     if (currentMatch) scrollToLine(currentMatch.line);
   }, [currentMatch, scrollToLine]);
-
-  /**
-   * Paint the marks after every render that could have produced new line nodes.
-   * React owns the text; this pass only wraps ranges inside text nodes, and
-   * re-running it from scratch keeps it idempotent.
-   */
-  useEffect(() => {
-    const root = contentScrollRef.current;
-    if (!root) return;
-    root
-      .querySelectorAll<HTMLElement>("mark.file-pane-find-hit")
-      .forEach((mark) => {
-        const parent = mark.parentNode;
-        if (!parent) return;
-        parent.replaceChild(
-          document.createTextNode(mark.textContent ?? ""),
-          mark,
-        );
-        parent.normalize();
-      });
-    if (!find.query || matches.length === 0) return;
-    const currentLine = currentMatch?.line;
-    root.querySelectorAll<HTMLElement>(".file-pane-line-code").forEach((el) => {
-      const lineNo = Number(el.dataset.lineNo ?? "0");
-      const hits = hitsByLine.get(lineNo);
-      if (!hits) return;
-      for (const hit of [...hits].reverse()) {
-        wrapTextRange(
-          el,
-          hit.index,
-          hit.length,
-          lineNo === currentLine && hit === currentMatch
-            ? "file-pane-find-hit file-pane-find-hit--current"
-            : "file-pane-find-hit",
-        );
-      }
-    });
-  });
 
   /** `Ctrl/Cmd+F` opens the find bar; `Esc` closes it (scenarios 1/5). */
   useEffect(() => {
@@ -1122,6 +990,15 @@ export const FilePane: React.FC<FilePaneProps> = ({
     !fileView.imageBase64 &&
     !!fileView.content;
 
+  // 只读代码视图（含行号、选区、评论入口）正在显示：正文高度交给它自己滚，
+  // 面板外层容器不再兼作滚动容器，否则会出现两条滚动条。
+  const showCodeView =
+    !!fileView?.content &&
+    !fileView.error &&
+    !markdown &&
+    !editing &&
+    !!contentLines;
+
   // 编辑器不受控（文本由 CodeMirror 持有），保存读的是这里的镜像而不是 React
   // state：onChange 与点击保存/按 Cmd+S 是两次事件，走 state 会有一段「慢一次提
   // 交」的窗口，快手指令下会把旧内容写回磁盘。
@@ -1183,6 +1060,10 @@ export const FilePane: React.FC<FilePaneProps> = ({
     to: number;
   } | null>(null);
   const [commentDraft, setCommentDraft] = useState("");
+  // Where the inline comment box is portalled to: a block slot the code surface
+  // inserts right after the commented line, so the box pushes the following
+  // lines down (and scrolls with them) instead of covering them.
+  const [commentSlot, setCommentSlot] = useState<HTMLElement | null>(null);
   const {
     containerRef: commentContainerRef,
     containerProps: commentContainerProps,
@@ -1192,10 +1073,27 @@ export const FilePane: React.FC<FilePaneProps> = ({
     menuRef: commentMenuRef,
     closeMenu: closeCommentMenu,
     clearChip: clearCommentChip,
+    syncChip: syncCommentChip,
   } = useCodeCommentEntry({
     enabled:
       Boolean(onAddComment) && !markdown && !editing && !!fileView?.content,
   });
+
+  // The box follows the open range: opening it asks the code surface for a slot
+  // after that line, closing it takes the slot away again.
+  useEffect(() => {
+    codeViewRef.current?.setCommentBox(commentRange?.to ?? null);
+  }, [commentRange?.to, fileView?.path]);
+
+  // The comment entries live in a container that does not scroll itself
+  // (CodeMirror owns the scrolling), so they re-anchor when the text moves under
+  // them: the floating button recomputes against the live selection, and the
+  // right-click menu — anchored to a click point that no longer means anything —
+  // closes, like a native menu.
+  const handleCodeScroll = useCallback(() => {
+    syncCommentChip();
+    closeCommentMenu();
+  }, [syncCommentChip, closeCommentMenu]);
 
   // Markdown block comments (spec「文件面板评论」场景 8): same interaction and
   // same append format as line comments, anchored to a rendered block. Nothing
@@ -1700,7 +1598,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
           )}
         </>
       }
-      bodyClassName={`preview-pane-body file-pane-body${editing ? " file-pane-body--editing" : ""}`}
+      bodyClassName={`preview-pane-body file-pane-body${editing ? " file-pane-body--editing" : ""}${showCodeView ? " file-pane-body--code-view" : ""}`}
       bodyRef={setBodyEl}
     >
       <div className="file-pane-layout">
@@ -1888,7 +1786,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
               )}
             </div>
           )}
-          <div className="file-pane-scroll" ref={contentScrollRef}>
+          <div className="file-pane-scroll">
             {showList && (
               <ConversationFileList
                 files={conversationFiles ?? []}
@@ -2078,69 +1976,39 @@ export const FilePane: React.FC<FilePaneProps> = ({
                       className="file-pane-code"
                       ref={commentContainerRef}
                       {...commentContainerProps}
-                      style={
-                        {
-                          // Line-number column width in digits: every row shares
-                          // one value so the code column stays a straight edge,
-                          // and it follows *this* file's last line number rather
-                          // than a fixed reservation (a 7-line file gets a 7px
-                          // number instead of a three-digit gutter).
-                          "--file-pane-line-no-digits": String(
-                            contentLines.length,
-                          ).length,
-                        } as React.CSSProperties
-                      }
                     >
-                      {fileView.truncated &&
-                        fileView.totalLines !== undefined && (
-                          <div className="file-pane-truncated-hint">
-                            文件共 {fileView.totalLines} 行，仅显示前{" "}
-                            {contentLines.length} 行
-                          </div>
-                        )}
-                      {contentLines.map((line, i) => {
-                        const lineNo = i + 1;
-                        const active =
-                          fileView.startLine !== undefined &&
-                          lineNo >= fileView.startLine &&
-                          (fileView.endLine === undefined ||
-                            lineNo <= fileView.endLine);
-                        return (
-                          <React.Fragment key={i}>
-                            <div
-                              className={`file-pane-line${active ? " file-pane-line--active" : ""}`}
-                              data-comment-unit={
-                                onAddComment ? lineNo : undefined
-                              }
-                              data-testid={`file-pane-line-${lineNo}`}
-                            >
-                              <span className="file-pane-line-no">
-                                {lineNo}
-                              </span>
-                              <span
-                                className="file-pane-line-code"
-                                data-line-no={lineNo}
-                                dangerouslySetInnerHTML={{ __html: line.html }}
-                              />
-                            </div>
-                            {commentRange?.to === lineNo && (
-                              <LineCommentBox
-                                draft={commentDraft}
-                                onDraftChange={setCommentDraft}
-                                onSubmit={submitComment}
-                                onCancel={closeComment}
-                                tag={commentTag}
-                                placeholder={`${commentLabel(commentRange)}…`}
-                              />
-                            )}
-                          </React.Fragment>
-                        );
-                      })}
-                      {fileView.truncated &&
-                        fileView.totalLines === undefined && (
-                          <div className="file-pane-truncated-hint">
-                            文件较大，内容已截断
-                          </div>
+                      {/* 只读正文交给 CodeMirror：一个可聚焦的 contenteditable（只
+                          设 `readOnly`、不设 `editable(false)`）才会把 `Ctrl/Cmd+A`
+                          收在这份文件里 —— 否则全选是整页选区，把工具栏路径、标签
+                          带、行号和截断提示一起圈进去（客户反馈的那条）。行号在
+                          gutter 里、`user-select: none`，永远不进选区。 */}
+                      <ReadOnlyCodeView
+                        ref={codeViewRef}
+                        path={fileView.path}
+                        content={contentText(fileView.content)}
+                        commentUnits={Boolean(onAddComment)}
+                        activeFrom={fileView.startLine}
+                        activeTo={fileView.endLine ?? fileView.startLine}
+                        startLine={fileView.startLine}
+                        hits={findHits}
+                        onScroll={handleCodeScroll}
+                        onCommentSlot={setCommentSlot}
+                      />
+                      {/* 评论框挂进正文里那一行的后面（CM 的 block widget 插槽），
+                          所以它把下面的行往下推、并跟着正文一起滚，而不是浮在上
+                          面挡住内容。 */}
+                      {commentSlot &&
+                        commentRange &&
+                        createPortal(
+                          <LineCommentBox
+                            draft={commentDraft}
+                            onDraftChange={setCommentDraft}
+                            onSubmit={submitComment}
+                            onCancel={closeComment}
+                            tag={commentTag}
+                            placeholder={`${commentLabel(commentRange)}…`}
+                          />,
+                          commentSlot,
                         )}
                       <CodeCommentEntry
                         chip={commentChip}
@@ -2157,6 +2025,18 @@ export const FilePane: React.FC<FilePaneProps> = ({
           </div>
         </div>
       </div>
+      {/* 截断说明挂在正文滚动区之外、面板底部：跟 Claude 桌面端文件查看器一致，
+          是一行次要色小字而不是通栏横幅，也不报总行数 —— 用户要判断的是「我看
+          到的是不是全文」，行数是实现细节。放这里同时意味着它不会跟着正文滚走
+          （要一直可见），也不会被代码区的全选圈进去（见只读查看器的选区故事）。 */}
+      {showCodeView && fileView?.truncated && (
+        <div
+          className="file-pane-truncated-hint"
+          data-testid="file-pane-truncated-hint"
+        >
+          文件较大，末尾内容可能缺失
+        </div>
+      )}
     </PaneShell>
   );
 };

@@ -10,3 +10,9 @@ export type {
   CodeEditorHandle,
   CodeEditorOptions,
 } from "./components/fileEditor/createCodeEditor";
+export { createReadOnlyCodeView } from "./components/fileEditor/createReadOnlyCodeView";
+export type {
+  ReadOnlyCodeViewHandle,
+  ReadOnlyCodeViewOptions,
+  ReadOnlyHit,
+} from "./components/fileEditor/createReadOnlyCodeView";

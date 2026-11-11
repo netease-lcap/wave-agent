@@ -2,8 +2,9 @@
  * Loader for the desktop-only `editor.js` chunk (CodeMirror). Same shape as the
  * terminal chunk's loader: a same-origin <script> tag, a single in-flight
  * promise, and a cached global. Desktop only — the chunk is filtered out of the
- * plugin hosts' webview directory, so `window.WaveEditor` never appears there and
- * the file panel simply has no edit affordance.
+ * plugin hosts' webview directory, so `window.WaveEditor` never appears there;
+ * the plugin hosts get no file pane at all (only the desktop host sends
+ * `fileView`), which is why the read-only viewer may live in this chunk too.
  */
 
 export interface CodeEditorHandle {
@@ -20,11 +21,46 @@ export interface CodeEditorOptions {
   onSave?: () => void;
 }
 
+/** A find hit in the panel's coordinates (1-based line + offset in it). */
+export interface ReadOnlyHit {
+  line: number;
+  index: number;
+  length: number;
+  current?: boolean;
+}
+
+export interface ReadOnlyCodeViewOptions {
+  doc: string;
+  path: string;
+  dark: boolean;
+  commentUnits?: boolean;
+  activeFrom?: number;
+  activeTo?: number;
+  hits?: ReadOnlyHit[];
+  onScroll?: () => void;
+  onCommentSlot?: (slot: HTMLElement | null) => void;
+}
+
+export interface ReadOnlyCodeViewHandle {
+  setActiveRange(from: number | undefined, to: number | undefined): void;
+  setHits(hits: ReadOnlyHit[]): void;
+  setCommentBox(line: number | null): void;
+  scrollToLine(line: number): void;
+  getScrollTop(): number;
+  setScrollTop(top: number): void;
+  readonly scrollElement: HTMLElement;
+  destroy(): void;
+}
+
 export interface WaveEditorGlobal {
   createCodeEditor(
     parent: HTMLElement,
     options: CodeEditorOptions,
   ): CodeEditorHandle;
+  createReadOnlyCodeView(
+    parent: HTMLElement,
+    options: ReadOnlyCodeViewOptions,
+  ): ReadOnlyCodeViewHandle;
 }
 
 declare global {
