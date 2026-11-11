@@ -352,6 +352,17 @@ interface PluginListRow {
   latestVersion?: string;
 }
 
+/**
+ * 「新建对话」的结果。调用方只在「还要不要接着做下一步」时需要区分成败，
+ * 而两种失败要给用户的话不同，所以不是 boolean：
+ * - `"ok"`：新 agent 已激活进 pane（后续动作可以继续，例：创作集往它预填提示词）；
+ * - `"no-workdir"`：本机还没选过文件夹，pane 退回空白新会话态，要靠用户去左侧
+ *   选目录（可操作、要提示）；
+ * - `"failed"`：spawn / 激活失败、或 spawn 期间 pane 被别的会话抢走 —— 原因已在
+ *   pane 里报过（`新建对话失败: …`），调用方只需别接着往下做。
+ */
+type NewSessionOutcome = "ok" | "no-workdir" | "failed";
+
 export class DesktopHost {
   /**
    * Timing knobs the reconnect tests shrink so one round does not need real
@@ -5296,18 +5307,37 @@ export class DesktopHost {
         break;
       }
 
-      // 创作集「新建 → 模板」：把模板提示词预填进**当前选中会话**的输入框。
-      // 这里刻意不建会话——原实现先 `await handleNewSession()` 再 prefill，代价是
-      // ①提示词要等新 agent spawn 完（2-3s）才出现（PM 3500350535448832）；
-      // ②提示词总是落到新对话，而不是用户左侧选中的那个会话（3500351963339008）。
-      // prefillPrompt 走 webview 侧的 pending 重放路径，输入框就绪后写入。
+      // 创作集「添加作品 → 任一类型」：从**一个新对话**开始，再把模板提示词预填进
+      // 那个新对话的输入框。
+      //
+      // 设计师 2026-11-06：「选择任意类型后，默认都从新对话框开始，不要填充到当前
+      // 对话，默认左侧已选的文件夹」。目录因此走 `handleNewSession` 的同一条规则
+      // （最近使用的真实目录 = 左侧选中的文件夹；不跟当前会话的 worktree / bash cd），
+      // 与点侧栏「新对话」完全一致。
+      //
+      // 与更早实现的关系：中间版本是「不建会话、直接 prefill 当前会话」（PM
+      // 3500350535448832 嫌 spawn 慢、3500351963339008 嫌落点不对），本轮被这条
+      // 设计口径取代——提示词仍要等新 agent 起来，所以 spawn 完再下发 prefill；
+      // webview 侧对早到的 prefill 有 pending 重放，不会丢。
+      //
+      // **预填跟着建会话的成败走**：没建成（本机还没选过文件夹 / spawn 失败 /
+      // spawn 期间用户切走了）就一个 prompt 都不发 —— 否则它落进当前那个旧会话的
+      // 输入框，正是上面被否掉的「填充到当前对话」。
       case "desktopArtifactsNewFromTemplate": {
         const prompt = msg.prompt as string;
-        if (prompt) {
-          this.postMessage({
-            command: "prefillPrompt",
-            paneId: this.focusedPaneId,
-            prompt,
+        if (!prompt) break;
+        const paneId = this.focusedPaneId;
+        const outcome = await this.handleNewSession(paneId);
+        if (outcome === "ok") {
+          this.postMessage({ command: "prefillPrompt", paneId, prompt });
+          break;
+        }
+        // spawn 失败已经在 pane 里报过原因（`新建对话失败: …`），不再叠一条 toast；
+        // 只有「还没选过文件夹」是用户能自己解决、又没有任何提示的，补一句可操作的。
+        if (outcome === "no-workdir") {
+          this.showToast({
+            message: "请先在左侧选择文件夹，再添加作品",
+            type: "info",
           });
         }
         break;
@@ -7185,7 +7215,7 @@ export class DesktopHost {
   private async handleNewSession(
     paneId?: string,
     backOffOnRestore = false,
-  ): Promise<void> {
+  ): Promise<NewSessionOutcome> {
     const pid = paneId ?? this.focusedPaneId;
     const active = this.agentForPane(pid);
     // New session cwd = the most recently user-selected repo root (recents),
@@ -7203,7 +7233,7 @@ export class DesktopHost {
       // stays in the pool and remains re-selectable from the sidebar; only a
       // blank agent is discarded by bindAgentToPane. Sending a message here is
       // still intercepted by handleSendMessage's 请先选择工作目录 guard.
-      if (backOffOnRestore && this.pendingRestores.has(pid)) return;
+      if (backOffOnRestore && this.pendingRestores.has(pid)) return "failed";
       this.bindAgentToPane(pid, null);
       this.workdir = undefined;
       this.postMessage({
@@ -7214,7 +7244,7 @@ export class DesktopHost {
       this.sendWorkdirState();
       this.pushPanes();
       await this.pushPaneSessionState(pid);
-      return;
+      return "no-workdir";
     }
     // No no-op guard for an already-empty active session: clicking 新对话 is an
     // explicit intent, and the blank agent is discarded by bindAgentToPane when
@@ -7227,19 +7257,21 @@ export class DesktopHost {
       // just-spawned agent so it doesn't linger orphaned in the pool.
       if (this.agentForPane(pid) !== active) {
         await this.discardAgent(agent);
-        return;
+        return "failed";
       }
       if (backOffOnRestore && this.pendingRestores.has(pid)) {
         // The user selected a historical session while the delete was in
         // flight — its restore owns this pane. Destroy the just-spawned
         // agent so it doesn't linger orphaned in the pool.
         await this.discardAgent(agent);
-        return;
+        return "failed";
       }
       await this.activateAgentInPane(pid, agent);
+      return "ok";
     } catch (error) {
       console.error("[DesktopHost] 新建对话失败:", error);
       this.pushSystemMessage(`新建对话失败: ${error}`, pid);
+      return "failed";
     }
   }
 

@@ -6076,12 +6076,20 @@
 
 /* 单字段的分类弹窗（新建 / 重命名）：只有一颗输入框 + 一行提示，560 宽显得空；收到 compact 档的
    440（1022 评论：「重命名弹窗尺寸太大了」→「新建分类弹窗也改」）。其余（r12 / 24 内衬 / 标题 16 /
-   控件 32 / 页脚 24）仍走上面表单档。两者共用同一个 `data-testid="artifacts-category-dialog"`，
-   且 DOM 逐字相同，只能靠 `aria-label`（= 弹窗标题文案）区分 —— 若标题文案改了，这条选择器要
-   跟着改，否则宽度会静默回到 560。 */
-[data-host="desktop"]
-  .artifacts-modal:is([aria-label="重命名分类"], [aria-label="新建分类"]) {
+   控件 32 / 页脚 24）仍走上面表单档。
+   挑选的是 `<Modal size="compact">` 落下的 `data-size`，**不是** `aria-label`（= 弹窗标题文案）：
+   靠文案匹配时，标题一从「新建分类」改成「添加分类」，宽度就会静默漂回 560。删除确认共用同一个
+   `data-testid="artifacts-category-dialog"`，但它不传 size，所以仍走 560。 */
+[data-host="desktop"] .artifacts-modal[data-size="compact"] {
   --cc-artifacts-form-dialog-width: 440px;
+}
+
+/* 「添加作品」类型选择：560 宽下两张卡各 ~250，7 条提示词逐行换行还装不下全文
+   （设计师 2026-11-06 预览评论：「提示词展示不全，看看能不能调大」）。放宽到 800，
+   两列各 ~370 可以完整展示；其余（24 内衬 / 标题 16 / 网格 8）仍走表单档。 */
+[data-host="desktop"]
+  .artifacts-modal:is([data-testid="artifacts-new-dialog"]) {
+  --cc-artifacts-form-dialog-width: 800px;
 }
 
 /* 头部：去分隔线与 14/18 内衬，标题升到 16/24/600；右侧让出 28px 给关闭控件 */
