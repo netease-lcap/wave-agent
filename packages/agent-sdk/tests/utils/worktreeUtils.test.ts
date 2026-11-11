@@ -50,10 +50,12 @@ vi.mock("node:child_process", async () => {
 /**
  * Fake filesystem for the removal tests.
  *
- * The removal touches the tree in a specific ORDER — unlink the `.git` pointer,
- * then delete the directory, then (on failure) write the pointer back — so the
- * fake records every mutating call in `ops`. Order is the whole point of the
- * implementation, and only an ordered log can assert it.
+ * The removal touches the tree in a specific ORDER — read the `.git` pointer,
+ * delete the tree's contents (keeping that pointer on disk), unlink the
+ * pointer, remove the now-empty shell, and only then (if the shell delete
+ * failed) write the pointer back — so the fake records every mutating call in
+ * `ops`. Order is the whole point of the implementation, and only an ordered
+ * log can assert it.
  */
 const fakeFs = vi.hoisted(() => {
   interface FakeEntry {
@@ -615,6 +617,33 @@ describe("worktreeUtils", () => {
       fakeFs.children.set(WORKTREE_PATH, []);
     }
 
+    /** The same, with real content standing in for the tree to delete. */
+    function givenWorktreeWithContent(...names: string[]) {
+      givenRegisteredWorktree();
+      fakeFs.children.set(
+        WORKTREE_PATH,
+        names.map((name) => ({
+          name,
+          link: false,
+          dir: !name.includes("."),
+        })),
+      );
+      return names.map((name) => path.join(WORKTREE_PATH, name));
+    }
+
+    /**
+     * Fail the final shell delete only, leaving the per-entry content deletes
+     * working. The two failure points now sit on opposite sides of the `.git`
+     * unlink, so a test has to be able to reach them separately.
+     */
+    function failShellDelete(code: string) {
+      const removeEntry = vi.mocked(fs.rmSync).getMockImplementation()!;
+      vi.mocked(fs.rmSync).mockImplementation(((p, options) => {
+        if (fakeFs.key(String(p)) === WORKTREE_PATH) throw failWith(code);
+        removeEntry(p, options);
+      }) as typeof fs.rmSync);
+    }
+
     /** Git subcommands issued, in order — `["worktree prune", "branch -D x"]`. */
     function gitOps(): string[] {
       return vi
@@ -637,14 +666,25 @@ describe("worktreeUtils", () => {
       clearGlobalLogger();
     });
 
-    it("deletes the .git pointer before the directory, then prunes and deletes the branch", () => {
-      givenRegisteredWorktree();
+    it("deletes the contents before detaching the pointer, then removes the shell, then prunes and deletes the branch", () => {
+      const [srcPath, pkgPath] = givenWorktreeWithContent(
+        "src",
+        "package.json",
+      );
 
       worktreeUtils.removeWorktree(INFO);
 
-      // The order IS the implementation: pointer first, directory second. The
-      // previous implementation ran `git worktree remove --force` here instead.
-      expect(fakeFs.ops).toEqual([`unlink:${DOT_GIT}`, `rm:${WORKTREE_PATH}`]);
+      // The order IS the implementation. The long, failure-prone pass (the tree
+      // contents) runs while `.git` is still on disk, so git keeps registering
+      // the worktree; the pointer only goes for the two microsecond-scale steps
+      // that follow. The previous implementation unlinked the pointer first, and
+      // before that ran `git worktree remove --force` here instead.
+      expect(fakeFs.ops).toEqual([
+        `rm:${srcPath}`,
+        `rm:${pkgPath}`,
+        `unlink:${DOT_GIT}`,
+        `rm:${WORKTREE_PATH}`,
+      ]);
       expect(
         gitOps().filter((op) => op.includes("worktree remove")),
       ).toHaveLength(0);
@@ -657,23 +697,64 @@ describe("worktreeUtils", () => {
       );
     });
 
-    it("uses an extended-length path for fs.rmSync on Windows", () => {
-      givenRegisteredWorktree();
+    it("leaves .git untouched and keeps the branch when deleting the contents fails", () => {
+      // The whole point of the rework. The content pass is where a held file
+      // fails it, and it runs with the pointer still in place: nothing was
+      // unlinked, so there is nothing to restore and git still recognises the
+      // directory that survived.
+      givenWorktreeWithContent("src");
+      const original = fakeFs.files.get(DOT_GIT);
+      fakeFs.rmError = failWith("EPERM");
+
+      expect(() => worktreeUtils.removeWorktree(INFO)).not.toThrow();
+
+      expect(fakeFs.ops).toEqual([]);
+      expect(fakeFs.files.get(DOT_GIT)).toBe(original);
+      // No write-back: rewriting a file that was never removed would claim a
+      // restore that did not happen.
+      expect(fakeFs.written).toEqual([]);
+      // No prune either — that is what would deregister the worktree git still
+      // has every reason to keep.
+      expect(gitOps()).toEqual([]);
+      // EPERM is translated, not just passed through: the errno alone tells a
+      // user nothing about what to close.
+      expect(logger.error).toHaveBeenCalledWith(
+        expect.stringContaining("its .git is still in place"),
+        expect.objectContaining({
+          stage: "delete contents",
+          reason: expect.stringContaining("one of the worktree's files open"),
+        }),
+      );
+      expect(logger.warn).toHaveBeenCalledWith(
+        expect.stringContaining("keeping worktree-feat"),
+        expect.anything(),
+      );
+    });
+
+    it("uses an extended-length path for every delete on Windows", () => {
+      givenWorktreeWithContent("node_modules");
 
       worktreeUtils.removeWorktree(INFO);
 
-      const [rmPath] = vi.mocked(fs.rmSync).mock.calls[0];
-      if (process.platform === "win32") {
-        expect(String(rmPath)).toMatch(/^\\\\\?\\/);
-      } else {
-        expect(rmPath).toBe(WORKTREE_PATH);
+      const rmPaths = vi.mocked(fs.rmSync).mock.calls.map(([p]) => String(p));
+      // The per-entry content deletes and the shell delete alike: the entries
+      // are where the longest paths live.
+      expect(rmPaths).toHaveLength(2);
+      for (const rmPath of rmPaths) {
+        if (process.platform === "win32") {
+          expect(rmPath).toMatch(/^\\\\\?\\/);
+        } else {
+          expect(rmPath.startsWith(WORKTREE_PATH)).toBe(true);
+        }
       }
     });
 
-    it("restores the .git pointer and keeps the branch when the delete fails", () => {
-      givenRegisteredWorktree();
+    it("restores the .git pointer and keeps the branch when the shell delete fails", () => {
+      givenWorktreeWithContent("src");
       const original = fakeFs.files.get(DOT_GIT);
-      fakeFs.rmError = failWith("EPERM");
+      // The content pass succeeds (so the pointer really was unlinked); only the
+      // removal of the now-empty directory fails.
+      failShellDelete("EPERM");
 
       expect(() => worktreeUtils.removeWorktree(INFO)).not.toThrow();
 
@@ -685,8 +766,6 @@ describe("worktreeUtils", () => {
       expect(String(fakeFs.written[0].content)).toBe(original);
       expect(fakeFs.files.get(DOT_GIT)).toBe(original);
       expect(gitOps()).toEqual([]);
-      // EPERM is translated, not just passed through: the errno alone tells a
-      // user nothing about what to close.
       expect(logger.error).toHaveBeenCalledWith(
         expect.stringContaining("Failed to remove worktree directory"),
         expect.objectContaining({
@@ -701,8 +780,8 @@ describe("worktreeUtils", () => {
     });
 
     it("reports both errors when even the write-back fails", () => {
-      givenRegisteredWorktree();
-      fakeFs.rmError = failWith("EBUSY");
+      givenWorktreeWithContent("src");
+      failShellDelete("EBUSY");
       fakeFs.writeError = failWith("EROFS");
 
       worktreeUtils.removeWorktree(INFO);
@@ -800,7 +879,10 @@ describe("worktreeUtils", () => {
 
       worktreeUtils.removeWorktree(INFO);
 
-      expect(fakeFs.ops).toEqual([`rm:${WORKTREE_PATH}`]);
+      expect(fakeFs.ops).toEqual([
+        `rm:${path.join(WORKTREE_PATH, "src")}`,
+        `rm:${WORKTREE_PATH}`,
+      ]);
       expect(gitOps()).toEqual(["worktree prune", "branch -D worktree-feat"]);
       expect(logger.warn).toHaveBeenCalledWith(
         expect.stringContaining("plain leftover"),
@@ -836,19 +918,28 @@ describe("worktreeUtils", () => {
       );
     });
 
-    it("aborts when the .git pointer cannot be unlinked", () => {
-      givenRegisteredWorktree();
+    it("aborts before the shell delete when the .git pointer cannot be unlinked", () => {
+      const [srcPath] = givenWorktreeWithContent("src");
+      const original = fakeFs.files.get(DOT_GIT);
       fakeFs.unlinkError = failWith("EPERM");
 
       worktreeUtils.removeWorktree(INFO);
 
-      // Deleting the directory with a live registration would leave a dangling
-      // entry — exactly the half-state this rework exists to remove.
-      expect(fakeFs.ops).toEqual([]);
+      // The content pass ran — it is the one that has to run with the pointer in
+      // place — but the shell delete did not: deleting the directory with a live
+      // registration would leave a dangling entry, exactly the half-state this
+      // rework exists to remove. Nothing to restore either: the unlink is what
+      // failed, so the file never left the disk.
+      expect(fakeFs.ops).toEqual([`rm:${srcPath}`]);
+      expect(fakeFs.files.get(DOT_GIT)).toBe(original);
+      expect(fakeFs.written).toEqual([]);
       expect(gitOps()).toEqual([]);
       expect(logger.error).toHaveBeenCalledWith(
         expect.stringContaining("could not detach its .git"),
-        expect.objectContaining({ stage: "unlink .git" }),
+        expect.objectContaining({
+          stage: "unlink .git",
+          gitPointerIntact: true,
+        }),
       );
     });
 
@@ -859,12 +950,12 @@ describe("worktreeUtils", () => {
         fakeFs.files.delete(fakeFs.key(p));
         throw failWith("ENOENT");
       }) as unknown as typeof fs.unlinkSync);
-      fakeFs.rmError = failWith("EBUSY");
+      failShellDelete("EBUSY");
 
       worktreeUtils.removeWorktree(INFO);
 
-      // The delete still ran; there was no pointer left to write back, and that
-      // is not reported as a restore failure.
+      // The shell delete still ran; there was no pointer left to write back, and
+      // that is not reported as a restore failure.
       expect(fakeFs.written).toEqual([]);
       expect(logger.error).toHaveBeenCalledWith(
         expect.stringContaining("Failed to remove worktree directory"),
@@ -891,9 +982,11 @@ describe("worktreeUtils", () => {
 
         worktreeUtils.removeWorktree(INFO);
 
-        // The junction is gone before the recursive delete starts.
+        // The junction is gone before the content delete starts — that pass is
+        // the one that cannot remove them on Windows.
         expect(fakeFs.ops).toEqual([
           `rmdir:${pnpmLink}`,
+          `rm:${nodeModules}`,
           `unlink:${DOT_GIT}`,
           `rm:${WORKTREE_PATH}`,
         ]);
@@ -921,8 +1014,10 @@ describe("worktreeUtils", () => {
 
         worktreeUtils.removeWorktree(INFO);
 
+        // A junction that cannot be replaced fails the *content* pass, which is
+        // the one that runs with `.git` still in place.
         expect(logger.error).toHaveBeenCalledWith(
-          expect.stringContaining("Failed to remove worktree directory"),
+          expect.stringContaining("its .git is still in place"),
           expect.objectContaining({
             reason: expect.stringContaining(`could not be removed: ${stuck}`),
           }),

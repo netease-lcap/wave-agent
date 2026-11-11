@@ -25,17 +25,43 @@
  * recurring "directory residue + branch still there + worktree no longer
  * registered" report.
  *
- * So the worktree's own `.git` pointer is deleted first, then the directory,
- * and `git worktree prune` deregisters what is left. Once the pointer is gone
- * git's records play no part in the delete: what remains is an ordinary
- * directory, and if it cannot be removed the pointer is written back. "Directory
- * on disk" and "git knows about it" never diverge.
+ * So git does not perform the delete and neither does the pointer go first. The
+ * order is Claude Code's (`mn()` with `pointerFirst: false`, i.e. what every
+ * caller uses):
  *
- * Accepted trade-off: a crash between the pointer unlink and the delete leaves a
- * plain directory git no longer knows about — `git worktree prune` drops the
- * registration and nothing on disk sweeps it up. That window is a single delete
- * call, whereas the git-first order opened an equally unrecoverable window on
- * every junction-skeleton failure.
+ *   1. the checks below (main working tree / lock / pointer points back);
+ *   2. read the pointer's bytes;
+ *   3. Windows only: clear the reparse points;
+ *   4. delete every entry under the worktree EXCEPT the root `.git`;
+ *   5. unlink the root `.git`;
+ *   6. remove the now-empty directory;
+ *   7. only if 6 failed: write the pointer back;
+ *   8. the caller runs `git worktree prune` and `branch -D`.
+ *
+ * Steps 4 and 5 are in that order on purpose. Step 4 is the long, failure-prone
+ * one — seconds on a pnpm `node_modules`, and the one that fails on a file some
+ * other process still holds. While it runs the `.git` pointer is still on disk,
+ * so git still recognises the worktree: a process killed in that window leaves a
+ * directory that is still registered, which `git worktree prune` and the next
+ * removal both find. Steps 5 and 6 are microsecond-scale, and the only window
+ * they open (pointer gone, empty shell still there) is closed by the restore in
+ * step 7 the moment the shell delete reports failure.
+ *
+ * The three failure points therefore act on the pointer differently, and the
+ * difference is the whole point of the rework:
+ *
+ * | failed at | `.git` on disk? | action |
+ * | --- | --- | --- |
+ * | 4 (contents) | yes, never touched | nothing to restore |
+ * | 5 (unlink) | yes, the unlink failed | nothing to restore |
+ * | 6 (shell) | no, already unlinked | write the bytes back |
+ *
+ * Either way the branch is kept: the directory survived, and its branch is the
+ * only ref still leading back to whatever work is in it.
+ *
+ * Everything a crash can therefore leave behind is something git knows about.
+ * That is the property the git-first order could not hold, since it stranded a
+ * deregistered checkout on every junction-skeleton failure.
  *
  * Because git no longer performs the delete, the checks it used to make are made
  * here: never the main working tree, never a `git worktree lock`ed worktree, and
@@ -369,14 +395,64 @@ export function clearReparsePoints(
 // The delete itself
 // ---------------------------------------------------------------------------
 
+/** The root gitfile's name — the one entry steps 4 and 5 diverge over. */
+const GITFILE_NAME = ".git";
+
+/**
+ * Step 4: delete everything under the worktree **except** the root `.git`.
+ *
+ * Returning an error means the pointer was never touched — nothing was
+ * unlinked, so there is nothing to restore and git still registers the
+ * worktree. That is the property this split exists for: the failure that
+ * actually happens (a file another process holds, an unremovable junction) is
+ * the one that leaves git's records intact.
+ *
+ * One `rmSync` per top-level entry rather than one recursive `rmSync` over the
+ * whole tree, because the root `.git` has to survive the pass. The per-entry
+ * `rmSync` is still recursive, so nested content is removed by Node (which
+ * handles directory symlinks/junctions, the thing git gives up on) in one call.
+ *
+ * Callers own the retry policy: a directory held by a process that is only now
+ * exiting becomes deletable a moment later, and how long to wait for that is a
+ * per-entry-point decision (`worktreeRemoveRetry` in `packages/code`). The
+ * retry belongs around *this* call and no other — once the pointer is gone,
+ * re-running the sequence makes no sense.
+ */
+export function removeWorktreeContents(worktreePath: string): unknown | null {
+  const root = toExtendedLengthPath(worktreePath);
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(root, { withFileTypes: true }) as fs.Dirent[];
+  } catch (error) {
+    // Already gone: there is no content left to delete, and the steps after this
+    // one are no-ops rather than failures.
+    return errnoOf(error) === "ENOENT" ? null : error;
+  }
+  for (const entry of entries) {
+    if (entry.name === GITFILE_NAME) continue;
+    try {
+      // `path.join` keeps the `\\?\` prefix, so the per-entry delete stays
+      // extended-length too (the entries can be the longest paths in the tree).
+      fs.rmSync(path.join(root, entry.name), {
+        recursive: true,
+        force: true,
+      });
+    } catch (error) {
+      return error;
+    }
+  }
+  return null;
+}
+
 /**
  * Delete the worktree directory with `fs.rmSync`, returning the error when it
  * fails (null on success). Node removes directory symlinks/junctions properly,
  * which is exactly where git gives up on Windows.
  *
- * Callers own the retry policy: a directory held by a process that is only now
- * exiting becomes deletable a moment later, and how long to wait for that is a
- * per-entry-point decision (`worktreeRemoveRetry` in `packages/code`).
+ * By the time `finishWorktreeRemoval` reaches this the tree is empty and the
+ * pointer is gone, so this is the microsecond-scale step: it cannot fail the way
+ * the content delete does, and if it somehow does there is nothing left to
+ * retry (the pointer is gone) — the caller restores the pointer instead.
  */
 export function removeWorktreeDirectory(worktreePath: string): unknown | null {
   try {
@@ -391,7 +467,7 @@ export function removeWorktreeDirectory(worktreePath: string): unknown | null {
 }
 
 // ---------------------------------------------------------------------------
-// The shared sequence: check, detach, hand back
+// The shared sequence: check, delete the contents, detach, remove the shell
 // ---------------------------------------------------------------------------
 
 /** Why the core refused to touch a worktree. */
@@ -401,9 +477,9 @@ export type WorktreeRefusalReason =
   | "not-pointing-back"
   | "locked";
 
-export interface WorktreeDetached {
-  status: "detached";
-  /** The pointer read before unlinking; null when it was already gone */
+export interface WorktreePrepared {
+  status: "prepared";
+  /** The pointer read before anything was deleted; null when it was already gone */
   pointer: WorktreePointer | null;
   /** True when there was no `.git` at all: a plain leftover directory */
   leftover: boolean;
@@ -421,38 +497,32 @@ export interface WorktreeRefusal {
   details: { gitDir?: string; lockReason?: string; pointerProblem?: string };
 }
 
-export type WorktreeDetachResult =
-  /** No directory: nothing to delete. Its branch may still exist. */
-  | { status: "absent" }
-  | WorktreeDetached
+export type WorktreePreparation =
+  | WorktreePrepared
   | WorktreeRefusal
-  /** The `.git` could not be unlinked: nothing was deleted. */
-  | {
-      status: "pointer-stuck";
-      reason: string;
-      reparsePointUnremovable: string | null;
-    };
+  /** No directory: nothing to delete. Its branch may still exist. */
+  | { status: "absent" };
 
 /**
- * Do everything that must happen before the directory can be deleted: make the
- * checks git used to make, clear the reparse points Windows cannot recurse
- * over, read the pointer, then unlink it.
+ * Steps 1–3: everything that must happen before a single file is deleted. Make
+ * the checks git used to make, read the pointer, and clear the reparse points
+ * Windows cannot recurse over.
  *
- * The pointer comes back in the result because the delete may still fail; the
- * caller writes it back then. Splitting the sequence here rather than shipping
- * one function is deliberate: the delete has to stay in the caller (sync single
- * shot vs. async retry loop), and the `.git` restore must happen after the
- * caller's *last* attempt, never between attempts — rewriting the pointer and
- * retrying would leave a stray `.git` behind once an attempt succeeds.
+ * The pointer comes back in the result because a later step may need to write it
+ * back. Splitting the sequence up rather than shipping one function is
+ * deliberate: the content delete (step 4) has to stay in the caller (sync single
+ * shot vs. async retry loop), and the restore must happen after the caller's
+ * *last* attempt, never between attempts — rewriting the pointer and retrying
+ * would leave a stray `.git` behind once an attempt succeeds.
  *
  * Non-throwing by contract: every outcome is a value, so both the SDK's
  * "best-effort, return nothing" caller and `packages/code`'s "return whether the
  * directory is gone" caller can use it.
  */
-export function detachWorktreePointer(options: {
+export function prepareWorktreeRemoval(options: {
   worktreePath: string;
   repoRoot: string;
-}): WorktreeDetachResult {
+}): WorktreePreparation {
   const { worktreePath, repoRoot } = options;
 
   // Never the main working tree: the containment check callers run before this
@@ -470,8 +540,8 @@ export function detachWorktreePointer(options: {
     };
   }
 
-  // Already gone: nothing to unwrap or delete. The branch still goes, which is
-  // what makes a repeated removal idempotent.
+  // Already gone: nothing to delete. The branch still goes, which is what makes
+  // a repeated removal idempotent.
   if (!fs.existsSync(worktreePath)) return { status: "absent" };
 
   const probe = probeWorktreePointer(worktreePath);
@@ -522,16 +592,62 @@ export function detachWorktreePointer(options: {
 
   // Windows only: junctions are the reason this pass exists, and on POSIX a
   // symlink inside a worktree is ordinary user content that rmSync handles.
+  // Runs before the content delete because that is the pass which cannot remove
+  // them on Windows.
   const reparse: ReparsePointPass = { unlinked: 0, unremovable: null };
   if (process.platform === "win32") {
     clearReparsePoints(worktreePath, false, reparse);
   }
 
-  // Pointer first: from here on git's records are out of the picture, so the
-  // delete the caller runs can fail (and be undone) without them going stale.
+  return {
+    status: "prepared",
+    pointer,
+    leftover: probe.kind === "absent",
+    reparsePointsUnlinked: reparse.unlinked,
+    reparsePointUnremovable: reparse.unremovable,
+  };
+}
+
+export type WorktreeFinish =
+  /** Both steps done: the directory is gone. */
+  | { status: "removed" }
+  /** The `.git` could not be unlinked: nothing else was touched. */
+  | { status: "pointer-stuck"; reason: string }
+  /**
+   * The `.git` was unlinked and the empty directory could not be removed: the
+   * pointer goes back so git keeps recognising the directory that survived.
+   */
+  | {
+      status: "shell-stuck";
+      error: unknown;
+      reason: string;
+      /** True when the pointer bytes are back on disk */
+      pointerRestored: boolean;
+      /** Why the write-back failed, when it did */
+      restoreError: unknown | null;
+    };
+
+/**
+ * Steps 5–7: unlink the root `.git`, remove the now-empty directory, and — only
+ * if that last step failed — write the pointer back.
+ *
+ * The restore is attached to step 6 alone. Steps 4 and 5 failing both leave the
+ * pointer on disk untouched, so writing it again would be a no-op at best and a
+ * lie about what happened at worst; and the pointer must not go back while the
+ * directory is fine, or every successful removal would leave a `.git` behind.
+ */
+export function finishWorktreeRemoval(options: {
+  worktreePath: string;
+  pointer: WorktreePointer | null;
+  /** Named in the failure sentence instead of a bare errno */
+  reparsePointUnremovable: string | null;
+}): WorktreeFinish {
+  const { worktreePath, reparsePointUnremovable } = options;
+  let pointer = options.pointer;
+
   if (pointer !== null) {
     try {
-      fs.unlinkSync(path.join(worktreePath, ".git"));
+      fs.unlinkSync(path.join(worktreePath, GITFILE_NAME));
     } catch (error) {
       if (errnoOf(error) !== "ENOENT") {
         // A directory that is still registered would be deleted out from under
@@ -539,8 +655,7 @@ export function detachWorktreePointer(options: {
         // to eliminate. Stop while the two still agree.
         return {
           status: "pointer-stuck",
-          reason: describeRemovalFailure(error, reparse.unremovable),
-          reparsePointUnremovable: reparse.unremovable,
+          reason: describeRemovalFailure(error, reparsePointUnremovable),
         };
       }
       // Already gone (a concurrent cleanup, a previous partial run): nothing to
@@ -549,12 +664,19 @@ export function detachWorktreePointer(options: {
     }
   }
 
+  const shellError = removeWorktreeDirectory(worktreePath);
+  if (shellError === null) return { status: "removed" };
+
+  const restoreError =
+    pointer === null
+      ? null
+      : restoreWorktreePointer(worktreePath, pointer.content);
   return {
-    status: "detached",
-    pointer,
-    leftover: probe.kind === "absent",
-    reparsePointsUnlinked: reparse.unlinked,
-    reparsePointUnremovable: reparse.unremovable,
+    status: "shell-stuck",
+    error: shellError,
+    reason: describeRemovalFailure(shellError, reparsePointUnremovable),
+    pointerRestored: pointer !== null && restoreError === null,
+    restoreError,
   };
 }
 
