@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { render } from "@testing-library/react";
 import React from "react";
 import { Message } from "../../src/components/Message";
-import { createMockVscode, expandBashRow } from "./test-utils";
+import { createMockVscode } from "./test-utils";
 import { BASH_TOOL_NAME } from "wave-agent-sdk/constants";
 import type { Message as MessageType } from "../../src/types";
 
@@ -35,9 +35,6 @@ function renderBashCommand(
   const { container } = render(
     <Message message={message} vscode={createMockVscode()} />,
   );
-  // 已结束的块默认收起，命令正文要点开折叠行才在 DOM 里（spec
-  // ui/message-rendering-system.md「Bash 工具块默认收起」）。
-  expandBashRow(container);
   const input = container.querySelector(".bash-command") as HTMLElement | null;
   return {
     container,

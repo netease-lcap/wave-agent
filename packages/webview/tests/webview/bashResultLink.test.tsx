@@ -2,11 +2,7 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, fireEvent } from "@testing-library/react";
 import React from "react";
 import { Message } from "../../src/components/Message";
-import {
-  createMockVscode,
-  clickKeepingDefaultNavigation,
-  expandBashRow,
-} from "./test-utils";
+import { createMockVscode, clickKeepingDefaultNavigation } from "./test-utils";
 import { BASH_TOOL_NAME } from "wave-agent-sdk/constants";
 import type { Message as MessageType } from "../../src/types";
 
@@ -47,9 +43,6 @@ function renderBashMessage(
       onOpenPreview={options?.onOpenPreview}
     />,
   );
-  // 已结束的块默认收起，输出要点开折叠行才在 DOM 里（spec
-  // ui/message-rendering-system.md「Bash 工具块默认收起」）。
-  expandBashRow(rendered.container);
   const output = rendered.container.querySelector(".bash-command-output");
   return {
     ...rendered,

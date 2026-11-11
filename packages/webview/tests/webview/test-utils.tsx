@@ -335,22 +335,6 @@ export function clickKeepingDefaultNavigation(element: Element): boolean {
 }
 
 /**
- * 展开一个已结束的 Bash 工具行（specs/ui/message-rendering-system.md「Bash 工具
- * 块默认收起」）：`end` + 成功的块默认收起，命令与输出**不在 DOM 里**，想断言它们
- * 就得先点开折叠行。
- *
- * 幂等：正文已经可见（运行中的块、`!` 模式、没有折叠入口的块）时什么都不做——那些
- * 形态本来就常显，再点一下反而会把它们收起来。
- */
-export function expandBashRow(container: HTMLElement): HTMLElement | null {
-  const header = container.querySelector(".bash-tool-header") as HTMLElement;
-  if (header && !container.querySelector(".bash-command")) {
-    fireEvent.click(header);
-  }
-  return header ?? null;
-}
-
-/**
  * Set text on a contenteditable message input, then fire the input event so the
  * React handler picks up the value.
  *

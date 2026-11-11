@@ -5,7 +5,6 @@ import { WRITE_TOOL_NAME, BASH_TOOL_NAME } from "wave-agent-sdk/constants";
 import { Message } from "../../src/components/Message";
 import { WriteToolPreview } from "../../src/components/WriteToolPreview";
 import { MockDataGenerator } from "../fixtures/mockData";
-import { expandBashRow } from "./test-utils";
 import type { ToolBlock } from "../../src/types";
 
 // Mermaid is heavy and irrelevant here; stub it out (same as markdownSanitize).
@@ -131,9 +130,6 @@ describe("桌面端专属 tab stop gating", () => {
     it("桌面宿主：输出区可键盘聚焦", () => {
       window.waveHostType = "desktop";
       const { container } = renderBash();
-      // 已结束的块默认收起，输出区要点开折叠行才挂载（spec
-      // ui/message-rendering-system.md「Bash 工具块默认收起」）。
-      expandBashRow(container);
       expect(
         container.querySelector('.bash-command-output[tabindex="0"]'),
       ).not.toBeNull();
@@ -141,7 +137,6 @@ describe("桌面端专属 tab stop gating", () => {
 
     it("插件端：输出区不加 tab stop", () => {
       const { container } = renderBash();
-      expandBashRow(container);
       expect(container.querySelector(".bash-command-output")).not.toBeNull();
       expect(
         container.querySelector(".bash-command-output[tabindex]"),
