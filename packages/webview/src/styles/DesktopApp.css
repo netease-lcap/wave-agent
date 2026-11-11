@@ -1798,11 +1798,19 @@ body.is-panel-resizing webview {
   min-height: 0;
 }
 
+/* 底色跟面板同源（设计师 1110 评论，深色档）：「深色模式在预览网址输入后…这里会闪一下
+   白屏，很突兀，希望加载和背景色一致」。
+   改前写死 `#ffffff`：它压在当前轮换下来的空态 `.preview-tab-new` 之上，而空态上一轮
+   已经绑到 `--vscode-panel-background`（浅 #FFFFFF / 深 #111314）⇒ 输入网址那一刻元素
+   自己先刷一层白，深色档等于黑面板上一道白闪。这里换成同一枚 token：浅色取值与原来的
+   #FFFFFF 相同（零变化），深色由 #FFFFFF → #111314，与空态、pane 底一致。
+   真机里访客页首帧之前画的是 Electron guest 自己的默认白底（属另一层合成，CSS 盖不住）；
+   本轮只改这一层，那一层留到 beta 上实测确认后再决定要不要加遮板。 */
 .preview-pane-webview {
   width: 100%;
   height: 100%;
   border: none;
-  background: #ffffff;
+  background: var(--vscode-panel-background);
 }
 
 .preview-pane-error {
