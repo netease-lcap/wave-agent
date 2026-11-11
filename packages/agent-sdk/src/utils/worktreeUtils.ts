@@ -15,10 +15,10 @@ import { logger } from "./globalLogger.js";
 import {
   describeRemovalFailure,
   describeWorktreeResidue,
-  detachWorktreePointer,
+  finishWorktreeRemoval,
   errorMessage,
-  removeWorktreeDirectory,
-  restoreWorktreePointer,
+  prepareWorktreeRemoval,
+  removeWorktreeContents,
 } from "./worktreeRemoval.js";
 
 // Post-creation setup runs inside the shared `wave --stdio` process too
@@ -676,37 +676,44 @@ export async function performPostCreationSetup(
 /**
  * Remove a git worktree and its branch.
  *
- * The order is inverted relative to "let git delete it": the worktree's own
- * `.git` pointer is deleted first, then the directory, and `git worktree prune`
- * deregisters what is left. That is deliberate.
+ * The order is inverted relative to "let git delete it" — git performs no part
+ * of the delete at all — but the `.git` pointer is deliberately *not* first:
  *
- * - git's exit code is not trustworthy for this job. On Windows git cannot
- *   remove the directory symlinks/junctions pnpm's node_modules is made of, so
- *   it deletes the files, leaves the skeleton behind and still exits 0; the
- *   opposite also happens (git deregisters, then fails to delete). Whichever
- *   way, the directory and git's records end up disagreeing — the recurring
- *   "directory residue + branch still there + worktree no longer registered"
- *   report.
- * - With the pointer removed first, git's records play no part in the delete:
- *   what remains is an ordinary directory, and if `fs.rmSync` cannot remove it
- *   the pointer is written back. So "directory on disk" and "git knows about
- *   it" never diverge.
+ *   1. the checks git used to make (main working tree / lock / points back);
+ *   2. read the pointer's bytes;
+ *   3. Windows only: clear the reparse points;
+ *   4. delete every entry under the worktree except the root `.git`;
+ *   5. unlink the root `.git`;
+ *   6. remove the now-empty directory;
+ *   7. only if 6 failed: write the pointer back;
+ *   8. `git worktree prune`, then `git branch -D`.
  *
- * Accepted trade-off: a crash (or a kill) between the pointer unlink and the
- * delete leaves a plain directory that git no longer knows about — `git
- * worktree prune` will never report it and nothing sweeps it up. That window is
- * a single `fs.rmSync` call, whereas the git-first order opened an equally
- * unrecoverable window on every junction-skeleton failure.
+ * git's exit code is not trustworthy for this job. On Windows git cannot remove
+ * the directory symlinks/junctions pnpm's node_modules is made of, so it deletes
+ * the files, leaves the skeleton behind and still exits 0; the opposite also
+ * happens (it deregisters, then fails to delete). Whichever way, the directory
+ * and git's records end up disagreeing — the recurring "directory residue +
+ * branch still there + worktree no longer registered" report.
+ *
+ * Steps 4 and 5 are in that order because step 4 is the long, failure-prone one
+ * (seconds on a pnpm `node_modules`) and the one that fails on a held file.
+ * Keeping `.git` on disk while it runs is what makes a crash there recoverable:
+ * git still registers the worktree, so `git worktree prune` and the next removal
+ * both find it. A failed step 4 or 5 leaves the pointer untouched and there is
+ * nothing to restore; only a failed step 6 (the empty shell) needs the bytes
+ * written back. The identical thing Claude Code's `mn()` does with
+ * `pointerFirst: false`, which is what every one of its callers uses.
  *
  * Because git no longer performs the delete, the checks it used to make are
  * made here: never the main working tree, never a `git worktree lock`ed
  * worktree, and only a directory whose `.git` points back into this repo.
  *
- * The checks, the pointer handling and the delete all live in
- * `worktreeRemoval.ts` — `packages/code` removes worktrees too (TUI exit, `-p`,
- * `daemon destroy --remove-worktree`, the remote-control `destroy`) and shares
- * exactly that core. What is left below is this package's calling convention:
- * synchronous git, best-effort, no return value.
+ * The steps live in `worktreeRemoval.ts` — `packages/code` removes worktrees too
+ * (TUI exit, `-p`, `daemon destroy --remove-worktree`, the remote-control
+ * `destroy`) and shares exactly that core. What is left below is this package's
+ * calling convention: synchronous git, best-effort, no return value, a single
+ * attempt at the content delete (no retry — see `worktreeRemoveRetry` in
+ * `packages/code` for why the other entry point has one).
  *
  * Removal stays best-effort and non-throwing: every refusal and failure is
  * logged, and the branch is kept whenever the directory survives.
@@ -727,35 +734,28 @@ export function removeWorktree(info: WorktreeInfo): void {
     return;
   }
 
-  const detach = detachWorktreePointer({ worktreePath: info.path, repoRoot });
+  const prepared = prepareWorktreeRemoval({
+    worktreePath: info.path,
+    repoRoot,
+  });
 
-  if (detach.status === "refused") {
-    logger.warn(detach.message, {
+  if (prepared.status === "refused") {
+    logger.warn(prepared.message, {
       worktreePath: info.path,
-      refusal: detach.reason,
-      ...detach.details,
+      refusal: prepared.reason,
+      ...prepared.details,
     });
     return;
   }
 
-  if (detach.status === "pointer-stuck") {
-    logger.error("Failed to remove worktree — could not detach its .git:", {
-      worktreePath: info.path,
-      stage: "unlink .git",
-      reason: detach.reason,
-      residue: describeWorktreeResidue(info.path),
-    });
-    return;
-  }
-
-  // Already gone: nothing to unwrap or delete. The branch still goes, which is
-  // what makes a repeated removal idempotent.
-  if (detach.status === "absent") {
+  // Already gone: nothing to delete. The branch still goes, which is what makes
+  // a repeated removal idempotent.
+  if (prepared.status === "absent") {
     deregisterAndDeleteBranch(repoRoot, info);
     return;
   }
 
-  if (detach.leftover) {
+  if (prepared.leftover) {
     // No pointer: a previous cleanup already took it, so this is a plain
     // leftover directory. Not an error — just delete it like one.
     logger.warn(
@@ -763,24 +763,58 @@ export function removeWorktree(info: WorktreeInfo): void {
       { worktreePath: info.path, residue: describeWorktreeResidue(info.path) },
     );
   }
-  if (detach.reparsePointsUnlinked > 0) {
+  if (prepared.reparsePointsUnlinked > 0) {
     logger.info("Unlinked reparse points before removing the worktree:", {
       worktreePath: info.path,
-      unlinked: detach.reparsePointsUnlinked,
+      unlinked: prepared.reparsePointsUnlinked,
     });
   }
 
-  const rmError = removeWorktreeDirectory(info.path);
-  if (rmError !== null) {
-    const restoreError =
-      detach.pointer === null
-        ? null
-        : restoreWorktreePointer(info.path, detach.pointer.content);
-    const reason = describeRemovalFailure(
-      rmError,
-      detach.reparsePointUnremovable,
+  // Step 4, with `.git` still on disk. A failure here is the common case (a
+  // file another process holds) and the pointer was never touched, so there is
+  // nothing to restore — writing it back would be a no-op that lies about what
+  // happened, and git still registers the directory either way.
+  const contentError = removeWorktreeContents(info.path);
+  if (contentError !== null) {
+    logger.error(
+      "Failed to remove the worktree's contents — its .git is still in place, so git keeps this worktree registered:",
+      {
+        worktreePath: info.path,
+        stage: "delete contents",
+        reason: describeRemovalFailure(
+          contentError,
+          prepared.reparsePointUnremovable,
+        ),
+        residue: describeWorktreeResidue(info.path),
+      },
     );
-    if (restoreError !== null) {
+    keepBranchOnSurvivingDirectory(info);
+    return;
+  }
+
+  // Steps 5–7.
+  const finish = finishWorktreeRemoval({
+    worktreePath: info.path,
+    pointer: prepared.pointer,
+    reparsePointUnremovable: prepared.reparsePointUnremovable,
+  });
+
+  if (finish.status === "pointer-stuck") {
+    logger.error("Failed to remove worktree — could not detach its .git:", {
+      worktreePath: info.path,
+      stage: "unlink .git",
+      reason: finish.reason,
+      // The unlink is the step that failed, so the file is still there — git
+      // still registers the directory, and nothing had to be written back.
+      gitPointerIntact: true,
+      residue: describeWorktreeResidue(info.path),
+    });
+    keepBranchOnSurvivingDirectory(info);
+    return;
+  }
+
+  if (finish.status === "shell-stuck") {
+    if (finish.restoreError !== null) {
       // Both failures, and neither masks the other: the directory is still
       // there but git no longer knows about it, so a manual removal is required.
       logger.error(
@@ -788,8 +822,8 @@ export function removeWorktree(info: WorktreeInfo): void {
         {
           worktreePath: info.path,
           stage: "fs.rmSync + restore .git",
-          reason,
-          restoreError: errorMessage(restoreError),
+          reason: finish.reason,
+          restoreError: errorMessage(finish.restoreError),
           residue: describeWorktreeResidue(info.path),
         },
       );
@@ -797,21 +831,27 @@ export function removeWorktree(info: WorktreeInfo): void {
       logger.error("Failed to remove worktree directory:", {
         worktreePath: info.path,
         stage: "fs.rmSync",
-        reason,
-        gitPointerRestored: detach.pointer !== null,
+        reason: finish.reason,
+        gitPointerRestored: finish.pointerRestored,
         residue: describeWorktreeResidue(info.path),
       });
     }
-    // The directory survived, so the branch stays (it is the only ref leading
-    // back to whatever work is left in that checkout).
-    logger.warn(
-      `Worktree directory survived removal — keeping ${info.branch} so the leftover checkout stays reachable:`,
-      { worktreePath: info.path, residue: describeWorktreeResidue(info.path) },
-    );
+    keepBranchOnSurvivingDirectory(info);
     return;
   }
 
   deregisterAndDeleteBranch(repoRoot, info);
+}
+
+/**
+ * The directory survived, so the branch stays: it is the only ref leading back
+ * to whatever work is left in that checkout. One log line, three call sites.
+ */
+function keepBranchOnSurvivingDirectory(info: WorktreeInfo): void {
+  logger.warn(
+    `Worktree directory survived removal — keeping ${info.branch} so the leftover checkout stays reachable:`,
+    { worktreePath: info.path, residue: describeWorktreeResidue(info.path) },
+  );
 }
 
 /**
