@@ -7027,10 +7027,71 @@
   border-radius: 12px;
 }
 
+/* ═══ 1110 评论：代码块复制键对齐「预览面板工具条图标键」 ═══
+   设计师两条评论（锚点 `button.md-code-copy` + `button.preview-pane-button`）：
+   「复制按钮用这个按钮，圆角等，交互样式也保持一致」。
+   参照物 = 右侧面板工具条的 24×24 图标键（本文件 `.preview-pane-button` 那颗），
+   桌面端实测：24×24 / r8（`--cc-radius-md`）/ 无描边 / 透明底 / 图标 16px /
+   hover 只换底与字色、无过渡（瞬时）。
+   复制键改前是 base `Message.css:1052` 的一档：22×22 / r4 / 1px 面板描边 /
+   次级按钮实底（浅 #F0F0F1、深 #232526）/ hover 只在那块实底上换一档 —
+   尺寸、圆角、描边、底、hover 五处都不与参照物同族。
+   这里逐值对齐参照物：字色 = 图标灰（浅 #565A60 / 深 #9A9EA5），hover 面 =
+   浅 #EEF0F3 / 深 8% 白，hover 字色 = 1 级（浅 #1F2329 / 深 #FFFFFF）。
+   ⚠ 两个主题档都只认 `data-theme`（与参照物同构）：属性缺失时两边都落回各自
+   base 的前景色，不引入第三档。
+   只落在桌面端：VS Code / JetBrains 里没有这颗工具条键当参照物，复制键继续走
+   base 的次级按钮档。
+   显隐与过渡不动：仍是「悬停代码块 / `:focus-visible` 才淡入」，120ms 只作用在
+   opacity 上，底色与字色跟参照物一样瞬时切换。 */
+[data-host="desktop"] .md-code-copy {
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: var(--cc-radius-md, 8px);
+  background: transparent;
+}
+
+[data-host="desktop"][data-theme="light"] .md-code-copy {
+  color: #565a60;
+}
+[data-host="desktop"][data-theme="light"] .md-code-copy:hover {
+  background: #eef0f3;
+  color: #1f2329;
+}
+[data-host="desktop"][data-theme="dark"] .md-code-copy {
+  color: #9a9ea5;
+}
+[data-host="desktop"][data-theme="dark"] .md-code-copy:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #ffffff;
+}
+
+/* 图标（设计师 2026-11-10：「就是图标要改掉，统一一下复制图标，不光是交互样式」）：
+   桌面端从 codicon 字体字形换成官方矢量——`Message.tsx` 的 `mdCodeCopyIcon` 把
+   「复制」（= 官方「复制.svg」那两张纸，与文件面板 `CopyPathIcon` 同一份
+   `COPY_PATH_ICON_PATHS`；不是「复制文件内容」那枚剪贴板）与「已复制」
+   对勾两枚 `<svg>` 一起注入，这里只负责换显隐：默认显示复制、`.is-copied` 时换成
+   对勾。于是 `copyCodeBlockText` 那套改 DOM 换图标类的逻辑在桌面端什么都不做，
+   插件端仍走 codicon（`codicon-copy` ↔ `codicon-check`），两边互不影响。
+   颜色不写死：`stroke="currentColor"` 跟着按钮的图标灰走，hover 到 1 级色。 */
+[data-host="desktop"] .md-code-copy-icon {
+  display: block;
+  flex-shrink: 0;
+}
+[data-host="desktop"] .md-code-copy-icon--check {
+  display: none;
+}
+[data-host="desktop"] .md-code-copy.is-copied .md-code-copy-icon--copy {
+  display: none;
+}
+[data-host="desktop"] .md-code-copy.is-copied .md-code-copy-icon--check {
+  display: block;
+}
 
 /* ═══ 1110 评论：Write 预览「打开预览」键交互样式参照代码块复制键 ═══
    设计师同一轮第二条（锚点 `button.write-preview-open`）：「尺寸选A，交互样式也
-   参照复制键」。参照物 = 本文件末尾「代码块复制键」那段（`[data-host="desktop"]
+   参照复制键」。参照物 = 本文件上方「代码块复制键」那段（`[data-host="desktop"]
    .md-code-copy`），它的取值又来自右侧面板工具条的 24×24 图标键。
    该键改前是 base `Message.css:497` 的一档：22×22 / r4 / 1px 面板描边 / 实底
    （浅 rgba(0,0,0,.12)、深 rgba(90,93,94,.31)，来自 `--vscode-toolbar-hoverBackground`）

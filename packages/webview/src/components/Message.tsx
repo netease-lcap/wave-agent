@@ -31,6 +31,7 @@ import {
 import { attachBrokenImageFallback } from "../utils/brokenImageFallback";
 import { highlightCode } from "../utils/highlight";
 import { copyTextToClipboard } from "../utils/clipboard";
+import { COPY_PATH_ICON_PATHS } from "./FilePaneToolbarIcons";
 import { marked } from "marked";
 
 // ... (existing imports)
@@ -534,12 +535,51 @@ const highlightBashCommandBody = (command: string): string => {
 /** 代码块复制成功后图标与文案停留多久（spec: 代码块复制按钮场景 5）。 */
 export const CODE_COPY_FEEDBACK_MS = 1500;
 
+/** 桌面端图标的描边档：与文件面板工具条那套官方矢量逐值相同（1.4 / 圆头圆角）。 */
+const MD_COPY_ICON_STROKE =
+  'fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"';
+
+/** 「已复制」对勾：与模型选择器那条折线同一形状，线宽按图标族收到 1.4。 */
+const MD_CHECK_ICON_PATH = "M3 8.5l3.2 3L13 4.5";
+
+/**
+ * 代码块复制键的图标（设计师 2026-11-10：「就是图标要改掉，统一一下复制图标，
+ * 不光是交互样式」）。
+ *
+ * 桌面端改成官方矢量，不再用 codicon 字体字形：直接用官方「复制.svg」那枚两张纸
+ * （`COPY_PATH_ICON_PATHS` —— 与 `FilePaneToolbarIcons.tsx` 的 `CopyPathIcon` 是
+ * 同一份 path 数据，逐像素同源），16×16 / 线宽 1.4 / `currentColor`：颜色由按钮
+ * 继承，hover、深色档、按下都自动跟随，不会再出现字体字形自带 `#606060` 那种比
+ * 同排图标浅一档的问题。
+ *
+ * 之所以不用文件面板「复制文件内容」那枚剪贴板：那边把「两张纸 = 复制路径 / 剪贴板
+ * = 复制文件内容」当成同排两颗按钮的区分手段，而复制代码在另一处、有自己的悬停
+ * 提示，按「复制」这件事本身统一成官方那一枚更顺。若设计师点名要剪贴板，把
+ * `COPY_PATH_ICON_PATHS` 换成 `COPY_CONTENT_ICON_PATHS` 即可（同一套描边档）。
+ *
+ * 复制与对勾两枚同时输出，靠按钮上的 `is-copied` 换显隐（纯 CSS）——所以
+ * `copyCodeBlockText` 那套「改 DOM 换图标类」在桌面端什么都不用做。
+ * 插件端没有这套矢量资产，保留 codicon 字形（仍是 `codicon-copy` / `codicon-check`），
+ * 视觉与改动前一致。
+ */
+const mdCodeCopyIcon = (kind: "copy" | "check"): string => {
+  const paths: readonly string[] =
+    kind === "copy" ? COPY_PATH_ICON_PATHS : [MD_CHECK_ICON_PATH];
+  return (
+    `<svg class="md-code-copy-icon md-code-copy-icon--${kind}" width="16" height="16"` +
+    ` viewBox="0 0 16 16" ${MD_COPY_ICON_STROKE} aria-hidden="true">` +
+    paths.map((d) => `<path d="${d}"></path>`).join("") +
+    `</svg>`
+  );
+};
+
 /**
  * 代码块右上角复制按钮的点击落地（spec: ui/message-rendering-system.md「助手
  * 消息代码块的复制按钮」场景 4-6）。
  *
- * 这块 DOM 是净化后的 HTML 字符串、不是 React 树，所以反馈直接改 DOM：图标在
- * `codicon-copy` / `codicon-check` 之间换，可访问名与悬停提示（桌面端 `data-tip`、
+ * 这块 DOM 是净化后的 HTML 字符串、不是 React 树，所以反馈直接改 DOM：桌面端
+ * 靠按钮上的 `is-copied` 换掉那一对矢量图标（见 `mdCodeCopyIcon`），插件端在
+ * `codicon-copy` / `codicon-check` 之间换；可访问名与悬停提示（桌面端 `data-tip`、
  * 插件端 `title`）换成「已复制」，1.5s 后自己回来。块被虚拟列表卸载后不再回写
  * （`isConnected` 兜底）。
  *
@@ -688,7 +728,11 @@ export const createMessageMarkdownRenderer = (
     const copyButton = code.trim()
       ? `<button class="md-code-copy" type="button" ${
           isDesktopHost() ? 'data-tip="复制代码"' : 'title="复制代码"'
-        } aria-label="复制代码"><span class="codicon codicon-copy" aria-hidden="true"></span></button>`
+        } aria-label="复制代码">${
+          isDesktopHost()
+            ? mdCodeCopyIcon("copy") + mdCodeCopyIcon("check")
+            : '<span class="codicon codicon-copy" aria-hidden="true"></span>'
+        }</button>`
       : "";
     return `<div class="md-code-block">${copyButton}${pre}</div>\n`;
   };
@@ -870,6 +914,13 @@ const parseMarkdownWithMermaid = (content: string): ParsedMarkdownContent => {
           // 屏幕上没有入口而单测与走查看不出差异（同上面 span / div 的陷阱）。
           // 属性仍受 ALLOWED_ATTR 约束，无脚本语义。
           "button",
+          // svg / path 同样只为这颗复制按钮（桌面端图标改成官方矢量，见
+          // `mdCodeCopyIcon`）：不在白名单时 DOMPurify 会连 `<svg>` 一起剥掉，
+          // 屏幕上只剩一颗空按钮。只放行这两层形状元素，`use` / `image` /
+          // `foreignObject` 一律不放——模型正文里塞进来的 `<svg>` 也只是图形，
+          // 默认净化规则仍会摘掉脚本与事件属性。
+          "svg",
+          "path",
         ],
         ALLOWED_ATTR: [
           "href",
@@ -894,6 +945,20 @@ const parseMarkdownWithMermaid = (content: string): ParsedMarkdownContent => {
           // 不让模型在正文里塞任意 data-*），所以按老规矩往里点名单条，不整批放开。
           // 属性本身无脚本语义，仍受默认 URL 校验约束。
           "data-tip",
+          // 桌面端复制图标的矢量属性（`mdCodeCopyIcon` 拼的 `<svg>` / `<path>`）：
+          // 几何四件套 + 描边四件套 + path 的 `d`。少任何一条都会被静默摘掉，
+          // 结果是「图标看不见」而不是保存不了。注意 `d` 必须显式列出——
+          // DOMPurify 会把未列出的属性一起剥掉，实测 path 会变成空标签。
+          "width",
+          "height",
+          "viewBox",
+          "d",
+          "fill",
+          "stroke",
+          "stroke-width",
+          "stroke-linecap",
+          "stroke-linejoin",
+          "aria-hidden",
         ],
         ALLOW_DATA_ATTR: false,
         FORBID_ATTR: [],
@@ -2086,7 +2151,9 @@ export const Message: React.FC<MessageProps> = React.memo(
                 // 官方矢量（设计师 1110 第 19 轮：「这个图标用 跳转.svg」）：监视器 +
                 // 右向箭头，与面板「后台任务」那颗同一套外形。第 23 轮同样放开到三端
                 // （「只换图标、盒不动」）。
-                iconSvg={<JumpToBackgroundIcon className="message-action-icon" />}
+                iconSvg={
+                  <JumpToBackgroundIcon className="message-action-icon" />
+                }
                 label="把本轮转到后台"
                 testId="background-current-task"
                 onClick={onBackgroundCurrentTask!}
