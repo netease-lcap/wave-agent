@@ -10552,6 +10552,101 @@ describe("SSH remote hosts", () => {
     expect(clear?.paneId).toBe("pane-1");
   });
 
+  it("desktopSelectHost opens a session on the new host's default directory", async () => {
+    // 新对话切到远程主机后，分屏不能停在「显示了远端目录、却没有会话」的半残状态：
+    // 斜杠命令弹层要过 agent 取命令（没有会话 → 列表空 → 弹层不出现），直接发送
+    // 消息则被「请先选择工作目录」拦下。切主机把空白 agent 解绑之后必须在默认目录
+    // 上补一个，与本地新对话的状态一致（spec scenario 23）。
+    seedSshConfig("Host prod\n  HostName 10.0.0.1\n");
+    const { host, store, sent } = await readyHost(); // 本地会话 /work/a
+    store.addRecentWorkdir({ host: "prod", path: "/remote/repo" });
+    const before = h.agentInstances.length;
+
+    await host.handleWebviewMessage({
+      command: "desktopSelectHost",
+      host: "prod",
+    });
+
+    // 建会话是异步的（切主机本身不等远端），等它落到分屏上。
+    await vi.waitFor(() => {
+      const panes = sent("desktopPanes").at(-1) as {
+        panes: Array<{ sessionId?: string; host: string }>;
+      };
+      expect(panes.panes[0]).toMatchObject({ host: "prod" });
+      expect(panes.panes[0].sessionId).toBeDefined();
+    });
+    expect(h.agentInstances).toHaveLength(before + 1);
+    expect(lastAgent().initialize).toHaveBeenCalledWith(
+      expect.objectContaining({ workdir: "/remote/repo" }),
+    );
+
+    // 用户就在这个状态下输入 `/`：命令列表必须非空，否则弹层不出现。
+    await host.handleWebviewMessage({
+      command: "requestSlashCommands",
+      filterText: "",
+    });
+    await vi.waitFor(() => {
+      const reply = sent("slashCommandsResponse").at(-1) as {
+        commands?: unknown[];
+      };
+      expect(reply.commands?.length ?? 0).toBeGreaterThan(0);
+    });
+  });
+
+  it("desktopSelectHost leaves the picker alone when the host has no recent directory", async () => {
+    // 没有默认目录时无处开会话，分屏就停在「选择工作目录…」——不得为了让 `/` 有行
+    // 可用而凭空建一个没有目录的会话。
+    seedSshConfig("Host prod\n  HostName 10.0.0.1\n");
+    const { host, sent } = await readyHost();
+    const before = h.agentInstances.length;
+    const authBefore = sent("authStatusResponse").length;
+
+    await host.handleWebviewMessage({
+      command: "desktopSelectHost",
+      host: "prod",
+    });
+
+    // 登录态重查是切主机那条链上建会话之前的最后一步：等到它就等于等链跑完。
+    await vi.waitFor(() => {
+      expect(sent("authStatusResponse").length).toBeGreaterThan(authBefore);
+    });
+    expect(h.agentInstances).toHaveLength(before);
+    expect(sent("updateWorkdir").at(-1)).toMatchObject({
+      paneId: "pane-1",
+      workdir: undefined,
+    });
+  });
+
+  it("desktopSelectHost drops the auto session when the user switches host again mid-spawn", async () => {
+    // 自动建会话期间用户又换了主机（或绑了别的会话）：刚 spawn 的空会话必须丢弃，
+    // 不得把它绑到分屏上抢走用户的视图。
+    seedSshConfig("Host prod\n  HostName 10.0.0.1\n");
+    const { host, store } = await readyHost();
+    store.addRecentWorkdir({ host: "prod", path: "/remote/repo" });
+    let releaseGate = () => {};
+    h.initializeGate = new Promise<void>((resolve) => (releaseGate = resolve));
+    const before = h.agentInstances.length;
+
+    await host.handleWebviewMessage({
+      command: "desktopSelectHost",
+      host: "prod",
+    });
+    await vi.waitFor(() => {
+      expect(h.agentInstances).toHaveLength(before + 1);
+    });
+    const prodAgent = lastAgent();
+
+    await host.handleWebviewMessage({
+      command: "desktopSelectHost",
+      host: "local",
+    });
+    releaseGate();
+
+    await vi.waitFor(() => {
+      expect(prodAgent.destroy).toHaveBeenCalled();
+    });
+  });
+
   it("desktopSelectHost re-pushes the pane layout so the webview host label refreshes", async () => {
     // The webview derives a pane's host from the authoritative `desktopPanes`
     // push, not from desktopWorkdirState — a stale pane layout keeps the host

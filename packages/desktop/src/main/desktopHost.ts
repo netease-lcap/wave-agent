@@ -6142,6 +6142,50 @@ export class DesktopHost {
   }
 
   /**
+   * 切到某台主机后，若分屏还停在「新对话」状态，就在这台主机的默认目录上把会话建起来
+   * （spec desktop/desktop-remote.md 场景 28）。
+   *
+   * 判据是分屏**没有 agent**。主机的最近目录只是选择器里的默认值，宿主这边并没有
+   * 会话，于是分屏处在半残状态：工作目录显示着远端路径，输入 `/` 却拿不到命令
+   * （斜杠弹层要过 agent 取命令，见 handleSlashCommandsRequest），直接发送消息会被
+   * 「请先选择工作目录」拦下。本地新对话没这个问题——它绑着一个空白 agent；切主机把
+   * 空白 agent 解绑之后补一个，两个入口就一致了：命令弹层、直接发送、`@` 文件搜索
+   * 都立即可用。
+   *
+   * 失败静默：主机不可达时连接本身已有 toast，这里再推系统消息反而会把分屏踢出
+   * 「新对话」状态（`pushSystemMessage` 算作会话内容），让用户连目录都选不了。
+   */
+  private async openDefaultSessionOnHost(
+    paneId: string,
+    host: string,
+  ): Promise<void> {
+    if (this.agentForPane(paneId) || this.pendingRestores.has(paneId)) return;
+    // 目录取本机缓存那份（不额外发 RPC）：切主机本身已经在拉远端那份 recents，
+    // 这里再要一次除了多一次往返，还会在隧道刚断开时把「空闲后不再重连」的重连
+    // 序列又踢起来。会话一旦激活，`workdir` 就由那个 agent 决定（activateAgentInPane
+    // → sendWorkdirState），选择器显示的就是实际工作的目录，不会与这里分叉。
+    const dir = this.configStore.getRecentWorkdirsForHost(host)[0];
+    if (!dir) return;
+    try {
+      const agent = await this.spawnAgent({ host, workdir: dir });
+      // 建会话期间用户又切了主机、绑了别的会话、开始恢复、或把焦点移到了别的分屏
+      // → 丢弃这次的空会话，绝不抢用户当前的视图与焦点。
+      if (
+        (this.hostState.get(paneId) ?? LOCAL_HOST) !== host ||
+        this.focusedPaneId !== paneId ||
+        this.agentForPane(paneId) ||
+        this.pendingRestores.has(paneId)
+      ) {
+        await this.discardAgent(agent);
+        return;
+      }
+      await this.activateAgentInPane(paneId, agent);
+    } catch {
+      // 见上：静默。
+    }
+  }
+
+  /**
    * Pick a host for the focused pane's new-session workdir picker. Only
    * hosts from ~/.ssh/config (or 本地) are accepted; switching host re-sends
    * workdir state so the picker shows that host's recents (spec scenario 1).
@@ -6208,7 +6252,12 @@ export class DesktopHost {
     // host's 登录 button. Failures surface as a system message, the picker
     // updates immediately.
     this.ensureClientFor(host)
-      .then(() => this.refreshAuthStatus(host))
+      .then(async () => {
+        await this.refreshAuthStatus(host);
+        // 连上之后把「新对话」状态收尾：在该主机的默认目录上建会话，否则分屏会停在
+        // 「显示了目录却没有会话」的半残状态（见 openDefaultSessionOnHost）。
+        await this.openDefaultSessionOnHost(pid, host);
+      })
       .catch((error) => {
         this.showToast({
           message: `连接主机 ${host} 失败：${error instanceof Error ? error.message : String(error)}`,
@@ -6260,7 +6309,12 @@ export class DesktopHost {
       });
     }
     this.ensureClientFor(name)
-      .then(() => this.refreshAuthStatus(name))
+      .then(async () => {
+        await this.refreshAuthStatus(name);
+        // Same as handleSelectHost: a pane that is still the new-session picker
+        // gets its session opened on this host's default directory.
+        await this.openDefaultSessionOnHost(pid, name);
+      })
       .catch((error) => {
         this.showToast({
           message: `连接主机 ${name} 失败：${error instanceof Error ? error.message : String(error)}`,
