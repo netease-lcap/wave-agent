@@ -264,6 +264,23 @@ describe("cleanupStaleEphemeralWorktrees", () => {
     expect(moduleMocks.removeWorktree).not.toHaveBeenCalled();
   });
 
+  it("leaves a directory git no longer recognises alone", async () => {
+    // A directory whose `.git` pointer is gone (a previous removal got that far
+    // before failing or crashing) is a plain leftover: every git probe inside it
+    // fails, so `isCleanAndFullyPushed` fails closed and the sweep never reaches
+    // `removeWorktree`. That is the intended division of labour — the sweep only
+    // reclaims worktrees git still vouches for.
+    addWorktree(STALE_NAME);
+    git.failStatus = true;
+
+    const result = await cleanupStaleEphemeralWorktrees(REPO_ROOT, 30);
+
+    expect(result).toEqual({ removed: 0, errors: 0 });
+    expect(moduleMocks.removeWorktree).not.toHaveBeenCalled();
+    // Nothing was removed, so there is no metadata to prune either.
+    expect(git.calls.some((c) => c.args.includes("prune"))).toBe(false);
+  });
+
   it("never touches user worktrees, whatever their state", async () => {
     // A pre-prefix ephemeral name, a session worktree auto name, and a
     // user-chosen name — none may be swept.

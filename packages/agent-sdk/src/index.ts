@@ -56,6 +56,7 @@ export type { RuntimeDepsResult } from "./utils/runtimeDeps.js";
 export { shrinkImageForTransport } from "./utils/imageRewrite.js";
 export type { TransportShrinkOutcome } from "./utils/imageRewrite.js";
 export * from "./utils/worktreeSession.js";
+export * from "./utils/worktreeRemoval.js";
 export * from "./utils/worktreeUtils.js";
 export {
   loadMergedWaveConfig,

@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import * as fs from "node:fs";
 import { exitWorktreeTool } from "@/tools/exitWorktreeTool.js";
 import type { ToolContext } from "@/tools/types.js";
 import type { WorktreeSession } from "@/utils/worktreeSession.js";
@@ -8,6 +9,14 @@ import * as worktreeUtils from "@/utils/worktreeUtils.js";
 import * as worktreeHooks from "@/services/worktreeHooks.js";
 
 vi.mock("@/utils/worktreeUtils.js");
+// `removeWorktree` is automocked into a no-op here, so "did the directory go
+// away" is answered by `existsSync` — the one witness the tool has in
+// production too (the removal refuses silently instead of throwing). Only that
+// call is intercepted; everything else stays the real fs.
+vi.mock("node:fs", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs")>();
+  return { ...actual, existsSync: vi.fn() };
+});
 vi.mock("@/services/worktreeHooks.js", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("@/services/worktreeHooks.js")>();
@@ -192,6 +201,41 @@ describe("exitWorktreeTool", () => {
       expect(result.content).toContain("Exited and removed worktree");
       expect(result.content).not.toContain("Discarded");
       expect(worktreeUtils.removeWorktree).toHaveBeenCalled();
+    });
+
+    it("should report a surviving worktree instead of claiming it was removed", async () => {
+      mockGetWorktreeSession.mockReturnValue(mockSession);
+      vi.mocked(worktreeUtils.countWorktreeChanges).mockReturnValue({
+        changedFiles: 0,
+        commits: 0,
+      });
+      // `removeWorktree` returns nothing: a refusal (locked, an independent
+      // repository, the main working tree) and a failed delete look identical
+      // from here. The only witness is the directory.
+      vi.mocked(fs.existsSync).mockImplementation(
+        (p) => p === mockSession.worktreePath,
+      );
+
+      const result = await exitWorktreeTool.execute(
+        { action: "remove" },
+        mockContext,
+      );
+
+      expect(worktreeUtils.removeWorktree).toHaveBeenCalled();
+      // The old text announced success over a directory that is still there.
+      expect(result.content).not.toContain("Exited and removed worktree");
+      expect(result.success).toBe(false);
+      expect(result.content).toContain(
+        `Exited worktree at ${mockSession.worktreePath}, but it was not removed.`,
+      );
+      expect(result.content).toContain(
+        `Worktree directory survived at ${mockSession.worktreePath}`,
+      );
+      expect(result.content).toContain("Session is now back in /original/dir");
+      expect(result.error).toContain("was not removed");
+      // The session still exits: the tool did the half of the job it could.
+      expect(mockSetWorktreeSession).toHaveBeenCalledWith(null);
+      expect(mockSetWorkdir).toHaveBeenCalledWith("/original/dir");
     });
 
     describe("action: remove — hook-based worktree (WorktreeRemove replace semantics)", () => {
