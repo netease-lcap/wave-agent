@@ -30,7 +30,7 @@
   "scripts": {
     "wave": "tsx --tsconfig tsconfig.dev.json src/index.ts",
     "build": "rimraf dist && node scripts/bundle.mjs",
-    "type-check": "tsc --noEmit --incremental",
+    "type-check": "tsrs --noEmit",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:unit": "vitest run --exclude 'tests/integration/**' --exclude '**/*.integration.test.ts'",

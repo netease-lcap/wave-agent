@@ -10,8 +10,8 @@
   "scripts": {
     "wave": "tsx --tsconfig packages/code/tsconfig.dev.json packages/code/src/index.ts",
     "watch": "pnpm -r --parallel watch",
-    "build": "pnpm -r build",
-    "type-check": "pnpm -r type-check",
+    "build": "pnpm -r --workspace-concurrency=1 build",
+    "type-check": "pnpm -r --workspace-concurrency=1 type-check",
     "test": "pnpm -r test",
     "test:coverage": "pnpm -r test:coverage",
     "test:unit": "pnpm -r test:unit",
@@ -53,6 +53,7 @@
     "oxlint": "^1.79.0",
     "prettier": "3.6.2",
     "tsx": "catalog:",
+    "tsrs": "catalog:",
     "typescript": "catalog:",
     "vitepress": "^1.6.4",
     "vitepress-plugin-llms": "^1.14.0",

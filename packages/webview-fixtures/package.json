@@ -7,9 +7,9 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
-    "build": "rimraf dist && tsc -p tsconfig.build.json",
+    "build": "rimraf dist && tsrs -p tsconfig.build.json",
     "format": "prettier --write .",
-    "type-check": "tsc --noEmit",
+    "type-check": "tsrs --noEmit",
     "test": "vitest run",
     "test:unit": "vitest run"
   },

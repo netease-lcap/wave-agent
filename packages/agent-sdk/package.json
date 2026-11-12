@@ -44,8 +44,8 @@
     "README.md"
   ],
   "scripts": {
-    "build": "rimraf dist && tsc -p tsconfig.build.json",
-    "type-check": "tsc --noEmit --incremental",
+    "build": "rimraf dist && tsrs -p tsconfig.build.json",
+    "type-check": "tsrs --noEmit",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:unit": "vitest run --exclude 'tests/integration/**' --exclude '**/*.integration.test.ts'",

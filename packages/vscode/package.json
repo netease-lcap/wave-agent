@@ -126,7 +126,7 @@
     "sync:webview": "node scripts/syncWebview.mjs",
     "esbuild:prod": "node esbuild.config.mjs --production && node scripts/syncWebview.mjs --production && node scripts/bundleCli.mjs",
     "package": "node scripts/package.mjs",
-    "type-check": "tsc --noEmit --incremental && tsc -p tests --noEmit --incremental",
+    "type-check": "tsrs --noEmit && tsrs -p tests --noEmit",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:e2e:completion": "node scripts/runInlineCompletionE2E.mjs",

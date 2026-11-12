@@ -26,6 +26,15 @@ minimumReleaseAgeExclude:
   - wave-search-tools-linux-x64@0.2.0
   - wave-search-tools-win32-x64@0.2.0
   - wave-search-tools@0.2.0 || 0.3.0
+  - "@tsrs/darwin-arm64@0.25.0-ts7.1.0-beta"
+  - "@tsrs/darwin-x64@0.25.0-ts7.1.0-beta"
+  - "@tsrs/linux-arm64-gnu@0.25.0-ts7.1.0-beta"
+  - "@tsrs/linux-arm64-musl@0.25.0-ts7.1.0-beta"
+  - "@tsrs/linux-x64-gnu@0.25.0-ts7.1.0-beta"
+  - "@tsrs/linux-x64-musl@0.25.0-ts7.1.0-beta"
+  - "@tsrs/win32-arm64@0.25.0-ts7.1.0-beta"
+  - "@tsrs/win32-x64@0.25.0-ts7.1.0-beta"
+  - tsrs@0.25.0-ts7.1.0-beta
 # 工具链版本统一到 catalog：升级 vitest / typescript / tsx 只改这里一处，
 # 各包 package.json 写 `"vitest": "catalog:"`。catalogMode: prefer 让 `pnpm add`
 # 也优先落到 catalog 版本，避免新包又写一份独立范围把版本漂开。
@@ -34,6 +43,14 @@ catalog:
   vitest: ^5.1.0
   "@vitest/coverage-v8": ^5.1.0
   tsx: ^4.20.4
+  # type-check 与 build 的执行者是 tsrs（TypeScript 的 Rust 移植），不是 tsc：
+  # 7.0.2 的原生编译器在多线程模式下 program 的输入集合不确定，同一份代码连跑会
+  # 随机丢掉默认 lib / 某个源文件（幻影 TS2307/TS2550/TS2339，emit 时直接漏产文件），
+  # 上游 microsoft/typescript-go#4262 #4834 记录了这个缺陷，7.1 beta/dev 实测仍在。
+  # tsrs 自带 lib、逐字节复现 .js/.d.ts，program 集合稳定（本仓实测 120 轮 0 抖动）。
+  # 精确锁版本：它的版本号绑死 TS 基线（0.25.0-ts7.1.0-beta ≈ TS 7.1.0-beta），
+  # 且几乎每天发版，用范围会静默换基线。升级时同时复核语义基线。
+  tsrs: 0.25.0-ts7.1.0-beta
 catalogs:
   # @types/node 刻意分层：根锁 22 对齐 engines.node >= 22，三个端跟随各自运行时
   # （Electron / VS Code 的 Node 版本更新）。合并成一份会让端侧丢掉新 API 类型。
