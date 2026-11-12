@@ -9,15 +9,18 @@
  * B) is an order of magnitude larger than the delta it carries — and the relay
  * pays that cost per subscriber, per frame.
  *
- * So the remote path alone gets a merge window: notifications whose payload is
- * an accumulating delta are held for at most `windowMs` and concatenated.
- * Everything else is a discrete event — a permission request, a tool block
- * reaching `end`, a status signal — and is written through immediately, after
- * flushing whatever was held, so a phone never observes a reordered stream.
+ * So the remote path alone gets a merge window: notifications carrying an
+ * accumulating delta are held for at most `windowMs` and concatenated, and
+ * notifications carrying a **replaceable snapshot** (a tool block's `running`
+ * stage `shortResult`) are held for the same window and overwritten, last one
+ * winning. Everything else is a discrete event — a permission request, a tool
+ * block reaching `end`, a status signal — and is written through immediately,
+ * after flushing whatever was held, so a phone never observes a reordered stream.
  *
  * This is a delay, never a sample: no delta is dropped, and the merged frame
- * carries exactly the bytes the individual frames would have. The local
- * desktop / IDE path does not go through here at all.
+ * carries exactly the bytes the individual frames would have (for the
+ * replaceable kind, exactly the bytes of the last frame). The local desktop /
+ * IDE path does not go through here at all.
  */
 
 /** One notification on its way to the relay. */
@@ -34,24 +37,43 @@ export interface RelayFrame {
  */
 export const REMOTE_FRAME_WINDOW_MS = 150;
 
-interface MergeSpec {
-  /** The params field that accumulates. */
-  field: string;
-  /** Identity of the accumulating thing, so two streams never interleave. */
-  key: string;
-}
+type MergeSpec =
+  | {
+      /** Concatenate `field` across every frame of the run. */
+      mode: "append";
+      /** The params field that accumulates. */
+      field: string;
+      /** Identity of the accumulating thing, so two runs never interleave. */
+      key: string;
+    }
+  | {
+      /** Keep only the latest frame of the run — a snapshot, not a delta. */
+      mode: "replace";
+      /** Identity of the thing being refreshed. */
+      key: string;
+    };
 
 /**
- * Decide whether a notification is a pure delta that may be merged.
+ * Decide whether a notification may be merged, and how.
  *
- * Only the streaming callbacks qualify, and only in their streaming stage:
+ * The streaming callbacks qualify for `append` only in their streaming stage:
  * their payloads are documented as deltas ("consumers accumulate"), and
  * `messageOperations.ts` accumulates `parametersChunk` by plain concatenation —
  * the same operation this class performs. A `start` / `running` / `end` frame
  * is a one-time snapshot (or the authoritative full value) and must not be
- * merged with anything. `btwContent` (the `/btw` answer stream) is the fourth,
- * and the compaction summary tail (`compactionContentUpdate`) the fifth: both
- * carry one delta field and no stages, so every frame is a delta.
+ * concatenated with anything. `btwContent` (the `/btw` answer stream) is the
+ * fourth, and the compaction summary tail (`compactionContentUpdate`) the fifth:
+ * both carry one delta field and no stages, so every frame is a delta.
+ *
+ * The one `replace` case is the tool block's `running` + `shortResult` snapshot
+ * (a subagent's live progress, a foreground script's invocation count). The SDK
+ * rewrites it on every subagent delta — model-frame rate, with `compactParams`
+ * and friends repeated in full each time — while the local CLI throttles the
+ * very same family (500 ms window, `core/stream-content-updates.md`) precisely
+ * because nothing is lost by showing it less often: it is "the progress right
+ * now", and the later snapshot supersedes the earlier one entirely. Without
+ * this the window's savings leak out through the busiest path of a subagent
+ * run; see `remote/remote-channel.md`「白名单与增量拉取」场景 14.
  */
 function mergeSpec(method: string, params: unknown): MergeSpec | undefined {
   if (typeof params !== "object" || params === null) return undefined;
@@ -64,20 +86,34 @@ function mergeSpec(method: string, params: unknown): MergeSpec | undefined {
     if (p.stage !== "streaming" || typeof p.chunk !== "string")
       return undefined;
     if (typeof p.messageId !== "string") return undefined;
-    return { field: "chunk", key: `c\u0000${p.messageId}` };
+    return {
+      mode: "append",
+      field: "chunk",
+      key: `c\u0000${p.messageId}`,
+    };
   }
 
   if (method === "toolBlockUpdated") {
-    if (p.stage !== "streaming" || typeof p.parametersChunk !== "string") {
-      return undefined;
-    }
     if (typeof p.messageId !== "string" || typeof p.id !== "string") {
       return undefined;
     }
-    return {
-      field: "parametersChunk",
-      key: `t\u0000${p.messageId}\u0000${p.id}`,
-    };
+    if (p.stage === "streaming" && typeof p.parametersChunk === "string") {
+      return {
+        mode: "append",
+        field: "parametersChunk",
+        key: `t\u0000${p.messageId}\u0000${p.id}`,
+      };
+    }
+    // Progress snapshot, not content: `start` / `end` and the `running` frame
+    // that only announces "parameters complete" carry no `shortResult` and stay
+    // discrete.
+    if (p.stage === "running" && typeof p.shortResult === "string") {
+      return {
+        mode: "replace",
+        key: `r\u0000${p.messageId}\u0000${p.id}`,
+      };
+    }
+    return undefined;
   }
 
   // `/btw` side question (`btwContent`, spec remote/remote-web.md「Web 页也能用
@@ -92,6 +128,7 @@ function mergeSpec(method: string, params: unknown): MergeSpec | undefined {
       return undefined;
     }
     return {
+      mode: "append",
       field: "content",
       // 归属键里有 requestId：多轮追问之后同一个问题可以同时在途两次（从主输入框
       // 连发两次 `/btw 同样的话`），只按 question 合并会把两轮的增量揉成一团。
@@ -108,20 +145,29 @@ function mergeSpec(method: string, params: unknown): MergeSpec | undefined {
   // 场景 10).
   if (method === "compactionContentUpdate") {
     if (typeof p.content !== "string") return undefined;
-    return { field: "content", key: "k" };
+    return { mode: "append", field: "content", key: "k" };
   }
 
   return undefined;
 }
 
-interface Pending {
-  method: string;
-  sessionId?: string;
-  /** Params of the first frame of the run, with the delta field zeroed. */
-  base: Record<string, unknown>;
-  field: string;
-  text: string;
-}
+type Pending =
+  | {
+      kind: "append";
+      method: string;
+      sessionId?: string;
+      /** Params of the first frame of the run, with the delta field zeroed. */
+      base: Record<string, unknown>;
+      field: string;
+      text: string;
+    }
+  | {
+      kind: "replace";
+      method: string;
+      sessionId?: string;
+      /** Params of the newest frame — the whole snapshot, nothing merged in. */
+      params: Record<string, unknown>;
+    };
 
 export class NotificationCoalescer {
   private pending = new Map<string, Pending>();
@@ -147,22 +193,38 @@ export class NotificationCoalescer {
     const mapKey = `${sessionId ?? ""}\u0000${method}\u0000${spec.key}`;
     const existing = this.pending.get(mapKey);
     if (existing) {
-      existing.text += String(
-        (params as Record<string, unknown>)[spec.field] ?? "",
-      );
+      if (existing.kind === "replace") {
+        // Last one wins: a progress snapshot supersedes the one before it, so
+        // keeping the earlier bytes would only send a stale progress line.
+        existing.params = { ...(params as Record<string, unknown>) };
+      } else {
+        existing.text += String(
+          (params as Record<string, unknown>)[existing.field] ?? "",
+        );
+      }
       return;
     }
 
-    const base = { ...(params as Record<string, unknown>) };
-    const text = String(base[spec.field] ?? "");
-    delete base[spec.field];
-    this.pending.set(mapKey, {
-      method,
-      sessionId,
-      base,
-      field: spec.field,
-      text,
-    });
+    if (spec.mode === "replace") {
+      this.pending.set(mapKey, {
+        kind: "replace",
+        method,
+        sessionId,
+        params: { ...(params as Record<string, unknown>) },
+      });
+    } else {
+      const base = { ...(params as Record<string, unknown>) };
+      const text = String(base[spec.field] ?? "");
+      delete base[spec.field];
+      this.pending.set(mapKey, {
+        kind: "append",
+        method,
+        sessionId,
+        base,
+        field: spec.field,
+        text,
+      });
+    }
     this.order.push(mapKey);
     if (this.timer === undefined) {
       this.timer = setTimeout(() => this.flush(), this.windowMs);
@@ -188,7 +250,10 @@ export class NotificationCoalescer {
       const item = buffered.get(key)!;
       return {
         method: item.method,
-        params: { ...item.base, [item.field]: item.text },
+        params:
+          item.kind === "replace"
+            ? item.params
+            : { ...item.base, [item.field]: item.text },
         sessionId: item.sessionId,
       };
     });
