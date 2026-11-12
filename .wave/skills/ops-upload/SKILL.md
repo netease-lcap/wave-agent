@@ -65,7 +65,7 @@ allowed-tools:
 
 ## 一、桌面端三件套
 
-**不用本地构建**：CI 已把产物传到 GitHub Release，下载后直接上传（Windows exe 上传前先本地签名，见下）。
+**不用本地构建**：CI 已把产物传到 GitHub Release，下载后直接上传（Windows exe 上传前先本地签名，并把签名后的那份覆盖回 Release，见下）。
 
 ### 发布前检查（每次都做）
 
@@ -77,7 +77,25 @@ allowed-tools:
    ls /tmp/wave-desktop-<version>
    ```
    资产名随 electron-builder 的命名规则变，**以 `ls` 实际输出为准**（2026-09-20 实测为 `CodeWave.IDE-<v>-arm64.dmg` / `CodeWave.IDE-<v>-arm64-mac.zip` / `CodeWave.IDE.Setup.<v>.exe`）。
-4. **（仅 Windows exe）上传前先签名**：Release 上那份是未签名的，用 `windows-sign` 技能的 `sign <文件>` 签本地副本（Windows 直连；Linux/macOS 自动 SSH 到一台配好的 Windows 机器签完取回）。**签完的字节就是最终发布物，只上传管控台，不需要回传 GitHub**。签名会改字节与大小 ⇒ 后面核 `sha512` / `size` 一律用**签名后**的本地文件算，与 Release 上那份不同是正常的；签完别再改文件（签名会失效）。
+4. **（仅 Windows exe）签名 → 把签名后的那份回传 Release**：Release 上那份是未签名的，先签本地副本，再**覆盖回 Release**，让「Release 上的 exe」与「线上发布的 exe」是同一份字节。
+
+   ```bash
+   V=1.2.6; DIR=/tmp/wave-desktop-$V
+
+   # 签名（= windows-sign 技能；就地覆盖，文件名不变）：Windows 直连，Linux/macOS 自动 SSH 到配好的 Windows 机器签完取回
+   "$WAVE_SKILL_DIR/windows-sign.sh" sign "$DIR/CodeWave.IDE.Setup.$V.exe"
+
+   # 回传：同名 + --clobber 才是替换，不加会报 already_exists
+   gh release upload -R netease-lcap/wave-agent "wave-desktop@$V" \
+     "$DIR/CodeWave.IDE.Setup.$V.exe" --clobber
+   ```
+
+   **先回传、再传管控台**：管控台才是线上发布面，中途失败最糟的中间态是「线上已是签名版、Release 上还挂着未签名副本」。签名会改字节与大小 ⇒ 后面核 `sha512` / `size` 一律用**签名后**的本地文件算（与 Release 上原来那份不同是正常的，回传之后就一致了）；签完别再改文件（签名会失效）。
+
+**为什么必须回传**（两条理由都是有具体后果的，不是洁癖）：
+
+- **私有化出包会二次取这份 exe**：`ops-artifacts` 用 `gh release download` 拿三件套，`upload-all.sh` 按台账 `version+platform+channel+sha512` 判重。Release 上留**未签名**字节 ⇒ sha512 与台账里签名后那条对不上 ⇒ 判成「没有这份」→ 重传一遍**未签名**的 exe，按三元组**覆盖**掉客户环境里那条签名记录。回传后两份字节一致，判重直接跳过。
+- **换掉 asset 的字节不影响任何人自动更新**：Release 只挂 `.dmg` / `.zip` / `.exe`（`publish.yml` 的 `files` 清单里没有 `latest.yml` / `.blockmap`），**GitHub Release 不是更新源**；客户端只吃企业端 feed、按服务端算出的 `sha512` 校验。所以 `--clobber` 覆盖 exe 不会让任何人 `ERR_UPDATER_INTEGRITY_ERROR`。
 
 ### 上传（分片直传）
 
@@ -131,7 +149,7 @@ node $S --file "$DIR/CodeWave.IDE-$V-arm64-mac.zip" --version "$V" --platform ma
 - **服务端已支持**（vusion/codechat#50，`d4db5d2` 已在 main）：按版本 upsert 到 `desktop_release_notes`、feed 输出 `releaseNotes` 数组。企业端版本较老时该字段被**忽略**（init 路由逐字段读请求体，未知字段一律 400 不了），只表现为 feed 里没有记录。
 - **上线后要顺手验 feed**：`curl <server>/api/downloads/desktop/win/latest.yml | node -e "const y=require('js-yaml')…"` —— 解析成功且 `releaseNotes` 是**非空数组**、每项 `version`/`note` 都是字符串，才算真通。多行 markdown 一旦被字符串拼进 yml，**所有**客户端的更新检查都会挂（`ERR_UPDATER_INVALID_UPDATE_INFO`）。
 
-### 验证要点（四路硬证，上传后逐一跑）
+### 验证要点（五路硬证，上传后逐一跑；第 5 路仅 Windows）
 
 脚本在 `complete` 之后**已经自动核对**了 `version` / `platform` / `channels` / `sizeBytes` / `sha512`（不一致直接非零退出），下面第 1 步是回读台账再确认一遍「记录确实在库里」。
 
@@ -207,6 +225,18 @@ curl -s "https://codechat.codewave-test.163yun.com/api/downloads/desktop-beta/ma
 ```
 
 运营端 `neteasecc.*` 已不再挂这组接口（2026-11-04 起全仓只有企业端一个写面），旧地址只当「环境还没升级镜像」时的过渡兜底；产物读路径全在企业端，传完在同一个域名上验证，不用在两本地址之间来回切。
+
+**5. 签名后的字节确实回到 Release 了**（`--clobber` 成功也可能传错文件，别只看退出码）：GitHub 资产的 `digest` 是 `sha256:`，与本地算的逐字比；`size` 应等于**签名后**的字节数（与签名前那份不同是正常的）。`digest` 字段要较新的 `gh`（2.9x 实测有），老版本没有就退一步只比 `size`。
+
+```bash
+gh release view -R netease-lcap/wave-agent "wave-desktop@$V" --json assets \
+  -q '.assets[] | select(.name|endswith(".exe")) | "\(.name) \(.size) \(.digest)"'
+
+node -e "console.log('sha256:'+require('node:crypto').createHash('sha256').update(require('node:fs').readFileSync(process.argv[1])).digest('hex'))" \
+  /tmp/wave-desktop-$V/CodeWave.IDE.Setup.$V.exe
+```
+
+只有一个同名 exe 资产 = 替换成功；**出现两行就是名字不一样、`--clobber` 没命中**（先 `gh release delete-asset` 删掉未签名那份再传）。
 
 ## 二、文档站包
 
@@ -420,3 +450,4 @@ node .wave/skills/ops-upload/upload.mjs \
 - **「插件端」与「wave 插件市场」是两件事，别混**：平台**不再分发** 插件端安装包（vsix / jar），文案是「插件端已迁移至官方插件市场，不再在此分发」，发布走 `ide-plugin-publish` 技能；而平台**确实**托管 wave 官方插件市场的镜像快照（企业端 `/wave-plugins-official/`），上传见「四、wave 官方插件市场」。
 - **文档包由本技能的「二、文档站包」负责出包 + 上传**：CI 不再构建文档，`docs-<version>.tar.gz` 一律本地 `pnpm run docs:pack` 产出。上传走 `POST /api/publish/docs` 单次 multipart，**不进分片链路、不入台账**，所以传完在台账里看不到任何文档记录——这不是失败。
 - **远控页属托管类资源**：上传 201 只证明对象写进去了，页面上线要看「入口引用的 hash 名对不对得上本地 dist」；「页面已更新」≠「机器侧已更新」——白名单在服务那个会话的进程里，旧机器只显示「…指令没有回执」。
+- **Windows exe 回传 Release：先签后传 + 必须 `--clobber`**：同名资产默认不覆盖（422 `already_exists`）。顺序反过来（先传后签）等于把未签名那份当签名版发出去——字节没变，签名根本没进去。回传**只换资产，别顺手改 Release body**：客户端 S4 的变更记录是从 body 落的（`gh release view --json body` → `--release-notes-file`），手改 body 就与发版时生成的文本不同源。
