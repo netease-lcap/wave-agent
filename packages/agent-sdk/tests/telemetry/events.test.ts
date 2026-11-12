@@ -420,9 +420,9 @@ describe("events", () => {
 
     /**
      * Levels are derived from the event name, so this table is the whole
-     * contract: `error` is the only failure, everything else is informational
-     * (no WARN — no event is semantically a warning). A monitoring backend
-     * filters logs and buckets counters on these two fields.
+     * contract: `error` is a system fault, `tool_error` is a tool reporting
+     * failure (real signal, not an alert), everything else is informational. A
+     * monitoring backend filters logs and buckets counters on these two fields.
      */
     it.each([
       ["session_start", 9, "INFO"],
@@ -432,6 +432,7 @@ describe("events", () => {
       ["compaction", 9, "INFO"],
       ["system_prompt", 9, "INFO"],
       ["tool_schema", 9, "INFO"],
+      ["tool_error", 13, "WARN"],
       ["error", 17, "ERROR"],
     ] as const)(
       "should report %s at severity %i %s",

@@ -21,7 +21,34 @@ export type ErrorCategory =
   | "server"
   | "invalid_request"
   | "config"
+  | "persist"
+  | "mcp"
+  | "tool"
   | "unknown";
+
+/**
+ * Local write failures: the transcript could not be written. Deliberately not
+ * including `ENOENT` as a code — a missing path is only a persistence failure
+ * when the message says so (see `PERSIST_PATTERNS`), otherwise it is some other
+ * lookup that happened to fail.
+ */
+const PERSIST_CODES = new Set([
+  "ENOSPC",
+  "EDQUOT",
+  "EACCES",
+  "EROFS",
+  "EPERM",
+  "EISDIR",
+  "EMFILE",
+  "ENFILE",
+]);
+
+/** The transcript is gone or unwritable — the write path has no fallback. */
+const PERSIST_PATTERNS = [
+  /session file not found/i,
+  /failed to save (?:the )?session/i,
+  /cannot (?:write|append) (?:to )?(?:the )?session/i,
+];
 
 /** Node/undici codes meaning "the request never got a real reply". */
 const NETWORK_CODES = new Set([
@@ -108,6 +135,13 @@ export function classifyError(error: unknown): ErrorCategory {
   const name = readString(error, "name") ?? "";
   const code = readString(error, "code") ?? "";
   const message = messageOf(error);
+
+  // Local persistence is checked before the transport families: a disk that is
+  // full or a directory that drifted out from under us both surface as a plain
+  // `Error`, and neither is an upstream problem.
+  if (PERSIST_CODES.has(code) || matches(PERSIST_PATTERNS, message)) {
+    return "persist";
+  }
 
   // Provider SDKs name these types (`APIConnectionTimeoutError`,
   // `APIConnectionError` — same names in the OpenAI and Anthropic SDKs).

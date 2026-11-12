@@ -20,25 +20,29 @@ interface OTelLogger {
   }) => void;
 }
 
-/** OTel `SeverityNumber` values in use — INFO=9, ERROR=17. WARN (13) is unused. */
+/** OTel `SeverityNumber` values in use — INFO=9, WARN=13, ERROR=17. */
 const SEVERITY_INFO = 9;
+const SEVERITY_WARN = 13;
 const SEVERITY_ERROR = 17;
 
 /**
  * Event name → severity, so "which events are failures" is one list to read and
- * the same event can never report two levels from two call sites. Deliberately
- * no `WARN`: none of these events is semantically a warning, and a made-up
- * middle level is worse than an unused one (spec:
- * `enterprise/opentelemetry.md`「事件级别与错误的可监控性」).
+ * the same event can never report two levels from two call sites.
+ *
+ * `WARN` exists for `tool_error` alone: a tool reported failure, which is real
+ * signal but not a system fault. Filing it as `ERROR` would put every failed
+ * `grep` into the alert series; filing it as `INFO` would bury it (spec:
+ * `enterprise/opentelemetry.md`「可感知失败的覆盖」).
  *
  * Total over `OTelEventName` on purpose — adding an event fails to compile
  * until it is given a level.
  */
 const EVENT_SEVERITY: Record<
   OTelEventName,
-  { severityNumber: number; severityText: "INFO" | "ERROR" }
+  { severityNumber: number; severityText: "INFO" | "WARN" | "ERROR" }
 > = {
   error: { severityNumber: SEVERITY_ERROR, severityText: "ERROR" },
+  tool_error: { severityNumber: SEVERITY_WARN, severityText: "WARN" },
   session_start: { severityNumber: SEVERITY_INFO, severityText: "INFO" },
   session_end: { severityNumber: SEVERITY_INFO, severityText: "INFO" },
   user_prompt: { severityNumber: SEVERITY_INFO, severityText: "INFO" },

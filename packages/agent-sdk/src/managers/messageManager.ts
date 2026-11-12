@@ -54,6 +54,11 @@ import type {
   MessageWindowResult,
 } from "../types/messageWindow.js";
 import type { RewindCheckpoint } from "../utils/rewindCheckpoints.js";
+import {
+  releasePersistFailure,
+  reportPersistFailure,
+} from "../telemetry/failureEvents.js";
+import { entrypointOf } from "../telemetry/entrypoint.js";
 
 import { Container } from "../utils/container.js";
 // Cap for recentFileReads: content is only consumed by getRecentFileReads
@@ -562,8 +567,29 @@ export class MessageManager {
 
       // Update the saved message count
       this.savedMessageCount = this.messages.length;
+      // The transcript is writable again — release the dedup slot so a later
+      // relapse is reported instead of staying silent forever.
+      releasePersistFailure(this.sessionId);
     } catch (error) {
       logger?.error("Failed to save session:", error);
+      // A failure the user can feel (messages stop being persisted) that used
+      // to exist only in this machine's log file (spec `enterprise/
+      // opentelemetry.md`「可感知失败的覆盖」).
+      //
+      // The workdir reported is the one this write actually used, not the
+      // session's opening directory: when the two disagree, that disagreement
+      // *is* the failure being diagnosed, so recording the stable one would
+      // hide it.
+      void reportPersistFailure({
+        error,
+        sessionId: this.sessionId,
+        workdir: this.workdir,
+        context: {
+          sessionId: this.sessionId,
+          workdir: this.workdir,
+          entrypoint: entrypointOf(this.container),
+        },
+      });
     }
   }
 
