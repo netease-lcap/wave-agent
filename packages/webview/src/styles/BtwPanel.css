@@ -69,12 +69,8 @@
   font-size: 13px;
 }
 
-.btw-loading-indicator {
-  flex-shrink: 0;
-  color: var(--vscode-foreground);
-  animation: blink 1s ease-in-out infinite;
-}
-
+/* 在途态的提示只有「正在回答 + 流式尾部」两个静态信号：原来还挂一颗闪动的
+   ▋（blink 1s 无限循环），既和尾部重复，又违反 prefers-reduced-motion 也不停。 */
 .btw-loading-text {
   flex-shrink: 0;
   white-space: nowrap;
@@ -93,6 +89,13 @@
   user-select: text;
 }
 
+/* 答案容器：只负责字体角色与「长词不撑破面板」。
+   块内元素（h1–h6 / p / pre / code / a / ul / ol / blockquote / table）一律交给
+   共用层 `.markdown-content`（Message.css + host-desktop.css）——面板此前自己抄了
+   一份近似规则，字号/圆角/缩进/链接色都跟主对话对不上（1109 走查 BTW-01…06）。
+   `word-break: break-word` 同时是宽表被压扁的原因（它让表格单元格降到逐字断行、
+   永不溢出、也就永不横向滚动），换成 `overflow-wrap` 后长词照样折行，表格恢复
+   「按词分配列宽 + 真放不下再横向滚动」。 */
 .btw-panel-answer {
   padding: 8px 12px;
   overflow-y: auto;
@@ -101,37 +104,7 @@
      「第八处」） */
   font-size: 14px;
   line-height: 22px;
-  word-break: break-word;
-}
-
-.btw-panel-answer p {
-  margin: 0 0 8px 0;
-}
-
-.btw-panel-answer p:last-child {
-  margin-bottom: 0;
-}
-
-.btw-panel-answer pre {
-  background-color: var(--vscode-textCodeBlock-background);
-  border: 1px solid var(--vscode-dropdown-border);
-  border-radius: 4px;
-  padding: 8px;
-  overflow-x: auto;
-}
-
-.btw-panel-answer code {
-  font-family: var(--vscode-editor-font-family, monospace);
-}
-
-.btw-panel-answer a {
-  color: var(--vscode-textLink-foreground);
-}
-
-.btw-panel-answer ul,
-.btw-panel-answer ol {
-  padding-left: 20px;
-  margin: 0 0 8px 0;
+  overflow-wrap: break-word;
 }
 
 /* ── 多轮追问（spec commands/btw-command.md「Webview 端继续提问」）───────────
