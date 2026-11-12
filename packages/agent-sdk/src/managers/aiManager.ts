@@ -103,6 +103,7 @@ import {
   resetContentEventState,
 } from "../telemetry/events.js";
 import { recordTokenUsage } from "../telemetry/metrics.js";
+import { classifyError } from "../telemetry/errorCategory.js";
 import { trackCliOperation } from "../telemetry/activity.js";
 import { entrypointOf } from "../telemetry/attributes.js";
 import type { HostEntrypoint } from "../constants/telemetry.js";
@@ -2672,16 +2673,30 @@ ${question}`;
           if (errorQuotaHeaders)
             this.callbacks?.onQuotaHeaders?.(errorQuotaHeaders);
 
-          // Log error event
-          logOTelEvent(
-            "error",
-            {
-              error_type:
-                error instanceof Error ? error.constructor.name : "Unknown",
-              message: error instanceof Error ? error.message : String(error),
-            },
-            this.telemetryContext,
-          ).catch(() => {}); // Non-blocking
+          // 用户取消不是故障（spec: enterprise/opentelemetry.md「事件级别与错误的
+          // 可监控性」）：中断不记 error 事件，否则每按一次 Esc 都往监控里灌一条
+          // ERROR，告警曲线直接失去意义。判据取中断信号本身 —— aiService 会把
+          // AbortError 换成普通 Error，按文案判断会随文案改动失效（与上面取子任务
+          // 结果时同一个口径）。中断后的界面收尾照旧走下面几步。
+          // 控制器可能已被清空（重启 / 递归路径上取到的是 `this.abortController`
+          // 的旧值），读不到信号时按未中断处理。
+          const turnAborted =
+            abortController?.signal.aborted === true ||
+            toolAbortController?.signal.aborted === true;
+          if (!turnAborted) {
+            logOTelEvent(
+              "error",
+              {
+                error_type:
+                  error instanceof Error ? error.constructor.name : "Unknown",
+                // 闭集类别：客户端自抛的错误 error_type 恒为 "Error"，只有类别能
+                // 当监控侧的维度用。
+                "error.category": classifyError(error),
+                message: error instanceof Error ? error.message : String(error),
+              },
+              this.telemetryContext,
+            ).catch(() => {}); // Non-blocking
+          }
 
           // Finalize any streaming text/reasoning blocks so the UI stops ticking
           // its in-progress timer (e.g. when the request is aborted mid-thought).
