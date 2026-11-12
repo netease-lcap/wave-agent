@@ -220,8 +220,11 @@
 }
 
 [data-host="desktop"] .ssh-conn-field {
-  /* :146「label-to-control spacing is 8px」 */
-  gap: var(--cc-space-2, 8px);
+  /* :146「label-to-control spacing is 8px」—— 这里改成分开给：gap 归零，
+     label→控件仍 8px（由下一条 label 的 margin-bottom 给），控件→错误行单独收紧
+     （见 `.ssh-conn-field > .ssh-conn-error`）。为什么不用一条 gap：错误行与
+     label 共处一个纵向 flex，gap 是同一个值，想只收错误那一处就得把间距显式写。 */
+  gap: 0;
 }
 
 [data-host="desktop"] .ssh-conn-confirm {
@@ -268,10 +271,13 @@
 }
 
 [data-host="desktop"] .ssh-conn-label {
-  /* 契约 :146 —— 字段标签 14px/22px/400 `--cc-text-regular`（原 12/16） */
+  /* 契约 :146 —— 字段标签 14px/22px/400 `--cc-text-regular`（原 12/16）。
+     margin-bottom 8px = :146 的 label-to-control 间距：`.ssh-conn-field` 的 gap
+     已归零（那里要单独收紧控件→错误行），所以这条间距改由 label 自己给。 */
   font-size: var(--cc-font-size-md, 14px);
   line-height: 22px;
   color: var(--cc-text-regular);
+  margin-bottom: var(--cc-space-2, 8px);
 }
 
 [data-host="desktop"] .ssh-conn-input {
@@ -327,10 +333,15 @@
 }
 
 /* 字段级错误行现在挂在 `.ssh-conn-field` 内部（跟着出错的字段走，而不是堆在
-   表单底部）：8px 由字段组自己的 gap 给，这里把 margin 清掉，避免 8+8=16。
+   表单底部）。控件→错误行的间距按设计师 2026-11-12 的裁定收紧到 4px：
+   规范里没有「错误行」的专门间距，`common-components.md:147` 只有一条通用的
+   「supporting descriptions … 8px from their associated control」；按 8px 落时，
+   12px/20px 的错误字有 4px 半行距，从输入框底到文字墨迹实际是 12px —— 和
+   「label → 输入框」的净空一样松，看上去像另一组内容。收紧到 4px 后墨迹净空 8px，
+   错误行明确挂在这个字段下面。要回到 8px 把这里改成 var(--cc-space-2, 8px)。
    表单级错误（宿主回传、没有归属字段）仍在字段块之外，继续吃上面那条 margin。 */
 [data-host="desktop"] .ssh-conn-field > .ssh-conn-error {
-  margin-top: 0;
+  margin-top: var(--cc-space-1, 4px);
 }
 
 [data-host="desktop"] .ssh-conn-actions {
