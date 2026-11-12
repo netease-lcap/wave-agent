@@ -42,6 +42,16 @@ vi.mock("../../src/telemetry/metrics.js", () => ({
   recordActiveTime: vi.fn(),
 }));
 
+const { logOTelEventMock } = vi.hoisted(() => ({
+  logOTelEventMock: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock("../../src/telemetry/events.js", () => ({
+  logOTelEvent: logOTelEventMock,
+  logRequestContentEvents: vi.fn().mockResolvedValue(undefined),
+  resetContentEventState: vi.fn(),
+}));
+
 // Mock node:fs
 vi.mock("node:fs", () => ({
   existsSync: vi.fn(),
@@ -706,6 +716,96 @@ describe("AIManager", () => {
       // Tool blocks stuck in start/streaming/running must be finalized so the
       // UI stops showing the yellow "running" spinner.
       expect(mockMessageManager.finalizeAbortedToolBlocks).toHaveBeenCalled();
+    });
+
+    /**
+     * Spec `enterprise/opentelemetry.md`「事件级别与错误的可监控性」: an `error`
+     * event is what a monitoring backend turns into an alert, so it must mean
+     * "something broke" — a user cancelling is intent, not breakage, and the
+     * event must carry a closed-set `error.category` (the class name cannot be a
+     * metric dimension: everything Wave throws itself is `Error`).
+     */
+    describe("error telemetry", () => {
+      /** The `error` events that went out, as `[name, metadata]` pairs. */
+      function errorEvents(): Array<[unknown, Record<string, string>]> {
+        return logOTelEventMock.mock.calls.filter(
+          (call) => call[0] === "error",
+        ) as Array<[unknown, Record<string, string>]>;
+      }
+
+      /** Abort the turn the way the UI does, then fail the in-flight call. */
+      function abortDuringCall(message: string): void {
+        vi.spyOn(aiService, "callAgent").mockImplementation(async () => {
+          // By the time the model call runs, the turn's controller is
+          // registered on the manager — this is the same signal a stop button
+          // or Escape aborts.
+          (
+            aiManager as unknown as { abortController: AbortController }
+          ).abortController.abort();
+          throw new Error(message);
+        });
+      }
+
+      it("should not log an error event when the user aborts the turn", async () => {
+        abortDuringCall("Request was aborted");
+
+        await aiManager.sendAIMessage({ recursionDepth: 0 });
+
+        expect(errorEvents()).toHaveLength(0);
+        // Suppressing telemetry must not skip the teardown: the UI still stops
+        // its timers and the tool spinners.
+        expect(mockMessageManager.finalizeStreamingBlocks).toHaveBeenCalled();
+        expect(mockMessageManager.finalizeAbortedToolBlocks).toHaveBeenCalled();
+        expect(mockMessageManager.addNoticeBlock).toHaveBeenCalledWith(
+          "Request was aborted",
+          "error",
+        );
+      });
+
+      it("should key the abort on the signal, not on the message text", async () => {
+        // The abort product's wording is an implementation detail — a rewrite
+        // must not turn every cancelled turn into an ERROR event again.
+        abortDuringCall("cancelled by operator");
+
+        await aiManager.sendAIMessage({ recursionDepth: 0 });
+
+        expect(errorEvents()).toHaveLength(0);
+      });
+
+      it("should still log a failure whose message merely mentions an abort", async () => {
+        // Companion to the two above: the guard reads the signal, so a real
+        // failure carrying abort-ish wording is not swallowed. (Otherwise
+        // "no error event" could be satisfied by matching on text.)
+        vi.spyOn(aiService, "callAgent").mockRejectedValue(
+          new Error("Request was aborted"),
+        );
+
+        await aiManager.sendAIMessage({ recursionDepth: 0 });
+
+        expect(errorEvents()).toHaveLength(1);
+      });
+
+      it("should report a closed-set category alongside the existing fields", async () => {
+        // Shaped like a provider SDK error: a real class (so `error_type` has
+        // information) carrying an HTTP status (so the category is structured).
+        class RateLimitError extends Error {
+          status = 429;
+        }
+        vi.spyOn(aiService, "callAgent").mockRejectedValue(
+          new RateLimitError("Rate limit reached for gpt-4"),
+        );
+
+        await aiManager.sendAIMessage({ recursionDepth: 0 });
+
+        const events = errorEvents();
+        expect(events).toHaveLength(1);
+        const metadata = events[0]![1];
+        expect(metadata["error.category"]).toBe("rate_limit");
+        // `error_type` keeps meaning "the error class" — the category is an
+        // added column, not a replacement.
+        expect(metadata.error_type).toBe("RateLimitError");
+        expect(metadata.message).toBe("Rate limit reached for gpt-4");
+      });
     });
 
     it("should log warning and recurse when finish reason is length", async () => {

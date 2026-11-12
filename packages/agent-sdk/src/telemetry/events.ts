@@ -14,9 +14,39 @@ import type { StandardAttributeContext } from "./attributes.js";
 interface OTelLogger {
   emit: (logRecord: {
     body?: unknown;
+    severityNumber: number;
+    severityText: string;
     attributes?: Record<string, unknown>;
   }) => void;
 }
+
+/** OTel `SeverityNumber` values in use — INFO=9, ERROR=17. WARN (13) is unused. */
+const SEVERITY_INFO = 9;
+const SEVERITY_ERROR = 17;
+
+/**
+ * Event name → severity, so "which events are failures" is one list to read and
+ * the same event can never report two levels from two call sites. Deliberately
+ * no `WARN`: none of these events is semantically a warning, and a made-up
+ * middle level is worse than an unused one (spec:
+ * `enterprise/opentelemetry.md`「事件级别与错误的可监控性」).
+ *
+ * Total over `OTelEventName` on purpose — adding an event fails to compile
+ * until it is given a level.
+ */
+const EVENT_SEVERITY: Record<
+  OTelEventName,
+  { severityNumber: number; severityText: "INFO" | "ERROR" }
+> = {
+  error: { severityNumber: SEVERITY_ERROR, severityText: "ERROR" },
+  session_start: { severityNumber: SEVERITY_INFO, severityText: "INFO" },
+  session_end: { severityNumber: SEVERITY_INFO, severityText: "INFO" },
+  user_prompt: { severityNumber: SEVERITY_INFO, severityText: "INFO" },
+  tool_decision: { severityNumber: SEVERITY_INFO, severityText: "INFO" },
+  compaction: { severityNumber: SEVERITY_INFO, severityText: "INFO" },
+  system_prompt: { severityNumber: SEVERITY_INFO, severityText: "INFO" },
+  tool_schema: { severityNumber: SEVERITY_INFO, severityText: "INFO" },
+};
 
 let cachedLogger: OTelLogger | undefined;
 let cachedProvider: unknown;
@@ -68,6 +98,8 @@ export async function logOTelEvent(
 
   log.emit({
     body: eventName,
+    // The level is derived from the event name, never chosen by the call site.
+    ...EVENT_SEVERITY[eventName],
     attributes: {
       "event.name": eventName,
       // The whole context rides along (session, entrypoint, …): events carry

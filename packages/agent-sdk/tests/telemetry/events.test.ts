@@ -92,6 +92,8 @@ describe("events", () => {
 
       expect(mockLogEmit).toHaveBeenCalledWith({
         body: "session_start",
+        severityNumber: 9,
+        severityText: "INFO",
         attributes: {
           "event.name": "session_start",
           sessionId: "abc123",
@@ -140,6 +142,8 @@ describe("events", () => {
 
       expect(mockLogEmit).toHaveBeenCalledWith({
         body: "user_prompt",
+        severityNumber: 9,
+        severityText: "INFO",
         attributes: {
           "event.name": "user_prompt",
           prompt_length: "42",
@@ -161,6 +165,8 @@ describe("events", () => {
 
       expect(mockLogEmit).toHaveBeenCalledWith({
         body: "user_prompt",
+        severityNumber: 9,
+        severityText: "INFO",
         attributes: {
           "event.name": "user_prompt",
           prompt_length: "42",
@@ -185,6 +191,8 @@ describe("events", () => {
 
       expect(mockLogEmit).toHaveBeenCalledWith({
         body: "compaction",
+        severityNumber: 9,
+        severityText: "INFO",
         attributes: {
           "event.name": "compaction",
           beforeTokens: "100",
@@ -210,6 +218,8 @@ describe("events", () => {
 
       expect(mockLogEmit).toHaveBeenCalledWith({
         body: "tool_decision",
+        severityNumber: 9,
+        severityText: "INFO",
         attributes: {
           "event.name": "tool_decision",
           tool_name: "Bash",
@@ -235,6 +245,8 @@ describe("events", () => {
 
       expect(mockLogEmit).toHaveBeenCalledWith({
         body: "session_end",
+        severityNumber: 9,
+        severityText: "INFO",
         attributes: {
           "event.name": "session_end",
           duration: "120s",
@@ -259,6 +271,8 @@ describe("events", () => {
 
       expect(mockLogEmit).toHaveBeenCalledWith({
         body: "error",
+        severityNumber: 17,
+        severityText: "ERROR",
         attributes: {
           "event.name": "error",
           error_type: "TypeError",
@@ -283,6 +297,8 @@ describe("events", () => {
 
       expect(mockLogEmit).toHaveBeenCalledWith({
         body: "compaction",
+        severityNumber: 9,
+        severityText: "INFO",
         attributes: {
           "event.name": "compaction",
           beforeTokens: "50",
@@ -307,6 +323,8 @@ describe("events", () => {
 
       expect(mockLogEmit).toHaveBeenCalledWith({
         body: "tool_decision",
+        severityNumber: 9,
+        severityText: "INFO",
         attributes: {
           "event.name": "tool_decision",
           tool_name: "Bash",
@@ -325,6 +343,8 @@ describe("events", () => {
 
       expect(mockLogEmit).toHaveBeenCalledWith({
         body: "session_start",
+        severityNumber: 9,
+        severityText: "INFO",
         attributes: {
           "event.name": "session_start",
         },
@@ -371,6 +391,8 @@ describe("events", () => {
 
       expect(mockLogEmit).toHaveBeenCalledWith({
         body: "user_prompt",
+        severityNumber: 9,
+        severityText: "INFO",
         attributes: {
           "event.name": "user_prompt",
           "user.id": "u-1",
@@ -395,6 +417,42 @@ describe("events", () => {
         includeRepository: undefined,
       });
     });
+
+    /**
+     * Levels are derived from the event name, so this table is the whole
+     * contract: `error` is the only failure, everything else is informational
+     * (no WARN — no event is semantically a warning). A monitoring backend
+     * filters logs and buckets counters on these two fields.
+     */
+    it.each([
+      ["session_start", 9, "INFO"],
+      ["session_end", 9, "INFO"],
+      ["user_prompt", 9, "INFO"],
+      ["tool_decision", 9, "INFO"],
+      ["compaction", 9, "INFO"],
+      ["system_prompt", 9, "INFO"],
+      ["tool_schema", 9, "INFO"],
+      ["error", 17, "ERROR"],
+    ] as const)(
+      "should report %s at severity %i %s",
+      async (eventName, severityNumber, severityText) => {
+        mockIsInitialized.mockReturnValue(true);
+        mockGetCurrentConfig.mockReturnValue({
+          logUserPrompts: false,
+          logToolContent: false,
+        });
+
+        await events.logOTelEvent(eventName, {});
+
+        expect(mockLogEmit).toHaveBeenCalledWith(
+          expect.objectContaining({
+            body: eventName,
+            severityNumber,
+            severityText,
+          }),
+        );
+      },
+    );
   });
 
   describe("logRequestContentEvents", () => {
