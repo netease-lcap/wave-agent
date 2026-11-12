@@ -573,6 +573,46 @@ describe("StdioAgent", () => {
     );
   });
 
+  it("forwards the side-chat segment id so the engine can freeze the prefix", async () => {
+    const { agent, client } = createAgent();
+    client.request.mockResolvedValue({
+      sessionId: "session-123",
+      currentWorkdir: "/w",
+      permissionMode: "default",
+      latestTotalTokens: 0,
+    });
+    await agent.initialize({ workdir: "/w" });
+    client.request.mockResolvedValue("And sunny again");
+
+    await agent.askBtw("And tomorrow?", { segmentId: "btwseg-1" });
+
+    expect(client.request).toHaveBeenCalledWith(
+      "askBtw",
+      { question: "And tomorrow?", segmentId: "btwseg-1" },
+      "session-123",
+    );
+  });
+
+  it("sends closeBtw with the segment id so the host drops that segment", async () => {
+    const { agent, client } = createAgent();
+    client.request.mockResolvedValue({
+      sessionId: "session-123",
+      currentWorkdir: "/w",
+      permissionMode: "default",
+      latestTotalTokens: 0,
+    });
+    await agent.initialize({ workdir: "/w" });
+    client.request.mockResolvedValue(null);
+
+    await agent.closeBtw("btwseg-1");
+
+    expect(client.request).toHaveBeenCalledWith(
+      "closeBtw",
+      { segmentId: "btwseg-1" },
+      "session-123",
+    );
+  });
+
   // ── removeQueuedMessage ────────────────────────────────────
   it("sends deleteQueuedMessage with index and sessionId", async () => {
     const { agent, client } = createAgent();

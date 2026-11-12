@@ -1155,6 +1155,41 @@ describe("remote page shim", () => {
     });
   });
 
+  test("carries the side-chat segment id, and drops the segment when the panel closes", async () => {
+    const { page } = await openPage();
+
+    // 段标识（spec「侧聊分段与上下文冻结」）：同一段侧聊每一轮带同一个值，关闭
+    // 面板时页面再发一条 closeBtw 让宿主释放那一段冻结的前缀。
+    page.api.postMessage({
+      command: "askBtw",
+      question: "今天几号",
+      requestId: "btw-1",
+      segmentId: "btwseg-1",
+    });
+    await flush();
+    expect(page.socket.framesFor("askBtw")[0].params).toEqual({
+      question: "今天几号",
+      requestId: "btw-1",
+      segmentId: "btwseg-1",
+    });
+
+    page.api.postMessage({ command: "closeBtw", segmentId: "btwseg-1" });
+    await flush();
+
+    expect(page.socket.framesFor("closeBtw")).toEqual([
+      {
+        id: expect.any(Number),
+        method: "closeBtw",
+        params: { segmentId: "btwseg-1" },
+        sessionId: "s-new",
+      },
+    ]);
+    // 没有回执：面板已经丢弃这一段，页面不该因为关闭而多出任何消息。
+    const postedBefore = page.posted.length;
+    await page.answer("closeBtw", null);
+    expect(page.posted.length).toBe(postedBefore);
+  });
+
   test("a /btw the machine cannot run ends on screen instead of loading forever", async () => {
     const { page } = await openPage();
 

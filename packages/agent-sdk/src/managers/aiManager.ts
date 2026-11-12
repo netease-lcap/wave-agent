@@ -134,6 +134,73 @@ const MAX_AUTO_MEMORY_FORK_TURNS = 5;
  */
 const MAX_OUTPUT_TOKENS_RECOVERY_LIMIT = 3;
 
+/**
+ * 侧聊的一段在引擎侧的状态（spec commands/btw-command.md「侧聊分段与上下文冻结」）。
+ *
+ * 一段侧聊 = 一次 fork：前缀在首次提问那一刻取一次，段内每轮原样复用，主 Agent
+ * 之后产出的新消息进不来；关闭该段即丢弃。
+ */
+interface BtwSegmentState {
+  /** 该段首次提问那一刻的主对话前缀（含记忆注入）；段内每轮只读复用。 */
+  prefix?: ChatCompletionMessageParam[];
+  /** 关闭该段时用它中止在途的那一轮。 */
+  controller: AbortController;
+}
+
+/** 引擎侧最多同时保留几段侧聊的冻结前缀：整份父对话快照，不能无限攒。 */
+const MAX_BTW_SEGMENTS = 8;
+
+/**
+ * 历史答案在重放前先净化（对齐 Claude Code 2.1.322 侧聊多轮实现 `Ahn()`）：
+ * 模型只把工具调用写成文本、或这一轮压根没成功时，那句"答案"没有任何信息量，
+ * 原样喂回后续每一轮只会让模型接着照着编——换成一句省略说明。
+ */
+const BTW_HISTORY_TOOL_CALLS_OMITTED =
+  "(That answer wrote tool calls as text. Nothing was executed, so it is omitted here.)";
+const BTW_HISTORY_FAILED_OMITTED =
+  "(That answer failed, so it is omitted here.)";
+
+function sanitizeBtwHistoryAnswer(answer: string): string {
+  const trimmed = answer.trim();
+  if (
+    /^\(The model tried to call .*instead of answering directly/s.test(trimmed)
+  ) {
+    return BTW_HISTORY_TOOL_CALLS_OMITTED;
+  }
+  if (
+    trimmed.startsWith("(API error: ") ||
+    trimmed === "No response received"
+  ) {
+    return BTW_HISTORY_FAILED_OMITTED;
+  }
+  return answer;
+}
+
+/**
+ * 合并多个取消信号：调用方的（CLI overlay 按 Esc）与这一段的（面板关闭）谁先来
+ * 都算数。手工合并而不是 `AbortSignal.any`（仓库的 lib 下没有它的类型），并在
+ * 请求结束后由 `dispose` 摘掉监听——追问是长尾场景，逐轮堆监听会一直拽着旧请求。
+ */
+function linkAbortSignals(signals: Array<AbortSignal | undefined>): {
+  signal?: AbortSignal;
+  dispose: () => void;
+} {
+  const live = signals.filter((signal): signal is AbortSignal => !!signal);
+  if (live.length <= 1) return { signal: live[0], dispose: () => {} };
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  for (const signal of live) {
+    if (signal.aborted) controller.abort();
+    else signal.addEventListener("abort", abort, { once: true });
+  }
+  return {
+    signal: controller.signal,
+    dispose: () => {
+      for (const signal of live) signal.removeEventListener("abort", abort);
+    },
+  };
+}
+
 // Truncate text to `max` chars and append a "… [+N chars]" marker when exceeded.
 // Used for background_tasks description/command fields (≤1000 chars per spec FR-063).
 function truncateWithMarker(text: string, max: number): string {
@@ -258,6 +325,11 @@ export class AIManager {
     | "none"
     | "required"
     | { type: "function"; function: { name: string } };
+  /**
+   * 侧聊分段状态（spec commands/btw-command.md「侧聊分段与上下文冻结」）。宿主
+   * 只带 `segmentId` 过来，冻结的父对话前缀与在途请求的取消信号都留在这里。
+   */
+  private btwSegments = new Map<string, BtwSegmentState>();
 
   /** Subagent type, or undefined for the main agent (tool-event hook context) */
   getSubagentType(): string | undefined {
@@ -1594,11 +1666,15 @@ export class AIManager {
    * are never executed — the wrapped question instructs the model to answer
    * directly; an attempted tool call is surfaced as an error string.
    *
-   * `history` carries the earlier side-chat turns (spec commands/btw-command.md
-   * 「Webview 端继续提问」): they are appended as ordinary user/assistant
-   * messages *after* the main-conversation prefix, so follow-up questions can
-   * refer back to earlier answers while the prefix that hits the prompt cache
-   * stays byte-identical.
+   * `segmentId` names one段侧聊 (spec commands/btw-command.md「侧聊分段与上下文
+   * 冻结」): the parent-conversation prefix is captured once, on that segment's
+   * first question, and reused verbatim for the rest of the segment — new main
+   * messages produced meanwhile never enter it. `releaseBtwSegment` drops it.
+   *
+   * `history` carries this segment's earlier turns (「Webview 端继续提问」): they
+   * are appended as ordinary user/assistant messages *after* the prefix, so
+   * follow-up questions can refer back to earlier answers while the prefix that
+   * hits the prompt cache stays byte-identical.
    */
   async runBtwFork(
     question: string,
@@ -1606,42 +1682,20 @@ export class AIManager {
     onContent?: (content: string) => void,
     onReasoning?: (content: string) => void,
     history?: BtwHistoryTurn[],
+    segmentId?: string,
   ): Promise<{ content?: string; error?: string }> {
     const modelConfig = this.getModelConfig();
     const gatewayConfig = this.getGatewayConfig();
     const sessionId = this.messageManager.getSessionId();
     const workdir = this.getCurrentWorkdir();
 
-    const rawMessages = this.messageManager.getMessages();
-
-    // Strip the in-progress assistant message (a block still in "streaming"
-    // stage) so the fork's request prefix matches the last completed
-    // main-loop request and the prompt cache is reused.
-    const lastMessage = rawMessages[rawMessages.length - 1];
-    const hasInProgressMessage =
-      lastMessage?.role === "assistant" &&
-      lastMessage.blocks.some(
-        (b) => "stage" in b && (b as { stage?: string }).stage === "streaming",
-      );
-
-    const forkMessages: ChatCompletionMessageParam[] =
-      await convertMessagesForAPI(
-        hasInProgressMessage ? rawMessages.slice(0, -1) : rawMessages,
-        {
-          supportsVision: supportsVision(modelConfig.capabilities),
-          reasoningSignatures:
-            resolveApiType(modelConfig.capabilities) === "messages",
-        },
-      );
-
-    // Mirror the main loop's memory injection so the request prefix matches.
-    const { prependContent } =
-      await this.messageManager.getMemoryForInjection();
-    if (prependContent.trim()) {
-      forkMessages.unshift({
-        role: "user",
-        content: wrapInSystemReminder(prependContent),
-      });
+    // 一段侧聊 = 一次 fork：前缀只在首次提问那一刻取，段内每轮原样复用（主 Agent
+    // 之后产出的新消息进不来）。没有段标识（CLI 单轮）就每轮现取。
+    const segment = segmentId ? this.btwSegmentFor(segmentId) : undefined;
+    let prefix = segment?.prefix;
+    if (!prefix) {
+      prefix = await this.buildBtwForkPrefix();
+      if (segment) segment.prefix = prefix;
     }
 
     // Wrap the question with the side-question instructions (verbatim
@@ -1673,13 +1727,23 @@ Simply answer the question with the information you have.</system-reminder>
 
 ${question}`;
 
-    // Earlier side-chat turns sit between the main-conversation prefix and the
-    // new question: the cacheable prefix is unchanged, only the suffix grows.
+    // 历史轮 + 这一问接在冻结前缀之后：前缀只读（`[...prefix]`），段内每轮只有
+    // 尾部增长。历史答案是重放用的，先净化掉没有信息量的那几类。
+    const forkMessages: ChatCompletionMessageParam[] = [...prefix];
     for (const turn of history ?? []) {
       forkMessages.push({ role: "user", content: turn.question });
-      forkMessages.push({ role: "assistant", content: turn.answer });
+      forkMessages.push({
+        role: "assistant",
+        content: sanitizeBtwHistoryAnswer(turn.answer),
+      });
     }
     forkMessages.push({ role: "user", content: wrappedQuestion });
+
+    // 关闭面板要能中止在途的那一轮：这一段的取消信号与调用方自带的合并。
+    const linkedAbort = linkAbortSignals([
+      abortSignal,
+      segment?.controller.signal,
+    ]);
 
     const { toolsConfig, reachableToolPlugins } = this.resolveFilteredTools();
     const systemPrompt = await this.buildMainSystemPrompt(reachableToolPlugins);
@@ -1710,7 +1774,7 @@ ${question}`;
         modelConfig,
         messages: forkMessages,
         sessionId,
-        abortSignal,
+        abortSignal: linkedAbort.signal,
         workdir,
         tools: toolsConfig,
         systemPrompt,
@@ -1750,12 +1814,92 @@ ${question}`;
       // aiService.callAgent converts AbortError into a plain Error, so the
       // abort is detected via the signal itself; rethrow so the UI can
       // silently dismiss instead of showing an error.
-      if (abortSignal?.aborted) {
+      if (linkedAbort.signal?.aborted) {
         throw error;
       }
       return {
         error: `(API error: ${error instanceof Error ? error.message : String(error)})`,
       };
+    } finally {
+      linkedAbort.dispose();
+    }
+  }
+
+  /**
+   * 侧聊请求的前缀：主对话快照 + 记忆注入，与主对话请求字节级一致（命中 prompt
+   * cache）。为了「前缀」这一份东西，一段侧聊只在首次提问时算一次。
+   */
+  private async buildBtwForkPrefix(): Promise<ChatCompletionMessageParam[]> {
+    const modelConfig = this.getModelConfig();
+    const rawMessages = this.messageManager.getMessages();
+
+    // Strip the in-progress assistant message (a block still in "streaming"
+    // stage) so the fork's request prefix matches the last completed
+    // main-loop request and the prompt cache is reused.
+    const lastMessage = rawMessages[rawMessages.length - 1];
+    const hasInProgressMessage =
+      lastMessage?.role === "assistant" &&
+      lastMessage.blocks.some(
+        (b) => "stage" in b && (b as { stage?: string }).stage === "streaming",
+      );
+
+    const forkMessages: ChatCompletionMessageParam[] =
+      await convertMessagesForAPI(
+        hasInProgressMessage ? rawMessages.slice(0, -1) : rawMessages,
+        {
+          supportsVision: supportsVision(modelConfig.capabilities),
+          reasoningSignatures:
+            resolveApiType(modelConfig.capabilities) === "messages",
+        },
+      );
+
+    // Mirror the main loop's memory injection so the request prefix matches.
+    const { prependContent } =
+      await this.messageManager.getMemoryForInjection();
+    if (prependContent.trim()) {
+      forkMessages.unshift({
+        role: "user",
+        content: wrapInSystemReminder(prependContent),
+      });
+    }
+    return forkMessages;
+  }
+
+  /**
+   * 取（必要时新建）一段侧聊的引擎侧状态。超过上限就按插入顺序淘汰最旧的一段：
+   * 宿主崩溃、或换段时没发 `releaseBtwSegment`，前缀也不能一直攒着——它是一整份
+   * 父对话快照。
+   */
+  private btwSegmentFor(segmentId: string): BtwSegmentState {
+    const existing = this.btwSegments.get(segmentId);
+    if (existing) return existing;
+    const segment: BtwSegmentState = { controller: new AbortController() };
+    this.btwSegments.set(segmentId, segment);
+    while (this.btwSegments.size > MAX_BTW_SEGMENTS) {
+      const oldest = this.btwSegments.keys().next().value;
+      if (oldest === undefined) break;
+      this.releaseBtwSegment(oldest);
+    }
+    return segment;
+  }
+
+  /**
+   * 丢弃一段侧聊（关闭面板）：释放冻结前缀并中止在途的那一轮（spec
+   * commands/btw-command.md「侧聊分段与上下文冻结」场景 6）。关闭之后的迟到回包
+   * 由界面按 `requestId` 丢弃，这里只负责别再往下跑。
+   */
+  releaseBtwSegment(segmentId: string): void {
+    const segment = this.btwSegments.get(segmentId);
+    if (!segment) return;
+    this.btwSegments.delete(segmentId);
+    segment.prefix = undefined;
+    segment.controller.abort();
+  }
+
+  /** 整份丢弃（`/clear`、销毁）：段的意义依附于那场对话，对话没了就都作废。 */
+  releaseAllBtwSegments(): void {
+    for (const segmentId of [...this.btwSegments.keys()]) {
+      this.releaseBtwSegment(segmentId);
     }
   }
 

@@ -216,6 +216,15 @@ function makeBtwRequestId(): string {
   return `btw-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+/**
+ * 一段侧聊的标识（spec commands/btw-command.md「侧聊分段与上下文冻结」）：段内
+ * 每轮沿用同一个值，宿主据此复用那一份冻结的父对话前缀；关闭后重新打开换新值，
+ * 于是新段从当下的最新主对话重新 fork。
+ */
+function makeBtwSegmentId(): string {
+  return `btwseg-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
 /** 本轮之后要随请求发出的历史（跳过在途轮与失败轮）。 */
 function btwHistory(turns: BtwTurn[]): { question: string; answer: string }[] {
   return turns
@@ -732,9 +741,10 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   // new-session bucket migrates to the session id only when that message binds
   // one — a sidebar switch to an existing session must not inherit the bucket.
   const sentFromNewSessionRef = useRef(false);
-  // /btw side-question panel（spec commands/btw-command.md 场景 14）：面板属于
-  // **发起它的那个对话**，切走只是隐去、切回来原样恢复（含还在跑的那条），所以
-  // 状态存在会话快照里，本地只留一份镜像。归属键与面板组同源：桌面 pane 用
+  // /btw 侧聊面板（spec commands/btw-command.md 场景 14 与「侧聊分段与上下文
+  // 冻结」）：一段侧聊属于**发起它的那个对话**，切走只是隐去、切回来原样恢复
+  //（含还在跑的那条），所以状态存在会话快照里，本地只留一份镜像。关闭即丢弃整段
+  //（面板从这个快照里移除）。归属键与面板组同源：桌面 pane 用
   // groupKey（绑定会话的 id，未绑定时 `new:<paneId>`）；插件端 / 远控页没有 pane，
   // 用 currentSession.id。`btwStateKey` = 本地镜像当前反映的那个键，它比 btwKey
   // 晚一个提交——这正是下面回写 effect 里 `btwStateKey !== btwKeyRef.current`
@@ -1933,8 +1943,8 @@ export const ChatApp: React.FC<ChatAppProps> = ({
       }
       case "btwResponse":
         if (!forThisPane(message)) break;
-        // 迟到回包落在它所属的轮次上；找不到归属（侧聊被清空、或从没发起）
-        // 就整条丢弃（「继续提问」场景 6）。
+        // 迟到回包落在它所属的轮次上；找不到归属（那段侧聊已关闭、或从没发起）
+        // 就整条丢弃（「继续提问」场景 7）。
         routeBtwReply(message.requestId, message.question, (turns) =>
           applyBtwReply(turns, message.requestId, message.question, (turn) => ({
             ...turn,
@@ -2973,13 +2983,18 @@ export const ChatApp: React.FC<ChatAppProps> = ({
    * 提出一轮旁路提问（spec commands/btw-command.md「Webview 端继续提问」）。
    * 主输入框的 `/btw <问题>` 与面板输入框共用这一条路径：把这一轮以 loading
    * 状态压进面板 → 立刻落进会话快照（首个流式分片按 requestId 必须查得到）→
-   * 带上此前**已完成**的最近 10 轮作为历史发给宿主。
+   * 带上本段此前**已完成**的最近 10 轮作为历史、以及段标识发给宿主。
+   *
+   * 面板不在就是「新开一段」（spec「侧聊分段与上下文冻结」场景 1）：新段有新的
+   * `segmentId`，宿主侧据此从此刻的主对话重新 fork 一份冻结前缀。
    */
   const askBtw = useCallback(
     (rawQuestion: string) => {
       const question = rawQuestion.trim();
       if (!question) return;
-      const previousTurns = btwPanelRef.current?.turns ?? [];
+      const current = btwPanelRef.current;
+      const previousTurns = current?.turns ?? [];
+      const segmentId = current?.segmentId ?? makeBtwSegmentId();
       const requestId = makeBtwRequestId();
       const turn: BtwTurn = {
         requestId,
@@ -2990,8 +3005,8 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         failed: false,
       };
       const panel: BtwPanelState = {
+        segmentId,
         turns: [...previousTurns, turn],
-        visible: true,
         draft: "",
       };
       setBtwPanel(panel);
@@ -3002,6 +3017,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         command: "askBtw",
         question,
         requestId,
+        segmentId,
         ...(history.length > 0 ? { history } : {}),
       });
     },
@@ -3185,15 +3201,19 @@ export const ChatApp: React.FC<ChatAppProps> = ({
       // /btw side question — answered out-of-band via askBtw, never enters the chat.
       // Not behind `interceptHostLocalCommand`: the panel is this component's own UI,
       // so the remote page serves it too (route: shim → bridge `askBtw`).
-      // 带问题 = 在已有侧聊之上追问一轮；裸 `/btw` = 打开面板（没有轮次时显示用法
-      // 说明，可直接在面板输入框里问）——见 spec「Webview 端继续提问」场景 7/8。
+      // 带问题 = 在当前这一段上追问一轮（没有面板就是新开一段，从最新的主对话
+      // fork）；裸 `/btw` = 打开面板（没有轮次时显示用法说明，可直接在面板输入框
+      // 里问）——见 spec「Webview 端继续提问」场景 8/9 与「侧聊分段与上下文冻结」场景 1。
       if (trimmedText === "/btw" || trimmedText.startsWith("/btw ")) {
         const question = trimmedText.slice("/btw".length).trim();
         if (!question) {
-          const current = btwPanelRef.current;
-          const opened: BtwPanelState = current
-            ? { ...current, visible: true }
-            : { turns: [], visible: true, draft: "" };
+          // 没有面板 = 建立新的一段（spec「侧聊分段与上下文冻结」场景 1）：段标识
+          // 现在就生成，第一问发出时引擎按那一刻的主对话 fork 冻结前缀。
+          const opened: BtwPanelState = btwPanelRef.current ?? {
+            segmentId: makeBtwSegmentId(),
+            turns: [],
+            draft: "",
+          };
           setBtwPanel(opened);
           if (btwKeyRef.current)
             sessionUi.patch(btwKeyRef.current, { btwPanel: opened });
@@ -3711,28 +3731,17 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     [isRemotePage, postToHost],
   );
 
-  // 关闭（关闭按钮 / Esc）只是隐去面板：在途请求继续、答案照常落回这个会话，
-  // 再打开（裸 `/btw`）就能看到完整历史（spec「Webview 端继续提问」场景 7）。
-  // 要清掉整段侧聊用 handleBtwClear——它删掉轮次，此后迟到的回包按 requestId
-  // 查不到归属，自然丢弃。
+  // 关闭（关闭按钮 / Esc）= 丢弃这一段侧聊（spec「侧聊分段与上下文冻结」场景 6）：
+  // 轮次清空、宿主侧释放冻结的父对话前缀并中止在途的那一轮。此后迟到的回包按
+  // requestId 查不到归属，自然丢弃。再打开（裸 `/btw`）是新的一段。
   const handleBtwClose = useCallback(() => {
     const panel = btwPanelRef.current;
-    if (panel) {
-      const hidden: BtwPanelState = { ...panel, visible: false };
-      setBtwPanel(hidden);
-      if (btwKeyRef.current)
-        sessionUi.patch(btwKeyRef.current, { btwPanel: hidden });
-    }
-    messageInputRef.current?.focus();
-  }, []);
-
-  // 「清空侧聊」：移除全部轮次，面板留着（焦点回到面板输入框），下一问从零开始。
-  const handleBtwClear = useCallback(() => {
-    const cleared: BtwPanelState = { turns: [], visible: true, draft: "" };
-    setBtwPanel(cleared);
+    setBtwPanel(null);
     if (btwKeyRef.current)
-      sessionUi.patch(btwKeyRef.current, { btwPanel: cleared });
-  }, []);
+      sessionUi.patch(btwKeyRef.current, { btwPanel: null });
+    if (panel) postToHost({ command: "closeBtw", segmentId: panel.segmentId });
+    messageInputRef.current?.focus();
+  }, [postToHost]);
 
   // 面板输入框的草稿随会话保留（切走再回来还写着），所以它进会话快照而不是组件
   // 本地 state。写快照这步不必另做——上面的回写 effect 以 btwPanel 为依赖。
@@ -5444,13 +5453,12 @@ export const ChatApp: React.FC<ChatAppProps> = ({
                 />
               }
               btwPopup={
-                btwPanel?.visible ? (
+                btwPanel ? (
                   <BtwPanel
                     turns={btwPanel.turns}
                     draft={btwPanel.draft}
                     onDraftChange={handleBtwDraftChange}
                     onSubmit={askBtw}
-                    onClear={handleBtwClear}
                     onClose={handleBtwClose}
                   />
                 ) : undefined

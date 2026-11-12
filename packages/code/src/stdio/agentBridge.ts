@@ -447,7 +447,10 @@ export class AgentBridge {
           sessionId,
           p.history as BtwHistoryTurn[] | undefined,
           p.requestId as string | undefined,
+          p.segmentId as string | undefined,
         );
+      case "closeBtw":
+        return this.closeBtw(p.segmentId as string, sessionId);
       case "abortMessage":
         return this.abortMessage(sessionId);
       case "clearMessages":
@@ -2163,6 +2166,7 @@ export class AgentBridge {
     sessionId?: string,
     history?: BtwHistoryTurn[],
     requestId?: string,
+    segmentId?: string,
   ): Promise<string> {
     const entry = this.requireSession(sessionId);
     return entry.agent.askBtw(
@@ -2194,7 +2198,17 @@ export class AgentBridge {
         }
       },
       history,
+      // 段标识让引擎在首次提问时 fork 一份父对话前缀、段内复用（spec
+      // 「侧聊分段与上下文冻结」）；`closeBtw` 负责丢弃它。
+      segmentId,
     );
+  }
+
+  /** 关闭一段侧聊：释放冻结前缀 + 中止在途的那一轮（spec 场景 6）。 */
+  private async closeBtw(segmentId: string, sessionId?: string): Promise<null> {
+    const entry = this.requireSession(sessionId);
+    entry.agent.closeBtw(segmentId);
+    return null;
   }
 
   private async abortMessage(sessionId?: string): Promise<null> {

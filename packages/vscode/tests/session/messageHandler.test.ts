@@ -80,6 +80,7 @@ function createMockSession(): ChatSession {
       anchorLost: false,
     })),
     askBtw: vi.fn(),
+    closeBtw: vi.fn(async () => undefined),
     backgroundTasks: [],
   } as unknown as ChatSession;
 }
@@ -764,6 +765,39 @@ describe("MessageHandler MCP handlers", () => {
     expect(posted.command).toBe("btwResponse");
     expect(posted.question).toBe("and tomorrow?");
     expect(posted.requestId).toBe("btw-2");
+  });
+
+  // 侧聊分段（spec commands/btw-command.md「侧聊分段与上下文冻结」）：段标识
+  // 逐跳下传，引擎靠它冻结这一段 fork 时的父对话前缀。
+  test("askBtw forwards the side-chat segment id", async () => {
+    const session = createMockSession();
+    (session.askBtw as ReturnType<typeof vi.fn>).mockResolvedValue("Sunny");
+
+    const { handler } = createHandler(session);
+    await handler.handleMessage(
+      { command: "askBtw", question: "weather?", segmentId: "btwseg-1" },
+      "tab",
+    );
+
+    expect(session.askBtw).toHaveBeenCalledWith("weather?", {
+      requestId: undefined,
+      history: undefined,
+      segmentId: "btwseg-1",
+    });
+  });
+
+  // 关闭面板 = 丢弃这一段（spec 场景 6）：没有回执，界面已丢弃、迟到回包按
+  // requestId 归不了属。
+  test("closeBtw drops the segment on the session", async () => {
+    const session = createMockSession();
+
+    const { handler } = createHandler(session);
+    await handler.handleMessage(
+      { command: "closeBtw", segmentId: "btwseg-1" },
+      "tab",
+    );
+
+    expect(session.closeBtw).toHaveBeenCalledWith("btwseg-1");
   });
 
   test("askBtw posts btwError when session.askBtw rejects", async () => {

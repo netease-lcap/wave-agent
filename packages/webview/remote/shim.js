@@ -3253,6 +3253,11 @@
         if (typeof msg.requestId === "string" && msg.requestId) {
           btwParams.requestId = msg.requestId;
         }
+        // 段标识（spec「侧聊分段与上下文冻结」）：同一段侧聊的每一轮都带同一个值，
+        // 引擎据此复用那一份冻结的父对话前缀；关闭面板后页面换新值。
+        if (typeof msg.segmentId === "string" && msg.segmentId) {
+          btwParams.segmentId = msg.segmentId;
+        }
         request("askBtw", btwParams)
           .then(function (result) {
             var done = {
@@ -3277,6 +3282,23 @@
             if (btwParams.requestId) failed.requestId = btwParams.requestId;
             post(failed);
           });
+        return;
+      }
+
+      // 关闭一段侧聊（spec「侧聊分段与上下文冻结」场景 6）：引擎侧释放该段冻结的
+      // 父对话前缀、并中止仍在途的那一轮。页面不要回执，也不因此改变显示——迟到
+      // 的 `btwContent` / `btwResponse` 到了页面按 requestId 找不到归属，自然丢弃。
+      case "closeBtw": {
+        var btwSegmentId =
+          typeof msg.segmentId === "string" ? msg.segmentId : "";
+        if (!btwSegmentId) return;
+        request("closeBtw", { segmentId: btwSegmentId }).catch(function (err) {
+          // 宿主没接这个方法（旧版 CLI）就当没这回事：那一轮会在宿主侧跑完，
+          // 回包照样被页面丢弃。
+          if (err && err.code !== HOST_UNSUPPORTED) {
+            console.warn("[wave-remote] closeBtw failed:", err);
+          }
+        });
         return;
       }
 

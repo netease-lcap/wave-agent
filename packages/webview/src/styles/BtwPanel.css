@@ -197,24 +197,3 @@
   opacity: 0.6;
   cursor: not-allowed;
 }
-
-.btw-panel-icon-btn {
-  display: flex;
-  align-items: center;
-  padding: 2px;
-  border: none;
-  border-radius: 3px;
-  background: none;
-  color: var(--vscode-descriptionForeground);
-  cursor: pointer;
-}
-
-.btw-panel-icon-btn:hover {
-  background-color: var(--vscode-toolbar-hoverBackground);
-  color: var(--vscode-foreground);
-}
-
-.btw-panel-icon {
-  width: 14px;
-  height: 14px;
-}

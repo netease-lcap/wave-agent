@@ -190,4 +190,139 @@ describe("Agent askBtw", () => {
       agent.askBtw("Question?", abortController.signal),
     ).rejects.toThrow("Request was aborted");
   });
+
+  const lastRequestMessages = () =>
+    callAgentMock.mock.calls[callAgentMock.mock.calls.length - 1][0]
+      .messages as Array<{ role: string; content: unknown }>;
+
+  const contentOf = (message: { content: unknown }): string =>
+    typeof message.content === "string"
+      ? message.content
+      : ((message.content as Array<{ text?: string }> | undefined) ?? [])
+          .map((part) => part.text ?? "")
+          .join("");
+
+  it("freezes the parent prefix for a segment, so main messages added later stay out", async () => {
+    await agent.sendMessage("first main message");
+    await agent.askBtw(
+      "side one",
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      "seg-freeze",
+    );
+    const firstFork = lastRequestMessages();
+    // The last message is the wrapped question; everything before it is the
+    // frozen parent prefix.
+    const prefixLength = firstFork.length - 1;
+
+    await agent.sendMessage("second main message");
+    await agent.askBtw(
+      "side two",
+      undefined,
+      undefined,
+      undefined,
+      [{ question: "side one", answer: "Side answer" }],
+      "seg-freeze",
+    );
+    const secondFork = lastRequestMessages();
+
+    expect(secondFork.slice(0, prefixLength)).toEqual(
+      firstFork.slice(0, prefixLength),
+    );
+    expect(secondFork.map(contentOf).join("\n")).not.toContain(
+      "second main message",
+    );
+  });
+
+  it("reforks from the latest conversation for a segment it does not know (new panel open)", async () => {
+    await agent.sendMessage("first main message");
+    await agent.askBtw(
+      "old segment",
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      "seg-old",
+    );
+
+    await agent.sendMessage("new main message");
+    await agent.askBtw(
+      "new segment",
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      "seg-new",
+    );
+
+    expect(lastRequestMessages().map(contentOf).join("\n")).toContain(
+      "new main message",
+    );
+  });
+
+  it("closeBtw aborts the in-flight question and releases the frozen prefix", async () => {
+    const signals: Array<AbortSignal | undefined> = [];
+    callAgentMock.mockImplementationOnce((options) => {
+      signals.push(options.abortSignal);
+      return new Promise((_resolve, reject) => {
+        options.abortSignal?.addEventListener("abort", () =>
+          reject(new Error("Request was aborted")),
+        );
+      });
+    });
+
+    const pending = agent.askBtw(
+      "long question",
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      "seg-close",
+    );
+    await vi.waitFor(() => expect(signals).toHaveLength(1));
+
+    agent.closeBtw("seg-close");
+
+    await expect(pending).rejects.toThrow("Request was aborted");
+    expect(signals[0]?.aborted).toBe(true);
+
+    // The prefix is gone, so the same id forks the latest conversation again.
+    await agent.sendMessage("main message after close");
+    await agent.askBtw(
+      "same id after close",
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      "seg-close",
+    );
+    expect(lastRequestMessages().map(contentOf).join("\n")).toContain(
+      "main message after close",
+    );
+  });
+
+  it("rewrites unusable history answers into omission notices", async () => {
+    const toolCallAnswer =
+      "(The model tried to call Read instead of answering directly. Try rephrasing or ask in the main conversation.)";
+
+    await agent.askBtw("third side question", undefined, undefined, undefined, [
+      { question: "q1", answer: toolCallAnswer },
+      { question: "q2", answer: "(API error: gateway timeout)" },
+      { question: "q3", answer: "No response received" },
+      { question: "q4", answer: "A real side answer" },
+    ]);
+
+    const replayedAnswers = lastRequestMessages()
+      .filter((message) => message.role === "assistant")
+      .map(contentOf);
+
+    expect(replayedAnswers).toEqual([
+      "(That answer wrote tool calls as text. Nothing was executed, so it is omitted here.)",
+      "(That answer failed, so it is omitted here.)",
+      "(That answer failed, so it is omitted here.)",
+      "A real side answer",
+    ]);
+  });
 });

@@ -478,16 +478,27 @@ export class StdioAgent {
       question: string;
       history?: BtwHistoryTurn[];
       requestId?: string;
+      segmentId?: string;
     } = { question };
     if (options?.history && options.history.length > 0) {
       params.history = options.history;
     }
     if (options?.requestId) params.requestId = options.requestId;
+    if (options?.segmentId) params.segmentId = options.segmentId;
     return (await this.client.request(
       "askBtw",
       params,
       this.sessionId,
     )) as string;
+  }
+
+  /**
+   * 丢弃一段侧聊（spec commands/btw-command.md「侧聊分段与上下文冻结」场景 6）：
+   * 引擎侧释放该段冻结的父对话前缀，并中止仍在途的那一轮。关闭面板时调用；迟到
+   * 的回包由界面按 `requestId` 丢弃。
+   */
+  async closeBtw(segmentId: string): Promise<void> {
+    await this.client.request("closeBtw", { segmentId }, this.sessionId);
   }
 
   async removeQueuedMessage(index: number): Promise<void> {

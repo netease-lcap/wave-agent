@@ -383,16 +383,27 @@ class StdioAgent(
      * webview can attribute chunks to the turn that asked (spec
      * commands/btw-command.md「Webview 端继续提问」).
      */
-    suspend fun askBtw(question: String, history: JsonElement?, requestId: String?): String =
+    suspend fun askBtw(
+        question: String,
+        history: JsonElement?,
+        requestId: String?,
+        segmentId: String?,
+    ): String =
         client.request(
             "askBtw",
             buildJsonObject {
                 put("question", question)
                 history?.let { put("history", it) }
                 requestId?.let { put("requestId", it) }
+                segmentId?.let { put("segmentId", it) }
             },
             sessionId,
         )?.jsonPrimitive?.content ?: ""
+
+    /** 关闭一段侧聊：引擎侧释放冻结前缀并中止在途的那一轮（spec 场景 6）。 */
+    suspend fun closeBtw(segmentId: String) {
+        client.request("closeBtw", buildJsonObject { put("segmentId", segmentId) }, sessionId)
+    }
 
     suspend fun listRewindCheckpoints(): JsonElement =
         client.request("listRewindCheckpoints", sessionId = sessionId) ?: JsonObject(emptyMap())

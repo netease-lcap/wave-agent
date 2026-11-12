@@ -172,6 +172,10 @@ export const REMOTE_ALLOWED_METHODS: ReadonlySet<string> = new Set([
   // 那条「页面能不能承载」同一条判据。**只放行请求**：流式增量是宿主推的
   // `btwContent` 通知，走既有的通知扇出，白名单管不到也不需要管。
   "askBtw",
+  // 关闭一段侧聊：释放引擎侧冻结的父对话前缀、中止在途的那一轮（spec
+  // 「侧聊分段与上下文冻结」）。只作用于该会话的侧聊状态，同样是「页面能承载」的
+  // 那一条判据；参数是页面自己生成的段标识，够不到这台机器上的任何路径。
+  "closeBtw",
   // ── 第四批：会话删除（spec「手机端的会话列表与删除」）──
   // 写：`destroy` 带上可选 `removeWorktree`（默认 false）。工作树由 daemon 从该
   // 会话的 createdWorkdir 定位、并在 agent.destroy() 之后删除，页面给不出路径。
