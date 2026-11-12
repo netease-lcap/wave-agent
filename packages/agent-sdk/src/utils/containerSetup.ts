@@ -50,7 +50,10 @@ import type {
 
 import { logger } from "./globalLogger.js";
 import { authService } from "../services/authService.js";
-import { remoteSettingsService } from "../services/remoteSettingsService.js";
+import {
+  ensureAuthChangeRefresh,
+  remoteSettingsService,
+} from "../services/remoteSettingsService.js";
 
 export interface AgentContainerSetupOptions {
   options: AgentOptions;
@@ -243,21 +246,22 @@ export function setupAgentContainer(
   });
   container.register("McpManager", mcpManager);
 
-  // Wire up auth change callback to refresh/clear remote settings
+  // 托管配置的刷新是**进程级**的：`_cachedSettings` 只有一份，一次登录刷一次就够。
+  // 它曾经写在下面这个 per-agent 回调里，于是 N 个会话 = N 次串行全量拉取、且每次
+  // 拉取都广播给全部 N 个 agent —— 一次登录 O(N²)，会话多的用户要等几十秒
+  // （2026-11-12 实测 16 个会话 57.8s，拆出来之后 8.1s）。
+  ensureAuthChangeRefresh();
   teardowns.push(
-    authService.onAuthChange(async (event) => {
-      if (event === "login") {
-        await remoteSettingsService.refresh();
-      } else if (event === "logout") {
-        remoteSettingsService.clear();
-      }
+    authService.onAuthChange(async () => {
+      // 账号级特性门控是 per-agent 的：每个 Agent 有自己的 ToolManager /
+      // SkillManager，登录/登出会改变 gated 工具与 /artifact 技能，谁的可用集都
+      // 得各自重算一次。SDK 没有跨 agent 的广播机制，只能每个实例自己挂监听。
       // The Artifact code default depends on the account (see
       // artifactAvailability.ts) and its registration was decided at setup time,
       // so a mid-session login/logout must re-evaluate the gated tools and the
       // /artifact skill — otherwise a first-run user who logs in from inside the
-      // session would only get the feature after a restart. The refresh above
-      // does not cover this: it reloads only when the managed-settings checksum
-      // changed, which a login does not touch.
+      // session would only get the feature after a restart. 托管配置的刷新不覆盖
+      // 这一点：配置没变时它连通知都不会发。
       // Resolved through the container rather than the locals below, which are
       // declared after this callback is registered.
       container.get<ToolManager>("ToolManager")?.reloadFeatureGatedTools();
