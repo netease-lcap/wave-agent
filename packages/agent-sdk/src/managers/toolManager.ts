@@ -1,4 +1,9 @@
 import type { ToolContext, ToolPlugin, ToolResult } from "../tools/types.js";
+import {
+  reportToolCrash,
+  reportToolFailure,
+} from "../telemetry/failureEvents.js";
+import type { StandardAttributeContext } from "../telemetry/attributes.js";
 import { validateToolInput } from "../tools/inputValidation.js";
 import { bashTool } from "../tools/bashTool.js";
 import { taskStopTool } from "../tools/taskStopTool.js";
@@ -157,6 +162,15 @@ function recordBashActivity(
     recordContextOf(context, container),
   );
 }
+
+/**
+ * Tool results already filed as a crash.
+ *
+ * `execute` files every reported failure (`success: false`) as a WARN
+ * `tool_error`; without this marker one thrown tool would produce both an
+ * `error` and a `tool_error` for the same failure.
+ */
+const crashReported = new WeakSet<object>();
 
 /**
  * Tool Manager
@@ -417,11 +431,77 @@ class ToolManager {
     // One tool execution is one CLI-active operation for its session. Nested
     // and parallel calls collapse into a single interval — the set the activity
     // tracker keeps is what makes concurrent work count once, not per call.
-    return trackCliOperation(
+    const result = await trackCliOperation(
       "tool",
       recordContextOf(context, this.container),
       () => this.executeTool(name, args, context),
     );
+    // A failure the tool *reported* (`success: false`) is ordinary operation:
+    // wrong arguments, a rejected permission, a command that exited non-zero.
+    // It goes out as WARN `tool_error`, never as `error` (spec:
+    // `enterprise/opentelemetry.md`「可感知失败的覆盖」). Results already filed
+    // as a crash are skipped — same failure, one record.
+    if (!result.success && !crashReported.has(result)) {
+      const telemetry = this.failureTelemetry(context);
+      if (telemetry) {
+        void reportToolFailure({
+          sessionId: telemetry.sessionId,
+          toolName: name,
+          isMcp: this.mcpManager.isMcpTool(name),
+          message: result.error || result.content || "Tool reported failure",
+          context: telemetry.context,
+        });
+      }
+    }
+    return result;
+  }
+
+  /**
+   * Telemetry attribution for a failure in this tool call.
+   *
+   * The session id comes from the call context, not the container: a nested
+   * agent or the Exec sandbox runs a tool under its own session, and the event
+   * has to point at whichever session actually made the call.
+   */
+  private failureTelemetry(
+    context: ToolContext,
+  ): { sessionId: string; context: StandardAttributeContext } | undefined {
+    const sessionId =
+      context.sessionId ??
+      this.container
+        .get<{ getSessionId(): string }>("MessageManager")
+        ?.getSessionId();
+    if (!sessionId) return undefined;
+    const workdir =
+      context.originalWorkdir ??
+      this.container.get<string>("SessionWorkdir") ??
+      context.workdir;
+    return {
+      sessionId,
+      context: { sessionId, workdir, entrypoint: entrypointOf(this.container) },
+    };
+  }
+
+  /**
+   * File a tool that could not run at all. The result is marked so `execute`
+   * does not also file it as a reported failure.
+   */
+  private reportCrash(
+    name: string,
+    error: unknown,
+    result: ToolResult,
+    context: ToolContext,
+  ): void {
+    crashReported.add(result);
+    const telemetry = this.failureTelemetry(context);
+    if (!telemetry) return;
+    void reportToolCrash({
+      error,
+      sessionId: telemetry.sessionId,
+      toolName: name,
+      isMcp: this.mcpManager.isMcpTool(name),
+      context: telemetry.context,
+    });
   }
 
   /**
@@ -542,9 +622,16 @@ class ToolManager {
         const message = error instanceof Error ? error.message : String(error);
         // A hook block is a refusal, not a tool failure: keep its wording in
         // the result so a flat call shows the model what a nested one sees.
-        return error instanceof HookBlockedToolError
-          ? { success: false, content: message, error: message }
-          : { success: false, content: "", error: message };
+        if (error instanceof HookBlockedToolError) {
+          return { success: false, content: message, error: message };
+        }
+        const failure: ToolResult = {
+          success: false,
+          content: "",
+          error: message,
+        };
+        this.reportCrash(name, error, failure, context);
+        return failure;
       }
     }
 
@@ -598,6 +685,7 @@ class ToolManager {
           error: message,
         });
         result = { success: false, content: "", error: message };
+        this.reportCrash(name, error, result, context);
       }
 
       // PostToolUse hooks run for a failed call too — the tool was attempted,
@@ -623,11 +711,15 @@ class ToolManager {
     }
 
     logger?.warn("Tool not found", { toolName: name });
-    return {
+    // A tool that does not exist is a registration/config fault, not the model
+    // getting something wrong — it belongs in the ERROR series.
+    const missing: ToolResult = {
       success: false,
       content: "",
       error: `Tool '${name}' not found`,
     };
+    this.reportCrash(name, new Error(missing.error), missing, context);
+    return missing;
   }
 
   list(): ToolPlugin[] {

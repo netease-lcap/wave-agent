@@ -104,6 +104,7 @@ export type OTelEventName =
   | "session_end"
   | "user_prompt"
   | "tool_decision"
+  | "tool_error"
   | "compaction"
   | "error"
   | "system_prompt"

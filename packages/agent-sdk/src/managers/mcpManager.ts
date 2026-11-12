@@ -1,5 +1,5 @@
 import { promises as fs } from "fs";
-import { join } from "path";
+import { basename, join } from "path";
 import { homedir } from "os";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
@@ -15,6 +15,8 @@ import {
 import { HookBlockedToolError } from "../types/hooks.js";
 import { recordToolActivity } from "../telemetry/metrics.js";
 import { entrypointOf } from "../telemetry/attributes.js";
+import type { StandardAttributeContext } from "../telemetry/attributes.js";
+import { reportMcpConnectionFailure } from "../telemetry/failureEvents.js";
 import { detectMcpActivity } from "../telemetry/toolActivity.js";
 import type { ToolPlugin, ToolResult, ToolContext } from "../tools/types.js";
 import { Container } from "../utils/container.js";
@@ -244,6 +246,7 @@ export class McpManager {
                 );
               } else {
                 logger?.warn(`Failed to connect to MCP server: ${serverName}`);
+                this.reportConnectionFailure(serverName, "initialize");
               }
             })
             .catch((error) => {
@@ -251,6 +254,7 @@ export class McpManager {
                 `Background connection to MCP server ${serverName} failed:`,
                 error,
               );
+              this.reportConnectionFailure(serverName, "initialize", error);
             });
         });
       }
@@ -333,14 +337,60 @@ export class McpManager {
             logger?.warn(
               `MCP server ${name} failed to connect on first use; it stays disconnected until an explicit connect`,
             );
+            this.reportConnectionFailure(name, "lazy");
           }
         } catch (error) {
           logger?.warn(`MCP lazy dial failed for ${name}:`, error);
+          this.reportConnectionFailure(name, "lazy", error);
         } finally {
           this.pendingDials.delete(name);
         }
       }),
     );
+  }
+
+  /**
+   * Whose session could not reach an MCP server.
+   *
+   * Attribution comes from this manager's own container, so a nested agent's
+   * container reports its own session rather than the outer one.
+   */
+  private connectionFailureTelemetry():
+    | { sessionId: string; context: StandardAttributeContext }
+    | undefined {
+    const sessionId = this.container
+      .get<{ getSessionId(): string }>("MessageManager")
+      ?.getSessionId();
+    if (!sessionId) return undefined;
+    return {
+      sessionId,
+      context: {
+        sessionId,
+        workdir: this.container.get<string>("SessionWorkdir") ?? "",
+        entrypoint: entrypointOf(this.container),
+      },
+    };
+  }
+
+  /**
+   * Report a server that could not be reached. Deduped per server per session
+   * inside `reportMcpConnectionFailure`: a server that is down stays down for
+   * the whole session, and the dial is retried on every use.
+   */
+  private reportConnectionFailure(
+    serverName: string,
+    phase: "initialize" | "lazy" | "config",
+    error?: unknown,
+  ): void {
+    const telemetry = this.connectionFailureTelemetry();
+    if (!telemetry) return;
+    void reportMcpConnectionFailure({
+      error,
+      sessionId: telemetry.sessionId,
+      serverName,
+      phase,
+      context: telemetry.context,
+    });
   }
 
   async ensureConfigLoaded(): Promise<McpConfig | null> {
@@ -446,6 +496,9 @@ export class McpManager {
       // Only log error if it's not a "file not found" error
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
         logger?.error("Failed to load MCP config:", error);
+        // 配置整体加载失败（两个来源都成功读盘之后才可能走到这里）：
+        // 不是某台服务器的问题，但同样让 MCP 能力整块消失。
+        this.reportConnectionFailure("mcp-config", "config", error);
       }
       return null;
     }
@@ -519,6 +572,10 @@ export class McpManager {
       const code = (error as NodeJS.ErrnoException).code;
       if (code === "ENOENT") return null;
       logger?.error("Failed to load .mcp.json:", error);
+      // Name the file that actually failed: the user-level config and the
+      // project's `.mcp.json` are two different sources, and a report that
+      // calls both `.mcp.json` cannot tell which one to fix.
+      this.reportConnectionFailure(basename(configPath), "config", error);
       return null;
     }
   }

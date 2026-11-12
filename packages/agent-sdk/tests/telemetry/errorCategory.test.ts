@@ -123,6 +123,36 @@ describe("classifyError", () => {
     });
   });
 
+  describe("local persistence", () => {
+    it("maps write-side filesystem codes to persist", () => {
+      for (const code of ["ENOSPC", "EACCES", "EROFS", "EMFILE", "EDQUOT"]) {
+        const error = new Error("write failed") as Error & { code: string };
+        error.code = code;
+        expect(classifyError(error)).toBe("persist");
+      }
+    });
+
+    it("maps a missing transcript to persist", () => {
+      // This is the message `appendMessages` throws when the directory the
+      // session was opened under no longer encodes to where its file lives.
+      expect(
+        classifyError(
+          new Error(
+            "Session file not found: e81f0cd1. Use createSession() to create a new session first.",
+          ),
+        ),
+      ).toBe("persist");
+    });
+
+    it("does not treat a bare ENOENT as a persistence failure", () => {
+      // ENOENT on its own is some other lookup that happened to miss; only the
+      // write-path wording makes it a persistence failure.
+      const error = new Error("no such file") as Error & { code: string };
+      error.code = "ENOENT";
+      expect(classifyError(error)).toBe("unknown");
+    });
+  });
+
   describe("fallback and closed set", () => {
     it("maps an unrecognized failure to unknown", () => {
       expect(classifyError(new Error("boom"))).toBe("unknown");
