@@ -2,7 +2,10 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import { Agent } from "@/agent.js";
 import { createMockToolManager } from "../helpers/mockFactories.js";
 import { authService } from "@/services/authService.js";
-import { remoteSettingsService } from "@/services/remoteSettingsService.js";
+import {
+  remoteSettingsService,
+  resetAuthChangeRefresh,
+} from "@/services/remoteSettingsService.js";
 import { SkillManager } from "@/managers/skillManager.js";
 
 // Mock AI Service
@@ -34,6 +37,7 @@ vi.mock("@/managers/toolManager", () => ({
 describe("auth change re-evaluation", () => {
   afterEach(() => {
     vi.restoreAllMocks();
+    resetAuthChangeRefresh();
   });
 
   it("re-evaluates feature-gated tools and skills on login and logout", async () => {
@@ -45,11 +49,11 @@ describe("auth change re-evaluation", () => {
       .spyOn(SkillManager.prototype, "reloadFeatureGatedSkills")
       .mockResolvedValue(undefined);
 
-    let onAuthChange:
-      | ((event: "login" | "logout") => void | Promise<void>)
-      | undefined;
+    const callbacks: Array<
+      (event: "login" | "logout") => void | Promise<void>
+    > = [];
     vi.spyOn(authService, "onAuthChange").mockImplementation((callback) => {
-      onAuthChange = callback;
+      callbacks.push(callback);
       return () => {};
     });
     const refresh = vi
@@ -75,16 +79,23 @@ describe("auth change re-evaluation", () => {
       const reloadedTools = reloadTools.mock.calls.length;
       const reloadedSkills = reloadSkills.mock.calls.length;
 
+      // 最后一个注册的都是 per-agent 的那个回调；进程级的（刷托管配置）在
+      // `ensureAuthChangeRefresh` 里只装一次，不随 agent 增减（见该函数注释）。
+      const agentAuthChange = callbacks.at(-1);
+      expect(agentAuthChange).toBeDefined();
+
       // Artifact's code default follows the account, so a first-run user who
       // logs in from inside the session must get the tool without a restart.
-      await onAuthChange?.("login");
-      expect(refresh).toHaveBeenCalledTimes(1);
+      await agentAuthChange?.("login");
+      // 托管配置的刷新绝不能按 agent 重复：N 个会话就是 N 次串行全量拉取，
+      // 会把一次登录拖成几十秒（2026-11-12 实测 16 个会话 57.8s）。
+      expect(refresh).not.toHaveBeenCalled();
       expect(reloadTools.mock.calls.length).toBe(reloadedTools + 1);
       expect(reloadSkills.mock.calls.length).toBe(reloadedSkills + 1);
 
       // ...and logging out must take it away again.
-      await onAuthChange?.("logout");
-      expect(clear).toHaveBeenCalledTimes(1);
+      await agentAuthChange?.("logout");
+      expect(clear).not.toHaveBeenCalled();
       expect(reloadTools.mock.calls.length).toBe(reloadedTools + 2);
       expect(reloadSkills.mock.calls.length).toBe(reloadedSkills + 2);
     } finally {

@@ -232,10 +232,36 @@ export function getRemoteSettingsSync(): WaveConfiguration | null {
 }
 
 export async function refresh(): Promise<RemoteSettingsFetchResult> {
-  // Clear in-memory so we force a fresh fetch
-  _cachedSettings = null;
+  // `_cachedSettings` 故意留着：它的 checksum 是条件请求的 If-None-Match，服务端
+  // 配置没变就回 304。清掉它等于自己放弃协商 —— 每次都变成全量下发，而「拿到新
+  // 配置」随后会广播给每个 agent（一次登录 = 会话数² 次配置重载）。
+  // 磁盘缓存照旧删掉：它可能属于上一个账号 / 上一次部署，不能让进程重启后先读到。
   removeCacheFromDisk();
   return fetchRemoteSettings();
+}
+
+let _authRefreshUnsubscribe: (() => void) | null = null;
+
+/**
+ * 进程级订阅一次登录/登出：登录后拉一次托管配置，登出后清掉。
+ *
+ * 托管配置是**进程单例**（`_cachedSettings` 只有一份），这件事只能做一次。早期
+ * 版本把它写在每个 Agent 的 auth 回调里，于是 N 个会话 = N 次串行全量拉取，而
+ * 每次拉取又把新配置广播给全部 N 个 agent ⇒ 一次登录 O(N²)。2026-11-12 实测
+ * （假服务端固定 400ms 延迟）：16 个会话 57.8s，改成只刷一次后 8.1s。
+ */
+export function ensureAuthChangeRefresh(): void {
+  if (_authRefreshUnsubscribe) return;
+  _authRefreshUnsubscribe = authService.onAuthChange(async (event) => {
+    if (event === "login") await refresh();
+    else clear();
+  });
+}
+
+/** 仅测试用：撤掉进程级订阅，允许重新安装（生产路径从不注销）。 */
+export function resetAuthChangeRefresh(): void {
+  _authRefreshUnsubscribe?.();
+  _authRefreshUnsubscribe = null;
 }
 
 export function clear(): void {
@@ -396,4 +422,5 @@ export const remoteSettingsService = {
   shutdown,
   mergeRemoteSettings,
   onSettingsUpdate,
+  ensureAuthChangeRefresh,
 } as const;

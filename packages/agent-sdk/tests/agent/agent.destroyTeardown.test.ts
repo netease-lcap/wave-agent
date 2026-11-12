@@ -1,7 +1,10 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { Agent } from "@/agent.js";
 import { createMockToolManager } from "../helpers/mockFactories.js";
-import { remoteSettingsService } from "@/services/remoteSettingsService.js";
+import {
+  remoteSettingsService,
+  resetAuthChangeRefresh,
+} from "@/services/remoteSettingsService.js";
 import { authService } from "@/services/authService.js";
 import type { Container } from "@/utils/container.js";
 
@@ -34,6 +37,7 @@ vi.mock("@/managers/toolManager", () => ({
 describe("Agent destroy teardown", () => {
   afterEach(() => {
     vi.restoreAllMocks();
+    resetAuthChangeRefresh();
   });
 
   it("destroy() unsubscribes module-level listeners registered during setup", async () => {
@@ -49,9 +53,12 @@ describe("Agent destroy teardown", () => {
       workdir: "/tmp/test-destroy-teardown",
     });
 
-    // Setup registered one listener per module-level structure
+    // Setup registered one listener per module-level structure. `onAuthChange`
+    // 上挂两条：一条 agent 级门控重算（随 destroy 注销，本用例要验的），一条
+    // 进程级托管配置刷新（`ensureAuthChangeRefresh`，只装一次且**故意**不随
+    // agent 销毁 —— 它只捕获模块单例，不持有 agent 对象图）。
     expect(remoteSettingsService.onSettingsUpdate).toHaveBeenCalledTimes(1);
-    expect(authService.onAuthChange).toHaveBeenCalledTimes(1);
+    expect(authService.onAuthChange).toHaveBeenCalled();
     expect(unsubSettings).not.toHaveBeenCalled();
     expect(unsubAuth).not.toHaveBeenCalled();
 

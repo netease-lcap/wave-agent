@@ -22,6 +22,7 @@ vi.mock("../../src/services/authService.js", () => ({
     getSSOToken: vi.fn(),
     getServerUrl: vi.fn(),
     checkAndRefreshTokenIfNeeded: vi.fn().mockResolvedValue(true),
+    onAuthChange: vi.fn(() => vi.fn()),
   },
   createAuthAwareFetch: vi.fn((innerFetch: typeof fetch) => innerFetch),
 }));
@@ -46,6 +47,8 @@ import {
   initialize,
   startBackgroundFetch,
   onSettingsUpdate,
+  ensureAuthChangeRefresh,
+  resetAuthChangeRefresh,
   remoteSettingsService,
 } from "../../src/services/remoteSettingsService.js";
 
@@ -67,6 +70,8 @@ describe("remoteSettingsService", () => {
 
   afterEach(() => {
     clear();
+    resetAuthChangeRefresh();
+    vi.mocked(authService.onAuthChange).mockClear();
   });
 
   // ---------------------------------------------------------------------------
@@ -459,33 +464,94 @@ describe("remoteSettingsService", () => {
   // refresh
   // ---------------------------------------------------------------------------
   describe("refresh()", () => {
-    it("clears in-memory and disk cache then fetches fresh", async () => {
+    it("keeps the cached checksum so the next refresh revalidates instead of re-downloading", async () => {
       (authService.isSSOAuthenticated as Mock).mockReturnValue(true);
       (authService.getSSOToken as Mock).mockReturnValue("token123");
       (authService.getServerUrl as Mock).mockReturnValue("https://server.test");
-      // refresh() only unlinks a cache file that exists; say so explicitly
-      // instead of inheriting whatever the previous test left on the mock.
-      (fs.existsSync as Mock).mockReturnValue(true);
-
-      const newSettings = { language: "ko" };
+      const settings = { language: "en" };
       vi.stubGlobal(
         "fetch",
         vi.fn().mockResolvedValue({
           status: 200,
           ok: true,
           json: () =>
-            Promise.resolve({
-              uuid: "u1",
-              checksum: "fresh",
-              settings: newSettings,
-            }),
+            Promise.resolve({ uuid: "u1", checksum: "etag1", settings }),
+        }),
+      );
+      await refresh();
+
+      // 第二次 refresh：缓存里的 checksum 必须被带上，服务端才能回 304。
+      const fetchSpy = vi.mocked(fetch);
+      fetchSpy.mockResolvedValue({ status: 304 } as Response);
+      const result = await refresh();
+
+      const lastInit = fetchSpy.mock.calls.at(-1)?.[1] as RequestInit;
+      expect(
+        (lastInit.headers as Record<string, string>)["If-None-Match"],
+      ).toBe("etag1");
+      expect(result.success).toBe(true);
+      expect(result.settings).toEqual(settings);
+    });
+
+    it("drops the disk cache so a restart never reads another account's copy", async () => {
+      (authService.isSSOAuthenticated as Mock).mockReturnValue(true);
+      (authService.getSSOToken as Mock).mockReturnValue("token123");
+      (authService.getServerUrl as Mock).mockReturnValue("https://server.test");
+      // refresh() only unlinks a cache file that exists; say so explicitly
+      // instead of inheriting whatever the previous test left on the mock.
+      (fs.existsSync as Mock).mockReturnValue(true);
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue({
+          status: 200,
+          ok: true,
+          json: () =>
+            Promise.resolve({ uuid: "u1", checksum: "fresh", settings: {} }),
         }),
       );
 
-      const result = await refresh();
-      expect(result.success).toBe(true);
-      expect(result.settings).toEqual(newSettings);
+      await refresh();
       expect(fs.unlinkSync).toHaveBeenCalled();
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // ensureAuthChangeRefresh
+  // ---------------------------------------------------------------------------
+  describe("ensureAuthChangeRefresh()", () => {
+    it("installs a single process-wide subscription no matter how many agents call it", () => {
+      // 每个 Agent 的 setup 都会调一次；托管配置是进程单例，只能订阅一次 ——
+      // 否则 N 个会话就是 N 次串行全量拉取（2026-11-12 登录慢 10~30s 的根因）。
+      ensureAuthChangeRefresh();
+      ensureAuthChangeRefresh();
+      ensureAuthChangeRefresh();
+
+      expect(authService.onAuthChange).toHaveBeenCalledTimes(1);
+    });
+
+    it("refreshes on login and clears on logout", async () => {
+      (authService.isSSOAuthenticated as Mock).mockReturnValue(true);
+      (authService.getSSOToken as Mock).mockReturnValue("token123");
+      (authService.getServerUrl as Mock).mockReturnValue("https://server.test");
+      const settings = { language: "en" };
+      const fetchSpy = vi.fn().mockResolvedValue({
+        status: 200,
+        ok: true,
+        json: () => Promise.resolve({ uuid: "u1", checksum: "c1", settings }),
+      });
+      vi.stubGlobal("fetch", fetchSpy);
+
+      ensureAuthChangeRefresh();
+      const callback = vi.mocked(authService.onAuthChange).mock.calls[0][0] as (
+        event: "login" | "logout",
+      ) => Promise<void>;
+
+      await callback("login");
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+      expect(getRemoteSettingsSync()).toEqual(settings);
+
+      await callback("logout");
+      expect(getRemoteSettingsSync()).toBeNull();
     });
   });
 
