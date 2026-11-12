@@ -61,6 +61,14 @@
   box-sizing: border-box;
   max-width: var(--artifacts-content-max);
   margin-inline: auto;
+  /* 宽度必须自己写死成「铺满父级」。本行的 `margin-inline: auto` 会让这条 flex
+     子项在交叉轴上被 auto margin 吸走空余空间，从而**不再参与父级 `.artifacts-page`
+     的 `align-items: stretch`**（CSS Flexbox §8.1/§9.5：交叉轴上的 auto margin 优先于
+     stretch），于是宽度退化成 fit-content —— 有列表时被宽表格撑到上限，一旦空态
+     （表格不渲染）就只剩页头 + tab 行的文字宽度（实测 1180 → 632px，内容列整体右移
+     居中）。`width: 100%` 让宽度只取决于父级，两种状态逐像素一致；宽于 1280 时仍由
+     `max-width` 截断、由上面的 auto margin 居中。 */
+  width: 100%;
 }
 
 /* ── 页头：标题 + 一句说明（与插件市场 `.settings-page-header` 同形同值：
