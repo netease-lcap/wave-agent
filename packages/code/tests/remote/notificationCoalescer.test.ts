@@ -273,6 +273,128 @@ describe("NotificationCoalescer", () => {
     expect(written[2][0].params).toEqual({ content: "第二次的尾" });
   });
 
+  it("should keep the last shortResult snapshot of one tool and drop the rest", () => {
+    // 子代理运行期间 `running` 阶段的 shortResult 是「此刻进度」的完整快照，SDK
+    // 每收到一个子代理增量就重写一次（模型帧率）。它不是增量：早先的快照没有任
+    // 何信息是最后一帧缺的，所以同键取最后一帧。
+    const c = createCoalescer();
+    const snap = (shortResult: string, id = "t1") => ({
+      messageId: "m1",
+      id,
+      stage: "running",
+      name: "Agent",
+      compactParams: '{"description":"跑评测"}',
+      shortResult,
+    });
+    c.push("toolBlockUpdated", snap("1 tool · 2.0k tokens"), "s1");
+    c.push("toolBlockUpdated", snap("2 tools · 5.1k tokens\nRead a.ts"), "s1");
+    c.push(
+      "toolBlockUpdated",
+      snap("3 tools · 9.4k tokens\nRead a.ts\nBash pnpm test"),
+      "s1",
+    );
+    vi.advanceTimersByTime(REMOTE_FRAME_WINDOW_MS);
+
+    expect(written).toHaveLength(1);
+    expect(written[0]).toHaveLength(1);
+    expect(written[0][0].params).toEqual({
+      messageId: "m1",
+      id: "t1",
+      stage: "running",
+      name: "Agent",
+      compactParams: '{"description":"跑评测"}',
+      shortResult: "3 tools · 9.4k tokens\nRead a.ts\nBash pnpm test",
+    });
+  });
+
+  it("should merge two tools' shortResult snapshots apart", () => {
+    const c = createCoalescer();
+    const snap = (id: string, shortResult: string) => ({
+      messageId: "m1",
+      id,
+      stage: "running",
+      shortResult,
+    });
+    c.push("toolBlockUpdated", snap("t1", "t1 第一步"), "s1");
+    c.push("toolBlockUpdated", snap("t2", "t2 第一步"), "s1");
+    c.push("toolBlockUpdated", snap("t1", "t1 第二步"), "s1");
+    vi.advanceTimersByTime(REMOTE_FRAME_WINDOW_MS);
+
+    expect(
+      written[0].map((f) => (f.params as { shortResult: string }).shortResult),
+    ).toEqual(["t1 第二步", "t2 第一步"]);
+  });
+
+  it("should keep the same tool's shortResult apart across sessions", () => {
+    const c = createCoalescer();
+    const snap = (shortResult: string) => ({
+      messageId: "m1",
+      id: "t1",
+      stage: "running",
+      shortResult,
+    });
+    c.push("toolBlockUpdated", snap("会话一"), "s1");
+    c.push("toolBlockUpdated", snap("会话二"), "s2");
+    vi.advanceTimersByTime(REMOTE_FRAME_WINDOW_MS);
+
+    expect(written[0]).toHaveLength(2);
+    expect(written[0].map((f) => f.sessionId)).toEqual(["s1", "s2"]);
+  });
+
+  it("should flush a buffered shortResult snapshot before the tool block's end", () => {
+    // 工具结束是离散事件：先冲刷快照，再发权威终值。手机因此仍然按「进度 → 终
+    // 态」的顺序看到这一块，最后一次进度更新也不会被窗口吞掉。
+    const c = createCoalescer();
+    c.push(
+      "toolBlockUpdated",
+      {
+        messageId: "m1",
+        id: "t1",
+        stage: "running",
+        shortResult: "跑到第 3 个用例",
+      },
+      "s1",
+    );
+    c.push(
+      "toolBlockUpdated",
+      {
+        messageId: "m1",
+        id: "t1",
+        stage: "end",
+        shortResult: "3 passed",
+        result: "…",
+      },
+      "s1",
+    );
+
+    expect(written).toHaveLength(2);
+    expect((written[0][0].params as { shortResult: string }).shortResult).toBe(
+      "跑到第 3 个用例",
+    );
+    expect((written[1][0].params as { stage: string }).stage).toBe("end");
+  });
+
+  it("should write a running frame without shortResult through at once", () => {
+    // 「参数已完整、工具开始执行」那条 running 快照不带 shortResult，它是结构性
+    // 事件，不能被窗口延迟（否则手机要等 150ms 才知道工具真的开跑了）。
+    const c = createCoalescer();
+    c.push(
+      "toolBlockUpdated",
+      {
+        messageId: "m1",
+        id: "t1",
+        stage: "running",
+        name: "Bash",
+        parameters: '{"command":"pnpm test"}',
+        parametersChunk: "",
+      },
+      "s1",
+    );
+
+    expect(written).toHaveLength(1);
+    expect((written[0][0].params as { stage: string }).stage).toBe("running");
+  });
+
   it("should not merge a non-streaming stage", () => {
     const c = createCoalescer();
     c.push(
