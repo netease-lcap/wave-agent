@@ -1444,6 +1444,16 @@
 [data-host="desktop"] .markdown-content thead th:last-child {
   border-top-right-radius: 12px;
 }
+/* 无表头的表格（Message.tsx isEmptyTableHeader 会把全空的 thead 整段丢掉）：
+   顶角圆角改由首行数据单元格承担，否则表格上边是直角、下边是 12px 圆角。
+   选择器用 `table > tbody:first-child` 精确限定「没有 thead 的表格」—— 有表头时
+   thead 占着 first-child，这两条不命中，不影响既有外观。 */
+[data-host="desktop"] .markdown-content table > tbody:first-child > tr:first-child > td:first-child {
+  border-top-left-radius: 12px;
+}
+[data-host="desktop"] .markdown-content table > tbody:first-child > tr:first-child > td:last-child {
+  border-top-right-radius: 12px;
+}
 [data-host="desktop"] .markdown-content tbody tr:last-child td:first-child {
   border-bottom-left-radius: 12px;
 }
