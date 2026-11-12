@@ -4094,6 +4094,40 @@ describe("account card (desktopAccountInfo)", () => {
     h.handleClientRequest = orig;
   });
 
+  it("登录成功后推送的卡片带 sso 凭据（否则卡片停在登录按钮）", async () => {
+    // 登录前的那次 getAuthStatus 留下 `none`（无网关），登录成功后的推送若沿用
+    // 它，webview 会按凭据形态把卡片渲染回「登录」按钮——客户端表现就是「登录
+    // 成功后要等很久按钮才变成用户」。
+    const orig = h.handleClientRequest;
+    h.handleClientRequest = (m: string, params?: unknown) => {
+      if (m === "getAuthStatus")
+        return {
+          isAuthenticated: false,
+          credential: { kind: "none" },
+          user: null,
+          serverUrl: h.authServerUrl,
+        };
+      if (m === "getAccountInfo") return { billing: null, apiQuota: null };
+      if (m === "login") return { user: { id: "u1", email: "a@b.com" } };
+      return orig(m, params);
+    };
+    const { host, sent } = await readyHost();
+    await vi.waitFor(() =>
+      expect(sent("desktopAccountInfo").at(-1)).toMatchObject({
+        isAuthenticated: false,
+      }),
+    );
+
+    await host.handleWebviewMessage({ command: "login" });
+
+    expect(sent("desktopAccountInfo").at(-1)).toMatchObject({
+      isAuthenticated: true,
+      user: { id: "u1", email: "a@b.com" },
+      credential: { kind: "sso", gateway: null },
+    });
+    h.handleClientRequest = orig;
+  });
+
   it("clears the account card on logout", async () => {
     const restore = stubAccountRpc(
       { id: "u1", email: "bob@example.com" },

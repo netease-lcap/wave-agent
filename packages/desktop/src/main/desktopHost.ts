@@ -8216,6 +8216,16 @@ export class DesktopHost {
   ): Promise<void> {
     this.seedAccountFromAuth(host, {
       isAuthenticated: true,
+      // 登录成功即企业账号形态，这里必须显式带 `credential`：缺省时
+      // seedAccountFromAuth 会沿用 cache 里登录前那份（未登录 ⇒ `none`），随后
+      // 的 pushAccountInfo 把 webview 在 loginResponse 里乐观置上的 `sso`
+      // 覆盖回 `none` —— 卡片按凭据形态渲染，于是继续显示「登录」按钮，直到下一次
+      // authStatusResponse 才恢复。本机的网关凭据带上：登录后它的语义是「退出登录
+      // 后会落到的那份」。
+      credential: {
+        kind: "sso",
+        gateway: this.accountCache.get(host)?.credential?.gateway ?? null,
+      },
       user: user ?? null,
     });
     if (host === this.currentHost) this.syncAccountCard();
