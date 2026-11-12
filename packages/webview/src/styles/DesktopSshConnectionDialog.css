@@ -157,14 +157,121 @@
 /* 桌面端：与设置页 / 确认框 / 重命名弹窗同一档（14px 正文、r8 按钮、32px 字段、
    `--cc-field-*` 共享字段映射）。 */
 [data-host="desktop"] .ssh-conn-dialog {
+  /* 关闭键用绝对定位（与 .confirm-dialog 同一套），故这里要定位上下文 */
+  position: relative;
   width: 440px;
   padding: 24px;
   border-radius: 12px;
-  gap: 14px;
+  /* 2026-11-12 审计 A1/A3：面与阴影都换成契约角色。原来面挂
+     `--vscode-panel-background`（= `--cc-bg-conversation`，深色 #111314），
+     比 `--cc-bg-modal`（深色 #181a1b）暗一档；阴影是硬编码的 4/9 小投影。
+     浅色 #FFF 恰好相等，所以这个偏差只在深色下可见。 */
+  background-color: var(--cc-bg-modal, var(--vscode-panel-background, #131415));
+  box-shadow: var(--cc-shadow-overlay, 0 12px 36px rgb(31 35 41 / 16%));
+  /* 2026-11-12 审计 A2：描边换契约角色。base 挂的是 `--vscode-widget-border`，
+     它桥到 `--cc-border-light`（浅 #E4E7ED / 深 #34393C）—— 那是面板分隔线的
+     「quiet line」档；契约 :128/:143 要求弹窗框用 `--cc-border` 强边界档
+     （浅 #DCDFE6 / 深 #414649）。浅色差一档几乎看不见，深色是描边偏暗。 */
+  border-color: var(--cc-border);
+  /* 2026-11-12 审计 A4：窄窗安全边距。base 是 `calc(100vw - 64px)`（两侧各留
+     32px），契约 :127/:142 统一 `calc(100vw - 32px)`（两侧各 16px）。窗口宽于
+     472px 时两者都不生效（440 + 32），只有拖窄到 472 以下才看得出差别：改前
+     两侧各 32 显得空，改后贴着 16px 安全边。 */
+  max-width: calc(100vw - 32px);
+  /* ═══ 1112 第二批：表单间距按契约收口（原来一个 gap: 14px 兼了三种关系）═══
+     契约 common-components.md 的「Form dialog visual variant」要求三种不同的
+     关系间距，一个统一 gap 兼不了它们，因此这里把 gap 归零，改由下面各条
+     的 margin / 局部 gap 分别给出：
+
+       关系                          契约      改前    来源
+       ① 标题行 → 第一个内容块       20px      14     :144（space-5）
+       ② 字段组之间                  16px      10     :147（space-4）
+       ③ label → 控件                8px       4      :146（space-2）
+       ④ 内容 → footer               24px      14     :131 / :148（space-6）
+       ⑦ 删除态 标题 → 描述          8px       14     :129（space-2）
+       ⑧ 删除态 描述 → footer        24px      14     :131
+     另外 ⑤ 错误行 12/16 → 12/20（:147 支撑说明）、⑥ 按钮标签 14/18 → 14/22
+     （:131）也一并收口。 */
+  gap: 0;
 }
 
+/* 标题行 → 第一个内容块 20px（:144）。删除确认态被 :129 的 8px 覆盖 ——
+   `.ssh-conn-confirm` 是 `.ssh-conn-title` 的紧邻兄弟，用 :has() 分档，
+   不用给 TSX 加修饰类。 */
 [data-host="desktop"] .ssh-conn-title {
-  font-size: 15px;
+  /* 契约 common-components.md:129/:144 —— 16px/24px/600 `--cc-text-primary`。
+     原来是 15px + line-height:normal（21px）：15 不在 12/14/16 的字号刻度上。
+     右内衬给右上角关闭键让位（:130/:144「reserve room without overlap」）。 */
+  font-size: var(--cc-font-size-lg, 16px);
+  line-height: 24px;
+  color: var(--cc-text-primary);
+  padding-right: 28px;
+  margin: 0 0 var(--cc-space-5, 20px);
+}
+
+[data-host="desktop"] .ssh-conn-title:has(+ .ssh-conn-confirm) {
+  /* 紧凑确认变体 :129「title-to-description 8px」 */
+  margin-bottom: var(--cc-space-2, 8px);
+}
+
+[data-host="desktop"] .ssh-conn-fields {
+  /* :147「16px between field groups」 */
+  gap: var(--cc-space-4, 16px);
+}
+
+[data-host="desktop"] .ssh-conn-field {
+  /* :146「label-to-control spacing is 8px」 */
+  gap: var(--cc-space-2, 8px);
+}
+
+[data-host="desktop"] .ssh-conn-confirm {
+  /* :129 描述 14px/22px/400 `--cc-text-regular`（原 13/20 且继承 --vscode-foreground，
+     与正文同色，读不出「说明」的层级） */
+  font-size: var(--cc-font-size-md, 14px);
+  line-height: 22px;
+  color: var(--cc-text-regular);
+}
+
+
+/* 右上角关闭键：与 .confirm-dialog-close 同一官方矢量、同一 20×20 盒、
+   同一 8px 圆角与 hover 面（:126/:144 要求本变体必须有）。 */
+[data-host="desktop"] .ssh-conn-close {
+  position: absolute;
+  top: var(--cc-space-6, 24px);
+  right: var(--cc-space-6, 24px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: var(--cc-radius-md, 8px);
+  background: transparent;
+  color: var(--cc-text-regular);
+  cursor: pointer;
+}
+[data-host="desktop"] .ssh-conn-close:hover {
+  background-color: var(--cc-fill-hover, #eef0f3);
+  color: var(--cc-text-primary);
+}
+[data-host="desktop"][data-theme="dark"] .ssh-conn-close:hover {
+  background-color: rgb(255 255 255 / 8%);
+}
+[data-host="desktop"] .ssh-conn-close:focus-visible {
+  outline: 2px solid var(--cc-border-focus, #2f5edb);
+  outline-offset: 2px;
+}
+/* 24 的图标盒在 20 的按钮里会被 flex 压小（0916 踩过：字形被压到 0.83 倍） */
+[data-host="desktop"] .ssh-conn-close-icon {
+  flex-shrink: 0;
+}
+
+[data-host="desktop"] .ssh-conn-label {
+  /* 契约 :146 —— 字段标签 14px/22px/400 `--cc-text-regular`（原 12/16） */
+  font-size: var(--cc-font-size-md, 14px);
+  line-height: 22px;
+  color: var(--cc-text-regular);
 }
 
 [data-host="desktop"] .ssh-conn-input {
@@ -189,11 +296,46 @@
   border-color: var(--cc-field-border-focus, var(--vscode-focusBorder));
 }
 
-/* 错误态走危险色，且显式带上 :hover / :focus 组合 —— 否则 hover/focus 会盖掉它。 */
+/* 占位符接字段族配方（`ArtifactsPage.css:876` 那条的同一条口径）：
+   色只允许 `--cc-field-placeholder`（浅 #979CA2 / 深 #6E757A），且显式 opacity:1
+   —— 原来这里没有任何 `::placeholder` 规则，两主题都吃浏览器默认 #757575，
+   深色下既亮过正文又不在主题里。 */
+[data-host="desktop"] .ssh-conn-input::placeholder {
+  color: var(--cc-field-placeholder, var(--vscode-input-placeholderForeground));
+  opacity: 1;
+}
+
+/* 错误态：**边框全程报错色** —— 失焦、悬停、聚焦都是同一个红。
+   这是设计师 2026-11-12 的裁定：「文案位置对了，但边框线也应该是报错色」——
+   原来的写法让聚焦时退回中性焦点描边，红字配灰框，观感上不像报错。
+   聚焦与失焦同色（不自作主张再分深浅档）；只换 1px 描边颜色，不动盒尺寸、
+   不加外扩环（契约 :56）。若之后希望聚焦有一眼之差，加一条
+   `:focus { border-color: var(--cc-color-danger-hover) }` 即可。
+   注：这偏离契约 :71「Field compound-state checks」的 option B（聚焦用中性焦点
+   描边），以设计师裁定为准；同族 `.session-rename-input` 也是危险色全程，口径一致。 */
 [data-host="desktop"] .ssh-conn-input[aria-invalid="true"],
 [data-host="desktop"] .ssh-conn-input[aria-invalid="true"]:hover,
 [data-host="desktop"] .ssh-conn-input[aria-invalid="true"]:focus {
   border-color: var(--cc-color-danger, var(--vscode-errorForeground));
+}
+
+[data-host="desktop"] .ssh-conn-error {
+  /* :147 支撑说明 12px/20px（原 12/16），且距关联控件 8px（原来沿统一 gap 14） */
+  font-size: var(--cc-font-size-sm, 12px);
+  line-height: 20px;
+  margin-top: var(--cc-space-2, 8px);
+}
+
+/* 字段级错误行现在挂在 `.ssh-conn-field` 内部（跟着出错的字段走，而不是堆在
+   表单底部）：8px 由字段组自己的 gap 给，这里把 margin 清掉，避免 8+8=16。
+   表单级错误（宿主回传、没有归属字段）仍在字段块之外，继续吃上面那条 margin。 */
+[data-host="desktop"] .ssh-conn-field > .ssh-conn-error {
+  margin-top: 0;
+}
+
+[data-host="desktop"] .ssh-conn-actions {
+  /* :131 / :148「leave 24px before the footer」 */
+  margin-top: var(--cc-space-6, 24px);
 }
 
 [data-host="desktop"] .ssh-conn-btn {
@@ -201,6 +343,8 @@
   border-radius: 8px;
   font-size: 14px;
   font-weight: 500;
+  /* :131 标签 14px/22px（原 18px） */
+  line-height: 22px;
 }
 
 [data-host="desktop"] .ssh-conn-btn--primary {
@@ -217,12 +361,51 @@
   background: var(--cc-action-primary-active, #111318);
 }
 
+/* 「取消」= outlined secondary（契约 :132）：透明底 + `--cc-text-primary`
+   + 1px `--cc-border-light`；hover `--cc-fill-hover`、按下 `--cc-fill-pressed`。
+   base 写的是 `color: var(--vscode-foreground)`：深色那档恰好等于
+   `--cc-text-primary`，浅色却桥到 #202020，与标题的 #1F2329 差一档 —— 只有浅色
+   看得见的偏差。按下态原来完全没有，实测与 hover 同色（#EEF0F3 / #303436）。 */
+[data-host="desktop"] .ssh-conn-btn--ghost {
+  border-color: var(--cc-border-light);
+  background: transparent;
+  color: var(--cc-text-primary, var(--vscode-foreground));
+}
+
+[data-host="desktop"] .ssh-conn-btn--ghost:hover {
+  background: var(--cc-fill-hover, var(--vscode-list-hoverBackground));
+}
+
+[data-host="desktop"] .ssh-conn-btn--ghost:active {
+  background: var(--cc-fill-pressed, var(--cc-fill-hover));
+}
+
 [data-host="desktop"] .ssh-conn-btn--danger {
   height: 32px;
   color: var(--cc-color-danger, var(--vscode-errorForeground));
 }
 
+/* 破坏性确认键走契约 :134 的 soft-danger 变体（软底 + 危险字），不再用实心红：
+   深色实心 #fc4e52 上白字只有 3.31:1，14px 正文不达 4.5:1；软底档是 4.64:1。
+   与同族 `.confirm-dialog-btn-confirm.is-destructive` 同一配方。 */
 [data-host="desktop"] .ssh-conn-btn--danger-solid {
-  background: var(--cc-color-danger, var(--vscode-errorForeground));
-  color: #ffffff;
+  background: var(--cc-color-danger-soft, var(--vscode-errorForeground));
+  color: var(--cc-color-danger, var(--vscode-errorForeground));
+  border-color: transparent;
+}
+
+[data-host="desktop"] .ssh-conn-btn--danger-solid:hover:not(:disabled) {
+  background: var(--cc-color-danger-soft, var(--vscode-errorForeground));
+  color: var(--cc-color-danger-hover, #b91c1c);
+}
+
+[data-host="desktop"] .ssh-conn-btn--danger-solid:active:not(:disabled) {
+  background: var(--cc-color-danger-soft, var(--vscode-errorForeground));
+  color: var(--cc-color-danger-active, #991b1b);
+}
+
+/* 焦点环：soft 档没有装饰性红描边，键盘焦点必须另有可见指示（契约 :136） */
+[data-host="desktop"] .ssh-conn-btn:focus-visible {
+  outline: 2px solid var(--cc-border-focus, #2f5edb);
+  outline-offset: 2px;
 }
