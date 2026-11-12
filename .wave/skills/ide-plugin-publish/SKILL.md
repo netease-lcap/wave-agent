@@ -23,6 +23,7 @@ allowed-tools:
 1. **`git pull` 主仓库到最新**：`release.js` 的版本 bump 是经 PR 合入 main 的，本地不 pull 就会以**旧版本号**打包（实战踩过：本地停在 bump 之前的 commit，结果以 1.1.10 发了一个本该是 1.1.11 的 pre-release）。
 2. **核对版本号**：`python3 -c "import json;print(json.load(open('packages/vscode/package.json'))['version'])"`（JB 看 `packages/jetbrains/gradle.properties`）。
 3. **看市场现状**：`cd packages/vscode && pnpm exec vsce show wave-codechat.wave-vscode` —— 只列 **stable** 版本；注意我们市场正式版可能落后于 GitHub Release 很多（2026-09-10 时 stable 还停在 1.1.5，而桌面/tag 已到 1.1.11）。
+4. **确认发布 run 真的起来了**：`gh run list --workflow=publish.yml`。一条都没有 = tag push 没触发（单次 push 创建超过 3 个 tag 时 GitHub 静默不发事件），删掉 tag 逐个重推即可，别改 workflow。
 
 ## VS Code 扩展发布
 

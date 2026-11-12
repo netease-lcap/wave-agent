@@ -198,9 +198,10 @@ if (
         );
         console.log(`Created tag: ${tagName}`);
       }
-      console.log(
-        `\nTo publish this version, run:\n  git push origin ${tags.join(" ")}\n`,
-      );
+      // One push per tag: GitHub emits no push event for a single push that
+      // creates more than three tags (see release.js).
+      const pushes = tags.map((tag) => `git push origin ${tag}`).join("\n  ");
+      console.log(`\nTo publish this version, run:\n  ${pushes}\n`);
     } catch (error) {
       console.error("Git operation failed:", error.message);
       process.exit(1);
