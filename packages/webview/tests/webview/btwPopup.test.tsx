@@ -100,8 +100,10 @@ describe("/btw Popup", () => {
     );
     expect(screen.getByTestId("btw-panel-loading")).toBeInTheDocument();
     expect(screen.getByText("正在回答")).toBeInTheDocument();
-    // No emoji — the ▋ cursor blink is aligned with the message list
-    expect(screen.getByTestId("btw-panel-loading").textContent).toContain("▋");
+    // 在途态只有一个信号：文案「正在回答」（闪烁的 ▋ 已按 1109 走查 BTW-15 移除）
+    expect(screen.getByTestId("btw-panel-loading").textContent).toBe(
+      "正在回答",
+    );
   });
 
   it("shows only the streaming tail while loading and renders the finished answer as markdown", async () => {

@@ -1444,6 +1444,16 @@
 [data-host="desktop"] .markdown-content thead th:last-child {
   border-top-right-radius: 12px;
 }
+/* 无表头的表格（Message.tsx isEmptyTableHeader 会把全空的 thead 整段丢掉）：
+   顶角圆角改由首行数据单元格承担，否则表格上边是直角、下边是 12px 圆角。
+   选择器用 `table > tbody:first-child` 精确限定「没有 thead 的表格」—— 有表头时
+   thead 占着 first-child，这两条不命中，不影响既有外观。 */
+[data-host="desktop"] .markdown-content table > tbody:first-child > tr:first-child > td:first-child {
+  border-top-left-radius: 12px;
+}
+[data-host="desktop"] .markdown-content table > tbody:first-child > tr:first-child > td:last-child {
+  border-top-right-radius: 12px;
+}
 [data-host="desktop"] .markdown-content tbody tr:last-child td:first-child {
   border-bottom-left-radius: 12px;
 }
@@ -7248,4 +7258,262 @@
 [data-host="desktop"] .slash-group-title {
   padding: 0 8px;
   color: var(--cc-text-secondary);
+}
+
+/* ═══ 1112 · `/btw` 侧聊面板按设计规范收口（桌面端）═══
+   来源：1109–1111 走查（证据页 `btw-panel-audit.html`，22 条 + 逐值对照），
+   她点名执行的三条：「1、面板宽度参考任务列表消息列表，跟随 AI 对话框宽度响应
+   3、收口到 token 4、收口」。
+   契约：`codechat-desktop-skill@300743b`
+     · references/conversation-typography.md:33-38 角色表（H1 20/28 · H2 18/26 ·
+       H3 16/24 · H4–H6 14/22，一律 600；正文 14/22；辅助信息 12/20；代码 13/20）、
+       :43 相邻块 8、:44 列表缩进、:46 引用正文档、:47 代码块内衬 12、:59 TXT-06
+       宽表就地横向滚动
+     · references/common-components.md:25 图标键 r8（含紧凑 22–24 档）、:31 桌面
+       文本域 r8、:46-53 表单字段映射、:58 禁用态专用配色且不整组压暗
+     · references/design-system.md:95 产品链接 `--cc-text-link`、:154 浮层皮肤
+   做法：答案块改吃共用层 `.markdown-content`（结构件见 BtwPanel.tsx），本层只
+   补桌面档的差异与「面板自有部件」（头部 / 气泡 / 输入行 / 图标键 / 失败态）。
+   不动的几何：面板圆角 12、`max-height: min(420px, 60vh)`、头部与输入行内衬
+   8·12、轮次列表内衬 8·12。
+   未做（见报告「待裁」）：BTW-16 任务清单残渣（实测无缺陷，撤回）；失败轮的
+   「重试」入口（新增交互，需点名）。BTW-12 正文字色已被她的第 2 条裁定
+   （「对话流的展示规范参考正式对话」）⇒ 取正式对话的 1 级字色，见 ⑩。 */
+
+/* ① DES-18 宽度与位置 = AI 对话框（她的第 1 条 + 1112 追加：「修改后宽度是超出
+   AI 对话框的，我希望是像任务列表一样和 AI 对话框宽度保持一致」）。
+   量清楚的三层（1440 下，1× DPR）：消息列 `.messages-column` 800（含左右 10
+   内衬，行 `.timeline-row` 780）→ **AI 对话框 `.input-wrapper` 768**（= 输入卡
+   外框，也是面板的定位父级）→ 三者同心（中心都是 849.5）。
+   第一版取的是消息列（`100% + 32px` = 800）⇒ 左右各比输入卡宽出 16px，就是她说
+   的「超出」；本版直接取父级宽：`100%` = min(768, 面板可用宽 − 32)，与输入卡
+   逐值同宽同位，窄窗口同步收缩，仍不需要 JS。 */
+[data-host="desktop"] .btw-panel {
+  left: 50%;
+  transform: translateX(-50%);
+  width: 100%;
+  max-width: 768px;
+}
+
+/* ② 皮肤接 token（浅色四值与族规则逐值相同 → 零像素变化；深色阴影按 BTW-09
+   换成浮层档 `--cc-shadow-popover` = 0 12px 30px / 40%，原为 0 0 12px / 40%）。
+   深色容器字色 #9A9EA5 → `--cc-text-secondary` #A0A5A8（DES-20）。
+   ⚠️ 底面取哪一档，设计师改了两轮（两轮都是她的原话，逐字记下）：
+   ① 「背景色特别是深色主题也和任务列表一致」→ 取 `--cc-bg-conversation`
+      （浅 #FFFFFF / 深 #111314 = 画布 / 任务列表面）。
+   ② 「深色版，颜色可以统一用发送那里的背景色」→ 上一档作废，改取面板自己的
+      **发送行**（`.btw-panel-input-row`）那一档。为什么这条只在深色说得通：
+      实测浅色下发送行底 = #FFFFFF，与面板底逐值相同（没有可「统一」的差异）；
+      深色下发送行底 = rgb(24,26,27) = #181A1B，面板底 rgb(17,19,20) = #111314
+      ⇒ 面板下半截突然亮一档，正是她看到的那道「两种颜色」。
+      #181A1B 就是 `--cc-bg-panel`（浅 #FFFFFF / 深 #181A1B），故底面改用这枚
+      token：浅色仍 #FFFFFF（零变化），深色 #111314 → #181A1B 与发送行同色。
+   配套：发送行自身改 `transparent`（见下一条）——两段真的同属一块面，不靠
+   「两个恰好同值的底色」凑。 */
+[data-host="desktop"] .btw-panel {
+  background-color: var(--cc-bg-panel);
+  border-color: var(--cc-border-lighter);
+  box-shadow: var(--cc-shadow-popover);
+  color: var(--cc-text-regular);
+}
+/* 深色档必须在**两属性**的选择器上再落一次面：菜单族规则
+   （`:2997 [data-host="desktop"][data-theme="dark"] .btw-panel`）也把面板列进了
+   浮层族并给了 `--cc-bg-overlay`，特异性 (0,3,1) 高过上面那条 (0,2,1) —— 只改 ②
+   实测仍是 #232526。这条同为 (0,3,1) 且在文件里更靠后 ⇒ 按序胜出。 */
+[data-host="desktop"][data-theme="dark"] .btw-panel {
+  background-color: var(--cc-bg-panel);
+  box-shadow: var(--cc-shadow-popover);
+  color: var(--cc-text-secondary);
+}
+
+/* 发送行跟着面板同面（她的第 2 条「颜色可以统一用发送那里的背景色」的另一半）：
+   这一行 base 吃 `--vscode-editor-background`（深色 #181A1B），是面板里唯一一块
+   自己上色的分区，也就成了深色下「上半截 #111314、下半截 #181A1B」的来源。
+   底面已换成 #181A1B（= `--cc-bg-panel`），这里把发送行改成 transparent，
+   两段因此是同**一块**面（不是两块同值的面）；浅色原本就同值，零变化。 */
+[data-host="desktop"] .btw-panel-input-row {
+  background-color: transparent;
+}
+
+/* 头部跟着换面：菜单族给头部也写了 `#FFFFFF / #232526`（`:2972` / `:3073`），
+   面板底换到画布档后头部会留一道 #232526 的竖带。任务列表面板（`.preview-pane`
+   /`.preview-pane-toolbar`）的做法是工具栏透明、只留 1px 底边 ⇒ 这里同样置透明，
+   浅色等价（原 #FFFFFF = 面板底）、深色与面板底同色。 */
+[data-host="desktop"] .btw-panel-header,
+[data-host="desktop"][data-theme="dark"] .btw-panel-header {
+  background-color: transparent;
+}
+
+/* ③ 头部 = 面板标题角色 14/22 600 一级字色（2026-11-12 评论「标题的文本也要
+   符合规范，现在偏小」）。改前整行 12/20 按「辅助信息」处理是错的：这一行是面板
+   的标题，同族是 `.desktop-panel-toolbar-title`（文件 / 计划 / 差异面板工具栏标题，
+   14px + 600 + `--vscode-foreground`，那是 2026-09 她本人点名过的口径：
+   「这里标题区域字号应该是 14px」「这个位置的标题都加粗」）。
+   契约 conversation-typography.md:36「工具名称、任务标题、状态标题 14 / 22」。
+   在途不是标题，仍是辅助信息 12/20（BTW-11）；空态见 ③-2。 */
+[data-host="desktop"] .btw-panel-header {
+  font-size: var(--cc-font-size-md, 14px);
+  line-height: var(--cc-line-height-md, 22px);
+}
+/* ③-1 标题里的「问题文本」弱化到 2 级、字重回 400（2026-11-12 评论「这个文本
+   可以弱化一些，不要加粗，2 级文本我看看效果」）。
+   一行两个角色：`/btw` 前缀 = 面板标识（600 + 一级字色，别动），后面那句问题
+   = 标题的正文，落 2 级 `--cc-text-regular`（浅 #565A60 / 深 #C4C7C9）+ 400。
+   字号仍是上一轮定的 14/22 —— 这一轮只动字重与字色，不动大小。 */
+[data-host="desktop"] .btw-panel-question {
+  color: var(--cc-text-regular);
+  font-weight: var(--cc-font-weight-regular, 400);
+}
+[data-host="desktop"] .btw-panel-loading,
+[data-host="desktop"] .btw-loading-text,
+[data-host="desktop"] .btw-loading-tail {
+  color: var(--cc-text-secondary);
+  font-size: var(--cc-font-size-sm, 12px);
+  line-height: var(--cc-line-height-sm, 20px);
+}
+
+/* ③-2 空态提示「用法：/btw <你的问题>」= 14/22（2026-11-12 评论「提示的文本
+   大小也要符合规范」）。改前跟着在途一起压成 12/20 是按「辅助信息」处理，错的：
+   面板空态提示在全族都是 14 —— 文件面板三个空态（`.file-pane-status--error`
+   /`--failed`/`--loading`、`.file-pane-placeholder-empty`）与预览页空态同一档，
+   那是 1030 第二轮你本人裁的口径「一起提到 14」。
+   字色不动，仍是次要色（同一批口径：「字色不动，仍是 descriptionForeground」）。
+   在途那三行不是空态（是状态行 + 尾部），这一轮不在点名范围，仍是 12/20。 */
+[data-host="desktop"] .btw-panel-empty {
+  color: var(--cc-text-secondary);
+  font-size: var(--cc-font-size-md, 14px);
+  line-height: var(--cc-line-height-md, 22px);
+}
+
+/* ④ 图标键 24×24 / r8 / hover `--cc-fill-hover`，字形 hover 升 1 级字色
+   （BTW-08；原 18/20 见方、r3、hover 吃宿主 toolbar 色 → axe target-size 2 处）。
+   字形统一 16：两键原来一个 14（清空）一个 16（关闭），并排看着不一样大。 */
+[data-host="desktop"] .btw-panel-icon-btn,
+[data-host="desktop"] .btw-panel-close {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--cc-radius-md, 8px);
+  color: var(--cc-text-regular);
+}
+[data-host="desktop"] .btw-panel-icon-btn:hover,
+[data-host="desktop"] .btw-panel-close:hover {
+  background-color: var(--cc-fill-hover);
+  color: var(--cc-text-primary);
+}
+[data-host="desktop"] .btw-panel-icon,
+[data-host="desktop"] .btw-panel-close-icon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+/* ⑤ 轮次间距（BTW-17）：轮内「问题 → 答案」8（契约 :43 相邻块 8），轮与轮之间
+   16（两轮的边界要能和轮内区分开；原 6 / 12 太接近，多轮时读成一串）。 */
+[data-host="desktop"] .btw-panel-turns {
+  gap: 16px;
+}
+[data-host="desktop"] .btw-turn {
+  gap: 8px;
+}
+
+/* ⑥ 问题气泡（BTW-13）：r8 + 8·12 内衬，底色取主对话用户气泡同一 token
+   `--vscode-chat-requestBubbleBackground`（浅 #F0F2F5 / 深 #25292B）。
+   1112 第二轮（她的第 2 条「对话流的展示规范参考正式对话」）：这一枚对齐正式
+   对话的用户消息 —— 实测 `.user-text-block` = r8 / 内衬 8·12 / 字重 **500** /
+   无描边 / `width:fit-content; max-width:100%`。原面板是 400 + 1px 描边 +
+   上限 85%，三处都与正式对话不同：
+   · 字重 400 → 500（同一句话在气泡里该和正式对话一样有「用户说的」重量）；
+   · 去掉 1px 描边：当初加描边是因为「深色下面气泡与面板底只差 Δ2,4,5」——
+     那是对面板底 #111314 说的；现在面板底是 #181A1B，气泡 #25292B 与它
+     Δ(13,15,16)，描边反而成了正式对话里没有的多余线；
+   · 上限 85% → 100%：正式对话的气泡没有这个上限（长问题整行铺开）。 */
+[data-host="desktop"] .btw-turn-question {
+  padding: 8px 12px;
+  border: none;
+  border-radius: var(--cc-radius-md, 8px);
+  background-color: var(--vscode-chat-requestBubbleBackground);
+  font-weight: var(--cc-font-weight-medium, 500);
+  max-width: 100%;
+}
+
+/* ⑦ 失败轮（BTW-14）：错误文案走正文角色，只换成危险语义色（`--cc-color-danger`
+   浅 #DC2626 / 深 #FC4E52；浅色对白底 4.83:1）。不新增「重试」按钮 —— 那是新
+   交互，不在这一批。 */
+[data-host="desktop"] .btw-panel-answer--failed {
+  color: var(--cc-color-danger);
+}
+
+/* ⑧ 输入框（BTW-07）：0923 契约「桌面文本域 r8」+ 1023 的字段映射
+   `--cc-field-*`（与设置页、侧栏搜索、主机地址行、行内评论框同一份）：
+   静止 / hover 只换描边 / focus 1px 沿边零位移 / 占位专用色 / 停用三色。
+   停用态不再整块 opacity .6（契约 :58 不要把整组字段压暗）。 */
+[data-host="desktop"] .btw-panel-input {
+  border-radius: var(--cc-radius-md, 8px);
+  background: var(--cc-field-bg);
+  border-color: var(--cc-field-border);
+  color: var(--cc-field-text);
+}
+[data-host="desktop"] .btw-panel-input::placeholder {
+  color: var(--cc-field-placeholder);
+  opacity: 1;
+}
+[data-host="desktop"] .btw-panel-input:hover:not(:disabled) {
+  border-color: var(--cc-field-border-hover);
+}
+[data-host="desktop"] .btw-panel-input:focus:not(:disabled) {
+  border-color: var(--cc-field-border-focus);
+  outline: none;
+}
+[data-host="desktop"] .btw-panel-input:disabled {
+  background: var(--cc-field-bg-disabled);
+  border-color: var(--cc-field-border-disabled);
+  color: var(--cc-field-text-disabled);
+  opacity: 1;
+  cursor: not-allowed;
+}
+
+/* ⑨ 正文章节标题角色（BTW-02 + DES-21，同一批）：面板与主对话共用 ——
+   角色表 H1 20/28、H2 18/26、H3 16/24、H4–H6 14/22，一律 600。base 是相对
+   正文的 em 连乘（1.8/1.5/1.3/1.1/1/0.9 × 14 = 25.2/21/18.2/15.4/14/12.6），
+   两处都偏离契约；这里给绝对值，面板与主对话一次到位。 */
+[data-host="desktop"] .markdown-content h1 {
+  font-size: 20px;
+  line-height: 28px;
+  font-weight: var(--cc-font-weight-semibold, 600);
+}
+[data-host="desktop"] .markdown-content h2 {
+  font-size: 18px;
+  line-height: 26px;
+  font-weight: var(--cc-font-weight-semibold, 600);
+}
+[data-host="desktop"] .markdown-content h3 {
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: var(--cc-font-weight-semibold, 600);
+}
+[data-host="desktop"] .markdown-content h4,
+[data-host="desktop"] .markdown-content h5,
+[data-host="desktop"] .markdown-content h6 {
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: var(--cc-font-weight-semibold, 600);
+}
+
+/* ⑩ 答案正文接正式对话的字色（她的第 2 条「对话流的展示规范参考正式对话」，
+   也是报告里 BTW-12 那枚待裁点的裁定）。
+   改前：面板容器把字色压到 `--cc-text-regular`（浅 #565A60）/ `--cc-text-secondary`
+   （深 #A0A5A8），答案正文、列表、表头、单元格全部继承这一档 ⇒ 同一段话在面板里
+   是「次要信息」的灰，在正式对话里是 1 级字色（实测 `.markdown-content` 正文
+   浅 rgb(32,32,32) / 深 rgb(229,231,232) = `--vscode-editor-foreground`）。
+   改后：正文这一层直接吃 `--vscode-editor-foreground` —— 与正式对话**同一个变量**，
+   两处逐值相等（浅 #202020 / 深 #E5E7E8），不是抄一个近似的十六进制。
+   只管「对话内容」这一层：面板自己的部件（头部提问、在途、空态、占位符）仍走
+   辅助信息色 12/20，不去动它们。
+   排除失败轮：⑦ 的 `--cc-color-danger` 与这条同特异性 (0,2,1)，放在后面才轮到它
+   胜出；这里显式排除，免得以后调整顺序把错误色吃掉。 */
+[data-host="desktop"] .btw-panel-answer:not(.btw-panel-answer--failed) {
+  color: var(--vscode-editor-foreground);
 }

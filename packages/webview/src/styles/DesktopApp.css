@@ -1668,7 +1668,23 @@ body.is-panel-resizing webview {
    ⚠️ 本该写进 host-desktop.css 的文件标签段（:2036-2054），但那个文件当前有另一个
    窗口在改，先落本文件；`[data-host="desktop"] .file-tab .file-tab-close:hover`
    带上 `.file-tab` 是为了压过 host 层那条 `:hover { background: --cc-fill-pressed }`。
-   回退：删掉下面四条 + 把 `FileTabStrip.tsx` 换回 `CloseIcon` 即恢复原样。 */
+   回退：删掉下面四条 + 把 `FileTabStrip.tsx` 换回 `CloseIcon` 即恢复原样。
+
+   ── 1112 补：hover / 按住态的对齐（评论「关闭按钮的hover色要和…这里一致」，
+      补充「hover和点击色都要一致」）──
+   实测两颗键的 `color` 曲线本来就逐值相同（浅 常态 #565A60 → hover #1F2329；
+   深 #9A9EA5 → #FFFFFF），背景两边都是 transparent（面板侧 hover 底早在 0903
+   就按评论去掉，见 host-desktop.css:2753）。唯一分歧是 **opacity**：
+
+     状态      文件标签带（改前）      面板页签（基准）
+     hover     color 变，opacity 0.6   color 变，opacity 1
+     按住      同 hover（未声明 :active） 同 hover（未声明 :active）
+
+   根因是层叠顺序而非缺声明：base 的 `.file-tab-close:hover { opacity: 1 }`
+   （FilePane.css:713）与 `[data-host="desktop"] .file-tab-close` 同为 (0,2,0)，
+   后者在本文件里更靠后 ⇒ 常态的 0.6 在 hover 时照样赢，图标一直是半透明。
+   所以这里只补一条 `opacity: 1`；**不新增 `:active` 规则** —— 基准侧没有，
+   按住态本来就继承 hover，补上反而制造新的不对称。 */
 [data-host="desktop"] .file-tab-close {
   border-radius: 0;
   opacity: 0.6;
@@ -1680,6 +1696,8 @@ body.is-panel-resizing webview {
 [data-host="desktop"] .file-tab .file-tab-close:hover {
   background: transparent;
   color: #1f2329;
+  /* 与面板页签关闭键同一条 hover 曲线（同时覆盖按住态） */
+  opacity: 1;
 }
 [data-host="desktop"][data-theme="dark"] .file-tab .file-tab-close:hover {
   color: #ffffff;

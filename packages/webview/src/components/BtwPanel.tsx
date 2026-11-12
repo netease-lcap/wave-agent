@@ -4,6 +4,7 @@ import DOMPurify from "dompurify";
 import type { BtwTurn } from "../utils/sessionUiStore";
 import { streamingTail } from "../utils/streamingText";
 import { CloseIcon, QueueTrashIcon } from "./HeaderIcons";
+import { isDesktopHost } from "../utils/platform";
 import "../styles/BtwPanel.css";
 
 interface BtwPanelProps {
@@ -23,6 +24,26 @@ interface BtwPanelProps {
 // with stopPropagation runs before React's synthetic onKeyDown (attached at
 // the root container), so the keypress never reaches MessageInput's
 // onAbortMessage and the in-flight agent loop keeps running.
+/**
+ * 答案块与主对话共用同一套 markdown 皮肤（`.markdown-content`，见 Message.css
+ * 与 host-desktop.css 的角色规则）。主对话的表格滚动容器 / 代码块 tabindex 来自
+ * Message.tsx 的 renderer，面板自己渲染 HTML，拿不到那层，所以在这里补两个结构件：
+ *  · 宽表外层 `.md-table-scroll`：横向滚动兜底（TXT-06），否则宽表被面板裁掉；
+ *  · `pre` 的 `tabindex="0"`：可横向滚动的代码块要能键盘聚焦
+ *    （axe scrollable-region-focusable）。
+ * 两步都在 DOMPurify **之后**做：净化只管模型输出的原始标签，注入的包装层不过
+ * 白名单，也就不用为 `class` / `tabindex` 放宽 ALLOWED_ATTR。
+ * `tabindex` 只在桌面端注入 —— 与 Message.tsx renderer.code 同一理由：焦点环样式
+ * 只写在 `[data-host="desktop"]` 层，插件端加了只会多出看不见的 Tab 停靠点。
+ */
+const decorateMarkdown = (html: string): string => {
+  const tabindex = isDesktopHost() ? ' tabindex="0"' : "";
+  return html
+    .replace(/<table>/g, `<div class="md-table-scroll"${tabindex}><table>`)
+    .replace(/<\/table>/g, "</table></div>")
+    .replace(/<pre>/g, `<pre${tabindex}>`);
+};
+
 const renderMarkdown = (content: string): string => {
   const html = marked.parse(content, { gfm: true, breaks: true });
   const sanitized = DOMPurify.sanitize(html as string, {
@@ -59,8 +80,23 @@ const renderMarkdown = (content: string): string => {
     ALLOWED_ATTR: ["href", "title", "align", "src", "alt"],
     ALLOW_DATA_ATTR: false,
   });
-  return typeof sanitized === "string" ? sanitized : "";
+  return typeof sanitized === "string" ? decorateMarkdown(sanitized) : "";
 };
+
+/**
+ * 流式尾部（「正在回答」后面那 30 个字）是单行纯文本，不是 markdown —— 直接把
+ * 原文塞进去会把 `**`、``` 之类的记号一起带出来。这里只剥记号、不动内容：
+ * 换行保留（`streamingTail` 要把它们写成 `\n` 转义），制表/多空格压成一个。
+ */
+const plainTail = (text: string): string =>
+  text
+    .replace(/```[^\n]*/g, " ")
+    .replace(/`/g, "")
+    .replace(/\*\*|__|\*/g, "")
+    .replace(/^#{1,6}\s+/gm, "")
+    .replace(/^\s*[-*+]\s+/gm, "")
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/[ \t]+/g, " ");
 
 /** 列表离底部多近算「仍停在底部」（behaviour 见 spec 场景 5）。 */
 const NEAR_BOTTOM_PX = 48;
@@ -209,20 +245,21 @@ export const BtwPanel: React.FC<BtwPanelProps> = ({
                 className="btw-panel-loading"
                 data-testid="btw-panel-loading"
               >
-                <span className="btw-loading-indicator">▋</span>
                 <span className="btw-loading-text">正在回答</span>
                 {turn.answer && (
                   <span
                     className="btw-loading-tail"
                     data-testid="btw-loading-tail"
                   >
-                    {streamingTail(turn.answer)}
+                    {streamingTail(plainTail(turn.answer))}
                   </span>
                 )}
               </div>
             ) : (
               <div
-                className="btw-panel-answer"
+                className={`btw-panel-answer markdown-content${
+                  turn.failed ? " btw-panel-answer--failed" : ""
+                }`}
                 data-testid="btw-panel-answer"
                 dangerouslySetInnerHTML={{
                   __html: renderMarkdown(turn.answer),

@@ -292,6 +292,33 @@ const stripCellHtml = (cellHtml: string): string =>
     .replace(/&(?:amp|lt|gt|quot|#39|nbsp);/g, (m) => HTML_ENTITY_MAP[m] ?? m)
     .trim();
 
+// 表头是否「全空」（用户 2026-11-12 反馈）：markdown 写成 `| | |` 的键值对表格
+// （两列、不要列名）是合法 GFM，marked 照样输出 `<thead><tr><th></th><th></th>`。
+// 桌面端 th 带 `--cc-fill` 底色 + 8/12 内衬，于是表格顶部多出一条空的高亮带
+// （实测浅色 #F0F2F5 / 深色 #25292B，高 17px = 上下 8px 内衬 + 1px 描边，空单元格
+// 没有行盒；整表因此比无表头版本高 17px）。这类表头没有任何可读内容，保留它只会
+// 多一条脏底色和几个空列头（读屏念「表头」后无名称）。
+// 判据：单元格纯文本为空 **且** 不含可见元素。后者不能省 —— 列头写成
+// `![](badge.svg)` 的表格去标签后文本也是空的，但那个列头是有内容的，删掉 thead
+// 等于把图片列头一起丢掉。与列数、列序、内容语义无关；没有 th 的异常输入按空处理。
+// 解实体要**两轮**：marked 会把单元格里的 `&` 再转义一次，作者写的 `&nbsp;` 到
+// 这里已经是 `&amp;nbsp;`，只解一轮剩下字面 `&nbsp;`，既非空、又会被当成列名原样
+// 显示出来（「想留白却看到 6 个字符」）。两轮解完就是空白 ⇒ 与 `| | |` 同等对待。
+const EMPTY_HEADER_VISIBLE_TAG_RE =
+  /<(?:img|svg|picture|video|canvas|input|button|select|iframe)\b/i;
+const decodeCellEntities = (text: string): string =>
+  text.replace(
+    /&(?:amp|lt|gt|quot|#39|nbsp);/g,
+    (m) => HTML_ENTITY_MAP[m] ?? m,
+  );
+const isEmptyTableHeader = (headerHtml: string): boolean =>
+  [...headerHtml.matchAll(TABLE_CELL_HTML_RE)].every(
+    (m) =>
+      // stripCellHtml 已去标签并解过一轮实体，这里再解一轮收掉 `&amp;nbsp;`
+      decodeCellEntities(stripCellHtml(m[3])).trim() === "" &&
+      !EMPTY_HEADER_VISIBLE_TAG_RE.test(m[3]),
+  );
+
 const isIconCell = (text: string): boolean =>
   [...text].length <= 4 && TABLE_ALIGN_ICON_RE.test(text);
 
@@ -637,13 +664,22 @@ export const createMessageMarkdownRenderer = (
   // 需能聚焦该区域后用方向键滚看被裁掉的列；与 F-10 给 code pre 的处理同源。
   // 仅桌面端注入（见下方 renderer.code 的说明：插件端没有对应焦点环样式）。
   // 默认渲染结果再过一遍列级对齐（见 applyTableColumnAlign）。
+  // 空表头（见 isEmptyTableHeader）：整段 thead 丢掉，表格直接从第一行数据开始，
+  // 不再渲染那条空底色带。**顺序要求**：先 applyTableColumnAlign 再删 thead ——
+  // 对齐判定以「首行 = 列头」为前提，先删 thead 会让第一行数据被当成列头。
   const defaultTable = marked.Renderer.prototype.table;
-  renderer.table = (header: string, body: string) =>
-    `<div class="md-table-scroll"${
-      isDesktopHost() ? ' tabindex="0"' : ""
-    }>${applyTableColumnAlign(
+  renderer.table = (header: string, body: string) => {
+    const aligned = applyTableColumnAlign(
       defaultTable.call(renderer, header, body),
-    )}</div>`;
+    );
+    return `<div class="md-table-scroll"${
+      isDesktopHost() ? ' tabindex="0"' : ""
+    }>${
+      isEmptyTableHeader(header)
+        ? aligned.replace(/<thead>[\s\S]*?<\/thead>/, "")
+        : aligned
+    }</div>`;
+  };
   // 单元格列宽判定（V-01，用户 2026-09-10「按内容分配列宽，优先自然换行，横向
   // 滚动只作兜底」）：只依据单元格纯文本判定，不看列序/表结构/具体内容，故对任意
   // 表格可复用，不会变成按某张表硬编码。
