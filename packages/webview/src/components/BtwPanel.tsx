@@ -73,9 +73,12 @@ export const BtwPanel: React.FC<BtwPanelProps> = ({
   onClear,
   onClose,
 }) => {
+  const panelRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const nearBottomRef = useRef(true);
+  /** 打开面板时没能送出去的那次聚焦（见下面的 effect）。 */
+  const pendingFocusRef = useRef(false);
 
   const isLoading = turns.some((turn) => turn.loading);
   const latestQuestion =
@@ -93,10 +96,40 @@ export const BtwPanel: React.FC<BtwPanelProps> = ({
     return () => document.removeEventListener("keydown", handleKeyDown, true);
   }, [onClose]);
 
-  // 打开面板就把光标放进面板输入框：提问入口在这里，不该逼用户先点一下。
+  // 打开面板就把光标放进面板输入框：提问入口在这里，不该逼用户先点一下
+  // （对齐 CC 桌面端 Side chat：它打开侧聊时也是先把焦点放进追问输入框）。
   useEffect(() => {
-    inputRef.current?.focus();
+    const input = inputRef.current;
+    if (!input) return;
+    if (input.disabled) pendingFocusRef.current = true;
+    else input.focus();
   }, []);
+
+  // 首问在途时输入框是禁用的，上面那次聚焦会落空——禁用控件拿不到焦点，光标
+  // 留在主输入框，用户接着打字就变成一条主对话消息。所以等它恢复可用的这一刻
+  // 补上（CC 靠时序躲过同一件事：它在把状态置成 thinking 之前就聚焦，之后再转
+  // 禁用并不会夺走已经到手的焦点）。补之前先看用户有没有自己动过手——焦点落到
+  // 面板外、或在面板外按键，都算「他在别处干活」，那就别再抢。
+  useEffect(() => {
+    if (!pendingFocusRef.current) return;
+    const input = inputRef.current;
+    if (input && !input.disabled) {
+      pendingFocusRef.current = false;
+      input.focus();
+      return;
+    }
+    const cancel = (event: Event) => {
+      const target = event.target as Node | null;
+      if (target && panelRef.current?.contains(target)) return;
+      pendingFocusRef.current = false;
+    };
+    document.addEventListener("focusin", cancel, true);
+    document.addEventListener("keydown", cancel, true);
+    return () => {
+      document.removeEventListener("focusin", cancel, true);
+      document.removeEventListener("keydown", cancel, true);
+    };
+  }, [isLoading]);
 
   // 「清空侧聊」之后焦点回到输入框（spec 场景 6）：清空前若在等答案，输入框
   // 是 disabled 的，点下按钮那一刻还 focus 不上，所以等轮次清空之后再补。
@@ -122,7 +155,7 @@ export const BtwPanel: React.FC<BtwPanelProps> = ({
   };
 
   return (
-    <div className="btw-panel" data-testid="btw-panel">
+    <div className="btw-panel" data-testid="btw-panel" ref={panelRef}>
       <div className="btw-panel-header">
         {/* The prefix is always rendered so the header keeps a title and the
             close button stays on the right even for a bare `/btw` (spec

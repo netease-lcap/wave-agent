@@ -594,6 +594,52 @@ describe("/btw Popup", () => {
     expect(screen.queryByTestId("btw-turn")).not.toBeInTheDocument();
   });
 
+  it("moves the caret into the follow-up input once the first answer lands", async () => {
+    renderChatApp();
+    const mainInput = screen.getByTestId("message-input");
+    mainInput.focus();
+    await typeInInput("/btw first?");
+    act(() => {
+      fireEvent.click(screen.getByTestId("send-btn"));
+    });
+
+    // 面板是「带着一轮在途」挂载的：输入框开局就禁用，浏览器不给禁用控件焦点，
+    // 这一刻光标还在主输入框（对齐 CC：它在发出问题之前就把光标放进侧聊输入框，
+    // 之后输入框转成禁用并不会把已经拿到手的焦点夺走）。
+    const input = screen.getByTestId("btw-panel-input");
+    expect(input).toBeDisabled();
+    expect(mainInput).toHaveFocus();
+
+    act(() => {
+      sendCommand("btwResponse", { question: "first?", answer: "one" });
+    });
+
+    // 答案落地、输入框恢复可用后补上那一次焦点，用户可以直接接着追问
+    expect(input).toHaveFocus();
+  });
+
+  it("leaves the caret alone if the user has already moved on", async () => {
+    renderChatApp();
+    const mainInput = screen.getByTestId("message-input");
+    mainInput.focus();
+    await typeInInput("/btw first?");
+    act(() => {
+      fireEvent.click(screen.getByTestId("send-btn"));
+    });
+
+    // 还在等答案，用户已经点回主输入框接着写 —— 答案落地时不该把他拽走
+    act(() => {
+      mainInput.focus();
+      fireEvent.keyDown(mainInput, { key: "n" });
+    });
+    act(() => {
+      sendCommand("btwResponse", { question: "first?", answer: "one" });
+    });
+
+    expect(mainInput).toHaveFocus();
+    expect(screen.getByTestId("btw-panel-input")).not.toHaveFocus();
+  });
+
   it("switches the input placeholder, disables it while thinking, and keeps Shift+Enter from sending", async () => {
     const { vscode } = renderChatApp();
     await typeInInput("/btw");
