@@ -27,9 +27,20 @@ try {
     stdio: "inherit",
   });
 
-  // 4. Push branch and tag
-  console.log("Pushing branch and tags...");
-  execSync("git push -u origin HEAD --follow-tags", { stdio: "inherit" });
+  // 4. Push the branch, then each tag on its own: GitHub emits no push event
+  // when a single push creates more than three tags, so the publish workflow
+  // silently never starts (hit 2026-11-12: one npm tag + three GUI tags).
+  console.log("Pushing branch...");
+  execSync("git push -u origin HEAD", { stdio: "inherit" });
+
+  const newTags = execSync("git tag --points-at HEAD", { encoding: "utf8" })
+    .split("\n")
+    .map((tag) => tag.trim())
+    .filter(Boolean);
+  for (const tag of newTags) {
+    console.log(`Pushing tag ${tag}...`);
+    execSync(`git push origin ${tag}`, { stdio: "inherit" });
+  }
 
   // 5. Create PR and set auto-merge
   console.log("Creating Pull Request and enabling auto-merge...");
