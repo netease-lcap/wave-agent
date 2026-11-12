@@ -206,7 +206,10 @@ jobs:
       - name: Type-check, lint, small package unit tests
         if: steps.filter.outputs.code == 'true'
         run: |
-          pnpm -r --parallel type-check
+          # 必须串行：多个 tsrs 进程同时构建 program 时，模块解析会偶发漏掉包
+          # （幻影 TS2307）。根脚本 type-check 已带 --workspace-concurrency=1，
+          # 这里不要再加 --parallel。
+          pnpm run type-check
           pnpm -r --parallel lint
           pnpm -F wave-desktop -F wave-vscode -F wave-webview-fixtures test:unit
 
