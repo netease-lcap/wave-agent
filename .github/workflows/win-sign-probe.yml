@@ -1,0 +1,135 @@
+name: Windows Sign Probe (temp)
+
+# 临时探针：验证 GitHub 托管的 windows-latest runner 能否完成
+# ssigncode 远程签名（下载工具 → 用 Auth Key 换 token → 签名 → 验签）。
+# 跑完即可删除本文件。触发方式：推送到 test/ci-sign-probe 分支。
+
+on:
+  push:
+    branches: [test/ci-sign-probe]
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: windows-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: 1. Runner 基本信息
+        shell: pwsh
+        run: |
+          Write-Host "OS: $((Get-CimInstance Win32_OperatingSystem).Caption)"
+          Write-Host "PowerShell: $($PSVersionTable.PSVersion)"
+          Write-Host "Runner IP (egress):"
+          try { (Invoke-RestMethod -Uri 'https://api.ipify.org' -TimeoutSec 15) } catch { Write-Host "ipify failed: $_" }
+
+      - name: 2. 签名服务网络可达性
+        shell: pwsh
+        run: |
+          $targets = @(
+            @{ h = 'rcss.nie.netease.com';              p = 443 },
+            @{ h = 'fcy-auth.nie.netease.com';          p = 443 },
+            @{ h = 'timestamp.rcss.nie.netease.com';    p = 80  }
+          )
+          $failed = 0
+          foreach ($t in $targets) {
+            $r = Test-NetConnection -ComputerName $t.h -Port $t.p -WarningAction SilentlyContinue
+            $state = if ($r.TcpTestSucceeded) { 'OK  ' } else { $failed++; 'FAIL' }
+            Write-Host ("{0} {1}:{2} -> {3} ip={4}" -f $state, $t.h, $t.p, $r.TcpTestSucceeded, $r.RemoteAddress)
+          }
+          if ($failed -gt 0) { Write-Host "::warning::$failed 个签名依赖服务不可达" }
+
+      - name: 3. 下载 ssigncode 并校验 SHA256
+        shell: pwsh
+        run: |
+          $dir = Join-Path $env:APPDATA 'ssigncode'
+          New-Item -ItemType Directory -Force -Path $dir | Out-Null
+          $exe = Join-Path $dir 'ssigncode.exe'
+          Invoke-WebRequest -Uri 'https://rcss.nie.netease.com/ssigncode/ssigncode.latest.exe' -OutFile $exe -TimeoutSec 120 -UseBasicParsing
+          $sha = (Get-FileHash -Path $exe -Algorithm SHA256).Hash.ToLower()
+          Write-Host "size = $((Get-Item $exe).Length) bytes"
+          Write-Host "sha256 = $sha"
+          $known = 'dd83df4a4ccf7ffb7166cd3778a0d6521bf67ece794c57f656d6f5900884f018'
+          if ($sha -eq $known) { Write-Host "hash 与已知 2.3 一致" } else { Write-Host "::warning::hash 与已知 2.3 不同（工具滚动升级，通常正常）" }
+
+      - name: 4. 用 Auth Key 换 token
+        shell: pwsh
+        env:
+          SSIGN_AUTH_KEY: ${{ secrets.SSIGN_AUTH_KEY }}
+          SSIGN_ACCOUNT: liuyiqi02
+        run: |
+          if (-not $env:SSIGN_AUTH_KEY) { throw 'secret SSIGN_AUTH_KEY 为空' }
+          $body = @{ user = $env:SSIGN_ACCOUNT; key = $env:SSIGN_AUTH_KEY } | ConvertTo-Json -Compress
+          try {
+            $resp = Invoke-RestMethod -Method Post `
+              -Uri 'https://fcy-auth.nie.netease.com/api/v2/tokens' `
+              -ContentType 'application/json' `
+              -Body ([Text.Encoding]::UTF8.GetBytes($body)) `
+              -TimeoutSec 30
+          } catch {
+            throw "换 token 失败：$($_.Exception.Message)"
+          }
+          if (-not $resp.token) { throw "响应里没有 token" }
+          $dir = Join-Path $env:APPDATA 'ssigncode'
+          New-Item -ItemType Directory -Force -Path $dir | Out-Null
+          # 纯 ASCII、无 BOM、无换行——ssigncode 直接读这个文件
+          [IO.File]::WriteAllText((Join-Path $dir 'authtoken'), $resp.token, [Text.Encoding]::ASCII)
+          # 只打印 claim 摘要，不打印 token 本身
+          $p = $resp.token.Split('.')
+          $b64 = $p[1].Replace('-', '+').Replace('_', '/')
+          switch ($b64.Length % 4) { 2 { $b64 += '==' } 3 { $b64 += '=' } }
+          $claims = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($b64)) | ConvertFrom-Json
+          Write-Host "token 拿到：user=$($claims.user) exp=$([DateTimeOffset]::FromUnixTimeSeconds([int64]$claims.exp).ToLocalTime())"
+
+      - name: 5. 签名测试文件
+        shell: pwsh
+        run: |
+          $dir = Join-Path $env:APPDATA 'ssigncode'
+          $tool = Join-Path $dir 'ssigncode.exe'
+          $work = Join-Path $env:RUNNER_TEMP 'signwork'
+          New-Item -ItemType Directory -Force -Path $work | Out-Null
+          $target = Join-Path $work 'probe.exe'
+          Copy-Item "$env:SystemRoot\System32\notepad.exe" $target -Force
+          Write-Host "待签文件：$target ($((Get-Item $target).Length) bytes)"
+
+          foreach ($n in @('done-fail', 'done-success')) {
+            Remove-Item (Join-Path $work $n) -Force -ErrorAction SilentlyContinue
+          }
+          $cmd = 'chcp 936 >nul & "' + $tool + '" -c -t ev2024 -f "' + $target + '"'
+          $sw = [Diagnostics.Stopwatch]::StartNew()
+          Push-Location $work
+          try { & cmd.exe /c $cmd | Write-Host } finally { Pop-Location }
+          $code = $LASTEXITCODE
+          $sw.Stop()
+          Write-Host ("ssigncode 退出码 = {0}，耗时 {1:N1}s" -f $code, ($sw.Elapsed.TotalSeconds))
+
+          if (Test-Path (Join-Path $work 'done-fail')) {
+            $msg = Get-Content (Join-Path $work 'done-fail') -Raw -Encoding Default
+            Write-Host "::error::签名失败：$msg"
+          }
+          if ($code -ne 0) { throw "ssigncode 退出码 $code" }
+
+      - name: 6. 验签
+        shell: pwsh
+        run: |
+          $target = Join-Path $env:RUNNER_TEMP 'signwork\probe.exe'
+          $sig = Get-AuthenticodeSignature -LiteralPath $target
+          Write-Host "Status      : $($sig.Status)"
+          Write-Host "StatusMsg   : $($sig.StatusMessage)"
+          Write-Host "Signer      : $($sig.SignerCertificate.Subject)"
+          Write-Host "Issuer      : $($sig.SignerCertificate.Issuer)"
+          Write-Host "Timestamped : $($sig.TimeStamperCertificate -ne $null)"
+          if ($sig.TimeStamperCertificate) {
+            Write-Host "TS Signer   : $($sig.TimeStamperCertificate.Subject)"
+          }
+          if ($sig.Status -ne 'Valid') { throw "验签未通过：$($sig.Status)" }
+          if (-not $sig.TimeStamperCertificate) { Write-Host "::warning::没有可信时间戳" }
+          Write-Host "`n=== 结论：GitHub 托管 runner 可以完成 ssigncode 签名 ==="
+
+      - name: 7. 上传签名产物（留证）
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: signed-probe
+          path: ${{ runner.temp }}/signwork/probe.exe
+          if-no-files-found: warn
