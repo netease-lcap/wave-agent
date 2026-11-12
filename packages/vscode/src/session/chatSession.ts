@@ -684,6 +684,14 @@ export class ChatSession {
     return await this.agent.askBtw(question, options);
   }
 
+  /**
+   * 关闭一段侧聊（spec commands/btw-command.md「侧聊分段与上下文冻结」场景 6）：
+   * 引擎侧丢弃该段冻结的父对话前缀，并中止仍在途的那一轮。
+   */
+  public async closeBtw(segmentId: string): Promise<void> {
+    await this.agent?.closeBtw(segmentId);
+  }
+
   public async destroy() {
     if (this.streamingContentUpdateTimer) {
       clearTimeout(this.streamingContentUpdateTimer);

@@ -472,6 +472,7 @@ describe("RemoteControlService", () => {
       "askBtw",
       "backgroundCurrentTask",
       "clearMessages",
+      "closeBtw",
       "compact",
       "createWorktree",
       "deleteQueuedMessageById",

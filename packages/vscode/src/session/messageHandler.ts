@@ -336,7 +336,17 @@ export class MessageHandler {
           msg.history as BtwHistoryTurn[] | undefined,
           viewType,
           windowId,
+          msg.segmentId as string | undefined,
         );
+        break;
+
+      // 关闭一段侧聊（spec commands/btw-command.md「侧聊分段与上下文冻结」场景
+      // 6）：引擎侧释放该段冻结的父对话前缀、中止仍在途的那一轮。没有回执——界面
+      // 已经丢弃了这段，迟到的回包按 requestId 找不到归属自然丢弃。
+      case "closeBtw":
+        await this.context
+          .getChatSession(viewType || "tab", windowId)
+          .closeBtw(msg.segmentId as string);
         break;
       case "requestHistory":
         await this.handleRequestHistory(
@@ -1585,10 +1595,15 @@ export class MessageHandler {
     history?: BtwHistoryTurn[],
     viewType?: "sidebar" | "tab" | "window",
     windowId?: string,
+    segmentId?: string,
   ) {
     const session = this.context.getChatSession(viewType || "tab", windowId);
     try {
-      const answer = await session.askBtw(question, { requestId, history });
+      const answer = await session.askBtw(question, {
+        requestId,
+        history,
+        segmentId,
+      });
       this.context.postMessage(
         {
           command: "btwResponse",

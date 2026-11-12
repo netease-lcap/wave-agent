@@ -4964,8 +4964,17 @@ export class DesktopHost {
           msg.requestId as string | undefined,
           msg.history as BtwHistoryTurn[] | undefined,
           pid,
+          msg.segmentId as string | undefined,
         );
         break;
+
+      // 关闭一段侧聊（spec commands/btw-command.md「侧聊分段与上下文冻结」场景
+      // 6）：让引擎释放该段冻结的父对话前缀，并中止仍在途的那一轮。没有回执——界面
+      // 已经丢弃了这段，迟到的回包按 requestId 找不到归属自然丢弃。
+      case "closeBtw": {
+        await this.agentForPane(pid)?.closeBtw(msg.segmentId as string);
+        break;
+      }
 
       case "confirmationResponse":
         this.handleConfirmationResponse(
@@ -7460,6 +7469,7 @@ export class DesktopHost {
     requestId?: string,
     history?: BtwHistoryTurn[],
     paneId?: string,
+    segmentId?: string,
   ): Promise<void> {
     const pid = paneId ?? this.focusedPaneId;
     const agent = this.agentForPane(pid);
@@ -7474,7 +7484,11 @@ export class DesktopHost {
       return;
     }
     try {
-      const answer = await agent.askBtw(question, { requestId, history });
+      const answer = await agent.askBtw(question, {
+        requestId,
+        history,
+        segmentId,
+      });
       this.postMessage({
         command: "btwResponse",
         paneId: pid,

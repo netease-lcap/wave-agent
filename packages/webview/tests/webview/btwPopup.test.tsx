@@ -212,16 +212,25 @@ describe("/btw Popup", () => {
     });
   });
 
-  it("close button only hides the panel: the in-flight answer still lands and shows up on reopen", async () => {
+  it("close discards the segment: the host is told to drop it and late replies no longer land", async () => {
     const vscode = await sendText("/btw what is the weather?");
+    const [first] = askBtwPayloads(vscode);
+    expect(typeof first.segmentId).toBe("string");
 
     act(() => {
       fireEvent.click(screen.getByTestId("btw-panel-close"));
     });
     expect(screen.queryByTestId("btw-panel")).not.toBeInTheDocument();
+    // 关闭即丢弃（spec「侧聊分段与上下文冻结」场景 6）：宿主侧释放这一段冻结的
+    // 父对话前缀，并中止仍在途的那一轮。
+    expect(vscode.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        command: "closeBtw",
+        segmentId: first.segmentId,
+      }),
+    );
 
-    // Closing hides, it does not cancel nor forget (spec「Webview 端继续提问」
-    // 场景 7): the reply landing afterwards is kept for the conversation.
+    // 迟到的那一轮无处可落（那段侧聊已经不存在了）
     act(() => {
       sendCommand("btwResponse", {
         question: "what is the weather?",
@@ -230,27 +239,59 @@ describe("/btw Popup", () => {
     });
     expect(screen.queryByTestId("btw-panel")).not.toBeInTheDocument();
 
-    // Reopening with a bare /btw brings the finished turn back, input ready.
+    // 再打开是新的一段：空态说明 + 没有上一段的轮次
     await typeInInput("/btw");
     act(() => {
       fireEvent.click(screen.getByTestId("send-btn"));
     });
-    const answers = screen.getAllByTestId("btw-panel-answer");
-    expect(answers).toHaveLength(1);
-    expect(answers[0].textContent).toContain("Sunny");
+    expect(screen.queryByTestId("btw-turn")).not.toBeInTheDocument();
+    expect(screen.getByTestId("btw-panel-empty")).toBeInTheDocument();
+    // 面板头部不再有「清空侧聊」（关闭覆盖了它的两个职责，spec 场景 7）
+    expect(screen.queryByTestId("btw-panel-clear")).not.toBeInTheDocument();
     expect(vscode.postMessage).not.toHaveBeenCalledWith(
       expect.objectContaining({ command: "sendMessage" }),
     );
   });
 
-  it("Escape closes the panel", async () => {
-    await sendText("/btw what is the weather?");
+  it("keeps one segment id for the whole segment and starts a new one after closing", async () => {
+    const vscode = await sendText("/btw first?");
+    act(() => {
+      sendCommand("btwResponse", { question: "first?", answer: "one" });
+    });
+    followUpInPanel("second?");
+
+    const asks = askBtwPayloads(vscode);
+    // 同一段侧聊：段内每一轮带同一个段标识（宿主据此复用冻结前缀）
+    expect(asks).toHaveLength(2);
+    expect(asks[0].segmentId).toBe(asks[1].segmentId);
+
+    act(() => {
+      fireEvent.click(screen.getByTestId("btw-panel-close"));
+    });
+    // 关闭后重新打开 = 新的一段：段标识换新值，从最新的主对话重新 fork
+    await typeInInput("/btw third?");
+    act(() => {
+      fireEvent.click(screen.getByTestId("send-btn"));
+    });
+    const [, , third] = askBtwPayloads(vscode);
+    expect(third.question).toBe("third?");
+    expect(third.segmentId).not.toBe(asks[0].segmentId);
+    // 跨段不继承：新段的第一问不带历史
+    expect(third.history).toBeUndefined();
+  });
+
+  it("Escape closes the panel and discards that segment", async () => {
+    const vscode = await sendText("/btw what is the weather?");
     expect(screen.getByTestId("btw-panel")).toBeInTheDocument();
 
     act(() => {
       fireEvent.keyDown(document, { key: "Escape" });
     });
     expect(screen.queryByTestId("btw-panel")).not.toBeInTheDocument();
+    // Esc 与关闭按钮同一个语义：关闭即丢弃这一段（spec 场景 6）
+    expect(vscode.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ command: "closeBtw" }),
+    );
   });
 
   it("Escape while streaming closes only the panel, never aborting the agent loop", async () => {
@@ -572,28 +613,6 @@ describe("/btw Popup", () => {
     expect(screen.getByTestId("btw-panel-answer").textContent).toContain(
       "second answer",
     );
-  });
-
-  it("clear empties the side chat and drops the replies that were in flight", async () => {
-    await sendText("/btw first?");
-    expect(screen.getByTestId("btw-panel-loading")).toBeInTheDocument();
-
-    act(() => {
-      fireEvent.click(screen.getByTestId("btw-panel-clear"));
-    });
-
-    // 面板留着、轮次清空、焦点回到输入框（spec 场景 6）
-    expect(screen.getByTestId("btw-panel")).toBeInTheDocument();
-    expect(screen.queryByTestId("btw-turn")).not.toBeInTheDocument();
-    expect(screen.getByTestId("btw-panel-empty")).toBeInTheDocument();
-    expect(screen.getByTestId("btw-panel-input")).toHaveFocus();
-
-    // 清空之后迟到的那一轮无处可落
-    act(() => {
-      sendCommand("btwResponse", { question: "first?", answer: "late" });
-    });
-    expect(screen.queryByTestId("btw-panel-answer")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("btw-turn")).not.toBeInTheDocument();
   });
 
   it("moves the caret into the follow-up input once the first answer lands", async () => {

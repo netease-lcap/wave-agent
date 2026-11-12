@@ -1142,6 +1142,9 @@ export class Agent {
     }
 
     this.aiManager.abortAIMessage();
+    // 侧聊段的冻结前缀指向的是这场对话：对话被清空，段也就作废了（在途的那一轮
+    // 一并中止）。
+    this.aiManager.releaseAllBtwSegments();
 
     // Capture old session info before clearing
     const oldSessionId = this.messageManager.getSessionId();
@@ -1366,6 +1369,9 @@ export class Agent {
       );
     }
     this.abortAIMessage(); // This will abort tools including Agent tool (subagents)
+    // 侧聊段依附于这场对话：销毁时一并丢弃，在途的那一轮随之中止（否则它会带着
+    // 网络句柄活过 destroy）。
+    this.aiManager.releaseAllBtwSegments();
     this.abortBashCommand();
     this.abortSlashCommand();
     this.cronManager.stop();
@@ -1450,6 +1456,10 @@ export class Agent {
    * @param history - Earlier side-chat turns (follow-up questions); see
    *   `BtwHistoryTurn`. Appended after the main-conversation prefix so the
    *   prompt cache still matches.
+   * @param segmentId - Names one side-chat segment: the parent-conversation
+   *   prefix is captured on that segment's first question and reused for the
+   *   rest of it (spec commands/btw-command.md「侧聊分段与上下文冻结」). Omit it
+   *   for the CLI's single-turn overlay.
    * @returns Promise that resolves to the AI's answer
    */
   public async askBtw(
@@ -1458,6 +1468,7 @@ export class Agent {
     onContent?: (content: string) => void,
     onReasoning?: (content: string) => void,
     history?: BtwHistoryTurn[],
+    segmentId?: string,
   ): Promise<string> {
     this.assertNotDestroyed();
     const result = await this.aiManager.runBtwFork(
@@ -1466,8 +1477,19 @@ export class Agent {
       onContent,
       onReasoning,
       history,
+      segmentId,
     );
     return result.content ?? result.error ?? "No response received";
+  }
+
+  /**
+   * Discard one side-chat segment: release its frozen parent-conversation prefix and abort
+   * the question that is still in flight (spec commands/btw-command.md「侧聊
+   * 分段与上下文冻结」场景 6: 关闭即丢弃). A later ask with the same id would
+   * fork a fresh prefix — the UI starts a new segment instead.
+   */
+  public closeBtw(segmentId: string): void {
+    this.aiManager.releaseBtwSegment(segmentId);
   }
 
   /**

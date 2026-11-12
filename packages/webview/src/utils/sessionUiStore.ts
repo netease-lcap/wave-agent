@@ -59,9 +59,9 @@ export interface ProjectSettingsSnapshot {
 /**
  * 侧聊里的一轮问答（spec commands/btw-command.md「Webview 端继续提问」）。
  *
- * 追问是**无状态重放**：每轮都是一次独立的一轮 fork，宿主把此前已完成的轮次
- * 作为历史随请求带上，SDK 把它们接在主对话前缀之后。所以面板只需要按顺序
- * 攒住每一轮，不需要维持一个长会话对象。
+ * 段内追问是**无状态重放**：每轮都是一次独立的一轮 fork，界面把本段已完成的
+ * 轮次作为历史随请求带上，SDK 把它们接在该段冻结的父对话前缀之后。所以面板只
+ * 需要按顺序攒住每一轮，不需要维持一个长会话对象。
  */
 export interface BtwTurn {
   /** 该轮请求的标识：回包/流式分片按它归位（重复问同一句也分得清）。 */
@@ -77,18 +77,22 @@ export interface BtwTurn {
 }
 
 /**
- * `/btw` 侧聊面板的状态（spec commands/btw-command.md 场景 10/14 与
+ * `/btw` 一段侧聊的状态（spec commands/btw-command.md「侧聊分段与上下文冻结」与
  * 「Webview 端继续提问」）。
  *
  * 面板属于**发起它的那个对话**：切走只是隐去，切回来原样恢复——包括还在
  * `loading` 的那轮（后台请求不中断，流式尾部接着更新）。所以它必须留在会话快照
- * 里，而不是组件本地 useState。关闭只是 `visible = false`（请求继续、内容保留），
- * 「清空侧聊」才把 `turns` 清空（此后迟到的回包按 requestId 查不到归属，自然丢弃）。
+ * 里，而不是组件本地 useState。**关闭即丢弃**（面板整个移除、宿主侧同时释放该段
+ * 冻结的前缀并中止在途请求），再打开是新的一段；所以这里只在面板存在时存在，
+ * 不再需要 `visible` 这类"隐去"状态。
  */
 export interface BtwPanelState {
+  /**
+   * 这一段侧聊的标识：段内每轮随 `askBtw` 发给宿主，引擎据此复用同一份冻结的
+   * 父对话前缀；关闭后重新打开换新值。
+   */
+  segmentId: string;
   turns: BtwTurn[];
-  /** 面板是否显示。关闭/打开只切这个，内容不动。 */
-  visible: boolean;
   /** 面板输入框里的草稿（随会话保留，切走再回来还在）。 */
   draft: string;
 }
@@ -151,9 +155,10 @@ export interface SessionUiState {
   forwardError: string | null;
   /**
    * `/btw` side-question panel of this session (spec commands/btw-command.md
-   * scenario 14). Null = no panel. Kept here — not in ChatApp's local state —
-   * so switching conversations only hides it and switching back restores it,
-   * in-flight request included.
+   * 场景 14 与「侧聊分段与上下文冻结」). Null = no panel (closing discards the
+   * segment). Kept here — not in ChatApp's local state — so switching
+   * conversations only hides it and switching back restores it, in-flight
+   * request included.
    */
   btwPanel: BtwPanelState | null;
 }
@@ -271,9 +276,9 @@ class SessionUiStore {
    * `btwError` 回包不带 session）。优先 requestId；宿主没回填时退回「在途 + 问题
    * 文本相同」——已发布的旧版 CLI / 远控中继仍走这一条。
    *
-   * 查不到 = 该轮已被「清空侧聊」清掉或从未发起，回包一律丢弃。切走对话时仍在途
-   * 的那条照样查得到——它的答案落回自己所属的会话，切回来即可见
-   * （spec commands/btw-command.md「Webview 端继续提问」场景 6/10）。
+   * 查不到 = 那段侧聊已被关闭（关闭即丢弃）或从未发起，回包一律丢弃。切走对话时
+   * 仍在途的那条照样查得到——它的答案落回自己所属的会话，切回来即可见
+   * （spec commands/btw-command.md「Webview 端继续提问」场景 7）。
    */
   keyByBtwReply(
     requestId: string | undefined,

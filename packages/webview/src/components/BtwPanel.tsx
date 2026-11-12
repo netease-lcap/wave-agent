@@ -3,7 +3,7 @@ import { marked } from "marked";
 import DOMPurify from "dompurify";
 import type { BtwTurn } from "../utils/sessionUiStore";
 import { streamingTail } from "../utils/streamingText";
-import { CloseIcon, QueueTrashIcon } from "./HeaderIcons";
+import { CloseIcon } from "./HeaderIcons";
 import { isDesktopHost } from "../utils/platform";
 import "../styles/BtwPanel.css";
 
@@ -15,8 +15,7 @@ interface BtwPanelProps {
   onDraftChange: (value: string) => void;
   /** 提交一句新问题（多轮追问走同一条路径）。 */
   onSubmit: (question: string) => void;
-  /** 清空侧聊：移除全部轮次（在途答案此后不再落回）。 */
-  onClear: () => void;
+  /** 关闭面板 = 丢弃这一段侧聊（宿主侧同时释放冻结前缀、中止在途请求）。 */
   onClose: () => void;
 }
 
@@ -106,7 +105,6 @@ export const BtwPanel: React.FC<BtwPanelProps> = ({
   draft,
   onDraftChange,
   onSubmit,
-  onClear,
   onClose,
 }) => {
   const panelRef = useRef<HTMLDivElement>(null);
@@ -167,17 +165,8 @@ export const BtwPanel: React.FC<BtwPanelProps> = ({
     };
   }, [isLoading]);
 
-  // 「清空侧聊」之后焦点回到输入框（spec 场景 6）：清空前若在等答案，输入框
-  // 是 disabled 的，点下按钮那一刻还 focus 不上，所以等轮次清空之后再补。
-  const previousTurnCount = useRef(turns.length);
-  useEffect(() => {
-    if (previousTurnCount.current > 0 && turns.length === 0)
-      inputRef.current?.focus();
-    previousTurnCount.current = turns.length;
-  }, [turns.length]);
-
   // 新的一轮出现 / 答案增长时贴到底部，除非用户已经上滚看旧轮次
-  // （spec「Webview 端继续提问」场景 5）。
+  // （spec「Webview 端继续提问」场景 6）。
   useLayoutEffect(() => {
     const el = listRef.current;
     if (!el || !nearBottomRef.current) return;
@@ -200,17 +189,6 @@ export const BtwPanel: React.FC<BtwPanelProps> = ({
         <span className="btw-panel-question" data-testid="btw-panel-question">
           {latestQuestion}
         </span>
-        {turns.length > 0 && (
-          <button
-            className="btw-panel-icon-btn"
-            onClick={onClear}
-            aria-label="清空侧聊"
-            title="清空侧聊"
-            data-testid="btw-panel-clear"
-          >
-            <QueueTrashIcon className="btw-panel-icon" />
-          </button>
-        )}
         <button
           className="btw-panel-close"
           onClick={onClose}

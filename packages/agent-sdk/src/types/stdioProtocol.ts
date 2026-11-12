@@ -31,6 +31,7 @@ export type RequestMethod =
   | "sendMessage"
   | "bang"
   | "askBtw"
+  | "closeBtw"
   | "abortMessage"
   | "clearMessages"
   | "rewindToMessage"

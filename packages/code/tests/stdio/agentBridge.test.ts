@@ -1897,6 +1897,42 @@ test("askBtw returns the side-question answer", async () => {
   expect(r).toBe("side answer");
 });
 
+test("askBtw forwards the segment id to the agent", async () => {
+  const { bridge } = createBridge();
+  const mockAgent = createMockAgent({
+    askBtw: vi.fn().mockResolvedValue("side answer"),
+  });
+  vi.mocked(Agent.create).mockResolvedValue(mockAgent);
+
+  const result = await bridge.handleRequest("initialize", {});
+  const sessionId = (result as { sessionId: string }).sessionId;
+  await bridge.handleRequest(
+    "askBtw",
+    { question: "what is 2+2?", segmentId: "btwseg-1" },
+    sessionId,
+  );
+
+  // (question, signal, onContent, onReasoning, history, segmentId)
+  expect(vi.mocked(mockAgent.askBtw).mock.calls[0][5]).toBe("btwseg-1");
+});
+
+test("closeBtw drops the segment on the agent and answers null", async () => {
+  const { bridge } = createBridge();
+  const mockAgent = createMockAgent({ closeBtw: vi.fn() });
+  vi.mocked(Agent.create).mockResolvedValue(mockAgent);
+
+  const result = await bridge.handleRequest("initialize", {});
+  const sessionId = (result as { sessionId: string }).sessionId;
+  const r = await bridge.handleRequest(
+    "closeBtw",
+    { segmentId: "btwseg-1" },
+    sessionId,
+  );
+
+  expect(vi.mocked(mockAgent.closeBtw)).toHaveBeenCalledWith("btwseg-1");
+  expect(r).toBeNull();
+});
+
 test("askBtw emits btwContent notifications for thinking and content chunks", async () => {
   const { bridge, notifications } = createBridge();
   const mockAgent = createMockAgent({

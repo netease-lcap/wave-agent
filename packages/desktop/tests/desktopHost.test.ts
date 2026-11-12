@@ -478,6 +478,7 @@ vi.mock("wave-agent-sdk/host", async (importOriginal) => ({
     compact = vi.fn(async () => undefined);
     rewindToMessage = vi.fn(async () => ({ inputContent: "rewound draft" }));
     askBtw = vi.fn(async () => "**Sunny** weather");
+    closeBtw = vi.fn();
     // Mirrors StdioAgent.getMessages(): no argument → the whole list; with a
     // window → that page (`{ messages, hasMore }`, `anchorLost` when the
     // anchor is gone). Either way the two **state** side effects the host is
@@ -5636,6 +5637,31 @@ describe("misc commands", () => {
       question: "and tomorrow?",
       requestId: "btw-2",
     });
+  });
+
+  it("askBtw forwards the side-chat segment id so the engine freezes the prefix", async () => {
+    const { host } = await readyHost();
+    await host.handleWebviewMessage({
+      command: "askBtw",
+      question: "weather?",
+      segmentId: "btwseg-1",
+    });
+
+    expect(lastAgent().askBtw).toHaveBeenCalledWith("weather?", {
+      requestId: undefined,
+      history: undefined,
+      segmentId: "btwseg-1",
+    });
+  });
+
+  it("closeBtw tells the pane's agent to drop that segment", async () => {
+    const { host } = await readyHost();
+    await host.handleWebviewMessage({
+      command: "closeBtw",
+      segmentId: "btwseg-1",
+    });
+
+    expect(lastAgent().closeBtw).toHaveBeenCalledWith("btwseg-1");
   });
 
   it("askBtw posts btwError when the agent is missing", async () => {

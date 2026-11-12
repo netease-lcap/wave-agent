@@ -353,7 +353,15 @@ class MessageHandler(
                     question,
                     msg["history"],
                     msg["requestId"]?.jsonPrimitive?.contentOrNull,
+                    msg["segmentId"]?.jsonPrimitive?.contentOrNull,
                 )
+            }
+            // 关闭一段侧聊（spec commands/btw-command.md「侧聊分段与上下文冻结」
+            // 场景 6）：引擎侧释放该段冻结的父对话前缀、中止仍在途的那一轮。
+            // 无回执——界面已丢弃该段，迟到的回包按 requestId 找不到归属自然丢弃。
+            "closeBtw" -> {
+                val segmentId = msg["segmentId"]?.jsonPrimitive?.content ?: return
+                handleCloseBtw(segmentId)
             }
 
             // ── Prompt history ─────────────────────────────────────────
@@ -1120,9 +1128,14 @@ class MessageHandler(
     // ── /btw side question: answer out-of-band, echo the question (and the
     // requestId) so the webview can match the reply against the in-flight turn
     // and drop stale ones (spec commands/btw-command.md「Webview 端继续提问」）──
-    private suspend fun handleAskBtw(question: String, history: JsonElement?, requestId: String?) {
+    private suspend fun handleAskBtw(
+        question: String,
+        history: JsonElement?,
+        requestId: String?,
+        segmentId: String?,
+    ) {
         try {
-            val answer = session.agent?.askBtw(question, history, requestId)
+            val answer = session.agent?.askBtw(question, history, requestId, segmentId)
                 ?: throw StdioClientException("智能体未初始化")
             postMessage("btwResponse", buildJsonObject {
                 put("question", question)
@@ -1136,6 +1149,16 @@ class MessageHandler(
                 requestId?.let { put("requestId", it) }
                 put("error", e.message ?: "unknown")
             })
+        }
+    }
+
+    /** 关闭一段侧聊：让引擎释放冻结前缀并中止在途的那一轮（spec 场景 6）。 */
+    private suspend fun handleCloseBtw(segmentId: String) {
+        try {
+            session.agent?.closeBtw(segmentId)
+        } catch (e: StdioClientException) {
+            // 宿主侧的旧版 CLI 没接这个方法：那一轮会在引擎侧跑完，回包被页面丢弃。
+            LOG.warn("closeBtw failed: ${e.message}")
         }
     }
 
