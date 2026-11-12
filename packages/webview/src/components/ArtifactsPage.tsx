@@ -25,6 +25,7 @@ import { ToastGlyph } from "./ToastStack";
 import { useHostMessage } from "../utils/useHostMessage";
 import { useRovingMenu } from "../utils/useRovingMenu";
 import { useClickOutside } from "../utils/useClickOutside";
+import { useAnchoredMenuStyle } from "../utils/anchoredMenu";
 import { createPortal } from "react-dom";
 import type {
   ArtifactCategory,
@@ -473,21 +474,15 @@ const ViewMenu: React.FC<{
   useClickOutside({ refs: [menuRef], onClickOutside: onClose });
 
   const menuWidth = 148;
-  const left = Math.max(
-    8,
-    Math.min(anchorRect.right - menuWidth, window.innerWidth - menuWidth - 8),
-  );
+  // 右对齐触发键 + 夹进视口；纵向「下 → 翻上 → 夹取并内部滚动」与会话行菜单
+  // 同一份实现（spec desktop-sessions.md「会话行菜单完整可见」场景 3）。
+  const menuStyle = useAnchoredMenuStyle(menuRef, anchorRect, menuWidth);
   return createPortal(
     <div
       ref={menuRef}
       className="desktop-session-menu"
       role="menu"
-      style={{
-        position: "fixed",
-        top: anchorRect.bottom + 4,
-        left,
-        width: menuWidth,
-      }}
+      style={menuStyle}
       data-testid="artifacts-view-menu"
     >
       {options.map((option, i) => (
@@ -547,23 +542,15 @@ const CategoryItemMenu: React.FC<{
   });
   useClickOutside({ refs: [menuRef], onClickOutside: onClose });
 
-  // 与会话行菜单同宽同位置规则：右对齐触发按钮，并夹在视口内。
+  // 与会话行菜单同宽同位置规则：右对齐触发按钮 + 夹进视口（纵向同一份实现）。
   const menuWidth = 148;
-  const left = Math.max(
-    8,
-    Math.min(anchorRect.right - menuWidth, window.innerWidth - menuWidth - 8),
-  );
+  const menuStyle = useAnchoredMenuStyle(menuRef, anchorRect, menuWidth);
   return (
     <div
       ref={menuRef}
       className="desktop-session-menu"
       role="menu"
-      style={{
-        position: "fixed",
-        top: anchorRect.bottom + 4,
-        left,
-        width: menuWidth,
-      }}
+      style={menuStyle}
       data-testid="artifacts-category-menu"
     >
       <div
@@ -628,11 +615,14 @@ const RowActionsMenu: React.FC<{
   useClickOutside({ refs: [menuRef], onClickOutside: onClose });
 
   // 操作列贴着表格右缘：菜单与「⋯」左对齐向下展开（右对齐会往左压住「分享给」列），
-  // 再按视口夹一次，保证不越界。
+  // 再按视口夹一次，保证不越界；纵向「下 → 翻上 → 夹取并内部滚动」与会话行菜单
+  // 同一份实现。
   const menuWidth = width;
-  const left = Math.max(
-    8,
-    Math.min(anchorRect.left, window.innerWidth - menuWidth - 8),
+  const menuStyle = useAnchoredMenuStyle(
+    menuRef,
+    anchorRect,
+    menuWidth,
+    "left",
   );
   // 必须挂到 body：操作列是 `position: sticky` + `z-index: 1` 的单元格，
   // 菜单若留在单元格内部，会被后面几行同样带背景的 sticky 单元格盖住
@@ -642,12 +632,7 @@ const RowActionsMenu: React.FC<{
       ref={menuRef}
       className="desktop-session-menu"
       role="menu"
-      style={{
-        position: "fixed",
-        top: anchorRect.bottom + 4,
-        left,
-        width: menuWidth,
-      }}
+      style={menuStyle}
       data-testid={testId}
     >
       {header && (

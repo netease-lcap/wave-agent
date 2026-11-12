@@ -21,6 +21,7 @@ import {
 } from "./HeaderIcons";
 import { useRovingMenu } from "../utils/useRovingMenu";
 import { useClickOutside } from "../utils/useClickOutside";
+import { useAnchoredMenuStyle } from "../utils/anchoredMenu";
 import { useHostMessage } from "../utils/useHostMessage";
 import type { SessionContentMatch } from "wave-webview-fixtures";
 import {
@@ -114,7 +115,8 @@ const GroupChevron: React.FC<{ expanded: boolean }> = ({ expanded }) => (
 /** Row menu anchored under a session row's "更多" button (fixed positioning
  *  escapes the sidebar's overflow:hidden). 并排打开 + 重命名 + 删除会话 —
  *  顺序与配色见 spec desktop-sessions.md「会话重命名（侧边栏行内编辑）」场景 1
- *  （重命名夹在中间，且不得用删除项的危险配色）。 */
+ *  （重命名夹在中间，且不得用删除项的危险配色）。纵向落点见
+ *  「会话行菜单完整可见」：行贴近窗口下缘时整个翻到行上方，绝不越过窗口。 */
 const SessionItemMenu: React.FC<{
   anchorRect: DOMRect;
   onSplit: () => void;
@@ -143,22 +145,14 @@ const SessionItemMenu: React.FC<{
   });
 
   const menuWidth = 148;
-  // Right-align the menu to the trigger, clamped to the viewport.
-  const left = Math.max(
-    8,
-    Math.min(anchorRect.right - menuWidth, window.innerWidth - menuWidth - 8),
-  );
+  // Right-aligned to the trigger and kept inside the viewport on both axes.
+  const menuStyle = useAnchoredMenuStyle(menuRef, anchorRect, menuWidth);
   return (
     <div
       ref={menuRef}
       className="desktop-session-menu"
       role="menu"
-      style={{
-        position: "fixed",
-        top: anchorRect.bottom + 4,
-        left,
-        width: menuWidth,
-      }}
+      style={menuStyle}
       data-testid="desktop-session-menu"
     >
       <div
