@@ -50,6 +50,7 @@ import {
 } from "./relayClient.js";
 import type { RemoteControlEndpoint } from "./remoteControlConfig.js";
 import { resultForRemote } from "../stdio/uiPayload.js";
+import { logger } from "../utils/logger.js";
 
 /**
  * Methods the remote channel accepts.
@@ -441,7 +442,11 @@ export class RemoteControlService implements RemoteControlController {
       credential: { type: "host", token: hostToken },
       version,
       createSocket: this.options.createSocket,
-      onAuthenticated: () => {
+      onAuthenticated: (info) => {
+        // The one line that makes an outage answerable after the fact: without
+        // it `status` only ever shows *now*, so "why did it drop at 23:00" had
+        // no answer anywhere on this machine (2026-11-13).
+        logger.info(`[Relay] online (host=${info.hostId ?? "unknown"})`);
         this.setStatus({ state: "online" });
         // Tell the phone which CLI build is behind this session: the page is
         // always the newest one, so a mismatch is resolved by asking the user
@@ -484,10 +489,19 @@ export class RemoteControlService implements RemoteControlController {
       onFrame: (frame) => this.handleFrame(frame),
       onStaleIdentity: (info) => {
         if (generation !== this.generation) return;
+        logger.warn(
+          `[Relay] stored identity is stale (${info.error}); registering again`,
+        );
         this.refreshIdentity(info.error);
       },
       onRetry: (info) => {
         if (generation !== this.generation) return;
+        // Warn, not debug: this is the line that says a link went down and why
+        // (`relay connection lost (1006)`, `relay handshake timed out`, …). At
+        // the default INFO level it is the only record that an outage happened.
+        logger.warn(
+          `[Relay] link down: ${info.reason} (attempt ${String(info.attempt)}, retrying in ${String(info.delayMs)}ms, ${String(info.remainingMs)}ms of the window left)`,
+        );
         // A drop the client is already healing is `connecting`, never `error`:
         // there is nothing for the user to fix yet, and calling it an error
         // sends them hunting for a fault that is fixing itself. What they
@@ -500,6 +514,9 @@ export class RemoteControlService implements RemoteControlController {
       },
       onFatal: (message) => {
         if (generation !== this.generation) return;
+        // Error, because nobody is retrying any more: the only way back is a
+        // user action, so the log has to say what that action is for.
+        logger.error(`[Relay] gave up: ${message}`);
         this.setStatus({ state: "error", message });
       },
     });
