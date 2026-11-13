@@ -43,7 +43,7 @@ export interface DesktopHostSelectorProps {
 
 /** Group header text per host kind; `local` never gets a header. */
 const GROUP_LABEL: Record<"ssh" | "wsl", string> = {
-  wsl: "WSL 发行版",
+  wsl: "WSL",
   ssh: "SSH 主机",
 };
 

@@ -81,7 +81,7 @@ describe("desktop selector keyboard accessibility", () => {
     ).not.toBeNull();
   });
 
-  it("host menu icons: the WSL 发行版 group follows the same rule as SSH 主机", () => {
+  it("host menu icons: the WSL group follows the same rule as SSH 主机", () => {
     const { vscode } = renderDesktopApp();
     sendCommand("desktopWorkdirState", {
       host: "local",
@@ -103,7 +103,7 @@ describe("desktop selector keyboard accessibility", () => {
     // 两个分组标题行都只有一颗图标（同一颗 codicon-remote），具体条目行一颗都不带。
     const labels = menu.querySelectorAll(".desktop-host-menu-label");
     expect(Array.from(labels).map((l) => l.textContent)).toEqual([
-      "WSL 发行版",
+      "WSL",
       "SSH 主机",
     ]);
     for (const label of labels) {
@@ -118,7 +118,50 @@ describe("desktop selector keyboard accessibility", () => {
     }
   });
 
-  it("host menu: no WSL distro installed → no WSL 发行版 group at all", () => {
+  it("host menu: WSL 条目只写发行版名，主机按钮仍带 (WSL)", () => {
+    // 场景 17：分组标题「WSL」已经说明条目是什么环境，条目再挂一遍 `(WSL)` 是
+    // 重复；但主机按钮脱离了分组上下文，必须自己说明是 WSL。两者来源不同
+    // （条目读 hostOptions[].label，按钮读宿主随分屏下发的 hostLabel）。
+    renderDesktopApp();
+    sendCommand("desktopWorkdirState", {
+      host: "wsl:Ubuntu-24.04",
+      hosts: ["wsl:Ubuntu-24.04"],
+      hostOptions: [
+        { id: "local", label: "本地", kind: "local" },
+        { id: "wsl:Ubuntu-24.04", label: "Ubuntu-24.04", kind: "wsl" },
+      ],
+      recentWorkdirs: [],
+    });
+    sendCommand("desktopPanes", {
+      panes: [
+        {
+          paneId: "pane-1",
+          host: "wsl:Ubuntu-24.04",
+          hostLabel: "Ubuntu-24.04 (WSL)",
+          width: 100,
+          row: 0,
+        },
+      ],
+      focusedPaneId: "pane-1",
+    });
+    sendCommand("setInitialState", { messages: [] });
+
+    expect(
+      screen.getByTestId("desktop-host").querySelector(".desktop-host-name")
+        ?.textContent,
+    ).toBe("Ubuntu-24.04 (WSL)");
+
+    fireEvent.click(screen.getByTestId("desktop-host"));
+    const menuNames = screen
+      .getAllByTestId("desktop-host-item")
+      .map(
+        (row) => row.querySelector(".desktop-workdir-menu-name")?.textContent,
+      );
+    expect(menuNames).toContain("Ubuntu-24.04");
+    expect(menuNames).not.toContain("Ubuntu-24.04 (WSL)");
+  });
+
+  it("host menu: no WSL distro installed → no WSL group at all", () => {
     // 宿主在下发 hostOptions 时已经把「本机一台发行版都没装 / wsl.exe 不可用」
     // 过滤成「没有 wsl 项」（desktop-wsl.md 场景 1）。webview 不得自己补一个空
     // 分组或占位文案——那会让没装 WSL 的用户以为哪里坏了。
@@ -140,7 +183,7 @@ describe("desktop selector keyboard accessibility", () => {
 
     const labels = menu.querySelectorAll(".desktop-host-menu-label");
     expect(Array.from(labels).map((l) => l.textContent)).toEqual(["SSH 主机"]);
-    expect(screen.queryByText("WSL 发行版")).toBeNull();
+    expect(screen.queryByText("WSL")).toBeNull();
   });
 
   it("host menu: with neither WSL nor SSH, only 本地 and 添加主机… remain", () => {

@@ -1451,7 +1451,10 @@ export class DesktopHost {
       const id = wslHostId(distro.name);
       options.push({
         id,
-        label: hostDisplayLabel(id),
+        // 菜单条目只写发行版名：它上面就有「WSL」分组标题，再挂一遍 `(WSL)` 是
+        // 重复。脱离分组上下文的地方（主机选择按钮 / 侧栏分组 / 登录项后缀）走
+        // `displayLabelForHost` → `hostDisplayLabel`，仍带 `(WSL)`（场景 17）。
+        label: distro.name,
         kind: "wsl",
         ...(distro.version === 2
           ? {}
