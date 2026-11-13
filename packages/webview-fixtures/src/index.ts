@@ -57,6 +57,7 @@ import type {
   DesktopWorkdirStateMessage,
   DesktopTogglePanelMessage,
   DesktopModPanelUpdateMessage,
+  DesktopModPanelRenderMessage,
   ModPanelUpdatePayload,
   DesktopPanelKind,
   DesktopAccountInfoMessage,
@@ -211,6 +212,10 @@ export interface Fixtures {
     payload: ModPanelUpdatePayload,
     overrides?: Overrides<DesktopModPanelUpdateMessage>,
   ) => DesktopModPanelUpdateMessage;
+  desktopModPanelRender: (
+    tabId: string,
+    overrides?: Overrides<DesktopModPanelRenderMessage>,
+  ) => DesktopModPanelRenderMessage;
   desktopAccountInfo: (
     overrides?: Overrides<DesktopAccountInfoMessage>,
   ) => DesktopAccountInfoMessage;
@@ -467,6 +472,14 @@ export const fixtures: Fixtures = {
   desktopModPanelUpdate: (payload, overrides = {}) => ({
     command: "desktopModPanelUpdate",
     payload,
+    ...overrides,
+  }),
+
+  desktopModPanelRender: (tabId, overrides = {}) => ({
+    command: "desktopModPanelRender",
+    tabId,
+    revision: 1,
+    tree: { type: "Text", props: {}, children: ["hello"] },
     ...overrides,
   }),
 

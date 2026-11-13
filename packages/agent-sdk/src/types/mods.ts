@@ -39,7 +39,12 @@ export interface ModTreeNode {
 /** 面板内容：一棵树，或者 render 失败时的错误摘要。 */
 export type ModPanelTree = ModTreeNode | string;
 
-/** 一次 `invalidate` 到面板刷新 = 一条 `modPanelUpdate`。 */
+/**
+ * 一条面板**元信息**（不带树）。
+ *
+ * 树永远由 surface 拉取（spec「架构约束」）：宿主只告诉渲染端这个 pane
+ * 存在 / 过期 / 关掉了，surface 收到后自己发 `modPanelRender` 要树。
+ */
 export interface ModPanelUpdatePayload {
   /** 会话 id（信封里也有，这里留一份便于宿主直接转发给 webview）。 */
   sessionId: string;
@@ -48,15 +53,27 @@ export interface ModPanelUpdatePayload {
   /** mod 自己起的面板 id（同一 mod 可开多个面板）。 */
   paneId: string;
   title: string;
-  /** 单调递增；webview 丢弃更小的值（乱序到达时保留最新树）。 */
+  /** 单调递增；surface 丢弃比已显示版本更旧的回复。 */
   revision: number;
-  /**
-   * 渲染失败时为字符串摘要（webview 画错误态），`tree` 为 `null` 时也走这条路。
-   */
-  tree: ModPanelTree | null;
+  /** 树已过期，surface 应对这个 pane 发一次 `modPanelRender`。 */
+  stale?: boolean;
   /** 面板被关掉时宿主发这一条，`closed: true`。 */
   closed?: boolean;
-  /** 失败原因（编译失败 / 校验超限 / 钩子异常）。 */
+  /** 失败原因（编译失败 / 校验超限 / 钩子异常）。surface 画错误条，树保留。 */
+  error?: string;
+}
+
+/** `modPanelRender` 的回复：surface 要的那棵树。 */
+export interface ModPanelRenderResult {
+  modId: string;
+  paneId: string;
+  /** 每次成功渲染递增。 */
+  revision: number;
+  /**
+   * 渲染失败时这里是**上一帧成功的树**（可能为 `null`），错误摘要放 `error` ——
+   * 把整棵树换成一行错误文字会让面板一次性报废。
+   */
+  tree: ModPanelTree | null;
   error?: string;
 }
 

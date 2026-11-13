@@ -50,6 +50,7 @@ import type {
   UserPreferenceSource,
   RemoteControlSnapshot,
   ModPanelUpdatePayload,
+  ModPanelTree,
 } from "wave-agent-sdk/types";
 
 export type {
@@ -509,16 +510,35 @@ export interface DesktopFileContentMessage extends HostToWebviewMessageBase {
 }
 
 /**
- * A plugin mod's panel produced a new snapshot (spec `ecosystem/plugin-mods.md`).
+ * A plugin mod's panel changed **metadata** (spec `ecosystem/plugin-mods.md`
+ * 「架构约束」). No tree: the tree is pulled by the surface — `stale` means this
+ * pane's tree is out of date and the surface should ask for it with
+ * `modPanelRender`. `closed` retires the tab.
  *
- * A push, not a reply: the mod runs in the CLI process and can redraw whenever
- * its own hooks say so, so there is no request to attribute this to. The
- * `revision` inside the payload is what keeps a late snapshot from overwriting
- * a newer one.
+ * A push, not a reply: the mod runs in the CLI process and can mark itself
+ * stale whenever its own hooks say so, so there is no request to attribute
+ * this to.
  */
 export interface DesktopModPanelUpdateMessage extends HostToWebviewMessageBase {
   command: "desktopModPanelUpdate";
   payload: ModPanelUpdatePayload;
+}
+
+/** Reply to `modPanelRender` — the tree the surface asked this pane for. */
+export interface DesktopModPanelRenderMessage extends HostToWebviewMessageBase {
+  command: "desktopModPanelRender";
+  /** The webview tab this tree belongs to (`mod:<modId>:<paneId>`) — the
+   *  attribution key. A reply can only ever land on its own tab, so a slow one
+   *  for a pane that was closed in the meantime is dropped rather than painted
+   *  somewhere else. Ordering *within* a tab is decided by `revision`. */
+  tabId: string;
+  /** Incremented on every successful render; a reply older than the displayed
+   *  revision is dropped. */
+  revision: number;
+  /** `null` when the mod rendered nothing (empty pane). */
+  tree: ModPanelTree | null;
+  /** Render failure; `tree` is then the last successful frame (possibly null). */
+  error?: string;
 }
 
 /** One row of a directory listing for the file panel's tree. */
@@ -1750,6 +1770,7 @@ export type HostToWebviewMessage =
   | DesktopForwardPortResultMessage
   | DesktopFileContentMessage
   | DesktopModPanelUpdateMessage
+  | DesktopModPanelRenderMessage
   | DesktopDirEntriesMessage
   | DesktopFileSaveResultMessage
   | DesktopPreviewFileResultMessage
@@ -1941,6 +1962,11 @@ type ReplyAttribution = {
   // 侧栏内容搜索：输入每变一次发一笔查询，晚到的旧结果必须按 requestId 丢弃，
   // 否则会把上一轮的命中列表贴在新关键词下面。
   desktopSessionContentMatches: "requestId";
+  // mod 面板的树（spec ecosystem/plugin-mods.md「架构约束」）：归属键是**tab**
+  // 而不是 requestId。同一个 pane 可以有多笔在途请求（stale 连着来），回复只描述
+  // 它自己那个 pane，晚到的最多被 revision 判旧丢掉，落不到别的 tab 上；用
+  // requestId 反而要求 webview 记住每一次请求的 id。
+  desktopModPanelRender: "tabId";
 };
 
 // ---- 编译期断言：注册表中的每条响应命令，union 成员必须必填其归属键。 ----
@@ -2003,6 +2029,7 @@ export const replyAttributionLocked = {
   imagePreviewResponse: true,
   earlierMessages: true,
   desktopSessionContentMatches: true,
+  desktopModPanelRender: true,
 } satisfies {
   [C in keyof ReplyAttribution & string]: ReplyAttributionSatisfied[C];
 };

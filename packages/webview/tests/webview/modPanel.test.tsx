@@ -11,9 +11,10 @@ import type { ModPanelTree, ModPanelUpdatePayload } from "wave-agent-sdk/types";
  * 桌面端右侧面板槽里的 mod 面板（spec `ecosystem/plugin-mods.md`）。
  *
  * 从这里往上游全在 SDK / CLI 进程侧（编译、沙箱、限额、`revision` 合并），
- * webview 只做两件事：把树画出来、把交互以 `{ kind, key }` 回传。所以这些用例
- * 只钉这两件事，加上两种必须由宿主仲裁的行为（外链走 `openExternal`、旧快照
- * 丢弃）——树本身的校验不在这一层。
+ * webview 是那个 **surface**：元信息（`desktopModPanelUpdate`）告诉它哪个 pane
+ * 的树过期了，它自己发 `modPanelRender` 去要一帧，宿主把树放在
+ * `desktopModPanelRender` 里回来。所以这些用例钉三件事：拉取、画树、交互以
+ * `{ kind, key }` 回传 —— 树本身的校验不在这一层。
  */
 
 function renderDesktop() {
@@ -25,6 +26,8 @@ function renderDesktop() {
   return { vscode, unmount: view.unmount };
 }
 
+const TAB_ID = "mod:todo:panel:p1";
+
 const payload = (
   overrides: Partial<ModPanelUpdatePayload> = {},
 ): ModPanelUpdatePayload => ({
@@ -33,15 +36,34 @@ const payload = (
   paneId: "p1",
   title: "待办",
   revision: 1,
-  tree: { type: "Text", props: {}, children: ["Hello"] },
+  stale: true,
   ...overrides,
 });
+
+/** 宿主回的「这一帧的树」。revision 要比 webview 手上那帧更新才画得上。 */
+const renderReply = (
+  tree: ModPanelTree | null,
+  overrides: Partial<{ revision: number; error: string }> = {},
+) => fixtures.desktopModPanelRender(TAB_ID, { tree, ...overrides });
+
+/** 一次完整往返：通知过期 → surface 发请求 → 宿主回包。 */
+function openPanel(tree: ModPanelTree | null, revision = 1) {
+  sendHostMessage(fixtures.desktopModPanelUpdate(payload({ revision })));
+  sendHostMessage(renderReply(tree, { revision }));
+}
 
 /** webview→host 的 mod 交互回传。 */
 const events = (vscode: ReturnType<typeof createMockVscode>) =>
   vscode.postMessage.mock.calls
     .map(([msg]) => msg as Record<string, unknown>)
     .filter((m) => m.command === "modPanelEvent")
+    .map((m) => m.payload as Record<string, unknown>);
+
+/** webview→host 的拉取请求（surface 才是发起方）。 */
+const renderRequests = (vscode: ReturnType<typeof createMockVscode>) =>
+  vscode.postMessage.mock.calls
+    .map(([msg]) => msg as Record<string, unknown>)
+    .filter((m) => m.command === "modPanelRender")
     .map((m) => m.payload as Record<string, unknown>);
 
 const externalLinks = (vscode: ReturnType<typeof createMockVscode>) =>
@@ -54,22 +76,32 @@ afterEach(() => {
   delete window.waveHostType;
   // 面板 tab 的 UI 状态（含 `activeTabId` / `modRevision`）按会话缓存在模块级
   // `SessionUiStore` 里，跨用例存活：不清的话，上一个用例留下的 tab 会抢走
-  // active 位置（下一条快照因为 tab 已存在而不被激活，树落在隐藏面板里）或把
-  // 更高的 revision 带下去（新用例的 revision 1 被当成晚到的旧快照丢掉）。
+  // active 位置（下一条通知因为 tab 已存在而不被激活，树落在隐藏面板里）或把
+  // 更高的 revision 带下去（新用例的 revision 1 被当成晚到的旧帧丢掉）。
   sessionUi.prune(new Set());
 });
 
 describe("desktop mod panel", () => {
-  it("快照到达就开一个 tab 并画出树（场景 1）", () => {
+  it("过期通知到达就开一个 tab，由 surface 自己拉这一帧（场景 1）", () => {
     const { vscode } = renderDesktop();
     sendHostMessage(fixtures.desktopModPanelUpdate(payload()));
 
+    // 元信息里没有树：tab 先出现，内容还是「在路上」。
     expect(screen.getByTestId("mod-panel")).toBeInTheDocument();
-    expect(screen.getByTestId("mod-panel-root")).toHaveTextContent("Hello");
+    expect(screen.getByTestId("mod-panel")).toHaveTextContent("正在渲染");
+    // 宿主不推树，是 surface 自己去要的 —— 拉取模型的核心。
+    expect(renderRequests(vscode)).toEqual([
+      { modId: "todo:panel", paneId: "p1" },
+    ]);
     // tab 标题用 mod 自己起的名字，而不是兜底的「插件」。
     expect(screen.getAllByText("待办").length).toBeGreaterThan(0);
     // 画树本身不该回传任何事件。
     expect(events(vscode)).toEqual([]);
+
+    sendHostMessage(
+      renderReply({ type: "Text", props: {}, children: ["Hello"] }),
+    );
+    expect(screen.getByTestId("mod-panel-root")).toHaveTextContent("Hello");
   });
 
   it("Box 的 flexDirection/gap 落到样式上（场景 2）", () => {
@@ -82,7 +114,7 @@ describe("desktop mod panel", () => {
         { type: "Button", props: { key: "b", label: "B" }, children: [] },
       ],
     };
-    sendHostMessage(fixtures.desktopModPanelUpdate(payload({ tree })));
+    openPanel(tree);
 
     const root = screen.getByTestId("mod-panel-root").firstElementChild;
     expect(root).toHaveStyle({ display: "flex", flexDirection: "row" });
@@ -94,17 +126,11 @@ describe("desktop mod panel", () => {
 
   it("点 Button 回传 press，不带 value（场景 1）", () => {
     const { vscode } = renderDesktop();
-    sendHostMessage(
-      fixtures.desktopModPanelUpdate(
-        payload({
-          tree: {
-            type: "Button",
-            props: { key: "inc", label: "+1" },
-            children: [],
-          },
-        }),
-      ),
-    );
+    openPanel({
+      type: "Button",
+      props: { key: "inc", label: "+1" },
+      children: [],
+    });
 
     fireEvent.click(screen.getByRole("button", { name: "+1" }));
 
@@ -115,17 +141,11 @@ describe("desktop mod panel", () => {
 
   it("Input 提交回传 input 并清空输入框（场景 2）", () => {
     const { vscode } = renderDesktop();
-    sendHostMessage(
-      fixtures.desktopModPanelUpdate(
-        payload({
-          tree: {
-            type: "Input",
-            props: { key: "add", submitLabel: "加上" },
-            children: [],
-          },
-        }),
-      ),
-    );
+    openPanel({
+      type: "Input",
+      props: { key: "add", submitLabel: "加上" },
+      children: [],
+    });
 
     const input = screen.getByPlaceholderText("") as HTMLInputElement;
     fireEvent.change(input, { target: { value: "hello" } });
@@ -145,11 +165,12 @@ describe("desktop mod panel", () => {
     ]);
   });
 
-  it("error 时画错误态而不是树（场景 1/2）", () => {
-    renderDesktop();
+  it("错误态（mod 加载失败那类）直接画错误，不发起拉取", () => {
+    const { vscode } = renderDesktop();
+    // 加载失败的 pane 没有可渲染的东西：元信息带 error、不带 stale。
     sendHostMessage(
       fixtures.desktopModPanelUpdate(
-        payload({ tree: null, error: "元素树超过节点上限（2000）" }),
+        payload({ error: "元素树超过节点上限（2000）", stale: undefined }),
       ),
     );
 
@@ -157,9 +178,10 @@ describe("desktop mod panel", () => {
       "元素树超过节点上限（2000）",
     );
     expect(screen.queryByTestId("mod-panel-root")).not.toBeInTheDocument();
+    expect(renderRequests(vscode)).toEqual([]);
   });
 
-  it("回调抛错时错误条叠在上一帧树上，面板仍然能点（场景 18）", () => {
+  it("回包带 error 时错误条叠在上一帧树上，面板仍然能点（场景 18）", () => {
     const { vscode } = renderDesktop();
     const tree: ModPanelTree = {
       type: "Box",
@@ -168,14 +190,15 @@ describe("desktop mod panel", () => {
         { type: "Button", props: { key: "ok", label: "OK" }, children: [] },
       ],
     };
-    sendHostMessage(fixtures.desktopModPanelUpdate(payload({ tree })));
+    openPanel(tree);
 
-    // 同一个面板的下一条快照带 error，但树还在（mod 的元素回调抛了错）。
+    // 元素回调抛错：宿主把 stale + error 一起发来，这一帧的请求会失败。
     sendHostMessage(
       fixtures.desktopModPanelUpdate(
-        payload({ tree, error: "钩子炸了", revision: 2 }),
+        payload({ revision: 1, error: "钩子炸了" }),
       ),
     );
+    sendHostMessage(renderReply(tree, { revision: 1, error: "钩子炸了" }));
 
     expect(screen.getByTestId("mod-panel-error")).toHaveTextContent("钩子炸了");
     // 树没有被错误顶掉：用户还能点别的按钮，而不是整块面板报废。
@@ -186,25 +209,17 @@ describe("desktop mod panel", () => {
     ]);
 
     // 下一次成功渲染（error 清掉）后错误条消失。
-    sendHostMessage(
-      fixtures.desktopModPanelUpdate(payload({ tree, revision: 3 })),
-    );
+    sendHostMessage(renderReply(tree, { revision: 2 }));
     expect(screen.queryByTestId("mod-panel-error")).not.toBeInTheDocument();
   });
 
   it("Link 点击交给宿主开浏览器，不在 webview 里导航", () => {
     const { vscode } = renderDesktop();
-    sendHostMessage(
-      fixtures.desktopModPanelUpdate(
-        payload({
-          tree: {
-            type: "Link",
-            props: { href: "https://example.com/x", label: "文档" },
-            children: [],
-          },
-        }),
-      ),
-    );
+    openPanel({
+      type: "Link",
+      props: { href: "https://example.com/x", label: "文档" },
+      children: [],
+    });
 
     // 未被 preventDefault 的话 jsdom 会打一条「not implemented: navigation」。
     expect(fireEvent.click(screen.getByRole("link", { name: "文档" }))).toBe(
@@ -215,39 +230,25 @@ describe("desktop mod panel", () => {
 
   it("Markdown 里的链接同样走 openExternal", () => {
     const { vscode } = renderDesktop();
-    sendHostMessage(
-      fixtures.desktopModPanelUpdate(
-        payload({
-          tree: {
-            type: "Markdown",
-            props: { text: "见 [文档](https://example.com/md)" },
-            children: [],
-          },
-        }),
-      ),
-    );
+    openPanel({
+      type: "Markdown",
+      props: { text: "见 [文档](https://example.com/md)" },
+      children: [],
+    });
 
     const anchor = screen.getByRole("link", { name: "文档" });
     fireEvent.click(anchor);
     expect(externalLinks(vscode)).toEqual(["https://example.com/md"]);
   });
 
-  it("revision 更小的晚到快照不覆盖新树", () => {
+  it("revision 更小的晚到回包不覆盖新树", () => {
     renderDesktop();
+    openPanel({ type: "Text", props: {}, children: ["new"] }, 2);
+    // 两笔请求都发过，慢的那笔（旧帧）后到。
     sendHostMessage(
-      fixtures.desktopModPanelUpdate(
-        payload({
-          revision: 2,
-          tree: { type: "Text", props: {}, children: ["new"] },
-        }),
-      ),
-    );
-    sendHostMessage(
-      fixtures.desktopModPanelUpdate(
-        payload({
-          revision: 1,
-          tree: { type: "Text", props: {}, children: ["old"] },
-        }),
+      renderReply(
+        { type: "Text", props: {}, children: ["old"] },
+        { revision: 1 },
       ),
     );
 
@@ -255,9 +256,22 @@ describe("desktop mod panel", () => {
     expect(screen.getByTestId("mod-panel-root")).not.toHaveTextContent("old");
   });
 
+  it("tab 关掉之后到的回包不会把面板画回来", () => {
+    renderDesktop();
+    sendHostMessage(fixtures.desktopModPanelUpdate(payload()));
+    sendHostMessage(fixtures.desktopModPanelUpdate(payload({ closed: true })));
+
+    // 请求还在路上时用户就关掉了 tab：回包只能丢弃（它携带着归属键 tabId）。
+    sendHostMessage(
+      renderReply({ type: "Text", props: {}, children: ["late"] }),
+    );
+
+    expect(screen.queryByTestId("mod-panel")).not.toBeInTheDocument();
+  });
+
   it("用户关掉 tab 时回传 close，origin 是 person", () => {
     const { vscode } = renderDesktop();
-    sendHostMessage(fixtures.desktopModPanelUpdate(payload()));
+    openPanel({ type: "Text", props: {}, children: ["Hello"] });
 
     // 关 tab 是用户动作：mod 的 `ui.close` 钩子据此区分「人关的」与
     // 「插件自己关的 / 会话卸载」。
@@ -275,14 +289,12 @@ describe("desktop mod panel", () => {
     expect(screen.queryByTestId("mod-panel")).not.toBeInTheDocument();
   });
 
-  it("closed 快照关掉 tab", () => {
+  it("closed 元信息关掉 tab", () => {
     renderDesktop();
-    sendHostMessage(fixtures.desktopModPanelUpdate(payload()));
+    openPanel({ type: "Text", props: {}, children: ["Hello"] });
     expect(screen.getByTestId("mod-panel")).toBeInTheDocument();
 
-    sendHostMessage(
-      fixtures.desktopModPanelUpdate(payload({ closed: true, tree: null })),
-    );
+    sendHostMessage(fixtures.desktopModPanelUpdate(payload({ closed: true })));
 
     expect(screen.queryByTestId("mod-panel")).not.toBeInTheDocument();
   });

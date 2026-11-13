@@ -12,6 +12,7 @@ import { validateModTree } from "../mods/validate.js";
 import {
   MOD_LIMITS,
   type ModPanelEventPayload,
+  type ModPanelRenderResult,
   type ModPanelTree,
   type ModPanelUpdatePayload,
   type PluginMod,
@@ -28,9 +29,10 @@ import { logger } from "../utils/globalLogger.js";
  *
  * 编译与执行都在 agent 进程内（spec「架构约束」），对外只暴露两件事：
  *
- * - {@link onPanelUpdate}：面板内容的全量快照（`revision` 递增，webview 丢
- *   弃更小的值）。发全量而不是增量，是因为一棵树最多 2000 节点、几十 KB，
- *   而增量协议要给每个元素编 stable id —— 一期不值得。
+ * - {@link onPanelUpdate}：面板的**元信息**（新面板 / 过期 / 关闭 / 错误），
+ *   **不带树**。树永远由 surface 拉取（{@link renderPane}，spec「架构约束」）：
+ *   surface 收到 `stale` 后自己来要，宿主不主动推树，也不缓存一份给别的
+ *   surface —— 每次请求都重新跑 `ui.render`。
  * - {@link handlePanelEvent}：webview 回传的点击/输入/关闭。
  *
  * ## 面板状态归属
@@ -54,9 +56,10 @@ interface PaneState {
   paneId: string;
   title: string;
   revision: number;
+  /** 上一帧**成功**渲染的树；渲染失败时回给 surface 的也是它。 */
   tree: ModPanelTree | null;
   error?: string;
-  /** 上一次真正发出去的时间，用于 100ms 合并。 */
+  /** 上一次发出 stale 通知的时间，用于 100ms 合并（spec「限额」）。 */
   lastRenderAt: number;
   pending?: NodeJS.Timeout;
 }
@@ -240,9 +243,16 @@ export class ModManager {
     }
   }
 
-  /** 当前所有面板的快照（`initialize` / 会话恢复时补发）。 */
+  /**
+   * 当前所有面板的元信息（`initialize` / 会话恢复 / webview 重建时补发）。
+   *
+   * 一律带 `stale: true`：接上来的这个 surface 手里一帧都没有，必须自己去拉
+   * —— 宿主不缓存树，没法替它回放上一次渲染的内容。
+   */
   paneSnapshots(): ModPanelUpdatePayload[] {
-    return [...this.panes.values()].map((pane) => this.payloadOf(pane));
+    return [...this.panes.values()].map((pane) =>
+      this.payloadOf(pane, { stale: true }),
+    );
   }
 
   /** webview 回传的交互。 */
@@ -284,15 +294,17 @@ export class ModManager {
         `[Wave] ${payload.modId} 处理 ${payload.kind} 失败：${message}`,
       );
       const pane = this.panes.get(key);
-      if (pane) this.publish({ ...pane, error: message }, true);
+      if (pane) this.publishUpdate(pane, { stale: true, error: message });
     }
   }
 
   /** 会话结束 / agent 销毁：关掉所有面板、撤销所有定时器，进入终态。 */
   async dispose(): Promise<void> {
-    this.disposed = true;
     this.cancelAllTimers();
+    // 先关面板再进终态：`closed: true` 是界面关掉 tab 的唯一信号，而
+    // `publishUpdate` 在 `disposed` 之后一律静默。
     this.closeAllPanes();
+    this.disposed = true;
   }
 
   /**
@@ -443,7 +455,9 @@ export class ModManager {
     const message = errorMessage(error);
     logger.warn(`[Wave] ${modId} 的定时器回调失败：${message}`);
     for (const pane of [...this.panes.values()]) {
-      if (pane.modId === modId) this.publish({ ...pane, error: message }, true);
+      if (pane.modId === modId) {
+        this.publishUpdate(pane, { stale: true, error: message });
+      }
     }
   }
 
@@ -455,11 +469,7 @@ export class ModManager {
     this.panes.clear();
     // 只让界面把 tab 关掉（`closed: true`）；mod 收不到通知（spec「事件」）。
     for (const pane of closing) {
-      this.options.onPanelUpdate({
-        ...this.payloadOf(pane),
-        tree: null,
-        closed: true,
-      });
+      this.publishUpdate(pane, { closed: true });
     }
   }
 
@@ -525,7 +535,7 @@ export class ModManager {
       lastRenderAt: Date.now(),
     };
     this.panes.set(`${mod.id}\u0000error`, pane);
-    this.publish(pane, true);
+    this.publishUpdate(pane, { error });
   }
 
   private openPane(modId: string, paneId: string, title: string): void {
@@ -542,7 +552,8 @@ export class ModManager {
     };
     pane.title = title;
     this.panes.set(key, pane);
-    void this.render(pane);
+    // 只登记 + 通知 surface 来要树，不在这里渲染（spec「架构约束」）。
+    this.publishUpdate(pane, { stale: true });
   }
 
   private closePane(modId: string, paneId: string): void {
@@ -551,18 +562,15 @@ export class ModManager {
     if (!pane) return;
     if (pane.pending) clearTimeout(pane.pending);
     this.panes.delete(key);
-    this.options.onPanelUpdate({
-      ...this.payloadOf(pane),
-      tree: null,
-      closed: true,
-    });
+    this.publishUpdate(pane, { closed: true });
   }
 
   /**
-   * 请求重画：100ms 内的多次调用合并成一次（spec「限额」）。
+   * 标记过期：100ms 内的多次调用合并成一次 `stale` 通知（spec「限额」）。
    *
    * mod 在一次交互里改三个 state 再 invalidate 一次是常态，但如果它在一个
-   * 循环里 invalidate，合并能避免把 stdio 打爆。
+   * 循环里 invalidate，合并能避免把 stdio 打爆。这里**不渲染** —— 树由
+   * surface 收到 stale 后自己来要（spec「架构约束」）。
    */
   private invalidate(modId: string, paneId: string): void {
     const key = `${modId}\u0000${paneId}`;
@@ -575,20 +583,32 @@ export class ModManager {
     );
     pane.pending = setTimeout(() => {
       pane.pending = undefined;
-      void this.render(pane);
+      this.publishUpdate(pane, { stale: true });
     }, wait);
     pane.pending.unref?.();
   }
 
-  /** 跑 `ui.render` 并发布结果。 */
-  private async render(pane: PaneState): Promise<void> {
-    if (this.disposed) return;
-    pane.lastRenderAt = Date.now();
-    const loaded = this.mods.get(pane.modId);
-    if (!loaded) return;
+  /**
+   * surface 来要树：跑一次 `ui.render` 并把结果回给它（spec「架构约束」）。
+   *
+   * 失败时返回**上一帧成功的树** + 错误摘要 —— 面板保留可点的内容，错误只
+   * 叠在顶上；把整棵树换成一行错误文字会让面板一次性报废。
+   */
+  async renderPane(
+    modId: string,
+    paneId: string,
+  ): Promise<ModPanelRenderResult> {
+    const key = `${modId}\u0000${paneId}`;
+    const pane = this.panes.get(key);
+    if (this.disposed || !pane) {
+      return { modId, paneId, revision: 0, tree: null, error: "面板已关闭" };
+    }
+    const loaded = this.mods.get(modId);
+    if (!loaded) {
+      return this.renderFailed(pane, "mod 未加载");
+    }
     if (loaded.error || !loaded.runtime) {
-      this.publish({ ...pane, error: loaded.error ?? "mod 未加载" }, true);
-      return;
+      return this.renderFailed(pane, loaded.error ?? "mod 未加载");
     }
     const result = await loaded.runtime.callHook("ui.render", {
       modId: pane.modId,
@@ -596,49 +616,65 @@ export class ModManager {
       component: "Pane",
     });
     if (!result.ok) {
-      this.publish({ ...pane, error: result.error }, true);
-      return;
+      return this.renderFailed(pane, result.error);
     }
     if (result.value === undefined) {
       // 钩子没注册或明确返回 undefined：面板留空而不是报错。
-      this.publish({ ...pane, tree: null, error: undefined }, true);
-      return;
+      pane.tree = null;
+      pane.error = undefined;
+      pane.revision += 1;
+      return { modId, paneId, revision: pane.revision, tree: null };
     }
     const validated = validateModTree(result.value);
     if (!validated.ok) {
-      this.publish({ ...pane, error: validated.error }, true);
-      return;
+      return this.renderFailed(pane, validated.error);
     }
     // 成功这一帧必须**清掉**上一次的错误：交互钩子抛的错也落在 `error` 上
     // （见 `handlePanelEvent`），不清的话用户误点一次报错按钮，面板就永久停在
-    // 错误页 —— 之后的 invalidate 再成功，`error` 还压在树上。
-    this.publish({ ...pane, tree: validated.tree, error: undefined }, true);
+    // 错误页 —— 之后的请求再成功，`error` 还压在树上。
+    pane.tree = validated.tree;
+    pane.error = undefined;
+    pane.revision += 1;
+    return { modId, paneId, revision: pane.revision, tree: validated.tree };
   }
 
-  private publish(pane: PaneState, bumpRevision: boolean): void {
-    if (this.disposed) return;
-    const next: PaneState = bumpRevision
-      ? { ...pane, revision: pane.revision + 1 }
-      : pane;
-    const current = this.panes.get(`${pane.modId}\u0000${pane.paneId}`);
-    if (current) {
-      current.revision = next.revision;
-      current.tree = next.tree;
-      current.error = next.error;
-      current.title = next.title;
-    }
-    this.options.onPanelUpdate(this.payloadOf(next));
+  private renderFailed(pane: PaneState, error: string): ModPanelRenderResult {
+    pane.error = error;
+    return {
+      modId: pane.modId,
+      paneId: pane.paneId,
+      revision: pane.revision,
+      tree: pane.tree,
+      error,
+    };
   }
 
-  private payloadOf(pane: PaneState): ModPanelUpdatePayload {
+  private payloadOf(
+    pane: PaneState,
+    extra: { stale?: boolean; closed?: boolean } = {},
+  ): ModPanelUpdatePayload {
     return {
       sessionId: this.options.sessionId,
       modId: pane.modId,
       paneId: pane.paneId,
       title: pane.title,
       revision: pane.revision,
-      tree: pane.tree,
+      ...(extra.stale ? { stale: true } : {}),
+      ...(extra.closed ? { closed: true } : {}),
       ...(pane.error ? { error: pane.error } : {}),
     };
+  }
+
+  /** 发一条元信息通知（不带树）；`stale` 表示 surface 该来要树了。 */
+  private publishUpdate(
+    pane: PaneState,
+    extra: { stale?: boolean; closed?: boolean; error?: string },
+  ): void {
+    if (this.disposed) return;
+    if (extra.error !== undefined) pane.error = extra.error;
+    pane.lastRenderAt = Date.now();
+    const current = this.panes.get(`${pane.modId}\u0000${pane.paneId}`);
+    if (current && current !== pane) current.error = pane.error;
+    this.options.onPanelUpdate(this.payloadOf(pane, extra));
   }
 }

@@ -165,13 +165,40 @@ function textOf(node: unknown): string {
   return node === null || node === undefined ? "" : String(node);
 }
 
+type RenderFrame = Record<string, unknown> & {
+  tabId: string;
+  revision: number;
+  tree: { type: string; children: Array<{ children?: unknown[] }> };
+  error?: string;
+};
+
+/**
+ * What the webview does on a `stale` update: ask for this pane's tree and wait
+ * for the reply. The tree never rides on the update itself.
+ */
+async function renderPanel(
+  paneId: string,
+  mod: { modId: string; paneId: string },
+): Promise<RenderFrame> {
+  const tabId = `mod:${mod.modId}:${mod.paneId}`;
+  await ctx.host.handleWebviewMessage({
+    command: "modPanelRender",
+    paneId,
+    payload: { modId: mod.modId, paneId: mod.paneId },
+  });
+  return (await ctx.waitFor("desktopModPanelRender", {
+    timeout: 30_000,
+    predicate: (m) => m.tabId === tabId && m.tree != null,
+  })) as unknown as RenderFrame;
+}
+
 describe("real host · plugin mods", () => {
-  it("mod 的 TSX 面板经 stdio 推到 webview，点击能回到 mod", async () => {
+  it("mod 的 TSX 面板由 surface 拉取经 stdio 拿到，点击能回到 mod", async () => {
     await openProject(dirA);
 
-    // `session.start` 里 `$.ui.open` → 第一帧。面板是 CLI 侧编译 + 沙箱执行
-    // 出来的，所以这条消息证明：插件被发现 → TSX 编译成功 → 钩子跑通 →
-    // 快照穿过 stdio 到了宿主。
+    // `session.start` 里 `$.ui.open` → 一条**元信息**（`stale`，不带树）。面板
+    // 是 CLI 侧编译 + 沙箱执行出来的，所以这条消息证明：插件被发现 → TSX 编译
+    // 成功 → 钩子跑通 → 通知穿过 stdio 到了宿主。树本身还要拉一次。
     const first = await ctx.waitFor<{
       paneId: string;
       payload: {
@@ -179,7 +206,7 @@ describe("real host · plugin mods", () => {
         paneId: string;
         title: string;
         revision: number;
-        tree: { type: string; children: Array<{ children?: unknown[] }> };
+        stale?: boolean;
         error?: string;
       };
     }>("desktopModPanelUpdate", { timeout: 60_000 });
@@ -188,13 +215,20 @@ describe("real host · plugin mods", () => {
       modId: "todo-demo:panel",
       paneId: "p1",
       title: "待办",
-      revision: 1,
+      stale: true,
     });
-    expect(first.payload.error).toBeUndefined();
-    expect(first.payload.tree.type).toBe("Box");
-    expect(textOf(first.payload.tree)).toContain("点击 0 次");
+    expect(first.payload).not.toHaveProperty("tree");
 
-    // 点一下：webview 侧就是发这条命令，宿主把它转成 RPC 交给 mod。
+    // webview 收到 stale 后发的就是这条；宿主转成 RPC，CLI 现跑一次 `ui.render`。
+    const tree = await renderPanel(first.paneId, first.payload);
+    expect(tree.revision).toBe(1);
+    expect(tree.error).toBeUndefined();
+    expect(tree.tree.type).toBe("Box");
+    expect(textOf(tree.tree)).toContain("点击 0 次");
+
+    // 点一下：webview 侧就是发这条命令，宿主把它转成 RPC 交给 mod。先清掉已记录
+    // 的消息，否则下面的等待会立刻匹配到刚才那帧。
+    ctx.clear();
     await ctx.host.handleWebviewMessage({
       command: "modPanelEvent",
       paneId: first.paneId,
@@ -206,19 +240,21 @@ describe("real host · plugin mods", () => {
       },
     });
 
-    const second = await ctx.waitFor<typeof first>("desktopModPanelUpdate", {
+    // 交互只让这一帧过期（100ms 合并后一条 stale），内容得再拉一次。
+    await ctx.waitFor("desktopModPanelUpdate", {
       timeout: 30_000,
-      predicate: (m) => m.payload.revision > first.payload.revision,
+      predicate: (m) => m.payload.stale === true,
     });
-    expect(second.payload.revision).toBe(2);
-    expect(textOf(second.payload.tree)).toContain("点击 1 次");
+    const second = await renderPanel(first.paneId, first.payload);
+    expect(second.revision).toBe(2);
+    expect(textOf(second.tree)).toContain("点击 1 次");
   }, 120_000);
 
   it("webview 重建后宿主重放已有面板（webviewReady 之后）", async () => {
     await openProject(dirA);
     await ctx.waitFor("desktopModPanelUpdate", { timeout: 60_000 });
 
-    // 重新握手 = 渲染进程重建：之前推送的快照不会被重发（`webviewReady` →
+    // 重新握手 = 渲染进程重建：之前推送的元信息不会被重发（`webviewReady` →
     // `pushInitialState` 只重推 pane 状态），宿主必须顺手把已有面板一起回放，
     // 否则用户的 mod tab 全消失 —— `getModPanels` 那条旁路就是为这个存在的。
     ctx.clear();
@@ -229,5 +265,8 @@ describe("real host · plugin mods", () => {
       { timeout: 30_000 },
     );
     expect(replayed.payload.modId).toBe("todo-demo:panel");
+    // 新 surface 手里一帧都没有：回放的元信息必须标过期，否则 tab 恢复出来
+    // 是个永远空着的面板。
+    expect(replayed.payload).toMatchObject({ stale: true });
   }, 120_000);
 });

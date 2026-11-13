@@ -499,6 +499,14 @@ export class AgentBridge {
         );
       case "getModPanels":
         return this.requireSessionForRead(sessionId).agent.getModPanels();
+      // 树由 surface 拉取（spec「架构约束」）：每次请求都真跑一次 `ui.render`。
+      case "modPanelRender": {
+        const request = p as { modId: string; paneId: string };
+        return this.requireSession(sessionId).agent.renderModPanel(
+          request.modId,
+          request.paneId,
+        );
+      }
 
       // ── Permissions ──
       case "setPermissionMode":

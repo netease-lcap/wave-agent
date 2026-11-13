@@ -49,6 +49,7 @@ import type {
   MessageThreadSummary,
   UserImage,
   ModPanelEventPayload,
+  ModPanelRenderResult,
   ModPanelUpdatePayload,
 } from "../types/index.js";
 import type { BtwAskOptions, BtwHistoryTurn } from "../types/btw.js";
@@ -644,6 +645,23 @@ export class StdioAgent {
    */
   async sendModPanelEvent(payload: ModPanelEventPayload): Promise<void> {
     await this.client.request("modPanelEvent", payload, this.sessionId);
+  }
+
+  /**
+   * 要一棵面板的树（spec「架构约束」：树由 surface 拉取）。
+   *
+   * surface 收到 `modPanelUpdate` 的 `stale` 后自己发起，宿主不缓存树 ——
+   * 每一次请求都会真的跑一次 mod 的 `ui.render`。
+   */
+  async renderModPanel(
+    modId: string,
+    paneId: string,
+  ): Promise<ModPanelRenderResult> {
+    return (await this.client.request(
+      "modPanelRender",
+      { modId, paneId },
+      this.sessionId,
+    )) as ModPanelRenderResult;
   }
 
   /** 当前所有 mod 面板的快照（宿主重连后补画面板用）。 */

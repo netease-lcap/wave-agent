@@ -125,6 +125,9 @@ const DESKTOP_GATED_NON_PREFIX = new Set([
   // desktopHost 推来的 `desktopModPanelUpdate` 创建，插件端/远控页没有这条推送
   // ⇒ webview 在那里永不发送。等二期给插件端做 mod 渲染时从本表摘掉。
   "modPanelEvent",
+  // 同一个 mod 面板的树由 surface 拉取（spec「架构约束」）：桌面端收到 stale
+  // 元信息后发这条去要一帧。插件端没有可以拉的东西（同一原因）。
+  "modPanelRender",
 ]);
 
 /**

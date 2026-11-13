@@ -192,9 +192,14 @@ export type RequestMethod =
   // being closed. The mod itself runs in this process; the host is only carrying
   // the click here.
   | "modPanelEvent"
-  // Every open mod panel, as full snapshots. Session-scoped resync: a host that
-  // attached after `session.start` (session restore, remote re-attach) would
-  // otherwise miss the `modPanelUpdate` notifications that opened them.
+  // The tree for one panel, **pulled by the surface** (spec: trees are pulled,
+  // never pushed). Params: `{ modId, paneId }`; returns `ModPanelRenderResult`.
+  // Nothing is cached: every call runs the mod's `ui.render` again.
+  | "modPanelRender"
+  // Every open mod panel's **metadata** (no trees — the surface pulls each tree
+  // with `modPanelRender`). Session-scoped resync: a host that attached after
+  // `session.start` (session restore, remote re-attach) would otherwise miss the
+  // `modPanelUpdate` notifications that opened them.
   | "getModPanels";
 
 // ── Client → Server notification methods ────────────────────────

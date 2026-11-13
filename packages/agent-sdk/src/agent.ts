@@ -15,6 +15,7 @@ import { PluginManager } from "./managers/pluginManager.js";
 import { ModManager } from "./managers/modManager.js";
 import type {
   ModPanelEventPayload,
+  ModPanelRenderResult,
   ModPanelUpdatePayload,
 } from "./types/mods.js";
 import { HookManager } from "./managers/hookManager.js";
@@ -237,6 +238,20 @@ export class Agent {
   /** Panel snapshots for panels opened before the host attached (resync). */
   public getModPanels(): ModPanelUpdatePayload[] {
     return this.modManager.paneSnapshots();
+  }
+
+  /**
+   * Produce the tree a surface is asking for (spec `ecosystem/plugin-mods.md`
+   * 「架构约束」: trees are pulled, never pushed).
+   *
+   * Public because the stdio bridge receives the `modPanelRender` RPC and hands
+   * the pane identity straight here.
+   */
+  public async renderModPanel(
+    modId: string,
+    paneId: string,
+  ): Promise<ModPanelRenderResult> {
+    return this.modManager.renderPane(modId, paneId);
   }
 
   /**

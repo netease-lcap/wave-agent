@@ -19,6 +19,7 @@ MODS 补上这两件事：插件带一个 TypeScript 模块（可写 TSX），�
 - **mod**：插件目录下的一个模块文件（`.tsx`/`.ts`/`.jsx`/`.js`），导出 `register($, on)`。一个插件可以有多个 mod。
 - **hooks module**：普通的 ES 模块，在 agent 进程内执行。它没有 Node 全局（`fs`/`process`/`setTimeout` 都没有），只能通过 `$` 做事。
 - **render site**：宿主界面上的一个可画点。一期只有 `Pane`（桌面端右侧面板的一个 tab）。
+- **surface**：真正画树的渲染端（一期就是桌面端 webview）。树由 surface **拉取**：surface 对每个已挂载的 pane 发一次请求，agent 进程才去问 mod；宿主不主动把树推给 surface。
 - **元素树**：`Box`/`Text`/`Button`/`Input`/`Link`/`Code`/`Markdown` 组成的嵌套声明，纯数据，可 JSON 序列化。
 - **`$`**：hooks module 拿到的能力面，即「mods API」。
 
@@ -30,19 +31,24 @@ MODS 补上这两件事：插件带一个 TypeScript 模块（可写 TSX），�
 2. 桌面端是 Electron renderer，不持有会话，也不该拿到任意用户代码的执行权；
 3. 宿主只收到**已编译的 JS 产物**，自己不做任何转译。
 
-数据流：
+数据流是**拉取式**（与 Claude Code 的 `ui.render` 一致：invalidate 只通知过期，树永远由 surface 来要）：
 
 ```
 插件目录 mods/*.tsx
   → [agent 进程] 逐文件编译（esbuild transform, classic JSX pragma `__wave.h`/`__wave.Fragment`）
   → [agent 进程] 执行 register($, on)，得到事件钩子表与元素回调表
-  → 事件发生 → 钩子返回元素树 → 校验（形状/限额）
-  → [stdio RPC 通知] modPanelUpdate { sessionId, modId, paneId, title, tree, revision }
+  → mod 调 $.ui.open / $.ui.invalidate → [agent 进程] 只登记 pane、标记该 pane 的树过期
+  → [stdio RPC 通知] modPanelUpdate { sessionId, modId, paneId, title, stale, closed? }（**不带树**）
   → [桌面端主进程] 转发 webview
+  → [webview] 对每个已挂载的 pane 发 modPanelRender { modId, paneId }
+  → [stdio RPC 请求] → agent 进程调 mod 的 ui.render → 校验（形状/限额）
+  → 回 { revision, tree, error? }
   → [webview] ModPanelRenderer 把树画成 React
   → 用户点击/提交 → [webview] 回传 modPanelEvent { modId, paneId, key, kind, value }
   → [stdio RPC 请求] → agent 进程派发给 mod 的元素回调（`onPress` / `onSubmit`）
 ```
+
+宿主**不缓存树**：每次请求都重新跑 `ui.render`，`revision` 在每次成功渲染时递增，webview 丢弃比已显示版本更旧的回复。这样 webview 重载、切会话回来、或多个 surface 并存时都不需要宿主额外推快照 —— surface 自己重新挂载一次即可。
 
 ## 编译
 
@@ -76,12 +82,12 @@ MODS 补上这两件事：插件带一个 TypeScript 模块（可写 TSX），�
 
 `register($, on)` 的 `on(name, handler)` 注册**生命周期钩子**：
 
-| 事件            | 触发时机                                                         | 钩子可返回                                 |
-| --------------- | ---------------------------------------------------------------- | ------------------------------------------ |
-| `session.start` | 会话初始化完成、第一个 prompt 之前                               | 无（返回值忽略；面板得在这里 `$.ui.open`） |
-| `ui.render`     | 某个 render site 要画，`e.component` 为站点名（一期只有 `Pane`） | 元素树                                     |
+| 事件            | 触发时机                                                                                                           | 钩子可返回                                 |
+| --------------- | ------------------------------------------------------------------------------------------------------------------ | ------------------------------------------ |
+| `session.start` | 会话初始化完成、第一个 prompt 之前                                                                                 | 无（返回值忽略；面板得在这里 `$.ui.open`） |
+| `ui.render`     | surface 请求某个 render site 的树时（宿主不缓存，每次请求都重新问 mod），`e.component` 为站点名（一期只有 `Pane`） | 元素树                                     |
 
-**只有这两个**，与 Claude Code 一致（它有 `session.start`/`session.end` 与 `ui.render` 等，但**没有**「面板被关掉」事件）。面板被用户关掉、插件重载、会话销毁都由宿主内部清理（撤销回调表与定时器、丢弃该 pane 的快照），不通知 mod；mod 想确认面板还在不在，用 `$.ui.panes()` 查。
+**只有这两个**，与 Claude Code 一致（它有 `session.start`/`session.end` 与 `ui.render` 等，但**没有**「面板被关掉」事件）。面板被用户关掉、插件重载、会话销毁都由宿主内部清理（撤销回调表与定时器、丢弃该 pane 的登记，之后的请求不再返回树），不通知 mod；mod 想确认面板还在不在，用 `$.ui.panes()` 查。
 
 用户交互**不走** `on`，而是写在元素自己的回调 prop 上（回调用 `key` 与元素绑定，不进树）：
 
@@ -92,13 +98,13 @@ MODS 补上这两件事：插件带一个 TypeScript 模块（可写 TSX），�
 
 ### `$`（一期）
 
-| 命名空间   | 方法                                                                                 |
-| ---------- | ------------------------------------------------------------------------------------ |
-| `$.plugin` | `name`                                                                               |
-| `$.ui`     | `open({ id, title })`、`close(id)`、`panes()`、`invalidate(id)`                      |
-| `$.state`  | `get`、`set`（会话级状态；`get` 返回副本，`set` 后需自己 `invalidate`）              |
-| `$.store`  | `get`、`set`、`delete`、`keys`（该插件自己的 JSON KV，跨会话）                       |
-| `$.clock`  | `now()`、`after(ms, fn)`、`every(ms, fn)`（后两者返回 `{ cancel() }`，见「定时器」） |
+| 命名空间   | 方法                                                                                                             |
+| ---------- | ---------------------------------------------------------------------------------------------------------------- |
+| `$.plugin` | `name`                                                                                                           |
+| `$.ui`     | `open({ id, title })`、`close(id)`、`panes()`、`invalidate(id)`（只丢缓存并通知 surface 重新请求，不直接产生树） |
+| `$.state`  | `get`、`set`（会话级状态；`get` 返回副本，`set` 后需自己 `invalidate`）                                          |
+| `$.store`  | `get`、`set`、`delete`、`keys`（该插件自己的 JSON KV，跨会话）                                                   |
+| `$.clock`  | `now()`、`after(ms, fn)`、`every(ms, fn)`（后两者返回 `{ cancel() }`，见「定时器」）                             |
 
 ### 定时器
 
@@ -124,9 +130,9 @@ mod 的沙箱里**没有** `setTimeout`/`setInterval`，要定时只能走 `$.cl
 
 - 元素回调拿不到事件对象：`onPress()` 无参，`onSubmit(value)` 只有用户输入的字符串。想知道是哪个面板，用 `$.ui.panes()`，或在创建时把 `paneId` 闭包进回调。
 - 回调返回后，若 `$.state` 或 `$.store` 变了，宿主**不**自动重画；mod 需要显式 `$.ui.invalidate(paneId)`（避免每个回调都触发一次渲染）。
-- 一次 `invalidate` 到面板刷新 = 一次 `modPanelUpdate`，带递增的 `revision`；webview 丢弃 `revision` 更小的消息。
-- 一个 pane 的**第一个**快照到达时，桌面端会展开右侧面板槽并激活该 tab（与用户从「＋」菜单打开同一个效果）—— mod 申请的面板不该还要用户自己去点开。后续快照只更新内容，不抢当前焦点。
-- 回调抛错时，面板顶部叠一条错误摘要，**上一次成功渲染的树保留且仍可操作**；下一次 `invalidate` 渲染成功后摘要自动消失。把整棵树换成一行错误文字会让面板一次性报废（用户连别的按钮都点不到），不做。
+- 一次 `invalidate` = 一条 `modPanelUpdate`（`stale`，不带树）；surface 收到后对受影响的 pane 各发一次 `modPanelRender`，回复里带递增的 `revision`，webview 丢弃比当前显示版本更旧的回复。
+- 一个 pane 的**第一次** `modPanelRender` 回复到达时，桌面端会展开右侧面板槽并激活该 tab（与用户从「＋」菜单打开同一个效果）—— mod 申请的面板不该还要用户自己去点开。后续回复只更新内容，不抢当前焦点。
+- 回包带 `error` 时，面板顶部叠一条错误摘要，**同一回复里给的是上一帧成功的树**（仍可操作）；下一次请求成功后摘要自动消失。把整棵树换成一行错误文字会让面板一次性报废（用户连别的按钮都点不到），不做。
 
 ## 限额
 
@@ -161,7 +167,7 @@ mod 的沙箱里**没有** `setTimeout`/`setInterval`，要定时只能走 `$.cl
 - `/reload-plugins` 会**重建**所有 mod：旧面板由宿主内部关掉（webview 上的 tab 随 `closed: true` 消失、旧实例的定时器与回调表一并丢弃），再按新插件列表重新加载与 `session.start`。mod 收不到「被关掉」的通知（见「事件」）。
 - 会话结束 / agent 销毁：宿主内部关掉所有面板并丢弃该会话的 mod 实例，此后发来的一切交互静默丢弃。
 - 会话结束与 `/reload-plugins` 同时撤销该 mod 的所有 `$.clock` 定时器（见「定时器」），销毁后不再有回调。
-- webview 重建（窗口重载、panes 换绑）后宿主重新推送当前面板快照，用户不需要等 mod 下一次 invalidate 才能看到面板。
+- webview 重建（窗口重载、panes 换绑）后 surface 自己对每个 pane 重新请求一次，用户不需要等 mod 下一次 invalidate 才能看到面板；宿主不主动推树。
 
 ## 交付分层（一期不做的事）
 
@@ -189,7 +195,7 @@ mod 的沙箱里**没有** `setTimeout`/`setInterval`，要定时只能走 `$.cl
 
 1. **假设**面板里有一个 `Button`，它的 `onPress` 里把 `$.state` 的计数加一并 `$.ui.invalidate(paneId)`，**当**用户点击该按钮，**则**面板数字从 `n` 变为 `n+1`，且整个过程不产生新的对话轮次。
 2. **假设**面板里有一个 `Input`，它的 `onSubmit` 把提交值追加进 `$.state` 并 invalidate，**当**用户输入 `hello` 并提交，**则**面板列表新增一行 `hello`，输入框清空。
-3. **假设**同一个按钮被连点三次而 mod 每次只做一次 invalidate，**当**三次点击都到达，**则** mod 的回调被执行三次，面板最终只刷一次（按 `revision` 合并）。
+3. **假设**同一个按钮被连点三次而 mod 每次只做一次 invalidate，**当**三次点击都到达，**则** mod 的回调被执行三次，宿主把 100ms 内的多次 invalidate 合并成一条 `stale` 通知，面板最终只请求并渲染一次。
 4. **假设**面板里一个按钮的 `onPress` 直接抛错，**当**用户点击它，**则**面板顶部出现一条错误摘要、上一次渲染的按钮与列表仍能继续点，且下一次 `invalidate` 成功后摘要消失。
 
 ### 用户故事：面板跟着外部程序的状态走（优先级：P0）
@@ -231,8 +237,9 @@ mod 的沙箱里**没有** `setTimeout`/`setInterval`，要定时只能走 `$.cl
 
 1. **假设**一个 mod 已经开着一个面板、还挂着 `$.clock.every` 定时器，**当**用户执行 `/reload-plugins`，**则**旧 tab 先消失、旧实例的定时器停止，随后按新插件列表重新出现，面板内容是新代码渲染的；mod 全程收不到「被关掉」的通知。
 2. **假设**会话被销毁，**当**宿主收尾，**则**所有 mod tab 消失、该会话的 mod 实例被丢弃，此后再来的交互被静默丢弃。
-3. **假设** mod 在 `session.start` 之外又调用了 `$.ui.open`，**当**快照推送，**则**右侧面板**新增**一个 tab（同一 `modId` 可以开多个面板，`paneId` 区分）。
+3. **假设** mod 在 `session.start` 之外又调用了 `$.ui.open`，**当** `modPanelUpdate` 到达且 surface 完成请求，**则**右侧面板**新增**一个 tab（同一 `modId` 可以开多个面板，`paneId` 区分）。
 4. **假设**用户手动关掉 mod 的 tab，**当**之后该 mod 的定时器调用 `$.ui.invalidate(paneId)`，**则**该调用于是无害的空操作（面板已不在 `$.ui.panes()` 里），宿主不报错、不重建 tab。
+5. **假设** webview 重载（窗口刷新、切走再切回），**当**面板重新挂载，**则** webview 自己对每个 pane 发 `modPanelRender` 并拿到当前树，mod 不需要再 invalidate。
 
 ### 用户故事：多个 mod 互不影响（优先级：P1）
 

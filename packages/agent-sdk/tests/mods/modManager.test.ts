@@ -6,12 +6,12 @@ import type { ModPanelUpdatePayload } from "../../src/types/mods.js";
 import type { Plugin } from "../../src/types/plugins.js";
 
 /**
- * `ModManager` 是 mod 的宿主侧编排：编译 → 沙箱实例 → 事件 → 面板快照。
+ * `ModManager` 是 mod 的宿主侧编排：编译 → 沙箱实例 → 事件 → 面板元信息。
  *
  * 这里把两条外部依赖换成假的：esbuild（源码原样返回，测试 mod 直接写成 CJS，
  * 真转译由 `compile.test.ts` 覆盖）与文件系统（按路径喂源码 / store 内容）。
  * 剩下被测的是编排本身：谁拿到哪个面板、revision 怎么涨、关闭怎么通知、插件
- * 重载之后还活在不在。
+ * 重载之后还活在不在、树怎么由 surface 拉取。
  */
 
 const probe = vi.hoisted(() => ({
@@ -112,6 +112,11 @@ function storeFile(name: string): string {
   return path.join(STORE_ROOT, `${name}.json`);
 }
 
+/** surface 拉一帧：这就是「树从哪来」的全部（宿主不推）。 */
+function pull(manager: ModManager, paneId = "p1") {
+  return manager.renderPane("todo:panel", paneId);
+}
+
 beforeEach(() => {
   probe.esbuild = fakeEsbuild;
   fakeEsbuild.transform.mockClear();
@@ -145,13 +150,12 @@ describe("ModManager.loadFromPlugins", () => {
     expect(updates[0]).toMatchObject({
       modId: "todo:panel",
       paneId: "error",
-      tree: null,
     });
     expect(updates[0].error).toContain("esbuild");
     expect(fakeEsbuild.transform).not.toHaveBeenCalled();
   });
 
-  it("session.start 打开面板后发布第一帧（revision 1）", async () => {
+  it("session.start 只登记面板并通知过期，树由 surface 拉取（revision 1）", async () => {
     const { manager, updates } = createManager();
     await manager.loadFromPlugins([
       plugin([{ id: "todo:panel", path: MOD_PATH }]),
@@ -159,20 +163,28 @@ describe("ModManager.loadFromPlugins", () => {
     await manager.startSession();
 
     await vi.waitFor(() => expect(updates).toHaveLength(1));
+    // 元信息：新面板 + 该来要树了，**不带树**（宿主不缓存）。
     expect(updates[0]).toMatchObject({
       sessionId: "s1",
       modId: "todo:panel",
       paneId: "p1",
       title: "计数器",
-      revision: 1,
+      stale: true,
     });
-    expect(updates[0].tree).toMatchObject({
+    expect(updates[0]).not.toHaveProperty("tree");
+
+    // 每来一笔请求就真跑一次 `ui.render`。
+    const frame = await pull(manager);
+    expect(frame.revision).toBe(1);
+    expect(frame.tree).toMatchObject({
       type: "Box",
       children: [
         { type: "Text", props: {}, children: ["n=0"] },
         { type: "Button", props: { key: "inc", label: "+1" } },
       ],
     });
+    // 拉取是幂等的读：再要一次，revision 继续涨而不是回同一帧。
+    expect((await pull(manager)).revision).toBe(2);
   });
 
   it("编译失败只影响那一个 mod", async () => {
@@ -217,7 +229,7 @@ describe("ModManager.loadFromPlugins", () => {
     const broken = updates.find((u) => u.modId === "todo:broken");
     expect(good).toMatchObject({ paneId: "p1" });
     expect(good?.error).toBeUndefined();
-    expect(broken).toMatchObject({ paneId: "error", tree: null });
+    expect(broken).toMatchObject({ paneId: "error" });
     expect(broken?.error).toContain(`${brokenPath}:3:5:`);
   });
 
@@ -255,10 +267,13 @@ describe("ModManager.handlePanelEvent", () => {
     ]);
     await created.manager.startSession();
     await vi.waitFor(() => expect(created.updates).toHaveLength(1));
+    // 先把这一帧真的渲染出来：元素回调（`onPress`）是在 `h()` 里登记进 mod 的
+    // 处理表的，没渲染过就没有可点的东西。
+    await pull(created.manager);
     return created;
   }
 
-  it("点击走 mod 的回调，重画后 revision 递增", async () => {
+  it("点击走 mod 的回调，下一次拉取拿到新的一帧（revision 递增）", async () => {
     const { manager, updates } = await opened();
 
     await manager.handlePanelEvent({
@@ -269,9 +284,14 @@ describe("ModManager.handlePanelEvent", () => {
       kind: "press",
     });
 
+    // invalidate 只发一条 stale 元信息，不自己渲染。
     await vi.waitFor(() => expect(updates).toHaveLength(2));
-    expect(updates[1].revision).toBe(2);
-    expect(JSON.stringify(updates[1].tree)).toContain("n=1");
+    expect(updates[1]).toMatchObject({ paneId: "p1", stale: true });
+    expect(updates[1]).not.toHaveProperty("tree");
+
+    const frame = await pull(manager);
+    expect(frame.revision).toBe(2);
+    expect(JSON.stringify(frame.tree)).toContain("n=1");
   });
 
   it("交互钩子抛错只污染那一帧，下一次成功渲染把错误清掉", async () => {
@@ -301,6 +321,7 @@ exports.register = function ($, on) {
     ]);
     await manager.startSession();
     await vi.waitFor(() => expect(updates).toHaveLength(1));
+    await pull(manager);
 
     await manager.handlePanelEvent({
       sessionId: "s1",
@@ -318,10 +339,74 @@ exports.register = function ($, on) {
       key: "ok",
       kind: "press",
     });
-    await vi.waitFor(() => expect(updates.at(-1)?.error).toBeUndefined(), {
+    await vi.waitFor(() => expect(updates).toHaveLength(3), {
       timeout: MOD_LIMITS.invalidateIntervalMs * 10,
     });
-    expect(updates.at(-1)?.tree).not.toBeNull();
+    // 成功的这一帧把错误清掉：错误只活在失败的那一帧上，拉一次新的就没了。
+    const frame = await pull(manager);
+    expect(frame.error).toBeUndefined();
+    expect(frame.tree).not.toBeNull();
+  });
+
+  it("拉取失败时回上一帧成功的树 + 错误摘要（面板不报废）", async () => {
+    // 整棵树换成一行错误文字会让面板一次性报废：用户连别的按钮都点不到。
+    const throwing = `
+var broken = false;
+exports.register = function ($, on) {
+  on("session.start", function () {
+    $.ui.open({ id: "p1", title: "会炸的面板" });
+  });
+  on("ui.render", function () {
+    if (broken) throw new Error("render 炸了");
+    return __wave.h("Box", null,
+      __wave.h("Text", null, "ok"),
+      __wave.h("Button", { key: "break", label: "炸", onPress: function () {
+        broken = true;
+      }})
+    );
+  });
+};
+`;
+    const { manager, updates } = createManager({ [MOD_PATH]: throwing });
+    await manager.loadFromPlugins([
+      plugin([{ id: "todo:panel", path: MOD_PATH }]),
+    ]);
+    await manager.startSession();
+    await vi.waitFor(() => expect(updates).toHaveLength(1));
+
+    const first = await pull(manager);
+    expect(first.tree).not.toBeNull();
+    await manager.handlePanelEvent({
+      sessionId: "s1",
+      modId: "todo:panel",
+      paneId: "p1",
+      key: "break",
+      kind: "press",
+    });
+
+    const failed = await pull(manager);
+    expect(failed.error).toBe("render 炸了");
+    // 失败不涨 revision（没有新帧），树仍是上一帧成功那份。
+    expect(failed.revision).toBe(first.revision);
+    expect(failed.tree).toEqual(first.tree);
+  });
+
+  it("面板关掉之后的拉取回「面板已关闭」", async () => {
+    const { manager } = await opened();
+    await manager.handlePanelEvent({
+      sessionId: "s1",
+      modId: "todo:panel",
+      paneId: "p1",
+      key: "",
+      kind: "close",
+      origin: "person",
+    });
+
+    expect(await pull(manager)).toMatchObject({
+      revision: 0,
+      tree: null,
+      error: "面板已关闭",
+    });
   });
 
   it("100ms 内的多次 invalidate 合并成一帧", async () => {
@@ -364,7 +449,6 @@ exports.register = function ($, on) {
     expect(updates[1]).toMatchObject({
       paneId: "p1",
       closed: true,
-      tree: null,
     });
     expect(manager.paneSnapshots()).toEqual([]);
     // 一期没有「面板被关掉」事件（spec「事件」）：mod 侧不该被调用，store 里
@@ -415,11 +499,8 @@ exports.register = function ($, on) {
     ]);
     await second.startSession();
 
-    await vi.waitFor(() =>
-      expect(second.paneSnapshots()[0]?.tree).toMatchObject({
-        type: "Box",
-      }),
-    );
+    const frame = await second.renderPane("todo:panel", "p1");
+    expect(frame.tree).toMatchObject({ type: "Box" });
   });
 });
 
@@ -522,6 +603,8 @@ exports.register = function ($, on) {
     ]);
     await manager.startSession();
     await vi.waitFor(() => expect(updates).toHaveLength(1));
+    // 同 `opened()`：按钮的回调只有渲染过才登记进 mod 的处理表。
+    await pull(manager);
     return manager;
   }
 
@@ -648,6 +731,7 @@ exports.register = function ($, on) {
     await manager.loadFromPlugins(plugins);
     await manager.startSession();
     await vi.waitFor(() => expect(updates).toHaveLength(1));
+    await pull(manager);
 
     await press(manager, "run");
     await vi.waitFor(() => expect(ticks()).toBeGreaterThanOrEqual(1), {

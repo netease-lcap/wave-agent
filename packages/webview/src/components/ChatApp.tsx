@@ -79,7 +79,7 @@ import type {
   UpdateToast,
 } from "../types";
 import { EXIT_PLAN_MODE_TOOL_NAME } from "wave-agent-sdk/constants";
-import type { ModPanelUpdatePayload } from "wave-agent-sdk/types";
+import type { ModPanelTree, ModPanelUpdatePayload } from "wave-agent-sdk/types";
 // Type-only, borrowed the same way types/index.ts does it: the four facts are
 // part of the host → webview contract (fixtures defines `PushState`), and the
 // import is erased so nothing runtime-bound survives.
@@ -1706,10 +1706,10 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         }
         break;
       case "desktopModPanelUpdate": {
-        // 插件 mod 面板的新快照（spec ecosystem/plugin-mods.md）。mod 跑在 CLI
-        // 进程里，什么时候重画由它自己的钩子决定，所以这是一条**推送**：按
-        // `modId + paneId` 找对应的 tab，没有就新开一个（`revision` 单调递增，
-        // 晚到的旧快照直接丢弃）。
+        // 插件 mod 面板的**元信息**（spec ecosystem/plugin-mods.md「架构约束」）：
+        // 不带树。mod 跑在 CLI 进程里，什么时候过期由它自己的钩子决定，所以这是
+        // 一条推送；`stale` 表示这一帧要重新拉，这时**由 surface 自己发请求**
+        // （宿主不缓存树、也不主动推）。
         if (!forThisPane(message)) break;
         const payload = (message as { payload?: ModPanelUpdatePayload })
           .payload;
@@ -1722,19 +1722,13 @@ export const ChatApp: React.FC<ChatAppProps> = ({
             return existing ? prev.filter((t) => t.id !== tabId) : prev;
           }
           if (existing) {
-            if (
-              typeof existing.modRevision === "number" &&
-              payload.revision < existing.modRevision
-            ) {
-              return prev; // 晚到的旧快照
-            }
+            // 元信息只改标题与错误条；树仍是上一次回包那份（还没到的帧由
+            // `modTree === undefined` 表示）。
             return prev.map((t) =>
               t.id === tabId
                 ? {
                     ...t,
                     modTitle: payload.title || t.modTitle,
-                    modRevision: payload.revision,
-                    modTree: payload.tree,
                     modError: payload.error,
                   }
                 : t,
@@ -1746,17 +1740,61 @@ export const ChatApp: React.FC<ChatAppProps> = ({
             modId: payload.modId,
             modPaneId: payload.paneId,
             modTitle: payload.title,
-            modRevision: payload.revision,
-            modTree: payload.tree,
             modError: payload.error,
+            // `modTree` 有意留空：它只由 `desktopModPanelRender` 回包填。
           };
           return [...prev, created];
         });
-        if (!existed && !payload.closed) {
-          // mod 自己申请的面板必须让用户看见：新 tab 直接激活并展开槽，与用户
-          // 从「＋」菜单打开同一个效果。只 push 不激活的话，槽（panelExpanded
-          // 为 false 时整块 display:none）与 tab 都是隐形的，等于没开。
+        if (!payload.closed && payload.stale) {
+          postToHost({
+            command: "modPanelRender",
+            payload: { modId: payload.modId, paneId: payload.paneId },
+          });
+        }
+        if (!existed && !payload.closed && !payload.stale) {
+          // 不会再有回包的面板（mod 加载失败那一类）现在就展开；等第一帧树的
+          // 那些在回包里展开（spec「用户交互的结果」）。
           setActiveTabId(tabId);
+          setPanelExpanded(true);
+        }
+        break;
+      }
+      case "desktopModPanelRender": {
+        // `modPanelRender` 的回包：这一帧的树（spec「架构约束」）。归属键是
+        // tab —— tab 已经关了就丢弃；同一 tab 上按 revision 判旧。
+        if (!forThisPane(message)) break;
+        const reply = message as {
+          tabId?: string;
+          revision?: number;
+          tree?: ModPanelTree | null;
+          error?: string;
+        };
+        if (!reply.tabId || typeof reply.revision !== "number") break;
+        const tab = tabsRef.current.find((t) => t.id === reply.tabId);
+        if (!tab) break;
+        if (
+          typeof tab.modRevision === "number" &&
+          reply.revision < tab.modRevision
+        ) {
+          break; // 晚到的旧帧
+        }
+        const firstFrame = tab.modTree === undefined;
+        setTabs((prev) =>
+          prev.map((t) =>
+            t.id === reply.tabId
+              ? {
+                  ...t,
+                  modRevision: reply.revision,
+                  modTree: reply.tree ?? null,
+                  modError: reply.error,
+                }
+              : t,
+          ),
+        );
+        if (firstFrame) {
+          // mod 自己申请的面板必须让用户看见：第一帧到达就激活并展开槽，与用户
+          // 从「＋」菜单打开同一个效果。后续帧只更新内容，不抢当前焦点。
+          setActiveTabId(reply.tabId);
           setPanelExpanded(true);
         }
         break;
@@ -5137,32 +5175,37 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     }
     if (kind === "mod") {
       // 树已经过宿主校验（节点数/深度/文本量/href 白名单），这里只画。交互回到
-      // 宿主再转给 mod：webview 不持有 mod 的任何状态。
+      // 宿主再转给 mod：webview 不持有 mod 的任何状态。`modTree === undefined`
+      // 表示这一帧还在路上（surface 刚发过请求），别把它画成「没有返回内容」。
       return (
         <div
           className="mod-panel"
           style={{ width: common.width }}
           data-testid="mod-panel"
         >
-          <ModPanelRenderer
-            tree={tab.modTree ?? null}
-            error={tab.modError}
-            onEvent={(eventKind, key, value) =>
-              postToHost({
-                command: "modPanelEvent",
-                payload: {
-                  modId: tab.modId,
-                  paneId: tab.modPaneId,
-                  key,
-                  kind: eventKind,
-                  ...(value === undefined ? {} : { value }),
-                },
-              })
-            }
-            onOpenLink={(href) =>
-              postToHost({ command: "openExternal", url: href })
-            }
-          />
+          {tab.modTree === undefined && !tab.modError ? (
+            <div className="mod-panel-empty">正在渲染…</div>
+          ) : (
+            <ModPanelRenderer
+              tree={tab.modTree ?? null}
+              error={tab.modError}
+              onEvent={(eventKind, key, value) =>
+                postToHost({
+                  command: "modPanelEvent",
+                  payload: {
+                    modId: tab.modId,
+                    paneId: tab.modPaneId,
+                    key,
+                    kind: eventKind,
+                    ...(value === undefined ? {} : { value }),
+                  },
+                })
+              }
+              onOpenLink={(href) =>
+                postToHost({ command: "openExternal", url: href })
+              }
+            />
+          )}
         </div>
       );
     }

@@ -887,9 +887,12 @@ export interface PanelTab {
   modPaneId?: string;
   /** mod tab: the tab label the mod asked for (`$.ui.open({title})`). */
   modTitle?: string;
-  /** mod tab: last applied revision; a snapshot with a smaller one is dropped. */
+  /** mod tab: revision of the frame currently on screen (from the last
+   *  `desktopModPanelRender` reply); a reply with a smaller one is dropped. */
   modRevision?: number;
-  /** mod tab: the element tree, already validated by the host. */
+  /** mod tab: the element tree, already validated by the host. `undefined` =
+   *  the first frame is still on its way (the surface has asked for it), as
+   *  opposed to `null` = the mod rendered nothing. */
   modTree?: ModPanelTree | null;
   /** mod tab: compile / validation / hook failure, shown instead of the tree. */
   modError?: string;
