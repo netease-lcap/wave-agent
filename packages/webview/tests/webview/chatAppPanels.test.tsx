@@ -184,6 +184,29 @@ describe("ChatApp desktop panel framework", () => {
     });
   });
 
+  it('the "＋" menu lists only panels that are not open yet (preview always stays)', () => {
+    window.waveHostType = "desktop";
+    renderDesktop({ workdir: "/work/a" });
+    // Open the single-instance tasks panel from the empty-state guide.
+    fireEvent.click(screen.getByTestId("panel-toggle-btn"));
+    fireEvent.click(screen.getByTestId("panel-empty-item-tasks"));
+    expect(screen.getByTestId("panel-tab-tasks-1")).toBeInTheDocument();
+
+    // The tab strip already shows the open panels, so the "＋" menu must not
+    // offer them again: activating one would be a no-op (it is already the
+    // active tab) — the reported「点了没反应」. Filtering is per kind: the other
+    // single-instance kinds stay listed, and preview ALWAYS stays because every
+    // click there adds a fresh tab.
+    fireEvent.click(screen.getByTestId("panel-tabs-add"));
+    expect(
+      screen.queryByTestId("panel-toggle-item-tasks"),
+    ).not.toBeInTheDocument();
+    expect(screen.getByTestId("panel-toggle-item-diff")).toBeInTheDocument();
+    expect(
+      screen.getByTestId("panel-toggle-item-preview"),
+    ).toBeInTheDocument();
+  });
+
   it("a preview tab shows the guest page title once the page reports one", () => {
     window.waveHostType = "desktop";
     renderDesktop({ workdir: "/work/a" });

@@ -140,9 +140,11 @@ test.describe("Desktop panel divider drag (real geometry)", () => {
     const S_manual = await slotWidth(page);
     near(S_manual, S_auto - 140, 8);
 
-    // A new tab must NOT re-auto-fill a manually-dragged slot.
+    // A new tab must NOT re-auto-fill a manually-dragged slot. (Another fresh
+    // preview tab: the setup already opened diff, and every kind except preview
+    // is single-instance — the "＋" menu no longer lists kinds that are open.)
     await pane.getByTestId("panel-tabs-add").click();
-    await pane.getByTestId("panel-toggle-item-diff").click();
+    await pane.getByTestId("panel-toggle-item-preview").click();
     await expect.poll(() => slotWidth(page)).toBeLessThanOrEqual(S_manual + 3);
     near(await slotWidth(page), S_manual, 3);
 
