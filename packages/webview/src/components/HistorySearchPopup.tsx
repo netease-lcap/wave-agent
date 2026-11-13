@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState, useCallback } from "react";
 import { useClickOutside } from "../utils/useClickOutside";
 import { useHostMessage } from "../utils/useHostMessage";
 import "../styles/HistorySearchPopup.css";
+import { HistoryIcon } from "./HistoryIcon";
 import { HistoryItem, VsCodeApi } from "../types";
 
 interface HistorySearchPopupProps {
@@ -151,7 +152,7 @@ export const HistorySearchPopup: React.FC<HistorySearchPopupProps> = ({
       data-testid="history-search-popup"
     >
       <div className="history-search-header">
-        <span className="codicon codicon-history"></span>
+        <HistoryIcon className="history-search-icon" />
         <input
           ref={inputRef}
           type="text"

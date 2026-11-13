@@ -3076,6 +3076,164 @@
   border-bottom-color: rgba(255, 255, 255, 0.12);
 }
 
+/* ── 历史提示词搜索浮层：按 skill 菜单契约收口（2026-11-13 走查）──────
+   依据 `references/common-components.md:81`（锚定选择器 / 菜单组合）：
+   「2px trigger gap, right-edge alignment, matching width where possible…
+    Menu uses bg-overlay, 12px radius, 8px padding and the existing popover
+    border/shadow. Options use at least 28px height, 14px/22px regular 400
+    labels, 8px horizontal padding and 6px radius」。
+   容器面/圆角/边框/阴影/选项 hover·selected 已由上面第十三轮族规则给到，
+   这里补四类原先没跟上的点 —— 均只在桌面宿主生效，插件端保持宿主控制：
+     ① 定位：原 `left: 0 !important` + `max-width: 600px` 比 768 的输入卡窄
+        168px（左对齐、右缘空出一截），且底部与输入卡重叠 4px；
+     ② 内衬：原浮层 padding 0（header 自己 8px、列表 0），选项直贴浮层边；
+     ③ 选项：原 `padding: 8px 12px` + r0 + 行高 normal；
+     ④ 文字：主行 14px 但行高只有 20px（契约 22），时间戳 11px（次级信息档 12/20）。
+   选项行高按 4px 垂直内衬保住 54px（= 22 + 4 + 20 + 8），与改前同高。 */
+[data-host="desktop"] .history-search-popup {
+  /* ② 菜单档 8px 内衬（内容宽 750 = 768 − 2×8 − 2×1） */
+  padding: 8px;
+  /* ① 宽度匹配输入卡：右缘随 width:100% 自然对齐，不再有 600px 上限 */
+  max-width: none;
+  /* ① 2px 触发间距：锚到 .input-wrapper 顶边上方。原先靠 inline top +
+     translateY(-100%) + margin-top:-8 三者凑，实测底部侵入输入卡 4px */
+  top: auto !important;
+  bottom: calc(100% + 2px) !important;
+  transform: none;
+  margin-top: 0;
+  /* 视口兜底：矮窗口先把浮层压矮，不出视口（无翻转逻辑） */
+  max-height: min(300px, calc(100vh - 120px));
+}
+
+/* 搜索框与结果之间不再画线：菜单族（会话列表弹层同款）用 8px 间距 + 字段自身
+   边框区隔。内衬交给浮层容器，header 只保留下方 8px。 */
+[data-host="desktop"] .history-search-header {
+  padding: 0 0 8px;
+  border-bottom: none;
+}
+/* 头部图标：换成设计交付的官方矢量（HistoryIcon，16×16，原来是 codicon 字形），
+   颜色按 2026-11-13 评论「颜色可以浅一些作为提示用的」落到提示档
+   --cc-text-placeholder（浅 #8B8F95 / 深 #858B8F，原为次级信息档 #6C7076 / #A0A5A8）。 */
+[data-host="desktop"] .history-search-header .history-search-icon {
+  color: var(--cc-text-placeholder);
+}
+
+/* 搜索框：菜单族紧凑字段档 28px / r6 / 14·22（原 24 / r2 / 12）。描边与底走
+   `--cc-field-*`（与「添加主机」inline 行、设置页字段同一份映射）：原来浅色吃
+   --vscode-input-border → --cc-border #DCDFE6 尚可、深色吃出来是 #A0A5A8 发亮；
+   底色深色原 #313131 比浮层面 #232526 还亮一档。 */
+[data-host="desktop"] .history-search-input {
+  box-sizing: border-box;
+  height: 28px;
+  padding: 0 8px;
+  font-size: 14px;
+  line-height: 22px;
+  border-radius: 6px;
+  background: var(--cc-field-bg);
+  border-color: var(--cc-field-border);
+  color: var(--cc-field-text);
+}
+[data-host="desktop"] .history-search-input::placeholder {
+  color: var(--cc-field-placeholder);
+  opacity: 1;
+}
+[data-host="desktop"] .history-search-input:hover:not(:focus) {
+  border-color: var(--cc-field-border-hover);
+}
+[data-host="desktop"] .history-search-input:focus {
+  border-color: var(--cc-field-border-focus);
+  outline: none;
+}
+
+/* 列表底色随浮层（base 是 --vscode-dropdown-background：深色 #313131，在 #232526
+   的浮层里亮出一块）。
+   滚动条位置照任务列队（`.queued-items`）的做法：滚动容器负边距抵掉浮层 8px
+   内衬，让滚动条贴到浮层内缘（实测距外缘 1px = 边框宽），内容再用 4px 右内衬
+   让开覆盖式滚动条 —— 与队列卡片的数字同构（容器距卡片缘 1、内容距 5）。
+   原来滚动容器停在 8px 内衬里，滚动条悬在浮层中间、跟选项行的圆角块错位。 */
+[data-host="desktop"] .history-search-results {
+  background-color: transparent;
+  margin-right: -8px;
+  padding-right: 4px;
+}
+
+/* ③ 选项：8px 水平内衬 + 6px 圆角 + 去掉行间分隔线（有 hover/selected 填充面
+   的菜单项不画线，同 more-menu / 斜杠指令）。
+   2026-11-13 评论（锚 `.session-card`「参考这里」）：标题与时间之间不再留间距
+   —— 参照物会话卡的标题行（14/26）与副行（12/20）就是 gap 0 紧贴，靠行高自带的
+   半行距分隔。行高 22 + 20 + 垂直内衬 8 = 50px（原 54）。 */
+[data-host="desktop"] .history-search-item {
+  padding: 4px 8px;
+  border-radius: 6px;
+  border-bottom: none;
+  gap: 0;
+}
+
+/* ④ 主行 14/22；时间戳 12/20 + --cc-text-placeholder（比次级信息再弱一档，
+   原 11px + 继承色 → 12/20 + text-secondary → 现在 placeholder）。
+   2026-11-13 评论「深色模式默认状态（没 hover 的时候），时间字体颜色也要弱化」：
+   浅色 placeholder #8B8F95 on #FFFFFF = 3.25:1，深色 placeholder #858B8F on #232526
+   却是 4.46:1 —— 同一个 token 在深底上明显更「实」，默认行看着比 hover 行重。
+   深色单独降一档到 #727577（3.32:1），对齐浅色那档的观感；未用 --cc-text-disabled
+   #62686B（2.72:1 更低，且语义是「禁用」）。选择器前缀多加一层 .history-search-item，
+   压过 base 里 `.selected .history-item-time{color:inherit}`。 */
+[data-host="desktop"] .history-item-prompt {
+  line-height: 22px;
+}
+[data-host="desktop"] .history-search-item .history-item-time {
+  font-size: 12px;
+  line-height: 20px;
+  color: var(--cc-text-placeholder);
+}
+[data-host="desktop"][data-theme="dark"] .history-search-item .history-item-time {
+  color: #727577;
+}
+
+/* 空态 / 加载中：同一次级信息档（原 12px + 行高 normal） */
+[data-host="desktop"] .history-search-empty,
+[data-host="desktop"] .history-search-loading {
+  font-size: 12px;
+  line-height: 20px;
+  color: var(--cc-text-secondary);
+}
+
+/* ⑤ hover / 选中分档（2026-11-13 评论「hover 色也要按照规范，现在太接近选中色」）
+   实测根因：组件 onMouseEnter 把鼠标所在行设为 selectedIndex，而 `.selected` 与
+   `:hover` 同特异性、族规则里排在后面 → hover 面被整行吞掉，鼠标悬停显示的就是
+   选中面（light 两态实测同为 rgb(231,233,237) / 文字同为主色，视觉上无法区分）。
+   按 common-components「hover uses fill-hover and selected uses fill-pressed with
+   primary text, without increased weight」+ design-system「Hover uses fill-hover
+   and text-primary」落地：hover = --cc-fill-hover，未悬停的选中行 = --cc-fill-pressed。
+   深色沿用站内现档（8% / 12% 白，合成 #2A2B2C / #3A3C3D），与族规则同源。 */
+[data-host="desktop"] .history-search-item:hover {
+  background-color: var(--cc-fill-hover);
+  color: var(--cc-text-primary);
+}
+[data-host="desktop"] .history-search-item.selected:not(:hover) {
+  background-color: var(--cc-fill-pressed);
+  color: var(--cc-text-primary);
+}
+[data-host="desktop"][data-theme="dark"] .history-search-item:hover {
+  background-color: rgba(255, 255, 255, 0.08);
+  color: var(--cc-text-primary);
+}
+[data-host="desktop"][data-theme="dark"] .history-search-item.selected:not(:hover) {
+  background-color: rgba(255, 255, 255, 0.12);
+  color: var(--cc-text-primary);
+}
+/* 时间戳在交互态不再继承成主文字色（原 `.selected .history-item-time{color:inherit;
+   opacity:.8}` 会让日期忽然加深、整行一起变实），三态都保持弱化档 —— 深色跟 ④ 里
+   那一档 #727577 走，避免悬停时颜色回弹变亮。 */
+[data-host="desktop"] .history-search-item:hover .history-item-time,
+[data-host="desktop"] .history-search-item.selected .history-item-time {
+  color: var(--cc-text-placeholder);
+  opacity: 1;
+}
+[data-host="desktop"][data-theme="dark"] .history-search-item:hover .history-item-time,
+[data-host="desktop"][data-theme="dark"] .history-search-item.selected .history-item-time {
+  color: #727577;
+}
+
 /* ── 第十五轮：确认弹窗对齐 codechat approval 浮层 ────────────────── */
 
 /* 卡片：codechat approval-dialog —— padding 16 / 边框 --cc-border-light #e4e7ed /
