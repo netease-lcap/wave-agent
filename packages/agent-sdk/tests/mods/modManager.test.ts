@@ -74,9 +74,6 @@ exports.register = function ($, on) {
       }})
     );
   });
-  on("ui.close", function (e) {
-    $.store.set("closed", e.origin.kind);
-  });
 };
 `;
 
@@ -351,7 +348,7 @@ exports.register = function ($, on) {
     expect(updates).toHaveLength(2);
   });
 
-  it("关面板发 closed:true，并给 mod 一次 ui.close", async () => {
+  it("关面板发 closed:true，mod 收不到通知", async () => {
     const { manager, updates } = await opened();
 
     await manager.handlePanelEvent({
@@ -370,7 +367,9 @@ exports.register = function ($, on) {
       tree: null,
     });
     expect(manager.paneSnapshots()).toEqual([]);
-    expect(probe.files.get(storeFile("todo"))).toContain('"closed": "person"');
+    // 一期没有「面板被关掉」事件（spec「事件」）：mod 侧不该被调用，store 里
+    // 也就不会多出任何东西。
+    expect(probe.files.has(storeFile("todo"))).toBe(false);
   });
 
   it("未知 mod / 缺 key 的事件被忽略而不抛错", async () => {
@@ -450,11 +449,9 @@ describe("ModManager.reload / dispose", () => {
     await manager.startSession();
     await vi.waitFor(() => expect(updates).toHaveLength(1));
 
-    await manager.dispose("unload");
+    await manager.dispose();
     expect(updates.at(-1)).toMatchObject({ closed: true });
     expect(manager.paneSnapshots()).toEqual([]);
-    // ui.close 的 origin 真的传给了 mod。
-    expect(probe.files.get(storeFile("todo"))).toContain('"closed": "unload"');
 
     await manager.handlePanelEvent({
       sessionId: "s1",
@@ -464,5 +461,202 @@ describe("ModManager.reload / dispose", () => {
       kind: "press",
     });
     expect(updates.at(-1)).toMatchObject({ closed: true });
+  });
+});
+
+describe("ModManager 的 $.clock", () => {
+  const MIN = MOD_LIMITS.timerMinIntervalMs;
+
+  /** 面板上两个按钮：`run` 里起定时器（`body` 决定起什么），`stop` 撤销。 */
+  function clockMod(body: string): string {
+    return `
+var timer = null;
+exports.register = function ($, on) {
+  on("session.start", function () { $.ui.open({ id: "p1", title: "定时" }); });
+  on("ui.render", function () {
+    return __wave.h("Box", null,
+      __wave.h("Button", { key: "run", label: "run", onPress: function () {
+        ${body}
+      }}),
+      __wave.h("Button", { key: "stop", label: "stop", onPress: function () {
+        if (timer) { timer.cancel(); timer = null; }
+      }})
+    );
+  });
+};
+`;
+  }
+
+  /** mod 里 `$.store.get(name)` 的最新值（store 每次读写都走文件）。 */
+  function stored(name: string): string | undefined {
+    const raw = probe.files.get(storeFile("todo"));
+    return raw === undefined
+      ? undefined
+      : (JSON.parse(raw) as Record<string, string>)[name];
+  }
+
+  function ticks(): number {
+    return Number(stored("ticks") ?? 0);
+  }
+
+  /** 一个每拍把 `ticks` 加一的定时器源码。 */
+  function counting(kind: "after" | "every", ms: number): string {
+    return `timer = $.clock.${kind}(${ms}, function () {
+        $.store.set("ticks", String(Number($.store.get("ticks") || 0) + 1));
+      });`;
+  }
+
+  /** 建出来的 manager 都在这里登记：用例之间共用同一个 store 文件，漏掉一
+   * 个就是上一个用例的定时器还在往这个用例的断言里写数。 */
+  const managers: ModManager[] = [];
+
+  afterEach(async () => {
+    for (const manager of managers.splice(0)) await manager.dispose();
+  });
+
+  async function started(source: string): Promise<ModManager> {
+    const { manager, updates } = createManager({ [MOD_PATH]: source });
+    managers.push(manager);
+    await manager.loadFromPlugins([
+      plugin([{ id: "todo:panel", path: MOD_PATH }]),
+    ]);
+    await manager.startSession();
+    await vi.waitFor(() => expect(updates).toHaveLength(1));
+    return manager;
+  }
+
+  function press(manager: ModManager, key: string): Promise<void> {
+    return manager.handlePanelEvent({
+      sessionId: "s1",
+      modId: "todo:panel",
+      paneId: "p1",
+      key,
+      kind: "press",
+    });
+  }
+
+  /** 负向断言的观察窗口：由间隔常量派生，不写死毫秒。 */
+  function watch(intervals = 2): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, MIN * intervals));
+  }
+
+  it("every 按间隔重复触发，cancel 之后不再触发", async () => {
+    const manager = await started(clockMod(counting("every", MIN)));
+
+    await press(manager, "run");
+    await vi.waitFor(() => expect(ticks()).toBeGreaterThanOrEqual(2), {
+      timeout: MIN * 10,
+    });
+
+    await press(manager, "stop");
+    const stopped = ticks();
+    await watch();
+    expect(ticks()).toBe(stopped);
+  });
+
+  it("after 只跑一次", async () => {
+    const manager = await started(clockMod(counting("after", MIN)));
+
+    await press(manager, "run");
+    await vi.waitFor(() => expect(stored("ticks")).toBe("1"), {
+      timeout: MIN * 10,
+    });
+    await watch();
+    expect(stored("ticks")).toBe("1");
+  });
+
+  it("小于下限的间隔夹到下限，不会被打爆", async () => {
+    const manager = await started(clockMod(counting("every", 0)));
+
+    await press(manager, "run");
+    await watch(3);
+    // 3 个下限间隔最多 3~4 拍；没夹取的话这 600ms 里会是几百拍。
+    expect(ticks()).toBeGreaterThanOrEqual(1);
+    expect(ticks()).toBeLessThanOrEqual(4);
+  });
+
+  it("超量定时器报错，前 16 个照常登记", async () => {
+    const manager = await started(
+      clockMod(`
+      var created = 0, message = "";
+      for (var i = 0; i < ${MOD_LIMITS.maxTimersPerMod + 1}; i++) {
+        try { $.clock.after(60000, function () {}); created++; }
+        catch (error) { message = error.message; }
+      }
+      $.store.set("timers", created + "|" + message);
+    `),
+    );
+
+    await press(manager, "run");
+    await vi.waitFor(() => expect(stored("timers")).toContain("|"));
+    expect(stored("timers")).toBe(
+      `${MOD_LIMITS.maxTimersPerMod}|定时器上限 ${MOD_LIMITS.maxTimersPerMod} 个（todo:panel），先 cancel 掉不用的`,
+    );
+  });
+
+  it("上一拍没跑完时跳过这一拍（async 回调也一样）", async () => {
+    // 跨 realm：mod 在 vm 里 `new Promise` 不是宿主 realm 的 Promise，
+    // 用 `instanceof` 判就会把它当成同步完成，串行语义整个失效。
+    const manager = await started(
+      clockMod(`
+      var inFlight = 0, maxInFlight = 0, starts = 0;
+      timer = $.clock.every(${MIN}, function () {
+        starts++;
+        inFlight++;
+        if (inFlight > maxInFlight) maxInFlight = inFlight;
+        return new Promise(function (resolve) {
+          $.clock.after(${MIN * 2}, function () { inFlight--; resolve(); });
+        });
+      });
+      $.clock.after(${MIN * 6}, function () {
+        $.store.set("serial", starts + "|" + maxInFlight);
+      });
+    `),
+    );
+
+    await press(manager, "run");
+    await vi.waitFor(() => expect(stored("serial")).toBeDefined(), {
+      timeout: MIN * 20,
+    });
+    const [starts, maxInFlight] = (stored("serial") ?? "")
+      .split("|")
+      .map(Number);
+    expect(starts).toBeGreaterThanOrEqual(1);
+    expect(maxInFlight).toBe(1);
+  });
+
+  it("dispose 之后定时器全部停止", async () => {
+    const manager = await started(clockMod(counting("every", MIN)));
+
+    await press(manager, "run");
+    await vi.waitFor(() => expect(ticks()).toBeGreaterThanOrEqual(1), {
+      timeout: MIN * 10,
+    });
+
+    await manager.dispose();
+    const stopped = ticks();
+    await watch();
+    expect(ticks()).toBe(stopped);
+  });
+
+  it("插件重载撤销旧实例的定时器", async () => {
+    const plugins = [plugin([{ id: "todo:panel", path: MOD_PATH }])];
+    const { manager, updates } = createManager({
+      [MOD_PATH]: clockMod(counting("every", MIN)),
+    });
+    managers.push(manager);
+    await manager.loadFromPlugins(plugins);
+    await manager.startSession();
+    await vi.waitFor(() => expect(updates).toHaveLength(1));
+
+    await press(manager, "run");
+    await vi.waitFor(() => expect(ticks()).toBeGreaterThanOrEqual(1), {
+      timeout: MIN * 10,
+    });
+
+    await manager.reload(plugins);
+    const stopped = ticks();
+    await watch();
+    expect(ticks()).toBe(stopped);
   });
 });

@@ -71,7 +71,7 @@ export interface ModPanelEventPayload {
   kind: "press" | "input" | "close";
   /** `kind === "input"` 时是用户提交的字符串。 */
   value?: string;
-  /** `kind === "close"` 时是谁关的。 */
+  /** `kind === "close"` 时是谁关的（诊断用；mod 收不到关闭通知，见 spec「事件」）。 */
   origin?: "person" | "plugin" | "unload";
 }
 
@@ -106,4 +106,8 @@ export const MOD_LIMITS = {
   hookTimeoutMs: 5_000,
   /** 同一面板两次刷新的最小间隔。 */
   invalidateIntervalMs: 100,
+  /** `$.clock` 的最小间隔；更小的值夹到这个数（spec「定时器」）。 */
+  timerMinIntervalMs: 200,
+  /** 一个 mod 同时活跃的定时器数；超出时新建报错。 */
+  maxTimersPerMod: 16,
 } as const;

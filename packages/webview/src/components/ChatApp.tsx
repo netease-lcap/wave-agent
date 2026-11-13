@@ -4106,10 +4106,9 @@ export const ChatApp: React.FC<ChatAppProps> = ({
             path: removed.previewFilePath,
           });
         }
-        // A mod tab going away is the user closing the pane: the mod's
-        // `ui.close` hook fires so it can drop whatever state belonged to it
-        // (spec ecosystem/plugin-mods.md). Closing is the user's action, so
-        // the origin says `person`.
+        // A mod tab going away is the user closing the pane: the host drops the
+        // pane snapshot (spec ecosystem/plugin-mods.md). The mod itself is not
+        // notified — it has no "panel closed" hook.
         if (removed.kind === "mod" && removed.modId && removed.modPaneId) {
           postToHost({
             command: "modPanelEvent",

@@ -32,6 +32,11 @@ const elements = Object.fromEntries(
   ELEMENT_CONSTRUCTORS.map((name) => [String(name), String(name)]),
 ) as Record<ModElementType, ModElementType>;
 
+/** 定时器句柄：`cancel()` 可重复调用。 */
+export interface ModTimerHandle {
+  cancel(): void;
+}
+
 /** 事件钩子能拿到的 `$`（见 spec「$（一期）」）。 */
 export interface ModDollar {
   plugin: { name: string; root: string };
@@ -52,6 +57,17 @@ export interface ModDollar {
     delete(key: string): void;
     keys(): string[];
   };
+  /**
+   * 定时器（spec「定时器」）。
+   *
+   * 沙箱里没有 `setTimeout`/`setInterval`：定时器登记在宿主上，会话销毁或插件
+   * 重载时才撤销得掉 —— 裸定时器会留在进程里继续跑，然后打到已经销毁的会话上。
+   */
+  clock: {
+    now(): number;
+    after(ms: number, fn: () => unknown): ModTimerHandle;
+    every(ms: number, fn: () => unknown): ModTimerHandle;
+  };
 }
 
 /** 沙箱需要宿主提供的全部能力。 */
@@ -68,7 +84,22 @@ export interface ModRuntimeHost {
   storeSet(key: string, value: string): void;
   storeDelete(key: string): void;
   storeKeys(): string[];
+  /** 登记一个定时器；间隔下限、数量上限、串行与撤销都由宿主实现。 */
+  startTimer(
+    kind: "after" | "every",
+    ms: number,
+    fn: () => unknown,
+  ): ModTimerHandle;
 }
+
+/**
+ * 一期允许注册的钩子（spec「事件」）。
+ *
+ * 只有这两个：Claude Code 有 `session.start` / `ui.render` 等同一个集合，但
+ * **没有**「面板被关掉」事件 —— 面板的关闭、插件重载、会话销毁都由宿主内部
+ * 清理，不通知 mod。别的名字一律拒收，免得插件作者依赖一个不存在的钩子。
+ */
+const HOOK_NAMES = new Set(["session.start", "ui.render"]);
 
 /** 一个已编译文件：路径 + CJS 源码。 */
 export interface CompiledModule {
@@ -105,6 +136,21 @@ export function errorMessage(error: unknown): string {
     return error.message;
   }
   return String(error);
+}
+
+/**
+ * 跨 realm 的 thenable 判断。
+ *
+ * mod 在 vm context 里 `new Promise(...)` 拿到的是**另一个 realm** 的
+ * `Promise`，`instanceof Promise` 判假。定时器要靠它判定「这一拍还没跑完」，
+ * 判错就会把 async 回调当成同步的，串行语义整个失效。
+ */
+export function isThenable(value: unknown): value is PromiseLike<unknown> {
+  return (
+    (typeof value === "object" || typeof value === "function") &&
+    value !== null &&
+    typeof (value as { then?: unknown }).then === "function"
+  );
 }
 
 /**
@@ -232,6 +278,12 @@ export class ModRuntime {
         delete: (key) => host.storeDelete(key),
         keys: () => [...host.storeKeys()],
       },
+      clock: {
+        now: () => Date.now(),
+        // 只登记到宿主，不在沙箱里自己起计时器：撤销权必须留在宿主手里。
+        after: (ms, fn) => host.startTimer("after", ms, fn),
+        every: (ms, fn) => host.startTimer("every", ms, fn),
+      },
     };
 
     this.context = vm.createContext(
@@ -270,12 +322,17 @@ export class ModRuntime {
       exports,
       this.dollar,
       (name: unknown, handler: unknown) => {
-        if (typeof name === "string" && typeof handler === "function") {
-          this.hooks.set(name, handler as (event: unknown) => unknown);
+        if (typeof name !== "string" || typeof handler !== "function") return;
+        if (!HOOK_NAMES.has(name)) {
+          logger.warn(
+            `[Wave] ${this.host.pluginName} 注册了不存在的 mod 钩子：${name}（一期只有 session.start / ui.render）`,
+          );
+          return;
         }
+        this.hooks.set(name, handler as (event: unknown) => unknown);
       },
     );
-    if (result instanceof Promise) await result;
+    if (isThenable(result)) await result;
     return true;
   }
 

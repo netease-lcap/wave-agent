@@ -35,6 +35,7 @@ function host(overrides: Partial<ModRuntimeHost> = {}): ModRuntimeHost {
     storeSet: vi.fn(),
     storeDelete: vi.fn(),
     storeKeys: vi.fn(() => []),
+    startTimer: vi.fn(() => ({ cancel: vi.fn() })),
     ...overrides,
   };
 }
@@ -212,7 +213,7 @@ describe("ModRuntime 的隔离", () => {
   it("沙箱里没有 process / Buffer / require 之外的 node 能力", async () => {
     const { mod } = runtime(`
       exports.register = function ($, on) {
-        on("probe", function () {
+        on("session.start", function () {
           return [
             typeof process,
             typeof Buffer,
@@ -224,7 +225,7 @@ describe("ModRuntime 的隔离", () => {
     `);
 
     await mod.load();
-    const result = await mod.callHook("probe", {});
+    const result = await mod.callHook("session.start", {});
     expect(result.ok && result.value).toBe(
       "undefined,undefined,undefined,undefined",
     );
@@ -233,16 +234,30 @@ describe("ModRuntime 的隔离", () => {
   it("eval / new Function 被 codeGeneration 开关挡住", async () => {
     const { mod } = runtime(`
       exports.register = function ($, on) {
-        on("probe", function () {
+        on("session.start", function () {
           return eval("1 + 1");
         });
       };
     `);
 
     await mod.load();
-    const result = await mod.callHook("probe", {});
+    const result = await mod.callHook("session.start", {});
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error).toMatch(/code generation/i);
+  });
+
+  it("未知钩子名被拒绝而不是静默登记", async () => {
+    // 一期只有 session.start / ui.render；`ui.close` 这类「面板被关掉」的事件
+    // 是宿主内部清理（spec「事件」），mod 注册它不该悄悄生效。
+    const { mod } = runtime(`
+      exports.register = function ($, on) {
+        on("ui.close", function () {});
+        on("session.start", function () { return "ok"; });
+      };
+    `);
+
+    await mod.load();
+    expect(mod.hookNames()).toEqual(["session.start"]);
   });
 });
 
@@ -419,6 +434,43 @@ describe("ModRuntime 的 $ 命名空间", () => {
     await mod.load();
     await mod.callHook("session.start", {});
     expect(hostApi.closePane).toHaveBeenCalledWith("p1");
+  });
+
+  it("clock 只登记到宿主，沙箱里没有裸定时器", async () => {
+    const hostApi = host();
+    const { mod } = runtime(
+      `
+      exports.register = function ($, on) {
+        on("session.start", function () {
+          $.clock.after(500, function () {});
+          var handle = $.clock.every(1000, function () {});
+          return {
+            now: typeof $.clock.now(),
+            handle: typeof handle.cancel,
+            timers: [typeof setTimeout, typeof setInterval],
+          };
+        });
+      };
+      `,
+      { host: hostApi },
+    );
+
+    await mod.load();
+    const result = await mod.callHook("session.start", {});
+    expect(result.ok && result.value).toEqual({
+      now: "number",
+      handle: "function",
+      timers: ["undefined", "undefined"],
+    });
+    // 回调是 vm realm 的函数，`expect.any(Function)` 的构造器比较会判假，
+    // 所以按参数位逐个断言。
+    const calls = vi.mocked(hostApi.startTimer).mock.calls;
+    expect(
+      calls.map(([kind, ms, fn]) => [kind, ms, typeof fn] as const),
+    ).toEqual([
+      ["after", 500, "function"],
+      ["every", 1000, "function"],
+    ]);
   });
 });
 

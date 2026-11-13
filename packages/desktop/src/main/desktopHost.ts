@@ -6128,7 +6128,7 @@ export class DesktopHost {
         break;
 
       // 插件 mod 面板里的交互（spec ecosystem/plugin-mods.md）：点按钮 / 提交
-      // 输入 / 关面板都运到 CLI 进程，mod 自己处理。
+      // 输入运到 CLI 进程交给 mod；关面板只是宿主丢掉快照，mod 收不到通知。
       case "modPanelEvent": {
         const agent = this.agentForPane(pid);
         const payload = msg.payload as

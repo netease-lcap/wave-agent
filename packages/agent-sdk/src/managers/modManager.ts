@@ -5,6 +5,7 @@ import { compileMods, type ModSourceFile } from "../mods/compile.js";
 import {
   ModRuntime,
   errorMessage,
+  isThenable,
   type CompiledModule,
 } from "../mods/runtime.js";
 import { validateModTree } from "../mods/validate.js";
@@ -36,7 +37,9 @@ import { logger } from "../utils/globalLogger.js";
  *
  * 面板活在**会话**里，不活在 mod 进程里：mod 调 `$.ui.open()` 只是登记一个
  * 面板，真正的内容由 `ui.render` 钩子现算。所以关掉面板的 tab 不需要通知
- * mod 的渲染路径，只需要补一次 `ui.close`（mod 可以据此清自己的 state）。
+ * mod 的渲染路径 —— mod 也**收不到**任何「面板被关了」的事件（spec「事件」：
+ * 一期只有 `session.start` / `ui.render`，与 Claude Code 的交集）。宿主在这里
+ * 把该 pane 的快照、回调表与定时器一并丢掉就完了。
  */
 export interface ModManagerOptions {
   sessionId: string;
@@ -65,6 +68,23 @@ interface LoadedMod {
   error?: string;
 }
 
+/**
+ * 一个 `$.clock` 定时器。
+ *
+ * `running` 是「上一拍的回调还没结束」：`every` 的节拍固定（fire 时就把下一拍
+ * 排上），所以回调慢于间隔时会出现「上一拍还在跑、下一拍又到」—— 这时跳过这一
+ * 拍而不是排队或并发（spec「定时器」）。
+ */
+interface ClockTimer {
+  modId: string;
+  kind: "after" | "every";
+  delayMs: number;
+  run: () => unknown;
+  timer?: NodeJS.Timeout;
+  running: boolean;
+  cancelled: boolean;
+}
+
 /** 该插件持久化的 KV（跨会话），按插件名分文件。 */
 function storePath(root: string, pluginName: string): string {
   return path.join(root, `${pluginName}.json`);
@@ -74,6 +94,8 @@ export class ModManager {
   private readonly mods = new Map<string, LoadedMod>();
   private readonly panes = new Map<string, PaneState>();
   private readonly state = new Map<string, Map<string, unknown>>();
+  /** modId → 它名下还活着的定时器。 */
+  private readonly timers = new Map<string, Set<ClockTimer>>();
   private readonly storeRoot: string;
   private disposed = false;
 
@@ -150,7 +172,7 @@ export class ModManager {
               pluginName: plugin.name,
               pluginRoot: plugin.path,
               openPane: (paneId, title) => this.openPane(mod.id, paneId, title),
-              closePane: (paneId) => this.closePane(mod.id, paneId, "plugin"),
+              closePane: (paneId) => this.closePane(mod.id, paneId),
               listPanes: () => this.listPanes(mod.id),
               invalidate: (paneId) => this.invalidate(mod.id, paneId),
               stateGet: (key) => this.stateFor(mod.id).get(key),
@@ -169,6 +191,8 @@ export class ModManager {
                 this.writeStore(plugin.name, store);
               },
               storeKeys: () => Object.keys(this.readStore(plugin.name)),
+              startTimer: (kind, ms, fn) =>
+                this.startTimer(mod.id, kind, ms, fn),
             },
             mod.path,
             compiled,
@@ -236,7 +260,8 @@ export class ModManager {
       return;
     }
     if (payload.kind === "close") {
-      this.closePane(payload.modId, payload.paneId, payload.origin ?? "person");
+      // mod 收不到这条（spec「事件」）：宿主丢掉 pane 快照就够了。
+      this.closePane(payload.modId, payload.paneId);
       return;
     }
     if (!payload.key) {
@@ -264,10 +289,11 @@ export class ModManager {
     }
   }
 
-  /** 会话结束 / agent 销毁：通知每个面板 `ui.close(origin)` 并进入终态。 */
-  async dispose(origin: "plugin" | "unload" = "unload"): Promise<void> {
+  /** 会话结束 / agent 销毁：关掉所有面板、撤销所有定时器，进入终态。 */
+  async dispose(): Promise<void> {
     this.disposed = true;
-    await this.closeAllPanes(origin);
+    this.cancelAllTimers();
+    this.closeAllPanes();
   }
 
   /**
@@ -279,30 +305,162 @@ export class ModManager {
    * 直接在 reload 路径上调 `dispose("plugin")`，结果重载一次 mod 就永久不生效。
    */
   async reload(plugins: Plugin[]): Promise<void> {
-    await this.closeAllPanes("plugin");
+    // 旧实例的定时器必须先停：下面会丢掉 `mods`，它们的 `$` 还指向旧 runtime。
+    this.cancelAllTimers();
+    this.closeAllPanes();
     this.mods.clear();
     this.state.clear();
     await this.loadFromPlugins(plugins);
     await this.startSession();
   }
 
-  private async closeAllPanes(origin: "plugin" | "unload"): Promise<void> {
+  // ── 定时器（spec「定时器」） ────────────────────────────────
+
+  private timersFor(modId: string): Set<ClockTimer> {
+    let set = this.timers.get(modId);
+    if (!set) {
+      set = new Set();
+      this.timers.set(modId, set);
+    }
+    return set;
+  }
+
+  /**
+   * 登记一个定时器。
+   *
+   * 间隔下限与数量上限都在这里强制（spec「限额」）：下限**夹取**而不报错
+   * （`0` / 负值 / 非数字几乎一定是写错了，但没必要让整个面板变成错误态），
+   * 上限则报错 —— 一个 mod 起了第 17 个定时器是设计问题，不该静默成功。
+   */
+  private startTimer(
+    modId: string,
+    kind: "after" | "every",
+    ms: number,
+    fn: () => unknown,
+  ): { cancel(): void } {
+    if (typeof fn !== "function") {
+      throw new Error("$.clock 的回调必须是一个函数");
+    }
+    if (this.disposed) {
+      // agent 已经销毁：给一个空句柄，别让 mod 的收尾代码再炸一次。
+      return { cancel: () => {} };
+    }
+    const set = this.timersFor(modId);
+    if (set.size >= MOD_LIMITS.maxTimersPerMod) {
+      throw new Error(
+        `定时器上限 ${MOD_LIMITS.maxTimersPerMod} 个（${modId}），先 cancel 掉不用的`,
+      );
+    }
+    const delayMs = Number.isFinite(ms)
+      ? Math.max(MOD_LIMITS.timerMinIntervalMs, Math.floor(ms))
+      : MOD_LIMITS.timerMinIntervalMs;
+    const timer: ClockTimer = {
+      modId,
+      kind,
+      delayMs,
+      run: fn,
+      running: false,
+      cancelled: false,
+    };
+    set.add(timer);
+    this.schedule(timer);
+    return { cancel: () => this.cancelTimer(timer) };
+  }
+
+  private schedule(timer: ClockTimer): void {
+    if (timer.cancelled || this.disposed) return;
+    timer.timer = setTimeout(() => this.fireTimer(timer), timer.delayMs);
+    // 定时器不该把进程钉住：CLI 退出时 `unref` 掉，会话销毁时再显式 cancel。
+    timer.timer.unref?.();
+  }
+
+  private fireTimer(timer: ClockTimer): void {
+    timer.timer = undefined;
+    if (timer.cancelled || this.disposed) return;
+    if (timer.kind === "after") {
+      // 一次性：先摘出登记表，回调里 cancel 也无妨。
+      this.timersFor(timer.modId).delete(timer);
+    }
+    if (timer.running) {
+      // 上一拍还没跑完 —— 跳过这一拍，节拍照旧（不排队、不并发）。
+      logger.debug(`[Wave] ${timer.modId} 的定时器上一拍未结束，跳过这一拍`);
+    } else {
+      timer.running = true;
+      const finish = () => {
+        timer.running = false;
+      };
+      try {
+        const result = timer.run();
+        if (isThenable(result)) {
+          void result.then(
+            () => finish(),
+            (error: unknown) => {
+              this.reportTimerError(timer.modId, error);
+              finish();
+            },
+          );
+        } else {
+          finish();
+        }
+      } catch (error) {
+        this.reportTimerError(timer.modId, error);
+        finish();
+      }
+    }
+    // `every` 的下一拍在 fire 时就排好（固定节拍）；`after` 到此为止。
+    if (timer.kind === "every") this.schedule(timer);
+  }
+
+  private cancelTimer(timer: ClockTimer): void {
+    timer.cancelled = true;
+    if (timer.timer) {
+      clearTimeout(timer.timer);
+      timer.timer = undefined;
+    }
+    this.timersFor(timer.modId).delete(timer);
+  }
+
+  /** 撤销所有定时器；给了 `modId` 就只撤那个 mod 的。 */
+  private cancelAllTimers(modId?: string): void {
+    if (modId === undefined) {
+      for (const id of [...this.timers.keys()]) this.cancelAllTimers(id);
+      this.timers.clear();
+      return;
+    }
+    const set = this.timers.get(modId);
+    if (!set) return;
+    for (const timer of [...set]) this.cancelTimer(timer);
+    this.timers.delete(modId);
+  }
+
+  /**
+   * 定时器回调抛错：记日志，并把错误摘要叠在该 mod 的每个面板上。
+   *
+   * 面板不是错误态换掉树，而是「错误条 + 上一帧照旧」（与元素回调抛错同一条
+   * 路径）；下一拍如果成功渲染，摘要自动消失。定时器本身**不停**——一次抛错就
+   * 让面板永远不刷新，比偶发错误更难查。
+   */
+  private reportTimerError(modId: string, error: unknown): void {
+    const message = errorMessage(error);
+    logger.warn(`[Wave] ${modId} 的定时器回调失败：${message}`);
+    for (const pane of [...this.panes.values()]) {
+      if (pane.modId === modId) this.publish({ ...pane, error: message }, true);
+    }
+  }
+
+  private closeAllPanes(): void {
     const closing = [...this.panes.values()];
     for (const pane of closing) {
       if (pane.pending) clearTimeout(pane.pending);
     }
     this.panes.clear();
-    // 先让界面把 tab 关掉（`closed: true`），再通知 mod —— 反过来的话 mod 的
-    // `ui.close` 钩子里还可能再 invalidate 一次，那个面板已经不存在了。
+    // 只让界面把 tab 关掉（`closed: true`）；mod 收不到通知（spec「事件」）。
     for (const pane of closing) {
       this.options.onPanelUpdate({
         ...this.payloadOf(pane),
         tree: null,
         closed: true,
       });
-    }
-    for (const pane of closing) {
-      await this.emitClose(pane, origin);
     }
   }
 
@@ -388,38 +546,17 @@ export class ModManager {
     void this.render(pane);
   }
 
-  private closePane(
-    modId: string,
-    paneId: string,
-    origin: "person" | "plugin" | "unload",
-  ): void {
+  private closePane(modId: string, paneId: string): void {
     const key = `${modId}\u0000${paneId}`;
     const pane = this.panes.get(key);
     if (!pane) return;
     if (pane.pending) clearTimeout(pane.pending);
     this.panes.delete(key);
-    void this.emitClose(pane, origin);
     this.options.onPanelUpdate({
       ...this.payloadOf(pane),
       tree: null,
       closed: true,
     });
-  }
-
-  private async emitClose(
-    pane: PaneState,
-    origin: "person" | "plugin" | "unload",
-  ): Promise<void> {
-    const loaded = this.mods.get(pane.modId);
-    if (!loaded?.runtime) return;
-    const result = await loaded.runtime.callHook("ui.close", {
-      modId: pane.modId,
-      paneId: pane.paneId,
-      origin: { kind: origin },
-    });
-    if (!result.ok) {
-      logger.warn(`[Wave] ${pane.modId} 的 ui.close 失败：${result.error}`);
-    }
   }
 
   /**

@@ -212,7 +212,8 @@ export class Agent {
     );
     // Mods are part of the plugin surface: a reloaded plugin brings its mods
     // into the sandbox, a removed one drops them. `reload` closes the old
-    // panels with `ui.close(origin: "plugin")` before rebuilding.
+    // panels and cancels their timers before rebuilding (the mods themselves
+    // are not notified — spec ecosystem/plugin-mods.md「事件」).
     try {
       await this.modManager.reload(this.pluginManager.getPlugins());
     } catch (error) {
@@ -1412,6 +1413,9 @@ export class Agent {
       );
     }
     this.abortAIMessage(); // This will abort tools including Agent tool (subagents)
+    // 插件 mod 的面板与定时器：会话已经结束，先把定时器停掉并关面板 —— 留到
+    // 后面会有回调打到半销毁的 agent 上（spec ecosystem/plugin-mods.md「定时器」）。
+    await this.modManager.dispose();
     // 侧聊段依附于这场对话：销毁时一并丢弃，在途的那一轮随之中止（否则它会带着
     // 网络句柄活过 destroy）。
     this.aiManager.releaseAllBtwSegments();
