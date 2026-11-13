@@ -24,7 +24,9 @@
   background-color: var(--vscode-editor-background);
 }
 
-.history-search-header .codicon-history {
+/* 头部图标：官方矢量（HistoryIcon，16×16）替掉原 codicon 字形；
+   间距 8px 与配色沿用原来那条规则，非桌面宿主观感不变。 */
+.history-search-header .history-search-icon {
   margin-right: 8px;
   color: var(--vscode-descriptionForeground);
 }

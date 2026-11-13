@@ -7,7 +7,7 @@ import React, {
   useMemo,
 } from "react";
 import { useRovingMenu } from "../utils/useRovingMenu";
-import { ContextLocalIcon, PermCaretIcon } from "./HeaderIcons";
+import { ContextLocalIcon, PermCaretIcon, QueueEditIcon } from "./HeaderIcons";
 import { DesktopSshConnectionDialog } from "./DesktopSshConnectionDialog";
 import type {
   DesktopHostOption,
@@ -337,7 +337,11 @@ export const DesktopHostSelector: React.FC<DesktopHostSelectorProps> = ({
       )}
       {/* 编辑入口：SSH 条目才有（本地/WSL 不是连接库里的东西）。常驻但默认透明，
           指针停到这一行、或键盘焦点进到这一行/这颗按钮上才显形——与行内 ✕ 同一
-          套显隐规则；点击不能冒泡成「选中该主机」。 */}
+          套显隐规则；点击不能冒泡成「选中该主机」。
+          1113 评论（她点 `div.desktop-workdir-menu-item`「本地」+ `button.queued-action-button`
+          「同步图标、交互样式等」）：图标从 codicon 字体字形换成队列动作键同款矢量
+          （`QueueEditIcon`：16 网格 / stroke 1.4 圆头），盒 20×20 / r0 / 无底色改成
+          24×24 / r8 / hover 浅底（见 host-desktop.css），与 `queued-action-button` 同族。 */}
       {row.option.kind === "ssh" && (
         <button
           type="button"
@@ -350,7 +354,7 @@ export const DesktopHostSelector: React.FC<DesktopHostSelectorProps> = ({
             openEdit(row.option.id);
           }}
         >
-          <span className="codicon codicon-edit"></span>
+          <QueueEditIcon />
         </button>
       )}
     </div>
