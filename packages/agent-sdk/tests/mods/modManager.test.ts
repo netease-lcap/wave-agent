@@ -3,7 +3,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ModManager } from "../../src/managers/modManager.js";
 import { logger } from "../../src/utils/globalLogger.js";
 import { MOD_LIMITS } from "../../src/types/mods.js";
-import type { ModPanelUpdatePayload } from "../../src/types/mods.js";
+import type {
+  ModPanelUpdatePayload,
+  ModStatusPayload,
+  ModToastPayload,
+} from "../../src/types/mods.js";
 import type { Plugin } from "../../src/types/plugins.js";
 
 /**
@@ -78,6 +82,238 @@ exports.register = function ($, on) {
 };
 `;
 
+describe("ModManager 的带、状态行与提示", () => {
+  /** 只注册 `ui.render`、按 `e.component` 分叉的 mod（同一钩子两个站点）。 */
+  const bandMod = (bandBody: string) => `
+exports.register = function ($, on) {
+  on("ui.render", function (e) {
+    if (e.component !== "AbovePrompt") return __wave.h("Text", null, "pane");
+    ${bandBody}
+  });
+};
+`;
+
+  it("带只问注册了 ui.render 的 mod，且携带 AbovePrompt 站点与固定 instance_id", async () => {
+    const withBand = path.join(ROOT, "mods", "band.tsx");
+    const paneOnly = path.join(ROOT, "mods", "pane-only.tsx");
+    const { manager } = createManager({
+      [withBand]: bandMod(
+        'return __wave.h("Text", null, e.surface + ":" + e.component + ":" + e.instance_id);',
+      ),
+      [paneOnly]: `
+exports.register = function ($, on) {
+  on("session.start", function () { $.ui.open({ id: "p1", title: "面板" }); });
+  on("ui.render", function () { return __wave.h("Text", null, "pane"); });
+};
+`,
+    });
+    await manager.loadFromPlugins([
+      plugin([
+        { id: "todo:band", path: withBand },
+        { id: "todo:pane-only", path: paneOnly },
+      ]),
+    ]);
+    await manager.startSession();
+
+    const bands = await manager.renderBand();
+    // 只有一条：`todo:pane-only` 也注册了 ui.render，所以两条都会出现 ——
+    // 但它是同一个站点，返回的是 "pane" 文本，照样占位置。
+    expect(bands.map((b) => b.modId).sort()).toEqual([
+      "todo:band",
+      "todo:pane-only",
+    ]);
+    const band = bands.find((b) => b.modId === "todo:band");
+    expect(band).toMatchObject({ plugin: "todo", revision: 1 });
+    expect(band?.tree).toEqual({
+      type: "Text",
+      props: {},
+      children: ["desktop:AbovePrompt:above-prompt"],
+    });
+
+    // 每次拉取 revision 都涨（surface 靠它丢晚到的旧帧）。
+    const again = await manager.renderBand();
+    expect(again.find((b) => b.modId === "todo:band")?.revision).toBe(2);
+
+    await manager.dispose();
+  });
+
+  it("没有注册 ui.render 的 mod 不出现在带里", async () => {
+    const noRender = path.join(ROOT, "mods", "silent.tsx");
+    const { manager } = createManager({
+      [noRender]: `exports.register = function ($, on) { on("session.start", function () {}); };`,
+    });
+    await manager.loadFromPlugins([
+      plugin([{ id: "todo:silent", path: noRender }]),
+    ]);
+    await manager.startSession();
+
+    await expect(manager.renderBand()).resolves.toEqual([]);
+
+    await manager.dispose();
+  });
+
+  it("钩子返回 undefined 的带不占位置，失败时回上一帧成功的树 + 错误摘要", async () => {
+    const flaky = path.join(ROOT, "mods", "flaky.tsx");
+    const { manager } = createManager({
+      [flaky]: `
+exports.register = function ($, on) {
+  on("ui.render", function (e) {
+    var mode = $.state.get("mode") || "ok";
+    if (mode === "throw") throw new Error("崩了");
+    if (mode === "empty") return undefined;
+    return __wave.h("Text", null, e.component);
+  });
+};
+`,
+    });
+    await manager.loadFromPlugins([
+      plugin([{ id: "todo:flaky", path: flaky }]),
+    ]);
+    await manager.startSession();
+
+    const first = await manager.renderBand();
+    expect(first[0]).toMatchObject({ revision: 1 });
+    expect(first[0].error).toBeUndefined();
+    expect(first[0].tree).toMatchObject({ children: ["AbovePrompt"] });
+
+    // 抛错：树还是上一帧那份，错误叠在上面（空白化这条带会让用户以为它没了）。
+    const stateSet = (
+      manager as unknown as {
+        stateFor(modId: string): Map<string, unknown>;
+      }
+    ).stateFor("todo:flaky");
+    stateSet.set("mode", "throw");
+    const failed = await manager.renderBand();
+    expect(failed[0]).toMatchObject({ revision: 1, error: "崩了" });
+    expect(failed[0].tree).toMatchObject({ children: ["AbovePrompt"] });
+
+    // 明确返回 undefined：这一帧没内容，revision 仍然涨（surface 据此换掉旧帧）。
+    stateSet.set("mode", "empty");
+    const empty = await manager.renderBand();
+    expect(empty[0]).toMatchObject({ revision: 2, tree: null });
+    expect(empty[0].error).toBeUndefined();
+
+    await manager.dispose();
+  });
+
+  it("$.ui.status / $.ui.toast 带着插件名推到宿主，null 表示清除", async () => {
+    const statusMod = path.join(ROOT, "mods", "status.tsx");
+    const { manager, statuses, toasts } = createManager({
+      [statusMod]: `
+exports.register = function ($, on) {
+  on("session.start", function () {
+    $.ui.status("ctx 62%");
+    $.ui.status(null);
+    $.ui.toast("已保存");
+    $.ui.toast("等一会儿", 1200);
+  });
+};
+`,
+    });
+    await manager.loadFromPlugins([
+      plugin([{ id: "todo:status", path: statusMod }]),
+    ]);
+    await manager.startSession();
+
+    // 署名是**插件**名而不是 modId：用户要能看出是谁贴的。
+    expect(statuses).toEqual([
+      {
+        sessionId: "s1",
+        modId: "todo:status",
+        plugin: "todo",
+        text: "ctx 62%",
+      },
+      { sessionId: "s1", modId: "todo:status", plugin: "todo", text: null },
+    ]);
+    expect(toasts).toEqual([
+      {
+        sessionId: "s1",
+        modId: "todo:status",
+        plugin: "todo",
+        text: "已保存",
+        timeoutMs: 4000,
+      },
+      {
+        sessionId: "s1",
+        modId: "todo:status",
+        plugin: "todo",
+        text: "等一会儿",
+        timeoutMs: 1200,
+      },
+    ]);
+
+    // 最后贴的是 null（已清除），所以快照里没有它：surface 挂上来时重放的
+    // 是「此刻还挂着」的那几行，toast 一律不重放（瞬时消息，晚了就不该再弹）。
+    expect(manager.statusSnapshots()).toEqual([]);
+
+    await manager.dispose();
+  });
+
+  it("宿主没接状态行/提示的出口时，调用照常成功（CLI 不画这些）", async () => {
+    const statusMod = path.join(ROOT, "mods", "status.tsx");
+    const { manager } = createManager({
+      [statusMod]: `
+exports.register = function ($, on) {
+  on("session.start", function () {
+    $.ui.status("ctx 62%");
+    $.ui.toast("已保存");
+  });
+};
+`,
+    });
+    // 模拟 CLI：两个出口都不传。
+    const bare = new ModManager({
+      sessionId: "s1",
+      onPanelUpdate: () => {},
+      storeRoot: STORE_ROOT,
+    });
+    await bare.loadFromPlugins([
+      plugin([{ id: "todo:status", path: statusMod }]),
+    ]);
+    await expect(bare.startSession()).resolves.toBeUndefined();
+    await bare.dispose();
+    await manager.dispose();
+  });
+
+  it("statusSnapshots 只回还挂着的那几行，dispose 之后清空", async () => {
+    const a = path.join(ROOT, "mods", "a.tsx");
+    const b = path.join(ROOT, "mods", "b.tsx");
+    const { manager } = createManager({
+      [a]: `exports.register = function ($, on) { on("session.start", function () { $.ui.status("甲"); }); };`,
+      [b]: `exports.register = function ($, on) { on("session.start", function () { $.ui.status("乙"); }); };`,
+    });
+    await manager.loadFromPlugins([
+      plugin([
+        { id: "todo:a", path: a },
+        { id: "todo:b", path: b },
+      ]),
+    ]);
+    await manager.startSession();
+
+    // 顺序是「谁先贴出来」；一条 mod 一行，互不覆盖。
+    expect(manager.statusSnapshots()).toEqual([
+      { sessionId: "s1", modId: "todo:a", plugin: "todo", text: "甲" },
+      { sessionId: "s1", modId: "todo:b", plugin: "todo", text: "乙" },
+    ]);
+
+    await manager.dispose();
+    expect(manager.statusSnapshots()).toEqual([]);
+  });
+
+  it("dispose 之后不再推带：surface 已经走了", async () => {
+    const { manager } = createManager({
+      [MOD_PATH]: bandMod('return __wave.h("Text", null, "hi");'),
+    });
+    await manager.loadFromPlugins([
+      plugin([{ id: "todo:panel", path: MOD_PATH }]),
+    ]);
+    await manager.startSession();
+    await manager.dispose();
+
+    await expect(manager.renderBand()).resolves.toEqual([]);
+  });
+});
+
 function plugin(mods: Array<{ id: string; path: string }>): Plugin {
   return {
     name: "todo",
@@ -95,18 +331,24 @@ function createManager(
 ): {
   manager: ModManager;
   updates: ModPanelUpdatePayload[];
+  statuses: ModStatusPayload[];
+  toasts: ModToastPayload[];
 } {
   probe.files.clear();
   for (const [file, source] of Object.entries(modSources)) {
     probe.files.set(path.resolve(file), source);
   }
   const updates: ModPanelUpdatePayload[] = [];
+  const statuses: ModStatusPayload[] = [];
+  const toasts: ModToastPayload[] = [];
   const manager = new ModManager({
     sessionId: "s1",
     onPanelUpdate: (payload) => updates.push(payload),
+    onStatus: (payload) => statuses.push(payload),
+    onToast: (payload) => toasts.push(payload),
     storeRoot: STORE_ROOT,
   });
-  return { manager, updates };
+  return { manager, updates, statuses, toasts };
 }
 
 function storeFile(name: string): string {

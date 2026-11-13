@@ -58,7 +58,13 @@ import type {
   DesktopTogglePanelMessage,
   DesktopModPanelUpdateMessage,
   DesktopModPanelRenderMessage,
+  DesktopModBandMessage,
+  DesktopModStatusMessage,
+  DesktopModToastMessage,
+  ModBandRenderResult,
   ModPanelUpdatePayload,
+  ModStatusPayload,
+  ModToastPayload,
   DesktopPanelKind,
   DesktopAccountInfoMessage,
   DesktopFullScreenMessage,
@@ -216,6 +222,18 @@ export interface Fixtures {
     tabId: string,
     overrides?: Overrides<DesktopModPanelRenderMessage>,
   ) => DesktopModPanelRenderMessage;
+  desktopModBand: (
+    bands: ModBandRenderResult[],
+    overrides?: Overrides<DesktopModBandMessage>,
+  ) => DesktopModBandMessage;
+  desktopModStatus: (
+    payload: ModStatusPayload,
+    overrides?: Overrides<DesktopModStatusMessage>,
+  ) => DesktopModStatusMessage;
+  desktopModToast: (
+    payload: ModToastPayload,
+    overrides?: Overrides<DesktopModToastMessage>,
+  ) => DesktopModToastMessage;
   desktopAccountInfo: (
     overrides?: Overrides<DesktopAccountInfoMessage>,
   ) => DesktopAccountInfoMessage;
@@ -480,6 +498,24 @@ export const fixtures: Fixtures = {
     tabId,
     revision: 1,
     tree: { type: "Text", props: {}, children: ["hello"] },
+    ...overrides,
+  }),
+
+  desktopModBand: (bands, overrides = {}) => ({
+    command: "desktopModBand",
+    bands,
+    ...overrides,
+  }),
+
+  desktopModStatus: (payload, overrides = {}) => ({
+    command: "desktopModStatus",
+    payload,
+    ...overrides,
+  }),
+
+  desktopModToast: (payload, overrides = {}) => ({
+    command: "desktopModToast",
+    payload,
     ...overrides,
   }),
 

@@ -12,14 +12,14 @@ order: 75
 
 MODS 补上这两件事：插件带一个 TypeScript 模块（可写 TSX），运行在 agent 进程内，向宿主返回一棵声明式元素树，宿主按自己的渲染能力画出来，用户的点击/输入再回到这个模块。Claude Code 的 mods 是同一形态（`docs/specs` 外的对照调研见 PR 描述），本规格只取其最小可用子集。
 
-一期只做**桌面端面板**：一个 mod 面板画在右侧面板槽里，面板能自己起定时器（`$.clock`）盯住外部状态，外部程序经 `$.store` 与它交换状态和意图。外部程序可以只由用户自己跑，也可以由 mod 用 `$.process.spawn` 起（例如第三方服务的 WebSocket 客户端），它读到的内容再用 `$.prompt.submit` 投进对话。VS Code / JetBrains / 终端渲染、事件拦截改写、`Client` 动画、模型调用都留到后续期；mod 侧请求宿主新建会话本期不做（见「面板的归属」）。
+一期只做**桌面端**：一方是右侧面板槽里的 mod 面板，另一方是**不属于任何面板**的三样东西 —— 输入框上方的状态带、输入框下方的常驻状态行、以及短暂提示。面板能自己起定时器（`$.clock`）盯住外部状态，外部程序经 `$.store` 与它交换状态和意图。外部程序可以只由用户自己跑，也可以由 mod 用 `$.process.spawn` 起（例如第三方服务的 WebSocket 客户端），它读到的内容再用 `$.prompt.submit` 投进对话。VS Code / JetBrains / 终端渲染、事件拦截改写、`Client` 动画、模型调用都留到后续期；mod 侧请求宿主新建会话本期不做（见「面板的归属」）。
 
 ## 概念
 
 - **mod**：插件目录下的一个模块文件（`.tsx`/`.ts`/`.jsx`/`.js`），导出 `register($, on)`。一个插件可以有多个 mod。
 - **hooks module**：普通的 ES 模块，在 agent 进程内执行。它没有 Node 全局（`fs`/`process`/`setTimeout` 都没有），只能通过 `$` 做事。
-- **render site**：宿主界面上的一个可画点。一期只有 `Pane`（桌面端右侧面板的一个 tab）。
-- **surface**：真正画树的渲染端（一期就是桌面端 webview）。树由 surface **拉取**：surface 对每个已挂载的 pane 发一次请求，agent 进程才去问 mod；宿主不主动把树推给 surface。
+- **render site**：宿主界面上的一个可画点。一期有两个：`Pane`（桌面端右侧面板的一个 tab）与 `AbovePrompt`（输入框上方的状态带）。
+- **surface**：真正画树的渲染端（一期就是桌面端 webview）。树由 surface **拉取**：surface 对每个已挂载的 pane、以及输入框上方那条带各发一次请求，agent 进程才去问 mod；宿主不主动把树推给 surface。
 - **元素树**：`Box`/`Text`/`Button`/`Input`/`Link`/`Code`/`Markdown` 组成的嵌套声明，纯数据，可 JSON 序列化。
 - **外部进程**：mod 用 `$.process.spawn` 起的子进程。它跑在沙箱外、可以是任何程序（例如连第三方服务的 WebSocket 客户端），与 mod 之间靠输出流回话。
 - **`$`**：hooks module 拿到的能力面，即「mods API」。
@@ -83,10 +83,10 @@ MODS 补上这两件事：插件带一个 TypeScript 模块（可写 TSX），�
 
 `register($, on)` 的 `on(name, handler)` 注册**生命周期钩子**：
 
-| 事件            | 触发时机                                                                                                                                                                                                                                     | 钩子可返回                                 |
-| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
-| `session.start` | 会话初始化完成、第一个 prompt 之前                                                                                                                                                                                                           | 无（返回值忽略；面板得在这里 `$.ui.open`） |
-| `ui.render`     | surface 请求某个 render site 的树时（宿主不缓存，每次请求都重新问 mod）；事件带三个正交的维度：`e.surface` 是画这棵树的那一端（一期只有 `desktop`）、`e.component` 是站点名（一期只有 `Pane`）、`e.instance_id` 是 `$.ui.open({ id })` 的 id | 元素树                                     |
+| 事件            | 触发时机                                                                                                                                                                                                                                                                                                         | 钩子可返回                                 |
+| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
+| `session.start` | 会话初始化完成、第一个 prompt 之前                                                                                                                                                                                                                                                                               | 无（返回值忽略；面板得在这里 `$.ui.open`） |
+| `ui.render`     | surface 请求某个 render site 的树时（宿主不缓存，每次请求都重新问 mod）；事件带三个正交的维度：`e.surface` 是画这棵树的那一端（一期只有 `desktop`）、`e.component` 是站点名（一期有 `Pane` / `AbovePrompt`）、`e.instance_id` 是该站点的哪个实例（`Pane` 是 `$.ui.open({ id })` 的 id，带固定是 `above-prompt`） | 元素树                                     |
 
 `ui.render` 的事件要交给 `$.ui.resolve(e)` 换元素表（见下）；表外的元素名会被 `validateModTree` 拦下。
 
@@ -101,21 +101,39 @@ MODS 补上这两件事：插件带一个 TypeScript 模块（可写 TSX），�
 
 ### `$`（一期）
 
-| 命名空间    | 方法                                                                                                                                                                                  |
-| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `$.plugin`  | `name`                                                                                                                                                                                |
-| `$.ui`      | `resolve(e)`、`open({ id, title })`、`close(id)`、`panes()`、`invalidate(id)`（只丢缓存并通知 surface 重新请求，不直接产生树）                                                        |
-| `$.state`   | `get`、`set`（会话级状态；`get` 返回副本，`set` 后需自己 `invalidate`）                                                                                                               |
-| `$.store`   | `get`、`set`、`delete`、`keys`（该插件自己的 JSON KV，跨会话）                                                                                                                        |
-| `$.clock`   | `now()`、`after(ms, fn)`、`every(ms, fn)`（后两者返回 `{ cancel() }`，见「定时器」）                                                                                                  |
-| `$.process` | `spawn({ argv, cwd?, env?, input? })` → 异步迭代子进程的输出；`run(argv, { cwd?, env?, stdin?, timeoutMs? })` → 跑完拿 `{ exitCode, stdout, stderr, is…Truncated }`（见「外部进程」） |
-| `$.fs`      | `read`（可选 `{ as: "bytes" }`）、`write`、`list`、`stat`、`exists`（相对路径按会话工作目录解析，见「读写文件」）                                                                     |
-| `$.http`    | `fetch(url, { method?, headers?, body?, timeoutMs? })`（只允许 `https:` 与本机回环，见「发 HTTP 请求」）                                                                              |
-| `$.prompt`  | `submit({ text, asUser })`：把一条 prompt 送进当前会话（见「把 prompt 送进对话」）                                                                                                    |
+| 命名空间    | 方法                                                                                                                                                                                                    |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `$.plugin`  | `name`                                                                                                                                                                                                  |
+| `$.ui`      | `resolve(e)`、`open({ id, title })`、`close(id)`、`panes()`、`invalidate(id)`（只丢缓存并通知 surface 重新请求，不直接产生树）、`status(text)`、`toast(text, timeoutMs?)`（见「状态带、状态行与提示」） |
+| `$.state`   | `get`、`set`（会话级状态；`get` 返回副本，`set` 后需自己 `invalidate`）                                                                                                                                 |
+| `$.store`   | `get`、`set`、`delete`、`keys`（该插件自己的 JSON KV，跨会话）                                                                                                                                          |
+| `$.clock`   | `now()`、`after(ms, fn)`、`every(ms, fn)`（后两者返回 `{ cancel() }`，见「定时器」）                                                                                                                    |
+| `$.process` | `spawn({ argv, cwd?, env?, input? })` → 异步迭代子进程的输出；`run(argv, { cwd?, env?, stdin?, timeoutMs? })` → 跑完拿 `{ exitCode, stdout, stderr, is…Truncated }`（见「外部进程」）                   |
+| `$.fs`      | `read`（可选 `{ as: "bytes" }`）、`write`、`list`、`stat`、`exists`（相对路径按会话工作目录解析，见「读写文件」）                                                                                       |
+| `$.http`    | `fetch(url, { method?, headers?, body?, timeoutMs? })`（只允许 `https:` 与本机回环，见「发 HTTP 请求」）                                                                                                |
+| `$.prompt`  | `submit({ text, asUser })`：把一条 prompt 送进当前会话（见「把 prompt 送进对话」）                                                                                                                      |
 
 `$.ui.resolve(e)` 把 `ui.render` 收到的事件换成**这一端可用的元素表**（`{ Box, Text, Button, Input, Link, Code, Markdown }`，值与从 `wave-agent-sdk/mods` 导入的同名导出是同一份）。表按 `e.surface` 选：一期只发 `desktop`，别的值、以及不认识的 `e.component`，都直接报错并列出可用名单，不返回半张表。
 
 与 Claude Code 的 `$.ui.resolve(e)` 同一个语义：它同样拿 `ui.render` 的 `e`，按 `e.surface` 选元素表、并要求 `e.component` 是引擎画得出的站点（它的错误文案是 `takes a ui.render argument (e.surface names the surface)`）。区别在覆盖面：CC 的 surface 有 `terminal` / `desktop` / `mobile` / `vscode` 四端，**各端元素表不同** —— `terminal` 有 `Raster` / `Image` 没有 `Svg`，`desktop` 反过来（11 个：多 `Select` / `Svg` / `Progress` / `Client`），`mobile` / `vscode` 有 `Svg` 没有 `Client`；我们一期只发 `desktop`，且表里只放已实现的 7 个 —— 给画不出的名字，mod 编出的树只会被 `validateModTree` 拒掉，错误离原因更远。
+
+### 状态带、状态行与提示
+
+面板之外，mod 还能往界面上贴三样**不属于任何 pane** 的东西，落点与形态各不相同：
+
+| 能力                              | 落点                     | 形态                                                    |
+| --------------------------------- | ------------------------ | ------------------------------------------------------- |
+| `AbovePrompt` 站点（`ui.render`） | 输入框**上方**的带       | 一棵元素树；一个 mod 一条带，多条按插件加载顺序纵向排列 |
+| `$.ui.status(text)`               | 输入框下方**常驻的一行** | 纯文本，每个插件一条，后一次调用替换前一次，`null` 清除 |
+| `$.ui.toast(text, timeoutMs?)`    | 输入框下方的**短暂提示** | 纯文本，默认停留 4000ms，到点自己消失                   |
+
+后两个是**只推不拉**的：不产生树、不进对话上下文、宿主收到就画。`status` 的一行一直挂着，直到插件自己替换或清除；`toast` 会自己消失。两者都按插件署名，用户能看出是谁贴的。
+
+**状态行会重放，`toast` 不会**：`session.start` 里贴的状态比客户端注册会话更早，那条推送按传输层既有语义会被丢掉（v1：未知会话的通知一律丢弃）。所以 surface 挂上来要面板快照时（`getModPanels`）agent 顺带把当前每个插件的状态行补发一次 —— 「启动时贴一行、之后一直挂着」才是这个能力的正常用法。`toast` 是瞬时消息，晚了就不该再弹。
+
+带是第二个渲染站点，走与面板同一条拉取链路：surface 在会话就绪后、以及每次 `stale` 之后，对每个注册了 `ui.render` 的 mod 用 `{ surface: "desktop", component: "AbovePrompt", instance_id: "above-prompt" }` 拉一次树；返回 `undefined` 或空树就不占位置。校验、限额、`revision`、失败时保留上一帧并叠错误摘要，全部与面板一致。
+
+与 Claude Code 的差异：它的带是**一个共享站点**（`instance_id` 固定 `above-prompt`，与 pane 一起列进 `ui.focus` / `ui.scroll` 的站点集合）；我们按插件分成多条带，且一期不给带键盘焦点与滚动 —— 那是面板才有的东西。
 
 ### 定时器
 
@@ -214,6 +232,10 @@ mod 的沙箱里没有 `child_process`，要跑外部程序只能走 `$.process.
 | `$.fs.read` / `$.fs.write`       | 单个文件 4 MiB                                                    |
 | `$.http.fetch` 请求体 / 响应体   | 各 4 MiB（响应体超 `Content-Length` 声明即报错）                  |
 | 一次 `$.http.fetch`              | 30 秒（含重定向与读完 body），最多 5 次重定向                     |
+| `$.ui.status` 的一行             | 10,000 字符（超出截断并加省略号）                                 |
+| `$.ui.toast` 停留时间            | 默认 4000ms，`timeoutMs` 最多 10 秒（我们的限额）                 |
+| 同时排队的 toast                 | 50 条（溢出丢弃未展示的旧条；同屏显示 1 条）                      |
+| 输入框上方的带                   | 一个 mod 一条，树与节点限额同面板                                 |
 
 ## 加载纪律
 
@@ -262,6 +284,19 @@ mod 的沙箱里没有 `child_process`，要跑外部程序只能走 `$.process.
 2. **假设**面板里有一个 `Input`，它的 `onSubmit` 把提交值追加进 `$.state` 并 invalidate，**当**用户输入 `hello` 并提交，**则**面板列表新增一行 `hello`，输入框清空。
 3. **假设**同一个按钮被连点三次而 mod 每次只做一次 invalidate，**当**三次点击都到达，**则** mod 的回调被执行三次，宿主把 100ms 内的多次 invalidate 合并成一条 `stale` 通知，面板最终只请求并渲染一次。
 4. **假设**面板里一个按钮的 `onPress` 直接抛错，**当**用户点击它，**则**面板顶部出现一条错误摘要、上一次渲染的按钮与列表仍能继续点，且下一次 `invalidate` 成功后摘要消失。
+
+### 用户故事：不开面板也能把信息放在用户眼前（优先级：P0）
+
+作为插件作者，我希望在输入框上方画一条状态带、在输入框下方贴一行常驻状态、必要时弹一条提示，以便「额度快用完了」「正在看哪个分支」「刚保存了什么」这类信息不必为它开一块面板。
+
+**验收场景**：
+
+1. **假设** mod 注册了 `ui.render` 并在 `e.component === "AbovePrompt"` 时返回 `<Box><Text>ctx 62%</Text></Box>`，**当**会话就绪，**则**输入框上方出现这条带，且它的文本随下一次 `invalidate` 更新；同一 mod 返回 `undefined` 时带不占位置、不留空行。
+2. **假设** mod 在 `session.start` 里调 `$.ui.status("sonnet · 62% context")`，**当**界面渲染出来，**则**输入框下方常驻这一行；再调一次换成新文本，调 `$.ui.status(null)` 后这行消失，全程不进对话上下文、不产生新消息。
+3. **假设** mod 调 `$.ui.toast("已保存", 2000)`，**当**调用到达，**则**输入框下方出现这条提示并在约 2 秒后自己消失，mod 不需要再调一次来清；连续来三条时排队逐条显示，不堆成一堵。
+4. **假设**同一会话里两个插件都画带、也都设了 status，**当**两者都到位，**则**两条带按插件加载顺序上下排列、两行 status 互不覆盖，关掉其中一个插件的面板不影响另一个的带与 status。
+5. **假设**某 mod 的带钩子抛错，**当** surface 重画，**则**只有那条带显示错误摘要，其余带与所有 status 行照常显示，会话不中断。
+6. **假设** mod 只在 `session.start` 里贴了一次 status、之后再也不写，**当**桌面端挂上这条会话（新建、切回来、webview 重建），**则**那一行照样出现 —— surface 要面板快照时 agent 会把它重放一次；`toast` 不重放，那时的提示早已过期。
 
 ### 用户故事：面板跟着外部程序的状态走（优先级：P0）
 

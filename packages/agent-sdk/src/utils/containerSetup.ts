@@ -550,6 +550,8 @@ export function setupAgentContainer(
   const modManager = new ModManager({
     sessionId: messageManager.getSessionId(),
     onPanelUpdate: (payload) => callbacks.onModPanelUpdate?.(payload),
+    onStatus: (payload) => callbacks.onModStatus?.(payload),
+    onToast: (payload) => callbacks.onModToast?.(payload),
     // `$.process.spawn` 的默认 cwd：与 Bash 工具的 spawn cwd 同口径，取「会动」
     // 的那个工作目录（容器 token `CurrentWorkdir`，`cd` 之后跟着变），不是会话
     // 起点也不是工作区根。

@@ -1,0 +1,65 @@
+/* 输入框上方的带 / 下方的状态行与短提示（spec ecosystem/plugin-mods.md
+   「状态带、状态行与提示」）。三者都不属于任何 pane，宽度跟着输入区容器走；
+   与输入卡之间只留一处间距，避免「有一条带时输入区整体下移一截」的突兀。 */
+
+.mod-band {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 8px;
+  /* mod 的树是任意的（Box/Text/Button…），过宽的内容要能被收住，不能把输入区
+     横向撑出视口。 */
+  min-width: 0;
+}
+
+.mod-band-item {
+  min-width: 0;
+  padding: 8px 12px;
+  border-radius: var(--cc-radius-sm, 6px);
+  border: 1px solid var(--cc-border-light, var(--vscode-panel-border, #d9dbe0));
+  background: var(--cc-surface-subtle, transparent);
+  font-size: 12px;
+}
+
+.mod-status {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 6px;
+  padding: 0 4px;
+  font-size: 11px;
+  /* 状态行是「一直挂着」的信息，不能抢输入区的注意力。 */
+  color: var(--vscode-descriptionForeground, #888);
+}
+
+.mod-status-line {
+  min-width: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.mod-status-plugin,
+.mod-toast-plugin {
+  margin-right: 6px;
+  font-weight: 600;
+  opacity: 0.75;
+}
+
+.mod-toasts {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 6px;
+  padding: 0 4px;
+}
+
+.mod-toast {
+  padding: 6px 10px;
+  border-radius: var(--cc-radius-sm, 6px);
+  border: 1px solid var(--cc-border-light, var(--vscode-panel-border, #d9dbe0));
+  background: var(--cc-field-bg, var(--vscode-input-background, #fff));
+  color: var(--vscode-foreground, inherit);
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}

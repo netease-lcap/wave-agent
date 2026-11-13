@@ -48,9 +48,12 @@ import type {
   MessageWindowResult,
   MessageThreadSummary,
   UserImage,
+  ModBandRenderResult,
   ModPanelEventPayload,
   ModPanelRenderResult,
   ModPanelUpdatePayload,
+  ModStatusPayload,
+  ModToastPayload,
 } from "../types/index.js";
 import type { BtwAskOptions, BtwHistoryTurn } from "../types/btw.js";
 import type { RpcClient } from "./rpcClient.js";
@@ -200,6 +203,13 @@ export interface StdioAgentCallbacks {
    * tree + monotonic `revision`; drop anything older than what is on screen.
    */
   onModPanelUpdate?: (payload: ModPanelUpdatePayload) => void;
+  /**
+   * A mod set or cleared its line under the composer (`$.ui.status`; spec
+   * 状态带、状态行与提示). `text: null` clears.
+   */
+  onModStatus?: (payload: ModStatusPayload) => void;
+  /** A mod asked for a transient notice (`$.ui.toast`). */
+  onModToast?: (payload: ModToastPayload) => void;
   onCommandRunningChange?: (running: boolean) => void;
   onQueuedMessagesChange?: (messages: QueuedMessage[]) => void;
   onTasksChange?: (tasks: Task[]) => void;
@@ -664,6 +674,20 @@ export class StdioAgent {
     )) as ModPanelRenderResult;
   }
 
+  /**
+   * 要输入框上方那条带的树（spec「状态带、状态行与提示」）。
+   *
+   * 与 `renderModPanel` 同一条纪律：surface 自己发起、宿主不缓存，每次调用都
+   * 真的跑一遍每个 mod 的 `ui.render`。
+   */
+  async renderModBand(): Promise<ModBandRenderResult[]> {
+    return (await this.client.request(
+      "modBandRender",
+      {},
+      this.sessionId,
+    )) as ModBandRenderResult[];
+  }
+
   /** 当前所有 mod 面板的快照（宿主重连后补画面板用）。 */
   async getModPanels(): Promise<ModPanelUpdatePayload[]> {
     return (await this.client.request(
@@ -1032,6 +1056,14 @@ export class StdioAgent {
       }
       case "modPanelUpdate": {
         this.callbacks.onModPanelUpdate?.(params as ModPanelUpdatePayload);
+        break;
+      }
+      case "modStatusUpdate": {
+        this.callbacks.onModStatus?.(params as ModStatusPayload);
+        break;
+      }
+      case "modToast": {
+        this.callbacks.onModToast?.(params as ModToastPayload);
         break;
       }
       case "commandRunningChange": {

@@ -77,6 +77,8 @@ function host(overrides: Partial<ModRuntimeHost> = {}): ModRuntimeHost {
     closePane: vi.fn(),
     listPanes: vi.fn(() => []),
     invalidate: vi.fn(),
+    setStatus: vi.fn(),
+    showToast: vi.fn(),
     stateGet: vi.fn(() => undefined),
     stateSet: vi.fn(),
     storeGet: vi.fn(() => undefined),
@@ -554,6 +556,75 @@ describe("ModRuntime 的 $ 命名空间", () => {
     // 站点名不认识：说清楚这一端只有什么。
     expect(messages[2]).toContain('不认识站点 "Hint"');
     expect(messages[2]).toContain("Pane");
+  });
+
+  it("$.ui.status 转发到宿主：纯文本、过长的截断、null 与空串都表示清除", async () => {
+    const hostApi = host();
+    const { mod } = runtime(
+      `
+      exports.register = function ($, on) {
+        on("session.start", function () {
+          $.ui.status("ctx 62%");
+          $.ui.status(null);
+          $.ui.status("   ");
+          $.ui.status("x".repeat(10001));
+          try { $.ui.status(42); } catch (e) { return String(e.message || e); }
+          return "no error";
+        });
+      };
+      `,
+      { host: hostApi },
+    );
+
+    await mod.load();
+    const result = await mod.callHook("session.start", {});
+    const calls = vi.mocked(hostApi.setStatus).mock.calls.map(([text]) => text);
+    expect(calls.slice(0, 3)).toEqual(["ctx 62%", null, null]);
+    // 限额 10000 字符：多出来的部分截掉并用省略号收口（不让一行顶满整屏）。
+    const tooLong = calls[3] ?? "";
+    expect(tooLong).toHaveLength(10001);
+    expect(tooLong.endsWith("…")).toBe(true);
+    // 类型错了当场报错，而不是把 `42` 画成「42」。
+    expect(result.ok && result.value).toBe(
+      "$.ui.status 需要一段文本（null 清除）",
+    );
+  });
+
+  it("$.ui.toast 的停留时间：缺省 4000ms、夹到 10 秒、非法值报错", async () => {
+    const hostApi = host();
+    const { mod } = runtime(
+      `
+      exports.register = function ($, on) {
+        on("session.start", function () {
+          $.ui.toast("已保存");
+          $.ui.toast("等很久", 60000);
+          $.ui.toast("等一下", 1500);
+          var messages = [];
+          for (var bad of ["1200", 0 / 0]) {
+            try { $.ui.toast("x", bad); messages.push("no error"); }
+            catch (e) { messages.push(String(e.message || e)); }
+          }
+          try { $.ui.toast("   "); } catch (e) { messages.push(String(e.message || e)); }
+          return messages;
+        });
+      };
+      `,
+      { host: hostApi },
+    );
+
+    await mod.load();
+    const result = await mod.callHook("session.start", {});
+    const calls = vi.mocked(hostApi.showToast).mock.calls;
+    expect(calls.map(([text, ms]) => [text, ms])).toEqual([
+      ["已保存", 4000],
+      ["等很久", 10000],
+      ["等一下", 1500],
+    ]);
+    const messages = (result.ok ? result.value : []) as string[];
+    expect(messages[0]).toContain("毫秒数");
+    expect(messages[1]).toContain("毫秒数");
+    // 空文本没有可展示的东西：报错，不落一条空白提示。
+    expect(messages[2]).toContain("需要一段文本");
   });
 
   it("clock 只登记到宿主，沙箱里没有裸定时器", async () => {

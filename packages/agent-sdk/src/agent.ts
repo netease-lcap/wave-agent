@@ -14,9 +14,11 @@ import { SlashCommandManager } from "./managers/slashCommandManager.js";
 import { PluginManager } from "./managers/pluginManager.js";
 import { ModManager } from "./managers/modManager.js";
 import type {
+  ModBandRenderResult,
   ModPanelEventPayload,
   ModPanelRenderResult,
   ModPanelUpdatePayload,
+  ModStatusPayload,
 } from "./types/mods.js";
 import { HookManager } from "./managers/hookManager.js";
 import { ReversionManager } from "./managers/reversionManager.js";
@@ -241,6 +243,18 @@ export class Agent {
   }
 
   /**
+   * The status lines mods currently show (spec `ecosystem/plugin-mods.md`
+   * 「状态带、状态行与提示」).
+   *
+   * For replay only: a `session.start` push lands before the client has
+   * registered the session and is dropped by the router, so the surface asks for
+   * this snapshot at the same moment it resyncs the panels.
+   */
+  public getModStatuses(): ModStatusPayload[] {
+    return this.modManager.statusSnapshots();
+  }
+
+  /**
    * Produce the tree a surface is asking for (spec `ecosystem/plugin-mods.md`
    * 「架构约束」: trees are pulled, never pushed).
    *
@@ -252,6 +266,15 @@ export class Agent {
     paneId: string,
   ): Promise<ModPanelRenderResult> {
     return this.modManager.renderPane(modId, paneId);
+  }
+
+  /**
+   * Produce the trees for the band above the composer (spec
+   * `ecosystem/plugin-mods.md` 「状态带、状态行与提示」: same pull discipline as
+   * panes — one `ui.render` call per mod that registers it).
+   */
+  public async renderModBand(): Promise<ModBandRenderResult[]> {
+    return this.modManager.renderBand();
   }
 
   /**

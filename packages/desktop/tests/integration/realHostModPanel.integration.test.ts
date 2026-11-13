@@ -107,6 +107,34 @@ export function register($, on) {
 }
 `,
   );
+  // 第二个 mod：输入框周围那三样「不属于任何 pane」的输出（spec「状态带、状态行
+  // 与提示」）。状态行与提示在 `session.start` 里就推；带要等 surface 来拉。
+  fs.writeFileSync(
+    path.join(root, "mods", "status.tsx"),
+    `
+import { Box, Text, Button } from "wave-agent-sdk/mods";
+
+export function register($, on) {
+  on("session.start", () => {
+    $.ui.status("准备就绪");
+  });
+  on("ui.render", (e) => {
+    if (e.component !== "AbovePrompt") return undefined;
+    return (
+      <Box flexDirection="column" gap={2}>
+        <Text>带 {$.state.get("v") ?? 0}</Text>
+        <Button
+          key="ping"
+          label="提示"
+          onPress={() => $.ui.toast("已连接 1 个设备", 3000)}
+        />
+      </Box>
+    );
+  });
+}
+`,
+  );
+
   // Two records make the plugin visible to `PluginManager.loadInstalledPlugins`,
   // and both are needed:
   //  - `installed_plugins.json` is the only source it scans. A directory merely
@@ -292,6 +320,70 @@ describe("real host · plugin mods", () => {
       () => expect(model.sawRequest("来自远端服务")).toBe(true),
       { timeout: 60_000 },
     );
+  }, 120_000);
+
+  it("状态行、提示与带穿过 stdio 到达宿主的 webview 消息", async () => {
+    await openProject(dirA);
+
+    // 状态行在 `session.start` 里贴出。那一条推送**比客户端注册会话更早**，会被
+    // router 按 v1 语义丢掉 —— 它能在宿主上看到，靠的是重放：surface 挂上来要面板
+    // 快照（`getModPanels`）时一并补回来，否则「启动时贴一行、一直挂着」永远看不到。
+    const status = await ctx.waitFor<{
+      paneId: string;
+      payload: { modId: string; plugin: string; text: string | null };
+    }>("desktopModStatus", { timeout: 60_000 });
+    expect(status.payload).toMatchObject({
+      modId: "todo-demo:status",
+      plugin: "todo-demo",
+      text: "准备就绪",
+    });
+
+    // 带是**拉取式**的：webview 发 `modBandRender`，宿主转成 RPC，CLI 现跑每个注
+    // 册了 `ui.render` 的 mod（这个插件里两个 mod 都注册了，所以结果是两条）。
+    ctx.clear();
+    await ctx.host.handleWebviewMessage({
+      command: "modBandRender",
+      paneId: status.paneId,
+    });
+    const band = await ctx.waitFor<{
+      paneId: string;
+      bands: Array<{
+        modId: string;
+        plugin: string;
+        revision: number;
+        tree: unknown;
+      }>;
+    }>("desktopModBand", {
+      timeout: 30_000,
+      predicate: (m) => Array.isArray(m.bands),
+    });
+    const mine = band.bands.find((b) => b.modId === "todo-demo:status");
+    expect(mine).toMatchObject({ plugin: "todo-demo", revision: 1 });
+    // `e.component === "AbovePrompt"` 就在这条带里成立 —— 站点维度真的传到了
+    // mod（`ui.render` 收到的是带的那一帧，不是面板那帧）。
+    expect(textOf(mine?.tree)).toContain("带 0");
+
+    // 带里的按钮：webview 发 `modPanelEvent` 时 `paneId` 用站点自己的固定值
+    // （`above-prompt`，不是任何 pane 的 id），mod 的回调照样能收到，`$.ui.toast`
+    // 也就从 CLI 进程穿回来。
+    await ctx.host.handleWebviewMessage({
+      command: "modPanelEvent",
+      paneId: band.paneId,
+      payload: {
+        modId: "todo-demo:status",
+        paneId: "above-prompt",
+        key: "ping",
+        kind: "press",
+      },
+    });
+    const toast = await ctx.waitFor<{
+      payload: { plugin: string; text: string; timeoutMs: number };
+    }>("desktopModToast", { timeout: 30_000 });
+    expect(toast.payload).toMatchObject({
+      plugin: "todo-demo",
+      text: "已连接 1 个设备",
+      timeoutMs: 3000,
+    });
   }, 120_000);
 
   it("webview 重建后宿主重放已有面板（webviewReady 之后）", async () => {

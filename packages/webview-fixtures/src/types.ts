@@ -49,8 +49,11 @@ import type {
   UserPreferenceKey,
   UserPreferenceSource,
   RemoteControlSnapshot,
+  ModBandRenderResult,
   ModPanelUpdatePayload,
   ModPanelTree,
+  ModStatusPayload,
+  ModToastPayload,
 } from "wave-agent-sdk/types";
 
 export type {
@@ -63,7 +66,10 @@ export type {
   ToolBlockUpdateCallbackParams,
   SessionMetadata,
   SessionData,
+  ModBandRenderResult,
   ModPanelUpdatePayload,
+  ModStatusPayload,
+  ModToastPayload,
 };
 
 // ---- Webview-owned shapes (copied structurally — the fixtures package must
@@ -539,6 +545,35 @@ export interface DesktopModPanelRenderMessage extends HostToWebviewMessageBase {
   tree: ModPanelTree | null;
   /** Render failure; `tree` is then the last successful frame (possibly null). */
   error?: string;
+}
+
+/**
+ * Reply to `modBandRender` — the trees for the band above the composer (spec
+ * `ecosystem/plugin-mods.md`「状态带、状态行与提示」). One entry per mod that
+ * registers `ui.render`; `tree: null` means that mod's band takes no space.
+ *
+ * A snapshot of the whole band list rather than per-tab replies: order follows
+ * the mod load order, and `revision` (per mod) lets the webview drop a frame
+ * that is older than what it already shows.
+ */
+export interface DesktopModBandMessage extends HostToWebviewMessageBase {
+  command: "desktopModBand";
+  bands: ModBandRenderResult[];
+}
+
+/**
+ * A mod set or cleared its line under the composer (`$.ui.status`). A push, not
+ * a reply: nothing asked for it, so there is nothing to attribute it to.
+ */
+export interface DesktopModStatusMessage extends HostToWebviewMessageBase {
+  command: "desktopModStatus";
+  payload: ModStatusPayload;
+}
+
+/** A mod asked for a transient notice (`$.ui.toast`). A push. */
+export interface DesktopModToastMessage extends HostToWebviewMessageBase {
+  command: "desktopModToast";
+  payload: ModToastPayload;
 }
 
 /** One row of a directory listing for the file panel's tree. */
@@ -1771,6 +1806,9 @@ export type HostToWebviewMessage =
   | DesktopFileContentMessage
   | DesktopModPanelUpdateMessage
   | DesktopModPanelRenderMessage
+  | DesktopModBandMessage
+  | DesktopModStatusMessage
+  | DesktopModToastMessage
   | DesktopDirEntriesMessage
   | DesktopFileSaveResultMessage
   | DesktopPreviewFileResultMessage

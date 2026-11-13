@@ -101,6 +101,33 @@ function resolveElements(
   return ELEMENT_TABLE;
 }
 
+/**
+ * 状态行 / 提示的文本：纯文本，截到限额并加省略号。
+ *
+ * `null` 与空串都表示「清掉那一行」—— 空串在界面上只会留一条空行，没有别的
+ * 含义，按清除处理比让 mod 作者记两条规则好。
+ */
+function normalizeStatus(text: unknown): string | null {
+  if (text === null || text === undefined) return null;
+  if (typeof text !== "string") {
+    throw new Error("$.ui.status 需要一段文本（null 清除）");
+  }
+  if (text.trim().length === 0) return null;
+  return text.length > MOD_LIMITS.statusChars
+    ? `${text.slice(0, MOD_LIMITS.statusChars)}…`
+    : text;
+}
+
+/** `$.ui.toast` 的停留时间：默认 4000ms，超过上限夹住（都是我们的限额）。 */
+function toastMs(timeoutMs: unknown): number {
+  if (timeoutMs === undefined) return MOD_LIMITS.toastDefaultMs;
+  if (typeof timeoutMs !== "number" || !Number.isFinite(timeoutMs)) {
+    throw new Error("$.ui.toast 的第二个参数是停留毫秒数");
+  }
+  if (timeoutMs <= 0) return MOD_LIMITS.toastDefaultMs;
+  return Math.min(timeoutMs, MOD_LIMITS.toastMaxMs);
+}
+
 /** 定时器句柄：`cancel()` 可重复调用。 */
 export interface ModTimerHandle {
   cancel(): void;
@@ -116,6 +143,10 @@ export interface ModDollar {
     close(id: string): void;
     panes(): string[];
     invalidate(id: string): void;
+    /** 输入框下方那一行常驻状态（每个插件一条）；`null` 清除。 */
+    status(text: string | null): void;
+    /** 输入框下方的短暂提示；`timeoutMs` 默认 4000ms、最多 10 秒。 */
+    toast(text: string, timeoutMs?: number): void;
   };
   state: {
     get(key: string): unknown;
@@ -200,6 +231,10 @@ export interface ModRuntimeHost {
   closePane(paneId: string): void;
   listPanes(): string[];
   invalidate(paneId: string): void;
+  /** 输入框下方那一行常驻状态；`null` 清除（spec「状态带、状态行与提示」）。 */
+  setStatus(text: string | null): void;
+  /** 短暂提示；`timeoutMs` 由 runtime 夹进限额后交下来。 */
+  showToast(text: string, timeoutMs: number): void;
   stateGet(key: string): unknown;
   stateSet(key: string, value: unknown): void;
   storeGet(key: string): string | undefined;
@@ -406,6 +441,16 @@ export class ModRuntime {
         close: (id) => host.closePane(id),
         panes: () => [...host.listPanes()],
         invalidate: (id) => host.invalidate(id),
+        // 只推不拉：不产生树、不进上下文，宿主收到就画（spec「状态带、状态行
+        // 与提示」）。
+        status: (text) => host.setStatus(normalizeStatus(text)),
+        toast: (text, timeoutMs) => {
+          const trimmed = normalizeStatus(text);
+          if (trimmed === null) {
+            throw new Error("$.ui.toast 需要一段文本");
+          }
+          host.showToast(trimmed, toastMs(timeoutMs));
+        },
       },
       state: {
         get: (key) => cloneValue(host.stateGet(key)),

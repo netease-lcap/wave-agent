@@ -11,11 +11,15 @@ import {
 } from "../mods/runtime.js";
 import { validateModTree } from "../mods/validate.js";
 import {
+  MOD_BAND_INSTANCE_ID,
   MOD_LIMITS,
+  type ModBandRenderResult,
   type ModPanelEventPayload,
   type ModPanelRenderResult,
   type ModPanelTree,
   type ModPanelUpdatePayload,
+  type ModStatusPayload,
+  type ModToastPayload,
   type PluginMod,
 } from "../types/mods.js";
 import type { Plugin } from "../types/plugins.js";
@@ -49,6 +53,15 @@ export interface ModManagerOptions {
   /** 面板快照的出口；stdio 层把它转成 `modPanelUpdate` 通知。 */
   onPanelUpdate: (payload: ModPanelUpdatePayload) => void;
   /**
+   * `$.ui.status` / `$.ui.toast` 的出口（spec「状态带、状态行与提示」）。
+   *
+   * 可选：不画状态行与提示的宿主（CLI）不传，mod 的调用照常成功、只是没人展示
+   * —— 与 `$.ui.open` 在没人画面板时同一条纪律。stdio 层把它们转成
+   * `modStatusUpdate` / `modToast` 通知。
+   */
+  onStatus?: (payload: ModStatusPayload) => void;
+  onToast?: (payload: ModToastPayload) => void;
+  /**
    * `$.process.spawn` 的默认 cwd。
    *
    * 传 getter 而不是字符串：口径是「会动」的那个工作目录（容器 token
@@ -75,6 +88,8 @@ interface PaneState {
 
 interface LoadedMod {
   mod: PluginMod;
+  /** 插件注册名（`$.ui.status` / 状态带要按它署名）。 */
+  plugin: string;
   runtime?: ModRuntime;
   /** 加载/编译失败时的摘要（面板上显示）。 */
   error?: string;
@@ -105,6 +120,29 @@ function storePath(root: string, pluginName: string): string {
 export class ModManager {
   private readonly mods = new Map<string, LoadedMod>();
   private readonly panes = new Map<string, PaneState>();
+  /**
+   * modId → 输入框上方那条带的上一帧（spec「状态带、状态行与提示」）。
+   *
+   * 只在这里留住**上一帧成功的树**用于失败兜底 —— 与面板同一条纪律，surface
+   * 每次来要都重新跑 `ui.render`，宿主不缓存一份推给别人。
+   */
+  private readonly bands = new Map<
+    string,
+    { revision: number; tree: ModPanelTree | null }
+  >();
+  /**
+   * modId → 它当前贴的那一行状态（spec「状态带、状态行与提示」）。
+   *
+   * 只为了**重放**：`session.start` 里的推送比客户端注册会话更早，会被
+   * `NotificationRouter` 按 v1 语义丢掉（`if (!agent) return`）。surface 挂上来
+   * 时要的那份快的照（{@link statusSnapshots}）顺带把这一行补回去，否则
+   * 「启动时贴一次就该一直挂着」的用法会一条都看不到。toast 不重放：它是
+   * 瞬时消息，晚了就不该再弹。
+   */
+  private readonly statusLines = new Map<
+    string,
+    { plugin: string; text: string }
+  >();
   private readonly state = new Map<string, Map<string, unknown>>();
   /** modId → 它名下还活着的定时器。 */
   private readonly timers = new Map<string, Set<ClockTimer>>();
@@ -150,6 +188,7 @@ export class ModManager {
         for (const mod of modFiles) {
           this.mods.set(mod.id, {
             mod,
+            plugin: plugin.name,
             error: "TSX mod 需要 esbuild（运行时依赖尚未安装）",
           });
         }
@@ -169,6 +208,7 @@ export class ModManager {
         } catch (error) {
           this.mods.set(mod.id, {
             mod,
+            plugin: plugin.name,
             error: `读取失败：${errorMessage(error)}`,
           });
         }
@@ -189,6 +229,7 @@ export class ModManager {
         if (!outcome?.code) {
           this.mods.set(mod.id, {
             mod,
+            plugin: plugin.name,
             error: outcome?.error ?? "编译失败",
           });
           logger.warn(
@@ -204,6 +245,9 @@ export class ModManager {
               closePane: (paneId) => this.closePane(mod.id, paneId),
               listPanes: () => this.listPanes(mod.id),
               invalidate: (paneId) => this.invalidate(mod.id, paneId),
+              setStatus: (text) => this.publishStatus(mod.id, text),
+              showToast: (text, timeoutMs) =>
+                this.publishToast(mod.id, text, timeoutMs),
               stateGet: (key) => this.stateFor(mod.id).get(key),
               stateSet: (key, value) => {
                 this.stateFor(mod.id).set(key, value);
@@ -241,11 +285,11 @@ export class ModManager {
             );
             continue;
           }
-          this.mods.set(mod.id, { mod, runtime });
+          this.mods.set(mod.id, { mod, plugin: plugin.name, runtime });
           logger.info(`[Wave] 已加载 mod ${mod.id}`);
         } catch (error) {
           const message = errorMessage(error);
-          this.mods.set(mod.id, { mod, error: message });
+          this.mods.set(mod.id, { mod, plugin: plugin.name, error: message });
           logger.warn(`[Wave] mod 加载失败：${mod.id}：${message}`);
         }
       }
@@ -287,6 +331,20 @@ export class ModManager {
     return [...this.panes.values()].map((pane) =>
       this.payloadOf(pane, { stale: true }),
     );
+  }
+
+  /**
+   * 当前每个插件贴的状态行（surface 挂上来时重放用，见 `statusLines`）。
+   *
+   * 顺序按插件首次贴出的先后；清掉的行不在里面。
+   */
+  statusSnapshots(): ModStatusPayload[] {
+    return [...this.statusLines].map(([modId, line]) => ({
+      sessionId: this.options.sessionId,
+      modId,
+      plugin: line.plugin,
+      text: line.text,
+    }));
   }
 
   /** webview 回传的交互。 */
@@ -341,6 +399,8 @@ export class ModManager {
     // 先关面板再进终态：`closed: true` 是界面关掉 tab 的唯一信号，而
     // `publishUpdate` 在 `disposed` 之后一律静默。
     this.closeAllPanes();
+    this.bands.clear();
+    this.statusLines.clear();
     this.disposed = true;
   }
 
@@ -358,6 +418,8 @@ export class ModManager {
     this.cancelAllTimers();
     this.processes.killAll();
     this.closeAllPanes();
+    this.bands.clear();
+    this.statusLines.clear();
     this.mods.clear();
     this.state.clear();
     await this.loadFromPlugins(plugins);
@@ -706,6 +768,74 @@ export class ModManager {
     return { modId, paneId, revision: pane.revision, tree: validated.tree };
   }
 
+  /**
+   * 输入框上方那条带：surface 来要（spec「状态带、状态行与提示」）。
+   *
+   * 只问注册了 `ui.render` 的 mod（没注册的压根不该占位置）；钩子返回
+   * `undefined` 的 mod 回一条空树 —— surface 按「空树不占位置」处理，下一帧它
+   * 又有内容时带会自己长回来。
+   *
+   * 失败与面板同一条纪律：回**上一帧成功的树** + 错误摘要，不把这条带换成一行
+   * 错误文字；也从没成功过时回空树 + 错误。
+   */
+  async renderBand(): Promise<ModBandRenderResult[]> {
+    if (this.disposed) return [];
+    const bands: ModBandRenderResult[] = [];
+    for (const [modId, loaded] of this.mods) {
+      if (loaded.error || !loaded.runtime) continue;
+      if (!loaded.runtime.hookNames().includes("ui.render")) continue;
+      const previous = this.bands.get(modId);
+      const result = await loaded.runtime.callHook("ui.render", {
+        modId,
+        // 与面板同一套三个维度，只是 `component` 换成第二个站点、
+        // `instance_id` 是固定值（一期一个 mod 一条带，不按实例区分）。
+        surface: "desktop",
+        component: "AbovePrompt",
+        instance_id: MOD_BAND_INSTANCE_ID,
+      });
+      if (!result.ok) {
+        bands.push({
+          modId,
+          plugin: loaded.plugin,
+          revision: previous?.revision ?? 0,
+          tree: previous?.tree ?? null,
+          error: result.error,
+        });
+        continue;
+      }
+      const revision = (previous?.revision ?? 0) + 1;
+      if (result.value === undefined) {
+        this.bands.set(modId, { revision, tree: null });
+        bands.push({
+          modId,
+          plugin: loaded.plugin,
+          revision,
+          tree: null,
+        });
+        continue;
+      }
+      const validated = validateModTree(result.value);
+      if (!validated.ok) {
+        bands.push({
+          modId,
+          plugin: loaded.plugin,
+          revision: previous?.revision ?? 0,
+          tree: previous?.tree ?? null,
+          error: validated.error,
+        });
+        continue;
+      }
+      this.bands.set(modId, { revision, tree: validated.tree });
+      bands.push({
+        modId,
+        plugin: loaded.plugin,
+        revision,
+        tree: validated.tree,
+      });
+    }
+    return bands;
+  }
+
   private renderFailed(pane: PaneState, error: string): ModPanelRenderResult {
     pane.error = error;
     return {
@@ -731,6 +861,43 @@ export class ModManager {
       ...(extra.closed ? { closed: true } : {}),
       ...(pane.error ? { error: pane.error } : {}),
     };
+  }
+
+  /**
+   * `$.ui.status` 的出口（spec「状态带、状态行与提示」）。
+   *
+   * 宿主不替 mod 记住这一行：真实来源是 mod 自己的 `$.state`，surface 重连后由
+   * mod 下次贴一次。没人画状态行的宿主（CLI）不传 `onStatus`，调用照常成功、
+   * 只是没人展示 —— 与 `$.ui.open` 在没人画面板时同一条纪律。
+   */
+  private publishStatus(modId: string, text: string | null): void {
+    if (this.disposed) return;
+    const plugin = this.pluginOf(modId);
+    if (text === null) this.statusLines.delete(modId);
+    else this.statusLines.set(modId, { plugin, text });
+    this.options.onStatus?.({
+      sessionId: this.options.sessionId,
+      modId,
+      plugin,
+      text,
+    });
+  }
+
+  /** `$.ui.toast` 的出口；`timeoutMs` 已由 runtime 夹进限额。 */
+  private publishToast(modId: string, text: string, timeoutMs: number): void {
+    if (this.disposed) return;
+    this.options.onToast?.({
+      sessionId: this.options.sessionId,
+      modId,
+      plugin: this.pluginOf(modId),
+      text,
+      timeoutMs,
+    });
+  }
+
+  /** 插件注册名（署名用）；`modId` 是 `<pluginName>:<fileStem>`，但别去拆它。 */
+  private pluginOf(modId: string): string {
+    return this.mods.get(modId)?.plugin ?? modId;
   }
 
   /** 发一条元信息通知（不带树）；`stale` 表示 surface 该来要树了。 */

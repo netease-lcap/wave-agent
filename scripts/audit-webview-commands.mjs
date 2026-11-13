@@ -128,6 +128,9 @@ const DESKTOP_GATED_NON_PREFIX = new Set([
   // 同一个 mod 面板的树由 surface 拉取（spec「架构约束」）：桌面端收到 stale
   // 元信息后发这条去要一帧。插件端没有可以拉的东西（同一原因）。
   "modPanelRender",
+  // 输入框上方那条带同一条拉取链路（spec「状态带、状态行与提示」）：桌面端在会话
+  // 就绪 / 每次 stale 后发这条去要。插件端没有 mod 宿主，无从拉取。
+  "modBandRender",
 ]);
 
 /**

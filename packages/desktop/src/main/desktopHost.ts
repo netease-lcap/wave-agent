@@ -59,6 +59,8 @@ import {
   startupStageText,
   type ModPanelUpdatePayload,
   type ModPanelEventPayload,
+  type ModStatusPayload,
+  type ModToastPayload,
 } from "wave-agent-sdk/host";
 import { StdioClient } from "./stdio/stdioClient";
 import { primeLoginShellEnv } from "./loginShellEnv";
@@ -2182,6 +2184,20 @@ export class DesktopHost {
             paneId,
             payload,
           });
+        }
+      },
+      // 状态行与短暂提示（spec「状态带、状态行与提示」）：只推不拉，不产生树、
+      // 不进对话上下文，webview 收到就画。
+      onModStatus: (payload: ModStatusPayload) => {
+        const paneId = paneIdOf();
+        if (paneId) {
+          this.postMessage({ command: "desktopModStatus", paneId, payload });
+        }
+      },
+      onModToast: (payload: ModToastPayload) => {
+        const paneId = paneIdOf();
+        if (paneId) {
+          this.postMessage({ command: "desktopModToast", paneId, payload });
         }
       },
       onQuotaHeaders: (headers: Record<string, string>) => {
@@ -6151,6 +6167,17 @@ export class DesktopHost {
             tree: result.tree,
             error: result.error,
           });
+        }
+        break;
+      }
+
+      // 输入框上方那条带（spec「状态带、状态行与提示」）：与面板同一条拉取链路，
+      // 每一次请求都真跑一遍每个 mod 的 `ui.render`。
+      case "modBandRender": {
+        const agent = this.agentForPane(pid);
+        if (agent) {
+          const bands = await agent.renderModBand();
+          this.postMessage({ command: "desktopModBand", paneId: pid, bands });
         }
         break;
       }

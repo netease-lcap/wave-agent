@@ -196,6 +196,11 @@ export type RequestMethod =
   // never pushed). Params: `{ modId, paneId }`; returns `ModPanelRenderResult`.
   // Nothing is cached: every call runs the mod's `ui.render` again.
   | "modPanelRender"
+  // The trees for the band above the composer (spec 状态带、状态行与提示). Same
+  // pull discipline as `modPanelRender`: no params, returns `ModBandRenderResult[]`
+  // — one entry per mod that registers `ui.render`; an entry whose `tree` is null
+  // takes no space.
+  | "modBandRender"
   // Every open mod panel's **metadata** (no trees — the surface pulls each tree
   // with `modPanelRender`). Session-scoped resync: a host that attached after
   // `session.start` (session restore, remote re-attach) would otherwise miss the
@@ -325,4 +330,14 @@ export type ServerNotificationMethod =
    * nodes, and a delta protocol would need a stable id per element (keyed
    * reconciliation) for no measurable win at this size.
    */
-  | "modPanelUpdate";
+  | "modPanelUpdate"
+  /**
+   * A mod set or cleared its line under the composer (`$.ui.status`; spec
+   * 状态带、状态行与提示). Params: `ModStatusPayload`; `text: null` clears.
+   *
+   * The host keeps no copy: the mod's own `$.state` is the truth, and it re-posts
+   * after a surface re-attaches.
+   */
+  | "modStatusUpdate"
+  /** A mod asked for a transient notice (`$.ui.toast`). Params: `ModToastPayload`. */
+  | "modToast";

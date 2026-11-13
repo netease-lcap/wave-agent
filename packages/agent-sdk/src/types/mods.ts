@@ -77,6 +77,45 @@ export interface ModPanelRenderResult {
   error?: string;
 }
 
+/**
+ * 输入框上方那条带的渲染结果（spec「状态带、状态行与提示」）。
+ *
+ * 一个 mod 一条带；没有注册 `ui.render`、或钩子返回 `undefined` 的 mod 不出现在
+ * 结果里（不占位置）。`instance_id` 固定是 {@link MOD_BAND_INSTANCE_ID}。
+ */
+export interface ModBandRenderResult {
+  modId: string;
+  /** 插件注册名，界面按它署名与排序。 */
+  plugin: string;
+  /** 每次成功渲染递增；surface 丢弃比已显示版本更旧的回复。 */
+  revision: number;
+  /** 空树表示这条带这次没有内容，surface 不占位置。 */
+  tree: ModPanelTree | null;
+  /** 渲染失败；`tree` 是上一帧成功的树（可能为 null）。 */
+  error?: string;
+}
+
+/** `AbovePrompt` 站点的 `instance_id`（spec「状态带、状态行与提示」）。 */
+export const MOD_BAND_INSTANCE_ID = "above-prompt";
+
+/** `$.ui.status(text)` 的推送：每个插件一条常驻行，`text: null` 表示清除。 */
+export interface ModStatusPayload {
+  sessionId: string;
+  modId: string;
+  /** 插件注册名：用户要能看出是谁贴的。 */
+  plugin: string;
+  text: string | null;
+}
+
+/** `$.ui.toast(text)` 的推送：短暂提示，`timeoutMs` 已夹进限额。 */
+export interface ModToastPayload {
+  sessionId: string;
+  modId: string;
+  plugin: string;
+  text: string;
+  timeoutMs: number;
+}
+
 /** webview → 宿主 → mod 的用户交互。 */
 export interface ModPanelEventPayload {
   sessionId: string;
@@ -233,4 +272,12 @@ export const MOD_LIMITS = {
   httpTimeoutMs: 30_000,
   /** 一次 `$.http.fetch` 最多跟的重定向次数。 */
   httpMaxRedirects: 5,
+  /** `$.ui.status` 一行的字符上限，超出截断并加省略号。 */
+  statusChars: 10_000,
+  /** `$.ui.toast` 的默认停留时间。 */
+  toastDefaultMs: 4_000,
+  /** `$.ui.toast` 允许的最长停留时间；更大的 `timeoutMs` 夹到这个数。 */
+  toastMaxMs: 10_000,
+  /** 同时排队的 toast 条数；溢出时丢弃尚未展示的旧条。 */
+  toastQueueMax: 50,
 } as const;
