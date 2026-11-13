@@ -48,6 +48,46 @@ body {
   padding-right: env(safe-area-inset-right, 0px);
 }
 
+/* ---- 远控 Web 页：主屏形态下自己画状态栏那一条（压掉 iOS 27 的系统模糊）----
+   iOS 27 起，**装到主屏**的 web app 顶部会被系统再画一层渐进模糊——状态栏加上其
+   下约 40pt，页面自己的顶栏一起糊；Safari 标签页只有状态栏后面一条细模糊，横屏
+   （状态栏隐藏）则没有。这层模糊页面侧关不掉：`backdrop-filter: none`、
+   `theme-color`、`apple-mobile-web-app-status-bar-style` 都无效（`black-translucent`
+   已被 WebKit 判废弃，但删掉它只让状态栏变成系统挑的实色、并不解决模糊，还可能让
+   `safe-area-inset-top` 归零、整页退化成字母箱）。跟踪单：WebKit bugzilla
+   324438 / 329103 / 330085 / 325807，2026-11-13（iOS 27.2）全部 NEW，Apple 未表态。
+
+   能压掉它的只有一件事：**页面自己在最顶边画一块不透明的贴边元素**，系统拿它当
+   状态栏底色、把模糊换成实色（社区实测阈值：≥6px 高 / ≥80% 宽 / 距顶 ≤4px，另有
+   一次在 27.0.1 上测到约 12px 才可靠 ⇒ 下限取 12px；`position: fixed` 是唯一被
+   验证有效的形态）。这块就是 index.html 里那个 `#remote-top-edge`（由
+   remote/build.mjs 生成，真元素），只有这一页有 ⇒ 不需要再拿 `data-remote-page`
+   收窄。装机形态由 `display-mode: standalone` 判定（manifest 里声明的就是它），
+   2026-11-13 真机验过：模糊确实被压掉。
+
+   高度取 `max(12px, 安全区)`：正常机型取状态栏真实高度（色带与下方同色的顶栏无缝，
+   看上去就是一条正常的实色状态栏），`safe-area-inset-top` 归零的机型（26.1 / 27 上
+   出现过）留 12px 兜底，否则色带退化成 0 高、模糊照旧。颜色用页面底色 token（与
+   body、.chat-header 同一个），深浅两套主题各自动跟。
+
+   层级只取 1：它是**背景层**，弹窗 / 菜单 / tooltip（1000+）照旧盖在它上面——那些
+   浮层自己的顶边本就不透明，系统采样到的是它们，模糊一样不会回来。Apple 修好之后
+   这段应整段删掉，而不是留着当「反正无害」。
+
+   ⚠️ headless 浏览器进不了 standalone 形态 ⇒ 单测只读这段文本，e2e 把块内容原样
+   注入再量几何（`remote-page-viewport.e2e.ts`）。 */
+@media (display-mode: standalone) {
+  #remote-top-edge {
+    display: block;
+    position: fixed;
+    inset: 0 0 auto 0;
+    z-index: 1;
+    height: max(12px, env(safe-area-inset-top, 0px));
+    background: var(--vscode-panel-background);
+    pointer-events: none;
+  }
+}
+
 /* Animations */
 @keyframes blink {
   0%,
