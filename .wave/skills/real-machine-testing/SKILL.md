@@ -5,7 +5,7 @@ allowed-tools:
   - Bash
 ---
 
-# 真机测试（macOS / Linux）
+# 真机测试（macOS / Linux / Windows）
 
 真机套件的红，**环境占的比例远大于代码**。动手指令之前先定两件事：要验的是哪一层、那一层的前置满足没有。本文件只做路由；每一层的手法在同目录 `references/` 下，按需读。
 
@@ -15,7 +15,7 @@ allowed-tools:
 
 | 要验的东西                               | 命令                                                | 真到什么程度                                                              | 前置                       | 细读                         |
 | ---------------------------------------- | --------------------------------------------------- | ------------------------------------------------------------------------- | -------------------------- | ---------------------------- |
-| 交互式 CLI / TUI / 权限弹窗 / skill 菜单 | 自起 tmux 会话                                      | 真 TTY + 真模型                                                           | SDK 已 build               | `references/cli.md`          |
+| 交互式 CLI / TUI / 权限弹窗 / skill 菜单 | 自起 tmux 会话（Windows 用 node-pty 起真 ConPTY）   | 真 TTY + 真模型                                                           | SDK 已 build               | `references/cli.md`          |
 | 非交互 CLI 一轮                          | `pnpm run wave -p "…"`                              | 真 CLI，无 TTY                                                            | —                          | `references/cli.md`          |
 | 宿主与 CLI 的协议链路                    | `pnpm run wave --stdio` / daemon 子命令             | 真 JSON-RPC                                                               | —                          | `references/cli.md`          |
 | SDK 自身逻辑（工具/hook/子代理/记忆）    | `cd packages/agent-sdk && pnpm exec tsx examples/…` | 真 SDK 源码 + 真模型（不读 dist）                                         | type-check 过              | `references/sdk.md`          |

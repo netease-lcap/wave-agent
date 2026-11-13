@@ -252,6 +252,8 @@ export const useInputManager = (
                 dispatch({ type: "SET_SHOW_HELP", payload: true });
               } else if (command === "status") {
                 dispatch({ type: "SET_SHOW_STATUS_COMMAND", payload: true });
+              } else if (command === "diff") {
+                dispatch({ type: "SET_SHOW_DIFF_MANAGER", payload: true });
               } else if (command === "login") {
                 dispatch({ type: "SET_SHOW_LOGIN_COMMAND", payload: true });
               } else if (command === "logout") {
@@ -531,6 +533,10 @@ export const useInputManager = (
     dispatch({ type: "SET_SHOW_STATUS_COMMAND", payload: show });
   }, []);
 
+  const setShowDiffManager = useCallback((show: boolean) => {
+    dispatch({ type: "SET_SHOW_DIFF_MANAGER", payload: show });
+  }, []);
+
   const setShowRemoteControl = useCallback((show: boolean) => {
     dispatch({ type: "SET_SHOW_REMOTE_CONTROL", payload: show });
   }, []);
@@ -683,6 +689,7 @@ export const useInputManager = (
     showResumeSelector: state.showResumeSelector,
     showHelp: state.showHelp,
     showStatusCommand: state.showStatusCommand,
+    showDiffManager: state.showDiffManager,
     showRemoteControl: state.showRemoteControl,
     showLoginCommand: state.showLoginCommand,
     showPluginManager: state.showPluginManager,
@@ -732,6 +739,7 @@ export const useInputManager = (
     setShowRewindManager,
     setShowHelp,
     setShowStatusCommand,
+    setShowDiffManager,
     setShowRemoteControl,
     setShowLoginCommand,
     setShowPluginManager,

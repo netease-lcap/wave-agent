@@ -176,6 +176,7 @@ export interface InputState {
   showResumeSelector: boolean;
   showHelp: boolean;
   showStatusCommand: boolean;
+  showDiffManager: boolean;
   showRemoteControl: boolean;
   showLoginCommand: boolean;
   showPluginManager: boolean;
@@ -218,6 +219,7 @@ export const initialState: InputState = {
   showResumeSelector: false,
   showHelp: false,
   showStatusCommand: false,
+  showDiffManager: false,
   showRemoteControl: false,
   showLoginCommand: false,
   showPluginManager: false,
@@ -521,6 +523,7 @@ export type InputAction =
   | { type: "SET_SHOW_RESUME_SELECTOR"; payload: boolean }
   | { type: "SET_SHOW_HELP"; payload: boolean }
   | { type: "SET_SHOW_STATUS_COMMAND"; payload: boolean }
+  | { type: "SET_SHOW_DIFF_MANAGER"; payload: boolean }
   | { type: "SET_SHOW_REMOTE_CONTROL"; payload: boolean }
   | { type: "SET_SHOW_LOGIN_COMMAND"; payload: boolean }
   | { type: "SET_SHOW_PLUGIN_MANAGER"; payload: boolean }
@@ -739,6 +742,12 @@ export function inputReducer(
       return {
         ...state,
         showStatusCommand: action.payload,
+        selectorJustUsed: !action.payload ? true : state.selectorJustUsed,
+      };
+    case "SET_SHOW_DIFF_MANAGER":
+      return {
+        ...state,
+        showDiffManager: action.payload,
         selectorJustUsed: !action.payload ? true : state.selectorJustUsed,
       };
     case "SET_SHOW_REMOTE_CONTROL":
@@ -1162,6 +1171,7 @@ export function inputReducer(
             state.showResumeSelector ||
             state.showHelp ||
             state.showStatusCommand ||
+            state.showDiffManager ||
             state.showRemoteControl ||
             state.showLoginCommand ||
             state.showPluginManager ||

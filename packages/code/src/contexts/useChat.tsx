@@ -193,6 +193,8 @@ export interface ChatContextType {
   getGatewayConfig: () => import("wave-agent-sdk").GatewayConfig;
   getModelConfig: () => import("wave-agent-sdk").ModelConfig;
   workingDirectory: string;
+  /** 会话工作根：只有 EnterWorktree / ExitWorktree 会动它（`.wave/rules/workdir.md`）。 */
+  workspaceRoot: string;
   version?: string;
   workdir?: string;
   // Plugin in-place reload (docs/specs/ecosystem/plugin.md「插件变更的就地重载」)
@@ -607,6 +609,10 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
 
   // Status metadata state
   const [workingDirectory, setWorkingDirectory] = useState("");
+  // The session workspace root —  inside the session leaves it alone, only
+  // EnterWorktree / ExitWorktree move it. The /diff panel reads it (aligned with
+  // the desktop diff panel, see .wave/rules/workdir.md).
+  const [workspaceRoot, setWorkspaceRoot] = useState("");
 
   const agentRef = useRef<Agent | null>(null);
 
@@ -853,6 +859,9 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         onCommandRunningChange: (running) => {
           setIsCommandRunning(running);
         },
+        onWorkspaceRootChange: (root) => {
+          setWorkspaceRoot(root);
+        },
         onQueuedMessagesChange: (messages) => {
           setQueuedMessages([...messages]);
         },
@@ -938,6 +947,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         setIsCompacting(agent.isCompacting);
         setPermissionModeState(agent.getPermissionMode());
         setWorkingDirectory(agent.currentWorkdir);
+        setWorkspaceRoot(agent.workspaceRoot);
         setCurrentModelState(agent.getModelConfig().model || "");
         setConfiguredModels(agent.getConfiguredModels().map((m) => m.name));
         setContextWindow(agent.getContextWindow());
@@ -1267,6 +1277,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
 
       setSessionId(agent.sessionId);
       setWorkingDirectory(agent.currentWorkdir);
+      setWorkspaceRoot(agent.workspaceRoot);
       setIsLoading(agent.isLoading);
       refreshMessages();
       forceRemount();
@@ -1678,6 +1689,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     getGatewayConfig,
     getModelConfig,
     workingDirectory,
+    workspaceRoot,
     version,
     workdir,
     reloadPlugins,

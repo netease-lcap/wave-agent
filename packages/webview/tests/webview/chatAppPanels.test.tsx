@@ -147,6 +147,36 @@ describe("ChatApp desktop panel framework", () => {
     expect(screen.getByTestId("panel-tab-diff-1")).toBeInTheDocument();
   });
 
+  it("typing /diff opens the diff tab instead of sending the text to the model", async () => {
+    window.waveHostType = "desktop";
+    const { vscode } = renderDesktop({ workdir: "/work/a" });
+    const sentToModel = () =>
+      vscode.postMessage.mock.calls.filter(
+        ([msg]) => msg.command === "sendMessage",
+      );
+
+    const input = screen.getByTestId("message-input");
+    await setInputText(input, "/diff");
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("send-btn"));
+    });
+
+    // 斜杠命令是本地入口：打开右侧面板的差异 tab（desktop/desktop-diff-panel.md），
+    // 文本不进对话、也不发给模型。
+    expect(screen.getByTestId("panel-tab-diff-1")).toBeInTheDocument();
+    expect(screen.getByTestId("diff-pane")).toBeInTheDocument();
+    expect(sentToModel()).toHaveLength(0);
+
+    // 面板已在：再敲一次复用同一个 tab（单实例），不开第二个。
+    fireEvent.click(screen.getByTestId("panel-tab-close-diff-1"));
+    await setInputText(input, "/diff");
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("send-btn"));
+    });
+    expect(screen.getAllByTestId("diff-pane")).toHaveLength(1);
+    expect(sentToModel()).toHaveLength(0);
+  });
+
   it("multiple panels open as tabs in one shared slot; clicking a tab switches the active panel", () => {
     window.waveHostType = "desktop";
     renderDesktop({ workdir: "/work/a" });

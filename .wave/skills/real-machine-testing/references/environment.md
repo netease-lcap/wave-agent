@@ -10,7 +10,9 @@
 HOME=/tmp/probe-home pnpm run wave            # Linux / macOS（POSIX 下 os.homedir() 读 $HOME）
 ```
 
-一次假 HOME 里会被隔离的东西：`~/.wave/settings.json`、`auth.json`（凭证）、`projects/`（会话）、`file-history/`、`daemon.sock`、`logs/`、用户级 `AGENTS.md`。想保留登录态就把真 `~/.wave/auth.json` 拷进去；想彻底干净就什么都别拷。
+一次假 HOME 里会被隔离的东西：`~/.wave/settings.json`、`auth.json`（凭证）、`projects/`（会话）、`file-history/`、`daemon.sock`、`logs/`、用户级 `AGENTS.md`。想保留登录态就把真 `~/.wave/auth.json` 拷进去；想彻底干净就什么都别拷。**拷过真实凭证的假 HOME 用完就把 `auth.json` / `remote-settings.json` 删掉**——那是真 SSO token，不该留在临时目录里。
+
+Windows 上 `os.homedir()` 读 `USERPROFILE`，但配置与缓存还会落到 `APPDATA` / `LOCALAPPDATA`，所以**三个都要指**到同一个临时目录并预建。
 
 **两个反直觉点：**
 
