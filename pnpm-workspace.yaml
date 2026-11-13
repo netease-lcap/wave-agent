@@ -35,11 +35,10 @@ minimumReleaseAgeExclude:
   - "@tsrs/win32-arm64@0.25.0-ts7.1.0-beta"
   - "@tsrs/win32-x64@0.25.0-ts7.1.0-beta"
   - tsrs@0.25.0-ts7.1.0-beta
-# 工具链版本统一到 catalog：升级 vitest / typescript / tsx 只改这里一处，
+# 工具链版本统一到 catalog：升级 vitest / tsx 只改这里一处，
 # 各包 package.json 写 `"vitest": "catalog:"`。catalogMode: prefer 让 `pnpm add`
 # 也优先落到 catalog 版本，避免新包又写一份独立范围把版本漂开。
 catalog:
-  typescript: ^7.0.2
   vitest: ^5.1.0
   "@vitest/coverage-v8": ^5.1.0
   tsx: ^4.20.4
