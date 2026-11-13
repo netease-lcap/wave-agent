@@ -5178,12 +5178,18 @@
   color: #1f2329;
 }
 
+/* 选中项：她 2026-11-13「按照规范统一」——契约为菜单选项只定义了一组选中表达
+   「selected uses fill-pressed with primary text, without increased weight」，
+   所以这里从写死的 #e7e9ed / #1f2329 改成 token 对（浅色逐值不变，深色跟着 token 走）。
+   深色那支原来写的是 12% 白 + #ffffff（合成面 ≈#3D3E3F、字纯白），与创作集视图下拉
+   （`.desktop-session-menu-item[aria-checked=true]` = `--cc-fill-pressed` + 1 级字）
+   不是一套；本轮把两支收到同一个 token 对，四处下拉的选中项自此逐值相同。 */
 [data-host="desktop"] .settings-select-option.is-selected,
 [data-host="desktop"] .settings-select-option.is-selected:hover,
 [data-host="desktop"] .session-board-filter-option.is-selected,
 [data-host="desktop"] .session-board-filter-option.is-selected:hover {
-  background: #e7e9ed;
-  color: #1f2329;
+  background: var(--cc-fill-pressed, #e7e9ed);
+  color: var(--cc-text-primary, #1f2329);
 }
 
 /* 键盘焦点：roving tabindex 会把真实焦点放到选项上（鼠标点击不亮）。
@@ -5220,8 +5226,10 @@
   .session-board-filter-option.is-selected,
 [data-host="desktop"][data-theme="dark"]
   .session-board-filter-option.is-selected:hover {
-  background: rgba(255, 255, 255, 0.12);
-  color: #ffffff;
+  /* 同一对 token（深色 `--cc-fill-pressed` #393E41 / `--cc-text-primary` #E5E7E8）——
+     保留这条只是为了特异性：上面那条 (0,2,0) 压不过本文件的深色常态档 (0,3,0)。 */
+  background: var(--cc-fill-pressed, #393e41);
+  color: var(--cc-text-primary, #e5e7e8);
 }
 
 /* 0922 评论：插件市场行（.settings-plugin-row）hover 与左侧导航同档。

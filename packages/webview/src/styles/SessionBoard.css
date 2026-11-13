@@ -435,9 +435,12 @@
        五轮「要补」把浅色块缺的这条桥补上了（host-desktop.css 浅色块），于是浅色从基础
        主题的 `#202020` 变成 `--cc-text-primary` `#1F2329` —— 与触发器自己的字色
        `--cc-field-text` 逐值相同；深色 rgb(229,231,232) 不变。
-   特异性排布：静态档 (0,2,0)、深色静态档 (0,3,0)、悬停档 (0,3,0) 且写在最后 ⇒
+   特异性排布：静态档 (0,2,0)、深色静态档 (0,3,0)、悬停/展开档 (0,3,0) 且写在最后 ⇒
    深色下同特异性靠顺序赢，四种组合（浅/深 × 悬停与否）实测都取对应档。
-   展开态与键盘焦点**不动墨色**（按她的原话只认 hover）；要加再说。 */
+   展开态 2026-11-13 追加裁定（创作集视图下拉那句「选中以后，就算鼠标移开也不变色」）：
+   `.is-open` 与 `:hover` 取同一档 —— 菜单打开后指针会移到选项上，触发键 `:hover` 随之
+   失效，只写 hover 会让三角在打开瞬间「退回去」，而展开是比悬停更强的状态。
+   键盘焦点仍不动墨色（那档由描边表达）。 */
 [data-host="desktop"] .session-board-filter-arrow {
   color: #6c7076;
 }
@@ -446,7 +449,10 @@
   color: #858b8f;
 }
 
-[data-host="desktop"] .session-board-filter:hover .session-board-filter-arrow {
+[data-host="desktop"] .session-board-filter:hover .session-board-filter-arrow,
+[data-host="desktop"]
+  .session-board-filter.is-open
+  .session-board-filter-arrow {
   color: var(--vscode-input-foreground, var(--cc-field-text));
 }
 

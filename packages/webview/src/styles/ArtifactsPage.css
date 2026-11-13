@@ -119,32 +119,47 @@
    是否符合规范并优化」「选择器再按规范优化」）：盒与字按契约 select 触发器收口 ——
    32 高 / 14px·22px / r8 / **左右各 8px 内衬**（common-components.md「Desktop select
    trigger and menu composition」：文字从内缘 8px 起、尾图标墨迹右内衬 8px；按钮契约
-   的 12px 内衬是纯文字动作键的口径，这颗是选择器）；字色与状态底色接语义 token ——
-   hover 用 `--cc-fill-hover`、展开（≈按下）用 `--cc-fill-pressed`，原来是写死的
-   `rgba(127,127,127,.1/.14)`：浅色档 ≈#E9E9E9 与 fill-hover #EEF0F3 不等值，深色档
-   则是半透明灰盖在深底上，与族内菜单 hover 面（rgba(255,255,255,.08)）也不一致。 */
+   的 12px 内衬是纯文字动作键的口径，这颗是选择器）。
+
+   2026-11-13 评论（锚在本键「默认视图」）「选择器在选中态状的时候颜色还是不对，再参考下」
+   —— 她指的参照件是设置页下拉 `[data-testid=settings-select-language]`「中文」，同批已
+   收口的看板筛选器 `.session-board-filter` 走的是同一套。改前的三态是「普通按钮」语言：
+   静止透明底 + `--vscode-panel-border` 浅边，hover 铺一层 `--cc-fill-hover` 灰，展开再
+   加深成 `--cc-fill-pressed` —— 展开态于是变成一块**带浅边的灰块**，看着像「被按住的
+   按钮」，而参照件是「字段底 + 一行深描边」：浅色 灰底 #E7E9ED/边 #E4E7ED ↔ 白底
+   #FFFFFF/边 #565A60；深色 灰底 #393E41/边 #34393C ↔ #1B1D1E/边 #A0A5A8。
+   契约 §Desktop form field colors and focus 三档 + 「Hover changes only border color,
+   not field background」+ §Desktop select trigger「While the popup is expanded, retain
+   the trigger's focus/active border」「Do not confuse an open trigger with a permanently
+   selected menu option」⇒ 三态一律改走 `--cc-field-*`（= 设置页下拉、看板筛选器同一族），
+   只换颜色，几何（110×32 / r8 / 内衬 0 8px）与三角一律不动。 */
 .artifacts-view-btn {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   height: 32px;
   padding: 0 8px;
-  border: 1px solid var(--vscode-panel-border, rgba(127, 127, 127, 0.35));
+  border: 1px solid var(--cc-field-border, #c5c9ce);
   border-radius: 8px;
-  background: transparent;
+  background: var(--cc-field-bg, #fff);
   color: var(--cc-text-primary, var(--vscode-foreground));
   font-size: 14px;
   line-height: 22px;
   cursor: pointer;
 }
 
+/* hover：只换描边、不动底色（契约原句「Hover changes only border color」）——
+   改前是铺 `--cc-fill-hover` 灰底、描边不动，与参照件正好相反。 */
 .artifacts-view-btn:hover {
-  background: var(--cc-fill-hover, #eef0f3);
+  border-color: var(--cc-field-border-hover, #6c7076);
 }
 
-/* 下拉展开时按钮自身保留一层按压底色，让「菜单是它打开的」看得出来。 */
+/* 展开（选择器的「选中/激活」态）：底回字段底、描边换 focus 档
+   （浅 #565A60 / 深 #A0A5A8）。写在 hover 之后，同特异性靠顺序压过 hover 的描边 ——
+   展开且鼠标仍停在键上时，按契约是 focus/expanded 优先。 */
 .artifacts-view-btn[aria-expanded="true"] {
-  background: var(--cc-fill-pressed, #e7e9ed);
+  background: var(--cc-field-bg, #fff);
+  border-color: var(--cc-field-border-focus, #565a60);
 }
 
 /* 键盘焦点 —— 这一档上一轮漏了（2026-11-13 补）：改前没有任何规则，浏览器给的是
@@ -154,9 +169,9 @@
    与设置页下拉 `.settings-select-trigger`、会话看板筛选器 `.session-board-filter` 同一条
    字段焦点档（浅 #565A60 / 深 #A0A5A8）；**不用**本页图标键那颗 2px 内收环
    （`.artifacts-header-icon-btn`）—— 那是图标键的配方，这颗是选择器（select trigger）。
-   写在 hover 之后：同特异性 (0,2,0) 时焦点态压过 hover 底色上的描边（底色仍由 hover /
-   expanded 各自那条管，互不干扰）；展开中被 Tab 进来同样保持这一档（契约「Expanded
-   select + option focus → trigger retains field-border-focus」）。 */
+   写在 hover / 展开之后：同特异性 (0,2,0) 时焦点态压过 hover 那条描边；底色只由静止
+   那条（字段底）管，hover / 展开 / 焦点都不动它。展开中被 Tab 进来同样保持这一档（契约
+   「Expanded select + option focus → trigger retains field-border-focus」）。 */
 .artifacts-view-btn:focus-visible {
   border-color: var(--cc-field-border-focus, #565a60);
   outline: none;
@@ -196,6 +211,35 @@
     center / 16px 16px no-repeat;
   mask: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'><g transform='translate(0,16) scale(1,-1)'><path d='M7.99977 7.22354L5.17108 10.0522C4.91078 10.3125 4.48875 10.3125 4.22844 10.0522C3.96813 9.79192 3.96812 9.36988 4.22843 9.10957L7.29266 6.04533C7.68318 5.65481 8.31635 5.65481 8.70687 6.04534L11.7711 9.10957C12.0314 9.36988 12.0314 9.79192 11.7711 10.0522C11.5108 10.3125 11.0888 10.3125 10.8285 10.0522L7.99977 7.22354Z' fill='%23000'/></g></svg>")
     center / 16px 16px no-repeat;
+}
+
+/* 三角墨色 —— 她 2026-11-13「按照规范统一，三角也要改」+ 追加「选中以后，就算鼠标
+   移开也不变色」：与同批收口的看板筛选器 `.session-board-filter-arrow` 走同一条两档模型
+   （那支是设计师连裁四轮的成品）：
+     · 静止 = `--cc-text-secondary`（浅 #6C7076）/ `--cc-text-placeholder`（深 #858B8F）
+       —— 同一个中性梯度上比正文各退一格，对字段底 4.98:1 / 4.90:1，两主题弱化程度对齐；
+       三角是装饰符号，退到「看得见但不抢文字」的浓度；
+     · hover **与展开（选中/激活）** = `--vscode-input-foreground`（= `--cc-field-text`）
+       提到正文档。展开档单独写了 `[aria-expanded="true"]`：菜单打开后指针会移到选项上，
+       触发键的 `:hover` 随之失效 —— 只写 hover 的话三角会在打开的一瞬间「退回去」，
+       而展开是比悬停更强的状态，不能比悬停更弱（她原话「选中以后，就算鼠标移开也不变色」）。
+       关闭后 `aria-expanded` 消失，回到静止档。
+     · 键盘焦点不动墨色（底色/描边由字段焦点档表达）。
+   改前是纯 `currentColor`：三态恒等于按钮字色 #1F2329 / #E5E7E8，三角与 14px 文字同浓，
+   在字段家里比参照件重一档。非桌面宿主不接管，仍由上面那条 `currentColor` 走宿主外观。 */
+[data-host="desktop"] .artifacts-view-caret {
+  color: var(--cc-text-secondary, #6c7076);
+}
+
+[data-host="desktop"][data-theme="dark"] .artifacts-view-caret {
+  color: var(--cc-text-placeholder, #858b8f);
+}
+
+[data-host="desktop"] .artifacts-view-btn:hover .artifacts-view-caret,
+[data-host="desktop"]
+  .artifacts-view-btn[aria-expanded="true"]
+  .artifacts-view-caret {
+  color: var(--vscode-input-foreground, var(--cc-field-text));
 }
 
 /* 展开时三角上翻，指向「菜单就在下面」。 */
