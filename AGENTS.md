@@ -2,180 +2,66 @@
 
 This file provides guidance to Agent when working with code in this repository.
 
+**修改约定**：不要自行修改，需要先询问用户；如果用户同意了修改，也必须要简约，优先考虑用 rules 或者子目录的 agents.md。
+
 ## 🏗 Architecture & Structure
 
-This is a pnpm monorepo focused on AI-powered development tools.
+pnpm monorepo（Node >= 22，pnpm 12），做 AI 编码工具：
 
-- **`packages/agent-sdk`**: Core Node.js SDK. Handles AI model integration, tool systems, and memory management.
-- **`packages/code`**: CLI frontend built with React Ink. Provides the interactive terminal interface.
-- **`packages/webview`**: React 18 chat UI shared by the VS Code extension, JetBrains plugin, and desktop app.
-- **`packages/vscode`**: VS Code extension. Uses esbuild for bundling (not tsc). Its `webview/` directory is a build artifact synced from `packages/webview` — always edit the source in `packages/webview/src/`.
-- **`packages/jetbrains`**: JetBrains plugin (Gradle/Kotlin), reuses the `packages/webview` UI.
-- **`packages/desktop`**: Electron desktop app, reuses the `packages/webview` UI and drives the CLI via stdio.
-- **`packages/webview-fixtures`**: Shared host→webview message contract fixtures consumed by the webview, VS Code, JetBrains, and desktop test suites. Rebuild after edits: `pnpm -F wave-webview-fixtures build`.
-- **`docs/`**: VitePress documentation site.
-- **`docs/specs/`**: Feature specifications grouped by topic (e.g., `docs/specs/commands/slash-commands.md`). See "Specs & Spec-First Workflow" below.
-- **`.wave/rules/`**: Modular memory rules scoped to specific paths or tasks.
+- **`packages/agent-sdk`** 核心 SDK：模型接入、工具系统、记忆管理。
+- **`packages/code`** React Ink CLI 终端界面。
+- **`packages/webview`** React 18 聊天 UI，VS Code / JetBrains / 桌面端共用。
+- **`packages/vscode`** VS Code 扩展（esbuild 打包）。`webview/` 是同步产物 —— 永远改 `packages/webview/src/`。
+- **`packages/jetbrains`** JetBrains 插件（Gradle/Kotlin），复用 webview 产物。
+- **`packages/desktop`** Electron 桌面端，复用 webview 产物，通过 stdio 驱动 CLI。
+- **`packages/webview-fixtures`** host→webview 消息契约 fixtures（四端测试共用）；改后 `pnpm -F wave-webview-fixtures build`。
+- **`docs/`** VitePress 站点；**`docs/specs/`** 功能规格（见文末）。
+- **`.wave/rules/`** 按路径生效的模块化规则（带 `paths:` 的只在相关文件进上下文时才注入）。桌面端 / VS Code / Webview / CLI 的内部细节与约定都放在这里，按目录自动生效，本文件不再重复。
 
-### Key Dependencies
+依赖方向：`code` → `agent-sdk`；`vscode` → `agent-sdk` + `webview`；`jetbrains` / `desktop` 吃 webview 产物；`desktop` 另外 spawn `wave --stdio`（来自 `code`）。**改完 `agent-sdk` 或 `webview` 必须重建**（`pnpm -F wave-agent-sdk build` / `-F wave-webview build`）—— 依赖方读的是产物。
 
-- **Node >= 22 required** (`engines` in package.json, pnpm 12 via `packageManager`).
-- **工具链版本统一走 catalog**：`typescript` / `vitest` / `@vitest/coverage-v8` / `tsx` 声明在 `pnpm-workspace.yaml` 的 `catalog:`，各包 package.json 写 `"catalog:"`；`@types/node` 分 `catalog:node22`（根，对齐 `engines.node`）和 `catalog:node25`（desktop / vscode / webview，跟随各自运行时）。升级只改 catalog 一处 —— 不要在单个 package.json 里写死这些版本，`catalogMode: prefer` 会让 `pnpm add` 自动沿用 catalog 版本。
-- `packages/code` depends on `packages/agent-sdk`.
-- `packages/vscode` depends on `packages/agent-sdk` and `packages/webview`.
-- `packages/jetbrains` consumes the `packages/webview` build output.
-- `packages/desktop` consumes the `packages/webview` build output and spawns the `wave --stdio` CLI (from `packages/code`).
-- **Important**: After modifying `agent-sdk` or `webview`, you MUST rebuild them (`pnpm -F wave-agent-sdk build` / `pnpm -F wave-webview build`) before the changes are available to dependent packages.
+工具链版本统一写在 `pnpm-workspace.yaml` 的 `catalog:`（vitest / @vitest/coverage-v8 / tsx / tsrs），各包只写 `"catalog:"`，别在单个 package.json 写死；`catalogMode: prefer` 会让 `pnpm add` 自动沿用 catalog 版本。`@types/node` 分 `catalog:node22`（根，对齐 `engines.node`）与 `catalog:node25`（desktop / vscode / webview，跟随各自运行时），合并会丢端侧新 API 类型。
 
-### Agent SDK Internals (`packages/agent-sdk`)
+## 🔧 Agent SDK Internals (`packages/agent-sdk`)
 
-The SDK _is_ the product — every host (CLI, VS Code, JetBrains, desktop) drives the same `Agent`. When the question is "why did the model see / do X", the answer is usually in one of these:
+SDK 就是产品：CLI、VS Code、JetBrains、桌面端驱动同一个 `Agent`。"模型为什么看到/做了 X" 基本都在这几处：
 
-- **`Agent` (`src/agent.ts`)**: constructed only via `Agent.create(options)` (the constructor is private). It stands up a lightweight DI `Container` (`utils/container.ts` + `utils/containerSetup.ts`) and pulls the managers/services out of it. `sendMessage()` queues when busy, else delegates to `InteractionService`.
-- **Turn loop (`managers/aiManager.ts`)**: `sendAIMessage()` runs a `while (true)` loop — pin the per-turn config snapshot → call the model (`services/aiService.ts`) → if `tool_calls` came back: PreToolUse hook → `toolManager.execute()` → PostToolUse hook → loop again until the model stops calling tools.
-- **Tools (`managers/toolManager.ts`, `src/tools/`)**: each built-in tool is a `ToolPlugin` (`src/tools/types.ts`) registered via `toolManager.register()`; names/limits live in `src/constants/`.
-- **Permissions (`managers/permissionManager.ts`)**: `PermissionMode = default | acceptEdits | plan | dontAsk | bypassPermissions` (`src/types/permissions.ts`). `checkPermission()` is the single gate; the mode resolves CLI override > configured > `default`.
-- **Memory (`services/memory.ts`)**: three scopes — project `<workdir>/AGENTS.md` (falls back to `CLAUDE.md`), user `~/.wave/AGENTS.md`, and auto-memory `~/.wave/projects/<git-common-dir>/memory/MEMORY.md` (only the first 200 lines load; keyed by git common dir so worktrees share it). Writes go through `utils/atomicWrite.ts`.
-- **Config chain**: `services/configurationService.ts` + `utils/configPaths.ts`. Effective order: override > `AgentOptions` > Remote > `<workdir>/.wave/settings.local.json` > `<workdir>/.wave/settings.json` > `~/.wave/settings.json`. Per-session env vars are snapshotted (no `process.env` pollution). Hot reload is `LiveConfigManager` + `services/fileWatcher.ts`; each turn pins a snapshot.
-- **Settings changes must update the built-in skill**: any change to `settings.json` keys, `env` variables, hook events/fields, or their defaults also updates `packages/agent-sdk/src/builtin/skills/settings.ts` — it is the only source the model reads when answering "how do I configure X", so a stale skill teaches wrong usage.
-- **Host transport (`src/stdio/`)**: `StdioAgent` mirrors the `Agent` API over JSON-RPC with a `sessionId` on every call; `NotificationRouter` demuxes notifications by session. Re-exported by the `wave-agent-sdk/host` entry (it has no subpath of its own) and used by the VS Code extension and desktop app.
-- **Build**: `pnpm -F wave-agent-sdk build` = `tsrs` → `dist/` (per-file ESM + `.d.ts`, no bundling). Dependents import `dist/`, so rebuild after any SDK edit. `tsrs` is the Rust port of the TypeScript compiler and is what runs both type-check and the two `tsc`-based builds; `typescript` stays installed for the SDK's own type deps and editors. Two rules when touching it: `pnpm run type-check` / `pnpm run build` must stay **serial** (`--workspace-concurrency=1`) — concurrent compiler processes intermittently drop packages during module resolution (phantom TS2307), and the upstream Go compiler does the same with its default thread pool (`microsoft/typescript-go#4262` `#4834`), which is why we moved off `tsc` in the first place.
-- **Public surface**: three audiences, three entries. `wave-agent-sdk` (the barrel) is for the CLI, which embeds the agent in-process. The hosts (desktop main process, VS Code extension host) drive the agent over JSON-RPC and import **only `wave-agent-sdk/host`** — one positive entry re-exporting the RPC layer + shared literals + protocol types; need something new, add it there. The webview (pure UI) imports only `wave-agent-sdk/types` and `/constants`. The RPC layer deliberately has no subpath of its own — it is reachable only through `/host`, so a host cannot pick it up accidentally while reaching for a shared literal. `/types` and `/constants` stay public because the webview (a browser bundle) needs the node-free pair: `/constants` for values, `/types` for erased type-only imports. A barrel import from a host drags the whole agent runtime (tools, providers, transitive deps) into that host's bundle and can kill it at launch: `be05c42be` added two import lines for a shared string, grew the desktop main bundle by 2.2 MB, and the `@vscode/ripgrep` wrapper inside that graph threw while its module body evaluated — that is what made desktop + VS Code 1.2.5 crash before `whenReady`. Two invariants keep it cheap: `sideEffects: false` (so a stray barrel import costs ~10 KB instead of 2.2 MB) and **no import-time side effects in SDK modules** (no `import "./x.js"`, no module-scope IO/registration; optional/platform deps such as `@vscode/ripgrep` must be resolved lazily in a `createRequire` + `try/catch` wrapper). Enforced by `scripts/check-sdk-surface.mjs` (`pnpm run check:sdk-surface`, the PR-tier `sdk-surface` CI job). Split the host-side RPC layer into its own package only when an out-of-repo consumer appears — the barrier today is a script, and a package would make a wrong import _unresolvable_ rather than merely red.
-
-### Webview Internals (`packages/webview`)
-
-- `src/index.tsx` branches on the injected `window.waveHostType === "desktop"` → `DesktopApp`, else `ChatApp`. `DesktopApp` owns the desktop pane list / workdir and delegates rendering to `ChatApp`.
-- `ChatApp.tsx` is the reducer host (`useReducer(chatReducer, ...)`, `src/reducers/chatReducer.ts`) — the single `ChatState`/`ChatAction` for messages, tasks, sessions, confirmations, permissionMode, etc. Host↔webview traffic is a flat `command`-discriminated `postMessage` protocol.
+- **`Agent`**（`src/agent.ts`）：只能 `Agent.create(options)`（构造函数私有）。自建轻量 DI `Container`（`utils/container.ts` + `containerSetup.ts`）取 manager/service；`sendMessage()` 忙时入队，否则交给 `InteractionService`。
+- **回合循环**（`managers/aiManager.ts` 的 `sendAIMessage()`）：pin 本轮配置快照 → 调模型（`services/aiService.ts`）→ 有 `tool_calls` 就 PreToolUse hook → `toolManager.execute()` → PostToolUse hook → 再循环，直到模型不再调工具。
+- **工具**（`managers/toolManager.ts`、`src/tools/`）：内置工具都是 `ToolPlugin`（`src/tools/types.ts`），经 `toolManager.register()` 注册；名称/上限在 `src/constants/`。
+- **权限**（`managers/permissionManager.ts`）：`PermissionMode = default | acceptEdits | plan | dontAsk | bypassPermissions`（`src/types/permissions.ts`）；`checkPermission()` 是唯一闸门，模式解析顺序 CLI 覆盖 > 配置 > `default`。
+- **记忆**（`services/memory.ts`）：三档 —— 项目 `<workdir>/AGENTS.md`（回退 `CLAUDE.md`）、用户 `~/.wave/AGENTS.md`、自动记忆 `~/.wave/projects/<git-common-dir>/memory/MEMORY.md`（只加载前 200 行，按 git common dir 归档所以 worktree 共享）。写入走 `utils/atomicWrite.ts`。根 AGENTS.md 常驻；**子目录 AGENTS.md 不常驻，但要等 agent `Read` 到该子树里的文件后才注入**（`utils/nestedMemory.ts` 沿祖先链由远到近注入、同目录 `AGENTS.md` 优先于 `CLAUDE.md`、到项目根为止、会话级去重，与 CC 的 `nested_memory` 一致；只读触发，Write/Edit 不算）。
+- **配置链**（`services/configurationService.ts` + `utils/configPaths.ts`）：override > `AgentOptions` > Remote > `<workdir>/.wave/settings.local.json` > `<workdir>/.wave/settings.json` > `~/.wave/settings.json`。会话级 env 快照（不污染 `process.env`）；热更新是 `LiveConfigManager` + `services/fileWatcher.ts`，每轮 pin 快照。
+- **改 settings 必须同步内置技能**：`settings.json` 的键、`env`、hook 事件/字段或默认值有变动，就同步 `src/builtin/skills/settings.ts` —— 模型回答"怎么配 X"只读它，过期等于教错用法。
+- **host 传输**（`src/stdio/`）：`StdioAgent` 用 JSON-RPC 镜像 `Agent` API，每次调用带 `sessionId`；`NotificationRouter` 按会话分流。经 `wave-agent-sdk/host` 再导出（自己不设子路径），VS Code 扩展与桌面端使用。
+- **构建**：`pnpm -F wave-agent-sdk build` = `tsrs` → `dist/`（逐文件 ESM + `.d.ts`，不打包）。`tsrs` 是 TypeScript 的 Rust 移植，type-check 与两处 `tsc` 构建都由它跑；npm `typescript` **不是**依赖（无人 import 其 API，且 7.x 只发 `tsc` CLI，没有 tsserver/lib 可给编辑器用）。两条硬规则：`pnpm run type-check` / `pnpm run build` 必须**串行**（`--workspace-concurrency=1`）—— 并发编译器会在模块解析阶段随机丢包（幻影 TS2307），上游 `microsoft/typescript-go#4262` `#4834` 记录了这个缺陷，也是当初弃用 `tsc` 的原因。
+- **公共面**：三个受众三个入口。`wave-agent-sdk`（barrel）给 CLI（进程内嵌 agent）；host（桌面主进程、VS Code 扩展宿主）只准 import `wave-agent-sdk/host`，缺什么加到这里；webview 只用 `/types` 与 `/constants`（浏览器 bundle 需要这对 node-free 入口）。RPC 层不单独开子路径，只能经 `/host` 到达。host 引 barrel 会把整个 agent 运行时拖进宿主 bundle：`be05c42be` 为共享一个字符串加了两行 import，桌面主包涨 2.2 MB，图里 `@vscode/ripgrep` 包装器在模块体求值时抛错，把 1.2.5 的桌面端与 VS Code 崩在 `whenReady` 之前。两条不变式压住成本：`sideEffects: false`（误引约 10 KB 而非 2.2 MB）与 **SDK 模块零 import 副作用**（不写 `import "./x.js"`、不做模块级 IO/注册；`@vscode/ripgrep` 这类可选/平台依赖必须在 `createRequire` + `try/catch` 里懒加载）。由 `scripts/check-sdk-surface.mjs`（PR 级 `sdk-surface` job）把守。只有仓库外出现消费者时，才把 RPC 层拆成独立包。
 
 ## 🛠 Development Commands
 
-Always use `pnpm` as the package manager.
+包管理器只用 `pnpm`。
 
-### Build & Type-Check
-
-- **Build all**: `pnpm build`
-  - **Build specific package**: `pnpm -F <package-name> build` (e.g., `pnpm -F wave-agent-sdk build` or `pnpm -F wave-code build`)
-- **Type-check all**: `pnpm run type-check`
-- **Run the CLI locally**: `pnpm run wave` (runs `packages/code` source directly via tsx, no build needed; set `LOG_LEVEL=DEBUG` for DEBUG logs)
-
-### Testing
-
-- **Run all tests**: `pnpm test`
-  - **Run tests for a package**: `pnpm -F <package-name> test` (e.g., `pnpm -F wave-agent-sdk test`)
-  - **Run a single test file**: `pnpm -F <package-name> test <path/to/test>` (e.g., `pnpm -F wave-agent-sdk test tests/tools/bashTool.test.ts`)
-  - **Caution**: for `agent-sdk` and `code`, `pnpm test` includes `tests/integration/` + `*.integration.test.ts` files that hit real external dependencies (git/spawn/hook/filesystem — no real LLM calls; AI paths are mocked). Use `test:unit` to skip them.
-- **Testing Framework**: Vitest.
-- **Don't run the full suite unless asked.** Default to `pnpm -F <pkg> test <path/to/test>`; widen to a package's `test:unit` only for cross-cutting changes (shared helper, config, several files) and say why. Whole-repo runs need the user to ask for it.
-
-Test layers, ordered fast→slow (the PR gate runs unit tests only; the rest are post-merge — the screenshot/demo row is not a gate anywhere, it executes solely as part of the docs-site deploy in `pages.yml`):
-
-| Layer       | Where                                                                   | Command                                                                                                                                                                                                                               |
-| ----------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Unit        | `*.test.ts` / `*.test.tsx`                                              | `pnpm -F <pkg> test:unit` — what PR CI gates                                                                                                                                                                                          |
-| Integration | `tests/integration/**`, `*.integration.test.ts`                         | `pnpm run test:integration` (real git/spawn/fs, no LLM)                                                                                                                                                                               |
-| Webview e2e | `packages/webview/e2e/*.e2e.ts` (real Chromium)                         | `pnpm -F wave-webview run test:e2e`                                                                                                                                                                                                   |
-| Screenshots | `packages/webview/demo/*.demo.ts`                                       | `pnpm -F wave-webview run test:demo` — **not a test layer**: drives the UI into position and captures docs screenshots; behaviour assertions belong in `e2e`. CI runs it only inside the docs deploy (`pages.yml`), never as a PR job |
-| Real-host   | `packages/desktop/tests/integration/*.integration.test.ts`              | `pnpm -F wave-desktop run test:realhost` (real `DesktopHost` ↔ real `wave --stdio` child)                                                                                                                                            |
-| Real-IDE    | `packages/vscode/tests-e2e/`, `packages/jetbrains/src/integrationTest/` | `pnpm -F wave-vscode run test:e2e:completion` / `pnpm jb:test:ui` (real VS Code / real IDE via Starter+Driver, real model) — 跑不起来先读 `.wave/skills/real-machine-testing`（Linux 显示服务是主要变量，不是代码缺陷）               |
-| SDK surface | `scripts/check-sdk-surface.mjs`                                         | `pnpm run check:sdk-surface` after `pnpm -F wave-agent-sdk build` (the PR-tier `sdk-surface` CI job)                                                                                                                                  |
-
-Everything above runs **inside the repo**, where `node_modules` is complete and
-`@vscode/ripgrep-<platform>` resolves. The host apps are what actually gets
-**packaged and shipped** (an `app.asar` carries only the desktop app's own
-production deps; everything else must already be inlined in the bundle), so a
-green suite can still ship a host that dies on launch — v1.2.5 did exactly that.
-Nothing currently asserts the packaged artifact (the `host-bundle-load` job that
-inspected the dev-built bundles was rolled back); that side rests on the
-source-level checks in `scripts/check-sdk-surface.mjs`.
-
-### Linting
-
-- **Linter is oxlint, not eslint**: there is no `eslint` binary in the repo (`pnpm exec eslint` → `Command not found`); each package's `lint` script runs `oxlint` against the root `.oxlintrc.json`.
-- **Lint all**: `pnpm lint`
-- **Format**: `pnpm exec prettier --write .`
-- **Pre-commit** (`.husky/pre-commit`): runs `pnpm run type-check`, then `lint-staged` (prettier `--write` on staged code/json/md), then — only if a staged path is under `docs/` — `scripts/check-docs-links.mjs` + `scripts/check-sidebar-anchors.mjs`. Hooks install via `pnpm install` (`prepare` → husky).
-- **Webview command contract**: `pnpm run audit:commands` statically verifies every webview→host `command` literal is registered in all four host routers (this is the `webview-command-audit` CI job).
-- **SDK surface / host import boundary**: `pnpm run check:sdk-surface` (build the SDK first) pins the _shape_ of the public surface rather than the artifacts: each host package may only import its allowed SDK subpath, the `/host` entry's closure must have zero third-party deps and stay under a size budget, every SDK entry must still load with `@vscode/*` removed from the resolution environment, and `sideEffects: false` must stay in place. Seconds long, no host build, so it is a PR gate (`sdk-surface` job).
-
-### Release
-
-- **Release**: `pnpm run release:patch` / `release:minor` / `release:major` (runs `scripts/release.js`, then the `publish.yml` GitHub workflow publishes to npm).
-
-### JetBrains Plugin
-
-- **Run IDE with plugin**: `pnpm run jb:run`
-- **Build**: `pnpm run jb:build` (builds webview first, then the Gradle plugin)
-- **Test**: `pnpm run jb:test`
-
-### Desktop App (`packages/desktop`)
-
-- **Run dev**: `cd packages/desktop && pnpm run run` (compiles, then launches Electron; dev uses a separate `wave-desktop-dev` userData so it coexists with the installed app)
-- **Build installer**: `pnpm run dist` (electron-builder → `release/`). **Do not bypass `scripts/afterPack.js`**: electron-builder's bundle mutation breaks the ad-hoc linker seal, and without the re-sign step LaunchServices silently refuses to launch the app.
-- **Install/update installed app**: `pnpm run desktop:install` (run from repo root). Does a full `pnpm build` → `electron-builder --dir` → `rsync -a --delete` over `/Applications/CodeWave IDE.app/`. Full build (not selective) is required because the user consumes `wave-code` via npm link. **Do not quit/kill/relaunch the user's running CodeWave IDE.app** — rsync over a running `.app` is safe on macOS; restart is manual.
-- **Test**: `pnpm -F wave-desktop test`
-- **Architecture**: the main process wraps the shared webview and talks JSON-RPC to a `wave --stdio` child process — `src/main/desktopHost.ts` (agent pool: one `StdioAgent` per session for parallel conversations, see FR-031) → `stdio/stdioClient.ts` + `stdio/notificationRouter.ts` (routes notifications by sessionId). Session index/worktree metadata persists in `userData/wave-desktop.json` via `configStore.ts`.
-- **CLI resolution**: `WAVE_CLI_PATH` env var points at a workspace `wave-code` build; otherwise the bundled binary is used.
-
-### Docs Site
-
-- **Preview**: `pnpm run docs:dev`
-- **Build**: `pnpm run docs:build` — this first runs Playwright demo tests to regenerate screenshots into `docs/public/screenshots/` (gitignored). A bare `vitepress build docs` fails on missing screenshot imports. This deploy is the only CI place the demo suites run; `pages.yml` also triggers on `packages/webview/src/**`, so a UI change redeploys the site on merge and a broken demo surfaces there.
-- **Pack the docs site for upload**: `pnpm run docs:pack` — builds with `--base /docs/` and writes `docs-<version>.tar.gz` in the repo root, which `.wave/skills/ops-upload` uploads (`--type docs`) to the CodeChat publishing API. Releases do **not** build the docs (`publish.yml` only publishes npm + creates the GitHub Release); GitHub Pages is built separately by `pages.yml`.
-
-## 🧭 Webview Extension Conventions (`packages/webview`)
-
-When adding UI features, use the shared mechanisms below instead of hand-rolling — each was extracted after the duplicated version caused recurring bugs:
-
-- **Host→webview messages**: consume via the `useHostMessage` hook (`src/utils/useHostMessage.ts`), never a raw `window.addEventListener("message")`. Pane-scoped consumers pass `{ paneId }`; special filters (requestId/termId correlation) stay inline in the handler.
-- **New webview→host commands**: register in **all four** route instances (vscode chat + settings switches in `messageHandler.ts`, desktop `desktopHost.ts`, JB `MessageHandler.kt`). The `webview-command-audit` CI job fails on missing registration — follow the workflow documented at the top of `scripts/audit-webview-commands.mjs`. A desktop-only command **without** the `desktop*` prefix must also be added to `DESKTOP_GATED_NON_PREFIX` in that script.
-- **New host→webview response (reply-to) messages**: declare the attribution field in the `ReplyAttribution` registry (webview-fixtures) — compile-time enforced via `satisfies`. Consumers must either discard stale replies or filter by attribution at render time. Snapshot/broadcast messages need no attribution (classification JSDoc lives in the webview-fixtures types).
-- **Cross-session UI state** (state that must survive conversation switches): store it in `SessionUiStore` (`src/utils/sessionUiStore.ts`; key = `sessionId` | `new:<paneId>`, prune on session close), not in ad-hoc module caches. Known legacy paths pending migration: none — the projectSettings snapshot moved here (PR #2131); the #2081 context-usage cache deliberately stays in the desktop host (it is a cross-process event-replay source — cache-before-pane-check + replay on pane bind — not webview UI state; see `desktopHost.ts` `onContextUsage`).
-- **Pane skeletons**: compose `PaneShell`/`PanePlaceholder` instead of re-writing the aside/toolbar/empty-state markup.
-- **Settings list views** (mount→fetch→response→delete-confirm state machine): use `useSettingsList`.
-- **Test assertions**: anchor on testids/semantics (e.g. `is-spinning`, svg presence), never on icon font class names — standard documented at the top of `packages/webview/tests/test-utils.tsx`.
-
-Known legacy hotspots (duplication not yet deduplicated — check **both** copies when editing): the vscode chat/settings dual command switches in `messageHandler.ts` (settings commands are registered twice; fixing only one causes #2086-style drift). The vscode/desktop stdioAgent + NotificationRouter copies are now merged into the SDK's `src/stdio/` (exported via `wave-agent-sdk/host`; hosts keep their transports).
+- **构建 / 类型检查**：`pnpm build`（全量，串行）、`pnpm -F <pkg> build`、`pnpm run type-check`。
+- **本地跑 CLI**：`pnpm run wave`（tsx 直跑 `packages/code` 源码，不用构建；`LOG_LEVEL=DEBUG` 看调试日志）。
+- **测试**：`pnpm -F <pkg> test <path/to/test>` 跑单文件。**默认只跑改动相关的文件**；包级 `test:unit` 只用于横切改动（共享 helper/config/多文件）并说明理由，全仓跑要用户点名。`agent-sdk` / `code` 的 `pnpm test` 含 `tests/integration/` + `*.integration.test.ts`（真 git/spawn/hook/文件系统，无真 LLM，AI 路径 mock），要跳过用 `test:unit`。
+- **测试分层**（PR 门禁只跑 unit）：unit `*.test.ts(x)` → `test:unit`；integration `tests/integration/**` → `pnpm run test:integration`；webview e2e `packages/webview/e2e/*.e2e.ts`（真 Chromium）→ `-F wave-webview run test:e2e`；real-host `packages/desktop/tests/integration/**` → `-F wave-desktop run test:realhost`；real-IDE `packages/vscode/tests-e2e/`、`packages/jetbrains/src/integrationTest/` → `test:e2e:completion` / `pnpm jb:test:ui`（真 IDE + 真模型，跑不起来先读 `.wave/skills/real-machine-testing`）。
+- **`packages/webview/demo/*.demo.ts` 不是测试**：它把 UI 摆到位截 docs 截图（`test:demo`），行为断言一律写进 `e2e`。CI 只在文档部署（`pages.yml`）里跑 demo，PR 不跑。
+- **单测绿只是"仓库内"绿**：`app.asar` 只带桌面端自己的生产依赖，其余必须已内联进 bundle，所以全绿也可能发出一个启动即死的宿主（1.2.5 就是这样）；打包产物目前没有断言，只靠 `check:sdk-surface` 的源码级检查兜底。
+- **Lint 是 oxlint**（仓库没有 eslint，`pnpm exec eslint` → `Command not found`）：`pnpm lint` / `pnpm -F <pkg> lint`；格式化 `pnpm exec prettier --write .`。pre-commit（`.husky/pre-commit`）：`pnpm run type-check` → lint-staged（staged 的 code/json/md 走 prettier）→ staged 含 `docs/` 时再跑 `scripts/check-docs-links.mjs` + `check-sidebar-anchors.mjs`。hook 由 `pnpm install`（`prepare` → husky）安装。
+- **契约 / 公共面检查**：`pnpm run audit:commands` 静态校验每个 webview→host `command` 字面量是否在四个宿主路由都注册；`pnpm run check:sdk-surface`（先建 SDK）钉公共面形状 —— host 只准 import 允许的 SDK 子路径、`/host` 闭包零第三方依赖且在体积预算内、去掉 `@vscode/*` 后各入口仍能加载、`sideEffects: false` 必须留着。都秒级、不构建宿主，属 PR 门禁。
+- **发版**：`pnpm run release:patch|minor|major`（`scripts/release.js`，随后 `publish.yml` 发 npm 并建 GitHub Release）。
+- **JetBrains**：`pnpm jb:run` / `jb:build`（先建 webview 再跑 Gradle）/ `jb:test`。
+- **文档站**：`pnpm run docs:dev`；`pnpm run docs:build` 会先跑 demo 重新生成截图到 `docs/public/screenshots/`（gitignored），裸 `vitepress build docs` 会因缺图导入失败；`pnpm run docs:pack` 出 `docs-<version>.tar.gz`（`--base /docs/`），交给 `.wave/skills/ops-upload` 的 `--type docs` 上传。发版**不**建文档站（`publish.yml` 只发 npm + Release），Pages 由 `pages.yml` 单独构建，它也监听 `packages/webview/src/**` —— UI 改动合并就重部署，demo 坏了在那里暴露。
 
 ## 🐛 Debugging
 
-- **Prefer temporary console.log/console.trace**: When diagnosing bugs, especially race conditions or complex flows, add temporary `console.log` or `console.trace` statements to trace execution rather than overthinking through static analysis. Run the code/tests, observe the actual output, then remove the logs once the issue is identified.
-- **Stop/restart the daemon**: `pnpm wave daemon stop` (graceful shutdown of `~/.wave/daemon.sock`, idempotent when not running) / `pnpm wave daemon restart` (stop + relaunch from the current CLI).
-
-## 🧩 VS Code Extension (`packages/vscode`)
-
-### Build
-
-- **Compile**: `pnpm -F wave-vscode run compile` (esbuild: backend CJS + frontend IIFE)
-- **Watch**: `pnpm -F wave-vscode run watch`
-- **Package .vsix**: `pnpm -F wave-vscode run package`
-
-### Architecture
-
-- **Backend** (Extension Host): `src/extension.ts` → `ChatProvider` → `ChatSession` (drives a `wave --stdio` child over JSON-RPC via `StdioAgent`; it does **not** embed the SDK `Agent`) → `MessageHandler` → services
-- **Frontend** (Webview): React 18 app whose source lives in `packages/webview/src/` (NOT `packages/vscode/webview/`, which is synced build output), uses `useReducer` for state, communicates via `vscode.postMessage`
-- **Key constraint**: `acquireVsCodeApi()` can only be called once per webview lifecycle — call in root component and pass as prop
-
-### Testing
-
-- **Unit tests**: Vitest in `tests/` — `pnpm -F wave-vscode test`
-- **E2E tests**: real-browser Playwright tests in `packages/webview/e2e/` (`.e2e.ts`, requires Chromium) — `pnpm -F wave-webview run test:e2e`
-- **Screenshot generation** (`packages/webview/demo/*.demo.ts`): these are **not tests** — they drive the real UI into the state a docs image needs and capture it into `docs/public/screenshots/` (gitignored) via `pnpm -F wave-webview run test:demo`. A green demo run proves "the screenshots were produced", nothing about behaviour: **every behaviour assertion belongs in `e2e/*.e2e.ts`** (real Chromium, `pnpm -F wave-webview run test:e2e`). When adding a regression case, write it in `e2e`; leave `demo` alone unless the change also alters a screenshot. CI runs the demos only inside the docs deploy (`pages.yml`), never on pull requests.
-
-## 🖥 CLI (`packages/code`)
-
-React Ink terminal app. `src/index.ts` is the yargs entry; it dispatches to one of several run modes:
-
-- `src/cli.tsx` — interactive TUI (`render(<App/>)`), the default.
-- `src/print-cli.ts` — non-interactive `-p/--print`.
-- `src/stdio-cli.ts` + `src/stdio/` — JSON-RPC server over stdin/stdout (what the desktop app spawns as `wave --stdio`).
-- `src/daemon-cli.ts` + `src/daemon/` — background daemon on a Unix socket (`~/.wave/daemon.sock`).
-
-The `Agent` is constructed in `src/contexts/useChat.tsx` (it imports `wave-agent-sdk`, wires `AgentCallbacks`, and owns send/compact/queue state) — unlike the desktop app, which spawns the CLI and talks JSON-RPC. Slash commands are declared in `src/constants/commands.ts` (`AVAILABLE_COMMANDS`) with handling in `useChat.tsx`; the input state machine is `src/managers/inputReducer.ts` + `inputHandlers.ts`. Note `src/utils/logger.ts` writes to a log file, not stdout — stdout belongs to the Ink UI (don't `console.log` in CLI code).
+- **优先用临时 `console.log` / `console.trace`**：尤其竞态和复杂流程，跑起来看真实输出，定位后删掉，别纯靠静态推演。
+- **重启 daemon**：`pnpm wave daemon stop`（优雅停 `~/.wave/daemon.sock`，没在跑也安全）/ `pnpm wave daemon restart`。
 
 ## 📐 Specs & Spec-First Workflow
 
-`docs/specs/` is the **source of truth for feature design** (and is rendered into the docs site). Update the spec — and get it confirmed — _before_ implementing a requirement change; the spec is design, not a changelog.
+`docs/specs/` 是功能设计的**权威来源**（会渲染进文档站）。需求变更先改 spec 并确认，再动实现；spec 是设计，不是 changelog。
 
-- Grouped by topic under `core/`, `ui/`, `desktop/`, `multi-agent/`, `ecosystem/`, `automation/`, `enterprise/`. Frontmatter carries `name` / `description` / `order`; the H1 is `# 功能规格说明：<name>`.
-- A spec needs a `## 用户场景与测试` section with user stories (`### 用户故事：…`) and acceptance scenarios (numbered `N. **假设** … **当** … **则** …`).
-- Counts + template warnings come from `docs/.vitepress/spec-stats.mjs` (consumed by `docs/specs/specs.data.js` → `docs/specs/index.md`). Prefer targeted edits to an existing spec over whole-file rewrites, and re-run the stats after editing.
+- 按主题分在 `core/` `ui/` `desktop/` `multi-agent/` `ecosystem/` `automation/` `enterprise/`；frontmatter 带 `name` / `description` / `order`，H1 是 `# 功能规格说明：<name>`。
+- 必须有 `## 用户场景与测试`，内含用户故事（`### 用户故事：…`）与验收场景（编号 `N. **假设** … **当** … **则** …`）。
+- 统计与模板告警来自 `docs/.vitepress/spec-stats.mjs`（经 `docs/specs/specs.data.js` → `docs/specs/index.md`）；优先定点编辑已有 spec 而不是整篇重写，改完重跑统计。
