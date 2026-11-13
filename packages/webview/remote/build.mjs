@@ -372,6 +372,10 @@ function emit({ chatJs, chatCss, mermaid }) {
   <meta name="wave-remote-config" content='${JSON.stringify({ socketUrl, version: pageVersion, sha: pageSha })}' />
 </head>
 <body>
+  <!-- 顶部那条色带（iOS 27 主屏形态下压掉系统那层模糊）：元素常驻、由 CSS 决定
+       画不画——没点亮时它是 0 高的空 div，不影响布局，见 globals.css 里那条规则。
+       真元素而不是伪元素：实测能把模糊换成实色的形态是「贴边的 fixed 容器」。 -->
+  <div id="remote-top-edge" aria-hidden="true"></div>
   <div id="root"></div>
   <script src="./${shimName}"></script>
   <script src="./${chatName}"></script>
