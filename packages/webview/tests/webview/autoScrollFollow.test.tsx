@@ -1,5 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
+  ASK_USER_QUESTION_TOOL_NAME,
+  BASH_TOOL_NAME,
+} from "wave-agent-sdk/constants";
+import {
   renderChatApp,
   screen,
   waitFor,
@@ -304,6 +308,120 @@ describe("auto-scroll follow during streaming", () => {
     });
 
     expect(scrollTo).toHaveBeenCalled();
+  });
+
+  /**
+   * 恢复跟随的第三条途径（spec ui/message-rendering-system.md 场景 6）：在确认
+   * 弹窗里作答。作答与「自己发消息」同属用户主动把对话推下去——上滚读历史后答完，
+   * 视口必须回到真实底部并继续跟随，否则答案落进下方工具块，用户在屏幕上看不到
+   * 就等于白答。
+   */
+  it("re-arms following when the user answers an AskUserQuestion dialog", async () => {
+    const container = await renderStreamingAtBottom();
+    const scrollTo = vi.spyOn(container, "scrollTo");
+
+    fireEvent.wheel(container, { deltaY: -120 });
+    scrollUpBy(300);
+    expect(gap()).toBeGreaterThan(200);
+
+    act(() => {
+      sendCommand("showConfirmation", {
+        confirmationId: "auq-1",
+        toolName: ASK_USER_QUESTION_TOOL_NAME,
+        confirmationType: "需要确认",
+        toolInput: {
+          questions: [
+            {
+              question: "这次改动要不要一起带上文档？",
+              options: [{ label: "带上" }, { label: "先不带" }],
+              multiSelect: false,
+            },
+          ],
+        },
+      });
+    });
+    await waitFor(() =>
+      expect(
+        document.querySelector(".confirmation-dialog"),
+      ).toBeInTheDocument(),
+    );
+
+    // 只选了选项还不算作答：提交按钮此刻才可用。
+    await act(async () => {
+      fireEvent.click(screen.getByText("带上"));
+    });
+    scrollTo.mockClear();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /提交回答/ }));
+    });
+
+    await waitFor(() => expect(scrollTo).toHaveBeenCalled(), {
+      timeout: 3000,
+    });
+    await waitFor(() => expect(gap()).toBeLessThanOrEqual(2), {
+      timeout: 3000,
+    });
+
+    // 而且真的重新钉上了：后续 chunk 继续把视口带到底部。
+    pushChunk(BASE_LINES + 12);
+    await waitFor(() => expect(gap()).toBeLessThanOrEqual(2));
+  });
+
+  it("re-arms following when the user rejects a permission dialog", async () => {
+    const container = await renderStreamingAtBottom();
+    const scrollTo = vi.spyOn(container, "scrollTo");
+
+    fireEvent.wheel(container, { deltaY: -120 });
+    scrollUpBy(300);
+    expect(gap()).toBeGreaterThan(200);
+
+    act(() => {
+      sendCommand("showConfirmation", {
+        confirmationId: "bash-1",
+        toolName: BASH_TOOL_NAME,
+        confirmationType: "Bash 命令执行确认",
+        toolInput: { command: "npm run dev" },
+      });
+    });
+    await waitFor(() =>
+      expect(
+        document.querySelector(".confirmation-dialog"),
+      ).toBeInTheDocument(),
+    );
+
+    scrollTo.mockClear();
+    await act(async () => {
+      fireEvent.click(document.querySelector(".confirmation-close-btn")!);
+    });
+
+    await waitFor(() => expect(scrollTo).toHaveBeenCalled(), {
+      timeout: 3000,
+    });
+    await waitFor(() => expect(gap()).toBeLessThanOrEqual(2), {
+      timeout: 3000,
+    });
+  });
+
+  /**
+   * 同一对判据的另一面：宿主下发的「置底请求」仍旧只是一个请求。它与「作答」
+   * 走的是两个入口（`scrollToBottom` / `pinToBottom`），把作答接成强制置底时
+   * 不能顺手把请求那个入口也松掉——那会把读者的阅读位置一起交出去。
+   */
+  it("still ignores a host scrollToBottom request after the user scrolled up", async () => {
+    const container = await renderStreamingAtBottom();
+    const scrollTo = vi.spyOn(container, "scrollTo");
+
+    fireEvent.wheel(container, { deltaY: -120 });
+    scrollUpBy(300);
+    const parked = gap();
+    scrollTo.mockClear();
+
+    act(() => {
+      sendCommand("scrollToBottom", {});
+    });
+
+    expect(scrollTo).not.toHaveBeenCalled();
+    expect(gap()).toBeGreaterThan(parked - 2);
   });
 
   /**
