@@ -202,6 +202,13 @@
   display: flex;
   align-items: center;
   gap: 2px;
+  /* 严格吃掉 tab 行剩下的宽度（左右两侧的 16px gap 因此恒定），内容超了由
+     自己横向滚动，不把右侧的搜索 / 刷新 / 添加挤出自己的格子。
+     1113 评论（「这块区域不能和搜索重合，不然添加无法操作」）前这里是默认的
+     `0 1 auto`：超长分类名把 strip 的基准宽度撑到内容宽，末尾那颗「＋」跟着
+     被推到搜索框底下；`flex: 1 1 0` + 参考预览面板 tab 条的「＋」搬移
+     （见 ArtifactsPage.tsx 的 `categoryAddPinned`）两层兜住。 */
+  flex: 1 1 0;
   min-width: 0;
   overflow-x: auto;
   scrollbar-width: none;
@@ -216,15 +223,33 @@
   align-items: center;
   gap: 6px;
   height: 30px;
+  /* 与预览面板 tab 同档的封顶宽度（`.desktop-panel-tab` 的 max-width: 140px）：
+     分类名再长也只占一颗 tab 的常规宽度，多出来的字走省略号，tab 行因此总能
+     排完、不靠把「＋」挤到行外来「装下」。没有这条时一个 32 字的分类名就能占
+     327px，整行溢出 46px。 */
+  max-width: 140px;
   padding: 0 10px;
   border: none;
   border-radius: 6px;
   background: transparent;
   color: var(--vscode-descriptionForeground);
-  font-size: 13px;
+  /* 字号/行高对齐浏览器式页签（`.desktop-panel-tab`：14/22，设计师 2026-11-13
+     「对比浏览器的 tab 优化这里的字体」）。原来 13px 比页签小一档，同一排两种
+     文字大小并排看就虚。 */
+  font-size: 14px;
+  line-height: 22px;
   white-space: nowrap;
   cursor: pointer;
   flex: 0 0 auto;
+}
+
+/* 分类名的省略号（tab 有 max-width 之后才轮得到它生效）。`min-width: 0` 让这颗
+   flex item 允许窄于内容的最小宽度，否则文字会溢到右内衬上、压住「⋯」。 */
+.artifacts-tab-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .artifacts-tab:hover {
@@ -234,10 +259,10 @@
 
 .artifacts-tab.is-active {
   color: var(--vscode-foreground);
-  /* 深色档 0.16 的白 ≈ #2b2b2b，与面板底 #191a1b 只差一档、扫一眼难确认选中；
-     提到 0.22 后深浅两档都能一眼看出当前 tab。 */
-  background: rgba(127, 127, 127, 0.22);
-  font-weight: 600;
+  /* 选中态与浏览器式页签同一档（设计师 2026-11-13）：底色 = foreground 10%，
+     字重保持 400 —— 与 `.desktop-panel-tab.active` 逐字同一条表达式，
+     选中只靠底色表达，不靠加粗（原 rgba(127,127,127,.22) + 600 比页签重两档）。 */
+  background: color-mix(in srgb, var(--vscode-foreground) 10%, transparent);
 }
 
 .artifacts-tab-item {
@@ -247,10 +272,11 @@
   flex: 0 0 auto;
 }
 
-/* 「⋯」贴着 tab 内部右端（绝对定位，不参与 tab 之间的排版），tab 常驻
-   26px 右内衬给它留位：hover 时它淡入，不挤动相邻 tab。 */
+/* 「⋯」贴着 tab 内部右端（绝对定位，不参与 tab 之间的排版），tab 常驻右内衬
+   给它留位：hover 时它淡入，不挤动相邻 tab。内衬 30 = 2（贴右缘的偏移）+
+   24（按钮盒）+ 4（文字到按钮盒的间距，与页签 label→关闭按钮同值）。 */
 .artifacts-tab-item .artifacts-tab {
-  padding-right: 26px;
+  padding-right: 30px;
 }
 
 /* 分类 tab 的「⋯」：一律只在 hover 时淡入（选中的 tab 也不常显，避免整行
@@ -276,7 +302,7 @@
   cursor: pointer;
   transition:
     opacity 0.12s ease,
-    background-color 0.12s ease;
+    color 0.12s ease;
 }
 
 .artifacts-tab-item:hover .artifacts-tab-more,
@@ -286,13 +312,17 @@
   pointer-events: auto;
 }
 
+/* 交互态：只提字色，不给底（设计师 2026-11-13「更多图标的交互状态（不要背景）」）。
+   侧栏会话行那颗是「浅底 + 字色」两件套，这里按她的口径去掉背景这一件。 */
 .artifacts-tab-more:hover {
-  background: rgba(127, 127, 127, 0.12);
+  color: var(--vscode-foreground);
 }
 
+/* 与侧栏会话行 `.desktop-session-more-icon` 同一颗官方矢量、同一档 16×16
+   （设计师 2026-11-13「更多图标可以和左侧导航用同一个更多图标」）。 */
 .artifacts-tab-more-icon {
-  width: 14px;
-  height: 14px;
+  width: 16px;
+  height: 16px;
 }
 
 /* 「+ 新建分类」放在分类 tab 行末尾（自定义视图才出现）。 */
@@ -315,6 +345,12 @@
 .artifacts-tab-add:hover {
   color: var(--vscode-foreground);
   background: rgba(127, 127, 127, 0.12);
+}
+
+/* 溢出后搬到滚动区外（tabs 与右侧动作键之间）：行里已经有 16px gap，不再叠
+   那颗为紧跟 tab 而写的 2px 内缩。 */
+.artifacts-tab-add--pinned {
+  margin-left: 0;
 }
 
 .artifacts-tab-add-icon {

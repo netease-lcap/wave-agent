@@ -931,6 +931,14 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({
   const categoriesSaveRequestRef = useRef<string | null>(null);
   const revokeRequestRef = useRef<string | null>(null);
   const revokeTargetRef = useRef<string | null>(null);
+  // 主 tab 行的「添加分类」键：溢出语义照预览面板 tab 条（`DesktopPanelTabs`
+  // 的 `pinned`，设计师 2026-11-13 预览评论「参考这里的实现，但是不要分割线」）——
+  // tab 放得下时「＋」跟在最后一个 tab 后面；一放不下就搬到可横向滚动区之外、
+  // 紧贴右侧动作键，永远不会被滚出视野。
+  // 原来它固定排在 tab 末尾，分类名一长、tab 行溢出，它就被推到行外并压到搜索框
+  // 底下（搜索框在 DOM 里更靠后 ⇒ 命中它是输入框），表现正是她说的「添加无法操作」。
+  const tabsStripRef = useRef<HTMLDivElement>(null);
+  const [categoryAddPinned, setCategoryAddPinned] = useState(false);
   // 登录态（null = 还没收到过）。只用来识别「未登录 → 已登录 / 已登录 → 未登录」
   // 这两个翻转：列表与分类都是账号级数据，翻转时必须重取，否则页面会一直停在
   // 打开那一刻的结果上（PM 缺陷 3500345467492608）。
@@ -945,6 +953,53 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({
     },
     [],
   );
+
+  // 「添加分类」键贴内还是贴外（见上面 `categoryAddPinned` 的注释）：按
+  // 「全部 tab 宽 + 2px 间距 + 末尾这颗 24×24 键（含 2px 内缩）」与滚动区自身
+  // 宽度比较，跟 `DesktopPanelTabs` 的判定式同一个思路 —— 拿内容需求宽度比容器，
+  // 而不是比当前模式下的剩余空间，键在两处之间移动时才不会来回抖。
+  useLayoutEffect(() => {
+    if (view !== "custom") {
+      setCategoryAddPinned(false);
+      return;
+    }
+    const strip = tabsStripRef.current;
+    if (!strip) return;
+    const measure = () => {
+      const tabEls = Array.from(
+        strip.querySelectorAll<HTMLElement>(".artifacts-tab"),
+      );
+      const tabsTotal = tabEls.reduce((sum, el) => sum + el.offsetWidth, 0);
+      // .artifacts-tabs 的 gap 2 + 「＋」自身 24 + margin-left 2
+      const needed = tabsTotal + Math.max(0, tabEls.length - 1) * 2 + 26;
+      const next = needed > strip.clientWidth + 1;
+      setCategoryAddPinned((prev) => (prev === next ? prev : next));
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(strip);
+    strip
+      .querySelectorAll<HTMLElement>(".artifacts-tab")
+      .forEach((el) => ro.observe(el));
+    return () => ro.disconnect();
+  }, [view, categories]);
+
+  // 选中那颗 tab 自动滚进视野（同预览面板页签的浏览器语义，设计师 2026-11-13
+  // 「现在可以继续添加，但是不会自动滚动到选项」）：新建分类总排在末尾、且被自动
+  // 选中 —— 整条滚到最右，新 tab 与「＋」一起露出来；点的是中间那颗（或「全部」）
+  // 就只滚到「刚好可见」，已经看得见的位置一点都不动。
+  useEffect(() => {
+    const strip = tabsStripRef.current;
+    if (!strip || view !== "custom") return;
+    const last = categories[categories.length - 1];
+    if (activeCategoryId && last && activeCategoryId === last.id) {
+      strip.scrollLeft = strip.scrollWidth;
+      return;
+    }
+    strip
+      .querySelector('.artifacts-tab[aria-selected="true"]')
+      ?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [activeCategoryId, categories, view]);
 
   // 定位：toast 出现时量一次本页中心（layout effect ⇒ 在首次绘制前落定，
   // 不会先闪在视口中心）。
@@ -1583,7 +1638,7 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({
             视图 = 全部 + 各分类 + 添加分类。横向独占一行、工具条下方，表格随之
             占满整宽（原来那列 172px 的竖排分类栏已去掉）。 */}
         <div className="artifacts-tabs-row">
-          <div className="artifacts-tabs" role="tablist">
+          <div className="artifacts-tabs" role="tablist" ref={tabsStripRef}>
             {view === "default" ? (
               <>
                 <button
@@ -1635,6 +1690,9 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({
                       role="tab"
                       aria-selected={activeCategoryId === category.id}
                       className={`artifacts-tab${activeCategoryId === category.id ? " is-active" : ""}`}
+                      // 名字被 max-width 省略后，悬停仍要能看到全名 —— 与预览面板
+                      // 页签（`.desktop-panel-tab` 的 `title={label}`）同一口径。
+                      title={category.name}
                       onClick={() => {
                         setActiveCategoryId(category.id);
                         setSelected(new Set());
@@ -1701,20 +1759,37 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({
                     )}
                   </div>
                 ))}
-                <Tooltip text="添加分类" position="bottom">
-                  <button
-                    type="button"
-                    className="artifacts-tab-add"
-                    onClick={() => openCategoryDialog({ kind: "create" })}
-                    aria-label="添加分类"
-                    data-testid="artifacts-new-category"
-                  >
-                    <PlusIcon className="artifacts-tab-add-icon" />
-                  </button>
-                </Tooltip>
+                {/* 「添加分类」：放得下时跟在最后一个分类后面（浏览器 tab 条语义），
+                    放不下才搬到滚动区外 —— 见上面 `categoryAddPinned`。 */}
+                {!categoryAddPinned && (
+                  <Tooltip text="添加分类" position="bottom">
+                    <button
+                      type="button"
+                      className="artifacts-tab-add"
+                      onClick={() => openCategoryDialog({ kind: "create" })}
+                      aria-label="添加分类"
+                      data-testid="artifacts-new-category"
+                    >
+                      <PlusIcon className="artifacts-tab-add-icon" />
+                    </button>
+                  </Tooltip>
+                )}
               </>
             )}
           </div>
+          {view === "custom" && categoryAddPinned && (
+            <Tooltip text="添加分类" position="bottom">
+              <button
+                type="button"
+                className="artifacts-tab-add artifacts-tab-add--pinned"
+                onClick={() => openCategoryDialog({ kind: "create" })}
+                aria-label="添加分类"
+                data-testid="artifacts-new-category"
+              >
+                <PlusIcon className="artifacts-tab-add-icon" />
+              </button>
+            </Tooltip>
+          )}
           <div className="artifacts-tabs-actions">
             <SearchField
               value={search}
