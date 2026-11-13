@@ -259,6 +259,41 @@ describe("设置页 · 远程控制选项卡", () => {
     expect(view).toHaveTextContent("开启远程控制");
   });
 
+  it("puts keyboard focus on 开启远程控制 once the host says the link is off", async () => {
+    // `/remote-control` 这个入口的意义就是「不用鼠标把远程控制打开」：焦点直接落在
+    // 主按钮上，回车即开启，不必先 Tab 过八个导航项和状态行。
+    const { mountRequest } = await openRemoteControlTab();
+
+    await act(async () => {
+      sendHostMessage(
+        reply(mountRequest.requestId as string, {
+          snapshot: { state: "off" },
+        }),
+      );
+    });
+
+    expect(screen.getByRole("button", { name: "开启远程控制" })).toHaveFocus();
+  });
+
+  it("leaves focus alone when the link is already up (断开 must not be one Enter away)", async () => {
+    const { mountRequest } = await openRemoteControlTab();
+
+    await act(async () => {
+      sendHostMessage(reply(mountRequest.requestId as string));
+    });
+
+    expect(screen.getByRole("button", { name: "断开" })).not.toHaveFocus();
+  });
+
+  it("waits for the first reply before deciding where focus goes", async () => {
+    // 回执没到之前 `state` 只是乐观默认值（off）。若此时就聚焦，已连接的机器上会先
+    // 把焦点给「开启」，回执一到按钮换成「断开」，焦点跟着掉回 body——一次抢了又丢。
+    await openRemoteControlTab();
+    expect(
+      screen.getByRole("button", { name: "开启远程控制" }),
+    ).not.toHaveFocus();
+  });
+
   it("asks the host to disconnect from the connected state", async () => {
     const { vscode, mountRequest } = await openRemoteControlTab();
     await act(async () => {
