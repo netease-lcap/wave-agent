@@ -4,6 +4,7 @@ import {
   type ModElementType,
   type ModTreeNode,
 } from "../types/mods.js";
+import { isAllowedUrl } from "./url.js";
 
 /**
  * mod 返回的元素树校验（spec「限额」）。
@@ -24,21 +25,13 @@ function fail(error: string): ModTreeValidation {
   return { ok: false, error };
 }
 
-/** `Link.href` 只放行 `https:` 与本地回环的 `http:`。 */
+/**
+ * `Link.href` 的白名单与 `$.http.fetch` 共用一份（`./url.js`）。
+ *
+ * 两处各写一份必然漂移，而漂移的方向总是更宽松的那份。
+ */
 function isAllowedHref(href: string): boolean {
-  if (href.length > MOD_LIMITS.hrefChars) return false;
-  try {
-    const url = new URL(href);
-    if (url.protocol === "https:") return true;
-    if (url.protocol !== "http:") return false;
-    return (
-      url.hostname === "localhost" ||
-      url.hostname === "127.0.0.1" ||
-      url.hostname === "[::1]"
-    );
-  } catch {
-    return false;
-  }
+  return isAllowedUrl(href, MOD_LIMITS.hrefChars);
 }
 
 interface WalkState {

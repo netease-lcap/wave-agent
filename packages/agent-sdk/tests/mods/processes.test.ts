@@ -250,3 +250,115 @@ describe("ModProcessManager.spawn 的参数校验", () => {
     });
   }
 });
+
+/**
+ * `$.process.run`：跑完拿结果。
+ *
+ * 这几条也全在真 spawn 上跑 —— 「退出码非 0 也 resolve」「超时把进程杀干净」
+ * 「stdin 写完就关」都只在真进程上才有意义。
+ */
+describe("ModProcessManager.run", () => {
+  it("跑完返回 stdout / stderr 与退出码", async () => {
+    const result = await manager().run("todo:panel", [
+      process.execPath,
+      "-e",
+      "console.log('hi'); console.error('bad')",
+    ]);
+
+    expect(result).toEqual({
+      exitCode: 0,
+      stdout: "hi\n",
+      stderr: "bad\n",
+      isStdoutTruncated: false,
+      isStderrTruncated: false,
+    });
+  });
+
+  it("退出码非 0 也 resolve（grep 没匹配到不是异常）", async () => {
+    const result = await manager().run("todo:panel", [
+      process.execPath,
+      "-e",
+      "console.error('nope'); process.exit(3)",
+    ]);
+
+    expect(result.exitCode).toBe(3);
+    expect(result.stderr).toBe("nope\n");
+  });
+
+  it("stdin 一次性写入后关闭", async () => {
+    const result = await manager().run(
+      "todo:panel",
+      [process.execPath, "-e", "process.stdin.pipe(process.stdout)"],
+      { stdin: "ping" },
+    );
+
+    expect(result.stdout).toBe("ping");
+  });
+
+  it("超时的时候把进程杀掉再报错", async () => {
+    const started = Date.now();
+    await expect(
+      manager().run(
+        "todo:panel",
+        [process.execPath, "-e", "setInterval(function () {}, 1000)"],
+        { timeoutMs: 200 },
+      ),
+    ).rejects.toThrow(/超过 200 毫秒/);
+    // 真杀了才会这么快返回：留着进程的话这个 await 会挂到测试超时。
+    expect(Date.now() - started).toBeLessThan(5_000);
+  });
+
+  it("程序根本起不来就报错", async () => {
+    await expect(
+      manager().run("todo:panel", ["/definitely/not/a/program"]),
+    ).rejects.toThrow(/ENOENT/);
+  });
+
+  it("输出超过上限时截断并置上标志，进程照样跑完", async () => {
+    const oversize = MOD_LIMITS.runStreamBytes + 1024;
+    const result = await manager().run("todo:panel", [
+      process.execPath,
+      "-e",
+      `process.stdout.write('a'.repeat(${oversize}))`,
+    ]);
+
+    expect(result.isStdoutTruncated).toBe(true);
+    expect(result.stdout.length).toBe(MOD_LIMITS.runStreamBytes);
+    expect(result.exitCode).toBe(0);
+  });
+
+  it("run 也占一个进程名额", async () => {
+    const mgr = manager();
+    const running = [];
+    for (let i = 0; i < MOD_LIMITS.maxProcessesPerMod; i++) {
+      const gen = mgr.spawn("todo:panel", {
+        argv: [process.execPath, "-e", HANG_SCRIPT],
+      });
+      await gen.next();
+      running.push(gen);
+    }
+
+    await expect(
+      mgr.run("todo:panel", [process.execPath, "-e", "console.log('over')"]),
+    ).rejects.toThrow(/外部进程上限/);
+
+    for (const gen of running) await gen.return({ code: null, signal: null });
+  });
+
+  const invalidRun: Array<[string, unknown, unknown, RegExp]> = [
+    ["argv 不是数组", "node -v", undefined, /第一个参数必须是非空数组/],
+    ["argv 含非字符串", ["node", 1], undefined, /只能包含字符串/],
+    ["env 不是对象", ["node"], { env: "X=1" }, /env 必须是对象/],
+    ["stdin 不是字符串", ["node"], { stdin: 1 }, /stdin 必须是字符串/],
+    ["timeoutMs 不是正数", ["node"], { timeoutMs: 0 }, /timeoutMs 必须是正数/],
+    ["整体不是对象", ["node"], "x", /第二个参数必须是对象/],
+  ];
+
+  for (const [name, argv, options, message] of invalidRun) {
+    it(`参数校验：${name}`, async () => {
+      await expect(manager().run("todo:panel", argv, options)).rejects.toThrow(
+        message,
+      );
+    });
+  }
+});

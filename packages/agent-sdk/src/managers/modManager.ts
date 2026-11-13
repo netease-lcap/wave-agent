@@ -223,6 +223,11 @@ export class ModManager {
               startTimer: (kind, ms, fn) =>
                 this.startTimer(mod.id, kind, ms, fn),
               spawnProcess: (options) => this.processes.spawn(mod.id, options),
+              runProcess: (argv, runOptions) =>
+                this.processes.run(mod.id, argv, runOptions),
+              // `$.fs` 的相对路径基准与 `spawn` 的 cwd 同一口径：现取现用，
+              // `cd` 过之后读的相对路径跟着落在新目录。
+              workdir: () => this.options.workdir?.() ?? process.cwd(),
               submitPrompt: (text) => this.submitPrompt(mod.id, text),
             },
             mod.path,

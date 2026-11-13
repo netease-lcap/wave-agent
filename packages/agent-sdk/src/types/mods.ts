@@ -138,6 +138,57 @@ export interface ModProcessExit {
   signal: string | null;
 }
 
+/**
+ * `$.process.run` 的参数（spec「外部进程」）。
+ *
+ * 与 `spawn` 有一处名字不齐：这里的一次性输入叫 `stdin`，`spawn` 里叫
+ * `input`。这是 Claude Code 自己的不一致，照抄。
+ */
+export interface ModRunOptions {
+  /** 缺省用会话当前工作目录（与 `spawn` 同一条口径）。 */
+  cwd?: string;
+  /** 与宿主环境取并集，显式给的值覆盖。 */
+  env?: Record<string, string>;
+  /** 一次性写入 stdin 后关闭。 */
+  stdin?: string;
+  /** 缺省 30 秒，超过上限夹到 10 分钟。 */
+  timeoutMs?: number;
+}
+
+/** `$.process.run` 的结果：退出码非 0 也 resolve。 */
+export interface ModRunResult {
+  exitCode: number | null;
+  stdout: string;
+  stderr: string;
+  isStdoutTruncated: boolean;
+  isStderrTruncated: boolean;
+}
+
+/** `$.fs.list` 的一项（不递归）。 */
+export interface ModFsEntry {
+  name: string;
+  kind: "file" | "dir";
+  size: number;
+  isLink: boolean;
+}
+
+/** `$.fs.stat` 的结果。 */
+export interface ModFsStat {
+  kind: "file" | "dir";
+  size: number;
+  isLink: boolean;
+}
+
+/** `$.http.fetch` 的结果。 */
+export interface ModFetchResult {
+  ok: boolean;
+  status: number;
+  headers: Record<string, string>;
+  text: string;
+  /** 响应体超过限额时 `text` 只留了前面一段。 */
+  isTruncated: boolean;
+}
+
 /** 限额（spec「限额」表）。宿主与编译器共用同一份数字。 */
 export const MOD_LIMITS = {
   /** 单个 mod 文件。 */
@@ -168,4 +219,18 @@ export const MOD_LIMITS = {
   processChunkChars: 64 * 1024,
   /** 一个外部进程累计输出上限（字节），超出后停止读取并结束该进程。 */
   processTotalBytes: 4 * 1024 * 1024,
+  /** `$.process.run` 的默认超时。 */
+  runTimeoutMs: 30_000,
+  /** `$.process.run` 的超时上限；更大的 `timeoutMs` 夹到这个数。 */
+  maxRunTimeoutMs: 600_000,
+  /** `$.process.run` 的 stdout / stderr 各自保留的字节数。 */
+  runStreamBytes: 4 * 1024 * 1024,
+  /** `$.fs` 单个文件的读写上限（字节）。 */
+  fsFileBytes: 4 * 1024 * 1024,
+  /** `$.http.fetch` 的请求体 / 响应体上限（字符）。 */
+  httpBodyChars: 4 * 1024 * 1024,
+  /** 一次 `$.http.fetch` 的超时（含重定向与读完 body）。 */
+  httpTimeoutMs: 30_000,
+  /** 一次 `$.http.fetch` 最多跟的重定向次数。 */
+  httpMaxRedirects: 5,
 } as const;

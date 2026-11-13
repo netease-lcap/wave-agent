@@ -2,6 +2,11 @@ import * as vm from "node:vm";
 import * as path from "node:path";
 import type {
   ModElementType,
+  ModFetchResult,
+  ModFsEntry,
+  ModFsStat,
+  ModRunOptions,
+  ModRunResult,
   ModTreeNode,
   ModSpawnOptions,
   ModProcessChunk,
@@ -9,6 +14,8 @@ import type {
 } from "../types/mods.js";
 import { MOD_LIMITS } from "../types/mods.js";
 import { Box, Text, Button, Input, Link, Code, Markdown } from "./index.js";
+import { ModFs } from "./files.js";
+import { modFetch } from "./http.js";
 import { logger } from "../utils/globalLogger.js";
 
 /**
@@ -84,6 +91,39 @@ export interface ModDollar {
     spawn(
       options: ModSpawnOptions,
     ): AsyncGenerator<ModProcessChunk, ModProcessExit>;
+    run(argv: string[], options?: ModRunOptions): Promise<ModRunResult>;
+  };
+  /**
+   * 文件（spec「读写文件」）。
+   *
+   * 沙箱里没有 `fs`。相对路径按会话**当前**工作目录解析（会随 `cd` 动），与
+   * `$.process.spawn` 的 `cwd` 缺省值同一条口径。
+   */
+  fs: {
+    read(
+      filePath: string,
+      options?: { as?: "text" | "bytes" },
+    ): Promise<string | { base64: string }>;
+    write(filePath: string, text: string): Promise<void>;
+    list(dirPath: string): Promise<ModFsEntry[]>;
+    stat(filePath: string): Promise<ModFsStat>;
+    exists(filePath: string): Promise<boolean>;
+  };
+  /**
+   * 网络（spec「发 HTTP 请求」）。
+   *
+   * 沙箱里没有 `fetch`。只允许 `https:` 与本机回环的 `http:`。
+   */
+  http: {
+    fetch(
+      url: string,
+      options?: {
+        method?: string;
+        headers?: Record<string, string>;
+        body?: string;
+        timeoutMs?: number;
+      },
+    ): Promise<ModFetchResult>;
   };
   /**
    * 把一条 prompt 投进**当前会话**（spec「把 prompt 送进对话」）。
@@ -119,6 +159,13 @@ export interface ModRuntimeHost {
   spawnProcess(
     options: unknown,
   ): AsyncGenerator<ModProcessChunk, ModProcessExit>;
+  /** 跑完拿结果（`$.process.run`）；限额与回收同 `spawnProcess`。 */
+  runProcess(argv: unknown, options?: unknown): Promise<ModRunResult>;
+  /**
+   * `$.fs` 相对路径的解析基准：会话**当前**工作目录（容器 token
+   * `CurrentWorkdir`，会随 `cd` 动）。
+   */
+  workdir(): string;
   /** 把一条 prompt 投进当前会话。 */
   submitPrompt(text: string): Promise<void>;
 }
@@ -253,6 +300,8 @@ export class ModRuntime {
   private readonly wave: unknown;
   /** 当前正在计时的预算（`$.process.spawn` 等输出时会被暂停）。 */
   private budget: HookBudget | undefined;
+  /** `$.fs` 的实现，惰性创建：多数 mod 一次都不碰文件。 */
+  private fileApiHolder: ModFs | undefined;
 
   constructor(
     private readonly host: ModRuntimeHost,
@@ -320,6 +369,24 @@ export class ModRuntime {
       // 同上：进程也归宿主所有，`dispose` / `/reload-plugins` 时宿主统一回收。
       process: {
         spawn: (options) => this.streamWithBudget(host.spawnProcess(options)),
+        run: (argv, options) =>
+          this.withBudget(() => host.runProcess(argv, options)),
+      },
+      // fs / http 在 agent 进程内就地实现：它们不碰会话状态，不需要过宿主。
+      // 只有相对路径的基准要问宿主（`workdir()` 是 getter，`cd` 过要跟着变）。
+      fs: {
+        read: (filePath, options) =>
+          this.withBudget(() => this.fileApi().read(filePath, options)),
+        write: (filePath, text) =>
+          this.withBudget(() => this.fileApi().write(filePath, text)),
+        list: (dirPath) => this.withBudget(() => this.fileApi().list(dirPath)),
+        stat: (filePath) =>
+          this.withBudget(() => this.fileApi().stat(filePath)),
+        exists: (filePath) =>
+          this.withBudget(() => this.fileApi().exists(filePath)),
+      },
+      http: {
+        fetch: (url, options) => this.withBudget(() => modFetch(url, options)),
       },
       prompt: {
         submit: async (options) => {
@@ -493,6 +560,28 @@ export class ModRuntime {
   /** 该 mod 注册了哪些钩子（诊断用）。 */
   hookNames(): string[] {
     return [...this.hooks.keys()];
+  }
+
+  /**
+   * 等一次 I/O 的时间不计入钩子预算（spec「外部进程」）。
+   *
+   * 与 {@link streamWithBudget} 同一条规则，只是这里等的是一次性 promise：
+   * `$.process.run` 默认 30 秒、`$.http.fetch` 也是 30 秒，都把 5 秒的 hook
+   * 预算算穿。预算只算 mod 自己干活的时间。
+   */
+  private async withBudget<T>(call: () => Promise<T>): Promise<T> {
+    const budget = this.budget;
+    budget?.pause();
+    try {
+      return await call();
+    } finally {
+      budget?.resume();
+    }
+  }
+
+  private fileApi(): ModFs {
+    this.fileApiHolder ??= new ModFs(() => this.host.workdir());
+    return this.fileApiHolder;
   }
 
   /**

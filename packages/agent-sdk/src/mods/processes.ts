@@ -15,6 +15,7 @@ import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import type {
   ModProcessChunk,
   ModProcessExit,
+  ModRunResult,
   ModSpawnOptions,
 } from "../types/mods.js";
 import { MOD_LIMITS } from "../types/mods.js";
@@ -63,6 +64,121 @@ export class ModProcessManager {
       [Symbol.asyncIterator]: () => stream,
     };
     return stream;
+  }
+
+  /**
+   * 跑完拿结果（spec「外部进程」）。
+   *
+   * 与 `spawn` 共用同一套限额与回收：`run` 结束之前占一个进程名额，会话销毁
+   * 时同样被杀 —— 否则「一次调用最长 10 分钟」就是一条活过会话的后门。
+   * 超时到点先把进程树收掉再报错，不留一个还在写文件的后台进程。
+   *
+   * 退出码非 0 **不报错**：`grep` 没匹配到就是 1，那不是异常。
+   */
+  run(modId: string, argv: unknown, options?: unknown): Promise<ModRunResult> {
+    let parsed: ReturnType<typeof parseRunOptions>;
+    try {
+      parsed = parseRunOptions(argv, options, this.defaultCwd());
+    } catch (error) {
+      return Promise.reject(error);
+    }
+    if (this.disposed) {
+      return Promise.reject(new Error("会话已结束，不能再起外部进程"));
+    }
+    const set = this.processesFor(modId);
+    if (set.size >= MOD_LIMITS.maxProcessesPerMod) {
+      return Promise.reject(
+        new Error(
+          `外部进程上限 ${MOD_LIMITS.maxProcessesPerMod} 个（${modId}），先结束不用的进程`,
+        ),
+      );
+    }
+
+    return new Promise<ModRunResult>((resolve, reject) => {
+      const [command, ...args] = parsed.argv;
+      const child = spawn(command, args, {
+        cwd: parsed.cwd,
+        env: { ...process.env, ...parsed.env },
+        stdio: ["pipe", "pipe", "pipe"],
+        detached: process.platform !== "win32",
+      });
+      const entry: LiveProcess = { child };
+      set.add(entry);
+
+      let stdout: Buffer[] = [];
+      let stderr: Buffer[] = [];
+      let stdoutBytes = 0;
+      let stderrBytes = 0;
+      let isStdoutTruncated = false;
+      let isStderrTruncated = false;
+      let settled = false;
+
+      const settle = (fn: () => void) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        set.delete(entry);
+        fn();
+      };
+
+      const timer = setTimeout(() => {
+        killTree(child);
+        settle(() =>
+          reject(
+            new Error(
+              `$.process.run 超过 ${parsed.timeoutMs} 毫秒，已结束该进程`,
+            ),
+          ),
+        );
+      }, parsed.timeoutMs);
+
+      const take =
+        (stream: "stdout" | "stderr") =>
+        (chunk: Buffer): void => {
+          const kept = stream === "stdout" ? stdoutBytes : stderrBytes;
+          const room = MOD_LIMITS.runStreamBytes - kept;
+          if (room <= 0) {
+            // 超限之后照旧把管道读干净：不读，子进程会卡在写上，那个「跑完了
+            // 拿结果」的调用就永远不结束。只是不再往结果里存。
+            if (stream === "stdout") isStdoutTruncated = true;
+            else isStderrTruncated = true;
+            return;
+          }
+          const slice = chunk.length <= room ? chunk : chunk.subarray(0, room);
+          if (chunk.length > room) {
+            if (stream === "stdout") isStdoutTruncated = true;
+            else isStderrTruncated = true;
+          }
+          if (stream === "stdout") {
+            stdout.push(slice);
+            stdoutBytes += slice.length;
+          } else {
+            stderr.push(slice);
+            stderrBytes += slice.length;
+          }
+        };
+
+      child.stdout?.on("data", take("stdout"));
+      child.stderr?.on("data", take("stderr"));
+      child.on("error", (error: Error) => settle(() => reject(error)));
+      child.on("close", (code) => {
+        settle(() =>
+          resolve({
+            exitCode: code,
+            stdout: Buffer.concat(stdout).toString("utf8"),
+            stderr: Buffer.concat(stderr).toString("utf8"),
+            isStdoutTruncated,
+            isStderrTruncated,
+          }),
+        );
+      });
+
+      if (parsed.stdin !== undefined) {
+        child.stdin?.end(parsed.stdin);
+      } else {
+        child.stdin?.end();
+      }
+    });
   }
 
   /**
@@ -286,5 +402,68 @@ function parseSpawnOptions(
     cwd,
     ...(raw.env === undefined ? {} : { env }),
     ...(raw.input === undefined ? {} : { input: raw.input as string }),
+  };
+}
+
+/**
+ * 校验 `$.process.run` 的参数。
+ *
+ * 与 `spawn` 的差别是形状本身：`argv` 走位置参数、一次性输入叫 `stdin`
+ * （Claude Code 的 `$.process.run` 就是这么写的，照抄）。
+ */
+function parseRunOptions(
+  argv: unknown,
+  options: unknown,
+  defaultCwd: string,
+): {
+  argv: string[];
+  cwd: string;
+  env?: Record<string, string>;
+  stdin?: string;
+  timeoutMs: number;
+} {
+  if (!Array.isArray(argv) || argv.length === 0) {
+    throw new Error("$.process.run 的第一个参数必须是非空数组（不走 shell）");
+  }
+  const list = argv.map((item) => {
+    if (typeof item !== "string") {
+      throw new Error("$.process.run 的 argv 只能包含字符串");
+    }
+    return item;
+  });
+  if (options !== undefined && (typeof options !== "object" || !options)) {
+    throw new Error("$.process.run 的第二个参数必须是对象");
+  }
+  const raw = (options ?? {}) as Record<string, unknown>;
+
+  const cwd = typeof raw.cwd === "string" && raw.cwd ? raw.cwd : defaultCwd;
+  const env: Record<string, string> = {};
+  if (raw.env !== undefined) {
+    if (!raw.env || typeof raw.env !== "object" || Array.isArray(raw.env)) {
+      throw new Error("$.process.run 的 env 必须是对象");
+    }
+    for (const [key, value] of Object.entries(raw.env)) {
+      if (typeof value === "string") env[key] = value;
+    }
+  }
+  if (raw.stdin !== undefined && typeof raw.stdin !== "string") {
+    throw new Error("$.process.run 的 stdin 必须是字符串");
+  }
+
+  const asked =
+    raw.timeoutMs === undefined
+      ? MOD_LIMITS.runTimeoutMs
+      : Number(raw.timeoutMs);
+  if (!Number.isFinite(asked) || asked <= 0) {
+    throw new Error("$.process.run 的 timeoutMs 必须是正数");
+  }
+  const timeoutMs = Math.min(Math.floor(asked), MOD_LIMITS.maxRunTimeoutMs);
+
+  return {
+    argv: list,
+    cwd,
+    ...(raw.env === undefined ? {} : { env }),
+    ...(raw.stdin === undefined ? {} : { stdin: raw.stdin as string }),
+    timeoutMs,
   };
 }

@@ -128,10 +128,32 @@ mod 的沙箱里没有 `child_process`，要跑外部程序只能走 `$.process.
 - `spawn({ argv, cwd?, env?, input? })` 返回一个异步可迭代对象，逐块产出 `{ stream: "stdout" | "stderr", text }`；迭代正常结束时返回 `{ code, signal }`，进程起不来或被宿主拒绝时抛错。形状与 Claude Code 的 `$.process.spawn` 一致（它的生成器同样 yield `text` 块、`return { code, signal }`）。
 - `argv` 是**参数数组、不走 shell**；要用 shell 就显式写 `argv: ["bash", "-lc", cmd]`。
 - `cwd` 默认会话工作目录；`env` 与宿主环境取并集，显式给的值覆盖。`input` 给出时写进 stdin 然后关闭（一次性输入，不支持长连 stdin）。
-- **等流不计入钩子预算**：`for await` 停在下一块输出上的时间算空闲，5 秒预算在这段时间里暂停，所以「起一个长跑进程、在钩子或元素回调里逐块消费它」是最正常的写法，不会一动就超时；预算只算 mod 自己干活的时间。与 Claude Code 把 `process.spawn` 的预算标成 `pull` 是同一条规则。
-- 进程退出后句柄不可复用；要重连就再 `spawn` 一次。一个 mod 同时最多 4 个子进程。
+- **等 I/O 不计入钩子预算**：`for await` 停在下一块输出上的时间算空闲，5 秒预算在这段时间里暂停，所以「起一个长跑进程、在钩子或元素回调里逐块消费它」是最正常的写法，不会一动就超时；预算只算 mod 自己干活的时间。`run` / `fs` / `http` 的等待同理。与 Claude Code 把 `process.spawn` 的预算标成 `pull`、把 `$.clock.sleep` 之外的时间排除在事件预算外是同一条规则。
+- 进程退出后句柄不可复用；要重连就再 `spawn` 一次。一个 mod 同时最多 4 个子进程（`run` 在它跑完之前也占一个名额）。
 - **结束一条流就是结束那个进程**：`for await` 里 `break`，或者从别处对同一个迭代器调 `return()`（面板上的「断开」按钮就是这么写的），都会**立刻**给子进程发信号、连它的子进程树一起收掉，不等下一块输出。这是 Claude Code 的 streaming pull/close 协议（v2.1.280 changelog）——`return()` 不能排在正在 `await` 的那次 `next()` 后面，否则一条静默的长跑进程（`tail -f` 那类）永远杀不掉。
 - 子进程输出按块读、不做行切分：要行协议就自己按 `text` 拆分（外部脚本用 `console.log` 打一行 JSON 是最省事的接法）。
+- `run(argv, { cwd?, env?, stdin?, timeoutMs? })` 是「跑完拿结果」的那一半：一次调用 resolve 到 `{ exitCode, stdout, stderr, isStdoutTruncated, isStderrTruncated }`，**退出码非 0 也 resolve**；程序起不来或超时报错（超时先把进程树杀掉）。默认 30 秒、最多 10 分钟；stdout / stderr 各留 4 MiB，超出部分丢弃并把对应的 `is…Truncated` 置真。`stdin` 一次性写入后关闭。形状与 Claude Code 的 `$.process.run` 一致（它用 `stdin` 而 `spawn` 用 `input`，这个不一致也照抄）。
+
+### 读写文件
+
+沙箱里没有 `fs`，`$.fs` 是唯一入口。相对路径按**会话工作目录**解析（与 `spawn` 的 `cwd` 默认一致），绝对路径原样使用。
+
+- `read(path)` 返回 `string`；`read(path, { as: "bytes" })` 返回 `{ base64 }`（二进制走这条）。
+- `write(path, text)` 覆盖写入，走 `atomicWrite`（临时文件 + rename），不留半截文件。
+- `list(path)` 返回这一层的 `{ name, kind: "file" | "dir", size, isLink }`，不递归。
+- `stat(path)` 返回 `{ kind, size, isLink }`；`exists(path)` 返回 `boolean`（不存在就是 `false`，不抛错）。
+- 单个文件读写各 4 MiB。形状与 Claude Code 的 `$.fs` 一致。
+- **不另设路径白名单**：同一插件的 hooks 本来就在跑 shell，mod 也能 `spawn` 任意命令读同一个文件 —— 加白名单只是让「读」比「读」更难，不提高任何安全性。这与「外部进程」的信任论证是同一条。
+
+### 发 HTTP 请求
+
+`$.http.fetch(url, options?)` 是 mod 访问网络的唯一方式（沙箱里没有 `fetch`）。
+
+- **只允许 `https:` 与本地回环的 `http:`**（`localhost` / `127.0.0.1` / `[::1]`），与 `Link.href` 同一条白名单。明文 http 打远端直接报错 —— 否则一条命令就能把带 token 的请求发成明文。
+- `options` 是 `{ method?, headers?, body?, timeoutMs? }`；返回 `{ ok, status, headers, text }`，`text` 是响应体原文、不解 JSON。
+- 最多跟 5 次重定向，一次调用（含重定向与读完 body）最多 30 秒。
+- 请求体 4 MiB（按字符数），响应体 4 MiB：超出时 `text` 只留前 4 MiB 并置 `isTruncated`；`Content-Length` 声明的长度超限则**直接报错**，不静默截断。
+- 形状与 Claude Code 的 `$.http.fetch` 一致。
 
 ### 把 prompt 送进对话
 
@@ -176,9 +198,14 @@ mod 的沙箱里没有 `child_process`，要跑外部程序只能走 `$.process.
 | 面板每次 `invalidate` 的最小间隔 | 100ms（更快的调用合并）                                           |
 | 定时器最小间隔                   | 200ms（更小的值夹到 200ms）                                       |
 | 一个 mod 同时活跃的定时器        | 16（超出时新建定时器报错）                                        |
-| 一个 mod 同时活跃的外部进程      | 4（超出时 `spawn` 报错）                                          |
+| 一个 mod 同时活跃的外部进程      | 4（`run` 跑完前也占一个；超出时 `spawn` / `run` 报错）            |
 | 外部进程单块输出                 | 64 KiB（更长的块切开）                                            |
 | 一个外部进程累计输出             | 4 MiB（超出后停止读取并杀掉该进程）                               |
+| `$.process.run` 超时             | 默认 30 秒，最多 10 分钟                                          |
+| `$.process.run` 的 stdout/stderr | 各 4 MiB（超出置对应的 `is…Truncated`）                           |
+| `$.fs.read` / `$.fs.write`       | 单个文件 4 MiB                                                    |
+| `$.http.fetch` 请求体 / 响应体   | 各 4 MiB（响应体超 `Content-Length` 声明即报错）                  |
+| 一次 `$.http.fetch`              | 30 秒（含重定向与读完 body），最多 5 次重定向                     |
 
 ## 加载纪律
 
@@ -200,7 +227,7 @@ mod 的沙箱里没有 `child_process`，要跑外部程序只能走 `$.process.
 
 ## 交付分层（一期不做的事）
 
-不做，且**接口不预留**（避免半成品）：VS Code / JetBrains / 终端渲染、`Client`/`Svg`/`Raster`/`Image`、`$.model`/`$.agent`/`$.http`/`$.fs`/`$.mcp`、事件拦截与改写（`tool.call`/`prompt.*`）、mod 分层与加载期审查。
+不做，且**接口不预留**（避免半成品）：VS Code / JetBrains / 终端渲染、`Client`/`Svg`/`Raster`/`Image`、`$.model`/`$.agent`/`$.mcp`、事件拦截与改写（`tool.call`/`prompt.*`）、mod 分层与加载期审查。
 
 `$.host`（让 mod 请求宿主做界面动作）整条不做也不预留。一期只有一个候选动作「新建会话」，它本身就超出 Claude Code 的 mods API（`$.session` 只能读会话、在会话内动作，CC 桌面端的新会话走客户端自己的接口），而它的副作用会打断用户眼前的会话（新建会把当前 pane 换到新会话）。产品决定降级：外部事件到达时由用户自己先新建一条会话，面板在新会话里自动出现（见「面板的归属」）。
 
@@ -239,6 +266,21 @@ mod 的沙箱里没有 `child_process`，要跑外部程序只能走 `$.process.
 4. **假设**会话被销毁或执行了 `/reload-plugins`，**当**收尾完成，**则**该 mod 的定时器全部停止，之后不再有任何回调写 `$.state` 或 `$.ui`。
 5. **假设**外部事件需要一个干净会话来处理（面板没有任何新建会话的能力），**当**用户自己按侧栏「＋」新建一条会话，**则**新会话里同一插件自己长出同一块面板、显示与旧会话一致的状态（读同一个 `$.store`），用户不需要再手动开面板。
 6. **假设**「连接」按钮的 `onPress` 用 `$.process.spawn` 起了一个外部 WebSocket 客户端并把迭代器存在闭包里，「断开」按钮对同一个迭代器调 `return()`，**当**用户点击「断开」，**则**该外部进程连同子进程树在一秒内退出、面板显示「未连接」，即使它此后一直没有输出。
+
+### 用户故事：跨平台的双向连接（优先级：P0）
+
+作为插件作者，我希望面板能驱动一条真正的双向连接（WebSocket），且 Windows / macOS / Linux 行为一致，以便「遥控开关」这类面板不必等宿主造一套 WS API，也不被平台特性卡住。
+
+**为什么是这个形状**：mod 沙箱里没有 `fetch` 也没有 `WebSocket`，所以 WS 只能在**桥进程**里；桥与 mod 之间走本机回环 HTTP（`$.http.fetch` 发命令、桥的 stdout 收事件）——不用命名管道，是因为 Windows 没有 `mkfifo`。
+
+**验收场景**：
+
+1. **假设** mod 在「连接」按钮里 `$.process.spawn` 起一个桥进程（它自己连远端 WebSocket，并在 `127.0.0.1` 上开 HTTP），桥把端口打在 stdout 第一行，mod 读第一块拿到端口，**当**用户点「发送」，`onPress` 调 `$.http.fetch('http://127.0.0.1:<port>/send', { method: 'POST', body })`，**则**远端收到这条消息，调用在 30 秒内拿到 `ok`（桥没连上时返回 503，面板显示发送失败而不是静默）。
+2. **假设**桥每收到一条远端消息就往 stdout 打一行 JSON，mod 在 `for await` 里读到后写 `$.state` 并 invalidate，**当**远端推送到达，**则**面板在下一帧显示新内容。
+3. **假设**「断开」按钮对桥的迭代器调 `return()`，**当**用户点击，**则**桥进程连同子进程树在一秒内退出、面板显示「未连接」；整条链路不依赖 `mkfifo`，Windows 上同样成立。
+4. **假设** `$.http.fetch` 的目标是明文 `http://` 的公网地址，**当**调用发生，**则**报错（只允许 `https:` 与本机回环），面板顶部显示错误摘要。
+5. **假设**「探测」按钮用 `$.process.run` 跑一条 3 秒的命令，**当**它以退出码 2 结束，**则** `await` 正常返回 `{ exitCode: 2, stdout, stderr }`、面板显示「探测失败」而不是抛错；同一命令超过 `timeoutMs`（上限 10 分钟）时调用报错，且该进程树已被杀掉。
+6. **假设**「导出」按钮里调 `$.fs.write('.wave/export.json', text)`，**当**用户点击，**则**文件立刻是完整内容（不是半截），随后 `$.fs.list('.wave')` 能在结果里看到它，`$.fs.read` 读回同样的字符串。
 
 ### 用户故事：第三方服务点一下按钮，prompt 就进对话（优先级：P0）
 

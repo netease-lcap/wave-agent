@@ -1,5 +1,5 @@
 import * as path from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { compileMods } from "../../src/mods/compile.js";
 import {
   ModRuntime,
@@ -10,6 +10,7 @@ import {
   MOD_LIMITS,
   type ModProcessChunk,
   type ModProcessExit,
+  type ModRunResult,
   type ModTreeNode,
 } from "../../src/types/mods.js";
 import { getEsbuild } from "../../src/utils/esbuild.js";
@@ -17,6 +18,49 @@ import { getEsbuild } from "../../src/utils/esbuild.js";
 vi.mock("../../src/utils/globalLogger.js", () => ({
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
+
+/**
+ * `$.fs` 的真实实现在 `files.test.ts` 里测；这一层只关心「转发到 ModFs」和
+ * 「相对路径的基准是谁」，所以换成一个记录调用的替身。
+ */
+const fsStub = vi.hoisted(() => ({
+  calls: [] as Array<{ method: string; args: unknown[] }>,
+  cwd: undefined as (() => string) | undefined,
+}));
+
+vi.mock("../../src/mods/files.js", () => {
+  const record = (method: string, args: unknown[], value: unknown) => {
+    fsStub.calls.push({ method, args });
+    return Promise.resolve(value);
+  };
+  return {
+    ModFs: class {
+      constructor(cwd: () => string) {
+        fsStub.cwd = cwd;
+      }
+      read(...args: unknown[]) {
+        return record("read", args, { text: "hi", isTruncated: false });
+      }
+      write(...args: unknown[]) {
+        return record("write", args, undefined);
+      }
+      list(...args: unknown[]) {
+        return record("list", args, []);
+      }
+      stat(...args: unknown[]) {
+        return record("stat", args, { kind: "file", size: 2, isLink: false });
+      }
+      exists(...args: unknown[]) {
+        return record("exists", args, true);
+      }
+    },
+  };
+});
+
+beforeEach(() => {
+  fsStub.calls.length = 0;
+  fsStub.cwd = undefined;
+});
 
 /**
  * 沙箱执行的是 esbuild 产出的 CJS，所以这里的「编译产物」直接手写 —— 真转译
@@ -48,6 +92,14 @@ function host(overrides: Partial<ModRuntimeHost> = {}): ModRuntimeHost {
       yield* [] as ModProcessChunk[];
       return { code: 0, signal: null };
     }),
+    runProcess: vi.fn(async () => ({
+      exitCode: 0,
+      stdout: "",
+      stderr: "",
+      isStdoutTruncated: false,
+      isStderrTruncated: false,
+    })),
+    workdir: vi.fn(() => path.resolve("/fake/project")),
     submitPrompt: vi.fn(async () => {}),
     ...overrides,
   };
@@ -596,6 +648,131 @@ describe("ModRuntime 的 $ 命名空间", () => {
     await mod.callHook("ui.render", {});
     await expect(mod.dispatch("press", "stop")).resolves.toBe(true);
     expect(stopped).toHaveBeenCalledTimes(1);
+  });
+
+  it("process.run 转发到宿主，结果原样回给沙箱", async () => {
+    const cwd = path.resolve("/tmp/repo");
+    const hostApi = host({
+      runProcess: vi.fn(async () => ({
+        exitCode: 3,
+        stdout: "out",
+        stderr: "err",
+        isStdoutTruncated: false,
+        isStderrTruncated: true,
+      })),
+    });
+    const { mod } = runtime(
+      `
+      exports.register = function ($, on) {
+        on("session.start", function () {
+          return $.process.run(["git", "status"], { cwd: ${JSON.stringify(cwd)}, stdin: "x", timeoutMs: 1000 });
+        });
+      };
+      `,
+      { host: hostApi },
+    );
+
+    await mod.load();
+    await expect(mod.callHook("session.start", {})).resolves.toMatchObject({
+      ok: true,
+      value: { exitCode: 3, stdout: "out", isStderrTruncated: true },
+    });
+    expect(hostApi.runProcess).toHaveBeenCalledWith(["git", "status"], {
+      cwd,
+      stdin: "x",
+      timeoutMs: 1000,
+    });
+  });
+
+  it("等 run 结束的时间不计入 hook 预算", async () => {
+    vi.useFakeTimers();
+    // 什么时候结束由测试放行：停在 run 上的这段时间就是要验证的空闲。
+    let finish: ((result: ModRunResult) => void) | undefined;
+    const hostApi = host({
+      runProcess: () =>
+        new Promise<ModRunResult>((resolve) => {
+          finish = resolve;
+        }),
+    });
+    const { mod } = runtime(
+      `
+      exports.register = function ($, on) {
+        on("session.start", async function () {
+          var result = await $.process.run(["sleep", "10"]);
+          return result.stdout;
+        });
+      };
+      `,
+      { host: hostApi },
+    );
+
+    await mod.load();
+    const pending = mod.callHook("session.start", {});
+    await vi.advanceTimersByTimeAsync(MOD_LIMITS.hookTimeoutMs * 2);
+    finish?.({
+      exitCode: 0,
+      stdout: "done",
+      stderr: "",
+      isStdoutTruncated: false,
+      isStderrTruncated: false,
+    });
+
+    await expect(pending).resolves.toMatchObject({ ok: true, value: "done" });
+  });
+
+  it("fs 的方法全部转发，相对路径的基准是会动的 workdir()", async () => {
+    const workdir = vi.fn(() => path.resolve("/fake/project"));
+    const { mod } = runtime(
+      `
+      exports.register = function ($, on) {
+        on("session.start", async function () {
+          var read = await $.fs.read("a.txt");
+          await $.fs.write("b.txt", "hi");
+          await $.fs.list(".");
+          await $.fs.stat("a.txt");
+          var exists = await $.fs.exists("a.txt");
+          return { text: read.text, truncated: read.isTruncated, exists: exists };
+        });
+      };
+      `,
+      { host: host({ workdir }) },
+    );
+
+    await mod.load();
+    await expect(mod.callHook("session.start", {})).resolves.toMatchObject({
+      ok: true,
+      value: { text: "hi", truncated: false, exists: true },
+    });
+    expect(fsStub.calls.map((call) => call.method)).toEqual([
+      "read",
+      "write",
+      "list",
+      "stat",
+      "exists",
+    ]);
+    // 第二个参数原样透传（没给就是 undefined，由 ModFs 自己兜默认）。
+    expect(fsStub.calls[0].args).toEqual(["a.txt", undefined]);
+    expect(fsStub.calls[1].args).toEqual(["b.txt", "hi"]);
+
+    // 基准每次现问宿主：会话里 `cd` 过之后，相对路径要跟着走。
+    expect(fsStub.cwd?.()).toBe(path.resolve("/fake/project"));
+    workdir.mockReturnValue(path.resolve("/fake/other"));
+    expect(fsStub.cwd?.()).toBe(path.resolve("/fake/other"));
+  });
+
+  it("http.fetch 与链接共用同一份白名单，明文远端在沙箱里就报错", async () => {
+    const { mod } = runtime(`
+      exports.register = function ($, on) {
+        on("session.start", function () {
+          return $.http.fetch("http://example.com/x");
+        });
+      };
+    `);
+
+    await mod.load();
+    const result = await mod.callHook("session.start", {});
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toContain("只允许 https:");
   });
 
   it("prompt.submit 以用户身份投进会话", async () => {
