@@ -99,6 +99,11 @@ export interface DirectoryBrowserProps {
   onSelect: (path: string) => void;
   /** Escape 关闭面板；焦点归位由父级决定。 */
   onClose: () => void;
+  /**
+   * 底部那一行多一枚可见的「返回」（= `onClose`）。给没有 Esc 也没有「点外部」
+   * 的宿主用：远控页把它当新会话弹窗里的第二层，退回去必须点得到。
+   */
+  showBack?: boolean;
   /** 首次打开的起始位置（桌面端传上次访问目录，Web 页传 ~）。 */
   initialPath?: string;
   /** 每次列表解析成功后回报解析出的绝对路径（宿主位置记忆用）。 */
@@ -110,6 +115,7 @@ export const DirectoryBrowser: React.FC<DirectoryBrowserProps> = ({
   onRequestList,
   onSelect,
   onClose,
+  showBack = false,
   initialPath = "~",
   onResolved,
 }) => {
@@ -365,6 +371,17 @@ export const DirectoryBrowser: React.FC<DirectoryBrowserProps> = ({
         >
           选择此目录
         </button>
+        {/* 退回去的动作属于面板这一层，就放在面板自己的行里、紧挨着主操作；
+            弹窗级按钮条（创建 / 取消）不该混进这一层的东西。 */}
+        {showBack && (
+          <button
+            className="desktop-remote-browser-back"
+            onClick={onClose}
+            data-testid="desktop-remote-browser-back"
+          >
+            返回
+          </button>
+        )}
       </div>
     </div>
   );

@@ -117,6 +117,15 @@
       .confirmation-command,
       .confirmation-mcp-params,
       .confirmation-btn .btn-enter-hint,
+      .desktop-remote-browser-crumb,
+      .desktop-remote-browser-select,
+      .desktop-remote-browser-back,
+      /* 面板里**整块**都在这档：列表行、加载中 / 空态 / 错误、重试。只抬按钮
+         不抬列表，面板里就同时出现 12px 与 14px，看起来像是按钮「字号偏大」；
+         实际是同一块面板两档字号并排（2026-11-13 用户看截图后问的那句）。 */
+      .desktop-remote-browser-item,
+      .desktop-remote-browser-status,
+      .desktop-remote-browser-retry,
       .history-search-loading,
       .history-search-empty,
       .message-action-btn,
@@ -594,5 +603,46 @@
 
   [data-remote-page] .markdown-content :is(th, td).md-cell-long-token {
     overflow-wrap: break-word;
+  }
+
+  /* ── 新建会话弹窗（spec remote-web.md 场景 2）─────────────────────────────
+     弹窗高度改用 `dvh`：手机键盘弹出后 `vh` 不跟着缩（iOS 上仍是整屏），弹窗
+     会有一截落在可视区上方，而遮罩原先不能滚 ⇒ 头部永远够不到（2026-11-13
+     用户报「选目录弹窗的头部超出视野范围，也无法滚动」）。`dvh` 跟随可视区，
+     老内核不认识这条声明就回落到组件内联的 `vh` 上限。
+
+     面板里的控件不另立尺寸档：字号并入上面那组「次级信息」14px —— 面包屑、
+     列表行、「选择此目录」与「返回」整块面板一个档位（不是只有按钮那一行）；面包屑
+     与列表行再给一条最小高度，让它们按手指够得着。
+
+     底部那一行折成两行：输入框 + 「选择此目录」 + 「返回」挤在 390px 里，
+     输入框只剩百来像素，占位文案被截断、手输完整路径时看不见自己打了什么。
+     触控档让输入框独占一行，「选择此目录」与紧跟它右边的「返回」落到下一行
+     靠右——两个按钮仍在同一行、同一个位置关系，输入框拿回整行宽度。 */
+  [data-remote-page] .configuration-dialog {
+    max-height: min(680px, 88dvh) !important;
+  }
+
+  [data-remote-page] .desktop-remote-browser-footer {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  [data-remote-page] .desktop-remote-browser-footer .desktop-host-add-input {
+    /* 第一行独占（`flex-basis: 100%`），剩两个按钮换到第二行。 */
+    flex: 1 0 100%;
+  }
+
+  [data-remote-page] .desktop-remote-browser-crumb {
+    display: flex;
+    align-items: center;
+    min-height: 28px;
+    padding: 0 6px;
+  }
+
+  /* 目录行 14px 之后行高自己够得到 26px 左右，这里只把热区补到 28px ——
+     与面包屑同一档，列表密一点也不会点错行。 */
+  [data-remote-page] .desktop-remote-browser-item {
+    min-height: 28px;
   }
 }
