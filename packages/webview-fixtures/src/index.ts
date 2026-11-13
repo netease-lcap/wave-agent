@@ -10,9 +10,10 @@
  * `toEqual` — a fixture may contain a field the asserting host does not send.
  *
  * This is test infrastructure, not runtime code: changing a fixture default
- * intentionally breaks the tests that rely on it (that is the point), and the
- * package must be rebuilt (`pnpm -F wave-webview-fixtures build`) for changes
- * to reach consumers, same as agent-sdk.
+ * intentionally breaks the tests that rely on it (that is the point).
+ *
+ * The package has no build step: `main`/`types` point at `src/index.ts`, and
+ * every import of it outside tests is `import type`, so it never enters a bundle.
  */
 
 import type {
@@ -20,8 +21,6 @@ import type {
   Task,
   PermissionMode,
   NoticeLevel,
-  BackgroundTaskSummary,
-  SerializableWorkflowRun,
   SessionMetadata,
   SetInitialStateMessage,
   AuthStatusResponseMessage,

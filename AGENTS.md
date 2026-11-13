@@ -14,7 +14,7 @@ pnpm monorepo（Node >= 22，pnpm 12），做 AI 编码工具：
 - **`packages/vscode`** VS Code 扩展（esbuild 打包）。`webview/` 是同步产物 —— 永远改 `packages/webview/src/`。
 - **`packages/jetbrains`** JetBrains 插件（Gradle/Kotlin），复用 webview 产物。
 - **`packages/desktop`** Electron 桌面端，复用 webview 产物，通过 stdio 驱动 CLI。
-- **`packages/webview-fixtures`** host→webview 消息契约 fixtures（四端测试共用）；改后 `pnpm -F wave-webview-fixtures build`。
+- **`packages/webview-fixtures`** host→webview 消息契约 fixtures（四端测试共用）。
 - **`docs/`** VitePress 站点；**`docs/specs/`** 功能规格（见文末）。
 - **`.wave/rules/`** 按路径生效的模块化规则（带 `paths:` 的只在相关文件进上下文时才注入）。桌面端 / VS Code / Webview / CLI 的内部细节与约定都放在这里，按目录自动生效，本文件不再重复。
 

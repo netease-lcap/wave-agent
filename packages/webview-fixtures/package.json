@@ -4,17 +4,15 @@
   "private": true,
   "type": "module",
   "description": "Shared host→webview message contract fixtures for the webview, VS Code, JetBrains and desktop test suites",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
   "scripts": {
-    "build": "rimraf dist && tsrs -p tsconfig.build.json",
     "format": "prettier --write .",
     "type-check": "tsrs --noEmit",
     "test": "vitest run",
     "test:unit": "vitest run"
   },
   "devDependencies": {
-    "rimraf": "^6.0.1",
     "vitest": "catalog:",
     "wave-agent-sdk": "workspace:*"
   }

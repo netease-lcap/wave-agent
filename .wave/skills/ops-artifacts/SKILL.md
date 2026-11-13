@@ -83,13 +83,11 @@ MACZIP=$(ls "$DL"/*[Mm][Aa][Cc]*.zip 2>/dev/null | head -1)
 ## 2. 文档站包（两个前置：fixtures dist + gitignored 截图）
 
 ```bash
-# 2a. 前置 dist：demo 的 type-check 直接 import 这两个包的 dist，dist 过期时报的是一堆看着
-#     莫名其妙的 TS 错（2026-11-06 实测：fixtures 缺 releaseNotes → TS2339、sdk 缺
-#     DEFAULT_WAVE_CONTEXT_WINDOW → TS2305，都不是真代码问题）。判据不是「dist 在不在」
-#     而是「src 有没有比 dist 新」。
+# 2a. 前置 dist：demo 的 type-check 直接 import agent-sdk 的 dist，dist 过期时报的是一堆看着
+#     莫名其妙的 TS 错（2026-11-06 实测：sdk 缺 DEFAULT_WAVE_CONTEXT_WINDOW → TS2305，
+#     不是真代码问题）。判据不是「dist 在不在」而是「src 有没有比 dist 新」。
 need_build() { [ ! -d "$1/dist" ] || [ -n "$(find "$1/src" -newer "$1/dist" -name '*.ts*' -print -quit)" ]; }
-need_build packages/webview-fixtures && pnpm -F wave-webview-fixtures build
-need_build packages/agent-sdk      && pnpm -F wave-agent-sdk build
+need_build packages/agent-sdk && pnpm -F wave-agent-sdk build
 
 # 2b. 截图（docs/public/screenshots/ 是 gitignored 的构建产物）：按 docs 实际引用的文件名逐张查，
 #     比「目录非空」准 —— 缺一张就会让 vitepress 在「未解析 import」上炸。
