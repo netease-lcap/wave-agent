@@ -113,28 +113,53 @@
 }
 
 /* 视图开关（辅助功能，不占主位）：图标 + 当前视图名 + caret 的线型次键。
-   设计师 2026-11-06：「视图是一个辅助功能，而不是主 tab」。 */
+   设计师 2026-11-06：「视图是一个辅助功能，而不是主 tab」。
+
+   1113 评论（`button.artifacts-view-btn`「自定义视图」——「结合 skill 检查这个下拉
+   是否符合规范并优化」「选择器再按规范优化」）：盒与字按契约 select 触发器收口 ——
+   32 高 / 14px·22px / r8 / **左右各 8px 内衬**（common-components.md「Desktop select
+   trigger and menu composition」：文字从内缘 8px 起、尾图标墨迹右内衬 8px；按钮契约
+   的 12px 内衬是纯文字动作键的口径，这颗是选择器）；字色与状态底色接语义 token ——
+   hover 用 `--cc-fill-hover`、展开（≈按下）用 `--cc-fill-pressed`，原来是写死的
+   `rgba(127,127,127,.1/.14)`：浅色档 ≈#E9E9E9 与 fill-hover #EEF0F3 不等值，深色档
+   则是半透明灰盖在深底上，与族内菜单 hover 面（rgba(255,255,255,.08)）也不一致。 */
 .artifacts-view-btn {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   height: 32px;
-  padding: 0 10px;
+  padding: 0 8px;
   border: 1px solid var(--vscode-panel-border, rgba(127, 127, 127, 0.35));
   border-radius: 8px;
   background: transparent;
-  color: var(--vscode-foreground);
-  font-size: 13px;
+  color: var(--cc-text-primary, var(--vscode-foreground));
+  font-size: 14px;
+  line-height: 22px;
   cursor: pointer;
 }
 
 .artifacts-view-btn:hover {
-  background: rgba(127, 127, 127, 0.1);
+  background: var(--cc-fill-hover, #eef0f3);
 }
 
-/* 下拉展开时按钮自身保留一层底色，让「菜单是它打开的」看得出来。 */
+/* 下拉展开时按钮自身保留一层按压底色，让「菜单是它打开的」看得出来。 */
 .artifacts-view-btn[aria-expanded="true"] {
-  background: rgba(127, 127, 127, 0.14);
+  background: var(--cc-fill-pressed, #e7e9ed);
+}
+
+/* 键盘焦点 —— 这一档上一轮漏了（2026-11-13 补）：改前没有任何规则，浏览器给的是
+   默认焦点环 `outline: auto 1px` rgb(0,95,204)，那圈蓝不属于 token 族，还在 r8 盒
+   外面又套一层圆角，看起来像「这个键没被收口过」。契约 §Input fields：「Focus uses a
+   1px border/outline aligned with the existing edge … no layout shift」⇒ 就地换描边色，
+   与设置页下拉 `.settings-select-trigger`、会话看板筛选器 `.session-board-filter` 同一条
+   字段焦点档（浅 #565A60 / 深 #A0A5A8）；**不用**本页图标键那颗 2px 内收环
+   （`.artifacts-header-icon-btn`）—— 那是图标键的配方，这颗是选择器（select trigger）。
+   写在 hover 之后：同特异性 (0,2,0) 时焦点态压过 hover 底色上的描边（底色仍由 hover /
+   expanded 各自那条管，互不干扰）；展开中被 Tab 进来同样保持这一档（契约「Expanded
+   select + option focus → trigger retains field-border-focus」）。 */
+.artifacts-view-btn:focus-visible {
+  border-color: var(--cc-field-border-focus, #565a60);
+  outline: none;
 }
 
 .artifacts-view-icon {
@@ -147,41 +172,108 @@
   white-space: nowrap;
 }
 
+/* 下箭头（1113 评论 `svg.artifacts-view-caret`「这个三角也太小了」）：原来复用自绘
+   的 `ChevronDownIcon`，12px 盒里墨迹像素实测只有 4.0×2.5。按契约 §Desktop select trigger
+   「Reuse the current CC downward-chevron vector (not a Unicode triangle)：visible
+   artwork approximately 8×4.5px」换成官方矢量 —— 画法同本页 `select` 的箭头与会话
+   看板筛选器：**元素盒 = 墨迹盒 8×4.5**，mask 取 16×16 矢量正中的同一窗口，盒子不再
+   含字形透明边。右内衬随按钮的 8px 对称内衬走（= 契约的「右内衬 8px」）。
+
+   2026-11-13「三角上翻颜色什么都不对」：
+   - 颜色：去掉原来的 `opacity: .7` —— icon 契约要求图形「Use `currentColor` so hover,
+     active, disabled, and danger states follow the control token」；`.7` 把控件字色
+     整层压灰（浅色档 #202020 合成为 #636363，on #FFF 只有 6.02:1；深色档 #E5E7E8
+     合成为 #A5A7A8，7.75:1），比旁边 14px 文字弱一档，控件状态也带不动它。现在纯
+     `currentColor`，实测浅色 15.78:1 / 深色 15.02:1。
+   - 上翻：展开时 `rotate(180deg)`，120ms ease 过渡；`prefers-reduced-motion` 关掉。 */
 .artifacts-view-caret {
-  width: 12px;
-  height: 12px;
+  width: 8px;
+  height: 4.5px;
   flex: 0 0 auto;
-  opacity: 0.7;
+  background: currentColor;
+  transition: transform 120ms ease;
+  -webkit-mask: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'><g transform='translate(0,16) scale(1,-1)'><path d='M7.99977 7.22354L5.17108 10.0522C4.91078 10.3125 4.48875 10.3125 4.22844 10.0522C3.96813 9.79192 3.96812 9.36988 4.22843 9.10957L7.29266 6.04533C7.68318 5.65481 8.31635 5.65481 8.70687 6.04534L11.7711 9.10957C12.0314 9.36988 12.0314 9.79192 11.7711 10.0522C11.5108 10.3125 11.0888 10.3125 10.8285 10.0522L7.99977 7.22354Z' fill='%23000'/></g></svg>")
+    center / 16px 16px no-repeat;
+  mask: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'><g transform='translate(0,16) scale(1,-1)'><path d='M7.99977 7.22354L5.17108 10.0522C4.91078 10.3125 4.48875 10.3125 4.22844 10.0522C3.96813 9.79192 3.96812 9.36988 4.22843 9.10957L7.29266 6.04533C7.68318 5.65481 8.31635 5.65481 8.70687 6.04534L11.7711 9.10957C12.0314 9.36988 12.0314 9.79192 11.7711 10.0522C11.5108 10.3125 11.0888 10.3125 10.8285 10.0522L7.99977 7.22354Z' fill='%23000'/></g></svg>")
+    center / 16px 16px no-repeat;
+}
+
+/* 展开时三角上翻，指向「菜单就在下面」。 */
+.artifacts-view-btn[aria-expanded="true"] .artifacts-view-caret {
+  transform: rotate(180deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .artifacts-view-caret {
+    transition: none;
+  }
 }
 
 /* 菜单项带上各自视图的图标（设计师 2026-11-06：两颗图标要能区分视图，
-   下拉里把两档并排摆出来，含义才学得会）。图标 + 文字 + 右侧勾选。
+   下拉里把两档并排摆出来，含义才学得会）。图标 + 文字。
 
    只覆盖布局相关的两条：共享的 `.desktop-session-menu-item` 默认两端对齐，
-   这里改成「图标—文字」贴左、勾选仍靠右。 */
+   这里改成「图标—文字」贴左；行高补契约的单行项 14/22（1113 评论：共享皮肤
+   只给了 `min-height:28px`，行高停在 `normal`）。 */
 .artifacts-view-menu-item {
   display: flex;
   align-items: center;
   justify-content: flex-start;
   gap: 8px;
+  line-height: 22px;
+}
+
+/* 常态字色接 `--cc-text-regular`（design-system.md 的 token 表：「Ordinary labels and
+   options」，浅 #565A60 / 深 #C4C7C9）。host 层给整个菜单族写死的是 #565a60 / 深色
+   #9a9ea5 —— 浅色恰好等于 token 值（不变），深色 #9A9EA5 比 token 低两档：深色菜单底
+   #232526 上只有 5.72:1，换成 token 后 9.06:1，与浅色档 6.94:1 的轻重才对齐。
+
+   选择器带上 `[role="menuitemradio"][aria-checked]`（0,4,0）才压得过 host 层给整族
+   写的深色常态色（0,3,0）；只认 `aria-checked="false"`，选中项仍由下面那条
+   selection 规则给 1 级字色；`:not(:hover)` 再抬一档，让 hover 面与深色 hover 字色
+   （host 写的 #ffffff）照常生效，不被常态色顶掉。 */
+[data-host="desktop"]
+  .artifacts-view-menu-item[role="menuitemradio"][aria-checked="false"]:not(
+    :hover
+  ) {
+  color: var(--cc-text-regular, #565a60);
+}
+
+/* 选中项（`menuitemradio` 的当前档）：契约 selection = fill-pressed 底 + 1 级字色，
+   字重不变。改前只有右侧一个 ✓，底和字色跟未选中项一模一样 —— 鼠标划过另一项时
+   （hover = fill-hover + 1 级字）反而比当前选中的更强，层级是倒的。选择器多带
+   `[role]` + `[aria-checked]` 两个属性，才压得过 host 层给整族菜单项写的常态色与
+   深色 hover 面（菜单是 portal 到 body 的，拿不到页内的祖先类）。
+
+   她 2026-11-13「选中的 ✓ 那一拿掉」：✓ 已删（`.artifacts-view-menu-check` 整条
+   规则一并移除），选中与否只由这块底色与 1 级字色表达。 */
+[data-host="desktop"]
+  .artifacts-view-menu-item[role="menuitemradio"][aria-checked="true"],
+[data-host="desktop"]
+  .artifacts-view-menu-item[role="menuitemradio"][aria-checked="true"]:hover {
+  background: var(--cc-fill-pressed, #e7e9ed);
+  color: var(--cc-text-primary, #1f2329);
 }
 
 .artifacts-view-menu-icon {
   width: 16px;
   height: 16px;
   flex: 0 0 auto;
-  opacity: 0.85;
+}
+
+/* 菜单图标（desktop）：icon 契约默认 utility 16px、`currentColor`；host 层给整族写的是
+   `svg { 15px }`（0,2,1），这里带 `[data-host]` + 祖先项类名抬到 (0,3,1)。
+   原来的 `opacity: .85` 一并去掉 —— 那是「淡化图标」的临时手段，图标与文字同用
+   `currentColor` 才对（icon.md：hover / active / disabled / danger 都跟控件色走），
+   淡化后图标比同级文字弱一档，选中项还得单写一条 opacity:1 去补。 */
+[data-host="desktop"] .artifacts-view-menu-item .artifacts-view-menu-icon {
+  width: 16px;
+  height: 16px;
 }
 
 .artifacts-view-menu-label {
   flex: 1 1 auto;
   min-width: 0;
-}
-
-.artifacts-view-menu-check {
-  flex: 0 0 auto;
-  font-size: 13px;
-  color: var(--vscode-foreground);
 }
 
 /* ── 主 tab 行：当前视图下的分组 / 分类，横向独占一行 ─────────────────────

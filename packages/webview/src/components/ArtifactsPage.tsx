@@ -9,7 +9,6 @@ import React, {
 } from "react";
 import {
   ArtifactsIcon,
-  ChevronDownIcon,
   FileCodeIcon,
   MoreIcon,
   PencilIcon,
@@ -432,6 +431,10 @@ const CustomViewIcon: React.FC<{ className?: string }> = ({ className }) => (
  * 设计师 2026-11-06：视图是辅助功能，不该占主切换位 —— 收成页头右上角一颗
  * 图标键 + 下拉；主 tab 位让给「当前视图下的分类」。菜单皮肤与同页分类「⋯」
  * 菜单共用（`.desktop-session-menu*`），定位规则同：右对齐触发键 + 夹在视口内。
+ *
+ * 2026-11-13：当前档原来靠右侧一个 ✓ 标记，现按契约改成 fill-pressed 底色 +
+ * 1 级字（`selection uses fill-pressed with primary text`）；她当日评论「选中的
+ * ✓ 那一拿掉」⇒ ✓ 已删除，选中与否只由底色与字色表达。
  */
 const ViewMenu: React.FC<{
   anchorRect: DOMRect;
@@ -496,11 +499,6 @@ const ViewMenu: React.FC<{
         >
           {option.icon}
           <span className="artifacts-view-menu-label">{option.label}</span>
-          {view === option.value && (
-            <span className="artifacts-view-menu-check" aria-hidden="true">
-              ✓
-            </span>
-          )}
         </div>
       ))}
     </div>,
@@ -1612,7 +1610,11 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({
               <span className="artifacts-view-label">
                 {view === "default" ? "默认视图" : "自定义视图"}
               </span>
-              <ChevronDownIcon className="artifacts-view-caret" />
+              {/* 1113 评论（`svg.artifacts-view-caret`「这个三角也太小了」）：原来
+                  复用自绘的 `ChevronDownIcon`，12px 盒里墨迹像素实测只有 4.0×2.5；改按契约
+                  §Desktop select trigger 的官方下箭头矢量，元素盒 = 墨迹盒 8×4.5，
+                  画法同本页 `select` 的箭头与会话看板筛选器（mask 取 16×16 正中窗口）。 */}
+              <span className="artifacts-view-caret" aria-hidden="true" />
             </button>
             {viewMenu && (
               <ViewMenu
