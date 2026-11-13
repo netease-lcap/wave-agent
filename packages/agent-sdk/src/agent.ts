@@ -12,6 +12,15 @@ import { BackgroundTaskManager } from "./managers/backgroundTaskManager.js";
 import { MessageQueue, type QueuedMessage } from "./managers/messageQueue.js";
 import { SlashCommandManager } from "./managers/slashCommandManager.js";
 import { PluginManager } from "./managers/pluginManager.js";
+import { ModManager } from "./managers/modManager.js";
+import type {
+  ModBandRenderResult,
+  ModPanelEventPayload,
+  ModPanelRenderResult,
+  ModPanelUpdatePayload,
+  ModStatusPayload,
+  ModSessionUsage,
+} from "./types/mods.js";
 import { HookManager } from "./managers/hookManager.js";
 import { ReversionManager } from "./managers/reversionManager.js";
 import { PermissionManager } from "./managers/permissionManager.js";
@@ -88,6 +97,7 @@ import {
 import { entrypointOf } from "./telemetry/attributes.js";
 import { remoteSettingsService } from "./services/remoteSettingsService.js";
 import { AUTO_MEMORY_DRAIN_TIMEOUT_MS } from "./services/autoMemoryService.js";
+import { contextUsagePercent } from "./utils/tokenCalculation.js";
 
 export class Agent {
   private messageManager: MessageManager;
@@ -104,6 +114,7 @@ export class Agent {
   private subagentManager: SubagentManager; // Add subagent manager instance
   private slashCommandManager: SlashCommandManager; // Add slash command manager instance
   private pluginManager: PluginManager; // Add plugin manager instance
+  private modManager: ModManager;
   private skillManager: SkillManager; // Add skill manager instance
   private cronManager: CronManager; // Add cron manager instance
   private pageWatchManager: PageWatchManager; // Artifact comment stream watcher (per-agent)
@@ -205,7 +216,68 @@ export class Agent {
     this.slashCommandManager.registerSkillCommands(
       this.skillManager.getAvailableSkills(),
     );
+    // Mods are part of the plugin surface: a reloaded plugin brings its mods
+    // into the sandbox, a removed one drops them. `reload` closes the old
+    // panels and cancels their timers before rebuilding (the mods themselves
+    // are not notified — spec ecosystem/plugin-mods.md「事件」).
+    try {
+      await this.modManager.reload(this.pluginManager.getPlugins());
+    } catch (error) {
+      this.logger?.warn("Plugin mods failed to reload:", error);
+    }
     return result;
+  }
+
+  /**
+   * Route a webview interaction to the mod that owns the panel.
+   *
+   * Public because the stdio bridge is a different layer: it receives the
+   * `modPanelEvent` RPC and hands the payload straight here.
+   */
+  public async handleModPanelEvent(
+    payload: ModPanelEventPayload,
+  ): Promise<void> {
+    await this.modManager.handlePanelEvent(payload);
+  }
+
+  /** Panel snapshots for panels opened before the host attached (resync). */
+  public getModPanels(): ModPanelUpdatePayload[] {
+    return this.modManager.paneSnapshots();
+  }
+
+  /**
+   * The status lines mods currently show (spec `ecosystem/plugin-mods.md`
+   * 「状态带、状态行与提示」).
+   *
+   * For replay only: a `session.start` push lands before the client has
+   * registered the session and is dropped by the router, so the surface asks for
+   * this snapshot at the same moment it resyncs the panels.
+   */
+  public getModStatuses(): ModStatusPayload[] {
+    return this.modManager.statusSnapshots();
+  }
+
+  /**
+   * Produce the tree a surface is asking for (spec `ecosystem/plugin-mods.md`
+   * 「架构约束」: trees are pulled, never pushed).
+   *
+   * Public because the stdio bridge receives the `modPanelRender` RPC and hands
+   * the pane identity straight here.
+   */
+  public async renderModPanel(
+    modId: string,
+    paneId: string,
+  ): Promise<ModPanelRenderResult> {
+    return this.modManager.renderPane(modId, paneId);
+  }
+
+  /**
+   * Produce the trees for the band above the composer (spec
+   * `ecosystem/plugin-mods.md` 「状态带、状态行与提示」: same pull discipline as
+   * panes — one `ui.render` call per mod that registers it).
+   */
+  public async renderModBand(): Promise<ModBandRenderResult[]> {
+    return this.modManager.renderBand();
   }
 
   /**
@@ -400,11 +472,25 @@ export class Agent {
     this.aiManager = this.container.get("AIManager")!;
     this.slashCommandManager = this.container.get("SlashCommandManager")!;
     this.pluginManager = this.container.get("PluginManager")!;
+    this.modManager = this.container.get("ModManager")!;
     this.bashModeManager = this.container.get("BashModeManager")!;
     this.cronManager = this.container.get("CronManager")!;
     this.pageWatchManager = this.container.get("PageWatchManager")!;
     this.messageQueue = this.container.get("MessageQueue")!;
     this.asyncWorkRegistry = this.container.get("AsyncWorkRegistry")!;
+
+    // Plugin mods can post a prompt into this session (`$.prompt.submit`, spec
+    // ecosystem/plugin-mods.md). It has to go through `sendMessage` so a mod's
+    // prompt obeys the same rules as a typed one: queued while busy, immediate
+    // for `/clear`-style commands. The ModManager cannot resolve this itself —
+    // it sits below `Agent` in the dependency graph.
+    this.modManager.setPromptSubmitter((text) => this.sendMessage(text));
+
+    // Plugin mods can read the session's token usage (`$.session.usage`, spec
+    // ecosystem/plugin-mods.md「会话用量」). Same shape as the prompt channel:
+    // the numbers live on `Agent` and the managers below it, so they are pushed
+    // down here rather than resolved inside ModManager.
+    this.modManager.setSessionUsageProvider(() => this.getSessionUsage());
 
     // Wire up CWD change callback from AIManager to sync Agent's workdir
     this.aiManager.setOnCwdChange((newCwd) => {
@@ -478,6 +564,38 @@ export class Agent {
 
   public get latestTotalTokens(): number {
     return this.messageManager.getLatestTotalTokens();
+  }
+
+  /**
+   * `$.session.usage()` 的快照（spec `ecosystem/plugin-mods.md`「会话用量」）。
+   *
+   * 只读、O(usages)：`context.tokens` 取最近一次带 usage 的响应报出的总数
+   * （与输入框旁那个用量环同一个数），`context.percent` 的分母是自动压缩阈值；
+   * `tokens.*` 是整场会话的累计值，其中 `prompt` **含**缓存命中的 token ——
+   * 我们上游的 `prompt_tokens` 就是含的，别按 Claude Code 的 `input_tokens`
+   * （不含）去对。
+   */
+  public getSessionUsage(): ModSessionUsage {
+    const tokens = this.latestTotalTokens;
+    const window = this.getContextWindow();
+    const totals = { prompt: 0, completion: 0, cacheRead: 0, cacheCreation: 0 };
+    for (const usage of this.usages) {
+      totals.prompt += usage.prompt_tokens;
+      totals.completion += usage.completion_tokens;
+      totals.cacheRead += usage.cache_read_input_tokens ?? 0;
+      totals.cacheCreation += usage.cache_creation_input_tokens ?? 0;
+    }
+    const usage: ModSessionUsage = {
+      context: {
+        tokens,
+        window,
+        percent: contextUsagePercent(tokens, window, this.getMaxOutputTokens()),
+      },
+      tokens: totals,
+    };
+    const model = this.getModelConfig().model;
+    if (model !== undefined) usage.model = model;
+    return usage;
   }
 
   /**
@@ -1024,6 +1142,17 @@ export class Agent {
     } catch {
       // Model not configured yet - will be available after SSO login
     }
+
+    // Plugin MODS: compile and instantiate now that InitializationService has
+    // discovered the plugins, then give each mod its `session.start` — which is
+    // defined as "after init, before the first prompt". Compilation failures are
+    // per-mod (a broken mod must not take the session down), so this only logs.
+    try {
+      await this.modManager.loadFromPlugins(this.pluginManager.getPlugins());
+      await this.modManager.startSession();
+    } catch (error) {
+      this.logger?.warn("Plugin mods failed to load:", error);
+    }
   }
 
   /**
@@ -1392,6 +1521,9 @@ export class Agent {
       );
     }
     this.abortAIMessage(); // This will abort tools including Agent tool (subagents)
+    // 插件 mod 的面板与定时器：会话已经结束，先把定时器停掉并关面板 —— 留到
+    // 后面会有回调打到半销毁的 agent 上（spec ecosystem/plugin-mods.md「定时器」）。
+    await this.modManager.dispose();
     // 侧聊段依附于这场对话：销毁时一并丢弃，在途的那一轮随之中止（否则它会带着
     // 网络句柄活过 destroy）。
     this.aiManager.releaseAllBtwSegments();

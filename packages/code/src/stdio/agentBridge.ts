@@ -79,6 +79,10 @@ import {
   searchArtifactMembers,
   type ArtifactShareMode,
   type UserImage,
+  type ModPanelEventPayload,
+  type ModPanelUpdatePayload,
+  type ModStatusPayload,
+  type ModToastPayload,
 } from "wave-agent-sdk";
 import {
   type ClientNotificationMethod,
@@ -486,6 +490,39 @@ export class AgentBridge {
       case "remoteControlConnect":
       case "remoteControlDisconnect":
         return this.remoteControlRequest(method, p);
+
+      // ── Plugin mods ──
+      // The mod itself runs in this process (spec ecosystem/plugin-mods.md); the
+      // host is only carrying the user's click back to it, so this is a plain
+      // hand-off with no host-side policy.
+      case "modPanelEvent":
+        return this.requireSession(sessionId).agent.handleModPanelEvent(
+          p as unknown as ModPanelEventPayload,
+        );
+      case "getModPanels": {
+        const agent = this.requireSessionForRead(sessionId).agent;
+        // 状态行顺手重放一次（spec「状态带、状态行与提示」）：`session.start` 里的
+        // 推送比客户端注册会话更早，被 router 按 v1 语义丢掉；surface 挂上来要快照的
+        // 这一刻正是把它们补回去的时机，否则「启动时贴一行、一直挂着」看不到。
+        // toast 不重放：晚了就不该再弹。
+        for (const payload of agent.getModStatuses()) {
+          // 信封的 sessionId 用请求上这个（就是客户端注册过的那个），回包才认得
+          // 它属于哪条会话。
+          this.emit("modStatusUpdate", { ...payload, sessionId }, sessionId);
+        }
+        return agent.getModPanels();
+      }
+      // 树由 surface 拉取（spec「架构约束」）：每次请求都真跑一次 `ui.render`。
+      case "modPanelRender": {
+        const request = p as { modId: string; paneId: string };
+        return this.requireSession(sessionId).agent.renderModPanel(
+          request.modId,
+          request.paneId,
+        );
+      }
+      // 输入框上方那条带走同一条拉取链路（spec「状态带、状态行与提示」）。
+      case "modBandRender":
+        return this.requireSession(sessionId).agent.renderModBand();
 
       // ── Permissions ──
       case "setPermissionMode":
@@ -3499,6 +3536,40 @@ export class AgentBridge {
         this.emit(
           "workdirChange",
           { workdir: newCwd },
+          ctx.registeredSessionId,
+        );
+      },
+      onModPanelUpdate: (payload: ModPanelUpdatePayload) => {
+        // The manager is built with the session id known at construction time;
+        // a restored session changes it, so the envelope's id wins here.
+        this.emit(
+          "modPanelUpdate",
+          {
+            ...payload,
+            sessionId: ctx.registeredSessionId ?? payload.sessionId,
+          },
+          ctx.registeredSessionId,
+        );
+      },
+      // 状态行与提示也是「发生即推送」的一条元信息（spec「状态带、状态行与
+      // 提示」）：与 `modPanelUpdate` 同样按会话信封改写 sessionId。
+      onModStatus: (payload: ModStatusPayload) => {
+        this.emit(
+          "modStatusUpdate",
+          {
+            ...payload,
+            sessionId: ctx.registeredSessionId ?? payload.sessionId,
+          },
+          ctx.registeredSessionId,
+        );
+      },
+      onModToast: (payload: ModToastPayload) => {
+        this.emit(
+          "modToast",
+          {
+            ...payload,
+            sessionId: ctx.registeredSessionId ?? payload.sessionId,
+          },
           ctx.registeredSessionId,
         );
       },

@@ -58,6 +58,12 @@ const ALL_NOTIFICATION_METHODS: readonly ServerNotificationMethod[] = [
   "compactionContentUpdate",
   "planFileUpdated",
   "backgroundTasksChange",
+  // A plugin mod panel's full snapshot (spec ecosystem/plugin-mods.md).
+  "modPanelUpdate",
+  // A mod's line under the composer / a transient notice (same spec, 状态带、
+  // 状态行与提示).
+  "modStatusUpdate",
+  "modToast",
   // Global (no sessionId): the CLI's own startup steps, emitted before any
   // session exists. Delivered to the `registerGlobal` handler.
   "startupStage",

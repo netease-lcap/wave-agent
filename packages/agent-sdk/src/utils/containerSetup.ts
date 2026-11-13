@@ -16,6 +16,8 @@ import { HookManager } from "../managers/hookManager.js";
 import { SkillManager } from "../managers/skillManager.js";
 import { SlashCommandManager } from "../managers/slashCommandManager.js";
 import { PluginManager } from "../managers/pluginManager.js";
+import { ModManager } from "../managers/modManager.js";
+import type { ModPermissionRequestEvent } from "../types/mods.js";
 import { BashModeManager } from "../managers/bashModeManager.js";
 import { CronManager } from "../managers/cronManager.js";
 import { PageWatchManager } from "../managers/pageWatchManager.js";
@@ -81,6 +83,28 @@ export interface AgentContainerSetupResult {
    * (the callback closures capture per-agent managers).
    */
   teardown: () => void;
+}
+
+/**
+ * 一次工具审批即将弹给用户时通知 mods（spec ecosystem/plugin-mods.md「完成与审
+ * 批的观察」）。载荷就是 `PermissionRequest` 这个 settings hook 收到的 stdin
+ * JSON —— mod 那边的事件名叫 `classic.PermissionRequest`，形状照 Claude Code 的
+ * `classic.<Event>` 约定走。
+ *
+ * 只读且 fire-and-forget：mod 的上报既不能替用户回答这道审批，也不该把那卡片
+ * 拖住。走到这一步说明权限规则没有自行判定，所以自动放行/拒绝、以及被
+ * `PermissionRequest` 钩子直接拒掉的调用都不会有事件。
+ *
+ * 单独拎成一个函数只为一件事：这条接线能单独测 —— `setupAgentContainer` 太重，
+ * 而这里全部的逻辑就是「容器里有没有 mods 宿主」。
+ */
+export function notifyModPermissionRequest(
+  container: Container,
+  event: ModPermissionRequestEvent,
+): void {
+  container
+    .get<ModManager>("ModManager")
+    ?.notifyMods("classic.PermissionRequest", event);
 }
 
 export function setupAgentContainer(
@@ -377,6 +401,28 @@ export function setupAgentContainer(
           });
         }
 
+        // A permission prompt is about to show: tell the mods (read-only, spec
+        // ecosystem/plugin-mods.md「完成与审批的观察」). Fire-and-forget — a mod's
+        // reporting can neither answer this request nor delay the card, and the
+        // return value is dropped. Reaching this wrapper at all means the rules
+        // did not settle it on their own, so auto-allowed/denied calls, and the
+        // ones a `PermissionRequest` hook already rejected above, stay silent.
+        // The payload repeats what that hook's stdin JSON carries (mods get it as
+        // `classic.PermissionRequest`, the mirror event Claude Code also has).
+        notifyModPermissionRequest(container, {
+          session_id: messageManager.getSessionId(),
+          transcript_path: messageManager.getTranscriptPath(),
+          cwd: workdir,
+          hook_event_name: "PermissionRequest",
+          tool_name: context.toolName,
+          ...(context.toolInput !== undefined && {
+            tool_input: context.toolInput,
+          }),
+          ...(permissionManager.getPlanFilePath() !== undefined && {
+            plan_file_path: permissionManager.getPlanFilePath(),
+          }),
+        });
+
         const decision = await options.canUseTool!(context);
 
         if (decision.newPermissionMode) {
@@ -541,6 +587,22 @@ export function setupAgentContainer(
 
   const pluginManager = new PluginManager(container, { workdir });
   container.register("PluginManager", pluginManager);
+
+  // Plugin MODS (spec ecosystem/plugin-mods.md): compilation and execution both
+  // live in this process, so the host only ever receives an element tree. It
+  // starts empty — `Agent.initialize` feeds it the loaded plugins once
+  // InitializationService has finished, because mod files are discovered there.
+  const modManager = new ModManager({
+    sessionId: messageManager.getSessionId(),
+    onPanelUpdate: (payload) => callbacks.onModPanelUpdate?.(payload),
+    onStatus: (payload) => callbacks.onModStatus?.(payload),
+    onToast: (payload) => callbacks.onModToast?.(payload),
+    // `$.process.spawn` 的默认 cwd：与 Bash 工具的 spawn cwd 同口径，取「会动」
+    // 的那个工作目录（容器 token `CurrentWorkdir`，`cd` 之后跟着变），不是会话
+    // 起点也不是工作区根。
+    workdir: () => container.get<string>("CurrentWorkdir") ?? workdir,
+  });
+  container.register("ModManager", modManager);
 
   const bashModeManager = new BashModeManager(container, { workdir });
   container.register("BashModeManager", bashModeManager);

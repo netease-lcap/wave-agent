@@ -185,7 +185,27 @@ export type RequestMethod =
   // Same session-scoped, supersede-on-new-request shape as `getCompletion`, but
   // the input is the user's edit trajectory plus a rewritable window of the
   // file, and the answer replaces lines instead of being inserted at a caret.
-  | "getNextEdit";
+  | "getNextEdit"
+  // A user interaction inside a plugin mod's panel (spec
+  // ecosystem/plugin-mods.md). Params: `ModPanelEventPayload` — which mod, which
+  // pane, which element `key`, and whether it was a press, an input or the tab
+  // being closed. The mod itself runs in this process; the host is only carrying
+  // the click here.
+  | "modPanelEvent"
+  // The tree for one panel, **pulled by the surface** (spec: trees are pulled,
+  // never pushed). Params: `{ modId, paneId }`; returns `ModPanelRenderResult`.
+  // Nothing is cached: every call runs the mod's `ui.render` again.
+  | "modPanelRender"
+  // The trees for the band above the composer (spec 状态带、状态行与提示). Same
+  // pull discipline as `modPanelRender`: no params, returns `ModBandRenderResult[]`
+  // — one entry per mod that registers `ui.render`; an entry whose `tree` is null
+  // takes no space.
+  | "modBandRender"
+  // Every open mod panel's **metadata** (no trees — the surface pulls each tree
+  // with `modPanelRender`). Session-scoped resync: a host that attached after
+  // `session.start` (session restore, remote re-attach) would otherwise miss the
+  // `modPanelUpdate` notifications that opened them.
+  | "getModPanels";
 
 // ── Client → Server notification methods ────────────────────────
 
@@ -300,4 +320,24 @@ export type ServerNotificationMethod =
    * method and pull `getMessages` themselves. Hosts rendering from incremental
    * notifications must therefore **not** subscribe to it.
    */
-  | "messagesChange";
+  | "messagesChange"
+  /**
+   * A plugin mod's panel changed (spec `ecosystem/plugin-mods.md`). Params:
+   * `ModPanelUpdatePayload` — a **full** element tree plus a monotonic
+   * `revision`, or `closed: true` when the pane went away.
+   *
+   * Full snapshots rather than deltas on purpose: a tree is capped at 2000
+   * nodes, and a delta protocol would need a stable id per element (keyed
+   * reconciliation) for no measurable win at this size.
+   */
+  | "modPanelUpdate"
+  /**
+   * A mod set or cleared its line under the composer (`$.ui.status`; spec
+   * 状态带、状态行与提示). Params: `ModStatusPayload`; `text: null` clears.
+   *
+   * The host keeps no copy: the mod's own `$.state` is the truth, and it re-posts
+   * after a surface re-attaches.
+   */
+  | "modStatusUpdate"
+  /** A mod asked for a transient notice (`$.ui.toast`). Params: `ModToastPayload`. */
+  | "modToast";

@@ -1,0 +1,237 @@
+/* 输入框周围那三样**不属于任何 pane** 的 mod 输出（spec ecosystem/plugin-mods.md
+   「状态带、状态行与提示」）。
+
+   口径对齐 CC 桌面端（claude.ai 前端的 `above-prompt` 站点：
+   `c2719cf1b` 的 `zu` / `data-engine-status-lines` / cds Toast）：
+
+   - 带：输入卡**上方**，与卡同列同宽，高度上限 `calc(11lh + 40px)`，超出在带里
+     滚、滚动条隐掉；那 40px 是滚动内衬。
+   - 状态行：输入卡**下方**一行，右对齐，每个插件一段 `plugin: text`，单行省略，
+     放不下的收成 `+N`。
+   - 提示：**右下角固定浮层**（不是输入区的一部分），360px 宽、由下往上堆。 */
+
+/* 带与状态行与输入卡同宽同位置：两者都是 `.input-area-container` 的直接子元素，
+   而输入卡自己收在 `.input-wrapper` 里（插件端 800 / 桌面 768，`margin: auto`
+   居中，见 MessageInput.css 与 host-desktop.css 的 `.input-wrapper`）。少了这条
+   约束，带的两端会比输入卡各宽出几十像素、状态行文字也落到卡的左缘之外（1180
+   宽的桌面窗口里是各 61px）。 */
+.mod-band,
+.mod-status {
+  width: 100%;
+  max-width: 800px;
+  margin-left: auto;
+  margin-right: auto;
+  min-width: 0;
+  box-sizing: border-box;
+}
+/* 桌面那档跟 `.input-wrapper` 一起收到 768（Figma Form 768，见 host-desktop.css
+   的 `.input-wrapper`）。放在这里而不是 host-desktop.css，是为了让这两档数值挨着
+   一眼能对上。 */
+[data-host="desktop"] .mod-band,
+[data-host="desktop"] .mod-status {
+  max-width: 768px;
+}
+
+/* ── 带 ─────────────────────────────────────────────────────────────── */
+
+.mod-band {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  /* 高度上限：CC 桌面端的带是 `max-h-[calc(11lh+40px)]`（11 行正文 + 内衬），
+     超了在带里滚动、滚动条隐掉（同 CC 的 `scrollbar-width:none`）。再加一道
+     视口预算取小者 —— 小窗口里 11 行就可能吃掉半屏。没有这两条时，一棵 60 行的
+     树（限额允许 2000 节点）把输入卡顶到 y=1342、视口里完全看不到（1180×760
+     实测）。 */
+  max-height: 248px; /* 老引擎兜底：11 × 19px 行高 + 40px 内衬 */
+  max-height: min(calc(11lh + 40px), 30vh);
+  /* 滚动内衬：CC 那 40px 不是白留的 —— `-my/py/scroll-py [(40px-1lh)/2]` 上下
+     各一份，滚动时第一条的上边框和按钮的 focus ring 不会被容器边缘切掉。负
+     margin 正好抵掉内衬，视觉位置与不加时一致（8px 的卡间距被下内衬吃掉 10px）。 */
+  padding-block: 10px;
+  margin-top: -10px;
+  margin-bottom: -2px;
+  scroll-padding-block: 10px;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.mod-band::-webkit-scrollbar {
+  display: none;
+}
+
+.mod-band-item {
+  min-width: 0;
+  /* flex 列被 max-height 收住时，子项默认会被压扁（各自裁成一行）——
+     超出的部分要在容器的滚动条里，不是把每条挤成半截。 */
+  flex: 0 0 auto;
+  padding: 8px 12px;
+  border-radius: var(--cc-radius-sm, 6px);
+  border: 1px solid var(--cc-border-light, var(--vscode-panel-border, #d9dbe0));
+  background: var(--cc-surface-subtle, transparent);
+  font-size: 12px;
+}
+
+/* ── 状态行 ─────────────────────────────────────────────────────────── */
+
+/* 一行、右对齐（CC 的 `flex items-center justify-end gap-sm text-footnote
+   text-muted`）。竖排多行那一版比 CC 更抢注意力，也把输入卡往下推。 */
+.mod-status {
+  position: relative;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 6px;
+  padding: 0 6px;
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground, #888);
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+/* 一段 `plugin: text`：插件名不被截、文本吃省略号（CC 让 plugin 几乎不收缩、
+   text 吃 `truncate`）。 */
+.mod-status-line {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  min-width: 0;
+  flex: 0 1 auto;
+  white-space: nowrap;
+}
+/* 有行被收进 `+N` 时才给每段 32ch 的天花板（CC 的 `isCapped` 才挂
+   `max-w-[32ch]`）；只有一行时不限宽，让它尽量铺开。 */
+[data-capped] > .mod-status-line {
+  max-width: 32ch;
+}
+
+.mod-status-plugin,
+.mod-status-rest {
+  flex: 0 0 auto;
+  font-size: 11px;
+  font-weight: 600;
+  opacity: 0.75;
+}
+
+.mod-status-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 量自然宽度用：绝对定位、不可见，不参与布局。测量期间必须保留所有行，否则
+   收起来的行再也量不到，`shown` 会一路缩到 1。 */
+.mod-status-measure {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: flex;
+  gap: 8px;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+/* ── 提示 ───────────────────────────────────────────────────────────── */
+
+/* 右下角固定浮层（CC 的 cds Toast：`fixed right-4 bottom-4 w-[360px]
+   max-w-[calc(100vw-2rem)] flex-col-reverse gap-md`）。提示是全局通知，不参与
+   输入区布局，也就不受输入卡 768 宽度约束。 */
+.mod-toasts {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 40;
+  display: flex;
+  /* 队列顺序渲染（旧→新）+ 正序排列 ⇒ 最新一条贴着右下角，旧的往上堆
+     （CC 的 `flex-col-reverse` + 反向渲染是同一个效果，这里少一步反转）。 */
+  flex-direction: column;
+  gap: 8px;
+  width: 360px;
+  max-width: calc(100vw - 2rem);
+  max-height: calc(100vh - 2rem);
+  overflow-y: auto;
+  scrollbar-width: none;
+  /* 浮层不该吃掉落在它空白处的点击；条目自己开 auto。 */
+  pointer-events: none;
+}
+
+.mod-toasts::-webkit-scrollbar {
+  display: none;
+}
+
+.mod-toast {
+  pointer-events: auto;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+  flex: 0 0 auto;
+  padding: 10px 12px;
+  border-radius: var(--cc-radius-sm, 8px);
+  border: 1px solid
+    var(--cc-border-lighter, var(--vscode-panel-border, #d9dbe0));
+  background: var(--cc-bg-modal, var(--vscode-editorWidget-background, #fff));
+  box-shadow: var(--cc-shadow-popover, 0 4px 16px rgb(0 0 0 / 16%));
+  color: var(--vscode-foreground, inherit);
+  font-size: 12px;
+}
+
+.mod-toast-icon {
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+  margin-top: 1px;
+  opacity: 0.7;
+}
+
+.mod-toast-body {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.mod-toast-title {
+  font-weight: 600;
+}
+
+/* 文本两档封顶：渲染时先按 CC 的 240 字符截断（组件里），这里再补一道行数上限，
+   保证 50 条提示排队时单条不会长成一屏。clamp 挂在这层没有 padding 的盒子上
+   （`overflow` 在 padding box 上裁，混在一起时字头会从下内衬里透出来）。 */
+.mod-toast-text {
+  margin-top: 2px;
+  color: var(--vscode-descriptionForeground, #888);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+  overflow: hidden;
+}
+
+.mod-toast-close {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  opacity: 0.6;
+  cursor: pointer;
+}
+
+.mod-toast-close:hover {
+  opacity: 1;
+  background: var(--cc-surface-subtle, rgb(0 0 0 / 6%));
+}
+
+.mod-toast-close-icon {
+  width: 12px;
+  height: 12px;
+}

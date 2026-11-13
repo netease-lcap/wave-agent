@@ -186,6 +186,22 @@ export interface AgentCallbacks
   onCommandRunningChange?: (running: boolean) => void;
   onWorkdirChange?: (newCwd: string) => void;
   /**
+   * A plugin mod's panel produced a new snapshot (spec
+   * `ecosystem/plugin-mods.md`). Full tree, not a delta; `revision` is
+   * monotonic and consumers drop anything older than what they already show.
+   */
+  onModPanelUpdate?: (
+    payload: import("./mods.js").ModPanelUpdatePayload,
+  ) => void;
+  /**
+   * A plugin mod set / cleared its line under the composer (`$.ui.status`;
+   * spec `ecosystem/plugin-mods.md`「状态带、状态行与提示」). `text: null`
+   * clears it. Hosts without such a line leave it unwired.
+   */
+  onModStatus?: (payload: import("./mods.js").ModStatusPayload) => void;
+  /** A plugin mod asked for a transient notice (`$.ui.toast`). */
+  onModToast?: (payload: import("./mods.js").ModToastPayload) => void;
+  /**
    * The session's workspace moved (EnterWorktree / ExitWorktree) — a different
    * event from a Bash `cd`: the conversation now works in another working tree,
    * so the surfaces showing "the project the user is looking at" follow.

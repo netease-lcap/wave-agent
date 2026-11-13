@@ -58,6 +58,15 @@ import { FilePane } from "./FilePane";
 import { PlanPane } from "./PlanPane";
 import { DesktopPanelTabs } from "./DesktopPanelTabs";
 import { PanelEmptyState } from "./PanelEmptyState";
+import { ModPanelRenderer } from "./ModPanelRenderer";
+import {
+  ModBandList,
+  ModStatusLines,
+  ModToastStack,
+  type ModBandFrame,
+  type ModStatusFrame,
+  type ModToastFrame,
+} from "./ModAbovePrompt";
 import type {
   BackgroundTaskSummary,
   ChatAppProps,
@@ -78,6 +87,16 @@ import type {
   UpdateToast,
 } from "../types";
 import { EXIT_PLAN_MODE_TOOL_NAME } from "wave-agent-sdk/constants";
+import type {
+  ModBandRenderResult,
+  ModPanelTree,
+  ModPanelUpdatePayload,
+  ModStatusPayload,
+  ModToastPayload,
+} from "wave-agent-sdk/types";
+// 限额表与 agent 侧同一份（toast 排队上限），别在 webview 里另抄一个数字；
+// 带的 `instance_id` 同理，是它自己的站点标识（`above-prompt` 是 CC 的写法）。
+import { MOD_BAND_INSTANCE_ID, MOD_LIMITS } from "wave-agent-sdk/types";
 // Type-only, borrowed the same way types/index.ts does it: the four facts are
 // part of the host → webview contract (fixtures defines `PushState`), and the
 // import is erased so nothing runtime-bound survives.
@@ -129,6 +148,8 @@ export const PANEL_LABELS: Record<DesktopPanelKind, string> = {
   terminal: "终端",
   file: "文件",
   tasks: "后台任务",
+  // mod 面板由插件自己起名（`modTitle`），这里只是拿不到标题时的兜底。
+  mod: "插件",
 };
 // 上翻时锚点在转录里失效了（rewind / 截断）之后，换下一个已加载 id 重试的次数上限。
 // 三次足够跳过「被裁掉的那几条」，又不至于把一次坏锚点变成一个请求风暴。
@@ -881,6 +902,29 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   );
   const tabsRef = useRef(tabs);
   tabsRef.current = tabs;
+  // 插件 mod 的三样「不属于任何 pane」的输出（spec ecosystem/plugin-mods.md
+  // 「状态带、状态行与提示」）：输入框上方的带、下方的状态行与短提示。数据全在
+  // 宿主 / CLI 进程里，这里只是最近一帧的展示态；带由本实例**主动拉取**
+  // （宿主不缓存树），状态行与提示是推送。
+  const [modBands, setModBands] = useState<ModBandFrame[]>([]);
+  const modBandsRef = useRef(modBands);
+  modBandsRef.current = modBands;
+  const [modStatuses, setModStatuses] = useState<ModStatusFrame[]>([]);
+  const [modToasts, setModToasts] = useState<ModToastFrame[]>([]);
+  // toast 的序号与计时器：`timeoutMs` 到点自己消失（spec「状态带、状态行与
+  // 提示」）。计时器按 toast id 存，换会话 / 卸载时一并清掉。
+  const modToastSeqRef = useRef(0);
+  const modToastTimersRef = useRef(new Map<number, number>());
+  // 手动关掉一条提示（浮层右上角的 ×）：连同它那个到点的计时器一起撤掉，
+  // 否则计时器到点还会对已删掉的 id 做一次 filter。
+  const dismissModToast = useCallback((id: number) => {
+    const timer = modToastTimersRef.current.get(id);
+    if (timer !== undefined) {
+      window.clearTimeout(timer);
+      modToastTimersRef.current.delete(id);
+    }
+    setModToasts((prev) => prev.filter((toast) => toast.id !== id));
+  }, []);
   // 文件面板的未保存草稿（spec desktop-file-panel.md「文件面板内编辑与保存」）：
   // 判定与丢弃都落在 tab 态上，声明在这里是因为「离开」的守卫散落在关闭 tab、
   // 打开另一个文件、换会话等既有回调里，它们都在调用时读最新的 tabsRef。
@@ -965,6 +1009,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     terminal: 0,
     file: 0,
     tasks: 0,
+    mod: 0,
   });
   // Per-open-file id source (f1, f2, …) for the file panel's own tab strip.
   // Restored ids are absorbed into it in the same effect as the tab ids.
@@ -1701,6 +1746,181 @@ export const ChatApp: React.FC<ChatAppProps> = ({
           }
         }
         break;
+      case "desktopModPanelUpdate": {
+        // 插件 mod 面板的**元信息**（spec ecosystem/plugin-mods.md「架构约束」）：
+        // 不带树。mod 跑在 CLI 进程里，什么时候过期由它自己的钩子决定，所以这是
+        // 一条推送；`stale` 表示这一帧要重新拉，这时**由 surface 自己发请求**
+        // （宿主不缓存树、也不主动推）。
+        if (!forThisPane(message)) break;
+        const payload = (message as { payload?: ModPanelUpdatePayload })
+          .payload;
+        if (!payload?.modId || !payload.paneId) break;
+        const tabId = `mod:${payload.modId}:${payload.paneId}`;
+        const existed = tabsRef.current.some((t) => t.id === tabId);
+        setTabs((prev) => {
+          const existing = prev.find((t) => t.id === tabId);
+          if (payload.closed) {
+            return existing ? prev.filter((t) => t.id !== tabId) : prev;
+          }
+          if (existing) {
+            // 元信息只改标题与错误条；树仍是上一次回包那份（还没到的帧由
+            // `modTree === undefined` 表示）。
+            return prev.map((t) =>
+              t.id === tabId
+                ? {
+                    ...t,
+                    modTitle: payload.title || t.modTitle,
+                    modError: payload.error,
+                  }
+                : t,
+            );
+          }
+          const created: PanelTab = {
+            id: tabId,
+            kind: "mod",
+            modId: payload.modId,
+            modPaneId: payload.paneId,
+            modTitle: payload.title,
+            modError: payload.error,
+            // `modTree` 有意留空：它只由 `desktopModPanelRender` 回包填。
+          };
+          return [...prev, created];
+        });
+        if (!payload.closed && payload.stale) {
+          postToHost({
+            command: "modPanelRender",
+            payload: { modId: payload.modId, paneId: payload.paneId },
+          });
+          // 带也跟着这一次 stale 重拉（spec「状态带、状态行与提示」：surface 每次
+          // `stale` 之后对每个注册了 `ui.render` 的 mod 拉一次）。invalidate 是按
+          // pane 发的，所以这里只拿它当「mod 的画变了」的信号。
+          postModBandRender();
+        }
+        if (!existed && !payload.closed && !payload.stale) {
+          // 不会再有回包的面板（mod 加载失败那一类）现在就展开；等第一帧树的
+          // 那些在回包里展开（spec「用户交互的结果」）。
+          setActiveTabId(tabId);
+          setPanelExpanded(true);
+        }
+        break;
+      }
+      case "desktopModPanelRender": {
+        // `modPanelRender` 的回包：这一帧的树（spec「架构约束」）。归属键是
+        // tab —— tab 已经关了就丢弃；同一 tab 上按 revision 判旧。
+        if (!forThisPane(message)) break;
+        const reply = message as {
+          tabId?: string;
+          revision?: number;
+          tree?: ModPanelTree | null;
+          error?: string;
+        };
+        if (!reply.tabId || typeof reply.revision !== "number") break;
+        const tab = tabsRef.current.find((t) => t.id === reply.tabId);
+        if (!tab) break;
+        if (
+          typeof tab.modRevision === "number" &&
+          reply.revision < tab.modRevision
+        ) {
+          break; // 晚到的旧帧
+        }
+        const firstFrame = tab.modTree === undefined;
+        setTabs((prev) =>
+          prev.map((t) =>
+            t.id === reply.tabId
+              ? {
+                  ...t,
+                  modRevision: reply.revision,
+                  modTree: reply.tree ?? null,
+                  modError: reply.error,
+                }
+              : t,
+          ),
+        );
+        if (firstFrame) {
+          // mod 自己申请的面板必须让用户看见：第一帧到达就激活并展开槽，与用户
+          // 从「＋」菜单打开同一个效果。后续帧只更新内容，不抢当前焦点。
+          setActiveTabId(reply.tabId);
+          setPanelExpanded(true);
+        }
+        break;
+      }
+      case "desktopModBand": {
+        // `modBandRender` 的回包：整条带的**快照**（spec「状态带、状态行与
+        // 提示」）。归属键是 mod —— 同一个 mod 可能有多笔在途请求，按 `revision`
+        // 判旧；整表替换，所以这次没返回的 mod 的带会随之消失（它这一帧没内容）。
+        if (!forThisPane(message)) break;
+        const bands = (message as { bands?: ModBandRenderResult[] }).bands;
+        if (!Array.isArray(bands)) break;
+        const previous = new Map(modBandsRef.current.map((b) => [b.modId, b]));
+        setModBands(
+          bands.map((band) => {
+            const shown = previous.get(band.modId);
+            // 晚到的旧帧：保留已显示的版本，不把它画回去。
+            if (shown && band.revision < shown.revision) return shown;
+            return {
+              modId: band.modId,
+              plugin: band.plugin,
+              revision: band.revision,
+              tree: band.tree,
+              error: band.error,
+            };
+          }),
+        );
+        break;
+      }
+      case "desktopModStatus": {
+        // 每个插件一条常驻行（spec「状态带、状态行与提示」）：后一次调用替换前
+        // 一次，`text: null` 清除。只推不拉 —— 没请求可归属，也不进对话上下文。
+        if (!forThisPane(message)) break;
+        const payload = (message as { payload?: ModStatusPayload }).payload;
+        if (!payload?.modId) break;
+        setModStatuses((prev) => {
+          const index = prev.findIndex((line) => line.modId === payload.modId);
+          if (payload.text === null) {
+            return index === -1
+              ? prev
+              : prev.filter((line) => line.modId !== payload.modId);
+          }
+          const line: ModStatusFrame = {
+            modId: payload.modId,
+            plugin: payload.plugin,
+            text: payload.text,
+          };
+          // 原地替换，保住插件首次出现的位置（否则每更新一次就跳到末尾）。
+          if (index === -1) return [...prev, line];
+          return prev.map((old, i) => (i === index ? line : old));
+        });
+        break;
+      }
+      case "desktopModToast": {
+        // 短暂提示：到点自己消失（spec「状态带、状态行与提示」）。排队上限与
+        // agent 侧同一份限额；溢出丢**最旧**的一条 —— 用户最该看到的是刚发生的
+        // 那条，不是十分钟前的。
+        if (!forThisPane(message)) break;
+        const payload = (message as { payload?: ModToastPayload }).payload;
+        if (!payload?.text) break;
+        const id = ++modToastSeqRef.current;
+        const toast: ModToastFrame = {
+          id,
+          plugin: payload.plugin,
+          text: payload.text,
+        };
+        setModToasts((prev) => {
+          const next = [...prev, toast];
+          return next.length > MOD_LIMITS.toastQueueMax
+            ? next.slice(next.length - MOD_LIMITS.toastQueueMax)
+            : next;
+        });
+        const timer = window.setTimeout(
+          () => {
+            modToastTimersRef.current.delete(id);
+            setModToasts((prev) => prev.filter((t) => t.id !== id));
+          },
+          Math.max(0, payload.timeoutMs),
+        );
+        modToastTimersRef.current.set(id, timer);
+        break;
+      }
       case "desktopFileContent":
         // File panel content reply (file panel spec scenario 1/2). Routed by
         // paneId so a sibling pane's reply never overwrites this pane's view;
@@ -2537,6 +2757,12 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     },
     [vscode],
   );
+
+  // 输入框上方那条带由本实例**主动拉取**（spec「状态带、状态行与提示」）：宿主
+  // 不缓存树，每次请求都真跑一遍每个 mod 的 `ui.render`。
+  const postModBandRender = useCallback(() => {
+    postToHost({ command: "modBandRender" });
+  }, [postToHost]);
 
   // 头部标题就地编辑（spec session-management.md「会话重命名入口：CLI 与插件端」场景 8/9）：乐观更新走 reducer（sessions 列表 + currentSession 一起
   // 改，头部立即变），失败时 useSessionRename 回滚，头部就地给出可见提示。
@@ -3773,6 +3999,35 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     }
   }, [state.currentSession?.id]);
 
+  // 插件 mod 的三样输出都跟着会话走（spec「状态带、状态行与提示」）：换会话时
+  // 整组清空并重拉一次带。清空是因为它们描述「此刻这个会话的界面」，上一个会话
+  // 的 mod 状态画在新会话里就是错的；重拉是因为带是**拉取式**的，新会话就绪后
+  // 不问就永远不会出现（mod 的 `$.state` 才是真相，它自己不会推树过来）。
+  useEffect(() => {
+    setModBands([]);
+    setModStatuses([]);
+    setModToasts([]);
+    for (const timer of modToastTimersRef.current.values()) {
+      window.clearTimeout(timer);
+    }
+    modToastTimersRef.current.clear();
+    // 挂载时也要拉一次：新建会话还没有 id（`currentSession` 为空），带一样得出现
+    // —— 它是「还没开口就先看到状态」的那条路（spec「不开面板也能把信息放在用户
+    // 眼前」）。
+    postModBandRender();
+  }, [state.currentSession?.id, postModBandRender]);
+
+  // 卸载时把还在计时的 toast 计时器清掉（ChatApp 会随会话/设置页整块卸载）。
+  useEffect(
+    () => () => {
+      for (const timer of modToastTimersRef.current.values()) {
+        window.clearTimeout(timer);
+      }
+      modToastTimersRef.current.clear();
+    },
+    [],
+  );
+
   // 模型清单与当前模型由宿主解析（settings.json / env 链），底栏要随时显示，所以
   // 挂载时拉一次、会话一换再拉一次（每个会话的 agent 可以带自己的 `--model`）。
   // 远端页也拉（shim 已转发 `getConfiguredModels`），否则手机上的选择器没有候选。
@@ -4050,6 +4305,21 @@ export const ChatApp: React.FC<ChatAppProps> = ({
           postToHost({
             command: "desktopPreviewFileRelease",
             path: removed.previewFilePath,
+          });
+        }
+        // A mod tab going away is the user closing the pane: the host drops the
+        // pane snapshot (spec ecosystem/plugin-mods.md). The mod itself is not
+        // notified — it has no "panel closed" hook.
+        if (removed.kind === "mod" && removed.modId && removed.modPaneId) {
+          postToHost({
+            command: "modPanelEvent",
+            payload: {
+              modId: removed.modId,
+              paneId: removed.modPaneId,
+              key: "",
+              kind: "close",
+              origin: "person",
+            },
           });
         }
         if (removed.kind === "preview" || next.length === 0) {
@@ -5066,6 +5336,42 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     if (kind === "plan") {
       return <PlanPane content={planContent} {...common} />;
     }
+    if (kind === "mod") {
+      // 树已经过宿主校验（节点数/深度/文本量/href 白名单），这里只画。交互回到
+      // 宿主再转给 mod：webview 不持有 mod 的任何状态。`modTree === undefined`
+      // 表示这一帧还在路上（surface 刚发过请求），别把它画成「没有返回内容」。
+      return (
+        <div
+          className="mod-panel"
+          style={{ width: common.width }}
+          data-testid="mod-panel"
+        >
+          {tab.modTree === undefined && !tab.modError ? (
+            <div className="mod-panel-empty">正在渲染…</div>
+          ) : (
+            <ModPanelRenderer
+              tree={tab.modTree ?? null}
+              error={tab.modError}
+              onEvent={(eventKind, key, value) =>
+                postToHost({
+                  command: "modPanelEvent",
+                  payload: {
+                    modId: tab.modId,
+                    paneId: tab.modPaneId,
+                    key,
+                    kind: eventKind,
+                    ...(value === undefined ? {} : { value }),
+                  },
+                })
+              }
+              onOpenLink={(href) =>
+                postToHost({ command: "openExternal", url: href })
+              }
+            />
+          )}
+        </div>
+      );
+    }
     if (kind === "tasks") {
       // 数据与插件端对话框完全同源（`backgroundTasksChange` 推送的同一份
       // 列表），面板只换承载方式：列表 / 详情两态、运行中分组、停止与输出
@@ -5364,6 +5670,28 @@ export const ChatApp: React.FC<ChatAppProps> = ({
                 state.pendingConfirmations.length === 0 ? "block" : "none",
             }}
           >
+            {/* 输入框上方的带（spec「状态带、状态行与提示」）：一个 mod 一条，
+                树由本实例拉取。交互回宿主再转给 mod，webview 不持有 mod 状态。 */}
+            <ModBandList
+              bands={modBands}
+              onEvent={(modId, kind, key, value) =>
+                postToHost({
+                  command: "modPanelEvent",
+                  payload: {
+                    modId,
+                    // 带不是 pane：`instance_id` 是站点自己的固定值，mod 侧靠它
+                    // 区分「这次渲染/交互来自哪条带」。
+                    paneId: MOD_BAND_INSTANCE_ID,
+                    key,
+                    kind,
+                    ...(value === undefined ? {} : { value }),
+                  },
+                })
+              }
+              onOpenLink={(href) =>
+                postToHost({ command: "openExternal", url: href })
+              }
+            />
             <MessageInput
               ref={messageInputRef}
               onSendMessage={handleSendMessage}
@@ -5474,6 +5802,11 @@ export const ChatApp: React.FC<ChatAppProps> = ({
                 ) : undefined
               }
             />
+            {/* 输入框下方的常驻状态行与短暂提示（spec「状态带、状态行与提示」）：
+                只推不拉、纯文本、不进对话上下文；每个插件一段/一签。提示是右下角
+                固定浮层，不占输入区布局。 */}
+            <ModStatusLines lines={modStatuses} />
+            <ModToastStack toasts={modToasts} onDismiss={dismissModToast} />
           </div>
 
           {state.pendingConfirmations.length > 0 && (

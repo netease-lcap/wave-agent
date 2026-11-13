@@ -59,6 +59,9 @@ function tabLabel(tab: PanelTab): string {
       return tab.previewUrl;
     }
   }
+  // mod 面板与预览同理是 per-instance 的：tab 显示插件自己起的标题
+  // （`$.ui.open({ title })`），拿不到才退回类名。
+  if (tab.kind === "mod") return tab.modTitle || PANEL_LABELS.mod;
   return PANEL_LABELS[tab.kind];
 }
 

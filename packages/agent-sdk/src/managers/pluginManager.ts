@@ -274,6 +274,7 @@ export class PluginManager {
         ),
         hooksConfig: await PluginLoader.loadHooksConfig(absolutePath),
         workflows: (await PluginLoader.loadWorkflows(absolutePath)) ?? [],
+        mods: await PluginLoader.loadMods(absolutePath, manifest.name),
       };
 
       // Register components with managers

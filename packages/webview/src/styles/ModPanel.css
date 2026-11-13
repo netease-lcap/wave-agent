@@ -1,0 +1,140 @@
+/**
+ * 插件 mod 面板的默认外观（spec `ecosystem/plugin-mods.md`）。
+ *
+ * mod 返回的是一棵裸元素树，元素的结构（flex 方向、间距、粗细）由 mod 自己
+ * 通过 props 决定，这里只补「宿主侧的默认观感」：面板留白、按钮/输入框/代码块
+ * 跟随主题、错误条不与树抢位置。没有这层，用户在真机上看到的就是浏览器默认
+ * 控件贴着面板边缘排成一行。
+ *
+ * 变量一律先取桌面端主题（`--cc-*`），再退到 VS Code 的 `--vscode-*` 与硬编码
+ * fallback —— 面板以后接 VS Code / JetBrains 时这套还能用。
+ */
+
+/* `ChatApp` 给槽位传的是面板**总**宽度（`panelWidth`），所以这里必须
+   border-box：默认的 content-box 会让 32px 的左右 padding 加到宽度之外，整块
+   面板溢出槽位、底部冒出横向滚动条（真机复现过）。 */
+.mod-panel {
+  box-sizing: border-box;
+  padding: 12px 16px 20px;
+  overflow: auto;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+/* 根 Box 已自带 flex 布局；这里只保证它撑满面板宽度，不塌成一行。 */
+.mod-panel-root {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  max-width: 100%;
+}
+
+/* flex 子项的 `min-width` 默认是 auto：一个长代码块就能把整列撑出横向滚动条，
+   顺带把同一行的输入框和按钮挤到看不见。逐层压回 0，让内容自己滚动。 */
+.mod-panel-root > *,
+.mod-panel .mod-panel-input,
+.mod-panel .mod-panel-code,
+.mod-panel .mod-panel-markdown {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.mod-panel a {
+  color: var(--cc-action-primary, var(--vscode-focusBorder, #2f6fdd));
+  text-decoration: none;
+}
+
+.mod-panel a:hover {
+  text-decoration: underline;
+}
+
+.mod-panel button {
+  font: inherit;
+  padding: 4px 12px;
+  border-radius: var(--cc-radius-sm, 6px);
+  border: 1px solid var(--cc-border-light, var(--vscode-panel-border, #d9dbe0));
+  background: transparent;
+  color: var(--vscode-foreground, inherit);
+  cursor: pointer;
+  /* 一排按钮等分到手，按钮的文案不能被压成竖排。 */
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.mod-panel button:hover:not(:disabled) {
+  background: var(
+    --cc-action-secondary-hover,
+    var(--vscode-button-secondaryHoverBackground, rgba(128, 128, 128, 0.12))
+  );
+}
+
+.mod-panel button:disabled {
+  cursor: default;
+  color: var(--vscode-disabledForeground, #999);
+}
+
+.mod-panel input {
+  font: inherit;
+  padding: 4px 8px;
+  border-radius: var(--cc-radius-sm, 6px);
+  border: 1px solid var(--cc-field-border, var(--vscode-input-border, #d9dbe0));
+  background: var(--cc-field-bg, var(--vscode-input-background, #fff));
+  color: var(--vscode-input-foreground, inherit);
+}
+
+.mod-panel input:focus {
+  outline: none;
+  border-color: var(
+    --cc-field-border-focus,
+    var(--vscode-focusBorder, #2f6fdd)
+  );
+}
+
+.mod-panel .mod-panel-code {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: var(--cc-radius-sm, 6px);
+  background: var(--cc-bg-code, rgba(128, 128, 128, 0.1));
+  font-family: var(
+    --vscode-editor-font-family,
+    ui-monospace,
+    SFMono-Regular,
+    monospace
+  );
+  font-size: 12px;
+  overflow: auto;
+}
+
+.mod-panel .mod-panel-code-path {
+  margin-bottom: 4px;
+  color: var(--vscode-descriptionForeground, #888);
+  font-size: 11px;
+}
+
+.mod-panel .mod-panel-markdown > :first-child {
+  margin-top: 0;
+}
+
+.mod-panel .mod-panel-markdown > :last-child {
+  margin-bottom: 0;
+}
+
+/* 错误条叠在**上一帧树**上方而不是顶掉它：mod 的元素回调抛错时，树还是上一次
+   成功渲染的那份，把它换成一行错误文字会让面板彻底不可操作（用户连别的按钮
+   都点不到）。下一次 `$.ui.invalidate` 成功后这条自动消失。 */
+.mod-panel .mod-panel-error {
+  margin-bottom: 8px;
+  padding: 6px 10px;
+  border-radius: var(--cc-radius-sm, 6px);
+  border: 1px solid var(--cc-color-danger, #d93026);
+  background: var(--cc-color-danger-soft, rgba(217, 48, 38, 0.08));
+  color: var(--cc-color-danger, #d93026);
+  font-size: 12px;
+  white-space: pre-wrap;
+}
+
+.mod-panel .mod-panel-empty,
+.mod-panel .mod-panel-unknown {
+  color: var(--vscode-descriptionForeground, #888);
+  font-size: 12px;
+}

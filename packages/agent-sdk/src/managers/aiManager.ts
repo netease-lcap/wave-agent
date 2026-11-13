@@ -78,6 +78,8 @@ import type { SubagentManager } from "./subagentManager.js";
 import type { CronManager } from "./cronManager.js";
 import type { SkillManager } from "./skillManager.js";
 import type { LiveConfigManager } from "./liveConfigManager.js";
+import type { ModManager } from "./modManager.js";
+import type { ModTokenTotals } from "../types/mods.js";
 import {
   buildSystemPrompt,
   formatCompactSummary,
@@ -206,6 +208,16 @@ function linkAbortSignals(signals: Array<AbortSignal | undefined>): {
 function truncateWithMarker(text: string, max: number): string {
   if (text.length <= max) return text;
   return text.slice(0, max) + `… [+${text.length - max} chars]`;
+}
+
+// Add one response's usage into a turn's totals (`turn.complete`, spec
+// ecosystem/plugin-mods.md「完成与审批的观察」). `prompt` keeps the cache hits —
+// same convention as `$.session.usage().tokens`.
+function accumulateTurnUsage(totals: ModTokenTotals, usage: Usage): void {
+  totals.prompt += usage.prompt_tokens ?? 0;
+  totals.completion += usage.completion_tokens ?? 0;
+  totals.cacheRead += usage.cache_read_input_tokens ?? 0;
+  totals.cacheCreation += usage.cache_creation_input_tokens ?? 0;
 }
 
 // Map a BackgroundTask (from BackgroundTaskManager) to the Stop hook's
@@ -2146,6 +2158,22 @@ ${question}`;
     let myGeneration = this.turnGeneration;
     this.setIsLoading(true);
 
+    // Timed from here so the `turn.complete` mod event (spec ecosystem/plugin-mods.md
+    // 「完成与审批的观察」) covers the whole turn, including the Stop-hook and
+    // notification restarts below: from the user's side those are still one turn.
+    // Same for the token totals — every model request in the turn adds to them, so
+    // a turn that restarted still reports one set of numbers.
+    // `turnAborted` is recorded where the turn already works out whether it was
+    // aborted, and read on the single exit path below.
+    const turnStartedAt = Date.now();
+    const turnUsage: ModTokenTotals = {
+      prompt: 0,
+      completion: 0,
+      cacheRead: 0,
+      cacheCreation: 0,
+    };
+    let turnAborted = false;
+
     // Lazy MCP dial (spec ecosystem/mcp.md「按需连接 MCP 服务器」场景 2): the
     // servers were registered at `Agent.create()` but not spawned, because a
     // pooled Agent per session would otherwise cost one ~130 MB process tree per
@@ -2633,6 +2661,10 @@ ${question}`;
             // Charge the turn's budget ledger before anything else can fail:
             // the tokens were spent whether or not the message is persisted.
             this.recordTurnOutputTokens(usage);
+            // Per-turn totals for `turn.complete` (spec ecosystem/plugin-mods.md
+            // 「完成与审批的观察」): every request the turn makes counts, tool
+            // loops included.
+            accumulateTurnUsage(turnUsage, usage);
             const messages = this.messageManager.getMessages();
             const lastMessage = messages[messages.length - 1];
             if (lastMessage && lastMessage.role === "assistant") {
@@ -2884,6 +2916,7 @@ ${question}`;
         // Execute Stop/SubagentStop hooks only if the operation was not aborted
         const isCurrentlyAborted =
           abortController.signal.aborted || toolAbortController.signal.aborted;
+        turnAborted = isCurrentlyAborted;
 
         const messageQueue = this.getMessageQueue();
 
@@ -2971,6 +3004,20 @@ ${question}`;
         if (ownsTurnSnapshot) {
           this.liveConfigManager?.onTurnEnd();
         }
+        // Tell the mods the conversation is done (spec ecosystem/plugin-mods.md
+        // 「完成与审批的观察」). Read-only and fire-and-forget: a mod reporting to
+        // its own server must not hold up the idle state we just released. Only
+        // the main agent's turns own this event — a subagent's nested turn is
+        // not what the user sees as "the answer finished", and `turnOffset !== 0`
+        // leftovers are recursion, not turn ends.
+        if (turnOffset === 0 && !this.subagentType) {
+          this.getModManager()?.notifyMods("turn.complete", {
+            isAborted: turnAborted,
+            durationMs: Date.now() - turnStartedAt,
+            answer: this.lastAssistantText() ?? "",
+            usage: turnUsage,
+          });
+        }
         break outer;
       }
     }
@@ -2985,6 +3032,38 @@ ${question}`;
     return this.container.has("MessageQueue")
       ? this.container.get<MessageQueue>("MessageQueue")
       : undefined;
+  }
+
+  /**
+   * ModManager, resolved through the container like the message queue: the token
+   * belongs to the main agent's container (a subagent reaches it through its
+   * child container). A missing one is not an error — the turn reports to nobody.
+   */
+  private getModManager(): ModManager | undefined {
+    return this.container.has("ModManager")
+      ? this.container.get<ModManager>("ModManager")
+      : undefined;
+  }
+
+  /**
+   * The last assistant message's text, trimmed — `undefined` when there is none.
+   *
+   * Two readers: the Stop hook context (so a hook can inspect the final response
+   * without reading the transcript) and the `turn.complete` mod event's `answer`
+   * (spec ecosystem/plugin-mods.md「完成与审批的观察」).
+   */
+  private lastAssistantText(): string | undefined {
+    const lastAssistant = [...this.messageManager.getMessages()]
+      .reverse()
+      .find((m) => m.role === "assistant");
+    if (!lastAssistant) return undefined;
+    return (
+      lastAssistant.blocks
+        .filter((b) => b.type === "text")
+        .map((b) => b.content)
+        .join("\n")
+        .trim() || undefined
+    );
   }
 
   /**
@@ -3058,17 +3137,7 @@ ${question}`;
 
       // Extract text content from the last assistant message so hooks can
       // inspect the final response without reading the transcript file.
-      const allMessages = this.messageManager.getMessages();
-      const lastAssistant = [...allMessages]
-        .reverse()
-        .find((m) => m.role === "assistant");
-      const lastAssistantText = lastAssistant
-        ? lastAssistant.blocks
-            .filter((b) => b.type === "text")
-            .map((b) => b.content)
-            .join("\n")
-            .trim() || undefined
-        : undefined;
+      const lastAssistantText = this.lastAssistantText();
 
       const context: ExtendedHookExecutionContext = {
         event: hookName,

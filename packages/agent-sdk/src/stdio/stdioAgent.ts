@@ -48,6 +48,12 @@ import type {
   MessageWindowResult,
   MessageThreadSummary,
   UserImage,
+  ModBandRenderResult,
+  ModPanelEventPayload,
+  ModPanelRenderResult,
+  ModPanelUpdatePayload,
+  ModStatusPayload,
+  ModToastPayload,
 } from "../types/index.js";
 import type { BtwAskOptions, BtwHistoryTurn } from "../types/btw.js";
 import type { RpcClient } from "./rpcClient.js";
@@ -192,6 +198,18 @@ export interface StdioAgentCallbacks {
   /** 额度响应头（`x-codechat-quota-*`，每次模型调用都带），原样透传、不解析
    *  （spec: docs/specs/desktop/desktop-account.md「额度响应头」）。 */
   onQuotaHeaders?: (headers: Record<string, string>) => void;
+  /**
+   * A plugin mod panel's new snapshot (spec `ecosystem/plugin-mods.md`). Full
+   * tree + monotonic `revision`; drop anything older than what is on screen.
+   */
+  onModPanelUpdate?: (payload: ModPanelUpdatePayload) => void;
+  /**
+   * A mod set or cleared its line under the composer (`$.ui.status`; spec
+   * 状态带、状态行与提示). `text: null` clears.
+   */
+  onModStatus?: (payload: ModStatusPayload) => void;
+  /** A mod asked for a transient notice (`$.ui.toast`). */
+  onModToast?: (payload: ModToastPayload) => void;
   onCommandRunningChange?: (running: boolean) => void;
   onQueuedMessagesChange?: (messages: QueuedMessage[]) => void;
   onTasksChange?: (tasks: Task[]) => void;
@@ -627,6 +645,58 @@ export class StdioAgent {
     )) as { suggestion: NextEditSuggestion | null; model: string };
   }
 
+  // ── Plugin mods ───────────────────────────────────────────────
+
+  /**
+   * 把面板里的一次交互交回给 mod（spec `ecosystem/plugin-mods.md`）。
+   *
+   * 宿主只负责运这一趟：mod 的代码与它的状态都在 CLI 进程里，宿主没有
+   * 任何可以本地判断的东西。
+   */
+  async sendModPanelEvent(payload: ModPanelEventPayload): Promise<void> {
+    await this.client.request("modPanelEvent", payload, this.sessionId);
+  }
+
+  /**
+   * 要一棵面板的树（spec「架构约束」：树由 surface 拉取）。
+   *
+   * surface 收到 `modPanelUpdate` 的 `stale` 后自己发起，宿主不缓存树 ——
+   * 每一次请求都会真的跑一次 mod 的 `ui.render`。
+   */
+  async renderModPanel(
+    modId: string,
+    paneId: string,
+  ): Promise<ModPanelRenderResult> {
+    return (await this.client.request(
+      "modPanelRender",
+      { modId, paneId },
+      this.sessionId,
+    )) as ModPanelRenderResult;
+  }
+
+  /**
+   * 要输入框上方那条带的树（spec「状态带、状态行与提示」）。
+   *
+   * 与 `renderModPanel` 同一条纪律：surface 自己发起、宿主不缓存，每次调用都
+   * 真的跑一遍每个 mod 的 `ui.render`。
+   */
+  async renderModBand(): Promise<ModBandRenderResult[]> {
+    return (await this.client.request(
+      "modBandRender",
+      {},
+      this.sessionId,
+    )) as ModBandRenderResult[];
+  }
+
+  /** 当前所有 mod 面板的快照（宿主重连后补画面板用）。 */
+  async getModPanels(): Promise<ModPanelUpdatePayload[]> {
+    return (await this.client.request(
+      "getModPanels",
+      {},
+      this.sessionId,
+    )) as ModPanelUpdatePayload[];
+  }
+
   // ── Permissions ───────────────────────────────────────────────
 
   async setPermissionMode(mode: PermissionMode): Promise<void> {
@@ -982,6 +1052,18 @@ export class StdioAgent {
       case "quotaHeaders": {
         const p = params as { headers?: Record<string, string> };
         if (p.headers) this.callbacks.onQuotaHeaders?.(p.headers);
+        break;
+      }
+      case "modPanelUpdate": {
+        this.callbacks.onModPanelUpdate?.(params as ModPanelUpdatePayload);
+        break;
+      }
+      case "modStatusUpdate": {
+        this.callbacks.onModStatus?.(params as ModStatusPayload);
+        break;
+      }
+      case "modToast": {
+        this.callbacks.onModToast?.(params as ModToastPayload);
         break;
       }
       case "commandRunningChange": {

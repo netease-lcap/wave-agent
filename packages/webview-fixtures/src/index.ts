@@ -56,6 +56,15 @@ import type {
   DesktopSessionContentMatchesMessage,
   DesktopWorkdirStateMessage,
   DesktopTogglePanelMessage,
+  DesktopModPanelUpdateMessage,
+  DesktopModPanelRenderMessage,
+  DesktopModBandMessage,
+  DesktopModStatusMessage,
+  DesktopModToastMessage,
+  ModBandRenderResult,
+  ModPanelUpdatePayload,
+  ModStatusPayload,
+  ModToastPayload,
   DesktopPanelKind,
   DesktopAccountInfoMessage,
   DesktopFullScreenMessage,
@@ -205,6 +214,26 @@ export interface Fixtures {
     kind: DesktopPanelKind,
     overrides?: Overrides<DesktopTogglePanelMessage>,
   ) => DesktopTogglePanelMessage;
+  desktopModPanelUpdate: (
+    payload: ModPanelUpdatePayload,
+    overrides?: Overrides<DesktopModPanelUpdateMessage>,
+  ) => DesktopModPanelUpdateMessage;
+  desktopModPanelRender: (
+    tabId: string,
+    overrides?: Overrides<DesktopModPanelRenderMessage>,
+  ) => DesktopModPanelRenderMessage;
+  desktopModBand: (
+    bands: ModBandRenderResult[],
+    overrides?: Overrides<DesktopModBandMessage>,
+  ) => DesktopModBandMessage;
+  desktopModStatus: (
+    payload: ModStatusPayload,
+    overrides?: Overrides<DesktopModStatusMessage>,
+  ) => DesktopModStatusMessage;
+  desktopModToast: (
+    payload: ModToastPayload,
+    overrides?: Overrides<DesktopModToastMessage>,
+  ) => DesktopModToastMessage;
   desktopAccountInfo: (
     overrides?: Overrides<DesktopAccountInfoMessage>,
   ) => DesktopAccountInfoMessage;
@@ -455,6 +484,38 @@ export const fixtures: Fixtures = {
   desktopTogglePanel: (kind, overrides = {}) => ({
     command: "desktopTogglePanel",
     kind,
+    ...overrides,
+  }),
+
+  desktopModPanelUpdate: (payload, overrides = {}) => ({
+    command: "desktopModPanelUpdate",
+    payload,
+    ...overrides,
+  }),
+
+  desktopModPanelRender: (tabId, overrides = {}) => ({
+    command: "desktopModPanelRender",
+    tabId,
+    revision: 1,
+    tree: { type: "Text", props: {}, children: ["hello"] },
+    ...overrides,
+  }),
+
+  desktopModBand: (bands, overrides = {}) => ({
+    command: "desktopModBand",
+    bands,
+    ...overrides,
+  }),
+
+  desktopModStatus: (payload, overrides = {}) => ({
+    command: "desktopModStatus",
+    payload,
+    ...overrides,
+  }),
+
+  desktopModToast: (payload, overrides = {}) => ({
+    command: "desktopModToast",
+    payload,
     ...overrides,
   }),
 

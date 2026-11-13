@@ -94,6 +94,7 @@ const ENTRIES = {
   types: "types/index.js",
   constants: "constants/index.js",
   host: "host/index.js",
+  mods: "mods/index.js",
 };
 
 const QUOTED_SPECIFIER_FROM_RE =
