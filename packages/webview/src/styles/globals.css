@@ -77,14 +77,51 @@ body {
    ⚠️ headless 浏览器进不了 standalone 形态 ⇒ 单测只读这段文本，e2e 把块内容原样
    注入再量几何（`remote-page-viewport.e2e.ts`）。 */
 @media (display-mode: standalone) {
+  /* 色带高度、页面让位量、状态横幅自己补的那一段，全部读这一个变量。
+     它们是同一件事的三个落点，任何一个单独改数值都会让色带和它盖住的内容错位：
+     色带是 `position: fixed` 的覆盖层，流内内容不会自己让开。 */
+  [data-remote-page] {
+    --remote-top-edge-h: max(12px, env(safe-area-inset-top, 0px));
+  }
+
+  /* 让位：原先 body 只让 `env(safe-area-inset-top)`，而 `safe-area-inset-top` 归零的
+     机型上（这 12px 兜底正是为它们写的）色带仍占 12px，差出的那条把页面最顶上那块
+     内容切掉一截——顶栏那排 40px 按钮在 56px 顶栏里从 8px 开始，高亮底色（hover /
+     选中）顶上被切 4px，看上去像被一条黑带盖住（2026-11-13 用户：「这个方案不行」）。
+     安全区非零的机型取值不变（`max` 取的就是它），只有归零那一档多让 12px。
+     `border-box` + `100dvh` 保证这一让只是「从高度里扣」，页面照旧一屏。 */
+  [data-remote-page] body {
+    padding-top: var(--remote-top-edge-h);
+  }
+
   #remote-top-edge {
     display: block;
     position: fixed;
     inset: 0 0 auto 0;
     z-index: 1;
-    height: max(12px, env(safe-area-inset-top, 0px));
+    height: var(--remote-top-edge-h);
     background: var(--vscode-panel-background);
     pointer-events: none;
+  }
+
+  /* 色带自己跟着它盖住的那块内容走颜色：它的职责只是「在顶边画一块不透明」，
+     颜色由系统采样成状态栏底色，所以不该固定成页面底色。
+     状态横幅（`#remote-status`，`remote/shim.js` 的 `showStatus`）是 red/gray 的
+     整条提示，它的 `margin-top` 把 body 让出的那一段吃回去、贴着屏幕最顶——色带如果
+     还是页面底色，就会在红条上沿压出一条 12px 的深色缝（2026-11-13 用户：「红色横幅
+     上面还有一点点黑条」）。同色之后红条从屏幕最顶一路铺下来，系统状态栏也跟着变红，
+     这正是 iOS 原生提示的做法（录音中整条状态栏变红）。
+     横幅被关掉（元素消失）时规则自动失效，不需要 shim 还原任何东西。 */
+  [data-remote-page]
+    body:has(> #remote-status[data-tone="error"])
+    #remote-top-edge {
+    background: #5a1d1d;
+  }
+
+  [data-remote-page]
+    body:has(> #remote-status[data-tone="progress"])
+    #remote-top-edge {
+    background: #333333;
   }
 }
 

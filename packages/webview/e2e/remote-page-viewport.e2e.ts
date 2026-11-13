@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { test, expect } from "./utils/webviewTestHarness.js";
 import { MessageInjector } from "./utils/messageInjector.js";
+import { standaloneBlock } from "./utils/standaloneBlock.js";
 import { Message } from "wave-agent-sdk";
 
 /**
@@ -46,24 +47,6 @@ const build = (count: number): Message[] =>
         ],
       }) as unknown as Message,
   );
-
-/**
- * The body of `@media (display-mode: standalone) { … }` in the shipped CSS. The
- * e2e injects it back without the media condition — the one thing a headless
- * browser cannot be talked into is being an installed app.
- */
-const standaloneBlock = (css: string) => {
-  const open = css.search(/@media\s*\(\s*display-mode:\s*standalone\s*\)\s*\{/);
-  if (open < 0) return "";
-  const from = css.indexOf("{", open);
-  let depth = 0;
-  for (let i = from; i < css.length; i += 1) {
-    if (css[i] === "{") depth += 1;
-    if (css[i] === "}") depth -= 1;
-    if (depth === 0) return css.slice(from + 1, i);
-  }
-  return "";
-};
 
 const geometry = async (page: import("@playwright/test").Page) =>
   page.evaluate(() => {
@@ -173,7 +156,7 @@ test("远控页：顶栏与输入区同屏、页面不滚动、安全区从高�
   //    `display-mode: standalone`，所以把产物里那条媒体查询的**内容**原样取出来、
   //    去掉外层的媒体条件再注入 —— 量到的是已发布的那些声明，不是这里重写的一份。
   //    元素本身由产物 index.html 提供，这里照它的形状补一个。色带是背景层里的一块
-  //    实色贴边：贴顶、满宽、不接收点击，且不占布局（上面量到的几何一个都不许动）。
+  //    实色贴边：贴顶、满宽、不接收点击。
   const standaloneCss = standaloneBlock(css);
   expect(
     standaloneCss,
@@ -218,9 +201,16 @@ test("远控页：顶栏与输入区同屏、页面不滚动、安全区从高�
   );
   expect(painted.background).toBe(headerBackground);
 
-  // 不占布局：色带是 fixed 的背景层，插进来之后整屏几何一字不变。
+  // 6. 色带是 fixed 覆盖层，流内内容不会自己让开 —— 所以让位量写在 body 上，且与
+  //    色带高度是同一个表达式。判据取「内容起始 = 色带下沿」：顶栏顶边必须等于色带
+  //    底边，而不是压在色带底下（2026-11-13 真机：压着时顶栏 40px 按钮的高亮底色
+  //    顶边被切掉 4px、状态横幅的文案距顶 2px 距底 15px）。headless 的 env() 是 0，
+  //    所以这里量到的是 12px 那一档；真机上两边同时取安全区高度。
   const withBand = await geometry(webviewPage);
-  expect(withBand.header).toEqual(insets.header);
-  expect(withBand.inputArea).toEqual(insets.inputArea);
+  expect(withBand.paddingTop).toBe(`${painted.height}px`);
+  expect(withBand.header!.top).toBe(painted.height);
+  expect(withBand.header!.top).toBe(painted.top + painted.height);
+  // 让位仍是「从高度里扣」：页面照旧一屏，底部输入区不动。
+  expect(withBand.inputArea!.bottom).toBe(withBand.innerHeight);
   expect(withBand.scrollHeight).toBe(withBand.innerHeight);
 });

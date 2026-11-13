@@ -53,9 +53,11 @@ const atRule = (css: string, prelude: string) => {
 };
 
 const standalone = atRule(globals, "@media (display-mode: standalone)");
+/** The one rule that paints the band (`#remote-top-edge { … }`, brace-matched). */
+const bandStart = standalone.indexOf("#remote-top-edge {");
 const band = standalone.slice(
-  standalone.indexOf("#remote-top-edge {"),
-  standalone.lastIndexOf("}"),
+  bandStart,
+  bandStart + standalone.slice(bandStart).indexOf("}") + 1,
 );
 
 describe("remote page — the top-edge band that suppresses the iOS 27 blur", () => {
@@ -76,10 +78,13 @@ describe("remote page — the top-edge band that suppresses the iOS 27 blur", ()
   it("paints it only in the installed shape", () => {
     // A Safari tab only gets the thin blur behind the status bar, and the other
     // four hosts do not carry the element at all — an unconditional rule would
-    // put a 12px band over the top of the header there. Hence the guard, and
-    // hence exactly one rule may mention the element, inside that guard.
-    expect(globals.match(/#remote-top-edge/g)).toHaveLength(1);
+    // put a 12px band over the top of the header there. Hence the guard: every
+    // mention of the element (the paint rule plus the two tone rules that give
+    // the status banner a matching status-bar colour) lives inside it.
     expect(band).not.toBe("");
+    expect(
+      globals.replace(standalone, "").match(/#remote-top-edge/g),
+    ).toBeNull();
   });
 
   it("paints an opaque, full-width, edge-hugging box that takes no clicks", () => {
@@ -95,7 +100,10 @@ describe("remote page — the top-edge band that suppresses the iOS 27 blur", ()
     // within 4px of the top; one device needed ~12px). The inset is the status
     // bar's own height, so on a normal device the band covers exactly the status
     // bar; the floor is the fallback for the builds where that env() is 0.
-    expect(band).toContain("height: max(12px, env(safe-area-inset-top, 0px))");
+    // The number lives on the page, not on the band: the body's padding-top and
+    // the status banner's own compensation read the same variable (below), and
+    // three copies of `max(12px, env(…))` is how they drift apart.
+    expect(band).toContain("height: var(--remote-top-edge-h)");
     // The header's buttons sit under the band's bottom edge on short insets —
     // without this the top rows of those 40px targets are dead.
     expect(band).toContain("pointer-events: none");
@@ -105,15 +113,39 @@ describe("remote page — the top-edge band that suppresses the iOS 27 blur", ()
     expect(band).toMatch(/z-index: 1\b/);
   });
 
-  it("does not take part in the page's layout", () => {
-    // The one-screen constraint (header and input area visible together, no page
-    // scroll) is a geometry bug the moment this box becomes a flow element or
-    // reserves space with padding — `box-sizing: border-box` and the body's
-    // safe-area inset are already load-bearing there.
+  it("色带自己不进布局，让位交给 body —— 三个落点读同一个变量", () => {
+    // 色带必须是那个「贴边 fixed」的形态（上面一条已经钉了），所以它自己不能变成
+    // 流内元素、也不能靠自己的 padding 让位。
     expect(band).not.toContain("padding");
     expect(band).not.toContain("margin");
     expect(band).not.toContain("position: relative");
     expect(band).not.toContain("position: sticky");
+    // 覆盖层不会把流内内容挤开，于是让位只能写在 body 上。三者（页面变量、body 的
+    // 让位、色带高度）**必须读同一个变量**：各写一份 `max(12px, env(…))`，任何一处被
+    // 单独改动都会立刻错开，色带重新压住页面最顶上那块内容。实测代价（2026-11-13）：
+    // 安全区归零的机型上，顶栏 40px 按钮的高亮底色顶边被切掉 4px；状态横幅的文案
+    // 距红条顶 6px、距底 18px（后来横幅改成贴屏幕最顶，见下一条）。
+    expect(standalone).toContain(
+      "--remote-top-edge-h: max(12px, env(safe-area-inset-top, 0px))",
+    );
+    const value = (css: string, prop: string) =>
+      new RegExp(`${prop}:\\s*([^;]+);`).exec(css)?.[1].trim();
+    expect(value(standalone, "padding-top")).toBe("var(--remote-top-edge-h)");
+    expect(value(standalone, "height")).toBe("var(--remote-top-edge-h)");
+  });
+
+  it("状态横幅在顶边时，色带跟着它的 tone 走颜色", () => {
+    // 色带唯一的职责是「在最顶边画一块不透明」，颜色由系统采样成状态栏底色，所以
+    // 不该固定成页面底色。那条红色状态横幅用负 margin 贴到屏幕最顶（shim 的
+    // `bannerStyle`），色带若还是页面底色，就在它上沿压出一条 12px 的深色缝——
+    // 2026-11-13 用户：「红色横幅上面还有一点点黑条」。`:has()` 让横幅消失时自动
+    // 失效，shim 不需要还原任何状态。
+    expect(standalone).toMatch(
+      /body:has\(> #remote-status\[data-tone="error"\]\)[\s\S]{0,40}#remote-top-edge \{\s*background: #5a1d1d;/,
+    );
+    expect(standalone).toMatch(
+      /body:has\(> #remote-status\[data-tone="progress"\]\)[\s\S]{0,40}#remote-top-edge \{\s*background: #333333;/,
+    );
   });
 
   it("keeps black-translucent even though Apple calls it deprecated", () => {

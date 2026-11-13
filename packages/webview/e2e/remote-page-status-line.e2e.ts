@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { expect, test } from "./utils/webviewTestHarness.js";
 import { MessageInjector } from "./utils/messageInjector.js";
+import { standaloneBlock } from "./utils/standaloneBlock.js";
 import type { Page } from "@playwright/test";
 
 /**
@@ -163,4 +164,94 @@ test("状态条是流内一行：不盖顶栏、按钮仍可点、页面不长�
   expect(closed.header!.top).toBe(0);
   expect(closed.hits.filter((hit) => !hit.inside)).toEqual([]);
   expect(closed.scrollHeight).toBeLessThanOrEqual(closed.innerHeight);
+});
+
+/**
+ * 装机形态下（主屏启动的 PWA）这条线**贴屏幕最顶**，色带跟着它一起变红。
+ *
+ * 那条顶部色带是压 iOS 27 系统模糊用的（`globals.css`，真机验过）：一块
+ * `position: fixed` 的不透明贴边元素，颜色会被系统采样成状态栏底色。它同时是页面
+ * 让位的那 12px（或状态栏高度）的来源——流内内容由 body 的 `padding-top` 让开。
+ *
+ * 两个坑都只有真 Chromium 量得出来：
+ * - 色带若固定成页面底色，红色状态横幅（它用负 margin 把让位吃回去、贴到最顶）上沿
+ *   就露出一条 12px 的深色缝（2026-11-13 用户：「红色横幅上面还有一点点黑条」）。
+ *   所以断的是**两条边颜色相同**，不是「色带颜色等于某个常量」。
+ * - 让位量、色带高度、横幅自己补的那一半必须是同一个数：差一点，红色就连不成一条，
+ *   或者顶栏被盖住。
+ */
+test("装机形态：色带与横幅同色，红色从屏幕最顶连续铺下来", async ({
+  webviewPage,
+}) => {
+  await bootstrap(webviewPage);
+
+  const css = fs.readFileSync(
+    path.join(process.cwd(), "dist", "chat.css"),
+    "utf-8",
+  );
+  const block = standaloneBlock(css);
+  expect(
+    block,
+    "产物里没有 @media (display-mode: standalone)：那些声明没进构建；先跑 pnpm -F wave-webview build",
+  ).not.toBe("");
+  await webviewPage.addStyleTag({ content: block });
+  // 元素本身由产物 index.html 提供，这里照它的形状补一个。
+  await webviewPage.evaluate(() => {
+    const band = document.createElement("div");
+    band.id = "remote-top-edge";
+    band.setAttribute("aria-hidden", "true");
+    document.body.insertBefore(band, document.body.firstChild);
+  });
+
+  await webviewPage.addScriptTag({ content: SHIM });
+  await expect(webviewPage.locator("#remote-status")).toBeVisible();
+
+  const measured = await webviewPage.evaluate(() => {
+    const rect = (el: Element | null) => {
+      if (!el) return null;
+      const r = el.getBoundingClientRect();
+      return {
+        top: Math.round(r.top),
+        bottom: Math.round(r.bottom),
+        height: Math.round(r.height),
+      };
+    };
+    const band = document.getElementById("remote-top-edge");
+    const banner = document.getElementById("remote-status");
+    const header = document.querySelector(".chat-header");
+    const buttons = [
+      ...document.querySelectorAll(".chat-header .header-button"),
+    ];
+    return {
+      innerHeight: window.innerHeight,
+      scrollHeight: document.documentElement.scrollHeight,
+      band: rect(band),
+      banner: rect(banner),
+      header: rect(header),
+      bandColor: band ? getComputedStyle(band).backgroundColor : "",
+      bannerColor: banner ? getComputedStyle(banner).backgroundColor : "",
+      hits: buttons.map((button) => {
+        const r = button.getBoundingClientRect();
+        const at = document.elementFromPoint(
+          r.left + r.width / 2,
+          r.top + r.height / 2,
+        );
+        return { inside: !!at && (at === button || button.contains(at)) };
+      }),
+    };
+  });
+
+  expect(measured.banner).not.toBeNull();
+  expect(measured.band!.height).toBeGreaterThan(0);
+  // 1. 红色从屏幕最顶开始：横幅顶边就是视口顶边，上面没有留下色带那一条。
+  expect(measured.banner!.top).toBe(0);
+  // 2. 无缝：色带画的正是横幅的颜色（对比的是两边算出来的颜色，不是某个常量）。
+  expect(measured.bandColor).toBe(measured.bannerColor);
+  // 3. 那条让位没有白让，也没有白吃：横幅高 = 色带高 + 原来的一行（4 + 40 + 4）。
+  expect(measured.banner!.height).toBe(measured.band!.height + 48);
+  // 4. 顶栏紧接在横幅下面：既不被盖，也不再挤出一条缝。
+  expect(measured.header!.top).toBe(measured.banner!.bottom);
+  expect(measured.hits.filter((hit) => !hit.inside)).toEqual([]);
+  // 5. 整屏约束照旧：多了那一段让位也没有把输入区顶出屏幕。
+  expect(measured.scrollHeight).toBeLessThanOrEqual(measured.innerHeight);
 });
