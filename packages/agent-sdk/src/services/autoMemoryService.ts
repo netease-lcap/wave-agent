@@ -20,6 +20,13 @@ import {
 import type { Message } from "../types/index.js";
 
 /**
+ * Soft budget for a caller that has to wait for the extraction before its
+ * process exits (`--print`). Long enough for one fork run on a slow model,
+ * short enough that a wedged request cannot hold the exit.
+ */
+export const AUTO_MEMORY_DRAIN_TIMEOUT_MS = 60_000;
+
+/**
  * Message fed back to the extraction fork when the model requests a tool
  * outside the allowed set (Bash rm, MCP tools, Agent, out-of-dir writes...).
  */
@@ -162,11 +169,34 @@ export class AutoMemoryService {
   }
 
   /**
-   * Wait for an in-flight extraction to settle. Called from Agent.dispose so
-   * the process doesn't exit while the extraction fork is mid-flight.
+   * Wait for an in-flight extraction to settle, with a soft budget.
+   *
+   * Only for a caller whose process is about to exit and therefore cannot let
+   * the fork finish in the background: `--print` drains once before teardown
+   * so the last turn's memories are not lost. Every other exit path — the
+   * interactive CLI, the daemon, the desktop host, `--stdio` — does not drain
+   * at all: the process keeps running, so the fork finishes on its own.
+   *
+   * Never throws and never rejects: a slow extraction is not a failure of the
+   * caller's exit path. The timer is unref'd so waiting is never the reason the
+   * event loop stays alive.
    */
-  async drain(): Promise<void> {
-    await this.pendingExtraction;
+  async drain(timeoutMs: number = AUTO_MEMORY_DRAIN_TIMEOUT_MS): Promise<void> {
+    const pending = this.pendingExtraction;
+    if (!pending) return;
+
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        pending,
+        new Promise<void>((resolve) => {
+          timer = setTimeout(resolve, timeoutMs);
+          timer.unref();
+        }),
+      ]);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
   }
 
   /**

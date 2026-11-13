@@ -84,6 +84,7 @@ test("startPrintCli sends message and exits after completion", async () => {
   const mockAgent = {
     sendMessage: vi.fn(),
     destroy: vi.fn(),
+    drainAutoMemory: vi.fn(),
     abortMessage: vi.fn(),
     usages: mockUsages,
     sessionFilePath: mockSessionFilePath,
@@ -121,6 +122,7 @@ test("onAssistantMessageAdded outputs newline", async () => {
   const mockAgent = {
     sendMessage: vi.fn(),
     destroy: vi.fn(),
+    drainAutoMemory: vi.fn(),
     abortMessage: vi.fn(),
     usages: [],
     sessionFilePath: "/mock/session.json",
@@ -151,6 +153,7 @@ test("startPrintCli works with continue session", async () => {
   const mockAgent = {
     sendMessage: vi.fn(),
     destroy: vi.fn(),
+    drainAutoMemory: vi.fn(),
     abortMessage: vi.fn(),
     usages: [],
     sessionFilePath: "/mock/continued-session.json",
@@ -191,6 +194,7 @@ test("startPrintCli handles usage summary errors gracefully", async () => {
   const mockAgent = {
     sendMessage: vi.fn(),
     destroy: vi.fn(),
+    drainAutoMemory: vi.fn(),
     abortMessage: vi.fn(),
     get usages() {
       throw new Error("Usage access error");
@@ -227,6 +231,7 @@ test("startPrintCli handles sendMessage errors and displays usage summary", asyn
   const mockAgent = {
     sendMessage: vi.fn().mockRejectedValue(new Error("Send message failed")),
     destroy: vi.fn(),
+    drainAutoMemory: vi.fn(),
     abortMessage: vi.fn(),
     usages: mockUsages,
     sessionFilePath: mockSessionFilePath,
@@ -259,10 +264,68 @@ test("startPrintCli handles sendMessage errors and displays usage summary", asyn
   consoleErrorSpy.mockRestore();
 });
 
+test("startPrintCli drains the auto-memory extraction before destroying the agent", async () => {
+  // print mode is the one exit path that has to wait for the extraction fork:
+  // the process is about to exit, so nothing else lets it finish. Order
+  // matters — destroy() tears down the agent the drain is waiting on.
+  const order: string[] = [];
+  const mockAgent = {
+    sendMessage: vi.fn(),
+    destroy: vi.fn(async () => {
+      order.push("destroy");
+    }),
+    drainAutoMemory: vi.fn(async () => {
+      order.push("drainAutoMemory");
+    }),
+    abortMessage: vi.fn(),
+    usages: [],
+    sessionFilePath: "/mock/session.json",
+  };
+
+  vi.mocked(Agent.create).mockResolvedValue(mockAgent as unknown as Agent);
+
+  await startPrintCli({ message: "test message" });
+
+  expect(order).toEqual(["drainAutoMemory", "destroy"]);
+  // No explicit budget: the SDK default (60s soft timeout) applies.
+  expect(mockAgent.drainAutoMemory).toHaveBeenCalledWith();
+});
+
+test("startPrintCli drains before destroying on the error path too", async () => {
+  // A failed run can still have left an extraction in flight — the ordering is
+  // the same as the success path.
+  const order: string[] = [];
+  const mockAgent = {
+    sendMessage: vi.fn().mockRejectedValue(new Error("Send message failed")),
+    destroy: vi.fn(async () => {
+      order.push("destroy");
+    }),
+    drainAutoMemory: vi.fn(async () => {
+      order.push("drainAutoMemory");
+    }),
+    abortMessage: vi.fn(),
+    usages: [],
+    sessionFilePath: "/mock/session.json",
+  };
+
+  vi.mocked(Agent.create).mockResolvedValue(mockAgent as unknown as Agent);
+
+  const consoleErrorSpy = vi
+    .spyOn(console, "error")
+    .mockImplementation(() => {});
+
+  await startPrintCli({ message: "test message" });
+
+  expect(order).toEqual(["drainAutoMemory", "destroy"]);
+
+  consoleErrorSpy.mockRestore();
+});
+
 test("subagent content callbacks are not registered in print mode", async () => {
   const mockAgent = {
     sendMessage: vi.fn(),
     destroy: vi.fn(),
+    drainAutoMemory: vi.fn(),
     abortMessage: vi.fn(),
     usages: [],
     sessionFilePath: "/mock/session.json",
@@ -323,6 +386,7 @@ test("tool name printing during running stage", async () => {
   const mockAgent = {
     sendMessage: vi.fn(),
     destroy: vi.fn(),
+    drainAutoMemory: vi.fn(),
     abortMessage: vi.fn(),
     usages: [],
     sessionFilePath: "/mock/session.json",
@@ -424,6 +488,7 @@ test("reasoning callbacks output correctly", async () => {
   const mockAgent = {
     sendMessage: vi.fn(),
     destroy: vi.fn(),
+    drainAutoMemory: vi.fn(),
     abortMessage: vi.fn(),
     usages: [],
     sessionFilePath: "/mock/session.json",
@@ -504,6 +569,7 @@ test("startPrintCli does not display stats by default", async () => {
   const mockAgent = {
     sendMessage: vi.fn(),
     destroy: vi.fn(),
+    drainAutoMemory: vi.fn(),
     abortMessage: vi.fn(),
     usages: mockUsages,
     sessionFilePath: mockSessionFilePath,
@@ -562,6 +628,7 @@ test("startPrintCli waits for main agent to finish notification turn after backg
     destroy: vi.fn(async () => {
       if (isLoading) destroyedWhileLoading = true;
     }),
+    drainAutoMemory: vi.fn(),
     get hasRunningBackgroundWork() {
       return false; // all background tasks already completed
     },
@@ -608,6 +675,7 @@ test("startPrintCli waits for pending notifications even when main agent is idle
   const mockAgent = {
     sendMessage: vi.fn(),
     destroy: vi.fn(),
+    drainAutoMemory: vi.fn(),
     get hasRunningBackgroundWork() {
       return false;
     },
@@ -645,6 +713,7 @@ test("startPrintCli removes clean worktree after destroy", async () => {
   const mockAgent = {
     sendMessage: vi.fn(),
     destroy: vi.fn(),
+    drainAutoMemory: vi.fn(),
     abortMessage: vi.fn(),
     setWorktreeSession: vi.fn(),
     usages: [],
@@ -698,6 +767,7 @@ test("startPrintCli reports a surviving worktree instead of claiming success", a
   const mockAgent = {
     sendMessage: vi.fn(),
     destroy: vi.fn(),
+    drainAutoMemory: vi.fn(),
     abortMessage: vi.fn(),
     setWorktreeSession: vi.fn(),
     usages: [],
@@ -745,6 +815,7 @@ test("startPrintCli keeps dirty worktree with a warning", async () => {
   const mockAgent = {
     sendMessage: vi.fn(),
     destroy: vi.fn(),
+    drainAutoMemory: vi.fn(),
     abortMessage: vi.fn(),
     setWorktreeSession: vi.fn(),
     usages: [],
@@ -788,6 +859,7 @@ test("startPrintCli skips removal when worktree path fails validation", async ()
   const mockAgent = {
     sendMessage: vi.fn(),
     destroy: vi.fn(),
+    drainAutoMemory: vi.fn(),
     abortMessage: vi.fn(),
     setWorktreeSession: vi.fn(),
     usages: [],
@@ -836,6 +908,7 @@ test("startPrintCli skips path validation and delegates removal for hook-based w
   const mockAgent = {
     sendMessage: vi.fn(),
     destroy: vi.fn(),
+    drainAutoMemory: vi.fn(),
     abortMessage: vi.fn(),
     setWorktreeSession: vi.fn(),
     usages: [],
@@ -885,6 +958,7 @@ test("startPrintCli removes clean worktree after destroy on sendMessage error", 
   const mockAgent = {
     sendMessage: vi.fn().mockRejectedValue(new Error("Send message failed")),
     destroy: vi.fn(),
+    drainAutoMemory: vi.fn(),
     abortMessage: vi.fn(),
     setWorktreeSession: vi.fn(),
     usages: [],
@@ -962,6 +1036,7 @@ function structuredAgent(
   return {
     sendMessage: vi.fn(),
     destroy: vi.fn(),
+    drainAutoMemory: vi.fn(),
     sessionId: "session-1",
     usages: [
       {
