@@ -2,6 +2,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { homedir } from "node:os";
 import { compileMods, type ModSourceFile } from "../mods/compile.js";
+import { ModProcessManager } from "../mods/processes.js";
 import {
   ModRuntime,
   errorMessage,
@@ -47,6 +48,14 @@ export interface ModManagerOptions {
   sessionId: string;
   /** 面板快照的出口；stdio 层把它转成 `modPanelUpdate` 通知。 */
   onPanelUpdate: (payload: ModPanelUpdatePayload) => void;
+  /**
+   * `$.process.spawn` 的默认 cwd。
+   *
+   * 传 getter 而不是字符串：口径是「会动」的那个工作目录（容器 token
+   * `CurrentWorkdir`，与 Bash 工具的 spawn cwd 一致），会话里 `cd` 过之后起的
+   * 脚本该落在新目录；挂在会话起点或工作区根上都会指错。
+   */
+  workdir?: () => string;
   /** 覆盖 store 根目录（测试用）。 */
   storeRoot?: string;
 }
@@ -99,12 +108,30 @@ export class ModManager {
   private readonly state = new Map<string, Map<string, unknown>>();
   /** modId → 它名下还活着的定时器。 */
   private readonly timers = new Map<string, Set<ClockTimer>>();
+  private readonly processes: ModProcessManager;
   private readonly storeRoot: string;
+  /**
+   * `$.prompt.submit` 的出口。
+   *
+   * mod 把 prompt 投进**本会话**，而「投进会话」这件事只有 `Agent` 知道怎么做
+   * （走 `Agent.sendMessage`：忙时入队、`/clear` 之类的立即命令直通）。所以由
+   * `Agent` 在构造最后接进来，而不是让这个 manager 反过来持有 agent。
+   */
+  private promptSubmitter?: (text: string) => Promise<void>;
   private disposed = false;
 
   constructor(private readonly options: ModManagerOptions) {
     this.storeRoot =
       options.storeRoot ?? path.join(homedir(), ".wave", "plugin-mods");
+    // cwd 现取现用：`cd` 之后起的脚本落在新目录。
+    this.processes = new ModProcessManager(
+      () => options.workdir?.() ?? process.cwd(),
+    );
+  }
+
+  /** 接上 prompt 投递通道（见 `promptSubmitter`）。 */
+  setPromptSubmitter(fn: (text: string) => Promise<void>): void {
+    this.promptSubmitter = fn;
   }
 
   /**
@@ -195,6 +222,8 @@ export class ModManager {
               storeKeys: () => Object.keys(this.readStore(plugin.name)),
               startTimer: (kind, ms, fn) =>
                 this.startTimer(mod.id, kind, ms, fn),
+              spawnProcess: (options) => this.processes.spawn(mod.id, options),
+              submitPrompt: (text) => this.submitPrompt(mod.id, text),
             },
             mod.path,
             compiled,
@@ -298,9 +327,12 @@ export class ModManager {
     }
   }
 
-  /** 会话结束 / agent 销毁：关掉所有面板、撤销所有定时器，进入终态。 */
+  /** 会话结束 / agent 销毁：关掉所有面板、撤销所有定时器与外部进程，进入终态。 */
   async dispose(): Promise<void> {
     this.cancelAllTimers();
+    // 外部进程连同子进程树一起杀（spec「生命周期」）：留下的孤儿会一直跑，
+    // 然后往一个已经不存在的会话里写东西。
+    this.processes.dispose();
     // 先关面板再进终态：`closed: true` 是界面关掉 tab 的唯一信号，而
     // `publishUpdate` 在 `disposed` 之后一律静默。
     this.closeAllPanes();
@@ -316,8 +348,10 @@ export class ModManager {
    * 直接在 reload 路径上调 `dispose("plugin")`，结果重载一次 mod 就永久不生效。
    */
   async reload(plugins: Plugin[]): Promise<void> {
-    // 旧实例的定时器必须先停：下面会丢掉 `mods`，它们的 `$` 还指向旧 runtime。
+    // 旧实例的定时器与进程必须先停：下面会丢掉 `mods`，它们的 `$` 还指向旧
+    // runtime —— 留着的话这些回调/子进程会打到已经没人认领的旧实例上。
     this.cancelAllTimers();
+    this.processes.killAll();
     this.closeAllPanes();
     this.mods.clear();
     this.state.clear();
@@ -442,6 +476,29 @@ export class ModManager {
     if (!set) return;
     for (const timer of [...set]) this.cancelTimer(timer);
     this.timers.delete(modId);
+  }
+
+  // ── prompt 投递（spec「把 prompt 送进对话」） ────────────────
+
+  /**
+   * 把 mod 的一条 prompt 投进本会话。
+   *
+   * 语义就是用户自己发了一条：会话空闲时开新一轮，忙时按 `Agent.sendMessage`
+   * 的既有规则入队。这里不自己做队列，也不做「用户按了 Esc 就丢掉」那种回执
+   * ——多一套投递规则就多一种「消息去哪了」的解释。
+   */
+  private async submitPrompt(modId: string, text: string): Promise<void> {
+    if (this.disposed) {
+      throw new Error("会话已结束，不能再投递 prompt");
+    }
+    const submit = this.promptSubmitter;
+    if (!submit) {
+      throw new Error(
+        "当前宿主没有接入 prompt 投递通道，$.prompt.submit 不可用",
+      );
+    }
+    logger.info(`[Wave] ${modId} 把一条 prompt 投进了本会话`);
+    await submit(text);
   }
 
   /**

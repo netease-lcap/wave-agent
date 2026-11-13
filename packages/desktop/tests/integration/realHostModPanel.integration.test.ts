@@ -87,6 +87,21 @@ export function register($, on) {
           $.ui.invalidate("p1");
         }}
       />
+      <Button
+        key="remote"
+        label="遥控"
+        onPress={async () => {
+          // 外部进程代 mod 说话（mod 自己没有网络能力），读完再把 prompt 投进
+          // 本会话 —— spec「外部进程」「把 prompt 送进对话」的最小闭环。
+          for await (const chunk of $.process.spawn({
+            argv: [${JSON.stringify(process.execPath)}, "-e",
+              "console.log(JSON.stringify({ text: '来自远端服务' }))"],
+          })) {
+            const line = chunk.text.trim();
+            if (line) await $.prompt.submit({ text: JSON.parse(line).text, asUser: true });
+          }
+        }}
+      />
     </Box>
   ));
 }
@@ -248,6 +263,35 @@ describe("real host · plugin mods", () => {
     const second = await renderPanel(first.paneId, first.payload);
     expect(second.revision).toBe(2);
     expect(textOf(second.tree)).toContain("点击 1 次");
+  }, 120_000);
+
+  it("面板按钮起的子进程把 prompt 投进会话（外部事件驱动对话）", async () => {
+    await openProject(dirA);
+    const panel = await ctx.waitFor<{
+      paneId: string;
+      payload: { modId: string; paneId: string };
+    }>("desktopModPanelUpdate", { timeout: 60_000 });
+
+    // 先拉一帧：处理函数表是在 `ui.render` 跑 `h()` 时登记的，没渲染过就点不到。
+    await renderPanel(panel.paneId, panel.payload);
+    ctx.clear();
+    await ctx.host.handleWebviewMessage({
+      command: "modPanelEvent",
+      paneId: panel.paneId,
+      payload: {
+        modId: panel.payload.modId,
+        paneId: panel.payload.paneId,
+        key: "remote",
+        kind: "press",
+      },
+    });
+
+    // 判据是**模型收到了这句话**：mod 从子进程的 stdout 读到它、再以用户身份
+    // 投进会话，会话于是新开一轮（这条链路的终点就是一次真实的模型请求）。
+    await vi.waitFor(
+      () => expect(model.sawRequest("来自远端服务")).toBe(true),
+      { timeout: 60_000 },
+    );
   }, 120_000);
 
   it("webview 重建后宿主重放已有面板（webviewReady 之后）", async () => {

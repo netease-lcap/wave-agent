@@ -1,6 +1,7 @@
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ModManager } from "../../src/managers/modManager.js";
+import { logger } from "../../src/utils/globalLogger.js";
 import { MOD_LIMITS } from "../../src/types/mods.js";
 import type { ModPanelUpdatePayload } from "../../src/types/mods.js";
 import type { Plugin } from "../../src/types/plugins.js";
@@ -742,5 +743,86 @@ exports.register = function ($, on) {
     const stopped = ticks();
     await watch();
     expect(ticks()).toBe(stopped);
+  });
+});
+
+describe("ModManager 的 $.process / $.prompt", () => {
+  /**
+   * 一个 mod：起一个真子进程读一行输出，再把读到的东西作为 prompt 投进会话。
+   *
+   * 这正是「外部事件驱动对话」那条链路的最后一米（spec「把 prompt 送进对话」）。
+   */
+  function remoteMod(): string {
+    return `
+exports.register = function ($, on) {
+  on("session.start", async function () {
+    var lines = [];
+    for await (var chunk of $.process.spawn({
+      argv: [${JSON.stringify(process.execPath)}, "-e", "console.log('connected')"]
+    })) {
+      lines.push(chunk.text.trim());
+    }
+    $.ui.open({ id: "p1", title: "遥控" });
+    await $.prompt.submit({ text: "远端已连接：" + lines.join(","), asUser: true });
+  });
+};
+`;
+  }
+
+  it("子进程的输出经 $.prompt.submit 投进本会话", async () => {
+    const { manager, updates } = createManager({ [MOD_PATH]: remoteMod() });
+    const submit = vi.fn(async () => {});
+    manager.setPromptSubmitter(submit);
+
+    await manager.loadFromPlugins([
+      plugin([{ id: "todo:panel", path: MOD_PATH }]),
+    ]);
+    await manager.startSession();
+
+    // 面板在投递之前就开了：子进程的输出先到，才轮到 prompt。
+    expect(updates).toHaveLength(1);
+    expect(submit).toHaveBeenCalledWith("远端已连接：connected");
+
+    await manager.dispose();
+  });
+
+  it("宿主没接投递通道时 submit 报错，而不是静默吞掉", async () => {
+    const { manager, updates } = createManager({ [MOD_PATH]: remoteMod() });
+
+    await manager.loadFromPlugins([
+      plugin([{ id: "todo:panel", path: MOD_PATH }]),
+    ]);
+    await manager.startSession();
+
+    // 面板开在 submit 之前，报错发生在最后一次 await 上，所以面板还在。
+    expect(updates).toHaveLength(1);
+    expect(updates[0]).toMatchObject({ paneId: "p1" });
+    // `session.start` 的失败只进日志（它没有面板可以叠错误条）。
+    expect(vi.mocked(logger.warn).mock.calls.flat().join(" ")).toContain(
+      "宿主没有接入 prompt 投递通道",
+    );
+
+    await manager.dispose();
+  });
+
+  it("dispose 之后不能再投递", async () => {
+    const { manager } = createManager({ [MOD_PATH]: remoteMod() });
+    const submit = vi.fn(async () => {});
+    manager.setPromptSubmitter(submit);
+    await manager.loadFromPlugins([
+      plugin([{ id: "todo:panel", path: MOD_PATH }]),
+    ]);
+    await manager.startSession();
+    await manager.dispose();
+
+    await expect(
+      // 直接打私有的投递路径：dispose 之后 mod 已经没有存活的实例了。
+      (
+        manager as unknown as {
+          submitPrompt(modId: string, text: string): Promise<void>;
+        }
+      ).submitPrompt("todo:panel", "late"),
+    ).rejects.toThrow(/会话已结束/);
+    expect(submit).toHaveBeenCalledTimes(1);
   });
 });

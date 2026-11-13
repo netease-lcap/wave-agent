@@ -453,6 +453,13 @@ export class Agent {
     this.messageQueue = this.container.get("MessageQueue")!;
     this.asyncWorkRegistry = this.container.get("AsyncWorkRegistry")!;
 
+    // Plugin mods can post a prompt into this session (`$.prompt.submit`, spec
+    // ecosystem/plugin-mods.md). It has to go through `sendMessage` so a mod's
+    // prompt obeys the same rules as a typed one: queued while busy, immediate
+    // for `/clear`-style commands. The ModManager cannot resolve this itself —
+    // it sits below `Agent` in the dependency graph.
+    this.modManager.setPromptSubmitter((text) => this.sendMessage(text));
+
     // Wire up CWD change callback from AIManager to sync Agent's workdir
     this.aiManager.setOnCwdChange((newCwd) => {
       this.workdir = newCwd;

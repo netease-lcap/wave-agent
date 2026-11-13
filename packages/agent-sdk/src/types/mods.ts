@@ -103,6 +103,41 @@ export interface PluginMod {
   pluginRoot: string;
 }
 
+/**
+ * `$.process.spawn` 的参数（spec「外部进程」）。
+ *
+ * `cwd` 的缺省值是会话**当前**的工作目录，与 Bash 工具的 spawn cwd 同一条
+ * 口径（容器 token `CurrentWorkdir`，会随 `cd` 动）—— 不是会话起点，也不是
+ * 工作区根：`cd` 进子目录之后起的脚本该落在新目录里。
+ */
+export interface ModSpawnOptions {
+  /** 参数数组，**不走 shell**；要 shell 就显式写 `["bash", "-lc", cmd]`。 */
+  argv: string[];
+  /** 缺省用会话当前工作目录。 */
+  cwd?: string;
+  /** 与宿主环境取并集，显式给的值覆盖。 */
+  env?: Record<string, string>;
+  /** 一次性写入 stdin 后关闭；不支持长连 stdin。 */
+  input?: string;
+}
+
+/** 外部进程的一块输出。 */
+export interface ModProcessChunk {
+  stream: "stdout" | "stderr";
+  text: string;
+}
+
+/**
+ * 外部进程正常结束时，异步迭代的返回值。
+ *
+ * `for await` 拿不到它（语言限制），要看退出码就手动驱动迭代器；用 `for await`
+ * 的写法通常只关心输出块。
+ */
+export interface ModProcessExit {
+  code: number | null;
+  signal: string | null;
+}
+
 /** 限额（spec「限额」表）。宿主与编译器共用同一份数字。 */
 export const MOD_LIMITS = {
   /** 单个 mod 文件。 */
@@ -127,4 +162,10 @@ export const MOD_LIMITS = {
   timerMinIntervalMs: 200,
   /** 一个 mod 同时活跃的定时器数；超出时新建报错。 */
   maxTimersPerMod: 16,
+  /** 一个 mod 同时活跃的外部进程数；超出时 `$.process.spawn` 报错。 */
+  maxProcessesPerMod: 4,
+  /** 外部进程单块输出的字符上限，更长的块切开。 */
+  processChunkChars: 64 * 1024,
+  /** 一个外部进程累计输出上限（字节），超出后停止读取并结束该进程。 */
+  processTotalBytes: 4 * 1024 * 1024,
 } as const;

@@ -1,6 +1,12 @@
 import * as vm from "node:vm";
 import * as path from "node:path";
-import type { ModElementType, ModTreeNode } from "../types/mods.js";
+import type {
+  ModElementType,
+  ModTreeNode,
+  ModSpawnOptions,
+  ModProcessChunk,
+  ModProcessExit,
+} from "../types/mods.js";
 import { MOD_LIMITS } from "../types/mods.js";
 import { Box, Text, Button, Input, Link, Code, Markdown } from "./index.js";
 import { logger } from "../utils/globalLogger.js";
@@ -68,6 +74,26 @@ export interface ModDollar {
     after(ms: number, fn: () => unknown): ModTimerHandle;
     every(ms: number, fn: () => unknown): ModTimerHandle;
   };
+  /**
+   * 外部进程（spec「外部进程」）。
+   *
+   * 沙箱里没有 `child_process`；与 `$.clock` 同一条纪律，进程归宿主所有，
+   * 会话销毁或插件重载时由宿主一起杀掉。
+   */
+  process: {
+    spawn(
+      options: ModSpawnOptions,
+    ): AsyncGenerator<ModProcessChunk, ModProcessExit>;
+  };
+  /**
+   * 把一条 prompt 投进**当前会话**（spec「把 prompt 送进对话」）。
+   *
+   * 不是「用户当前看着的会话」：mod 活在某个会话的进程里，这份 `$` 就只属于
+   * 那个会话。跨会话是另一件事，一期没有。
+   */
+  prompt: {
+    submit(options: { text: string; asUser?: boolean }): Promise<void>;
+  };
 }
 
 /** 沙箱需要宿主提供的全部能力。 */
@@ -89,6 +115,12 @@ export interface ModRuntimeHost {
     ms: number,
     fn: () => unknown,
   ): ModTimerHandle;
+  /** 起一个外部进程；参数校验、限额与回收都由宿主实现。 */
+  spawnProcess(
+    options: unknown,
+  ): AsyncGenerator<ModProcessChunk, ModProcessExit>;
+  /** 把一条 prompt 投进当前会话。 */
+  submitPrompt(text: string): Promise<void>;
 }
 
 /**
@@ -219,6 +251,8 @@ export class ModRuntime {
   private readonly hooks = new Map<string, (event: unknown) => unknown>();
   private readonly dollar: ModDollar;
   private readonly wave: unknown;
+  /** 当前正在计时的预算（`$.process.spawn` 等输出时会被暂停）。 */
+  private budget: HookBudget | undefined;
 
   constructor(
     private readonly host: ModRuntimeHost,
@@ -283,6 +317,24 @@ export class ModRuntime {
         after: (ms, fn) => host.startTimer("after", ms, fn),
         every: (ms, fn) => host.startTimer("every", ms, fn),
       },
+      // 同上：进程也归宿主所有，`dispose` / `/reload-plugins` 时宿主统一回收。
+      process: {
+        spawn: (options) => this.streamWithBudget(host.spawnProcess(options)),
+      },
+      prompt: {
+        submit: async (options) => {
+          const text = options?.text;
+          if (typeof text !== "string" || text.length === 0) {
+            throw new Error("$.prompt.submit 需要非空的 text");
+          }
+          // 一期只支持以用户身份发言：模型身份（`asUser: false`）要额外定义
+          // 「这条消息怎么标注来源、要不要进 system 侧」，不在这一期的形状里。
+          if (options.asUser !== true) {
+            throw new Error("$.prompt.submit 一期只支持 asUser: true");
+          }
+          await host.submitPrompt(text);
+        },
+      },
     };
 
     this.context = vm.createContext(
@@ -341,10 +393,9 @@ export class ModRuntime {
     if (!handler) return { ok: true, value: undefined, elapsedMs: 0 };
     const started = Date.now();
     try {
-      const value = await withTimeout(
-        Promise.resolve().then(() => handler(event)),
-        MOD_LIMITS.hookTimeoutMs,
+      const value = await this.runWithBudget(
         `${name} 钩子超过 ${MOD_LIMITS.hookTimeoutMs}ms`,
+        () => handler(event),
       );
       return { ok: true, value, elapsedMs: Date.now() - started };
     } catch (error) {
@@ -372,14 +423,56 @@ export class ModRuntime {
     const type = kind === "input" ? "Input" : "Button";
     const handler = this.handlers.get(`${type}:${key}`);
     if (!handler) return false;
-    await withTimeout(
-      Promise.resolve().then(() =>
-        handler(kind === "input" ? value : undefined),
-      ),
-      MOD_LIMITS.hookTimeoutMs,
+    await this.runWithBudget(
       `${kind} 处理超过 ${MOD_LIMITS.hookTimeoutMs}ms`,
+      () => handler(kind === "input" ? value : undefined),
     );
     return true;
+  }
+
+  /**
+   * 在一份可暂停的预算里跑 mod 的代码（spec「限额」的 5 秒）。
+   *
+   * `this.budget` 是当前正在计时的那个：`$.process.spawn` 的迭代在等输出时
+   * 通过它暂停/恢复（见 {@link streamWithBudget}）。钩子不嵌套调用，所以只需
+   * 记一层，恢复回上一个即可。
+   */
+  private async runWithBudget<T>(
+    message: string,
+    work: () => Promise<T> | T,
+  ): Promise<T> {
+    const budget = new HookBudget(MOD_LIMITS.hookTimeoutMs, message);
+    const outer = this.budget;
+    this.budget = budget;
+    try {
+      return await withBudget(budget, work);
+    } finally {
+      this.budget = outer;
+    }
+  }
+
+  /**
+   * 包一层「等输出不算预算」的进程流。
+   *
+   * 暂停/恢复发生在**每一次** `next()` 上：mod 可能把迭代器留到钩子返回之后
+   * 再用（`$.clock.every` 里一拍读一次），那时 `this.budget` 已经是别的预算或
+   * 没有预算，暂停就自然不生效。
+   */
+  private async *streamWithBudget(
+    gen: AsyncGenerator<ModProcessChunk, ModProcessExit>,
+  ): AsyncGenerator<ModProcessChunk, ModProcessExit> {
+    while (true) {
+      const budget = this.budget;
+      budget?.pause();
+      let step: IteratorResult<ModProcessChunk, ModProcessExit>;
+      try {
+        step = await gen.next();
+      } finally {
+        budget?.resume();
+      }
+      if (step.done) return step.value;
+      yield step.value;
+    }
   }
 
   /** 该 mod 注册了哪些钩子（诊断用）。 */
@@ -463,23 +556,87 @@ function moduleCandidates(target: string): string[] {
   ];
 }
 
-function withTimeout<T>(
-  promise: Promise<T>,
-  ms: number,
-  message: string,
+/**
+ * 一次钩子/回调的时间预算，**可以暂停**。
+ *
+ * 暂停这一步是为了 `$.process.spawn`：mod 在钩子里 `for await` 一个长跑进程
+ * 时，停在「等下一块输出」上的时间是**空闲**，不是失控的循环。只把 mod 自己
+ * 干活的时间算进 5 秒里，否则「起一个连接、逐块消费」这种最正常的写法一动就
+ * 超时。这与 Claude Code 把 `process.spawn` 的预算标成 `pull` 是同一条规则。
+ */
+class HookBudget {
+  private remainingMs: number;
+  private timer: NodeJS.Timeout | undefined;
+  private armedAt = 0;
+  private paused = false;
+  private stopped = false;
+  private rejectExpiry!: (error: Error) => void;
+  /** 到期时 reject；调用方拿它和实际工作 race。 */
+  readonly expiry: Promise<never>;
+
+  constructor(
+    private readonly totalMs: number,
+    private readonly message: string,
+  ) {
+    this.remainingMs = totalMs;
+    this.expiry = new Promise<never>((_, reject) => {
+      this.rejectExpiry = reject;
+    });
+    this.arm();
+  }
+
+  pause(): void {
+    if (this.stopped || this.paused) return;
+    this.paused = true;
+    this.remainingMs -= Date.now() - this.armedAt;
+    this.clear();
+  }
+
+  resume(): void {
+    if (this.stopped || !this.paused) return;
+    this.paused = false;
+    // 暂停期间已经超了：立刻到期，不必再等一轮。
+    if (this.remainingMs <= 0) {
+      this.fire();
+      return;
+    }
+    this.arm();
+  }
+
+  /** 工作结束（成功或失败）：停表。 */
+  stop(): void {
+    this.stopped = true;
+    this.clear();
+  }
+
+  private arm(): void {
+    this.armedAt = Date.now();
+    this.timer = setTimeout(() => this.fire(), this.remainingMs);
+    this.timer.unref?.();
+  }
+
+  private clear(): void {
+    if (this.timer) {
+      clearTimeout(this.timer);
+      this.timer = undefined;
+    }
+  }
+
+  private fire(): void {
+    this.clear();
+    this.stopped = true;
+    this.rejectExpiry(new Error(this.message));
+  }
+}
+
+/** 把一份工作跑在预算里：到期即以 `message` 失败。 */
+async function withBudget<T>(
+  budget: HookBudget,
+  work: () => Promise<T> | T,
 ): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(message)), ms);
-    timer.unref?.();
-    promise.then(
-      (value) => {
-        clearTimeout(timer);
-        resolve(value);
-      },
-      (error: unknown) => {
-        clearTimeout(timer);
-        reject(error);
-      },
-    );
-  });
+  try {
+    return await Promise.race([Promise.resolve().then(work), budget.expiry]);
+  } finally {
+    budget.stop();
+  }
 }

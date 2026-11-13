@@ -6,7 +6,12 @@ import {
   type CompiledModule,
   type ModRuntimeHost,
 } from "../../src/mods/runtime.js";
-import { MOD_LIMITS, type ModTreeNode } from "../../src/types/mods.js";
+import {
+  MOD_LIMITS,
+  type ModProcessChunk,
+  type ModProcessExit,
+  type ModTreeNode,
+} from "../../src/types/mods.js";
 import { getEsbuild } from "../../src/utils/esbuild.js";
 
 vi.mock("../../src/utils/globalLogger.js", () => ({
@@ -35,6 +40,15 @@ function host(overrides: Partial<ModRuntimeHost> = {}): ModRuntimeHost {
     storeDelete: vi.fn(),
     storeKeys: vi.fn(() => []),
     startTimer: vi.fn(() => ({ cancel: vi.fn() })),
+    // 默认宿主不真起进程：一条立刻结束的空流。
+    spawnProcess: vi.fn(async function* (): AsyncGenerator<
+      ModProcessChunk,
+      ModProcessExit
+    > {
+      yield* [] as ModProcessChunk[];
+      return { code: 0, signal: null };
+    }),
+    submitPrompt: vi.fn(async () => {}),
     ...overrides,
   };
 }
@@ -468,6 +482,127 @@ describe("ModRuntime 的 $ 命名空间", () => {
       ["after", 500, "function"],
       ["every", 1000, "function"],
     ]);
+  });
+
+  it("process.spawn 转发到宿主，流在沙箱里可被 for await 消费", async () => {
+    const hostApi = host({
+      spawnProcess: vi.fn(async function* () {
+        yield { stream: "stdout" as const, text: "a" };
+        yield { stream: "stderr" as const, text: "b" };
+        return { code: 0, signal: null };
+      }),
+    });
+    const { mod } = runtime(
+      `
+      exports.register = function ($, on) {
+        on("session.start", async function () {
+          var out = [];
+          for await (var chunk of $.process.spawn({ argv: ["x"] })) {
+            out.push(chunk.stream + ":" + chunk.text);
+          }
+          return out.join(",");
+        });
+      };
+      `,
+      { host: hostApi },
+    );
+
+    await mod.load();
+    const result = await mod.callHook("session.start", {});
+    expect(result.ok && result.value).toBe("stdout:a,stderr:b");
+    expect(hostApi.spawnProcess).toHaveBeenCalledWith({ argv: ["x"] });
+  });
+
+  it("等外部进程输出的时间不计入 hook 预算", async () => {
+    vi.useFakeTimers();
+    // 每一块输出都由测试放行：停在「等下一块」上的时间就是要验证的空闲。
+    let release: (() => void) | undefined;
+    const hostApi = host({
+      spawnProcess: () =>
+        (async function* () {
+          await new Promise<void>((resolve) => {
+            release = resolve;
+          });
+          yield { stream: "stdout" as const, text: "a" };
+          await new Promise<void>((resolve) => {
+            release = resolve;
+          });
+          return { code: 0, signal: null };
+        })(),
+    });
+    const { mod } = runtime(
+      `
+      exports.register = function ($, on) {
+        on("session.start", async function () {
+          var out = "";
+          for await (var chunk of $.process.spawn({ argv: ["x"] })) out += chunk.text;
+          return out;
+        });
+      };
+      `,
+      { host: hostApi },
+    );
+
+    await mod.load();
+    const pending = mod.callHook("session.start", {});
+    // 跑到「等第一块」：此后暂停计时，超过预算也不该失败。
+    await vi.advanceTimersByTimeAsync(MOD_LIMITS.hookTimeoutMs * 2);
+    release?.();
+    // 第一块到手 → 循环体跑完 → 又停在等第二块，再超一轮预算。
+    await vi.advanceTimersByTimeAsync(MOD_LIMITS.hookTimeoutMs * 2);
+    release?.();
+
+    await expect(pending).resolves.toMatchObject({ ok: true, value: "a" });
+  });
+
+  it("prompt.submit 以用户身份投进会话", async () => {
+    const hostApi = host();
+    const { mod } = runtime(
+      `
+      exports.register = function ($, on) {
+        on("session.start", function () {
+          return $.prompt.submit({ text: "跑一下", asUser: true });
+        });
+      };
+      `,
+      { host: hostApi },
+    );
+
+    await mod.load();
+    const result = await mod.callHook("session.start", {});
+    expect(result.ok).toBe(true);
+    expect(hostApi.submitPrompt).toHaveBeenCalledWith("跑一下");
+  });
+
+  it("prompt.submit 缺 asUser / 空 text 一律报错，不静默降级", async () => {
+    const hostApi = host();
+    const { mod } = runtime(
+      `
+      exports.register = function ($, on) {
+        on("session.start", async function () {
+          var errors = [];
+          for (var attempt of [
+            function () { return $.prompt.submit({ text: "x" }); },
+            function () { return $.prompt.submit({ text: "x", asUser: false }); },
+            function () { return $.prompt.submit({ text: "" , asUser: true }); },
+          ]) {
+            try { await attempt(); } catch (e) { errors.push(e.message); }
+          }
+          return errors;
+        });
+      };
+      `,
+      { host: hostApi },
+    );
+
+    await mod.load();
+    const result = await mod.callHook("session.start", {});
+    expect(result.ok && result.value).toEqual([
+      "$.prompt.submit 一期只支持 asUser: true",
+      "$.prompt.submit 一期只支持 asUser: true",
+      "$.prompt.submit 需要非空的 text",
+    ]);
+    expect(hostApi.submitPrompt).not.toHaveBeenCalled();
   });
 });
 
