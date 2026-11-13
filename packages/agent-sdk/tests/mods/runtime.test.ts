@@ -511,7 +511,7 @@ describe("ModRuntime 的 $ 命名空间", () => {
 
     await mod.load();
     await expect(
-      mod.callHook("ui.render", { surface: "pane", component: "Pane" }),
+      mod.callHook("ui.render", { surface: "desktop", component: "Pane" }),
     ).resolves.toMatchObject({
       ok: true,
       value: {
@@ -529,8 +529,8 @@ describe("ModRuntime 的 $ 命名空间", () => {
           var messages = [];
           var cases = [
             {},
-            { surface: "transcript", component: "Pane" },
-            { surface: "pane", component: "Hint" },
+            { surface: "terminal", component: "Pane" },
+            { surface: "desktop", component: "Hint" },
           ];
           for (var bad of cases) {
             try { $.ui.resolve(bad); messages.push("no error"); }
@@ -545,11 +545,13 @@ describe("ModRuntime 的 $ 命名空间", () => {
     const result = await mod.callHook("session.start", {});
     expect(result.ok).toBe(true);
     const messages = (result.ok ? result.value : []) as string[];
-    // 不是 render 事件、surface 没见过：同一句，并列出可用位置。
+    // 不是 render 事件、或不是我们发的端：同一句，并列出支持的那一端。
     expect(messages[0]).toContain("需要一个 ui.render 的事件");
-    expect(messages[0]).toContain("pane");
+    expect(messages[0]).toContain("desktop");
     expect(messages[1]).toContain("需要一个 ui.render 的事件");
-    // 站点名不认识：说清楚这个位置上只有什么。
+    // 报错要点名拿到的是什么，否则 mod 作者不知道该改哪。
+    expect(messages[1]).toContain('"terminal"');
+    // 站点名不认识：说清楚这一端只有什么。
     expect(messages[2]).toContain('不认识站点 "Hint"');
     expect(messages[2]).toContain("Pane");
   });

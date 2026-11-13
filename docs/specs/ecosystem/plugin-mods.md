@@ -83,10 +83,10 @@ MODS 补上这两件事：插件带一个 TypeScript 模块（可写 TSX），�
 
 `register($, on)` 的 `on(name, handler)` 注册**生命周期钩子**：
 
-| 事件            | 触发时机                                                                                                                                                      | 钩子可返回                                 |
-| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
-| `session.start` | 会话初始化完成、第一个 prompt 之前                                                                                                                            | 无（返回值忽略；面板得在这里 `$.ui.open`） |
-| `ui.render`     | surface 请求某个 render site 的树时（宿主不缓存，每次请求都重新问 mod），`e.surface` 是渲染位置（一期只有 `pane`）、`e.component` 是站点名（一期只有 `Pane`） | 元素树                                     |
+| 事件            | 触发时机                                                                                                                                                                                                                                     | 钩子可返回                                 |
+| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
+| `session.start` | 会话初始化完成、第一个 prompt 之前                                                                                                                                                                                                           | 无（返回值忽略；面板得在这里 `$.ui.open`） |
+| `ui.render`     | surface 请求某个 render site 的树时（宿主不缓存，每次请求都重新问 mod）；事件带三个正交的维度：`e.surface` 是画这棵树的那一端（一期只有 `desktop`）、`e.component` 是站点名（一期只有 `Pane`）、`e.instance_id` 是 `$.ui.open({ id })` 的 id | 元素树                                     |
 
 `ui.render` 的事件要交给 `$.ui.resolve(e)` 换元素表（见下）；表外的元素名会被 `validateModTree` 拦下。
 
@@ -113,9 +113,9 @@ MODS 补上这两件事：插件带一个 TypeScript 模块（可写 TSX），�
 | `$.http`    | `fetch(url, { method?, headers?, body?, timeoutMs? })`（只允许 `https:` 与本机回环，见「发 HTTP 请求」）                                                                              |
 | `$.prompt`  | `submit({ text, asUser })`：把一条 prompt 送进当前会话（见「把 prompt 送进对话」）                                                                                                    |
 
-`$.ui.resolve(e)` 把 `ui.render` 收到的事件换成**这个渲染位置上可用的元素构造器表**（`{ Box, Text, Button, Input, Link, Code, Markdown }`，值与从 `wave-agent-sdk/mods` 导入的同名导出是同一份）。参数不对（不是 `ui.render` 的事件、`e.surface` 不认识）或站点不认识时直接报错并列出可用名单，不返回半张表。
+`$.ui.resolve(e)` 把 `ui.render` 收到的事件换成**这一端可用的元素表**（`{ Box, Text, Button, Input, Link, Code, Markdown }`，值与从 `wave-agent-sdk/mods` 导入的同名导出是同一份）。表按 `e.surface` 选：一期只发 `desktop`，别的值、以及不认识的 `e.component`，都直接报错并列出可用名单，不返回半张表。
 
-与 Claude Code 的 `$.ui.resolve(e)` 同一个语义：它同样拿 `ui.render` 的 `e`，按 `e.surface` / `e.component` 判定后返回站点可用的元素表（它的错误文案是 `takes a ui.render argument (e.surface names the surface)`，且元素集按 surface 收窄）。一期只有一个站点，所以表就是全集；将来加站点时由这张表收窄。
+与 Claude Code 的 `$.ui.resolve(e)` 同一个语义：它同样拿 `ui.render` 的 `e`，按 `e.surface` 选元素表、并要求 `e.component` 是引擎画得出的站点（它的错误文案是 `takes a ui.render argument (e.surface names the surface)`）。区别在覆盖面：CC 的 surface 有 `terminal` / `desktop` / `mobile` / `vscode` 四端，**各端元素表不同** —— `terminal` 有 `Raster` / `Image` 没有 `Svg`，`desktop` 反过来（11 个：多 `Select` / `Svg` / `Progress` / `Client`），`mobile` / `vscode` 有 `Svg` 没有 `Client`；我们一期只发 `desktop`，且表里只放已实现的 7 个 —— 给画不出的名字，mod 编出的树只会被 `validateModTree` 拒掉，错误离原因更远。
 
 ### 定时器
 
@@ -250,7 +250,7 @@ mod 的沙箱里没有 `child_process`，要跑外部程序只能走 `$.process.
 1. **假设**一个插件在 `mods/panel.tsx` 导出 `register($, on)`，其中注册了 `ui.render` 并在 `session.start` 里 `$.ui.open({ id: "p1", title: "待办" })`，**当**用户打开一个加载了该插件的会话，**则**右侧面板出现一个「待办」tab 并显示 `Hello`，且同目录下的其他插件能力（命令/技能）不受影响。
 2. **假设**该 mod 的 `ui.render` 返回 `<Box flexDirection="row" gap={2}><Text>A</Text><Button label="B" /></Box>`，**当**面板渲染，**则** `A` 与按钮 `B` 横向排列、间距为 2 个间距单位，按钮可点击。
 3. **假设** mod 只注册 `ui.render` 而从不调用 `$.ui.open`，**当**会话启动，**则**面板不出现，日志中记一条「mod 未申请面板」。
-4. **假设** `ui.render` 里用 `$.ui.resolve(e)` 取元素表（TSX 里 `const { Box, Text } = $.ui.resolve(e); return <Box><Text>hi</Text></Box>`），**当**面板渲染，**则**拿到的表里每个元素名都是可用构造器、渲染结果与 `import { Box, Text } from "wave-agent-sdk/mods"` 一致；把 `$.ui.resolve({})` 或带未知 `e.surface` 的对象传进去，**则**钩子返回错误摘要、面板顶部显示「需要一个 ui.render 的事件」并列出可用站点，不渲染半张表。
+4. **假设** `ui.render` 里用 `$.ui.resolve(e)` 取元素表（TSX 里 `const { Box, Text } = $.ui.resolve(e); return <Box><Text>hi</Text></Box>`），**当**面板渲染，**则**拿到的表里每个元素名都是可用构造器、渲染结果与 `import { Box, Text } from "wave-agent-sdk/mods"` 一致；把 `$.ui.resolve({})` 或 `e.surface` 不是 `desktop` 的事件传进去，**则**钩子返回错误摘要、面板顶部显示「需要一个 ui.render 的事件」并列出可用的端，不渲染半张表。
 
 ### 用户故事：面板交互回到 mod（优先级：P0）
 

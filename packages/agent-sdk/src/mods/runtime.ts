@@ -46,21 +46,35 @@ const elements = Object.fromEntries(
 ) as Record<ModElementType, ModElementType>;
 
 /**
- * 渲染站点：`surface` → 该位置上能画的站点名（`ui.render` 的
- * `e.surface` / `e.component`）。一期只有右侧面板这一个位置。
+ * 画这棵树的那一端 —— `ui.render` 的 `e.surface`，也是 `$.ui.resolve(e)` 选
+ * 元素表的键。
  *
- * `$.ui.resolve(e)` 按它判定、返回元素表 —— 与 Claude Code 同一条语义（它的
- * `Qp` 校验 `e.surface` / `e.component`，元素集按 surface 收窄）。将来加站点就
- * 往这里加，别在别处另写一份。
+ * Claude Code 的表里有四端：`terminal` / `desktop` / `mobile` / `vscode`，各自的
+ * 元素集不同（`terminal` 有 `Raster` / `Image` 没有 `Svg`，`desktop` 反过来）。
+ * 我们一期只发 `desktop` —— 别的值当错处理，别让它悄悄拿到桌面端的表。
  */
-const RENDER_SITES: Record<string, readonly string[]> = { pane: ["Pane"] };
+const SURFACE = "desktop";
 
-/** 冻结的元素表：每次 `$.ui.resolve(e)` 返回同一份，mod 改不到它。 */
+/**
+ * 这一端上能画的站点：`ui.render` 的 `e.component`。
+ *
+ * 一期只有右侧面板一处，所以只有 `Pane`。CC 的表里还有 17 个（`AbovePrompt`、
+ * `ToolUse`、`PromptHint`…），加站点时往这里加，别在别处另写一份。
+ */
+const RENDER_SITES: readonly string[] = ["Pane"];
+
+/**
+ * 冻结的元素表：每次 `$.ui.resolve(e)` 返回同一份，mod 改不到它。
+ *
+ * CC 的桌面端表是 11 个（多 `Select` / `Svg` / `Progress` / `Client`）；我们只放
+ * 真画得出的那 7 个 —— 给了画不出的名字，mod 编出的树会被 `validateModTree`
+ * 拒掉，错误离原因更远。
+ */
 const ELEMENT_TABLE: Readonly<Record<ModElementType, ModElementType>> =
   Object.freeze({ ...elements });
 
 /**
- * 把 `ui.render` 的事件换成这个渲染位置上可用的元素构造器表。
+ * 把 `ui.render` 的事件换成这一端可用的元素表。
  *
  * 传错参数（不是 render 事件、没见过的 surface / component）当场报错并列出
  * 可用名单 —— 返回半张表会让 mod 在 `<undefined>` 上炸，错误离原因更远。
@@ -73,16 +87,15 @@ function resolveElements(
     component?: unknown;
   };
   const surface = typeof e.surface === "string" ? e.surface : undefined;
-  const sites = surface === undefined ? undefined : RENDER_SITES[surface];
-  if (surface === undefined || sites === undefined) {
+  if (surface !== SURFACE) {
     throw new Error(
-      `$.ui.resolve 需要一个 ui.render 的事件（e.surface 指定渲染位置，一期只有 ${Object.keys(RENDER_SITES).join(" / ")}）`,
+      `$.ui.resolve 需要一个 ui.render 的事件（e.surface 是画这棵树的那一端，一期只有 ${SURFACE}${surface === undefined ? "" : `，拿到的是 "${surface}"`}）`,
     );
   }
   const component = typeof e.component === "string" ? e.component : "";
-  if (!sites.includes(component)) {
+  if (!RENDER_SITES.includes(component)) {
     throw new Error(
-      `$.ui.resolve 不认识站点 "${component}"（${surface} 上只有 ${sites.join(" / ")}）`,
+      `$.ui.resolve 不认识站点 "${component}"（一期只画 ${RENDER_SITES.join(" / ")}）`,
     );
   }
   return ELEMENT_TABLE;

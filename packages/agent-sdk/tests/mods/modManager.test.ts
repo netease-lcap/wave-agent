@@ -188,14 +188,16 @@ describe("ModManager.loadFromPlugins", () => {
     expect((await pull(manager)).revision).toBe(2);
   });
 
-  it("ui.render 的事件带 surface / component，$.ui.resolve 靠它取元素表", async () => {
+  it("ui.render 的事件带 surface / component / instance_id，$.ui.resolve 靠它取元素表", async () => {
     // mod 不写死元素名字符串：这是 `$.ui.resolve(e)` 唯一的用法。
+    // 事件里的三个维度都用一遍：surface 拿去换表，component / instance_id 用来
+    // 认出「这是哪一端的哪个面板」—— mod 靠它们分派，不用自己猜。
     const siteMod = `
 exports.register = function ($, on) {
   on("session.start", function () { $.ui.open({ id: "p1", title: "站点" }); });
   on("ui.render", function (e) {
     var t = $.ui.resolve(e);
-    return __wave.h(t.Text, null, e.surface + ":" + e.component);
+    return __wave.h(t.Text, null, e.surface + ":" + e.component + ":" + e.instance_id);
   });
 };
 `;
@@ -211,7 +213,7 @@ exports.register = function ($, on) {
     expect(frame.tree).toMatchObject({
       type: "Text",
       props: {},
-      children: ["pane:Pane"],
+      children: ["desktop:Pane:p1"],
     });
   });
 

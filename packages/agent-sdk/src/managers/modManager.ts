@@ -675,9 +675,13 @@ export class ModManager {
     const result = await loaded.runtime.callHook("ui.render", {
       modId: pane.modId,
       paneId: pane.paneId,
-      // 站点两件套：`$.ui.resolve(e)` 靠它们判定返回哪张元素表。
-      surface: "pane",
+      // 三个正交的维度（与 CC 的 `ui_render` 消息同形）：`surface` 是画这棵树
+      // 的那一端（决定 `$.ui.resolve(e)` 给哪张元素表），`component` 是画哪个
+      // 站点，`instance_id` 是该站点的哪个实例 —— `Pane` 的实例就是
+      // `$.ui.open({ id })` 的 id，也就是我们的 paneId。
+      surface: "desktop",
       component: "Pane",
+      instance_id: pane.paneId,
     });
     if (!result.ok) {
       return this.renderFailed(pane, result.error);
