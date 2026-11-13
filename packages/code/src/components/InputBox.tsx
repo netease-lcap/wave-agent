@@ -13,6 +13,7 @@ import { RewindCommand } from "./RewindCommand.js";
 import { ResumeCommand } from "./ResumeCommand.js";
 import { HelpView } from "./HelpView.js";
 import { StatusCommand } from "./StatusCommand.js";
+import { DiffManager } from "./DiffManager.js";
 import { RemoteControlView } from "./RemoteControlView.js";
 import { LoginCommand } from "./LoginCommand.js";
 import { PluginManagerShell } from "./PluginManagerShell.js";
@@ -95,6 +96,8 @@ export const InputBox: React.FC<InputBoxProps> = ({
     getRewindCheckpoints,
     sessionId,
     workingDirectory,
+    workspaceRoot,
+    messages,
     askBtw,
     clearMessages,
     compact,
@@ -163,6 +166,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
     showResumeSelector,
     showHelp,
     showStatusCommand,
+    showDiffManager,
     showRemoteControl,
     showLoginCommand,
     showPluginManager,
@@ -177,6 +181,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
     setShowResumeSelector,
     setShowHelp,
     setShowStatusCommand,
+    setShowDiffManager,
     setShowRemoteControl,
     setShowLoginCommand,
     setShowPluginManager,
@@ -245,6 +250,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
       showResumeSelector ||
       showHelp ||
       showStatusCommand ||
+      showDiffManager ||
       showLoginCommand ||
       showPluginManager ||
       showModelSelector ||
@@ -429,6 +435,14 @@ export const InputBox: React.FC<InputBoxProps> = ({
         <StatusCommand onCancel={() => setShowStatusCommand(false)} />
       )}
 
+      {showDiffManager && (
+        <DiffManager
+          workspaceRoot={workspaceRoot || workingDirectory}
+          messages={messages}
+          onCancel={() => setShowDiffManager(false)}
+        />
+      )}
+
       {showRemoteControl && (
         <RemoteControlView onCancel={() => setShowRemoteControl(false)} />
       )}
@@ -475,6 +489,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
             showResumeSelector ||
             showHelp ||
             showStatusCommand ||
+            showDiffManager ||
             showLoginCommand ||
             showPluginManager ||
             showModelSelector ||

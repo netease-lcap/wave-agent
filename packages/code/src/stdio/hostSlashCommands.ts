@@ -112,6 +112,14 @@ export const HOST_SLASH_COMMANDS: readonly HostSlashCommandSpec[] = [
     surfaces: ALL,
   },
   {
+    id: "diff",
+    description: "查看工作区改动",
+    runOnSelect: true,
+    // 只有桌面端：差异面板长在右侧面板槽位里（那槽位只在桌面端渲染），
+    // VS Code / JetBrains 用编辑器自己的 diff 视图，远控页没有面板机制。
+    surfaces: ["desktop"],
+  },
+  {
     id: "workflows",
     description: "查看工作流运行",
     runOnSelect: true,

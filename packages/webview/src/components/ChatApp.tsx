@@ -3122,6 +3122,14 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         dispatch({ type: "SHOW_DIALOG", payload: { type: "workflows" } });
         return;
       }
+      // `/diff` 只列给桌面端（见 `hostSlashCommands.ts`）：差异面板就是右侧面板
+      // 的一个 tab（spec desktop/desktop-diff-panel.md），复用它的单实例 / 空间
+      // 守卫 / 逐会话记忆。插件端与远控页没有面板机制，手打不拦 —— 按普通消息
+      // 处理，与桌面端 `/clear` 同口径，不报错。
+      if (isDesktop && trimmedText === "/diff") {
+        tryOpenPanelRef.current("diff");
+        return;
+      }
       if (interceptHostLocalCommand && trimmedText === "/remote-control") {
         // 手机接管本机会话（远端控制面）：不再弹窗，而是唤起设置页并选中
         // 「远程控制」选项卡（2026-10-17 用户拍板，与 /agents → subagents、

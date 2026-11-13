@@ -378,6 +378,8 @@ export const handleCommandSelect = (
           dispatch({ type: "SET_SHOW_HELP", payload: true });
         } else if (command === "status") {
           dispatch({ type: "SET_SHOW_STATUS_COMMAND", payload: true });
+        } else if (command === "diff") {
+          dispatch({ type: "SET_SHOW_DIFF_MANAGER", payload: true });
         } else if (command === "btw") {
           // Bare /btw executed via the command selector — show usage
           // (aligned with Claude Code's empty-args message).
@@ -753,6 +755,7 @@ export const handleInput = async (
         state.showResumeSelector ||
         state.showHelp ||
         state.showStatusCommand ||
+        state.showDiffManager ||
         state.showRemoteControl ||
         state.showPluginManager ||
         state.showModelSelector ||
@@ -779,6 +782,7 @@ export const handleInput = async (
     state.showResumeSelector ||
     state.showHelp ||
     state.showStatusCommand ||
+    state.showDiffManager ||
     state.showRemoteControl ||
     state.showPluginManager ||
     state.showModelSelector ||
@@ -791,6 +795,7 @@ export const handleInput = async (
       state.showResumeSelector ||
       state.showHelp ||
       state.showStatusCommand ||
+      state.showDiffManager ||
       state.showRemoteControl ||
       state.showPluginManager ||
       state.showModelSelector ||
