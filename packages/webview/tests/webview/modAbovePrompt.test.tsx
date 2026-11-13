@@ -202,6 +202,51 @@ describe("desktop mod band / status / toast", () => {
     expect(screen.queryByTestId("mod-toast")).not.toBeInTheDocument();
   });
 
+  it("提示可以手动关掉（× 连同它的计时器一起撤）", () => {
+    vi.useFakeTimers();
+    renderDesktop();
+    act(() => {
+      sendHostMessage(
+        fixtures.desktopModToast({
+          sessionId: "s1",
+          modId: "todo:a",
+          plugin: "todo",
+          text: "已保存",
+          timeoutMs: 4000,
+        }),
+      );
+    });
+    expect(screen.getByTestId("mod-toast")).toHaveTextContent("已保存");
+
+    act(() => {
+      screen.getByRole("button", { name: "关闭提示" }).click();
+    });
+    expect(screen.queryByTestId("mod-toast")).not.toBeInTheDocument();
+
+    // 计时器已撤：到点那次也不再对已删掉的 id 做一次滤波。
+    act(() => {
+      vi.advanceTimersByTime(5000);
+    });
+    expect(screen.queryByTestId("mod-toast")).not.toBeInTheDocument();
+  });
+
+  it("提示正文按 240 字符截断（CC 的 toast 口径）", () => {
+    renderDesktop();
+    sendHostMessage(
+      fixtures.desktopModToast({
+        sessionId: "s1",
+        modId: "todo:a",
+        plugin: "todo",
+        text: "已勾掉一项，".repeat(200),
+        timeoutMs: 60_000,
+      }),
+    );
+    const text = screen.getByTestId("mod-toast").textContent ?? "";
+    expect(text).toContain("…");
+    // 240 字符正文 + 插件署名。
+    expect(text.length).toBeLessThanOrEqual(240 + "todo".length);
+  });
+
   it("每次 stale 之后重拉带（带跟着 mod 的重画走）", () => {
     const { vscode } = renderDesktop();
     const before = bandRequests(vscode).length;

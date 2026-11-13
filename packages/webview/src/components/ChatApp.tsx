@@ -915,6 +915,16 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   // 提示」）。计时器按 toast id 存，换会话 / 卸载时一并清掉。
   const modToastSeqRef = useRef(0);
   const modToastTimersRef = useRef(new Map<number, number>());
+  // 手动关掉一条提示（浮层右上角的 ×）：连同它那个到点的计时器一起撤掉，
+  // 否则计时器到点还会对已删掉的 id 做一次 filter。
+  const dismissModToast = useCallback((id: number) => {
+    const timer = modToastTimersRef.current.get(id);
+    if (timer !== undefined) {
+      window.clearTimeout(timer);
+      modToastTimersRef.current.delete(id);
+    }
+    setModToasts((prev) => prev.filter((toast) => toast.id !== id));
+  }, []);
   // 文件面板的未保存草稿（spec desktop-file-panel.md「文件面板内编辑与保存」）：
   // 判定与丢弃都落在 tab 态上，声明在这里是因为「离开」的守卫散落在关闭 tab、
   // 打开另一个文件、换会话等既有回调里，它们都在调用时读最新的 tabsRef。
@@ -5788,9 +5798,10 @@ export const ChatApp: React.FC<ChatAppProps> = ({
               }
             />
             {/* 输入框下方的常驻状态行与短暂提示（spec「状态带、状态行与提示」）：
-                只推不拉、纯文本、不进对话上下文；每个插件一条/一签。 */}
+                只推不拉、纯文本、不进对话上下文；每个插件一段/一签。提示是右下角
+                固定浮层，不占输入区布局。 */}
             <ModStatusLines lines={modStatuses} />
-            <ModToastStack toasts={modToasts} />
+            <ModToastStack toasts={modToasts} onDismiss={dismissModToast} />
           </div>
 
           {state.pendingConfirmations.length > 0 && (
