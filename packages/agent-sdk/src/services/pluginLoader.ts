@@ -351,16 +351,20 @@ export class PluginLoader {
       return mods;
     }
 
+    // 排序也放在这个 try 里：读目录失败与「结果不可迭代」同属「这个插件没有
+    // mod」，与 `loadSkills` / `loadAgents` 的口径一致 —— 插件加载不该因为一次
+    // 目录读取问题整体失败（那会连带丢掉命令、技能等已就绪的能力）。
     let entries;
     try {
       entries = await fs.readdir(modsPath, { withFileTypes: true });
+      entries = entries.sort((a, b) => a.name.localeCompare(b.name));
     } catch {
       // No mods directory — the common case.
       return mods;
     }
 
     let totalBytes = 0;
-    for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+    for (const entry of entries) {
       if (!entry.isFile()) continue;
       if (!MOD_LOADER_EXTENSIONS.has(path.extname(entry.name).toLowerCase())) {
         continue;

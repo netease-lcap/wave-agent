@@ -524,6 +524,12 @@ vi.mock("wave-agent-sdk/host", async (importOriginal) => ({
     listRewindCheckpoints = vi.fn(async () => ({
       checkpoints: [{ id: "u1", content: "hello" }],
     }));
+    /**
+     * 插件 mod 面板的元信息旁路（spec ecosystem/plugin-mods.md）：宿主不缓存树，
+     * 切会话 / webview 重建时靠这份元信息恢复 mod tab。默认空 —— 只有专门测
+     * mod 恢复的用例才给它塞帧。
+     */
+    getModPanels = vi.fn(async () => [] as unknown[]);
     getConfiguredModels = vi.fn(async () => ({
       models: ["gpt-4", "claude"],
       currentModel: "gpt-4",
