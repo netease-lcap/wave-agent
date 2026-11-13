@@ -45,6 +45,49 @@ const elements = Object.fromEntries(
   ELEMENT_CONSTRUCTORS.map((name) => [String(name), String(name)]),
 ) as Record<ModElementType, ModElementType>;
 
+/**
+ * 渲染站点：`surface` → 该位置上能画的站点名（`ui.render` 的
+ * `e.surface` / `e.component`）。一期只有右侧面板这一个位置。
+ *
+ * `$.ui.resolve(e)` 按它判定、返回元素表 —— 与 Claude Code 同一条语义（它的
+ * `Qp` 校验 `e.surface` / `e.component`，元素集按 surface 收窄）。将来加站点就
+ * 往这里加，别在别处另写一份。
+ */
+const RENDER_SITES: Record<string, readonly string[]> = { pane: ["Pane"] };
+
+/** 冻结的元素表：每次 `$.ui.resolve(e)` 返回同一份，mod 改不到它。 */
+const ELEMENT_TABLE: Readonly<Record<ModElementType, ModElementType>> =
+  Object.freeze({ ...elements });
+
+/**
+ * 把 `ui.render` 的事件换成这个渲染位置上可用的元素构造器表。
+ *
+ * 传错参数（不是 render 事件、没见过的 surface / component）当场报错并列出
+ * 可用名单 —— 返回半张表会让 mod 在 `<undefined>` 上炸，错误离原因更远。
+ */
+function resolveElements(
+  event: unknown,
+): Readonly<Record<ModElementType, ModElementType>> {
+  const e = (typeof event === "object" && event !== null ? event : {}) as {
+    surface?: unknown;
+    component?: unknown;
+  };
+  const surface = typeof e.surface === "string" ? e.surface : undefined;
+  const sites = surface === undefined ? undefined : RENDER_SITES[surface];
+  if (surface === undefined || sites === undefined) {
+    throw new Error(
+      `$.ui.resolve 需要一个 ui.render 的事件（e.surface 指定渲染位置，一期只有 ${Object.keys(RENDER_SITES).join(" / ")}）`,
+    );
+  }
+  const component = typeof e.component === "string" ? e.component : "";
+  if (!sites.includes(component)) {
+    throw new Error(
+      `$.ui.resolve 不认识站点 "${component}"（${surface} 上只有 ${sites.join(" / ")}）`,
+    );
+  }
+  return ELEMENT_TABLE;
+}
+
 /** 定时器句柄：`cancel()` 可重复调用。 */
 export interface ModTimerHandle {
   cancel(): void;
@@ -54,7 +97,8 @@ export interface ModTimerHandle {
 export interface ModDollar {
   plugin: { name: string };
   ui: {
-    resolve(event: unknown): unknown;
+    /** `ui.render` 的事件 → 该站点可用的元素构造器表（spec「事件」）。 */
+    resolve(event: unknown): Readonly<Record<ModElementType, ModElementType>>;
     open(pane: { id: string; title: string }): void;
     close(id: string): void;
     panes(): string[];
@@ -344,7 +388,7 @@ export class ModRuntime {
     this.dollar = {
       plugin: { name: host.pluginName },
       ui: {
-        resolve: (event) => event,
+        resolve: resolveElements,
         open: (pane) => host.openPane(pane.id, pane.title),
         close: (id) => host.closePane(id),
         panes: () => [...host.listPanes()],

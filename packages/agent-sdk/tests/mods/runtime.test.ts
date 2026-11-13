@@ -499,6 +499,61 @@ describe("ModRuntime 的 $ 命名空间", () => {
     expect(hostApi.closePane).toHaveBeenCalledWith("p1");
   });
 
+  it("$.ui.resolve 把 ui.render 的事件换成元素表", async () => {
+    const { mod } = runtime(`
+      exports.register = function ($, on) {
+        on("ui.render", function (e) {
+          var t = $.ui.resolve(e);
+          return __wave.h(t.Box, null, __wave.h(t.Text, null, "hi"));
+        });
+      };
+    `);
+
+    await mod.load();
+    await expect(
+      mod.callHook("ui.render", { surface: "pane", component: "Pane" }),
+    ).resolves.toMatchObject({
+      ok: true,
+      value: {
+        type: "Box",
+        props: {},
+        children: [{ type: "Text", props: {}, children: ["hi"] }],
+      },
+    });
+  });
+
+  it("$.ui.resolve 传错参数当场报错，不返回半张表", async () => {
+    const { mod } = runtime(`
+      exports.register = function ($, on) {
+        on("session.start", function () {
+          var messages = [];
+          var cases = [
+            {},
+            { surface: "transcript", component: "Pane" },
+            { surface: "pane", component: "Hint" },
+          ];
+          for (var bad of cases) {
+            try { $.ui.resolve(bad); messages.push("no error"); }
+            catch (e) { messages.push(String(e.message || e)); }
+          }
+          return messages;
+        });
+      };
+    `);
+
+    await mod.load();
+    const result = await mod.callHook("session.start", {});
+    expect(result.ok).toBe(true);
+    const messages = (result.ok ? result.value : []) as string[];
+    // 不是 render 事件、surface 没见过：同一句，并列出可用位置。
+    expect(messages[0]).toContain("需要一个 ui.render 的事件");
+    expect(messages[0]).toContain("pane");
+    expect(messages[1]).toContain("需要一个 ui.render 的事件");
+    // 站点名不认识：说清楚这个位置上只有什么。
+    expect(messages[2]).toContain('不认识站点 "Hint"');
+    expect(messages[2]).toContain("Pane");
+  });
+
   it("clock 只登记到宿主，沙箱里没有裸定时器", async () => {
     const hostApi = host();
     const { mod } = runtime(

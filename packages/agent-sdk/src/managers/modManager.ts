@@ -675,6 +675,8 @@ export class ModManager {
     const result = await loaded.runtime.callHook("ui.render", {
       modId: pane.modId,
       paneId: pane.paneId,
+      // 站点两件套：`$.ui.resolve(e)` 靠它们判定返回哪张元素表。
+      surface: "pane",
       component: "Pane",
     });
     if (!result.ok) {

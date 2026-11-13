@@ -188,6 +188,33 @@ describe("ModManager.loadFromPlugins", () => {
     expect((await pull(manager)).revision).toBe(2);
   });
 
+  it("ui.render 的事件带 surface / component，$.ui.resolve 靠它取元素表", async () => {
+    // mod 不写死元素名字符串：这是 `$.ui.resolve(e)` 唯一的用法。
+    const siteMod = `
+exports.register = function ($, on) {
+  on("session.start", function () { $.ui.open({ id: "p1", title: "站点" }); });
+  on("ui.render", function (e) {
+    var t = $.ui.resolve(e);
+    return __wave.h(t.Text, null, e.surface + ":" + e.component);
+  });
+};
+`;
+    const { manager } = createManager();
+    probe.files.set(path.resolve(MOD_PATH), siteMod);
+    await manager.loadFromPlugins([
+      plugin([{ id: "todo:panel", path: MOD_PATH }]),
+    ]);
+    await manager.startSession();
+
+    const frame = await pull(manager);
+    expect(frame.error).toBeUndefined();
+    expect(frame.tree).toMatchObject({
+      type: "Text",
+      props: {},
+      children: ["pane:Pane"],
+    });
+  });
+
   it("编译失败只影响那一个 mod", async () => {
     probe.esbuild = {
       transform: vi.fn(
