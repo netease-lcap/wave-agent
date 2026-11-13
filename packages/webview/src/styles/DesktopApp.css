@@ -1509,6 +1509,23 @@ html[data-theme="dark"] .desktop-session-status-slot {
   cursor: default;
 }
 
+/* 面板自己的「返回」（= 关闭面板）。同尺寸、次级外观：它跟主操作同一行，
+   但不该跟「选择此目录」抢注意力。 */
+.desktop-remote-browser-back {
+  flex-shrink: 0;
+  border: none;
+  border-radius: 4px;
+  padding: 4px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  color: var(--vscode-dropdown-foreground);
+  background: transparent;
+}
+
+.desktop-remote-browser-back:hover {
+  background: var(--vscode-list-hoverBackground);
+}
+
 /* ---- Preview pane: localhost preview + element picker ---- */
 
 .preview-pane {
