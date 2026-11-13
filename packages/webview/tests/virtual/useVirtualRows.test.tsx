@@ -25,22 +25,17 @@ const rowKeys = (prefix: string) =>
   Array.from({ length: 20 }, (_, i) => `${prefix}-${i}`);
 const ROW_HEIGHT = 100;
 const VIEWPORT = 600;
-const TOTAL = 20 * ROW_HEIGHT;
-const BOTTOM = TOTAL - VIEWPORT;
 
 function Harness({
   keys,
-  docKey,
   apiRef,
 }: {
   keys: string[];
-  docKey: string;
   apiRef: React.MutableRefObject<VirtualRows | null>;
 }) {
   const rows = useVirtualRows({
     keys,
     estimate: () => ROW_HEIGHT,
-    docKey,
   });
   useImperativeHandle(apiRef as never, () => rows, [rows]);
   return (
@@ -60,37 +55,27 @@ function userScroll(container: HTMLElement, top: number) {
   container.dispatchEvent(new Event("scroll"));
 }
 
-function mount(keys: string[], docKey: string) {
+function mount(keys: string[]) {
   const apiRef =
     createRef<VirtualRows>() as React.MutableRefObject<VirtualRows | null>;
-  const utils = render(<Harness keys={keys} docKey={docKey} apiRef={apiRef} />);
+  const utils = render(<Harness keys={keys} apiRef={apiRef} />);
   const container = utils.getByTestId("messages-container");
   return { ...utils, apiRef, container };
 }
 
-describe("useVirtualRows 阅读位置恢复", () => {
-  it("锚点那一行还在首屏一页里：回到离开时的位置", () => {
-    const keys = rowKeys("hit");
-    const first = mount(keys, "doc-hit");
+describe("useVirtualRows 挂载状态", () => {
+  it("上翻离开底部后卸载再挂载：不恢复上一次的阅读位置", () => {
+    const keys = rowKeys("a");
+    const first = mount(keys);
     userScroll(first.container, 700);
     first.apiRef.current?.unpin();
+    expect(first.container.scrollTop).toBe(700);
     first.unmount();
 
-    const second = mount(keys, "doc-hit");
-    expect(second.container.scrollTop).toBe(700);
-    second.unmount();
-  });
-
-  it("锚点那一行不在首屏一页里：落到首屏默认的钉底位置，不留在顶部", () => {
-    const first = mount(rowKeys("visited"), "doc-missing");
-    userScroll(first.container, 700);
-    first.apiRef.current?.unpin();
-    first.unmount();
-
-    // 切回来时只加载了首屏一页，且那一页里没有离开时锚定的行。
-    const second = mount(rowKeys("other"), "doc-missing");
-    expect(second.container.scrollTop).toBe(BOTTOM);
-    expect(second.container.scrollTop).toBe(BOTTOM);
+    const second = mount(keys);
+    expect(second.container.scrollTop).not.toBe(700);
+    // 新挂载默认就是「钉底」：后续任何一次高度变化或使用方的跟随 effect 都会把
+    // 视口带到真实底部，而不是回到上面那次离开的位置。
     expect(second.apiRef.current?.isPinned()).toBe(true);
     second.unmount();
   });
