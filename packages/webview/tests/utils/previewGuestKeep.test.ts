@@ -1,12 +1,10 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import {
-  PREVIEW_GUEST_LIMIT,
   livePanelGroupKeys,
   parkGroup,
   parkedGroupsFor,
   pruneParkedGroups,
   releaseParkedGroups,
-  reportLiveGuests,
   resetParkedGroups,
   subscribeParkedGroups,
   unparkGroup,
@@ -14,15 +12,16 @@ import {
 
 /**
  * preview guest 跨会话保活的台账（spec desktop-right-panel.md「右侧面板 · preview
- * guest 跨会话保活」场景 3-4、边界「preview guest 保活额度」）。额度是窗口级、
- * 跨分屏共享、含当前可见者，超出按最久未使用淘汰。
+ * guest 跨会话保活」场景 3-4）。台账只是一个「谁停靠了哪些组」的集合：**没有数量
+ * 上限、不做 LRU 逐出**（对齐 Claude 桌面端 Browser pane），销毁只发生在关 tab /
+ * 删会话 / 关分屏 / 退出应用。
  */
 describe("preview guest keep-alive ledger", () => {
   beforeEach(() => {
     resetParkedGroups();
   });
 
-  it("keeps the MRU order and hands each instance only its own groups", () => {
+  it("hands each instance only its own groups", () => {
     const a = {};
     const b = {};
     parkGroup(a, "s1", 1);
@@ -43,12 +42,15 @@ describe("preview guest keep-alive ledger", () => {
     expect(parkedGroupsFor(a)).toEqual(["s1", "s2"]);
   });
 
-  it("re-parks a group at the MRU end instead of duplicating it", () => {
+  it("does not duplicate a group that is parked again", () => {
     const a = {};
     parkGroup(a, "s1", 1);
     parkGroup(a, "s2", 1);
+    const before = parkedGroupsFor(a);
     parkGroup(a, "s1", 1);
-    expect(parkedGroupsFor(a)).toEqual(["s2", "s1"]);
+    expect(parkedGroupsFor(a)).toEqual(["s1", "s2"]);
+    // 重复登记不该惊动订阅方（否则每次切会话都会白重渲染一次）。
+    expect(parkedGroupsFor(a)).toBe(before);
   });
 
   it("does not keep an entry for a group with no preview guest", () => {
@@ -57,60 +59,37 @@ describe("preview guest keep-alive ledger", () => {
     expect(parkedGroupsFor(a)).toEqual([]);
   });
 
-  it("counts every preview tab of a group against the quota", () => {
+  it("keeps every parked group — no cap, no eviction", () => {
     const a = {};
-    parkGroup(a, "s1", 3);
-    parkGroup(a, "s2", 1);
-    // 3 + 1 = 4 → 恰好满额，两个都还在。
-    expect(parkedGroupsFor(a)).toEqual(["s1", "s2"]);
-    parkGroup(a, "s3", 1);
-    // 5 > 4 → 最久未使用的 s1 整组（3 个 guest）一起销毁。
-    expect(parkedGroupsFor(a)).toEqual(["s2", "s3"]);
+    // 六个组、各自多个 preview tab：全部保活，最久未用的那个也不销毁。
+    for (const group of ["s1", "s2", "s3", "s4", "s5", "s6"]) {
+      parkGroup(a, group, 3);
+    }
+    expect(parkedGroupsFor(a)).toEqual(["s1", "s2", "s3", "s4", "s5", "s6"]);
+    // 再切走第 7 个：前面一个都不掉。
+    parkGroup(a, "s7", 3);
+    expect(parkedGroupsFor(a)).toHaveLength(7);
+    expect(parkedGroupsFor(a)).toContain("s1");
   });
 
-  it("evicts the least recently used group once the window quota is full", () => {
-    const a = {};
-    for (const group of ["s1", "s2", "s3", "s4"]) parkGroup(a, group, 1);
-    expect(parkedGroupsFor(a)).toEqual(["s1", "s2", "s3", "s4"]);
-
-    parkGroup(a, "s5", 1);
-    expect(parkedGroupsFor(a)).toEqual(["s2", "s3", "s4", "s5"]);
-    expect(PREVIEW_GUEST_LIMIT).toBe(4);
-  });
-
-  it("counts a group once even while it is both leaving and parked", () => {
-    const a = {};
-    reportLiveGuests(a, "s1", 1);
-    // 刚切走的那一瞬间：s1 既是「上一刻的可见组」又刚登记为停靠组，只能算一份，
-    // 否则额度凭空少一个、白白多淘汰一个会话。
-    parkGroup(a, "s1", 1);
-    reportLiveGuests(a, "s2", 1);
-    parkGroup(a, "s2", 1);
-    reportLiveGuests(a, "s3", 1);
-    parkGroup(a, "s3", 1);
-    // 三个组各 1 个 guest < 4 → 一个都不淘汰。
-    expect(parkedGroupsFor(a)).toEqual(["s1", "s2", "s3"]);
-  });
-
-  it("counts the visible guests of every instance against the quota", () => {
+  it("keeps the guests of every instance — the ledger is window-wide, not capped", () => {
     const a = {};
     const b = {};
-    // 两个分屏各显示一个 preview（a 显示 s1、b 显示 s9，各 1 个可见 guest）。
-    reportLiveGuests(a, "s1", 1);
-    reportLiveGuests(b, "s9", 1);
+    for (const group of ["s1", "s2", "s3", "s4", "s5"]) parkGroup(a, group, 1);
+    for (const group of ["t1", "t2", "t3"]) parkGroup(b, group, 1);
+    expect(parkedGroupsFor(a)).toHaveLength(5);
+    expect(parkedGroupsFor(b)).toEqual(["t1", "t2", "t3"]);
+  });
+
+  it("moves ownership when another instance parks the same group", () => {
+    const a = {};
+    const b = {};
     parkGroup(a, "s1", 1);
-    parkGroup(a, "s2", 1);
-    parkGroup(a, "s3", 1);
-    // 可见 s9 + 停靠 s1/s2/s3 = 4，刚好。
-    expect(parkedGroupsFor(a)).toEqual(["s1", "s2", "s3"]);
-
-    // b 那一侧再多一个可见 guest：总量 5 > 4 → 淘汰最久未用的 s1。
-    reportLiveGuests(b, "s9", 2);
-    expect(parkedGroupsFor(a)).toEqual(["s2", "s3"]);
-
-    // 可见数回落不恢复（被淘汰者已销毁，切回按记忆地址重新加载）。
-    reportLiveGuests(b, "s9", 1);
-    expect(parkedGroupsFor(a)).toEqual(["s2", "s3"]);
+    // 会话被移到另一个分屏：同一个组改由 b 渲染，台账里只能有一份（否则同一个
+    // tab 会在两个 pane 的停靠层里各挂一个 guest）。
+    parkGroup(b, "s1", 1);
+    expect(parkedGroupsFor(a)).toEqual([]);
+    expect(parkedGroupsFor(b)).toEqual(["s1"]);
   });
 
   it("drops a group when another instance brings it back to the foreground", () => {
@@ -124,17 +103,14 @@ describe("preview guest keep-alive ledger", () => {
     expect(parkedGroupsFor(b)).toEqual([]);
   });
 
-  it("releases an instance's groups and its live count when it unmounts", () => {
+  it("releases an instance's groups when it unmounts", () => {
     const a = {};
     const b = {};
     parkGroup(a, "s1", 1);
-    reportLiveGuests(a, "s1", 1);
+    parkGroup(b, "s2", 1);
     releaseParkedGroups(a);
     expect(parkedGroupsFor(a)).toEqual([]);
-
-    // a 的可见额度已释放，b 再停靠一组不会因为 a 的残留计数被挤掉。
-    reportLiveGuests(b, "s9", 3);
-    parkGroup(b, "s2", 1);
+    // 别的分屏的停靠组不受影响。
     expect(parkedGroupsFor(b)).toEqual(["s2"]);
   });
 
