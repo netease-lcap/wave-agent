@@ -99,15 +99,17 @@ MODS 补上这两件事：插件带一个 TypeScript 模块（可写 TSX），�
 
 ### `$`（一期）
 
-| 命名空间    | 方法                                                                                                             |
-| ----------- | ---------------------------------------------------------------------------------------------------------------- |
-| `$.plugin`  | `name`                                                                                                           |
-| `$.ui`      | `open({ id, title })`、`close(id)`、`panes()`、`invalidate(id)`（只丢缓存并通知 surface 重新请求，不直接产生树） |
-| `$.state`   | `get`、`set`（会话级状态；`get` 返回副本，`set` 后需自己 `invalidate`）                                          |
-| `$.store`   | `get`、`set`、`delete`、`keys`（该插件自己的 JSON KV，跨会话）                                                   |
-| `$.clock`   | `now()`、`after(ms, fn)`、`every(ms, fn)`（后两者返回 `{ cancel() }`，见「定时器」）                             |
-| `$.process` | `spawn({ argv, cwd?, env?, input? })` → 异步迭代子进程的输出（见「外部进程」）                                   |
-| `$.prompt`  | `submit({ text, asUser })`：把一条 prompt 送进当前会话（见「把 prompt 送进对话」）                               |
+| 命名空间    | 方法                                                                                                                                                                                  |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `$.plugin`  | `name`                                                                                                                                                                                |
+| `$.ui`      | `open({ id, title })`、`close(id)`、`panes()`、`invalidate(id)`（只丢缓存并通知 surface 重新请求，不直接产生树）                                                                      |
+| `$.state`   | `get`、`set`（会话级状态；`get` 返回副本，`set` 后需自己 `invalidate`）                                                                                                               |
+| `$.store`   | `get`、`set`、`delete`、`keys`（该插件自己的 JSON KV，跨会话）                                                                                                                        |
+| `$.clock`   | `now()`、`after(ms, fn)`、`every(ms, fn)`（后两者返回 `{ cancel() }`，见「定时器」）                                                                                                  |
+| `$.process` | `spawn({ argv, cwd?, env?, input? })` → 异步迭代子进程的输出；`run(argv, { cwd?, env?, stdin?, timeoutMs? })` → 跑完拿 `{ exitCode, stdout, stderr, is…Truncated }`（见「外部进程」） |
+| `$.fs`      | `read`（可选 `{ as: "bytes" }`）、`write`、`list`、`stat`、`exists`（相对路径按会话工作目录解析，见「读写文件」）                                                                     |
+| `$.http`    | `fetch(url, { method?, headers?, body?, timeoutMs? })`（只允许 `https:` 与本机回环，见「发 HTTP 请求」）                                                                              |
+| `$.prompt`  | `submit({ text, asUser })`：把一条 prompt 送进当前会话（见「把 prompt 送进对话」）                                                                                                    |
 
 ### 定时器
 
@@ -119,7 +121,7 @@ mod 的沙箱里**没有** `setTimeout`/`setInterval`，要定时只能走 `$.cl
 - 回调里可以调 `$` 的任何方法（`$.ui.invalidate`、`$.store.get`、`$.ui.panes` 都行）。回调抛错记 `wave` 日志并在面板顶部叠一条错误摘要，**下一拍照常执行**——一次抛错不会把定时器停掉。
 - 定时器不跨会话：会话销毁、`/reload-plugins`、agent 重建时宿主撤销该 mod 的全部定时器，之后不再有任何回调。
 
-轮询是 mod 看到**自己进程之外**变化的主要手段。外部程序（用户在客户产品里跑的脚本、本机的客户端进程，或 mod 自己用 `$.process.spawn` 起的进程）把状态写进 `$.store` 对应的文件，mod 用 `$.clock.every` 读出来、变了就 `$.ui.invalidate`；反过来，面板上的按钮把意图写进 `$.store`，外部程序自己那份循环读到后执行真正的动作（例如连上或断开 WebSocket）。mod 自己仍然没有网络能力（`$.http` 未开放），连接只活在外部进程里。
+轮询是 mod 看到**自己进程之外**变化的主要手段。外部程序（用户在客户产品里跑的脚本、本机的客户端进程，或 mod 自己用 `$.process.spawn` 起的进程）把状态写进 `$.store` 对应的文件，mod 用 `$.clock.every` 读出来、变了就 `$.ui.invalidate`；反过来，面板上的按钮把意图写进 `$.store`，外部程序自己那份循环读到后执行真正的动作（例如连上或断开 WebSocket）。mod 自己的网络能力是一次性请求（`$.http.fetch`）；要长连接就起一个**桥进程**，桥持有 WebSocket，mod 与桥之间走本机回环 HTTP（见「跨平台的双向连接」）。
 
 ### 外部进程
 
