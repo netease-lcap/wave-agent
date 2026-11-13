@@ -3978,19 +3978,23 @@
    深色 12% 白），hover 文字加深为 #1f2329/#ffffff。 */
 [data-host="desktop"] .task-list-chevron,
 [data-host="desktop"] .queued-chevron,
-[data-host="desktop"] .queued-action-button {
+[data-host="desktop"] .queued-action-button,
+[data-host="desktop"] .desktop-host-item-edit {
   color: #565a60;
 }
 [data-host="desktop"][data-theme="dark"] .task-list-chevron,
 [data-host="desktop"][data-theme="dark"] .queued-chevron,
-[data-host="desktop"][data-theme="dark"] .queued-action-button {
+[data-host="desktop"][data-theme="dark"] .queued-action-button,
+[data-host="desktop"][data-theme="dark"] .desktop-host-item-edit {
   color: #9a9ea5;
 }
-[data-host="desktop"][data-theme="light"] .queued-action-button:hover {
+[data-host="desktop"][data-theme="light"] .queued-action-button:hover,
+[data-host="desktop"][data-theme="light"] .desktop-host-item-edit:hover {
   background-color: #e7e9ed;
   color: #1f2329;
 }
-[data-host="desktop"][data-theme="dark"] .queued-action-button:hover {
+[data-host="desktop"][data-theme="dark"] .queued-action-button:hover,
+[data-host="desktop"][data-theme="dark"] .desktop-host-item-edit:hover {
   background-color: rgba(255, 255, 255, 0.12);
   color: #ffffff;
 }
@@ -4020,6 +4024,43 @@
      组右对齐故「编辑」右移 8px、「立即发送」右移 4px、「删除」零位移；按钮盒 24×24 与
      hover 底色之间的 4px 缝得以保留。 */
   gap: 4px;
+}
+
+/* 主机菜单行的「编辑连接」按钮并进队列动作按钮这一族（1113 评论：锚点
+   `div.desktop-workdir-menu-item`「本地」+ `button.queued-action-button`
+   「同步图标、交互样式等」）。
+   改前：codicon 字体字形、盒 20×20 / r0 / 无底色，hover 只把 opacity 提到 0.5
+   ——而且行 hover 那条规则特异性更高（.desktop-workdir-menu-item:hover
+   .desktop-host-item-edit = 0-3-0 压过 .desktop-host-item-edit:hover = 0-2-0），
+   指针压到按钮上反而不会再变亮。
+   改后与 `.queued-action-button` 同一套：图标换成矢量铅笔（16 网格 / stroke 1.4，
+   见 DesktopHostSelector 的 `QueueEditIcon`）、盒 24×24 / r8 / 图标 16；颜色与
+   hover 底色并入上面那三条同组选择器 —— 两端 computed 逐值相等，不是抄一份十六进制。
+   行高不动：所在行 `min-height: 28px` ≥ 24 盒，盒子在行内垂直居中；菜单宽度仍
+   由内容决定（行右内距 8px 不变，按钮左缘随盒宽左移 4px，名字仍 ellipsis）。 */
+[data-host="desktop"] .desktop-host-item-edit {
+  width: 24px;
+  height: 24px;
+  box-sizing: border-box;
+  border-radius: var(--cc-radius-md, 8px);
+  /* 1113 复审（她「图标有些偏左」）：base 只有 align-items: center，横向仍是
+     flex-start —— 24 盒减 2px 内衬后内容区 20px，16px 图标贴左，左 2 / 右 6，
+     墨迹盒中心比按钮盒中心偏左 2px。`.queued-action-button` 有 justify-content:
+     center，这一条原来漏了，两端才出现「盒子一样、图标位置不一样」。 */
+  justify-content: center;
+}
+[data-host="desktop"] .desktop-host-item-edit svg {
+  width: 16px;
+  height: 16px;
+}
+/* 显隐仍归行 hover（默认 opacity 0），但显形后是 1 —— 队列那颗也是整组由行
+   hover 显隐，两边观感一致；保持 0.5 会把 hover 底色一起打成半透明。 */
+[data-host="desktop"] .desktop-workdir-menu-item:hover .desktop-host-item-edit,
+[data-host="desktop"]
+  .desktop-workdir-menu-item:focus-visible
+  .desktop-host-item-edit,
+[data-host="desktop"] .desktop-host-item-edit:focus-visible {
+  opacity: 1;
 }
 /* 指针停在操作按钮组上时压掉「整条 hover 显示完整文案」的气泡（只隐藏，不动结构）。
    曾用 Tooltip 的 disabled 实现 → 会把外层 tooltip-container 卸载/重建，行子树连按钮
