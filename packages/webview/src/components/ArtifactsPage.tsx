@@ -1001,6 +1001,66 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({
       ?.scrollIntoView({ block: "nearest", inline: "nearest" });
   }, [activeCategoryId, categories, view]);
 
+  // 没有触控板时怎么横滚这一行（设计师 2026-11-13「如果没有触控板，这里如何横滚？」）：
+  // 实测鼠标只剩「倾斜滚轮（deltaX）」和方向键可用 —— 垂直滚轮完全没反应，Shift+
+  // 滚轮在 macOS 的 Chromium 里也不映射横向，滚动条又是隐藏的。所以把纵向滚轮翻译成
+  // 横向滚动：横向滚轮与触控板横扫交给浏览器，不重复处理；鼠标停在这一行时纵向滚轮
+  // 一律被它吃掉（她 2026-11-13「鼠标停在这行时永远不带页面动」），滚到两端就停住，
+  // 继续滚也不会带动页面。React 的 onWheel 是 passive 的（preventDefault 无效），
+  // 因此挂原生监听。
+  useEffect(() => {
+    const strip = tabsStripRef.current;
+    if (!strip) return;
+    const onWheel = (event: WheelEvent) => {
+      // ⌘/Ctrl + 滚轮是缩放，横向滚轮（触控板横扫 / 倾斜滚轮）走浏览器默认
+      if (event.ctrlKey || event.metaKey) return;
+      if (Math.abs(event.deltaX) > Math.abs(event.deltaY)) return;
+      event.preventDefault();
+      const max = Math.max(0, strip.scrollWidth - strip.clientWidth);
+      if (max <= 0) return;
+      const unit =
+        event.deltaMode === 1
+          ? 16
+          : event.deltaMode === 2
+            ? strip.clientWidth
+            : 1;
+      strip.scrollLeft = Math.min(
+        max,
+        Math.max(0, strip.scrollLeft + event.deltaY * unit),
+      );
+    };
+    strip.addEventListener("wheel", onWheel, { passive: false });
+    return () => strip.removeEventListener("wheel", onWheel);
+  }, [view]);
+
+  // 方向键在页签之间移动焦点（设计师 2026-11-13「对齐」，参照预览面板页签的
+  // roving tabindex：整组只留一个 Tab 停靠点，←/→ 串成一条）。这里只挪焦点、
+  // 不顺手切换 —— 切换交给 Enter/Space 由 button 自身的 click 完成，和鼠标点
+  // 一下等价；焦点落到被裁掉的那颗时浏览器会把它滚进视野。
+  const handleTabsKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+    const strip = tabsStripRef.current;
+    if (!strip) return;
+    const tabs = Array.from(
+      strip.querySelectorAll<HTMLElement>(".artifacts-tab"),
+    );
+    if (tabs.length === 0) return;
+    const cur = tabs.findIndex((el) => el.tabIndex === 0);
+    // 当前位置优先看焦点：roving 让「Tab 停靠点」始终在选中的那颗上，光按 ←/→
+    // 移动焦点并不改变选中 ⇒ 只按 tabIndex 找锚点会一直算回同一颗、第二次按就卡住。
+    const focusedAt = tabs.indexOf(document.activeElement as HTMLElement);
+    const index = focusedAt !== -1 ? focusedAt : cur === -1 ? 0 : cur;
+    const next =
+      event.key === "ArrowRight"
+        ? (index + 1) % tabs.length
+        : (index - 1 + tabs.length) % tabs.length;
+    tabs[next].focus();
+    // 脚本 focus() 不会替你把元素滚进视野（浏览器只对「用户直接操作」那次做），
+    // 所以显式补一次 nearest —— 与自动滚动那条 effect 的语义一致。
+    tabs[next].scrollIntoView({ block: "nearest", inline: "nearest" });
+    event.preventDefault();
+  };
+
   // 定位：toast 出现时量一次本页中心（layout effect ⇒ 在首次绘制前落定，
   // 不会先闪在视口中心）。
   useLayoutEffect(() => {
@@ -1638,7 +1698,12 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({
             视图 = 全部 + 各分类 + 添加分类。横向独占一行、工具条下方，表格随之
             占满整宽（原来那列 172px 的竖排分类栏已去掉）。 */}
         <div className="artifacts-tabs-row">
-          <div className="artifacts-tabs" role="tablist" ref={tabsStripRef}>
+          <div
+            className="artifacts-tabs"
+            role="tablist"
+            ref={tabsStripRef}
+            onKeyDown={handleTabsKeyDown}
+          >
             {view === "default" ? (
               <>
                 <button
@@ -1651,6 +1716,7 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({
                     setSelected(new Set());
                   }}
                   data-testid="artifacts-tab-mine"
+                  tabIndex={defaultTab === "mine" ? 0 : -1}
                 >
                   我发布的
                 </button>
@@ -1664,6 +1730,7 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({
                     setSelected(new Set());
                   }}
                   data-testid="artifacts-tab-shared"
+                  tabIndex={defaultTab === "shared" ? 0 : -1}
                 >
                   共享给我的
                 </button>
@@ -1680,6 +1747,7 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({
                     setSelected(new Set());
                   }}
                   data-testid="artifacts-category-all"
+                  tabIndex={activeCategoryId === null ? 0 : -1}
                 >
                   全部
                 </button>
@@ -1698,6 +1766,7 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({
                         setSelected(new Set());
                       }}
                       data-testid={`artifacts-category-${category.id}`}
+                      tabIndex={activeCategoryId === category.id ? 0 : -1}
                     >
                       <span className="artifacts-tab-label">
                         {category.name}
