@@ -116,7 +116,6 @@ import {
   parkGroup,
   parkedGroupsFor,
   releaseParkedGroups,
-  reportLiveGuests,
   subscribeParkedGroups,
   unparkGroup,
 } from "../utils/previewGuestKeep";
@@ -144,6 +143,12 @@ const EARLIER_ANCHOR_RETRY_LIMIT = 3;
 const PANEL_MIN_WIDTH = 202;
 /** The conversation (message) area never shrinks below this when opening/dragging panels. */
 const CHAT_MAIN_MIN_WIDTH = 360;
+/**
+ * 一级 tab 上限（含所有 kind：preview / plan / diff / terminal / file / 后台任务）。
+ * 对齐 Claude 桌面端 Browser pane：每个 pane 最多 9 个 tab，**达到上限时拒绝新建**
+ * 而不是踢掉旧的（spec desktop-right-panel.md「一级 Tab 栏与实例语义」场景 15）。
+ */
+export const PANEL_MAX_TABS = 9;
 // A slot the user never dragged splits the row 40% conversation / 60% panel
 // (spec desktop-right-panel.md「右侧面板 · 展开/折叠、空间守卫与欢迎页共存」场景 7-9,
 // 2026-09-09 拍板替代 2026-09-03 的「对话列恒 360、面板铺满剩余」语义): the
@@ -776,8 +781,8 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   // 跨会话保活」）：切走的会话组登记在窗口级台账（utils/previewGuestKeep.ts）里，
   // 它的 preview guest 继续挂在常驻层（见 previewGuestEntries /
   // .preview-guest-layer），只有真正关闭才销毁——关 tab、重置（epoch）、会话/分屏
-  // 消失、超出保活额度。台账是模块级的（额度跨分屏共享），本实例订阅自己名下的
-  // 条目；owner 让每个停靠 guest 只由一个 ChatApp 实例渲染。
+  // 消失。台账没有数量上限也不逐出（对齐 Claude 桌面端 Browser pane）；本实例订阅
+  // 自己名下的条目，owner 让每个停靠 guest 只由一个 ChatApp 实例渲染。
   const guestOwnerRef = useRef<object>({});
   const retainedPreviewGroups = useSyncExternalStore(
     subscribeParkedGroups,
@@ -1240,20 +1245,12 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     setFileTreeVisible(group?.fileTreeVisible ?? true);
     setFileTreeWidth(group?.fileTreeWidth ?? FILE_TREE_DEFAULT_WIDTH);
     setDiffSelection(group?.diffSelection ?? { kind: "all" });
-    // 切走的会话：它的 preview guest 不销毁，登记为停靠组保活（额度与 LRU 见
-    // utils/previewGuestKeep.ts）。登记必须落在这一个提交里——晚一个提交，槽位
+    // 切走的会话：它的 preview guest 不销毁，登记为停靠组保活（无上限、不逐出，
+    // 见 utils/previewGuestKeep.ts）。登记必须落在这一个提交里——晚一个提交，槽位
     // 已按新会话重建，guest 会被连同销毁，「切走再切回不重载」就失效了。
     const previewTabCount = (list: PanelTab[] | undefined) =>
       (list ?? []).filter((t) => t.kind === "preview").length;
     if (prevKey) {
-      // 可见数就地改成新会话的值：park 掉的那一个 guest 正是上一刻还算在可见数里
-      // 的（上报是 state 驱动的，此刻还停留在上一会话的值），不改就会把它既算作
-      // 可见又算作停靠——额度少一个，白白多淘汰一个会话。
-      reportLiveGuests(
-        guestOwnerRef.current,
-        groupKey,
-        previewTabCount(group?.checked),
-      );
       parkGroup(
         guestOwnerRef.current,
         prevKey,
@@ -1291,15 +1288,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     if (stateGroupKey) unparkGroup(stateGroupKey);
   }, [stateGroupKey]);
 
-  // 可见 guest 数上报（额度含可见者，窗口级汇总）：本实例的会话里多出一个 preview
-  // tab 也可能挤掉最旧的停靠组。stateGroupKey 也在依赖里——换会话时可见数可能不变
-  // （两边各一个 preview tab），但里面那个 guest 已经换人了，必须重新上报一次。
-  const livePreviewGuests = tabs.filter((t) => t.kind === "preview").length;
-  useEffect(() => {
-    reportLiveGuests(guestOwnerRef.current, stateGuestGroup, livePreviewGuests);
-  }, [livePreviewGuests, stateGuestGroup]);
-
-  // 实例卸载（分屏关闭 / 窗口关闭）：名下的停靠 guest 随之销毁、释放额度。
+  // 实例卸载（分屏关闭 / 窗口关闭）：名下的停靠 guest 随之销毁。
   useEffect(() => {
     const owner = guestOwnerRef.current;
     return () => releaseParkedGroups(owner);
@@ -3947,10 +3936,18 @@ export const ChatApp: React.FC<ChatAppProps> = ({
 
   // Append a NEW tab instance and activate it. Multi-instance kinds (preview /
   // diff / file) call this for every open action; single-instance kinds route
-  // through ensureUniqueTab instead. Returns the new id, or null when the space
-  // guard refuses (nothing is opened in that case).
+  // through ensureUniqueTab instead. Returns the new id, or null when a guard
+  // refuses (the tab cap, or the space guard) — nothing is opened in that case.
   const addTab = useCallback(
     (tab: Omit<PanelTab, "id">): string | null => {
+      // Tab cap first: it is pure state (the space guard below also re-splits
+      // the slot width as a side effect, which a refusal must not do).
+      if (tabsRef.current.length >= PANEL_MAX_TABS) {
+        showPanelHint(
+          `最多同时打开 ${PANEL_MAX_TABS} 个面板标签，请先关闭一个`,
+        );
+        return null;
+      }
       if (!ensurePanelSpace()) return null;
       const id = genTabId(tab.kind);
       setTabs((prev) => [...prev, { ...tab, id }]);
@@ -3962,7 +3959,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
       setPanelExpanded(true);
       return id;
     },
-    [ensurePanelSpace, genTabId],
+    [ensurePanelSpace, genTabId, showPanelHint],
   );
 
   // Open-or-activate a single-instance kind (terminal / plan): the existing tab

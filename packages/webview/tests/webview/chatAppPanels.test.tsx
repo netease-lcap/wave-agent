@@ -2,7 +2,11 @@ import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import { render, fireEvent, screen, act } from "@testing-library/react";
 import React from "react";
 import { DesktopApp } from "../../src/components/DesktopApp";
-import { ChatApp, prunePanelGroupCache } from "../../src/components/ChatApp";
+import {
+  ChatApp,
+  PANEL_MAX_TABS,
+  prunePanelGroupCache,
+} from "../../src/components/ChatApp";
 import type { WebviewTagElement } from "../../src/components/PreviewPane";
 import {
   READ_TOOL_NAME,
@@ -507,6 +511,36 @@ describe("ChatApp desktop panel framework", () => {
     } finally {
       rectSpy.mockRestore();
     }
+  });
+
+  it("caps the slot at 9 tabs and refuses the 10th with a hint (spec 场景 15)", () => {
+    window.waveHostType = "desktop";
+    const { vscode } = renderDesktop({ workdir: "/work/a" });
+    const tabCount = () => document.querySelectorAll("[data-panel-tab]").length;
+    // 「＋」菜单 → preview（多实例，每点一次新增一个 tab）。菜单可能因上一步
+    // 还开着，先按 aria-expanded 决定要不要点开。
+    const addPreviewTab = () => {
+      const add = screen.getByTestId("panel-tabs-add");
+      if (add.getAttribute("aria-expanded") !== "true") fireEvent.click(add);
+      fireEvent.click(screen.getByTestId("panel-toggle-item-preview"));
+      fireEvent.mouseDown(document.body); // dismiss any menu
+    };
+
+    // 空态入口开第一个，之后全走「＋」。
+    fireEvent.click(screen.getByTestId("panel-toggle-btn"));
+    fireEvent.click(screen.getByTestId("panel-empty-item-preview"));
+    while (tabCount() < PANEL_MAX_TABS) addPreviewTab();
+    expect(tabCount()).toBe(PANEL_MAX_TABS);
+
+    // 满额后再开：拒绝新建（不踢掉旧的），并复用空间守卫的提示通道给一句提示。
+    addPreviewTab();
+    expect(tabCount()).toBe(PANEL_MAX_TABS);
+    expect(vscode.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        command: "desktopShowHint",
+        text: expect.stringContaining(`${PANEL_MAX_TABS} 个面板标签`),
+      }),
+    );
   });
 
   it("two panels fit as tabs in one slot with a shared width (no eviction)", () => {
@@ -1202,12 +1236,13 @@ describe("session-level panel groups", () => {
     );
   });
 
-  it("keeps at most four preview guests window-wide, evicting the least recently used (spec 场景 3)", () => {
+  it("keeps every preview guest window-wide — no cap, no eviction (spec 场景 3)", () => {
     window.waveHostType = "desktop";
     renderDesktop({ workdir: "/work/a" });
     const ids = ["s1", "s2", "s3", "s4", "s5"];
     pushTree(ids);
     // 每个会话各开一个带独立地址的 preview tab：guest 的 src 就是它的身份。
+    const guests = new Map<string, Element>();
     ids.forEach((id, i) => {
       pushPanes(id);
       openPanel("preview");
@@ -1224,28 +1259,28 @@ describe("session-level panel groups", () => {
           url: `http://localhost:900${i}/`,
         }),
       );
+      guests.set(id, wv);
     });
 
     const guestSrcs = () =>
       screen
         .getAllByTestId("preview-guest")
         .map((g) => g.querySelector("webview")?.getAttribute("src"));
-    // 额度 4：当前显示的 s5 + 最近停靠的 s2/s3/s4；最久未用的 s1 已被淘汰销毁。
-    expect(guestSrcs()).toEqual([
+    // 无数量上限：五个会话的 guest 全部活着，最久未用的 s1 也没被销毁。
+    expect(guestSrcs().sort()).toEqual([
+      "http://localhost:9000/",
       "http://localhost:9001/",
       "http://localhost:9002/",
       "http://localhost:9003/",
       "http://localhost:9004/",
     ]);
 
-    // 被淘汰的会话切回来时是全新加载（记忆地址还在，页面从头来）。
+    // 切回最久未用的 s1：复用它自己那个 guest（同一个 DOM 节点 = 不重载）。
     pushPanes("s1");
-    expect(guestSrcs().sort()).toEqual([
-      "http://localhost:9000/",
-      "http://localhost:9002/",
-      "http://localhost:9003/",
-      "http://localhost:9004/",
-    ]);
+    expect(activePane("preview-pane")?.querySelector("webview")).toBe(
+      guests.get("s1"),
+    );
+    expect(guestSrcs()).toHaveLength(5);
   });
 
   it("closing a preview tab destroys its kept-alive guest (spec 场景 4)", () => {
