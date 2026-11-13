@@ -277,17 +277,22 @@ export const SessionBoard: React.FC<SessionBoardProps> = ({
           keyboardFocusOnly
         >
           <div
-            className="session-board-filter"
+            className={
+              "session-board-filter" + (filterMenuOpen ? " is-open" : "")
+            }
             data-testid="session-board-filter"
             ref={filterWrapRef}
           >
             <span ref={filterTextRef} className="session-board-filter-text">
               {filterLabel}
             </span>
-            <span
-              className="codicon codicon-chevron-down session-board-filter-arrow"
-              aria-hidden="true"
-            />
+            {/* 方向三角：1130 评论「检查这个下拉是否符合规范并优化」→ 契约
+                §Desktop select trigger「Reuse the current CC downward-chevron
+                vector (not a Unicode triangle)：墨迹约 8×4.5、墨迹右内衬 8px」。
+                改前是 codicon-chevron-down 字形（墨迹 10×5.5、墨迹右内衬 16px）；
+                现改用会话分组/文件树同源的官方矢量，画法同设置页自绘三角
+                （元素盒 = 墨迹盒 8×4.5 + mask，见 SessionBoard.css）。 */}
+            <span className="session-board-filter-arrow" aria-hidden="true" />
             {desktopFilter ? (
               // 桌面端：透明触发器 + 自绘 listbox（命中区与改前同为整块 160×32）
               <button

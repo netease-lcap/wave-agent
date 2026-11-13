@@ -10,6 +10,10 @@
   align-items: center;
   justify-content: center;
   z-index: 2000;
+  /* 弹窗比可视区高时（手机键盘弹出后只剩半屏）必须还能滚到它的每一处：
+     只靠内层滚动区不够——标题行与底部按钮不在滚动区里，溢出时会被裁在
+     视口外，既看不见也够不到。 */
+  overflow-y: auto;
 }
 
 .configuration-dialog {
@@ -25,6 +29,9 @@
   display: flex;
   flex-direction: column;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  /* auto 而不是 0：flex 居中时溢出内容两端都会被裁掉，auto margin 让滚动的
+     起点回到弹窗顶边（可滚 + 居中两者都要）。 */
+  margin: auto;
 }
 
 .configuration-dialog-header {
@@ -343,4 +350,24 @@
   border-radius: 3px;
   font-family: var(--vscode-editor-font-family, monospace);
   font-size: 12px;
+}
+
+/* 目录浏览面板在配置弹窗里是**弹窗的一屏**，不是下拉浮层。
+   `DesktopApp.css` 里那套样式是为工作目录选择器写的（从触发按钮向上展开的
+   绝对定位弹层）：原样搬进弹窗会让弹窗本体塌成只剩标题与按钮的空壳、面板
+   悬在弹窗外面，手机上还看不到它的头部（spec remote-web.md 场景 2）。
+   这里把它放回流内、撑满中间那块，列表自己滚。 */
+.configuration-dialog .desktop-remote-browser {
+  position: static;
+  width: auto;
+  max-height: none;
+  flex: 1;
+  min-height: 0;
+  margin-bottom: 0;
+  box-shadow: none;
+}
+
+.configuration-dialog .desktop-remote-browser-list {
+  /* flex 子项的默认 min-height:auto 会让列表撑破弹窗而不是自己滚。 */
+  min-height: 0;
 }

@@ -1142,6 +1142,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   const messageInputRef = useRef<MessageInputHandle>(null);
   const messageListRef = useRef<{
     scrollToBottom: (behavior?: ScrollBehavior) => void;
+    pinToBottom: (behavior?: ScrollBehavior) => void;
   }>(null);
   const stateRef = useRef(state);
   // 「最近目录」那条请求的 requestId：回执只认最后一次问出去的那条。远控页每开
@@ -3869,6 +3870,10 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         decision,
       });
       dispatch({ type: "HIDE_CONFIRMATION", payload: confirmationId });
+      // 作答即用户主动把对话推下去：视口回到底部并恢复跟随，与发新消息同一条
+      // 路（spec ui/message-rendering-system.md 场景 6）。弹窗自己出现不算——
+      // 那条仍只是「请求」，不覆盖阅读位置。
+      messageListRef.current?.pinToBottom("smooth");
     },
     [postToHost],
   );
@@ -3881,6 +3886,8 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         approved: false,
       });
       dispatch({ type: "HIDE_CONFIRMATION", payload: confirmationId });
+      // 拒绝与批准同等：也是作答，也把视口交回对话末尾。
+      messageListRef.current?.pinToBottom("smooth");
     },
     [postToHost],
   );
@@ -5583,8 +5590,6 @@ export const ChatApp: React.FC<ChatAppProps> = ({
           // 点开长会话，force 滚动被否决、停在新列表中间——见 longchat-switch e2e）。
           key={state.currentSession?.id}
           ref={messageListRef}
-          // 切走再切回来时按它恢复阅读位置（虚拟列表内核按会话 id 记锚点）。
-          docKey={state.currentSession?.id}
           messages={state.messages}
           queuedMessages={state.queuedMessages}
           isStreaming={state.isStreaming}

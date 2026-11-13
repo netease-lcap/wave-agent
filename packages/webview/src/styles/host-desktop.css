@@ -24,7 +24,9 @@
    --vscode-* 桥接到语义变量。值档标注 user-approved / derived。
    ════════════════════════════════════════════════════════════════════ */
 
-/* ── 浅色：桌面语义值（现值快照；浅色桥接只替换既有覆盖，不新增）── */
+/* ── 浅色：桌面语义值（现值快照；浅色桥接只替换既有覆盖，不新增）──
+   例外：1130 按评论补的 `--vscode-input-foreground` 桥 —— 深色块本来就有这条，
+   浅色漏写导致字段前景落到基础主题，属补齐对称，不是新语义。 */
 :root[data-host="desktop"][data-theme="light"] {
   /* 表面 */
   --cc-bg-conversation: #ffffff; /* 对话画布（= panel-background） */
@@ -95,6 +97,17 @@
   --vscode-panel-border: var(--cc-border-light);
   --vscode-widget-border: var(--cc-border-light);
   --vscode-input-border: var(--cc-border);
+
+  /* 1130 评论链条（看板筛选三角「参考这个」→ 我提「浅色桥接要不要补」→ 她答「要补」）：
+     深色块一直有这条桥（见 dark 块 `--vscode-input-foreground: var(--cc-text-primary)`），
+     浅色漏写，于是浅色下所有「字段前景」消费点落在 VS Code 基础主题的 #202020，与字段
+     自己的字色 `--cc-field-text`（= `--cc-text-primary` #1F2329）差 7/255 —— 同一个输入框里
+     文字与三角/图标不同源。补上后浅色字段前景 = #1F2329，两模式同一条链。
+     影响面：所有 `var(--vscode-input-foreground)` 消费点（输入框/搜索框字色、部分图标），
+     浅色下统一 #202020 → #1F2329（Δ7/255）；插件端（非 data-host="desktop"）不受影响。
+     同族的 `--vscode-foreground` / `-placeholderForeground` / `-descriptionForeground` /
+     `-disabledForeground` 浅色仍取 VS Code 原值，未在本次范围（见报告待裁）。 */
+  --vscode-input-foreground: var(--cc-text-primary);
 
   /* 0915-T-01：浅色补齐与深色档同族的三条中性角色桥接（codechat
      references/desktop-theme-bridge.md「Mapping by meaning」）——
@@ -3076,6 +3089,164 @@
   border-bottom-color: rgba(255, 255, 255, 0.12);
 }
 
+/* ── 历史提示词搜索浮层：按 skill 菜单契约收口（2026-11-13 走查）──────
+   依据 `references/common-components.md:81`（锚定选择器 / 菜单组合）：
+   「2px trigger gap, right-edge alignment, matching width where possible…
+    Menu uses bg-overlay, 12px radius, 8px padding and the existing popover
+    border/shadow. Options use at least 28px height, 14px/22px regular 400
+    labels, 8px horizontal padding and 6px radius」。
+   容器面/圆角/边框/阴影/选项 hover·selected 已由上面第十三轮族规则给到，
+   这里补四类原先没跟上的点 —— 均只在桌面宿主生效，插件端保持宿主控制：
+     ① 定位：原 `left: 0 !important` + `max-width: 600px` 比 768 的输入卡窄
+        168px（左对齐、右缘空出一截），且底部与输入卡重叠 4px；
+     ② 内衬：原浮层 padding 0（header 自己 8px、列表 0），选项直贴浮层边；
+     ③ 选项：原 `padding: 8px 12px` + r0 + 行高 normal；
+     ④ 文字：主行 14px 但行高只有 20px（契约 22），时间戳 11px（次级信息档 12/20）。
+   选项行高按 4px 垂直内衬保住 54px（= 22 + 4 + 20 + 8），与改前同高。 */
+[data-host="desktop"] .history-search-popup {
+  /* ② 菜单档 8px 内衬（内容宽 750 = 768 − 2×8 − 2×1） */
+  padding: 8px;
+  /* ① 宽度匹配输入卡：右缘随 width:100% 自然对齐，不再有 600px 上限 */
+  max-width: none;
+  /* ① 2px 触发间距：锚到 .input-wrapper 顶边上方。原先靠 inline top +
+     translateY(-100%) + margin-top:-8 三者凑，实测底部侵入输入卡 4px */
+  top: auto !important;
+  bottom: calc(100% + 2px) !important;
+  transform: none;
+  margin-top: 0;
+  /* 视口兜底：矮窗口先把浮层压矮，不出视口（无翻转逻辑） */
+  max-height: min(300px, calc(100vh - 120px));
+}
+
+/* 搜索框与结果之间不再画线：菜单族（会话列表弹层同款）用 8px 间距 + 字段自身
+   边框区隔。内衬交给浮层容器，header 只保留下方 8px。 */
+[data-host="desktop"] .history-search-header {
+  padding: 0 0 8px;
+  border-bottom: none;
+}
+/* 头部图标：换成设计交付的官方矢量（HistoryIcon，16×16，原来是 codicon 字形），
+   颜色按 2026-11-13 评论「颜色可以浅一些作为提示用的」落到提示档
+   --cc-text-placeholder（浅 #8B8F95 / 深 #858B8F，原为次级信息档 #6C7076 / #A0A5A8）。 */
+[data-host="desktop"] .history-search-header .history-search-icon {
+  color: var(--cc-text-placeholder);
+}
+
+/* 搜索框：菜单族紧凑字段档 28px / r6 / 14·22（原 24 / r2 / 12）。描边与底走
+   `--cc-field-*`（与「添加主机」inline 行、设置页字段同一份映射）：原来浅色吃
+   --vscode-input-border → --cc-border #DCDFE6 尚可、深色吃出来是 #A0A5A8 发亮；
+   底色深色原 #313131 比浮层面 #232526 还亮一档。 */
+[data-host="desktop"] .history-search-input {
+  box-sizing: border-box;
+  height: 28px;
+  padding: 0 8px;
+  font-size: 14px;
+  line-height: 22px;
+  border-radius: 6px;
+  background: var(--cc-field-bg);
+  border-color: var(--cc-field-border);
+  color: var(--cc-field-text);
+}
+[data-host="desktop"] .history-search-input::placeholder {
+  color: var(--cc-field-placeholder);
+  opacity: 1;
+}
+[data-host="desktop"] .history-search-input:hover:not(:focus) {
+  border-color: var(--cc-field-border-hover);
+}
+[data-host="desktop"] .history-search-input:focus {
+  border-color: var(--cc-field-border-focus);
+  outline: none;
+}
+
+/* 列表底色随浮层（base 是 --vscode-dropdown-background：深色 #313131，在 #232526
+   的浮层里亮出一块）。
+   滚动条位置照任务列队（`.queued-items`）的做法：滚动容器负边距抵掉浮层 8px
+   内衬，让滚动条贴到浮层内缘（实测距外缘 1px = 边框宽），内容再用 4px 右内衬
+   让开覆盖式滚动条 —— 与队列卡片的数字同构（容器距卡片缘 1、内容距 5）。
+   原来滚动容器停在 8px 内衬里，滚动条悬在浮层中间、跟选项行的圆角块错位。 */
+[data-host="desktop"] .history-search-results {
+  background-color: transparent;
+  margin-right: -8px;
+  padding-right: 4px;
+}
+
+/* ③ 选项：8px 水平内衬 + 6px 圆角 + 去掉行间分隔线（有 hover/selected 填充面
+   的菜单项不画线，同 more-menu / 斜杠指令）。
+   2026-11-13 评论（锚 `.session-card`「参考这里」）：标题与时间之间不再留间距
+   —— 参照物会话卡的标题行（14/26）与副行（12/20）就是 gap 0 紧贴，靠行高自带的
+   半行距分隔。行高 22 + 20 + 垂直内衬 8 = 50px（原 54）。 */
+[data-host="desktop"] .history-search-item {
+  padding: 4px 8px;
+  border-radius: 6px;
+  border-bottom: none;
+  gap: 0;
+}
+
+/* ④ 主行 14/22；时间戳 12/20 + --cc-text-placeholder（比次级信息再弱一档，
+   原 11px + 继承色 → 12/20 + text-secondary → 现在 placeholder）。
+   2026-11-13 评论「深色模式默认状态（没 hover 的时候），时间字体颜色也要弱化」：
+   浅色 placeholder #8B8F95 on #FFFFFF = 3.25:1，深色 placeholder #858B8F on #232526
+   却是 4.46:1 —— 同一个 token 在深底上明显更「实」，默认行看着比 hover 行重。
+   深色单独降一档到 #727577（3.32:1），对齐浅色那档的观感；未用 --cc-text-disabled
+   #62686B（2.72:1 更低，且语义是「禁用」）。选择器前缀多加一层 .history-search-item，
+   压过 base 里 `.selected .history-item-time{color:inherit}`。 */
+[data-host="desktop"] .history-item-prompt {
+  line-height: 22px;
+}
+[data-host="desktop"] .history-search-item .history-item-time {
+  font-size: 12px;
+  line-height: 20px;
+  color: var(--cc-text-placeholder);
+}
+[data-host="desktop"][data-theme="dark"] .history-search-item .history-item-time {
+  color: #727577;
+}
+
+/* 空态 / 加载中：同一次级信息档（原 12px + 行高 normal） */
+[data-host="desktop"] .history-search-empty,
+[data-host="desktop"] .history-search-loading {
+  font-size: 12px;
+  line-height: 20px;
+  color: var(--cc-text-secondary);
+}
+
+/* ⑤ hover / 选中分档（2026-11-13 评论「hover 色也要按照规范，现在太接近选中色」）
+   实测根因：组件 onMouseEnter 把鼠标所在行设为 selectedIndex，而 `.selected` 与
+   `:hover` 同特异性、族规则里排在后面 → hover 面被整行吞掉，鼠标悬停显示的就是
+   选中面（light 两态实测同为 rgb(231,233,237) / 文字同为主色，视觉上无法区分）。
+   按 common-components「hover uses fill-hover and selected uses fill-pressed with
+   primary text, without increased weight」+ design-system「Hover uses fill-hover
+   and text-primary」落地：hover = --cc-fill-hover，未悬停的选中行 = --cc-fill-pressed。
+   深色沿用站内现档（8% / 12% 白，合成 #2A2B2C / #3A3C3D），与族规则同源。 */
+[data-host="desktop"] .history-search-item:hover {
+  background-color: var(--cc-fill-hover);
+  color: var(--cc-text-primary);
+}
+[data-host="desktop"] .history-search-item.selected:not(:hover) {
+  background-color: var(--cc-fill-pressed);
+  color: var(--cc-text-primary);
+}
+[data-host="desktop"][data-theme="dark"] .history-search-item:hover {
+  background-color: rgba(255, 255, 255, 0.08);
+  color: var(--cc-text-primary);
+}
+[data-host="desktop"][data-theme="dark"] .history-search-item.selected:not(:hover) {
+  background-color: rgba(255, 255, 255, 0.12);
+  color: var(--cc-text-primary);
+}
+/* 时间戳在交互态不再继承成主文字色（原 `.selected .history-item-time{color:inherit;
+   opacity:.8}` 会让日期忽然加深、整行一起变实），三态都保持弱化档 —— 深色跟 ④ 里
+   那一档 #727577 走，避免悬停时颜色回弹变亮。 */
+[data-host="desktop"] .history-search-item:hover .history-item-time,
+[data-host="desktop"] .history-search-item.selected .history-item-time {
+  color: var(--cc-text-placeholder);
+  opacity: 1;
+}
+[data-host="desktop"][data-theme="dark"] .history-search-item:hover .history-item-time,
+[data-host="desktop"][data-theme="dark"] .history-search-item.selected .history-item-time {
+  color: #727577;
+}
+
 /* ── 第十五轮：确认弹窗对齐 codechat approval 浮层 ────────────────── */
 
 /* 卡片：codechat approval-dialog —— padding 16 / 边框 --cc-border-light #e4e7ed /
@@ -3978,19 +4149,23 @@
    深色 12% 白），hover 文字加深为 #1f2329/#ffffff。 */
 [data-host="desktop"] .task-list-chevron,
 [data-host="desktop"] .queued-chevron,
-[data-host="desktop"] .queued-action-button {
+[data-host="desktop"] .queued-action-button,
+[data-host="desktop"] .desktop-host-item-edit {
   color: #565a60;
 }
 [data-host="desktop"][data-theme="dark"] .task-list-chevron,
 [data-host="desktop"][data-theme="dark"] .queued-chevron,
-[data-host="desktop"][data-theme="dark"] .queued-action-button {
+[data-host="desktop"][data-theme="dark"] .queued-action-button,
+[data-host="desktop"][data-theme="dark"] .desktop-host-item-edit {
   color: #9a9ea5;
 }
-[data-host="desktop"][data-theme="light"] .queued-action-button:hover {
+[data-host="desktop"][data-theme="light"] .queued-action-button:hover,
+[data-host="desktop"][data-theme="light"] .desktop-host-item-edit:hover {
   background-color: #e7e9ed;
   color: #1f2329;
 }
-[data-host="desktop"][data-theme="dark"] .queued-action-button:hover {
+[data-host="desktop"][data-theme="dark"] .queued-action-button:hover,
+[data-host="desktop"][data-theme="dark"] .desktop-host-item-edit:hover {
   background-color: rgba(255, 255, 255, 0.12);
   color: #ffffff;
 }
@@ -4020,6 +4195,43 @@
      组右对齐故「编辑」右移 8px、「立即发送」右移 4px、「删除」零位移；按钮盒 24×24 与
      hover 底色之间的 4px 缝得以保留。 */
   gap: 4px;
+}
+
+/* 主机菜单行的「编辑连接」按钮并进队列动作按钮这一族（1113 评论：锚点
+   `div.desktop-workdir-menu-item`「本地」+ `button.queued-action-button`
+   「同步图标、交互样式等」）。
+   改前：codicon 字体字形、盒 20×20 / r0 / 无底色，hover 只把 opacity 提到 0.5
+   ——而且行 hover 那条规则特异性更高（.desktop-workdir-menu-item:hover
+   .desktop-host-item-edit = 0-3-0 压过 .desktop-host-item-edit:hover = 0-2-0），
+   指针压到按钮上反而不会再变亮。
+   改后与 `.queued-action-button` 同一套：图标换成矢量铅笔（16 网格 / stroke 1.4，
+   见 DesktopHostSelector 的 `QueueEditIcon`）、盒 24×24 / r8 / 图标 16；颜色与
+   hover 底色并入上面那三条同组选择器 —— 两端 computed 逐值相等，不是抄一份十六进制。
+   行高不动：所在行 `min-height: 28px` ≥ 24 盒，盒子在行内垂直居中；菜单宽度仍
+   由内容决定（行右内距 8px 不变，按钮左缘随盒宽左移 4px，名字仍 ellipsis）。 */
+[data-host="desktop"] .desktop-host-item-edit {
+  width: 24px;
+  height: 24px;
+  box-sizing: border-box;
+  border-radius: var(--cc-radius-md, 8px);
+  /* 1113 复审（她「图标有些偏左」）：base 只有 align-items: center，横向仍是
+     flex-start —— 24 盒减 2px 内衬后内容区 20px，16px 图标贴左，左 2 / 右 6，
+     墨迹盒中心比按钮盒中心偏左 2px。`.queued-action-button` 有 justify-content:
+     center，这一条原来漏了，两端才出现「盒子一样、图标位置不一样」。 */
+  justify-content: center;
+}
+[data-host="desktop"] .desktop-host-item-edit svg {
+  width: 16px;
+  height: 16px;
+}
+/* 显隐仍归行 hover（默认 opacity 0），但显形后是 1 —— 队列那颗也是整组由行
+   hover 显隐，两边观感一致；保持 0.5 会把 hover 底色一起打成半透明。 */
+[data-host="desktop"] .desktop-workdir-menu-item:hover .desktop-host-item-edit,
+[data-host="desktop"]
+  .desktop-workdir-menu-item:focus-visible
+  .desktop-host-item-edit,
+[data-host="desktop"] .desktop-host-item-edit:focus-visible {
+  opacity: 1;
 }
 /* 指针停在操作按钮组上时压掉「整条 hover 显示完整文案」的气泡（只隐藏，不动结构）。
    曾用 Tooltip 的 disabled 实现 → 会把外层 tooltip-container 卸载/重建，行子树连按钮
@@ -4966,12 +5178,18 @@
   color: #1f2329;
 }
 
+/* 选中项：她 2026-11-13「按照规范统一」——契约为菜单选项只定义了一组选中表达
+   「selected uses fill-pressed with primary text, without increased weight」，
+   所以这里从写死的 #e7e9ed / #1f2329 改成 token 对（浅色逐值不变，深色跟着 token 走）。
+   深色那支原来写的是 12% 白 + #ffffff（合成面 ≈#3D3E3F、字纯白），与创作集视图下拉
+   （`.desktop-session-menu-item[aria-checked=true]` = `--cc-fill-pressed` + 1 级字）
+   不是一套；本轮把两支收到同一个 token 对，四处下拉的选中项自此逐值相同。 */
 [data-host="desktop"] .settings-select-option.is-selected,
 [data-host="desktop"] .settings-select-option.is-selected:hover,
 [data-host="desktop"] .session-board-filter-option.is-selected,
 [data-host="desktop"] .session-board-filter-option.is-selected:hover {
-  background: #e7e9ed;
-  color: #1f2329;
+  background: var(--cc-fill-pressed, #e7e9ed);
+  color: var(--cc-text-primary, #1f2329);
 }
 
 /* 键盘焦点：roving tabindex 会把真实焦点放到选项上（鼠标点击不亮）。
@@ -5008,8 +5226,10 @@
   .session-board-filter-option.is-selected,
 [data-host="desktop"][data-theme="dark"]
   .session-board-filter-option.is-selected:hover {
-  background: rgba(255, 255, 255, 0.12);
-  color: #ffffff;
+  /* 同一对 token（深色 `--cc-fill-pressed` #393E41 / `--cc-text-primary` #E5E7E8）——
+     保留这条只是为了特异性：上面那条 (0,2,0) 压不过本文件的深色常态档 (0,3,0)。 */
+  background: var(--cc-fill-pressed, #393e41);
+  color: var(--cc-text-primary, #e5e7e8);
 }
 
 /* 0922 评论：插件市场行（.settings-plugin-row）hover 与左侧导航同档。

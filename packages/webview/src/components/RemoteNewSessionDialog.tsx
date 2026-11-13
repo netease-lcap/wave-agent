@@ -196,6 +196,10 @@ const RemoteNewSessionDialog: React.FC<RemoteNewSessionDialogProps> = ({
                 onRequestList={handleRequestList}
                 onSelect={chooseWorkdir}
                 onClose={() => setBrowsing(false)}
+                // 手机上没有 Esc，「返回」是浏览态唯一的退路；它属于面板自己
+                // 那一行（紧挨「选择此目录」），不是弹窗级按钮条——那里是
+                // 「创建 / 取消」的地盘，两层动作不混（spec remote-web.md 场景 2）。
+                showBack
               />
             ) : workdir ? (
               <>

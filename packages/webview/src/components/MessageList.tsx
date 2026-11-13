@@ -78,7 +78,10 @@ function timelineDotCount(message: MessageType): number {
 }
 
 export const MessageList = forwardRef<
-  { scrollToBottom: (behavior?: ScrollBehavior) => void },
+  {
+    scrollToBottom: (behavior?: ScrollBehavior) => void;
+    pinToBottom: (behavior?: ScrollBehavior) => void;
+  },
   MessageListProps
 >(function MessageList(
   {
@@ -96,7 +99,6 @@ export const MessageList = forwardRef<
     hasEarlier,
     isLoadingEarlier,
     onLoadEarlier,
-    docKey,
     initialFind,
   },
   ref,
@@ -199,15 +201,14 @@ export const MessageList = forwardRef<
   /** 行的定位容器，手势期的视觉补偿写在这上面（见 useVirtualRows）。 */
   const canvasRef = useRef<HTMLDivElement | null>(null);
 
-  // 虚拟化内核（自研，见 `src/virtual/`）。它自己管滚动分类、钉底状态、锚点补偿
-  // 与阅读位置记录；这里只管「什么时候该钉/松手」和行内渲染。
+  // 虚拟化内核（自研，见 `src/virtual/`）。它自己管滚动分类、钉底状态与锚点补偿；
+  // 这里只管「什么时候该钉/松手」和行内渲染。
   const list = useVirtualRows({
     keys,
     // 估算闭包依赖正文列宽：列宽一变它就是个新闭包，账本里那批「按旧列宽估算」的
     // 未挂载行跟着重算（见 `estimate` 选项的注释）。
     estimate,
     originOffsetPx: COLUMN_PADDING_PX,
-    docKey,
     canvasRef,
   });
   const {
@@ -409,11 +410,6 @@ export const MessageList = forwardRef<
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
-
-  // 换会话就关掉：新会话的命中与旧的关键词无关，留下的高亮还会指向已被卸载的行。
-  useEffect(() => {
-    setFind({ ...EMPTY_TRANSCRIPT_FIND, open: false });
-  }, [docKey]);
 
   // 侧栏「内容命中」跳进来（spec desktop/desktop-sessions.md 场景 6）：把种子变成
   // 一次真正的查找。`nonce` 让连点同一处也能重新落位。消息还没到时 `findHits` 为空、
@@ -634,11 +630,32 @@ export const MessageList = forwardRef<
   // commands: confirmation shown, pane/session bound, after rewind, settings
   // saved). It is a request, not an order — a user who scrolled up to read
   // history must not be yanked down because a dialog appeared somewhere else
-  // (spec: 显式置底请求不得覆盖阅读位置). Restoring follow has exactly two
-  // ways: the user scrolls back to the real bottom, or sends a new message.
+  // (spec: 显式置底请求不得覆盖阅读位置). Restoring follow has exactly three
+  // ways: the user scrolls back to the real bottom, sends a new message, or
+  // answers a confirmation dialog (`pinToBottom` below).
+  const pinBottomFrameRef = useRef(0);
+  useEffect(() => () => cancelAnimationFrame(pinBottomFrameRef.current), []);
+
   useImperativeHandle(ref, () => ({
     scrollToBottom: (behavior: ScrollBehavior = "smooth") => {
       followToBottom(behavior);
+    },
+    /**
+     * 用户在确认弹窗里作答（提交回答 / 批准 / 拒绝 / 提供反馈）：视口回到底部并
+     * 重新钉上。作答与「自己发新消息」同属用户主动把对话推下去，所以它不受上滚
+     * 的阅读位置锁约束（spec ui/message-rendering-system.md 场景 6）——否则答案
+     * 落进下方工具块、用户在屏幕上看不到就等于白答。
+     *
+     * 钉底同步落下（后续流式 chunk 立刻按跟随处理），滚动则推到下一帧：弹窗摘
+     * 掉、输入区回来、列表高度恢复都发生在同一个提交里，此刻量到的底还是被弹窗
+     * 挤扁的那一版，早滚会短掉弹窗那一截。
+     */
+    pinToBottom: (behavior: ScrollBehavior = "smooth") => {
+      pin();
+      cancelAnimationFrame(pinBottomFrameRef.current);
+      pinBottomFrameRef.current = requestAnimationFrame(() => {
+        scrollToEnd(behavior);
+      });
     },
   }));
 

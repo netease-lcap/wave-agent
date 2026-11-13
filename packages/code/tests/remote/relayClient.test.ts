@@ -15,6 +15,8 @@ import {
   RELAY_CLOSE_BACKPRESSURE,
   RELAY_CLOSE_REPLACED,
   RELAY_CLOSE_UNAVAILABLE,
+  RELAY_CONNECT_TIMEOUT_MS,
+  RELAY_KEEPALIVE_MAX_MISSES,
   RELAY_MAX_BUFFERED_BYTES,
   RELAY_PING_INTERVAL_MS,
   RELAY_RETRY_BASE_DELAY_MS,
@@ -40,12 +42,19 @@ class FakeSocket implements RelaySocket {
 
   constructor(readonly url: string) {}
 
+  /** Set when the client tore the TCP connection down instead of closing it. */
+  terminated = false;
+
   send(data: string): void {
     this.sent.push(data);
   }
 
   close(code?: number, reason?: string): void {
     this.closed = { code, reason };
+  }
+
+  terminate(): void {
+    this.terminated = true;
   }
 
   open(): void {
@@ -133,6 +142,38 @@ describe("RelayClient", () => {
     expect(client.getState()).toBe("connecting");
   });
 
+  it("should fail a dial that never opens, instead of waiting on the kernel", () => {
+    const client = createClient();
+    client.start();
+
+    // No open, no error, no close: a handshake that goes nowhere fires nothing
+    // at all, and the kernel keeps retrying for around two minutes. Without a
+    // bound here the state stays `connecting` for that whole time and
+    // `scheduleRetry` — the thing that eventually reports a real outage — is
+    // never reached.
+    vi.advanceTimersByTime(RELAY_CONNECT_TIMEOUT_MS - 1);
+    expect(onRetry).not.toHaveBeenCalled();
+
+    vi.advanceTimersByTime(1);
+    expect(sockets[0].terminated).toBe(true);
+    expect(onRetry.mock.calls[0][0].reason).toBe("relay handshake timed out");
+
+    // And the retry is a real dial, not a state change.
+    vi.advanceTimersByTime(RELAY_RETRY_BASE_DELAY_MS);
+    expect(sockets).toHaveLength(2);
+  });
+
+  it("should not time out a dial that opened in time", () => {
+    const client = createClient();
+    client.start();
+    sockets[0].open();
+
+    vi.advanceTimersByTime(RELAY_CONNECT_TIMEOUT_MS * 3);
+    expect(onRetry).not.toHaveBeenCalled();
+    expect(sockets).toHaveLength(1);
+    expect(sockets[0].terminated).toBe(false);
+  });
+
   it("should authenticate with the host credential and the CLI version once open", () => {
     const client = createClient();
     client.start();
@@ -203,12 +244,74 @@ describe("RelayClient", () => {
       JSON.stringify({ type: "auth_ok", role: "host", hostId: "h1" }),
     );
 
-    vi.advanceTimersByTime(RELAY_PING_INTERVAL_MS * 3);
+    // Answered the way the relay answers: an unanswered keepalive is judged
+    // separately (see the tests below).
+    for (let i = 0; i < 3; i++) {
+      vi.advanceTimersByTime(RELAY_PING_INTERVAL_MS);
+      sockets[0].deliver(JSON.stringify({ type: "pong" }));
+    }
     const pings = sockets[0].frames().filter((f) => f.type === "ping");
     expect(pings).toHaveLength(3);
     // A control frame, not an envelope: with `method` the relay would forward
     // every heartbeat to every subscriber of this machine.
     expect(pings[0]).toEqual({ type: "ping" });
+  });
+
+  it("should leave a link alone while the keepalive is answered", () => {
+    const client = createClient();
+    client.start();
+    sockets[0].open();
+    sockets[0].deliver(
+      JSON.stringify({ type: "auth_ok", role: "host", hostId: "h1" }),
+    );
+
+    for (let i = 0; i < 10; i++) {
+      vi.advanceTimersByTime(RELAY_PING_INTERVAL_MS);
+      sockets[0].deliver(JSON.stringify({ type: "pong" }));
+    }
+
+    expect(onRetry).not.toHaveBeenCalled();
+    expect(sockets).toHaveLength(1);
+    expect(client.getState()).toBe("open");
+  });
+
+  it("should drop a link that stops answering the keepalive, and reconnect", () => {
+    const client = createClient();
+    client.start();
+    sockets[0].open();
+    sockets[0].deliver(
+      JSON.stringify({ type: "auth_ok", role: "host", hostId: "h1" }),
+    );
+
+    // Pings go out, nothing ever answers. A half-open connection still accepts
+    // writes and reports nothing at all, so the missing reply is the only
+    // evidence there is — and without acting on it `status` keeps saying
+    // `online` while the phone can never reach this machine.
+    vi.advanceTimersByTime(RELAY_PING_INTERVAL_MS * RELAY_KEEPALIVE_MAX_MISSES);
+    expect(onRetry).not.toHaveBeenCalled();
+
+    vi.advanceTimersByTime(RELAY_PING_INTERVAL_MS);
+    expect(sockets[0].terminated).toBe(true);
+    expect(onRetry.mock.calls[0][0].reason).toBe(
+      "relay stopped answering the keepalive",
+    );
+
+    // A drop like any other: same backoff, same window, and it really redials.
+    vi.advanceTimersByTime(RELAY_RETRY_BASE_DELAY_MS);
+    expect(sockets).toHaveLength(2);
+  });
+
+  it("should not judge the keepalive before the relay authenticated us", () => {
+    const client = createClient();
+    client.start();
+    // Open, but no `auth_ok`: the relay parses every frame as the handshake
+    // until then, and it closes an unauthenticated connection on its own
+    // schedule (`auth_timeout`). Timing that out here would only race it.
+    sockets[0].open();
+
+    vi.advanceTimersByTime(RELAY_PING_INTERVAL_MS * 5);
+    expect(onRetry).not.toHaveBeenCalled();
+    expect(sockets).toHaveLength(1);
   });
 
   it("should stop pinging once the socket is gone", () => {

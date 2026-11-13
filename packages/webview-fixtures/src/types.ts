@@ -295,6 +295,11 @@ export interface DesktopSessionGroup {
  */
 export interface DesktopHostOption {
   id: string;
+  /**
+   * 菜单**条目**的文案。WSL 条目只有发行版名（`Ubuntu`），因为分组标题已经
+   * 说明它是 WSL；主机选择按钮 / 侧栏分组 / 登录项后缀这些脱离分组的地方用
+   * 宿主随分屏下发的 `hostLabel`（`Ubuntu (WSL)`），不读这个字段。
+   */
   label: string;
   kind: "local" | "ssh" | "wsl";
   /** 不可选（目前只有 WSL 1 发行版）——菜单置灰，`hint` 作为原因文案。 */

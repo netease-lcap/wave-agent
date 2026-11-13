@@ -67,9 +67,21 @@
  * here: never the main working tree, never a `git worktree lock`ed worktree, and
  * only a directory whose `.git` points back into this repo.
  *
- * Everything in this module is synchronous and side-effect free apart from the
- * filesystem: callers own logging, the retry policy, and the git commands that
- * finish the job (`prune`, `branch -D`).
+ * Async all the way down
+ * ----------------------
+ * Every step that walks the tree uses `fs.promises`, never `readdirSync` /
+ * `rmSync` / `unlinkSync`. This code runs inside the long-lived `wave --stdio`
+ * process, which serves several sessions at once: a pnpm `node_modules` takes
+ * minutes to walk, and a synchronous pass would block the event loop for that
+ * whole time — every other session's JSON-RPC reply stalls behind it, including
+ * the remote-control `destroy` answer that times out after 20 s. `fs.promises`
+ * runs on the libuv pool, so the loop (and those replies) keep moving while the
+ * delete grinds on. Only the microsecond-scale accesses stay synchronous: the
+ * gitfile, the lock file, and the one directory level read while explaining a
+ * failure.
+ *
+ * Side-effect free apart from the filesystem: callers own logging, the retry
+ * policy, and the git commands that finish the job (`prune`, `branch -D`).
  */
 
 import * as path from "node:path";
@@ -305,12 +317,12 @@ export function probeWorktreeLock(gitDir: string): {
  * mean "git still knows about it", instead of the half-state that left users
  * with a stranded checkout, a live branch and no record tying them together.
  */
-export function restoreWorktreePointer(
+export async function restoreWorktreePointer(
   worktreePath: string,
   content: Buffer,
-): unknown | null {
+): Promise<unknown | null> {
   try {
-    fs.writeFileSync(path.join(worktreePath, ".git"), content);
+    await fs.promises.writeFile(path.join(worktreePath, ".git"), content);
     return null;
   } catch (error) {
     return error;
@@ -334,15 +346,15 @@ export interface ReparsePointPass {
  * `RemoveDirectory`, which drops the reparse point and leaves its target
  * alone). `true` means the link is gone — including "it was not there".
  */
-function removeLink(linkPath: string): boolean {
+async function removeLink(linkPath: string): Promise<boolean> {
   try {
-    fs.unlinkSync(linkPath);
+    await fs.promises.unlink(linkPath);
     return true;
   } catch {
     // Junction / directory symlink: rmdir is the one that works on Windows.
   }
   try {
-    fs.rmdirSync(linkPath);
+    await fs.promises.rmdir(linkPath);
     return true;
   } catch (error) {
     return errnoOf(error) === "ENOENT";
@@ -364,13 +376,13 @@ function removeLink(linkPath: string): boolean {
  * `unremovable` verdict is reported. A link is never walked into — its contents
  * belong to the link's target, not to the worktree.
  */
-export function clearReparsePoints(
+export async function clearReparsePoints(
   target: string,
   isLink: boolean,
   state: ReparsePointPass,
-): void {
+): Promise<void> {
   if (isLink) {
-    if (removeLink(target)) {
+    if (await removeLink(target)) {
       state.unlinked++;
     } else if (state.unremovable === null) {
       state.unremovable = target;
@@ -379,7 +391,9 @@ export function clearReparsePoints(
   }
   let entries: fs.Dirent[];
   try {
-    entries = fs.readdirSync(target, { withFileTypes: true }) as fs.Dirent[];
+    entries = (await fs.promises.readdir(target, {
+      withFileTypes: true,
+    })) as fs.Dirent[];
   } catch {
     // A plain file, or a directory we cannot list — the delete reports it.
     return;
@@ -387,7 +401,7 @@ export function clearReparsePoints(
   for (const entry of entries) {
     const entryIsLink = entry.isSymbolicLink();
     if (!entryIsLink && !entry.isDirectory()) continue;
-    clearReparsePoints(path.join(target, entry.name), entryIsLink, state);
+    await clearReparsePoints(path.join(target, entry.name), entryIsLink, state);
   }
 }
 
@@ -407,10 +421,10 @@ const GITFILE_NAME = ".git";
  * actually happens (a file another process holds, an unremovable junction) is
  * the one that leaves git's records intact.
  *
- * One `rmSync` per top-level entry rather than one recursive `rmSync` over the
- * whole tree, because the root `.git` has to survive the pass. The per-entry
- * `rmSync` is still recursive, so nested content is removed by Node (which
- * handles directory symlinks/junctions, the thing git gives up on) in one call.
+ * One recursive delete per top-level entry rather than one over the whole tree,
+ * because the root `.git` has to survive the pass. Each per-entry delete is
+ * still recursive, so nested content is removed by Node (which handles
+ * directory symlinks/junctions, the thing git gives up on) in one call.
  *
  * Callers own the retry policy: a directory held by a process that is only now
  * exiting becomes deletable a moment later, and how long to wait for that is a
@@ -418,11 +432,15 @@ const GITFILE_NAME = ".git";
  * retry belongs around *this* call and no other — once the pointer is gone,
  * re-running the sequence makes no sense.
  */
-export function removeWorktreeContents(worktreePath: string): unknown | null {
+export async function removeWorktreeContents(
+  worktreePath: string,
+): Promise<unknown | null> {
   const root = toExtendedLengthPath(worktreePath);
   let entries: fs.Dirent[];
   try {
-    entries = fs.readdirSync(root, { withFileTypes: true }) as fs.Dirent[];
+    entries = (await fs.promises.readdir(root, {
+      withFileTypes: true,
+    })) as fs.Dirent[];
   } catch (error) {
     // Already gone: there is no content left to delete, and the steps after this
     // one are no-ops rather than failures.
@@ -433,7 +451,7 @@ export function removeWorktreeContents(worktreePath: string): unknown | null {
     try {
       // `path.join` keeps the `\\?\` prefix, so the per-entry delete stays
       // extended-length too (the entries can be the longest paths in the tree).
-      fs.rmSync(path.join(root, entry.name), {
+      await fs.promises.rm(path.join(root, entry.name), {
         recursive: true,
         force: true,
       });
@@ -445,18 +463,20 @@ export function removeWorktreeContents(worktreePath: string): unknown | null {
 }
 
 /**
- * Delete the worktree directory with `fs.rmSync`, returning the error when it
- * fails (null on success). Node removes directory symlinks/junctions properly,
- * which is exactly where git gives up on Windows.
+ * Delete the worktree directory, returning the error when it fails (null on
+ * success). Node removes directory symlinks/junctions properly, which is
+ * exactly where git gives up on Windows.
  *
  * By the time `finishWorktreeRemoval` reaches this the tree is empty and the
  * pointer is gone, so this is the microsecond-scale step: it cannot fail the way
  * the content delete does, and if it somehow does there is nothing left to
  * retry (the pointer is gone) — the caller restores the pointer instead.
  */
-export function removeWorktreeDirectory(worktreePath: string): unknown | null {
+export async function removeWorktreeDirectory(
+  worktreePath: string,
+): Promise<unknown | null> {
   try {
-    fs.rmSync(toExtendedLengthPath(worktreePath), {
+    await fs.promises.rm(toExtendedLengthPath(worktreePath), {
       recursive: true,
       force: true,
     });
@@ -510,19 +530,19 @@ export type WorktreePreparation =
  *
  * The pointer comes back in the result because a later step may need to write it
  * back. Splitting the sequence up rather than shipping one function is
- * deliberate: the content delete (step 4) has to stay in the caller (sync single
- * shot vs. async retry loop), and the restore must happen after the caller's
- * *last* attempt, never between attempts — rewriting the pointer and retrying
- * would leave a stray `.git` behind once an attempt succeeds.
+ * deliberate: the content delete (step 4) has to stay in the caller (one shot
+ * vs. a retry loop), and the restore must happen after the caller's *last*
+ * attempt, never between attempts — rewriting the pointer and retrying would
+ * leave a stray `.git` behind once an attempt succeeds.
  *
  * Non-throwing by contract: every outcome is a value, so both the SDK's
  * "best-effort, return nothing" caller and `packages/code`'s "return whether the
  * directory is gone" caller can use it.
  */
-export function prepareWorktreeRemoval(options: {
+export async function prepareWorktreeRemoval(options: {
   worktreePath: string;
   repoRoot: string;
-}): WorktreePreparation {
+}): Promise<WorktreePreparation> {
   const { worktreePath, repoRoot } = options;
 
   // Never the main working tree: the containment check callers run before this
@@ -591,12 +611,12 @@ export function prepareWorktreeRemoval(options: {
   }
 
   // Windows only: junctions are the reason this pass exists, and on POSIX a
-  // symlink inside a worktree is ordinary user content that rmSync handles.
-  // Runs before the content delete because that is the pass which cannot remove
-  // them on Windows.
+  // symlink inside a worktree is ordinary user content that the recursive delete
+  // handles. Runs before the content delete because that is the pass which
+  // cannot remove them on Windows.
   const reparse: ReparsePointPass = { unlinked: 0, unremovable: null };
   if (process.platform === "win32") {
-    clearReparsePoints(worktreePath, false, reparse);
+    await clearReparsePoints(worktreePath, false, reparse);
   }
 
   return {
@@ -636,18 +656,18 @@ export type WorktreeFinish =
  * lie about what happened at worst; and the pointer must not go back while the
  * directory is fine, or every successful removal would leave a `.git` behind.
  */
-export function finishWorktreeRemoval(options: {
+export async function finishWorktreeRemoval(options: {
   worktreePath: string;
   pointer: WorktreePointer | null;
   /** Named in the failure sentence instead of a bare errno */
   reparsePointUnremovable: string | null;
-}): WorktreeFinish {
+}): Promise<WorktreeFinish> {
   const { worktreePath, reparsePointUnremovable } = options;
   let pointer = options.pointer;
 
   if (pointer !== null) {
     try {
-      fs.unlinkSync(path.join(worktreePath, GITFILE_NAME));
+      await fs.promises.unlink(path.join(worktreePath, GITFILE_NAME));
     } catch (error) {
       if (errnoOf(error) !== "ENOENT") {
         // A directory that is still registered would be deleted out from under
@@ -664,13 +684,13 @@ export function finishWorktreeRemoval(options: {
     }
   }
 
-  const shellError = removeWorktreeDirectory(worktreePath);
+  const shellError = await removeWorktreeDirectory(worktreePath);
   if (shellError === null) return { status: "removed" };
 
   const restoreError =
     pointer === null
       ? null
-      : restoreWorktreePointer(worktreePath, pointer.content);
+      : await restoreWorktreePointer(worktreePath, pointer.content);
   return {
     status: "shell-stuck",
     error: shellError,

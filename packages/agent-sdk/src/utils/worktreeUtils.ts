@@ -718,7 +718,7 @@ export async function performPostCreationSetup(
  * Removal stays best-effort and non-throwing: every refusal and failure is
  * logged, and the branch is kept whenever the directory survives.
  */
-export function removeWorktree(info: WorktreeInfo): void {
+export async function removeWorktree(info: WorktreeInfo): Promise<void> {
   const repoRoot = info.repoRoot;
 
   // Path safety (symlink final component, path escaping the repo root). Kept as
@@ -734,7 +734,7 @@ export function removeWorktree(info: WorktreeInfo): void {
     return;
   }
 
-  const prepared = prepareWorktreeRemoval({
+  const prepared = await prepareWorktreeRemoval({
     worktreePath: info.path,
     repoRoot,
   });
@@ -774,7 +774,7 @@ export function removeWorktree(info: WorktreeInfo): void {
   // file another process holds) and the pointer was never touched, so there is
   // nothing to restore — writing it back would be a no-op that lies about what
   // happened, and git still registers the directory either way.
-  const contentError = removeWorktreeContents(info.path);
+  const contentError = await removeWorktreeContents(info.path);
   if (contentError !== null) {
     logger.error(
       "Failed to remove the worktree's contents — its .git is still in place, so git keeps this worktree registered:",
@@ -793,7 +793,7 @@ export function removeWorktree(info: WorktreeInfo): void {
   }
 
   // Steps 5–7.
-  const finish = finishWorktreeRemoval({
+  const finish = await finishWorktreeRemoval({
     worktreePath: info.path,
     pointer: prepared.pointer,
     reparsePointUnremovable: prepared.reparsePointUnremovable,
@@ -821,7 +821,7 @@ export function removeWorktree(info: WorktreeInfo): void {
         "Failed to remove the worktree directory AND failed to restore its .git — git will not register it until `git worktree prune` is followed by a manual delete:",
         {
           worktreePath: info.path,
-          stage: "fs.rmSync + restore .git",
+          stage: "fs.promises.rm + restore .git",
           reason: finish.reason,
           restoreError: errorMessage(finish.restoreError),
           residue: describeWorktreeResidue(info.path),
@@ -830,7 +830,7 @@ export function removeWorktree(info: WorktreeInfo): void {
     } else {
       logger.error("Failed to remove worktree directory:", {
         worktreePath: info.path,
-        stage: "fs.rmSync",
+        stage: "fs.promises.rm",
         reason: finish.reason,
         gitPointerRestored: finish.pointerRestored,
         residue: describeWorktreeResidue(info.path),

@@ -1,5 +1,5 @@
 /**
- * 自研虚拟列表内核（React 层）。几何在 `./geometry.ts`，这里只管四件事：
+ * 自研虚拟列表内核（React 层）。几何在 `./geometry.ts`，这里只管三件事：
  *
  * 1. **量**：行挂载时读一次高度，之后由共用的 ResizeObserver 盯着（流式增长、
  *    折叠展开、宽度变化都走同一条路）；
@@ -8,9 +8,7 @@
  *    测量，三种变化是同一件事故，同一个补偿；
  * 3. **钉**：到底就跟着长（`pinned`），用户一次真实的上滚就松手；只有「到底」和
  *    「用户自己发消息」两条路能重新钉上。滚动事件按 own / clamp / foreign 分类，
- *    只有 foreign 能改钉状态；
- * 4. **记**：离开会话时把「锚点 + 是否钉底」按会话 id 存下，切回来接着读（CC 的
- *    `scrollRestore`，LRU 32 份）。
+ *    只有 foreign 能改钉状态。
  *
  * 与 tanstack 的三处口径差异（对着 CC 桌面端 `shared-4-CF5qF0Y3.js` 的 `gT` 抄）：
  * overscan 是像素预算、离末尾两屏内整段渲染、位置靠锚点而不是逐行补偿。逐条的
@@ -28,7 +26,6 @@ import {
   anchorAt,
   buildRowMetrics,
   compensationFor,
-  offsetForAnchor,
   rangeFor,
   rowAtOffset,
   EMPTY_RANGE,
@@ -66,8 +63,6 @@ const GESTURE_SETTLE_MS = 140;
  * 用例）：手指按着的期间上层插入一页更早的消息，`touchend` 一次都没到。
  */
 const TOUCH_STALE_MS = 400;
-/** 记多少个会话的阅读位置（CC 的 `XD = 32`）。 */
-const SAVED_DOC_LIMIT = 32;
 
 /**
  * 视口高度。`clientHeight` 扣掉了横向滚动条，是准的；但它会是 0（首帧、
@@ -75,23 +70,6 @@ const SAVED_DOC_LIMIT = 32;
  */
 const viewportHeight = (element: HTMLElement): number =>
   element.clientHeight || element.offsetHeight;
-
-interface SavedPosition {
-  anchor: Anchor | undefined;
-  pinned: boolean;
-}
-
-/** 模块级：切会话再切回来时用它接上，不落盘。 */
-const savedPositions = new Map<string, SavedPosition>();
-
-function savePosition(docKey: string, position: SavedPosition) {
-  savedPositions.delete(docKey);
-  savedPositions.set(docKey, position);
-  if (savedPositions.size > SAVED_DOC_LIMIT) {
-    const oldest = savedPositions.keys().next().value;
-    if (oldest !== undefined) savedPositions.delete(oldest);
-  }
-}
 
 export interface VirtualRow {
   index: number;
@@ -118,8 +96,6 @@ export interface UseVirtualRowsOptions {
    * box 上，而 spacer 在流里从 content box 起算，两者差的就是列的 padding。
    */
   originOffsetPx?: number;
-  /** 会话 id：切回来恢复阅读位置。 */
-  docKey?: string;
   /**
    * 行所在的定位容器（`.virtual-canvas`，`position: absolute; inset: 0` 铺满列的
    * padding box，行坐标因此与直接挂在列上完全一致）。给出它，手势期就能把补偿量
@@ -166,7 +142,6 @@ export function useVirtualRows(options: UseVirtualRowsOptions): VirtualRows {
     nearTailScreens = DEFAULT_NEAR_TAIL_SCREENS,
     initialWindowBottomPx = DEFAULT_INITIAL_WINDOW_PX,
     originOffsetPx = 0,
-    docKey,
     canvasRef,
   } = options;
 
@@ -214,11 +189,8 @@ export function useVirtualRows(options: UseVirtualRowsOptions): VirtualRows {
   /** 与 `metricsRef` 成对的「量过的行」快照，随账本一起在布局效应里换。 */
   const measuredRef = useRef<Set<string>>(measured);
   const anchorRef = useRef<Anchor | undefined>(undefined);
-  const savedRef = useRef<SavedPosition | undefined>(
-    docKey === undefined ? undefined : savedPositions.get(docKey),
-  );
-  const restoredRef = useRef(false);
-  const pinnedRef = useRef(savedRef.current ? savedRef.current.pinned : true);
+  /** 挂载即钉底：任何一次挂载都是「打开这条列表」，落点一律是真实底部。 */
+  const pinnedRef = useRef(true);
   /** 上一次我们自己的滚动落点；用于认出「这个滚动事件是我们造成的」。 */
   const ownScrollRef = useRef<{ top: number; at: number } | undefined>(
     undefined,
@@ -664,39 +636,6 @@ export function useVirtualRows(options: UseVirtualRowsOptions): VirtualRows {
     });
     return () => cancelAnimationFrame(handle);
   }, [initialPhase]);
-
-  // 首次有行之后恢复阅读位置（只有「离开时没钉底」才恢复；钉底本来就要落到底）。
-  useLayoutEffect(() => {
-    if (restoredRef.current) return;
-    if (keys.length === 0) return;
-    restoredRef.current = true;
-    const saved = savedRef.current;
-    if (!saved || saved.pinned) return;
-    const offset = saved.anchor
-      ? offsetForAnchor(metrics, saved.anchor)
-      : undefined;
-    if (offset === undefined) {
-      // 锚点那一行不在切回后的首屏一页里：按首屏默认位置（钉底）呈现，不为恢复
-      // 位置去重读更早的页。留在 scrollTop 0 会更糟——那是这一页的顶，下面还有
-      // 一屏多没读过的内容，用户既没回到原处也没跟上新消息。
-      pinnedRef.current = true;
-      scrollToEnd("auto");
-      return;
-    }
-    pinnedRef.current = false;
-    writeScroll(offset + originOffsetPx, "auto");
-  }, [keys.length, metrics, originOffsetPx, scrollToEnd, writeScroll]);
-
-  // 离开会话时记下位置。
-  useEffect(() => {
-    if (docKey === undefined) return;
-    return () => {
-      savePosition(docKey, {
-        anchor: anchorRef.current,
-        pinned: pinnedRef.current,
-      });
-    };
-  }, [docKey]);
 
   const applyHeight = useCallback((key: string, height: number) => {
     if (!(height > 0)) return;

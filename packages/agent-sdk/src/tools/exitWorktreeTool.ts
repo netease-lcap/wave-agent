@@ -219,7 +219,7 @@ export const exitWorktreeTool: ToolPlugin = {
           " No WorktreeRemove hook configured, hook-based worktree left at the path above.";
       }
     } else {
-      removeWorktree(worktreeInfo);
+      await removeWorktree(worktreeInfo);
       // Removal refuses rather than throws (locked, an independent repository,
       // the main working tree, an unreadable pointer) and also gives up when the
       // directory cannot be deleted. All of those leave the directory in place —

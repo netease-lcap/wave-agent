@@ -407,4 +407,77 @@ describe("AutoMemoryService", () => {
     await drainPromise;
     expect(drained).toBe(true);
   });
+
+  it("should return immediately when nothing is in flight", async () => {
+    // No extraction was ever triggered: drain must not arm a timer at all.
+    const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout");
+
+    await autoMemoryService.drain();
+
+    expect(setTimeoutSpy).not.toHaveBeenCalled();
+    setTimeoutSpy.mockRestore();
+  });
+
+  it("should give up at the soft timeout when the extraction never settles", async () => {
+    mockMessageManager.getMessages.mockReturnValue([
+      { id: "msg1", role: "user", blocks: [] },
+    ]);
+    // A wedged model request: the fork never settles.
+    mockAiManager.runAutoMemoryFork.mockReturnValue(new Promise(() => {}));
+
+    await autoMemoryService.onTurnEnd("/workdir");
+    await vi.waitFor(() => {
+      expect(mockAiManager.runAutoMemoryFork).toHaveBeenCalledTimes(1);
+    });
+
+    vi.useFakeTimers();
+    try {
+      let drained = false;
+      const drainPromise = autoMemoryService.drain(60_000).then(() => {
+        drained = true;
+      });
+
+      // One tick short of the budget: still waiting.
+      await vi.advanceTimersByTimeAsync(59_999);
+      expect(drained).toBe(false);
+
+      // At the budget: drain resolves instead of throwing.
+      await vi.advanceTimersByTimeAsync(1);
+      await drainPromise;
+      expect(drained).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("should not keep the event loop alive while draining", async () => {
+    mockMessageManager.getMessages.mockReturnValue([
+      { id: "msg1", role: "user", blocks: [] },
+    ]);
+    let resolveExtraction!: (value: unknown) => void;
+    mockAiManager.runAutoMemoryFork.mockReturnValue(
+      new Promise((resolve) => {
+        resolveExtraction = resolve;
+      }),
+    );
+
+    await autoMemoryService.onTurnEnd("/workdir");
+    await vi.waitFor(() => {
+      expect(mockAiManager.runAutoMemoryFork).toHaveBeenCalledTimes(1);
+    });
+
+    const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout");
+    const drainPromise = autoMemoryService.drain(60_000);
+
+    // The budget timer is unref'd: waiting for the extraction must never be
+    // the reason the process stays up.
+    const budgetTimer = setTimeoutSpy.mock.results.at(-1)?.value;
+    expect(budgetTimer).toBeDefined();
+    expect(typeof budgetTimer?.hasRef).toBe("function");
+    expect(budgetTimer?.hasRef()).toBe(false);
+
+    setTimeoutSpy.mockRestore();
+    resolveExtraction({});
+    await drainPromise;
+  });
 });

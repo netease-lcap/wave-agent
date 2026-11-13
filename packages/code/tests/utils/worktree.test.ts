@@ -172,6 +172,10 @@ vi.mock("node:fs", () => ({
     mkdir: vi.fn(),
     copyFile: vi.fn(),
     cp: vi.fn(),
+    readdir: vi.fn(),
+    rm: vi.fn(),
+    unlink: vi.fn(),
+    rmdir: vi.fn(),
   },
 }));
 
@@ -877,7 +881,14 @@ describe("worktree utils", () => {
           isFile: () => fakeFs.files.has(key),
         };
       }) as unknown as typeof fs.lstatSync);
-      vi.mocked(fs.readdirSync).mockImplementation(((
+      // The delete walks the tree through `fs.promises` — it runs inside the
+      // long-lived `wave --stdio` process, so it must never block the event loop
+      // (`readdirSync` survives only for `describeWorktreeResidue`, which reads
+      // one level to say what a failed removal left behind).
+      vi.mocked(fs.readdirSync).mockImplementation(((p: unknown) => {
+        return (fakeFs.children.get(fakeFs.key(p)) ?? []).map((e) => e.name);
+      }) as unknown as typeof fs.readdirSync);
+      vi.mocked(fs.promises.readdir).mockImplementation((async (
         p: unknown,
         options?: unknown,
       ) => {
@@ -895,8 +906,8 @@ describe("worktree utils", () => {
           }));
         }
         return entries.map((entry) => entry.name);
-      }) as unknown as typeof fs.readdirSync);
-      vi.mocked(fs.rmSync).mockImplementation(((p: unknown) => {
+      }) as unknown as typeof fs.promises.readdir);
+      vi.mocked(fs.promises.rm).mockImplementation((async (p: unknown) => {
         const key = fakeFs.key(p);
         if (fakeFs.rmError) throw fakeFs.rmError;
         fakeFs.ops.push(`rm:${key}`);
@@ -908,8 +919,8 @@ describe("worktree utils", () => {
             fakeFs.files.delete(file);
           }
         }
-      }) as unknown as typeof fs.rmSync);
-      vi.mocked(fs.unlinkSync).mockImplementation(((p: unknown) => {
+      }) as unknown as typeof fs.promises.rm);
+      vi.mocked(fs.promises.unlink).mockImplementation((async (p: unknown) => {
         const key = fakeFs.key(p);
         if (fakeFs.unlinkError) throw fakeFs.unlinkError;
         // A junction is a directory reparse point: unlink does not remove it.
@@ -917,14 +928,14 @@ describe("worktree utils", () => {
         if (!fakeFs.files.has(key)) throw fsError("ENOENT");
         fakeFs.files.delete(key);
         fakeFs.ops.push(`unlink:${key}`);
-      }) as unknown as typeof fs.unlinkSync);
-      vi.mocked(fs.rmdirSync).mockImplementation(((p: unknown) => {
+      }) as unknown as typeof fs.promises.unlink);
+      vi.mocked(fs.promises.rmdir).mockImplementation((async (p: unknown) => {
         const key = fakeFs.key(p);
         if (!fakeFs.links.has(key)) throw fsError("ENOTEMPTY");
         fakeFs.links.delete(key);
         fakeFs.ops.push(`rmdir:${key}`);
-      }) as unknown as typeof fs.rmdirSync);
-      vi.mocked(fs.writeFileSync).mockImplementation(((
+      }) as unknown as typeof fs.promises.rmdir);
+      vi.mocked(fs.promises.writeFile).mockImplementation((async (
         p: unknown,
         content: unknown,
       ) => {
@@ -933,7 +944,7 @@ describe("worktree utils", () => {
         fakeFs.files.set(key, String(content));
         fakeFs.written.push({ file: key, content: String(content) });
         fakeFs.ops.push(`write:${key}`);
-      }) as unknown as typeof fs.writeFileSync);
+      }) as unknown as typeof fs.promises.writeFile);
     }
 
     /** A linked worktree of REPO_ROOT that git still registers. */
@@ -959,14 +970,14 @@ describe("worktree utils", () => {
     }
 
     /**
-     * The per-entry delete `installFakeFs` put behind `fs.rmSync`, typed so a
-     * case can wrap it and still let every other call through.
+     * The per-entry delete `installFakeFs` put behind `fs.promises.rm`, typed so
+     * a case can wrap it and still let every other call through.
      */
-    function installedRmSync(): (p: string, options?: unknown) => void {
-      return vi.mocked(fs.rmSync).getMockImplementation()! as (
+    function installedRm(): (p: string, options?: unknown) => Promise<void> {
+      return vi.mocked(fs.promises.rm).getMockImplementation()! as (
         p: string,
         options?: unknown,
-      ) => void;
+      ) => Promise<void>;
     }
 
     /**
@@ -975,14 +986,14 @@ describe("worktree utils", () => {
      * unlink, so a test has to be able to reach them separately.
      */
     function failShellDelete(code: string) {
-      const removeEntry = installedRmSync();
-      vi.mocked(fs.rmSync).mockImplementation(((
+      const removeEntry = installedRm();
+      vi.mocked(fs.promises.rm).mockImplementation((async (
         p: unknown,
         options?: unknown,
       ) => {
         if (fakeFs.key(p) === WORKTREE_PATH) throw fsError(code);
-        removeEntry(String(p), options);
-      }) as unknown as typeof fs.rmSync);
+        await removeEntry(String(p), options);
+      }) as unknown as typeof fs.promises.rm);
     }
 
     /** Every warning emitted, joined — most cases assert on one sentence. */
@@ -1014,7 +1025,7 @@ describe("worktree utils", () => {
         `unlink:${DOT_GIT}`,
         `rm:${WORKTREE_PATH}`,
       ]);
-      expect(vi.mocked(fs.rmSync)).toHaveBeenCalledWith(
+      expect(vi.mocked(fs.promises.rm)).toHaveBeenCalledWith(
         expect.any(String),
         expect.objectContaining({ recursive: true, force: true }),
       );
@@ -1045,7 +1056,9 @@ describe("worktree utils", () => {
 
       await removeWorktree(session);
 
-      const rmPaths = vi.mocked(fs.rmSync).mock.calls.map(([p]) => String(p));
+      const rmPaths = vi
+        .mocked(fs.promises.rm)
+        .mock.calls.map(([p]) => String(p));
       // The per-entry content deletes and the shell delete alike: the entries
       // are where the longest paths live.
       expect(rmPaths).toHaveLength(2);
@@ -1168,16 +1181,19 @@ describe("worktree utils", () => {
       // Fail the first two attempts, succeed on the last. A restore performed
       // inside the retry loop would leave a stray `.git` behind on success.
       let attempts = 0;
-      const removeEntry = installedRmSync();
-      vi.mocked(fs.rmSync).mockImplementation(((p: unknown, o?: unknown) => {
+      const removeEntry = installedRm();
+      vi.mocked(fs.promises.rm).mockImplementation((async (
+        p: unknown,
+        o?: unknown,
+      ) => {
         if (fakeFs.key(p) === srcPath) {
           attempts++;
           if (attempts < 1 + worktreeRemoveRetry.delaysMs.length) {
             throw fsError("EPERM");
           }
         }
-        removeEntry(String(p), o);
-      }) as unknown as typeof fs.rmSync);
+        await removeEntry(String(p), o);
+      }) as unknown as typeof fs.promises.rm);
       const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
 
       expect(await removeWorktree(session)).toBe(true);
@@ -1217,7 +1233,7 @@ describe("worktree utils", () => {
         `unlink:${DOT_GIT}`,
         `write:${DOT_GIT}`,
       ]);
-      expect(vi.mocked(fs.rmSync)).toHaveBeenCalledTimes(2);
+      expect(vi.mocked(fs.promises.rm)).toHaveBeenCalledTimes(2);
       errorSpy.mockRestore();
       warnSpy.mockRestore();
     });
@@ -1288,9 +1304,9 @@ describe("worktree utils", () => {
       givenRegisteredWorktree();
       // rmSync reports success but the directory is still there afterwards
       // (something re-created it): the branch is the only ref back to its work.
-      vi.mocked(fs.rmSync).mockImplementation((() => {
+      vi.mocked(fs.promises.rm).mockImplementation((async () => {
         fakeFs.ops.push(`rm:${WORKTREE_PATH}`);
-      }) as unknown as typeof fs.rmSync);
+      }) as unknown as typeof fs.promises.rm);
       const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
 
       expect(await removeWorktree(session)).toBe(false);

@@ -99,6 +99,22 @@ const SettingsRemoteControlView: React.FC<SettingsRemoteControlViewProps> = ({
   const state = snapshot?.state ?? "off";
   // `off` 是唯一「开启」有意义的态；已经连上（或在连的路上）就是断开。
   const showConnect = state === "off" || state === "error";
+
+  // 进入这一项就把键盘焦点放到「开启远程控制」上：`/remote-control` 这个入口的
+  // 意义就是「不用鼠标把远程控制打开」，焦点留在导航或状态行上还得 Tab 一圈。
+  // 只做一次，且只在主按钮**是**「开启」时做——已连接态的按钮是「断开」，按一下
+  // 就断链，不该由进入页面后的一次误按回车触发。还要等**首个状态回执**到齐才决定：
+  // 回执没到时 `state` 只是乐观默认值，在已连接的机器上会先把焦点给「开启」、
+  // 回执一到按钮又换成「断开」，焦点跟着掉回 body。
+  const primaryActionRef = useRef<HTMLButtonElement | null>(null);
+  const focusDecidedRef = useRef(false);
+  useEffect(() => {
+    if (focusDecidedRef.current) return;
+    if (snapshot === null && error === undefined) return;
+    focusDecidedRef.current = true;
+    if (showConnect) primaryActionRef.current?.focus();
+  }, [snapshot, error, showConnect]);
+
   // 要打开的页面。CLI 报过地址才显示；还在 connecting 的那种快照没有地址，
   // 下一次轮询会带上来。
   const pageUrl = snapshot?.pageUrl;
@@ -177,6 +193,7 @@ const SettingsRemoteControlView: React.FC<SettingsRemoteControlViewProps> = ({
         <div className="settings-actions">
           {showConnect ? (
             <button
+              ref={primaryActionRef}
               type="button"
               className="settings-save-btn"
               onClick={handleConnect}

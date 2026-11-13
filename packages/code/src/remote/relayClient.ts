@@ -79,6 +79,13 @@ function asString(value: unknown): string | undefined {
 export interface RelaySocket {
   send(data: string): void;
   close(code?: number, reason?: string): void;
+  /**
+   * Drop the TCP connection without a closing handshake (`ws` only; the browser
+   * API has no equivalent). Used on a socket that never finished connecting: a
+   * `close()` there only aborts the handshake and can leave the kernel holding
+   * the socket, which is the state a watchdog exists to get out of.
+   */
+  terminate?(): void;
   readonly bufferedAmount?: number;
   onopen: (() => void) | null;
   onmessage: ((event: { data: unknown }) => void) | null;
@@ -169,9 +176,46 @@ export const RELAY_RETRY_WINDOW_MS = 10 * 60 * 1000;
  * growing instead of letting a still-restarting relay be dialled immediately.
  */
 export const RELAY_RETRY_JITTER = 0.5;
+/**
+ * How long a dial may stay in flight before it is declared failed.
+ *
+ * Nothing below the application fails this for us. The browser `WebSocket` API
+ * has no handshake timeout, and `ws` leaves its own `handshakeTimeout` unset
+ * unless told otherwise — so a SYN or upgrade that goes nowhere keeps
+ * `readyState === CONNECTING` for as long as the kernel retries (Linux with the
+ * default `tcp_syn_retries`: about 127s). No `open`, no `error`, no `close`
+ * fires in that window, so `state` stays `connecting` and `scheduleRetry` never
+ * runs: the link is down but nothing is retrying it.
+ *
+ * That is what 2026-11-13 looked like from the relay side — `Relay connection
+ * closed (host=…, code=1006)` at 23:00:13, then nothing at all for four minutes
+ * (no second handshake reached the relay) until remote control was toggled by
+ * hand. The outage was a blip; the missing timeout is what made it permanent.
+ *
+ * 15s is far above a healthy handshake (tens of ms on a LAN, a couple of seconds
+ * for a cold relay pod behind the load balancer) and short enough that one bad
+ * dial costs one retry slot rather than a session.
+ */
+export const RELAY_CONNECT_TIMEOUT_MS = 15_000;
 /** Idle keepalive. Browsers cannot send WebSocket control pings, and the relay
  * faces the phone anyway, so this is an application-level frame. */
 export const RELAY_PING_INTERVAL_MS = 30_000;
+/**
+ * Keepalive intervals that may pass without a `pong` before the link is
+ * declared dead.
+ *
+ * Sending a ping proves nothing on its own: a half-open connection (peer gone, a
+ * NAT mapping reclaimed, a blackholed route) accepts writes forever and never
+ * reports anything — only the reply distinguishes "idle" from "dead". The relay
+ * has its own 30s heartbeat and terminates what it judges dead, but that verdict
+ * arrives here as a close frame only if our side of the path still works; the
+ * case this covers is the one where it does not.
+ *
+ * Two intervals (60s) rather than one: a single late pong under load or on a
+ * phone page whose timers were throttled is not evidence of anything, while a
+ * genuinely dead link costs at most a minute of not noticing.
+ */
+export const RELAY_KEEPALIVE_MAX_MISSES = 2;
 /** Above this much unsent data the phone is not keeping up. Closing (rather
  * than queueing) bounds this process's memory; the phone reconnects and catches
  * up through `getMessages({ since })`, which is the same path a cold start
@@ -250,7 +294,13 @@ export class RelayClient {
   private state: RelayState = "idle";
   private socket: RelaySocket | undefined;
   private retryTimer: ReturnType<typeof setTimeout> | undefined;
+  /** Bounds one dial — see `RELAY_CONNECT_TIMEOUT_MS`. Cleared by `open`. */
+  private connectTimer: ReturnType<typeof setTimeout> | undefined;
   private pingTimer: ReturnType<typeof setInterval> | undefined;
+  /** A keepalive went out and its `pong` has not come back yet. */
+  private awaitingPong = false;
+  /** Intervals that ended without a `pong` — see `RELAY_KEEPALIVE_MAX_MISSES`. */
+  private missedPongs = 0;
   /** Failed dials in a row; drives the backoff curve. Reset by a completed
    * handshake, never by a socket that merely opened (a relay that accepts TCP
    * and closes immediately would otherwise pin the delay at its first step). */
@@ -419,9 +469,13 @@ export class RelayClient {
       return;
     }
     this.socket = socket;
+    this.armConnectTimeout(socket);
 
     socket.onopen = () => {
       if (this.socket !== socket) return;
+      // The dial is over. What is still outstanding is the handshake, and that
+      // one the relay bounds for us (`auth_timeout`).
+      this.clearConnectTimeout();
       this.state = "open";
       // Neither the attempt counter nor the retry window is cleared here: an
       // open socket that never completes the handshake is a failing dial, not a
@@ -469,8 +523,66 @@ export class RelayClient {
       if (this.socket !== socket) return;
       this.socket = undefined;
       this.stopPing();
+      this.clearConnectTimeout();
       this.handleClose(event?.code, event?.reason);
     };
+  }
+
+  /**
+   * An attempt that never opens has no event to end it — so it gets a timer.
+   *
+   * This is the difference between "the relay is unreachable for a moment" and
+   * "remote control is off until someone notices": without it the socket sits in
+   * `CONNECTING` until the kernel gives up, `scheduleRetry` is never called, and
+   * the retry window (the thing that turns a dead link into a user-visible
+   * `error`) never even starts.
+   */
+  private armConnectTimeout(socket: RelaySocket): void {
+    this.clearConnectTimeout();
+    const timer = setTimeout(() => {
+      this.connectTimer = undefined;
+      if (this.socket !== socket || this.state !== "connecting") return;
+      this.abandonSocket(socket);
+      this.scheduleRetry("relay handshake timed out");
+    }, RELAY_CONNECT_TIMEOUT_MS);
+    timer.unref?.();
+    this.connectTimer = timer;
+  }
+
+  /**
+   * Let go of a socket without pretending the peer said goodbye: handlers come
+   * off first, so whatever it fires on the way down is not mistaken for a drop
+   * and does not schedule a second retry on top of the one the caller is about
+   * to schedule.
+   */
+  private abandonSocket(socket: RelaySocket): void {
+    if (this.socket === socket) this.socket = undefined;
+    this.stopPing();
+    this.clearConnectTimeout();
+    socket.onopen = null;
+    socket.onmessage = null;
+    socket.onclose = null;
+    socket.onerror = null;
+    try {
+      if (typeof socket.terminate === "function") socket.terminate();
+      else socket.close();
+    } catch {
+      // Already gone.
+    }
+  }
+
+  /**
+   * The keepalive went unanswered for `RELAY_KEEPALIVE_MAX_MISSES` intervals.
+   *
+   * Same treatment as a dropped link — one shared budget, one shared backoff —
+   * because from here it *is* a dropped link; the only difference is that the
+   * news arrived from the timer rather than from a close frame.
+   */
+  private dropDeadLink(): void {
+    const socket = this.socket;
+    if (!socket) return;
+    this.abandonSocket(socket);
+    this.scheduleRetry("relay stopped answering the keepalive");
   }
 
   private handleClose(code: number | undefined, reason?: string): void {
@@ -633,6 +745,10 @@ export class RelayClient {
         this.sendControl({ type: "pong" });
         return;
       case "pong":
+        // The link is alive, whatever else is going on: this is the only frame
+        // that answers that question (see `RELAY_KEEPALIVE_MAX_MISSES`).
+        this.awaitingPong = false;
+        this.missedPongs = 0;
         return;
     }
   }
@@ -649,20 +765,57 @@ export class RelayClient {
   private startPing(): void {
     this.stopPing();
     this.pingTimer = setInterval(() => {
-      // Application-level on purpose: browsers cannot send WebSocket control
-      // pings, and this connection is the one a phone page would hold too. The
-      // relay answers it (`pong`) and forwards neither direction — with a
-      // `method` envelope instead, every heartbeat would be broadcast to every
-      // subscriber of this machine.
-      this.sendControl({ type: "ping" });
+      this.keepaliveTick();
     }, RELAY_PING_INTERVAL_MS);
     this.pingTimer.unref?.();
+  }
+
+  /**
+   * One keepalive interval: ask, and judge whether the last ask was answered.
+   *
+   * Application-level on purpose: browsers cannot send WebSocket control pings,
+   * and this connection is the one a phone page would hold too. The relay
+   * answers it (`pong`) and forwards neither direction — with a `method`
+   * envelope instead, every heartbeat would be broadcast to every subscriber of
+   * this machine.
+   */
+  private keepaliveTick(): void {
+    // The relay answers keepalives only as an authenticated peer (before that
+    // it parses every frame as the handshake), and it closes an unauthenticated
+    // connection on its own schedule — `auth_timeout`, 10s. Counting misses here
+    // would race that verdict and could drop a dial that is merely slow.
+    if (!this.authed) return;
+
+    if (this.awaitingPong) {
+      this.missedPongs += 1;
+      if (this.missedPongs >= RELAY_KEEPALIVE_MAX_MISSES) {
+        // The socket still writes without complaint, which is exactly why the
+        // answer is the only thing worth trusting: a connection nobody answers
+        // is a connection that is not there. Drop it and let the retry window
+        // do its job instead of leaving `status` saying `online` forever.
+        this.dropDeadLink();
+        return;
+      }
+    } else {
+      this.awaitingPong = true;
+      this.missedPongs = 0;
+    }
+    this.sendControl({ type: "ping" });
   }
 
   private stopPing(): void {
     if (this.pingTimer !== undefined) {
       clearInterval(this.pingTimer);
       this.pingTimer = undefined;
+    }
+    this.awaitingPong = false;
+    this.missedPongs = 0;
+  }
+
+  private clearConnectTimeout(): void {
+    if (this.connectTimer !== undefined) {
+      clearTimeout(this.connectTimer);
+      this.connectTimer = undefined;
     }
   }
 
@@ -671,6 +824,7 @@ export class RelayClient {
       clearTimeout(this.retryTimer);
       this.retryTimer = undefined;
     }
+    this.clearConnectTimeout();
     this.stopPing();
   }
 }

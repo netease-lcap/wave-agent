@@ -228,8 +228,8 @@ test.describe("Desktop host menu height cap", () => {
     const wslRows = wslList.getByTestId("desktop-host-item");
     const addEntry = webviewPage.getByTestId("desktop-host-add-entry");
 
-    // ── Both group headers are on screen, WSL 发行版 above SSH 主机 (host order) ──
-    await expect(wslLabel).toHaveText("WSL 发行版");
+    // ── Both group headers are on screen, WSL above SSH 主机 (host order) ──
+    await expect(wslLabel).toHaveText("WSL");
     await expect(sshLabel).toHaveText("SSH 主机");
     const wslLabelBox = await boxOf(wslLabel);
     const sshLabelBox = await boxOf(sshLabel);

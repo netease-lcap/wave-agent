@@ -1052,6 +1052,54 @@ describe("Agent - Abort Handling", () => {
       );
     });
 
+    it("destroy must not wait for an in-flight auto-memory extraction", async () => {
+      const testAgent = await Agent.create({
+        apiKey: "test-key",
+        workdir: "/tmp/test-destroy-no-memory-drain",
+        callbacks: { onLoadingChange: vi.fn() },
+      });
+      activeTestAgent = testAgent;
+      const container = (testAgent as unknown as { container: Container })
+        .container;
+
+      // The extraction fork is a model request with no bound worth putting on a
+      // teardown: every exit path whose process keeps running (interactive CLI,
+      // daemon, desktop, --stdio) lets it finish on its own. If destroy() went
+      // back to awaiting it, this never-settling drain would hang the teardown
+      // and the CLI's 5s outer bound would fire "Agent teardown timed out".
+      const drain = vi.fn(() => new Promise<void>(() => {}));
+      container.register("AutoMemoryService", { drain });
+
+      await testAgent.destroy();
+      activeTestAgent = undefined; // already destroyed above
+
+      expect(drain).not.toHaveBeenCalled();
+    });
+
+    it("drainAutoMemory delegates to the extraction with a soft budget", async () => {
+      const testAgent = await Agent.create({
+        apiKey: "test-key",
+        workdir: "/tmp/test-drain-auto-memory",
+        callbacks: { onLoadingChange: vi.fn() },
+      });
+      activeTestAgent = testAgent;
+      const container = (testAgent as unknown as { container: Container })
+        .container;
+
+      const drain = vi.fn().mockResolvedValue(undefined);
+      container.register("AutoMemoryService", { drain });
+
+      // Default budget: the 60s soft timeout the headless exit path uses.
+      await testAgent.drainAutoMemory();
+      expect(drain).toHaveBeenCalledWith(60_000);
+
+      await testAgent.drainAutoMemory(1_234);
+      expect(drain).toHaveBeenLastCalledWith(1_234);
+
+      await testAgent.destroy();
+      activeTestAgent = undefined; // already destroyed above
+    });
+
     it("should reset queue state to idle on abort", async () => {
       const testAgent = await Agent.create({
         apiKey: "test-key",

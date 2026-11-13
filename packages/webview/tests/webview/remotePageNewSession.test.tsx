@@ -469,6 +469,51 @@ describe("remote page new-session dialog", () => {
     );
   });
 
+  // 浏览态是弹窗里的第二层，退回去的「返回」留在面板自己那一行（紧挨
+  // 「选择此目录」）——弹窗级按钮条只放「创建 / 取消」，两层动作不混。
+  // 手机上没有 Esc，也没有「点外部」，这枚键是唯一的退路（spec remote-web.md 场景 2）。
+  it("closes the browser panel back to the recent-dirs step", () => {
+    const { vscode } = renderRemotePage();
+    openDialog(vscode);
+    // 选目录那一屏没有「返回」：它只在浏览态的面板里出现。
+    expect(
+      screen.queryByTestId("desktop-remote-browser-back"),
+    ).not.toBeInTheDocument();
+
+    act(() => {
+      fireEvent.click(screen.getByTestId("remote-new-session-browse"));
+    });
+    act(() => {
+      sendCommand("newSessionDirs", {
+        requestId: sentLastCommand(vscode, "newSessionListDirs").requestId,
+        resolvedPath: "/home/alice",
+        dirs: ["code"],
+      });
+    });
+    expect(screen.getByTestId("desktop-remote-browser")).toBeInTheDocument();
+
+    act(() => {
+      fireEvent.click(screen.getByTestId("desktop-remote-browser-back"));
+    });
+
+    expect(
+      screen.queryByTestId("desktop-remote-browser"),
+    ).not.toBeInTheDocument();
+    // 弹窗还在，且退回的是「选目录」那一屏——最近目录与「浏览…」重新出现，
+    // 没有顺手把目录定成浏览到的那个。
+    expect(screen.getByTestId("remote-new-session-dialog")).toBeInTheDocument();
+    expect(screen.getByTestId("remote-new-session-browse")).toBeInTheDocument();
+    expect(
+      screen.getByTestId("remote-new-session-recents"),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByTestId("remote-new-session-workdir"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("desktop-remote-browser-back"),
+    ).not.toBeInTheDocument();
+  });
+
   // 浏览面板的路径同样跟着主机拼写走：Windows 主机回的是 `realpath` 出来的
   // 反斜杠路径。只按 `/` 切时面包屑退化成「一整条路径」、点它落到盘根、`…`
   // 上级也去错地方——用户在那个 Windows 主机上根本无从逐级浏览。
