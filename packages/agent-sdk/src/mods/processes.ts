@@ -35,13 +35,47 @@ export class ModProcessManager {
   /**
    * 起一个外部进程并返回它的输出流。
    *
+   * 返回的是一层**薄包装**：`next()` 原样转给内部生成器，`return()` 先杀进程
+   * 再回 `done`。这就是 Claude Code 的 streaming pull/close 协议（v2.1.280
+   * changelog：「streaming pull/close protocol underlying features like
+   * process.spawn」），社区拿它做 Cancel 按钮（issues#106170）。
+   *
+   * 为什么不能只靠生成器自己的 `finally`：对一个正 `await` 的生成器调
+   * `return()` 会被排队，要等下一块输出才轮到 —— 一条静默的长跑进程（`tail -f`
+   * 那类）因此永远杀不掉。杀进程必须由这层包装同步发起。
+   */
+  spawn(
+    modId: string,
+    options: unknown,
+  ): AsyncGenerator<ModProcessChunk, ModProcessExit> {
+    let close: (() => void) | undefined;
+    const inner = this.runProcess(modId, options, (fn) => {
+      close = fn;
+    });
+    const stopped: ModProcessExit = { code: null, signal: null };
+    const stream: AsyncGenerator<ModProcessChunk, ModProcessExit> = {
+      next: (value) => inner.next(value),
+      return: async () => {
+        close?.();
+        return { done: true, value: stopped };
+      },
+      throw: (error) => inner.throw(error),
+      [Symbol.asyncIterator]: () => stream,
+    };
+    return stream;
+  }
+
+  /**
+   * 进程本体：起进程、合并输出、收尾。
+   *
    * 参数校验、限额与拒绝都在**第一次 `next()` 之前**完成（生成器函数体只在
    * 第一次拉取时执行），所以 mod 里的 `$.process.spawn(...)` 本身不会抛错，
    * 错误出现在 `for await` 上 —— 与 CC 的「调用返回流、失败在流上抛」一致。
    */
-  async *spawn(
+  private async *runProcess(
     modId: string,
     options: unknown,
+    onStart: (close: () => void) => void,
   ): AsyncGenerator<ModProcessChunk, ModProcessExit> {
     const parsed = parseSpawnOptions(options, this.defaultCwd());
     if (this.disposed) {
@@ -118,6 +152,13 @@ export class ModProcessManager {
     child.stderr?.on("data", (chunk: string) => push("stderr", chunk));
     child.on("error", (error: Error) => fail(error));
     child.on("close", (code, signal) => finish({ code, signal }));
+
+    // 外部 `return()`（Cancel 按钮）走这条路：拿到 child 就能立刻发信号，不必
+    // 等这个生成器被排队轮上。`killTree` 幂等，进程早已退出时什么也不做。
+    onStart(() => {
+      killedByHost = true;
+      killTree(child);
+    });
 
     if (parsed.input !== undefined) {
       // 一次性输入：写完就关，不支持长连 stdin（spec「外部进程」）。

@@ -457,22 +457,37 @@ export class ModRuntime {
    * 暂停/恢复发生在**每一次** `next()` 上：mod 可能把迭代器留到钩子返回之后
    * 再用（`$.clock.every` 里一拍读一次），那时 `this.budget` 已经是别的预算或
    * 没有预算，暂停就自然不生效。
+   *
+   * 手写迭代器而不是 `async *`：mod 对这层调 `return()`（Cancel 按钮）时，必须
+   * 立刻转给内层的 pull/close 协议去杀进程。写成生成器的话 `return()` 会被排在
+   * 正在 `await` 的 `gen.next()` 后面，静默的长跑进程就永远等不到收尸。
    */
-  private async *streamWithBudget(
+  private streamWithBudget(
     gen: AsyncGenerator<ModProcessChunk, ModProcessExit>,
   ): AsyncGenerator<ModProcessChunk, ModProcessExit> {
-    while (true) {
-      const budget = this.budget;
-      budget?.pause();
-      let step: IteratorResult<ModProcessChunk, ModProcessExit>;
-      try {
-        step = await gen.next();
-      } finally {
-        budget?.resume();
-      }
-      if (step.done) return step.value;
-      yield step.value;
-    }
+    const stream: AsyncGenerator<ModProcessChunk, ModProcessExit> = {
+      next: async () => {
+        const budget = this.budget;
+        budget?.pause();
+        try {
+          return await gen.next();
+        } finally {
+          budget?.resume();
+        }
+      },
+      return: async (value) => {
+        const budget = this.budget;
+        budget?.pause();
+        try {
+          return await gen.return(value);
+        } finally {
+          budget?.resume();
+        }
+      },
+      throw: (error) => gen.throw(error),
+      [Symbol.asyncIterator]: () => stream,
+    };
+    return stream;
   }
 
   /** 该 mod 注册了哪些钩子（诊断用）。 */

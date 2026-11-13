@@ -555,6 +555,49 @@ describe("ModRuntime 的 $ 命名空间", () => {
     await expect(pending).resolves.toMatchObject({ ok: true, value: "a" });
   });
 
+  it("mod 对进程流调 return() 时，宿主拿到的是 return", async () => {
+    const stopped = vi.fn(async () => ({
+      done: true as const,
+      value: { code: null, signal: null },
+    }));
+    // 手写迭代器：`for await` 之外的 Cancel 按钮就是这么结束一条流的。
+    const stream: AsyncGenerator<ModProcessChunk, ModProcessExit> = {
+      next: async () => ({
+        done: false,
+        value: { stream: "stdout", text: "a" },
+      }),
+      return: stopped,
+      throw: async () => ({ done: true, value: { code: null, signal: null } }),
+      [Symbol.asyncIterator]: () => stream,
+    };
+    const { mod } = runtime(
+      `
+      var stream = null;
+      exports.register = function ($, on) {
+        on("session.start", function () {
+          stream = $.process.spawn({ argv: ["x"] });
+          return "ready";
+        });
+        on("ui.render", function () {
+          return __wave.h("Button", { key: "stop", label: "stop", onPress: function () {
+            return stream.return({ code: null, signal: null }).then(function () {
+              return "stopped";
+            });
+          }});
+        });
+      };
+      `,
+      { host: host({ spawnProcess: () => stream }) },
+    );
+
+    await mod.load();
+    await mod.callHook("session.start", {});
+    // 元素回调只有渲染过一次才登记进处理表。
+    await mod.callHook("ui.render", {});
+    await expect(mod.dispatch("press", "stop")).resolves.toBe(true);
+    expect(stopped).toHaveBeenCalledTimes(1);
+  });
+
   it("prompt.submit 以用户身份投进会话", async () => {
     const hostApi = host();
     const { mod } = runtime(

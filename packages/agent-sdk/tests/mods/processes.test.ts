@@ -147,6 +147,26 @@ describe("ModProcessManager.spawn", () => {
     });
   });
 
+  it("正在等下一块输出时从外部 return()，进程立刻被杀", async () => {
+    const mgr = manager();
+    const gen = mgr.spawn("todo:panel", {
+      argv: [process.execPath, "-e", PID_HANG_SCRIPT],
+    });
+    const first = await gen.next();
+    const pid = Number(textOf([first.value as ModProcessChunk]).trim());
+    expect(pid).toBeGreaterThan(0);
+
+    // 这个进程此后不再输出，这次 next() 会一直挂着 —— 正是 Cancel 按钮要打断的
+    // 状态。`return()` 必须直接杀进程，而不是排在这次 next() 后面等下一块输出。
+    const pending = gen.next();
+    await gen.return({ code: null, signal: null });
+
+    await expect(pending).resolves.toMatchObject({ done: true });
+    await vi.waitFor(() => {
+      expect(() => process.kill(pid, 0)).toThrow();
+    });
+  });
+
   it(
     "一个 mod 最多同时跑 4 个进程，第 5 个报错",
     { timeout: 20_000 },
