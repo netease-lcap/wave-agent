@@ -53,7 +53,7 @@ describe("worktreeUtils with real git", () => {
     fs.rmSync(repoRoot, { recursive: true, force: true });
   });
 
-  it("creates a worktree from HEAD with its own branch", () => {
+  it("creates a worktree from HEAD with its own branch", async () => {
     const info = createWorktree("real-git-test", repoRoot, {
       baseRef: "head",
     });
@@ -72,11 +72,11 @@ describe("worktreeUtils with real git", () => {
       const branches = git(repoRoot, ["branch", "--list", info.branch]);
       expect(branches).toContain(info.branch);
     } finally {
-      removeWorktree(info);
+      await removeWorktree(info);
     }
   });
 
-  it("keeps files created in the worktree out of the main repo", () => {
+  it("keeps files created in the worktree out of the main repo", async () => {
     const info = createWorktree("real-git-isolated", repoRoot, {
       baseRef: "head",
     });
@@ -86,24 +86,24 @@ describe("worktreeUtils with real git", () => {
       const status = git(repoRoot, ["status", "--porcelain"]);
       expect(status).not.toContain("worktree-only.txt");
     } finally {
-      removeWorktree(info);
+      await removeWorktree(info);
     }
   });
 
-  it("removes the worktree directory and its branch", () => {
+  it("removes the worktree directory and its branch", async () => {
     const info = createWorktree("real-git-remove", repoRoot, {
       baseRef: "head",
     });
     const worktreePath = info.path;
     const branchName = info.branch;
-    removeWorktree(info);
+    await removeWorktree(info);
 
     expect(fs.existsSync(worktreePath)).toBe(false);
     const branches = git(repoRoot, ["branch", "--list", branchName]);
     expect(branches).not.toContain(branchName);
   });
 
-  it("creates a worktree from the default remote branch (baseRef fresh)", () => {
+  it("creates a worktree from the default remote branch (baseRef fresh)", async () => {
     // origin/main is needed for the default "fresh" path — point origin at
     // this same repo and fetch so refs/remotes/origin/main exists.
     git(repoRoot, ["remote", "add", "origin", repoRoot]);
@@ -115,12 +115,12 @@ describe("worktreeUtils with real git", () => {
       // Content of the default branch is present in the new worktree.
       expect(fs.existsSync(path.join(info.path, "file.txt"))).toBe(true);
     } finally {
-      removeWorktree(info);
+      await removeWorktree(info);
       git(repoRoot, ["remote", "remove", "origin"]);
     }
   });
 
-  it("counts commits made inside the worktree since creation", () => {
+  it("counts commits made inside the worktree since creation", async () => {
     const info = createWorktree("real-git-count", repoRoot, {
       baseRef: "head",
     });
@@ -132,7 +132,7 @@ describe("worktreeUtils with real git", () => {
       const changes = countWorktreeChanges(info.path, info.originalHeadCommit);
       expect(changes).toEqual({ changedFiles: 0, commits: 1 });
     } finally {
-      removeWorktree(info);
+      await removeWorktree(info);
     }
   });
 });

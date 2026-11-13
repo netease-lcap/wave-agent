@@ -398,19 +398,19 @@ function sleep(ms: number): Promise<void> {
  * to reason about.
  *
  * The retry lives here rather than in the shared core because how long to wait
- * for a just-exited process is this entry point's call — the SDK's synchronous
- * caller deletes once. It wraps this one call and no other: the `.git` unlink
- * and the shell delete happen after it, and retrying them makes no sense once
- * the pointer is gone.
+ * for a just-exited process is this entry point's call — the SDK's caller
+ * deletes once. It wraps this one call and no other: the `.git` unlink and the
+ * shell delete happen after it, and retrying them makes no sense once the
+ * pointer is gone.
  */
 async function rmWorktreeContentsWithRetries(
   worktreePath: string,
 ): Promise<unknown | null> {
-  let error = removeWorktreeContents(worktreePath);
+  let error = await removeWorktreeContents(worktreePath);
   for (const delayMs of worktreeRemoveRetry.delaysMs) {
     if (!error) return null;
     await sleep(delayMs);
-    error = removeWorktreeContents(worktreePath);
+    error = await removeWorktreeContents(worktreePath);
   }
   return error;
 }
@@ -657,9 +657,9 @@ export async function getWorktreeChanges(
  * git's records end up disagreeing, which is the "residue + branch still there
  * + worktree no longer registered" report. So git no longer deletes: the
  * contents go first with the pointer still in place (the long, failure-prone
- * step), then the pointer is unlinked, then the empty shell is removed with
- * `fs.rmSync` on an extended-length path (bypasses MAX_PATH), and `prune` ties
- * up the registration afterwards.
+ * step), then the pointer is unlinked, then the empty shell is removed with a
+ * recursive `fs.promises.rm` on an extended-length path (bypasses MAX_PATH), and
+ * `prune` ties up the registration afterwards.
  *
  * Steps 4 and 5 are in that order because step 4 is the one that takes seconds
  * and the one that fails on a held file. While it runs git still registers the
@@ -675,7 +675,9 @@ export async function getWorktreeChanges(
  * One delete core, two calling conventions; they used to be independent
  * implementations and drifted. What stays here is this package's half: git
  * calls are async (a synchronous spawn would freeze every session the shared
- * `wave --stdio` process serves), the *content* delete retries
+ * `wave --stdio` process serves), so is every filesystem step of the delete
+ * (same reason — this process serves several sessions, and the remote-control
+ * `destroy` reply rides on the event loop), the *content* delete retries
  * (`worktreeRemoveRetry`) because Windows releases a just-exited process's
  * directory handle asynchronously, and the answer is "is the directory gone"
  * rather than nothing.
@@ -725,7 +727,7 @@ export async function removeWorktree(
   // Steps 1–3 — the checks git used to make, the Windows reparse-point pass and
   // the pointer read — all in the shared core, so this path and the SDK's cannot
   // diverge.
-  const prepared = prepareWorktreeRemoval({ worktreePath, repoRoot });
+  const prepared = await prepareWorktreeRemoval({ worktreePath, repoRoot });
 
   if (prepared.status === "refused") {
     // Nothing was deleted and the directory is still there, so this is a
@@ -773,7 +775,7 @@ export async function removeWorktree(
       // back only if that last step failed. The restore has to happen after the
       // retries above, never between them; and the pointer must not go back
       // when the unlink itself failed, since it was never removed.
-      const finish = finishWorktreeRemoval({
+      const finish = await finishWorktreeRemoval({
         worktreePath,
         pointer: prepared.pointer,
         reparsePointUnremovable: prepared.reparsePointUnremovable,
