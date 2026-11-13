@@ -1784,8 +1784,15 @@ describe("remote page shim — 状态条按输入能力分档", () => {
     const styles = page.bannerStyles();
 
     expect(styles.close).toContain("width:40px;height:40px;font-size:20px");
-    // 条自身让出高度：4 + 40 + 4 = 48，不因为关闭键长高变成 56。
-    expect(styles.line).toContain("padding:4px 12px");
+    // 条自身让出高度：4 + 40 + 4 = 48，不因为关闭键长高变成 56。竖直内边距上再叠
+    // 主屏形态顶边色带的一半（`--remote-top-edge-h`，别处未定义 ⇒ 取 0px，就是 4）。
+    expect(styles.line).toContain(
+      "padding:calc(4px + var(--remote-top-edge-h, 0px) / 2) 12px",
+    );
+    // 色带让出的那段由横幅自己吃回去：它属于屏幕最顶，不该被顶栏那条底色隔开。
+    expect(styles.line).toContain(
+      "margin-top:calc(-1 * var(--remote-top-edge-h, 0px))",
+    );
     // 文案不跟着抬：13px 就是这一页手机档的「辅助信息」档（`remote-page.css`），
     // 抬到正文档的 15px 换不来可读性，只让一条三行文案高 18px。
     expect(styles.line).toContain("font:13px/1.5");
@@ -1796,8 +1803,38 @@ describe("remote page shim — 状态条按输入能力分档", () => {
     const styles = page.bannerStyles();
 
     expect(styles.close).toContain("width:32px;height:32px");
-    expect(styles.line).toContain("padding:8px 12px");
+    expect(styles.line).toContain(
+      "padding:calc(8px + var(--remote-top-edge-h, 0px) / 2) 12px",
+    );
     expect(styles.line).toContain("font:13px/1.5");
+  });
+
+  it("给色带留 tone：拒绝态 error、进度态 progress", async () => {
+    // 主屏形态下顶边色带按这个属性取色（globals.css 的 `:has()` 规则），它和横幅
+    // 同色时红色才从屏幕最顶连续铺下来；没有它，色带会在红条上沿压出一条深色缝。
+    const page = await waitingBanner({ touch: true });
+    expect(page.element("remote-status")?.getAttribute("data-tone")).toBe(
+      "error",
+    );
+
+    // 进度态同样要能把色带刷成中性色（每次绘制都重设，长命的条不会留住上一次的色）。
+    // 冷启动（地址里没有 `host=`）读机器列表时就是这一档。
+    const progress = loadShim({
+      url: "https://codechat.example.com/remote/",
+      token: "jwt",
+      hosts: {
+        status: 200,
+        body: {
+          hosts: [
+            { id: "host-1", name: "工位机", platform: "darwin", online: true },
+          ],
+        },
+      },
+    });
+    expect(progress.banner()).toContain("正在读取机器列表");
+    expect(progress.element("remote-status")?.getAttribute("data-tone")).toBe(
+      "progress",
+    );
   });
 
   it("关闭键的字号是显式声明，不是会被整条丢掉的 font 简写", async () => {

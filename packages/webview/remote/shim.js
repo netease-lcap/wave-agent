@@ -438,12 +438,12 @@
   var BANNER_TIER = {
     // Mouse pointer (the design sheet's density) — unchanged.
     fine: {
-      padding: "8px 12px",
+      padY: "8px",
       close: "width:32px;height:32px;font-size:18px;",
     },
     // Finger — the close takes the page's icon-button numbers.
     coarse: {
-      padding: "4px 12px",
+      padY: "4px",
       close: "width:40px;height:40px;font-size:20px;",
     },
   };
@@ -472,13 +472,28 @@
    * The label may wrap; the close never does, so it stays visible on the first
    * line however long the message is (spec「状态只在一条流内状态条上播报」
    * 场景 4 / 9).
+   *
+   * `--remote-top-edge-h` is the page's top-edge band (globals.css, installed
+   * shape only — it is undefined everywhere else and every use here falls back
+   * to `0px`, i.e. the line above is unchanged in a Safari tab and in the other
+   * four hosts). On an installed iPhone the band is painted by a `position:
+   * fixed` layer that the body's padding-top makes room for, but this line is
+   * *not* supposed to sit below that room: it belongs to the very top, so it
+   * takes the band's colour (the `:has()` rules in globals.css) and eats the
+   * room back with a negative margin, then splits it between its own top and
+   * bottom padding so the sentence stays centred in what the user sees as one
+   * continuous coloured strip. Without this the band shows through above the
+   * banner as a dark seam (2026-11-13 「红色横幅上面还有一点点黑条」).
    */
   function bannerStyle(tone) {
     var tier = bannerTier();
     return (
-      "flex:0 0 auto;box-sizing:border-box;padding:" +
-      tier.padding +
-      ";display:flex;align-items:center;gap:8px;" +
+      "flex:0 0 auto;box-sizing:border-box;" +
+      "padding:calc(" +
+      tier.padY +
+      " + var(--remote-top-edge-h, 0px) / 2) 12px;" +
+      "margin-top:calc(-1 * var(--remote-top-edge-h, 0px));" +
+      "display:flex;align-items:center;gap:8px;" +
       "font:13px/1.5 -apple-system,system-ui,sans-serif;color:#fff;" +
       "background:" +
       (tone === "progress" ? "#333333" : "#5a1d1d") +
@@ -548,6 +563,13 @@
     }
     bannerKey = statusKey;
     banner.setAttribute("style", bannerStyle(tone));
+    // What the top-edge band paints in the installed shape (the `:has()` rules
+    // in globals.css key off this): the band is the status bar's colour, and a
+    // status bar over a red line has to be red, not page-coloured.
+    banner.setAttribute(
+      "data-tone",
+      tone === "progress" ? "progress" : "error",
+    );
     banner.textContent = "";
     var label = document.createElement("span");
     // Its own id: the line carries a close as well as its sentence, so 「what
