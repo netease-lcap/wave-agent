@@ -170,7 +170,6 @@ export class ModManager {
           const runtime = new ModRuntime(
             {
               pluginName: plugin.name,
-              pluginRoot: plugin.path,
               openPane: (paneId, title) => this.openPane(mod.id, paneId, title),
               closePane: (paneId) => this.closePane(mod.id, paneId),
               listPanes: () => this.listPanes(mod.id),

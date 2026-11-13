@@ -24,7 +24,6 @@ const ENTRY = path.join(ROOT, "mods", "panel.tsx");
 function host(overrides: Partial<ModRuntimeHost> = {}): ModRuntimeHost {
   return {
     pluginName: "todo",
-    pluginRoot: ROOT,
     openPane: vi.fn(),
     closePane: vi.fn(),
     listPanes: vi.fn(() => []),
@@ -392,7 +391,6 @@ describe("ModRuntime 的 $ 命名空间", () => {
           $.store.delete("gone");
           return {
             plugin: $.plugin.name,
-            root: $.plugin.root,
             panes: $.ui.panes(),
             keys: $.store.keys(),
             stored: $.store.get("k"),
@@ -407,7 +405,6 @@ describe("ModRuntime 的 $ 命名空间", () => {
     const result = await mod.callHook("session.start", {});
     expect(result.ok && result.value).toEqual({
       plugin: "todo",
-      root: ROOT,
       panes: ["p1"],
       keys: ["k"],
       stored: "7",

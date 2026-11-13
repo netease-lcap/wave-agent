@@ -94,7 +94,7 @@ MODS 补上这两件事：插件带一个 TypeScript 模块（可写 TSX），�
 
 | 命名空间   | 方法                                                                                 |
 | ---------- | ------------------------------------------------------------------------------------ |
-| `$.plugin` | `name`、`root`                                                                       |
+| `$.plugin` | `name`                                                                               |
 | `$.ui`     | `open({ id, title })`、`close(id)`、`panes()`、`invalidate(id)`                      |
 | `$.state`  | `get`、`set`（会话级状态；`get` 返回副本，`set` 后需自己 `invalidate`）              |
 | `$.store`  | `get`、`set`、`delete`、`keys`（该插件自己的 JSON KV，跨会话）                       |

@@ -39,7 +39,7 @@ export interface ModTimerHandle {
 
 /** 事件钩子能拿到的 `$`（见 spec「$（一期）」）。 */
 export interface ModDollar {
-  plugin: { name: string; root: string };
+  plugin: { name: string };
   ui: {
     resolve(event: unknown): unknown;
     open(pane: { id: string; title: string }): void;
@@ -73,7 +73,6 @@ export interface ModDollar {
 /** 沙箱需要宿主提供的全部能力。 */
 export interface ModRuntimeHost {
   pluginName: string;
-  pluginRoot: string;
   openPane(paneId: string, title: string): void;
   closePane(paneId: string): void;
   listPanes(): string[];
@@ -260,7 +259,7 @@ export class ModRuntime {
     this.wave = { h, Fragment: "Fragment", elements };
 
     this.dollar = {
-      plugin: { name: host.pluginName, root: host.pluginRoot },
+      plugin: { name: host.pluginName },
       ui: {
         resolve: (event) => event,
         open: (pane) => host.openPane(pane.id, pane.title),
