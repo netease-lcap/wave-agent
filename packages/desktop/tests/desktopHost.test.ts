@@ -11731,10 +11731,12 @@ describe("WSL 发行版主机（desktop-wsl.md）", () => {
     });
     expect(sent("desktopWorkdirState").at(-1)?.hostOptions).toEqual([
       { id: "local", label: "本地", kind: "local" },
-      { id: "wsl:Ubuntu", label: "Ubuntu (WSL)", kind: "wsl" },
+      // 条目只写发行版名（分组标题已经是「WSL」），(WSL) 后缀只出现在脱离
+      // 分组上下文的地方（按钮 / 侧栏 / 登录项，场景 17）。
+      { id: "wsl:Ubuntu", label: "Ubuntu", kind: "wsl" },
       {
         id: "wsl:Legacy",
-        label: "Legacy (WSL)",
+        label: "Legacy",
         kind: "wsl",
         disabled: true,
         hint: "WSL 1：不支持",
