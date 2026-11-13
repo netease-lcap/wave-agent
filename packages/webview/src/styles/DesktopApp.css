@@ -1980,9 +1980,16 @@ body.is-panel-resizing webview {
 }
 
 /* Resize handle between the two pane rows; overlays the row border.
-   可见线 = ::after 上的 2px 横向渐变（设计师 0916 评论③「类似的地方都一起
-   改掉」→ 与 .panel-slot-drag-handle 同一档：中间深两端浅 8% 淡出、核心走
-   --cc-text-secondary）；5px 命中区整条保留，拖拽手感与逻辑零改动。 */
+   静态态 = 1px 实线（设计师 1113 评论：「并排打开过多、第二排出现对话窗口时
+   缺少上描边的分割线」）。横向这条缝原来完全空着 —— pane 之间靠 .desktop-pane
+   的 border-right 有竖线，而 pane 没有 border-top/bottom，两排之间只剩 separator
+   的 5px 命中区减 2×2px 负边距后的那 1px 空隙，什么也没画。
+   线画在 ::after 上而不是给 pane 补 border-top：separator 的负边距让它正好压住那
+   1px 缝，加边框会多吃 1px、把两排的 50/50 比例推歪。
+   颜色与 pane 竖线同源（--vscode-panel-border），不是另调一档灰。
+   hover / 拖动时才换成 0916 评论③定下的 2px 渐变高亮（与 .panel-slot-drag-handle
+   同一档：中间深两端浅 8% 淡出、核心走 --cc-text-secondary）；5px 命中区整条保留，
+   拖拽手感与逻辑零改动。 */
 .desktop-row-separator {
   --pane-drag-line: var(
     --cc-text-secondary,
@@ -2001,11 +2008,20 @@ body.is-panel-resizing webview {
   left: 0;
   right: 0;
   top: 50%;
+  height: 1px;
+  margin-top: -0.5px;
+  pointer-events: none;
+  background: var(--vscode-panel-border, rgba(128, 128, 128, 0.2));
+  transition:
+    height 120ms ease,
+    margin-top 120ms ease,
+    background 120ms ease;
+}
+
+.desktop-row-separator:hover::after,
+.desktop-row-separator--active::after {
   height: 2px;
   margin-top: -1px;
-  pointer-events: none;
-  opacity: 0;
-  transition: opacity 120ms ease;
   background: linear-gradient(
     90deg,
     color-mix(in srgb, var(--pane-drag-line) 8%, transparent) 0%,
@@ -2013,11 +2029,6 @@ body.is-panel-resizing webview {
     var(--pane-drag-line) 80%,
     color-mix(in srgb, var(--pane-drag-line) 8%, transparent) 100%
   );
-}
-
-.desktop-row-separator:hover::after,
-.desktop-row-separator--active::after {
-  opacity: 1;
 }
 
 /* VS Code-style translucent overlay over the half of a single-row layout
