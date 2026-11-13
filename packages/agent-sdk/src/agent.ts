@@ -19,6 +19,7 @@ import type {
   ModPanelRenderResult,
   ModPanelUpdatePayload,
   ModStatusPayload,
+  ModSessionUsage,
 } from "./types/mods.js";
 import { HookManager } from "./managers/hookManager.js";
 import { ReversionManager } from "./managers/reversionManager.js";
@@ -95,6 +96,7 @@ import {
 } from "./telemetry/activity.js";
 import { entrypointOf } from "./telemetry/attributes.js";
 import { remoteSettingsService } from "./services/remoteSettingsService.js";
+import { contextUsagePercent } from "./utils/tokenCalculation.js";
 
 export class Agent {
   private messageManager: MessageManager;
@@ -483,6 +485,12 @@ export class Agent {
     // it sits below `Agent` in the dependency graph.
     this.modManager.setPromptSubmitter((text) => this.sendMessage(text));
 
+    // Plugin mods can read the session's token usage (`$.session.usage`, spec
+    // ecosystem/plugin-mods.md「会话用量」). Same shape as the prompt channel:
+    // the numbers live on `Agent` and the managers below it, so they are pushed
+    // down here rather than resolved inside ModManager.
+    this.modManager.setSessionUsageProvider(() => this.getSessionUsage());
+
     // Wire up CWD change callback from AIManager to sync Agent's workdir
     this.aiManager.setOnCwdChange((newCwd) => {
       this.workdir = newCwd;
@@ -555,6 +563,38 @@ export class Agent {
 
   public get latestTotalTokens(): number {
     return this.messageManager.getLatestTotalTokens();
+  }
+
+  /**
+   * `$.session.usage()` 的快照（spec `ecosystem/plugin-mods.md`「会话用量」）。
+   *
+   * 只读、O(usages)：`context.tokens` 取最近一次带 usage 的响应报出的总数
+   * （与输入框旁那个用量环同一个数），`context.percent` 的分母是自动压缩阈值；
+   * `tokens.*` 是整场会话的累计值，其中 `prompt` **含**缓存命中的 token ——
+   * 我们上游的 `prompt_tokens` 就是含的，别按 Claude Code 的 `input_tokens`
+   * （不含）去对。
+   */
+  public getSessionUsage(): ModSessionUsage {
+    const tokens = this.latestTotalTokens;
+    const window = this.getContextWindow();
+    const totals = { prompt: 0, completion: 0, cacheRead: 0, cacheCreation: 0 };
+    for (const usage of this.usages) {
+      totals.prompt += usage.prompt_tokens;
+      totals.completion += usage.completion_tokens;
+      totals.cacheRead += usage.cache_read_input_tokens ?? 0;
+      totals.cacheCreation += usage.cache_creation_input_tokens ?? 0;
+    }
+    const usage: ModSessionUsage = {
+      context: {
+        tokens,
+        window,
+        percent: contextUsagePercent(tokens, window, this.getMaxOutputTokens()),
+      },
+      tokens: totals,
+    };
+    const model = this.getModelConfig().model;
+    if (model !== undefined) usage.model = model;
+    return usage;
   }
 
   /**

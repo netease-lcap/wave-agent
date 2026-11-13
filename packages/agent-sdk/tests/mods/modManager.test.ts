@@ -1097,3 +1097,182 @@ exports.register = function ($, on) {
     expect(submit).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("ModManager 的 $.session.usage", () => {
+  /** 把快照摊平画成一行的 mod：只读快照，spec「会话用量」。 */
+  const USAGE_MOD = `
+exports.register = function ($, on) {
+  on("session.start", function () {
+    $.ui.open({ id: "p1", title: "用量" });
+  });
+  on("ui.render", function () {
+    var u = $.session.usage();
+    return __wave.h("Text", null,
+      u.context.percent + "%|" + u.context.tokens + "/" + u.context.window +
+      "|" + u.tokens.prompt + "+" + u.tokens.completion +
+      "+" + u.tokens.cacheRead + "+" + u.tokens.cacheCreation +
+      "|" + u.model);
+  });
+};
+`;
+
+  it("接上取数点后 mod 拿到真实数字", async () => {
+    const { manager } = createManager({ [MOD_PATH]: USAGE_MOD });
+    manager.setSessionUsageProvider(() => ({
+      context: { tokens: 83_500, window: 200_000, percent: 50 },
+      tokens: { prompt: 300, completion: 30, cacheRead: 40, cacheCreation: 5 },
+      model: "some-model",
+    }));
+    await manager.loadFromPlugins([
+      plugin([{ id: "todo:panel", path: MOD_PATH }]),
+    ]);
+    await manager.startSession();
+
+    const frame = await pull(manager);
+    expect(frame.tree).toEqual({
+      type: "Text",
+      props: {},
+      children: ["50%|83500/200000|300+30+40+5|some-model"],
+    });
+
+    await manager.dispose();
+  });
+
+  it("没接上取数点时给全 0 快照，不抛错", async () => {
+    const { manager } = createManager({ [MOD_PATH]: USAGE_MOD });
+    await manager.loadFromPlugins([
+      plugin([{ id: "todo:panel", path: MOD_PATH }]),
+    ]);
+    await manager.startSession();
+
+    const frame = await pull(manager);
+    expect(frame.tree).toEqual({
+      type: "Text",
+      props: {},
+      children: ["0%|0/0|0+0+0+0|undefined"],
+    });
+
+    await manager.dispose();
+  });
+});
+
+describe("ModManager 的只读观察事件", () => {
+  /** 收到事件就把载荷贴成状态行（状态行是测试观察 mod 内部最容易的出口）。 */
+  const OBSERVER_MOD = `
+exports.register = function ($, on) {
+  on("turn.complete", function (e) {
+    $.ui.status("turn:" + e.isAborted + ":" + e.durationMs + ":" + e.answer + ":" + e.usage.prompt + "+" + e.usage.completion);
+  });
+  on("classic.PermissionRequest", function (e) {
+    $.ui.status("ask:" + e.hook_event_name + ":" + e.tool_name + ":" + e.tool_input.command);
+  });
+};
+`;
+
+  const TURN_USAGE = {
+    prompt: 0,
+    completion: 0,
+    cacheRead: 0,
+    cacheCreation: 0,
+  };
+
+  it("两个事件都派发到注册了它们的 mod，载荷原样", async () => {
+    const { manager, statuses } = createManager({
+      [MOD_PATH]: OBSERVER_MOD,
+    });
+    await manager.loadFromPlugins([
+      plugin([{ id: "todo:panel", path: MOD_PATH }]),
+    ]);
+    await manager.startSession();
+
+    manager.notifyMods("turn.complete", {
+      isAborted: false,
+      durationMs: 42,
+      answer: "done",
+      usage: { ...TURN_USAGE, prompt: 1200, completion: 300 },
+    });
+    await vi.waitFor(() =>
+      expect(statuses.at(-1)?.text).toBe("turn:false:42:done:1200+300"),
+    );
+
+    // 审批事件用 Claude Code 的 `classic.<Event>` 名字，载荷是那份 stdin JSON。
+    manager.notifyMods("classic.PermissionRequest", {
+      session_id: "s1",
+      transcript_path: path.join(ROOT, "transcript.jsonl"),
+      cwd: ROOT,
+      hook_event_name: "PermissionRequest",
+      tool_name: "Bash",
+      tool_input: { command: "rm -rf build" },
+    });
+    await vi.waitFor(() =>
+      expect(statuses.at(-1)?.text).toBe(
+        "ask:PermissionRequest:Bash:rm -rf build",
+      ),
+    );
+
+    await manager.dispose();
+  });
+
+  it("是 fire-and-forget：不等钩子，钩子抛错只记一条 warn", async () => {
+    const hangForever = path.join(ROOT, "mods", "hangs.tsx");
+    const boom = path.join(ROOT, "mods", "boom.tsx");
+    const { manager } = createManager({
+      [hangForever]: `
+exports.register = function ($, on) {
+  on("turn.complete", function () { return new Promise(function () {}); });
+};
+`,
+      [boom]: `
+exports.register = function ($, on) {
+  on("turn.complete", function () { throw new Error("boom"); });
+};
+`,
+    });
+    await manager.loadFromPlugins([
+      plugin([
+        { id: "todo:hangs", path: hangForever },
+        { id: "todo:boom", path: boom },
+      ]),
+    ]);
+    await manager.startSession();
+
+    // 钩子永不 resolve：调用方仍然立刻拿到返回（没有 Promise 可等）。
+    expect(
+      manager.notifyMods("turn.complete", {
+        isAborted: false,
+        durationMs: 1,
+        answer: "",
+        usage: TURN_USAGE,
+      }),
+    ).toBeUndefined();
+
+    await vi.waitFor(() =>
+      expect(logger.warn).toHaveBeenCalledWith(
+        expect.stringContaining("todo:boom 的 turn.complete 失败"),
+      ),
+    );
+
+    await manager.dispose();
+  });
+
+  it("没有注册这两个钩子的 mod 不受影响", async () => {
+    const { manager, statuses } = createManager({ [MOD_PATH]: COUNTER_MOD });
+    await manager.loadFromPlugins([
+      plugin([{ id: "todo:panel", path: MOD_PATH }]),
+    ]);
+    await manager.startSession();
+
+    manager.notifyMods("turn.complete", {
+      isAborted: true,
+      durationMs: 5,
+      answer: "",
+      usage: TURN_USAGE,
+    });
+    // 冲刷一轮事件循环：派发是异步的，这里要给它机会真的跑完再断言「什么都没发生」。
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(statuses).toEqual([]);
+    expect(logger.warn).not.toHaveBeenCalled();
+
+    await manager.dispose();
+  });
+});

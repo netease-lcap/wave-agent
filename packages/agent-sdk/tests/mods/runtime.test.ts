@@ -103,6 +103,10 @@ function host(overrides: Partial<ModRuntimeHost> = {}): ModRuntimeHost {
     })),
     workdir: vi.fn(() => path.resolve("/fake/project")),
     submitPrompt: vi.fn(async () => {}),
+    sessionUsage: vi.fn(() => ({
+      context: { tokens: 0, window: 200_000, percent: 0 },
+      tokens: { prompt: 0, completion: 0, cacheRead: 0, cacheCreation: 0 },
+    })),
     ...overrides,
   };
 }
@@ -325,6 +329,26 @@ describe("ModRuntime 的隔离", () => {
 
     await mod.load();
     expect(mod.hookNames()).toEqual(["session.start"]);
+  });
+
+  it("两个只读的观察事件可以注册", async () => {
+    // spec「完成与审批的观察」：它们只报告事实，宿主丢弃返回值。审批那个用
+    // Claude Code 的 `classic.<Event>` 名字。
+    const { mod } = runtime(`
+      exports.register = function ($, on) {
+        on("turn.complete", function (e) { return "done:" + e.isAborted; });
+        on("classic.PermissionRequest", function (e) { return e.tool_name; });
+      };
+    `);
+
+    await mod.load();
+    expect(mod.hookNames()).toEqual([
+      "turn.complete",
+      "classic.PermissionRequest",
+    ]);
+    await expect(
+      mod.callHook("turn.complete", { isAborted: true, durationMs: 1 }),
+    ).resolves.toMatchObject({ ok: true, value: "done:true" });
   });
 });
 
@@ -951,6 +975,35 @@ describe("ModRuntime 的 $ 命名空间", () => {
       "$.prompt.submit 需要非空的 text",
     ]);
     expect(hostApi.submitPrompt).not.toHaveBeenCalled();
+  });
+
+  it("session.usage 每次给一份新快照，mod 改它伤不到会话", async () => {
+    // 宿主给的是**同一个**对象（缓存实现会这样），克隆是 runtime 的责任。
+    const snapshot = {
+      context: { tokens: 1000, window: 200_000, percent: 1 },
+      tokens: { prompt: 10, completion: 2, cacheRead: 3, cacheCreation: 4 },
+      model: "some-model",
+    };
+    const hostApi = host({ sessionUsage: vi.fn(() => snapshot) });
+    const { mod } = runtime(
+      `
+      exports.register = function ($, on) {
+        on("session.start", function () {
+          var first = $.session.usage();
+          first.context.tokens = 999;
+          first.tokens.prompt = 999;
+          var second = $.session.usage();
+          return [first.context.tokens, second.context.tokens, second.tokens.prompt];
+        });
+      };
+      `,
+      { host: hostApi },
+    );
+
+    await mod.load();
+    const result = await mod.callHook("session.start", {});
+    expect(result.ok && result.value).toEqual([999, 1000, 10]);
+    expect(hostApi.sessionUsage).toHaveBeenCalledTimes(2);
   });
 });
 

@@ -81,6 +81,30 @@ export function getAutoCompactThreshold(
   );
 }
 
+/**
+ * 上下文用量百分比：分母是**自动压缩阈值**，不是裸的上下文窗口。
+ *
+ * 与输入框旁那个用量环同一条规则（`packages/code` 的 `percentOf` 服务线上
+ * 快照，另留了一份以容忍被整体 mock 的 SDK barrel）：环画到 100% 正是压缩要
+ * 发生的地方，换成 `tokens / window` 会让环永远到不了头。
+ */
+export function contextUsagePercent(
+  tokens: number,
+  contextWindow: number,
+  maxOutputTokens: number,
+): number {
+  if (!Number.isFinite(tokens) || tokens <= 0) return 0;
+  if (!Number.isFinite(contextWindow) || contextWindow <= 0) return 0;
+  const threshold = getAutoCompactThreshold(
+    contextWindow,
+    Number.isFinite(maxOutputTokens) && maxOutputTokens > 0
+      ? maxOutputTokens
+      : 32_000,
+  );
+  const base = threshold > 0 ? threshold : contextWindow;
+  return Math.min(100, Math.round((tokens / base) * 100));
+}
+
 export function roughTokenCountForMessages(messages: Message[]): number {
   let total = 0;
   for (const message of messages) {

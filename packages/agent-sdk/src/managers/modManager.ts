@@ -18,8 +18,11 @@ import {
   type ModPanelRenderResult,
   type ModPanelTree,
   type ModPanelUpdatePayload,
+  type ModPermissionRequestEvent,
+  type ModSessionUsage,
   type ModStatusPayload,
   type ModToastPayload,
+  type ModTurnCompleteEvent,
   type PluginMod,
 } from "../types/mods.js";
 import type { Plugin } from "../types/plugins.js";
@@ -45,7 +48,8 @@ import { logger } from "../utils/globalLogger.js";
  * 面板活在**会话**里，不活在 mod 进程里：mod 调 `$.ui.open()` 只是登记一个
  * 面板，真正的内容由 `ui.render` 钩子现算。所以关掉面板的 tab 不需要通知
  * mod 的渲染路径 —— mod 也**收不到**任何「面板被关了」的事件（spec「事件」：
- * 一期只有 `session.start` / `ui.render`，与 Claude Code 的交集）。宿主在这里
+ * 没有这一条，与 Claude Code 的交集就是 `session.start` / `ui.render` 加上两
+ * 个只读的观察事件）。宿主在这里
  * 把该 pane 的快照、回调表与定时器一并丢掉就完了。
  */
 export interface ModManagerOptions {
@@ -117,6 +121,12 @@ function storePath(root: string, pluginName: string): string {
   return path.join(root, `${pluginName}.json`);
 }
 
+/** 没接上用量来源时的快照：全 0，`window: 0` 表示「还不知道」。 */
+const EMPTY_SESSION_USAGE: ModSessionUsage = {
+  context: { tokens: 0, window: 0, percent: 0 },
+  tokens: { prompt: 0, completion: 0, cacheRead: 0, cacheCreation: 0 },
+};
+
 export class ModManager {
   private readonly mods = new Map<string, LoadedMod>();
   private readonly panes = new Map<string, PaneState>();
@@ -156,6 +166,15 @@ export class ModManager {
    * `Agent` 在构造最后接进来，而不是让这个 manager 反过来持有 agent。
    */
   private promptSubmitter?: (text: string) => Promise<void>;
+  /**
+   * `$.session.usage()` 的数据源。
+   *
+   * 用量只有 `Agent` 读得到（上下文窗口、模型、每次响应的 usage 都在它和它下
+   * 面的 manager 手里），与 `promptSubmitter` 同一条理由：由 `Agent` 在构造最
+   * 后接进来，这个 manager 不反过来持有 agent。没接上时给零值快照 —— mod 拿到
+   * 一个 0 而不是抛错。
+   */
+  private sessionUsageProvider?: () => ModSessionUsage;
   private disposed = false;
 
   constructor(private readonly options: ModManagerOptions) {
@@ -170,6 +189,11 @@ export class ModManager {
   /** 接上 prompt 投递通道（见 `promptSubmitter`）。 */
   setPromptSubmitter(fn: (text: string) => Promise<void>): void {
     this.promptSubmitter = fn;
+  }
+
+  /** 接上用量快照（见 `sessionUsageProvider`）。 */
+  setSessionUsageProvider(fn: () => ModSessionUsage): void {
+    this.sessionUsageProvider = fn;
   }
 
   /**
@@ -273,6 +297,8 @@ export class ModManager {
               // `cd` 过之后读的相对路径跟着落在新目录。
               workdir: () => this.options.workdir?.() ?? process.cwd(),
               submitPrompt: (text) => this.submitPrompt(mod.id, text),
+              sessionUsage: () =>
+                this.sessionUsageProvider?.() ?? EMPTY_SESSION_USAGE,
             },
             mod.path,
             compiled,
@@ -318,6 +344,31 @@ export class ModManager {
           `[Wave] ${modId} 未申请面板（没有调用 $.ui.open），本会话不显示`,
         );
       }
+    }
+  }
+
+  /**
+   * 派发一次只读事件（`turn.complete` / `classic.PermissionRequest`，spec「完成
+   * 与审批的观察」）。
+   *
+   * 不等 mod、也不返回 Promise：这两个时刻都压在宿主的关键路径上（轮次收尾、
+   * 审批卡片即将弹出），mod 在里面做网络上报不能把用户的中断或那道审批拖住。
+   * 钩子失败、超时只记一条 warn —— 事件丢了就丢了，宿主不回滚、不重试、不排
+   * 队（瞬时事件本来就没有「补发」这回事）。
+   */
+  notifyMods(
+    event: "turn.complete" | "classic.PermissionRequest",
+    payload: ModTurnCompleteEvent | ModPermissionRequestEvent,
+  ): void {
+    if (this.disposed) return;
+    for (const [modId, loaded] of this.mods) {
+      const runtime = loaded.runtime;
+      if (!runtime) continue;
+      void runtime.callHook(event, payload).then((result) => {
+        if (!result.ok) {
+          logger.warn(`[Wave] ${modId} 的 ${event} 失败：${result.error}`);
+        }
+      });
     }
   }
 

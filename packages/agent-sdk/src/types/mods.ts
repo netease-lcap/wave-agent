@@ -228,6 +228,77 @@ export interface ModFetchResult {
   isTruncated: boolean;
 }
 
+/**
+ * `$.session.usage()` 的快照（spec「会话用量」）。
+ *
+ * 只在 agent 进程内传（不过 RPC），字段名刻意按我们的口径写死，别拿它去对
+ * Claude Code 的 `usage()`：
+ *
+ * - `context.percent` 的分母是**自动压缩阈值**，不是裸 `window` —— 与输入框旁
+ *   那个用量环同一个算法，环画到 100% 就是压缩要发生的地方。
+ * - `tokens.prompt` **含**缓存命中的 token（我们上游的 `prompt_tokens` 就是含
+ *   的），对应 Claude Code 的 `input_tokens` 是**不含**的那种，两者不能互换。
+ */
+export interface ModSessionUsage {
+  /** 上下文占用：`tokens` 是最近一次带 usage 的响应报出的总数。 */
+  context: { tokens: number; window: number; percent: number };
+  /** 整场会话累计的 token（跨轮相加，含压缩轮）。 */
+  tokens: ModTokenTotals;
+  /** 当前模型名；没配时是 `undefined`。 */
+  model?: string;
+}
+
+/**
+ * token 合计，口径与 `$.session.usage().tokens` 同一套字段名。
+ *
+ * 两处用法作用域不同：这里给的是**本轮**的合计，`$.session.usage()` 给的是**整
+ * 场会话**的累计。`prompt` 均**含**缓存命中的 token（我们上游的 `prompt_tokens`
+ * 就是含的），别把它当 Claude Code 的 `input_tokens`（那种不含）。
+ */
+export interface ModTokenTotals {
+  prompt: number;
+  completion: number;
+  cacheRead: number;
+  cacheCreation: number;
+}
+
+/**
+ * `turn.complete` 的载荷（spec「完成与审批的观察」）。
+ *
+ * 与 Claude Code 同名事件对齐的部分是 `isAborted` / `durationMs` / `answer` /
+ * `usage`；**没有** `turnId` / `agentId`（我们一期只报主 agent 的轮次），也不接
+ * 管返回值（CC 的 `{ text }` 会在答案下面显示一行，我们不显示）。
+ */
+export interface ModTurnCompleteEvent {
+  /** 这一轮是被用户中断掉的（Esc / 停止），而不是答完。 */
+  isAborted: boolean;
+  /** 从这一轮开始处理到结束（含 Stop 钩子重开、通知注入重开的循环）。 */
+  durationMs: number;
+  /** 这一轮最后一条 assistant 消息的正文；中断时可能为空串。 */
+  answer: string;
+  /** 本轮所有模型请求的 token 合计（含工具循环里的每一次与每次重开）。 */
+  usage: ModTokenTotals;
+}
+
+/**
+ * `classic.PermissionRequest` 的载荷：一次工具审批**即将**弹给用户。
+ *
+ * 形状刻意与 Claude Code 的 `classic.<Event>` 一致 —— 那是 `PermissionRequest`
+ * 这个 settings hook 收到的 stdin JSON（snake_case，含 `transcript_path`），不是
+ * 我们的 camelCase 内部事件。权限规则自动放行/拒绝、以及 `PermissionRequest`
+ * 钩子直接拒掉的都不会触发，那些情况没有卡片要显示；只读，mod 返回什么都不影
+ * 响审批结果。
+ */
+export interface ModPermissionRequestEvent {
+  session_id: string;
+  transcript_path: string;
+  cwd: string;
+  hook_event_name: "PermissionRequest";
+  tool_name: string;
+  tool_input?: unknown;
+  plan_file_path?: string;
+}
+
 /** 限额（spec「限额」表）。宿主与编译器共用同一份数字。 */
 export const MOD_LIMITS = {
   /** 单个 mod 文件。 */

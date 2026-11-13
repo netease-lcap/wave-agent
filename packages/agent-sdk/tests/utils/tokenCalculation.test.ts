@@ -4,6 +4,7 @@ import {
   estimateContextTokens,
   roughTokenCountForMessages,
   getAutoCompactThreshold,
+  contextUsagePercent,
 } from "@/utils/tokenCalculation.js";
 import type { Message, Usage } from "@/types/index.js";
 
@@ -30,6 +31,26 @@ describe("auto-compaction threshold", () => {
 
   it("never returns a negative threshold", () => {
     expect(getAutoCompactThreshold(10_000, 32_000)).toBe(0);
+  });
+});
+
+describe("contextUsagePercent", () => {
+  it("分母是压缩阈值而不是窗口", () => {
+    // 200k 窗口的阈值是 167k：环画到 100% 就是压缩点。
+    expect(contextUsagePercent(167_000, 200_000, 32_000)).toBe(100);
+    expect(contextUsagePercent(83_500, 200_000, 32_000)).toBe(50);
+  });
+
+  it("封顶 100，空值 / 未知窗口一律 0", () => {
+    expect(contextUsagePercent(400_000, 200_000, 32_000)).toBe(100);
+    expect(contextUsagePercent(0, 200_000, 32_000)).toBe(0);
+    expect(contextUsagePercent(1_000, 0, 32_000)).toBe(0);
+    expect(contextUsagePercent(Number.NaN, 200_000, 32_000)).toBe(0);
+  });
+
+  it("窗口小到阈值为 0 时退回按窗口算", () => {
+    // 16k 窗口 − 摘要输出上限（夹到 20k）− 13k ⇒ 阈值为 0。
+    expect(contextUsagePercent(8_000, 16_000, 32_000)).toBe(50);
   });
 });
 

@@ -11,6 +11,7 @@ import type {
   ModSpawnOptions,
   ModProcessChunk,
   ModProcessExit,
+  ModSessionUsage,
 } from "../types/mods.js";
 import { MOD_LIMITS } from "../types/mods.js";
 import { Box, Text, Button, Input, Link, Code, Markdown } from "./index.js";
@@ -222,6 +223,15 @@ export interface ModDollar {
   prompt: {
     submit(options: { text: string; asUser?: boolean }): Promise<void>;
   };
+  /**
+   * 只读的会话快照（spec「会话用量」）。
+   *
+   * 现取现算、不订阅：`usage()` 每次返回一份新对象，mod 拿它画画，改不动会话
+   * 里的任何东西。要看它变化就在自己的定时器或 `ui.render` 里再问一次。
+   */
+  session: {
+    usage(): ModSessionUsage;
+  };
 }
 
 /** 沙箱需要宿主提供的全部能力。 */
@@ -260,16 +270,26 @@ export interface ModRuntimeHost {
   workdir(): string;
   /** 把一条 prompt 投进当前会话。 */
   submitPrompt(text: string): Promise<void>;
+  /** `$.session.usage()` 的数据源；会话还没起过轮次时给零值快照。 */
+  sessionUsage(): ModSessionUsage;
 }
 
 /**
- * 一期允许注册的钩子（spec「事件」）。
+ * 允许注册的钩子（spec「事件」）。
  *
- * 只有这两个：Claude Code 有 `session.start` / `ui.render` 等同一个集合，但
- * **没有**「面板被关掉」事件 —— 面板的关闭、插件重载、会话销毁都由宿主内部
- * 清理，不通知 mod。别的名字一律拒收，免得插件作者依赖一个不存在的钩子。
+ * `session.start` / `ui.render` 是「要 mod 做事」的那两个；`turn.complete` 与
+ * `classic.PermissionRequest` 是只读的观察事件，返回值一律丢弃。后者用 `classic.`
+ * 前缀是照 Claude Code 的规矩：它把每个 settings hook 事件都镜像成
+ * `classic.<Event>`，我们只做这一个镜像，`e` 的形状也照那份 stdin JSON。
+ * **没有**「面板被关掉」事件 —— 面板的关闭、插件重载、会话销毁都由宿主内部清
+ * 理，不通知 mod。别的名字一律拒收，免得插件作者依赖一个不存在的钩子。
  */
-const HOOK_NAMES = new Set(["session.start", "ui.render"]);
+const HOOK_NAMES = new Set([
+  "session.start",
+  "ui.render",
+  "turn.complete",
+  "classic.PermissionRequest",
+]);
 
 /** 一个已编译文件：路径 + CJS 源码。 */
 export interface CompiledModule {
@@ -504,6 +524,10 @@ export class ModRuntime {
           await host.submitPrompt(text);
         },
       },
+      // 只读快照；克隆一份交出去，mod 改自己的副本伤不到会话。
+      session: {
+        usage: () => cloneValue(host.sessionUsage()),
+      },
     };
 
     this.context = vm.createContext(
@@ -545,7 +569,7 @@ export class ModRuntime {
         if (typeof name !== "string" || typeof handler !== "function") return;
         if (!HOOK_NAMES.has(name)) {
           logger.warn(
-            `[Wave] ${this.host.pluginName} 注册了不存在的 mod 钩子：${name}（一期只有 session.start / ui.render）`,
+            `[Wave] ${this.host.pluginName} 注册了不存在的 mod 钩子：${name}（可用：${[...HOOK_NAMES].join(" / ")}）`,
           );
           return;
         }
