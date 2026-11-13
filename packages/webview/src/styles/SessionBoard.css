@@ -168,11 +168,23 @@
 
 .session-board-filter-arrow {
   flex-shrink: 0;
-  /* 墨迹内衬对齐：codicon 的 16px 盒里 chevron-down 墨迹实测 10×5.5 且居中（盒右缘到
-     墨迹右缘 3.5px）。本控件的文字左内衬是 8px，故**墨迹**右内衬也应取 8px（左右对称，
-     口径同设置页自绘三角那条：SettingsPage.css「让墨迹距输入框内缘 8px」）→ 盒子再左移
-     4.5px；若让盒子直接贴内缘，墨迹只剩 3.5px，比左侧内衬紧 4.5px。 */
-  margin-right: 4.5px;
+  /* 1130 评论（「检查这个下拉是否符合规范并优化」）：三角由 codicon 字形换成官方矢量，
+     契约 §Desktop select trigger 要求「Reuse the current CC downward-chevron vector
+     (not a Unicode triangle)：visible artwork approximately 8×4.5px, centered
+     vertically, right inset 8px from the trigger's inner edge」。
+     画法同设置页自绘三角（SettingsPage.css 那条）：**元素盒 = 墨迹盒 8×4.5**，再用
+     mask 取 16×16 矢量正中的 8×4.5 窗口 —— 这样「8px 内衬」直接等于盒右内衬（padding 8），
+     不必为字形透明边再补位移。改前是 codicon 字形：16px 盒 + margin 4.5px ⇒ 墨迹
+     10×5.5、墨迹右内衬实测 16px（比文字左内衬 8px 整整松一倍，旧注释把位移写反了方向）。
+     墨色见下方 desktop 那条：接参照物的同一个变量（她 1130 第二轮评论「参考这个，三角的
+     颜色不对」），此处 6C7076 只留给非桌面端（插件端保留宿主外观）。 */
+  width: 8px;
+  height: 4.5px;
+  background: currentColor;
+  -webkit-mask: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'><g transform='translate(0,16) scale(1,-1)'><path d='M7.99977 7.22354L5.17108 10.0522C4.91078 10.3125 4.48875 10.3125 4.22844 10.0522C3.96813 9.79192 3.96812 9.36988 4.22843 9.10957L7.29266 6.04533C7.68318 5.65481 8.31635 5.65481 8.70687 6.04534L11.7711 9.10957C12.0314 9.36988 12.0314 9.79192 11.7711 10.0522C11.5108 10.3125 11.0888 10.3125 10.8285 10.0522L7.99977 7.22354Z' fill='%23000'/></g></svg>")
+    center / 16px 16px no-repeat;
+  mask: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'><g transform='translate(0,16) scale(1,-1)'><path d='M7.99977 7.22354L5.17108 10.0522C4.91078 10.3125 4.48875 10.3125 4.22844 10.0522C3.96813 9.79192 3.96812 9.36988 4.22843 9.10957L7.29266 6.04533C7.68318 5.65481 8.31635 5.65481 8.70687 6.04534L11.7711 9.10957C12.0314 9.36988 12.0314 9.79192 11.7711 10.0522C11.5108 10.3125 11.0888 10.3125 10.8285 10.0522L7.99977 7.22354Z' fill='%23000'/></g></svg>")
+    center / 16px 16px no-repeat;
   color: #6c7076;
 }
 
@@ -397,17 +409,101 @@
 }
 
 [data-host="desktop"][data-theme="dark"] .session-board-filter {
-  border-color: rgba(255, 255, 255, 0.12);
-  background: #27292b;
-  color: #e6e6e6;
+  /* 描边走契约字段映射（`--cc-field-*` 声明在 host-desktop.css 根级）：
+     静止 #414649 / hover #858B8F / 展开·聚焦 #A0A5A8，改前是 12% · 24% 白两档
+     （没有任何一档等于契约值）。底色跟着走 `--cc-field-bg` = #1B1D1E（设计师
+     1130 裁定「要换」）：改前是看板面板面 #27292B，比契约字段底浅一档。 */
+  border-color: var(--cc-field-border);
+  background: var(--cc-field-bg);
+  color: var(--cc-field-text);
+}
+
+/* 1130 第二轮评论（点 `button.settings-select-trigger`「中文」、「参考这个，三角的颜色
+   不对」）：先定的「三角一律用文本色」。
+   1130 第三轮评论（点 `div.desktop-host-trigger`「本地」、「三角默认和这里保持一致，
+   hover 以后才变文本色」）改成两档：静止一档、悬停提亮到文本色。
+   1130 第四轮评论「可以再浅一档」：静止档在第三轮的基础上再退一档 ——
+     · 静止 = `#6c7076`（浅）/ `#858b8f`（深）。第三轮那版分别与灰条触发器
+       `.desktop-host-trigger` 的字色逐值相同（浅 #565a60 / 深 #9a9ea5），这一版是
+       在同一个中性梯度上各退一格：浅 #565A60 → #6C7076（= `--cc-text-secondary`）、
+       深 #9A9EA5 → #858B8F（= `--cc-text-placeholder`）。两档对字段底的对比度
+       因此几乎相等：浅 4.98:1 / 深 4.90:1 —— 三角是纯装饰符号，退到「看得见但不抢
+       文字」的浓度；两个主题的弱化程度一次对齐。
+       注：**不再与参照物逐值相同**（参照物仍是 #565a60 / #9a9ea5），这是刻意的，
+       别按「和本地一致」回退。
+     · 悬停 = `--vscode-input-foreground`（= 第二轮「参考那个」定下的文本色档）。1130 第
+       五轮「要补」把浅色块缺的这条桥补上了（host-desktop.css 浅色块），于是浅色从基础
+       主题的 `#202020` 变成 `--cc-text-primary` `#1F2329` —— 与触发器自己的字色
+       `--cc-field-text` 逐值相同；深色 rgb(229,231,232) 不变。
+   特异性排布：静态档 (0,2,0)、深色静态档 (0,3,0)、悬停档 (0,3,0) 且写在最后 ⇒
+   深色下同特异性靠顺序赢，四种组合（浅/深 × 悬停与否）实测都取对应档。
+   展开态与键盘焦点**不动墨色**（按她的原话只认 hover）；要加再说。 */
+[data-host="desktop"] .session-board-filter-arrow {
+  color: #6c7076;
 }
 
 [data-host="desktop"][data-theme="dark"] .session-board-filter-arrow {
-  color: #9a9ea5;
+  color: #858b8f;
+}
+
+[data-host="desktop"] .session-board-filter:hover .session-board-filter-arrow {
+  color: var(--vscode-input-foreground, var(--cc-field-text));
 }
 
 [data-host="desktop"][data-theme="dark"] .session-board-filter:hover {
-  border-color: rgba(255, 255, 255, 0.24);
+  border-color: var(--cc-field-border-hover);
+}
+
+/* ── 1130 评论（点 `div.session-board-filter`「全部项目」）「检查这个下拉是否符合规范
+   并优化」：触发器接契约 §Input fields「Desktop form field colors and focus」的三态 ——
+   本族是第三族（前两族：设置页行内字段、侧栏搜索；映射本身在 host-desktop.css 根级），
+   浅色 #DCDFE6 → `--cc-field-border` #C5C9CE、hover #C0C4CC → `--cc-field-border-hover`
+   #6C7076，并补上改前完全没有的**展开/聚焦**档 `--cc-field-border-focus` #565A60。
+   几何一律不动：160×32 / 1px / 14px / 文字左内衬 8px（+1px 描边 = 实测 9px）。
+
+   1130 设计师三处裁定（问她三选一，答复「按契约来 / 要换 / 要翻」）：
+     · 圆角 r6 → 8px：契约 §Input fields 开头「select triggers use the shared 8px input
+       radius」；Figma「Select Input」节点标的 r6 自此不再适用（与创作集表单 select 的
+       r8 拉齐）→ 走 `var(--cc-radius-md, 8px)`，同族写法。
+     · 深色底 #27292B → `--cc-field-bg` #1B1D1E（见上面的 dark 块）。
+     · 三角展开时翻成「^」（见文末 `.is-open` 那条）。
+
+   展开态（`.is-open`，由 `filterMenuOpen` 给）与真实焦点解耦：契约「While the popup is
+   expanded, retain the trigger's focus/active border even when keyboard focus moves into
+   the options」+「On dismissal remove expanded styling」⇒ 关掉 `is-open` 即撤销。
+   `:has()` 那条给键盘焦点：透明触发器 `opacity:0`，焦点环会被一起透明化，故焦点可见性
+   落到父级描边上（契约「Preserve the field's actual focus visibility」）。
+   这两条放在 hover 之后 ⇒ 复合态按契约「focus/expanded border takes precedence over
+   hover」：同特异性靠顺序赢，深色那档靠 4 档特异性压过 dark hover。 */
+[data-host="desktop"] .session-board-filter {
+  border-color: var(--cc-field-border);
+  background: var(--cc-field-bg);
+  border-radius: var(--cc-radius-md, 8px);
+  color: var(--cc-field-text);
+}
+
+[data-host="desktop"] .session-board-filter:hover {
+  border-color: var(--cc-field-border-hover);
+}
+
+[data-host="desktop"] .session-board-filter.is-open,
+[data-host="desktop"]
+  .session-board-filter:has(> .session-board-filter-select:focus-visible),
+[data-host="desktop"][data-theme="dark"] .session-board-filter.is-open,
+[data-host="desktop"][data-theme="dark"]
+  .session-board-filter:has(> .session-board-filter-select:focus-visible) {
+  border-color: var(--cc-field-border-focus);
+}
+
+/* 展开时三角翻成「^」（1130 裁定「要翻」）：契约没规定方向，但展开态用翻转表达
+   「点这里收起」是产品里 disclosure 的既有语义（侧栏分组头 expanded→「v」是另一种
+   方向约定，此处恰好相反 —— 这里「v」表示「点开」，「^」表示「点收」）。
+   只绕盒心转 180°，墨迹盒与内衬（8×4.5 / 右内衬 8px）逐值不变；不加过渡：
+   同文件的折叠箭头族（侧栏分组、文件树）也都没有旋转动画，保持一致。 */
+[data-host="desktop"]
+  .session-board-filter.is-open
+  .session-board-filter-arrow {
+  transform: rotate(180deg);
 }
 
 /* 深色列头色块：状态色 12% 透明底；胶囊点用状态色本身 */

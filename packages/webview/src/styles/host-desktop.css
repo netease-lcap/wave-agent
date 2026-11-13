@@ -24,7 +24,9 @@
    --vscode-* 桥接到语义变量。值档标注 user-approved / derived。
    ════════════════════════════════════════════════════════════════════ */
 
-/* ── 浅色：桌面语义值（现值快照；浅色桥接只替换既有覆盖，不新增）── */
+/* ── 浅色：桌面语义值（现值快照；浅色桥接只替换既有覆盖，不新增）──
+   例外：1130 按评论补的 `--vscode-input-foreground` 桥 —— 深色块本来就有这条，
+   浅色漏写导致字段前景落到基础主题，属补齐对称，不是新语义。 */
 :root[data-host="desktop"][data-theme="light"] {
   /* 表面 */
   --cc-bg-conversation: #ffffff; /* 对话画布（= panel-background） */
@@ -95,6 +97,17 @@
   --vscode-panel-border: var(--cc-border-light);
   --vscode-widget-border: var(--cc-border-light);
   --vscode-input-border: var(--cc-border);
+
+  /* 1130 评论链条（看板筛选三角「参考这个」→ 我提「浅色桥接要不要补」→ 她答「要补」）：
+     深色块一直有这条桥（见 dark 块 `--vscode-input-foreground: var(--cc-text-primary)`），
+     浅色漏写，于是浅色下所有「字段前景」消费点落在 VS Code 基础主题的 #202020，与字段
+     自己的字色 `--cc-field-text`（= `--cc-text-primary` #1F2329）差 7/255 —— 同一个输入框里
+     文字与三角/图标不同源。补上后浅色字段前景 = #1F2329，两模式同一条链。
+     影响面：所有 `var(--vscode-input-foreground)` 消费点（输入框/搜索框字色、部分图标），
+     浅色下统一 #202020 → #1F2329（Δ7/255）；插件端（非 data-host="desktop"）不受影响。
+     同族的 `--vscode-foreground` / `-placeholderForeground` / `-descriptionForeground` /
+     `-disabledForeground` 浅色仍取 VS Code 原值，未在本次范围（见报告待裁）。 */
+  --vscode-input-foreground: var(--cc-text-primary);
 
   /* 0915-T-01：浅色补齐与深色档同族的三条中性角色桥接（codechat
      references/desktop-theme-bridge.md「Mapping by meaning」）——
