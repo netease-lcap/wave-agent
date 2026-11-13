@@ -57,6 +57,12 @@ import {
   describeWorktreeSurvival,
   worktreeCreationBranch,
 } from "../utils/worktree.js";
+import {
+  restoreRemoteControl,
+  sampleRemoteControlState,
+  shouldRestoreRemoteControl,
+} from "../remote/remoteControlRestore.js";
+import { readStoredRemoteControlName } from "../remote/remoteControlConfig.js";
 
 /**
  * Fixed default daemon socket (spec: 默认 socket 固定，无 --socket 覆盖). The
@@ -1674,8 +1680,38 @@ export async function daemonStopCommand(socketPath: string): Promise<void> {
  * fresh daemon is started on demand from the current CLI; when none is
  * running this just starts one. Exits 1 with a clear error if the daemon
  * cannot be stopped or the fresh one does not come up.
+ *
+ * Remote control rides through the restart (spec: 场景 7): the state is sampled
+ * **before** the stop — once the process is gone there is nothing left to ask —
+ * and, when it was `online` / `connecting`, the fresh daemon is told to dial
+ * again, carrying the stored label so the phone's row keeps its name.
+ * Two deliberate limits:
+ *
+ * - **Only this path.** The sample lives in this function's scope and nowhere
+ *   else: boot, and the on-demand start every other subcommand performs when the
+ *   socket is missing, must never turn remote control on. A persisted "it was on
+ *   last time" marker would be read at process start and would become exactly the
+ *   auto-start this machine no longer wants, so there is none (see
+ *   `remote/remoteControlRestore.ts`). The one thing read from
+ *   `remote-control.json` here is the display name, which carries no intent.
+ * - **Never changes the exit code, never prints the banner.** The restart itself
+ *   already succeeded, so a failed restore is a stderr warning with a command the
+ *   user can run by hand; the success line is one line, with no page address or
+ *   QR code (that belongs to `wave remote-control on`).
  */
 export async function daemonRestartCommand(socketPath: string): Promise<void> {
+  // Sampled off a connection that never starts a daemon: "is it running" and
+  // "was the switch on" are separate questions, and a restart of a machine with
+  // no daemon must stay a plain start.
+  let keepRemoteControl = false;
+  const sampling = await connectDaemonIfRunning(socketPath);
+  if (sampling) {
+    keepRemoteControl = shouldRestoreRemoteControl(
+      await sampleRemoteControlState(sampling),
+    );
+    sampling.dispose();
+  }
+
   let wasRunning = false;
   try {
     wasRunning = await stopDaemon(socketPath);
@@ -1685,7 +1721,35 @@ export async function daemonRestartCommand(socketPath: string): Promise<void> {
   // connectDaemonOrExit starts a daemon when the socket is absent and retries
   // until it comes up (exit 1 with the spec'd error on timeout).
   const client = await connectDaemonOrExit(socketPath);
-  client.dispose();
-  console.log(wasRunning ? "Daemon restarted" : "Daemon started");
+  try {
+    console.log(wasRunning ? "Daemon restarted" : "Daemon started");
+    if (keepRemoteControl) {
+      // The label the machine registered with: a fresh daemon has no name of its
+      // own, and the phone's row would lose it on every restart otherwise.
+      const restored = await restoreRemoteControl(
+        client,
+        readStoredRemoteControlName(),
+      );
+      const reason = restored.reason ?? "unknown reason";
+      if (restored.ok) {
+        console.log("Remote control restored (online)");
+      } else if (restored.retrying) {
+        // Still dialing: the daemon keeps retrying inside its own bounded
+        // window, so re-dialing by hand would throw away a link that may be
+        // about to come up. Point at the read-only command instead.
+        console.error(
+          `Remote control is still connecting (${reason}). The daemon keeps retrying in the background — check \`wave remote-control status\`.`,
+        );
+      } else {
+        // stderr, not stdout: the restart succeeded, and scripts reading stdout
+        // must not start believing it failed.
+        console.error(
+          `Remote control was not restored (${reason}). Turn it back on with \`wave remote-control on\`.`,
+        );
+      }
+    }
+  } finally {
+    client.dispose();
+  }
   process.exit(0);
 }

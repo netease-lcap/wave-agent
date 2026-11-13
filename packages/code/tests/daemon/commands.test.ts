@@ -106,6 +106,22 @@ vi.mock("../../src/utils/worktree.js", async (importOriginal) => {
   };
 });
 
+// The restore dial carries the label this machine registered with, which comes
+// from ~/.wave/remote-control.json. Keep the rest of that module real (settings
+// / endpoint resolution) and answer the label from here, so the suite never
+// reads the developer's own file.
+let storedRemoteControlName: string | undefined;
+vi.mock("../../src/remote/remoteControlConfig.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("../../src/remote/remoteControlConfig.js")
+    >();
+  return {
+    ...actual,
+    readStoredRemoteControlName: () => storedRemoteControlName,
+  };
+});
+
 // vitest.config onConsoleLog throws on any stderr console output — commands use
 // console.error for diagnostics, so capture it (and raw writes) here.
 const stderrWriteSpy = vi
@@ -148,6 +164,9 @@ import {
 import { createWorktree, removeWorktree } from "../../src/utils/worktree.js";
 import { daemonLogFile } from "../../src/daemon/daemonLog.js";
 import { isWindowsPipeName } from "../../src/daemon/socketPath.js";
+import { remoteRestorePolicy } from "../../src/remote/remoteControlRestore.js";
+import type { RemoteControlSink } from "../../src/remote/remoteControlSink.js";
+import type { RemoteControlSnapshot, RemoteControlState } from "wave-agent-sdk";
 
 /** Where the on-demand daemon's stderr log lands (WAVE_LOGS_DIR override). */
 const logsDir = path.join(os.tmpdir(), `wave-daemon-logs-${process.pid}`);
@@ -155,6 +174,58 @@ const logsDir = path.join(os.tmpdir(), `wave-daemon-logs-${process.pid}`);
 /** When set, the spawn mock starts a real daemon here so the retry succeeds. */
 let autoStartSocket: string | undefined;
 let autoStartServer: DaemonServer | undefined;
+/** Remote control of the daemon the spawn mock starts — set by a test that
+ * cares whether the fresh daemon was told to dial. Unset means the fresh daemon
+ * has no remote control at all (the RPCs then answer "not enabled"). */
+let autoStartRemoteSink: FakeRemoteSink | undefined;
+
+/**
+ * A remote-control sink double: the state the daemon would report, and a count
+ * of dials. `afterConnect` is what the sink reports once `connect` lands — the
+ * real service answers `connecting` immediately (the dial is async) and the
+ * caller polls, so both shapes are representable here.
+ */
+interface FakeRemoteSink extends RemoteControlSink {
+  state: RemoteControlState;
+  message: string | undefined;
+  connects: number;
+  /** The label each dial carried — `undefined` when the dial carried none. */
+  names: Array<string | undefined>;
+}
+
+function createFakeRemoteSink(
+  options: {
+    state?: RemoteControlState;
+    afterConnect?: { state: RemoteControlState; message?: string };
+  } = {},
+): FakeRemoteSink {
+  const sink: FakeRemoteSink = {
+    state: options.state ?? "off",
+    message: undefined,
+    connects: 0,
+    names: [],
+    getSnapshot(): RemoteControlSnapshot {
+      return {
+        state: sink.state,
+        ...(sink.message ? { message: sink.message } : {}),
+      };
+    },
+    connect(name?: string): void {
+      sink.connects += 1;
+      sink.names.push(name);
+      sink.state = options.afterConnect?.state ?? "connecting";
+      sink.message = options.afterConnect?.message;
+    },
+    disconnect(): void {
+      sink.state = "off";
+      sink.message = undefined;
+    },
+    sendNotification(): void {},
+    stop(): void {},
+  };
+  return sink;
+}
+
 /** What the fake `wave --daemon` child does once spawned: write to its stderr —
  * the log file the parent handed it — and exit with a code. That pair is what
  * the failure diagnostics report. Unset means "stays alive, says nothing". */
@@ -167,7 +238,11 @@ let fakeDaemonChild: { exitsWith: number; stderr?: string } | undefined;
 // whole start timeout — sees a real event.
 vi.mocked(spawn).mockImplementation(() => {
   if (autoStartSocket) {
-    const s = new DaemonServer({ socketPath: autoStartSocket });
+    const remoteSink = autoStartRemoteSink;
+    const s = new DaemonServer({
+      socketPath: autoStartSocket,
+      ...(remoteSink ? { createRemoteSink: () => remoteSink } : {}),
+    });
     void s.start().then(() => {
       autoStartServer = s;
     });
@@ -429,12 +504,17 @@ async function stdoutOf(run: () => Promise<unknown>): Promise<string[]> {
 
 let server: DaemonServer;
 let socketPath: string;
+/** Remote control of the daemon `beforeEach` starts. */
+let hubRemoteSink: FakeRemoteSink;
+/** The restore budget, restored after every test (tests shorten it). */
+const savedRemoteRestorePolicy = { ...remoteRestorePolicy };
 
 beforeEach(async () => {
   vi.clearAllMocks();
   gitTopLevel = "";
   gitBranch = "";
   gitLookupError = null;
+  storedRemoteControlName = undefined;
   vi.mocked(loadUserConfigEnv).mockReturnValue({});
   vi.mocked(Agent.create).mockResolvedValue(createMockAgent());
   // The auto-start child's stderr goes to a log file under this dir; keep it out
@@ -442,7 +522,14 @@ beforeEach(async () => {
   process.env.WAVE_LOGS_DIR = logsDir;
   fs.rmSync(logsDir, { recursive: true, force: true });
   socketPath = daemonTestSocketPath("server");
-  server = new DaemonServer({ socketPath });
+  // Every daemon in this suite answers the three `remoteControl*` RPCs; its
+  // state starts at `off`, which is what a machine that never dialed reports —
+  // so `restart` has nothing to restore unless a test says otherwise.
+  hubRemoteSink = createFakeRemoteSink();
+  server = new DaemonServer({
+    socketPath,
+    createRemoteSink: () => hubRemoteSink,
+  });
   await server.start();
 });
 
@@ -451,9 +538,12 @@ afterEach(async () => {
   daemonStartTimeout.ms = 10_000;
   daemonExitGrace.ms = 1_500;
   waitPollInterval.ms = 2_000;
+  Object.assign(remoteRestorePolicy, savedRemoteRestorePolicy);
+  storedRemoteControlName = undefined;
   await autoStartServer?.stop();
   autoStartServer = undefined;
   autoStartSocket = undefined;
+  autoStartRemoteSink = undefined;
   fakeDaemonChild = undefined;
   delete process.env.WAVE_LOGS_DIR;
   fs.rmSync(logsDir, { recursive: true, force: true });
@@ -3208,4 +3298,136 @@ test("restart: starts a fresh daemon when none is running", async () => {
   );
   expect(stdoutLines()).toEqual(["Daemon started"]);
   expect(exitSpy).toHaveBeenCalledWith(0);
+});
+
+// ── restart keeps the remote-control switch (spec: 场景 7) ──────
+
+test("restart: an online machine is online again afterwards, without the page banner", async () => {
+  hubRemoteSink.state = "online";
+  autoStartSocket = socketPath;
+  autoStartRemoteSink = createFakeRemoteSink({
+    state: "off",
+    afterConnect: { state: "online" },
+  });
+  storedRemoteControlName = "my-laptop";
+  daemonStartTimeout.ms = 2_000;
+
+  await expect(daemonRestartCommand(socketPath)).rejects.toThrow("exit(0)");
+
+  // One short confirmation line, and nothing that looks like `remote-control
+  // on`'s answer: no page address, no QR code.
+  expect(stdoutLines()).toEqual([
+    "Daemon restarted",
+    "Remote control restored (online)",
+  ]);
+  expect(autoStartRemoteSink.connects).toBe(1);
+  // The fresh daemon has no name of its own, so the dial carries the stored
+  // label — otherwise the phone's row loses it on every restart.
+  expect(autoStartRemoteSink.names).toEqual(["my-laptop"]);
+  expect(exitSpy).toHaveBeenCalledWith(0);
+});
+
+test("restart: a machine that was off stays off", async () => {
+  hubRemoteSink.state = "off";
+  autoStartSocket = socketPath;
+  autoStartRemoteSink = createFakeRemoteSink({ state: "off" });
+  daemonStartTimeout.ms = 2_000;
+
+  await expect(daemonRestartCommand(socketPath)).rejects.toThrow("exit(0)");
+
+  expect(stdoutLines()).toEqual(["Daemon restarted"]);
+  // The fresh daemon HAS remote control available — the only reason it was not
+  // dialed is that nobody had turned it on before the restart.
+  expect(autoStartRemoteSink.connects).toBe(0);
+});
+
+test("restart: a machine whose remote control was in error stays off", async () => {
+  hubRemoteSink.state = "error";
+  hubRemoteSink.message = "host token revoked";
+  autoStartSocket = socketPath;
+  autoStartRemoteSink = createFakeRemoteSink({
+    state: "off",
+    afterConnect: { state: "online" },
+  });
+  daemonStartTimeout.ms = 2_000;
+
+  await expect(daemonRestartCommand(socketPath)).rejects.toThrow("exit(0)");
+
+  // `error` is usually a revoked / expired host token (90-day, revocable): a
+  // restart keeps the state, it does not retry a broken dial on the user's
+  // behalf — so nothing is dialed and nothing is printed about it.
+  expect(autoStartRemoteSink.connects).toBe(0);
+  expect(stdoutLines()).toEqual(["Daemon restarted"]);
+  expect(stderrText()).not.toContain("Remote control");
+});
+
+test("restart: a failed restore warns on stderr and still exits 0", async () => {
+  hubRemoteSink.state = "online";
+  autoStartSocket = socketPath;
+  autoStartRemoteSink = createFakeRemoteSink({
+    state: "off",
+    afterConnect: {
+      state: "error",
+      message: "the relay refused this machine",
+    },
+  });
+  daemonStartTimeout.ms = 2_000;
+
+  await expect(daemonRestartCommand(socketPath)).rejects.toThrow("exit(0)");
+
+  // The restart itself succeeded: stdout says so and the exit code stays 0.
+  expect(stdoutLines()).toEqual(["Daemon restarted"]);
+  expect(exitSpy).toHaveBeenCalledWith(0);
+  const warning = stderrText();
+  expect(warning).toContain("the relay refused this machine");
+  // ... and the user is told the command that fixes it by hand.
+  expect(warning).toContain("wave remote-control on");
+});
+
+test("restart: a machine with no daemon running never turns remote control on", async () => {
+  const missing = daemonTestSocketPath("restart-rc-off");
+  autoStartSocket = missing;
+  autoStartRemoteSink = createFakeRemoteSink({ state: "off" });
+  daemonStartTimeout.ms = 2_000;
+
+  await expect(daemonRestartCommand(missing)).rejects.toThrow("exit(0)");
+
+  // Nothing was there to sample, so nothing may be restored — the on-demand
+  // start must never become an auto-start.
+  expect(autoStartRemoteSink.connects).toBe(0);
+  expect(stdoutLines()).toEqual(["Daemon started"]);
+});
+
+test("on-demand start: a subcommand that finds no daemon does not turn remote control on", async () => {
+  const missing = daemonTestSocketPath("ondemand-rc-off");
+  autoStartSocket = missing;
+  autoStartRemoteSink = createFakeRemoteSink({ state: "off" });
+  daemonStartTimeout.ms = 2_000;
+
+  await expect(daemonListCommand(missing)).rejects.toThrow("exit(0)");
+
+  expect(autoStartRemoteSink.connects).toBe(0);
+  expect(stdoutLines()).toEqual(["No sessions"]);
+});
+
+test("restart: a dial still in flight warns without telling the user to re-dial", async () => {
+  hubRemoteSink.state = "online";
+  autoStartSocket = socketPath;
+  // Never settles: the fresh daemon is still dialing when the budget runs out.
+  autoStartRemoteSink = createFakeRemoteSink({ state: "off" });
+  daemonStartTimeout.ms = 2_000;
+  remoteRestorePolicy.attemptTimeoutMs = 200;
+  remoteRestorePolicy.pollIntervalMs = 50;
+
+  await expect(daemonRestartCommand(socketPath)).rejects.toThrow("exit(0)");
+
+  expect(exitSpy).toHaveBeenCalledWith(0);
+  const warning = stderrText();
+  // The service keeps retrying inside its own window, so a second manual dial
+  // would throw away a link that may be about to come up — point at `status`.
+  expect(warning).toContain("still connecting");
+  expect(warning).toContain("wave remote-control status");
+  expect(warning).not.toContain("wave remote-control on");
+  // One dial, not a retry loop: the budget is a single wait, ~4s in production.
+  expect(autoStartRemoteSink.connects).toBe(1);
 });

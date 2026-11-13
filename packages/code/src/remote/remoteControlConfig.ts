@@ -100,6 +100,18 @@ function writeState(state: RemoteControlStateFile): void {
 }
 
 /**
+ * The label registration sent, so a restore dial keeps the same name on the
+ * relay.
+ *
+ * Only a display name: a fresh process has no `name` of its own until its first
+ * `connect(name)`, and the relay shows whatever the last `hostHello` carried —
+ * so a `daemon restart` that dialed without it would blank the phone's row.
+ */
+export function readStoredRemoteControlName(): string | undefined {
+  return readState().name;
+}
+
+/**
  * RPC base for the relay's REST surface (`/api/relay/hosts`, …): the same
  * deployment that serves the WebSocket channel.
  *
