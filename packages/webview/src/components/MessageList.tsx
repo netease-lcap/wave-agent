@@ -96,7 +96,6 @@ export const MessageList = forwardRef<
     hasEarlier,
     isLoadingEarlier,
     onLoadEarlier,
-    docKey,
     initialFind,
   },
   ref,
@@ -199,15 +198,14 @@ export const MessageList = forwardRef<
   /** 行的定位容器，手势期的视觉补偿写在这上面（见 useVirtualRows）。 */
   const canvasRef = useRef<HTMLDivElement | null>(null);
 
-  // 虚拟化内核（自研，见 `src/virtual/`）。它自己管滚动分类、钉底状态、锚点补偿
-  // 与阅读位置记录；这里只管「什么时候该钉/松手」和行内渲染。
+  // 虚拟化内核（自研，见 `src/virtual/`）。它自己管滚动分类、钉底状态与锚点补偿；
+  // 这里只管「什么时候该钉/松手」和行内渲染。
   const list = useVirtualRows({
     keys,
     // 估算闭包依赖正文列宽：列宽一变它就是个新闭包，账本里那批「按旧列宽估算」的
     // 未挂载行跟着重算（见 `estimate` 选项的注释）。
     estimate,
     originOffsetPx: COLUMN_PADDING_PX,
-    docKey,
     canvasRef,
   });
   const {
@@ -409,11 +407,6 @@ export const MessageList = forwardRef<
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
-
-  // 换会话就关掉：新会话的命中与旧的关键词无关，留下的高亮还会指向已被卸载的行。
-  useEffect(() => {
-    setFind({ ...EMPTY_TRANSCRIPT_FIND, open: false });
-  }, [docKey]);
 
   // 侧栏「内容命中」跳进来（spec desktop/desktop-sessions.md 场景 6）：把种子变成
   // 一次真正的查找。`nonce` 让连点同一处也能重新落位。消息还没到时 `findHits` 为空、
