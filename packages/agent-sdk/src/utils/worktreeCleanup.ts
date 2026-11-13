@@ -115,7 +115,7 @@ export async function cleanupStaleEphemeralWorktrees(
     if (!(await isCleanAndFullyPushed(worktreePath))) continue;
 
     try {
-      removeWorktree({
+      await removeWorktree({
         name,
         path: worktreePath,
         branch: worktreeBranchName(name),

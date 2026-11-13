@@ -877,7 +877,7 @@ export class SubagentManager {
     }
 
     try {
-      removeWorktree({
+      await removeWorktree({
         name: session.worktreeName,
         path: session.worktreePath,
         branch: session.worktreeBranch,

@@ -115,6 +115,10 @@ vi.mock("node:fs", () => ({
     mkdir: vi.fn(),
     copyFile: vi.fn(),
     cp: vi.fn(),
+    readdir: vi.fn(),
+    rm: vi.fn(),
+    unlink: vi.fn(),
+    rmdir: vi.fn(),
   },
 }));
 
@@ -553,23 +557,22 @@ describe("worktreeUtils", () => {
         if (content === undefined) throw failWith("ENOENT");
         return encoding ? content : Buffer.from(content);
       }) as unknown as typeof fs.readFileSync);
-      vi.mocked(fs.readdirSync).mockImplementation(((
+      // The delete itself walks the tree through `fs.promises` (it runs inside
+      // the long-lived `wave --stdio` process, so it must not block the event
+      // loop); `readdirSync` survives only for `describeWorktreeResidue`, which
+      // reads one level to say what a failed removal left behind.
+      vi.mocked(fs.readdirSync).mockImplementation(((p: string) => {
+        return fakeEntries(p).map((entry) => entry.name);
+      }) as unknown as typeof fs.readdirSync);
+      vi.mocked(fs.promises.readdir).mockImplementation((async (
         p: string,
         options?: { withFileTypes?: boolean },
       ) => {
-        const entries = fakeFs.children.get(fakeFs.key(p));
-        if (entries === undefined) throw failWith("ENOENT");
-        if (options?.withFileTypes) {
-          return entries.map((entry) => ({
-            name: entry.name,
-            isSymbolicLink: () => entry.link,
-            isDirectory: () => entry.dir,
-            isFile: () => !entry.dir && !entry.link,
-          }));
-        }
+        const entries = fakeEntries(p);
+        if (options?.withFileTypes) return direntsOf(entries);
         return entries.map((entry) => entry.name);
-      }) as unknown as typeof fs.readdirSync);
-      vi.mocked(fs.rmSync).mockImplementation(((p: string) => {
+      }) as unknown as typeof fs.promises.readdir);
+      vi.mocked(fs.promises.rm).mockImplementation((async (p: string) => {
         const key = fakeFs.key(p);
         if (fakeFs.rmError) throw fakeFs.rmError;
         fakeFs.ops.push(`rm:${key}`);
@@ -581,8 +584,8 @@ describe("worktreeUtils", () => {
             fakeFs.files.delete(file);
           }
         }
-      }) as unknown as typeof fs.rmSync);
-      vi.mocked(fs.unlinkSync).mockImplementation(((p: string) => {
+      }) as unknown as typeof fs.promises.rm);
+      vi.mocked(fs.promises.unlink).mockImplementation((async (p: string) => {
         const key = fakeFs.key(p);
         if (fakeFs.unlinkError) throw fakeFs.unlinkError;
         // A junction is a directory reparse point: unlink does not remove it.
@@ -590,14 +593,14 @@ describe("worktreeUtils", () => {
         if (!fakeFs.files.has(key)) throw failWith("ENOENT");
         fakeFs.files.delete(key);
         fakeFs.ops.push(`unlink:${key}`);
-      }) as unknown as typeof fs.unlinkSync);
-      vi.mocked(fs.rmdirSync).mockImplementation(((p: string) => {
+      }) as unknown as typeof fs.promises.unlink);
+      vi.mocked(fs.promises.rmdir).mockImplementation((async (p: string) => {
         const key = fakeFs.key(p);
         if (!fakeFs.links.has(key)) throw failWith("ENOTEMPTY");
         fakeFs.links.delete(key);
         fakeFs.ops.push(`rmdir:${key}`);
-      }) as unknown as typeof fs.rmdirSync);
-      vi.mocked(fs.writeFileSync).mockImplementation(((
+      }) as unknown as typeof fs.promises.rmdir);
+      vi.mocked(fs.promises.writeFile).mockImplementation((async (
         p: string,
         content: unknown,
       ) => {
@@ -606,7 +609,30 @@ describe("worktreeUtils", () => {
         fakeFs.files.set(key, String(content));
         fakeFs.written.push({ file: key, content });
         fakeFs.ops.push(`write:${key}`);
-      }) as unknown as typeof fs.writeFileSync);
+      }) as unknown as typeof fs.promises.writeFile);
+    }
+
+    /** `readdir` on the fake tree, with the ENOENT a real one would raise. */
+    function fakeEntries(p: string): Array<{
+      name: string;
+      link: boolean;
+      dir: boolean;
+    }> {
+      const entries = fakeFs.children.get(fakeFs.key(p));
+      if (entries === undefined) throw failWith("ENOENT");
+      return entries;
+    }
+
+    /** The same entries in the shape `withFileTypes` hands back. */
+    function direntsOf(
+      entries: Array<{ name: string; link: boolean; dir: boolean }>,
+    ) {
+      return entries.map((entry) => ({
+        name: entry.name,
+        isSymbolicLink: () => entry.link,
+        isDirectory: () => entry.dir,
+        isFile: () => !entry.dir && !entry.link,
+      }));
     }
 
     /** A linked worktree of REPO_ROOT that git still registers. */
@@ -637,11 +663,11 @@ describe("worktreeUtils", () => {
      * unlink, so a test has to be able to reach them separately.
      */
     function failShellDelete(code: string) {
-      const removeEntry = vi.mocked(fs.rmSync).getMockImplementation()!;
-      vi.mocked(fs.rmSync).mockImplementation(((p, options) => {
+      const removeEntry = vi.mocked(fs.promises.rm).getMockImplementation()!;
+      vi.mocked(fs.promises.rm).mockImplementation((async (p, options) => {
         if (fakeFs.key(String(p)) === WORKTREE_PATH) throw failWith(code);
-        removeEntry(p, options);
-      }) as typeof fs.rmSync);
+        await removeEntry(p, options);
+      }) as typeof fs.promises.rm);
     }
 
     /** Git subcommands issued, in order — `["worktree prune", "branch -D x"]`. */
@@ -666,13 +692,13 @@ describe("worktreeUtils", () => {
       clearGlobalLogger();
     });
 
-    it("deletes the contents before detaching the pointer, then removes the shell, then prunes and deletes the branch", () => {
+    it("deletes the contents before detaching the pointer, then removes the shell, then prunes and deletes the branch", async () => {
       const [srcPath, pkgPath] = givenWorktreeWithContent(
         "src",
         "package.json",
       );
 
-      worktreeUtils.removeWorktree(INFO);
+      await worktreeUtils.removeWorktree(INFO);
 
       // The order IS the implementation. The long, failure-prone pass (the tree
       // contents) runs while `.git` is still on disk, so git keeps registering
@@ -691,13 +717,13 @@ describe("worktreeUtils", () => {
       // prune has to run before branch -D: git refuses to delete a branch a
       // still-registered worktree has checked out.
       expect(gitOps()).toEqual(["worktree prune", "branch -D worktree-feat"]);
-      expect(vi.mocked(fs.rmSync)).toHaveBeenCalledWith(
+      expect(vi.mocked(fs.promises.rm)).toHaveBeenCalledWith(
         expect.any(String),
         expect.objectContaining({ recursive: true, force: true }),
       );
     });
 
-    it("leaves .git untouched and keeps the branch when deleting the contents fails", () => {
+    it("leaves .git untouched and keeps the branch when deleting the contents fails", async () => {
       // The whole point of the rework. The content pass is where a held file
       // fails it, and it runs with the pointer still in place: nothing was
       // unlinked, so there is nothing to restore and git still recognises the
@@ -706,7 +732,7 @@ describe("worktreeUtils", () => {
       const original = fakeFs.files.get(DOT_GIT);
       fakeFs.rmError = failWith("EPERM");
 
-      expect(() => worktreeUtils.removeWorktree(INFO)).not.toThrow();
+      await expect(worktreeUtils.removeWorktree(INFO)).resolves.toBeUndefined();
 
       expect(fakeFs.ops).toEqual([]);
       expect(fakeFs.files.get(DOT_GIT)).toBe(original);
@@ -731,12 +757,14 @@ describe("worktreeUtils", () => {
       );
     });
 
-    it("uses an extended-length path for every delete on Windows", () => {
+    it("uses an extended-length path for every delete on Windows", async () => {
       givenWorktreeWithContent("node_modules");
 
-      worktreeUtils.removeWorktree(INFO);
+      await worktreeUtils.removeWorktree(INFO);
 
-      const rmPaths = vi.mocked(fs.rmSync).mock.calls.map(([p]) => String(p));
+      const rmPaths = vi
+        .mocked(fs.promises.rm)
+        .mock.calls.map(([p]) => String(p));
       // The per-entry content deletes and the shell delete alike: the entries
       // are where the longest paths live.
       expect(rmPaths).toHaveLength(2);
@@ -749,14 +777,14 @@ describe("worktreeUtils", () => {
       }
     });
 
-    it("restores the .git pointer and keeps the branch when the shell delete fails", () => {
+    it("restores the .git pointer and keeps the branch when the shell delete fails", async () => {
       givenWorktreeWithContent("src");
       const original = fakeFs.files.get(DOT_GIT);
       // The content pass succeeds (so the pointer really was unlinked); only the
       // removal of the now-empty directory fails.
       failShellDelete("EPERM");
 
-      expect(() => worktreeUtils.removeWorktree(INFO)).not.toThrow();
+      await expect(worktreeUtils.removeWorktree(INFO)).resolves.toBeUndefined();
 
       // "Directory still there" must keep meaning "git still knows about it":
       // the pointer goes back byte-for-byte, and the branch is kept.
@@ -779,12 +807,12 @@ describe("worktreeUtils", () => {
       );
     });
 
-    it("reports both errors when even the write-back fails", () => {
+    it("reports both errors when even the write-back fails", async () => {
       givenWorktreeWithContent("src");
       failShellDelete("EBUSY");
       fakeFs.writeError = failWith("EROFS");
 
-      worktreeUtils.removeWorktree(INFO);
+      await worktreeUtils.removeWorktree(INFO);
 
       expect(logger.error).toHaveBeenCalledWith(
         expect.stringContaining("failed to restore its .git"),
@@ -800,14 +828,14 @@ describe("worktreeUtils", () => {
       );
     });
 
-    it("refuses a worktree git was told to lock", () => {
+    it("refuses a worktree git was told to lock", async () => {
       givenRegisteredWorktree();
       fakeFs.files.set(
         path.join(GIT_DIR, "locked"),
         "in use by a long build\n",
       );
 
-      worktreeUtils.removeWorktree(INFO);
+      await worktreeUtils.removeWorktree(INFO);
 
       expect(fakeFs.ops).toEqual([]);
       expect(gitOps()).toEqual([]);
@@ -821,7 +849,7 @@ describe("worktreeUtils", () => {
       );
     });
 
-    it("refuses a directory whose .git points at another repo", () => {
+    it("refuses a directory whose .git points at another repo", async () => {
       // An independent clone: its `.git` holds the only copy of its history, so
       // removing the directory would destroy the repository.
       fakeFs.dirs.add(WORKTREE_PATH);
@@ -831,7 +859,7 @@ describe("worktreeUtils", () => {
       );
       fakeFs.children.set(WORKTREE_PATH, []);
 
-      worktreeUtils.removeWorktree(INFO);
+      await worktreeUtils.removeWorktree(INFO);
 
       expect(fakeFs.ops).toEqual([]);
       expect(gitOps()).toEqual([]);
@@ -841,10 +869,10 @@ describe("worktreeUtils", () => {
       );
     });
 
-    it("refuses the main working tree", () => {
+    it("refuses the main working tree", async () => {
       fakeFs.dirs.add(REPO_ROOT);
 
-      worktreeUtils.removeWorktree({ ...INFO, path: REPO_ROOT });
+      await worktreeUtils.removeWorktree({ ...INFO, path: REPO_ROOT });
 
       expect(fakeFs.ops).toEqual([]);
       expect(gitOps()).toEqual([]);
@@ -854,12 +882,12 @@ describe("worktreeUtils", () => {
       );
     });
 
-    it("refuses a .git that is not a gitfile at all", () => {
+    it("refuses a .git that is not a gitfile at all", async () => {
       fakeFs.dirs.add(WORKTREE_PATH);
       fakeFs.files.set(DOT_GIT, "garbage");
       fakeFs.children.set(WORKTREE_PATH, []);
 
-      worktreeUtils.removeWorktree(INFO);
+      await worktreeUtils.removeWorktree(INFO);
 
       expect(fakeFs.ops).toEqual([]);
       expect(logger.warn).toHaveBeenCalledWith(
@@ -868,7 +896,7 @@ describe("worktreeUtils", () => {
       );
     });
 
-    it("deletes a directory whose .git is already gone as a plain leftover", () => {
+    it("deletes a directory whose .git is already gone as a plain leftover", async () => {
       // A previous cleanup already removed the pointer: git does not know about
       // this directory any more, so there is nothing to unlink and nothing to
       // restore — it is just files.
@@ -877,7 +905,7 @@ describe("worktreeUtils", () => {
         { name: "src", link: false, dir: true },
       ]);
 
-      worktreeUtils.removeWorktree(INFO);
+      await worktreeUtils.removeWorktree(INFO);
 
       expect(fakeFs.ops).toEqual([
         `rm:${path.join(WORKTREE_PATH, "src")}`,
@@ -890,26 +918,26 @@ describe("worktreeUtils", () => {
       );
     });
 
-    it("still deletes the branch when the directory is already gone", () => {
+    it("still deletes the branch when the directory is already gone", async () => {
       // Idempotent: a repeated removal finds no directory but must not leave
       // the branch behind.
-      worktreeUtils.removeWorktree(INFO);
+      await worktreeUtils.removeWorktree(INFO);
 
       expect(fakeFs.ops).toEqual([]);
       expect(gitOps()).toEqual(["worktree prune", "branch -D worktree-feat"]);
     });
 
-    it("keeps the branch when the directory survives a successful delete", () => {
+    it("keeps the branch when the directory survives a successful delete", async () => {
       givenRegisteredWorktree();
       // rmSync reports success but the directory is still listed afterwards
       // (something re-created it): the branch is the only ref back to its work.
       fakeFs.dirs.add(WORKTREE_PATH);
       fakeFs.children.set(WORKTREE_PATH, []);
-      vi.mocked(fs.rmSync).mockImplementation((() => {
+      vi.mocked(fs.promises.rm).mockImplementation((async () => {
         fakeFs.ops.push(`rm:${WORKTREE_PATH}`);
-      }) as unknown as typeof fs.rmSync);
+      }) as unknown as typeof fs.promises.rm);
 
-      worktreeUtils.removeWorktree(INFO);
+      await worktreeUtils.removeWorktree(INFO);
 
       expect(gitOps()).toEqual(["worktree prune"]);
       expect(logger.warn).toHaveBeenCalledWith(
@@ -918,12 +946,12 @@ describe("worktreeUtils", () => {
       );
     });
 
-    it("aborts before the shell delete when the .git pointer cannot be unlinked", () => {
+    it("aborts before the shell delete when the .git pointer cannot be unlinked", async () => {
       const [srcPath] = givenWorktreeWithContent("src");
       const original = fakeFs.files.get(DOT_GIT);
       fakeFs.unlinkError = failWith("EPERM");
 
-      worktreeUtils.removeWorktree(INFO);
+      await worktreeUtils.removeWorktree(INFO);
 
       // The content pass ran — it is the one that has to run with the pointer in
       // place — but the shell delete did not: deleting the directory with a live
@@ -943,16 +971,16 @@ describe("worktreeUtils", () => {
       );
     });
 
-    it("treats an already-unlinked .git as nothing to restore", () => {
+    it("treats an already-unlinked .git as nothing to restore", async () => {
       // present at the pre-check read, gone by the time we unlink it
       givenRegisteredWorktree();
-      vi.mocked(fs.unlinkSync).mockImplementation(((p: string) => {
+      vi.mocked(fs.promises.unlink).mockImplementation((async (p: string) => {
         fakeFs.files.delete(fakeFs.key(p));
         throw failWith("ENOENT");
-      }) as unknown as typeof fs.unlinkSync);
+      }) as unknown as typeof fs.promises.unlink);
       failShellDelete("EBUSY");
 
-      worktreeUtils.removeWorktree(INFO);
+      await worktreeUtils.removeWorktree(INFO);
 
       // The shell delete still ran; there was no pointer left to write back, and
       // that is not reported as a restore failure.
@@ -965,7 +993,7 @@ describe("worktreeUtils", () => {
 
     it.runIf(process.platform === "win32")(
       "unlinks junctions before the delete so rmSync sees plain directories",
-      () => {
+      async () => {
         givenRegisteredWorktree();
         const nodeModules = path.join(WORKTREE_PATH, "node_modules");
         const pnpmLink = path.join(nodeModules, "deps", "foo");
@@ -980,7 +1008,7 @@ describe("worktreeUtils", () => {
         ]);
         fakeFs.links.add(pnpmLink);
 
-        worktreeUtils.removeWorktree(INFO);
+        await worktreeUtils.removeWorktree(INFO);
 
         // The junction is gone before the content delete starts — that pass is
         // the one that cannot remove them on Windows.
@@ -999,7 +1027,7 @@ describe("worktreeUtils", () => {
 
     it.runIf(process.platform === "win32")(
       "names an unremovable junction in the failure log",
-      () => {
+      async () => {
         givenRegisteredWorktree();
         const stuck = path.join(WORKTREE_PATH, "locked-link");
         fakeFs.children.set(WORKTREE_PATH, [
@@ -1007,12 +1035,12 @@ describe("worktreeUtils", () => {
         ]);
         fakeFs.links.add(stuck);
         // Neither unlink nor rmdir can take it (a real junction in use).
-        vi.mocked(fs.rmdirSync).mockImplementation((() => {
+        vi.mocked(fs.promises.rmdir).mockImplementation((async () => {
           throw failWith("EBUSY");
-        }) as unknown as typeof fs.rmdirSync);
+        }) as unknown as typeof fs.promises.rmdir);
         fakeFs.rmError = failWith("ENOTEMPTY");
 
-        worktreeUtils.removeWorktree(INFO);
+        await worktreeUtils.removeWorktree(INFO);
 
         // A junction that cannot be replaced fails the *content* pass, which is
         // the one that runs with `.git` still in place.
@@ -1025,11 +1053,11 @@ describe("worktreeUtils", () => {
       },
     );
 
-    it("transfers the extended-length-path note for ENAMETOOLONG", () => {
+    it("transfers the extended-length-path note for ENAMETOOLONG", async () => {
       givenRegisteredWorktree();
       fakeFs.rmError = failWith("ENAMETOOLONG");
 
-      worktreeUtils.removeWorktree(INFO);
+      await worktreeUtils.removeWorktree(INFO);
 
       expect(logger.error).toHaveBeenCalledWith(
         expect.stringContaining("Failed to remove worktree directory"),
