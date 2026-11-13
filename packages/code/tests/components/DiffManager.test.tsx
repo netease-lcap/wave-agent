@@ -234,6 +234,17 @@ describe("DiffManager", () => {
     // One page per press, so a single keypress already moves the viewport off
     // the top. Press-per-frame loops pay for a full render per keystroke
     // (~120ms on the Windows runner) and can spend the whole test timeout.
+    //
+    // Yield one macrotask before the key: the detail frame is painted from the
+    // commit where the row count is still 0 (nothing to scroll), and the
+    // measured count only lands in the *next* commit — which React schedules as
+    // its own macrotask, after `settle()`'s stdout barrier (a microtask) is
+    // already done. A page key written in that window is handled by a viewport
+    // that still believes there is nothing to scroll and is swallowed: this
+    // file failed on every local run this way while passing on CI runners
+    // (2026-11-13, #2918), where the second commit happens to be in before the
+    // key. Yielding once puts the measured commit first.
+    await new Promise((resolve) => setImmediate(resolve));
     stdin.write(PAGE_DOWN);
     await vi.waitFor(() => expect(lastFrame()).toContain("↑"));
     expect(lastFrame()).not.toContain("line 0");
