@@ -48,7 +48,7 @@ async function setupSinglePane(injector: MessageInjector) {
 }
 
 test.describe("Desktop conversation-level panels", () => {
-  test("panel toggle menu lists preview / diff / terminal", async ({
+  test("panel toggle menu lists the panels that aren't open yet", async ({
     webviewPage,
   }) => {
     const injector = new MessageInjector(webviewPage);
@@ -56,7 +56,8 @@ test.describe("Desktop conversation-level panels", () => {
     await setupSinglePane(injector);
 
     // The "＋" menu lives in the tab bar: open a first panel via the header
-    // toggle (empty slot → empty-state entry), then list the panel types.
+    // toggle (empty slot → empty-state entry), then list the panel types. The
+    // open one is already a tab, so the menu skips it.
     await webviewPage.getByTestId("panel-toggle-btn").click();
     await webviewPage.getByTestId("panel-empty-item-terminal").click();
     await webviewPage.getByTestId("panel-tabs-add").click();
@@ -66,9 +67,6 @@ test.describe("Desktop conversation-level panels", () => {
     ).toBeVisible();
     await expect(
       webviewPage.getByTestId("panel-toggle-item-diff"),
-    ).toBeVisible();
-    await expect(
-      webviewPage.getByTestId("panel-toggle-item-terminal"),
     ).toBeVisible();
     await screenshotWebp(
       webviewPage,

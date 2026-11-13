@@ -3965,8 +3965,8 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     [ensurePanelSpace, genTabId],
   );
 
-  // Open-or-activate a single-instance kind (terminal / plan): the existing tab
-  // is activated, never duplicated.
+  // Open-or-activate a single-instance kind (every kind except preview): the
+  // existing tab is activated, never duplicated.
   const ensureUniqueTab = useCallback(
     (kind: DesktopPanelKind): string | null => {
       const existing = tabsRef.current.find((t) => t.kind === kind);

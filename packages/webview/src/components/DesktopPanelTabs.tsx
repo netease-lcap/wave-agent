@@ -17,9 +17,10 @@ export interface DesktopPanelTabsProps {
   disabled: DesktopPanelKind[];
   onActivate: (tabId: string) => void;
   onClose: (tabId: string) => void;
-  /** "＋" menu item click: add a fresh instance (preview/diff/file) or open-or-
-   *  activate the unique tab (terminal/plan). Returns false when space is
-   *  refused and nothing was opened. */
+  /** "＋" menu item click: add a fresh preview tab (the only multi-instance
+   *  kind) or open the single-instance tab when the kind isn't open yet (the
+   *  menu does not list open kinds). Returns false when space is refused and
+   *  nothing was opened. */
   onAdd: (kind: DesktopPanelKind) => boolean;
   fullscreen: boolean;
   onToggleFullscreen: () => void;
@@ -297,9 +298,12 @@ export const DesktopPanelTabs: React.FC<DesktopPanelTabsProps> = ({
       {menuOpen && (
         <PanelToggleMenu
           // Tab-bar "＋" 是「新建/打开」操作菜单，不是面板勾选菜单：
-          // checklist=false → 所有项一律无 checkbox 勾、无 active 选中底
-          // （计划/终端等单实例已开时也不高亮），aria 走 plain menuitem。
+          // checklist=false → 所有项一律无 checkbox 勾、无 active 选中底，
+          // aria 走 plain menuitem；showChecked=false → 只列还没开的面板
+          // （已开的单实例种类点了只会切过去，没有激活态时更是零反应），
+          // 预览不受影响（每次点都新开一个 tab）。
           checklist={false}
+          showChecked={false}
           checked={Array.from(
             new Set(tabs.map((t) => t.kind).filter((k) => k !== "preview")),
           )}
