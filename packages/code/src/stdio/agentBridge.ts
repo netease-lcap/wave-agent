@@ -79,6 +79,8 @@ import {
   searchArtifactMembers,
   type ArtifactShareMode,
   type UserImage,
+  type ModPanelEventPayload,
+  type ModPanelUpdatePayload,
 } from "wave-agent-sdk";
 import {
   type ClientNotificationMethod,
@@ -486,6 +488,17 @@ export class AgentBridge {
       case "remoteControlConnect":
       case "remoteControlDisconnect":
         return this.remoteControlRequest(method, p);
+
+      // ── Plugin mods ──
+      // The mod itself runs in this process (spec ecosystem/plugin-mods.md); the
+      // host is only carrying the user's click back to it, so this is a plain
+      // hand-off with no host-side policy.
+      case "modPanelEvent":
+        return this.requireSession(sessionId).agent.handleModPanelEvent(
+          p as unknown as ModPanelEventPayload,
+        );
+      case "getModPanels":
+        return this.requireSessionForRead(sessionId).agent.getModPanels();
 
       // ── Permissions ──
       case "setPermissionMode":
@@ -3499,6 +3512,18 @@ export class AgentBridge {
         this.emit(
           "workdirChange",
           { workdir: newCwd },
+          ctx.registeredSessionId,
+        );
+      },
+      onModPanelUpdate: (payload: ModPanelUpdatePayload) => {
+        // The manager is built with the session id known at construction time;
+        // a restored session changes it, so the envelope's id wins here.
+        this.emit(
+          "modPanelUpdate",
+          {
+            ...payload,
+            sessionId: ctx.registeredSessionId ?? payload.sessionId,
+          },
           ctx.registeredSessionId,
         );
       },

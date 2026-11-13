@@ -185,7 +185,17 @@ export type RequestMethod =
   // Same session-scoped, supersede-on-new-request shape as `getCompletion`, but
   // the input is the user's edit trajectory plus a rewritable window of the
   // file, and the answer replaces lines instead of being inserted at a caret.
-  | "getNextEdit";
+  | "getNextEdit"
+  // A user interaction inside a plugin mod's panel (spec
+  // ecosystem/plugin-mods.md). Params: `ModPanelEventPayload` — which mod, which
+  // pane, which element `key`, and whether it was a press, an input or the tab
+  // being closed. The mod itself runs in this process; the host is only carrying
+  // the click here.
+  | "modPanelEvent"
+  // Every open mod panel, as full snapshots. Session-scoped resync: a host that
+  // attached after `session.start` (session restore, remote re-attach) would
+  // otherwise miss the `modPanelUpdate` notifications that opened them.
+  | "getModPanels";
 
 // ── Client → Server notification methods ────────────────────────
 
@@ -300,4 +310,14 @@ export type ServerNotificationMethod =
    * method and pull `getMessages` themselves. Hosts rendering from incremental
    * notifications must therefore **not** subscribe to it.
    */
-  | "messagesChange";
+  | "messagesChange"
+  /**
+   * A plugin mod's panel changed (spec `ecosystem/plugin-mods.md`). Params:
+   * `ModPanelUpdatePayload` — a **full** element tree plus a monotonic
+   * `revision`, or `closed: true` when the pane went away.
+   *
+   * Full snapshots rather than deltas on purpose: a tree is capped at 2000
+   * nodes, and a delta protocol would need a stable id per element (keyed
+   * reconciliation) for no measurable win at this size.
+   */
+  | "modPanelUpdate";

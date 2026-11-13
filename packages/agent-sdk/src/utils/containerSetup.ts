@@ -16,6 +16,7 @@ import { HookManager } from "../managers/hookManager.js";
 import { SkillManager } from "../managers/skillManager.js";
 import { SlashCommandManager } from "../managers/slashCommandManager.js";
 import { PluginManager } from "../managers/pluginManager.js";
+import { ModManager } from "../managers/modManager.js";
 import { BashModeManager } from "../managers/bashModeManager.js";
 import { CronManager } from "../managers/cronManager.js";
 import { PageWatchManager } from "../managers/pageWatchManager.js";
@@ -541,6 +542,16 @@ export function setupAgentContainer(
 
   const pluginManager = new PluginManager(container, { workdir });
   container.register("PluginManager", pluginManager);
+
+  // Plugin MODS (spec ecosystem/plugin-mods.md): compilation and execution both
+  // live in this process, so the host only ever receives an element tree. It
+  // starts empty — `Agent.initialize` feeds it the loaded plugins once
+  // InitializationService has finished, because mod files are discovered there.
+  const modManager = new ModManager({
+    sessionId: messageManager.getSessionId(),
+    onPanelUpdate: (payload) => callbacks.onModPanelUpdate?.(payload),
+  });
+  container.register("ModManager", modManager);
 
   const bashModeManager = new BashModeManager(container, { workdir });
   container.register("BashModeManager", bashModeManager);

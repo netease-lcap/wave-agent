@@ -5,6 +5,7 @@ import { McpConfig, McpServerConfig } from "./mcp.js";
 import { PartialHookConfiguration } from "./configuration.js";
 import { SubagentConfiguration } from "../utils/subagentParser.js";
 import { WorkflowMeta } from "../workflow/types.js";
+import { PluginMod } from "./mods.js";
 
 /**
  * Plugin manifest structure (.wave-plugin/plugin.json)
@@ -79,4 +80,11 @@ export interface Plugin extends PluginManifest {
   mcpConfig?: McpConfig;
   hooksConfig?: PartialHookConfiguration;
   workflows: PluginWorkflow[];
+  /**
+   * TSX/JS mods under `<pluginRoot>/mods/` (spec `ecosystem/plugin-mods.md`).
+   * Loaded but not compiled here — compilation needs esbuild, which is an
+   * on-demand runtime dependency, so it happens in `managers/modManager.ts`
+   * right before a session uses them.
+   */
+  mods: PluginMod[];
 }

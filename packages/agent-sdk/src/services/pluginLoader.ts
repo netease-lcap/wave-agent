@@ -19,6 +19,10 @@ import {
 import { logger } from "../utils/globalLogger.js";
 import { WORKFLOW_SCRIPT_EXTENSION } from "../workflow/workflowRegistry.js";
 import { parseScript, validateScript } from "../workflow/scriptRuntime.js";
+import { MOD_LIMITS, type PluginMod } from "../types/mods.js";
+
+/** 能被编译成 mod 的扩展名（与 `mods/compile.ts` 的 loader 表一致）。 */
+const MOD_LOADER_EXTENSIONS = new Set([".tsx", ".ts", ".jsx", ".js"]);
 
 export class PluginLoader {
   /**
@@ -318,6 +322,92 @@ export class PluginLoader {
     }
 
     return workflows;
+  }
+
+  /**
+   * Collect the mod files under `<pluginRoot>/mods/`.
+   *
+   * Only paths and sizes are gathered here — compilation needs esbuild, an
+   * on-demand runtime dependency that may not be installed yet, so it happens
+   * in `managers/modManager.ts` right before a session uses the mod.
+   *
+   * The entry names are the file stems and the ids are `<plugin>:<stem>`, the
+   * same `<plugin>:<name>` shape commands and workflows use. Files are resolved
+   * through `realpath` and dropped when the result escapes the plugin
+   * directory (a symlink pointing outside must not become loadable code), and
+   * the spec's per-file / total / count limits are enforced here so an
+   * oversized mod never reaches the compiler.
+   */
+  static async loadMods(
+    pluginPath: string,
+    pluginName: string,
+  ): Promise<PluginMod[]> {
+    const modsPath = path.join(pluginPath, "mods");
+    const mods: PluginMod[] = [];
+    let realRoot: string;
+    try {
+      realRoot = await fs.realpath(pluginPath);
+    } catch {
+      return mods;
+    }
+
+    let entries;
+    try {
+      entries = await fs.readdir(modsPath, { withFileTypes: true });
+    } catch {
+      // No mods directory — the common case.
+      return mods;
+    }
+
+    let totalBytes = 0;
+    for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+      if (!entry.isFile()) continue;
+      if (!MOD_LOADER_EXTENSIONS.has(path.extname(entry.name).toLowerCase())) {
+        continue;
+      }
+      if (mods.length >= MOD_LIMITS.fileCount) {
+        logger?.warn(
+          `插件 ${pluginName} 的 mod 文件超过 ${MOD_LIMITS.fileCount} 个，其余被忽略`,
+        );
+        break;
+      }
+      const filePath = path.join(modsPath, entry.name);
+      try {
+        const realPath = await fs.realpath(filePath);
+        if (
+          realPath !== realRoot &&
+          !realPath.startsWith(realRoot + path.sep)
+        ) {
+          logger?.warn(`忽略越出插件目录的 mod 文件：${filePath}`);
+          continue;
+        }
+        const stat = await fs.stat(realPath);
+        if (stat.size > MOD_LIMITS.fileBytes) {
+          logger?.warn(
+            `忽略超过 ${MOD_LIMITS.fileBytes} 字节的 mod 文件：${filePath}`,
+          );
+          continue;
+        }
+        totalBytes += stat.size;
+        if (totalBytes > MOD_LIMITS.totalBytes) {
+          logger?.warn(
+            `插件 ${pluginName} 的 mod 文件总量超过 ${MOD_LIMITS.totalBytes} 字节，其余被忽略`,
+          );
+          break;
+        }
+        mods.push({
+          id: `${pluginName}:${path.parse(entry.name).name}`,
+          name: path.parse(entry.name).name,
+          path: realPath,
+          pluginRoot: pluginPath,
+        });
+      } catch (error) {
+        logger?.warn(
+          `读取 mod 文件失败：${filePath}（${error instanceof Error ? error.message : String(error)}）`,
+        );
+      }
+    }
+    return mods;
   }
 
   /**

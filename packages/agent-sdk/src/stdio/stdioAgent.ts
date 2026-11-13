@@ -48,6 +48,8 @@ import type {
   MessageWindowResult,
   MessageThreadSummary,
   UserImage,
+  ModPanelEventPayload,
+  ModPanelUpdatePayload,
 } from "../types/index.js";
 import type { BtwAskOptions, BtwHistoryTurn } from "../types/btw.js";
 import type { RpcClient } from "./rpcClient.js";
@@ -192,6 +194,11 @@ export interface StdioAgentCallbacks {
   /** 额度响应头（`x-codechat-quota-*`，每次模型调用都带），原样透传、不解析
    *  （spec: docs/specs/desktop/desktop-account.md「额度响应头」）。 */
   onQuotaHeaders?: (headers: Record<string, string>) => void;
+  /**
+   * A plugin mod panel's new snapshot (spec `ecosystem/plugin-mods.md`). Full
+   * tree + monotonic `revision`; drop anything older than what is on screen.
+   */
+  onModPanelUpdate?: (payload: ModPanelUpdatePayload) => void;
   onCommandRunningChange?: (running: boolean) => void;
   onQueuedMessagesChange?: (messages: QueuedMessage[]) => void;
   onTasksChange?: (tasks: Task[]) => void;
@@ -627,6 +634,27 @@ export class StdioAgent {
     )) as { suggestion: NextEditSuggestion | null; model: string };
   }
 
+  // ── Plugin mods ───────────────────────────────────────────────
+
+  /**
+   * 把面板里的一次交互交回给 mod（spec `ecosystem/plugin-mods.md`）。
+   *
+   * 宿主只负责运这一趟：mod 的代码与它的状态都在 CLI 进程里，宿主没有
+   * 任何可以本地判断的东西。
+   */
+  async sendModPanelEvent(payload: ModPanelEventPayload): Promise<void> {
+    await this.client.request("modPanelEvent", payload, this.sessionId);
+  }
+
+  /** 当前所有 mod 面板的快照（宿主重连后补画面板用）。 */
+  async getModPanels(): Promise<ModPanelUpdatePayload[]> {
+    return (await this.client.request(
+      "getModPanels",
+      {},
+      this.sessionId,
+    )) as ModPanelUpdatePayload[];
+  }
+
   // ── Permissions ───────────────────────────────────────────────
 
   async setPermissionMode(mode: PermissionMode): Promise<void> {
@@ -982,6 +1010,10 @@ export class StdioAgent {
       case "quotaHeaders": {
         const p = params as { headers?: Record<string, string> };
         if (p.headers) this.callbacks.onQuotaHeaders?.(p.headers);
+        break;
+      }
+      case "modPanelUpdate": {
+        this.callbacks.onModPanelUpdate?.(params as ModPanelUpdatePayload);
         break;
       }
       case "commandRunningChange": {

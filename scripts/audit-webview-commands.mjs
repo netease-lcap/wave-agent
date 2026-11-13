@@ -121,6 +121,10 @@ const DESKTOP_GATED_NON_PREFIX = new Set([
   "setThemeSource", // 设置页主题行仅 desktop 有 UI
   "setUpdateChannel", // 设置页更新通道行仅 desktop 有 UI（#2107；插件端无 updateChannel 字段恒 stable 不渲染）
   "toastAction", // UpdateToast 仅 desktop 推送
+  // 插件 mod 面板里的交互（spec ecosystem/plugin-mods.md）：mod tab 只能由
+  // desktopHost 推来的 `desktopModPanelUpdate` 创建，插件端/远控页没有这条推送
+  // ⇒ webview 在那里永不发送。等二期给插件端做 mod 渲染时从本表摘掉。
+  "modPanelEvent",
 ]);
 
 /**

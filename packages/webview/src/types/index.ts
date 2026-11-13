@@ -20,6 +20,7 @@ import type {
   ImageBlock,
   CompactBlock,
   ReasoningBlock,
+  ModPanelTree,
   PermissionMode,
   AskUserQuestion,
   AskUserQuestionInput,
@@ -824,7 +825,9 @@ export type DesktopPanelKind =
   | "terminal"
   | "file"
   | "plan"
-  | "tasks";
+  | "tasks"
+  // Plugin MODS (spec ecosystem/plugin-mods.md): one tab per pane a mod opened.
+  | "mod";
 
 /**
  * One open file inside the file panel's own tab strip (spec
@@ -878,6 +881,18 @@ export interface PanelTab {
   /** file tab: showing the conversation file list (spec desktop-file-panel.md
    *  「文件面板列出当前对话的文件」). Cleared as soon as a file is activated. */
   listMode?: boolean;
+  /** mod tab: the plugin mod that owns this pane (`<plugin>:<stem>`). */
+  modId?: string;
+  /** mod tab: the mod's own pane id — one mod may open several. */
+  modPaneId?: string;
+  /** mod tab: the tab label the mod asked for (`$.ui.open({title})`). */
+  modTitle?: string;
+  /** mod tab: last applied revision; a snapshot with a smaller one is dropped. */
+  modRevision?: number;
+  /** mod tab: the element tree, already validated by the host. */
+  modTree?: ModPanelTree | null;
+  /** mod tab: compile / validation / hook failure, shown instead of the tree. */
+  modError?: string;
 }
 
 /**

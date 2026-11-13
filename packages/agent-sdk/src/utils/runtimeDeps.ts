@@ -3,14 +3,16 @@
  *
  * ## Why this exists
  *
- * Four dependencies live here: `sharp` (the image codec behind outbound image
+ * Five dependencies live here: `sharp` (the image codec behind outbound image
  * resizing, ~19MB unpacked), `@vscode/ripgrep` (the search binary behind the
  * Grep tool, ~5MB with its platform package), `wave-search-tools` (the ugrep /
- * bfs binaries that shadow `grep` / `find` inside the Bash tool) and
- * `@anthropic-ai/sandbox-runtime` (the Bash sandbox, ~12MB of vendored
- * binaries). All of them are too big to ship in every host bundle and useless
- * to users who never send an image, run a search or enable the sandbox. The
- * first three are installed on every launch; the sandbox row is opt-in per call
+ * bfs binaries that shadow `grep` / `find` inside the Bash tool), `esbuild`
+ * (the TSX transpiler behind plugin MODS, ~11MB unpacked with its platform
+ * package) and `@anthropic-ai/sandbox-runtime` (the Bash sandbox, ~12MB of
+ * vendored binaries). All of them are too big to ship in every host bundle and
+ * useless to users who never send an image, run a search, load a TSX mod or
+ * enable the sandbox. The first four are installed on every launch; the sandbox
+ * row is opt-in per call
  * (`includeSandbox`) so it is only fetched once the user has actually turned the
  * sandbox on. Two of the three ways of getting the CLI can simply use npm:
  *
@@ -40,6 +42,10 @@
  *                                    `@img/sharp-win32-<arch>`. Neither does wasm.
  *   @vscode/ripgrep/                 the wrapper (ESM, no dependencies of its own)
  *   @vscode/ripgrep-<platform>-<arch>/  holds bin/rg, published with the exec bit
+ *   esbuild/                         the JS API; must stay a sibling of the
+ *                                    package below, which it locates with
+ *                                    `require.resolve` relative to itself
+ *   @esbuild/<platform>-<arch>/      holds bin/esbuild (Go static build)
  *   @anthropic-ai/sandbox-runtime/    only when the sandbox was turned on; keyed
  *                                    by version, its vendor/ carries the platform
  *                                    binaries (macOS/Linux/Windows)
@@ -91,6 +97,7 @@ import {
   resolveSharp,
 } from "./imageProcessor.js";
 import { extractNpmTarball } from "./npmTarball.js";
+import { getEsbuild, resetEsbuild, resolveEsbuild } from "./esbuild.js";
 import { getRgPath, resetRipgrep, resolveRipgrep } from "./ripgrep.js";
 import {
   getSearchTools,
@@ -302,10 +309,41 @@ const sandboxRuntimeDependency: RuntimeDependency = {
   onInstalled: () => resetSandboxRuntime(),
 };
 
+/**
+ * esbuild 行：插件 MODS 的 TSX 转译器（`ecosystem/plugin-mods.md`）。
+ *
+ * 与 ripgrep 行同形 —— 主包只是 30KB 的 JS API，真正的负载在按
+ * `<platform>-<arch>` 命名的平台包里（Linux x64 约 4.5MB 压缩），Go 静态
+ * 链接，所以没有 musl 变体。它不能被打进 bundle（`The esbuild JavaScript API
+ * cannot be bundled` —— 平台二进制是用相对自身位置的 `require.resolve` 找
+ * 的），所以走这张表而不是宿主随包带。
+ */
+const esbuildDependency: RuntimeDependency = {
+  name: "esbuild",
+  range: "^0.28.2",
+  sharedPackages(entry) {
+    return [{ name: "esbuild", range: entry.version }];
+  },
+  platformPackages(entry, platformKey) {
+    const name = `@esbuild/${platformKey}`;
+    const range = entry.optionalDependencies?.[name];
+    if (!range) {
+      throw new Error(`esbuild 不支持当前平台（${platformKey}）：缺 ${name}`);
+    }
+    return [{ name, range }];
+  },
+  libcAwarePlatformKey: false,
+  isAvailable: () => getEsbuild() !== undefined,
+  loadsFrom: (requireBase) =>
+    resolveEsbuild(requireFnFor(requireBase)) !== undefined,
+  onInstalled: () => resetEsbuild(),
+};
+
 const RUNTIME_DEPENDENCIES: RuntimeDependency[] = [
   sharpDependency,
   ripgrepDependency,
   searchToolsDependency,
+  esbuildDependency,
 ];
 
 /**

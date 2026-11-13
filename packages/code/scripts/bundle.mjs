@@ -42,8 +42,11 @@ await build({
   },
   // `sharp` is a native module and is loaded through `createRequire` at
   // runtime (utils/imageProcessor.ts); marking it external keeps a future
-  // static import from dragging a `.node` file into the bundle.
-  external: ["@vscode/ripgrep", "fsevents", "sharp"],
+  // static import from dragging a `.node` file into the bundle. `esbuild` is
+  // external for a harder reason: its JS API throws "The esbuild JavaScript API
+  // cannot be bundled" because it finds its platform binary with a
+  // `require.resolve` relative to its own file (utils/esbuild.ts).
+  external: ["@vscode/ripgrep", "esbuild", "fsevents", "sharp"],
   alias: { "@": path.join(root, "src") },
   plugins: [inkDevtoolsStub],
   // Shrinks the bundle ~2.2x (8.4MB -> 3.7MB raw) and drops React's

@@ -186,6 +186,14 @@ export interface AgentCallbacks
   onCommandRunningChange?: (running: boolean) => void;
   onWorkdirChange?: (newCwd: string) => void;
   /**
+   * A plugin mod's panel produced a new snapshot (spec
+   * `ecosystem/plugin-mods.md`). Full tree, not a delta; `revision` is
+   * monotonic and consumers drop anything older than what they already show.
+   */
+  onModPanelUpdate?: (
+    payload: import("./mods.js").ModPanelUpdatePayload,
+  ) => void;
+  /**
    * The session's workspace moved (EnterWorktree / ExitWorktree) — a different
    * event from a Bash `cd`: the conversation now works in another working tree,
    * so the surfaces showing "the project the user is looking at" follow.

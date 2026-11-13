@@ -12,6 +12,11 @@ import { BackgroundTaskManager } from "./managers/backgroundTaskManager.js";
 import { MessageQueue, type QueuedMessage } from "./managers/messageQueue.js";
 import { SlashCommandManager } from "./managers/slashCommandManager.js";
 import { PluginManager } from "./managers/pluginManager.js";
+import { ModManager } from "./managers/modManager.js";
+import type {
+  ModPanelEventPayload,
+  ModPanelUpdatePayload,
+} from "./types/mods.js";
 import { HookManager } from "./managers/hookManager.js";
 import { ReversionManager } from "./managers/reversionManager.js";
 import { PermissionManager } from "./managers/permissionManager.js";
@@ -103,6 +108,7 @@ export class Agent {
   private subagentManager: SubagentManager; // Add subagent manager instance
   private slashCommandManager: SlashCommandManager; // Add slash command manager instance
   private pluginManager: PluginManager; // Add plugin manager instance
+  private modManager: ModManager;
   private skillManager: SkillManager; // Add skill manager instance
   private cronManager: CronManager; // Add cron manager instance
   private pageWatchManager: PageWatchManager; // Artifact comment stream watcher (per-agent)
@@ -204,7 +210,32 @@ export class Agent {
     this.slashCommandManager.registerSkillCommands(
       this.skillManager.getAvailableSkills(),
     );
+    // Mods are part of the plugin surface: a reloaded plugin brings its mods
+    // into the sandbox, a removed one drops them. `reload` closes the old
+    // panels with `ui.close(origin: "plugin")` before rebuilding.
+    try {
+      await this.modManager.reload(this.pluginManager.getPlugins());
+    } catch (error) {
+      this.logger?.warn("Plugin mods failed to reload:", error);
+    }
     return result;
+  }
+
+  /**
+   * Route a webview interaction to the mod that owns the panel.
+   *
+   * Public because the stdio bridge is a different layer: it receives the
+   * `modPanelEvent` RPC and hands the payload straight here.
+   */
+  public async handleModPanelEvent(
+    payload: ModPanelEventPayload,
+  ): Promise<void> {
+    await this.modManager.handlePanelEvent(payload);
+  }
+
+  /** Panel snapshots for panels opened before the host attached (resync). */
+  public getModPanels(): ModPanelUpdatePayload[] {
+    return this.modManager.paneSnapshots();
   }
 
   /**
@@ -399,6 +430,7 @@ export class Agent {
     this.aiManager = this.container.get("AIManager")!;
     this.slashCommandManager = this.container.get("SlashCommandManager")!;
     this.pluginManager = this.container.get("PluginManager")!;
+    this.modManager = this.container.get("ModManager")!;
     this.bashModeManager = this.container.get("BashModeManager")!;
     this.cronManager = this.container.get("CronManager")!;
     this.pageWatchManager = this.container.get("PageWatchManager")!;
@@ -1022,6 +1054,17 @@ export class Agent {
       recordSession(sessionContext);
     } catch {
       // Model not configured yet - will be available after SSO login
+    }
+
+    // Plugin MODS: compile and instantiate now that InitializationService has
+    // discovered the plugins, then give each mod its `session.start` — which is
+    // defined as "after init, before the first prompt". Compilation failures are
+    // per-mod (a broken mod must not take the session down), so this only logs.
+    try {
+      await this.modManager.loadFromPlugins(this.pluginManager.getPlugins());
+      await this.modManager.startSession();
+    } catch (error) {
+      this.logger?.warn("Plugin mods failed to load:", error);
     }
   }
 

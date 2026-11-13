@@ -56,6 +56,8 @@ import type {
   DesktopSessionContentMatchesMessage,
   DesktopWorkdirStateMessage,
   DesktopTogglePanelMessage,
+  DesktopModPanelUpdateMessage,
+  ModPanelUpdatePayload,
   DesktopPanelKind,
   DesktopAccountInfoMessage,
   DesktopFullScreenMessage,
@@ -205,6 +207,10 @@ export interface Fixtures {
     kind: DesktopPanelKind,
     overrides?: Overrides<DesktopTogglePanelMessage>,
   ) => DesktopTogglePanelMessage;
+  desktopModPanelUpdate: (
+    payload: ModPanelUpdatePayload,
+    overrides?: Overrides<DesktopModPanelUpdateMessage>,
+  ) => DesktopModPanelUpdateMessage;
   desktopAccountInfo: (
     overrides?: Overrides<DesktopAccountInfoMessage>,
   ) => DesktopAccountInfoMessage;
@@ -455,6 +461,12 @@ export const fixtures: Fixtures = {
   desktopTogglePanel: (kind, overrides = {}) => ({
     command: "desktopTogglePanel",
     kind,
+    ...overrides,
+  }),
+
+  desktopModPanelUpdate: (payload, overrides = {}) => ({
+    command: "desktopModPanelUpdate",
+    payload,
     ...overrides,
   }),
 

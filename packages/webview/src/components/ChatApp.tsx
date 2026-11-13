@@ -58,6 +58,7 @@ import { FilePane } from "./FilePane";
 import { PlanPane } from "./PlanPane";
 import { DesktopPanelTabs } from "./DesktopPanelTabs";
 import { PanelEmptyState } from "./PanelEmptyState";
+import { ModPanelRenderer } from "./ModPanelRenderer";
 import type {
   BackgroundTaskSummary,
   ChatAppProps,
@@ -78,6 +79,7 @@ import type {
   UpdateToast,
 } from "../types";
 import { EXIT_PLAN_MODE_TOOL_NAME } from "wave-agent-sdk/constants";
+import type { ModPanelUpdatePayload } from "wave-agent-sdk/types";
 // Type-only, borrowed the same way types/index.ts does it: the four facts are
 // part of the host → webview contract (fixtures defines `PushState`), and the
 // import is erased so nothing runtime-bound survives.
@@ -129,6 +131,8 @@ export const PANEL_LABELS: Record<DesktopPanelKind, string> = {
   terminal: "终端",
   file: "文件",
   tasks: "后台任务",
+  // mod 面板由插件自己起名（`modTitle`），这里只是拿不到标题时的兜底。
+  mod: "插件",
 };
 // 上翻时锚点在转录里失效了（rewind / 截断）之后，换下一个已加载 id 重试的次数上限。
 // 三次足够跳过「被裁掉的那几条」，又不至于把一次坏锚点变成一个请求风暴。
@@ -965,6 +969,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     terminal: 0,
     file: 0,
     tasks: 0,
+    mod: 0,
   });
   // Per-open-file id source (f1, f2, …) for the file panel's own tab strip.
   // Restored ids are absorbed into it in the same effect as the tab ids.
@@ -1700,6 +1705,62 @@ export const ChatApp: React.FC<ChatAppProps> = ({
           }
         }
         break;
+      case "desktopModPanelUpdate": {
+        // 插件 mod 面板的新快照（spec ecosystem/plugin-mods.md）。mod 跑在 CLI
+        // 进程里，什么时候重画由它自己的钩子决定，所以这是一条**推送**：按
+        // `modId + paneId` 找对应的 tab，没有就新开一个（`revision` 单调递增，
+        // 晚到的旧快照直接丢弃）。
+        if (!forThisPane(message)) break;
+        const payload = (message as { payload?: ModPanelUpdatePayload })
+          .payload;
+        if (!payload?.modId || !payload.paneId) break;
+        const tabId = `mod:${payload.modId}:${payload.paneId}`;
+        const existed = tabsRef.current.some((t) => t.id === tabId);
+        setTabs((prev) => {
+          const existing = prev.find((t) => t.id === tabId);
+          if (payload.closed) {
+            return existing ? prev.filter((t) => t.id !== tabId) : prev;
+          }
+          if (existing) {
+            if (
+              typeof existing.modRevision === "number" &&
+              payload.revision < existing.modRevision
+            ) {
+              return prev; // 晚到的旧快照
+            }
+            return prev.map((t) =>
+              t.id === tabId
+                ? {
+                    ...t,
+                    modTitle: payload.title || t.modTitle,
+                    modRevision: payload.revision,
+                    modTree: payload.tree,
+                    modError: payload.error,
+                  }
+                : t,
+            );
+          }
+          const created: PanelTab = {
+            id: tabId,
+            kind: "mod",
+            modId: payload.modId,
+            modPaneId: payload.paneId,
+            modTitle: payload.title,
+            modRevision: payload.revision,
+            modTree: payload.tree,
+            modError: payload.error,
+          };
+          return [...prev, created];
+        });
+        if (!existed && !payload.closed) {
+          // mod 自己申请的面板必须让用户看见：新 tab 直接激活并展开槽，与用户
+          // 从「＋」菜单打开同一个效果。只 push 不激活的话，槽（panelExpanded
+          // 为 false 时整块 display:none）与 tab 都是隐形的，等于没开。
+          setActiveTabId(tabId);
+          setPanelExpanded(true);
+        }
+        break;
+      }
       case "desktopFileContent":
         // File panel content reply (file panel spec scenario 1/2). Routed by
         // paneId so a sibling pane's reply never overwrites this pane's view;
@@ -4045,6 +4106,22 @@ export const ChatApp: React.FC<ChatAppProps> = ({
             path: removed.previewFilePath,
           });
         }
+        // A mod tab going away is the user closing the pane: the mod's
+        // `ui.close` hook fires so it can drop whatever state belonged to it
+        // (spec ecosystem/plugin-mods.md). Closing is the user's action, so
+        // the origin says `person`.
+        if (removed.kind === "mod" && removed.modId && removed.modPaneId) {
+          postToHost({
+            command: "modPanelEvent",
+            payload: {
+              modId: removed.modId,
+              paneId: removed.modPaneId,
+              key: "",
+              kind: "close",
+              origin: "person",
+            },
+          });
+        }
         if (removed.kind === "preview" || next.length === 0) {
           setPreviewFullscreen(false);
         }
@@ -5058,6 +5135,37 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     }
     if (kind === "plan") {
       return <PlanPane content={planContent} {...common} />;
+    }
+    if (kind === "mod") {
+      // 树已经过宿主校验（节点数/深度/文本量/href 白名单），这里只画。交互回到
+      // 宿主再转给 mod：webview 不持有 mod 的任何状态。
+      return (
+        <div
+          className="mod-panel"
+          style={{ width: common.width }}
+          data-testid="mod-panel"
+        >
+          <ModPanelRenderer
+            tree={tab.modTree ?? null}
+            error={tab.modError}
+            onEvent={(eventKind, key, value) =>
+              postToHost({
+                command: "modPanelEvent",
+                payload: {
+                  modId: tab.modId,
+                  paneId: tab.modPaneId,
+                  key,
+                  kind: eventKind,
+                  ...(value === undefined ? {} : { value }),
+                },
+              })
+            }
+            onOpenLink={(href) =>
+              postToHost({ command: "openExternal", url: href })
+            }
+          />
+        </div>
+      );
     }
     if (kind === "tasks") {
       // 数据与插件端对话框完全同源（`backgroundTasksChange` 推送的同一份

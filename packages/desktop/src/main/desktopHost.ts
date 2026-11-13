@@ -57,6 +57,8 @@ import {
   MESSAGE_PAGE_SIZE,
   describeUserPreferencePatch,
   startupStageText,
+  type ModPanelUpdatePayload,
+  type ModPanelEventPayload,
 } from "wave-agent-sdk/host";
 import { StdioClient } from "./stdio/stdioClient";
 import { primeLoginShellEnv } from "./loginShellEnv";
@@ -2169,6 +2171,18 @@ export class DesktopHost {
         if (paneId)
           this.postMessage({ command: "mcpServersUpdate", paneId, servers });
       },
+      onModPanelUpdate: (payload: ModPanelUpdatePayload) => {
+        // 插件 mod 面板的新快照（spec ecosystem/plugin-mods.md）：整棵树 + 单调
+        // revision，webview 侧按 revision 丢弃晚到的旧快照。
+        const paneId = paneIdOf();
+        if (paneId) {
+          this.postMessage({
+            command: "desktopModPanelUpdate",
+            paneId,
+            payload,
+          });
+        }
+      },
       onQuotaHeaders: (headers: Record<string, string>) => {
         // 账户卡片的主刷新源：每次模型调用响应都带当时的额度读数
         // (spec desktop-account「用量刷新时机」)。只在出现这批头时触发，
@@ -4099,6 +4113,30 @@ export class DesktopHost {
     // 清一次，覆盖「最后一步没报成 / 工具依赖失败但加载态还在」的窗口：界面上的
     // 那行文字不能跟着停在 100% 之前的某一步。
     if (!pending) this.setPaneStage(paneId, null);
+
+    // 插件 mod 面板不走 setInitialState：它有自己的一条旁路通道（spec
+    // ecosystem/plugin-mods.md）。webview 重建 / 切到另一个 pane 后靠这份快照恢复
+    // mod tab，否则用户得等 mod 下一次 `$.ui.invalidate` 才能再看到面板。
+    // revision 单调递增，晚到的旧快照由 webview 丢弃。
+    if (current) {
+      const agent = current;
+      void agent
+        .getModPanels()
+        .then((panels) => {
+          // 拉取期间 pane 可能已换绑（恢复落地 / 切会话），旧 agent 的快照不能
+          // 画到新会话上。
+          if (panels.length === 0 || this.agentForPane(paneId) !== agent)
+            return;
+          for (const payload of panels) {
+            this.postMessage({
+              command: "desktopModPanelUpdate",
+              paneId,
+              payload,
+            });
+          }
+        })
+        .catch(() => {});
+    }
   }
 
   /**
@@ -6088,6 +6126,19 @@ export class DesktopHost {
           this.htmlPreviewServer.release(pid, msg.path);
         }
         break;
+
+      // 插件 mod 面板里的交互（spec ecosystem/plugin-mods.md）：点按钮 / 提交
+      // 输入 / 关面板都运到 CLI 进程，mod 自己处理。
+      case "modPanelEvent": {
+        const agent = this.agentForPane(pid);
+        const payload = msg.payload as
+          | { modId?: string; paneId?: string; key?: string; kind?: string }
+          | undefined;
+        if (agent && payload?.modId && payload.paneId) {
+          await agent.sendModPanelEvent(payload as ModPanelEventPayload);
+        }
+        break;
+      }
 
       // Leave the panel and open in the OS default app. WSL sessions reach
       // their files through the `\\wsl.localhost\` share; ssh 远端 remains

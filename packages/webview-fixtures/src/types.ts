@@ -49,6 +49,7 @@ import type {
   UserPreferenceKey,
   UserPreferenceSource,
   RemoteControlSnapshot,
+  ModPanelUpdatePayload,
 } from "wave-agent-sdk/types";
 
 export type {
@@ -61,6 +62,7 @@ export type {
   ToolBlockUpdateCallbackParams,
   SessionMetadata,
   SessionData,
+  ModPanelUpdatePayload,
 };
 
 // ---- Webview-owned shapes (copied structurally — the fixtures package must
@@ -82,7 +84,9 @@ export type DesktopPanelKind =
   | "terminal"
   | "file"
   | "plan"
-  | "tasks";
+  | "tasks"
+  // Plugin MODS (spec ecosystem/plugin-mods.md): one tab per pane a mod opened.
+  | "mod";
 
 /** State of the desktop file panel, pushed via `desktopFileContent`. */
 export interface FileViewState {
@@ -502,6 +506,19 @@ export interface DesktopForwardPortResultMessage
 export interface DesktopFileContentMessage extends HostToWebviewMessageBase {
   command: "desktopFileContent";
   fileView: FileViewState;
+}
+
+/**
+ * A plugin mod's panel produced a new snapshot (spec `ecosystem/plugin-mods.md`).
+ *
+ * A push, not a reply: the mod runs in the CLI process and can redraw whenever
+ * its own hooks say so, so there is no request to attribute this to. The
+ * `revision` inside the payload is what keeps a late snapshot from overwriting
+ * a newer one.
+ */
+export interface DesktopModPanelUpdateMessage extends HostToWebviewMessageBase {
+  command: "desktopModPanelUpdate";
+  payload: ModPanelUpdatePayload;
 }
 
 /** One row of a directory listing for the file panel's tree. */
@@ -1732,6 +1749,7 @@ export type HostToWebviewMessage =
   | DesktopWorktreeCreatedMessage
   | DesktopForwardPortResultMessage
   | DesktopFileContentMessage
+  | DesktopModPanelUpdateMessage
   | DesktopDirEntriesMessage
   | DesktopFileSaveResultMessage
   | DesktopPreviewFileResultMessage

@@ -11,6 +11,8 @@ const PANEL_EMPTY_DESC: Record<DesktopPanelKind, string> = {
   terminal: "打开终端",
   file: "查看文件内容",
   tasks: "查看后台任务",
+  // mod 面板不出现在「＋」菜单里（由插件 `$.ui.open` 打开），这条只满足穷尽性。
+  mod: "插件提供的面板",
 };
 
 export interface PanelEmptyStateProps {
