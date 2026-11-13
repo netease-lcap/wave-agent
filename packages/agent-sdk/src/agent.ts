@@ -87,6 +87,7 @@ import {
 } from "./telemetry/activity.js";
 import { entrypointOf } from "./telemetry/attributes.js";
 import { remoteSettingsService } from "./services/remoteSettingsService.js";
+import { AUTO_MEMORY_DRAIN_TIMEOUT_MS } from "./services/autoMemoryService.js";
 
 export class Agent {
   private messageManager: MessageManager;
@@ -1296,6 +1297,28 @@ export class Agent {
     this.options.callbacks?.onBackgroundCurrentTask?.();
   }
 
+  /**
+   * Wait for an in-flight auto-memory extraction, with a soft budget.
+   *
+   * Opt-in, and only for a caller that is about to exit the process: `--print`
+   * drains once before `destroy()` so the last turn's memories survive. Asks
+   * the fork to settle up to `timeoutMs` (default 60s); past that it gives up
+   * and the caller carries on, because a model request must never hold an exit
+   * hostage. Every exit path whose process keeps living — the interactive CLI,
+   * the daemon, the desktop host, `--stdio` — skips this: the fork finishes on
+   * its own and `destroy()` does not wait.
+   */
+  public async drainAutoMemory(
+    timeoutMs: number = AUTO_MEMORY_DRAIN_TIMEOUT_MS,
+  ): Promise<void> {
+    const autoMemoryService =
+      this.container.get<
+        import("./services/autoMemoryService.js").AutoMemoryService
+      >("AutoMemoryService");
+    if (!autoMemoryService) return;
+    await autoMemoryService.drain(timeoutMs);
+  }
+
   /** Destroy managers, clean up resources */
   public async destroy(): Promise<void> {
     // Terminal guard: suppress any dispatch triggered during teardown (e.g. the
@@ -1388,21 +1411,13 @@ export class Agent {
     }
     // Cleanup subagent manager
     this.subagentManager.cleanup();
-    // Drain an in-flight auto-memory extraction fork so the process doesn't
-    // exit mid-extraction
-    try {
-      const autoMemoryService =
-        this.container.get<
-          import("./services/autoMemoryService.js").AutoMemoryService
-        >("AutoMemoryService");
-      if (autoMemoryService) {
-        await autoMemoryService.drain();
-      }
-    } catch (error) {
-      this.logger?.warn(
-        `Auto-memory extraction drain failed: ${(error as Error).message}`,
-      );
-    }
+    // No drain of the auto-memory extraction fork here: destroy() is called by
+    // hosts that keep running (interactive CLI, daemon, desktop, --stdio) as
+    // well as by ones about to exit, and a model request has no bound worth
+    // putting on a teardown. A caller that is exiting and would lose the last
+    // turn's memories calls `drainAutoMemory()` *before* destroy — that is what
+    // `--print` does.
+
     // Cleanup skill manager
     await this.skillManager.destroy();
     // Cleanup live configuration reload

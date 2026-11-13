@@ -285,7 +285,12 @@ export async function startPrintCli(options: PrintCliOptions): Promise<void> {
       }
     }
 
-    // Destroy agent and exit after sendMessage completes
+    // Destroy agent and exit after sendMessage completes. Drain the auto-memory
+    // extraction the last turn forked first: this process is about to exit, so
+    // unlike an interactive quit there is no "let it finish in the background"
+    // option. Soft-bounded (60s), so a stuck model request still cannot hold the
+    // exit.
+    await agent.drainAutoMemory();
     await agent.destroy();
 
     // Handle worktree cleanup for print mode (git removal stays after destroy)
@@ -368,6 +373,10 @@ export async function startPrintCli(options: PrintCliOptions): Promise<void> {
         }
       }
 
+      // Same ordering as the success path: drain the fork the last turn
+      // started, then tear down. A failed run can still have left an
+      // extraction in flight.
+      await agent.drainAutoMemory();
       await agent.destroy();
 
       // Handle worktree cleanup for print mode even on error

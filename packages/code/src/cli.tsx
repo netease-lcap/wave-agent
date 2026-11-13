@@ -10,10 +10,17 @@ import { BaseAppProps } from "./types.js";
 /**
  * Upper bound on waiting for `Agent.destroy()` after the UI is gone.
  *
- * The teardown is bounded on its own side (its async-work drain has a timeout),
- * but a wedged MCP child or LSP server must not turn closing the window into a
- * process that never exits. Past this point the orphan risk is accepted in
- * exchange for a terminal that actually comes back.
+ * Each stage of the teardown that waits on another process caps itself (MCP
+ * transport close ~4s, LSP shutdown 2s, telemetry flush 2s); this is the outer
+ * backstop for those. It is not a bound on everything destroy() awaits: work
+ * registered in the async-work registry drains up to 10s, and a SessionEnd hook
+ * falls back to 10 minutes when the hook declares no timeout. Past this point
+ * the orphan risk is accepted in exchange for a terminal that actually comes
+ * back.
+ *
+ * Auto-memory extraction is deliberately not part of this chain (it used to be,
+ * unbounded): one model request cannot fit in any teardown budget. `--print`
+ * drains it explicitly before teardown; an interactive quit lets the fork die.
  */
 const AGENT_DESTROY_TIMEOUT_MS = 5_000;
 
