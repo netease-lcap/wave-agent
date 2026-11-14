@@ -1,6 +1,7 @@
-import React, { useEffect, useRef, useCallback } from "react";
+import React, { useEffect, useMemo, useRef, useCallback } from "react";
 import { Box, Text } from "ink";
 import { useInput, usePaste } from "ink";
+import { AVAILABLE_COMMANDS } from "../constants/commands.js";
 import { FileSelector } from "./FileSelector.js";
 import { CommandSelector } from "./CommandSelector.js";
 import { HistorySearch } from "./HistorySearch.js";
@@ -294,6 +295,32 @@ export const InputBox: React.FC<InputBoxProps> = ({
   const isPlaceholder = !inputText;
   const placeholderText = INPUT_PLACEHOLDER_TEXT;
 
+  // 参数提示（spec commands/slash-commands.md「命令的作者能给出参数提示」）：
+  // 命令插进输入框后，输入行末尾以暗色给出参数形状，用户一打参数就撤。判据与
+  // 桌面端 / 插件端一致——输入内容 trim 后正好是 `/命令名`，且命令后面**已经有一段
+  // 空白**（Tab 补全与弹窗插入都插 `/cmd `；CC 两端同样要求这个空白，提示才与命令
+  // 之间留出间隔）。带参数则 find 不到、提示自然消失。
+  // 与 CC CLI 的差别只在「必须恰好一个尾随空白」那半条（它 `useTypeahead` 里注明
+  // 是向后兼容的历史包袱），这里放宽到任意空白，四个入口露出时机一致。
+  const argumentHint = useMemo(() => {
+    if (!/\s$/.test(inputText)) return null;
+    const trimmed = inputText.trim();
+    if (
+      !trimmed.startsWith("/") ||
+      // 光标不在末尾时不画：提示落在行尾，此时它与光标位置对不上，看着像命令
+      // 内容的一部分。
+      cursorPosition !== inputText.length
+    ) {
+      return null;
+    }
+    const name = trimmed.slice(1);
+    return (
+      [...AVAILABLE_COMMANDS, ...slashCommands].find(
+        (command) => command.name === name,
+      )?.argumentHint ?? null
+    );
+  }, [inputText, cursorPosition, slashCommands]);
+
   const isShellCommand =
     inputText?.startsWith("!") && !inputText.includes("\n");
 
@@ -513,6 +540,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
                           {atCursor}
                         </Text>
                         {afterCursor}
+                        {argumentHint && <Text dimColor>{argumentHint}</Text>}
                       </>
                     ) : (
                       displayText

@@ -103,6 +103,9 @@ export class SlashCommandManager {
           id: command.id,
           name: command.name,
           description,
+          ...(command.config?.argumentHint
+            ? { argumentHint: command.config.argumentHint }
+            : {}),
           handler: async (args?: string) => {
             const prepared = this.prepareCommand(command, args);
             await this.executeCustomCommandInMainAgent(
@@ -150,6 +153,7 @@ export class SlashCommandManager {
         description: `Skill: ${skill.description}`,
         // UI source tag: plugin skills carry pluginName; personal → 用户
         skillSource: skillSourceFor(skill),
+        ...(skill.argumentHint ? { argumentHint: skill.argumentHint } : {}),
         handler: async (args?: string, signal?: AbortSignal) => {
           try {
             // 1. Prepare skill content immediately
@@ -351,6 +355,9 @@ export class SlashCommandManager {
         id: namespacedId,
         name: namespacedName,
         description,
+        ...(command.config?.argumentHint
+          ? { argumentHint: command.config.argumentHint }
+          : {}),
         handler: async (args?: string) => {
           const prepared = this.prepareCommand(command, args);
           await this.executeCustomCommandInMainAgent(

@@ -198,6 +198,14 @@ export const MessageInput = forwardRef<
   } = props;
   const [message, setMessage] = useState("");
 
+  // 刚从弹窗里插进输入框的那条命令与它的参数提示。关弹窗时 `slashCommands` 会被
+  // 清空（那是按 `filterText` 过滤后的子集，不该留着），所以插入路径单独记一份，
+  // 免得提示跟着清单一起消失。
+  const [commandArgumentHint, setCommandArgumentHint] = useState<{
+    command: string;
+    hint: string;
+  } | null>(null);
+
   // 草稿图片按会话存（新对话按 pane），与宿主给 `inputDrafts` 分键的口径一致。
   const draftScopeKey = useMemo(
     () => draftImageScopeKey(sessionId, paneId),
@@ -1442,10 +1450,16 @@ export const MessageInput = forwardRef<
         range.setEnd(end.node, end.offset);
         range.deleteContents();
 
+        // 记下这条命令的参数提示；画不画由 `visibleArgumentHint` 按当前内容判定。
+        setCommandArgumentHint(
+          command.argumentHint
+            ? { command: command.name, hint: command.argumentHint }
+            : null,
+        );
+
         const commandText = `/${command.name} `;
         const newNode = document.createTextNode(commandText);
         range.insertNode(newNode);
-
         // Move cursor after the inserted text
         range.setStartAfter(newNode);
         range.collapse(true);
@@ -2107,6 +2121,22 @@ export const MessageInput = forwardRef<
     };
   }, [vscode]);
 
+  // 参数提示只在「输入框里就这一条命令」时露出来，判据照 CC 桌面端的 decoration：
+  // 命令前后都没有真实文本，**且命令后面已经有一段空白**——CC 把提示画在命令后那
+  // 段空白之后，没有空白就不画（手打到全名、还没打空格的那一刻不显示），于是提示
+  // 与命令之间天然留着间隔。
+  //
+  // 命令只在插入时记一份（`commandArgumentHint`）：关弹窗会清掉宿主下发的清单（那是
+  // 按 `filterText` 过滤后的子集），留不住可反查的表。CLI 那边表是常驻的，所以它按
+  // 内容反查；两端的**判据**是同一个。
+  // 文案由 CSS 的 `::after { content: attr(… ) }` 画，不进 DOM。
+  const visibleArgumentHint =
+    commandArgumentHint &&
+    /\s$/.test(message) &&
+    message.trim() === `/${commandArgumentHint.command}`
+      ? commandArgumentHint.hint
+      : null;
+
   // 权限模式按钮：图标档（`.is-compact`）里只剩左边的模式图标，文案靠
   // `.permission-mode-label` 藏掉（裸文本节点 CSS 藏不掉，所以文案单独成 span）。
   const permTriggerButton = (
@@ -2154,6 +2184,7 @@ export const MessageInput = forwardRef<
             onCompositionStart={handleCompositionStart}
             onCompositionEnd={handleCompositionEnd}
             data-testid="message-input"
+            data-argument-hint={visibleArgumentHint ?? undefined}
             data-placeholder={
               placeholder ?? "/快捷指令，@添加上下文，粘贴图片，Enter发送..."
             }

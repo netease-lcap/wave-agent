@@ -25,6 +25,8 @@ export interface SkillMetadata {
   model?: string;
   disableModelInvocation?: boolean;
   userInvocable?: boolean;
+  /** frontmatter `argument-hint`：`/技能名` 插进输入框后显示灰字参数提示。 */
+  argumentHint?: string;
   pluginName?: string;
   pluginRoot?: string;
 }
@@ -51,6 +53,7 @@ export interface SkillFrontmatter {
   model?: string;
   "disable-model-invocation"?: boolean | string;
   "user-invocable"?: boolean | string;
+  "argument-hint"?: string;
   [key: string]: unknown;
 }
 

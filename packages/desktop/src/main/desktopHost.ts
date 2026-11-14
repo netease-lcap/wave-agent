@@ -9473,6 +9473,9 @@ export class DesktopHost {
         // 宿主本地命令的选中即执行也由服务端下发（同一个字段，webview 不再
         // 自带命令名名单）。
         ...(command.runOnSelect ? { runOnSelect: true } : {}),
+        // 参数提示：命令插进输入框后画在命令后面的灰字（作者在 frontmatter 里
+        // 写的 `argument-hint`，宿主本地命令由服务端那张表给）。
+        ...(command.argumentHint ? { argumentHint: command.argumentHint } : {}),
       }));
       this.postMessage({
         command: "slashCommandsResponse",

@@ -885,6 +885,46 @@ describe("MessageHandler MCP handlers", () => {
     expect(status?.skillSource).toBeUndefined();
   });
 
+  test("slashCommandsRequest passes argumentHint through", async () => {
+    // 参数提示也照原样转发（webview 拿它画命令后面的灰字，spec
+    // commands/slash-commands.md「命令的作者能给出参数提示」）。
+    const session = createMockSession();
+    (session.getSlashCommands as ReturnType<typeof vi.fn>).mockResolvedValue([
+      {
+        id: "deploy",
+        name: "deploy",
+        description: "部署到某个环境",
+        argumentHint: "[环境] [分支]",
+      },
+      {
+        id: "status",
+        name: "status",
+        description: "查看当前状态",
+        runOnSelect: true,
+      },
+    ]);
+
+    const { handler, context } = createHandler(session);
+    await handler.handleMessage(
+      { command: "requestSlashCommands", filterText: "" },
+      "tab",
+    );
+
+    const posted = (context.postMessage as ReturnType<typeof vi.fn>).mock
+      .calls[0][0] as {
+      command: string;
+      commands: Array<{ name: string; argumentHint?: string }>;
+    };
+    expect(posted.command).toBe("slashCommandsResponse");
+    expect(posted.commands.find((c) => c.name === "deploy")?.argumentHint).toBe(
+      "[环境] [分支]",
+    );
+    // 没有提示的命令不多带一个空键——webview 靠「有没有这个字段」决定画不画。
+    expect(
+      posted.commands.find((c) => c.name === "status")?.argumentHint,
+    ).toBeUndefined();
+  });
+
   test("slashCommandsRequest flags local commands runOnSelect, /btw excepted", async () => {
     // webview 靠这条标记决定「发回宿主执行」还是「插入命令名等参数」——它不再
     // 自带命令名名单，所以每条本地指令的标记必须由宿主给全。

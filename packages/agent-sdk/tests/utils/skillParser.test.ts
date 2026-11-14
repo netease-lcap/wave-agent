@@ -95,6 +95,22 @@ agent: general-purpose
       expect(result.skillMetadata.agent).toBe("general-purpose");
     });
 
+    it("should carry argument-hint into the skill metadata", () => {
+      // spec ui/slash-commands.md「命令的作者能给出参数提示」：技能与自定义命令
+      // 用同一个 frontmatter 键，解析出来供命令弹窗画灰字提示。
+      mockReadFileSync.mockReturnValue(`---
+name: test-skill
+description: A test skill for validation
+argument-hint: "[<target>]"
+---
+
+# Test Skill`);
+
+      const result = parseSkillFile("/path/to/test-skill/SKILL.md");
+
+      expect(result.skillMetadata.argumentHint).toBe("[<target>]");
+    });
+
     it("should parse allowed-tools in frontmatter (list)", () => {
       const mockContent = `---
 name: test-skill

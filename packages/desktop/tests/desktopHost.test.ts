@@ -587,7 +587,12 @@ vi.mock("wave-agent-sdk/host", async (importOriginal) => ({
         description: "查看当前状态",
         runOnSelect: true,
       },
-      { id: "btw", name: "btw", description: "旁路提问（不进入聊天记录）" },
+      {
+        id: "btw",
+        name: "btw",
+        description: "旁路提问（不进入聊天记录）",
+        argumentHint: "<你的问题>",
+      },
     ]);
     getSkillMetadata = vi.fn(async () => [
       {
@@ -4618,6 +4623,29 @@ describe("misc commands", () => {
     // SDK 命令一律不带（技能 / 自定义 / 插件命令都走插入文本）
     expect(
       commands.find((c) => c.name === "review")?.runOnSelect,
+    ).toBeUndefined();
+  });
+
+  it("requestSlashCommands passes argumentHint through", async () => {
+    // 参数提示也照原样转发（webview 拿它画命令后面的灰字，spec
+    // commands/slash-commands.md「命令的作者能给出参数提示」）。
+    const { host, sent } = await readyHost();
+    await host.handleWebviewMessage({
+      command: "requestSlashCommands",
+      filterText: "",
+    });
+
+    const resp = sent("slashCommandsResponse")[0];
+    const commands = resp.commands as Array<{
+      name: string;
+      argumentHint?: string;
+    }>;
+    expect(commands.find((c) => c.name === "btw")?.argumentHint).toBe(
+      "<你的问题>",
+    );
+    // 没有提示的命令不多带一个空键——webview 靠「有没有这个字段」决定画不画。
+    expect(
+      commands.find((c) => c.name === "status")?.argumentHint,
     ).toBeUndefined();
   });
 

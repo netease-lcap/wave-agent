@@ -56,6 +56,14 @@ describe("/loop execution integration", () => {
     expect(slashCommandManager.hasCommand("loop")).toBe(true);
   });
 
+  it("should carry the argument hint from SKILL.md frontmatter", () => {
+    // 内置技能与自定义命令走同一个键（CC 的 loop 写的是同一句），前端据此在
+    // `/loop ` 后面画参数形状。
+    expect(slashCommandManager.getCommand("loop")?.argumentHint).toBe(
+      "[interval] <prompt>",
+    );
+  });
+
   it("should invoke /loop skill and send message to AI", async () => {
     const cmd = slashCommandManager.getCommand("loop");
     expect(cmd).toBeDefined();

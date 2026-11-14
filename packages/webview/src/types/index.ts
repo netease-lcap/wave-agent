@@ -90,6 +90,9 @@ export interface SlashCommand {
    *  `/名字` 发回宿主；不带则把命令名插到输入框里等用户补参数。由 host 随命令下发，
    *  webview 不维护命令名名单（见 webview-fixtures 的 SlashCommandsResponseMessage）。 */
   runOnSelect?: boolean;
+  /** 参数提示（`[path]` 这类）。选中命令插进输入框后，输入框里以灰字显示在
+   *  `/命令 ` 后面，用户一打字就消失；空/缺省 = 不显示。由 host 随命令下发。 */
+  argumentHint?: string;
 }
 
 // File mention types for @ file suggestion feature

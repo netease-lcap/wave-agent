@@ -1482,6 +1482,12 @@ export interface SlashCommandsResponseMessage extends HostToWebviewMessageBase {
      *  另存一份命令名名单（它们必然是两份，加命令时漏同步就让指令落进「插入文本」
      *  分支）。 */
     runOnSelect?: boolean;
+    /** 参数提示（`[path]`、`<file>` 这类）：选中命令插进输入框后，前端把它画成
+     *  跟在 `/命令 ` 后面的灰字，用户一打字就撤。空/缺省 = 什么都不画。
+     *
+     *  来源是命令作者写的 `argument-hint`（技能/插件/自定义命令的 frontmatter），
+     *  宿主本地指令里只有需要用户补参数的 `/btw` 带它。 */
+    argumentHint?: string;
   }>;
 }
 
