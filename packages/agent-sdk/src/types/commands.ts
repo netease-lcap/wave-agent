@@ -15,6 +15,12 @@ export interface SlashCommand {
    * renders a source tag (内置/用户/项目/插件) from it. Plain/custom/plugin
    * commands leave it undefined. */
   skillSource?: SkillSource;
+  /**
+   * 参数提示（`[path]`、`<file>` 这类），命令插进输入框后以灰字显示在它后面，
+   * 用户一打字就消失 —— 形状照 CC 桌面端（spec ui/slash-commands.md「参数提示」）。
+   * 来源是命令作者的 frontmatter `argument-hint`；没有就什么都不显示。
+   */
+  argumentHint?: string;
   handler: (args?: string, signal?: AbortSignal) => Promise<void> | void;
   /** Whether this command should bypass the message queue when AI is busy.
    * - `true`: always immediate
@@ -44,6 +50,8 @@ export interface SlashCommandInfo {
    *  input. Absent = insert the name and let the user type the rest, which is
    *  what `/btw` needs. */
   runOnSelect?: boolean;
+  /** 参数提示；选中命令插进输入框后由前端渲染成灰字，见 `SlashCommand.argumentHint`。 */
+  argumentHint?: string;
 }
 
 /**
@@ -60,6 +68,8 @@ export interface CustomSlashCommandConfig {
   model?: string;
   description?: string;
   allowedTools?: string[];
+  /** frontmatter `argument-hint`。 */
+  argumentHint?: string;
 }
 
 export interface CustomSlashCommand {

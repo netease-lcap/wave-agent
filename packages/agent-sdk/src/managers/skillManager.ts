@@ -873,6 +873,7 @@ export class SkillManager extends EventEmitter {
         model: skill.model,
         disableModelInvocation: skill.disableModelInvocation,
         userInvocable: skill.userInvocable,
+        argumentHint: skill.argumentHint,
         pluginName,
         pluginRoot: skill.pluginRoot,
       };

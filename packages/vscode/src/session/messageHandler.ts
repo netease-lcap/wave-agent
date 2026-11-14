@@ -2458,6 +2458,9 @@ export class MessageHandler {
         ...(command.skillSource ? { skillSource: command.skillSource } : {}),
         // 宿主本地命令的选中即执行也由服务端下发（同一个字段）。
         ...(command.runOnSelect ? { runOnSelect: true } : {}),
+        // 参数提示：选中命令后画在它后面的灰字（见 spec
+        // commands/slash-commands.md「命令的作者能给出参数提示」）。
+        ...(command.argumentHint ? { argumentHint: command.argumentHint } : {}),
       }));
       this.context.postMessage(
         {

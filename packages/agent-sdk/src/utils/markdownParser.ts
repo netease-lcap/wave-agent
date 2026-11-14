@@ -75,6 +75,13 @@ export function parseMarkdownFile(filePath: string): ParsedMarkdownFile {
             .filter((s) => s.length > 0);
         }
       }
+
+      // `argument-hint` 是 UI 文案（`[path]`、`<file>`），原样保留：修掉首尾空白即可，
+      // 不做大小写或括号规范化，作者写什么菜单下就显示什么。
+      const argumentHint = frontmatter["argument-hint"];
+      if (typeof argumentHint === "string" && argumentHint.trim()) {
+        config.argumentHint = argumentHint.trim();
+      }
     }
 
     return {

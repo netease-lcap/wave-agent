@@ -8,6 +8,7 @@ export const loopSkill: Record<string, string> = {
   "skills/loop/SKILL.md": `---
 name: loop
 description: Run a prompt or slash command on a recurring interval (e.g. /loop 5m /foo, defaults to 10m)
+argument-hint: "[interval] <prompt>"
 allowed-tools: ${CRON_CREATE_TOOL_NAME}, ${SKILL_TOOL_NAME}
 user-invocable: true
 ---

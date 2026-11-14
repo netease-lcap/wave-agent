@@ -147,15 +147,26 @@ test("表里说某入口支持的每一条，webview 里都有一条以它为准
   }
 });
 
-test("回包形状只带 id / name / description / runOnSelect —— 没有 handler", () => {
+test("回包形状只带白名单字段（id / name / description / runOnSelect / argumentHint）—— 没有 handler", () => {
+  // `handler` 与其它内部字段一律不过线；可选字段按条目是否真设置来带。
+  const ALLOWED_KEYS = [
+    "argumentHint",
+    "description",
+    "id",
+    "name",
+    "runOnSelect",
+  ];
   for (const surface of ALL_SURFACES) {
     for (const command of hostSlashCommandsFor(surface)) {
       expect(command.id).toBe(command.name);
       expect(command.description).not.toHaveLength(0);
-      expect(Object.keys(command).sort()).toEqual(
-        command.runOnSelect
-          ? ["description", "id", "name", "runOnSelect"]
-          : ["description", "id", "name"],
+      const keys = Object.keys(command);
+      expect(
+        keys.filter((key) => !ALLOWED_KEYS.includes(key)),
+        `${command.id} 过线了白名单之外的字段`,
+      ).toEqual([]);
+      expect(keys).toEqual(
+        expect.arrayContaining(["description", "id", "name"]),
       );
     }
   }
@@ -207,6 +218,34 @@ test("toSlashCommandInfo 丢掉 handler，只留 skillSource 真设置时的标�
       handler: () => {},
     } as Parameters<typeof toSlashCommandInfo>[0]),
   ).toEqual({ id: "ship", name: "ship", description: "自定义命令" });
+});
+
+test("argumentHint 随命令一起过线，没写就不带这个键", () => {
+  // spec ui/slash-commands.md「命令的作者能给出参数提示」：前端只能画它拿到的
+  // 东西，所以 hint 必须在这一层透传，且缺省时不能凭空造一个空串键。
+  expect(
+    toSlashCommandInfo({
+      id: "deploy",
+      name: "deploy",
+      description: "部署",
+      argumentHint: "[环境]",
+      handler: () => {},
+    } as Parameters<typeof toSlashCommandInfo>[0]),
+  ).toEqual({
+    id: "deploy",
+    name: "deploy",
+    description: "部署",
+    argumentHint: "[环境]",
+  });
+
+  const btw = hostSlashCommandsFor("desktop").find(
+    (command) => command.id === "btw",
+  );
+  // 宿主表里只有插入型命令（`/btw`）有「等用户补参数」这一步，所以只有它带提示。
+  expect(btw?.argumentHint).toBe("[你的问题]");
+  for (const command of hostSlashCommandsFor("desktop")) {
+    if (command.id !== "btw") expect(command.argumentHint).toBeUndefined();
+  }
 });
 
 test("parseHostSurface 只认四个入口，其余（含缺失）一律 undefined", () => {

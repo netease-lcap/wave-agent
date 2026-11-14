@@ -129,6 +129,10 @@ export function parseSkillFile(
       model: result.frontmatter.model as string | undefined,
       disableModelInvocation,
       userInvocable,
+      ...(typeof result.frontmatter["argument-hint"] === "string" &&
+      result.frontmatter["argument-hint"].trim()
+        ? { argumentHint: result.frontmatter["argument-hint"].trim() }
+        : {}),
     };
 
     // Validate metadata if requested

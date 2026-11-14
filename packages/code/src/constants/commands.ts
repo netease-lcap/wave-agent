@@ -72,6 +72,8 @@ export const AVAILABLE_COMMANDS: SlashCommand[] = [
     id: "btw",
     name: "btw",
     description: "Ask a side question without tool use",
+    // 唯一需要用户补内容的本地命令：`/btw` 插进输入框后以暗色提示问题形状。
+    argumentHint: "<your question>",
     handler: () => {}, // Handler here won't be used, actual processing is in the hook
   },
   {
@@ -102,6 +104,9 @@ export const AVAILABLE_COMMANDS: SlashCommand[] = [
     id: "plan",
     name: "plan",
     description: "Enable plan mode or view the current session plan",
+    // CC 写 `[open|<description>]`，但 `/plan open` 三端都不支持（spec
+    // plan-mode.md），提示里不列这个填不出来的词。
+    argumentHint: "[description]",
     handler: () => {}, // Handler here won't be used, actual processing is in the hook
   },
   {
@@ -114,6 +119,8 @@ export const AVAILABLE_COMMANDS: SlashCommand[] = [
     id: "rename",
     name: "rename",
     description: "Set a custom title for the current conversation",
+    // 与 `Usage: /rename <title>` 逐字一致（CC 的同一个命令写 `[name]`）。
+    argumentHint: "<title>",
     handler: () => {}, // Handler here won't be used, actual processing is in the hook
   },
   {
@@ -132,12 +139,16 @@ export const AVAILABLE_COMMANDS: SlashCommand[] = [
     id: "compact",
     name: "compact",
     description: "Compact conversation history to reduce context usage",
+    // 可选的压缩指令（`/compact 只留结论`），CC 的措辞太长，这里压成一段。
+    argumentHint: "[instructions]",
     handler: () => {},
   },
   {
     id: "add-dir",
     name: "add-dir",
     description: "Add a directory to the session Safe Zone",
+    // 与 `Usage: /add-dir <path> [--remember]` 逐字一致。
+    argumentHint: "<path> [--remember]",
     handler: () => {}, // Handler here won't be used, actual processing is in the hook
   },
 ];

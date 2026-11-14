@@ -35,6 +35,9 @@ interface HostSlashCommandSpec {
   description: string;
   /** Absent = insert `/name ` and let the user finish (only `/btw` today). */
   runOnSelect?: boolean;
+  /** 插入型命令的参数提示，只在 `runOnSelect` 缺席时有意义（选中即执行的命令
+   *  没有「等用户补参数」这一步）。 */
+  argumentHint?: string;
   surfaces: Surfaces;
 }
 
@@ -169,6 +172,7 @@ export const HOST_SLASH_COMMANDS: readonly HostSlashCommandSpec[] = [
     description: "旁路提问（不进入聊天记录）",
     // 不标 `runOnSelect`：选中后只把 `/btw ` 插进输入框，等用户补问题
     // （spec ui/btw-command.md）。
+    argumentHint: "[你的问题]",
     surfaces: ALL,
   },
   {
@@ -189,6 +193,7 @@ export function hostSlashCommandsFor(surface: HostSurface): SlashCommandInfo[] {
     name: command.id,
     description: command.description,
     ...(command.runOnSelect ? { runOnSelect: true } : {}),
+    ...(command.argumentHint ? { argumentHint: command.argumentHint } : {}),
   }));
 }
 
@@ -202,12 +207,14 @@ export function toSlashCommandInfo(command: {
   name: string;
   description: string;
   skillSource?: SlashCommandInfo["skillSource"];
+  argumentHint?: string;
 }): SlashCommandInfo {
   return {
     id: command.id,
     name: command.name,
     description: command.description,
     ...(command.skillSource ? { skillSource: command.skillSource } : {}),
+    ...(command.argumentHint ? { argumentHint: command.argumentHint } : {}),
   };
 }
 

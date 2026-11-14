@@ -90,6 +90,19 @@
   display: block;
 }
 
+/* 参数提示（spec ui/slash-commands.md「参数提示」）：选中带 `argumentHint` 的命令
+   后，灰字跟在 `/命令 ` 后面，用户一打字就消失。
+   - 文案走 `content: attr()`，**不进 DOM** —— 与上面 placeholder 同一族做法，
+     所以草稿序列化、`innerText`、发送内容都天然拿不到它，不用在每个取值点过滤。
+   - 半透明 + 不吃指针/选区：它是个提示，不是可编辑内容（CC 桌面端同样把 hint
+     排成 `user-select:none` 的装饰）。 */
+.content-editable-input[data-argument-hint]::after {
+  content: attr(data-argument-hint);
+  opacity: 0.5;
+  pointer-events: none;
+  user-select: none;
+}
+
 .message-input:focus {
   outline: none;
 }

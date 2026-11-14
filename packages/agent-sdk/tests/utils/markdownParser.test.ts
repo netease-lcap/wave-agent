@@ -106,6 +106,34 @@ describe("markdownParser", () => {
   });
 
   describe("parseMarkdownFile", () => {
+    it("should read argument-hint into the command config", () => {
+      // spec ui/slash-commands.md「命令的作者能给出参数提示」：键名照 CC 的
+      // `argument-hint`，值原样保留（括号、尖括号都是作者写的），只去首尾空白。
+      const filePath = join(tmpdir(), `test-arg-hint-${Date.now()}.md`);
+      const content = '---\nargument-hint: "  [环境] [分支]  "\n---\nContent';
+      writeFileSync(filePath, content);
+
+      try {
+        const result = parseMarkdownFile(filePath);
+        expect(result.config?.argumentHint).toBe("[环境] [分支]");
+      } finally {
+        unlinkSync(filePath);
+      }
+    });
+
+    it("should leave argumentHint unset when the frontmatter omits or blanks it", () => {
+      const filePath = join(tmpdir(), `test-arg-hint-empty-${Date.now()}.md`);
+      writeFileSync(filePath, '---\nargument-hint: "   "\n---\nContent');
+
+      try {
+        expect(
+          parseMarkdownFile(filePath).config?.argumentHint,
+        ).toBeUndefined();
+      } finally {
+        unlinkSync(filePath);
+      }
+    });
+
     it("should read and parse a markdown file", () => {
       const filePath = join(tmpdir(), `test-${Date.now()}.md`);
       const content =
