@@ -1642,6 +1642,30 @@ describe("remote page shim — healing after a disconnect", () => {
     expect(page.banner()).not.toContain("已停止重试");
   });
 
+  it("一台离线的电脑不算「连上了」：轮次与退避都接着上一轮长", async () => {
+    const { page } = await connectedPage();
+
+    // 真实时序（spec remote/channel「握手与凭证」那一段）：手机这一侧的认证先
+    // 通过（`auth_ok`），中继紧接着说「电脑已断开」（`peer_disconnected`），
+    // 再以 4001 关掉。三次重试都是先 WS `open` 成功、再走完这条链 —— 把 `open`
+    // 当成「连上了」，整段离线期间就永远停在「第 1 次」、退避永远 2 秒一拨：
+    // 页面既不退让，也不告诉用户到底等了几轮（2026-11-14 报障「只能看到第一次
+    // 重连」）。
+    const delays: number[] = [];
+    for (let i = 0; i < 3; i++) {
+      const socket = page.socket();
+      socket.readyState = 1;
+      socket.onopen?.();
+      socket.receive({ type: "auth_ok" });
+      socket.receive({ type: "peer_disconnected" });
+      socket.onclose?.({ code: 4001 });
+      expect(page.banner()).toContain(`第 ${i + 1} 次`);
+      delays.push(pendingRetryDelay(page));
+      page.runRetryTimers();
+    }
+    expect(delays).toEqual([2000, 4000, 8000]);
+  });
+
   it("points at the machine switcher in the 4001 line — the other machine may be the right one", async () => {
     const { page } = await connectedPage();
 
@@ -1654,7 +1678,7 @@ describe("remote page shim — healing after a disconnect", () => {
     expect(page.banner()).toContain("切换电脑");
   });
 
-  it("grows the backoff up to the cap, and any open starts it over", async () => {
+  it("grows the backoff up to the cap, and a served channel starts it over", async () => {
     const { page } = await connectedPage();
     const delays: number[] = [];
     for (let i = 0; i < 6; i++) {
@@ -1664,10 +1688,20 @@ describe("remote page shim — healing after a disconnect", () => {
     }
     expect(delays).toEqual([2000, 4000, 8000, 16000, 30000, 30000]);
 
-    // An open puts the backoff back at the fastest step.
+    // 拨通并握手**不算**连上：电脑不在线时中继照样给这两步，然后一条 4001 把
+    // 连接放掉（见「一台离线的电脑不算"连上了"」）。
     page.socket().readyState = 1;
     page.socket().onopen?.();
     page.socket().receive({ type: "auth_ok" });
+    page.socket().onclose?.({ code: 4001 });
+    expect(pendingRetryDelay(page)).toBe(30000);
+
+    // 回来一帧业务帧才算：这一轮的退避从头开始。
+    page.runRetryTimers();
+    page.socket().readyState = 1;
+    page.socket().onopen?.();
+    page.socket().receive({ type: "auth_ok" });
+    page.socket().receive({ id: 99, result: {} });
     page.socket().onclose?.({ code: 4001 });
     expect(pendingRetryDelay(page)).toBe(2000);
   });
@@ -2237,5 +2271,22 @@ describe("remote page shim — the second batch", () => {
     // 兜底分支不再只写日志：不回执的后果是界面停在那个动作上，而手机没有终端
     // 可以去看。
     expect(page.banner()).toContain("这个操作在 Web 端还没有接通");
+  });
+
+  it("mod 的带与面板：页面自己拉它们，Web 端静默丢弃而不是提示未接通", async () => {
+    const page = await openPage();
+    const before = page.requests().length;
+
+    // 页面挂载与每次切会话都会发这一条（`ChatApp` 那个 effect：新建对话还没有
+    // id 也一样发）。落到兜底分支就等于每开一次页面在顶上弹一句「还没有接通」，
+    // 而这不是用户做错的操作，也不该靠「升级机器」解决 —— 一期只做桌面端。
+    page.post({ command: "modBandRender" });
+    page.post({ command: "modPanelRender" });
+    page.post({ command: "modPanelEvent" });
+    await flush();
+
+    expect(page.requests()).toHaveLength(before);
+    expect(page.banner()).toBe("");
+    expect(page.warns.join("\n")).toContain("modBandRender");
   });
 });
