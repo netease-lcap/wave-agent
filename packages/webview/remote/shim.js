@@ -224,6 +224,13 @@
     uploadFilesToArtifacts: "Web 端不能上传文件",
     login: "Web 端复用企业端登录态，不需要单独登录",
     logout: "Web 端退出请走企业端",
+    // 插件 mod 的界面（spec `ecosystem/plugin-mods.md`「交付分层」：一期只做
+    // 桌面端）。页面挂载、切会话时都会**主动拉一次**带 —— 新建对话也一样，
+    // 所以这三个不是「将来某个操作才会点到」，而是每次开页面就发。静默丢弃：
+    // 落到 `default:` 就是每新建一次对话在屏幕顶上弹一句「还没有接通」。
+    modBandRender: "Web 端不显示插件 mod 的状态带（一期只做桌面端）",
+    modPanelRender: "Web 端不显示插件 mod 的面板（一期只做桌面端）",
+    modPanelEvent: "Web 端没有插件 mod 的交互入口（一期只做桌面端）",
   };
   /**
    * "The channel would carry this method, but **this host** has not implemented
@@ -936,12 +943,15 @@
 
     ws.onopen = function () {
       if (ws !== socket) return;
-      attempts = 0;
-      // Any open counts as success: the next drop starts from the fastest step.
-      retryDelay = RETRY_MS;
-      // 上一轮断开的宽限就此作废：接回来了，没有要播报的东西。
+      // **`open` 不是「连上了」**：电脑不在线时中继照样完成握手，然后一条
+      // 「电脑已断开」控制帧加一个 4001 把这条连接放掉（spec
+      // `remote/remote-channel.md`「连接生命周期」场景 10：`auth_ok` →
+      // `peer_disconnected` → 4001）。在这里归零就成了整段离线期间每次重试都从
+      // 「第 1 次、2 秒」开始 —— 计数永远不长、退避永远不涨，用户只看到
+      // 「第 1 次重试」反复出现（2026-11-14 报障）。归零挪到 `markConnected`：
+      // 真正有业务帧往来才算（spec「断线自愈」场景 6）。
+      // 上一轮断开的宽限仍然就此作废：这次拨号已经把「接回来了」的可能性用掉。
       cancelStatusGrace();
-      clearStatus();
       // The handshake owns the first frame. On an unauthenticated connection
       // the relay parses *every* frame as `auth`, and a parse failure is a
       // permanent 4003 — so nothing else may go out until `auth_ok`.
@@ -967,10 +977,29 @@
         handleControl(frame);
         return;
       }
+      // A JSON-RPC frame is the first sign this channel really serves: the
+      // handshake said ok, but only an answer (or a notification) proves the
+      // machine behind it is up. That — not `open`, not `auth_ok` — is when the
+      // retry count and the backoff start over.
+      markConnected();
       if (frame && frame.id !== undefined) settle(frame);
       else if (frame && frame.method)
         deliver(frame.method, frame.params, frame.sessionId);
     };
+
+    /**
+     * The one place a connection counts as successful — see `ws.onopen` for why
+     * neither `open` nor `auth_ok` qualifies.
+     */
+    function markConnected() {
+      var wasDown = attempts > 0;
+      attempts = 0;
+      retryDelay = RETRY_MS;
+      // The line the outage painted (and its mute) is over. A first connection
+      // of the page never painted one, so this stays a no-op there — and so it
+      // must, or every frame would wipe whatever else is on the line.
+      if (wasDown || bannerKey === "reconnecting") clearStatus();
+    }
 
     ws.onclose = function (event) {
       if (ws !== socket) return;
