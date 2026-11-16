@@ -188,6 +188,10 @@ describe("AIManager - pre-request auto compaction", () => {
     await aiManager.sendAIMessage();
 
     expect(compactSpy).toHaveBeenCalledTimes(1);
+    // 撞阈值触发的算 auto（`session.compact` 事件要能区分是谁压的）。
+    expect(compactSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ trigger: "auto" }),
+    );
     // Compaction decision happens pre-request: it must fire before callAgent.
     expect(compactSpy.mock.invocationCallOrder[0]).toBeLessThan(
       (aiService.callAgent as ReturnType<typeof vi.fn>).mock

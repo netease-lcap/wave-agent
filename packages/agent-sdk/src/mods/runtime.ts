@@ -16,8 +16,9 @@ import type {
   ModPropValue,
   ModPromptFillMode,
   ModSessionUsage,
+  ModSettingsSource,
 } from "../types/mods.js";
-import { MOD_LIMITS } from "../types/mods.js";
+import { MOD_LIMITS, MOD_SETTINGS_SOURCES } from "../types/mods.js";
 import {
   Box,
   Text,
@@ -200,6 +201,43 @@ function validateCommandSpec(spec: unknown): ModCommandSpec {
   };
 }
 
+/**
+ * 校验 `$.settings.read` 的参数（spec「环境变量与设置（只读）」）。
+ *
+ * 四种形式：`read()` / `read({ source })` / `read({ key })` /
+ * `read({ source, key })`。`source` 只认我们自己有的三层 —— Claude Code 的表里
+ * 还有 `flag` / `policy`，我们没有那两层，写错了要当场报出来并列出可用值，
+ * 而不是安静地返回一份合并结果（那会让插件以为读到了策略层）。
+ */
+function normalizeSettingsQuery(query: unknown): {
+  source?: ModSettingsSource;
+  key?: string;
+} {
+  if (query === undefined) return {};
+  if (!isPlainObject(query)) {
+    throw new Error("$.settings.read 只接受 { source }、{ key } 或无参数");
+  }
+  const source = query.source;
+  if (
+    source !== undefined &&
+    !(MOD_SETTINGS_SOURCES as readonly unknown[]).includes(source)
+  ) {
+    throw new Error(
+      `$.settings.read 的 source 只允许 ${MOD_SETTINGS_SOURCES.map((s) => `"${s}"`).join("、")}`,
+    );
+  }
+  const key = query.key;
+  if (key !== undefined && typeof key !== "string") {
+    throw new Error(
+      "$.settings.read 的 key 是字符串（顶层键，不做 . 路径展开）",
+    );
+  }
+  return {
+    ...(source === undefined ? {} : { source: source as ModSettingsSource }),
+    ...(key === undefined ? {} : { key }),
+  };
+}
+
 /** 定时器句柄：`cancel()` 可重复调用。 */
 export interface ModTimerHandle {
   cancel(): void;
@@ -246,13 +284,16 @@ export interface ModDollar {
     keys(): string[];
   };
   /**
-   * 定时器（spec「定时器」）。
+   * 定时器（spec「定时器」）与等待（spec「时钟：等待」）。
    *
    * 沙箱里没有 `setTimeout`/`setInterval`：定时器登记在宿主上，会话销毁或插件
    * 重载时才撤销得掉 —— 裸定时器会留在进程里继续跑，然后打到已经销毁的会话上。
+   * `sleep` 同理：未完成的等待在销毁时 reject，不会留一个 resolve 到已死会话上
+   * 的 Promise。
    */
   clock: {
     now(): number;
+    sleep(ms: number, options?: { signal?: AbortSignal }): Promise<void>;
     after(ms: number, fn: () => unknown): ModTimerHandle;
     every(ms: number, fn: () => unknown): ModTimerHandle;
   };
@@ -333,6 +374,41 @@ export interface ModDollar {
      * 三者口径必须一致，否则插件算出来的路径会与它读写的位置分叉。
      */
     cwd(): string;
+    /**
+     * 会话 id（spec「会话事实：id、根目录、模型」）。
+     *
+     * 异步是照 Claude Code 的形状：那边的 `session.id()` 也是 Promise。**要用
+     * 时现取** —— `/clear` 与恢复会话会换 id，存死在 `session.start` 里就过期了。
+     */
+    id(): Promise<string>;
+    /**
+     * 会话工作根（容器 token `WorkspaceRoot`）：`EnterWorktree` 会让它动，`cd`
+     * 不会。回答「这条会话在哪个工作区里干活」。
+     */
+    root(): Promise<string>;
+    /** 当前生效的模型名（没配时是空串），与 `usage().model` 同一处解析。 */
+    model(): Promise<string>;
+  };
+  /**
+   * 环境变量（spec「环境变量与设置（只读）」）。
+   *
+   * 沙箱里没有 `process`：读到的值与工具、钩子看到的是同一份（会话 env 快照
+   * 覆盖 OS env）。未设置给 `undefined`、不抛错 —— Claude Code 同语义，社区
+   * 插件的写法就是 `(await $.env.get("X")) || 默认值`。
+   */
+  env: {
+    get(name: string): Promise<string | undefined>;
+  };
+  /**
+   * 设置快照（spec「环境变量与设置（只读）」）。
+   *
+   * 只读：不给 `set`，改配置会牵连正在跑的工具与子进程，且用户不知道是谁改的。
+   */
+  settings: {
+    read(query?: {
+      source?: ModSettingsSource;
+      key?: string;
+    }): Promise<unknown>;
   };
   /**
    * 注册斜杠命令（spec「注册命令」）。
@@ -398,6 +474,32 @@ export interface ModRuntimeHost {
   }): Promise<boolean>;
   /** `$.session.usage()` 的数据源；会话还没起过轮次时给零值快照。 */
   sessionUsage(): ModSessionUsage;
+  /** `$.session.id()`：会话 id（现取，`/clear` 之后是新值）。 */
+  sessionId(): string;
+  /** `$.session.root()`：会话工作根（容器 token `WorkspaceRoot`，`cd` 不动）。 */
+  workspaceRoot(): string;
+  /** `$.session.model()`：当前生效的模型名；没配时给空串。 */
+  model(): string;
+  /** `$.env.get`：会话 env 快照与 OS env 合并后按名字取。 */
+  envGet(name: string): string | undefined;
+  /**
+   * `$.settings.read`：某一层或合并后的设置。
+   *
+   * `source` 缺省给合并后的当前配置；`key` 给了就取顶层键。层的读法、脱不开的
+   * 「这一层不存在」都由实现方决定（`null` 当空对象）。
+   */
+  settingsRead(query: {
+    source?: ModSettingsSource;
+    key?: string;
+  }): Promise<unknown>;
+  /**
+   * `$.clock.sleep`：等待 `ms`。
+   *
+   * 撤销权在宿主：会话销毁 / 插件重载时未完成的等待一律 reject（`AbortError`），
+   * 所以这里只收「等多久」和 mod 自己那份 signal（可为 `undefined`，跨 realm，
+   * 由实现方 duck-type 判）。
+   */
+  sleep(ms: number, signal: unknown): Promise<void>;
   /** `$.command.register`：交给宿主的命令表（归属、重名、上限都在那边判）。 */
   registerCommand(spec: ModCommandSpec): { command: string };
   /** `$.command.list`：当前可见的命令（含非 mod 来源）。 */
@@ -410,19 +512,25 @@ export interface ModRuntimeHost {
  * 允许注册的钩子（spec「事件」）。
  *
  * `session.start` / `ui.render` 是「要 mod 做事」的那两个；`turn.complete`、
- * `tool.call` 与 `classic.PermissionRequest` 是只读的观察事件，返回值一律丢弃
+ * `tool.call`、`turn.start`、`turn.step`、`session.compact`、`session.end`、
+ * `ui.close` 与 `classic.PermissionRequest` 是只读的观察事件，返回值一律丢弃
  * （`tool.call` 在 Claude Code 里还能返回 `{ deny }` 拦下调用，那是决策型钩子，
  * 我们只做观察这一半）。`classic.` 前缀是照 Claude Code 的规矩：它把每个
  * settings hook 事件都镜像成 `classic.<Event>`，我们只做这一个镜像，`e` 的形状
- * 也照那份 stdin JSON。`command.run` 是唯一带 matcher 的事件，也唯一有返回值
- * 语义（`{ text }`）。
- * **没有**「面板被关掉」事件 —— 面板的关闭、插件重载、会话销毁都由宿主内部清
- * 理，不通知 mod。别的名字一律拒收，免得插件作者依赖一个不存在的钩子。
+ * 也照那份 stdin JSON。`prompt.submit` 与 `command.run` 是仅有的两个有返回值
+ * 语义的：前者答 `{ context }`（本轮附加上下文，不改用户原文），后者答
+ * `{ text }`。别的名字一律拒收，免得插件作者依赖一个不存在的钩子。
  */
 const HOOK_NAMES = new Set([
   "session.start",
+  "prompt.submit",
+  "turn.start",
+  "turn.step",
   "ui.render",
+  "ui.close",
   "turn.complete",
+  "session.compact",
+  "session.end",
   "tool.call",
   "classic.PermissionRequest",
   "command.run",
@@ -698,6 +806,13 @@ export class ModRuntime {
         // 只登记到宿主，不在沙箱里自己起计时器：撤销权必须留在宿主手里。
         after: (ms, fn) => host.startTimer("after", ms, fn),
         every: (ms, fn) => host.startTimer("every", ms, fn),
+        // 同上：销毁时未完成的等待要能 reject，所以计时与撤销都在宿主那边。
+        sleep: (ms, options) => {
+          if (typeof ms !== "number" || !Number.isFinite(ms) || ms < 0) {
+            throw new Error("$.clock.sleep 需要非负的毫秒数");
+          }
+          return host.sleep(ms, options?.signal);
+        },
       },
       // 同上：进程也归宿主所有，`dispose` / `/reload-plugins` 时宿主统一回收。
       process: {
@@ -764,6 +879,37 @@ export class ModRuntime {
         usage: () => cloneValue(host.sessionUsage()),
         // 与 `$.fs` 同一份 getter：`cd` 过之后这里立刻是新目录。
         cwd: () => host.workdir(),
+        // 三个事实都异步（Claude Code 同名方法也是异步的），一律现取。
+        id: async () => host.sessionId(),
+        root: async () => host.workspaceRoot(),
+        model: async () => host.model(),
+      },
+      env: {
+        get: async (name) => {
+          if (typeof name !== "string" || name.length === 0) {
+            throw new Error("$.env.get 需要一个变量名");
+          }
+          // 超长的名字按「没设置」处理：它不可能是真的环境变量名，报错反而
+          // 逼插件去处理一个写错了的字符串。
+          if (name.length > MOD_LIMITS.envNameChars) return undefined;
+          return host.envGet(name);
+        },
+      },
+      settings: {
+        read: async (query) => {
+          const request = normalizeSettingsQuery(query);
+          const value = await host.settingsRead(request);
+          // 跨 realm 传一份拷贝；同时守住体积（截断的配置是错的配置，所以超限
+          // 报错而不是切一刀）。
+          const cloned = cloneValue(value);
+          const size = Buffer.byteLength(JSON.stringify(cloned) ?? "", "utf-8");
+          if (size > MOD_LIMITS.settingsReadBytes) {
+            throw new Error(
+              `$.settings.read 的结果有 ${size} 字节，超过 ${MOD_LIMITS.settingsReadBytes}`,
+            );
+          }
+          return cloned;
+        },
       },
       // 命令的三件事：注册元数据、看命令表、执行一条（spec「注册命令」）。
       command: {
@@ -790,6 +936,11 @@ export class ModRuntime {
     this.context = vm.createContext(
       {
         __wave: this.wave,
+        // `$.clock.sleep` 接受 `{ signal }`，而沙箱里原本连 `AbortController`
+        // 都没有 —— 不给它，`signal` 就永远只能由宿主造（mod 自己取消不了自己
+        // 的等待）。这两个类来自宿主 realm，只用来传递取消信号。
+        AbortController,
+        AbortSignal,
         console: {
           log: (...args: unknown[]) =>
             logger.info(`[mod:${host.pluginName}]`, ...args),

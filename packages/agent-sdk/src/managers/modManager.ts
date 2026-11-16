@@ -22,11 +22,16 @@ import {
   type ModPanelUpdatePayload,
   type ModPermissionRequestEvent,
   type ModPromptFillMode,
+  type ModPromptSubmitResult,
+  type ModSessionCompactEvent,
   type ModSessionUsage,
+  type ModSettingsSource,
   type ModStatusPayload,
   type ModToastPayload,
   type ModToolCallEvent,
   type ModTurnCompleteEvent,
+  type ModTurnStartEvent,
+  type ModTurnStepEvent,
   type PluginMod,
 } from "../types/mods.js";
 import type { Plugin } from "../types/plugins.js";
@@ -50,12 +55,30 @@ import { logger } from "../utils/globalLogger.js";
  * ## 面板状态归属
  *
  * 面板活在**会话**里，不活在 mod 进程里：mod 调 `$.ui.open()` 只是登记一个
- * 面板，真正的内容由 `ui.render` 钩子现算。所以关掉面板的 tab 不需要通知
- * mod 的渲染路径 —— mod 也**收不到**任何「面板被关了」的事件（spec「事件」：
- * 没有这一条，与 Claude Code 的交集就是 `session.start` / `ui.render` 加上两
- * 个只读的观察事件）。宿主在这里
- * 把该 pane 的快照、回调表与定时器一并丢掉就完了。
+ * 面板，真正的内容由 `ui.render` 钩子现算。宿主关掉一个 pane 时把它的快照、
+ * 回调表与定时器一并丢掉；mod 那边只收到一条 `ui.close`（spec「事件」），而且
+ * 是告知 —— 拦不下关闭。
  */
+/**
+ * `$` 上那几个只读事实的数据源（spec「会话事实」「环境变量与设置（只读）」）。
+ *
+ * 每个值住在不同的 manager 里（`MessageManager` / 容器 token / `AIManager` /
+ * `ConfigurationService`），而 `ModManager` 在这些层的下面、一个都拿不到，所以
+ * 由 `Agent` 接进来 —— 与 `promptSubmitter` / `sessionUsageProvider` 同一条纪律。
+ */
+export interface ModSessionFacts {
+  sessionId(): string;
+  /** 会话工作根（容器 token `WorkspaceRoot`，`cd` 不动）。 */
+  workspaceRoot(): string;
+  /** 当前生效的模型名；没配时是空串。 */
+  model(): string;
+  env(name: string): string | undefined;
+  settings(query: {
+    source?: ModSettingsSource;
+    key?: string;
+  }): Promise<unknown>;
+}
+
 export interface ModManagerOptions {
   sessionId: string;
   /** 面板快照的出口；stdio 层把它转成 `modPanelUpdate` 通知。 */
@@ -77,6 +100,8 @@ export interface ModManagerOptions {
    * 脚本该落在新目录；挂在会话起点或工作区根上都会指错。
    */
   workdir?: () => string;
+  /** `$.session.id()` / `root()` / `model()`、`$.env.get`、`$.settings.read` 的数据源。 */
+  sessionFacts?: ModSessionFacts;
   /** 覆盖 store 根目录（测试用）。 */
   storeRoot?: string;
 }
@@ -125,6 +150,41 @@ function storePath(root: string, pluginName: string): string {
   return path.join(root, `${pluginName}.json`);
 }
 
+/**
+ * `$.clock.sleep` 的取消错误（spec「时钟：等待」）。
+ *
+ * `name` 必须是 `AbortError`：mod 的 `try/catch` 要能分辨「等到了」和「被宿主
+ * 撤销了」，只靠消息文字做不到（跨 realm，`instanceof` 也不可靠）。
+ */
+function abortError(): Error {
+  const error = new Error("$.clock.sleep 被取消（会话结束或插件重载）");
+  error.name = "AbortError";
+  return error;
+}
+
+/**
+ * 跨 realm 的 `AbortSignal` 判断。
+ *
+ * mod 传进来的 signal 可能是沙箱那边 `new AbortController().signal`，也可能是
+ * 用户从别处传进来的对象 —— 只按结构判，不 `instanceof`。
+ */
+function isAbortSignal(value: unknown): value is AbortSignal {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as { aborted?: unknown }).aborted === "boolean" &&
+    typeof (value as { addEventListener?: unknown }).addEventListener ===
+      "function" &&
+    typeof (value as { removeEventListener?: unknown }).removeEventListener ===
+      "function"
+  );
+}
+
+/** 一个未完成的 `$.clock.sleep`：`cancel()` 让它的 Promise reject。 */
+interface SleepWait {
+  cancel: () => void;
+}
+
 /** 没接上用量来源时的快照：全 0，`window: 0` 表示「还不知道」。 */
 const EMPTY_SESSION_USAGE: ModSessionUsage = {
   context: { tokens: 0, window: 0, percent: 0 },
@@ -167,8 +227,17 @@ export class ModManager {
   private readonly state = new Map<string, Map<string, unknown>>();
   /** modId → 它名下还活着的定时器。 */
   private readonly timers = new Map<string, Set<ClockTimer>>();
+  /** modId → 它名下还没结束的 `$.clock.sleep`（与定时器分开计，spec「限额」）。 */
+  private readonly sleeps = new Map<string, Set<SleepWait>>();
   private readonly processes: ModProcessManager;
   private readonly storeRoot: string;
+  /**
+   * 只读事实的数据源（{@link ModSessionFacts}）。
+   *
+   * 没接上时给一份兜底：会话 id 用构造时那个、工作根用「会动」的目录、模型空
+   * 串、env 读不到、settings 空对象 —— 宿主没接线不该让 mod 直接报错。
+   */
+  private readonly facts: ModSessionFacts;
   /**
    * `$.prompt.submit` 的出口。
    *
@@ -220,6 +289,15 @@ export class ModManager {
   constructor(private readonly options: ModManagerOptions) {
     this.storeRoot =
       options.storeRoot ?? path.join(homedir(), ".wave", "plugin-mods");
+    this.facts = options.sessionFacts ?? {
+      sessionId: () => options.sessionId,
+      workspaceRoot: () => options.workdir?.() ?? process.cwd(),
+      model: () => "",
+      env: () => undefined,
+      // `key` 由数据源自己取（它有那份配置）；兜底没配置可查，所以带 key 时
+      // 与「没这一项」同义。
+      settings: async (query) => (query.key === undefined ? {} : undefined),
+    };
     // cwd 现取现用：`cd` 之后起的脚本落在新目录。
     this.processes = new ModProcessManager(
       () => options.workdir?.() ?? process.cwd(),
@@ -365,6 +443,12 @@ export class ModManager {
               fillPrompt: (request) => this.fillPrompt(request),
               sessionUsage: () =>
                 this.sessionUsageProvider?.() ?? EMPTY_SESSION_USAGE,
+              sessionId: () => this.facts.sessionId(),
+              workspaceRoot: () => this.facts.workspaceRoot(),
+              model: () => this.facts.model(),
+              envGet: (name) => this.facts.env(name),
+              settingsRead: (query) => this.facts.settings(query),
+              sleep: (ms, signal) => this.startSleep(mod.id, ms, signal),
             },
             mod.path,
             compiled,
@@ -414,18 +498,30 @@ export class ModManager {
   }
 
   /**
-   * 派发一次只读事件（`turn.complete` / `tool.call` /
-   * `classic.PermissionRequest`，spec「完成与审批的观察」）。
+   * 派发一次只读事件（`turn.start` / `turn.step` / `turn.complete` /
+   * `session.compact` / `tool.call` / `classic.PermissionRequest`，spec「事件」
+   * 「轮次内外的事件」「完成与审批的观察」）。
    *
-   * 不等 mod、也不返回 Promise：这三个时刻都压在宿主的关键路径上（轮次收尾、
-   * 工具刚跑完、审批卡片即将弹出），mod 在里面做网络上报不能把用户的中断、下
-   * 一次工具调用或那道审批拖住。钩子失败、超时只记一条 warn —— 事件丢了就丢
-   * 了，宿主不回滚、不重试、不排队（瞬时事件本来就没有「补发」这回事）。
+   * 不等 mod、也不返回 Promise：这些时刻都压在宿主的关键路径上（轮次起收尾、
+   * 每次请求之前、工具刚跑完、审批卡片即将弹出），mod 在里面做网络上报不能把
+   * 用户的中断、下一个请求或那道审批拖住。钩子失败、超时只记一条 warn —— 事件
+   * 丢了就丢了，宿主不回滚、不重试、不排队（瞬时事件本来就没有「补发」这回事）。
+   * 唯一要等返回值的是 `prompt.submit`（见 {@link collectPromptContext}）与
+   * `session.end`（见 {@link endSession}）。
    */
   notifyMods(
-    event: "turn.complete" | "tool.call" | "classic.PermissionRequest",
+    event:
+      | "turn.start"
+      | "turn.step"
+      | "turn.complete"
+      | "session.compact"
+      | "tool.call"
+      | "classic.PermissionRequest",
     payload:
+      | ModTurnStartEvent
+      | ModTurnStepEvent
       | ModTurnCompleteEvent
+      | ModSessionCompactEvent
       | ModToolCallEvent
       | ModPermissionRequestEvent,
   ): void {
@@ -439,6 +535,76 @@ export class ModManager {
         }
       });
     }
+  }
+
+  /**
+   * 派发 `prompt.submit` 并收集 mod 塞进本轮的上下文（spec「轮次内外的事件」）。
+   *
+   * 与 {@link notifyMods} 的区别是**要等返回值**：注入的文本必须在这一轮的请求
+   * 发出前就位。等是有边界的 —— 每个 mod 各自受钩子超时约束，失败或超时只记一条
+   * warn，这一轮照常发出（只是没有注入）。返回值按插件加载顺序拼接。
+   */
+  async collectPromptContext(text: string): Promise<string[]> {
+    if (this.disposed) return [];
+    const parts = await Promise.all(
+      [...this.mods].map(async ([modId, loaded]) => {
+        const runtime = loaded.runtime;
+        if (!runtime) return [];
+        const result = await runtime.callHook("prompt.submit", { text });
+        if (!result.ok) {
+          logger.warn(`[Wave] ${modId} 的 prompt.submit 失败：${result.error}`);
+          return [];
+        }
+        const returned = result.value;
+        if (
+          typeof returned !== "object" ||
+          returned === null ||
+          Array.isArray(returned)
+        ) {
+          return [];
+        }
+        const value = returned as ModPromptSubmitResult &
+          Record<string, unknown>;
+        // 改 `text` / `drop` 是 Claude Code 同名事件另外两个返回值：我们不支持
+        // （悄悄改写或丢掉用户敲的话，用户在界面上看不出来）。
+        if (value.text !== undefined || value.drop !== undefined) {
+          logger.warn(
+            `[Wave] ${modId} 的 prompt.submit 返回了 text/drop：只支持 { context }，那两项被忽略`,
+          );
+        }
+        const context = value.context;
+        if (context === undefined) return [];
+        if (
+          !Array.isArray(context) ||
+          context.some((item) => typeof item !== "string")
+        ) {
+          logger.warn(
+            `[Wave] ${modId} 的 prompt.submit 的 context 必须是字符串数组，已忽略`,
+          );
+          return [];
+        }
+        return context
+          .map((item: string) => item.trim())
+          .filter((item: string) => item.length > 0);
+      }),
+    );
+    const merged = parts.flat();
+    // 条数与总字数封顶：多余部分丢弃并记一条 warn —— 这一轮不能因为插件塞太多
+    // 东西而失败。
+    const limited: string[] = [];
+    let chars = 0;
+    for (const part of merged) {
+      if (limited.length >= MOD_LIMITS.promptContextMaxItems) break;
+      if (chars + part.length > MOD_LIMITS.promptContextChars) break;
+      limited.push(part);
+      chars += part.length;
+    }
+    if (limited.length < merged.length) {
+      logger.warn(
+        `[Wave] prompt.submit 的上下文有 ${merged.length} 条，超过限额，只用了前 ${limited.length} 条`,
+      );
+    }
+    return limited;
   }
 
   /**
@@ -481,7 +647,8 @@ export class ModManager {
       return;
     }
     if (payload.kind === "close") {
-      // mod 收不到这条（spec「事件」）：宿主丢掉 pane 快照就够了。
+      // 宿主丢掉 pane 快照，同时给打开它的 mod 一条 `ui.close`（spec「事件」：
+      // 告知，拦不下关闭）。
       this.closePane(payload.modId, payload.paneId);
       return;
     }
@@ -513,17 +680,45 @@ export class ModManager {
   /** 会话结束 / agent 销毁：关掉所有面板、撤销所有定时器与外部进程，进入终态。 */
   async dispose(): Promise<void> {
     this.cancelAllTimers();
+    // 未完成的 `$.clock.sleep` 一并 reject（spec「时钟：等待」）：留着就是一个
+    // resolve 到已销毁会话上的 Promise。
+    this.cancelAllSleeps();
     // 外部进程连同子进程树一起杀（spec「生命周期」）：留下的孤儿会一直跑，
     // 然后往一个已经不存在的会话里写东西。
     this.processes.dispose();
     // 命令的 handler 闭包指着这个沙箱，留下就是一个打到已销毁会话上的僵尸。
     this.dropOwnedCommands();
     // 先关面板再进终态：`closed: true` 是界面关掉 tab 的唯一信号，而
-    // `publishUpdate` 在 `disposed` 之后一律静默。
-    this.closeAllPanes();
+    // `publishUpdate` 在 `disposed` 之后一律静默。这里**不**逐条发 `ui.close`：
+    // 会话销毁只发一次 `session.end`（spec「事件」）。
+    this.closeAllPanes(false);
     this.bands.clear();
     this.statusLines.clear();
     this.disposed = true;
+  }
+
+  /**
+   * 会话销毁之前派发一次 `session.end`（spec「轮次内外的事件（只读）」）。
+   *
+   * 唯一一个宿主会**等**的 mod 事件：插件要拿它把「这一场结束了」报到自己的服
+   * 务端，而 `dispose` 之后实例就没了。并行等所有 mod，各自受 5 秒钩子上限约束；
+   * 失败只记 warn —— 收尾不能因为一个插件卡住而卡住。
+   */
+  async endSession(): Promise<void> {
+    if (this.disposed) return;
+    const pending: Array<Promise<void>> = [];
+    for (const [modId, loaded] of this.mods) {
+      const runtime = loaded.runtime;
+      if (!runtime) continue;
+      pending.push(
+        runtime.callHook("session.end", {}).then((result) => {
+          if (!result.ok) {
+            logger.warn(`[Wave] ${modId} 的 session.end 失败：${result.error}`);
+          }
+        }),
+      );
+    }
+    await Promise.all(pending);
   }
 
   /**
@@ -538,10 +733,12 @@ export class ModManager {
     // 旧实例的定时器与进程必须先停：下面会丢掉 `mods`，它们的 `$` 还指向旧
     // runtime —— 留着的话这些回调/子进程会打到已经没人认领的旧实例上。
     this.cancelAllTimers();
+    this.cancelAllSleeps();
     this.processes.killAll();
     // 命令先撤再重建：否则重载后命令表里留着指向旧沙箱的 handler。
     this.dropOwnedCommands();
-    this.closeAllPanes();
+    // 早于 `mods.clear()`：`ui.close` 要发给还活着的旧实例（spec「事件」）。
+    this.closeAllPanes(true);
     this.bands.clear();
     this.statusLines.clear();
     this.mods.clear();
@@ -673,6 +870,79 @@ export class ModManager {
     this.timers.delete(modId);
   }
 
+  // ── 等待（spec「时钟：等待」） ──────────────────────────────
+
+  private sleepsFor(modId: string): Set<SleepWait> {
+    let set = this.sleeps.get(modId);
+    if (!set) {
+      set = new Set();
+      this.sleeps.set(modId, set);
+    }
+    return set;
+  }
+
+  /**
+   * 起一次 `$.clock.sleep`。
+   *
+   * 三条纪律都在这里：间隔夹进 [下限, 上限]、每 mod 并发数封顶、撤销权归宿主
+   * （会话销毁 / 插件重载时 reject 掉所有未完成的等待）。下半段「与定时器同一
+   * 条：沙箱里不该有活过会话的东西」。
+   */
+  private startSleep(
+    modId: string,
+    ms: number,
+    signal: unknown,
+  ): Promise<void> {
+    const live = this.sleepsFor(modId);
+    // 超配额与参数错误一样是**当场**抛（不是 rejection）：与 `after`/`every`
+    // 的配额错误同一个形状，mod 的 `try/catch` 就能抓住；只有撤销才走 reject。
+    if (live.size >= MOD_LIMITS.maxSleepsPerMod) {
+      throw new Error(
+        `$.clock.sleep 同时未完成的等待最多 ${MOD_LIMITS.maxSleepsPerMod} 个`,
+      );
+    }
+    const delay = Math.min(
+      Math.max(ms, MOD_LIMITS.timerMinIntervalMs),
+      MOD_LIMITS.maxSleepMs,
+    );
+    const abortSignal = isAbortSignal(signal) ? signal : undefined;
+    return new Promise<void>((resolve, reject) => {
+      let settled = false;
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      let onAbort: (() => void) | undefined;
+      const finish = (error?: Error): void => {
+        if (settled) return;
+        settled = true;
+        if (timer !== undefined) clearTimeout(timer);
+        if (onAbort) abortSignal?.removeEventListener("abort", onAbort);
+        live.delete(wait);
+        if (error) reject(error);
+        else resolve();
+      };
+      const wait: SleepWait = { cancel: () => finish(abortError()) };
+      live.add(wait);
+      timer = setTimeout(() => finish(), delay);
+      if (abortSignal) {
+        onAbort = () => finish(abortError());
+        abortSignal.addEventListener("abort", onAbort);
+        // 已经 abort 的 signal：立刻结束，不必等下一次事件。
+        if (abortSignal.aborted) finish(abortError());
+      }
+    });
+  }
+
+  /** 撤销所有未完成的等待；给了 `modId` 就只撤那个 mod 的。 */
+  private cancelAllSleeps(modId?: string): void {
+    if (modId === undefined) {
+      for (const id of [...this.sleeps.keys()]) this.cancelAllSleeps(id);
+      return;
+    }
+    const set = this.sleeps.get(modId);
+    if (!set) return;
+    this.sleeps.delete(modId);
+    for (const wait of [...set]) wait.cancel();
+  }
+
   // ── prompt 投递（spec「把 prompt 送进对话」） ────────────────
 
   /**
@@ -730,16 +1000,29 @@ export class ModManager {
     }
   }
 
-  private closeAllPanes(): void {
+  private closeAllPanes(notifyMods: boolean): void {
     const closing = [...this.panes.values()];
     for (const pane of closing) {
       if (pane.pending) clearTimeout(pane.pending);
     }
     this.panes.clear();
-    // 只让界面把 tab 关掉（`closed: true`）；mod 收不到通知（spec「事件」）。
+    // 只让界面把 tab 关掉（`closed: true`）；`notifyMods` 由调用方决定 ——
+    // 插件重载时 mod 还活着，逐个发 `ui.close`；会话销毁只发一次 `session.end`。
     for (const pane of closing) {
+      if (notifyMods) this.notifyPaneClosed(pane);
       this.publishUpdate(pane, { closed: true });
     }
+  }
+
+  /** 给打开这个 pane 的 mod 发一条 `ui.close`（fire-and-forget，拦不下关闭）。 */
+  private notifyPaneClosed(pane: PaneState): void {
+    const runtime = this.mods.get(pane.modId)?.runtime;
+    if (!runtime || this.disposed) return;
+    void runtime.callHook("ui.close", { id: pane.paneId }).then((result) => {
+      if (!result.ok) {
+        logger.warn(`[Wave] ${pane.modId} 的 ui.close 失败：${result.error}`);
+      }
+    });
   }
 
   private stateFor(modId: string): Map<string, unknown> {
@@ -831,6 +1114,7 @@ export class ModManager {
     if (!pane) return;
     if (pane.pending) clearTimeout(pane.pending);
     this.panes.delete(key);
+    this.notifyPaneClosed(pane);
     this.publishUpdate(pane, { closed: true });
   }
 

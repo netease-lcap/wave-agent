@@ -11,6 +11,7 @@ import { parsePageCommentEventXml } from "../utils/pageCommentEventXml.js";
 import {
   estimateContextTokens,
   getAutoCompactThreshold,
+  roughTokenCountForMessages,
 } from "../utils/tokenCalculation.js";
 import { estimateTokens } from "../utils/tokenEstimate.js";
 import {
@@ -854,7 +855,10 @@ export class AIManager {
       logger?.debug(
         `Estimated request tokens ${estimatedTokens} reached ${threshold}, compacting before request...`,
       );
-      await this.compactConversation({ abortSignal: abortController.signal });
+      await this.compactConversation({
+        abortSignal: abortController.signal,
+        trigger: "auto",
+      });
       return true;
     }
     return false;
@@ -868,6 +872,8 @@ export class AIManager {
     options: {
       customInstructions?: string;
       abortSignal?: AbortSignal;
+      /** Who asked: the pre-request threshold (`auto`) or `/compact` (`manual`). */
+      trigger?: "auto" | "manual";
     } = {},
   ): Promise<void> {
     const messagesToCompact = this.messageManager.getMessages();
@@ -875,6 +881,10 @@ export class AIManager {
       logger?.debug("No messages to compact");
       return;
     }
+    // Reported to the mods once the summary replaces the history (spec
+    // ecosystem/plugin-mods.md「轮次内外的事件」).
+    const tokensBefore = estimateContextTokens(messagesToCompact);
+    const trigger = options.trigger ?? "manual";
 
     // Circuit breaker: skip if already compacting
     if (this.isCompacting) {
@@ -1024,6 +1034,26 @@ export class AIManager {
       }
 
       this.consecutiveCompactionFailures = 0;
+
+      // Tell the mods the history was compacted (spec ecosystem/plugin-mods.md
+      // 「轮次内外的事件」). Fires only after the summary actually replaced the
+      // messages; the abandoned-write path above (session switched) returns
+      // without it.
+      if (!this.subagentType) {
+        this.getModManager()?.notifyMods("session.compact", {
+          trigger,
+          tokensBefore,
+          // `tokensAfter` 单独用文本估算，**不能**再用 `estimateContextTokens`：
+          // 它锚定「最后一条带 usage 的消息」，而压缩后保留下来的那两轮仍带着
+          // 压缩前的 usage，于是它会原样返回压缩前的数字（真机实测 before 与
+          // after 完全相等）。压缩刚结束也还没有新请求的 usage 可锚定，所以这里
+          // 只数新历史的消息文本——它天然小于 `tokensBefore`（后者还含系统
+          // 提示词、工具 schema）。
+          tokensAfter: roughTokenCountForMessages(
+            this.messageManager.getMessages(),
+          ),
+        });
+      }
 
       // Reset content-event dedupe after compaction: the next request's
       // context is a new shape and should be re-reported.
@@ -2190,6 +2220,18 @@ ${question}`;
           })
         : undefined;
 
+    // Tell the mods a turn started (spec ecosystem/plugin-mods.md「轮次内外的事件」).
+    // Same scope rule as `turn.complete`: only the main agent's turns own the
+    // event. Deliberately outside the restart loop below — a Stop-hook
+    // continuation or a notification drain is still the same turn, so the step
+    // counter below survives it too.
+    if (!this.subagentType) {
+      this.getModManager()?.notifyMods("turn.start", { step: 0 });
+    }
+    // 这一轮的第几次请求。**不**用 `turnDepth - turnOffset`：那两个量在每次
+    // `outer` 重开时都会重置，重开是同一轮里的新请求，mod 看到的步数不该退回 1。
+    let turnSteps = 0;
+
     outer: while (true) {
       let shouldRestart = false;
 
@@ -2389,6 +2431,15 @@ ${question}`;
           // memory, so they must not be added again (see
           // estimateContextTokens).
           await this.maybeAutoCompactBeforeRequest(abortController);
+
+          // Tell the mods a request is going out (spec ecosystem/plugin-mods.md
+          // 「轮次内外的事件」). `turn.start` opened the turn; from here on every
+          // request is a step, numbered from 1 within this turn — the pair is
+          // what lets a status band show "step 3" without watching messages.
+          if (!this.subagentType) {
+            turnSteps += 1;
+            this.getModManager()?.notifyMods("turn.step", { step: turnSteps });
+          }
 
           // Background-task notifications are drained at the request boundary:
           // a task that finished while this turn's tools were running lands in

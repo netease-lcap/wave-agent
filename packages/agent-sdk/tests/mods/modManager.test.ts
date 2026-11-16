@@ -1,6 +1,7 @@
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ModManager } from "../../src/managers/modManager.js";
+import type { ModManagerOptions } from "../../src/managers/modManager.js";
 import { logger } from "../../src/utils/globalLogger.js";
 import { MOD_BAND_INSTANCE_ID, MOD_LIMITS } from "../../src/types/mods.js";
 import type {
@@ -378,6 +379,7 @@ function plugin(mods: Array<{ id: string; path: string }>): Plugin {
 
 function createManager(
   modSources: Record<string, string> = { [MOD_PATH]: COUNTER_MOD },
+  options: Partial<ModManagerOptions> = {},
 ): {
   manager: ModManager;
   updates: ModPanelUpdatePayload[];
@@ -397,6 +399,7 @@ function createManager(
     onStatus: (payload) => statuses.push(payload),
     onToast: (payload) => toasts.push(payload),
     storeRoot: STORE_ROOT,
+    ...options,
   });
   return { manager, updates, statuses, toasts };
 }
@@ -1644,5 +1647,495 @@ exports.register = function ($, on) {
 
     await manager.dispose();
     expect(removed).toEqual(["standup"]);
+  });
+});
+
+describe("ModManager 的 $.clock.sleep（spec「时钟：等待」）", () => {
+  const MIN = MOD_LIMITS.timerMinIntervalMs;
+
+  /** `$.store.set` 写过的最新值（store 每次读写都走文件）。 */
+  function stored(name: string): string | undefined {
+    const raw = probe.files.get(storeFile("todo"));
+    return raw === undefined
+      ? undefined
+      : (JSON.parse(raw) as Record<string, string>)[name];
+  }
+
+  /** 一个按钮触发一次 `body` 的 mod；面板开着，回调才登记得进去。 */
+  function sleepMod(body: string): string {
+    return `
+exports.register = function ($, on) {
+  on("session.start", function () { $.ui.open({ id: "p1", title: "等" }); });
+  on("ui.render", function () {
+    return __wave.h("Button", { key: "run", label: "run", onPress: function () {
+      ${body}
+    }});
+  });
+};
+`;
+  }
+
+  async function started(source: string): Promise<ModManager> {
+    const { manager } = createManager({ [MOD_PATH]: source });
+    await manager.loadFromPlugins([
+      plugin([{ id: "todo:panel", path: MOD_PATH }]),
+    ]);
+    await manager.startSession();
+    await pull(manager);
+    return manager;
+  }
+
+  function press(manager: ModManager, key = "run"): Promise<void> {
+    return manager.handlePanelEvent({
+      sessionId: "s1",
+      modId: "todo:panel",
+      paneId: "p1",
+      key,
+      kind: "press",
+    });
+  }
+
+  it("到点才 resolve，比下限短的等待被夹到下限", async () => {
+    const manager = await started(
+      sleepMod(`
+      var started = $.clock.now();
+      $.clock.sleep(0).then(
+        function () { $.store.set("woke", String($.clock.now() - started)); },
+        function (e) { $.store.set("woke", "error:" + e.name); }
+      );
+    `),
+    );
+
+    await press(manager);
+    // 不是同步 resolve：夹到下限之后要等一个真定时器。
+    expect(stored("woke")).toBeUndefined();
+    await vi.waitFor(() => expect(stored("woke")).toBeDefined(), {
+      timeout: MIN * 10,
+    });
+    const waited = Number(stored("woke"));
+    expect(waited).toBeGreaterThanOrEqual(MIN - 5);
+    expect(waited).toBeLessThan(MIN * 5);
+
+    await manager.dispose();
+  });
+
+  it("传了 { signal } 时 abort 让 Promise reject 成 AbortError", async () => {
+    const manager = await started(
+      sleepMod(`
+      var controller = new AbortController();
+      $.clock.sleep(${MIN * 100}, { signal: controller.signal }).then(
+        function () { $.store.set("signal", "resolved"); },
+        function (e) { $.store.set("signal", "rejected:" + e.name); }
+      );
+      controller.abort();
+    `),
+    );
+
+    await press(manager);
+    await vi.waitFor(() =>
+      expect(stored("signal")).toBe("rejected:AbortError"),
+    );
+
+    await manager.dispose();
+  });
+
+  it("超过同时未完成的上限时 sleep 报错，前 16 个照常挂着", async () => {
+    const manager = await started(
+      sleepMod(`
+      var created = 0, message = "";
+      for (var i = 0; i < ${MOD_LIMITS.maxSleepsPerMod + 1}; i++) {
+        try {
+          $.clock.sleep(60000).catch(function () {});
+          created++;
+        } catch (e) { message = e.message; }
+      }
+      $.store.set("sleeps", created + "|" + message);
+    `),
+    );
+
+    await press(manager);
+    await vi.waitFor(() => expect(stored("sleeps")).toContain("|"));
+    expect(stored("sleeps")).toBe(
+      `${MOD_LIMITS.maxSleepsPerMod}|$.clock.sleep 同时未完成的等待最多 ${MOD_LIMITS.maxSleepsPerMod} 个`,
+    );
+
+    await manager.dispose();
+  });
+
+  it("会话销毁时未完成的等待 reject（不是永远挂着）", async () => {
+    const manager = await started(
+      sleepMod(`
+      $.clock.sleep(60000).then(
+        function () { $.store.set("end", "resolved"); },
+        function (e) { $.store.set("end", "rejected:" + e.name); }
+      );
+    `),
+    );
+
+    await press(manager);
+    expect(stored("end")).toBeUndefined();
+    await manager.dispose();
+    expect(stored("end")).toBe("rejected:AbortError");
+  });
+
+  it("插件重载时旧实例的等待一并 reject", async () => {
+    const plugins = [plugin([{ id: "todo:panel", path: MOD_PATH }])];
+    const manager = await started(
+      sleepMod(`
+      $.clock.sleep(60000).then(
+        function () { $.store.set("reload", "resolved"); },
+        function (e) { $.store.set("reload", "rejected:" + e.name); }
+      );
+    `),
+    );
+
+    await press(manager);
+    expect(stored("reload")).toBeUndefined();
+    await manager.reload(plugins);
+    expect(stored("reload")).toBe("rejected:AbortError");
+
+    await manager.dispose();
+  });
+});
+
+describe("ModManager 的只读事实（spec「会话事实」「环境变量与设置」）", () => {
+  /** 面板上摊平画一行的 mod：五个只读入口各取一个值。 */
+  const FACTS_MOD = `
+exports.register = function ($, on) {
+  on("session.start", function () { $.ui.open({ id: "p1", title: "事实" }); });
+  on("ui.render", async function () {
+    var id = await $.session.id();
+    var root = await $.session.root();
+    var model = await $.session.model();
+    var watch = await $.env.get("WATCH");
+    var merged = await $.settings.read();
+    var keyed = await $.settings.read({ source: "project", key: "model" });
+    return __wave.h("Text", null,
+      [id, root, model, String(watch), String(merged.owner), String(keyed)].join("|"));
+  });
+};
+`;
+
+  it("接上数据源后 mod 读得到三个事实、env 与设置", async () => {
+    const { manager } = createManager(
+      { [MOD_PATH]: FACTS_MOD },
+      {
+        sessionFacts: {
+          sessionId: () => "s-9",
+          workspaceRoot: () => path.resolve("/fake/root"),
+          model: () => "wave-pro",
+          env: (name) => (name === "WATCH" ? "1" : undefined),
+          settings: async (query) =>
+            query.key === undefined
+              ? { owner: "me", model: "wave-pro" }
+              : "wave-pro",
+        },
+      },
+    );
+    await manager.loadFromPlugins([
+      plugin([{ id: "todo:panel", path: MOD_PATH }]),
+    ]);
+    await manager.startSession();
+
+    const frame = await pull(manager);
+    expect(frame.tree).toEqual({
+      type: "Text",
+      props: {},
+      children: [`s-9|${path.resolve("/fake/root")}|wave-pro|1|me|wave-pro`],
+    });
+
+    await manager.dispose();
+  });
+
+  it("没接数据源时给兜底值，不抛错", async () => {
+    const { manager } = createManager({ [MOD_PATH]: FACTS_MOD });
+    await manager.loadFromPlugins([
+      plugin([{ id: "todo:panel", path: MOD_PATH }]),
+    ]);
+    await manager.startSession();
+
+    // 兜底：会话 id 用构造时那个、工作根用「会动」的目录（这里没配，落到
+    // 进程 cwd）、模型空串、env 与设置读不到 —— 宿主没接线不该让 mod 报错。
+    const frame = await pull(manager);
+    const flat = String((frame.tree as { children: string[] }).children[0]);
+    expect(flat.split("|")[0]).toBe("s1");
+    expect(flat.split("|")[2]).toBe("");
+    expect(flat.endsWith("|undefined|undefined|undefined")).toBe(true);
+    expect(vi.mocked(logger.warn)).not.toHaveBeenCalled();
+
+    await manager.dispose();
+  });
+});
+
+describe("ModManager 的轮次事件（turn.start / turn.step / session.compact）", () => {
+  const TIMELINE_MOD = `
+exports.register = function ($, on) {
+  on("turn.start", function (e) { $.ui.status("start:" + e.step); });
+  on("turn.step", function (e) { $.ui.status("step:" + e.step); });
+  on("session.compact", function (e) {
+    $.ui.status("compact:" + e.trigger + ":" + e.tokensBefore + ">" + e.tokensAfter);
+  });
+};
+`;
+
+  it("三个事件都派发到注册了它们的 mod，载荷原样", async () => {
+    const { manager, statuses } = createManager({ [MOD_PATH]: TIMELINE_MOD });
+    await manager.loadFromPlugins([
+      plugin([{ id: "todo:panel", path: MOD_PATH }]),
+    ]);
+    await manager.startSession();
+
+    manager.notifyMods("turn.start", { step: 0 });
+    await vi.waitFor(() => expect(statuses.at(-1)?.text).toBe("start:0"));
+
+    manager.notifyMods("turn.step", { step: 3 });
+    await vi.waitFor(() => expect(statuses.at(-1)?.text).toBe("step:3"));
+
+    manager.notifyMods("session.compact", {
+      trigger: "auto",
+      tokensBefore: 180_000,
+      tokensAfter: 20_000,
+    });
+    await vi.waitFor(() =>
+      expect(statuses.at(-1)?.text).toBe("compact:auto:180000>20000"),
+    );
+
+    await manager.dispose();
+  });
+});
+
+describe("ModManager.endSession（spec「轮次内外的事件」）", () => {
+  it("等所有 mod 的 session.end 跑完；失败的只记 warn，不影响别人", async () => {
+    const ok = path.join(ROOT, "mods", "ok.tsx");
+    const boom = path.join(ROOT, "mods", "boom.tsx");
+    const { manager } = createManager({
+      [ok]: `
+exports.register = function ($, on) {
+  on("session.end", function () { $.store.set("ended", $.session.cwd ? "1" : "0"); });
+};
+`,
+      [boom]: `
+exports.register = function ($, on) {
+  on("session.end", function () { throw new Error("boom"); });
+};
+`,
+    });
+    await manager.loadFromPlugins([
+      plugin([
+        { id: "todo:ok", path: ok },
+        { id: "todo:boom", path: boom },
+      ]),
+    ]);
+    await manager.startSession();
+
+    // 返回的是 Promise：宿主（`Agent.destroy`）真的会 await 它。
+    await expect(manager.endSession()).resolves.toBeUndefined();
+    const raw = probe.files.get(storeFile("todo"));
+    expect(raw === undefined ? undefined : JSON.parse(raw).ended).toBe("1");
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.stringContaining("todo:boom 的 session.end 失败"),
+    );
+
+    await manager.dispose();
+  });
+
+  it("dispose 之后不再派发（实例已经没了）", async () => {
+    const { manager } = createManager({ [MOD_PATH]: COUNTER_MOD });
+    await manager.loadFromPlugins([
+      plugin([{ id: "todo:panel", path: MOD_PATH }]),
+    ]);
+    await manager.startSession();
+    await manager.dispose();
+
+    vi.mocked(logger.warn).mockClear();
+    await expect(manager.endSession()).resolves.toBeUndefined();
+    expect(logger.warn).not.toHaveBeenCalled();
+  });
+});
+
+describe("ModManager.collectPromptContext（prompt.submit）", () => {
+  /** 两个 mod：各自往本轮塞一条上下文。 */
+  function contextMod(...items: string[]): string {
+    return `
+exports.register = function ($, on) {
+  on("prompt.submit", function (e) {
+    ${items.length === 0 ? "return undefined;" : `return { context: ${JSON.stringify(items)} };`}
+  });
+};
+`;
+  }
+
+  async function hooked(sources: Record<string, string>): Promise<{
+    manager: ModManager;
+    mods: Array<{ id: string; path: string }>;
+  }> {
+    const mods = Object.keys(sources).map((file, index) => ({
+      id: `todo:m${index}`,
+      path: file,
+    }));
+    const { manager } = createManager(sources);
+    await manager.loadFromPlugins([plugin(mods)]);
+    await manager.startSession();
+    return { manager, mods };
+  }
+
+  it("按插件顺序合并各 mod 的 context，空白条目丢掉", async () => {
+    const first = path.join(ROOT, "mods", "first.tsx");
+    const second = path.join(ROOT, "mods", "second.tsx");
+    const { manager } = await hooked({
+      [first]: contextMod("A", "  ", "B"),
+      [second]: contextMod("C"),
+    });
+
+    await expect(manager.collectPromptContext("用户原话")).resolves.toEqual([
+      "A",
+      "B",
+      "C",
+    ]);
+
+    await manager.dispose();
+  });
+
+  it("返回值里的 text / drop 被忽略并记 warn（不改写、不丢弃用户的 prompt）", async () => {
+    const rewrite = path.join(ROOT, "mods", "rewrite.tsx");
+    const { manager } = await hooked({
+      [rewrite]: `
+exports.register = function ($, on) {
+  on("prompt.submit", function () { return { text: "被改写", drop: true }; });
+};
+`,
+    });
+
+    await expect(manager.collectPromptContext("原文")).resolves.toEqual([]);
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.stringContaining("只支持 { context }"),
+    );
+
+    await manager.dispose();
+  });
+
+  it("非数组 / 非字符串的 context 被忽略并记 warn", async () => {
+    const bad = path.join(ROOT, "mods", "bad.tsx");
+    const { manager } = await hooked({
+      [bad]: `
+exports.register = function ($, on) {
+  on("prompt.submit", function () { return { context: "一条字符串" }; });
+};
+`,
+    });
+
+    await expect(manager.collectPromptContext("原文")).resolves.toEqual([]);
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.stringContaining("context 必须是字符串数组"),
+    );
+
+    await manager.dispose();
+  });
+
+  it("条数与字数超限的部分丢掉并记一条 warn", async () => {
+    const many = path.join(ROOT, "mods", "many.tsx");
+    const items = Array.from(
+      { length: MOD_LIMITS.promptContextMaxItems + 4 },
+      (_, index) => `item-${index}`,
+    );
+    const { manager } = await hooked({ [many]: contextMod(...items) });
+
+    const context = await manager.collectPromptContext("原文");
+    expect(context).toHaveLength(MOD_LIMITS.promptContextMaxItems);
+    expect(context[0]).toBe("item-0");
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.stringContaining(
+        `只用了前 ${MOD_LIMITS.promptContextMaxItems} 条`,
+      ),
+    );
+
+    await manager.dispose();
+  });
+
+  it("钩子抛错只记 warn，别的 mod 的 context 照样进本轮", async () => {
+    const good = path.join(ROOT, "mods", "good.tsx");
+    const boom = path.join(ROOT, "mods", "boom.tsx");
+    const { manager } = await hooked({
+      [good]: contextMod("保留"),
+      [boom]: `
+exports.register = function ($, on) {
+  on("prompt.submit", function () { throw new Error("boom"); });
+};
+`,
+    });
+
+    await expect(manager.collectPromptContext("原文")).resolves.toEqual([
+      "保留",
+    ]);
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.stringContaining("prompt.submit 失败"),
+    );
+
+    await manager.dispose();
+  });
+
+  it("prompt.submit 收到的就是用户敲的原文", async () => {
+    const echo = path.join(ROOT, "mods", "echo.tsx");
+    const { manager } = await hooked({
+      [echo]: `
+exports.register = function ($, on) {
+  on("prompt.submit", function (e) { return { context: ["echo:" + e.text] }; });
+};
+`,
+    });
+
+    await expect(
+      manager.collectPromptContext("部署到测试环境"),
+    ).resolves.toEqual(["echo:部署到测试环境"]);
+
+    await manager.dispose();
+  });
+});
+
+describe("ModManager 的 ui.close（spec「事件」）", () => {
+  const CLOSE_MOD = `
+exports.register = function ($, on) {
+  on("session.start", function () { $.ui.open({ id: "p1", title: "面板" }); });
+  on("ui.close", function (e) { $.ui.status("closed:" + e.id); });
+  on("session.end", function () { $.ui.status("end"); });
+};
+`;
+
+  it("关掉一个 pane 时通知打开它的 mod（拦不下关闭）", async () => {
+    const { manager, updates, statuses } = createManager({
+      [MOD_PATH]: CLOSE_MOD,
+    });
+    await manager.loadFromPlugins([
+      plugin([{ id: "todo:panel", path: MOD_PATH }]),
+    ]);
+    await manager.startSession();
+
+    await manager.handlePanelEvent({
+      sessionId: "s1",
+      modId: "todo:panel",
+      paneId: "p1",
+      key: "",
+      kind: "close",
+    });
+    await vi.waitFor(() => expect(statuses.at(-1)?.text).toBe("closed:p1"));
+    // 界面那条关 tab 的指令照旧发（`closed: true`），通知 mod 不改变它。
+    expect(paneUpdates(updates).at(-1)?.closed).toBe(true);
+
+    await manager.dispose();
+  });
+
+  it("插件重载时旧实例收到 ui.close，会话销毁只发 session.end", async () => {
+    const plugins = [plugin([{ id: "todo:panel", path: MOD_PATH }])];
+    const { manager, statuses } = createManager({ [MOD_PATH]: CLOSE_MOD });
+    await manager.loadFromPlugins(plugins);
+    await manager.startSession();
+
+    await manager.reload(plugins);
+    await vi.waitFor(() => expect(statuses.at(-1)?.text).toBe("closed:p1"));
+
+    statuses.length = 0;
+    await manager.dispose();
+    // 销毁不逐条发 ui.close：只剩一条 session.end（没进状态行，所以没有新行）。
+    expect(statuses).toEqual([]);
   });
 });

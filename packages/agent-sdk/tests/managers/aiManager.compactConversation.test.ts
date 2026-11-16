@@ -711,4 +711,102 @@ describe("AIManager - compactConversation", () => {
       expect(aiManager.getIsCompacting()).toBe(false);
     });
   });
+
+  /**
+   * `session.compact`（spec ecosystem/plugin-mods.md「轮次内外的事件」）：压缩
+   * **完成后**给 mod 一条只读通知，带「谁触发的」与前后 token 估值。
+   */
+  describe("session.compact 事件", () => {
+    function withMods(): ReturnType<typeof vi.fn> {
+      const notifyMods = vi.fn();
+      // 容器里放一个假的 ModManager：派发点只看 `notifyMods` 这一个方法。
+      container.register("ModManager", { notifyMods });
+      return notifyMods;
+    }
+
+    it("压缩完成后派发一次，带上 trigger 与前后估值", async () => {
+      const notifyMods = withMods();
+
+      await aiManager.compactConversation({ trigger: "auto" });
+
+      expect(notifyMods).toHaveBeenCalledTimes(1);
+      expect(notifyMods).toHaveBeenCalledWith("session.compact", {
+        trigger: "auto",
+        tokensBefore: expect.any(Number),
+        tokensAfter: expect.any(Number),
+      });
+    });
+
+    it("没传 trigger 时算手动压缩（`/compact`）", async () => {
+      const notifyMods = withMods();
+
+      await aiManager.compactConversation();
+
+      expect(notifyMods).toHaveBeenCalledWith(
+        "session.compact",
+        expect.objectContaining({ trigger: "manual" }),
+      );
+    });
+
+    // 上下文逼近窗口的常见形状：历史远大于摘要，after 明显小于 before。
+    // （不是不变量：窗口极小、历史本来就很短时摘要可能更长，spec 已写明。）
+    it("tokensAfter 量的是压缩后的新历史，不跟着压缩前的 usage 走", async () => {
+      const notifyMods = withMods();
+      const beforeCompaction = [
+        {
+          id: "m1",
+          role: "user",
+          blocks: [{ type: "text", content: "旧对话" }],
+          usage: {
+            prompt_tokens: 179_000,
+            completion_tokens: 1_000,
+            total_tokens: 180_000,
+          },
+        },
+      ];
+      // 压缩后被保留下来的两轮仍带压缩前的 usage，而压缩块本身排在它们前面：
+      // 用 `estimateContextTokens` 会锚定到那两轮的 usage，原样报回 180_000。
+      const afterCompaction = [
+        {
+          id: "m2",
+          role: "assistant",
+          blocks: [{ type: "compact", content: "摘要" }],
+        },
+        beforeCompaction[0],
+      ];
+      let compacted = false;
+      vi.mocked(
+        mockMessageManager.compactMessagesAndUpdateSession,
+      ).mockImplementation(async () => {
+        compacted = true;
+      });
+      vi.mocked(mockMessageManager.getMessages).mockImplementation(
+        () =>
+          (compacted
+            ? afterCompaction
+            : beforeCompaction) as unknown as ReturnType<
+            typeof mockMessageManager.getMessages
+          >,
+      );
+
+      await aiManager.compactConversation();
+
+      const payload = notifyMods.mock.calls[0][1] as {
+        tokensBefore: number;
+        tokensAfter: number;
+      };
+      expect(payload.tokensBefore).toBe(180_000);
+      expect(payload.tokensAfter).toBeGreaterThan(0);
+      expect(payload.tokensBefore).toBeGreaterThan(payload.tokensAfter);
+    });
+
+    it("压缩失败不派发（mod 看到的「压缩完了」必须真完了）", async () => {
+      const notifyMods = withMods();
+      callAgentMock.mockRejectedValue(new Error("fork exploded"));
+
+      await aiManager.compactConversation();
+
+      expect(notifyMods).not.toHaveBeenCalled();
+    });
+  });
 });

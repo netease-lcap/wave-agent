@@ -179,6 +179,19 @@ function buildHarness(
   return { aiManager, messageQueue, messageManager, notifyMods, events };
 }
 
+/**
+ * 按事件名取载荷：同一轮除 `turn.complete` 还会发 `turn.start` / `turn.step`，
+ * 「只发一次」的断言必须落在具体事件上，否则数到的是这一整轮的所有事件。
+ */
+function modCalls(
+  notifyMods: ReturnType<typeof vi.fn>,
+  event: string,
+): unknown[] {
+  return notifyMods.mock.calls
+    .filter((call) => call[0] === event)
+    .map((call) => call[1]);
+}
+
 describe("AIManager 的 turn.complete", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -190,15 +203,20 @@ describe("AIManager 的 turn.complete", () => {
 
     await aiManager.sendAIMessage();
 
-    expect(notifyMods).toHaveBeenCalledTimes(1);
+    expect(modCalls(notifyMods, "turn.complete")).toHaveLength(1);
     expect(notifyMods).toHaveBeenCalledWith("turn.complete", {
       isAborted: false,
       durationMs: expect.any(Number),
       answer: "",
       usage: { prompt: 1, completion: 1, cacheRead: 0, cacheCreation: 0 },
     });
+    // 一轮一条 turn.start、每个请求一条 turn.step。
+    expect(modCalls(notifyMods, "turn.start")).toEqual([{ step: 0 }]);
+    expect(modCalls(notifyMods, "turn.step")).toEqual([{ step: 1 }]);
     expect(events).toEqual([
       "loading:true",
+      "mods:turn.start",
+      "mods:turn.step",
       "loading:false",
       "mods:turn.complete",
     ]);
@@ -224,7 +242,7 @@ describe("AIManager 的 turn.complete", () => {
     aiManager.abortAIMessage();
     await sendPromise;
 
-    expect(notifyMods).toHaveBeenCalledTimes(1);
+    expect(modCalls(notifyMods, "turn.complete")).toHaveLength(1);
     expect(notifyMods).toHaveBeenCalledWith("turn.complete", {
       isAborted: true,
       durationMs: expect.any(Number),
@@ -265,14 +283,19 @@ describe("AIManager 的 turn.complete", () => {
     await vi.waitFor(() =>
       expect(mockCallAgent.mock.calls.length).toBeGreaterThanOrEqual(2),
     );
-    // 重开的那一段还没结束：一次都不该派发。
-    expect(notifyMods).not.toHaveBeenCalled();
+    // 重开的那一段还没结束：`turn.complete` 一次都不该派发。
+    expect(modCalls(notifyMods, "turn.complete")).toEqual([]);
 
     resolveSecondCall!(REPLY);
     await sendPromise;
 
-    expect(notifyMods).toHaveBeenCalledTimes(1);
-    // 两次请求都算进这一轮：重开不是新的一轮，用量也不该从头再算。
+    expect(modCalls(notifyMods, "turn.complete")).toHaveLength(1);
+    // 两次请求都算进这一轮：重开不是新的一轮，用量也不该从头再算；步数倒是
+    // 一步一步往上走（2 表示这一轮的第 2 次请求）。
+    expect(modCalls(notifyMods, "turn.step")).toEqual([
+      { step: 1 },
+      { step: 2 },
+    ]);
     expect(notifyMods).toHaveBeenCalledWith("turn.complete", {
       isAborted: false,
       durationMs: expect.any(Number),

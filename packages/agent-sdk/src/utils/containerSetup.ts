@@ -601,6 +601,24 @@ export function setupAgentContainer(
     // 的那个工作目录（容器 token `CurrentWorkdir`，`cd` 之后跟着变），不是会话
     // 起点也不是工作区根。
     workdir: () => container.get<string>("CurrentWorkdir") ?? workdir,
+    // `$.session.id()` / `root()` / `model()`、`$.env.get`、`$.settings.read` 的
+    // 数据源（spec「会话事实」「环境变量与设置」）。每个值住在不同的 manager 里，
+    // 而 ModManager 在它们下面 —— 全都用惰性闭包取，与注册顺序无关。
+    sessionFacts: {
+      sessionId: () => messageManager.getSessionId(),
+      // 会话工作根：`EnterWorktree` 会动、`cd` 不动（容器 token 语义见 workdir 规则）。
+      workspaceRoot: () => container.get<string>("WorkspaceRoot") ?? workdir,
+      model: () => aiManager.getModelConfig().model ?? "",
+      env: (name) => configurationService.getMergedEnv()[name],
+      settings: async (query) => {
+        const layer = configurationService.readSettingsLayer(
+          query.source,
+          // 项目级配置按「会话工作根」读：`cd` 过不该换成另一个项目的设置。
+          container.get<string>("WorkspaceRoot") ?? workdir,
+        );
+        return query.key === undefined ? layer : layer[query.key];
+      },
+    },
   });
   container.register("ModManager", modManager);
 

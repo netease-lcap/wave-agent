@@ -112,6 +112,14 @@ function host(overrides: Partial<ModRuntimeHost> = {}): ModRuntimeHost {
       tokens: { prompt: 0, completion: 0, cacheRead: 0, cacheCreation: 0 },
     })),
     appendLog: vi.fn(),
+    // `$` 上的只读事实（spec「会话事实」「环境变量与设置」）：默认给一份能用的
+    // 值，具体断言在各用例里用 `mockReturnValue` 覆盖。
+    sessionId: vi.fn(() => "session-1"),
+    workspaceRoot: vi.fn(() => path.resolve("/fake/project")),
+    model: vi.fn(() => "test-model"),
+    envGet: vi.fn((): string | undefined => undefined),
+    settingsRead: vi.fn(async () => ({})),
+    sleep: vi.fn(async () => {}),
     registerCommand: vi.fn((spec: ModCommandSpec) => ({ command: spec.name })),
     listCommands: vi.fn(() => []),
     runCommand: vi.fn(async () => {}),
@@ -328,11 +336,11 @@ describe("ModRuntime 的隔离", () => {
   });
 
   it("未知钩子名被拒绝而不是静默登记", async () => {
-    // 一期只有 session.start / ui.render；`ui.close` 这类「面板被关掉」的事件
-    // 是宿主内部清理（spec「事件」），mod 注册它不该悄悄生效。
+    // 钩子名单是白名单（spec「事件」）：Claude Code 有、我们没有的事件名不该
+    // 悄悄生效，否则插件作者会以为那条路径通了。
     const { mod } = runtime(`
       exports.register = function ($, on) {
-        on("ui.close", function () {});
+        on("ui.destroy", function () {});
         on("session.start", function () { return "ok"; });
       };
     `);
@@ -1478,5 +1486,164 @@ describe("ModRuntime 的 $.command（spec「注册命令」）", () => {
     await outer.load();
     await outer.callHook("session.start", {});
     expect(outerHost.runCommand).toHaveBeenCalledWith("inner", undefined);
+  });
+});
+
+describe("ModRuntime 的 $.session 事实与 $.env / $.settings", () => {
+  it("id/root/model、env.get、settings.read 全部转发到宿主", async () => {
+    const hostApi = host({
+      sessionId: () => "s-42",
+      workspaceRoot: () => path.resolve("/fake/root"),
+      model: () => "wave-pro",
+      envGet: (name) => (name === "WATCH" ? "1" : undefined),
+      settingsRead: async (query) => ({ echoed: query }),
+    });
+    const { mod } = runtime(
+      `
+      exports.register = function ($, on) {
+        on("session.start", async function () {
+          return {
+            id: await $.session.id(),
+            root: await $.session.root(),
+            model: await $.session.model(),
+            watch: await $.env.get("WATCH"),
+            missing: (await $.env.get("NOPE")) === undefined,
+            merged: await $.settings.read(),
+            keyed: await $.settings.read({ source: "project", key: "model" }),
+          };
+        });
+      };
+      `,
+      { host: hostApi },
+    );
+
+    await mod.load();
+    await expect(mod.callHook("session.start", {})).resolves.toMatchObject({
+      ok: true,
+      value: {
+        id: "s-42",
+        root: path.resolve("/fake/root"),
+        model: "wave-pro",
+        watch: "1",
+        missing: true,
+        merged: { echoed: {} },
+        keyed: { echoed: { source: "project", key: "model" } },
+      },
+    });
+  });
+
+  it("$.env.get 空名报错、超长名按「没设置」处理", async () => {
+    const hostApi = host({ envGet: vi.fn(() => "value") });
+    const { mod } = runtime(
+      `
+      exports.register = function ($, on) {
+        on("session.start", async function () {
+          var tooLong = await $.env.get(new Array(${MOD_LIMITS.envNameChars} + 2).join("X"));
+          var error = "";
+          try { await $.env.get(""); } catch (e) { error = String(e.message || e); }
+          return { tooLong: tooLong === undefined, error: error };
+        });
+      };
+      `,
+      { host: hostApi },
+    );
+
+    await mod.load();
+    const result = await mod.callHook("session.start", {});
+    expect(result.ok && result.value).toEqual({
+      tooLong: true,
+      error: "$.env.get 需要一个变量名",
+    });
+    // 超长名连宿主都不问（那不可能是个真变量）。
+    expect(hostApi.envGet).toHaveBeenCalledTimes(0);
+  });
+
+  it("$.settings.read 的 source 只认三层、key 必须是字符串", async () => {
+    const { mod } = runtime(`
+      exports.register = function ($, on) {
+        on("session.start", async function () {
+          var messages = [];
+          for (var bad of [{ source: "policy" }, { key: 42 }, "user"]) {
+            try { await $.settings.read(bad); messages.push("no error"); }
+            catch (e) { messages.push(String(e.message || e)); }
+          }
+          return messages;
+        });
+      };
+    `);
+
+    await mod.load();
+    const result = await mod.callHook("session.start", {});
+    expect(result.ok).toBe(true);
+    const messages = (result.ok ? result.value : []) as string[];
+    // 报错要点名能用的层，否则插件作者不知道该改成什么。
+    expect(messages[0]).toContain('"user"、"project"、"local"');
+    expect(messages[1]).toContain("key");
+    expect(messages[2]).toContain("只接受");
+  });
+
+  it("$.settings.read 的结果超过 4 MiB 报错（截断的配置是错的配置）", async () => {
+    const { mod } = runtime(
+      `
+      exports.register = function ($, on) {
+        on("session.start", async function () {
+          try { await $.settings.read(); return ""; }
+          catch (e) { return String(e.message || e); }
+        });
+      };
+      `,
+      {
+        host: host({
+          settingsRead: async () => ({
+            big: "x".repeat(MOD_LIMITS.settingsReadBytes),
+          }),
+        }),
+      },
+    );
+
+    await mod.load();
+    const result = await mod.callHook("session.start", {});
+    expect(result.ok && String(result.value)).toContain(
+      `超过 ${MOD_LIMITS.settingsReadBytes}`,
+    );
+  });
+});
+
+describe("ModRuntime 的 $.clock.sleep（spec「时钟：等待」）", () => {
+  it("转发到宿主并透传 signal；负数与 NaN 当场报错", async () => {
+    const signals: unknown[] = [];
+    const hostApi = host({
+      sleep: vi.fn(async (_ms: number, signal: unknown) => {
+        signals.push(signal);
+      }),
+    });
+    const { mod } = runtime(
+      `
+      exports.register = function ($, on) {
+        on("session.start", async function () {
+          var controller = new AbortController();
+          await $.clock.sleep(0, { signal: controller.signal });
+          var messages = [];
+          for (var bad of [-1, NaN, "100"]) {
+            try { await $.clock.sleep(bad); messages.push("no error"); }
+            catch (e) { messages.push(String(e.message || e)); }
+          }
+          return messages;
+        });
+      };
+      `,
+      { host: hostApi },
+    );
+
+    await mod.load();
+    const result = await mod.callHook("session.start", {});
+    expect(result.ok).toBe(true);
+    expect(hostApi.sleep).toHaveBeenCalledTimes(1);
+    // 沙箱里的 `AbortController` 就是宿主那一份，signal 原样下来（宿主自己判形状）。
+    expect(signals[0]).toBeInstanceOf(AbortSignal);
+    const messages = (result.ok ? result.value : []) as string[];
+    expect(messages).toHaveLength(3);
+    expect(messages[0]).toBe("$.clock.sleep 需要非负的毫秒数");
+    expect(messages[1]).toBe("$.clock.sleep 需要非负的毫秒数");
   });
 });
