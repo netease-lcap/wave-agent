@@ -74,6 +74,9 @@ function createMockSession(): ChatSession {
       { id: "btw", name: "btw", description: "旁路提问（不进入聊天记录）" },
     ]),
     getMessages: vi.fn().mockResolvedValue([]),
+    // webviewReady 会回放 mod 面板的元信息（spec ecosystem/plugin-mods.md
+    // 「生命周期」）：桩里给空的，专门测那段的用例自己覆盖。
+    getModPanels: vi.fn().mockResolvedValue([]),
     getInitialPage: vi.fn(async () => ({ messages: [], hasEarlier: false })),
     getEarlierPage: vi.fn(async () => ({
       messages: [],
@@ -137,6 +140,9 @@ function createReadySession(): ChatSession {
     isStreaming: false,
     isCommandRunning: false,
     getMessages: vi.fn().mockResolvedValue([]),
+    // webviewReady 会回放 mod 面板的元信息（spec ecosystem/plugin-mods.md
+    // 「生命周期」）：桩里给空的，专门测那段的用例自己覆盖。
+    getModPanels: vi.fn().mockResolvedValue([]),
     getInitialPage: vi.fn(async () => ({ messages: [], hasEarlier: false })),
     getEarlierPage: vi.fn(async () => ({
       messages: [],

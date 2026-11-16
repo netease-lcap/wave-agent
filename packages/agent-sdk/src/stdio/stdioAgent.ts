@@ -52,6 +52,8 @@ import type {
   ModBandRenderResult,
   ModPanelEventPayload,
   ModPanelRenderResult,
+  ModPaneLayout,
+  ModSurfaceMetrics,
   ModPanelUpdatePayload,
   ModPromptFillRequest,
   ModPromptReadRequest,
@@ -686,15 +688,17 @@ export class StdioAgent {
    * 要一棵面板的树（spec「架构约束」：树由 surface 拉取）。
    *
    * surface 收到 `modPanelUpdate` 的 `stale` 后自己发起，宿主不缓存树 ——
-   * 每一次请求都会真的跑一次 mod 的 `ui.render`。
+   * 每一次请求都会真的跑一次 mod 的 `ui.render`。`layout` 是「这一端把它摆在哪」
+   * （spec「在 IDE 插件里画」）：只有画它的那一端知道，所以随请求一起上来。
    */
   async renderModPanel(
     modId: string,
     paneId: string,
+    layout: ModPaneLayout = {},
   ): Promise<ModPanelRenderResult> {
     return (await this.client.request(
       "modPanelRender",
-      { modId, paneId },
+      { modId, paneId, ...layout },
       this.sessionId,
     )) as ModPanelRenderResult;
   }
@@ -705,10 +709,12 @@ export class StdioAgent {
    * 与 `renderModPanel` 同一条纪律：surface 自己发起、宿主不缓存，每次调用都
    * 真的跑一遍每个 mod 的 `ui.render`。
    */
-  async renderModBand(): Promise<ModBandRenderResult[]> {
+  async renderModBand(
+    metrics: ModSurfaceMetrics = {},
+  ): Promise<ModBandRenderResult[]> {
     return (await this.client.request(
       "modBandRender",
-      {},
+      { ...metrics },
       this.sessionId,
     )) as ModBandRenderResult[];
   }

@@ -1,0 +1,199 @@
+/* IDE 聊天面板里的 mod 面板（spec ecosystem/plugin-mods.md「在 IDE 插件里画」）。
+
+   两种摆法由 `data-placement` 分开，断点在 ChatApp（`(min-width: 800px)`，与
+   Claude Code 同一个数）：
+
+   - `dock`：宽面板，贴在对话右侧一列，自己一条边框、内部纵向滚。
+   - `inline`：窄面板，落在输入框上方（与带、状态行、toast 同一个栈），显示 12
+     行后整体滚 —— 12 是 Claude Code 扩展里的那个数（`LTe`），再高就把输入框
+     挤出视口。 */
+
+.mod-ide-panes {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border-radius: var(--cc-radius-sm, 6px);
+  border: 1px solid var(--cc-border-light, var(--vscode-panel-border, #d9dbe0));
+  background: var(--cc-bg-panel, transparent);
+  font-size: 12px;
+}
+
+/* ── 表头：单开时是标题，多开时是 tab 栏；右侧恒有关闭 ─────────────── */
+
+.mod-ide-panes-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+  min-width: 0;
+  padding: 4px 6px;
+  border-bottom: 1px solid
+    var(--cc-border-light, var(--vscode-panel-border, #d9dbe0));
+}
+
+.mod-ide-panes-tabs {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.mod-ide-panes-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.mod-ide-pane-tab,
+.mod-ide-pane-title {
+  min-width: 0;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+.mod-ide-pane-tab {
+  flex: 0 1 auto;
+  padding: 3px 8px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--vscode-descriptionForeground, #888);
+  cursor: pointer;
+}
+
+.mod-ide-pane-tab:hover {
+  background: var(--cc-surface-subtle, rgb(0 0 0 / 6%));
+}
+
+.mod-ide-pane-tab[data-active="true"] {
+  color: var(--vscode-foreground, inherit);
+  background: var(--cc-surface-subtle, rgb(0 0 0 / 6%));
+  font-weight: 600;
+}
+
+.mod-ide-pane-title {
+  flex: 1 1 auto;
+  font-weight: 600;
+}
+
+.mod-ide-pane-close {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  opacity: 0.6;
+  cursor: pointer;
+}
+
+.mod-ide-pane-close:hover {
+  opacity: 1;
+  background: var(--cc-surface-subtle, rgb(0 0 0 / 6%));
+}
+
+.mod-ide-pane-close-icon {
+  width: 9px;
+  height: 9px;
+}
+
+/* ── 面板体 ─────────────────────────────────────────────────────────── */
+
+.mod-ide-panes-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.mod-ide-pane {
+  min-width: 0;
+  padding: 8px 10px;
+}
+
+/* ── dock：对话右侧那一列 ───────────────────────────────────────────── */
+
+.mod-ide-panes[data-placement="dock"] {
+  /* 与桌面端侧栏同一量级：够放一行按钮与两列文本，又不把对话挤到 500px 以下
+     （800px 断点上 320 + 两侧留白，对话还剩一半）。 */
+  width: clamp(240px, 32%, 360px);
+  flex: 0 0 auto;
+  align-self: stretch;
+  margin: 0 0 8px 8px;
+}
+
+/* ── inline：输入框上方那一块（12 行后整体滚） ──────────────────────── */
+
+.mod-ide-panes[data-placement="inline"] {
+  width: 100%;
+  /* 12 行正文 + 表头 + 内衬；老引擎没有 `lh` 时用 12 × 19px 兜底。 */
+  max-height: 228px;
+  max-height: min(calc(12lh + 34px), 42vh);
+  margin-bottom: 6px;
+}
+
+.mod-ide-panes[data-placement="inline"] .mod-ide-panes-body {
+  overflow-y: auto;
+}
+
+/* ── 输入框上方那个栈（IDE 插件端三样 + 窄面板） ─────────────────────── */
+
+.mod-ide-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  /* 与输入卡同列同宽（桌面端的带 / 状态行也是这么对齐的，见
+     ModAbovePrompt.css 顶部那段说明）。 */
+  width: 100%;
+  max-width: 800px;
+  margin-left: auto;
+  margin-right: auto;
+  min-width: 0;
+}
+
+/* 栈里没有「右下角浮层」：提示跟着栈走，宽度由栈决定。 */
+.mod-ide-stack .mod-toasts {
+  position: static;
+  width: 100%;
+  max-width: none;
+  max-height: none;
+  overflow: visible;
+  pointer-events: auto;
+}
+
+/* 栈里没有「一行右对齐」：每个插件一行，正文最多两行再省略。 */
+.mod-status[data-variant="stack"] {
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 2px;
+  margin-top: 0;
+  padding: 0;
+  white-space: normal;
+}
+
+.mod-status[data-variant="stack"] .mod-status-line {
+  display: flex;
+  max-width: 100%;
+  white-space: normal;
+}
+
+.mod-status[data-variant="stack"] .mod-status-text {
+  overflow: hidden;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}

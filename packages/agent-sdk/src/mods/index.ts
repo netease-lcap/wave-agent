@@ -93,8 +93,8 @@ function element<P>(name: string): ModComponent<P> {
 }
 
 export interface BoxProps {
-  /** 默认 `row`（与 flex 一致）。 */
-  flexDirection?: "row" | "column";
+  /** 默认 `row`（与 flex 一致）。`-reverse` 两个方向照 flex 原义（主操作摆到右/下）。 */
+  flexDirection?: "row" | "column" | "row-reverse" | "column-reverse";
   /** 一排放不下时是否折行（默认 `nowrap`，与 flex 一致）。 */
   flexWrap?: "wrap" | "nowrap";
   /** 剩余空间里怎么长/怎么缩。带里的一排按钮默认会被压窄，要它别缩就给 `flexShrink: 0`。 */

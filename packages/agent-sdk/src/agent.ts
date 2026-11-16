@@ -17,12 +17,14 @@ import type {
   ModBandRenderResult,
   ModPanelEventPayload,
   ModPanelRenderResult,
+  ModPaneLayout,
   ModPanelUpdatePayload,
   ModPromptFillMode,
   ModRenderSurface,
   ModStatusPayload,
   ModSessionUsage,
   ModUiCopyResult,
+  ModSurfaceMetrics,
 } from "./types/mods.js";
 import { MOD_LIMITS } from "./types/mods.js";
 import { HookManager } from "./managers/hookManager.js";
@@ -297,22 +299,31 @@ export class Agent {
    * 「架构约束」: trees are pulled, never pushed).
    *
    * Public because the stdio bridge receives the `modPanelRender` RPC and hands
-   * the pane identity straight here.
+   * the pane identity straight here. `layout` 是「这一端把它摆在哪」（spec
+   * 「在 IDE 插件里画」）：宽面板 dock 在对话右侧、窄面板落到输入框上方，
+   * 引擎把它放进 `ui.render` 的 `e.props.placement` 与 `e.viewport`。
    */
   public async renderModPanel(
     modId: string,
     paneId: string,
+    layout: ModPaneLayout = {},
   ): Promise<ModPanelRenderResult> {
-    return this.modManager.renderPane(modId, paneId);
+    return this.modManager.renderPane(modId, paneId, layout);
   }
 
   /**
    * Produce the trees for the band above the composer (spec
    * `ecosystem/plugin-mods.md` 「状态带、状态行与提示」: same pull discipline as
    * panes — one `ui.render` call per mod that registers it).
+   *
+   * `metrics` is what the surface measured (the band's own width in character
+   * cells, plus the surface's viewport in cells): it becomes `e.props.bodyColumns`
+   * and `e.viewport` for the mod.
    */
-  public async renderModBand(): Promise<ModBandRenderResult[]> {
-    return this.modManager.renderBand();
+  public async renderModBand(
+    metrics: ModSurfaceMetrics = {},
+  ): Promise<ModBandRenderResult[]> {
+    return this.modManager.renderBand(metrics);
   }
 
   /**

@@ -128,7 +128,14 @@ function boxStyle(
   props = mergeHover(props, hover);
   const style: React.CSSProperties = { display: "flex", minWidth: 0 };
   const direction = props.flexDirection;
-  if (direction === "row" || direction === "column") {
+  // 四个方向都照 `flexDirection` 的原义走（CC 的 `Box` 直接落成 CSS 值）：
+  // `row-reverse` / `column-reverse` 是社区 mod 用来把主操作摆到右边/下边的写法。
+  if (
+    direction === "row" ||
+    direction === "column" ||
+    direction === "row-reverse" ||
+    direction === "column-reverse"
+  ) {
     style.flexDirection = direction;
   }
   // flex 子项默认 `flex-shrink: 1`：带里一排按钮会被压窄到折行。mod 要它别缩

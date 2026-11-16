@@ -124,6 +124,25 @@ describe("desktop mod panel", () => {
     expect(screen.getByRole("button", { name: "B" })).toBeInTheDocument();
   });
 
+  it("Box 的 flexDirection 四个方向都照原义（含 row-reverse / column-reverse）", () => {
+    renderDesktop();
+    const tree: ModPanelTree = {
+      type: "Box",
+      props: { flexDirection: "row-reverse", gap: 1 },
+      children: [
+        { type: "Text", props: {}, children: ["A"] },
+        { type: "Button", props: { key: "b", label: "B" }, children: [] },
+      ],
+    };
+    openPanel(tree);
+
+    const root = screen.getByTestId("mod-panel-root")
+      .firstElementChild as HTMLElement;
+    // 社区 mod 用它把主操作摆到右边（`column-reverse` 是摆到下面）：值是 CSS 原义，
+    // 不由我们重排。
+    expect(root.style.flexDirection).toBe("row-reverse");
+  });
+
   it("Button 的 variant 与 Box 的 flex 三个 prop 落到样式上（场景 6）", () => {
     renderDesktop();
     const tree: ModPanelTree = {

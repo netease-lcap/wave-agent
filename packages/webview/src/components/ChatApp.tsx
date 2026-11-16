@@ -63,10 +63,12 @@ import { PlanPane } from "./PlanPane";
 import { DesktopPanelTabs } from "./DesktopPanelTabs";
 import { PanelEmptyState } from "./PanelEmptyState";
 import { ModPanelRenderer } from "./ModPanelRenderer";
+import { ModIdePanes, type ModIdePaneFrame } from "./ModIdePanes";
 import {
   ModBandList,
   ModStatusLines,
   ModToastStack,
+  IDE_TOAST_TEXT_MAX,
   type ModBandFrame,
   type ModStatusFrame,
   type ModToastFrame,
@@ -103,8 +105,10 @@ import type {
   ModToastPayload,
 } from "wave-agent-sdk/types";
 // 限额表与 agent 侧同一份（toast 排队上限），别在 webview 里另抄一个数字；
-// 带的 `instance_id` 同理，是它自己的站点标识（`above-prompt` 是 CC 的写法）。
+// 带的站点标识 `MOD_BAND_INSTANCE_ID` 同理，是它自己的固定值（`above-prompt`
+// 是 CC 的写法），mod 那边在 `e.requestId` 里读到它。
 import { MOD_BAND_INSTANCE_ID, MOD_LIMITS } from "wave-agent-sdk/types";
+import type { ModSurfaceMetrics } from "wave-agent-sdk/types";
 // Type-only, borrowed the same way types/index.ts does it: the four facts are
 // part of the host → webview contract (fixtures defines `PushState`), and the
 // import is erased so nothing runtime-bound survives.
@@ -127,6 +131,12 @@ import {
 import { toAbsoluteFilePath } from "../utils/messageUtils";
 import { copyTextToClipboard } from "../utils/clipboard";
 import { isMacHiddenTitlebar, isRemotePageHost } from "../utils/platform";
+import { useMediaQuery } from "../utils/useMediaQuery";
+import {
+  measureElementCells,
+  measureViewportCells,
+  modSurfaceMetrics,
+} from "../utils/modViewport";
 import { chatReducer, initialState } from "../reducers/chatReducer";
 import {
   sessionUi,
@@ -367,6 +377,54 @@ function canonicalForwardUrl(raw: string): string {
  */
 function isFileDragEvent(e: React.DragEvent): boolean {
   return e.dataTransfer.types.includes("Files");
+}
+
+/**
+ * IDE 插件端 mod 面板的摆放断点（spec `ecosystem/plugin-mods.md`「在 IDE 插件
+ * 里画」）：宽于 800px 时 dock 在对话右侧，否则落到输入框上方。800 与 Claude Code
+ * 扩展里那条媒体查询同一个数，mod 侧读到的 `e.props.placement` 就由它决定。
+ */
+const MOD_PANE_DOCK_QUERY = "(min-width: 800px)";
+
+/**
+ * 这一端此刻有多大（spec「`ui.render` 的 `e.props`」：`columns` / `rows` 是视口、
+ * `bodyColumns` 是 `selector` 那块正文的宽）。
+ *
+ * 发请求时**现量**而不是记在 state 里：`modPanelRender` / `modBandRender` 都由一条
+ * 消息触发，量到的就是那一刻的宽度；元素还没挂上（第一帧）就只报视口，缺的字段
+ * 不带 —— 插件侧看到的是「没量到」，不是「量到 0」。
+ */
+function measureModSurface(selector: string): ModSurfaceMetrics {
+  if (typeof document === "undefined") return {};
+  const element = document.querySelector(selector);
+  return modSurfaceMetrics(
+    measureViewportCells(element),
+    measureElementCells(element),
+  );
+}
+
+/**
+ * IDE 聊天面板此刻把 `Pane` 摆在哪、有多大（跟着 `modPaneWide` 的同一条断点走）。
+ *
+ * 只有画它的这一端知道答案，所以要在**发请求时**现量，再跟着请求上去进
+ * `ui.render` 的 `e.props.placement` / `e.props.bodyColumns` 与 `e.viewport`。
+ * 没有 `matchMedia` 时按宽处理，与 `useMediaQuery` 同一条兜底。
+ */
+function modPaneLayout(): ModSurfaceMetrics & {
+  placement: "dock" | "inline";
+  isFullscreen: boolean;
+} {
+  const isWide =
+    typeof window === "undefined" || typeof window.matchMedia !== "function"
+      ? true
+      : window.matchMedia(MOD_PANE_DOCK_QUERY).matches;
+  // `isFullscreen` 在这一端恒为 true：插件端的 webview 就是整个聊天面板，内部
+  // 没有分屏；桌面端的面板嵌在分屏里，所以那边不报（走默认 false）。
+  return {
+    placement: isWide ? "dock" : "inline",
+    isFullscreen: true,
+    ...measureModSurface(".mod-ide-panes"),
+  };
 }
 
 // Panel-group snapshot storage (per session) moved to utils/sessionUiStore —
@@ -1830,7 +1888,14 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         if (!payload.closed && payload.stale) {
           postToHost({
             command: "modPanelRender",
-            payload: { modId: payload.modId, paneId: payload.paneId },
+            payload: {
+              modId: payload.modId,
+              paneId: payload.paneId,
+              // 摆法只在 IDE 聊天面板要报（spec「在 IDE 插件里画」）：桌面端只有
+              // 右侧面板槽一种放法，报了也只有一个值。`placement` 进 `ui.render`
+              // 的 `e.props`，`isFullscreen` 进 `e.viewport`。
+              ...(isDesktop ? {} : modPaneLayout()),
+            },
           });
           // 带也跟着这一次 stale 重拉（spec「状态带、状态行与提示」：surface 每次
           // 拿到「这个 mod 的画变了」都对每个注册了 `ui.render` 的 mod 拉一次）。
@@ -2912,10 +2977,15 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   );
 
   // 输入框上方那条带由本实例**主动拉取**（spec「状态带、状态行与提示」）：宿主
-  // 不缓存树，每次请求都真跑一遍每个 mod 的 `ui.render`。
+  // 不缓存树，每次请求都真跑一遍每个 mod 的 `ui.render`。带和面板一样要报这一端
+  // 多大：`columns` / `rows` 是视口，`bodyColumns` 是带自己那列（IDE 端就是
+  // `mod-ide-stack`，带、状态行、提示同宽）。桌面端不报，走缺省值。
   const postModBandRender = useCallback(() => {
-    postToHost({ command: "modBandRender" });
-  }, [postToHost]);
+    postToHost({
+      command: "modBandRender",
+      ...(isDesktop ? {} : { payload: measureModSurface(".mod-ide-stack") }),
+    });
+  }, [postToHost, isDesktop]);
 
   // 头部标题就地编辑（spec session-management.md「会话重命名入口：CLI 与插件端」场景 8/9）：乐观更新走 reducer（sessions 列表 + currentSession 一起
   // 改，头部立即变），失败时 useSessionRename 回滚，头部就地给出可见提示。
@@ -5765,6 +5835,130 @@ export const ChatApp: React.FC<ChatAppProps> = ({
       />
     ) : null;
 
+  // ── IDE 插件端的 mod 面板（spec ecosystem/plugin-mods.md「在 IDE 插件里画」）──
+  // 数据源与桌面端同一个（`tabs` 里的 mod tab，由 `desktopMod*` 那套消息喂进来），
+  // 只是摆法不同：宽面板 dock 在对话右侧、窄面板落到输入框上方；桌面端由右侧面板
+  // 槽画，不走这里。
+  const modPaneWide = useMediaQuery(MOD_PANE_DOCK_QUERY);
+  const modPanes: ModIdePaneFrame[] = isDesktop
+    ? []
+    : tabs
+        .filter((tab) => tab.kind === "mod" && tab.modId && tab.modPaneId)
+        .map((tab) => ({
+          id: tab.id,
+          modId: tab.modId as string,
+          paneId: tab.modPaneId as string,
+          title: tab.modTitle || (tab.modPaneId as string),
+          tree: tab.modTree,
+          error: tab.modError,
+        }));
+
+  // 面板挂上之后才量得到它多宽（spec「`ui.render` 的 `e.props`」的
+  // `bodyColumns`）：量到宽度变了就对每个开着的 pane 再拉一帧，`e.props` 里
+  // 的列数跟着变，mod 的断行/分页才对得上用户眼下看到的那块地方。
+  //
+  // **只看 `columns`**：行数随内容涨落，跟着它重拉会「拉一帧 → 变高 → 再拉」
+  // 转圈；宽度是 CSS 定的（`clamp(240px, 32%, 360px)` / `100%`），只有窗口或
+  // dock/inline 切换才会变。
+  const modPaneCellsRef = useRef<{ columns: number; rows: number } | null>(
+    null,
+  );
+  const handleModPaneMeasure = useCallback(
+    (cells: { columns: number; rows: number }) => {
+      const previous = modPaneCellsRef.current;
+      modPaneCellsRef.current = cells;
+      if (isDesktop) return;
+      if (previous && previous.columns === cells.columns) return;
+      const open = tabsRef.current.filter(
+        (tab) => tab.kind === "mod" && tab.modId && tab.modPaneId,
+      );
+      for (const tab of open) {
+        postToHost({
+          command: "modPanelRender",
+          payload: {
+            modId: tab.modId,
+            paneId: tab.modPaneId,
+            ...modPaneLayout(),
+          },
+        });
+      }
+    },
+    [isDesktop, postToHost],
+  );
+
+  const modPaneHost = {
+    onActivate: handleActivatePanel,
+    onClose: handleCloseTab,
+    onMeasure: handleModPaneMeasure,
+    onEvent: (
+      pane: ModIdePaneFrame,
+      kind: "press" | "input" | "select",
+      key: string,
+      value?: string,
+    ) =>
+      postToHost({
+        command: "modPanelEvent",
+        payload: {
+          modId: pane.modId,
+          paneId: pane.paneId,
+          key,
+          kind,
+          ...(value === undefined ? {} : { value }),
+        },
+      }),
+    onOpenLink: (href: string) =>
+      postToHost({ command: "openExternal", url: href }),
+  };
+
+  // 输入框上方那条带（spec「状态带、状态行与提示」）：一个 mod 一条，树由本实例
+  // 拉取。交互回宿主再转给 mod，webview 不持有 mod 状态。
+  const modBandList = (
+    <ModBandList
+      bands={modBands}
+      onEvent={(modId, kind, key, value) =>
+        postToHost({
+          command: "modPanelEvent",
+          payload: {
+            modId,
+            // 带不是 pane：`paneId` 用站点自己的固定值，mod 侧在 `e.requestId`
+            // 里读到它，靠它区分「这次渲染/交互来自哪条带」。
+            paneId: MOD_BAND_INSTANCE_ID,
+            key,
+            kind,
+            ...(value === undefined ? {} : { value }),
+          },
+        })
+      }
+      onOpenLink={(href) => postToHost({ command: "openExternal", url: href })}
+    />
+  );
+
+  // IDE 聊天面板的「输入框上方那个栈」（spec「在 IDE 插件里画」）：窄面板、带、
+  // 状态行、toast 收成一处 —— 桌面端是带在上、状态行在下、toast 右下角三处落点，
+  // 这一端只有一道缝可用。有审批或对话弹窗时整栈收起（它们会盖住输入区）。
+  // 面板只在**窄**的时候落在这里：宽的时候它自己占对话右侧那一列，同一个组件
+  // 挂两处会让树画两遍、非激活草稿丢一份。
+  const modIdeStack =
+    state.activeDialog === null ? (
+      <div className="mod-ide-stack" data-testid="mod-ide-stack">
+        {!modPaneWide && (
+          <ModIdePanes
+            panes={modPanes}
+            activePaneId={activeTabId}
+            placement="inline"
+            {...modPaneHost}
+          />
+        )}
+        {modBandList}
+        <ModStatusLines lines={modStatuses} variant="stack" />
+        <ModToastStack
+          toasts={modToasts}
+          onDismiss={dismissModToast}
+          maxChars={IDE_TOAST_TEXT_MAX}
+        />
+      </div>
+    ) : null;
+
   const chatBodyContent = state.isRestoring ? (
     // Desktop restore in progress: the pane already switched to the target
     // session — show the sweep animation over the message + input area until
@@ -5875,28 +6069,9 @@ export const ChatApp: React.FC<ChatAppProps> = ({
                 state.pendingConfirmations.length === 0 ? "block" : "none",
             }}
           >
-            {/* 输入框上方的带（spec「状态带、状态行与提示」）：一个 mod 一条，
-                树由本实例拉取。交互回宿主再转给 mod，webview 不持有 mod 状态。 */}
-            <ModBandList
-              bands={modBands}
-              onEvent={(modId, kind, key, value) =>
-                postToHost({
-                  command: "modPanelEvent",
-                  payload: {
-                    modId,
-                    // 带不是 pane：`instance_id` 是站点自己的固定值，mod 侧靠它
-                    // 区分「这次渲染/交互来自哪条带」。
-                    paneId: MOD_BAND_INSTANCE_ID,
-                    key,
-                    kind,
-                    ...(value === undefined ? {} : { value }),
-                  },
-                })
-              }
-              onOpenLink={(href) =>
-                postToHost({ command: "openExternal", url: href })
-              }
-            />
+            {/* 输入框上方那一块：桌面端是带；IDE 聊天面板把窄面板、带、状态行
+                与 toast 收进同一个栈（spec「在 IDE 插件里画」）。 */}
+            {isDesktop ? modBandList : modIdeStack}
             <MessageInput
               ref={messageInputRef}
               onSendMessage={handleSendMessage}
@@ -6012,9 +6187,14 @@ export const ChatApp: React.FC<ChatAppProps> = ({
             />
             {/* 输入框下方的常驻状态行与短暂提示（spec「状态带、状态行与提示」）：
                 只推不拉、纯文本、不进对话上下文；每个插件一段/一签。提示是右下角
-                固定浮层，不占输入区布局。 */}
-            <ModStatusLines lines={modStatuses} />
-            <ModToastStack toasts={modToasts} onDismiss={dismissModToast} />
+                固定浮层，不占输入区布局。IDE 聊天面板把这两样收进输入框上方的
+                同一个栈（见 `modIdeStack`）。 */}
+            {isDesktop && (
+              <>
+                <ModStatusLines lines={modStatuses} />
+                <ModToastStack toasts={modToasts} onDismiss={dismissModToast} />
+              </>
+            )}
           </div>
 
           {state.pendingConfirmations.length > 0 && (
@@ -6620,8 +6800,25 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         // so entering/leaving the welcome page never unmounts the input card
         // (e.g. the abort button must survive clearing the chat while
         // streaming).
-        <div className="ide-chat-wrap">
+        <div
+          className="ide-chat-wrap"
+          // 宽面板且真有 mod 面板时才转成一行（对话 + 右侧 dock）：
+          // 没有面板时保持原来的 flex-column，欢迎页的居中依赖它。
+          data-mod-dock={
+            modPaneWide && modPanes.length > 0 ? "true" : undefined
+          }
+        >
           <div className="ide-chat-main">{chatBodyContent}</div>
+          {/* dock 那一列（spec「在 IDE 插件里画」）：窄面板时不画这里，面板落到
+              输入框上方的 `modIdeStack` 里 —— 同一个组件两处只挂一处。 */}
+          {modPaneWide && modPanes.length > 0 && (
+            <ModIdePanes
+              panes={modPanes}
+              activePaneId={activeTabId}
+              placement="dock"
+              {...modPaneHost}
+            />
+          )}
         </div>
       )}
     </div>

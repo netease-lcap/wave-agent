@@ -115,10 +115,44 @@ export interface ModPanelRenderResult {
 }
 
 /**
+ * surface 量到的**版面事实**（spec「`ui.render` 的 `e.props`」）。
+ *
+ * 这些只有画它的那一端知道，所以跟着 `modPanelRender` / `modBandRender` 请求上来，
+ * 再原样进 `ui.render` 事件的 `e.viewport` 与 `e.props`。字段名与 Claude Code 同形，
+ * 没量到的字段**不带**（缺省由引擎补，见 {@link MOD_RENDER_BODY_COLUMNS}）—— 报一个
+ * 假的 `false` / 0 比不报更坏，mod 会把猜测当成测量结果。
+ */
+export interface ModSurfaceMetrics {
+  /** 这一端画布的字符宽（`e.viewport.columns`）。 */
+  columns?: number;
+  /** 这一端画布的字符高（`e.viewport.rows`）。 */
+  rows?: number;
+  /**
+   * 这块面板自己的字符宽（`e.props.bodyColumns`）。dock 时是右侧那一列、inline 与
+   * 带时是输入区那一列 —— 与 `columns` 不是一个数，mod 靠这个差换排布。
+   */
+  bodyColumns?: number;
+  /** 这一端是不是占满视口（IDE 聊天面板是，桌面端分屏不是）。 */
+  isFullscreen?: boolean;
+}
+
+/**
+ * surface 在要 `Pane` 这一帧时顺带说明的**摆法**（spec「在 IDE 插件里画」）。
+ *
+ * 摆法与版面事实分开说：摆法只有两种（宽面板 dock 在对话右侧、窄面板落到输入框
+ * 上方），量到的宽高跟着 {@link ModSurfaceMetrics} 一起上来。
+ */
+export interface ModPaneLayout extends ModSurfaceMetrics {
+  /** `dock`：摆在对话右侧；`inline`：摆在输入框上方。缺省 `dock`。 */
+  placement?: "dock" | "inline";
+}
+
+/**
  * 输入框上方那条带的渲染结果（spec「状态带、状态行与提示」）。
  *
  * 一个 mod 一条带；没有注册 `ui.render`、或钩子返回 `undefined` 的 mod 不出现在
- * 结果里（不占位置）。`instance_id` 固定是 {@link MOD_BAND_INSTANCE_ID}。
+ * 结果里（不占位置）。`ui.render` 事件里的 `requestId` 固定是
+ * {@link MOD_BAND_INSTANCE_ID}。
  */
 export interface ModBandRenderResult {
   modId: string;
@@ -132,32 +166,41 @@ export interface ModBandRenderResult {
   error?: string;
 }
 
-/** `AbovePrompt` 站点的 `instance_id`（spec「状态带、状态行与提示」）。 */
+/** `AbovePrompt` 站点的 `requestId`（spec「状态带、状态行与提示」）。 */
 export const MOD_BAND_INSTANCE_ID = "above-prompt";
 
 /**
- * `ui.render` 事件里 `props.bodyColumns` 的取值。
+ * `ui.render` 事件里 `props.bodyColumns` 的**缺省值**。
  *
- * surface 目前不在渲染请求里报自己的宽度（面板宽度由用户拖，带宽度跟窗口走），
- * 而社区 mod 会拿它决定「画 8 格还是 12 格的进度条」「这半句要不要省略」。给一
- * 个中性的默认值总比给 `undefined` 好：后者会让 `e.props.bodyColumns >= 110`
- * 恒假，宽窗口上也永远画窄版。
+ * surface 会在请求树时报量到的宽度（{@link ModSurfaceMetrics.bodyColumns}），这是
+ * 「它还没量到」时的兜底：给一个中性的默认值总比给 `undefined` 好 —— 后者会让
+ * `e.props.bodyColumns >= 110` 恒假，宽窗口上也永远画窄版。
  */
 export const MOD_RENDER_BODY_COLUMNS = 100;
 
 /**
  * `ui.render` 的 `Pane` 站点：一次最多画多少行（`props.maxRows` 与
- * `props.scroll.bodyRows`）。
+ * `props.scroll.bodyRows`）的**缺省值**。
  *
- * 与 {@link MOD_RENDER_BODY_COLUMNS} 一样是**插件侧的保守默认值**，不是量出来
- * 的：面板真实高度随窗口与用户拖动变，宿主也拿不到「行高」这个单位。给一组上限
- * 值（面板 24、带 8）能让分页的 mod 一开始就不溢出：面板更高时留白，更矮时由
- * 面板自己滚。要精确值得让 surface 在请求树时把量到的行数报上来。
+ * surface 报来画布行数时按它算（{@link ModSurfaceMetrics.rows}），这是兜底：面板
+ * 真实高度随窗口与用户拖动变。给一组上限值（面板 24、带 8）能让分页的 mod 一开始
+ * 就不溢出：面板更高时留白，更矮时由面板自己滚。
  */
 export const MOD_RENDER_PANE_ROWS = 24;
 
-/** `AbovePrompt` / `AbovePromptList` 站点的行数默认值（见 {@link MOD_RENDER_PANE_ROWS}）。 */
+/** `AbovePrompt` / `AbovePromptList` 站点的行数缺省值（见 {@link MOD_RENDER_PANE_ROWS}）。 */
 export const MOD_RENDER_BAND_ROWS = 8;
+
+/**
+ * 面板落到输入框上方（`placement: "inline"`）时正文的行数上限。
+ *
+ * 12 是 Claude Code 扩展里的那个数（官方文档「Draw in the VS Code extension」：
+ * 面板窄于 800 像素时面板落到输入框上方，「a pane shows 12 rows before it
+ * scrolls」；宽于 800 像素则 dock 在右侧、`isFullscreen` 为 `true`）。再高就把
+ * 输入框挤出视口。`e.props.maxRows` 与 `e.props.scroll.bodyRows` 都用它 —— mod
+ * 按它分页才不会画到可视区外面。
+ */
+export const MOD_RENDER_INLINE_ROWS = 12;
 
 /** `$.ui.status(text)` 的推送：每个插件一条常驻行，`text: null` 表示清除。 */
 export interface ModStatusPayload {
