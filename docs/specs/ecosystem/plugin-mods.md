@@ -92,18 +92,24 @@ MODS 补上这两件事：插件带一个 TypeScript 模块（可写 TSX），�
 
 `register($, on)` 的 `on(name, handler)` 注册**生命周期钩子**：
 
-| 事件                        | 触发时机                                                                                                                                                                                                                                                                                                         | 钩子可返回                                 |
-| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
-| `session.start`             | 会话初始化完成、第一个 prompt 之前                                                                                                                                                                                                                                                                               | 无（返回值忽略；面板得在这里 `$.ui.open`） |
-| `ui.render`                 | surface 请求某个 render site 的树时（宿主不缓存，每次请求都重新问 mod）；事件带三个正交的维度：`e.surface` 是画这棵树的那一端（一期只有 `desktop`）、`e.component` 是站点名（一期有 `Pane` / `AbovePrompt`）、`e.instance_id` 是该站点的哪个实例（`Pane` 是 `$.ui.open({ id })` 的 id，带固定是 `above-prompt`） | 元素树                                     |
-| `turn.complete`             | 一轮对话结束（答完，或被用户中断），见下                                                                                                                                                                                                                                                                         | 无（返回值忽略）                           |
-| `tool.call`                 | 一次工具调用**结束**后（拿到工具结果、`PostToolUse` 钩子跑完），见下                                                                                                                                                                                                                                             | 无（返回值忽略；**不能**拦下这次调用）     |
-| `classic.PermissionRequest` | 一次工具审批**即将**弹给用户时（`PermissionRequest` 钩子已放行、宿主询问用户之前），见下                                                                                                                                                                                                                         | 无（返回值忽略；**没有**批准/拒绝通道）    |
-| `command.run`               | 用户执行了一个由 `$.command.register` 注册的命令，或 mod 自己调 `$.command.run`（见「注册命令」）                                                                                                                                                                                                                | `{ text }`：这一行要变成的 prompt          |
+| 事件                        | 触发时机                                                                                                                                                                                                                                                                                                         | 钩子可返回                                     |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
+| `session.start`             | 会话初始化完成、第一个 prompt 之前                                                                                                                                                                                                                                                                               | 无（返回值忽略；面板得在这里 `$.ui.open`）     |
+| `prompt.submit`             | 用户审阅并提交一条 prompt（含 mod 自己调 `$.prompt.submit`），**模型请求还没发出之前**，见下                                                                                                                                                                                                                     | `{ context?: string[] }`：塞给模型的额外上下文 |
+| `turn.start`                | 一轮开始（用户消息已进上下文、第一个模型请求之前）                                                                                                                                                                                                                                                               | 无（返回值忽略）                               |
+| `turn.step`                 | 一轮里**每发出一次模型请求之前**（工具循环的每一步），`e.step` 从 1 起                                                                                                                                                                                                                                           | 无（返回值忽略）                               |
+| `ui.render`                 | surface 请求某个 render site 的树时（宿主不缓存，每次请求都重新问 mod）；事件带三个正交的维度：`e.surface` 是画这棵树的那一端（一期只有 `desktop`）、`e.component` 是站点名（一期有 `Pane` / `AbovePrompt`）、`e.instance_id` 是该站点的哪个实例（`Pane` 是 `$.ui.open({ id })` 的 id，带固定是 `above-prompt`） | 元素树                                         |
+| `turn.complete`             | 一轮对话结束（答完，或被用户中断），见下                                                                                                                                                                                                                                                                         | 无（返回值忽略）                               |
+| `session.compact`           | 上下文压缩**完成后**（自动或手动 `/compact`），`e` 是 `{ trigger, tokensBefore, tokensAfter }`                                                                                                                                                                                                                   | 无（返回值忽略）                               |
+| `tool.call`                 | 一次工具调用**结束**后（拿到工具结果、`PostToolUse` 钩子跑完），见下                                                                                                                                                                                                                                             | 无（返回值忽略；**不能**拦下这次调用）         |
+| `classic.PermissionRequest` | 一次工具审批**即将**弹给用户时（`PermissionRequest` 钩子已放行、宿主询问用户之前），见下                                                                                                                                                                                                                         | 无（返回值忽略；**没有**批准/拒绝通道）        |
+| `command.run`               | 用户执行了一个由 `$.command.register` 注册的命令，或 mod 自己调 `$.command.run`（见「注册命令」）                                                                                                                                                                                                                | `{ text }`：这一行要变成的 prompt              |
+| `session.end`               | 会话销毁（关掉这条会话、进程退出）**之前**；返回后该会话的 mod 实例、定时器与外部进程全部撤销，其面板**不再**逐条发 `ui.close`                                                                                                                                                                                   | 无（返回值忽略）                               |
+| `ui.close`                  | 一个**由 mod 打开**的面板被关掉、且 mod 实例还活着：用户点 ×、mod 调 `$.ui.close`、`/reload-plugins`。`e.id` 是 pane id                                                                                                                                                                                          | 无（返回值忽略）                               |
 
 `ui.render` 的事件要交给 `$.ui.resolve(e)` 换元素表（见下）；表外的元素名会被 `validateModTree` 拦下。
 
-**没有「面板被关掉」事件**，与 Claude Code 一致。面板被用户关掉、插件重载、会话销毁都由宿主内部清理（撤销回调表与定时器、丢弃该 pane 的登记，之后的请求不再返回树），不通知 mod；mod 想确认面板还在不在，用 `$.ui.panes()` 查。
+**面板被关掉时有 `ui.close`**（`e.id` 是被关的那个 pane）。Claude Code 同样有这个名字 —— 它的首方插件在自己的 scan 声明里把 `ui.close` 列进可监听钩子，与 `ui.render` 并列。发完之后宿主内部清理（撤销该 pane 的回调表与登记，之后的请求不再返回树）；`ui.close` 只是告知，**不能**拦下关闭。会话销毁时不逐条发它，只发一次 `session.end`（实例马上整体丢弃，逐条通知没有接收方）。mod 想确认面板还在不在，仍可用 `$.ui.panes()` 查。
 
 用户交互**不走** `on`，而是写在元素自己的回调 prop 上（回调用 `key` 与元素绑定，不进树）：
 
@@ -114,6 +120,17 @@ MODS 补上这两件事：插件带一个 TypeScript 模块（可写 TSX），�
 | `Select.onSelect(value)` | 用户在面板里的 `Select` 选了一项，`value` 是那一项的 `value` | 忽略   |
 
 `Select` 的选中值**不会**自动变成元素自己的 `value`：宿主只报「选了哪个」，下一帧画什么由 `ui.render` 的返回值决定（mod 想让它停在新的选中项，就把 `value` 一起写进状态）。这与 `Input` 提交后清空是同一条纪律 —— 控件的状态归 mod，不归 webview。
+
+### 轮次内外的事件（只读）
+
+`prompt.submit` / `turn.start` / `turn.step` / `session.compact` / `session.end` / `ui.close` 六个事件回答「一轮对话里正在发生什么」「会话什么时候没了」。除 `prompt.submit` 能往上下文里塞文本，其余返回值一律忽略。
+
+- **`prompt.submit` 只在用户敲的那条 prompt 上触发**：mod 自己经 `$.prompt.submit` 投进来的**不再触发**它 —— 否则 handler 里再 submit 一次就是无限环。触发点在「用户消息已进上下文、本轮第一个模型请求还没发出」之间，与 Claude Code 同一个位置（它的 `prompt.submit` 钩子在 `next(e)` 里跑完 `classic.UserPromptSubmit` 之后、请求发出之前）。
+- **返回值只认 `context`**：`{ context?: string[] }`，字符串数组，合起来受限额（见「限额」）。宿主把它们当作**本轮**的附加上下文，走与 `tool.call` 的 `context` 同一套注入点（请求边界），模型下一个请求就能看到；不写进用户消息原文。
+- **不改 `text`、不给 `drop`**：这两项是 Claude Code 同名事件另外两个返回值（改掉用户敲的话、或把这条 prompt 丢掉）。改/丢用户输入在这种「钩子跑在界面看不到的地方」的位置上没法让用户察觉，产品上不给插件。
+- **`turn.start` / `turn.step` 的分工**：`turn.start` 一轮一次，在用户消息落库之后；`turn.step` 每发一次模型请求之前一次，`e.step` 从 1 起 —— 一轮里有 N 次请求（工具循环）就有 N 个 step。用户中断后不再有 step，`turn.complete` 带 `isAborted: true` 收尾。
+- **`session.compact` 在压缩完成之后**，`e` 是 `{ trigger: "auto" | "manual", tokensBefore, tokensAfter }`。`tokensBefore` 与 `$.session.usage()` 的 `context.tokens` 同一处（锚定最后一次请求的 usage，含系统提示词与工具 schema）；`tokensAfter` 只数压缩后新历史的消息文本 —— 压缩刚结束还没有新请求的 usage 可锚定，而被保留下来的那两轮仍带着压缩前的 usage，按同一处口径算会原样报回压缩前的数字（真机实测两者曾完全相等）。这一对是「压缩前的估算上下文」与「压缩后的历史文本量」，**不是**同一把尺子：上下文接近窗口时前者远大于后者，但窗口极小、历史本来就很短时，摘要本身可能比被折叠掉的内容更长，此时 `tokensAfter` 反而更大（探针实测 985 → 2248）。mod 要判断「省了多少」应把它当最近似值，不要当不变量。
+- **`session.end` 是唯一一个宿主会等的**：会话销毁要先撤销 mod 实例，所以它必须在销毁之前跑完；仍受 5 秒上限约束，超时照常销毁。其余五个都是 fire-and-forget（抛错、超时只记一条 warn），也都不重放。
 
 ### 完成与审批的观察（只读事件）
 
@@ -143,19 +160,21 @@ MODS 补上这两件事：插件带一个 TypeScript 模块（可写 TSX），�
 
 ### `$`（一期）
 
-| 命名空间    | 方法                                                                                                                                                                                                                                                                                                         |
-| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `$.plugin`  | `name`                                                                                                                                                                                                                                                                                                       |
-| `$.ui`      | `resolve(e)`、`open({ id, title })`、`close(id)`、`panes()`、`invalidate("ui.render")`（只通知「我这个 mod 画的东西过期了」，不直接产生树；见「用户交互的结果」）、`status(text)`、`toast(text, timeoutMs?)`（见「状态带、状态行与提示」）、`log(text, { to? })`（在对话流里留一行，见「在对话流里留一行」） |
-| `$.state`   | `get`、`set`（会话级状态；`get` 返回副本，`set` 后需自己 `invalidate`）                                                                                                                                                                                                                                      |
-| `$.store`   | `get`、`set`、`delete`、`keys`（该插件自己的 JSON KV，跨会话）                                                                                                                                                                                                                                               |
-| `$.clock`   | `now()`、`after(ms, fn)`、`every(ms, fn)`（后两者返回 `{ cancel() }`，见「定时器」）                                                                                                                                                                                                                         |
-| `$.process` | `spawn({ argv, cwd?, env?, input? })` → 异步迭代子进程的输出；`run(argv, { cwd?, env?, stdin?, timeoutMs? })` → 跑完拿 `{ exitCode, stdout, stderr, is…Truncated }`（见「外部进程」）                                                                                                                        |
-| `$.fs`      | `read`（可选 `{ as: "bytes" }`）、`write`、`list`、`stat`、`exists`（相对路径按会话工作目录解析，见「读写文件」）                                                                                                                                                                                            |
-| `$.http`    | `fetch(url, { method?, headers?, body?, timeoutMs? })`（只允许 `https:` 与本机回环，见「发 HTTP 请求」）                                                                                                                                                                                                     |
-| `$.prompt`  | `submit({ text, asUser })`：把一条 prompt 送进当前会话（见「把 prompt 送进对话」）；`fill({ text, mode? })` → `{ isFilled }`：把草稿填进输入框、不发送（见「把草稿填进输入框」）                                                                                                                             |
-| `$.session` | `usage()`：只读的 token 用量快照（见「会话用量」）；`cwd()`：会话**当前**工作目录（与 `$.fs` 相对路径、`$.process` 的缺省 cwd 同一份数据源，会随会话里的 `cd` 变）                                                                                                                                           |
-| `$.command` | `register({ name, description, argumentHint?, immediate? })`、`list()`、`run({ command, args? })`（见「注册命令」）                                                                                                                                                                                          |
+| 命名空间     | 方法                                                                                                                                                                                                                                                                                                         |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `$.plugin`   | `name`                                                                                                                                                                                                                                                                                                       |
+| `$.ui`       | `resolve(e)`、`open({ id, title })`、`close(id)`、`panes()`、`invalidate("ui.render")`（只通知「我这个 mod 画的东西过期了」，不直接产生树；见「用户交互的结果」）、`status(text)`、`toast(text, timeoutMs?)`（见「状态带、状态行与提示」）、`log(text, { to? })`（在对话流里留一行，见「在对话流里留一行」） |
+| `$.state`    | `get`、`set`（会话级状态；`get` 返回副本，`set` 后需自己 `invalidate`）                                                                                                                                                                                                                                      |
+| `$.store`    | `get`、`set`、`delete`、`keys`（该插件自己的 JSON KV，跨会话）                                                                                                                                                                                                                                               |
+| `$.clock`    | `now()`、`sleep(ms, { signal? })` → Promise（等待，可被取消；见「时钟：等待」）、`after(ms, fn)`、`every(ms, fn)`（后两者返回 `{ cancel() }`，见「定时器」）                                                                                                                                                 |
+| `$.process`  | `spawn({ argv, cwd?, env?, input? })` → 异步迭代子进程的输出；`run(argv, { cwd?, env?, stdin?, timeoutMs? })` → 跑完拿 `{ exitCode, stdout, stderr, is…Truncated }`（见「外部进程」）                                                                                                                        |
+| `$.fs`       | `read`（可选 `{ as: "bytes" }`）、`write`、`list`、`stat`、`exists`（相对路径按会话工作目录解析，见「读写文件」）                                                                                                                                                                                            |
+| `$.http`     | `fetch(url, { method?, headers?, body?, timeoutMs? })`（只允许 `https:` 与本机回环，见「发 HTTP 请求」）                                                                                                                                                                                                     |
+| `$.prompt`   | `submit({ text, asUser })`：把一条 prompt 送进当前会话（见「把 prompt 送进对话」）；`fill({ text, mode? })` → `{ isFilled }`：把草稿填进输入框、不发送（见「把草稿填进输入框」）                                                                                                                             |
+| `$.session`  | `usage()`：只读的 token 用量快照（见「会话用量」）；`cwd()`：会话**当前**工作目录（与 `$.fs` 相对路径、`$.process` 的缺省 cwd 同一份数据源，会随会话里的 `cd` 变）；`id()`：这条会话的 id；`root()`：会话工作根（不随 `cd` 动）；`model()`：当前生效的模型名（见「会话事实：id、根目录、模型」）             |
+| `$.env`      | `get(name)` → `Promise<string \| undefined>`：读一个环境变量，没设置就是 `undefined`（不抛错）；见「环境变量与设置（只读）」                                                                                                                                                                                 |
+| `$.settings` | `read()` / `read({ source })` / `read({ key })` / `read({ source, key })` → Promise：`settings.json` 的只读快照，`source` 取 `user` / `project` / `local`，不传就是合并后的当前配置；见「环境变量与设置（只读）」                                                                                            |
+| `$.command`  | `register({ name, description, argumentHint?, immediate? })`、`list()`、`run({ command, args? })`（见「注册命令」）                                                                                                                                                                                          |
 
 `$.ui.resolve(e)` 把 `ui.render` 收到的事件换成**这一端可用的元素表**（`{ Box, Text, Button, Input, Select, Svg, Link, Code, Markdown, Progress }`，值与从 `wave-agent-sdk/mods` 导入的同名导出是同一份）。表按 `e.surface` 选：一期只发 `desktop`，别的值、以及不认识的 `e.component`，都直接报错并列出可用名单，不返回半张表。
 
@@ -233,6 +252,36 @@ mod 的沙箱里**没有** `setTimeout`/`setInterval`，要定时只能走 `$.cl
 
 轮询是 mod 看到**自己进程之外**变化的主要手段。外部程序（用户在客户产品里跑的脚本、本机的客户端进程，或 mod 自己用 `$.process.spawn` 起的进程）把状态写进 `$.store` 对应的文件，mod 用 `$.clock.every` 读出来、变了就 `$.ui.invalidate`；反过来，面板上的按钮把意图写进 `$.store`，外部程序自己那份循环读到后执行真正的动作（例如连上或断开 WebSocket）。mod 自己的网络能力是一次性请求（`$.http.fetch`）；要长连接就起一个**桥进程**，桥持有 WebSocket，mod 与桥之间走本机回环 HTTP（见「跨平台的双向连接」）。
 
+### 时钟：等待
+
+`$.clock.sleep(ms, { signal? })` 返回一个 Promise，`ms` 之后 resolve —— 沙箱里没有 `setTimeout`，轮询之间、退避重试、等外部进程重启都要它。它和 `after` 不是一回事：`after(ms, fn)` 是「到点跑一个回调」，`sleep` 是「这一行代码停在这儿等」。
+
+- `ms` 的限额与定时器同一条（下限 200ms、单次上限 10 分钟，更小的夹到 200ms）。
+- **可取消**：传 `{ signal }`（`AbortSignal`）就能提前结束，abort 后 Promise **reject**（一个 `AbortError`，`name` 是 `"AbortError"`），不是 resolve —— 调用方要能分辨「等到了」和「被打断」。
+- **会话销毁 / 插件重载时未完成的等待一并 reject**，与定时器、外部进程同一条纪律：沙箱里不该有活过会话的东西。所以 `await $.clock.sleep(...)` 外面永远要考虑被 reject 的可能（例如 `try/catch` 后直接返回，别在 `finally` 里再写界面）。
+- 等待**不占**「同时活跃的定时器」配额（那是 `after`/`every` 的），但占用一个 hook 的执行时间额度：一个 5 秒的 `sleep` 会把同一次钩子调用吃满，钩子超时的规则照旧（见「限额」）。
+
+### 环境变量与设置（只读）
+
+插件常要把自己的配置放在环境变量或 `settings.json` 里（`$.env.get("MY_PLUGIN_WATCH")`），两个只读入口：
+
+- **`$.env.get(name)`** 返回 `Promise<string | undefined>`：读会话环境变量的值与 `process.env` 合并后的结果（`settings.json` 的 `env` 段优先，与工具、钩子看到的是同一份）。**没设置就给 `undefined`，不抛错** —— Claude Code 同样是这个语义，社区插件的写法就是 `(await $.env.get("X")) || 默认值`。
+- **`$.settings.read(...)`** 返回 `Promise<Record<string, unknown>>`（带 `key` 时是该键的值，可能 `undefined`）。四种调用形式：`read()` 拿合并后的当前配置；`read({ source })` 只拿某一层（`user` = `~/.wave/settings.json`、`project` = `<workdir>/.wave/settings.json`、`local` = `<workdir>/.wave/settings.local.json`）；`read({ key })` / `read({ source, key })` 再取一个**顶层键**（不做 `.` 路径展开）。`source` 传别的值当场报错并列出可用值 —— Claude Code 的这份表里还有 `flag` / `policy`（它的命令行 flag 层与托管策略层），我们没有这两层，不假装有。
+- **不做掩码**：`$.env.get("WAVE_API_KEY")` 能读到真值、`settings.read()` 里也含 `env` 段。这不是疏忽：同一个插件的 hooks 本来就在宿主进程里跑 shell（`echo $WAVE_API_KEY` 一样读得到），掩码只会让「同一份配置在 hook 里能读、在 mod 里是星号」变成更坏的语义。信任边界在**装插件**那一刻，不在 `$` 的字段上（同「外部进程」的信任说明）。反过来要求插件作者：别把读到的值打进 `$.ui.log`、`$.ui.status` 或 `$.http.fetch`。
+- 两者都是**只读**：没有 `$.env.set`（Claude Code 有，改会话环境会牵连正在跑的工具与子进程）、没有写 `settings.json`。
+
+### 会话事实：id、根目录、模型
+
+`$.session` 上除了 `usage()` / `cwd()`，还有三个只读事实，插件拿它们做键、做标题、做上报：
+
+| 方法      | 值                                                                                          |
+| --------- | ------------------------------------------------------------------------------------------- |
+| `id()`    | 这条会话的 id（`/clear` 与恢复会话后会变，所以**要用时现取**，别在 `session.start` 里存死） |
+| `root()`  | 会话工作根：`EnterWorktree` 会让它动，`cd` 不会                                             |
+| `model()` | 当前生效的模型名（与 `$.session.usage()` 的 `model` 同一处解析，没配时是空串）              |
+
+三个都返回 `Promise`（Claude Code 的同名方法也是异步的），一次读取不产生副作用。`$.session.usage()` 与 `$.session.cwd()` 是既有的**同步**返回（一期已交付），与 Claude Code 那两处异步不同 —— 差异只影响 `.then()` 这种写法（`await` 两边都能用），不改。
+
 ### 外部进程
 
 mod 的沙箱里没有 `child_process`，要跑外部程序只能走 `$.process.spawn`。与 `$.clock` 同一条纪律：进程归宿主所有，会话销毁或插件重载时由宿主统一杀掉；裸 `spawn` 会留下孤儿进程，然后打到已经销毁的会话上。
@@ -274,6 +323,7 @@ mod 的沙箱里没有 `child_process`，要跑外部程序只能走 `$.process.
 - 语义就是用户自己发了一条：会话空闲时立刻开新一轮，忙时按 `Agent.sendMessage` 的既有规则入队。投递只有「入队」与「执行」两种结果，没有第三种。
 - `asUser` 一期只接受 `true`。Claude Code 在 `asUser: false` 时会在正文前加一句「由 XX 发送」，那需要一个「消息来源」块，本期不做；传 `false` 或省略直接报错，而不是静默降级成用户发言。
 - 不做 Claude Code 的「中断后拒收」回执（`{ drop }`）：我们的投递不会因为用户按了 Esc 就把在队里的消息丢掉。
+- **它投进去的这条 prompt 不触发 `prompt.submit` 事件**（那个事件只对用户敲的话发）：否则 mod 在钩子里再 submit 一次就是无限环。它开的那一轮里 `turn.start` / `turn.step` 照常发，所以「投完再观察自己造成的那一轮」仍然做得到。
 
 **信任。** `spawn` 让 mod 能执行任意命令，但它不引入新的信任层级——同一个插件的 hooks 本来就在跑 shell（`services/hook.ts` 的 `executeCommand`）。变的只是 mods 也能做同一件事，而插件安装时用户已经在授予这个权限。
 
@@ -348,6 +398,11 @@ mod 的沙箱里没有 `child_process`，要跑外部程序只能走 `$.process.
 | 面板每次 `invalidate` 的最小间隔 | 100ms（更快的调用合并）                                           |
 | 定时器最小间隔                   | 200ms（更小的值夹到 200ms）                                       |
 | 一个 mod 同时活跃的定时器        | 16（超出时新建定时器报错）                                        |
+| `$.clock.sleep` 单次等待         | 10 分钟（更长的夹到 10 分钟）                                     |
+| 一个 mod 同时未完成的 `sleep`    | 16（与定时器分开计；超出时 `sleep` 报错）                         |
+| `$.env.get` 的变量名             | 256 字符（更长的按没设置处理，返回 `undefined`）                  |
+| `$.settings.read` 的返回值       | 4 MiB（超出报错，不截断 —— 截断的配置是错的配置）                 |
+| `prompt.submit` 返回的 `context` | 32 条、合计 100,000 字符（超出丢弃多余的并记一条 warn）           |
 | 一个 mod 同时活跃的外部进程      | 4（`run` 跑完前也占一个；超出时 `spawn` / `run` 报错）            |
 | 外部进程单块输出                 | 64 KiB（更长的块切开）                                            |
 | 一个外部进程累计输出             | 4 MiB（超出后停止读取并杀掉该进程）                               |
@@ -376,7 +431,7 @@ mod 的沙箱里没有 `child_process`，要跑外部程序只能走 `$.process.
 
 - `session.start` 在会话初始化完成、第一个 prompt 之前跑一次；面板在这一刻登记。
 - **每挂载一次就跑一次**：新建会话、切回旧会话、webview 重建、`/reload-plugins` 都会重新走一遍。所以 `session.start` 里要幂等 —— 恢复状态读 `$.store` 就好，别每次追加一条 `$.ui.log`（对话流里会看到重复的行）。
-- `/reload-plugins` 会**重建**所有 mod：旧面板由宿主内部关掉（webview 上的 tab 随 `closed: true` 消失、旧实例的定时器与回调表一并丢弃），再按新插件列表重新加载与 `session.start`。mod 收不到「被关掉」的通知（见「事件」）。
+- `/reload-plugins` 会**重建**所有 mod：旧面板逐个发 `ui.close`（见「事件」）后由宿主内部关掉（webview 上的 tab 随 `closed: true` 消失、旧实例的定时器与回调表一并丢弃），再按新插件列表重新加载与 `session.start`。
 - 会话结束 / agent 销毁：宿主内部关掉所有面板并丢弃该会话的 mod 实例，此后发来的一切交互静默丢弃。
 - 会话结束与 `/reload-plugins` 同时撤销该 mod 的所有 `$.clock` 定时器（见「定时器」），销毁后不再有回调。
 - 同一时刻也杀掉该 mod 的所有外部进程（连同其子进程树），与定时器同一条纪律：进程不能活过开它的会话。
@@ -384,7 +439,13 @@ mod 的沙箱里没有 `child_process`，要跑外部程序只能走 `$.process.
 
 ## 交付分层（一期不做的事）
 
-不做，且**接口不预留**（避免半成品）：VS Code / JetBrains / 终端渲染、`Client`（要在 webview 里执行 mod 附带的第二份模块，连带 `ui.message` / `ui.fault` 两个事件）、终端专有的 `Raster`/`Image`、`$.model`/`$.agent`/`$.mcp`、事件拦截与改写（`prompt.*` 那族、CC 那种能改写放行决定的 `tool.check`、以及 `tool.call` 的 `{ deny }` 决议——我们只发只读事件，见「完成与审批的观察」）、mod 分层与加载期审查。
+不做，且**接口不预留**（避免半成品）：VS Code / JetBrains / 终端渲染、`Client`（要在 webview 里执行 mod 附带的第二份模块，连带 `ui.message` / `ui.fault` 两个事件）、终端专有的 `Raster`/`Image`、`$.model`/`$.agent`/`$.mcp`、事件拦截与改写（`prompt.*` 那族改写钩子、CC 那种能改写放行决定的 `tool.check`、`tool.call` 的 `{ deny }` 决议、`prompt.submit` 的改写 `text` 与 `drop` —— 我们只发只读事件与一次上下文注入，见「轮次内外的事件」）、mod 分层与加载期审查。
+
+Claude Code 的 `$` 有 23 个命名空间，我们一期覆盖 12 个（`ui` / `session` / `prompt` / `clock` / `process` / `fs` / `http` / `store` / `state` / `command` / `env` / `settings`）。差的是三组，各自的理由：
+
+- **改会话**：`$.session.send` / `append` / `compact`、`$.turn.abort`、`$.prompt.edit` / `paint` / `compose`、`$.env.set`、`$.config.set`。这些不是「多一个方法」，而是「mod 能替用户改东西」，每一条都要单独想清楚可见性（改了什么用户看不看得见）与冲突（用户正在打字时 mod 改输入框）。
+- **读更多会话内部**：`$.session.messages` / `turns` / `repo` / `surface` / `surfaces` / `authorize` / `identity` / `version`。`messages` 与 `turns` 把整份对话（含工具输出）交出去，与 `$.session.usage()` 那种「一个数字」不是一个量级。
+- **我们没有的底座**：`$.model`（调模型）、`$.agent`（派子代理）、`$.mcp`（调 MCP）、`$.telemetry`、`$.theme`、`$.audio`、`$.flag`、`$.decision`、`$.config`。前三个要独立的额度、权限与生命周期模型，后几个依赖我们还没有的对应子系统。
 
 **Web 远控页也不显示这三样**：手机上既没有状态带、没有状态行，也没有提示浮层。这是「一期只做桌面端」的下游结果，所以远控页不会因为它们弹「这个操作在 Web 端还没有接通」这类提示 —— 带是页面自己在打开会话、切换会话时取一次的，不是用户点出来的请求，不该在用户眼前报错。
 
@@ -533,7 +594,7 @@ mod 的沙箱里没有 `child_process`，要跑外部程序只能走 `$.process.
 
 **验收场景**：
 
-1. **假设**一个 mod 已经开着一个面板、还挂着 `$.clock.every` 定时器，**当**用户执行 `/reload-plugins`，**则**旧 tab 先消失、旧实例的定时器停止，随后按新插件列表重新出现，面板内容是新代码渲染的；mod 全程收不到「被关掉」的通知。
+1. **假设**一个 mod 已经开着一个面板、还挂着 `$.clock.every` 定时器，**当**用户执行 `/reload-plugins`，**则**旧 tab 先收到一次 `ui.close` 再消失、旧实例的定时器停止，随后按新插件列表重新出现，面板内容是新代码渲染的。
 2. **假设**会话被销毁，**当**宿主收尾，**则**所有 mod tab 消失、该会话的 mod 实例被丢弃，此后再来的交互被静默丢弃。
 3. **假设** mod 在 `session.start` 之外又调用了 `$.ui.open`，**当** `modPanelUpdate` 到达且 surface 完成请求，**则**右侧面板**新增**一个 tab（同一 `modId` 可以开多个面板，`paneId` 区分）。
 4. **假设**用户手动关掉 mod 的 tab，**当**之后该 mod 的定时器调用 `$.ui.invalidate("ui.render")`，**则**该调用于是无害的空操作（它没有已登记的面板，带也不再占位置），宿主不报错、不重建 tab。
@@ -615,3 +676,38 @@ mod 的沙箱里没有 `child_process`，要跑外部程序只能走 `$.process.
 1. **假设** mod 在 `command.run` 或 `turn.complete` 里调 `$.ui.log("已把审批规则写进 .wave/settings.local.json")`，**当**这一行落地，**则**对话流里出现一条提示块（署名由插件自己写在文字里），切走会话再回来仍然在。
 2. **假设**这一行落了地，**当**下一轮请求发给模型，**则**请求里**没有**这行文字（提示块不进上下文）。
 3. **假设** mod 传了 `{ to: "pane" }` 这类我们没有的目标，**当**调用发生，**则**抛错并列出唯一可用的 `"transcript"`，而不是静默写进对话流。
+
+### 用户故事：用户一提交，插件就把相关材料塞进这一轮（优先级：P0）
+
+作为用户，我希望我敲下问题的瞬间，插件能把它检索到的相关材料交给模型，以便模型回答时用得上，而我自己敲的那句话保持原样。
+
+**验收场景**：
+
+1. **假设** mod 注册 `prompt.submit` 并在钩子里返回 `{ context: ["记忆 A", "记忆 B"] }`，**当**用户提交「上次那个 bug 修了吗」，**则**本轮请求带上这两条（作为附加上下文），对话流里显示的仍是用户自己敲的那句原文。
+2. **假设**同一次提交有两个 mod 都返回 `context`，**当**请求发出，**则**两条都在（按插件加载顺序拼接）；合计超过限额时丢弃多余部分并记一条 warn，这一轮照常发出。
+3. **假设** mod 在 `prompt.submit` 钩子里又调 `$.prompt.submit`，**当**那条 prompt 落地，**则**它**不**触发 `prompt.submit`（否则是无限环），但它开的那一轮里 `turn.start` / `turn.step` 照常发。
+4. **假设**钩子抛错或超过 5 秒，**当**用户提交，**则**这一轮照常发请求（只是没有注入），日志一条 warn，用户看不到错误。
+5. **假设** mod 返回 `{ text: "改写", drop: true }`（Claude Code 同名事件的另外两个返回值），**当**钩子返回，**则**两项都被忽略、只认 `context`，并记一条 warn 说明「改/丢用户输入不支持」；`context` 不是字符串数组时同样忽略、不打断这一轮。
+
+### 用户故事：插件按轮次节奏做事、会话结束时收尾（优先级：P1）
+
+作为插件作者，我希望知道「一轮什么时候开始、走到第几步、上下文什么时候被压缩、会话什么时候没的」，以便按节奏刷新面板、退避轮询、上报用量。
+
+**验收场景**：
+
+1. **假设** mod 在 `turn.start` 与 `turn.step` 里累计步数，**当**用户问一个要连调三次工具的问题，**则** `turn.start` 一次、`turn.step` 四次（首答一次 + 每次工具结果后各一次请求），`e.step` 依次 1–4，`turn.complete` 一次。
+2. **假设**用户在第二轮中途按 Esc，**当**这一轮结束，**则**不再有 `turn.step`，`turn.complete` 收到 `isAborted: true`。
+3. **假设** `$.clock.sleep(30000)` 正在等，**当**用户关掉这条会话，**则**这次等待立刻 reject（`name === "AbortError"`），mod 的 catch 能跑收尾；传了 `{ signal }` 时 abort 行为相同。
+4. **假设**上下文逼近窗口（历史远大于摘要），**当**自动压缩完成，**则** `session.compact` 收到 `{ trigger: "auto", tokensBefore, tokensAfter }` 且 `tokensBefore > tokensAfter`；手动 `/compact` 时 `trigger` 是 `"manual"`。两者不是同一把尺子（见「轮次内外的事件」），历史本来就很短时 `tokensAfter` 可能更大。
+5. **假设** mod 打开了两个面板，**当**用户点掉其中一个的 ×，**则** `ui.close` 收到 `{ id }`；**当**整条会话被关掉，**则**只收到一次 `session.end`、不再收到两条 `ui.close`。
+6. **假设** `session.end` 的钩子卡住，**当** 5 秒过去，**则**会话照常销毁（超时只记一条 warn，不阻止销毁）。
+
+### 用户故事：插件从环境变量和设置里读自己的配置（优先级：P1）
+
+作为插件作者，我希望把配置放在用户熟悉的地方（`settings.json` 的 `env` 段或环境变量），并在插件里读到与会话相关的那几个事实（会话 id、工作根、模型），以便不用自造一份配置文件。
+
+**验收场景**：
+
+1. **假设**用户把 `MY_WATCH=1` 写进 `settings.json` 的 `env` 段，**当** mod 调 `$.env.get("MY_WATCH")`，**则**拿到 `"1"`；没设置的名字返回 `undefined`（不抛错），`|| 默认值` 就能兜底。
+2. **假设** mod 调 `$.settings.read({ source: "project", key: "permissions" })` 而 `project` 层没有这个键，**当**调用发生，**则**得到 `undefined`；把 `source` 写成 `"policy"`（我们没有这一层）**则**抛错并列出 `user` / `project` / `local` 三个可用值。
+3. **假设** mod 需要给会话打标，**当**它调 `$.session.id()` / `root()` / `model()`，**则**分别拿到当前会话 id（`/clear` 之后是新值）、会话工作根（`cd` 之后不变）、当前生效的模型名；三者都不改变会话任何状态。

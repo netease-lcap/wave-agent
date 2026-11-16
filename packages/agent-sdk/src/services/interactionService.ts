@@ -7,6 +7,7 @@ import type { ConfigurationService } from "./configurationService.js";
 import type { AIManager } from "../managers/aiManager.js";
 import type { SubagentManager } from "../managers/subagentManager.js";
 import type { TaskManager } from "./taskManager.js";
+import type { ModManager } from "../managers/modManager.js";
 
 export interface InteractionContext {
   messageManager: MessageManager;
@@ -18,6 +19,11 @@ export interface InteractionContext {
   aiManager: AIManager;
   subagentManager: SubagentManager;
   taskManager: TaskManager;
+  /**
+   * 插件 MODS 的编排器（`prompt.submit` 的上下文注入用，spec「轮次内外的事件」）。
+   * 可选：手工组装 context 的调用方（测试、纯服务调用）没有 mod 层。
+   */
+  modManager?: ModManager;
   options: AgentOptions;
   abortMessage: () => void;
   /**
@@ -127,6 +133,20 @@ export class InteractionService {
           logger?.warn("UserPromptSubmit hooks execution failed:", error);
           // Continue processing even if hooks fail
         }
+      }
+
+      // Mods get one look at the user's prompt before this turn's request goes
+      // out (`prompt.submit`, spec ecosystem/plugin-mods.md「轮次内外的事件」).
+      // Their `context` rides the turn as one hidden meta message — the user's
+      // own text stays exactly as typed, and the injected block never shows up
+      // in the transcript UI.
+      const injectedContext =
+        (await context.modManager?.collectPromptContext(content)) ?? [];
+      if (injectedContext.length > 0) {
+        messageManager.addUserMessage({
+          content: injectedContext.join("\n\n"),
+          isMeta: true,
+        });
       }
 
       // Send AI message

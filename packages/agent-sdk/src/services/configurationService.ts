@@ -10,6 +10,7 @@ import * as path from "path";
 import * as os from "os";
 import { isValidHookEvent } from "../types/hooks.js";
 import type { HookEvent, HookEventConfig } from "../types/hooks.js";
+import type { ModSettingsSource } from "../types/mods.js";
 import { logger } from "../utils/globalLogger.js";
 import type {
   ConfigurationLoadResult,
@@ -367,6 +368,35 @@ export class ConfigurationService {
    */
   getCurrentConfiguration(): WaveConfiguration | null {
     return this.liveConfiguration;
+  }
+
+  /**
+   * 读某一层 settings，供 `$.settings.read` 用（spec「环境变量与设置（只读）」）。
+   *
+   * `source` 缺省给**合并后**的当前配置；给了就只读那一个文件（`user` =
+   * `~/.wave/settings.json`、`project` = `<workdir>/.wave/settings.json`、
+   * `local` = `<workdir>/.wave/settings.local.json`）。文件不存在是空对象 ——
+   * 「这一层什么都没配」不该让插件报错。
+   *
+   * `workdir` 用**会话工作根**（容器 token `WorkspaceRoot` / 调用方传会话起点）：
+   * 项目级配置属于「这个会话属于哪个项目」，会话里 `cd` 过不该换一份配置出来。
+   */
+  readSettingsLayer(
+    source?: ModSettingsSource,
+    workdir: string = process.cwd(),
+  ): Record<string, unknown> {
+    if (source === undefined) {
+      return { ...(this.getCurrentConfiguration() ?? {}) };
+    }
+    const projectPaths = getProjectConfigPaths(workdir);
+    const filePath =
+      source === "user"
+        ? getUserConfigPaths()[0]
+        : source === "project"
+          ? projectPaths[1]
+          : projectPaths[0];
+    if (filePath === undefined) return {};
+    return { ...(loadWaveConfigFromFile(filePath) ?? {}) };
   }
 
   /** Environment snapshot the current turn reads from. */

@@ -1291,6 +1291,7 @@ export class Agent {
       aiManager: this.aiManager,
       subagentManager: this.subagentManager,
       taskManager: this.taskManager,
+      modManager: this.modManager,
       options: this.options,
       abortMessage: () => this.abortMessage(),
       switchWorkdir: (workdir) => this.switchSessionWorkdir(workdir),
@@ -1599,6 +1600,9 @@ export class Agent {
     this.abortAIMessage(); // This will abort tools including Agent tool (subagents)
     // 插件 mod 的面板与定时器：会话已经结束，先把定时器停掉并关面板 —— 留到
     // 后面会有回调打到半销毁的 agent 上（spec ecosystem/plugin-mods.md「定时器」）。
+    // `session.end` 是唯一一个 mod **会被等**的事件（「轮次内外的事件」），要在
+    // 实例被丢掉之前派发；它自带 5 秒钩子上限，卡住也不会挡住销毁。
+    await this.modManager.endSession();
     await this.modManager.dispose();
     // 侧聊段依附于这场对话：销毁时一并丢弃，在途的那一轮随之中止（否则它会带着
     // 网络句柄活过 destroy）。

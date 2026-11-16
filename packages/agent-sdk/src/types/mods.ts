@@ -358,6 +358,63 @@ export interface ModToolCallEvent {
 }
 
 /**
+ * `prompt.submit` 的载荷：用户提交了一条 prompt、模型请求还没发出（spec
+ * 「轮次内外的事件（只读）」）。
+ *
+ * **只在用户敲的那条 prompt 上派发**：mod 自己经 `$.prompt.submit` 投进来的不
+ * 触发（否则 handler 里再 submit 就是无限环）。钩子可以返回
+ * {@link ModPromptSubmitResult} 往本轮塞上下文；改 `text` / `drop` 是 Claude
+ * Code 同名事件另外两个返回值，我们不支持（悄悄改写或丢掉用户敲的话，界面上
+ * 看不出来）。
+ */
+export interface ModPromptSubmitEvent {
+  /** 用户提交的原文。 */
+  text: string;
+}
+
+/** `prompt.submit` 钩子的返回值：塞进本轮的附加上下文。 */
+export interface ModPromptSubmitResult {
+  /** 字符串数组；为空、非数组、超限的部分一律丢弃并记一条 warn。 */
+  context?: string[];
+}
+
+/** `turn.start` 的载荷：一轮开始（用户消息已进上下文、第一个请求之前）。 */
+export interface ModTurnStartEvent {
+  /** 一轮里第几步，永远是 0；给形状留位（与 `turn.step` 的 `step` 连着看）。 */
+  step: 0;
+}
+
+/** `turn.step` 的载荷：这一轮里每发出一次模型请求之前。 */
+export interface ModTurnStepEvent {
+  /** 从 1 起：一轮里第 N 次模型请求（工具循环里每次请求都算一步）。 */
+  step: number;
+}
+
+/** `session.compact` 的载荷：上下文压缩**完成后**。 */
+export interface ModSessionCompactEvent {
+  /** 自动（撞到阈值）还是手动（`/compact`）。 */
+  trigger: "auto" | "manual";
+  /** 压缩前的上下文估值，与 `$.session.usage().context.tokens` 同一口径。 */
+  tokensBefore: number;
+  /** 压缩后的上下文估值（压缩完读历史重新算）。 */
+  tokensAfter: number;
+}
+
+/** `session.end` 的载荷：会话销毁之前（没有字段，形状留位）。 */
+export type ModSessionEndEvent = Record<string, never>;
+
+/** `ui.close` 的载荷：一个由 mod 打开的面板被关掉。 */
+export interface ModPaneCloseEvent {
+  /** 被关掉的 pane id（`$.ui.open({ id })` 的那个）。 */
+  id: string;
+}
+
+/** `$.settings.read({ source })` 认的层。 */
+export const MOD_SETTINGS_SOURCES = ["user", "project", "local"] as const;
+
+export type ModSettingsSource = (typeof MOD_SETTINGS_SOURCES)[number];
+
+/**
  * `$.command.register` 的参数（spec「注册命令」）。
  *
  * 只有菜单元数据，**没有 handler** —— 用户敲下命令后引擎派 `command.run` 钩子，
@@ -482,4 +539,16 @@ export const MOD_LIMITS = {
   toastQueueMax: 50,
   /** 一个 mod 注册的命令数上限；超出时 `$.command.register` 报错。 */
   maxCommandsPerMod: 32,
+  /** `$.clock.sleep` 单次等待上限；更长的夹到这个数。 */
+  maxSleepMs: 600_000,
+  /** 一个 mod 同时未完成的 `$.clock.sleep` 数；与定时器分开计。 */
+  maxSleepsPerMod: 16,
+  /** `$.env.get` 的名字长度上限；更长的按「没设置」处理。 */
+  envNameChars: 256,
+  /** `$.settings.read` 返回值的 JSON 字节上限；超出报错（截断的配置是错的配置）。 */
+  settingsReadBytes: 4 * 1024 * 1024,
+  /** `prompt.submit` 钩子能塞的上下文条数上限。 */
+  promptContextMaxItems: 32,
+  /** `prompt.submit` 钩子能塞的上下文总字符上限。 */
+  promptContextChars: 100_000,
 } as const;
