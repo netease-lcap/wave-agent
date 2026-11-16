@@ -86,11 +86,12 @@ const ELEMENT_PROPS: Record<ModElementType, ReadonlySet<string>> = {
   Button: new Set([
     "key",
     "label",
-    "disabled",
     "variant",
     "plain",
     "dimColor",
+    "role",
     "autoFocus",
+    "hotkey",
   ]),
   Input: new Set([
     "key",
@@ -373,6 +374,15 @@ function checkElementValues(
       );
     }
   }
+  if (type === "Button" && props.hotkey !== undefined) {
+    // 一个数字或一个小写字母（Claude Code 的取值面）：它是**裸按键**，带修饰键
+    // 的组合归宿主自己（Ctrl+C 那一类）。
+    if (typeof props.hotkey !== "string" || !/^[a-z0-9]$/.test(props.hotkey)) {
+      throw new Error(
+        `Button.hotkey 是一个数字或一个小写字母，拿到的是 ${JSON.stringify(props.hotkey)}`,
+      );
+    }
+  }
 }
 
 /**
@@ -505,6 +515,15 @@ function walkNode(
     if (props.variant !== "primary" && props.variant !== "secondary") {
       throw new Error(`Button.variant 只允许 "primary" 或 "secondary"`);
     }
+  }
+  // `role` 只有一个值：它是「这个按钮关闭本站点」的绘制提示（与 Claude Code 的
+  // `role is "dismiss" or absent` 同一档），写别的说明作者想要的语义我们画不出。
+  if (
+    type === "Button" &&
+    props.role !== undefined &&
+    props.role !== "dismiss"
+  ) {
+    throw new Error(`Button.role 只允许 "dismiss"`);
   }
   checkElementValues(type, props);
   const hover = checkHover(

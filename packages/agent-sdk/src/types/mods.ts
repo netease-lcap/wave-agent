@@ -145,6 +145,20 @@ export const MOD_BAND_INSTANCE_ID = "above-prompt";
  */
 export const MOD_RENDER_BODY_COLUMNS = 100;
 
+/**
+ * `ui.render` 的 `Pane` 站点：一次最多画多少行（`props.maxRows` 与
+ * `props.scroll.bodyRows`）。
+ *
+ * 与 {@link MOD_RENDER_BODY_COLUMNS} 一样是**插件侧的保守默认值**，不是量出来
+ * 的：面板真实高度随窗口与用户拖动变，宿主也拿不到「行高」这个单位。给一组上限
+ * 值（面板 24、带 8）能让分页的 mod 一开始就不溢出：面板更高时留白，更矮时由
+ * 面板自己滚。要精确值得让 surface 在请求树时把量到的行数报上来。
+ */
+export const MOD_RENDER_PANE_ROWS = 24;
+
+/** `AbovePrompt` / `AbovePromptList` 站点的行数默认值（见 {@link MOD_RENDER_PANE_ROWS}）。 */
+export const MOD_RENDER_BAND_ROWS = 8;
+
 /** `$.ui.status(text)` 的推送：每个插件一条常驻行，`text: null` 表示清除。 */
 export interface ModStatusPayload {
   sessionId: string;
@@ -185,6 +199,168 @@ export interface ModPanelEventPayload {
  * `insert` 插在光标处。
  */
 export type ModPromptFillMode = "replace" | "append" | "insert";
+
+/**
+ * 能画 mod 树的一端（spec「会话事实」的 `$.session.surfaces()`）。
+ *
+ * 四个名字照 Claude Code 的 `RenderSurface` 取，`$.ui.resolve(e)` 也按它选
+ * 元素表。一期只有 `desktop` 真的会画：终端 / VS Code / JetBrains 都不画，
+ * 所以它们此刻**不在**数组里（`[]` 就是「没有界面」）。
+ */
+export type ModRenderSurface = "terminal" | "desktop" | "vscode" | "mobile";
+
+/**
+ * `$.ui.open()` 的结果（spec「面板放得下吗」）。
+ *
+ * `isPlaced: false` 时 `reason` 说明为什么没画：没有能画面板的表面（以
+ * `no-surface` 开头，与 Claude Code 同一个词）、会话正在销毁。守卫类插件据此
+ * 决定要不要把命令冻在等人按键上。
+ */
+export type ModUiOpenResult =
+  | { isPlaced: true }
+  | { isPlaced: false; reason: string };
+
+/**
+ * `$.config.list()` 的一行（spec「配了哪些、能调什么、有谁在跑」）。
+ *
+ * 形状照 Claude Code 的 `ConfigRow`：`key` 是行名，`kind` 说这一行的值怎么
+ * 取，`value` 是值本体，`isLocked` 表示它被托管层钉住（显示但拒绝改）。我们
+ * 只列**真有值的键**，不把默认值铺出来 —— 社区的读法是
+ * `find(row => row.key === "theme")`，没写过要给 `undefined`。
+ */
+export type ModConfigKind = "boolean" | "choice" | "text" | "number";
+
+/** 一行配置的值；`choice` 的候选另放 `options`。 */
+export type ModConfigValue = boolean | string | number | readonly string[];
+
+/** 谁拥有这一行：引擎自己的行 `plugin` 是 `"engine"`。 */
+export interface ModConfigProvider {
+  plugin: string;
+  tier: string;
+}
+
+export interface ModConfigRow {
+  key: string;
+  label: string;
+  description?: string;
+  kind: ModConfigKind;
+  value: ModConfigValue;
+  options?: readonly string[];
+  provider: ModConfigProvider;
+  isLocked: boolean;
+}
+
+/** `$.tool.list()` 的一项：`mcp` 为真表示这是 MCP server 的工具。 */
+export interface ModToolInfo {
+  name: string;
+  description: string;
+  mcp: boolean;
+}
+
+/** `$.agent.list()` 里的状态，照 Claude Code 的 `AgentStatus` 取。 */
+export type ModAgentStatus =
+  | "pending"
+  | "running"
+  | "idle"
+  | "completed"
+  | "failed"
+  | "killed";
+
+/** `$.agent.list()` 的一项：一条会话里派过的一个子代理。 */
+export interface ModAgentInfo {
+  id: string;
+  description: string;
+  type: string;
+  status: ModAgentStatus;
+  parentAgentId?: string;
+}
+
+/** `$.session.repo()`：会话所在的 git 仓库；不在仓库里时给 `null`。 */
+export interface ModSessionRepo {
+  /** 仓库根，绝对路径（在 worktree 里跑也给主工作树的）。 */
+  root: string;
+  /** `origin` 的 URL；没有 remote 就是 `null`。 */
+  remote: string | null;
+  /** 是不是「我们自己的」仓库。我们不分公有/内部，恒 `false`。 */
+  internal: boolean;
+  /** 匹配到的仓库名 `owner/name`；`internal` 为假时是 `null`。 */
+  name: string | null;
+}
+
+/** `$.session.version()`：引擎版本、它的发布基线、构建时间。 */
+export interface ModSessionVersion {
+  version: string;
+  base?: string;
+  builtAt?: string;
+}
+
+/** `$.prompt.read()`：输入框里的草稿，`cursor` 是 UTF-16 偏移。 */
+export interface ModPromptBox {
+  text: string;
+  cursor: number;
+}
+
+/** `$.fs.ancestors()` 里一项的组成部分；一期只有文件自己。 */
+export interface ModFsAncestorPart {
+  path: string;
+  content: string;
+}
+
+/** `$.fs.ancestors()` 的一项：一个目录里的一个指令文件。 */
+export interface ModFsAncestor {
+  dir: string;
+  name: string;
+  content: string;
+  parts: readonly ModFsAncestorPart[];
+}
+
+/** `$.ui.copy()` 的结果，照 Claude Code 的 `UiCopyResult`。 */
+export type ModUiCopyResult =
+  | { isCopied: true }
+  | { isCopied: false; reason: "no-surface" | "no-clipboard" | "refused" };
+
+/** `$.ui.view()` 的结果：`{}` 表示视图已切过去，`{ deny }` 说明为什么没动。 */
+export interface ModUiViewResult {
+  deny?: string;
+}
+
+/** `$.prompt.read()` 送达 surface 的一次请求（与 `ModPromptFillRequest` 配对）。 */
+export interface ModPromptReadRequest {
+  sessionId: string;
+  requestId: string;
+}
+
+/** surface 对 `ModPromptReadRequest` 的回执。 */
+export interface ModPromptReadResult {
+  sessionId: string;
+  requestId: string;
+  text: string;
+  cursor: number;
+}
+
+/** `$.ui.copy()` 送达 surface 的一次请求。 */
+export interface ModCopyRequest {
+  sessionId: string;
+  requestId: string;
+  text: string;
+  surface?: ModRenderSurface;
+}
+
+/** surface 对 `ModCopyRequest` 的回执。 */
+export interface ModCopyResult {
+  sessionId: string;
+  requestId: string;
+  isCopied: boolean;
+  reason?: string;
+}
+
+/** `$.ui.notice` 推给 surface 的一行（`text: null` 表示撤掉）。 */
+export interface ModNoticePayload {
+  sessionId: string;
+  plugin: string;
+  toolUseId: string;
+  text: string | null;
+}
 
 /**
  * `$.prompt.fill` 送达 surface 的一次请求（spec「把草稿填进输入框」）。
@@ -420,16 +596,53 @@ export interface ModPermissionRequestEvent {
 }
 
 /**
- * `tool.call` 的载荷：一次工具调用**结束**，结果已经拿到（spec「完成与审批的
- * 观察」）。
+ * `$.ui.ask` 的第二个参数（spec「问用户一个问题」）。
  *
- * 字段照 Claude Code 同名事件的形状取最小集：`tool` 是工具名、`input` 是它收到
- * 的参数。CC 的同名钩子还能返回 `{ deny }` 拦下这次调用，我们只做观察这一半，
- * 返回值丢弃。
+ * 照 Claude Code 的 `AskOptions`：可以直接给标签数组，也可以给
+ * `{ options, header, multiSelect }`。标签少于两个按「是 / 否」补齐，多于四个
+ * 报错（提问卡片画不下）。
+ */
+export type ModAskOptions =
+  | readonly string[]
+  | {
+      options?: readonly string[];
+      /** 那颗小标签；没写用插件名（CLI 会 `.slice(0, 12)`）。 */
+      header?: string;
+      /** 允许多选时多个答案用逗号连接。 */
+      multiSelect?: true;
+    };
+
+/**
+ * `tool.call` / `tool.run` 的载荷：一次工具调用（spec「拦下一次工具调用」
+ * 「在工具真正跑之前插一脚」）。
+ *
+ * 字段照 Claude Code 的 `ToolCallEnvelope`：`tool` 是工具名、`tool_use_id` 是这
+ * 次调用的 id、`input` 是它收到的参数；参数**另外在顶层铺一份**（`e.command`
+ * 就是 Bash 的 `command`），社区插件读写的是顶层那份而不是 `e.input.command`。
+ *
+ * 两个事件的区别只在时机：`tool.call` 在 PreToolUse 钩子之前（「要不要拦」），
+ * `tool.run` 在它之后、工具真正执行之前（`next(e)` 才执行）。
  */
 export interface ModToolCallEvent {
   tool: string;
+  tool_use_id: string;
   input: unknown;
+  /** 工具参数在顶层铺开的副本（见上）。 */
+  [key: string]: unknown;
+}
+
+/** `tool.run` 的载荷：与 {@link ModToolCallEvent} 同形，时机不同。 */
+export type ModToolRunEvent = ModToolCallEvent;
+
+/**
+ * `tool.call` / `tool.run` 钩子的返回值。
+ *
+ * 只认 `{ deny }`：拦下这次调用，模型收到这段文本作为工具错误结果（与「参数
+ * 不合法」同一形态）。改写参数、用自己的结果顶替（`{ result }`）、替用户批准
+ * （`tool.check`）都不做。
+ */
+export interface ModToolDenyResult {
+  deny: string;
 }
 
 /**
@@ -511,6 +724,14 @@ export interface ModPaneCloseEvent {
 export const MOD_SETTINGS_SOURCES = ["user", "project", "local"] as const;
 
 export type ModSettingsSource = (typeof MOD_SETTINGS_SOURCES)[number];
+
+/** `$.ui.copy({ surface })` / `surfaces()` 认的端（与 `ModRenderSurface` 同一组）。 */
+export const MOD_RENDER_SURFACES = [
+  "terminal",
+  "desktop",
+  "vscode",
+  "mobile",
+] as const;
 
 /**
  * `$.command.register` 的参数（spec「注册命令」）。
@@ -625,6 +846,19 @@ export const MOD_LIMITS = {
    * 回执丢弃。没有这条上限，mod 的 `await` 会在一个卡住的 webview 上永远挂着。
    */
   promptFillTimeoutMs: 5_000,
+  /**
+   * `$.prompt.read()` 等宿主回执的上限（spec「输入框里现在有什么」）。
+   *
+   * 比 `fill` 短：读草稿是「顺手问一句」，超时就当没有输入框，不值得让调用方
+   * 多等两秒。
+   */
+  promptReadTimeoutMs: 3_000,
+  /** `$.ui.copy` 一次能写入的字符上限；超出报错而不是切一刀。 */
+  copyTextChars: 100_000,
+  /** `$.fs.ancestors` 最多返回几项；超出按目录由近到远截断。 */
+  ancestorFiles: 32,
+  /** `$.fs.ancestors` 读出来的正文总量（字节）；超出报错。 */
+  ancestorBytes: 256 * 1024,
   /** 一次 `$.http.fetch` 最多跟的重定向次数。 */
   httpMaxRedirects: 5,
   /** `$.ui.status` 一行的字符上限，超出截断并加省略号。 */

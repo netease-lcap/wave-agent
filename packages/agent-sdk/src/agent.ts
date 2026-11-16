@@ -19,8 +19,10 @@ import type {
   ModPanelRenderResult,
   ModPanelUpdatePayload,
   ModPromptFillMode,
+  ModRenderSurface,
   ModStatusPayload,
   ModSessionUsage,
+  ModUiCopyResult,
 } from "./types/mods.js";
 import { MOD_LIMITS } from "./types/mods.js";
 import { HookManager } from "./managers/hookManager.js";
@@ -47,6 +49,8 @@ import type {
   PluginReloadResult,
   UserImage,
 } from "./types/index.js";
+import type { PermissionCallback } from "./types/permissions.js";
+import { ASK_USER_QUESTION_TOOL_NAME } from "./constants/tools.js";
 import type { HookEvent, HookEventConfig } from "./types/hooks.js";
 import type { ContextBreakdown } from "./types/contextBreakdown.js";
 import type { BtwHistoryTurn } from "./types/btw.js";
@@ -160,6 +164,25 @@ export class Agent {
     (filled: boolean) => void
   >();
   private modPromptFillSeq = 0;
+  /**
+   * `$.prompt.read` requests waiting for the surface's answer, keyed by the id
+   * the host carries back (spec「输入框里现在有什么」).
+   */
+  private readonly modPromptReads = new Map<
+    string,
+    (box: { text: string; cursor: number }) => void
+  >();
+  private modPromptReadSeq = 0;
+  /**
+   * `$.ui.copy` requests waiting for the surface's answer (spec「剪贴板与视图」).
+   */
+  private readonly modCopies = new Map<
+    string,
+    (result: { isCopied: boolean; reason?: string }) => void
+  >();
+  private modCopySeq = 0;
+  /** `$.ui.ask` 每次提问的 id 序号（与 `toolCallId` 同一处用处）。 */
+  private modAskSeq = 0;
 
   // Configuration options storage for dynamic resolution
   private options: AgentOptions;
@@ -305,6 +328,104 @@ export class Agent {
   }
 
   /**
+   * Settle a `$.prompt.read` (spec `ecosystem/plugin-mods.md`「输入框里现在有什么」).
+   *
+   * Anything the surface cannot say reads as an empty draft: "nobody is drawing
+   * a composer" and "the person has not typed yet" are one answer to a mod.
+   */
+  public resolveModPromptRead(
+    requestId: string,
+    text: string,
+    cursor: number,
+  ): void {
+    const settle = this.modPromptReads.get(requestId);
+    this.modPromptReads.delete(requestId);
+    settle?.({
+      text: typeof text === "string" ? text : "",
+      cursor: Number.isFinite(cursor) ? cursor : 0,
+    });
+  }
+
+  /**
+   * Settle a `$.ui.copy` (spec `ecosystem/plugin-mods.md`「剪贴板与视图」).
+   *
+   * A refusal is an answer, not an error: `isCopied: false` with a `reason` is
+   * exactly what the mod compares against.
+   */
+  public resolveModCopy(
+    requestId: string,
+    isCopied: boolean,
+    reason?: string,
+  ): void {
+    const settle = this.modCopies.get(requestId);
+    this.modCopies.delete(requestId);
+    settle?.({ isCopied: isCopied === true, reason });
+  }
+
+  /**
+   * `$.ui.ask` — 一个 mod 问用户一个问题（spec「问用户一个问题」）。
+   *
+   * 走的就是模型那个 `AskUserQuestion` 工具的审批链路：同一个
+   * `PermissionManager.checkPermission`、同一张卡片、同一套「关掉 = 拒绝」。所以
+   * 插件不需要新的界面能力，界面也不需要认出「这张卡片是插件问的」。
+   *
+   * resolve 成用户选中的那个标签（或在「其他」里打的自由文本）；用户关掉对话
+   * 框、这条会话没有界面接手时 reject —— 守卫据此按「没人能答」处理。
+   */
+  private async askModQuestion(
+    question: string,
+    options: { labels: string[]; header?: string; multiSelect?: true },
+  ): Promise<string> {
+    const permissionManager = this.container.has("PermissionManager")
+      ? this.container.get<PermissionManager>("PermissionManager")
+      : undefined;
+    if (!permissionManager) {
+      throw new Error("这条会话没有权限管理器，插件问不了问题");
+    }
+    const permissionMode = this.container.has("PermissionMode")
+      ? this.container.get<PermissionMode>("PermissionMode")
+      : undefined;
+    const canUseToolCallback = this.container.has("CanUseToolCallback")
+      ? this.container.get<PermissionCallback>("CanUseToolCallback")
+      : undefined;
+    const permissionContext = permissionManager.createContext(
+      ASK_USER_QUESTION_TOOL_NAME,
+      permissionMode || "default",
+      canUseToolCallback,
+      {
+        questions: [
+          {
+            question,
+            header: options.header ?? "plugin",
+            options: options.labels.map((label) => ({ label })),
+            ...(options.multiSelect ? { multiSelect: true } : {}),
+          },
+        ],
+      },
+      `mod-ask-${++this.modAskSeq}`,
+    );
+    // 与模型那次提问同一条：不给「一直允许」那一档。
+    permissionContext.hidePersistentOption = true;
+    const decision = await permissionManager.checkPermission(permissionContext);
+    if (decision.behavior === "deny") {
+      throw new Error(
+        "用户没有回答插件的问题（对话框关掉，或这条会话没有界面）",
+      );
+    }
+    const answers = JSON.parse(decision.message || "{}") as Record<
+      string,
+      string | string[]
+    >;
+    const answer = answers[question];
+    // 多选时界面给的是数组：Claude Code 的口径是用逗号连起来。
+    if (Array.isArray(answer)) return answer.join(", ");
+    if (typeof answer !== "string" || answer.trim().length === 0) {
+      throw new Error("用户没有回答插件的问题（回执里没有答案）");
+    }
+    return answer;
+  }
+
+  /**
    * Ask the surface to put a draft in its composer.
    *
    * Resolves `false` — never rejects — when there is no surface to ask, or when
@@ -349,6 +470,84 @@ export class Agent {
     // a late reply arriving in the same tick must find nothing to settle again.
     this.modPromptFills.delete(requestId);
     settle?.(filled);
+  }
+
+  /**
+   * Read the draft the person is typing right now (spec「输入框里现在有什么」).
+   *
+   * `$.prompt.fill`'s mirror image, on the same channel discipline: no surface
+   * wired, no answer in time, or a host that throws all read as an empty draft —
+   * the mod gets `{ text: "", cursor: 0 }` rather than a rejection.
+   */
+  private readModPrompt(): Promise<{ text: string; cursor: number }> {
+    const notify = this.options.callbacks?.onModPromptRead;
+    if (!notify) return Promise.resolve({ text: "", cursor: 0 });
+    const requestId = `prompt-read-${++this.modPromptReadSeq}`;
+    return new Promise<{ text: string; cursor: number }>((resolve) => {
+      const timer = setTimeout(() => {
+        this.resolveModPromptRead(requestId, "", 0);
+      }, MOD_LIMITS.promptReadTimeoutMs);
+      timer.unref?.();
+      this.modPromptReads.set(requestId, (box) => {
+        clearTimeout(timer);
+        resolve(box);
+      });
+      try {
+        notify({ sessionId: this.sessionId, requestId });
+      } catch {
+        this.resolveModPromptRead(requestId, "", 0);
+      }
+    });
+  }
+
+  /**
+   * Ask the surface to put text on the clipboard (spec「剪贴板与视图」).
+   *
+   * Refuses politely where there is no clipboard: no surface wired, or an answer
+   * that never arrives, both read as `no-surface` rather than an error.
+   */
+  private copyModText(request: {
+    text: string;
+    surface?: ModRenderSurface;
+  }): Promise<ModUiCopyResult> {
+    const notify = this.options.callbacks?.onModCopy;
+    if (!notify)
+      return Promise.resolve({ isCopied: false, reason: "no-surface" });
+    const requestId = `copy-${++this.modCopySeq}`;
+    return new Promise<ModUiCopyResult>((resolve) => {
+      const timer = setTimeout(() => {
+        this.resolveModCopy(requestId, false, "no-surface");
+      }, MOD_LIMITS.promptReadTimeoutMs);
+      timer.unref?.();
+      this.modCopies.set(requestId, (result) => {
+        clearTimeout(timer);
+        resolve(
+          result.isCopied
+            ? { isCopied: true }
+            : {
+                isCopied: false,
+                // 协议里只有三个词：认得出的原样透传，剩下的（宿主自造的
+                // 理由）归一成「被拒」，别把没约定的字符串漏给 mod。
+                reason:
+                  result.reason === "no-clipboard"
+                    ? "no-clipboard"
+                    : result.reason === "no-surface"
+                      ? "no-surface"
+                      : "refused",
+              },
+        );
+      });
+      try {
+        notify({
+          sessionId: this.sessionId,
+          requestId,
+          text: request.text,
+          ...(request.surface ? { surface: request.surface } : {}),
+        });
+      } catch {
+        this.resolveModCopy(requestId, false, "no-surface");
+      }
+    });
   }
 
   /**
@@ -568,6 +767,36 @@ export class Agent {
     // travels out to the surface and back: only the UI knows whether the text
     // landed, so the answer arrives later through `resolveModPromptFill`.
     this.modManager.setPromptFiller((request) => this.fillModPrompt(request));
+
+    // `$.prompt.read` — the draft the person is typing right now
+    // (spec「输入框里现在有什么」). Same channel as `fill`, answered the same way.
+    this.modManager.setPromptDraftReader(() => this.readModPrompt());
+
+    // `$.ui.notice` — one line under a tool call (spec「工具行下面的一行」).
+    // Push-only: a host without tool blocks leaves it unwired and the mod's call
+    // still succeeds.
+    this.modManager.setNoticeSink((plugin, toolUseId, text) => {
+      this.options.callbacks?.onModNotice?.({
+        sessionId: this.sessionId,
+        plugin,
+        toolUseId,
+        text,
+      });
+    });
+
+    // `$.ui.copy` — put text on the surface's clipboard (spec「剪贴板与视图」).
+    // A refusal travels back as `isCopied: false`, never as a rejection.
+    this.modManager.setCopySink((request) => this.copyModText(request));
+
+    // Plugin mods can ask the user a question (`$.ui.ask`, spec
+    // ecosystem/plugin-mods.md「问用户一个问题」). It rides the very same
+    // `AskUserQuestion` permission path the model's tool uses, so every surface
+    // already knows how to draw it and nobody has to learn a second dialog. What
+    // it cannot do is invent an answer when nobody is watching: that rejects,
+    // and a guard reads the rejection as "no".
+    this.modManager.setAskUser((question, options) =>
+      this.askModQuestion(question, options),
+    );
 
     // Wire up CWD change callback from AIManager to sync Agent's workdir
     this.aiManager.setOnCwdChange((newCwd) => {

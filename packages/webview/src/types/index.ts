@@ -692,6 +692,11 @@ export interface MessageListProps {
    * 重新触发——只比 query 的话第二次点击不会有任何反应。
    */
   initialFind?: { query: string; hitIndex: number; nonce: number };
+  /**
+   * 插件贴在工具块下面的一行，按 tool_use id 索引（`$.ui.notice`；spec
+   * ecosystem/plugin-mods.md「工具行下面的一行」）。缺席 = 没有插件在贴。
+   */
+  modNotices?: Record<string, string>;
 }
 
 export interface MessageProps {
@@ -716,6 +721,8 @@ export interface MessageProps {
   onOpenPreview?: (url: string) => void;
   /** Desktop host only: open a file in the file panel instead of the OS. */
   onOpenFile?: (path: string, startLine?: number, endLine?: number) => void;
+  /** 工具块下面那一行（`$.ui.notice`），按 tool_use id 索引。 */
+  modNotices?: Record<string, string>;
 }
 
 // Image attachment types (uses base64 data directly)

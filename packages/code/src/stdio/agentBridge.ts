@@ -86,6 +86,9 @@ import {
   type ModStatusPayload,
   type ModToastPayload,
   type ModPromptFillRequest,
+  type ModPromptReadRequest,
+  type ModCopyRequest,
+  type ModNoticePayload,
 } from "wave-agent-sdk";
 import {
   type ClientNotificationMethod,
@@ -541,6 +544,39 @@ export class AgentBridge {
           this.requireSessionForRead(sessionId).agent.resolveModPromptFill(
             request.requestId,
             request.filled === true,
+          );
+        }
+        return;
+      }
+      // surface 对一次 `$.prompt.read` 的回答（spec「输入框里现在有什么」）：
+      // 只有它知道输入框里此刻有什么，所以内容原样转交、这里不做判断。
+      case "modPromptReadResult": {
+        const request = p as {
+          requestId?: string;
+          text?: string;
+          cursor?: number;
+        };
+        if (typeof request.requestId === "string") {
+          this.requireSessionForRead(sessionId).agent.resolveModPromptRead(
+            request.requestId,
+            typeof request.text === "string" ? request.text : "",
+            typeof request.cursor === "number" ? request.cursor : 0,
+          );
+        }
+        return;
+      }
+      // surface 对一次 `$.ui.copy` 的回答（spec「剪贴板与视图」）。
+      case "modCopyResult": {
+        const request = p as {
+          requestId?: string;
+          isCopied?: boolean;
+          reason?: string;
+        };
+        if (typeof request.requestId === "string") {
+          this.requireSessionForRead(sessionId).agent.resolveModCopy(
+            request.requestId,
+            request.isCopied === true,
+            typeof request.reason === "string" ? request.reason : undefined,
           );
         }
         return;
@@ -3678,6 +3714,42 @@ export class AgentBridge {
       onModPromptFill: (payload: ModPromptFillRequest) => {
         this.emit(
           "modPromptFill",
+          {
+            ...payload,
+            sessionId: ctx.registeredSessionId ?? payload.sessionId,
+          },
+          ctx.registeredSessionId,
+        );
+      },
+      // 同一条往返的另一头（spec「输入框里现在有什么」）：推 `modPromptRead`
+      // 出去，等宿主回 `modPromptReadResult`，3 秒没有回执按空草稿收口。
+      onModPromptRead: (payload: ModPromptReadRequest) => {
+        this.emit(
+          "modPromptRead",
+          {
+            ...payload,
+            sessionId: ctx.registeredSessionId ?? payload.sessionId,
+          },
+          ctx.registeredSessionId,
+        );
+      },
+      // 剪贴板（spec「剪贴板与视图」）：同样是「推出去、等回执」，只是回执带的
+      // 是成没成。
+      onModCopy: (payload: ModCopyRequest) => {
+        this.emit(
+          "modCopy",
+          {
+            ...payload,
+            sessionId: ctx.registeredSessionId ?? payload.sessionId,
+          },
+          ctx.registeredSessionId,
+        );
+      },
+      // 工具行下面那一行（spec「工具行下面的一行」）：只推不拉，与状态行同一
+      // 条纪律 —— 宿主没有工具块可贴就忽略这条通知。
+      onModNotice: (payload: ModNoticePayload) => {
+        this.emit(
+          "modNotice",
           {
             ...payload,
             sessionId: ctx.registeredSessionId ?? payload.sessionId,

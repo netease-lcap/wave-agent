@@ -67,6 +67,12 @@ const ALL_NOTIFICATION_METHODS: readonly ServerNotificationMethod[] = [
   // The one mod push that expects an answer (`$.prompt.fill`): the surface
   // replies with the `modPromptFillResult` RPC, and silence reads as unfilled.
   "modPromptFill",
+  // The mirror image (`$.prompt.read`) plus the clipboard and the per-tool line
+  // (`$.ui.copy` / `$.ui.notice`): all three are addressed to the surface, and
+  // the first two come back as RPCs.
+  "modPromptRead",
+  "modCopy",
+  "modNotice",
   // Global (no sessionId): the CLI's own startup steps, emitted before any
   // session exists. Delivered to the `registerGlobal` handler.
   "startupStage",

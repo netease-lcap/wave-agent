@@ -60,6 +60,9 @@ import {
   type ModPanelUpdatePayload,
   type ModPanelEventPayload,
   type ModPromptFillRequest,
+  type ModPromptReadRequest,
+  type ModCopyRequest,
+  type ModNoticePayload,
   type ModStatusPayload,
   type ModToastPayload,
 } from "wave-agent-sdk/host";
@@ -2297,6 +2300,42 @@ export class DesktopHost {
         if (paneId) {
           this.postMessage({
             command: "desktopModPromptFill",
+            paneId,
+            payload,
+          });
+        }
+      },
+      // `$.prompt.read`（spec「输入框里现在有什么」）：同一条往返的另一头 ——
+      // 输入框的内容只有 webview 知道，回执走 `modPromptReadResult`。
+      onModPromptRead: (payload: ModPromptReadRequest) => {
+        const paneId = paneIdOf();
+        if (paneId) {
+          this.postMessage({
+            command: "desktopModPromptRead",
+            paneId,
+            payload,
+          });
+        }
+      },
+      // `$.ui.copy`（spec「剪贴板与视图」）：剪贴板在渲染进程手里，回执走
+      // `modCopyResult`。没有 pane 就等于没人接 —— Agent 那边按 `no-surface` 收口。
+      onModCopy: (payload: ModCopyRequest) => {
+        const paneId = paneIdOf();
+        if (paneId) {
+          this.postMessage({
+            command: "desktopModCopy",
+            paneId,
+            payload,
+          });
+        }
+      },
+      // 工具行下面那一行（spec「工具行下面的一行」）：只推不拉，与状态行同一
+      // 条纪律 —— 没有绑定 pane 就没人看，直接不发。
+      onModNotice: (payload: ModNoticePayload) => {
+        const paneId = paneIdOf();
+        if (paneId) {
+          this.postMessage({
+            command: "desktopModNotice",
             paneId,
             payload,
           });
@@ -6335,6 +6374,36 @@ export class DesktopHost {
         const requestId = msg.requestId as string | undefined;
         if (agent && typeof requestId === "string") {
           await agent.resolveModPromptFill(requestId, msg.filled === true);
+        }
+        break;
+      }
+
+      // webview 对一次 `$.prompt.read` 的回答（spec「输入框里现在有什么」）：
+      // 内容与光标位置都是输入框那边量的，宿主原样运回 CLI。
+      case "modPromptReadResult": {
+        const agent = this.agentForPane(pid);
+        const requestId = msg.requestId as string | undefined;
+        if (agent && typeof requestId === "string") {
+          await agent.resolveModPromptRead(
+            requestId,
+            typeof msg.text === "string" ? msg.text : "",
+            typeof msg.cursor === "number" ? msg.cursor : 0,
+          );
+        }
+        break;
+      }
+
+      // webview 对一次 `$.ui.copy` 的回答（spec「剪贴板与视图」）：写没写进去
+      // 由渲染进程判定，拒绝也是一种答案。
+      case "modCopyResult": {
+        const agent = this.agentForPane(pid);
+        const requestId = msg.requestId as string | undefined;
+        if (agent && typeof requestId === "string") {
+          await agent.resolveModCopy(
+            requestId,
+            msg.isCopied === true,
+            typeof msg.reason === "string" ? msg.reason : undefined,
+          );
         }
         break;
       }

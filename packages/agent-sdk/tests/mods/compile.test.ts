@@ -19,7 +19,10 @@ describe("loaderFor", () => {
     ["a.TS", "ts"],
     ["a.jsx", "jsx"],
     ["a.js", "js"],
-    ["a.mjs", undefined],
+    // Claude Code 官方示例的入口就是 `.mjs`（ESM 语法）：一律按 `js` 编译成
+    // CJS，入口文件的模块语法不影响加载。
+    ["a.mjs", "js"],
+    ["a.cjs", "js"],
     ["a", undefined],
   ])("%s → %s", (file, loader) => {
     expect(loaderFor(path.join(ROOT, file))).toBe(loader);

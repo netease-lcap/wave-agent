@@ -42,6 +42,11 @@ export function loaderFor(
       return "ts";
     case ".jsx":
       return "jsx";
+    case ".mjs":
+    case ".cjs":
+      // Claude Code 官方示例就是 `.mjs`（ESM 语法）。这里一律按 `js` 编译成
+      // CJS，所以「入口文件用什么模块语法写的」不影响加载。
+      return "js";
     case ".js":
       return "js";
     default:

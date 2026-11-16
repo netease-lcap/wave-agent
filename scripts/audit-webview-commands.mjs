@@ -134,6 +134,11 @@ const DESKTOP_GATED_NON_PREFIX = new Set([
   // 对一次 `$.prompt.fill` 的回答（spec「把草稿填进输入框」）：只有桌面端会推
   // `desktopModPromptFill`，插件端没有这条推送 ⇒ webview 在那里永不发送。
   "modPromptFillResult",
+  // `$.prompt.read` / `$.ui.copy` 的回执（spec「输入框里现在有什么」「剪贴板与视
+  // 图」）：与上面那条同源 —— 只有桌面端会推 `desktopModPromptRead` /
+  // `desktopModCopy`，插件端没有这两条推送 ⇒ webview 在那里永不发送。
+  "modPromptReadResult",
+  "modCopyResult",
 ]);
 
 /**

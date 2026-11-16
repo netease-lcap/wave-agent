@@ -56,7 +56,12 @@ function build(
     /** The JSON Schema the fake declares for the model. */
     parameters?: Record<string, unknown>;
     /** 容器里接一个 ModManager 替身（`tool.call` 的派发点）。 */
-    notifyMods?: (event: string, payload: unknown) => void;
+    dispatchToolCall?: (event: unknown) => Promise<string | undefined>;
+    /** `tool.run` 的派发点：不给就照常把工具跑掉（与真实现一致）。 */
+    dispatchToolRun?: (
+      event: unknown,
+      run: () => Promise<unknown>,
+    ) => Promise<{ deny?: string }>;
   } = {},
 ) {
   const container = new Container();
@@ -98,9 +103,15 @@ function build(
   container.register("McpManager", mockMcpManager as unknown as McpManager);
   container.register("MessageManager", mockMessageManager);
   container.register("HookManager", hookManager);
-  if (options.notifyMods) {
+  if (options.dispatchToolCall || options.dispatchToolRun) {
     container.register("ModManager", {
-      notifyMods: options.notifyMods,
+      dispatchToolCall: options.dispatchToolCall ?? (async () => undefined),
+      dispatchToolRun:
+        options.dispatchToolRun ??
+        (async (_event, run) => {
+          await run();
+          return {};
+        }),
     } as unknown as ModManager);
   }
 
@@ -227,43 +238,97 @@ describe("ToolManager built-in funnel runs tool-event hooks", () => {
     expect(mockMessageManager.addUserMessage).toHaveBeenCalledOnce();
   });
 
-  // spec「工具跑完之后」：一次调用结束（含失败）就派一次只读事件，mod 靠它
-  // 「一有动作就刷新」，不必轮询。
-  it("派发 tool.call，载荷是工具名与入参", async () => {
-    const notifyMods = vi.fn();
-    const { toolManager, context } = build({ notifyMods });
+  // spec「拦下一次工具调用」/「在工具真正跑之前插一脚」：`tool.call` 在执行之
+  // 前就问，`tool.run` 的 `next(e)` 才是执行本身。
+  it("tool.call 与 tool.run 都拿到工具名、调用 id 与顶层铺开的参数", async () => {
+    const dispatchToolCall = vi.fn(async () => undefined);
+    const dispatchToolRun = vi.fn(
+      async (_event: unknown, run: () => Promise<unknown>) => {
+        await run();
+        return {};
+      },
+    );
+    const { toolManager, context } = build({
+      dispatchToolCall,
+      dispatchToolRun,
+    });
 
     await toolManager.execute("FakeTool", { a: 1 }, context);
 
-    expect(notifyMods).toHaveBeenCalledWith("tool.call", {
+    expect(dispatchToolCall).toHaveBeenCalledWith({
+      a: 1,
+      tool: "FakeTool",
+      tool_use_id: expect.any(String),
+      input: { a: 1 },
+    });
+    expect(dispatchToolRun).toHaveBeenCalledOnce();
+    expect(dispatchToolRun.mock.calls[0]?.[0]).toMatchObject({
+      a: 1,
       tool: "FakeTool",
       input: { a: 1 },
     });
   });
 
-  it("工具抛错也派发 tool.call（调用确实发生了）", async () => {
-    const notifyMods = vi.fn();
+  it("插件在 tool.call 里拦下时不执行工具，模型收到那段文本", async () => {
+    const { toolManager, execute, context } = build({
+      dispatchToolCall: vi.fn(async () => "rm -rf 太危险，改用删除单文件"),
+    });
+
+    const result = await toolManager.execute("FakeTool", { a: 1 }, context);
+
+    expect(result).toEqual({
+      success: false,
+      content: "rm -rf 太危险，改用删除单文件",
+      error: "rm -rf 太危险，改用删除单文件",
+    });
+    expect(execute).not.toHaveBeenCalled();
+  });
+
+  it("插件在 tool.run 里不放行时不执行工具", async () => {
+    const { toolManager, execute, context } = build({
+      dispatchToolRun: vi.fn(async () => ({ deny: "先 pull 一下" })),
+    });
+
+    const result = await toolManager.execute("FakeTool", {}, context);
+
+    expect(result).toEqual({
+      success: false,
+      content: "先 pull 一下",
+      error: "先 pull 一下",
+    });
+    expect(execute).not.toHaveBeenCalled();
+  });
+
+  it("工具抛错也照样经过 tool.run 的 next（结果与以前一致）", async () => {
+    const dispatchToolRun = vi.fn(
+      async (_event: unknown, run: () => Promise<unknown>) => {
+        await run();
+        return {};
+      },
+    );
     const { toolManager, context } = build({
-      notifyMods,
+      dispatchToolCall: vi.fn(async () => undefined),
+      dispatchToolRun,
       execute: vi.fn().mockRejectedValue(new Error("disk full")),
     });
 
-    await toolManager.execute("FakeTool", {}, context);
+    const result = await toolManager.execute("FakeTool", {}, context);
 
-    expect(notifyMods).toHaveBeenCalledWith("tool.call", {
-      tool: "FakeTool",
-      input: {},
-    });
+    expect(result).toEqual({ success: false, content: "", error: "disk full" });
+    expect(dispatchToolRun).toHaveBeenCalledOnce();
   });
 
-  it("PreToolUse 拦下、工具根本没跑时不派发", async () => {
-    const notifyMods = vi.fn();
-    const { toolManager, context } = build({ notifyMods });
+  it("PreToolUse 拦下时不进入 tool.run（工具根本没跑）", async () => {
+    const dispatchToolRun = vi.fn(async () => ({}));
+    const { toolManager, context } = build({
+      dispatchToolCall: vi.fn(async () => undefined),
+      dispatchToolRun,
+    });
     mockExecuteCommand.mockResolvedValue(PRE_BLOCKED);
 
     await toolManager.execute("FakeTool", {}, context);
 
-    expect(notifyMods).not.toHaveBeenCalled();
+    expect(dispatchToolRun).not.toHaveBeenCalled();
   });
 });
 

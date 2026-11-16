@@ -73,11 +73,6 @@
   );
 }
 
-.mod-surface button:disabled {
-  cursor: default;
-  color: var(--vscode-disabledForeground, #999);
-}
-
 /* `variant`（spec 「元素」表）：`primary` 用主题主操作色，`secondary` 与未给
    时同一中性底（后者那条是上面的 `.mod-surface button`）。mod 的树里没有
    尺寸概念，两档只换颜色，不换高度。 */
@@ -91,10 +86,6 @@
   background: var(--cc-action-primary-hover, #34383f);
 }
 
-.mod-surface .mod-button-primary:disabled {
-  opacity: 0.5;
-}
-
 /* `plain`：没有边框和底色的按钮，靠文字本身看（工具栏里一排开关用它）。悬停
    时给一层极淡的底，否则「指上去什么都没发生」。 */
 .mod-surface .mod-button-plain {
@@ -103,11 +94,30 @@
   background: transparent;
 }
 
+/* `Button.role="dismiss"` 画的是那颗 × 关闭控件（`label` 只做无障碍名）：
+   字形是 svg，靠 inline-flex 才与周围文字居中对齐。 */
+.mod-surface .mod-button-dismiss {
+  display: inline-flex;
+  align-items: center;
+}
+
 .mod-surface .mod-button-plain:hover:not(:disabled) {
   background: var(
     --cc-action-secondary-hover,
     var(--vscode-button-secondaryHoverBackground, rgba(128, 128, 128, 0.12))
   );
+}
+
+/* `Button.hotkey` 的键帽（spec「用户交互的结果」）：摆在标签右边，不参与按钮
+   高度（`line-height: 1` + 小字号），否则一排按钮会被它顶高。 */
+.mod-surface .mod-button-hotkey {
+  margin-left: 6px;
+  padding: 0 4px;
+  border: 1px solid var(--cc-border-light, rgba(128, 128, 128, 0.4));
+  border-radius: var(--cc-radius-sm, 4px);
+  font-size: 0.85em;
+  line-height: 1.2;
+  opacity: 0.75;
 }
 
 .mod-surface input,

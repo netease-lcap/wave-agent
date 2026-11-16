@@ -188,6 +188,32 @@ exports.register = function ($, on) {
     expect(JSON.stringify(band.tree)).toContain("n=1");
   });
 
+  it("ui.render 的 props 报站点行数：面板 24 行、带 8 行", async () => {
+    const rows = path.join(ROOT, "mods", "rows.tsx");
+    const { manager } = createManager({
+      [rows]: `
+exports.register = function ($, on) {
+  on("session.start", function () { $.ui.open({ id: "p1", title: "行数" }); });
+  on("ui.render", function (e) {
+    return __wave.h("Text", null, e.component + ":" + e.props.maxRows + ":" + e.props.scroll.bodyRows);
+  });
+};
+`,
+    });
+    await manager.loadFromPlugins([plugin([{ id: "todo:rows", path: rows }])]);
+    await manager.startSession();
+
+    const pane = await manager.renderPane("todo:rows", "p1");
+    // 面板高得多：插件按 24 行分页，一开始就不会溢出（值本身是保守默认值，
+    // 不是量出来的 —— spec「ui.render 的 props」）。
+    expect(pane.tree).toMatchObject({ children: ["Pane:24:24"] });
+
+    const [band] = await manager.renderBand();
+    expect(band?.tree).toMatchObject({ children: ["AbovePrompt:8:8"] });
+
+    await manager.dispose();
+  });
+
   it("没有注册 ui.render 的 mod 不出现在带里", async () => {
     const noRender = path.join(ROOT, "mods", "silent.tsx");
     const { manager } = createManager({
@@ -199,6 +225,161 @@ exports.register = function ($, on) {
     await manager.startSession();
 
     await expect(manager.renderBand()).resolves.toEqual([]);
+
+    await manager.dispose();
+  });
+
+  /** 只画一行文字的最小带（`AbovePrompt` 站点），当排序器的素材。 */
+  const rowMod = (label: string) => `
+exports.register = function ($, on) {
+  on("ui.render", { component: "AbovePrompt" }, function () {
+    return __wave.h("Text", null, ${JSON.stringify(label)});
+  });
+};
+`;
+
+  /** 只注册 `AbovePromptList` 站点：`body` 里用 `rows` 拼出留下的那些行。 */
+  const sorterMod = (body: string) => `
+exports.register = function ($, on) {
+  on("ui.render", { component: "AbovePromptList" }, function (e) {
+    var rows = e.props.rows;
+    ${body}
+  });
+};
+`;
+
+  /** 带的结果里只挑有树的那些按 pop 顺序记 modId（空树不占位置）。 */
+  const bandOrder = (bands: Array<{ modId: string; tree: unknown }>) =>
+    bands.filter((band) => band.tree !== null).map((band) => band.modId);
+
+  /** 三个各画一行 a / b / c 的 mod + 一个排序器，装载完并画一帧带。 */
+  const renderWithSorter = async (sorterBody: string) => {
+    const rowA = path.join(ROOT, "mods", "row-a.tsx");
+    const rowB = path.join(ROOT, "mods", "row-b.tsx");
+    const rowC = path.join(ROOT, "mods", "row-c.tsx");
+    const sorter = path.join(ROOT, "mods", "sorter.tsx");
+    const { manager } = createManager({
+      [rowA]: rowMod("a"),
+      [rowB]: rowMod("b"),
+      [rowC]: rowMod("c"),
+      [sorter]: sorterMod(sorterBody),
+    });
+    await manager.loadFromPlugins([
+      plugin([
+        { id: "todo:row-a", path: rowA },
+        { id: "todo:row-b", path: rowB },
+        { id: "todo:row-c", path: rowC },
+        { id: "todo:sorter", path: sorter },
+      ]),
+    ]);
+    await manager.startSession();
+    return { manager, bands: await manager.renderBand() };
+  };
+
+  it("AbovePromptList 留下的行就是核心叠的那些：可以重排", async () => {
+    const { manager, bands } = await renderWithSorter(
+      `return __wave.h("Box", null, rows[2].tree, rows[0].tree, rows[1].tree);`,
+    );
+
+    expect(bandOrder(bands)).toEqual([
+      "todo:row-c",
+      "todo:row-a",
+      "todo:row-b",
+    ]);
+    // 排序器自己不画带（它只注册了 AbovePromptList 站点），也不占位置。
+    expect(bands.find((band) => band.modId === "todo:sorter")).toMatchObject({
+      tree: null,
+    });
+
+    await manager.dispose();
+  });
+
+  it("AbovePromptList 不放进树里的行被隐藏（重排之外的另一半语义）", async () => {
+    const { manager, bands } = await renderWithSorter(
+      `return __wave.h("Box", null, rows[1].tree);`,
+    );
+
+    expect(bandOrder(bands)).toEqual(["todo:row-b"]);
+
+    await manager.dispose();
+  });
+
+  it("没在 matcher 里点名 AbovePromptList 的 mod 不被问（否则会藏掉别人的行）", async () => {
+    const rowA = path.join(ROOT, "mods", "row-a.tsx");
+    const noMatcher = path.join(ROOT, "mods", "no-matcher.tsx");
+    const { manager } = createManager({
+      [rowA]: rowMod("a"),
+      // 「只画自己那一行」的插件：每个站点都回同一棵树，那棵树恰好等于它自己
+      // 那一行 —— 按「留下哪些行」去读就等于把所有别人的行都隐藏了。
+      [noMatcher]: `
+exports.register = function ($, on) {
+  on("ui.render", function () {
+    return __wave.h("Text", null, "照旧");
+  });
+};
+`,
+    });
+    await manager.loadFromPlugins([
+      plugin([
+        { id: "todo:row-a", path: rowA },
+        { id: "todo:no-matcher", path: noMatcher },
+      ]),
+    ]);
+    await manager.startSession();
+
+    expect(bandOrder(await manager.renderBand())).toEqual([
+      "todo:row-a",
+      "todo:no-matcher",
+    ]);
+
+    await manager.dispose();
+  });
+
+  it("AbovePromptList 抛错按原顺序画（失败不能把整条带弄没）", async () => {
+    const { manager, bands } = await renderWithSorter(
+      `throw new Error("排序器崩了");`,
+    );
+
+    expect(bandOrder(bands)).toEqual([
+      "todo:row-a",
+      "todo:row-b",
+      "todo:row-c",
+    ]);
+    // 失败记一条 debug（静默吞掉的话没人能解释「为什么没重排」）。
+    expect(vi.mocked(logger.debug)).toHaveBeenCalledWith(
+      expect.stringContaining("AbovePromptList"),
+    );
+
+    await manager.dispose();
+  });
+
+  it("在 .catch 里答一棵不含行的树 = 把带清空（fail closed 的写法）", async () => {
+    const rowA = path.join(ROOT, "mods", "row-a.tsx");
+    const rowB = path.join(ROOT, "mods", "row-b.tsx");
+    const sorter = path.join(ROOT, "mods", "sorter.tsx");
+    const { manager } = createManager({
+      [rowA]: rowMod("a"),
+      [rowB]: rowMod("b"),
+      [sorter]: `
+exports.register = function ($, on) {
+  on("ui.render", { component: "AbovePromptList" }, function () {
+    throw new Error("拿不到行");
+  }).catch(function () {
+    return __wave.h("Box", null);
+  });
+};
+`,
+    });
+    await manager.loadFromPlugins([
+      plugin([
+        { id: "todo:row-a", path: rowA },
+        { id: "todo:row-b", path: rowB },
+        { id: "todo:sorter", path: sorter },
+      ]),
+    ]);
+    await manager.startSession();
+
+    expect(bandOrder(await manager.renderBand())).toEqual([]);
 
     await manager.dispose();
   });
@@ -1083,6 +1264,29 @@ exports.register = function ($, on) {
     await watch();
     expect(ticks()).toBe(stopped);
   });
+
+  it(
+    "定时器回调里的同步死循环也被打断，不会把进程卡死",
+    { timeout: 30_000 },
+    async () => {
+      // 定时器回调不在钩子链上，由宿主的 `setTimeout` 触发 —— 不经过沙箱那一跳
+      // 就是裸调，`while (true) {}` 一样能卡死整个 `wave --stdio`。
+      const manager = await started(
+        clockMod(
+          `timer = $.clock.after(${MIN}, function () { while (true) {} });`,
+        ),
+      );
+
+      await press(manager, "run");
+      await vi.waitFor(
+        () =>
+          expect(vi.mocked(logger.warn).mock.calls.flat().join(" ")).toContain(
+            "同步执行超过",
+          ),
+        { timeout: 20_000 },
+      );
+    },
+  );
 });
 
 describe("ModManager 的 $.process / $.prompt", () => {
@@ -1334,6 +1538,7 @@ exports.register = function ($, on) {
   });
   on("tool.call", function (e) {
     $.ui.status("tool:" + e.tool + ":" + e.input.file_path);
+    return { deny: "blocked:" + e.file_path };
   });
 };
 `;
@@ -1379,11 +1584,15 @@ exports.register = function ($, on) {
       ),
     );
 
-    // 工具跑完之后：只带工具名与入参，返回值宿主丢弃（拦不下这次调用）。
-    manager.notifyMods("tool.call", {
+    // `tool.call` 是决策型事件：参数在顶层也铺一份（社区读写的是 `e.file_path`），
+    // 返回 `{ deny }` 拦下这次调用 —— 由 `ToolManager` 决定怎么报。
+    const deny = await manager.dispatchToolCall({
+      ...{ file_path: "a.ts", content: "x" },
       tool: "Write",
+      tool_use_id: "call-1",
       input: { file_path: "a.ts", content: "x" },
     });
+    expect(deny).toBe("blocked:a.ts");
     await vi.waitFor(() =>
       expect(statuses.at(-1)?.text).toBe("tool:Write:a.ts"),
     );
@@ -1881,7 +2090,7 @@ exports.register = function ($, on) {
 });
 
 describe("ModManager 的只读事实（spec「会话事实」「环境变量与设置」）", () => {
-  /** 面板上摊平画一行的 mod：五个只读入口各取一个值。 */
+  /** 面板上摊平画一行的 mod：只读入口各取一个值。 */
   const FACTS_MOD = `
 exports.register = function ($, on) {
   on("session.start", function () { $.ui.open({ id: "p1", title: "事实" }); });
@@ -1892,8 +2101,9 @@ exports.register = function ($, on) {
     var watch = await $.env.get("WATCH");
     var merged = await $.settings.read();
     var keyed = await $.settings.read({ source: "project", key: "model" });
+    var surfaces = await $.session.surfaces();
     return __wave.h("Text", null,
-      [id, root, model, String(watch), String(merged.owner), String(keyed)].join("|"));
+      [id, root, model, String(watch), String(merged.owner), String(keyed), surfaces.join(",")].join("|"));
   });
 };
 `;
@@ -1906,11 +2116,23 @@ exports.register = function ($, on) {
           sessionId: () => "s-9",
           workspaceRoot: () => path.resolve("/fake/root"),
           model: () => "wave-pro",
+          surfaces: () => ["desktop"] as const,
           env: (name) => (name === "WATCH" ? "1" : undefined),
           settings: async (query) =>
             query.key === undefined
               ? { owner: "me", model: "wave-pro" }
               : "wave-pro",
+          turns: () => 4,
+          repo: () => ({
+            root: path.resolve("/fake/root"),
+            remote: null,
+            internal: false,
+            name: null,
+          }),
+          version: () => ({ version: "1.6.6" }),
+          configRows: () => [],
+          toolInfos: () => [],
+          agentInfos: () => [],
         },
       },
     );
@@ -1923,7 +2145,9 @@ exports.register = function ($, on) {
     expect(frame.tree).toEqual({
       type: "Text",
       props: {},
-      children: [`s-9|${path.resolve("/fake/root")}|wave-pro|1|me|wave-pro`],
+      children: [
+        `s-9|${path.resolve("/fake/root")}|wave-pro|1|me|wave-pro|desktop`,
+      ],
     });
 
     await manager.dispose();
@@ -1937,13 +2161,173 @@ exports.register = function ($, on) {
     await manager.startSession();
 
     // 兜底：会话 id 用构造时那个、工作根用「会动」的目录（这里没配，落到
-    // 进程 cwd）、模型空串、env 与设置读不到 —— 宿主没接线不该让 mod 报错。
+    // 进程 cwd）、模型空串、env 与设置读不到、没有界面（surfaces 空数组）——
+    // 宿主没接线不该让 mod 报错。
     const frame = await pull(manager);
     const flat = String((frame.tree as { children: string[] }).children[0]);
     expect(flat.split("|")[0]).toBe("s1");
     expect(flat.split("|")[2]).toBe("");
-    expect(flat.endsWith("|undefined|undefined|undefined")).toBe(true);
+    expect(flat.endsWith("|undefined|undefined|undefined|")).toBe(true);
     expect(vi.mocked(logger.warn)).not.toHaveBeenCalled();
+
+    await manager.dispose();
+  });
+});
+
+describe("ModManager 的清单、草稿、工具行与剪贴板（spec「配了哪些、能调什么、有谁在跑」「输入框里现在有什么」「工具行下面的一行」「剪贴板与视图」）", () => {
+  const PANEL_MOD = `
+exports.register = function ($, on) {
+  on("session.start", function () { $.ui.open({ id: "p1", title: "面板" }); });
+  on("ui.render", function () {
+    var rows = $.config.list().map(function (row) { return row.key + "=" + row.value + (row.isLocked ? "(锁)" : ""); });
+    var tools = $.tool.list().map(function (tool) { return tool.name + (tool.mcp ? "(mcp)" : ""); });
+    var agents = $.agent.list().map(function (agent) { return agent.id + "@" + agent.status; });
+    return __wave.h("Text", null, [rows.join(","), tools.join(","), agents.join(",")].join("|"));
+  });
+};
+`;
+
+  it("三份清单从会话事实来，面板上摊平成一行", async () => {
+    const { manager } = createManager(
+      { [MOD_PATH]: PANEL_MOD },
+      {
+        sessionFacts: {
+          sessionId: () => "s1",
+          workspaceRoot: () => path.resolve("/fake/root"),
+          model: () => "",
+          surfaces: () => ["desktop"] as const,
+          env: () => undefined,
+          settings: async () => ({}),
+          turns: () => 0,
+          repo: () => null,
+          version: () => ({ version: "" }),
+          configRows: () => [
+            {
+              key: "model",
+              label: "模型",
+              kind: "text",
+              value: "wave-pro",
+              provider: { plugin: "engine", tier: "core" },
+              isLocked: true,
+            },
+          ],
+          toolInfos: () => [
+            { name: "Bash", description: "跑命令", mcp: false },
+            { name: "mcp__fs__read", description: "读文件", mcp: true },
+          ],
+          agentInfos: () => [
+            {
+              id: "a1",
+              description: "查资料",
+              type: "Explore",
+              status: "running",
+            },
+          ],
+        },
+      },
+    );
+    await manager.loadFromPlugins([
+      plugin([{ id: "todo:panel", path: MOD_PATH }]),
+    ]);
+    await manager.startSession();
+
+    const frame = await pull(manager);
+    expect(String((frame.tree as { children: string[] }).children[0])).toBe(
+      "model=wave-pro(锁)|Bash,mcp__fs__read(mcp)|a1@running",
+    );
+
+    await manager.dispose();
+  });
+
+  it("没接剪贴板 / 输入框通道时按「没人接」作答，不抛错", async () => {
+    const { manager } = createManager(
+      {
+        [MOD_PATH]: `
+        exports.register = function ($, on) {
+          on("session.start", function () { $.ui.open({ id: "p1", title: "面板" }); });
+          on("ui.render", async function () {
+            var draft = await $.prompt.read();
+            var copied = await $.ui.copy({ text: "hi" });
+            return __wave.h("Text", null,
+              [draft.text, String(draft.cursor), due(copied)].join("|"));
+          });
+        };
+        function due(copied) { return String(copied.isCopied) + ":" + String(copied.reason); }
+        `,
+      },
+      {},
+    );
+    await manager.loadFromPlugins([
+      plugin([{ id: "todo:panel", path: MOD_PATH }]),
+    ]);
+    await manager.startSession();
+
+    const frame = await pull(manager);
+    expect(String((frame.tree as { children: string[] }).children[0])).toBe(
+      "|0|false:no-surface",
+    );
+
+    await manager.dispose();
+  });
+
+  it("$.ui.notice 带上插件名转发到出口；没接线时调用照样成功", async () => {
+    const notices: Array<[string, string, string | null]> = [];
+    const { manager } = createManager(
+      {
+        [MOD_PATH]: `
+        exports.register = function ($, on) {
+          on("session.start", function () {
+            $.ui.notice("tool-1", "3 个文件");
+            $.ui.notice("tool-1", undefined);
+          });
+        };
+        `,
+      },
+      {},
+    );
+    manager.setNoticeSink((pluginName, toolUseId, text) =>
+      notices.push([pluginName, toolUseId, text]),
+    );
+    await manager.loadFromPlugins([
+      plugin([{ id: "todo:panel", path: MOD_PATH }]),
+    ]);
+    await manager.startSession();
+
+    await vi.waitFor(() =>
+      expect(notices).toEqual([
+        ["todo", "tool-1", "3 个文件"],
+        ["todo", "tool-1", null],
+      ]),
+    );
+
+    await manager.dispose();
+  });
+
+  it("草稿读取接上之后原样把输入框内容交回 mod", async () => {
+    const { manager } = createManager(
+      {
+        [MOD_PATH]: `
+        exports.register = function ($, on) {
+          on("session.start", function () { $.ui.open({ id: "p1", title: "面板" }); });
+          on("ui.render", async function () {
+            var draft = await $.prompt.read();
+            return __wave.h("Text", null, draft.text + "@" + draft.cursor);
+          });
+        };
+        `,
+      },
+      {},
+    );
+    manager.setPromptDraftReader(async () => ({ text: "半句话", cursor: 3 }));
+    await manager.loadFromPlugins([
+      plugin([{ id: "todo:panel", path: MOD_PATH }]),
+    ]);
+    await manager.startSession();
+
+    const frame = await pull(manager);
+    expect(String((frame.tree as { children: string[] }).children[0])).toBe(
+      "半句话@3",
+    );
 
     await manager.dispose();
   });
@@ -2219,5 +2603,303 @@ exports.register = function ($, on) {
     await manager.dispose();
     // 销毁不逐条发 ui.close：只剩一条 session.end（没进状态行，所以没有新行）。
     expect(statuses).toEqual([]);
+  });
+});
+
+describe("ModManager 的工具决议链（tool.call / tool.run）", () => {
+  /** 一条守卫：Bash 的 `rm -rf` 直接拦，其它交下去。 */
+  const GUARD_MOD = `
+exports.register = function (on) {
+  on("tool.call", { tool: "Bash" }, async function ($, e, next) {
+    if (e.command === "rm -rf /") return { deny: "删库跑路？先别" };
+    return next(e);
+  });
+};
+`;
+
+  /** 第二个守卫：什么都不拦，只是把事件记进状态行。 */
+  const OBSERVER_GUARD = `
+exports.register = function (on) {
+  on("tool.call", async function ($, e, next) {
+    $.ui.status("seen:" + e.tool + ":" + e.command);
+    return next(e);
+  });
+};
+`;
+
+  function bashEvent(command: string) {
+    return {
+      ...{ command },
+      tool: "Bash",
+      tool_use_id: "call-1",
+      input: { command },
+    };
+  }
+
+  it("返回 { deny } 就拦下；matcher 不命中的工具交给下一个", async () => {
+    const { manager, statuses } = createManager({
+      [MOD_PATH]: GUARD_MOD,
+    });
+    await manager.loadFromPlugins([
+      plugin([{ id: "todo:panel", path: MOD_PATH }]),
+    ]);
+    await manager.startSession();
+
+    expect(await manager.dispatchToolCall(bashEvent("rm -rf /"))).toBe(
+      "删库跑路？先别",
+    );
+    // matcher 是 `{ tool: "Bash" }`：换一个工具就不该被这条钩子看见。
+    expect(
+      await manager.dispatchToolCall({
+        ...{ file_path: "a.ts" },
+        tool: "Edit",
+        tool_use_id: "call-2",
+        input: { file_path: "a.ts" },
+      }),
+    ).toBeUndefined();
+    // 无害命令交下去，链尾没人拦。
+    expect(await manager.dispatchToolCall(bashEvent("ls"))).toBeUndefined();
+    expect(statuses).toEqual([]);
+
+    await manager.dispose();
+  });
+
+  it("两个 mod 按加载顺序串行：前一个 next 之后才轮到后一个，deny 从链上传回来", async () => {
+    const second = path.join(ROOT, "mods", "second.tsx");
+    const { manager, statuses } = createManager({
+      [MOD_PATH]: OBSERVER_GUARD,
+      [second]: `
+exports.register = function (on) {
+  on("tool.call", { tool: "Bash" }, function ($, e) {
+    return { deny: "第二个 mod 说不" };
+  });
+};
+`,
+    });
+    await manager.loadFromPlugins([
+      plugin([
+        { id: "todo:panel", path: MOD_PATH },
+        { id: "todo:second", path: second },
+      ]),
+    ]);
+    await manager.startSession();
+
+    // 前一个 mod `return next(e)`：后一个的 deny 原样上去。
+    expect(await manager.dispatchToolCall(bashEvent("ls"))).toBe(
+      "第二个 mod 说不",
+    );
+    await vi.waitFor(() => expect(statuses.at(-1)?.text).toBe("seen:Bash:ls"));
+
+    await manager.dispose();
+  });
+
+  it("前一个 mod await next(e) 之后忘掉返回值，后一个的 deny 也不丢", async () => {
+    const second = path.join(ROOT, "mods", "second.tsx");
+    const { manager } = createManager({
+      [MOD_PATH]: `
+exports.register = function (on) {
+  on("tool.call", async function ($, e, next) {
+    await next(e);
+    $.ui.status("passthrough");
+  });
+};
+`,
+      [second]: `
+exports.register = function (on) {
+  on("tool.call", function () {
+    return { deny: "还是不" };
+  });
+};
+`,
+    });
+    await manager.loadFromPlugins([
+      plugin([
+        { id: "todo:panel", path: MOD_PATH },
+        { id: "todo:second", path: second },
+      ]),
+    ]);
+    await manager.startSession();
+
+    expect(await manager.dispatchToolCall(bashEvent("ls"))).toBe("还是不");
+
+    await manager.dispose();
+  });
+
+  it("钩子抛错时 fail-open：记一条 warn 并放行", async () => {
+    const { manager } = createManager({
+      [MOD_PATH]: `
+exports.register = function (on) {
+  on("tool.call", function () {
+    throw new Error("boom");
+  });
+};
+`,
+    });
+    await manager.loadFromPlugins([
+      plugin([{ id: "todo:panel", path: MOD_PATH }]),
+    ]);
+    await manager.startSession();
+    vi.mocked(logger.warn).mockClear();
+
+    expect(await manager.dispatchToolCall(bashEvent("ls"))).toBeUndefined();
+    expect(vi.mocked(logger.warn)).toHaveBeenCalledWith(
+      expect.stringContaining("tool.call"),
+    );
+
+    await manager.dispose();
+  });
+
+  it(".catch 里按 next.called 做 fail-closed：没调过 next 就自己 deny", async () => {
+    const { manager } = createManager({
+      [MOD_PATH]: `
+exports.register = function (on) {
+  on("tool.call", function () {
+    throw new Error("guard 挂了");
+  }).catch(function ($, e, next) {
+    return next.called ? next(e) : { deny: "守卫失效，先不放行" };
+  });
+};
+`,
+    });
+    await manager.loadFromPlugins([
+      plugin([{ id: "todo:panel", path: MOD_PATH }]),
+    ]);
+    await manager.startSession();
+
+    expect(await manager.dispatchToolCall(bashEvent("ls"))).toBe(
+      "守卫失效，先不放行",
+    );
+
+    await manager.dispose();
+  });
+
+  it("tool.run：没注册任何钩子时照样执行一次", async () => {
+    const { manager } = createManager({});
+    await manager.loadFromPlugins([]);
+    await manager.startSession();
+
+    const run = vi.fn(async () => ({ success: true }));
+    expect(await manager.dispatchToolRun(bashEvent("ls"), run)).toEqual({});
+    expect(run).toHaveBeenCalledOnce();
+
+    await manager.dispose();
+  });
+
+  it("tool.run：next(e) 就是执行，之后那一行跑在工具结束之后", async () => {
+    const { manager, statuses } = createManager({
+      [MOD_PATH]: `
+exports.register = function (on) {
+  on("tool.run", { tool: "Bash" }, async function ($, e, next) {
+    $.ui.status("before");
+    var result = await next(e);
+    $.ui.status("after:" + result.ok);
+    return result;
+  });
+};
+`,
+    });
+    await manager.loadFromPlugins([
+      plugin([{ id: "todo:panel", path: MOD_PATH }]),
+    ]);
+    await manager.startSession();
+
+    const run = vi.fn(async () => ({ ok: 7 }));
+    expect(await manager.dispatchToolRun(bashEvent("ls"), run)).toEqual({});
+    expect(run).toHaveBeenCalledOnce();
+    await vi.waitFor(() => expect(statuses.at(-1)?.text).toBe("after:7"));
+    expect(statuses.map((line) => line.text)).toContain("before");
+
+    await manager.dispose();
+  });
+
+  it("tool.run：不调 next(e) 就是不执行，模型收到一条拦下文本", async () => {
+    const { manager } = createManager({
+      [MOD_PATH]: `
+exports.register = function (on) {
+  on("tool.run", { tool: "Bash" }, function () {
+    return { deny: "分支没同步，先 pull" };
+  });
+};
+`,
+    });
+    await manager.loadFromPlugins([
+      plugin([{ id: "todo:panel", path: MOD_PATH }]),
+    ]);
+    await manager.startSession();
+
+    const run = vi.fn(async () => ({ ok: 1 }));
+    const decision = await manager.dispatchToolRun(bashEvent("ls"), run);
+    expect(decision.deny).toContain("分支没同步");
+    expect(run).not.toHaveBeenCalled();
+
+    await manager.dispose();
+  });
+});
+
+describe("ModManager 的 $.ui.ask", () => {
+  const ASK_MOD = `
+exports.register = function (on) {
+  on("tool.call", { tool: "Bash" }, async function ($, e, next) {
+    try {
+      var answer = await $.ui.ask("要跑吗？\\n" + e.command, ["允许一次", "拒绝"]);
+      return answer === "允许一次" ? next(e) : { deny: "用户拒绝" };
+    } catch (error) {
+      return { deny: "没人能确认" };
+    }
+  });
+};
+`;
+
+  async function buildAsk(
+    answer: string | Error,
+  ): Promise<{ manager: ModManager; asked: unknown[] }> {
+    const asked: unknown[] = [];
+    const { manager } = createManager({ [MOD_PATH]: ASK_MOD });
+    manager.setAskUser(async (question, options) => {
+      asked.push({ question, options });
+      if (answer instanceof Error) throw answer;
+      return answer;
+    });
+    await manager.loadFromPlugins([
+      plugin([{ id: "todo:panel", path: MOD_PATH }]),
+    ]);
+    await manager.startSession();
+    return { manager, asked };
+  }
+
+  const event = {
+    ...{ command: "git push --force" },
+    tool: "Bash",
+    tool_use_id: "call-1",
+    input: { command: "git push --force" },
+  };
+
+  it("选中「允许一次」就放行，问题与选项原样交给宿主", async () => {
+    const { manager, asked } = await buildAsk("允许一次");
+
+    expect(await manager.dispatchToolCall(event)).toBeUndefined();
+    expect(asked).toEqual([
+      {
+        question: "要跑吗？\ngit push --force",
+        options: {
+          labels: ["允许一次", "拒绝"],
+          header: "todo",
+        },
+      },
+    ]);
+
+    await manager.dispose();
+  });
+
+  it("用户选了拒绝就 deny", async () => {
+    const { manager } = await buildAsk("拒绝");
+    expect(await manager.dispatchToolCall(event)).toBe("用户拒绝");
+    await manager.dispose();
+  });
+
+  it("没人能答（宿主 reject）时守卫按「没人能确认」处理", async () => {
+    const { manager } = await buildAsk(new Error("没有界面"));
+    expect(await manager.dispatchToolCall(event)).toBe("没人能确认");
+    await manager.dispose();
   });
 });

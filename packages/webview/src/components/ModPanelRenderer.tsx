@@ -2,6 +2,7 @@ import React, { useMemo, useState } from "react";
 import DOMPurify from "dompurify";
 import { marked } from "marked";
 import type { ModPanelTree, ModTreeNode } from "wave-agent-sdk/types";
+import { CloseTabIcon } from "./CloseTabIcon";
 import "../styles/ModPanel.css";
 
 /**
@@ -586,14 +587,20 @@ function renderNode(
       );
     case "Button": {
       const buttonKey = String(node.props.key ?? "");
-      const disabled = node.props.disabled === true;
       // `variant` 是纯外观：`primary` 用主题强调色，`secondary`/未给用中性底。
       const variant = node.props.variant;
       // `plain`：去掉边框与底色的按钮（工具栏里那一排「开关」用它）。它与
       // `variant` 互斥 —— 没有底色的按钮谈不上「主操作色」。
       const plain = node.props.plain === true;
+      // `role="dismiss"`：这个按钮关闭它所在的站点。桌面端把它画成那颗关闭控件
+      // （与面板页签的 × 同一颗），`label` 不再画出来、改当无障碍名 —— 与 Claude
+      // Code 的「a desktop its native close control, the label its accessible
+      // name」同一套。它不是行为声明：关了之后发生什么由 `onPress` 决定。
+      const dismiss = node.props.role === "dismiss";
       const classes = ["mod-button"];
-      if (plain) {
+      if (dismiss) {
+        classes.push("mod-button-plain", "mod-button-dismiss");
+      } else if (plain) {
         classes.push("mod-button-plain");
       } else if (variant === "primary" || variant === "secondary") {
         classes.push(`mod-button-${variant}`);
@@ -610,20 +617,39 @@ function renderNode(
           type="button"
           className={classes.join(" ")}
           data-mod-key={buttonKey}
-          disabled={disabled}
+          data-mod-hotkey={
+            typeof node.props.hotkey === "string"
+              ? node.props.hotkey
+              : undefined
+          }
           autoFocus={node.props.autoFocus === true}
+          aria-label={
+            dismiss && typeof node.props.label === "string"
+              ? node.props.label
+              : undefined
+          }
           onClick={() => onEvent("press", buttonKey)}
           {...hoverHandlers}
         >
           {/* 标签一律包一层 span：`hover` 在 `Button` 上改的是**字**（字色/字重），
-              与 Claude Code 的 `ButtonHoverProps` 同一套。 */}
+              与 Claude Code 的 `ButtonHoverProps` 同一套。`dismiss` 的按钮画的
+              是关闭字形，`label` 已经给了 `aria-label`。 */}
           <span style={textStyle(labelProps, activeHover)}>
-            {children.length > 0
-              ? children
-              : typeof node.props.label === "string"
-                ? node.props.label
-                : buttonKey}
+            {dismiss ? (
+              <CloseTabIcon />
+            ) : children.length > 0 ? (
+              children
+            ) : typeof node.props.label === "string" ? (
+              node.props.label
+            ) : (
+              buttonKey
+            )}
           </span>
+          {/* 快捷键画成一个小的键帽：不画的话用户无从知道有热键（Claude Code
+              的桌面端也把键摆在标签旁边）。 */}
+          {typeof node.props.hotkey === "string" ? (
+            <kbd className="mod-button-hotkey">{node.props.hotkey}</kbd>
+          ) : null}
         </button>
       );
     }
@@ -709,6 +735,49 @@ function renderNode(
   }
 }
 
+/**
+ * 面板有键盘焦点时按 `Button.hotkey` 等于点了那个按钮（spec「用户交互的结果」）。
+ *
+ * 三条与 Claude Code 同口径的边界：
+ *
+ * - **只在这个渲染器里生效**：监听挂在这棵树的根上，焦点在别处（输入框、消息
+ *   区）时收不到事件，所以不会劫持全局输入。
+ * - **焦点在输入类控件里时一律放行**：`Input` 拿到焦点后每个可打印键都归它，
+ *   否则用户在输入框里打 `y` 会顺手点掉一个按钮。
+ * - **撞键时后写的赢**：`querySelectorAll` 从后往前找第一个没被禁用的。
+ */
+function hotkeyHandler(
+  onEvent: ModPanelRendererProps["onEvent"],
+): (event: React.KeyboardEvent<HTMLDivElement>) => void {
+  return (event) => {
+    // 带修饰键的是宿主的快捷键（Ctrl+C 那类），不是 mod 的热键。
+    if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey)
+      return;
+    const target = event.target as HTMLElement | null;
+    const tag = target?.tagName;
+    if (
+      tag === "INPUT" ||
+      tag === "TEXTAREA" ||
+      tag === "SELECT" ||
+      target?.isContentEditable === true
+    ) {
+      return;
+    }
+    const key = event.key;
+    if (key.length !== 1) return;
+    const hot = key.toLowerCase();
+    const matches = event.currentTarget.querySelectorAll<HTMLElement>(
+      `[data-mod-hotkey="${hot}"]`,
+    );
+    for (let at = matches.length - 1; at >= 0; at -= 1) {
+      const element = matches[at]!;
+      event.preventDefault();
+      onEvent("press", element.dataset.modKey ?? "");
+      return;
+    }
+  };
+}
+
 export function ModPanelRenderer({
   tree,
   error,
@@ -752,7 +821,11 @@ export function ModPanelRenderer({
           {error}
         </div>
         {tree ? (
-          <div className="mod-panel-root" data-testid="mod-panel-root">
+          <div
+            className="mod-panel-root"
+            data-testid="mod-panel-root"
+            onKeyDown={hotkeyHandler(onEvent)}
+          >
             {renderNode(tree, onEvent, onOpenLink, 0, hover, undefined)}
           </div>
         ) : null}
@@ -763,7 +836,11 @@ export function ModPanelRenderer({
     return <div className="mod-panel-empty">mod 没有返回内容</div>;
   }
   return (
-    <div className="mod-panel-root" data-testid="mod-panel-root">
+    <div
+      className="mod-panel-root"
+      data-testid="mod-panel-root"
+      onKeyDown={hotkeyHandler(onEvent)}
+    >
       {renderNode(tree, onEvent, onOpenLink, 0, hover, undefined)}
     </div>
   );
