@@ -600,30 +600,6 @@ export class AgentBridge {
           inputText: typeof event.inputText === "string" ? event.inputText : "",
         });
       }
-      // 焦点环挪动（spec「输入框里的建议与焦点」）：只读事件，返回值只表达
-      // 「这次没挪成」。
-      case "uiFocus": {
-        const event = p as {
-          component?: string;
-          requestId?: string;
-          plugin?: string;
-          element?: string;
-        };
-        // 只有插件画的站点才有焦点事件（`Pane` / `AbovePrompt`）：输入框自己
-        // 是宿主的，CC 的枚举里也没有它，别的值一律不派发。
-        const component = event.component;
-        if (component !== "Pane" && component !== "AbovePrompt") return {};
-        const requestId =
-          typeof event.requestId === "string" ? event.requestId : "";
-        return this.requireSessionForRead(sessionId).agent.notifyModUiFocus({
-          component,
-          requestId,
-          ...(typeof event.plugin === "string" ? { plugin: event.plugin } : {}),
-          ...(typeof event.element === "string"
-            ? { element: event.element }
-            : {}),
-        });
-      }
       // surface 对一次 `$.ui.copy` 的回答（spec「剪贴板与视图」）。
       case "modCopyResult": {
         const request = p as {

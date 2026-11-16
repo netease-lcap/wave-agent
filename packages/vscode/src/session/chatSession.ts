@@ -723,20 +723,6 @@ export class ChatSession {
   }
 
   /**
-   * 焦点环挪动（spec 同节）：只读事件，返回值只用来表达「这次没挪成」。没有
-   * agent 时同样要回一个空答案，否则界面会干等。
-   */
-  public async notifyUiFocus(event: {
-    component: string;
-    requestId: string;
-    plugin?: string;
-    element?: string;
-  }): Promise<{ deny?: string }> {
-    if (!this.agent) return {};
-    return await this.agent.uiFocus(event);
-  }
-
-  /**
    * 回答一次 `$.prompt.suggest`（spec 同节）：建议摆没摆上只有输入框知道。会话
    * 已经不认这个 `requestId`（超时已按 `{ isShown: false }` 收尾）时是空操作。
    */

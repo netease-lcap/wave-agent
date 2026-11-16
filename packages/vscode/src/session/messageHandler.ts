@@ -584,34 +584,6 @@ export class MessageHandler {
         );
         break;
       }
-      // 焦点环挪动：只读事件，`deny` 只用来表达「这次没挪成」。界面不一定看回
-      // 包内容，但不回会让它干等。
-      case "uiFocus": {
-        const requestId =
-          typeof msg.requestId === "string" ? msg.requestId : "";
-        let deny: string | undefined;
-        try {
-          const result = await this.context
-            .getChatSession(viewType || "tab", windowId)
-            .notifyUiFocus({
-              component: typeof msg.component === "string" ? msg.component : "",
-              requestId,
-              ...(typeof msg.plugin === "string" ? { plugin: msg.plugin } : {}),
-              ...(typeof msg.element === "string"
-                ? { element: msg.element }
-                : {}),
-            });
-          deny = result.deny;
-        } catch (error) {
-          console.error(`mod 焦点事件投递失败（${viewType}）:`, error);
-        }
-        this.context.postMessage(
-          { command: "uiFocusResult", requestId, ...(deny ? { deny } : {}) },
-          viewType,
-          windowId,
-        );
-        break;
-      }
       // 建议摆没摆上的回执：只把在等回执的那个 mod 放行，没有回包（mod 那边超
       // 时也会按 `{ isShown: false }` 收尾，会话已经不认这个 requestId 时空操作）。
       case "modPromptSuggestResult": {

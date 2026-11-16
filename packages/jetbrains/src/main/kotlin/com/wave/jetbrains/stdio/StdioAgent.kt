@@ -563,12 +563,6 @@ class StdioAgent(
         client.request("promptEdit", event, sessionId)?.jsonObject
 
     /**
-     * 焦点环挪动。只读事件：返回里的 `deny` 只用来解释「这次没挪成」，宿主可以不看。
-     */
-    suspend fun uiFocus(event: JsonObject): JsonObject? =
-        client.request("uiFocus", event, sessionId)?.jsonObject
-
-    /**
      * 回答一次 `$.prompt.suggest`：建议摆没摆上只有输入框知道。会话已经不认这个
      * `requestId`（超时已按 `{ isShown: false }` 收尾）时什么也不会发生。
      */

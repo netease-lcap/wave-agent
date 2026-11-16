@@ -225,15 +225,12 @@ export type RequestMethod =
   // 点」). Params: `{ requestId, isShown }`. An unknown `requestId` (the limit
   // already answered `{ isShown: false }`) is ignored rather than an error.
   | "modPromptSuggestResult"
-  // 用户在输入框里做完一次编辑（spec「输入框里的建议与焦点」）。**方向反过来**：
+  // 用户在输入框里做完一次编辑（spec「输入框里的建议」）。**方向反过来**：
   // 这次是宿主先说话 —— 只有它知道用户按了什么、草稿变成了什么。Params:
   // `{ key?, text, cursor, start, end, inputText }`（`text`/`cursor` 是编辑**之
   // 前**的草稿与光标）；返回 `{ text, cursor }` 是插件改写后的结果，宿主照它
   // 覆盖输入框。终端不存在这条调用。
-  | "promptEdit"
-  // 焦点环挪动（同一条规格）。Params: `{ component, requestId, plugin?, element?,
-  // origin? }`；返回 `{ deny? }` —— 只读事件，`deny` 只用来解释「这次没挪成」。
-  | "uiFocus";
+  | "promptEdit";
 
 // ── Client → Server notification methods ────────────────────────
 

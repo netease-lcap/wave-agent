@@ -6423,37 +6423,6 @@ export class DesktopHost {
         break;
       }
 
-      // 焦点环挪动（spec「输入框里的建议与焦点」）：只读事件，只回一句「挪没挪
-      // 成」，webview 不看也行。
-      case "uiFocus": {
-        const agent = this.agentForPane(pid);
-        const requestId =
-          typeof msg.requestId === "string" ? msg.requestId : "";
-        let deny: string | undefined;
-        if (agent) {
-          try {
-            const result = await agent.uiFocus({
-              component: typeof msg.component === "string" ? msg.component : "",
-              requestId,
-              ...(typeof msg.plugin === "string" ? { plugin: msg.plugin } : {}),
-              ...(typeof msg.element === "string"
-                ? { element: msg.element }
-                : {}),
-            });
-            deny = typeof result?.deny === "string" ? result.deny : undefined;
-          } catch (error) {
-            console.error("[Wave] ui.focus 失败", error);
-          }
-        }
-        this.postMessage({
-          command: "uiFocusResult",
-          paneId: pid,
-          requestId,
-          ...(deny === undefined ? {} : { deny }),
-        });
-        break;
-      }
-
       // webview 对一次 `$.prompt.suggest` 的回答（spec「输入框里的建议与焦
       // 点」）：摆没摆上由渲染进程判定，宿主只把这一句运回 CLI。
       case "modPromptSuggestResult": {

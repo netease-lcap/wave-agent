@@ -2073,10 +2073,6 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         });
         break;
       }
-      case "uiFocusResult":
-        // `ui.focus` 只读（spec 同段）：回执只用来告诉宿主「这次没挪成」，界面
-        // 没有任何事要做，收到即丢。
-        break;
       case "desktopModCopy": {
         // `$.ui.copy`（spec「剪贴板与视图」）：写进本端剪贴板后回执。浏览器拒绝
         // （没有剪贴板权限 / 非安全上下文）也要作答，`reason` 用协议里那两个词。

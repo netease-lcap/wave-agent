@@ -25,7 +25,6 @@ import {
   type ModModelCompleteResult,
   type ModPromptEditEvent,
   type ModPromptSuggestEvent,
-  type ModUiFocusEvent,
   type ModPanelEventPayload,
   type ModPanelRenderResult,
   type ModPanelTree,
@@ -1594,43 +1593,6 @@ export class ModManager {
     };
     const result = await fromIndex(0, event);
     return { isShown: result.isShown, text: submitted };
-  }
-
-  /**
-   * 派发 `ui.focus`：焦点环挪动（spec「输入框里的建议与焦点」）。
-   *
-   * 只读事件：我们不提供 `$.ui.focus`（把环挪到某个元素上要先把面板自己的焦点
-   * 状态暴露给宿主）。返回值按 spec 收 `{ deny }` —— 事件本身没有可改的内容，
-   * 它不是「拦住了什么」，而是「这次没挪成，原因给你」。
-   */
-  async dispatchFocus(
-    event: ModUiFocusEvent,
-    signal?: AbortSignal,
-  ): Promise<{ deny?: string }> {
-    if (this.disposed) return {};
-    const loaded = [...this.mods.values()].filter((item) => item.runtime);
-    let denied: { deny: string } | undefined;
-    const pending: Array<Promise<void>> = [];
-    for (const item of loaded) {
-      const runtime = item.runtime!;
-      if (!runtime.matchesHook("ui.focus", event)) continue;
-      pending.push(
-        runtime.callHook("ui.focus", event, { signal }).then((result) => {
-          if (!result.ok) {
-            logger.warn(
-              `[Wave] ${item.mod.id} 的 ui.focus 失败：${result.error}`,
-            );
-            return;
-          }
-          // 第一个说「没挪成」的说了算（后面的不必再凑热闹），但它们的钩子都
-          // 已经发出去了 —— 焦点事件是广播，不是链。
-          if (denied) return;
-          if (isDeny(result.value)) denied = { deny: result.value.deny };
-        }),
-      );
-    }
-    await Promise.all(pending);
-    return denied ?? {};
   }
 
   /**

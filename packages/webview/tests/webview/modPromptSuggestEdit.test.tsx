@@ -8,10 +8,10 @@ import { fixtures } from "wave-webview-fixtures";
 import type { ModPromptSuggestRequest } from "wave-webview-fixtures";
 
 /**
- * `prompt.suggest` / `prompt.edit` / `ui.focus` 的落点（spec
- * `ecosystem/plugin-mods.md`「输入框里的建议与焦点」）。
+ * `prompt.suggest` / `prompt.edit` 的落点（spec
+ * `ecosystem/plugin-mods.md`「输入框里的建议」）。
  *
- * 这一层钉的是 surface 上的三件事：建议摆成暗字且**一定作答**、用户的每次编辑
+ * 这一层钉的是 surface 上的两件事：建议摆成暗字且**一定作答**、用户的每次编辑
  * 都报给宿主（带前缀/后缀差值）、插件改写的结果只套在**最后一次**编辑上。
  * 钩子链、`next(e)` 语义、超时都在 SDK 侧。
  */
@@ -185,28 +185,5 @@ describe("desktop mod prompt.edit", () => {
 
     expect(input()).not.toHaveTextContent("旧结果");
     expect(input().textContent).toBe("ab");
-  });
-});
-
-describe("desktop mod ui.focus", () => {
-  it("焦点落在输入框上时报一次 Composer（场景 10）", async () => {
-    const { vscode } = renderDesktop();
-    // 输入框挂载时会自动聚焦一次；先移走再点回来，才是一次「用户的落点」。
-    await act(async () => {
-      input().blur();
-    });
-    vscode.postMessage.mockClear();
-
-    await act(async () => {
-      input().focus();
-    });
-
-    expect(posts(vscode, "uiFocus")).toEqual([
-      expect.objectContaining({
-        command: "uiFocus",
-        component: "Composer",
-        requestId: "composer",
-      }),
-    ]);
   });
 });

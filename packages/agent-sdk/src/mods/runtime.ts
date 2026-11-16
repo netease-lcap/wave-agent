@@ -1363,13 +1363,12 @@ const HOOK_NAMES = new Set([
   "skill.prompt",
   "command.describe",
   // 第二判定源之外的三个「让插件做事」的落点（spec「把我们自己的工具交给模型」
-  // 「派子代理」「输入框里的建议与焦点」）。
+  // 「派子代理」「输入框里的建议」）。
   "tool.register",
   "agent.offer",
   "agent.spawn",
   "prompt.edit",
   "prompt.suggest",
-  "ui.focus",
   // 影子事件（spec「影子事件：`classic.*`」）：除 `PreToolUse` / `Stop` 外都是
   // 只读镜像，返回值忽略。
   "classic.PermissionRequest",
@@ -1426,10 +1425,9 @@ const MATCHER_EVENTS = new Set([
   "classic.PostToolBatch",
   "tool.call",
   // `agent.offer` / `agent.spawn` 按子代理类型匹配（spec「派子代理」）：只想管
-  // `Explore` 的插件没必要在每次派发上被叫起来。`ui.focus` 按 `{ component }`。
+  // `Explore` 的插件没必要在每次派发上被叫起来。
   "agent.offer",
   "agent.spawn",
-  "ui.focus",
 ]);
 
 /**

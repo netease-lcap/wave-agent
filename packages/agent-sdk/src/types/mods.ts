@@ -344,19 +344,18 @@ export type ModModelCompleteResult =
     };
 
 /**
- * `prompt.suggest` / `prompt.edit` / `ui.focus` 三处共用的「谁发起的」
- * （spec「输入框里的建议与焦点」）。
+ * `prompt.suggest` / `prompt.edit` 两处共用的「谁发起的」
+ * （spec「输入框里的建议」）。
  *
- * 三个事件各认其中几个分支，`next(e)` 把它原样传下去：哪个分支由引擎在起点盖
+ * 两个事件各认其中几个分支，`next(e)` 把它原样传下去：哪个分支由引擎在起点盖
  * 章，钩子改不动。
  */
 export type ModPromptOrigin =
   | { kind: "composer" }
   | { kind: "suggestion" }
-  | { kind: "person" }
   | { kind: "plugin"; name: string };
 
-/** `prompt.suggest` 的 `e`（spec「输入框里的建议与焦点」）。 */
+/** `prompt.suggest` 的 `e`（spec「输入框里的建议」）。 */
 export interface ModPromptSuggestEvent {
   /** 这次要摆上去的建议（改写它靠 `next({ ...e, text })`）。 */
   text: string;
@@ -364,7 +363,7 @@ export interface ModPromptSuggestEvent {
   [key: string]: unknown;
 }
 
-/** `prompt.edit` 的 `e`（spec「输入框里的建议与焦点」）。 */
+/** `prompt.edit` 的 `e`（spec「输入框里的建议」）。 */
 export interface ModPromptEditEvent {
   origin: ModPromptOrigin;
   /** 触发这次编辑的那一个按键；粘贴、折起来的一串键没有它。 */
@@ -379,24 +378,6 @@ export interface ModPromptEditEvent {
   end: number;
   /** 中间放进去的字（删除时为 `""`）。 */
   inputText: string;
-  [key: string]: unknown;
-}
-
-/** `ui.focus` 的 `e`（spec「输入框里的建议与焦点」）。 */
-export interface ModUiFocusEvent {
-  /**
-   * 哪个站点：`Pane`（右侧面板正文）或 `AbovePrompt`（输入框上方那条带）。
-   * 只有插件画的站点才有焦点事件 —— 输入框自己是宿主的，CC 的枚举里也没有它。
-   * 失焦不单独派发 —— 事件里没有区分字段。
-   */
-  component: "Pane" | "AbovePrompt";
-  /** 画这个站点的那次 `ui.render` 的实例 id。 */
-  requestId: string;
-  /** 拿到焦点环的元素是谁画的；引擎自己的停靠点时没有。 */
-  plugin?: string;
-  /** 拿到焦点环的元素的 `key`。 */
-  element?: string;
-  origin: ModPromptOrigin;
   [key: string]: unknown;
 }
 

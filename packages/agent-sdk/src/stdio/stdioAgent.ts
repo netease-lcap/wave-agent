@@ -784,22 +784,6 @@ export class StdioAgent {
   }
 
   /**
-   * 焦点环挪动（spec「输入框里的建议与焦点」）。
-   *
-   * 只读事件：返回值只用来表达「这次没挪成」，宿主可以不看。
-   */
-  async uiFocus(event: {
-    component: string;
-    requestId: string;
-    plugin?: string;
-    element?: string;
-  }): Promise<{ deny?: string }> {
-    return (await this.client.request("uiFocus", event, this.sessionId)) as {
-      deny?: string;
-    };
-  }
-
-  /**
    * 回答一次 `$.prompt.read`（spec「输入框里现在有什么」）。
    *
    * 宿主得把输入框**此刻**的内容与光标位置报回来；会话已经不认这个

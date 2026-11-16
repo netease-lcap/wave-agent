@@ -661,16 +661,6 @@ export interface DesktopModPromptEditResultMessage
 }
 
 /**
- * The answer to one `ui.focus` event: `{ deny }` when a mod refused to move
- * focus there (spec「输入框里的建议与焦点」).
- */
-export interface DesktopUiFocusResultMessage extends HostToWebviewMessageBase {
-  command: "uiFocusResult";
-  requestId: string;
-  deny?: string;
-}
-
-/**
  * One line under a tool call (`$.ui.notice`; spec「工具行下面的一行」). A push:
  * `text: null` removes the line, and nothing is replayed on re-attach.
  */
@@ -1960,7 +1950,6 @@ export type HostToWebviewMessage =
   | DesktopModPromptReadMessage
   | DesktopModPromptSuggestMessage
   | DesktopModPromptEditResultMessage
-  | DesktopUiFocusResultMessage
   | DesktopModCopyMessage
   | DesktopModNoticeMessage
   | DesktopDirEntriesMessage
@@ -2166,9 +2155,6 @@ type ReplyAttribution = {
   // `prompt.edit` 的改写回执：输入框每变一次上报一笔，晚到的旧回执必须按
   // requestId 丢掉，否则会把上一次的改写套回用户刚打的字上。
   modPromptEditResult: "requestId";
-  // `ui.focus` 的回执：焦点事件是广播，回执只说明「这一次落点有没有人否掉」，
-  // 按 requestId 归到那一次落点上（Composer 的 requestId 恒为 `composer`）。
-  uiFocusResult: "requestId";
 };
 
 // ---- 编译期断言：注册表中的每条响应命令，union 成员必须必填其归属键。 ----
@@ -2234,7 +2220,6 @@ export const replyAttributionLocked = {
   desktopSessionContentMatches: true,
   desktopModPanelRender: true,
   modPromptEditResult: true,
-  uiFocusResult: true,
 } satisfies {
   [C in keyof ReplyAttribution & string]: ReplyAttributionSatisfied[C];
 };

@@ -1140,9 +1140,6 @@ export const MessageInput = forwardRef<
   // position instead of inserting at the wrong spot.
   const lastCaretOffsetRef = useRef<number | null>(null);
 
-  // `ui.focus` 只由插件画的站点派发（`Pane` / `AbovePrompt`）：输入框自己是
-  // 宿主的，CC 的枚举里也没有它，所以这里不报焦点。
-
   const handleInputBlur = useCallback(() => {
     const selection = window.getSelection();
     if (

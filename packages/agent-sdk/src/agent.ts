@@ -20,7 +20,6 @@ import type {
   ModPromptEditEvent,
   ModPromptOrigin,
   ModPromptSuggestEvent,
-  ModUiFocusEvent,
   ModPanelRenderResult,
   ModPanelUpdatePayload,
   ModPromptFillMode,
@@ -471,26 +470,6 @@ export class Agent {
       const isShown = await this.showModPromptSuggestion(text, request.plugin);
       return { isShown };
     });
-  }
-
-  /**
-   * 焦点环挪动（spec「输入框里的建议与焦点」）。
-   *
-   * 只读事件：`e` 里没有可改的内容，返回值只表达「这次没挪成」。
-   */
-  public async notifyModUiFocus(event: {
-    /** 只有插件画的站点报焦点：`Pane` / `AbovePrompt`（输入框自己是宿主的）。 */
-    component: "Pane" | "AbovePrompt";
-    requestId: string;
-    plugin?: string;
-    element?: string;
-    origin?: ModPromptOrigin;
-  }): Promise<{ deny?: string }> {
-    const normalized: ModUiFocusEvent = {
-      ...event,
-      origin: event.origin ?? { kind: "person" },
-    };
-    return this.modManager.dispatchFocus(normalized);
   }
 
   /**

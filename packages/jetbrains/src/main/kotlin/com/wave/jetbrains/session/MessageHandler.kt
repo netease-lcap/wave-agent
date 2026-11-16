@@ -1193,27 +1193,6 @@ class MessageHandler(
                     put("cursor", (rewritten?.get("cursor") as? JsonPrimitive)?.intOrNull ?: (cursor ?: 0))
                 })
             }
-            // 焦点环挪动：只读事件，`deny` 只用来表达「这次没挪成」。界面不一定看回
-            // 包内容，但不回会让它干等。
-            "uiFocus" -> {
-                val requestId = (msg["requestId"] as? JsonPrimitive)?.contentOrNull ?: ""
-                var deny: String? = null
-                try {
-                    deny = session.agent?.uiFocus(buildJsonObject {
-                        put("component", (msg["component"] as? JsonPrimitive)?.contentOrNull ?: "")
-                        put("requestId", requestId)
-                        (msg["plugin"] as? JsonPrimitive)?.contentOrNull?.let { put("plugin", it) }
-                        (msg["element"] as? JsonPrimitive)?.contentOrNull?.let { put("element", it) }
-                    })?.get("deny")?.jsonPrimitive?.contentOrNull
-                } catch (e: StdioClientException) {
-                    LOG.warn("uiFocus failed: ${e.message}")
-                }
-                val denyReason = deny
-                postMessage("uiFocusResult", buildJsonObject {
-                    put("requestId", requestId)
-                    denyReason?.let { put("deny", it) }
-                })
-            }
             // 建议摆没摆上的回执：只把在等回执的那个 mod 放行，无回包（mod 那边超时
             // 也会按 `{ isShown: false }` 收尾，会话已经不认这个 requestId 时空操作）。
             "modPromptSuggestResult" -> {
