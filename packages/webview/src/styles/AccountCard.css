@@ -273,6 +273,17 @@
   gap: 8px;
 }
 
+/* 有重置时刻时整行被 Tooltip 的包裹层包了一层（气泡挂在 body 上，见 PlanBar）。
+   包裹层默认是 `inline-flex`，在这里会按内容宽收起 → 条不再撑满、状态值挤到中间。
+   两个类名压过 `.tooltip-container` 的 `inline-flex`（不依赖 CSS 引入顺序）。
+   `cursor: pointer`：整行是可悬停出气泡的热区，默认落到文字上会是文本光标（I 型），
+   看起来像可以选中复制（2026-11-16 走查）。只在有气泡的这层挂，没数据的行不加手型。 */
+.account-plan-bar-tip.tooltip-container {
+  display: block;
+  width: 100%;
+  cursor: pointer;
+}
+
 .account-plan-bar-label {
   flex-shrink: 0;
   color: var(--vscode-descriptionForeground);

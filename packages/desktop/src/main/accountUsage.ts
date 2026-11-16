@@ -90,7 +90,19 @@ function readPlanUsage(
   ) {
     return undefined;
   }
-  return { monthUsed, monthLimit, weekUsed, weekLimit, expireDate };
+  // 两个窗口的重置时刻（unix 秒）是**可选**的：缺了只是条上不弹「多久后重置」的气泡，
+  // 不影响两条的渲染 —— 所以不参与上面那道「齐了才画」的判断。
+  const weekResetAt = readNumber(headers, "weekly-reset");
+  const monthResetAt = readNumber(headers, "monthly-reset");
+  return {
+    monthUsed,
+    monthLimit,
+    weekUsed,
+    weekLimit,
+    expireDate,
+    ...(weekResetAt !== undefined ? { weekResetAt } : {}),
+    ...(monthResetAt !== undefined ? { monthResetAt } : {}),
+  };
 }
 
 /**
