@@ -56,9 +56,12 @@ const ELEMENT_PROPS: Record<ModElementType, ReadonlySet<string>> = {
   Text: new Set(["color", "bold", "italic", "dimColor", "underline", "wrap"]),
   Button: new Set(["key", "label", "disabled", "variant"]),
   Input: new Set(["key", "label", "placeholder", "value", "submitLabel"]),
+  Select: new Set(["key", "label", "options", "value", "autoFocus"]),
+  Svg: new Set(["source", "alt", "width", "height", "isInteractive"]),
   Link: new Set(["href", "label"]),
   Code: new Set(["source", "language", "path", "startLine"]),
   Markdown: new Set(["text"]),
+  Progress: new Set(["label", "value", "max", "valueText", "color"]),
 };
 
 export type ModTreeValidation =
@@ -77,6 +80,126 @@ function fail(error: string): ModTreeValidation {
 function isAllowedHref(href: string): boolean {
   return isAllowedUrl(href, MOD_LIMITS.hrefChars);
 }
+
+/** 这三个都是叶子：带 children 说明作者把有内容的元素搞混了。 */
+const LEAF_ELEMENTS = new Set(["Select", "Svg", "Progress"]);
+
+/** `Svg` 的 `width` / `height`：可选，但给出来就是 0–4096 的有限正数。 */
+function isSvgDimension(value: unknown): boolean {
+  return (
+    value === undefined ||
+    (typeof value === "number" &&
+      Number.isFinite(value) &&
+      value > 0 &&
+      value <= MOD_LIMITS.svgDimension)
+  );
+}
+
+/** `Progress` 的 `value` / `max`：可选，给出来就必须是数字。 */
+function isOptionalNumber(value: unknown): boolean {
+  return value === undefined || typeof value === "number";
+}
+
+function checkSelectProps(props: Record<string, unknown>): void {
+  const key = props.key;
+  if (typeof key !== "string" || key === "") {
+    throw new Error(
+      `Select 必须带一个非空的字符串 key（否则选择无法路由回 mod）`,
+    );
+  }
+  const options = props.options;
+  if (!Array.isArray(options) || options.length === 0) {
+    throw new Error(
+      `Select「${key}」需要 options，一个 { value, label? } 的非空数组`,
+    );
+  }
+  if (options.length > MOD_LIMITS.selectOptions) {
+    throw new Error(
+      `Select「${key}」的 options 最多 ${MOD_LIMITS.selectOptions} 项`,
+    );
+  }
+  const seen = new Set<string>();
+  for (const option of options) {
+    const shape = option as { value?: unknown; label?: unknown } | null;
+    if (
+      typeof shape !== "object" ||
+      shape === null ||
+      Array.isArray(shape) ||
+      Object.keys(shape).some((name) => name !== "value" && name !== "label")
+    ) {
+      throw new Error(
+        `Select「${key}」的 options 每一项都得是 { value, label? }`,
+      );
+    }
+    if (typeof shape.value !== "string") {
+      throw new Error(`Select「${key}」的 options 里每一项的 value 是字符串`);
+    }
+    if (shape.label !== undefined && typeof shape.label !== "string") {
+      throw new Error(`Select「${key}」的 options 里 label 是字符串`);
+    }
+    if (seen.has(shape.value)) {
+      throw new Error(
+        `Select「${key}」的 options 里 value「${shape.value}」重复（value 必须唯一）`,
+      );
+    }
+    seen.add(shape.value);
+  }
+  for (const name of ["label", "value"] as const) {
+    if (props[name] !== undefined && typeof props[name] !== "string") {
+      throw new Error(`Select「${key}」的 ${name} 是字符串`);
+    }
+  }
+  if (props.autoFocus !== undefined && typeof props.autoFocus !== "boolean") {
+    throw new Error(`Select「${key}」的 autoFocus 是布尔值`);
+  }
+}
+
+function checkSvgProps(props: Record<string, unknown>): void {
+  const source = props.source;
+  if (typeof source !== "string" || source === "") {
+    throw new Error("Svg 需要 source（一段 SVG 标记），不能为空");
+  }
+  if (source.length > MOD_LIMITS.svgSourceChars) {
+    throw new Error(`Svg.source 超过 ${MOD_LIMITS.svgSourceChars} 字符上限`);
+  }
+  if (typeof props.alt !== "string") {
+    throw new Error("Svg 需要 alt（这张图在说什么），一段文字");
+  }
+  if (!isSvgDimension(props.width) || !isSvgDimension(props.height)) {
+    throw new Error(
+      `Svg 的 width / height 是像素数，最多 ${MOD_LIMITS.svgDimension}`,
+    );
+  }
+  if (
+    props.isInteractive !== undefined &&
+    typeof props.isInteractive !== "boolean"
+  ) {
+    throw new Error("Svg 的 isInteractive 是布尔值");
+  }
+}
+
+function checkProgressProps(props: Record<string, unknown>): void {
+  const label = props.label;
+  if (typeof label !== "string" || label.trim() === "") {
+    throw new Error("Progress 需要 label（这一条在做什么），一段非空文字");
+  }
+  if (!isOptionalNumber(props.value) || !isOptionalNumber(props.max)) {
+    throw new Error(`Progress「${label}」的 value 与 max 是数字`);
+  }
+  for (const name of ["valueText", "color"] as const) {
+    if (props[name] !== undefined && typeof props[name] !== "string") {
+      throw new Error(`Progress「${label}」的 ${name} 是字符串`);
+    }
+  }
+}
+
+const ELEMENT_CHECKS: Readonly<
+  Record<string, (props: Record<string, unknown>) => void>
+> = {
+  Select: checkSelectProps,
+  Svg: checkSvgProps,
+  Progress: checkProgressProps,
+};
 
 interface WalkState {
   nodes: number;
@@ -115,14 +238,17 @@ function walkNode(
   if (typeof props !== "object" || props === null || Array.isArray(props)) {
     throw new Error(`${type} 的 props 必须是对象`);
   }
-  for (const [name, value] of Object.entries(props)) {
+  // 只有 `Select.options` 是数组（元素自己的检查负责它的形状）；其余元素的
+  // prop 一律只认原始值 —— 树要过 RPC，函数与普通对象到不了渲染端。
+  for (const [propName, value] of Object.entries(props)) {
+    if (type === "Select" && propName === "options") continue;
     if (
       typeof value !== "string" &&
       typeof value !== "number" &&
       typeof value !== "boolean" &&
       value !== null
     ) {
-      throw new Error(`${type} 的 prop「${name}」不是可序列化的原始值`);
+      throw new Error(`${type} 的 prop「${propName}」不是可序列化的原始值`);
     }
   }
   const allowed = ELEMENT_PROPS[type as ModElementType];
@@ -140,6 +266,9 @@ function walkNode(
       throw new Error(`Button.variant 只允许 "primary" 或 "secondary"`);
     }
   }
+  // 三个新元素的语义全在 prop 上（选哪几项、画哪段图、填充到几分之几），所以
+  // 名字对了还要查取值：空 options、重复 value、超限的 svg source 都当场点名。
+  ELEMENT_CHECKS[type]?.(props);
   if (type === "Link") {
     const href = props.href;
     if (typeof href !== "string" || !isAllowedHref(href)) {
@@ -158,6 +287,11 @@ function walkNode(
   const children = element.children ?? [];
   if (!Array.isArray(children)) {
     throw new Error(`${type} 的 children 必须是数组`);
+  }
+  if (LEAF_ELEMENTS.has(type) && children.length > 0) {
+    throw new Error(
+      `${type} 是叶子元素，不带 children（内容全在它的 prop 里）`,
+    );
   }
   const outChildren: Array<ModTreeNode | string> = [];
   for (const child of children) {

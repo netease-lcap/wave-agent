@@ -13,11 +13,23 @@ import type {
   ModSpawnOptions,
   ModProcessChunk,
   ModProcessExit,
+  ModPropValue,
   ModPromptFillMode,
   ModSessionUsage,
 } from "../types/mods.js";
 import { MOD_LIMITS } from "../types/mods.js";
-import { Box, Text, Button, Input, Link, Code, Markdown } from "./index.js";
+import {
+  Box,
+  Text,
+  Button,
+  Input,
+  Select,
+  Svg,
+  Link,
+  Code,
+  Markdown,
+  Progress,
+} from "./index.js";
 import { ModFs } from "./files.js";
 import { modFetch } from "./http.js";
 import { logger } from "../utils/globalLogger.js";
@@ -43,7 +55,18 @@ import { logger } from "../utils/globalLogger.js";
  * 在渲染器里变成未知元素。`tests/mods/runtime.test.ts` 钉住了它与
  * `ModElementType` 的一致性。
  */
-const ELEMENT_CONSTRUCTORS = [Box, Text, Button, Input, Link, Code, Markdown];
+const ELEMENT_CONSTRUCTORS = [
+  Box,
+  Text,
+  Button,
+  Input,
+  Select,
+  Svg,
+  Link,
+  Code,
+  Markdown,
+  Progress,
+];
 
 const elements = Object.fromEntries(
   ELEMENT_CONSTRUCTORS.map((name) => [String(name), String(name)]),
@@ -72,9 +95,9 @@ const RENDER_SITES: readonly string[] = ["Pane", "AbovePrompt"];
 /**
  * 冻结的元素表：每次 `$.ui.resolve(e)` 返回同一份，mod 改不到它。
  *
- * CC 的桌面端表是 11 个（多 `Select` / `Svg` / `Progress` / `Client`）；我们只放
- * 真画得出的那 7 个 —— 给了画不出的名字，mod 编出的树会被 `validateModTree`
- * 拒掉，错误离原因更远。
+ * CC 的桌面端表是 11 个，我们放真画得出的那 10 个 —— 只差 `Client`（要在渲染端
+ * 执行 mod 附带的第二份模块，spec「交付分层」没做）。给了画不出的名字，mod 编出
+ * 的树会被 `validateModTree` 拒掉，错误离原因更远。
  */
 const ELEMENT_TABLE: Readonly<Record<ModElementType, ModElementType>> =
   Object.freeze({ ...elements });
@@ -507,7 +530,36 @@ function appendChildren(
 }
 
 /** 带回调的 prop：留在进程内的处理函数表，不进树。 */
-const CALLBACK_PROPS = new Set(["onPress", "onSubmit"]);
+const CALLBACK_PROPS = new Set(["onPress", "onSubmit", "onSelect"]);
+
+/**
+ * `h()` 要原样留在树里的**非原始值** prop。
+ *
+ * 只有 `Select.options`：它是 `{ value, label? }[]`，丢了它下拉框就是个空壳。
+ * 其余非原始值（函数、Symbol、普通对象）照旧丢弃 —— 它们过不了 RPC，留着只会
+ * 在校验器那里变成一个更难读的错。
+ */
+const STRUCTURED_PROPS: Readonly<Record<string, (value: unknown) => unknown>> =
+  {
+    options: (value) => {
+      if (!Array.isArray(value)) return undefined;
+      const options: Array<{ value: string; label?: string }> = [];
+      for (const option of value) {
+        if (!isPlainObject(option)) return undefined;
+        const { value: optionValue, label } = option as {
+          value?: unknown;
+          label?: unknown;
+        };
+        if (typeof optionValue !== "string") return undefined;
+        options.push(
+          typeof label === "string"
+            ? { value: optionValue, label }
+            : { value: optionValue },
+        );
+      }
+      return options;
+    },
+  };
 
 /**
  * 一个 mod 的沙箱实例：执行入口文件、收集钩子、承载 `$`。
@@ -555,7 +607,7 @@ export class ModRuntime {
     const h = (type: unknown, props: unknown, ...children: unknown[]) => {
       const rawProps = isPlainObject(props) ? props : {};
       const key = typeof rawProps.key === "string" ? rawProps.key : undefined;
-      const kept: Record<string, string | number | boolean | null> = {};
+      const kept: Record<string, ModPropValue> = {};
       for (const [name, value] of Object.entries(rawProps)) {
         if (CALLBACK_PROPS.has(name)) {
           const callback = value as (input?: string) => unknown;
@@ -565,6 +617,14 @@ export class ModRuntime {
           continue;
         }
         if (value === undefined) continue;
+        const structured = STRUCTURED_PROPS[name];
+        if (structured) {
+          const mapped = structured(value);
+          // 形状不对就整条丢掉，让校验器去报「options 不是 { value, label? }[]」
+          // —— 这里只是搬运，不替 mod 猜它想写什么。
+          if (mapped !== undefined) kept[name] = mapped as ModPropValue;
+          continue;
+        }
         if (
           typeof value === "string" ||
           typeof value === "number" ||
@@ -864,18 +924,19 @@ export class ModRuntime {
    * 宿主据此决定要不要提示。
    */
   async dispatch(
-    kind: "press" | "input",
+    kind: "press" | "input" | "select",
     key: string,
     value?: string,
   ): Promise<boolean> {
-    // 按交互种类取对应元素的处理表：同一个 pane 里 Button 与 Input 撞 key 是
-    // 允许的（key 只要在自己的元素类型里唯一），所以不能跨类型兜底查找。
-    const type = kind === "input" ? "Input" : "Button";
+    // 按交互种类取对应元素的处理表：同一个 pane 里 Button / Input / Select 撞
+    // key 是允许的（key 只要在自己的元素类型里唯一），所以不能跨类型兜底查找。
+    const type =
+      kind === "input" ? "Input" : kind === "select" ? "Select" : "Button";
     const handler = this.handlers.get(`${type}:${key}`);
     if (!handler) return false;
     await this.runWithBudget(
       `${kind} 处理超过 ${MOD_LIMITS.hookTimeoutMs}ms`,
-      () => handler(kind === "input" ? value : undefined),
+      () => handler(kind === "press" ? undefined : value),
     );
     return true;
   }

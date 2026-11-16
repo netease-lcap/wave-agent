@@ -21,8 +21,12 @@ export interface ModPanelRendererProps {
   tree: ModPanelTree | null;
   /** 编译 / 校验 / 钩子失败的摘要，优先于树显示。 */
   error?: string;
-  /** 用户交互回传；`value` 只有 `input` 才有。 */
-  onEvent: (kind: "press" | "input", key: string, value?: string) => void;
+  /** 用户交互回传；`value` 只有 `input`（提交的文字）与 `select`（选中项）才有。 */
+  onEvent: (
+    kind: "press" | "input" | "select",
+    key: string,
+    value?: string,
+  ) => void;
   /**
    * 外链点击。桌面端的 webview 里直接导航会顶掉整个界面，所以链接一律交给
    * 宿主开系统浏览器（`openExternal`）——与聊天正文里的处理一致。
@@ -158,6 +162,138 @@ function ModInput({
   );
 }
 
+/**
+ * 下拉：选中项由树上的 `value` 决定，webview 不自己记。
+ *
+ * 选中只回 `select` 事件，界面等下一次渲染 —— mod 没有把 `value` 改过来时，
+ * 选中项就该原地不动（`Input` 提交后清空是同一条纪律：控件的状态归 mod）。
+ */
+function ModSelect({
+  node,
+  onEvent,
+}: {
+  node: ModTreeNode;
+  onEvent: ModPanelRendererProps["onEvent"];
+}): React.ReactElement {
+  const key = String(node.props.key ?? "");
+  const label =
+    typeof node.props.label === "string" ? node.props.label : undefined;
+  const value = typeof node.props.value === "string" ? node.props.value : "";
+  const options = Array.isArray(node.props.options)
+    ? (node.props.options as Array<{ value?: unknown; label?: unknown }>)
+    : [];
+  return (
+    <label className="mod-panel-select">
+      {label ? <span>{label}</span> : null}
+      <select
+        data-mod-key={key}
+        value={value}
+        onChange={(event) => onEvent("select", key, event.target.value)}
+      >
+        {options.map((option) => {
+          const optionValue = String(option.value ?? "");
+          return (
+            <option key={optionValue} value={optionValue}>
+              {typeof option.label === "string" ? option.label : optionValue}
+            </option>
+          );
+        })}
+      </select>
+    </label>
+  );
+}
+
+/**
+ * 一段 SVG 标记，内联画出来。
+ *
+ * 走 DOMPurify 的 svg profile：mod 的 `source` 是**字符串**，里面写 `<script>`
+ * 或 `onload=` 与聊天正文里的 markdown 同一条风险，净化口径也照抄那边。宽高由
+ * prop 给（校验器已经把它夹到 0–4096），缺省按 `viewBox` 自适应。
+ */
+function ModSvg({ node }: { node: ModTreeNode }): React.ReactElement {
+  const source = typeof node.props.source === "string" ? node.props.source : "";
+  const alt = typeof node.props.alt === "string" ? node.props.alt : "";
+  const html = useMemo(
+    () =>
+      DOMPurify.sanitize(source, {
+        USE_PROFILES: { svg: true, svgFilters: true },
+      }),
+    [source],
+  );
+  const style: React.CSSProperties = {
+    display: "block",
+    maxWidth: "100%",
+    ...(typeof node.props.width === "number"
+      ? { width: node.props.width }
+      : {}),
+    ...(typeof node.props.height === "number"
+      ? { height: node.props.height }
+      : {}),
+    // 非交互的图不吃指针事件：它常常被当背景用，挡着下面的按钮就白画了。
+    ...(node.props.isInteractive === false ? { pointerEvents: "none" } : {}),
+  };
+  return (
+    <div
+      className="mod-panel-svg"
+      role="img"
+      aria-label={alt}
+      style={style}
+      // 净化后的 SVG 只能整段内联：它是标记语言，没有「逐节点画」这条路。
+      dangerouslySetInnerHTML={{ __html: html }}
+    />
+  );
+}
+
+/** `value/max` 夹到 0–1；`max` 缺省 1（与 Claude Code 同一个口径）。 */
+function progressRatio(props: Record<string, unknown>): number | undefined {
+  const value = props.value;
+  if (typeof value !== "number" || !Number.isFinite(value)) return undefined;
+  const max =
+    typeof props.max === "number" && Number.isFinite(props.max) && props.max > 0
+      ? props.max
+      : 1;
+  return Math.min(1, Math.max(0, value / max));
+}
+
+function ModProgress({ node }: { node: ModTreeNode }): React.ReactElement {
+  const label = typeof node.props.label === "string" ? node.props.label : "";
+  const ratio = progressRatio(node.props);
+  const text =
+    typeof node.props.valueText === "string"
+      ? node.props.valueText
+      : ratio === undefined
+        ? undefined
+        : `${Math.round(ratio * 100)}%`;
+  return (
+    <div className="mod-panel-progress">
+      <div className="mod-panel-progress-head">
+        <span>{label}</span>
+        {text === undefined ? null : <span>{text}</span>}
+      </div>
+      {ratio === undefined ? null : (
+        <div
+          className="mod-panel-progress-track"
+          role="progressbar"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={Math.round(ratio * 100)}
+          aria-label={label}
+        >
+          <div
+            className="mod-panel-progress-fill"
+            style={{
+              width: `${ratio * 100}%`,
+              ...(typeof node.props.color === "string"
+                ? { background: node.props.color }
+                : {}),
+            }}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ModMarkdown({
   text,
   onOpenLink,
@@ -241,6 +377,12 @@ function renderNode(
     }
     case "Input":
       return <ModInput key={index} node={node} onEvent={onEvent} />;
+    case "Select":
+      return <ModSelect key={index} node={node} onEvent={onEvent} />;
+    case "Svg":
+      return <ModSvg key={index} node={node} />;
+    case "Progress":
+      return <ModProgress key={index} node={node} />;
     case "Link": {
       const href = String(node.props.href ?? "");
       return (

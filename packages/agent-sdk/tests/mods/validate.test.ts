@@ -173,6 +173,137 @@ describe("validateModTree", () => {
     ).toBe(true);
   });
 
+  describe("Select / Svg / Progress（二期元素，prop 有白名单）", () => {
+    const select = (props: Record<string, unknown>, children: unknown[] = []) =>
+      validateModTree({ type: "Select", props, children });
+    const svg = (props: Record<string, unknown>, children: unknown[] = []) =>
+      validateModTree({ type: "Svg", props, children });
+    const progress = (
+      props: Record<string, unknown>,
+      children: unknown[] = [],
+    ) => validateModTree({ type: "Progress", props, children });
+
+    it("Select 接受 { value, label? } 列表，并保留原样", () => {
+      const options = [{ value: "a", label: "A" }, { value: "b" }];
+      const result = select({ key: "s1", options, value: "a" });
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.tree.props).toEqual({ key: "s1", options, value: "a" });
+    });
+
+    it.each([
+      [{ options: [{ value: "a" }] }, "非空的字符串 key"],
+      [{ key: "s1" }, "需要 options"],
+      [{ key: "s1", options: [] }, "需要 options"],
+      [{ key: "s1", options: [{ value: "a" }, { value: "a" }] }, "重复"],
+      [{ key: "s1", options: [{ value: 1 }] }, "value 是字符串"],
+      [{ key: "s1", options: [{ value: "a", extra: 1 }] }, "{ value, label? }"],
+      [{ key: "s1", options: ["a"] }, "{ value, label? }"],
+      [{ key: "s1", options: [{ value: "a" }], value: 2 }, "value 是字符串"],
+      [{ key: "s1", options: [{ value: "a" }], onSelect: "x" }, "上没有 prop"],
+    ])("Select 拒绝 %j", (props, message) => {
+      const result = select(props);
+
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.error).toContain(message);
+    });
+
+    it("Select 的 options 最多 64 项", () => {
+      const options = Array.from(
+        { length: MOD_LIMITS.selectOptions },
+        (_, i) => ({
+          value: String(i),
+        }),
+      );
+      expect(select({ key: "s1", options }).ok).toBe(true);
+      expect(
+        select({ key: "s1", options: [...options, { value: "over" }] }).ok,
+      ).toBe(false);
+    });
+
+    it("Svg 接受 source + alt + 尺寸", () => {
+      const result = svg({
+        source: "<svg viewBox='0 0 1 1' />",
+        alt: "折线",
+        width: 120,
+        height: 40,
+        isInteractive: false,
+      });
+
+      expect(result.ok).toBe(true);
+    });
+
+    it.each([
+      [{ alt: "x" }, "需要 source"],
+      [{ source: "", alt: "x" }, "需要 source"],
+      [{ source: "<svg />" }, "需要 alt"],
+      [{ source: "<svg />", alt: "x", width: 0 }, "width / height"],
+      [{ source: "<svg />", alt: "x", height: 10_000 }, "width / height"],
+      [{ source: "<svg />", alt: "x", fill: "#000" }, "上没有 prop"],
+    ])("Svg 拒绝 %j", (props, message) => {
+      const result = svg(props);
+
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.error).toContain(message);
+    });
+
+    it("Svg.source 超过 131072 字符就拒绝", () => {
+      const source = "a".repeat(MOD_LIMITS.svgSourceChars + 1);
+      const result = svg({ source, alt: "x" });
+
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.error).toContain("上限");
+    });
+
+    it("Progress 接受 label / value / max / valueText / color", () => {
+      const result = progress({
+        label: "构建",
+        value: 3,
+        max: 5,
+        valueText: "3/5",
+        color: "#4c8",
+      });
+
+      expect(result.ok).toBe(true);
+    });
+
+    it.each([
+      [{}, "需要 label"],
+      [{ label: "  " }, "需要 label"],
+      [{ label: "构建", value: "3" }, "是数字"],
+      [{ label: "构建", max: null }, "是数字"],
+      [{ label: "构建", percent: 30 }, "上没有 prop"],
+    ])("Progress 拒绝 %j", (props, message) => {
+      const result = progress(props);
+
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.error).toContain(message);
+    });
+
+    it("三个元素都是叶子，带 children 就拒绝", () => {
+      const cases = [
+        ["Select", { key: "s1", options: [{ value: "a" }] }],
+        ["Svg", { source: "<svg />", alt: "x" }],
+        ["Progress", { label: "构建" }],
+      ] as const;
+      for (const [type, props] of cases) {
+        const result = validateModTree({
+          type,
+          props,
+          children: [text("x")],
+        });
+        expect(result.ok).toBe(false);
+        if (result.ok) continue;
+        expect(result.error).toContain("叶子元素");
+      }
+    });
+  });
+
   it("按节点数上限（含根节点）拦截", () => {
     const atLimit = box(
       ...Array.from({ length: MOD_LIMITS.treeNodes - 1 }, (_, i) =>

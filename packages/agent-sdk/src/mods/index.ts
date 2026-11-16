@@ -7,9 +7,10 @@
  * 的 require 接管、返回同一份表（见 `runtime.ts`），所以**这个文件在沙箱里不会
  * 被真正加载**。它存在的意义是给插件作者的 TypeScript 提供 props 类型。
  *
- * 因此这里的每个 props 接口都要跟两侧保持一致：
- * - `runtime.ts` 的 `h()`：哪些 prop 会被摘走（`onPress`/`onSubmit`），哪些值可
- *   序列化（其余一律丢弃）；
+ * 因此这里的每个 props 接口都要跟两侧保持一致（名单与 Claude Code 的 `desktop`
+ * 表逐项对齐，只差 `Client`）：
+ * - `runtime.ts` 的 `h()`：哪些 prop 会被摘走（`onPress`/`onSubmit`/`onSelect`），
+ *   哪些值可序列化（其余一律丢弃；只有 `Select.options` 是对象数组）；
  * - `packages/webview/src/components/ModPanelRenderer.tsx`：哪些 prop 会被画出来。
  */
 
@@ -107,6 +108,55 @@ export interface InputProps {
   onSubmit?: (value: string) => void;
 }
 
+export interface SelectOption {
+  value: string;
+  /** 缺省时列表里画 `value`。 */
+  label?: string;
+}
+
+export interface SelectProps {
+  /** 选中回调按它路由回 mod —— 同一个面板内必须唯一。 */
+  key: string;
+  /** 1–64 项，`value` 必须唯一。 */
+  options: SelectOption[];
+  /** 用户选了某一项时拿到那一项的 `value`。 */
+  onSelect?: (value: string) => void;
+  label?: string;
+  /** 当前选中项；缺省时列表里没有选中项。 */
+  value?: string;
+  /** 只接受 `true`：面板打开时把焦点放这里。 */
+  autoFocus?: boolean;
+}
+
+export interface SvgProps {
+  /** 一段 SVG 标记（≤131072 字符），内联画出来。 */
+  source: string;
+  /** 必填：没有它，读屏与降级渲染都拿不到这张图在说什么。 */
+  alt: string;
+  width?: number;
+  height?: number;
+  /**
+   * `false` 时整张图不吃指针事件（可以当背景图用）；缺省跟随浏览器默认。
+   *
+   * Claude Code 的桌面端只把它当「这张图是否接收交互」的开关，没有点击回调；
+   * 要可点的区域请在上面盖 `Button`。
+   */
+  isInteractive?: boolean;
+}
+
+export interface ProgressProps {
+  /** 必填：这一条在做什么（画在条上方）。 */
+  label: string;
+  /** 当前值；缺省时不画条、只画标签。 */
+  value?: number;
+  /** 满值，缺省 1。`value/max` 会被夹到 0–1。 */
+  max?: number;
+  /** 替代默认百分比的那段文字。 */
+  valueText?: string;
+  /** 条的颜色（CSS 颜色值）。 */
+  color?: string;
+}
+
 export interface LinkProps {
   /** 只允许 `https:` 与本地回环 `http:`（`localhost` / `127.0.0.1` / `[::1]`）。 */
   href: string;
@@ -130,9 +180,12 @@ export const Box = element<BoxProps>("Box");
 export const Text = element<TextProps>("Text");
 export const Button = element<ButtonProps>("Button");
 export const Input = element<InputProps>("Input");
+export const Select = element<SelectProps>("Select");
+export const Svg = element<SvgProps>("Svg");
 export const Link = element<LinkProps>("Link");
 export const Code = element<CodeProps>("Code");
 export const Markdown = element<MarkdownProps>("Markdown");
+export const Progress = element<ProgressProps>("Progress");
 
 /** `<></>` 的片段。classic pragma 下由编译器指向 `__wave.Fragment`。 */
 export const Fragment = element<{ children?: ModChild }>("Fragment");
