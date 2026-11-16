@@ -177,13 +177,20 @@ export interface ButtonProps {
   label?: string;
   /** 点击时执行（在 mod 进程内）。 */
   onPress?: () => void;
-  disabled?: boolean;
   /** 画面观感：`primary` 用主题主操作色，`secondary` 与不写时同一中性底。 */
   variant?: "primary" | "secondary";
   /** 画成无边框无底色的字形键（一排 `➤` / `✕` 就用它）；给了它 `variant` 不再起作用。 */
   plain?: boolean;
   /** label 静止时调暗、指针/焦点下恢复全强度。 */
   dimColor?: boolean;
+  /**
+   * `"dismiss"` = 这个按钮关闭它所在的站点（纯绘制提示，关了之后发生什么由
+   * `onPress` 决定）。桌面端把它画成关闭控件、`label` 当无障碍名。
+   *
+   * 只有这一个值：别的值当场点名（与 Claude Code 的 `role is "dismiss" or
+   * absent` 同一档）。
+   */
+  role?: "dismiss";
   /** `true` 时把焦点放这里（一个站点里多个只第一个生效）。 */
   autoFocus?: boolean;
   /**

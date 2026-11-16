@@ -211,6 +211,28 @@ export interface AgentCallbacks
    */
   onModPromptFill?: (payload: import("./mods.js").ModPromptFillRequest) => void;
   /**
+   * A plugin mod wants to read the surface's composer (`$.prompt.read`; spec
+   * `ecosystem/plugin-mods.md`「输入框里现在有什么」).
+   *
+   * Reply with `Agent.resolveModPromptRead(requestId, text, cursor)`. A host
+   * that never wires this leaves `$.prompt.read` answering an empty draft.
+   */
+  onModPromptRead?: (payload: import("./mods.js").ModPromptReadRequest) => void;
+  /**
+   * A plugin mod asked to put text on the clipboard (`$.ui.copy`; spec
+   * 「剪贴板与视图」).
+   *
+   * Reply with `Agent.resolveModCopy(requestId, isCopied, reason?)` — a refusal
+   * is an answer, not an error.
+   */
+  onModCopy?: (payload: import("./mods.js").ModCopyRequest) => void;
+  /**
+   * A plugin mod wants one line under a tool call (`$.ui.notice`; spec
+   * 「工具行下面的一行」). `text: null` removes it. Hosts without tool blocks
+   * leave it unwired.
+   */
+  onModNotice?: (payload: import("./mods.js").ModNoticePayload) => void;
+  /**
    * The session's workspace moved (EnterWorktree / ExitWorktree) — a different
    * event from a Bash `cd`: the conversation now works in another working tree,
    * so the surfaces showing "the project the user is looking at" follow.

@@ -213,7 +213,14 @@ export type RequestMethod =
   // The surface's answer to a `modPromptFill` push (spec「把草稿填进输入框」).
   // Params: `{ requestId, filled }`. An unknown `requestId` (the 5 s limit
   // already answered `{ isFilled: false }`) is ignored rather than an error.
-  | "modPromptFillResult";
+  | "modPromptFillResult"
+  // The surface's answer to a `modPromptRead` push (spec「输入框里现在有什么」).
+  // Params: `{ requestId, text, cursor }`. An unknown `requestId` (the 3 s limit
+  // already answered an empty draft) is ignored rather than an error.
+  | "modPromptReadResult"
+  // The surface's answer to a `modCopy` push (spec「剪贴板与视图」). Params:
+  // `{ requestId, isCopied, reason? }`. A refusal is a normal answer.
+  | "modCopyResult";
 
 // ── Client → Server notification methods ────────────────────────
 
@@ -375,4 +382,27 @@ export type ServerNotificationMethod =
    * false }`. It never touches the conversation: the text is a draft the user
    * still has to send.
    */
-  | "modPromptFill";
+  | "modPromptFill"
+  /**
+   * A mod wants to read the composer (`$.prompt.read`; spec「输入框里现在有什
+   * 么」). Params: `ModPromptReadRequest`.
+   *
+   * The mirror image of `modPromptFill`: the same round trip, and the surface
+   * answers with the `modPromptReadResult` RPC. No answer in time reads as an
+   * empty draft — "nobody is drawing a composer" and "the user typed nothing"
+   * are the same answer to a mod.
+   */
+  | "modPromptRead"
+  /**
+   * A mod wants text on the clipboard (`$.ui.copy`; spec「剪贴板与视图」).
+   * Params: `ModCopyRequest`; answered with the `modCopyResult` RPC.
+   */
+  | "modCopy"
+  /**
+   * One line under a tool call (`$.ui.notice`; spec「工具行下面的一行」).
+   * Params: `ModNoticePayload`; `text: null` removes the line.
+   *
+   * Push-only and **not replayed**: the mod's own `$.state` is the truth and it
+   * re-posts on `ui.render`, exactly like `modStatusUpdate`.
+   */
+  | "modNotice";

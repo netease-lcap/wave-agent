@@ -13,35 +13,45 @@ import { validateModTree } from "../mods/validate.js";
 import {
   MOD_BAND_INSTANCE_ID,
   MOD_LIMITS,
+  MOD_RENDER_BAND_ROWS,
   MOD_RENDER_BODY_COLUMNS,
+  MOD_RENDER_PANE_ROWS,
+  type ModAgentInfo,
   type ModBandRenderResult,
   type ModCommandBridge,
   type ModCommandSpec,
+  type ModConfigRow,
   type ModPanelEventPayload,
   type ModPanelRenderResult,
   type ModPanelTree,
   type ModPanelUpdatePayload,
   type ModPermissionRequestEvent,
+  type ModPromptBox,
   type ModPromptFillMode,
   type ModPromptSubmitResult,
   type ModRenderSurface,
   type ModSessionCompactEvent,
   type ModSessionMeasureTrigger,
+  type ModSessionRepo,
   type ModSessionUsage,
+  type ModSessionVersion,
   type ModSettingsSource,
   type ModStatusPayload,
   type ModToastPayload,
   type ModTokenTotals,
   type ModToolCallEvent,
+  type ModToolInfo,
   type ModToolRunEvent,
   type ModTurnCompleteEvent,
   type ModTurnCompleteTrigger,
   type ModTurnStartEvent,
   type ModTurnStepEvent,
+  type ModUiCopyResult,
   type PluginMod,
 } from "../types/mods.js";
 import type { Plugin } from "../types/plugins.js";
 import { atomicWriteFileSync } from "../utils/atomicWrite.js";
+import { engineVersion } from "../utils/engineVersion.js";
 import { getEsbuild } from "../utils/esbuild.js";
 import { logger } from "../utils/globalLogger.js";
 
@@ -90,6 +100,18 @@ export interface ModSessionFacts {
     source?: ModSettingsSource;
     key?: string;
   }): Promise<unknown>;
+  /** `$.session.turns()`：用户已经发过几条 prompt（只数真实输入）。 */
+  turns(): number;
+  /** `$.session.repo()`：会话所在的 git 仓库；不在仓库里给 `null`。 */
+  repo(): ModSessionRepo | null;
+  /** `$.session.version()`：引擎版本、发布基线、构建时间。 */
+  version(): ModSessionVersion;
+  /** `$.config.list()`：`/config` 菜单此刻会画的行。 */
+  configRows(): ModConfigRow[];
+  /** `$.tool.list()`：这一刻模型能调的工具。 */
+  toolInfos(): ModToolInfo[];
+  /** `$.agent.list()`：这条会话派过、还没被丢掉的子代理。 */
+  agentInfos(): ModAgentInfo[];
 }
 
 export interface ModManagerOptions {
@@ -244,17 +266,18 @@ function withCommunityUsage(
  *
  * 我们这一侧还没有这些事实：`hasSurvey` 是 Claude Code 偶尔插在输入框上方的
  * 调查横幅（我们没有），`isWorking` 要问 AI 层的加载状态（渲染请求是从 surface
- * 来的，路线上拿不到），`bodyColumns` 见 {@link MOD_RENDER_BODY_COLUMNS}。
+ * 来的，路线上拿不到），`bodyColumns` 见 {@link MOD_RENDER_BODY_COLUMNS}，两个
+ * 行数见 {@link MOD_RENDER_PANE_ROWS}。
  * 先给「中性且稳定」的一组值 —— 缺字段会让社区 mod 的 `e.props.hasSurvey` 直接
  * 抛错，那些 mod 连画都画不出来。
  */
-function renderSiteProps(): Record<string, unknown> {
+function renderSiteProps(rows = MOD_RENDER_BAND_ROWS): Record<string, unknown> {
   return {
     hasSurvey: false,
     isWorking: false,
     bodyColumns: MOD_RENDER_BODY_COLUMNS,
-    maxRows: 8,
-    scroll: { offset: 0, bodyRows: 8 },
+    maxRows: rows,
+    scroll: { offset: 0, bodyRows: rows },
     view: {},
   };
 }
@@ -372,6 +395,33 @@ export class ModManager {
     mode: ModPromptFillMode;
   }) => Promise<boolean>;
   /**
+   * `$.prompt.read` 的出口（spec「输入框里现在有什么」）。
+   *
+   * 与 `promptFiller` 是同一条通道的两头，配对与超时也一样留在 `Agent` 那边
+   * —— 这里只转一手，答不出来就是 `{ text: "", cursor: 0 }`。
+   */
+  private promptDraftReader?: () => Promise<ModPromptBox>;
+  /**
+   * `$.ui.notice` 的出口（spec「工具行下面的一行」）。
+   *
+   * 只推不拉：宿主不画工具块就不传，mod 的调用照常成功（同 `logSink`）。
+   */
+  private noticeSink?: (
+    plugin: string,
+    toolUseId: string,
+    text: string | null,
+  ) => void;
+  /**
+   * `$.ui.copy` 的出口（spec「剪贴板与视图」）。
+   *
+   * 要等回执（谁写、写没写成都在界面那一端），所以是个 Promise；没接上时按
+   * `no-surface` 作答。
+   */
+  private copySink?: (request: {
+    text: string;
+    surface?: ModRenderSurface;
+  }) => Promise<ModUiCopyResult>;
+  /**
    * `$.session.usage()` 的数据源。
    *
    * 用量只有 `Agent` 读得到（上下文窗口、模型、每次响应的 usage 都在它和它下
@@ -424,6 +474,14 @@ export class ModManager {
       // `key` 由数据源自己取（它有那份配置）；兜底没配置可查，所以带 key 时
       // 与「没这一项」同义。
       settings: async (query) => (query.key === undefined ? {} : undefined),
+      // 没接数据源时三个清单都是空的、轮数 0、没有仓库、版本取当前包版本 ——
+      // 「读不到」不编一个值出来。
+      turns: () => 0,
+      repo: () => null,
+      version: () => engineVersion(),
+      configRows: () => [],
+      toolInfos: () => [],
+      agentInfos: () => [],
     };
     // cwd 现取现用：`cd` 之后起的脚本落在新目录。
     this.processes = new ModProcessManager(
@@ -469,6 +527,28 @@ export class ModManager {
     }) => Promise<boolean>,
   ): void {
     this.promptFiller = fn;
+  }
+
+  /** 接上「读草稿」通道（见 `promptDraftReader`）。 */
+  setPromptDraftReader(fn: () => Promise<ModPromptBox>): void {
+    this.promptDraftReader = fn;
+  }
+
+  /** 接上「工具行下面贴一行」的出口（见 `noticeSink`）。 */
+  setNoticeSink(
+    fn: (plugin: string, toolUseId: string, text: string | null) => void,
+  ): void {
+    this.noticeSink = fn;
+  }
+
+  /** 接上剪贴板通道（见 `copySink`）。 */
+  setCopySink(
+    fn: (request: {
+      text: string;
+      surface?: ModRenderSurface;
+    }) => Promise<ModUiCopyResult>,
+  ): void {
+    this.copySink = fn;
   }
 
   /**
@@ -584,6 +664,16 @@ export class ModManager {
               sessionId: () => this.facts.sessionId(),
               workspaceRoot: () => this.facts.workspaceRoot(),
               model: () => this.facts.model(),
+              sessionTurns: () => this.facts.turns(),
+              sessionRepo: () => this.facts.repo(),
+              sessionVersion: () => this.facts.version(),
+              listConfigRows: () => this.facts.configRows(),
+              listToolInfos: () => this.facts.toolInfos(),
+              listAgentInfos: () => this.facts.agentInfos(),
+              readPromptDraft: () => this.readPromptDraft(),
+              showNotice: (toolUseId, text) =>
+                this.noticeSink?.(plugin.name, toolUseId, text),
+              copyText: (request) => this.copyText(request),
               envGet: (name) => this.facts.env(name),
               settingsRead: (query) => this.facts.settings(query),
               sleep: (ms, signal) => this.startSleep(mod.id, ms, signal),
@@ -1292,6 +1382,44 @@ export class ModManager {
   }
 
   /**
+   * 读输入框里此刻的草稿（spec「输入框里现在有什么」）。
+   *
+   * 与 `fillPrompt` 一样不抛错：没人画、宿主没接、读失败都给空输入框。
+   */
+  private async readPromptDraft(): Promise<ModPromptBox> {
+    const read = this.promptDraftReader;
+    if (this.disposed || !read) return { text: "", cursor: 0 };
+    try {
+      return await read();
+    } catch (error) {
+      logger.debug("[Wave] 读草稿失败", error);
+      return { text: "", cursor: 0 };
+    }
+  }
+
+  /**
+   * 把一段文本交给界面写进剪贴板（spec「剪贴板与视图」）。
+   *
+   * 三种失败态都由界面那一端判；没接通道时是 `no-surface` —— 「没有人能接」
+   * 与「接了但写不进去」是两句话，别混成一个 `false`。
+   */
+  private async copyText(request: {
+    text: string;
+    surface?: ModRenderSurface;
+  }): Promise<ModUiCopyResult> {
+    const copy = this.copySink;
+    if (this.disposed || !copy) {
+      return { isCopied: false, reason: "no-surface" };
+    }
+    try {
+      return await copy(request);
+    } catch (error) {
+      logger.debug("[Wave] $.ui.copy 失败", error);
+      return { isCopied: false, reason: "refused" };
+    }
+  }
+
+  /**
    * 定时器回调抛错：记日志，并把错误摘要叠在该 mod 的每个面板上。
    *
    * 面板不是错误态换掉树，而是「错误条 + 上一帧照旧」（与元素回调抛错同一条
@@ -1523,8 +1651,8 @@ export class ModManager {
       component: "Pane",
       instance_id: pane.paneId,
       // 站点的 `props`：社区 mod 会读 `e.props.bodyColumns` 这类事实（见
-      // `renderSiteProps`）。
-      props: renderSiteProps(),
+      // `renderSiteProps`）。面板比带高得多，行数分开给。
+      props: renderSiteProps(MOD_RENDER_PANE_ROWS),
     });
     if (!result.ok) {
       return this.renderFailed(pane, result.error);

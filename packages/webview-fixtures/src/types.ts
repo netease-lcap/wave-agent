@@ -54,6 +54,9 @@ import type {
   ModPanelTree,
   ModPromptFillMode,
   ModPromptFillRequest,
+  ModPromptReadRequest,
+  ModCopyRequest,
+  ModNoticePayload,
   ModStatusPayload,
   ModToastPayload,
   ContextBreakdown,
@@ -73,6 +76,9 @@ export type {
   ModPanelUpdatePayload,
   ModPromptFillMode,
   ModPromptFillRequest,
+  ModPromptReadRequest,
+  ModCopyRequest,
+  ModNoticePayload,
   ModStatusPayload,
   ModToastPayload,
 };
@@ -598,6 +604,37 @@ export interface DesktopModToastMessage extends HostToWebviewMessageBase {
 export interface DesktopModPromptFillMessage extends HostToWebviewMessageBase {
   command: "desktopModPromptFill";
   payload: ModPromptFillRequest;
+}
+
+/**
+ * A mod wants to read this pane's composer (`$.prompt.read`; spec
+ * `ecosystem/plugin-mods.md`「输入框里现在有什么」).
+ *
+ * The mirror image of `desktopModPromptFill`: the webview answers with
+ * `modPromptReadResult` (`{ requestId, text, cursor }`), and must answer either
+ * way — silence reads as an empty draft after the limit.
+ */
+export interface DesktopModPromptReadMessage extends HostToWebviewMessageBase {
+  command: "desktopModPromptRead";
+  payload: ModPromptReadRequest;
+}
+
+/**
+ * A mod wants text on the clipboard (`$.ui.copy`; spec「剪贴板与视图」). The
+ * webview writes it and answers `modCopyResult`; a refusal is a normal answer.
+ */
+export interface DesktopModCopyMessage extends HostToWebviewMessageBase {
+  command: "desktopModCopy";
+  payload: ModCopyRequest;
+}
+
+/**
+ * One line under a tool call (`$.ui.notice`; spec「工具行下面的一行」). A push:
+ * `text: null` removes the line, and nothing is replayed on re-attach.
+ */
+export interface DesktopModNoticeMessage extends HostToWebviewMessageBase {
+  command: "desktopModNotice";
+  payload: ModNoticePayload;
 }
 
 /** One row of a directory listing for the file panel's tree. */
@@ -1878,6 +1915,9 @@ export type HostToWebviewMessage =
   | DesktopModStatusMessage
   | DesktopModToastMessage
   | DesktopModPromptFillMessage
+  | DesktopModPromptReadMessage
+  | DesktopModCopyMessage
+  | DesktopModNoticeMessage
   | DesktopDirEntriesMessage
   | DesktopFileSaveResultMessage
   | DesktopPreviewFileResultMessage

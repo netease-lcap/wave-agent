@@ -356,7 +356,12 @@ export class PluginLoader {
       return mods;
     }
 
-    const candidates = await this.collectModCandidates(pluginPath);
+    const entries = await this.collectModCandidates(pluginPath);
+    const candidates = await PluginLoader.expandEntryImports(
+      pluginPath,
+      entries,
+    );
+
     if (candidates.length === 0) return mods;
 
     let totalBytes = 0;
@@ -484,6 +489,56 @@ export class PluginLoader {
   }
 
   /**
+   * 把入口的相对 import 递归收进编译集。
+   *
+   * mod 的模块图由沙箱自己的 `require` 走（只认相对路径与 `wave-agent-sdk/mods`），
+   * 而它只能在**已编译**的文件里找 —— 不把入口 import 的兄弟文件一起读进来，
+   * `import { lineDelta } from "../lib/diff"` 就会当场报「找不到模块」。收进来的
+   * 只是编译集：除了入口，其余文件在 `ModRuntime.load()` 里被判成「没有导出
+   * `register`」，不会变成 mod（不占面板、不注册钩子 —— 见 `managers/modManager.ts`
+   * 里那条 `continue`）。
+   *
+   * 解析规则与沙箱的 `require` 保持一致（同一张候选表：原样、`.tsx` / `.ts` /
+   * `.jsx` / `.js`、`/index.*`），路径一律 `realpath` 之后再判是否越出插件目录：
+   * 越界的不读也不收，与 `loadMods` 对入口的 realpath 校验同一条口径。
+   * 总量受 `MOD_LIMITS.fileCount` 约束 —— 它本来就是「一个插件最多几个 mod 文件」。
+   */
+  private static async expandEntryImports(
+    pluginPath: string,
+    entries: string[],
+  ): Promise<string[]> {
+    const root = await realPathOr(pluginPath);
+    const inside = (file: string) => file.startsWith(root + path.sep);
+    const collected = [...entries];
+    const seen = new Set<string>();
+    for (const entry of collected) seen.add(await realPathOr(entry));
+
+    for (
+      let index = 0;
+      index < collected.length && collected.length < MOD_LIMITS.fileCount;
+      index += 1
+    ) {
+      const file = collected[index]!;
+      let source: unknown;
+      try {
+        source = await fs.readFile(file, "utf-8");
+      } catch {
+        continue;
+      }
+      if (typeof source !== "string") continue;
+      for (const specifier of relativeImportSpecifiers(source)) {
+        const target = await resolveImportFile(
+          path.resolve(path.dirname(file), specifier),
+        );
+        if (!target || seen.has(target) || !inside(target)) continue;
+        seen.add(target);
+        collected.push(target);
+      }
+    }
+    return collected;
+  }
+
+  /**
    * Validate the plugin manifest structure
    */
   private static validateManifest(manifest: PluginManifest): void {
@@ -500,6 +555,64 @@ export class PluginLoader {
         `Invalid plugin name: ${manifest.name}. Only lowercase letters, numbers, and hyphens are allowed.`,
       );
     }
+  }
+}
+
+/**
+ * 源文件里所有**相对**模块说明符（`import … from` / `export … from` /
+ * `import(…)` / `require(…)` / 只求副作用的 `import "…"`），去重、按出现顺序。
+ *
+ * 正则会命中字符串与注释里的同形片段 —— 无害：解析出来不是文件就丢掉，真正
+ * 找不到模块时的报错仍在沙箱的 `require` 那一步，这里不重复报。
+ */
+function relativeImportSpecifiers(source: string): string[] {
+  const found: string[] = [];
+  const pattern =
+    /(?:\bfrom\s*|\brequire\s*\(\s*|\bimport\s*\(\s*|\bimport\s*)['"]([^'"\n]+)['"]/g;
+  for (const match of source.matchAll(pattern)) {
+    const specifier = match[1]!;
+    if (!specifier.startsWith("./") && !specifier.startsWith("../")) continue;
+    if (!found.includes(specifier)) found.push(specifier);
+  }
+  return found;
+}
+
+/**
+ * `./x` 解析成真实文件：候选表与沙箱 `require` 的 `moduleCandidates` 一致。
+ * 返回 `realpath`（调用方按它判越界与去重），找不到就 `undefined`。
+ */
+async function resolveImportFile(target: string): Promise<string | undefined> {
+  const candidates = [
+    target,
+    `${target}.tsx`,
+    `${target}.ts`,
+    `${target}.jsx`,
+    `${target}.js`,
+    path.join(target, "index.tsx"),
+    path.join(target, "index.ts"),
+    path.join(target, "index.jsx"),
+    path.join(target, "index.js"),
+  ];
+  for (const candidate of candidates) {
+    if (!MOD_LOADER_EXTENSIONS.has(path.extname(candidate).toLowerCase())) {
+      continue;
+    }
+    try {
+      if (!(await fs.stat(candidate)).isFile()) continue;
+      return await realPathOr(candidate);
+    } catch {
+      // 换下一个候选。
+    }
+  }
+  return undefined;
+}
+
+/** `realpath`，失败时退回 `path.resolve`（文件不在时后面会各自处理）。 */
+async function realPathOr(file: string): Promise<string> {
+  try {
+    return await fs.realpath(file);
+  } catch {
+    return path.resolve(file);
   }
 }
 

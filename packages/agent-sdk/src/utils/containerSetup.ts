@@ -20,6 +20,9 @@ import { PluginManager } from "../managers/pluginManager.js";
 import { ModManager } from "../managers/modManager.js";
 import { renderSurfacesOf } from "../mods/runtime.js";
 import type { ModPermissionRequestEvent } from "../types/mods.js";
+import { MOD_SETTINGS_SOURCES } from "../types/mods.js";
+import { buildConfigRows, detectSessionRepo } from "../mods/facts.js";
+import { engineVersion } from "./engineVersion.js";
 import { BashModeManager } from "../managers/bashModeManager.js";
 import { CronManager } from "../managers/cronManager.js";
 import { PageWatchManager } from "../managers/pageWatchManager.js";
@@ -627,6 +630,43 @@ export function setupAgentContainer(
         );
         return query.key === undefined ? layer : layer[query.key];
       },
+      // 用户轮数：只数真实输入，工具结果挂在 assistant 消息上、系统注入带
+      // `isMeta`，两者都不算（spec「会话事实」）。
+      turns: () => messageManager.countUserTurns(),
+      // 仓库探测按「会话工作根」：`cd` 进子目录不该让插件以为换了仓库，进
+      // 工作树是真的换了地方、该跟。
+      repo: () =>
+        detectSessionRepo(container.get<string>("WorkspaceRoot") ?? workdir),
+      version: () => engineVersion(),
+      // 三个只读清单（spec「配了哪些、能调什么、有谁在跑」）。每次都现取：
+      // 插件在一次钩子里连读两次不该看到两个版本。
+      configRows: () => {
+        const workspaceRoot = container.get<string>("WorkspaceRoot") ?? workdir;
+        const localKeys = new Set<string>();
+        for (const source of MOD_SETTINGS_SOURCES) {
+          const layer = configurationService.readSettingsLayer(
+            source,
+            workspaceRoot,
+          );
+          for (const key of Object.keys(layer)) localKeys.add(key);
+        }
+        return buildConfigRows({
+          merged: configurationService.getCurrentConfiguration() as Record<
+            string,
+            unknown
+          > | null,
+          localKeys,
+        });
+      },
+      toolInfos: () =>
+        toolManager.list().map((tool) => ({
+          name: tool.name,
+          description: tool.config?.function?.description ?? "",
+          // MCP 工具的名字由宿主编成 `mcp__<server>__<tool>`，这里按同一个
+          // 约定反判，不去翻 MCP 的注册表。
+          mcp: tool.name.startsWith("mcp__"),
+        })),
+      agentInfos: () => subagentManager.listModAgents(),
     },
   });
   container.register("ModManager", modManager);

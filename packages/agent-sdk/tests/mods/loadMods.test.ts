@@ -263,3 +263,94 @@ describe("PluginLoader.loadMods 认社区的 hooks/hooks.json 布局", () => {
     expect(fromMods.map((mod) => mod.id)).toEqual(["todo:a"]);
   });
 });
+
+/**
+ * 入口 import 的兄弟文件必须一起进编译集（沙箱的 `require` 只认已编译的文件）。
+ * 它们只是依赖模块：`register` 只有入口有，`ModRuntime.load()` 那边会把它们判成
+ * 「不是 mod」，所以这里只需断言「被收进来、排入口之后、不重复」。
+ */
+describe("PluginLoader.loadMods 收入口 import 的相对文件", () => {
+  const HOOKS = path.join(PLUGIN, "hooks", "hooks.json");
+  const ENTRY = path.join(PLUGIN, "hooks", "register.tsx");
+  const LIB = path.join(PLUGIN, "lib");
+
+  function mockTree(files: Record<string, string>): void {
+    vi.mocked(fs.realpath).mockImplementation(async (target: unknown) =>
+      String(target),
+    );
+    vi.mocked(fs.readdir).mockRejectedValue(
+      Object.assign(new Error("ENOENT"), { code: "ENOENT" }),
+    );
+    vi.mocked(fs.readFile).mockImplementation(async (target: unknown) => {
+      const content = files[String(target)];
+      if (content === undefined) {
+        throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+      }
+      return content;
+    });
+    vi.mocked(fs.stat).mockImplementation(async (target: unknown) => {
+      const key = String(target);
+      return {
+        size: 16,
+        isFile: () => files[key] !== undefined,
+      } as unknown as Awaited<ReturnType<typeof fs.stat>>;
+    });
+  }
+
+  it("省略扩展名的 import 按沙箱的候选表解析，兄弟文件排在入口之后", async () => {
+    mockTree({
+      [HOOKS]: JSON.stringify({ modules: ["./register.tsx"] }),
+      [ENTRY]: 'import { lineDelta } from "../lib/diff";\n',
+      [path.join(LIB, "diff.ts")]: "export const lineDelta = () => 0;\n",
+    });
+
+    const mods = await PluginLoader.loadMods(PLUGIN, "change-ledger");
+
+    expect(mods.map((mod) => mod.path)).toEqual([
+      ENTRY,
+      path.join(LIB, "diff.ts"),
+    ]);
+    expect(mods.map((mod) => mod.id)).toEqual([
+      "change-ledger:register",
+      "change-ledger:diff",
+    ]);
+  });
+
+  it("沿 import 链递归，同一个文件被两处 import 时只收一次", async () => {
+    const types = path.join(LIB, "types.ts");
+    mockTree({
+      [HOOKS]: JSON.stringify({ modules: ["./register.tsx", "./second.tsx"] }),
+      [ENTRY]:
+        'import { a } from "../lib/a";\nimport { t } from "../lib/types";\n',
+      [path.join(PLUGIN, "hooks", "second.tsx")]:
+        'import { a } from "../lib/a";\n',
+      // `lib/a.ts` 再往下 import 一个：链要走到底。
+      [path.join(LIB, "a.ts")]: 'import { deep } from "./deep";\n',
+      [path.join(LIB, "deep.ts")]: "export const deep = 1;\n",
+      [types]: "export type T = string;\n",
+    });
+
+    const mods = await PluginLoader.loadMods(PLUGIN, "todo");
+
+    expect(mods.map((mod) => mod.path)).toEqual([
+      ENTRY,
+      path.join(PLUGIN, "hooks", "second.tsx"),
+      path.join(LIB, "a.ts"),
+      types,
+      path.join(LIB, "deep.ts"),
+    ]);
+  });
+
+  it("越出插件目录的相对 import 不收（与入口的 realpath 校验同一条口径）", async () => {
+    const OUTSIDE = path.resolve("/elsewhere/util.ts");
+    mockTree({
+      [HOOKS]: JSON.stringify({ modules: ["./register.tsx"] }),
+      [ENTRY]: 'import { x } from "../../../elsewhere/util";\n',
+      [OUTSIDE]: "export const x = 1;\n",
+    });
+
+    const mods = await PluginLoader.loadMods(PLUGIN, "todo");
+
+    expect(mods.map((mod) => mod.path)).toEqual([ENTRY]);
+  });
+});

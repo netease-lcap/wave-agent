@@ -184,6 +184,14 @@ export interface MessageInputHandle {
    * 推送用量）时回退到整条底栏 —— 浮层照旧在输入框上方打开，不飘到视口角落。
    */
   getContextAnchorRect: () => MenuAnchorRect | null;
+  /**
+   * What is in the box right now, plus the caret offset in UTF-16 units
+   * (`$.prompt.read`, spec ecosystem/plugin-mods.md「输入框里现在有什么」).
+   *
+   * `null` when the input is not mounted — the caller answers the mod an empty
+   * draft instead of leaving it to time out.
+   */
+  readDraft: () => { text: string; cursor: number } | null;
 }
 
 /** 选区变化（@ 提及、斜杠命令下拉）的防抖：用户停下不光标了才去问宿主。 */
@@ -664,6 +672,29 @@ export const MessageInput = forwardRef<
     },
     fillDraft,
     getContextAnchorRect,
+    /**
+     * `$.prompt.read` 的取数点（spec「输入框里现在有什么」）：`fillDraft` 的反向
+     * 操作，返回纯文本与光标位置。光标不在输入框里（用户点了别处）时按末尾算 ——
+     * 插件要的是「接着会打在哪」的近似，不是选区本身。
+     */
+    readDraft: () => {
+      const div = textareaRef.current;
+      if (!div) return null;
+      const text = div.innerText ?? div.textContent ?? "";
+      const selection = window.getSelection();
+      const range =
+        selection && selection.rangeCount > 0 ? selection.getRangeAt(0) : null;
+      if (!range || !div.contains(range.commonAncestorContainer)) {
+        return { text, cursor: text.length };
+      }
+      // 量到光标为止的文本长度。`Range.toString()` 只拼文本节点、不把 `<br>`
+      // 算成换行，所以跨行时可能比 `innerText` 少几个字符；`cursor` 只是给插件
+      // 的近似位置（真插入要走 `fillDraft`），夹到正文长度内即可。
+      const upto = document.createRange();
+      upto.selectNodeContents(div);
+      upto.setEnd(range.endContainer, range.endOffset);
+      return { text, cursor: Math.min(upto.toString().length, text.length) };
+    },
   }));
 
   // Auto-focus input on component mount

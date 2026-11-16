@@ -1,15 +1,22 @@
 import * as vm from "node:vm";
 import * as path from "node:path";
 import type {
+  ModAgentInfo,
   ModAskOptions,
   ModCommandInfo,
   ModCommandSpec,
+  ModConfigRow,
   ModElementType,
   ModFetchResult,
+  ModFsAncestor,
   ModFsEntry,
   ModFsStat,
+  ModPromptBox,
   ModRunOptions,
   ModRunResult,
+  ModSessionRepo,
+  ModSessionVersion,
+  ModToolInfo,
   ModTreeNode,
   ModSpawnOptions,
   ModProcessChunk,
@@ -19,9 +26,15 @@ import type {
   ModRenderSurface,
   ModSessionUsage,
   ModSettingsSource,
+  ModUiCopyResult,
+  ModUiViewResult,
   ModUiOpenResult,
 } from "../types/mods.js";
-import { MOD_LIMITS, MOD_SETTINGS_SOURCES } from "../types/mods.js";
+import {
+  MOD_LIMITS,
+  MOD_RENDER_SURFACES,
+  MOD_SETTINGS_SOURCES,
+} from "../types/mods.js";
 import {
   Box,
   Text,
@@ -316,6 +329,67 @@ function toastMs(timeoutMs: unknown): number {
   return Math.min(timeoutMs, MOD_LIMITS.toastMaxMs);
 }
 
+/** `$.ui.copy({ surface })` 的端名是否合法。 */
+function isRenderSurface(value: unknown): value is ModRenderSurface {
+  return (
+    typeof value === "string" &&
+    (MOD_RENDER_SURFACES as readonly string[]).includes(value)
+  );
+}
+
+/** `child` 与 `parent` 是同一个路径，或者 `child` 落在 `parent` 之内。 */
+function isWithinPath(child: string, parent: string): boolean {
+  const relative = path.relative(parent, child);
+  return (
+    relative === "" ||
+    (!relative.startsWith("..") && !path.isAbsolute(relative))
+  );
+}
+
+/**
+ * 校验 `$.fs.ancestors` 的参数（spec「沿目录链找指令文件」）。
+ *
+ * `names` 只收文件名：给了带 `/` 的路径就当场报错，而不是拿它去 `join` 出一
+ * 个跑到祖父目录外面的路径。
+ */
+function normalizeAncestorRequest(request: unknown): {
+  names: string[];
+  of?: string;
+  below?: string;
+} {
+  const value = (request ?? {}) as {
+    names?: unknown;
+    of?: unknown;
+    below?: unknown;
+  };
+  if (!Array.isArray(value.names) || value.names.length === 0) {
+    throw new Error('$.fs.ancestors 需要一个 { names: ["AGENTS.md"] }');
+  }
+  const names: string[] = [];
+  for (const name of value.names) {
+    if (typeof name !== "string" || name.length === 0) {
+      throw new Error("$.fs.ancestors 的 names 只能是非空字符串");
+    }
+    if (name.includes("/") || name.includes(path.sep)) {
+      throw new Error(
+        `$.fs.ancestors 的 names 只收文件名，不接受路径：${name}`,
+      );
+    }
+    if (!names.includes(name)) names.push(name);
+  }
+  for (const key of ["of", "below"] as const) {
+    const item = value[key];
+    if (item !== undefined && typeof item !== "string") {
+      throw new Error(`$.fs.ancestors 的 ${key} 必须是字符串`);
+    }
+  }
+  return {
+    names,
+    of: value.of as string | undefined,
+    below: value.below as string | undefined,
+  };
+}
+
 /**
  * 校验 `$.ui.ask` 的参数，归一成宿主那张提问卡片要的形状（spec「问用户一个问题」）。
  *
@@ -548,6 +622,29 @@ export interface ModDollar {
      * 做**精确**比较。没人能答（没有界面、用户关掉了对话框）时 reject。
      */
     ask(question: string, options?: ModAskOptions): Promise<string>;
+    /**
+     * 贴在某个工具调用下面的一行（spec「工具行下面的一行」）。
+     *
+     * `text` 传 `undefined` 是撤掉那一行。tool_use_id 对不上当场报错：静默丢弃
+     * 会让作者以为自己画上了。
+     */
+    notice(toolUseId: string, text: string | undefined): void;
+    /**
+     * 把文本写进剪贴板（spec「剪贴板与视图」）。
+     *
+     * 拿不到剪贴板（终端 CLI、用户拒绝）也走返回值、不 reject —— 失败是正常
+     * 结果，插件据此换一种交付方式（与 `prompt.fill` 同一条纪律）。
+     */
+    copy(args: {
+      text: string;
+      surface?: ModRenderSurface;
+    }): Promise<ModUiCopyResult>;
+    /**
+     * 把主视图切到某个子代理的转录（spec「剪贴板与视图」）。
+     *
+     * 一期一律答 `{ deny }`：还没有「在一个会话里切视角」的界面。
+     */
+    view(view: { agentId?: string }): Promise<ModUiViewResult>;
   };
   state: {
     get(key: string): unknown;
@@ -600,6 +697,18 @@ export interface ModDollar {
     list(dirPath: string): Promise<ModFsEntry[]>;
     stat(filePath: string): Promise<ModFsStat>;
     exists(filePath: string): Promise<boolean>;
+    /**
+     * 沿目录链往上找同名的指令文件（spec「沿目录链找指令文件」）。
+     *
+     * 从 `of`（缺省是会话**当前**工作目录，与其余 `$.fs` 方法同一条口径）逐级
+     * 往上，到 `below`（缺省是会话工作根 —— `cd` 不会把它带走）为止，收集
+     * `names` 里任一个存在的文件，结果**根在前**。找不到给空数组、不抛错。
+     */
+    ancestors(request: {
+      names: readonly string[];
+      of?: string;
+      below?: string;
+    }): Promise<readonly ModFsAncestor[]>;
   };
   /**
    * 网络（spec「发 HTTP 请求」）。
@@ -635,6 +744,13 @@ export interface ModDollar {
       text: string;
       mode?: ModPromptFillMode;
     }): Promise<{ isFilled: boolean }>;
+    /**
+     * 读用户**此刻**打在输入框里的草稿（spec「输入框里现在有什么」）。
+     *
+     * `fill` 的反向操作：没有界面接手时给 `{ text: "", cursor: 0 }`，不 reject
+     * —— 「现在没人画输入框」和「用户还没打字」对插件是同一个答案。
+     */
+    read(): Promise<ModPromptBox>;
   };
   /**
    * 只读的会话快照（spec「会话用量」）。
@@ -671,6 +787,22 @@ export interface ModDollar {
      * 错误，直接判 `length`。与 `$.ui.open()` 的 `isPlaced` 同一个数据源。
      */
     surfaces(): Promise<readonly ModRenderSurface[]>;
+    /**
+     * 用户在这条会话里发过几轮话（spec「七个只读事实」）。
+     *
+     * 只数真实输入：工具结果、系统注入、`$.prompt.submit` 送进去的都算用户轮
+     * （它们确实是用户侧发言），meta 消息不算。
+     */
+    turns(): Promise<number>;
+    /**
+     * 会话所在的 git 仓库（spec「七个只读事实」）。
+     *
+     * 不在仓库里给 `null`、不抛错 —— 社区写法就是 `(await $.session.repo())?.root`。
+     * `root` 用会话工作根：进 worktree 该跟，`cd` 进子目录不该让插件以为换了仓库。
+     */
+    repo(): Promise<ModSessionRepo | null>;
+    /** 引擎版本（spec「七个只读事实」）：`{ version }`，读不到给空串。 */
+    version(): Promise<ModSessionVersion>;
   };
   /**
    * 环境变量（spec「环境变量与设置（只读）」）。
@@ -704,6 +836,32 @@ export interface ModDollar {
     register(spec: ModCommandSpec): { command: string };
     list(): ModCommandInfo[];
     run(options: { command: string; args?: string }): Promise<void>;
+  };
+  /**
+   * 有哪些工具可调（spec「配了哪些、能调什么、有谁在跑」）。
+   *
+   * 只给名字、说明、是不是 MCP；工具自己的参数 schema 不给 —— 那是给模型看
+   * 的，插件拿它没有用途。
+   */
+  tool: {
+    list(): ModToolInfo[];
+  };
+  /**
+   * 生效的配置项（spec「配了哪些、能调什么、有谁在跑」）。
+   *
+   * 只列标量（`boolean` / `string` / `number` / 字符串数组），嵌套对象整棵跳过：
+   * 配置面板画不出树，`isLocked` 这种判断也只对标量有意义。
+   */
+  config: {
+    list(): ModConfigRow[];
+  };
+  /**
+   * 这条会话里跑过的子代理（spec「配了哪些、能调什么、有谁在跑」）。
+   *
+   * 只读、瞬时快照；状态是归一化后的五个值，没有「空闲」这个中间态。
+   */
+  agent: {
+    list(): ModAgentInfo[];
   };
 }
 
@@ -780,6 +938,45 @@ export interface ModRuntimeHost {
   workspaceRoot(): string;
   /** `$.session.model()`：当前生效的模型名；没配时给空串。 */
   model(): string;
+  /**
+   * `$.session.turns()`：用户已经发过几条 prompt。
+   *
+   * 数的是真实输入，不含工具结果与系统注入（spec「会话事实」）。
+   */
+  sessionTurns(): number;
+  /** `$.session.repo()`：会话所在的 git 仓库；不在仓库里给 `null`。 */
+  sessionRepo(): ModSessionRepo | null;
+  /** `$.session.version()`：引擎版本、发布基线、构建时间。 */
+  sessionVersion(): ModSessionVersion;
+  /** `$.config.list()`：`/config` 菜单此刻会画的行（只列真有值的键）。 */
+  listConfigRows(): ModConfigRow[];
+  /** `$.tool.list()`：这一刻模型能调的工具，顺序就是模型看到的那份。 */
+  listToolInfos(): ModToolInfo[];
+  /** `$.agent.list()`：这条会话派过、还没被宿主丢掉的子代理。 */
+  listAgentInfos(): ModAgentInfo[];
+  /**
+   * `$.prompt.read()`：surface 输入框里的草稿。
+   *
+   * 与 {@link fillPrompt} 同一条通道的另一头：没人答、没人画都按
+   * `{ text: "", cursor: 0 }` 作答，**不 reject**（spec「输入框里现在有什么」）。
+   */
+  readPromptDraft(): Promise<ModPromptBox>;
+  /**
+   * `$.ui.notice`：在某个工具调用下面贴一行，`null` 撤掉（spec「工具行下面的一行」）。
+   *
+   * 只推不拉：宿主收不到（CLI 不画工具块）就丢弃，mod 那边照常成功。
+   */
+  showNotice(toolUseId: string, text: string | null): void;
+  /**
+   * `$.ui.copy()`：把文本写进某一端的剪贴板。
+   *
+   * 返回值是结果而不是抛错：`no-surface` / `no-clipboard` / `refused` 三种
+   * 失败态都由实现方判（spec「剪贴板与视图」）。
+   */
+  copyText(request: {
+    text: string;
+    surface?: ModRenderSurface;
+  }): Promise<ModUiCopyResult>;
   /** `$.env.get`：会话 env 快照与 OS env 合并后按名字取。 */
   envGet(name: string): string | undefined;
   /**
@@ -1280,6 +1477,45 @@ export class ModRuntime {
           // 等人的时间不算钩子预算：与 `$.process.run` 同一条口径。
           return this.withBudget(() => host.askUser(text, rest));
         },
+        // 贴在某个工具调用下面的一行（spec「工具行下面的一行」）：只推不拉，
+        // 对不上 id 当场报错 —— 默默丢弃会让作者以为画上了。
+        notice: (toolUseId, text) => {
+          if (typeof toolUseId !== "string" || toolUseId.length === 0) {
+            throw new Error("$.ui.notice 需要一个 tool_use_id");
+          }
+          if (text !== undefined && typeof text !== "string") {
+            throw new Error("$.ui.notice 的 text 必须是字符串或者不写");
+          }
+          host.showNotice(toolUseId, text === undefined ? null : text);
+        },
+        // 剪贴板：哪一端接得住由宿主判，失败也走返回值不走抛错
+        // （spec「剪贴板与视图」）。
+        copy: (args) => {
+          const request = args as
+            | { text?: unknown; surface?: unknown }
+            | undefined;
+          const text = request?.text;
+          if (typeof text !== "string") {
+            throw new Error("$.ui.copy 需要一个 { text }");
+          }
+          if (text.length > MOD_LIMITS.copyTextChars) {
+            throw new Error(
+              `$.ui.copy 的 text 超过 ${MOD_LIMITS.copyTextChars} 个字符`,
+            );
+          }
+          const surface = request?.surface;
+          if (surface !== undefined && !isRenderSurface(surface)) {
+            throw new Error(
+              `$.ui.copy 的 surface 只允许 ${MOD_RENDER_SURFACES.join(" / ")}`,
+            );
+          }
+          return this.withBudget(() => host.copyText({ text, surface }));
+        },
+        // 一期一律拒绝：还没有「在一个会话里切换看哪个 agent」的界面。形状
+        // 先对上，能力后补 —— 与 `$.ui.panes()` 只回 id 数组同一条纪律。
+        view: async (): Promise<ModUiViewResult> => ({
+          deny: "还不能把主视图切到子代理的转录（这条会话没有多 agent 视图）",
+        }),
       },
       state: {
         get: (key) => cloneValue(host.stateGet(key)),
@@ -1322,6 +1558,10 @@ export class ModRuntime {
           this.withBudget(() => this.fileApi().stat(filePath)),
         exists: (filePath) =>
           this.withBudget(() => this.fileApi().exists(filePath)),
+        // 沿目录链找指令文件（spec「沿目录链找指令文件」）；上界是会话工作根，
+        // 不走到文件系统根。
+        ancestors: (request) =>
+          this.withBudget(() => this.ancestorFiles(request)),
       },
       http: {
         fetch: (url, options) => this.withBudget(() => modFetch(url, options)),
@@ -1363,6 +1603,9 @@ export class ModRuntime {
           });
           return { isFilled };
         },
+        // 与 fill 同一条通道的另一头；没人画 / 没人答都按空输入框作答
+        // （spec「输入框里现在有什么」）。
+        read: () => this.withBudget(() => host.readPromptDraft()),
       },
       // 只读快照；克隆一份交出去，mod 改自己的副本伤不到会话。
       session: {
@@ -1375,6 +1618,11 @@ export class ModRuntime {
         model: async () => host.model(),
         // 空数组 = 没有界面（`wave -p` 也是正常会话），永远不 reject。
         surfaces: async () => [...host.surfaces()],
+        // 用户轮数：只数真实输入，不含工具结果与系统注入。
+        turns: async () => host.sessionTurns(),
+        // 不在 git 仓库里给 null，不抛错（社区写法是 `?.root`）。
+        repo: async () => cloneValue(host.sessionRepo()),
+        version: async () => ({ ...host.sessionVersion() }),
       },
       env: {
         get: async (name) => {
@@ -1422,6 +1670,17 @@ export class ModRuntime {
           }
           await host.runCommand(command, options?.args);
         },
+      },
+      // 三个只读清单（spec「配了哪些、能调什么、有谁在跑」）：形状照 Claude
+      // Code 的 ConfigRow / ToolInfo / AgentInfo，一次读取无副作用。
+      tool: {
+        list: () => cloneValue(host.listToolInfos()),
+      },
+      config: {
+        list: () => cloneValue(host.listConfigRows()),
+      },
+      agent: {
+        list: () => cloneValue(host.listAgentInfos()),
       },
     };
 
@@ -1691,7 +1950,9 @@ export class ModRuntime {
         return await this.invokeInContext<unknown>(
           entry.handler,
           undefined,
-          entry.isCommunity ? [this.dollar, event, next] : [event],
+          // 我们的形状也拿到 `next`（第二个实参）：没有它，按推荐写法写的守卫
+          // 只能看见调用、看不见结果。老 mod 少写一个形参不受影响。
+          entry.isCommunity ? [this.dollar, event, next] : [event, next],
           `${name} 的处理函数`,
           `${this.host.pluginName}:${name}`,
         );
@@ -2003,6 +2264,67 @@ export class ModRuntime {
   private fileApi(): ModFs {
     this.fileApiHolder ??= new ModFs(() => this.host.workdir());
     return this.fileApiHolder;
+  }
+
+  /**
+   * `$.fs.ancestors`：沿目录链向上找 `names` 里的文件（spec「沿目录链找指令文件」）。
+   *
+   * 相对路径按会话**当前**工作目录解析（与 `$.fs` 其余方法同一个基准），上界是
+   * **会话工作根** —— 那个值 `cd` 不动。拿「会动」的那个当上界的话，`cd` 进子
+   * 目录之后「一路往上找到项目根」就变成「往上找到刚才那个目录」。
+   */
+  private async ancestorFiles(request: unknown): Promise<ModFsAncestor[]> {
+    const { names, of, below } = normalizeAncestorRequest(request);
+    const base = path.resolve(this.host.workdir());
+    const startDir = path.resolve(base, of ?? ".");
+    const limit = path.resolve(base, below ?? this.host.workspaceRoot());
+    if (!isWithinPath(startDir, limit)) {
+      throw new Error(`$.fs.ancestors 的起点 ${startDir} 不在 ${limit} 之内`);
+    }
+
+    // 近 → 远收集，最后翻成「根在前」（与 Claude Code 同一个顺序）。
+    const nearToFar: ModFsAncestor[] = [];
+    let total = 0;
+    let stopped = false;
+    let dir = startDir;
+    while (!stopped) {
+      for (const name of names) {
+        const file = path.join(dir, name);
+        let content: string;
+        try {
+          if (!(await this.fileApi().exists(file))) continue;
+          const text = await this.fileApi().read(file);
+          if (typeof text !== "string") continue;
+          content = text;
+        } catch (error) {
+          // 读不动（权限、是个目录、超过单文件上限）就跳过这一份：整条祖先链
+          // 不该因为一个不可读的父目录失败。至于「为什么没找到」，日志里有。
+          logger.debug(`[mods] $.fs.ancestors 跳过 ${file}`, error);
+          continue;
+        }
+        if (
+          total + Buffer.byteLength(content, "utf8") >
+            MOD_LIMITS.ancestorBytes ||
+          nearToFar.length >= MOD_LIMITS.ancestorFiles
+        ) {
+          // 到上限就停：再往上的都离会话更远，截掉它们比截掉近的那几份好。
+          stopped = true;
+          break;
+        }
+        total += Buffer.byteLength(content, "utf8");
+        nearToFar.push({
+          dir,
+          name,
+          content,
+          parts: [{ path: file, content }],
+        });
+      }
+      if (stopped || dir === limit) break;
+      const parent = path.dirname(dir);
+      if (parent === dir) break;
+      dir = parent;
+    }
+    return nearToFar.reverse();
   }
 
   /**

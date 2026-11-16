@@ -62,9 +62,15 @@ import type {
   DesktopModStatusMessage,
   DesktopModToastMessage,
   DesktopModPromptFillMessage,
+  DesktopModPromptReadMessage,
+  DesktopModCopyMessage,
+  DesktopModNoticeMessage,
   ModBandRenderResult,
   ModPanelUpdatePayload,
   ModPromptFillRequest,
+  ModPromptReadRequest,
+  ModCopyRequest,
+  ModNoticePayload,
   ModStatusPayload,
   ModToastPayload,
   DesktopPanelKind,
@@ -256,6 +262,18 @@ export interface Fixtures {
     payload: ModPromptFillRequest,
     overrides?: Overrides<DesktopModPromptFillMessage>,
   ) => DesktopModPromptFillMessage;
+  desktopModPromptRead: (
+    payload: ModPromptReadRequest,
+    overrides?: Overrides<DesktopModPromptReadMessage>,
+  ) => DesktopModPromptReadMessage;
+  desktopModCopy: (
+    payload: ModCopyRequest,
+    overrides?: Overrides<DesktopModCopyMessage>,
+  ) => DesktopModCopyMessage;
+  desktopModNotice: (
+    payload: ModNoticePayload,
+    overrides?: Overrides<DesktopModNoticeMessage>,
+  ) => DesktopModNoticeMessage;
   desktopAccountInfo: (
     overrides?: Overrides<DesktopAccountInfoMessage>,
   ) => DesktopAccountInfoMessage;
@@ -547,6 +565,24 @@ export const fixtures: Fixtures = {
 
   desktopModPromptFill: (payload, overrides = {}) => ({
     command: "desktopModPromptFill",
+    payload,
+    ...overrides,
+  }),
+
+  desktopModPromptRead: (payload, overrides = {}) => ({
+    command: "desktopModPromptRead",
+    payload,
+    ...overrides,
+  }),
+
+  desktopModCopy: (payload, overrides = {}) => ({
+    command: "desktopModCopy",
+    payload,
+    ...overrides,
+  }),
+
+  desktopModNotice: (payload, overrides = {}) => ({
+    command: "desktopModNotice",
     payload,
     ...overrides,
   }),

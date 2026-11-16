@@ -86,10 +86,10 @@ const ELEMENT_PROPS: Record<ModElementType, ReadonlySet<string>> = {
   Button: new Set([
     "key",
     "label",
-    "disabled",
     "variant",
     "plain",
     "dimColor",
+    "role",
     "autoFocus",
     "hotkey",
   ]),
@@ -515,6 +515,15 @@ function walkNode(
     if (props.variant !== "primary" && props.variant !== "secondary") {
       throw new Error(`Button.variant 只允许 "primary" 或 "secondary"`);
     }
+  }
+  // `role` 只有一个值：它是「这个按钮关闭本站点」的绘制提示（与 Claude Code 的
+  // `role is "dismiss" or absent` 同一档），写别的说明作者想要的语义我们画不出。
+  if (
+    type === "Button" &&
+    props.role !== undefined &&
+    props.role !== "dismiss"
+  ) {
+    throw new Error(`Button.role 只允许 "dismiss"`);
   }
   checkElementValues(type, props);
   const hover = checkHover(

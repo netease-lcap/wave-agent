@@ -656,6 +656,19 @@ button.reasoning-header {
   gap: 4px;
 }
 
+/* 插件贴在工具块下面的一行（`$.ui.notice`，spec「工具行下面的一行」）：
+   读起来像工具块自己的备注 —— 与 `.compact-params` 同一档字号与颜色，缩进
+   对齐到圆点之后那一列。 */
+.tool-notice {
+  color: var(--vscode-descriptionForeground);
+  font-size: 11px;
+  line-height: 18px;
+  padding-left: 18px;
+  margin-top: 2px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .bash-command-input {
   display: flex;
   align-items: flex-start;

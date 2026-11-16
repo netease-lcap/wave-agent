@@ -3,6 +3,7 @@ import * as fs from "fs";
 import * as path from "path";
 import type { SubagentConfiguration } from "../utils/subagentParser.js";
 import type { Message, NoticeLevel, Usage } from "../types/index.js";
+import type { ModAgentInfo, ModAgentStatus } from "../types/mods.js";
 import { AIManager } from "./aiManager.js";
 import { MessageManager } from "./messageManager.js";
 import { ToolManager } from "./toolManager.js";
@@ -1266,6 +1267,26 @@ export class SubagentManager {
   }
 
   /**
+   * 这条会话派过的子代理，按派生的先后排（`$.agent.list()`，spec「配了哪些、
+   * 能调什么、有谁在跑」）。
+   *
+   * 只列还在的：任务被丢掉之后就不在表里了。状态按 Claude Code 的
+   * `AgentStatus` 命名，映射见 {@link modAgentStatusOf}。
+   */
+  listModAgents(): ModAgentInfo[] {
+    const agents: ModAgentInfo[] = [];
+    for (const instance of this.instances.values()) {
+      agents.push({
+        id: instance.subagentId,
+        description: instance.description,
+        type: instance.subagentType,
+        status: modAgentStatusOf(instance.status),
+      });
+    }
+    return agents;
+  }
+
+  /**
    * Update instance status
    */
   updateInstanceStatus(
@@ -1493,5 +1514,27 @@ export class SubagentManager {
     if (this.callbacks?.onSubagentMessagesChange) {
       this.callbacks.onSubagentMessagesChange(subagentId, messages);
     }
+  }
+}
+
+/**
+ * 子代理状态 → mod 面那六档（Claude Code 的 `AgentStatus`）。
+ *
+ * 我们的 `initializing` / `active` / `completed` / `error` / `aborted` 逐一对上
+ * `pending` / `running` / `completed` / `failed` / `killed`。`idle` 没有对应：
+ * 我们的子代理不吃消息，跑完就结束。
+ */
+function modAgentStatusOf(status: SubagentInstance["status"]): ModAgentStatus {
+  switch (status) {
+    case "initializing":
+      return "pending";
+    case "active":
+      return "running";
+    case "completed":
+      return "completed";
+    case "error":
+      return "failed";
+    case "aborted":
+      return "killed";
   }
 }

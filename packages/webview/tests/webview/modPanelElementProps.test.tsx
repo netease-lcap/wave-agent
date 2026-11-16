@@ -123,6 +123,36 @@ describe("mod 元素的视觉与布局 prop", () => {
     expect(document.activeElement).toBe(button);
   });
 
+  it("Button 的 role=dismiss 画成关闭控件，label 只剩无障碍名", async () => {
+    const user = userEvent.setup();
+    const { container, onEvent } = renderTree(
+      box({}, [
+        {
+          type: "Button",
+          props: {
+            key: "close",
+            label: "关闭",
+            role: "dismiss",
+            variant: "primary",
+          },
+          children: [],
+        },
+      ]),
+    );
+    const button = container.querySelector("button");
+
+    // 那里是那颗 × 字形（与面板页签的关闭图标同一颗），不是「关闭」两个字。
+    expect(button?.querySelector("span")?.textContent).toBe("");
+    expect(button?.querySelector("svg")).not.toBeNull();
+    expect(button?.getAttribute("aria-label")).toBe("关闭");
+    // 关闭控件不该有边框底色，`variant` 随之失效。
+    expect(button?.className).toContain("mod-button-plain");
+    expect(button?.className).not.toContain("mod-button-primary");
+
+    await user.click(button as HTMLButtonElement);
+    expect(onEvent).toHaveBeenCalledWith("press", "close");
+  });
+
   it("Input 的 rows 换成多行输入框，回车照样提交、Shift+Enter 换行", async () => {
     const user = userEvent.setup();
     const { container, onEvent } = renderTree(

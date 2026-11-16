@@ -1069,6 +1069,28 @@ function formatBytes(bytes: number): string {
   return `${bytes} B`;
 }
 
+/**
+ * 这张消息里各工具块当前挂着的 notice（`$.ui.notice`），拼成一个可比较的串。
+ *
+ * `React.memo` 的比较函数用它，而不是比较整份 map：notice 是按 tool_use id 存的，
+ * 一条新 notice 不该让列表里每个消息行都重渲一次 markdown。
+ */
+function noticeSignature(
+  modNotices: Record<string, string> | undefined,
+  blocks: readonly MessageBlock[],
+): string {
+  if (!modNotices) return "";
+  const parts: string[] = [];
+  for (const block of blocks) {
+    if (block.type !== "tool") continue;
+    const id = (block as ToolBlock).id;
+    if (!id) continue;
+    const text = modNotices[id];
+    if (text !== undefined) parts.push(`${id}\u0000${text}`);
+  }
+  return parts.join("\u0001");
+}
+
 export const Message: React.FC<MessageProps> = React.memo(
   (props: MessageProps) => {
     const {
@@ -1930,6 +1952,7 @@ export const Message: React.FC<MessageProps> = React.memo(
       let rendered: React.ReactNode = null;
       let wrap = false;
       let dotColor: string | undefined;
+      let toolNotice: string | null = null;
 
       switch (block.type) {
         case "compact":
@@ -2080,6 +2103,11 @@ export const Message: React.FC<MessageProps> = React.memo(
           rendered = renderToolBlock(toolBlock, index);
           wrap = true;
           dotColor = getToolStatusColor(block as ToolBlock);
+          // 插件在这个工具调用下面贴的一行（`$.ui.notice`，spec「工具行下面的
+          // 一行」）：挂在时间线行内部、工具块之后，与工具块同生共死。
+          toolNotice = toolBlock.id
+            ? (props.modNotices?.[toolBlock.id] ?? null)
+            : null;
           break;
         }
         case "image":
@@ -2126,6 +2154,11 @@ export const Message: React.FC<MessageProps> = React.memo(
           }
         >
           {rendered}
+          {toolNotice && (
+            <div className="tool-notice" data-testid="tool-notice">
+              {toolNotice}
+            </div>
+          )}
         </div>
       );
     };
@@ -2207,7 +2240,11 @@ export const Message: React.FC<MessageProps> = React.memo(
       prev.isQueued === next.isQueued &&
       prev.isLastMessage === next.isLastMessage &&
       prev.onRewindToMessage === next.onRewindToMessage &&
-      prev.onBackgroundCurrentTask === next.onBackgroundCurrentTask
+      prev.onBackgroundCurrentTask === next.onBackgroundCurrentTask &&
+      // 工具块下面的 notice 只按本消息那些 id 比较：整份 map 一变就重渲全部行太贵。
+      (prev.modNotices === next.modNotices ||
+        noticeSignature(prev.modNotices, prev.message.blocks) ===
+          noticeSignature(next.modNotices, next.message.blocks))
     );
   },
 );

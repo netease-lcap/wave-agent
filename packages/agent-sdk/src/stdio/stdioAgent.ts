@@ -54,6 +54,9 @@ import type {
   ModPanelRenderResult,
   ModPanelUpdatePayload,
   ModPromptFillRequest,
+  ModPromptReadRequest,
+  ModCopyRequest,
+  ModNoticePayload,
   ModStatusPayload,
   ModToastPayload,
 } from "../types/index.js";
@@ -219,6 +222,19 @@ export interface StdioAgentCallbacks {
    * `{ isFilled: false }`.
    */
   onModPromptFill?: (payload: ModPromptFillRequest) => void;
+  /**
+   * A mod wants to read the composer (`$.prompt.read`; spec「输入框里现在有什
+   * 么」). The host answers with the `modPromptReadResult` RPC; no answer inside
+   * the limit reads as an empty draft.
+   */
+  onModPromptRead?: (payload: ModPromptReadRequest) => void;
+  /**
+   * A mod wants text on the clipboard (`$.ui.copy`; spec「剪贴板与视图」). The
+   * host answers with the `modCopyResult` RPC.
+   */
+  onModCopy?: (payload: ModCopyRequest) => void;
+  /** One line under a tool call (`$.ui.notice`; `text: null` removes it). */
+  onModNotice?: (payload: ModNoticePayload) => void;
   onCommandRunningChange?: (running: boolean) => void;
   onQueuedMessagesChange?: (messages: QueuedMessage[]) => void;
   onTasksChange?: (tasks: Task[]) => void;
@@ -723,6 +739,42 @@ export class StdioAgent {
     );
   }
 
+  /**
+   * 回答一次 `$.prompt.read`（spec「输入框里现在有什么」）。
+   *
+   * 宿主得把输入框**此刻**的内容与光标位置报回来；会话已经不认这个
+   * `requestId`（超时已按空草稿作答）时什么也不会发生。
+   */
+  async resolveModPromptRead(
+    requestId: string,
+    text: string,
+    cursor: number,
+  ): Promise<void> {
+    await this.client.request(
+      "modPromptReadResult",
+      { requestId, text, cursor },
+      this.sessionId,
+    );
+  }
+
+  /**
+   * 回答一次 `$.ui.copy`（spec「剪贴板与视图」）。
+   *
+   * 写不进去也是答案：`isCopied: false` 带一句 `reason`（`no-clipboard` /
+   * `refused`），mod 据此换一种交付方式，不当异常处理。
+   */
+  async resolveModCopy(
+    requestId: string,
+    isCopied: boolean,
+    reason?: string,
+  ): Promise<void> {
+    await this.client.request(
+      "modCopyResult",
+      { requestId, isCopied, ...(reason ? { reason } : {}) },
+      this.sessionId,
+    );
+  }
+
   // ── Permissions ───────────────────────────────────────────────
 
   async setPermissionMode(mode: PermissionMode): Promise<void> {
@@ -1108,6 +1160,20 @@ export class StdioAgent {
         // The only mod push that expects an answer: the host replies with the
         // `modPromptFillResult` RPC (spec「把草稿填进输入框」).
         this.callbacks.onModPromptFill?.(params as ModPromptFillRequest);
+        break;
+      }
+      case "modPromptRead": {
+        // The same round trip as `modPromptFill`, opposite direction; the answer
+        // is the `modPromptReadResult` RPC (spec「输入框里现在有什么」).
+        this.callbacks.onModPromptRead?.(params as ModPromptReadRequest);
+        break;
+      }
+      case "modCopy": {
+        this.callbacks.onModCopy?.(params as ModCopyRequest);
+        break;
+      }
+      case "modNotice": {
+        this.callbacks.onModNotice?.(params as ModNoticePayload);
         break;
       }
       case "commandRunningChange": {

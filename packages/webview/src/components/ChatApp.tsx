@@ -96,6 +96,9 @@ import type {
   ModPanelTree,
   ModPanelUpdatePayload,
   ModPromptFillRequest,
+  ModPromptReadRequest,
+  ModCopyRequest,
+  ModNoticePayload,
   ModStatusPayload,
   ModToastPayload,
 } from "wave-agent-sdk/types";
@@ -122,6 +125,7 @@ import {
   setDiscardAsker,
 } from "../utils/fileDraftGuard";
 import { toAbsoluteFilePath } from "../utils/messageUtils";
+import { copyTextToClipboard } from "../utils/clipboard";
 import { isMacHiddenTitlebar, isRemotePageHost } from "../utils/platform";
 import { chatReducer, initialState } from "../reducers/chatReducer";
 import {
@@ -938,6 +942,10 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   modBandsRef.current = modBands;
   const [modStatuses, setModStatuses] = useState<ModStatusFrame[]>([]);
   const [modToasts, setModToasts] = useState<ModToastFrame[]>([]);
+  // 插件贴在工具块下面的一行（`$.ui.notice`，spec「工具行下面的一行」）：按
+  // tool_use id 索引，`text: null` 撤掉。只推不拉 —— 插件自己记得贴了什么，
+  // 重连后由它重贴。
+  const [modNotices, setModNotices] = useState<Record<string, string>>({});
   // toast 的序号与计时器：`timeoutMs` 到点自己消失（spec「状态带、状态行与
   // 提示」）。计时器按 toast id 存，换会话 / 卸载时一并清掉。
   const modToastSeqRef = useRef(0);
@@ -1981,6 +1989,54 @@ export const ChatApp: React.FC<ChatAppProps> = ({
           command: "modPromptFillResult",
           requestId: payload.requestId,
           filled,
+        });
+        break;
+      }
+      case "desktopModPromptRead": {
+        // `$.prompt.read`（spec「输入框里现在有什么」）：把输入框此刻的内容与
+        // 光标位置报回去。读不到也必须作答 —— 沉默只会让 mod 等到 3 秒超时。
+        if (!forThisPane(message)) break;
+        const payload = (message as { payload?: ModPromptReadRequest }).payload;
+        if (!payload?.requestId) break;
+        const draft = messageInputRef.current?.readDraft() ?? null;
+        vscode.postMessage({
+          command: "modPromptReadResult",
+          requestId: payload.requestId,
+          text: draft?.text ?? "",
+          cursor: draft?.cursor ?? 0,
+        });
+        break;
+      }
+      case "desktopModCopy": {
+        // `$.ui.copy`（spec「剪贴板与视图」）：写进本端剪贴板后回执。浏览器拒绝
+        // （没有剪贴板权限 / 非安全上下文）也要作答，`reason` 用协议里那两个词。
+        if (!forThisPane(message)) break;
+        const payload = (message as { payload?: ModCopyRequest }).payload;
+        if (!payload?.requestId) break;
+        void copyTextToClipboard(payload.text).then((ok) => {
+          vscode.postMessage({
+            command: "modCopyResult",
+            requestId: payload.requestId,
+            isCopied: ok,
+            ...(ok ? {} : { reason: "no-clipboard" }),
+          });
+        });
+        break;
+      }
+      case "desktopModNotice": {
+        // 工具行下面那一行（spec「工具行下面的一行」）：按 tool_use id 落一份，
+        // `text: null` 撤掉。
+        if (!forThisPane(message)) break;
+        const payload = (message as { payload?: ModNoticePayload }).payload;
+        if (!payload?.toolUseId) break;
+        setModNotices((prev) => {
+          if (payload.text === null) {
+            if (!(payload.toolUseId in prev)) return prev;
+            const next = { ...prev };
+            delete next[payload.toolUseId];
+            return next;
+          }
+          return { ...prev, [payload.toolUseId]: payload.text };
         });
         break;
       }
@@ -5768,6 +5824,8 @@ export const ChatApp: React.FC<ChatAppProps> = ({
                 }
               : undefined
           }
+          // 插件贴在工具块下面的一行（`$.ui.notice`，spec「工具行下面的一行」）。
+          modNotices={modNotices}
         />
       )}
 

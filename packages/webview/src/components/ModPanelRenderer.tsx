@@ -2,6 +2,7 @@ import React, { useMemo, useState } from "react";
 import DOMPurify from "dompurify";
 import { marked } from "marked";
 import type { ModPanelTree, ModTreeNode } from "wave-agent-sdk/types";
+import { CloseTabIcon } from "./CloseTabIcon";
 import "../styles/ModPanel.css";
 
 /**
@@ -586,14 +587,20 @@ function renderNode(
       );
     case "Button": {
       const buttonKey = String(node.props.key ?? "");
-      const disabled = node.props.disabled === true;
       // `variant` 是纯外观：`primary` 用主题强调色，`secondary`/未给用中性底。
       const variant = node.props.variant;
       // `plain`：去掉边框与底色的按钮（工具栏里那一排「开关」用它）。它与
       // `variant` 互斥 —— 没有底色的按钮谈不上「主操作色」。
       const plain = node.props.plain === true;
+      // `role="dismiss"`：这个按钮关闭它所在的站点。桌面端把它画成那颗关闭控件
+      // （与面板页签的 × 同一颗），`label` 不再画出来、改当无障碍名 —— 与 Claude
+      // Code 的「a desktop its native close control, the label its accessible
+      // name」同一套。它不是行为声明：关了之后发生什么由 `onPress` 决定。
+      const dismiss = node.props.role === "dismiss";
       const classes = ["mod-button"];
-      if (plain) {
+      if (dismiss) {
+        classes.push("mod-button-plain", "mod-button-dismiss");
+      } else if (plain) {
         classes.push("mod-button-plain");
       } else if (variant === "primary" || variant === "secondary") {
         classes.push(`mod-button-${variant}`);
@@ -615,19 +622,28 @@ function renderNode(
               ? node.props.hotkey
               : undefined
           }
-          disabled={disabled}
           autoFocus={node.props.autoFocus === true}
+          aria-label={
+            dismiss && typeof node.props.label === "string"
+              ? node.props.label
+              : undefined
+          }
           onClick={() => onEvent("press", buttonKey)}
           {...hoverHandlers}
         >
           {/* 标签一律包一层 span：`hover` 在 `Button` 上改的是**字**（字色/字重），
-              与 Claude Code 的 `ButtonHoverProps` 同一套。 */}
+              与 Claude Code 的 `ButtonHoverProps` 同一套。`dismiss` 的按钮画的
+              是关闭字形，`label` 已经给了 `aria-label`。 */}
           <span style={textStyle(labelProps, activeHover)}>
-            {children.length > 0
-              ? children
-              : typeof node.props.label === "string"
-                ? node.props.label
-                : buttonKey}
+            {dismiss ? (
+              <CloseTabIcon />
+            ) : children.length > 0 ? (
+              children
+            ) : typeof node.props.label === "string" ? (
+              node.props.label
+            ) : (
+              buttonKey
+            )}
           </span>
           {/* 快捷键画成一个小的键帽：不画的话用户无从知道有热键（Claude Code
               的桌面端也把键摆在标签旁边）。 */}
@@ -755,7 +771,6 @@ function hotkeyHandler(
     );
     for (let at = matches.length - 1; at >= 0; at -= 1) {
       const element = matches[at]!;
-      if (element.hasAttribute("disabled")) continue;
       event.preventDefault();
       onEvent("press", element.dataset.modKey ?? "");
       return;

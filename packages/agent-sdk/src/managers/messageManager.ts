@@ -243,6 +243,18 @@ export class MessageManager {
     return [...this.messages];
   }
 
+  /**
+   * 用户发过几条 prompt（`$.session.turns()`，spec「会话事实」）。
+   *
+   * 只数真实输入：工具结果挂在 assistant 消息的 `ToolBlock` 上、系统注入带
+   * `isMeta`，两者都不算「用户轮」；`/clear` 清空 `messages` 后自然从 0 重数。
+   */
+  public countUserTurns(): number {
+    return this.messages.filter(
+      (message) => message.role === "user" && message.isMeta !== true,
+    ).length;
+  }
+
   public getUsages(): Usage[] {
     return [...this._usages];
   }

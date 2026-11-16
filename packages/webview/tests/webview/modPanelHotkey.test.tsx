@@ -17,17 +17,12 @@ const root = (children: ModPanelTree[]): ModPanelTree => ({
   children,
 });
 
-const button = (
-  key: string,
-  hotkey?: string,
-  disabled?: boolean,
-): ModPanelTree => ({
+const button = (key: string, hotkey?: string): ModPanelTree => ({
   type: "Button",
   props: {
     key,
     label: key,
     ...(hotkey ? { hotkey } : {}),
-    ...(disabled ? { disabled: true } : {}),
   },
   children: [],
 });
@@ -81,16 +76,6 @@ describe("ModPanelRenderer 的 Button.hotkey", () => {
 
     expect(onEvent).toHaveBeenCalledTimes(1);
     expect(onEvent).toHaveBeenCalledWith("press", "second");
-  });
-
-  it("最后那个按钮是禁用的时候退回前一个", () => {
-    const { onEvent } = renderTree(
-      root([button("first", "y"), button("second", "y", true)]),
-    );
-
-    fireEvent.keyDown(screen.getByTestId("mod-panel-root"), { key: "y" });
-
-    expect(onEvent).toHaveBeenCalledWith("press", "first");
   });
 
   it("带修饰键的是宿主快捷键，不触发热键", () => {

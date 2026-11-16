@@ -27,6 +27,10 @@ vi.mock("../../src/utils/globalLogger.js", () => ({
 const fsStub = vi.hoisted(() => ({
   calls: [] as Array<{ method: string; args: unknown[] }>,
   cwd: undefined as (() => string) | undefined,
+  // 默认不装：装了以后这两个方法按回调作答，`$.fs.ancestors` 的目录链要控制
+  // 哪些文件存在、内容是什么（它自己走 exists/read，不额外开接口）。
+  existsImpl: undefined as ((filePath: string) => boolean) | undefined,
+  readImpl: undefined as ((filePath: string) => string) | undefined,
 }));
 
 vi.mock("../../src/mods/files.js", () => {
@@ -40,6 +44,9 @@ vi.mock("../../src/mods/files.js", () => {
         fsStub.cwd = cwd;
       }
       read(...args: unknown[]) {
+        if (fsStub.readImpl) {
+          return record("read", args, fsStub.readImpl(String(args[0])));
+        }
         return record("read", args, { text: "hi", isTruncated: false });
       }
       write(...args: unknown[]) {
@@ -52,6 +59,9 @@ vi.mock("../../src/mods/files.js", () => {
         return record("stat", args, { kind: "file", size: 2, isLink: false });
       }
       exists(...args: unknown[]) {
+        if (fsStub.existsImpl) {
+          return record("exists", args, fsStub.existsImpl(String(args[0])));
+        }
         return record("exists", args, true);
       }
     },
@@ -61,6 +71,8 @@ vi.mock("../../src/mods/files.js", () => {
 beforeEach(() => {
   fsStub.calls.length = 0;
   fsStub.cwd = undefined;
+  fsStub.existsImpl = undefined;
+  fsStub.readImpl = undefined;
 });
 
 /**
@@ -122,6 +134,18 @@ function host(overrides: Partial<ModRuntimeHost> = {}): ModRuntimeHost {
     sessionId: vi.fn(() => "session-1"),
     workspaceRoot: vi.fn(() => path.resolve("/fake/project")),
     model: vi.fn(() => "test-model"),
+    // 默认：用户发过 3 轮、不在仓库里、版本读得到一份能用的值。
+    sessionTurns: vi.fn(() => 3),
+    sessionRepo: vi.fn(() => null),
+    sessionVersion: vi.fn(() => ({ version: "1.6.6" })),
+    listConfigRows: vi.fn(() => []),
+    listToolInfos: vi.fn(() => []),
+    listAgentInfos: vi.fn(() => []),
+    // 默认没有界面接手输入框：`read` 给空草稿。
+    readPromptDraft: vi.fn(async () => ({ text: "", cursor: 0 })),
+    // 默认接得住：贴一行、写剪贴板都成功。
+    showNotice: vi.fn(),
+    copyText: vi.fn(async () => ({ isCopied: true as const })),
     envGet: vi.fn((): string | undefined => undefined),
     settingsRead: vi.fn(async () => ({})),
     sleep: vi.fn(async () => {}),
@@ -1912,6 +1936,422 @@ describe("ModRuntime 的 $.session 事实与 $.env / $.settings", () => {
   });
 });
 
+describe("ModRuntime 的只读清单与 UI 小件（spec「配了哪些、能调什么、有谁在跑」「工具行下面的一行」「剪贴板与视图」）", () => {
+  it("$.config.list / $.tool.list / $.agent.list 原样给出宿主的三份清单，且是副本", async () => {
+    const hostApi = host({
+      listConfigRows: vi.fn(() => [
+        {
+          key: "model",
+          label: "模型",
+          kind: "text" as const,
+          value: "wave-pro",
+          provider: { plugin: "engine", tier: "core" },
+          isLocked: true,
+        },
+      ]),
+      listToolInfos: vi.fn(() => [
+        { name: "Bash", description: "跑命令", mcp: false },
+      ]),
+      listAgentInfos: vi.fn(() => [
+        {
+          id: "a1",
+          description: "查资料",
+          type: "Explore",
+          status: "running" as const,
+        },
+      ]),
+    });
+    const { mod } = runtime(
+      `
+      exports.register = function ($, on) {
+        on("session.start", function () {
+          var rows = $.config.list();
+          var tools = $.tool.list();
+          var agents = $.agent.list();
+          // 改自己拿到的那份：宿主那份必须不动（跨 realm 拷贝）。
+          rows[0].value = "tampered";
+          return { rows: rows, tools: tools, agents: agents };
+        });
+      };
+      `,
+      { host: hostApi },
+    );
+
+    await mod.load();
+    const result = await mod.callHook("session.start", {});
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value).toEqual({
+      rows: [
+        {
+          key: "model",
+          label: "模型",
+          kind: "text",
+          value: "tampered",
+          provider: { plugin: "engine", tier: "core" },
+          isLocked: true,
+        },
+      ],
+      tools: [{ name: "Bash", description: "跑命令", mcp: false }],
+      agents: [
+        { id: "a1", description: "查资料", type: "Explore", status: "running" },
+      ],
+    });
+    expect(hostApi.listConfigRows()).toEqual([
+      {
+        key: "model",
+        label: "模型",
+        kind: "text",
+        value: "wave-pro",
+        provider: { plugin: "engine", tier: "core" },
+        isLocked: true,
+      },
+    ]);
+  });
+
+  it("$.session 的 turns / repo / version 都是异步取，不在仓库里给 null", async () => {
+    const notRepo = runtime(
+      `
+      exports.register = function ($, on) {
+        on("session.start", async function () {
+          return {
+            turns: await $.session.turns(),
+            repo: await $.session.repo(),
+            version: await $.session.version(),
+          };
+        });
+      };
+      `,
+    );
+    await notRepo.mod.load();
+    await expect(
+      notRepo.mod.callHook("session.start", {}),
+    ).resolves.toMatchObject({
+      ok: true,
+      value: { turns: 3, repo: null, version: { version: "1.6.6" } },
+    });
+
+    const root = path.resolve("/fake/repo");
+    const inRepo = runtime(
+      `
+      exports.register = function ($, on) {
+        on("session.start", async function () {
+          return await $.session.repo();
+        });
+      };
+      `,
+      {
+        host: host({
+          sessionRepo: vi.fn(() => ({
+            root,
+            remote: "git@example.com:a/b.git",
+            internal: false,
+            name: null,
+          })),
+        }),
+      },
+    );
+    await inRepo.mod.load();
+    await expect(
+      inRepo.mod.callHook("session.start", {}),
+    ).resolves.toMatchObject({
+      ok: true,
+      value: { root, remote: "git@example.com:a/b.git" },
+    });
+  });
+
+  it("$.prompt.read 转发到宿主：没人画输入框时给空草稿而不是 reject", async () => {
+    const { mod } = runtime(`
+      exports.register = function ($, on) {
+        on("session.start", async function () {
+          return await $.prompt.read();
+        });
+      };
+    `);
+    await mod.load();
+    await expect(mod.callHook("session.start", {})).resolves.toMatchObject({
+      ok: true,
+      value: { text: "", cursor: 0 },
+    });
+
+    const readPromptDraft = vi.fn(async () => ({ text: "草稿", cursor: 2 }));
+    const withDraft = runtime(
+      `
+      exports.register = function ($, on) {
+        on("session.start", async function () {
+          return await $.prompt.read();
+        });
+      };
+      `,
+      { host: host({ readPromptDraft }) },
+    );
+    await withDraft.mod.load();
+    await expect(
+      withDraft.mod.callHook("session.start", {}),
+    ).resolves.toMatchObject({ ok: true, value: { text: "草稿", cursor: 2 } });
+    expect(readPromptDraft).toHaveBeenCalledTimes(1);
+  });
+
+  it("$.ui.notice 贴在指定工具调用下面，undefined 表示撤掉", async () => {
+    const showNotice = vi.fn();
+    const { mod } = runtime(
+      `
+      exports.register = function ($, on) {
+        on("session.start", function () {
+          $.ui.notice("tool-1", "3 个文件");
+          $.ui.notice("tool-1", undefined);
+        });
+      };
+      `,
+      { host: host({ showNotice }) },
+    );
+
+    await mod.load();
+    await expect(mod.callHook("session.start", {})).resolves.toMatchObject({
+      ok: true,
+    });
+    expect(showNotice.mock.calls).toEqual([
+      ["tool-1", "3 个文件"],
+      ["tool-1", null],
+    ]);
+  });
+
+  it("$.ui.notice 的 tool_use_id 为空、text 不是字符串都当场报错", async () => {
+    const showNotice = vi.fn();
+    const { mod } = runtime(
+      `
+      exports.register = function ($, on) {
+        on("session.start", function () {
+          var messages = [];
+          for (var args of [[], [""], ["tool-1", 42]]) {
+            try { $.ui.notice.apply(null, args); } catch (e) { messages.push(e.message); }
+          }
+          return messages;
+        });
+      };
+      `,
+      { host: host({ showNotice }) },
+    );
+
+    await mod.load();
+    const result = await mod.callHook("session.start", {});
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect((result.value as string[]).length).toBe(3);
+    expect(showNotice).not.toHaveBeenCalled();
+  });
+
+  it("$.ui.copy 把文本与 surface 交给宿主，结果原样回给 mod", async () => {
+    const copyText = vi.fn(async () => ({ isCopied: true as const }));
+    const { mod } = runtime(
+      `
+      exports.register = function ($, on) {
+        on("session.start", async function () {
+          var ok = await $.ui.copy({ text: "一段话" });
+          var scoped = await $.ui.copy({ text: "另一段", surface: "desktop" });
+          return [ok, scoped];
+        });
+      };
+      `,
+      { host: host({ copyText }) },
+    );
+
+    await mod.load();
+    await expect(mod.callHook("session.start", {})).resolves.toMatchObject({
+      ok: true,
+      value: [{ isCopied: true }, { isCopied: true }],
+    });
+    expect(copyText.mock.calls).toEqual([
+      [{ text: "一段话" }],
+      [{ text: "另一段", surface: "desktop" }],
+    ]);
+  });
+
+  it("$.ui.copy 宿主拒绝时按返回值作答，不抛错", async () => {
+    const { mod } = runtime(
+      `
+      exports.register = function ($, on) {
+        on("session.start", async function () {
+          return await $.ui.copy({ text: "x" });
+        });
+      };
+      `,
+      {
+        host: host({
+          copyText: vi.fn(async () => ({
+            isCopied: false as const,
+            reason: "no-clipboard" as const,
+          })),
+        }),
+      },
+    );
+
+    await mod.load();
+    await expect(mod.callHook("session.start", {})).resolves.toMatchObject({
+      ok: true,
+      value: { isCopied: false, reason: "no-clipboard" },
+    });
+  });
+
+  it("$.ui.copy 缺 text、超长、surface 拼错都当场报错", async () => {
+    const copyText = vi.fn(async () => ({ isCopied: true as const }));
+    const { mod } = runtime(
+      `
+      exports.register = function ($, on) {
+        on("session.start", async function () {
+          var messages = [];
+          var cases = [
+            [{}],
+            [{ text: "x".repeat(${MOD_LIMITS.copyTextChars} + 1) }],
+            [{ text: "x", surface: "tablet" }],
+          ];
+          for (var args of cases) {
+            try { await $.ui.copy(args[0]); } catch (e) { messages.push(e.message); }
+          }
+          return messages;
+        });
+      };
+      `,
+      { host: host({ copyText }) },
+    );
+
+    await mod.load();
+    const result = await mod.callHook("session.start", {});
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect((result.value as string[]).length).toBe(3);
+    expect(copyText).not.toHaveBeenCalled();
+  });
+
+  it("$.ui.view 一期一律答 deny，说明为什么没切", async () => {
+    const { mod } = runtime(`
+      exports.register = function ($, on) {
+        on("session.start", async function () {
+          return await $.ui.view({ agentId: "a1" });
+        });
+      };
+    `);
+
+    await mod.load();
+    const result = await mod.callHook("session.start", {});
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(String((result.value as { deny?: string }).deny)).toContain(
+      "子代理",
+    );
+  });
+});
+
+describe("ModRuntime 的 $.fs.ancestors（spec「沿目录链找指令文件」）", () => {
+  const ROOT_DIR = path.resolve("/fake/project");
+  const SUB_DIR = path.join(ROOT_DIR, "sub");
+  const DEEP_DIR = path.join(SUB_DIR, "deep");
+  const NAME = "AGENTS.md";
+
+  /** 只让 `paths` 里的文件存在，内容取 `contents`。 */
+  const setTree = (contents: Record<string, string>) => {
+    fsStub.existsImpl = (filePath) => filePath in contents;
+    fsStub.readImpl = (filePath) => contents[filePath]!;
+  };
+
+  it("从当前目录往上收集，结果根在前；上界是会话工作根", async () => {
+    setTree({
+      [path.join(ROOT_DIR, NAME)]: "root",
+      [path.join(SUB_DIR, NAME)]: "sub",
+    });
+    const { mod } = runtime(
+      `
+      exports.register = function ($, on) {
+        on("session.start", async function () {
+          return await $.fs.ancestors({ names: ["${NAME}"], of: "sub/deep" });
+        });
+      };
+      `,
+      {
+        host: host({
+          workdir: vi.fn(() => ROOT_DIR),
+          workspaceRoot: vi.fn(() => ROOT_DIR),
+        }),
+      },
+    );
+
+    await mod.load();
+    const result = await mod.callHook("session.start", {});
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const found = result.value as Array<{
+      dir: string;
+      name: string;
+      content: string;
+    }>;
+    expect(found.map((item) => item.content)).toEqual(["root", "sub"]);
+    expect(found.map((item) => item.dir)).toEqual([ROOT_DIR, SUB_DIR]);
+    expect(found.every((item) => item.name === NAME)).toBe(true);
+  });
+
+  it("起点在工作根之外当场报错（不让插件顺着文件系统往上跑）", async () => {
+    setTree({});
+    const { mod } = runtime(
+      `
+      exports.register = function ($, on) {
+        on("session.start", async function () {
+          try {
+            await $.fs.ancestors({ names: ["${NAME}"], of: "../../elsewhere" });
+            return "no-error";
+          } catch (e) {
+            return e.message;
+          }
+        });
+      };
+      `,
+      {
+        host: host({
+          workdir: vi.fn(() => DEEP_DIR),
+          workspaceRoot: vi.fn(() => SUB_DIR),
+        }),
+      },
+    );
+
+    await mod.load();
+    const result = await mod.callHook("session.start", {});
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(String(result.value)).toContain("不在");
+  });
+
+  it("一份读不动就跳过它，其余照给（不让一个不可读的父目录毁掉整条链）", async () => {
+    const broken = path.join(SUB_DIR, NAME);
+    fsStub.existsImpl = () => true;
+    fsStub.readImpl = (filePath) => {
+      if (filePath === broken) throw new Error("EACCES");
+      return "root";
+    };
+    const { mod } = runtime(
+      `
+      exports.register = function ($, on) {
+        on("session.start", async function () {
+          return await $.fs.ancestors({ names: ["${NAME}"], of: "sub" });
+        });
+      };
+      `,
+      {
+        host: host({
+          workdir: vi.fn(() => ROOT_DIR),
+          workspaceRoot: vi.fn(() => ROOT_DIR),
+        }),
+      },
+    );
+
+    await mod.load();
+    const result = await mod.callHook("session.start", {});
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(
+      (result.value as Array<{ dir: string }>).map((item) => item.dir),
+    ).toEqual([ROOT_DIR]);
+  });
+});
+
 describe("ModRuntime 的 $.clock.sleep（spec「时钟：等待」）", () => {
   it("转发到宿主并透传 signal；负数与 NaN 当场报错", async () => {
     const signals: unknown[] = [];
@@ -2183,6 +2623,31 @@ describe("兼容社区 mod（spec「兼容社区 mod」）", () => {
     );
     // `const ran = await next(e)` 之后读 `ran` 是社区的标准写法（CC 里
     // `next(e)` resolve 出来的就是工具结果），所以链尾必须把结果交回来。
+    expect(result).toMatchObject({
+      ok: true,
+      value: { isSignal: true, out: "hello" },
+    });
+  });
+
+  it("我们的形状 (e, next) 也拿到 next：next(e) 就是执行，拿得到工具结果", async () => {
+    const { mod } = runtime(`
+      exports.register = function ($, on) {
+        on("tool.run", { tool: "Bash" }, async function (e, next) {
+          var isSignal = next.signal instanceof AbortSignal;
+          var ran = await next(e);
+          return { isSignal: isSignal, out: ran.stdout };
+        });
+      };
+    `);
+
+    await mod.load();
+    const result = await mod.callHook(
+      "tool.run",
+      { tool: "Bash" },
+      { engine: async () => ({ stdout: "hello" }) },
+    );
+    // 第二个形参是后来补的：没有它，按我们推荐写法写的守卫只能看见调用、
+    // 看不见结果（`tool.run` 里「工具跑完之后」那几行就写不了）。
     expect(result).toMatchObject({
       ok: true,
       value: { isSignal: true, out: "hello" },

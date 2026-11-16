@@ -90,6 +90,24 @@ describe("validateModTree", () => {
       expect(variant("danger").ok).toBe(false);
     });
 
+    it("Button.role 只有 dismiss 一个值", () => {
+      const role = (value: unknown) =>
+        validateModTree({
+          type: "Button",
+          props: { key: "b1", role: value },
+          children: [],
+        });
+
+      expect(role("dismiss").ok).toBe(true);
+      // 别的语义我们画不出（CC 那边也是 `role is "dismiss" or absent`）。
+      for (const value of ["cancel", "close", "", true]) {
+        const result = role(value);
+        expect(result.ok).toBe(false);
+        if (result.ok) continue;
+        expect(result.error).toContain('Button.role 只允许 "dismiss"');
+      }
+    });
+
     it("Button.hotkey 是一个数字或一个小写字母", () => {
       const hotkey = (value: unknown) =>
         validateModTree({

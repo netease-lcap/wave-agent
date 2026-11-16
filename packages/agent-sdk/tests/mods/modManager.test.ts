@@ -188,6 +188,32 @@ exports.register = function ($, on) {
     expect(JSON.stringify(band.tree)).toContain("n=1");
   });
 
+  it("ui.render 的 props 报站点行数：面板 24 行、带 8 行", async () => {
+    const rows = path.join(ROOT, "mods", "rows.tsx");
+    const { manager } = createManager({
+      [rows]: `
+exports.register = function ($, on) {
+  on("session.start", function () { $.ui.open({ id: "p1", title: "行数" }); });
+  on("ui.render", function (e) {
+    return __wave.h("Text", null, e.component + ":" + e.props.maxRows + ":" + e.props.scroll.bodyRows);
+  });
+};
+`,
+    });
+    await manager.loadFromPlugins([plugin([{ id: "todo:rows", path: rows }])]);
+    await manager.startSession();
+
+    const pane = await manager.renderPane("todo:rows", "p1");
+    // 面板高得多：插件按 24 行分页，一开始就不会溢出（值本身是保守默认值，
+    // 不是量出来的 —— spec「ui.render 的 props」）。
+    expect(pane.tree).toMatchObject({ children: ["Pane:24:24"] });
+
+    const [band] = await manager.renderBand();
+    expect(band?.tree).toMatchObject({ children: ["AbovePrompt:8:8"] });
+
+    await manager.dispose();
+  });
+
   it("没有注册 ui.render 的 mod 不出现在带里", async () => {
     const noRender = path.join(ROOT, "mods", "silent.tsx");
     const { manager } = createManager({
@@ -2096,6 +2122,17 @@ exports.register = function ($, on) {
             query.key === undefined
               ? { owner: "me", model: "wave-pro" }
               : "wave-pro",
+          turns: () => 4,
+          repo: () => ({
+            root: path.resolve("/fake/root"),
+            remote: null,
+            internal: false,
+            name: null,
+          }),
+          version: () => ({ version: "1.6.6" }),
+          configRows: () => [],
+          toolInfos: () => [],
+          agentInfos: () => [],
         },
       },
     );
@@ -2132,6 +2169,165 @@ exports.register = function ($, on) {
     expect(flat.split("|")[2]).toBe("");
     expect(flat.endsWith("|undefined|undefined|undefined|")).toBe(true);
     expect(vi.mocked(logger.warn)).not.toHaveBeenCalled();
+
+    await manager.dispose();
+  });
+});
+
+describe("ModManager 的清单、草稿、工具行与剪贴板（spec「配了哪些、能调什么、有谁在跑」「输入框里现在有什么」「工具行下面的一行」「剪贴板与视图」）", () => {
+  const PANEL_MOD = `
+exports.register = function ($, on) {
+  on("session.start", function () { $.ui.open({ id: "p1", title: "面板" }); });
+  on("ui.render", function () {
+    var rows = $.config.list().map(function (row) { return row.key + "=" + row.value + (row.isLocked ? "(锁)" : ""); });
+    var tools = $.tool.list().map(function (tool) { return tool.name + (tool.mcp ? "(mcp)" : ""); });
+    var agents = $.agent.list().map(function (agent) { return agent.id + "@" + agent.status; });
+    return __wave.h("Text", null, [rows.join(","), tools.join(","), agents.join(",")].join("|"));
+  });
+};
+`;
+
+  it("三份清单从会话事实来，面板上摊平成一行", async () => {
+    const { manager } = createManager(
+      { [MOD_PATH]: PANEL_MOD },
+      {
+        sessionFacts: {
+          sessionId: () => "s1",
+          workspaceRoot: () => path.resolve("/fake/root"),
+          model: () => "",
+          surfaces: () => ["desktop"] as const,
+          env: () => undefined,
+          settings: async () => ({}),
+          turns: () => 0,
+          repo: () => null,
+          version: () => ({ version: "" }),
+          configRows: () => [
+            {
+              key: "model",
+              label: "模型",
+              kind: "text",
+              value: "wave-pro",
+              provider: { plugin: "engine", tier: "core" },
+              isLocked: true,
+            },
+          ],
+          toolInfos: () => [
+            { name: "Bash", description: "跑命令", mcp: false },
+            { name: "mcp__fs__read", description: "读文件", mcp: true },
+          ],
+          agentInfos: () => [
+            {
+              id: "a1",
+              description: "查资料",
+              type: "Explore",
+              status: "running",
+            },
+          ],
+        },
+      },
+    );
+    await manager.loadFromPlugins([
+      plugin([{ id: "todo:panel", path: MOD_PATH }]),
+    ]);
+    await manager.startSession();
+
+    const frame = await pull(manager);
+    expect(String((frame.tree as { children: string[] }).children[0])).toBe(
+      "model=wave-pro(锁)|Bash,mcp__fs__read(mcp)|a1@running",
+    );
+
+    await manager.dispose();
+  });
+
+  it("没接剪贴板 / 输入框通道时按「没人接」作答，不抛错", async () => {
+    const { manager } = createManager(
+      {
+        [MOD_PATH]: `
+        exports.register = function ($, on) {
+          on("session.start", function () { $.ui.open({ id: "p1", title: "面板" }); });
+          on("ui.render", async function () {
+            var draft = await $.prompt.read();
+            var copied = await $.ui.copy({ text: "hi" });
+            return __wave.h("Text", null,
+              [draft.text, String(draft.cursor), due(copied)].join("|"));
+          });
+        };
+        function due(copied) { return String(copied.isCopied) + ":" + String(copied.reason); }
+        `,
+      },
+      {},
+    );
+    await manager.loadFromPlugins([
+      plugin([{ id: "todo:panel", path: MOD_PATH }]),
+    ]);
+    await manager.startSession();
+
+    const frame = await pull(manager);
+    expect(String((frame.tree as { children: string[] }).children[0])).toBe(
+      "|0|false:no-surface",
+    );
+
+    await manager.dispose();
+  });
+
+  it("$.ui.notice 带上插件名转发到出口；没接线时调用照样成功", async () => {
+    const notices: Array<[string, string, string | null]> = [];
+    const { manager } = createManager(
+      {
+        [MOD_PATH]: `
+        exports.register = function ($, on) {
+          on("session.start", function () {
+            $.ui.notice("tool-1", "3 个文件");
+            $.ui.notice("tool-1", undefined);
+          });
+        };
+        `,
+      },
+      {},
+    );
+    manager.setNoticeSink((pluginName, toolUseId, text) =>
+      notices.push([pluginName, toolUseId, text]),
+    );
+    await manager.loadFromPlugins([
+      plugin([{ id: "todo:panel", path: MOD_PATH }]),
+    ]);
+    await manager.startSession();
+
+    await vi.waitFor(() =>
+      expect(notices).toEqual([
+        ["todo", "tool-1", "3 个文件"],
+        ["todo", "tool-1", null],
+      ]),
+    );
+
+    await manager.dispose();
+  });
+
+  it("草稿读取接上之后原样把输入框内容交回 mod", async () => {
+    const { manager } = createManager(
+      {
+        [MOD_PATH]: `
+        exports.register = function ($, on) {
+          on("session.start", function () { $.ui.open({ id: "p1", title: "面板" }); });
+          on("ui.render", async function () {
+            var draft = await $.prompt.read();
+            return __wave.h("Text", null, draft.text + "@" + draft.cursor);
+          });
+        };
+        `,
+      },
+      {},
+    );
+    manager.setPromptDraftReader(async () => ({ text: "半句话", cursor: 3 }));
+    await manager.loadFromPlugins([
+      plugin([{ id: "todo:panel", path: MOD_PATH }]),
+    ]);
+    await manager.startSession();
+
+    const frame = await pull(manager);
+    expect(String((frame.tree as { children: string[] }).children[0])).toBe(
+      "半句话@3",
+    );
 
     await manager.dispose();
   });
