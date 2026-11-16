@@ -46,6 +46,8 @@
 import { execFileSync } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
+import http from "node:http";
+import https from "node:https";
 import os from "node:os";
 import path from "node:path";
 
@@ -320,6 +322,9 @@ const USAGE = `用法：node upload.mjs --type <desktop|docs|remote|plugin-marke
   --env <环境>           目标环境：${Object.keys(ENV_BASES).join(" / ")}（默认 prod）
   --base <URL>           直接指定地址（与 --env 二选一）：私有化环境必须用它 +
                          该环境令牌（私有化没有 --env 预设）
+  --host-header <host>   连 --base 给的那个地址，但把 HTTP Host 头改写成 <host>
+                         （私有化场景：域名解析不了、或只能连到 ingress IP 时用。
+                           Node 内置 fetch 会忽略手写的 Host，这里改用本地代理转发实现）
 
 其它：
   --type <desktop|docs|remote|plugin-market>
@@ -374,6 +379,9 @@ function parseArgs(argv) {
       case "--base":
         opts.base = next();
         opts.baseGiven = true;
+        break;
+      case "--host-header":
+        opts.hostHeader = next();
         break;
       case "--token":
         opts.token = next();
@@ -440,6 +448,17 @@ function validate(opts) {
     opts.base = ENV_BASES[opts.env];
   }
   opts.base = opts.base.replace(/\/+$/, "");
+
+  if (opts.hostHeader !== undefined) {
+    if (!opts.baseGiven) {
+      die(
+        "--host-header 必须与 --base 一起用（--env 预设的地址本身就是域名，不需要覆盖 Host）",
+      );
+    }
+    if (!/^[A-Za-z0-9][A-Za-z0-9.\-]*(:\d+)?$/.test(opts.hostHeader)) {
+      die(`--host-header 只能是 host 或 host:port（不要带协议、路径）：${opts.hostHeader}`);
+    }
+  }
 
   // 台账动作不需要产物文件，先收口
   if (opts.list || opts.deleteId) {
@@ -615,6 +634,71 @@ async function fetchLedger(opts, token) {
   );
 }
 
+// ─── Host 头覆盖（私有化 / 只能连 IP 的场景）────────────────────────────────
+
+/**
+ * `--host-header`：连 `--base` 给的地址，但把 HTTP Host 改成指定值。
+ *
+ * 为什么不是在 `request()` 里加个 header 就完事：Node 内置 fetch 按 fetch 规范把
+ * `Host` 当 forbidden header **静默丢掉**（实测：手写 `headers: { Host: ... }` 后
+ * 服务端收到的仍是 URL 里的 host），patch `dns.lookup` 也不生效（undici 用的是内部
+ * lookup）。所以这里起一个本地一次性代理：请求仍走原来的 fetch（FormData/Blob/分片
+ * 全不动），代理只做两件事 —— 改 Host、把目的地换成 `--base` 的真实 host。
+ *
+ * 私有化环境的典型用法：域名解析不了，但 ingress IP 直连可达
+ *   --base http://10.195.40.9 --host-header codechat.v458a-lowcode.com
+ */
+async function applyHostHeaderProxy(opts) {
+  if (!opts.hostHeader) return;
+  const target = new URL(opts.base);
+  const secure = target.protocol === "https:";
+  const upstream = secure ? https : http;
+  const upstreamPort = target.port || (secure ? 443 : 80);
+  const upstreamHost = target.hostname;
+  // https 目标的 SNI 必须仍是域名（否则握手会带 IP，按 SNI 分流的入口会拒）
+  const servername = opts.hostHeader.split(":")[0];
+
+  const server = http.createServer((req, res) => {
+    const up = upstream.request(
+      {
+        host: upstreamHost,
+        port: upstreamPort,
+        method: req.method,
+        path: req.url,
+        headers: { ...req.headers, host: opts.hostHeader },
+        ...(secure ? { servername } : {}),
+      },
+      (upRes) => {
+        res.writeHead(upRes.statusCode ?? 502, upRes.headers);
+        upRes.pipe(res);
+      },
+    );
+    up.on("error", (err) => {
+      if (!res.headersSent) {
+        res.writeHead(502, { "content-type": "text/plain; charset=utf-8" });
+      }
+      res.end(`经本地代理转发失败（${upstreamHost}:${upstreamPort}）：${err.code || err.message}`);
+    });
+    req.pipe(up);
+  });
+  server.keepAliveTimeout = 65_000;
+
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  const { port } = server.address();
+  // 进程退出时释放端口；unref 保证这个监听不阻止 Node 自然退出
+  server.unref();
+  process.on("exit", () => server.close());
+
+  opts.originBase = opts.base;
+  opts.base = `http://127.0.0.1:${port}`;
+  console.log(
+    `Host 覆盖  ${opts.hostHeader} → 真实地址 ${upstreamHost}:${upstreamPort}（本地代理 127.0.0.1:${port}）`,
+  );
+}
+
 // ─── 入口 ──────────────────────────────────────────────────────────────────
 
 async function main() {
@@ -624,8 +708,11 @@ async function main() {
   const { token, source } = resolveToken(opts);
   assertTokenShape(token, source);
 
+  // 令牌按真实 base 查表（在上面已完成），这里再把 base 换成代理地址
+  await applyHostHeaderProxy(opts);
+
   console.log(
-    `平台地址   ${opts.base}${opts.env ? `（--env ${opts.env}）` : ""}`,
+    `平台地址   ${opts.originBase ?? opts.base}${opts.env ? `（--env ${opts.env}）` : ""}`,
   );
   if (opts.list || opts.deleteId) {
     console.log(
