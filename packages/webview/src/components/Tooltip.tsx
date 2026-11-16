@@ -53,6 +53,16 @@ interface TooltipProps {
    */
   anchorRef?: RefObject<HTMLElement>;
   /**
+   * 只借这个元素的**右缘**当水平锚点，垂直方向仍按触发元素居中（`position="right"`
+   * 专用）。
+   *
+   * 给「气泡要贴着某个面板的右边界」的调用点：气泡按触发元素定位时，落点是**行内容**
+   * 的右缘，行被面板内衬 + 滚动条推离面板边框，气泡于是压在面板上。斜杠指令弹层就是
+   * 这种 —— 设计师 2026-11-16 评论要求描述气泡「显示在距离下拉面板 4px 的右侧」，
+   * 演示前实测气泡左缘 870.5 / 面板右缘 883.5，压进面板 13px。
+   */
+  rightEdgeRef?: RefObject<HTMLElement>;
+  /**
    * 受控显示：`true` 时无视 hover 状态直接显示气泡（只在与 hover 自动显示取「或」
    * 的方向上生效，传 `false` 不会压下 hover）。给**键盘导航**的列表用 —— 焦点在
    * 输入框、指针没动，`mouseenter` 永远不会来，但用户按上下键时仍要能看到当前项
@@ -85,6 +95,7 @@ export const Tooltip: React.FC<TooltipProps> = ({
   multiline = false,
   keyboardFocusOnly = false,
   anchorRef,
+  rightEdgeRef,
   portal = false,
   forceVisible = false,
 }) => {
@@ -151,7 +162,10 @@ export const Tooltip: React.FC<TooltipProps> = ({
           containerRect.top + containerRect.height / 2 - tooltipRect.height / 2;
         break;
       case "right":
-        left = containerRect.right + gap;
+        // 水平锚点可以让给 `rightEdgeRef`（贴面板右缘），垂直仍取触发元素中心
+        left =
+          (rightEdgeRef?.current?.getBoundingClientRect().right ??
+            containerRect.right) + gap;
         top =
           containerRect.top + containerRect.height / 2 - tooltipRect.height / 2;
         break;
@@ -188,7 +202,7 @@ export const Tooltip: React.FC<TooltipProps> = ({
     top = Math.min(Math.max(top, margin), maxTop);
 
     setTooltipStyle({ left, top });
-  }, [position, gap, anchorRef]);
+  }, [position, gap, anchorRef, rightEdgeRef]);
 
   // 气泡的显示条件：hover 自动显示，或受控（`forceVisible`）显示；两者都受 `hover:
   // hover` 门控（触屏上气泡出来就收不掉）。

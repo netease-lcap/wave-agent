@@ -350,4 +350,87 @@ describe("Tooltip Component", () => {
       expect(tooltip.style.top).toBe("48px");
     });
   });
+
+  // 2026-11-16 评论（斜杠指令弹层）：「快捷指令的 hover tooltip，应该显示在距离
+  // 下拉面板 4px 的右侧」——水平锚点取面板右缘，垂直仍按触发元素居中。
+  describe("rightEdgeRef（贴面板右缘）", () => {
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    const asRect = (r: Partial<DOMRect>) =>
+      ({
+        left: 0,
+        top: 0,
+        right: 0,
+        bottom: 0,
+        width: 0,
+        height: 0,
+        x: 0,
+        y: 0,
+        ...r,
+        toJSON: () => ({}),
+      }) as DOMRect;
+
+    it("position=right 时水平贴 rightEdgeRef 的右缘、垂直仍按触发元素居中", async () => {
+      const edge = document.createElement("div");
+      document.body.appendChild(edge);
+
+      vi.spyOn(
+        HTMLElement.prototype,
+        "getBoundingClientRect",
+      ).mockImplementation(function (this: HTMLElement) {
+        // 面板：右缘 620，垂直范围与触发元素无关
+        if (this === edge) {
+          return asRect({
+            left: 500,
+            right: 620,
+            top: 100,
+            bottom: 400,
+            width: 120,
+            height: 300,
+          });
+        }
+        if (this.classList.contains("tooltip-box")) {
+          return asRect({ width: 100, height: 20 });
+        }
+        // 触发元素：右缘 140、垂直中心 60
+        return asRect({
+          left: 100,
+          right: 140,
+          top: 50,
+          bottom: 70,
+          width: 40,
+          height: 20,
+        });
+      });
+
+      render(
+        <Tooltip text="tip" position="right" rightEdgeRef={{ current: edge }}>
+          <button type="button">anchor</button>
+        </Tooltip>,
+      );
+      const container = document.querySelector(
+        ".tooltip-container",
+      ) as HTMLElement;
+      await act(async () => {
+        fireEvent.mouseEnter(container);
+      });
+
+      let tooltip: HTMLElement | null = null;
+      await waitFor(() => {
+        tooltip = document.querySelector(".tooltip-box.visible");
+        expect(tooltip).not.toBeNull();
+        expect((tooltip as unknown as HTMLElement).style.left).not.toBe("");
+      });
+
+      const box = tooltip as unknown as HTMLElement;
+      // 620 + 8（非桌面档的气泡间距）；若按触发元素定位会是 140 + 8 = 148
+      expect(box.style.left).toBe("628px");
+      // 垂直中心仍取触发元素：60 − 气泡半高 10 = 50
+      expect(box.style.top).toBe("50px");
+
+      edge.remove();
+    });
+  });
 });
