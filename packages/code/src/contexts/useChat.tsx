@@ -38,7 +38,7 @@ import {
   extractLatestTotalTokens,
   PLUGIN_CHANGE_PENDING_MESSAGE,
   PLUGIN_RELOADED_MESSAGE,
-  onLicenseBlocked,
+  onHostNotice,
 } from "wave-agent-sdk";
 import { logger } from "../utils/logger.js";
 import { displayUsageSummary } from "../utils/usageSummary.js";
@@ -1009,7 +1009,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
 
   // 一次性提示（Notifications 行那一格灰字）：多来源共用同一个槽位，谁最后设置谁
   // 显示，数秒后自行消失。既有来源是插件变更 / 重载完成（docs/specs/ecosystem/
-  // plugin.md「插件变更提示」），2026-11-16 起加上私有化未授权拦截
+  // plugin.md「插件变更提示」），2026-11-16 起加上进程级的一类提示
   // （docs/specs/enterprise/server-managed-config.md「私有化未授权时给出一次性提示」）。
   const [hint, setHint] = useState<string | null>(null);
   const hintTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1027,11 +1027,12 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     showHint(PLUGIN_CHANGE_PENDING_MESSAGE);
   }, [showHint]);
 
-  // 私有化未授权的提示是**进程级**事件（拉托管配置被授权闸门拦下，早于任何会话），
-  // 由 SDK 在识别出 license 码时回调一次；同码只报一次、拉到成功响应后重新武装。
-  // 文案是服务端原文，这里不加工（spec「私有化未授权时给出一次性提示」场景 1）。
+  // 进程级提示（私有化未授权 / 登录过期 / 配置文件解析失败）都是**进程级**事件：
+  // 拉托管配置被授权闸门拦下、SSO 会话过期、settings 文件解析失败，都早于或独立
+  // 于任何会话，由 SDK 去重后回调。文案是 SDK 给的原文，这里不加工、不拼第二句
+  // （spec「私有化未授权时给出一次性提示」场景 1）。
   useEffect(
-    () => onLicenseBlocked((block) => showHint(block.message)),
+    () => onHostNotice((notice) => showHint(notice.message)),
     [showHint],
   );
 

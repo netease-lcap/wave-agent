@@ -396,12 +396,12 @@ export class DesktopHost {
   private initPromise: Promise<void> | null = null;
 
   /**
-   * 上一条已弹过的 license 拦截文案（spec enterprise/server-managed-config
-   * 「私有化未授权时给出一次性提示」）。本地 / WSL / 远端各有自己的 CLI 进程，
-   * 同一个拦截会被每个连上的主机各报一次；窗口级 toast 只留一条，文案相同就不再
-   * 弹。SDK 侧已按 code 去重、成功拉取后重新武装，故这里只做跨进程去重。
+   * 上一条已弹过的宿主提示文案（`hostNotice`：license 拦截 / 登录过期 /
+   * 配置解析失败）。本地 / WSL / 远端各有自己的 CLI 进程，同一条提示会被每个
+   * 连上的主机各报一次；窗口级 toast 只留一条，文案相同就不再弹。SDK 侧已按各自
+   * 的来源去重、在自己的成功路径上重新武装，故这里只做跨进程去重。
    */
-  private lastLicenseToast: string | null = null;
+  private lastHostNoticeToast: string | null = null;
 
   // Remote (ssh) host infrastructure: host name → its own shared JSON-RPC
   // client. Each remote host runs a `wave --daemon` (nohup, survives this app),
@@ -1109,6 +1109,17 @@ export class DesktopHost {
   }
 
   /**
+   * 把一段错误原因压成能塞进 toast 的一句话：折掉换行与连续空白（Node 的
+   * `Error.stack` 与 RPC 报错常常多行），过长时**保留尾部** —— 原因通常写在
+   * 最后（`... Caused by: ECONNREFUSED`），从前截断只会留下「是什么操作失败」
+   * 而丢掉「为什么失败」。
+   */
+  private errorSummary(text: string, limit = 200): string {
+    const flat = text.replace(/\s+/g, " ").trim();
+    return flat.length <= limit ? flat : `…${flat.slice(-limit)}`;
+  }
+
+  /**
    * 打开外部链接失败（没有可用的浏览器、默认浏览器注册损坏等）时告知用户。
    * 系统层面打不开时不提示的话，点击看起来就是「毫无反应」——失败与「已在后台
    * 打开但没抢到焦点」无法区分。所有打开外部链接的入口都走这里。
@@ -1617,8 +1628,9 @@ export class DesktopHost {
       // the inherited environment (场景 3).
       await primeLoginShellEnv();
 
-      this.client = new StdioClient(binaryPath, ["--stdio"]);
-      this.router = new NotificationRouter(this.client);
+      const client = new StdioClient(binaryPath, ["--stdio"]);
+      this.client = client;
+      this.router = new NotificationRouter(client);
       this.router.registerGlobal("authUrl", (params) => {
         const p = params as { url?: string };
         if (p?.url) {
@@ -1629,6 +1641,7 @@ export class DesktopHost {
       });
       this.registerHostGlobalHandlers(this.router, LOCAL_HOST);
       this.router.attach();
+      client.onClosed((reason) => this.onLocalClientClosed(reason));
     })();
 
     this.initPromise.catch(() => {
@@ -1641,14 +1654,44 @@ export class DesktopHost {
   }
 
   /**
+   * 本地 `wave --stdio` 退出了（崩溃、被 OOM 干掉、被用户 kill）。没有人在等
+   * 它，所以不处理的话用户要等到下一次发消息才看到「发送消息失败」。
+   *
+   * 这里只做三件事：把本地主机的 agent 全部解绑（进程没了，它们也都没了）、把
+   * 客户端三件套清掉 —— `initPromise = null` 正是既有那条懒重启路径的开关，下一次
+   * 访问本地会话时 `ensureClient()` 会重新 spawn，不另造重启循环 —— 以及告诉用户
+   * 发生了什么。stderr 尾巴只进日志：它可能很长（而且常常是 CLI 自己的堆栈），
+   * toast 只留退出摘要。文案里不提「重启编辑器 / 重装 CLI」：本地进程由这个宿主
+   * 自己重启，那两句话只在没有自动重启机制的 IDE 宿主里才对。
+   */
+  private onLocalClientClosed(reason: string): void {
+    // 退出应用时 dispose() 会主动关掉子进程 —— 那不是意外退出，不该弹提示。
+    if (this.disposed) return;
+    hostLog.error("[DesktopHost] 本地 wave 进程已退出:", reason);
+    this.dropHostAgents(LOCAL_HOST);
+    this.initPromise = null;
+    this.client = null;
+    this.router = null;
+    // 完整原因（含 stderr 尾巴）已经进日志；toast 只取退出摘要那份。
+    const exit = /wave --stdio process exited \(([^)]*)\)/.exec(reason)?.[1];
+    this.showToast({
+      message: exit
+        ? `wave 进程已退出（${exit}），重新打开该会话将自动重启`
+        : "wave 进程已退出，重新打开该会话将自动重启",
+      type: "error",
+    });
+  }
+
+  /**
    * 订阅 CLI 侧的进程级事件：它们是这件事**只在这个进程里知道**、且早于任何会话
    * 绑定的，通知不带 sessionId，走全局处理器。
    *
    * - `startupStage`（spec ui/stdio-transport.md）：工具依赖下载与「正在启动
    *   会话…」；宿主管不了 CLI 报什么，只负责按主机归属到分屏。
-   * - `licenseBlocked`（spec enterprise/server-managed-config.md「私有化未授权时
-   *   给出一次性提示」）：托管配置被授权闸门拦下时弹一条错误 toast，文案取服务端
-   *   原文、不自造；同一句只弹一次（多主机各有进程，避免重复）。
+   * - `hostNotice`（spec enterprise/server-managed-config.md「私有化未授权时给出
+   *   一次性提示」以及登录过期、settings 解析失败）：三类提示共用这一条通道，各自
+   *   都已由 SDK 去重，桌面端只再按文案去重一次（本地 / WSL / 远端各有自己的 CLI
+   *   进程，同一句会被各报一次）。文案取 SDK 给的原文、不自造，也不按 kind 挑。
    */
   private registerHostGlobalHandlers(
     router: NotificationRouter,
@@ -1659,12 +1702,12 @@ export class DesktopHost {
       if (typeof stage !== "string") return;
       this.reportStartupStage(host, stage as StartupStage);
     });
-    router.registerGlobal("licenseBlocked", (params) => {
-      const p = params as { code?: string; message?: string };
+    router.registerGlobal("hostNotice", (params) => {
+      const p = params as { kind?: string; message?: string };
       const message = typeof p?.message === "string" ? p.message.trim() : "";
       if (!message) return;
-      if (this.lastLicenseToast === message) return;
-      this.lastLicenseToast = message;
+      if (this.lastHostNoticeToast === message) return;
+      this.lastHostNoticeToast = message;
       this.showToast({ message, type: "error" });
     });
   }
@@ -8436,10 +8479,18 @@ export class DesktopHost {
       await this.afterLogin(host, result.user);
     } catch (error) {
       console.error("[DesktopHost] 登录失败:", error);
+      const reason = error instanceof Error ? error.message : String(error);
       this.postMessage({
         command: "loginResponse",
         success: false,
-        error: error instanceof Error ? error.message : String(error),
+        error: reason,
+      });
+      // webview 只处理 loginResponse 的成功分支，失败分支什么都不做 —— 只回包
+      // 的话，点了「登录」的人看到的是一次毫无反应的空转（浏览器关掉、授权被
+      // 拒、回调超时都一样），所以这里再给一条 toast。
+      this.showToast({
+        message: `登录失败：${this.errorSummary(reason)}`,
+        type: "error",
       });
     } finally {
       // The code exchange has settled (success or failure) — the callback
@@ -9040,6 +9091,13 @@ export class DesktopHost {
           message: `部分文件上传失败: ${errors.length} 个错误`,
           ...(paneId !== undefined ? { paneId } : {}),
         });
+        // 回包只到「发起这次上传的那个输入框」的安全网里，别处（例如另一个分屏
+        // 的输入框、或是替换掉它的新会话态）看不到 —— 用户面对的仍是「点了上传，
+        // 什么都没发生」。所以再给一条窗口级 toast，只带上第一个失败原因。
+        this.showToast({
+          message: `部分文件上传失败：${errors.length} 个文件，${this.errorSummary(errors[0] ?? "")}`,
+          type: "error",
+        });
       }
     } catch (error) {
       console.error("[DesktopHost] 文件上传处理失败:", error);
@@ -9047,6 +9105,10 @@ export class DesktopHost {
         command: "uploadError",
         error: `文件上传处理失败: ${error}`,
         ...(paneId !== undefined ? { paneId } : {}),
+      });
+      this.showToast({
+        message: `文件上传失败：${this.errorSummary(String(error))}`,
+        type: "error",
       });
     }
   }

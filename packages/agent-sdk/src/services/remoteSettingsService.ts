@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import * as path from "node:path";
 
 import { authService, createAuthAwareFetch } from "./authService.js";
+import { emitHostNotice } from "./hostNotice.js";
 import type {
   RemoteSettingsCache,
   RemoteSettingsFetchResult,
@@ -29,16 +30,10 @@ const LICENSE_BLOCK_CODES = new Set([
   "LICENSE_EXPIRED",
 ]);
 
-/** 一次 license 拦截：响应码与服务端给的原样文案（客户端不自造文案）。 */
-export interface LicenseBlock {
-  code: string;
-  message: string;
-}
-
 let _cachedSettings: RemoteSettingsCache | null = null;
 let _pollingTimer: ReturnType<typeof setInterval> | null = null;
 let _onSettingsUpdateCallbacks: Array<() => void | Promise<void>> = [];
-let _licenseBlockCallbacks: Array<(block: LicenseBlock) => void> = [];
+
 /**
  * 已经提示过的 code（进程级）。同一个码只提示一次——后台轮询一小时一次，不设这
  * 道闸就是每小时弹一遍；换成别的码（MISSING → EXPIRED）算新情况，再提示一次。
@@ -72,36 +67,9 @@ async function notifySettingsUpdate(): Promise<void> {
 }
 
 /**
- * Subscribe to license blocks (spec enterprise/server-managed-config「私有化未授权
- * 时给出一次性提示」). Subscribers are per-process surfaces that turn it into their
- * own one-off notice — the CLI's hint line, the desktop's toast. Returns an
- * unsubscribe function.
- */
-export function onLicenseBlocked(
-  callback: (block: LicenseBlock) => void,
-): () => void {
-  _licenseBlockCallbacks.push(callback);
-  return () => {
-    _licenseBlockCallbacks = _licenseBlockCallbacks.filter(
-      (cb) => cb !== callback,
-    );
-  };
-}
-
-function notifyLicenseBlocked(block: LicenseBlock): void {
-  for (const cb of _licenseBlockCallbacks) {
-    try {
-      cb(block);
-    } catch {
-      // Subscriber errors must not break the fetch flow.
-    }
-  }
-}
-
-/**
  * 403 里如果是 license 拦截就通知一次（同码去重）。返回不改变调用方的控制流：
  * 无论提示与否，fetch 仍按 `success: false` + 缓存兜底返回——提示只是让用户看见
- * 原因，不是新的失败分支。
+ * 原因，不是新的失败分支。去重在本模块做；通道本身（`hostNotice`）不做状态。
  */
 function reportLicenseBlock(status: number, body: string): void {
   if (status !== 403) return;
@@ -118,7 +86,7 @@ function reportLicenseBlock(status: number, body: string): void {
   const message = typeof parsed?.error === "string" ? parsed.error.trim() : "";
   if (!message) return;
   _notifiedLicenseCode = code;
-  notifyLicenseBlocked({ code, message });
+  emitHostNotice({ kind: "licenseBlocked", message });
 }
 
 function loadCacheFromDisk(): void {
@@ -502,6 +470,5 @@ export const remoteSettingsService = {
   shutdown,
   mergeRemoteSettings,
   onSettingsUpdate,
-  onLicenseBlocked,
   ensureAuthChangeRefresh,
 } as const;

@@ -54,7 +54,7 @@ import {
   type SlashCommandInfo,
   type ConfiguredModel,
   loadUserConfigEnv,
-  onLicenseBlocked,
+  onHostNotice,
   loadWaveConfigFromFile,
   getUserConfigPaths,
   getProjectConfigPaths,
@@ -362,9 +362,12 @@ export class AgentBridge {
     if (userEnv.WAVE_SERVER_URL) {
       process.env.WAVE_SERVER_URL = userEnv.WAVE_SERVER_URL;
     }
-    // License 拦截（私有化未授权）：托管配置的拉取是进程级、早于任何会话，所以
-    // 只能走不带 sessionId 的全局通知。SDK 侧已按 code 去重，这里原样转发。
-    onLicenseBlocked((block) => this.emit("licenseBlocked", block));
+    // 进程级一次性提示（私有化未授权 / 登录过期 / 配置文件解析失败）：这些来源
+    // 都发生在任何会话绑定之前（启动、SSO 登录、定时轮询）或由进程自己持有的
+    // 子系统发出，所以只能走不带 sessionId 的全局通知。SDK 侧已按来源去重、
+    // 各来源在自己的成功路径上重新武装，这里原样转发三种 kind，宿主只负责展示。
+    // stdio 与 daemon 共用本 bridge，所以订阅挂在构造处而不是某个传输分支里。
+    onHostNotice((notice) => this.emit("hostNotice", notice));
   }
 
   // ── Public API ────────────────────────────────────────────────

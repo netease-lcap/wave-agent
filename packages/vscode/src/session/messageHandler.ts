@@ -2678,6 +2678,13 @@ export class MessageHandler {
       console.error("登录失败:", error);
       const errorMessage =
         error instanceof Error ? error.message : String(error);
+      // 登录失败原本只有回包、而 webview 只处理 success，失败对用户完全静默；
+      // 这里补一条编辑器错误通知。只取原因首行并截断——RPC 错误常带整段堆栈，
+      // 弹窗里塞进去读不完。
+      const reason = errorMessage.split("\n")[0].trim() || "未知错误";
+      void vscode.window.showErrorMessage(
+        `登录失败：${reason.length > 200 ? `${reason.slice(0, 200)}…` : reason}`,
+      );
       this.context.postMessage(
         {
           command: "loginResponse",

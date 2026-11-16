@@ -97,11 +97,13 @@ class WaveBackendService(private val project: Project) : Disposable {
                         val stage = p?.jsonObject?.get("stage")?.jsonPrimitive?.content
                         if (!stage.isNullOrEmpty()) reportStage(stage)
                     }
-                    // 私有化未授权（spec enterprise/server-managed-config.md「私有化
-                    // 未授权时给出一次性提示」）：拉托管配置被授权闸门拦下，同样发生在
-                    // 任何会话之前。文案是服务端原文，不自造；SDK 已按 code 去重，这里
-                    // 直接转成 IDE 的错误气泡（与 VSCE 的 showErrorMessage 同档）。
-                    r.registerGlobal("licenseBlocked") { p ->
+                    // 进程级一次性提示（spec enterprise/server-managed-config.md「私有化
+                    // 未授权时给出一次性提示」）：三类共用一条通道——私有化未授权、SSO
+                    // 会话过期、配置文件不再可解析，都发生在任何会话之前。文案由 SDK 给定
+                    // （授权闸门那句是服务端原文），宿主不自造第二条；SDK 已去重（`kind`
+                    // 只用于 SDK 侧分源，宿主不必分辨），这里直接转成 IDE 错误气泡（与
+                    // VSCE 的 showErrorMessage 同档）。
+                    r.registerGlobal("hostNotice") { p ->
                         val message = p?.jsonObject?.get("message")?.jsonPrimitive?.content
                         if (!message.isNullOrBlank()) {
                             Edt.invokeLater { IdeService.showError(project, message) }

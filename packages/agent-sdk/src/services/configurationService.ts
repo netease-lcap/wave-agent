@@ -12,6 +12,7 @@ import { isValidHookEvent } from "../types/hooks.js";
 import type { HookEvent, HookEventConfig } from "../types/hooks.js";
 import type { ModSettingsSource } from "../types/mods.js";
 import { logger } from "../utils/globalLogger.js";
+import { emitHostNotice } from "./hostNotice.js";
 import type {
   ConfigurationLoadResult,
   ValidationResult,
@@ -57,6 +58,14 @@ import { ensureWaveRuntimeFilesExcluded } from "../utils/gitUtils.js";
 import { atomicWriteFile } from "../utils/atomicWrite.js";
 import { supportsVision } from "../utils/modelCapabilities.js";
 import type { TelemetryInitSettings } from "../telemetry/instrumentation.js";
+
+/**
+ * 已经提示过「设置文件解析失败」的路径（进程级）。同一个坏文件会被反复加载——
+ * 热更新重读、user + project 两层各读一遍、多处调用 `loadWaveConfigFromFile`；
+ * 不按路径去重就是每次重读提示一遍。该路径下一次解析成功时清掉，文件修好后又
+ * 写坏了能重新提示。只记 SyntaxError：文件不存在 / 空文件 / 其它 IO 错误不算。
+ */
+const _parseErrorNotifiedPaths = new Set<string>();
 
 /**
  * Validate a configuration object's structure and values. Module-level so it
@@ -1841,6 +1850,9 @@ export function loadWaveConfigFromFile(
 
     const config = JSON.parse(content) as WaveConfiguration;
 
+    // 解析成功就把这条路径的「解析失败」记录清掉：文件修好后再次写坏要能重新提示。
+    _parseErrorNotifiedPaths.delete(filePath);
+
     return {
       hooks: config.hooks || undefined,
       env: config.env || undefined,
@@ -1904,6 +1916,16 @@ export function loadWaveConfigFromFile(
       // partially-written state. Warn and return null so callers skip this
       // source instead of crashing.
       logger.warn(`Invalid JSON syntax in ${filePath}: ${error.message}`);
+      // 同一个坏文件会被反复加载（热更新、多点读取），按路径去重只提示一次；
+      // 该路径下一次解析成功时清记录（见上面的 delete）。文件不存在 / 空文件 /
+      // 其它 IO 错误都不是「用户写坏了 JSON」，不提示。
+      if (!_parseErrorNotifiedPaths.has(filePath)) {
+        _parseErrorNotifiedPaths.add(filePath);
+        emitHostNotice({
+          kind: "configParseError",
+          message: `设置文件解析失败：${filePath}（本轮忽略该文件）`,
+        });
+      }
       return null;
     }
 

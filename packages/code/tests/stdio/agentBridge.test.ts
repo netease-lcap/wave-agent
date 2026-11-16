@@ -21,7 +21,7 @@ import {
   readRecentWorkdirs,
   rememberRecentWorkdir,
   forgetRecentWorkdir,
-  onLicenseBlocked,
+  onHostNotice,
   type ClientNotificationMethod,
   type RequestMethod,
 } from "wave-agent-sdk";
@@ -221,28 +221,45 @@ afterEach(() => {
   delete process.env.WAVE_BASE_URL;
 });
 
-// ── license 拦截 ─────────────────────────────────────────────────
+// ── 进程级一次性提示 ─────────────────────────────────────────────
 
 test("forwards a private-deployment license block as a global notification", () => {
   const { notifications } = createBridge();
   // 构造时订阅了 SDK 的进程级事件；这里手动触发它，验证桥把它变成不带
   // sessionId 的通知（spec enterprise/server-managed-config「私有化未授权时给出
   // 一次性提示」：拉配置早于任何会话，只能走全局通道）。
-  const notify = vi.mocked(onLicenseBlocked).mock.calls[0]?.[0];
+  const notify = vi.mocked(onHostNotice).mock.calls[0]?.[0];
   expect(notify).toBeTypeOf("function");
 
   notify?.({
-    code: "LICENSE_MISSING",
+    kind: "licenseBlocked",
     message: "产品尚未授权，请联系企业管理员上传 license",
   });
 
   expect(notifications).toEqual([
     {
-      method: "licenseBlocked",
+      method: "hostNotice",
       params: {
-        code: "LICENSE_MISSING",
+        kind: "licenseBlocked",
         message: "产品尚未授权，请联系企业管理员上传 license",
       },
+      sessionId: undefined,
+    },
+  ]);
+});
+
+test("forwards every notice kind unchanged", () => {
+  const { notifications } = createBridge();
+  const notify = vi.mocked(onHostNotice).mock.calls[0]?.[0];
+
+  // 这条通道不只服务 license：登录过期等其它 kind 同样原样转发，桥不挑 kind、
+  // 不加字段、不改文案，展示口径全交给宿主。
+  notify?.({ kind: "authExpired", message: "登录已过期，请重新登录" });
+
+  expect(notifications).toEqual([
+    {
+      method: "hostNotice",
+      params: { kind: "authExpired", message: "登录已过期，请重新登录" },
       sessionId: undefined,
     },
   ]);

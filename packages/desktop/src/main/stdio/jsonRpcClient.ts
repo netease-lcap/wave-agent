@@ -41,7 +41,7 @@ export abstract class JsonRpcClient {
   private nextId = 1;
   private pending = new Map<number, PendingRequest>();
   private handlers = new Map<string, Set<NotificationHandler>>();
-  private closedHandlers: Array<() => void> = [];
+  private closedHandlers: Array<(reason: string) => void> = [];
   private closed = false;
 
   // ── Transport hooks (subclass) ─────────────────────────────────
@@ -65,7 +65,7 @@ export abstract class JsonRpcClient {
     const error = new Error(reason);
     for (const p of this.pending.values()) p.reject(error);
     this.pending.clear();
-    for (const handler of this.closedHandlers) handler();
+    for (const handler of this.closedHandlers) handler(reason);
     this.closedHandlers = [];
   }
 
@@ -78,8 +78,14 @@ export abstract class JsonRpcClient {
   /** Close the transport and reject pending requests (subclass tears down its stream). */
   abstract dispose(): void;
 
-  /** Observe transport teardown (dispose or unexpected close), fired once. */
-  onClosed(handler: () => void): void {
+  /**
+   * Observe transport teardown (dispose or unexpected close), fired once. The
+   * reason is the same string that rejects the pending requests — for a child
+   * process that is the exit summary (`wave --stdio process exited (code: …,
+   * signal: …)`) plus the stderr tail, so a host can pick what to display and
+   * log the rest.
+   */
+  onClosed(handler: (reason: string) => void): void {
     this.closedHandlers.push(handler);
   }
 

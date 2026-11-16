@@ -83,6 +83,10 @@ import {
   getOrCreateAnonymousId,
   __resetAnonymousIdForTesting,
 } from "../../src/services/authService.js";
+import {
+  onHostNotice,
+  type HostNotice,
+} from "../../src/services/hostNotice.js";
 
 describe("AuthService", () => {
   beforeEach(() => {
@@ -1206,6 +1210,116 @@ describe("AuthService", () => {
       // Writing here would resurrect the session the user just ended.
       expect(result).toBe(false);
       expect(mockedWriteFile).not.toHaveBeenCalled();
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // 「登录已过期」一次性宿主提示
+  // ---------------------------------------------------------------------------
+  describe("authExpired host notice", () => {
+    const mockFetch = vi.fn();
+    const staleSession = () =>
+      JSON.stringify({
+        SSO_TOKEN: "old-token",
+        SSO_REFRESH_TOKEN: "old-refresh",
+        SSO_TOKEN_EXPIRES_AT: Date.now() + 3 * 60 * 1000,
+      });
+
+    const notices: HostNotice[] = [];
+    const unsubscribers: Array<() => void> = [];
+
+    beforeEach(() => {
+      vi.stubGlobal("fetch", mockFetch);
+      process.env.WAVE_SERVER_URL = "https://ai.example.com";
+      notices.length = 0;
+      unsubscribers.push(onHostNotice((notice) => notices.push(notice)));
+      mockedExists.mockReturnValue(true);
+      mockedReadFile.mockReturnValue(staleSession());
+    });
+
+    afterEach(() => {
+      for (const off of unsubscribers.splice(0)) off();
+      vi.unstubAllGlobals();
+      delete process.env.WAVE_SERVER_URL;
+    });
+
+    it("notifies once when the server rejects the refresh token", async () => {
+      mockFetch.mockResolvedValue({ ok: false, status: 400 });
+
+      const service = AuthService.getInstance();
+      await service.checkAndRefreshTokenIfNeeded(true);
+      // 认证已经被清掉，后续每个请求都会走同一条失败路径：不再重复提示。
+      await service.checkAndRefreshTokenIfNeeded(true);
+
+      expect(notices).toEqual([
+        { kind: "authExpired", message: "登录已过期，请重新登录" },
+      ]);
+      expect(mockedRm).toHaveBeenCalled();
+    });
+
+    it("treats a 401 the same way", async () => {
+      mockFetch.mockResolvedValueOnce({ ok: false, status: 401 });
+
+      const service = AuthService.getInstance();
+      await service.checkAndRefreshTokenIfNeeded(true);
+
+      expect(notices.map((notice) => notice.kind)).toEqual(["authExpired"]);
+    });
+
+    it("re-arms after the next successful login", async () => {
+      mockFetch.mockResolvedValueOnce({ ok: false, status: 400 });
+      const service = AuthService.getInstance();
+      await service.checkAndRefreshTokenIfNeeded(true);
+      expect(notices).toHaveLength(1);
+
+      // 重新登录（这里是 refresh 成功，走同一条 notifyAuthChange("login")）
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          token: "new-token",
+          refreshToken: "new-refresh",
+          expiresIn: 3600,
+        }),
+      });
+      await service.checkAndRefreshTokenIfNeeded(true);
+      expect(notices).toHaveLength(1);
+
+      // 再过期一次算新情况。
+      mockFetch.mockResolvedValueOnce({ ok: false, status: 400 });
+      await service.checkAndRefreshTokenIfNeeded(true);
+
+      expect(notices.map((notice) => notice.message)).toEqual([
+        "登录已过期，请重新登录",
+        "登录已过期，请重新登录",
+      ]);
+    });
+
+    it("stays silent on a transient network error", async () => {
+      mockFetch.mockRejectedValueOnce(new Error("Network error"));
+
+      const service = AuthService.getInstance();
+      const result = await service.checkAndRefreshTokenIfNeeded(true);
+
+      // 网络错误不清认证，也就没有「过期」可提示。
+      expect(result).toBe(false);
+      expect(notices).toEqual([]);
+      expect(mockedRm).not.toHaveBeenCalled();
+    });
+
+    it("stays silent when the user logs out on their own", async () => {
+      const service = AuthService.getInstance();
+      await service.clearAuth();
+
+      expect(notices).toEqual([]);
+    });
+
+    it("stays silent for a non-401/400 failure such as a 500", async () => {
+      mockFetch.mockResolvedValueOnce({ ok: false, status: 500 });
+
+      const service = AuthService.getInstance();
+      await service.checkAndRefreshTokenIfNeeded(true);
+
+      expect(notices).toEqual([]);
     });
   });
 

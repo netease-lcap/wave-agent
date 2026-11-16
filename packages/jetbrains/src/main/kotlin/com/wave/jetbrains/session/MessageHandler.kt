@@ -777,6 +777,15 @@ class MessageHandler(
                     reloadAgentConfig()
                 } catch (e: StdioClientException) {
                     LOG.warn("login failed: ${e.message}")
+                    // 登录失败原本只有回包、而 webview 只处理 success，失败对用户完全
+                    // 静默；补一条 IDE 错误气泡。只取原因首行并截断——RPC 错误常带整段
+                    // 堆栈，气泡里塞进去读不完（口径与 VSCE 一致）。
+                    val reason = e.message?.lineSequence()?.firstOrNull()?.trim()
+                        ?.takeIf { it.isNotEmpty() } ?: "未知错误"
+                    IdeService.showError(
+                        project,
+                        "登录失败：" + if (reason.length > 200) reason.take(200) + "…" else reason,
+                    )
                     postMessage("loginResponse", buildJsonObject {
                         put("success", false)
                         put("error", e.message ?: "登录失败")

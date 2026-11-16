@@ -49,9 +49,12 @@ import {
   onSettingsUpdate,
   ensureAuthChangeRefresh,
   resetAuthChangeRefresh,
-  onLicenseBlocked,
   remoteSettingsService,
 } from "../../src/services/remoteSettingsService.js";
+import {
+  onHostNotice,
+  type HostNotice,
+} from "../../src/services/hostNotice.js";
 
 describe("remoteSettingsService", () => {
   beforeEach(() => {
@@ -381,10 +384,8 @@ describe("remoteSettingsService", () => {
 
     // 订阅是模块级的，订阅者出错或残留会串到后面的用例：逐个记下并在收尾退订。
     const unsubscribers: Array<() => void> = [];
-    const subscribe = (
-      callback: (block: { code: string; message: string }) => void,
-    ) => {
-      unsubscribers.push(onLicenseBlocked(callback));
+    const subscribe = (callback: (notice: HostNotice) => void) => {
+      unsubscribers.push(onHostNotice(callback));
     };
     afterEach(() => {
       for (const off of unsubscribers.splice(0)) off();
@@ -392,8 +393,8 @@ describe("remoteSettingsService", () => {
 
     it("notifies once with the server's own copy for a licensed block code", async () => {
       authenticate();
-      const seen: Array<{ code: string; message: string }> = [];
-      subscribe((block) => seen.push(block));
+      const seen: HostNotice[] = [];
+      subscribe((notice) => seen.push(notice));
       vi.stubGlobal(
         "fetch",
         vi
@@ -412,7 +413,7 @@ describe("remoteSettingsService", () => {
       expect(result.success).toBe(false);
       expect(seen).toEqual([
         {
-          code: "LICENSE_MISSING",
+          kind: "licenseBlocked",
           message: "产品尚未授权，请联系企业管理员上传 license",
         },
       ]);
@@ -420,23 +421,27 @@ describe("remoteSettingsService", () => {
 
     it("does not repeat the same code on the next poll", async () => {
       authenticate();
-      const seen: string[] = [];
-      subscribe((block) => seen.push(block.code));
-      vi.stubGlobal(
-        "fetch",
-        vi.fn().mockResolvedValue(blockResponse("LICENSE_MISSING", "尚未授权")),
-      );
+      const seen: HostNotice[] = [];
+      subscribe((notice) => seen.push(notice));
+      // 服务端把文案改了也算同一个码：去重按 code，不按文案。
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce(blockResponse("LICENSE_MISSING", "尚未授权"))
+        .mockResolvedValueOnce(
+          blockResponse("LICENSE_MISSING", "仍是尚未授权"),
+        );
+      vi.stubGlobal("fetch", fetchMock);
 
       await refresh();
       await refresh();
 
-      expect(seen).toEqual(["LICENSE_MISSING"]);
+      expect(seen).toEqual([{ kind: "licenseBlocked", message: "尚未授权" }]);
     });
 
     it("notifies again when the code changes", async () => {
       authenticate();
-      const seen: string[] = [];
-      subscribe((block) => seen.push(block.code));
+      const seen: HostNotice[] = [];
+      subscribe((notice) => seen.push(notice));
       const fetchMock = vi
         .fn()
         .mockResolvedValueOnce(blockResponse("LICENSE_EXPIRED", "已到期"))
@@ -446,13 +451,16 @@ describe("remoteSettingsService", () => {
       await refresh();
       await refresh();
 
-      expect(seen).toEqual(["LICENSE_EXPIRED", "LICENSE_MISSING"]);
+      expect(seen.map((notice) => notice.message)).toEqual([
+        "已到期",
+        "尚未授权",
+      ]);
     });
 
     it("re-arms after a successful fetch", async () => {
       authenticate();
-      const seen: string[] = [];
-      subscribe((block) => seen.push(block.code));
+      const seen: HostNotice[] = [];
+      subscribe((notice) => seen.push(notice));
       const fetchMock = vi
         .fn()
         .mockResolvedValueOnce(blockResponse("LICENSE_MISSING", "尚未授权"))
@@ -474,13 +482,16 @@ describe("remoteSettingsService", () => {
       await refresh();
 
       // 授权修好（200）后再失效，同一句要能重新提示。
-      expect(seen).toEqual(["LICENSE_MISSING", "LICENSE_MISSING"]);
+      expect(seen.map((notice) => notice.message)).toEqual([
+        "尚未授权",
+        "尚未授权",
+      ]);
     });
 
     it("stays silent for an unknown code or a non-403", async () => {
       authenticate();
-      const seen: string[] = [];
-      subscribe((block) => seen.push(block.code));
+      const seen: HostNotice[] = [];
+      subscribe((notice) => seen.push(notice));
       vi.stubGlobal(
         "fetch",
         vi
@@ -1275,7 +1286,6 @@ describe("remoteSettingsService", () => {
       expect(remoteSettingsService.clear).toBeTypeOf("function");
       expect(remoteSettingsService.shutdown).toBeTypeOf("function");
       expect(remoteSettingsService.mergeRemoteSettings).toBeTypeOf("function");
-      expect(remoteSettingsService.onLicenseBlocked).toBeTypeOf("function");
     });
   });
 

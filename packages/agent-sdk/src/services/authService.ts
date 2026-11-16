@@ -22,6 +22,7 @@ import { URL } from "url";
 import type { AuthConfig, AuthUser, TokenResponse } from "../types/auth.js";
 import { logger } from "../utils/globalLogger.js";
 import { DEFAULT_SERVER_URL } from "../utils/constants.js";
+import { emitHostNotice } from "./hostNotice.js";
 
 /** Persistent anonymous ID for telemetry fallback when SSO is not authenticated. */
 let _anonymousId: string | undefined;
@@ -34,6 +35,12 @@ export class AuthService {
   > = [];
   private _refreshPromise: Promise<boolean> | null = null;
   private _authFileMtime: number = 0;
+  /**
+   * 已经提示过「登录已过期」（进程级：本类是单例）。服务端拒掉 refresh token
+   * 后认证已被清掉，后续每个请求都会走同一条失败路径；不设这道闸就是每轮对话
+   * 弹一遍。下一次登录成功时重新武装（见 `notifyAuthChange`）。
+   */
+  private _authExpiredNotified: boolean = false;
   private static readonly REFRESH_BUFFER_MS = 5 * 60 * 1000;
 
   static getInstance(): AuthService {
@@ -67,6 +74,9 @@ export class AuthService {
   }
 
   private async notifyAuthChange(event: "login" | "logout"): Promise<void> {
+    // 一次成功的登录（含 refresh 成功）让「登录已过期」重新可提示：同一个进程
+    // 换了新会话，再过期一次是新情况。
+    if (event === "login") this._authExpiredNotified = false;
     for (const cb of this.onAuthChangeCallbacks) {
       try {
         await cb(event);
@@ -401,6 +411,16 @@ export class AuthService {
           `[Auth] Refresh token rejected (${response.status}), clearing auth`,
         );
         await this.clearAuth();
+        // 只有服务端亲口否掉 refresh token 才提示：瞬时网络错误（下面的 catch）
+        // 与用户自己 logout（直接调 clearAuth）都不该走到这里。同一次「过期」
+        // 只提示一次，直到下一次登录成功。
+        if (!this._authExpiredNotified) {
+          this._authExpiredNotified = true;
+          emitHostNotice({
+            kind: "authExpired",
+            message: "登录已过期，请重新登录",
+          });
+        }
         return false;
       }
 

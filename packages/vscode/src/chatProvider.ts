@@ -223,11 +223,12 @@ export class ChatProvider implements vscode.WebviewViewProvider {
           text: startupStageText(stage as StartupStage),
         });
       });
-      // 私有化未授权（spec enterprise/server-managed-config.md「私有化未授权时给出
-      // 一次性提示」）：托管配置被授权闸门拦下，同样是进程级、无 sessionId 的通知。
-      // 文案是服务端原文，不自造；SDK 已按 code 去重（同一句在下一个轮询里不会再发），
-      // 这里直接转成编辑器的错误通知。
-      this.notificationRouter.registerGlobal("licenseBlocked", (params) => {
+      // 进程级一次性提示（spec enterprise/server-managed-config.md「私有化未授权时
+      // 给出一次性提示」）：三类共用一条通道——私有化未授权、SSO 会话过期、
+      // 配置文件不再可解析。都是进程级、无 sessionId 的通知。
+      // 文案由 SDK 给定（授权闸门那句是服务端原文），宿主不自造第二条；SDK 已去重
+      // （同一件事在下一个轮询里不会再发），这里只负责展示成编辑器的错误通知。
+      this.notificationRouter.registerGlobal("hostNotice", (params) => {
         const message = (params as { message?: string })?.message;
         if (typeof message !== "string" || !message.trim()) return;
         void vscode.window.showErrorMessage(message);

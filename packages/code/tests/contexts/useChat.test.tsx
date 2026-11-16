@@ -26,10 +26,11 @@ vi.mock("ink", async () => {
   };
 });
 
-// License 拦截的订阅者：真实实现在 SDK 里由托管配置的 403 触发（那条链路在 SDK
-// 的用例里覆盖），这里只验证 useChat 把它变成一次性提示。
-const license = vi.hoisted(() => ({
-  subscribers: [] as Array<(block: { code: string; message: string }) => void>,
+// 进程级一次性提示的订阅者：真实实现在 SDK 里由托管配置的 403 / 登录过期 /
+// 配置解析失败触发（那些链路在 SDK 的用例里覆盖），这里只验证 useChat 把它变成
+// 同一个一次性提示槽。
+const hostNotice = vi.hoisted(() => ({
+  subscribers: [] as Array<(notice: { kind: string; message: string }) => void>,
 }));
 
 // Mock wave-agent-sdk
@@ -40,12 +41,12 @@ vi.mock("wave-agent-sdk", async () => {
     Agent: {
       create: vi.fn(),
     },
-    onLicenseBlocked: vi.fn(
-      (callback: (block: { code: string; message: string }) => void) => {
-        license.subscribers.push(callback);
+    onHostNotice: vi.fn(
+      (callback: (notice: { kind: string; message: string }) => void) => {
+        hostNotice.subscribers.push(callback);
         return () => {
-          const index = license.subscribers.indexOf(callback);
-          if (index >= 0) license.subscribers.splice(index, 1);
+          const index = hostNotice.subscribers.indexOf(callback);
+          if (index >= 0) hostNotice.subscribers.splice(index, 1);
         };
       },
     ),
@@ -151,7 +152,7 @@ describe("ChatProvider", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.clearAllMocks();
-    license.subscribers.length = 0;
+    hostNotice.subscribers.length = 0;
     // Reset the shared mock agent's message list and session id — tests mutate
     // them (Object.assign, session switches) and the initial pull at mount
     // reads the current values.
@@ -211,19 +212,43 @@ describe("ChatProvider", () => {
       lastValue = val;
     });
     await vi.waitFor(() => {
-      expect(license.subscribers).toHaveLength(1);
+      expect(hostNotice.subscribers).toHaveLength(1);
     });
 
-    // 服务端原文原样显示（spec「私有化未授权时给出一次性提示」场景 1）。
+    // SDK 给的原文原样显示（spec「私有化未授权时给出一次性提示」场景 1）。
     const message = "产品尚未授权，请联系企业管理员上传 license";
-    license.subscribers.forEach((notify) =>
-      notify({ code: "LICENSE_MISSING", message }),
+    hostNotice.subscribers.forEach((notify) =>
+      notify({ kind: "licenseBlocked", message }),
     );
     await vi.waitFor(() => {
       expect(lastValue?.hint).toBe(message);
     });
 
     // 一次性：数秒后自行消失，不留常驻标识。
+    await vi.advanceTimersByTimeAsync(8000);
+    await vi.waitFor(() => {
+      expect(lastValue?.hint).toBeNull();
+    });
+  });
+
+  it("shows other notice kinds in the same one-off hint slot", async () => {
+    let lastValue: ChatContextType | undefined;
+    renderWithProvider((val) => {
+      lastValue = val;
+    });
+    await vi.waitFor(() => {
+      expect(hostNotice.subscribers).toHaveLength(1);
+    });
+
+    // 登录过期与私有化未授权共用同一个槽位：不挑 kind，文案照抄。
+    const message = "登录已过期，请重新登录";
+    hostNotice.subscribers.forEach((notify) =>
+      notify({ kind: "authExpired", message }),
+    );
+    await vi.waitFor(() => {
+      expect(lastValue?.hint).toBe(message);
+    });
+
     await vi.advanceTimersByTimeAsync(8000);
     await vi.waitFor(() => {
       expect(lastValue?.hint).toBeNull();
