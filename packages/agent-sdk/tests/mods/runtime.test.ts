@@ -322,20 +322,46 @@ describe("ModRuntime 的 require", () => {
     await expect(mod.load()).rejects.toThrow("mod 找不到模块：./missing");
   });
 
-  it("循环 import 被拦下", async () => {
+  it("循环 import 按 CJS 语义拿到半成品导出，不整片失败", async () => {
     const a = path.join(ROOT, "mods", "a.ts");
     const b = path.join(ROOT, "mods", "b.ts");
     const { mod } = runtime(
-      `require("./a"); exports.register = function () {};`,
+      `const a = require("./a");
+       // a 跑完了：b 拿到了 a 的同一个 exports 对象（当时只写了一半）。
+       if (a.fromB.kind !== "b") throw new Error("b 没执行");
+       if (a.fromB.fromA !== a) throw new Error("b 看到的 a 不是同一份 exports");
+       exports.register = function () {};`,
       {
         extra: [
-          { path: a, code: `exports.a = require("./b");` },
-          { path: b, code: `exports.b = require("./a");` },
+          {
+            path: a,
+            code: `exports.kind = "a"; exports.fromB = require("./b");`,
+          },
+          {
+            path: b,
+            // 环里进来的 a 还没执行到 `fromB = ...`，所以那一项此时没有。
+            code: `const a = require("./a");
+                   if (a.kind !== "a") throw new Error("a 的已有导出该可见");
+                   if (a.fromB !== undefined) throw new Error("a 不该已经有 fromB");
+                   exports.kind = "b"; exports.fromA = a;`,
+          },
         ],
       },
     );
 
-    await expect(mod.load()).rejects.toThrow("import 出现循环");
+    await expect(mod.load()).resolves.toBe(true);
+  });
+
+  it("`./x.js` 说明符落到同名的 .ts 源码上", async () => {
+    const dep = path.join(ROOT, "mods", "dep.ts");
+    const { mod } = runtime(
+      `require("./dep.js"); exports.register = function () {};`,
+      {
+        extra: [{ path: dep, code: `exports.ready = true;` }],
+      },
+    );
+
+    await expect(mod.load()).resolves.toBe(true);
   });
 });
 
@@ -602,8 +628,8 @@ describe("ModRuntime 的交互路由", () => {
     await mod.dispatch("press", "same");
     await mod.dispatch("input", "same", "typed");
 
-    expect(hostApi.openPane).toHaveBeenNthCalledWith(1, "press", "");
-    expect(hostApi.openPane).toHaveBeenNthCalledWith(2, "typed", "");
+    expect(hostApi.openPane).toHaveBeenNthCalledWith(1, "press", "", false);
+    expect(hostApi.openPane).toHaveBeenNthCalledWith(2, "typed", "", false);
   });
 
   it("Select 的 options 是对象数组，照样搬进树里", async () => {
@@ -725,14 +751,14 @@ describe("ModRuntime 的交互路由", () => {
 describe("ModRuntime 的 $ 命名空间", () => {
   it("ui / state / store 全部转发到宿主，值跨 realm 拷贝", async () => {
     const state = new Map<string, unknown>([["count", { n: 1 }]]);
-    const store = new Map<string, string>();
+    const store = new Map<string, unknown>();
     const hostApi = host({
       stateGet: (key) => state.get(key),
       stateSet: vi.fn((key: string, value: unknown) => {
         state.set(key, value);
       }),
       storeGet: (key) => store.get(key),
-      storeSet: vi.fn((key: string, value: string) => {
+      storeSet: vi.fn((key: string, value: unknown) => {
         store.set(key, value);
       }),
       storeDelete: vi.fn((key: string) => {
@@ -744,19 +770,20 @@ describe("ModRuntime 的 $ 命名空间", () => {
     const { mod } = runtime(
       `
       exports.register = function ($, on) {
-        on("session.start", function () {
+        on("session.start", async function () {
           var current = $.state.get("count");
           current.n = 99;                 // 改副本，不应影响宿主
           $.state.set("count", { n: 2 });
           $.ui.open({ id: "p1", title: "待办" });
           $.ui.invalidate("ui.render");
-          $.store.set("k", 7);
-          $.store.delete("gone");
+          // 任意 JSON：对象原样存，不当成 "[object Object]"。
+          await $.store.set("k", { n: 7 });
+          await $.store.delete("gone");
           return {
             plugin: $.plugin.name,
-            panes: $.ui.panes(),
-            keys: $.store.keys(),
-            stored: $.store.get("k"),
+            panes: await $.ui.panes(),
+            keys: await $.store.keys(),
+            stored: await $.store.get("k"),
           };
         });
       };
@@ -770,14 +797,120 @@ describe("ModRuntime 的 $ 命名空间", () => {
       plugin: "todo",
       panes: ["p1"],
       keys: ["k"],
-      stored: "7",
+      stored: { n: 7 },
     });
 
     // 副本语义：mod 改的是它自己那份。
     expect(state.get("count")).toEqual({ n: 2 });
-    expect(hostApi.openPane).toHaveBeenCalledWith("p1", "待办");
+    expect(hostApi.openPane).toHaveBeenCalledWith("p1", "待办", false);
     expect(hostApi.invalidate).toHaveBeenCalledWith("ui.render");
     expect(hostApi.storeDelete).toHaveBeenCalledWith("gone");
+  });
+
+  it("$.store 四个方法都返回 Promise，值是任意 JSON（不压成字符串）", async () => {
+    // 社区插件按 Claude Code 的 async 契约写：`store.get(k).catch(…)`、`await
+    // store.set(k, {…})`。同步返回会 `TypeError: … reading 'catch'`，只收字符串
+    // 则把对象存成 "[object Object]"。
+    const store = new Map<string, unknown>();
+    const hostApi = host({
+      storeGet: (key) => store.get(key),
+      storeSet: vi.fn((key: string, value: unknown) => {
+        store.set(key, value);
+      }),
+      storeDelete: vi.fn((key: string) => {
+        store.delete(key);
+      }),
+      storeKeys: () => [...store.keys()],
+    });
+    const { mod } = runtime(
+      `
+      exports.register = function ($, on) {
+        on("session.start", function () {
+          var get = $.store.get("last");
+          var set = $.store.set("last", { at: 1, tags: ["a"] });
+          var del = $.store.delete("gone");
+          var keys = $.store.keys();
+          // 只认 thenable：社区写法里最常见的下一步就是 .catch。
+          return Promise.all([get, set, del, keys]).then(function (all) {
+            return { isThenable: typeof set.catch, last: all[0] };
+          }).then(function (state) {
+            return $.store.set("last", { at: 2 }).then(function () {
+              return $.store.get("last").then(function (next) {
+                return { ...state, next: next };
+              });
+            });
+          });
+        });
+      };
+      `,
+      { host: hostApi },
+    );
+
+    await mod.load();
+    const result = await mod.callHook("session.start", {});
+    expect(result).toMatchObject({
+      ok: true,
+      value: {
+        isThenable: "function",
+        // 写的时候还没写过，读回来是 undefined。
+        last: undefined,
+        next: { at: 2 },
+      },
+    });
+    expect(hostApi.storeSet).toHaveBeenCalledWith("last", {
+      at: 1,
+      tags: ["a"],
+    });
+  });
+
+  it("$.store.set 的 JSON 口径与 Claude Code 一致（值先归一，键再查）", async () => {
+    const hostApi = host();
+    const { mod } = runtime(
+      `
+      exports.register = function ($, on) {
+        var cases = [
+          // 函数在对象属性上被 JSON.stringify 静默丢掉 —— CC 就是这样，不放宽也不加严。
+          function () { return $.store.set("fn", { cb: function () {}, keep: 1 }); },
+          function () {
+            var loop = {};
+            loop.self = loop;
+            return $.store.set("loop", loop);
+          },
+          function () {
+            return $.store.set("big", "x".repeat(${MOD_LIMITS.storeValueChars + 1}));
+          },
+          function () { return $.store.set("", 1); },
+          function () { return $.store.set("nothing", undefined); },
+          function () { return $.store.get(""); },
+          function () { return $.store.delete(""); },
+        ];
+        on("session.start", async function () {
+          return await Promise.all(cases.map(function (run) {
+            return run().then(function (v) { return v === undefined ? "ok" : v; }, function (e) {
+              return e.message;
+            });
+          }));
+        });
+      };
+      `,
+      { host: hostApi },
+    );
+
+    await mod.load();
+    const result = await mod.callHook("session.start", {});
+    expect(result.ok).toBe(true);
+    const messages = (result as unknown as { value: unknown[] }).value;
+    expect(messages[0]).toBe("ok");
+    // 环、顶层 undefined、超限、空键都当场报错（空键三条方法都查）。
+    expect(messages[1]).toContain("circular");
+    expect(messages[2]).toMatch(/超过 \d+/);
+    expect(messages[3]).toContain("字符串键");
+    expect(messages[4]).toContain("undefined");
+    expect(messages[5]).toContain("字符串键");
+    expect(messages[6]).toContain("字符串键");
+    // 函数被 JSON 丢掉，留下的就是纯 JSON：`{ keep: 1 }`。
+    expect(hostApi.storeSet).toHaveBeenCalledTimes(1);
+    expect(hostApi.storeSet).toHaveBeenCalledWith("fn", { keep: 1 });
   });
 
   it("ui.close 转发到宿主（`{ id }` 是 Claude Code 的形状）", async () => {
@@ -839,7 +972,7 @@ describe("ModRuntime 的 $ 命名空间", () => {
     });
     // 面板仍然登记着（与 Claude Code 一样「没有 surface 也把面板留着」，之后
     // 有界面挂上来它就画出来），只是这一次没人接住。
-    expect(noSurface.openPane).toHaveBeenCalledWith("p1", "守卫");
+    expect(noSurface.openPane).toHaveBeenCalledWith("p1", "守卫", false);
 
     const desktop = host();
     const { mod: lit } = runtime(
@@ -855,7 +988,8 @@ describe("ModRuntime 的 $ 命名空间", () => {
     await lit.load();
     const placed = await lit.callHook("session.start", {});
     expect(placed.ok && placed.value).toEqual({ isPlaced: true });
-    expect(desktop.openPane).toHaveBeenCalledWith("p1", "守卫");
+    // `focus: true` 要原样透给宿主：surface 靠它把键盘直接送进这块面板。
+    expect(desktop.openPane).toHaveBeenCalledWith("p1", "守卫", true);
   });
 
   it("$.ui.open 的 focus 只收 true（与 Claude Code 一样）", async () => {
@@ -981,7 +1115,7 @@ describe("ModRuntime 的 $ 命名空间", () => {
           var messages = [];
           var cases = [
             {},
-            { surface: "terminal", component: "Pane" },
+            { surface: "vscode", component: "Pane" },
             { surface: "desktop", component: "Hint" },
           ];
           for (var bad of cases) {
@@ -991,6 +1125,9 @@ describe("ModRuntime 的 $ 命名空间", () => {
           // 两个站点都得认：宿主两处都会发 ui.render，漏一个那处的 mod 就全抛错。
           var band = $.ui.resolve({ surface: "desktop", component: "AbovePrompt" });
           messages.push("band:" + band.Box.elementType + "," + typeof band.Button);
+          // 按端裁剪：终端那张表没有 Svg（spec「元素表按端分」）。
+          var term = $.ui.resolve({ surface: "terminal", component: "Pane" });
+          messages.push("terminal:" + typeof term.Svg + "," + typeof term.Progress);
           return messages;
         });
       };
@@ -1000,18 +1137,20 @@ describe("ModRuntime 的 $ 命名空间", () => {
     const result = await mod.callHook("session.start", {});
     expect(result.ok).toBe(true);
     const messages = (result.ok ? result.value : []) as string[];
-    // 不是 render 事件、或不是我们发的端：同一句，并列出支持的那一端。
+    // 不是 render 事件、或不是我们画的端：同一句，并列出支持的那两端。
     expect(messages[0]).toContain("需要一个 ui.render 的事件");
-    expect(messages[0]).toContain("desktop");
+    expect(messages[0]).toContain("terminal / desktop");
     expect(messages[1]).toContain("需要一个 ui.render 的事件");
     // 报错要点名拿到的是什么，否则 mod 作者不知道该改哪。
-    expect(messages[1]).toContain('"terminal"');
-    // 站点名不认识：说清楚这一端只有什么。
+    expect(messages[1]).toContain('"vscode"');
+    // 站点名不认识：说清楚这一期只有什么。
     expect(messages[2]).toContain('不认识站点 "Hint"');
     expect(messages[2]).toContain("Pane");
     // `AbovePrompt`（输入框上方的带）是第二个站点，必须拿到同一张表。
     expect(messages[2]).toContain("AbovePrompt");
     expect(messages[3]).toBe("band:Box,function");
+    // 终端表：Svg 拿不到，Progress 照常有。
+    expect(messages[4]).toBe("terminal:undefined,function");
   });
 
   it("$.ui.status 转发到宿主：纯文本、过长的截断、null 与空串都表示清除", async () => {
@@ -1616,7 +1755,25 @@ describe("ModRuntime 的 $.ui.log 与 $.session.cwd", () => {
     expect(hostApi.appendLog).toHaveBeenCalledWith("standup 该开了");
   });
 
-  it("$.ui.log 不认 transcript 以外的落点，也不接受空行", async () => {
+  it('$.ui.log 的 to: "debug" 只进调试日志，对话流里一个字都不留', async () => {
+    const { logger } = await import("../../src/utils/globalLogger.js");
+    vi.mocked(logger.debug).mockClear();
+    const { mod, host: hostApi } = runtime(`
+      exports.register = function ($, on) {
+        on("session.start", function () {
+          $.ui.log("  排查用  ", { to: "debug" });
+          return "ok";
+        });
+      };
+    `);
+
+    await mod.load();
+    await mod.callHook("session.start", {});
+    expect(hostApi.appendLog).not.toHaveBeenCalled();
+    expect(logger.debug).toHaveBeenCalledWith("[mod:todo]", "排查用");
+  });
+
+  it("$.ui.log 不认 transcript / debug 以外的落点，也不接受空行", async () => {
     // 拼错一个落点就安静写进对话流，比报错更难查（spec「在对话流里留一行」）。
     const { mod, host: hostApi } = runtime(`
       exports.register = function ($, on) {
@@ -1632,7 +1789,11 @@ describe("ModRuntime 的 $.ui.log 与 $.session.cwd", () => {
     await mod.load();
     const rejectedTo = await mod.callHook("session.start", {});
     expect(rejectedTo.ok).toBe(false);
-    if (!rejectedTo.ok) expect(rejectedTo.error).toMatch(/transcript/);
+    if (!rejectedTo.ok) {
+      // 报错要能告诉作者可用的落点有哪些。
+      expect(rejectedTo.error).toContain("transcript");
+      expect(rejectedTo.error).toContain("debug");
+    }
 
     const empty = await mod.callHook("turn.complete", { isAborted: false });
     expect(empty.ok).toBe(false);
@@ -2799,10 +2960,10 @@ describe("兼容社区 mod（spec「兼容社区 mod」）", () => {
   });
 
   it("'claude-code' 是 wave-agent-sdk/mods 的别名，atom/read/update 落在 $.store 上", async () => {
-    const store = new Map<string, string>();
+    const store = new Map<string, unknown>();
     const hostApi = host({
       storeGet: vi.fn((key: string) => store.get(key)),
-      storeSet: vi.fn((key: string, value: string) => {
+      storeSet: vi.fn((key: string, value: unknown) => {
         store.set(key, value);
       }),
     });
@@ -2835,15 +2996,24 @@ describe("兼容社区 mod（spec「兼容社区 mod」）", () => {
     expect(store.has("burn-rate/turns")).toBe(true);
   });
 
-  it("atom 存进去的不是合法 JSON 时读回初值", async () => {
-    const hostApi = host({ storeGet: vi.fn(() => "not json") });
+  it("atom 兼容旧版存进去的 JSON 文本，解析不了就原样给", async () => {
+    const values = new Map<string, unknown>([
+      // 旧版 `$.store` 只收字符串，atom 存进去的是 `JSON.stringify(["seed"])`。
+      ["p/legacy", '["seed"]'],
+      ["p/plain", "not json"],
+    ]);
+    const hostApi = host({ storeGet: vi.fn((key: string) => values.get(key)) });
     const { mod } = runtime(
       `
       var cc = require("claude-code");
-      var turns = cc.atom({ plugin: "p", key: "k" }, ["seed"]);
+      var legacy = cc.atom({ plugin: "p", key: "legacy" }, ["fallback"]);
+      var plain = cc.atom({ plugin: "p", key: "plain" }, ["fallback"]);
       exports.register = function (on) {
-        on("session.start", async function ($, e) {
-          return await cc.read($, turns);
+        on("session.start", async function ($) {
+          return {
+            legacy: await cc.read($, legacy),
+            plain: await cc.read($, plain),
+          };
         });
       };
       `,
@@ -2852,7 +3022,10 @@ describe("兼容社区 mod（spec「兼容社区 mod」）", () => {
 
     await mod.load();
     const result = await mod.callHook("session.start", {});
-    expect(result).toMatchObject({ ok: true, value: ["seed"] });
+    expect(result).toMatchObject({
+      ok: true,
+      value: { legacy: ["seed"], plain: "not json" },
+    });
   });
 
   it("prompt.submit 里 next({ ...e, context }) 的上下文能传到链尾（社区注入写法）", async () => {

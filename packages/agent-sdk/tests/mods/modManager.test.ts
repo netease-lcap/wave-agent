@@ -1023,6 +1023,34 @@ exports.register = function ($, on) {
     const frame = await second.renderPane("todo:panel", "p1");
     expect(frame.tree).toMatchObject({ type: "Box" });
   });
+
+  it("$store 的值原样落成 JSON（对象不当字符串压平）", async () => {
+    // 社区插件存的是对象（`set("last", { at, count })`）。只收字符串会把它变成
+    // "[object Object]"，读回来永远救不出去。
+    const SOURCE = `
+exports.register = function ($, on) {
+  on("session.start", async function () {
+    await $.store.set("state", { count: 2, tags: ["a", "b"] });
+    $.ui.open({ id: "p1", title: "状态" });
+  });
+  on("ui.render", async function () {
+    return __wave.h("Text", null, JSON.stringify(await $.store.get("state")));
+  });
+};
+`;
+    const { manager } = createManager({ [MOD_PATH]: SOURCE });
+    await manager.loadFromPlugins([
+      plugin([{ id: "todo:panel", path: MOD_PATH }]),
+    ]);
+    await manager.startSession();
+
+    const frame = await pull(manager);
+    expect(frame.tree).toMatchObject({
+      children: ['{"count":2,"tags":["a","b"]}'],
+    });
+    // 落盘的就是嵌套 JSON，不是转义过的字符串。
+    expect(probe.files.get(storeFile("todo"))).toContain('"tags": [');
+  });
 });
 
 describe("ModManager.reload / dispose", () => {
@@ -1090,11 +1118,11 @@ exports.register = function ($, on) {
   }
 
   /** mod 里 `$.store.get(name)` 的最新值（store 每次读写都走文件）。 */
-  function stored(name: string): string | undefined {
+  function stored(name: string): unknown {
     const raw = probe.files.get(storeFile("todo"));
     return raw === undefined
       ? undefined
-      : (JSON.parse(raw) as Record<string, string>)[name];
+      : (JSON.parse(raw) as Record<string, unknown>)[name];
   }
 
   function ticks(): number {
@@ -1104,7 +1132,9 @@ exports.register = function ($, on) {
   /** 一个每拍把 `ticks` 加一的定时器源码。 */
   function counting(kind: "after" | "every", ms: number): string {
     return `timer = $.clock.${kind}(${ms}, function () {
-        $.store.set("ticks", String(Number($.store.get("ticks") || 0) + 1));
+        return $.store.get("ticks").then(function (n) {
+          return $.store.set("ticks", Number(n || 0) + 1);
+        });
       });`;
   }
 
@@ -1162,11 +1192,11 @@ exports.register = function ($, on) {
     const manager = await started(clockMod(counting("after", MIN)));
 
     await press(manager, "run");
-    await vi.waitFor(() => expect(stored("ticks")).toBe("1"), {
+    await vi.waitFor(() => expect(stored("ticks")).toBe(1), {
       timeout: MIN * 10,
     });
     await watch();
-    expect(stored("ticks")).toBe("1");
+    expect(stored("ticks")).toBe(1);
   });
 
   it("小于下限的间隔夹到下限，不会被打爆", async () => {
@@ -1222,7 +1252,7 @@ exports.register = function ($, on) {
     await vi.waitFor(() => expect(stored("serial")).toBeDefined(), {
       timeout: MIN * 20,
     });
-    const [starts, maxInFlight] = (stored("serial") ?? "")
+    const [starts, maxInFlight] = String(stored("serial") ?? "")
       .split("|")
       .map(Number);
     expect(starts).toBeGreaterThanOrEqual(1);
@@ -1945,11 +1975,11 @@ describe("ModManager 的 $.clock.sleep（spec「时钟：等待」）", () => {
   const MIN = MOD_LIMITS.timerMinIntervalMs;
 
   /** `$.store.set` 写过的最新值（store 每次读写都走文件）。 */
-  function stored(name: string): string | undefined {
+  function stored(name: string): unknown {
     const raw = probe.files.get(storeFile("todo"));
     return raw === undefined
       ? undefined
-      : (JSON.parse(raw) as Record<string, string>)[name];
+      : (JSON.parse(raw) as Record<string, unknown>)[name];
   }
 
   /** 一个按钮触发一次 `body` 的 mod；面板开着，回调才登记得进去。 */

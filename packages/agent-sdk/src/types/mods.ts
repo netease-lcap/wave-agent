@@ -8,11 +8,12 @@
  */
 
 /**
- * 支持的元素。新增一个要同时改 runtime 的工厂与 webview 的渲染器。
+ * 支持的元素。新增一个要同时改 runtime 的工厂与各端的渲染器。
  *
- * 与 Claude Code 的 `desktop` 表逐项对齐，只差 `Client`（它要在渲染端执行 mod
- * 附带的第二份模块，见 spec「交付分层」）；`Raster` / `Image` 只有终端有，不在
- * 桌面端的表里。
+ * 这张是**并集**：桌面端全有；终端少 `Svg`（没有矢量画布），见
+ * {@link MOD_SURFACE_ELEMENTS} 与 spec「元素表按端分」。与 Claude Code 的四张表
+ * 相比只少 `Client` / `Shader` / `Raster` / `Image` 四件（都要在渲染端执行 mod
+ * 附带的第二份模块或画位图，spec「交付分层」没做）。
  */
 export const MOD_ELEMENT_TYPES = [
   "Box",
@@ -94,6 +95,14 @@ export interface ModPanelUpdatePayload {
   revision: number;
   /** 树已过期，surface 应对这个 pane 发一次 `modPanelRender`。 */
   stale?: boolean;
+  /**
+   * `$.ui.open({ focus: true })` 打开的这一帧：surface 应把键盘直接送进面板。
+   *
+   * 只在打开（或再打开）的那一条推送里为 `true`，之后的重绘都不带 —— 否则 mod
+   * 每 `invalidate` 一次就会把用户正在输入框里打的字抢走。终端用得上它，桌面端
+   * 忽略（它的 tab 本来就是激活态，spec「面板的归属」）。
+   */
+  focus?: boolean;
   /** 面板被关掉时宿主发这一条，`closed: true`。 */
   closed?: boolean;
   /** 失败原因（编译失败 / 校验超限 / 钩子异常）。surface 画错误条，树保留。 */
@@ -204,10 +213,26 @@ export type ModPromptFillMode = "replace" | "append" | "insert";
  * 能画 mod 树的一端（spec「会话事实」的 `$.session.surfaces()`）。
  *
  * 四个名字照 Claude Code 的 `RenderSurface` 取，`$.ui.resolve(e)` 也按它选
- * 元素表。一期只有 `desktop` 真的会画：终端 / VS Code / JetBrains 都不画，
+ * 元素表。一期两端真的会画：桌面端与前端的终端 CLI；VS Code / JetBrains 都不画，
  * 所以它们此刻**不在**数组里（`[]` 就是「没有界面」）。
  */
 export type ModRenderSurface = "terminal" | "desktop" | "vscode" | "mobile";
+
+/**
+ * 各端能画的元素名（spec「元素表按端分」）。
+ *
+ * 桌面端 10 个；终端 9 个 —— 只少 `Svg`（终端没有矢量画布）。`Progress` 两端都
+ * 有，与 Claude Code 四端一致。`$.ui.resolve(e)` 按 `e.surface` 取这里的名单造表，
+ * `validateModTree` 按同一份名单拒绝画不出的名字 —— 两处必须是同一个数据源，
+ * 否则 mod 拿得到构造器、树却在渲染时被拒。
+ */
+export const MOD_SURFACE_ELEMENTS: Record<
+  Extract<ModRenderSurface, "terminal" | "desktop">,
+  readonly ModElementType[]
+> = {
+  desktop: MOD_ELEMENT_TYPES,
+  terminal: MOD_ELEMENT_TYPES.filter((name) => name !== "Svg"),
+};
 
 /**
  * `$.ui.open()` 的结果（spec「面板放得下吗」）。
@@ -879,6 +904,11 @@ export const MOD_LIMITS = {
   envNameChars: 256,
   /** `$.settings.read` 返回值的 JSON 字节上限；超出报错（截断的配置是错的配置）。 */
   settingsReadBytes: 4 * 1024 * 1024,
+  /**
+   * `$.store` 单个值的 JSON 文本**字符数**上限（与 Claude Code 同一个数，
+   * 它比的也是 `JSON.stringify` 之后的 `length`，不是字节）。
+   */
+  storeValueChars: 4_194_304,
   /** `prompt.submit` 钩子能塞的上下文条数上限。 */
   promptContextMaxItems: 32,
   /** `prompt.submit` 钩子能塞的上下文总字符上限。 */

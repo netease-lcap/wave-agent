@@ -302,8 +302,9 @@ export class Agent {
   public async renderModPanel(
     modId: string,
     paneId: string,
+    surface: Extract<ModRenderSurface, "terminal" | "desktop"> = "desktop",
   ): Promise<ModPanelRenderResult> {
-    return this.modManager.renderPane(modId, paneId);
+    return this.modManager.renderPane(modId, paneId, surface);
   }
 
   /**
@@ -311,8 +312,10 @@ export class Agent {
    * `ecosystem/plugin-mods.md` 「状态带、状态行与提示」: same pull discipline as
    * panes — one `ui.render` call per mod that registers it).
    */
-  public async renderModBand(): Promise<ModBandRenderResult[]> {
-    return this.modManager.renderBand();
+  public async renderModBand(
+    surface: Extract<ModRenderSurface, "terminal" | "desktop"> = "desktop",
+  ): Promise<ModBandRenderResult[]> {
+    return this.modManager.renderBand(surface);
   }
 
   /**

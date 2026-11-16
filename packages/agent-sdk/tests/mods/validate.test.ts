@@ -604,4 +604,30 @@ describe("validateModTree", () => {
     if (result.ok) return;
     expect(result.error).toContain("文本超过");
   });
+
+  it("按端查元素名：终端没有 Svg，Progress 两端都有", () => {
+    const svg: ModTreeNode = {
+      type: "Svg",
+      props: { source: "<svg/>", alt: "图" },
+      children: [],
+    };
+    const progress: ModTreeNode = {
+      type: "Progress",
+      props: { label: "迁移", value: 7, max: 20 },
+      children: [],
+    };
+
+    // 默认按桌面端校验：模块导入拿的是并集表，照桌面端写的树照常过。
+    expect(validateModTree(box(svg)).ok).toBe(true);
+    expect(validateModTree(box(svg), "desktop").ok).toBe(true);
+
+    const result = validateModTree(box(svg), "terminal");
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    // 报错点名是哪一端、缺的是哪个名字。
+    expect(result.error).toContain("terminal");
+    expect(result.error).toContain("Svg");
+
+    expect(validateModTree(box(progress), "terminal").ok).toBe(true);
+  });
 });

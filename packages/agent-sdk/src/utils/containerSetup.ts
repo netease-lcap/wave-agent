@@ -19,7 +19,10 @@ import { SlashCommandManager } from "../managers/slashCommandManager.js";
 import { PluginManager } from "../managers/pluginManager.js";
 import { ModManager } from "../managers/modManager.js";
 import { renderSurfacesOf } from "../mods/runtime.js";
-import type { ModPermissionRequestEvent } from "../types/mods.js";
+import type {
+  ModPermissionRequestEvent,
+  ModRenderSurface,
+} from "../types/mods.js";
 import { MOD_SETTINGS_SOURCES } from "../types/mods.js";
 import { buildConfigRows, detectSessionRepo } from "../mods/facts.js";
 import { engineVersion } from "./engineVersion.js";
@@ -164,6 +167,9 @@ export function setupAgentContainer(
   // channel), and every manager reads the same container key. A value outside
   // the known table resolves to undefined — "not declared", never exported.
   container.register("Entrypoint", normalizeEntrypoint(options.entrypoint));
+  // Declared surfaces win over the entrypoint's default: `wave` and `wave -p`
+  // share `entrypoint: "cli"` but only the interactive TUI draws mod trees.
+  container.register("RenderSurfaces", options.renderSurfaces);
 
   // Module-level listener teardowns collected during setup and returned to the
   // agent, which invokes them in destroy(). The remote-settings callback
@@ -614,10 +620,13 @@ export function setupAgentContainer(
       // 会话工作根：`EnterWorktree` 会动、`cd` 不动（容器 token 语义见 workdir 规则）。
       workspaceRoot: () => container.get<string>("WorkspaceRoot") ?? workdir,
       model: () => aiManager.getModelConfig().model ?? "",
-      // 这一刻有谁在画（spec「会话事实」）：一期只有桌面端真画 mod 的树。
-      // 数据源是入口标识（谁创建了这条会话），不是进程环境 —— 终端 CLI、
-      // `wave -p`、VS Code / JetBrains 都给空数组。
+      // 这一刻有谁在画（spec「会话事实」「元素表按端分」）：宿主显式声明的
+      // `renderSurfaces` 优先；没声明时按入口推导（桌面端画、其余不画）。数据源
+      // 不是进程环境 —— 终端 CLI 的交互模式声明 `["terminal"]`，`wave -p` 不声明。
       surfaces: () =>
+        container.get<readonly ModRenderSurface[] | undefined>(
+          "RenderSurfaces",
+        ) ??
         renderSurfacesOf(
           container.get<HostEntrypoint | undefined>("Entrypoint"),
         ),

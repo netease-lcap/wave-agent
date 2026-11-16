@@ -56,6 +56,14 @@ import { getEsbuild } from "../utils/esbuild.js";
 import { logger } from "../utils/globalLogger.js";
 
 /**
+ * 我们真的会画的那两端（spec「元素表按端分」）。
+ *
+ * `renderPane` / `renderBand` 的 `surface` 只收这两个名字：`vscode` / `mobile`
+ * 没有渲染器，放进来会让 `ui.render` 说「这棵树有人画」、实际一个像素都不出。
+ */
+type DrawnSurface = Extract<ModRenderSurface, "terminal" | "desktop">;
+
+/**
  * 插件 MODS 的宿主侧编排：加载 → 编译 → 沙箱实例 → 事件 → 面板快照。
  *
  * ## 分层
@@ -151,6 +159,11 @@ interface PaneState {
   error?: string;
   /** 上一次发出 stale 通知的时间，用于 100ms 合并（spec「限额」）。 */
   lastRenderAt: number;
+  /**
+   * `$.ui.open({ focus: true })` 记下的「这一帧该把键盘送进面板」（spec
+   * 「终端形态」）。只在打开那一条推送里透传一次，之后不再带。
+   */
+  focus?: boolean;
   pending?: NodeJS.Timeout;
 }
 
@@ -620,7 +633,8 @@ export class ModManager {
           const runtime = new ModRuntime(
             {
               pluginName: plugin.name,
-              openPane: (paneId, title) => this.openPane(mod.id, paneId, title),
+              openPane: (paneId, title, focus) =>
+                this.openPane(mod.id, paneId, title, focus),
               closePane: (paneId) => this.closePane(mod.id, paneId),
               listPanes: () => this.listPanes(mod.id),
               surfaces: () => this.facts.surfaces(),
@@ -1470,7 +1484,7 @@ export class ModManager {
     return map;
   }
 
-  private readStore(pluginName: string): Record<string, string> {
+  private readStore(pluginName: string): Record<string, unknown> {
     try {
       const raw = fs.readFileSync(
         storePath(this.storeRoot, pluginName),
@@ -1478,7 +1492,7 @@ export class ModManager {
       );
       const parsed: unknown = JSON.parse(raw);
       if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-        return parsed as Record<string, string>;
+        return parsed as Record<string, unknown>;
       }
       return {};
     } catch {
@@ -1486,7 +1500,7 @@ export class ModManager {
     }
   }
 
-  private writeStore(pluginName: string, store: Record<string, string>): void {
+  private writeStore(pluginName: string, store: Record<string, unknown>): void {
     try {
       fs.mkdirSync(this.storeRoot, { recursive: true });
       atomicWriteFileSync(
@@ -1526,7 +1540,12 @@ export class ModManager {
     this.publishUpdate(pane, { error });
   }
 
-  private openPane(modId: string, paneId: string, title: string): boolean {
+  private openPane(
+    modId: string,
+    paneId: string,
+    title: string,
+    focus = false,
+  ): boolean {
     if (this.disposed) return false;
     const key = `${modId}\u0000${paneId}`;
     const existing = this.panes.get(key);
@@ -1539,9 +1558,12 @@ export class ModManager {
       lastRenderAt: 0,
     };
     pane.title = title;
+    // 只有**这一次**打开要求了焦点才带：之后的重绘都清成 false，否则 mod 每
+    // invalidate 一次就把用户的输入焦点抢走一次。
+    pane.focus = focus;
     this.panes.set(key, pane);
     // 只登记 + 通知 surface 来要树，不在这里渲染（spec「架构约束」）。
-    this.publishUpdate(pane, { stale: true });
+    this.publishUpdate(pane, { stale: true, focus });
     return true;
   }
 
@@ -1627,6 +1649,7 @@ export class ModManager {
   async renderPane(
     modId: string,
     paneId: string,
+    surface: DrawnSurface = "desktop",
   ): Promise<ModPanelRenderResult> {
     const key = `${modId}\u0000${paneId}`;
     const pane = this.panes.get(key);
@@ -1647,7 +1670,7 @@ export class ModManager {
       // 的那一端（决定 `$.ui.resolve(e)` 给哪张元素表），`component` 是画哪个
       // 站点，`instance_id` 是该站点的哪个实例 —— `Pane` 的实例就是
       // `$.ui.open({ id })` 的 id，也就是我们的 paneId。
-      surface: "desktop",
+      surface,
       component: "Pane",
       instance_id: pane.paneId,
       // 站点的 `props`：社区 mod 会读 `e.props.bodyColumns` 这类事实（见
@@ -1664,7 +1687,7 @@ export class ModManager {
       pane.revision += 1;
       return { modId, paneId, revision: pane.revision, tree: null };
     }
-    const validated = validateModTree(result.value);
+    const validated = validateModTree(result.value, surface);
     if (!validated.ok) {
       return this.renderFailed(pane, validated.error);
     }
@@ -1687,7 +1710,9 @@ export class ModManager {
    * 失败与面板同一条纪律：回**上一帧成功的树** + 错误摘要，不把这条带换成一行
    * 错误文字；也从没成功过时回空树 + 错误。
    */
-  async renderBand(): Promise<ModBandRenderResult[]> {
+  async renderBand(
+    surface: DrawnSurface = "desktop",
+  ): Promise<ModBandRenderResult[]> {
     if (this.disposed) return [];
     const bands: ModBandRenderResult[] = [];
     for (const [modId, loaded] of this.mods) {
@@ -1698,7 +1723,7 @@ export class ModManager {
         modId,
         // 与面板同一套三个维度，只是 `component` 换成第二个站点、
         // `instance_id` 是固定值（一期一个 mod 一条带，不按实例区分）。
-        surface: "desktop",
+        surface,
         component: "AbovePrompt",
         instance_id: MOD_BAND_INSTANCE_ID,
         props: renderSiteProps(),
@@ -1724,7 +1749,7 @@ export class ModManager {
         });
         continue;
       }
-      const validated = validateModTree(result.value);
+      const validated = validateModTree(result.value, surface);
       if (!validated.ok) {
         bands.push({
           modId,
@@ -1743,7 +1768,7 @@ export class ModManager {
         tree: validated.tree,
       });
     }
-    return this.applyBandList(bands);
+    return this.applyBandList(bands, surface);
   }
 
   /**
@@ -1771,6 +1796,7 @@ export class ModManager {
    */
   private async applyBandList(
     bands: ModBandRenderResult[],
+    surface: DrawnSurface,
   ): Promise<ModBandRenderResult[]> {
     if (this.disposed) return bands;
     const rows = bands.filter((band) => band.tree !== null);
@@ -1784,7 +1810,7 @@ export class ModManager {
       if (!loaded.runtime.hasSiteHook("ui.render", "AbovePromptList")) continue;
       const result = await loaded.runtime.callHook("ui.render", {
         modId,
-        surface: "desktop",
+        surface,
         component: "AbovePromptList",
         instance_id: MOD_BAND_INSTANCE_ID,
         props: { ...renderSiteProps(), rows: handed },
@@ -1818,7 +1844,7 @@ export class ModManager {
 
   private payloadOf(
     pane: PaneState,
-    extra: { stale?: boolean; closed?: boolean } = {},
+    extra: { stale?: boolean; closed?: boolean; focus?: boolean } = {},
   ): ModPanelUpdatePayload {
     return {
       sessionId: this.options.sessionId,
@@ -1828,6 +1854,7 @@ export class ModManager {
       revision: pane.revision,
       ...(extra.stale ? { stale: true } : {}),
       ...(extra.closed ? { closed: true } : {}),
+      ...(extra.focus ? { focus: true } : {}),
       ...(pane.error ? { error: pane.error } : {}),
     };
   }
@@ -1985,7 +2012,12 @@ export class ModManager {
   /** 发一条元信息通知（不带树）；`stale` 表示 surface 该来要树了。 */
   private publishUpdate(
     pane: PaneState,
-    extra: { stale?: boolean; closed?: boolean; error?: string },
+    extra: {
+      stale?: boolean;
+      closed?: boolean;
+      error?: string;
+      focus?: boolean;
+    },
   ): void {
     if (this.disposed) return;
     if (extra.error !== undefined) pane.error = extra.error;

@@ -31,22 +31,12 @@ import type {
   ModUiOpenResult,
 } from "../types/mods.js";
 import {
+  MOD_ELEMENT_TYPES,
   MOD_LIMITS,
   MOD_RENDER_SURFACES,
   MOD_SETTINGS_SOURCES,
+  MOD_SURFACE_ELEMENTS,
 } from "../types/mods.js";
-import {
-  Box,
-  Text,
-  Button,
-  Input,
-  Select,
-  Svg,
-  Link,
-  Code,
-  Markdown,
-  Progress,
-} from "./index.js";
 import { ModFs } from "./files.js";
 import { modFetch } from "./http.js";
 import { atom, read, update } from "./atoms.js";
@@ -149,25 +139,10 @@ function hardenContext(context: vm.Context): void {
 }
 
 /**
- * 元素名：`h()` 认的 tag，也是构造器的 `elementType`。
- *
- * 名单不许在这里另写一份 —— `./index.js` 才是插件作者 `import` 的那份（也是
- * `wave-agent-sdk/mods` 子路径的产物），两边漂移会让 `<Text>` 编译出来的 tag
- * 在渲染器里变成未知元素。`tests/mods/runtime.test.ts` 钉住了它与
- * `ModElementType` 的一致性。
+ * 元素名（`h()` 认的 tag）的唯一来源是 `MOD_ELEMENT_TYPES`：`./index.js` 只是给
+ * 插件作者用的那层包装，两边漂移会让 `<Text>` 编译出来的 tag 在渲染器里变成未知
+ * 元素。`tests/mods/runtime.test.ts` 钉住了它与各端元素表的一致性。
  */
-const ELEMENT_CONSTRUCTORS = [
-  Box,
-  Text,
-  Button,
-  Input,
-  Select,
-  Svg,
-  Link,
-  Code,
-  Markdown,
-  Progress,
-];
 
 /**
  * `h()` 的 tag：JSX 标签既可能是元素名（`__wave.h("Text", …)`），也可能是构造器
@@ -186,19 +161,20 @@ function tagOf(type: unknown): string {
  * 画这棵树的那一端 —— `ui.render` 的 `e.surface`，也是 `$.ui.resolve(e)` 选
  * 元素表的键。
  *
- * Claude Code 的表里有四端：`terminal` / `desktop` / `mobile` / `vscode`，各自的
- * 元素集不同（`terminal` 有 `Raster` / `Image` 没有 `Svg`，`desktop` 反过来）。
- * 我们一期只发 `desktop` —— 别的值当错处理，别让它悄悄拿到桌面端的表。
+ * 一期两端：`desktop`（webview 右侧面板与带）与 `terminal`（`wave` 的输入框上方），
+ * 各自能画的元素见 `MOD_SURFACE_ELEMENTS`（终端少 `Svg`）。Claude Code 还有
+ * `vscode` / `mobile`，我们没接 —— 别的值当错处理，别让它悄悄拿到桌面端的表。
  */
-const SURFACE = "desktop";
+const SURFACES_WE_DRAW: readonly ModRenderSurface[] = ["terminal", "desktop"];
 
 /**
  * 这一刻有谁在画这条会话（spec「会话事实」的 `$.session.surfaces()`）。
  *
- * 由宿主入口决定：桌面端会画 mod 的树 ⇒ `["desktop"]`；终端 CLI、`wave -p`、
- * VS Code / JetBrains 一期都不画 ⇒ `[]`（「没有界面」）。判据是**有没有界面**
- * 而不是「能不能画面板」：将来终端接上渲染，这里先变成 `["terminal"]`，读它的
- * 插件不用改（`$.ui.open()` 的 `isPlaced` 与它同一个数据源）。
+ * **只是默认值**：宿主在 `AgentOptions.renderSurfaces` 里显式声明时以声明为准
+ * （终端 CLI 声明 `["terminal"]`，而 `wave -p` 同样是 `entrypoint: "cli"` 却不画，
+ * 所以不能靠入口区分）。没声明时按入口推导：桌面端会画 mod 的树 ⇒ `["desktop"]`；
+ * VS Code / JetBrains / 远控 ⇒ `[]`（「没有界面」）。判据是**有没有界面**而不是
+ * 「能不能画面板」：`$.ui.open()` 的 `isPlaced` 与它同一个数据源。
  */
 export function renderSurfacesOf(
   entrypoint: "cli" | "desktop" | "vscode" | "jetbrains" | "remote" | undefined,
@@ -235,14 +211,17 @@ const RENDER_SITES: readonly string[] = [
 /**
  * 一张元素表（`$.ui.resolve(e)` 与 `require("claude-code")` 拿到的是同一份）。
  *
- * CC 的桌面端表是 11 个，我们放真画得出的那 10 个 —— 只差 `Client`（要在渲染端
- * 执行 mod 附带的第二份模块，spec「交付分层」没做）。给了画不出的名字，mod 编出
- * 的树会被 `validateModTree` 拒掉，错误离原因更远。
+ * 名字全部取自 {@link MOD_SURFACE_ELEMENTS}：桌面端 10 个，终端 9 个（少 `Svg`）。
+ * 模块导入拿到的是**并集**（两端名字都在），按端裁剪只发生在 `$.ui.resolve(e)`
+ * 与校验 —— 给了画不出的名字，mod 编出的树会被 `validateModTree` 拒掉，错误离
+ * 原因更远。
  *
  * **每个 mod 实例一份、且在构造时冻结**：构造器要闭包住这个实例的 `h()`（事件
  * 回调登记在实例上），所以不能是模块级共享的那一份。
  */
-type ModElementTable = Readonly<Record<ModElementType, ModElementBuilder>>;
+type ModElementTable = Readonly<
+  Partial<Record<ModElementType, ModElementBuilder>>
+>;
 
 /**
  * 造一套元素构造器：调用式 `Text({ children: "hi" })` 与 JSX `<Text>hi</Text>`
@@ -253,10 +232,10 @@ type ModElementTable = Readonly<Record<ModElementType, ModElementBuilder>>;
  */
 function elementTableOf(
   h: (type: unknown, props: unknown, ...children: unknown[]) => unknown,
+  names: readonly ModElementType[],
 ): ModElementTable {
   const table: Record<string, ModElementBuilder> = {};
-  for (const name of ELEMENT_CONSTRUCTORS) {
-    const elementType = String(name) as ModElementType;
+  for (const elementType of names) {
     const builder = ((props?: Record<string, unknown>) => {
       const { children, ...rest } = isPlainObject(props) ? props : {};
       if (children === undefined) return h(elementType, rest);
@@ -281,16 +260,17 @@ function elementTableOf(
  */
 function resolveElements(
   event: unknown,
-  table: ModElementTable,
+  tables: Readonly<Record<string, ModElementTable>>,
 ): ModElementTable {
   const e = (typeof event === "object" && event !== null ? event : {}) as {
     surface?: unknown;
     component?: unknown;
   };
   const surface = typeof e.surface === "string" ? e.surface : undefined;
-  if (surface !== SURFACE) {
+  const table = surface === undefined ? undefined : tables[surface];
+  if (!table) {
     throw new Error(
-      `$.ui.resolve 需要一个 ui.render 的事件（e.surface 是画这棵树的那一端，一期只有 ${SURFACE}${surface === undefined ? "" : `，拿到的是 "${surface}"`}）`,
+      `$.ui.resolve 需要一个 ui.render 的事件（e.surface 是画这棵树的那一端，一期只有 ${SURFACES_WE_DRAW.join(" / ")}${surface === undefined ? "" : `，拿到的是 "${surface}"`}）`,
     );
   }
   const component = typeof e.component === "string" ? e.component : "";
@@ -565,10 +545,16 @@ export interface ModElementBuilder {
 export interface ModDollar {
   plugin: { name: string };
   ui: {
-    /** `ui.render` 的事件 → 该站点可用的元素构造器表（spec「事件」）。 */
+    /**
+     * `ui.render` 的事件 → **这一端**可用的元素构造器表（spec「元素表按端分」）。
+     *
+     * 表按 `e.surface` 裁剪：桌面端 10 个，终端 9 个（没有 `Svg`）。所以返回类型
+     * 是部分表 —— 照桌面端写的 `const { Svg } = $.ui.resolve(e)` 在终端里拿到
+     * `undefined`，与 Claude Code 同一个行为。
+     */
     resolve(
       event: unknown,
-    ): Readonly<Record<ModElementType, ModElementBuilder>>;
+    ): Readonly<Partial<Record<ModElementType, ModElementBuilder>>>;
     /**
      * 打开一块面板（spec「面板放得下吗」）。
      *
@@ -594,7 +580,7 @@ export interface ModDollar {
      * isFocused, isPlaced }` 对象数组）：后三个字段要等 surface 把「当前显示哪
      * 个 tab」报上来才编得出来，现在编一个只会让守卫按错的答案放行。
      */
-    panes(): string[];
+    panes(): Promise<string[]>;
     /**
      * 「我这个 mod 画的东西过期了」——参数是**渲染站点的生产者**，一期只有
      * `"ui.render"`（spec「用户交互的结果」）。
@@ -612,9 +598,10 @@ export interface ModDollar {
      * 在**对话流**里留一行（spec「在对话流里留一行」）。
      *
      * 与 `status` / `toast` 的区别是它属于这次对话：随会话落盘、切回来还在，
-     * 但不进模型上下文。一期只有 `to: "transcript"` 这一个落点。
+     * 但不进模型上下文。`to` 两个落点：`"transcript"`（默认，对话流）与
+     * `"debug"`（只进 `wave` 调试日志，用户看不见）。
      */
-    log(text: string, options?: { to?: "transcript" }): void;
+    log(text: string, options?: { to?: "transcript" | "debug" }): void;
     /**
      * 问用户一个问题（spec「问用户一个问题」）。
      *
@@ -650,11 +637,19 @@ export interface ModDollar {
     get(key: string): unknown;
     set(key: string, value: unknown): void;
   };
+  /**
+   * 插件自己的持久化 KV（spec「`$`（一期）」的 `$.store` 行）。
+   *
+   * 四个方法都是异步的、值是任意 JSON —— 社区插件按 Claude Code 的契约写
+   * `store.get(k).catch(…)` 与 `await store.set(k, {…})`。
+   */
   store: {
-    get(key: string): string | undefined;
-    set(key: string, value: string): void;
-    delete(key: string): void;
-    keys(): string[];
+    /** 读一个键；没有这个键（或文件读不出来）就是 `undefined`，不抛错。 */
+    get(key: string): Promise<unknown>;
+    /** 写一个键，返回的 Promise 落地才算写完（落盘走宿主的原子写）。 */
+    set(key: string, value: unknown): Promise<void>;
+    delete(key: string): Promise<void>;
+    keys(): Promise<string[]>;
   };
   /**
    * 定时器（spec「定时器」）与等待（spec「时钟：等待」）。
@@ -868,8 +863,13 @@ export interface ModDollar {
 /** 沙箱需要宿主提供的全部能力。 */
 export interface ModRuntimeHost {
   pluginName: string;
-  /** 登记一块面板；返回「挂上了没有」（会话正在销毁时 false）。 */
-  openPane(paneId: string, title: string): boolean;
+  /**
+   * 登记一块面板；返回「挂上了没有」（会话正在销毁时 false）。
+   *
+   * `focus` 是 `$.ui.open({ focus: true })` 的那一次要求：surface 收到推送里的
+   * `focus: true` 就把键盘直接送进这块面板（spec「终端形态」）。之后的重绘不带。
+   */
+  openPane(paneId: string, title: string, focus?: boolean): boolean;
   closePane(paneId: string): void;
   listPanes(): string[];
   /**
@@ -897,8 +897,14 @@ export interface ModRuntimeHost {
   ): Promise<string>;
   stateGet(key: string): unknown;
   stateSet(key: string, value: unknown): void;
-  storeGet(key: string): string | undefined;
-  storeSet(key: string, value: string): void;
+  /**
+   * `$.store` 的读写（值已由 runtime 归一成 JSON 安全的东西、并过了体积上限）。
+   *
+   * 一个插件一份文件、跨会话；`get` 拿不到就是 `undefined`，文件坏了当空表
+   * （与 `atom` 的「解析失败给初值」同一条口径）。
+   */
+  storeGet(key: string): unknown;
+  storeSet(key: string, value: unknown): void;
   storeDelete(key: string): void;
   storeKeys(): string[];
   /** 登记一个定时器；间隔下限、数量上限、串行与撤销都由宿主实现。 */
@@ -1218,6 +1224,46 @@ function cloneValue<T>(value: T): T {
 }
 
 /**
+ * `$.store.set` 落盘前的归一，与 Claude Code 逐条同口径：
+ *
+ * - `JSON.stringify` 抛错（环）→ 报错；
+ * - 结果不是字符串（顶层 `undefined` / 函数 / symbol）→ 报错；
+ * - 按**字符数**卡 4 MiB → 报错；
+ * - 能过就 `JSON.parse` 回来当副本（存进去的是 JSON 值，不是字符串）。
+ *
+ * 对象属性里的函数 / symbol 会被 `JSON.stringify` **静默丢掉**，CC 就是这样，
+ * 我们不加严：社区插件里 `set("x", { …带回调 })` 在 CC 上能跑，这里报错就变成
+ * 「CC 能用的插件在我们这儿坏」。`undefined` 作为整体值则两边都拒。
+ */
+function storableJson(value: unknown, what: string): unknown {
+  let text: string | undefined;
+  try {
+    text = JSON.stringify(value);
+  } catch (error) {
+    throw new Error(`${what} 的值不是 JSON：${errorMessage(error)}`);
+  }
+  if (typeof text !== "string") {
+    throw new Error(
+      `${what} 的值不是 JSON：${value === undefined ? "undefined" : typeof value}`,
+    );
+  }
+  if (text.length > MOD_LIMITS.storeValueChars) {
+    throw new Error(
+      `${what} 的值有 ${text.length} 个字符，超过 ${MOD_LIMITS.storeValueChars}`,
+    );
+  }
+  return JSON.parse(text) as unknown;
+}
+
+/** 键必须是非空字符串（Claude Code 对 `get` / `set` / `delete` 三条都这么查）。 */
+function storeKeyArg(key: unknown, method: string): string {
+  if (typeof key !== "string" || key.length === 0) {
+    throw new Error(`$.store.${method} 需要一个非空的字符串键`);
+  }
+  return key;
+}
+
+/**
  * 把 `h()` 的 children 拍平成树节点。
  *
  * 只保留字符串/数字与元素；`null` / `undefined` / `false` / `true` 丢弃 ——
@@ -1307,10 +1353,13 @@ export class ModRuntime {
   private readonly dollar: ModDollar;
   private readonly wave: unknown;
   /**
-   * 元素表：`$.ui.resolve(e)` 与 `require` 拿到的是同一份。**每实例一份**
-   * （不是模块级常量），因为构造器要绑这个实例的 `h`（它记 handlers）。
+   * 元素表：`require` 与 JSX 用的是**并集**（两端名字都在），按端裁剪只发生在
+   * `$.ui.resolve(e)`（见 {@link elementsBySurface}）。**每实例一份**（不是模块级
+   * 常量），因为构造器要绑这个实例的 `h`（它记 handlers）。
    */
   private readonly elements: ModElementTable;
+  /** 按端裁剪后的表：`$.ui.resolve(e)` 按 `e.surface` 取这一份。 */
+  private readonly elementsBySurface: Readonly<Record<string, ModElementTable>>;
   /** 当前正在计时的预算（`$.process.spawn` 等输出时会被暂停）。 */
   private budget: HookBudget | undefined;
   /** `$.fs` 的实现，惰性创建：多数 mod 一次都不碰文件。 */
@@ -1387,16 +1436,28 @@ export class ModRuntime {
       };
     };
 
-    /** 元素表：`$.ui.resolve(e)` 与 `require("claude-code")` 拿到的是这一份。 */
-    this.elements = elementTableOf(h);
+    /**
+     * 元素表：`require("claude-code")` 与 JSX 拿到的是**并集**（两端名字都在，
+     * 按端裁剪在 `$.ui.resolve(e)` 与校验）。
+     */
+    this.elements = elementTableOf(h, MOD_ELEMENT_TYPES);
     const elements = this.elements;
+    const elementsBySurface: Record<string, ModElementTable> = {};
+    for (const surface of SURFACES_WE_DRAW) {
+      elementsBySurface[surface] = elementTableOf(
+        h,
+        MOD_SURFACE_ELEMENTS[surface as "desktop" | "terminal"],
+      );
+    }
+    this.elementsBySurface = Object.freeze(elementsBySurface);
 
     this.wave = { h, Fragment: "Fragment", elements };
 
     this.dollar = {
       plugin: { name: host.pluginName },
       ui: {
-        resolve: (event: unknown) => resolveElements(event, elements),
+        resolve: (event: unknown) =>
+          resolveElements(event, this.elementsBySurface),
         // 与 Claude Code 同形：`isPlaced` 说这块面板有没有真的挂到某端上。
         // 判据是「有没有 surface 在画」，不是「宿主登记成功没」—— 终端里登记
         // 得到一块永远没人画的面板，守卫若照它等人按键就会把对话挂死。
@@ -1413,7 +1474,7 @@ export class ModRuntime {
           // 登记照做：与 Claude Code 一样「没有 surface 也把面板留着」—— 之后
           // 有界面挂上来它就画出来，`$.ui.panes()` 也看得到它。`isPlaced` 才是
           // 诚实的那句话。
-          const registered = host.openPane(id, title);
+          const registered = host.openPane(id, title, pane.focus === true);
           if (host.surfaces().length === 0) {
             return {
               isPlaced: false,
@@ -1431,7 +1492,9 @@ export class ModRuntime {
           }
           host.closePane(id);
         },
-        panes: () => [...host.listPanes()],
+        // 异步与 Claude Code 同形状：社区写法是 `await`/`.then`，同步数组
+        // 会让 `.then` 当场报错。
+        panes: async () => [...host.listPanes()],
         invalidate: (target) => {
           if (target !== "ui.render") {
             throw new Error(
@@ -1453,16 +1516,22 @@ export class ModRuntime {
         // 进对话流、不进上下文：长度口径与状态行同一份限额。
         log: (text, options) => {
           const to = options?.to;
-          if (to !== undefined && to !== "transcript") {
+          if (to !== undefined && to !== "transcript" && to !== "debug") {
             // 不静默当成 transcript：CC 的 `to` 还认别的落点，拼错一个值就安静
             // 写进对话流比报错更难查。
             throw new Error(
-              `$.ui.log 只认 to: "transcript"（一期只有对话流这一个落点），拿到的是 ${JSON.stringify(to)}`,
+              `$.ui.log 的 to 只认 "transcript" 与 "debug"，拿到的是 ${JSON.stringify(to)}`,
             );
           }
           const line = normalizeStatus(text)?.trim() ?? null;
           if (line === null) {
             throw new Error("$.ui.log 需要一段文本");
+          }
+          // `to: "debug"` 是给 mod 作者自己排查的：只写 wave 的调试日志
+          // （`LOG_LEVEL=DEBUG` 才看得见），对话流里一个字都不留。
+          if (to === "debug") {
+            logger.debug(`[mod:${host.pluginName}]`, line);
+            return;
           }
           host.appendLog(line);
         },
@@ -1521,11 +1590,19 @@ export class ModRuntime {
         get: (key) => cloneValue(host.stateGet(key)),
         set: (key, value) => host.stateSet(key, cloneValue(value)),
       },
+      // 插件自己的持久化 KV（spec「`$`（一期）」）：异步 + 任意 JSON，与
+      // Claude Code 同名方法一致 —— 社区插件写的是 `store.get(k).catch(…)`，
+      // 同步返回会让它当场 `TypeError: … reading 'catch'`；只收字符串则把
+      // `set("last", { at, count })` 存成 `"[object Object]"`。
       store: {
-        get: (key) => host.storeGet(key),
-        set: (key, value) => host.storeSet(key, String(value)),
-        delete: (key) => host.storeDelete(key),
-        keys: () => [...host.storeKeys()],
+        get: async (key) => cloneValue(host.storeGet(storeKeyArg(key, "get"))),
+        set: async (key, value) => {
+          // 值先校验、键后校验：CC 的实参求值就是这个顺序，报错先撞哪条一致。
+          const stored = storableJson(value, "$.store.set");
+          host.storeSet(storeKeyArg(key, "set"), stored);
+        },
+        delete: async (key) => host.storeDelete(storeKeyArg(key, "delete")),
+        keys: async () => [...host.storeKeys()],
       },
       clock: {
         now: () => Date.now(),
@@ -1785,7 +1862,7 @@ export class ModRuntime {
    * 文件全部参与编译，但只有带 `register` 的才算一个 mod）。
    */
   async load(): Promise<boolean> {
-    const exports = this.execute(this.entryPath, new Set());
+    const exports = this.execute(this.entryPath);
     const register = (exports as { register?: unknown } | undefined)?.register;
     if (typeof register !== "function") return false;
     // 两种 `register` 形状靠**哪一个实参被当成登记函数**区分，而不是 handler 的
@@ -2334,14 +2411,12 @@ export class ModRuntime {
    * 表。其余裸包名直接抛错（spec「加载纪律」）。相对路径只在本 mod 已编译的
    * 文件集合里找，解析不出插件目录（文件本身在加载前已经过 realpath 校验）。
    */
-  private execute(filePath: string, visiting: Set<string>): unknown {
+  private execute(filePath: string): unknown {
     const resolved = path.resolve(filePath);
-    // 循环要先于缓存判：`execute` 在递归**之前**就把半成品 `module.exports`
-    // 写进了缓存（CJS 语义需要它），所以只查缓存永远看不到环。mod 的模块本该
-    // 是「进来就注册」的，环形 import 拿到的是半成品导出 —— 宁可当场说清楚。
-    if (visiting.has(resolved)) {
-      throw new Error(`mod 的 import 出现循环：${resolved}`);
-    }
+    // 环形 import 按 CJS 语义解：已经在执行中的文件先给出它**半成品**的
+    // `module.exports`（`execute` 在递归之前就把它放进了缓存），Node / Bun 都是
+    // 这么处理的。社区的多文件 mod 里 `ledger → history → ledger` 这种真环很常见，
+    // 当场报错会把整个插件的所有面板一起废掉。
     const cached = this.modules.get(resolved);
     if (cached) return cached.exports;
     const code = this.sources.get(resolved);
@@ -2350,7 +2425,6 @@ export class ModRuntime {
     }
     const module = { exports: {} as Record<string, unknown> };
     this.modules.set(resolved, module);
-    visiting.add(resolved);
 
     const requireFn = (specifier: string) => {
       // `wave-agent-sdk/mods` 是我们对外推荐的名字；社区的 `'claude-code'` 是它
@@ -2370,7 +2444,7 @@ export class ModRuntime {
       const target = path.resolve(path.dirname(resolved), specifier);
       for (const candidate of moduleCandidates(target)) {
         if (this.sources.has(candidate)) {
-          return this.execute(candidate, visiting);
+          return this.execute(candidate);
         }
       }
       throw new Error(
@@ -2396,17 +2470,30 @@ export class ModRuntime {
       // 一个空 exports，失败点离原因更远。
       this.modules.delete(resolved);
       throw error;
-    } finally {
-      visiting.delete(resolved);
     }
     return module.exports;
   }
 }
 
-/** `./a` 的候选：原样、`.tsx`、`.ts`、`.jsx`、`.js`、`/index.*`。 */
+/**
+ * `./a` 的候选：原样、`.tsx`、`.ts`、`.jsx`、`.js`、`/index.*`。
+ *
+ * 还有 TS 的 ESM 写法：源码里 `import "./x.js"`、磁盘上只有 `x.ts` —— 与
+ * `pluginLoader.ts` 的 `resolveImportFile` 同一张表（那边决定收进编译集的是
+ * 哪些文件，两张表不一致就会「收进来了却 require 不到」）。
+ */
 function moduleCandidates(target: string): string[] {
+  const ext = path.extname(target).toLowerCase();
+  const withoutExt = target.slice(0, target.length - ext.length);
+  const sourceVariants =
+    ext === ".js"
+      ? [`${withoutExt}.ts`, `${withoutExt}.tsx`]
+      : ext === ".jsx"
+        ? [`${withoutExt}.tsx`]
+        : [];
   return [
     target,
+    ...sourceVariants,
     `${target}.tsx`,
     `${target}.ts`,
     `${target}.jsx`,

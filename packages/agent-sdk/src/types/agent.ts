@@ -164,6 +164,17 @@ export interface AgentOptions {
    * daemon hosts sessions created from several front ends at once.
    */
   entrypoint?: HostEntrypoint;
+  /**
+   * Which surfaces this session actually draws mod trees on (spec
+   * `ecosystem/plugin-mods.md`「元素表按端分」). Feeds `$.session.surfaces()`
+   * and `$.ui.open()`'s `isPlaced`.
+   *
+   * Declared, not derived, because the same entrypoint can both draw and not
+   * draw: the interactive CLI draws (`["terminal"]`), `wave -p` does not — both
+   * report `entrypoint: "cli"`. Left unset, the entrypoint decides
+   * (`desktop` → `["desktop"]`, everything else → `[]`).
+   */
+  renderSurfaces?: readonly import("./mods.js").ModRenderSurface[];
   [key: string]: unknown;
 }
 

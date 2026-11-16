@@ -353,4 +353,40 @@ describe("PluginLoader.loadMods 收入口 import 的相对文件", () => {
 
     expect(mods.map((mod) => mod.path)).toEqual([ENTRY]);
   });
+
+  it("同名的兄弟文件都留在编译集里（id 带后缀），入口同名仍然只留先到的", async () => {
+    const spinner = path.join(LIB, "features", "spinner", "index.ts");
+    const mermaid = path.join(LIB, "features", "mermaid", "index.ts");
+    mockTree({
+      [HOOKS]: JSON.stringify({ modules: ["./register.tsx"] }),
+      [ENTRY]:
+        'import { a } from "../lib/features/spinner";\nimport { b } from "../lib/features/mermaid";\n',
+      [spinner]: "export const a = 1;\n",
+      [mermaid]: "export const b = 2;\n",
+    });
+
+    const mods = await PluginLoader.loadMods(PLUGIN, "rich-ui");
+
+    // 多个目录下的 `index.ts` 都只是被 import 的共享模块，按文件名去重会丢掉
+    // 一个，入口随后 require 不到它。
+    expect(mods.map((mod) => mod.path)).toEqual([ENTRY, spinner, mermaid]);
+    expect(mods.map((mod) => mod.id)).toEqual([
+      "rich-ui:register",
+      "rich-ui:index",
+      "rich-ui:index~2",
+    ]);
+  });
+
+  it("`./x.js` 说明符收到同名的 .ts 源文件上", async () => {
+    const store = path.join(LIB, "archive", "file-store.ts");
+    mockTree({
+      [HOOKS]: JSON.stringify({ modules: ["./register.tsx"] }),
+      [ENTRY]: 'import { S } from "../lib/archive/file-store.js";\n',
+      [store]: "export class S {}\n",
+    });
+
+    const mods = await PluginLoader.loadMods(PLUGIN, "lossless-compact");
+
+    expect(mods.map((mod) => mod.path)).toEqual([ENTRY, store]);
+  });
 });
