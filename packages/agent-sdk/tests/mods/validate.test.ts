@@ -91,6 +91,231 @@ describe("validateModTree", () => {
     });
   });
 
+  describe("视觉与布局的 prop（spec「元素」）", () => {
+    it("整批新 prop 都能过", () => {
+      const result = validateModTree({
+        type: "Box",
+        props: {
+          key: "row",
+          paddingX: "sm",
+          paddingY: 2,
+          marginX: 4,
+          minHeight: 24,
+          minWidth: 0,
+          borderStyle: "round",
+          borderColor: "promptBorder",
+          backgroundColor: "#f5f5f5",
+          alignSelf: "center",
+          display: "flex",
+          position: "absolute",
+          top: 4,
+          justifyContent: "space-between",
+        },
+        children: [
+          {
+            type: "Text",
+            props: {
+              weight: "semibold",
+              size: "footnote",
+              backgroundColor: "success",
+              strikethrough: true,
+              inverse: true,
+            },
+            children: ["已完成"],
+          },
+          {
+            type: "Button",
+            props: {
+              key: "b1",
+              label: "开",
+              plain: true,
+              dimColor: true,
+              autoFocus: true,
+            },
+            children: [],
+          },
+          {
+            type: "Input",
+            props: { key: "i1", rows: 3, autoFocus: true },
+            children: [],
+          },
+          {
+            type: "Code",
+            props: { source: "a\nb", wrap: "truncate-end" },
+            children: [],
+          },
+        ],
+      });
+
+      expect(result.ok).toBe(true);
+    });
+
+    it("枚举取值写错时点名元素和可用值", () => {
+      const cases: Array<[string, Record<string, unknown>, string]> = [
+        ["Box", { alignSelf: "middle" }, "alignSelf"],
+        ["Box", { display: "block" }, "display"],
+        ["Box", { position: "fixed" }, "position"],
+        ["Text", { size: "huge" }, "size"],
+        ["Text", { weight: "black" }, "weight"],
+        ["Code", { source: "x", wrap: "wrap-all" }, "wrap"],
+      ];
+      for (const [type, props, name] of cases) {
+        const result = validateModTree({ type, props, children: [] });
+        expect(result.ok).toBe(false);
+        if (result.ok) continue;
+        expect(result.error).toContain(`${type}.${name}`);
+      }
+    });
+
+    it("布尔 / 数字取值写错时也当场报错", () => {
+      const boolean = validateModTree({
+        type: "Button",
+        props: { key: "b1", plain: "yes" },
+        children: [],
+      });
+      expect(boolean.ok).toBe(false);
+      if (!boolean.ok) expect(boolean.error).toContain("Button.plain");
+
+      const offset = validateModTree({
+        type: "Box",
+        props: { position: "absolute", top: "4px" },
+        children: [],
+      });
+      expect(offset.ok).toBe(false);
+      if (!offset.ok) expect(offset.error).toContain("Box.top");
+
+      const rows = validateModTree({
+        type: "Input",
+        props: { key: "i1", rows: 0 },
+        children: [],
+      });
+      expect(rows.ok).toBe(false);
+      if (!rows.ok) expect(rows.error).toContain("Input.rows");
+    });
+  });
+
+  describe("hover（悬停态）", () => {
+    const box = (props: Record<string, unknown>, children: unknown[] = []) =>
+      validateModTree({ type: "Box", props, children });
+
+    it("是节点的独立字段，规范化后留在树上", () => {
+      const result = validateModTree({
+        type: "Box",
+        props: { key: "row" },
+        hover: { backgroundColor: "success", borderDimColor: true },
+        children: [
+          {
+            type: "Text",
+            props: {},
+            hover: { color: "error", bold: true },
+            children: ["x"],
+          },
+        ],
+      });
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.tree.hover).toEqual({
+        backgroundColor: "success",
+        borderDimColor: true,
+      });
+      const child = result.tree.children[0] as ModTreeNode;
+      expect(child.hover).toEqual({ color: "error", bold: true });
+    });
+
+    it("作用域继承最近的带 key 的 Box；没有 scope 时报错", () => {
+      // 带 key 的 Box 是作用域宿主，子节点的 hover 才有地方挂。
+      expect(
+        box({ key: "row" }, [
+          {
+            type: "Text",
+            props: {},
+            hover: { color: "success" },
+            children: ["x"],
+          },
+        ]).ok,
+      ).toBe(true);
+      // 裸 hover 无处挂：树顶就一个 Text，没有 scope。
+      const loose = validateModTree({
+        type: "Text",
+        props: {},
+        hover: { color: "error" },
+        children: ["x"],
+      });
+      expect(loose.ok).toBe(false);
+      if (!loose.ok) expect(loose.error).toContain("scope");
+    });
+
+    it("hover.scope 显式指定作用域名时不用祖先 key", () => {
+      expect(
+        box({}, [
+          {
+            type: "Text",
+            props: {},
+            hover: { scope: "row", color: "success" },
+            children: ["x"],
+          },
+        ]).ok,
+      ).toBe(true);
+      expect(
+        box({}, [
+          { type: "Text", props: {}, hover: { scope: "" }, children: ["x"] },
+        ]).ok,
+      ).toBe(false);
+    });
+
+    it("key 集按元素封闭：hover 里写不相干的 prop 就报错", () => {
+      const width = box({}, [
+        {
+          type: "Text",
+          props: {},
+          hover: { scope: "r", width: 10 },
+          children: ["x"],
+        },
+      ]);
+      expect(width.ok).toBe(false);
+      if (!width.ok) expect(width.error).toContain("width");
+
+      const border = box({}, [
+        {
+          type: "Text",
+          props: {},
+          hover: { scope: "r", borderColor: "error" },
+          children: ["x"],
+        },
+      ]);
+      expect(border.ok).toBe(false);
+    });
+
+    it("没有悬停态的元素上写 hover 就报错", () => {
+      const result = validateModTree({
+        type: "Input",
+        props: { key: "i1" },
+        hover: { dimColor: true },
+        children: [],
+      });
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.error).toContain("不支持 hover");
+    });
+
+    it("hover 的取值也查：颜色是字符串、布尔键是布尔、偏移是数字", () => {
+      const color = box({ key: "row" }, [
+        { type: "Text", props: {}, hover: { color: 1 }, children: ["x"] },
+      ]);
+      expect(color.ok).toBe(false);
+
+      const boolean = box({ key: "row", hover: { borderDimColor: "yes" } });
+      expect(boolean.ok).toBe(false);
+
+      const offset = box({ key: "row", hover: { top: "4px" } });
+      expect(offset.ok).toBe(false);
+
+      const display = box({ key: "row", hover: { display: "none" } });
+      expect(display.ok).toBe(false);
+    });
+  });
+
   it("根节点是裸文本时包成一个 Text", () => {
     const result = validateModTree("hello");
 

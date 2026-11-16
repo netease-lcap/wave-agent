@@ -80,6 +80,10 @@ describe("Agent getSessionUsage ($.session.usage 的数据源)", () => {
     });
 
     expect(agent.getSessionUsage()).toEqual({
+      // 会话起点：社区 mod 拿它算「$/小时」这类速率，所以它必须在快照里。
+      startedAt: expect.any(Number),
+      // 额度窗口要企业端接口，我们没有：空数组是「这个账号没有配额窗口可报」。
+      rateLimits: [],
       context: { tokens: 83_500, window: 200_000, percent: 50 },
       tokens: { prompt: 300, completion: 30, cacheRead: 40, cacheCreation: 5 },
       model: "some-model",
@@ -93,6 +97,8 @@ describe("Agent getSessionUsage ($.session.usage 的数据源)", () => {
     vi.spyOn(agent, "getModelConfig").mockReturnValue({});
 
     expect(agent.getSessionUsage()).toEqual({
+      startedAt: expect.any(Number),
+      rateLimits: [],
       context: { tokens: 0, window: 200_000, percent: 0 },
       tokens: { prompt: 0, completion: 0, cacheRead: 0, cacheCreation: 0 },
     });

@@ -33,6 +33,7 @@ import {
 } from "./index.js";
 import { ModFs } from "./files.js";
 import { modFetch } from "./http.js";
+import { atom, read, update } from "./atoms.js";
 import { logger } from "../utils/globalLogger.js";
 
 /**
@@ -82,6 +83,17 @@ const elements = Object.fromEntries(
  * 我们一期只发 `desktop` —— 别的值当错处理，别让它悄悄拿到桌面端的表。
  */
 const SURFACE = "desktop";
+
+/** 我们对外推荐的 mod 模块名（`wave-agent-sdk/mods` 子路径）。 */
+const MODULE_SPECIFIER = "wave-agent-sdk/mods";
+
+/**
+ * 社区 mod 里写的裸模块名，解析到**同一份**模块（spec「兼容社区 mod」）。
+ *
+ * 不是依赖：这个 specifier 由沙箱自己的 `require` 接管，返回的是元素构造器表
+ * 与 `atom` / `read` / `update`，不存在任何按包名去 `node_modules` 找的路径。
+ */
+const COMMUNITY_MODULE_SPECIFIER = "claude-code";
 
 /**
  * 这一端上能画的站点：`ui.render` 的 `e.component`。
@@ -512,8 +524,9 @@ export interface ModRuntimeHost {
  * 允许注册的钩子（spec「事件」）。
  *
  * `session.start` / `ui.render` 是「要 mod 做事」的那两个；`turn.complete`、
- * `tool.call`、`turn.start`、`turn.step`、`session.compact`、`session.end`、
- * `ui.close` 与 `classic.PermissionRequest` 是只读的观察事件，返回值一律丢弃
+ * `tool.call`、`turn.start`、`turn.step`、`session.measure`、`session.compact`、
+ * `session.end`、`ui.close` 与 `classic.PermissionRequest` 是只读的观察事件，
+ * 返回值一律丢弃
  * （`tool.call` 在 Claude Code 里还能返回 `{ deny }` 拦下调用，那是决策型钩子，
  * 我们只做观察这一半）。`classic.` 前缀是照 Claude Code 的规矩：它把每个
  * settings hook 事件都镜像成 `classic.<Event>`，我们只做这一个镜像，`e` 的形状
@@ -529,12 +542,33 @@ const HOOK_NAMES = new Set([
   "ui.render",
   "ui.close",
   "turn.complete",
+  "session.measure",
   "session.compact",
   "session.end",
   "tool.call",
   "classic.PermissionRequest",
   "command.run",
 ]);
+
+/**
+ * 接受 matcher 的事件（其余事件带 matcher 一律拒收并 warn）。
+ *
+ * matcher 是**事件字段的子集**：`{ component: "Pane" }` 只吃 `component` 是
+ * `Pane` 的那些渲染请求。社区 mod 用这三处把「一个事件、多个处理器」分开：
+ * `ui.render` 按站点（`component` / `requestId`）、`tool.call` 按工具名、
+ * `command.run` 按命令名。
+ */
+const MATCHER_EVENTS = new Set(["command.run", "ui.render", "tool.call"]);
+
+/**
+ * matcher 里用的字段名 → 事件的字段名。
+ *
+ * 社区按 Claude Code 的字段名写 matcher（`requestId` 是渲染请求的实例 id），
+ * 我们的事件里那个字段叫 `instance_id`（与 CC 的 `ui_render` 消息同形）。
+ */
+const MATCHER_KEY_ALIASES: Record<string, string> = {
+  requestId: "instance_id",
+};
 
 /** 一个已编译文件：路径 + CJS 源码。 */
 export interface CompiledModule {
@@ -549,6 +583,70 @@ export type ModHookResult =
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** `on(...)` 的返回值：只有社区的 `.catch(fn)` 一种用法。 */
+interface HookRegistration {
+  catch: (onError: unknown) => HookRegistration;
+}
+
+/** 一个已注册的钩子。 */
+interface HookEntry {
+  /** 原样的处理函数；形状（`(e)` / `($, e, next)`）看 {@link HookEntry.isCommunity}。 */
+  handler: (...args: unknown[]) => unknown;
+  /** 事件字段的子集；没有就是「所有这个事件的实例」。 */
+  matcher?: Record<string, unknown>;
+  /** `on(...).catch(fn)`：这个钩子抛错（含超时）时的兜底。 */
+  onError?: (...args: unknown[]) => unknown;
+  /** handler 是社区形状 `($, e, next)` —— 由登记时用的是哪个 `register` 实参决定。 */
+  isCommunity: boolean;
+  /** onError 与 handler 同形状。 */
+  isCommunityError: boolean;
+}
+
+/** 命令名归一：`burn` 与 `/burn` 是同一条（社区的 matcher 不带斜杠）。 */
+function normalizeCommand(command: string): string {
+  return command.startsWith("/") ? command : `/${command}`;
+}
+
+function matcherValueMatches(
+  key: string,
+  expected: unknown,
+  actual: unknown,
+): boolean {
+  if (
+    key === "command" &&
+    typeof expected === "string" &&
+    typeof actual === "string"
+  ) {
+    return normalizeCommand(expected) === normalizeCommand(actual);
+  }
+  return expected === actual;
+}
+
+/**
+ * matcher 是不是这个事件的实例：要求 matcher 里**每一项**都对上。
+ *
+ * matcher 的值可以是一组候选（`{ tool: ["Write", "Edit"] }`），命中任一个都算。
+ */
+function matchesEvent(
+  matcher: Record<string, unknown> | undefined,
+  event: unknown,
+): boolean {
+  if (!matcher) return true;
+  if (!isPlainObject(event)) return false;
+  for (const [rawKey, expected] of Object.entries(matcher)) {
+    const key = MATCHER_KEY_ALIASES[rawKey] ?? rawKey;
+    const actual = event[key];
+    if (Array.isArray(expected)) {
+      if (!expected.some((value) => matcherValueMatches(key, value, actual))) {
+        return false;
+      }
+      continue;
+    }
+    if (!matcherValueMatches(key, expected, actual)) return false;
+  }
+  return true;
 }
 
 /**
@@ -681,19 +779,14 @@ export class ModRuntime {
   private readonly sources = new Map<string, string>();
   /** `<type>:<key>` → 回调。 */
   private readonly handlers = new Map<string, (value?: string) => unknown>();
-  private readonly hooks = new Map<string, (event: unknown) => unknown>();
   /**
-   * `command.run` 的处理器：matcher 是**带斜杠**的命令名（`"/standup"`），与
-   * Claude Code 的 matcher 口径一致。
+   * 钩子表：事件名 → 按注册顺序排的处理器。
    *
-   * 单独一张表而不是塞进 `hooks`：这个事件是唯一带 matcher、唯一有返回值语义
-   * 的钩子，而且同一个 mod 会为多条命令各注册一个 —— 塞进 `hooks`（同名覆盖）
-   * 只会剩下最后一条。
+   * 一个事件可以有多条（社区写法：同一个 mod 给 `ui.render` 的多个站点、给
+   * `tool.call` 的多个工具名各注册一条），所以是数组而不是单值；具体哪几条
+   * 参与这次事件由 matcher 决定（见 {@link matchesEvent}）。
    */
-  private readonly commandHooks = new Map<
-    string,
-    (event: unknown) => unknown
-  >();
+  private readonly hooks = new Map<string, HookEntry[]>();
   /** 正在跑 `command.run` 钩子的层数（`$.command.run` 靠它拒自激）。 */
   private commandHookDepth = 0;
   private readonly dollar: ModDollar;
@@ -707,6 +800,13 @@ export class ModRuntime {
     private readonly host: ModRuntimeHost,
     private readonly entryPath: string,
     compiled: CompiledModule[],
+    /**
+     * `plugin.json` 的 `userConfig` 当前取值（只有默认值，spec「兼容社区 mod」）。
+     *
+     * 社区形状的 `register(on, options)` 读它；我们的形状用不到，但两种形状
+     * 都拿到同一对实参（见 {@link load}）。
+     */
+    private readonly modOptions: Record<string, unknown> = {},
   ) {
     for (const mod of compiled) {
       this.sources.set(path.resolve(mod.path), mod.code);
@@ -716,7 +816,15 @@ export class ModRuntime {
       const rawProps = isPlainObject(props) ? props : {};
       const key = typeof rawProps.key === "string" ? rawProps.key : undefined;
       const kept: Record<string, ModPropValue> = {};
+      // `hover` 的值是对象，props 只收原始值 —— 所以它是节点的独立字段
+      // （与 Claude Code 的 `{ type, props, hover }` 同形）。形状不对时照样
+      // 搬过去，由校验器点名，不在这里猜作者想写什么。
+      let hover: unknown;
       for (const [name, value] of Object.entries(rawProps)) {
+        if (name === "hover") {
+          hover = value;
+          continue;
+        }
         if (CALLBACK_PROPS.has(name)) {
           const callback = value as (input?: string) => unknown;
           if (key && typeof callback === "function") {
@@ -740,11 +848,22 @@ export class ModRuntime {
           value === null
         ) {
           kept[name] = value;
+          continue;
         }
+        // 函数/对象 prop 到不了树上（过不了 RPC）。以前是静默丢弃，作者只看到
+        // 「写了没效果、也没有报错」；现在点名，免得对着树猜。
+        logger.warn(
+          `[Wave] ${host.pluginName} 的 <${String(type)}${key ? ` key="${key}"` : ""}> 上有个 prop 传不出去：${name}（只有字符串/数字/布尔/null 能进树；对象只有 Select.options 与 hover 两处例外）`,
+        );
       }
       const nodeChildren: Array<ModTreeNode | string> = [];
       for (const child of children) appendChildren(nodeChildren, child);
-      return { type: String(type), props: kept, children: nodeChildren };
+      return {
+        type: String(type),
+        props: kept,
+        ...(hover === undefined ? {} : { hover }),
+        children: nodeChildren,
+      };
     };
 
     this.wave = { h, Fragment: "Fragment", elements };
@@ -960,74 +1079,225 @@ export class ModRuntime {
   }
 
   /**
-   * 执行入口文件，调用它导出的 `register($, on)`。
+   * 执行入口文件，调用它导出的 `register`。
+   *
+   * 两种注册签名都认（spec「兼容社区 mod」），**按实参形状区分**：两个实参都是
+   * 同一个登记函数，只是各自挂了一套属性 ——
+   *
+   * - 第一个挂着 `$`（`ui` / `store` / `clock`…）。我们的形状把它当对象用；
+   * - 第二个挂着 `userConfig` 的当前取值。社区的形状把它当对象用。
+   *
+   * 于是 `register($, on)` 与 `register(on, options)` 都能原样跑：两条路里
+   * 「当对象用的那个实参」都能读到自己的属性，「当函数用的那个实参」都能登记。
    *
    * 返回 `false` 表示这个文件没有导出 `register` —— 它只是被别的 mod
-   * `import` 的共享模块，不是面板入口（`mods/` 目录里的文件全部参与编译，
-   * 但只有带 `register` 的才算一个 mod）。
+   * `import` 的共享模块，不是面板入口（`mods/` 与 `hooks/hooks.json` 声明的
+   * 文件全部参与编译，但只有带 `register` 的才算一个 mod）。
    */
   async load(): Promise<boolean> {
     const exports = this.execute(this.entryPath, new Set());
     const register = (exports as { register?: unknown } | undefined)?.register;
     if (typeof register !== "function") return false;
-    const result = (register as (dollar: unknown, on: unknown) => unknown).call(
+    // 两种 `register` 形状靠**哪一个实参被当成登记函数**区分，而不是 handler 的
+    // 形参个数：我们的是 `register($, on)`（用第 2 个），社区的是
+    // `register(on, options)` / `Register = on =>`（用第 1 个，还是对象照样能用）。
+    // 形参个数在社区侧靠不住 —— `on("command.run", matcher, async $ => …)` 只写
+    // 一个形参，那就是社区的 `$`。
+    const registrarFor =
+      (isCommunity: boolean) =>
+      (
+        name: unknown,
+        matcherOrHandler: unknown,
+        maybeHandler?: unknown,
+      ): HookRegistration =>
+        this.registerHook(name, matcherOrHandler, maybeHandler, isCommunity);
+    const bind = (isCommunity: boolean, extra: object) => {
+      const registrar = registrarFor(isCommunity);
+      return Object.assign(
+        (...args: unknown[]) => registrar(args[0], args[1], args[2]),
+        extra,
+      );
+    };
+    const withDollar = bind(true, this.dollar);
+    const withOptions = bind(false, this.modOptions);
+    const result = (register as (...args: unknown[]) => unknown).call(
       exports,
-      this.dollar,
-      (name: unknown, matcherOrHandler: unknown, maybeHandler?: unknown) => {
-        if (typeof name !== "string") return;
-        const hasMatcher = typeof maybeHandler === "function";
-        const handler = hasMatcher ? maybeHandler : matcherOrHandler;
-        if (typeof handler !== "function") return;
-        if (!HOOK_NAMES.has(name)) {
-          logger.warn(
-            `[Wave] ${this.host.pluginName} 注册了不存在的 mod 钩子：${name}（可用：${[...HOOK_NAMES].join(" / ")}）`,
-          );
-          return;
-        }
-        if (name === "command.run") {
-          // 唯一带 matcher 的事件：matcher 决定「这条命令归谁答」，没有它就无法
-          // 把一条命令指到自己的处理器上（CC 的形状是 { command: "/name" }）。
-          const command = isPlainObject(matcherOrHandler)
-            ? matcherOrHandler.command
-            : undefined;
-          if (
-            typeof command !== "string" ||
-            !command.startsWith("/") ||
-            command.length < 2
-          ) {
-            logger.warn(
-              `[Wave] ${this.host.pluginName} 的 command.run 钩子需要 matcher { command: "/<命令名>" }（带斜杠），这一条被忽略`,
-            );
-            return;
-          }
-          this.commandHooks.set(
-            command,
-            handler as (event: unknown) => unknown,
-          );
-          return;
-        }
-        if (hasMatcher) {
-          logger.warn(
-            `[Wave] ${this.host.pluginName} 给 ${name} 传了 matcher：只有 command.run 接受 matcher，这一条被忽略`,
-          );
-          return;
-        }
-        this.hooks.set(name, handler as (event: unknown) => unknown);
-      },
+      withDollar,
+      withOptions,
     );
     if (isThenable(result)) await result;
     return true;
   }
 
+  /**
+   * 登记一个钩子（`on(name, handler)` / `on(name, matcher, handler)`）。
+   *
+   * 拒收的理由一律留一条 warn：静默登记一个永远不触发的处理器，比报错更难查。
+   */
+  private registerHook(
+    name: unknown,
+    matcherOrHandler: unknown,
+    maybeHandler: unknown,
+    isCommunity: boolean,
+  ): HookRegistration {
+    const noop: HookRegistration = {
+      catch: () => noop,
+    };
+    if (typeof name !== "string") return noop;
+    const hasMatcher = typeof maybeHandler === "function";
+    const handler = hasMatcher ? maybeHandler : matcherOrHandler;
+    if (typeof handler !== "function") return noop;
+    if (!HOOK_NAMES.has(name)) {
+      logger.warn(
+        `[Wave] ${this.host.pluginName} 注册了不存在的 mod 钩子：${name}（可用：${[...HOOK_NAMES].join(" / ")}）`,
+      );
+      return noop;
+    }
+    if (hasMatcher && !MATCHER_EVENTS.has(name)) {
+      logger.warn(
+        `[Wave] ${this.host.pluginName} 给 ${name} 传了 matcher：只有 ${[...MATCHER_EVENTS].join(" / ")} 接受 matcher，这一条被忽略`,
+      );
+      return noop;
+    }
+    // `command.run` 的 matcher 是**可选**的：社区 mod（burn-rate 的 limit-guard）
+    // 就是 `on("command.run", handler)` 一条钩子管自己所有命令，在钩子里比
+    // `e.command`。派发本身已经按 mod 分开（`runCommandHook(modId, …)`），所以
+    // 没有 matcher 只是「这个 mod 的每条命令都问它」，不会串到别的 mod 去。
+    let matcher: Record<string, unknown> | undefined;
+    if (hasMatcher) {
+      if (!isPlainObject(matcherOrHandler)) {
+        logger.warn(
+          `[Wave] ${this.host.pluginName} 的 ${name} matcher 必须是对象，这一条被忽略`,
+        );
+        return noop;
+      }
+      if (
+        name === "command.run" &&
+        (typeof matcherOrHandler.command !== "string" ||
+          matcherOrHandler.command.replace(/^\//, "").length === 0)
+      ) {
+        logger.warn(
+          `[Wave] ${this.host.pluginName} 的 command.run matcher 要写成 { command: "/<命令名>" }，这一条被忽略`,
+        );
+        return noop;
+      }
+      matcher = { ...matcherOrHandler };
+    }
+    const entry: HookEntry = {
+      handler: handler as (...args: unknown[]) => unknown,
+      matcher,
+      isCommunity,
+      isCommunityError: false,
+    };
+    const list = this.hooks.get(name);
+    if (list) list.push(entry);
+    else this.hooks.set(name, [entry]);
+    const registration: HookRegistration = {
+      // 社区的 `on(...).catch(handler)`：钩子抛错（含 5 秒预算超时）时用它兜底，
+      // 兜底自己也抛错才算这条钩子失败。
+      catch: (onError: unknown) => {
+        if (typeof onError !== "function") return registration;
+        entry.onError = onError as (...args: unknown[]) => unknown;
+        // 兜底与它所在的那条钩子同形状（同一个 `on` 登记出来的）。
+        entry.isCommunityError = isCommunity;
+        return registration;
+      },
+    };
+    return registration;
+  }
+
+  /**
+   * 跑这条事件上的处理器链，返回**第一个匹配上的处理器**给出的值。
+   *
+   * 社区形状的 `next(e)` 把控制权交给链上的下一个（最后是引擎自己那一帧，
+   * 见 {@link engineFrame}），所以「包一层再返回」的写法照样成立。一次 handler
+   * 只能调一次 `next(e)` —— 再调会让同一条链跑两遍。
+   */
+  private async runChain(
+    entries: HookEntry[],
+    start: number,
+    event: unknown,
+    engine: (finalEvent: unknown) => unknown,
+  ): Promise<unknown> {
+    for (let index = start; index < entries.length; index += 1) {
+      const entry = entries[index]!;
+      if (!matchesEvent(entry.matcher, event)) continue;
+      let nextCalled = false;
+      const next = (nextEvent?: unknown) => {
+        if (nextCalled) {
+          throw new Error("next(e) 一次只能调一次：再调会让同一条链跑两遍");
+        }
+        nextCalled = true;
+        return this.runChain(
+          entries,
+          index + 1,
+          nextEvent === undefined ? event : nextEvent,
+          engine,
+        );
+      };
+      try {
+        return entry.isCommunity
+          ? await entry.handler(this.dollar, event, next)
+          : await entry.handler(event);
+      } catch (error) {
+        if (!entry.onError) throw error;
+        return entry.isCommunityError
+          ? await entry.onError(this.dollar, event)
+          : await entry.onError(error);
+      }
+    }
+    // 引擎帧按**走到这里的那份事件**算：`next({ ...e, context })` 改过的内容
+    // 必须在链尾出现，否则注入静默失效。
+    return engine(event);
+  }
+
+  /**
+   * 引擎自己那一帧 —— `next(e)` 走到链尾时拿到的东西。
+   *
+   * `ui.render` 的 `Pane` / `AbovePrompt` 是留给 mod 的空间，引擎没有自己那一帧
+   * （`undefined`，社区的写法会据此判断「这个站点本来就是空的」）。
+   *
+   * 其余事件里，社区最常见的写法是「改一份事件再 `next(e)`」——
+   * `return next({ ...e, context: [...] })` 那种（burn-rate 的限额提醒就这么
+   * 写）。链尾必须从**最终那份事件**上把答案取回来，否则 mod 传下去的改动在
+   * 链尾被丢掉，宿主拿到一个空对象。观察型事件的引擎帧就是个空对象：社区 mod
+   * 会读 `ran.deny` / `ran.isError`，给 `undefined` 会当场抛属性错误。
+   */
+  private engineFrame(name: string, event: unknown): unknown {
+    if (name === "ui.render") return undefined;
+    if (!isPlainObject(event)) return {};
+    if (name === "prompt.submit") {
+      const context = event.context;
+      // 只认字符串数组：形状不对时按「引擎没有意见」处理，由宿主那边统一报。
+      return Array.isArray(context) &&
+        context.every((item) => typeof item === "string")
+        ? { context }
+        : {};
+    }
+    if (name === "command.run") {
+      return typeof event.text === "string" ? { text: event.text } : {};
+    }
+    return {};
+  }
+
+  /** 该事件上匹配这次事件的处理器（`command.run` 也走这张表）。 */
+  private matchingHooks(name: string, event: unknown): HookEntry[] {
+    const entries = this.hooks.get(name);
+    if (!entries || entries.length === 0) return [];
+    return entries.filter((entry) => matchesEvent(entry.matcher, event));
+  }
+
   /** 调一个钩子；没有注册时返回 `{ ok: true, value: undefined }`。 */
   async callHook(name: string, event: unknown): Promise<ModHookResult> {
-    const handler = this.hooks.get(name);
-    if (!handler) return { ok: true, value: undefined, elapsedMs: 0 };
+    const entries = this.matchingHooks(name, event);
+    if (entries.length === 0)
+      return { ok: true, value: undefined, elapsedMs: 0 };
     const started = Date.now();
     try {
       const value = await this.runWithBudget(
         `${name} 钩子超过 ${MOD_LIMITS.hookTimeoutMs}ms`,
-        () => handler(event),
+        () =>
+          this.runChain(entries, 0, event, (e) => this.engineFrame(name, e)),
       );
       return { ok: true, value, elapsedMs: Date.now() - started };
     } catch (error) {
@@ -1042,19 +1312,27 @@ export class ModRuntime {
   /**
    * 派一条命令给它的 `command.run` 钩子（spec「注册命令」）。
    *
-   * `command` 带斜杠（`"/standup"`），与注册时的 matcher 同一个写法。没有对应
-   * 处理器时返回 `{ ok: true, value: undefined }` —— 由调用方（宿主）决定「注册
-   * 了命令却没人答」怎么报。
+   * 参数带斜杠（`"/standup"`）；**事件里的 `e.command` 不带斜杠** —— 社区 mod
+   * 直接比 `e.command === "guard"`，那是 Claude Code 的口径。matcher 两边都归
+   * 一（见 `matcherValueMatches`），所以哪种写法都能匹配上。
+   *
+   * 没有对应处理器时返回 `{ ok: true, value: undefined }` —— 由调用方（宿主）
+   * 决定「注册了命令却没人答」怎么报。
    */
   async callCommandHook(command: string, args: string): Promise<ModHookResult> {
-    const handler = this.commandHooks.get(command);
-    if (!handler) return { ok: true, value: undefined, elapsedMs: 0 };
+    const event = { command: command.replace(/^\//, ""), args };
+    const entries = this.matchingHooks("command.run", event);
+    if (entries.length === 0)
+      return { ok: true, value: undefined, elapsedMs: 0 };
     const started = Date.now();
     this.commandHookDepth += 1;
     try {
       const value = await this.runWithBudget(
         `${command} 的命令钩子超过 ${MOD_LIMITS.hookTimeoutMs}ms`,
-        () => handler({ command, args }),
+        () =>
+          this.runChain(entries, 0, event, (e) =>
+            this.engineFrame("command.run", e),
+          ),
       );
       return { ok: true, value, elapsedMs: Date.now() - started };
     } catch (error) {
@@ -1154,14 +1432,23 @@ export class ModRuntime {
 
   /** 该 mod 注册了哪些钩子（诊断用）。 */
   hookNames(): string[] {
-    const names = [...this.hooks.keys()];
-    if (this.commandHooks.size > 0) names.push("command.run");
-    return names;
+    return [...this.hooks.keys()].filter(
+      (name) => (this.hooks.get(name)?.length ?? 0) > 0,
+    );
   }
 
   /** 该 mod 用 matcher 注册了哪些命令（宿主清理/诊断用，带斜杠）。 */
   commandHookTargets(): string[] {
-    return [...this.commandHooks.keys()];
+    const entries = this.hooks.get("command.run") ?? [];
+    const commands: string[] = [];
+    for (const entry of entries) {
+      const command = entry.matcher?.command;
+      if (typeof command === "string") {
+        const normalized = normalizeCommand(command);
+        if (!commands.includes(normalized)) commands.push(normalized);
+      }
+    }
+    return commands;
   }
 
   /**
@@ -1212,12 +1499,18 @@ export class ModRuntime {
     visiting.add(resolved);
 
     const requireFn = (specifier: string) => {
-      if (specifier === "wave-agent-sdk/mods") {
-        return { ...elements, Fragment: "Fragment" };
+      // `wave-agent-sdk/mods` 是我们对外推荐的名字；社区的 `'claude-code'` 是它
+      // 的**别名**（同一份模块：元素构造器 + atom/read/update）。不引入那个 npm
+      // 包、也不解析 `node_modules`。
+      if (
+        specifier === MODULE_SPECIFIER ||
+        specifier === COMMUNITY_MODULE_SPECIFIER
+      ) {
+        return { ...elements, Fragment: "Fragment", atom, read, update };
       }
       if (!specifier.startsWith("./") && !specifier.startsWith("../")) {
         throw new Error(
-          `mod 只能 import 相对路径或 wave-agent-sdk/mods：${specifier}`,
+          `mod 只能 import 相对路径、${MODULE_SPECIFIER} 或 ${COMMUNITY_MODULE_SPECIFIER}：${specifier}`,
         );
       }
       const target = path.resolve(path.dirname(resolved), specifier);

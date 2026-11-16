@@ -2791,6 +2791,14 @@ ${question}`;
           // Update token statistics for display (compaction decision is
           // pre-request, see maybeAutoCompactBeforeRequest)
           this.updateLatestTotalTokens(result.usage);
+          // 拿到一次 usage 就是「量了一次」：`session.measure` 是 mod 刷新用量
+          // 类面板/带的唯一节拍，不靠用户去点（spec「用量的变化」）。子代理的
+          // 嵌套轮次不报 —— 它用的是自己的 AIManager，mod 只关心主会话这一条。
+          if (result.usage && !this.subagentType) {
+            this.getModManager()?.notifyMods("session.measure", {
+              changed: ["context", "tokens"],
+            });
+          }
 
           // Finalize text/reasoning blocks for the final response (no tools)
           this.messageManager.finalizeStreamingBlocks();

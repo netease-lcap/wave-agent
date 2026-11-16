@@ -27,6 +27,23 @@ export interface PluginManifest {
    * paths here; only the object form is supported.
    */
   mcpServers?: Record<string, McpServerConfig>;
+  /**
+   * 插件自己的配置 schema（社区写法，spec `ecosystem/plugin-mods.md`
+   *「兼容社区 mod」）。
+   *
+   * 只有 `default` 参与取值：mod 的 `register(on, options)` 拿到的 `options`
+   * 就是这份默认值（用户改过的值需要一条设置入口，一期还没有）。`type` /
+   * `title` / `description` 留作将来的配置界面用，现在原样保存、不做解释。
+   */
+  userConfig?: Record<string, PluginUserConfigField>;
+}
+
+/** `userConfig` 里的一项。 */
+export interface PluginUserConfigField {
+  type?: string;
+  title?: string;
+  description?: string;
+  default?: unknown;
 }
 
 /**
@@ -87,4 +104,10 @@ export interface Plugin extends PluginManifest {
    * right before a session uses them.
    */
   mods: PluginMod[];
+  /**
+   * `userConfig` 的当前取值（只有默认值，见 {@link PluginManifest.userConfig}）。
+   *
+   * 传给 mod 的 `register(on, options)`。
+   */
+  modOptions: Record<string, unknown>;
 }

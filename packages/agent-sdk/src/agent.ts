@@ -662,12 +662,17 @@ export class Agent {
       totals.cacheCreation += usage.cache_creation_input_tokens ?? 0;
     }
     const usage: ModSessionUsage = {
+      // 会话起点，社区 mod 用它算「$/小时」这类速率（`(now - startedAt)`）。
+      startedAt: this.sessionStartTime,
       context: {
         tokens,
         window,
         percent: contextUsagePercent(tokens, window, this.getMaxOutputTokens()),
       },
       tokens: totals,
+      // 额度窗口要企业端的额度接口，我们没有；空数组表示「这个账号没有配额
+      // 窗口可报」，形状与社区一致（它们直接 `.reduce` 这个字段）。
+      rateLimits: [],
     };
     const model = this.getModelConfig().model;
     if (model !== undefined) usage.model = model;

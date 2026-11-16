@@ -36,33 +36,135 @@ const ELEMENT_PROPS: Record<ModElementType, ReadonlySet<string>> = {
     "flexShrink",
     "gap",
     "padding",
+    "paddingX",
+    "paddingY",
     "columnGap",
     "rowGap",
     "paddingTop",
     "paddingRight",
     "paddingBottom",
     "paddingLeft",
+    "margin",
+    "marginX",
+    "marginY",
     "marginTop",
     "marginRight",
     "marginBottom",
     "marginLeft",
     "width",
     "height",
+    "minWidth",
+    "minHeight",
     "borderStyle",
+    "borderColor",
+    "borderDimColor",
+    "backgroundColor",
     "alignItems",
+    "alignSelf",
     "justifyContent",
+    "display",
+    "position",
+    "top",
+    "left",
+    "right",
+    "bottom",
     "overflow",
   ]),
-  Text: new Set(["color", "bold", "italic", "dimColor", "underline", "wrap"]),
-  Button: new Set(["key", "label", "disabled", "variant"]),
-  Input: new Set(["key", "label", "placeholder", "value", "submitLabel"]),
+  Text: new Set([
+    "color",
+    "backgroundColor",
+    "weight",
+    "size",
+    "bold",
+    "italic",
+    "dimColor",
+    "underline",
+    "strikethrough",
+    "inverse",
+    "wrap",
+  ]),
+  Button: new Set([
+    "key",
+    "label",
+    "disabled",
+    "variant",
+    "plain",
+    "dimColor",
+    "autoFocus",
+  ]),
+  Input: new Set([
+    "key",
+    "label",
+    "placeholder",
+    "value",
+    "submitLabel",
+    "autoFocus",
+    "rows",
+  ]),
   Select: new Set(["key", "label", "options", "value", "autoFocus"]),
   Svg: new Set(["source", "alt", "width", "height", "isInteractive"]),
   Link: new Set(["href", "label"]),
-  Code: new Set(["source", "language", "path", "startLine"]),
+  Code: new Set(["source", "language", "path", "startLine", "wrap"]),
   Markdown: new Set(["text"]),
   Progress: new Set(["label", "value", "max", "valueText", "color"]),
 };
+
+/**
+ * `hover` 的 key 集（spec「元素」）：`Box` 一套、`Text` / `Button` 一套。
+ *
+ * 两套都是**封闭**的 —— 悬停态只在少数几个样式上有意义，放开成任意 prop 会让
+ * 「hover 里写 `width` 想改宽度但没效果」这类问题静默过去。
+ */
+const HOVER_PROPS: Readonly<Record<string, ReadonlySet<string>>> = {
+  Box: new Set([
+    "scope",
+    "borderStyle",
+    "borderColor",
+    "borderDimColor",
+    "backgroundColor",
+    "display",
+    "top",
+    "left",
+    "right",
+    "bottom",
+  ]),
+  Text: new Set([
+    "scope",
+    "color",
+    "backgroundColor",
+    "dimColor",
+    "bold",
+    "italic",
+    "underline",
+    "strikethrough",
+    "inverse",
+  ]),
+  Button: new Set([
+    "scope",
+    "color",
+    "backgroundColor",
+    "dimColor",
+    "bold",
+    "italic",
+    "underline",
+    "strikethrough",
+    "inverse",
+  ]),
+};
+
+/** `hover` 里那几个布尔开关；给别的类型也照旧报错。 */
+const HOVER_BOOLEANS = new Set([
+  "borderDimColor",
+  "dimColor",
+  "bold",
+  "italic",
+  "underline",
+  "strikethrough",
+  "inverse",
+]);
+
+/** `hover` 里只有 `position: absolute` 用得上的四个偏移量。 */
+const HOVER_OFFSETS = new Set(["top", "left", "right", "bottom"]);
 
 export type ModTreeValidation =
   | { ok: true; tree: ModTreeNode }
@@ -201,6 +303,142 @@ const ELEMENT_CHECKS: Readonly<
   Progress: checkProgressProps,
 };
 
+/** 取值是枚举的 prop（spec「元素」）：写别的当场点名，不静默画成默认样子。 */
+const ENUM_PROPS: Readonly<
+  Record<string, Readonly<Record<string, readonly string[]>>>
+> = {
+  Box: {
+    alignSelf: ["flex-start", "center", "flex-end", "auto"],
+    display: ["flex", "none"],
+    position: ["relative", "absolute"],
+  },
+  Text: {
+    weight: ["regular", "medium", "semibold", "bold"],
+    size: ["caption", "footnote", "body", "heading", "title"],
+  },
+  Code: {
+    wrap: ["wrap", "truncate-end"],
+  },
+};
+
+/** 取值只能是布尔的 prop。 */
+const BOOLEAN_PROPS: Readonly<Record<string, readonly string[]>> = {
+  Box: ["borderDimColor"],
+  Text: ["strikethrough", "inverse"],
+  Button: ["plain", "dimColor", "autoFocus"],
+  Input: ["autoFocus"],
+  Select: ["autoFocus"],
+};
+
+/** `Box` 上单位是 px 的偏移量（只有 `position: absolute` 时才生效）。 */
+const BOX_OFFSETS = ["top", "left", "right", "bottom"] as const;
+
+function checkElementValues(
+  type: string,
+  props: Record<string, unknown>,
+): void {
+  const enums = ENUM_PROPS[type];
+  if (enums) {
+    for (const [name, allowed] of Object.entries(enums)) {
+      const value = props[name];
+      if (value === undefined) continue;
+      if (typeof value !== "string" || !allowed.includes(value)) {
+        throw new Error(
+          `${type}.${name} 只允许 ${allowed.map((item) => `"${item}"`).join(" / ")}，拿到的是 ${JSON.stringify(value)}`,
+        );
+      }
+    }
+  }
+  for (const name of BOOLEAN_PROPS[type] ?? []) {
+    const value = props[name];
+    if (value !== undefined && typeof value !== "boolean") {
+      throw new Error(
+        `${type}.${name} 是布尔值，拿到的是 ${JSON.stringify(value)}`,
+      );
+    }
+  }
+  if (type === "Box") {
+    for (const name of BOX_OFFSETS) {
+      const value = props[name];
+      if (value !== undefined && typeof value !== "number") {
+        throw new Error(`Box.${name} 是数字（px，可为负）`);
+      }
+    }
+  }
+  if (type === "Input" && props.rows !== undefined) {
+    const rows = props.rows;
+    if (typeof rows !== "number" || !Number.isInteger(rows) || rows < 1) {
+      throw new Error(
+        `Input.rows 是 ≥1 的整数，拿到的是 ${JSON.stringify(rows)}`,
+      );
+    }
+  }
+}
+
+/**
+ * 校验 `hover` 并返回规范化后的副本（spec「元素」的悬停态）。
+ *
+ * `hover` 是节点的独立字段，key 集按元素封闭：只有 `Box` / `Text` / `Button`
+ * 有悬停态，写别的元素上是作者搞混了（`<Input hover={…}>` 不会变色）。
+ */
+function checkHover(
+  type: string,
+  hover: unknown,
+): ModTreeNode["hover"] | undefined {
+  if (hover === undefined) return undefined;
+  const allowed = HOVER_PROPS[type];
+  if (!allowed) {
+    throw new Error(
+      `${type} 不支持 hover（只有 ${Object.keys(HOVER_PROPS).join(" / ")} 能随指针变）`,
+    );
+  }
+  if (typeof hover !== "object" || hover === null || Array.isArray(hover)) {
+    throw new Error(`${type} 的 hover 是对象，比如 hover={{ color: "error" }}`);
+  }
+  const out: Record<string, string | number | boolean> = {};
+  for (const [name, value] of Object.entries(hover)) {
+    if (!allowed.has(name)) {
+      throw new Error(
+        `${type} 的 hover 上没有「${name}」（可用：${[...allowed].join("、")}）`,
+      );
+    }
+    if (name === "scope") {
+      if (typeof value !== "string" || value.trim() === "") {
+        throw new Error(`${type} 的 hover.scope 是一个非空字符串`);
+      }
+      out.scope = value;
+      continue;
+    }
+    if (HOVER_BOOLEANS.has(name)) {
+      if (typeof value !== "boolean") {
+        throw new Error(`${type} 的 hover.${name} 是布尔值`);
+      }
+      out[name] = value;
+      continue;
+    }
+    if (HOVER_OFFSETS.has(name)) {
+      if (typeof value !== "number") {
+        throw new Error(`${type} 的 hover.${name} 是数字（px，可为负）`);
+      }
+      out[name] = value;
+      continue;
+    }
+    if (name === "display") {
+      // 只用来 reveal 一个 `display: "none"` 的 Box：别的值会让布局跳。
+      if (value !== "flex") {
+        throw new Error(`Box 的 hover.display 只允许 "flex"`);
+      }
+      out[name] = value;
+      continue;
+    }
+    if (typeof value !== "string") {
+      throw new Error(`${type} 的 hover.${name} 是颜色字符串`);
+    }
+    out[name] = value;
+  }
+  return out;
+}
+
 interface WalkState {
   nodes: number;
   textChars: number;
@@ -210,6 +448,8 @@ function walkNode(
   node: unknown,
   depth: number,
   state: WalkState,
+  /** 最近的悬停 scope 名（带 `key` 的 `Box` 或给了 `hover.scope` 的元素）。 */
+  scope: string | undefined,
 ): ModTreeNode | string {
   if (typeof node === "string") {
     state.textChars += node.length;
@@ -266,6 +506,29 @@ function walkNode(
       throw new Error(`Button.variant 只允许 "primary" 或 "secondary"`);
     }
   }
+  checkElementValues(type, props);
+  const hover = checkHover(
+    type,
+    element.hover === undefined ? undefined : element.hover,
+  );
+  // 一个带字符串 `key` 的 `Box` 自己就是一个 scope；`hover.scope` 给名字时加入
+  // 那个同名 scope（画在行外的卡片靠它跟着行内元素一起亮，spec「元素」）。
+  const nodeScope =
+    (typeof hover?.scope === "string" ? hover.scope : undefined) ??
+    (type === "Box" && typeof props.key === "string" ? props.key : undefined) ??
+    scope;
+  if (hover && nodeScope === undefined) {
+    throw new Error(
+      `${type} 上的 hover 找不到 scope：要么给最近的 Box 一个字符串 key，要么在 hover 里写 scope`,
+    );
+  }
+  if (hover) {
+    // 悬停态的取值也计入树内文本预算：不设上限时它能绕开树的大小限制。
+    state.textChars += JSON.stringify(hover).length;
+    if (state.textChars > MOD_LIMITS.treeTextChars) {
+      throw new Error(`元素树文本超过 ${MOD_LIMITS.treeTextChars} 字符上限`);
+    }
+  }
   // 三个新元素的语义全在 prop 上（选哪几项、画哪段图、填充到几分之几），所以
   // 名字对了还要查取值：空 options、重复 value、超限的 svg source 都当场点名。
   ELEMENT_CHECKS[type]?.(props);
@@ -295,11 +558,12 @@ function walkNode(
   }
   const outChildren: Array<ModTreeNode | string> = [];
   for (const child of children) {
-    outChildren.push(walkNode(child, depth + 1, state));
+    outChildren.push(walkNode(child, depth + 1, state, nodeScope));
   }
   return {
     type: type as ModElementType,
     props: props as ModTreeNode["props"],
+    ...(hover === undefined ? {} : { hover }),
     children: outChildren,
   };
 }
@@ -308,7 +572,7 @@ function walkNode(
 export function validateModTree(input: unknown): ModTreeValidation {
   try {
     const state: WalkState = { nodes: 0, textChars: 0 };
-    const tree = walkNode(input, 1, state);
+    const tree = walkNode(input, 1, state, undefined);
     if (typeof tree === "string") {
       // 根节点是裸文本：包一个 Text，免得 webview 侧要处理两种根类型。
       return {

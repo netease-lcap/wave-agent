@@ -275,6 +275,15 @@ export class PluginManager {
         hooksConfig: await PluginLoader.loadHooksConfig(absolutePath),
         workflows: (await PluginLoader.loadWorkflows(absolutePath)) ?? [],
         mods: await PluginLoader.loadMods(absolutePath, manifest.name),
+        // 只取默认值：`userConfig` 里的 `type` / `title` / `description` 描述的是
+        // 将来配置界面的形状，mod 只要拿到当前值（spec「兼容社区 mod」）。
+        modOptions: Object.fromEntries(
+          Object.entries(manifest.userConfig ?? {}).flatMap(([key, field]) =>
+            field && typeof field === "object" && "default" in field
+              ? [[key, field.default] as const]
+              : [],
+          ),
+        ),
       };
 
       // Register components with managers

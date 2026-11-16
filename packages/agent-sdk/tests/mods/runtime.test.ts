@@ -108,8 +108,10 @@ function host(overrides: Partial<ModRuntimeHost> = {}): ModRuntimeHost {
     // 这一层只关心 `$` 把参数原样交下来、把布尔值原样包成 `{ isFilled }`。
     fillPrompt: vi.fn(async () => true),
     sessionUsage: vi.fn(() => ({
+      startedAt: 1_700_000_000_000,
       context: { tokens: 0, window: 200_000, percent: 0 },
       tokens: { prompt: 0, completion: 0, cacheRead: 0, cacheCreation: 0 },
+      rateLimits: [],
     })),
     appendLog: vi.fn(),
     // `$` 上的只读事实（spec「会话事实」「环境变量与设置」）：默认给一份能用的
@@ -129,14 +131,21 @@ function host(overrides: Partial<ModRuntimeHost> = {}): ModRuntimeHost {
 
 function runtime(
   code: string,
-  options: { host?: ModRuntimeHost; extra?: CompiledModule[] } = {},
+  options: {
+    host?: ModRuntimeHost;
+    extra?: CompiledModule[];
+    modOptions?: Record<string, unknown>;
+  } = {},
 ): { mod: ModRuntime; host: ModRuntimeHost } {
   const hostApi = options.host ?? host();
   const compiled: CompiledModule[] = [
     { path: ENTRY, code },
     ...(options.extra ?? []),
   ];
-  return { mod: new ModRuntime(hostApi, ENTRY, compiled), host: hostApi };
+  return {
+    mod: new ModRuntime(hostApi, ENTRY, compiled, options.modOptions ?? {}),
+    host: hostApi,
+  };
 }
 
 /** 注册一个 `ui.render` 钩子，返回 `__wave.h("Text", null, "hi")`。 */
@@ -242,11 +251,16 @@ describe("ModRuntime 的 require", () => {
   it("wave-agent-sdk/mods 的元素表与 ModElementType 一一对应", async () => {
     // 沙箱给的构造器来自 `src/mods/index.ts`（插件作者的书写面）。它漏一个或
     // 多一个，编译产物里的 tag 就会变成渲染器不认识的元素 —— 这里钉住名单。
+    // 同一份模块还导出 `atom` / `read` / `update` 三个助手（不是元素），排除掉
+    // 再看元素表。
     const { mod } = runtime(`
       var ui = require("wave-agent-sdk/mods");
+      var HELPERS = ["atom", "read", "update"];
       exports.register = function ($, on) {
         on("ui.render", function () {
-          return __wave.h(ui.Box, null, Object.keys(ui).sort().join(","));
+          return __wave.h(ui.Box, null, Object.keys(ui).filter(function (name) {
+            return HELPERS.indexOf(name) === -1;
+          }).sort().join(","));
         });
       };
     `);
@@ -400,6 +414,49 @@ describe("ModRuntime 的交互路由", () => {
 
     const pressed = await mod.dispatch("press", "go");
     expect(pressed).toBe(true);
+  });
+
+  it("h() 把 hover 提到节点字段，不留在 props 里", async () => {
+    // `hover` 的值是对象，props 只收原始值；CC 那边它也是节点的同级字段
+    // （`{ type, props, hover }`），所以这里不能走「非原始值一律丢」那条路。
+    const { mod } = runtime(`
+      exports.register = function ($, on) {
+        on("ui.render", function () {
+          return __wave.h("Box", { key: "row", hover: { backgroundColor: "success" } },
+            __wave.h("Text", null, "hi"));
+        });
+      };
+    `);
+
+    await mod.load();
+    const result = await mod.callHook("ui.render", {});
+    expect(result.ok && result.value).toEqual({
+      type: "Box",
+      props: { key: "row" },
+      hover: { backgroundColor: "success" },
+      children: [{ type: "Text", props: {}, children: ["hi"] }],
+    });
+  });
+
+  it("h() 丢掉传不出去的对象 prop 时留一条 warn", async () => {
+    const { logger } = await import("../../src/utils/globalLogger.js");
+    const warn = vi.mocked(logger.warn);
+    warn.mockClear();
+    const { mod } = runtime(`
+      exports.register = function ($, on) {
+        on("ui.render", function () {
+          return __wave.h("Text", { key: "t1", style: { color: "red" } }, "hi");
+        });
+      };
+    `);
+
+    await mod.load();
+    await mod.callHook("ui.render", {});
+
+    // 静默丢弃时作者只看到「写了没效果」，连去哪查都不知道。
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining("上有个 prop 传不出去：style"),
+    );
   });
 
   it("$.ui.invalidate 只认 ui.render，别的目标当场报错", async () => {
@@ -1185,8 +1242,10 @@ describe("ModRuntime 的 $ 命名空间", () => {
   it("session.usage 每次给一份新快照，mod 改它伤不到会话", async () => {
     // 宿主给的是**同一个**对象（缓存实现会这样），克隆是 runtime 的责任。
     const snapshot = {
+      startedAt: 1_700_000_000_000,
       context: { tokens: 1000, window: 200_000, percent: 1 },
       tokens: { prompt: 10, completion: 2, cacheRead: 3, cacheCreation: 4 },
+      rateLimits: [],
       model: "some-model",
     };
     const hostApi = host({ sessionUsage: vi.fn(() => snapshot) });
@@ -1436,23 +1495,29 @@ describe("ModRuntime 的 $.command（spec「注册命令」）", () => {
     expect(hostApi.runCommand).toHaveBeenCalledWith("standup", "周一");
   });
 
-  it("command.run 钩子用带斜杠的 matcher 登记，事件带命令与参数", async () => {
+  it("command.run 钩子的 matcher 带不带斜杠都认，事件带命令与参数", async () => {
     const { mod } = runtime(`
       exports.register = function ($, on) {
         on("command.run", { command: "/standup" }, function (e) {
           return { text: "/standup " + e.args };
         });
-        on("command.run", { command: "no-slash" }, function () {});
+        on("command.run", { command: "no-slash" }, function () {
+          return { text: "no-slash" };
+        });
       };
     `);
 
     await mod.load();
-    // 没有 matcher 的那一条被忽略，带斜杠的登记成钩子。
+    // 社区的 matcher 不带斜杠，我们归一成同一条命令（注册与派发两边都归一）。
     expect(mod.hookNames()).toEqual(["command.run"]);
-    expect(mod.commandHookTargets()).toEqual(["/standup"]);
+    expect(mod.commandHookTargets()).toEqual(["/standup", "/no-slash"]);
     await expect(
       mod.callCommandHook("/standup", "周一"),
     ).resolves.toMatchObject({ ok: true, value: { text: "/standup 周一" } });
+    await expect(mod.callCommandHook("/no-slash", "")).resolves.toMatchObject({
+      ok: true,
+      value: { text: "no-slash" },
+    });
     // 没人答的命令不报错，由宿主决定怎么提示。
     await expect(mod.callCommandHook("/unknown", "")).resolves.toMatchObject({
       ok: true,
@@ -1645,5 +1710,314 @@ describe("ModRuntime 的 $.clock.sleep（spec「时钟：等待」）", () => {
     expect(messages).toHaveLength(3);
     expect(messages[0]).toBe("$.clock.sleep 需要非负的毫秒数");
     expect(messages[1]).toBe("$.clock.sleep 需要非负的毫秒数");
+  });
+});
+
+describe("兼容社区 mod（spec「兼容社区 mod」）", () => {
+  it("register(on, options)：第一个实参可调用、第二个带 userConfig 的值", async () => {
+    const { mod } = runtime(
+      `
+      exports.register = function (on, options) {
+        on("session.start", function ($, e) {
+          return { mode: options.mode, size: options.size };
+        });
+      };
+      `,
+      { modOptions: { mode: "strict", size: 3 } },
+    );
+
+    await mod.load();
+    const result = await mod.callHook("session.start", {});
+    expect(result).toMatchObject({
+      ok: true,
+      value: { mode: "strict", size: 3 },
+    });
+  });
+
+  it("社区的 handler 只写一个形参时也是 `$`（第一个实参被当成登记函数就够了）", async () => {
+    // `on("command.run", matcher, async $ => …)` 真的存在（社区 ideas-shelf）：
+    // 按形参个数判形状会把它当成我们的 `(e)`，`$` 会变成事件对象。
+    const { mod, host: hostApi } = runtime(`
+      exports.register = function (on) {
+        on("command.run", { command: "ideas" }, async $ => {
+          $.ui.toast("opened");
+          return { text: "ideas" };
+        });
+      };
+    `);
+
+    await mod.load();
+    const result = await mod.callCommandHook("/ideas", "");
+    expect(hostApi.showToast).toHaveBeenCalledWith(
+      "opened",
+      expect.any(Number),
+    );
+    expect(result).toMatchObject({ ok: true, value: { text: "ideas" } });
+  });
+
+  it("register($, on)：我们的形状照旧（第一个实参当对象用、第二个当登记函数）", async () => {
+    const { mod, host: hostApi } = runtime(`
+      exports.register = function ($, on) {
+        on("session.start", function (e) {
+          $.ui.status(e.label);
+        });
+      };
+    `);
+
+    await mod.load();
+    await mod.callHook("session.start", { label: "ready" });
+    // 第二个实参当登记函数用 ⇒ handler 是我们的 `(e)`，一个形参拿事件。
+    expect(hostApi.setStatus).toHaveBeenCalledWith("ready");
+  });
+
+  it("handler ($, e, next)：拿到 $、事件与 next，next 给引擎那一帧", async () => {
+    const { mod, host: hostApi } = runtime(`
+      exports.register = function (on) {
+        on("session.start", async function ($, e, next) {
+          $.ui.status(e.label);
+          var engine = await next(e);
+          return { from: "handler", engine: engine === undefined ? "undefined" : typeof engine };
+        });
+      };
+    `);
+
+    await mod.load();
+    const result = await mod.callHook("session.start", { label: "ready" });
+    expect(hostApi.setStatus).toHaveBeenCalledWith("ready");
+    // 观察型事件的引擎帧是空对象：社区 mod 会读 `ran.deny` / `ran.isError`，
+    // 给 undefined 会当场抛「读不到属性」。
+    expect(result).toMatchObject({
+      ok: true,
+      value: { from: "handler", engine: "object" },
+    });
+  });
+
+  it("ui.render 的 next(e) 是 undefined（Pane / AbovePrompt 没有引擎帧）", async () => {
+    const { mod } = runtime(`
+      exports.register = function (on) {
+        on("ui.render", async function ($, e, next) {
+          var engine = await next(e);
+          return __wave.h("Text", null, engine === undefined ? "none" : "some");
+        });
+      };
+    `);
+
+    await mod.load();
+    const result = await mod.callHook("ui.render", {
+      component: "AbovePrompt",
+    });
+    expect(result.ok && result.value).toMatchObject({ children: ["none"] });
+  });
+
+  it("next(e) 一次只能调一次，第二次当场抛错", async () => {
+    const { mod } = runtime(`
+      exports.register = function (on) {
+        on("session.start", async function ($, e, next) {
+          await next(e);
+          await next(e);
+        });
+      };
+    `);
+
+    await mod.load();
+    const result = await mod.callHook("session.start", {});
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toMatch(/一次只能调一次/);
+  });
+
+  it("matcher 按事件字段分流：ui.render 的站点、tool.call 的工具名", async () => {
+    const { mod } = runtime(`
+      exports.register = function (on) {
+        on("ui.render", { component: "AbovePrompt" }, function () {
+          return __wave.h("Text", null, "band");
+        });
+        on("ui.render", { component: "Pane", requestId: "todo" }, function () {
+          return __wave.h("Text", null, "pane-todo");
+        });
+        on("ui.render", { component: "Pane", requestId: "other" }, function () {
+          return __wave.h("Text", null, "pane-other");
+        });
+        on("tool.call", { tool: ["Write", "Edit"] }, function ($, e) {
+          return { saw: e.tool };
+        });
+      };
+    `);
+
+    await mod.load();
+    // `requestId` 是社区的字段名，我们的事件的字段叫 `instance_id`（别名）。
+    const band = await mod.callHook("ui.render", { component: "AbovePrompt" });
+    expect(band.ok && band.value).toMatchObject({ children: ["band"] });
+    const todo = await mod.callHook("ui.render", {
+      component: "Pane",
+      instance_id: "todo",
+    });
+    expect(todo.ok && todo.value).toMatchObject({ children: ["pane-todo"] });
+    const other = await mod.callHook("ui.render", {
+      component: "Pane",
+      instance_id: "other",
+    });
+    expect(other.ok && other.value).toMatchObject({ children: ["pane-other"] });
+    // 工具名不在候选里 ⇒ 这条钩子根本不参与这次事件（与 Claude Code 一样：
+    // matcher 不命中就等于没注册）。
+    const bash = await mod.callHook("tool.call", { tool: "Bash" });
+    expect(bash).toMatchObject({ ok: true, value: undefined });
+    const edit = await mod.callHook("tool.call", { tool: "Edit" });
+    expect(edit.ok && edit.value).toEqual({ saw: "Edit" });
+  });
+
+  it("on(...).catch(handler)：钩子抛错时用兜底，兜底本身不抛就算成功", async () => {
+    const { mod } = runtime(`
+      exports.register = function (on) {
+        on("tool.call", { tool: "Bash" }, async function ($, e) {
+          throw new Error("guard broke");
+        }).catch(async function ($, e) {
+          return { deny: "guard broke on " + e.tool };
+        });
+      };
+    `);
+
+    await mod.load();
+    const result = await mod.callHook("tool.call", { tool: "Bash" });
+    expect(result).toMatchObject({
+      ok: true,
+      value: { deny: "guard broke on Bash" },
+    });
+  });
+
+  it("没有 .catch() 的钩子抛错照旧报 ok:false", async () => {
+    const { mod } = runtime(`
+      exports.register = function (on) {
+        on("session.start", function () {
+          throw new Error("boom");
+        });
+      };
+    `);
+
+    await mod.load();
+    const result = await mod.callHook("session.start", {});
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toBe("boom");
+  });
+
+  it("'claude-code' 是 wave-agent-sdk/mods 的别名，atom/read/update 落在 $.store 上", async () => {
+    const store = new Map<string, string>();
+    const hostApi = host({
+      storeGet: vi.fn((key: string) => store.get(key)),
+      storeSet: vi.fn((key: string, value: string) => {
+        store.set(key, value);
+      }),
+    });
+    const { mod } = runtime(
+      `
+      var cc = require("claude-code");
+      var turns = cc.atom({ plugin: "burn-rate", key: "turns" }, []);
+      exports.register = function (on) {
+        on("turn.complete", async function ($, e) {
+          var before = await cc.read($, turns);
+          var after = await cc.update($, turns, function (list) {
+            return list.concat([1]);
+          });
+          return { before: before.length, after: after.length, tag: cc.Box };
+        });
+      };
+      `,
+      { host: hostApi },
+    );
+
+    await mod.load();
+    const first = await mod.callHook("turn.complete", {});
+    expect(first).toMatchObject({
+      ok: true,
+      value: { before: 0, after: 1, tag: "Box" },
+    });
+    // 第二次读到的就是上一次写进去的那份（同一个 store 键）。
+    const second = await mod.callHook("turn.complete", {});
+    expect(second).toMatchObject({ ok: true, value: { before: 1, after: 2 } });
+    expect(store.has("burn-rate/turns")).toBe(true);
+  });
+
+  it("atom 存进去的不是合法 JSON 时读回初值", async () => {
+    const hostApi = host({ storeGet: vi.fn(() => "not json") });
+    const { mod } = runtime(
+      `
+      var cc = require("claude-code");
+      var turns = cc.atom({ plugin: "p", key: "k" }, ["seed"]);
+      exports.register = function (on) {
+        on("session.start", async function ($, e) {
+          return await cc.read($, turns);
+        });
+      };
+      `,
+      { host: hostApi },
+    );
+
+    await mod.load();
+    const result = await mod.callHook("session.start", {});
+    expect(result).toMatchObject({ ok: true, value: ["seed"] });
+  });
+
+  it("prompt.submit 里 next({ ...e, context }) 的上下文能传到链尾（社区注入写法）", async () => {
+    const { mod } = runtime(`
+      exports.register = function (on) {
+        on("prompt.submit", async function ($, e, next) {
+          return next({ ...e, context: ["[guard] 省着点用", "只用具体路径"] });
+        });
+      };
+    `);
+
+    await mod.load();
+    // 引擎帧从**最终那份事件**上取：社区的写法是把改动交给 next，自己不要
+    // 拼返回值。链尾丢掉这份改动，注入就静默失效了。
+    const result = await mod.callHook("prompt.submit", { text: "干活" });
+    expect(result).toMatchObject({
+      ok: true,
+      value: { context: ["[guard] 省着点用", "只用具体路径"] },
+    });
+  });
+
+  it("command.run 的事件里 e.command 不带斜杠（社区直接比 'guard'）", async () => {
+    const { mod } = runtime(`
+      exports.register = function (on) {
+        on("command.run", { command: "/guard" }, async function ($, e, next) {
+          if (e.command !== "guard") return next(e);
+          return { text: "guard:" + e.args };
+        });
+      };
+    `);
+
+    await mod.load();
+    const result = await mod.callCommandHook("/guard", "off");
+    expect(result).toMatchObject({ ok: true, value: { text: "guard:off" } });
+  });
+
+  it("command.run 的 matcher 可以不给：一条钩子管自己所有命令（社区就这么写）", async () => {
+    const { mod } = runtime(`
+      exports.register = function (on) {
+        on("command.run", async function ($, e, next) {
+          if (e.command === "guard") return { text: "guard" };
+          if (e.command === "burn") return { text: "burn:" + e.args };
+          return next(e);
+        });
+      };
+    `);
+
+    await mod.load();
+    // 派发本来就按 mod 分开（`runCommandHook(modId, …)`），没有 matcher 只是
+    // 「这个 mod 的每条命令都问它」，不会串到别的 mod。
+    expect(mod.hookNames()).toEqual(["command.run"]);
+    expect(mod.commandHookTargets()).toEqual([]);
+    await expect(mod.callCommandHook("/guard", "")).resolves.toMatchObject({
+      ok: true,
+      value: { text: "guard" },
+    });
+    await expect(mod.callCommandHook("/burn", "42")).resolves.toMatchObject({
+      ok: true,
+      value: { text: "burn:42" },
+    });
+    // 不认识的那条交回引擎：空对象（没有 `{ text }`），宿主照「没人答」处理。
+    await expect(mod.callCommandHook("/other", "")).resolves.toMatchObject({
+      ok: true,
+      value: {},
+    });
   });
 });
