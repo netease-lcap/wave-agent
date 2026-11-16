@@ -68,6 +68,7 @@ order: 75
 9. **假设**浮层处于打开态，**当**点击个人信息热区，**则**纯功能菜单打开、用量浮层收起；**假设**纯功能菜单处于打开态，**当**点击用量按钮，**则**浮层打开、菜单收起——两个弹层互斥，同一位置不叠两层。
 10. **假设**宿主下发 `billing` 与 `apiQuota` 均为空/未下发（私有化部署的常态，见上一故事场景 22），**当**查看账户卡片，**则**没有用量可看，用量按钮不渲染（卡片只剩个人信息行 + 有更新时的更新按钮）。
 11. **假设**浮层打开时**某一维正在报警**（结论行 `tone` 为 warning/error，或余额不足 20% / 已耗尽），**当**浮层弹出，**则**默认**停到报警的那一维**——免得「打开只看到健康的套餐条、预警藏在另一页签里」（**2026-11-05 定稿**：用户在有预警时选「停在报警的那一维」，而不是「总是套餐」）；两维同时报警时取**更严重**的那档（错误 > 预警），同档回到套餐维度；两维都没有预警时保持套餐维度，也不覆盖用户在本次打开期间的切换。
+12. **假设**宿主给了本窗口的重置时刻（`billing.plan.weekResetAt` / `monthResetAt`，来自 `x-codechat-quota-weekly-reset` / `-monthly-reset`，unix 秒），**当**鼠标悬停「本周」/「本月」额度条，**则**在条行右侧 4px 弹出两行气泡：第一行为相对时长「X 天 Y 小时 Z 分钟后重置」（值为 0 的档位省略、**分钟恒显示**、不足一分钟按 1 分钟向上取整，已过点读「额度即将重置」），第二行为重置那一刻的绝对时刻「11月19日 19:35」（跨年才带年份）；倒计时每 30 秒重算一次。气泡挂到 `document.body`（浮层是 `overflow-y: auto` + 动态 `maxHeight` 的内滚容器，不 portal 会被裁掉），位置为 `right` —— 气泡比条行宽，`top` 会盖住同一浮层里的「套餐用量 / API 余额」页签行；气泡只接管视觉，条行矩形、浮层矩形与浮层内滚动量在有无气泡两态下逐值不变。**缺失该字段时不弹气泡**、条本身照常渲染（旧版服务端 / 私有化部署 / 只发 `plan-expire` 的已到期形态）。**已知限制（2026-11-16）**：条行不是可聚焦控件，倒计时目前只有鼠标悬停这一条通路，键盘与读屏用户读不到；要不要把这句同时挂成 `progressbar` 的 `aria-label`（「本周额度，3 天 5 小时后重置」）待裁。
 
 ---
 
@@ -90,7 +91,7 @@ order: 75
 7. **假设**头解析：`limit` 三态解码为 `unlimited → null`（不限制）、`unavailable → 0`（该维度不可用）、数字原样；`api-limit` **只有两态**（`unlimited → null`、数字原样 —— API 余额是充值制，`0` 就是「已用完」，与套餐侧的 `0` 语义不同）；**数值不可解析（非数字、负数、空串）时该项按「没给」处理**（不更新、不错写成 0，避免把健康的账号渲染成「已用尽」）。
 8. **假设**头里**没有** `api-*` 三个字段（`ok_plan` 路径故意不发：套餐可用时不查 `api_quotas`，没有数字可发），**当**映射 `apiQuota`，**则**保留上次已知的 `apiQuota`、不清空——否则正停在余额维度的用户会被下一次套餐计费调用的响应把余额行挤掉（`apiQuota` 从此只在「打开浮层核对」与「头里确实给了 `api-*`」两种时机变化）。
 9. **假设**同一份 `billing` 既来自响应头也来自账户接口，**当**两者先后写入，**则**后到的覆盖先到的、不做新旧比较也不打时间戳——两者数值同源（服务端 proxy 闸口与账户卡片共用 `getBillingVerdict` 同一份判定），差异只可能是「一次调用的时间差」；客户端**不得**为了对齐两者而额外请求。
-10. **假设**该响应同时带 `x-codechat-quota-utilization` / `-surpassed-threshold` / `x-codechat-quota-status`，**当**渲染预警，**则**仍按浮层既有的「剩余 < 限额 20%」自算，**不**改用头里的阈值——同一件事只有一套阈值，避免头（0.8）与浮层（20%）两处算法给出不同档位；`claim` / `reset` / `weekly-reset` / `monthly-reset` 当前**只解析、不渲染**（重置时刻与「哪个窗口用完」由到期日与结论行承担，见故事一场景 4–7）。
+10. **假设**该响应同时带 `x-codechat-quota-utilization` / `-surpassed-threshold` / `x-codechat-quota-status`，**当**渲染预警，**则**仍按浮层既有的「剩余 < 限额 20%」自算，**不**改用头里的阈值——同一件事只有一套阈值，避免头（0.8）与浮层（20%）两处算法给出不同档位；`claim` / `reset` 仍**只解析、不渲染**（重置时刻与「哪个窗口用完」由到期日与结论行承担，见故事一场景 4–7），而 `weekly-reset` / `monthly-reset` **2026-11-16 起渲染**为两条额度条的 hover 倒计时气泡（故事一场景 12）。
 
 ---
 
@@ -313,27 +314,27 @@ export interface DesktopAccountInfoMessage {
 
 模型调用的响应（proxy 转发）在**每次调用**上带一组额度头，数值即该次闸口判定的结果。19 个字段（缺失 = 本维度没有数据，不得用 `0` 或 `rejected` 表达）：
 
-| 头                                             | 取值                                                                  | 说明                                                                                |
-| ---------------------------------------------- | --------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
-| `x-codechat-quota-status`                      | `allowed` / `allowed_warning` / `rejected`                            | 有快照即恒发。本规格只用来判断「这次带了额度头」；预警档位仍按浮层自算（场景 10）   |
-| `x-codechat-quota-claim`                       | `weekly` / `monthly` / `enterprise` / `api` / `none`                  | 代表性限额（哪一池最可能先触顶）。只解析、不渲染                                    |
-| `x-codechat-quota-reset`                       | unix 秒                                                               | 代表限额的重置时刻；`claim` 为 `api` / `enterprise` / `none` 时省略。只解析、不渲染 |
-| `x-codechat-quota-weekly-used`                 | 数字                                                                  | 本自然周已用积分                                                                    |
-| `x-codechat-quota-weekly-limit`                | 数字 / `unlimited` / `unavailable`                                    | 三态：`null`→不限制、`0`→该维度不可用、正数→限额                                    |
-| `x-codechat-quota-weekly-reset`                | unix 秒                                                               | 本窗口重置时刻（下周一 00:00，北京时间）。只解析、不渲染                            |
-| `x-codechat-quota-weekly-utilization`          | `0`–`1`（4 位小数）                                                   | 该维限额为正数时才发。只解析、不渲染                                                |
-| `x-codechat-quota-weekly-surpassed-threshold`  | `0.8`                                                                 | 越过 80% 才发。只解析、不渲染                                                       |
-| `x-codechat-quota-monthly-used`                | 数字                                                                  | 本滚动月已用积分                                                                    |
-| `x-codechat-quota-monthly-limit`               | 数字 / `unlimited` / `unavailable`                                    | 同周三态                                                                            |
-| `x-codechat-quota-monthly-reset`               | unix 秒                                                               | 本窗口重置时刻。只解析、不渲染                                                      |
-| `x-codechat-quota-monthly-utilization`         | `0`–`1`（4 位小数）                                                   | 限额为正数时才发。只解析、不渲染                                                    |
-| `x-codechat-quota-monthly-surpassed-threshold` | `0.8`                                                                 | 越过 80% 才发。只解析、不渲染                                                       |
-| `x-codechat-quota-plan-expire`                 | `YYYY-MM-DD`                                                          | 有生效套餐（或仅剩已到期订单）时才发                                                |
-| `x-codechat-quota-reason`                      | `month` / `week` / `enterprise` / `no_plan` / `dimension_unavailable` | 降级原因，只在判定走 API 时下发                                                     |
-| `x-codechat-quota-code`                        | `EXPIRED_NO_API` / `USER_QUOTA_ZERO` / `TEAM_QUOTA_ZERO`              | 402 阻断码                                                                          |
-| `x-codechat-quota-api-status`                  | `allowed` / `rejected`                                                | 只在判定走 API 时下发（`ok_plan` 路径不查 `api_quotas`，三个 `api-*` 一个都不发）   |
-| `x-codechat-quota-api-used`                    | 数字                                                                  | 同上                                                                                |
-| `x-codechat-quota-api-limit`                   | 数字 / `unlimited`                                                    | 充值制：`0` 就是「已用完」（与套餐侧 `0` 语义不同）                                 |
+| 头                                             | 取值                                                                  | 说明                                                                                         |
+| ---------------------------------------------- | --------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| `x-codechat-quota-status`                      | `allowed` / `allowed_warning` / `rejected`                            | 有快照即恒发。本规格只用来判断「这次带了额度头」；预警档位仍按浮层自算（场景 10）            |
+| `x-codechat-quota-claim`                       | `weekly` / `monthly` / `enterprise` / `api` / `none`                  | 代表性限额（哪一池最可能先触顶）。只解析、不渲染                                             |
+| `x-codechat-quota-reset`                       | unix 秒                                                               | 代表限额的重置时刻；`claim` 为 `api` / `enterprise` / `none` 时省略。只解析、不渲染          |
+| `x-codechat-quota-weekly-used`                 | 数字                                                                  | 本自然周已用积分                                                                             |
+| `x-codechat-quota-weekly-limit`                | 数字 / `unlimited` / `unavailable`                                    | 三态：`null`→不限制、`0`→该维度不可用、正数→限额                                             |
+| `x-codechat-quota-weekly-reset`                | unix 秒                                                               | 本窗口重置时刻（下周一 00:00，北京时间）。**渲染**：「本周」条 hover 气泡的倒计时（场景 12） |
+| `x-codechat-quota-weekly-utilization`          | `0`–`1`（4 位小数）                                                   | 该维限额为正数时才发。只解析、不渲染                                                         |
+| `x-codechat-quota-weekly-surpassed-threshold`  | `0.8`                                                                 | 越过 80% 才发。只解析、不渲染                                                                |
+| `x-codechat-quota-monthly-used`                | 数字                                                                  | 本滚动月已用积分                                                                             |
+| `x-codechat-quota-monthly-limit`               | 数字 / `unlimited` / `unavailable`                                    | 同周三态                                                                                     |
+| `x-codechat-quota-monthly-reset`               | unix 秒                                                               | 本窗口重置时刻。**渲染**：「本月」条 hover 气泡的倒计时（场景 12）                           |
+| `x-codechat-quota-monthly-utilization`         | `0`–`1`（4 位小数）                                                   | 限额为正数时才发。只解析、不渲染                                                             |
+| `x-codechat-quota-monthly-surpassed-threshold` | `0.8`                                                                 | 越过 80% 才发。只解析、不渲染                                                                |
+| `x-codechat-quota-plan-expire`                 | `YYYY-MM-DD`                                                          | 有生效套餐（或仅剩已到期订单）时才发                                                         |
+| `x-codechat-quota-reason`                      | `month` / `week` / `enterprise` / `no_plan` / `dimension_unavailable` | 降级原因，只在判定走 API 时下发                                                              |
+| `x-codechat-quota-code`                        | `EXPIRED_NO_API` / `USER_QUOTA_ZERO` / `TEAM_QUOTA_ZERO`              | 402 阻断码                                                                                   |
+| `x-codechat-quota-api-status`                  | `allowed` / `rejected`                                                | 只在判定走 API 时下发（`ok_plan` 路径不查 `api_quotas`，三个 `api-*` 一个都不发）            |
+| `x-codechat-quota-api-used`                    | 数字                                                                  | 同上                                                                                         |
+| `x-codechat-quota-api-limit`                   | 数字 / `unlimited`                                                    | 充值制：`0` 就是「已用完」（与套餐侧 `0` 语义不同）                                          |
 
 **映射（只在宿主做一次，webview 认原契约）**：
 

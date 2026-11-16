@@ -9,6 +9,14 @@
   justify-content: center;
 }
 
+/* 滚动区外面包一层定位容器：桌面端的渐变蒙层与箭头键叠在滚动区两端，内容从
+   它们下面穿过（定位不能挂在 `.quick-start-row` 上——那是被裁剪的滚动区）。 */
+.quick-start-scroller {
+  position: relative;
+  width: 100%;
+  max-width: 800px;
+}
+
 .quick-start-row {
   width: 100%;
   max-width: 800px;
@@ -19,6 +27,12 @@
   align-content: center;
   justify-content: center;
   gap: 8px;
+}
+
+/* 蒙层与箭头只服务桌面端的单行横滚，插件端保持两行换行、两者都不渲染。 */
+.quick-start-fade,
+.quick-start-arrow {
+  display: none;
 }
 
 [data-host="desktop"] .quick-start-row {
@@ -45,6 +59,20 @@
 .quick-start-cat:hover,
 .quick-start-sub:hover {
   background: var(--vscode-list-hoverBackground);
+}
+
+/* 一级分类胶囊带上图标（设计师 2026-11-16 给件 12 张，16×16 / 描边 1.4）：
+   图标与文字同一个 flex 行、间距 6px；图标走 `currentColor`，随胶囊字色一起变
+   （默认 2 级、hover 与按下提到 1 级），不再单定一份色值。 */
+.quick-start-cat {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.quick-start-cat-icon {
+  display: block;
+  flex: none;
 }
 
 /* 二级子项：hover 用品牌红描边提示「点了会填进输入框」，与侧栏活动器同色。 */
@@ -99,8 +127,13 @@
   flex: none;
 }
 
-/* 分类与其子分类之间的分隔竖线。 */
+/* 分类与其子分类之间的分隔竖线。
+   `flex: none` 不能省（设计师 2026-11-16 评论：「界面过窄时，返回与选项之间的分割线
+   就不见了」）：桌面端是 `nowrap` 行，三颗胶囊都已 `flex: none`，只剩这条线还带默认
+   `flex-shrink: 1` —— 行一溢出，1px 就被压成 0px（实测视口 ≤768 时 computed width
+   为 `0px`，线整个消失）。插件端是换行布局、本来不缩，加上也无副作用。 */
 .quick-start-divider {
+  flex: none;
   width: 1px;
   height: 14px;
   align-self: center;
@@ -122,10 +155,126 @@
   height: 32px;
 }
 
-/* 两行高随之从 64 → 72（2×32 + gap 8）：保住「切到二级时整行高度不变」那条不变量，
-   否则一级两行 72 / 二级一行 64 会让下方内容跳 8px。 */
+/* 桌面端改为单行横滚（设计师 2026-11-16 评论：「单行显示，左右通过箭头按钮滚动，
+   也支持滚轮横滚，滚动过程中左右两侧出现渐变蒙层」）。
+   高度随之从两行 72 落到一行 32 —— 一级、二级都是单行，那条「切层时高度不变、
+   页面不位移」的不变量由「同为一行」接手，不再靠 min-height 撑两条行高。 */
+[data-host="desktop"] .quick-start-scroller,
 [data-host="desktop"] .quick-start-row {
-  min-height: 72px;
+  max-width: 768px;
+}
+
+[data-host="desktop"] .quick-start-row {
+  min-height: 32px;
+  flex-wrap: nowrap;
+  align-items: center;
+  /* 内容比行窄（二级）时照旧居中；溢出时 `safe` 回落到 start —— 否则居中对齐
+     会把左侧那截顶到滚动区外，再也滚不回来。 */
+  justify-content: center;
+  justify-content: safe center;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+[data-host="desktop"] .quick-start-row::-webkit-scrollbar {
+  display: none;
+}
+
+/* nowrap 之后胶囊默认允许被压缩（flex-shrink: 1），字会被挤扁，一律不许缩。 */
+[data-host="desktop"] .quick-start-cat,
+[data-host="desktop"] .quick-start-sub,
+[data-host="desktop"] .quick-start-back {
+  flex: none;
+}
+
+/* 边缘蒙层：**先纯色、再渐变**（设计师 2026-11-16 第二轮：「现在有滚动按钮和选项重叠的
+   感觉，不行可以加一块纯色再按钮下面，然后再加渐变」）。只留一条渐变时，箭头身下仍会
+   露出被裁掉半颗胶囊的边与描边，读起来像「按钮压在选项上」；所以前 32px 铺满画布底
+   （28px 箭头 + 4px 余量，把箭头整个托住），32 → 80px 才是渐隐。
+   底色取对话画布（浅 #ffffff / 深 #111314，与空态页同色），只在那一侧还有内容可滚时
+   显形（`.is-visible`），指针穿透，不挡胶囊点击。 */
+[data-host="desktop"] .quick-start-fade {
+  display: block;
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 80px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 120ms ease;
+  z-index: 1;
+}
+
+[data-host="desktop"] .quick-start-fade--start {
+  left: 0;
+  background-image: linear-gradient(
+    to right,
+    var(--cc-bg-conversation, #ffffff) 32px,
+    transparent 80px
+  );
+}
+
+[data-host="desktop"] .quick-start-fade--end {
+  right: 0;
+  background-image: linear-gradient(
+    to left,
+    var(--cc-bg-conversation, #ffffff) 32px,
+    transparent 80px
+  );
+}
+
+[data-host="desktop"] .quick-start-fade.is-visible {
+  opacity: 1;
+}
+
+/* 箭头键：与同排胶囊同一族（1px widget-border + r8 + 14px 字档的墨色）。
+   叠在蒙层之上、滚动区两端，那一侧滚到头就整颗消失，不挡内容也不留死键。 */
+[data-host="desktop"] .quick-start-arrow {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 2;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--vscode-widget-border);
+  border-radius: 8px;
+  background: var(--cc-bg-conversation, #ffffff);
+  color: #565a60;
+  cursor: pointer;
+}
+
+[data-host="desktop"] .quick-start-arrow svg {
+  display: block;
+}
+
+[data-host="desktop"] .quick-start-arrow--start {
+  left: 0;
+}
+
+[data-host="desktop"] .quick-start-arrow--end {
+  right: 0;
+}
+
+[data-host="desktop"] .quick-start-arrow:hover {
+  background: var(--cc-fill-hover, var(--vscode-list-hoverBackground));
+  color: var(--cc-text-primary, var(--vscode-foreground));
+}
+
+[data-host="desktop"] .quick-start-arrow:active {
+  background: var(--cc-fill-pressed, var(--vscode-list-activeSelectionBackground));
+  color: var(--cc-text-primary, var(--vscode-foreground));
+}
+
+/* 未选中态的墨色与同排胶囊逐值相同（浅 #565a60 / 深 #9a9ea5）；
+   `:not(:hover):not(:active)` 是为了不与上面两条交互态抢特异性。 */
+[data-host="desktop"][data-theme="dark"]
+  .quick-start-arrow:not(:hover):not(:active) {
+  color: #9a9ea5;
 }
 
 /* 「返回胶囊」= 当前分类，属于选中态（与侧栏选中行同语义），仍用 600；

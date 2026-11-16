@@ -93,7 +93,16 @@ const CommandRow: React.FC<{
   isAnyHovered: boolean;
   onHoverChange: (id: string | null) => void;
   onSelect: (command: SlashCommand) => void;
-}> = ({ command, isSelected, isAnyHovered, onHoverChange, onSelect }) => (
+  /** 弹层容器：描述气泡的水平锚点取它的右缘（贴面板外侧 4px，不压面板）。 */
+  popupRef: React.RefObject<HTMLDivElement>;
+}> = ({
+  command,
+  isSelected,
+  isAnyHovered,
+  onHoverChange,
+  onSelect,
+  popupRef,
+}) => (
   <li
     className={`slash-command-item ${isSelected ? "selected" : ""}`}
     onMouseEnter={() => onHoverChange(command.id)}
@@ -109,6 +118,11 @@ const CommandRow: React.FC<{
       multiline
       position="right"
       portal
+      // 2026-11-16 评论：「快捷指令的 hover tooltip，应该显示在距离下拉面板 4px 的
+      // 右侧」。改前按触发元素定位 ⇒ 落点是**行内容**右缘（面板 8px 内衬 + 行内衬
+      // 之后），气泡压进面板 13px；锚点换成面板右缘，间距由 Tooltip 的桌面档 gap
+      // 给到 4px。
+      rightEdgeRef={popupRef}
       disabled={!command.description}
       forceVisible={isSelected && !isAnyHovered}
       className="slash-command-row-wrap"
@@ -228,6 +242,7 @@ export const SlashCommandsPopup: React.FC<SlashCommandsPopupProps> = ({
                       isAnyHovered={hoveredId !== null}
                       onHoverChange={setHoveredId}
                       onSelect={onSelect}
+                      popupRef={popupRef}
                     />
                   );
                 })}

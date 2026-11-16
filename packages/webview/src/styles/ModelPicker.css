@@ -139,7 +139,13 @@
   gap: 6px;
   padding: 6px 12px;
   cursor: pointer;
-  color: var(--vscode-dropdown-foreground);
+  /* 常态字色继承菜单壳（`.model-picker-menu`），不再自己写
+     `--vscode-dropdown-foreground`：桌面端菜单壳的字色是菜单族那一档
+     （浅 #565A60 / 深 #9A9EA5，深色本轮已抬到 #C4C7C9），而 dropdown-foreground
+     在两端都更亮（浅 #202020 / 深 #CCCCCC），于是模型菜单项成为整族里唯一更亮的一项。
+     插件端 / 编辑器端 / 远控页的菜单壳本身就取 dropdown-foreground，
+     继承结果与改前逐值相同。 */
+  color: inherit;
 }
 
 .model-picker-item:hover {
@@ -232,13 +238,17 @@
   border-radius: 6px;
 }
 
+/* hover = fill-hover、选中 = fill-pressed，两档要能分开（契约 `## Menus`）：
+   族里权限菜单与斜杠弹层都是「选中 #E7E9ED / hover #EEF0F3」，模型菜单原来两态
+   同写 #EEF0F3 ⇒ 悬停和选中读起来是同一件事，选中项根本认不出来。这里把选中收到
+   族主导的 fill-pressed 档，hover 保持 fill-hover。 */
 [data-host="desktop"] .model-picker-item:hover {
   background: #eef0f3;
   color: #1f2329;
 }
 
 [data-host="desktop"] .model-picker-item.selected {
-  background: #eef0f3;
+  background: #e7e9ed;
   color: #1f2329;
 }
 
@@ -254,7 +264,9 @@
 
 [data-host="desktop"][data-theme="dark"] .model-picker-trigger:hover {
   background: rgba(255, 255, 255, 0.08);
-  color: #fff;
+  /* 深色 hover 字接 1 级 token（#E5E7E8），原来写死 #FFFFFF —— 比 primary 高
+     半档；浅色档 hover 就是 primary（#1F2329），两侧轻重才对得齐 */
+  color: var(--cc-text-primary, #e5e7e8);
 }
 
 [data-host="desktop"][data-theme="dark"] .model-picker-trigger:focus {
@@ -264,14 +276,23 @@
 [data-host="desktop"][data-theme="dark"] .model-picker-menu {
   background: var(--cc-bg-overlay);
   border-color: rgba(255, 255, 255, 0.12);
-  color: #9a9ea5;
+  /* 菜单常态字接 1 级常规 token（深色 #C4C7C9）；菜单项靠 `.model-picker-item`
+     的 inherit 跟着取这个值，所以只改壳这一处就够 */
+  color: var(--cc-text-regular);
   box-shadow: 0 0 12px rgb(0 0 0 / 40%);
 }
 
-[data-host="desktop"][data-theme="dark"] .model-picker-item:hover,
-[data-host="desktop"][data-theme="dark"] .model-picker-item.selected {
+/* 深色同样分两档：hover 8% 白、选中 12% 白（= 权限菜单 / 斜杠弹层的现行值）。
+   分成两条而不是合写一句，是因为「悬停已选中项」要留在 12% —— 合并写法会让 hover
+   把选中项压回 8%，两态又变成一样。 */
+[data-host="desktop"][data-theme="dark"] .model-picker-item:hover {
   background: rgba(255, 255, 255, 0.08);
-  color: #fff;
+  color: var(--cc-text-primary, #e5e7e8);
+}
+
+[data-host="desktop"][data-theme="dark"] .model-picker-item.selected {
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--cc-text-primary, #e5e7e8);
 }
 
 [data-host="desktop"][data-theme="dark"] .model-picker-vision {

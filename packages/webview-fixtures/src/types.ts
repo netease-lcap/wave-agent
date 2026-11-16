@@ -1207,6 +1207,14 @@ export interface AccountBillingPlanUsage {
   weekLimit: number | null;
   /** 套餐到期日（YYYY-MM-DD）. */
   expireDate: string;
+  /**
+   * 本周窗口的重置时刻（unix 秒，服务端 `x-codechat-quota-weekly-reset`，下周一
+   * 00:00 北京时间）。条上 hover 的气泡据此算「多少天多少小时后重置」。
+   * 缺失 = 服务端没给（旧后端 / 私有化），气泡不出现，条本身照常渲染。
+   */
+  weekResetAt?: number;
+  /** 本月窗口的重置时刻（unix 秒，`x-codechat-quota-monthly-reset`；滚动月跟开通日）. */
+  monthResetAt?: number;
 }
 
 /** 计费降级原因（codechat `BillingDegradeReason`）：客户端据此选结论行文案. */

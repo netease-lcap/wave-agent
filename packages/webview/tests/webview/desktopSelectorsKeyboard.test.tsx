@@ -48,7 +48,7 @@ describe("desktop selector keyboard accessibility", () => {
     expect(addItem).toHaveProperty("tabIndex", -1);
   });
 
-  it("host menu icons: 本地 keeps its icon, the remote glyph sits on the SSH 主机 group label", () => {
+  it("host menu icons: 本地 keeps its icon, group labels carry none (2026-11-16)", () => {
     const { vscode } = renderDesktopApp();
     sendCommand("desktopWorkdirState", {
       host: "local",
@@ -61,8 +61,8 @@ describe("desktop selector keyboard accessibility", () => {
     fireEvent.click(screen.getByTestId("desktop-host"));
     const menu = screen.getByTestId("desktop-host-menu");
 
-    // 具体主机名不再各带一颗图标：图标只在「本地」行与分组标题行上（用户口径：
-    // 把主机名前面那颗图标挪到「SSH 主机」前面，跟「本地」保持一致）。只看行的
+    // 具体主机名不再各带一颗图标，分组标题也不再带（2026-11-16 评论「这里是分类，
+    // 去掉图标，改成『最近打开』这里这样」）；只剩「本地」行那颗 host 图标。只看行的
     // 直接子节点——行尾「编辑连接」按钮里那颗是操作入口的图标，不是主机图标。
     for (const item of screen.getAllByTestId("desktop-host-item")) {
       expect(
@@ -73,7 +73,7 @@ describe("desktop selector keyboard accessibility", () => {
     }
     const label = menu.querySelector(".desktop-host-menu-label");
     expect(label?.textContent).toBe("SSH 主机");
-    expect(label?.querySelector(".codicon-remote")).not.toBeNull();
+    expect(label?.querySelector(".codicon")).toBeNull();
     expect(
       screen
         .getByTestId("desktop-host-local")
@@ -100,14 +100,14 @@ describe("desktop selector keyboard accessibility", () => {
     fireEvent.click(screen.getByTestId("desktop-host"));
     const menu = screen.getByTestId("desktop-host-menu");
 
-    // 两个分组标题行都只有一颗图标（同一颗 codicon-remote），具体条目行一颗都不带。
+    // 两个分组标题行都是纯文字（无图标），具体条目行一颗都不带。
     const labels = menu.querySelectorAll(".desktop-host-menu-label");
     expect(Array.from(labels).map((l) => l.textContent)).toEqual([
       "WSL",
       "SSH 主机",
     ]);
     for (const label of labels) {
-      expect(label.querySelectorAll(".codicon-remote")).toHaveLength(1);
+      expect(label.querySelectorAll(".codicon")).toHaveLength(0);
     }
     for (const item of screen.getAllByTestId("desktop-host-item")) {
       expect(

@@ -7,12 +7,12 @@ import { viewportSize } from "../utils/viewport";
 import {
   BellIcon,
   BellRingIcon,
-  ExternalLinkIcon,
-  FileTextIcon,
-  HouseIcon,
-  LogOutIcon,
   MachineIcon,
-  SettingsGearIcon,
+  MoreMenuConsoleIcon,
+  MoreMenuExternalLinkIcon,
+  MoreMenuHelpDocsIcon,
+  MoreMenuLogOutIcon,
+  MoreMenuSettingsIcon,
 } from "./HeaderIcons";
 import type { PushNotificationControl } from "../types";
 import type { AccountCredential } from "wave-webview-fixtures";
@@ -231,7 +231,7 @@ export const MoreMenu: React.FC<MoreMenuProps> = ({
             run: handleSettings,
             content: (
               <>
-                <SettingsGearIcon className="more-menu-item-icon" />
+                <MoreMenuSettingsIcon className="more-menu-item-icon" />
                 <span>设置{authLabelSuffix}</span>
               </>
             ),
@@ -249,10 +249,10 @@ export const MoreMenu: React.FC<MoreMenuProps> = ({
             content: (
               <>
                 <span className="more-menu-item-leading">
-                  <HouseIcon className="more-menu-item-icon" />
+                  <MoreMenuConsoleIcon className="more-menu-item-icon" />
                   <span>企业控制台</span>
                 </span>
-                <ExternalLinkIcon className="more-menu-item-icon" />
+                <MoreMenuExternalLinkIcon className="more-menu-item-icon" />
               </>
             ),
           },
@@ -264,10 +264,10 @@ export const MoreMenu: React.FC<MoreMenuProps> = ({
       content: (
         <>
           <span className="more-menu-item-leading">
-            <FileTextIcon className="more-menu-item-icon" />
+            <MoreMenuHelpDocsIcon className="more-menu-item-icon" />
             <span>帮助文档</span>
           </span>
-          <ExternalLinkIcon className="more-menu-item-icon" />
+          <MoreMenuExternalLinkIcon className="more-menu-item-icon" />
         </>
       ),
     },
@@ -285,7 +285,7 @@ export const MoreMenu: React.FC<MoreMenuProps> = ({
                 run: onLogout,
                 content: logoutSubtitle ? (
                   <>
-                    <LogOutIcon className="more-menu-item-icon" />
+                    <MoreMenuLogOutIcon className="more-menu-item-icon" />
                     <span className="more-menu-item-text">
                       <span>退出登录{authLabelSuffix}</span>
                       <span
@@ -300,7 +300,7 @@ export const MoreMenu: React.FC<MoreMenuProps> = ({
                   </>
                 ) : (
                   <>
-                    <LogOutIcon className="more-menu-item-icon" />
+                    <MoreMenuLogOutIcon className="more-menu-item-icon" />
                     <span>退出登录{authLabelSuffix}</span>
                   </>
                 ),
@@ -312,7 +312,7 @@ export const MoreMenu: React.FC<MoreMenuProps> = ({
                   run: onLogin,
                   content: (
                     <>
-                      <LogOutIcon className="more-menu-item-icon" />
+                      <MoreMenuLogOutIcon className="more-menu-item-icon" />
                       <span>登录企业账号{authLabelSuffix}</span>
                     </>
                   ),
@@ -322,7 +322,7 @@ export const MoreMenu: React.FC<MoreMenuProps> = ({
                   run: onLogin,
                   content: (
                     <>
-                      <LogOutIcon className="more-menu-item-icon" />
+                      <MoreMenuLogOutIcon className="more-menu-item-icon" />
                       <span>登录{authLabelSuffix}</span>
                     </>
                   ),

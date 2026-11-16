@@ -201,16 +201,80 @@ function isPlanUsage(
   return "monthLimit" in plan;
 }
 
-/** 单根套餐额度条（标签 + 条/占位 + 状态值）. */
+/** 绝对时刻：「11月23日 00:00」（跨年才带年份）。 */
+function formatResetMoment(at: Date): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const monthDay = `${at.getMonth() + 1}月${at.getDate()}日 ${pad(at.getHours())}:${pad(at.getMinutes())}`;
+  const sameYear = at.getFullYear() === new Date().getFullYear();
+  return sameYear ? monthDay : `${at.getFullYear()}年${monthDay}`;
+}
+
+/**
+ * 额度条 hover 气泡的文案（她 2026-11-16 评论：「hover 上去 tooltip 提示多少天多少小时后
+ * 重置，然后精确到分钟」）：第一行是相对时长、第二行是重置那一刻的绝对时刻。
+ *
+ * `resetAt` = 服务端给的重置时刻（unix 秒，`x-codechat-quota-weekly-reset` /
+ * `-monthly-reset`）。分钟向上取整（还剩 20 秒也读「1 分钟」，不读「0 分钟」），
+ * 已经过点（时钟偏差 / 数据陈旧）读「额度即将重置」，不出现负数。
+ */
+export function resetTooltipText(
+  resetAt: number,
+  now: number = Date.now(),
+): string | null {
+  const at = resetAt * 1000;
+  if (!Number.isFinite(at)) return null;
+  const absolute = formatResetMoment(new Date(at));
+  const diff = at - now;
+  if (diff <= 0) return `额度即将重置\n${absolute}`;
+  const totalMinutes = Math.ceil(diff / 60_000);
+  const days = Math.floor(totalMinutes / 1440);
+  const hours = Math.floor((totalMinutes % 1440) / 60);
+  const minutes = totalMinutes % 60;
+  // 天 / 小时先按「多少天多少小时」读，分永远带上（她要求精确到分钟）；为 0 的高位不占位。
+  const parts: string[] = [];
+  if (days > 0) parts.push(`${days} 天`);
+  if (hours > 0) parts.push(`${hours} 小时`);
+  if (minutes > 0 || parts.length === 0) parts.push(`${minutes} 分钟`);
+  return `${parts.join(" ")}后重置\n${absolute}`;
+}
+
+/** 单根套餐额度条（标签 + 条/占位 + 状态值）；`resetAt` 有值时整行 hover 出重置倒计时. */
 const PlanBar: React.FC<{
   label: string;
   testId: string;
   used: number;
   limit: number | null;
-}> = ({ label, testId, used, limit }) => {
+  resetAt?: number;
+}> = ({ label, testId, used, limit, resetAt }) => {
   const view = planBarView(used, limit);
-  return (
-    <div className="account-plan-bar" data-testid={testId}>
+  // 倒计时读到分钟：浮层开着不走表的话，同一句「24 分钟后重置」会一直挂着。
+  // 有重置时刻才起这个 30 秒的核对；没数据的条不受影响。
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (resetAt === undefined) return;
+    const timer = window.setInterval(() => setNow(Date.now()), 30_000);
+    return () => window.clearInterval(timer);
+  }, [resetAt]);
+  const tipText = resetAt === undefined ? null : resetTooltipText(resetAt, now);
+
+  // 气泡贴的是「卡片右缘 + 4」，不是条行右缘（2026-11-16 走查）：条行比卡片窄
+  // 9px（浮层内衬 8 + 边框 1），按行右缘落会啃进浮层边框里 5px。差值由布局决定、
+  // 与浮层位置无关，所以只在挂载时量一次；量不到（外部复用）就退回默认 4。
+  const rowRef = useRef<HTMLDivElement>(null);
+  const [tipOffset, setTipOffset] = useState(4);
+  useEffect(() => {
+    const row = rowRef.current;
+    const card = row?.closest('[data-testid="account-card"]');
+    if (!row || !card) return;
+    const gap =
+      Math.round(
+        card.getBoundingClientRect().right - row.getBoundingClientRect().right,
+      ) + 4;
+    if (gap !== tipOffset) setTipOffset(gap);
+  }, [tipOffset]);
+
+  const row = (
+    <div className="account-plan-bar" data-testid={testId} ref={rowRef}>
       <span className="account-plan-bar-label">{label}</span>
       {view.percent === null ? (
         <span className="account-plan-bar-spacer" aria-hidden="true" />
@@ -232,6 +296,20 @@ const PlanBar: React.FC<{
         {view.text}
       </span>
     </div>
+  );
+
+  if (tipText === null) return row;
+  return (
+    <Tooltip
+      text={tipText}
+      position="right"
+      offset={tipOffset}
+      multiline
+      portal
+      className="account-plan-bar-tip"
+    >
+      {row}
+    </Tooltip>
   );
 };
 
@@ -765,12 +843,14 @@ export const AccountCard: React.FC<AccountCardProps> = ({
                     testId="account-plan-week"
                     used={planUsage.weekUsed}
                     limit={planUsage.weekLimit}
+                    resetAt={planUsage.weekResetAt}
                   />
                   <PlanBar
                     label="本月"
                     testId="account-plan-month"
                     used={planUsage.monthUsed}
                     limit={planUsage.monthLimit}
+                    resetAt={planUsage.monthResetAt}
                   />
                 </>
               )}

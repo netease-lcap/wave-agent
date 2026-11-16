@@ -479,7 +479,9 @@
 }
 [data-host="desktop"][data-theme="dark"] .permission-mode-select:hover {
   background: rgba(255, 255, 255, 0.08);
-  color: #fff;
+  /* 深色 hover 字接 1 级 token（#E5E7E8），原来是字面量 #FFFFFF —— 比 primary
+     高半档；浅色档 hover 恰好就是 primary（#1F2329），两侧轻重才对得齐 */
+  color: var(--cc-text-primary, #e5e7e8);
 }
 [data-host="desktop"][data-theme="dark"] .permission-mode-select:focus {
   background: transparent;
@@ -560,20 +562,23 @@
 [data-host="desktop"][data-theme="dark"] .permission-mode-menu {
   background: var(--cc-bg-overlay);
   border-color: rgba(255, 255, 255, 0.12);
-  color: #9a9ea5;
+  /* 菜单常态字接 `--cc-text-regular`（深色 #C4C7C9），原为 #9A9EA5 —— 比 token
+     低两档：深色菜单底 #232526 上 5.72:1 vs 9.06:1。浅色档不变（token 浅色值
+     #565A60 就是这一族原来的浅色值）。 */
+  color: var(--cc-text-regular);
   box-shadow: 0 0 12px rgb(0 0 0 / 40%);
 }
 [data-host="desktop"][data-theme="dark"] .permission-mode-item:hover {
   background: rgba(255, 255, 255, 0.08);
-  color: #fff;
+  color: var(--cc-text-primary, #e5e7e8);
 }
 [data-host="desktop"][data-theme="dark"] .permission-mode-item.selected {
   background: rgba(255, 255, 255, 0.12);
-  color: #fff;
+  color: var(--cc-text-primary, #e5e7e8);
 }
 [data-host="desktop"][data-theme="dark"] .permission-mode-item.selected:hover {
   background: rgba(255, 255, 255, 0.12);
-  color: #fff;
+  color: var(--cc-text-primary, #e5e7e8);
 }
 [data-host="desktop"][data-theme="dark"]
   .permission-mode-item.mode-bypassPermissions {
@@ -645,10 +650,12 @@
 }
 
 /* 深色模式：--vscode-fill-light 未定义会回退浅灰 #f5f7fa 突兀。
-   浅色条 #f5f7fa 是比画布白暗一档的「略灰」面；卡片同画布（#111314）后
-   对称取 nav 面 #181A1B —— 与画布仅差一档，横条略浮不抢层次 */
+   浅色条 #f5f7fa 是比画布白暗一档的「略灰」面；深色原先对称取 nav 面 #181A1B。
+   设计师 2026-11-16 第二轮「（卡片与灰条）颜色调换一下」⇒ 灰条从 nav 面
+   #181A1B 抬到浮层面 #232526（L* 14.5），卡片落回 nav 面（见上方 `.input-content`
+   深色块）。灰条现在比卡片亮一档，靠卡片 1px 边框 #414649 分界。 */
 [data-host="desktop"][data-theme="dark"] .input-workdir-row {
-  background: var(--cc-bg-navigation, #181a1b);
+  background: var(--cc-bg-overlay, #232526);
 }
 
 /* 灰条内控件按钮化：Figma「本地 / 选择工作目录」按钮 32 高、r8（base
@@ -729,7 +736,9 @@
 [data-host="desktop"][data-theme="dark"] .desktop-host-trigger:hover,
 [data-host="desktop"][data-theme="dark"] .desktop-workdir-trigger:hover {
   background: rgba(255, 255, 255, 0.08);
-  color: #ffffff;
+  /* 灰条上主机 / 目录这两颗触发键本就在同一条规则里，hover 字色一并接 1 级
+     token（#E5E7E8），原来是 #FFFFFF —— 只改一颗就得拆规则、两颗读数分岔 */
+  color: var(--cc-text-primary, #e5e7e8);
 }
 
 /* ── 消息流：时间线节点 6px → 8px（codechat design-node 8px）────────── */
@@ -768,11 +777,12 @@
 [data-host="desktop"][data-theme="dark"] .plus-menu {
   background: var(--cc-bg-overlay);
   border-color: rgba(255, 255, 255, 0.12);
-  color: #9a9ea5;
+  /* 同 `.permission-mode-menu`：菜单常态字接 1 级常规 token（深色 #C4C7C9） */
+  color: var(--cc-text-regular);
 }
 [data-host="desktop"][data-theme="dark"] .plus-menu-item:hover {
   background: rgba(255, 255, 255, 0.08);
-  color: #ffffff;
+  color: var(--cc-text-primary, #e5e7e8);
 }
 
 /* ── 左侧导航细节（对齐 codechat 规格）──────────────────────────── */
@@ -972,12 +982,21 @@
 /* Composer 卡片布局：Figma 13439-9245 卡片 768×110 = pad 12 + 输入区 44 +
    gap 8 + 工具行 32 + pad 12（base 实现 86px：无 pad-top、工具行 40 贴底）。
    输入区自带 padding 0 12px（左右留白），pad-top 由卡片承担。
-   z-index 1：灰条是卡片后的兄弟元素，默认绘制在卡片之上会盖住卡片底 18px
-   （Figma 中灰条在卡片后面，顶部 18px 被卡片遮住）——卡片需提到上层；
-   灰条内 dropdown 的 absolute z-index 10000 仍在根层，不受影响。 */
+   z-index：两层原因，取值 30。
+   1）灰条是卡片后的兄弟元素，默认绘制在卡片之上会盖住卡片底 18px（Figma 中灰条在
+      卡片后面，顶部 18px 被卡片遮住）——卡片需提到上层。
+   2）卡片是「向上展开的下拉」的容器（权限模式 / 模型 / 「+」/ 斜杠指令），这些菜单
+      写的是 `position:absolute; z-index:10000`。但这里一旦给了 z-index，卡片本身
+      就成了堆叠上下文，**层叠上下文内的 z-index 只跟兄弟比，出不去卡片** —— 整个
+      卡片（含菜单）按 30 之前的 `1` 参与根层排序，而消息区底部那条渐隐
+      `.jump-to-bottom-layer` 是 `25`，于是菜单被蒙层压住、文字发灰（设计师
+      2026-11-16 评论 `ul.permission-mode-menu`「下拉菜单的层级应该高于对话流的渐变
+      蒙层，现在被蒙层遮挡了」）。
+   取值只需大于消息区最高的浮层 25（`回到最新` 层；sticky 消息卡 20 / 其渐隐 19）。
+   卡片与这些浮层本来就不几何重叠（消息区止于卡片顶边），抬高只是让菜单露出来。 */
 [data-host="desktop"] .input-content {
   position: relative;
-  z-index: 1;
+  z-index: 30;
   padding-top: 12px;
 }
 [data-host="desktop"] .input-buttons-row {
@@ -1021,12 +1040,20 @@
   border-color: #dcdfe6;
 }
 
-/* Composer 卡片深色：同画布色 #111314 + 强边框 #414649（用户 0904 拍板；
-   approved 契约 conversation canvas + border。input-background 是全局 token
-   （Diff/File/Settings/composer 共用）不可整体改 → 局部覆盖，与对话画布融为一体，
-   靠 1px 强边框勾卡） */
+/* Composer 卡片深色：设计师 2026-11-16 两轮评论 —— 先是「给深色模式的 AI 对话框
+   加一个深灰色背景色，类似（下方灰条）这里的颜色，然后再浅一个度，用已有的色彩
+   变量」，看到效果后又补「这里的颜色和（灰条）这里，调换一下」⇒ 最终
+   **卡片取灰条原来的 nav 面 #181A1B，灰条抬到浮层面 #232526**（两条规则一起换，
+   见下方 `.input-workdir-row` 深色块）。
+   面阶实测 L*：画布 `--cc-bg-conversation` #111314 = 5.7 ／ nav #181A1B = 9.1 ／
+   code `--cc-bg-code` #1B1D1E = 10.6 ／ 浮层 `--cc-bg-overlay` #232526 = 14.5。
+   卡片落 9.1（比画布浅 3.4、对比 1.07），灰条落 14.5（比卡片浅 5.4、对比 1.13）
+   —— 层次变成「灰条在卡片之上」，与浅色相反（浅色卡 #FFF 100 > 条 #F5F7FA 97.2），
+   这是她点名调换的结果，不是笔误。
+   input-background 是全局 token（Diff/File/Settings/composer 共用）不可整体改
+   → 局部覆盖；1px 强边框 #414649 保留勾卡。 */
 [data-host="desktop"][data-theme="dark"] .input-content {
-  background-color: var(--cc-bg-conversation, #111314);
+  background-color: var(--cc-bg-navigation, #181a1b);
   border-color: var(--cc-border, #414649);
 }
 
@@ -2859,13 +2886,23 @@
   opacity: 1;
   color: #6c7076;
 }
-/* 主机菜单的分组标题带一颗远程图标：「SSH 主机」标题行与「本地」行同构，
-   组内主机名缩进到与标题文字齐平（8 padding + 16 图标 + 8 gap = 32px）。 */
-[data-host="desktop"] .desktop-host-menu-label {
-  gap: 8px;
-}
+/* 主机菜单的分组标题：2026-11-16 评论撤掉远程图标（「这里是分类，去掉图标，改成
+   『最近打开』这里这样」）⇒ 标题行不再是 flex，`gap` 也撤掉；组内条目名的 32px
+   缩进保留（让条目名落在标题文字右侧一档，与「最近打开」菜单「标题 17 / 条目 41」
+   同构）。没有图标的种类（WSL）继续吃这条。 */
 [data-host="desktop"] .desktop-host-menu-items .desktop-workdir-menu-item {
   padding-left: 32px;
+}
+/* 同日第二条评论（她点 `div.desktop-workdir-menu-item`「local」即 SSH 条目）：
+   「主机名称前面加个图标，名称位置不变」⇒ SSH 条目补上「SSH主机」颗，正好把这
+   32px 吃满：左内衬 8 + 图标 16 + 行内 gap 8 = 32，名称左缘一格不动（1440 视口
+   下改前后都在 x920）。图标列因此与「本地」行图标、分组标题文字同一条竖线。
+   必须按 kind 收窄：WSL 条目没有图标，若也降到 8px，名称会整体左移 24px
+   （实测 tmp-1109-host-wsl：名字 x519 → 495）。 */
+[data-host="desktop"]
+  .desktop-host-menu-items
+  .desktop-workdir-menu-item[data-host-kind="ssh"] {
+  padding-left: 8px;
 }
 
 /* 下拉内「添加主机…」展开的 inline 输入行（走查评论 div.desktop-host-add：
@@ -3027,14 +3064,35 @@
 [data-host="desktop"][data-theme="dark"] .account-usage-popover {
   color: var(--vscode-foreground);
 }
-/* 深色下菜单项基础文字：覆盖浅色的 #565A60（含此前已统一的 permission/plus） */
+/* 深色下菜单项基础文字：覆盖浅色的 #565A60（含此前已统一的 permission/plus）。
+   2026-11-16「3 也改」：常态字由 #9A9EA5 抬到 `--cc-text-regular`（深 #C4C7C9）——
+   菜单底 #232526 上 5.72:1 → 9.06:1，与浅色档（#565A60 on #FFFFFF 6.94:1）的轻重
+   对齐；这与创作集「视图」下拉 1113 那条是同一个裁定（那条当时是逐选择器绕开族规则，
+   现在族规则本身到位，它变冗余但无害）。 */
 [data-host="desktop"][data-theme="dark"] .permission-mode-item,
 [data-host="desktop"][data-theme="dark"] .plus-menu-item,
 [data-host="desktop"][data-theme="dark"] .more-menu-item,
 [data-host="desktop"][data-theme="dark"] .panel-toggle-menu-item,
 [data-host="desktop"][data-theme="dark"] .desktop-session-menu-item,
 [data-host="desktop"][data-theme="dark"] .desktop-workdir-menu-item {
-  color: #9a9ea5;
+  color: var(--cc-text-regular);
+}
+/* 上面那条容器规则（14 个选择器共用一句 `color: #9a9ea5`）里混着「菜单」和
+   「非菜单面」：`.btw-panel`（对话面板）、`.account-usage-popup`（用量浮层）、
+   `.account-usage-popover`（已有还原规则）、`.desktop-remote-browser`（远程浏览器）。
+   抬族值只抬菜单容器，其余四个保持原样 —— 用白名单另起一条，而不是把那句改掉，
+   这样「菜单以外一个像素都不动」是结构上成立的，不依赖逐面回归。 */
+[data-host="desktop"][data-theme="dark"] .more-menu,
+[data-host="desktop"][data-theme="dark"] .panel-toggle-menu,
+[data-host="desktop"][data-theme="dark"] .desktop-session-menu,
+[data-host="desktop"][data-theme="dark"] .desktop-workdir-menu,
+[data-host="desktop"][data-theme="dark"] .session-list-popup,
+[data-host="desktop"][data-theme="dark"] .slash-commands-popup,
+[data-host="desktop"][data-theme="dark"] .file-suggestion-dropdown,
+[data-host="desktop"][data-theme="dark"] .rewind-popup,
+[data-host="desktop"][data-theme="dark"] .model-popup,
+[data-host="desktop"][data-theme="dark"] .history-search-popup {
+  color: var(--cc-text-regular);
 }
 [data-host="desktop"][data-theme="dark"] .desktop-workdir-menu-label {
   color: #9a9ea5;
@@ -3050,7 +3108,10 @@
 [data-host="desktop"][data-theme="dark"] .model-popup-item:hover,
 [data-host="desktop"][data-theme="dark"] .history-search-item:hover {
   background-color: rgba(255, 255, 255, 0.08);
-  color: #ffffff;
+  /* 深色 hover 字接 1 级 token（#E5E7E8），原来是字面量 #FFFFFF —— 比 primary
+     高半档，浅色档 hover 恰好就是 primary（#1F2329），两侧轻重才对得齐
+     （design-system.md `## Menus`：hover = fill-hover + text-primary）。 */
+  color: var(--cc-text-primary, #e5e7e8);
 }
 [data-host="desktop"][data-theme="dark"] .session-list-item--selected,
 [data-host="desktop"][data-theme="dark"] .session-list-item--current,
@@ -3060,13 +3121,14 @@
 [data-host="desktop"][data-theme="dark"] .model-popup-item.selected,
 [data-host="desktop"][data-theme="dark"] .history-search-item.selected {
   background-color: rgba(255, 255, 255, 0.12);
-  color: #ffffff;
+  /* 选中同理：契约 selection = fill-pressed + 1 级字色（字重不变）。 */
+  color: var(--cc-text-primary, #e5e7e8);
 }
-/* 第二十五轮：面板切换菜单选中态深色（12% 白底 + 白字） */
+/* 面板切换菜单选中态深色（12% 白底 + 1 级字） */
 [data-host="desktop"][data-theme="dark"] .panel-toggle-menu-item--active,
 [data-host="desktop"][data-theme="dark"] .panel-toggle-menu-item--active:hover {
   background-color: rgba(255, 255, 255, 0.12);
-  color: #ffffff;
+  color: var(--cc-text-primary, #e5e7e8);
 }
 [data-host="desktop"][data-theme="dark"] .more-menu-item--danger,
 [data-host="desktop"][data-theme="dark"] .desktop-session-menu-item--danger {
@@ -3423,7 +3485,9 @@
   outline-offset: -2px;
 }
 
-[data-host="desktop"] .other-text-input:focus,
+/* 「其他」输入框 2026-11-16 起改走表单字段族（`--cc-field-*`，见下方
+   `other-text-input` 那节），焦点色不再是这里的 `--cc-border-focus`；
+   反馈输入框未点名，保持原档。 */
 [data-host="desktop"] .feedback-textarea:focus {
   outline: none;
   border-color: var(--cc-border-focus, var(--vscode-focusBorder, #005fb8));
@@ -4378,6 +4442,53 @@
   line-height: 22px;
 }
 
+/* ═══ 「其他」输入框按表单规范收口（1116 评论）═══
+   她对着 `textarea.other-text-input`（问题卡第 3 问「其他」选中后展开的那个框）说
+   「参考表单规范优化这里的样式」。契约：`codechat-desktop-skill`
+   `references/common-components.md` §Input fields / 同节「Desktop form field colors
+   and focus」（与设置页字段、行内评论框同一份口径）。
+   改前实测（浅 / 深，1440×960）：r4；描边跟着 `--vscode-input-border`
+   （浅 #DCDFE6 / 深 #414649）；面跟 `--vscode-input-background`（浅 #FFF / 深 #313131，
+   比对话框底 #232526 还亮 ⇒ 凸出）；聚焦时描边整条染成 `--cc-border-focus`
+   （浅近黑 #1F2329，比卡片描边重一档）；占位符吃 `--vscode-input-placeholderForeground`
+   #757575。
+   改后：r8（与卡片 r12、按钮 r8、设置页字段 r8 同族）；面 / 描边 / 字 / 占位四件套
+   走 `--cc-field-*`；补 hover（只换描边、不动底）；聚焦改为字段档
+   `--cc-field-border-focus`（浅 #565A60 / 深 #A0A5A8），仍是 1px 沿边、无外扩环、零位移。
+   几何一格未动（内衬 4×8、min-height 26、max-height 160、`field-sizing: content`
+   自动长高）：契约原话是「Keep single-line and multiline geometry distinct /
+   较大的既有控件可保留自己的尺寸档」，这个框是卡片内的行内紧凑档，不并到设置页
+   多行域的 120 高。 */
+[data-host="desktop"] .other-text-input {
+  border-radius: var(--cc-radius-md, 8px);
+  background-color: var(--cc-field-bg);
+  border-color: var(--cc-field-border);
+  color: var(--cc-field-text);
+}
+/* hover：只换描边、不动底色（契约原句 hover changes only border color） */
+[data-host="desktop"] .other-text-input:hover:not(:disabled) {
+  border-color: var(--cc-field-border-hover);
+}
+/* 聚焦排在 hover 之后：两者同时成立时焦点优先；`outline: none` 保留原来那条
+   「不外加环」的口径，只把颜色换成字段档 */
+[data-host="desktop"] .other-text-input:focus:not(:disabled) {
+  outline: none;
+  border-color: var(--cc-field-border-focus);
+}
+/* 占位符：独立占位色 + 显式 opacity 1（避免浏览器再压一层） */
+[data-host="desktop"] .other-text-input::placeholder {
+  color: var(--cc-field-placeholder);
+  opacity: 1;
+}
+/* 停用：专用「面 / 字 / 边」三色，不再靠整块降透明度 */
+[data-host="desktop"] .other-text-input:disabled {
+  background-color: var(--cc-field-bg-disabled);
+  border-color: var(--cc-field-border-disabled);
+  color: var(--cc-field-text-disabled);
+  opacity: 1;
+  cursor: not-allowed;
+}
+
 /* ═══ 1023 skill 契约：桌面端选择控件 + 问题选项卡（`div.options-list`）════════
    skill `codechat-desktop-skill` @ `docs/choice-controls-1023`
    （`references/common-components.md` §Choice controls → Desktop Radio and
@@ -5205,18 +5316,19 @@
   background: var(--cc-bg-overlay);
   border-color: rgba(255, 255, 255, 0.12);
   box-shadow: 0 0 12px rgb(0 0 0 / 40%);
-  color: #9a9ea5;
+  /* 菜单常态字接 1 级常规 token（深色 #C4C7C9），与菜单族同步抬一档 */
+  color: var(--cc-text-regular);
 }
 
 [data-host="desktop"][data-theme="dark"] .settings-select-option,
 [data-host="desktop"][data-theme="dark"] .session-board-filter-option {
-  color: #9a9ea5;
+  color: var(--cc-text-regular);
 }
 
 [data-host="desktop"][data-theme="dark"] .settings-select-option:hover,
 [data-host="desktop"][data-theme="dark"] .session-board-filter-option:hover {
   background: rgba(255, 255, 255, 0.08);
-  color: #ffffff;
+  color: var(--cc-text-primary, #e5e7e8);
 }
 
 [data-host="desktop"][data-theme="dark"] .settings-select-option.is-selected,
