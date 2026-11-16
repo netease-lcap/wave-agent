@@ -8,8 +8,8 @@ import type { Plugin } from "../../src/types/plugins.js";
 
 /**
  * 「value 型」钩子链（`runValueHookChain`）的语义：`next(e)` 之后外层**还能改**，
- * 链尾是宿主原本的值。这是与 `tool.call` / `tool.run` 那条 deny 型链的分界 ——
- * deny 型里 `next` 之后外层的返回值会被丢掉，value 型不能丢。
+ * 链尾是宿主原本的值。这是与 `tool.call` 那条 deny 型链的分界 —— 守卫替用户
+ * 裁决完（工具已经跑掉）之后外层的返回值不再算数，value 型不能丢。
  *
  * 九条钩子共用这一条链，所以这里挑三条代表（`tool.check` 三档 / `prompt.section`
  * `{ text }` / `session.append` `{ deny }`）测机制本身；各自的归一化细节在上游
@@ -172,11 +172,14 @@ describe("value 型钩子链", () => {
       `,
     ]);
 
-    const out = await manager.dispatchSessionAppend({
-      id: "m1",
-      role: "user",
-      content: [{ type: "text", text: "原话" }],
-    });
+    const out = await manager.dispatchSessionAppend(
+      {
+        id: "m1",
+        role: "user",
+        content: [{ type: "text", text: "原话" }],
+      },
+      "prompt",
+    );
     expect(out.message.content).toEqual([{ type: "text", text: "脱敏后" }]);
   });
 
@@ -291,7 +294,7 @@ describe("value 型钩子链", () => {
     ).resolves.toEqual({ decision: "allow", reason: "自家工具不用问" });
   });
 
-  it("tool.check：非法 decision 退回引擎的判定并记一条 warn", async () => {
+  it("tool.check：非法 decision 按拒绝处理并记一条 warn", async () => {
     const { manager } = await managerOf([
       `
       exports.register = function (on) {
@@ -308,7 +311,10 @@ describe("value 型钩子链", () => {
         decision: "ask",
         reason: "宿主自己的理由",
       }),
-    ).resolves.toEqual({ decision: "ask", reason: "宿主自己的理由" });
+    ).resolves.toEqual({
+      decision: "deny",
+      reason: "tool.check returned no valid decision",
+    });
     expect(vi.mocked(logger.warn)).toHaveBeenCalledWith(
       expect.stringContaining("不合法的 decision"),
     );
@@ -356,19 +362,25 @@ describe("value 型钩子链", () => {
       `,
     ]);
 
-    const kept = await manager.dispatchSessionAppend({
-      id: "m1",
-      role: "user",
-      content: [{ type: "text", text: "留着" }],
-    });
+    const kept = await manager.dispatchSessionAppend(
+      {
+        id: "m1",
+        role: "user",
+        content: [{ type: "text", text: "留着" }],
+      },
+      "prompt",
+    );
     expect(kept.uuid).toBe("m1");
     expect(kept.deny).toBeUndefined();
 
-    const dropped = await manager.dispatchSessionAppend({
-      id: "m2",
-      role: "user",
-      content: [{ type: "text", text: "丢弃我" }],
-    });
+    const dropped = await manager.dispatchSessionAppend(
+      {
+        id: "m2",
+        role: "user",
+        content: [{ type: "text", text: "丢弃我" }],
+      },
+      "prompt",
+    );
     expect(dropped).toMatchObject({ uuid: "m2", deny: "脱敏失败" });
   });
 

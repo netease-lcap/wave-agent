@@ -138,6 +138,26 @@ function renderModToolResult(value: unknown): string {
 }
 
 /**
+ * `tool.call` 交上来的 `{ result }` → 一份工具结果。
+ *
+ * 两条来源共用这一处：mod 的 `next(e)` 真跑出来的就是 `ToolResult`（原样用，
+ * 失败标记要留着）；mod 自己造的值是任意 JSON，按插件工具的规矩序列化后当成
+ * 一次成功。
+ */
+function toToolResult(value: unknown): ToolResult {
+  if (typeof value === "object" && value !== null) {
+    const shape = value as Partial<ToolResult>;
+    if (
+      typeof shape.success === "boolean" &&
+      typeof shape.content === "string"
+    ) {
+      return value as ToolResult;
+    }
+  }
+  return { success: true, content: renderModToolResult(value) };
+}
+
+/**
  * Feed an edit tool's line delta into the `wave.lines.changed` counter.
  *
  * Editing tools report `linesAdded` / `linesRemoved` in `result.metadata`;
@@ -738,9 +758,42 @@ class ToolManager {
     if (this.mcpManager.isMcpTool(name)) {
       // `tool.call` 对真 MCP 工具同样要过一遍：mod 工具（名字也带 `mcp__`）
       // 能被拦、真 MCP 不能，是同名工具两套语义（spec「拦下一次工具调用」说的
-      // 是「一次工具调用执行之前」，没有挑工具从哪来）。`{ result }` 由
-      // `dispatchToolCall` 自己筛掉（只有插件注册的工具认）。
-      const mcpDecision = await modManager?.dispatchToolCall(modToolEvent);
+      // 是「一次工具调用执行之前」，没有挑工具从哪来）。
+      //
+      // `next(e)` 走到链尾就是**真的执行**这次 MCP 调用（CC 的形状）：
+      // `executeMcpToolByRegistry` 只跑 MCP 自己的 `execute`，不会把这条链再
+      // 跑一遍，所以这里传执行体是安全的。
+      const runMcpTool = async (): Promise<ToolResult> => {
+        try {
+          return await this.mcpManager.executeMcpToolByRegistry(
+            name,
+            args,
+            enhancedContext,
+          );
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : String(error);
+          // A hook block is a refusal, not a tool failure: keep its wording in
+          // the result so a flat call shows the model what a nested one sees.
+          if (error instanceof HookBlockedToolError) {
+            return { success: false, content: message, error: message };
+          }
+          const failure: ToolResult = {
+            success: false,
+            content: "",
+            error: message,
+          };
+          this.reportCrash(name, error, failure, context);
+          return failure;
+        }
+      };
+      let mcpResult: ToolResult | undefined;
+      const mcpDecision = await modManager?.dispatchToolCall(modToolEvent, {
+        run: async () => {
+          mcpResult ??= await runMcpTool();
+          return mcpResult;
+        },
+      });
       if (mcpDecision?.deny !== undefined) {
         logger?.debug("Tool call denied by plugin mod", { toolName: name });
         return {
@@ -749,28 +802,10 @@ class ToolManager {
           error: mcpDecision.deny,
         };
       }
-      try {
-        const result = await this.mcpManager.executeMcpToolByRegistry(
-          name,
-          args,
-          enhancedContext,
-        );
-        return result;
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        // A hook block is a refusal, not a tool failure: keep its wording in
-        // the result so a flat call shows the model what a nested one sees.
-        if (error instanceof HookBlockedToolError) {
-          return { success: false, content: message, error: message };
-        }
-        const failure: ToolResult = {
-          success: false,
-          content: "",
-          error: message,
-        };
-        this.reportCrash(name, error, failure, context);
-        return failure;
+      if (mcpDecision && "result" in mcpDecision) {
+        return toToolResult(mcpDecision.result);
       }
+      return mcpResult ?? (await runMcpTool());
     }
 
     // Check built-in tools. PreToolUse / PostToolUse belong here rather than in
@@ -801,9 +836,68 @@ class ToolManager {
         }
       }
 
+      const hookManager = enhancedContext.hookManager;
+      /**
+       * `settings.json` 的 PreToolUse 只跑一次。
+       *
+       * 它在 `tool.call` 的 `next(e)` 里面也要过：mod 的执行请求不算「已经
+       * 批准过」，否则 `next()` 就成了绕过用户拒绝的后门。两条路（mod 调了
+       * `next`、没人调）共用同一份结果，不会问两次。
+       */
+      let preToolUseGate: Promise<string | null> | undefined;
+      const checkPreToolUse = (): Promise<string | null> => {
+        // `null` 是 `executePreToolUseHooks` 的「放行」，没有 hookManager 时
+        // 同样放行。
+        preToolUseGate ??= hookManager
+          ? hookManager.executePreToolUseHooks(name, args, enhancedContext)
+          : Promise.resolve(null);
+        return preToolUseGate;
+      };
+
+      let result: ToolResult | undefined;
+      /** 真正跑一次工具（`tool.call` 的 `next(e)` 与「没人注册」两条路共用）。 */
+      const runTool = async (): Promise<ToolResult> => {
+        if (result) return result;
+        try {
+          result = await plugin.execute(args, enhancedContext);
+          recordLinesChangedFromResult(result, context, this.container);
+          recordBashActivity(name, args, result, context, this.container);
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : String(error);
+          logger?.error("Tool execution failed", {
+            toolName: name,
+            error: message,
+          });
+          result = { success: false, content: "", error: message };
+          this.reportCrash(name, error, result, context);
+        }
+        return result;
+      };
+      /** `tool.call` 的 `next(e)` 走到链尾时的那一步：先过审批闸，再执行。 */
+      let blockedByPreToolUse = false;
+      const runThroughPreToolUse = async (): Promise<ToolResult> => {
+        const blocked = await checkPreToolUse();
+        if (blocked) {
+          blockedByPreToolUse = true;
+          return {
+            success: false,
+            content: blocked,
+            error: blocked,
+          };
+        }
+        return runTool();
+      };
+
       // `tool.call`：执行**之前**问一遍插件，被拦下就不跑（spec「拦下一次工具
       // 调用」）。拦下不是审批失败，模型收到这段文本作为工具错误结果。
-      const modDecision = await modManager?.dispatchToolCall(modToolEvent);
+      //
+      // `next(e)` 走到链尾 = 真的执行（CC 的形状），所以执行体传下去；插件自己
+      // 注册的工具没有宿主侧执行体，那条路上不传。
+      const modOwnsTool = modManager?.ownsTool(name) ?? false;
+      const modDecision = await modManager?.dispatchToolCall(modToolEvent, {
+        run: modOwnsTool ? undefined : runThroughPreToolUse,
+      });
       if (modDecision?.deny !== undefined) {
         logger?.debug("Tool call denied by plugin mod", { toolName: name });
         return {
@@ -812,7 +906,12 @@ class ToolManager {
           error: modDecision.deny,
         };
       }
-      if (modManager && modManager.ownsTool(name)) {
+      // `{ result }`：可能是 `next()` 真跑出来的，也可能是 mod 自己造的那份
+      // （CC 同口径）。有了结果就不再执行第二遍。
+      if (modDecision && "result" in modDecision) {
+        result = toToolResult(modDecision.result);
+      }
+      if (modManager && modOwnsTool) {
         // 插件带来的工具与 MCP 工具走同一条审批路（spec「把我们自己的工具交给
         // 模型」）：名字带 `mcp__` 前缀，`isRestrictedTool()` 认它，所以这里要
         // 真的问一次 —— 否则「用户看得见、能拒」只是句空话。内置工具各自在自己
@@ -851,8 +950,8 @@ class ToolManager {
             error: blockedByHook,
           };
         }
-        // 拿到 `{ result }` 就直接交回模型，不再进 `tool.run` —— 那个钩子是
-        // 为「真要执行」准备的，这条路上没有执行体。
+        // 拿到 `{ result }` 就直接交回模型：这条路上没有宿主侧执行体，结果只能
+        // 由插件给。
         const modOutcome: ToolResult =
           modDecision && "result" in modDecision
             ? {
@@ -877,62 +976,28 @@ class ToolManager {
         return modOutcome;
       }
 
-      const hookManager = enhancedContext.hookManager;
-      const blocked = await hookManager?.executePreToolUseHooks(
-        name,
-        args,
-        enhancedContext,
-      );
-      if (blocked) {
-        return { success: false, content: blocked, error: blocked };
-      }
-
-      let result: ToolResult | undefined;
-      /** 真正跑一次工具（`tool.run` 的 `next(e)` 与「没人注册」两条路共用）。 */
-      const runTool = async (): Promise<ToolResult> => {
-        if (result) return result;
-        try {
-          result = await plugin.execute(args, enhancedContext);
-          recordLinesChangedFromResult(result, context, this.container);
-          recordBashActivity(name, args, result, context, this.container);
-        } catch (error) {
-          const message =
-            error instanceof Error ? error.message : String(error);
-          logger?.error("Tool execution failed", {
-            toolName: name,
-            error: message,
-          });
-          result = { success: false, content: "", error: message };
-          this.reportCrash(name, error, result, context);
-        }
-        return result;
-      };
-
-      // `tool.run`：`next(e)` 就是这次执行本身（spec「在工具真正跑之前插一
-      // 脚」）。没有插件注册时它自己就把工具跑掉。
-      if (modManager) {
-        const decision = await modManager.dispatchToolRun(
-          modToolEvent,
-          runTool,
-        );
-        if (decision.deny !== undefined) {
-          return {
-            success: false,
-            content: decision.deny,
-            error: decision.deny,
-          };
+      // 没人调过 `next()` 的那条路：闸门在这里过（mod 调过的话 `result` 已经
+      // 有了，闸门也已经问过一次）。
+      if (result === undefined) {
+        const blocked = await checkPreToolUse();
+        if (blocked) {
+          return { success: false, content: blocked, error: blocked };
         }
       }
       const outcome = result ?? (await runTool());
 
       // PostToolUse hooks run for a failed call too — the tool was attempted,
-      // and PostToolUse cannot block anything at this point.
-      await hookManager?.executePostToolUseHooks(
-        name,
-        args,
-        outcome,
-        enhancedContext,
-      );
+      // and PostToolUse cannot block anything at this point. A call stopped by
+      // PreToolUse was never attempted, so it stays out of PostToolUse (the
+      // same rule as the path that never went through `tool.call`'s `next`).
+      if (!blockedByPreToolUse) {
+        await hookManager?.executePostToolUseHooks(
+          name,
+          args,
+          outcome,
+          enhancedContext,
+        );
+      }
 
       // A memory write that left the file over its cap is worth saying out loud
       // in the result: unlike the load-time warning, this reaches the model
@@ -1145,12 +1210,17 @@ class ToolManager {
   }
 
   /**
-   * 翻到新一轮（`tool.describe` 的缓存粒度）。
+   * 翻到新一轮（`tool.describe` 的翻转点）。
    *
    * 「一轮」用 `MessageManager.countUserTurns()` 认 —— 它只数用户真发出来的
    * prompt（`isMeta` 的注入不算），所以一轮里那些中间请求、工具结果、重开的
    * `sendAIMessage` 都落在同一个 epoch 上。没有 MessageManager 的容器（单测、
    * 独立用 ToolManager 的调用方）恒为 0，也就是「整场一轮」。
+   *
+   * 这里只把上一轮的答案翻成「这一轮要用的」：`describeAsked` **不清** ——
+   * 描述是会话级缓存（每个工具每场会话问一次），清了就等于每轮重问，插件的
+   * 时间戳/计数器会把提示词缓存一直打断。要重问只有两条路：换一场会话，或者
+   * 插件在答案里说 `breakPromptCache: true`。
    */
   private rollDescribeEpoch(): void {
     const epoch = this.container.has("MessageManager")
@@ -1161,16 +1231,15 @@ class ToolManager {
     if (epoch === this.describeEpoch) return;
     this.describeEpoch = epoch;
     this.describePinned = new Map(this.describeStaged);
-    this.describeAsked.clear();
   }
 
   /**
-   * 一个工具这一轮要发给模型的描述：本轮快照里有的用它，没有的用宿主自己的；
-   * 本轮还没问过的就问一次（异步落地，供**下一轮**用）。
+   * 一个工具要发给模型的描述：这一轮 pin 的快照里有就用它，没有的用宿主自己
+   * 的；这个工具还没问过就问一次（异步落地，供**下一轮**用）。
    *
-   * 两个「不」写在 spec 里：同一个工具一轮只问一次（一次请求里既有描述 A 又有
-   * B 是不可能的），以及本轮刚开始问的那一次改不了本轮的 schema —— 工具表是本轮
-   * 开头 pin 的快照。
+   * 两个「不」写在 spec 里：同一个工具一场会话只问一次（描述是会话级缓存，见
+   * `rollDescribeEpoch`），以及刚开始问的那一次改不了本轮的工具表 —— schema 是
+   * 本轮开头 pin 的快照，改过的描述下一轮生效。
    */
   private describeTool(
     name: string,
@@ -1189,8 +1258,14 @@ class ToolManager {
       this.describeAsked.add(name);
       modManager
         .collectToolDescription({ name, description: base ?? "" })
-        .then((description) => {
-          this.describeStaged.set(name, description);
+        .then((described) => {
+          // `breakPromptCache: true` 是插件说「这份答案别存」：把「问过了」
+          // 撤掉，下一次请求再问一遍；答案本身也不进本轮的快照。
+          if (described.breakPromptCache === true) {
+            this.describeAsked.delete(name);
+            return;
+          }
+          this.describeStaged.set(name, described.description);
         })
         .catch((error: unknown) => {
           // `tool.describe` 自己 fail-open，这里只是兜住一个不该发生的拒绝：

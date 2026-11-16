@@ -609,8 +609,10 @@ export class AgentBridge {
           plugin?: string;
           element?: string;
         };
-        const component =
-          typeof event.component === "string" ? event.component : "";
+        // 只有插件画的站点才有焦点事件（`Pane` / `AbovePrompt`）：输入框自己
+        // 是宿主的，CC 的枚举里也没有它，别的值一律不派发。
+        const component = event.component;
+        if (component !== "Pane" && component !== "AbovePrompt") return {};
         const requestId =
           typeof event.requestId === "string" ? event.requestId : "";
         return this.requireSessionForRead(sessionId).agent.notifyModUiFocus({
@@ -678,7 +680,10 @@ export class AgentBridge {
 
       // ── Commands ──
       case "getSlashCommands":
-        return this.getSlashCommands(sessionId, parseHostSurface(p.surface));
+        return await this.getSlashCommands(
+          sessionId,
+          parseHostSurface(p.surface),
+        );
       case "getSubagentConfigurations":
         return this.getSubagentConfigurations(sessionId);
       case "getSkillMetadata":
@@ -2708,14 +2713,14 @@ export class AgentBridge {
    * being handed rows it has no handling for. Unknown values are dropped the
    * same way by `parseHostSurface`.
    */
-  private getSlashCommands(
+  private async getSlashCommands(
     sessionId?: string,
     surface?: HostSurface,
-  ): { commands: SlashCommandInfo[] } {
+  ): Promise<{ commands: SlashCommandInfo[] }> {
     const entry = this.requireSessionForRead(sessionId);
-    const agentCommands = entry.agent
-      .getSlashCommands()
-      .map((command) => toSlashCommandInfo(command));
+    const agentCommands = (await entry.agent.getSlashCommands()).map(
+      (command) => toSlashCommandInfo(command),
+    );
     if (!surface) return { commands: agentCommands };
     const hostCommands = hostSlashCommandsFor(surface);
     // 宿主本地命令（`/config`、`/clear`…）是各前端自己实现的动作，不在 SDK 的

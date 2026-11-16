@@ -2918,10 +2918,10 @@ describe("兼容社区 mod（spec「兼容社区 mod」）", () => {
     if (!result.ok) expect(result.error).toBe("boom");
   });
 
-  it("tool.run 的 next(e) 就是执行本身：拿得到工具结果，next.signal 是 AbortSignal", async () => {
+  it("tool.call 的 next(e) 就是执行本身：拿得到工具结果，next.signal 是 AbortSignal", async () => {
     const { mod } = runtime(`
       exports.register = function (on) {
-        on("tool.run", { tool: "Bash" }, async function ($, e, next) {
+        on("tool.call", { tool: "Bash" }, async function ($, e, next) {
           var isSignal = next.signal instanceof AbortSignal;
           var ran = await next(e);
           return { isSignal: isSignal, out: ran.stdout };
@@ -2931,7 +2931,7 @@ describe("兼容社区 mod（spec「兼容社区 mod」）", () => {
 
     await mod.load();
     const result = await mod.callHook(
-      "tool.run",
+      "tool.call",
       { tool: "Bash" },
       { engine: async () => ({ stdout: "hello" }) },
     );
@@ -2946,7 +2946,7 @@ describe("兼容社区 mod（spec「兼容社区 mod」）", () => {
   it("我们的形状 (e, next) 也拿到 next：next(e) 就是执行，拿得到工具结果", async () => {
     const { mod } = runtime(`
       exports.register = function ($, on) {
-        on("tool.run", { tool: "Bash" }, async function (e, next) {
+        on("tool.call", { tool: "Bash" }, async function (e, next) {
           var isSignal = next.signal instanceof AbortSignal;
           var ran = await next(e);
           return { isSignal: isSignal, out: ran.stdout };
@@ -2956,12 +2956,12 @@ describe("兼容社区 mod（spec「兼容社区 mod」）", () => {
 
     await mod.load();
     const result = await mod.callHook(
-      "tool.run",
+      "tool.call",
       { tool: "Bash" },
       { engine: async () => ({ stdout: "hello" }) },
     );
     // 第二个形参是后来补的：没有它，按我们推荐写法写的守卫只能看见调用、
-    // 看不见结果（`tool.run` 里「工具跑完之后」那几行就写不了）。
+    // 看不见结果（`tool.call` 里「工具跑完之后」那几行就写不了）。
     expect(result).toMatchObject({
       ok: true,
       value: { isSignal: true, out: "hello" },
@@ -2972,7 +2972,7 @@ describe("兼容社区 mod（spec「兼容社区 mod」）", () => {
     const engine = vi.fn(async () => ({ stdout: "hello" }));
     const { mod } = runtime(`
       exports.register = function (on) {
-        on("tool.run", { tool: "Bash" }, async function ($, e, next) {
+        on("tool.call", { tool: "Bash" }, async function ($, e, next) {
           await next(e);
           throw new Error("refresh failed");
         }).catch(async function ($, e, next) {
@@ -2983,7 +2983,11 @@ describe("兼容社区 mod（spec「兼容社区 mod」）", () => {
     `);
 
     await mod.load();
-    const result = await mod.callHook("tool.run", { tool: "Bash" }, { engine });
+    const result = await mod.callHook(
+      "tool.call",
+      { tool: "Bash" },
+      { engine },
+    );
     expect(engine).toHaveBeenCalledTimes(1);
     expect(result).toMatchObject({
       ok: true,
@@ -2995,7 +2999,7 @@ describe("兼容社区 mod（spec「兼容社区 mod」）", () => {
     const engine = vi.fn(async () => ({ stdout: "hello" }));
     const { mod } = runtime(`
       exports.register = function (on) {
-        on("tool.run", { tool: "Bash" }, async function () {
+        on("tool.call", { tool: "Bash" }, async function () {
           throw new Error("guard broke");
         }).catch(async function ($, e, next) {
           // CC 里这条惯用法就是「还没跑过就别跑，直接拒掉」。
@@ -3005,7 +3009,11 @@ describe("兼容社区 mod（spec「兼容社区 mod」）", () => {
     `);
 
     await mod.load();
-    const result = await mod.callHook("tool.run", { tool: "Bash" }, { engine });
+    const result = await mod.callHook(
+      "tool.call",
+      { tool: "Bash" },
+      { engine },
+    );
     expect(engine).not.toHaveBeenCalled();
     expect(result).toEqual({
       ok: true,

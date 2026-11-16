@@ -848,14 +848,20 @@ export class PermissionManager {
     try {
       result = await modManager.dispatchToolCheck(event);
     } catch (error) {
-      // 钩子抛错 / 超时：按宿主原本的决定走 —— fail-open 的方向是「插件坏了
-      // 也不放行」，不是「插件坏了就算了」。`ModManager` 内部已经逐 mod 兜过一
-      // 层，这里是它自己炸了时的最后一档。
-      logger?.warn("tool.check 链失败，按宿主原本的决定走", {
+      // 钩子抛错 / 超时：CC 给 `tool.check` 的兜底结果就是
+      // `{ decision: "deny", reason }` —— 一个守卫坏了不能等于放行。
+      // `ModManager` 内部已经逐 mod 兜过一层，这里是它自己炸了时的最后一档。
+      const message = error instanceof Error ? error.message : String(error);
+      logger?.warn("tool.check 链失败，按拒绝处理", {
         toolName: context.toolName,
-        error: error instanceof Error ? error.message : String(error),
+        error: message,
       });
-      return host;
+      return {
+        decision: "deny",
+        reason: `tool.check hook chain failed: ${message}`,
+        source: host.source,
+        denyReason: host.denyReason,
+      };
     }
     logger?.debug("tool.check verdict", {
       toolName: context.toolName,

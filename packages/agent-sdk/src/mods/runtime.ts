@@ -1326,8 +1326,9 @@ export interface ModRuntimeHost {
  * `session.start` / `ui.render` 是「要 mod 做事」的那两个；`turn.complete`、
  * `turn.start`、`turn.step`、`session.measure`、`session.compact`、`session.end`、
  * `ui.close` 与 `classic.PermissionRequest` 之外的大部分 `classic.*` 是只读的
- * 观察事件，返回值一律丢弃。有返回值语义的六个：`tool.call` / `tool.run` 答
- * `{ deny }`（拦下这次调用，后者还负责真正执行它）、`prompt.submit` 答
+ * 观察事件，返回值一律丢弃。有返回值语义的六个：`tool.call` 答 `{ deny }` 或
+ * `{ result }`（拦下这次调用 / 给出它的结果，`next(e)` 就是执行）、`prompt.
+ * submit` 答
  * `{ context }`（本轮附加上下文，不改用户原文）、`command.run` 答 `{ text }`、
  * `classic.Stop` 答 `{ additionalContext }`（这一轮别急着收尾，把这几句读给
  * 模型听，spec「一轮收尾时的非错误反馈」）、`classic.PreToolUse` 答 `{ deny }`
@@ -1349,7 +1350,6 @@ const HOOK_NAMES = new Set([
   "session.compact",
   "session.end",
   "tool.call",
-  "tool.run",
   "command.run",
   // A 档（spec「第二判定源」「系统提示词与附件」「给工具、技能、命令写描述」
   // 「转录写入前改写」）：都是「改写宿主算出来的东西」而不是「观察」。
@@ -1399,7 +1399,7 @@ const HOOK_NAMES = new Set([
  *
  * matcher 是**事件字段的子集**：`{ component: "Pane" }` 只吃 `component` 是
  * `Pane` 的那些渲染请求。社区 mod 用这几处把「一个事件、多个处理器」分开：
- * `ui.render` 按站点（`component` / `requestId`）、`tool.call` / `tool.run` /
+ * `ui.render` 按站点（`component` / `requestId`）、`tool.call` /
  * `classic.PreToolUse` 按工具名、`command.run` 按命令名、`classic.PostToolUse`
  * 族按 `tool_name`（这三条键就是 Claude Code 的 matcher 键表里对这个事件列的
  * 全部键）。
@@ -1425,7 +1425,6 @@ const MATCHER_EVENTS = new Set([
   "classic.PostToolUseFailure",
   "classic.PostToolBatch",
   "tool.call",
-  "tool.run",
   // `agent.offer` / `agent.spawn` 按子代理类型匹配（spec「派子代理」）：只想管
   // `Explore` 的插件没必要在每次派发上被叫起来。`ui.focus` 按 `{ component }`。
   "agent.offer",
@@ -1440,11 +1439,14 @@ const MATCHER_EVENTS = new Set([
  * 我们的事件里那个字段叫 `instance_id`（与 CC 的 `ui_render` 消息同形）。
  */
 const MATCHER_KEY_ALIASES: Record<string, string> = {
+  // 只有 `requestId` 这一条：它是同一个字段在 CC 的两处不同名字（钩子事件
+  // 叫 `requestId`、`ui_render` 消息叫 `instance_id`）。
+  //
+  // 事件之间**不做别名**：`agent.offer` 的字段是 `agent`、`agent.spawn` 的是
+  // `subagentType`（CC 那两个事件各自的名字），一个 matcher 写哪把钥匙就只
+  // 能开对应的那把锁 —— 给 `spawn` 补一条 `agent → subagentType` 会让同一份
+  // matcher 在两个事件上表现不一致，那是 CC 面外的行为。
   requestId: "instance_id",
-  // CC 的 `agent.spawn` matcher 写 `{ agent: "Explore" }`，我们的事件按
-  // `subagentType` 命名（spec「派子代理」的事件形状）。同一个词在
-  // `agent.offer` 上就是真的 `agent` 字段，所以下面按「事件里有就用真的」取值。
-  agent: "subagentType",
 };
 
 /**
@@ -1562,8 +1564,8 @@ function matchesEvent(
   if (!matcher) return true;
   if (!isPlainObject(event)) return false;
   for (const [rawKey, expected] of Object.entries(matcher)) {
-    // 事件自己有这个键就按字面用它 —— 别名只在事件缺这个键时兜底
-    // （`agent` 在 `agent.offer` 上是真的，在 `agent.spawn` 上是别名）。
+    // 事件自己有这个键就按字面用它 —— 别名只在事件缺这个键时兜底（同一字段
+    // 的两个名字，不是两个事件之间的换算）。
     const key =
       rawKey in event ? rawKey : (MATCHER_KEY_ALIASES[rawKey] ?? rawKey);
     const actual = event[key];
@@ -2463,6 +2465,9 @@ export class ModRuntime {
    * 社区形状的 `next(e)` 把控制权交给链上的下一个（最后是引擎自己那一帧，
    * 见 {@link engineFrame}），所以「包一层再返回」的写法照样成立。一次 handler
    * 只能调一次 `next(e)` —— 再调会让同一条链跑两遍。
+   *
+   * 生成器事件（Claude Code 的 `turn.step` / `process.spawn`）里 handler 是
+   * `async function*`：见 {@link runChainStream}。
    */
   private async runChain(
     name: string,
@@ -2472,20 +2477,47 @@ export class ModRuntime {
     engine: (finalEvent: unknown) => unknown,
     signal: AbortSignal,
   ): Promise<unknown> {
+    return drainHookStream(
+      this.runChainStream(name, entries, start, event, engine, signal),
+    );
+  }
+
+  /**
+   * 同一条链的流形态：handler 中途 `yield` 出来的块交给调用方，`return` 的
+   * 值才是这次调用的结果。
+   *
+   * 普通钩子（绝大多数）没有任何 `yield`，`runChain` 把流驱动到底就是原来那次
+   * `await`。生成器钩子（Claude Code 的 `turn.step`、`process.spawn`）在 CC 里
+   * 是**唯一的两种**「链上每个 mod 都能产出、也能改写」的形状：mod 写
+   * `yield* next(e)` 把下游那条流原样接上来，`next` 的返回值既是「下游最终定成
+   * 什么」也是「下游中途产出了什么」。宿主用 `gen.next()` 循环驱动（见
+   * `ModManager.dispatchTurnStep`），所以 `next()` 返回的东西必须同时是
+   * thenable（`await next(e)`）与 async iterable（`yield* next(e)`）。
+   */
+  private async *runChainStream(
+    name: string,
+    entries: HookEntry[],
+    start: number,
+    event: unknown,
+    engine: (finalEvent: unknown) => unknown,
+    signal: AbortSignal,
+  ): AsyncGenerator<unknown, unknown> {
     for (let index = start; index < entries.length; index += 1) {
       const entry = entries[index]!;
       if (!matchesEvent(entry.matcher, event)) continue;
       let nextCalled = false;
       /** 已经交给下层的那次调用的结果（`.catch` 里的重放要用）。 */
-      let nextResult: Promise<unknown> | undefined;
+      let nextResult: HookStream | undefined;
       const callNext = (nextEvent?: unknown) => {
-        nextResult = this.runChain(
-          name,
-          entries,
-          index + 1,
-          nextEvent === undefined ? event : nextEvent,
-          engine,
-          signal,
+        nextResult = new HookStream(
+          this.runChainStream(
+            name,
+            entries,
+            index + 1,
+            nextEvent === undefined ? event : nextEvent,
+            engine,
+            signal,
+          ),
         );
         return nextResult;
       };
@@ -2506,7 +2538,7 @@ export class ModRuntime {
         },
       );
       try {
-        return await this.invokeInContext<unknown>(
+        const outcome = await this.invokeInContext<unknown>(
           entry.handler,
           undefined,
           // 我们的形状也拿到 `next`（第二个实参）：没有它，按推荐写法写的守卫
@@ -2515,15 +2547,18 @@ export class ModRuntime {
           `${name} 的处理函数`,
           `${this.host.pluginName}:${name}`,
         );
+        return yield* asHookStream(outcome);
       } catch (error) {
         if (!entry.onError) throw error;
         if (!entry.isCommunityError) {
-          return await this.invokeInContext<unknown>(
-            entry.onError,
-            undefined,
-            [error],
-            `${name} 的 catch`,
-            `${this.host.pluginName}:${name}`,
+          return yield* asHookStream(
+            await this.invokeInContext<unknown>(
+              entry.onError,
+              undefined,
+              [error],
+              `${name} 的 catch`,
+              `${this.host.pluginName}:${name}`,
+            ),
           );
         }
         // 社区 `.catch(($, e, next) => …)`：这里的 `next` 多两样东西 ——
@@ -2537,18 +2572,20 @@ export class ModRuntime {
           },
           { signal, error, called: nextCalled },
         );
-        return await this.invokeInContext<unknown>(
-          entry.onError,
-          undefined,
-          [this.dollar, event, caught],
-          `${name} 的 catch`,
-          `${this.host.pluginName}:${name}`,
+        return yield* asHookStream(
+          await this.invokeInContext<unknown>(
+            entry.onError,
+            undefined,
+            [this.dollar, event, caught],
+            `${name} 的 catch`,
+            `${this.host.pluginName}:${name}`,
+          ),
         );
       }
     }
     // 引擎帧按**走到这里的那份事件**算：`next({ ...e, context })` 改过的内容
     // 必须在链尾出现，否则注入静默失效。
-    return engine(event);
+    return await engine(event);
   }
 
   /**
@@ -2583,8 +2620,8 @@ export class ModRuntime {
   /**
    * 这个 mod 有没有注册能接下这次事件的钩子。
    *
-   * `tool.call` / `tool.run` 的链是**跨 mod** 的（`ModManager` 逐个 mod 往下
-   * 走），走到一个压根没注册的 mod 时要能跳过它而不是把它的「空结果」当成决议。
+   * `tool.call` 的链是**跨 mod** 的（`ModManager` 逐个 mod 往下走），走到一个
+   * 压根没注册的 mod 时要能跳过它而不是把它的「空结果」当成决议。
    */
   matchesHook(name: string, event: unknown): boolean {
     return this.matchingHooks(name, event).length > 0;
@@ -2600,8 +2637,8 @@ export class ModRuntime {
   /**
    * 调一个钩子；没有注册时返回 `{ ok: true, value: undefined }`。
    *
-   * `options.engine` 换掉「链尾」—— `tool.call` / `tool.run` 的链尾不是空对象，
-   * 而是「交给下一个 mod」与「真正执行这次调用」（见 `ModManager`）。
+   * `options.engine` 换掉「链尾」—— `tool.call` 的链尾不是空对象，而是「交给
+   * 下一个 mod」与「真正执行这次调用」（见 `ModManager`）。
    * `options.signal` 就是 `next.signal`：整条调用被放弃时 abort。
    */
   async callHook(
@@ -3070,4 +3107,69 @@ async function withBudget<T>(
   } finally {
     budget.stop();
   }
+}
+
+/**
+ * `next(e)` 的返回值：既能 `await`（拿链的最终值），也能 `yield*`（把下游中途
+ * `yield` 出来的块接上来）。
+ *
+ * Claude Code 的生成器事件（`turn.step` / `process.spawn`）两种写法都出现在社区
+ * mod 里：只要结果的 mod 写 `return await next(e)`，要转发的 mod 写
+ * `yield* next(e)`。因为 `next()` 一被调用就开始跑，这里不能在构造时选形态 ——
+ * 由调用方先决定怎么消费它（`await` 走 `then`，`yield*` 走迭代器），另一条路
+ * 到时就废了（一次 handler 只能调一次 `next`，本来也不会有第二次）。
+ */
+class HookStream implements PromiseLike<unknown>, AsyncIterable<unknown> {
+  private settled: Promise<unknown> | undefined;
+
+  constructor(private readonly stream: AsyncGenerator<unknown, unknown>) {}
+
+  [Symbol.asyncIterator](): AsyncIterator<unknown> {
+    return this.stream;
+  }
+
+  then<TResult1 = unknown, TResult2 = never>(
+    onfulfilled?: ((value: unknown) => TResult1 | PromiseLike<TResult1>) | null,
+    onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null,
+  ): Promise<TResult1 | TResult2> {
+    this.settled ??= drainHookStream(this.stream);
+    return this.settled.then(onfulfilled, onrejected);
+  }
+}
+
+/** 驱动一条链流到底，丢掉中途产出的块，只要最终值。 */
+async function drainHookStream(
+  stream: AsyncGenerator<unknown, unknown>,
+): Promise<unknown> {
+  let step = await stream.next();
+  while (step.done !== true) step = await stream.next();
+  return step.value;
+}
+
+/**
+ * handler 的返回值 → 一条链流。
+ *
+ * 普通返回值（绝大多数钩子）就是「一次都没 `yield`、终值等于它」的流；
+ * `async function*` 是生成器事件的形状：它中途 `yield` 出来的块交给调用方，
+ * `return` 的值才是这次钩子的结果。
+ */
+async function* asHookStream(
+  outcome: unknown,
+): AsyncGenerator<unknown, unknown> {
+  if (!isAsyncIterable(outcome)) return outcome;
+  const iterator = outcome[Symbol.asyncIterator]();
+  for (;;) {
+    const step = await iterator.next();
+    if (step.done === true) return step.value;
+    yield step.value;
+  }
+}
+
+function isAsyncIterable(value: unknown): value is AsyncIterable<unknown> {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as AsyncIterable<unknown>)[Symbol.asyncIterator] ===
+      "function"
+  );
 }

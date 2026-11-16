@@ -1761,9 +1761,10 @@ export class AIManager {
    * subagents available" — the reminder then says the name did not match, which
    * is still better than throwing away the turn.
    *
-   * This is the `agent-mention` slot of `prompt.attachment` (spec
+   * This is the `agent_mention` slot of `prompt.attachment` (spec
    * ecosystem/plugin-mods.md「系统提示词与附件」): a mod can rewrite the
-   * reminder or drop it with `{ text: null }`.
+   * reminder or drop it with `{ text: null }`. The name is CC's, underscore
+   * included — a plugin filtering on the real type gets nothing otherwise.
    */
   private async injectAgentMentionReminder(
     mentionedAgents: string[],
@@ -1780,7 +1781,7 @@ export class AIManager {
     const text = buildAgentMentionReminder(mentionedAgents, availableNames);
     if (!text) return;
 
-    const attachment = await this.rewriteAttachment("agent-mention", text);
+    const attachment = await this.rewriteAttachment("agent_mention", text);
     if (attachment === null) return;
 
     const wrapped = wrapInSystemReminder(attachment);
@@ -2603,7 +2604,10 @@ ${question}`;
       maxTokens?: number;
     } = {},
   ): Promise<void> {
-    const { recursionDepth = 0, model, allowedRules, maxTokens } = options;
+    const { recursionDepth = 0, allowedRules, maxTokens } = options;
+    // `let`：`turn.step` 上的 mod 可以把这次请求换到另一个模型上（CC 的生成器
+    // 事件形状），改写落在下面那次请求里。
+    let model = options.model;
     let turnOffset = recursionDepth;
 
     // Pin the settings.json-derived configuration for the whole turn: live
@@ -2693,7 +2697,7 @@ ${question}`;
     const turnId = randomUUID();
     if (!this.subagentType) {
       this.currentTurnId = turnId;
-      this.getModManager()?.notifyMods("turn.start", { turnId, step: 0 });
+      this.getModManager()?.notifyMods("turn.start", { turnId });
     }
     // 这一轮的第几次请求。**不**用 `turnDepth - turnOffset`：那两个量在每次
     // `outer` 重开时都会重置，重开是同一轮里的新请求，mod 看到的步数不该退回 1。
@@ -2836,10 +2840,11 @@ ${question}`;
           const nestedMemories =
             (await this.messageManager.collectNestedMemoryFiles?.()) ?? [];
           for (const memory of nestedMemories) {
-            // `prompt.attachment`（spec「系统提示词与附件」）：`type` 是我们自
-            // 己的分类，`nested-memory` 专指这一档。返回 `null` 就不注入这一条。
+            // `prompt.attachment`（spec「系统提示词与附件」）：`nested_memory`
+            // 是 CC 那一档的真名（下划线），插件按它过滤。返回 `null` 就不注
+            // 入这一条。
             const nestedMemoryText = await this.rewriteAttachment(
-              "nested-memory",
+              "nested_memory",
               `Contents of ${memory.path}:\n\n${memory.content}`,
             );
             if (nestedMemoryText === null) continue;
@@ -2905,7 +2910,8 @@ ${question}`;
           const { toolsConfig, toolNames, reachableToolPlugins } =
             this.resolveFilteredTools();
 
-          const currentModelConfig = this.getModelConfig();
+          // `let`：`turn.step` 上的 mod 可能把这次请求换到另一个模型上。
+          let currentModelConfig = this.getModelConfig();
 
           // Get memory for message-array injection (not system prompt).
           // `omitAgentsMd` subagents start without it — the same saving Claude
@@ -2926,14 +2932,33 @@ ${question}`;
 
           // Tell the mods a request is going out (spec ecosystem/plugin-mods.md
           // 「轮次内外的事件」). `turn.start` opened the turn; from here on every
-          // request is a step, numbered from 1 within this turn — the pair is
+          // request is a step, numbered from 0 within this turn — the pair is
           // what lets a status band show "step 3" without watching messages.
-          if (!this.subagentType) {
-            turnSteps += 1;
-            this.getModManager()?.notifyMods("turn.step", {
+          //
+          // CC's step carries the model it is about to ask and is a **generator**
+          // event: a mod may `yield* next(e)` and `return { ...e, model }` to send
+          // this one request to a different model. That answer has to be in hand
+          // before the request is built, so this one waits (unlike `turn.start`).
+          const stepModel = currentModelConfig.model?.trim();
+          const mods = this.getModManager();
+          if (mods && !this.subagentType && stepModel) {
+            const stepped = await mods.dispatchTurnStep({
               turnId,
-              step: turnSteps,
+              index: turnSteps,
+              messageCount: this.messageManager.getMessages().length,
+              model: stepModel,
             });
+            turnSteps += 1;
+            if (stepped.model !== stepModel) {
+              // 换了模型就把整份配置重新解析一遍：apiType、上下文窗口、输出
+              // 上限都是按模型名查出来的，只换请求里的名字会让限额按旧模型算。
+              currentModelConfig = this.configurationService.resolveModelConfig(
+                stepped.model,
+                undefined,
+                currentModelConfig.permissionMode,
+              );
+              model = stepped.model;
+            }
           }
 
           // Background-task notifications are drained at the request boundary:
@@ -2981,7 +3006,9 @@ ${question}`;
           // Call AI service with streaming callbacks if enabled
           const callAgentOptions: CallAgentOptions = {
             gatewayConfig: this.getGatewayConfig(),
-            modelConfig: this.getModelConfig(),
+            // `currentModelConfig`（而不是再取一次）：`turn.step` 换了模型时这
+            // 份配置已经按新名字重解析过，请求与限额必须是同一个模型。
+            modelConfig: currentModelConfig,
             messages: refreshedMessages,
             sessionId: this.messageManager.getSessionId(),
             abortSignal: abortController.signal,
@@ -2996,7 +3023,7 @@ ${question}`;
             // explicitly configured (never in the agent loop).
             disableThinkingOptions:
               this.modelOverride === "fastModel"
-                ? this.getModelConfig().disableThinkingOptions
+                ? currentModelConfig.disableThinkingOptions
                 : undefined,
           };
 

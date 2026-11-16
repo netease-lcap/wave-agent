@@ -117,7 +117,7 @@ export interface RemoteControlCliSession {
    * page renders these as a menu; the SDK's own list is exactly what a phone
    * can run, since host-local commands (`/plan`, `/config`, …) live outside it.
    */
-  slashCommands(): SlashCommand[];
+  slashCommands(): Promise<SlashCommand[]>;
 }
 
 /** The JSON-RPC code for a rejected parameter (matches the daemon's answer). */
@@ -226,7 +226,7 @@ export class RemoteControlCliHost implements RemoteControlHost {
           // entry's ceiling; the host narrows it to what it can actually run
           // (spec commands/slash-commands.md 场景 4).
           commands: [
-            ...this.session.slashCommands().map(toSlashCommandInfo),
+            ...(await this.session.slashCommands()).map(toSlashCommandInfo),
             ...hostSlashCommandsFor("remote-page").filter(
               (command) => command.id !== "resume",
             ),

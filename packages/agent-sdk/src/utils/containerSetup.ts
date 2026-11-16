@@ -736,16 +736,14 @@ export function setupAgentContainer(
     unregister: (name) => slashCommandManager.unregisterModCommand(name),
     list: () => slashCommandManager.listCommandsForMods(),
     run: async (command, args) => {
-      const target = slashCommandManager
-        .getCommands()
-        .find((entry) => entry.name === command);
+      const commands = await slashCommandManager.getCommands();
+      const target = commands.find((entry) => entry.name === command);
       if (!target) {
         // 建议按「不带斜杠的前缀」找：`$/command.run({ command: "pro" })` 该提示
         // `/probe`，而不是拿带斜杠的三个字符去比。
         const prefix = command.replace(/^\//, "").slice(0, 3);
         const suggestion = prefix
-          ? slashCommandManager
-              .getCommands()
+          ? commands
               .map((entry) => entry.name)
               .find((name) => name.startsWith(prefix))
           : undefined;

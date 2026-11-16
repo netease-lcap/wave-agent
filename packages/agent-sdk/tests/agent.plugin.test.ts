@@ -97,7 +97,7 @@ describe("Agent Plugin Integration", () => {
     });
     activeAgent = agent;
 
-    const commands = agent.getSlashCommands();
+    const commands = await agent.getSlashCommands();
     // Plugin commands are namespaced as pluginName:commandId
     const pluginCommand = commands.find((c) => c.id === "test-plugin:hello");
     expect(pluginCommand).toBeDefined();
@@ -227,7 +227,9 @@ describe("Agent Plugin Integration", () => {
     const sessionId = agent.sessionId;
     const messagesBefore = agent.messages.length;
     expect(
-      agent.getSlashCommands().some((c) => c.id === "test-plugin:hello"),
+      (await agent.getSlashCommands()).some(
+        (c) => c.id === "test-plugin:hello",
+      ),
     ).toBe(true);
 
     // 磁盘上该插件已卸载（命令消失），同时多出一个技能命令。
@@ -251,7 +253,7 @@ describe("Agent Plugin Integration", () => {
     // 就地：会话未重建、消息未清空。
     expect(agent.sessionId).toBe(sessionId);
     expect(agent.messages.length).toBe(messagesBefore);
-    const commands = agent.getSlashCommands();
+    const commands = await agent.getSlashCommands();
     expect(commands.some((c) => c.id === "test-plugin:hello")).toBe(false);
     // 插件技能带来的斜杠命令在重载时重新派生。
     expect(commands.some((c) => c.id === "test-plugin:new-skill")).toBe(true);

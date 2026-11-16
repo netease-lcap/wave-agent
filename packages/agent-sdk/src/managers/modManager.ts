@@ -39,6 +39,7 @@ import {
   type ModSessionMeasureTrigger,
   type ModPromptContextBlock,
   type ModPromptSection,
+  type ModSessionAppendDoor,
   type ModSessionMessage,
   type ModSessionMessageBlock,
   type ModSessionRepo,
@@ -57,7 +58,6 @@ import {
   type ModTokenTotals,
   type ModToolCallEvent,
   type ModToolInfo,
-  type ModToolRunEvent,
   type ModTurnCompleteEvent,
   type ModTurnCompleteTrigger,
   type ModTurnStartEvent,
@@ -206,8 +206,12 @@ export interface ModToolBridge {
 /**
  * `dispatchToolCall` 的答复。
  *
- * 三种可能：`{ deny }`（拦下）、`{ result }`（插件自己给了结果 —— 只可能是
- * 它自己注册的工具）、`{}`（没有意见）。`result` 与 `deny` 互斥。
+ * 三种可能：`{ deny }`（拦下）、`{ result }`（这次调用的结果）、`{}`（没有
+ * 意见，宿主照常往下走）。`result` 与 `deny` 互斥。
+ *
+ * `result` 有两个来源，宿主不用区分：mod 调了 `next(e)` 时链尾**真的执行**了
+ * 这次调用，返回的是那条结果；或者 mod 自己造了一份（CC 同口径 —— 拿到
+ * `next()` 的结果再改写就是它的正常用法）。
  */
 export interface ModToolCallDecision {
   deny?: string;
@@ -370,11 +374,11 @@ const EMPTY_SESSION_USAGE: ModSessionUsage = {
  * `undefined`，整条带会画出 `NaN`。我们的 `prompt` 含缓存命中、CC 的
  * `input_tokens` 不含，所以是**相减**得来的，不是改名。
  */
-/** 钩子返回值是不是一个 `{ deny: string }`（`tool.call` / `tool.run` 的决议形状）。 */
+/** 钩子返回值是不是一个 `{ deny: string }`（`tool.call` 的决议形状）。 */
 /**
  * 走「改写型」链的事件（见 `ModManager.runValueHookChain`）。
  *
- * 与 deny 型那三个（`tool.call` / `tool.run` / `classic.PreToolUse`）分开命名，
+ * 与 deny 型那两个（`tool.call` / `classic.PreToolUse`）分开命名，
  * 免得调用方误用：两族链的 `next` 语义不同。
  */
 type ModValueHookName =
@@ -391,7 +395,10 @@ type ModValueHookName =
   // 值、插件可以换掉它」的形状，与上面那批同一条链。
   | "agent.offer"
   | "prompt.edit"
-  | "prompt.suggest";
+  | "prompt.suggest"
+  // `turn.step` 也在这条链上：引擎算了一份「这次请求用哪个模型」，插件可以
+  // 换掉它（`{ ...e, model }`）。它是生成器事件，但改写语义与这一族相同。
+  | "turn.step";
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -608,6 +615,31 @@ function sameTree(tree: ModPanelTree, node: unknown): boolean {
   } catch {
     return false;
   }
+}
+
+/**
+ * `turn.step` 链上的一份答案：只收下 `model` / `effort`。
+ *
+ * 轮次、序号、消息条数是宿主的事实（mod 说「现在是第 5 步」没有意义）；
+ * `model` 按 CC 的口径必须是非空字符串，给了空串、数字就当没改。
+ */
+function mergeTurnStep(
+  fallback: ModTurnStepEvent,
+  patch: unknown,
+): ModTurnStepEvent {
+  if (typeof patch !== "object" || patch === null) return fallback;
+  const { model, effort } = patch as { model?: unknown; effort?: unknown };
+  const nextModel =
+    typeof model === "string" && model.trim() ? model.trim() : fallback.model;
+  const nextEffort =
+    typeof effort === "string" || typeof effort === "number"
+      ? effort
+      : fallback.effort;
+  return {
+    ...fallback,
+    model: nextModel,
+    ...(nextEffort === undefined ? {} : { effort: nextEffort }),
+  };
 }
 
 export class ModManager {
@@ -1103,8 +1135,8 @@ export class ModManager {
    * 丢了就丢了，宿主不回滚、不重试、不排队（瞬时事件本来就没有「补发」这回事）。
    * 要等返回值的另外几条：`prompt.submit`（见 {@link collectPromptContext}）、
    * `session.end`（见 {@link endSession}）、`classic.Stop`（见
-   * {@link collectStopContext}）、以及决策型的 `tool.call` /
-   * `tool.run`（见 {@link dispatchToolCall} / {@link dispatchToolRun}）。
+   * {@link collectStopContext}）、以及决策型的 `tool.call`（见
+   * {@link dispatchToolCall}）。
    */
   notifyMods(
     event:
@@ -1155,6 +1187,29 @@ export class ModManager {
         }
       });
     }
+  }
+
+  /**
+   * 派发 `turn.step` 并等它答完：这次请求到底用哪个模型。
+   *
+   * 与 {@link notifyMods} 里那条 fire-and-forget 的差别就是 Claude Code 的
+   * **生成器形状**：`turn.step` 是它仅有的两个生成器事件之一（另一个是
+   * `process.spawn`），链上的 mod 可以 `yield* next(e)` 让下游先产出、也可以
+   * `return { ...e, model }` 把这次请求换到另一个模型上 —— 所以宿主必须等，
+   * 并把链尾那份事件（不是进场那份）带回去。
+   *
+   * 只认 `model` / `effort` 两个字段：`turnId` / `index` / `messageCount` 是宿主
+   * 的事实，mod 改不动「现在是第几步」。`model` 必须是非空字符串（CC 同口径），
+   * 给了别的就按没改。
+   */
+  async dispatchTurnStep(event: ModTurnStepEvent): Promise<ModTurnStepEvent> {
+    if (this.disposed) return event;
+    return this.runValueHookChain<ModTurnStepEvent>(
+      "turn.step",
+      event,
+      (current) => mergeTurnStep(event, current),
+      (_modId, value, fallback) => mergeTurnStep(fallback, value),
+    );
   }
 
   /**
@@ -1261,6 +1316,11 @@ export class ModManager {
    * `{ result }` 时 caller 直接把这份值当成工具结果（见 `ModToolCallDecision`）；
    * 都没有就是「没人拦」。
    *
+   * `options.run` 让 `next(e)` **真的执行**这次调用（CC 的形状：`tool.call`
+   * 的 next 是「往下走」，走到链尾就该轮到工具）。宿主传进来的 thunk 自己负责
+   * 幂等与「先过 settings 的 PreToolUse」—— mod 的 `next` 不该成为绕过审批的
+   * 后门。插件自己注册的工具没有宿主侧执行体，那时不传 `run`（链尾仍是空对象）。
+   *
    * `classic.PreToolUse` 是这条链的**另一个名字**：同一时刻、同一份信封、同一
    * 个 `{ deny }`，`tool.call` 没人拦时接着问它（spec「影子事件」里那条
    * 「先 `tool.call` 再它」）。CC 把两者做成两层（一个在 mods 面、一个是
@@ -1269,57 +1329,33 @@ export class ModManager {
    */
   async dispatchToolCall(
     event: ModToolCallEvent,
-    signal?: AbortSignal,
+    options: {
+      signal?: AbortSignal;
+      /** 链尾的执行体：`next(e)` 走到最后一个 mod 之后调它，返回这次调用的结果。 */
+      run?: () => Promise<unknown>;
+    } = {},
   ): Promise<ModToolCallDecision> {
     if (this.disposed) return {};
+    // 链尾把结果包成 `{ result }`：mod 的 `await next(e)` 读 `below.result` 就是
+    // 这次调用的结果（与它自己 `return { result }` 的形状一致）。
+    const run = options.run;
     const decision = await this.runToolHookChain(
       "tool.call",
       event,
-      {},
-      signal,
+      run ? { run: async () => ({ result: await run() }) } : {},
+      options.signal,
     );
     if (decision.deny !== undefined) return { deny: decision.deny };
-    if ("result" in decision) {
-      // `{ result }` 只认**我们自己注册的工具**：那些工具本来就没有宿主侧的
-      // 执行体，结果只能由插件给。顶替一个真会执行的工具的结果，等于让用户
-      // 以为 Bash 跑过了而其实没跑 —— 那是替用户改事实（spec 同款取舍）。
-      if (this.ownsTool(event.tool)) return { result: decision.result };
-      logger.warn(
-        `[Wave] ${event.tool} 不是插件注册的工具，tool.call 返回的 { result } 被忽略`,
-      );
-    }
+    if ("result" in decision) return { result: decision.result };
     // 信封就是同一份（`tool` / `tool_use_id` / `input` + 顶层铺开的参数）：
     // 差别只在这条链认的是另一个钩子名。
     const classic = await this.runToolHookChain(
       "classic.PreToolUse",
       event as ModClassicPreToolUseEvent,
       {},
-      signal,
+      options.signal,
     );
     return classic.deny === undefined ? {} : { deny: classic.deny };
-  }
-
-  /**
-   * 派发 `tool.run`：`next(e)` 就是**执行**这次调用（spec「在工具真正跑之前插
-   * 一脚」）。
-   *
-   * `run` 只会被真正调用一次，由 `ToolManager` 保证幂等。没有插件注册时它照常
-   * 跑 —— 这条链的链尾就是那次执行。插件匹配上了却没调 `next(e)`，等于「不放
-   * 行」，返回一条 deny 文本。
-   */
-  async dispatchToolRun(
-    event: ModToolRunEvent,
-    run: () => Promise<unknown>,
-    signal?: AbortSignal,
-  ): Promise<{ deny?: string }> {
-    if (this.disposed) return {};
-    const decision = await this.runToolHookChain(
-      "tool.run",
-      event,
-      { run },
-      signal,
-    );
-    return decision.deny === undefined ? {} : { deny: decision.deny };
   }
 
   /**
@@ -1379,7 +1415,7 @@ export class ModManager {
    *
    * 两种答案：`{ deny }` 拒绝这一次派发、`{ model, agentId? }` 是它起来之后的
    * 事实。链尾就是真正的派发（`tail`），所以没插件注册时它照常跑 —— 与
-   * `tool.run` 同一条纪律，只是这里 `next(e)` 交回的不是结果而是「它起来了」。
+   * `tool.call` 同一条纪律，只是这里 `next(e)` 交回的不是结果而是「它起来了」。
    */
   async dispatchAgentSpawn(
     event: unknown,
@@ -1420,7 +1456,7 @@ export class ModManager {
           continue;
         }
         // 调过 `next(e)` 之后自己那份返回值不再算数：子代理已经起来了，
-        // 事后再 deny 撤不回它（与 `tool.run` 同一条）。
+        // 事后再 deny 撤不回它（与 `tool.call` 同一条）。
         if (inner !== undefined) return inner;
         // 没调 `next` 也没给答复 = 这一层只是看看：接着问下一个 mod，而不是
         // 就此派发 —— 否则排在后面的守卫 mod 永远轮不到。
@@ -1544,10 +1580,10 @@ export class ModManager {
           );
           continue;
         }
-        // 只有 `false` 是决定：它是「这次别摆」。`true` 等于没意见 —— 建议摆
-        // 不摆得上要宿主的输入框说了算，不能因为某个 mod 说了 true 就跳过。
-        if (value.isShown) continue;
-        return { isShown: false };
+        // `{ isShown }` 就是这条事件的答案，两种取值都算数：`false` 是不摆，
+        // `true` 是「摆上」—— 宿主照旧按自己的输入框状态尽力而为，但不再往下
+        // 问。CC 的这条事件以 `isShown` 为结果键，谁给出合法值谁就收敛。
+        return { isShown: value.isShown };
       }
       // 链尾按走到那里的那份事件算：`next({ ...e, text })` 换过的建议才是要摆
       // 上去的那条。
@@ -1630,13 +1666,24 @@ export class ModManager {
         return { decision, ...(reason === undefined ? {} : { reason }) };
       },
       (modId, value, fallback) => {
-        if (!isPlainRecord(value)) return fallback;
+        if (!isPlainRecord(value)) {
+          logger.warn(
+            `[Wave] ${modId} 的 tool.check 返回了不合法的结果：按拒绝处理`,
+          );
+          return {
+            decision: "deny",
+            reason: "tool.check returned no decision",
+          };
+        }
         const next = value.decision;
         if (next !== "allow" && next !== "ask" && next !== "deny") {
           logger.warn(
-            `[Wave] ${modId} 的 tool.check 返回了不合法的 decision：按引擎的判定走`,
+            `[Wave] ${modId} 的 tool.check 返回了不合法的 decision：按拒绝处理`,
           );
-          return fallback;
+          return {
+            decision: "deny",
+            reason: "tool.check returned no valid decision",
+          };
         }
         // 三个方向都算数（含放宽）。CC 的契约就是 `return any { decision }`，
         // 官方示例是 `on("tool.check", { tool: "Read" }, () => ({ decision: "allow" }))`，
@@ -1653,6 +1700,20 @@ export class ModManager {
         return { decision: next, reason };
       },
       signal,
+      // 抛错 / 超时也是拒绝：CC 给这条链的兜底就是
+      // `(e) => ({ decision: "deny", reason: e })`，理由是那条错误本身。这是
+      // 全部事件里唯一 fail-closed 的一处 —— 守卫坏了要挡住工具，不是放行。
+      (modId, error) => {
+        logger.warn(
+          `[Wave] ${modId} 的 tool.check 失败，按拒绝处理：${String(error)}`,
+        );
+        return {
+          decision: "deny",
+          reason: `tool.check hook failed: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        };
+      },
     );
   }
 
@@ -1681,7 +1742,7 @@ export class ModManager {
         sections.push({
           id: item.id,
           text: item.text.slice(0, MOD_LIMITS.promptSectionChars),
-          scope: item.scope === "turn" ? "turn" : "session",
+          scope: item.scope === "session" ? "session" : "shared",
         });
       }
       return sections;
@@ -1891,7 +1952,8 @@ export class ModManager {
    */
   async dispatchSessionAppend(
     message: ModSessionMessage,
-    turnId?: string,
+    door: ModSessionAppendDoor,
+    agentId?: string,
     signal?: AbortSignal,
   ): Promise<{ message: ModSessionMessage; uuid: string; deny?: string }> {
     const base: { message: ModSessionMessage; uuid: string; deny?: string } = {
@@ -1903,12 +1965,13 @@ export class ModManager {
       "session.append",
       {
         message,
-        // `uuid` / `door` 是 CC 的两个字段名（`uuid` 就是我们的 message.id）：
-        // 真插件按 `e.agentId` 分主/子代理、按 `e.door` 分主对话/压缩，
-        // 回来后按 `r.uuid` 记自己那份。
+        // `uuid` / `door` / `agentId` 是 CC 的三个字段名（`uuid` 就是我们的
+        // message.id）：真插件按 `e.agentId` 分主/子代理、按 `e.door` 分这行是
+        // 怎么来的，回来后按 `r.uuid` 记自己那份。没有 `turnId` —— CC 的事件
+        // 里就没这个字段。
         uuid: message.id,
-        door: "engine",
-        ...(turnId === undefined ? {} : { turnId }),
+        door,
+        ...(agentId === undefined ? {} : { agentId }),
       },
       (current) => {
         // 链尾按链尾收到的事件取值：`next({ ...e, message })` / `{ deny }` 之后
@@ -1948,19 +2011,23 @@ export class ModManager {
   /**
    * 派发 `tool.describe`：一个工具的描述第一次要发给模型时（spec「给工具、技
    * 能、命令写描述」）。
+   *
+   * 每场会话问一次，答案由 `ToolManager` 存着；`breakPromptCache: true` 是插
+   * 件声明「这份别存」，那一次请求之后就重新问。
    */
   async collectToolDescription(
     tool: { name: string; description: string },
     signal?: AbortSignal,
-  ): Promise<string> {
-    if (this.disposed) return tool.description;
-    return this.runValueHookChain<string>(
+  ): Promise<{ description: string; breakPromptCache?: boolean }> {
+    if (this.disposed) return { description: tool.description };
+    type Described = { description: string; breakPromptCache?: boolean };
+    return this.runValueHookChain<Described>(
       "tool.describe",
       { tool: tool.name, description: tool.description },
       (current) =>
         isPlainRecord(current) && typeof current.description === "string"
-          ? current.description
-          : tool.description,
+          ? { description: current.description }
+          : { description: tool.description },
       (modId, value, fallback) => {
         if (!isPlainRecord(value)) return fallback;
         if (value.isDeferred !== undefined) {
@@ -1969,9 +2036,16 @@ export class ModManager {
             `[Wave] ${modId} 的 tool.describe 返回了 isDeferred：我们没有 tool search，这一项被忽略`,
           );
         }
-        return typeof value.description === "string"
-          ? value.description
-          : fallback;
+        const description =
+          typeof value.description === "string"
+            ? value.description
+            : fallback.description;
+        // `breakPromptCache: true` 是「这一份别缓存」的声明，链上任何一环说了
+        // 都算数 —— 丢掉它就等于把插件的时间戳又缓存住了一整场会话。
+        return value.breakPromptCache === true ||
+          fallback.breakPromptCache === true
+          ? { description, breakPromptCache: true }
+          : { description };
       },
       signal,
     );
@@ -2080,27 +2154,26 @@ export class ModManager {
   }
 
   /**
-   * `tool.call` / `tool.run` 的**跨 mod** 钩子链。
+   * `tool.call` / `classic.PreToolUse` 的**跨 mod** 钩子链。
    *
-   * 链尾（`tail`）有两个：`tool.call` 的「没有意见」（空对象，谁都没拦）与
-   * `tool.run` 的「执行这次调用」。所以 `next(e)` 走到最后一个 mod 之后落到
-   * `tail` 上 —— 事件走到哪一份，`tail` 就拿哪一份。
+   * 链尾（`tail`）有两个：`tool.call` 的「执行这次调用」（mod 的 `next(e)`
+   * 走到最后一个 mod 之后真的把工具跑掉）与 `classic.PreToolUse` 的「没有意见」
+   * （空对象，它只拦、不执行 —— 执行已经在 `tool.call` 那条链上了）。
    *
    * 一个 mod 失败（抛错、超时）按 fail-open 处理：记一条 warn，接着问下一个
    * —— 钩子挂掉不该让对话卡在「工具既不跑也不拒」（要 fail-closed 的守卫用
    * `.catch` 自己返回 `{ deny }`）。
    */
   private async runToolHookChain(
-    name: "tool.call" | "tool.run" | "classic.PreToolUse",
+    name: "tool.call" | "classic.PreToolUse",
     event: unknown,
     tail: { run?: () => Promise<unknown> },
     signal?: AbortSignal,
   ): Promise<{ deny?: string; result?: unknown }> {
     const loaded = [...this.mods.values()].filter((item) => item.runtime);
     let ran = false;
-    // 只认 `tool.call` 的 `{ result }`：`tool.run` 的链尾已经是真结果，`classic.
-    // PreToolUse` 在 Claude Code 那边也没有这一项。返回 `null` = 这一层没有给出
-    // 可用的答案（继续按「没有意见」算）。
+    // 只认 `tool.call` 的 `{ result }`：`classic.PreToolUse` 在 Claude Code 那边
+    // 没有这一项。返回 `null` = 这一层没有给出可用的答案（继续按「没有意见」算）。
     const asAnswer = (
       value: unknown,
     ):
@@ -2116,9 +2189,9 @@ export class ModManager {
       if (!("result" in shape)) return null;
       return { result: shape.result ?? null };
     };
-    // 链尾把**工具结果**交回去：`tool.run` 的 `next(e)` 是「跑这次调用」，社区
-    // 写法就是 `const r = await next(e)` 之后读 `r`。`tool.call` 没有这一步
-    // （`tail.run` 缺省），链尾给「没有意见」的空对象。
+    // 链尾把**工具结果**交回去：`tool.call` 的 `next(e)` 就是执行，社区写法是
+    // `const r = await next(e)` 之后读 `r.result`。没有执行体（`classic.
+    // PreToolUse`、或插件自己注册的工具）时，链尾给「没有意见」的空对象。
     const runOnce = async () => {
       if (tail.run && !ran) {
         ran = true;
@@ -2151,9 +2224,8 @@ export class ModManager {
           logger.warn(`[Wave] ${item.mod.id} 的 ${name} 失败：${result.error}`);
           continue;
         }
-        // 交给下面之后，`tool.run` / `classic.PreToolUse` 里这个 mod 自己的
-        // 返回值不再算数：`next` 之后 deny 撤不回已经跑掉的工具（Claude Code
-        // 同口径），内层的决议说了算。
+        // 交给下面之后，`classic.PreToolUse` 里这个 mod 自己的返回值不再算数：
+        // 它没有执行体，`next` 之后只可能是在看下游的裁决（Claude Code 同口径）。
         //
         // `tool.call` 是例外：它没有「已经跑掉的工具」，`await next(e)` 之后包
         // 一层再返回（`return { result: shape(r) }`）是社区最自然的后处理写法，
@@ -2162,13 +2234,6 @@ export class ModManager {
           if (name === "tool.call" && asAnswer(result.value))
             return result.value;
           return innerValue;
-        }
-        if (name === "tool.run" && !isDeny(result.value)) {
-          // 匹配上了却没调 `next(e)`：工具没跑，也就没有结果。按「不放行」报，
-          // 否则模型会拿到一个凭空的成功。
-          return {
-            deny: `${item.plugin} 的 tool.run 钩子没有放行这次调用`,
-          };
         }
         if (name === "classic.PreToolUse" && !isDeny(result.value)) {
           // CC 这一条另有 `{ allow: true }` / `{ ask }` / `updatedInput`：放行
@@ -2205,8 +2270,9 @@ export class ModManager {
    *
    * 与 {@link runToolHookChain} 的两处不同，都是刻意的：
    *
-   * - **`next(e)` 之后外层还能改**。deny 链里 `next` 之后工具已经跑了，外层再
-   *   说什么都晚了（Claude Code 同口径）；改写链里 `next` 只是「先看看下面几
+   * - **`next(e)` 之后外层还能改**。deny 链里 `next` 之后工具已经跑了（`tool.
+   *   call` 的 `next` 就是执行），外层再说什么都晚了（Claude Code 同口径）；
+   *   改写链里 `next` 只是「先看看下面几
    *   个 mod 改成什么」，外层在自己那份基础上继续改是正常写法 —— 社区的
    *   `const below = await next(e); return { ...below, text: fix(below.text) }`
    *   就是这个意思。旧链丢掉外层返回值，让这种写法静默失效。
@@ -2225,6 +2291,15 @@ export class ModManager {
     tail: (event: unknown) => T,
     normalize: (modId: string, value: unknown, fallback: T) => T,
     signal?: AbortSignal,
+    /**
+     * 某个 mod 抛错 / 超时时怎么办：返回一个结果就**当场收口**（链上后面的 mod
+     * 不再问），返回 `undefined` 就按默认的「跳过它、继续问下一个」。
+     *
+     * 只有 `tool.check` 传它：CC 给这条链的兜底是 `{ decision: "deny" }`，
+     * 一个守卫坏了不能等于放行；其余 value 型事件的失败语义是「这次没有答
+     * 案」，跳过才是对的。
+     */
+    onFailure?: (modId: string, error: unknown, fallback: T) => T | undefined,
   ): Promise<T> {
     const loaded = [...this.mods.values()].filter((item) => item.runtime);
     const fromIndex = async (index: number, current: unknown): Promise<T> => {
@@ -2250,6 +2325,8 @@ export class ModManager {
         if (!result.ok) {
           logger.warn(`[Wave] ${item.mod.id} 的 ${name} 失败：${result.error}`);
           if (inner !== undefined) return inner;
+          const failed = onFailure?.(item.mod.id, result.error, fallback);
+          if (failed !== undefined) return failed;
           continue;
         }
         if (result.value === undefined) return fallback;

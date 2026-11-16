@@ -229,9 +229,6 @@ export interface MessageInputHandle {
   }) => boolean;
 }
 
-/** 输入框自己的 `ui.focus` 实例 id：它不是 `ui.render` 画的站点，没有别的 id。 */
-const COMPOSER_FOCUS_ID = "composer";
-
 /** 只按修饰键时不该算作「一次编辑的触发键」。 */
 const MODIFIER_KEYS = new Set([
   "Shift",
@@ -1143,20 +1140,8 @@ export const MessageInput = forwardRef<
   // position instead of inserting at the wrong spot.
   const lastCaretOffsetRef = useRef<number | null>(null);
 
-  // 焦点环落到输入框上（`ui.focus`，spec「输入框里的建议与焦点」）。只读事件：
-  // 宿主拿它通知「用户开始打字了」，返回值只表达「没挪成」，这里不看。
-  //
-  // 只报落点、不报失焦：事件里没有区分字段，为了「移走」再加一个 CC 面外的
-  // 字段就是另一种形状 —— 插件要的「此刻焦点在哪」由各站点自己的落点拼出来。
-  const handleInputFocus = useCallback(() => {
-    vscode.postMessage({
-      command: "uiFocus",
-      sessionId,
-      ...(paneId === undefined ? {} : { paneId }),
-      component: "Composer",
-      requestId: COMPOSER_FOCUS_ID,
-    });
-  }, [vscode, sessionId, paneId]);
+  // `ui.focus` 只由插件画的站点派发（`Pane` / `AbovePrompt`）：输入框自己是
+  // 宿主的，CC 的枚举里也没有它，所以这里不报焦点。
 
   const handleInputBlur = useCallback(() => {
     const selection = window.getSelection();
@@ -2543,7 +2528,6 @@ export const MessageInput = forwardRef<
             onKeyDown={handleKeyDown}
             onSelect={handleSelectionChange}
             onClick={handleSelectionChange}
-            onFocus={handleInputFocus}
             onBlur={handleInputBlur}
             onCompositionStart={handleCompositionStart}
             onCompositionEnd={handleCompositionEnd}

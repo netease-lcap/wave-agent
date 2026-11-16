@@ -1042,8 +1042,9 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         const initialMcpServers = agent.getMcpServers?.() || [];
         setMcpServerStatuses(initialMcpServers);
 
-        // Get initial commands
-        const agentSlashCommands = agent.getSlashCommands?.() || [];
+        // Get initial commands (`command.describe` runs on every draw, so the
+        // list arrives asynchronously).
+        const agentSlashCommands = (await agent.getSlashCommands?.()) || [];
         setSlashCommands(agentSlashCommands);
 
         // Get initial agent definitions
@@ -1184,7 +1185,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     try {
       const result = await agent.reloadPlugins();
       // 换装后本进程各会话的能力已变，UI 侧的命令 / 子代理 / 技能列表同步重读。
-      setSlashCommands(agent.getSlashCommands?.() || []);
+      setSlashCommands((await agent.getSlashCommands?.()) || []);
       setAgentDefinitions(agent.getSubagentConfigurations?.() || []);
       setSkills(agent.getSkillMetadata?.() || []);
       if (result.failures.length > 0) {
@@ -1709,7 +1710,8 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     // 是为了让失败以 RPC 错误回给页面（TUI 那条路径把错误渲染成一条消息）。
     renameSession: (title) => agentRef.current?.renameSession(title),
     compact: (instructions) => compact(instructions),
-    slashCommands: () => agentRef.current?.getSlashCommands() ?? [],
+    slashCommands: () =>
+      agentRef.current?.getSlashCommands() ?? Promise.resolve([]),
     // 手机页取数都读 agent 手上那份列表（压缩后的上下文）：首屏尾段（`limit`）、
     // 重连补差（`since`）、滚到顶往回翻（`before` + `limit`）三种窗口原样交给
     // SDK，切片与 `hasMore` / `anchorLost` 都由它判。分页是 2026-11-06 起远控页

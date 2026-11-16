@@ -479,7 +479,8 @@ export class Agent {
    * 只读事件：`e` 里没有可改的内容，返回值只表达「这次没挪成」。
    */
   public async notifyModUiFocus(event: {
-    component: string;
+    /** 只有插件画的站点报焦点：`Pane` / `AbovePrompt`（输入框自己是宿主的）。 */
+    component: "Pane" | "AbovePrompt";
     requestId: string;
     plugin?: string;
     element?: string;
@@ -2116,7 +2117,9 @@ export class Agent {
     await this.modManager.endSession();
     // 影子事件 `classic.SessionEnd`（spec「影子事件」）：`session.end` 之后、实
     // 例被丢掉之前。`dispose` 之后一律静默，所以必须在这里。
-    this.modManager.notifyMods("classic.SessionEnd", { reason: "exit" });
+    this.modManager.notifyMods("classic.SessionEnd", {
+      reason: "prompt_input_exit",
+    });
     await this.modManager.dispose();
     // 侧聊段依附于这场对话：销毁时一并丢弃，在途的那一轮随之中止（否则它会带着
     // 网络句柄活过 destroy）。
@@ -2379,8 +2382,13 @@ export class Agent {
 
   // ========== Slash Command Management Methods ==========
 
-  /** Get all available slash commands */
-  public getSlashCommands(): SlashCommand[] {
+  /**
+   * Get all available slash commands.
+   *
+   * Async because `command.describe` runs on every draw and its answer has to be
+   * in hand before the list is handed out (spec「给工具、技能、命令写描述」).
+   */
+  public async getSlashCommands(): Promise<SlashCommand[]> {
     return this.slashCommandManager.getCommands();
   }
 

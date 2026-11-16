@@ -8,8 +8,8 @@ import type { SlashCommand } from "../../src/types/index.js";
 
 /**
  * `command.describe`（spec ecosystem/plugin-mods.md「给工具、技能、命令写描述」）：
- * 命令列表要画时每个命令问一次，返回的 `{ description, argumentHint, isHidden }`
- * 三个字段都可选、只覆盖给了的。
+ * 命令列表要画时每个命令问一次、**等答案回来再画**，返回的
+ * `{ description, argumentHint, isHidden }` 三个字段都可选、只覆盖给了的。
  *
  * `isHidden` 只影响**列表**：列表里不显示，但 `hasCommand` / `executeCommand` 照旧
  * 找得到它 —— 用户直接敲那个命令时它得能跑（spec 验收场景 8）。
@@ -25,13 +25,6 @@ vi.mock("../../src/utils/globalLogger.js", () => ({
 }));
 
 const WORKDIR = path.resolve("/fake/project");
-
-/** 让 `command.describe` 那次问答落地：一条 promise 链，没有定时器。 */
-async function settleDescribe(): Promise<void> {
-  for (let i = 0; i < 3; i += 1) {
-    await Promise.resolve();
-  }
-}
 
 function build(
   options: {
@@ -80,11 +73,11 @@ function build(
   return { manager, collectCommandDescribe, handler, messageManager, register };
 }
 
-function row(
+async function row(
   manager: SlashCommandManager,
   name: string,
-): SlashCommand | undefined {
-  return manager.getCommands().find((command) => command.name === name);
+): Promise<SlashCommand | undefined> {
+  return (await manager.getCommands()).find((command) => command.name === name);
 }
 
 beforeEach(() => {
@@ -92,24 +85,16 @@ beforeEach(() => {
 });
 
 describe("command.describe", () => {
-  it("每个命令问一次，答案在下一次画列表时生效（只覆盖给了的字段）", async () => {
+  it("每次画列表都问一次，答案当次就用上（只覆盖给了的字段）", async () => {
     const { manager, collectCommandDescribe } = build({
       describe: (command) =>
         command === "deploy" ? { description: "部署到测试环境" } : {},
     });
 
-    // 第一次画：钩子是异步的，这一份还是宿主自己的。
-    expect(row(manager, "deploy")?.description).toBe("宿主描述：deploy");
-    expect(collectCommandDescribe).toHaveBeenCalledTimes(2);
-    await settleDescribe();
-
-    const deploy = row(manager, "deploy");
+    const deploy = await row(manager, "deploy");
     expect(deploy?.description).toBe("部署到测试环境");
     // 没给的字段保留宿主的。
     expect(deploy?.argumentHint).toBe("[path]");
-    // 一轮画多少次都只问过一次。
-    row(manager, "deploy");
-    row(manager, "deploy");
     expect(collectCommandDescribe).toHaveBeenCalledTimes(2);
   });
 
@@ -118,10 +103,9 @@ describe("command.describe", () => {
       describe: () => ({ argumentHint: "<env> <version>" }),
     });
 
-    row(manager, "deploy");
-    await settleDescribe();
-
-    expect(row(manager, "deploy")?.argumentHint).toBe("<env> <version>");
+    expect((await row(manager, "deploy"))?.argumentHint).toBe(
+      "<env> <version>",
+    );
   });
 
   it("isHidden 只影响列表：列表里不显示，直接敲照旧能执行", async () => {
@@ -129,13 +113,10 @@ describe("command.describe", () => {
       describe: (command) => (command === "probe" ? { isHidden: true } : {}),
     });
 
-    row(manager, "probe");
-    await settleDescribe();
-
-    expect(manager.getCommands().map((command) => command.name)).toEqual([
-      "deploy",
-    ]);
-    expect(row(manager, "probe")).toBeUndefined();
+    expect(
+      (await manager.getCommands()).map((command) => command.name),
+    ).toEqual(["deploy"]);
+    expect(await row(manager, "probe")).toBeUndefined();
 
     // 藏起来不等于不能跑：`hasCommand` / `executeCommand` 都还认它。
     expect(manager.hasCommand("probe")).toBe(true);
@@ -144,34 +125,33 @@ describe("command.describe", () => {
     expect(messageManager.saveSession).toHaveBeenCalled();
   });
 
-  it("命令重新注册时旧答案作废，会重新问一次", async () => {
-    const { manager, collectCommandDescribe, register } = build({
-      describe: (command) => (command === "deploy" ? { isHidden: true } : {}),
+  it("答案是每次现问的：插件改了口，下一次画就变了", async () => {
+    let hidden = true;
+    const { manager, collectCommandDescribe } = build({
+      describe: (command) =>
+        command === "deploy" && hidden ? { isHidden: true } : {},
     });
 
-    row(manager, "deploy");
-    await settleDescribe();
-    expect(row(manager, "deploy")).toBeUndefined();
+    expect(await row(manager, "deploy")).toBeUndefined();
 
-    register({ name: "deploy" });
-    row(manager, "deploy");
-    await settleDescribe();
-
-    expect(collectCommandDescribe).toHaveBeenCalledTimes(3);
-    // 重新问过之后还是「藏起来」（假 ModManager 的回答不变），只是问过第二次。
-    expect(row(manager, "deploy")).toBeUndefined();
+    hidden = false;
+    expect((await row(manager, "deploy"))?.description).toBe(
+      "宿主描述：deploy",
+    );
+    // 两次画，每次每个命令各问一次。
+    expect(collectCommandDescribe).toHaveBeenCalledTimes(4);
   });
 
-  it("没接 ModManager 时照旧：宿主自己的描述与参数提示", () => {
+  it("没接 ModManager 时照旧：宿主自己的描述与参数提示", async () => {
     const { manager, collectCommandDescribe } = build({
       withoutModManager: true,
     });
 
-    expect(row(manager, "deploy")).toMatchObject({
+    expect(await row(manager, "deploy")).toMatchObject({
       description: "宿主描述：deploy",
       argumentHint: "[path]",
     });
-    expect(manager.getCommands()).toHaveLength(2);
+    expect(await manager.getCommands()).toHaveLength(2);
     expect(collectCommandDescribe).not.toHaveBeenCalled();
   });
 });

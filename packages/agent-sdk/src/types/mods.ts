@@ -385,10 +385,11 @@ export interface ModPromptEditEvent {
 /** `ui.focus` 的 `e`（spec「输入框里的建议与焦点」）。 */
 export interface ModUiFocusEvent {
   /**
-   * 哪个站点：`Pane`（右侧面板正文）、`AbovePrompt`（输入框上方那条带）或
-   * `Composer`（输入框自己）。失焦不单独派发 —— 事件里没有区分字段。
+   * 哪个站点：`Pane`（右侧面板正文）或 `AbovePrompt`（输入框上方那条带）。
+   * 只有插件画的站点才有焦点事件 —— 输入框自己是宿主的，CC 的枚举里也没有它。
+   * 失焦不单独派发 —— 事件里没有区分字段。
    */
-  component: string;
+  component: "Pane" | "AbovePrompt";
   /** 画这个站点的那次 `ui.render` 的实例 id。 */
   requestId: string;
   /** 拿到焦点环的元素是谁画的；引擎自己的停靠点时没有。 */
@@ -793,7 +794,11 @@ export interface ModClassicSessionStartEvent extends ModClassicEventBase {
 /** `classic.SessionEnd`：会话销毁前。 */
 export interface ModClassicSessionEndEvent extends ModClassicEventBase {
   hook_event_name: "SessionEnd";
-  reason: "clear" | "exit";
+  /**
+   * 与 CC 同名同义：`clear` 是 `/clear` 把这一场扔掉、`prompt_input_exit` 是
+   * 用户退出（CC 的 `--input=exit` 那档）、`other` 是宿主要求销毁。
+   */
+  reason: "clear" | "prompt_input_exit" | "other";
 }
 
 /** `classic.Stop`：模型停下来、这一轮可能要收尾（答完或用户中断）。 */
@@ -1110,14 +1115,31 @@ export interface ModSessionAppendEvent {
    * 回查 / 串联自己要记的那一份 —— 真插件（lossless-claude）读的就是这个名字。
    */
   uuid: string;
-  /** 谁写的这一行：主对话，还是压缩时摘要落库。 */
-  door: "engine" | "compaction";
-  /** 子代理落库时带自己的 id。 */
+  /** 这一行是从哪条门进来的，取值与 CC 的 `doorOf` 同名同义。 */
+  door: ModSessionAppendDoor;
+  /** 子代理落库时带自己的 id（主会话的行上没有这个键）。 */
   agentId?: string;
-  /** 这条消息属于哪一轮；不在轮次里存的（通知、记忆）没有。 */
-  turnId?: string;
   [key: string]: unknown;
 }
+
+/**
+ * `session.append` 的 `door`：这一行是怎么来的。
+ *
+ * 只列我们给得出的档；CC 另有 `tool-message`（子代理的工具消息）、`command`
+ * （斜杠命令的回显）、`notice`（系统提示行）、`compaction`（压缩摘要）、
+ * `delivery`（投递给子代理的附件）、`hook-context`（钩子塞进来的上下文）、
+ * `attachment`（宿主自己渲染的附件）七档，我们没有对应的行，就不放进类型里
+ * 装作有 —— 压缩摘要那一行本来就不问 `session.append`。
+ */
+export type ModSessionAppendDoor =
+  // 用户提交的一句话
+  | "prompt"
+  // 模型的回答
+  | "response"
+  // 工具结果（CC 里是带 tool_result 块的 user 行）
+  | "tool-result"
+  // 宿主自己塞进去、不来自人的行（记忆注入、系统提醒）
+  | "note";
 
 /** `tool.check` 能给出的决定（spec「第二判定源」）。 */
 export type ModToolCheckDecision = "allow" | "ask" | "deny";
@@ -1148,8 +1170,11 @@ export interface ModPromptSection {
   /** 段名，`prompt.section` 的 `e.name` 就是它。 */
   id: string;
   text: string;
-  /** `session` 进缓存前缀（整场不变），`turn` 每轮重算。 */
-  scope: "session" | "turn";
+  /**
+   * `shared` 是跨轮不变的共享段（排在段表最前、进缓存前缀），`session` 是本场
+   * 会话内才成立的段（排在最后、每轮重算）。与 CC 的两档同名同义。
+   */
+  scope: "shared" | "session";
 }
 
 /**
@@ -1206,15 +1231,14 @@ export type ModAskOptions =
     };
 
 /**
- * `tool.call` / `tool.run` 的载荷：一次工具调用（spec「拦下一次工具调用」
- * 「在工具真正跑之前插一脚」）。
+ * `tool.call` 的载荷：一次工具调用（spec「拦下一次工具调用」）。
  *
  * 字段照 Claude Code 的 `ToolCallEnvelope`：`tool` 是工具名、`tool_use_id` 是这
  * 次调用的 id、`input` 是它收到的参数；参数**另外在顶层铺一份**（`e.command`
  * 就是 Bash 的 `command`），社区插件读写的是顶层那份而不是 `e.input.command`。
  *
- * 两个事件的区别只在时机：`tool.call` 在 PreToolUse 钩子之前（「要不要拦」），
- * `tool.run` 在它之后、工具真正执行之前（`next(e)` 才执行）。
+ * 时机在 `settings.json` 的 PreToolUse 钩子之前（「要不要拦」）；`next(e)` 就是
+ * 执行，里面的执行先过那道 PreToolUse，所以它不能用来绕过用户的拒绝。
  */
 export interface ModToolCallEvent {
   tool: string;
@@ -1224,15 +1248,12 @@ export interface ModToolCallEvent {
   [key: string]: unknown;
 }
 
-/** `tool.run` 的载荷：与 {@link ModToolCallEvent} 同形，时机不同。 */
-export type ModToolRunEvent = ModToolCallEvent;
-
 /**
- * `tool.call` / `tool.run` 钩子的返回值。
+ * `tool.call` 钩子的 `{ deny }` 返回值。
  *
- * 只认 `{ deny }`：拦下这次调用，模型收到这段文本作为工具错误结果（与「参数
- * 不合法」同一形态）。改写参数、用自己的结果顶替（`{ result }`）、替用户批准
- * （`tool.check`）都不做。
+ * 拦下这次调用，模型收到这段文本作为工具错误结果（与「参数不合法」同一形态）。
+ * 改写参数、替用户批准（`tool.check`）都不做；`{ result }` 是另一个通道
+ * （见 `ModManager.dispatchToolCall` 的 `ModToolCallDecision`）。
  */
 export interface ModToolDenyResult {
   deny: string;
@@ -1269,16 +1290,22 @@ export interface ModTurnStartEvent {
    * 那一个（spec「收掉一轮」）。
    */
   turnId: string;
-  /** 一轮里第几步，永远是 0；给形状留位（与 `turn.step` 的 `step` 连着看）。 */
-  step: 0;
+  [key: string]: unknown;
 }
 
 /** `turn.step` 的载荷：这一轮里每发出一次模型请求之前。 */
 export interface ModTurnStepEvent {
   /** 属于哪一轮（与 `turn.start` 的 `turnId` 同一个值）。 */
   turnId: string;
-  /** 从 1 起：一轮里第 N 次模型请求（工具循环里每次请求都算一步）。 */
-  step: number;
+  /** 这一轮里第几次模型请求，**从 0 起**：工具循环里每次请求都算一步。 */
+  index: number;
+  /** 写这一次请求时会话里已有的消息条数。 */
+  messageCount: number;
+  /** 这一次请求要用的模型名（CC 要求非空字符串）。 */
+  model: string;
+  /** 推理强度：宿主有统一口径就带上，没有这个键（CC 的取值是枚举或数字）。 */
+  effort?: string | number;
+  [key: string]: unknown;
 }
 
 /** `session.compact` 的载荷：上下文压缩**完成后**。 */

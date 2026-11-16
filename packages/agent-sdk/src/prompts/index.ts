@@ -473,12 +473,13 @@ export interface SystemPromptOptions {
 
 /**
  * The system prompt as named sections, in the order they are sent (spec
- * ecosystem/plugin-mods.md「系统提示词与附件」). `scope` decides which block a
- * section lands in: `session` sections form the cacheable prefix, `turn`
- * sections the per-turn block below it.
+ * ecosystem/plugin-mods.md「系统提示词与附件」). `scope` is CC's two-tier
+ * vocabulary: `shared` sections are stable across turns and form the cacheable
+ * prefix, `session` sections are only true for this session and land in the
+ * block below it.
  *
- * The join is unchanged from the two-block era — `session` sections join on
- * `\n\n`, `turn` sections each carry their own leading `\n\n` — so a prompt
+ * The join is unchanged from the two-block era — `shared` sections join on
+ * `\n\n`, `session` sections each carry their own leading `\n\n` — so a prompt
  * nobody rewrote is byte-identical to before
  * (docs/specs/core/prompt-cache-control.md).
  */
@@ -495,26 +496,26 @@ export function buildSystemPromptSections(
     {
       id: "identity",
       text: basePrompt || DEFAULT_SYSTEM_PROMPT,
-      scope: "session",
+      scope: "shared",
     },
-    { id: "security", text: SECURITY_NOTE, scope: "session" },
+    { id: "security", text: SECURITY_NOTE, scope: "shared" },
   ];
 
   if (options.leanPrompt) {
     sections.push({
       id: "harness",
       text: LEAN_SYSTEM_PROMPT,
-      scope: "session",
+      scope: "shared",
     });
   } else {
     sections.push(
-      { id: "url-guard", text: URL_GUARD, scope: "session" },
-      { id: "system", text: SYSTEM_PROMPT, scope: "session" },
-      { id: "doing-tasks", text: DOING_TASKS_PROMPT, scope: "session" },
+      { id: "url-guard", text: URL_GUARD, scope: "shared" },
+      { id: "system", text: SYSTEM_PROMPT, scope: "shared" },
+      { id: "doing-tasks", text: DOING_TASKS_PROMPT, scope: "shared" },
       {
         id: "executing-actions",
         text: EXECUTING_ACTIONS_PROMPT,
-        scope: "session",
+        scope: "shared",
       },
     );
 
@@ -522,14 +523,14 @@ export function buildSystemPromptSections(
       sections.push({
         id: "tools",
         text: buildUsingToolsPrompt(tools),
-        scope: "session",
+        scope: "shared",
       });
     }
 
     sections.push({
       id: "tone",
       text: TONE_AND_STYLE_PROMPT,
-      scope: "session",
+      scope: "shared",
     });
   }
 
@@ -537,7 +538,7 @@ export function buildSystemPromptSections(
     sections.push({
       id: "language",
       text: `# Language\nAlways respond in ${options.language}. Use ${options.language} for all explanations, comments, and communications with the user. Technical terms and code identifiers should remain in their original form.`,
-      scope: "turn",
+      scope: "session",
     });
   }
 
@@ -572,7 +573,7 @@ ${shellInfo}
 OS Version: ${osVersion}
 </env>
 `,
-        scope: "turn",
+        scope: "session",
       });
     } else {
       // Main agent env section, aligned with Claude Code's
@@ -605,7 +606,7 @@ OS Version: ${osVersion}
         ),
       ].join("\n");
 
-      sections.push({ id: "env", text: envBlock, scope: "turn" });
+      sections.push({ id: "env", text: envBlock, scope: "session" });
     }
   }
 
@@ -614,7 +615,7 @@ OS Version: ${osVersion}
     if (options.autoMemory.content.trim()) {
       memoryText += `\n\n## MEMORY.md\n\n${options.autoMemory.content}`;
     }
-    sections.push({ id: "memory", text: memoryText, scope: "turn" });
+    sections.push({ id: "memory", text: memoryText, scope: "session" });
   }
 
   return sections;
@@ -623,9 +624,9 @@ OS Version: ${osVersion}
 /**
  * Join named sections back into request blocks.
  *
- * The cache boundary is the `scope`: `session` sections make up the cacheable
- * prefix, `turn` sections the block after it. Grouping (rather than keeping
- * whatever interleaving a mod produced) is what keeps a `turn` section from
+ * The cache boundary is the `scope`: `shared` sections make up the cacheable
+ * prefix, `session` sections the block after it. Grouping (rather than keeping
+ * whatever interleaving a mod produced) is what keeps a `session` section from
  * ever landing inside the cached prefix — a section a mod moved across the
  * boundary would otherwise invalidate the cache on every turn.
  */
@@ -634,22 +635,22 @@ export function buildSystemPromptBlocks(
 ): SystemPromptBlock[] {
   const blocks: SystemPromptBlock[] = [];
 
-  const sessionText = sections
-    .filter((section) => section.scope === "session")
+  const sharedText = sections
+    .filter((section) => section.scope === "shared")
     .map((section) => section.text)
     .join("\n\n");
-  if (sessionText) {
-    blocks.push({ text: sessionText, cacheable: true });
+  if (sharedText) {
+    blocks.push({ text: sharedText, cacheable: true });
   }
 
-  // Turn sections keep the leading `\n\n` the two-block builder used to add
+  // Session sections keep the leading `\n\n` the two-block builder used to add
   // around each part, so the joined text is unchanged.
-  const turnText = sections
-    .filter((section) => section.scope === "turn")
+  const sessionText = sections
+    .filter((section) => section.scope === "session")
     .map((section) => `\n\n${section.text}`)
     .join("");
-  if (turnText.trim()) {
-    blocks.push({ text: turnText, cacheable: false });
+  if (sessionText.trim()) {
+    blocks.push({ text: sessionText, cacheable: false });
   }
 
   return blocks;

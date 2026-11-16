@@ -56,19 +56,6 @@ export class SlashCommandManager {
    * 注册时就拒，所以这张表还兼作「谁占了这个名字」的答案。
    */
   private modCommandPlugins = new Map<string, string>();
-  /**
-   * `command.describe` 的结果（spec「给工具、技能、命令写描述」）。
-   *
-   * 一个命令问一次，答案留在 `commandDescribeOverrides` 里给下一次画列表用；
-   * 命令重新注册时连同 `commandDescribeAsked` 一起清掉，于是「换了实现」的命令
-   * 会被重新问一遍。画列表是同步的、钩子是异步的，所以**第一次**画出来的一定
-   * 还是宿主自己的描述 —— 下一次画（宿主重拉列表时）才是插件那一份。
-   */
-  private commandDescribeOverrides = new Map<
-    string,
-    { description?: string; argumentHint?: string; isHidden?: boolean }
-  >();
-  private commandDescribeAsked = new Set<string>();
   private workdir: string;
   private currentCommandAbortController: AbortController | null = null;
 
@@ -551,31 +538,26 @@ export class SlashCommandManager {
    */
   public registerCommand(command: SlashCommand): void {
     this.commands.set(command.id, command);
-    this.forgetCommandDescribe(command.id);
   }
 
   /**
    * Unregister command
    */
   private unregisterCommand(commandId: string): boolean {
-    this.forgetCommandDescribe(commandId);
     return this.commands.delete(commandId);
-  }
-
-  /** 命令换了主人（重新注册 / 撤销）时，`command.describe` 的旧答案跟着作废。 */
-  private forgetCommandDescribe(commandId: string): void {
-    this.commandDescribeAsked.delete(commandId);
-    this.commandDescribeOverrides.delete(commandId);
   }
 
   /**
    * 一个命令要画进列表时的那一行：`command.describe` 覆盖过的字段用插件的，
    * 其余用宿主自己的。
    *
-   * 问是异步的，答案是下一次画的时候才有的；一个命令只问一次（`registerCommand`
-   * 会把它清掉，重新注册就算新的一次）。
+   * **每次画列表都问一次，而且等答案回来再画** —— CC 同一条：插件给的描述当次
+   * 就生效，不是下一次。不缓存：命令表是插件随时会换的东西，缓存会让「换了实现
+   * 的命令」继续显示旧描述。各命令之间是并行的，每个 mod 各自受钩子超时约束。
    */
-  private describeCommand(command: SlashCommand): SlashCommand {
+  private async describeCommand(
+    command: SlashCommand,
+  ): Promise<{ command: SlashCommand; isHidden?: boolean }> {
     const modManager = this.container.has("ModManager")
       ? this.container.get<ModManager>("ModManager")
       : undefined;
@@ -583,33 +565,30 @@ export class SlashCommandManager {
       !modManager ||
       typeof modManager.collectCommandDescribe !== "function"
     ) {
-      return command;
+      return { command };
     }
-    if (!this.commandDescribeAsked.has(command.id)) {
-      this.commandDescribeAsked.add(command.id);
-      modManager
-        .collectCommandDescribe(command.name)
-        .then((described) => {
-          this.commandDescribeOverrides.set(command.id, described);
-        })
-        .catch((error: unknown) => {
-          logger?.warn("command.describe failed", {
-            command: command.name,
-            error,
-          });
-        });
+    try {
+      const described = await modManager.collectCommandDescribe(command.name);
+      return {
+        command: {
+          ...command,
+          ...(described.description === undefined
+            ? {}
+            : { description: described.description }),
+          ...(described.argumentHint === undefined
+            ? {}
+            : { argumentHint: described.argumentHint }),
+        },
+        isHidden: described.isHidden,
+      };
+    } catch (error) {
+      // 问不出来就用宿主自己的那一行：画列表不能因为插件挂了而空掉。
+      logger?.warn("command.describe failed", {
+        command: command.name,
+        error,
+      });
+      return { command };
     }
-    const described = this.commandDescribeOverrides.get(command.id);
-    if (!described) return command;
-    return {
-      ...command,
-      ...(described.description === undefined
-        ? {}
-        : { description: described.description }),
-      ...(described.argumentHint === undefined
-        ? {}
-        : { argumentHint: described.argumentHint }),
-    };
   }
 
   /**
@@ -621,13 +600,15 @@ export class SlashCommandManager {
    * list only — `hasCommand` / `executeCommand` still find it, because hiding
    * changes what the list shows, not what can be run.
    */
-  public getCommands(): SlashCommand[] {
-    return Array.from(this.commands.values())
-      .map((command) => this.describeCommand(command))
-      .filter(
-        (command) =>
-          this.commandDescribeOverrides.get(command.id)?.isHidden !== true,
-      );
+  public async getCommands(): Promise<SlashCommand[]> {
+    const described = await Promise.all(
+      Array.from(this.commands.values()).map((command) =>
+        this.describeCommand(command),
+      ),
+    );
+    return described.flatMap(({ command, isHidden }) =>
+      isHidden === true ? [] : [command],
+    );
   }
 
   /**

@@ -113,20 +113,31 @@ function buildMockToolManager(): ToolManager {
 }
 
 function buildHarness(
-  options: { subagentType?: string; withMods?: boolean } = {},
+  options: {
+    subagentType?: string;
+    withMods?: boolean;
+    /** `turn.step` 上那个 mod 的答复：默认原样带回来（没人改模型）。 */
+    onTurnStep?: (event: {
+      turnId: string;
+      index: number;
+      messageCount: number;
+      model: string;
+    }) => { model?: string } | void;
+  } = {},
 ) {
   const { subagentType, withMods = true } = options;
   const container = new Container();
   const messageQueue = new MessageQueue();
   container.register("MessageQueue", messageQueue);
-  container.register("ConfigurationService", {
+  const configurationService = {
     resolveGatewayConfig: vi.fn().mockReturnValue(mockGatewayConfig),
     resolveModelConfig: vi.fn().mockReturnValue(mockModelConfig),
     resolveContextWindow: vi.fn().mockReturnValue(96000),
     resolveMaxOutputTokens: vi.fn().mockReturnValue(4096),
     resolveAutoMemoryEnabled: vi.fn().mockReturnValue(true),
     resolveLanguage: vi.fn().mockReturnValue(undefined),
-  });
+  };
+  container.register("ConfigurationService", configurationService);
   const messageManager = buildMockMessageManager();
   container.register("MessageManager", messageManager);
   container.register("ToolManager", buildMockToolManager());
@@ -168,10 +179,20 @@ function buildHarness(
     events.push("mods:classic.Stop");
     return [] as string[];
   });
+  // `turn.step` 是生成器事件，宿主等它答完才知道这次请求用哪个模型：没人改就
+  // 原样带回来。
+  const dispatchTurnStep = vi.fn(
+    async (event: { turnId: string; model: string }) => {
+      events.push("mods:turn.step");
+      const patched = options.onTurnStep?.(event as never);
+      return patched ? { ...event, ...patched } : event;
+    },
+  );
   if (withMods) {
     container.register("ModManager", {
       notifyMods,
       collectStopContext,
+      dispatchTurnStep,
       // 提示词类钩子原样放行 = 「没有插件改东西」，与不挂 ModManager 时同形。
       collectPromptSections: vi.fn(async (sections) => sections),
       collectPromptSection: vi.fn(async (section) => section.text),
@@ -196,6 +217,8 @@ function buildHarness(
     messageManager,
     notifyMods,
     collectStopContext,
+    dispatchTurnStep,
+    configurationService,
     events,
   };
 }
@@ -213,13 +236,18 @@ function modCalls(
     .map((call) => call[1]);
 }
 
+/** `turn.step` 的载荷（它走的是要等返回值的 `dispatchTurnStep`）。 */
+function stepCalls(dispatchTurnStep: ReturnType<typeof vi.fn>): unknown[] {
+  return dispatchTurnStep.mock.calls.map((call) => call[0]);
+}
+
 describe("AIManager 的 turn.complete", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
   it("答完时派发一次，且在 loading 释放之后", async () => {
-    const { aiManager, notifyMods, events } = buildHarness();
+    const { aiManager, notifyMods, dispatchTurnStep, events } = buildHarness();
     vi.mocked(callAgent).mockResolvedValue(REPLY);
 
     await aiManager.sendAIMessage();
@@ -232,12 +260,17 @@ describe("AIManager 的 turn.complete", () => {
       answer: "",
       usage: { prompt: 1, completion: 1, cacheRead: 0, cacheCreation: 0 },
     });
-    // 一轮一条 turn.start、每个请求一条 turn.step。
+    // 一轮一条 turn.start、每个请求一条 turn.step（step 从 0 起数）。
     expect(modCalls(notifyMods, "turn.start")).toEqual([
-      { turnId: expect.any(String), step: 0 },
+      { turnId: expect.any(String) },
     ]);
-    expect(modCalls(notifyMods, "turn.step")).toEqual([
-      { turnId: expect.any(String), step: 1 },
+    expect(stepCalls(dispatchTurnStep)).toEqual([
+      {
+        turnId: expect.any(String),
+        index: 0,
+        messageCount: 0,
+        model: mockModelConfig.model,
+      },
     ]);
     expect(events).toEqual([
       "loading:true",
@@ -255,7 +288,7 @@ describe("AIManager 的 turn.complete", () => {
   it("同一轮里 turn.start / turn.step / turn.complete 用同一个 turnId，两轮各不相同", async () => {
     // `$.turn.abort({ turnId })` 就是拿这个 id 认「要收的是哪一轮」（spec
     // 「`$.turn`」），所以一轮之内必须稳定、跨轮必须不同。
-    const { aiManager, notifyMods } = buildHarness();
+    const { aiManager, notifyMods, dispatchTurnStep } = buildHarness();
     vi.mocked(callAgent).mockResolvedValue(REPLY);
 
     await aiManager.sendAIMessage();
@@ -265,11 +298,14 @@ describe("AIManager 的 turn.complete", () => {
       (modCalls(notifyMods, event) as { turnId: string }[]).map(
         (payload) => payload.turnId,
       );
+    const stepIds = stepCalls(dispatchTurnStep).map(
+      (payload) => (payload as { turnId: string }).turnId,
+    );
     const [first, second] = ids("turn.start");
     expect(first).toBeTruthy();
     expect(second).toBeTruthy();
     expect(first).not.toBe(second);
-    expect(ids("turn.step")).toEqual([first, second]);
+    expect(stepIds).toEqual([first, second]);
     expect(ids("turn.complete")).toEqual([first, second]);
   });
 
@@ -360,7 +396,8 @@ describe("AIManager 的 turn.complete", () => {
   });
 
   it("注入通知把循环重开一次时仍算同一轮，只派发一次", async () => {
-    const { aiManager, messageQueue, notifyMods } = buildHarness();
+    const { aiManager, messageQueue, notifyMods, dispatchTurnStep } =
+      buildHarness();
     const mockCallAgent = vi.mocked(callAgent);
     let resolveFirstCall:
       | ((value: Awaited<ReturnType<typeof callAgent>>) => void)
@@ -399,11 +436,12 @@ describe("AIManager 的 turn.complete", () => {
 
     expect(modCalls(notifyMods, "turn.complete")).toHaveLength(1);
     // 两次请求都算进这一轮：重开不是新的一轮，用量也不该从头再算；步数倒是
-    // 一步一步往上走（2 表示这一轮的第 2 次请求）。
-    expect(modCalls(notifyMods, "turn.step")).toEqual([
-      { turnId: expect.any(String), step: 1 },
-      { turnId: expect.any(String), step: 2 },
-    ]);
+    // 一步一步往上走（index 1 表示这一轮的第 2 次请求）。
+    expect(
+      stepCalls(dispatchTurnStep).map(
+        (payload) => (payload as { index: number }).index,
+      ),
+    ).toEqual([0, 1]);
     expect(notifyMods).toHaveBeenCalledWith("turn.complete", {
       turnId: expect.any(String),
       isAborted: false,
@@ -703,5 +741,42 @@ describe("AIManager 的 abortTurn（$.turn.abort 的落点）", () => {
 
     aiManager.abortTurn(turnId);
     await sendPromise;
+  });
+});
+
+describe("AIManager 的 turn.step", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("mod 换了模型：这次请求与整份配置都换成新模型", async () => {
+    const { aiManager, dispatchTurnStep, configurationService } = buildHarness({
+      onTurnStep: () => ({ model: "claude-opus-4" }),
+    });
+    vi.mocked(callAgent).mockResolvedValue(REPLY);
+
+    await aiManager.sendAIMessage();
+
+    expect(dispatchTurnStep).toHaveBeenCalledTimes(1);
+    // 请求本身用新模型。
+    expect(vi.mocked(callAgent).mock.calls[0]![0].model).toBe("claude-opus-4");
+    // 配置按新名字重解析一遍：apiType / 上下文窗口 / 输出上限都是按模型名查的，
+    // 只换请求里的名字会让限额按旧模型算。
+    expect(configurationService.resolveModelConfig).toHaveBeenCalledWith(
+      "claude-opus-4",
+      undefined,
+      undefined,
+    );
+  });
+
+  it("子代理的嵌套轮次不派发 turn.step", async () => {
+    const { aiManager, dispatchTurnStep } = buildHarness({
+      subagentType: "Explore",
+    });
+    vi.mocked(callAgent).mockResolvedValue(REPLY);
+
+    await aiManager.sendAIMessage();
+
+    expect(dispatchTurnStep).not.toHaveBeenCalled();
   });
 });

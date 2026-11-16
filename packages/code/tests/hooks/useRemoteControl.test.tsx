@@ -70,7 +70,7 @@ const baseOptions: Omit<UseRemoteControlOptions, "messages"> = {
   respondPermission: vi.fn(),
   renameSession: vi.fn(),
   compact: vi.fn(),
-  slashCommands: () => [],
+  slashCommands: async () => [],
   messagePage: async () => ({ messages: [], hasMore: false }),
   currentThread: async () => [],
   threadSummary: () => ({ messageCount: 0 }),

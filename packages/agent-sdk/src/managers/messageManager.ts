@@ -64,7 +64,7 @@ import { entrypointOf } from "../telemetry/entrypoint.js";
 import { Container } from "../utils/container.js";
 import { toModSessionMessages } from "./modManager.js";
 import type { ModManager } from "./modManager.js";
-import type { ModSessionMessage } from "../types/mods.js";
+import type { ModSessionAppendDoor, ModSessionMessage } from "../types/mods.js";
 // Cap for recentFileReads: content is only consumed by getRecentFileReads
 // (top 5 for post-compact restoration), so bound both the entry count and the
 // number of entries that keep full content (aligned with Claude Code's
@@ -579,8 +579,11 @@ export class MessageManager {
 
     let outcome: { message: ModSessionMessage; uuid: string; deny?: string };
     try {
-      // `turnId` 省略：这一轮的身份在 AIManager 手里，MessageManager 看不到它。
-      outcome = await modManager.dispatchSessionAppend(projected);
+      outcome = await modManager.dispatchSessionAppend(
+        projected,
+        sessionAppendDoorOf(message),
+        this.subagentType,
+      );
     } catch (error) {
       logger.warn(
         `[Wave] session.append 钩子失败，消息 ${message.id} 按原样存：${
@@ -2008,6 +2011,22 @@ function lastIndexById(list: readonly Message[], id: string): number {
     if (list[i].id === id) return i;
   }
   return -1;
+}
+
+/**
+ * 这一行进转录时走的是哪条门（`session.append` 的 `door`，与 CC 的 `doorOf` 同名）。
+ *
+ * 我们的行只有 user / assistant 两种角色：带工具结果的 user 行是 `tool-result`、
+ * 宿主自己塞进去的（记忆注入、系统提醒）是 `note`、剩下的是用户敲的那句
+ * `prompt`；assistant 一律是 `response`。压缩摘要不走这条通道，所以没有
+ * `compaction` 一档。
+ */
+function sessionAppendDoorOf(message: Message): ModSessionAppendDoor {
+  if (message.role === "assistant") return "response";
+  if (message.blocks.some((block) => block.type === "tool")) {
+    return "tool-result";
+  }
+  return message.isMeta ? "note" : "prompt";
 }
 
 /**

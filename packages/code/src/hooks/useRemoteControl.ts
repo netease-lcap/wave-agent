@@ -94,7 +94,7 @@ export interface UseRemoteControlOptions {
   /** Compact the conversation; errors must propagate (the page shows them). */
   compact: (customInstructions?: string) => void | Promise<void>;
   /** Slash commands the page may offer (SDK commands: skills / custom). */
-  slashCommands: () => SlashCommand[];
+  slashCommands: () => Promise<SlashCommand[]>;
   /** One page of the display thread — read from the transcript when it reaches back. */
   messagePage: (window: MessageWindow) => Promise<MessageWindowResult>;
   /** The whole thread in one shot (no window asked for); nothing is cached. */
