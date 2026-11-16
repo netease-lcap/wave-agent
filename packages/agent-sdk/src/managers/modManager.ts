@@ -44,6 +44,7 @@ import {
   type ModSessionRepo,
   type ModToolCheckDecision,
   type ModToolCheckEvent,
+  type ModUiControlEvent,
   type ModSessionUsage,
   type ModSessionVersion,
   type ModSettingsSource,
@@ -397,7 +398,12 @@ type ModValueHookName =
   | "prompt.suggest"
   // `turn.step` 也在这条链上：引擎算了一份「这次请求用哪个模型」，插件可以
   // 换掉它（`{ ...e, model }`）。它是生成器事件，但改写语义与这一族相同。
-  | "turn.step";
+  | "turn.step"
+  // 控件交互（spec「控件的交互事件」）：链尾是「用户这次按的是哪个控件、带了
+  // 什么值」，插件可以换掉两者。
+  | "ui.press"
+  | "ui.input"
+  | "ui.select";
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -1058,6 +1064,8 @@ export class ModManager {
               listAgentInfos: () => this.facts.agentInfos(),
               registerTool: (spec) =>
                 this.registerModTool(mod.id, plugin.name, spec),
+              checkTool: (request) => this.checkModTool(request),
+              callTool: (request) => this.callModTool(request),
               spawnAgent: (args) =>
                 this.spawnModAgent(mod.id, plugin.name, args),
               completeModel: (request) =>
@@ -1677,6 +1685,44 @@ export class ModManager {
         };
       },
     );
+  }
+
+  /**
+   * `$.tool.check`：跑一遍 `tool.check` 链（spec「主动问一次工具面」）。
+   *
+   * 基底决定是 `allow`：没有真实调用时宿主没算过规则与权限模式，唯一诚实的起
+   * 点是「还没人拦」。`tool_use_id` 编一个稳定的临时值 —— 事件形状要求它，但
+   * 它不会出现在任何 `ui.notice` 上。
+   */
+  async checkModTool(request: {
+    tool: string;
+    input?: unknown;
+  }): Promise<{ decision: ModToolCheckDecision; reason?: string }> {
+    return this.dispatchToolCheck({
+      tool: request.tool,
+      tool_use_id: `mod:${request.tool}`,
+      input: request.input,
+      decision: "allow",
+    });
+  }
+
+  /**
+   * `$.tool.call`：跑一遍 `tool.call` + `classic.PreToolUse` 链，只回「有没有
+   * 人拦」（spec「主动问一次工具面」）。
+   *
+   * **不传 `run`**：mod 主动发起时没有宿主侧执行体，链尾是空对象 —— 这条方法
+   * 不会真的执行工具，想做事用 `$.process` / `$.fs` / `$.http`。
+   */
+  async callModTool(request: {
+    tool: string;
+    input?: unknown;
+  }): Promise<{ deny?: string }> {
+    const decision = await this.dispatchToolCall({
+      tool: request.tool,
+      tool_use_id: `mod:${request.tool}`,
+      input: request.input,
+    });
+    return decision.deny === undefined ? {} : { deny: decision.deny };
   }
 
   /**
@@ -2422,6 +2468,71 @@ export class ModManager {
     }));
   }
 
+  /**
+   * 派发 `ui.press` / `ui.input` / `ui.select`：控件自己的回调之前先问一遍插件
+   * （spec「控件的交互事件」）。
+   *
+   * 返回这次交互最终派给哪个控件、带什么值。返回值只认 `element` / `value`：
+   * `element` 换派给哪个控件、`value` 换回调收到的值，两者都只对这一次生效、
+   * 不落进元素树。`value` 只有 `ui.input` / `ui.select` 认得，形状不对时丢掉
+   * 这一项并 warn（回调仍拿用户原本给的值）。
+   */
+  private async dispatchUiInteraction(
+    payload: ModPanelEventPayload,
+    plugin: string,
+  ): Promise<{ element: string; value?: string }> {
+    const name =
+      payload.kind === "press"
+        ? "ui.press"
+        : payload.kind === "input"
+          ? "ui.input"
+          : "ui.select";
+    const component =
+      payload.kind === "press"
+        ? "Button"
+        : payload.kind === "input"
+          ? "Input"
+          : "Select";
+    const base: ModUiControlEvent = {
+      plugin,
+      component,
+      requestId: payload.paneId,
+      element: payload.key,
+      ...(payload.value === undefined ? {} : { value: payload.value }),
+    };
+    const read = (
+      raw: unknown,
+      fallback: { element: string; value?: string },
+      modId?: string,
+    ): { element: string; value?: string } => {
+      if (!isPlainRecord(raw)) return fallback;
+      const element =
+        typeof raw.element === "string" && raw.element !== ""
+          ? raw.element
+          : fallback.element;
+      // `ui.press` 没有 `value` 这一项：钩子给什么都不认。
+      if (payload.kind === "press") return { element };
+      const kept =
+        fallback.value === undefined
+          ? { element }
+          : { element, value: fallback.value };
+      if (raw.value === undefined) return kept;
+      if (typeof raw.value !== "string") {
+        logger.warn(
+          `[Wave] ${modId ?? "mod"} 的 ${name} 给了非字符串的 value，这一项被丢掉`,
+        );
+        return kept;
+      }
+      return { element, value: raw.value };
+    };
+    return this.runValueHookChain<{ element: string; value?: string }>(
+      name,
+      base,
+      (current) => read(current, base),
+      (modId, value, fallback) => read(value, fallback, modId),
+    );
+  }
+
   /** webview 回传的交互。 */
   async handlePanelEvent(payload: ModPanelEventPayload): Promise<void> {
     if (this.disposed) return;
@@ -2446,10 +2557,13 @@ export class ModManager {
       return;
     }
     try {
+      // 控件自己的回调之前先跑一遍同名钩子（spec「控件的交互事件」）：钩子能
+      // 把这次交互改派给别的控件、换掉回调收到的值。
+      const target = await this.dispatchUiInteraction(payload, loaded.plugin);
       const handled = await loaded.runtime.dispatch(
         payload.kind,
-        payload.key,
-        payload.value,
+        target.element,
+        target.value,
       );
       if (!handled) {
         logger.debug(

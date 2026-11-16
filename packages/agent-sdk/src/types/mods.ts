@@ -206,6 +206,46 @@ export interface ModPanelEventPayload {
 }
 
 /**
+ * `ui.press` / `ui.input` / `ui.select` 的载荷（spec「控件的交互事件」）。
+ *
+ * 三个事件共用一份形状：`component` + `element` 认控件，`value` 只在
+ * `ui.input` / `ui.select` 上有。钩子在控件自己的 `onPress` / `onSubmit` /
+ * `onSelect` **之前**跑。
+ *
+ * **没有 `surface`**：一次交互来自哪一端要走一条 host→agent 的回报通道，一期
+ * 没有；填「此刻在画的端」在两端同时画时就是错的值（与 `$.ui.panes()` 少三个
+ * 字段同一条纪律：宁可少给，不编假值）。
+ */
+export interface ModUiControlEvent {
+  /** 画这个控件的 mod 的注册名 —— matcher 钉的就是它。 */
+  plugin: string;
+  component: "Button" | "Input" | "Select";
+  /**
+   * 这块面板的实例 id：pane id，输入框上方那条带是 `above-prompt`。
+   *
+   * 与 `ui.render` 的 `instance_id` 是同一个值，钩子按它区分「哪个站点的控件」。
+   */
+  requestId: string;
+  /** 控件的 `key`。 */
+  element: string;
+  /** `ui.input` / `ui.select` 上用户给的值。 */
+  value?: string;
+}
+
+/**
+ * 三个控件事件的返回值：改写这次交互派给谁、带什么值（spec「控件的交互事
+ * 件」）。
+ *
+ * 只对**这一次**生效，不落进元素树：下一帧画什么仍由 `ui.render` 决定。
+ */
+export interface ModUiControlResult {
+  /** 换派给哪个控件；那个 pane 里没有对应回调时按「没人接」丢掉并记 debug。 */
+  element?: string;
+  /** 换控件回调收到的值；必须是字符串，否则这一项被丢掉并 warn。 */
+  value?: string;
+}
+
+/**
  * `$.prompt.fill` 把文本放在哪（spec「把草稿填进输入框」）。
  *
  * 三档都是 Claude Code 的原名：`replace` 替掉整份草稿、`append` 接在后面、

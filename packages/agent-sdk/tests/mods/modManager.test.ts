@@ -3716,3 +3716,320 @@ exports.register = function ($, on) {
     await manager.dispose();
   });
 });
+
+/** 与 {@link plugin} 一样，只是插件注册名可换（跨 mod 的 matcher 要靠它区分）。 */
+function namedPlugin(
+  name: string,
+  mods: Array<{ id: string; path: string }>,
+): Plugin {
+  return {
+    name,
+    path: ROOT,
+    mods: mods.map((mod) => ({
+      ...mod,
+      name: path.basename(mod.path),
+      pluginRoot: ROOT,
+    })),
+  } as unknown as Plugin;
+}
+
+/** 一个画面板、三种控件各一个，并把「回调结果」与「钩子看到的」画出来的 mod。 */
+function controlsMod(hooks: string): string {
+  return `
+exports.register = function ($, on) {
+  on("session.start", function () {
+    $.ui.open({ id: "p1", title: "控件" });
+  });
+  on("ui.render", function () {
+    var callback = $.state.get("callback") || "none";
+    var seen = $.state.get("seen") || "none";
+    return __wave.h("Box", null,
+      __wave.h("Button", { key: "go", label: "走", onPress: function () {
+        $.state.set("callback", "go");
+      }}),
+      __wave.h("Button", { key: "other", label: "别的", onPress: function () {
+        $.state.set("callback", "other");
+      }}),
+      __wave.h("Input", { key: "tag", onSubmit: function (value) {
+        $.state.set("callback", "input:" + value);
+      }}),
+      __wave.h("Text", null, "callback=" + callback + " seen=" + seen)
+    );
+  });
+  ${hooks}
+};
+`;
+}
+
+describe("ModManager 的控件交互事件（ui.press / ui.input / ui.select）", () => {
+  async function opened(hooks: string) {
+    const created = createManager({ [MOD_PATH]: controlsMod(hooks) });
+    await created.manager.loadFromPlugins([
+      plugin([{ id: "todo:panel", path: MOD_PATH }]),
+    ]);
+    await created.manager.startSession();
+    await vi.waitFor(() => expect(created.updates).toHaveLength(1));
+    // 元素回调是在 `h()` 里登记进 mod 的处理表的：没渲染过就没有可点的东西。
+    await pull(created.manager);
+    return created;
+  }
+
+  /** 一次交互 → 重画一帧，看 mod 自己画出来的那两个观察值。 */
+  async function interact(
+    manager: ModManager,
+    payload: { key: string; kind: "press" | "input"; value?: string },
+  ): Promise<string> {
+    await manager.handlePanelEvent({
+      sessionId: "s1",
+      modId: "todo:panel",
+      paneId: "p1",
+      ...payload,
+    });
+    const frame = await pull(manager);
+    return JSON.stringify(frame.tree);
+  }
+
+  it("钩子跑在控件回调之前，能看见 component / element / requestId", async () => {
+    const { manager } = await opened(`
+  on("ui.press", function (e) {
+    $.state.set("seen", [e.component, e.element, e.requestId, $.state.get("callback") || "none"].join("|"));
+  });
+`);
+
+    expect(await interact(manager, { key: "go", kind: "press" })).toContain(
+      // `callback` 还是 none：钩子跑的时候控件自己的 `onPress` 还没跑。
+      "callback=go seen=Button|go|p1|none",
+    );
+
+    await manager.dispose();
+  });
+
+  it("返回 { value } 换掉回调收到的值", async () => {
+    const { manager } = await opened(`
+  on("ui.input", function (e) { return { value: e.value + "!" }; });
+`);
+
+    expect(
+      await interact(manager, { key: "tag", kind: "input", value: "dev" }),
+    ).toContain("callback=input:dev!");
+
+    await manager.dispose();
+  });
+
+  it("返回 { element } 把这次交互改派给另一个控件", async () => {
+    const { manager } = await opened(`
+  on("ui.press", function () { return { element: "other" }; });
+`);
+
+    // 点的是 `go`，跑的是 `other` 的回调。
+    expect(await interact(manager, { key: "go", kind: "press" })).toContain(
+      "callback=other",
+    );
+
+    await manager.dispose();
+  });
+
+  it("非字符串 value 被丢掉、记一条 warn，回调拿原值", async () => {
+    vi.mocked(logger.warn).mockClear();
+    const { manager } = await opened(`
+  on("ui.input", function () { return { value: 42 }; });
+`);
+
+    expect(
+      await interact(manager, { key: "tag", kind: "input", value: "dev" }),
+    ).toContain("callback=input:dev");
+    expect(vi.mocked(logger.warn).mock.calls.flat().join(" ")).toContain(
+      "非字符串的 value",
+    );
+
+    await manager.dispose();
+  });
+
+  it("不写 matcher 只收到自己画的控件；写 { plugin } 才能跨 mod", async () => {
+    // 观察者在**另一个插件**里：它画的控件跟这次点击毫无关系，只有 matcher
+    // 才能让它被叫起来。
+    const watchPath = path.join(ROOT, "other", "watch.tsx");
+    const watchMod = (matcher: string) => `
+exports.register = function ($, on) {
+  on("ui.press", ${matcher}function (e) {
+    $.ui.status("beta:" + e.element);
+  });
+};
+`;
+
+    const bare = createManager({
+      [MOD_PATH]: controlsMod(""),
+      [watchPath]: watchMod(""),
+    });
+    await bare.manager.loadFromPlugins([
+      namedPlugin("alpha", [{ id: "alpha:panel", path: MOD_PATH }]),
+      namedPlugin("beta", [{ id: "beta:watch", path: watchPath }]),
+    ]);
+    await bare.manager.startSession();
+    await vi.waitFor(() => expect(bare.updates).toHaveLength(1));
+    await bare.manager.renderPane("alpha:panel", "p1");
+    await bare.manager.handlePanelEvent({
+      sessionId: "s1",
+      modId: "alpha:panel",
+      paneId: "p1",
+      key: "go",
+      kind: "press",
+    });
+    // 没写 matcher = 只对自己画的控件：别人的按钮点了不叫它。
+    expect(bare.statuses).toEqual([]);
+    await bare.manager.dispose();
+
+    const pinned = createManager({
+      [MOD_PATH]: controlsMod(""),
+      [watchPath]: watchMod('{ plugin: "alpha" }, '),
+    });
+    await pinned.manager.loadFromPlugins([
+      namedPlugin("alpha", [{ id: "alpha:panel", path: MOD_PATH }]),
+      namedPlugin("beta", [{ id: "beta:watch", path: watchPath }]),
+    ]);
+    await pinned.manager.startSession();
+    await vi.waitFor(() => expect(pinned.updates).toHaveLength(1));
+    await pinned.manager.renderPane("alpha:panel", "p1");
+    await pinned.manager.handlePanelEvent({
+      sessionId: "s1",
+      modId: "alpha:panel",
+      paneId: "p1",
+      key: "go",
+      kind: "press",
+    });
+    expect(pinned.statuses.map((entry) => entry.text)).toEqual(["beta:go"]);
+
+    await pinned.manager.dispose();
+  });
+
+  it("关面板不触发任何控件事件", async () => {
+    const { manager, statuses } = await opened(`
+  on("ui.press", function (e) { $.ui.status("pressed:" + e.element); });
+`);
+
+    await manager.handlePanelEvent({
+      sessionId: "s1",
+      modId: "todo:panel",
+      paneId: "p1",
+      key: "",
+      kind: "close",
+      origin: "person",
+    });
+
+    expect(statuses).toEqual([]);
+
+    await manager.dispose();
+  });
+});
+
+describe("$.tool.check / $.tool.call", () => {
+  /** 两个方向各问一次，把结果贴成状态行（mod 自己看得到答案）。 */
+  function probeMod(hooks: string): string {
+    return `
+exports.register = function ($, on) {
+  on("session.start", function () {
+    $.tool.check({ tool: "Bash", input: { command: "npm publish" } }).then(function (r) {
+      $.ui.status("check=" + r.decision + (r.reason ? ":" + r.reason : ""));
+    }, function (e) {
+      $.ui.status("check-error=" + e.message);
+    });
+    $.tool.call({ tool: "Bash", input: { command: "ls" } }).then(function (r) {
+      $.ui.status("call=" + (r.deny ? "deny:" + r.deny : "ok"));
+    }, function (e) {
+      $.ui.status("call-error=" + e.message);
+    });
+  });
+  ${hooks}
+};
+`;
+  }
+
+  async function startedSource(source: string) {
+    const created = createManager({ [MOD_PATH]: source });
+    await created.manager.loadFromPlugins([
+      plugin([{ id: "todo:panel", path: MOD_PATH }]),
+    ]);
+    await created.manager.startSession();
+    // 两个询问都是 promise，状态行在 `then` 里贴。
+    await vi.waitFor(() => expect(created.statuses).toHaveLength(2));
+    // `text: null` 是「撤掉这行」，这里只关心贴出来的那些。
+    const texts = created.statuses.map((entry) => entry.text ?? "");
+    await created.manager.dispose();
+    return texts;
+  }
+
+  // 两条询问各自是一条 promise，谁先 resolve 不定 —— 断言按内容认，不按顺序。
+  function pick(texts: string[], prefix: string): string {
+    const found = texts.find((text) => text.startsWith(prefix));
+    if (found === undefined) throw new Error(`没有 ${prefix} 状态行：${texts}`);
+    return found;
+  }
+
+  it("没人拦时 tool.check 是 allow、tool.call 是放行", async () => {
+    const texts = await startedSource(probeMod(""));
+
+    expect(pick(texts, "check=")).toBe("check=allow");
+    expect(pick(texts, "call=")).toBe("call=ok");
+  });
+
+  it("tool.check 钩子的决定就是答案；tool.call 只回这条链的 deny", async () => {
+    const deniedCheck = await startedSource(
+      probeMod(`
+  on("tool.check", function () { return { decision: "deny", reason: "要先问人" }; });
+`),
+    );
+    expect(pick(deniedCheck, "check=")).toBe("check=deny:要先问人");
+    expect(pick(deniedCheck, "call=")).toBe("call=ok");
+
+    const deniedCall = await startedSource(
+      probeMod(`
+  on("tool.call", function () { return { deny: "只读策略" }; });
+`),
+    );
+    expect(pick(deniedCall, "check=")).toBe("check=allow");
+    expect(pick(deniedCall, "call=")).toBe("call=deny:只读策略");
+  });
+
+  it("在自家钩子里重入同一个询问会 reject（不能把整条链重跑一遍）", async () => {
+    const texts = await startedSource(
+      probeMod(`
+  on("tool.check", function () {
+    return $.tool.check({ tool: "Bash" }).then(function (inner) {
+      return { decision: inner.decision };
+    });
+  });
+`),
+    );
+
+    // 钩子炸了按拒绝收（tool.check 是唯一 fail-closed 的一条），理由是那句错误。
+    const check = pick(texts, "check=");
+    expect(check).toContain("check=deny:");
+    expect(check).toContain("不能在 tool.check 钩子里调用");
+  });
+
+  it("参数不合法时当场 reject，不跑链", async () => {
+    const texts = await startedSource(`
+exports.register = function ($, on) {
+  on("session.start", function () {
+    $.tool.check({}).then(function () {
+      $.ui.status("no-error");
+    }, function (e) {
+      $.ui.status("bad=" + e.message);
+    });
+    $.tool.call({ tool: "  " }).then(function () {
+      $.ui.status("no-error");
+    }, function (e) {
+      $.ui.status("bad=" + e.message);
+    });
+  });
+};
+`);
+
+    // 两条都拒了：没有一条贴出 `no-error`。
+    expect(texts).toHaveLength(2);
+    for (const text of texts) {
+      expect(text).toContain("bad=");
+      expect(text).toContain("tool 必须是非空字符串");
+    }
+  });
+});

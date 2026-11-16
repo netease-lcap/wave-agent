@@ -160,6 +160,9 @@ function host(overrides: Partial<ModRuntimeHost> = {}): ModRuntimeHost {
     registerTool: vi.fn(async (spec: { name: string }) => ({
       name: spec.name,
     })),
+    // 工具面的两个探针（spec「主动问一次工具面」）：默认「没人拦」。
+    checkTool: vi.fn(async () => ({ decision: "allow" as const })),
+    callTool: vi.fn(async () => ({})),
     spawnAgent: vi.fn(async () => ({
       model: "test-model",
       agentId: "agent-1",

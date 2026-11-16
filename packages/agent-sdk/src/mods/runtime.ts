@@ -29,6 +29,7 @@ import type {
   ModRenderSurface,
   ModSessionUsage,
   ModSettingsSource,
+  ModToolCheckDecision,
   ModToolRegisterSpec,
   ModUiCopyResult,
   ModUiViewResult,
@@ -546,6 +547,28 @@ function normalizeToolRegisterSpec(
 }
 
 /**
+ * 校验 `$.tool.check` / `$.tool.call` 的参数（spec「主动问一次工具面」）。
+ *
+ * 两个方法收同一个形状 `{ tool, input? }`。`tool` 必须是非空字符串：名字拼错
+ * 时链上一条 matcher 都匹配不上，静默答「没人拦」比当场报错更难查。
+ */
+function normalizeToolProbeRequest(
+  request: unknown,
+  label: string,
+): { tool: string; input?: unknown } {
+  if (!isPlainObject(request)) {
+    throw new Error(`${label} 需要一个对象：{ tool, input? }`);
+  }
+  const tool = request.tool;
+  if (typeof tool !== "string" || tool.trim().length === 0) {
+    throw new Error(`${label} 的 tool 必须是非空字符串（模型看到的工具名）`);
+  }
+  return request.input === undefined
+    ? { tool }
+    : { tool, input: request.input };
+}
+
+/**
  * 校验 `$.agent.spawn` 的参数（spec「派子代理」）。
  *
  * 与 Claude Code 的 `AgentSpawnArgs` 同一个形状：`prompt` 必填，其余可选。
@@ -1052,6 +1075,28 @@ export interface ModDollar {
      * `mcp__<plugin>__<name>`，于是这个工具与 MCP 工具走同一条审批路。
      */
     register(spec: ModToolRegisterSpec): Promise<{ name: string }>;
+    /**
+     * 问一句「按现在这些规则与插件，这个调用会不会被拦 / 会不会被要求审批」
+     * （spec「主动问一次工具面」）。
+     *
+     * 只跑 `tool.check` 那条链，**不执行工具**：基底是 `allow`（没有真实调用
+     * 就没有宿主的决定），链上只会让它更严或更松。
+     */
+    check(request: {
+      tool: string;
+      input?: unknown;
+    }): Promise<{ decision: ModToolCheckDecision; reason?: string }>;
+    /**
+     * 跑一遍 `tool.call` + `classic.PreToolUse` 链，看有没有人拦（spec「主动
+     * 问一次工具面」）。
+     *
+     * 同样不执行工具：链尾在这条路上没有宿主侧执行体，`next(e)` 走到尾是空对
+     * 象，所以返回里没有 `{ result }`。
+     */
+    call(request: {
+      tool: string;
+      input?: unknown;
+    }): Promise<{ deny?: string }>;
   };
   /**
    * 生效的配置项（spec「配了哪些、能调什么、有谁在跑」）。
@@ -1218,6 +1263,28 @@ export interface ModRuntimeHost {
     inputSchema: Record<string, unknown>;
   }): Promise<{ name: string }>;
   /**
+   * `$.tool.check`：跑一遍 `tool.check` 链（spec「主动问一次工具面」）。
+   *
+   * **不执行工具**，也不读权限规则：没有真实调用就没有宿主的决定，基底按
+   * `allow` 起算，链上只会让它更严或更松。要看真实决定得在 `tool.check` 事件
+   * 里看 —— 那时 `decision` 是规则与权限模式算出来的。
+   */
+  checkTool(request: {
+    tool: string;
+    input?: unknown;
+  }): Promise<{ decision: ModToolCheckDecision; reason?: string }>;
+  /**
+   * `$.tool.call`：跑一遍 `tool.call` + `classic.PreToolUse` 链（spec「主动问
+   * 一次工具面」）。
+   *
+   * 同样**不执行工具**：链尾在 mod 主动发起时没有宿主侧执行体，`next(e)` 走到
+   * 尾是空对象。想真的做事用 `$.process` / `$.fs` / `$.http`。
+   */
+  callTool(request: {
+    tool: string;
+    input?: unknown;
+  }): Promise<{ deny?: string }>;
+  /**
    * `$.agent.spawn`：派一个子代理，resolve 在它**started** 之后（spec「派子
    * 代理」）。
    *
@@ -1369,6 +1436,11 @@ const HOOK_NAMES = new Set([
   "agent.spawn",
   "prompt.edit",
   "prompt.suggest",
+  // 控件的交互事件（spec「控件的交互事件」）：都在控件自己的回调**之前**跑，
+  // 返回值能改写这次交互派给哪个控件、带什么值。
+  "ui.press",
+  "ui.input",
+  "ui.select",
   // 影子事件（spec「影子事件：`classic.*`」）：除 `PreToolUse` / `Stop` 外都是
   // 只读镜像，返回值忽略。
   "classic.PermissionRequest",
@@ -1428,7 +1500,16 @@ const MATCHER_EVENTS = new Set([
   // `Explore` 的插件没必要在每次派发上被叫起来。
   "agent.offer",
   "agent.spawn",
+  // 三个控件事件按 `{ plugin }` 匹配（spec「控件的交互事件」）：不写 matcher
+  // 只收到自己画的控件，写别人的名字才能看别人的（`plugin` 是这条事件上唯一
+  // 被钉住的键，见 `matchingHooks`）。
+  "ui.press",
+  "ui.input",
+  "ui.select",
 ]);
+
+/** 控件交互事件的三个名字（`plugin` 是钉住的 matcher 键）。 */
+const UI_CONTROL_EVENTS = new Set(["ui.press", "ui.input", "ui.select"]);
 
 /**
  * matcher 里用的字段名 → 事件的字段名。
@@ -1758,6 +1839,15 @@ export class ModRuntime {
   private readonly hooks = new Map<string, HookEntry[]>();
   /** 正在跑 `command.run` 钩子的层数（`$.command.run` 靠它拒自激）。 */
   private commandHookDepth = 0;
+  /**
+   * 正在跑的钩子名（异步上下文）。
+   *
+   * 只有 `$.tool.check` / `$.tool.call` 读它：在自家的 `tool.check` 钩子里再调
+   * `$.tool.check` 会把整条链重跑一遍，两个 mod 互相这么写就成环了。用异步上
+   * 下文而不是计数器 —— 同一个 handler 并发跑两次是两个平级调用，不该被误判
+   * 成重入（与 `modelCallContext` 同一条理由）。
+   */
+  private readonly hookContext = new AsyncLocalStorage<readonly string[]>();
   /**
    * 正在跑的 `$.model.complete` 的**异步上下文**。
    *
@@ -2200,6 +2290,23 @@ export class ModRuntime {
           this.withBudget(() =>
             host.registerTool(normalizeToolRegisterSpec(spec, host.pluginName)),
           ),
+        // 方法形态的两个探针（spec「主动问一次工具面」）：只跑链、不执行工具。
+        // 与 `register` 一样要过预算闸 —— 它们会跑别的 mod 的钩子，那 5 秒上限
+        // 是整条链的事，不是「谁发起」的事。
+        check: (request) =>
+          this.withBudget(() => {
+            this.assertNotNestedHook("tool.check", "$.tool.check");
+            return host.checkTool(
+              normalizeToolProbeRequest(request, "$.tool.check"),
+            );
+          }),
+        call: (request) =>
+          this.withBudget(() => {
+            this.assertNotNestedHook("tool.call", "$.tool.call");
+            return host.callTool(
+              normalizeToolProbeRequest(request, "$.tool.call"),
+            );
+          }),
       },
       config: {
         list: () => cloneValue(host.listConfigRows()),
@@ -2625,10 +2732,34 @@ export class ModRuntime {
     return this.matchingHooks(name, event).length > 0;
   }
 
+  /**
+   * 拒「在自家钩子里调同名方法」。
+   *
+   * 只有 `$.tool.check` / `$.tool.call` 用它：这两条链会遍历所有 mod 的钩子，
+   * 在钩子里再调一次就是从头再跑一遍，两个 mod 互相这样写就永远收敛不了。
+   */
+  private assertNotNestedHook(name: string, label: string): void {
+    if (!(this.hookContext.getStore() ?? []).includes(name)) return;
+    throw new Error(
+      `${label} 不能在 ${name} 钩子里调用：那会把整条链重跑一遍（互相这么写就成环了）`,
+    );
+  }
+
   /** 该事件上匹配这次事件的处理器（`command.run` 也走这张表）。 */
   private matchingHooks(name: string, event: unknown): HookEntry[] {
     const entries = this.hooks.get(name);
     if (!entries || entries.length === 0) return [];
+    // 控件事件的 `plugin` 是**钉住**的键（CC 的 `pinnedKeys: ["plugin"]`）：
+    // 不写 matcher 的钩子只收到自己画的控件。别的事件里「没写 matcher」= 全量，
+    // 这里不能沿用 —— 否则每个装了 mod 的插件都会被别人面板上的按钮叫起来。
+    if (UI_CONTROL_EVENTS.has(name) && isPlainObject(event)) {
+      const drawnBy = event.plugin;
+      return entries.filter((entry) =>
+        entry.matcher === undefined
+          ? drawnBy === this.host.pluginName
+          : matchesEvent(entry.matcher, event),
+      );
+    }
     return entries.filter((entry) => matchesEvent(entry.matcher, event));
   }
 
@@ -2655,10 +2786,13 @@ export class ModRuntime {
     const engine =
       options.engine ?? ((e: unknown) => this.engineFrame(name, e));
     const signal = options.signal ?? NEVER_ABORTED;
+    const running = this.hookContext.getStore() ?? [];
     try {
-      const value = await this.runWithBudget(
-        `${name} 钩子超过 ${MOD_LIMITS.hookTimeoutMs}ms`,
-        () => this.runChain(name, entries, 0, event, engine, signal),
+      const value = await this.hookContext.run([...running, name], () =>
+        this.runWithBudget(
+          `${name} 钩子超过 ${MOD_LIMITS.hookTimeoutMs}ms`,
+          () => this.runChain(name, entries, 0, event, engine, signal),
+        ),
       );
       return { ok: true, value, elapsedMs: Date.now() - started };
     } catch (error) {
