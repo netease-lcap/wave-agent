@@ -67,6 +67,14 @@ export {
   REMOTE_CONTROL_DEFAULT_ENABLED,
   isRemoteControlEnabled,
 } from "./services/remoteControlAvailability.js";
+// 一次性宿主提示（spec enterprise/server-managed-config「私有化未授权时给出一次
+// 性提示」，另有登录过期与设置文件解析失败）：来源各自去重，宿主只负责展示
+// SDK 给的文案。CLI 的 hint 行与 stdio 转发各订阅一次。
+export {
+  onHostNotice,
+  type HostNotice,
+  type HostNoticeKind,
+} from "./services/hostNotice.js";
 export {
   getUserConfigPaths,
   getProjectConfigPaths,

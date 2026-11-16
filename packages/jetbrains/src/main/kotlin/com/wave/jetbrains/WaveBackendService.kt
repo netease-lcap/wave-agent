@@ -7,6 +7,7 @@ import com.intellij.notification.NotificationType
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.project.Project
+import com.wave.jetbrains.ide.IdeService
 import com.wave.jetbrains.session.WaveSession
 import com.wave.jetbrains.stdio.BinaryResolver
 import com.wave.jetbrains.stdio.NotificationRouter
@@ -95,6 +96,18 @@ class WaveBackendService(private val project: Project) : Disposable {
                     r.registerGlobal("startupStage") { p ->
                         val stage = p?.jsonObject?.get("stage")?.jsonPrimitive?.content
                         if (!stage.isNullOrEmpty()) reportStage(stage)
+                    }
+                    // 进程级一次性提示（spec enterprise/server-managed-config.md「私有化
+                    // 未授权时给出一次性提示」）：三类共用一条通道——私有化未授权、SSO
+                    // 会话过期、配置文件不再可解析，都发生在任何会话之前。文案由 SDK 给定
+                    // （授权闸门那句是服务端原文），宿主不自造第二条；SDK 已去重（`kind`
+                    // 只用于 SDK 侧分源，宿主不必分辨），这里直接转成 IDE 错误气泡（与
+                    // VSCE 的 showErrorMessage 同档）。
+                    r.registerGlobal("hostNotice") { p ->
+                        val message = p?.jsonObject?.get("message")?.jsonPrimitive?.content
+                        if (!message.isNullOrBlank()) {
+                            Edt.invokeLater { IdeService.showError(project, message) }
+                        }
                     }
                     sharedClient = c
                     router = r

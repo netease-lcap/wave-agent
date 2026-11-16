@@ -54,6 +54,7 @@ import {
   type SlashCommandInfo,
   type ConfiguredModel,
   loadUserConfigEnv,
+  onHostNotice,
   loadWaveConfigFromFile,
   getUserConfigPaths,
   getProjectConfigPaths,
@@ -361,6 +362,12 @@ export class AgentBridge {
     if (userEnv.WAVE_SERVER_URL) {
       process.env.WAVE_SERVER_URL = userEnv.WAVE_SERVER_URL;
     }
+    // 进程级一次性提示（私有化未授权 / 登录过期 / 配置文件解析失败）：这些来源
+    // 都发生在任何会话绑定之前（启动、SSO 登录、定时轮询）或由进程自己持有的
+    // 子系统发出，所以只能走不带 sessionId 的全局通知。SDK 侧已按来源去重、
+    // 各来源在自己的成功路径上重新武装，这里原样转发三种 kind，宿主只负责展示。
+    // stdio 与 daemon 共用本 bridge，所以订阅挂在构造处而不是某个传输分支里。
+    onHostNotice((notice) => this.emit("hostNotice", notice));
   }
 
   // ── Public API ────────────────────────────────────────────────

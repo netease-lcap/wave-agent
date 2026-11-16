@@ -20,6 +20,9 @@ const h = vi.hoisted(() => ({
   realpaths: new Map<string, string>(),
   // When set, fs.promises.writeFile rejects — the file panel's save failure path.
   writeFileError: null as Error | null,
+  // When set, fs.writeFileSync throws — the artifact upload's per-file failure
+  // path (local uploads write the bytes with the sync API).
+  writeFileSyncError: null as Error | null,
   agentInstances: [] as Array<Record<string, unknown>>,
   clientRequests: [] as Array<{ method: string; params: unknown }>,
   // searchFiles 的回包（`@` 下拉）。默认空列表；测试要文件与子代理条目排序
@@ -235,7 +238,13 @@ const h = vi.hoisted(() => ({
   agentCounter: 0,
   // onClosed handlers registered by ensureRemoteHostClient on each
   // connectRemoteDaemon client — tests fire them to simulate a disconnect.
-  closedHandlers: [] as Array<() => void>,
+  closedHandlers: [] as Array<(reason: string) => void>,
+  // onClosed handlers registered on the local / WSL `wave --stdio` child — the
+  // local one is fired to simulate a CLI crash.
+  stdioClosedHandlers: [] as Array<(reason: string) => void>,
+  // How many `StdioClient`s were spawned: 1 after the first connect, 2 after a
+  // crash-then-access (the lazy restart path).
+  stdioClientCount: 0,
   // listPendingPermissions result for the remote daemon client (SSH remote
   // background: re-surfaced pending approvals on attach).
   pendingPermissionRequests: [] as Array<{
@@ -258,6 +267,7 @@ vi.mock("fs", () => ({
     return data;
   }),
   writeFileSync: vi.fn((p: string, data: string | Buffer) => {
+    if (h.writeFileSyncError) throw h.writeFileSyncError;
     h.files.set(p, data);
   }),
   renameSync: vi.fn((from: string, to: string) => {
@@ -356,9 +366,15 @@ vi.mock("fs", () => ({
 
 vi.mock("../src/main/stdio/stdioClient", () => ({
   StdioClient: class {
+    constructor() {
+      h.stdioClientCount += 1;
+    }
     onNotification = vi.fn();
     removeOnNotification = vi.fn();
     dispose = vi.fn();
+    onClosed = vi.fn((handler: (reason: string) => void) => {
+      h.stdioClosedHandlers.push(handler);
+    });
     request = vi.fn(async (method: string, params?: unknown) => {
       h.clientRequests.push({ method, params });
       return h.handleClientRequest(method, params);
@@ -966,6 +982,7 @@ beforeEach(() => {
   h.dirPaths.clear();
   h.realpaths.clear();
   h.writeFileError = null;
+  h.writeFileSyncError = null;
   h.agentInstances.length = 0;
   h.clientRequests.length = 0;
   h.searchFilesResult = null;
@@ -996,6 +1013,8 @@ beforeEach(() => {
   h.sessionWorktreeReply = undefined;
   h.agentCounter = 0;
   h.closedHandlers.length = 0;
+  h.stdioClosedHandlers.length = 0;
+  h.stdioClientCount = 0;
   h.pendingPermissionRequests = [];
   h.artifactResponses.clear();
   htmlPreviewMock.acquire.mockClear();
@@ -1452,6 +1471,44 @@ describe("uploadFilesToArtifacts", () => {
       paneId?: string;
     };
     expect(success.paneId).toBe("pane-1");
+  });
+
+  it("单个文件失败时：uploadError 回包照旧，另补一条窗口级 toast", async () => {
+    // 回包只到发起上传的那个输入框的安全网里；用户面对的仍是「点了上传，什么
+    // 都没发生」（spec 场景：附件上传失败必须可见）。
+    const { host, sent } = await readyHost();
+    h.writeFileSyncError = new Error("EACCES: permission denied");
+    const data = new TextEncoder().encode("hello").buffer;
+
+    await host.handleWebviewMessage({
+      command: "uploadFilesToArtifacts",
+      files: [{ name: "note.txt", data }],
+    });
+
+    const err = sent("uploadError").at(-1) as { errors: string[] };
+    expect(err.errors).toHaveLength(1);
+    expect(err.errors[0]).toContain("note.txt");
+
+    const toast = sent("showToast").at(-1);
+    expect(toast?.toast.type).toBe("error");
+    expect(toast?.toast.message).toContain("部分文件上传失败");
+    // 摘要够短：只带第一个失败文件，不把整段细节铺进 toast。
+    expect(toast?.toast.message).toContain("note.txt");
+    expect(toast?.toast.message.length).toBeLessThan(300);
+  });
+
+  it("整个上传处理抛错时也补一条 toast（安全网不能只有回包）", async () => {
+    const { host, sent } = await readyHost();
+
+    await host.handleWebviewMessage({
+      command: "uploadFilesToArtifacts",
+      files: undefined,
+    });
+
+    expect(sent("uploadError")).toHaveLength(1);
+    const toast = sent("showToast").at(-1);
+    expect(toast?.toast.type).toBe("error");
+    expect(toast?.toast.message).toContain("文件上传失败");
   });
 });
 
@@ -4140,6 +4197,56 @@ describe("account card (desktopAccountInfo)", () => {
     h.handleClientRequest = orig;
   });
 
+  it("登录失败时除了回包还给一条 toast（失败分支 webview 不处理）", async () => {
+    const orig = h.handleClientRequest;
+    h.handleClientRequest = (m: string, params?: unknown) => {
+      if (m === "login") throw new Error("授权码已失效，请重新登录");
+      if (m === "getAccountInfo") return { billing: null, apiQuota: null };
+      return orig(m, params);
+    };
+    const { host, sent } = await readyHost();
+
+    await host.handleWebviewMessage({ command: "login" });
+
+    // 回包照旧（成功/失败的信封不变）。
+    expect(sent("loginResponse").at(-1)).toMatchObject({
+      success: false,
+      error: "授权码已失效，请重新登录",
+    });
+    // webview 只处理 success 分支，所以提示必须由宿主自己给。
+    const toasts = sent("showToast").filter((m) =>
+      String(m.toast.message).startsWith("登录失败"),
+    );
+    expect(toasts).toHaveLength(1);
+    expect(toasts[0]?.toast.type).toBe("error");
+    expect(toasts[0]?.toast.message).toBe("登录失败：授权码已失效，请重新登录");
+    h.handleClientRequest = orig;
+  });
+
+  it("过长的失败原因截断到一句话，且保留尾部（真实原因在末尾）", async () => {
+    const orig = h.handleClientRequest;
+    const long = `${"前置噪音 ".repeat(60)}Caused by: 无法连接授权服务`;
+    h.handleClientRequest = (m: string, params?: unknown) => {
+      if (m === "login") throw new Error(`登录请求失败\n${long}`);
+      if (m === "getAccountInfo") return { billing: null, apiQuota: null };
+      return orig(m, params);
+    };
+    const { host, sent } = await readyHost();
+
+    await host.handleWebviewMessage({ command: "login" });
+
+    const message = String(
+      sent("showToast").find((m) =>
+        String(m.toast.message).startsWith("登录失败"),
+      )?.toast.message,
+    );
+    // 折成一行、总长可控（前缀 + 200 字符），尾部原因还在。
+    expect(message).not.toContain("\n");
+    expect(message.endsWith("Caused by: 无法连接授权服务")).toBe(true);
+    expect(message.length).toBeLessThanOrEqual("登录失败：…".length + 200);
+    h.handleClientRequest = orig;
+  });
+
   it("clears the account card on logout", async () => {
     const restore = stubAccountRpc(
       { id: "u1", email: "bob@example.com" },
@@ -6564,6 +6671,146 @@ describe("startup progress line", () => {
       result: { current: "main" },
     });
     expect(sent("loadingStage").at(-1)?.text).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 宿主一次性提示（`hostNotice`：私有化未授权 / 登录过期 / settings 解析失败）
+// (spec enterprise/server-managed-config.md「私有化未授权时给出一次性提示」)
+// ---------------------------------------------------------------------------
+
+describe("host notice toast", () => {
+  const LICENSE_MESSAGE = "产品尚未授权，请联系企业管理员上传 license";
+
+  it("surfaces the CLI-side notice as an error toast, verbatim", async () => {
+    const { sent } = await readyHost();
+
+    h.globalHandlers.hostNotice?.({
+      kind: "licenseBlocked",
+      message: LICENSE_MESSAGE,
+    });
+
+    const toasts = sent("showToast");
+    expect(toasts).toHaveLength(1);
+    expect(toasts[0]?.toast.message).toBe(LICENSE_MESSAGE);
+    expect(toasts[0]?.toast.type).toBe("error");
+  });
+
+  it("shows each distinct copy once, and never repeats the same one", async () => {
+    const { sent } = await readyHost();
+
+    h.globalHandlers.hostNotice?.({
+      kind: "licenseBlocked",
+      message: LICENSE_MESSAGE,
+    });
+    // SDK 已按来源去重，主机侧兜住多主机（本地/WSL/远端各一个 CLI 进程）重复
+    // 上报的同一条。
+    h.globalHandlers.hostNotice?.({
+      kind: "licenseBlocked",
+      message: LICENSE_MESSAGE,
+    });
+    // 换了一条 = 新情况，文案不同，再弹一次。
+    h.globalHandlers.hostNotice?.({
+      kind: "authExpired",
+      message: "您的订阅已到期，不可使用该产品!",
+    });
+
+    expect(sent("showToast").map((m) => m.toast.message)).toEqual([
+      LICENSE_MESSAGE,
+      "您的订阅已到期，不可使用该产品!",
+    ]);
+  });
+
+  it("ignores a notification without copy", async () => {
+    const { sent } = await readyHost();
+
+    h.globalHandlers.hostNotice?.({ kind: "licenseBlocked" });
+    h.globalHandlers.hostNotice?.({ kind: "licenseBlocked", message: "  " });
+
+    expect(sent("showToast")).toHaveLength(0);
+  });
+
+  it("shows an expired-session notice the same way — the host does not pick kinds", async () => {
+    // 桌面端不关心 `kind`：三类提示都是 SDK 拼好的、给用户看的一句话，一律原样
+    // 以 error toast 露出。挑 kind 就等于把「哪类值得告诉用户」的判定搬到宿主，
+    // 和 SDK 那条通道的契约相反。
+    const { sent } = await readyHost();
+
+    h.globalHandlers.hostNotice?.({
+      kind: "authExpired",
+      message: "登录状态已过期，请重新登录",
+    });
+
+    const toasts = sent("showToast");
+    expect(toasts).toHaveLength(1);
+    expect(toasts[0]?.toast.message).toBe("登录状态已过期，请重新登录");
+    expect(toasts[0]?.toast.type).toBe("error");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 本地 CLI 崩溃（`wave --stdio` 退出）
+// ---------------------------------------------------------------------------
+
+describe("local CLI crash", () => {
+  // 真实关停原因：第一行是退出摘要，后面是 stderr 尾巴（StdioClient 拼的）。
+  const EXIT_REASON =
+    "wave --stdio process exited (code: 1, signal: null)\n" +
+    "stderr:\nError: Cannot find module 'wave-agent-sdk'\n    at Module._resolveFilename";
+
+  it("tells the user immediately and lets the next access respawn the CLI", async () => {
+    const { host, sent } = await readyHost();
+    const agent = lastAgent();
+    seedConversation(agent, "sess-local");
+    // 崩溃前：会话挂在分屏上。
+    expect(
+      (
+        sent("desktopPanes").at(-1) as {
+          panes: Array<{ sessionId?: string }>;
+        }
+      ).panes[0].sessionId,
+    ).toBe("sess-local");
+    expect(h.stdioClientCount).toBe(1);
+
+    h.stdioClosedHandlers[0]?.(EXIT_REASON);
+
+    // 1) 立刻告诉用户：只带退出摘要，stderr 尾巴（可能很长）只进日志。
+    const toast = sent("showToast").at(-1);
+    expect(toast?.toast.type).toBe("error");
+    expect(toast?.toast.message).toBe(
+      "wave 进程已退出（code: 1, signal: null），重新打开该会话将自动重启",
+    );
+    expect(toast?.toast.message).not.toContain("Cannot find module");
+
+    // 2) 本地 agent 解绑（进程没了，它也不在了），但绝不 destroy：transcript 还
+    //    在磁盘上，侧栏照旧能恢复它。
+    expect(agent.destroy).not.toHaveBeenCalled();
+    expect(
+      (
+        sent("desktopPanes").at(-1) as {
+          panes: Array<{ sessionId?: string; host: string }>;
+        }
+      ).panes[0],
+    ).toMatchObject({ host: "local", sessionId: undefined });
+
+    // 3) 下一次访问本地会话 → 重新 spawn（`initPromise = null` 就是那条既有的
+    //    懒重启路径，不另造重启循环）。
+    await host.handleWebviewMessage({
+      command: "desktopSelectRecentWorkdir",
+      path: "/work/a",
+    });
+    await vi.waitFor(() => expect(h.stdioClientCount).toBe(2));
+  });
+
+  it("stays silent when the shutdown comes from dispose (app quit)", async () => {
+    const { host, sent } = await readyHost();
+
+    await host.dispose();
+    // dispose 会主动关掉子进程，同一条 onClosed 处理器也会被触发 —— 退出应用
+    // 不是意外崩溃，不该弹提示。
+    h.stdioClosedHandlers[0]?.(EXIT_REASON);
+
+    expect(sent("showToast")).toHaveLength(0);
   });
 });
 

@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import * as path from "node:path";
 
 import { authService, createAuthAwareFetch } from "./authService.js";
+import { emitHostNotice } from "./hostNotice.js";
 import type {
   RemoteSettingsCache,
   RemoteSettingsFetchResult,
@@ -17,9 +18,28 @@ const CACHE_FILE = path.join(homedir(), ".wave", "remote-settings.json");
 const POLLING_INTERVAL_MS = 60 * 60 * 1000; // 60 minutes
 const FETCH_TIMEOUT_MS = 10_000;
 
+/**
+ * 私有化 license 拦截的响应码（codechat spec `private-deployment-license.md`
+ * 验收场景 1）：产品未授权时服务端用 403 拦住客户端面，body 里带着可以直接
+ * 展示的中文 `error`。**只认这三个码**——其余 403（普通权限、服务端先于客户端
+ * 新增的码）仍按普通失败静默回退，不能被当成授权问题。
+ */
+const LICENSE_BLOCK_CODES = new Set([
+  "LICENSE_MISSING",
+  "LICENSE_NOT_STARTED",
+  "LICENSE_EXPIRED",
+]);
+
 let _cachedSettings: RemoteSettingsCache | null = null;
 let _pollingTimer: ReturnType<typeof setInterval> | null = null;
 let _onSettingsUpdateCallbacks: Array<() => void | Promise<void>> = [];
+
+/**
+ * 已经提示过的 code（进程级）。同一个码只提示一次——后台轮询一小时一次，不设这
+ * 道闸就是每小时弹一遍；换成别的码（MISSING → EXPIRED）算新情况，再提示一次。
+ * 拿到一次成功响应就清空，授权修好后又失效时能重新提示。
+ */
+let _notifiedLicenseCode: string | null = null;
 
 /**
  * Register a callback invoked when remote settings change (checksum differs).
@@ -44,6 +64,29 @@ async function notifySettingsUpdate(): Promise<void> {
       // Don't let callback errors break the fetch flow
     }
   }
+}
+
+/**
+ * 403 里如果是 license 拦截就通知一次（同码去重）。返回不改变调用方的控制流：
+ * 无论提示与否，fetch 仍按 `success: false` + 缓存兜底返回——提示只是让用户看见
+ * 原因，不是新的失败分支。去重在本模块做；通道本身（`hostNotice`）不做状态。
+ */
+function reportLicenseBlock(status: number, body: string): void {
+  if (status !== 403) return;
+  let parsed: { code?: unknown; error?: unknown } | null = null;
+  try {
+    parsed = JSON.parse(body) as { code?: unknown; error?: unknown };
+  } catch {
+    return;
+  }
+  const code = typeof parsed?.code === "string" ? parsed.code : "";
+  if (!LICENSE_BLOCK_CODES.has(code)) return;
+  if (_notifiedLicenseCode === code) return;
+  // 文案只取服务端原文：缺了就什么都不提示，不自己编一句。
+  const message = typeof parsed?.error === "string" ? parsed.error.trim() : "";
+  if (!message) return;
+  _notifiedLicenseCode = code;
+  emitHostNotice({ kind: "licenseBlocked", message });
 }
 
 function loadCacheFromDisk(): void {
@@ -125,6 +168,7 @@ async function fetchRemoteSettings(): Promise<RemoteSettingsFetchResult> {
       logger.debug("remoteSettings: 304 unchanged", {
         checksum: _cachedSettings?.checksum,
       });
+      _notifiedLicenseCode = null;
       return {
         success: true,
         settings: _cachedSettings!.settings,
@@ -135,6 +179,7 @@ async function fetchRemoteSettings(): Promise<RemoteSettingsFetchResult> {
     if (response.status === 404) {
       logger.debug("remoteSettings: 404 not configured — clearing stale cache");
       _cachedSettings = null;
+      _notifiedLicenseCode = null;
       removeCacheFromDisk();
       if (oldChecksum) {
         await notifySettingsUpdate();
@@ -148,6 +193,7 @@ async function fetchRemoteSettings(): Promise<RemoteSettingsFetchResult> {
         status: response.status,
         body: body.slice(0, 200),
       });
+      reportLicenseBlock(response.status, body);
       return {
         success: false,
         error: `HTTP ${response.status}`,
@@ -156,6 +202,7 @@ async function fetchRemoteSettings(): Promise<RemoteSettingsFetchResult> {
     }
 
     const data = (await response.json()) as RemoteSettingsResponse;
+    _notifiedLicenseCode = null;
     _cachedSettings = {
       uuid: data.uuid,
       checksum: data.checksum,
@@ -266,6 +313,7 @@ export function resetAuthChangeRefresh(): void {
 
 export function clear(): void {
   _cachedSettings = null;
+  _notifiedLicenseCode = null;
   removeCacheFromDisk();
   if (_pollingTimer) {
     clearInterval(_pollingTimer);

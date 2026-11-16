@@ -45,6 +45,10 @@ import {
   loadUserConfigEnv,
 } from "../../src/services/configurationService.js";
 import { getRemoteSettingsSync } from "../../src/services/remoteSettingsService.js";
+import {
+  onHostNotice,
+  type HostNotice,
+} from "../../src/services/hostNotice.js";
 import { atomicWriteFile } from "../../src/utils/atomicWrite.js";
 import {
   DEFAULT_WAVE_CONTEXT_WINDOW,
@@ -2077,6 +2081,104 @@ describe("ConfigurationService", () => {
       const result = loadWaveConfigFromFile(configPath);
       expect(result).not.toBeNull();
       expect(result?.model).toBe("valid-model");
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // 「设置文件解析失败」一次性宿主提示
+  // ---------------------------------------------------------------------------
+  describe("loadWaveConfigFromFile — configParseError notice", () => {
+    const notices: HostNotice[] = [];
+    const unsubscribers: Array<() => void> = [];
+
+    beforeEach(() => {
+      notices.length = 0;
+      unsubscribers.push(
+        onHostNotice((notice) => {
+          if (notice.kind === "configParseError") notices.push(notice);
+        }),
+      );
+    });
+
+    afterEach(() => {
+      for (const off of unsubscribers.splice(0)) off();
+    });
+
+    const broken = (configPath: string) => {
+      mockExistsSync.mockImplementation((p) => p.toString() === configPath);
+      mockReadFileSync.mockReturnValue('{"model": "test"');
+    };
+
+    it("notifies once with the full path, and only once for a repeated load", () => {
+      const configPath = path.join(tempDir, ".wave", "settings.json");
+      broken(configPath);
+
+      expect(loadWaveConfigFromFile(configPath)).toBeNull();
+      // 热更新 / 两层配置各读一遍：同一个坏文件不重复提示。
+      expect(loadWaveConfigFromFile(configPath)).toBeNull();
+
+      expect(notices).toEqual([
+        {
+          kind: "configParseError",
+          message: `设置文件解析失败：${configPath}（本轮忽略该文件）`,
+        },
+      ]);
+    });
+
+    it("notifies once per path", () => {
+      const userPath = path.join(userHome, ".wave", "settings.json");
+      const projectPath = path.join(tempDir, ".wave", "settings.json");
+      mockExistsSync.mockReturnValue(true);
+      mockReadFileSync.mockReturnValue("not json");
+
+      loadWaveConfigFromFile(userPath);
+      loadWaveConfigFromFile(projectPath);
+
+      expect(notices.map((notice) => notice.message)).toEqual([
+        `设置文件解析失败：${userPath}（本轮忽略该文件）`,
+        `设置文件解析失败：${projectPath}（本轮忽略该文件）`,
+      ]);
+    });
+
+    it("re-arms once the same path parses again", () => {
+      const configPath = path.join(tempDir, ".wave", "settings.json");
+      mockExistsSync.mockImplementation((p) => p.toString() === configPath);
+
+      mockReadFileSync.mockReturnValue('{"model": "test"');
+      loadWaveConfigFromFile(configPath);
+      expect(notices).toHaveLength(1);
+
+      // 用户修好了文件
+      mockReadFileSync.mockReturnValue(JSON.stringify({ model: "fixed" }));
+      expect(loadWaveConfigFromFile(configPath)?.model).toBe("fixed");
+
+      // 又写坏了：算新情况，再提示一次。
+      mockReadFileSync.mockReturnValue('{"model": "test"');
+      loadWaveConfigFromFile(configPath);
+      expect(notices).toHaveLength(2);
+    });
+
+    it("stays silent for a missing, empty or unreadable file", () => {
+      const missingPath = path.join(tempDir, ".wave", "missing.json");
+      mockExistsSync.mockReturnValue(false);
+      expect(loadWaveConfigFromFile(missingPath)).toBeNull();
+
+      const emptyPath = path.join(tempDir, ".wave", "empty.json");
+      mockExistsSync.mockReturnValue(true);
+      mockReadFileSync.mockReturnValue("");
+      expect(loadWaveConfigFromFile(emptyPath)).toBeNull();
+
+      const unreadablePath = path.join(tempDir, ".wave", "unreadable.json");
+      mockReadFileSync.mockImplementation(() => {
+        const error = new Error("EACCES: permission denied") as Error & {
+          code: string;
+        };
+        error.code = "EACCES";
+        throw error;
+      });
+      expect(() => loadWaveConfigFromFile(unreadablePath)).toThrow("EACCES");
+
+      expect(notices).toEqual([]);
     });
   });
 

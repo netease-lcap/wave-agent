@@ -8,10 +8,12 @@ export interface NotificationsProps {
   maxOutputTokens?: number;
   showLoginHint?: boolean;
   /**
-   * 一次性中性提示（插件变更待应用 / 重载完成）。由宿主显式设置并在数秒后清除，
-   * 不提供持久可见标识（docs/specs/ecosystem/plugin.md「插件变更提示」）。
+   * 一次性中性提示（插件变更待应用 / 重载完成 / 私有化未授权拦截）。由宿主显式
+   * 设置并在数秒后清除，不提供持久可见标识（docs/specs/ecosystem/plugin.md
+   * 「插件变更提示」、docs/specs/enterprise/server-managed-config.md「私有化未授权
+   * 时给出一次性提示」）。多个来源共用这一个槽位：谁最后设置谁显示。
    */
-  pluginHint?: string | null;
+  hint?: string | null;
 }
 
 export const Notifications: React.FC<NotificationsProps> = ({
@@ -19,7 +21,7 @@ export const Notifications: React.FC<NotificationsProps> = ({
   contextWindow = 200000,
   maxOutputTokens = 32000,
   showLoginHint = false,
-  pluginHint = null,
+  hint = null,
 }) => {
   const percentage =
     latestTotalTokens > 0
@@ -31,7 +33,7 @@ export const Notifications: React.FC<NotificationsProps> = ({
 
   return (
     <Box gap={1}>
-      {pluginHint && <Text color="gray">{pluginHint}</Text>}
+      {hint && <Text color="gray">{hint}</Text>}
       {showLoginHint && <Text color="gray">Type /login to authenticate</Text>}
       {percentage > 0 && (
         <Text color={contextColor}>{percentage}% context</Text>

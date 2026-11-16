@@ -1214,8 +1214,18 @@ export const MessageInput = forwardRef<
         insertUploadedFilePaths(data.uploadedFiles);
       }
     } else if (data.command === "uploadError") {
-      console.error("文件上传失败:", data.error);
-      // Could show an error notification here if needed
+      // The host reports two shapes: a per-file failure list (`errors` + a
+      // summary `message`) and a whole-handler failure (`error`). Reading only
+      // `error` logged `undefined` for the common case. The user-visible half
+      // lives on the host side (desktop toast / IDE notification), so this is
+      // just the console trail — keep it accurate.
+      const errors = (data as { errors?: string[] }).errors;
+      console.error(
+        "文件上传失败:",
+        (data as { message?: string }).message ??
+          (data as { error?: string }).error,
+        errors ?? "",
+      );
     } else if (data.command === "addSelectionToInput") {
       insertSelectionTag(data.selection);
     }
