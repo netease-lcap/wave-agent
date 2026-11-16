@@ -21,6 +21,11 @@
   line-height: 1.6;
 }
 
+/* 控件与文本的观感规则挂在 `.mod-surface` 而不是 `.mod-panel`：同一棵树既画在
+   面板里，也画在输入框上方那条带里，而带的外壳是 `.mod-band-item`（带自己有
+   间距与上限高度，套不上 `.mod-panel` 的 padding/overflow）。不共用这套规则
+   时，带里的按钮就是浏览器默认的灰方块（真机截图里三个按钮一行全是原生样式）。 */
+
 /* 根 Box 已自带 flex 布局；这里只保证它撑满面板宽度，不塌成一行。 */
 .mod-panel-root {
   display: flex;
@@ -32,23 +37,23 @@
 /* flex 子项的 `min-width` 默认是 auto：一个长代码块就能把整列撑出横向滚动条，
    顺带把同一行的输入框和按钮挤到看不见。逐层压回 0，让内容自己滚动。 */
 .mod-panel-root > *,
-.mod-panel .mod-panel-input,
-.mod-panel .mod-panel-code,
-.mod-panel .mod-panel-markdown {
+.mod-surface .mod-panel-input,
+.mod-surface .mod-panel-code,
+.mod-surface .mod-panel-markdown {
   min-width: 0;
   max-width: 100%;
 }
 
-.mod-panel a {
+.mod-surface a {
   color: var(--cc-action-primary, var(--vscode-focusBorder, #2f6fdd));
   text-decoration: none;
 }
 
-.mod-panel a:hover {
+.mod-surface a:hover {
   text-decoration: underline;
 }
 
-.mod-panel button {
+.mod-surface button {
   font: inherit;
   padding: 4px 12px;
   border-radius: var(--cc-radius-sm, 6px);
@@ -61,19 +66,36 @@
   white-space: nowrap;
 }
 
-.mod-panel button:hover:not(:disabled) {
+.mod-surface button:hover:not(:disabled) {
   background: var(
     --cc-action-secondary-hover,
     var(--vscode-button-secondaryHoverBackground, rgba(128, 128, 128, 0.12))
   );
 }
 
-.mod-panel button:disabled {
+.mod-surface button:disabled {
   cursor: default;
   color: var(--vscode-disabledForeground, #999);
 }
 
-.mod-panel input {
+/* `variant`（spec 「元素」表）：`primary` 用主题主操作色，`secondary` 与未给
+   时同一中性底（后者那条是上面的 `.mod-surface button`）。mod 的树里没有
+   尺寸概念，两档只换颜色，不换高度。 */
+.mod-surface .mod-button-primary {
+  border-color: var(--cc-action-primary, #1f2329);
+  background: var(--cc-action-primary, #1f2329);
+  color: var(--cc-action-primary-text, #fff);
+}
+
+.mod-surface .mod-button-primary:hover:not(:disabled) {
+  background: var(--cc-action-primary-hover, #34383f);
+}
+
+.mod-surface .mod-button-primary:disabled {
+  opacity: 0.5;
+}
+
+.mod-surface input {
   font: inherit;
   padding: 4px 8px;
   border-radius: var(--cc-radius-sm, 6px);
@@ -82,7 +104,7 @@
   color: var(--vscode-input-foreground, inherit);
 }
 
-.mod-panel input:focus {
+.mod-surface input:focus {
   outline: none;
   border-color: var(
     --cc-field-border-focus,
@@ -90,7 +112,7 @@
   );
 }
 
-.mod-panel .mod-panel-code {
+.mod-surface .mod-panel-code {
   margin: 0;
   padding: 8px 10px;
   border-radius: var(--cc-radius-sm, 6px);
@@ -105,24 +127,24 @@
   overflow: auto;
 }
 
-.mod-panel .mod-panel-code-path {
+.mod-surface .mod-panel-code-path {
   margin-bottom: 4px;
   color: var(--vscode-descriptionForeground, #888);
   font-size: 11px;
 }
 
-.mod-panel .mod-panel-markdown > :first-child {
+.mod-surface .mod-panel-markdown > :first-child {
   margin-top: 0;
 }
 
-.mod-panel .mod-panel-markdown > :last-child {
+.mod-surface .mod-panel-markdown > :last-child {
   margin-bottom: 0;
 }
 
 /* 错误条叠在**上一帧树**上方而不是顶掉它：mod 的元素回调抛错时，树还是上一次
    成功渲染的那份，把它换成一行错误文字会让面板彻底不可操作（用户连别的按钮
    都点不到）。下一次 `$.ui.invalidate` 成功后这条自动消失。 */
-.mod-panel .mod-panel-error {
+.mod-surface .mod-panel-error {
   margin-bottom: 8px;
   padding: 6px 10px;
   border-radius: var(--cc-radius-sm, 6px);
@@ -133,8 +155,8 @@
   white-space: pre-wrap;
 }
 
-.mod-panel .mod-panel-empty,
-.mod-panel .mod-panel-unknown {
+.mod-surface .mod-panel-empty,
+.mod-surface .mod-panel-unknown {
   color: var(--vscode-descriptionForeground, #888);
   font-size: 12px;
 }

@@ -27,7 +27,7 @@ describe("validateModTree", () => {
   it("接受合法树，并返回只保留已知字段的副本", () => {
     const input = {
       type: "Box",
-      props: { gap: 2, justify: "center" },
+      props: { gap: 2, flexShrink: 0 },
       children: [text("hi")],
       // 宿主只认 type/props/children，其余字段不往下游传。
       extra: "dropped",
@@ -39,11 +39,56 @@ describe("validateModTree", () => {
     if (!result.ok) return;
     expect(result.tree).toEqual({
       type: "Box",
-      // props 不做白名单：渲染器按名字取自己认识的那些。
-      props: { gap: 2, justify: "center" },
+      props: { gap: 2, flexShrink: 0 },
       children: [{ type: "Text", props: {}, children: ["hi"] }],
     });
     expect(result.tree).not.toHaveProperty("extra");
+  });
+
+  describe("prop 白名单", () => {
+    it("拒绝拼错的 prop，并点名它和该元素的可用名单", () => {
+      const result = validateModTree({
+        type: "Button",
+        props: { key: "b1", label2: "x" },
+        children: [],
+      });
+
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      // 静默忽略会让作者以为写对了：错误必须点出元素 + prop 名。
+      expect(result.error).toContain("Button");
+      expect(result.error).toContain("label2");
+    });
+
+    it("别的框架的习惯写法（className / style）也当场报错", () => {
+      for (const props of [{ className: "x" }, { style: "color: red" }]) {
+        const result = validateModTree({ type: "Text", props, children: [] });
+        expect(result.ok).toBe(false);
+      }
+    });
+
+    it("key 每个元素都能带（列表里的稳定标识）", () => {
+      expect(
+        validateModTree({
+          type: "Box",
+          props: { key: "row-1" },
+          children: [text("hi")],
+        }).ok,
+      ).toBe(true);
+    });
+
+    it("Button.variant 只认 primary / secondary", () => {
+      const variant = (value: unknown) =>
+        validateModTree({
+          type: "Button",
+          props: { key: "b1", variant: value },
+          children: [],
+        });
+
+      expect(variant("primary").ok).toBe(true);
+      expect(variant("secondary").ok).toBe(true);
+      expect(variant("danger").ok).toBe(false);
+    });
   });
 
   it("根节点是裸文本时包成一个 Text", () => {

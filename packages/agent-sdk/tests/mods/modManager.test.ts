@@ -2,7 +2,7 @@ import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ModManager } from "../../src/managers/modManager.js";
 import { logger } from "../../src/utils/globalLogger.js";
-import { MOD_LIMITS } from "../../src/types/mods.js";
+import { MOD_BAND_INSTANCE_ID, MOD_LIMITS } from "../../src/types/mods.js";
 import type {
   ModPanelUpdatePayload,
   ModStatusPayload,
@@ -75,7 +75,7 @@ exports.register = function ($, on) {
       __wave.h("Button", { key: "inc", label: "+1", onPress: function () {
         $.state.set("n", n + 1);
         $.store.set("total", String(n + 1));
-        $.ui.invalidate("p1");
+        $.ui.invalidate("ui.render");
       }})
     );
   });
@@ -135,6 +135,54 @@ exports.register = function ($, on) {
     expect(again.find((b) => b.modId === "todo:band")?.revision).toBe(2);
 
     await manager.dispose();
+  });
+
+  it("只画带的 mod 也能靠 invalidate 重画自己（它没有面板可挂）", async () => {
+    const bandOnly = path.join(ROOT, "mods", "band-only.tsx");
+    const { manager, updates } = createManager({
+      [bandOnly]: `
+var n = 0;
+exports.register = function ($, on) {
+  on("ui.render", function (e) {
+    if (e.component !== "AbovePrompt") return undefined;
+    return __wave.h("Box", null,
+      __wave.h("Text", null, "n=" + n),
+      __wave.h("Button", { key: "tick", label: "+1", onPress: function () {
+        n = n + 1;
+        $.ui.invalidate("ui.render");
+      }})
+    );
+  });
+};
+`,
+    });
+    await manager.loadFromPlugins([
+      plugin([{ id: "todo:band", path: bandOnly }]),
+    ]);
+    await manager.startSession();
+    // 先真的画一帧：元素回调是在 `h()` 里登记进 mod 处理表的。
+    await manager.renderBand();
+
+    await manager.handlePanelEvent({
+      sessionId: "s1",
+      modId: "todo:band",
+      paneId: MOD_BAND_INSTANCE_ID,
+      key: "tick",
+      kind: "press",
+    });
+
+    // 带不是 pane：这条 stale 的 `paneId` 是固定值，surface 收到只会重拉带。
+    await vi.waitFor(() => expect(updates).toHaveLength(1));
+    expect(updates[0]).toMatchObject({
+      modId: "todo:band",
+      paneId: MOD_BAND_INSTANCE_ID,
+      stale: true,
+    });
+    expect(updates[0]).not.toHaveProperty("tree");
+
+    const [band] = await manager.renderBand();
+    expect(band.revision).toBe(2);
+    expect(JSON.stringify(band.tree)).toContain("n=1");
   });
 
   it("没有注册 ui.render 的 mod 不出现在带里", async () => {
@@ -355,6 +403,13 @@ function storeFile(name: string): string {
   return path.join(STORE_ROOT, `${name}.json`);
 }
 
+/** 只看面板那一条：一次 invalidate 之后带也会收到一条（`paneId` 固定值）。 */
+function paneUpdates(
+  updates: ModPanelUpdatePayload[],
+): ModPanelUpdatePayload[] {
+  return updates.filter((update) => update.paneId === "p1");
+}
+
 /** surface 拉一帧：这就是「树从哪来」的全部（宿主不推）。 */
 function pull(manager: ModManager, paneId = "p1") {
   return manager.renderPane("todo:panel", paneId);
@@ -557,9 +612,13 @@ describe("ModManager.handlePanelEvent", () => {
     });
 
     // invalidate 只发一条 stale 元信息，不自己渲染。
-    await vi.waitFor(() => expect(updates).toHaveLength(2));
-    expect(updates[1]).toMatchObject({ paneId: "p1", stale: true });
-    expect(updates[1]).not.toHaveProperty("tree");
+    await vi.waitFor(() => expect(paneUpdates(updates)).toHaveLength(2));
+    const paneStale = paneUpdates(updates)[1];
+    expect(paneStale).toMatchObject({ paneId: "p1", stale: true });
+    expect(paneStale).not.toHaveProperty("tree");
+    // 一次 invalidate 管到这个 mod 的**所有**站点：带也各收到一条，`paneId` 是
+    // 固定值（这是只画带的 mod 唯一的重画通道）。
+    expect(updates.some((u) => u.paneId === MOD_BAND_INSTANCE_ID)).toBe(true);
 
     const frame = await pull(manager);
     expect(frame.revision).toBe(2);
@@ -581,7 +640,7 @@ exports.register = function ($, on) {
         throw new Error("boom");
       }}),
       __wave.h("Button", { key: "ok", label: "好", onPress: function () {
-        $.ui.invalidate("p1");
+        $.ui.invalidate("ui.render");
       }})
     );
   });
@@ -611,7 +670,7 @@ exports.register = function ($, on) {
       key: "ok",
       kind: "press",
     });
-    await vi.waitFor(() => expect(updates).toHaveLength(3), {
+    await vi.waitFor(() => expect(paneUpdates(updates)).toHaveLength(3), {
       timeout: MOD_LIMITS.invalidateIntervalMs * 10,
     });
     // 成功的这一帧把错误清掉：错误只活在失败的那一帧上，拉一次新的就没了。
@@ -695,14 +754,18 @@ exports.register = function ($, on) {
       });
     }
 
-    await vi.waitFor(() => expect(updates).toHaveLength(2), {
+    await vi.waitFor(() => expect(paneUpdates(updates)).toHaveLength(2), {
       timeout: MOD_LIMITS.invalidateIntervalMs * 10,
     });
     // 观察窗口要够宽：合并之后不该再冒出第 3 帧。
     await new Promise((resolve) =>
       setTimeout(resolve, MOD_LIMITS.invalidateIntervalMs * 2),
     );
-    expect(updates).toHaveLength(2);
+    expect(paneUpdates(updates)).toHaveLength(2);
+    // 带也合并在同一次里（一个 mod 一条）。
+    expect(
+      updates.filter((u) => u.paneId === MOD_BAND_INSTANCE_ID),
+    ).toHaveLength(1);
   });
 
   it("关面板发 closed:true，mod 收不到通知", async () => {
@@ -1074,6 +1137,67 @@ exports.register = function ($, on) {
     );
 
     await manager.dispose();
+  });
+
+  /** 在 `session.start` 里填一次草稿的 mod（spec「把草稿填进输入框」）。 */
+  const fillMod = `
+exports.register = function ($, on) {
+  on("session.start", function () {
+    return $.prompt.fill({ text: "基于这个再改一版", mode: "append" });
+  });
+};
+`;
+
+  it("$.prompt.fill 把文本与 mode 交给接上的填草稿通道", async () => {
+    const { manager } = createManager({ [MOD_PATH]: fillMod });
+    const fill = vi.fn(async () => true);
+    manager.setPromptFiller(fill);
+
+    await manager.loadFromPlugins([
+      plugin([{ id: "todo:panel", path: MOD_PATH }]),
+    ]);
+    await manager.startSession();
+
+    expect(fill).toHaveBeenCalledWith({
+      text: "基于这个再改一版",
+      mode: "append",
+    });
+
+    await manager.dispose();
+  });
+
+  it("宿主没接填草稿通道时 $.prompt.fill 答 false，不抛错", async () => {
+    // 终端 CLI、没挂 surface 的宿主就是这一种：填不上是正常结果（spec 场景 4）。
+    const { manager } = createManager({ [MOD_PATH]: fillMod });
+
+    await manager.loadFromPlugins([
+      plugin([{ id: "todo:panel", path: MOD_PATH }]),
+    ]);
+    await manager.startSession();
+
+    // `session.start` 正常结束，没有任何错误摘要被推出来。
+    expect(vi.mocked(logger.warn)).not.toHaveBeenCalled();
+
+    await manager.dispose();
+  });
+
+  it("dispose 之后 $.prompt.fill 一律答 false", async () => {
+    const { manager } = createManager();
+    const fill = vi.fn(async () => true);
+    manager.setPromptFiller(fill);
+    await manager.dispose();
+
+    await expect(
+      (
+        manager as unknown as {
+          fillPrompt(request: {
+            text: string;
+            mode: "replace" | "append" | "insert";
+          }): Promise<boolean>;
+        }
+      ).fillPrompt({ text: "late", mode: "replace" }),
+    ).resolves.toBe(false);
+    expect(fill).not.toHaveBeenCalled();
   });
 
   it("dispose 之后不能再投递", async () => {

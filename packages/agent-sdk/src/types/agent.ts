@@ -202,6 +202,15 @@ export interface AgentCallbacks
   /** A plugin mod asked for a transient notice (`$.ui.toast`). */
   onModToast?: (payload: import("./mods.js").ModToastPayload) => void;
   /**
+   * A plugin mod wants a draft placed in the surface's composer
+   * (`$.prompt.fill`; spec `ecosystem/plugin-mods.md`「把草稿填进输入框」).
+   *
+   * The one mod channel that asks the surface for an answer: reply with
+   * `Agent.resolveModPromptFill(requestId, filled)`. A host that never wires
+   * this simply leaves `$.prompt.fill` answering `{ isFilled: false }`.
+   */
+  onModPromptFill?: (payload: import("./mods.js").ModPromptFillRequest) => void;
+  /**
    * The session's workspace moved (EnterWorktree / ExitWorktree) — a different
    * event from a Bash `cd`: the conversation now works in another working tree,
    * so the surfaces showing "the project the user is looking at" follow.

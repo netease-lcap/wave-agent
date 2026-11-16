@@ -11,6 +11,7 @@ import type {
   ModSpawnOptions,
   ModProcessChunk,
   ModProcessExit,
+  ModPromptFillMode,
   ModSessionUsage,
 } from "../types/mods.js";
 import { MOD_LIMITS } from "../types/mods.js";
@@ -59,10 +60,12 @@ const SURFACE = "desktop";
 /**
  * 这一端上能画的站点：`ui.render` 的 `e.component`。
  *
- * 一期只有右侧面板一处，所以只有 `Pane`。CC 的表里还有 17 个（`AbovePrompt`、
- * `ToolUse`、`PromptHint`…），加站点时往这里加，别在别处另写一份。
+ * 一期两处：右侧面板（`Pane`）与输入框上方的带（`AbovePrompt`）—— 宿主两处都
+ * 会发 `ui.render`，漏一个就等于让那一处的 mod 在 `$.ui.resolve(e)` 上抛错。
+ * CC 的表里还有 15 个（`ToolUse`、`PromptHint`…），加站点时往这里加，别在别处
+ * 另写一份。
  */
-const RENDER_SITES: readonly string[] = ["Pane"];
+const RENDER_SITES: readonly string[] = ["Pane", "AbovePrompt"];
 
 /**
  * 冻结的元素表：每次 `$.ui.resolve(e)` 返回同一份，mod 改不到它。
@@ -143,7 +146,15 @@ export interface ModDollar {
     open(pane: { id: string; title: string }): void;
     close(id: string): void;
     panes(): string[];
-    invalidate(id: string): void;
+    /**
+     * 「我这个 mod 画的东西过期了」——参数是**渲染站点的生产者**，一期只有
+     * `"ui.render"`（spec「用户交互的结果」）。
+     *
+     * 不是面板 id：一次调用作用于该 mod 的**所有**站点，面板与输入框上方那条
+     * 带都重画。带平时只在 surface 挂载时拉一次，没有这条通道就只能永远停在
+     * 第一帧（Claude Code 的 `$.ui.invalidate("ui.render")` 是同一个形状）。
+     */
+    invalidate(target: string): void;
     /** 输入框下方那一行常驻状态（每个插件一条）；`null` 清除。 */
     status(text: string | null): void;
     /** 输入框下方的短暂提示；`timeoutMs` 默认 4000ms、最多 10 秒。 */
@@ -222,6 +233,16 @@ export interface ModDollar {
    */
   prompt: {
     submit(options: { text: string; asUser?: boolean }): Promise<void>;
+    /**
+     * 把草稿填进用户正看着的输入框、**不发送**（spec「把草稿填进输入框」）。
+     *
+     * `isFilled: false` 是正常结果：终端 CLI、没有 surface 接手、对话框占着
+     * 键、5 秒没有回执，都是这一种。mod 拿它决定要不要降级成 `submit`。
+     */
+    fill(options: {
+      text: string;
+      mode?: ModPromptFillMode;
+    }): Promise<{ isFilled: boolean }>;
   };
   /**
    * 只读的会话快照（spec「会话用量」）。
@@ -240,7 +261,7 @@ export interface ModRuntimeHost {
   openPane(paneId: string, title: string): void;
   closePane(paneId: string): void;
   listPanes(): string[];
-  invalidate(paneId: string): void;
+  invalidate(target: string): void;
   /** 输入框下方那一行常驻状态；`null` 清除（spec「状态带、状态行与提示」）。 */
   setStatus(text: string | null): void;
   /** 短暂提示；`timeoutMs` 由 runtime 夹进限额后交下来。 */
@@ -270,6 +291,16 @@ export interface ModRuntimeHost {
   workdir(): string;
   /** 把一条 prompt 投进当前会话。 */
   submitPrompt(text: string): Promise<void>;
+  /**
+   * 把草稿填进 surface 的输入框（spec「把草稿填进输入框」）。
+   *
+   * 返回「填了没有」。宿主链路（通知 → webview → 回执）与超时都由实现方
+   * 负责：这里只看结果，不关心是哪一端放弃的。
+   */
+  fillPrompt(request: {
+    text: string;
+    mode: ModPromptFillMode;
+  }): Promise<boolean>;
   /** `$.session.usage()` 的数据源；会话还没起过轮次时给零值快照。 */
   sessionUsage(): ModSessionUsage;
 }
@@ -460,7 +491,14 @@ export class ModRuntime {
         open: (pane) => host.openPane(pane.id, pane.title),
         close: (id) => host.closePane(id),
         panes: () => [...host.listPanes()],
-        invalidate: (id) => host.invalidate(id),
+        invalidate: (target) => {
+          if (target !== "ui.render") {
+            throw new Error(
+              `$.ui.invalidate 只认 "ui.render"（一期只有这一个渲染站点生产者），拿到的是 ${JSON.stringify(target)}`,
+            );
+          }
+          host.invalidate(target);
+        },
         // 只推不拉：不产生树、不进上下文，宿主收到就画（spec「状态带、状态行
         // 与提示」）。
         status: (text) => host.setStatus(normalizeStatus(text)),
@@ -522,6 +560,30 @@ export class ModRuntime {
             throw new Error("$.prompt.submit 一期只支持 asUser: true");
           }
           await host.submitPrompt(text);
+        },
+        fill: async (options) => {
+          const text = options?.text;
+          // 空串是合法输入：`replace` 空串就是把草稿清掉（与 Claude Code 一致）。
+          if (typeof text !== "string") {
+            throw new Error("$.prompt.fill 的 text 必须是字符串");
+          }
+          const mode = options.mode;
+          if (
+            mode !== undefined &&
+            mode !== "replace" &&
+            mode !== "append" &&
+            mode !== "insert"
+          ) {
+            // 不静默当成 replace：拼错的 mode 会安静地替掉用户已打的字。
+            throw new Error(
+              '$.prompt.fill 的 mode 只允许 "replace"、"append"、"insert"',
+            );
+          }
+          const isFilled = await host.fillPrompt({
+            text,
+            mode: mode ?? "replace",
+          });
+          return { isFilled };
         },
       },
       // 只读快照；克隆一份交出去，mod 改自己的副本伤不到会话。

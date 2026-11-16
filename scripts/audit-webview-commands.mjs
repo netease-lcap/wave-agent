@@ -131,6 +131,9 @@ const DESKTOP_GATED_NON_PREFIX = new Set([
   // 输入框上方那条带同一条拉取链路（spec「状态带、状态行与提示」）：桌面端在会话
   // 就绪 / 每次 stale 后发这条去要。插件端没有 mod 宿主，无从拉取。
   "modBandRender",
+  // 对一次 `$.prompt.fill` 的回答（spec「把草稿填进输入框」）：只有桌面端会推
+  // `desktopModPromptFill`，插件端没有这条推送 ⇒ webview 在那里永不发送。
+  "modPromptFillResult",
 ]);
 
 /**

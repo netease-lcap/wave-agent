@@ -205,7 +205,11 @@ export type RequestMethod =
   // with `modPanelRender`). Session-scoped resync: a host that attached after
   // `session.start` (session restore, remote re-attach) would otherwise miss the
   // `modPanelUpdate` notifications that opened them.
-  | "getModPanels";
+  | "getModPanels"
+  // The surface's answer to a `modPromptFill` push (spec「把草稿填进输入框」).
+  // Params: `{ requestId, filled }`. An unknown `requestId` (the 5 s limit
+  // already answered `{ isFilled: false }`) is ignored rather than an error.
+  | "modPromptFillResult";
 
 // ── Client → Server notification methods ────────────────────────
 
@@ -340,4 +344,14 @@ export type ServerNotificationMethod =
    */
   | "modStatusUpdate"
   /** A mod asked for a transient notice (`$.ui.toast`). Params: `ModToastPayload`. */
-  | "modToast";
+  | "modToast"
+  /**
+   * A mod wants a draft placed in the composer (`$.prompt.fill`; spec
+   * 「把草稿填进输入框」). Params: `ModPromptFillRequest`.
+   *
+   * The one mod push that expects an answer — the host replies with the
+   * `modPromptFillResult` RPC, and no answer in time reads as `{ isFilled:
+   * false }`. It never touches the conversation: the text is a draft the user
+   * still has to send.
+   */
+  | "modPromptFill";

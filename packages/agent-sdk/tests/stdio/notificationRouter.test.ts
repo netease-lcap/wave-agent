@@ -80,6 +80,12 @@ describe("NotificationRouter", () => {
     expect(methods).toContain("compactBlockAdded");
     expect(methods).toContain("compactionStateChange");
     expect(methods).toContain("compactionContentUpdate");
+    // 插件 mod 的推送：这张表是**逐个列举**的，漏一条不会报错 —— 宿主只是
+    // 静默收不到（`modPromptFill` 更隐蔽：mod 干等 5 秒按「没填上」收口）。
+    expect(methods).toContain("modPanelUpdate");
+    expect(methods).toContain("modStatusUpdate");
+    expect(methods).toContain("modToast");
+    expect(methods).toContain("modPromptFill");
   });
 
   it("attach is idempotent — does not register handlers twice", () => {

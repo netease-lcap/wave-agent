@@ -91,6 +91,7 @@ import type {
   ModBandRenderResult,
   ModPanelTree,
   ModPanelUpdatePayload,
+  ModPromptFillRequest,
   ModStatusPayload,
   ModToastPayload,
 } from "wave-agent-sdk/types";
@@ -1755,6 +1756,12 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         const payload = (message as { payload?: ModPanelUpdatePayload })
           .payload;
         if (!payload?.modId || !payload.paneId) break;
+        // 带不是 pane：`paneId === above-prompt` 时只重拉带，不建 tab、不抢面板。
+        // 这是只画带的 mod 唯一的重画通道（spec「用户交互的结果」）。
+        if (payload.paneId === MOD_BAND_INSTANCE_ID) {
+          if (payload.stale) postModBandRender();
+          break;
+        }
         const tabId = `mod:${payload.modId}:${payload.paneId}`;
         const existed = tabsRef.current.some((t) => t.id === tabId);
         setTabs((prev) => {
@@ -1792,8 +1799,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
             payload: { modId: payload.modId, paneId: payload.paneId },
           });
           // 带也跟着这一次 stale 重拉（spec「状态带、状态行与提示」：surface 每次
-          // `stale` 之后对每个注册了 `ui.render` 的 mod 拉一次）。invalidate 是按
-          // pane 发的，所以这里只拿它当「mod 的画变了」的信号。
+          // 拿到「这个 mod 的画变了」都对每个注册了 `ui.render` 的 mod 拉一次）。
           postModBandRender();
         }
         if (!existed && !payload.closed && !payload.stale) {
@@ -1919,6 +1925,37 @@ export const ChatApp: React.FC<ChatAppProps> = ({
           Math.max(0, payload.timeoutMs),
         );
         modToastTimersRef.current.set(id, timer);
+        break;
+      }
+      case "desktopModPromptFill": {
+        // 唯一要作答的 mod 消息（spec「把草稿填进输入框」）：把文本放进输入框当
+        // 草稿、不发送，然后回 `modPromptFillResult`。**填不上也必须作答** ——
+        // 沉默只会让 mod 等到 5 秒超时，还分不清「界面没接」与「界面卡住」。
+        if (!forThisPane(message)) break;
+        const payload = (message as { payload?: ModPromptFillRequest }).payload;
+        if (!payload?.requestId) break;
+        // 审批卡片 / 各种确认框出现时输入框还挂着（只是被 `display: none`），
+        // 此刻填进去用户看不见 —— 按「填不上」作答，与 Claude Code 的
+        // 「对话框占着键时 `{ filled: false }`」同一口径。
+        const dialogHoldsKeys =
+          state.pendingConfirmations.length > 0 ||
+          pendingRewindId !== null ||
+          pendingClearConfirm ||
+          pendingModelSwitch !== null ||
+          pluginChangePending ||
+          draftDiscardOpen;
+        const filled =
+          !dialogHoldsKeys &&
+          (messageInputRef.current?.fillDraft({
+            text: payload.text,
+            mode: payload.mode,
+          }) ??
+            false);
+        vscode.postMessage({
+          command: "modPromptFillResult",
+          requestId: payload.requestId,
+          filled,
+        });
         break;
       }
       case "desktopFileContent":
@@ -5342,7 +5379,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
       // 表示这一帧还在路上（surface 刚发过请求），别把它画成「没有返回内容」。
       return (
         <div
-          className="mod-panel"
+          className="mod-panel mod-surface"
           style={{ width: common.width }}
           data-testid="mod-panel"
         >

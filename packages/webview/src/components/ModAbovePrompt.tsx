@@ -79,7 +79,7 @@ export function ModBandList({
     <div className="mod-band" data-testid="mod-band">
       {visible.map((band) => (
         <div
-          className="mod-band-item"
+          className="mod-band-item mod-surface"
           key={band.modId}
           data-mod-id={band.modId}
           data-plugin={band.plugin}

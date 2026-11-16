@@ -38,7 +38,7 @@ MODS 补上这两件事：插件带一个 TypeScript 模块（可写 TSX），�
 插件目录 mods/*.tsx
   → [agent 进程] 逐文件编译（esbuild transform, classic JSX pragma `__wave.h`/`__wave.Fragment`）
   → [agent 进程] 执行 register($, on)，得到事件钩子表与元素回调表
-  → mod 调 $.ui.open / $.ui.invalidate → [agent 进程] 只登记 pane、标记该 pane 的树过期
+  → mod 调 $.ui.open / $.ui.invalidate("ui.render") → [agent 进程] 登记 pane（或只标记「这个 mod 的树过期」）、发 stale 通知
   → [stdio RPC 通知] modPanelUpdate { sessionId, modId, paneId, title, stale, closed? }（**不带树**）
   → [桌面端主进程] 转发 webview
   → [webview] 对每个已挂载的 pane 发 modPanelRender { modId, paneId }
@@ -65,17 +65,21 @@ MODS 补上这两件事：插件带一个 TypeScript 模块（可写 TSX），�
 
 ### 元素（一期）
 
-| 元素       | 主要 props                                                                                                                                       | 说明                                                                                                    |
-| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------- |
-| `Box`      | `flexDirection`、`gap`/`columnGap`/`rowGap`、`padding*`、`margin*`、`width`、`height`、`borderStyle`、`alignItems`、`justifyContent`、`overflow` | 布局容器，用 CSS flex 实现                                                                              |
-| `Text`     | `color`、`bold`、`italic`、`dimColor`、`underline`、`wrap`                                                                                       | 一段文本                                                                                                |
-| `Button`   | `key`、`label`、`onPress`、`disabled`、`variant`                                                                                                 | 点击后触发 `ui.press`                                                                                   |
-| `Input`    | `key`、`label`、`placeholder`、`value`、`submitLabel`、`onSubmit`                                                                                | 提交后触发 `ui.input`                                                                                   |
-| `Link`     | `href`、`label`                                                                                                                                  | 只允许 `https:` 与本地回环 `http:`；点击交给宿主用系统浏览器打开（`openExternal`），不在 webview 里导航 |
-| `Code`     | `source`、`language`、`path`、`startLine`                                                                                                        | 一期用 `<pre><code>` 原样展示（不做语法高亮），可选一行文件路径                                         |
-| `Markdown` | `text`                                                                                                                                           | `marked` + `DOMPurify` 渲染（与 webview 既有 markdown 用法同一套）                                      |
+| 元素       | 主要 props                                                                                                                                                                             | 说明                                                                                                    |
+| ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `Box`      | `flexDirection`、`flexWrap`、`flexGrow`、`flexShrink`、`gap`/`columnGap`/`rowGap`、`padding*`、`margin*`、`width`、`height`、`borderStyle`、`alignItems`、`justifyContent`、`overflow` | 布局容器，用 CSS flex 实现                                                                              |
+| `Text`     | `color`、`bold`、`italic`、`dimColor`、`underline`、`wrap`                                                                                                                             | 一段文本                                                                                                |
+| `Button`   | `key`、`label`、`onPress`、`disabled`、`variant`（`"primary"`/`"secondary"`）                                                                                                          | 点击后触发 `ui.press`                                                                                   |
+| `Input`    | `key`、`label`、`placeholder`、`value`、`submitLabel`、`onSubmit`                                                                                                                      | 提交后触发 `ui.input`                                                                                   |
+| `Link`     | `href`、`label`                                                                                                                                                                        | 只允许 `https:` 与本地回环 `http:`；点击交给宿主用系统浏览器打开（`openExternal`），不在 webview 里导航 |
+| `Code`     | `source`、`language`、`path`、`startLine`                                                                                                                                              | 一期用 `<pre><code>` 原样展示（不做语法高亮），可选一行文件路径                                         |
+| `Markdown` | `text`                                                                                                                                                                                 | `marked` + `DOMPurify` 渲染（与 webview 既有 markdown 用法同一套）                                      |
 
 `Box` 的间距既可写数字（px），也可写 `'xs' | 'sm' | 'md' | 'lg' | 'xl'`。
+
+**props 是白名单，写错要报错**：每个元素只认上表列出的名字，多写一个（拼错、或照别的框架习惯写 `className`/`style`）在 `validateModTree` 阶段就失败并点名那个 prop —— 静默忽略会让作者以为写对了、却看不到任何效果。这条与 Claude Code 的元素校验一致（它的 `Button` 校验连 `variant` 的取值都会挑出来）。
+
+`flexGrow`/`flexShrink`/`flexWrap` 用 Claude Code 的同名 props，作用于**这个 `Box` 在父容器里**怎么伸缩与折行。`Button` 不收这三个名字 —— 宿主给按钮的默认是 `flex: 0 0 auto`，一排按钮不会被压成竖排；带里按钮多到放不下时，给那一行的 `Box` 写 `flexWrap="wrap"` 折到下一行。
 
 上面这些名字从 `wave-agent-sdk/mods` 导入，那个子路径就是它们的 props 类型来源（`Box`、`Text`… `Fragment` 加各自的 `*Props`），插件作者写 TSX 时靠它拿类型补全；运行时值只是元素名字符串，实际由沙箱的 `require` 提供同一份表。
 
@@ -127,18 +131,18 @@ MODS 补上这两件事：插件带一个 TypeScript 模块（可写 TSX），�
 
 ### `$`（一期）
 
-| 命名空间    | 方法                                                                                                                                                                                                    |
-| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `$.plugin`  | `name`                                                                                                                                                                                                  |
-| `$.ui`      | `resolve(e)`、`open({ id, title })`、`close(id)`、`panes()`、`invalidate(id)`（只丢缓存并通知 surface 重新请求，不直接产生树）、`status(text)`、`toast(text, timeoutMs?)`（见「状态带、状态行与提示」） |
-| `$.state`   | `get`、`set`（会话级状态；`get` 返回副本，`set` 后需自己 `invalidate`）                                                                                                                                 |
-| `$.store`   | `get`、`set`、`delete`、`keys`（该插件自己的 JSON KV，跨会话）                                                                                                                                          |
-| `$.clock`   | `now()`、`after(ms, fn)`、`every(ms, fn)`（后两者返回 `{ cancel() }`，见「定时器」）                                                                                                                    |
-| `$.process` | `spawn({ argv, cwd?, env?, input? })` → 异步迭代子进程的输出；`run(argv, { cwd?, env?, stdin?, timeoutMs? })` → 跑完拿 `{ exitCode, stdout, stderr, is…Truncated }`（见「外部进程」）                   |
-| `$.fs`      | `read`（可选 `{ as: "bytes" }`）、`write`、`list`、`stat`、`exists`（相对路径按会话工作目录解析，见「读写文件」）                                                                                       |
-| `$.http`    | `fetch(url, { method?, headers?, body?, timeoutMs? })`（只允许 `https:` 与本机回环，见「发 HTTP 请求」）                                                                                                |
-| `$.prompt`  | `submit({ text, asUser })`：把一条 prompt 送进当前会话（见「把 prompt 送进对话」）                                                                                                                      |
-| `$.session` | `usage()`：只读的 token 用量快照（见「会话用量」）                                                                                                                                                      |
+| 命名空间    | 方法                                                                                                                                                                                                                                       |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `$.plugin`  | `name`                                                                                                                                                                                                                                     |
+| `$.ui`      | `resolve(e)`、`open({ id, title })`、`close(id)`、`panes()`、`invalidate("ui.render")`（只通知「我这个 mod 画的东西过期了」，不直接产生树；见「用户交互的结果」）、`status(text)`、`toast(text, timeoutMs?)`（见「状态带、状态行与提示」） |
+| `$.state`   | `get`、`set`（会话级状态；`get` 返回副本，`set` 后需自己 `invalidate`）                                                                                                                                                                    |
+| `$.store`   | `get`、`set`、`delete`、`keys`（该插件自己的 JSON KV，跨会话）                                                                                                                                                                             |
+| `$.clock`   | `now()`、`after(ms, fn)`、`every(ms, fn)`（后两者返回 `{ cancel() }`，见「定时器」）                                                                                                                                                       |
+| `$.process` | `spawn({ argv, cwd?, env?, input? })` → 异步迭代子进程的输出；`run(argv, { cwd?, env?, stdin?, timeoutMs? })` → 跑完拿 `{ exitCode, stdout, stderr, is…Truncated }`（见「外部进程」）                                                      |
+| `$.fs`      | `read`（可选 `{ as: "bytes" }`）、`write`、`list`、`stat`、`exists`（相对路径按会话工作目录解析，见「读写文件」）                                                                                                                          |
+| `$.http`    | `fetch(url, { method?, headers?, body?, timeoutMs? })`（只允许 `https:` 与本机回环，见「发 HTTP 请求」）                                                                                                                                   |
+| `$.prompt`  | `submit({ text, asUser })`：把一条 prompt 送进当前会话（见「把 prompt 送进对话」）；`fill({ text, mode? })` → `{ isFilled }`：把草稿填进输入框、不发送（见「把草稿填进输入框」）                                                           |
+| `$.session` | `usage()`：只读的 token 用量快照（见「会话用量」）                                                                                                                                                                                         |
 
 `$.ui.resolve(e)` 把 `ui.render` 收到的事件换成**这一端可用的元素表**（`{ Box, Text, Button, Input, Link, Code, Markdown }`，值与从 `wave-agent-sdk/mods` 导入的同名导出是同一份）。表按 `e.surface` 选：一期只发 `desktop`，别的值、以及不认识的 `e.component`，都直接报错并列出可用名单，不返回半张表。
 
@@ -222,6 +226,17 @@ mod 的沙箱里没有 `child_process`，要跑外部程序只能走 `$.process.
 
 **信任。** `spawn` 让 mod 能执行任意命令，但它不引入新的信任层级——同一个插件的 hooks 本来就在跑 shell（`services/hook.ts` 的 `executeCommand`）。变的只是 mods 也能做同一件事，而插件安装时用户已经在授予这个权限。
 
+### 把草稿填进输入框
+
+`$.prompt.fill({ text, mode? })` 把文本放进**用户正看着的那个输入框**，当草稿、**不发送**，返回 `{ isFilled }`：
+
+- 与 `submit` 是两件事：`submit` 替用户按下回车（开一轮、进上下文、不可改），`fill` 只是把字打好，什么时候发、发不发都由用户决定。所以 `fill` 不改会话状态、不开轮次、不进上下文。
+- `mode` 一期三档，语义与 Claude Code 同名：`replace`（默认，替掉整份草稿）、`append`（接在草稿后面）、`insert`（插在光标处；编辑器没聚焦时按末尾算）。光标落在填入的文本之后，用户可以接着打字。
+- **`isFilled: false` 是正常结果，不是错误**：终端 CLI、宿主没接这条通道、审批卡片或问答对话框正占着键、输入框还没挂上，都会返回 `false` 而不是抛错——mod 拿到 `false` 就知道这次没落地，可以自己降级（改成 `$.ui.toast` 或 `$.prompt.submit`）。
+- **5 秒没有回执按 `false`**：与 Claude Code 同一时限。晚到的回执不改变已返回的结果，也不会把文本填第二次。
+- 文本允许空串（`replace` 空串 = 清空草稿）；`mode` 传了不认识的值当场报错并列出可用值。
+- 一期是 Claude Code 的**子集**：不做 `decorations`（给填入的文字涂色）、`cursor`（指定光标落点）、`answers_press`（回指某次按键）。那三样要么依赖 composer 的富文本区间绘制，要么依赖「一次按键」的标识，与「把字打好」不是一件事。
+
 ### 会话用量
 
 `$.session.usage()` 返回一份**只读快照**，让 mod 能自己把「这次会话用了多少」画成带、状态行或面板：
@@ -253,8 +268,12 @@ mod 的沙箱里没有 `child_process`，要跑外部程序只能走 `$.process.
 ### 用户交互的结果
 
 - 元素回调拿不到事件对象：`onPress()` 无参，`onSubmit(value)` 只有用户输入的字符串。想知道是哪个面板，用 `$.ui.panes()`，或在创建时把 `paneId` 闭包进回调。
-- 回调返回后，若 `$.state` 或 `$.store` 变了，宿主**不**自动重画；mod 需要显式 `$.ui.invalidate(paneId)`（避免每个回调都触发一次渲染）。
-- 一次 `invalidate` = 一条 `modPanelUpdate`（`stale`，不带树）；surface 收到后对受影响的 pane 各发一次 `modPanelRender`，回复里带递增的 `revision`，webview 丢弃比当前显示版本更旧的回复。
+- 回调返回后，若 `$.state` 或 `$.store` 变了，宿主**不**自动重画；mod 需要显式 `$.ui.invalidate("ui.render")`（避免每个回调都触发一次渲染）。
+- 一次 `invalidate("ui.render")` **作用于这个 mod 的所有渲染站点**，不只是面板：
+  - 每个已登记的面板各发一条 `modPanelUpdate`（`stale`，不带树），surface 收到后对该 pane 发一次 `modPanelRender`；
+  - 带也各发一条（`paneId` 是固定值 `above-prompt`），surface 收到后重拉一次带。
+    这是**带唯一的重画通道**：surface 平时只在挂载时拉一次带，没有 `invalidate` 就永远停在第一帧（一期只支持 `"ui.render"` 这一个目标，`prompt.section`/`tool.describe` 等站点还没有）。
+    回复里带递增的 `revision`，webview 丢弃比当前显示版本更旧的回复。
 - 一个 pane 的**第一次** `modPanelRender` 回复到达时，桌面端会展开右侧面板槽并激活该 tab（与用户从「＋」菜单打开同一个效果）—— mod 申请的面板不该还要用户自己去点开。后续回复只更新内容，不抢当前焦点。
 - 回包带 `error` 时，面板顶部叠一条错误摘要，**同一回复里给的是上一帧成功的树**（仍可操作）；下一次请求成功后摘要自动消失。把整棵树换成一行错误文字会让面板一次性报废（用户连别的按钮都点不到），不做。
 
@@ -327,13 +346,16 @@ mod 的沙箱里没有 `child_process`，要跑外部程序只能走 `$.process.
 3. **假设** mod 只注册 `ui.render` 而从不调用 `$.ui.open`，**当**会话启动，**则**面板不出现，日志中记一条「mod 未申请面板」。
 4. **假设** `ui.render` 里用 `$.ui.resolve(e)` 取元素表（TSX 里 `const { Box, Text } = $.ui.resolve(e); return <Box><Text>hi</Text></Box>`），**当**面板渲染，**则**拿到的表里每个元素名都是可用构造器、渲染结果与 `import { Box, Text } from "wave-agent-sdk/mods"` 一致；把 `$.ui.resolve({})` 或 `e.surface` 不是 `desktop` 的事件传进去，**则**钩子返回错误摘要、面板顶部显示「需要一个 ui.render 的事件」并列出可用的端，不渲染半张表。
 
+5. **假设** mod 在 `Button` 上多写了一个 prop（拼错的 `label2`，或照别的框架习惯写 `className`），**当**这一帧树被校验，**则** `validateModTree` 拒绝整棵树并点名那个 prop（面板顶部一条错误摘要），而不是静默忽略 —— 写错 prop 必须当场看见。
+6. **假设**带里一行放了三个 `Button`（那一行的 `Box` 写了 `flexWrap="wrap"`），**当**这一行渲染，**则**每个按钮保持单行宽度、放不下的折到下一行；画在带里的按钮与画在面板里的是同一套观感（`variant="primary"` 用主题主操作色），不是浏览器默认的灰方块。
+
 ### 用户故事：面板交互回到 mod（优先级：P0）
 
 作为用户，我希望点击面板里的按钮、在面板里输入文字后界面能立刻变化，以便这个面板真的能用。
 
 **验收场景**：
 
-1. **假设**面板里有一个 `Button`，它的 `onPress` 里把 `$.state` 的计数加一并 `$.ui.invalidate(paneId)`，**当**用户点击该按钮，**则**面板数字从 `n` 变为 `n+1`，且整个过程不产生新的对话轮次。
+1. **假设**面板里有一个 `Button`，它的 `onPress` 里把 `$.state` 的计数加一并 `$.ui.invalidate("ui.render")`，**当**用户点击该按钮，**则**面板数字从 `n` 变为 `n+1`，且整个过程不产生新的对话轮次。
 2. **假设**面板里有一个 `Input`，它的 `onSubmit` 把提交值追加进 `$.state` 并 invalidate，**当**用户输入 `hello` 并提交，**则**面板列表新增一行 `hello`，输入框清空。
 3. **假设**同一个按钮被连点三次而 mod 每次只做一次 invalidate，**当**三次点击都到达，**则** mod 的回调被执行三次，宿主把 100ms 内的多次 invalidate 合并成一条 `stale` 通知，面板最终只请求并渲染一次。
 4. **假设**面板里一个按钮的 `onPress` 直接抛错，**当**用户点击它，**则**面板顶部出现一条错误摘要、上一次渲染的按钮与列表仍能继续点，且下一次 `invalidate` 成功后摘要消失。
@@ -350,8 +372,9 @@ mod 的沙箱里没有 `child_process`，要跑外部程序只能走 `$.process.
 4. **假设** mod 调 `$.ui.toast("已保存", 2000)`，**当**调用到达，**则**屏幕**右下角**浮出一条提示、约 2 秒后自己消失，mod 不需要再调一次来清；再来两条时按时间由下往上叠，最新的那条贴着右下角；正文超过 240 字符时截断加省略号；用户点 × 可提前关掉（连同它的计时器）。
 5. **假设**带的内容远高于输入卡（60 行）而某条 toast 正文长达一万字符，**当**界面渲染出来，**则**带的高度封顶、超出部分在带内滚动，输入卡仍在视口内；toast 作为固定浮层不参与输入区高度，五条也不会把消息区压成 0。
 6. **假设**同一会话里两个插件都画带、也都设了 status，**当**两者都到位，**则**两条带按插件加载顺序上下排列、两行 status 互不覆盖，关掉其中一个插件的面板不影响另一个的带与 status。
-7. **假设**某 mod 的带钩子抛错，**当** surface 重画，**则**只有那条带显示错误摘要，其余带与所有 status 行照常显示，会话不中断。
-8. **假设** mod 只在 `session.start` 里贴了一次 status、之后再也不写，**当**桌面端挂上这条会话（新建、切回来、webview 重建），**则**那一行照样出现 —— surface 要面板快照时 agent 会把它重放一次；`toast` 不重放，那时的提示早已过期。
+7. **假设**一个只画带、从不开面板的 mod 用 `$.clock.every(2000, …)` 每两秒调一次 `$.ui.invalidate("ui.render")`，**当**第二拍到达，**则**这条带重画成新内容 —— 不需要任何面板存在（surface 平时只在挂载时拉一次带，`invalidate` 是它唯一的重画通道）。
+8. **假设**某 mod 的带钩子抛错，**当** surface 重画，**则**只有那条带显示错误摘要，其余带与所有 status 行照常显示，会话不中断。
+9. **假设** mod 只在 `session.start` 里贴了一次 status、之后再也不写，**当**桌面端挂上这条会话（新建、切回来、webview 重建），**则**那一行照样出现 —— surface 要面板快照时 agent 会把它重放一次；`toast` 不重放，那时的提示早已过期。
 
 ### 用户故事：面板跟着外部程序的状态走（优先级：P0）
 
@@ -396,6 +419,23 @@ mod 的沙箱里没有 `child_process`，要跑外部程序只能走 `$.process.
 5. **假设** `argv` 指向的程序不存在，**当** mod 调 `$.process.spawn`，**则**这一路的迭代抛错、`wave` 日志记下原文，mod 的其余面板与定时器照常工作。
 6. **假设**同一个 mod 已经开着 4 个外部进程，**当**它再调一次 `spawn`，**则**这次调用报错（见「限额」），不会静默排队或杀掉旧进程。
 
+### 用户故事：点一下建议，草稿就落在输入框里（优先级：P1）
+
+作为插件作者，我希望 mod 把一段文本填进输入框当草稿、而不是替用户发出去，以便「下一步建议」「改写这一句」这类面板用户还能先改一改再发。
+
+**为什么是这个优先级**：它和 `$.prompt.submit` 是同一件事的两档力度。`submit` 已经在主链路里，但「替用户按下回车」是不可撤销的动作——建议类面板多半只想把字打好。
+
+**验收场景**：
+
+1. **假设**面板上有三条建议按钮，**当**用户点第二条，**则**输入框里出现第二条的正文、光标在末尾、**没有**发出去，`await` 拿到 `{ isFilled: true }`。
+2. **假设**输入框里已经有一段用户自己打的字，**当** mod 用 `mode: "append"` 填，**则**原有的字保留、新文本接在后面；用默认的 `replace` 时整份草稿被换掉。
+3. **假设**用户正把光标放在输入框中间，**当** mod 用 `mode: "insert"` 填，**则**文本插在光标处、光标跟到填入的文本之后；输入框当时没有聚焦时按末尾算。
+4. **假设**宿主是终端 CLI（没有可填的输入框），**当** mod 调 `$.prompt.fill`，**则**拿到 `{ isFilled: false }` 而不是抛错，mod 的其余逻辑照常跑。
+5. **假设**一张审批卡片或问答对话框正占着键，**当** mod 调 `$.prompt.fill`，**则**拿到 `{ isFilled: false }`，对话框不受影响。
+6. **假设**宿主 5 秒内没有回执（webview 卡住或没挂上），**当**超时到，**则**调用返回 `{ isFilled: false }`；之后晚到的回执被丢弃，文本不会被填第二次。
+7. **假设** mod 传 `{ text: "" }` 配 `mode: "replace"`，**当**调用到达，**则**清空草稿并返回 `{ isFilled: true }`。
+8. **假设** mod 传 `{ text: "x", mode: "prepend" }`，**当**调用发生，**则**当场报错并列出 `replace` / `append` / `insert`，不静默当成 `replace`。
+
 ### 用户故事：宿主拒绝不合法或过大的树（优先级：P0）
 
 作为宿主，我需要在把树交给渲染器之前挡住不合法输入，以便一个坏 mod 不会让界面白屏或卡死。
@@ -424,7 +464,7 @@ mod 的沙箱里没有 `child_process`，要跑外部程序只能走 `$.process.
 1. **假设**一个 mod 已经开着一个面板、还挂着 `$.clock.every` 定时器，**当**用户执行 `/reload-plugins`，**则**旧 tab 先消失、旧实例的定时器停止，随后按新插件列表重新出现，面板内容是新代码渲染的；mod 全程收不到「被关掉」的通知。
 2. **假设**会话被销毁，**当**宿主收尾，**则**所有 mod tab 消失、该会话的 mod 实例被丢弃，此后再来的交互被静默丢弃。
 3. **假设** mod 在 `session.start` 之外又调用了 `$.ui.open`，**当** `modPanelUpdate` 到达且 surface 完成请求，**则**右侧面板**新增**一个 tab（同一 `modId` 可以开多个面板，`paneId` 区分）。
-4. **假设**用户手动关掉 mod 的 tab，**当**之后该 mod 的定时器调用 `$.ui.invalidate(paneId)`，**则**该调用于是无害的空操作（面板已不在 `$.ui.panes()` 里），宿主不报错、不重建 tab。
+4. **假设**用户手动关掉 mod 的 tab，**当**之后该 mod 的定时器调用 `$.ui.invalidate("ui.render")`，**则**该调用于是无害的空操作（它没有已登记的面板，带也不再占位置），宿主不报错、不重建 tab。
 5. **假设** webview 重载（窗口刷新、切走再切回），**当**面板重新挂载，**则** webview 自己对每个 pane 发 `modPanelRender` 并拿到当前树，mod 不需要再 invalidate。
 
 ### 用户故事：多个 mod 互不影响（优先级：P1）

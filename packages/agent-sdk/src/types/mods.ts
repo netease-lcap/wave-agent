@@ -131,6 +131,28 @@ export interface ModPanelEventPayload {
   origin?: "person" | "plugin" | "unload";
 }
 
+/**
+ * `$.prompt.fill` 把文本放在哪（spec「把草稿填进输入框」）。
+ *
+ * 三档都是 Claude Code 的原名：`replace` 替掉整份草稿、`append` 接在后面、
+ * `insert` 插在光标处。
+ */
+export type ModPromptFillMode = "replace" | "append" | "insert";
+
+/**
+ * `$.prompt.fill` 送达 surface 的一次请求（spec「把草稿填进输入框」）。
+ *
+ * 这是宿主里唯一一条「mod 提问、界面作答」的通道：CLI 发下去，surface 填完
+ * 输入框后带着 `requestId` 回执（`modPromptFillResult`）。`requestId` 只用于
+ * 配对，不进 mod 的视野 —— mod 拿到的是 `{ isFilled }`。
+ */
+export interface ModPromptFillRequest {
+  sessionId: string;
+  requestId: string;
+  text: string;
+  mode: ModPromptFillMode;
+}
+
 /** 一个已加载的 mod（`<pluginRoot>/mods/*.tsx|*.js`）。 */
 export interface PluginMod {
   /** `<pluginName>:<fileStem>`。 */
@@ -341,6 +363,13 @@ export const MOD_LIMITS = {
   httpBodyChars: 4 * 1024 * 1024,
   /** 一次 `$.http.fetch` 的超时（含重定向与读完 body）。 */
   httpTimeoutMs: 30_000,
+  /**
+   * `$.prompt.fill` 等宿主回执的上限（spec「把草稿填进输入框」）。
+   *
+   * 与 Claude Code 同一个 5 秒：超时按 `{ isFilled: false }` 作答，晚到的
+   * 回执丢弃。没有这条上限，mod 的 `await` 会在一个卡住的 webview 上永远挂着。
+   */
+  promptFillTimeoutMs: 5_000,
   /** 一次 `$.http.fetch` 最多跟的重定向次数。 */
   httpMaxRedirects: 5,
   /** `$.ui.status` 一行的字符上限，超出截断并加省略号。 */
