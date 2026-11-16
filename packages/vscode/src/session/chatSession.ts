@@ -17,6 +17,7 @@ import type {
   ModToastPayload,
   ModPromptFillRequest,
   ModPromptReadRequest,
+  ModPromptSuggestRequest,
   ModCopyRequest,
   ModPaneLayout,
   ModSurfaceMetrics,
@@ -105,6 +106,12 @@ export interface ChatSessionCallbacks {
   onModPromptFill?: (payload: ModPromptFillRequest) => void;
   onModPromptRead?: (payload: ModPromptReadRequest) => void;
   onModCopy?: (payload: ModCopyRequest) => void;
+  /**
+   * 某个 mod 想把一条建议摆进这个面板的输入框（spec `ecosystem/plugin-mods.md`
+   * 「输入框里的建议与焦点」）。摆不摆得上只有输入框知道，所以界面收到后要用
+   * `session.resolveModPromptSuggest` 回执，不回会被按 `{ isShown: false }` 收尾。
+   */
+  onModPromptSuggest?: (payload: ModPromptSuggestRequest) => void;
 }
 
 export class ChatSession {
@@ -320,6 +327,9 @@ export class ChatSession {
         },
         onModCopy: (payload) => {
           this.callbacks.onModCopy?.(payload);
+        },
+        onModPromptSuggest: (payload) => {
+          this.callbacks.onModPromptSuggest?.(payload);
         },
       };
 
@@ -735,6 +745,37 @@ export class ChatSession {
    */
   public async closeBtw(segmentId: string): Promise<void> {
     await this.agent?.closeBtw(segmentId);
+  }
+
+  /**
+   * 用户在输入框里做完一次编辑（spec `ecosystem/plugin-mods.md`「输入框里的建
+   * 议与焦点」）。与其余 mod 通道方向相反：宿主先说话，答案是插件改写后的草稿；
+   * 没有 mod 接这条钩子时，答案就是「把这次编辑应用上去」——所以界面拿到回包
+   * 直接回填即可，不必自己再算一遍。
+   *
+   * `undefined` = 这条会话还没有 agent（初始化中 / 已销毁），调用方回原样。
+   */
+  public async dispatchPromptEdit(event: {
+    key?: unknown;
+    text: string;
+    cursor: number;
+    start: number;
+    end: number;
+    inputText: string;
+  }): Promise<{ text: string; cursor: number } | undefined> {
+    if (!this.agent) return undefined;
+    return await this.agent.promptEdit(event);
+  }
+
+  /**
+   * 回答一次 `$.prompt.suggest`（spec 同节）：建议摆没摆上只有输入框知道。会话
+   * 已经不认这个 `requestId`（超时已按 `{ isShown: false }` 收尾）时是空操作。
+   */
+  public async resolveModPromptSuggest(
+    requestId: string,
+    isShown: boolean,
+  ): Promise<void> {
+    await this.agent?.resolveModPromptSuggest(requestId, isShown);
   }
 
   public async destroy() {

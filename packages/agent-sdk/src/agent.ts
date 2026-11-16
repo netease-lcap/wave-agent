@@ -13,9 +13,13 @@ import { MessageQueue, type QueuedMessage } from "./managers/messageQueue.js";
 import { SlashCommandManager } from "./managers/slashCommandManager.js";
 import { PluginManager } from "./managers/pluginManager.js";
 import { ModManager } from "./managers/modManager.js";
+import { wrapInSystemReminder } from "./prompts/planModeReminders.js";
 import type {
   ModBandRenderResult,
   ModPanelEventPayload,
+  ModPromptEditEvent,
+  ModPromptOrigin,
+  ModPromptSuggestEvent,
   ModPanelRenderResult,
   ModPaneLayout,
   ModPanelUpdatePayload,
@@ -108,6 +112,37 @@ import { remoteSettingsService } from "./services/remoteSettingsService.js";
 import { AUTO_MEMORY_DRAIN_TIMEOUT_MS } from "./services/autoMemoryService.js";
 import { contextUsagePercent } from "./utils/tokenCalculation.js";
 
+/**
+ * 一份指令文件属于哪一档记忆（`classic.InstructionsLoaded` 的 `memory_type`）。
+ *
+ * 判据只有两条，按顺序：文件名认 `local` 两档（`AGENTS.local.md` /
+ * `CLAUDE.local.md`，都是「私有于本用户、但属于本仓库」），其余看位置 ——
+ * 会话工作目录里的是项目档，之外的（`~/.wave/AGENTS.md` 与它的
+ * `~/.claude/AGENTS.md` 回退）是用户档。`Managed` 给不出：我们没有企业托管层。
+ *
+ * 用 `path.relative` 而不是前缀比较：`/a/bc` 不该被判成 `/a/b` 里面。
+ */
+function classifyMemoryTier(
+  filePath: string,
+  workdir: string,
+): "Project" | "Local" | "User" {
+  const name = path.basename(filePath);
+  if (name === "AGENTS.local.md" || name === "CLAUDE.local.md") return "Local";
+  const relative = path.relative(workdir, filePath);
+  const insideWorkdir =
+    relative.length > 0 &&
+    !relative.startsWith("..") &&
+    !path.isAbsolute(relative);
+  return insideWorkdir ? "Project" : "User";
+}
+
+/** 把钩子交回来的偏移夹进草稿里（负数、`NaN`、越界都落回给的默认值）。 */
+function clampOffset(value: unknown, fallback: number, length: number): number {
+  const raw =
+    typeof value === "number" && Number.isFinite(value) ? value : fallback;
+  return Math.min(Math.max(0, Math.trunc(raw)), length);
+}
+
 export class Agent {
   private messageManager: MessageManager;
   private aiManager: AIManager;
@@ -175,6 +210,15 @@ export class Agent {
     (box: { text: string; cursor: number }) => void
   >();
   private modPromptReadSeq = 0;
+  /**
+   * `$.prompt.suggest` requests waiting for the surface's answer, keyed by the id
+   * the host carries back (spec「输入框里的建议与焦点」).
+   */
+  private readonly modPromptSuggests = new Map<
+    string,
+    (shown: boolean) => void
+  >();
+  private modPromptSuggestSeq = 0;
   /**
    * `$.ui.copy` requests waiting for the surface's answer (spec「剪贴板与视图」).
    */
@@ -358,6 +402,85 @@ export class Agent {
   }
 
   /**
+   * Settle a `$.prompt.suggest` (spec「输入框里的建议与焦点」).
+   *
+   * The surface is the only one that knows whether the ghost text went up (the
+   * composer may be busy or absent), so — exactly like `fill` — the request goes
+   * out as a notification and the answer comes back here.
+   */
+  public resolveModPromptSuggest(requestId: string, isShown: boolean): void {
+    const settle = this.modPromptSuggests.get(requestId);
+    this.modPromptSuggests.delete(requestId);
+    settle?.(isShown === true);
+  }
+
+  /**
+   * 用户在输入框里做完一次编辑（spec「输入框里的建议与焦点」）。
+   *
+   * 链尾就是「把这次编辑应用上去」：`text` 是编辑**之前**的草稿，`start`/`end`
+   * 圈出被替换的那一段，`inputText` 是放进去的字。所以 `next({ ...e, text })`
+   * 是「换一份草稿再做同一次编辑」，`next({ ...e, inputText })` 是「换成别的
+   * 字」；不调 `next` 直接答 `{ text: e.text, cursor: e.cursor }` 等于吃掉这次
+   * 按键（拼写检查、语法闸门就这么写）。
+   */
+  public async dispatchModPromptEdit(event: {
+    key?: unknown;
+    text: string;
+    cursor: number;
+    start: number;
+    end: number;
+    inputText: string;
+  }): Promise<{ text: string; cursor: number }> {
+    const normalized: ModPromptEditEvent = {
+      ...event,
+      origin: { kind: "composer" },
+    };
+    return this.modManager.dispatchPromptEdit(normalized, (current) => {
+      const box: Record<string, unknown> =
+        typeof current === "object" && current !== null
+          ? (current as Record<string, unknown>)
+          : {};
+      const base = typeof box.text === "string" ? box.text : event.text;
+      const start = clampOffset(box.start, event.start, base.length);
+      const end = clampOffset(box.end, event.end, base.length);
+      const inputText =
+        typeof box.inputText === "string" ? box.inputText : event.inputText;
+      const from = Math.min(start, end);
+      const to = Math.max(start, end);
+      const text = `${base.slice(0, from)}${inputText}${base.slice(to)}`;
+      // 光标落在填进去的字后面（spec 同段）：钩子没给就是「接着打字」。
+      return { text, cursor: from + inputText.length };
+    });
+  }
+
+  /**
+   * 一个建议要摆进输入框（spec「输入框里的建议与焦点」）。
+   *
+   * `plugin` 缺省表示这是引擎自己的推荐（`origin: { kind: "suggestion" }`）；
+   * `$.prompt.suggest` 走 `plugin` 那一支，于是别的 mod 能看见、能换、能否。
+   * 链尾是宿主那一趟往返（`next({ ...e, text })` 改的就是要摆的那条）。
+   */
+  public async dispatchModPromptSuggest(request: {
+    text: string;
+    plugin?: string;
+  }): Promise<{ isShown: boolean; text: string }> {
+    const origin: ModPromptOrigin = request.plugin
+      ? { kind: "plugin", name: request.plugin }
+      : { kind: "suggestion" };
+    const event: ModPromptSuggestEvent = { text: request.text, origin };
+    return this.modManager.dispatchPromptSuggest(event, async (current) => {
+      const text =
+        typeof current === "object" &&
+        current !== null &&
+        typeof (current as { text?: unknown }).text === "string"
+          ? (current as { text: string }).text
+          : request.text;
+      const isShown = await this.showModPromptSuggestion(text, request.plugin);
+      return { isShown };
+    });
+  }
+
+  /**
    * Settle a `$.ui.copy` (spec `ecosystem/plugin-mods.md`「剪贴板与视图」).
    *
    * A refusal is an answer, not an error: `isCopied: false` with a `reason` is
@@ -417,6 +540,9 @@ export class Agent {
     );
     // 与模型那次提问同一条：不给「一直允许」那一档。
     permissionContext.hidePersistentOption = true;
+    // 这里**不**发 `classic.Notification`：CC 对提问卡片不发通知，它的取值表里也
+    // 没有这一类。编个表外的名字（曾经是 `notification_type: "question"`）只会让
+    // 按真名字过滤的插件永远不触发（spec「影子事件」）。
     const decision = await permissionManager.checkPermission(permissionContext);
     if (decision.behavior === "deny") {
       throw new Error(
@@ -512,6 +638,45 @@ export class Agent {
   }
 
   /**
+   * Ask the surface to show a suggestion above the composer
+   * (spec「输入框里的建议与焦点」).
+   *
+   * Same discipline as `fill` / `read`: no surface wired, or nobody answering in
+   * time, both read as `isShown: false` — a suggestion that did not land is a
+   * normal result, not an error, and the mod is expected to degrade on its own.
+   */
+  private showModPromptSuggestion(
+    text: string,
+    plugin?: string,
+  ): Promise<boolean> {
+    const notify = this.options.callbacks?.onModPromptSuggest;
+    if (!notify) return Promise.resolve(false);
+    const requestId = `prompt-suggest-${++this.modPromptSuggestSeq}`;
+    return new Promise<boolean>((resolve) => {
+      const timer = setTimeout(() => {
+        this.resolveModPromptSuggest(requestId, false);
+      }, MOD_LIMITS.promptFillTimeoutMs);
+      // A pending suggestion must not keep the process alive on its own.
+      timer.unref?.();
+      this.modPromptSuggests.set(requestId, (shown) => {
+        clearTimeout(timer);
+        resolve(shown);
+      });
+      try {
+        notify({
+          sessionId: this.sessionId,
+          requestId,
+          text,
+          plugin: plugin ?? "wave",
+        });
+      } catch {
+        // A host that throws on its own callback is a host that cannot show it.
+        this.resolveModPromptSuggest(requestId, false);
+      }
+    });
+  }
+
+  /**
    * Ask the surface to put text on the clipboard (spec「剪贴板与视图」).
    *
    * Refuses politely where there is no clipboard: no surface wired, or an answer
@@ -566,8 +731,23 @@ export class Agent {
    * @param model - The ID of the model to use
    */
   public async setModel(model: string): Promise<void> {
+    // 换之前那两个值要在 `setModel` **之前**取：配置一改，解析出来就是新模型
+    // 了，`from_model` 会变成自己。
+    const fromModel =
+      this.configurationService.resolveModelConfig().model ?? "";
+    const contextTokens = this.getSessionUsage().context.tokens;
     await this.configurationService.setModel(model);
     this.options.callbacks?.onModelChange?.(model);
+    // 影子事件 `classic.PostModelSwitch`（spec「影子事件」）：只在显式换模型时
+    // 发，配置文件热更新换模型不走这条路。字段名照 CC（`from_model` /
+    // `to_model` / `context_tokens`）；`cache_ttl` 恒 `null` —— 我们不做提示词
+    // 缓存的 TTL 记账，给个假数字比给 `null` 更坏。
+    this.modManager.notifyMods("classic.PostModelSwitch", {
+      from_model: fromModel,
+      to_model: model,
+      context_tokens: contextTokens,
+      cache_ttl: null,
+    });
   }
 
   /**
@@ -767,6 +947,14 @@ export class Agent {
     // it sits below `Agent` in the dependency graph.
     this.modManager.setPromptSubmitter((text) => this.sendMessage(text));
 
+    // Plugin mods can end the turn that is running (`$.turn.abort`, spec「收掉
+    // 一轮」). Same reason as the prompt channel: only AIManager knows which turn
+    // is in flight, so ModManager forwards and lets a bad `turnId` reject — a mod
+    // must not be told it stopped something it did not.
+    this.modManager.setTurnAborter((turnId) =>
+      this.aiManager.abortTurn(turnId),
+    );
+
     // Plugin mods can read the session's token usage (`$.session.usage`, spec
     // ecosystem/plugin-mods.md「会话用量」). Same shape as the prompt channel:
     // the numbers live on `Agent` and the managers below it, so they are pushed
@@ -782,6 +970,13 @@ export class Agent {
     // `$.prompt.read` — the draft the person is typing right now
     // (spec「输入框里现在有什么」). Same channel as `fill`, answered the same way.
     this.modManager.setPromptDraftReader(() => this.readModPrompt());
+
+    // `$.prompt.suggest` — ghost text above the composer, Tab to accept
+    // (spec「输入框里的建议与焦点」). The chain in ModManager calls this only
+    // when no mod vetoed it, so this sink is the "show it" tail.
+    this.modManager.setPromptSuggestionSink(async (request) => ({
+      isShown: await this.showModPromptSuggestion(request.text, request.plugin),
+    }));
 
     // `$.ui.notice` — one line under a tool call (spec「工具行下面的一行」).
     // Push-only: a host without tool blocks leaves it unwired and the mod's call
@@ -811,9 +1006,13 @@ export class Agent {
 
     // Wire up CWD change callback from AIManager to sync Agent's workdir
     this.aiManager.setOnCwdChange((newCwd) => {
+      const previousCwd = this.workdir;
       this.workdir = newCwd;
       this.container.register("CurrentWorkdir", newCwd);
       this.options.callbacks?.onWorkdirChange?.(newCwd);
+      if (newCwd !== previousCwd) {
+        this.notifyCwdChanged(previousCwd);
+      }
     });
 
     // Workspace relocations (EnterWorktree / ExitWorktree) are a different
@@ -981,9 +1180,26 @@ export class Agent {
    * @param newCwd - The new working directory
    */
   public setCurrentWorkdir(newCwd: string): void {
+    const previousCwd = this.workdir;
     this.workdir = newCwd;
     this.container.register("CurrentWorkdir", newCwd);
     this.options.callbacks?.onWorkdirChange?.(newCwd);
+    if (newCwd !== previousCwd) {
+      this.notifyCwdChanged(previousCwd);
+    }
+  }
+
+  /**
+   * 影子事件 `classic.CwdChanged`（spec「影子事件」）：只报**会动的**那个目录变
+   * 了（Bash `cd`、进/出 worktree）。工作区根（`WorkspaceRoot`）与会话起点
+   * （`SessionWorkdir`）不动，所以它们变了也不算 —— 见那两个 token 的分工。
+   */
+  private notifyCwdChanged(previousCwd: string): void {
+    this.modManager.notifyMods("classic.CwdChanged", {
+      // 字段名照 CC：`old_cwd` / `new_cwd`（社区插件读的就是这两个）。
+      old_cwd: previousCwd,
+      new_cwd: this.workdir,
+    });
   }
 
   /**
@@ -1213,7 +1429,7 @@ export class Agent {
         next.content,
         ...this.messageQueue.drainNotifications(),
       ];
-      this.aiManager.injectTaskNotifications(allNotifications);
+      await this.aiManager.injectTaskNotifications(allNotifications);
       await this.aiManager.sendAIMessage({ recursionDepth: 0 });
     } else {
       await this.sendMessage(next.content, next.images);
@@ -1479,6 +1695,28 @@ export class Agent {
     try {
       await this.modManager.loadFromPlugins(this.pluginManager.getPlugins());
       await this.modManager.startSession();
+      // `tool.register`（spec「把我们自己的工具交给模型」）：每个 mod 一次，赶在
+      // 第一个请求之前。放在 `session.start` 之后，让在 `session.start` 里直接
+      // 调 `$.tool.register` 的 mod 与走这条钩子的两条路都落到同一刻。
+      await this.modManager.dispatchToolRegister();
+      // 影子事件 `classic.SessionStart`（spec「影子事件」）：自有事件
+      // `session.start` 先发、镜像后发。只读，宿主不等。
+      this.modManager.notifyMods("classic.SessionStart", { source: "startup" });
+      // 开局常驻的指令文件：一份一条 `classic.InstructionsLoaded`（同一节）。
+      // 读不到指令文件不该让 mod 层跟着失败，所以单独吞错。
+      const memoryService =
+        this.container.get<import("./services/memory.js").MemoryService>(
+          "MemoryService",
+        );
+      const instructions =
+        (await memoryService?.loadSessionStartInstructions(this.workdir)) ?? [];
+      for (const filePath of instructions) {
+        this.modManager.notifyMods("classic.InstructionsLoaded", {
+          file_path: filePath,
+          memory_type: classifyMemoryTier(filePath, this.workdir),
+          load_reason: "session_start",
+        });
+      }
     } catch (error) {
       this.logger?.warn("Plugin mods failed to load:", error);
     }
@@ -1622,6 +1860,10 @@ export class Agent {
         `SessionEnd hooks on clear failed: ${(error as Error).message}`,
       );
     }
+    // 影子事件 `classic.SessionEnd`（spec「影子事件」）：`/clear` 结束掉当前这
+    // 场对话。必须在这里发 —— 下面的 `clearMessages()` 会换掉 session id，镜像
+    // 报的应该是被结束的那一场。
+    this.modManager.notifyMods("classic.SessionEnd", { reason: "clear" });
 
     // Clear messages and generate new session
     this.messageManager.clearMessages();
@@ -1639,10 +1881,18 @@ export class Agent {
 
       // Inject additionalContext as a meta user message
       if (sessionStartResult.additionalContext) {
-        this.messageManager.addUserMessage({
-          content: `<system-reminder>\nSessionStart hook additional context: ${sessionStartResult.additionalContext}\n</system-reminder>`,
-          isMeta: true,
+        // `prompt.attachment` 的 `session-start` 档（spec ecosystem/plugin-mods.md
+        // 「系统提示词与附件」）：`/clear` 之后插件还活着，所以这条要过一遍钩子。
+        const sessionStartText = await this.modManager.rewritePromptAttachment({
+          type: "session-start",
+          text: `SessionStart hook additional context: ${sessionStartResult.additionalContext}`,
         });
+        if (sessionStartText !== null) {
+          this.messageManager.addUserMessage({
+            content: wrapInSystemReminder(sessionStartText),
+            isMeta: true,
+          });
+        }
       }
 
       // Inject initialUserMessage as a meta user message
@@ -1657,6 +1907,11 @@ export class Agent {
         `SessionStart hooks on clear failed: ${(error as Error).message}`,
       );
     }
+
+    // 影子事件 `classic.SessionStart`（spec「影子事件」）：清空之后这场对话算
+    // 重新开局，`source` 就是 `clear`。放在这里而不是 `startSession` 里 —— 那
+    // 条路只在会话创建时走一次。
+    this.modManager.notifyMods("classic.SessionStart", { source: "clear" });
 
     await this.messageManager.saveSession();
   }
@@ -1856,6 +2111,11 @@ export class Agent {
     // `session.end` 是唯一一个 mod **会被等**的事件（「轮次内外的事件」），要在
     // 实例被丢掉之前派发；它自带 5 秒钩子上限，卡住也不会挡住销毁。
     await this.modManager.endSession();
+    // 影子事件 `classic.SessionEnd`（spec「影子事件」）：`session.end` 之后、实
+    // 例被丢掉之前。`dispose` 之后一律静默，所以必须在这里。
+    this.modManager.notifyMods("classic.SessionEnd", {
+      reason: "prompt_input_exit",
+    });
     await this.modManager.dispose();
     // 侧聊段依附于这场对话：销毁时一并丢弃，在途的那一轮随之中止（否则它会带着
     // 网络句柄活过 destroy）。
@@ -2118,8 +2378,13 @@ export class Agent {
 
   // ========== Slash Command Management Methods ==========
 
-  /** Get all available slash commands */
-  public getSlashCommands(): SlashCommand[] {
+  /**
+   * Get all available slash commands.
+   *
+   * Async because `command.describe` runs on every draw and its answer has to be
+   * in hand before the list is handed out (spec「给工具、技能、命令写描述」).
+   */
+  public async getSlashCommands(): Promise<SlashCommand[]> {
     return this.slashCommandManager.getCommands();
   }
 

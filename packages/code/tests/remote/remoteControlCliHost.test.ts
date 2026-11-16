@@ -65,7 +65,7 @@ function makeSession(
     respondPermission: vi.fn(),
     renameSession: vi.fn(),
     compact: vi.fn(),
-    slashCommands: () => [],
+    slashCommands: async () => [],
     ...overrides,
   };
 }

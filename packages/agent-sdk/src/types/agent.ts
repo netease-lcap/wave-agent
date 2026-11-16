@@ -164,6 +164,17 @@ export interface AgentOptions {
    * daemon hosts sessions created from several front ends at once.
    */
   entrypoint?: HostEntrypoint;
+  /**
+   * Which surfaces this session actually draws mod trees on (spec
+   * `ecosystem/plugin-mods.md`「元素表按端分」). Feeds `$.session.surfaces()`
+   * and `$.ui.open()`'s `isPlaced`.
+   *
+   * Declared, not derived, because the same entrypoint can both draw and not
+   * draw: the interactive CLI draws (`["terminal"]`), `wave -p` does not — both
+   * report `entrypoint: "cli"`. Left unset, the entrypoint decides
+   * (`desktop` → `["desktop"]`, everything else → `[]`).
+   */
+  renderSurfaces?: readonly import("./mods.js").ModRenderSurface[];
   [key: string]: unknown;
 }
 
@@ -218,6 +229,17 @@ export interface AgentCallbacks
    * that never wires this leaves `$.prompt.read` answering an empty draft.
    */
   onModPromptRead?: (payload: import("./mods.js").ModPromptReadRequest) => void;
+  /**
+   * A plugin mod wants to put an inline suggestion above the composer
+   * (`$.prompt.suggest`; spec `ecosystem/plugin-mods.md`「输入框里的建议与焦点」).
+   *
+   * Reply with `Agent.resolveModPromptSuggest(requestId, isShown)`. A host that
+   * never wires this (the terminal) leaves `$.prompt.suggest` answering
+   * `{ isShown: false }`.
+   */
+  onModPromptSuggest?: (
+    payload: import("./mods.js").ModPromptSuggestRequest,
+  ) => void;
   /**
    * A plugin mod asked to put text on the clipboard (`$.ui.copy`; spec
    * 「剪贴板与视图」).

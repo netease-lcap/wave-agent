@@ -91,7 +91,7 @@ Initial content`,
     }
 
     let skills = skillManager.getAvailableSkills();
-    let commands = slashCommandManager.getCommands();
+    let commands = await slashCommandManager.getCommands();
     console.log(`Found ${skills.length} skills.`);
     console.log(`Slash commands: ${commands.map((c) => c.id).join(", ")}`);
 
@@ -132,7 +132,7 @@ Updated content`,
     await new Promise((r) => setTimeout(r, 100));
 
     skills = skillManager.getAvailableSkills();
-    commands = slashCommandManager.getCommands();
+    commands = await slashCommandManager.getCommands();
     console.log(`Found ${skills.length} skills.`);
     if (!commands.some((c) => c.id === "dynamic-skill")) {
       console.log("🎯 Success: dynamic-skill was removed from slash commands!");

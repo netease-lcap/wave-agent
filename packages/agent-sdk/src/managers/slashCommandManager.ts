@@ -32,6 +32,7 @@ import {
 import type { SkillManager } from "./skillManager.js";
 import type { SkillMetadata } from "../types/skills.js";
 import type { SubagentManager } from "./subagentManager.js";
+import type { ModManager } from "./modManager.js";
 import {
   createForkSubagentConfiguration,
   FORK_SUBTASK_MAX_TURNS,
@@ -273,17 +274,25 @@ export class SlashCommandManager {
             }
 
             if (skill.context === "fork") {
+              // `skill.prompt`（spec ecosystem/plugin-mods.md「给工具、技能、命令
+              // 写描述」）：fork 技能没有 `!`cmd`` 展开这一步，正文在这里定型，
+              // 所以问在这里 —— 之后的三处（消息正文、工具块参数、子代理
+              // prompt）用的都是这一份。
+              const forkContent = await this.skillManager.applySkillPrompt(
+                prepared.skill,
+                prepared.content,
+              );
               // Forked skill execution: add user message with text + tool block
               const messageId = this.messageManager.addUserMessage({
                 content: `/${skill.name}${args ? ` ${args}` : ""}`,
-                customCommandContent: prepared.content,
+                customCommandContent: forkContent,
               });
 
               const toolBlockId = this.messageManager.addToolBlockToMessage(
                 messageId,
                 {
                   name: skill.name,
-                  parameters: prepared.content,
+                  parameters: forkContent,
                   stage: "running",
                 },
               );
@@ -306,7 +315,7 @@ export class SlashCommandManager {
                   config,
                   {
                     description: skill.description,
-                    prompt: prepared.content,
+                    prompt: forkContent,
                     subagent_type: subagentType,
                     model: skill.model,
                   },
@@ -368,7 +377,7 @@ export class SlashCommandManager {
                 try {
                   const result = await this.subagentManager.executeAgent(
                     instance,
-                    prepared.content,
+                    forkContent,
                     signal,
                   );
 
@@ -633,10 +642,67 @@ export class SlashCommandManager {
   }
 
   /**
-   * Get all available commands
+   * 一个命令要画进列表时的那一行：`command.describe` 覆盖过的字段用插件的，
+   * 其余用宿主自己的。
+   *
+   * **每次画列表都问一次，而且等答案回来再画** —— CC 同一条：插件给的描述当次
+   * 就生效，不是下一次。不缓存：命令表是插件随时会换的东西，缓存会让「换了实现
+   * 的命令」继续显示旧描述。各命令之间是并行的，每个 mod 各自受钩子超时约束。
    */
-  public getCommands(): SlashCommand[] {
-    return Array.from(this.commands.values());
+  private async describeCommand(
+    command: SlashCommand,
+  ): Promise<{ command: SlashCommand; isHidden?: boolean }> {
+    const modManager = this.container.has("ModManager")
+      ? this.container.get<ModManager>("ModManager")
+      : undefined;
+    if (
+      !modManager ||
+      typeof modManager.collectCommandDescribe !== "function"
+    ) {
+      return { command };
+    }
+    try {
+      const described = await modManager.collectCommandDescribe(command.name);
+      return {
+        command: {
+          ...command,
+          ...(described.description === undefined
+            ? {}
+            : { description: described.description }),
+          ...(described.argumentHint === undefined
+            ? {}
+            : { argumentHint: described.argumentHint }),
+        },
+        isHidden: described.isHidden,
+      };
+    } catch (error) {
+      // 问不出来就用宿主自己的那一行：画列表不能因为插件挂了而空掉。
+      logger?.warn("command.describe failed", {
+        command: command.name,
+        error,
+      });
+      return { command };
+    }
+  }
+
+  /**
+   * Get all available commands
+   *
+   * This is the list every front end draws (the popup, the CLI's completion), so
+   * it is also where `command.describe` lands: descriptions and argument hints
+   * are overridden, and a command a mod marked `isHidden` is left out of **this**
+   * list only — `hasCommand` / `executeCommand` still find it, because hiding
+   * changes what the list shows, not what can be run.
+   */
+  public async getCommands(): Promise<SlashCommand[]> {
+    const described = await Promise.all(
+      Array.from(this.commands.values()).map((command) =>
+        this.describeCommand(command),
+      ),
+    );
+    return described.flatMap(({ command, isHidden }) =>
+      isHidden === true ? [] : [command],
+    );
   }
 
   /**

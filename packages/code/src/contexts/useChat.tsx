@@ -28,6 +28,11 @@ import type {
   WorkflowRun,
   ToolBlockUpdateCallbackParams,
   RewindCheckpoint,
+  ModPanelUpdatePayload,
+  ModStatusPayload,
+  ModToastPayload,
+  ModPanelRenderResult,
+  ModBandRenderResult,
 } from "wave-agent-sdk";
 import {
   Agent,
@@ -208,6 +213,29 @@ export interface ChatContextType {
   reloadPlugins: () => Promise<void>;
   notifyPluginChange: () => void;
   hint: string | null;
+  // Plugin MODS（spec `ecosystem/plugin-mods.md`「终端形态」）：面板活在会话里，
+  // 树由 surface 每帧自己拉（宿主不推树），交互经 `sendModPanelEvent` 回到 mod。
+  /** 当前登记的面板（只有元信息，没有树）。 */
+  modPanes: import("wave-agent-sdk").ModPanelUpdatePayload[];
+  /** 哪个面板拿到了键盘（`null` = 键盘在输入框里）。 */
+  modFocusPaneId: string | null;
+  setModFocusPaneId: (paneId: string | null) => void;
+  /** 每帧都在的常驻状态行（`$.ui.status`），左侧是插件名。 */
+  modStatuses: import("wave-agent-sdk").ModStatusPayload[];
+  /** 短暂提示（`$.ui.toast`），到点自己消失。 */
+  modToasts: import("wave-agent-sdk").ModToastPayload[];
+  renderModPanel: (
+    modId: string,
+    paneId: string,
+  ) => Promise<import("wave-agent-sdk").ModPanelRenderResult>;
+  renderModBand: () => Promise<import("wave-agent-sdk").ModBandRenderResult[]>;
+  sendModPanelEvent: (
+    modId: string,
+    paneId: string,
+    kind: "press" | "input" | "select" | "close",
+    key: string,
+    value?: string,
+  ) => Promise<void>;
 }
 
 const ChatContext = createContext<ChatContextType | null>(null);
@@ -732,6 +760,52 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         : undefined;
 
       const callbacks: AgentCallbacks = {
+        // ── 插件 MODS：面板元信息、状态行、短暂提示（spec「终端形态」）──
+        // 三者都只是**推送**：树永远由 `ModPane` 收到 `stale` 之后自己拉
+        // （spec「架构约束」），所以这里连树字段都不需要读。
+        onModPanelUpdate: (payload: ModPanelUpdatePayload) => {
+          if (payload.closed) {
+            setModPanes((prev) =>
+              prev.filter(
+                (pane) =>
+                  pane.modId !== payload.modId ||
+                  pane.paneId !== payload.paneId,
+              ),
+            );
+            setModFocusPaneId((current) =>
+              current === payload.paneId ? null : current,
+            );
+            return;
+          }
+          setModPanes((prev) => {
+            const index = prev.findIndex(
+              (pane) =>
+                pane.modId === payload.modId && pane.paneId === payload.paneId,
+            );
+            if (index < 0) return [...prev, payload];
+            const next = [...prev];
+            next[index] = payload;
+            return next;
+          });
+          // `$.ui.open({ focus: true })`：只有那一条推送带 `focus`，把键盘送进
+          // 面板；之后每次重绘都不抢（否则用户打字打到一半会被换走焦点）。
+          if (payload.focus) setModFocusPaneId(payload.paneId);
+        },
+        onModStatus: (payload: ModStatusPayload) => {
+          setModStatuses((prev) => {
+            const rest = prev.filter((line) => line.modId !== payload.modId);
+            return payload.text === null ? rest : [...rest, payload];
+          });
+        },
+        onModToast: (payload: ModToastPayload) => {
+          setModToasts((prev) => [...prev, payload]);
+          // 到点自己消失：与桌面端同一个 `timeoutMs`（宿主已夹进限额），mod 不
+          // 需要再调一次来清。
+          const timer = setTimeout(() => {
+            setModToasts((prev) => prev.filter((toast) => toast !== payload));
+          }, payload.timeoutMs);
+          timer.unref?.();
+        },
         // ── Incremental message updates (no full-list pushes) ──────
         // Every update applies immediately via setMessages — no data-layer
         // throttling (removed 2026-10-15, see docs/specs/core/stream-content-updates.md).
@@ -921,6 +995,10 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
           mcpServers,
           // This session was created from the interactive CLI → `app.entrypoint`.
           entrypoint: "cli",
+          // The TUI draws mod panels and bands above the composer (spec
+          // `ecosystem/plugin-mods.md`「终端形态」). Declared rather than derived:
+          // `wave -p` reports the same entrypoint and draws nothing.
+          renderSurfaces: ["terminal"],
         });
 
         agentRef.current = agent;
@@ -964,8 +1042,9 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         const initialMcpServers = agent.getMcpServers?.() || [];
         setMcpServerStatuses(initialMcpServers);
 
-        // Get initial commands
-        const agentSlashCommands = agent.getSlashCommands?.() || [];
+        // Get initial commands (`command.describe` runs on every draw, so the
+        // list arrives asynchronously).
+        const agentSlashCommands = (await agent.getSlashCommands?.()) || [];
         setSlashCommands(agentSlashCommands);
 
         // Get initial agent definitions
@@ -1020,6 +1099,13 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   const [hint, setHint] = useState<string | null>(null);
   const hintTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // 插件 MODS 的终端 surface 状态（spec `ecosystem/plugin-mods.md`「终端形态」）：
+  // 面板只存元信息，树由 `ModPane` 每帧自己拉；状态行与提示是两条独立的推送。
+  const [modPanes, setModPanes] = useState<ModPanelUpdatePayload[]>([]);
+  const [modFocusPaneId, setModFocusPaneId] = useState<string | null>(null);
+  const [modStatuses, setModStatuses] = useState<ModStatusPayload[]>([]);
+  const [modToasts, setModToasts] = useState<ModToastPayload[]>([]);
+
   const showHint = useCallback((message: string) => {
     setHint(message);
     if (hintTimer.current) {
@@ -1028,6 +1114,59 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     // 一次性提示：数秒后自行消失，不留常驻标识。
     hintTimer.current = setTimeout(() => setHint(null), 8000);
   }, []);
+
+  // ── 插件 MODS 的 surface 接口（spec「终端形态」）──
+  // 三个都直接打在 agent 实例上：终端是**进程内** surface，没有 stdio 那一层。
+  const renderModPanel = useCallback(
+    async (modId: string, paneId: string): Promise<ModPanelRenderResult> => {
+      const agent = agentRef.current;
+      if (!agent) {
+        return {
+          modId,
+          paneId,
+          revision: 0,
+          tree: null,
+          error: "会话还没就绪",
+        };
+      }
+      // 摆法与量到的版面事实都走缺省：终端自己按字符格排版，不上报
+      // `bodyColumns` / `rows`（spec「`ui.render` 的 `e.props`」允许空着）。
+      return agent.renderModPanel(modId, paneId);
+    },
+    [],
+  );
+
+  const renderModBand = useCallback(async (): Promise<
+    ModBandRenderResult[]
+  > => {
+    const agent = agentRef.current;
+    if (!agent) return [];
+    return agent.renderModBand();
+  }, []);
+
+  const sendModPanelEvent = useCallback(
+    async (
+      modId: string,
+      paneId: string,
+      kind: "press" | "input" | "select" | "close",
+      key: string,
+      value?: string,
+    ) => {
+      const agent = agentRef.current;
+      const sessionId = agent?.sessionId;
+      if (!agent || !sessionId) return;
+      await agent.handleModPanelEvent({
+        sessionId,
+        modId,
+        paneId,
+        key,
+        kind,
+        ...(value === undefined ? {} : { value }),
+        ...(kind === "close" ? { origin: "person" as const } : {}),
+      });
+    },
+    [],
+  );
 
   const notifyPluginChange = useCallback(() => {
     showHint(PLUGIN_CHANGE_PENDING_MESSAGE);
@@ -1048,7 +1187,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     try {
       const result = await agent.reloadPlugins();
       // 换装后本进程各会话的能力已变，UI 侧的命令 / 子代理 / 技能列表同步重读。
-      setSlashCommands(agent.getSlashCommands?.() || []);
+      setSlashCommands((await agent.getSlashCommands?.()) || []);
       setAgentDefinitions(agent.getSubagentConfigurations?.() || []);
       setSkills(agent.getSkillMetadata?.() || []);
       if (result.failures.length > 0) {
@@ -1573,7 +1712,8 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     // 是为了让失败以 RPC 错误回给页面（TUI 那条路径把错误渲染成一条消息）。
     renameSession: (title) => agentRef.current?.renameSession(title),
     compact: (instructions) => compact(instructions),
-    slashCommands: () => agentRef.current?.getSlashCommands() ?? [],
+    slashCommands: () =>
+      agentRef.current?.getSlashCommands() ?? Promise.resolve([]),
     // 手机页取数都读 agent 手上那份列表（压缩后的上下文）：首屏尾段（`limit`）、
     // 重连补差（`since`）、滚到顶往回翻（`before` + `limit`）三种窗口原样交给
     // SDK，切片与 `hasMore` / `anchorLost` 都由它判。分页是 2026-11-06 起远控页
@@ -1750,6 +1890,14 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     reloadPlugins,
     notifyPluginChange,
     hint,
+    modPanes,
+    modFocusPaneId,
+    setModFocusPaneId,
+    modStatuses,
+    modToasts,
+    renderModPanel,
+    renderModBand,
+    sendModPanelEvent,
   };
 
   return (

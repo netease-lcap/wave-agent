@@ -42,7 +42,7 @@ describe("Agent - Slash Commands Readiness", () => {
       workdir: "/tmp/test-slash-commands",
     });
 
-    const commands = agent.getSlashCommands();
+    const commands = await agent.getSlashCommands();
 
     // Verify that commands are returned as an array
     // Built-in commands were moved to CLI; SDK starts with no commands

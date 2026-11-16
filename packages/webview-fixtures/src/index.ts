@@ -63,12 +63,14 @@ import type {
   DesktopModToastMessage,
   DesktopModPromptFillMessage,
   DesktopModPromptReadMessage,
+  DesktopModPromptSuggestMessage,
   DesktopModCopyMessage,
   DesktopModNoticeMessage,
   ModBandRenderResult,
   ModPanelUpdatePayload,
   ModPromptFillRequest,
   ModPromptReadRequest,
+  ModPromptSuggestRequest,
   ModCopyRequest,
   ModNoticePayload,
   ModStatusPayload,
@@ -266,6 +268,10 @@ export interface Fixtures {
     payload: ModPromptReadRequest,
     overrides?: Overrides<DesktopModPromptReadMessage>,
   ) => DesktopModPromptReadMessage;
+  desktopModPromptSuggest: (
+    payload: ModPromptSuggestRequest,
+    overrides?: Overrides<DesktopModPromptSuggestMessage>,
+  ) => DesktopModPromptSuggestMessage;
   desktopModCopy: (
     payload: ModCopyRequest,
     overrides?: Overrides<DesktopModCopyMessage>,
@@ -571,6 +577,12 @@ export const fixtures: Fixtures = {
 
   desktopModPromptRead: (payload, overrides = {}) => ({
     command: "desktopModPromptRead",
+    payload,
+    ...overrides,
+  }),
+
+  desktopModPromptSuggest: (payload, overrides = {}) => ({
+    command: "desktopModPromptSuggest",
     payload,
     ...overrides,
   }),

@@ -55,6 +55,7 @@ import type {
   ModPromptFillMode,
   ModPromptFillRequest,
   ModPromptReadRequest,
+  ModPromptSuggestRequest,
   ModCopyRequest,
   ModNoticePayload,
   ModStatusPayload,
@@ -77,6 +78,7 @@ export type {
   ModPromptFillMode,
   ModPromptFillRequest,
   ModPromptReadRequest,
+  ModPromptSuggestRequest,
   ModCopyRequest,
   ModNoticePayload,
   ModStatusPayload,
@@ -626,6 +628,36 @@ export interface DesktopModPromptReadMessage extends HostToWebviewMessageBase {
 export interface DesktopModCopyMessage extends HostToWebviewMessageBase {
   command: "desktopModCopy";
   payload: ModCopyRequest;
+}
+
+/**
+ * A mod wants ghost text above this pane's composer (`$.prompt.suggest`; spec
+ * `ecosystem/plugin-mods.md`「输入框里的建议与焦点」).
+ *
+ * Answers with `modPromptSuggestResult` (`{ requestId, isShown }`), and must
+ * answer either way — silence reads as `{ isShown: false }` after the limit. The
+ * suggestion never touches the draft: only Tab puts it in.
+ */
+export interface DesktopModPromptSuggestMessage
+  extends HostToWebviewMessageBase {
+  command: "desktopModPromptSuggest";
+  payload: ModPromptSuggestRequest;
+}
+
+/**
+ * The answer to one `modPromptEdit` the composer reported (spec
+ * `ecosystem/plugin-mods.md`「输入框里的建议与焦点」).
+ *
+ * The host answers every report, rewritten or not — leaving it unanswered would
+ * let the composer drift from what the mods believe is in it. `requestId` is the
+ * one the webview generated, so a late answer to an older edit can be dropped.
+ */
+export interface DesktopModPromptEditResultMessage
+  extends HostToWebviewMessageBase {
+  command: "modPromptEditResult";
+  requestId: string;
+  text: string;
+  cursor: number;
 }
 
 /**
@@ -1916,6 +1948,8 @@ export type HostToWebviewMessage =
   | DesktopModToastMessage
   | DesktopModPromptFillMessage
   | DesktopModPromptReadMessage
+  | DesktopModPromptSuggestMessage
+  | DesktopModPromptEditResultMessage
   | DesktopModCopyMessage
   | DesktopModNoticeMessage
   | DesktopDirEntriesMessage
@@ -2118,6 +2152,9 @@ type ReplyAttribution = {
   // 它自己那个 pane，晚到的最多被 revision 判旧丢掉，落不到别的 tab 上；用
   // requestId 反而要求 webview 记住每一次请求的 id。
   desktopModPanelRender: "tabId";
+  // `prompt.edit` 的改写回执：输入框每变一次上报一笔，晚到的旧回执必须按
+  // requestId 丢掉，否则会把上一次的改写套回用户刚打的字上。
+  modPromptEditResult: "requestId";
 };
 
 // ---- 编译期断言：注册表中的每条响应命令，union 成员必须必填其归属键。 ----
@@ -2182,6 +2219,7 @@ export const replyAttributionLocked = {
   earlierMessages: true,
   desktopSessionContentMatches: true,
   desktopModPanelRender: true,
+  modPromptEditResult: true,
 } satisfies {
   [C in keyof ReplyAttribution & string]: ReplyAttributionSatisfied[C];
 };

@@ -57,6 +57,7 @@ import type {
   ModPanelUpdatePayload,
   ModPromptFillRequest,
   ModPromptReadRequest,
+  ModPromptSuggestRequest,
   ModCopyRequest,
   ModNoticePayload,
   ModStatusPayload,
@@ -230,6 +231,12 @@ export interface StdioAgentCallbacks {
    * the limit reads as an empty draft.
    */
   onModPromptRead?: (payload: ModPromptReadRequest) => void;
+  /**
+   * A mod wants ghost text above the composer (`$.prompt.suggest`; spec「输入框
+   * 里的建议与焦点」). The host answers with the `modPromptSuggestResult` RPC; no
+   * answer inside the limit reads as `{ isShown: false }`.
+   */
+  onModPromptSuggest?: (payload: ModPromptSuggestRequest) => void;
   /**
    * A mod wants text on the clipboard (`$.ui.copy`; spec「剪贴板与视图」). The
    * host answers with the `modCopyResult` RPC.
@@ -746,6 +753,43 @@ export class StdioAgent {
   }
 
   /**
+   * 回答一次 `$.prompt.suggest`（spec「输入框里的建议与焦点」）。
+   *
+   * 只有 surface 知道建议摆没摆上（输入框可能正忙、可能没挂上）。会话已经不
+   * 认这个 `requestId`（超时已按 `{ isShown: false }` 作答）时什么也不会发生。
+   */
+  async resolveModPromptSuggest(
+    requestId: string,
+    isShown: boolean,
+  ): Promise<void> {
+    await this.client.request(
+      "modPromptSuggestResult",
+      { requestId, isShown },
+      this.sessionId,
+    );
+  }
+
+  /**
+   * 用户在输入框里做完一次编辑（spec「输入框里的建议与焦点」）。
+   *
+   * 与其余几条反向：这次是**宿主先说话**，返回的是插件改写后的草稿。没有 mod
+   * 注册这条钩子时，命中的是引擎自己的「应用这次编辑」，代价就是一趟 RPC。
+   */
+  async promptEdit(event: {
+    key?: unknown;
+    text: string;
+    cursor: number;
+    start: number;
+    end: number;
+    inputText: string;
+  }): Promise<{ text: string; cursor: number }> {
+    return (await this.client.request("promptEdit", event, this.sessionId)) as {
+      text: string;
+      cursor: number;
+    };
+  }
+
+  /**
    * 回答一次 `$.prompt.read`（spec「输入框里现在有什么」）。
    *
    * 宿主得把输入框**此刻**的内容与光标位置报回来；会话已经不认这个
@@ -1166,6 +1210,13 @@ export class StdioAgent {
         // The only mod push that expects an answer: the host replies with the
         // `modPromptFillResult` RPC (spec「把草稿填进输入框」).
         this.callbacks.onModPromptFill?.(params as ModPromptFillRequest);
+        break;
+      }
+      case "modPromptSuggest": {
+        // Same round trip as `modPromptFill` (spec「输入框里的建议与焦点」): the
+        // surface decides whether the ghost text can go up, and answers through
+        // the `modPromptSuggestResult` RPC.
+        this.callbacks.onModPromptSuggest?.(params as ModPromptSuggestRequest);
         break;
       }
       case "modPromptRead": {

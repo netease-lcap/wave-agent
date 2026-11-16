@@ -1317,7 +1317,7 @@ describe("SkillManager", () => {
       expect(skills[0].name).toBe("new-skill");
 
       // Check if slash commands were updated
-      const commands = slashCommandManager.getCommands();
+      const commands = await slashCommandManager.getCommands();
       expect(commands.find((c) => c.id === "new-skill")).toBeDefined();
     });
 

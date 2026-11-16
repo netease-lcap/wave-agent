@@ -52,23 +52,29 @@ function storeKey(atomRef: ModAtom<unknown>): string {
 }
 
 /**
- * 读一个 atom：键不存在、或存进去的不是合法 JSON 时返回初值。
+ * 读一个 atom：键不存在时返回初值。
  *
- * 「解析失败就当没有」是刻意的：store 是用户能打开看的文件（
- * `~/.wave/plugin-mods/*.json`），手改坏了不该让 mod 整个挂掉，读回初值还能
- * 自愈（下一次 `update` 会把整份写回去）。
+ * store 是用户能打开看的文件（`~/.wave/plugin-mods/*.json`），手改坏了不该让
+ * mod 整个挂掉：读不会抛错，比较不了就按原样给（除非存的是 JSON 文本，那说明
+ * 是旧版本写的，解析回原值）。
  */
 export async function read<T>(
   $: Pick<ModDollar, "store">,
   atomRef: ModAtom<T>,
 ): Promise<T> {
-  const raw = $.store.get(storeKey(atomRef));
+  const raw: unknown = await $.store.get(storeKey(atomRef));
   if (raw === undefined) return atomRef.initial;
-  try {
-    return JSON.parse(raw) as T;
-  } catch {
-    return atomRef.initial;
+  // 兼容旧数据：`$.store` 以前只收字符串，atom 存进去的是 `JSON.stringify(值)`
+  // 的文本，读回来会多一层引号。字符串能解析就用解析结果（下次 `update` 按新
+  // 形状整份写回、自愈）；解析不了说明存的就是一个字符串，原样给。
+  if (typeof raw === "string") {
+    try {
+      return JSON.parse(raw) as T;
+    } catch {
+      return raw as T;
+    }
   }
+  return raw as T;
 }
 
 /**
@@ -87,6 +93,6 @@ export async function update<T>(
     typeof valueOrUpdater === "function"
       ? (valueOrUpdater as (previous: T) => T)(await read($, atomRef))
       : valueOrUpdater;
-  $.store.set(storeKey(atomRef), JSON.stringify(next));
+  await $.store.set(storeKey(atomRef), next);
   return next;
 }

@@ -21,8 +21,21 @@ import { WORKFLOW_SCRIPT_EXTENSION } from "../workflow/workflowRegistry.js";
 import { parseScript, validateScript } from "../workflow/scriptRuntime.js";
 import { MOD_LIMITS, type PluginMod } from "../types/mods.js";
 
-/** 能被编译成 mod 的扩展名（与 `mods/compile.ts` 的 loader 表一致）。 */
-const MOD_LOADER_EXTENSIONS = new Set([".tsx", ".ts", ".jsx", ".js"]);
+/**
+ * 能被编译成 mod 的扩展名（与 `mods/compile.ts` 的 loader 表一致）。
+ *
+ * `.mjs` / `.cjs` 必须在这里：社区 mod 常常入口是 `.mjs`、`import` 的兄弟文件
+ * 也是 `.mjs`（dprint 的 `./lib.mjs`、sotto 的 `./modcore.mjs`），漏掉它们入口
+ * 进得了编译集、兄弟文件进不了，加载时就报「找不到模块」。
+ */
+const MOD_LOADER_EXTENSIONS = new Set([
+  ".tsx",
+  ".ts",
+  ".jsx",
+  ".js",
+  ".mjs",
+  ".cjs",
+]);
 
 export class PluginLoader {
   /**
@@ -367,6 +380,12 @@ export class PluginLoader {
     let totalBytes = 0;
     const seenPaths = new Set<string>();
     const seenIds = new Set<string>();
+    // 入口文件（真的会变成 mod 的那些）。入口之后收进来的是被 import 的兄弟
+    // 文件，它们的 id 永远不会露出来（`ModRuntime.load()` 对没有导出
+    // `register` 的文件直接跳过），所以允许同名的兄弟文件都留下 ——
+    // 只按文件名去重会把多文件社区 mod 的 `features/a/index.ts` 与
+    // `features/b/index.ts` 顶掉一个，随后入口 `require` 就报找不到模块。
+    const entryPaths = new Set(entries.map((entry) => path.resolve(entry)));
     for (const filePath of candidates) {
       if (mods.length >= MOD_LIMITS.fileCount) {
         logger?.warn(
@@ -394,14 +413,19 @@ export class PluginLoader {
           continue;
         }
         const stem = path.parse(filePath).name;
-        const id = `${pluginName}:${stem}`;
-        // id 是面板/命令的归属键，重名会让两个文件互相顶掉：先到先得，后来的
-        // 记一条 warn 丢掉。
+        let id = `${pluginName}:${stem}`;
+        // id 是面板/命令的归属键，入口重名会让两个 mod 互相顶掉：先到先得，
+        // 后来的记一条 warn 丢掉。兄弟文件只是编译集里的一项，给个唯一后缀留住。
         if (seenIds.has(id)) {
-          logger?.warn(
-            `插件 ${pluginName} 有两个同名 mod 文件（${stem}），跳过：${filePath}`,
-          );
-          continue;
+          if (entryPaths.has(path.resolve(filePath))) {
+            logger?.warn(
+              `插件 ${pluginName} 有两个同名 mod 文件（${stem}），跳过：${filePath}`,
+            );
+            continue;
+          }
+          let suffix = 2;
+          while (seenIds.has(`${id}~${suffix}`)) suffix += 1;
+          id = `${id}~${suffix}`;
         }
         totalBytes += stat.size;
         if (totalBytes > MOD_LIMITS.totalBytes) {
@@ -584,6 +608,9 @@ function relativeImportSpecifiers(source: string): string[] {
 async function resolveImportFile(target: string): Promise<string | undefined> {
   const candidates = [
     target,
+    // TS 的 ESM 写法：源码里写 `import "./x.js"`，磁盘上只有 `x.ts` / `x.tsx`
+    // （社区插件普遍这么写）。放在字面量之后 ⇒ 真有 `x.js` 时仍然它优先。
+    ...sourceSuffixVariants(target),
     `${target}.tsx`,
     `${target}.ts`,
     `${target}.jsx`,
@@ -605,6 +632,20 @@ async function resolveImportFile(target: string): Promise<string | undefined> {
     }
   }
   return undefined;
+}
+
+/**
+ * `.js` / `.jsx` 说明符对应的 TS 源码文件（`./x.js` → `x.ts` / `x.tsx`）。
+ *
+ * 沙箱 `require` 里有一份同样的表（`runtime.ts` 的 `moduleCandidates`）——
+ * 收编译集时不认这个映射，文件就不在编译集里，入口照样报找不到模块。
+ */
+export function sourceSuffixVariants(target: string): string[] {
+  const ext = path.extname(target).toLowerCase();
+  const withoutExt = target.slice(0, target.length - ext.length);
+  if (ext === ".js") return [`${withoutExt}.ts`, `${withoutExt}.tsx`];
+  if (ext === ".jsx") return [`${withoutExt}.tsx`];
+  return [];
 }
 
 /** `realpath`，失败时退回 `path.resolve`（文件不在时后面会各自处理）。 */

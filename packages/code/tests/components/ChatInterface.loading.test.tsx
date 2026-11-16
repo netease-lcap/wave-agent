@@ -49,6 +49,15 @@ describe("ChatInterface Loading State", () => {
       apiKey: undefined,
       baseURL: undefined,
     }),
+    // 插件 MODS 的三个面：没有插件在画时的空形态（ModSurface 会读它们）。
+    modPanes: [],
+    modFocusPaneId: null,
+    modStatuses: [],
+    modToasts: [],
+    setModFocusPaneId: vi.fn(),
+    renderModPanel: vi.fn(),
+    renderModBand: vi.fn().mockResolvedValue([]),
+    sendModPanelEvent: vi.fn(),
   } as unknown as ChatContextType;
 
   const mockInputManager = {

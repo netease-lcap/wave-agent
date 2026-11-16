@@ -87,6 +87,7 @@ const ENTRY = path.join(ROOT, "mods", "panel.tsx");
 function host(overrides: Partial<ModRuntimeHost> = {}): ModRuntimeHost {
   return {
     pluginName: "todo",
+    pluginRoot: ROOT,
     openPane: vi.fn(() => true),
     closePane: vi.fn(),
     listPanes: vi.fn(() => []),
@@ -142,6 +143,8 @@ function host(overrides: Partial<ModRuntimeHost> = {}): ModRuntimeHost {
     listConfigRows: vi.fn(() => []),
     listToolInfos: vi.fn(() => []),
     listAgentInfos: vi.fn(() => []),
+    // 默认会话里没有消息：`$.session.messages()` 给空数组。
+    listSessionMessages: vi.fn(() => []),
     // 默认没有界面接手输入框：`read` 给空草稿。
     readPromptDraft: vi.fn(async () => ({ text: "", cursor: 0 })),
     // 默认接得住：贴一行、写剪贴板都成功。
@@ -153,6 +156,35 @@ function host(overrides: Partial<ModRuntimeHost> = {}): ModRuntimeHost {
     registerCommand: vi.fn((spec: ModCommandSpec) => ({ command: spec.name })),
     listCommands: vi.fn(() => []),
     runCommand: vi.fn(async () => {}),
+    // 三个写入型 API 的出口（spec「把我们自己的工具交给模型」「派子代理」
+    // 「让模型替插件答一次」）：默认都成功，断言看各用例怎么改。
+    registerTool: vi.fn(async (spec: { name: string }) => ({
+      name: spec.name,
+    })),
+    // 工具面的两个探针（spec「主动问一次工具面」）：默认「没人拦」。
+    checkTool: vi.fn(async () => ({ decision: "allow" as const })),
+    callTool: vi.fn(async () => ({})),
+    spawnAgent: vi.fn(async () => ({
+      model: "test-model",
+      agentId: "agent-1",
+    })),
+    completeModel: vi.fn(async () => ({
+      isAnswered: true as const,
+      text: "ok",
+      usage: {
+        prompt: 1,
+        completion: 1,
+        cacheRead: 0,
+        cacheCreation: 0,
+        input_tokens: 1,
+        output_tokens: 1,
+        cache_read_input_tokens: 0,
+        cache_creation_input_tokens: 0,
+      },
+    })),
+    suggestPrompt: vi.fn(async () => ({ isShown: true })),
+    // 默认「有得收」：`$.turn.abort` 的 id 判在宿主那边，这一层只验证原样交下去。
+    turnAbort: vi.fn(),
     ...overrides,
   };
 }
@@ -323,20 +355,46 @@ describe("ModRuntime 的 require", () => {
     await expect(mod.load()).rejects.toThrow("mod 找不到模块：./missing");
   });
 
-  it("循环 import 被拦下", async () => {
+  it("循环 import 按 CJS 语义拿到半成品导出，不整片失败", async () => {
     const a = path.join(ROOT, "mods", "a.ts");
     const b = path.join(ROOT, "mods", "b.ts");
     const { mod } = runtime(
-      `require("./a"); exports.register = function () {};`,
+      `const a = require("./a");
+       // a 跑完了：b 拿到了 a 的同一个 exports 对象（当时只写了一半）。
+       if (a.fromB.kind !== "b") throw new Error("b 没执行");
+       if (a.fromB.fromA !== a) throw new Error("b 看到的 a 不是同一份 exports");
+       exports.register = function () {};`,
       {
         extra: [
-          { path: a, code: `exports.a = require("./b");` },
-          { path: b, code: `exports.b = require("./a");` },
+          {
+            path: a,
+            code: `exports.kind = "a"; exports.fromB = require("./b");`,
+          },
+          {
+            path: b,
+            // 环里进来的 a 还没执行到 `fromB = ...`，所以那一项此时没有。
+            code: `const a = require("./a");
+                   if (a.kind !== "a") throw new Error("a 的已有导出该可见");
+                   if (a.fromB !== undefined) throw new Error("a 不该已经有 fromB");
+                   exports.kind = "b"; exports.fromA = a;`,
+          },
         ],
       },
     );
 
-    await expect(mod.load()).rejects.toThrow("import 出现循环");
+    await expect(mod.load()).resolves.toBe(true);
+  });
+
+  it("`./x.js` 说明符落到同名的 .ts 源码上", async () => {
+    const dep = path.join(ROOT, "mods", "dep.ts");
+    const { mod } = runtime(
+      `require("./dep.js"); exports.register = function () {};`,
+      {
+        extra: [{ path: dep, code: `exports.ready = true;` }],
+      },
+    );
+
+    await expect(mod.load()).resolves.toBe(true);
   });
 });
 
@@ -379,10 +437,13 @@ describe("ModRuntime 的隔离", () => {
 
   it("未知钩子名被拒绝而不是静默登记", async () => {
     // 钩子名单是白名单（spec「事件」）：Claude Code 有、我们没有的事件名不该
-    // 悄悄生效，否则插件作者会以为那条路径通了。
+    // 悄悄生效，否则插件作者会以为那条路径通了。`classic.` 只镜像「影子事件」
+    // 那张表里的事件，其余（`classic.Setup`、`classic.TaskCompleted`…）照旧拒。
     const { mod } = runtime(`
       exports.register = function ($, on) {
         on("ui.destroy", function () {});
+        on("classic.Setup", function () {});
+        on("classic.TaskCompleted", function () {});
         on("session.start", function () { return "ok"; });
       };
     `);
@@ -414,6 +475,72 @@ describe("ModRuntime 的隔离", () => {
     await expect(
       mod.callHook("tool.call", { tool: "Bash", input: { command: "ls" } }),
     ).resolves.toMatchObject({ ok: true, value: "Bash" });
+  });
+
+  it("影子事件的 15 个 classic.* 镜像都能注册，载荷原样交给 handler", async () => {
+    // spec「影子事件」：全是只读镜像，返回值由宿主丢弃（这里只看名字收下了、
+    // 载荷没被改写）。
+    const names = [
+      "classic.SessionStart",
+      "classic.SessionEnd",
+      "classic.Stop",
+      "classic.StopFailure",
+      "classic.UserPromptSubmit",
+      "classic.Notification",
+      "classic.InstructionsLoaded",
+      "classic.PostModelSwitch",
+      "classic.SubagentStart",
+      "classic.SubagentStop",
+      "classic.PostToolUse",
+      "classic.PostToolUseFailure",
+      "classic.PostToolBatch",
+      "classic.CwdChanged",
+    ];
+    const { mod } = runtime(`
+      exports.register = function ($, on) {
+        ${names
+          .map(
+            (name) =>
+              `on(${JSON.stringify(name)}, function (e) { return e.hook_event_name || "?"; });`,
+          )
+          .join("\n        ")}
+      };
+    `);
+
+    await mod.load();
+    expect(mod.hookNames()).toEqual(names);
+    await expect(
+      mod.callHook("classic.SessionStart", { hook_event_name: "SessionStart" }),
+    ).resolves.toMatchObject({ ok: true, value: "SessionStart" });
+    await expect(
+      mod.callHook("classic.StopFailure", { hook_event_name: "StopFailure" }),
+    ).resolves.toMatchObject({ ok: true, value: "StopFailure" });
+  });
+
+  it("影子事件里只有 PostToolUse 族吃 matcher（按 tool_name 分流）", async () => {
+    // Claude Code 的 matcher 键表对这三个事件列的就是 `tool_name`；其余影子事
+    // 件带 matcher 一律拒收，免得插件作者以为能按 `source` / `reason` 分流。
+    const { mod } = runtime(`
+      exports.register = function ($, on) {
+        on("classic.PostToolUse", { tool_name: ["Write", "Edit"] }, function (e) {
+          return "saw:" + e.tool_name;
+        });
+        on("classic.Stop", { source: "startup" }, function () {
+          return "stop";
+        });
+      };
+    `);
+
+    await mod.load();
+    expect(mod.hookNames()).toEqual(["classic.PostToolUse"]);
+    const matched = await mod.callHook("classic.PostToolUse", {
+      tool_name: "Edit",
+    });
+    expect(matched).toMatchObject({ ok: true, value: "saw:Edit" });
+    const other = await mod.callHook("classic.PostToolUse", {
+      tool_name: "Bash",
+    });
+    expect(other).toMatchObject({ ok: true, value: undefined });
   });
 });
 
@@ -603,8 +730,8 @@ describe("ModRuntime 的交互路由", () => {
     await mod.dispatch("press", "same");
     await mod.dispatch("input", "same", "typed");
 
-    expect(hostApi.openPane).toHaveBeenNthCalledWith(1, "press", "");
-    expect(hostApi.openPane).toHaveBeenNthCalledWith(2, "typed", "");
+    expect(hostApi.openPane).toHaveBeenNthCalledWith(1, "press", "", false);
+    expect(hostApi.openPane).toHaveBeenNthCalledWith(2, "typed", "", false);
   });
 
   it("Select 的 options 是对象数组，照样搬进树里", async () => {
@@ -726,14 +853,14 @@ describe("ModRuntime 的交互路由", () => {
 describe("ModRuntime 的 $ 命名空间", () => {
   it("ui / state / store 全部转发到宿主，值跨 realm 拷贝", async () => {
     const state = new Map<string, unknown>([["count", { n: 1 }]]);
-    const store = new Map<string, string>();
+    const store = new Map<string, unknown>();
     const hostApi = host({
       stateGet: (key) => state.get(key),
       stateSet: vi.fn((key: string, value: unknown) => {
         state.set(key, value);
       }),
       storeGet: (key) => store.get(key),
-      storeSet: vi.fn((key: string, value: string) => {
+      storeSet: vi.fn((key: string, value: unknown) => {
         store.set(key, value);
       }),
       storeDelete: vi.fn((key: string) => {
@@ -745,19 +872,21 @@ describe("ModRuntime 的 $ 命名空间", () => {
     const { mod } = runtime(
       `
       exports.register = function ($, on) {
-        on("session.start", function () {
+        on("session.start", async function () {
           var current = $.state.get("count");
           current.n = 99;                 // 改副本，不应影响宿主
           $.state.set("count", { n: 2 });
           $.ui.open({ id: "p1", title: "待办" });
           $.ui.invalidate("ui.render");
-          $.store.set("k", 7);
-          $.store.delete("gone");
+          // 任意 JSON：对象原样存，不当成 "[object Object]"。
+          await $.store.set("k", { n: 7 });
+          await $.store.delete("gone");
           return {
             plugin: $.plugin.name,
-            panes: $.ui.panes(),
-            keys: $.store.keys(),
-            stored: $.store.get("k"),
+            root: $.plugin.root,
+            panes: await $.ui.panes(),
+            keys: await $.store.keys(),
+            stored: await $.store.get("k"),
           };
         });
       };
@@ -769,16 +898,176 @@ describe("ModRuntime 的 $ 命名空间", () => {
     const result = await mod.callHook("session.start", {});
     expect(result.ok && result.value).toEqual({
       plugin: "todo",
+      // 插件自己的根目录（`mods/` 的上一级）：社区插件拿它拼自己那几份资源。
+      root: ROOT,
       panes: ["p1"],
       keys: ["k"],
-      stored: "7",
+      stored: { n: 7 },
     });
 
     // 副本语义：mod 改的是它自己那份。
     expect(state.get("count")).toEqual({ n: 2 });
-    expect(hostApi.openPane).toHaveBeenCalledWith("p1", "待办");
+    expect(hostApi.openPane).toHaveBeenCalledWith("p1", "待办", false);
     expect(hostApi.invalidate).toHaveBeenCalledWith("ui.render");
     expect(hostApi.storeDelete).toHaveBeenCalledWith("gone");
+  });
+
+  it("$.turn.abort 只转一手：turnId 原样交给宿主，空的在 runtime 就拒", async () => {
+    // spec「`$.turn`」：判据（这一轮在不在、id 对不对）全在宿主，runtime 只转发
+    // 并把宿主的错误原样交给 mod —— 静默成功会让插件以为自己叫停了。
+    const hostApi = host({ turnAbort: vi.fn() });
+    const { mod } = runtime(
+      `
+      exports.register = function ($, on) {
+        on("session.start", async function () {
+          await $.turn.abort({ turnId: "t-1" });
+          try {
+            await $.turn.abort({});
+            return "没抛错";
+          } catch (error) {
+            return error.message;
+          }
+        });
+      };
+      `,
+      { host: hostApi },
+    );
+
+    await mod.load();
+    const result = await mod.callHook("session.start", {});
+
+    expect(hostApi.turnAbort).toHaveBeenCalledWith("t-1");
+    expect(result.ok && result.value).toBe("$.turn.abort 需要一个 { turnId }");
+  });
+
+  it("$.turn.abort 时宿主判不过（没有这一轮 / id 对不上）的错原样抛给 mod", async () => {
+    const hostApi = host({
+      turnAbort: vi.fn(() => {
+        throw new Error("没有正在跑的一轮");
+      }),
+    });
+    const { mod } = runtime(
+      `
+      exports.register = function ($, on) {
+        on("session.start", async function () {
+          await $.turn.abort({ turnId: "t-stale" });
+        });
+      };
+      `,
+      { host: hostApi },
+    );
+
+    await mod.load();
+    const result = await mod.callHook("session.start", {});
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toContain("没有正在跑的一轮");
+  });
+
+  it("$.store 四个方法都返回 Promise，值是任意 JSON（不压成字符串）", async () => {
+    // 社区插件按 Claude Code 的 async 契约写：`store.get(k).catch(…)`、`await
+    // store.set(k, {…})`。同步返回会 `TypeError: … reading 'catch'`，只收字符串
+    // 则把对象存成 "[object Object]"。
+    const store = new Map<string, unknown>();
+    const hostApi = host({
+      storeGet: (key) => store.get(key),
+      storeSet: vi.fn((key: string, value: unknown) => {
+        store.set(key, value);
+      }),
+      storeDelete: vi.fn((key: string) => {
+        store.delete(key);
+      }),
+      storeKeys: () => [...store.keys()],
+    });
+    const { mod } = runtime(
+      `
+      exports.register = function ($, on) {
+        on("session.start", function () {
+          var get = $.store.get("last");
+          var set = $.store.set("last", { at: 1, tags: ["a"] });
+          var del = $.store.delete("gone");
+          var keys = $.store.keys();
+          // 只认 thenable：社区写法里最常见的下一步就是 .catch。
+          return Promise.all([get, set, del, keys]).then(function (all) {
+            return { isThenable: typeof set.catch, last: all[0] };
+          }).then(function (state) {
+            return $.store.set("last", { at: 2 }).then(function () {
+              return $.store.get("last").then(function (next) {
+                return { ...state, next: next };
+              });
+            });
+          });
+        });
+      };
+      `,
+      { host: hostApi },
+    );
+
+    await mod.load();
+    const result = await mod.callHook("session.start", {});
+    expect(result).toMatchObject({
+      ok: true,
+      value: {
+        isThenable: "function",
+        // 写的时候还没写过，读回来是 undefined。
+        last: undefined,
+        next: { at: 2 },
+      },
+    });
+    expect(hostApi.storeSet).toHaveBeenCalledWith("last", {
+      at: 1,
+      tags: ["a"],
+    });
+  });
+
+  it("$.store.set 的 JSON 口径与 Claude Code 一致（值先归一，键再查）", async () => {
+    const hostApi = host();
+    const { mod } = runtime(
+      `
+      exports.register = function ($, on) {
+        var cases = [
+          // 函数在对象属性上被 JSON.stringify 静默丢掉 —— CC 就是这样，不放宽也不加严。
+          function () { return $.store.set("fn", { cb: function () {}, keep: 1 }); },
+          function () {
+            var loop = {};
+            loop.self = loop;
+            return $.store.set("loop", loop);
+          },
+          function () {
+            return $.store.set("big", "x".repeat(${MOD_LIMITS.storeValueChars + 1}));
+          },
+          function () { return $.store.set("", 1); },
+          function () { return $.store.set("nothing", undefined); },
+          function () { return $.store.get(""); },
+          function () { return $.store.delete(""); },
+        ];
+        on("session.start", async function () {
+          return await Promise.all(cases.map(function (run) {
+            return run().then(function (v) { return v === undefined ? "ok" : v; }, function (e) {
+              return e.message;
+            });
+          }));
+        });
+      };
+      `,
+      { host: hostApi },
+    );
+
+    await mod.load();
+    const result = await mod.callHook("session.start", {});
+    expect(result.ok).toBe(true);
+    const messages = (result as unknown as { value: unknown[] }).value;
+    expect(messages[0]).toBe("ok");
+    // 环、顶层 undefined、超限、空键都当场报错（空键三条方法都查）。
+    expect(messages[1]).toContain("circular");
+    expect(messages[2]).toMatch(/超过 \d+/);
+    expect(messages[3]).toContain("字符串键");
+    expect(messages[4]).toContain("undefined");
+    expect(messages[5]).toContain("字符串键");
+    expect(messages[6]).toContain("字符串键");
+    // 函数被 JSON 丢掉，留下的就是纯 JSON：`{ keep: 1 }`。
+    expect(hostApi.storeSet).toHaveBeenCalledTimes(1);
+    expect(hostApi.storeSet).toHaveBeenCalledWith("fn", { keep: 1 });
   });
 
   it("ui.close 转发到宿主（`{ id }` 是 Claude Code 的形状）", async () => {
@@ -840,7 +1129,7 @@ describe("ModRuntime 的 $ 命名空间", () => {
     });
     // 面板仍然登记着（与 Claude Code 一样「没有 surface 也把面板留着」，之后
     // 有界面挂上来它就画出来），只是这一次没人接住。
-    expect(noSurface.openPane).toHaveBeenCalledWith("p1", "守卫");
+    expect(noSurface.openPane).toHaveBeenCalledWith("p1", "守卫", false);
 
     const desktop = host();
     const { mod: lit } = runtime(
@@ -856,7 +1145,8 @@ describe("ModRuntime 的 $ 命名空间", () => {
     await lit.load();
     const placed = await lit.callHook("session.start", {});
     expect(placed.ok && placed.value).toEqual({ isPlaced: true });
-    expect(desktop.openPane).toHaveBeenCalledWith("p1", "守卫");
+    // `focus: true` 要原样透给宿主：surface 靠它把键盘直接送进这块面板。
+    expect(desktop.openPane).toHaveBeenCalledWith("p1", "守卫", true);
   });
 
   it("$.ui.open 的 focus 只收 true（与 Claude Code 一样）", async () => {
@@ -982,7 +1272,7 @@ describe("ModRuntime 的 $ 命名空间", () => {
           var messages = [];
           var cases = [
             {},
-            { surface: "terminal", component: "Pane" },
+            { surface: "mobile", component: "Pane" },
             { surface: "desktop", component: "Hint" },
           ];
           for (var bad of cases) {
@@ -992,6 +1282,9 @@ describe("ModRuntime 的 $ 命名空间", () => {
           // 两个站点都得认：宿主两处都会发 ui.render，漏一个那处的 mod 就全抛错。
           var band = $.ui.resolve({ surface: "desktop", component: "AbovePrompt" });
           messages.push("band:" + band.Box.elementType + "," + typeof band.Button);
+          // 按端裁剪：终端那张表没有 Svg（spec「元素表按端分」）。
+          var term = $.ui.resolve({ surface: "terminal", component: "Pane" });
+          messages.push("terminal:" + typeof term.Svg + "," + typeof term.Progress);
           return messages;
         });
       };
@@ -1001,18 +1294,20 @@ describe("ModRuntime 的 $ 命名空间", () => {
     const result = await mod.callHook("session.start", {});
     expect(result.ok).toBe(true);
     const messages = (result.ok ? result.value : []) as string[];
-    // 不是 render 事件、或不是我们发的端：同一句，并列出支持的那一端。
+    // 不是 render 事件、或不是我们画的端：同一句，并列出支持的那三端。
     expect(messages[0]).toContain("需要一个 ui.render 的事件");
-    expect(messages[0]).toContain("desktop");
+    expect(messages[0]).toContain("terminal / desktop / vscode");
     expect(messages[1]).toContain("需要一个 ui.render 的事件");
     // 报错要点名拿到的是什么，否则 mod 作者不知道该改哪。
-    expect(messages[1]).toContain('"terminal"');
-    // 站点名不认识：说清楚这一端只有什么。
+    expect(messages[1]).toContain('"mobile"');
+    // 站点名不认识：说清楚这一期只有什么。
     expect(messages[2]).toContain('不认识站点 "Hint"');
     expect(messages[2]).toContain("Pane");
     // `AbovePrompt`（输入框上方的带）是第二个站点，必须拿到同一张表。
     expect(messages[2]).toContain("AbovePrompt");
     expect(messages[3]).toBe("band:Box,function");
+    // 终端表：Svg 拿不到，Progress 照常有。
+    expect(messages[4]).toBe("terminal:undefined,function");
   });
 
   it("renderSurfacesOf 把宿主入口映射成 ui.render 的 surface（JetBrains 与 VS Code 同一个）", () => {
@@ -1658,7 +1953,25 @@ describe("ModRuntime 的 $.ui.log 与 $.session.cwd", () => {
     expect(hostApi.appendLog).toHaveBeenCalledWith("standup 该开了");
   });
 
-  it("$.ui.log 不认 transcript 以外的落点，也不接受空行", async () => {
+  it('$.ui.log 的 to: "debug" 只进调试日志，对话流里一个字都不留', async () => {
+    const { logger } = await import("../../src/utils/globalLogger.js");
+    vi.mocked(logger.debug).mockClear();
+    const { mod, host: hostApi } = runtime(`
+      exports.register = function ($, on) {
+        on("session.start", function () {
+          $.ui.log("  排查用  ", { to: "debug" });
+          return "ok";
+        });
+      };
+    `);
+
+    await mod.load();
+    await mod.callHook("session.start", {});
+    expect(hostApi.appendLog).not.toHaveBeenCalled();
+    expect(logger.debug).toHaveBeenCalledWith("[mod:todo]", "排查用");
+  });
+
+  it("$.ui.log 不认 transcript / debug 以外的落点，也不接受空行", async () => {
     // 拼错一个落点就安静写进对话流，比报错更难查（spec「在对话流里留一行」）。
     const { mod, host: hostApi } = runtime(`
       exports.register = function ($, on) {
@@ -1674,7 +1987,11 @@ describe("ModRuntime 的 $.ui.log 与 $.session.cwd", () => {
     await mod.load();
     const rejectedTo = await mod.callHook("session.start", {});
     expect(rejectedTo.ok).toBe(false);
-    if (!rejectedTo.ok) expect(rejectedTo.error).toMatch(/transcript/);
+    if (!rejectedTo.ok) {
+      // 报错要能告诉作者可用的落点有哪些。
+      expect(rejectedTo.error).toContain("transcript");
+      expect(rejectedTo.error).toContain("debug");
+    }
 
     const empty = await mod.callHook("turn.complete", { isAborted: false });
     expect(empty.ok).toBe(false);
@@ -2694,10 +3011,10 @@ describe("兼容社区 mod（spec「兼容社区 mod」）", () => {
     if (!result.ok) expect(result.error).toBe("boom");
   });
 
-  it("tool.run 的 next(e) 就是执行本身：拿得到工具结果，next.signal 是 AbortSignal", async () => {
+  it("tool.call 的 next(e) 就是执行本身：拿得到工具结果，next.signal 是 AbortSignal", async () => {
     const { mod } = runtime(`
       exports.register = function (on) {
-        on("tool.run", { tool: "Bash" }, async function ($, e, next) {
+        on("tool.call", { tool: "Bash" }, async function ($, e, next) {
           var isSignal = next.signal instanceof AbortSignal;
           var ran = await next(e);
           return { isSignal: isSignal, out: ran.stdout };
@@ -2707,7 +3024,7 @@ describe("兼容社区 mod（spec「兼容社区 mod」）", () => {
 
     await mod.load();
     const result = await mod.callHook(
-      "tool.run",
+      "tool.call",
       { tool: "Bash" },
       { engine: async () => ({ stdout: "hello" }) },
     );
@@ -2722,7 +3039,7 @@ describe("兼容社区 mod（spec「兼容社区 mod」）", () => {
   it("我们的形状 (e, next) 也拿到 next：next(e) 就是执行，拿得到工具结果", async () => {
     const { mod } = runtime(`
       exports.register = function ($, on) {
-        on("tool.run", { tool: "Bash" }, async function (e, next) {
+        on("tool.call", { tool: "Bash" }, async function (e, next) {
           var isSignal = next.signal instanceof AbortSignal;
           var ran = await next(e);
           return { isSignal: isSignal, out: ran.stdout };
@@ -2732,12 +3049,12 @@ describe("兼容社区 mod（spec「兼容社区 mod」）", () => {
 
     await mod.load();
     const result = await mod.callHook(
-      "tool.run",
+      "tool.call",
       { tool: "Bash" },
       { engine: async () => ({ stdout: "hello" }) },
     );
     // 第二个形参是后来补的：没有它，按我们推荐写法写的守卫只能看见调用、
-    // 看不见结果（`tool.run` 里「工具跑完之后」那几行就写不了）。
+    // 看不见结果（`tool.call` 里「工具跑完之后」那几行就写不了）。
     expect(result).toMatchObject({
       ok: true,
       value: { isSignal: true, out: "hello" },
@@ -2748,7 +3065,7 @@ describe("兼容社区 mod（spec「兼容社区 mod」）", () => {
     const engine = vi.fn(async () => ({ stdout: "hello" }));
     const { mod } = runtime(`
       exports.register = function (on) {
-        on("tool.run", { tool: "Bash" }, async function ($, e, next) {
+        on("tool.call", { tool: "Bash" }, async function ($, e, next) {
           await next(e);
           throw new Error("refresh failed");
         }).catch(async function ($, e, next) {
@@ -2759,7 +3076,11 @@ describe("兼容社区 mod（spec「兼容社区 mod」）", () => {
     `);
 
     await mod.load();
-    const result = await mod.callHook("tool.run", { tool: "Bash" }, { engine });
+    const result = await mod.callHook(
+      "tool.call",
+      { tool: "Bash" },
+      { engine },
+    );
     expect(engine).toHaveBeenCalledTimes(1);
     expect(result).toMatchObject({
       ok: true,
@@ -2771,7 +3092,7 @@ describe("兼容社区 mod（spec「兼容社区 mod」）", () => {
     const engine = vi.fn(async () => ({ stdout: "hello" }));
     const { mod } = runtime(`
       exports.register = function (on) {
-        on("tool.run", { tool: "Bash" }, async function () {
+        on("tool.call", { tool: "Bash" }, async function () {
           throw new Error("guard broke");
         }).catch(async function ($, e, next) {
           // CC 里这条惯用法就是「还没跑过就别跑，直接拒掉」。
@@ -2781,7 +3102,11 @@ describe("兼容社区 mod（spec「兼容社区 mod」）", () => {
     `);
 
     await mod.load();
-    const result = await mod.callHook("tool.run", { tool: "Bash" }, { engine });
+    const result = await mod.callHook(
+      "tool.call",
+      { tool: "Bash" },
+      { engine },
+    );
     expect(engine).not.toHaveBeenCalled();
     expect(result).toEqual({
       ok: true,
@@ -2889,10 +3214,10 @@ describe("兼容社区 mod（spec「兼容社区 mod」）", () => {
   });
 
   it("'claude-code' 是 wave-agent-sdk/mods 的别名，atom/read/update 落在 $.store 上", async () => {
-    const store = new Map<string, string>();
+    const store = new Map<string, unknown>();
     const hostApi = host({
       storeGet: vi.fn((key: string) => store.get(key)),
-      storeSet: vi.fn((key: string, value: string) => {
+      storeSet: vi.fn((key: string, value: unknown) => {
         store.set(key, value);
       }),
     });
@@ -2925,15 +3250,24 @@ describe("兼容社区 mod（spec「兼容社区 mod」）", () => {
     expect(store.has("burn-rate/turns")).toBe(true);
   });
 
-  it("atom 存进去的不是合法 JSON 时读回初值", async () => {
-    const hostApi = host({ storeGet: vi.fn(() => "not json") });
+  it("atom 兼容旧版存进去的 JSON 文本，解析不了就原样给", async () => {
+    const values = new Map<string, unknown>([
+      // 旧版 `$.store` 只收字符串，atom 存进去的是 `JSON.stringify(["seed"])`。
+      ["p/legacy", '["seed"]'],
+      ["p/plain", "not json"],
+    ]);
+    const hostApi = host({ storeGet: vi.fn((key: string) => values.get(key)) });
     const { mod } = runtime(
       `
       var cc = require("claude-code");
-      var turns = cc.atom({ plugin: "p", key: "k" }, ["seed"]);
+      var legacy = cc.atom({ plugin: "p", key: "legacy" }, ["fallback"]);
+      var plain = cc.atom({ plugin: "p", key: "plain" }, ["fallback"]);
       exports.register = function (on) {
-        on("session.start", async function ($, e) {
-          return await cc.read($, turns);
+        on("session.start", async function ($) {
+          return {
+            legacy: await cc.read($, legacy),
+            plain: await cc.read($, plain),
+          };
         });
       };
       `,
@@ -2942,7 +3276,10 @@ describe("兼容社区 mod（spec「兼容社区 mod」）", () => {
 
     await mod.load();
     const result = await mod.callHook("session.start", {});
-    expect(result).toMatchObject({ ok: true, value: ["seed"] });
+    expect(result).toMatchObject({
+      ok: true,
+      value: { legacy: ["seed"], plain: "not json" },
+    });
   });
 
   it("prompt.submit 里 next({ ...e, context }) 的上下文能传到链尾（社区注入写法）", async () => {

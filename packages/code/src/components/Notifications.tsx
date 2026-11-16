@@ -14,6 +14,12 @@ export interface NotificationsProps {
    * 时给出一次性提示」）。多个来源共用这一个槽位：谁最后设置谁显示。
    */
   hint?: string | null;
+  /**
+   * 插件贴的持久状态（`$.ui.status(...)`）：`插件名: 文本`，多个用 ` · ` 并排，
+   * 超出的收成 `+N`。由 `InputBox` 拼好传入（docs/specs/ecosystem/plugin-mods.md
+   * 「状态带、状态行与提示」）。
+   */
+  modStatus?: string | null;
 }
 
 export const Notifications: React.FC<NotificationsProps> = ({
@@ -22,6 +28,7 @@ export const Notifications: React.FC<NotificationsProps> = ({
   maxOutputTokens = 32000,
   showLoginHint = false,
   hint = null,
+  modStatus = null,
 }) => {
   const percentage =
     latestTotalTokens > 0
@@ -33,6 +40,7 @@ export const Notifications: React.FC<NotificationsProps> = ({
 
   return (
     <Box gap={1}>
+      {modStatus && <Text color="gray">{modStatus}</Text>}
       {hint && <Text color="gray">{hint}</Text>}
       {showLoginHint && <Text color="gray">Type /login to authenticate</Text>}
       {percentage > 0 && (

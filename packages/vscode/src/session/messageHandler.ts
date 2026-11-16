@@ -617,6 +617,48 @@ export class MessageHandler {
         );
         break;
       }
+      // 输入框里的建议与焦点（spec ecosystem/plugin-mods.md）：mod 能看见「用户
+      // 正在输入框里做什么」的三条通道，这是 VS Code 端的第一批。
+      //
+      // `modPromptEdit` 与另外两条方向相反——宿主先说话，答案是插件改写后的草
+      // 稿。任何情况下都必须回包：不回就等于让这次按键一直等着回执。没有 agent
+      // （初始化中/已销毁）或 RPC 失败时回原样，等于「这次编辑没被改写」，界面
+      // 按本地结果继续。
+      case "modPromptEdit": {
+        const requestId = msg.requestId as string | undefined;
+        const text = typeof msg.text === "string" ? msg.text : "";
+        // 偏移缺省按「插在末尾」算，与 CLI 侧同一套降级。
+        const atEnd = text.length;
+        let answer = {
+          text,
+          cursor: typeof msg.cursor === "number" ? msg.cursor : 0,
+        };
+        try {
+          const rewritten = await this.context
+            .getChatSession(viewType || "tab", windowId)
+            .dispatchPromptEdit({
+              key: msg.key,
+              text,
+              cursor: typeof msg.cursor === "number" ? msg.cursor : atEnd,
+              start: typeof msg.start === "number" ? msg.start : atEnd,
+              end: typeof msg.end === "number" ? msg.end : atEnd,
+              inputText: typeof msg.inputText === "string" ? msg.inputText : "",
+            });
+          if (rewritten) answer = rewritten;
+        } catch (error) {
+          console.error(`mod 改写输入框失败（${viewType}）:`, error);
+        }
+        this.context.postMessage(
+          {
+            command: "modPromptEditResult",
+            ...(requestId ? { requestId } : {}),
+            ...answer,
+          },
+          viewType,
+          windowId,
+        );
+        break;
+      }
       case "modPanelEvent": {
         const session = this.context.getChatSession(
           viewType || "tab",
@@ -668,6 +710,18 @@ export class MessageHandler {
             msg.isCopied === true,
             typeof msg.reason === "string" ? msg.reason : undefined,
           );
+        }
+        break;
+      }
+      // 建议摆没摆上的回执：只把在等回执的那个 mod 放行，没有回包（mod 那边超
+      // 时也会按 `{ isShown: false }` 收尾，会话已经不认这个 requestId 时空操作）。
+      case "modPromptSuggestResult": {
+        const requestId =
+          typeof msg.requestId === "string" ? msg.requestId : "";
+        if (requestId) {
+          await this.context
+            .getChatSession(viewType || "tab", windowId)
+            .resolveModPromptSuggest(requestId, msg.isShown === true);
         }
         break;
       }

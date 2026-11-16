@@ -693,6 +693,20 @@ function storeFile(name: string): string {
   return path.join(STORE_ROOT, `${name}.json`);
 }
 
+/**
+ * `tool.call` 的答复里只看「拦不拦」。
+ *
+ * `dispatchToolCall` 还会带回插件替**自己注册的工具**答的 `{ result }`（spec
+ * 「把我们自己的工具交给模型」），那是另一组用例的事；守卫用例读的还是「拦下
+ * 给了什么文本」。
+ */
+async function denyOf(
+  manager: ModManager,
+  event: Parameters<ModManager["dispatchToolCall"]>[0],
+): Promise<string | undefined> {
+  return (await manager.dispatchToolCall(event)).deny;
+}
+
 /** 一份「什么都读得到」的会话事实；默认入口是桌面端，按需覆盖。 */
 function factsWith(overrides: Partial<ModSessionFacts> = {}): ModSessionFacts {
   return {
@@ -708,6 +722,9 @@ function factsWith(overrides: Partial<ModSessionFacts> = {}): ModSessionFacts {
     configRows: () => [],
     toolInfos: () => [],
     agentInfos: () => [],
+    sessionMessages: () => [],
+    transcriptPath: () => path.join(ROOT, "transcript.jsonl"),
+    permissionMode: () => "default",
     ...overrides,
   };
 }
@@ -1238,6 +1255,34 @@ exports.register = function ($, on) {
     const frame = await second.renderPane("todo:panel", "p1");
     expect(frame.tree).toMatchObject({ type: "Box" });
   });
+
+  it("$store 的值原样落成 JSON（对象不当字符串压平）", async () => {
+    // 社区插件存的是对象（`set("last", { at, count })`）。只收字符串会把它变成
+    // "[object Object]"，读回来永远救不出去。
+    const SOURCE = `
+exports.register = function ($, on) {
+  on("session.start", async function () {
+    await $.store.set("state", { count: 2, tags: ["a", "b"] });
+    $.ui.open({ id: "p1", title: "状态" });
+  });
+  on("ui.render", async function () {
+    return __wave.h("Text", null, JSON.stringify(await $.store.get("state")));
+  });
+};
+`;
+    const { manager } = createManager({ [MOD_PATH]: SOURCE });
+    await manager.loadFromPlugins([
+      plugin([{ id: "todo:panel", path: MOD_PATH }]),
+    ]);
+    await manager.startSession();
+
+    const frame = await pull(manager);
+    expect(frame.tree).toMatchObject({
+      children: ['{"count":2,"tags":["a","b"]}'],
+    });
+    // 落盘的就是嵌套 JSON，不是转义过的字符串。
+    expect(probe.files.get(storeFile("todo"))).toContain('"tags": [');
+  });
 });
 
 describe("ModManager.reload / dispose", () => {
@@ -1305,11 +1350,11 @@ exports.register = function ($, on) {
   }
 
   /** mod 里 `$.store.get(name)` 的最新值（store 每次读写都走文件）。 */
-  function stored(name: string): string | undefined {
+  function stored(name: string): unknown {
     const raw = probe.files.get(storeFile("todo"));
     return raw === undefined
       ? undefined
-      : (JSON.parse(raw) as Record<string, string>)[name];
+      : (JSON.parse(raw) as Record<string, unknown>)[name];
   }
 
   function ticks(): number {
@@ -1319,7 +1364,9 @@ exports.register = function ($, on) {
   /** 一个每拍把 `ticks` 加一的定时器源码。 */
   function counting(kind: "after" | "every", ms: number): string {
     return `timer = $.clock.${kind}(${ms}, function () {
-        $.store.set("ticks", String(Number($.store.get("ticks") || 0) + 1));
+        return $.store.get("ticks").then(function (n) {
+          return $.store.set("ticks", Number(n || 0) + 1);
+        });
       });`;
   }
 
@@ -1377,11 +1424,11 @@ exports.register = function ($, on) {
     const manager = await started(clockMod(counting("after", MIN)));
 
     await press(manager, "run");
-    await vi.waitFor(() => expect(stored("ticks")).toBe("1"), {
+    await vi.waitFor(() => expect(stored("ticks")).toBe(1), {
       timeout: MIN * 10,
     });
     await watch();
-    expect(stored("ticks")).toBe("1");
+    expect(stored("ticks")).toBe(1);
   });
 
   it("小于下限的间隔夹到下限，不会被打爆", async () => {
@@ -1437,7 +1484,7 @@ exports.register = function ($, on) {
     await vi.waitFor(() => expect(stored("serial")).toBeDefined(), {
       timeout: MIN * 20,
     });
-    const [starts, maxInFlight] = (stored("serial") ?? "")
+    const [starts, maxInFlight] = String(stored("serial") ?? "")
       .split("|")
       .map(Number);
     expect(starts).toBeGreaterThanOrEqual(1);
@@ -1775,6 +1822,7 @@ exports.register = function ($, on) {
     await manager.startSession();
 
     manager.notifyMods("turn.complete", {
+      turnId: "turn-1",
       isAborted: false,
       durationMs: 42,
       answer: "done",
@@ -1789,6 +1837,7 @@ exports.register = function ($, on) {
       session_id: "s1",
       transcript_path: path.join(ROOT, "transcript.jsonl"),
       cwd: ROOT,
+      permission_mode: "default",
       hook_event_name: "PermissionRequest",
       tool_name: "Bash",
       tool_input: { command: "rm -rf build" },
@@ -1801,7 +1850,7 @@ exports.register = function ($, on) {
 
     // `tool.call` 是决策型事件：参数在顶层也铺一份（社区读写的是 `e.file_path`），
     // 返回 `{ deny }` 拦下这次调用 —— 由 `ToolManager` 决定怎么报。
-    const deny = await manager.dispatchToolCall({
+    const deny = await denyOf(manager, {
       ...{ file_path: "a.ts", content: "x" },
       tool: "Write",
       tool_use_id: "call-1",
@@ -1810,6 +1859,89 @@ exports.register = function ($, on) {
     expect(deny).toBe("blocked:a.ts");
     await vi.waitFor(() =>
       expect(statuses.at(-1)?.text).toBe("tool:Write:a.ts"),
+    );
+
+    await manager.dispose();
+  });
+
+  it("影子事件的公共五字段由 ModManager 补齐，hook_event_name 不带前缀", async () => {
+    // spec「影子事件」：载荷是 CC 的 hook stdin 形状，`session_id` /
+    // `transcript_path` / `cwd` / `permission_mode` / `hook_event_name` 每条都带
+    // —— 调用点只写自己那几个字段（`source` / `model` / `previous_cwd`）。
+    // `permission_mode` 是**每条** classic 事件都有的（CC 的 base hook input 就
+    // 这么铺），社区守卫靠它判断「有没有人会被问到」。
+    const shadowMod = `
+exports.register = function ($, on) {
+  on("classic.SessionStart", function (e) {
+    $.ui.status([e.session_id, e.hook_event_name, e.source, e.cwd, e.transcript_path, e.permission_mode].join("|"));
+  });
+  on("classic.PostModelSwitch", function (e) {
+    $.ui.status([e.hook_event_name, e.from_model, e.to_model, String(e.context_tokens), String(e.cache_ttl)].join("|"));
+  });
+  on("classic.CwdChanged", function (e) {
+    $.ui.status([e.hook_event_name, e.old_cwd, e.new_cwd, e.cwd].join("|"));
+  });
+};
+`;
+    const { manager, statuses } = createManager(
+      { [MOD_PATH]: shadowMod },
+      {
+        workdir: () => ROOT,
+        sessionFacts: {
+          sessionId: () => "s-live",
+          workspaceRoot: () => ROOT,
+          model: () => "",
+          surfaces: () => ["desktop"] as const,
+          env: () => undefined,
+          settings: async () => ({}),
+          turns: () => 0,
+          repo: () => null,
+          version: () => ({ version: "" }),
+          configRows: () => [],
+          toolInfos: () => [],
+          agentInfos: () => [],
+          sessionMessages: () => [],
+          // 会话 id 取「现取的」那个：`/clear` 之后它变了，镜像不该报旧值。
+          transcriptPath: () => path.join(ROOT, "session.jsonl"),
+          permissionMode: () => "acceptEdits",
+        },
+      },
+    );
+    await manager.loadFromPlugins([
+      plugin([{ id: "todo:panel", path: MOD_PATH }]),
+    ]);
+    await manager.startSession();
+
+    manager.notifyMods("classic.SessionStart", { source: "startup" });
+    await vi.waitFor(() =>
+      expect(statuses.at(-1)?.text).toBe(
+        `s-live|SessionStart|startup|${ROOT}|${path.join(ROOT, "session.jsonl")}|acceptEdits`,
+      ),
+    );
+
+    // `cache_ttl` 恒 `null`：我们不做提示词缓存的 TTL 记账。换模型报的是
+    // `from_model` / `to_model` 两个名字（曾经只有一个自造的 `model`）。
+    manager.notifyMods("classic.PostModelSwitch", {
+      from_model: "wave-lite",
+      to_model: "wave-pro",
+      context_tokens: 12_000,
+      cache_ttl: null,
+    });
+    await vi.waitFor(() =>
+      expect(statuses.at(-1)?.text).toBe(
+        "PostModelSwitch|wave-lite|wave-pro|12000|null",
+      ),
+    );
+
+    // `old_cwd` / `new_cwd` 是 CC 的名字；公共字段 `cwd` 跟着 `new_cwd` 走。
+    manager.notifyMods("classic.CwdChanged", {
+      old_cwd: path.resolve("/fake/before"),
+      new_cwd: path.resolve("/fake/after"),
+    });
+    await vi.waitFor(() =>
+      expect(statuses.at(-1)?.text).toBe(
+        `CwdChanged|${path.resolve("/fake/before")}|${path.resolve("/fake/after")}|${ROOT}`,
+      ),
     );
 
     await manager.dispose();
@@ -1842,6 +1974,7 @@ exports.register = function ($, on) {
     // 我们的 `prompt` 含缓存命中（1200 = 900 缓存读 + 100 缓存写 + 200 未命中），
     // 社区的 `input_tokens` 不含 —— 差值是减出来的，不是改名。
     manager.notifyMods("turn.complete", {
+      turnId: "turn-1",
       isAborted: false,
       durationMs: 42,
       answer: "done",
@@ -1886,6 +2019,7 @@ exports.register = function ($, on) {
     // 钩子永不 resolve：调用方仍然立刻拿到返回（没有 Promise 可等）。
     expect(
       manager.notifyMods("turn.complete", {
+        turnId: "turn-1",
         isAborted: false,
         durationMs: 1,
         answer: "",
@@ -1910,6 +2044,7 @@ exports.register = function ($, on) {
     await manager.startSession();
 
     manager.notifyMods("turn.complete", {
+      turnId: "turn-1",
       isAborted: true,
       durationMs: 5,
       answer: "",
@@ -2088,6 +2223,7 @@ exports.register = function ($, on) {
 
     // 上限拒在 33 条里的最后一条：前 32 条真的进了命令表。
     manager.notifyMods("turn.complete", {
+      turnId: "turn-1",
       isAborted: false,
       durationMs: 1,
       answer: "",
@@ -2160,11 +2296,11 @@ describe("ModManager 的 $.clock.sleep（spec「时钟：等待」）", () => {
   const MIN = MOD_LIMITS.timerMinIntervalMs;
 
   /** `$.store.set` 写过的最新值（store 每次读写都走文件）。 */
-  function stored(name: string): string | undefined {
+  function stored(name: string): unknown {
     const raw = probe.files.get(storeFile("todo"));
     return raw === undefined
       ? undefined
-      : (JSON.parse(raw) as Record<string, string>)[name];
+      : (JSON.parse(raw) as Record<string, unknown>)[name];
   }
 
   /** 一个按钮触发一次 `body` 的 mod；面板开着，回调才登记得进去。 */
@@ -2348,6 +2484,9 @@ exports.register = function ($, on) {
           configRows: () => [],
           toolInfos: () => [],
           agentInfos: () => [],
+          sessionMessages: () => [],
+          transcriptPath: () => "",
+          permissionMode: () => "default",
         },
       },
     );
@@ -2438,6 +2577,9 @@ exports.register = function ($, on) {
               status: "running",
             },
           ],
+          sessionMessages: () => [],
+          transcriptPath: () => "",
+          permissionMode: () => "default",
         },
       },
     );
@@ -2551,8 +2693,8 @@ exports.register = function ($, on) {
 describe("ModManager 的轮次事件（turn.start / turn.step / session.compact）", () => {
   const TIMELINE_MOD = `
 exports.register = function ($, on) {
-  on("turn.start", function (e) { $.ui.status("start:" + e.step); });
-  on("turn.step", function (e) { $.ui.status("step:" + e.step); });
+  on("turn.start", function (e) { $.ui.status("start:" + e.step + ":" + e.turnId); });
+  on("turn.step", function (e) { $.ui.status("step:" + e.index + ":" + e.turnId + ":" + e.model); });
   on("session.compact", function (e) {
     $.ui.status("compact:" + e.trigger + ":" + e.tokensBefore + ">" + e.tokensAfter);
   });
@@ -2566,11 +2708,27 @@ exports.register = function ($, on) {
     ]);
     await manager.startSession();
 
-    manager.notifyMods("turn.start", { step: 0 });
-    await vi.waitFor(() => expect(statuses.at(-1)?.text).toBe("start:0"));
+    manager.notifyMods("turn.start", { turnId: "t-9" });
+    await vi.waitFor(() =>
+      expect(statuses.at(-1)?.text).toBe("start:undefined:t-9"),
+    );
 
-    manager.notifyMods("turn.step", { step: 3 });
-    await vi.waitFor(() => expect(statuses.at(-1)?.text).toBe("step:3"));
+    const stepped = await manager.dispatchTurnStep({
+      turnId: "t-9",
+      index: 3,
+      messageCount: 7,
+      model: "claude-sonnet-4",
+    });
+    await vi.waitFor(() =>
+      expect(statuses.at(-1)?.text).toBe("step:3:t-9:claude-sonnet-4"),
+    );
+    // 没改就是原样带回来。
+    expect(stepped).toMatchObject({
+      turnId: "t-9",
+      index: 3,
+      messageCount: 7,
+      model: "claude-sonnet-4",
+    });
 
     manager.notifyMods("session.compact", {
       trigger: "auto",
@@ -2580,6 +2738,78 @@ exports.register = function ($, on) {
     await vi.waitFor(() =>
       expect(statuses.at(-1)?.text).toBe("compact:auto:180000>20000"),
     );
+
+    await manager.dispose();
+  });
+
+  it("生成器形状：turn.step 的 mod 用 yield* next(e) 转发、用 return 换模型", async () => {
+    const STEPGEN_MOD = `
+exports.register = function ($, on) {
+  on("turn.step", async function* (e, next) {
+    $.ui.status("outer:" + e.model);
+    const below = yield* next(e);
+    return { ...below, model: "claude-opus-4" };
+  });
+  on("turn.step", async function* (e, next) {
+    $.ui.status("inner:" + e.model);
+    const below = yield* next({ ...e, effort: "high" });
+    return { ...below, effort: "high" };
+  });
+};
+`;
+    const { manager, statuses } = createManager({ [MOD_PATH]: STEPGEN_MOD });
+    await manager.loadFromPlugins([
+      plugin([{ id: "todo:panel", path: MOD_PATH }]),
+    ]);
+    await manager.startSession();
+
+    const stepped = await manager.dispatchTurnStep({
+      turnId: "t-1",
+      index: 0,
+      messageCount: 2,
+      model: "claude-sonnet-4",
+    });
+
+    // 外层先跑、下游再跑，最终模型由最外层决定，推理强度由内层加。
+    expect(statuses.map((status) => status.text)).toEqual([
+      "outer:claude-sonnet-4",
+      "inner:claude-sonnet-4",
+    ]);
+    expect(stepped).toMatchObject({
+      turnId: "t-1",
+      index: 0,
+      messageCount: 2,
+      model: "claude-opus-4",
+      effort: "high",
+    });
+
+    await manager.dispose();
+  });
+
+  it("mod 里的 model 不是非空字符串时按没改", async () => {
+    const BAD_MOD = `
+exports.register = function ($, on) {
+  on("turn.step", function (e) { return { ...e, model: "  ", index: 99 }; });
+};
+`;
+    const { manager } = createManager({ [MOD_PATH]: BAD_MOD });
+    await manager.loadFromPlugins([
+      plugin([{ id: "todo:panel", path: MOD_PATH }]),
+    ]);
+    await manager.startSession();
+
+    const stepped = await manager.dispatchTurnStep({
+      turnId: "t-2",
+      index: 1,
+      messageCount: 0,
+      model: "claude-sonnet-4",
+    });
+    // 轮次与序号是宿主的事实，mod 改不动。
+    expect(stepped).toMatchObject({
+      turnId: "t-2",
+      index: 1,
+      model: "claude-sonnet-4",
+    });
 
     await manager.dispose();
   });
@@ -2821,7 +3051,7 @@ exports.register = function ($, on) {
   });
 });
 
-describe("ModManager 的工具决议链（tool.call / tool.run）", () => {
+describe("ModManager 的工具决议链（tool.call）", () => {
   /** 一条守卫：Bash 的 `rm -rf` 直接拦，其它交下去。 */
   const GUARD_MOD = `
 exports.register = function (on) {
@@ -2860,12 +3090,10 @@ exports.register = function (on) {
     ]);
     await manager.startSession();
 
-    expect(await manager.dispatchToolCall(bashEvent("rm -rf /"))).toBe(
-      "删库跑路？先别",
-    );
+    expect(await denyOf(manager, bashEvent("rm -rf /"))).toBe("删库跑路？先别");
     // matcher 是 `{ tool: "Bash" }`：换一个工具就不该被这条钩子看见。
     expect(
-      await manager.dispatchToolCall({
+      await denyOf(manager, {
         ...{ file_path: "a.ts" },
         tool: "Edit",
         tool_use_id: "call-2",
@@ -2873,8 +3101,61 @@ exports.register = function (on) {
       }),
     ).toBeUndefined();
     // 无害命令交下去，链尾没人拦。
-    expect(await manager.dispatchToolCall(bashEvent("ls"))).toBeUndefined();
+    expect(await denyOf(manager, bashEvent("ls"))).toBeUndefined();
     expect(statuses).toEqual([]);
+
+    await manager.dispose();
+  });
+
+  it("matcher 的值可以是 RegExp（对字符串 test），跨 realm 也认", async () => {
+    // 社区 mod 真这么写：`{ command: /git\s+commit/ }`（FunnyQ 的 chronicle）。
+    // matcher 在沙箱里造出来，`instanceof RegExp` 在宿主这边是假的，所以按
+    // `[object RegExp]` 判。带 `g` 的那条再跑一遍，证明 `lastIndex` 不会串。
+    const { manager } = createManager({
+      [MOD_PATH]: `
+exports.register = function (on) {
+  on("tool.call", { tool: "Bash", command: /git\\s+commit/ }, function ($, e) {
+    return { deny: "先开分支再提交" };
+  });
+  on("tool.call", { tool: "Bash", command: /rm -rf/g }, function ($, e) {
+    return { deny: "别删" };
+  });
+};
+`,
+    });
+    await manager.loadFromPlugins([
+      plugin([{ id: "todo:panel", path: MOD_PATH }]),
+    ]);
+    await manager.startSession();
+
+    expect(await denyOf(manager, bashEvent("git commit -m x"))).toBe(
+      "先开分支再提交",
+    );
+    expect(await denyOf(manager, bashEvent("ls"))).toBeUndefined();
+    expect(await denyOf(manager, bashEvent("rm -rf build"))).toBe("别删");
+    // 同一个 `g` 正则第二次命中：`test` 的 `lastIndex` 已归零。
+    expect(await denyOf(manager, bashEvent("rm -rf dist"))).toBe("别删");
+
+    await manager.dispose();
+  });
+
+  it("事件字段是对象时，matcher 里的对象按偏匹配比", async () => {
+    const { manager } = createManager({
+      [MOD_PATH]: `
+exports.register = function (on) {
+  on("tool.call", { tool: "Bash", input: { command: "git status" } }, function ($, e) {
+    return { deny: "状态我来看" };
+  });
+};
+`,
+    });
+    await manager.loadFromPlugins([
+      plugin([{ id: "todo:panel", path: MOD_PATH }]),
+    ]);
+    await manager.startSession();
+
+    expect(await denyOf(manager, bashEvent("git status"))).toBe("状态我来看");
+    expect(await denyOf(manager, bashEvent("git log"))).toBeUndefined();
 
     await manager.dispose();
   });
@@ -2900,9 +3181,7 @@ exports.register = function (on) {
     await manager.startSession();
 
     // 前一个 mod `return next(e)`：后一个的 deny 原样上去。
-    expect(await manager.dispatchToolCall(bashEvent("ls"))).toBe(
-      "第二个 mod 说不",
-    );
+    expect(await denyOf(manager, bashEvent("ls"))).toBe("第二个 mod 说不");
     await vi.waitFor(() => expect(statuses.at(-1)?.text).toBe("seen:Bash:ls"));
 
     await manager.dispose();
@@ -2935,7 +3214,7 @@ exports.register = function (on) {
     ]);
     await manager.startSession();
 
-    expect(await manager.dispatchToolCall(bashEvent("ls"))).toBe("还是不");
+    expect(await denyOf(manager, bashEvent("ls"))).toBe("还是不");
 
     await manager.dispose();
   });
@@ -2956,7 +3235,7 @@ exports.register = function (on) {
     await manager.startSession();
     vi.mocked(logger.warn).mockClear();
 
-    expect(await manager.dispatchToolCall(bashEvent("ls"))).toBeUndefined();
+    expect(await denyOf(manager, bashEvent("ls"))).toBeUndefined();
     expect(vi.mocked(logger.warn)).toHaveBeenCalledWith(
       expect.stringContaining("tool.call"),
     );
@@ -2981,34 +3260,34 @@ exports.register = function (on) {
     ]);
     await manager.startSession();
 
-    expect(await manager.dispatchToolCall(bashEvent("ls"))).toBe(
-      "守卫失效，先不放行",
-    );
+    expect(await denyOf(manager, bashEvent("ls"))).toBe("守卫失效，先不放行");
 
     await manager.dispose();
   });
 
-  it("tool.run：没注册任何钩子时照样执行一次", async () => {
+  it("tool.call：没注册任何钩子时照样执行一次，链尾给出结果", async () => {
     const { manager } = createManager({});
     await manager.loadFromPlugins([]);
     await manager.startSession();
 
     const run = vi.fn(async () => ({ success: true }));
-    expect(await manager.dispatchToolRun(bashEvent("ls"), run)).toEqual({});
+    expect(await manager.dispatchToolCall(bashEvent("ls"), { run })).toEqual({
+      result: { success: true },
+    });
     expect(run).toHaveBeenCalledOnce();
 
     await manager.dispose();
   });
 
-  it("tool.run：next(e) 就是执行，之后那一行跑在工具结束之后", async () => {
+  it("tool.call：next(e) 就是执行，它 resolve 之后那几行跑在工具结束之后", async () => {
     const { manager, statuses } = createManager({
       [MOD_PATH]: `
 exports.register = function (on) {
-  on("tool.run", { tool: "Bash" }, async function ($, e, next) {
+  on("tool.call", { tool: "Bash" }, async function ($, e, next) {
     $.ui.status("before");
-    var result = await next(e);
-    $.ui.status("after:" + result.ok);
-    return result;
+    var below = await next(e);
+    $.ui.status("after:" + below.result.ok);
+    return below;
   });
 };
 `,
@@ -3019,20 +3298,35 @@ exports.register = function (on) {
     await manager.startSession();
 
     const run = vi.fn(async () => ({ ok: 7 }));
-    expect(await manager.dispatchToolRun(bashEvent("ls"), run)).toEqual({});
+    expect(await manager.dispatchToolCall(bashEvent("ls"), { run })).toEqual({
+      result: { ok: 7 },
+    });
     expect(run).toHaveBeenCalledOnce();
-    await vi.waitFor(() => expect(statuses.at(-1)?.text).toBe("after:7"));
-    expect(statuses.map((line) => line.text)).toContain("before");
+    // 「before」在工具之前、「after」在它之后 —— 顺序就是钩子里的源码顺序。
+    await vi.waitFor(() =>
+      expect(statuses.map((line) => line.text)).toEqual(["before", "after:7"]),
+    );
 
     await manager.dispose();
   });
 
-  it("tool.run：不调 next(e) 就是不执行，模型收到一条拦下文本", async () => {
-    const { manager } = createManager({
+  it("classic.PreToolUse 拿到同一份信封，{ deny } 照样拦下", async () => {
+    // spec「影子事件」：社区插件（chronicle、FlowCTL）只写 CC 那个名字。信封是
+    // `tool.call` 的那份（`tool` / `tool_use_id` / `input` + 顶层铺开的参数），
+    // **不带** `hook_event_name` —— CC 在自己 mods 面里就是这个形状。
+    const { manager, statuses } = createManager({
       [MOD_PATH]: `
 exports.register = function (on) {
-  on("tool.run", { tool: "Bash" }, function () {
-    return { deny: "分支没同步，先 pull" };
+  on("classic.PreToolUse", { tool: "Bash" }, function ($, e) {
+    $.ui.status([
+      e.tool,
+      e.tool_use_id,
+      e.command,
+      String(e.input.command),
+      String(e.hook_event_name),
+    ].join("|"));
+    if (e.command === "rm -rf /") return { deny: "这条不许跑" };
+    return {};
   });
 };
 `,
@@ -3042,10 +3336,122 @@ exports.register = function (on) {
     ]);
     await manager.startSession();
 
-    const run = vi.fn(async () => ({ ok: 1 }));
-    const decision = await manager.dispatchToolRun(bashEvent("ls"), run);
-    expect(decision.deny).toContain("分支没同步");
-    expect(run).not.toHaveBeenCalled();
+    expect(await denyOf(manager, bashEvent("rm -rf /"))).toBe("这条不许跑");
+    await vi.waitFor(() =>
+      expect(statuses.at(-1)?.text).toBe(
+        "Bash|call-1|rm -rf /|rm -rf /|undefined",
+      ),
+    );
+    // matcher 是 `{ tool: "Bash" }`：别的工具不该被它看见。
+    expect(
+      await denyOf(manager, {
+        ...{ file_path: "a.ts" },
+        tool: "Edit",
+        tool_use_id: "call-2",
+        input: { file_path: "a.ts" },
+      }),
+    ).toBeUndefined();
+
+    await manager.dispose();
+  });
+
+  it("tool.call 已经拦下时不再问 classic.PreToolUse", async () => {
+    const second = path.join(ROOT, "mods", "second.tsx");
+    const { manager, statuses } = createManager({
+      [MOD_PATH]: GUARD_MOD,
+      [second]: `
+exports.register = function (on) {
+  on("classic.PreToolUse", function ($, e) {
+    $.ui.status("classic:asked");
+    return { deny: "第二个名字说不" };
+  });
+};
+`,
+    });
+    await manager.loadFromPlugins([
+      plugin([
+        { id: "todo:panel", path: MOD_PATH },
+        { id: "todo:second", path: second },
+      ]),
+    ]);
+    await manager.startSession();
+
+    // 前一个名字已经拒了：这条链到此为止，第二个名字连问都不问。
+    expect(await denyOf(manager, bashEvent("rm -rf /"))).toBe("删库跑路？先别");
+    expect(statuses).toEqual([]);
+    // 前一个名字放行时才轮到它。
+    expect(await denyOf(manager, bashEvent("ls"))).toBe("第二个名字说不");
+    await vi.waitFor(() =>
+      expect(statuses.map((line) => line.text)).toContain("classic:asked"),
+    );
+
+    await manager.dispose();
+  });
+
+  it("classic.PreToolUse 的 allow/ask/updatedInput 不生效，但要点名", async () => {
+    // 只支持 `{ deny }`（spec「交付分层」）：静默忽略会让作者以为放行生效了。
+    const { manager } = createManager({
+      [MOD_PATH]: `
+exports.register = function (on) {
+  on("classic.PreToolUse", function () {
+    return { allow: true };
+  });
+};
+`,
+    });
+    await manager.loadFromPlugins([
+      plugin([{ id: "todo:panel", path: MOD_PATH }]),
+    ]);
+    await manager.startSession();
+    vi.mocked(logger.warn).mockClear();
+
+    // 放行 ≠ 拦截：调用照常放下去（`undefined`）。
+    expect(await denyOf(manager, bashEvent("ls"))).toBeUndefined();
+    expect(vi.mocked(logger.warn)).toHaveBeenCalledWith(
+      expect.stringContaining("allow/ask/updatedInput"),
+    );
+
+    await manager.dispose();
+  });
+});
+
+describe("ModManager 的 $.turn.abort", () => {
+  const abortMod = (turnId: string) => `
+exports.register = function (on) {
+  on("session.start", async function ($) {
+    await $.turn.abort({ turnId: "${turnId}" });
+  });
+};
+`;
+
+  async function buildAbort(turnId = "t-1") {
+    const { manager } = createManager({ [MOD_PATH]: abortMod(turnId) });
+    await manager.loadFromPlugins([
+      plugin([{ id: "todo:panel", path: MOD_PATH }]),
+    ]);
+    return manager;
+  }
+
+  it("把 turnId 交给宿主接上的那条通道", async () => {
+    const manager = await buildAbort("t-42");
+    const aborted: string[] = [];
+    manager.setTurnAborter((turnId) => aborted.push(turnId));
+
+    await manager.startSession();
+
+    expect(aborted).toEqual(["t-42"]);
+    await manager.dispose();
+  });
+
+  it("宿主没接通道时抛错（钩子 fail-open，落到 warn 上）", async () => {
+    // spec「收掉一轮」：静默成功会让插件以为自己叫停了，所以这条必须抛。
+    const manager = await buildAbort();
+    vi.mocked(logger.warn).mockClear();
+
+    await manager.startSession();
+    expect(vi.mocked(logger.warn)).toHaveBeenCalledWith(
+      expect.stringContaining("没有接入轮次中断通道"),
+    );
 
     await manager.dispose();
   });
@@ -3092,7 +3498,7 @@ exports.register = function (on) {
   it("选中「允许一次」就放行，问题与选项原样交给宿主", async () => {
     const { manager, asked } = await buildAsk("允许一次");
 
-    expect(await manager.dispatchToolCall(event)).toBeUndefined();
+    expect(await denyOf(manager, event)).toBeUndefined();
     expect(asked).toEqual([
       {
         question: "要跑吗？\ngit push --force",
@@ -3108,13 +3514,741 @@ exports.register = function (on) {
 
   it("用户选了拒绝就 deny", async () => {
     const { manager } = await buildAsk("拒绝");
-    expect(await manager.dispatchToolCall(event)).toBe("用户拒绝");
+    expect(await denyOf(manager, event)).toBe("用户拒绝");
     await manager.dispose();
   });
 
   it("没人能答（宿主 reject）时守卫按「没人能确认」处理", async () => {
     const { manager } = await buildAsk(new Error("没有界面"));
-    expect(await manager.dispatchToolCall(event)).toBe("没人能确认");
+    expect(await denyOf(manager, event)).toBe("没人能确认");
     await manager.dispose();
+  });
+});
+
+describe("ModManager 的 classic.Stop 返回值", () => {
+  /** 收到 `classic.Stop` 记一行状态（观察 `e` 的形状），再按 body 返回。 */
+  const stopMod = (body: string) => `
+exports.register = function ($, on) {
+  on("classic.Stop", function (e) {
+    $.ui.status([e.hook_event_name, String(e.stop_hook_active), e.permission_mode, e.background_tasks.length].join("|"));
+    ${body}
+  });
+};
+`;
+
+  it("按加载顺序拍平 additionalContext，公共五字段与 stop_hook_active 原样", async () => {
+    // spec「一轮收尾时的非错误反馈」：插件要说的话按加载顺序拍平，空串丢掉；
+    // `e` 仍是影子事件的形状（`stop_hook_active` 由调用方给）。
+    const first = path.join(ROOT, "mods", "first.tsx");
+    const second = path.join(ROOT, "mods", "second.tsx");
+    const { manager, statuses } = createManager({
+      [first]: stopMod(
+        `return { additionalContext: [" 先跑测试 ", "", "再看 diff"] };`,
+      ),
+      [second]: stopMod(`return { additionalContext: ["第二个插件"] };`),
+    });
+    await manager.loadFromPlugins([
+      plugin([
+        { id: "todo:first", path: first },
+        { id: "todo:second", path: second },
+      ]),
+    ]);
+    await manager.startSession();
+
+    await expect(
+      manager.collectStopContext({
+        background_tasks: [],
+        stop_hook_active: true,
+      }),
+    ).resolves.toEqual(["先跑测试", "再看 diff", "第二个插件"]);
+    await vi.waitFor(() =>
+      expect(statuses.at(-1)?.text).toBe("Stop|true|default|0"),
+    );
+
+    await manager.dispose();
+  });
+
+  it("decision / preventContinuation 不支持：忽略并记一条 warn", async () => {
+    const { manager } = createManager({
+      [MOD_PATH]: stopMod(
+        `return { decision: "block", reason: "还没完", additionalContext: ["照收"] };`,
+      ),
+    });
+    await manager.loadFromPlugins([
+      plugin([{ id: "todo:panel", path: MOD_PATH }]),
+    ]);
+    await manager.startSession();
+
+    await expect(
+      manager.collectStopContext({
+        background_tasks: [],
+        stop_hook_active: false,
+      }),
+    ).resolves.toEqual(["照收"]);
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.stringContaining("只支持 { additionalContext }"),
+    );
+
+    await manager.dispose();
+  });
+
+  it("非字符串数组的 additionalContext 被丢掉并记一条 warn", async () => {
+    const { manager } = createManager({
+      [MOD_PATH]: stopMod(`return { additionalContext: [1, 2] };`),
+    });
+    await manager.loadFromPlugins([
+      plugin([{ id: "todo:panel", path: MOD_PATH }]),
+    ]);
+    await manager.startSession();
+
+    await expect(
+      manager.collectStopContext({
+        background_tasks: [],
+        stop_hook_active: false,
+      }),
+    ).resolves.toEqual([]);
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.stringContaining("additionalContext 必须是字符串数组"),
+    );
+
+    await manager.dispose();
+  });
+
+  it("一个 mod 抛错只影响自己：另一个 mod 的反馈照收", async () => {
+    const boom = path.join(ROOT, "mods", "boom.tsx");
+    const ok = path.join(ROOT, "mods", "ok.tsx");
+    const { manager } = createManager({
+      [boom]: `
+exports.register = function ($, on) {
+  on("classic.Stop", function () { throw new Error("boom"); });
+};
+`,
+      [ok]: stopMod(`return { additionalContext: ["还好我没事"] };`),
+    });
+    await manager.loadFromPlugins([
+      plugin([
+        { id: "todo:boom", path: boom },
+        { id: "todo:ok", path: ok },
+      ]),
+    ]);
+    await manager.startSession();
+
+    await expect(
+      manager.collectStopContext({
+        background_tasks: [],
+        stop_hook_active: false,
+      }),
+    ).resolves.toEqual(["还好我没事"]);
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.stringContaining("todo:boom 的 classic.Stop 失败"),
+    );
+
+    await manager.dispose();
+  });
+
+  it("没有 mod 注册这条事件时返回空数组（没人说话就照常收尾）", async () => {
+    const { manager } = createManager();
+    await manager.loadFromPlugins([{ name: "plain", path: ROOT } as Plugin]);
+    await manager.startSession();
+
+    await expect(
+      manager.collectStopContext({
+        background_tasks: [],
+        stop_hook_active: false,
+      }),
+    ).resolves.toEqual([]);
+
+    await manager.dispose();
+  });
+});
+
+describe("插件自己的工具、子代理与模型通道", () => {
+  /** 交一个自己的工具、并在 `tool.call` 里把结果答掉（spec「把我们自己的工具交给模型」）。 */
+  const LOOKUP_MOD = `
+exports.register = function ($, on) {
+  on("tool.register", function () {
+    $.tool.register({
+      name: "lookup_ticket",
+      description: "查工单",
+      inputSchema: { type: "object", properties: { id: { type: "number" } } }
+    });
+  });
+  on("tool.call", { tool: "mcp__todo__lookup_ticket" }, function (e) {
+    return { result: { id: e.input.id, title: "登录坏了" } };
+  });
+};
+`;
+
+  it("tool.register 归一成 mcp__<plugin>__<name>，tool.call 的 { result } 就是那次调用的结果", async () => {
+    const { manager } = createManager({ [MOD_PATH]: LOOKUP_MOD });
+    const registered: Array<{
+      name: string;
+      description: string;
+      plugin: string;
+    }> = [];
+    const unregister = vi.fn();
+    manager.setToolBridge({
+      register: (spec) => {
+        registered.push(spec);
+        return { ok: true };
+      },
+      unregister,
+    });
+    await manager.loadFromPlugins([
+      plugin([{ id: "todo:panel", path: MOD_PATH }]),
+    ]);
+    await manager.startSession();
+    await manager.dispatchToolRegister();
+
+    expect(registered).toHaveLength(1);
+    expect(registered[0]).toMatchObject({
+      name: "mcp__todo__lookup_ticket",
+      description: "查工单",
+      plugin: "todo",
+    });
+    expect(manager.ownsTool("mcp__todo__lookup_ticket")).toBe(true);
+
+    await expect(
+      manager.dispatchToolCall({
+        ...{ id: 7 },
+        tool: "mcp__todo__lookup_ticket",
+        tool_use_id: "call-1",
+        input: { id: 7 },
+      }),
+    ).resolves.toEqual({ result: { id: 7, title: "登录坏了" } });
+
+    // 重载要把工具摘掉：工具表里留着指向旧沙箱的钩子，模型下一次调用就打到
+    // 一个已经没人的实例上。
+    await manager.reload([{ name: "plain", path: ROOT } as Plugin]);
+    expect(unregister).toHaveBeenCalledWith("mcp__todo__lookup_ticket");
+    expect(manager.ownsTool("mcp__todo__lookup_ticket")).toBe(false);
+
+    await manager.dispose();
+  });
+
+  it("对任何工具返回 { result } 都算这次调用的结果（CC 同口径）", async () => {
+    // `next(e)` 真的执行之后，mod 拿到结果再改写是正常写法；自己造一份同样是
+    // CC 允许的。宿主只看「这次调用的结果是什么」，不再按工具归属筛。
+    const { manager } = createManager({
+      [MOD_PATH]: `
+exports.register = function (on) {
+  on("tool.call", { tool: "Bash" }, function () {
+    return { result: { pretend: "ran" } };
+  });
+};
+`,
+    });
+    await manager.loadFromPlugins([
+      plugin([{ id: "todo:panel", path: MOD_PATH }]),
+    ]);
+    await manager.startSession();
+
+    await expect(
+      manager.dispatchToolCall({
+        ...{ command: "ls" },
+        tool: "Bash",
+        tool_use_id: "call-1",
+        input: { command: "ls" },
+      }),
+    ).resolves.toEqual({ result: { pretend: "ran" } });
+
+    await manager.dispose();
+  });
+
+  it("tool.call 的 next(e) 走到链尾时真执行，mod 拿得到结果", async () => {
+    const { manager } = createManager({
+      [MOD_PATH]: `
+exports.register = function ($, on) {
+  on("tool.call", { tool: "Bash" }, async function (e, next) {
+    const below = await next(e);
+    return { result: { ...below.result, seen: true } };
+  });
+};
+`,
+    });
+    await manager.loadFromPlugins([
+      plugin([{ id: "todo:panel", path: MOD_PATH }]),
+    ]);
+    await manager.startSession();
+
+    const run = vi.fn(async () => ({
+      success: true,
+      content: "file.txt",
+    }));
+    const decision = await manager.dispatchToolCall(
+      {
+        tool: "Bash",
+        tool_use_id: "call-2",
+        input: { command: "ls" },
+      },
+      { run },
+    );
+
+    // 执行体只跑一次，mod 在后处理里看得到它的结果。
+    expect(run).toHaveBeenCalledTimes(1);
+    expect(decision).toEqual({
+      result: { success: true, content: "file.txt", seen: true },
+    });
+
+    await manager.dispose();
+  });
+
+  it("$.agent.spawn 交到桥上，把 model 与 agentId 还给 mod（不等它跑完）", async () => {
+    const { manager, statuses } = createManager({
+      [MOD_PATH]: `
+exports.register = function ($, on) {
+  on("session.start", async function () {
+    var r = await $.agent.spawn({ prompt: "跑一下", subagentType: "runner" });
+    $.ui.status("spawned:" + r.model + ":" + r.agentId);
+  });
+};
+`,
+    });
+    // 子代理永远不结束：证明 `spawn` 的 resolve 与它的结局无关。
+    const settled = new Promise<void>(() => {});
+    const spawn = vi.fn(async () => ({
+      model: "test-model",
+      agentId: "agent-7",
+      settled,
+    }));
+    manager.setAgentBridge({ spawn });
+    await manager.loadFromPlugins([
+      plugin([{ id: "todo:panel", path: MOD_PATH }]),
+    ]);
+    await manager.startSession();
+
+    await vi.waitFor(() =>
+      expect(statuses.at(-1)?.text).toBe("spawned:test-model:agent-7"),
+    );
+    expect(spawn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        prompt: "跑一下",
+        subagentType: "runner",
+        plugin: "todo",
+        modId: "todo:panel",
+      }),
+    );
+
+    await manager.dispose();
+  });
+
+  it("$.model.complete 把答案还给 mod；额度用完当场 reject（不混进 aborted）", async () => {
+    const { manager, statuses } = createManager({
+      [MOD_PATH]: `
+exports.register = function ($, on) {
+  on("session.start", async function () {
+    var first = await $.model.complete({ model: "fast", prompt: "q1" });
+    $.ui.status("first:" + (first.isAnswered ? first.text : first.reason));
+    try {
+      await $.model.complete({ model: "fast", prompt: "q2" });
+    } catch (error) {
+      $.ui.status("err:" + error.message);
+    }
+  });
+};
+`,
+    });
+    const complete = vi.fn(async () => ({
+      isAnswered: true as const,
+      text: "答了",
+      usage: {
+        prompt: 1,
+        completion: 1,
+        cacheRead: 0,
+        cacheCreation: 0,
+        input_tokens: 1,
+        output_tokens: 1,
+        cache_read_input_tokens: 0,
+        cache_creation_input_tokens: 0,
+      },
+    }));
+    manager.setModelBridge({ complete });
+    // `as const` 只冻类型，运行时还是可写的：压到 1 次让第二次调用越界。
+    const limits = MOD_LIMITS as unknown as {
+      modModelCallsPerSession: number;
+    };
+    const original = limits.modModelCallsPerSession;
+    limits.modModelCallsPerSession = 1;
+    try {
+      await manager.loadFromPlugins([
+        plugin([{ id: "todo:panel", path: MOD_PATH }]),
+      ]);
+      await manager.startSession();
+
+      await vi.waitFor(() =>
+        expect(statuses.map((entry) => entry.text)).toEqual([
+          "first:答了",
+          expect.stringContaining("最多 1 次"),
+        ]),
+      );
+      expect(complete).toHaveBeenCalledTimes(1);
+      expect(complete).toHaveBeenCalledWith(
+        expect.objectContaining({
+          model: "fast",
+          plugin: "todo",
+          maxTokens: 1024,
+        }),
+      );
+    } finally {
+      limits.modModelCallsPerSession = original;
+      await manager.dispose();
+    }
+  });
+
+  it("agent.spawn 的 matcher 用事件自己的键 { subagentType }，别的类型不命中", async () => {
+    // 事件里叫 `subagentType`（CC 的 `agent.spawn` 事件字段也是这个），matcher
+    // 写同一把钥匙；`{ agent }` 是 `agent.offer` 的键，不跨事件别名。
+    const { manager, statuses } = createManager({
+      [MOD_PATH]: `
+exports.register = function ($, on) {
+  on("agent.spawn", { subagentType: "Explore" }, function (e) {
+    $.ui.status("seen:" + e.subagentType);
+    return { deny: "只许只读子代理" };
+  });
+};
+`,
+    });
+    const tail = vi.fn(async () => ({ model: "test-model" }));
+    await manager.loadFromPlugins([
+      plugin([{ id: "todo:panel", path: MOD_PATH }]),
+    ]);
+    await manager.startSession();
+
+    await expect(
+      manager.dispatchAgentSpawn(
+        { prompt: "p", subagentType: "general-purpose" },
+        tail,
+      ),
+    ).resolves.toEqual({ value: { model: "test-model" } });
+    expect(statuses).toEqual([]);
+
+    await expect(
+      manager.dispatchAgentSpawn(
+        { prompt: "p", subagentType: "Explore" },
+        tail,
+      ),
+    ).resolves.toEqual({ deny: "只许只读子代理" });
+    expect(statuses.map((entry) => entry.text)).toEqual(["seen:Explore"]);
+    expect(tail).toHaveBeenCalledTimes(1);
+
+    await manager.dispose();
+  });
+});
+
+/** 与 {@link plugin} 一样，只是插件注册名可换（跨 mod 的 matcher 要靠它区分）。 */
+function namedPlugin(
+  name: string,
+  mods: Array<{ id: string; path: string }>,
+): Plugin {
+  return {
+    name,
+    path: ROOT,
+    mods: mods.map((mod) => ({
+      ...mod,
+      name: path.basename(mod.path),
+      pluginRoot: ROOT,
+    })),
+  } as unknown as Plugin;
+}
+
+/** 一个画面板、三种控件各一个，并把「回调结果」与「钩子看到的」画出来的 mod。 */
+function controlsMod(hooks: string): string {
+  return `
+exports.register = function ($, on) {
+  on("session.start", function () {
+    $.ui.open({ id: "p1", title: "控件" });
+  });
+  on("ui.render", function () {
+    var callback = $.state.get("callback") || "none";
+    var seen = $.state.get("seen") || "none";
+    return __wave.h("Box", null,
+      __wave.h("Button", { key: "go", label: "走", onPress: function () {
+        $.state.set("callback", "go");
+      }}),
+      __wave.h("Button", { key: "other", label: "别的", onPress: function () {
+        $.state.set("callback", "other");
+      }}),
+      __wave.h("Input", { key: "tag", onSubmit: function (value) {
+        $.state.set("callback", "input:" + value);
+      }}),
+      __wave.h("Text", null, "callback=" + callback + " seen=" + seen)
+    );
+  });
+  ${hooks}
+};
+`;
+}
+
+describe("ModManager 的控件交互事件（ui.press / ui.input / ui.select）", () => {
+  async function opened(hooks: string) {
+    const created = createManager({ [MOD_PATH]: controlsMod(hooks) });
+    await created.manager.loadFromPlugins([
+      plugin([{ id: "todo:panel", path: MOD_PATH }]),
+    ]);
+    await created.manager.startSession();
+    await vi.waitFor(() => expect(created.updates).toHaveLength(1));
+    // 元素回调是在 `h()` 里登记进 mod 的处理表的：没渲染过就没有可点的东西。
+    await pull(created.manager);
+    return created;
+  }
+
+  /** 一次交互 → 重画一帧，看 mod 自己画出来的那两个观察值。 */
+  async function interact(
+    manager: ModManager,
+    payload: { key: string; kind: "press" | "input"; value?: string },
+  ): Promise<string> {
+    await manager.handlePanelEvent({
+      sessionId: "s1",
+      modId: "todo:panel",
+      paneId: "p1",
+      ...payload,
+    });
+    const frame = await pull(manager);
+    return JSON.stringify(frame.tree);
+  }
+
+  it("钩子跑在控件回调之前，能看见 component / element / requestId", async () => {
+    const { manager } = await opened(`
+  on("ui.press", function (e) {
+    $.state.set("seen", [e.component, e.element, e.requestId, $.state.get("callback") || "none"].join("|"));
+  });
+`);
+
+    expect(await interact(manager, { key: "go", kind: "press" })).toContain(
+      // `callback` 还是 none：钩子跑的时候控件自己的 `onPress` 还没跑。
+      // `component` 是站点（`Pane`），不是控件类型 —— 与 CC 的 `UiPressArgument` 一致。
+      "callback=go seen=Pane|go|p1|none",
+    );
+
+    await manager.dispose();
+  });
+
+  it("返回 { value } 换掉回调收到的值", async () => {
+    const { manager } = await opened(`
+  on("ui.input", function (e) { return { value: e.value + "!" }; });
+`);
+
+    expect(
+      await interact(manager, { key: "tag", kind: "input", value: "dev" }),
+    ).toContain("callback=input:dev!");
+
+    await manager.dispose();
+  });
+
+  it("返回 { element } 把这次交互改派给另一个控件", async () => {
+    const { manager } = await opened(`
+  on("ui.press", function () { return { element: "other" }; });
+`);
+
+    // 点的是 `go`，跑的是 `other` 的回调。
+    expect(await interact(manager, { key: "go", kind: "press" })).toContain(
+      "callback=other",
+    );
+
+    await manager.dispose();
+  });
+
+  it("非字符串 value 被丢掉、记一条 warn，回调拿原值", async () => {
+    vi.mocked(logger.warn).mockClear();
+    const { manager } = await opened(`
+  on("ui.input", function () { return { value: 42 }; });
+`);
+
+    expect(
+      await interact(manager, { key: "tag", kind: "input", value: "dev" }),
+    ).toContain("callback=input:dev");
+    expect(vi.mocked(logger.warn).mock.calls.flat().join(" ")).toContain(
+      "非字符串的 value",
+    );
+
+    await manager.dispose();
+  });
+
+  it("不写 matcher 只收到自己画的控件；写 { plugin } 才能跨 mod", async () => {
+    // 观察者在**另一个插件**里：它画的控件跟这次点击毫无关系，只有 matcher
+    // 才能让它被叫起来。
+    const watchPath = path.join(ROOT, "other", "watch.tsx");
+    const watchMod = (matcher: string) => `
+exports.register = function ($, on) {
+  on("ui.press", ${matcher}function (e) {
+    $.ui.status("beta:" + e.element);
+  });
+};
+`;
+
+    const bare = createManager({
+      [MOD_PATH]: controlsMod(""),
+      [watchPath]: watchMod(""),
+    });
+    await bare.manager.loadFromPlugins([
+      namedPlugin("alpha", [{ id: "alpha:panel", path: MOD_PATH }]),
+      namedPlugin("beta", [{ id: "beta:watch", path: watchPath }]),
+    ]);
+    await bare.manager.startSession();
+    await vi.waitFor(() => expect(bare.updates).toHaveLength(1));
+    await bare.manager.renderPane("alpha:panel", "p1");
+    await bare.manager.handlePanelEvent({
+      sessionId: "s1",
+      modId: "alpha:panel",
+      paneId: "p1",
+      key: "go",
+      kind: "press",
+    });
+    // 没写 matcher = 只对自己画的控件：别人的按钮点了不叫它。
+    expect(bare.statuses).toEqual([]);
+    await bare.manager.dispose();
+
+    const pinned = createManager({
+      [MOD_PATH]: controlsMod(""),
+      [watchPath]: watchMod('{ plugin: "alpha" }, '),
+    });
+    await pinned.manager.loadFromPlugins([
+      namedPlugin("alpha", [{ id: "alpha:panel", path: MOD_PATH }]),
+      namedPlugin("beta", [{ id: "beta:watch", path: watchPath }]),
+    ]);
+    await pinned.manager.startSession();
+    await vi.waitFor(() => expect(pinned.updates).toHaveLength(1));
+    await pinned.manager.renderPane("alpha:panel", "p1");
+    await pinned.manager.handlePanelEvent({
+      sessionId: "s1",
+      modId: "alpha:panel",
+      paneId: "p1",
+      key: "go",
+      kind: "press",
+    });
+    expect(pinned.statuses.map((entry) => entry.text)).toEqual(["beta:go"]);
+
+    await pinned.manager.dispose();
+  });
+
+  it("关面板不触发任何控件事件", async () => {
+    const { manager, statuses } = await opened(`
+  on("ui.press", function (e) { $.ui.status("pressed:" + e.element); });
+`);
+
+    await manager.handlePanelEvent({
+      sessionId: "s1",
+      modId: "todo:panel",
+      paneId: "p1",
+      key: "",
+      kind: "close",
+      origin: "person",
+    });
+
+    expect(statuses).toEqual([]);
+
+    await manager.dispose();
+  });
+});
+
+describe("$.tool.check / $.tool.call", () => {
+  /** 两个方向各问一次，把结果贴成状态行（mod 自己看得到答案）。 */
+  function probeMod(hooks: string): string {
+    return `
+exports.register = function ($, on) {
+  on("session.start", function () {
+    $.tool.check({ tool: "Bash", input: { command: "npm publish" } }).then(function (r) {
+      $.ui.status("check=" + r.decision + (r.reason ? ":" + r.reason : ""));
+    }, function (e) {
+      $.ui.status("check-error=" + e.message);
+    });
+    $.tool.call({ tool: "Bash", input: { command: "ls" } }).then(function (r) {
+      $.ui.status("call=" + (r.deny ? "deny:" + r.deny : "ok"));
+    }, function (e) {
+      $.ui.status("call-error=" + e.message);
+    });
+  });
+  ${hooks}
+};
+`;
+  }
+
+  async function startedSource(source: string) {
+    const created = createManager({ [MOD_PATH]: source });
+    await created.manager.loadFromPlugins([
+      plugin([{ id: "todo:panel", path: MOD_PATH }]),
+    ]);
+    await created.manager.startSession();
+    // 两个询问都是 promise，状态行在 `then` 里贴。
+    await vi.waitFor(() => expect(created.statuses).toHaveLength(2));
+    // `text: null` 是「撤掉这行」，这里只关心贴出来的那些。
+    const texts = created.statuses.map((entry) => entry.text ?? "");
+    await created.manager.dispose();
+    return texts;
+  }
+
+  // 两条询问各自是一条 promise，谁先 resolve 不定 —— 断言按内容认，不按顺序。
+  function pick(texts: string[], prefix: string): string {
+    const found = texts.find((text) => text.startsWith(prefix));
+    if (found === undefined) throw new Error(`没有 ${prefix} 状态行：${texts}`);
+    return found;
+  }
+
+  it("没人拦时 tool.check 是 allow、tool.call 是放行", async () => {
+    const texts = await startedSource(probeMod(""));
+
+    expect(pick(texts, "check=")).toBe("check=allow");
+    expect(pick(texts, "call=")).toBe("call=ok");
+  });
+
+  it("tool.check 钩子的决定就是答案；tool.call 只回这条链的 deny", async () => {
+    const deniedCheck = await startedSource(
+      probeMod(`
+  on("tool.check", function () { return { decision: "deny", reason: "要先问人" }; });
+`),
+    );
+    expect(pick(deniedCheck, "check=")).toBe("check=deny:要先问人");
+    expect(pick(deniedCheck, "call=")).toBe("call=ok");
+
+    const deniedCall = await startedSource(
+      probeMod(`
+  on("tool.call", function () { return { deny: "只读策略" }; });
+`),
+    );
+    expect(pick(deniedCall, "check=")).toBe("check=allow");
+    expect(pick(deniedCall, "call=")).toBe("call=deny:只读策略");
+  });
+
+  it("在自家钩子里重入同一个询问会 reject（不能把整条链重跑一遍）", async () => {
+    const texts = await startedSource(
+      probeMod(`
+  on("tool.check", function () {
+    return $.tool.check({ tool: "Bash" }).then(function (inner) {
+      return { decision: inner.decision };
+    });
+  });
+`),
+    );
+
+    // 钩子炸了按拒绝收（tool.check 是唯一 fail-closed 的一条），理由是那句错误。
+    const check = pick(texts, "check=");
+    expect(check).toContain("check=deny:");
+    expect(check).toContain("不能在 tool.check 钩子里调用");
+  });
+
+  it("参数不合法时当场 reject，不跑链", async () => {
+    const texts = await startedSource(`
+exports.register = function ($, on) {
+  on("session.start", function () {
+    $.tool.check({}).then(function () {
+      $.ui.status("no-error");
+    }, function (e) {
+      $.ui.status("bad=" + e.message);
+    });
+    $.tool.call({ tool: "  " }).then(function () {
+      $.ui.status("no-error");
+    }, function (e) {
+      $.ui.status("bad=" + e.message);
+    });
+  });
+};
+`);
+
+    // 两条都拒了：没有一条贴出 `no-error`。
+    expect(texts).toHaveLength(2);
+    for (const text of texts) {
+      expect(text).toContain("bad=");
+      expect(text).toContain("tool 必须是非空字符串");
+    }
   });
 });

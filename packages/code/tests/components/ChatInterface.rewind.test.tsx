@@ -24,6 +24,15 @@ vi.mock("../../src/hooks/useInputManager.js", () => ({
 describe("ChatInterface Rewind Visibility", () => {
   it("should hide InputBox when showRewindManager is true", async () => {
     vi.mocked(useChat).mockReturnValue({
+      // 插件 MODS 的三个面：没插件在画时是「没有面板持焦点 / 没有状态行 / 没有提示」。
+      modFocusPaneId: null,
+      modStatuses: [],
+      modToasts: [],
+      modPanes: [],
+      setModFocusPaneId: vi.fn(),
+      renderModPanel: vi.fn(),
+      renderModBand: vi.fn().mockResolvedValue([]),
+      sendModPanelEvent: vi.fn(),
       sessionId: "test-session",
       messages: [],
       isLoading: false,
@@ -108,6 +117,15 @@ describe("ChatInterface Rewind Visibility", () => {
 
   it("should show InputBox when showRewindManager is false", async () => {
     vi.mocked(useChat).mockReturnValue({
+      // 插件 MODS 的三个面：没插件在画时是「没有面板持焦点 / 没有状态行 / 没有提示」。
+      modFocusPaneId: null,
+      modStatuses: [],
+      modToasts: [],
+      modPanes: [],
+      setModFocusPaneId: vi.fn(),
+      renderModPanel: vi.fn(),
+      renderModBand: vi.fn().mockResolvedValue([]),
+      sendModPanelEvent: vi.fn(),
       sessionId: "test-session",
       messages: [],
       isLoading: false,

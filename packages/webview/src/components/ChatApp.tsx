@@ -99,6 +99,7 @@ import type {
   ModPanelUpdatePayload,
   ModPromptFillRequest,
   ModPromptReadRequest,
+  ModPromptSuggestRequest,
   ModCopyRequest,
   ModNoticePayload,
   ModStatusPayload,
@@ -1000,6 +1001,12 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   modBandsRef.current = modBands;
   const [modStatuses, setModStatuses] = useState<ModStatusFrame[]>([]);
   const [modToasts, setModToasts] = useState<ModToastFrame[]>([]);
+  // 输入框里摆着的那条暗色建议（`prompt.suggest`，spec「输入框里的建议与焦点」）。
+  // 谁提的不进渲染：`requestId` 只用来在回执时对上号，采纳时把 `text` 变成草稿。
+  const [modSuggestion, setModSuggestion] = useState<{
+    requestId: string;
+    text: string;
+  } | null>(null);
   // 插件贴在工具块下面的一行（`$.ui.notice`，spec「工具行下面的一行」）：按
   // tool_use id 索引，`text: null` 撤掉。只推不拉 —— 插件自己记得贴了什么，
   // 重连后由它重贴。
@@ -1259,6 +1266,15 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   useEffect(() => {
     stateRef.current = state;
   }, [state]);
+
+  // 建议的前提是「一轮没在跑、草稿是空的」：开跑或换会话之后它就不成立了，
+  // 留着会让用户按 Tab 把上一轮的建议填进新一轮的输入框。
+  useEffect(() => {
+    if (state.isStreaming) setModSuggestion(null);
+  }, [state.isStreaming]);
+  useEffect(() => {
+    setModSuggestion(null);
+  }, [state.currentSession?.id]);
 
   useEffect(() => {
     effectiveWorkdirRef.current = effectiveWorkdir;
@@ -1576,6 +1592,17 @@ export const ChatApp: React.FC<ChatAppProps> = ({
       pid === undefined ? payload : { ...payload, paneId: pid },
     );
   };
+
+  // 「对话框占着键」：输入框还挂着（只是被盖住 / `display: none`），此刻既填不进
+  // 草稿、也摆不上建议。`$.prompt.fill` 与 `prompt.suggest` 两处共用同一份判据，
+  // 免得两条通道对「界面现在能不能接」给出不同答案。
+  const composerBlockedByDialog = () =>
+    state.pendingConfirmations.length > 0 ||
+    pendingRewindId !== null ||
+    pendingClearConfirm ||
+    pendingModelSwitch !== null ||
+    pluginChangePending ||
+    draftDiscardOpen;
 
   const handleMessage = (message: MessageEvent["data"]) => {
     // Desktop plan panel: route an ExitPlanMode plan to the plan pane (opens
@@ -2036,15 +2063,8 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         // 审批卡片 / 各种确认框出现时输入框还挂着（只是被 `display: none`），
         // 此刻填进去用户看不见 —— 按「填不上」作答，与 Claude Code 的
         // 「对话框占着键时 `{ filled: false }`」同一口径。
-        const dialogHoldsKeys =
-          state.pendingConfirmations.length > 0 ||
-          pendingRewindId !== null ||
-          pendingClearConfirm ||
-          pendingModelSwitch !== null ||
-          pluginChangePending ||
-          draftDiscardOpen;
         const filled =
-          !dialogHoldsKeys &&
+          !composerBlockedByDialog() &&
           (messageInputRef.current?.fillDraft({
             text: payload.text,
             mode: payload.mode,
@@ -2069,6 +2089,52 @@ export const ChatApp: React.FC<ChatAppProps> = ({
           requestId: payload.requestId,
           text: draft?.text ?? "",
           cursor: draft?.cursor ?? 0,
+        });
+        break;
+      }
+      case "desktopModPromptSuggest": {
+        // `prompt.suggest`（spec「输入框里的建议与焦点」）：把建议摆成输入框里的
+        // 暗字，等用户按 Tab 采纳。**摆不上也必须作答** —— 沉默只会让 mod 等到
+        // 超时，还分不清「界面没接」与「界面拒绝了」。
+        if (!forThisPane(message)) break;
+        const payload = (message as { payload?: ModPromptSuggestRequest })
+          .payload;
+        if (!payload?.requestId) break;
+        // 摆不上的四种确定原因（spec 同段）：一轮正在跑、对话框占着键、输入框里
+        // 已有字、建议文本是空白；没有输入框（headless / 未挂载）由 `readDraft`
+        // 返回 `null` 表达。
+        const draft = messageInputRef.current?.readDraft() ?? null;
+        const canShow =
+          !state.isStreaming &&
+          !inputDisabled &&
+          !composerBlockedByDialog() &&
+          draft !== null &&
+          draft.text.trim() === "" &&
+          payload.text.trim() !== "";
+        setModSuggestion(
+          canShow ? { requestId: payload.requestId, text: payload.text } : null,
+        );
+        vscode.postMessage({
+          command: "modPromptSuggestResult",
+          requestId: payload.requestId,
+          isShown: canShow,
+        });
+        break;
+      }
+      case "modPromptEditResult": {
+        // 插件改写的结果（`prompt.edit`，spec「输入框里的建议与焦点」）：交给输入框
+        // 自己判定要不要套用（只认最后一次编辑的回执，原文不动就不重建 DOM）。
+        if (!forThisPane(message)) break;
+        const reply = message as {
+          requestId?: string;
+          text?: string;
+          cursor?: number;
+        };
+        if (typeof reply.requestId !== "string") break;
+        messageInputRef.current?.applyPromptEdit({
+          requestId: reply.requestId,
+          text: typeof reply.text === "string" ? reply.text : "",
+          cursor: typeof reply.cursor === "number" ? reply.cursor : 0,
         });
         break;
       }
@@ -6099,6 +6165,8 @@ export const ChatApp: React.FC<ChatAppProps> = ({
               contextRingRef={contextRingRef}
               disabled={inputDisabled}
               placeholder={inputDisabledReason}
+              modSuggestion={modSuggestion}
+              onModSuggestionDismiss={() => setModSuggestion(null)}
               workdirSelector={
                 host?.type === "desktop" &&
                 isNewSessionState(paneHasContent, state.messages) ? (

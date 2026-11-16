@@ -8,6 +8,7 @@ import type { AIManager } from "../managers/aiManager.js";
 import type { SubagentManager } from "../managers/subagentManager.js";
 import type { TaskManager } from "./taskManager.js";
 import type { ModManager } from "../managers/modManager.js";
+import { wrapInSystemReminder } from "../prompts/planModeReminders.js";
 
 export interface InteractionContext {
   messageManager: MessageManager;
@@ -149,6 +150,15 @@ export class InteractionService {
         });
       }
 
+      // 影子事件 `classic.UserPromptSubmit`（spec「影子事件」）：与 `prompt.submit`
+      // 同一时刻、之后发。只读 —— 不改用户原文、不丢弃这条 prompt，与
+      // `prompt.submit` 同一条理由（钩子跑在界面看不到的地方，改/丢用户输入没法
+      // 让用户察觉）。
+      const modManager = context.modManager;
+      if (modManager) {
+        modManager.notifyMods("classic.UserPromptSubmit", { prompt: content });
+      }
+
       // Send AI message
       await aiManager.sendAIMessage();
     } catch (error) {
@@ -261,10 +271,21 @@ export class InteractionService {
           messageManager.getTranscriptPath(),
         );
         if (sessionStartResult.additionalContext) {
-          messageManager.addUserMessage({
-            content: `<system-reminder>\nSessionStart hook additional context: ${sessionStartResult.additionalContext}\n</system-reminder>`,
-            isMeta: true,
-          });
+          // `prompt.attachment` 的 `session-start` 档（spec
+          // ecosystem/plugin-mods.md「系统提示词与附件」）：`null` 是「这条不要」，
+          // 所以没有 ModManager 时的原文不能写成同一个 `??` 兜底。
+          const sessionStartText = context.modManager
+            ? await context.modManager.rewritePromptAttachment({
+                type: "session-start",
+                text: `SessionStart hook additional context: ${sessionStartResult.additionalContext}`,
+              })
+            : `SessionStart hook additional context: ${sessionStartResult.additionalContext}`;
+          if (sessionStartText !== null) {
+            messageManager.addUserMessage({
+              content: wrapInSystemReminder(sessionStartText),
+              isMeta: true,
+            });
+          }
         }
       } catch (error) {
         logger?.warn(
@@ -272,6 +293,13 @@ export class InteractionService {
         );
       }
     }
+
+    // 影子事件 `classic.SessionStart`（spec「影子事件」）：恢复一场旧会话也是
+    // 「开局」的一种，`source` 就是 `resume`。放在钩子块外面 —— 镜像不依赖
+    // settings 钩子有没有跑成。
+    context.modManager?.notifyMods("classic.SessionStart", {
+      source: "resume",
+    });
 
     // Update task manager with the root session ID to ensure continuity across compactions
     taskManager.setTaskListId(sessionData.id);

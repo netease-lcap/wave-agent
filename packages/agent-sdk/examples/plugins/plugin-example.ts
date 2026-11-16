@@ -57,7 +57,7 @@ Hello! I am a command from the example plugin. How can I help you today?
     console.log("Agent initialized with plugins.");
 
     // 5. List available slash commands
-    const commands = agent.getSlashCommands();
+    const commands = await agent.getSlashCommands();
     console.log("Available commands:");
     commands.forEach((cmd) => {
       console.log(` - /${cmd.name}: ${cmd.description}`);

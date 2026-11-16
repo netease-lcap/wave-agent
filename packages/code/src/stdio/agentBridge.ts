@@ -87,6 +87,7 @@ import {
   type ModToastPayload,
   type ModPromptFillRequest,
   type ModPromptReadRequest,
+  type ModPromptSuggestRequest,
   type ModCopyRequest,
   type ModNoticePayload,
   type ModPaneLayout,
@@ -588,6 +589,40 @@ export class AgentBridge {
         }
         return;
       }
+      // surface 对一次 `$.prompt.suggest` 的回答（spec「输入框里的建议与焦
+      // 点」）：摆没摆上只有输入框知道，这里只把在等回执的那个 mod 放行。
+      case "modPromptSuggestResult": {
+        const request = p as { requestId?: string; isShown?: boolean };
+        if (typeof request.requestId === "string") {
+          this.requireSessionForRead(sessionId).agent.resolveModPromptSuggest(
+            request.requestId,
+            request.isShown === true,
+          );
+        }
+        return;
+      }
+      // 用户在输入框里做完一次编辑（spec「输入框里的建议与焦点」）：方向反过来
+      // —— 宿主先说话，答案是插件改写后的草稿。`prompt.edit` 的链尾是「把这次
+      // 编辑应用上去」，所以没插件注册时这里给的就是用户该看到的那份文本。
+      case "promptEdit": {
+        const event = p as {
+          key?: unknown;
+          text?: string;
+          cursor?: number;
+          start?: number;
+          end?: number;
+          inputText?: string;
+        };
+        const text = typeof event.text === "string" ? event.text : "";
+        return this.requireSession(sessionId).agent.dispatchModPromptEdit({
+          key: event.key,
+          text,
+          cursor: typeof event.cursor === "number" ? event.cursor : text.length,
+          start: typeof event.start === "number" ? event.start : text.length,
+          end: typeof event.end === "number" ? event.end : text.length,
+          inputText: typeof event.inputText === "string" ? event.inputText : "",
+        });
+      }
       // surface 对一次 `$.ui.copy` 的回答（spec「剪贴板与视图」）。
       case "modCopyResult": {
         const request = p as {
@@ -644,7 +679,10 @@ export class AgentBridge {
 
       // ── Commands ──
       case "getSlashCommands":
-        return this.getSlashCommands(sessionId, parseHostSurface(p.surface));
+        return await this.getSlashCommands(
+          sessionId,
+          parseHostSurface(p.surface),
+        );
       case "getSubagentConfigurations":
         return this.getSubagentConfigurations(sessionId);
       case "getSkillMetadata":
@@ -2674,14 +2712,14 @@ export class AgentBridge {
    * being handed rows it has no handling for. Unknown values are dropped the
    * same way by `parseHostSurface`.
    */
-  private getSlashCommands(
+  private async getSlashCommands(
     sessionId?: string,
     surface?: HostSurface,
-  ): { commands: SlashCommandInfo[] } {
+  ): Promise<{ commands: SlashCommandInfo[] }> {
     const entry = this.requireSessionForRead(sessionId);
-    const agentCommands = entry.agent
-      .getSlashCommands()
-      .map((command) => toSlashCommandInfo(command));
+    const agentCommands = (await entry.agent.getSlashCommands()).map(
+      (command) => toSlashCommandInfo(command),
+    );
     if (!surface) return { commands: agentCommands };
     const hostCommands = hostSlashCommandsFor(surface);
     // 宿主本地命令（`/config`、`/clear`…）是各前端自己实现的动作，不在 SDK 的
@@ -3749,6 +3787,19 @@ export class AgentBridge {
       onModPromptRead: (payload: ModPromptReadRequest) => {
         this.emit(
           "modPromptRead",
+          {
+            ...payload,
+            sessionId: ctx.registeredSessionId ?? payload.sessionId,
+          },
+          ctx.registeredSessionId,
+        );
+      },
+      // 摆建议（spec「输入框里的建议与焦点」）：与 `modPromptFill` 同一条往返，
+      // 回执是 `modPromptSuggestResult`（超时在 Agent 侧按 `{ isShown: false }`
+      // 收口）。
+      onModPromptSuggest: (payload: ModPromptSuggestRequest) => {
+        this.emit(
+          "modPromptSuggest",
           {
             ...payload,
             sessionId: ctx.registeredSessionId ?? payload.sessionId,

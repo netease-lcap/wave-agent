@@ -47,6 +47,16 @@ describe("ChatInterface login hint", () => {
   let authChangeCallback: ((event: "login" | "logout") => void) | null = null;
 
   const baseContext = {
+    // 插件 MODS 的三个面（docs/specs/ecosystem/plugin-mods.md「状态带、状态行与
+    // 提示」）：没插件在画时是「没有面板持焦点 / 没有状态行 / 没有提示」。
+    modFocusPaneId: null,
+    modStatuses: [],
+    modToasts: [],
+    modPanes: [],
+    setModFocusPaneId: vi.fn(),
+    renderModPanel: vi.fn(),
+    renderModBand: vi.fn().mockResolvedValue([]),
+    sendModPanelEvent: vi.fn(),
     sessionId: "test-session",
     messages: [],
     isLoading: false,

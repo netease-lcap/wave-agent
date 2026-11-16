@@ -14,7 +14,7 @@ async function main() {
   try {
     // 1. Check plugin manifest loaded via .claude-plugin/ fallback
     const commands = agent.getCustomCommands();
-    const slashCommands = agent.getSlashCommands();
+    const slashCommands = await agent.getSlashCommands();
 
     console.log("=== Plugin Registration ===");
     console.log(`Custom commands: ${commands.length}`);

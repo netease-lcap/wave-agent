@@ -715,6 +715,12 @@ export class MemoryService {
   private _cachedLocalMemory: string | null = null;
   private _cachedCombinedMemory: string | null = null;
   private _cachedAutoMemoryContent: string | null = null;
+  /**
+   * 真的读到并注入过上下文的指令文件（spec「影子事件」的
+   * `classic.InstructionsLoaded`）。只记**读到了**的那种：不存在的那一档不进
+   * 来，读失败也不进来。
+   */
+  private _loadedInstructionFiles = new Set<string>();
 
   constructor(private container: Container) {}
 
@@ -732,6 +738,7 @@ export class MemoryService {
     this._cachedLocalMemory = null;
     this._cachedCombinedMemory = null;
     this._cachedAutoMemoryContent = null;
+    this._loadedInstructionFiles.clear();
   }
 
   /**
@@ -980,6 +987,7 @@ export class MemoryService {
   ): Promise<string | null> {
     if (source.kind === "error") return null;
     if (source.kind === "missing") return "";
+    this._loadedInstructionFiles.add(source.filePath);
     return expandMemoryIncludes(
       source.content,
       source.filePath,
@@ -1040,6 +1048,19 @@ export class MemoryService {
 
   async getUserMemoryContent(): Promise<string> {
     return this.loadUserMemory(createMemoryIncludeLoad());
+  }
+
+  /**
+   * 开局常驻的那几份指令文件（spec「影子事件」的 `classic.InstructionsLoaded`，
+   * `load_reason: "session_start"`）。
+   *
+   * 先按同一口径读一遍三档 —— 已缓存时是空跑，没缓存时正是系统提示词本来就要
+   * 做的那次读 —— 再把记下来的路径交出去。只报读到了的（不存在、读不了的那一
+   * 档不冒充）。
+   */
+  async loadSessionStartInstructions(workdir: string): Promise<string[]> {
+    await this.getCombinedMemoryContent(workdir);
+    return Array.from(this._loadedInstructionFiles);
   }
 
   async readMemoryFile(workdir: string): Promise<string> {

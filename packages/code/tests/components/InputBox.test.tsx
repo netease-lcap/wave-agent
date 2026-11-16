@@ -65,6 +65,11 @@ vi.mock("../../src/contexts/useChat.js", () => ({
     handleRewindSelect: mockHandleRewindSelect,
     getRewindCheckpoints: mockGetRewindCheckpoints,
     backgroundCurrentTask: mockBackgroundCurrentTask,
+    // 插件 MODS 的三个面（docs/specs/ecosystem/plugin-mods.md）：没有插件在画时
+    // 分别是「没有面板持焦点 / 没有状态行 / 没有提示」。
+    modFocusPaneId: null,
+    modStatuses: [],
+    modToasts: [],
   }),
 }));
 

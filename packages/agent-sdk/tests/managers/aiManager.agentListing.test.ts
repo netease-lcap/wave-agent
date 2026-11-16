@@ -86,7 +86,7 @@ function agent(
   };
 }
 
-function createHarness() {
+function createHarness(options: { modManager?: unknown } = {}) {
   const container = new Container();
   const messages: Message[] = [];
 
@@ -174,6 +174,7 @@ function createHarness() {
     drainNotifications: vi.fn().mockReturnValue([]),
   });
   container.register("McpManager", {});
+  if (options.modManager) container.register("ModManager", options.modManager);
 
   const aiManager = new AIManager(container, {
     workdir: "/test/workdir",
@@ -282,5 +283,34 @@ describe("AIManager subagent listing", () => {
     const all = listings(messages);
     expect(all).toHaveLength(2);
     expect(textOf(all[1])).toContain("No subagents are currently available");
+  });
+
+  it("agent.offer 说 false 的类型不入清单（清单这一次也算 offer）", async () => {
+    givenAgents(
+      agent("reviewer", "reviews diffs"),
+      agent("tester", "writes tests"),
+    );
+    const dispatchAgentOffer = vi.fn(
+      async (event: { agent: string }) => event.agent !== "tester",
+    );
+    const { aiManager, messages } = createHarness({
+      modManager: {
+        dispatchAgentOffer,
+        notifyMods: vi.fn(),
+        // 这一轮之前会先问一次「有没有插件要给会话加一段上下文」，缺了就抛。
+        collectSessionContextBlocks: vi.fn(async () => []),
+      },
+    });
+
+    await aiManager.sendAIMessage({ recursionDepth: 0 });
+
+    const [listing] = listings(messages);
+    expect(textOf(listing)).toContain("- reviewer: reviews diffs");
+    expect(textOf(listing)).not.toContain("tester");
+    expect(dispatchAgentOffer).toHaveBeenCalledWith({
+      agent: "tester",
+      description: "writes tests",
+      source: "project",
+    });
   });
 });

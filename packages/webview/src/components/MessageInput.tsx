@@ -78,6 +78,16 @@ interface MessageInputPropsWithCompress extends MessageInputProps {
   /** 环自身元素的 ref：ChatApp 拿它取锚点矩形，也靠它豁免「点外部关闭」
    *  —— 否则点环会先被 mousedown 关掉、再被 click 打开，闪一下还重取一次数。 */
   contextRingRef?: RefObject<HTMLButtonElement>;
+  /**
+   * 要摆进输入框的建议（`prompt.suggest`，spec ecosystem/plugin-mods.md
+   * 「输入框里的建议与焦点」）：暗字显示、按 Tab 采纳。
+   *
+   * 摆不摆由 ChatApp 判（草稿是否为空、是否有一轮在跑），这里是纯展示。
+   * `requestId` 用于回复执时对上号。
+   */
+  modSuggestion?: { requestId: string; text: string } | null;
+  /** 建议被采纳或作废之后回一手：ChatApp 拿它清掉 `modSuggestion`。 */
+  onModSuggestionDismiss?: () => void;
 }
 
 interface AtMentionState {
@@ -114,6 +124,18 @@ function findTextOffset(
     textNode = walker.nextNode() as Text | null;
   }
   return null;
+}
+
+// 一段纯文本拆成 contenteditable 的子节点：换行只能是 `<br>`，否则
+// `innerText` 与草稿序列化都会把它读成空格。三条「整份替换草稿」的路径
+// （设置页 `loadDraft`、`$.prompt.fill` 的 replace、插件改写）共用这份。
+function plainTextNodes(source: string): Node[] {
+  const nodes: Node[] = [];
+  source.split("\n").forEach((line, i) => {
+    if (i > 0) nodes.push(document.createElement("br"));
+    if (line.length > 0) nodes.push(document.createTextNode(line));
+  });
+  return nodes;
 }
 
 // Map a {node, offset} position inside `container` back to a flat character
@@ -192,7 +214,30 @@ export interface MessageInputHandle {
    * draft instead of leaving it to time out.
    */
   readDraft: () => { text: string; cursor: number } | null;
+  /**
+   * 插件改写的结果（`prompt.edit`，spec「输入框里的建议与焦点」）：把输入框换成
+   * 钩子给出的那份草稿。
+   *
+   * 只认**最后一次**编辑的回执（`requestId` 对不上就丢，用户可能已经接着打了
+   * 好几个字）；`text` 与当前内容一致时什么都不做 —— 「没人改写」不该触发一次
+   * 无谓的 DOM 重建（那会吃掉用户的选区）。
+   */
+  applyPromptEdit: (request: {
+    requestId: string;
+    text: string;
+    cursor: number;
+  }) => boolean;
 }
+
+/** 只按修饰键时不该算作「一次编辑的触发键」。 */
+const MODIFIER_KEYS = new Set([
+  "Shift",
+  "Control",
+  "Alt",
+  "Meta",
+  "CapsLock",
+  "Process",
+]);
 
 /** 选区变化（@ 提及、斜杠命令下拉）的防抖：用户停下不光标了才去问宿主。 */
 export const SELECTION_CHANGE_DEBOUNCE_MS = 200;
@@ -231,6 +276,8 @@ export const MessageInput = forwardRef<
     onOpenContextPanel,
     contextPanelOpen,
     contextRingRef,
+    modSuggestion,
+    onModSuggestionDismiss,
   } = props;
   const [message, setMessage] = useState("");
 
@@ -474,6 +521,14 @@ export const MessageInput = forwardRef<
 
   const textareaRef = useRef<HTMLDivElement>(null);
   const requestIdRef = useRef<string>("");
+  /** 上一次上报给 `prompt.edit` 时的草稿正文 / 光标。差值就靠它与当前比出来。 */
+  const prevEditTextRef = useRef<string | null>(null);
+  const draftCursorRef = useRef(0);
+  /** 递增的编辑序号：回执只认最后一次，晚到的旧回执不能盖掉用户新打的字。 */
+  const editSeqRef = useRef(0);
+  const lastEditRequestIdRef = useRef<string | null>(null);
+  /** 触发这次编辑的那一个按键（粘贴没有 keydown，就是 `undefined`）。 */
+  const lastEditKeyRef = useRef<unknown>(undefined);
   const inputContentTimerRef = useRef<NodeJS.Timeout | null>(null);
   // 还在 150ms 防抖窗口里、尚未上报宿主的那份草稿。卸载时必须补发：打开设置页 /
   // 会话看板会把整个 pane 卸载，重挂载的输入框由宿主快照（setInitialState 的
@@ -510,15 +565,6 @@ export const MessageInput = forwardRef<
       const div = textareaRef.current;
       if (!div) return false;
 
-      const nodesOf = (source: string): Node[] => {
-        const nodes: Node[] = [];
-        source.split("\n").forEach((line, i) => {
-          if (i > 0) nodes.push(document.createElement("br"));
-          if (line.length > 0) nodes.push(document.createTextNode(line));
-        });
-        return nodes;
-      };
-
       const selection = window.getSelection();
       const range =
         selection && selection.rangeCount > 0 ? selection.getRangeAt(0) : null;
@@ -528,13 +574,13 @@ export const MessageInput = forwardRef<
         div.contains(range.commonAncestorContainer);
 
       if (mode === "replace") {
-        div.replaceChildren(...nodesOf(text));
+        div.replaceChildren(...plainTextNodes(text));
         // DOM 被重建，光标追踪随之失效（见 lastSelectionChangePosRef 的注释）。
         lastSelectionChangePosRef.current = null;
       } else if (caretInside && range) {
         range.deleteContents();
         const fragment = document.createDocumentFragment();
-        const nodes = nodesOf(text);
+        const nodes = plainTextNodes(text);
         for (const node of nodes) fragment.appendChild(node);
         range.insertNode(fragment);
         const last = nodes[nodes.length - 1];
@@ -548,7 +594,7 @@ export const MessageInput = forwardRef<
         if ((div.textContent ?? "").trim() !== "") {
           div.appendChild(document.createElement("br"));
         }
-        div.append(...nodesOf(text));
+        div.append(...plainTextNodes(text));
       }
 
       // `innerText` 是排版后的文本，`textContent` 兜底没实现它的引擎；这个镜像
@@ -639,11 +685,7 @@ export const MessageInput = forwardRef<
     loadDraft: (text: string) => {
       const div = textareaRef.current;
       if (!div) return;
-      div.replaceChildren();
-      text.split("\n").forEach((line, i) => {
-        if (i > 0) div.appendChild(document.createElement("br"));
-        div.appendChild(document.createTextNode(line));
-      });
+      div.replaceChildren(...plainTextNodes(text));
       const mirror = div.innerText ?? div.textContent ?? "";
       setMessage(mirror);
       inputContentRef.current = mirror;
@@ -695,6 +737,51 @@ export const MessageInput = forwardRef<
       upto.setEnd(range.endContainer, range.endOffset);
       return { text, cursor: Math.min(upto.toString().length, text.length) };
     },
+    applyPromptEdit: ({
+      requestId,
+      text,
+      cursor,
+    }: {
+      requestId: string;
+      text: string;
+      cursor: number;
+    }): boolean => {
+      if (requestId !== lastEditRequestIdRef.current) return false;
+      const div = textareaRef.current;
+      if (!div) return false;
+      // 没人改写这次编辑（钩子没返回、或返回的就是原文）：别动 DOM —— 重建会
+      // 吃掉用户此刻的选区，看起来像「打着字光标突然跳”。
+      if (text === (div.innerText ?? div.textContent ?? "")) return false;
+
+      div.replaceChildren(...plainTextNodes(text));
+      const mirror = div.innerText ?? div.textContent ?? "";
+      setMessage(mirror);
+      inputContentRef.current = mirror;
+      vscode.postMessage({
+        command: "updateInputContent",
+        sessionId,
+        content: serializeInputDraft(div, draftScopeKey),
+      });
+
+      // 光标落到插件给的位置（越界夹到正文里）。
+      const offset = Math.max(0, Math.min(cursor, text.length));
+      const at = findTextOffset(div, offset);
+      const sel = window.getSelection();
+      if (at && sel) {
+        const range = document.createRange();
+        range.setStart(at.node, at.offset);
+        range.collapse(true);
+        sel.removeAllRanges();
+        sel.addRange(range);
+      }
+      // DOM 被重建，光标追踪与「上一次草稿」跟着重置（否则下一次编辑会拿旧
+      // 文本算差值，报出一段用户根本没做过的编辑）。
+      lastSelectionChangePosRef.current = null;
+      draftCursorRef.current = offset;
+      prevEditTextRef.current = text;
+      onModSuggestionDismiss?.();
+      return true;
+    },
   }));
 
   // Auto-focus input on component mount
@@ -714,6 +801,12 @@ export const MessageInput = forwardRef<
   // with the (stale) inputContent prop the host last pushed.
   const messageRef = useRef(message);
   messageRef.current = message;
+  // 草稿正文的「上一次」快照：`prompt.edit` 的差值靠它算。所有改写草稿的路径
+  // （用户输入、填草稿、插件改写、宿主回填）都会走到 `setMessage`，同步放这里
+  // 最省事 —— 漏一条就会把整份草稿报成一次「替换」。
+  useEffect(() => {
+    prevEditTextRef.current = message;
+  }, [message]);
   // 回填草稿里的图片要挂上「点开预览」，那个回调定义在下面（粘贴路径）：
   // 用 ref 转一手，免得把它的声明拖到本 effect 前面来。
   const handleImagePreviewRef = useRef<(url: string, name: string) => void>(
@@ -1809,6 +1902,11 @@ export const MessageInput = forwardRef<
 
   const handleKeyDown = useCallback(
     (event: KeyboardEvent<HTMLDivElement>) => {
+      // 记下这次按键（`prompt.edit` 的 `e.key`）：粘贴 / 拖入没有 keydown，就不报。
+      if (!MODIFIER_KEYS.has(event.key)) {
+        lastEditKeyRef.current = event.key;
+      }
+
       // Handle Cmd/Ctrl+Shift+M to open the permission mode menu (aligned
       // with Claude Code Desktop). preventDefault+stopPropagation also keeps
       // the chord away from host defaults that share it: VS Code's "Focus
@@ -1858,6 +1956,22 @@ export const MessageInput = forwardRef<
           vscode.postMessage({ command: "backgroundCurrentTask" });
           return;
         }
+      }
+
+      // 暗色建议的采纳（spec「输入框里的建议与焦点」）：Tab 把它变成草稿。
+      // 位置在斜杠/提及导航之前 —— 建议只在空草稿上摆（见 ChatApp 的判据），
+      // 那两个下拉此刻都不活跃，不会抢走同一个 Tab。
+      if (
+        modSuggestion &&
+        event.key === "Tab" &&
+        !event.shiftKey &&
+        !isComposing
+      ) {
+        event.preventDefault();
+        event.stopPropagation();
+        fillDraft({ text: modSuggestion.text, mode: "replace" });
+        onModSuggestionDismiss?.();
+        return;
       }
 
       // Handle 指令 navigation. Navigate over the display-ordered list so the
@@ -1950,6 +2064,9 @@ export const MessageInput = forwardRef<
       openPermissionModeMenu,
       isStreaming,
       onAbortMessage,
+      modSuggestion,
+      fillDraft,
+      onModSuggestionDismiss,
     ],
   );
 
@@ -1966,6 +2083,9 @@ export const MessageInput = forwardRef<
     preCaretRange.setEnd(range.endContainer, range.endOffset);
 
     const cursorPos = preCaretRange.toString().length;
+    // `prompt.edit` 要的「编辑之前光标在哪」就是这里量到的值：`select` 事件先于
+    // 下一次 `input` 到达，所以 `handleInput` 里读到的是这次编辑之前的那个位置。
+    draftCursorRef.current = cursorPos;
 
     // Skip if cursor position hasn't changed (avoid redundant work)
     if (cursorPos === lastSelectionChangePosRef.current) {
@@ -2055,6 +2175,49 @@ export const MessageInput = forwardRef<
 
       setMessage(newValue);
 
+      // 一次编辑上报给插件（`prompt.edit`，spec「输入框里的建议与焦点」）：用
+      // 前缀/后缀差值还原「替换掉的是哪一段」，插件据此做拼写检查、语法闸门。
+      // 输入法组合期间不报 —— 组合中间的拼音串会把插件引到错误的改写上，而且
+      // 一改就打断候选；组合结束那一次 `input` 才是用户真的写进去的字。
+      if (!isComposing) {
+        const prevText = prevEditTextRef.current;
+        prevEditTextRef.current = newValue;
+        if (prevText !== null && prevText !== newValue) {
+          const limit = Math.min(prevText.length, newValue.length);
+          let start = 0;
+          while (start < limit && prevText[start] === newValue[start]) start++;
+          // 后缀不能越过前缀（`aaaa` → `aa` 这种重复字里，两个方向都会一直相等）。
+          let suffix = 0;
+          while (
+            suffix < limit - start &&
+            prevText[prevText.length - 1 - suffix] ===
+              newValue[newValue.length - 1 - suffix]
+          ) {
+            suffix++;
+          }
+          const requestId = `prompt-edit-${++editSeqRef.current}`;
+          lastEditRequestIdRef.current = requestId;
+          vscode.postMessage({
+            command: "modPromptEdit",
+            sessionId,
+            // 分屏里每个 pane 各有一个输入框：带上自己的 pane，宿主的回包才认
+            // 得回这一格（桌面端按 `paneId` 挑 agent，缺省会落到聚焦的那个）。
+            ...(paneId === undefined ? {} : { paneId }),
+            requestId,
+            key: lastEditKeyRef.current,
+            text: prevText,
+            cursor: draftCursorRef.current,
+            start,
+            end: prevText.length - suffix,
+            inputText: newValue.slice(start, newValue.length - suffix),
+          });
+        }
+        lastEditKeyRef.current = undefined;
+      }
+
+      // 用户一动输入框，暗色建议就不再是「他接着会打的字」。
+      onModSuggestionDismiss?.();
+
       // If we're editing a queued message and the read-only chip has been deleted
       // (e.g. via backspace), exit edit mode. The remaining body text is kept.
       if (editingQueuedId && !target.querySelector(".queued-edit-chip")) {
@@ -2095,6 +2258,9 @@ export const MessageInput = forwardRef<
       onCancelQueuedEdit,
       sessionId,
       draftScopeKey,
+      isComposing,
+      onModSuggestionDismiss,
+      paneId,
     ],
   );
 
@@ -2364,10 +2530,29 @@ export const MessageInput = forwardRef<
             onCompositionEnd={handleCompositionEnd}
             data-testid="message-input"
             data-argument-hint={visibleArgumentHint ?? undefined}
+            // 建议摆着时让出 placeholder 那一行：暗字故意不进 DOM（与参数提示
+            // 同一个理由），所以清空属性来让位，而不是叠两段灰字。
             data-placeholder={
-              placeholder ?? "/快捷指令，@添加上下文，粘贴图片，Enter发送..."
+              modSuggestion
+                ? ""
+                : (placeholder ??
+                  "/快捷指令，@添加上下文，粘贴图片，Enter发送...")
             }
           />
+
+          {/* 暗色建议（`prompt.suggest`，spec「输入框里的建议与焦点」）：按 Tab
+              采纳才进草稿。`aria-hidden` + 不吃指针 —— 它是提议，不是内容，
+              所以也不进 `innerText` / 草稿序列化 / 发送正文。 */}
+          {modSuggestion && (
+            <div
+              className="mod-suggestion"
+              data-testid="mod-suggestion"
+              aria-hidden="true"
+            >
+              <span className="mod-suggestion-text">{modSuggestion.text}</span>
+              <span className="mod-suggestion-hint">Tab</span>
+            </div>
+          )}
 
           {/* Buttons row */}
           <div className="input-buttons-row" ref={buttonsRowRef}>

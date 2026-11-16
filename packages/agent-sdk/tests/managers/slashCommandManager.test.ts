@@ -99,6 +99,10 @@ describe("SlashCommandManager", () => {
         content: "Skill content",
         allowedTools: ["tool1", "tool2"],
       }),
+      // `skill.prompt` 钩子的落点：没有 ModManager 时原样返回正文
+      applySkillPrompt: vi
+        .fn()
+        .mockImplementation(async (_skill, text) => text),
       on: vi.fn(),
     } as unknown as SkillManager;
 

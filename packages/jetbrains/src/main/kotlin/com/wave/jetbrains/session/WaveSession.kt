@@ -490,6 +490,15 @@ class WaveSession(
         }
     }
 
+    /**
+     * `$.prompt.suggest`（spec ecosystem/plugin-mods.md「输入框里的建议与焦点」）：
+     * 消息名与桌面端一致，同一份 webview 按这个名字收，payload 原样转发（里面有
+     * `requestId`，回执还要用它）。插件端没有 pane，也就没有 paneId 可带。
+     */
+    override fun onModPromptSuggest(payload: JsonObject) {
+        postMessage("desktopModPromptSuggest", buildJsonObject { put("payload", payload) })
+    }
+
     override fun onError(message: String) {
         LOG.warn("Wave session error: $message")
     }

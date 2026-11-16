@@ -6,6 +6,7 @@ import { InputBox } from "./InputBox.js";
 import { LoadingIndicator } from "./LoadingIndicator.js";
 import { TaskList } from "./TaskList.js";
 import { QueuedMessageList } from "./QueuedMessageList.js";
+import { ModSurface } from "./mods/ModSurface.js";
 import { ConfirmationDetails } from "./ConfirmationDetails.js";
 import { ConfirmationSelector } from "./ConfirmationSelector.js";
 
@@ -100,6 +101,9 @@ export const ChatInterface: React.FC = () => {
           )}
           <TaskList />
           <QueuedMessageList />
+          {/* 终端没有右栏：插件面板落在输入框上方，带紧贴输入框（spec「终端形态」）。 */}
+          <ModSurface part="pane" />
+          <ModSurface part="band" />
           <InputBox
             isLoading={isLoading}
             isCommandRunning={isCommandRunning}

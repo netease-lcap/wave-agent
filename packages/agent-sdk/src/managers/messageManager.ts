@@ -62,6 +62,9 @@ import {
 import { entrypointOf } from "../telemetry/entrypoint.js";
 
 import { Container } from "../utils/container.js";
+import { toModSessionMessages } from "./modManager.js";
+import type { ModManager } from "./modManager.js";
+import type { ModSessionAppendDoor, ModSessionMessage } from "../types/mods.js";
 // Cap for recentFileReads: content is only consumed by getRecentFileReads
 // (top 5 for post-compact restoration), so bound both the entry count and the
 // number of entries that keep full content (aligned with Claude Code's
@@ -546,6 +549,126 @@ export class MessageManager {
   }
 
   /**
+   * ModManager 从容器取（与 `toolManager` / `permissionManager` 同一个口径）。
+   *
+   * 拿不到不是错误：纯服务调用和测试里没有 agent，也就没有插件要问。
+   */
+  private get modManager(): ModManager | undefined {
+    return this.container.has("ModManager")
+      ? this.container.get<ModManager>("ModManager")
+      : undefined;
+  }
+
+  /**
+   * 一条消息真正落进转录之前，过一遍 `session.append`（spec「转录写入前改写」）。
+   *
+   * 返回 `null` 表示插件丢了这一行（`{ deny: reason }`），caller 不存它 —— 它仍
+   * 留在内存里，界面照旧显示。插件抛错 / 超时 / 交回不合形状的东西，一律按
+   * **原样**返回：丢一条消息比放过一次改写更坏。
+   *
+   * 只作用于「还没存下的行」：已经存过的不回头改，恢复会话（`--resume`）不重跑。
+   */
+  private async rewriteBeforeAppend(message: Message): Promise<Message | null> {
+    const modManager = this.modManager;
+    if (!modManager) return message;
+
+    // `isMeta` 的行（记忆注入、SessionStart 上下文）不进 `$.session.messages()`，
+    // 插件读不到它们，也就不该改它们。
+    const projected = toModSessionMessages([message])[0];
+    if (!projected) return message;
+
+    let outcome: { message: ModSessionMessage; uuid: string; deny?: string };
+    try {
+      outcome = await modManager.dispatchSessionAppend(
+        projected,
+        sessionAppendDoorOf(message),
+        this.subagentType,
+      );
+    } catch (error) {
+      logger.warn(
+        `[Wave] session.append 钩子失败，消息 ${message.id} 按原样存：${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      return message;
+    }
+
+    if (outcome.deny !== undefined) {
+      // reason 已经由 ModManager 记过一条 info；这里只让调用点知道「不存这一行」。
+      return null;
+    }
+    return this.applySessionAppendRewrite(message, projected, outcome.message);
+  }
+
+  /**
+   * 把插件交回来的文本写回宿主消息，返回真正要落库/留在内存里的那一份。
+   *
+   * 两边都是 mods 形状，块下标一一对应，所以能逐个比：块数变了、块类型变了、
+   * `id` / `role` 变了，都按原样返回并记一条 warn（spec：不允许改身份）。
+   *
+   * 能落回去的只有 `text` 块的 `text`。工具块的正文改不了：宿主一个 `tool` 块
+   * 同时装着调用与结果，而 mods 面是 `tool_use` + `tool_result` 两块 —— 这一处
+   * 按 spec 的「粒度是我们的」处理，忽略并记一条 warn。
+   *
+   * 写回是**原地**的：这一版要活在内存里，后续请求与 `$.session.messages()`
+   * 读的才是同一个版本（spec 验收场景 1）。没被改的文本块一个字符都不动，因为
+   * mods 面按 `sessionMessageChars` 截断过，照抄回去会把长消息截短。
+   */
+  private applySessionAppendRewrite(
+    message: Message,
+    before: ModSessionMessage,
+    after: ModSessionMessage,
+  ): Message {
+    if (after.id !== before.id || after.role !== before.role) {
+      logger.warn(
+        `[Wave] session.append 改了消息的身份（id/role），按原样存：${message.id}`,
+      );
+      return message;
+    }
+    if (after.content.length !== before.content.length) {
+      logger.warn(
+        `[Wave] session.append 改了块的数量（${before.content.length} → ${after.content.length}），按原样存：${message.id}`,
+      );
+      return message;
+    }
+
+    const textBlocks = message.blocks.filter((block) => block.type === "text");
+    const rewrites = new Map<number, string>();
+    let textIndex = 0;
+    let hasToolRewrite = false;
+
+    for (let index = 0; index < before.content.length; index += 1) {
+      const prev = before.content[index]!;
+      const next = after.content[index]!;
+      if (prev.type !== next.type) {
+        logger.warn(
+          `[Wave] session.append 把块类型从 ${prev.type} 改成了 ${next.type}，按原样存：${message.id}`,
+        );
+        return message;
+      }
+      if (prev.type === "text" && next.type === "text") {
+        if (next.text !== prev.text) rewrites.set(textIndex, next.text);
+        textIndex += 1;
+        continue;
+      }
+      if (differsDeeply(prev, next)) hasToolRewrite = true;
+    }
+
+    if (hasToolRewrite) {
+      logger.warn(
+        `[Wave] session.append 改了工具块的正文：宿主的一个 tool 块同时装调用与结果，这次改写被忽略（${message.id}）`,
+      );
+    }
+
+    for (const [slot, text] of rewrites) {
+      const block = textBlocks[slot];
+      if (block?.type !== "text") continue;
+      block.content = text;
+    }
+    return message;
+  }
+
+  /**
    * Save current session
    */
   public async saveSession(): Promise<void> {
@@ -572,6 +695,21 @@ export class MessageManager {
         return;
       }
 
+      // 转录写入前改写（spec「转录写入前改写」）：每一行问一次 `session.append`，
+      // 插件可能换掉文本，也可能让这一行根本不存（`{ deny }`）。
+      const rowsToPersist: Message[] = [];
+      for (const message of unsavedMessages) {
+        const rewritten = await this.rewriteBeforeAppend(message);
+        if (rewritten) rowsToPersist.push(rewritten);
+      }
+
+      // 全被插件丢掉时不建一个只有头的会话文件（与上面 meta-only 同一条纪律）。
+      // 它们算「已处理」，否则下次 save 会把同样的事再问一遍。
+      if (rowsToPersist.length === 0) {
+        this.savedMessageCount = this.messages.length;
+        return;
+      }
+
       // Create session if needed (only when we have messages to save)
       if (this.savedMessageCount === 0) {
         // This is the first time saving messages, so create the session
@@ -581,7 +719,7 @@ export class MessageManager {
       // Use JSONL format for new sessions
       const writtenBytes = await appendMessages(
         this.sessionId,
-        unsavedMessages,
+        rowsToPersist,
         this.workdir,
         this.sessionType,
       );
@@ -935,6 +1073,10 @@ export class MessageManager {
     // compaction (saveSession ran at the start), so re-appending them would
     // duplicate those lines in the transcript — the loader relies on each
     // message id appearing exactly once (dedup-skipped, aligned with CC).
+    //
+    // `session.append` 不问这一行：它不是对话里的一行，宿主形状里是 `compact`
+    // 块，mods 面表达不出来（`toModSessionMessages` 会投影成空 content），而
+    // 允许插件把它丢掉会让内存里的折叠与转录分家（恢复会话时摘要就没了）。
     const { appendMessages } = await import("../services/session.js");
     await appendMessages(
       this.sessionId,
@@ -1869,4 +2011,36 @@ function lastIndexById(list: readonly Message[], id: string): number {
     if (list[i].id === id) return i;
   }
   return -1;
+}
+
+/**
+ * 这一行进转录时走的是哪条门（`session.append` 的 `door`，与 CC 的 `doorOf` 同名）。
+ *
+ * 我们的行只有 user / assistant 两种角色：带工具结果的 user 行是 `tool-result`、
+ * 宿主自己塞进去的（记忆注入、系统提醒）是 `note`、剩下的是用户敲的那句
+ * `prompt`；assistant 一律是 `response`。压缩摘要不走这条通道，所以没有
+ * `compaction` 一档。
+ */
+function sessionAppendDoorOf(message: Message): ModSessionAppendDoor {
+  if (message.role === "assistant") return "response";
+  if (message.blocks.some((block) => block.type === "tool")) {
+    return "tool-result";
+  }
+  return message.isMeta ? "note" : "prompt";
+}
+
+/**
+ * 两个 mods 块是不是不一样（工具块的改写检测用）。
+ *
+ * 按值比：插件交回来的 `input` 是它自己的对象，引用永远不会相等。环或
+ * `BigInt` 让 `JSON.stringify` 抛错时按「改了」算 —— 这时保守地报一条 warn
+ * 比静默放过去安全，反正工具块的改写我们本来就落不回去。
+ */
+function differsDeeply(a: unknown, b: unknown): boolean {
+  if (a === b) return false;
+  try {
+    return JSON.stringify(a) !== JSON.stringify(b);
+  } catch {
+    return true;
+  }
 }

@@ -11,6 +11,7 @@ import * as aiService from "@/services/aiService.js";
 import { createMockToolManager } from "../helpers/mockFactories.js";
 import { Container } from "@/utils/container.js";
 import { AIManager } from "@/managers/aiManager.js";
+import { ModManager } from "@/managers/modManager.js";
 
 import type { NoticeBlock, Usage } from "@/types/index.js";
 
@@ -200,6 +201,27 @@ describe("Agent - clear/compact ignored while running", () => {
       errorBlocks().some((b) => b.content?.includes("Request was aborted")),
     ).toBe(true);
     expect(onNoticeAdded).toHaveBeenCalled();
+  });
+
+  it("影子事件：/clear 先发 classic.SessionEnd(clear) 再发 SessionStart(clear)", async () => {
+    // spec「影子事件」：结束的那场报旧 session id（在 `clearMessages()` 换 id
+    // 之前发），新开的那场报 `source: "clear"`。
+    const notifyMods = vi.spyOn(ModManager.prototype, "notifyMods");
+    await agent.sendMessage("Test message");
+    await vi.waitFor(() => expect(agent.isLoading).toBe(false));
+    notifyMods.mockClear();
+
+    await agent.clearMessages();
+
+    const lifecycle = notifyMods.mock.calls
+      .filter((call) => call[0].startsWith("classic.Session"))
+      .map((call) => `${call[0]}:${JSON.stringify(call[1])}`);
+    expect(lifecycle).toEqual([
+      'classic.SessionEnd:{"reason":"clear"}',
+      'classic.SessionStart:{"source":"clear"}',
+    ]);
+
+    notifyMods.mockRestore();
   });
 
   it("/clear while idle still works — messages cleared, new session ID", async () => {

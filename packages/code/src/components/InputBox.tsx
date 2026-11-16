@@ -119,6 +119,9 @@ export const InputBox: React.FC<InputBoxProps> = ({
     planView,
     setPlanView,
     handlePlanCommand,
+    modFocusPaneId,
+    modStatuses,
+    modToasts,
   } = useChat();
 
   // Ref to hold setInputText so queue callbacks can access it before useInputManager returns
@@ -247,8 +250,10 @@ export const InputBox: React.FC<InputBoxProps> = ({
   // These views have their own useInput handlers that handle escape and
   // navigation. While one is open it owns the keyboard: InputBox must skip its
   // own handling to avoid duplicate dispatches or state update conflicts.
+  // 插件面板拿到键盘（`$.ui.open({ focus: true })`）时同理：`Esc`/`↑↓` 归面板。
   const overlayOwnsKeyboard = Boolean(
-    planView ||
+    modFocusPaneId ||
+      planView ||
       showRewindManager ||
       showResumeSelector ||
       showHelp ||
@@ -293,6 +298,21 @@ export const InputBox: React.FC<InputBoxProps> = ({
       setShowRewindManager(false);
     }
   };
+
+  // 插件贴的状态行与一次性提示（docs/specs/ecosystem/plugin-mods.md「状态带、状态
+  // 行与提示」）：状态持久可见、最多摆两条再收成 `+N`；提示复用既有 hint 槽位，
+  // 且比宿主自己的提示优先（用户刚点了面板里的按钮，最该看到的是操作结果）。
+  const modStatusLine = useMemo(() => {
+    if (modStatuses.length === 0) return null;
+    const shown = modStatuses
+      .slice(0, 2)
+      .map((line) => `${line.plugin}: ${line.text}`);
+    const rest = modStatuses.length - shown.length;
+    return rest > 0 ? `${shown.join("  ·  ")} +${rest}` : shown.join("  ·  ");
+  }, [modStatuses]);
+
+  const modToast =
+    modToasts.length > 0 ? modToasts[modToasts.length - 1]! : null;
 
   const isPlaceholder = !inputText;
   const placeholderText = INPUT_PLACEHOLDER_TEXT;
@@ -559,7 +579,10 @@ export const InputBox: React.FC<InputBoxProps> = ({
                     contextWindow={contextWindow}
                     maxOutputTokens={maxOutputTokens}
                     showLoginHint={showLoginHint}
-                    hint={hint}
+                    hint={
+                      modToast ? `${modToast.plugin}: ${modToast.text}` : hint
+                    }
+                    modStatus={modStatusLine}
                   />
                 </Box>
               </Box>

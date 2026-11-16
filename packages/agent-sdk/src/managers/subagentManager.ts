@@ -3,7 +3,13 @@ import * as fs from "fs";
 import * as path from "path";
 import type { SubagentConfiguration } from "../utils/subagentParser.js";
 import type { Message, NoticeLevel, Usage } from "../types/index.js";
-import type { ModAgentInfo, ModAgentStatus } from "../types/mods.js";
+import type {
+  ModAgentInfo,
+  ModAgentStatus,
+  ModClassicSubagentStartEvent,
+  ModClassicSubagentStopEvent,
+  ModClassicTrigger,
+} from "../types/mods.js";
 import { AIManager } from "./aiManager.js";
 import { MessageManager } from "./messageManager.js";
 import { ToolManager } from "./toolManager.js";
@@ -490,6 +496,12 @@ export class SubagentManager {
       /** Run this instance in its own temporary git worktree. */
       worktreeIsolation?: boolean;
       /**
+       * Started by a plugin-mod's `$.agent.spawn`. The child gets a
+       * `ModAgentDepth` of its own so its Agent tool refuses to spawn again —
+       * spec「派子代理」的「mod 派的子代理不再派（深度 1），防递归」。
+       */
+      modSpawned?: boolean;
+      /**
        * Start from a snapshot of the parent session's messages instead of from
        * nothing — the fork shape `/subtask` uses. See
        * {@link seedFromParentContext} for the isolation boundary.
@@ -528,6 +540,13 @@ export class SubagentManager {
     // files on disk and racing the main agent's own drain. All ReversionManager
     // consumers are truthiness-guarded, so resolving to `undefined` is safe.
     subagentContainer.register("ReversionManager", undefined);
+
+    // A mod-spawned subagent is one level deep: its own Agent tool reads this and
+    // refuses to delegate again (spec「派子代理」的深度 1)。
+    if (parameters.modSpawned) {
+      const depth = this.container.get<number>("ModAgentDepth") ?? 0;
+      subagentContainer.register("ModAgentDepth", depth + 1);
+    }
 
     // Worktree isolation must be wired before any manager is constructed: the
     // child container's "CurrentWorkdir" slot is what AIManager resolves at run time,
@@ -579,6 +598,9 @@ export class SubagentManager {
       const subagentPermissionManager = new PermissionManager(
         subagentContainer,
         {
+          // `tool.check` 的 `e.agentId`：子代理发起的调用要能被插件认出来
+          // （spec「第二判定源」）；主会话那个 PermissionManager 不带这一项。
+          agentId: subagentId,
           configuredPermissionMode:
             parameters.permissionModeOverride ??
             parentPermissionManager?.getConfiguredPermissionMode(),
@@ -721,6 +743,15 @@ export class SubagentManager {
       };
 
       this.instances.set(subagentId, instance);
+
+      // 影子事件 `classic.SubagentStart`（spec「影子事件」）：实例建好就报。只
+      // 读，返回值（CC 的 `additionalContext`）不收 —— 那会改子代理的上下文。
+      // 载荷照 CC：只有两个字段，`description` 是我们自造的（CC 的 Start 没有
+      // 它），去掉免得插件按 CC 的形状写时拿到一个多余的键。
+      this.notifyMods("classic.SubagentStart", {
+        agent_id: subagentId,
+        agent_type: parameters.subagent_type,
+      });
 
       return instance;
     } catch (error) {
@@ -1454,6 +1485,15 @@ export class SubagentManager {
     if (!instance) {
       return;
     }
+    // 这两样要在下面清空之前取：`agent_transcript_path` 是后台子代理的日志文件
+    // （`logStream` 一销毁就没了，实例上没留路径），`last_assistant_message` 来自
+    // 子代理自己的对话（`instance.messages` 自己不记录，见
+    // `addMessageToInstance` 无人调用）。
+    const transcriptPath =
+      typeof instance.logStream?.path === "string"
+        ? instance.logStream.path
+        : undefined;
+    const lastAssistantMessage = this.lastAssistantTextOf(instance);
     if (instance.backgroundTaskId) {
       const backgroundTaskManager = this.container.has("BackgroundTaskManager")
         ? this.container.get<BackgroundTaskManager>("BackgroundTaskManager")
@@ -1478,7 +1518,63 @@ export class SubagentManager {
       instance.logStream.destroy();
     }
     instance.logStream = undefined;
+    // 影子事件 `classic.SubagentStop`（spec「影子事件」）：所有结束路径（完成、
+    // 出错、中止、用户停掉）最后都走这里，所以只报一次。载荷照 CC：没有
+    // `description` / `status`（那是我们自造的，插件按 CC 的名字读不到），
+    // `stop_hook_active` 恒 `false` —— 我们这条没有续跑通道，给确定值而不是
+    // `undefined`。
+    this.notifyMods("classic.SubagentStop", {
+      agent_id: instance.subagentId,
+      agent_type: instance.subagentType,
+      stop_hook_active: false,
+      ...(lastAssistantMessage === undefined
+        ? {}
+        : { last_assistant_message: lastAssistantMessage }),
+      ...(transcriptPath === undefined
+        ? {}
+        : { agent_transcript_path: transcriptPath }),
+    });
     this.instances.delete(subagentId);
+  }
+
+  /**
+   * 子代理最后一条 assistant 消息的正文（`classic.SubagentStop` 的
+   * `last_assistant_message`）。
+   *
+   * 读实例自己的 `messageManager`：`instance.messages` 那条记录没有任何调用点，
+   * 一直是空的。
+   */
+  private lastAssistantTextOf(instance: SubagentInstance): string | undefined {
+    // 收尾路径上取的，抛出去就是一个没人接的 rejection：拿不到对话（替身只实现
+    // 了一部分、实例没走到建消息那一步）就当没有最后一条，别把整条清理链带塌。
+    const messages = instance.messageManager.getMessages();
+    if (!Array.isArray(messages)) return undefined;
+    const lastAssistant = [...messages]
+      .reverse()
+      .find((message) => message.role === "assistant");
+    if (!lastAssistant) return undefined;
+    const text = lastAssistant.blocks
+      .filter((block) => block.type === "text")
+      .map((block) => block.content)
+      .join("\n")
+      .trim();
+    return text.length > 0 ? text : undefined;
+  }
+
+  /**
+   * 派发一条只读的影子事件给 mods（spec「影子事件」）。子代理自己的容器里没有
+   * ModManager —— mod 只关心主会话看到的这层，所以走父容器的那个。
+   */
+  private notifyMods(
+    event: "classic.SubagentStart" | "classic.SubagentStop",
+    payload:
+      | ModClassicTrigger<ModClassicSubagentStartEvent>
+      | ModClassicTrigger<ModClassicSubagentStopEvent>,
+  ): void {
+    if (!this.container.has("ModManager")) return;
+    this.container
+      .get<import("./modManager.js").ModManager>("ModManager")
+      ?.notifyMods(event, payload);
   }
 
   /**

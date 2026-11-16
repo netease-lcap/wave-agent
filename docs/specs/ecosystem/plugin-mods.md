@@ -1,6 +1,6 @@
 ---
 name: "插件 MODS"
-description: "用 TSX 给插件加界面与事件钩子：mods 的编译、执行、渲染、定时器、外部进程与限额（一期渲染端是桌面端与 IDE 插件）"
+description: "用 TSX 给插件加界面与事件钩子：mods 的编译、执行、渲染、定时器、外部进程与限额（一期渲染端是桌面端、终端 CLI 与 IDE 插件）"
 order: 75
 ---
 
@@ -12,15 +12,21 @@ order: 75
 
 MODS 补上这两件事：插件带一个 TypeScript 模块（可写 TSX），运行在 agent 进程内，向宿主返回一棵声明式元素树，宿主按自己的渲染能力画出来，用户的点击/输入再回到这个模块。Claude Code 的 mods 是同一形态（`docs/specs` 外的对照调研见 PR 描述），本规格只取其最小可用子集。
 
-一期有两个渲染端：**桌面端**与**IDE 插件的聊天面板**。桌面端一方是右侧面板槽里的 mod 面板，另一方是**不属于任何面板**的三样东西 —— 输入框上方的状态带、输入框下方的常驻状态行、以及短暂提示；IDE 聊天面板（VS Code 与 JetBrains 复用同一个 webview 产物，算同一个渲染端）画同样两个站点、落在同一个面板里（差异见「在 IDE 插件里画」）。面板能自己起定时器（`$.clock`）盯住外部状态，外部程序经 `$.store` 与它交换状态和意图。外部程序可以只由用户自己跑，也可以由 mod 用 `$.process.spawn` 起（例如第三方服务的 WebSocket 客户端），它读到的内容再用 `$.prompt.submit` 投进对话。终端渲染、事件拦截改写、`Client` 动画、模型调用都留到后续期；mod 侧请求宿主新建会话本期不做（见「面板的归属」）。
+一期做**三个 surface**，画的是同一棵树：
+
+- **桌面端**：一方是右侧面板槽里的 mod 面板，另一方是**不属于任何面板**的三样东西 —— 输入框上方的状态带、输入框下方的常驻状态行、以及短暂提示。
+- **终端 CLI（`wave`）**：没有右侧栏，面板落在**输入框上方**（与桌面端的状态带同列，一次显示一个面板，多个时顶部一行 tab），三样非面板件落在输入框上下两行（见「终端形态」）。终端不做侧栏式两栏、拖动宽度与按列数决定的出现阈值，也不做终端专有的 `Raster`/`Image`。
+- **IDE 插件的聊天面板**（VS Code 与 JetBrains 复用同一份 webview 产物，算同一个渲染端，surface 名 `vscode`）：画同样两个站点、落在同一个面板里（差异见「在 IDE 插件里画」）。
+
+面板能自己起定时器（`$.clock`）盯住外部状态，外部程序经 `$.store` 与它交换状态和意图。外部程序可以只由用户自己跑，也可以由 mod 用 `$.process.spawn` 起（例如第三方服务的 WebSocket 客户端），它读到的内容再用 `$.prompt.submit` 投进对话。`Client` 动画、模型调用留到后续期；mod 侧请求宿主新建会话本期不做（见「面板的归属」）。
 
 ## 概念
 
 - **mod**：插件目录下的一个模块文件（`.tsx`/`.ts`/`.jsx`/`.js`/`.mjs`/`.cjs`），导出 `register($, on)`。一个插件可以有多个 mod。社区里的写法（`hooks/hooks.json` 的 `modules` 声明 + `register(on, options)` + handler 收 `($, e, next)`）同样认，见「兼容社区 mod」；入口文件的扩展名不改变加载方式 —— 一律编译成 CJS，`.mjs` 里的 ESM 语法照常（Claude Code 官方示例 `mods/blast-radius` 的入口就是 `.mjs`）。
 - **hooks module**：普通的 ES 模块，在 agent 进程内执行。它没有 Node 全局（`fs`/`process`/`setTimeout` 都没有），只能通过 `$` 做事。
-- **render site**：宿主界面上的一个可画点。一期有两个：`Pane`（桌面端右侧面板的一个 tab；IDE 聊天面板按宽度 dock 在对话旁或落到输入框上方）与 `AbovePrompt`（输入框上方的状态带）。
-- **surface**：真正画树的渲染端（一期是桌面端 webview 与 IDE 聊天面板）。树由 surface **拉取**：surface 对每个已挂载的 pane、以及输入框上方那条带各发一次请求，agent 进程才去问 mod；宿主不主动把树推给 surface。**VS Code 与 JetBrains 共用一个 surface 名 `vscode`**：两端画的是同一份 webview、同一张元素表、同一套布局，插件没有理由区分它们。
-- **元素树**：`Box`/`Text`/`Button`/`Input`/`Select`/`Svg`/`Link`/`Code`/`Markdown`/`Progress` 组成的嵌套声明，纯数据，可 JSON 序列化。
+- **render site**：宿主界面上的一个可画点。一期有两个：`Pane`（桌面端是右侧面板的一个 tab，终端是输入框上方那块，IDE 聊天面板按宽度 dock 在对话旁或落到输入框上方）与 `AbovePrompt`（输入框上方的状态带）。
+- **surface**：真正画树的渲染端，一期有三端：桌面端 webview、终端 CLI（Ink）与 IDE 聊天面板。树由 surface **拉取**：surface 对每个已挂载的 pane、以及输入框上方那条带各发一次请求，agent 进程才去问 mod；宿主不主动把树推给 surface。**VS Code 与 JetBrains 共用一个 surface 名 `vscode`**：两端画的是同一份 webview、同一张元素表、同一套布局，插件没有理由区分它们。
+- **元素树**：`Box`/`Text`/`Button`/`Input`/`Select`/`Svg`/`Link`/`Code`/`Markdown`/`Progress` 组成的嵌套声明，纯数据，可 JSON 序列化（`Svg` 只在桌面端与 IDE 端有，终端没有，见「元素」）。
 - **外部进程**：mod 用 `$.process.spawn` 起的子进程。它跑在沙箱外、可以是任何程序（例如连第三方服务的 WebSocket 客户端），与 mod 之间靠输出流回话。
 - **`$`**：hooks module 拿到的能力面，即「mods API」。
 
@@ -51,6 +57,10 @@ MODS 补上这两件事：插件带一个 TypeScript 模块（可写 TSX），�
 
 宿主**不缓存树**：每次请求都重新跑 `ui.render`，`revision` 在每次成功渲染时递增，webview 丢弃比已显示版本更旧的回复。这样 webview 重载、切会话回来、或多个 surface 并存时都不需要宿主额外推快照 —— surface 自己重新挂载一次即可。
 
+**终端是进程内 surface，没有 RPC 那一层。** `wave` 的 Ink 界面与 agent 同在 CLI 进程里，所以它省掉上面图里的「stdio RPC 通知 / 请求」两跳，直接调 `Agent` 的四个方法：`getModPanels()` 拿已有面板（顺带带回状态行）、`renderPane(modId, paneId)` / `renderBand()` 拉树、`handlePanelEvent()` 回传交互；`onModPanelUpdate` 回调只当「这个 pane 过期了」的信号，树照旧自己来要。两端共用同一套 `ModManager`，限额、校验、`revision`、失败保留上一帧全部一致。
+
+请求树时 `surface` 字段按端给：桌面端 `"desktop"`、终端 `"terminal"`、IDE 聊天面板 `"vscode"`（VS Code 与 JetBrains 共用这个名字）。它决定 `$.ui.resolve(e)` 发哪张元素表，也是插件判断「我现在画在哪」的唯一依据（见「元素表按端分」）。
+
 ## 编译
 
 - **逐文件转译，不打包**。每个文件单独编译，相对 import 由我们自己解析（与 Claude Code 同构），不解析 `node_modules`。
@@ -76,18 +86,18 @@ mod 跑在 `node:vm` 的独立 context 里（每个 mod 一个）：没有 `proc
 
 ### 元素
 
-| 元素       | 主要 props                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | 说明                                                                                                       |
-| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------- |
-| `Box`      | `flexDirection`（`row`/`column`/`row-reverse`/`column-reverse`）、`flexWrap`、`flexGrow`、`flexShrink`、`gap`/`columnGap`/`rowGap`、`padding`、`paddingX`/`paddingY`、`paddingTop`/`Right`/`Bottom`/`Left`、`margin`、`marginX`/`marginY`、`marginTop`/`Right`/`Bottom`/`Left`、`width`/`height`/`minWidth`/`minHeight`、`borderStyle`、`borderColor`、`borderDimColor`、`backgroundColor`、`alignItems`、`alignSelf`、`justifyContent`、`display`、`position`、`top`/`left`/`right`/`bottom`、`overflow`、`hover` | 布局容器，用 CSS flex 实现                                                                                 |
-| `Text`     | `color`、`backgroundColor`、`weight`、`size`、`bold`、`italic`、`dimColor`、`underline`、`strikethrough`、`inverse`、`wrap`、`hover`                                                                                                                                                                                                                                                                                                                                                                               | 一段文本                                                                                                   |
-| `Button`   | `key`、`label`、`onPress`、`variant`（`"primary"`/`"secondary"`）、`plain`、`dimColor`、`role`（只有 `"dismiss"`：这个按钮关闭它所在的站点）、`autoFocus`、`hotkey`（一个小写字母或数字：面板聚焦时按下等于点它）、`hover`                                                                                                                                                                                                                                                                                         | 点击后触发 `ui.press`                                                                                      |
-| `Input`    | `key`、`label`、`placeholder`、`value`、`submitLabel`、`onSubmit`、`autoFocus`、`rows`                                                                                                                                                                                                                                                                                                                                                                                                                             | 提交后触发 `ui.input`                                                                                      |
-| `Select`   | `key`、`options`、`onSelect`、`label`、`value`、`autoFocus`                                                                                                                                                                                                                                                                                                                                                                                                                                                        | 下拉选择，选中后触发 `ui.select`；`options` 是 1–64 个 `{ value, label? }`，`value` 唯一                   |
-| `Svg`      | `source`、`alt`、`width`、`height`、`isInteractive`                                                                                                                                                                                                                                                                                                                                                                                                                                                                | 一段 SVG 标记内联画出来；`source` 非空且 ≤131072 字符，`alt` 必填（没有它等于没有可读文本）                |
-| `Link`     | `href`、`label`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | 只允许 `https:` 与本地回环 `http:`；点击交给宿主用系统浏览器打开（`openExternal`），不在 webview 里导航    |
-| `Code`     | `source`、`language`、`path`、`startLine`、`wrap`                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | 一期用 `<pre><code>` 原样展示（不做语法高亮），可选一行文件路径；`wrap` 只有 `"wrap"`/`"truncate-end"`     |
-| `Markdown` | `text`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | `marked` + `DOMPurify` 渲染（与 webview 既有 markdown 用法同一套）                                         |
-| `Progress` | `label`、`value`、`max`、`valueText`、`color`                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | 一条进度：`value/max` 夹到 0–1（`max` 缺省 1），`valueText` 缺省是百分比；有 `value` 时是两行（标签 + 条） |
+| 元素       | 主要 props                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | 说明                                                                                                                                           |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Box`      | `flexDirection`（`row`/`column`/`row-reverse`/`column-reverse`）、`flexWrap`、`flexGrow`、`flexShrink`、`gap`/`columnGap`/`rowGap`、`padding`、`paddingX`/`paddingY`、`paddingTop`/`Right`/`Bottom`/`Left`、`margin`、`marginX`/`marginY`、`marginTop`/`Right`/`Bottom`/`Left`、`width`/`height`/`minWidth`/`minHeight`、`borderStyle`、`borderColor`、`borderDimColor`、`backgroundColor`、`alignItems`、`alignSelf`、`justifyContent`、`display`、`position`、`top`/`left`/`right`/`bottom`、`overflow`、`hover` | 布局容器，用 CSS flex 实现                                                                                                                     |
+| `Text`     | `color`、`backgroundColor`、`weight`、`size`、`bold`、`italic`、`dimColor`、`underline`、`strikethrough`、`inverse`、`wrap`、`hover`                                                                                                                                                                                                                                                                                                                                                                               | 一段文本                                                                                                                                       |
+| `Button`   | `key`、`label`、`onPress`、`variant`（`"primary"`/`"secondary"`）、`plain`、`dimColor`、`role`（只有 `"dismiss"`：这个按钮关闭它所在的站点）、`autoFocus`、`hotkey`（一个小写字母或数字：面板聚焦时按下等于点它）、`hover`                                                                                                                                                                                                                                                                                         | 点击后触发 `ui.press`                                                                                                                          |
+| `Input`    | `key`、`label`、`placeholder`、`value`、`submitLabel`、`onSubmit`、`autoFocus`、`rows`                                                                                                                                                                                                                                                                                                                                                                                                                             | 提交后触发 `ui.input`                                                                                                                          |
+| `Select`   | `key`、`options`、`onSelect`、`label`、`value`、`autoFocus`                                                                                                                                                                                                                                                                                                                                                                                                                                                        | 下拉选择，选中后触发 `ui.select`；`options` 是 1–64 个 `{ value, label? }`，`value` 唯一                                                       |
+| `Svg`      | `source`、`alt`、`width`、`height`、`isInteractive`                                                                                                                                                                                                                                                                                                                                                                                                                                                                | 一段 SVG 标记内联画出来；`source` 非空且 ≤131072 字符，`alt` 必填（没有它等于没有可读文本）。**桌面端与 IDE 端有，终端的元素表里没有这个名字** |
+| `Link`     | `href`、`label`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | 只允许 `https:` 与本地回环 `http:`；点击交给宿主用系统浏览器打开（`openExternal`），不在 webview 里导航                                        |
+| `Code`     | `source`、`language`、`path`、`startLine`、`wrap`                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | 一期用 `<pre><code>` 原样展示（不做语法高亮），可选一行文件路径；`wrap` 只有 `"wrap"`/`"truncate-end"`                                         |
+| `Markdown` | `text`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | `marked` + `DOMPurify` 渲染（与 webview 既有 markdown 用法同一套）                                                                             |
+| `Progress` | `label`、`value`、`max`、`valueText`、`color`                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | 一条进度：`value/max` 夹到 0–1（`max` 缺省 1），`valueText` 缺省是百分比；`label` 必填（说什么在做）；有 `value` 时是两行（标签 + 条）         |
 
 `Box` 的间距既可写数字（px），也可写 `'xs' | 'sm' | 'md' | 'lg' | 'xl'`。
 
@@ -133,41 +143,84 @@ mod 跑在 `node:vm` 的独立 context 里（每个 mod 一个）：没有 `proc
 
 `flexGrow`/`flexShrink`/`flexWrap` 用 Claude Code 的同名 props，作用于**这个 `Box` 在父容器里**怎么伸缩与折行。`Button` 不收这三个名字 —— 宿主给按钮的默认是 `flex: 0 0 auto`，一排按钮不会被压成竖排；带里按钮多到放不下时，给那一行的 `Box` 写 `flexWrap="wrap"` 折到下一行。
 
-`Select` / `Svg` / `Progress` 与前面七个的差别只有一条：**它们的 props 里有非原始值**（`Select.options` 是对象数组）。所以「prop 必须可序列化成原始值」这条规则按元素区分 —— 只有 `Select.options` 走数组，其余元素照旧只认字符串/数字/布尔/null。三个都是**叶子**（带 children 会被校验拒掉），而且它们的语义全在 prop 上（选哪几项、画哪段图、填充到几分之几），所以除了名字白名单还查取值：空 `options`、重复 `value`、超限的 `source`、非数字的 `value/max` 都当场点名。
+`Select` / `Svg` / `Progress` 与前面七个的差别只有两条：**它们的 props 里有非原始值**（`Select.options` 是对象数组 —— 全表唯一一处），以及**三个都是叶子**（带 children 会被校验拒掉）。所以「prop 必须可序列化成原始值」这条规则按元素区分 —— 只有 `Select.options` 走数组，其余元素照旧只认字符串/数字/布尔/null。叶子的语义全在 prop 上（选哪几项、画哪段图、进度到哪），所以除了名字白名单还查取值：空 `options`、重复 `value`、超限的 `source`、非数字的 `value`/`max`、缺 `label` 的进度条，都当场点名。
 
 **被丢掉的对象 prop 要出声**：`h()` 只留原始值（`Select.options` 与 `hover` 两处例外），其余非原始值到不了树上。这类 prop（`style={{…}}`、`className` 的变体）以前是静默丢弃 —— 作者看到「写了没效果、也没有报错」。现在每丢一个记一条 warn，点名元素与 prop。
 
 上面这些名字从 `wave-agent-sdk/mods` 导入，那个子路径就是它们的 props 类型来源（`Box`、`Text`… `Fragment` 加各自的 `*Props`），插件作者写 TSX 时靠它拿类型补全；运行时值由沙箱的 `require` 提供同一份表（`$.ui.resolve(e)` 拿到的也是它）。**两种写法编出同一种树**：JSX（`<Text>hi</Text>`，编译器把 tag 交给 `__wave.h`）与调用式（`Text({ children: "hi" })`，Claude Code 官方示例就这么写）—— 构造器带 `elementType`，`h()` 按它归一，所以画出来的节点类型都是 `Text`。
 
+### 元素表按端分
+
+三端画的元素**不是同一张表**：`$.ui.resolve(e)` 按 `e.surface` 给这一端能画的那几张构造器。桌面端与 IDE 端各 10 个（`Box`/`Text`/`Button`/`Input`/`Select`/`Svg`/`Link`/`Code`/`Markdown`/`Progress`，两端逐项相同 —— VS Code 与 JetBrains 画的就是同一份 webview），终端 9 个（同一张表去掉 `Svg`）。这与 Claude Code 的分表方式一致 —— 它四张表各差几项（`terminal` 12 个，有 `Raster`/`Image` 而没有 `Svg`；`desktop` 12 个，反过来有 `Svg`/`Shader`；`vscode` 是那九个加 `Progress`），其中 `Progress` 在**每一端都有**。我们的差别只在没做 `Client`（三端都没）、`Shader`（桌面）、`Raster`/`Image`（终端）。
+
+**`Svg` 在终端拿不到**：终端没有矢量画布，画出来只会是一堆坐标文本，所以名字压根不进终端那张表 —— 插件在终端里 `$.ui.resolve(e).Svg` 是 `undefined`，照桌面端写的那段直接报错，错误落在面板顶部。要兼顾两端就按 `e.surface` 分支：`"terminal"` 时改画几行 `Text` 或 `Box` 拼的条。
+
+**`Progress` 两端都有**：终端用一行字符条（`█` 填、`░` 空）加百分比文本，宽度按站点给的行宽算，`value`/`max`/`valueText` 的语义与桌面端逐字相同。Claude Code 的终端表里也有它，所以「进度条」这类 mod 不必自己拿 `Box` + `Text` 拼字符条（社区里现在的确都是自己拼的，见「终端渲染」）。
+
+**退回模块导入也过不了校验**：`import { Svg } from "wave-agent-sdk/mods"` 拿得到构造器（那是并集表，不按端裁剪），但用它拼出的树在终端请求里会被 `validateModTree` 拒掉并点名「terminal 的元素表里没有 Svg」，不会静默画成空白。
+
+### 终端渲染
+
+终端与桌面端画**同一棵树**，差别只在终端能表达什么。终端那张表里的九类都直译成 Ink：`Box` → 伸缩盒（`flexDirection`/`gap`/`padding`/`border*` 照抄），`Text` → 一段带颜色的字，`Button` → 一行「字形 + label」，`Input` → 一个焦点行，`Select` → 当前值一行、展开时列候选，`Progress` → 一行字符条（`█`/`░`）+ 百分比，宽度取站点行宽、上限 40 列，`Code`/`Markdown` 复用 CLI 现有的高亮与终端 markdown 渲染，`Link` 只把 URL 当文本显示（终端里点了不跳）。
+
+三个桌面端特有、终端里自然失效的 prop，**不算校验错误**（树照收，只是画面上没有效果）：`hover`（终端没有指针移入事件）、`position="absolute"`（按普通盒子画，不脱流）、`Box` 的 `overflow` 滚动（滚动归终端这个 pane 自己，一层就够）。
+
+### 终端形态（输入框上方）
+
+终端没有右栏，面板只能落在**输入框上方**。纵向自上而下是：`pane`（面板）→ 输入框上方的带 → 输入框 → 输入框下方那一行（权限模式提示在左，`$.ui.status` 与提示在右）。
+
+- **一次显示一个 pane**。同时登记了多个时，pane 区顶部多一行 tab：`1: 待办   2: 检查`，数字是该 pane 在当前列表里的序号（超过 9 个只列前 9 个）。只有一个 pane 时不画 tab 行。
+- **默认不抢焦点**：面板出现后键盘还在输入框里，用户可以接着打字。`$.ui.open({ focus: true })`（或用户敲的 `/命令` 带出来的面板）才把焦点直接送进面板。
+- **焦点在面板时**：`↑`/`↓` 在控件之间移动，`Enter` 触发按钮或提交 `Input`，`hotkey` 字母直接触发对应按钮，`PageUp`/`PageDown` 翻页，数字键 `1`–`9` 切到对应面板；焦点在 `Input` 里时所有可打印键归输入框（与桌面端同一条纪律）。
+- **退出用 `Esc`**：焦点在面板时按 `Esc` **收起这个面板并把焦点还给输入框**（只是这一端不再画它，mod 不会收到 `ui.close` —— 与桌面端关掉 tab 同一纪律；mod 下一次 `$.ui.open` / `invalidate` 会重新出现）。焦点在输入框时 `Esc` 完全归输入框（清空提示那套语义照旧），不碰面板。`Ctrl+C` 等宿主键不受影响。
+- **高度**：面板正文封顶 12 行、带每条封顶 6 行（终端比这矮时按实际可用高度缩，缩不下就滚）。两者与输入区合计不得超过终端 `rows` 的 2/3：先压带（每条最低 3 行）、再压面板（最低 6 行），仍放不下时面板内部滚动，消息区不被挤出去。
+- **不做**：手动把焦点移进面板的独立键（裸 `Tab` 已是补全/选择确认的键，不抢）、焦点在输入框时用 `Esc` 收盘；侧栏两栏与拖动宽度、按列数决定的出现阈值、`$.ui.open` 的 `rows`/`columns` 字段（我们本来就不收）、`Raster`/`Image`、重绘对话流里的消息与工具行。
+
 ### 事件（一期）
 
 `register($, on)` 的 `on(name, handler)` 注册**生命周期钩子**：
 
-| 事件                                  | 触发时机                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | 钩子可返回                                                       |
-| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
-| `session.start`                       | 会话初始化完成、第一个 prompt 之前                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | 无（返回值忽略；面板得在这里 `$.ui.open`）                       |
-| `prompt.submit`                       | 用户审阅并提交一条 prompt（含 mod 自己调 `$.prompt.submit`），**模型请求还没发出之前**，见下                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | `{ context?: string[] }`：塞给模型的额外上下文                   |
-| `turn.start`                          | 一轮开始（用户消息已进上下文、第一个模型请求之前）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | 无（返回值忽略）                                                 |
-| `turn.step`                           | 一轮里**每发出一次模型请求之前**（工具循环的每一步），`e.step` 从 1 起                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | 无（返回值忽略）                                                 |
-| `ui.render`                           | surface 请求某个 render site 的树时（宿主不缓存，每次请求都重新问 mod）；事件带三个正交的维度：`e.surface` 是画这棵树的那一端（`desktop` 或 `vscode`，后者含 VS Code 与 JetBrains 两个宿主）、`e.component` 是站点名（一期有 `Pane` / `AbovePrompt` / `AbovePromptList`）、`e.requestId` 是该站点的哪个实例（`Pane` 是 `$.ui.open({ id })` 的 id，带固定是 `above-prompt`）、`e.plugin` 是这棵树归哪个插件；信封就是 Claude Code 的那五个加 `props`：`{ surface, component, requestId, plugin, viewport, props }`，不多不少；`e.props` 是站点给的版面事实（按站点分的字段见下） | 元素树                                                           |
-| `turn.complete`                       | 一轮对话结束（答完，或被用户中断），见下                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | 无（返回值忽略）                                                 |
-| `session.measure`                     | 一次带 usage 的响应回来后、token 计数已更新，见下                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | 无（返回值忽略）                                                 |
-| `session.compact`                     | 上下文压缩**完成后**（自动或手动 `/compact`），`e` 是 `{ trigger, tokensBefore, tokensAfter }`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | 无（返回值忽略）                                                 |
-| `tool.call`                           | 一次工具调用**执行之前**（参数已通过 schema 校验、工具还没跑、权限还没问），见下                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | `{ deny: string }`：拦下这次调用，模型收到这段文本作为错误结果   |
-| `tool.run`                            | 一次工具调用**被放行、即将真的执行**（`tool.call` 与 PreToolUse 钩子都过了），见下                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | `{ deny: string }`：拦下不执行；`next(e)` 才真正执行并把结果交回 |
-| `classic.PermissionRequest`           | 一次工具审批**即将**弹给用户时（`PermissionRequest` 钩子已放行、宿主询问用户之前），见下                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | 无（返回值忽略；**没有**批准/拒绝通道）                          |
-| `command.run`                         | 用户执行了一个由 `$.command.register` 注册的命令，或 mod 自己调 `$.command.run`（见「注册命令」）                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | `{ text }`：这一行要变成的 prompt                                |
-| `session.end`                         | 会话销毁（关掉这条会话、进程退出）**之前**；返回后该会话的 mod 实例、定时器与外部进程全部撤销，其面板**不再**逐条发 `ui.close`                                                                                                                                                                                                                                                                                                                                                                                                                                                  | 无（返回值忽略）                                                 |
-| `ui.close`                            | 一个**由 mod 打开**的面板被关掉、且 mod 实例还活着：用户点 ×、mod 调 `$.ui.close`、`/reload-plugins`。`e.id` 是 pane id                                                                                                                                                                                                                                                                                                                                                                                                                                                         | 无（返回值忽略）                                                 |
-| `ui.press` / `ui.input` / `ui.select` | 用户用了**这个 mod 自己画的**控件（`Button` 点下去、`Input` 提交、`Select` 选中），**在控件自己的回调之前**触发；事件与 Claude Code 的 `UiPressArgument` / `UiInputArgument` / `UiSelectArgument` 同形：`plugin`（谁画的）、`element`（控件的 `key`）、`component`（`Pane` 或 `AbovePrompt`）、`requestId`（哪个实例，也就是 pane id）、`surface`，`ui.input` 另有 `kind`（我们只有提交一条通道，恒为 `"submit"`）与 `value`，`ui.select` 另有 `value`                                                                                                                          | 无（返回值忽略；**没有**改文本/拦下回调的通道）                  |
+| 事件                                  | 触发时机                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | 钩子可返回                                                                                                                                                                                                                                                         |
+| ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `session.start`                       | 会话初始化完成、第一个 prompt 之前                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | 无（返回值忽略；面板得在这里 `$.ui.open`）                                                                                                                                                                                                                         |
+| `prompt.submit`                       | 用户审阅并提交一条 prompt（含 mod 自己调 `$.prompt.submit`），**模型请求还没发出之前**，见下                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | `{ context?: string[] }`：塞给模型的额外上下文                                                                                                                                                                                                                     |
+| `prompt.compose`                      | 宿主组装系统提示词时（一轮一次），见「系统提示词与附件」                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | `{ sections }`：`{ id, text, scope }` 数组，`scope` 取 `shared` / `session`，按发出的顺序                                                                                                                                                                          |
+| `prompt.section`                      | 系统提示词里每个**命名段**一次，`e.name` 是它在 `prompt.compose` 里的 `id`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | `{ text }`，或用 `{ text: null }` 让这一段不出现（见「系统提示词与附件」）                                                                                                                                                                                         |
+| `prompt.context`                      | 每条会话**一次**，在第一条消息发出之前                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | `{ blocks }`：整场会话都要带的上下文块，每块 `{ name, text }`（见「系统提示词与附件」）                                                                                                                                                                            |
+| `prompt.attachment`                   | 宿主自己要往对话里加一条消息之前（`system-reminder`、记忆注入、后台任务通知…），`e.type` 是这一类的名字                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | `{ text }`，或用 `{ text: null }` 让这条不出现                                                                                                                                                                                                                     |
+| `prompt.edit`                         | 用户在输入框里做完一次编辑（一次按键、一次粘贴、一次删除），`e` 是 `{ origin, key?, text, cursor, start, end, inputText }`，见「输入框里的建议」                                                                                                                                                                                                                                                                                                                                                                                                                                                            | `next(e)` 解析到 `{ text, cursor }`：改写后的输入框；外层返回自己的那份也算数                                                                                                                                                                                      |
+| `prompt.suggest`                      | 一个建议要摆进输入框时（引擎自己的推荐、或某个 mod 的 `$.prompt.suggest`），`e` 是 `{ text, origin }`，见「输入框里的建议」                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | `{ isShown: boolean }`：给出即是最终答案（`true` 不再问宿主，`false` 就是不摆）                                                                                                                                                                                    |
+| `turn.start`                          | 一轮开始（用户消息已进上下文、第一个模型请求之前）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | 无（返回值忽略）                                                                                                                                                                                                                                                   |
+| `turn.step`                           | 一轮里**每发出一次模型请求之前**（工具循环的每一步），`e` 是 `{ turnId, index, model, effort?, messageCount, agentId? }`，`index` 从 0 起；handler 可以写成 async generator（见「轮次内外的事件」）                                                                                                                                                                                                                                                                                                                                                                                                         | `next(e)` 把这次请求交给下游（`yield*` 可转发中途产出）；返回 `{ ...e, model }` / `{ ...e, effort }` 改写**这一次**请求，宿主等答案落地后才发请求（见「轮次内外的事件」）                                                                                          |
+| `ui.render`                           | surface 请求某个 render site 的树时（宿主不缓存，每次请求都重新问 mod）；事件带三个正交的维度：`e.surface` 是画这棵树的那一端（`desktop` / `terminal` / `vscode`，后者含 VS Code 与 JetBrains 两个宿主）、`e.component` 是站点名（一期有 `Pane` / `AbovePrompt` / `AbovePromptList`）、`e.requestId` 是该站点的哪个实例（`Pane` 是 `$.ui.open({ id })` 的 id，带固定是 `above-prompt`）、`e.plugin` 是这棵树归哪个插件；信封就是 Claude Code 的那五个加 `props`：`{ surface, component, requestId, plugin, viewport, props }`，不多不少；`e.props` 是站点给的版面事实（`bodyColumns` / `maxRows` 等，见下） | 元素树                                                                                                                                                                                                                                                             |
+| `turn.complete`                       | 一轮对话结束（答完，或被用户中断），见下                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | 无（返回值忽略）                                                                                                                                                                                                                                                   |
+| `session.measure`                     | 一次带 usage 的响应回来后、token 计数已更新，见下                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | 无（返回值忽略）                                                                                                                                                                                                                                                   |
+| `session.compact`                     | 上下文压缩**完成后**（自动或手动 `/compact`），`e` 是 `{ trigger, tokensBefore, tokensAfter }`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | 无（返回值忽略）                                                                                                                                                                                                                                                   |
+| `session.append`                      | 对话要**存下一行**之前（用户消息、一条 assistant 文本块、一个工具结果、一条通知），见「转录写入前改写」                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | `next({ ...e, message })`：改这一行的文本块；`{ deny: reason }` 不存这一行；`e` / 返回值都带 `uuid`（= `message.id`）与 `door`                                                                                                                                     |
+| `tool.call`                           | 一次工具调用**执行之前**（参数已通过 schema 校验、工具还没跑、权限还没问），见下                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | `next(e)` 就是**执行这次调用**（`settings.json` 的 PreToolUse 与执行都在里面，resolve 到 `{ result }`，CC 同一条链）；`{ deny: string }` 拦下不跑；`{ result }` 是这次调用的结果 —— 可以是 `next()` 真跑出来的改写，也可以自己造（见「把我们自己的工具交给模型」） |
+| `tool.check`                          | 一次工具调用**能不能跑**：`tool.call` 与 `classic.PreToolUse` 都放行之后、权限规则与模式给决定之前；`next(e)` 解析到的就是「规则 + 模式 + 前面那些钩子」已经形成的决定，见「第二判定源」                                                                                                                                                                                                                                                                                                                                                                                                                    | `{ decision: "allow" \| "ask" \| "deny", reason? }`：只能**收紧**，不能放宽（见「第二判定源」）                                                                                                                                                                    |
+| `tool.describe`                       | 一个工具的描述**第一次要发给模型**时（每个工具一次），见「给工具、技能、命令写描述」                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | `{ description, breakPromptCache? }`；`isDeferred` 一期不收（我们没有 tool search）。`breakPromptCache: true` 才让会话里存的那份失效                                                                                                                               |
+| `tool.register`                       | 会话第一次把工具清单交给模型之前（`session.start` 之后、第一个请求之前），每个 mod 一次，见「把我们自己的工具交给模型」                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | 无（返回值忽略；handler 里调 `$.tool.register`）                                                                                                                                                                                                                   |
+| `agent.offer`                         | 引擎把一个子代理类型摆到模型面前时（Agent 工具的清单里一次、真正派发时再一次），见「派子代理」                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | `{ isOffered }`：`false` 既不入清单、也拒绝派发                                                                                                                                                                                                                    |
+| `agent.spawn`                         | Agent 工具（或 `$.agent.spawn`）即将起一个子代理、模型还没解析时，见「派子代理」                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | `next(e)` 解析到 `{ model, agentId? }`；改 `e.prompt` / `e.description` 就是子代理真正拿到的东西                                                                                                                                                                   |
+| `classic.PermissionRequest`           | 一次工具审批**即将**弹给用户时（`PermissionRequest` 钩子已放行、宿主询问用户之前），见下                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | 无（返回值忽略；**没有**批准/拒绝通道）                                                                                                                                                                                                                            |
+| `classic.*`（19 个镜像）              | 各自挂在宿主已有的某个时刻上（会话开局/销毁、一轮收尾、用户提交、换模型、工具跑完、压缩前后、目录变了…），逐条见「影子事件」                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | 只有两条有返回通道，且都是我们本来就有的能力换了个名字：`classic.Stop` 的 `{ additionalContext }` 让这一轮续跑、`classic.PreToolUse` 的 `{ deny }` 在工具跑之前拦下它。其余返回值一律忽略                                                                          |
+| `command.run`                         | 用户执行了一个由 `$.command.register` 注册的命令，或 mod 自己调 `$.command.run`（见「注册命令」）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | `{ text }`：这一行要变成的 prompt                                                                                                                                                                                                                                  |
+| `command.describe`                    | 命令列表要画时，每个命令（内置、插件、`$.command.register` 注册的）问一次，宿主等答案再画                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | `{ description, argumentHint, isHidden }`（见「给工具、技能、命令写描述」）                                                                                                                                                                                        |
+| `skill.prompt`                        | 一个技能的正文被展开给模型时（`/名字` 调用、或模型自己调）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | `{ text }`：换掉技能正文                                                                                                                                                                                                                                           |
+| `session.end`                         | 会话销毁（关掉这条会话、进程退出）**之前**；返回后该会话的 mod 实例、定时器与外部进程全部撤销，其面板**不再**逐条发 `ui.close`                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | 无（返回值忽略）                                                                                                                                                                                                                                                   |
+| `ui.close`                            | 一个**由 mod 打开**的面板被关掉、且 mod 实例还活着：用户点 ×、mod 调 `$.ui.close`、`/reload-plugins`。`e.id` 是 pane id                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | 无（返回值忽略）                                                                                                                                                                                                                                                   |
+| `ui.press` / `ui.input` / `ui.select` | 用户用了 mod 画的一个控件（`Button` 点下去、`Input` 提交、`Select` 选中），**在控件自己的回调之前**触发；事件与 Claude Code 的 `UiPressArgument` / `UiInputArgument` / `UiSelectArgument` 同形：`plugin`（谁画的）、`element`（控件的 `key`）、`component`（`Pane` 或 `AbovePrompt`）、`requestId`（哪个实例，也就是 pane id）、`surface`，`ui.input` 另有 `kind`（我们只有提交一条通道，恒为 `"submit"`）与 `value`，`ui.select` 另有 `value`，见「控件的交互事件」                                                                                                                                        | `{ element?, value? }`：改写这次交互派给哪个控件、带什么值                                                                                                                                                                                                         |
+
+=======
 
 `ui.render` 的事件要交给 `$.ui.resolve(e)` 换元素表（见下）；表外的元素名会被 `validateModTree` 拦下。
 
 `ui.render` 的 `e.props` 是**站点给的版面事实**，字段按站点分，与 Claude Code 的 render sites 表逐项对齐：`Pane` 是 `title`、`isFocused`（恒 `false`：我们的面板不接管键盘焦点）、`bodyColumns`（正文宽度，单位字符）、`placement`、`scroll`（`{ offset, bodyRows }`）、`view`；`AbovePrompt` / `AbovePromptList` 是 `hasSurvey` / `isCollapsed` / `isWorking`（都是 `false`，协议占位）、`maxRows`（这条带一次最多显示多少行）、`bodyColumns`、`scroll`、`view`。mod 按 `bodyColumns` 断行、按 `scroll.bodyRows` 决定要不要自己滚，比猜宽度稳。**不跨站点多给字段**：给 `Pane` 塞 `maxRows` 会让照 CC 写的 mod 在我们这里能跑、到 CC 上读到 `undefined`。
 
-`e.viewport` 是**这一端有多大**：`{ columns, rows, isFullscreen }`，`columns` / `rows` 是该端画布的字符宽高（按它所画的字体的字宽 / 行高折算），`isFullscreen` 是「这一端有没有分屏」。三个字段与 Claude Code 同形，缺了就说明这个 surface 还没量到（不填 `false` 冒充测量结果）。
+**桌面端与 IDE 端的数字由 surface 实测上报**：`e.viewport` 是**这一端有多大** —— `{ columns, rows, isFullscreen }`，`columns` / `rows` 是画布的字符宽高（按它所画字体的字宽 / 行高折算），`isFullscreen` 是「这一端有没有分屏」。三个字段与 Claude Code 同形，缺了就说明这个 surface 还没量到（不填 `false` 冒充测量结果）。surface 在请求树时把量到的字符宽高带上来（`modPanelRender` / `modBandRender` 的 `columns` / `rows` / `bodyColumns`），引擎把它原样填进 `e.viewport` 与 `e.props.bodyColumns`；`bodyColumns` 量的是**这块面板自己的宽**（dock 时右侧那一列、inline 与带时输入区那一列），窄到一列按钮摆不下时 mod 自己能换排布。surface 没报的字段按缺省值处理（正文 100 字符、面板 24 行、带 8 行），所以「宿主还没量到」不会让面板变空；`placement: "inline"` 时 `scroll.bodyRows` 是那个 **12 行**上限（见「在 IDE 插件里画」），dock 时仍是面板的行数上限。
 
-**这些数字由 surface 实测上报，不是插件侧的猜测**：surface 在请求树时把量到的字符宽高带上来（`modPanelRender` / `modBandRender` 的 `columns` / `rows` / `bodyColumns`），引擎把它原样填进 `e.viewport` 与 `e.props.bodyColumns`；`bodyColumns` 量的是**这块面板自己的宽**（dock 时右侧那一列、inline 与带时输入区那一列），窄到一列按钮摆不下时 mod 自己能换排布。surface 没报的字段按缺省值处理（正文 100 字符、面板 24 行），所以「宿主还没量到」不会让面板变空。`placement: "inline"` 时 `scroll.bodyRows` 是那个 **12 行**上限（见「在 IDE 插件里画」），dock 时仍是面板的行数上限。
+**终端这边量得到，就直接报真实值**：Ink 侧拿得到终端行列数，所以 `bodyColumns` 是这块区域的真实宽度（减掉边框）、`maxRows` 与 `scroll.bodyRows` 是终端这块的实际可用行数（见「终端形态」的高度上限）。插件在终端里按这两个数分页是准的，在桌面端与 IDE 端仍要按「可能比实际矮」来写。
 
 **面板被关掉时有 `ui.close`**（`e.id` 是被关的那个 pane）。Claude Code 同样有这个名字 —— 它的首方插件在自己的 scan 声明里把 `ui.close` 列进可监听钩子，与 `ui.render` 并列。发完之后宿主内部清理（撤销该 pane 的回调表与登记，之后的请求不再返回树）；`ui.close` 只是告知，**不能**拦下关闭。会话销毁时不逐条发它，只发一次 `session.end`（实例马上整体丢弃，逐条通知没有接收方）。mod 想确认面板还在不在，仍可用 `$.ui.panes()` 查。
 
@@ -181,14 +234,24 @@ mod 跑在 `node:vm` 的独立 context 里（每个 mod 一个）：没有 `proc
 
 `Select` 的选中值**不会**自动变成元素自己的 `value`：宿主只报「选了哪个」，下一帧画什么由 `ui.render` 的返回值决定（mod 想让它停在新的选中项，就把 `value` 一起写进状态）。这与 `Input` 提交后清空是同一条纪律 —— 控件的状态归 mod，不归 webview。
 
+### 控件的交互事件（`ui.press` / `ui.input` / `ui.select`）
+
+同一次交互还会**先跑一遍同名钩子**，再跑上面那些回调：`ui.press`（按了 `Button`）、`ui.input`（提交了 `Input`）、`ui.select`（选了 `Select` 的一项）。钩子在回调之前跑，所以 mod 能看见「用户按的是哪个控件、输入了什么」，再决定回调收到什么。
+
+- **`e` 的形状**：`{ plugin, component, requestId, surface, element, kind?, value? }`，与 Claude Code 的 `UiPressArgument` / `UiInputArgument` / `UiSelectArgument` 同形。`plugin` 是画这个控件的 mod 自己、`component` 是**站点**（`Pane` 或 `AbovePrompt`，不是控件类型 —— 控件靠 `element` 认）、`requestId` 是这块面板的实例 id（pane id，带上是 `above-prompt`）、`surface` 是这次交互来自哪一端（`desktop` / `terminal` / `vscode`）、`element` 就是控件的 `key`；`kind` 只有 `ui.input` 带（我们只有提交一条通道，恒为 `"submit"`），`value` 只有 `ui.input` / `ui.select` 带。社区里按 `e.element` 认控件、按 `e.value` 读输入。
+- **默认只对自己画的控件触发**：不写 matcher 的钩子只收到自己画的那个控件的事件；要看别人画的控件，matcher 写成 `{ plugin: "other-mod" }`（`"*"` 也行，等于「谁的都看」）—— 这是 Claude Code 的 matcher 语义：`plugin` 是这条事件上唯一被钉住的键。
+- **返回 `{ element?, value? }` 改写这次交互**：`element` 换派给哪个控件，`value` 换回调收到的值。改写只对这一次生效，**不落进元素树** —— 下一帧画什么仍由 `ui.render` 决定。`element` 在那个 pane 里没有对应回调时按「没人接」丢掉并记一条 debug，不会串到别的 pane。
+- **`value` 不合法就退回原值**：`ui.input` / `ui.select` 的 `value` 必须是字符串，别的形状（数字、对象）丢掉这一项并 warn，控件回调仍拿到用户原本的值。
+- **三端一致**：桌面端、webview 与终端都发（终端里的输入/选择走同一条 `modPanelEvent`），没有 `prompt.edit` 那种「终端不发」的差异 —— 这里观察的是**已经发生的**一次控件操作，不与用户正在打字冲突。
+
 ### 轮次内外的事件（只读）
 
-`prompt.submit` / `turn.start` / `turn.step` / `session.compact` / `session.end` / `ui.close` 六个事件回答「一轮对话里正在发生什么」「会话什么时候没了」。除 `prompt.submit` 能往上下文里塞文本，其余返回值一律忽略。
+`prompt.submit` / `turn.start` / `turn.step` / `session.compact` / `session.end` / `ui.close` 六个事件回答「一轮对话里正在发生什么」「会话什么时候没了」。有返回通道的只有两个：`prompt.submit` 往上下文里塞文本、`turn.step` 改写这一次请求用的模型或推理强度；其余返回值一律忽略。
 
 - **`prompt.submit` 只在用户敲的那条 prompt 上触发**：mod 自己经 `$.prompt.submit` 投进来的**不再触发**它 —— 否则 handler 里再 submit 一次就是无限环。触发点在「用户消息已进上下文、本轮第一个模型请求还没发出」之间，与 Claude Code 同一个位置（它的 `prompt.submit` 钩子在 `next(e)` 里跑完 `classic.UserPromptSubmit` 之后、请求发出之前）。
 - **返回值只认 `context`**：`{ context?: string[] }`，字符串数组，合起来受限额（见「限额」）。宿主把它们当作**本轮**的附加上下文，在请求边界并入（与后台任务通知同一个注入点，见「轮次内注入」），模型下一个请求就能看到；不写进用户消息原文。
 - **不改 `text`、不给 `drop`**：这两项是 Claude Code 同名事件另外两个返回值（改掉用户敲的话、或把这条 prompt 丢掉）。改/丢用户输入在这种「钩子跑在界面看不到的地方」的位置上没法让用户察觉，产品上不给插件。
-- **`turn.start` / `turn.step` 的分工**：`turn.start` 一轮一次，在用户消息落库之后；`turn.step` 每发一次模型请求之前一次，`e.step` 从 1 起 —— 一轮里有 N 次请求（工具循环）就有 N 个 step。用户中断后不再有 step，`turn.complete` 带 `isAborted: true` 收尾。
+- **`turn.start` / `turn.step` 的分工**：`turn.start` 一轮一次，在用户消息落库之后；`turn.step` 每发一次模型请求之前一次，`e.index` 从 0 起 —— 一轮里有 N 次请求（工具循环）就有 N 个 index。它同时带着这次请求的 `model` 与 `messageCount`（`effort` 有才带、`agentId` 只在子代理里），handler 可以写成 async generator：`yield* next(e)` 把下游接上来并转发它产出的块，`return { ...e, model }`（或 `next({ ...e, model })`）改写**这一次**请求 —— 宿主在这里是**等**的，答案落地之后才构造请求（CC 的 `turn.step` 是它仅有的两个 generator 事件之一，另一个是 `process.spawn`）。只认 `model`（必须非空字符串）与 `effort` 两项：`turnId` / `index` / `messageCount` 是宿主的事实，改不动。用户中断后不再有 step，`turn.complete` 带 `isAborted: true` 收尾。三者都带同一个 `turnId`（这一轮的身份，`$.turn.abort` 与 `classic.MessageDisplay` 认它）：Stop 钩子要求续跑、注入后台任务通知把循环重开，都还是同一轮，`turnId` 不变。
 - **`session.compact` 在压缩完成之后**，`e` 是 `{ trigger: "auto" | "manual", tokensBefore, tokensAfter }`。`tokensBefore` 与 `$.session.usage()` 的 `context.tokens` 同一处（锚定最后一次请求的 usage，含系统提示词与工具 schema）；`tokensAfter` 只数压缩后新历史的消息文本 —— 压缩刚结束还没有新请求的 usage 可锚定，而被保留下来的那两轮仍带着压缩前的 usage，按同一处口径算会原样报回压缩前的数字（真机实测两者曾完全相等）。这一对是「压缩前的估算上下文」与「压缩后的历史文本量」，**不是**同一把尺子：上下文接近窗口时前者远大于后者，但窗口极小、历史本来就很短时，摘要本身可能比被折叠掉的内容更长，此时 `tokensAfter` 反而更大（探针实测 985 → 2248）。mod 要判断「省了多少」应把它当最近似值，不要当不变量。
 - **`session.end` 是唯一一个宿主会等的**：会话销毁要先撤销 mod 实例，所以它必须在销毁之前跑完；仍受 5 秒上限约束，超时照常销毁。其余五个都是 fire-and-forget（抛错、超时只记一条 warn），也都不重放。
 
@@ -196,17 +259,17 @@ mod 跑在 `node:vm` 的独立 context 里（每个 mod 一个）：没有 `proc
 
 第三方服务想把「对话答完了」「有张审批卡片在等」反映到自己的页面上（网页那边看到一个通知），用的就是这两个事件：它们只报告宿主**已经发生**的事实，不改变任何行为。
 
-| 事件                        | 载荷                                                                                            | 触发边界                                                                                                                                                                                                                                                                       |
-| --------------------------- | ----------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `turn.complete`             | `{ isAborted, durationMs, answer, usage }`                                                      | 一轮结束：答完或用户中断（Esc / 停止）。`durationMs` 从这一轮开始处理到结束，`answer` 是最后一条 assistant 消息的正文，`usage` 是本轮所有模型请求的 token 合计；因 Stop 钩子要求继续、注入后台任务通知而重开的循环算**同一轮**，只在真正结束时触发一次（`usage` 也不从头再算） |
-| `classic.PermissionRequest` | `{ session_id, transcript_path, cwd, hook_event_name, tool_name, tool_input, plan_file_path? }` | 一次工具审批即将弹给用户。权限规则自动放行或拒绝的不触发（没有卡片要显示），`PermissionRequest` 钩子把这次请求拒掉的也不触发                                                                                                                                                   |
+| 事件                        | 载荷                                                                                            | 触发边界                                                                                                                                                                                                                                                                                             |
+| --------------------------- | ----------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `turn.complete`             | `{ turnId, isAborted, durationMs, answer, usage }`                                              | 一轮结束：答完或用户中断（Esc / 停止 / 插件 `$.turn.abort`）。`durationMs` 从这一轮开始处理到结束，`answer` 是最后一条 assistant 消息的正文，`usage` 是本轮所有模型请求的 token 合计；因 Stop 钩子要求继续、注入后台任务通知而重开的循环算**同一轮**，只在真正结束时触发一次（`usage` 也不从头再算） |
+| `classic.PermissionRequest` | `{ session_id, transcript_path, cwd, hook_event_name, tool_name, tool_input, plan_file_path? }` | 一次工具审批即将弹给用户。权限规则自动放行或拒绝的不触发（没有卡片要显示），`PermissionRequest` 钩子把这次请求拒掉的也不触发                                                                                                                                                                         |
 
 **与 Claude Code 的关系**（照它官方 mods 的 events 参考核过）：
 
 - `turn.complete` 是**同名事件**（CC 的 Turns 分组里有 `turn.start` / `turn.step` / `turn.complete`），字段取 `isAborted` / `durationMs` / `answer` / `usage` 四个。**没有** `turnId` / `agentId`（我们只报主 agent 的轮次，子代理的嵌套轮次不报），也不实现返回 `{ text }` 在答案下面显示一行那个能力。
-- `classic.PermissionRequest` 用 CC 的 `classic.` 前缀，因为 CC 把**每个** settings hook 事件都镜像成 `classic.<Event>`（`classic.Stop`、`classic.PostToolUse`…），`e` 就是那份 hook stdin JSON（snake_case，含 `transcript_path`）。我们**只做这一个镜像**，不是整套 `classic.*`；载荷字段与 `PermissionRequest` 钩子收到的 stdin 一致。
-- 审批**不是** `tool.check`：那是 CC 里唯一能拿到并改写放行决定的钩子（`{ decision: allow | ask | deny }`），被 mod 拿去做「自动批准」时用户的卡片就形同虚设，本规格明确不做。`tool.call` 只做 CC 面内那个**拦下**（`{ deny }`），不给「替用户批准」的通道 —— 见「拦下一次工具调用」。
-- 想在「工具跑完」那一刻做事，用 `tool.run` + `await next(e)`（见「在工具真正跑之前插一脚」）—— 这是 CC 的写法，我们照它的语义做，没有另造一个「跑完了」的事件。
+- `classic.PermissionRequest` 用 CC 的 `classic.` 前缀，因为 CC 把**每个** settings hook 事件都镜像成 `classic.<Event>`（`classic.Stop`、`classic.PostToolUse`…），`e` 就是那份 hook stdin JSON（snake_case，含 `transcript_path`）。载荷字段与 `PermissionRequest` 钩子收到的 stdin 一致；其余镜像见「影子事件」。
+- 审批**不是** `tool.check`：那是 CC 里唯一能拿到并改写放行决定的钩子（`{ decision: allow | ask | deny }`），被 mod 拿去做「自动批准」时用户的卡片就形同虚设。这一批做它，但**只给收紧的半边**：`allow → ask/deny`、`ask → deny` 收，`deny → allow/ask` 不收（见「第二判定源」）。`tool.call` 仍只做那个**拦下**（`{ deny }`），「替用户批准」的通道两边都不给。
+- 想在「工具跑完」那一刻做事，用 `tool.call` + `await next(e)`（见「拦下一次工具调用」）—— `next(e)` 就是执行，它 resolve 之后钩子里的下一行跑在工具结束之后。这是 CC 的写法（它的 `tool.call` 里 `next` 就是执行），我们没有另造一个「跑完了」的事件，也没有第二个入口。
 
 四条约束：
 
@@ -218,72 +281,192 @@ mod 跑在 `node:vm` 的独立 context 里（每个 mod 一个）：没有 `proc
 
 **怎么把它们送到自己的服务端**是插件自己的事：`$.process.spawn` 起一个 WebSocket 客户端、或 `$.http.fetch` 直接发 HTTP（见「外部进程」「发 HTTP 请求」），宿主不提供推送通道，也不替 mod 保存「发到哪」。
 
+### 影子事件：`classic.*`（只读）
+
+Claude Code 把**每个** settings hook 事件都镜像成 `classic.<Event>`，社区插件大量只写这一套 —— 语料里 49 个含 mods 源码的仓库中，`classic.PreToolUse`（10 仓）、`classic.Stop`（12）、`classic.SessionStart`（14）、`classic.MessageDisplay`（6）、`classic.PermissionDenied`（5）都在用得最多的那一档。这一批做两件事：把已有的 14 个镜像**逐字段对齐** CC 的 hook stdin（上一批有几处是照我们自己的形状合成的，插件按 CC 的名字读会拿到 `undefined`），再补 5 个（`classic.PreToolUse` / `classic.PermissionDenied` / `classic.PreCompact` / `classic.PostCompact` / `classic.MessageDisplay`）—— 连 `classic.PermissionRequest` 一共 **20 个**镜像。
+
+共同纪律：
+
+- **载荷是 CC 的 hook stdin 形状（snake_case）**，不是我们自己的 camelCase：公共五字段 `session_id` / `transcript_path` / `cwd` / `permission_mode` / `hook_event_name` 每条都带（`hook_event_name` 是不带前缀的事件名，例如 `"Stop"`），其余字段见下表。这五项就是 CC 的 `createBaseHookInput(permissionMode)` —— 权限模式是**每一条** hook stdin 都有的字段，不是某几个事件专属（社区守卫靠它判断「这一刻有没有人会被问到」，见「验收场景」最后一条）。
+- **字段名与字段集照 CC，不自造**：插件是按 CC 的名字读的，多一个我们编的字段名（曾经的 `ok` / `description` / `status`）它读不到，少一个真字段它也读不到 —— 两种都让「已经装上的插件」静默不工作。所以每条事件给 CC 那一份的全集，我们拿不到的那几个写成可选（见「只能给近似」），**新造字段名一律不做**。唯一的形状例外是 `classic.PreToolUse`：CC 在自己 mods 面里也把它排掉（`E extends 'PreToolUse' ? ToolCallEnvelope : ClassicHookInputs[E]`），`e` 就是 `tool.call` 的 `ToolCallEnvelope`（`{ tool, tool_use_id, input }` + 顶层铺开参数），不是 stdin 那份 `{ tool_name, tool_input }`。
+- **只读 + fire-and-forget**：返回值一律忽略，钩子抛错、超时（5 秒）只记一条 warn，与 `turn.complete` / `classic.PermissionRequest` 同一条纪律。例外只有两条：`classic.Stop` 的 `additionalContext`（宿主会等它，见「一轮收尾时的非错误反馈」）与 `classic.PreToolUse` 的 `deny`（它和 `tool.call` 是同一条链上的两个名字，见「拦下一次工具调用」）。
+- **顺序**：同一时刻我们自有的事件先发、镜像后发（`turn.complete` → `classic.Stop`，`prompt.submit` → `classic.UserPromptSubmit`，`tool.call` 的 `next(e)` 已经把结果交回之后才发 `classic.PostToolUse`）。跨事件之间不承诺顺序，它们本来就各自代表不同的时刻。同样只有 `classic.Stop` 例外：它有返回通道，必须先在 `turn.complete` 之前拿到返回值（同上）。
+- **不重放**：瞬时事件，surface 后挂上来（切会话、webview 重建）不补发。
+- **`on("classic.*", handler)` 一次订阅全部**：CC 支持这个通配（GenesisTools 就是一条吃掉所有 classic 事件），我们把它展开成每一条镜像，**同一条登记**挂到每个名字下 —— 所以 `on(…).catch(fn)` 的兜底对每一条都生效，不会只兜住最后一个。带 matcher 不支持（`classic.*` 的镜像事件都不按字段筛，要筛就在 handler 里比 `e.hook_event_name`）。
+
+| 事件                         | 触发时机                                                                              | 额外字段                                                                                                                                                                                                         | 只能给近似 / 给不出的                                                                                                                                                                                                                            |
+| ---------------------------- | ------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `classic.SessionStart`       | 会话初始化完成、`session.start` 之后                                                  | `source`：`startup` / `resume` / `clear`                                                                                                                                                                         | 我们没有分叉会话的入口，不会出现 `fork`                                                                                                                                                                                                          |
+| `classic.SessionEnd`         | 会话销毁前、`session.end` 之后                                                        | `reason`：`clear` / `prompt_input_exit` / `other`                                                                                                                                                                | 取值与 CC 同名同义；我们没有 `logout` / `resume` 这两个入口，走到时按 `other` 报                                                                                                                                                                 |
+| `classic.UserPromptSubmit`   | 用户审阅并提交一条 prompt，与 `prompt.submit` 同一时刻                                | `prompt`                                                                                                                                                                                                         | 不改用户原文、不丢弃（与 `prompt.submit` 同一条理由）                                                                                                                                                                                            |
+| `classic.InstructionsLoaded` | 一份指令文件被注入上下文                                                              | `file_path`；`memory_type`：`Project` / `Local` / `User`；`load_reason`：`session_start` / `nested_traversal`                                                                                                    | `Managed` 给不出（我们没有企业托管设置层）；CC 另有 `path_glob_match` / `include` / `compact` 三种触发原因，我们没有对应入口                                                                                                                     |
+| `classic.PreToolUse`         | 工具参数校验通过、**还没执行**、权限也还没问（与 `tool.call` 同一时刻）               | `e` 就是 `tool.call` 的 `ToolCallEnvelope`：`tool` / `tool_use_id` / `input`，外加顶层铺开的一份参数；**没有** `hook_event_name`（CC 在 mods 面里也是这么排的）                                                  | 只认 `{ deny }`。CC 另外三种答复不做：`{ allow: true }`（不弹审批直接放行）、`{ ask }`（强制弹一次卡片）、`updatedInput`（改写参数）—— 前两个见「交付分层」里的第二判定源                                                                        |
+| `classic.PermissionDenied`   | 一次工具调用被权限**拒**掉之后（命中 deny 规则、模式自动拒、用户点了拒绝、没人能问）  | `tool_name` / `tool_input` / `tool_use_id`；`reason`：`denied_by_rule` / `denied_by_mode` / `no_permission_prompt` / `user_denied`                                                                               | `reason` 这一格 CC 也是宿主自定的短码（它自己给的是 `host_exit` 这类），所以我们的取值不与它逐字相同；CC 的 `{ retry: true }`（插件告诉模型「可以重试」）不收                                                                                    |
+| `classic.PostToolUse`        | 一次工具调用**成功**返回之后                                                          | `tool_name`, `tool_input`, `tool_use_id`, `tool_response`（按限额截断，见下）, `duration_ms`                                                                                                                     | 不改模型看到的结果（CC 的 `updatedToolOutput` / `updatedMCPToolOutput` 不做）；`mcp_server` 没给（这一层不区分工具来源）                                                                                                                         |
+| `classic.PostToolUseFailure` | 一次工具调用失败或被拒之后                                                            | `tool_name`, `tool_input`, `tool_use_id`, `error`, `duration_ms`                                                                                                                                                 | 同上；`is_interrupt` 没给（被中断与被拒绝在结果里是同一类失败，分不出来）                                                                                                                                                                        |
+| `classic.PostToolBatch`      | 同一次模型响应里的**一批**工具调用全部跑完之后                                        | `tool_calls: [{ tool_name, tool_input, tool_use_id, tool_response? }]`                                                                                                                                           | `tool_response` 与单条那个同一份截断；「一批」按一次响应算，不是上面为了并发切出来的小块                                                                                                                                                         |
+| `classic.Notification`       | 一次审批**即将**弹给用户（与 `classic.PermissionRequest` 同一时刻）                   | `notification_type`：`permission_prompt`；`message`                                                                                                                                                              | 只发这一类。`$.ui.ask` 的提问卡片**不**发 —— CC 对提问不发通知，它的取值表（`permission_prompt` / `idle_prompt` / `auth_success` / `elicitation_*`）里没有对应名字，编一个表外的只会让按真名字过滤的插件（done-waiting-ping）永远不触发          |
+| `classic.SubagentStart`      | 一个子代理起来                                                                        | `agent_id`, `agent_type`                                                                                                                                                                                         | 返回值（CC 的 `additionalContext`）不收                                                                                                                                                                                                          |
+| `classic.SubagentStop`       | 一个子代理结束（完成 / 出错 / 中止 / 用户停掉）                                       | `agent_id`, `agent_type`, `stop_hook_active`（恒 `false`：这条事件没有续跑通道）, `last_assistant_message?`, `agent_transcript_path?`（只有跑在后台、有日志文件的子代理才给）                                    | `additionalContext` / `background_tasks` / `session_crons` 不收或没给                                                                                                                                                                            |
+| `classic.PreCompact`         | 上下文压缩**开始之前**（撞阈值自动压与 `/compact` 都走这里）                          | `trigger`：`auto` / `manual`；`custom_instructions`：`/compact` 带的那段指令，没有时是 `null`                                                                                                                    | CC 的 `block`（插件否决这次压缩）不支持 —— 我们这条是纯观察                                                                                                                                                                                      |
+| `classic.PostCompact`        | 上下文压缩**完成之后**（与 `session.compact` 同一时刻）                               | `trigger`；`compact_summary`：这次生成的摘要正文                                                                                                                                                                 | 想知道「省了多少」看同一时刻的 `session.compact`（`tokensBefore` / `tokensAfter`），别从这个字段推                                                                                                                                               |
+| `classic.PostModelSwitch`    | `Agent.setModel` 被调（会话的模型被换掉）                                             | `from_model`, `to_model`, `context_tokens`（换之前那一刻的上下文估值，与 `$.session.usage().context.tokens` 同一处）, `cache_ttl`                                                                                | `cache_ttl` 恒 `null`：我们不做提示词缓存的 TTL 记账，给个假数字比给 `null` 更坏；`requested_model` / `source` / `prompt_cache_warm` / `pricing` / `estimated_cache_write_usd` 没给 —— `/model` 与界面上的模型选择器走到同一个入口，分不出调用方 |
+| `classic.Stop`               | 模型停下来、这一轮可能要收尾时（答完或用户中断，在 `turn.complete` 之前，见下一小节） | `background_tasks`：还在跑的后台任务对象数组（`id` / `type` / `status` / `description`，没有时是 `[]`）；`stop_hook_active`：这一轮是不是已经被要求续过；`last_assistant_message`：最后一条 assistant 消息的正文 | 支持返回 `{ additionalContext }` 让模型再跑一轮；`{ decision: "block" }` 与 `preventContinuation` 不支持                                                                                                                                         |
+| `classic.StopFailure`        | 一轮**因错误**结束                                                                    | `error: { kind, message }`，`kind` 取我们自己的错误分类（`rate_limit` / `server` / `network` / `timeout` / `auth` …，即遥测的 `ErrorCategory`）                                                                  | `kind` 是那张闭集里的值，不是 CC 的 `overloaded` / `api_error` 那一套                                                                                                                                                                            |
+| `classic.CwdChanged`         | 会话**会动的工作目录**变了（Bash `cd`、进/出 worktree）                               | `old_cwd`, `new_cwd`                                                                                                                                                                                             | 只报这一个目录（见「会话事实」里的三个目录），工作区根与会话起点变了不算                                                                                                                                                                         |
+| `classic.MessageDisplay`     | 一条 assistant 消息**收尾时**（与 `turn.complete` 无关：一轮里每条回答各一次）        | `turn_id`, `message_id`, `index`（恒 `0`）, `final`（恒 `true`）, `delta`（这条消息的完整正文，按限额截断）                                                                                                      | 我们不分 flush：CC 每攒够几行派发一次、`index` 递增、`final` 只在最后一次为真；我们一条消息只给一次全文。CC 的 `displayContent`（替换用户看到的文本）不收                                                                                        |
+
+- **matcher**：`classic.PostToolUse` / `classic.PostToolUseFailure` 认 `{ tool_name }`，`classic.PostToolBatch` 认 `{ tool_name }` / `{ tool_calls }`（这三条是 CC matcher 键表里对这个事件列的全部键），`classic.PreToolUse` 认 `{ tool }`（与 `tool.call` 同一套），其余 `classic.*` 不带 matcher，传了按既有纪律 warn 并忽略这一条。
+- **`tool_response` / `delta` 截断**：与 `$.ui.log` 单条同一个口径（超过「限额」里的上限就截断并加省略号），`classic.PostToolBatch` 里那几份、`classic.MessageDisplay` 的 `delta` 都算。CC 给的是全文，我们这一处是**刻意的偏离**：一次 `Read` 可以几 MB，把它整份跨沙箱边界递给每个插件，是让「观察」变成「拷贝」。
+- **不做的返回通道**（都是改行为，不是观察）：`classic.Stop` 的 block 与 `preventContinuation`、`classic.UserPromptSubmit` 的 `drop` 与改文本、`classic.SubagentStart` / `classic.SubagentStop` 的 `additionalContext`、`classic.PostToolUse` 的 `updatedToolOutput`、`classic.PreToolUse` 的 `allow` / `ask` / `updatedInput`、`classic.PermissionDenied` 的 `retry`、`classic.PreCompact` 的 `block`、`classic.MessageDisplay` 的 `displayContent`、`classic.SessionStart` 的 `hookSpecificOutput`。
+- **仍然不做**：`ui.message`（元素事件，和 `ui.press` / `ui.input` 一家，需要可交互元素）。它不是广播，单独立项。`session.append` 已做（见「转录写入前改写」），粒度按我们的一条消息、不按 CC 的一行。
+
+### 一轮收尾时的非错误反馈（`classic.Stop` 的 `additionalContext`）
+
+模型停下来之后、这一轮真正收尾之前，`classic.Stop` 的钩子可以返回 `{ additionalContext: string[] }`：这不是错误、也不是拦下用户，而是「还有一件事没做」的提醒 —— 宿主把它读进对话、**这一轮不收尾**、再跑一轮。社区里靠这条通道的自查类插件（cys 对着自己的改动再核一遍、watchducks 盯用户的要求有没有被满足）不接这条就完全是白装：它们的全部逻辑就是「发现不对就提醒一句，让模型接着改」。
+
+- **只收 `additionalContext`**（字符串数组，空串丢掉）：多个 mod 按加载顺序拍平、用空行拼成**一条** meta 消息（与后台任务通知同一种消息 —— 模型看得到，界面上不是用户说的话），条数与字数沿用 `prompt.submit` 那份限额。
+- **续跑的那一轮**里 `stop_hook_active` 是 `true`：插件据此认出「这一轮是我要求续的」，自己收手；首次收尾是 `false`（名字与语义都照 Claude Code）。
+- **上限 8 次**：同一条用户 prompt 里因 `additionalContext` 续跑最多 8 次（Claude Code 的 `CLAUDE_CODE_STOP_HOOK_BLOCK_CAP` 默认值），到顶之后收到的 `additionalContext` 丢弃并记一条 warn、这一轮照常结束 —— 插件写得再贪也不会把用户困在死循环里。
+- **不收两项**：`{ decision: "block", reason }` 与 `preventContinuation` 仍然不支持（一个是「拦下模型」的另一套说法，一个是强制终止），返回了只记一条 warn 并忽略。`classic.SubagentStop` 这次同样不收：我们这条事件是在子代理实例**释放**时发的（子代理已经跑完、结果已交回父代理），那一刻没有「让它再跑一轮」的落点；要对齐得先把这条事件搬到子代理自己的一轮收尾，另立项。
+- **中断与排队优先**：用户按 Esc 收尾的那一轮、以及收尾时已有用户消息在队列里等着的，都不续跑（排队的消息下一轮再说 —— 插进来续跑会把它饿死）。因错误结束的一轮发的是 `classic.StopFailure`，没有这条通道。
+- **失败/超时**：与只读镜像同一条纪律 —— 某个 mod 抛错或超时（5 秒）只记一条 warn，其余 mod 的反馈照收；一个都没有时与原来完全一样（一次请求就收尾）。
+
 ### 拦下一次工具调用（`tool.call`）
 
 危险命令守卫类插件（社区里的 blast-radius / risky-hold / warden 这一族）要的是同一件事：**在工具跑之前**看一眼参数，判断该拦就拦，该问就问。「问」由 `$.ui.ask` 提供，「拦」就是这里的 `{ deny }`。
 
 - **触发点**：参数已通过 schema 校验（非法参数不进钩子，模型直接拿到校验错误），工具**还没执行**、权限**也还没问**。因此被 deny 的调用不会弹审批卡片 —— 用户看到的是「插件拦了」，不是「审批被拒了」。
 - **`e` 的形状**：`{ tool, tool_use_id, input }`，并把工具参数**在顶层铺一份**（`e.command` 就是 Bash 的 `command`）。这是 Claude Code 的 `ToolCallEnvelope` 形状，社区插件读写的是 `e.command` / `e.file_path` 而不是 `e.input.command`。
-- **matcher**：`on("tool.call", { tool: "Bash" }, handler)`，`tool` 可以是字符串或字符串数组（`["Bash", "PowerShell"]`）。不写 matcher 收所有工具。（`tool.run` 同形。）
-- **放行 = 调 `next(e)`**：它继续把这次调用交给**下一个 mod** 的同名钩子，最后一个交回引擎执行。链上没人 deny 就照常跑。`next.called` 告诉你这个钩子有没有调过它；`next.signal` 在整条调用被放弃时 abort（用户中断、会话销毁），长等待应该挂在它上面。
+- **matcher**：`on("tool.call", { tool: "Bash" }, handler)`，`tool` 可以是字符串或字符串数组（`["Bash", "PowerShell"]`）。不写 matcher 收所有工具。
+- **放行 = 调 `next(e)`**：它继续把这次调用交给**下一个 mod** 的同名钩子，最后一个交回引擎执行（先过 `settings.json` 的 PreToolUse）。链上没人 deny 就照常跑。`next(e)` resolve 之后，钩子里的下一行跑在工具**结束之后** —— 「跑完再刷新」用的就是这个位置（`const r = await next(e); await refresh();`）。`next.called` 告诉你这个钩子有没有调过它；`next.signal` 在整条调用被放弃时 abort（用户中断、会话销毁），长等待应该挂在它上面。
 - **拦下 = 返回 `{ deny: string }`**：这次调用**不执行**，模型收到这段文本作为工具错误结果（与「参数不合法」同一形态），排在它后面的 mod 钩子不再跑。文本要写成给模型看的行动建议（「先问用户，或用更安全的形式」），因为用户看不到卡片、只能从对话里看到模型重试。
 - **抛错 / 超时（5 秒）= 不表态**：宿主记一条 warn 并**放行**，与只读事件同一条纪律 —— 钩子挂掉不该让用户的对话卡在「工具既不跑也不拒」。要 fail-closed 的守卫用 `on(...).catch((next) => …)` 自己返回 `{ deny }`（社区插件正是这么写的）。
 - **多个 mod**：按加载顺序串行，第一个 `{ deny }` 生效。同一个 mod 注册多条（不同 matcher）时按注册顺序跑。
+- **`{ result }` 是这次调用的结果**：两个来源同一个形状 —— `next(e)` 走到链尾真的跑了一次，得到 `{ result }`；mod 也可以不看 `next` 自己造一份（CC 同口径，拿到 `next()` 的结果再改写是它的正常用法）。宿主只认「这次调用的结果是什么」，不再按工具归属筛。`next(e)` 里的执行**先过 `settings.json` 的 PreToolUse**，所以它不能用来绕过用户的拒绝。
 - **不做的两件事**：改写参数（CC 的 rewrite，会把用户以为要跑的命令换成别的）与替用户批准（`tool.check`）。前者不给，后者见「完成与审批的观察」。
+- **`classic.PreToolUse` 是这条链的另一个名字**：同一时刻、同一份 `ToolCallEnvelope`、同一个 `{ deny }` 返回值，先跑 `tool.call` 再跑它（前者已经拦下就不再问后者）。CC 把两者做成两层（`tool.call` 在 mods 面、`classic.PreToolUse` 是 settings 钩子的镜像），社区里只写后者的一半（chronicle 的注释写得很直白：「only the classic result can ask」）；我们让两个名字落到同一条链上，插件写哪个都拦得住。它的 `{ allow: true }` / `{ ask }` / `updatedInput` 三种答复不做 —— 允许绕开审批与强制弹卡片都是第二判定源，见「交付分层」。
 
-### 在工具真正跑之前插一脚（`tool.run`）
+### 第二判定源（`tool.check`）
 
-`tool.call` 是「要不要拦」，`tool.run` 是「现在跑吧」—— 同一族守卫的第二个落点，也是唯一能在「工具刚跑完」做事的位置：`next(e)` 就是执行本身，它 resolve 之后钩子里的下一行代码跑在工具结束之后。
+`tool.call` 是**我们自己的链上**第一次拦，`tool.check` 是在**权限规则与模式已经给出结论之后**插一脚。Claude Code 的定位是「Claude Code decides whether a tool call may run, after the `tool.call` and `PreToolUse` hooks」——`next(e)` 解析到的就是那个决定，钩子可以换掉它。
 
-```ts
-on("tool.run", { tool: "Bash" }, async ($, e, next) => {
-  const result = await next(e); // 这里工具才真的跑
-  await refresh(); // 跑完了：重新读一次 git status，带跟着更新
-  return result;
-});
-```
+落点是 `PermissionManager.checkPermission()`：`tool.call` 链与 `classic.PreToolUse` 链都放行之后，规则（deny / allow 列表、权限模式）先算出决定，再把这份决定交给 `tool.check` 链。钩子拿到 `e = { tool, tool_use_id, input, agentId?, isReadOnly?, decision, reason? }`，`next(e)` 原样传下去，返回 `{ decision, reason? }` 换掉它。
 
-- **触发点**：参数校验通过、`tool.call` 没有人拦、PreToolUse 钩子也放行之后。权限询问在我们这里发生在工具内部（每个工具自己向 `PermissionManager` 要一次判定），所以 `tool.run` 里的 `{ deny }` 同样**不会**弹审批卡片。
-- **`e` 的形状与 `tool.call` 一样**（`{ tool, tool_use_id, input }` 且顶层铺开参数），matcher 也认 `{ tool }`。
-- **`next(e)` 最多跑一次工具**：第二次 `next(e)` 不会再执行，按 CC 的口径返回「已经跑过了」。一次 handler 里不调 `next(e)` 就直接返回，等于**这次调用不执行** —— 工具没跑、也没有结果，模型收到一条「插件没有放行这次调用」的错误结果。
-- **拦下 = `{ deny: string }`**，模型收到这段文本作为错误结果，与 `tool.call` 同一形态；`next(e)` 已经把工具跑掉之后再 deny 撤不回那一次执行。
-- **不做 `{ result }`**：CC 允许在这里用自己的结果顶替工具的结果（连 `context` 一起），那属于「改写模型看到的东西」，与参数改写同一条理由不做。
-- **抛错 / 超时（5 秒）= 照常执行**：与 `tool.call` 同一条纪律（fail-open）；要 fail-closed 就用 `.catch(($, e, next) => next.called ? next(e) : { deny: "…" })` —— `next.called` 只在 `.catch` 的 `next` 上有（CC 的 `Caught`），用来判断「失败之前工具是不是已经跑掉了」。
+**三个方向都算数，包括放宽。** `allow → ask`、`allow → deny`、`ask → deny` 是收紧；`deny → allow`、`deny → ask` 是放宽 —— 两者都接受。这不是「随便让它放过」：CC 的类型文档写的就是「return any `{ decision }`」，官方示例是 `on("tool.check", { tool: "Read" }, () => ({ decision: "allow" }))`；真插件的主要用途恰恰是放宽（sotto 用它给自家的 `mcp__sotto__*` 工具免审批）。把放宽挡掉会让这条钩子对它最现实的用法失效，也会让插件作者以为放宽生效了而实际没生效。收紧与放宽的**理由不同**：收紧不撤销任何已经到手的授权，放宽是 mod 替用户放行 —— 后者是插件作者对自己会话的一个明确选择（插件是用户自己装的，`settings.json` 里能看见），我们只在**非法返回值**（不是三个字符串之一）、抛错或超时时按 `{ decision: "deny" }` 处理并记 warn —— 与 CC 的 `Jn["tool.check"]` 同一条默认（答复不可用就不放行）。这是本事件唯一 fail-closed 的地方，与其余只读钩子的 fail-open 不同。
+
+`decision: "ask"` 在我们这里的含义是「这张卡片必须弹」：`dontAsk` / `bypassPermissions` 下原本不弹，插件抬成 `ask` 就弹。`agentId` 只在子代理的调用上有；`isReadOnly` 只在工具自己报了只读时出现（不出现即「不是只读」，不是 `false`）。
+
+唯一的例外是**本身就是提问**的工具（`AskUserQuestion` / `ExitPlanMode` 那一类，`USER_INTERACTION_REQUIRED_TOOLS`）：它们没有「不问就跑」的形态，放宽成 `allow` 等于让宿主去执行一个没有答案的提问。所以这一类只接收紧（插件仍能拒），放宽按宿主的 `ask` 走 —— 这条比 CC 更保守，理由不是「防插件」而是「放宽之后那个工具没法完成它的语义」。
+
+返回 `{ decision: "deny" }` 之后模型收到的错误文本是 `reason`（没给就用一句固定的「被插件拒绝」），与 `tool.call` 的 `deny` 落在同一个位置。
+
+### 主动问一次工具面（`$.tool.check` / `$.tool.call`）
+
+`tool.check` / `tool.call` 各有一个**方法形态**，让 mod 在不真的跑工具的前提下问一句：
+
+| 方法                             | 参数                                                  | 返回                                                                                              |
+| -------------------------------- | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `$.tool.check({ tool, input? })` | `tool` 是工具名（模型看到的那个），`input` 是这份参数 | `Promise<{ decision, reason? }>`：跑一遍 `tool.check` 链得到的决定                                |
+| `$.tool.call({ tool, input? })`  | 同上                                                  | `Promise<{ deny?: string }>`：跑一遍 `tool.call` + `classic.PreToolUse` 链，有人拦就是 `{ deny }` |
+
+- **两条都不执行工具**：只是跑链。`tool.call` 的 `next(e)` 在 mod 主动发起时**没有宿主侧执行体**（那个执行体只在模型真的要调用时才有），链尾是空对象 —— 想真的做事用 `$.process` / `$.fs` / `$.http`。这也是 Claude Code 的形状：它的 `$.tool.call` 同样是「跑一遍那个事件」，不是「执行工具」。
+- **`tool.check` 的基底是 `allow`**：没有真实调用就没有宿主的决定，方法按「还没人拦」起算，链上只会让它更严或更松。要看真实决定得在 `tool.check` 事件里看 —— 那时 `decision` 是规则与权限模式算出来的。
+- **`tool_use_id` 是宿主编的临时值**：这不是一次真实调用，事件里那个 id 只为形状一致，别拿它去对 `$.ui.notice`。
+- **matcher 照旧生效**：`on("tool.check", { tool: "Bash" }, …)` 只在这份 `tool` 是 `Bash` 时才被叫起来，与真实调用同一个判定。
+
+### 系统提示词与附件（`prompt.compose` / `prompt.section` / `prompt.context` / `prompt.attachment`）
+
+这四个事件改的是**模型读到、用户看不到**的文本，落点各不相同：
+
+| 事件                | 落点                                            | 频率              | 返回                                 |
+| ------------------- | ----------------------------------------------- | ----------------- | ------------------------------------ |
+| `prompt.compose`    | `buildSystemPrompt()`（`src/prompts/index.ts`） | 每轮一次          | `{ sections }`：整份系统提示词的段表 |
+| `prompt.section`    | 同上，逐段                                      | 每个命名段一次/轮 | `{ text }` / `{ text: null }`        |
+| `prompt.context`    | 会话的第一条消息                                | 每条会话一次      | `{ blocks }`                         |
+| `prompt.attachment` | 宿主自己往对话里加一条消息的位置                | 每次一条          | `{ text }` / `{ text: null }`        |
+
+**「一轮一次」怎么算**：一轮里工具循环会连着发好几次请求，`prompt.compose` 与逐段的 `prompt.section` 只在这一轮第一次问，后面几步复用同一份结果（带时间戳/计数器的插件才不会让同一轮各步的系统提示词不同，缓存前缀也就不被打断）。只有**宿主自己的**段表变了才会再问一次 —— 典型是一轮中间 MCP 拨号换了可达工具。
+
+**`prompt.section` 的前提是「命名段」，我们现在没有。** `buildSystemPrompt()` 现在拼出的是 `[staticText, dynamicText]` 两个整块字符串（前者 cacheable、后者不），段内部靠 `\n\n` 串起 `SECURITY_NOTE` / `URL_GUARD` / `SYSTEM_PROMPT` / `DOING_TASKS_PROMPT` / `EXECUTING_ACTIONS_PROMPT` / `buildUsingToolsPrompt(tools)` / `TONE_AND_STYLE_PROMPT` 与动态的环境、记忆块。`prompt.section` 的 `e.name` 无处可指。所以这一批先把它们各自命名成段（`identity` / `security` / `url-guard` / `system` / `doing-tasks` / `executing-actions` / `tools` / `tone` / `env` / `memory` …），`buildSystemPrompt()` 的返回从「两个块」变成「按段拼」。
+
+**代价是提示词缓存**：现在是「静态块整块 cacheable」，拆段之后要么按段各自缓存、要么整份不再缓存。这一批取**按段缓存** —— 段表按 `id` 排序稳定、`scope` 标记哪些段属于可缓存前缀，拼出来的字符串与今天逐字相同；`prompt.section` 改过某一段时，从这一段起往后的缓存断掉（与 CC 的 `breakPromptCache` 同一个后果，但我们不给那个字段：改了就断，不额外声明）。一段都没改时，拼出来的前缀与今天完全一致，缓存命中率不下降。
+
+`prompt.compose` 的 `sections` 是**这一次实际要发出去的段表**（已含各段钩子的结果），`scope` 取 `"shared"`（跨轮不变的共享段，排在最前）或 `"session"`（本场会话，排在最后）—— 与 CC 的两档同义。`prompt.compose` 自己返回的 `sections` 会被下游的 `prompt.section` 再问一遍 —— 顺序与 CC 一致：先 `compose` 定段、再逐段 `section`。
+
+`prompt.context` 与 `prompt.submit` 的 `{ context }` 不是一回事：后者每轮都能塞、只作用于**本轮**；前者一条会话只有一次机会、作用于**整场**（落点是第一条用户消息旁边的上下文块，与「会话开始的附加上下文」同一处）。
+
+`prompt.context` 的块形状照 CC：`{ blocks: [{ name, text }] }`，`name` 是来源标记（给人看、进日志），`text` 才进模型上下文 —— lossless-claude 写的就是 `{ blocks: [...blocks, { name: "lcm", text }] }`。裸字符串块也收（来源名记作 `context`），但 `next(e)` 交下去的永远是 `{ blocks }`，不是裸数组。
+
+`prompt.section` 与 `tool.check` 一样**接受 matcher**（`{ name }`）：只想管「记忆段」的插件没必要在每一段上被叫起来，lossless-claude 就是 `on("prompt.section", { name: "memory" }, …)`。交下去和 `next(e)` 解析到的都是 `{ text }` 对象（不是裸字符串）—— 同一族的写法是 `const s = await next(e); return { text: s.text + … }`。`prompt.attachment`（`{ type }`）与 `skill.prompt`（`{ skill }`）同样接受 matcher，取值就是 CC 类型文档示例里的那两个（`on("prompt.attachment", { type: "todo_reminder" }, …)` / `on("skill.prompt", { skill: "commit" }, …)`）。
+
+**`prompt.compose` 的 `scope` 只有 CC 那两档**：`shared` 与 `session`。宿主自己那些「每轮重算」的段（环境、记忆）也标 `session` —— 缓存前缀怎么切是宿主的事，不通过插件可见的 `scope` 表达（CC 用 `prompt.section` 的 invalidator 做同一件事，我们没有那个入口就不发明第三档）。
+
+`prompt.attachment` 的 `e.type` 是我们自己的分类，但**与 CC 同名的那两个逐字照抄**：`nested_memory`（子目录 AGENTS.md）、`agent_mention`（@子代理提醒）—— 名字差一个分隔符，按真名字过滤的插件就匹配不上。其余是我们自己的：`memory`（AGENTS.md 注入）、`session-start`（SessionStart 钩子的附加上下文）、`background-task`（后台任务通知）。返回 `{ text: null }` 让这条不出现 —— 这是**唯一**能让插件压掉一条宿主消息的通道，所以只给文本，不给「改消息的其它字段」。
+
+### 给工具、技能、命令写描述（`tool.describe` / `skill.prompt` / `command.describe`）
+
+三个事件改的是**模型读到的说明文本**，不改任何行为：
+
+- **`tool.describe`**：落点是 `ToolManager` 组装工具 schema 的位置（`config.function.description = tool.prompt(args)` 那一处）。**每个工具每场会话问一次**，返回 `{ description, breakPromptCache? }`：默认把这份描述存进会话，之后每次请求都用它（工具 schema 是每轮开头 pin 的快照，改过的描述下一轮生效）；只有 `breakPromptCache: true` 才让存的那份失效、下一次请求重问。`isDeferred` 不收 —— 我们没有 tool search，`true` 会让工具压根不发给模型，等于凭空下架。
+- **`skill.prompt`**：技能正文被展开时问一次，返回 `{ text }` 换掉正文。`e` 给 `{ skill, text, source?, path? }`；`source` 取 `builtin` / `plugin` / `project` / `user`，`path` 是技能文件（没有文件的内置技能不给）。
+- **`command.describe`**：命令列表每次要画时每个命令问一次，**`await` 完再画**（与 CC 同一条：插件给的描述当次就生效，不是下一次）。返回 `{ description, argumentHint, isHidden }`，三个字段都可选、只覆盖给了的。`isHidden` 只影响列表里显不显示，不影响能不能执行。
+
+三者的时机**不一样**，别按同一条记：`tool.describe` 每场会话一次（默认继续用存下的那份，要换就 `breakPromptCache`）；`command.describe` 每次画列表都问、且 `await` 完再画；`skill.prompt` 每次展开都问（技能正文不缓存）。`tool.describe` 之所以存一份，是因为工具 schema 每轮都要发给模型：同一次请求里不可能既有描述 A 又有描述 B，而每轮都重问会让插件的时间戳/计数器把提示词缓存打断（CC 的 `breakPromptCache` 就是为这个加的）。
+
+### 转录写入前改写（`session.append`）
+
+落点是 `MessageManager` 写转录的那一处（`appendMessages`）。**每次要存下一行**之前问一次，`e = { message, uuid, door, agentId? }`：`message` 与 `$.session.messages()` 里的同形，`uuid` 就是 `message.id`（CC 的字段名，插件按它回查自己记的那份），`door` 是这一行的来源、取 CC 的名字：`prompt`（用户敲的那句）/ `response`（assistant 回答）/ `tool-result`（工具结果）/ `note`（宿主自己塞进去的记忆注入与系统提醒）；`agentId` 只在子代理落库时出现。CC 另有 `tool-message` / `command` / `notice` / `compaction` / `delivery` / `hook-context` / `attachment` 七档，我们没有对应的行（压缩摘要那一行本来就不问这条通道），所以不会出现 —— 插件按 `door` 过滤时，我们给的值都在它认得的集合里。返回值里同样带 `uuid`（`{ message, uuid, deny? }`），插件按 `r.uuid` 串联 —— lossless-claude 的 shadow 就是这么读的。
+
+- 返回 `next({ ...e, message })` 换掉这一行的文本块。可改的只有 `text` 块与 `tool_result` 块的 `content` —— 改别的字段（`role`、`tool_use_id`、块类型）当场报错，与 CC 同一个口径。
+- 返回 `{ deny: reason }` 不存这一行（记一条 info，model 侧看不到这一行存在过）。
+- **粒度是我们的，不是 CC 的**：CC 的「一行」是它自己消息流里的行（prompt / response block / tool result / notice 各算一行），我们的转录按**一条消息**存（一条 assistant 消息可能带多个块）。所以 `e.message` 是一条消息而不是一个块，`deny` 丢掉的是整条。这是刻意的降级：把块切开再拼回去，会让「一条消息」这个身份在 `classic.MessageDisplay` / `$.session.messages()` 里对不上。
+- **不重放、不追溯**：只作用于「从这一刻起要存的行」，已经存过的不回头改。恢复会话（`--resume`）时不重跑。
+
+### 会话消息（`$.session.messages`）
+
+只读：返回这条会话**已经存下**的消息，最新的在最后。每项 `{ id, role, content }`，`content` 是块数组（`{ type: "text", text }` / `{ type: "tool_use", id, name, input }` / `{ type: "tool_result", tool_use_id, content }`），与 `session.append` 的 `message` 同形。
+
+- **限额与截断**：最多回最近 `200` 条；单条超过「限额」里那档的文本按同一口径截断并加省略号。插件要「整份历史」自己做分页。
+- **只读**：没有配套的「改写 / 删除」；要改是 `session.append` 的事（写之前），不是这里。
+- **不快照到磁盘**：每次调用读的是内存里那份会话记录，与 `$.session.usage()` 同一层数据源。
 
 ### `$`（一期）
 
 | 命名空间     | 方法                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `$.plugin`   | `name`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --- |
+| `$.plugin`   | `name`；`root`：这个插件自己的目录（绝对路径）—— 插件随包带的资源（权重、模板、脚本）拼在它下面再交给 `$.fs` / `$.process`，见「读写文件」                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | `$.ui`       | `resolve(e)`、`open({ id, title, focus? })` → `Promise<{ isPlaced, reason? }>`（放得下吗，见「面板放得下吗」）、`close({ id })` → `Promise<void>`（对象参数，与 Claude Code 同一个形状；传字符串当场报错）、`panes()` → `Promise<string[]>`（自己开着的 pane id；CC 那个 `{ id, title, isShown, isFocused, isPlaced }` 的对象形状要先有「surface 回报当前 tab」这条通道，一期没有，见「交付分层」）、`invalidate("ui.render")`（只通知「我这个 mod 画的东西过期了」，不直接产生树；见「用户交互的结果」）、`status(text)`、`toast(text, timeoutMs?)`（见「状态带、状态行与提示」）、`log(text, { to? })`（在对话流里留一行）、`ask(question, options?)` → Promise（问用户一个问题，见「问用户一个问题」）、`notice(tool_use_id, text)`（在一个工具调用下面加一行，`undefined` 撤掉；见「工具调用下面的一行」）、`copy({ text, surface? })` → `Promise<{ isCopied: true } \| { isCopied: false, reason }>`（写进剪贴板）、`view({ agentId? })` → `Promise<{ deny? }>`（主视图切到某个子代理的转录；一期只答 `deny`） |
 | `$.state`    | `get`、`set`（会话级状态；`get` 返回副本，`set` 后需自己 `invalidate`）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| `$.store`    | `get`、`set`、`delete`、`keys`（该插件自己的 JSON KV，跨会话）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `$.store`    | `get(key)`、`set(key, value)`、`delete(key)`、`keys()`，四个都返回 Promise；`key` 必须是非空字符串（三条读写都查，与 Claude Code 同一句报错）。值是**任意 JSON**：`set` 按 `JSON.stringify` 归一（对象属性里的函数/symbol 静默丢掉，等同 CC；环、顶层 `undefined`、超限都报错），`get` 读回的是反序列化出来的副本                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |     |
 | `$.clock`    | `now()`、`sleep(ms, { signal? })` → Promise（等待，可被取消；见「时钟：等待」）、`after(ms, fn)`、`every(ms, fn)`（后两者返回 `{ cancel() }`，见「定时器」）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | `$.process`  | `spawn({ argv, cwd?, env?, input? })` → 异步迭代子进程的输出；`run(argv, { cwd?, env?, stdin?, timeoutMs? })` → 跑完拿 `{ exitCode, stdout, stderr, is…Truncated }`（见「外部进程」）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | `$.fs`       | `read`（可选 `{ as: "bytes" }`）、`write`、`list`、`stat`、`exists`（相对路径按会话工作目录解析，见「读写文件」）、`ancestors({ names, of?, below? })` → `Promise<readonly FsAncestor[]>`（沿目录链找指令文件，见「沿目录链找指令文件」）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | `$.http`     | `fetch(url, { method?, headers?, body?, timeoutMs? })`（只允许 `https:` 与本机回环，见「发 HTTP 请求」）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| `$.prompt`   | `submit({ text, asUser })`：把一条 prompt 送进当前会话（见「把 prompt 送进对话」）；`fill({ text, mode? })` → `{ isFilled }`：把草稿填进输入框、不发送（见「把草稿填进输入框」）；`read()` → `{ text, cursor }`：输入框里此刻有什么（见「输入框里现在有什么」）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| `$.session`  | `usage()`：只读的 token 用量快照（见「会话用量」）；`cwd()`：会话**当前**工作目录（与 `$.fs` 相对路径、`$.process` 的缺省 cwd 同一份数据源，会随会话里的 `cd` 变）；`id()`：这条会话的 id；`root()`：会话工作根（不随 `cd` 动）；`model()`：当前生效的模型名；`surfaces()`：这一刻有谁在画；`turns()`：用户已发过几条 prompt；`repo()`：所在的 git 仓库；`version()`：引擎版本（后三个见「会话事实：id、根目录、模型」）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `$.prompt`   | `submit({ text, asUser })`：把一条 prompt 送进当前会话（见「把 prompt 送进对话」）；`fill({ text, mode? })` → `{ isFilled }`：把草稿填进输入框、不发送（见「把草稿填进输入框」）；`read()` → `{ text, cursor }`：输入框里此刻有什么（见「输入框里现在有什么」）；`suggest({ text })` → `Promise<{ isShown }>`：把这个建议摆成输入框的暗色建议、Tab 采纳，`e.origin` 是 `{ kind: "plugin", name }`（见「输入框里的建议」）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `$.session`  | `usage()`：只读的 token 用量快照（见「会话用量」）；`cwd()`：会话**当前**工作目录（与 `$.fs` 相对路径、`$.process` 的缺省 cwd 同一份数据源，会随会话里的 `cd` 变）；`id()`：这条会话的 id；`root()`：会话工作根（不随 `cd` 动）；`model()`：当前生效的模型名；`surfaces()`：这一刻有谁在画；`turns()`：用户已发过几条 prompt；`repo()`：所在的 git 仓库；`version()`：引擎版本（后三个见「会话事实：id、根目录、模型」）；`messages()` → `Promise<SessionMessage[]>`：这条会话里已经存下的消息（见「会话消息」）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `$.turn`     | `abort({ turnId })` → `Promise<void>`：把**此刻正在跑的那一轮**收掉（`turnId` 就是 `turn.start` 给的那个，不匹配时 reject 并同时报出两个 id）。走的是与 Esc 同一条路：模型请求中断、正在跑的工具停掉；不清用户队列、不打断 Bash 命令与斜杠命令（见「收掉一轮」）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | `$.env`      | `get(name)` → `Promise<string \| undefined>`：读一个环境变量，没设置就是 `undefined`（不抛错）；见「环境变量与设置（只读）」                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | `$.settings` | `read()` / `read({ source })` / `read({ key })` / `read({ source, key })` → Promise：`settings.json` 的只读快照，`source` 取 `user` / `project` / `local`，不传就是合并后的当前配置；见「环境变量与设置（只读）」                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | `$.command`  | `register({ name, description, argumentHint?, immediate? })`、`list()`、`run({ command, args? })`（见「注册命令」）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| `$.tool`     | `list()` → `Promise<ToolInfo[]>`：这一刻模型能调的工具，`{ name, description, mcp }`（见「配了哪些、能调什么、有谁在跑」）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `$.tool`     | `list()` → `Promise<ToolInfo[]>`：这一刻模型能调的工具，`{ name, description, mcp }`（见「配了哪些、能调什么、有谁在跑」）；`register({ name, description, inputSchema? })` → `Promise<{ name }>`：把**自己**的一个工具交给模型，`name` 是模型看到的全名（见「把我们自己的工具交给模型」）；`check({ tool, input? })` → `Promise<{ decision, reason? }>`、`call({ tool, input? })` → `Promise<{ deny? }>`：不真的跑工具，只跑一遍「允不允许」/「拦不拦」那两条链（见「主动问一次工具面」）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | `$.config`   | `list()` → `Promise<ConfigRow[]>`：`/config` 菜单此刻会画的行，`{ key, label, description?, kind, value, options?, provider, isLocked }`（同上）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| `$.agent`    | `list()` → `Promise<AgentInfo[]>`：这条会话跑过的子代理，`{ id, description, type, status, parentAgentId? }`（同上）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `$.agent`    | `list()` → `Promise<AgentInfo[]>`：这条会话跑过的子代理，`{ id, description, type, status, parentAgentId?, plugin? }`（同上）；`spawn({ prompt, description?, subagentType?, model? })` → `Promise<{ model, agentId? }>`：派一个子代理（见「派子代理」）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `$.model`    | `complete({ model, prompt, system?, maxTokens?, timeoutMs? })` → `Promise<{ isAnswered: true, text, usage } \| { isAnswered: false, reason, usage }>`：让模型答一次，结果回给 mod（见「让模型替插件答一次」）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 
-`$.ui.resolve(e)` 把 `ui.render` 收到的事件换成**这一端可用的元素表**（`{ Box, Text, Button, Input, Select, Svg, Link, Code, Markdown, Progress }`，与从 `wave-agent-sdk/mods` 导入的同名导出是同一份）。表里每一项既是 JSX tag、也能直接调用（`t.Text({ children: "hi" })`，`children` 从 props 里摘出来），两种写法落到同一个节点。表按 `e.surface` 选：`desktop` 与 `vscode` 各有一张，别的值、以及不认识的 `e.component`，都直接报错并列出可用名单，不返回半张表。
+`$.ui.resolve(e)` 把 `ui.render` 收到的事件换成**这一端可用的元素表**：`desktop` 与 `vscode` 是 `{ Box, Text, Button, Input, Select, Svg, Link, Code, Markdown, Progress }`（两端内容相同 —— VS Code 与 JetBrains 画的就是同一份 webview），`terminal` 是同一张表去掉 `Svg`（见「元素表按端分」）。从 `wave-agent-sdk/mods` 导入的是**并集表**（三端的名字都在），不按端裁剪 —— 拿它拼出的树会在校验时按端查一遍。表里每一项既是 JSX tag、也能直接调用（`t.Text({ children: "hi" })`，`children` 从 props 里摘出来），两种写法落到同一个节点。表按 `e.surface` 选：一期只发 `desktop` / `vscode` / `terminal`，别的值、以及不认识的 `e.component`，都直接报错并列出可用名单，不返回半张表。
 
-与 Claude Code 的 `$.ui.resolve(e)` 同一个语义：它同样拿 `ui.render` 的 `e`，按 `e.surface` 选元素表、并要求 `e.component` 是引擎画得出的站点（它的错误文案是 `takes a ui.render argument (e.surface names the surface)`）。区别在覆盖面：CC 的 surface 有 `terminal` / `desktop` / `mobile` / `vscode` 四端，**各端元素表不同** —— `terminal` 有 `Raster` / `Image` 没有 `Svg`，`desktop` 反过来（11 个：多 `Select` / `Svg` / `Progress` / `Client`），`mobile` / `vscode` 有 `Svg` 没有 `Client`。我们只发 `desktop` 与 `vscode`，两张表**内容相同**（都是已实现的 10 个，与 CC 的桌面端表只差 `Client`）—— 我们这一期没有 `Client`，所以 vscode 端也没有可省的；将来真做 `Client` 时它只进 `desktop` 表（CC 的 vscode 表就没有）。给画不出的名字，mod 编出的树只会被 `validateModTree` 拒掉，错误离原因更远。
+与 Claude Code 的 `$.ui.resolve(e)` 同一个语义：它同样拿 `ui.render` 的 `e`，按 `e.surface` 选元素表、并要求 `e.component` 是引擎画得出的站点（它的错误文案是 `takes a ui.render argument (e.surface names the surface)`）。区别在覆盖面：CC 的 surface 有 `terminal` / `desktop` / `mobile` / `vscode` 四端，**各端元素表不同，但九类 + `Progress` 是四端共有的底**（`terminal` 另加 `Client`/`Raster`/`Image`、没有 `Svg`；`desktop` 另加 `Svg`/`Client`/`Shader`；`mobile` 另加 `Svg`/`Shader`；`vscode` 正好那十类）；我们只发 `desktop` / `vscode` / `terminal` 三端，前两端 10 个、终端 9 个，都少 `Client`（终端还少 `Raster`/`Image`、桌面少 `Shader`），且**没有 CC 之外的任何名字** —— 给画不出的名字，mod 编出的树只会被 `validateModTree` 拒掉，错误离原因更远。
 
 ### 面板放得下吗（`$.ui.open` 的 `isPlaced`）
 
 `$.ui.open({ id, title, focus? })` 返回 `Promise<{ isPlaced, reason? }>`：`isPlaced: true` 表示这一次请求已经被一个 surface 接住、会画出来；`false` 带一句 `reason` 说明为什么没画（没人接、会话正在销毁）。它**不等待**用户做任何事，也不表示面板已经可见 —— 只是「有人接这一帧」。
 
-- 判据是「有没有 surface 在画」，与 `$.session.surfaces()` 同一个数据源：桌面端、VS Code 或 JetBrains 在画 ⇒ `isPlaced: true`；终端 CLI、`wave -p`（一期都不画 mod 的面板）⇒ `isPlaced: false`，`reason` 是「这条会话没有画面板的表面」。
+- 判据是「有没有 surface 在画」，与 `$.session.surfaces()` 同一个数据源：桌面端、终端 CLI 或 VS Code / JetBrains 在画 ⇒ `isPlaced: true`（终端的具体形态见「终端形态」）；`wave -p` ⇒ `isPlaced: false`，`reason` 是「这条会话没有画面板的表面」。
 - **没人接的时候面板照样登记**（与 Claude Code 的「With none attached keep the pane」一致）：`isPlaced` 说的是「这一帧有没有人看得见」，不是「这个 pane 存不存在」。之后有 surface 挂上来，它照常能画出这个面板。所以判断「要不要等用户按」只能读 `isPlaced`，不能反推「面板登记成功了就有人看」。
 - 守卫类插件的用法：开不了面板就别开，直接按「没人看得见」降级 —— blast-radius 那种「冻住命令、等用户按 Proceed」的流程在无界面时必须立刻拒绝，而不是等一个永远没人按的按钮。
 
-`focus: true` 表示用户点了按钮/命令带出来的面板（抢焦点）；省略表示 mod 自己的意愿（不抢焦点）。**只收 `true`**：写 `focus: false` 与不写是两件事（后者是「没有意见」、前者是想显式表达「别抢」），CC 也是在 `false` 上报错，所以两边同一个口径。桌面端首帧打开面板本来就是激活这个 tab，因此 `focus: true` 在这一期是 no-op —— 收它只为让照 CC 写的插件原样能跑，别指望它有第二种行为。
+`focus: true` 表示用户点了按钮/命令带出来的面板（抢焦点）；省略表示 mod 自己的意愿（不抢焦点）。**只收 `true`**：写 `focus: false` 与不写是两件事（后者是「没有意见」、前者是想显式表达「别抢」），CC 也是在 `false` 上报错，所以两边同一个口径。**桌面端**首帧打开面板本来就是激活这个 tab，因此 `focus: true` 在桌面端是 no-op —— 收它只为让照 CC 写的插件原样能跑；**终端**里它才真的有第二种行为：键盘焦点直接进面板，省略时焦点留在输入框、面板只显示（见「终端形态」）。
 
 ### 状态带、状态行与提示
 
@@ -308,6 +491,14 @@ on("tool.run", { tool: "Bash" }, async ($, e, next) => {
 带是第二个渲染站点，走与面板同一条拉取链路：surface 在会话就绪后、以及每次 `stale` 之后，对每个注册了 `ui.render` 的 mod 用 `{ surface: <这一端>, component: "AbovePrompt", requestId: "above-prompt" }` 拉一次树；返回 `undefined` 或空树就不占位置。校验、限额、`revision`、失败时保留上一帧并叠错误摘要，全部与面板一致。
 
 与 Claude Code 的差异：它的带是**一个共享站点**（`requestId` 固定 `above-prompt`，与 pane 一起列进 `ui.focus` / `ui.scroll` 的站点集合）；我们按插件分成多条带，且一期不给带键盘焦点与滚动 —— 那是面板才有的东西。
+
+**终端里这三样的落点**（终端没有浮层与右栏，只能落在输入框上下两行）：
+
+| 能力               | 终端落点                                                                                                                                                                 |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `AbovePrompt` 站点 | 输入框上方，一个 mod 一条、按插件加载顺序自上而下；每条正文封顶 6 行，超出在带内滚动                                                                                     |
+| `$.ui.status`      | 输入框下方那一行（左侧仍是权限模式提示）：`插件名: text` 用 `·` 连起来、单行省略，放不下时收成末尾的 `+N`                                                                |
+| `$.ui.toast`       | 同一个槽位（与「插件变更待应用」同一个 hint，谁最后设置谁显示），带 `插件名: ` 署名，默认停留 4 秒后自己消失；终端里没有 × 可点，提前清就走 `timeoutMs` 或下一次提示覆盖 |
 
 **`AbovePromptList` 站点：看见并重排别人的带**。第三个站点把「带里现在有什么」摊给 mod 看：宿主先把所有 mod 的带收齐，再用 `{ surface: "desktop", component: "AbovePromptList", requestId: "above-prompt" }` 问**显式在 matcher 里点名这个站点的** mod 一次（`on("ui.render", { component: "AbovePromptList" }, …)`），`e.props.rows` 是这一帧全部行的形状 `{ plugin, tree }`（`plugin` 是行主的插件名，`tree` 是那一行当前要画的树），外加 `hasSurvey` / `isCollapsed` / `isWorking` / `maxRows` / `bodyColumns` 几个版面事实。
 
@@ -346,7 +537,7 @@ on("tool.call", { tool: "Bash" }, async ($, e, next) => {
 
 - 与 `status` / `toast` 的区别是**它属于这次对话**：随会话落盘，切会话、重启之后还在；`status` 是常驻的一行（后一次覆盖前一次），`toast` 几秒就没了。要「这件事发生过、以后还能回看」就用 `log`。
 - **不进模型上下文**：`notice` 块不进 API 请求（参见消息块可见性矩阵），所以 mod 可以放开写，不会污染提示词、也不会顶掉 token 预算。
-- `to` 一期只接受 `"transcript"`（省略时默认它），别的值报错 —— Claude Code 同名方法的 `to` 还认面板/终端那几档，我们只有对话流这一档，给个拼错的值静默当成 transcript 更糟。
+- `to` 只认两个值：`"transcript"`（省略时默认它，即上面那条）与 `"debug"`（只写进 `wave` 的调试日志，对话流里**不出现** —— 给 mod 作者自己排查用）。别的值报错并列出这两个可用值，与 Claude Code 逐字同一份口径（它宿主侧也是这两个值，原话 `to is "transcript" or "debug"`）；唯一差别是不合法时**我们让这条钩子失败、CC 只丢掉这一行并记一条 warn** —— 我们一贯宁可当场失败，不静默吞掉。
 - 单条超过上限（见「限额」）截断并加省略号，与 `status` 同一个口径。
 
 ### 工具行下面的一行
@@ -394,6 +585,78 @@ on("command.run", { command: "/standup" }, ($, e) => ({
 - **撞宿主本地命令**在宿主侧丢弃：`/config`、`/clear`、`/model` 这类是各前端自己实现的动作（不在 SDK 的命令表里），SDK 检查不到；所以 `getSlashCommands` 合并时，同名 mod 命令被丢掉并记一条 warn。
 - **不能在 `command.run` 钩子里调 `$.prompt.submit`**：钩子正持有用户打出的这一轮，再投一条会等自己（CC 的原文案是「would wait on the turn this hook is holding」）。要在这之后继续，就存到状态里、在 `turn.complete` 里投。
 - `$.command.list()` 返回当前可见的命令（`{ name, description, source, plugin? }`，`source` 是 `built-in` / `user` / `skill` / `plugin`），`$.command.run({ command, args })` 以 mod 身份执行一条已注册的命令 —— 与用户敲下它等价（同样走 `command.run` 钩子）；命令不存在时报错并列出最接近的名字。
+
+### 把我们自己的工具交给模型
+
+除了观察和改写宿主已有的工具，mod 还能**带来自己的工具**：`$.tool.register()` 交一份工具规格，模型按 `mcp__<plugin>__<name>` 调它，执行体是同一个 mod 的另一条 `tool.call` 钩子。
+
+```ts
+on("tool.register", ($) => {
+  $.tool.register({
+    name: "lookup_ticket", // /^[a-zA-Z0-9_-]{1,64}$/
+    description: "按编号查一张工单的现状", // 模型看到的那段，必填非空
+    inputSchema: {
+      // JSON Schema 对象，缺省 { type: "object" }
+      type: "object",
+      properties: { id: { type: "string" } },
+      required: ["id"],
+    },
+  });
+});
+
+on("tool.call", { tool: "mcp__myplugin__lookup_ticket" }, async ($, e) => {
+  const ticket = await lookup(e.input.id);
+  return { result: ticket }; // 这份 JSON 就是模型读到的工具结果
+});
+```
+
+- **名字带前缀**：`mcp__<plugin>__<name>`，`<plugin>` 是插件目录名归一后的 `[a-z0-9_-]+`。这个前缀不是装饰：`isRestrictedTool()` 按它把工具归进受限工具，于是 mod 带来的工具与 MCP 工具走同一条审批路（用户看得见、能拒）。不写前缀就得给「第三方工具」单开一条权限分支，那是把同一个判断做两次。
+- **执行走 `tool.call`**：规格里没有 handler，模型调它时引擎派 `tool.call`，matcher 写全名、返回 `{ result }`（任意 JSON，序列化后作为工具结果文本交给模型）或 `{ deny }`。为此 `tool.call` 的返回值从「只认 `{ deny }`」扩成 `{ deny } | { result }`，链也从「只观察」变成能答结果的链：`next(e)` 解析到下游已经形成的答案，外层返回自己的那份才算数。不注册 `tool.call` 的工具被调用时按 `{ result: null }` 答，并在插件日志里说明没人接。
+- **5 秒预算照旧**：执行体是 mod 的代码，受「限额」那一节的全部约束；要跑长活就 `$.process` / `$.http`（它们有自己的超时与暂停规则）。
+- **时机**：`tool.register` 事件每个 mod 一次，在第一次请求之前；在 `session.start` 里直接调也一样 —— 只要赶在第一次请求之前。
+- **限额**：一个 mod 最多 16 个工具（`MOD_LIMITS.modToolsPerMod`）；`description` ≤ 2000 字符、`inputSchema` 序列化后 ≤ 16 KB，超了当场报错并把实际数字写进错误里；重名（别的插件、内置工具、MCP 工具）注册即失败。
+- **卸载**：插件重载、`session.end` 时注销；注销之后模型不再看到它，同一轮里已经跑起来的调用不打断。
+
+### 派子代理
+
+`$.agent.spawn()` 让 mod 自己起一个子代理；`agent.spawn` 事件让 mod 拦在**任何**子代理起跑之前（包括 `Agent` 工具派的）。
+
+```ts
+on("agent.spawn", { subagentType: "Explore" }, async ($, e, next) => {
+  if (e.prompt.includes(".env"))
+    return { deny: "这个仓库里不许把 .env 交给子代理" };
+  return next({ ...e, prompt: e.prompt + "\n只读，别改文件。" });
+});
+```
+
+- **形状**：`e` 是 `{ tool_use_id, prompt, description, subagentType, model? }`；`next(e)` 解析到 `{ model, agentId? }`（`agentId` 是 core 派的那个子代理的 id，钩子自己答的没有）；`{ deny }` 拒绝这一次派发。
+- **matcher**：`{ agent: "Explore" }` 匹配 `agent.offer`（事件里那个字段就叫 `agent`），`{ subagentType: "Explore" }` 匹配 `agent.spawn`（CC 的事件字段名也是这个，见它的 `n.subagentType`）。不跨事件别名：给 `agent.spawn` 写 `{ agent }` 匹配不上，与 CC 一致。值按字面比，内置 `Explore` 的 `E` 是大写。
+- `agent.offer` 在**清单**与**派发**各触发一次，返回 `{ isOffered: false }` 让这个子代理类型既不出现在 Agent 工具的清单里、也拒绝派发 —— 它与 `agent.spawn` 的分工是「先决定给不给看，再决定这一次放不放」。
+- **额度**：一个 mod 同时活跃的子代理最多 4 个；mod 派的子代理**不再派**（深度 1），防递归。超了 `$.agent.spawn` reject，`agent.spawn` 钩子则不触发（没东西可派）。
+- **归属**：`$.agent.list()` 能看见它们，多一个 `plugin?` 字段标明是谁派的；主会话的汇总与 `$.ui.view({ agentId })` 照旧。
+- 子代理的 `tool.call` 事件带 `agentId`（主会话上这个键不出现），mod 据此分辨是谁在调。
+
+### 让模型替插件答一次（`$.model.complete`）
+
+mod 有时要自己问模型一句：给一段长文本分类、把一堆提交写成摘要、判断这行日志像不像故障。
+
+```ts
+const reply = await $.model.complete({
+  // 全名，取用户配置里已有的模型（与 --model 同一份清单 + 当前会话模型；
+  // Wave 没有 haiku/sonnet 这类族别名，写不存在的名字当场 reject）
+  model: "gpt-4o-mini",
+  system: "你是一个分类器，只回一个词。",
+  prompt: chunk,
+  maxTokens: 256,
+});
+if (reply.isAnswered) $.ui.status(reply.text.trim());
+```
+
+- **一次一问、不流式**：答了给 `{ isAnswered: true, text, usage }`（`usage` 与 `$.session.usage()` 同口径），没答出来给 `{ isAnswered: false, reason, usage }`，`reason` 取 CC 的三档：`api-error`（带 `status` 与 `error`，`status` 是 HTTP 状态、拿不到响应时为 `null`）、`empty-reply`（模型回了但正文没有文本块）、`aborted`（`timeoutMs` 到期、调用方取消、插件被卸载）。**我们自己的门槛不混进这个联合**：模型不在 allowlist 里、超出每会话 50 次、`maxTokens` 非正整数，一律当场 reject —— CC 的 `reason` 说的是「这次请求怎么了」，而这三件是「根本没发这次请求」。
+- **它是唯一一条不占 5 秒钩子预算的调用**：一次请求通常 3–60 秒，把它塞进钩子预算等于废掉这个能力。实现上走与 `$.process` 等输出同一条「暂停预算」通道，超时由调用方用 `timeoutMs` 自己给（缺省不设，与 CC 一致）；**除它之外，钩子里的一切仍然受 5 秒约束。**
+- **额度**：每条会话每个插件最多 50 次（`MOD_LIMITS.modModelCallsPerSession`）；`maxTokens` 缺省 1024、上限 4096（`MOD_LIMITS.modModelMaxTokens`）。上限比 Claude Code 的「`min(模型输出上限, 64000)`」紧一档：这条通道是给插件做单次判断用的，不是给它们跑长生成 —— 64k 的一问在额度只有 50 次时能被一次花光。超出额度 reject 而不是答 `aborted` —— 见上一条的分工。
+- **记账可见**：这几次调用算进会话总量（与模型请求同一条记账路，`model` 记的是请求的那个模型），所以 `$.session.usage()` 与 `session.measure` 的快照都含它们。用户的账单要能对上模型请求，所以不藏。
+- **不许在 `$.model.complete` 里再调 `$.model.complete`**：一次调用只有一层，直接 reject。
 - 命令的归属随插件：`/reload-plugins` 或卸载插件后该命令消失；同名命令不会被另一个插件抢走。
 
 ### 定时器
@@ -436,7 +699,7 @@ mod 的沙箱里**没有** `setTimeout`/`setInterval`，要定时只能走 `$.cl
 | `$.tool.list()`   | `Promise<ToolInfo[]>`  | 这一刻 `ToolManager` 上注册的工具，`{ name, description, mcp }`，顺序就是模型看到的顺序；`mcp` 按工具名是不是 `mcp__<server>__<tool>` 判。                                                                                                                                                                                                                                                                                                                                      |
 | `$.agent.list()`  | `Promise<AgentInfo[]>` | 这条会话派过的子代理，一条一个：`{ id, description, type, status, parentAgentId? }`。`id` 就是子代理事件里那个 id；`type` 是派它时用的子代理类型；`status` 取 `pending` / `running` / `idle` / `completed` / `failed` / `killed`（我们的 `initializing` / `active` / `completed` / `error` / `aborted` 逐一对上）。                                                                                                                                                             |
 
-- 三个都**只读**：没有 `$.config.set`、没有 `$.tool.register`、没有 `$.agent.spawn` / `$.agent.register`（理由见「交付分层」）。
+- 这两个清单仍**只读**：没有 `$.config.set`、没有 `$.agent.register`。会写的那三个 `$.tool.register` / `$.agent.spawn` / `$.model.complete` 各有自己的额度与生命周期，见「把我们自己的工具交给模型」「派子代理」「让模型替插件答一次」。
 - `$.config.list()` 的值是**合并后**的（override > `AgentOptions` > Remote > 三层 `settings.json`），与 `$.settings.read()` 同一个数据源；它比后者多的只有「菜单会怎么画」—— `label`、`kind`、`isLocked`（被 Remote / override 那层钉住的键为真，菜单显示但拒绝改）。
 - `$.agent.list()` 只列**还在的**子代理：任务被丢掉之后就不在列表里，与 Claude Code 的「until the engine drops its task」同语义。列表按派生的先后排。
 - 三个都返回 `Promise`，一次读取无副作用、不占钩子预算（不碰 I/O 的只有 `agent.list`，另外两个读的是宿主内存里的快照）。
@@ -457,7 +720,7 @@ mod 的沙箱里**没有** `setTimeout`/`setInterval`，要定时只能走 `$.cl
 
 七个都返回 `Promise`（Claude Code 的同名方法也是异步的），一次读取不产生副作用。`turns()` 数的是 `MessageManager` 里 `role: "user"` 的**真实输入**（不含工具结果与系统注入），`repo()` 每次现读工作副本（不缓存，因为用户可能在会话中间 `git init`），`version()` 是编译期常量。`$.session.usage()` 与 `$.session.cwd()` 是既有的**同步**返回（一期已交付），与 Claude Code 那两处异步不同 —— 差异只影响 `.then()` 这种写法（`await` 两边都能用），不改。
 
-`surfaces()` 一期会给出三种答案：桌面端在画 ⇒ `["desktop"]`；IDE 聊天面板在画（VS Code 或 JetBrains）⇒ `["vscode"]`；终端 CLI、`wave -p` ⇒ `[]` —— 后两者一期都不画 mod 的元素树（见「交付分层」），所以「有界面」与「能画面板」在这一期是同一件事，但语义按**前者**定义：元素表按 `e.surface` 选，将来终端接上渲染时这个数组会先变成 `["terminal"]`，读它的插件不需要改。
+`surfaces()` 给出三类答案：桌面端在画 ⇒ `["desktop"]`；IDE 聊天面板在画（VS Code 或 JetBrains）⇒ `["vscode"]`；终端 CLI 在画 ⇒ `["terminal"]`；`wave -p` ⇒ `[]`。几个端可能同时挂着（同一会话既开桌面端又从终端连），所以它给的是**数组**、按 surface 名字母序去重，插件要「择一」就取第一项。语义按「有界面」定义而不是「能画面板」：元素表按 `e.surface` 选，读它的插件不需要改。
 
 - **它是「有没有人看得见」的唯一诚实答案**，`$.ui.open()` 的 `isPlaced` 与它同一个数据源（见「面板放得下吗」）。守卫类插件必须在拦下之前问一次：没人看得见就别把命令冻在那儿等一个永远没人按的按钮。
 - **空数组不是错误**：Claude Code 对它明确写了「never rejects」，`wave -p` 也是正常会话。所以调用方别用 `try/catch` 兜，直接判 `length`。
@@ -485,6 +748,7 @@ mod 的沙箱里没有 `child_process`，要跑外部程序只能走 `$.process.
 - `list(path)` 返回这一层的 `{ name, kind: "file" | "dir", size, isLink }`，不递归。
 - `stat(path)` 返回 `{ kind, size, isLink }`；`exists(path)` 返回 `boolean`（不存在就是 `false`，不抛错）。
 - 单个文件读写各 4 MiB。形状与 Claude Code 的 `$.fs` 一致。
+- **插件自己的资源走 `$.plugin.root`**：那是插件目录的绝对路径，`$.fs.read(`${$.plugin.root}/hooks/weights.bin`, { as: "bytes" })` 是社区写法（camjac251/cc-enhanced 的钩子就这么取自己那份词表）。相对路径仍然按会话工作目录解析 —— 插件目录与会话目录是两个地方，别指望 `read("hooks/x.json")`。
 - **不另设路径白名单**：同一插件的 hooks 本来就在跑 shell，mod 也能 `spawn` 任意命令读同一个文件 —— 加白名单只是让「读」比「读」更难，不提高任何安全性。这与「外部进程」的信任论证是同一条。
 
 ### 沿目录链找指令文件
@@ -516,6 +780,15 @@ mod 的沙箱里没有 `child_process`，要跑外部程序只能走 `$.process.
 - 不做 Claude Code 的「中断后拒收」回执（`{ drop }`）：我们的投递不会因为用户按了 Esc 就把在队里的消息丢掉。
 - **它投进去的这条 prompt 不触发 `prompt.submit` 事件**（那个事件只对用户敲的话发）：否则 mod 在钩子里再 submit 一次就是无限环。它开的那一轮里 `turn.start` / `turn.step` 照常发，所以「投完再观察自己造成的那一轮」仍然做得到。
 
+### 收掉一轮（`$.turn.abort`）
+
+`$.turn.abort({ turnId })` 是 `$.prompt.submit` 的反向操作：插件发现「这一轮不该继续跑了」（自建的超时、外部信号、盯到一个不该出现的命令）时，自己把它收掉，不必等用户去按 Esc。
+
+- **`turnId` 是 `turn.start` 给的那个**：形状照 Claude Code（`{ turnId }`），不匹配时 reject 并同时报出两个 id —— 插件手里那个 id 可能已经过期（上一轮早就结束了），把「收掉此刻这一轮」按旧 id 执行会杀掉用户刚发起的新一轮。
+- **收掉 = 模型请求中断、正在跑的工具停掉**，与用户按 Esc 收到的效果一致；被收掉的那一轮照常发 `turn.complete`（`isAborted: true`）与 `classic.Stop`，所以「我收的」这件事在事件里是看得见的。
+- **不动的两样**：用户已经排队的消息照旧留在队里（下一轮再说），Bash 常驻命令与斜杠命令不跟着断 —— Esc 会顺手把它们也停掉，插件手上没有「用户按下去了」这个事实，越界替它做决定反而更糟。
+- **没有一轮在跑时**（模型在等用户输入）reject，而不是静默成功：插件的超时逻辑靠这个异常分辨「我收掉了」与「本来就没事」。
+
 **信任。** `spawn` 让 mod 能执行任意命令，但它不引入新的信任层级——同一个插件的 hooks 本来就在跑 shell（`services/hook.ts` 的 `executeCommand`）。变的只是 mods 也能做同一件事，而插件安装时用户已经在授予这个权限。
 
 ### 把草稿填进输入框
@@ -537,6 +810,22 @@ mod 的沙箱里没有 `child_process`，要跑外部程序只能走 `$.process.
 - **永不 reject**：终端 CLI、`wave -p`、输入框还没挂上、3 秒没有回执，一律给 `{ text: "", cursor: 0 }`。社区写法是 `(await $.prompt.read()).text` 直接取，抛错会让他们整个钩子挂掉。
 - 空串是「输入框是空的」还是「没有输入框」，调用方分不出来 —— 这是刻意的：CC 也一样。要区分就问 `$.session.surfaces()`。
 - `fill` 填进去的字**立刻**能从 `read` 读回来（同一条通道，不走另一份缓存），所以「填完再读一遍确认」是合法写法。
+
+### 输入框里的建议（`prompt.suggest` / `prompt.edit`）
+
+两个事件让 mod 看见「用户正在输入框里做什么」，都能改写：
+
+| 事件             | 时机                                                                                                                       | 返回                                                                          |
+| ---------------- | -------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| `prompt.edit`    | 用户在输入框里做完一次编辑（一次按键、一次粘贴、一次删除），`e` 是 `{ origin, key?, text, cursor, start, end, inputText }` | `next(e)` 解析到 `{ text, cursor }`：改写后的输入框；外层返回自己的那份也算数 |
+| `prompt.suggest` | 一个建议要摆进输入框（用户打字后的推荐、或某个 mod 的 `$.prompt.suggest`），`e` 是 `{ text, origin }`                      | `{ isShown: boolean }`：这次建议摆没摆上                                      |
+
+- **`origin` 是两处同一个形状**：`prompt.edit` 恒为 `{ kind: "composer" }`（人是唯一来源）；`prompt.suggest` 取 `{ kind: "suggestion" }`（引擎自己的推荐）或 `{ kind: "plugin", name }`（某个 mod 调的 `$.prompt.suggest`）。`next(e)` 原样传下去，任何钩子都不改它。
+- **`prompt.edit` 的改写**：`next({ ...e, text })` 是「把这次编辑应用到另一份草稿上」、`next({ ...e, inputText })` 是「换成别的字」，光标落在它后面；不调 `next` 直接返回 `{ text: e.text, cursor: e.cursor }` 等于**吃掉这次按键**（拼写检查、语法闸门就这么写）。
+- **`prompt.suggest` 不返回文本**：换一个建议靠 `next({ ...e, text })`。返回 `{ isShown: boolean }` 且不调 `next` 就是**最终答案**：`false` 是不摆，`true` 是「我摆上了」—— 宿主不再自己问输入框（CC 的 core 以 `isShown` 为结果键，谁给出合法的它，链就收敛）。要问宿主摆不摆就别返回它，走 `next(e)`。宿主摆不上有确定的原因：输入框里已有字、一轮正在跑、文本是空白、没有输入框（headless）、对话框占着键或输入框被禁用（此刻用户看不见草稿）。
+- **三端差异**：桌面端与 webview 两件都发；**终端一律不发**（`prompt.edit` / `prompt.suggest` 与用户正在打字直接冲突，与 `$.prompt.read` 在终端「刻意不做」是同一条理由）。mod 用 `$.session.surfaces()` 判断要不要挂这些钩子。
+- **焦点不在这条通道上**：CC 另有一个 `ui.focus` 事件（焦点环落到插件画的 `Pane` / `AbovePrompt` 里的某个元素时通知 mod），我们**不做** —— 它的另一半是 `$.ui.focus` 方法（mod 把环挪到自己元素上），而宿主与 webview 从没产生过这类事件，留着就是一个永不触发的钩子。要看「用户在打字」用 `prompt.edit`。
+- **与 `$.prompt.fill` 的关系**：`prompt.suggest` 只是「提议」，用户按 Tab 采纳才进输入框；mod 想直接写进去仍要调 `$.prompt.fill`（同一条草稿状态，所以两边不会打架）。`$.prompt.suggest({ text })` 是这条事件的方法形态，与引擎自己的推荐走同一条链，`e.origin` 标明是谁提的 —— 否则 mod 容易自己触发自己。
 
 ### 会话用量
 
@@ -607,13 +896,13 @@ mod 的沙箱里没有 `child_process`，要跑外部程序只能走 `$.process.
 
 **handler 签名**（按**哪个实参被当成登记函数**区分，不看形参个数 —— 两种形状互斥：我们的用第二个实参当 `on`，社区的把第一个实参当 `on`，因此同一个 `on` 登记出来的 handler 形状是确定的）：
 
-- `(e, next)` —— 我们的形状（`register($, on)` 登记），返回值语义仍按「事件」那张表；`next` 与社区那个同义（交给链上的下一个 mod / 引擎，`tool.run` 下它就是执行本身）。第二个形参是后来补的：没有它，按我们推荐写法写的守卫只能看见调用、看不见结果（`tool.run` 里改不了 `isError` 之后的动作），而社区写法有。老 mod 少写一个形参不受影响。
+- `(e, next)` —— 我们的形状（`register($, on)` 登记），返回值语义仍按「事件」那张表；`next` 与社区那个同义（交给链上的下一个 mod / 引擎；`tool.call` 下它就是执行本身）。第二个形参是后来补的：没有它，按我们推荐写法写的守卫只能看见调用、看不见结果（`tool.call` 里拿不到 `next(e)` 交回的那份结果），而社区写法有。老 mod 少写一个形参不受影响。
 - `($, e, next)` —— 社区的（`register(on, options)` / `Register = on =>` 登记）。**社区 handler 可以只写一个形参**（`on("command.run", matcher, async $ => …)`，社区真 mod 就这么写），那一个形参就是 `$`：按形参个数判形状会把它当成我们的 `(e)`，`$` 会变成事件对象。`next(e)` 把这次事件交给链上的下一个 mod / 引擎：`ui.render` 下它返回**引擎自己那一帧**（只有宿主本来就会画的站点才有；`Pane` / `AbovePrompt` 是留给 mod 的空间，`next(e)` 返回 `undefined`），mod 可以返回自己的树去替换它，也可以把 `next(e)` 的结果包一层再返回；`tool.call` 下它返回链上后面的 mod 的决议（没人拦就是**空对象**），所以守卫要先看 `ran.deny` 再决定自己要不要返回 `{ deny }`；其余观察型事件（`turn.*` / `session.*`）下它同样返回**空对象**而不是 `undefined` —— 社区 mod 会 `await next(e)` 之后读 `ran.deny` / `ran.isError`，给 `undefined` 会当场抛属性错误，空对象正好表达「引擎没有意见（也就没有拒绝、没有报错）」。一次 handler 最多调一次 `next(e)` —— 再调当场报错（否则链会跑两遍）。
 - **`next(e)` 收下改过的事件**：社区最常见的写法是 `return next({ ...e, context: [...] })`（burn-rate 的限额提醒就是这样注入上下文的）。链尾的引擎帧按**走到那里的那份事件**算 —— `prompt.submit` 取 `e.context` 还成 `{ context }`，`command.run` 取 `e.text` 还成 `{ text }`，所以 mod 把改动交给 `next`、自己不拼返回值也能生效。丢掉这份改动会让注入静默失效。
 
 **同一条事件可以挂多个 handler**（不分社区还我们，按注册顺序串成一条链；第一个匹配上的 handler 的返回值就是结果）。`on(name, handler)` 返回一个可以 `.catch(handler)` 的注册凭据：handler 抛错（含 5 秒预算超时）时用它兜底，兜底自己也抛才算这条钩子失败。社区的写法是 `.catch(function ($, e) { … })`，兜底与它所在的那条钩子同形状（同一个 `on` 登记出来的）。
 
-**matcher**（第三个实参，社区写法 `on(name, matcher, handler)`）：只对这几个事件有意义 —— `ui.render`（`{ component, requestId }`）、`ui.press` / `ui.input` / `ui.select`（`{ plugin, element }`，Claude Code 的写法）、`tool.call` / `tool.run`（`{ tool }`）、`command.run`（`{ command }`）。语义是**事件字段的子集匹配**，值可以是一个候选值数组（命中任一即匹配）；事件的字段名就是 Claude Code 钩子里的名字（`requestId` 而不是 `ui_render` 消息里的 `instance_id`），matcher 与 handler 读的是同一个字段。没匹配上的钩子**不参与**这次事件（不是「参与但拿不到值」）。`command.run` 的 matcher **可省**：省了就是「这个 mod 注册的每条命令都问它」，钩子自己比 `e.command`（社区真 mod 就这么写）；写了就带不带斜杠都认、内部归一。给别的配对不上 matcher 的钩子传 matcher 会记一条 warn 并忽略这条注册。
+**matcher**（第三个实参，社区写法 `on(name, matcher, handler)`）：只对这几个事件有意义 —— `ui.render`（`{ component, requestId }`）、`ui.press` / `ui.input` / `ui.select`（`{ plugin, element }`，Claude Code 的写法）、`tool.call`（`{ tool }`）、`command.run`（`{ command }`）。语义是**事件字段的子集匹配**，值可以是一个候选值数组（命中任一即匹配）。单个值按 CC 的同一套比：标量是 `===`（`command` 两边归一后比），`RegExp` 是把事件值当字符串 `test`（社区 mod 写 `{ command: /git\s+commit/ }` 就是这个意思），事件值是对象时 matcher 里给对象按**对象偏匹配**递归比；事件的字段名就是 Claude Code 钩子里的名字（`requestId`，没有别名），matcher 与 handler 读的是同一个字段。没匹配上的钩子**不参与**这次事件（不是「参与但拿不到值」）。`command.run` 的 matcher **可省**：省了就是「这个 mod 注册的每条命令都问它」，钩子自己比 `e.command`（社区真 mod 就这么写）；写了就带不带斜杠都认、内部归一。给别的配对不上 matcher 的钩子传 matcher 会记一条 warn 并忽略这条注册。
 
 **裸名 import**：`wave-agent-sdk/mods` 是我们对外推荐的名字；社区的 `'claude-code'` 作为**别名**解析到同一个模块 —— 不引入那个 npm 包，也不解析 `node_modules`。除元素构造器，该模块还导出三个助手：
 
@@ -627,47 +916,55 @@ mod 的沙箱里没有 `child_process`，要跑外部程序只能走 `$.process.
 
 宿主侧强制，超限**不画**并给出可见错误（面板错误态 + `wave` 日志里的原因），不静默丢弃。
 
-| 限额                             | 值                                                                |
-| -------------------------------- | ----------------------------------------------------------------- |
-| 单个 mod 文件                    | 1 MiB                                                             |
-| 一个插件所有 mod 文件总量        | 4 MiB                                                             |
-| 文件数                           | 64                                                                |
-| 元素树节点数                     | 2000                                                              |
-| 元素树深度                       | 24                                                                |
-| 树内文本总量                     | 100,000 字符                                                      |
-| `Link.href`                      | 2048 字符                                                         |
-| `Svg.source`                     | 131,072 字符（与 Claude Code 同一个数）                           |
-| `Svg` 的 `width` / `height`      | 各 4096px（同上）                                                 |
-| `Select.options`                 | 1–64 项，`value` 必须唯一                                         |
-| 单个 hook 执行时间               | 5 秒（等外部进程输出的空闲不计；超时视为失败，事件按无 mod 处理） |
-| 面板每次 `invalidate` 的最小间隔 | 100ms（更快的调用合并）                                           |
-| 定时器最小间隔                   | 200ms（更小的值夹到 200ms）                                       |
-| 一个 mod 同时活跃的定时器        | 16（超出时新建定时器报错）                                        |
-| `$.clock.sleep` 单次等待         | 10 分钟（更长的夹到 10 分钟）                                     |
-| 一个 mod 同时未完成的 `sleep`    | 16（与定时器分开计；超出时 `sleep` 报错）                         |
-| `$.env.get` 的变量名             | 256 字符（更长的按没设置处理，返回 `undefined`）                  |
-| `$.settings.read` 的返回值       | 4 MiB（超出报错，不截断 —— 截断的配置是错的配置）                 |
-| `prompt.submit` 返回的 `context` | 32 条、合计 100,000 字符（超出丢弃多余的并记一条 warn）           |
-| 一个 mod 同时活跃的外部进程      | 4（`run` 跑完前也占一个；超出时 `spawn` / `run` 报错）            |
-| 外部进程单块输出                 | 64 KiB（更长的块切开）                                            |
-| 一个外部进程累计输出             | 4 MiB（超出后停止读取并杀掉该进程）                               |
-| `$.process.run` 超时             | 默认 30 秒，最多 10 分钟                                          |
-| `$.process.run` 的 stdout/stderr | 各 4 MiB（超出置对应的 `is…Truncated`）                           |
-| `$.fs.read` / `$.fs.write`       | 单个文件 4 MiB                                                    |
-| `$.http.fetch` 请求体 / 响应体   | 各 4 MiB（响应体超 `Content-Length` 声明即报错）                  |
-| 一次 `$.http.fetch`              | 30 秒（含重定向与读完 body），最多 5 次重定向                     |
-| `$.ui.status` 的一行             | 10,000 字符（超出截断并加省略号）                                 |
-| `$.ui.toast` 停留时间            | 默认 4000ms，`timeoutMs` 最多 10 秒（我们的限额）                 |
-| 同时排队的 toast                 | 50 条（溢出丢弃未展示的旧条；同屏显示 1 条）                      |
-| 输入框上方的带                   | 一个 mod 一条，树与节点限额同面板                                 |
-| `$.ui.log` 的一行                | 10,000 字符（超出截断并加省略号）                                 |
-| 一个 mod 注册的命令              | 32 个（超出报错）                                                 |
+| 限额                              | 值                                                                                                                                                    |
+| --------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 单个 mod 文件                     | 1 MiB                                                                                                                                                 |
+| 一个插件所有 mod 文件总量         | 4 MiB                                                                                                                                                 |
+| 文件数                            | 64                                                                                                                                                    |
+| 元素树节点数                      | 2000                                                                                                                                                  |
+| 元素树深度                        | 24                                                                                                                                                    |
+| 树内文本总量                      | 100,000 字符                                                                                                                                          |
+| `Link.href`                       | 2048 字符                                                                                                                                             |
+| `Svg.source`                      | 131,072 字符（与 Claude Code 同一个数）                                                                                                               |
+| `Svg` 的 `width` / `height`       | 各 4096px（同上）                                                                                                                                     |
+| `Select.options`                  | 1–64 项，`value` 必须唯一                                                                                                                             |
+| 单个 hook 执行时间                | 5 秒（等外部进程输出的空闲不计；超时视为失败，事件按无 mod 处理）                                                                                     |
+| 面板每次 `invalidate` 的最小间隔  | 100ms（更快的调用合并）                                                                                                                               |
+| 定时器最小间隔                    | 200ms（更小的值夹到 200ms）                                                                                                                           |
+| 一个 mod 同时活跃的定时器         | 16（超出时新建定时器报错）                                                                                                                            |
+| `$.clock.sleep` 单次等待          | 10 分钟（更长的夹到 10 分钟）                                                                                                                         |
+| 一个 mod 同时未完成的 `sleep`     | 16（与定时器分开计；超出时 `sleep` 报错）                                                                                                             |
+| `$.env.get` 的变量名              | 256 字符（更长的按没设置处理，返回 `undefined`）                                                                                                      |
+| `$.settings.read` 的返回值        | 4 MiB（超出报错，不截断 —— 截断的配置是错的配置）                                                                                                     |
+| `prompt.submit` 返回的 `context`  | 32 条、合计 100,000 字符（超出丢弃多余的并记一条 warn）                                                                                               |
+| 一个 mod 同时活跃的外部进程       | 4（`run` 跑完前也占一个；超出时 `spawn` / `run` 报错）                                                                                                |
+| 外部进程单块输出                  | 64 KiB（更长的块切开）                                                                                                                                |
+| 一个外部进程累计输出              | 4 MiB（超出后停止读取并杀掉该进程）                                                                                                                   |
+| `$.process.run` 超时              | 默认 30 秒，最多 10 分钟                                                                                                                              |
+| `$.process.run` 的 stdout/stderr  | 各 4 MiB（超出置对应的 `is…Truncated`）                                                                                                               |
+| `$.fs.read` / `$.fs.write`        | 单个文件 4 MiB                                                                                                                                        |
+| `$.http.fetch` 请求体 / 响应体    | 各 4 MiB（响应体超 `Content-Length` 声明即报错）                                                                                                      |
+| 一次 `$.http.fetch`               | 30 秒（含重定向与读完 body），最多 5 次重定向                                                                                                         |
+| `$.ui.status` 的一行              | 10,000 字符（超出截断并加省略号）                                                                                                                     |
+| `$.ui.toast` 停留时间             | 默认 4000ms，`timeoutMs` 最多 10 秒（我们的限额）                                                                                                     |
+| 同时排队的 toast                  | 50 条（溢出丢弃未展示的旧条；同屏显示 1 条）                                                                                                          |
+| 输入框上方的带                    | 一个 mod 一条，树与节点限额同面板                                                                                                                     |
+| 终端的面板正文 / 每条带           | 一次最多 12 行 / 6 行（见「终端形态」，超出在端内滚动）                                                                                               |
+| `$.ui.log` 的一行                 | 10,000 字符（超出截断并加省略号）                                                                                                                     |
+| `$.store` 的单个值                | 4,194,304 个字符（`JSON.stringify` 之后的长度；与 Claude Code 同一个数与同一个算法。超出、含环、顶层 `undefined` 都报错，不截断 —— 截断的值是错的值） |
+| 一个 mod 注册的命令               | 32 个（超出报错）                                                                                                                                     |
+| 一个 mod 注册的工具               | 16 个（超出报错）；`description` ≤ 2000 字符、`inputSchema` ≤ 16 KiB（超出报错并把实际数字写进错误）                                                  |
+| 一个 mod 同时活跃的子代理         | 4 个（超出 `$.agent.spawn` 报错）；mod 派的子代理不再派子代理（深度 1）                                                                               |
+| `$.model.complete` 的调用次数     | 每条会话每个插件 50 次（超出当场 reject —— 那是「这次请求根本没发出去」，不是 `reason: "budget_exceeded"`）                                           |
+| `$.model.complete` 的 `maxTokens` | 4096（超出夹到这个数）                                                                                                                                |
+| 一次 `$.model.complete`           | 缺省不设超时，`timeoutMs` 最多 5 分钟（这条调用不占 5 秒的钩子预算）                                                                                  |
 
 ## 加载纪律
 
 - mod 的 import 只允许**相对路径**与 `wave-agent-sdk/mods`（元素构造器表 + `atom`/`read`/`update`）；社区的 `'claude-code'` 是它的别名，其他裸包名直接报错。
 - 动态 `import()` 在 CJS 产物里同样变成 `require`，因此受同一条白名单约束。
-- 相对 import 只在**该插件本次参与编译的文件集合**里解析（不读 `node_modules`）；出现环形 import 直接报错。
+- 相对 import 只在**该插件本次参与编译的文件集合**里解析（不读 `node_modules`）；`.js` / `.jsx` 说明符也认同名 TS 源码（`./x.js` → `x.ts` / `x.tsx`）。环形 import 按 CJS 语义解 —— 后来者拿到前者**当时已写下**的 `exports`，不整片失败（社区多文件 mod 里这种真环很常见）。
+- 同一插件里两个**入口**文件重名时只留先到的那个（记一条 warn）；被 import 的兄弟文件重名不影响，各自带后缀留在编译集里。
 - 文件解析走 `realpath`，解析结果必须落在插件目录内，越界即拒绝。
 - 编译或加载失败：该 mod 不生效，其余 mod 与插件其他能力不受影响；失败原文进 `wave` 日志，并**占一个错误面板**（`paneId` 为 `error`，标题是文件名，内容是一行摘要）—— 否则用户只会看到「面板没出现」。
 - 只注册 `ui.render` 而从不 `$.ui.open` 的 mod 不产生面板，日志记一条 debug。
@@ -680,7 +977,7 @@ mod 的沙箱里没有 `child_process`，要跑外部程序只能走 `$.process.
 - 会话结束 / agent 销毁：宿主内部关掉所有面板并丢弃该会话的 mod 实例，此后发来的一切交互静默丢弃。
 - 会话结束与 `/reload-plugins` 同时撤销该 mod 的所有 `$.clock` 定时器（见「定时器」），销毁后不再有回调。
 - 同一时刻也杀掉该 mod 的所有外部进程（连同其子进程树），与定时器同一条纪律：进程不能活过开它的会话。
-- webview 重建（窗口重载、panes 换绑）后 surface 自己对每个 pane 重新请求一次，用户不需要等 mod 下一次 invalidate 才能看到面板；宿主不主动推树。
+- surface 重建（webview 重载、终端重新挂载或改变尺寸）后 surface 自己对每个 pane 重新请求一次，用户不需要等 mod 下一次 invalidate 才能看到面板；宿主不主动推树。
 
 ## 在 IDE 插件里画
 
@@ -695,16 +992,18 @@ IDE 聊天面板（VS Code 与 JetBrains）是第二个 surface，`e.surface` �
 
 ## 交付分层（一期不做的事）
 
-不做，且**接口不预留**（避免半成品）：终端渲染、`Client`（要在 webview 里执行 mod 附带的第二份模块，连带 `ui.message` / `ui.fault` 两个事件）、终端专有的 `Raster`/`Image`、`$.model`/`$.agent`/`$.mcp`、事件拦截与改写（`prompt.*` 那族改写钩子、CC 那种能改写放行决定的 `tool.check`、`tool.call` 的**改写参数**与**替用户批准**、`prompt.submit` 的改写 `text` 与 `drop` —— 我们只给一次上下文注入与一个「拦下」（见「轮次内外的事件」「拦下一次工具调用」））、mod 分层与加载期审查。
+不做，且**接口不预留**（避免半成品）：终端专有的 `Raster`/`Image`、终端的侧栏两栏与拖动宽度、按列数决定的出现阈值、对话流消息/工具行/spinner 的重绘站点、`Client`（要在 webview 里执行 mod 附带的第二份模块，连带 `ui.message` / `ui.fault` 两个事件）、`$.mcp`、`$.agent.register`、`tool.call` 的**改写参数**（`updatedInput`）与**替用户批准**、`prompt.submit` 的改写 `text` 与 `drop`、`$.prompt.compose` 这个**方法**（要做的是同名的 `prompt.compose` / `prompt.section` **事件**，不是让 mod 自己拼提示词）、把焦点环挪到某个元素上（CC 的 `$.ui.focus` 方法连同它的 `ui.focus` 事件）、`prompt.autocomplete`（CC 那个「一次给一批补全候选」的事件：候选下拉的承载在多端宿主的文件补全通道里，mod 没有参与点，给个同名事件就是永不触发的空钩子）、mod 分层与加载期审查。
 
-Claude Code 的 `$` 有 23 个命名空间，我们覆盖 15 个（`ui` / `session` / `prompt` / `clock` / `process` / `fs` / `http` / `store` / `state` / `command` / `env` / `settings` / `tool` / `config` / `agent`）。差的是三类，各自的理由：
+终端已有的降级（做，但不追平桌面端）：`Svg` 不画（见「终端渲染」）、`hover` 与 `absolute` 无效果、`$.prompt.fill` 仍返回 `{ isFilled: false }`、`$.prompt.read` 仍返回空草稿（终端的输入框状态没接到那条 RPC 上）——前三者是终端表达不出，最后一条是刻意不做：mod 替用户改输入框，在终端里与「用户正在打字」的冲突没法让它察觉。
 
-- **改会话**：`$.session.send` / `append` / `compact`、`$.turn.abort`、`$.prompt.edit` / `paint` / `compose`、`$.env.set`、`$.config.set`。这些不是「多一个方法」，而是「mod 能替用户改东西」，每一条都要单独想清楚可见性（改了什么用户看不看得见）与冲突（用户正在打字时 mod 改输入框）。
-- **读更多会话内部**：`$.session.messages` / `authorize` / `identity`。`messages` 把整份对话（含工具输出）交出去，与 `$.session.usage()` 那种「一个数字」不是一个量级；`authorize` / `identity` 绑账号身份，我们这条链上还没有对应物。（`turns` / `repo` / `version` 已做，见「会话事实」；CC 的单数 `surface()` 已标 deprecated，我们不跟。）
-- **我们没有的底座**：`$.model`（调模型）、`$.agent.spawn` / `$.agent.register`（派子代理、注册子代理类型）、`$.mcp`（调 MCP）、`$.telemetry`、`$.theme`、`$.audio`、`$.flag`、`$.decision`。前三个要独立的额度、权限与生命周期模型，后几个依赖我们还没有的对应子系统。（`$.agent.list` / `$.config.list` / `$.tool.list` 是只读事实，已做，见「配了哪些、能调什么、有谁在跑」。）
+Claude Code 的 `$` 有 23 个命名空间，我们覆盖 16 个（`ui` / `session` / `turn` / `prompt` / `clock` / `process` / `fs` / `http` / `store` / `state` / `command` / `env` / `settings` / `tool` / `config` / `agent`）。差的是三类，各自的理由：
+
+- **改会话**：`$.session.send` / `append` / `compact`、`$.prompt.edit` 这个**方法**（我们做的是同名**事件**：观察用户怎么改输入框，不是替用户改）、`$.prompt.paint` / `compose`、`$.env.set`、`$.config.set`。这些不是「多一个方法」，而是「mod 能替用户改东西」，每一条都要单独想清楚可见性（改了什么用户看不看得见）与冲突（用户正在打字时 mod 改输入框）。（`$.turn.abort` 已做：它只收自己那一轮，不改用户输入、不替用户答审批，与 `$.prompt.submit` 对称。）
+- **读更多会话内部**：`$.session.authorize` / `identity` 不做（绑账号身份，我们这条链上还没有对应物）。`$.session.messages` 这一批做了，但**不是**「把整份对话原样交出去」：最近 200 条、单条按限额截断，与 `$.session.usage()` 那种「一个数字」仍然是两个量级，所以限额是硬约束（见「会话消息」）。（`turns` / `repo` / `version` 已做，见「会话事实」；CC 的单数 `surface()` 已标 deprecated，我们不跟。）
+- **我们没有的底座**：`$.agent.register`（注册子代理**类型**）、`$.mcp`（调 MCP）、`$.telemetry`、`$.theme`、`$.audio`、`$.flag`、`$.decision`。前两个要往模型的选择清单里加东西 / 缺 MCP 客户端，后几个依赖我们还没有的对应子系统。（`$.agent.list` / `$.config.list` / `$.tool.list` 是只读事实，已做；`$.tool.register` / `$.agent.spawn` / `$.model.complete` 这三个「会做事」的在这一版做了，见各自的小节。）
 - **`$.ui.panes()` 的元素形状**：CC 的每一项是 `{ id, title, isShown, isFocused, isPlaced }`，其中 `isShown` / `isFocused` 要 surface 回报「我现在把哪个 tab 摆在焦点上」—— 这条 host→agent 的回报通道还没有。一期只回 pane id 数组：宁可少给，也不把三个假字段编出来让人当真值用。
 
-**Web 远控页也不显示这三样**：手机上既没有状态带、没有状态行，也没有提示浮层。这是「一期只有桌面端与 IDE 插件两个渲染端」的下游结果，所以远控页不会因为它们弹「这个操作在 Web 端还没有接通」这类提示 —— 带是页面自己在打开会话、切换会话时取一次的，不是用户点出来的请求，不该在用户眼前报错。
+**Web 远控页也不显示这三样**：手机上既没有状态带、没有状态行，也没有提示浮层。这是「一期只做桌面端、终端与 IDE 插件三个渲染端」的下游结果，所以远控页不会因为它们弹「这个操作在 Web 端还没有接通」这类提示 —— 带是页面自己在打开会话、切换会话时取一次的，不是用户点出来的请求，不该在用户眼前报错。
 
 `$.host`（让 mod 请求宿主做界面动作）整条不做也不预留。一期只有一个候选动作「新建会话」，它本身就超出 Claude Code 的 mods API（`$.session` 只能读会话、在会话内动作，CC 桌面端的新会话走客户端自己的接口），而它的副作用会打断用户眼前的会话（新建会把当前 pane 换到新会话）。产品决定降级：外部事件到达时由用户自己先新建一条会话，面板在新会话里自动出现（见「面板的归属」）。
 
@@ -712,17 +1011,33 @@ Claude Code 的 `$` 有 23 个命名空间，我们覆盖 15 个（`ui` / `sessi
 
 ### 用户故事：插件作者用 TSX 画出自己的面板（优先级：P0）
 
-作为插件作者，我希望在插件里写一个 TSX 文件，让桌面端右侧面板出现我设计的界面，以便把插件的能力（待办、检查结果、看板）直接呈现给用户。
+作为插件作者，我希望在插件里写一个 TSX 文件，让桌面端右侧面板（以及终端里输入框上方）出现我设计的界面，以便把插件的能力（待办、检查结果、看板）直接呈现给用户。
 
 **验收场景**：
 
 1. **假设**一个插件在 `mods/panel.tsx` 导出 `register($, on)`，其中注册了 `ui.render` 并在 `session.start` 里 `$.ui.open({ id: "p1", title: "待办" })`，**当**用户打开一个加载了该插件的会话，**则**右侧面板出现一个「待办」tab 并显示 `Hello`，且同目录下的其他插件能力（命令/技能）不受影响。
 2. **假设**该 mod 的 `ui.render` 返回 `<Box flexDirection="row" gap={2}><Text>A</Text><Button label="B" /></Box>`，**当**面板渲染，**则** `A` 与按钮 `B` 横向排列、间距为 2 个间距单位，按钮可点击。
 3. **假设** mod 只注册 `ui.render` 而从不调用 `$.ui.open`，**当**会话启动，**则**面板不出现，日志中记一条「mod 未申请面板」。
-4. **假设** `ui.render` 里用 `$.ui.resolve(e)` 取元素表（TSX 里 `const { Box, Text } = $.ui.resolve(e); return <Box><Text>hi</Text></Box>`），**当**面板渲染，**则**拿到的表里每个元素名都是可用构造器、渲染结果与 `import { Box, Text } from "wave-agent-sdk/mods"` 一致；把 `$.ui.resolve({})` 或 `e.surface` 不是 `desktop` / `vscode` 的事件传进去，**则**钩子返回错误摘要、面板顶部显示「需要一个 ui.render 的事件」并列出可用的端，不渲染半张表。
+4. **假设** `ui.render` 里用 `$.ui.resolve(e)` 取元素表（TSX 里 `const { Box, Text } = $.ui.resolve(e); return <Box><Text>hi</Text></Box>`），**当**面板渲染，**则**拿到的表里每个元素名都是可用构造器、渲染结果与 `import { Box, Text } from "wave-agent-sdk/mods"` 一致；把 `$.ui.resolve({})` 或 `e.surface` 既不是 `desktop` / `vscode` 也不是 `terminal` 的事件传进去，**则**钩子返回错误摘要、面板顶部显示「需要一个 ui.render 的事件」并列出可用的端，不渲染半张表。
 
 5. **假设** mod 在 `Button` 上多写了一个 prop（拼错的 `label2`，或照别的框架习惯写 `className`），**当**这一帧树被校验，**则** `validateModTree` 拒绝整棵树并点名那个 prop（面板顶部一条错误摘要），而不是静默忽略 —— 写错 prop 必须当场看见。
 6. **假设**带里一行放了三个 `Button`（那一行的 `Box` 写了 `flexWrap="wrap"`），**当**这一行渲染，**则**每个按钮保持单行宽度、放不下的折到下一行；画在带里的按钮与画在面板里的是同一套观感（`variant="primary"` 用主题主操作色），不是浏览器默认的灰方块。
+
+### 用户故事：同一个 mod 在终端里也能用（优先级：P0）
+
+作为终端用户，我希望在 `wave` 里跑同一个插件时，它的面板与状态出现在输入框上方，而不是什么都没有，以便不装桌面端也能用插件画出来的界面。
+
+**验收场景**：
+
+1. **假设**加载了上面那个面板插件的会话在终端里打开，**当** mod 在 `session.start` 里 `$.ui.open({ id: "p1", title: "待办" })`，**则**输入框上方出现带边框的面板并显示 `Hello`，只有一个面板时顶部不画 tab 行，消息区与输入框都仍在视口里；同样这一帧里 `e.surface === "terminal"`。
+2. **假设**同一个 mod 在 `ui.render` 里判断 `e.surface`，**当**树被终端拉取，**则**它按 `"terminal"` 分支返回的那棵树被画出来（不是桌面端那张）。
+3. **假设**面板是 `$.ui.open({ id: "p1" })` 打开的（没有 `focus: true`），**当**用户接着在输入框里打字，**则**字进输入框、面板不抢键盘；**当**换成 `$.ui.open({ id: "p2", focus: true })`，**则**焦点直接进面板，按 `hotkey` 触发对应按钮、按 `Esc` 收起面板并让焦点回到输入框，输入框内容不变。
+4. **假设**两个面板同时登记，**当**终端画出这一帧，**则**面板区顶部有一行 `1: 待办  2: 检查`，焦点在面板时按 `2` 切到第二个面板；`$.ui.panes()` 仍然只回 id 数组（不编 `isShown` / `isFocused`）。
+5. **假设**焦点在输入框、上方有面板，**当**用户按 `Esc`，**则**只走输入框自己的清空语义、面板不动；**当** mod 调 `$.ui.close({ id })`，**则**面板消失（终端这一端照桌面端一样，收起的动作本身不触发 `ui.close`）。
+6. **假设**某个照桌面端写的 mod 在 `ui.render` 里 `const { Svg } = $.ui.resolve(e)`，**当**这条会话在终端里画，**则** `Svg` 是 `undefined`、那次渲染在终端那块区域显示一条错误摘要，不画空白；把同一个 mod 改成 `e.surface === "terminal"` 时改画几行 `Text`，**则**终端里正常显示那几行。同一棵树里的 `Progress` 不必分支 —— 终端照常把它画成一行字符条。
+7. **假设**面板的 `ui.render` 返回 60 行内容、且带里某条 mod 返回 20 行，**当**终端画这一帧，**则**面板正文只占 12 行、带每条只占 6 行，剩下的在各自区域内滚动（焦点在面板时 `↑`/`↓` 与 `PageUp`/`PageDown`），消息区仍有高度。
+8. **假设**终端正在画这条会话，**当** mod 读 `$.session.surfaces()` 与 `$.ui.open` 的返回值，**则**前者含 `"terminal"`、后者是 `{ isPlaced: true }`；同一条会话换成 `wave -p`，**则**前者是空数组、后者是 `{ isPlaced: false, reason: … }`，且不抛错。
+9. **假设** mod 调 `$.ui.status("sonnet · 62%")` 与 `$.ui.toast("已保存", 2000)`，**当**终端画出这一帧，**则**输入框下方那一行出现 `插件名: sonnet · 62%`（左侧的权限模式提示不动），提示 `插件名: 已保存` 复用这一行的提示槽位、约 2 秒后自己消失，两者都不进对话上下文、也不把输入区顶高。
 
 ### 用户故事：面板交互回到 mod（优先级：P0）
 
@@ -737,16 +1052,16 @@ Claude Code 的 `$` 有 23 个命名空间，我们覆盖 15 个（`ui` / `sessi
 
 ### 用户故事：画一张图、一个下拉和一个进度条（优先级：P0）
 
-作为插件作者，我希望在面板和带里画一张自己拼出来的 SVG 图、让用户从一组选项里挑一个、并且把「做到哪一步了」画成进度条，以便「用量趋势」「当前口径」「跑到 7/12 了」这类信息不必退化成一行文字。
+作为插件作者，我希望在面板和带里画一张自己拼出来的 SVG 图、让用户从一组选项里挑一个、把「还剩多少」画成进度条，以便「用量趋势」「当前口径」「这一步走到哪」这类信息不必退化成一行文字。
 
-**为什么是这个优先级**：社区里真正画图的那批 mod 全靠 `Svg`（我们用 33 个热门 mod 仓的源码数过：`<Svg` 6 仓，`<Select` 与 `<Progress` 几乎没有）；没有它，一整类「把数据画出来」的插件移植过来只能降级成文字表。
+**为什么是这个优先级**：社区里真正画图的那批 mod 全靠 `Svg`（我们用 33 个热门 mod 仓的源码数过：`<Svg` 6 仓，`<Select` 几乎没有）；进度条那批（`savvy-progress` 等）现在全是自己拿 `Box` + `Text` 拼 `█░` 字符条，`Progress` 是 Claude Code 四端都有的官方元素，接过来它们就不用自己拼。
 
 **验收场景**：
 
 1. **假设**某 mod 的 `ui.render` 返回 `<Svg source={...} alt="近 5 分钟 CPU" width={340} height={96} />`，**当**面板渲染，**则**那段 SVG 内联画在面板里、尺寸就是给的 `width`/`height`；把 `alt` 去掉或写成 `source: ""`，**则**这次渲染失败并在面板顶部说明缺的是哪个 prop。
 2. **假设** `Svg.source` 里带 `<script>` 或 `onload=` 这类可执行内容，**当**面板渲染，**则**画出来的 SVG 被净化过（脚本与外链引用都不生效），宿主进程不受影响；`source` 超过 131072 字符或 `width`/`height` 超过 4096，**则**整棵树被校验拒绝并给出是哪一条超限。
 3. **假设**面板里有 `<Select key="range" value={picked} options={[{value:"1m",label:"1 分钟"},{value:"5m",label:"5 分钟"}]} onSelect={v => { picked = v; $.ui.invalidate("ui.render") }} />`，**当**用户选了「5 分钟」，**则** mod 的 `onSelect` 收到 `"5m"`、下一次渲染的选中项跟着变；`options` 为空、超过 64 项、或有重复 `value`，**则**这次渲染失败并点名是哪一条。
-4. **假设**元素是 `Progress`：`<Progress label="构建" value={7} max={12} />`，**当**面板渲染，**则**画出一条夹在 0–1 的进度（这里约 58%）与标签「构建」；`value` 缺省时只画标签，`valueText` 给出时用它替代默认百分比，`value` 为负数或大于 `max` 时夹到两端而不是画到外面。
+4. **假设**面板里有 `<Progress label="迁移" value={7} max={20} />`，**当**标签页渲染，**则**画出一条填充 35% 的条并带 `35%`；`value={25} max={20}` **则**画成满格、`value` 缺省或给 `NaN` **则**画成不确定态（条在跑、不显示百分比）；把 `label` 去掉或写成空串，**则**这次渲染失败并点名 `label`。
 5. **假设**同一棵树里 `Svg` / `Select` / `Progress` 被写成带 children（`<Svg source={…}>x</Svg>`），**当**面板渲染，**则**校验以「Svg 是叶子、不带 children」拒绝，而不是悄悄把 children 丢掉。
 6. **假设**这些元素被用在输入框上方的带里（`e.component === "AbovePrompt"`），**当**带渲染，**则**它们与面板里画出来的一致（同一个渲染器）；`Select` 在带里选中后同样回到 mod。
 
@@ -932,7 +1247,72 @@ Claude Code 的 `$` 有 23 个命名空间，我们覆盖 15 个（`ui` / `sessi
 6. **假设** mod 的 `turn.complete` 钩子里写了死循环，**当**超过 5 秒，**则**这次派发超时并记一条 warn，该轮照常说结束、界面正常回到可输入状态；mod 的这条上报丢失，不重试、不排队。
 7. **假设** mod 在这两个钩子里完全没有注册，**当**轮次结束、审批弹出，**则**宿主什么都不做（没有 mod 时派发是空操作），既不报错也不产生日志噪音。
 8. **假设** mod 在 `classic.PermissionRequest` 里 `return { decision: "allow" }`（照 Claude Code 的 `tool.check` 习惯写），**当**卡片弹出，**则**这次审批照样等用户回答，返回值被忽略 —— 只读事件不能替用户批准。
-9. **假设** mod 注册了 `classic.Stop` 这类我们没有的 `classic.*` 名字，**当**插件加载，**则**它被当作不存在的钩子拒收并记一条 warn（一期只做 `classic.PermissionRequest` 这一个镜像），而不是静默登记一个永远不触发的钩子。
+9. **假设** mod 注册了我们没有镜像的 `classic.*` 名字（`classic.Setup`、`classic.WorktreeCreate`…），**当**插件加载，**则**它被当作不存在的钩子拒收并记一条 warn（已镜像的 20 个见「影子事件」），而不是静默登记一个永远不触发的钩子。
+10. **假设** mod 注册了 `classic.PermissionDenied`，**当**用户在卡片上点了「拒绝」，**则**它收到 `{ tool_name, tool_input, tool_use_id, reason: "user_denied" }`；同一个调用因为命中 `permissions.deny` 规则被拦，**则** `reason` 是 `"denied_by_rule"`、卡片根本没弹（两种情况都要能分辨是「规则拦的」还是「人拒的」）。
+
+### 用户故事：只写 `classic.*` 的社区插件也能收到事件（优先级：P0）
+
+作为装社区插件的用户，我希望那些只认 Claude Code 那套 `classic.<Event>` 名字的插件在 wave 里也能收到事件，以便它们的面板与上报不用改一行代码就能用。
+
+**为什么是这个优先级**：语料里 49 个含 mods 源码的仓库中，`classic.SessionStart` / `classic.Stop` 分别被 14 / 12 个插件用到，`classic.PreToolUse` 10 个，是缺得最多的一档；而这些事件的触发时刻我们**本来就有**（开局、一轮收尾、用户提交、工具跑完、目录变了），补的是名字与载荷，不是新机制。载荷还必须逐字段和 CC 对齐：上一批有几处是照我们自己的形状合成的，插件按 CC 的名字读一律拿到 `undefined` —— 事件发了、插件照旧不工作，比没发更难查。
+
+**验收场景**：
+
+1. **假设** mod 注册了 `on("classic.Stop", h)`，**当**一轮答完，**则** `h` 收到 `{ session_id, transcript_path, cwd, permission_mode, hook_event_name: "Stop", background_tasks, stop_hook_active, last_assistant_message }`（最后一项是最后一条 assistant 消息的正文，插件不必自己去解转录），且这次派发在 `turn.complete` **之前**（它要拿返回值才知道这一轮算不算收尾，见「一轮收尾时的非错误反馈」）；用户按 Esc 中断的那一轮同样派发一次。
+2. **假设** mod 注册 `on("classic.PostToolUse", { tool_name: "Write" }, h)`，**当**一次 `Write` 成功返回，**则** `h` 被调用一次、`tool_response` 是那次工具的文本结果并按限额截断、`tool_use_id` 与模型消息里那次调用的 id 相同（插件拿它去 `$.ui.notice(tool_use_id, …)` 能落在对应的那一行）、`duration_ms` 是这次执行的耗时；同一轮的 `Bash` 调用不触发它。
+3. **假设**一次工具调用失败（工具自己报错、被插件 `{ deny }`、被权限拒绝），**当**它收尾，**则**派发的是 `classic.PostToolUseFailure` 而不是 `classic.PostToolUse`，`error` 里是那条错误正文，`tool_use_id` 同样给到。
+4. **假设**同一个模型响应里并行发了三条工具调用，**当**三条全部跑完，**则** `classic.PostToolBatch` 派发一次，`tool_calls` 是三项 `{ tool_name, tool_input, tool_use_id, tool_response }` —— **没有**我们自造的 `ok` 字段（CC 的 schema 里没有它，多给一个字段名插件也读不到），成功与否看 `tool_response` 在不在。
+5. **假设** mod 的 `classic.Stop` 钩子 `return { decision: "block" }`（照 Claude Code 的写法），**当**一轮答完，**则**这一轮照常结束，返回值被忽略 —— 唯一开的口子是 `additionalContext`（见「一轮收尾时的非错误反馈」）。
+6. **假设** mod 的 `classic.SessionStart` 钩子抛错，**当**会话启动，**则**会话照常起来、面板照常可用，只记一条 warn。
+7. **假设** mod 在 `classic.PostModelSwitch` 里读 `e.to_model` 与 `e.from_model`，**当**用户从 `wave-pro` 切到 `wave-max`，**则**它拿到 `from_model: "wave-pro"`、`to_model: "wave-max"`（不再是自造的 `model` 字段）；`e.cache_ttl` 是 `null`（我们不做缓存 TTL 记账），而不是一个猜出来的值。
+8. **假设**用户在会话里让 Bash `cd` 到子目录，**当**目录真的变了，**则** `classic.CwdChanged` 带 `{ old_cwd, new_cwd }` 派发一次（读 `old_cwd` 的插件 —— kwitsch 的 universal-lint、nadundesilva 的 hud 都是 —— 能拿到旧目录）；`EnterWorktree` 换工作区时同样派发（工作区根变了，会动的那个目录也变了）。
+9. **假设** mod 在 `classic.SessionStart`、`classic.PostToolBatch`、`classic.PermissionRequest`、`classic.Stop` 里都读 `e.permission_mode`（社区守卫 jr-deploy-guard 就是这么写的：它靠这个值判断「这一刻有没有人会被问到」，读不到就当成没人可问、一律拒绝），**当**这些事件派发，**则**每条都带着当时生效的权限模式（`default` / `acceptEdits` / `plan` / `dontAsk` / `bypassPermissions`），与 `$.session` 那份配置同一处解析。
+10. **假设**一次审批卡片即将弹出，**当**派发 `classic.Notification`，**则** `notification_type` 是 `permission_prompt`（Claude Code 自己给审批卡片用的名字），按这个名字过滤的插件（done-waiting-ping）能收到；`$.ui.ask` 的提问卡片**不**派发 `classic.Notification`。
+11. **假设** mod 在 `classic.InstructionsLoaded` 里按 `e.load_reason === "nested_traversal"` 过滤（照 CC 的取值写），**当**模型读到子目录里的 `AGENTS.md`，**则**它收到 `{ file_path, memory_type: "Project", load_reason: "nested_traversal" }`；开局那几份报的是 `session_start`，`<workdir>/AGENTS.local.md` 报 `memory_type: "Local"`、`~/.wave/AGENTS.md` 报 `"User"` —— 我们自造的 `nested_read` 不再出现。
+12. **假设** mod 在 `classic.SubagentStop` 里读 `e.last_assistant_message` 与 `e.agent_id`，**当**一个子代理结束，**则**它拿到那两个字段（外加 CC 也有的 `stop_hook_active`，我们恒给 `false`）；我们自造的 `description` / `status` 不再给 —— 这两个名字 CC 没有，插件读了只会是 `undefined`，多给反而让人以为有这个约定。
+
+### 用户故事：压缩前后与「助手说了什么」也能被插件看见（优先级：P1）
+
+作为把 wave 接进自有系统的团队，我希望 mod 在上下文被压缩的前后、以及每段助手回答收尾时都收到一次事件，以便我在自己那边留下「什么时候丢了历史」「用户看到的是哪段话」这两条记录。
+
+**为什么是这个优先级**：`classic.PreCompact` / `classic.PostCompact` / `classic.MessageDisplay` 在语料里分别是 4 个仓库、6 个仓库在用（后两个是 hud / sotter 这一族「把对话镜像到别处」的插件），触发时刻我们本来就有（压缩入口、消息收尾），缺的只是名字与载荷。
+
+**验收场景**：
+
+1. **假设** mod 注册了 `classic.PreCompact` 与 `classic.PostCompact`，**当**自动压缩撞到阈值触发，**则**先收到 `PreCompact { trigger: "auto", custom_instructions: null }`；压缩完成后收到 `PostCompact { trigger: "auto", compact_summary: "…" }`，`compact_summary` 就是这次写回历史的那段摘要；同一时刻还有 `session.compact`（带 `tokensBefore` / `tokensAfter`）。
+2. **假设**用户敲 `/compact 只保留接口相关的`，**当**它跑起来，**则** `PreCompact` 的 `trigger` 是 `"manual"`、`custom_instructions` 是用户带的那段话。
+3. **假设**压缩因为会话被切走而放弃（摘要写不回去），**当**它中止，**则** `PreCompact` 已经发过、`PostCompact` 与 `session.compact` 都不发 —— 「开始了」与「真的压缩了」是两件事。
+4. **假设** mod 注册了 `classic.MessageDisplay`，**当**模型答完一段话，**则**它收到 `{ turn_id, message_id, index: 0, final: true, delta }`，`delta` 是这段回答的完整正文（按限额截断）、`message_id` 与转录里的那条消息同 id；一轮里模型答了两段（中间夹了工具调用），**则**收到两次，`turn_id` 相同、`message_id` 不同。
+5. **假设** mod 的 `classic.MessageDisplay` 返回 `{ displayContent: "…" }`（照 Claude Code 的写法），**当**这段回答显示出来，**则**用户看到的仍是原文，返回值被忽略（替换显示内容是改行为，见「不做的返回通道」）。
+
+### 用户故事：自查类插件能让这一轮别急着收尾（优先级：P1）
+
+作为装了自查类社区插件的用户，我希望插件发现「还有一处没改完」时能把这句话塞回对话、让模型接着做，而不是答完就停在那里等我自己再催一遍。
+
+**为什么是这个优先级**：cys / watchducks 这一族插件的全部逻辑就是 `classic.Stop` 里返回 `additionalContext`；只发事件、不收返回值的话它们装上去等于白装，而「续跑一轮」这条路径宿主本来就有（后台任务通知、Stop 钩子阻塞都用它）。
+
+**验收场景**：
+
+1. **假设** mod 注册了 `on("classic.Stop", …)` 并返回 `{ additionalContext: ["改动里还有一处没跑测试"] }`，**当**一轮答完，**则**这段文本作为一条 meta 消息进上下文、宿主再发一次模型请求，模型第二段回答接在第一段之后，界面仍是同一个回合（输入框保持「生成中」）。
+2. **假设**同一轮里又有后台任务通知送达，**当**这一轮收尾，**则** `turn.complete` 只上报一次（`durationMs` 覆盖含续跑在内的整段时间），不会因为中途续跑而多报几条。
+3. **假设**某个 mod 每次收尾都无条件返回 `additionalContext`，**当**这一轮反复续跑，**则**第 8 次之后停下、记一条 warn，这一轮正常结束，第 9 次的反馈被丢弃。
+4. **假设** mod 靠 `e.stop_hook_active` 判重，**当**第一次收尾拿到 `false` 并返回 `additionalContext`，**则**续跑那一轮的 `classic.Stop` 拿到 `true`，插件据此不再要求继续、这一轮真正收尾。
+5. **假设**用户按 Esc 收尾、或收尾时队列里已有一条用户消息，**当** mod 在这时返回 `additionalContext`，**则**宿主不续跑（中断就是中断、排队的消息优先），反馈丢弃。
+6. **假设** mod 的 `classic.Stop` 钩子返回 `{ decision: "block", reason: "…" }`，**当**一轮答完，**则**这一轮照常收尾并记一条 warn（只收 `additionalContext`）。
+7. **假设** mod 的 `classic.Stop` 里写了死循环、而另一个 mod 也注册了这条事件，**当**超过 5 秒，**则**那个 mod 的反馈丢失并记一条 warn，另一个 mod 的 `additionalContext` 照收、这一轮照常续跑。
+
+### 用户故事：插件能主动收掉这一轮（优先级：P1）
+
+作为装了一个「看门」插件的用户，我希望它在发现这一轮已经跑偏（自建的超时到了、盯到一个不该出现的命令）时能把这一轮收掉，而不是让我盯着它一直跑到自己停。
+
+**为什么是这个优先级**：`turn.start` / `turn.complete` 已经让插件看得见轮次，但只能看不能动 —— 语料里 3 个插件在用 `$.turn.abort`，写出来的都是「我自己定的超时/条件到点就收」。`$.prompt.submit` 是「加一轮」，这是它的反向操作，缺了它，轮次这条线就只有半边。
+
+**验收场景**：
+
+1. **假设** mod 在 `turn.start` 里记下 `e.turnId`，**当**它自己定的 60 秒超时到了而这一轮还在跑，**则** `await $.turn.abort({ turnId })` resolve，模型请求中断、正在跑的工具停掉，那一轮照常发 `turn.complete`（`isAborted: true`）与 `classic.Stop`。
+2. **假设** mod 拿的是一个已经结束的 `turnId`（用户已经问过新的一句、新一轮在跑），**当**它调 `$.turn.abort`，**则** Promise reject、报错里同时有两个 id，正在跑的那一轮**不受影响** —— 旧 id 绝不能杀掉用户刚发起的一轮。
+3. **假设**模型在等用户输入（没有一轮在跑），**当** mod 调 `$.turn.abort`，**则** Promise reject，插件的 `catch` 能分辨「收掉了」与「本来就没事」。
+4. **假设**收的时候队列里有用户排着的消息，**当**这一轮被收掉，**则**那几条消息仍在队里、下一轮照常发出去（不是「连同队列一起清空」）。
 
 ### 用户故事：危险命令被插件拦下（优先级：P0）
 
@@ -952,7 +1332,10 @@ Claude Code 的 `$` 有 23 个命名空间，我们覆盖 15 个（`ui` / `sessi
 8. **假设**两个 mod 都注册了 `tool.call`，**当**第一个返回 `{ deny }`，**则**第二个的钩子不再跑；第一个 `next(e)` 之后第二个才跑，两边都能依次拿到事件。
 9. **假设** mod 的钩子把 `next(e)` 调了两次，**当**第二次调用，**则**当场抛错（链不会跑两遍），按「钩子抛错」处理。
 10. **假设**工具参数不合 schema（比如缺 `command`），**当**调用发生，**则** `tool.call` **不触发**，模型直接拿到参数校验错误 —— 守卫不必自己防「参数是空的」。
-11. **假设**守卫按我们推荐的写法登记 `on("tool.run", { tool: "Write" }, async (e, next) => { const result = await next(e); … })`，**当**工具跑完，**则** `next` resolve 成这次调用的结果（含 `isError`），钩子在它之后的那几行才跑；同一个 handler 只写一个形参 `(e)` 时行为与以前一样，不调 `next` 就等于「工具没跑」。
+11. **假设**守卫按我们推荐的写法登记 `on("tool.call", { tool: "Write" }, async (e, next) => { const r = await next(e); … })`，**当**工具跑完，**则** `next` resolve 成 `{ result }`（`r.result.content` / `r.result.error` 就是这次调用的结果），钩子在它之后的那几行才跑；同一个 handler 只写一个形参 `(e)`、既不调 `next` 也不返回 `{ deny }` 时，工具照常执行（拦下必须显式给 `{ deny }`）。
+12. **假设**同一个守卫是照 Claude Code 的 `classic.PreToolUse` 写的（chronicle 的 check-branch 就是这样：`on("classic.PreToolUse", { tool: "Bash" }, ($, e, next) => …)`，读 `e.tool` / `e.command`），**当**模型要跑一条 Bash，**则**它收到与 `tool.call` 完全一样的那份信封（`tool` / `tool_use_id` / `input` + 顶层铺开参数，没有 `hook_event_name`），返回 `{ deny: "…" }` 同样能拦下这次调用；`tool.call` 上已经有人拦下时它不再被问。
+13. **假设**只写了 `classic.PreToolUse` 的守卫返回 CC 的另外几种答复（`{ allow: true }`、`{ ask: "…" }`、`updatedInput`），**当**这次调用继续，**则**它们被忽略并记一条 warn：放行与强制弹卡片都是第二判定源（见「交付分层」），改写参数同一条理由不做。
+14. **假设**守卫在 `tool.call` 里 `const r = await next(e)` 之后读 `r.result`，返回 `{ result: { ...r.result, content: r.result.content + "\n（已记录）" } }`，**当** `ls` 跑完，**则**工具**只执行一次**、`r.result` 就是这次调用的真结果，模型收到的正文带那段后缀；`next(e)` 里的执行先过 `settings.json` 的 PreToolUse，被它拦下时工具不执行、`r.result` 是那条拒绝。
 
 ### 用户故事：拦下之后开个面板，按一下才放行（优先级：P0）
 
@@ -962,7 +1345,7 @@ Claude Code 的 `$` 有 23 个命名空间，我们覆盖 15 个（`ui` / `sessi
 
 **验收场景**：
 
-1. **假设** `tool.call` 钩子里先 `await $.session.surfaces()`，**当**这条会话是 `wave -p`（或终端 CLI，一期不画 mod 的树），**则**拿到**空数组**（不 reject），守卫据此**立刻**返回 `{ deny: "这里没有人能确认这条命令" }` —— 不开面板、不等待、不让对话停在一个没人按的按钮上。
+1. **假设** `tool.call` 钩子里先 `await $.session.surfaces()`，**当**这条会话是 `wave -p`（一期不画 mod 的树），**则**拿到**空数组**（不 reject），守卫据此**立刻**返回 `{ deny: "这里没有人能确认这条命令" }` —— 不开面板、不等待、不让对话停在一个没人按的按钮上。
 2. **假设**同一个钩子在桌面端跑，**当** `await $.session.surfaces()`，**则**拿到 `["desktop"]`；随后 `await $.ui.open({ id: "blast", title: "确认命令" })` 返回 `{ isPlaced: true }`，面板画出来。
 3. **假设** `$.ui.open()` 返回的是 `{ isPlaced: false, reason: "…" }`（会话正在销毁、或这一端不画面板），**当**守卫读到它，**则**按「没人看得见」降级（`{ deny }`），而不是继续等一个没画出来的面板上的按钮。
 4. **假设**面板里有 `<Button key="ok" label="放行 (y)" hotkey="y" onPress={resolveOk} />` 与 `<Button key="no" label="拒绝 (n)" hotkey="n" onPress={resolveNo} />`，**当**面板有键盘焦点时用户按 `y`，**则**等于点了「放行」那个按钮、`onPress` 触发、钩子拿到答案并 `next(e)`，命令照常执行 —— 用户不需要先把指针挪到按钮上。
@@ -982,8 +1365,8 @@ Claude Code 的 `$` 有 23 个命名空间，我们覆盖 15 个（`ui` / `sessi
 
 **验收场景**：
 
-1. **假设** mod 注册了 `tool.run`，在钩子里 `const r = await next(e)` 之后重新读一次 `git status`、写进 `$.state` 并 `invalidate`，**当**模型跑完一个 Bash 调用，**则**带上的未提交文件数在下一次渲染里就是新值，不需要等任何定时器；`r` 就是这次工具的结果。
-2. **假设**这次工具调用的审批被用户拒掉，**当** `next(e)` 返回，**则** `tool.run` 照常把结果交回（`success: false`），mod 在 `await` 之后照样能刷新，不会卡在「上一次状态」里。
+1. **假设** mod 注册了 `tool.call`，在钩子里 `const r = await next(e)` 之后重新读一次 `git status`、写进 `$.state` 并 `invalidate`，**当**模型跑完一个 Bash 调用，**则**带上的未提交文件数在下一次渲染里就是新值，不需要等任何定时器；`r.result` 就是这次工具的结果。
+2. **假设**这次工具调用的审批被用户拒掉，**当** `next(e)` 返回，**则**它照常把结果交回（`result.success: false`），mod 在 `await` 之后照样能刷新，不会卡在「上一次状态」里。
 3. **假设** mod 不调 `next(e)` 直接 `return { deny: "分支没同步，先 pull" }`，**当**这次调用派发，**则**工具**不执行**，模型收到这段文本作为错误结果。
 
 ### 用户故事：插件注册自己的斜杠命令（优先级：P0）
@@ -1009,7 +1392,8 @@ Claude Code 的 `$` 有 23 个命名空间，我们覆盖 15 个（`ui` / `sessi
 
 1. **假设** mod 在 `command.run` 或 `turn.complete` 里调 `$.ui.log("已把审批规则写进 .wave/settings.local.json")`，**当**这一行落地，**则**对话流里出现一条提示块（署名由插件自己写在文字里），切走会话再回来仍然在。
 2. **假设**这一行落了地，**当**下一轮请求发给模型，**则**请求里**没有**这行文字（提示块不进上下文）。
-3. **假设** mod 传了 `{ to: "pane" }` 这类我们没有的目标，**当**调用发生，**则**抛错并列出唯一可用的 `"transcript"`，而不是静默写进对话流。
+3. **假设** mod 传了 `{ to: "pane" }` 这类我们没有的目标，**当**调用发生，**则**抛错并列出可用的 `"transcript"` 与 `"debug"`，而不是静默写进对话流。
+4. **假设** mod 调 `$.ui.log("…", { to: "debug" })`，**当**这一行落地，**则**对话流里不出现提示块，只有 `wave` 的调试日志里多一行（`LOG_LEVEL=DEBUG` 才看得见）。
 
 ### 用户故事：用户一提交，插件就把相关材料塞进这一轮（优先级：P0）
 
@@ -1029,12 +1413,13 @@ Claude Code 的 `$` 有 23 个命名空间，我们覆盖 15 个（`ui` / `sessi
 
 **验收场景**：
 
-1. **假设** mod 在 `turn.start` 与 `turn.step` 里累计步数，**当**用户问一个要连调三次工具的问题，**则** `turn.start` 一次、`turn.step` 四次（首答一次 + 每次工具结果后各一次请求），`e.step` 依次 1–4，`turn.complete` 一次。
+1. **假设** mod 在 `turn.start` 与 `turn.step` 里累计步数，**当**用户问一个要连调三次工具的问题，**则** `turn.start` 一次、`turn.step` 四次（首答一次 + 每次工具结果后各一次请求），`e.index` 依次 0–3，`turn.complete` 一次。
 2. **假设**用户在第二轮中途按 Esc，**当**这一轮结束，**则**不再有 `turn.step`，`turn.complete` 收到 `isAborted: true`。
 3. **假设** `$.clock.sleep(30000)` 正在等，**当**用户关掉这条会话，**则**这次等待立刻 reject（`name === "AbortError"`），mod 的 catch 能跑收尾；传了 `{ signal }` 时 abort 行为相同。
 4. **假设**上下文逼近窗口（历史远大于摘要），**当**自动压缩完成，**则** `session.compact` 收到 `{ trigger: "auto", tokensBefore, tokensAfter }` 且 `tokensBefore > tokensAfter`；手动 `/compact` 时 `trigger` 是 `"manual"`。两者不是同一把尺子（见「轮次内外的事件」），历史本来就很短时 `tokensAfter` 可能更大。
 5. **假设** mod 打开了两个面板，**当**用户点掉其中一个的 ×，**则** `ui.close` 收到 `{ id }`；**当**整条会话被关掉，**则**只收到一次 `session.end`、不再收到两条 `ui.close`。
 6. **假设** `session.end` 的钩子卡住，**当** 5 秒过去，**则**会话照常销毁（超时只记一条 warn，不阻止销毁）。
+7. **假设** mod 是 `async function*` 写在 `turn.step` 上、`const below = yield* next(e)` 之后 `return { ...below, model: "claude-opus-4" }`，**当**这一轮的这次请求发出，**则**它用的是 `claude-opus-4`，且 apiType / 上下文窗口 / 输出上限按新模型重新解析（不是只换请求里的名字）；返回 `{ ...e, model: "  " }` **则**按没改处理，`turnId` / `index` / `messageCount` 也改不动。
 
 ### 用户故事：插件从环境变量和设置里读自己的配置（优先级：P1）
 
@@ -1059,8 +1444,9 @@ Claude Code 的 `$` 有 23 个命名空间，我们覆盖 15 个（`ui` / `sessi
 5. **假设**同一个 handler 调了两次 `next(e)`，**当**第二次调用，**则**当场报错（链只走一次），日志点名 mod 与事件名。
 6. **假设**一个 mod 用 `on("tool.call", { tool: ["Bash", "Edit"] }, handler)` 注册、另一个用 `on("ui.render", { component: "AbovePrompt", requestId: "above-prompt" }, handler)`，**当**一次 Bash 调用发起、带站点第三次重画，**则**两条钩子各自只在自己匹配的事件上被调用；**当**换成 `Read` 调用，**则**第一条不被调用（matcher 没命中 = 这次事件与它无关）。
 7. **假设** mod 写 `on("session.measure", handler).catch((e) => …)`，**当**一次带 usage 的响应回来，**则** handler 收到的 `e` 里既有 `changed`、也有与 `$.session.usage()` 相同的 `context` / `tokens` / `startedAt` / `rateLimits`；**当** handler 抛错，**则** `.catch` 里那个被调用，会话照常继续。
-8. **假设**一个社区 mod 在 `turn.complete` 里读 `e.usage.input_tokens` / `output_tokens` / `cache_read_input_tokens` / `cache_creation_input_tokens` / `usage.model`，并按 `e.command === "guard"` 认自己的命令，**当**一轮答完、用户敲 `/guard off`，**则**五个字段都有数字（`input_tokens` = 本轮 `prompt` 减去两份缓存）、`e.command` 是不带斜杠的 `"guard"`、`e.args` 是 `"off"`。
-9. **假设**社区 mod 在 `session.start` 里调 `$.ui.toast("hello", { timeoutMs: 8000 })` 并注册了 `on("ui.press", handler)`，**当**会话启动、用户点了它画在面板里的按钮，**则** toast 按 8 秒停留显示、`ui.press` 的 handler 收到 `e.element` 是那个控件的 `key`，两处都不抛错、也不中断 `session.start` 后面的 `$.ui.open`（`$.ui.toast(text, 8000)` 这种裸数字的老写法同样认）。
+8. **假设** mod 要读自己随包带的文件（`await $.fs.read(`${$.plugin.root}/weights.bin`, { as: "bytes" })`，camjac251/cc-enhanced 的钩子就这么取词表），**当**它拼这个路径，**则** `$.plugin.root` 是插件目录的绝对路径、`read` 拿到的是那份文件；**当**它改用相对路径 `read("weights.bin")`，**则**按会话工作目录解析、通常读不到 —— 两个目录是两回事。
+9. # **假设**一个社区 mod 在 `turn.complete` 里读 `e.usage.input_tokens` / `output_tokens` / `cache_read_input_tokens` / `cache_creation_input_tokens` / `usage.model`，并按 `e.command === "guard"` 认自己的命令，**当**一轮答完、用户敲 `/guard off`，**则**五个字段都有数字（`input_tokens` = 本轮 `prompt` 减去两份缓存）、`e.command` 是不带斜杠的 `"guard"`、`e.args` 是 `"off"`。
+10. **假设**社区 mod 在 `session.start` 里调 `$.ui.toast("hello", { timeoutMs: 8000 })` 并注册了 `on("ui.press", handler)`，**当**会话启动、用户点了它画在面板里的按钮，**则** toast 按 8 秒停留显示、`ui.press` 的 handler 收到 `e.element` 是那个控件的 `key`，两处都不抛错、也不中断 `session.start` 后面的 `$.ui.open`（`$.ui.toast(text, 8000)` 这种裸数字的老写法同样认）。
 
 ### 用户故事：插件显示「配了哪些、能调什么、有谁在跑」（优先级：P1）
 
@@ -1084,3 +1470,93 @@ Claude Code 的 `$` 有 23 个命名空间，我们覆盖 15 个（`ui` / `sessi
 3. **假设** mod 用了一个不存在的 `tool_use_id` 调 `$.ui.notice`，**当**调用发生，**则**当场抛错（不静默丢弃）。
 4. **假设** mod 调 `$.ui.copy({ text: "…" })`，**当**桌面端在画这条会话，**则**解析到 `{ isCopied: true }` 且剪贴板里是那段文本；**当**没有界面在画（`wave -p`），**则**解析到 `{ isCopied: false, reason: "no-surface" }`。
 5. **假设** mod 调 `$.ui.view({ agentId })`，**当**调用发生，**则**解析到 `{ deny: "…" }`、主视图不动；不传 `agentId` 时同理。
+
+### 用户故事：插件能在工具真跑之前多问一次，也能拒绝（优先级：P0）
+
+作为守卫类插件的作者，我希望在宿主已经按规则算出「放行 / 问一下 / 拒绝」之后再插一脚，以便把策略里加不进去的判断做掉（例如「这个仓库里 `npm publish` 一律先问」），而不是只能在更早的 `tool.call` 里硬拦。
+
+**验收场景**：
+
+1. **假设** mod 注册 `tool.check`，规则与模式给出 `allow`，钩子返回 `{ decision: "ask", reason: "发布前请确认版本号" }`，**当**模型发起那次调用，**则**弹出审批卡片、卡片上带那句 reason；用户批准后工具照常执行。
+2. **假设**同一次调用命中了 deny 规则，**当** mod 返回 `{ decision: "allow" }`，**则**这次调用按插件的结论执行（放宽算数 —— 这是 CC 的契约，sotto 这样给自家工具免审批）。
+3. **假设** mod 返回 `{ decision: "deny", reason: "…" }`，**当**调用发生，**则**工具不执行、模型收到 reason 作为错误结果，`classic.PermissionDenied` 的 `reason` 仍是 `denied_by_rule` 那套宿主短码（不被插件的 reason 覆盖）。
+4. **假设**运在 `dontAsk` 模式下、原本不会弹卡片，**当** mod 抬成 `ask`，**则**卡片仍然弹出（收紧的含义就是「多问一次」）。
+5. **假设**钩子抛错或超时，**当**调用发生，**则**按宿主原本的决定走（不因为插件坏了就放行），日志一条 warn。
+6. **假设**一个子代理发起调用，**当**钩子读到 `e.agentId`，**则**能认出它属于哪个子代理；主会话的调用上这个字段不出现。
+7. **假设** mod 想把 `AskUserQuestion` 这样的「本身就是提问」的工具放宽成 `allow`，**当**调用发生，**则**仍然弹卡片（这一类没有「不问就跑」的形态）。
+8. **假设** mod 返回 `{ decision: "sure" }` 这种非法值，**当**调用发生，**则**按引擎的结论走，日志一条 warn。
+
+### 用户故事：插件能改模型读到的提示词与说明文字（优先级：P1）
+
+作为插件作者，我希望替换系统提示词里的某一段、把整场会话的上下文塞一次、压掉某条宿主提醒，也能改写工具与技能的说明文字，以便我的策略生效于模型真正读到的内容，而不是只在界面上提示用户。
+
+**验收场景**：
+
+1. **假设** mod 注册 `prompt.section` 并在 `e.name === "tone"` 时返回 `{ text: "只用中文回答。" }`，**当**下一轮请求发出，**则**请求里的语气段是这句、其余段一字未变；一轮里这段只问一次。
+2. **假设** mod 对某个段返回 `{ text: null }`，**当**请求发出，**则**这一段整体不出现（不是空字符串占位）。
+3. **假设**一个段都没被改，**当**请求发出，**则**拼出来的系统提示词与没有这些钩子时**逐字相同**（缓存前缀不被打断）；只有被改的那一段之后的前缀断开。
+4. **假设** mod 注册 `prompt.context` 并返回 `{ blocks: [{ name: "lcm", text: "本仓库只用 pnpm" }] }`，**当**这条会话的第一条消息发出，**则**该块出现在上下文里；**当**用户在同一会话里继续追问，**则**不再重复注入（一条会话一次）；`next(e)` 交下去的同样是 `{ blocks }`（不是裸数组）。
+5. **假设** mod 在 `prompt.attachment` 里按 `e.type === "memory"` 返回 `{ text: null }`，**当** AGENTS.md 注定入时，**则**那条提醒不出现、其余提醒不受影响；`e.type` 换成我们没发的值时不匹配（不会误伤）。
+6. **假设** mod 注册 `tool.describe` 并给 `Bash` 返回新的 `description`，**当**下一轮请求发出，**则**模型看到的工具说明是新的；**当**同一轮里连调三次工具，**则**描述只问过一次、三次请求里一致。
+7. **假设** mod 返回 `{ isDeferred: true }`，**当**钩子返回，**则**这一项被忽略并记一条 warn（我们没有 tool search，`true` 等于把工具下架）。
+8. **假设** mod 注册 `command.describe` 给某个命令返回 `{ isHidden: true }`，**当**命令列表画出，**则**该命令不显示；**当**用户直接敲那个命令，**则**它照常执行（隐藏只影响列表）。
+9. **假设** mod 注册 `skill.prompt` 给一个技能返回 `{ text }`，**当**用户用 `/名字` 调用它，**则**模型收到的技能正文是改写后的。
+10. **假设** mod 用 `{ name: "memory" }` 作 matcher 注册 `prompt.section`，**当**发出去的段表里有 `memory` 段（其余段名不同），**则**只有那一段进 handler；`next(e)` 解析到的是 `{ text }`（不是裸字符串），写 `const s = await next(e); return { text: s.text + "…" }` 能拿到原文（lossless-claude 就是这个写法）。
+
+### 用户故事：插件能在消息存下之前改写它、也能读到已经存下的（优先级：P1）
+
+作为需要脱敏或标注的插件作者，我希望在一条消息落进转录之前改掉其中的敏感片段，也能读到这条会话已经存下的消息，以便给自己的面板做历史视图。
+
+**验收场景**：
+
+1. **假设** mod 注册 `session.append` 并把 `message` 里文本块中的 token 替换成 `***`，**当**一条 assistant 消息落库，**则**转录里存的是替换后的文本；同一个会话里后续请求读到的也是这一版。
+2. **假设** mod 返回 `{ deny: "脱敏失败，丢弃这一条" }`，**当**这一行要落库，**则**它**不**进转录，日志一条 info，界面上这一行仍显示（界面与转录是两份数据）。
+3. **假设** mod 在 `next({ ...e, message })` 里改了 `role` 或块类型，**当**钩子返回，**则**当场抛错、按原样存下（不允许改身份）。
+4. **假设**会话里已经有 300 条消息，**当** mod 调 `$.session.messages()`，**则**只拿到最近 200 条（最新的在最后），单条超限的按限额截断并带省略号。
+5. **假设** mod 在 `session.append` 里抛错或超时，**当**消息要落库，**则**按原样存下（不因为插件坏了就丢消息），日志一条 warn。
+6. **假设** `session.append` 里返回的 `message` 与 `$.session.messages()` 里的同形，**当**插件把前者直接喂给后者渲染，**则**字段对得上（`id` / `role` / `content` 与块形状一致）。
+7. **假设** mod 读 `e.uuid` 与 `e.door`，**当**一条用户消息落库，**则** `uuid` 等于 `message.id`、`door` 是 `prompt`；返回值里同样带 `uuid`，插件按它串联自己记的那份（lossless-claude 的 shadow 就这么读）。
+
+### 用户故事：插件带来自己的工具、派自己的子代理、自己问模型一次（优先级：P1）
+
+作为想把外部系统接进对话的插件作者，我希望插件能带来模型**直接调用**的工具、能派子代理去做一段独立的工作、也能自己问模型一句话，以便把「查工单」「批量审阅」「给长文本分类」这类活儿真正做成插件，而不是只画一个面板。
+
+**验收场景**：
+
+1. **假设** mod 在 `tool.register` 里注册了 `lookup_ticket`，**当**下一轮请求发出，**则**模型看到的工具里有 `mcp__<plugin>__lookup_ticket`；**当**模型调它，**则**这条调用走与 MCP 工具同一条审批路（用户能看见、能拒），执行体是 mod 的 `tool.call` 钩子，它返回的 `{ result }` 就是模型读到的结果。
+2. **假设** 注册的工具名与内置工具、别的插件的工具或某个 MCP 工具重名，**当** `$.tool.register` 调用，**则**注册失败并在错误里说明是谁占了那个名字。
+3. **假设** 插件被重载或会话结束，**当**下一轮请求发出，**则**模型看不到那个工具了；同一轮里已经跑起来的调用不被打断。
+4. **假设** mod 注册 `agent.spawn` 并返回 `{ deny: "…" }`，**当** Agent 工具要起子代理，**则**子代理不启动、模型收到这段文本作为错误结果；**假设**返回 `next({ ...e, prompt })`，**则**子代理拿到的是改写后的 prompt。
+5. **假设** mod 在 `agent.offer` 里返回 `{ isOffered: false }`，**当**Agent 工具的清单画出、或模型试图派发这个类型，**则**它既不在清单里、也派不出去。
+6. **假设** 同一个 mod 已经派了 4 个还在跑的子代理，**当**它再调 `$.agent.spawn`，**则** reject 并说明上限；**假设** mod 派的子代理里再调 `$.agent.spawn`，**则**同样 reject（深度只到 1）。
+7. **假设** mod 在 `prompt.section` 钩子里调 `$.model.complete`，**当**这次调用耗时 20 秒，**则**钩子的 5 秒预算被暂停、这次调用按自己的超时走完；返回 `{ isAnswered: true, text, usage }`，这次 usage 记进会话总量，`session.measure` 里带 `source: "mod"` 与 `plugin`。
+8. **假设** 传的模型不在 allowlist 里，**当** `$.model.complete` 调用，**则**当场 reject 并说明这个模型不许用（不是返回 `aborted` —— 这次请求根本没发出去）；**假设** provider 回了 529，**则** resolve 成 `{ isAnswered: false, reason: "api-error", status: 529, usage }`。
+9. **假设** 一条会话里同一个插件已经调了 50 次 `$.model.complete`，**当**它调第 51 次，**则** reject 并说明额度用完了。
+10. **假设** 在终端里，**当**用户打字，**则** `prompt.edit` / `prompt.suggest` 都不触发；**假设** 在桌面端用户打了一个字，**则** mod 收到一次 `prompt.edit`，返回 `{ text, cursor }` 之后输入框变成改写后的内容。
+11. **假设** mod 调 `$.prompt.suggest({ text })`，**当** `prompt.suggest` 派发到别的插件，**则** `e.origin` 是 `{ kind: "plugin", name }`，引擎自己的推荐是 `{ kind: "suggestion" }`；**假设** 某个钩子返回 `{ isShown: false }` 且不调 `next`，**则**输入框不出现建议，`$.prompt.suggest` 拿到 `{ isShown: false }`。
+
+### 用户故事：插件先看见用户按了哪个控件，再决定回调收到什么（优先级：P1）
+
+作为面板类插件的作者，我希望能借一次按钮/输入/选择做点别的事（埋点、校验、把这次按键转给另一个控件），而不是只能等 `onPress` 被调用。
+
+**验收场景**：
+
+1. **假设** mod 画了 `Button({ key: "deploy" })` 并注册 `on("ui.press", handler)`，**当**用户点了它，**则** handler 先收到 `{ plugin, surface, component: "Pane", requestId, element: "deploy" }`，`onPress` 在它返回**之后**才跑。
+2. **假设** mod 画了 `Input({ key: "tag" })`，`ui.input` 的 handler 返回 `{ value: e.value.trim() }`，**当**用户提交 `" dev "`，**则** `onSubmit` 收到 `"dev"`；元素树里那份 `value` 不变（下一帧画什么仍由 `ui.render` 决定）。
+3. **假设** handler 返回 `{ element: "cancel" }` 且同一个 pane 里画着 `Button({ key: "cancel" })`，**当**用户按了 `deploy`，**则**跑的是 `cancel` 的 `onPress`；**假设** `cancel` 不在这个 pane 里，**则**按原来的 `deploy` 派发，日志一条 warn。
+4. **假设** handler 在 `ui.select` 上返回 `{ value: 42 }`（不是字符串），**当**用户选了一项，**则**这一项被丢掉、日志一条 warn，`onSelect` 拿到用户原本选的值。
+5. **假设**两个 mod 都注册了 `on("ui.press", handler)`（都不写 matcher），**当**用户按了其中一个画的按钮，**则**只有画那个按钮的 mod 的 handler 被调用；**假设**其中一个写 `{ plugin: "另一个 mod" }`，**则**它也会被调用（`"*"` 同理）。
+6. **假设**同样的 mod 跑在终端里，**当**用户用热键/回车按下 `Button`，**则**同样收到一次 `ui.press`；`component` / `element` / `requestId` 与桌面端一致，`surface` 是 `"terminal"`。
+
+### 用户故事：插件能先问一句「这个工具我能不能用」（优先级：P1）
+
+作为要在动手之前自查的插件作者，我想在不真的执行工具的前提下问一句「按现在这些规则与插件，这个调用会被拦吗、会被要求审批吗」，以便自己的流程能提前降级，而不是撞上去才发现。
+
+**验收场景**：
+
+1. **假设**另一个 mod 注册了 `on("tool.check", { tool: "Bash" }, () => ({ decision: "deny", reason: "发布前请确认版本号" }))`，**当** mod 调 `$.tool.check({ tool: "Bash", input: { command: "npm publish" } })`，**则**解析到 `{ decision: "deny", reason: "发布前请确认版本号" }`，**且**没有任何工具被执行、没有审批卡片弹出。
+2. **假设**没有任何钩子收紧，**当** mod 调 `$.tool.check({ tool: "Read" })`，**则**解析到 `{ decision: "allow" }`（基底是「还没人拦」，不是规则算出来的决定）。
+3. **假设**另一个 mod 的 `tool.call` 钩子返回 `{ deny: "…" }`，**当** mod 调 `$.tool.call({ tool: "Bash", input })`，**则**解析到 `{ deny: "…" }`；没人拦时解析到 `{}`。
+4. **假设** `$.tool.call` 触发了一次真实调用（钩子调了 `next(e)`），**当**链走到尾，**则**链尾是空对象 —— 方法**不执行**工具，返回里没有 `{ result }`。
+5. **假设**钩子的 matcher 是 `{ tool: "Bash" }`，**当** mod 调 `$.tool.check({ tool: "Read" })`，**则**那条钩子不被调用（与真实调用同一个匹配规则）。
+6. **假设** mod 在自己的 `tool.check` 钩子内部调 `$.tool.check`（同一个 mod 的同名事件重入），**当**调用发生，**则**当场 reject 并说明「不能在钩子里重入同名事件」；`$.tool.call` 同理。

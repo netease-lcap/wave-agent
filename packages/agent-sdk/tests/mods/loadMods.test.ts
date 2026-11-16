@@ -11,7 +11,7 @@ vi.mock("../../src/utils/globalLogger.js", () => ({
 }));
 
 /**
- * `loadMods` 是 mod 的**加载期门禁**：只收四个扩展名、只收插件目录内的真文件、
+ * `loadMods` 是 mod 的**加载期门禁**：只收六个扩展名、只收插件目录内的真文件、
  * 三个限额在这里先拦一道 —— 超限的文件根本不会进编译器（spec「限额」「加载
  * 纪律」）。
  */
@@ -71,8 +71,17 @@ describe("PluginLoader.loadMods", () => {
     await expect(PluginLoader.loadMods(PLUGIN, "todo")).resolves.toEqual([]);
   });
 
-  it("只收四个扩展名，id 由插件名 + 文件名 stem 构成，按名字排序", async () => {
-    mockFiles(["b.tsx", "a.ts", "c.jsx", "d.js", "note.md", "noext"]);
+  it("只收六个扩展名，id 由插件名 + 文件名 stem 构成，按名字排序", async () => {
+    mockFiles([
+      "b.tsx",
+      "a.ts",
+      "c.jsx",
+      "d.js",
+      "e.mjs",
+      "f.cjs",
+      "note.md",
+      "noext",
+    ]);
 
     const mods = await PluginLoader.loadMods(PLUGIN, "todo");
 
@@ -81,6 +90,8 @@ describe("PluginLoader.loadMods", () => {
       "todo:b",
       "todo:c",
       "todo:d",
+      "todo:e",
+      "todo:f",
     ]);
     expect(mods[0]).toEqual({
       id: "todo:a",
@@ -316,6 +327,23 @@ describe("PluginLoader.loadMods 收入口 import 的相对文件", () => {
     ]);
   });
 
+  it("`.mjs` 入口 import 的 `.mjs` 兄弟文件一起进编译集", async () => {
+    // 社区的纯 JS 插件（dprint 的 `./lib.mjs`、sotto 的 `./modcore.mjs`）：入口
+    // 走 hooks.json 进得来，兄弟文件也必须收，否则沙箱 require 当场报找不到模块。
+    const mjsEntry = path.join(PLUGIN, "hooks", "register.mjs");
+    const mjsLib = path.join(PLUGIN, "hooks", "lib.mjs");
+    mockTree({
+      [HOOKS]: JSON.stringify({ modules: ["./register.mjs"] }),
+      [mjsEntry]:
+        'import { x } from "./lib.mjs";\nexport const register = () => x;\n',
+      [mjsLib]: "export const x = 1;\n",
+    });
+
+    const mods = await PluginLoader.loadMods(PLUGIN, "dprint");
+
+    expect(mods.map((mod) => mod.path)).toEqual([mjsEntry, mjsLib]);
+  });
+
   it("沿 import 链递归，同一个文件被两处 import 时只收一次", async () => {
     const types = path.join(LIB, "types.ts");
     mockTree({
@@ -352,5 +380,41 @@ describe("PluginLoader.loadMods 收入口 import 的相对文件", () => {
     const mods = await PluginLoader.loadMods(PLUGIN, "todo");
 
     expect(mods.map((mod) => mod.path)).toEqual([ENTRY]);
+  });
+
+  it("同名的兄弟文件都留在编译集里（id 带后缀），入口同名仍然只留先到的", async () => {
+    const spinner = path.join(LIB, "features", "spinner", "index.ts");
+    const mermaid = path.join(LIB, "features", "mermaid", "index.ts");
+    mockTree({
+      [HOOKS]: JSON.stringify({ modules: ["./register.tsx"] }),
+      [ENTRY]:
+        'import { a } from "../lib/features/spinner";\nimport { b } from "../lib/features/mermaid";\n',
+      [spinner]: "export const a = 1;\n",
+      [mermaid]: "export const b = 2;\n",
+    });
+
+    const mods = await PluginLoader.loadMods(PLUGIN, "rich-ui");
+
+    // 多个目录下的 `index.ts` 都只是被 import 的共享模块，按文件名去重会丢掉
+    // 一个，入口随后 require 不到它。
+    expect(mods.map((mod) => mod.path)).toEqual([ENTRY, spinner, mermaid]);
+    expect(mods.map((mod) => mod.id)).toEqual([
+      "rich-ui:register",
+      "rich-ui:index",
+      "rich-ui:index~2",
+    ]);
+  });
+
+  it("`./x.js` 说明符收到同名的 .ts 源文件上", async () => {
+    const store = path.join(LIB, "archive", "file-store.ts");
+    mockTree({
+      [HOOKS]: JSON.stringify({ modules: ["./register.tsx"] }),
+      [ENTRY]: 'import { S } from "../lib/archive/file-store.js";\n',
+      [store]: "export class S {}\n",
+    });
+
+    const mods = await PluginLoader.loadMods(PLUGIN, "lossless-compact");
+
+    expect(mods.map((mod) => mod.path)).toEqual([ENTRY, store]);
   });
 });

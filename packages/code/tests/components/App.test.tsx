@@ -40,6 +40,16 @@ vi.mock("wave-agent-sdk", async () => {
         getHooksByScope: vi.fn().mockReturnValue(Promise.resolve({})),
         getContextWindow: vi.fn(() => 128000),
         setWorktreeSession: vi.fn(),
+        // 插件 MODS 的终端 surface（spec `ecosystem/plugin-mods.md`「终端形态」）：
+        // 没有插件在画时是「没有面板 / 没有带」。
+        renderModPanel: vi.fn().mockResolvedValue({
+          modId: "",
+          paneId: "",
+          revision: 0,
+          tree: null,
+        }),
+        renderModBand: vi.fn().mockResolvedValue([]),
+        handleModPanelEvent: vi.fn(),
       }),
     },
     hasUncommittedChanges: vi.fn(),
