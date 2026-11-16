@@ -13,6 +13,7 @@ import { MessageQueue, type QueuedMessage } from "./managers/messageQueue.js";
 import { SlashCommandManager } from "./managers/slashCommandManager.js";
 import { PluginManager } from "./managers/pluginManager.js";
 import { ModManager } from "./managers/modManager.js";
+import { wrapInSystemReminder } from "./prompts/planModeReminders.js";
 import type {
   ModBandRenderResult,
   ModPanelEventPayload,
@@ -105,6 +106,30 @@ import { entrypointOf } from "./telemetry/attributes.js";
 import { remoteSettingsService } from "./services/remoteSettingsService.js";
 import { AUTO_MEMORY_DRAIN_TIMEOUT_MS } from "./services/autoMemoryService.js";
 import { contextUsagePercent } from "./utils/tokenCalculation.js";
+
+/**
+ * 一份指令文件属于哪一档记忆（`classic.InstructionsLoaded` 的 `memory_type`）。
+ *
+ * 判据只有两条，按顺序：文件名认 `local` 两档（`AGENTS.local.md` /
+ * `CLAUDE.local.md`，都是「私有于本用户、但属于本仓库」），其余看位置 ——
+ * 会话工作目录里的是项目档，之外的（`~/.wave/AGENTS.md` 与它的
+ * `~/.claude/AGENTS.md` 回退）是用户档。`Managed` 给不出：我们没有企业托管层。
+ *
+ * 用 `path.relative` 而不是前缀比较：`/a/bc` 不该被判成 `/a/b` 里面。
+ */
+function classifyMemoryTier(
+  filePath: string,
+  workdir: string,
+): "Project" | "Local" | "User" {
+  const name = path.basename(filePath);
+  if (name === "AGENTS.local.md" || name === "CLAUDE.local.md") return "Local";
+  const relative = path.relative(workdir, filePath);
+  const insideWorkdir =
+    relative.length > 0 &&
+    !relative.startsWith("..") &&
+    !path.isAbsolute(relative);
+  return insideWorkdir ? "Project" : "User";
+}
 
 export class Agent {
   private messageManager: MessageManager;
@@ -561,13 +586,21 @@ export class Agent {
    * @param model - The ID of the model to use
    */
   public async setModel(model: string): Promise<void> {
+    // 换之前那两个值要在 `setModel` **之前**取：配置一改，解析出来就是新模型
+    // 了，`from_model` 会变成自己。
+    const fromModel =
+      this.configurationService.resolveModelConfig().model ?? "";
+    const contextTokens = this.getSessionUsage().context.tokens;
     await this.configurationService.setModel(model);
     this.options.callbacks?.onModelChange?.(model);
     // 影子事件 `classic.PostModelSwitch`（spec「影子事件」）：只在显式换模型时
-    // 发，配置文件热更新换模型不走这条路。`cache_ttl` 恒 `null` —— 我们不做提
-    // 示词缓存的 TTL 记账，给个假数字比给 `null` 更坏。
+    // 发，配置文件热更新换模型不走这条路。字段名照 CC（`from_model` /
+    // `to_model` / `context_tokens`）；`cache_ttl` 恒 `null` —— 我们不做提示词
+    // 缓存的 TTL 记账，给个假数字比给 `null` 更坏。
     this.modManager.notifyMods("classic.PostModelSwitch", {
-      model,
+      from_model: fromModel,
+      to_model: model,
+      context_tokens: contextTokens,
       cache_ttl: null,
     });
   }
@@ -768,6 +801,14 @@ export class Agent {
     // for `/clear`-style commands. The ModManager cannot resolve this itself —
     // it sits below `Agent` in the dependency graph.
     this.modManager.setPromptSubmitter((text) => this.sendMessage(text));
+
+    // Plugin mods can end the turn that is running (`$.turn.abort`, spec「收掉
+    // 一轮」). Same reason as the prompt channel: only AIManager knows which turn
+    // is in flight, so ModManager forwards and lets a bad `turnId` reject — a mod
+    // must not be told it stopped something it did not.
+    this.modManager.setTurnAborter((turnId) =>
+      this.aiManager.abortTurn(turnId),
+    );
 
     // Plugin mods can read the session's token usage (`$.session.usage`, spec
     // ecosystem/plugin-mods.md「会话用量」). Same shape as the prompt channel:
@@ -1003,8 +1044,9 @@ export class Agent {
    */
   private notifyCwdChanged(previousCwd: string): void {
     this.modManager.notifyMods("classic.CwdChanged", {
-      cwd: this.workdir,
-      previous_cwd: previousCwd,
+      // 字段名照 CC：`old_cwd` / `new_cwd`（社区插件读的就是这两个）。
+      old_cwd: previousCwd,
+      new_cwd: this.workdir,
     });
   }
 
@@ -1235,7 +1277,7 @@ export class Agent {
         next.content,
         ...this.messageQueue.drainNotifications(),
       ];
-      this.aiManager.injectTaskNotifications(allNotifications);
+      await this.aiManager.injectTaskNotifications(allNotifications);
       await this.aiManager.sendAIMessage({ recursionDepth: 0 });
     } else {
       await this.sendMessage(next.content, next.images);
@@ -1506,6 +1548,7 @@ export class Agent {
       for (const filePath of instructions) {
         this.modManager.notifyMods("classic.InstructionsLoaded", {
           file_path: filePath,
+          memory_type: classifyMemoryTier(filePath, this.workdir),
           load_reason: "session_start",
         });
       }
@@ -1673,10 +1716,18 @@ export class Agent {
 
       // Inject additionalContext as a meta user message
       if (sessionStartResult.additionalContext) {
-        this.messageManager.addUserMessage({
-          content: `<system-reminder>\nSessionStart hook additional context: ${sessionStartResult.additionalContext}\n</system-reminder>`,
-          isMeta: true,
+        // `prompt.attachment` 的 `session-start` 档（spec ecosystem/plugin-mods.md
+        // 「系统提示词与附件」）：`/clear` 之后插件还活着，所以这条要过一遍钩子。
+        const sessionStartText = await this.modManager.rewritePromptAttachment({
+          type: "session-start",
+          text: `SessionStart hook additional context: ${sessionStartResult.additionalContext}`,
         });
+        if (sessionStartText !== null) {
+          this.messageManager.addUserMessage({
+            content: wrapInSystemReminder(sessionStartText),
+            isMeta: true,
+          });
+        }
       }
 
       // Inject initialUserMessage as a meta user message

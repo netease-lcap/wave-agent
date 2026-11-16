@@ -30,6 +30,12 @@ import {
 } from "../telemetry/metrics.js";
 import { languageFromPath } from "../telemetry/language.js";
 import type { MessageManager } from "./messageManager.js";
+import type { ModManager } from "./modManager.js";
+import type {
+  ModPermissionDeniedReason,
+  ModToolCheckDecision,
+  ModToolCheckEvent,
+} from "../types/mods.js";
 import {
   splitBashCommand,
   stripEnvVars,
@@ -174,10 +180,67 @@ function userSourceOf(decision: PermissionDecision): PermissionDecisionSource {
     : "user_reject";
 }
 
+/**
+ * 规则（deny / allow 列表）+ 权限模式算出来的**三档**结论，「第二判定源」
+ * （spec ecosystem/plugin-mods.md「第二判定源」）。
+ *
+ * 三档而不是两档，是因为 `ask` 在我们这里的含义是「这张卡片必须弹」：`tool.check`
+ * 能把它抬上来，`bypassPermissions` / `dontAsk` 下原本不弹的那条路也照弹。所以
+ * 这个形状是**问过人之前**的结论，`ask` 之后才交给 {@link askUserForPermission}。
+ */
+interface HostVerdict {
+  decision: ModToolCheckDecision;
+  /** 结论的理由：`deny` 时是规则名、`ask` 时是模式名（同 spec 那一列）。 */
+  reason?: string;
+  /** 遥测口径（`wave.code_edit_tool.decision` 的 `source`）。 */
+  source: PermissionDecisionSource;
+  /** `deny` 时：`classic.PermissionDenied` 的四档短码之一。 */
+  denyReason?: ModPermissionDeniedReason;
+  /** `deny` 时：宿主自己给模型看的那段拒绝文本。 */
+  message?: string;
+}
+
+/**
+ * `tool.check` 判了 `deny` 却没给 `reason` 时，模型读到的那句话（spec：没给就
+ * 用一句固定的「被插件拒绝」）。
+ */
+const PLUGIN_DENIED_MESSAGE =
+  "This tool call was denied by a plugin's tool.check hook.";
+
 /** A resolved decision plus where it came from — the latter telemetry-only. */
 interface PermissionResolution {
   decision: PermissionDecision;
   source: PermissionDecisionSource;
+  /**
+   * 只在 `deny` 时有意义：它是哪一档拒绝（`classic.PermissionDenied` 的
+   * `reason`，spec「影子事件」）。
+   *
+   * 省掉时按 `source` 推（见 {@link denyReasonOf}）：规则与安全边界一律算「规则
+   * 拒」、用户点的算「用户拒」、没人能答的算「没有审批人」。模式不给问（plan /
+   * `dontAsk`）与「没有回调」这两种必须显式给，否则会被推成规则拒。
+   */
+  denyReason?: ModPermissionDeniedReason;
+}
+
+/**
+ * `deny` 的 `reason` 兜底：按 `PermissionDecisionSource` 推。
+ *
+ * `config` 是最常见的那个（实例规则、deny 规则、worktree 安全边界都走它）——
+ * 这三者本来就是「规则不许」，所以默认归 `denied_by_rule`；真正属于「模式不给
+ * 问」的两条在各自的返回点上显式标注。
+ */
+function denyReasonOf(
+  source: PermissionDecisionSource,
+): ModPermissionDeniedReason {
+  switch (source) {
+    case "user_abort":
+    case "user_reject":
+      return "user_denied";
+    case "unknown":
+      return "no_permission_prompt";
+    default:
+      return "denied_by_rule";
+  }
 }
 
 export interface PermissionManagerOptions {
@@ -205,6 +268,13 @@ export interface PermissionManagerOptions {
   systemAdditionalDirectories?: string[];
   /** Path to the current plan file */
   planFilePath?: string;
+  /**
+   * 这一份判定属于哪个子代理（`tool.check` 的 `e.agentId`）。
+   *
+   * 只有子代理容器里的那一份会带：主会话的调用上这个字段不出现 —— 插件据此认
+   * 出「这次调用是哪个子代理发起的」。
+   */
+  agentId?: string;
   /** Optional logger */
   logger?: Logger;
 }
@@ -229,6 +299,7 @@ export class PermissionManager {
   private instanceAdditionalDirectories: string[] = [];
   private systemAdditionalDirectories: string[] = [];
   private planFilePath?: string;
+  private readonly agentId?: string;
   private hasExitedPlanMode: boolean = false;
   private needsPlanModeExitAttachment: boolean = false;
   private workdir?: string;
@@ -248,6 +319,7 @@ export class PermissionManager {
     this.instanceAllowedRules = options.instanceAllowedRules || [];
     this.instanceDeniedRules = options.instanceDeniedRules || [];
     this.planFilePath = options.planFilePath;
+    this.agentId = options.agentId;
     this._logger = options.logger;
     // Read workdir first so relative additional directories resolve against it.
     this.workdir = this.container.get<string>("CurrentWorkdir");
@@ -674,7 +746,21 @@ export class PermissionManager {
   async checkPermission(
     context: ToolPermissionContext,
   ): Promise<PermissionDecision> {
-    const { decision, source } = await this.resolvePermission(context);
+    // 三段落：规则 + 模式先算出结论（不碰人）→ 第二判定源 `tool.check` 换掉它
+    // → 结论是 `ask` 才去找人。顺序是 spec「第二判定源」定的：插件能多问一次或
+    // 多拒一次，但只在这张卡片弹出来之前 —— 弹过了再收紧就等于用户白按了一次。
+    const host = await this.resolvePermission(context);
+    const verdict = await this.applyToolCheck(context, host);
+    const resolution =
+      verdict.decision === "ask"
+        ? // `dontAsk` / `bypassPermissions` 下宿主原本不弹卡；插件抬成 `ask` 就走
+          // 到这里，卡片照弹（spec 用户故事场景 4）。
+          await this.askUserForPermission(
+            context,
+            verdict.reason === host.reason ? undefined : verdict.reason,
+          )
+        : this.resolutionFrom(host, verdict);
+    const { decision, source } = resolution;
 
     recordCodeEditDecision(
       {
@@ -690,7 +776,133 @@ export class PermissionManager {
       this.telemetryContext(),
     );
 
+    // 影子事件 `classic.PermissionDenied`（spec「影子事件」）：判定落到 deny
+    // 之后报一次。放在这个唯一收口里而不是每条拒绝分支上 —— 规则、模式、没人能
+    // 答、用户点了拒绝最后都经过这里，漏一条就等于某个插件永远收不到。
+    if (decision.behavior === "deny") {
+      this.notifyPermissionDenied(context, resolution);
+    }
+
     return decision;
+  }
+
+  /**
+   * 把「问过人之前」的三档结论落成一份最终结果。
+   *
+   * `allow` / `deny` 两条不需要人：`deny` 的模型侧文本优先用插件的 `reason`
+   * （spec 场景 3），插件没说才保留宿主自己那段 —— 于是「插件把结论换成 deny 但
+   * 没给理由」的调用拿到的拒绝文本与没有这个钩子时逐字相同（场景 2b）。
+   */
+  private resolutionFrom(
+    host: HostVerdict,
+    verdict: HostVerdict,
+  ): PermissionResolution {
+    if (verdict.decision === "allow") {
+      return { decision: { behavior: "allow" }, source: verdict.source };
+    }
+    const pluginReason =
+      verdict.reason === host.reason ? undefined : verdict.reason;
+    return {
+      decision: {
+        behavior: "deny",
+        message: pluginReason ?? host.message ?? PLUGIN_DENIED_MESSAGE,
+      },
+      source: verdict.source,
+      // `classic.PermissionDenied` 的 `reason` 只由宿主自己定：插件的理由落在
+      // 模型读到的那段文本上，不改这个短码（spec 场景 3）。
+      denyReason: host.denyReason,
+    };
+  }
+
+  /**
+   * 第二判定源（spec「第二判定源」）：把宿主已经算出来的结论交给 `tool.check`
+   * 链，拿回一个替换用的结论。
+   *
+   * 三个方向都算数（含放宽）由 `ModManager.dispatchToolCheck` 兑现；这里只负责
+   * 「宿主结论 → 插件结论 → 最终结果/卡片」这一段。没接 ModManager（单测、老宿
+   * 主）就原样用宿主的结论。
+   */
+  private async applyToolCheck(
+    context: ToolPermissionContext,
+    host: HostVerdict,
+  ): Promise<HostVerdict> {
+    const modManager = this.container.has("ModManager")
+      ? this.container.get<ModManager>("ModManager")
+      : undefined;
+    if (!modManager || typeof modManager.dispatchToolCheck !== "function") {
+      return host;
+    }
+    const event: ModToolCheckEvent = {
+      tool: context.toolName,
+      tool_use_id: context.toolCallId ?? "",
+      input: context.toolInput ?? {},
+      decision: host.decision,
+      ...(host.reason === undefined ? {} : { reason: host.reason }),
+      // 主会话的调用上这个键不出现（不是空串），插件据此分辨是谁发起的。
+      ...(this.agentId === undefined ? {} : { agentId: this.agentId }),
+      // 只读是「工具自己报了」：不在 `RESTRICTED_TOOLS` 里的工具就是这一个口径。
+      // 不是只读时不出现这个键，而不是给 `false`（spec 明确要求）。
+      ...(this.isRestrictedTool(context.toolName) ? {} : { isReadOnly: true }),
+    };
+    let result: { decision: ModToolCheckDecision; reason?: string };
+    try {
+      result = await modManager.dispatchToolCheck(event);
+    } catch (error) {
+      // 钩子抛错 / 超时：按宿主原本的决定走 —— fail-open 的方向是「插件坏了
+      // 也不放行」，不是「插件坏了就算了」。`ModManager` 内部已经逐 mod 兜过一
+      // 层，这里是它自己炸了时的最后一档。
+      logger?.warn("tool.check 链失败，按宿主原本的决定走", {
+        toolName: context.toolName,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return host;
+    }
+    logger?.debug("tool.check verdict", {
+      toolName: context.toolName,
+      host: host.decision,
+      verdict: result.decision,
+    });
+    // 「本身就是提问」的工具（AskUserQuestion / ExitPlanMode 那几种）没有「不问
+    // 就跑」的形态：放宽成 allow 会让它去执行一个没有答案的提问。所以这一类只接
+    // 收紧（插件仍能拒），放宽按宿主的 `ask` 走。
+    const relaxedPastAsk =
+      result.decision === "allow" &&
+      (USER_INTERACTION_REQUIRED_TOOLS as readonly string[]).includes(
+        context.toolName,
+      );
+    if (relaxedPastAsk) {
+      logger?.debug("tool.check 想放宽一个必须问人的工具，按 ask 走", {
+        toolName: context.toolName,
+      });
+    }
+    return {
+      ...host,
+      decision: relaxedPastAsk ? host.decision : result.decision,
+      reason: relaxedPastAsk ? host.reason : (result.reason ?? host.reason),
+    };
+  }
+
+  /**
+   * 影子事件 `classic.PermissionDenied`（spec「影子事件」）：一次工具调用被拒
+   * 之后，只读、不阻塞。
+   *
+   * `reason` 是四档短码（见 {@link ModPermissionDeniedReason}）：插件据此区分
+   * 「规则不许」与「用户刚拒了」—— 后者才值得弹一条提示让人重试。
+   */
+  private notifyPermissionDenied(
+    context: ToolPermissionContext,
+    resolution: PermissionResolution,
+  ): void {
+    if (!this.container.has("ModManager")) return;
+    const modManager =
+      this.container.get<import("./modManager.js").ModManager>("ModManager");
+    if (!modManager) return;
+    modManager.notifyMods("classic.PermissionDenied", {
+      tool_name: context.toolName,
+      tool_input: context.toolInput ?? {},
+      tool_use_id: context.toolCallId ?? "",
+      reason: resolution.denyReason ?? denyReasonOf(resolution.source),
+    });
   }
 
   /**
@@ -698,9 +910,13 @@ export class PermissionManager {
    * phone, an SDK host) and turn its answer into a resolution. The single exit
    * for every path that has to reach a person — an automatic allow here would
    * strand the caller with an answer nobody gave.
+   *
+   * `cardReason` 是插件给的「为什么还要问一次」（`tool.check` 抬成 `ask` 时的那
+   * 句 reason），作为卡片上的一行提示带下去；宿主自己决定问的时候没有这一行。
    */
   private async askUserForPermission(
     context: ToolPermissionContext,
+    cardReason?: string,
   ): Promise<PermissionResolution> {
     if (!context.canUseToolCallback) {
       logger?.warn(
@@ -715,6 +931,7 @@ export class PermissionManager {
           message: `Tool '${context.toolName}' requires permission approval. No permission callback configured.`,
         },
         source: "unknown",
+        denyReason: "no_permission_prompt",
       };
     }
 
@@ -724,7 +941,13 @@ export class PermissionManager {
     const telemetry = this.telemetryContext();
     beginUserWait(telemetry);
     try {
-      const answered = await context.canUseToolCallback(context);
+      const answered = await context.canUseToolCallback(
+        // 一行插件给的提示走 `warning` 这条现成的通道（宿主把它画在卡片上）；
+        // 不动调用方那份 context。
+        cardReason === undefined
+          ? context
+          : { ...context, warning: cardReason },
+      );
       if (answered.behavior !== "allow") {
         logger?.debug("Custom callback returned decision", {
           toolName: context.toolName,
@@ -748,6 +971,8 @@ export class PermissionManager {
           message: "Error in permission callback",
         },
         source: "unknown",
+        // 回调本身炸了：没人给出答案，与「没有审批人」同一档。
+        denyReason: "no_permission_prompt",
       };
     } finally {
       endUserWait(telemetry);
@@ -758,10 +983,14 @@ export class PermissionManager {
    * Resolve the decision itself, plus where it came from. Split from
    * {@link checkPermission} so every path out carries its source and the
    * recording happens exactly once.
+   *
+   * Returns the **three-valued** {@link HostVerdict}: nothing here reaches the
+   * user. `ask` means "this needs a person"; whether that card is actually shown
+   * (and with what note) is decided afterwards by `tool.check`.
    */
   private async resolvePermission(
     context: ToolPermissionContext,
-  ): Promise<PermissionResolution> {
+  ): Promise<HostVerdict> {
     // 0. Check instance-specific denied rules first - Deny always takes precedence
     for (const rule of this.instanceDeniedRules) {
       if (this.matchesRule(context, rule)) {
@@ -770,10 +999,9 @@ export class PermissionManager {
           rule,
         });
         return {
-          decision: {
-            behavior: "deny",
-            message: `Access to tool '${context.toolName}' is explicitly denied by instance rule: ${rule}`,
-          },
+          decision: "deny",
+          message: `Access to tool '${context.toolName}' is explicitly denied by instance rule: ${rule}`,
+          reason: rule,
           source: "config",
         };
       }
@@ -787,10 +1015,9 @@ export class PermissionManager {
           rule,
         });
         return {
-          decision: {
-            behavior: "deny",
-            message: `Access to tool '${context.toolName}' is explicitly denied by rule: ${rule}`,
-          },
+          decision: "deny",
+          message: `Access to tool '${context.toolName}' is explicitly denied by rule: ${rule}`,
+          reason: rule,
           source: "config",
         };
       }
@@ -809,7 +1036,13 @@ export class PermissionManager {
         context.toolName,
       )
     ) {
-      return this.askUserForPermission(context);
+      // 这几种工具**就是**那次提问本身，一律要走人这一关。它照样过 `tool.check`
+      // —— 插件能拒掉，但放宽不到 `allow`（见 `applyToolCheck` 里那一档）。
+      return {
+        decision: "ask",
+        reason: "requires-user-interaction",
+        source: "config",
+      };
     }
 
     // Check worktree safety for Write and Edit tools — unconditional safety
@@ -860,10 +1093,9 @@ export class PermissionManager {
               workdir: effectiveWorkdir,
             });
             return {
-              decision: {
-                behavior: "deny",
-                message: `Access denied: You are currently in a worktree session ("${effectiveWorktreeName}"). Modifying files in the main repository (outside the worktree) is not allowed. Please only modify files within the worktree directory: ${effectiveWorkdir}`,
-              },
+              decision: "deny",
+              message: `Access denied: You are currently in a worktree session ("${effectiveWorktreeName}"). Modifying files in the main repository (outside the worktree) is not allowed. Please only modify files within the worktree directory: ${effectiveWorkdir}`,
+              reason: "worktree-scope",
               source: "config",
             };
           }
@@ -876,10 +1108,9 @@ export class PermissionManager {
             workdir: effectiveWorkdir,
           });
           return {
-            decision: {
-              behavior: "deny",
-              message: `Access denied: You are currently in a worktree session ("${effectiveWorktreeName}"). Modifying files in the main repository (outside the worktree) is not allowed. Please only modify files within the worktree directory: ${effectiveWorkdir}`,
-            },
+            decision: "deny",
+            message: `Access denied: You are currently in a worktree session ("${effectiveWorktreeName}"). Modifying files in the main repository (outside the worktree) is not allowed. Please only modify files within the worktree directory: ${effectiveWorkdir}`,
+            reason: "worktree-scope",
             source: "config",
           };
         }
@@ -898,7 +1129,7 @@ export class PermissionManager {
       context.toolInput?.sandboxed === true &&
       this.isSandboxAutoAllowEnabled()
     ) {
-      return { decision: { behavior: "allow" }, source: "config" };
+      return { decision: "allow", source: "config" };
     }
 
     // If bypassPermissions mode — or plan mode in a session that was authorized
@@ -909,7 +1140,7 @@ export class PermissionManager {
       context.permissionMode === "bypassPermissions" ||
       (context.permissionMode === "plan" && this.getBypassAuthorization());
     if (bypassesPermissionChecks) {
-      return { decision: { behavior: "allow" }, source: "config" };
+      return { decision: "allow", source: "config" };
     }
 
     // If acceptEdits mode, allow Edit, Write, and mkdir in safe zone
@@ -936,7 +1167,7 @@ export class PermissionManager {
             );
             // Fall through to normal permission check flow to trigger confirmation prompt
           } else {
-            return { decision: { behavior: "allow" }, source: "config" };
+            return { decision: "allow", source: "config" };
           }
         }
       }
@@ -967,7 +1198,7 @@ export class PermissionManager {
                 });
 
                 if (allPathsSafe) {
-                  return { decision: { behavior: "allow" }, source: "config" };
+                  return { decision: "allow", source: "config" };
                 }
               }
             }
@@ -981,7 +1212,7 @@ export class PermissionManager {
       // Which source the matching rule came from is not recoverable: the rules
       // are matched as one union, and a chained command's leaves may each hit a
       // different source. Reported as `config`, never guessed at.
-      return { decision: { behavior: "allow" }, source: "config" };
+      return { decision: "allow", source: "config" };
     }
 
     // 1.3 If plan mode, allow Read-only tools and Edit/Write for plan file
@@ -995,23 +1226,24 @@ export class PermissionManager {
           const absolutePlanPath = path.resolve(this.planFilePath);
 
           if (absoluteTargetPath === absolutePlanPath) {
-            return { decision: { behavior: "allow" }, source: "config" };
+            return { decision: "allow", source: "config" };
           }
         }
 
         return {
-          decision: {
-            behavior: "deny",
-            message: `In plan mode, you are only allowed to edit the designated plan file: ${this.planFilePath || "not set"}.`,
-          },
+          decision: "deny",
+          message: `In plan mode, you are only allowed to edit the designated plan file: ${this.planFilePath || "not set"}.`,
+          reason: "plan",
           source: "config",
+          // 不是哪条规则写的，是这个模式本身只许改计划文件。
+          denyReason: "denied_by_mode",
         };
       }
     }
 
     // 2. If not a restricted tool, always allow
     if (!this.isRestrictedTool(context.toolName)) {
-      return { decision: { behavior: "allow" }, source: "config" };
+      return { decision: "allow", source: "config" };
     }
 
     // 2.1 If dontAsk mode, auto-deny restricted tools that were not allowed by rules above
@@ -1020,17 +1252,22 @@ export class PermissionManager {
         toolName: context.toolName,
       });
       return {
-        decision: {
-          behavior: "deny",
-          message: `Tool '${context.toolName}' was automatically denied because 'dontAsk' permission mode is active and no pre-approved rule matches this call.`,
-        },
+        decision: "deny",
+        message: `Tool '${context.toolName}' was automatically denied because 'dontAsk' permission mode is active and no pre-approved rule matches this call.`,
+        reason: "dontAsk",
         source: "config",
+        denyReason: "denied_by_mode",
       };
     }
 
-    // 3. Ask the host's user-facing callback (the one place a person can answer;
-    // it also carries the no-callback deny for headless callers).
-    return this.askUserForPermission(context);
+    // 3. This one needs a person: the host's user-facing callback is the only place
+    // one can answer (it also carries the no-callback deny for headless callers).
+    // Which mode asked is the reason a mod sees on `e.reason`.
+    return {
+      decision: "ask",
+      reason: context.permissionMode,
+      source: "config",
+    };
   }
 
   /**

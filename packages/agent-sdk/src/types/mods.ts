@@ -575,11 +575,13 @@ export interface ModCommunityTokenTotals {
 /**
  * `turn.complete` 的载荷（spec「完成与审批的观察」）。
  *
- * 与 Claude Code 同名事件对齐的部分是 `isAborted` / `durationMs` / `answer` /
- * `usage`；**没有** `turnId` / `agentId`（我们一期只报主 agent 的轮次），也不接
+ * 与 Claude Code 同名事件对齐的部分是 `turnId` / `isAborted` / `durationMs` /
+ * `answer` / `usage`；**没有** `agentId`（我们一期只报主 agent 的轮次），也不接
  * 管返回值（CC 的 `{ text }` 会在答案下面显示一行，我们不显示）。
  */
 export interface ModTurnCompleteEvent {
+  /** 收尾的是哪一轮（与 `turn.start` 的 `turnId` 同一个值）。 */
+  turnId: string;
   /** 这一轮是被用户中断掉的（Esc / 停止），而不是答完。 */
   isAborted: boolean;
   /** 从这一轮开始处理到结束（含 Stop 钩子重开、通知注入重开的循环）。 */
@@ -687,6 +689,13 @@ export interface ModClassicStopEvent extends ModClassicEventBase {
    * 次收尾就该看见 `true` 并收手。首次收尾恒为 `false`。
    */
   stop_hook_active: boolean;
+  /**
+   * 这一轮最后一条 assistant 消息的正文（CC 的 `last_assistant_message`）。
+   *
+   * 给它是为了省掉「插件自己去读转录、自己解 JSONL」那一步 —— 社区插件里有几
+   * 个就是这么用的。中断的一轮可能没有答案，那时不给这个字段。
+   */
+  last_assistant_message?: string;
 }
 
 /**
@@ -748,26 +757,63 @@ export interface ModClassicNotificationEvent extends ModClassicEventBase {
 export interface ModClassicInstructionsLoadedEvent extends ModClassicEventBase {
   hook_event_name: "InstructionsLoaded";
   file_path: string;
-  /** 我们只有两档：开局常驻、读到子树后注入。 */
-  load_reason: "session_start" | "nested_read";
+  /**
+   * 这份文件属于哪一档记忆（CC 的 `memory_type`）。
+   *
+   * 我们的对应：`<workdir>/AGENTS.md`（回退 `CLAUDE.md`）与子树里那份 →
+   * `Project`；`<workdir>/AGENTS.local.md` → `Local`；`~/.wave/AGENTS.md` →
+   * `User`。`Managed` 给不出：我们没有企业托管设置层。
+   */
+  memory_type: "Project" | "Local" | "User";
+  /**
+   * 为什么读它。名字照 CC：开局常驻的几份是 `session_start`，模型读到子树里的
+   * 文件之后沿目录链注入的那份是 `nested_traversal`（我们曾经自造成
+   * `nested_read`，按真名字过滤的插件于是永不触发）。
+   */
+  load_reason: "session_start" | "nested_traversal";
 }
 
 /** `classic.PostModelSwitch`：会话的模型被换掉。 */
 export interface ModClassicPostModelSwitchEvent extends ModClassicEventBase {
   hook_event_name: "PostModelSwitch";
-  model: string;
+  /** 换之前生效的模型名。 */
+  from_model: string;
+  /** 换之后生效的模型名（曾经叫 `model`，CC 那两个名字才是插件读的）。 */
+  to_model: string;
+  /**
+   * 换之前那一刻的上下文估值：下一次请求要重发的量，与
+   * `$.session.usage().context.tokens` 同一处解析。
+   */
+  context_tokens: number;
   /** 恒为 `null`：我们不做提示词缓存的 TTL 记账（给假数字更坏）。 */
   cache_ttl: null;
 }
 
-/** `classic.SubagentStart` / `classic.SubagentStop`：一个子代理起止。 */
-export interface ModClassicSubagentEvent extends ModClassicEventBase {
-  hook_event_name: "SubagentStart" | "SubagentStop";
+/** `classic.SubagentStart`：一个子代理起来（CC 这一条只有这两个字段）。 */
+export interface ModClassicSubagentStartEvent extends ModClassicEventBase {
+  hook_event_name: "SubagentStart";
   agent_id: string;
   agent_type: string;
-  description: string;
-  /** 只有 `SubagentStop` 有：`ok` / `error` / `aborted`。 */
-  status?: "ok" | "error" | "aborted";
+}
+
+/** `classic.SubagentStop`：一个子代理结束（完成 / 出错 / 中止 / 用户停掉）。 */
+export interface ModClassicSubagentStopEvent extends ModClassicEventBase {
+  hook_event_name: "SubagentStop";
+  agent_id: string;
+  agent_type: string;
+  /**
+   * 恒 `false`：这条事件在我们这里没有续跑通道（`additionalContext` 不收），
+   * 字段照 CC 给，是为了让读它的插件拿到一个布尔值而不是 `undefined`。
+   */
+  stop_hook_active: false;
+  /** 子代理停下来之前最后一条 assistant 消息的正文（插件不必去解转录）。 */
+  last_assistant_message?: string;
+  /**
+   * 子代理自己的日志文件：只有跑在后台、宿主为它开了日志流的子代理才给。
+   *
+   * 不是 JSONL 转录（我们还没有子代理级的转录文件），CC 那边这一格是转录。
+   */
+  agent_transcript_path?: string;
 }
 
 /** `classic.PostToolUse` / `classic.PostToolUseFailure`：一次工具调用的收尾。 */
@@ -775,6 +821,10 @@ export interface ModClassicToolUseEvent extends ModClassicEventBase {
   hook_event_name: "PostToolUse" | "PostToolUseFailure";
   tool_name: string;
   tool_input: unknown;
+  /** 模型消息里那次调用的 id（`$.ui.notice` 也认它）。 */
+  tool_use_id: string;
+  /** 这次执行花了多久（从进工具到它返回，含内部的权限判定与钩子）。 */
+  duration_ms?: number;
   /** 只有 `PostToolUse` 有：那次工具的结果文本（按限额截断）。 */
   tool_response?: string;
   /** 只有 `PostToolUseFailure` 有：失败正文。 */
@@ -784,17 +834,213 @@ export interface ModClassicToolUseEvent extends ModClassicEventBase {
 /** `classic.PostToolBatch`：一批工具调用全部跑完。 */
 export interface ModClassicPostToolBatchEvent extends ModClassicEventBase {
   hook_event_name: "PostToolBatch";
-  tool_calls: Array<{ tool_name: string; tool_use_id: string; ok: boolean }>;
+  /**
+   * 这一批里的每一次调用；形状照 CC（没有 `ok` —— 成功与否看 `tool_response`
+   * 在不在）。
+   */
+  tool_calls: Array<{
+    tool_name: string;
+    tool_input: unknown;
+    tool_use_id: string;
+    tool_response?: string;
+  }>;
 }
 
 /** `classic.CwdChanged`：会话**会动的**工作目录变了。 */
 export interface ModClassicCwdChangedEvent extends ModClassicEventBase {
   hook_event_name: "CwdChanged";
-  previous_cwd: string;
+  /** 变之前那个目录（社区插件读的就是这个名字）。 */
+  old_cwd: string;
+  /** 变之后那个目录，与公共字段 `cwd` 同一个值。 */
+  new_cwd: string;
 }
 
 /**
- * 所有 `classic.*` 镜像的并集（`classic.PermissionRequest` 在它自己的类型里）。
+ * `classic.PreToolUse` 的 `e`：**不是** `classic.*` 那份 stdin，而是 `tool.call`
+ * 的 `ToolCallEnvelope`。
+ *
+ * 这是 CC 自己在 mods 面里的排法（`E extends 'PreToolUse' ? ToolCallEnvelope :
+ * ClassicHookInputs[E]`）：工具名、调用 id、参数对象，外加把参数在顶层铺一份。
+ * 所以这一条**没有** `hook_event_name`，也不进 `ModClassicEvent` 那个联合 ——
+ * 它和 `tool.call` 走同一条链（见 `ModManager.dispatchToolCall`）。
+ */
+export interface ModClassicPreToolUseEvent {
+  /** 工具名（与 `tool.call` 的 `tool` 同一个字段）。 */
+  tool: string;
+  tool_use_id: string;
+  input: Record<string, unknown>;
+  /** 顶层铺开的一份工具参数：`e.command` 就是 Bash 的 command。 */
+  [key: string]: unknown;
+}
+
+/**
+ * `classic.PreToolUse` 的返回值：与 `tool.call` 同一份 `{ deny }`。
+ *
+ * CC 对这一条另有 `{ allow: true }` / `{ ask }` / `updatedInput`：前两个是「替
+ * 用户放行」与「强制弹一次卡片」，都是第二判定源，`updatedInput` 是改写参数，
+ * 三者一律不做。
+ */
+export interface ModPreToolUseResult {
+  deny?: string;
+}
+
+/**
+ * 一次工具调用是怎么被拒的（`classic.PermissionDenied` 的 `reason`）。
+ *
+ * 四档分别对应宿主里不同的拒绝点：规则/安全边界直接拒、模式不给问（plan /
+ * `dontAsk`）、没有能答的人（headless 没有审批回调）、用户点了拒绝。
+ */
+export type ModPermissionDeniedReason =
+  | "denied_by_rule"
+  | "denied_by_mode"
+  | "no_permission_prompt"
+  | "user_denied";
+
+/**
+ * `classic.PermissionDenied`：一次工具调用被权限拒掉之后。
+ *
+ * 卡片弹出来、用户点了拒绝，与规则/模式直接拒，都在这里报；两者靠 `reason`
+ * 分辨。CC 那一格也是宿主自定的短码（它自己给 `host_exit` 这类），所以取值不
+ * 与它逐字相同。
+ */
+export interface ModClassicPermissionDeniedEvent extends ModClassicEventBase {
+  hook_event_name: "PermissionDenied";
+  tool_name: string;
+  tool_input: unknown;
+  tool_use_id: string;
+  reason: ModPermissionDeniedReason;
+}
+
+/** `classic.PreCompact`：上下文压缩**开始之前**。 */
+export interface ModClassicPreCompactEvent extends ModClassicEventBase {
+  hook_event_name: "PreCompact";
+  /** 撞阈值自动压（`auto`）还是 `/compact`（`manual`）。 */
+  trigger: "auto" | "manual";
+  /** `/compact` 带的那段指令；没有时是 `null`（CC 这一格就是 nullable）。 */
+  custom_instructions: string | null;
+}
+
+/** `classic.PostCompact`：上下文压缩**完成之后**（与 `session.compact` 同一时刻）。 */
+export interface ModClassicPostCompactEvent extends ModClassicEventBase {
+  hook_event_name: "PostCompact";
+  trigger: "auto" | "manual";
+  /** 这次写回历史的那段摘要正文。 */
+  compact_summary: string;
+}
+
+/**
+ * `classic.MessageDisplay`：一条 assistant 消息收尾时（一轮里每条回答各一次）。
+ *
+ * 我们不分 flush：CC 每攒够几行派发一次、`index` 递增、`final` 只在最后一次为
+ * 真；我们一条消息只给一次全文，所以 `index` 恒 `0`、`final` 恒 `true`。
+ */
+export interface ModClassicMessageDisplayEvent extends ModClassicEventBase {
+  hook_event_name: "MessageDisplay";
+  /** 这条消息属于哪一轮（与 `turn.start` / `turn.complete` 的 `turnId` 同一个）。 */
+  turn_id: string;
+  /** 转录里这条消息的 id（同一条消息的多次 flush 共用一个）。 */
+  message_id: string;
+  /** 恒 `0`：我们不给增量，只有一次全文。 */
+  index: 0;
+  /** 恒 `true`：这一次就是这条消息的最后一次。 */
+  final: true;
+  /** 这条消息的完整正文（按限额截断）。 */
+  delta: string;
+}
+
+/**
+ * 会话里一条消息的内容块（spec「会话消息」）。
+ *
+ * 三种块就是模型真正读的那三种：文本、一次工具调用、一次工具结果。没有第四
+ * 种 —— 宿主自己的提醒在转录里也是文本块，只是带 `system-reminder` 包壳。
+ */
+export type ModSessionMessageBlock =
+  | { type: "text"; text: string }
+  | { type: "tool_use"; id: string; name: string; input: unknown }
+  | { type: "tool_result"; tool_use_id: string; content: string };
+
+/**
+ * `$.session.messages()` 返回的一条消息，也是 `session.append` 里的 `e.message`
+ * （spec「会话消息」「转录写入前改写」）。
+ *
+ * 两个地方同一形状是刻意的：插件拿到 `session.append` 的消息后可能想直接喂给
+ * 自己的面板，形状不一致会让它写两套渲染。
+ */
+export interface ModSessionMessage {
+  id: string;
+  role: "user" | "assistant" | "system";
+  content: ModSessionMessageBlock[];
+}
+
+/**
+ * `session.append` 的载荷：一条消息要存进转录之前（spec「转录写入前改写」）。
+ *
+ * 粒度是**一条消息**，不是 CC 的一行 —— 一条 assistant 消息可能带多个块，
+ * 见 spec 里那条「粒度是我们的，不是 CC 的」。
+ */
+export interface ModSessionAppendEvent {
+  message: ModSessionMessage;
+  /**
+   * 这一行在转录里的 id（就是 `message.id`）。CC 的字段名是 `uuid`，插件按它
+   * 回查 / 串联自己要记的那一份 —— 真插件（lossless-claude）读的就是这个名字。
+   */
+  uuid: string;
+  /** 谁写的这一行：主对话，还是压缩时摘要落库。 */
+  door: "engine" | "compaction";
+  /** 子代理落库时带自己的 id。 */
+  agentId?: string;
+  /** 这条消息属于哪一轮；不在轮次里存的（通知、记忆）没有。 */
+  turnId?: string;
+  [key: string]: unknown;
+}
+
+/** `tool.check` 能给出的决定（spec「第二判定源」）。 */
+export type ModToolCheckDecision = "allow" | "ask" | "deny";
+
+/**
+ * `tool.check` 的载荷：宿主已经按规则与模式算出决定之后（spec「第二判定源」）。
+ *
+ * `decision` / `reason` 是**宿主的结论**，`next(e)` 原样传给下面的 mod；钩子
+ * 返回 `{ decision }` 换掉它。**只能收紧**：`deny → allow/ask` 不接受。
+ */
+export interface ModToolCheckEvent {
+  tool: string;
+  tool_use_id: string;
+  input: unknown;
+  /** 宿主的结论（规则 + 模式 + 前面那些钩子的结果）。 */
+  decision: ModToolCheckDecision;
+  /** 结论的理由：`deny` 时是规则名、`ask` 时是模式名，`allow` 时通常没有。 */
+  reason?: string;
+  /** 子代理发起的调用上才有。 */
+  agentId?: string;
+  /** 工具自己报了只读时为 `true`；不是 `false`，是不出现。 */
+  isReadOnly?: true;
+  [key: string]: unknown;
+}
+
+/** 系统提示词里的一段（spec「系统提示词与附件」）。 */
+export interface ModPromptSection {
+  /** 段名，`prompt.section` 的 `e.name` 就是它。 */
+  id: string;
+  text: string;
+  /** `session` 进缓存前缀（整场不变），`turn` 每轮重算。 */
+  scope: "session" | "turn";
+}
+
+/**
+ * `prompt.context` 交下去的一块上下文（spec「系统提示词与附件」）。
+ *
+ * 形状照 CC：`{ name, text }` —— `name` 是给人和日志看的来源标记，`text` 才是
+ * 进模型上下文的正文。lossless-claude 就是 `{ blocks: [...blocks, { name: "lcm", text }] }`。
+ */
+export interface ModPromptContextBlock {
+  name: string;
+  text: string;
+}
+
+/**
+ * 所有 `classic.*` 镜像的并集（`classic.PermissionRequest` 与
+ * `classic.PreToolUse` 在它们自己的类型里）。
  *
  * 只用于 `notifyMods` 的载荷签名 —— mod 侧拿到的是对应的那一个。
  */
@@ -807,10 +1053,15 @@ export type ModClassicEvent =
   | ModClassicNotificationEvent
   | ModClassicInstructionsLoadedEvent
   | ModClassicPostModelSwitchEvent
-  | ModClassicSubagentEvent
+  | ModClassicSubagentStartEvent
+  | ModClassicSubagentStopEvent
   | ModClassicToolUseEvent
   | ModClassicPostToolBatchEvent
-  | ModClassicCwdChangedEvent;
+  | ModClassicCwdChangedEvent
+  | ModClassicPermissionDeniedEvent
+  | ModClassicPreCompactEvent
+  | ModClassicPostCompactEvent
+  | ModClassicMessageDisplayEvent;
 
 /**
  * `$.ui.ask` 的第二个参数（spec「问用户一个问题」）。
@@ -883,14 +1134,24 @@ export interface ModPromptSubmitResult {
   context?: string[];
 }
 
-/** `turn.start` 的载荷：一轮开始（用户消息已进上下文、第一个请求之前）。 */
+/**
+ * `turn.start` 的载荷：一轮开始（用户消息已进上下文、第一个请求之前）。
+ */
 export interface ModTurnStartEvent {
+  /**
+   * 这一轮的 id：`turn.start` / `turn.step` / `turn.complete` /
+   * `classic.MessageDisplay` 用同一个值，也是 `$.turn.abort({ turnId })` 要传的
+   * 那一个（spec「收掉一轮」）。
+   */
+  turnId: string;
   /** 一轮里第几步，永远是 0；给形状留位（与 `turn.step` 的 `step` 连着看）。 */
   step: 0;
 }
 
 /** `turn.step` 的载荷：这一轮里每发出一次模型请求之前。 */
 export interface ModTurnStepEvent {
+  /** 属于哪一轮（与 `turn.start` 的 `turnId` 同一个值）。 */
+  turnId: string;
   /** 从 1 起：一轮里第 N 次模型请求（工具循环里每次请求都算一步）。 */
   step: number;
 }
@@ -1113,4 +1374,18 @@ export const MOD_LIMITS = {
    * 也不会把用户困在「永远答不完」的循环里。
    */
   stopHookContinuationCap: 8,
+  /**
+   * `$.session.messages()` 最多回多少条（spec「会话消息」）。
+   *
+   * 「整份对话」与「一个数字」不是一个量级：`usage()` 那种快照可以每轮给，
+   * 历史不行。200 条足够画一屏历史，又不至于把一次 `Read` 的几 MB 结果连同
+   * 前面几十轮一起跨沙箱边界递出去。
+   */
+  sessionMessages: 200,
+  /** `$.session.messages()` 单条消息的正文上限，超出截断并加省略号。 */
+  sessionMessageChars: 8_000,
+  /** `prompt.compose` 能返回的段数上限；超出只取前这么多并记一条 warn。 */
+  promptSections: 64,
+  /** 一段系统提示词的字符上限；超出截断并记一条 warn（截断的提示词是坏提示词）。 */
+  promptSectionChars: 100_000,
 } as const;

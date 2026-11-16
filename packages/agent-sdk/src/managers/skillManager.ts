@@ -28,6 +28,7 @@ import {
 } from "../utils/markdownParser.js";
 import { createBashCommandGate } from "../utils/bashCommandGate.js";
 import type { PermissionManager } from "./permissionManager.js";
+import type { ModManager } from "./modManager.js";
 import { getBuiltinSkillsDir } from "../utils/configPaths.js";
 import { isArtifactEnabled } from "../services/artifactAvailability.js";
 
@@ -719,7 +720,9 @@ export class SkillManager extends EventEmitter {
       );
 
       return {
-        content: finalContent,
+        // 正文定型（参数替换、`!`cmd`` 展开都跑完）之后才问插件：把 hook 放在
+        // 前面就会让插件写的文本进宿主 shell。
+        content: await this.applySkillPrompt(prepared.skill, finalContent),
         context: {
           skillName: skill_name,
         },
@@ -731,6 +734,32 @@ export class SkillManager extends EventEmitter {
         content: `**Error executing skill**: ${error instanceof Error ? error.message : String(error)}`,
       };
     }
+  }
+
+  /**
+   * 派发 `skill.prompt`：一个技能的正文要展开给模型时问一次（spec
+   * ecosystem/plugin-mods.md「给工具、技能、命令写描述」），返回 `text` 换掉正文。
+   *
+   * 与 `tool.describe` 同一条纪律：宿主不缓存，每次重新问。`path` 是技能文件；
+   * 内置技能没有真实文件，按 spec 不给。
+   */
+  async applySkillPrompt(skill: Skill, text: string): Promise<string> {
+    const mods = this.container.has("ModManager")
+      ? this.container.get<ModManager>("ModManager")
+      : undefined;
+    if (!mods) return text;
+    return mods.collectSkillText({
+      skill: skill.name,
+      text,
+      source: skill.pluginName
+        ? "plugin"
+        : skill.type === "personal"
+          ? "user"
+          : skill.type,
+      ...(skill.type === "builtin"
+        ? {}
+        : { path: join(skill.skillPath, "SKILL.md") }),
+    });
   }
 
   /**

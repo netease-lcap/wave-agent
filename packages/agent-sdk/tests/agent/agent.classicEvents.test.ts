@@ -74,6 +74,7 @@ describe("Agent 派发的影子事件", () => {
     expect(classicCalls(notifyMods, "classic.InstructionsLoaded")).toEqual([
       {
         file_path: path.join(WORKDIR, "AGENTS.md"),
+        memory_type: "Project",
         load_reason: "session_start",
       },
     ]);
@@ -98,7 +99,12 @@ describe("Agent 派发的影子事件", () => {
     await agent.setModel("wave-pro");
 
     expect(classicCalls(notifyMods, "classic.PostModelSwitch")).toEqual([
-      { model: "wave-pro", cache_ttl: null },
+      {
+        from_model: expect.any(String),
+        to_model: "wave-pro",
+        context_tokens: expect.any(Number),
+        cache_ttl: null,
+      },
     ]);
   });
 
@@ -110,7 +116,7 @@ describe("Agent 派发的影子事件", () => {
     agent.setCurrentWorkdir(next);
 
     expect(classicCalls(notifyMods, "classic.CwdChanged")).toEqual([
-      { cwd: next, previous_cwd: WORKDIR },
+      { old_cwd: WORKDIR, new_cwd: next },
     ]);
   });
 });

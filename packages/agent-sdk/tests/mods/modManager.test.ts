@@ -1590,6 +1590,7 @@ exports.register = function ($, on) {
     await manager.startSession();
 
     manager.notifyMods("turn.complete", {
+      turnId: "turn-1",
       isAborted: false,
       durationMs: 42,
       answer: "done",
@@ -1604,6 +1605,7 @@ exports.register = function ($, on) {
       session_id: "s1",
       transcript_path: path.join(ROOT, "transcript.jsonl"),
       cwd: ROOT,
+      permission_mode: "default",
       hook_event_name: "PermissionRequest",
       tool_name: "Bash",
       tool_input: { command: "rm -rf build" },
@@ -1642,10 +1644,10 @@ exports.register = function ($, on) {
     $.ui.status([e.session_id, e.hook_event_name, e.source, e.cwd, e.transcript_path, e.permission_mode].join("|"));
   });
   on("classic.PostModelSwitch", function (e) {
-    $.ui.status([e.hook_event_name, e.model, String(e.cache_ttl)].join("|"));
+    $.ui.status([e.hook_event_name, e.from_model, e.to_model, String(e.context_tokens), String(e.cache_ttl)].join("|"));
   });
   on("classic.CwdChanged", function (e) {
-    $.ui.status([e.hook_event_name, e.cwd, e.previous_cwd].join("|"));
+    $.ui.status([e.hook_event_name, e.old_cwd, e.new_cwd, e.cwd].join("|"));
   });
 };
 `;
@@ -1666,6 +1668,7 @@ exports.register = function ($, on) {
           configRows: () => [],
           toolInfos: () => [],
           agentInfos: () => [],
+          sessionMessages: () => [],
           // 会话 id 取「现取的」那个：`/clear` 之后它变了，镜像不该报旧值。
           transcriptPath: () => path.join(ROOT, "session.jsonl"),
           permissionMode: () => "acceptEdits",
@@ -1684,23 +1687,28 @@ exports.register = function ($, on) {
       ),
     );
 
-    // `cache_ttl` 恒 `null`：我们不做提示词缓存的 TTL 记账。
+    // `cache_ttl` 恒 `null`：我们不做提示词缓存的 TTL 记账。换模型报的是
+    // `from_model` / `to_model` 两个名字（曾经只有一个自造的 `model`）。
     manager.notifyMods("classic.PostModelSwitch", {
-      model: "wave-pro",
+      from_model: "wave-lite",
+      to_model: "wave-pro",
+      context_tokens: 12_000,
       cache_ttl: null,
     });
     await vi.waitFor(() =>
-      expect(statuses.at(-1)?.text).toBe("PostModelSwitch|wave-pro|null"),
+      expect(statuses.at(-1)?.text).toBe(
+        "PostModelSwitch|wave-lite|wave-pro|12000|null",
+      ),
     );
 
-    // 调用点显式给的字段优先于补齐的那份（`cwd` 就是新的那个）。
+    // `old_cwd` / `new_cwd` 是 CC 的名字；公共字段 `cwd` 跟着 `new_cwd` 走。
     manager.notifyMods("classic.CwdChanged", {
-      cwd: path.resolve("/fake/after"),
-      previous_cwd: path.resolve("/fake/before"),
+      old_cwd: path.resolve("/fake/before"),
+      new_cwd: path.resolve("/fake/after"),
     });
     await vi.waitFor(() =>
       expect(statuses.at(-1)?.text).toBe(
-        `CwdChanged|${path.resolve("/fake/after")}|${path.resolve("/fake/before")}`,
+        `CwdChanged|${path.resolve("/fake/before")}|${path.resolve("/fake/after")}|${ROOT}`,
       ),
     );
 
@@ -1734,6 +1742,7 @@ exports.register = function ($, on) {
     // 我们的 `prompt` 含缓存命中（1200 = 900 缓存读 + 100 缓存写 + 200 未命中），
     // 社区的 `input_tokens` 不含 —— 差值是减出来的，不是改名。
     manager.notifyMods("turn.complete", {
+      turnId: "turn-1",
       isAborted: false,
       durationMs: 42,
       answer: "done",
@@ -1778,6 +1787,7 @@ exports.register = function ($, on) {
     // 钩子永不 resolve：调用方仍然立刻拿到返回（没有 Promise 可等）。
     expect(
       manager.notifyMods("turn.complete", {
+        turnId: "turn-1",
         isAborted: false,
         durationMs: 1,
         answer: "",
@@ -1802,6 +1812,7 @@ exports.register = function ($, on) {
     await manager.startSession();
 
     manager.notifyMods("turn.complete", {
+      turnId: "turn-1",
       isAborted: true,
       durationMs: 5,
       answer: "",
@@ -1980,6 +1991,7 @@ exports.register = function ($, on) {
 
     // 上限拒在 33 条里的最后一条：前 32 条真的进了命令表。
     manager.notifyMods("turn.complete", {
+      turnId: "turn-1",
       isAborted: false,
       durationMs: 1,
       answer: "",
@@ -2240,6 +2252,7 @@ exports.register = function ($, on) {
           configRows: () => [],
           toolInfos: () => [],
           agentInfos: () => [],
+          sessionMessages: () => [],
           transcriptPath: () => "",
           permissionMode: () => "default",
         },
@@ -2332,6 +2345,7 @@ exports.register = function ($, on) {
               status: "running",
             },
           ],
+          sessionMessages: () => [],
           transcriptPath: () => "",
           permissionMode: () => "default",
         },
@@ -2447,8 +2461,8 @@ exports.register = function ($, on) {
 describe("ModManager 的轮次事件（turn.start / turn.step / session.compact）", () => {
   const TIMELINE_MOD = `
 exports.register = function ($, on) {
-  on("turn.start", function (e) { $.ui.status("start:" + e.step); });
-  on("turn.step", function (e) { $.ui.status("step:" + e.step); });
+  on("turn.start", function (e) { $.ui.status("start:" + e.step + ":" + e.turnId); });
+  on("turn.step", function (e) { $.ui.status("step:" + e.step + ":" + e.turnId); });
   on("session.compact", function (e) {
     $.ui.status("compact:" + e.trigger + ":" + e.tokensBefore + ">" + e.tokensAfter);
   });
@@ -2462,11 +2476,11 @@ exports.register = function ($, on) {
     ]);
     await manager.startSession();
 
-    manager.notifyMods("turn.start", { step: 0 });
-    await vi.waitFor(() => expect(statuses.at(-1)?.text).toBe("start:0"));
+    manager.notifyMods("turn.start", { turnId: "t-9", step: 0 });
+    await vi.waitFor(() => expect(statuses.at(-1)?.text).toBe("start:0:t-9"));
 
-    manager.notifyMods("turn.step", { step: 3 });
-    await vi.waitFor(() => expect(statuses.at(-1)?.text).toBe("step:3"));
+    manager.notifyMods("turn.step", { turnId: "t-9", step: 3 });
+    await vi.waitFor(() => expect(statuses.at(-1)?.text).toBe("step:3:t-9"));
 
     manager.notifyMods("session.compact", {
       trigger: "auto",
@@ -2775,6 +2789,67 @@ exports.register = function (on) {
     await manager.dispose();
   });
 
+  it("matcher 的值可以是 RegExp（对字符串 test），跨 realm 也认", async () => {
+    // 社区 mod 真这么写：`{ command: /git\s+commit/ }`（FunnyQ 的 chronicle）。
+    // matcher 在沙箱里造出来，`instanceof RegExp` 在宿主这边是假的，所以按
+    // `[object RegExp]` 判。带 `g` 的那条再跑一遍，证明 `lastIndex` 不会串。
+    const { manager } = createManager({
+      [MOD_PATH]: `
+exports.register = function (on) {
+  on("tool.call", { tool: "Bash", command: /git\\s+commit/ }, function ($, e) {
+    return { deny: "先开分支再提交" };
+  });
+  on("tool.call", { tool: "Bash", command: /rm -rf/g }, function ($, e) {
+    return { deny: "别删" };
+  });
+};
+`,
+    });
+    await manager.loadFromPlugins([
+      plugin([{ id: "todo:panel", path: MOD_PATH }]),
+    ]);
+    await manager.startSession();
+
+    expect(await manager.dispatchToolCall(bashEvent("git commit -m x"))).toBe(
+      "先开分支再提交",
+    );
+    expect(await manager.dispatchToolCall(bashEvent("ls"))).toBeUndefined();
+    expect(await manager.dispatchToolCall(bashEvent("rm -rf build"))).toBe(
+      "别删",
+    );
+    // 同一个 `g` 正则第二次命中：`test` 的 `lastIndex` 已归零。
+    expect(await manager.dispatchToolCall(bashEvent("rm -rf dist"))).toBe(
+      "别删",
+    );
+
+    await manager.dispose();
+  });
+
+  it("事件字段是对象时，matcher 里的对象按偏匹配比", async () => {
+    const { manager } = createManager({
+      [MOD_PATH]: `
+exports.register = function (on) {
+  on("tool.call", { tool: "Bash", input: { command: "git status" } }, function ($, e) {
+    return { deny: "状态我来看" };
+  });
+};
+`,
+    });
+    await manager.loadFromPlugins([
+      plugin([{ id: "todo:panel", path: MOD_PATH }]),
+    ]);
+    await manager.startSession();
+
+    expect(await manager.dispatchToolCall(bashEvent("git status"))).toBe(
+      "状态我来看",
+    );
+    expect(
+      await manager.dispatchToolCall(bashEvent("git log")),
+    ).toBeUndefined();
+
+    await manager.dispose();
+  });
+
   it("两个 mod 按加载顺序串行：前一个 next 之后才轮到后一个，deny 从链上传回来", async () => {
     const second = path.join(ROOT, "mods", "second.tsx");
     const { manager, statuses } = createManager({
@@ -2942,6 +3017,158 @@ exports.register = function (on) {
     const decision = await manager.dispatchToolRun(bashEvent("ls"), run);
     expect(decision.deny).toContain("分支没同步");
     expect(run).not.toHaveBeenCalled();
+
+    await manager.dispose();
+  });
+
+  it("classic.PreToolUse 拿到同一份信封，{ deny } 照样拦下", async () => {
+    // spec「影子事件」：社区插件（chronicle、FlowCTL）只写 CC 那个名字。信封是
+    // `tool.call` 的那份（`tool` / `tool_use_id` / `input` + 顶层铺开的参数），
+    // **不带** `hook_event_name` —— CC 在自己 mods 面里就是这个形状。
+    const { manager, statuses } = createManager({
+      [MOD_PATH]: `
+exports.register = function (on) {
+  on("classic.PreToolUse", { tool: "Bash" }, function ($, e) {
+    $.ui.status([
+      e.tool,
+      e.tool_use_id,
+      e.command,
+      String(e.input.command),
+      String(e.hook_event_name),
+    ].join("|"));
+    if (e.command === "rm -rf /") return { deny: "这条不许跑" };
+    return {};
+  });
+};
+`,
+    });
+    await manager.loadFromPlugins([
+      plugin([{ id: "todo:panel", path: MOD_PATH }]),
+    ]);
+    await manager.startSession();
+
+    expect(await manager.dispatchToolCall(bashEvent("rm -rf /"))).toBe(
+      "这条不许跑",
+    );
+    await vi.waitFor(() =>
+      expect(statuses.at(-1)?.text).toBe(
+        "Bash|call-1|rm -rf /|rm -rf /|undefined",
+      ),
+    );
+    // matcher 是 `{ tool: "Bash" }`：别的工具不该被它看见。
+    expect(
+      await manager.dispatchToolCall({
+        ...{ file_path: "a.ts" },
+        tool: "Edit",
+        tool_use_id: "call-2",
+        input: { file_path: "a.ts" },
+      }),
+    ).toBeUndefined();
+
+    await manager.dispose();
+  });
+
+  it("tool.call 已经拦下时不再问 classic.PreToolUse", async () => {
+    const second = path.join(ROOT, "mods", "second.tsx");
+    const { manager, statuses } = createManager({
+      [MOD_PATH]: GUARD_MOD,
+      [second]: `
+exports.register = function (on) {
+  on("classic.PreToolUse", function ($, e) {
+    $.ui.status("classic:asked");
+    return { deny: "第二个名字说不" };
+  });
+};
+`,
+    });
+    await manager.loadFromPlugins([
+      plugin([
+        { id: "todo:panel", path: MOD_PATH },
+        { id: "todo:second", path: second },
+      ]),
+    ]);
+    await manager.startSession();
+
+    // 前一个名字已经拒了：这条链到此为止，第二个名字连问都不问。
+    expect(await manager.dispatchToolCall(bashEvent("rm -rf /"))).toBe(
+      "删库跑路？先别",
+    );
+    expect(statuses).toEqual([]);
+    // 前一个名字放行时才轮到它。
+    expect(await manager.dispatchToolCall(bashEvent("ls"))).toBe(
+      "第二个名字说不",
+    );
+    await vi.waitFor(() =>
+      expect(statuses.map((line) => line.text)).toContain("classic:asked"),
+    );
+
+    await manager.dispose();
+  });
+
+  it("classic.PreToolUse 的 allow/ask/updatedInput 不生效，但要点名", async () => {
+    // 只支持 `{ deny }`（spec「交付分层」）：静默忽略会让作者以为放行生效了。
+    const { manager } = createManager({
+      [MOD_PATH]: `
+exports.register = function (on) {
+  on("classic.PreToolUse", function () {
+    return { allow: true };
+  });
+};
+`,
+    });
+    await manager.loadFromPlugins([
+      plugin([{ id: "todo:panel", path: MOD_PATH }]),
+    ]);
+    await manager.startSession();
+    vi.mocked(logger.warn).mockClear();
+
+    // 放行 ≠ 拦截：调用照常放下去（`undefined`）。
+    expect(await manager.dispatchToolCall(bashEvent("ls"))).toBeUndefined();
+    expect(vi.mocked(logger.warn)).toHaveBeenCalledWith(
+      expect.stringContaining("allow/ask/updatedInput"),
+    );
+
+    await manager.dispose();
+  });
+});
+
+describe("ModManager 的 $.turn.abort", () => {
+  const abortMod = (turnId: string) => `
+exports.register = function (on) {
+  on("session.start", async function ($) {
+    await $.turn.abort({ turnId: "${turnId}" });
+  });
+};
+`;
+
+  async function buildAbort(turnId = "t-1") {
+    const { manager } = createManager({ [MOD_PATH]: abortMod(turnId) });
+    await manager.loadFromPlugins([
+      plugin([{ id: "todo:panel", path: MOD_PATH }]),
+    ]);
+    return manager;
+  }
+
+  it("把 turnId 交给宿主接上的那条通道", async () => {
+    const manager = await buildAbort("t-42");
+    const aborted: string[] = [];
+    manager.setTurnAborter((turnId) => aborted.push(turnId));
+
+    await manager.startSession();
+
+    expect(aborted).toEqual(["t-42"]);
+    await manager.dispose();
+  });
+
+  it("宿主没接通道时抛错（钩子 fail-open，落到 warn 上）", async () => {
+    // spec「收掉一轮」：静默成功会让插件以为自己叫停了，所以这条必须抛。
+    const manager = await buildAbort();
+    vi.mocked(logger.warn).mockClear();
+
+    await manager.startSession();
+    expect(vi.mocked(logger.warn)).toHaveBeenCalledWith(
+      expect.stringContaining("没有接入轮次中断通道"),
+    );
 
     await manager.dispose();
   });

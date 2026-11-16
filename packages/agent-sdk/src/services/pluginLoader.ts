@@ -21,8 +21,21 @@ import { WORKFLOW_SCRIPT_EXTENSION } from "../workflow/workflowRegistry.js";
 import { parseScript, validateScript } from "../workflow/scriptRuntime.js";
 import { MOD_LIMITS, type PluginMod } from "../types/mods.js";
 
-/** 能被编译成 mod 的扩展名（与 `mods/compile.ts` 的 loader 表一致）。 */
-const MOD_LOADER_EXTENSIONS = new Set([".tsx", ".ts", ".jsx", ".js"]);
+/**
+ * 能被编译成 mod 的扩展名（与 `mods/compile.ts` 的 loader 表一致）。
+ *
+ * `.mjs` / `.cjs` 必须在这里：社区 mod 常常入口是 `.mjs`、`import` 的兄弟文件
+ * 也是 `.mjs`（dprint 的 `./lib.mjs`、sotto 的 `./modcore.mjs`），漏掉它们入口
+ * 进得了编译集、兄弟文件进不了，加载时就报「找不到模块」。
+ */
+const MOD_LOADER_EXTENSIONS = new Set([
+  ".tsx",
+  ".ts",
+  ".jsx",
+  ".js",
+  ".mjs",
+  ".cjs",
+]);
 
 export class PluginLoader {
   /**

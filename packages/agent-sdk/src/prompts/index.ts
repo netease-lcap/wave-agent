@@ -1,5 +1,6 @@
 import * as os from "node:os";
 import { ToolPlugin } from "../tools/types.js";
+import type { ModPromptSection } from "../types/mods.js";
 import { isGitRepository } from "../utils/gitUtils.js";
 import type { WorktreeSession } from "../utils/worktreeSession.js";
 import { buildAutoMemoryPrompt } from "./autoMemory.js";
@@ -456,53 +457,88 @@ function getUnameSR(): string {
   return `${os.type()} ${os.release()}`;
 }
 
-export function buildSystemPrompt(
+export interface SystemPromptOptions {
+  workdir?: string;
+  originalWorkdir?: string;
+  language?: string;
+  isSubagent?: boolean;
+  worktreeSession?: WorktreeSession | null;
+  additionalWorkingDirectories?: string[];
+  autoMemory?: {
+    directory: string;
+    content: string;
+  };
+  leanPrompt?: boolean;
+}
+
+/**
+ * The system prompt as named sections, in the order they are sent (spec
+ * ecosystem/plugin-mods.md「系统提示词与附件」). `scope` decides which block a
+ * section lands in: `session` sections form the cacheable prefix, `turn`
+ * sections the per-turn block below it.
+ *
+ * The join is unchanged from the two-block era — `session` sections join on
+ * `\n\n`, `turn` sections each carry their own leading `\n\n` — so a prompt
+ * nobody rewrote is byte-identical to before
+ * (docs/specs/core/prompt-cache-control.md).
+ */
+export function buildSystemPromptSections(
   basePrompt: string | undefined,
   tools: ToolPlugin[],
-  options: {
-    workdir?: string;
-    originalWorkdir?: string;
-    language?: string;
-    isSubagent?: boolean;
-    worktreeSession?: WorktreeSession | null;
-    additionalWorkingDirectories?: string[];
-    autoMemory?: {
-      directory: string;
-      content: string;
-    };
-    leanPrompt?: boolean;
-  } = {},
-): SystemPromptBlock[] {
-  // --- Static block (cacheable) ---
+  options: SystemPromptOptions = {},
+): ModPromptSection[] {
   // Both tiers open with the identity line + safety note. Lean mode then swaps
-  // the five full-tier sections for a single harness block and drops the URL
-  // guard, matching Claude Code's `Coo()`; the dynamic block below is
+  // the five full-tier sections for a single harness section and drops the URL
+  // guard, matching Claude Code's `Coo()`; the turn sections below are
   // unaffected either way.
-  let staticText = basePrompt || DEFAULT_SYSTEM_PROMPT;
-  staticText += `\n\n${SECURITY_NOTE}`;
+  const sections: ModPromptSection[] = [
+    {
+      id: "identity",
+      text: basePrompt || DEFAULT_SYSTEM_PROMPT,
+      scope: "session",
+    },
+    { id: "security", text: SECURITY_NOTE, scope: "session" },
+  ];
 
   if (options.leanPrompt) {
-    staticText += `\n\n${LEAN_SYSTEM_PROMPT}`;
+    sections.push({
+      id: "harness",
+      text: LEAN_SYSTEM_PROMPT,
+      scope: "session",
+    });
   } else {
-    staticText += `\n\n${URL_GUARD}`;
-    staticText += `\n\n${SYSTEM_PROMPT}`;
-    staticText += `\n\n${DOING_TASKS_PROMPT}`;
-    staticText += `\n\n${EXECUTING_ACTIONS_PROMPT}`;
+    sections.push(
+      { id: "url-guard", text: URL_GUARD, scope: "session" },
+      { id: "system", text: SYSTEM_PROMPT, scope: "session" },
+      { id: "doing-tasks", text: DOING_TASKS_PROMPT, scope: "session" },
+      {
+        id: "executing-actions",
+        text: EXECUTING_ACTIONS_PROMPT,
+        scope: "session",
+      },
+    );
 
     if (tools.length > 0) {
-      staticText += `\n\n${buildUsingToolsPrompt(tools)}`;
+      sections.push({
+        id: "tools",
+        text: buildUsingToolsPrompt(tools),
+        scope: "session",
+      });
     }
 
-    staticText += `\n\n${TONE_AND_STYLE_PROMPT}`;
+    sections.push({
+      id: "tone",
+      text: TONE_AND_STYLE_PROMPT,
+      scope: "session",
+    });
   }
 
-  const blocks: SystemPromptBlock[] = [{ text: staticText, cacheable: true }];
-
-  // --- Dynamic block (not cacheable) ---
-  let dynamicText = "";
-
   if (options.language) {
-    dynamicText += `\n\n# Language\nAlways respond in ${options.language}. Use ${options.language} for all explanations, comments, and communications with the user. Technical terms and code identifiers should remain in their original form.`;
+    sections.push({
+      id: "language",
+      text: `# Language\nAlways respond in ${options.language}. Use ${options.language} for all explanations, comments, and communications with the user. Technical terms and code identifiers should remain in their original form.`,
+      scope: "turn",
+    });
   }
 
   if (options.workdir) {
@@ -523,9 +559,9 @@ export function buildSystemPrompt(
         additionalWorkingDirectories.length > 0
           ? `Additional working directories: ${additionalWorkingDirectories.join(", ")}\n`
           : "";
-      dynamicText += `
-
-${SUBAGENT_ENV_NOTES}
+      sections.push({
+        id: "env",
+        text: `${SUBAGENT_ENV_NOTES}
 
 Here is useful information about the environment you are running in:
 <env>
@@ -535,7 +571,9 @@ ${additionalDirsInfo}Platform: ${platform}
 ${shellInfo}
 OS Version: ${osVersion}
 </env>
-`;
+`,
+        scope: "turn",
+      });
     } else {
       // Main agent env section, aligned with Claude Code's
       // computeSimpleEnvInfo() (without the model description, knowledge
@@ -567,20 +605,63 @@ OS Version: ${osVersion}
         ),
       ].join("\n");
 
-      dynamicText += `\n\n${envBlock}`;
+      sections.push({ id: "env", text: envBlock, scope: "turn" });
     }
   }
 
   if (options.autoMemory) {
-    dynamicText += `\n\n${buildAutoMemoryPrompt(options.autoMemory.directory)}`;
+    let memoryText = buildAutoMemoryPrompt(options.autoMemory.directory);
     if (options.autoMemory.content.trim()) {
-      dynamicText += `\n\n## MEMORY.md\n\n${options.autoMemory.content}`;
+      memoryText += `\n\n## MEMORY.md\n\n${options.autoMemory.content}`;
     }
+    sections.push({ id: "memory", text: memoryText, scope: "turn" });
   }
 
-  if (dynamicText.trim()) {
-    blocks.push({ text: dynamicText, cacheable: false });
+  return sections;
+}
+
+/**
+ * Join named sections back into request blocks.
+ *
+ * The cache boundary is the `scope`: `session` sections make up the cacheable
+ * prefix, `turn` sections the block after it. Grouping (rather than keeping
+ * whatever interleaving a mod produced) is what keeps a `turn` section from
+ * ever landing inside the cached prefix — a section a mod moved across the
+ * boundary would otherwise invalidate the cache on every turn.
+ */
+export function buildSystemPromptBlocks(
+  sections: readonly ModPromptSection[],
+): SystemPromptBlock[] {
+  const blocks: SystemPromptBlock[] = [];
+
+  const sessionText = sections
+    .filter((section) => section.scope === "session")
+    .map((section) => section.text)
+    .join("\n\n");
+  if (sessionText) {
+    blocks.push({ text: sessionText, cacheable: true });
+  }
+
+  // Turn sections keep the leading `\n\n` the two-block builder used to add
+  // around each part, so the joined text is unchanged.
+  const turnText = sections
+    .filter((section) => section.scope === "turn")
+    .map((section) => `\n\n${section.text}`)
+    .join("");
+  if (turnText.trim()) {
+    blocks.push({ text: turnText, cacheable: false });
   }
 
   return blocks;
+}
+
+/** The system prompt as request blocks, without asking any mod. */
+export function buildSystemPrompt(
+  basePrompt: string | undefined,
+  tools: ToolPlugin[],
+  options: SystemPromptOptions = {},
+): SystemPromptBlock[] {
+  return buildSystemPromptBlocks(
+    buildSystemPromptSections(basePrompt, tools, options),
+  );
 }

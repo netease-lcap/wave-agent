@@ -17,13 +17,13 @@ import { HookManager } from "../managers/hookManager.js";
 import { SkillManager } from "../managers/skillManager.js";
 import { SlashCommandManager } from "../managers/slashCommandManager.js";
 import { PluginManager } from "../managers/pluginManager.js";
-import { ModManager } from "../managers/modManager.js";
+import { ModManager, toModSessionMessages } from "../managers/modManager.js";
 import { renderSurfacesOf } from "../mods/runtime.js";
 import type {
   ModPermissionRequestEvent,
   ModRenderSurface,
 } from "../types/mods.js";
-import { MOD_SETTINGS_SOURCES } from "../types/mods.js";
+import { MOD_LIMITS, MOD_SETTINGS_SOURCES } from "../types/mods.js";
 import { buildConfigRows, detectSessionRepo } from "../mods/facts.js";
 import { engineVersion } from "./engineVersion.js";
 import { BashModeManager } from "../managers/bashModeManager.js";
@@ -686,6 +686,12 @@ export function setupAgentContainer(
           mcp: tool.name.startsWith("mcp__"),
         })),
       agentInfos: () => subagentManager.listModAgents(),
+      // `$.session.messages()`：只递最近 N 条，形状换成 mods 面那一套
+      // （spec「会话消息」）。上限在这里夹，runtime 不重复数一遍。
+      sessionMessages: () =>
+        toModSessionMessages(
+          messageManager.getMessages().slice(-MOD_LIMITS.sessionMessages),
+        ),
       // 影子的公共字段（spec「影子事件」）：转录路径与 settings 钩子收到的是
       // 同一个值；权限模式取当前生效的那一档。
       transcriptPath: () => messageManager.getTranscriptPath(),

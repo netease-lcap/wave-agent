@@ -172,6 +172,11 @@ function buildHarness(
     container.register("ModManager", {
       notifyMods,
       collectStopContext,
+      // 提示词类钩子原样放行 = 「没有插件改东西」，与不挂 ModManager 时同形。
+      collectPromptSections: vi.fn(async (sections) => sections),
+      collectPromptSection: vi.fn(async (section) => section.text),
+      collectSessionContextBlocks: vi.fn(async () => []),
+      rewritePromptAttachment: vi.fn(async (attachment) => attachment.text),
     } as unknown as ModManager);
   }
   container.register("AgentOptions", {
@@ -221,14 +226,19 @@ describe("AIManager 的 turn.complete", () => {
 
     expect(modCalls(notifyMods, "turn.complete")).toHaveLength(1);
     expect(notifyMods).toHaveBeenCalledWith("turn.complete", {
+      turnId: expect.any(String),
       isAborted: false,
       durationMs: expect.any(Number),
       answer: "",
       usage: { prompt: 1, completion: 1, cacheRead: 0, cacheCreation: 0 },
     });
     // 一轮一条 turn.start、每个请求一条 turn.step。
-    expect(modCalls(notifyMods, "turn.start")).toEqual([{ step: 0 }]);
-    expect(modCalls(notifyMods, "turn.step")).toEqual([{ step: 1 }]);
+    expect(modCalls(notifyMods, "turn.start")).toEqual([
+      { turnId: expect.any(String), step: 0 },
+    ]);
+    expect(modCalls(notifyMods, "turn.step")).toEqual([
+      { turnId: expect.any(String), step: 1 },
+    ]);
     expect(events).toEqual([
       "loading:true",
       "mods:turn.start",
@@ -240,6 +250,27 @@ describe("AIManager 的 turn.complete", () => {
       "loading:false",
       "mods:turn.complete",
     ]);
+  });
+
+  it("同一轮里 turn.start / turn.step / turn.complete 用同一个 turnId，两轮各不相同", async () => {
+    // `$.turn.abort({ turnId })` 就是拿这个 id 认「要收的是哪一轮」（spec
+    // 「`$.turn`」），所以一轮之内必须稳定、跨轮必须不同。
+    const { aiManager, notifyMods } = buildHarness();
+    vi.mocked(callAgent).mockResolvedValue(REPLY);
+
+    await aiManager.sendAIMessage();
+    await aiManager.sendAIMessage();
+
+    const ids = (event: string) =>
+      (modCalls(notifyMods, event) as { turnId: string }[]).map(
+        (payload) => payload.turnId,
+      );
+    const [first, second] = ids("turn.start");
+    expect(first).toBeTruthy();
+    expect(second).toBeTruthy();
+    expect(first).not.toBe(second);
+    expect(ids("turn.step")).toEqual([first, second]);
+    expect(ids("turn.complete")).toEqual([first, second]);
   });
 
   it("被中断的轮次报 isAborted: true，同样只一次", async () => {
@@ -264,6 +295,7 @@ describe("AIManager 的 turn.complete", () => {
 
     expect(modCalls(notifyMods, "turn.complete")).toHaveLength(1);
     expect(notifyMods).toHaveBeenCalledWith("turn.complete", {
+      turnId: expect.any(String),
       isAborted: true,
       durationMs: expect.any(Number),
       answer: "",
@@ -288,6 +320,29 @@ describe("AIManager 的 turn.complete", () => {
     expect(modCalls(notifyMods, "classic.Stop")).toEqual([]);
     expect(modCalls(notifyMods, "classic.StopFailure")).toEqual([]);
     expect(modCalls(notifyMods, "turn.complete")).toHaveLength(1);
+  });
+
+  it("影子事件 classic.Stop：已经有答案时把最后一条正文一起交出去", async () => {
+    // CC 同名字段 `last_assistant_message`：插件（hud 这类）不必自己去读转录解
+    // JSONL。中断的一轮可能没有答案，那时字段整个省略。
+    const { aiManager, collectStopContext, messageManager } = buildHarness();
+    vi.mocked(callAgent).mockResolvedValue(REPLY);
+    vi.mocked(messageManager.getMessages).mockReturnValue([
+      {
+        id: "m1",
+        role: "assistant",
+        blocks: [{ type: "text", content: "改好了，测试也过了" }],
+        timestamp: "2026-08-19T00:00:00.000Z",
+      },
+    ] as unknown as ReturnType<typeof messageManager.getMessages>);
+
+    await aiManager.sendAIMessage();
+
+    expect(collectStopContext).toHaveBeenCalledWith({
+      background_tasks: [],
+      stop_hook_active: false,
+      last_assistant_message: "改好了，测试也过了",
+    });
   });
 
   it("影子事件 classic.StopFailure：因错误结束的一轮只发它，kind 取错误分类", async () => {
@@ -346,10 +401,11 @@ describe("AIManager 的 turn.complete", () => {
     // 两次请求都算进这一轮：重开不是新的一轮，用量也不该从头再算；步数倒是
     // 一步一步往上走（2 表示这一轮的第 2 次请求）。
     expect(modCalls(notifyMods, "turn.step")).toEqual([
-      { step: 1 },
-      { step: 2 },
+      { turnId: expect.any(String), step: 1 },
+      { turnId: expect.any(String), step: 2 },
     ]);
     expect(notifyMods).toHaveBeenCalledWith("turn.complete", {
+      turnId: expect.any(String),
       isAborted: false,
       durationMs: expect.any(Number),
       answer: "",
@@ -506,5 +562,146 @@ describe("AIManager 的 classic.Stop 续跑", () => {
     expect(vi.mocked(callAgent)).toHaveBeenCalledTimes(1);
     expect(modCalls(notifyMods, "turn.complete")).toHaveLength(1);
     expect(messageQueue.getQueue()).toHaveLength(1);
+  });
+});
+
+describe("AIManager 的 classic.MessageDisplay", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  /** 让这条 assistant 消息带着 id 出现在历史里（钩子按 id 去找正文）。 */
+  function withAssistantMessage(
+    messageManager: MessageManager,
+    id: string,
+    text: string,
+  ) {
+    vi.mocked(messageManager.addAssistantMessage).mockReturnValue(id);
+    vi.mocked(messageManager.getMessages).mockReturnValue([
+      {
+        id,
+        role: "assistant",
+        blocks: [{ type: "text", content: text }],
+        timestamp: "2026-08-19T00:00:00.000Z",
+      },
+    ] as unknown as ReturnType<typeof messageManager.getMessages>);
+  }
+
+  it("一条 assistant 消息报一次全文：index 恒 0、final 恒真", async () => {
+    // spec「影子事件」：我们不分 flush，所以 `index` / `final` 这两档没有意义，
+    // 只给一次完整正文（按 `$.ui.log` 的限额截断）。
+    const { aiManager, messageManager, notifyMods } = buildHarness();
+    vi.mocked(callAgent).mockResolvedValue(REPLY);
+    withAssistantMessage(messageManager, "m-1", "答完了");
+
+    await aiManager.sendAIMessage();
+
+    expect(modCalls(notifyMods, "classic.MessageDisplay")).toEqual([
+      {
+        turn_id: expect.any(String),
+        message_id: "m-1",
+        index: 0,
+        final: true,
+        delta: "答完了",
+      },
+    ]);
+  });
+
+  it("只带工具调用、没有正文的不报（空 delta 只会让透明类插件画一行空白）", async () => {
+    const { aiManager, messageManager, notifyMods } = buildHarness();
+    // 先要一次工具调用（那条消息没有正文），再正常答完。
+    vi.mocked(callAgent)
+      .mockResolvedValueOnce({
+        ...REPLY,
+        content: "",
+        tool_calls: [
+          {
+            id: "call_1",
+            type: "function",
+            function: { name: "Read", arguments: '{"file_path":"a.ts"}' },
+          },
+        ],
+      })
+      .mockResolvedValue(REPLY);
+    withAssistantMessage(messageManager, "m-2", "");
+
+    await aiManager.sendAIMessage();
+
+    expect(modCalls(notifyMods, "classic.MessageDisplay")).toEqual([]);
+  });
+
+  it("子代理的嵌套轮次不报（mod 只关心用户眼前那条会话）", async () => {
+    const { aiManager, messageManager, notifyMods } = buildHarness({
+      subagentType: "general-purpose",
+    });
+    vi.mocked(callAgent).mockResolvedValue(REPLY);
+    withAssistantMessage(messageManager, "m-3", "子代理的答案");
+
+    await aiManager.sendAIMessage();
+
+    expect(notifyMods).not.toHaveBeenCalled();
+  });
+});
+
+describe("AIManager 的 abortTurn（$.turn.abort 的落点）", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  /** 一轮卡在模型请求上：拿到 turnId，等测试决定它怎么结束。 */
+  async function startPendingTurn(aiManager: AIManager) {
+    vi.mocked(callAgent).mockImplementation(
+      async (options) =>
+        new Promise<Awaited<ReturnType<typeof callAgent>>>(
+          (_resolve, reject) => {
+            options.abortSignal?.addEventListener(
+              "abort",
+              () => reject(new Error("Aborted")),
+              { once: true },
+            );
+          },
+        ),
+    );
+    const sendPromise = aiManager.sendAIMessage();
+    await vi.waitFor(() => expect(callAgent).toHaveBeenCalledTimes(1));
+    // 包一层，别让 async 函数把这一轮 adopt 掉（那样 await 就一直等下去了）。
+    return { sendPromise };
+  }
+
+  it("turnId 对上就和按 Esc 走同一条路：这一轮按中断收尾", async () => {
+    const { aiManager, notifyMods } = buildHarness();
+    const { sendPromise } = await startPendingTurn(aiManager);
+    const [{ turnId }] = modCalls(notifyMods, "turn.start") as {
+      turnId: string;
+    }[];
+
+    aiManager.abortTurn(turnId);
+    await sendPromise;
+
+    expect(notifyMods).toHaveBeenCalledWith(
+      "turn.complete",
+      expect.objectContaining({ turnId, isAborted: true }),
+    );
+  });
+
+  it("没有一轮在跑时抛错，不静默吞掉", () => {
+    const { aiManager } = buildHarness();
+
+    expect(() => aiManager.abortTurn("turn-x")).toThrow(/没有正在跑的一轮/);
+  });
+
+  it("turnId 对不上时抛错，正在跑的那轮不受影响", async () => {
+    const { aiManager, notifyMods } = buildHarness();
+    const { sendPromise } = await startPendingTurn(aiManager);
+    const [{ turnId }] = modCalls(notifyMods, "turn.start") as {
+      turnId: string;
+    }[];
+
+    expect(() => aiManager.abortTurn(`${turnId}-stale`)).toThrow(/对不上/);
+    // 那一轮还挂着：没人 abort 过它。
+    expect(modCalls(notifyMods, "turn.complete")).toEqual([]);
+
+    aiManager.abortTurn(turnId);
+    await sendPromise;
   });
 });

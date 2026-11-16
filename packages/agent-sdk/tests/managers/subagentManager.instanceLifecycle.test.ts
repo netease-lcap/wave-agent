@@ -167,7 +167,6 @@ describe("SubagentManager instance lifecycle and tool tracking", () => {
       {
         agent_id: instance.subagentId,
         agent_type: "reporter",
-        description: "查资料",
       },
     ]);
 
@@ -179,13 +178,55 @@ describe("SubagentManager instance lifecycle and tool tracking", () => {
     const stops = notifyMods.mock.calls
       .filter((call) => call[0] === "classic.SubagentStop")
       .map((call) => call[1]);
+    // CC 的 SubagentStop 载荷：`stop_hook_active` 恒 false（我们不在子代理收尾
+    // 时跑 Stop 钩子）；没有产出、也没有日志流时那两个可选字段不出现。
     expect(stops).toEqual([
       {
         agent_id: instance.subagentId,
         agent_type: "reporter",
-        description: "查资料",
-        status: "ok",
+        stop_hook_active: false,
       },
+    ]);
+  });
+
+  it("classic.SubagentStop 带上最后一条正文（插件不必自己去读转录）", async () => {
+    // CC 同名字段 `last_assistant_message`：读实例自己的 messageManager（`instance.messages`
+    // 那条记录一直是空的）。
+    const config: SubagentConfiguration = {
+      name: "reporter",
+      description: "报道",
+      systemPrompt: "...",
+      tools: [],
+      model: "inherit",
+      filePath: "/tmp/reporter.md",
+      scope: "project",
+      priority: 1,
+    };
+    const instance = await subagentManager.createInstance(config, {
+      description: "查资料",
+      prompt: "查一下",
+      subagent_type: "reporter",
+    });
+    vi.spyOn(instance.messageManager, "getMessages").mockReturnValue([
+      {
+        id: "m1",
+        role: "assistant",
+        blocks: [{ type: "text", content: "查到了，三条线索" }],
+        timestamp: "2026-08-19T00:00:00.000Z",
+      },
+    ] as unknown as ReturnType<typeof instance.messageManager.getMessages>);
+
+    instance.status = "completed";
+    subagentManager.cleanupInstance(instance.subagentId);
+
+    const stops = notifyMods.mock.calls
+      .filter((call) => call[0] === "classic.SubagentStop")
+      .map((call) => call[1]);
+    expect(stops).toEqual([
+      expect.objectContaining({
+        agent_id: instance.subagentId,
+        last_assistant_message: "查到了，三条线索",
+      }),
     ]);
   });
 

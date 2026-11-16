@@ -73,6 +73,8 @@ describe("AIManager - invoked skills re-injection", () => {
     container.register("SkillManager", {
       loadSkill,
       renderSkillContent,
+      // 没有 ModManager 注册时 `skill.prompt` 原样返回正文（这个文件不挂 mod）。
+      applySkillPrompt: vi.fn(async (_skill, text) => text),
     } as unknown as SkillManager);
 
     aiManager = new AIManager(container, {

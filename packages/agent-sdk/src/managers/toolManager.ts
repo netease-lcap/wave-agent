@@ -5,7 +5,7 @@ import {
 } from "../telemetry/failureEvents.js";
 import type { StandardAttributeContext } from "../telemetry/attributes.js";
 import type { ModManager } from "./modManager.js";
-import { MOD_LIMITS } from "../types/mods.js";
+import { truncateForModEvent } from "../mods/text.js";
 import { validateToolInput } from "../tools/inputValidation.js";
 import { bashTool } from "../tools/bashTool.js";
 import { taskStopTool } from "../tools/taskStopTool.js";
@@ -49,6 +49,7 @@ import { enterWorktreeTool } from "../tools/enterWorktreeTool.js";
 import { exitWorktreeTool } from "../tools/exitWorktreeTool.js";
 import { workflowTool } from "../tools/workflowTool.js";
 import { McpManager } from "./mcpManager.js";
+import type { MessageManager } from "./messageManager.js";
 import { PermissionManager } from "./permissionManager.js";
 import { ChatCompletionFunctionTool } from "openai/resources.js";
 import type {
@@ -175,17 +176,6 @@ function recordBashActivity(
 const crashReported = new WeakSet<object>();
 
 /**
- * `classic.PostToolUse` 的 `tool_response`：按 `$.ui.log` 的同一份字符限额截断
- * （超出加省略号）。这是**刻意偏离** Claude Code 的地方 —— 它的 PostToolUse 给
- * 全文，但一个 Bash 的输出动辄几十 KB，乘上每个插件的钩子就不该再给全文。
- */
-function truncateForModEvent(text: string): string {
-  return text.length > MOD_LIMITS.statusChars
-    ? `${text.slice(0, MOD_LIMITS.statusChars)}…`
-    : text;
-}
-
-/**
  * Tool Manager
  *
  * Manages tool registration and execution with optional permission system integration.
@@ -203,6 +193,20 @@ class ToolManager {
   private disallowedTools?: string[];
   private customTools?: ToolPlugin[];
   private container: Container;
+  /**
+   * `tool.describe` 的快照（spec「给工具、技能、命令写描述」）。
+   *
+   * 这件事天生异步，而工具 schema 是同步拼的（`getToolsConfig` 被宿主的请求
+   * 组装同步调用），所以留两层：`staged` 是「问到的答案」，`pinned` 是「这一轮
+   * 真正发出去的那一份」。进入新一轮时把 staged 铺开成 pinned，本轮所有请求都
+   * 读同一份 —— 同一轮里描述不会中途变（一次请求里既有 A 又有 B 更不可能），
+   * 插件改过的描述下一轮生效。
+   */
+  private describeEpoch?: number;
+  private describePinned = new Map<string, string>();
+  private describeStaged = new Map<string, string>();
+  /** 这一轮已经问过的工具（含还在飞的）—— 一轮一个工具只问一次。 */
+  private describeAsked = new Set<string>();
 
   constructor(options: ToolManagerOptions) {
     this.container = options.container;
@@ -444,6 +448,8 @@ class ToolManager {
     // One tool execution is one CLI-active operation for its session. Nested
     // and parallel calls collapse into a single interval — the set the activity
     // tracker keeps is what makes concurrent work count once, not per call.
+    // 计时给 `classic.PostToolUse` 的 `duration_ms`：从进工具到它返回。
+    const startedAt = Date.now();
     const result = await trackCliOperation(
       "tool",
       recordContextOf(context, this.container),
@@ -452,7 +458,12 @@ class ToolManager {
     // 影子事件 `classic.PostToolUse` / `classic.PostToolUseFailure`（spec「影子
     // 事件」）：一次调用返回之后。放在这个壳里而不是内置工具那条路上 —— MCP 工
     // 具走的是另一个漏斗，社区插件不该因为工具来源不同而收不到。
-    this.notifyModToolOutcome(name, args, result);
+    this.notifyModToolOutcome(name, args, result, {
+      // `tool_use_id` 就是模型消息里那次调用的 id（工具上下文里现成带着）：
+      // 插件拿它去 `$.ui.notice` 能落在对应的那一行。
+      toolUseId: context.toolCallId ?? "",
+      durationMs: Date.now() - startedAt,
+    });
     // A failure the tool *reported* (`success: false`) is ordinary operation:
     // wrong arguments, a rejected permission, a command that exited non-zero.
     // It goes out as WARN `tool_error`, never as `error` (spec:
@@ -484,13 +495,19 @@ class ToolManager {
     name: string,
     args: Record<string, unknown>,
     result: ToolResult,
+    call: { toolUseId: string; durationMs: number },
   ): void {
     const modManager = this.container.has("ModManager")
       ? this.container.get<ModManager>("ModManager")
       : undefined;
     if (!modManager) return;
     // `permission_mode` 不在这里给：公共字段由 `ModManager.notifyMods` 统一补。
-    const base = { tool_name: name, tool_input: args };
+    const base = {
+      tool_name: name,
+      tool_input: args,
+      tool_use_id: call.toolUseId,
+      duration_ms: call.durationMs,
+    };
     if (result.success) {
       modManager.notifyMods("classic.PostToolUse", {
         ...base,
@@ -925,6 +942,8 @@ class ToolManager {
   }): ChatCompletionFunctionTool[] {
     const permissionManager = this.getPermissionManager();
     const leanPromptEnabled = isLeanPromptEnabled(options?.workdir);
+    // 描述的快照在这一句里翻页：新一轮 → 上一轮问到的答案成为本轮发出的那份。
+    this.rollDescribeEpoch();
 
     // A tool in the pool is declared only inside the sandbox, never flat as well:
     // the two must not coexist, or the model would see the same tool twice while
@@ -975,6 +994,12 @@ class ToolManager {
         } else if (tool.prompt) {
           config.function.description = tool.prompt(promptArgs);
         }
+        // 第二判定源没有份的那半：插件可以换掉模型读到的这段说明文字（spec
+        // 「给工具、技能、命令写描述」）。换的只是文本，schema 与工具集不动。
+        config.function.description = this.describeTool(
+          tool.name,
+          config.function.description,
+        );
         return config;
       });
     // Every MCP tool is deferred, so this is empty while `Exec` exists; it is the
@@ -989,6 +1014,63 @@ class ToolManager {
         return true;
       });
     return [...builtInToolsConfig, ...mcpToolsConfig];
+  }
+
+  /**
+   * 翻到新一轮（`tool.describe` 的缓存粒度）。
+   *
+   * 「一轮」用 `MessageManager.countUserTurns()` 认 —— 它只数用户真发出来的
+   * prompt（`isMeta` 的注入不算），所以一轮里那些中间请求、工具结果、重开的
+   * `sendAIMessage` 都落在同一个 epoch 上。没有 MessageManager 的容器（单测、
+   * 独立用 ToolManager 的调用方）恒为 0，也就是「整场一轮」。
+   */
+  private rollDescribeEpoch(): void {
+    const epoch = this.container.has("MessageManager")
+      ? (this.container
+          .get<MessageManager>("MessageManager")
+          ?.countUserTurns() ?? 0)
+      : 0;
+    if (epoch === this.describeEpoch) return;
+    this.describeEpoch = epoch;
+    this.describePinned = new Map(this.describeStaged);
+    this.describeAsked.clear();
+  }
+
+  /**
+   * 一个工具这一轮要发给模型的描述：本轮快照里有的用它，没有的用宿主自己的；
+   * 本轮还没问过的就问一次（异步落地，供**下一轮**用）。
+   *
+   * 两个「不」写在 spec 里：同一个工具一轮只问一次（一次请求里既有描述 A 又有
+   * B 是不可能的），以及本轮刚开始问的那一次改不了本轮的 schema —— 工具表是本轮
+   * 开头 pin 的快照。
+   */
+  private describeTool(
+    name: string,
+    base: string | undefined,
+  ): string | undefined {
+    const modManager = this.container.has("ModManager")
+      ? this.container.get<ModManager>("ModManager")
+      : undefined;
+    if (
+      !modManager ||
+      typeof modManager.collectToolDescription !== "function"
+    ) {
+      return base;
+    }
+    if (!this.describeAsked.has(name)) {
+      this.describeAsked.add(name);
+      modManager
+        .collectToolDescription({ name, description: base ?? "" })
+        .then((description) => {
+          this.describeStaged.set(name, description);
+        })
+        .catch((error: unknown) => {
+          // `tool.describe` 自己 fail-open，这里只是兜住一个不该发生的拒绝：
+          // 描述写不进去就继续用宿主那一份，不能把请求拖垮。
+          logger?.warn("tool.describe failed", { toolName: name, error });
+        });
+    }
+    return this.describePinned.get(name) ?? base;
   }
 
   /**

@@ -86,6 +86,7 @@ const ENTRY = path.join(ROOT, "mods", "panel.tsx");
 function host(overrides: Partial<ModRuntimeHost> = {}): ModRuntimeHost {
   return {
     pluginName: "todo",
+    pluginRoot: ROOT,
     openPane: vi.fn(() => true),
     closePane: vi.fn(),
     listPanes: vi.fn(() => []),
@@ -141,6 +142,8 @@ function host(overrides: Partial<ModRuntimeHost> = {}): ModRuntimeHost {
     listConfigRows: vi.fn(() => []),
     listToolInfos: vi.fn(() => []),
     listAgentInfos: vi.fn(() => []),
+    // 默认会话里没有消息：`$.session.messages()` 给空数组。
+    listSessionMessages: vi.fn(() => []),
     // 默认没有界面接手输入框：`read` 给空草稿。
     readPromptDraft: vi.fn(async () => ({ text: "", cursor: 0 })),
     // 默认接得住：贴一行、写剪贴板都成功。
@@ -152,6 +155,8 @@ function host(overrides: Partial<ModRuntimeHost> = {}): ModRuntimeHost {
     registerCommand: vi.fn((spec: ModCommandSpec) => ({ command: spec.name })),
     listCommands: vi.fn(() => []),
     runCommand: vi.fn(async () => {}),
+    // 默认「有得收」：`$.turn.abort` 的 id 判在宿主那边，这一层只验证原样交下去。
+    turnAbort: vi.fn(),
     ...overrides,
   };
 }
@@ -405,12 +410,12 @@ describe("ModRuntime 的隔离", () => {
   it("未知钩子名被拒绝而不是静默登记", async () => {
     // 钩子名单是白名单（spec「事件」）：Claude Code 有、我们没有的事件名不该
     // 悄悄生效，否则插件作者会以为那条路径通了。`classic.` 只镜像「影子事件」
-    // 那张表里的 15 个，其余（`classic.PreToolUse`、`classic.Setup`…）照旧拒。
+    // 那张表里的事件，其余（`classic.Setup`、`classic.TaskCompleted`…）照旧拒。
     const { mod } = runtime(`
       exports.register = function ($, on) {
         on("ui.destroy", function () {});
-        on("classic.PreToolUse", function () {});
         on("classic.Setup", function () {});
+        on("classic.TaskCompleted", function () {});
         on("session.start", function () { return "ok"; });
       };
     `);
@@ -850,6 +855,7 @@ describe("ModRuntime 的 $ 命名空间", () => {
           await $.store.delete("gone");
           return {
             plugin: $.plugin.name,
+            root: $.plugin.root,
             panes: await $.ui.panes(),
             keys: await $.store.keys(),
             stored: await $.store.get("k"),
@@ -864,6 +870,8 @@ describe("ModRuntime 的 $ 命名空间", () => {
     const result = await mod.callHook("session.start", {});
     expect(result.ok && result.value).toEqual({
       plugin: "todo",
+      // 插件自己的根目录（`mods/` 的上一级）：社区插件拿它拼自己那几份资源。
+      root: ROOT,
       panes: ["p1"],
       keys: ["k"],
       stored: { n: 7 },
@@ -874,6 +882,58 @@ describe("ModRuntime 的 $ 命名空间", () => {
     expect(hostApi.openPane).toHaveBeenCalledWith("p1", "待办", false);
     expect(hostApi.invalidate).toHaveBeenCalledWith("ui.render");
     expect(hostApi.storeDelete).toHaveBeenCalledWith("gone");
+  });
+
+  it("$.turn.abort 只转一手：turnId 原样交给宿主，空的在 runtime 就拒", async () => {
+    // spec「`$.turn`」：判据（这一轮在不在、id 对不对）全在宿主，runtime 只转发
+    // 并把宿主的错误原样交给 mod —— 静默成功会让插件以为自己叫停了。
+    const hostApi = host({ turnAbort: vi.fn() });
+    const { mod } = runtime(
+      `
+      exports.register = function ($, on) {
+        on("session.start", async function () {
+          await $.turn.abort({ turnId: "t-1" });
+          try {
+            await $.turn.abort({});
+            return "没抛错";
+          } catch (error) {
+            return error.message;
+          }
+        });
+      };
+      `,
+      { host: hostApi },
+    );
+
+    await mod.load();
+    const result = await mod.callHook("session.start", {});
+
+    expect(hostApi.turnAbort).toHaveBeenCalledWith("t-1");
+    expect(result.ok && result.value).toBe("$.turn.abort 需要一个 { turnId }");
+  });
+
+  it("$.turn.abort 时宿主判不过（没有这一轮 / id 对不上）的错原样抛给 mod", async () => {
+    const hostApi = host({
+      turnAbort: vi.fn(() => {
+        throw new Error("没有正在跑的一轮");
+      }),
+    });
+    const { mod } = runtime(
+      `
+      exports.register = function ($, on) {
+        on("session.start", async function () {
+          await $.turn.abort({ turnId: "t-stale" });
+        });
+      };
+      `,
+      { host: hostApi },
+    );
+
+    await mod.load();
+    const result = await mod.callHook("session.start", {});
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toContain("没有正在跑的一轮");
   });
 
   it("$.store 四个方法都返回 Promise，值是任意 JSON（不压成字符串）", async () => {

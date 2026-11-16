@@ -3,7 +3,13 @@ import * as fs from "fs";
 import * as path from "path";
 import type { SubagentConfiguration } from "../utils/subagentParser.js";
 import type { Message, NoticeLevel, Usage } from "../types/index.js";
-import type { ModAgentInfo, ModAgentStatus } from "../types/mods.js";
+import type {
+  ModAgentInfo,
+  ModAgentStatus,
+  ModClassicSubagentStartEvent,
+  ModClassicSubagentStopEvent,
+  ModClassicTrigger,
+} from "../types/mods.js";
 import { AIManager } from "./aiManager.js";
 import { MessageManager } from "./messageManager.js";
 import { ToolManager } from "./toolManager.js";
@@ -549,6 +555,9 @@ export class SubagentManager {
       const subagentPermissionManager = new PermissionManager(
         subagentContainer,
         {
+          // `tool.check` 的 `e.agentId`：子代理发起的调用要能被插件认出来
+          // （spec「第二判定源」）；主会话那个 PermissionManager 不带这一项。
+          agentId: subagentId,
           configuredPermissionMode:
             parameters.permissionModeOverride ??
             parentPermissionManager?.getConfiguredPermissionMode(),
@@ -678,10 +687,11 @@ export class SubagentManager {
 
       // 影子事件 `classic.SubagentStart`（spec「影子事件」）：实例建好就报。只
       // 读，返回值（CC 的 `additionalContext`）不收 —— 那会改子代理的上下文。
+      // 载荷照 CC：只有两个字段，`description` 是我们自造的（CC 的 Start 没有
+      // 它），去掉免得插件按 CC 的形状写时拿到一个多余的键。
       this.notifyMods("classic.SubagentStart", {
         agent_id: subagentId,
         agent_type: parameters.subagent_type,
-        description: parameters.description,
       });
 
       return instance;
@@ -1344,6 +1354,15 @@ export class SubagentManager {
     if (!instance) {
       return;
     }
+    // 这两样要在下面清空之前取：`agent_transcript_path` 是后台子代理的日志文件
+    // （`logStream` 一销毁就没了，实例上没留路径），`last_assistant_message` 来自
+    // 子代理自己的对话（`instance.messages` 自己不记录，见
+    // `addMessageToInstance` 无人调用）。
+    const transcriptPath =
+      typeof instance.logStream?.path === "string"
+        ? instance.logStream.path
+        : undefined;
+    const lastAssistantMessage = this.lastAssistantTextOf(instance);
     if (instance.backgroundTaskId) {
       const backgroundTaskManager = this.container.has("BackgroundTaskManager")
         ? this.container.get<BackgroundTaskManager>("BackgroundTaskManager")
@@ -1369,22 +1388,42 @@ export class SubagentManager {
     }
     instance.logStream = undefined;
     // 影子事件 `classic.SubagentStop`（spec「影子事件」）：所有结束路径（完成、
-    // 出错、中止、用户停掉）最后都走这里，所以只报一次。`status` 是实例自己记
-    // 下的终态。
+    // 出错、中止、用户停掉）最后都走这里，所以只报一次。载荷照 CC：没有
+    // `description` / `status`（那是我们自造的，插件按 CC 的名字读不到），
+    // `stop_hook_active` 恒 `false` —— 我们这条没有续跑通道，给确定值而不是
+    // `undefined`。
     this.notifyMods("classic.SubagentStop", {
       agent_id: instance.subagentId,
       agent_type: instance.subagentType,
-      description: instance.description,
-      status:
-        instance.status === "completed"
-          ? "ok"
-          : instance.status === "error"
-            ? "error"
-            : instance.status === "aborted"
-              ? "aborted"
-              : undefined,
+      stop_hook_active: false,
+      ...(lastAssistantMessage === undefined
+        ? {}
+        : { last_assistant_message: lastAssistantMessage }),
+      ...(transcriptPath === undefined
+        ? {}
+        : { agent_transcript_path: transcriptPath }),
     });
     this.instances.delete(subagentId);
+  }
+
+  /**
+   * 子代理最后一条 assistant 消息的正文（`classic.SubagentStop` 的
+   * `last_assistant_message`）。
+   *
+   * 读实例自己的 `messageManager`：`instance.messages` 那条记录没有任何调用点，
+   * 一直是空的。
+   */
+  private lastAssistantTextOf(instance: SubagentInstance): string | undefined {
+    const lastAssistant = [...instance.messageManager.getMessages()]
+      .reverse()
+      .find((message) => message.role === "assistant");
+    if (!lastAssistant) return undefined;
+    const text = lastAssistant.blocks
+      .filter((block) => block.type === "text")
+      .map((block) => block.content)
+      .join("\n")
+      .trim();
+    return text.length > 0 ? text : undefined;
   }
 
   /**
@@ -1393,12 +1432,9 @@ export class SubagentManager {
    */
   private notifyMods(
     event: "classic.SubagentStart" | "classic.SubagentStop",
-    payload: {
-      agent_id: string;
-      agent_type: string;
-      description: string;
-      status?: "ok" | "error" | "aborted";
-    },
+    payload:
+      | ModClassicTrigger<ModClassicSubagentStartEvent>
+      | ModClassicTrigger<ModClassicSubagentStopEvent>,
   ): void {
     if (!this.container.has("ModManager")) return;
     this.container

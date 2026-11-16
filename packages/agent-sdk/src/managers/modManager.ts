@@ -10,6 +10,7 @@ import {
   type CompiledModule,
 } from "../mods/runtime.js";
 import { validateModTree } from "../mods/validate.js";
+import type { Message } from "../types/messaging.js";
 import {
   MOD_BAND_INSTANCE_ID,
   MOD_LIMITS,
@@ -32,12 +33,19 @@ import {
   type ModRenderSurface,
   type ModSessionCompactEvent,
   type ModSessionMeasureTrigger,
+  type ModPromptContextBlock,
+  type ModPromptSection,
+  type ModSessionMessage,
+  type ModSessionMessageBlock,
   type ModSessionRepo,
+  type ModToolCheckDecision,
+  type ModToolCheckEvent,
   type ModSessionUsage,
   type ModSessionVersion,
   type ModSettingsSource,
   type ModStatusPayload,
   type ModClassicEvent,
+  type ModClassicPreToolUseEvent,
   type ModClassicStopEvent,
   type ModClassicTrigger,
   type ModStopHookResult,
@@ -72,6 +80,9 @@ type DrawnSurface = Extract<ModRenderSurface, "terminal" | "desktop">;
  *
  * 列在这里而不是从 `HOOK_NAMES` 里筛：两边的用途不同 —— 那张表是「mod 允许注册
  * 什么」，这里是「宿主会派什么」，改一处不该顺带改另一处。
+ *
+ * `classic.PreToolUse` **不在**这里：它要等返回值、载荷是 `tool.call` 的信封而
+ * 不是 stdin，走的是 {@link ModManager.dispatchToolCall} 那条链。
  */
 type ClassicEventName =
   | "classic.PermissionRequest"
@@ -85,10 +96,14 @@ type ClassicEventName =
   | "classic.PostModelSwitch"
   | "classic.SubagentStart"
   | "classic.SubagentStop"
+  | "classic.PermissionDenied"
   | "classic.PostToolUse"
   | "classic.PostToolUseFailure"
   | "classic.PostToolBatch"
-  | "classic.CwdChanged";
+  | "classic.CwdChanged"
+  | "classic.PreCompact"
+  | "classic.PostCompact"
+  | "classic.MessageDisplay";
 
 /**
  * 插件 MODS 的宿主侧编排：加载 → 编译 → 沙箱实例 → 事件 → 面板快照。
@@ -147,6 +162,12 @@ export interface ModSessionFacts {
   toolInfos(): ModToolInfo[];
   /** `$.agent.list()`：这条会话派过、还没被丢掉的子代理。 */
   agentInfos(): ModAgentInfo[];
+  /**
+   * `$.session.messages()`：转录里已经存下的消息（最新在最后）。
+   *
+   * 由 `Agent` 接进来；没接时给空数组 —— 插件拿到「没有历史」而不是报错。
+   */
+  sessionMessages(): ModSessionMessage[];
   /**
    * 当前会话的转录文件路径（`classic.*` 镜像的 `transcript_path`）。
    *
@@ -287,6 +308,142 @@ const EMPTY_SESSION_USAGE: ModSessionUsage = {
  * `input_tokens` 不含，所以是**相减**得来的，不是改名。
  */
 /** 钩子返回值是不是一个 `{ deny: string }`（`tool.call` / `tool.run` 的决议形状）。 */
+/**
+ * 走「改写型」链的事件（见 `ModManager.runValueHookChain`）。
+ *
+ * 与 deny 型那三个（`tool.call` / `tool.run` / `classic.PreToolUse`）分开命名，
+ * 免得调用方误用：两族链的 `next` 语义不同。
+ */
+type ModValueHookName =
+  | "tool.check"
+  | "tool.describe"
+  | "prompt.compose"
+  | "prompt.section"
+  | "prompt.context"
+  | "prompt.attachment"
+  | "session.append"
+  | "skill.prompt"
+  | "command.describe";
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
+ * 把我们的消息转成 mods 面看到的形状（spec「会话消息」）。
+ *
+ * 两处刻意的差异：我们的 `tool` 块一条里同时装着调用与结果，CC 那边是
+ * `tool_use` 与 `tool_result` 两块 —— 插件按 CC 的形状写渲染，拆成两块它才认得
+ * 出「这个工具在干什么」；`isMeta` 的隐藏行不递出去（它们不是对话的一部分）。
+ */
+export function toModSessionMessages(
+  messages: readonly Message[],
+): ModSessionMessage[] {
+  const out: ModSessionMessage[] = [];
+  for (const message of messages) {
+    if (message.isMeta) continue;
+    let budget = MOD_LIMITS.sessionMessageChars;
+    const clip = (text: string): string => {
+      if (budget <= 0) return "…";
+      const slice = text.length > budget ? `${text.slice(0, budget)}…` : text;
+      budget -= Math.min(text.length, budget);
+      return slice;
+    };
+    const content: ModSessionMessageBlock[] = [];
+    for (const block of message.blocks) {
+      if (block.type === "text") {
+        content.push({ type: "text", text: clip(block.content) });
+        continue;
+      }
+      if (block.type !== "tool") continue;
+      const id = typeof block.id === "string" ? block.id : "";
+      const name = typeof block.name === "string" ? block.name : "";
+      content.push({
+        type: "tool_use",
+        id,
+        name,
+        input: parseToolParameters(block.parameters),
+      });
+      const result = block.result ?? block.error;
+      if (result === undefined) continue;
+      const text =
+        typeof result === "string"
+          ? result
+          : result instanceof Error
+            ? result.message
+            : String(result);
+      content.push({
+        type: "tool_result",
+        tool_use_id: id,
+        content: clip(text),
+      });
+    }
+    out.push({ id: message.id, role: message.role, content });
+  }
+  return out;
+}
+
+/** 工具参数在消息里是一段 JSON 文本；解析不出来就原样给（插件自己会 `String()`）。 */
+function parseToolParameters(parameters: string | undefined): unknown {
+  if (typeof parameters !== "string") return {};
+  try {
+    return JSON.parse(parameters) as unknown;
+  } catch {
+    return parameters;
+  }
+}
+
+/**
+ * `session.append` 里插件交回来的消息：只认「同一条消息、换掉文本」。
+ *
+ * 改 `role`、改块类型、少一个块都不认（返回 `undefined`，caller 按原样存）——
+ * 一条被改了身份的消息会让 `$.session.messages()` 与 `classic.MessageDisplay`
+ * 里的 id 对不上（spec「转录写入前改写」）。
+ */
+function normalizeSessionMessage(
+  value: unknown,
+): ModSessionMessage | undefined {
+  if (!isPlainRecord(value)) return undefined;
+  if (typeof value.id !== "string") return undefined;
+  const role = value.role;
+  if (role !== "user" && role !== "assistant" && role !== "system") {
+    return undefined;
+  }
+  if (!Array.isArray(value.content)) return undefined;
+  const content: ModSessionMessageBlock[] = [];
+  for (const raw of value.content) {
+    if (!isPlainRecord(raw)) return undefined;
+    if (raw.type === "text") {
+      if (typeof raw.text !== "string") return undefined;
+      content.push({ type: "text", text: raw.text });
+      continue;
+    }
+    if (raw.type === "tool_use") {
+      if (typeof raw.id !== "string" || typeof raw.name !== "string") {
+        return undefined;
+      }
+      content.push({
+        type: "tool_use",
+        id: raw.id,
+        name: raw.name,
+        input: raw.input,
+      });
+      continue;
+    }
+    if (raw.type === "tool_result") {
+      if (typeof raw.tool_use_id !== "string") return undefined;
+      content.push({
+        type: "tool_result",
+        tool_use_id: raw.tool_use_id,
+        content: typeof raw.content === "string" ? raw.content : "",
+      });
+      continue;
+    }
+    return undefined;
+  }
+  return { id: value.id, role, content };
+}
+
 function isDeny(value: unknown): value is { deny: string } {
   return (
     typeof value === "object" &&
@@ -435,6 +592,14 @@ export class ModManager {
    */
   private promptSubmitter?: (text: string) => Promise<void>;
   /**
+   * `$.turn.abort` 的出口（spec「收掉一轮」）。
+   *
+   * 与 `promptSubmitter` 同一条理由：只有 `AIManager` 知道哪一轮在跑、`turnId`
+   * 对不对得上，所以由 `Agent` 在构造最后接进来。判不过就让它抛错 —— 这里不做
+   * 二次判断，也不吞错。
+   */
+  private turnAborter?: (turnId: string) => void;
+  /**
    * `$.prompt.fill` 的出口（spec「把草稿填进输入框」）。
    *
    * 与 `promptSubmitter` 的区别是这条路**要等回执**：填输入框的是界面进程，
@@ -521,6 +686,7 @@ export class ModManager {
       model: () => "",
       // 没接入口就不画面板：宁可按「没人看得见」降级，也不编一个 desktop。
       surfaces: () => [],
+      sessionMessages: () => [],
       env: () => undefined,
       // `key` 由数据源自己取（它有那份配置）；兜底没配置可查，所以带 key 时
       // 与「没这一项」同义。
@@ -546,6 +712,11 @@ export class ModManager {
   /** 接上 prompt 投递通道（见 `promptSubmitter`）。 */
   setPromptSubmitter(fn: (text: string) => Promise<void>): void {
     this.promptSubmitter = fn;
+  }
+
+  /** 接上「收掉一轮」的通道（见 `turnAborter`）。 */
+  setTurnAborter(fn: (turnId: string) => void): void {
+    this.turnAborter = fn;
   }
 
   /** 接上用量快照（见 `sessionUsageProvider`）。 */
@@ -674,6 +845,9 @@ export class ModManager {
           const runtime = new ModRuntime(
             {
               pluginName: plugin.name,
+              // `$.plugin.root`：插件自己的目录（`plugin.json` 那个），不是会话
+              // 工作目录 —— 后者会随 `cd` 动，拼出来的插件资源必然找不到。
+              pluginRoot: plugin.path,
               openPane: (paneId, title, focus) =>
                 this.openPane(mod.id, paneId, title, focus),
               closePane: (paneId) => this.closePane(mod.id, paneId),
@@ -725,6 +899,7 @@ export class ModManager {
               listConfigRows: () => this.facts.configRows(),
               listToolInfos: () => this.facts.toolInfos(),
               listAgentInfos: () => this.facts.agentInfos(),
+              listSessionMessages: () => this.facts.sessionMessages(),
               readPromptDraft: () => this.readPromptDraft(),
               showNotice: (toolUseId, text) =>
                 this.noticeSink?.(plugin.name, toolUseId, text),
@@ -732,6 +907,7 @@ export class ModManager {
               envGet: (name) => this.facts.env(name),
               settingsRead: (query) => this.facts.settings(query),
               sleep: (ms, signal) => this.startSleep(mod.id, ms, signal),
+              turnAbort: (turnId) => this.abortTurn(mod.id, turnId),
             },
             mod.path,
             compiled,
@@ -950,6 +1126,12 @@ export class ModManager {
    *
    * 返回 `{ deny }` 时 caller 把这段文本当成工具的错误结果交回模型；返回
    * `undefined` 就是「没人拦」。
+   *
+   * `classic.PreToolUse` 是这条链的**另一个名字**：同一时刻、同一份信封、同一
+   * 个 `{ deny }`，`tool.call` 没人拦时接着问它（spec「影子事件」里那条
+   * 「先 `tool.call` 再它」）。CC 把两者做成两层（一个在 mods 面、一个是
+   * settings 钩子的镜像），社区里只写后者的那半（chronicle、FlowCTL）就靠这一
+   * 步才真的拦得住。
    */
   async dispatchToolCall(
     event: ModToolCallEvent,
@@ -962,7 +1144,16 @@ export class ModManager {
       {},
       signal,
     );
-    return decision.deny;
+    if (decision.deny !== undefined) return decision.deny;
+    // 信封就是同一份（`tool` / `tool_use_id` / `input` + 顶层铺开的参数）：
+    // 差别只在这条链认的是另一个钩子名。
+    const classic = await this.runToolHookChain(
+      "classic.PreToolUse",
+      event as ModClassicPreToolUseEvent,
+      {},
+      signal,
+    );
+    return classic.deny;
   }
 
   /**
@@ -983,6 +1174,392 @@ export class ModManager {
   }
 
   /**
+   * 派发 `tool.check`：宿主已经算出决定之后，让插件**换掉**它（spec「第二判定
+   * 源」）。
+   *
+   * 与 `tool.call` 那条链的分工：那条回答「拦不拦」，这条回答「允不允许」。
+   * 三个方向都算数，包括放宽 —— CC 的契约是 `return any { decision }`（官方示例
+   * 就是 `() => ({ decision: "allow" })`），真插件用它给自家工具免审批（sotto）。
+   */
+  async dispatchToolCheck(
+    event: ModToolCheckEvent,
+    signal?: AbortSignal,
+  ): Promise<{ decision: ModToolCheckDecision; reason?: string }> {
+    const base: { decision: ModToolCheckDecision; reason?: string } = {
+      decision: event.decision,
+      reason: event.reason,
+    };
+    if (this.disposed) return base;
+    return this.runValueHookChain(
+      "tool.check",
+      event,
+      () => base,
+      (modId, value, fallback) => {
+        if (!isPlainRecord(value)) return fallback;
+        const next = value.decision;
+        if (next !== "allow" && next !== "ask" && next !== "deny") {
+          logger.warn(
+            `[Wave] ${modId} 的 tool.check 返回了不合法的 decision：按引擎的判定走`,
+          );
+          return fallback;
+        }
+        // 三个方向都算数（含放宽）。CC 的契约就是 `return any { decision }`，
+        // 官方示例是 `on("tool.check", { tool: "Read" }, () => ({ decision: "allow" }))`，
+        // 真插件拿它给自家的 `mcp__x__*` 工具免审批（sotto）。把放宽挡掉等于
+        // 让这条钩子对它的主要用途失效。
+        //
+        // 换了档才换理由：`allow → allow` 不该把宿主的理由冲掉。
+        const reason =
+          typeof value.reason === "string"
+            ? value.reason
+            : next === fallback.decision
+              ? fallback.reason
+              : undefined;
+        return { decision: next, reason };
+      },
+      signal,
+    );
+  }
+
+  /**
+   * 派发 `prompt.compose`：让插件换掉整份系统提示词的段表（spec「系统提示词
+   * 与附件」）。
+   *
+   * 链尾是宿主自己拼出来的段表。返回的段表要过一遍形状校验：缺 `id` / `text`
+   * 的段直接丢掉（一段拼不出来的提示词比少一段更坏）。
+   */
+  async collectPromptSections(
+    base: readonly ModPromptSection[],
+    signal?: AbortSignal,
+  ): Promise<ModPromptSection[]> {
+    if (this.disposed) return [...base];
+    return this.runValueHookChain(
+      "prompt.compose",
+      { sections: base },
+      () => [...base],
+      (modId, value, fallback) => {
+        if (!isPlainRecord(value) || !Array.isArray(value.sections)) {
+          return fallback;
+        }
+        const raw = value.sections as unknown[];
+        if (raw.length > MOD_LIMITS.promptSections) {
+          logger.warn(
+            `[Wave] ${modId} 的 prompt.compose 给了 ${raw.length} 段，超过上限，只用了前 ${MOD_LIMITS.promptSections} 段`,
+          );
+        }
+        const sections: ModPromptSection[] = [];
+        for (const item of raw.slice(0, MOD_LIMITS.promptSections)) {
+          if (!isPlainRecord(item)) continue;
+          if (typeof item.id !== "string" || typeof item.text !== "string") {
+            continue;
+          }
+          if (item.text.length > MOD_LIMITS.promptSectionChars) {
+            logger.warn(
+              `[Wave] ${modId} 的 prompt.compose 给了一段超过 ${MOD_LIMITS.promptSectionChars} 字符的提示词，已截断`,
+            );
+          }
+          sections.push({
+            id: item.id,
+            text: item.text.slice(0, MOD_LIMITS.promptSectionChars),
+            scope: item.scope === "turn" ? "turn" : "session",
+          });
+        }
+        return sections;
+      },
+      signal,
+    );
+  }
+
+  /**
+   * 派发 `prompt.section`：逐段问下去（spec「系统提示词与附件」）。
+   *
+   * 返回 `null` 表示这一段不出现（`{ text: null }`），与「空字符串」是两件事。
+   */
+  async collectPromptSection(
+    section: ModPromptSection,
+    signal?: AbortSignal,
+  ): Promise<string | null> {
+    if (this.disposed) return section.text;
+    // 交下去（也给 `next(e)`）的是 `{ text }` 而不是裸字符串：CC 的这条契约
+    // 就是这个对象，真插件写的是 `const s = await next(e); return { text: s.text + … }`
+    // —— 给字符串会让 `s.text` 变 undefined。
+    const result = await this.runValueHookChain<{ text: string | null }>(
+      "prompt.section",
+      { name: section.id, text: section.text, scope: section.scope },
+      () => ({ text: section.text }),
+      (modId, value, fallback) => {
+        if (isPlainRecord(value) && "text" in value) {
+          if (value.text === null) return { text: null };
+          if (typeof value.text === "string") return { text: value.text };
+        }
+        // 宽容一档：直接返回字符串的也认（写起来更短，但拿不到 `next` 的结果）。
+        if (typeof value === "string") return { text: value };
+        logger.warn(
+          `[Wave] ${modId} 的 prompt.section 只认 { text } / { text: null }：这一段按原样用`,
+        );
+        return fallback;
+      },
+      signal,
+    );
+    return result.text;
+  }
+
+  /**
+   * 派发 `prompt.context`：每条会话一次的上下文块（spec「系统提示词与附件」）。
+   *
+   * 与 {@link collectPromptContext}（`prompt.submit` 的每轮注入）是两件事：
+   * 那条每轮都能塞、只作用于本轮；这条一条会话只有一次机会。
+   */
+  async collectSessionContextBlocks(
+    signal?: AbortSignal,
+  ): Promise<ModPromptContextBlock[]> {
+    if (this.disposed) return [];
+    const result = await this.runValueHookChain<{
+      blocks: ModPromptContextBlock[];
+    }>(
+      "prompt.context",
+      { blocks: [] as ModPromptContextBlock[] },
+      () => ({ blocks: [] as ModPromptContextBlock[] }),
+      (modId, value, fallback) => {
+        if (!isPlainRecord(value) || !Array.isArray(value.blocks)) {
+          logger.warn(
+            `[Wave] ${modId} 的 prompt.context 只认 { blocks }：这一条被忽略`,
+          );
+          return fallback;
+        }
+        const blocks: ModPromptContextBlock[] = [];
+        for (const item of value.blocks as unknown[]) {
+          // 一块要么是 `{ name, text }`（CC 的形状），要么是裸字符串（写起来
+          // 更短，来源名留空）。
+          if (typeof item === "string") {
+            if (item.trim()) blocks.push({ name: "context", text: item });
+            continue;
+          }
+          if (!isPlainRecord(item) || typeof item.text !== "string") continue;
+          blocks.push({
+            name: typeof item.name === "string" ? item.name : "context",
+            text: item.text,
+          });
+        }
+        let chars = 0;
+        const limited: ModPromptContextBlock[] = [];
+        for (const block of blocks) {
+          if (
+            limited.length >= MOD_LIMITS.promptContextMaxItems ||
+            chars + block.text.length > MOD_LIMITS.promptContextChars
+          ) {
+            break;
+          }
+          limited.push(block);
+          chars += block.text.length;
+        }
+        if (limited.length < blocks.length) {
+          logger.warn(
+            `[Wave] ${modId} 的 prompt.context 有 ${blocks.length} 块，超过限额，只用了前 ${limited.length} 块`,
+          );
+        }
+        return { blocks: limited };
+      },
+      signal,
+    );
+    return result.blocks;
+  }
+
+  /**
+   * 派发 `prompt.attachment`：宿主自己要加一条消息之前（spec「系统提示词与附
+   * 件」）。
+   *
+   * 返回 `null` 表示这条提醒不出现 —— 这是插件唯一能压掉一条宿主消息的通道。
+   */
+  async rewritePromptAttachment(
+    attachment: { type: string; text: string },
+    signal?: AbortSignal,
+  ): Promise<string | null> {
+    if (this.disposed) return attachment.text;
+    return this.runValueHookChain<string | null>(
+      "prompt.attachment",
+      attachment,
+      () => attachment.text,
+      (modId, value, fallback) => {
+        return this.textOrNullReply(
+          modId,
+          "prompt.attachment",
+          value,
+          fallback,
+        );
+      },
+      signal,
+    );
+  }
+
+  /**
+   * 派发 `session.append`：一条消息落进转录之前（spec「转录写入前改写」）。
+   *
+   * 返回 `dropped` 时 caller 不存这一行。钩子返回的 `message` 过一遍形状校验：
+   * 改 `role` 或块类型一律不认，按原样存（见 spec 那条「不允许改身份」）。
+   */
+  async dispatchSessionAppend(
+    message: ModSessionMessage,
+    turnId?: string,
+    signal?: AbortSignal,
+  ): Promise<{ message: ModSessionMessage; uuid: string; deny?: string }> {
+    const base: { message: ModSessionMessage; uuid: string; deny?: string } = {
+      message,
+      uuid: message.id,
+    };
+    if (this.disposed) return base;
+    return this.runValueHookChain(
+      "session.append",
+      {
+        message,
+        // `uuid` / `door` 是 CC 的两个字段名（`uuid` 就是我们的 message.id）：
+        // 真插件按 `e.agentId` 分主/子代理、按 `e.door` 分主对话/压缩，
+        // 回来后按 `r.uuid` 记自己那份。
+        uuid: message.id,
+        door: "engine",
+        ...(turnId === undefined ? {} : { turnId }),
+      },
+      () => base,
+      (modId, value, fallback) => {
+        if (!isPlainRecord(value)) return fallback;
+        if (typeof value.deny === "string") {
+          logger.info(
+            `[Wave] ${modId} 的 session.append 丢弃了一条消息：${value.deny}`,
+          );
+          return {
+            message: fallback.message,
+            uuid: fallback.uuid,
+            deny: value.deny,
+          };
+        }
+        const next = normalizeSessionMessage(value.message);
+        if (!next) {
+          logger.warn(
+            `[Wave] ${modId} 的 session.append 返回了不合法的 message（只能改文本块的 text）：按原样存`,
+          );
+          return fallback;
+        }
+        return { message: next, uuid: next.id };
+      },
+      signal,
+    );
+  }
+
+  /**
+   * 派发 `tool.describe`：一个工具的描述第一次要发给模型时（spec「给工具、技
+   * 能、命令写描述」）。
+   */
+  async collectToolDescription(
+    tool: { name: string; description: string },
+    signal?: AbortSignal,
+  ): Promise<string> {
+    if (this.disposed) return tool.description;
+    return this.runValueHookChain<string>(
+      "tool.describe",
+      { tool: tool.name, description: tool.description },
+      () => tool.description,
+      (modId, value, fallback) => {
+        if (!isPlainRecord(value)) return fallback;
+        if (value.isDeferred !== undefined) {
+          // 我们没有 tool search：`true` 等于把工具下架，`false` 没有意义。
+          logger.warn(
+            `[Wave] ${modId} 的 tool.describe 返回了 isDeferred：我们没有 tool search，这一项被忽略`,
+          );
+        }
+        return typeof value.description === "string"
+          ? value.description
+          : fallback;
+      },
+      signal,
+    );
+  }
+
+  /**
+   * 派发 `skill.prompt`：一个技能的正文被展开给模型时（spec「给工具、技能、
+   * 命令写描述」）。
+   */
+  async collectSkillText(
+    skill: { skill: string; text: string; source?: string; path?: string },
+    signal?: AbortSignal,
+  ): Promise<string> {
+    if (this.disposed) return skill.text;
+    return this.runValueHookChain<string>(
+      "skill.prompt",
+      skill,
+      () => skill.text,
+      (_modId, value, fallback) => {
+        if (!isPlainRecord(value)) return fallback;
+        return typeof value.text === "string" ? value.text : fallback;
+      },
+      signal,
+    );
+  }
+
+  /**
+   * 派发 `command.describe`：命令列表要画时每个命令一次（spec「给工具、技能、
+   * 命令写描述」）。
+   *
+   * 三个字段都可选、只覆盖给了的：插件只关心「藏起来」时不必把描述也抄一遍。
+   */
+  async collectCommandDescribe(
+    command: string,
+    signal?: AbortSignal,
+  ): Promise<{
+    description?: string;
+    argumentHint?: string;
+    isHidden?: boolean;
+  }> {
+    if (this.disposed) return {};
+    return this.runValueHookChain(
+      "command.describe",
+      { command },
+      () =>
+        ({}) as {
+          description?: string;
+          argumentHint?: string;
+          isHidden?: boolean;
+        },
+      (_modId, value, fallback) => {
+        if (!isPlainRecord(value)) return fallback;
+        const merged = { ...fallback };
+        if (typeof value.description === "string") {
+          merged.description = value.description;
+        }
+        if (typeof value.argumentHint === "string") {
+          merged.argumentHint = value.argumentHint;
+        }
+        if (typeof value.isHidden === "boolean") {
+          merged.isHidden = value.isHidden;
+        }
+        return merged;
+      },
+      signal,
+    );
+  }
+
+  /**
+   * `prompt.section` / `prompt.attachment` 共用的 `{ text }` / `{ text: null }`
+   * 解析：`null` 与「没给」是两件事，前者是「这一段不要」。
+   */
+  private textOrNullReply(
+    modId: string,
+    name: "prompt.section" | "prompt.attachment",
+    value: unknown,
+    fallback: string | null,
+  ): string | null {
+    if (!isPlainRecord(value)) return fallback;
+    if (value.text === null) return null;
+    if (typeof value.text !== "string") return fallback;
+    if (value.text.length > MOD_LIMITS.promptSectionChars) {
+      logger.warn(
+        `[Wave] ${modId} 的 ${name} 给了超过 ${MOD_LIMITS.promptSectionChars} 字符的文本，已截断`,
+      );
+      return value.text.slice(0, MOD_LIMITS.promptSectionChars);
+    }
+    return value.text;
+  }
+
+  /**
    * `tool.call` / `tool.run` 的**跨 mod** 钩子链。
    *
    * 链尾（`tail`）有两个：`tool.call` 的「没有意见」（空对象，谁都没拦）与
@@ -994,7 +1571,7 @@ export class ModManager {
    * `.catch` 自己返回 `{ deny }`）。
    */
   private async runToolHookChain(
-    name: "tool.call" | "tool.run",
+    name: "tool.call" | "tool.run" | "classic.PreToolUse",
     event: unknown,
     tail: { run?: () => Promise<unknown> },
     signal?: AbortSignal,
@@ -1047,6 +1624,24 @@ export class ModManager {
             deny: `${item.plugin} 的 tool.run 钩子没有放行这次调用`,
           };
         }
+        if (name === "classic.PreToolUse" && !isDeny(result.value)) {
+          // CC 这一条另有 `{ allow: true }` / `{ ask }` / `updatedInput`：放行
+          // 与强制弹卡片都是第二判定源，改写参数同一条理由（spec「交付分层」）。
+          // 静默忽略会让作者以为放行生效了，所以点一次名。
+          const reply: unknown = result.value;
+          if (typeof reply === "object" && reply !== null) {
+            const shape = reply as Record<string, unknown>;
+            if (
+              shape.allow !== undefined ||
+              shape.ask !== undefined ||
+              shape.updatedInput !== undefined
+            ) {
+              logger.warn(
+                `[Wave] ${item.mod.id} 的 classic.PreToolUse 返回了 allow/ask/updatedInput：只支持 { deny }，那几项被忽略`,
+              );
+            }
+          }
+        }
         return result.value ?? {};
       }
       return runOnce();
@@ -1054,6 +1649,58 @@ export class ModManager {
     const value = await fromIndex(0, event);
     if (isDeny(value)) return { deny: value.deny };
     return {};
+  }
+
+  /**
+   * 「改写型」钩子链：宿主先算出**一份值**，插件可以换掉它，下游还能再换。
+   *
+   * 与 {@link runToolHookChain} 的两处不同，都是刻意的：
+   *
+   * - **`next(e)` 之后外层还能改**。deny 链里 `next` 之后工具已经跑了，外层再
+   *   说什么都晚了（Claude Code 同口径）；改写链里 `next` 只是「先看看下面几
+   *   个 mod 改成什么」，外层在自己那份基础上继续改是正常写法 —— 社区的
+   *   `const below = await next(e); return { ...below, text: fix(below.text) }`
+   *   就是这个意思。旧链丢掉外层返回值，让这种写法静默失效。
+   * - **链尾是「宿主原本的值」**，不是空对象：谁都没改时返回值必须与没有这些
+   *   钩子时逐字相同（提示词缓存靠它）。
+   *
+   * 失败（抛错、超时、返回 `undefined`）按 fail-open：下游的值说了算。
+   */
+  private async runValueHookChain<T>(
+    name: ModValueHookName,
+    event: unknown,
+    tail: () => T,
+    normalize: (modId: string, value: unknown, fallback: T) => T,
+    signal?: AbortSignal,
+  ): Promise<T> {
+    const loaded = [...this.mods.values()].filter((item) => item.runtime);
+    const fromIndex = async (index: number, current: unknown): Promise<T> => {
+      for (let i = index; i < loaded.length; i += 1) {
+        const item = loaded[i]!;
+        const runtime = item.runtime!;
+        if (!runtime.matchesHook(name, current)) continue;
+        let nextCalled = false;
+        let inner: T | undefined;
+        const result = await runtime.callHook(name, current, {
+          signal,
+          engine: async (nextEvent) => {
+            nextCalled = true;
+            inner = await fromIndex(i + 1, nextEvent);
+            return inner;
+          },
+        });
+        const fallback = nextCalled ? (inner as T) : tail();
+        if (!result.ok) {
+          logger.warn(`[Wave] ${item.mod.id} 的 ${name} 失败：${result.error}`);
+          if (nextCalled) return fallback;
+          continue;
+        }
+        if (result.value === undefined) return fallback;
+        return normalize(item.mod.id, result.value, fallback);
+      }
+      return tail();
+    };
+    return fromIndex(0, event);
   }
 
   /**
@@ -1528,6 +2175,24 @@ export class ModManager {
     }
     logger.info(`[Wave] ${modId} 把一条 prompt 投进了本会话`);
     await submit(text);
+  }
+
+  /**
+   * 收掉一轮（spec「收掉一轮」）。
+   *
+   * 与 `submitPrompt` 同一条纪律：会话已销毁、宿主没接通道都抛错 —— 静默成功会
+   * 让插件以为自己叫停了。`turnId` 对不对得上由 `AIManager` 判。
+   */
+  private abortTurn(modId: string, turnId: string): void {
+    if (this.disposed) {
+      throw new Error("会话已结束，没有可以收掉的轮次");
+    }
+    const abort = this.turnAborter;
+    if (!abort) {
+      throw new Error("当前宿主没有接入轮次中断通道，$.turn.abort 不可用");
+    }
+    logger.info(`[Wave] ${modId} 收掉了一轮：${turnId}`);
+    abort(turnId);
   }
 
   /**

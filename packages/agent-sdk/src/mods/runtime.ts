@@ -15,6 +15,7 @@ import type {
   ModRunOptions,
   ModRunResult,
   ModSessionRepo,
+  ModSessionMessage,
   ModSessionVersion,
   ModToolInfo,
   ModTreeNode,
@@ -543,7 +544,16 @@ export interface ModElementBuilder {
 
 /** 事件钩子能拿到的 `$`（见 spec「$（一期）」）。 */
 export interface ModDollar {
-  plugin: { name: string };
+  plugin: {
+    name: string;
+    /**
+     * 这个插件自己的目录（绝对路径）—— `plugin.json` 所在的目录。
+     *
+     * 插件带的脚本、模板、数据文件按它解析：`$.fs` 的相对路径基准是会话当前
+     * 工作目录（会随 `cd` 动），拿它去拼插件自己的文件必然拼错。
+     */
+    root: string;
+  };
   ui: {
     /**
      * `ui.render` 的事件 → **这一端**可用的元素构造器表（spec「元素表按端分」）。
@@ -798,6 +808,30 @@ export interface ModDollar {
     repo(): Promise<ModSessionRepo | null>;
     /** 引擎版本（spec「七个只读事实」）：`{ version }`，读不到给空串。 */
     version(): Promise<ModSessionVersion>;
+    /**
+     * 这条会话**已经存下**的消息，最新的在最后（spec「会话消息」）。
+     *
+     * 只读、且有硬上限：最多 `MOD_LIMITS.sessionMessages` 条、单条按
+     * `sessionMessageChars` 截断。它和 `session.append` 的 `e.message` 同形，
+     * 插件可以拿同一套渲染画「历史」和「正要存的那条」。
+     */
+    messages(): Promise<ModSessionMessage[]>;
+  };
+  /**
+   * 收掉一轮（spec「收掉一轮」）。
+   *
+   * 与 `session` 那一片**故意**分开：`session` 全是只读快照，这一个会真的改动
+   * 会话（打断正在跑的请求、停掉还没跑的工具）。只认 `turn.start` 给的 id。
+   */
+  turn: {
+    /**
+     * 把某一轮按中断处理（与用户按 Esc 同一条路）。
+     *
+     * `turnId` 对不上、或那条会话这一刻没有一轮在跑，一律 reject：静默成功会让
+     * 插件以为自己叫停了。不动排队等待的用户消息，也不打断 Bash 命令与斜杠
+     * 命令（它们不是这一轮的一部分）。
+     */
+    abort(options: { turnId: string }): Promise<void>;
   };
   /**
    * 环境变量（spec「环境变量与设置（只读）」）。
@@ -863,6 +897,12 @@ export interface ModDollar {
 /** 沙箱需要宿主提供的全部能力。 */
 export interface ModRuntimeHost {
   pluginName: string;
+  /**
+   * `$.plugin.root`：这个插件自己的目录（绝对路径）。
+   *
+   * 不是会话工作目录 —— 插件起自己的脚本、读自己的模板都该按这个拼。
+   */
+  pluginRoot: string;
   /**
    * 登记一块面板；返回「挂上了没有」（会话正在销毁时 false）。
    *
@@ -961,6 +1001,13 @@ export interface ModRuntimeHost {
   /** `$.agent.list()`：这条会话派过、还没被宿主丢掉的子代理。 */
   listAgentInfos(): ModAgentInfo[];
   /**
+   * `$.session.messages()`：转录里已经存下的消息（最新在最后）。
+   *
+   * 宿主按 `MOD_LIMITS.sessionMessages` 截好再交下来 —— 限流放在这里而不是
+   * runtime，是因为只有宿主知道哪些行不该递给插件（例如内部 meta 行）。
+   */
+  listSessionMessages(): ModSessionMessage[];
+  /**
    * `$.prompt.read()`：surface 输入框里的草稿。
    *
    * 与 {@link fillPrompt} 同一条通道的另一头：没人答、没人画都按
@@ -1009,6 +1056,13 @@ export interface ModRuntimeHost {
   listCommands(): ModCommandInfo[];
   /** `$.command.run`：以 mod 身份执行一条已注册的命令。 */
   runCommand(command: string, args?: string): Promise<void>;
+  /**
+   * `$.turn.abort`：收掉 `turnId` 那一轮。
+   *
+   * 宿主那边同步判「这个 id 对不对、有没有一轮在跑」，判不过就抛错 ——
+   * runtime 不做二次判断，只把错误原样交给 mod。
+   */
+  turnAbort(turnId: string): void;
 }
 
 /**
@@ -1016,15 +1070,17 @@ export interface ModRuntimeHost {
  *
  * `session.start` / `ui.render` 是「要 mod 做事」的那两个；`turn.complete`、
  * `turn.start`、`turn.step`、`session.measure`、`session.compact`、`session.end`、
- * `ui.close` 与 `classic.PermissionRequest` 是只读的观察事件，返回值一律丢弃。
- * 有返回值语义的五个：`tool.call` / `tool.run` 答 `{ deny }`（拦下这次调用，
- * 后者还负责真正执行它）、`prompt.submit` 答 `{ context }`（本轮附加上下文，
- * 不改用户原文）、`command.run` 答 `{ text }`、`classic.Stop` 答
- * `{ additionalContext }`（这一轮别急着收尾，把这几句读给模型听，spec「一轮收
- * 尾时的非错误反馈」）。`classic.` 前缀是照 Claude Code
+ * `ui.close` 与 `classic.PermissionRequest` 之外的大部分 `classic.*` 是只读的
+ * 观察事件，返回值一律丢弃。有返回值语义的六个：`tool.call` / `tool.run` 答
+ * `{ deny }`（拦下这次调用，后者还负责真正执行它）、`prompt.submit` 答
+ * `{ context }`（本轮附加上下文，不改用户原文）、`command.run` 答 `{ text }`、
+ * `classic.Stop` 答 `{ additionalContext }`（这一轮别急着收尾，把这几句读给
+ * 模型听，spec「一轮收尾时的非错误反馈」）、`classic.PreToolUse` 答 `{ deny }`
+ * （与 `tool.call` 是同一条链的另一个名字）。`classic.` 前缀是照 Claude Code
  * 的规矩：它把每个 settings hook 事件都镜像成 `classic.<Event>`，我们镜像其中
- * 15 个（spec「影子事件」），`e` 的形状也照那份 stdin JSON。别的名字一律拒收，
- * 免得插件作者依赖一个不存在的钩子。
+ * 20 个（spec「影子事件」），`e` 的形状也照那份 stdin JSON（`PreToolUse` 例外，
+ * 照 CC 自己的排法给 `tool.call` 那个信封）。别的名字一律拒收，免得插件作者依
+ * 赖一个不存在的钩子。
  */
 const HOOK_NAMES = new Set([
   "session.start",
@@ -1040,7 +1096,19 @@ const HOOK_NAMES = new Set([
   "tool.call",
   "tool.run",
   "command.run",
-  // 影子事件（spec「影子事件：`classic.*`」）：全是只读镜像，返回值忽略。
+  // A 档（spec「第二判定源」「系统提示词与附件」「给工具、技能、命令写描述」
+  // 「转录写入前改写」）：都是「改写宿主算出来的东西」而不是「观察」。
+  "tool.check",
+  "tool.describe",
+  "prompt.compose",
+  "prompt.section",
+  "prompt.context",
+  "prompt.attachment",
+  "session.append",
+  "skill.prompt",
+  "command.describe",
+  // 影子事件（spec「影子事件：`classic.*`」）：除 `PreToolUse` / `Stop` 外都是
+  // 只读镜像，返回值忽略。
   "classic.PermissionRequest",
   "classic.SessionStart",
   "classic.SessionEnd",
@@ -1052,10 +1120,15 @@ const HOOK_NAMES = new Set([
   "classic.PostModelSwitch",
   "classic.SubagentStart",
   "classic.SubagentStop",
+  "classic.PreToolUse",
   "classic.PostToolUse",
   "classic.PostToolUseFailure",
   "classic.PostToolBatch",
+  "classic.PermissionDenied",
   "classic.CwdChanged",
+  "classic.PreCompact",
+  "classic.PostCompact",
+  "classic.MessageDisplay",
 ]);
 
 /**
@@ -1063,13 +1136,28 @@ const HOOK_NAMES = new Set([
  *
  * matcher 是**事件字段的子集**：`{ component: "Pane" }` 只吃 `component` 是
  * `Pane` 的那些渲染请求。社区 mod 用这几处把「一个事件、多个处理器」分开：
- * `ui.render` 按站点（`component` / `requestId`）、`tool.call` 按工具名、
- * `command.run` 按命令名、`classic.PostToolUse` 族按 `tool_name`（这三条键就是
- * Claude Code 的 matcher 键表里对这个事件列的全部键）。
+ * `ui.render` 按站点（`component` / `requestId`）、`tool.call` / `tool.run` /
+ * `classic.PreToolUse` 按工具名、`command.run` 按命令名、`classic.PostToolUse`
+ * 族按 `tool_name`（这三条键就是 Claude Code 的 matcher 键表里对这个事件列的
+ * 全部键）。
  */
 const MATCHER_EVENTS = new Set([
   "command.run",
   "ui.render",
+  // 这两条按 `{ tool }` 匹配（spec「第二判定源」「给工具、技能、命令写描述」）：
+  // 一个只想管 `Bash` 的守卫没必要在每次 `Read` 上被叫起来。
+  "tool.check",
+  "tool.describe",
+  // `prompt.section` 按 `{ name }` 匹配（spec「系统提示词与附件」）：只想管
+  // 「记忆段」的插件没必要在每一段上被叫起来（lossless-claude 就是
+  // `on("prompt.section", { name: "memory" }, …)`）。
+  "prompt.section",
+  // `prompt.attachment` 按 `{ type }`、`skill.prompt` 按 `{ skill }`：CC 的
+  // 类型文档里给的示例就是 `on("prompt.attachment", { type: "todo_reminder" }, …)`
+  // 与 `on("skill.prompt", { skill: "commit" }, …)`。
+  "prompt.attachment",
+  "skill.prompt",
+  "classic.PreToolUse",
   "classic.PostToolUse",
   "classic.PostToolUseFailure",
   "classic.PostToolBatch",
@@ -1151,11 +1239,35 @@ function normalizeCommand(command: string): string {
   return command.startsWith("/") ? command : `/${command}`;
 }
 
+/**
+ * matcher 里的一个字段值是否命中事件里的同一个字段。
+ *
+ * 三档，与 CC 的 matcher 同一套：`RegExp` 把事件值当字符串 `test`（社区 mod 写
+ * `{ command: /git\s+commit/ }` 就是这个意思）；事件值是对象、matcher 里也给对象
+ * 时按**对象偏匹配**递归比；其余按 `===`（`command` 两边归一后比，社区写的
+ * matcher 不带斜杠）。
+ *
+ * `RegExp` 判定不能 `instanceof`：matcher 在 mod 的沙箱里造出来，那是另一个
+ * realm 的构造函数。
+ */
 function matcherValueMatches(
   key: string,
   expected: unknown,
   actual: unknown,
 ): boolean {
+  if (Object.prototype.toString.call(expected) === "[object RegExp]") {
+    if (typeof actual !== "string") return false;
+    const pattern = expected as RegExp;
+    // 去掉 `g` / `y`：带这两个标志的 `test` 有 `lastIndex` 状态，同一条 matcher
+    // 第二次命中就会被判假。
+    return new RegExp(pattern.source, pattern.flags.replace(/[gy]/g, "")).test(
+      actual,
+    );
+  }
+  if (isPlainObject(expected)) {
+    // 对象偏匹配：事件值是对象时只比 matcher 里写出来的那几个键，递归下去。
+    return isPlainObject(actual) && matchesEvent(expected, actual);
+  }
   if (
     key === "command" &&
     typeof expected === "string" &&
@@ -1475,7 +1587,7 @@ export class ModRuntime {
     this.wave = { h, Fragment: "Fragment", elements };
 
     this.dollar = {
-      plugin: { name: host.pluginName },
+      plugin: { name: host.pluginName, root: host.pluginRoot },
       ui: {
         resolve: (event: unknown) =>
           resolveElements(event, this.elementsBySurface),
@@ -1721,6 +1833,19 @@ export class ModRuntime {
         // 不在 git 仓库里给 null，不抛错（社区写法是 `?.root`）。
         repo: async () => cloneValue(host.sessionRepo()),
         version: async () => ({ ...host.sessionVersion() }),
+        // 已经存下的消息（最新在最后）：宿主先按限额截好再交下来。
+        messages: async () => cloneValue(host.listSessionMessages()),
+      },
+      turn: {
+        abort: async (options) => {
+          const turnId = options?.turnId;
+          if (typeof turnId !== "string" || turnId.length === 0) {
+            throw new Error("$.turn.abort 需要一个 { turnId }");
+          }
+          // 判据全在宿主（它才知道哪一轮在跑）；不匹配就 reject，别把「没找到」
+          // 伪装成收掉了。
+          host.turnAbort(turnId);
+        },
       },
       env: {
         get: async (name) => {
@@ -1937,13 +2062,24 @@ export class ModRuntime {
     const hasMatcher = typeof maybeHandler === "function";
     const handler = hasMatcher ? maybeHandler : matcherOrHandler;
     if (typeof handler !== "function") return noop;
-    if (!HOOK_NAMES.has(name)) {
+    // `on("classic.*", handler)`：一次订阅全部 classic 事件（CC 支持，GenesisTools
+    // 就是这么吃的）。展开成具体名字，**同一条 entry** 挂到每一个名字下 —— 这样
+    // `on(…).catch(fn)` 的兜底对每一条都生效，而不是只兜住最后一个。
+    const names =
+      name === "classic.*"
+        ? [...HOOK_NAMES].filter((item) => item.startsWith("classic."))
+        : [name];
+    const unknown = names.find((item) => !HOOK_NAMES.has(item));
+    if (unknown !== undefined || names.length === 0) {
       logger.warn(
         `[Wave] ${this.host.pluginName} 注册了不存在的 mod 钩子：${name}（可用：${[...HOOK_NAMES].join(" / ")}）`,
       );
       return noop;
     }
-    if (hasMatcher && !MATCHER_EVENTS.has(name)) {
+    const noMatcher = names.find(
+      (item) => hasMatcher && !MATCHER_EVENTS.has(item),
+    );
+    if (noMatcher !== undefined) {
       logger.warn(
         `[Wave] ${this.host.pluginName} 给 ${name} 传了 matcher：只有 ${[...MATCHER_EVENTS].join(" / ")} 接受 matcher，这一条被忽略`,
       );
@@ -1979,9 +2115,11 @@ export class ModRuntime {
       isCommunity,
       isCommunityError: false,
     };
-    const list = this.hooks.get(name);
-    if (list) list.push(entry);
-    else this.hooks.set(name, [entry]);
+    for (const hooked of names) {
+      const bucket = this.hooks.get(hooked);
+      if (bucket) bucket.push(entry);
+      else this.hooks.set(hooked, [entry]);
+    }
     const registration: HookRegistration = {
       // 社区的 `on(...).catch(handler)`：钩子抛错（含 5 秒预算超时）时用它兜底，
       // 兜底自己也抛错才算这条钩子失败。

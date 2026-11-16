@@ -158,6 +158,8 @@ function build(
 
   const context = {
     workdir: "/test/workdir",
+    // 模型消息里那次调用的 id：影子事件按 CC 的形状转成 `tool_use_id`。
+    toolCallId: "call_1",
   } as unknown as ToolContext;
 
   return {
@@ -376,7 +378,7 @@ describe("ToolManager MCP funnel keeps a hook block's wording", () => {
 });
 
 describe("ToolManager 派发影子事件 classic.PostToolUse 族", () => {
-  it("成功的调用发 PostToolUse，带上工具名、参数与结果", async () => {
+  it("成功的调用发 PostToolUse，带上工具名、参数、调用 id 与结果", async () => {
     const notifyMods = vi.fn();
     const { toolManager, context } = build({ notifyMods });
 
@@ -385,6 +387,8 @@ describe("ToolManager 派发影子事件 classic.PostToolUse 族", () => {
     expect(notifyMods).toHaveBeenCalledWith("classic.PostToolUse", {
       tool_name: "FakeTool",
       tool_input: { a: 1 },
+      tool_use_id: "call_1",
+      duration_ms: expect.any(Number),
       tool_response: "done",
     });
     expect(notifyMods).not.toHaveBeenCalledWith(
@@ -409,6 +413,8 @@ describe("ToolManager 派发影子事件 classic.PostToolUse 族", () => {
     expect(notifyMods).toHaveBeenCalledWith("classic.PostToolUseFailure", {
       tool_name: "FakeTool",
       tool_input: { a: 1 },
+      tool_use_id: "call_1",
+      duration_ms: expect.any(Number),
       error: "boom",
     });
     expect(notifyMods).not.toHaveBeenCalledWith(
@@ -422,12 +428,10 @@ describe("ToolManager 派发影子事件 classic.PostToolUse 族", () => {
     const long = "x".repeat(MOD_LIMITS.statusChars + 10);
     const { toolManager, context } = build({
       notifyMods,
-      execute: vi
-        .fn()
-        .mockResolvedValue({
-          success: true,
-          content: long,
-        }) as unknown as ToolPlugin["execute"],
+      execute: vi.fn().mockResolvedValue({
+        success: true,
+        content: long,
+      }) as unknown as ToolPlugin["execute"],
     });
 
     await toolManager.execute("FakeTool", {}, context);

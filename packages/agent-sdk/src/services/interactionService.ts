@@ -8,6 +8,7 @@ import type { AIManager } from "../managers/aiManager.js";
 import type { SubagentManager } from "../managers/subagentManager.js";
 import type { TaskManager } from "./taskManager.js";
 import type { ModManager } from "../managers/modManager.js";
+import { wrapInSystemReminder } from "../prompts/planModeReminders.js";
 
 export interface InteractionContext {
   messageManager: MessageManager;
@@ -270,10 +271,21 @@ export class InteractionService {
           messageManager.getTranscriptPath(),
         );
         if (sessionStartResult.additionalContext) {
-          messageManager.addUserMessage({
-            content: `<system-reminder>\nSessionStart hook additional context: ${sessionStartResult.additionalContext}\n</system-reminder>`,
-            isMeta: true,
-          });
+          // `prompt.attachment` 的 `session-start` 档（spec
+          // ecosystem/plugin-mods.md「系统提示词与附件」）：`null` 是「这条不要」，
+          // 所以没有 ModManager 时的原文不能写成同一个 `??` 兜底。
+          const sessionStartText = context.modManager
+            ? await context.modManager.rewritePromptAttachment({
+                type: "session-start",
+                text: `SessionStart hook additional context: ${sessionStartResult.additionalContext}`,
+              })
+            : `SessionStart hook additional context: ${sessionStartResult.additionalContext}`;
+          if (sessionStartText !== null) {
+            messageManager.addUserMessage({
+              content: wrapInSystemReminder(sessionStartText),
+              isMeta: true,
+            });
+          }
         }
       } catch (error) {
         logger?.warn(

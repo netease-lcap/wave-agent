@@ -1,5 +1,6 @@
 import { type CallAgentOptions } from "../services/aiService.js";
 import * as aiService from "../services/aiService.js";
+import { randomUUID } from "crypto";
 import type { BtwHistoryTurn } from "../types/btw.js";
 import { convertMessagesForAPI } from "../utils/convertMessagesForAPI.js";
 import { resolveApiType, supportsVision } from "../utils/modelCapabilities.js";
@@ -90,11 +91,18 @@ import type { CronManager } from "./cronManager.js";
 import type { SkillManager } from "./skillManager.js";
 import type { LiveConfigManager } from "./liveConfigManager.js";
 import type { ModManager } from "./modManager.js";
-import { MOD_LIMITS, type ModTokenTotals } from "../types/mods.js";
 import {
-  buildSystemPrompt,
+  MOD_LIMITS,
+  type ModPromptSection,
+  type ModTokenTotals,
+} from "../types/mods.js";
+import { truncateForModEvent } from "../mods/text.js";
+import {
+  buildSystemPromptBlocks,
+  buildSystemPromptSections,
   formatCompactSummary,
   getCompactPrompt,
+  type SystemPromptOptions,
 } from "../prompts/index.js";
 import {
   buildPlanModeReminder,
@@ -355,6 +363,18 @@ export class AIManager {
    * 不再续 —— 插件的 `additionalContext` 写得再贪也不能把用户困在死循环里。
    */
   private modStopContextCount = 0;
+  /**
+   * `prompt.context` 已经问过的那一场会话（spec「系统提示词与附件」：一条会话
+   * 一次）。存的是 session id 而不是布尔值 —— 换会话时不需要额外的重置点。
+   */
+  private sessionPromptContextFor?: string;
+  /**
+   * 正在跑的那一轮的 id（spec「收掉一轮」）。`turn.start` 时写入、收尾时清空。
+   *
+   * 只给 `$.turn.abort({ turnId })` 判「你叫的是不是这一轮」：id 对不上或没有
+   * 一轮在跑，一律 reject —— 静默成功会让插件以为自己叫停了。
+   */
+  private currentTurnId?: string;
   private readonly maxTurns?: number;
   /** Start turns without project/user memory injection (`omitAgentsMd` subagents) */
   private readonly omitAgentsMd: boolean;
@@ -550,7 +570,16 @@ export class AIManager {
     }> = [];
     try {
       const { toolsConfig, reachableToolPlugins } = this.resolveFilteredTools();
-      const blocks = await this.buildMainSystemPrompt(reachableToolPlugins);
+      // 这一份估算故意不问 mods：`prompt.compose` / `prompt.section` 定义为
+      // 「每轮一次」，而 `/context` 是一次诊断读数、不是发请求 —— 让它顺手把插
+      // 件问一遍，「一轮一次」就不成立了。报的是宿主自己拼出来的这一份。
+      const blocks = buildSystemPromptBlocks(
+        buildSystemPromptSections(
+          this.systemPrompt,
+          reachableToolPlugins,
+          await this.resolveSystemPromptOptions(),
+        ),
+      );
       systemPromptTokens = estimateTokens(
         blocks.map((block) => block.text).join("\n\n"),
       );
@@ -1018,6 +1047,31 @@ export class AIManager {
     this.setIsLoading(false);
   }
 
+  /**
+   * 收掉某一轮（`$.turn.abort`，spec「收掉一轮」）。
+   *
+   * 与用户按 Esc 同一条路（`abortAIMessage`）：打断正在跑的请求、停掉还没跑完
+   * 的工具，**不动**排队等着的用户消息，也不碰 Bash 命令与斜杠命令（它们不是
+   * 这一轮的一部分）。
+   *
+   * `turnId` 对不上、或者这一刻没有一轮在跑，都抛错 —— 宿主必须让插件看见「我
+   * 没叫停」。
+   */
+  public abortTurn(turnId: string): void {
+    const running = this.currentTurnId;
+    if (running === undefined) {
+      throw new Error(
+        `没有正在跑的一轮，$.turn.abort(${turnId}) 无处可收（turnId 来自 turn.start）`,
+      );
+    }
+    if (running !== turnId) {
+      throw new Error(
+        `$.turn.abort 的 turnId 对不上：给的是 ${turnId}，正在跑的是 ${running}`,
+      );
+    }
+    this.abortAIMessage();
+  }
+
   // Helper method to generate compactParams
   private generateCompactParams(
     toolName: string,
@@ -1126,6 +1180,17 @@ export class AIManager {
     if (this.isCompacting) {
       logger?.warn("Compaction already in progress");
       return;
+    }
+
+    // 影子事件 `classic.PreCompact`（spec「影子事件」）：压缩真的开始之前报一次
+    // —— 与 `classic.PostCompact` 配对，插件据此在压缩前后各取一次快照（状态带
+    // 上「正在压缩…」就是这么来的）。被上面的断路器挡掉的那次不报：什么都没发
+    // 生，报一个开始会让等 `PostCompact` 的插件永远悬着。
+    if (!this.subagentType) {
+      this.getModManager()?.notifyMods("classic.PreCompact", {
+        trigger,
+        custom_instructions: options.customInstructions ?? null,
+      });
     }
 
     // 压缩绑定发起时的会话：LLM fork 期间用户可能已把 agent 原地切到另一会话
@@ -1289,6 +1354,13 @@ export class AIManager {
             this.messageManager.getMessages(),
           ),
         });
+        // 影子事件 `classic.PostCompact`（spec「影子事件」）：与 `session.compact`
+        // 同一时刻（摘要已经替换了历史），载荷是 CC 那一份 —— `trigger` 与压缩后
+        // 写回历史的那段摘要正文。
+        this.getModManager()?.notifyMods("classic.PostCompact", {
+          trigger,
+          compact_summary: enhancedSummary,
+        });
       }
 
       // Reset content-event dedupe after compaction: the next request's
@@ -1324,10 +1396,18 @@ export class AIManager {
               this.subagentType,
             );
           if (sessionStartResult.additionalContext) {
-            this.messageManager.addUserMessage({
-              content: `<system-reminder>\nSessionStart hook additional context: ${sessionStartResult.additionalContext}\n</system-reminder>`,
-              isMeta: true,
-            });
+            // `prompt.attachment` 的 `session-start` 档（spec「系统提示词与附
+            // 件」）：SessionStart 钩子塞进来的附加上下文，插件可改可压。
+            const sessionStartText = await this.rewriteAttachment(
+              "session-start",
+              `SessionStart hook additional context: ${sessionStartResult.additionalContext}`,
+            );
+            if (sessionStartText !== null) {
+              this.messageManager.addUserMessage({
+                content: wrapInSystemReminder(sessionStartText),
+                isMeta: true,
+              });
+            }
           }
           if (sessionStartResult.initialUserMessage) {
             this.messageManager.addUserMessage({
@@ -1376,13 +1456,14 @@ export class AIManager {
   }
 
   /**
-   * Build the system prompt used by the main agent loop. Extracted so the
-   * compaction fork can mirror it exactly — the forked request prefix must
-   * match the main conversation's for the prompt cache to be reused.
+   * The options `buildSystemPromptSections()` needs for this turn.
+   *
+   * Split out from {@link buildMainSystemPrompt} because the token estimate in
+   * `getContextBreakdown()` needs the same options without asking any mod
+   * (that read is a diagnostic, not a request — `prompt.compose` is defined as
+   * once per turn).
    */
-  private async buildMainSystemPrompt(
-    reachableToolPlugins: ReturnType<ToolManager["getTools"]>,
-  ) {
+  private async resolveSystemPromptOptions(): Promise<SystemPromptOptions> {
     let autoMemoryOptions: { directory: string; content: string } | undefined;
 
     if (this.getAutoMemoryEnabled()) {
@@ -1395,7 +1476,7 @@ export class AIManager {
       autoMemoryOptions = { directory, content };
     }
 
-    return buildSystemPrompt(this.systemPrompt, reachableToolPlugins, {
+    return {
       workdir: this.getCurrentWorkdir(),
       originalWorkdir: this.getOriginalWorkdir(),
       language: this.getLanguage(),
@@ -1405,7 +1486,43 @@ export class AIManager {
         this.permissionManager?.getEffectiveAdditionalDirectories?.() ?? [],
       autoMemory: autoMemoryOptions,
       leanPrompt: isLeanPromptEnabled(this.getCurrentWorkdir()),
-    });
+    };
+  }
+
+  /**
+   * Build the system prompt used by the main agent loop. Extracted so the
+   * compaction fork can mirror it exactly — the forked request prefix must
+   * match the main conversation's for the prompt cache to be reused.
+   *
+   * This is where `prompt.compose` / `prompt.section` land (spec
+   * ecosystem/plugin-mods.md「系统提示词与附件」): the host builds the named
+   * sections, mods get `prompt.compose` once per turn to settle the table, then
+   * every section goes through `prompt.section` — `null` drops it. Without a
+   * ModManager both hooks are skipped and the sections are joined as-is, so a
+   * prompt nobody rewrote stays byte-identical.
+   */
+  private async buildMainSystemPrompt(
+    reachableToolPlugins: ReturnType<ToolManager["getTools"]>,
+  ) {
+    const sections = buildSystemPromptSections(
+      this.systemPrompt,
+      reachableToolPlugins,
+      await this.resolveSystemPromptOptions(),
+    );
+
+    const mods = this.getModManager();
+    if (!mods) return buildSystemPromptBlocks(sections);
+
+    const composed = await mods.collectPromptSections(sections);
+    const applied: ModPromptSection[] = [];
+    for (const section of composed) {
+      const text = await mods.collectPromptSection(section);
+      // `null` means "this section should not appear" — not an empty string in
+      // its place (spec 验收场景 2).
+      if (text === null) continue;
+      applied.push({ id: section.id, text, scope: section.scope });
+    }
+    return buildSystemPromptBlocks(applied);
   }
 
   /**
@@ -1596,8 +1713,14 @@ export class AIManager {
    * the reminder from stacking. A failed configuration read degrades to "no
    * subagents available" — the reminder then says the name did not match, which
    * is still better than throwing away the turn.
+   *
+   * This is the `agent-mention` slot of `prompt.attachment` (spec
+   * ecosystem/plugin-mods.md「系统提示词与附件」): a mod can rewrite the
+   * reminder or drop it with `{ text: null }`.
    */
-  private injectAgentMentionReminder(mentionedAgents: string[]): void {
+  private async injectAgentMentionReminder(
+    mentionedAgents: string[],
+  ): Promise<void> {
     let availableNames: string[] = [];
     try {
       availableNames = (this.subagentManager?.getConfigurations() ?? []).map(
@@ -1610,7 +1733,10 @@ export class AIManager {
     const text = buildAgentMentionReminder(mentionedAgents, availableNames);
     if (!text) return;
 
-    const wrapped = wrapInSystemReminder(text);
+    const attachment = await this.rewriteAttachment("agent-mention", text);
+    if (attachment === null) return;
+
+    const wrapped = wrapInSystemReminder(attachment);
     const alreadyInjected = this.messageManager
       .getMessages()
       .some((message) =>
@@ -1689,10 +1815,16 @@ export class AIManager {
     // Mirror the main loop's memory injection so the request prefix matches.
     const { prependContent } =
       await this.messageManager.getMemoryForInjection();
-    if (prependContent.trim()) {
+    // `prompt.attachment` 的 `memory` 档（spec「系统提示词与附件」）：AGENTS.md
+    // 与用户记忆走的就是这一条，插件可以改也可以压掉。
+    const memoryAttachment = await this.rewriteAttachment(
+      "memory",
+      prependContent,
+    );
+    if (memoryAttachment?.trim()) {
       forkMessages.unshift({
         role: "user",
-        content: wrapInSystemReminder(prependContent),
+        content: wrapInSystemReminder(memoryAttachment),
       });
     }
 
@@ -2164,10 +2296,15 @@ ${question}`;
     // Mirror the main loop's memory injection so the request prefix matches.
     const { prependContent } =
       await this.messageManager.getMemoryForInjection();
-    if (prependContent.trim()) {
+    // Same `memory` attachment slot as the main loop (spec「系统提示词与附件」).
+    const memoryAttachment = await this.rewriteAttachment(
+      "memory",
+      prependContent,
+    );
+    if (memoryAttachment?.trim()) {
       forkMessages.unshift({
         role: "user",
-        content: wrapInSystemReminder(prependContent),
+        content: wrapInSystemReminder(memoryAttachment),
       });
     }
     return forkMessages;
@@ -2251,10 +2388,16 @@ ${question}`;
           // base-directory header). Re-render from the file only when that
           // record is missing — never hand the model a raw SKILL.md, whose
           // `${WAVE_SKILL_DIR}` would be a literal placeholder
-          // (spec core/message-compact 场景 4).
-          let skillContent =
-            invoked.content?.trim() ??
-            (skill ? this.skillManager.renderSkillContent(skill) : undefined);
+          // (spec core/message-compact 场景 4). A re-rendered body goes through
+          // `skill.prompt` again so the model sees the same text it saw the
+          // first time; the recorded body already did.
+          let skillContent = invoked.content?.trim();
+          if (!skillContent && skill) {
+            skillContent = await this.skillManager.applySkillPrompt(
+              skill,
+              this.skillManager.renderSkillContent(skill),
+            );
+          }
           if (!skillContent) continue;
 
           const maxSkillChars = POST_COMPACT_MAX_TOKENS_PER_SKILL * 4;
@@ -2495,8 +2638,15 @@ ${question}`;
     // event. Deliberately outside the restart loop below — a Stop-hook
     // continuation or a notification drain is still the same turn, so the step
     // counter below survives it too.
+    //
+    // `turnId` 是这一轮的身份：`turn.start` / `turn.step` / `turn.complete` /
+    // `classic.MessageDisplay` 四处共用同一个值，也是 `$.turn.abort({ turnId })`
+    // 的凭据（spec「收掉一轮」）。子代理的嵌套轮次不对外报这些，但 id 照给 ——
+    // 它只在本实例内流转，不会有第二个消费者。
+    const turnId = randomUUID();
     if (!this.subagentType) {
-      this.getModManager()?.notifyMods("turn.start", { step: 0 });
+      this.currentTurnId = turnId;
+      this.getModManager()?.notifyMods("turn.start", { turnId, step: 0 });
     }
     // 这一轮的第几次请求。**不**用 `turnDepth - turnOffset`：那两个量在每次
     // `outer` 重开时都会重置，重开是同一轮里的新请求，mod 看到的步数不该退回 1。
@@ -2557,7 +2707,7 @@ ${question}`;
           }
 
           if (mentionedAgents.length > 0) {
-            this.injectAgentMentionReminder(mentionedAgents);
+            await this.injectAgentMentionReminder(mentionedAgents);
           }
         }
       }
@@ -2639,20 +2789,33 @@ ${question}`;
           const nestedMemories =
             (await this.messageManager.collectNestedMemoryFiles?.()) ?? [];
           for (const memory of nestedMemories) {
+            // `prompt.attachment`（spec「系统提示词与附件」）：`type` 是我们自
+            // 己的分类，`nested-memory` 专指这一档。返回 `null` 就不注入这一条。
+            const nestedMemoryText = await this.rewriteAttachment(
+              "nested-memory",
+              `Contents of ${memory.path}:\n\n${memory.content}`,
+            );
+            if (nestedMemoryText === null) continue;
             this.messageManager.addUserMessage({
-              content: wrapInSystemReminder(
-                `Contents of ${memory.path}:\n\n${memory.content}`,
-              ),
+              content: wrapInSystemReminder(nestedMemoryText),
               isMeta: true,
             });
             // 影子事件 `classic.InstructionsLoaded`（spec「影子事件」）：这里只
-            // 有「读到子树后注入」这一档（`nested_read`），开局常驻的那几份由
-            // Agent 在启动时统一报。
+            // 有「沿目录链注入」这一档（`nested_traversal`），开局常驻的那几份
+            // 由 Agent 在启动时统一报。子树里的那份按定义属于项目档
+            // （`Local` 只认 `AGENTS.local.md` 这个名字，且只在会话根上找）。
+            // 被插件压掉的那份没有注入，也就没有「载入了」这件事。
             this.getModManager()?.notifyMods("classic.InstructionsLoaded", {
               file_path: memory.path,
-              load_reason: "nested_read",
+              memory_type: "Project",
+              load_reason: "nested_traversal",
             });
           }
+
+          // Session-scoped context from mods (`prompt.context`): one chance per
+          // session, and it has to land before the snapshot below to be in the
+          // first request.
+          await this.injectSessionPromptContext();
 
           // Subtree skills reached by this turn's file operations, then the
           // skill list itself — both before the snapshot below, so a skill
@@ -2720,7 +2883,10 @@ ${question}`;
           // what lets a status band show "step 3" without watching messages.
           if (!this.subagentType) {
             turnSteps += 1;
-            this.getModManager()?.notifyMods("turn.step", { step: turnSteps });
+            this.getModManager()?.notifyMods("turn.step", {
+              turnId,
+              step: turnSteps,
+            });
           }
 
           // Background-task notifications are drained at the request boundary:
@@ -2751,7 +2917,7 @@ ${question}`;
             const pendingNotifications =
               this.getMessageQueue()?.drainNotifications() ?? [];
             if (pendingNotifications.length > 0) {
-              this.injectTaskNotifications(pendingNotifications);
+              await this.injectTaskNotifications(pendingNotifications);
             }
           }
 
@@ -2787,11 +2953,16 @@ ${question}`;
                 : undefined,
           };
 
-          // Prepend: AGENTS.md + user memory + unconditional rules as system-reminder
-          if (prependContent.trim()) {
+          // Prepend: AGENTS.md + user memory + unconditional rules as system-reminder.
+          // 这是 `prompt.attachment` 的 `memory` 档（spec「系统提示词与附件」）。
+          const memoryAttachment = await this.rewriteAttachment(
+            "memory",
+            prependContent,
+          );
+          if (memoryAttachment?.trim()) {
             callAgentOptions.messages.unshift({
               role: "user",
-              content: wrapInSystemReminder(prependContent),
+              content: wrapInSystemReminder(memoryAttachment),
             });
           }
 
@@ -2922,7 +3093,7 @@ ${question}`;
             (!assistantMessageCreated &&
               (result.content || result.tool_calls || result.reasoning_content))
           ) {
-            this.messageManager.addAssistantMessage();
+            assistantMessageId = this.messageManager.addAssistantMessage();
             assistantMessageCreated = true;
           }
 
@@ -2957,6 +3128,10 @@ ${question}`;
           if (result.content && !createdByStreaming) {
             this.messageManager.appendCurrentMessageContent(result.content);
           }
+
+          // 影子事件 `classic.MessageDisplay`（spec「影子事件」）：一条 assistant
+          // 消息的正文到这里就齐了 —— 一条报一次，`index` 恒 0、`final` 恒真。
+          this.notifyMessageDisplay(turnId, assistantMessageId);
 
           // The Messages endpoint signs each thinking block and verifies those
           // boundaries on replay, so the per-block signatures have to land on the
@@ -3041,10 +3216,13 @@ ${question}`;
             }
 
             // Execute batches sequentially; within a safe batch, tools run in parallel
+            // 形状照 CC：成功与否看 `tool_response` 在不在（曾经有一个自造的
+            // `ok`，按 CC 字段写的插件读不到它）。
             const batchOutcomes: Array<{
               tool_name: string;
+              tool_input: Record<string, unknown>;
               tool_use_id: string;
-              ok: boolean;
+              tool_response?: string;
             }> = [];
             for (const batch of batches) {
               if (
@@ -3056,7 +3234,7 @@ ${question}`;
               const run = async (
                 call: ChatCompletionMessageFunctionToolCall,
               ) => {
-                const ok = await this.executeToolCall(
+                const outcome = await this.executeToolCall(
                   call,
                   abortController,
                   toolAbortController,
@@ -3064,8 +3242,12 @@ ${question}`;
                 );
                 batchOutcomes.push({
                   tool_name: call.function?.name || "",
+                  tool_input: outcome.toolInput ?? {},
                   tool_use_id: call.id || "",
-                  ok,
+                  // 失败的调用没有 `tool_response`（CC 同形）。
+                  ...(outcome.toolResponse === undefined
+                    ? {}
+                    : { tool_response: outcome.toolResponse }),
                 });
               };
               if (batch.calls.length === 1) {
@@ -3340,7 +3522,7 @@ ${question}`;
           messageQueue.hasNotifications() &&
           !isCurrentlyAborted
         ) {
-          this.injectTaskNotifications(messageQueue.drainNotifications());
+          await this.injectTaskNotifications(messageQueue.drainNotifications());
           // Re-assert loading state before restarting: if this turn was
           // aborted, abortAIMessage already reset loading to false, and the
           // restart below continues the conversation — the UI must show
@@ -3362,6 +3544,7 @@ ${question}`;
         // 报（`turnUsage` / `turnStartedAt` 跨续跑累计，报的仍是整段）。
         if (!shouldRestart && !this.subagentType) {
           const mods = this.getModManager();
+          const lastAnswer = this.lastAssistantText();
           const backgroundTasks = (
             this.backgroundTaskManager?.getAllTasks() ?? []
           )
@@ -3373,6 +3556,9 @@ ${question}`;
                 background_tasks: backgroundTasks,
                 stop_hook_active:
                   this.stopHookActive || this.modStopContextCount > 0,
+                // 已经有答案就交出去（`last_assistant_message`，CC 同名字段）：
+                // 插件不必自己去读转录解 JSONL。中断的一轮可能没有答案，省略。
+                ...(lastAnswer ? { last_assistant_message: lastAnswer } : {}),
               })) ?? []);
           if (stopContexts.length > 0) {
             // 中断的一轮、以及已有一条用户消息在排队的收尾都不续跑（照 CC 的
@@ -3423,6 +3609,7 @@ ${question}`;
         if (turnOffset === 0 && !this.subagentType) {
           const mods = this.getModManager();
           mods?.notifyMods("turn.complete", {
+            turnId,
             isAborted: turnAborted,
             durationMs: Date.now() - turnStartedAt,
             answer: this.lastAssistantText() ?? "",
@@ -3434,6 +3621,9 @@ ${question}`;
           if (turnError) {
             mods?.notifyMods("classic.StopFailure", { error: turnError });
           }
+          // 这一轮已经收尾：之后的 `$.turn.abort` 该拿到「没有一轮在跑」，而不是
+          // 悄悄收掉下一轮。
+          this.currentTurnId = undefined;
         }
         break outer;
       }
@@ -3463,6 +3653,51 @@ ${question}`;
   }
 
   /**
+   * 派发 `prompt.attachment`：宿主自己要往对话里加一条消息之前（spec
+   * ecosystem/plugin-mods.md「系统提示词与附件」）。
+   *
+   * 返回 `null` 表示这条不要 —— 这是插件唯一能压掉一条宿主消息的通道。交给插
+   * 件的是**没包 `system-reminder` 的正文**：那层标签是宿主与模型之间的约定，
+   * 插件改的是内容，包壳留在宿主这边（`wrapInSystemReminder`）。
+   */
+  private async rewriteAttachment(
+    type: string,
+    text: string,
+  ): Promise<string | null> {
+    const mods = this.getModManager();
+    if (!mods) return text;
+    return mods.rewritePromptAttachment({ type, text });
+  }
+
+  /**
+   * 派发 `prompt.context`：这场会话的上下文块，**一条会话一次**（spec「系统提
+   * 示词与附件」）。
+   *
+   * 落在第一轮的消息快照之前，所以第一个请求就带上了它；用 session id 记住问
+   * 过哪一场 —— `/clear`、恢复会话、压缩都会换 session id，换了就等于新的一场，
+   * 不需要另外的重置点。与 `prompt.submit` 的 `{ context }` 不是一回事：那条每
+   * 轮都能塞、只作用于本轮。
+   */
+  private async injectSessionPromptContext(): Promise<void> {
+    const mods = this.getModManager();
+    if (!mods) return;
+
+    const sessionId = this.messageManager.getSessionId();
+    if (this.sessionPromptContextFor === sessionId) return;
+    // 先记后问：钩子抛错时不能变成「每个请求都重问一遍」。
+    this.sessionPromptContextFor = sessionId;
+
+    const blocks = await mods.collectSessionContextBlocks();
+    for (const block of blocks) {
+      if (!block.text.trim()) continue;
+      this.messageManager.addUserMessage({
+        content: wrapInSystemReminder(block.text),
+        isMeta: true,
+      });
+    }
+  }
+
+  /**
    * The last assistant message's text, trimmed — `undefined` when there is none.
    *
    * Two readers: the Stop hook context (so a hook can inspect the final response
@@ -3484,6 +3719,40 @@ ${question}`;
   }
 
   /**
+   * 影子事件 `classic.MessageDisplay`（spec「影子事件」）：一条 assistant 消息
+   * 的正文定型时报一次。
+   *
+   * 我们不分 flush：CC 每攒够几行派发一次、`index` 递增、`final` 只在最后一次
+   * 为真；这里一条消息只给一次全文，所以 `index` 恒 `0`、`final` 恒 `true`、
+   * `delta` 就是完整正文（按限额截断）。没有正文的消息（只带工具调用的那种）不
+   * 报 —— 报一个空 `delta` 只会让透明类插件画一行空白。
+   */
+  private notifyMessageDisplay(
+    turnId: string,
+    messageId: string | undefined,
+  ): void {
+    if (this.subagentType || messageId === undefined) return;
+    const mods = this.getModManager();
+    if (!mods) return;
+    const message = this.messageManager
+      .getMessages()
+      .find((item) => item.id === messageId);
+    const text = (message?.blocks ?? [])
+      .filter((block) => block.type === "text")
+      .map((block) => block.content)
+      .join("\n")
+      .trim();
+    if (text.length === 0) return;
+    mods.notifyMods("classic.MessageDisplay", {
+      turn_id: turnId,
+      message_id: messageId,
+      index: 0,
+      final: true,
+      delta: truncateForModEvent(text),
+    });
+  }
+
+  /**
    * Write background-task notifications into the message history as hidden
    * (isMeta) user messages, returning how many landed.
    *
@@ -3491,11 +3760,19 @@ ${question}`;
    * the end-of-turn drain, and the idle wake-up in Agent.processQueuedMessage.
    * Callers pass already-drained XML, so injection *is* the consumption step —
    * the same notification can never be injected twice.
+   *
+   * 这是 `prompt.attachment` 的 `background-task` 档（spec「系统提示词与附
+   * 件」）：插件拿到的是那条通知的原文（XML 或 page-comment 事件），可以改也
+   * 可以用 `{ text: null }` 压掉 —— 压掉即当它没来过，不会重投。
    */
-  public injectTaskNotifications(xmls: readonly string[]): number {
+  public async injectTaskNotifications(
+    xmls: readonly string[],
+  ): Promise<number> {
     let injected = 0;
     for (const xml of xmls) {
-      const block = parseTaskNotificationXml(xml);
+      const attachment = await this.rewriteAttachment("background-task", xml);
+      if (attachment === null) continue;
+      const block = parseTaskNotificationXml(attachment);
       if (block) {
         this.messageManager.addNotificationMessage({
           taskId: block.taskId,
@@ -3512,8 +3789,11 @@ ${question}`;
       // taskId, no terminal state): they land as hidden user text so the model
       // reads the threads itself. Same handling as the idle path in
       // Agent.processQueuedMessage.
-      if (parsePageCommentEventXml(xml)) {
-        this.messageManager.addUserMessage({ content: xml, isMeta: true });
+      if (parsePageCommentEventXml(attachment)) {
+        this.messageManager.addUserMessage({
+          content: attachment,
+          isMeta: true,
+        });
         injected++;
       }
     }
@@ -3660,18 +3940,27 @@ ${question}`;
   /**
    * Execute a single tool call: arg parsing, block emission, PreToolUse hooks,
    * tool execution, PostToolUse hooks, and error handling.
+   *
+   * Returns what `classic.PostToolBatch` reports per call: whether it ran at all
+   * is no longer the whole answer — the batch payload carries `tool_input` and
+   * `tool_response` (spec「影子事件」), so the parsed args and the result text
+   * come back from here instead of being re-derived in the caller.
    */
   private async executeToolCall(
     functionToolCall: ChatCompletionMessageFunctionToolCall,
     abortController: AbortController,
     toolAbortController: AbortController,
     finishReason?: string | null,
-  ): Promise<boolean> {
+  ): Promise<{
+    ok: boolean;
+    toolInput?: Record<string, unknown>;
+    toolResponse?: string;
+  }> {
     const toolId = functionToolCall.id || "";
 
     // Check if already interrupted, skip tool execution if so
     if (abortController.signal.aborted || toolAbortController.signal.aborted) {
-      return false;
+      return { ok: false };
     }
 
     const toolName = functionToolCall.function?.name || "";
@@ -3711,7 +4000,7 @@ ${question}`;
             compactParams: "",
             timestamp: Date.now(),
           });
-          return false;
+          return { ok: false };
         }
       }
     }
@@ -3846,7 +4135,15 @@ ${question}`;
       // Write/Edit of the plan file broadcasts the new content so hosts can
       // update an already-open plan panel without waiting for ExitPlanMode.
       await this.notifyPlanFileUpdate(toolName, toolArgs, toolResult.success);
-      return toolResult.success;
+      return {
+        ok: toolResult.success,
+        toolInput: toolArgs,
+        // 失败的调用不给 `tool_response`（CC 的 PostToolBatch 同形：失败那次
+        // 只有 `tool_use_id` 在）。
+        ...(toolResult.success
+          ? { toolResponse: truncateForModEvent(toolResultContent) }
+          : {}),
+      };
     } catch (toolError) {
       const errorMessage =
         toolError instanceof Error ? toolError.message : String(toolError);
@@ -3862,7 +4159,7 @@ ${question}`;
         compactParams,
         timestamp: Date.now(),
       });
-      return false;
+      return { ok: false, toolInput: toolArgs };
     }
   }
 

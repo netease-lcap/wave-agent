@@ -159,6 +159,13 @@ function createHarness() {
   const notifyMods = vi.fn();
   container.register("ModManager", {
     notifyMods,
+    // 一轮结束会问一遍 `Stop` 钩子；这个用例只关心嵌套记忆的注入点，没人注册。
+    collectStopContext: vi.fn().mockResolvedValue([]),
+    // 提示词类钩子原样放行 = 「没有插件改东西」。
+    collectPromptSections: vi.fn(async (sections) => sections),
+    collectPromptSection: vi.fn(async (section) => section.text),
+    collectSessionContextBlocks: vi.fn(async () => []),
+    rewritePromptAttachment: vi.fn(async (attachment) => attachment.text),
     currentPermissionMode: () => "default",
   } as unknown as ModManager);
 
@@ -333,14 +340,15 @@ describe("AIManager nested memory injection", () => {
     expect(loaded).toEqual([
       {
         file_path: "/test/workdir/packages/AGENTS.md",
-        load_reason: "nested_read",
+        memory_type: "Project",
+        load_reason: "nested_traversal",
       },
     ]);
   });
 
-  it("整批工具跑完后发一次 classic.PostToolBatch，带上每次的 ok", async () => {
+  it("整批工具跑完后发一次 classic.PostToolBatch，带上每次的入参与结果", async () => {
     // spec「影子事件」：一批 = 一次模型响应里的全部工具调用（不是为并发切出来
-    // 的那些小块），`ok` 取那次调用自己的结果。
+    // 的那些小块）；成功的调用带 `tool_response`，失败的没有。
     const { aiManager, nestedMemoryQueue, notifyMods } = createHarness();
     readToolCall(nestedMemoryQueue);
     textReply();
@@ -350,8 +358,14 @@ describe("AIManager nested memory injection", () => {
     const batches = notifyMods.mock.calls
       .filter((call) => call[0] === "classic.PostToolBatch")
       .map((call) => call[1]);
-    expect(batches).toEqual([
-      { tool_calls: [{ tool_name: "Read", tool_use_id: "call_1", ok: true }] },
-    ]);
+    expect(batches).toHaveLength(1);
+    const calls = batches[0].tool_calls;
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toEqual({
+      tool_name: "Read",
+      tool_input: { file_path: "a.ts" },
+      tool_use_id: "call_1",
+      tool_response: expect.any(String),
+    });
   });
 });

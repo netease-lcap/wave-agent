@@ -719,8 +719,17 @@ describe("AIManager - compactConversation", () => {
   describe("session.compact 事件", () => {
     function withMods(): ReturnType<typeof vi.fn> {
       const notifyMods = vi.fn();
-      // 容器里放一个假的 ModManager：派发点只看 `notifyMods` 这一个方法。
-      container.register("ModManager", { notifyMods });
+      // 容器里放一个假的 ModManager：本用例只看 `notifyMods`，提示词类钩子
+      // （`prompt.*` / `prompt.attachment`）一律原样放行，等于「没有插件」。
+      container.register("ModManager", {
+        notifyMods,
+        collectPromptSections: vi.fn(async (sections) => sections),
+        collectPromptSection: vi.fn(async (section) => section.text),
+        collectSessionContextBlocks: vi.fn(async () => []),
+        rewritePromptAttachment: vi.fn(async (attachment) => attachment.text),
+        collectSkillText: vi.fn(async (request) => request.text),
+        collectStopContext: vi.fn(async () => []),
+      });
       return notifyMods;
     }
 
@@ -729,11 +738,38 @@ describe("AIManager - compactConversation", () => {
 
       await aiManager.compactConversation({ trigger: "auto" });
 
-      expect(notifyMods).toHaveBeenCalledTimes(1);
+      // 顺序：压缩前一条 `classic.PreCompact`、压缩后一条 `session.compact` 与
+      // 它的镜像 `classic.PostCompact`（spec「影子事件」）。
+      expect(notifyMods.mock.calls.map((call) => call[0])).toEqual([
+        "classic.PreCompact",
+        "session.compact",
+        "classic.PostCompact",
+      ]);
       expect(notifyMods).toHaveBeenCalledWith("session.compact", {
         trigger: "auto",
         tokensBefore: expect.any(Number),
         tokensAfter: expect.any(Number),
+      });
+      expect(notifyMods).toHaveBeenCalledWith("classic.PreCompact", {
+        trigger: "auto",
+        custom_instructions: null,
+      });
+      expect(notifyMods).toHaveBeenCalledWith("classic.PostCompact", {
+        trigger: "auto",
+        compact_summary: expect.any(String),
+      });
+    });
+
+    it("/compact 的补充指令进 classic.PreCompact", async () => {
+      const notifyMods = withMods();
+
+      await aiManager.compactConversation({
+        customInstructions: "只留改动的文件",
+      });
+
+      expect(notifyMods).toHaveBeenCalledWith("classic.PreCompact", {
+        trigger: "manual",
+        custom_instructions: "只留改动的文件",
       });
     });
 
@@ -791,7 +827,9 @@ describe("AIManager - compactConversation", () => {
 
       await aiManager.compactConversation();
 
-      const payload = notifyMods.mock.calls[0][1] as {
+      const payload = notifyMods.mock.calls.find(
+        (call) => call[0] === "session.compact",
+      )?.[1] as {
         tokensBefore: number;
         tokensAfter: number;
       };
@@ -806,7 +844,11 @@ describe("AIManager - compactConversation", () => {
 
       await aiManager.compactConversation();
 
-      expect(notifyMods).not.toHaveBeenCalled();
+      // 压缩**开始**之前那条还是发了（它是「正要压」的事实），失败之后那两条
+      // 一条都不许出现。
+      expect(notifyMods.mock.calls.map((call) => call[0])).toEqual([
+        "classic.PreCompact",
+      ]);
     });
   });
 });
