@@ -321,6 +321,77 @@ export interface ModPermissionRequestEvent {
   plan_file_path?: string;
 }
 
+/**
+ * `tool.call` 的载荷：一次工具调用**结束**，结果已经拿到（spec「完成与审批的
+ * 观察」）。
+ *
+ * 字段照 Claude Code 同名事件的形状取最小集：`tool` 是工具名、`input` 是它收到
+ * 的参数。CC 的同名钩子还能返回 `{ deny }` 拦下这次调用，我们只做观察这一半，
+ * 返回值丢弃。
+ */
+export interface ModToolCallEvent {
+  tool: string;
+  input: unknown;
+}
+
+/**
+ * `$.command.register` 的参数（spec「注册命令」）。
+ *
+ * 只有菜单元数据，**没有 handler** —— 用户敲下命令后引擎派 `command.run` 钩子，
+ * 由钩子答 `{ text }`。这是 Claude Code 的契约，照抄的理由是：注册的是「菜单里
+ * 那一行」，而真正做什么每次都可能在钩子里按状态变化。
+ */
+export interface ModCommandSpec {
+  /** `/^[a-zA-Z0-9_-]{1,64}$/`，不带斜杠。 */
+  name: string;
+  /** 菜单里显示的那行字，必填非空。 */
+  description: string;
+  /** 命令后显示的参数提示（如 `"<天数>"`）。 */
+  argumentHint?: string;
+  /** 忙时是否插队执行，语义同 `SlashCommand.immediate`。 */
+  immediate?: boolean;
+}
+
+/** `$.command.list()` 的一行。 */
+export interface ModCommandInfo {
+  name: string;
+  description: string;
+  /** 来源：内置技能、用户/项目自定义命令、插件（含 mod 自己注册的）。 */
+  source: "builtin" | "user" | "project" | "plugin";
+  /** `source === "plugin"` 时的插件名（不可信文本，展示前要转义）。 */
+  plugin?: string;
+}
+
+/**
+ * `ModManager` 与斜杠命令表之间的桥（spec「注册命令」）。
+ *
+ * 命令表在 `SlashCommandManager`，而「执行这条命令该问哪个 mod」只有
+ * `ModManager` 知道；两边互相持有会成环，所以由组装方（`containerSetup`）建一个
+ * 只含四个动作的桥传进去。
+ */
+export interface ModCommandBridge {
+  /**
+   * 登记一条 mod 命令。重名、非法名都在实现侧拒掉并返回原因 ——
+   * `$.command.register` 要把原因抛给 mod 作者看。
+   */
+  register(input: {
+    name: string;
+    description: string;
+    argumentHint?: string;
+    immediate?: boolean;
+    /** 注册者插件名，用于命令的归属（重名判定的「插件 X 已注册」）。 */
+    plugin: string;
+    /** 用户执行这条命令时调用；返回 `undefined` 表示没有钩子回答。 */
+    run: (args: string) => Promise<string | undefined>;
+  }): { ok: true } | { ok: false; reason: string };
+  /** 撤销一条 mod 命令（插件重载 / 会话销毁）。 */
+  unregister(name: string): void;
+  /** 当前可见的命令（含非 mod 来源），供 `$.command.list()`。 */
+  list(): ModCommandInfo[];
+  /** 以 mod 身份执行一条命令；不存在时抛错。 */
+  run(command: string, args?: string): Promise<void>;
+}
+
 /** 限额（spec「限额」表）。宿主与编译器共用同一份数字。 */
 export const MOD_LIMITS = {
   /** 单个 mod 文件。 */
@@ -380,4 +451,6 @@ export const MOD_LIMITS = {
   toastMaxMs: 10_000,
   /** 同时排队的 toast 条数；溢出时丢弃尚未展示的旧条。 */
   toastQueueMax: 50,
+  /** 一个 mod 注册的命令数上限；超出时 `$.command.register` 报错。 */
+  maxCommandsPerMod: 32,
 } as const;

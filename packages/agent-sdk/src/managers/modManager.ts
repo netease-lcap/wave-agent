@@ -14,6 +14,8 @@ import {
   MOD_BAND_INSTANCE_ID,
   MOD_LIMITS,
   type ModBandRenderResult,
+  type ModCommandBridge,
+  type ModCommandSpec,
   type ModPanelEventPayload,
   type ModPanelRenderResult,
   type ModPanelTree,
@@ -23,6 +25,7 @@ import {
   type ModSessionUsage,
   type ModStatusPayload,
   type ModToastPayload,
+  type ModToolCallEvent,
   type ModTurnCompleteEvent,
   type PluginMod,
 } from "../types/mods.js";
@@ -194,6 +197,24 @@ export class ModManager {
    * 一个 0 而不是抛错。
    */
   private sessionUsageProvider?: () => ModSessionUsage;
+  /**
+   * `$.ui.log` 的出口（spec「在对话流里留一行」）。
+   *
+   * 落点是会话的提示块（`notice`），只有 `MessageManager` 写得了；与
+   * `promptSubmitter` 同一条理由，由 `Agent` 接进来。没接上时这行丢失并记一条
+   * debug —— 宿主（比如将来的 CLI 形态）不展示对话流时不该让 mod 报错。
+   */
+  private logSink?: (text: string) => void;
+  /**
+   * `$.command.*` 的桥（spec「注册命令」）。
+   *
+   * 命令表在 `SlashCommandManager` 里，而「执行一条命令时该问哪个 mod 的钩子」
+   * 只有这里知道 —— 两边互相持有会成环，所以由 `containerSetup` 组装一个桥：
+   * 注册/列表/执行都转给命令表，回调里再回到本 manager 派 `command.run`。
+   */
+  private commandBridge?: ModCommandBridge;
+  /** 每个 mod 注册了哪些命令（`<modId>` → 命令名集合），卸载与重载时清理。 */
+  private readonly ownedCommands = new Map<string, Set<string>>();
   private disposed = false;
 
   constructor(private readonly options: ModManagerOptions) {
@@ -213,6 +234,16 @@ export class ModManager {
   /** 接上用量快照（见 `sessionUsageProvider`）。 */
   setSessionUsageProvider(fn: () => ModSessionUsage): void {
     this.sessionUsageProvider = fn;
+  }
+
+  /** 接上对话流的写入口（见 `logSink`）。 */
+  setLogSink(fn: (text: string) => void): void {
+    this.logSink = fn;
+  }
+
+  /** 接上命令表（见 `commandBridge`）。 */
+  setCommandBridge(bridge: ModCommandBridge): void {
+    this.commandBridge = bridge;
   }
 
   /** 接上「填草稿」通道（见 `promptFiller`）。 */
@@ -301,6 +332,11 @@ export class ModManager {
               setStatus: (text) => this.publishStatus(mod.id, text),
               showToast: (text, timeoutMs) =>
                 this.publishToast(mod.id, text, timeoutMs),
+              appendLog: (text) => this.appendLog(text),
+              registerCommand: (spec) =>
+                this.registerCommand(mod.id, plugin.name, spec),
+              listCommands: () => this.commandBridge?.list() ?? [],
+              runCommand: (command, args) => this.runCommand(command, args),
               stateGet: (key) => this.stateFor(mod.id).get(key),
               stateSet: (key, value) => {
                 this.stateFor(mod.id).set(key, value);
@@ -378,17 +414,20 @@ export class ModManager {
   }
 
   /**
-   * 派发一次只读事件（`turn.complete` / `classic.PermissionRequest`，spec「完成
-   * 与审批的观察」）。
+   * 派发一次只读事件（`turn.complete` / `tool.call` /
+   * `classic.PermissionRequest`，spec「完成与审批的观察」）。
    *
-   * 不等 mod、也不返回 Promise：这两个时刻都压在宿主的关键路径上（轮次收尾、
-   * 审批卡片即将弹出），mod 在里面做网络上报不能把用户的中断或那道审批拖住。
-   * 钩子失败、超时只记一条 warn —— 事件丢了就丢了，宿主不回滚、不重试、不排
-   * 队（瞬时事件本来就没有「补发」这回事）。
+   * 不等 mod、也不返回 Promise：这三个时刻都压在宿主的关键路径上（轮次收尾、
+   * 工具刚跑完、审批卡片即将弹出），mod 在里面做网络上报不能把用户的中断、下
+   * 一次工具调用或那道审批拖住。钩子失败、超时只记一条 warn —— 事件丢了就丢
+   * 了，宿主不回滚、不重试、不排队（瞬时事件本来就没有「补发」这回事）。
    */
   notifyMods(
-    event: "turn.complete" | "classic.PermissionRequest",
-    payload: ModTurnCompleteEvent | ModPermissionRequestEvent,
+    event: "turn.complete" | "tool.call" | "classic.PermissionRequest",
+    payload:
+      | ModTurnCompleteEvent
+      | ModToolCallEvent
+      | ModPermissionRequestEvent,
   ): void {
     if (this.disposed) return;
     for (const [modId, loaded] of this.mods) {
@@ -477,6 +516,8 @@ export class ModManager {
     // 外部进程连同子进程树一起杀（spec「生命周期」）：留下的孤儿会一直跑，
     // 然后往一个已经不存在的会话里写东西。
     this.processes.dispose();
+    // 命令的 handler 闭包指着这个沙箱，留下就是一个打到已销毁会话上的僵尸。
+    this.dropOwnedCommands();
     // 先关面板再进终态：`closed: true` 是界面关掉 tab 的唯一信号，而
     // `publishUpdate` 在 `disposed` 之后一律静默。
     this.closeAllPanes();
@@ -498,6 +539,8 @@ export class ModManager {
     // runtime —— 留着的话这些回调/子进程会打到已经没人认领的旧实例上。
     this.cancelAllTimers();
     this.processes.killAll();
+    // 命令先撤再重建：否则重载后命令表里留着指向旧沙箱的 handler。
+    this.dropOwnedCommands();
     this.closeAllPanes();
     this.bands.clear();
     this.statusLines.clear();
@@ -1035,6 +1078,119 @@ export class ModManager {
       text,
       timeoutMs,
     });
+  }
+
+  /**
+   * `$.ui.log` 的出口（spec「在对话流里留一行」）。
+   *
+   * 与 toast 不同，这一行属于会话：出口接的是 `MessageManager.addNoticeBlock`，
+   * 所以它会随会话落盘、但不进模型上下文。没有落点（没人接）时丢弃并记 debug
+   * —— 让 mod 因为「宿主不显示对话流」而报错没有意义。
+   */
+  private appendLog(text: string): void {
+    if (this.disposed) return;
+    if (!this.logSink) {
+      logger.debug(`[Wave] $.ui.log 没有落点，丢弃一行：${text}`);
+      return;
+    }
+    this.logSink(text);
+  }
+
+  /**
+   * `$.command.register`（spec「注册命令」）。
+   *
+   * 归属记在 `ownedCommands` 里：重载与销毁要按 mod 撤销（命令的 handler 闭包指
+   * 向这个沙箱，留着就是一个打到已销毁会话上的僵尸）；重名则原样抛给 mod。
+   */
+  private registerCommand(
+    modId: string,
+    plugin: string,
+    spec: ModCommandSpec,
+  ): { command: string } {
+    const bridge = this.commandBridge;
+    if (!bridge) {
+      throw new Error("这个会话没有命令表，$.command.register 无处可去");
+    }
+    const owned = this.ownedCommands.get(modId) ?? new Set<string>();
+    // 同一个 mod 重复注册同一个名字是幂等的（CC 同款：只在命令表里留一条）。
+    if (owned.has(spec.name)) {
+      logger.debug(
+        `[Wave] $.command.register (${plugin}): /${spec.name} unchanged; not re-registered`,
+      );
+      return { command: spec.name };
+    }
+    if (owned.size >= MOD_LIMITS.maxCommandsPerMod) {
+      throw new Error(
+        `$.command.register 一个 mod 最多注册 ${MOD_LIMITS.maxCommandsPerMod} 条命令`,
+      );
+    }
+    const outcome = bridge.register({
+      ...spec,
+      plugin,
+      // 用户执行这条命令时回到本沙箱：钩子答什么，这一行就变成什么。
+      run: async (args) => this.runCommandHook(modId, spec.name, args),
+    });
+    if (!outcome.ok) throw new Error(outcome.reason);
+    owned.add(spec.name);
+    this.ownedCommands.set(modId, owned);
+    logger.info(`[Wave] $.command.register (${plugin}): /${spec.name} listed`);
+    return { command: spec.name };
+  }
+
+  /**
+   * 派一条 `command.run` 钩子，取出它答的那段文字。
+   *
+   * 三种「没人答得上来」都返回 `undefined`：mod 没注册对应 matcher、钩子抛错、
+   * 返回的不是 `{ text: string }`。由命令表那边统一报「注册了但没钩子回答」，
+   * 免得同一件事在两处给两种文案。
+   */
+  private async runCommandHook(
+    modId: string,
+    name: string,
+    args: string,
+  ): Promise<string | undefined> {
+    const runtime = this.mods.get(modId)?.runtime;
+    if (!runtime) return undefined;
+    const result = await runtime.callCommandHook(`/${name}`, args);
+    if (!result.ok) {
+      logger.warn(`[Wave] ${modId} 的 /${name} 命令钩子失败：${result.error}`);
+      return undefined;
+    }
+    const value = result.value;
+    if (
+      typeof value === "object" &&
+      value !== null &&
+      typeof (value as { text?: unknown }).text === "string"
+    ) {
+      return (value as { text: string }).text;
+    }
+    return undefined;
+  }
+
+  /** `$.command.run`：以 mod 身份执行一条已注册的命令。 */
+  private async runCommand(command: string, args?: string): Promise<void> {
+    const bridge = this.commandBridge;
+    if (!bridge) {
+      throw new Error("这个会话没有命令表，$.command.run 无处可去");
+    }
+    await bridge.run(command, args);
+  }
+
+  /**
+   * 撤销某个 mod 注册过的全部命令（重载、销毁）。
+   *
+   * 逐个名单条命令，而不是按插件整批撤：同一个插件可能还有 markdown 命令（那些
+   * 归 `PluginManager` 管），这里只碰 mod 自己注册的。
+   */
+  private dropOwnedCommands(modId?: string): void {
+    const bridge = this.commandBridge;
+    const targets = modId ? [modId] : [...this.ownedCommands.keys()];
+    for (const target of targets) {
+      const owned = this.ownedCommands.get(target);
+      if (!owned) continue;
+      for (const name of owned) bridge?.unregister(name);
+      this.ownedCommands.delete(target);
+    }
   }
 
   /** 插件注册名（署名用）；`modId` 是 `<pluginName>:<fileStem>`，但别去拆它。 */

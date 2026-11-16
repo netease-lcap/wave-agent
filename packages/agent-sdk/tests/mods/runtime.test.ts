@@ -8,6 +8,7 @@ import {
 } from "../../src/mods/runtime.js";
 import {
   MOD_LIMITS,
+  type ModCommandSpec,
   type ModProcessChunk,
   type ModProcessExit,
   type ModRunResult,
@@ -110,6 +111,10 @@ function host(overrides: Partial<ModRuntimeHost> = {}): ModRuntimeHost {
       context: { tokens: 0, window: 200_000, percent: 0 },
       tokens: { prompt: 0, completion: 0, cacheRead: 0, cacheCreation: 0 },
     })),
+    appendLog: vi.fn(),
+    registerCommand: vi.fn((spec: ModCommandSpec) => ({ command: spec.name })),
+    listCommands: vi.fn(() => []),
+    runCommand: vi.fn(async () => {}),
     ...overrides,
   };
 }
@@ -334,13 +339,14 @@ describe("ModRuntime 的隔离", () => {
     expect(mod.hookNames()).toEqual(["session.start"]);
   });
 
-  it("两个只读的观察事件可以注册", async () => {
-    // spec「完成与审批的观察」：它们只报告事实，宿主丢弃返回值。审批那个用
-    // Claude Code 的 `classic.<Event>` 名字。
+  it("三个只读的观察事件可以注册", async () => {
+    // spec「完成与审批的观察」「工具跑完之后」：它们只报告事实，宿主丢弃返回值。
+    // 审批那个用 Claude Code 的 `classic.<Event>` 名字；`tool.call` 拦不下调用。
     const { mod } = runtime(`
       exports.register = function ($, on) {
         on("turn.complete", function (e) { return "done:" + e.isAborted; });
         on("classic.PermissionRequest", function (e) { return e.tool_name; });
+        on("tool.call", function (e) { return e.tool; });
       };
     `);
 
@@ -348,10 +354,14 @@ describe("ModRuntime 的隔离", () => {
     expect(mod.hookNames()).toEqual([
       "turn.complete",
       "classic.PermissionRequest",
+      "tool.call",
     ]);
     await expect(
       mod.callHook("turn.complete", { isAborted: true, durationMs: 1 }),
     ).resolves.toMatchObject({ ok: true, value: "done:true" });
+    await expect(
+      mod.callHook("tool.call", { tool: "Bash", input: { command: "ls" } }),
+    ).resolves.toMatchObject({ ok: true, value: "Bash" });
   });
 });
 
@@ -1191,4 +1201,214 @@ describe("插件作者的真实写法", () => {
       });
     },
   );
+});
+
+describe("ModRuntime 的 $.ui.log 与 $.session.cwd", () => {
+  it("$.ui.log 把一段文字裁掉首尾空白后交给宿主", async () => {
+    const { mod, host: hostApi } = runtime(`
+      exports.register = function ($, on) {
+        on("session.start", function () {
+          $.ui.log("  standup 该开了  ", { to: "transcript" });
+          return "ok";
+        });
+      };
+    `);
+
+    await mod.load();
+    await mod.callHook("session.start", {});
+    expect(hostApi.appendLog).toHaveBeenCalledWith("standup 该开了");
+  });
+
+  it("$.ui.log 不认 transcript 以外的落点，也不接受空行", async () => {
+    // 拼错一个落点就安静写进对话流，比报错更难查（spec「在对话流里留一行」）。
+    const { mod, host: hostApi } = runtime(`
+      exports.register = function ($, on) {
+        on("session.start", function () {
+          $.ui.log("x", { to: "pane" });
+        });
+        on("turn.complete", function () {
+          $.ui.log("   ");
+        });
+      };
+    `);
+
+    await mod.load();
+    const rejectedTo = await mod.callHook("session.start", {});
+    expect(rejectedTo.ok).toBe(false);
+    if (!rejectedTo.ok) expect(rejectedTo.error).toMatch(/transcript/);
+
+    const empty = await mod.callHook("turn.complete", { isAborted: false });
+    expect(empty.ok).toBe(false);
+    expect(hostApi.appendLog).not.toHaveBeenCalled();
+  });
+
+  it("$.session.cwd() 与 $.fs 同源：cd 过之后立刻是新目录", async () => {
+    let cwd = path.resolve("/fake/project");
+    const { mod } = runtime(
+      `
+      exports.register = function ($, on) {
+        on("session.start", function () { return $.session.cwd(); });
+      };
+    `,
+      { host: host({ workdir: () => cwd }) },
+    );
+
+    await mod.load();
+    await expect(mod.callHook("session.start", {})).resolves.toMatchObject({
+      ok: true,
+      value: path.resolve("/fake/project"),
+    });
+    cwd = path.resolve("/fake/project/sub");
+    await expect(mod.callHook("session.start", {})).resolves.toMatchObject({
+      ok: true,
+      value: path.resolve("/fake/project/sub"),
+    });
+  });
+});
+
+describe("ModRuntime 的 $.command（spec「注册命令」）", () => {
+  it("注册只交元数据，返回值原样透传", async () => {
+    const { mod, host: hostApi } = runtime(`
+      exports.register = function ($, on) {
+        on("session.start", function () {
+          return $.command.register({
+            name: "standup",
+            description: "把今天的站会摘要写进对话",
+            argumentHint: "[日期]",
+          });
+        });
+      };
+    `);
+
+    await mod.load();
+    await expect(mod.callHook("session.start", {})).resolves.toMatchObject({
+      ok: true,
+      value: { command: "standup" },
+    });
+    expect(hostApi.registerCommand).toHaveBeenCalledWith({
+      name: "standup",
+      description: "把今天的站会摘要写进对话",
+      argumentHint: "[日期]",
+    });
+  });
+
+  it("名字不合法、缺描述都在注册时抛错，宿主什么都收不到", async () => {
+    const { mod, host: hostApi } = runtime(`
+      exports.register = function ($, on) {
+        on("session.start", function () {
+          $.command.register({ name: "/standup", description: "x" });
+        });
+        on("turn.complete", function () {
+          $.command.register({ name: "standup" });
+        });
+      };
+    `);
+
+    await mod.load();
+    const badName = await mod.callHook("session.start", {});
+    expect(badName.ok).toBe(false);
+    if (!badName.ok) expect(badName.error).toMatch(/name/);
+    const noDescription = await mod.callHook("turn.complete", {});
+    expect(noDescription.ok).toBe(false);
+    if (!noDescription.ok) expect(noDescription.error).toMatch(/description/);
+    expect(hostApi.registerCommand).not.toHaveBeenCalled();
+  });
+
+  it("$.command.list 交给 mod 的是副本", async () => {
+    const rows = [
+      { name: "standup", description: "x", source: "plugin" as const },
+    ];
+    const { mod } = runtime(
+      `
+      exports.register = function ($, on) {
+        on("session.start", function () {
+          var rows = $.command.list();
+          rows.push({ name: "extra", description: "y", source: "plugin" });
+          return rows.length;
+        });
+      };
+    `,
+      { host: host({ listCommands: () => rows }) },
+    );
+
+    await mod.load();
+    await expect(mod.callHook("session.start", {})).resolves.toMatchObject({
+      ok: true,
+      value: 2,
+    });
+    expect(rows).toHaveLength(1);
+  });
+
+  it("$.command.run 拿带斜杠的名字当场报错，正常名字转发宿主", async () => {
+    const { mod, host: hostApi } = runtime(`
+      exports.register = function ($, on) {
+        on("session.start", async function () {
+          await $.command.run({ command: "/standup" });
+        });
+        on("turn.complete", async function () {
+          await $.command.run({ command: "standup", args: "周一" });
+        });
+      };
+    `);
+
+    await mod.load();
+    const slash = await mod.callHook("session.start", {});
+    expect(slash.ok).toBe(false);
+    if (!slash.ok) expect(slash.error).toMatch(/不带斜杠/);
+
+    await mod.callHook("turn.complete", { isAborted: false });
+    expect(hostApi.runCommand).toHaveBeenCalledWith("standup", "周一");
+  });
+
+  it("command.run 钩子用带斜杠的 matcher 登记，事件带命令与参数", async () => {
+    const { mod } = runtime(`
+      exports.register = function ($, on) {
+        on("command.run", { command: "/standup" }, function (e) {
+          return { text: "/standup " + e.args };
+        });
+        on("command.run", { command: "no-slash" }, function () {});
+      };
+    `);
+
+    await mod.load();
+    // 没有 matcher 的那一条被忽略，带斜杠的登记成钩子。
+    expect(mod.hookNames()).toEqual(["command.run"]);
+    expect(mod.commandHookTargets()).toEqual(["/standup"]);
+    await expect(
+      mod.callCommandHook("/standup", "周一"),
+    ).resolves.toMatchObject({ ok: true, value: { text: "/standup 周一" } });
+    // 没人答的命令不报错，由宿主决定怎么提示。
+    await expect(mod.callCommandHook("/unknown", "")).resolves.toMatchObject({
+      ok: true,
+      value: undefined,
+    });
+  });
+
+  it("command.run 钩子里再 $.command.run 被拒绝（会等自己那一轮）", async () => {
+    const { mod, host: hostApi } = runtime(`
+      exports.register = function ($, on) {
+        on("command.run", { command: "/outer" }, async function () {
+          await $.command.run({ command: "inner" });
+        });
+      };
+    `);
+
+    await mod.load();
+    const result = await mod.callCommandHook("/outer", "");
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toMatch(/command\.run 钩子/);
+    expect(hostApi.runCommand).not.toHaveBeenCalled();
+
+    // 深度计数已经退回：钩子外面再调是允许的。
+    const { mod: outer, host: outerHost } = runtime(`
+      exports.register = function ($, on) {
+        on("session.start", async function () {
+          await $.command.run({ command: "inner" });
+        });
+      };
+    `);
+    await outer.load();
+    await outer.callHook("session.start", {});
+    expect(outerHost.runCommand).toHaveBeenCalledWith("inner", undefined);
+  });
 });

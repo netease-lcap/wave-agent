@@ -32,6 +32,7 @@ import {
 import type { SkillManager } from "./skillManager.js";
 import type { SkillMetadata } from "../types/skills.js";
 import type { SubagentManager } from "./subagentManager.js";
+import type { ModCommandInfo } from "../types/mods.js";
 import { logger } from "../utils/globalLogger.js";
 
 export interface SlashCommandManagerOptions {
@@ -45,6 +46,15 @@ export class SlashCommandManager {
   /** Ids registered by plugins, so they can be dropped per-plugin and are not
    * mistaken for disk-sourced custom commands. */
   private pluginCommandIds = new Set<string>();
+  /**
+   * 命令名 → 注册它的插件，只记 `$.command.register` 建的那些（spec「注册命
+   * 令」）。
+   *
+   * 与 `pluginCommandIds`（插件的 markdown 命令，带 `${plugin}:` 命名空间）分
+   * 开：mod 命令用**裸名字**（`/standup` 而不是 `/myplugin:standup`），重名一律
+   * 注册时就拒，所以这张表还兼作「谁占了这个名字」的答案。
+   */
+  private modCommandPlugins = new Map<string, string>();
   private workdir: string;
   private currentCommandAbortController: AbortController | null = null;
 
@@ -373,6 +383,100 @@ export class SlashCommandManager {
     logger?.debug(
       `Registered ${commands.length} commands from plugin '${pluginName}'`,
     );
+  }
+
+  /**
+   * 登记 mod 注册的命令（spec「注册命令」）。
+   *
+   * 与插件 markdown 命令的区别：**裸名字、重名即拒**。名字被占了就返回原因，
+   * 由 `$.command.register` 抛给插件作者看 —— 静默覆盖会让两个插件抢同一个
+   * `/standup`，而用户看不出命令换了主人。
+   */
+  public registerModCommand(input: {
+    name: string;
+    description: string;
+    argumentHint?: string;
+    immediate?: boolean;
+    plugin: string;
+    run: (args: string) => Promise<string | undefined>;
+  }): { ok: true } | { ok: false; reason: string } {
+    const name = input.name;
+    const owner = this.modCommandPlugins.get(name);
+    if (owner !== undefined) {
+      return {
+        ok: false,
+        reason:
+          owner === input.plugin
+            ? `/${name} 已经由本插件的另一个 mod 注册过`
+            : `refused: 插件 ${owner} 已经注册了 /${name}`,
+      };
+    }
+    if (this.commands.has(name)) {
+      return {
+        ok: false,
+        reason: `refused: 名字 /${name} 已经被占用（内置命令 / 技能 / 自定义命令 / 插件命令中的一个）`,
+      };
+    }
+    this.modCommandPlugins.set(name, input.plugin);
+    this.registerCommand({
+      id: name,
+      name,
+      description: input.description,
+      ...(input.argumentHint === undefined
+        ? {}
+        : { argumentHint: input.argumentHint }),
+      immediate: input.immediate ?? false,
+      handler: async (args?: string) => {
+        // 注册只给菜单元数据，逻辑在 command.run 钩子里（与 CC 同形状）。
+        const text = await input.run(args ?? "");
+        if (text === undefined) {
+          this.messageManager.addNoticeBlock(
+            `/${name} 已注册，但没有任何 command.run 钩子回答它：在插件里补 on("command.run", { command: "/${name}" }, ($, e) => ({ text: ... }))`,
+            "error",
+          );
+          return;
+        }
+        await this.executeCustomCommandInMainAgent(name, text, undefined, args);
+      },
+    });
+    return { ok: true };
+  }
+
+  /** 撤销一条 mod 命令（插件重载 / 会话销毁）。 */
+  public unregisterModCommand(name: string): void {
+    if (!this.modCommandPlugins.delete(name)) return;
+    this.unregisterCommand(name);
+  }
+
+  /** 当前可见的命令，按来源标注（供 `$.command.list()`）。 */
+  public listCommandsForMods(): ModCommandInfo[] {
+    const rows: ModCommandInfo[] = [];
+    for (const command of this.commands.values()) {
+      const modPlugin = this.modCommandPlugins.get(command.name);
+      if (modPlugin !== undefined) {
+        rows.push({
+          name: command.name,
+          description: command.description,
+          source: "plugin",
+          plugin: modPlugin,
+        });
+        continue;
+      }
+      const source: ModCommandInfo["source"] =
+        command.skillSource ??
+        (this.pluginCommandIds.has(command.id) ? "plugin" : "user");
+      rows.push({
+        name: command.name,
+        description: command.description,
+        source,
+      });
+    }
+    return rows;
+  }
+
+  /** 命令是否由 mod 注册（`$.command.run` 的前置检查用）。 */
+  public isModCommand(name: string): boolean {
+    return this.modCommandPlugins.has(name);
   }
 
   /**

@@ -4,6 +4,8 @@ import { ModManager } from "../../src/managers/modManager.js";
 import { logger } from "../../src/utils/globalLogger.js";
 import { MOD_BAND_INSTANCE_ID, MOD_LIMITS } from "../../src/types/mods.js";
 import type {
+  ModCommandBridge,
+  ModCommandInfo,
   ModPanelUpdatePayload,
   ModStatusPayload,
   ModToastPayload,
@@ -1290,6 +1292,9 @@ exports.register = function ($, on) {
   on("classic.PermissionRequest", function (e) {
     $.ui.status("ask:" + e.hook_event_name + ":" + e.tool_name + ":" + e.tool_input.command);
   });
+  on("tool.call", function (e) {
+    $.ui.status("tool:" + e.tool + ":" + e.input.file_path);
+  });
 };
 `;
 
@@ -1300,7 +1305,7 @@ exports.register = function ($, on) {
     cacheCreation: 0,
   };
 
-  it("两个事件都派发到注册了它们的 mod，载荷原样", async () => {
+  it("三个事件都派发到注册了它们的 mod，载荷原样", async () => {
     const { manager, statuses } = createManager({
       [MOD_PATH]: OBSERVER_MOD,
     });
@@ -1332,6 +1337,15 @@ exports.register = function ($, on) {
       expect(statuses.at(-1)?.text).toBe(
         "ask:PermissionRequest:Bash:rm -rf build",
       ),
+    );
+
+    // 工具跑完之后：只带工具名与入参，返回值宿主丢弃（拦不下这次调用）。
+    manager.notifyMods("tool.call", {
+      tool: "Write",
+      input: { file_path: "a.ts", content: "x" },
+    });
+    await vi.waitFor(() =>
+      expect(statuses.at(-1)?.text).toBe("tool:Write:a.ts"),
     );
 
     await manager.dispose();
@@ -1379,7 +1393,7 @@ exports.register = function ($, on) {
     await manager.dispose();
   });
 
-  it("没有注册这两个钩子的 mod 不受影响", async () => {
+  it("没有注册这三个钩子的 mod 不受影响", async () => {
     const { manager, statuses } = createManager({ [MOD_PATH]: COUNTER_MOD });
     await manager.loadFromPlugins([
       plugin([{ id: "todo:panel", path: MOD_PATH }]),
@@ -1398,5 +1412,237 @@ exports.register = function ($, on) {
     expect(logger.warn).not.toHaveBeenCalled();
 
     await manager.dispose();
+  });
+});
+
+/**
+ * 命令表的替身：记住每条命令的 `run` 回调，调用它就等于「用户执行了这条命令」。
+ * 真命令表在 `slashCommandManager.test.ts` 里被测。
+ */
+function createCommandBridge(): {
+  bridge: ModCommandBridge;
+  rows: Map<
+    string,
+    { info: ModCommandInfo; run: (args: string) => Promise<string | undefined> }
+  >;
+  removed: string[];
+} {
+  const rows = new Map<
+    string,
+    { info: ModCommandInfo; run: (args: string) => Promise<string | undefined> }
+  >();
+  const removed: string[] = [];
+  const bridge: ModCommandBridge = {
+    register: (input) => {
+      if (rows.has(input.name)) {
+        return { ok: false, reason: `/${input.name} 已经被注册了` };
+      }
+      rows.set(input.name, {
+        info: {
+          name: input.name,
+          description: input.description,
+          source: "plugin",
+          plugin: input.plugin,
+        },
+        run: input.run,
+      });
+      return { ok: true };
+    },
+    unregister: (name) => {
+      rows.delete(name);
+      removed.push(name);
+    },
+    list: () => [...rows.values()].map((row) => row.info),
+    run: async () => {},
+  };
+  return { bridge, rows, removed };
+}
+
+describe("ModManager 的 $.ui.log 与 $.command", () => {
+  it("$.ui.log 交到对话流的写入口，首尾空白被裁掉", async () => {
+    const logMod = path.join(ROOT, "mods", "log.tsx");
+    const { manager } = createManager({
+      [logMod]: `
+exports.register = function ($, on) {
+  on("session.start", function () { $.ui.log("  standup 该开了  "); });
+};
+`,
+    });
+    const lines: string[] = [];
+    manager.setLogSink((text) => lines.push(text));
+    await manager.loadFromPlugins([plugin([{ id: "todo:log", path: logMod }])]);
+    await manager.startSession();
+
+    expect(lines).toEqual(["standup 该开了"]);
+
+    await manager.dispose();
+  });
+
+  it("没有落点时不抛错，只记一条 debug", async () => {
+    const logMod = path.join(ROOT, "mods", "log.tsx");
+    const { manager } = createManager({
+      [logMod]: `
+exports.register = function ($, on) {
+  on("session.start", function () { $.ui.log("x"); });
+};
+`,
+    });
+    await manager.loadFromPlugins([plugin([{ id: "todo:log", path: logMod }])]);
+    await expect(manager.startSession()).resolves.toBeUndefined();
+    expect(logger.debug).toHaveBeenCalledWith(
+      expect.stringContaining("$.ui.log 没有落点"),
+    );
+
+    await manager.dispose();
+  });
+
+  it("$.command.register 进命令表，执行时回到自己的 command.run 钩子", async () => {
+    const commandMod = path.join(ROOT, "mods", "cmd.tsx");
+    const { manager } = createManager({
+      [commandMod]: `
+exports.register = function ($, on) {
+  on("session.start", function () {
+    $.command.register({
+      name: "standup",
+      description: "站会摘要",
+      argumentHint: "[日期]",
+    });
+  });
+  on("command.run", { command: "/standup" }, function (e) {
+    return { text: "总结 " + e.args + " 的提交" };
+  });
+};
+`,
+    });
+    const { bridge, rows } = createCommandBridge();
+    manager.setCommandBridge(bridge);
+    await manager.loadFromPlugins([
+      plugin([{ id: "todo:cmd", path: commandMod }]),
+    ]);
+    await manager.startSession();
+
+    expect([...rows.keys()]).toEqual(["standup"]);
+    expect(rows.get("standup")?.info).toMatchObject({
+      description: "站会摘要",
+      plugin: "todo",
+      source: "plugin",
+    });
+    // 命令表执行它时问回注册者：钩子答的那段文字就是要送进会话的 prompt。
+    await expect(rows.get("standup")?.run("上周")).resolves.toBe(
+      "总结 上周 的提交",
+    );
+    expect(logger.info).toHaveBeenCalledWith(
+      expect.stringContaining("$.command.register (todo): /standup listed"),
+    );
+
+    await manager.dispose();
+  });
+
+  it("命令表的拒绝原样抛回 mod，每个 mod 最多 32 条", async () => {
+    const { manager, statuses } = createManager({
+      [MOD_PATH]: `
+exports.register = function ($, on) {
+  on("session.start", function () {
+    $.command.register({ name: "dup", description: "重名的那条" });
+  });
+  on("turn.complete", function () {
+    for (var i = 0; i < 33; i++) {
+      try {
+        $.command.register({ name: "c" + i, description: "x" });
+      } catch (e) {
+        $.ui.status("err:" + e.message);
+      }
+    }
+  });
+};
+`,
+    });
+    const { bridge, rows } = createCommandBridge();
+    bridge.register({
+      name: "dup",
+      description: "别处注册的",
+      plugin: "other",
+      run: async () => undefined,
+    });
+    manager.setCommandBridge(bridge);
+    await manager.loadFromPlugins([
+      plugin([{ id: "todo:panel", path: MOD_PATH }]),
+    ]);
+    await manager.startSession();
+
+    // 重名拒在注册那一刻抛回 mod：钩子失败，原因进日志。
+    await vi.waitFor(() =>
+      expect(logger.warn).toHaveBeenCalledWith(
+        expect.stringContaining("/dup 已经被注册了"),
+      ),
+    );
+
+    // 上限拒在 33 条里的最后一条：前 32 条真的进了命令表。
+    manager.notifyMods("turn.complete", {
+      isAborted: false,
+      durationMs: 1,
+      answer: "",
+      usage: { prompt: 0, completion: 0, cacheRead: 0, cacheCreation: 0 },
+    });
+    await vi.waitFor(() =>
+      expect(statuses.at(-1)?.text).toMatch(/最多注册 32 条/),
+    );
+    expect(rows.size).toBe(1 + 32);
+
+    await manager.dispose();
+  });
+
+  it("同一个 mod 重复注册同一个名字是幂等的", async () => {
+    const { manager } = createManager({
+      [MOD_PATH]: `
+exports.register = function ($, on) {
+  on("session.start", function () {
+    $.command.register({ name: "standup", description: "站会摘要" });
+    $.command.register({ name: "standup", description: "站会摘要" });
+  });
+};
+`,
+    });
+    const { bridge, rows } = createCommandBridge();
+    manager.setCommandBridge(bridge);
+    await manager.loadFromPlugins([
+      plugin([{ id: "todo:panel", path: MOD_PATH }]),
+    ]);
+    await manager.startSession();
+
+    // 与 CC 同款：命令表里只有一条，第二次注册不报错。
+    expect([...rows.keys()]).toEqual(["standup"]);
+    const listed = vi
+      .mocked(logger.info)
+      .mock.calls.filter(([line]) => String(line).includes("/standup listed"));
+    expect(listed).toHaveLength(1);
+    expect(logger.debug).toHaveBeenCalledWith(
+      expect.stringContaining("unchanged; not re-registered"),
+    );
+
+    await manager.dispose();
+  });
+
+  it("dispose 撤销这个 mod 注册过的命令", async () => {
+    const commandMod = path.join(ROOT, "mods", "cmd.tsx");
+    const { manager } = createManager({
+      [commandMod]: `
+exports.register = function ($, on) {
+  on("session.start", function () {
+    $.command.register({ name: "standup", description: "站会摘要" });
+  });
+  on("command.run", { command: "/standup" }, function () { return { text: "x" }; });
+};
+`,
+    });
+    const { bridge, removed } = createCommandBridge();
+    manager.setCommandBridge(bridge);
+    await manager.loadFromPlugins([
+      plugin([{ id: "todo:cmd", path: commandMod }]),
+    ]);
+    await manager.startSession();
+
+    await manager.dispose();
+    expect(removed).toEqual(["standup"]);
   });
 });

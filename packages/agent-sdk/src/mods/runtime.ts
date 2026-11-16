@@ -1,6 +1,8 @@
 import * as vm from "node:vm";
 import * as path from "node:path";
 import type {
+  ModCommandInfo,
+  ModCommandSpec,
   ModElementType,
   ModFetchResult,
   ModFsEntry,
@@ -132,6 +134,49 @@ function toastMs(timeoutMs: unknown): number {
   return Math.min(timeoutMs, MOD_LIMITS.toastMaxMs);
 }
 
+/** 命令名的合法形状（与 Claude Code 同一条：`/^[a-zA-Z0-9_-]{1,64}$/`）。 */
+const COMMAND_NAME_RE = /^[a-zA-Z0-9_-]{1,64}$/;
+
+/**
+ * 校验 `$.command.register` 的参数，再交给宿主。
+ *
+ * 校验放这里（而不是宿主）与其它 `$` 方法一致：形状错误是 mod 写错了，要在
+ * 调用点就带着能改的文案报出来，而不是变成宿主日志里一条莫名的 warn。
+ */
+function validateCommandSpec(spec: unknown): ModCommandSpec {
+  if (!isPlainObject(spec)) {
+    throw new Error(
+      "$.command.register 需要一个对象：{ name, description, argumentHint?, immediate? }",
+    );
+  }
+  const name = spec.name;
+  if (typeof name !== "string" || !COMMAND_NAME_RE.test(name)) {
+    throw new Error(
+      "$.command.register 的 name 只能用小写/大写字母、数字、下划线和连字符（1-64 个）",
+    );
+  }
+  const description = spec.description;
+  if (typeof description !== "string" || description.trim().length === 0) {
+    throw new Error(
+      "$.command.register 需要 description（菜单里显示的那行字，不能为空）",
+    );
+  }
+  const argumentHint = spec.argumentHint;
+  if (argumentHint !== undefined && typeof argumentHint !== "string") {
+    throw new Error("$.command.register 的 argumentHint 是字符串");
+  }
+  const immediate = spec.immediate;
+  if (immediate !== undefined && typeof immediate !== "boolean") {
+    throw new Error("$.command.register 的 immediate 是布尔值");
+  }
+  return {
+    name,
+    description: description.trim(),
+    ...(argumentHint === undefined ? {} : { argumentHint }),
+    ...(immediate === undefined ? {} : { immediate }),
+  };
+}
+
 /** 定时器句柄：`cancel()` 可重复调用。 */
 export interface ModTimerHandle {
   cancel(): void;
@@ -159,6 +204,13 @@ export interface ModDollar {
     status(text: string | null): void;
     /** 输入框下方的短暂提示；`timeoutMs` 默认 4000ms、最多 10 秒。 */
     toast(text: string, timeoutMs?: number): void;
+    /**
+     * 在**对话流**里留一行（spec「在对话流里留一行」）。
+     *
+     * 与 `status` / `toast` 的区别是它属于这次对话：随会话落盘、切回来还在，
+     * 但不进模型上下文。一期只有 `to: "transcript"` 这一个落点。
+     */
+    log(text: string, options?: { to?: "transcript" }): void;
   };
   state: {
     get(key: string): unknown;
@@ -252,6 +304,24 @@ export interface ModDollar {
    */
   session: {
     usage(): ModSessionUsage;
+    /**
+     * 会话**当前**工作目录（容器 token `CurrentWorkdir`，会随会话里的 `cd`
+     * 变）。与 `$.fs` 相对路径、`$.process` 的缺省 cwd 是同一份数据源 ——
+     * 三者口径必须一致，否则插件算出来的路径会与它读写的位置分叉。
+     */
+    cwd(): string;
+  };
+  /**
+   * 注册斜杠命令（spec「注册命令」）。
+   *
+   * 注册只给菜单元数据，逻辑写在 `command.run` 钩子里：用户敲下 `/name args`
+   * 后引擎派钩子，钩子返回 `{ text }` 才是这次命令要送进会话的那句话（与
+   * Claude Code 同名能力同形状）。
+   */
+  command: {
+    register(spec: ModCommandSpec): { command: string };
+    list(): ModCommandInfo[];
+    run(options: { command: string; args?: string }): Promise<void>;
   };
 }
 
@@ -266,6 +336,8 @@ export interface ModRuntimeHost {
   setStatus(text: string | null): void;
   /** 短暂提示；`timeoutMs` 由 runtime 夹进限额后交下来。 */
   showToast(text: string, timeoutMs: number): void;
+  /** `$.ui.log`：在对话流里追加一行（长度已由 runtime 夹进限额）。 */
+  appendLog(text: string): void;
   stateGet(key: string): unknown;
   stateSet(key: string, value: unknown): void;
   storeGet(key: string): string | undefined;
@@ -303,15 +375,24 @@ export interface ModRuntimeHost {
   }): Promise<boolean>;
   /** `$.session.usage()` 的数据源；会话还没起过轮次时给零值快照。 */
   sessionUsage(): ModSessionUsage;
+  /** `$.command.register`：交给宿主的命令表（归属、重名、上限都在那边判）。 */
+  registerCommand(spec: ModCommandSpec): { command: string };
+  /** `$.command.list`：当前可见的命令（含非 mod 来源）。 */
+  listCommands(): ModCommandInfo[];
+  /** `$.command.run`：以 mod 身份执行一条已注册的命令。 */
+  runCommand(command: string, args?: string): Promise<void>;
 }
 
 /**
  * 允许注册的钩子（spec「事件」）。
  *
- * `session.start` / `ui.render` 是「要 mod 做事」的那两个；`turn.complete` 与
- * `classic.PermissionRequest` 是只读的观察事件，返回值一律丢弃。后者用 `classic.`
- * 前缀是照 Claude Code 的规矩：它把每个 settings hook 事件都镜像成
- * `classic.<Event>`，我们只做这一个镜像，`e` 的形状也照那份 stdin JSON。
+ * `session.start` / `ui.render` 是「要 mod 做事」的那两个；`turn.complete`、
+ * `tool.call` 与 `classic.PermissionRequest` 是只读的观察事件，返回值一律丢弃
+ * （`tool.call` 在 Claude Code 里还能返回 `{ deny }` 拦下调用，那是决策型钩子，
+ * 我们只做观察这一半）。`classic.` 前缀是照 Claude Code 的规矩：它把每个
+ * settings hook 事件都镜像成 `classic.<Event>`，我们只做这一个镜像，`e` 的形状
+ * 也照那份 stdin JSON。`command.run` 是唯一带 matcher 的事件，也唯一有返回值
+ * 语义（`{ text }`）。
  * **没有**「面板被关掉」事件 —— 面板的关闭、插件重载、会话销毁都由宿主内部清
  * 理，不通知 mod。别的名字一律拒收，免得插件作者依赖一个不存在的钩子。
  */
@@ -319,7 +400,9 @@ const HOOK_NAMES = new Set([
   "session.start",
   "ui.render",
   "turn.complete",
+  "tool.call",
   "classic.PermissionRequest",
+  "command.run",
 ]);
 
 /** 一个已编译文件：路径 + CJS 源码。 */
@@ -439,6 +522,20 @@ export class ModRuntime {
   /** `<type>:<key>` → 回调。 */
   private readonly handlers = new Map<string, (value?: string) => unknown>();
   private readonly hooks = new Map<string, (event: unknown) => unknown>();
+  /**
+   * `command.run` 的处理器：matcher 是**带斜杠**的命令名（`"/standup"`），与
+   * Claude Code 的 matcher 口径一致。
+   *
+   * 单独一张表而不是塞进 `hooks`：这个事件是唯一带 matcher、唯一有返回值语义
+   * 的钩子，而且同一个 mod 会为多条命令各注册一个 —— 塞进 `hooks`（同名覆盖）
+   * 只会剩下最后一条。
+   */
+  private readonly commandHooks = new Map<
+    string,
+    (event: unknown) => unknown
+  >();
+  /** 正在跑 `command.run` 钩子的层数（`$.command.run` 靠它拒自激）。 */
+  private commandHookDepth = 0;
   private readonly dollar: ModDollar;
   private readonly wave: unknown;
   /** 当前正在计时的预算（`$.process.spawn` 等输出时会被暂停）。 */
@@ -508,6 +605,22 @@ export class ModRuntime {
             throw new Error("$.ui.toast 需要一段文本");
           }
           host.showToast(trimmed, toastMs(timeoutMs));
+        },
+        // 进对话流、不进上下文：长度口径与状态行同一份限额。
+        log: (text, options) => {
+          const to = options?.to;
+          if (to !== undefined && to !== "transcript") {
+            // 不静默当成 transcript：CC 的 `to` 还认别的落点，拼错一个值就安静
+            // 写进对话流比报错更难查。
+            throw new Error(
+              `$.ui.log 只认 to: "transcript"（一期只有对话流这一个落点），拿到的是 ${JSON.stringify(to)}`,
+            );
+          }
+          const line = normalizeStatus(text)?.trim() ?? null;
+          if (line === null) {
+            throw new Error("$.ui.log 需要一段文本");
+          }
+          host.appendLog(line);
         },
       },
       state: {
@@ -589,6 +702,28 @@ export class ModRuntime {
       // 只读快照；克隆一份交出去，mod 改自己的副本伤不到会话。
       session: {
         usage: () => cloneValue(host.sessionUsage()),
+        // 与 `$.fs` 同一份 getter：`cd` 过之后这里立刻是新目录。
+        cwd: () => host.workdir(),
+      },
+      // 命令的三件事：注册元数据、看命令表、执行一条（spec「注册命令」）。
+      command: {
+        register: (spec) => host.registerCommand(validateCommandSpec(spec)),
+        list: () => cloneValue(host.listCommands()),
+        run: async (options) => {
+          const command = options?.command;
+          if (typeof command !== "string" || !COMMAND_NAME_RE.test(command)) {
+            throw new Error(
+              '$.command.run 的 command 是命令名（不带斜杠，如 "standup"）',
+            );
+          }
+          if (this.commandHookDepth > 0) {
+            // 与 CC 同一条边界：钩子正持有用户打出的那一轮，再执行命令会等自己。
+            throw new Error(
+              "$.command.run 不能在 command.run 钩子里调用：它会等正被这个钩子占着的那一轮；在钩子里直接返回 { text }，或挪到 turn.complete 里再跑",
+            );
+          }
+          await host.runCommand(command, options?.args);
+        },
       },
     };
 
@@ -627,11 +762,42 @@ export class ModRuntime {
     const result = (register as (dollar: unknown, on: unknown) => unknown).call(
       exports,
       this.dollar,
-      (name: unknown, handler: unknown) => {
-        if (typeof name !== "string" || typeof handler !== "function") return;
+      (name: unknown, matcherOrHandler: unknown, maybeHandler?: unknown) => {
+        if (typeof name !== "string") return;
+        const hasMatcher = typeof maybeHandler === "function";
+        const handler = hasMatcher ? maybeHandler : matcherOrHandler;
+        if (typeof handler !== "function") return;
         if (!HOOK_NAMES.has(name)) {
           logger.warn(
             `[Wave] ${this.host.pluginName} 注册了不存在的 mod 钩子：${name}（可用：${[...HOOK_NAMES].join(" / ")}）`,
+          );
+          return;
+        }
+        if (name === "command.run") {
+          // 唯一带 matcher 的事件：matcher 决定「这条命令归谁答」，没有它就无法
+          // 把一条命令指到自己的处理器上（CC 的形状是 { command: "/name" }）。
+          const command = isPlainObject(matcherOrHandler)
+            ? matcherOrHandler.command
+            : undefined;
+          if (
+            typeof command !== "string" ||
+            !command.startsWith("/") ||
+            command.length < 2
+          ) {
+            logger.warn(
+              `[Wave] ${this.host.pluginName} 的 command.run 钩子需要 matcher { command: "/<命令名>" }（带斜杠），这一条被忽略`,
+            );
+            return;
+          }
+          this.commandHooks.set(
+            command,
+            handler as (event: unknown) => unknown,
+          );
+          return;
+        }
+        if (hasMatcher) {
+          logger.warn(
+            `[Wave] ${this.host.pluginName} 给 ${name} 传了 matcher：只有 command.run 接受 matcher，这一条被忽略`,
           );
           return;
         }
@@ -659,6 +825,35 @@ export class ModRuntime {
         error: errorMessage(error),
         elapsedMs: Date.now() - started,
       };
+    }
+  }
+
+  /**
+   * 派一条命令给它的 `command.run` 钩子（spec「注册命令」）。
+   *
+   * `command` 带斜杠（`"/standup"`），与注册时的 matcher 同一个写法。没有对应
+   * 处理器时返回 `{ ok: true, value: undefined }` —— 由调用方（宿主）决定「注册
+   * 了命令却没人答」怎么报。
+   */
+  async callCommandHook(command: string, args: string): Promise<ModHookResult> {
+    const handler = this.commandHooks.get(command);
+    if (!handler) return { ok: true, value: undefined, elapsedMs: 0 };
+    const started = Date.now();
+    this.commandHookDepth += 1;
+    try {
+      const value = await this.runWithBudget(
+        `${command} 的命令钩子超过 ${MOD_LIMITS.hookTimeoutMs}ms`,
+        () => handler({ command, args }),
+      );
+      return { ok: true, value, elapsedMs: Date.now() - started };
+    } catch (error) {
+      return {
+        ok: false,
+        error: errorMessage(error),
+        elapsedMs: Date.now() - started,
+      };
+    } finally {
+      this.commandHookDepth -= 1;
     }
   }
 
@@ -747,7 +942,14 @@ export class ModRuntime {
 
   /** 该 mod 注册了哪些钩子（诊断用）。 */
   hookNames(): string[] {
-    return [...this.hooks.keys()];
+    const names = [...this.hooks.keys()];
+    if (this.commandHooks.size > 0) names.push("command.run");
+    return names;
+  }
+
+  /** 该 mod 用 matcher 注册了哪些命令（宿主清理/诊断用，带斜杠）。 */
+  commandHookTargets(): string[] {
+    return [...this.commandHooks.keys()];
   }
 
   /**
