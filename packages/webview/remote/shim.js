@@ -3932,6 +3932,28 @@
         });
         return;
 
+      // `/context` 面板（spec commands/context-command.md）：机器侧 agent 算好
+      // 的构成原样中继。失败必须回 `error` —— 页面没有终端可以去看，一次静默
+      // 的空面板等于「你的上下文是空的」这个假结论。
+      case "getContextBreakdown":
+        request("getContextBreakdown", {}).then(
+          function (result) {
+            post({
+              command: "contextBreakdownResponse",
+              requestId: msg.requestId,
+              breakdown: result,
+            });
+          },
+          function (err) {
+            post({
+              command: "contextBreakdownResponse",
+              requestId: msg.requestId,
+              error: String((err && err.message) || err),
+            });
+          },
+        );
+        return;
+
       case "getPushState":
         // The menu asks once on mount; every change answers with the same
         // message, so the two ends cannot drift.

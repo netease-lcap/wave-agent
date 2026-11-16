@@ -1172,6 +1172,7 @@ export interface ChatState {
   // Dialog state
   activeDialog:
     | "status"
+    | "context"
     | "tasks"
     | "workflows"
     // 远控 Web 页顶栏「新建对话」重绑的弹窗（initialize 建新会话，非 clearChat）。
@@ -1343,6 +1344,15 @@ export interface SelectionInfo {
  */
 export interface StatusDialogProps {
   onClose: () => void;
+}
+
+/**
+ * Props for the `/context` panel. `busy` = the agent is mid-turn right now: the
+ * numbers on screen are then necessarily stale, and the footer says so instead
+ * of offering "send a message to refresh".
+ */
+export interface ContextDialogProps extends StatusDialogProps {
+  busy?: boolean;
 }
 
 export interface BackgroundTaskManagerProps {

@@ -36,7 +36,7 @@ describe("Dynamic Tool Definitions", () => {
   });
 
   describe("Agent Tool", () => {
-    it("should dynamically reflect subagents added after tool creation", async () => {
+    it("should keep the description constant when subagents are added after tool creation", async () => {
       container.register("ConfigurationService", {
         resolveGatewayConfig: () => ({}) as unknown as GatewayConfig,
         resolveModelConfig: () => ({}) as unknown as ModelConfig,
@@ -59,9 +59,13 @@ describe("Dynamic Tool Definitions", () => {
 
       const tool = agentTool;
 
-      // Initially no subagents
+      // Initially no subagents: the description says where the list lives, and
+      // never enumerates it (spec core/prompt-cache-control.md 场景 1).
       const promptNoSubagents = tool.prompt?.({ availableSubagents: [] });
-      expect(promptNoSubagents).toContain("No agents configured");
+      expect(promptNoSubagents).toContain(
+        "Available agent types are listed in system-reminder messages in the conversation.",
+      );
+      expect(promptNoSubagents).not.toContain("No agents configured");
 
       // Add a subagent
       const mockSubagents: SubagentConfiguration[] = [
@@ -75,11 +79,13 @@ describe("Dynamic Tool Definitions", () => {
         },
       ];
 
-      // Tool prompt should now reflect the new subagent
+      // The description stays byte-identical: the set changes re-billed the
+      // cached `tools[]` prefix when the list lived here (场景 3).
       const promptWithSubagents = tool.prompt?.({
         availableSubagents: mockSubagents,
       });
-      expect(promptWithSubagents).toContain("test-subagent");
+      expect(promptWithSubagents).toBe(promptNoSubagents);
+      expect(promptWithSubagents).not.toContain("test-subagent");
     });
   });
 });

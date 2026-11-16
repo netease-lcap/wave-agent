@@ -7,8 +7,11 @@ import React, {
   forwardRef,
   useMemo,
   KeyboardEvent,
+  RefObject,
 } from "react";
 import { convertToMarkdown, serializeInputDraft } from "../utils/messageUtils";
+import type { MenuAnchorRect } from "../utils/anchoredMenu";
+import { viewportSize } from "../utils/viewport";
 import { renderDraftContent } from "../utils/inputDraft";
 import { clearDraftImages, draftImageScopeKey } from "../utils/draftImageStore";
 import {
@@ -68,6 +71,13 @@ interface MessageInputPropsWithCompress extends MessageInputProps {
   contextUsage?: number;
   /** Show the context-usage indicator (hidden on the welcome composer). */
   showContextUsage?: boolean;
+  /** 点用量环 → 打开 `/context` 浮层（spec commands/context-command.md 场景 1）。 */
+  onOpenContextPanel?: () => void;
+  /** 浮层当前是否开着：只用于环的 `aria-expanded`。 */
+  contextPanelOpen?: boolean;
+  /** 环自身元素的 ref：ChatApp 拿它取锚点矩形，也靠它豁免「点外部关闭」
+   *  —— 否则点环会先被 mousedown 关掉、再被 click 打开，闪一下还重取一次数。 */
+  contextRingRef?: RefObject<HTMLButtonElement>;
 }
 
 interface AtMentionState {
@@ -168,6 +178,12 @@ export interface MessageInputHandle {
    * mod `{ isFilled: false }` instead of leaving it to time out.
    */
   fillDraft: (request: { text: string; mode: ModPromptFillMode }) => boolean;
+  /**
+   * 用量环在视口里的矩形，用作 `/context` 浮层的锚点（spec
+   * commands/context-command.md 场景 1/2）。环没渲染（新会话首轮之前宿主还没
+   * 推送用量）时回退到整条底栏 —— 浮层照旧在输入框上方打开，不飘到视口角落。
+   */
+  getContextAnchorRect: () => MenuAnchorRect | null;
 }
 
 /** 选区变化（@ 提及、斜杠命令下拉）的防抖：用户停下不光标了才去问宿主。 */
@@ -204,6 +220,9 @@ export const MessageInput = forwardRef<
     paneId,
     contextUsage,
     showContextUsage,
+    onOpenContextPanel,
+    contextPanelOpen,
+    contextRingRef,
   } = props;
   const [message, setMessage] = useState("");
 
@@ -224,7 +243,8 @@ export const MessageInput = forwardRef<
   // Context-usage indicator: the ring fill and the trailing number both
   // reflect the current usage (rounded up per spec); hovering pops a
   // design-system tooltip naming the number as the context usage (the same
-  // text is the aria-label). Pure display — not a button, no click action.
+  // text is the aria-label). Clicking it opens the `/context` popover
+  // (a separate click target from the tooltip, which stays hover-only).
   // Both readings below are only consumed where the indicator is rendered,
   // i.e. when the host has reported a non-zero usage (see the JSX gate).
   const contextUsagePct =
@@ -303,6 +323,30 @@ export const MessageInput = forwardRef<
     isStreaming,
     compactRow,
   ]);
+
+  // `/context` 浮层的锚点矩形：优先用量环，环没渲染（新会话首轮之前）时退回
+  // 整条底栏（spec commands/context-command.md 场景 1/2）。
+  //
+  // 纵向取**输入框上沿**、横向取**输入框左缘** —— 与输入框上方那几个浮层同一族
+  // （`.rewind-popup` / `.btw-panel` 是 `bottom: 100%` + 靠左，`.model-picker-menu`
+  // / `.permission-mode-menu` / `.plus-menu` 也是 `left: 0`）。不从环本身长出去：
+  // 环长在输入框**里面**且在最右端，往上展开会盖住输入框上半截，右对齐到环则
+  // 让浮层悬在中间、右边一条空白，两种都跟既有 popover 对不齐。
+  //
+  // `bottom` 给到视口底 —— `placeAnchoredMenu` 先试「向下放得下」，这里要在语义
+  // 上表示「下面没有空间」，它才会上翻。
+  const getContextAnchorRect = useCallback((): MenuAnchorRect | null => {
+    const el = contextRingRef?.current ?? buttonsRowRef.current;
+    if (!el) return null;
+    const rect = el.getBoundingClientRect();
+    const composer = el.closest(".input-wrapper")?.getBoundingClientRect();
+    return {
+      top: composer ? composer.top : rect.top,
+      bottom: viewportSize().height,
+      left: composer ? composer.left : rect.left,
+      right: composer ? composer.right : rect.right,
+    };
+  }, [contextRingRef]);
 
   // Permission mode custom dropdown (roving-tabindex listbox shared with
   // the "+" menu via useRovingMenu; Escape returns to the trigger, Tab
@@ -619,6 +663,7 @@ export const MessageInput = forwardRef<
       readAndUploadFiles(files);
     },
     fillDraft,
+    getContextAnchorRect,
   }));
 
   // Auto-focus input on component mount
@@ -2407,13 +2452,22 @@ export const MessageInput = forwardRef<
                   is no longer rendered at all when usage is unknown).
 
                   Hovering pops the context-usage tooltip naming the number
-                  (spec 场景 1). The indicator is display-only — compression
-                  stays on /compact and auto compaction. */}
+                  (spec 场景 1); clicking the ring opens the `/context`
+                  breakdown popover anchored to it (spec
+                  commands/context-command.md 场景 1, CC 的
+                  ChatContextRingPopoverBody 同形态). Compression itself stays
+                  on /compact and auto compaction — the ring is a trigger, not
+                  a compress action. */}
             {!workdirSelector && showContextUsage && !!contextUsagePct && (
               <Tooltip text={contextUsageLabel} position="top">
-                <span
+                <button
+                  type="button"
+                  ref={contextRingRef}
                   className="compress-context-button"
                   aria-label={contextUsageLabel}
+                  aria-haspopup="dialog"
+                  aria-expanded={!!contextPanelOpen}
+                  onClick={onOpenContextPanel}
                 >
                   <svg
                     className="compress-context-ring"
@@ -2445,7 +2499,7 @@ export const MessageInput = forwardRef<
                   <span className="compress-context-pct">
                     {contextUsagePct}%
                   </span>
-                </span>
+                </button>
               </Tooltip>
             )}
 

@@ -51,6 +51,15 @@ export const AVAILABLE_COMMANDS: SlashCommand[] = [
     handler: () => {}, // Handler here won't be used, actual processing is in the hook
   },
   {
+    id: "context",
+    name: "context",
+    // CC 写 "Visualize current context usage as a colored grid"；我们的 CLI 报告
+    // 落到消息流里（纯文本，无法逐块着色），只有桌面端面板是彩色的，所以描述
+    // 不承诺配色。
+    description: "Show what's occupying the context window",
+    handler: () => {}, // Handler here won't be used, actual processing is in the hook
+  },
+  {
     id: "diff",
     name: "diff",
     description: "View uncommitted changes and per-turn diffs",

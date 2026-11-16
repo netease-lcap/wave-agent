@@ -13,6 +13,9 @@ import {
   getAutoCompactThreshold,
   roughTokenCountForMessages,
 } from "../utils/tokenCalculation.js";
+import { buildContextBreakdown } from "../services/contextBreakdown.js";
+import type { ContextBreakdown } from "../types/contextBreakdown.js";
+import { USER_MEMORY_FILE } from "../utils/constants.js";
 import { estimateTokens } from "../utils/tokenEstimate.js";
 import {
   pickQuotaHeaders,
@@ -27,8 +30,15 @@ import { getChangedFilesReminder } from "../utils/fileChangeReminder.js";
 import {
   buildSkillListingAnnouncement,
   collectSkillListingState,
-  DEFAULT_SKILL_LISTING_CHAR_BUDGET,
+  formatSkillsWithinBudget,
+  resolveSkillListingCharBudget,
 } from "../utils/skillListing.js";
+import {
+  buildAgentListingAnnouncement,
+  collectAgentListingState,
+  formatAgentsWithinBudget,
+  resolveAgentListingCharBudget,
+} from "../utils/agentListing.js";
 import {
   buildAgentMentionReminder,
   parseAgentMentions,
@@ -162,6 +172,17 @@ const BTW_HISTORY_TOOL_CALLS_OMITTED =
   "(That answer wrote tool calls as text. Nothing was executed, so it is omitted here.)";
 const BTW_HISTORY_FAILED_OMITTED =
   "(That answer failed, so it is omitted here.)";
+
+/**
+ * The `- ` lines of a listing body, in order. Skips the header and the
+ * `- (N more …)` footer — neither names a skill or a subagent, and counting
+ * them as entries would shift every later line by one.
+ */
+function listingLines(body: string): string[] {
+  return body
+    .split("\n")
+    .filter((line) => line.startsWith("- ") && !line.startsWith("- ("));
+}
 
 function sanitizeBtwHistoryAnswer(answer: string): string {
   const trimmed = answer.trim();
@@ -489,6 +510,197 @@ export class AIManager {
 
   public getLanguage(): string {
     return this.configurationService.resolveLanguage();
+  }
+
+  /**
+   * `/context` 的数据收集（spec `commands/context-command.md`）。
+   *
+   * 各部分体积都是本地估算（`estimateTokens`），总量优先用上一次响应报出的
+   * `total_tokens` —— 与输入框旁那个用量环同源。**不额外发 token 计数请求**
+   * （CC 的 `/context` 会为每个分类发一次；我们的文本全在进程内，不必）。
+   *
+   * 归属判据：system prompt 里含自动记忆（`buildAutoMemoryPrompt` + MEMORY.md
+   * 正文），记忆文件指的是每轮 prepend 进请求的那几份（项目 / 用户 /
+   * `.wave/rules`）；技能与子代理的清单**内嵌在 Skill / Agent 工具的
+   * description 里**（`tool.prompt(promptArgs)`），所以它们计入 System tools，
+   * 不单列 —— 单列会与工具 schema 重复计数。
+   */
+  public async getContextBreakdown(): Promise<ContextBreakdown> {
+    const errors: string[] = [];
+    const contextWindow = this.getContextWindow();
+    const maxOutputTokens = this.configurationService.resolveMaxOutputTokens();
+    const autoCompactThreshold = getAutoCompactThreshold(
+      contextWindow,
+      maxOutputTokens,
+    );
+
+    let systemPromptTokens = 0;
+    const systemTools: Array<{ name: string; tokens: number }> = [];
+    const mcpTools: Array<{
+      serverName: string;
+      name: string;
+      tokens: number;
+    }> = [];
+    try {
+      const { toolsConfig, reachableToolPlugins } = this.resolveFilteredTools();
+      const blocks = await this.buildMainSystemPrompt(reachableToolPlugins);
+      systemPromptTokens = estimateTokens(
+        blocks.map((block) => block.text).join("\n\n"),
+      );
+      for (const tool of toolsConfig) {
+        const name = tool.function.name;
+        // JSON 走 2 字/token 的比例：工具 schema 是压紧的一行 JSON。
+        const tokens = estimateTokens(JSON.stringify(tool), "json");
+        if (name.startsWith("mcp__")) {
+          const serverName = name.split("__")[1] || "mcp";
+          mcpTools.push({ serverName, name, tokens });
+        } else {
+          systemTools.push({ name, tokens });
+        }
+      }
+    } catch (error) {
+      errors.push(
+        `Failed to read system prompt / tool schemas: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+
+    const memoryFiles: ContextBreakdown["memoryFiles"] = [];
+    try {
+      const workdir = this.getCurrentWorkdir();
+      const { prependContent } = this.omitAgentsMd
+        ? { prependContent: "" }
+        : await this.messageManager.getMemoryForInjection();
+      const totalTokens = estimateTokens(prependContent);
+      if (totalTokens > 0) {
+        const projectTokens = estimateTokens(
+          await this.memoryService.readMemoryFile(workdir),
+        );
+        const userTokens = estimateTokens(
+          await this.memoryService.getUserMemoryContent(),
+        );
+        if (projectTokens > 0) {
+          memoryFiles.push({
+            type: "project",
+            path: path.join(workdir, "AGENTS.md"),
+            tokens: projectTokens,
+          });
+        }
+        if (userTokens > 0) {
+          memoryFiles.push({
+            type: "user",
+            path: USER_MEMORY_FILE,
+            tokens: userTokens,
+          });
+        }
+        // 剩下的差额是 `.wave/rules` 里无条件生效的规则；分成两半之外没有别的
+        // 注入来源，所以差额即规则体积。
+        const rulesTokens = Math.max(
+          0,
+          totalTokens - projectTokens - userTokens,
+        );
+        if (rulesTokens > 0) {
+          memoryFiles.push({
+            type: "rules",
+            path: ".wave/rules",
+            tokens: rulesTokens,
+          });
+        }
+      }
+    } catch (error) {
+      errors.push(
+        `Failed to read memory files: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+
+    // The skill / subagent listings are historical messages, so they are already
+    // inside `messagesTokens`. Break them out by re-rendering the exact body the
+    // announcement channel sends (same function + same budget), then let
+    // `buildContextBreakdown` subtract what was broken out.
+    const skills: Array<{ name: string; tokens: number }> = [];
+    try {
+      const available = this.skillManager?.getAvailableSkills() ?? [];
+      const eligible = available.filter(
+        (skill) =>
+          !skill.disableModelInvocation &&
+          (!this.subagentType || skill.context !== "fork"),
+      );
+      if (eligible.length > 0) {
+        const { body } = formatSkillsWithinBudget(
+          eligible,
+          resolveSkillListingCharBudget(contextWindow),
+        );
+        // The rendered body is sorted by name (`formatSkillsWithinBudget`), so
+        // line N belongs to entry N — no name parsing, which would break on
+        // descriptions containing a colon.
+        const sorted = [...eligible].sort((a, b) =>
+          a.name.localeCompare(b.name),
+        );
+        listingLines(body).forEach((line, index) => {
+          const skill = sorted[index];
+          if (!skill) return;
+          skills.push({ name: skill.name, tokens: estimateTokens(line) });
+        });
+      }
+    } catch (error) {
+      errors.push(
+        `Failed to read the skill listing: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+
+    const agents: Array<{ name: string; tokens: number }> = [];
+    try {
+      const configs = this.subagentManager?.getConfigurations() ?? [];
+      // Builtin subagents (Explore / general-purpose / Plan) are not broken out:
+      // they ship with the session, and their lines stay counted in `Messages`.
+      // Same split as Claude Code's `Custom agents` category.
+      const custom = new Set(
+        configs.filter((c) => c.scope !== "builtin").map((c) => c.name),
+      );
+      if (custom.size > 0) {
+        const { body } = formatAgentsWithinBudget(
+          configs,
+          resolveAgentListingCharBudget(contextWindow),
+        );
+        const sorted = [...configs].sort((a, b) =>
+          a.name.localeCompare(b.name),
+        );
+        listingLines(body).forEach((line, index) => {
+          const config = sorted[index];
+          if (!config || !custom.has(config.name)) return;
+          agents.push({ name: config.name, tokens: estimateTokens(line) });
+        });
+      }
+    } catch (error) {
+      errors.push(
+        `Failed to read the subagent listing: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+
+    return buildContextBreakdown({
+      model: this.getModelConfig().model ?? "unknown",
+      contextWindow,
+      maxOutputTokens,
+      autoCompactThreshold,
+      systemPromptTokens,
+      systemTools,
+      mcpTools,
+      memoryFiles,
+      skills,
+      agents,
+      messagesTokens: roughTokenCountForMessages(
+        this.messageManager.getMessages(),
+      ),
+      measuredTokens: this.messageManager.getLatestTotalTokens(),
+      errors,
+    });
   }
 
   public getAutoMemoryEnabled(): boolean {
@@ -1267,17 +1479,47 @@ export class AIManager {
         (!this.subagentType || skill.context !== "fork"),
     );
 
-    // The listing is a directory, not content: ~2% of the window keeps it small
-    // against the conversation, with a floor so small-window models still get a
-    // usable list.
-    const charBudget = Math.max(
-      DEFAULT_SKILL_LISTING_CHAR_BUDGET,
-      Math.floor(this.getContextWindow() * 4 * 0.02),
-    );
+    const charBudget = resolveSkillListingCharBudget(this.getContextWindow());
 
     const text = buildSkillListingAnnouncement(
       collectSkillListingState(this.messageManager.getMessages()),
       eligible,
+      charBudget,
+    );
+    if (!text) return;
+
+    this.messageManager.addUserMessage({
+      content: wrapInSystemReminder(text),
+      isMeta: true,
+    });
+  }
+
+  /**
+   * Announce the available-subagent list as a meta message.
+   *
+   * Same reason as the skill listing above, with a trigger that fires more
+   * often: the subagent set follows MCP connections, plugin reloads and
+   * permission rules, and the `Agent` description it used to live in sits in
+   * the cached `tools[]` prefix. See `utils/agentListing.ts` for the
+   * marker/hash protocol.
+   */
+  private maybeAnnounceAgentListing(): void {
+    const subagentManager = this.subagentManager;
+    if (!subagentManager) return;
+
+    let configs;
+    try {
+      configs = subagentManager.getConfigurations();
+    } catch {
+      // Not initialized yet: an absent list must not read as "no subagents".
+      return;
+    }
+
+    const charBudget = resolveAgentListingCharBudget(this.getContextWindow());
+
+    const text = buildAgentListingAnnouncement(
+      collectAgentListingState(this.messageManager.getMessages()),
+      configs,
       charBudget,
     );
     if (!text) return;
@@ -2378,6 +2620,7 @@ ${question}`;
           // discovered now lands in the request that can already use it.
           await this.maybeDiscoverNestedSkills();
           this.maybeAnnounceSkillListing();
+          this.maybeAnnounceAgentListing();
 
           // Announce MCP servers' own usage notes (persisted meta message) before
           // the snapshot below, so a server that connected mid-session explains

@@ -409,6 +409,8 @@ export const handleCommandSelect = (
           await callbacks.onRenameSession?.();
         } else if (command === "remote-control") {
           dispatch({ type: "SET_SHOW_REMOTE_CONTROL", payload: true });
+        } else if (command === "context") {
+          await callbacks.onContextCommand?.();
         }
       }
     })();

@@ -36,6 +36,7 @@ import type {
   McpServerConfig,
   SubagentConfiguration,
   SkillMetadata,
+  ContextBreakdown,
   RemoteControlSnapshot,
   ConfiguredModel,
   ServerNotificationMethod,
@@ -947,6 +948,18 @@ export class StdioAgent {
       this.sessionId,
     )) as { skills: SkillMetadata[] };
     return result.skills;
+  }
+
+  /**
+   * `/context` 的报告数据（spec `commands/context-command.md`）。宿主的上下文
+   * 面板与 CLI 的 `/context` 读同一份，避免两端各算一遍口径不一致。
+   */
+  async getContextBreakdown(): Promise<ContextBreakdown> {
+    return (await this.client.request(
+      "getContextBreakdown",
+      undefined,
+      this.sessionId,
+    )) as ContextBreakdown;
   }
 
   // ── Remote control ────────────────────────────────────────────

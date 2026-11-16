@@ -301,16 +301,23 @@
 }
 
 /* Context-usage indicator — ring progress glyph + percentage number, matching
-   the designer's compact glyph. Pure display (span, no click action); the
-   description lives in aria-label/title. Sits between the spacer and the
-   permission selector. */
+   the designer's compact glyph. A button: clicking opens the `/context`
+   breakdown popover anchored to it (spec commands/context-command.md 场景 1);
+   the description lives in aria-label, the hover tooltip is owned by Tooltip.
+   Sits between the spacer and the permission selector. The button reset keeps
+   the geometry identical to the old display-only span (host-desktop.css sizes
+   it at 59×32 / 32-high — a native border+padding would change that). */
 .compress-context-button {
   display: inline-flex;
   align-items: center;
   gap: 4px;
   font-size: 12px;
+  font-family: inherit;
   color: var(--vscode-foreground);
+  background: none;
+  border: none;
   padding: 4px 6px;
+  cursor: pointer;
   flex-shrink: 0;
   white-space: nowrap;
 }

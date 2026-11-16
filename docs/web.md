@@ -72,7 +72,7 @@ Web 端不需要安装任何客户端：电脑上跑着 agent，手机或电脑�
 
 ### 快捷指令弹窗
 
-输入框左侧的「/」列出这台手机上能用的指令：`/status`、`/clear`、`/compact`、`/tasks`、`/workflows`、`/rewind`、`/model`、`/btw`。选中即执行，不用再手打。
+输入框左侧的「/」列出这台手机上能用的指令：`/status`、`/context`、`/clear`、`/compact`、`/tasks`、`/workflows`、`/rewind`、`/model`、`/btw`。选中即执行，不用再手打。
 
 需要电脑那边界面的几条（设置、插件市场、计划预览等）不会出现在这里——手机上点下去没有承载它们的页面。
 

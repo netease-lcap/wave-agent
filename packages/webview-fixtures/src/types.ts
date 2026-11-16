@@ -56,6 +56,7 @@ import type {
   ModPromptFillRequest,
   ModStatusPayload,
   ModToastPayload,
+  ContextBreakdown,
 } from "wave-agent-sdk/types";
 
 export type {
@@ -1022,6 +1023,23 @@ export interface StatusResponseMessage extends HostToWebviewMessageBase {
 }
 
 /**
+ * Reply to the webview's `getContextBreakdown` request (the `/context` panel).
+ *
+ * The host forwards the breakdown its own agent built; `breakdown` and `error`
+ * are mutually exclusive. A failure is reported as a message rather than an
+ * empty panel because a panel showing 0% would read as "your context is
+ * empty" instead of "the query failed" (spec commands/context-command.md
+ * 场景 6: 旧版本 CLI 没有这条 RPC 时必须显示失败并可重试).
+ */
+export interface ContextBreakdownResponseMessage
+  extends HostToWebviewMessageBase {
+  command: "contextBreakdownResponse";
+  requestId: string;
+  breakdown?: ContextBreakdown;
+  error?: string;
+}
+
+/**
  * Reply to the webview's `remoteControl` request (the `/remote-control`
  * dialog): the host asked its own `wave --stdio` child what the outbound relay
  * link looks like, and forwards the child's snapshot verbatim.
@@ -1876,6 +1894,7 @@ export type HostToWebviewMessage =
   | ShowDialogMessage
   | ConfigurationUpdatedMessage
   | StatusResponseMessage
+  | ContextBreakdownResponseMessage
   | ConfigurationErrorMessage
   | FocusInputMessage
   | TriggerShortcutMessage
@@ -2003,6 +2022,9 @@ type ReplyAttribution = {
   remoteControlResponse: "requestId";
   // 回滚：请求生成 id，回复原样带回（同一会话可反复回滚，晚到的旧回复即弃）。
   rewindResult: "requestId";
+  // `/context` 面板：面板可反复开关，且每次打开重新取数 —— 晚到的旧回复必须按
+  // requestId 丢弃，否则会替刚打开的面板贴上上一次的构成。
+  contextBreakdownResponse: "requestId";
   // 手机页会话列表的行级动作：删除 / 删除前读工作树改动。两笔都是「一次点击一笔
   // 请求」，但同一行可以被反复操作（关掉确认卡再点一次、换一行再点），晚到的旧回复
   // 必须按 requestId 丢弃，否则会替另一行收起卡片或贴上别人的改动数字。
@@ -2084,6 +2106,7 @@ export const replyAttributionLocked = {
   desktopSshConnectionResult: true,
   remoteControlResponse: true,
   rewindResult: true,
+  contextBreakdownResponse: true,
   sessionDeleted: true,
   sessionWorktreeChanges: true,
   desktopArtifactsList: true,

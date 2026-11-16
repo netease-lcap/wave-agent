@@ -882,12 +882,19 @@ describe("Agent Tool worktree isolation", () => {
     expect(result.content).toContain(worktreeSummary);
   });
 
-  it("lists definitions that require worktree isolation", () => {
+  it("keeps the definition list out of the description", () => {
+    // The list moved to a per-session `system-reminder` announcement
+    // (`utils/agentListing.ts`): the description is part of the cached `tools[]`
+    // prefix, so naming subagents here re-billed the prefix whenever the set
+    // changed (spec core/prompt-cache-control.md 场景 1-3).
     const prompt = agentTool.prompt?.({
       availableSubagents: [{ ...isolationConfig, isolation: "worktree" }],
     });
 
-    expect(prompt).toContain("isolation: worktree");
+    expect(prompt).toContain(
+      "Available agent types are listed in system-reminder messages in the conversation.",
+    );
+    expect(prompt).not.toContain("isolation: worktree");
   });
 });
 
@@ -901,36 +908,21 @@ describe("Agent Tool tool-access summary", () => {
     priority: 3,
   } satisfies SubagentConfiguration;
 
-  it("renders an explicit whitelist", () => {
-    const prompt = agentTool.prompt?.({
-      availableSubagents: [{ ...base, tools: ["Read", "Grep"] }],
-    });
+  /** The tool-access wording moved to `formatAgentLine` (tests/utils/agentListing.test.ts). */
+  it("不再随子代理声明变化：传什么 availableSubagents 都是同一段文本", () => {
+    const empty = agentTool.prompt?.({ availableSubagents: [] });
+    const cases: SubagentConfiguration[][] = [
+      [{ ...base, tools: ["Read", "Grep"] }],
+      [{ ...base, disallowedTools: ["Edit", "Write"] }],
+      [{ ...base, tools: ["Read"], disallowedTools: ["Write"] }],
+      [base],
+    ];
 
-    expect(prompt).toContain("- scout: Scout (Tools: Read, Grep)");
-  });
-
-  it("renders a blacklist as 'All except …'", () => {
-    const prompt = agentTool.prompt?.({
-      availableSubagents: [{ ...base, disallowedTools: ["Edit", "Write"] }],
-    });
-
-    expect(prompt).toContain("- scout: Scout (Tools: All except Edit, Write)");
-  });
-
-  it("prefers the whitelist wording when both lists are set", () => {
-    const prompt = agentTool.prompt?.({
-      availableSubagents: [
-        { ...base, tools: ["Read"], disallowedTools: ["Write"] },
-      ],
-    });
-
-    expect(prompt).toContain("- scout: Scout (Tools: Read)");
-    expect(prompt).not.toContain("All except");
-  });
-
-  it("renders a wildcard when neither list is set", () => {
-    const prompt = agentTool.prompt?.({ availableSubagents: [base] });
-
-    expect(prompt).toContain("- scout: Scout (Tools: *)");
+    for (const availableSubagents of cases) {
+      const prompt = agentTool.prompt?.({ availableSubagents });
+      expect(prompt).toBe(empty);
+      expect(prompt).not.toContain("- scout:");
+      expect(prompt).not.toContain("All except");
+    }
   });
 });

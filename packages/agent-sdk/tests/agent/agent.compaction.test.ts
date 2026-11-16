@@ -550,9 +550,10 @@ describe("Agent Message Compaction Tests", () => {
     expect(callAgentCallCount).toBe(3);
 
     // Verify that messages passed to callAgent include the compacted message,
-    // the 3 preserved messages, the new message, and 1 prepend memory message
-    // (system-reminder with AGENTS.md + user memory).
-    expect(messagesPassedToCallAgent.length).toBe(6);
+    // the 3 preserved messages, the new message, 1 prepend memory message
+    // (system-reminder with AGENTS.md + user memory), and the two list
+    // announcements re-sent after the compaction dropped their markers.
+    expect(messagesPassedToCallAgent.length).toBe(7);
 
     // Verify the structure of messages passed to callAgent
     // The first message should be the compacted message as user role (matching Claude Code's auto-compact)
@@ -562,9 +563,14 @@ describe("Agent Message Compaction Tests", () => {
       "Compacted content: This contains summary information of previous multi-round conversations.",
     );
 
-    // The last message should be the second user message we added
-    const lastMessage =
-      messagesPassedToCallAgent[messagesPassedToCallAgent.length - 1];
+    // The last message should be the second user message we added. It is not the
+    // literal last entry any more: the list announcements are appended after the
+    // user message lands (right before the request), so they trail it.
+    const lastMessage = messagesPassedToCallAgent
+      .filter((message) =>
+        JSON.stringify(message).includes("Second message after compaction"),
+      )
+      .at(-1)!;
     expect(lastMessage.role).toBe("user");
     expect(lastMessage.content).toEqual([
       {

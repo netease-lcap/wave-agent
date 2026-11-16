@@ -25,15 +25,15 @@ function idsForAllSurfaces(): string[] {
   return HOST_SLASH_COMMANDS.map((command) => command.id);
 }
 
-test("每个入口拿到的正是它那份表：桌面 17 / VS Code 17 / JB 16 / 远控页 8", () => {
+test("每个入口拿到的正是它那份表：桌面 18 / VS Code 18 / JB 17 / 远控页 9", () => {
   // 数字是**能力盘点**，不是排版偏好：改动这张表就要连带确认对应入口真的能执行
   // 新加的那条（见下面的对齐用例），否则就是把一条点了没反应的行塞给用户。
-  expect(idsFor("desktop")).toHaveLength(17);
-  expect(idsFor("vscode")).toHaveLength(17);
-  expect(idsFor("jetbrains")).toHaveLength(16);
-  // 8 条，但**前台 CLI 承接时会少一条**（`/resume`，宿主在回包前自己删）：
+  expect(idsFor("desktop")).toHaveLength(18);
+  expect(idsFor("vscode")).toHaveLength(18);
+  expect(idsFor("jetbrains")).toHaveLength(17);
+  // 9 条，但**前台 CLI 承接时会少一条**（`/resume`，宿主在回包前自己删）：
   // 表的 `surfaces` 是入口的上限，宿主再收窄（commands/slash-commands.md 场景 4）。
-  expect(idsFor("remote-page")).toHaveLength(8);
+  expect(idsFor("remote-page")).toHaveLength(9);
 });
 
 test("各入口的差异只有既有拍板的四条", () => {
@@ -66,9 +66,10 @@ test("各入口的差异只有既有拍板的四条", () => {
   expect(jetbrains).toEqual(vscode.filter((id) => id !== "config"));
 });
 
-test("远控页只拿页面上真能执行的那 8 条，界面类的一条都不给", () => {
+test("远控页只拿页面上真能执行的那 9 条，界面类的一条都不给", () => {
   expect(idsFor("remote-page")).toEqual([
     "status",
+    "context",
     "clear",
     "compact",
     "tasks",
@@ -96,12 +97,14 @@ test("远控页只拿页面上真能执行的那 8 条，界面类的一条都�
   }
 });
 
-test("远控页那 8 条对应的远端方法都在白名单里", () => {
+test("远控页那 9 条对应的远端方法都在白名单里", () => {
   // 「弹窗里有 ⇒ 点了真的有效」。页面上的命令最终都落成远端 RPC，白名单是那道
   // 唯一的门；把两者钉在一起，才不会出现「点了回 -32601，提示去升级机器版本」。
   const remoteMethods: Record<string, string[]> = {
     // 只读弹窗：数据来自页面已经收到的状态/通知，不需要额外请求。
     status: [],
+    // 构成表要现算（分项估算 + 上次响应的实测总量），所以走一条只读 RPC。
+    context: ["getContextBreakdown"],
     tasks: [],
     compact: ["compact"],
     workflows: ["getWorkflowRuns"],

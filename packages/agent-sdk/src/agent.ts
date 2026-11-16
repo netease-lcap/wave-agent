@@ -48,6 +48,7 @@ import type {
   UserImage,
 } from "./types/index.js";
 import type { HookEvent, HookEventConfig } from "./types/hooks.js";
+import type { ContextBreakdown } from "./types/contextBreakdown.js";
 import type { BtwHistoryTurn } from "./types/btw.js";
 import type {
   MessageWindow,
@@ -677,6 +678,14 @@ export class Agent {
     const model = this.getModelConfig().model;
     if (model !== undefined) usage.model = model;
     return usage;
+  }
+
+  /**
+   * `/context` 的报告数据（spec `commands/context-command.md`）：按来源拆开的
+   * 上下文构成、窗口、压缩阈值与实测总量。只读、不发模型请求。
+   */
+  public async getContextBreakdown(): Promise<ContextBreakdown> {
+    return await this.aiManager.getContextBreakdown();
   }
 
   /**

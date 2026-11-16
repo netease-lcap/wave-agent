@@ -5760,6 +5760,31 @@ export class DesktopHost {
         break;
       }
 
+      // `/context` 面板（spec commands/context-command.md）：转发该 pane 自己
+      // agent 算出的构成。失败回 error —— 空数据会把 0% 画成「你的上下文是空
+      // 的」，而真实原因是这次 RPC 没成。
+      case "getContextBreakdown": {
+        const requestId = (msg.requestId as string) ?? "";
+        try {
+          const paneAgent = this.agentForPane(pid);
+          if (!paneAgent) throw new Error("No active session");
+          this.postMessage({
+            command: "contextBreakdownResponse",
+            paneId: pid,
+            requestId,
+            breakdown: await paneAgent.getContextBreakdown(),
+          });
+        } catch (error) {
+          this.postMessage({
+            command: "contextBreakdownResponse",
+            paneId: pid,
+            requestId,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+        break;
+      }
+
       case "connectMcpServer":
         try {
           await this.agentForPane(pid)?.connectMcpServer(

@@ -42,6 +42,7 @@ import {
 } from "wave-agent-sdk";
 import { logger } from "../utils/logger.js";
 import { displayUsageSummary } from "../utils/usageSummary.js";
+import { formatContextBreakdown } from "../utils/formatContextBreakdown.js";
 import { expandLongTextPlaceholders } from "../managers/inputHandlers.js";
 import { remoteNotifications } from "../remote/remoteNotifications.js";
 import type { RemoteNotify } from "../remote/remoteNotifications.js";
@@ -87,6 +88,11 @@ export interface ChatContextType {
   clearMessages: () => Promise<void>;
   compact: (instructions?: string) => Promise<void>;
   addDir: (args?: string) => Promise<void>;
+  /**
+   * Append a read-only report of the context window's composition (`/context`).
+   * UI-only: the report is never sent to the model.
+   */
+  showContextBreakdown: () => Promise<void>;
   /**
    * Set the current session's custom title (`/rename <title>`). A blank title
    * only prints the usage hint — no AI-generated titles (spec: session-management.md).
@@ -1249,6 +1255,43 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     }
   }, []);
 
+  // /context: append a read-only report of what is occupying the context
+  // window (spec: commands/context-command.md). It is a UI-only assistant text
+  // message — same display path as /add-dir — so it never enters the model's
+  // context and never blocks the next turn.
+  const showContextBreakdown = useCallback(async () => {
+    const agent = agentRef.current;
+    if (!agent) return;
+
+    const sessionAtRequest = agent.sessionId;
+    const showResult = (content: string) => {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`,
+          role: "assistant",
+          timestamp: new Date().toISOString(),
+          blocks: [{ type: "text", content, stage: "end" }],
+        },
+      ]);
+    };
+
+    try {
+      const breakdown = await agent.getContextBreakdown();
+      // The report was built from the session that was active when the command
+      // ran; if it moved on (/resume, /clear) the numbers belong to another
+      // conversation, so drop them instead of pasting them onto the new one.
+      if (agent.sessionId !== sessionAtRequest) return;
+      showResult(formatContextBreakdown(breakdown));
+    } catch (error) {
+      showResult(
+        `Failed to read context usage: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+  }, []);
+
   // /resume: switch to another conversation without leaving the process. The
   // session id and its on-disk project directory move together, so the next
   // message is appended to the target's own transcript. A failed restore leaves
@@ -1649,6 +1692,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     clearMessages,
     compact,
     addDir,
+    showContextBreakdown,
     renameSession,
     resumeSession,
     abortMessage,

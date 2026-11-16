@@ -464,7 +464,10 @@ describe("RemoteControlService", () => {
     // the running turn into a background one (`backgroundCurrentTask`: the phone
     // has no Ctrl/Cmd+B, so the message button is its only entry) and the disk
     // scan behind `/resume` (`listAllSessions`: a host-level read the page
-    // opens a *new* session from — `restoreSession` is still refused) are the
+    // opens a *new* session from — `restoreSession` is still refused) plus the
+    // read-only context breakdown behind `/context` (`getContextBreakdown`:
+    // takes no path, changes no state — the same "read-only observation"
+    // judgement that lets `/status` in) are the
     // whole surface. Adding a method here is a deliberate
     // widening, so this list is pinned rather than derived.
     expect([...REMOTE_ALLOWED_METHODS].sort()).toEqual([
@@ -479,6 +482,7 @@ describe("RemoteControlService", () => {
       "destroy",
       "getBackgroundTaskOutput",
       "getConfiguredModels",
+      "getContextBreakdown",
       "getImagePreview",
       "getMessages",
       "getPromptHistory",

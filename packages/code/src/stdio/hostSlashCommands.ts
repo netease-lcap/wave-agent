@@ -88,6 +88,14 @@ export const HOST_SLASH_COMMANDS: readonly HostSlashCommandSpec[] = [
     surfaces: ALL,
   },
   {
+    id: "context",
+    description: "查看上下文窗口的构成",
+    runOnSelect: true,
+    // 四个前端都能执行：面板只是把宿主自己 agent 的 `getContextBreakdown()`
+    // 转成一段只读构成表，不需要编辑器、文件系统或面板机制。
+    surfaces: ALL,
+  },
+  {
     id: "remote-control",
     description: "远程控制（用手机接管本机会话）",
     runOnSelect: true,

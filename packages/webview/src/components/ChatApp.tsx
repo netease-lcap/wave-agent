@@ -21,6 +21,7 @@ import type { RewindCheckpoint } from "./RewindPopup";
 import { ToastStack } from "./ToastStack";
 import { BtwPanel } from "./BtwPanel";
 import StatusDialog from "./StatusDialog";
+import ContextDialog from "./ContextDialog";
 import BackgroundTaskManager from "./BackgroundTaskManager";
 import BackgroundTasksPane from "./BackgroundTasksPane";
 import WorkflowManager from "./WorkflowManager";
@@ -33,6 +34,7 @@ import LoadingLogo from "./LoadingLogo";
 import { SidebarExpandIcon, CloseIcon } from "./HeaderIcons";
 import { useDesktopChrome } from "./DesktopChromeContext";
 import { useHostMessage } from "../utils/useHostMessage";
+import type { MenuAnchorRect } from "../utils/anchoredMenu";
 import {
   credentialAfterLogin,
   credentialAfterLogout,
@@ -646,6 +648,12 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   // Context-usage percentage pushed by the host (batch 2 compress button).
   // Undefined = no usage info received yet (spec 场景 4: label without %).
   const [contextUsage, setContextUsage] = useState<number | undefined>();
+  // `/context` 浮层的锚点（spec commands/context-command.md 场景 1）：打开时从
+  // MessageInput 现取一次用量环的矩形 —— 期间滚动/换会话都不会让它指错地方。
+  const [contextAnchorRect, setContextAnchorRect] =
+    useState<MenuAnchorRect | null>(null);
+  /** 用量环元素本身：既是锚点来源，也要交给浮层做「点环不算点外部」的豁免。 */
+  const contextRingRef = useRef<HTMLButtonElement>(null);
   // AGENTS.md editor contents (batch 2 personalization view). null = not yet
   // loaded; loaded on demand when the settings page opens, saved via the
   // setAgentsContent RPC.
@@ -3277,6 +3285,35 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     [postToHost],
   );
 
+  /** 当前弹层类型的最新值：环的 toggle 判定要在回调里读（不能靠 state 闭包）。 */
+  const activeDialogRef = useRef(state.activeDialog);
+  activeDialogRef.current = state.activeDialog;
+
+  /**
+   * 打开 `/context` 浮层（spec commands/context-command.md 场景 1）：点用量环与
+   * 跑 `/context` 走同一个入口，形态完全一致。锚点现取一次 —— 环没渲染（新会话
+   * 首轮之前）时 MessageInput 退回整条底栏，浮层不会飘到视口角落（场景 2）。
+   */
+  const openContextPanel = useCallback(() => {
+    setContextAnchorRect(
+      messageInputRef.current?.getContextAnchorRect() ?? null,
+    );
+    dispatch({ type: "SHOW_DIALOG", payload: { type: "context" } });
+  }, []);
+
+  /**
+   * 环的点击：浮层已经开着就收起。点环本身不算「点外部」（`ContextDialog` 的
+   * `anchorRef` 豁免），所以收起只能靠这里 —— 否则用户点了环想收起来，得去点
+   * 别处。`/context` 命令仍走 `openContextPanel`，重复执行不会把已开的浮层关掉。
+   */
+  const toggleContextPanel = useCallback(() => {
+    if (activeDialogRef.current === "context") {
+      dispatch({ type: "HIDE_DIALOG" });
+      return;
+    }
+    openContextPanel();
+  }, [openContextPanel]);
+
   const handleSendMessage = useCallback(
     (
       text: string,
@@ -3364,6 +3401,13 @@ export const ChatApp: React.FC<ChatAppProps> = ({
       }
       if (trimmedText === "/status") {
         dispatch({ type: "SHOW_DIALOG", payload: { type: "status" } });
+        return;
+      }
+      // `/context`：上下文窗口构成浮层（spec commands/context-command.md）。浮层
+      // 锚在输入框旁的用量环上（点环同入口），数据由宿主的 `getContextBreakdown`
+      // 转发它自己 agent 的结果，不是把 `/context` 当消息发给模型。
+      if (trimmedText === "/context") {
+        openContextPanel();
         return;
       }
       // `/tasks` 与 `/workflows`：数据由 shim 补齐（`backgroundTasksChange` /
@@ -3547,6 +3591,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
       gitBranches,
       onOpenPluginMarketFromPane,
       askBtw,
+      openContextPanel,
     ],
   );
 
@@ -5751,6 +5796,9 @@ export const ChatApp: React.FC<ChatAppProps> = ({
               paneId={paneId}
               contextUsage={contextUsage}
               showContextUsage={hasVisibleMessages}
+              onOpenContextPanel={toggleContextPanel}
+              contextPanelOpen={state.activeDialog === "context"}
+              contextRingRef={contextRingRef}
               disabled={inputDisabled}
               placeholder={inputDisabledReason}
               workdirSelector={
@@ -6057,6 +6105,15 @@ export const ChatApp: React.FC<ChatAppProps> = ({
       )}
       {state.activeDialog === "status" && (
         <StatusDialog onClose={handleDialogClose} vscode={vscode} />
+      )}
+      {state.activeDialog === "context" && (
+        <ContextDialog
+          onClose={handleDialogClose}
+          busy={state.isStreaming}
+          vscode={vscode}
+          anchorRect={contextAnchorRect}
+          anchorRef={contextRingRef}
+        />
       )}
       {/* 后台任务：桌面端走右侧面板（上面的 renderPanelSlot），对话框只留给
           没有面板机制的插件端与远控页（spec desktop-right-panel.md
