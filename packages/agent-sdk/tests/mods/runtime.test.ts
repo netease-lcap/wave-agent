@@ -103,6 +103,9 @@ function host(overrides: Partial<ModRuntimeHost> = {}): ModRuntimeHost {
     })),
     workdir: vi.fn(() => path.resolve("/fake/project")),
     submitPrompt: vi.fn(async () => {}),
+    // 默认宿主能填草稿：具体落点（replace/append/insert）由 webview 决定，
+    // 这一层只关心 `$` 把参数原样交下来、把布尔值原样包成 `{ isFilled }`。
+    fillPrompt: vi.fn(async () => true),
     sessionUsage: vi.fn(() => ({
       context: { tokens: 0, window: 200_000, percent: 0 },
       tokens: { prompt: 0, completion: 0, cacheRead: 0, cacheCreation: 0 },
@@ -999,6 +1002,98 @@ describe("ModRuntime 的 $ 命名空间", () => {
       "$.prompt.submit 需要非空的 text",
     ]);
     expect(hostApi.submitPrompt).not.toHaveBeenCalled();
+  });
+
+  it("prompt.fill 把文本与 mode 交给宿主，空串也照传", async () => {
+    const hostApi = host();
+    const { mod } = runtime(
+      `
+      exports.register = function ($, on) {
+        on("session.start", async function () {
+          var results = [];
+          results.push(await $.prompt.fill({ text: "基于这个再改一版" }));
+          results.push(await $.prompt.fill({ text: "续写", mode: "append" }));
+          results.push(await $.prompt.fill({ text: "", mode: "replace" }));
+          return results;
+        });
+      };
+      `,
+      { host: hostApi },
+    );
+
+    await mod.load();
+    const result = await mod.callHook("session.start", {});
+    expect(result.ok).toBe(true);
+    // mode 缺省是 replace（与 Claude Code 同一个缺省）。
+    expect(hostApi.fillPrompt).toHaveBeenNthCalledWith(1, {
+      text: "基于这个再改一版",
+      mode: "replace",
+    });
+    expect(hostApi.fillPrompt).toHaveBeenNthCalledWith(2, {
+      text: "续写",
+      mode: "append",
+    });
+    // 空串是合法输入：replace 空串等于清空草稿。
+    expect(hostApi.fillPrompt).toHaveBeenNthCalledWith(3, {
+      text: "",
+      mode: "replace",
+    });
+    expect(result.ok && result.value).toEqual([
+      { isFilled: true },
+      { isFilled: true },
+      { isFilled: true },
+    ]);
+  });
+
+  it("prompt.fill 宿主答 false 时原样透传，不抛错", async () => {
+    // 「填不上」是正常结果（spec 场景 4）：终端宿主、对话框占键、超时都走这条。
+    const hostApi = host({ fillPrompt: vi.fn(async () => false) });
+    const { mod } = runtime(
+      `
+      exports.register = function ($, on) {
+        on("session.start", function () {
+          return $.prompt.fill({ text: "x" });
+        });
+      };
+      `,
+      { host: hostApi },
+    );
+
+    await mod.load();
+    const result = await mod.callHook("session.start", {});
+    expect(result.ok).toBe(true);
+    expect(result.ok && result.value).toEqual({ isFilled: false });
+  });
+
+  it("prompt.fill 的 text / mode 不合法当场报错，不静默当成 replace", async () => {
+    const hostApi = host();
+    const { mod } = runtime(
+      `
+      exports.register = function ($, on) {
+        on("session.start", async function () {
+          var errors = [];
+          for (var attempt of [
+            function () { return $.prompt.fill({}); },
+            function () { return $.prompt.fill({ text: 1 }); },
+            function () { return $.prompt.fill({ text: "x", mode: "prepend" }); },
+          ]) {
+            try { await attempt(); } catch (e) { errors.push(e.message); }
+          }
+          return errors;
+        });
+      };
+      `,
+      { host: hostApi },
+    );
+
+    await mod.load();
+    const result = await mod.callHook("session.start", {});
+    expect(result.ok && result.value).toEqual([
+      "$.prompt.fill 的 text 必须是字符串",
+      "$.prompt.fill 的 text 必须是字符串",
+      '$.prompt.fill 的 mode 只允许 "replace"、"append"、"insert"',
+    ]);
+    expect(hostApi.fillPrompt).not.toHaveBeenCalled();
   });
 
   it("session.usage 每次给一份新快照，mod 改它伤不到会话", async () => {

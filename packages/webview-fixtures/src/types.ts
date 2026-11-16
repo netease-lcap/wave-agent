@@ -52,6 +52,8 @@ import type {
   ModBandRenderResult,
   ModPanelUpdatePayload,
   ModPanelTree,
+  ModPromptFillMode,
+  ModPromptFillRequest,
   ModStatusPayload,
   ModToastPayload,
 } from "wave-agent-sdk/types";
@@ -68,6 +70,8 @@ export type {
   SessionData,
   ModBandRenderResult,
   ModPanelUpdatePayload,
+  ModPromptFillMode,
+  ModPromptFillRequest,
   ModStatusPayload,
   ModToastPayload,
 };
@@ -579,6 +583,20 @@ export interface DesktopModStatusMessage extends HostToWebviewMessageBase {
 export interface DesktopModToastMessage extends HostToWebviewMessageBase {
   command: "desktopModToast";
   payload: ModToastPayload;
+}
+
+/**
+ * A mod wants a draft in this pane's composer (`$.prompt.fill`; spec
+ * `ecosystem/plugin-mods.md`「把草稿填进输入框」).
+ *
+ * The only mod message that expects an answer: the webview fills the input and
+ * replies with `modPromptFillResult` (`{ requestId, filled }`). It must answer
+ * either way — silence reads as `{ isFilled: false }` after the limit, and a
+ * dialog holding the keys is exactly the case where a mod has to be told "no".
+ */
+export interface DesktopModPromptFillMessage extends HostToWebviewMessageBase {
+  command: "desktopModPromptFill";
+  payload: ModPromptFillRequest;
 }
 
 /** One row of a directory listing for the file panel's tree. */
@@ -1820,6 +1838,7 @@ export type HostToWebviewMessage =
   | DesktopModBandMessage
   | DesktopModStatusMessage
   | DesktopModToastMessage
+  | DesktopModPromptFillMessage
   | DesktopDirEntriesMessage
   | DesktopFileSaveResultMessage
   | DesktopPreviewFileResultMessage

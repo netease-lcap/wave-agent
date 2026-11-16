@@ -141,7 +141,7 @@ MODS 补上这两件事：插件带一个 TypeScript 模块（可写 TSX），�
 | `$.process` | `spawn({ argv, cwd?, env?, input? })` → 异步迭代子进程的输出；`run(argv, { cwd?, env?, stdin?, timeoutMs? })` → 跑完拿 `{ exitCode, stdout, stderr, is…Truncated }`（见「外部进程」）                                                      |
 | `$.fs`      | `read`（可选 `{ as: "bytes" }`）、`write`、`list`、`stat`、`exists`（相对路径按会话工作目录解析，见「读写文件」）                                                                                                                          |
 | `$.http`    | `fetch(url, { method?, headers?, body?, timeoutMs? })`（只允许 `https:` 与本机回环，见「发 HTTP 请求」）                                                                                                                                   |
-| `$.prompt`  | `submit({ text, asUser })`：把一条 prompt 送进当前会话（见「把 prompt 送进对话」）                                                                                                                                                         |
+| `$.prompt`  | `submit({ text, asUser })`：把一条 prompt 送进当前会话（见「把 prompt 送进对话」）；`fill({ text, mode? })` → `{ isFilled }`：把草稿填进输入框、不发送（见「把草稿填进输入框」）                                                           |
 | `$.session` | `usage()`：只读的 token 用量快照（见「会话用量」）                                                                                                                                                                                         |
 
 `$.ui.resolve(e)` 把 `ui.render` 收到的事件换成**这一端可用的元素表**（`{ Box, Text, Button, Input, Link, Code, Markdown }`，值与从 `wave-agent-sdk/mods` 导入的同名导出是同一份）。表按 `e.surface` 选：一期只发 `desktop`，别的值、以及不认识的 `e.component`，都直接报错并列出可用名单，不返回半张表。
@@ -225,6 +225,17 @@ mod 的沙箱里没有 `child_process`，要跑外部程序只能走 `$.process.
 - 不做 Claude Code 的「中断后拒收」回执（`{ drop }`）：我们的投递不会因为用户按了 Esc 就把在队里的消息丢掉。
 
 **信任。** `spawn` 让 mod 能执行任意命令，但它不引入新的信任层级——同一个插件的 hooks 本来就在跑 shell（`services/hook.ts` 的 `executeCommand`）。变的只是 mods 也能做同一件事，而插件安装时用户已经在授予这个权限。
+
+### 把草稿填进输入框
+
+`$.prompt.fill({ text, mode? })` 把文本放进**用户正看着的那个输入框**，当草稿、**不发送**，返回 `{ isFilled }`：
+
+- 与 `submit` 是两件事：`submit` 替用户按下回车（开一轮、进上下文、不可改），`fill` 只是把字打好，什么时候发、发不发都由用户决定。所以 `fill` 不改会话状态、不开轮次、不进上下文。
+- `mode` 一期三档，语义与 Claude Code 同名：`replace`（默认，替掉整份草稿）、`append`（接在草稿后面）、`insert`（插在光标处；编辑器没聚焦时按末尾算）。光标落在填入的文本之后，用户可以接着打字。
+- **`isFilled: false` 是正常结果，不是错误**：终端 CLI、宿主没接这条通道、审批卡片或问答对话框正占着键、输入框还没挂上，都会返回 `false` 而不是抛错——mod 拿到 `false` 就知道这次没落地，可以自己降级（改成 `$.ui.toast` 或 `$.prompt.submit`）。
+- **5 秒没有回执按 `false`**：与 Claude Code 同一时限。晚到的回执不改变已返回的结果，也不会把文本填第二次。
+- 文本允许空串（`replace` 空串 = 清空草稿）；`mode` 传了不认识的值当场报错并列出可用值。
+- 一期是 Claude Code 的**子集**：不做 `decorations`（给填入的文字涂色）、`cursor`（指定光标落点）、`answers_press`（回指某次按键）。那三样要么依赖 composer 的富文本区间绘制，要么依赖「一次按键」的标识，与「把字打好」不是一件事。
 
 ### 会话用量
 
@@ -407,6 +418,23 @@ mod 的沙箱里没有 `child_process`，要跑外部程序只能走 `$.process.
 4. **假设**外部进程一直不退出，**当**用户销毁会话或执行 `/reload-plugins`，**则**该进程（连同它的子进程树）被杀掉，此后不再有回调往对话里投递。
 5. **假设** `argv` 指向的程序不存在，**当** mod 调 `$.process.spawn`，**则**这一路的迭代抛错、`wave` 日志记下原文，mod 的其余面板与定时器照常工作。
 6. **假设**同一个 mod 已经开着 4 个外部进程，**当**它再调一次 `spawn`，**则**这次调用报错（见「限额」），不会静默排队或杀掉旧进程。
+
+### 用户故事：点一下建议，草稿就落在输入框里（优先级：P1）
+
+作为插件作者，我希望 mod 把一段文本填进输入框当草稿、而不是替用户发出去，以便「下一步建议」「改写这一句」这类面板用户还能先改一改再发。
+
+**为什么是这个优先级**：它和 `$.prompt.submit` 是同一件事的两档力度。`submit` 已经在主链路里，但「替用户按下回车」是不可撤销的动作——建议类面板多半只想把字打好。
+
+**验收场景**：
+
+1. **假设**面板上有三条建议按钮，**当**用户点第二条，**则**输入框里出现第二条的正文、光标在末尾、**没有**发出去，`await` 拿到 `{ isFilled: true }`。
+2. **假设**输入框里已经有一段用户自己打的字，**当** mod 用 `mode: "append"` 填，**则**原有的字保留、新文本接在后面；用默认的 `replace` 时整份草稿被换掉。
+3. **假设**用户正把光标放在输入框中间，**当** mod 用 `mode: "insert"` 填，**则**文本插在光标处、光标跟到填入的文本之后；输入框当时没有聚焦时按末尾算。
+4. **假设**宿主是终端 CLI（没有可填的输入框），**当** mod 调 `$.prompt.fill`，**则**拿到 `{ isFilled: false }` 而不是抛错，mod 的其余逻辑照常跑。
+5. **假设**一张审批卡片或问答对话框正占着键，**当** mod 调 `$.prompt.fill`，**则**拿到 `{ isFilled: false }`，对话框不受影响。
+6. **假设**宿主 5 秒内没有回执（webview 卡住或没挂上），**当**超时到，**则**调用返回 `{ isFilled: false }`；之后晚到的回执被丢弃，文本不会被填第二次。
+7. **假设** mod 传 `{ text: "" }` 配 `mode: "replace"`，**当**调用到达，**则**清空草稿并返回 `{ isFilled: true }`。
+8. **假设** mod 传 `{ text: "x", mode: "prepend" }`，**当**调用发生，**则**当场报错并列出 `replace` / `append` / `insert`，不静默当成 `replace`。
 
 ### 用户故事：宿主拒绝不合法或过大的树（优先级：P0）
 

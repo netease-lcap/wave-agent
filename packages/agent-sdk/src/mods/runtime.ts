@@ -11,6 +11,7 @@ import type {
   ModSpawnOptions,
   ModProcessChunk,
   ModProcessExit,
+  ModPromptFillMode,
   ModSessionUsage,
 } from "../types/mods.js";
 import { MOD_LIMITS } from "../types/mods.js";
@@ -232,6 +233,16 @@ export interface ModDollar {
    */
   prompt: {
     submit(options: { text: string; asUser?: boolean }): Promise<void>;
+    /**
+     * 把草稿填进用户正看着的输入框、**不发送**（spec「把草稿填进输入框」）。
+     *
+     * `isFilled: false` 是正常结果：终端 CLI、没有 surface 接手、对话框占着
+     * 键、5 秒没有回执，都是这一种。mod 拿它决定要不要降级成 `submit`。
+     */
+    fill(options: {
+      text: string;
+      mode?: ModPromptFillMode;
+    }): Promise<{ isFilled: boolean }>;
   };
   /**
    * 只读的会话快照（spec「会话用量」）。
@@ -280,6 +291,16 @@ export interface ModRuntimeHost {
   workdir(): string;
   /** 把一条 prompt 投进当前会话。 */
   submitPrompt(text: string): Promise<void>;
+  /**
+   * 把草稿填进 surface 的输入框（spec「把草稿填进输入框」）。
+   *
+   * 返回「填了没有」。宿主链路（通知 → webview → 回执）与超时都由实现方
+   * 负责：这里只看结果，不关心是哪一端放弃的。
+   */
+  fillPrompt(request: {
+    text: string;
+    mode: ModPromptFillMode;
+  }): Promise<boolean>;
   /** `$.session.usage()` 的数据源；会话还没起过轮次时给零值快照。 */
   sessionUsage(): ModSessionUsage;
 }
@@ -539,6 +560,30 @@ export class ModRuntime {
             throw new Error("$.prompt.submit 一期只支持 asUser: true");
           }
           await host.submitPrompt(text);
+        },
+        fill: async (options) => {
+          const text = options?.text;
+          // 空串是合法输入：`replace` 空串就是把草稿清掉（与 Claude Code 一致）。
+          if (typeof text !== "string") {
+            throw new Error("$.prompt.fill 的 text 必须是字符串");
+          }
+          const mode = options.mode;
+          if (
+            mode !== undefined &&
+            mode !== "replace" &&
+            mode !== "append" &&
+            mode !== "insert"
+          ) {
+            // 不静默当成 replace：拼错的 mode 会安静地替掉用户已打的字。
+            throw new Error(
+              '$.prompt.fill 的 mode 只允许 "replace"、"append"、"insert"',
+            );
+          }
+          const isFilled = await host.fillPrompt({
+            text,
+            mode: mode ?? "replace",
+          });
+          return { isFilled };
         },
       },
       // 只读快照；克隆一份交出去，mod 改自己的副本伤不到会话。

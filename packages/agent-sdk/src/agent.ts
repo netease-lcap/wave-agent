@@ -18,9 +18,11 @@ import type {
   ModPanelEventPayload,
   ModPanelRenderResult,
   ModPanelUpdatePayload,
+  ModPromptFillMode,
   ModStatusPayload,
   ModSessionUsage,
 } from "./types/mods.js";
+import { MOD_LIMITS } from "./types/mods.js";
 import { HookManager } from "./managers/hookManager.js";
 import { ReversionManager } from "./managers/reversionManager.js";
 import { PermissionManager } from "./managers/permissionManager.js";
@@ -148,6 +150,15 @@ export class Agent {
   private lastCompletion: { model?: string; language?: string } | null = null;
   /** Same, for the most recent next-edit suggestion (`reportNextEditOutcome`). */
   private lastNextEdit: { model?: string; language?: string } | null = null;
+  /**
+   * `$.prompt.fill` requests waiting for the surface's answer, keyed by the id
+   * the host carries back (spec「把草稿填进输入框」).
+   */
+  private readonly modPromptFills = new Map<
+    string,
+    (filled: boolean) => void
+  >();
+  private modPromptFillSeq = 0;
 
   // Configuration options storage for dynamic resolution
   private options: AgentOptions;
@@ -278,6 +289,65 @@ export class Agent {
    */
   public async renderModBand(): Promise<ModBandRenderResult[]> {
     return this.modManager.renderBand();
+  }
+
+  /**
+   * Settle a `$.prompt.fill` (spec `ecosystem/plugin-mods.md`「把草稿填进输入框」).
+   *
+   * The surface is the only thing that can say whether the text landed, so the
+   * request travels down as a notification and comes back as this RPC. A
+   * `requestId` that is unknown by now (timed out, session gone) is ignored:
+   * the mod has already been answered `{ isFilled: false }`.
+   */
+  public resolveModPromptFill(requestId: string, filled: boolean): void {
+    this.settleModPromptFill(requestId, filled);
+  }
+
+  /**
+   * Ask the surface to put a draft in its composer.
+   *
+   * Resolves `false` — never rejects — when there is no surface to ask, or when
+   * nobody answers in time (spec「把草稿填进输入框」: `isFilled: false` is a
+   * normal result, not an error). The timer is not a nicety: without it a mod
+   * awaiting a wedged webview would hang until the session dies.
+   */
+  private fillModPrompt(request: {
+    text: string;
+    mode: ModPromptFillMode;
+  }): Promise<boolean> {
+    const notify = this.options.callbacks?.onModPromptFill;
+    if (!notify) return Promise.resolve(false);
+    const requestId = `prompt-fill-${++this.modPromptFillSeq}`;
+    return new Promise<boolean>((resolve) => {
+      const timer = setTimeout(() => {
+        this.settleModPromptFill(requestId, false);
+      }, MOD_LIMITS.promptFillTimeoutMs);
+      // A pending fill must not keep the process alive on its own.
+      timer.unref?.();
+      this.modPromptFills.set(requestId, (filled) => {
+        clearTimeout(timer);
+        resolve(filled);
+      });
+      try {
+        notify({
+          sessionId: this.sessionId,
+          requestId,
+          text: request.text,
+          mode: request.mode,
+        });
+      } catch {
+        // A host that throws on its own callback is a host that cannot fill.
+        this.settleModPromptFill(requestId, false);
+      }
+    });
+  }
+
+  private settleModPromptFill(requestId: string, filled: boolean): void {
+    const settle = this.modPromptFills.get(requestId);
+    // Delete before settling: the settle path clears the timer and resolves, and
+    // a late reply arriving in the same tick must find nothing to settle again.
+    this.modPromptFills.delete(requestId);
+    settle?.(filled);
   }
 
   /**
@@ -491,6 +561,12 @@ export class Agent {
     // the numbers live on `Agent` and the managers below it, so they are pushed
     // down here rather than resolved inside ModManager.
     this.modManager.setSessionUsageProvider(() => this.getSessionUsage());
+
+    // Plugin mods can put a draft in the composer (`$.prompt.fill`, spec
+    // ecosystem/plugin-mods.md「把草稿填进输入框」). Unlike `submit`, this one
+    // travels out to the surface and back: only the UI knows whether the text
+    // landed, so the answer arrives later through `resolveModPromptFill`.
+    this.modManager.setPromptFiller((request) => this.fillModPrompt(request));
 
     // Wire up CWD change callback from AIManager to sync Agent's workdir
     this.aiManager.setOnCwdChange((newCwd) => {

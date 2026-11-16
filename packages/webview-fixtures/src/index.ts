@@ -61,8 +61,10 @@ import type {
   DesktopModBandMessage,
   DesktopModStatusMessage,
   DesktopModToastMessage,
+  DesktopModPromptFillMessage,
   ModBandRenderResult,
   ModPanelUpdatePayload,
+  ModPromptFillRequest,
   ModStatusPayload,
   ModToastPayload,
   DesktopPanelKind,
@@ -234,6 +236,10 @@ export interface Fixtures {
     payload: ModToastPayload,
     overrides?: Overrides<DesktopModToastMessage>,
   ) => DesktopModToastMessage;
+  desktopModPromptFill: (
+    payload: ModPromptFillRequest,
+    overrides?: Overrides<DesktopModPromptFillMessage>,
+  ) => DesktopModPromptFillMessage;
   desktopAccountInfo: (
     overrides?: Overrides<DesktopAccountInfoMessage>,
   ) => DesktopAccountInfoMessage;
@@ -515,6 +521,12 @@ export const fixtures: Fixtures = {
 
   desktopModToast: (payload, overrides = {}) => ({
     command: "desktopModToast",
+    payload,
+    ...overrides,
+  }),
+
+  desktopModPromptFill: (payload, overrides = {}) => ({
+    command: "desktopModPromptFill",
     payload,
     ...overrides,
   }),

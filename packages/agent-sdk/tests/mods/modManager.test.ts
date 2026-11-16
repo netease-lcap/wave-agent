@@ -1139,6 +1139,67 @@ exports.register = function ($, on) {
     await manager.dispose();
   });
 
+  /** 在 `session.start` 里填一次草稿的 mod（spec「把草稿填进输入框」）。 */
+  const fillMod = `
+exports.register = function ($, on) {
+  on("session.start", function () {
+    return $.prompt.fill({ text: "基于这个再改一版", mode: "append" });
+  });
+};
+`;
+
+  it("$.prompt.fill 把文本与 mode 交给接上的填草稿通道", async () => {
+    const { manager } = createManager({ [MOD_PATH]: fillMod });
+    const fill = vi.fn(async () => true);
+    manager.setPromptFiller(fill);
+
+    await manager.loadFromPlugins([
+      plugin([{ id: "todo:panel", path: MOD_PATH }]),
+    ]);
+    await manager.startSession();
+
+    expect(fill).toHaveBeenCalledWith({
+      text: "基于这个再改一版",
+      mode: "append",
+    });
+
+    await manager.dispose();
+  });
+
+  it("宿主没接填草稿通道时 $.prompt.fill 答 false，不抛错", async () => {
+    // 终端 CLI、没挂 surface 的宿主就是这一种：填不上是正常结果（spec 场景 4）。
+    const { manager } = createManager({ [MOD_PATH]: fillMod });
+
+    await manager.loadFromPlugins([
+      plugin([{ id: "todo:panel", path: MOD_PATH }]),
+    ]);
+    await manager.startSession();
+
+    // `session.start` 正常结束，没有任何错误摘要被推出来。
+    expect(vi.mocked(logger.warn)).not.toHaveBeenCalled();
+
+    await manager.dispose();
+  });
+
+  it("dispose 之后 $.prompt.fill 一律答 false", async () => {
+    const { manager } = createManager();
+    const fill = vi.fn(async () => true);
+    manager.setPromptFiller(fill);
+    await manager.dispose();
+
+    await expect(
+      (
+        manager as unknown as {
+          fillPrompt(request: {
+            text: string;
+            mode: "replace" | "append" | "insert";
+          }): Promise<boolean>;
+        }
+      ).fillPrompt({ text: "late", mode: "replace" }),
+    ).resolves.toBe(false);
+    expect(fill).not.toHaveBeenCalled();
+  });
+
   it("dispose 之后不能再投递", async () => {
     const { manager } = createManager({ [MOD_PATH]: remoteMod() });
     const submit = vi.fn(async () => {});

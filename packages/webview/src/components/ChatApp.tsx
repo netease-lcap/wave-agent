@@ -91,6 +91,7 @@ import type {
   ModBandRenderResult,
   ModPanelTree,
   ModPanelUpdatePayload,
+  ModPromptFillRequest,
   ModStatusPayload,
   ModToastPayload,
 } from "wave-agent-sdk/types";
@@ -1924,6 +1925,37 @@ export const ChatApp: React.FC<ChatAppProps> = ({
           Math.max(0, payload.timeoutMs),
         );
         modToastTimersRef.current.set(id, timer);
+        break;
+      }
+      case "desktopModPromptFill": {
+        // 唯一要作答的 mod 消息（spec「把草稿填进输入框」）：把文本放进输入框当
+        // 草稿、不发送，然后回 `modPromptFillResult`。**填不上也必须作答** ——
+        // 沉默只会让 mod 等到 5 秒超时，还分不清「界面没接」与「界面卡住」。
+        if (!forThisPane(message)) break;
+        const payload = (message as { payload?: ModPromptFillRequest }).payload;
+        if (!payload?.requestId) break;
+        // 审批卡片 / 各种确认框出现时输入框还挂着（只是被 `display: none`），
+        // 此刻填进去用户看不见 —— 按「填不上」作答，与 Claude Code 的
+        // 「对话框占着键时 `{ filled: false }`」同一口径。
+        const dialogHoldsKeys =
+          state.pendingConfirmations.length > 0 ||
+          pendingRewindId !== null ||
+          pendingClearConfirm ||
+          pendingModelSwitch !== null ||
+          pluginChangePending ||
+          draftDiscardOpen;
+        const filled =
+          !dialogHoldsKeys &&
+          (messageInputRef.current?.fillDraft({
+            text: payload.text,
+            mode: payload.mode,
+          }) ??
+            false);
+        vscode.postMessage({
+          command: "modPromptFillResult",
+          requestId: payload.requestId,
+          filled,
+        });
         break;
       }
       case "desktopFileContent":

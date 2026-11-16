@@ -19,6 +19,7 @@ import {
   type ModPanelTree,
   type ModPanelUpdatePayload,
   type ModPermissionRequestEvent,
+  type ModPromptFillMode,
   type ModSessionUsage,
   type ModStatusPayload,
   type ModToastPayload,
@@ -174,6 +175,17 @@ export class ModManager {
    */
   private promptSubmitter?: (text: string) => Promise<void>;
   /**
+   * `$.prompt.fill` 的出口（spec「把草稿填进输入框」）。
+   *
+   * 与 `promptSubmitter` 的区别是这条路**要等回执**：填输入框的是界面进程，
+   * 会话这边只知道「发下去」和「填了没有」。配对、超时、宿主能力判断都在
+   * `Agent` 里做（见 `Agent.fillModPrompt`），这个 manager 只转一手。
+   */
+  private promptFiller?: (request: {
+    text: string;
+    mode: ModPromptFillMode;
+  }) => Promise<boolean>;
+  /**
    * `$.session.usage()` 的数据源。
    *
    * 用量只有 `Agent` 读得到（上下文窗口、模型、每次响应的 usage 都在它和它下
@@ -201,6 +213,16 @@ export class ModManager {
   /** 接上用量快照（见 `sessionUsageProvider`）。 */
   setSessionUsageProvider(fn: () => ModSessionUsage): void {
     this.sessionUsageProvider = fn;
+  }
+
+  /** 接上「填草稿」通道（见 `promptFiller`）。 */
+  setPromptFiller(
+    fn: (request: {
+      text: string;
+      mode: ModPromptFillMode;
+    }) => Promise<boolean>,
+  ): void {
+    this.promptFiller = fn;
   }
 
   /**
@@ -304,6 +326,7 @@ export class ModManager {
               // `cd` 过之后读的相对路径跟着落在新目录。
               workdir: () => this.options.workdir?.() ?? process.cwd(),
               submitPrompt: (text) => this.submitPrompt(mod.id, text),
+              fillPrompt: (request) => this.fillPrompt(request),
               sessionUsage: () =>
                 this.sessionUsageProvider?.() ?? EMPTY_SESSION_USAGE,
             },
@@ -628,6 +651,23 @@ export class ModManager {
     }
     logger.info(`[Wave] ${modId} 把一条 prompt 投进了本会话`);
     await submit(text);
+  }
+
+  /**
+   * 把草稿填进界面上的输入框（spec「把草稿填进输入框」）。
+   *
+   * 与 `submitPrompt` 相反的两处：这条路**不抛错**（填不上是正常结果，mod 拿到
+   * `false` 自己降级），也**不改会话**（不开轮次、不进上下文）。会话已经结束、
+   * 或者宿主根本没接这条通道（终端 CLI、没挂 surface）时直接答 `false`。
+   */
+  private async fillPrompt(request: {
+    text: string;
+    mode: ModPromptFillMode;
+  }): Promise<boolean> {
+    if (this.disposed) return false;
+    const fill = this.promptFiller;
+    if (!fill) return false;
+    return await fill(request);
   }
 
   /**

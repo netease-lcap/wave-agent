@@ -59,6 +59,7 @@ import {
   startupStageText,
   type ModPanelUpdatePayload,
   type ModPanelEventPayload,
+  type ModPromptFillRequest,
   type ModStatusPayload,
   type ModToastPayload,
 } from "wave-agent-sdk/host";
@@ -2201,6 +2202,19 @@ export class DesktopHost {
         const paneId = paneIdOf();
         if (paneId) {
           this.postMessage({ command: "desktopModToast", paneId, payload });
+        }
+      },
+      // 唯一一条「mod 提问、界面作答」的通道（spec「把草稿填进输入框」）：
+      // 填输入框的是 webview，所以这里只把请求转下去，回执走
+      // `modPromptFillResult` 命令（见 handleMessage）。
+      onModPromptFill: (payload: ModPromptFillRequest) => {
+        const paneId = paneIdOf();
+        if (paneId) {
+          this.postMessage({
+            command: "desktopModPromptFill",
+            paneId,
+            payload,
+          });
         }
       },
       onQuotaHeaders: (headers: Record<string, string>) => {
@@ -6194,6 +6208,17 @@ export class DesktopHost {
           | undefined;
         if (agent && payload?.modId && payload.paneId) {
           await agent.sendModPanelEvent(payload as ModPanelEventPayload);
+        }
+        break;
+      }
+
+      // webview 对一次 `$.prompt.fill` 的回答（spec「把草稿填进输入框」）：
+      // 填上了没有由输入框那边判定，宿主只把这一句运回 CLI 放行在等的 mod。
+      case "modPromptFillResult": {
+        const agent = this.agentForPane(pid);
+        const requestId = msg.requestId as string | undefined;
+        if (agent && typeof requestId === "string") {
+          await agent.resolveModPromptFill(requestId, msg.filled === true);
         }
         break;
       }

@@ -64,6 +64,9 @@ const ALL_NOTIFICATION_METHODS: readonly ServerNotificationMethod[] = [
   // 状态行与提示).
   "modStatusUpdate",
   "modToast",
+  // The one mod push that expects an answer (`$.prompt.fill`): the surface
+  // replies with the `modPromptFillResult` RPC, and silence reads as unfilled.
+  "modPromptFill",
   // Global (no sessionId): the CLI's own startup steps, emitted before any
   // session exists. Delivered to the `registerGlobal` handler.
   "startupStage",

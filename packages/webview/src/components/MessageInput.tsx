@@ -21,6 +21,7 @@ import {
 import type {
   IdeContextProvider,
   IdeContextResult,
+  ModPromptFillMode,
 } from "wave-webview-fixtures";
 import { validateImageFile } from "../utils/imageValidation";
 import { useRovingMenu } from "../utils/useRovingMenu";
@@ -159,6 +160,14 @@ export interface MessageInputHandle {
   /** Upload a dropped file selection to the host, tagging this pane so the
    *  uploadSuccess reply routes back only to this input. */
   uploadFiles: (files: FileList | File[]) => void;
+  /**
+   * Put a plain-text draft into the input without sending it, and report whether
+   * it landed (`$.prompt.fill`, spec ecosystem/plugin-mods.md「把草稿填进输入框」).
+   *
+   * `false` when the input is not mounted — the caller then has to answer the
+   * mod `{ isFilled: false }` instead of leaving it to time out.
+   */
+  fillDraft: (request: { text: string; mode: ModPromptFillMode }) => boolean;
 }
 
 /** 选区变化（@ 提及、斜杠命令下拉）的防抖：用户停下不光标了才去问宿主。 */
@@ -436,6 +445,89 @@ export const MessageInput = forwardRef<
    */
   const lastSelectionChangePosRef = useRef<number | null>(null);
 
+  /**
+   * `$.prompt.fill` 的落点（spec ecosystem/plugin-mods.md「把草稿填进输入框」）。
+   *
+   * 与用户自己打字等价、**不发送**。`replace` 换掉整份草稿（chip 一起没了，与
+   * 设置页的 `loadDraft` 同一个语义）；`append` / 没有光标的 `insert` 接在末尾，
+   * 已有内容时先空一行；有光标时 `insert` 插在光标处。写完后光标落在填入的文本
+   * 之后，用户可以接着打。
+   */
+  const fillDraft = useCallback(
+    ({ text, mode }: { text: string; mode: ModPromptFillMode }): boolean => {
+      const div = textareaRef.current;
+      if (!div) return false;
+
+      const nodesOf = (source: string): Node[] => {
+        const nodes: Node[] = [];
+        source.split("\n").forEach((line, i) => {
+          if (i > 0) nodes.push(document.createElement("br"));
+          if (line.length > 0) nodes.push(document.createTextNode(line));
+        });
+        return nodes;
+      };
+
+      const selection = window.getSelection();
+      const range =
+        selection && selection.rangeCount > 0 ? selection.getRangeAt(0) : null;
+      const caretInside =
+        mode === "insert" &&
+        range !== null &&
+        div.contains(range.commonAncestorContainer);
+
+      if (mode === "replace") {
+        div.replaceChildren(...nodesOf(text));
+        // DOM 被重建，光标追踪随之失效（见 lastSelectionChangePosRef 的注释）。
+        lastSelectionChangePosRef.current = null;
+      } else if (caretInside && range) {
+        range.deleteContents();
+        const fragment = document.createDocumentFragment();
+        const nodes = nodesOf(text);
+        for (const node of nodes) fragment.appendChild(node);
+        range.insertNode(fragment);
+        const last = nodes[nodes.length - 1];
+        if (last) range.setStartAfter(last);
+        range.collapse(true);
+        selection?.removeAllRanges();
+        selection?.addRange(range);
+      } else {
+        // 与 `appendText` 同一口径：空草稿不额外插空行（否则用户看到一条孤零零
+        // 的空行，光标还落在它下面）。
+        if ((div.textContent ?? "").trim() !== "") {
+          div.appendChild(document.createElement("br"));
+        }
+        div.append(...nodesOf(text));
+      }
+
+      // `innerText` 是排版后的文本，`textContent` 兜底没实现它的引擎；这个镜像
+      // 只喂给状态里的 trim() 空判定（与 `appendText` 同一写法）。
+      const mirror = div.innerText ?? div.textContent ?? "";
+      setMessage(mirror);
+      inputContentRef.current = mirror;
+      vscode.postMessage({
+        command: "updateInputContent",
+        sessionId,
+        content: serializeInputDraft(div, draftScopeKey),
+      });
+
+      div.focus();
+      // 光标落到整份草稿的末尾（插入分支已经在上面把光标放好了，这里只处理
+      // 「整份替换」与「接到末尾」两种）。
+      if (!caretInside) {
+        const after = window.getSelection();
+        if (after) {
+          const end = document.createRange();
+          end.selectNodeContents(div);
+          end.collapse(false);
+          after.removeAllRanges();
+          after.addRange(end);
+        }
+      }
+      return true;
+    },
+    [vscode, sessionId, draftScopeKey],
+  );
+
   // Expose focus method to parent component
   useImperativeHandle(ref, () => ({
     focus: () => {
@@ -526,6 +618,7 @@ export const MessageInput = forwardRef<
     uploadFiles: (files: FileList | File[]) => {
       readAndUploadFiles(files);
     },
+    fillDraft,
   }));
 
   // Auto-focus input on component mount

@@ -83,6 +83,7 @@ import {
   type ModPanelUpdatePayload,
   type ModStatusPayload,
   type ModToastPayload,
+  type ModPromptFillRequest,
 } from "wave-agent-sdk";
 import {
   type ClientNotificationMethod,
@@ -523,6 +524,18 @@ export class AgentBridge {
       // 输入框上方那条带走同一条拉取链路（spec「状态带、状态行与提示」）。
       case "modBandRender":
         return this.requireSession(sessionId).agent.renderModBand();
+      // surface 对一次 `$.prompt.fill` 的回答（spec「把草稿填进输入框」）：
+      // 只用来把在等回执的那个 mod 放行，不产生别的状态。
+      case "modPromptFillResult": {
+        const request = p as { requestId?: string; filled?: boolean };
+        if (typeof request.requestId === "string") {
+          this.requireSessionForRead(sessionId).agent.resolveModPromptFill(
+            request.requestId,
+            request.filled === true,
+          );
+        }
+        return;
+      }
 
       // ── Permissions ──
       case "setPermissionMode":
@@ -3566,6 +3579,19 @@ export class AgentBridge {
       onModToast: (payload: ModToastPayload) => {
         this.emit(
           "modToast",
+          {
+            ...payload,
+            sessionId: ctx.registeredSessionId ?? payload.sessionId,
+          },
+          ctx.registeredSessionId,
+        );
+      },
+      // 唯一「要宿主作答」的 mod 通道（spec「把草稿填进输入框」）：推一条通知
+      // 出去，等宿主回 `modPromptFillResult`，5 秒没有回执按 `{ isFilled: false }`
+      // 收口（超时在 Agent 侧，这里只负责把请求送出去）。
+      onModPromptFill: (payload: ModPromptFillRequest) => {
+        this.emit(
+          "modPromptFill",
           {
             ...payload,
             sessionId: ctx.registeredSessionId ?? payload.sessionId,

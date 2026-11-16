@@ -52,6 +52,7 @@ import type {
   ModPanelEventPayload,
   ModPanelRenderResult,
   ModPanelUpdatePayload,
+  ModPromptFillRequest,
   ModStatusPayload,
   ModToastPayload,
 } from "../types/index.js";
@@ -210,6 +211,13 @@ export interface StdioAgentCallbacks {
   onModStatus?: (payload: ModStatusPayload) => void;
   /** A mod asked for a transient notice (`$.ui.toast`). */
   onModToast?: (payload: ModToastPayload) => void;
+  /**
+   * A mod wants a draft in the composer (`$.prompt.fill`; spec
+   * `ecosystem/plugin-mods.md`「把草稿填进输入框」). The host answers with the
+   * `modPromptFillResult` RPC; no answer inside the limit reads as
+   * `{ isFilled: false }`.
+   */
+  onModPromptFill?: (payload: ModPromptFillRequest) => void;
   onCommandRunningChange?: (running: boolean) => void;
   onQueuedMessagesChange?: (messages: QueuedMessage[]) => void;
   onTasksChange?: (tasks: Task[]) => void;
@@ -697,6 +705,23 @@ export class StdioAgent {
     )) as ModPanelUpdatePayload[];
   }
 
+  /**
+   * 回答一次 `$.prompt.fill`（spec「把草稿填进输入框」）。
+   *
+   * 收到 `modPromptFill` 通知后由宿主调用，告诉 CLI 那边的 mod 文本落没落地。
+   * 会话已经不认这个 `requestId`（超时已作答）时什么也不会发生。
+   */
+  async resolveModPromptFill(
+    requestId: string,
+    filled: boolean,
+  ): Promise<void> {
+    await this.client.request(
+      "modPromptFillResult",
+      { requestId, filled },
+      this.sessionId,
+    );
+  }
+
   // ── Permissions ───────────────────────────────────────────────
 
   async setPermissionMode(mode: PermissionMode): Promise<void> {
@@ -1064,6 +1089,12 @@ export class StdioAgent {
       }
       case "modToast": {
         this.callbacks.onModToast?.(params as ModToastPayload);
+        break;
+      }
+      case "modPromptFill": {
+        // The only mod push that expects an answer: the host replies with the
+        // `modPromptFillResult` RPC (spec「把草稿填进输入框」).
+        this.callbacks.onModPromptFill?.(params as ModPromptFillRequest);
         break;
       }
       case "commandRunningChange": {
