@@ -18,6 +18,7 @@ import {
 export class MemoryService {
   private _cachedProjectMemory: string | null = null;
   private _cachedUserMemory: string | null = null;
+  private _cachedLocalMemory: string | null = null;
   private _cachedCombinedMemory: string | null = null;
   private _cachedAutoMemoryContent: string | null = null;
 
@@ -34,6 +35,7 @@ export class MemoryService {
   public clearCache(): void {
     this._cachedProjectMemory = null;
     this._cachedUserMemory = null;
+    this._cachedLocalMemory = null;
     this._cachedCombinedMemory = null;
     this._cachedAutoMemoryContent = null;
   }
@@ -242,18 +244,67 @@ export class MemoryService {
     }
   }
 
+  /**
+   * Read the project-level *personal* memory file (`<workdir>/AGENTS.local.md`,
+   * falling back to `CLAUDE.local.md`).
+   *
+   * This is the layer between the shared project memory and the user-level
+   * memory: private to this user (gitignored, never committed) but specific to
+   * this repository — the counterpart of CC's `CLAUDE.local.md`. Like the
+   * project layer it is read from the workdir only, with no upward walk, so a
+   * worktree needs its own copy.
+   */
+  async readLocalMemoryFile(workdir: string): Promise<string> {
+    if (this._cachedLocalMemory !== null) {
+      return this._cachedLocalMemory;
+    }
+
+    for (const fileName of ["AGENTS.local.md", "CLAUDE.local.md"]) {
+      const memoryFilePath = path.join(workdir, fileName);
+      try {
+        this._cachedLocalMemory = await fs.readFile(memoryFilePath, "utf-8");
+        logger.debug("Local memory file read successfully", {
+          memoryFilePath,
+          contentLength: this._cachedLocalMemory.length,
+        });
+        return this._cachedLocalMemory;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+          logger.error("Failed to read local memory file", {
+            memoryFilePath,
+            error: serializeError(error),
+          });
+          continue;
+        }
+      }
+    }
+
+    logger.debug("Neither AGENTS.local.md nor CLAUDE.local.md found", {
+      workdir,
+    });
+    this._cachedLocalMemory = "";
+    return "";
+  }
+
   async getCombinedMemoryContent(workdir: string): Promise<string> {
     if (this._cachedCombinedMemory !== null) {
       return this._cachedCombinedMemory;
     }
     const projectMemory = await this.readMemoryFile(workdir);
     const userMemory = await this.getUserMemoryContent();
+    const localMemory = await this.readLocalMemoryFile(workdir);
 
     let combined = "";
     if (projectMemory.trim()) combined += projectMemory;
     if (userMemory.trim()) {
       if (combined) combined += "\n\n";
       combined += userMemory;
+    }
+    // Personal project memory is loaded last, so it outranks both the shared
+    // project file and the cross-project user file.
+    if (localMemory.trim()) {
+      if (combined) combined += "\n\n";
+      combined += localMemory;
     }
     this._cachedCombinedMemory = combined;
     return combined;

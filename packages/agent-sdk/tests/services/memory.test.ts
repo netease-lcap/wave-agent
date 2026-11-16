@@ -430,7 +430,34 @@ describe("MemoryService", () => {
 
       expect(result).toContain("Project content");
       expect(result).toContain("User content");
-      expect(vi.mocked(fsPromises.readFile)).toHaveBeenCalledTimes(2);
+      // Project file, user file, then the personal-project layer probe.
+      expect(vi.mocked(fsPromises.readFile)).toHaveBeenCalledTimes(3);
+    });
+
+    it("should append the personal project memory last, so it outranks both other layers", async () => {
+      vi.mocked(fsPromises.readFile).mockImplementation((filePath) => {
+        const target = String(filePath);
+        if (target === path.join("/mock/workdir", "AGENTS.md")) {
+          return Promise.resolve("# Project Memory\n\nProject content");
+        }
+        if (target === "/mock/user/AGENTS.md") {
+          return Promise.resolve("# User Memory\n\nUser content");
+        }
+        if (target === path.join("/mock/workdir", "AGENTS.local.md")) {
+          return Promise.resolve("# Personal Memory\n\nPersonal content");
+        }
+        return Promise.reject({ code: "ENOENT" });
+      });
+
+      const result =
+        await memoryService.getCombinedMemoryContent("/mock/workdir");
+
+      expect(result.indexOf("Project content")).toBeLessThan(
+        result.indexOf("User content"),
+      );
+      expect(result.indexOf("User content")).toBeLessThan(
+        result.indexOf("Personal content"),
+      );
     });
 
     it("should cache combined content and not read from disk on second call", async () => {
@@ -439,10 +466,70 @@ describe("MemoryService", () => {
         .mockResolvedValueOnce("# User Memory\n\nUser content");
 
       await memoryService.getCombinedMemoryContent("/mock/workdir");
-      expect(vi.mocked(fsPromises.readFile)).toHaveBeenCalledTimes(2);
+      expect(vi.mocked(fsPromises.readFile)).toHaveBeenCalledTimes(3);
 
       await memoryService.getCombinedMemoryContent("/mock/workdir");
+      expect(vi.mocked(fsPromises.readFile)).toHaveBeenCalledTimes(3);
+    });
+  });
+
+  describe("readLocalMemoryFile", () => {
+    it("should return AGENTS.local.md content", async () => {
+      vi.mocked(fsPromises.readFile).mockResolvedValue(
+        "# Personal Memory\n\nPersonal content",
+      );
+
+      const result = await memoryService.readLocalMemoryFile("/mock/workdir");
+
+      expect(result).toBe("# Personal Memory\n\nPersonal content");
+      expect(vi.mocked(fsPromises.readFile)).toHaveBeenCalledWith(
+        path.join("/mock/workdir", "AGENTS.local.md"),
+        "utf-8",
+      );
+    });
+
+    it("should fallback to CLAUDE.local.md when AGENTS.local.md does not exist", async () => {
+      vi.mocked(fsPromises.readFile)
+        .mockRejectedValueOnce({ code: "ENOENT" })
+        .mockResolvedValueOnce("# Personal Memory\n\nClaude personal content");
+
+      const result = await memoryService.readLocalMemoryFile("/mock/workdir");
+
+      expect(result).toBe("# Personal Memory\n\nClaude personal content");
+      expect(vi.mocked(fsPromises.readFile)).toHaveBeenCalledWith(
+        path.join("/mock/workdir", "CLAUDE.local.md"),
+        "utf-8",
+      );
+    });
+
+    it("should keep AGENTS.local.md isolated from the project memory file", async () => {
+      await memoryService.readMemoryFile("/mock/workdir");
+
+      expect(vi.mocked(fsPromises.readFile)).not.toHaveBeenCalledWith(
+        path.join("/mock/workdir", "AGENTS.local.md"),
+        "utf-8",
+      );
+    });
+
+    it("should return empty string when neither local file exists", async () => {
+      vi.mocked(fsPromises.readFile).mockRejectedValue({ code: "ENOENT" });
+
+      const result = await memoryService.readLocalMemoryFile("/mock/workdir");
+
+      expect(result).toBe("");
       expect(vi.mocked(fsPromises.readFile)).toHaveBeenCalledTimes(2);
+    });
+
+    it("should re-read from disk after clearCache() invalidates the cache", async () => {
+      vi.mocked(fsPromises.readFile).mockResolvedValue("first content");
+      await memoryService.readLocalMemoryFile("/mock/workdir");
+
+      memoryService.clearCache();
+
+      vi.mocked(fsPromises.readFile).mockResolvedValue("second content");
+      expect(await memoryService.readLocalMemoryFile("/mock/workdir")).toBe(
+        "second content",
+      );
     });
   });
 

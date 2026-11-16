@@ -589,17 +589,24 @@ Wave provides multiple memory layers to give the agent context-specific instruct
 
 ## Memory Layers
 
-Wave looks for memory in the following locations, loaded in order of increasing priority:
+Wave looks for memory in the following locations, in this order — later entries are injected last, so they win on conflict:
 
-1. **User Memory**: \`~/.wave/AGENTS.md\` — Global instructions across all projects
-2. **Project Memory**: \`AGENTS.md\` in the project root — Project-specific instructions
-3. **Memory Rules**: \`.wave/rules/*.md\` and \`~/.wave/rules/*.md\` — Modular, path-scoped rules (see below)
+1. **Project Memory**: \`AGENTS.md\` in the project root — Project-specific instructions, checked into the repo and shared with the team
+2. **User Memory**: \`~/.wave/AGENTS.md\` — Global instructions across all projects
+3. **Local Memory**: \`AGENTS.local.md\` in the project root — Your private, per-project instructions (gitignored, not shared)
+4. **Memory Rules**: \`.wave/rules/*.md\` and \`~/.wave/rules/*.md\` — Modular, path-scoped rules (see below)
 
-> \`CLAUDE.md\` is also supported as a fallback for **project** memory (\`<workdir>/CLAUDE.md\`), and user memory falls back to \`~/.claude/AGENTS.md\`, for compatibility with existing setups.
+> \`CLAUDE.md\` is also supported as a fallback for **project** memory (\`<workdir>/CLAUDE.md\`), \`CLAUDE.local.md\` for **local** memory, and user memory falls back to \`~/.claude/AGENTS.md\`, for compatibility with existing setups.
 
 ## User Memory
 
 Stored at \`~/.wave/AGENTS.md\`. Use it for cross-project preferences and global instructions, e.g. "always write tests for new features", "prefer functional style".
+
+## Local Memory
+
+Stored at \`AGENTS.local.md\` in the project root. It sits between the shared project file and your global user file: private to you, but specific to this repository — your role and familiarity with the codebase, personal sandbox URLs or test accounts, workflow and communication quirks. Add it to \`.gitignore\` so it is never committed.
+
+It is read from the session's working directory only (no walk up the tree), so every git worktree needs its own copy. Create it yourself (any editor) — nothing writes it automatically.
 
 ## Project Memory
 
