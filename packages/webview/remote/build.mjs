@@ -18,7 +18,7 @@
  * - `connect-src 'none'` → `wss:`: the desktop page talks to its host over
  *   `postMessage` only, while the phone page must reach the relay.
  * - `terminal.*` is filtered out (the phone has no terminal pane), matching the
- *   exclusion `packages/webview/scripts/syncTargets.mjs` applies for VS Code.
+ *   exclusion `packages/vscode/scripts/syncWebview.mjs` applies for VS Code.
  * - Every asset carries a content hash in its file name and the HTML points at
  *   the hashed names; the four plugin hosts keep reading `dist/chat.js` from disk,
  *   so this rename is confined to this build. Rationale: this page is the only

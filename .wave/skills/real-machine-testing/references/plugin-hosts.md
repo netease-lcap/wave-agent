@@ -43,7 +43,7 @@ pnpm jb:test:ui -- --tests "*completion*"  # 只跑补全
 **驱动 JCEF webview 的用例（`@` 里的 IDE 上下文：`IdeContextRealIdeTest`）**
 
 ```sh
-pnpm -F wave-webview build        # 先重编 webview，见下「产物陈旧」
+pnpm -F wave-webview build        # 只出 packages/webview/dist；jb:test:ui 走 gradle，copyWebviewAssets 会拷进 resources
 DISPLAY=:101 pnpm jb:test:ui -- --tests "*IdeContextRealIdeTest*"
 ```
 
@@ -54,7 +54,7 @@ DISPLAY=:101 pnpm jb:test:ui -- --tests "*IdeContextRealIdeTest*"
 - **点完 DOM 还要 `jcef { setFocus() }`**：DOM 点击只把光标放进 contenteditable，Swing 焦点仍在旧组件，`keyboard { enterText("@") }` 会打空（现象：composer 里没有 `@`、下拉 0 条）。
 - **`findElement` ≠ `findElements`**：前者带 5s 等待、元素一重渲染就抛 `WaitForException`；读瞬时元素（下拉项）用 `findElements(...).firstOrNull()?.html`。
 - 断言挂在 webview 自己的钩子上：`[data-testid=message-input]` / `[data-testid=send-btn]` / `[data-testid=messages-container]`、`[data-path="ide:terminal"]`、`[role=dialog].ide-context-preview`。
-- **产物陈旧是最常见的假红**：插件打包的是 `packages/webview/dist`（`copyWebviewAssets` 只在 dist 变了才动），webview 源码改了但没 `pnpm -F wave-webview build` ⇒ 真机里跑的是旧 UI（现象：`.suggestion-item` 有 2 条却没有 `data-ide-context`，标签点开是「没有活动终端」）。跑之前先 `grep -c data-ide-context packages/webview/dist/chat.js`。
+- **产物陈旧是最常见的假红**：插件打包的是 `packages/webview/dist`（`copyWebviewAssets` 只在 dist 变了才动），webview 源码改了但没 `pnpm -F wave-webview build` ⇒ 真机里跑的是旧 UI（现象：`.suggestion-item` 有 2 条却没有 `data-ide-context`，标签点开是「没有活动终端」）。跑之前先 `grep -c data-ide-context packages/webview/dist/chat.js`。**`wave-webview build` 只出 `dist`，不同步任何宿主产物**：JetBrains 靠 gradle 的 `copyWebviewAssets`、VS Code 靠 `-F wave-vscode run sync:webview`、桌面端靠 `-F wave-desktop run sync:webview`，宿主不重建就还是旧 UI。
 - 真机已验证（2026-10-22，IC-242.20224.300）：`IdeContextRealIdeTest` 连跑两次通过（40–47s）；弹窗正文是终端缓冲原文（含提示符、命令回显、marker），气泡里那条消息 body 不含终端文本（内容只在弹窗里）。
 - **读终端的宿主侧坑（真机才发现）**：`ToolWindowManager.getToolWindow("Terminal").contentManager.selectedContent` 拿到的是**视图**条目，`getContent(widget)` 恒 null；用 `TerminalToolWindowManager.getWidgetByContent(content)` 拿 `JBTerminalWidget`（可 `as? ShellTerminalWidget`）。同名的 `findWidgetByContent(...)` 返回新 API 的桥接对象 `JBTerminalWidget$TerminalWidgetBridge`，拿不到 `terminalTextBuffer`。
 - 平台 fixture 的 `IdeContextReaderTest` 仍保留「无终端时降级」的断言；终端正路只在本套件覆盖。
