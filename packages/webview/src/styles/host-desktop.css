@@ -479,7 +479,9 @@
 }
 [data-host="desktop"][data-theme="dark"] .permission-mode-select:hover {
   background: rgba(255, 255, 255, 0.08);
-  color: #fff;
+  /* 深色 hover 字接 1 级 token（#E5E7E8），原来是字面量 #FFFFFF —— 比 primary
+     高半档；浅色档 hover 恰好就是 primary（#1F2329），两侧轻重才对得齐 */
+  color: var(--cc-text-primary, #e5e7e8);
 }
 [data-host="desktop"][data-theme="dark"] .permission-mode-select:focus {
   background: transparent;
@@ -560,20 +562,23 @@
 [data-host="desktop"][data-theme="dark"] .permission-mode-menu {
   background: var(--cc-bg-overlay);
   border-color: rgba(255, 255, 255, 0.12);
-  color: #9a9ea5;
+  /* 菜单常态字接 `--cc-text-regular`（深色 #C4C7C9），原为 #9A9EA5 —— 比 token
+     低两档：深色菜单底 #232526 上 5.72:1 vs 9.06:1。浅色档不变（token 浅色值
+     #565A60 就是这一族原来的浅色值）。 */
+  color: var(--cc-text-regular);
   box-shadow: 0 0 12px rgb(0 0 0 / 40%);
 }
 [data-host="desktop"][data-theme="dark"] .permission-mode-item:hover {
   background: rgba(255, 255, 255, 0.08);
-  color: #fff;
+  color: var(--cc-text-primary, #e5e7e8);
 }
 [data-host="desktop"][data-theme="dark"] .permission-mode-item.selected {
   background: rgba(255, 255, 255, 0.12);
-  color: #fff;
+  color: var(--cc-text-primary, #e5e7e8);
 }
 [data-host="desktop"][data-theme="dark"] .permission-mode-item.selected:hover {
   background: rgba(255, 255, 255, 0.12);
-  color: #fff;
+  color: var(--cc-text-primary, #e5e7e8);
 }
 [data-host="desktop"][data-theme="dark"]
   .permission-mode-item.mode-bypassPermissions {
@@ -731,7 +736,9 @@
 [data-host="desktop"][data-theme="dark"] .desktop-host-trigger:hover,
 [data-host="desktop"][data-theme="dark"] .desktop-workdir-trigger:hover {
   background: rgba(255, 255, 255, 0.08);
-  color: #ffffff;
+  /* 灰条上主机 / 目录这两颗触发键本就在同一条规则里，hover 字色一并接 1 级
+     token（#E5E7E8），原来是 #FFFFFF —— 只改一颗就得拆规则、两颗读数分岔 */
+  color: var(--cc-text-primary, #e5e7e8);
 }
 
 /* ── 消息流：时间线节点 6px → 8px（codechat design-node 8px）────────── */
@@ -770,11 +777,12 @@
 [data-host="desktop"][data-theme="dark"] .plus-menu {
   background: var(--cc-bg-overlay);
   border-color: rgba(255, 255, 255, 0.12);
-  color: #9a9ea5;
+  /* 同 `.permission-mode-menu`：菜单常态字接 1 级常规 token（深色 #C4C7C9） */
+  color: var(--cc-text-regular);
 }
 [data-host="desktop"][data-theme="dark"] .plus-menu-item:hover {
   background: rgba(255, 255, 255, 0.08);
-  color: #ffffff;
+  color: var(--cc-text-primary, #e5e7e8);
 }
 
 /* ── 左侧导航细节（对齐 codechat 规格）──────────────────────────── */
@@ -3056,14 +3064,35 @@
 [data-host="desktop"][data-theme="dark"] .account-usage-popover {
   color: var(--vscode-foreground);
 }
-/* 深色下菜单项基础文字：覆盖浅色的 #565A60（含此前已统一的 permission/plus） */
+/* 深色下菜单项基础文字：覆盖浅色的 #565A60（含此前已统一的 permission/plus）。
+   2026-11-16「3 也改」：常态字由 #9A9EA5 抬到 `--cc-text-regular`（深 #C4C7C9）——
+   菜单底 #232526 上 5.72:1 → 9.06:1，与浅色档（#565A60 on #FFFFFF 6.94:1）的轻重
+   对齐；这与创作集「视图」下拉 1113 那条是同一个裁定（那条当时是逐选择器绕开族规则，
+   现在族规则本身到位，它变冗余但无害）。 */
 [data-host="desktop"][data-theme="dark"] .permission-mode-item,
 [data-host="desktop"][data-theme="dark"] .plus-menu-item,
 [data-host="desktop"][data-theme="dark"] .more-menu-item,
 [data-host="desktop"][data-theme="dark"] .panel-toggle-menu-item,
 [data-host="desktop"][data-theme="dark"] .desktop-session-menu-item,
 [data-host="desktop"][data-theme="dark"] .desktop-workdir-menu-item {
-  color: #9a9ea5;
+  color: var(--cc-text-regular);
+}
+/* 上面那条容器规则（14 个选择器共用一句 `color: #9a9ea5`）里混着「菜单」和
+   「非菜单面」：`.btw-panel`（对话面板）、`.account-usage-popup`（用量浮层）、
+   `.account-usage-popover`（已有还原规则）、`.desktop-remote-browser`（远程浏览器）。
+   抬族值只抬菜单容器，其余四个保持原样 —— 用白名单另起一条，而不是把那句改掉，
+   这样「菜单以外一个像素都不动」是结构上成立的，不依赖逐面回归。 */
+[data-host="desktop"][data-theme="dark"] .more-menu,
+[data-host="desktop"][data-theme="dark"] .panel-toggle-menu,
+[data-host="desktop"][data-theme="dark"] .desktop-session-menu,
+[data-host="desktop"][data-theme="dark"] .desktop-workdir-menu,
+[data-host="desktop"][data-theme="dark"] .session-list-popup,
+[data-host="desktop"][data-theme="dark"] .slash-commands-popup,
+[data-host="desktop"][data-theme="dark"] .file-suggestion-dropdown,
+[data-host="desktop"][data-theme="dark"] .rewind-popup,
+[data-host="desktop"][data-theme="dark"] .model-popup,
+[data-host="desktop"][data-theme="dark"] .history-search-popup {
+  color: var(--cc-text-regular);
 }
 [data-host="desktop"][data-theme="dark"] .desktop-workdir-menu-label {
   color: #9a9ea5;
@@ -3079,7 +3108,10 @@
 [data-host="desktop"][data-theme="dark"] .model-popup-item:hover,
 [data-host="desktop"][data-theme="dark"] .history-search-item:hover {
   background-color: rgba(255, 255, 255, 0.08);
-  color: #ffffff;
+  /* 深色 hover 字接 1 级 token（#E5E7E8），原来是字面量 #FFFFFF —— 比 primary
+     高半档，浅色档 hover 恰好就是 primary（#1F2329），两侧轻重才对得齐
+     （design-system.md `## Menus`：hover = fill-hover + text-primary）。 */
+  color: var(--cc-text-primary, #e5e7e8);
 }
 [data-host="desktop"][data-theme="dark"] .session-list-item--selected,
 [data-host="desktop"][data-theme="dark"] .session-list-item--current,
@@ -3089,13 +3121,14 @@
 [data-host="desktop"][data-theme="dark"] .model-popup-item.selected,
 [data-host="desktop"][data-theme="dark"] .history-search-item.selected {
   background-color: rgba(255, 255, 255, 0.12);
-  color: #ffffff;
+  /* 选中同理：契约 selection = fill-pressed + 1 级字色（字重不变）。 */
+  color: var(--cc-text-primary, #e5e7e8);
 }
-/* 第二十五轮：面板切换菜单选中态深色（12% 白底 + 白字） */
+/* 面板切换菜单选中态深色（12% 白底 + 1 级字） */
 [data-host="desktop"][data-theme="dark"] .panel-toggle-menu-item--active,
 [data-host="desktop"][data-theme="dark"] .panel-toggle-menu-item--active:hover {
   background-color: rgba(255, 255, 255, 0.12);
-  color: #ffffff;
+  color: var(--cc-text-primary, #e5e7e8);
 }
 [data-host="desktop"][data-theme="dark"] .more-menu-item--danger,
 [data-host="desktop"][data-theme="dark"] .desktop-session-menu-item--danger {
@@ -5283,18 +5316,19 @@
   background: var(--cc-bg-overlay);
   border-color: rgba(255, 255, 255, 0.12);
   box-shadow: 0 0 12px rgb(0 0 0 / 40%);
-  color: #9a9ea5;
+  /* 菜单常态字接 1 级常规 token（深色 #C4C7C9），与菜单族同步抬一档 */
+  color: var(--cc-text-regular);
 }
 
 [data-host="desktop"][data-theme="dark"] .settings-select-option,
 [data-host="desktop"][data-theme="dark"] .session-board-filter-option {
-  color: #9a9ea5;
+  color: var(--cc-text-regular);
 }
 
 [data-host="desktop"][data-theme="dark"] .settings-select-option:hover,
 [data-host="desktop"][data-theme="dark"] .session-board-filter-option:hover {
   background: rgba(255, 255, 255, 0.08);
-  color: #ffffff;
+  color: var(--cc-text-primary, #e5e7e8);
 }
 
 [data-host="desktop"][data-theme="dark"] .settings-select-option.is-selected,
