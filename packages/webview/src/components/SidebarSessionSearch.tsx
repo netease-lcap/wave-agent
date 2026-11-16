@@ -55,7 +55,6 @@ export const SidebarSessionSearch: React.FC<SidebarSessionSearchProps> = ({
   const [draftStatuses, setDraftStatuses] = useState<SessionStatusFilter[]>([]);
   const [draftDate, setDraftDate] = useState<SessionDateFilter | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
 
   const close = () => setOpen(false);
 
@@ -94,7 +93,6 @@ export const SidebarSessionSearch: React.FC<SidebarSessionSearchProps> = ({
           <SearchIcon />
         </span>
         <input
-          ref={inputRef}
           type="text"
           className="desktop-sidebar-search-input"
           data-testid="desktop-session-search"
@@ -112,34 +110,6 @@ export const SidebarSessionSearch: React.FC<SidebarSessionSearchProps> = ({
             }
           }}
         />
-        {/* 2026-11-16 评论（她点名 `div.desktop-sidebar-search-field`）：「缺少清空
-            按钮」⇒ 有内容时在输入框右侧出现 ×，与创作集列表搜索 / 分享成员搜索的
-            `SearchField` 同一形态（16×16 命中盒 / 12×12 墨水 / 1.5 描边）。
-            `onMouseDown` 拦掉默认行为：点 × 时焦点不从输入框搬走，字段的
-            `:focus-within` 描边不闪一下；点击后照旧把焦点交还输入框。 */}
-        {query !== "" && (
-          <button
-            type="button"
-            className="desktop-sidebar-search-clear"
-            data-testid="desktop-session-search-clear"
-            aria-label="清除搜索"
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={() => {
-              onQueryChange("");
-              inputRef.current?.focus();
-            }}
-          >
-            <svg width={12} height={12} viewBox="0 0 12 12" aria-hidden="true">
-              <path
-                d="M2.6 2.6 L9.4 9.4 M9.4 2.6 L2.6 9.4"
-                stroke="currentColor"
-                strokeWidth={1.5}
-                strokeLinecap="round"
-                fill="none"
-              />
-            </svg>
-          </button>
-        )}
       </div>
       <Tooltip text="筛选" position="bottom">
         <button

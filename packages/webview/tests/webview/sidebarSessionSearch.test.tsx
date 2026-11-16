@@ -141,23 +141,6 @@ describe("侧栏会话搜索", () => {
     expect(searchBox().value).toBe("");
     expect(visibleSessionIds()).toEqual(["s1", "s2", "s3", "s4"]);
   });
-
-  // 2026-11-16 评论（`div.desktop-sidebar-search-field`）：「缺少清空按钮」。
-  it("有内容才出现清空键，点它清空关键词并把焦点交还输入框", () => {
-    renderTree();
-    expect(screen.queryByTestId("desktop-session-search-clear")).toBeNull();
-
-    typeQuery("payment");
-    const clear = screen.getByTestId("desktop-session-search-clear");
-    expect(clear.getAttribute("aria-label")).toBe("清除搜索");
-
-    fireEvent.click(clear);
-    expect(searchBox().value).toBe("");
-    expect(visibleSessionIds()).toEqual(["s1", "s2", "s3", "s4"]);
-    expect(screen.queryByTestId("desktop-session-search-clear")).toBeNull();
-    // 清空后焦点留在输入框：接着输入不用再点一次。
-    expect(document.activeElement).toBe(searchBox());
-  });
 });
 
 describe("侧栏会话筛选", () => {

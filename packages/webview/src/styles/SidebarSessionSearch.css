@@ -32,30 +32,6 @@
   flex: none;
 }
 
-/* 清空键（2026-11-16 评论「缺少清空按钮」）：形态照创作集列表搜索 / 分享成员搜索
-   的 `SearchField` 清空键 —— 16×16 命中盒 / 12×12 墨水 / 1.5 描边 / r4，有内容才
-   出现。区别只有落位：那边是绝对定位压在框内右侧，这里是 flex 行里输入框之后的
-   一个条项（输入框 `flex:1` 自行让位，不遮字）。 */
-.desktop-sidebar-search-clear {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 16px;
-  height: 16px;
-  padding: 0;
-  border: none;
-  border-radius: 4px;
-  background: transparent;
-  color: var(--vscode-descriptionForeground, #8c8f94);
-  cursor: pointer;
-}
-
-.desktop-sidebar-search-clear:hover {
-  color: var(--vscode-foreground);
-  background: rgba(127, 127, 127, 0.18);
-}
-
 .desktop-sidebar-search-input {
   flex: 1;
   min-width: 0;
@@ -341,25 +317,6 @@
 [data-host="desktop"] .desktop-sidebar-search-input::placeholder {
   color: var(--cc-field-placeholder);
   opacity: 1;
-}
-
-/* 桌面端的清空键接字段的字色映射：静止 = 次级字（与左侧放大镜同档），hover 提到
-   主字色 + `--cc-fill-hover` 薄底（与筛选按钮 / 菜单项的 hover 面同一变量）。 */
-[data-host="desktop"] .desktop-sidebar-search-clear {
-  color: var(--cc-text-secondary, #6c7076);
-}
-
-[data-host="desktop"] .desktop-sidebar-search-clear:hover {
-  color: var(--cc-text-primary, #1f2329);
-  background: var(--cc-fill-hover, #eef0f3);
-}
-
-/* 键盘焦点：按桌面既有「两种语言」分派里「边框透明的按钮」那一支 —— 外移 1px 环、
-   走 --cc-border-focus。不写这条的话键盘 Tab 到这里是浏览器默认的蓝环
-   （实测 rgb(0,95,204)、outline:auto），与同一行其它控件的焦点色不是一套。 */
-[data-host="desktop"] .desktop-sidebar-search-clear:focus-visible {
-  outline: 2px solid var(--cc-border-focus, var(--vscode-focusBorder, #005fb8));
-  outline-offset: 1px;
 }
 
 /* ── 筛选弹层（1022 评论：「读取 skill，优化这个下拉菜单样式」）────────────
