@@ -92,7 +92,9 @@ MODS 补上这两件事：插件带一个 TypeScript 模块（可写 TSX），�
 | `session.start`             | 会话初始化完成、第一个 prompt 之前                                                                                                                                                                                                                                                                               | 无（返回值忽略；面板得在这里 `$.ui.open`） |
 | `ui.render`                 | surface 请求某个 render site 的树时（宿主不缓存，每次请求都重新问 mod）；事件带三个正交的维度：`e.surface` 是画这棵树的那一端（一期只有 `desktop`）、`e.component` 是站点名（一期有 `Pane` / `AbovePrompt`）、`e.instance_id` 是该站点的哪个实例（`Pane` 是 `$.ui.open({ id })` 的 id，带固定是 `above-prompt`） | 元素树                                     |
 | `turn.complete`             | 一轮对话结束（答完，或被用户中断），见下                                                                                                                                                                                                                                                                         | 无（返回值忽略）                           |
+| `tool.call`                 | 一次工具调用**结束**后（拿到工具结果、`PostToolUse` 钩子跑完），见下                                                                                                                                                                                                                                             | 无（返回值忽略；**不能**拦下这次调用）     |
 | `classic.PermissionRequest` | 一次工具审批**即将**弹给用户时（`PermissionRequest` 钩子已放行、宿主询问用户之前），见下                                                                                                                                                                                                                         | 无（返回值忽略；**没有**批准/拒绝通道）    |
+| `command.run`               | 用户执行了一个由 `$.command.register` 注册的命令，或 mod 自己调 `$.command.run`（见「注册命令」）                                                                                                                                                                                                                | `{ text }`：这一行要变成的 prompt          |
 
 `ui.render` 的事件要交给 `$.ui.resolve(e)` 换元素表（见下）；表外的元素名会被 `validateModTree` 拦下。
 
@@ -107,11 +109,12 @@ MODS 补上这两件事：插件带一个 TypeScript 模块（可写 TSX），�
 
 ### 完成与审批的观察（只读事件）
 
-第三方服务想把「对话答完了」「有张审批卡片在等」反映到自己的页面上（网页那边看到一个通知），用的就是这两个事件：它们只报告宿主**已经发生**的事实，不改变任何行为。
+第三方服务想把「对话答完了」「有张审批卡片在等」反映到自己的页面上（网页那边看到一个通知），用的就是这三个事件：它们只报告宿主**已经发生**的事实，不改变任何行为。
 
 | 事件                        | 载荷                                                                                            | 触发边界                                                                                                                                                                                                                                                                       |
 | --------------------------- | ----------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `turn.complete`             | `{ isAborted, durationMs, answer, usage }`                                                      | 一轮结束：答完或用户中断（Esc / 停止）。`durationMs` 从这一轮开始处理到结束，`answer` 是最后一条 assistant 消息的正文，`usage` 是本轮所有模型请求的 token 合计；因 Stop 钩子要求继续、注入后台任务通知而重开的循环算**同一轮**，只在真正结束时触发一次（`usage` 也不从头再算） |
+| `tool.call`                 | `{ tool, input }`                                                                               | 一次工具调用结束、结果已经拿到（`PostToolUse` 钩子之后）。`tool` 是工具名、`input` 是它收到的参数对象。审批被用户拒掉、工具执行抛错也照发（mod 要靠这个知道「这一下结束了」）；**只读**，拦不下这次调用                                                                        |
 | `classic.PermissionRequest` | `{ session_id, transcript_path, cwd, hook_event_name, tool_name, tool_input, plan_file_path? }` | 一次工具审批即将弹给用户。权限规则自动放行或拒绝的不触发（没有卡片要显示），`PermissionRequest` 钩子把这次请求拒掉的也不触发                                                                                                                                                   |
 
 **与 Claude Code 的关系**（照它官方 mods 的 events 参考核过）：
@@ -119,30 +122,32 @@ MODS 补上这两件事：插件带一个 TypeScript 模块（可写 TSX），�
 - `turn.complete` 是**同名事件**（CC 的 Turns 分组里有 `turn.start` / `turn.step` / `turn.complete`），字段取 `isAborted` / `durationMs` / `answer` / `usage` 四个。**没有** `turnId` / `agentId`（我们只报主 agent 的轮次，子代理的嵌套轮次不报），也不实现返回 `{ text }` 在答案下面显示一行那个能力。
 - `classic.PermissionRequest` 用 CC 的 `classic.` 前缀，因为 CC 把**每个** settings hook 事件都镜像成 `classic.<Event>`（`classic.Stop`、`classic.PostToolUse`…），`e` 就是那份 hook stdin JSON（snake_case，含 `transcript_path`）。我们**只做这一个镜像**，不是整套 `classic.*`；载荷字段与 `PermissionRequest` 钩子收到的 stdin 一致。
 - 审批**不是** `tool.check`：那是 CC 里唯一能拿到并改写放行决定的钩子（`{ decision: allow | ask | deny }`），被 mod 拿去做「自动批准」时用户的卡片就形同虚设，本规格明确不做。
+- `tool.call` 只做**只读观察**这一半：CC 的同名事件允许返回 `{ deny }` 拦下这次调用，那是决策型钩子（与 `tool.check` 同级，要处理与权限模式的仲裁顺序、也要处理「插件拦了但用户看不到原因」）。我们只发事件、丢弃返回值；`prompt.*` 那族改写钩子同样不做。
 
 四条约束：
 
-- **只读**：两个事件的返回值都被忽略。`classic.PermissionRequest` **不是**审批通道 —— 批准、拒绝、记住规则都只能由用户在界面上做（或由既有权限规则决定），mod 无法替用户答。
+- **只读**：三个事件的返回值都被忽略。`classic.PermissionRequest` **不是**审批通道 —— 批准、拒绝、记住规则都只能由用户在界面上做（或由既有权限规则决定），mod 无法替用户答；`tool.call` 也拦不下调用。
 - **`usage` 是本轮、`$.session.usage()` 是整场**：同名的 `tokens` 字段（`prompt` / `completion` / `cacheRead` / `cacheCreation`），作用域不同，别混用；`prompt` 两侧都**含**缓存命中的 token。
 - **不阻塞**：派发是 fire-and-forget，mod 在钩子里做网络上报不会卡住轮次收尾或那张审批卡片；钩子抛错、超时（5 秒）只记一条 warn，本轮照常结束、审批卡片照常弹出。
-- **不重放**：两者都是瞬时事件，surface 后挂上来（切会话、webview 重建）不会补发 —— 它们是「此刻正在发生」，不是像 `$.ui.status` 那样的状态。
+- **不重放**：三者都是瞬时事件，surface 后挂上来（切会话、webview 重建）不会补发 —— 它们是「此刻正在发生」，不是像 `$.ui.status` 那样的状态。
 
 **怎么把它们送到自己的服务端**是插件自己的事：`$.process.spawn` 起一个 WebSocket 客户端、或 `$.http.fetch` 直接发 HTTP（见「外部进程」「发 HTTP 请求」），宿主不提供推送通道，也不替 mod 保存「发到哪」。
 
 ### `$`（一期）
 
-| 命名空间    | 方法                                                                                                                                                                                                                                       |
-| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `$.plugin`  | `name`                                                                                                                                                                                                                                     |
-| `$.ui`      | `resolve(e)`、`open({ id, title })`、`close(id)`、`panes()`、`invalidate("ui.render")`（只通知「我这个 mod 画的东西过期了」，不直接产生树；见「用户交互的结果」）、`status(text)`、`toast(text, timeoutMs?)`（见「状态带、状态行与提示」） |
-| `$.state`   | `get`、`set`（会话级状态；`get` 返回副本，`set` 后需自己 `invalidate`）                                                                                                                                                                    |
-| `$.store`   | `get`、`set`、`delete`、`keys`（该插件自己的 JSON KV，跨会话）                                                                                                                                                                             |
-| `$.clock`   | `now()`、`after(ms, fn)`、`every(ms, fn)`（后两者返回 `{ cancel() }`，见「定时器」）                                                                                                                                                       |
-| `$.process` | `spawn({ argv, cwd?, env?, input? })` → 异步迭代子进程的输出；`run(argv, { cwd?, env?, stdin?, timeoutMs? })` → 跑完拿 `{ exitCode, stdout, stderr, is…Truncated }`（见「外部进程」）                                                      |
-| `$.fs`      | `read`（可选 `{ as: "bytes" }`）、`write`、`list`、`stat`、`exists`（相对路径按会话工作目录解析，见「读写文件」）                                                                                                                          |
-| `$.http`    | `fetch(url, { method?, headers?, body?, timeoutMs? })`（只允许 `https:` 与本机回环，见「发 HTTP 请求」）                                                                                                                                   |
-| `$.prompt`  | `submit({ text, asUser })`：把一条 prompt 送进当前会话（见「把 prompt 送进对话」）；`fill({ text, mode? })` → `{ isFilled }`：把草稿填进输入框、不发送（见「把草稿填进输入框」）                                                           |
-| `$.session` | `usage()`：只读的 token 用量快照（见「会话用量」）                                                                                                                                                                                         |
+| 命名空间    | 方法                                                                                                                                                                                                                                                                                                         |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `$.plugin`  | `name`                                                                                                                                                                                                                                                                                                       |
+| `$.ui`      | `resolve(e)`、`open({ id, title })`、`close(id)`、`panes()`、`invalidate("ui.render")`（只通知「我这个 mod 画的东西过期了」，不直接产生树；见「用户交互的结果」）、`status(text)`、`toast(text, timeoutMs?)`（见「状态带、状态行与提示」）、`log(text, { to? })`（在对话流里留一行，见「在对话流里留一行」） |
+| `$.state`   | `get`、`set`（会话级状态；`get` 返回副本，`set` 后需自己 `invalidate`）                                                                                                                                                                                                                                      |
+| `$.store`   | `get`、`set`、`delete`、`keys`（该插件自己的 JSON KV，跨会话）                                                                                                                                                                                                                                               |
+| `$.clock`   | `now()`、`after(ms, fn)`、`every(ms, fn)`（后两者返回 `{ cancel() }`，见「定时器」）                                                                                                                                                                                                                         |
+| `$.process` | `spawn({ argv, cwd?, env?, input? })` → 异步迭代子进程的输出；`run(argv, { cwd?, env?, stdin?, timeoutMs? })` → 跑完拿 `{ exitCode, stdout, stderr, is…Truncated }`（见「外部进程」）                                                                                                                        |
+| `$.fs`      | `read`（可选 `{ as: "bytes" }`）、`write`、`list`、`stat`、`exists`（相对路径按会话工作目录解析，见「读写文件」）                                                                                                                                                                                            |
+| `$.http`    | `fetch(url, { method?, headers?, body?, timeoutMs? })`（只允许 `https:` 与本机回环，见「发 HTTP 请求」）                                                                                                                                                                                                     |
+| `$.prompt`  | `submit({ text, asUser })`：把一条 prompt 送进当前会话（见「把 prompt 送进对话」）；`fill({ text, mode? })` → `{ isFilled }`：把草稿填进输入框、不发送（见「把草稿填进输入框」）                                                                                                                             |
+| `$.session` | `usage()`：只读的 token 用量快照（见「会话用量」）；`cwd()`：会话**当前**工作目录（与 `$.fs` 相对路径、`$.process` 的缺省 cwd 同一份数据源，会随会话里的 `cd` 变）                                                                                                                                           |
+| `$.command` | `register({ name, description, argumentHint?, immediate? })`、`list()`、`run({ command, args? })`（见「注册命令」）                                                                                                                                                                                          |
 
 `$.ui.resolve(e)` 把 `ui.render` 收到的事件换成**这一端可用的元素表**（`{ Box, Text, Button, Input, Link, Code, Markdown }`，值与从 `wave-agent-sdk/mods` 导入的同名导出是同一份）。表按 `e.surface` 选：一期只发 `desktop`，别的值、以及不认识的 `e.component`，都直接报错并列出可用名单，不返回半张表。
 
@@ -169,6 +174,44 @@ MODS 补上这两件事：插件带一个 TypeScript 模块（可写 TSX），�
 带是第二个渲染站点，走与面板同一条拉取链路：surface 在会话就绪后、以及每次 `stale` 之后，对每个注册了 `ui.render` 的 mod 用 `{ surface: "desktop", component: "AbovePrompt", instance_id: "above-prompt" }` 拉一次树；返回 `undefined` 或空树就不占位置。校验、限额、`revision`、失败时保留上一帧并叠错误摘要，全部与面板一致。
 
 与 Claude Code 的差异：它的带是**一个共享站点**（`instance_id` 固定 `above-prompt`，与 pane 一起列进 `ui.focus` / `ui.scroll` 的站点集合）；我们按插件分成多条带，且一期不给带键盘焦点与滚动 —— 那是面板才有的东西。
+
+### 在对话流里留一行
+
+`$.ui.log(text, { to? })` 把一行用户可见的文字**追加进对话流**，落点是宿主已有的「提示块」（`notice`）：跟报错、钩子状态行同一个位置，挂在最后一条 assistant 消息下面，没有就在最新一条用户消息之下新起一条。
+
+- 与 `status` / `toast` 的区别是**它属于这次对话**：随会话落盘，切会话、重启之后还在；`status` 是常驻的一行（后一次覆盖前一次），`toast` 几秒就没了。要「这件事发生过、以后还能回看」就用 `log`。
+- **不进模型上下文**：`notice` 块不进 API 请求（参见消息块可见性矩阵），所以 mod 可以放开写，不会污染提示词、也不会顶掉 token 预算。
+- `to` 一期只接受 `"transcript"`（省略时默认它），别的值报错 —— Claude Code 同名方法的 `to` 还认面板/终端那几档，我们只有对话流这一档，给个拼错的值静默当成 transcript 更糟。
+- 单条超过上限（见「限额」）截断并加省略号，与 `status` 同一个口径。
+
+### 注册命令
+
+mod 可以注册一个斜杠命令，用户像用内置命令一样敲 `/name args`（也出现在 CLI 的命令选择器与 webview 的快捷指令弹窗里）。
+
+```ts
+on("session.start", ($) => {
+  $.command.register({
+    name: "standup", // /^[a-zA-Z0-9_-]{1,64}$/
+    description: "把昨天的提交整理成日报", // 菜单里显示的那行字，必填非空
+    argumentHint: "<天数>", // 可选：命令后那行参数提示
+    immediate: false, // 可选：忙的时候要不要插队执行
+  });
+});
+
+on("command.run", { command: "/standup" }, ($, e) => ({
+  text: `整理最近 ${e.args || "1"} 天的提交`,
+}));
+```
+
+**注册只给菜单元数据，逻辑在 `command.run` 钩子里**（与 Claude Code 同一个形状）：`register` 没有 handler，用户敲下 `/standup 3` 后引擎派 `command.run`，matcher 是本条命令（带斜杠，`{ command: "/standup" }`，与 CC 一致），钩子必须返回 `{ text }` —— 这段文字作为**一条用户消息**进会话，模型看到的就是它。
+
+- `args` 是用户敲在命令名后面的原文（`"3"`，没写就是空串）。
+- **钩子没答就不执行**：注册了命令但 `command.run` 没有对应 matcher 的钩子（或钩子返回的不是 `{ text }`），这条命令报错并给一句能照做的提示（缺钩子时照 CC 的文案形状：「registered /name but no command.run hook answered it」）。
+- **重名即拒**：与内置命令、用户/项目 `.wave/commands` 下的自定义命令、技能命令、别的插件的命令同名，注册就失败并在插件日志里说明是谁占了。同一个 mod 用同一份 spec 重复注册是幂等的。
+- **撞宿主本地命令**在宿主侧丢弃：`/config`、`/clear`、`/model` 这类是各前端自己实现的动作（不在 SDK 的命令表里），SDK 检查不到；所以 `getSlashCommands` 合并时，同名 mod 命令被丢掉并记一条 warn。
+- **不能在 `command.run` 钩子里调 `$.prompt.submit`**：钩子正持有用户打出的这一轮，再投一条会等自己（CC 的原文案是「would wait on the turn this hook is holding」）。要在这之后继续，就存到状态里、在 `turn.complete` 里投。
+- `$.command.list()` 返回当前可见的命令（`{ name, description, source, plugin? }`，`source` 是 `built-in` / `user` / `skill` / `plugin`），`$.command.run({ command, args })` 以 mod 身份执行一条已注册的命令 —— 与用户敲下它等价（同样走 `command.run` 钩子）；命令不存在时报错并列出最接近的名字。
+- 命令的归属随插件：`/reload-plugins` 或卸载插件后该命令消失；同名命令不会被另一个插件抢走。
 
 ### 定时器
 
@@ -306,6 +349,8 @@ mod 的沙箱里没有 `child_process`，要跑外部程序只能走 `$.process.
 | `$.ui.toast` 停留时间            | 默认 4000ms，`timeoutMs` 最多 10 秒（我们的限额）                 |
 | 同时排队的 toast                 | 50 条（溢出丢弃未展示的旧条；同屏显示 1 条）                      |
 | 输入框上方的带                   | 一个 mod 一条，树与节点限额同面板                                 |
+| `$.ui.log` 的一行                | 10,000 字符（超出截断并加省略号）                                 |
+| 一个 mod 注册的命令              | 32 个（超出报错）                                                 |
 
 ## 加载纪律
 
@@ -319,6 +364,7 @@ mod 的沙箱里没有 `child_process`，要跑外部程序只能走 `$.process.
 ## 生命周期
 
 - `session.start` 在会话初始化完成、第一个 prompt 之前跑一次；面板在这一刻登记。
+- **每挂载一次就跑一次**：新建会话、切回旧会话、webview 重建、`/reload-plugins` 都会重新走一遍。所以 `session.start` 里要幂等 —— 恢复状态读 `$.store` 就好，别每次追加一条 `$.ui.log`（对话流里会看到重复的行）。
 - `/reload-plugins` 会**重建**所有 mod：旧面板由宿主内部关掉（webview 上的 tab 随 `closed: true` 消失、旧实例的定时器与回调表一并丢弃），再按新插件列表重新加载与 `session.start`。mod 收不到「被关掉」的通知（见「事件」）。
 - 会话结束 / agent 销毁：宿主内部关掉所有面板并丢弃该会话的 mod 实例，此后发来的一切交互静默丢弃。
 - 会话结束与 `/reload-plugins` 同时撤销该 mod 的所有 `$.clock` 定时器（见「定时器」），销毁后不再有回调。
@@ -327,7 +373,7 @@ mod 的沙箱里没有 `child_process`，要跑外部程序只能走 `$.process.
 
 ## 交付分层（一期不做的事）
 
-不做，且**接口不预留**（避免半成品）：VS Code / JetBrains / 终端渲染、`Client`/`Svg`/`Raster`/`Image`、`$.model`/`$.agent`/`$.mcp`、事件拦截与改写（`tool.call`/`prompt.*`、CC 那种能改写放行决定的 `tool.check`）、mod 分层与加载期审查。
+不做，且**接口不预留**（避免半成品）：VS Code / JetBrains / 终端渲染、`Client`/`Svg`/`Raster`/`Image`、`$.model`/`$.agent`/`$.mcp`、事件拦截与改写（`prompt.*` 那族、CC 那种能改写放行决定的 `tool.check`、以及 `tool.call` 的 `{ deny }` 决议——我们只发只读事件，见「完成与审批的观察」）、mod 分层与加载期审查。
 
 **Web 远控页也不显示这三样**：手机上既没有状态带、没有状态行，也没有提示浮层。这是「一期只做桌面端」的下游结果，所以远控页不会因为它们弹「这个操作在 Web 端还没有接通」这类提示 —— 带是页面自己在打开会话、切换会话时取一次的，不是用户点出来的请求，不该在用户眼前报错。
 
@@ -506,3 +552,40 @@ mod 的沙箱里没有 `child_process`，要跑外部程序只能走 `$.process.
 7. **假设** mod 在这两个钩子里完全没有注册，**当**轮次结束、审批弹出，**则**宿主什么都不做（没有 mod 时派发是空操作），既不报错也不产生日志噪音。
 8. **假设** mod 在 `classic.PermissionRequest` 里 `return { decision: "allow" }`（照 Claude Code 的 `tool.check` 习惯写），**当**卡片弹出，**则**这次审批照样等用户回答，返回值被忽略 —— 只读事件不能替用户批准。
 9. **假设** mod 注册了 `classic.Stop` 这类我们没有的 `classic.*` 名字，**当**插件加载，**则**它被当作不存在的钩子拒收并记一条 warn（一期只做 `classic.PermissionRequest` 这一个镜像），而不是静默登记一个永远不触发的钩子。
+
+### 用户故事：工具一跑完就跟着刷新（优先级：P1）
+
+作为插件作者，我希望 mod 在每次工具调用结束时收到一个只读通知，以便「分支/未提交文件数」这类带不必靠轮询，用户 `git commit` 完那一瞬间就更新。
+
+**为什么是这个优先级**：轮询（`$.clock.every`）在长时间空闲时会白跑、在关键时刻又会慢半拍；但让 mod 拦下调用的 `{ deny }` 那一档要动权限仲裁，先只给观察面。
+
+**验收场景**：
+
+1. **假设** mod 注册了 `tool.call` 并在里面重新读一次 `git status`、写进 `$.state` 后 `invalidate`，**当**模型执行完一个 Bash 调用，**则**带上的未提交文件数在下一次渲染里就是新值，不需要等任何定时器。
+2. **假设**这次工具调用的审批被用户拒掉，**当**这一下结束，**则** `tool.call` 照常触发（载荷里同样是工具名与参数），mod 不会卡在「上一次状态」里。
+3. **假设** mod 在 `tool.call` 里 `return { deny: true }`（照 Claude Code 的写法），**当**工具执行，**则**这次调用照常执行、返回值被忽略 —— 只读事件拦不下工具。
+
+### 用户故事：插件注册自己的斜杠命令（优先级：P0）
+
+作为插件作者，我希望 mod 能注册一个 `/standup` 这样的命令，以便用户不必先打开面板，敲一行就走完我这条流程。
+
+**验收场景**：
+
+1. **假设** mod 在 `session.start` 里 `$.command.register({ name: "standup", description: "整理日报" })` 并注册了 `on("command.run", { command: "/standup" }, …)`，**当**用户在 webview 敲 `/stan`，**则**快捷指令弹窗里出现 `/standup` 与那行描述（与内置、自定义命令同组，不额外挂来源标签）；回车执行后**则**钩子返回的 `{ text }` 作为一条用户消息进会话，模型读到它。
+2. **假设**用户敲的是 `/standup 3`，**当** `command.run` 派发，**则** `e.args` 是 `"3"`、`e.command` 是 `"/standup"`。
+3. **假设** mod 注册了命令却没有注册对应 matcher 的 `command.run` 钩子，**当**用户执行它，**则**会话里出现一条错误提示，说明「注册了但没有任何钩子回答这条命令，补一个 `on("command.run", { command: "/<name>" }, …)`」，而不是静默什么都不做。
+4. **假设**内置命令（或用户 `.wave/commands` 下的自定义命令、别的插件的命令）已经叫这个名字，**当** mod 注册，**则**注册失败、插件日志写明被谁占了；同一个 mod 用同一份 spec 重复注册不报错、也不产生第二条命令。
+5. **假设**用户敲了 `/config` 这类由前端自己实现的宿主命令，而某个 mod 恰好也注册了同名命令，**当**命令列表合并，**则**宿主命令胜出、mod 的那条被丢掉并记一条 warn。
+6. **假设** `command.run` 钩子在忙时被触发而命令标了 `immediate: false`，**当**模型正在回答，**则**用户那行进队列，答完之后再执行（与内置命令同一套排队语义）。
+7. **假设**插件被卸载或 `/reload-plugins` 重载，**当**命令表刷新，**则**该命令从弹窗与 CLI 选择器里消失，再敲同名命令报「没有这个命令」。
+8. **假设** mod 在 `command.run` 钩子里调 `$.prompt.submit`，**当**钩子执行，**则**调用报错并说明「它会等正被这个钩子占着的那一轮，改成返回 `{ text }`，或挪到 `turn.complete` 里再投」。
+
+### 用户故事：在对话流里留一行（优先级：P1）
+
+作为用户，我希望插件做过的动作在对话里留个痕，以便过一会儿回看时知道「这一轮是插件替我跑的」，而不是只在几秒的 toast 里闪一下。
+
+**验收场景**：
+
+1. **假设** mod 在 `command.run` 或 `turn.complete` 里调 `$.ui.log("已把审批规则写进 .wave/settings.local.json")`，**当**这一行落地，**则**对话流里出现一条提示块（署名由插件自己写在文字里），切走会话再回来仍然在。
+2. **假设**这一行落了地，**当**下一轮请求发给模型，**则**请求里**没有**这行文字（提示块不进上下文）。
+3. **假设** mod 传了 `{ to: "pane" }` 这类我们没有的目标，**当**调用发生，**则**抛错并列出唯一可用的 `"transcript"`，而不是静默写进对话流。

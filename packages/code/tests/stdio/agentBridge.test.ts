@@ -1758,6 +1758,36 @@ test("getSlashCommands appends the host-local table of the asking surface", asyn
   expect(page.commands.map((command) => command.id)).toContain("btw");
 });
 
+test("getSlashCommands 让宿主本地命令胜出，同名的 agent 侧命令被丢掉", async () => {
+  const { bridge } = createBridge();
+  vi.mocked(Agent.create).mockResolvedValue(
+    createMockAgent({
+      // mod 注册的命令与宿主自己实现的 `/config` 撞名（SDK 侧查不到宿主表）。
+      getSlashCommands: vi.fn().mockReturnValue([
+        {
+          id: "config",
+          name: "config",
+          description: "插件注册的 config",
+          handler: () => {},
+        },
+      ]),
+    }),
+  );
+
+  const result = await bridge.handleRequest("initialize", {});
+  const sessionId = (result as { sessionId: string }).sessionId;
+  const r = (await bridge.handleRequest(
+    "getSlashCommands",
+    { surface: "desktop" },
+    sessionId,
+  )) as { commands: { id: string; description: string }[] };
+
+  const configs = r.commands.filter((command) => command.id === "config");
+  expect(configs).toHaveLength(1);
+  // 留下的是宿主那份（插件那行字被丢掉了）。
+  expect(configs[0].description).not.toBe("插件注册的 config");
+});
+
 test("getSlashCommands ignores an unknown surface instead of guessing", async () => {
   const { bridge } = createBridge();
   vi.mocked(Agent.create).mockResolvedValue(

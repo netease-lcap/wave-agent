@@ -12,7 +12,7 @@ import { Container } from "../../src/utils/container.js";
 import * as markdownParser from "../../src/utils/markdownParser.js";
 import type { SubagentManager } from "../../src/managers/subagentManager.js";
 import type { SkillManager } from "../../src/managers/skillManager.js";
-import type { TextBlock } from "../../src/types/index.js";
+import type { NoticeBlock, TextBlock } from "../../src/types/index.js";
 import type { MemoryService } from "../../src/services/memory.js";
 import { BASH_TOOL_NAME } from "../../src/constants/tools.js";
 import type { PermissionManager } from "../../src/managers/permissionManager.js";
@@ -985,6 +985,122 @@ describe("SlashCommandManager", () => {
 
       // Verify sendAIMessage was called (no early return due to isLoading guard)
       expect(aiManager.sendAIMessage).toHaveBeenCalled();
+    });
+  });
+
+  describe("registerModCommand（mod 注册的命令）", () => {
+    /** spec「注册命令」：注册只给菜单元数据，逻辑在 `command.run` 钩子里。 */
+    const modCommand = (
+      overrides: Partial<
+        Parameters<SlashCommandManager["registerModCommand"]>[0]
+      > = {},
+    ) => ({
+      name: "standup",
+      description: "站会摘要",
+      plugin: "todo",
+      run: vi.fn(async () => "总结今天的提交"),
+      ...overrides,
+    });
+
+    it("注册成裸名字的命令，来源标成插件", () => {
+      expect(slashCommandManager.registerModCommand(modCommand())).toEqual({
+        ok: true,
+      });
+      expect(slashCommandManager.hasCommand("standup")).toBe(true);
+      expect(slashCommandManager.isModCommand("standup")).toBe(true);
+      expect(slashCommandManager.listCommandsForMods()).toContainEqual({
+        name: "standup",
+        description: "站会摘要",
+        source: "plugin",
+        plugin: "todo",
+      });
+    });
+
+    it("重名即拒，三种原因分别说清楚", () => {
+      slashCommandManager.registerModCommand(modCommand());
+
+      // 同一个插件的另一个 mod。
+      expect(
+        slashCommandManager.registerModCommand(modCommand({ plugin: "todo" })),
+      ).toMatchObject({
+        ok: false,
+        reason: expect.stringContaining("本插件的另一个 mod"),
+      });
+
+      // 别的插件先占了。
+      expect(
+        slashCommandManager.registerModCommand(modCommand({ plugin: "other" })),
+      ).toMatchObject({
+        ok: false,
+        reason: expect.stringContaining("插件 todo 已经注册了 /standup"),
+      });
+
+      // 撞内置 / 技能 / 自定义 / 插件 markdown 命令。
+      slashCommandManager.registerCommand({
+        id: "taken",
+        name: "taken",
+        description: "别人先占了",
+        handler: vi.fn(),
+      });
+      expect(
+        slashCommandManager.registerModCommand(
+          modCommand({ name: "taken", plugin: "other" }),
+        ),
+      ).toMatchObject({
+        ok: false,
+        reason: expect.stringContaining("已经被占用"),
+      });
+    });
+
+    it("执行时把钩子答的文字当用户消息送进主对话", async () => {
+      const run = vi.fn(async (args: string) => `总结 ${args} 的提交`);
+      slashCommandManager.registerModCommand(modCommand({ run }));
+
+      await slashCommandManager.executeCommand("standup", "周一");
+
+      expect(run).toHaveBeenCalledWith("周一");
+      const messages = messageManager.getMessages();
+      const textBlock = messages[messages.length - 1].blocks[0] as TextBlock;
+      expect(textBlock.customCommandContent).toBe("总结 周一 的提交");
+      expect(aiManager.sendAIMessage).toHaveBeenCalledTimes(1);
+    });
+
+    it("没人回答时给一条错误提示，不把空消息发出去", async () => {
+      slashCommandManager.registerModCommand(
+        modCommand({ run: vi.fn(async () => undefined) }),
+      );
+
+      await slashCommandManager.executeCommand("standup", "");
+
+      const messages = messageManager.getMessages();
+      const notice = messages[messages.length - 1].blocks[0] as NoticeBlock;
+      expect(notice.level).toBe("error");
+      expect(notice.content).toContain("没有任何 command.run 钩子回答它");
+      expect(notice.content).toContain(`{ command: "/standup" }`);
+      expect(aiManager.sendAIMessage).not.toHaveBeenCalled();
+    });
+
+    it("撤销之后命令消失，非 mod 命令不会被误删", () => {
+      slashCommandManager.registerCommand({
+        id: "mine",
+        name: "mine",
+        description: "宿主自己的命令",
+        handler: vi.fn(),
+      });
+      slashCommandManager.registerModCommand(modCommand());
+
+      slashCommandManager.unregisterModCommand("standup");
+      expect(slashCommandManager.hasCommand("standup")).toBe(false);
+      expect(slashCommandManager.isModCommand("standup")).toBe(false);
+      expect(
+        slashCommandManager
+          .listCommandsForMods()
+          .some((r) => r.name === "standup"),
+      ).toBe(false);
+
+      // 不是 mod 注册的名字：撤销是空操作，命令还在。
+      slashCommandManager.unregisterModCommand("mine");
+      expect(slashCommandManager.hasCommand("mine")).toBe(true);
     });
   });
 });

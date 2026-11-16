@@ -4,6 +4,7 @@ import {
   reportToolFailure,
 } from "../telemetry/failureEvents.js";
 import type { StandardAttributeContext } from "../telemetry/attributes.js";
+import type { ModManager } from "./modManager.js";
 import { validateToolInput } from "../tools/inputValidation.js";
 import { bashTool } from "../tools/bashTool.js";
 import { taskStopTool } from "../tools/taskStopTool.js";
@@ -707,6 +708,15 @@ class ToolManager {
         enhancedContext.workdir,
         enhancedContext.autoMemoryDir,
       );
+
+      // 只读观察事件（spec「完成与审批的观察」）：模型这一下工具调用结束了，
+      // 包括被审批拒掉、执行抛错的情况 —— mod 靠它「一有动作就刷新」，不必轮询。
+      // fire-and-forget：mod 在里面做网络上报不能拖住下一次工具调用。
+      if (this.container.has("ModManager")) {
+        this.container
+          .get<ModManager>("ModManager")
+          ?.notifyMods("tool.call", { tool: name, input: args });
+      }
       return result;
     }
 

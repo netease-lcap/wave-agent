@@ -604,6 +604,37 @@ export function setupAgentContainer(
   });
   container.register("ModManager", modManager);
 
+  // `$.ui.log` 的落点：会话的提示块（用户可见、随会话落盘、不进模型上下文）。
+  modManager.setLogSink((text) => messageManager.addNoticeBlock(text, "info"));
+
+  // `$.command.*` 的桥：命令表在 slashCommandManager，而「执行这条命令该问哪个
+  // mod 的钩子」只有 modManager 知道。两边互相持有会成环，所以在这里组装。
+  modManager.setCommandBridge({
+    register: (input) => slashCommandManager.registerModCommand(input),
+    unregister: (name) => slashCommandManager.unregisterModCommand(name),
+    list: () => slashCommandManager.listCommandsForMods(),
+    run: async (command, args) => {
+      const target = slashCommandManager
+        .getCommands()
+        .find((entry) => entry.name === command);
+      if (!target) {
+        // 建议按「不带斜杠的前缀」找：`$/command.run({ command: "pro" })` 该提示
+        // `/probe`，而不是拿带斜杠的三个字符去比。
+        const prefix = command.replace(/^\//, "").slice(0, 3);
+        const suggestion = prefix
+          ? slashCommandManager
+              .getCommands()
+              .map((entry) => entry.name)
+              .find((name) => name.startsWith(prefix))
+          : undefined;
+        throw new Error(
+          `没有叫 /${command} 的命令${suggestion ? `（最接近的是 /${suggestion}）` : ""}`,
+        );
+      }
+      await slashCommandManager.executeCommand(target.id, args);
+    },
+  });
+
   const bashModeManager = new BashModeManager(container, { workdir });
   container.register("BashModeManager", bashModeManager);
 

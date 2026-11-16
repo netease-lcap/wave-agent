@@ -5,6 +5,7 @@ import { HookManager } from "../../src/managers/hookManager.js";
 import { HookMatcher } from "../../src/utils/hookMatcher.js";
 import { Container } from "../../src/utils/container.js";
 import { HookBlockedToolError } from "../../src/types/hooks.js";
+import type { ModManager } from "../../src/managers/modManager.js";
 import type { ToolContext, ToolPlugin } from "../../src/tools/types.js";
 import * as hookService from "../../src/services/hook.js";
 
@@ -54,6 +55,8 @@ function build(
     builtIn?: boolean;
     /** The JSON Schema the fake declares for the model. */
     parameters?: Record<string, unknown>;
+    /** 容器里接一个 ModManager 替身（`tool.call` 的派发点）。 */
+    notifyMods?: (event: string, payload: unknown) => void;
   } = {},
 ) {
   const container = new Container();
@@ -95,6 +98,11 @@ function build(
   container.register("McpManager", mockMcpManager as unknown as McpManager);
   container.register("MessageManager", mockMessageManager);
   container.register("HookManager", hookManager);
+  if (options.notifyMods) {
+    container.register("ModManager", {
+      notifyMods: options.notifyMods,
+    } as unknown as ModManager);
+  }
 
   const toolManager = new ToolManager({ container });
   toolManager.register(
@@ -217,6 +225,45 @@ describe("ToolManager built-in funnel runs tool-event hooks", () => {
 
     expect(result).toEqual({ success: false, content: "", error: "disk full" });
     expect(mockMessageManager.addUserMessage).toHaveBeenCalledOnce();
+  });
+
+  // spec「工具跑完之后」：一次调用结束（含失败）就派一次只读事件，mod 靠它
+  // 「一有动作就刷新」，不必轮询。
+  it("派发 tool.call，载荷是工具名与入参", async () => {
+    const notifyMods = vi.fn();
+    const { toolManager, context } = build({ notifyMods });
+
+    await toolManager.execute("FakeTool", { a: 1 }, context);
+
+    expect(notifyMods).toHaveBeenCalledWith("tool.call", {
+      tool: "FakeTool",
+      input: { a: 1 },
+    });
+  });
+
+  it("工具抛错也派发 tool.call（调用确实发生了）", async () => {
+    const notifyMods = vi.fn();
+    const { toolManager, context } = build({
+      notifyMods,
+      execute: vi.fn().mockRejectedValue(new Error("disk full")),
+    });
+
+    await toolManager.execute("FakeTool", {}, context);
+
+    expect(notifyMods).toHaveBeenCalledWith("tool.call", {
+      tool: "FakeTool",
+      input: {},
+    });
+  });
+
+  it("PreToolUse 拦下、工具根本没跑时不派发", async () => {
+    const notifyMods = vi.fn();
+    const { toolManager, context } = build({ notifyMods });
+    mockExecuteCommand.mockResolvedValue(PRE_BLOCKED);
+
+    await toolManager.execute("FakeTool", {}, context);
+
+    expect(notifyMods).not.toHaveBeenCalled();
   });
 });
 

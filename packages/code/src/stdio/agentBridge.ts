@@ -2608,10 +2608,24 @@ export class AgentBridge {
     const agentCommands = entry.agent
       .getSlashCommands()
       .map((command) => toSlashCommandInfo(command));
+    if (!surface) return { commands: agentCommands };
+    const hostCommands = hostSlashCommandsFor(surface);
+    // 宿主本地命令（`/config`、`/clear`…）是各前端自己实现的动作，不在 SDK 的
+    // 命令表里 —— 所以 mod 注册同名命令时 SDK 查不到。这里反向兜住：宿主那份
+    // 胜出，同名的 agent 侧命令丢掉并记一条 warn，免得用户敲 `/config` 时跑进
+    // 一个插件的流程。
+    const hostNames = new Set(hostCommands.map((command) => command.name));
     return {
-      commands: surface
-        ? [...agentCommands, ...hostSlashCommandsFor(surface)]
-        : agentCommands,
+      commands: [
+        ...agentCommands.filter((command) => {
+          if (!hostNames.has(command.name)) return true;
+          logger.warn(
+            `[Wave] 命令 /${command.name} 与宿主本地命令同名，列表里丢弃 agent 侧那一条`,
+          );
+          return false;
+        }),
+        ...hostCommands,
+      ],
     };
   }
 
