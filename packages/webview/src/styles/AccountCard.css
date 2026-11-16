@@ -296,7 +296,10 @@
 
 .account-plan-bar-value {
   flex-shrink: 0;
-  min-width: 48px;
+  /* 数值列只留「最宽的百分比」的宽（100% 实测墨迹 33.78px），多出来的横向空间
+     全给条；此前是 48px，白占了 14px（2026-11-16 走查）。「无额度限制」(60) /
+     「不可用」(36) 自己比这层地板宽，按内容排、不受影响。 */
+  min-width: 34px;
   text-align: right;
   color: var(--vscode-descriptionForeground);
   /* 两行数值等宽对齐（中文状态词与百分比混排也各占一格）。 */
