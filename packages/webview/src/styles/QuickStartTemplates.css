@@ -127,8 +127,13 @@
   flex: none;
 }
 
-/* 分类与其子分类之间的分隔竖线。 */
+/* 分类与其子分类之间的分隔竖线。
+   `flex: none` 不能省（设计师 2026-11-16 评论：「界面过窄时，返回与选项之间的分割线
+   就不见了」）：桌面端是 `nowrap` 行，三颗胶囊都已 `flex: none`，只剩这条线还带默认
+   `flex-shrink: 1` —— 行一溢出，1px 就被压成 0px（实测视口 ≤768 时 computed width
+   为 `0px`，线整个消失）。插件端是换行布局、本来不缩，加上也无副作用。 */
 .quick-start-divider {
+  flex: none;
   width: 1px;
   height: 14px;
   align-self: center;
