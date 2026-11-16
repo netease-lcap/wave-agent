@@ -1134,46 +1134,4 @@ describe("MemoryService", () => {
       );
     });
   });
-
-  describe("raw memory reads (settings-page editor)", () => {
-    it("returns the file as written while the loaded memory is expanded", async () => {
-      const entries = mockFileSystem({
-        [AGENTS]: "# Project\n\nread @./docs/x.md",
-        [path.join(WORKDIR, "docs/x.md")]: "EXPANDED BODY",
-        [LOCAL]: "# Personal\n\n@./docs/x.md",
-        [USER_MEMORY]: "# User\n\nno references here",
-      });
-
-      // Warm every expansion cache first: the raw read must ignore it.
-      const combined = await memoryService.getCombinedMemoryContent(WORKDIR);
-      expect(combined).toContain("EXPANDED BODY");
-      expect(combined).toContain("<!-- @include: docs/x.md -->");
-
-      expect(await memoryService.readRawProjectMemory(WORKDIR)).toBe(
-        "# Project\n\nread @./docs/x.md",
-      );
-      expect(await memoryService.readRawLocalMemory(WORKDIR)).toBe(
-        "# Personal\n\n@./docs/x.md",
-      );
-      expect(await memoryService.readRawUserMemory()).toBe(
-        "# User\n\nno references here",
-      );
-
-      // Saving what the editor showed must not inline the referenced body.
-      await memoryService.writeProjectMemoryContent(
-        WORKDIR,
-        await memoryService.readRawProjectMemory(WORKDIR),
-      );
-      expect(entries.get(AGENTS)?.content).toBe(
-        "# Project\n\nread @./docs/x.md",
-      );
-    });
-
-    it("reads a missing personal layer as empty without creating it", async () => {
-      mockFileSystem({ [AGENTS]: "# Project" });
-
-      expect(await memoryService.readRawLocalMemory(WORKDIR)).toBe("");
-      expect(fsPromises.writeFile).not.toHaveBeenCalled();
-    });
-  });
 });

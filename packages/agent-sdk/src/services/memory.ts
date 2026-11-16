@@ -1060,33 +1060,6 @@ export class MemoryService {
     return this.loadLocalMemory(workdir, createMemoryIncludeLoad());
   }
 
-  /**
-   * The project memory file exactly as it sits on disk: `@include` references
-   * stay unexpanded and nothing is served from the expansion cache.
-   *
-   * This is what the settings-page editor reads. Handing it an expanded body
-   * would mean one save writes the referenced content into `AGENTS.md`.
-   */
-  async readRawProjectMemory(workdir: string): Promise<string> {
-    const source = await this.readProjectMemorySource(workdir);
-    return source.kind === "content" ? source.content : "";
-  }
-
-  /** `~/.wave/AGENTS.md` as it sits on disk, unexpanded (settings editor). */
-  async readRawUserMemory(): Promise<string> {
-    const source = await this.readUserMemorySource();
-    return source.kind === "content" ? source.content : "";
-  }
-
-  /**
-   * `<workdir>/AGENTS.local.md` as it sits on disk, unexpanded (settings
-   * editor). Never creates the file: a missing personal layer reads as empty.
-   */
-  async readRawLocalMemory(workdir: string): Promise<string> {
-    const source = await this.readLocalMemorySource(workdir);
-    return source.kind === "content" ? source.content : "";
-  }
-
   async getCombinedMemoryContent(workdir: string): Promise<string> {
     if (this._cachedCombinedMemory !== null) {
       return this._cachedCombinedMemory;
