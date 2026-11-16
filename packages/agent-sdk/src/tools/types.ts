@@ -213,6 +213,18 @@ export interface ToolContext {
   /** Workflow manager instance for workflow orchestration */
   workflowManager?: import("../managers/workflowManager.js").WorkflowManager;
   /**
+   * Plugin-mod dispatcher, for the hooks a tool itself has to run — the Agent
+   * tool runs `agent.offer` and `agent.spawn` around its own dispatch, since
+   * only it knows which type is being offered and what the spawn resolved to.
+   */
+  modManager?: import("../managers/modManager.js").ModManager;
+  /**
+   * How many plugins deep this agent was spawned from a mod (`$.agent.spawn`).
+   * Depth 1 means "a mod's own subagent": it must not delegate again (spec
+   *「派子代理」的深度 1)。0 / unset for the session's own agents.
+   */
+  modAgentDepth?: number;
+  /**
    * Per-session merged environment (OS env overlaid with the settings env
    * snapshot) for this session. Tools that spawn subprocesses (Bash, hooks)
    * should merge this on top of `process.env` so settings `env` vars reach

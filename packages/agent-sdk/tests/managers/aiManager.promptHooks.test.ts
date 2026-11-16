@@ -347,6 +347,45 @@ describe("AIManager 的 prompt.* 钩子", () => {
     );
   });
 
+  it("一轮里发了两次模型请求：prompt.compose 与每个命名段都只问一次，两步的提示词逐字相同", async () => {
+    // 第一次带工具调用、第二次收尾 —— 一轮两次请求（spec「一轮一次」）。
+    vi.mocked(callAgent)
+      .mockResolvedValueOnce({
+        content: undefined,
+        usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+        tool_calls: [
+          {
+            id: "call-1",
+            type: "function" as const,
+            function: { name: "Bash", arguments: "{}" },
+          },
+        ],
+      })
+      .mockResolvedValueOnce(REPLY);
+
+    // 带计数器的那种插件：逐请求重问会让同一轮各步的系统提示词不同。
+    let asked = 0;
+    const mods = buildMods({
+      collectPromptSection: vi.fn(async (section: ModPromptSection) =>
+        section.id === "tone"
+          ? `只用中文回答（第 ${++asked} 次）`
+          : section.text,
+      ),
+    });
+    const { aiManager } = buildHarness({ mods });
+
+    await aiManager.sendAIMessage();
+
+    expect(mods.collectPromptSections).toHaveBeenCalledTimes(1);
+    expect(asked).toBe(1);
+    const prompts = vi
+      .mocked(callAgent)
+      .mock.calls.map((call) => call[0].systemPrompt);
+    expect(prompts).toHaveLength(2);
+    // 同一轮的两步必须逐字相同，否则缓存前缀整段作废。
+    expect(prompts[1]).toEqual(prompts[0]);
+  });
+
   it("一段都没被改：拼出来的提示词与没有 ModManager 时逐字相同（缓存前缀不被打断）", async () => {
     const withoutMods = buildHarness({ mods: null });
     await withoutMods.aiManager.sendAIMessage();

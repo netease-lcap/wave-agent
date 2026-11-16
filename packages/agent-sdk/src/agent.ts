@@ -17,6 +17,10 @@ import { wrapInSystemReminder } from "./prompts/planModeReminders.js";
 import type {
   ModBandRenderResult,
   ModPanelEventPayload,
+  ModPromptEditEvent,
+  ModPromptOrigin,
+  ModPromptSuggestEvent,
+  ModUiFocusEvent,
   ModPanelRenderResult,
   ModPanelUpdatePayload,
   ModPromptFillMode,
@@ -131,6 +135,13 @@ function classifyMemoryTier(
   return insideWorkdir ? "Project" : "User";
 }
 
+/** 把钩子交回来的偏移夹进草稿里（负数、`NaN`、越界都落回给的默认值）。 */
+function clampOffset(value: unknown, fallback: number, length: number): number {
+  const raw =
+    typeof value === "number" && Number.isFinite(value) ? value : fallback;
+  return Math.min(Math.max(0, Math.trunc(raw)), length);
+}
+
 export class Agent {
   private messageManager: MessageManager;
   private aiManager: AIManager;
@@ -198,6 +209,15 @@ export class Agent {
     (box: { text: string; cursor: number }) => void
   >();
   private modPromptReadSeq = 0;
+  /**
+   * `$.prompt.suggest` requests waiting for the surface's answer, keyed by the id
+   * the host carries back (spec「输入框里的建议与焦点」).
+   */
+  private readonly modPromptSuggests = new Map<
+    string,
+    (shown: boolean) => void
+  >();
+  private modPromptSuggestSeq = 0;
   /**
    * `$.ui.copy` requests waiting for the surface's answer (spec「剪贴板与视图」).
    */
@@ -375,6 +395,104 @@ export class Agent {
   }
 
   /**
+   * Settle a `$.prompt.suggest` (spec「输入框里的建议与焦点」).
+   *
+   * The surface is the only one that knows whether the ghost text went up (the
+   * composer may be busy or absent), so — exactly like `fill` — the request goes
+   * out as a notification and the answer comes back here.
+   */
+  public resolveModPromptSuggest(requestId: string, isShown: boolean): void {
+    const settle = this.modPromptSuggests.get(requestId);
+    this.modPromptSuggests.delete(requestId);
+    settle?.(isShown === true);
+  }
+
+  /**
+   * 用户在输入框里做完一次编辑（spec「输入框里的建议与焦点」）。
+   *
+   * 链尾就是「把这次编辑应用上去」：`text` 是编辑**之前**的草稿，`start`/`end`
+   * 圈出被替换的那一段，`inputText` 是放进去的字。所以 `next({ ...e, text })`
+   * 是「换一份草稿再做同一次编辑」，`next({ ...e, inputText })` 是「换成别的
+   * 字」；不调 `next` 直接答 `{ text: e.text, cursor: e.cursor }` 等于吃掉这次
+   * 按键（拼写检查、语法闸门就这么写）。
+   */
+  public async dispatchModPromptEdit(event: {
+    key?: unknown;
+    text: string;
+    cursor: number;
+    start: number;
+    end: number;
+    inputText: string;
+  }): Promise<{ text: string; cursor: number }> {
+    const normalized: ModPromptEditEvent = {
+      ...event,
+      origin: { kind: "composer" },
+    };
+    return this.modManager.dispatchPromptEdit(normalized, (current) => {
+      const box: Record<string, unknown> =
+        typeof current === "object" && current !== null
+          ? (current as Record<string, unknown>)
+          : {};
+      const base = typeof box.text === "string" ? box.text : event.text;
+      const start = clampOffset(box.start, event.start, base.length);
+      const end = clampOffset(box.end, event.end, base.length);
+      const inputText =
+        typeof box.inputText === "string" ? box.inputText : event.inputText;
+      const from = Math.min(start, end);
+      const to = Math.max(start, end);
+      const text = `${base.slice(0, from)}${inputText}${base.slice(to)}`;
+      // 光标落在填进去的字后面（spec 同段）：钩子没给就是「接着打字」。
+      return { text, cursor: from + inputText.length };
+    });
+  }
+
+  /**
+   * 一个建议要摆进输入框（spec「输入框里的建议与焦点」）。
+   *
+   * `plugin` 缺省表示这是引擎自己的推荐（`origin: { kind: "suggestion" }`）；
+   * `$.prompt.suggest` 走 `plugin` 那一支，于是别的 mod 能看见、能换、能否。
+   * 链尾是宿主那一趟往返（`next({ ...e, text })` 改的就是要摆的那条）。
+   */
+  public async dispatchModPromptSuggest(request: {
+    text: string;
+    plugin?: string;
+  }): Promise<{ isShown: boolean; text: string }> {
+    const origin: ModPromptOrigin = request.plugin
+      ? { kind: "plugin", name: request.plugin }
+      : { kind: "suggestion" };
+    const event: ModPromptSuggestEvent = { text: request.text, origin };
+    return this.modManager.dispatchPromptSuggest(event, async (current) => {
+      const text =
+        typeof current === "object" &&
+        current !== null &&
+        typeof (current as { text?: unknown }).text === "string"
+          ? (current as { text: string }).text
+          : request.text;
+      const isShown = await this.showModPromptSuggestion(text, request.plugin);
+      return { isShown };
+    });
+  }
+
+  /**
+   * 焦点环挪动（spec「输入框里的建议与焦点」）。
+   *
+   * 只读事件：`e` 里没有可改的内容，返回值只表达「这次没挪成」。
+   */
+  public async notifyModUiFocus(event: {
+    component: string;
+    requestId: string;
+    plugin?: string;
+    element?: string;
+    origin?: ModPromptOrigin;
+  }): Promise<{ deny?: string }> {
+    const normalized: ModUiFocusEvent = {
+      ...event,
+      origin: event.origin ?? { kind: "person" },
+    };
+    return this.modManager.dispatchFocus(normalized);
+  }
+
+  /**
    * Settle a `$.ui.copy` (spec `ecosystem/plugin-mods.md`「剪贴板与视图」).
    *
    * A refusal is an answer, not an error: `isCopied: false` with a `reason` is
@@ -527,6 +645,45 @@ export class Agent {
         notify({ sessionId: this.sessionId, requestId });
       } catch {
         this.resolveModPromptRead(requestId, "", 0);
+      }
+    });
+  }
+
+  /**
+   * Ask the surface to show a suggestion above the composer
+   * (spec「输入框里的建议与焦点」).
+   *
+   * Same discipline as `fill` / `read`: no surface wired, or nobody answering in
+   * time, both read as `isShown: false` — a suggestion that did not land is a
+   * normal result, not an error, and the mod is expected to degrade on its own.
+   */
+  private showModPromptSuggestion(
+    text: string,
+    plugin?: string,
+  ): Promise<boolean> {
+    const notify = this.options.callbacks?.onModPromptSuggest;
+    if (!notify) return Promise.resolve(false);
+    const requestId = `prompt-suggest-${++this.modPromptSuggestSeq}`;
+    return new Promise<boolean>((resolve) => {
+      const timer = setTimeout(() => {
+        this.resolveModPromptSuggest(requestId, false);
+      }, MOD_LIMITS.promptFillTimeoutMs);
+      // A pending suggestion must not keep the process alive on its own.
+      timer.unref?.();
+      this.modPromptSuggests.set(requestId, (shown) => {
+        clearTimeout(timer);
+        resolve(shown);
+      });
+      try {
+        notify({
+          sessionId: this.sessionId,
+          requestId,
+          text,
+          plugin: plugin ?? "wave",
+        });
+      } catch {
+        // A host that throws on its own callback is a host that cannot show it.
+        this.resolveModPromptSuggest(requestId, false);
       }
     });
   }
@@ -825,6 +982,13 @@ export class Agent {
     // `$.prompt.read` — the draft the person is typing right now
     // (spec「输入框里现在有什么」). Same channel as `fill`, answered the same way.
     this.modManager.setPromptDraftReader(() => this.readModPrompt());
+
+    // `$.prompt.suggest` — ghost text above the composer, Tab to accept
+    // (spec「输入框里的建议与焦点」). The chain in ModManager calls this only
+    // when no mod vetoed it, so this sink is the "show it" tail.
+    this.modManager.setPromptSuggestionSink(async (request) => ({
+      isShown: await this.showModPromptSuggestion(request.text, request.plugin),
+    }));
 
     // `$.ui.notice` — one line under a tool call (spec「工具行下面的一行」).
     // Push-only: a host without tool blocks leaves it unwired and the mod's call
@@ -1534,6 +1698,10 @@ export class Agent {
     try {
       await this.modManager.loadFromPlugins(this.pluginManager.getPlugins());
       await this.modManager.startSession();
+      // `tool.register`（spec「把我们自己的工具交给模型」）：每个 mod 一次，赶在
+      // 第一个请求之前。放在 `session.start` 之后，让在 `session.start` 里直接
+      // 调 `$.tool.register` 的 mod 与走这条钩子的两条路都落到同一刻。
+      await this.modManager.dispatchToolRegister();
       // 影子事件 `classic.SessionStart`（spec「影子事件」）：自有事件
       // `session.start` 先发、镜像后发。只读，宿主不等。
       this.modManager.notifyMods("classic.SessionStart", { source: "startup" });

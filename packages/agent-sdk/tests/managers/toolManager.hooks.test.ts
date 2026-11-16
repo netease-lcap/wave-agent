@@ -57,7 +57,12 @@ function build(
     /** The JSON Schema the fake declares for the model. */
     parameters?: Record<string, unknown>;
     /** 容器里接一个 ModManager 替身（`tool.call` 的派发点）。 */
-    dispatchToolCall?: (event: unknown) => Promise<string | undefined>;
+    dispatchToolCall?: (event: unknown) => Promise<{
+      deny?: string;
+      result?: unknown;
+    }>;
+    /** 这个工具是不是插件自己注册的（`{ result }` 与「没人接」都靠它）。 */
+    ownsTool?: (name: string) => boolean;
     /** `tool.run` 的派发点：不给就照常把工具跑掉（与真实现一致）。 */
     dispatchToolRun?: (
       event: unknown,
@@ -93,11 +98,20 @@ function build(
     getMcpToolOutputSchemas: vi.fn().mockReturnValue(new Map()),
   };
 
-  container.register("PermissionManager", {
+  const permissionManager = {
     isToolDenied: vi.fn().mockReturnValue(false),
     getCurrentEffectiveMode: vi.fn().mockReturnValue("default"),
     getPlanFilePath: vi.fn().mockReturnValue(undefined),
-  });
+    // 插件注册的工具要在 `ToolManager` 里自己问一次权限（内置工具各自在
+    // `execute` 里问）。默认放行，要拦的用例自己改 `checkPermission`。
+    createContext: vi.fn((toolName: string) => ({ toolName })),
+    checkPermission: vi.fn(
+      async (): Promise<{ behavior: string; message?: string }> => ({
+        behavior: "allow",
+      }),
+    ),
+  };
+  container.register("PermissionManager", permissionManager);
   container.register("TaskManager", {});
   container.register("ReversionManager", {});
   container.register("BackgroundTaskManager", {});
@@ -112,7 +126,7 @@ function build(
     options.notifyMods
   ) {
     container.register("ModManager", {
-      dispatchToolCall: options.dispatchToolCall ?? (async () => undefined),
+      dispatchToolCall: options.dispatchToolCall ?? (async () => ({})),
       dispatchToolRun:
         options.dispatchToolRun ??
         (async (_event, run) => {
@@ -120,6 +134,7 @@ function build(
           return {};
         }),
       notifyMods: options.notifyMods ?? vi.fn(),
+      ownsTool: options.ownsTool ?? (() => false),
       currentPermissionMode: () => "default",
     } as unknown as ModManager);
   }
@@ -169,6 +184,7 @@ function build(
     mockMessageManager,
     context,
     mockMcpManager,
+    permissionManager,
   };
 }
 
@@ -252,7 +268,7 @@ describe("ToolManager built-in funnel runs tool-event hooks", () => {
   // spec「拦下一次工具调用」/「在工具真正跑之前插一脚」：`tool.call` 在执行之
   // 前就问，`tool.run` 的 `next(e)` 才是执行本身。
   it("tool.call 与 tool.run 都拿到工具名、调用 id 与顶层铺开的参数", async () => {
-    const dispatchToolCall = vi.fn(async () => undefined);
+    const dispatchToolCall = vi.fn(async () => ({}));
     const dispatchToolRun = vi.fn(
       async (_event: unknown, run: () => Promise<unknown>) => {
         await run();
@@ -282,7 +298,9 @@ describe("ToolManager built-in funnel runs tool-event hooks", () => {
 
   it("插件在 tool.call 里拦下时不执行工具，模型收到那段文本", async () => {
     const { toolManager, execute, context } = build({
-      dispatchToolCall: vi.fn(async () => "rm -rf 太危险，改用删除单文件"),
+      dispatchToolCall: vi.fn(async () => ({
+        deny: "rm -rf 太危险，改用删除单文件",
+      })),
     });
 
     const result = await toolManager.execute("FakeTool", { a: 1 }, context);
@@ -293,6 +311,89 @@ describe("ToolManager built-in funnel runs tool-event hooks", () => {
       error: "rm -rf 太危险，改用删除单文件",
     });
     expect(execute).not.toHaveBeenCalled();
+  });
+
+  it("插件替自己注册的工具答了结果：交回模型，但 settings 的 Pre/PostToolUse 照跑、tool.run 不进", async () => {
+    // spec「把我们自己的工具交给模型」：`mcp__<plugin>__*` 没有宿主侧执行体，
+    // 结果只能由那条 `tool.call` 给，所以 `tool.run`（「真跑一次」的入口）不
+    // 进；但 `settings.json` 里的 PreToolUse / PostToolUse 与真 MCP 工具同一条
+    // 承诺 —— 用户按 `mcp__.*` 写的拒绝与审计对它们必须有效。
+    const dispatchToolRun = vi.fn(async () => ({}));
+    const { toolManager, execute, context } = build({
+      dispatchToolCall: vi.fn(async () => ({
+        result: { id: 7, title: "登录坏了" },
+      })),
+      dispatchToolRun,
+      ownsTool: () => true,
+    });
+
+    const result = await toolManager.execute("FakeTool", { a: 1 }, context);
+
+    expect(result).toEqual({
+      success: true,
+      content: JSON.stringify({ id: 7, title: "登录坏了" }, null, 2),
+    });
+    expect(execute).not.toHaveBeenCalled();
+    expect(dispatchToolRun).not.toHaveBeenCalled();
+    expect(mockExecuteCommand).toHaveBeenCalledWith(
+      "guard.sh",
+      expect.objectContaining({ event: "PreToolUse", toolName: "FakeTool" }),
+      undefined,
+    );
+    expect(mockExecuteCommand).toHaveBeenCalledWith(
+      "lint.sh",
+      expect.objectContaining({ event: "PostToolUse", toolName: "FakeTool" }),
+      undefined,
+    );
+  });
+
+  it("插件注册的工具被 PreToolUse 拦下时，结果不交给模型", async () => {
+    const { toolManager, context } = build({
+      dispatchToolCall: vi.fn(async () => ({ result: { id: 7 } })),
+      ownsTool: () => true,
+    });
+    mockExecuteCommand.mockResolvedValue(PRE_BLOCKED);
+
+    const result = await toolManager.execute("FakeTool", { a: 1 }, context);
+
+    expect(result).toEqual({
+      success: false,
+      content: "PreToolUse:FakeTool hook error: Blocked by policy",
+      error: "PreToolUse:FakeTool hook error: Blocked by policy",
+    });
+  });
+
+  it("插件注册的工具没人认领：按 { result: null } 答，并记一条 warn", async () => {
+    const { toolManager, execute, context } = build({
+      dispatchToolCall: vi.fn(async () => ({})),
+      ownsTool: () => true,
+    });
+
+    const result = await toolManager.execute("FakeTool", { a: 1 }, context);
+
+    expect(result).toEqual({ success: true, content: "null" });
+    expect(execute).not.toHaveBeenCalled();
+  });
+
+  it("插件注册的工具要过一次审批：拒绝了就不把结果交给模型", async () => {
+    // spec「把我们自己的工具交给模型」：名字带 `mcp__` 前缀就是为了走 MCP 那条
+    // 审批路 —— 用户看得见、能拒。
+    const { toolManager, permissionManager, context } = build({
+      dispatchToolCall: vi.fn(async () => ({ result: { id: 7 } })),
+      ownsTool: () => true,
+    });
+    permissionManager.checkPermission.mockResolvedValueOnce({
+      behavior: "deny",
+      message: "用户拒了",
+    });
+
+    const result = await toolManager.execute("FakeTool", { a: 1 }, context);
+
+    expect(result).toEqual({
+      success: false,
+      content: "FakeTool 的调用被拒绝：用户拒了",
+      error: "FakeTool 的调用被拒绝：用户拒了",
+    });
   });
 
   it("插件在 tool.run 里不放行时不执行工具", async () => {
@@ -318,7 +419,7 @@ describe("ToolManager built-in funnel runs tool-event hooks", () => {
       },
     );
     const { toolManager, context } = build({
-      dispatchToolCall: vi.fn(async () => undefined),
+      dispatchToolCall: vi.fn(async () => ({})),
       dispatchToolRun,
       execute: vi.fn().mockRejectedValue(new Error("disk full")),
     });
@@ -332,7 +433,7 @@ describe("ToolManager built-in funnel runs tool-event hooks", () => {
   it("PreToolUse 拦下时不进入 tool.run（工具根本没跑）", async () => {
     const dispatchToolRun = vi.fn(async () => ({}));
     const { toolManager, context } = build({
-      dispatchToolCall: vi.fn(async () => undefined),
+      dispatchToolCall: vi.fn(async () => ({})),
       dispatchToolRun,
     });
     mockExecuteCommand.mockResolvedValue(PRE_BLOCKED);
@@ -357,6 +458,32 @@ describe("ToolManager MCP funnel keeps a hook block's wording", () => {
       success: false,
       content: "PreToolUse:mcp__srv__t hook error: nope",
       error: "PreToolUse:mcp__srv__t hook error: nope",
+    });
+  });
+
+  it("真 MCP 工具也进 tool.call：插件拦下时不执行工具", async () => {
+    // 名字带 `mcp__` 前缀的既有 mod 工具也有真 MCP 工具，两者必须是同一套语义
+    // （spec「拦下一次工具调用」说的是「一次工具调用执行之前」，没挑工具从哪来）。
+    const dispatchToolCall = vi.fn(async () => ({
+      deny: "这个服务器今天不许调",
+    }));
+    const { toolManager, context, mockMcpManager } = build({
+      dispatchToolCall,
+    });
+    mockMcpManager.isMcpTool.mockReturnValue(true);
+
+    const result = await toolManager.execute("mcp__srv__t", {}, context);
+
+    expect(result).toEqual({
+      success: false,
+      content: "这个服务器今天不许调",
+      error: "这个服务器今天不许调",
+    });
+    expect(mockMcpManager.executeMcpToolByRegistry).not.toHaveBeenCalled();
+    expect(dispatchToolCall).toHaveBeenCalledWith({
+      tool: "mcp__srv__t",
+      tool_use_id: "call_1",
+      input: {},
     });
   });
 

@@ -230,6 +230,17 @@ export interface AgentCallbacks
    */
   onModPromptRead?: (payload: import("./mods.js").ModPromptReadRequest) => void;
   /**
+   * A plugin mod wants to put an inline suggestion above the composer
+   * (`$.prompt.suggest`; spec `ecosystem/plugin-mods.md`「输入框里的建议与焦点」).
+   *
+   * Reply with `Agent.resolveModPromptSuggest(requestId, isShown)`. A host that
+   * never wires this (the terminal) leaves `$.prompt.suggest` answering
+   * `{ isShown: false }`.
+   */
+  onModPromptSuggest?: (
+    payload: import("./mods.js").ModPromptSuggestRequest,
+  ) => void;
+  /**
    * A plugin mod asked to put text on the clipboard (`$.ui.copy`; spec
    * 「剪贴板与视图」).
    *

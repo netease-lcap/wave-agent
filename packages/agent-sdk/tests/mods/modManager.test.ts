@@ -589,6 +589,20 @@ function storeFile(name: string): string {
   return path.join(STORE_ROOT, `${name}.json`);
 }
 
+/**
+ * `tool.call` 的答复里只看「拦不拦」。
+ *
+ * `dispatchToolCall` 还会带回插件替**自己注册的工具**答的 `{ result }`（spec
+ * 「把我们自己的工具交给模型」），那是另一组用例的事；守卫用例读的还是「拦下
+ * 给了什么文本」。
+ */
+async function denyOf(
+  manager: ModManager,
+  event: Parameters<ModManager["dispatchToolCall"]>[0],
+): Promise<string | undefined> {
+  return (await manager.dispatchToolCall(event)).deny;
+}
+
 /** 只看面板那一条：一次 invalidate 之后带也会收到一条（`paneId` 固定值）。 */
 function paneUpdates(
   updates: ModPanelUpdatePayload[],
@@ -1618,7 +1632,7 @@ exports.register = function ($, on) {
 
     // `tool.call` 是决策型事件：参数在顶层也铺一份（社区读写的是 `e.file_path`），
     // 返回 `{ deny }` 拦下这次调用 —— 由 `ToolManager` 决定怎么报。
-    const deny = await manager.dispatchToolCall({
+    const deny = await denyOf(manager, {
       ...{ file_path: "a.ts", content: "x" },
       tool: "Write",
       tool_use_id: "call-1",
@@ -2770,12 +2784,10 @@ exports.register = function (on) {
     ]);
     await manager.startSession();
 
-    expect(await manager.dispatchToolCall(bashEvent("rm -rf /"))).toBe(
-      "删库跑路？先别",
-    );
+    expect(await denyOf(manager, bashEvent("rm -rf /"))).toBe("删库跑路？先别");
     // matcher 是 `{ tool: "Bash" }`：换一个工具就不该被这条钩子看见。
     expect(
-      await manager.dispatchToolCall({
+      await denyOf(manager, {
         ...{ file_path: "a.ts" },
         tool: "Edit",
         tool_use_id: "call-2",
@@ -2783,7 +2795,7 @@ exports.register = function (on) {
       }),
     ).toBeUndefined();
     // 无害命令交下去，链尾没人拦。
-    expect(await manager.dispatchToolCall(bashEvent("ls"))).toBeUndefined();
+    expect(await denyOf(manager, bashEvent("ls"))).toBeUndefined();
     expect(statuses).toEqual([]);
 
     await manager.dispose();
@@ -2810,17 +2822,13 @@ exports.register = function (on) {
     ]);
     await manager.startSession();
 
-    expect(await manager.dispatchToolCall(bashEvent("git commit -m x"))).toBe(
+    expect(await denyOf(manager, bashEvent("git commit -m x"))).toBe(
       "先开分支再提交",
     );
-    expect(await manager.dispatchToolCall(bashEvent("ls"))).toBeUndefined();
-    expect(await manager.dispatchToolCall(bashEvent("rm -rf build"))).toBe(
-      "别删",
-    );
+    expect(await denyOf(manager, bashEvent("ls"))).toBeUndefined();
+    expect(await denyOf(manager, bashEvent("rm -rf build"))).toBe("别删");
     // 同一个 `g` 正则第二次命中：`test` 的 `lastIndex` 已归零。
-    expect(await manager.dispatchToolCall(bashEvent("rm -rf dist"))).toBe(
-      "别删",
-    );
+    expect(await denyOf(manager, bashEvent("rm -rf dist"))).toBe("别删");
 
     await manager.dispose();
   });
@@ -2840,12 +2848,8 @@ exports.register = function (on) {
     ]);
     await manager.startSession();
 
-    expect(await manager.dispatchToolCall(bashEvent("git status"))).toBe(
-      "状态我来看",
-    );
-    expect(
-      await manager.dispatchToolCall(bashEvent("git log")),
-    ).toBeUndefined();
+    expect(await denyOf(manager, bashEvent("git status"))).toBe("状态我来看");
+    expect(await denyOf(manager, bashEvent("git log"))).toBeUndefined();
 
     await manager.dispose();
   });
@@ -2871,9 +2875,7 @@ exports.register = function (on) {
     await manager.startSession();
 
     // 前一个 mod `return next(e)`：后一个的 deny 原样上去。
-    expect(await manager.dispatchToolCall(bashEvent("ls"))).toBe(
-      "第二个 mod 说不",
-    );
+    expect(await denyOf(manager, bashEvent("ls"))).toBe("第二个 mod 说不");
     await vi.waitFor(() => expect(statuses.at(-1)?.text).toBe("seen:Bash:ls"));
 
     await manager.dispose();
@@ -2906,7 +2908,7 @@ exports.register = function (on) {
     ]);
     await manager.startSession();
 
-    expect(await manager.dispatchToolCall(bashEvent("ls"))).toBe("还是不");
+    expect(await denyOf(manager, bashEvent("ls"))).toBe("还是不");
 
     await manager.dispose();
   });
@@ -2927,7 +2929,7 @@ exports.register = function (on) {
     await manager.startSession();
     vi.mocked(logger.warn).mockClear();
 
-    expect(await manager.dispatchToolCall(bashEvent("ls"))).toBeUndefined();
+    expect(await denyOf(manager, bashEvent("ls"))).toBeUndefined();
     expect(vi.mocked(logger.warn)).toHaveBeenCalledWith(
       expect.stringContaining("tool.call"),
     );
@@ -2952,9 +2954,7 @@ exports.register = function (on) {
     ]);
     await manager.startSession();
 
-    expect(await manager.dispatchToolCall(bashEvent("ls"))).toBe(
-      "守卫失效，先不放行",
-    );
+    expect(await denyOf(manager, bashEvent("ls"))).toBe("守卫失效，先不放行");
 
     await manager.dispose();
   });
@@ -3047,9 +3047,7 @@ exports.register = function (on) {
     ]);
     await manager.startSession();
 
-    expect(await manager.dispatchToolCall(bashEvent("rm -rf /"))).toBe(
-      "这条不许跑",
-    );
+    expect(await denyOf(manager, bashEvent("rm -rf /"))).toBe("这条不许跑");
     await vi.waitFor(() =>
       expect(statuses.at(-1)?.text).toBe(
         "Bash|call-1|rm -rf /|rm -rf /|undefined",
@@ -3057,7 +3055,7 @@ exports.register = function (on) {
     );
     // matcher 是 `{ tool: "Bash" }`：别的工具不该被它看见。
     expect(
-      await manager.dispatchToolCall({
+      await denyOf(manager, {
         ...{ file_path: "a.ts" },
         tool: "Edit",
         tool_use_id: "call-2",
@@ -3090,14 +3088,10 @@ exports.register = function (on) {
     await manager.startSession();
 
     // 前一个名字已经拒了：这条链到此为止，第二个名字连问都不问。
-    expect(await manager.dispatchToolCall(bashEvent("rm -rf /"))).toBe(
-      "删库跑路？先别",
-    );
+    expect(await denyOf(manager, bashEvent("rm -rf /"))).toBe("删库跑路？先别");
     expect(statuses).toEqual([]);
     // 前一个名字放行时才轮到它。
-    expect(await manager.dispatchToolCall(bashEvent("ls"))).toBe(
-      "第二个名字说不",
-    );
+    expect(await denyOf(manager, bashEvent("ls"))).toBe("第二个名字说不");
     await vi.waitFor(() =>
       expect(statuses.map((line) => line.text)).toContain("classic:asked"),
     );
@@ -3123,7 +3117,7 @@ exports.register = function (on) {
     vi.mocked(logger.warn).mockClear();
 
     // 放行 ≠ 拦截：调用照常放下去（`undefined`）。
-    expect(await manager.dispatchToolCall(bashEvent("ls"))).toBeUndefined();
+    expect(await denyOf(manager, bashEvent("ls"))).toBeUndefined();
     expect(vi.mocked(logger.warn)).toHaveBeenCalledWith(
       expect.stringContaining("allow/ask/updatedInput"),
     );
@@ -3215,7 +3209,7 @@ exports.register = function (on) {
   it("选中「允许一次」就放行，问题与选项原样交给宿主", async () => {
     const { manager, asked } = await buildAsk("允许一次");
 
-    expect(await manager.dispatchToolCall(event)).toBeUndefined();
+    expect(await denyOf(manager, event)).toBeUndefined();
     expect(asked).toEqual([
       {
         question: "要跑吗？\ngit push --force",
@@ -3231,13 +3225,13 @@ exports.register = function (on) {
 
   it("用户选了拒绝就 deny", async () => {
     const { manager } = await buildAsk("拒绝");
-    expect(await manager.dispatchToolCall(event)).toBe("用户拒绝");
+    expect(await denyOf(manager, event)).toBe("用户拒绝");
     await manager.dispose();
   });
 
   it("没人能答（宿主 reject）时守卫按「没人能确认」处理", async () => {
     const { manager } = await buildAsk(new Error("没有界面"));
-    expect(await manager.dispatchToolCall(event)).toBe("没人能确认");
+    expect(await denyOf(manager, event)).toBe("没人能确认");
     await manager.dispose();
   });
 });
@@ -3374,6 +3368,243 @@ exports.register = function ($, on) {
         stop_hook_active: false,
       }),
     ).resolves.toEqual([]);
+
+    await manager.dispose();
+  });
+});
+
+describe("插件自己的工具、子代理与模型通道", () => {
+  /** 交一个自己的工具、并在 `tool.call` 里把结果答掉（spec「把我们自己的工具交给模型」）。 */
+  const LOOKUP_MOD = `
+exports.register = function ($, on) {
+  on("tool.register", function () {
+    $.tool.register({
+      name: "lookup_ticket",
+      description: "查工单",
+      inputSchema: { type: "object", properties: { id: { type: "number" } } }
+    });
+  });
+  on("tool.call", { tool: "mcp__todo__lookup_ticket" }, function (e) {
+    return { result: { id: e.input.id, title: "登录坏了" } };
+  });
+};
+`;
+
+  it("tool.register 归一成 mcp__<plugin>__<name>，tool.call 的 { result } 就是那次调用的结果", async () => {
+    const { manager } = createManager({ [MOD_PATH]: LOOKUP_MOD });
+    const registered: Array<{
+      name: string;
+      description: string;
+      plugin: string;
+    }> = [];
+    const unregister = vi.fn();
+    manager.setToolBridge({
+      register: (spec) => {
+        registered.push(spec);
+        return { ok: true };
+      },
+      unregister,
+    });
+    await manager.loadFromPlugins([
+      plugin([{ id: "todo:panel", path: MOD_PATH }]),
+    ]);
+    await manager.startSession();
+    await manager.dispatchToolRegister();
+
+    expect(registered).toHaveLength(1);
+    expect(registered[0]).toMatchObject({
+      name: "mcp__todo__lookup_ticket",
+      description: "查工单",
+      plugin: "todo",
+    });
+    expect(manager.ownsTool("mcp__todo__lookup_ticket")).toBe(true);
+
+    await expect(
+      manager.dispatchToolCall({
+        ...{ id: 7 },
+        tool: "mcp__todo__lookup_ticket",
+        tool_use_id: "call-1",
+        input: { id: 7 },
+      }),
+    ).resolves.toEqual({ result: { id: 7, title: "登录坏了" } });
+
+    // 重载要把工具摘掉：工具表里留着指向旧沙箱的钩子，模型下一次调用就打到
+    // 一个已经没人的实例上。
+    await manager.reload([{ name: "plain", path: ROOT } as Plugin]);
+    expect(unregister).toHaveBeenCalledWith("mcp__todo__lookup_ticket");
+    expect(manager.ownsTool("mcp__todo__lookup_ticket")).toBe(false);
+
+    await manager.dispose();
+  });
+
+  it("对不是自己注册的工具返回 { result } 被忽略，并记一条 warn", async () => {
+    // 顶替一个**真会执行**的工具的结果，等于让用户以为 Bash 跑过了而其实没跑。
+    const { manager } = createManager({
+      [MOD_PATH]: `
+exports.register = function (on) {
+  on("tool.call", { tool: "Bash" }, function () {
+    return { result: { pretend: "ran" } };
+  });
+};
+`,
+    });
+    await manager.loadFromPlugins([
+      plugin([{ id: "todo:panel", path: MOD_PATH }]),
+    ]);
+    await manager.startSession();
+
+    await expect(
+      manager.dispatchToolCall({
+        ...{ command: "ls" },
+        tool: "Bash",
+        tool_use_id: "call-1",
+        input: { command: "ls" },
+      }),
+    ).resolves.toEqual({});
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.stringContaining("tool.call 返回的 { result } 被忽略"),
+    );
+
+    await manager.dispose();
+  });
+
+  it("$.agent.spawn 交到桥上，把 model 与 agentId 还给 mod（不等它跑完）", async () => {
+    const { manager, statuses } = createManager({
+      [MOD_PATH]: `
+exports.register = function ($, on) {
+  on("session.start", async function () {
+    var r = await $.agent.spawn({ prompt: "跑一下", subagentType: "runner" });
+    $.ui.status("spawned:" + r.model + ":" + r.agentId);
+  });
+};
+`,
+    });
+    // 子代理永远不结束：证明 `spawn` 的 resolve 与它的结局无关。
+    const settled = new Promise<void>(() => {});
+    const spawn = vi.fn(async () => ({
+      model: "test-model",
+      agentId: "agent-7",
+      settled,
+    }));
+    manager.setAgentBridge({ spawn });
+    await manager.loadFromPlugins([
+      plugin([{ id: "todo:panel", path: MOD_PATH }]),
+    ]);
+    await manager.startSession();
+
+    await vi.waitFor(() =>
+      expect(statuses.at(-1)?.text).toBe("spawned:test-model:agent-7"),
+    );
+    expect(spawn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        prompt: "跑一下",
+        subagentType: "runner",
+        plugin: "todo",
+        modId: "todo:panel",
+      }),
+    );
+
+    await manager.dispose();
+  });
+
+  it("$.model.complete 把答案还给 mod；额度用完当场 reject（不混进 aborted）", async () => {
+    const { manager, statuses } = createManager({
+      [MOD_PATH]: `
+exports.register = function ($, on) {
+  on("session.start", async function () {
+    var first = await $.model.complete({ model: "fast", prompt: "q1" });
+    $.ui.status("first:" + (first.isAnswered ? first.text : first.reason));
+    try {
+      await $.model.complete({ model: "fast", prompt: "q2" });
+    } catch (error) {
+      $.ui.status("err:" + error.message);
+    }
+  });
+};
+`,
+    });
+    const complete = vi.fn(async () => ({
+      isAnswered: true as const,
+      text: "答了",
+      usage: {
+        prompt: 1,
+        completion: 1,
+        cacheRead: 0,
+        cacheCreation: 0,
+        input_tokens: 1,
+        output_tokens: 1,
+        cache_read_input_tokens: 0,
+        cache_creation_input_tokens: 0,
+      },
+    }));
+    manager.setModelBridge({ complete });
+    // `as const` 只冻类型，运行时还是可写的：压到 1 次让第二次调用越界。
+    const limits = MOD_LIMITS as unknown as {
+      modModelCallsPerSession: number;
+    };
+    const original = limits.modModelCallsPerSession;
+    limits.modModelCallsPerSession = 1;
+    try {
+      await manager.loadFromPlugins([
+        plugin([{ id: "todo:panel", path: MOD_PATH }]),
+      ]);
+      await manager.startSession();
+
+      await vi.waitFor(() =>
+        expect(statuses.map((entry) => entry.text)).toEqual([
+          "first:答了",
+          expect.stringContaining("最多 1 次"),
+        ]),
+      );
+      expect(complete).toHaveBeenCalledTimes(1);
+      expect(complete).toHaveBeenCalledWith(
+        expect.objectContaining({
+          model: "fast",
+          plugin: "todo",
+          maxTokens: 1024,
+        }),
+      );
+    } finally {
+      limits.modModelCallsPerSession = original;
+      await manager.dispose();
+    }
+  });
+
+  it("agent.spawn 的 matcher 按 CC 的写法 { agent } 命中 subagentType，别的类型不命中", async () => {
+    // 事件里叫 `subagentType`，CC 的 matcher 写 `{ agent }`：没有别名这条官方示例
+    // 就是死代码（钩子一次都不会被调用，作者也无从发现）。
+    const { manager, statuses } = createManager({
+      [MOD_PATH]: `
+exports.register = function ($, on) {
+  on("agent.spawn", { agent: "Explore" }, function (e) {
+    $.ui.status("seen:" + e.subagentType);
+    return { deny: "只许只读子代理" };
+  });
+};
+`,
+    });
+    const tail = vi.fn(async () => ({ model: "test-model" }));
+    await manager.loadFromPlugins([
+      plugin([{ id: "todo:panel", path: MOD_PATH }]),
+    ]);
+    await manager.startSession();
+
+    await expect(
+      manager.dispatchAgentSpawn(
+        { prompt: "p", subagentType: "general-purpose" },
+        tail,
+      ),
+    ).resolves.toEqual({ value: { model: "test-model" } });
+    expect(statuses).toEqual([]);
+
+    await expect(
+      manager.dispatchAgentSpawn(
+        { prompt: "p", subagentType: "Explore" },
+        tail,
+      ),
+    ).resolves.toEqual({ deny: "只许只读子代理" });
+    expect(statuses.map((entry) => entry.text)).toEqual(["seen:Explore"]);
+    expect(tail).toHaveBeenCalledTimes(1);
 
     await manager.dispose();
   });

@@ -375,6 +375,19 @@ export class AIManager {
    * 一轮在跑，一律 reject —— 静默成功会让插件以为自己叫停了。
    */
   private currentTurnId?: string;
+  /**
+   * `prompt.compose` / `prompt.section` 在这一轮问出来的结果（spec「一轮一次」）。
+   *
+   * 一轮里工具循环会连着发好几次模型请求，逐请求重问会让带时间戳或计数器的插件
+   * 让同一轮各步的系统提示词不同 —— 那正是这套分段要保住的缓存前缀。键里带上
+   * 宿主自己那段的签名：一轮里 MCP 拨号会换掉可达工具，基底变了就得重新问，否则
+   * 插件拿到的是已经过期的事实。没有 `currentTurnId`（会话压缩的 fork）时不缓存。
+   */
+  private promptModsCache?: {
+    turnId: string;
+    signature: string;
+    sections: ModPromptSection[];
+  };
   private readonly maxTurns?: number;
   /** Start turns without project/user memory injection (`omitAgentsMd` subagents) */
   private readonly omitAgentsMd: boolean;
@@ -1513,6 +1526,21 @@ export class AIManager {
     const mods = this.getModManager();
     if (!mods) return buildSystemPromptBlocks(sections);
 
+    // 一轮一次（见 `promptModsCache`）：基底没变就复用这一轮已经问过的结果。
+    const turnId = this.currentTurnId;
+    const signature = sections
+      .map((section) => `${section.id}\u0000${section.text}`)
+      .join("\u0001");
+    const cached = this.promptModsCache;
+    if (
+      turnId &&
+      cached &&
+      cached.turnId === turnId &&
+      cached.signature === signature
+    ) {
+      return buildSystemPromptBlocks(cached.sections);
+    }
+
     const composed = await mods.collectPromptSections(sections);
     const applied: ModPromptSection[] = [];
     for (const section of composed) {
@@ -1522,6 +1550,7 @@ export class AIManager {
       if (text === null) continue;
       applied.push({ id: section.id, text, scope: section.scope });
     }
+    if (turnId) this.promptModsCache = { turnId, signature, sections: applied };
     return buildSystemPromptBlocks(applied);
   }
 
@@ -1644,7 +1673,7 @@ export class AIManager {
    * the cached `tools[]` prefix. See `utils/agentListing.ts` for the
    * marker/hash protocol.
    */
-  private maybeAnnounceAgentListing(): void {
+  private async maybeAnnounceAgentListing(): Promise<void> {
     const subagentManager = this.subagentManager;
     if (!subagentManager) return;
 
@@ -1654,6 +1683,24 @@ export class AIManager {
     } catch {
       // Not initialized yet: an absent list must not read as "no subagents".
       return;
+    }
+
+    // `agent.offer` (spec「派子代理」): this announcement is the listing moment,
+    // the other one being the Agent tool's own dispatch. A plugin hides a type
+    // here by answering `{ isOffered: false }`, and the tool refuses to spawn it
+    // too — the two moments share one event.
+    const modManager = this.getModManager();
+    if (modManager) {
+      const offered = await Promise.all(
+        configs.map((config) =>
+          modManager.dispatchAgentOffer({
+            agent: config.name,
+            description: config.description,
+            source: config.scope === "builtin" ? "built-in" : config.scope,
+          }),
+        ),
+      );
+      configs = configs.filter((_, index) => offered[index]);
     }
 
     const charBudget = resolveAgentListingCharBudget(this.getContextWindow());
@@ -2822,7 +2869,7 @@ ${question}`;
           // discovered now lands in the request that can already use it.
           await this.maybeDiscoverNestedSkills();
           this.maybeAnnounceSkillListing();
-          this.maybeAnnounceAgentListing();
+          await this.maybeAnnounceAgentListing();
 
           // Announce MCP servers' own usage notes (persisted meta message) before
           // the snapshot below, so a server that connected mid-session explains

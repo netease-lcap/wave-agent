@@ -471,6 +471,12 @@ export class SubagentManager {
       maxTurns?: number;
       /** Run this instance in its own temporary git worktree. */
       worktreeIsolation?: boolean;
+      /**
+       * Started by a plugin-mod's `$.agent.spawn`. The child gets a
+       * `ModAgentDepth` of its own so its Agent tool refuses to spawn again —
+       * spec「派子代理」的「mod 派的子代理不再派（深度 1），防递归」。
+       */
+      modSpawned?: boolean;
     },
     runInBackground?: boolean,
     onUpdate?: () => void,
@@ -504,6 +510,13 @@ export class SubagentManager {
     // files on disk and racing the main agent's own drain. All ReversionManager
     // consumers are truthiness-guarded, so resolving to `undefined` is safe.
     subagentContainer.register("ReversionManager", undefined);
+
+    // A mod-spawned subagent is one level deep: its own Agent tool reads this and
+    // refuses to delegate again (spec「派子代理」的深度 1)。
+    if (parameters.modSpawned) {
+      const depth = this.container.get<number>("ModAgentDepth") ?? 0;
+      subagentContainer.register("ModAgentDepth", depth + 1);
+    }
 
     // Worktree isolation must be wired before any manager is constructed: the
     // child container's "CurrentWorkdir" slot is what AIManager resolves at run time,

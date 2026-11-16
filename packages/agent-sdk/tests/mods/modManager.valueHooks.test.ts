@@ -2,6 +2,7 @@ import * as path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ModManager } from "../../src/managers/modManager.js";
 import { logger } from "../../src/utils/globalLogger.js";
+import { MOD_LIMITS } from "../../src/types/mods.js";
 import type { ModStatusPayload } from "../../src/types/mods.js";
 import type { Plugin } from "../../src/types/plugins.js";
 
@@ -154,6 +155,74 @@ describe("value 型钩子链", () => {
         scope: "session",
       }),
     ).resolves.toBe("原文|内层|外层");
+  });
+
+  it("改事件也能改值：next({ ...e, text }) 之后下游没有别的 mod，改写照样生效", async () => {
+    const { manager } = await managerOf([
+      // spec 给 `session.append` 的改写通道就是 `next({ ...e, message })`：
+      // 链尾必须按**链尾收到的那份事件**取值，否则下游没人注册时这条通道是死的。
+      `
+      exports.register = function (on) {
+        on("session.append", async function ($, e, next) {
+          var masked = { ...e.message, content: [{ type: "text", text: "脱敏后" }] };
+          var r = await next({ ...e, message: masked });
+          return { message: r.message, uuid: r.uuid };
+        });
+      };
+      `,
+    ]);
+
+    const out = await manager.dispatchSessionAppend({
+      id: "m1",
+      role: "user",
+      content: [{ type: "text", text: "原话" }],
+    });
+    expect(out.message.content).toEqual([{ type: "text", text: "脱敏后" }]);
+  });
+
+  it("超时且下游没跑完：按宿主原值继续，不把 undefined 当结果交出去", async () => {
+    // 外层预算盖住 `next()` 里的整条下游链：每层 200ms、预算 300ms，外层到期时
+    // `next` 还没返回。这条路径以前会把 `undefined as T` 返回给宿主，
+    // `prompt.section` 的消费点读 `result.text` 直接 TypeError。
+    // 每层都调 next：不调 next 会截断链，只有一个 mod 跑 200ms 根本到不了 300ms。
+    // `MOD_LIMITS` 是 `as const`（类型只读、运行时可变）：把 5s 的预算压到 300ms，
+    // 让这条用例在 0.6s 内走到超时分支，而不是真等两个 2.6s。
+    const limits = MOD_LIMITS as unknown as { hookTimeoutMs: number };
+    const budget = limits.hookTimeoutMs;
+    limits.hookTimeoutMs = 300;
+    const slow = `
+      exports.register = function (on) {
+        on("prompt.section", async function ($, e, next) {
+          var r = await next(e);
+          await $.clock.sleep(200);
+          return r;
+        });
+      };
+      `;
+    try {
+      const { manager } = await managerOf([
+        `
+        exports.register = function (on) {
+          on("prompt.section", async function ($, e, next) {
+            var inner = await next(e);
+            return { text: inner.text };
+          });
+        };
+        `,
+        slow,
+        slow,
+      ]);
+
+      await expect(
+        manager.collectPromptSection({
+          id: "tone",
+          text: "原文",
+          scope: "session",
+        }),
+      ).resolves.toBe("原文");
+    } finally {
+      limits.hookTimeoutMs = budget;
+    }
   });
 
   it("谁都没改：拿到的就是宿主原本的值（逐字相同，缓存前缀不受影响）", async () => {

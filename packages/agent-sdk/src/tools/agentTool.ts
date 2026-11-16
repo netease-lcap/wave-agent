@@ -180,6 +180,18 @@ When using the Agent tool, you must specify a subagent_type parameter to select 
       };
     }
 
+    // 「mod 派的子代理不再派（深度 1），防递归」（spec「派子代理」）：插件自己
+    // 起了个子代理，那个子代理就不能再往下起，否则一个 mod 能指数级地开进程。
+    if ((context.modAgentDepth ?? 0) > 0) {
+      return {
+        success: false,
+        content: "",
+        error:
+          "This agent was started by a plugin ($.agent.spawn) and cannot delegate further (depth is limited to 1).",
+        shortResult: "Agent delegation depth limit",
+      };
+    }
+
     try {
       // Subagent selection logic with explicit name matching only
       const configuration = await subagentManager.findSubagent(subagent_type);
@@ -204,225 +216,329 @@ When using the Agent tool, you must specify a subagent_type parameter to select 
       const worktreeIsolation =
         configuration.isolation === "worktree" || isolationArg === "worktree";
 
-      // Create subagent instance and execute agent
-      const instance = await subagentManager.createInstance(
-        configuration,
-        {
-          description,
-          prompt,
-          subagent_type,
-          worktreeIsolation,
-        },
-        run_in_background,
-        () => {
-          // Do not update shortResult if it is running in background
-          if (run_in_background || isBackgrounded) return;
-
-          const messages = instance.messageManager.getMessages();
-          const tokens = instance.messageManager.getLatestTotalTokens();
-          // While the subagent is streaming content (reasoning or reply text),
-          // show the last ONE tool plus the streaming content tail; otherwise
-          // (tool streaming/running/idle) keep the last two tools.
-          const activeStreaming = findActiveStreamingBlock(messages);
-          const usedTools = activeStreaming
-            ? instance.usedTools.slice(-1)
-            : instance.usedTools;
-
-          const toolCount = countToolBlocks(messages);
-          const summary = formatToolTokenSummary(toolCount, tokens);
-
-          const getDisplayParam = (t: {
-            name: string;
-            parameters: string;
-            compactParams?: string;
-            stage?: string;
-          }) => {
-            if (
-              (t.stage === "end" || t.stage === "running") &&
-              t.compactParams
-            ) {
-              return t.compactParams;
-            }
-            const flat = t.parameters.replace(/\n/g, "\\n");
-            return flat.length > 30 ? `…${flat.slice(-30)}` : flat;
+      // `agent.offer` (spec「派子代理」): the model sees this type in the
+      // subagent listing once, and names it at dispatch again — the engine asks
+      // at both moments. A plugin's `{ isOffered: false }` refuses here without
+      // waiting for `agent.spawn`, which then decides this one call.
+      const modManager = context.modManager;
+      if (modManager) {
+        const isOffered = await modManager.dispatchAgentOffer(
+          {
+            agent: configuration.name,
+            description: configuration.description,
+            // What the definition came from, so a matcher tells a built-in
+            // from a user's agent of the same name (Claude Code's `source`).
+            source:
+              configuration.scope === "builtin"
+                ? "built-in"
+                : configuration.scope,
+          },
+          context.abortSignal,
+        );
+        if (!isOffered) {
+          return {
+            success: false,
+            content: "",
+            error: `Agent type "${subagent_type}" is hidden by a plugin (agent.offer returned { isOffered: false }).`,
+            shortResult: "Agent not offered",
           };
-
-          let shortResult = "";
-          if (toolCount > 2) {
-            shortResult += "... ";
-          }
-          shortResult += summary;
-          if (usedTools.length > 0) {
-            shortResult +=
-              "\n" +
-              usedTools
-                .map((t) => `${t.name} ${getDisplayParam(t)}`)
-                .join("\n");
-          }
-
-          // Streaming content tail, on its own line below the tool lines
-          // (compact style, mirroring the tool's truncated compact params).
-          if (activeStreaming) {
-            const flat = activeStreaming.content.replace(/\s+/g, " ").trim();
-            if (flat) {
-              const tail = flat.length > 30 ? `…${flat.slice(-30)}` : flat;
-              shortResult += (shortResult ? "\n" : "") + tail;
-            }
-          }
-
-          context.onShortResultUpdate?.(shortResult);
-        },
-      );
+        }
+      }
 
       return new Promise<ToolResult>((resolve) => {
         (async () => {
-          // Register for backgrounding if not already in background
-          if (!run_in_background && context.foregroundTaskManager) {
-            context.foregroundTaskManager.registerForegroundTask({
-              id: instance.subagentId,
-              backgroundHandler: async () => {
-                isBackgrounded = true;
-                const taskId = await subagentManager.backgroundInstance(
-                  instance.subagentId,
-                );
-                const task = context.backgroundTaskManager?.getTask(taskId);
-                const outputPath = task?.outputPath;
-                resolve({
-                  success: true,
-                  content: `Agent backgrounded with ID: ${taskId}.${outputPath ? ` Real-time output: ${outputPath}` : ""}`,
-                  shortResult: "Agent backgrounded",
-                  backgroundedByUser: true,
-                  backgroundTaskId: taskId,
-                });
-              },
-            });
-          }
+          /** Whether the chain's tail ran: a hook answering without `next` started none. */
+          let dispatched = false;
 
-          try {
-            const result = await subagentManager.executeAgent(
-              instance,
-              prompt,
-              context.abortSignal,
+          /**
+           * The chain's tail — the real dispatch. `agent.spawn`'s `next(e)` hands
+           * the rewritten event to it, so the subagent runs with the prompt,
+           * description and model the plugins left behind.
+           */
+          const spawn = async (spawnEvent: unknown): Promise<unknown> => {
+            dispatched = true;
+            const rewritten =
+              typeof spawnEvent === "object" && spawnEvent !== null
+                ? (spawnEvent as Record<string, unknown>)
+                : {};
+            const finalPrompt =
+              typeof rewritten.prompt === "string" ? rewritten.prompt : prompt;
+            const finalDescription =
+              typeof rewritten.description === "string"
+                ? rewritten.description
+                : description;
+            const finalModel =
+              typeof rewritten.model === "string" && rewritten.model
+                ? rewritten.model
+                : configuration.model;
+
+            // Create subagent instance and execute agent
+            const instance = await subagentManager.createInstance(
+              configuration,
+              {
+                description: finalDescription,
+                prompt: finalPrompt,
+                subagent_type,
+                worktreeIsolation,
+                ...(finalModel ? { model: finalModel } : {}),
+              },
               run_in_background,
+              () => {
+                // Do not update shortResult if it is running in background
+                if (run_in_background || isBackgrounded) return;
+
+                const messages = instance.messageManager.getMessages();
+                const tokens = instance.messageManager.getLatestTotalTokens();
+                // While the subagent is streaming content (reasoning or reply text),
+                // show the last ONE tool plus the streaming content tail; otherwise
+                // (tool streaming/running/idle) keep the last two tools.
+                const activeStreaming = findActiveStreamingBlock(messages);
+                const usedTools = activeStreaming
+                  ? instance.usedTools.slice(-1)
+                  : instance.usedTools;
+
+                const toolCount = countToolBlocks(messages);
+                const summary = formatToolTokenSummary(toolCount, tokens);
+
+                const getDisplayParam = (t: {
+                  name: string;
+                  parameters: string;
+                  compactParams?: string;
+                  stage?: string;
+                }) => {
+                  if (
+                    (t.stage === "end" || t.stage === "running") &&
+                    t.compactParams
+                  ) {
+                    return t.compactParams;
+                  }
+                  const flat = t.parameters.replace(/\n/g, "\\n");
+                  return flat.length > 30 ? `…${flat.slice(-30)}` : flat;
+                };
+
+                let shortResult = "";
+                if (toolCount > 2) {
+                  shortResult += "... ";
+                }
+                shortResult += summary;
+                if (usedTools.length > 0) {
+                  shortResult +=
+                    "\n" +
+                    usedTools
+                      .map((t) => `${t.name} ${getDisplayParam(t)}`)
+                      .join("\n");
+                }
+
+                // Streaming content tail, on its own line below the tool lines
+                // (compact style, mirroring the tool's truncated compact params).
+                if (activeStreaming) {
+                  const flat = activeStreaming.content
+                    .replace(/\s+/g, " ")
+                    .trim();
+                  if (flat) {
+                    const tail =
+                      flat.length > 30 ? `…${flat.slice(-30)}` : flat;
+                    shortResult += (shortResult ? "\n" : "") + tail;
+                  }
+                }
+
+                context.onShortResultUpdate?.(shortResult);
+              },
             );
 
-            if (isBackgrounded) {
-              return;
-            }
-
-            if (run_in_background) {
-              const task = context.backgroundTaskManager?.getTask(result);
-              const outputPath = task?.outputPath;
-              const backgroundMsg = [
-                `Agent started in background with ID: ${result}.`,
-                `The agent is working in the background. You will be notified automatically when it completes.`,
-                `Do not duplicate this agent's work — avoid working with the same files or topics it is using.`,
-                outputPath
-                  ? `output_file: ${outputPath}`
-                  : `Briefly tell the user what you launched and end your response.`,
-              ].join("\n");
-              resolve({
-                success: true,
-                content: backgroundMsg,
-                shortResult: `Agent started in background: ${result}${outputPath ? ` → ${outputPath}` : ""}`,
+            // Register for backgrounding if not already in background
+            if (!run_in_background && context.foregroundTaskManager) {
+              context.foregroundTaskManager.registerForegroundTask({
+                id: instance.subagentId,
+                backgroundHandler: async () => {
+                  isBackgrounded = true;
+                  const taskId = await subagentManager.backgroundInstance(
+                    instance.subagentId,
+                  );
+                  const task = context.backgroundTaskManager?.getTask(taskId);
+                  const outputPath = task?.outputPath;
+                  resolve({
+                    success: true,
+                    content: `Agent backgrounded with ID: ${taskId}.${outputPath ? ` Real-time output: ${outputPath}` : ""}`,
+                    shortResult: "Agent backgrounded",
+                    backgroundedByUser: true,
+                    backgroundTaskId: taskId,
+                  });
+                },
               });
-              return;
             }
 
-            // Cleanup subagent instance after agent completion
-            subagentManager.cleanupInstance(instance.subagentId);
+            try {
+              const result = await subagentManager.executeAgent(
+                instance,
+                finalPrompt,
+                context.abortSignal,
+                run_in_background,
+              );
 
-            const messages = instance.messageManager.getMessages();
-            const tokens = instance.messageManager.getLatestTotalTokens();
-            const toolCount = countToolBlocks(messages);
-            const summary = formatToolTokenSummary(toolCount, tokens);
+              if (isBackgrounded) {
+                return;
+              }
 
-            resolve({
-              success: true,
-              content: result,
-              shortResult: `Agent completed${summary ? ` ${summary}` : ""}`,
-            });
-          } catch (error) {
-            if (!isBackgrounded) {
-              // A user cancel is not a completion: the run was cut short, so
-              // whatever it had written so far is not reported as a result.
-              // Claude Code keeps this case separate too (AgentTool.tsx:1215).
-              if (context.abortSignal?.aborted) {
+              if (run_in_background) {
+                const task = context.backgroundTaskManager?.getTask(result);
+                const outputPath = task?.outputPath;
+                const backgroundMsg = [
+                  `Agent started in background with ID: ${result}.`,
+                  `The agent is working in the background. You will be notified automatically when it completes.`,
+                  `Do not duplicate this agent's work — avoid working with the same files or topics it is using.`,
+                  outputPath
+                    ? `output_file: ${outputPath}`
+                    : `Briefly tell the user what you launched and end your response.`,
+                ].join("\n");
                 resolve({
-                  success: false,
-                  content: "",
-                  error: "Agent was aborted",
-                  shortResult: "Agent aborted",
+                  success: true,
+                  content: backgroundMsg,
+                  shortResult: `Agent started in background: ${result}${outputPath ? ` → ${outputPath}` : ""}`,
                 });
                 return;
               }
 
-              // A subagent that already produced assistant output is reported
-              // back as a normal completion carrying only its `text` blocks —
-              // "it failed" deliberately stays out of the parent model's
-              // context (it is in the log stream and in the subagent panel).
-              // Mirrors Claude Code's sync-agent branch (AgentTool.tsx:1223):
-              // the error is re-thrown only when the subagent produced nothing
-              // at all, which is the one case where the parent would otherwise
-              // be handed an empty result with no explanation.
-              let content = "";
-              let hasAssistantMessage = false;
-              try {
-                const messages = instance.messageManager.getMessages();
-                const assistants = messages.filter(
-                  (m) => m.role === "assistant",
-                );
-                hasAssistantMessage = assistants.length > 0;
-                const lastAssistant = assistants.pop();
-                if (lastAssistant) {
-                  // Only `text` crosses the agent boundary (messages.ts
-                  // `extractTextContent`): a notice is narration for the human
-                  // (a loop's round counter, an error line) and never a result.
-                  content = lastAssistant.blocks
-                    .filter((b) => b.type === "text")
-                    .map((b) => (b as { content: string }).content)
-                    .join("\n")
-                    .trim();
-                }
-              } catch {
-                // Ignore errors when extracting messages
-              }
+              // Cleanup subagent instance after agent completion
+              subagentManager.cleanupInstance(instance.subagentId);
 
-              if (hasAssistantMessage) {
-                // A worktree-isolated run reports its worktree even when it
-                // failed, so the caller knows whether files were left behind.
-                const resultContent = instance.worktreeSummary
-                  ? `${content}${content ? "\n\n" : ""}${instance.worktreeSummary}`
-                  : content;
-                // Same terminal as the completed path above: the caller has its
-                // answer, so the instance graph can be released.
-                subagentManager.cleanupInstance(instance.subagentId);
-                resolve({
-                  success: true,
-                  content: resultContent,
-                  shortResult: "Agent completed",
-                });
-              } else {
-                // Nothing came back: the tool call itself fails and the parent
-                // gets the error text. A worktree-isolated run still reports
-                // its worktree, so the caller knows files were left behind.
-                const errorMsg = `Agent delegation failed: ${error instanceof Error ? error.message : String(error)}`;
-                resolve({
-                  success: false,
-                  content: instance.worktreeSummary
-                    ? `${errorMsg}\n\n${instance.worktreeSummary}`
-                    : errorMsg,
-                  error: errorMsg,
-                  shortResult: "Delegation error",
-                });
+              const messages = instance.messageManager.getMessages();
+              const tokens = instance.messageManager.getLatestTotalTokens();
+              const toolCount = countToolBlocks(messages);
+              const summary = formatToolTokenSummary(toolCount, tokens);
+
+              resolve({
+                success: true,
+                content: result,
+                shortResult: `Agent completed${summary ? ` ${summary}` : ""}`,
+              });
+            } catch (error) {
+              if (!isBackgrounded) {
+                // A user cancel is not a completion: the run was cut short, so
+                // whatever it had written so far is not reported as a result.
+                // Claude Code keeps this case separate too (AgentTool.tsx:1215).
+                if (context.abortSignal?.aborted) {
+                  resolve({
+                    success: false,
+                    content: "",
+                    error: "Agent was aborted",
+                    shortResult: "Agent aborted",
+                  });
+                  return;
+                }
+
+                // A subagent that already produced assistant output is reported
+                // back as a normal completion carrying only its `text` blocks —
+                // "it failed" deliberately stays out of the parent model's
+                // context (it is in the log stream and in the subagent panel).
+                // Mirrors Claude Code's sync-agent branch (AgentTool.tsx:1223):
+                // the error is re-thrown only when the subagent produced nothing
+                // at all, which is the one case where the parent would otherwise
+                // be handed an empty result with no explanation.
+                let content = "";
+                let hasAssistantMessage = false;
+                try {
+                  const messages = instance.messageManager.getMessages();
+                  const assistants = messages.filter(
+                    (m) => m.role === "assistant",
+                  );
+                  hasAssistantMessage = assistants.length > 0;
+                  const lastAssistant = assistants.pop();
+                  if (lastAssistant) {
+                    // Only `text` crosses the agent boundary (messages.ts
+                    // `extractTextContent`): a notice is narration for the human
+                    // (a loop's round counter, an error line) and never a result.
+                    content = lastAssistant.blocks
+                      .filter((b) => b.type === "text")
+                      .map((b) => (b as { content: string }).content)
+                      .join("\n")
+                      .trim();
+                  }
+                } catch {
+                  // Ignore errors when extracting messages
+                }
+
+                if (hasAssistantMessage) {
+                  // A worktree-isolated run reports its worktree even when it
+                  // failed, so the caller knows whether files were left behind.
+                  const resultContent = instance.worktreeSummary
+                    ? `${content}${content ? "\n\n" : ""}${instance.worktreeSummary}`
+                    : content;
+                  // Same terminal as the completed path above: the caller has its
+                  // answer, so the instance graph can be released.
+                  subagentManager.cleanupInstance(instance.subagentId);
+                  resolve({
+                    success: true,
+                    content: resultContent,
+                    shortResult: "Agent completed",
+                  });
+                } else {
+                  // Nothing came back: the tool call itself fails and the parent
+                  // gets the error text. A worktree-isolated run still reports
+                  // its worktree, so the caller knows files were left behind.
+                  const errorMsg = `Agent delegation failed: ${error instanceof Error ? error.message : String(error)}`;
+                  resolve({
+                    success: false,
+                    content: instance.worktreeSummary
+                      ? `${errorMsg}\n\n${instance.worktreeSummary}`
+                      : errorMsg,
+                    error: errorMsg,
+                    shortResult: "Delegation error",
+                  });
+                }
+              }
+            } finally {
+              if (!run_in_background && context.foregroundTaskManager) {
+                context.foregroundTaskManager.unregisterForegroundTask(
+                  instance.subagentId,
+                );
               }
             }
-          } finally {
-            if (!run_in_background && context.foregroundTaskManager) {
-              context.foregroundTaskManager.unregisterForegroundTask(
-                instance.subagentId,
-              );
+
+            return { model: finalModel ?? "", agentId: instance.subagentId };
+          };
+
+          const spawnEvent: Record<string, unknown> = {
+            tool_use_id: context.toolCallId ?? "",
+            prompt,
+            description,
+            subagentType: subagent_type,
+            ...(configuration.model ? { model: configuration.model } : {}),
+          };
+
+          try {
+            if (!modManager) {
+              await spawn(spawnEvent);
+              return;
             }
+            const decision = await modManager.dispatchAgentSpawn(
+              spawnEvent,
+              spawn,
+              context.abortSignal,
+            );
+            // The tail never ran: either a `{ deny }`, or a hook that answered
+            // without `next` — which started no subagent at all (Claude Code's
+            // "a hook that answers without next started none"). Both leave the
+            // model without an agent, so neither reads as success.
+            if (!dispatched) {
+              const reason =
+                decision.deny ?? "插件接管了这次派发，但没有启动子代理";
+              resolve({
+                success: false,
+                content: "",
+                error: reason,
+                shortResult: decision.deny
+                  ? "Agent delegation denied"
+                  : "Agent not started",
+              });
+            }
+          } catch (error) {
+            resolve({
+              success: false,
+              content: "",
+              error: `Agent delegation failed: ${error instanceof Error ? error.message : String(error)}`,
+              shortResult: "Delegation error",
+            });
           }
         })();
       });

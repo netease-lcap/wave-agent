@@ -90,6 +90,52 @@
   display: block;
 }
 
+/* 暗色建议（`prompt.suggest`，spec ecosystem/plugin-mods.md「输入框里的建议与
+   焦点」）：摆在输入框第一行上、与草稿同一套字号行高，等宽对齐所以看起来就是
+   「接着会打出来的字」。绝对定位相对 `.input-content` 的 padding box，而
+   `.message-input` 的文字也起于 padding box —— 两边 12px 内衬对上，不多不少。
+   `max-height` 收到正文区的高度：正文再长也不许压到底部工具栏上。 */
+.input-content {
+  position: relative;
+}
+
+.mod-suggestion {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  box-sizing: border-box;
+  padding: 12px;
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  max-height: 112px;
+  overflow: hidden;
+  pointer-events: none;
+  user-select: none;
+  font-family: var(--vscode-font-family);
+  font-size: 12px;
+  line-height: 16px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--vscode-input-placeholderForeground);
+}
+
+.mod-suggestion-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.mod-suggestion-hint {
+  flex-shrink: 0;
+  padding: 0 4px;
+  border: 1px solid currentColor;
+  border-radius: 4px;
+  font-size: 10px;
+  line-height: 14px;
+  opacity: 0.7;
+}
+
 /* 参数提示（spec ui/slash-commands.md「参数提示」）：选中带 `argumentHint` 的命令
    后，灰字跟在 `/命令 ` 后面，用户一打字就消失。
    - 文案走 `content: attr()`，**不进 DOM** —— 与上面 placeholder 同一族做法，

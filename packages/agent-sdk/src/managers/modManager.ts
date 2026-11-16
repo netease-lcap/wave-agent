@@ -22,6 +22,10 @@ import {
   type ModCommandBridge,
   type ModCommandSpec,
   type ModConfigRow,
+  type ModModelCompleteResult,
+  type ModPromptEditEvent,
+  type ModPromptSuggestEvent,
+  type ModUiFocusEvent,
   type ModPanelEventPayload,
   type ModPanelRenderResult,
   type ModPanelTree,
@@ -181,6 +185,65 @@ export interface ModSessionFacts {
   permissionMode(): string;
 }
 
+/**
+ * `$.tool.register` 收到的工具规格（name 已经是 `mcp__<plugin>__<name>`）。
+ *
+ * 与 `ModCommandBridge` 同一条理由：工具表在 `ToolManager`，而「这个工具该问哪
+ * 个 mod 的钩子」只有 `ModManager` 知道。两边互相持有会成环，所以在组装处接桥。
+ */
+export interface ModToolBridge {
+  /** 把一个 mod 的工具挂进注册表；重名（内置 / 自定义 / MCP / 别的 mod）即失败。 */
+  register(spec: {
+    name: string;
+    description: string;
+    inputSchema: Record<string, unknown>;
+    plugin: string;
+  }): { ok: true } | { ok: false; reason: string };
+  /** 撤销（插件重载、会话结束）。名字不在表里不算错。 */
+  unregister(name: string): void;
+}
+
+/**
+ * `dispatchToolCall` 的答复。
+ *
+ * 三种可能：`{ deny }`（拦下）、`{ result }`（插件自己给了结果 —— 只可能是
+ * 它自己注册的工具）、`{}`（没有意见）。`result` 与 `deny` 互斥。
+ */
+export interface ModToolCallDecision {
+  deny?: string;
+  result?: unknown;
+}
+
+/**
+ * `$.agent.spawn` 的出口：派一个子代理，resolve 在它 started 之后。
+ *
+ * `settled` 在子代理真正跑完（完成、失败、被杀）时敲定，用来把「还在跑几个」
+ * 减回去 —— 并发上限数的是活着的那些，不是派过的那些。
+ */
+export interface ModAgentBridge {
+  spawn(args: {
+    prompt: string;
+    description?: string;
+    subagentType?: string;
+    model?: string;
+    plugin: string;
+    modId: string;
+  }): Promise<{ model: string; agentId?: string; settled: Promise<unknown> }>;
+}
+
+/** `$.model.complete` 的出口：一次一问、不流式（spec「让模型替插件答一次」）。 */
+export interface ModModelBridge {
+  complete(request: {
+    model: string;
+    prompt: string;
+    system?: string;
+    maxTokens: number;
+    signal?: AbortSignal;
+    plugin: string;
+  }): Promise<ModModelCompleteResult>;
+}
+
+/** `ModManager` 的构造参数。 */
 export interface ModManagerOptions {
   sessionId: string;
   /** 面板快照的出口；stdio 层把它转成 `modPanelUpdate` 通知。 */
@@ -323,7 +386,12 @@ type ModValueHookName =
   | "prompt.attachment"
   | "session.append"
   | "skill.prompt"
-  | "command.describe";
+  | "command.describe"
+  // A 档第二批（spec「派子代理」「输入框里的建议与焦点」）：都是「引擎算了一份
+  // 值、插件可以换掉它」的形状，与上面那批同一条链。
+  | "agent.offer"
+  | "prompt.edit"
+  | "prompt.suggest";
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -452,7 +520,13 @@ function isDeny(value: unknown): value is { deny: string } {
   );
 }
 
-function withCommunityUsage(
+/**
+ * 把我们这一侧的 token 合计翻译成社区读的那套字段（spec「会话用量」）。
+ *
+ * `$.model.complete` 的 `usage` 也从这里出去：社区插件拿它记账，两处口径必须
+ * 一样，否则同一个插件会把缓存重复算一遍。
+ */
+export function withCommunityUsage(
   totals: ModTokenTotals,
   model: string | undefined,
 ): ModTurnCompleteEvent["usage"] {
@@ -618,6 +692,16 @@ export class ModManager {
    */
   private promptDraftReader?: () => Promise<ModPromptBox>;
   /**
+   * `$.prompt.suggest` 的出口（spec「输入框里的建议与焦点」）。
+   *
+   * 与 `promptFiller` 同一条通道的第三种用法：摆成暗色建议、Tab 采纳。没接上
+   * 时答 `{ isShown: false }` —— 终端就是这一档。
+   */
+  private promptSuggestionSink?: (request: {
+    text: string;
+    plugin: string;
+  }) => Promise<{ isShown: boolean }>;
+  /**
    * `$.ui.notice` 的出口（spec「工具行下面的一行」）。
    *
    * 只推不拉：宿主不画工具块就不传，mod 的调用照常成功（同 `logSink`）。
@@ -675,6 +759,23 @@ export class ModManager {
   private commandBridge?: ModCommandBridge;
   /** 每个 mod 注册了哪些命令（`<modId>` → 命令名集合），卸载与重载时清理。 */
   private readonly ownedCommands = new Map<string, Set<string>>();
+  /** `$.tool.register` 的出口（工具表在 `ToolManager`，装配在 `containerSetup`）。 */
+  private toolBridge?: ModToolBridge;
+  /** 每个 mod 注册了哪些工具（`<modId>` → 全名集合），卸载与重载时清理。 */
+  private readonly ownedTools = new Map<string, Set<string>>();
+  /** `$.agent.spawn` 的出口（子代理在 `SubagentManager`）。 */
+  private agentBridge?: ModAgentBridge;
+  /** 每个 mod 眼下还有几个子代理在跑（并发上限数这个）。 */
+  private readonly activeModAgents = new Map<string, number>();
+  /** `$.model.complete` 的出口（模型请求在 `AIService`）。 */
+  private modelBridge?: ModModelBridge;
+  /**
+   * 每条会话每个插件已经调过几次 `$.model.complete`（spec「让模型替插件答一
+   * 次」）。
+   *
+   * 按**插件**而不是按 mod 数：一个插件拆成三个 mod，用户看的还是这一个插件。
+   */
+  private readonly modModelCalls = new Map<string, number>();
   private disposed = false;
 
   constructor(private readonly options: ModManagerOptions) {
@@ -742,6 +843,31 @@ export class ModManager {
   /** 接上命令表（见 `commandBridge`）。 */
   setCommandBridge(bridge: ModCommandBridge): void {
     this.commandBridge = bridge;
+  }
+
+  /** 接上工具表（见 `toolBridge`）。 */
+  setToolBridge(bridge: ModToolBridge): void {
+    this.toolBridge = bridge;
+  }
+
+  /** 接上子代理出口（见 `agentBridge`）。 */
+  setAgentBridge(bridge: ModAgentBridge): void {
+    this.agentBridge = bridge;
+  }
+
+  /** 接上模型调用出口（见 `modelBridge`）。 */
+  setModelBridge(bridge: ModModelBridge): void {
+    this.modelBridge = bridge;
+  }
+
+  /** 接上「摆建议」通道（见 `promptSuggestionSink`）。 */
+  setPromptSuggestionSink(
+    fn: (request: {
+      text: string;
+      plugin: string;
+    }) => Promise<{ isShown: boolean }>,
+  ): void {
+    this.promptSuggestionSink = fn;
   }
 
   /** 接上「填草稿」通道（见 `promptFiller`）。 */
@@ -899,6 +1025,13 @@ export class ModManager {
               listConfigRows: () => this.facts.configRows(),
               listToolInfos: () => this.facts.toolInfos(),
               listAgentInfos: () => this.facts.agentInfos(),
+              registerTool: (spec) =>
+                this.registerModTool(mod.id, plugin.name, spec),
+              spawnAgent: (args) =>
+                this.spawnModAgent(mod.id, plugin.name, args),
+              completeModel: (request) =>
+                this.completeModModel(mod.id, plugin.name, request),
+              suggestPrompt: (request) => this.suggestPrompt(request),
               listSessionMessages: () => this.facts.sessionMessages(),
               readPromptDraft: () => this.readPromptDraft(),
               showNotice: (toolUseId, text) =>
@@ -1124,8 +1257,9 @@ export class ModManager {
    * 派发 `tool.call`：这次调用**执行之前**问一遍插件，被拦下就不跑（spec
    * 「拦下一次工具调用」）。
    *
-   * 返回 `{ deny }` 时 caller 把这段文本当成工具的错误结果交回模型；返回
-   * `undefined` 就是「没人拦」。
+   * 两种答法：`{ deny }` 时 caller 把这段文本当成工具的错误结果交回模型；
+   * `{ result }` 时 caller 直接把这份值当成工具结果（见 `ModToolCallDecision`）；
+   * 都没有就是「没人拦」。
    *
    * `classic.PreToolUse` 是这条链的**另一个名字**：同一时刻、同一份信封、同一
    * 个 `{ deny }`，`tool.call` 没人拦时接着问它（spec「影子事件」里那条
@@ -1136,15 +1270,24 @@ export class ModManager {
   async dispatchToolCall(
     event: ModToolCallEvent,
     signal?: AbortSignal,
-  ): Promise<string | undefined> {
-    if (this.disposed) return undefined;
+  ): Promise<ModToolCallDecision> {
+    if (this.disposed) return {};
     const decision = await this.runToolHookChain(
       "tool.call",
       event,
       {},
       signal,
     );
-    if (decision.deny !== undefined) return decision.deny;
+    if (decision.deny !== undefined) return { deny: decision.deny };
+    if ("result" in decision) {
+      // `{ result }` 只认**我们自己注册的工具**：那些工具本来就没有宿主侧的
+      // 执行体，结果只能由插件给。顶替一个真会执行的工具的结果，等于让用户
+      // 以为 Bash 跑过了而其实没跑 —— 那是替用户改事实（spec 同款取舍）。
+      if (this.ownsTool(event.tool)) return { result: decision.result };
+      logger.warn(
+        `[Wave] ${event.tool} 不是插件注册的工具，tool.call 返回的 { result } 被忽略`,
+      );
+    }
     // 信封就是同一份（`tool` / `tool_use_id` / `input` + 顶层铺开的参数）：
     // 差别只在这条链认的是另一个钩子名。
     const classic = await this.runToolHookChain(
@@ -1153,7 +1296,7 @@ export class ModManager {
       {},
       signal,
     );
-    return classic.deny;
+    return classic.deny === undefined ? {} : { deny: classic.deny };
   }
 
   /**
@@ -1170,7 +1313,288 @@ export class ModManager {
     signal?: AbortSignal,
   ): Promise<{ deny?: string }> {
     if (this.disposed) return {};
-    return this.runToolHookChain("tool.run", event, { run }, signal);
+    const decision = await this.runToolHookChain(
+      "tool.run",
+      event,
+      { run },
+      signal,
+    );
+    return decision.deny === undefined ? {} : { deny: decision.deny };
+  }
+
+  /**
+   * 派发 `tool.register`：每个 mod 一次，赶在第一次请求之前（spec「把我们自己的
+   * 工具交给模型」）。
+   *
+   * 返回值忽略 —— handler 里该做的是调 `$.tool.register`。所以这里只等它们跑
+   * 完，失败的记一条 warn，不阻塞谁。
+   */
+  async dispatchToolRegister(signal?: AbortSignal): Promise<void> {
+    if (this.disposed) return;
+    for (const [modId, loaded] of this.mods) {
+      const runtime = loaded.runtime;
+      if (!runtime) continue;
+      if (!runtime.matchesHook("tool.register", {})) continue;
+      const result = await runtime.callHook("tool.register", {}, { signal });
+      if (!result.ok) {
+        logger.warn(`[Wave] ${modId} 的 tool.register 失败：${result.error}`);
+      }
+    }
+  }
+
+  /**
+   * 派发 `agent.offer`：引擎把一个子代理类型摆到模型面前（spec「派子代理」）。
+   *
+   * 清单与派发各触发一次：`{ isOffered: false }` 让这个类型既不出现在 Agent 工
+   * 具的清单里、也拒绝派发。链尾是宿主的 `{ isOffered: true }`。
+   */
+  async dispatchAgentOffer(
+    event: { agent: string; description: string; source: string },
+    signal?: AbortSignal,
+  ): Promise<boolean> {
+    if (this.disposed) return true;
+    const result = await this.runValueHookChain<{ isOffered: boolean }>(
+      "agent.offer",
+      event,
+      (current) => {
+        if (!isPlainRecord(current)) return { isOffered: true };
+        return { isOffered: current.isOffered !== false };
+      },
+      (modId, value, fallback) => {
+        if (!isPlainRecord(value) || typeof value.isOffered !== "boolean") {
+          logger.warn(
+            `[Wave] ${modId} 的 agent.offer 只认 { isOffered: boolean }：这一条被忽略`,
+          );
+          return fallback;
+        }
+        return { isOffered: value.isOffered };
+      },
+      signal,
+    );
+    return result.isOffered;
+  }
+
+  /**
+   * 派发 `agent.spawn`：**任何**子代理起跑之前（spec「派子代理」）。
+   *
+   * 两种答案：`{ deny }` 拒绝这一次派发、`{ model, agentId? }` 是它起来之后的
+   * 事实。链尾就是真正的派发（`tail`），所以没插件注册时它照常跑 —— 与
+   * `tool.run` 同一条纪律，只是这里 `next(e)` 交回的不是结果而是「它起来了」。
+   */
+  async dispatchAgentSpawn(
+    event: unknown,
+    tail: (event: unknown) => Promise<unknown>,
+    signal?: AbortSignal,
+  ): Promise<{ deny?: string; value?: { model: string; agentId?: string } }> {
+    if (this.disposed) return {};
+    const loaded = [...this.mods.values()].filter((item) => item.runtime);
+    const fromIndex = async (
+      index: number,
+      current: unknown,
+    ): Promise<unknown> => {
+      for (let i = index; i < loaded.length; i += 1) {
+        const item = loaded[i]!;
+        const runtime = item.runtime!;
+        if (!runtime.matchesHook("agent.spawn", current)) continue;
+        let inner: unknown;
+        const result = await runtime.callHook("agent.spawn", current, {
+          signal,
+          engine: async (nextEvent) => {
+            // `next()` 不带参数 = 「按现在这份继续」。漏了兜底，下层收到的是
+            // `undefined`，链尾也按 `tail(undefined)` 算，整段事件凭空消失
+            // （`runtime.runChain` 同口径）。
+            inner = await fromIndex(
+              i + 1,
+              nextEvent === undefined ? current : nextEvent,
+            );
+            return inner;
+          },
+        });
+        if (!result.ok) {
+          // 钩子挂掉按 fail-open 放行（与其余守卫同一条纪律）：一个坏插件不能
+          // 让用户永远派不出子代理。
+          logger.warn(
+            `[Wave] ${item.mod.id} 的 agent.spawn 失败：${result.error}`,
+          );
+          if (inner !== undefined) return inner;
+          continue;
+        }
+        // 调过 `next(e)` 之后自己那份返回值不再算数：子代理已经起来了，
+        // 事后再 deny 撤不回它（与 `tool.run` 同一条）。
+        if (inner !== undefined) return inner;
+        // 没调 `next` 也没给答复 = 这一层只是看看：接着问下一个 mod，而不是
+        // 就此派发 —— 否则排在后面的守卫 mod 永远轮不到。
+        if (result.value === undefined) continue;
+        return result.value;
+      }
+      return tail(current);
+    };
+    const answer = await fromIndex(0, event);
+    if (isDeny(answer)) return { deny: answer.deny };
+    if (isPlainRecord(answer) && typeof answer.model === "string") {
+      return {
+        value: {
+          model: answer.model,
+          ...(typeof answer.agentId === "string"
+            ? { agentId: answer.agentId }
+            : {}),
+        },
+      };
+    }
+    // 谁都没答出合法形状：不把 `undefined` 当结果交出去（那会让上层 TypeError），
+    // 按「没起来」报。
+    logger.warn(
+      "[Wave] agent.spawn 链没有给出 { model, agentId } 也没有 deny，按拒绝处理",
+    );
+    return { deny: "插件没有放行这次子代理派发" };
+  }
+
+  /**
+   * 派发 `prompt.edit`：用户在输入框里做完一次编辑（spec「输入框里的建议与焦
+   * 点」）。
+   *
+   * 链尾是宿主算好的 `{ text, cursor }`；`next({ ...e, text })` 就是「把这次编辑
+   * 应用到另一份草稿上」，不调 `next` 直接返回 `{ text: e.text, cursor: e.cursor }`
+   * 等于吃掉这次按键。
+   */
+  async dispatchPromptEdit(
+    event: ModPromptEditEvent,
+    tail: (current: unknown) => { text: string; cursor: number },
+    signal?: AbortSignal,
+  ): Promise<{ text: string; cursor: number }> {
+    if (this.disposed) return tail(event);
+    return this.runValueHookChain<{ text: string; cursor: number }>(
+      "prompt.edit",
+      event,
+      tail,
+      (modId, value, fallback) => {
+        if (!isPlainRecord(value) || typeof value.text !== "string") {
+          logger.warn(
+            `[Wave] ${modId} 的 prompt.edit 只认 { text, cursor }：这一条被忽略`,
+          );
+          return fallback;
+        }
+        const cursor =
+          typeof value.cursor === "number" && Number.isFinite(value.cursor)
+            ? Math.min(Math.max(0, Math.trunc(value.cursor)), value.text.length)
+            : value.text.length;
+        return { text: value.text, cursor };
+      },
+      signal,
+    );
+  }
+
+  /**
+   * 派发 `prompt.suggest`：一个建议要摆进输入框（spec「输入框里的建议与焦
+   * 点」）。
+   *
+   * 答案只说「摆没摆上」；换一个建议靠 `next({ ...e, text })`。链尾是宿主的
+   * 「摆上去」——它可能因为输入框已有字、一轮在跑而答 `false`。
+   */
+  async dispatchPromptSuggest(
+    event: ModPromptSuggestEvent,
+    tail: (
+      current: unknown,
+    ) => { isShown: boolean } | Promise<{ isShown: boolean }>,
+    signal?: AbortSignal,
+  ): Promise<{ isShown: boolean; text: string }> {
+    if (this.disposed) return { isShown: false, text: event.text };
+    // 这条链不走 `runValueHookChain`：链尾是**一次宿主往返**（问输入框摆不
+    // 摆），只有真的没人否掉时才该发生。放进去会让 `{ isShown: false }` 的否
+    // 决晚于「已经摆上去了」。
+    const loaded = [...this.mods.values()].filter((item) => item.runtime);
+    let submitted = event.text;
+    const fromIndex = async (
+      index: number,
+      current: unknown,
+    ): Promise<{ isShown: boolean }> => {
+      for (let i = index; i < loaded.length; i += 1) {
+        const item = loaded[i]!;
+        const runtime = item.runtime!;
+        if (!runtime.matchesHook("prompt.suggest", current)) continue;
+        let inner: { isShown: boolean } | undefined;
+        const result = await runtime.callHook("prompt.suggest", current, {
+          signal,
+          engine: async (nextEvent) => {
+            // `next()` 不带参数 = 「按现在这份继续」。漏了兜底，下层收到的是
+            // `undefined`，链尾也按 `tail(undefined)` 算，整段事件凭空消失
+            // （`runtime.runChain` 同口径）。
+            inner = await fromIndex(
+              i + 1,
+              nextEvent === undefined ? current : nextEvent,
+            );
+            return inner;
+          },
+        });
+        if (!result.ok) {
+          logger.warn(
+            `[Wave] ${item.mod.id} 的 prompt.suggest 失败：${result.error}`,
+          );
+          if (inner !== undefined) return inner;
+          continue;
+        }
+        // 交给下面之后自己那份不算数（与其余几条链同一条纪律）。
+        if (inner !== undefined) return inner;
+        // 没调 `next` 也没表态：只是看看，接着问下一个。
+        if (result.value === undefined) continue;
+        const value = result.value;
+        if (!isPlainRecord(value) || typeof value.isShown !== "boolean") {
+          logger.warn(
+            `[Wave] ${item.mod.id} 的 prompt.suggest 只认 { isShown: boolean }：这一条被忽略`,
+          );
+          continue;
+        }
+        // 只有 `false` 是决定：它是「这次别摆」。`true` 等于没意见 —— 建议摆
+        // 不摆得上要宿主的输入框说了算，不能因为某个 mod 说了 true 就跳过。
+        if (value.isShown) continue;
+        return { isShown: false };
+      }
+      // 链尾按走到那里的那份事件算：`next({ ...e, text })` 换过的建议才是要摆
+      // 上去的那条。
+      if (isPlainRecord(current) && typeof current.text === "string") {
+        submitted = current.text;
+      }
+      return await tail(current);
+    };
+    const result = await fromIndex(0, event);
+    return { isShown: result.isShown, text: submitted };
+  }
+
+  /**
+   * 派发 `ui.focus`：焦点环挪动（spec「输入框里的建议与焦点」）。
+   *
+   * 只读事件：我们不提供 `$.ui.focus`（把环挪到某个元素上要先把面板自己的焦点
+   * 状态暴露给宿主）。返回值按 spec 收 `{ deny }` —— 事件本身没有可改的内容，
+   * 它不是「拦住了什么」，而是「这次没挪成，原因给你」。
+   */
+  async dispatchFocus(
+    event: ModUiFocusEvent,
+    signal?: AbortSignal,
+  ): Promise<{ deny?: string }> {
+    if (this.disposed) return {};
+    const loaded = [...this.mods.values()].filter((item) => item.runtime);
+    let denied: { deny: string } | undefined;
+    const pending: Array<Promise<void>> = [];
+    for (const item of loaded) {
+      const runtime = item.runtime!;
+      if (!runtime.matchesHook("ui.focus", event)) continue;
+      pending.push(
+        runtime.callHook("ui.focus", event, { signal }).then((result) => {
+          if (!result.ok) {
+            logger.warn(
+              `[Wave] ${item.mod.id} 的 ui.focus 失败：${result.error}`,
+            );
+            return;
+          }
+          // 第一个说「没挪成」的说了算（后面的不必再凑热闹），但它们的钩子都
+          // 已经发出去了 —— 焦点事件是广播，不是链。
+          if (denied) return;
+          if (isDeny(result.value)) denied = { deny: result.value.deny };
+        }),
+      );
+    }
+    await Promise.all(pending);
+    return denied ?? {};
   }
 
   /**
@@ -1193,7 +1617,18 @@ export class ModManager {
     return this.runValueHookChain(
       "tool.check",
       event,
-      () => base,
+      (current) => {
+        // 链尾按链尾收到的事件取值：`next({ ...e, decision: "deny" })` 之后没人
+        // 再注册时，这个决定就是最终结果。
+        if (!isPlainRecord(current)) return base;
+        const decision = current.decision;
+        if (decision !== "allow" && decision !== "ask" && decision !== "deny") {
+          return base;
+        }
+        const reason =
+          typeof current.reason === "string" ? current.reason : base.reason;
+        return { decision, ...(reason === undefined ? {} : { reason }) };
+      },
       (modId, value, fallback) => {
         if (!isPlainRecord(value)) return fallback;
         const next = value.decision;
@@ -1233,10 +1668,31 @@ export class ModManager {
     signal?: AbortSignal,
   ): Promise<ModPromptSection[]> {
     if (this.disposed) return [...base];
+    // 链尾与 normalize 共用这一份校验：`next({ ...e, sections })` 传下来的段表
+    // 也得过同一遍形状检查，否则改事件这条路就成了绕开校验的后门。
+    const readSections = (raw: unknown): ModPromptSection[] | undefined => {
+      if (!Array.isArray(raw)) return undefined;
+      const sections: ModPromptSection[] = [];
+      for (const item of raw.slice(0, MOD_LIMITS.promptSections)) {
+        if (!isPlainRecord(item)) continue;
+        if (typeof item.id !== "string" || typeof item.text !== "string") {
+          continue;
+        }
+        sections.push({
+          id: item.id,
+          text: item.text.slice(0, MOD_LIMITS.promptSectionChars),
+          scope: item.scope === "turn" ? "turn" : "session",
+        });
+      }
+      return sections;
+    };
     return this.runValueHookChain(
       "prompt.compose",
       { sections: base },
-      () => [...base],
+      (current) => {
+        const raw = isPlainRecord(current) ? current.sections : undefined;
+        return readSections(raw) ?? [...base];
+      },
       (modId, value, fallback) => {
         if (!isPlainRecord(value) || !Array.isArray(value.sections)) {
           return fallback;
@@ -1247,24 +1703,19 @@ export class ModManager {
             `[Wave] ${modId} 的 prompt.compose 给了 ${raw.length} 段，超过上限，只用了前 ${MOD_LIMITS.promptSections} 段`,
           );
         }
-        const sections: ModPromptSection[] = [];
-        for (const item of raw.slice(0, MOD_LIMITS.promptSections)) {
-          if (!isPlainRecord(item)) continue;
-          if (typeof item.id !== "string" || typeof item.text !== "string") {
-            continue;
-          }
-          if (item.text.length > MOD_LIMITS.promptSectionChars) {
-            logger.warn(
-              `[Wave] ${modId} 的 prompt.compose 给了一段超过 ${MOD_LIMITS.promptSectionChars} 字符的提示词，已截断`,
-            );
-          }
-          sections.push({
-            id: item.id,
-            text: item.text.slice(0, MOD_LIMITS.promptSectionChars),
-            scope: item.scope === "turn" ? "turn" : "session",
-          });
+        if (
+          raw.some(
+            (item) =>
+              isPlainRecord(item) &&
+              typeof item.text === "string" &&
+              item.text.length > MOD_LIMITS.promptSectionChars,
+          )
+        ) {
+          logger.warn(
+            `[Wave] ${modId} 的 prompt.compose 给了超过 ${MOD_LIMITS.promptSectionChars} 字符的提示词段，已截断`,
+          );
         }
-        return sections;
+        return readSections(raw) ?? fallback;
       },
       signal,
     );
@@ -1286,7 +1737,17 @@ export class ModManager {
     const result = await this.runValueHookChain<{ text: string | null }>(
       "prompt.section",
       { name: section.id, text: section.text, scope: section.scope },
-      () => ({ text: section.text }),
+      // 链尾按链尾收到的事件取值：`next({ ...e, text })` 之后没人再注册时，
+      // 改过的那份就是要用的。
+      (current) => {
+        if (!isPlainRecord(current) || !("text" in current)) {
+          return { text: section.text };
+        }
+        if (current.text === null) return { text: null };
+        return {
+          text: typeof current.text === "string" ? current.text : section.text,
+        };
+      },
       (modId, value, fallback) => {
         if (isPlainRecord(value) && "text" in value) {
           if (value.text === null) return { text: null };
@@ -1314,51 +1775,71 @@ export class ModManager {
     signal?: AbortSignal,
   ): Promise<ModPromptContextBlock[]> {
     if (this.disposed) return [];
+    // 链尾与 normalize 共用这一份归一化：`next({ ...e, blocks })` 传下来的块表
+    // 也得过同一遍校验与限额。
+    const readBlocks = (
+      raw: unknown,
+    ): { blocks: ModPromptContextBlock[]; truncated: number } | undefined => {
+      if (!Array.isArray(raw)) return undefined;
+      const blocks: ModPromptContextBlock[] = [];
+      for (const item of raw) {
+        // 一块要么是 `{ name, text }`（CC 的形状），要么是裸字符串（写起来
+        // 更短，来源名留空）。
+        if (typeof item === "string") {
+          if (item.trim()) blocks.push({ name: "context", text: item });
+          continue;
+        }
+        if (!isPlainRecord(item) || typeof item.text !== "string") continue;
+        blocks.push({
+          name: typeof item.name === "string" ? item.name : "context",
+          text: item.text,
+        });
+      }
+      let chars = 0;
+      const limited: ModPromptContextBlock[] = [];
+      for (const block of blocks) {
+        if (
+          limited.length >= MOD_LIMITS.promptContextMaxItems ||
+          chars + block.text.length > MOD_LIMITS.promptContextChars
+        ) {
+          break;
+        }
+        limited.push(block);
+        chars += block.text.length;
+      }
+      return { blocks: limited, truncated: blocks.length - limited.length };
+    };
     const result = await this.runValueHookChain<{
       blocks: ModPromptContextBlock[];
     }>(
       "prompt.context",
       { blocks: [] as ModPromptContextBlock[] },
-      () => ({ blocks: [] as ModPromptContextBlock[] }),
+      (current) => ({
+        blocks:
+          (isPlainRecord(current)
+            ? readBlocks(current.blocks)?.blocks
+            : undefined) ?? [],
+      }),
       (modId, value, fallback) => {
-        if (!isPlainRecord(value) || !Array.isArray(value.blocks)) {
+        if (!isPlainRecord(value)) {
           logger.warn(
             `[Wave] ${modId} 的 prompt.context 只认 { blocks }：这一条被忽略`,
           );
           return fallback;
         }
-        const blocks: ModPromptContextBlock[] = [];
-        for (const item of value.blocks as unknown[]) {
-          // 一块要么是 `{ name, text }`（CC 的形状），要么是裸字符串（写起来
-          // 更短，来源名留空）。
-          if (typeof item === "string") {
-            if (item.trim()) blocks.push({ name: "context", text: item });
-            continue;
-          }
-          if (!isPlainRecord(item) || typeof item.text !== "string") continue;
-          blocks.push({
-            name: typeof item.name === "string" ? item.name : "context",
-            text: item.text,
-          });
-        }
-        let chars = 0;
-        const limited: ModPromptContextBlock[] = [];
-        for (const block of blocks) {
-          if (
-            limited.length >= MOD_LIMITS.promptContextMaxItems ||
-            chars + block.text.length > MOD_LIMITS.promptContextChars
-          ) {
-            break;
-          }
-          limited.push(block);
-          chars += block.text.length;
-        }
-        if (limited.length < blocks.length) {
+        const read = readBlocks(value.blocks);
+        if (!read) {
           logger.warn(
-            `[Wave] ${modId} 的 prompt.context 有 ${blocks.length} 块，超过限额，只用了前 ${limited.length} 块`,
+            `[Wave] ${modId} 的 prompt.context 只认 { blocks }：这一条被忽略`,
+          );
+          return fallback;
+        }
+        if (read.truncated > 0) {
+          logger.warn(
+            `[Wave] ${modId} 的 prompt.context 有 ${read.blocks.length + read.truncated} 块，超过限额，只用了前 ${read.blocks.length} 块`,
           );
         }
-        return { blocks: limited };
+        return { blocks: read.blocks };
       },
       signal,
     );
@@ -1379,7 +1860,17 @@ export class ModManager {
     return this.runValueHookChain<string | null>(
       "prompt.attachment",
       attachment,
-      () => attachment.text,
+      (current) => {
+        // 链尾按链尾收到的事件取值：`next({ ...e, text })` / `{ text: null }`
+        // 之后没人再注册时，改过的那份就是最终结果。
+        if (!isPlainRecord(current) || !("text" in current)) {
+          return attachment.text;
+        }
+        if (current.text === null) return null;
+        return typeof current.text === "string"
+          ? current.text
+          : attachment.text;
+      },
       (modId, value, fallback) => {
         return this.textOrNullReply(
           modId,
@@ -1419,7 +1910,16 @@ export class ModManager {
         door: "engine",
         ...(turnId === undefined ? {} : { turnId }),
       },
-      () => base,
+      (current) => {
+        // 链尾按链尾收到的事件取值：`next({ ...e, message })` / `{ deny }` 之后
+        // 没人再注册时，这几个字段就是最终结果 —— 这是 spec 给的改写通道。
+        if (!isPlainRecord(current)) return base;
+        const next = normalizeSessionMessage(current.message);
+        const deny =
+          typeof current.deny === "string" ? { deny: current.deny } : {};
+        if (!next) return deny.deny === undefined ? base : { ...base, ...deny };
+        return { message: next, uuid: next.id, ...deny };
+      },
       (modId, value, fallback) => {
         if (!isPlainRecord(value)) return fallback;
         if (typeof value.deny === "string") {
@@ -1457,7 +1957,10 @@ export class ModManager {
     return this.runValueHookChain<string>(
       "tool.describe",
       { tool: tool.name, description: tool.description },
-      () => tool.description,
+      (current) =>
+        isPlainRecord(current) && typeof current.description === "string"
+          ? current.description
+          : tool.description,
       (modId, value, fallback) => {
         if (!isPlainRecord(value)) return fallback;
         if (value.isDeferred !== undefined) {
@@ -1486,7 +1989,10 @@ export class ModManager {
     return this.runValueHookChain<string>(
       "skill.prompt",
       skill,
-      () => skill.text,
+      (current) =>
+        isPlainRecord(current) && typeof current.text === "string"
+          ? current.text
+          : skill.text,
       (_modId, value, fallback) => {
         if (!isPlainRecord(value)) return fallback;
         return typeof value.text === "string" ? value.text : fallback;
@@ -1513,12 +2019,26 @@ export class ModManager {
     return this.runValueHookChain(
       "command.describe",
       { command },
-      () =>
-        ({}) as {
+      (current) => {
+        // 链尾按链尾收到的事件取值：`next({ ...e, isHidden: true })` 之后没人
+        // 再注册时，这一项就是要用的。
+        const out: {
           description?: string;
           argumentHint?: string;
           isHidden?: boolean;
-        },
+        } = {};
+        if (!isPlainRecord(current)) return out;
+        if (typeof current.description === "string") {
+          out.description = current.description;
+        }
+        if (typeof current.argumentHint === "string") {
+          out.argumentHint = current.argumentHint;
+        }
+        if (typeof current.isHidden === "boolean") {
+          out.isHidden = current.isHidden;
+        }
+        return out;
+      },
       (_modId, value, fallback) => {
         if (!isPlainRecord(value)) return fallback;
         const merged = { ...fallback };
@@ -1575,9 +2095,27 @@ export class ModManager {
     event: unknown,
     tail: { run?: () => Promise<unknown> },
     signal?: AbortSignal,
-  ): Promise<{ deny?: string }> {
+  ): Promise<{ deny?: string; result?: unknown }> {
     const loaded = [...this.mods.values()].filter((item) => item.runtime);
     let ran = false;
+    // 只认 `tool.call` 的 `{ result }`：`tool.run` 的链尾已经是真结果，`classic.
+    // PreToolUse` 在 Claude Code 那边也没有这一项。返回 `null` = 这一层没有给出
+    // 可用的答案（继续按「没有意见」算）。
+    const asAnswer = (
+      value: unknown,
+    ):
+      | { deny: string; result?: undefined }
+      | { deny?: undefined; result: unknown }
+      | null => {
+      if (isDeny(value)) return { deny: value.deny };
+      if (name !== "tool.call") return null;
+      if (typeof value !== "object" || value === null || Array.isArray(value)) {
+        return null;
+      }
+      const shape = value as Record<string, unknown>;
+      if (!("result" in shape)) return null;
+      return { result: shape.result ?? null };
+    };
     // 链尾把**工具结果**交回去：`tool.run` 的 `next(e)` 是「跑这次调用」，社区
     // 写法就是 `const r = await next(e)` 之后读 `r`。`tool.call` 没有这一步
     // （`tail.run` 缺省），链尾给「没有意见」的空对象。
@@ -1597,26 +2135,34 @@ export class ModManager {
         const runtime = item.runtime!;
         if (!runtime.matchesHook(name, current)) continue;
         let nextCalled = false;
-        let innerDeny: string | undefined;
+        let innerValue: unknown;
         const result = await runtime.callHook(name, current, {
           signal,
           engine: async (nextEvent) => {
             // 调了 `next(e)`：控制权交给下面的 mod（最后一个交回链尾）。把内层
-            // 的决议记下来 —— `await next(e)` 之后忘掉返回值的写法很常见，不能
-            // 因此丢掉下面那个 mod 的 `{ deny }`。
+            // 的答案记下来 —— `await next(e)` 之后忘掉返回值的写法很常见，不能
+            // 因此丢掉下面那个 mod 的 `{ deny }` / `{ result }`。
             nextCalled = true;
-            const value = await fromIndex(i + 1, nextEvent);
-            if (isDeny(value)) innerDeny = value.deny;
-            return value;
+            innerValue = await fromIndex(i + 1, nextEvent);
+            return innerValue;
           },
         });
         if (!result.ok) {
           logger.warn(`[Wave] ${item.mod.id} 的 ${name} 失败：${result.error}`);
           continue;
         }
-        // 交给下面之后，这个 mod 自己的返回值不再算数：`next` 之后 deny 撤不回
-        // 已经跑掉的工具（Claude Code 同口径）。内层的决议说了算。
-        if (nextCalled) return innerDeny ? { deny: innerDeny } : {};
+        // 交给下面之后，`tool.run` / `classic.PreToolUse` 里这个 mod 自己的
+        // 返回值不再算数：`next` 之后 deny 撤不回已经跑掉的工具（Claude Code
+        // 同口径），内层的决议说了算。
+        //
+        // `tool.call` 是例外：它没有「已经跑掉的工具」，`await next(e)` 之后包
+        // 一层再返回（`return { result: shape(r) }`）是社区最自然的后处理写法，
+        // spec「执行走 tool.call」也写了「外层返回自己的那份才算数」。
+        if (nextCalled) {
+          if (name === "tool.call" && asAnswer(result.value))
+            return result.value;
+          return innerValue;
+        }
         if (name === "tool.run" && !isDeny(result.value)) {
           // 匹配上了却没调 `next(e)`：工具没跑，也就没有结果。按「不放行」报，
           // 否则模型会拿到一个凭空的成功。
@@ -1647,8 +2193,11 @@ export class ModManager {
       return runOnce();
     };
     const value = await fromIndex(0, event);
-    if (isDeny(value)) return { deny: value.deny };
-    return {};
+    const answer = asAnswer(value);
+    if (!answer) return {};
+    return answer.deny !== undefined
+      ? { deny: answer.deny }
+      : { result: answer.result };
   }
 
   /**
@@ -1661,15 +2210,19 @@ export class ModManager {
    *   个 mod 改成什么」，外层在自己那份基础上继续改是正常写法 —— 社区的
    *   `const below = await next(e); return { ...below, text: fix(below.text) }`
    *   就是这个意思。旧链丢掉外层返回值，让这种写法静默失效。
-   * - **链尾是「宿主原本的值」**，不是空对象：谁都没改时返回值必须与没有这些
-   *   钩子时逐字相同（提示词缓存靠它）。
+   * - **链尾按「链尾收到的那份事件」算**，不是按进场时那份：`next({ ...e, x })`
+   *   把改过的事件交给下游，下游一个 mod 都没注册时这份事件就是最终结果。所以
+   *   `tail` 收事件、从里面取自己关心的字段；谁都没改时它与原值逐字相同（提示词
+   *   缓存靠它）。
    *
-   * 失败（抛错、超时、返回 `undefined`）按 fail-open：下游的值说了算。
+   * 失败（抛错、超时、返回 `undefined`）按 fail-open：下游的值说了算 —— 但只有
+   * 下游**跑完了**才算。`withBudget` 到期只是让 race 先落，handler 还挂在 `next`
+   * 里没回来，此刻 `inner` 仍是 `undefined`；「调过 `next`」不等于「下游跑完了」。
    */
   private async runValueHookChain<T>(
     name: ModValueHookName,
     event: unknown,
-    tail: () => T,
+    tail: (event: unknown) => T,
     normalize: (modId: string, value: unknown, fallback: T) => T,
     signal?: AbortSignal,
   ): Promise<T> {
@@ -1679,26 +2232,30 @@ export class ModManager {
         const item = loaded[i]!;
         const runtime = item.runtime!;
         if (!runtime.matchesHook(name, current)) continue;
-        let nextCalled = false;
         let inner: T | undefined;
         const result = await runtime.callHook(name, current, {
           signal,
           engine: async (nextEvent) => {
-            nextCalled = true;
-            inner = await fromIndex(i + 1, nextEvent);
+            // `next()` 不带参数 = 「按现在这份继续」。漏了兜底，下层收到的是
+            // `undefined`，链尾也按 `tail(undefined)` 算，整段事件凭空消失
+            // （`runtime.runChain` 同口径）。
+            inner = await fromIndex(
+              i + 1,
+              nextEvent === undefined ? current : nextEvent,
+            );
             return inner;
           },
         });
-        const fallback = nextCalled ? (inner as T) : tail();
+        const fallback = inner !== undefined ? inner : tail(current);
         if (!result.ok) {
           logger.warn(`[Wave] ${item.mod.id} 的 ${name} 失败：${result.error}`);
-          if (nextCalled) return fallback;
+          if (inner !== undefined) return inner;
           continue;
         }
         if (result.value === undefined) return fallback;
         return normalize(item.mod.id, result.value, fallback);
       }
-      return tail();
+      return tail(current);
     };
     return fromIndex(0, event);
   }
@@ -1881,6 +2438,8 @@ export class ModManager {
     this.processes.dispose();
     // 命令的 handler 闭包指着这个沙箱，留下就是一个打到已销毁会话上的僵尸。
     this.dropOwnedCommands();
+    // 工具同理：注销之后模型不再看到它（spec「把我们自己的工具交给模型」）。
+    this.dropOwnedTools();
     // 先关面板再进终态：`closed: true` 是界面关掉 tab 的唯一信号，而
     // `publishUpdate` 在 `disposed` 之后一律静默。这里**不**逐条发 `ui.close`：
     // 会话销毁只发一次 `session.end`（spec「事件」）。
@@ -1938,6 +2497,7 @@ export class ModManager {
     this.processes.killAll();
     // 命令先撤再重建：否则重载后命令表里留着指向旧沙箱的 handler。
     this.dropOwnedCommands();
+    this.dropOwnedTools();
     // 早于 `mods.clear()`：`ui.close` 要发给还活着的旧实例（spec「事件」）。
     this.closeAllPanes(true);
     this.bands.clear();
@@ -1946,6 +2506,9 @@ export class ModManager {
     this.state.clear();
     await this.loadFromPlugins(plugins);
     await this.startSession();
+    // 重载前 `dropOwnedTools()` 把工具表清空了，新的 mod 得重新交一遍规格
+    // （spec「把我们自己的工具交给模型」）。
+    await this.dispatchToolRegister();
   }
 
   // ── 定时器（spec「定时器」） ────────────────────────────────
@@ -2722,6 +3285,227 @@ export class ModManager {
       return;
     }
     this.logSink(text);
+  }
+
+  /**
+   * `$.tool.register`（spec「把我们自己的工具交给模型」）。
+   *
+   * 名字已经是 `mcp__<plugin>__<name>`：那个前缀让 `isRestrictedTool()` 把它归
+   * 进受限工具，于是它与 MCP 工具走同一条审批路 —— 用户看得见、能拒。
+   */
+  private registerModTool(
+    modId: string,
+    plugin: string,
+    spec: {
+      name: string;
+      description: string;
+      inputSchema: Record<string, unknown>;
+    },
+  ): Promise<{ name: string }> {
+    const bridge = this.toolBridge;
+    if (!bridge) {
+      throw new Error("这个会话没有工具表，$.tool.register 无处可去");
+    }
+    const owned = this.ownedTools.get(modId) ?? new Set<string>();
+    // 同一个 mod 重复注册同一个名字是幂等的（与 `$.command.register` 同款）。
+    if (owned.has(spec.name)) return Promise.resolve({ name: spec.name });
+    if (owned.size >= MOD_LIMITS.modToolsPerMod) {
+      throw new Error(
+        `$.tool.register 一个 mod 最多注册 ${MOD_LIMITS.modToolsPerMod} 个工具`,
+      );
+    }
+    const outcome = bridge.register({ ...spec, plugin });
+    if (!outcome.ok) throw new Error(outcome.reason);
+    owned.add(spec.name);
+    this.ownedTools.set(modId, owned);
+    logger.info(`[Wave] $.tool.register (${plugin}): ${spec.name} listed`);
+    return Promise.resolve({ name: spec.name });
+  }
+
+  /**
+   * 这个名字是不是某个 mod 通过 `$.tool.register` 交上去的。
+   *
+   * `tool.call` 只对这类工具接受 `{ result }`（别的工具真会执行，顶替结果等于
+   * 伪造事实）；调用没人接时也靠它认出「本该由插件答」的那一次。
+   */
+  ownsTool(name: string): boolean {
+    for (const owned of this.ownedTools.values()) {
+      if (owned.has(name)) return true;
+    }
+    return false;
+  }
+
+  /** 撤销某个 mod 注册过的全部工具（重载、销毁、`session.end`）。 */
+  private dropOwnedTools(modId?: string): void {
+    const bridge = this.toolBridge;
+    const targets = modId ? [modId] : [...this.ownedTools.keys()];
+    for (const target of targets) {
+      const owned = this.ownedTools.get(target);
+      if (!owned) continue;
+      for (const name of owned) bridge?.unregister(name);
+      this.ownedTools.delete(target);
+    }
+  }
+
+  /**
+   * `$.agent.spawn`（spec「派子代理」）。
+   *
+   * resolve 在子代理 **started** 之后，不等它跑完：结果在它自己的
+   * `turn.complete` 里。并发上限按 mod 数（不是按插件）：拆成三个 mod 的插件
+   * 想多开就多开，那本来就是三条独立的工作流。
+   */
+  private async spawnModAgent(
+    modId: string,
+    plugin: string,
+    args: {
+      prompt: string;
+      description?: string;
+      subagentType?: string;
+      model?: string;
+    },
+  ): Promise<{ model: string; agentId?: string }> {
+    const bridge = this.agentBridge;
+    if (!bridge) {
+      throw new Error("这个会话没有子代理，$.agent.spawn 无处可去");
+    }
+    if ((this.activeModAgents.get(modId) ?? 0) >= MOD_LIMITS.modAgentsPerMod) {
+      throw new Error(
+        `$.agent.spawn 一个 mod 同时最多有 ${MOD_LIMITS.modAgentsPerMod} 个子代理在跑`,
+      );
+    }
+    // 先占名额再 await：判定与自增之间隔着一次真正的派发，5 个并发的
+    // `$.agent.spawn` 会在自增之前全读到同一个旧值，把上限撑破。
+    this.activeModAgents.set(modId, (this.activeModAgents.get(modId) ?? 0) + 1);
+    const release = () => {
+      const left = (this.activeModAgents.get(modId) ?? 1) - 1;
+      if (left > 0) this.activeModAgents.set(modId, left);
+      else this.activeModAgents.delete(modId);
+    };
+    let handle: { model: string; agentId?: string };
+    /** 链尾拿到的那次派发的结局；链没走到尾就是 undefined。 */
+    let settled: Promise<unknown> | undefined;
+    try {
+      // 同一条链（spec「派子代理」）：mod 自己派的子代理，别的插件也拦得住 ——
+      // 「让 mod 拦下**任何**子代理起跑之前」。
+      const decision = await this.dispatchAgentSpawn(
+        {
+          tool_use_id: "",
+          prompt: args.prompt,
+          ...(args.description === undefined
+            ? {}
+            : { description: args.description }),
+          ...(args.subagentType === undefined
+            ? {}
+            : { subagentType: args.subagentType }),
+          ...(args.model === undefined ? {} : { model: args.model }),
+        },
+        async (current) => {
+          const event = isPlainRecord(current) ? current : {};
+          const spawned = await bridge.spawn({
+            ...args,
+            prompt:
+              typeof event.prompt === "string" ? event.prompt : args.prompt,
+            ...(typeof event.description === "string"
+              ? { description: event.description }
+              : {}),
+            ...(typeof event.subagentType === "string"
+              ? { subagentType: event.subagentType }
+              : {}),
+            ...(typeof event.model === "string" ? { model: event.model } : {}),
+            plugin,
+            modId,
+          });
+          settled = spawned.settled;
+          return { model: spawned.model, agentId: spawned.agentId };
+        },
+      );
+      if (decision.deny) throw new Error(decision.deny);
+      // 链没走到尾（有钩子自己答了个 `{ model }` 却没 `next`）＝ 一个子代理都
+      // 没起：不能让 mod 以为派成功了。
+      if (!decision.value || !settled) {
+        throw new Error("插件接管了这次派发，但没有启动子代理");
+      }
+      handle = decision.value;
+    } catch (error) {
+      release();
+      throw error;
+    }
+    // 子代理的结局不重要（结果在它自己的 `turn.complete` 里）：这里只还名额。
+    void (settled ?? Promise.resolve()).then(release, release);
+    return { model: handle.model, agentId: handle.agentId };
+  }
+
+  /**
+   * `$.model.complete`（spec「让模型替插件答一次」）。
+   *
+   * 额度用完**抛错**而不是答一个 `reason`：CC 的 `reason` 说的是「这次请求怎么
+   * 了」，而额度是「根本没发这次请求」，混进同一个联合里会让插件以为 provider
+   * 出了毛病、去做无意义的重试。
+   */
+  private async completeModModel(
+    modId: string,
+    plugin: string,
+    request: {
+      model: string;
+      prompt: string;
+      system?: string;
+      maxTokens: number;
+      signal?: AbortSignal;
+    },
+  ): Promise<ModModelCompleteResult> {
+    const bridge = this.modelBridge;
+    if (!bridge) {
+      throw new Error("这个会话没有模型通道，$.model.complete 无处可去");
+    }
+    const used = this.modModelCalls.get(plugin) ?? 0;
+    if (used >= MOD_LIMITS.modModelCallsPerSession) {
+      throw new Error(
+        `$.model.complete 每条会话每个插件最多 ${MOD_LIMITS.modModelCallsPerSession} 次（${plugin} 已用完）`,
+      );
+    }
+    // 先记账再发请求：超时/报错的调用同样花了额度，否则「失败重试」能把额度刷穿。
+    this.modModelCalls.set(plugin, used + 1);
+    logger.debug(
+      `[Wave] $.model.complete (${plugin}, ${modId}): ${request.model}`,
+      {
+        maxTokens: request.maxTokens,
+      },
+    );
+    return await bridge.complete({ ...request, plugin });
+  }
+
+  /**
+   * `$.prompt.suggest`（spec「输入框里的建议与焦点」）。
+   *
+   * 与 `fillPrompt` 一样不抛错：没人画输入框（终端、headless）时答
+   * `{ isShown: false }`，mod 自己降级。
+   */
+  private async suggestPrompt(request: {
+    text: string;
+    plugin: string;
+  }): Promise<{ isShown: boolean }> {
+    const suggest = this.promptSuggestionSink;
+    if (this.disposed || !suggest) return { isShown: false };
+    // 与引擎自己的推荐走同一条链（spec「输入框里的建议与焦点」）：`e.origin`
+    // 标明是谁提的，别的 mod 能换 `text`，也能用 `{ isShown: false }` 否掉。
+    // 链尾才是「问宿主摆不摆」——真摆了之后回包里的 `text` 就是摆上去的那条。
+    const result = await this.dispatchPromptSuggest(
+      { text: request.text, origin: { kind: "plugin", name: request.plugin } },
+      async (current) => {
+        const text =
+          isPlainRecord(current) && typeof current.text === "string"
+            ? current.text
+            : request.text;
+        try {
+          const answer = await suggest({ text, plugin: request.plugin });
+          return { isShown: answer.isShown };
+        } catch (error) {
+          logger.debug("[Wave] 摆建议失败", error);
+          return { isShown: false };
+        }
+      },
+    );
+    return { isShown: result.isShown };
   }
 
   /**

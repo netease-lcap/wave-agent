@@ -63,6 +63,13 @@ interface AgentCallbacks {
     fun onPermissionResolved(requestId: String) {}
     fun onNotificationMessageAdded(message: JsonObject) {}
     fun onBtwContent(question: String, content: String, type: String, requestId: String?) {}
+    /**
+     * 一个 mod 要往输入框上方摆一条建议（`$.prompt.suggest`；spec
+     * ecosystem/plugin-mods.md「输入框里的建议与焦点」）。摆不摆得上只有输入框知道，
+     * 所以宿主处理完必须用 `resolveModPromptSuggest` 回执，[payload] 里的
+     * `requestId` 要原样送回。
+     */
+    fun onModPromptSuggest(payload: JsonObject) {}
     fun onError(message: String) {}
 }
 
@@ -200,6 +207,10 @@ class StdioAgent(
             "planFileUpdated" -> callbacks.onPlanFileUpdated(
                 params?.jsonObject?.get("content")?.jsonPrimitive?.content ?: ""
             )
+            // 一条建议要摆进输入框上方（`$.prompt.suggest`）：整份 payload 原样交给宿
+            // 主，回执里要一字不差地送回同一个 requestId（spec「输入框里的建议与焦
+            // 点」）。
+            "modPromptSuggest" -> callbacks.onModPromptSuggest(params?.jsonObject ?: JsonObject(emptyMap()))
             else -> {}
         }
     }
@@ -533,6 +544,38 @@ class StdioAgent(
         client.request("deleteHook", buildJsonObject {
             put("scope", scope)
             put("hookName", hookName)
+        }, sessionId)
+    }
+
+    // ── Plugin mods: 输入框里的建议与焦点 ─────────────────────────
+    //
+    // 三条通道里只有 `modPromptSuggest` 是 CLI 推、宿主答；另外两条是宿主推、CLI
+    // 答（spec ecosystem/plugin-mods.md「输入框里的建议与焦点」）。事件对象按
+    // JsonObject 收整份：`key` 在协议里是 `unknown`（可能是一整串按键），写成具体
+    // 类型只能靠 JsonElement，那还不如让调用方自己拼。
+
+    /**
+     * 用户在输入框里做完一次编辑。与其余 mod 通道方向相反：宿主先说话，返回的是插件
+     * 改写后的 `{ text, cursor }`。没有 mod 接这条钩子时，答案就是「把这次编辑应用
+     * 上去」，所以界面拿回包直接回填即可，不必自己再算一遍。
+     */
+    suspend fun promptEdit(event: JsonObject): JsonObject? =
+        client.request("promptEdit", event, sessionId)?.jsonObject
+
+    /**
+     * 焦点环挪动。只读事件：返回里的 `deny` 只用来解释「这次没挪成」，宿主可以不看。
+     */
+    suspend fun uiFocus(event: JsonObject): JsonObject? =
+        client.request("uiFocus", event, sessionId)?.jsonObject
+
+    /**
+     * 回答一次 `$.prompt.suggest`：建议摆没摆上只有输入框知道。会话已经不认这个
+     * `requestId`（超时已按 `{ isShown: false }` 收尾）时什么也不会发生。
+     */
+    suspend fun resolveModPromptSuggest(requestId: String, isShown: Boolean) {
+        client.request("modPromptSuggestResult", buildJsonObject {
+            put("requestId", requestId)
+            put("isShown", isShown)
         }, sessionId)
     }
 

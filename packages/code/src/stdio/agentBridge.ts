@@ -87,6 +87,7 @@ import {
   type ModToastPayload,
   type ModPromptFillRequest,
   type ModPromptReadRequest,
+  type ModPromptSuggestRequest,
   type ModCopyRequest,
   type ModNoticePayload,
 } from "wave-agent-sdk";
@@ -564,6 +565,62 @@ export class AgentBridge {
           );
         }
         return;
+      }
+      // surface 对一次 `$.prompt.suggest` 的回答（spec「输入框里的建议与焦
+      // 点」）：摆没摆上只有输入框知道，这里只把在等回执的那个 mod 放行。
+      case "modPromptSuggestResult": {
+        const request = p as { requestId?: string; isShown?: boolean };
+        if (typeof request.requestId === "string") {
+          this.requireSessionForRead(sessionId).agent.resolveModPromptSuggest(
+            request.requestId,
+            request.isShown === true,
+          );
+        }
+        return;
+      }
+      // 用户在输入框里做完一次编辑（spec「输入框里的建议与焦点」）：方向反过来
+      // —— 宿主先说话，答案是插件改写后的草稿。`prompt.edit` 的链尾是「把这次
+      // 编辑应用上去」，所以没插件注册时这里给的就是用户该看到的那份文本。
+      case "promptEdit": {
+        const event = p as {
+          key?: unknown;
+          text?: string;
+          cursor?: number;
+          start?: number;
+          end?: number;
+          inputText?: string;
+        };
+        const text = typeof event.text === "string" ? event.text : "";
+        return this.requireSession(sessionId).agent.dispatchModPromptEdit({
+          key: event.key,
+          text,
+          cursor: typeof event.cursor === "number" ? event.cursor : text.length,
+          start: typeof event.start === "number" ? event.start : text.length,
+          end: typeof event.end === "number" ? event.end : text.length,
+          inputText: typeof event.inputText === "string" ? event.inputText : "",
+        });
+      }
+      // 焦点环挪动（spec「输入框里的建议与焦点」）：只读事件，返回值只表达
+      // 「这次没挪成」。
+      case "uiFocus": {
+        const event = p as {
+          component?: string;
+          requestId?: string;
+          plugin?: string;
+          element?: string;
+        };
+        const component =
+          typeof event.component === "string" ? event.component : "";
+        const requestId =
+          typeof event.requestId === "string" ? event.requestId : "";
+        return this.requireSessionForRead(sessionId).agent.notifyModUiFocus({
+          component,
+          requestId,
+          ...(typeof event.plugin === "string" ? { plugin: event.plugin } : {}),
+          ...(typeof event.element === "string"
+            ? { element: event.element }
+            : {}),
+        });
       }
       // surface 对一次 `$.ui.copy` 的回答（spec「剪贴板与视图」）。
       case "modCopyResult": {
@@ -3726,6 +3783,19 @@ export class AgentBridge {
       onModPromptRead: (payload: ModPromptReadRequest) => {
         this.emit(
           "modPromptRead",
+          {
+            ...payload,
+            sessionId: ctx.registeredSessionId ?? payload.sessionId,
+          },
+          ctx.registeredSessionId,
+        );
+      },
+      // 摆建议（spec「输入框里的建议与焦点」）：与 `modPromptFill` 同一条往返，
+      // 回执是 `modPromptSuggestResult`（超时在 Agent 侧按 `{ isShown: false }`
+      // 收口）。
+      onModPromptSuggest: (payload: ModPromptSuggestRequest) => {
+        this.emit(
+          "modPromptSuggest",
           {
             ...payload,
             sessionId: ctx.registeredSessionId ?? payload.sessionId,

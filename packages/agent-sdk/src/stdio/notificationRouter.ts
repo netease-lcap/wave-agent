@@ -73,6 +73,9 @@ const ALL_NOTIFICATION_METHODS: readonly ServerNotificationMethod[] = [
   "modPromptRead",
   "modCopy",
   "modNotice",
+  // Ghost text above the composer (`$.prompt.suggest`): same round trip as
+  // `modPromptFill`, answered with `modPromptSuggestResult`.
+  "modPromptSuggest",
   // Global (no sessionId): the CLI's own startup steps, emitted before any
   // session exists. Delivered to the `registerGlobal` handler.
   "startupStage",

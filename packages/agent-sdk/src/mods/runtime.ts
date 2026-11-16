@@ -1,4 +1,5 @@
 import * as vm from "node:vm";
+import { AsyncLocalStorage } from "node:async_hooks";
 import * as path from "node:path";
 import type {
   ModAgentInfo,
@@ -11,6 +12,7 @@ import type {
   ModFsAncestor,
   ModFsEntry,
   ModFsStat,
+  ModModelCompleteResult,
   ModPromptBox,
   ModRunOptions,
   ModRunResult,
@@ -27,6 +29,7 @@ import type {
   ModRenderSurface,
   ModSessionUsage,
   ModSettingsSource,
+  ModToolRegisterSpec,
   ModUiCopyResult,
   ModUiViewResult,
   ModUiOpenResult,
@@ -488,8 +491,165 @@ function validateCommandSpec(spec: unknown): ModCommandSpec {
 }
 
 /**
- * 校验 `$.settings.read` 的参数（spec「环境变量与设置（只读）」）。
+ * 校验 `$.tool.register` 的参数（spec「把我们自己的工具交给模型」）。
  *
+ * 名字由 runtime 补前缀：模型看到的是 `mcp__<plugin>__<name>`。`<plugin>` 归一
+ * 成 `[a-z0-9_-]+`（插件名可能带空格、大写、点），与 MCP 工具名同一个字符集 ——
+ * `isRestrictedTool()` 按 `mcp__` 前缀把这些工具归进受限工具，于是它们自动走
+ * 与 MCP 工具同一条审批路，不用给「第三方工具」单开一条权限分支。
+ */
+function normalizeToolRegisterSpec(
+  spec: unknown,
+  pluginName: string,
+): { name: string; description: string; inputSchema: Record<string, unknown> } {
+  if (!isPlainObject(spec)) {
+    throw new Error(
+      "$.tool.register 需要一个对象：{ name, description, inputSchema? }",
+    );
+  }
+  const name = spec.name;
+  if (typeof name !== "string" || !COMMAND_NAME_RE.test(name)) {
+    throw new Error(
+      "$.tool.register 的 name 只能用小写/大写字母、数字、下划线和连字符（1-64 个）",
+    );
+  }
+  const description = spec.description;
+  if (typeof description !== "string" || description.trim().length === 0) {
+    throw new Error(
+      "$.tool.register 需要 description（模型读到的那段，不能为空）",
+    );
+  }
+  if (description.length > MOD_LIMITS.modToolDescriptionChars) {
+    throw new Error(
+      `$.tool.register 的 description 有 ${description.length} 个字符，超过 ${MOD_LIMITS.modToolDescriptionChars}`,
+    );
+  }
+  const inputSchema = spec.inputSchema;
+  if (inputSchema !== undefined && !isPlainObject(inputSchema)) {
+    throw new Error("$.tool.register 的 inputSchema 是一个 JSON Schema 对象");
+  }
+  const schema = (inputSchema as Record<string, unknown> | undefined) ?? {
+    type: "object",
+  };
+  const schemaBytes = Buffer.byteLength(JSON.stringify(schema) ?? "", "utf-8");
+  if (schemaBytes > MOD_LIMITS.modToolSchemaBytes) {
+    throw new Error(
+      `$.tool.register 的 inputSchema 有 ${schemaBytes} 字节，超过 ${MOD_LIMITS.modToolSchemaBytes}`,
+    );
+  }
+  const owner = pluginName.toLowerCase().replace(/[^a-z0-9_-]+/g, "-");
+  return {
+    name: `mcp__${owner}__${name}`,
+    description: description.trim(),
+    inputSchema: schema,
+  };
+}
+
+/**
+ * 校验 `$.agent.spawn` 的参数（spec「派子代理」）。
+ *
+ * 与 Claude Code 的 `AgentSpawnArgs` 同一个形状：`prompt` 必填，其余可选。
+ */
+function normalizeAgentSpawnArgs(args: unknown): {
+  prompt: string;
+  description?: string;
+  subagentType?: string;
+  model?: string;
+} {
+  if (!isPlainObject(args)) {
+    throw new Error(
+      "$.agent.spawn 需要一个对象：{ prompt, description?, subagentType?, model? }",
+    );
+  }
+  const prompt = args.prompt;
+  if (typeof prompt !== "string" || prompt.trim().length === 0) {
+    throw new Error("$.agent.spawn 需要非空的 prompt");
+  }
+  const pick = (key: "description" | "subagentType" | "model") => {
+    const value = args[key];
+    if (value === undefined) return undefined;
+    if (typeof value !== "string" || value.trim().length === 0) {
+      throw new Error(`$.agent.spawn 的 ${key} 是非空字符串`);
+    }
+    return value;
+  };
+  const description = pick("description");
+  const subagentType = pick("subagentType");
+  const model = pick("model");
+  return {
+    prompt,
+    ...(description === undefined ? {} : { description }),
+    ...(subagentType === undefined ? {} : { subagentType }),
+    ...(model === undefined ? {} : { model }),
+  };
+}
+
+/**
+ * 校验 `$.model.complete` 的参数（spec「让模型替插件答一次」）。
+ *
+ * `maxTokens` 缺省与上限都照 Claude Code：缺省 1024，上限是「模型自己的输出上限
+ * 与 64000 中较小者」—— 我们这一层只知道后一半，前一半由模型配置那边夹。
+ */
+function normalizeCompleteRequest(request: unknown): {
+  model: string;
+  prompt: string;
+  system?: string;
+  maxTokens: number;
+  signal?: AbortSignal;
+} {
+  if (!isPlainObject(request)) {
+    throw new Error(
+      "$.model.complete 需要一个对象：{ model, prompt, system?, maxTokens?, timeoutMs? }",
+    );
+  }
+  const model = request.model;
+  if (typeof model !== "string" || model.trim().length === 0) {
+    throw new Error("$.model.complete 需要 model（别名或全名）");
+  }
+  const prompt = request.prompt;
+  if (typeof prompt !== "string" || prompt.length === 0) {
+    throw new Error("$.model.complete 需要非空的 prompt");
+  }
+  const system = request.system;
+  if (system !== undefined && typeof system !== "string") {
+    throw new Error("$.model.complete 的 system 是字符串");
+  }
+  const rawMax = request.maxTokens;
+  if (
+    rawMax !== undefined &&
+    (typeof rawMax !== "number" || !Number.isInteger(rawMax) || rawMax <= 0)
+  ) {
+    throw new Error("$.model.complete 的 maxTokens 是正整数");
+  }
+  const maxTokens = Math.min(rawMax ?? 1024, MOD_LIMITS.modModelMaxTokens);
+  const rawTimeout = request.timeoutMs;
+  if (
+    rawTimeout !== undefined &&
+    (typeof rawTimeout !== "number" ||
+      !Number.isInteger(rawTimeout) ||
+      rawTimeout <= 0)
+  ) {
+    throw new Error("$.model.complete 的 timeoutMs 是正整数");
+  }
+  const timeoutMs =
+    rawTimeout === undefined
+      ? undefined
+      : Math.min(rawTimeout, MOD_LIMITS.modModelMaxTimeoutMs);
+  return {
+    model: model.trim(),
+    prompt,
+    ...(system === undefined ? {} : { system }),
+    maxTokens,
+    // 超时就用一个自带的 signal 表达：与调用方取消走同一条路（provider 那边只
+    // 需要看 signal 是否 abort），结果落在 `aborted` 那一档。
+    ...(timeoutMs === undefined
+      ? {}
+      : { signal: AbortSignal.timeout(timeoutMs) }),
+  };
+}
+
+/**
+ * 校验 `$.settings.read` 的参数（spec「环境变量与设置（只读）」）。
  * 四种形式：`read()` / `read({ source })` / `read({ key })` /
  * `read({ source, key })`。`source` 只认我们自己有的三层 —— Claude Code 的表里
  * 还有 `flag` / `policy`，我们没有那两层，写错了要当场报出来并列出可用值，
@@ -756,6 +916,16 @@ export interface ModDollar {
      * —— 「现在没人画输入框」和「用户还没打字」对插件是同一个答案。
      */
     read(): Promise<ModPromptBox>;
+    /**
+     * 把这个建议摆成输入框里的暗色建议、Tab 采纳（spec「输入框里的建议与焦
+     * 点」）。
+     *
+     * 与 `fill` 的区别是它只是「提议」：用户不按 Tab 就不进输入框。走同一条
+     * `prompt.suggest` 事件链，`e.origin` 是 `{ kind: "plugin", name }`，别的
+     * mod 据此分辨是谁提的。摆不上（输入框里已有字、一轮在跑、终端没有输入框）
+     * 时答 `{ isShown: false }`，不 reject。
+     */
+    suggest(options: { text: string }): Promise<{ isShown: boolean }>;
   };
   /**
    * 只读的会话快照（spec「会话用量」）。
@@ -874,6 +1044,14 @@ export interface ModDollar {
    */
   tool: {
     list(): ModToolInfo[];
+    /**
+     * 把自己带来的一个工具交给模型（spec「把我们自己的工具交给模型」）。
+     *
+     * 规格里**没有 handler**：执行体是同一个 mod 的另一条 `tool.call` 钩子，它
+     * 返回 `{ result }` 就是模型读到的结果。`name` 由 runtime 补成
+     * `mcp__<plugin>__<name>`，于是这个工具与 MCP 工具走同一条审批路。
+     */
+    register(spec: ModToolRegisterSpec): Promise<{ name: string }>;
   };
   /**
    * 生效的配置项（spec「配了哪些、能调什么、有谁在跑」）。
@@ -891,6 +1069,33 @@ export interface ModDollar {
    */
   agent: {
     list(): ModAgentInfo[];
+    /**
+     * 自己派一个子代理（spec「派子代理」）。
+     *
+     * resolve 在它 **started** 之后，不等它跑完：结果在它自己的 `turn.complete`
+     * 里，`agentId` 是串起两边的那一个值。并发上限、深度、归属记账归宿主。
+     */
+    spawn(args: {
+      prompt: string;
+      description?: string;
+      subagentType?: string;
+      model?: string;
+    }): Promise<{ model: string; agentId?: string }>;
+  };
+  /**
+   * 让模型替插件答一次（spec「让模型替插件答一次」）。
+   *
+   * 唯一一条**刻意**不占 5 秒钩子预算的调用：一次请求通常 3–60 秒，塞进钩子预
+   * 算等于废掉这个能力。超时由 `timeoutMs` 自己给。
+   */
+  model: {
+    complete(request: {
+      model: string;
+      prompt: string;
+      system?: string;
+      maxTokens?: number;
+      timeoutMs?: number;
+    }): Promise<ModModelCompleteResult>;
   };
 }
 
@@ -1001,6 +1206,56 @@ export interface ModRuntimeHost {
   /** `$.agent.list()`：这条会话派过、还没被宿主丢掉的子代理。 */
   listAgentInfos(): ModAgentInfo[];
   /**
+   * `$.tool.register`：把一个 mod 自己的工具挂进这一轮的工具清单（spec
+   * 「把我们自己的工具交给模型」）。
+   *
+   * 名字已经由 runtime 归一成 `mcp__<plugin>__<name>`、限额也校验过了；重名判
+   * 定、真正注册、卸载都在实现方（只有它知道当前注册了些什么）。
+   */
+  registerTool(spec: {
+    name: string;
+    description: string;
+    inputSchema: Record<string, unknown>;
+  }): Promise<{ name: string }>;
+  /**
+   * `$.agent.spawn`：派一个子代理，resolve 在它**started** 之后（spec「派子
+   * 代理」）。
+   *
+   * 不等它跑完：结果在它自己的 `turn.complete` 里，`agentId` 是串起两边的那
+   * 个值。并发上限、深度限制、归属记账都是实现方的事。
+   */
+  spawnAgent(args: {
+    prompt: string;
+    description?: string;
+    subagentType?: string;
+    model?: string;
+  }): Promise<{ model: string; agentId?: string }>;
+  /**
+   * `$.model.complete`：让模型答一次（spec「让模型替插件答一次」）。
+   *
+   * provider 的失败是**结果**不是异常（`{ isAnswered: false, reason }`）；我们
+   * 自己的门槛（模型不在 allowlist、额度用完）由实现方直接 reject —— 那两件事
+   * 是「这次请求根本没发出去」，与 CC 的 `reason` 不是一回事。
+   */
+  completeModel(request: {
+    model: string;
+    prompt: string;
+    system?: string;
+    maxTokens: number;
+    signal?: AbortSignal;
+  }): Promise<ModModelCompleteResult>;
+  /**
+   * `$.prompt.suggest`：把这个建议摆成输入框里的暗色建议（spec「输入框里的建
+   * 议与焦点」）。
+   *
+   * 与 `$.prompt.fill` 同一条通道的第三种用法：没人画、没人答都按
+   * `{ isShown: false }` 作答，**不 reject**（终端就是这一档）。
+   */
+  suggestPrompt(request: {
+    text: string;
+    plugin: string;
+  }): Promise<{ isShown: boolean }>;
+  /**
    * `$.session.messages()`：转录里已经存下的消息（最新在最后）。
    *
    * 宿主按 `MOD_LIMITS.sessionMessages` 截好再交下来 —— 限流放在这里而不是
@@ -1107,6 +1362,14 @@ const HOOK_NAMES = new Set([
   "session.append",
   "skill.prompt",
   "command.describe",
+  // 第二判定源之外的三个「让插件做事」的落点（spec「把我们自己的工具交给模型」
+  // 「派子代理」「输入框里的建议与焦点」）。
+  "tool.register",
+  "agent.offer",
+  "agent.spawn",
+  "prompt.edit",
+  "prompt.suggest",
+  "ui.focus",
   // 影子事件（spec「影子事件：`classic.*`」）：除 `PreToolUse` / `Stop` 外都是
   // 只读镜像，返回值忽略。
   "classic.PermissionRequest",
@@ -1163,6 +1426,11 @@ const MATCHER_EVENTS = new Set([
   "classic.PostToolBatch",
   "tool.call",
   "tool.run",
+  // `agent.offer` / `agent.spawn` 按子代理类型匹配（spec「派子代理」）：只想管
+  // `Explore` 的插件没必要在每次派发上被叫起来。`ui.focus` 按 `{ component }`。
+  "agent.offer",
+  "agent.spawn",
+  "ui.focus",
 ]);
 
 /**
@@ -1173,6 +1441,10 @@ const MATCHER_EVENTS = new Set([
  */
 const MATCHER_KEY_ALIASES: Record<string, string> = {
   requestId: "instance_id",
+  // CC 的 `agent.spawn` matcher 写 `{ agent: "Explore" }`，我们的事件按
+  // `subagentType` 命名（spec「派子代理」的事件形状）。同一个词在
+  // `agent.offer` 上就是真的 `agent` 字段，所以下面按「事件里有就用真的」取值。
+  agent: "subagentType",
 };
 
 /**
@@ -1290,7 +1562,10 @@ function matchesEvent(
   if (!matcher) return true;
   if (!isPlainObject(event)) return false;
   for (const [rawKey, expected] of Object.entries(matcher)) {
-    const key = MATCHER_KEY_ALIASES[rawKey] ?? rawKey;
+    // 事件自己有这个键就按字面用它 —— 别名只在事件缺这个键时兜底
+    // （`agent` 在 `agent.offer` 上是真的，在 `agent.spawn` 上是别名）。
+    const key =
+      rawKey in event ? rawKey : (MATCHER_KEY_ALIASES[rawKey] ?? rawKey);
     const actual = event[key];
     if (Array.isArray(expected)) {
       if (!expected.some((value) => matcherValueMatches(key, value, actual))) {
@@ -1483,6 +1758,15 @@ export class ModRuntime {
   private readonly hooks = new Map<string, HookEntry[]>();
   /** 正在跑 `command.run` 钩子的层数（`$.command.run` 靠它拒自激）。 */
   private commandHookDepth = 0;
+  /**
+   * 正在跑的 `$.model.complete` 的**异步上下文**。
+   *
+   * 用它而不是一个计数器：同一个 handler 并发问两次（`Promise.all`）是两个
+   * 平级调用，计数器的第二次会拿到「不许套娃」这种误导性错误；真正要拒的是
+   * 「在上一次调用还没回来时、从它的回调里再问一次」——那正好是同一条异步
+   * 上下文（spec「让模型替插件答一次」：一次调用只有一层）。
+   */
+  private readonly modelCallContext = new AsyncLocalStorage<true>();
   private readonly dollar: ModDollar;
   private readonly wave: unknown;
   /**
@@ -1816,6 +2100,18 @@ export class ModRuntime {
         // 与 fill 同一条通道的另一头；没人画 / 没人答都按空输入框作答
         // （spec「输入框里现在有什么」）。
         read: () => this.withBudget(() => host.readPromptDraft()),
+        // 把一个建议摆成输入框里的暗色建议（spec「输入框里的建议与焦点」）。
+        // 与 `fill` 的区别是它只是「提议」：用户按 Tab 才采纳。事件链上
+        // `e.origin` 是 `{ kind: "plugin", name }`，别的 mod 据此分辨是谁提的。
+        suggest: (options) => {
+          const text = options?.text;
+          if (typeof text !== "string" || text.trim().length === 0) {
+            throw new Error("$.prompt.suggest 需要非空的 text");
+          }
+          return this.withBudget(() =>
+            host.suggestPrompt({ text, plugin: host.pluginName }),
+          );
+        },
       },
       // 只读快照；克隆一份交出去，mod 改自己的副本伤不到会话。
       session: {
@@ -1898,12 +2194,39 @@ export class ModRuntime {
       // Code 的 ConfigRow / ToolInfo / AgentInfo，一次读取无副作用。
       tool: {
         list: () => cloneValue(host.listToolInfos()),
+        // 写的一端：把自己带来的工具交给模型（spec「把我们自己的工具交给模
+        // 型」）。名字与限额在这里归一，重名与真正注册归宿主。
+        register: (spec) =>
+          this.withBudget(() =>
+            host.registerTool(normalizeToolRegisterSpec(spec, host.pluginName)),
+          ),
       },
       config: {
         list: () => cloneValue(host.listConfigRows()),
       },
       agent: {
         list: () => cloneValue(host.listAgentInfos()),
+        // 派子代理：resolve 在它 started 之后，不等它跑完（spec「派子代理」）。
+        spawn: (args) =>
+          this.withBudget(() => host.spawnAgent(normalizeAgentSpawnArgs(args))),
+      },
+      // 让模型替插件答一次（spec「让模型替插件答一次」）。这是唯一一条**刻意**
+      // 不占 5 秒钩子预算的调用：`withBudget` 暂停预算，超时由调用方用
+      // `timeoutMs` 自己给（与 CC 同一条：缺省不设）。
+      model: {
+        complete: (request) => {
+          const normalized = normalizeCompleteRequest(request);
+          // 一次调用只有一层：套娃既没有落点（结果回给谁）也没有额度意义。
+          // 判据是「当前是否已经在这条调用里」，不是「有没有别的调用在飞」。
+          if (this.modelCallContext.getStore()) {
+            throw new Error(
+              "$.model.complete 里不能再调 $.model.complete（一次调用只有一层）",
+            );
+          }
+          return this.modelCallContext.run(true, () =>
+            this.withBudget(() => host.completeModel(normalized)),
+          );
+        },
       },
     };
 

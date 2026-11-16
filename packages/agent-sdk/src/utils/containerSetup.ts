@@ -17,7 +17,12 @@ import { HookManager } from "../managers/hookManager.js";
 import { SkillManager } from "../managers/skillManager.js";
 import { SlashCommandManager } from "../managers/slashCommandManager.js";
 import { PluginManager } from "../managers/pluginManager.js";
-import { ModManager, toModSessionMessages } from "../managers/modManager.js";
+import {
+  ModManager,
+  toModSessionMessages,
+  withCommunityUsage,
+} from "../managers/modManager.js";
+import { callAgent } from "../services/aiService.js";
 import { renderSurfacesOf } from "../mods/runtime.js";
 import type {
   ModPermissionRequestEvent,
@@ -121,6 +126,26 @@ export function notifyModPermissionRequest(
     notification_type: "permission_prompt",
     message: `Wave needs your permission to use ${event.tool_name}`,
   });
+}
+
+/**
+ * 从 provider 抛出来的错误里取出 HTTP 状态（spec「让模型替插件答一次」：
+ * `api-error` 带 `status`，拿不到响应时是 `null`）。
+ *
+ * AI SDK 的错误对象把状态挂在 `status` 上；网关偶尔回字符串，`Number()` 之后
+ * 不是有限数就按「拿不到」处理 —— 给 mod 一个假的 0 比给 null 更误导。
+ */
+function errorStatusCodeOf(error: unknown): number | null {
+  if (typeof error !== "object" || error === null) return null;
+  const record = error as { status?: unknown; statusCode?: unknown };
+  // 两个字段都看：AI SDK 抛的挂 `status`，`errorCategory.ts` 那边同时读
+  // `statusCode`，网关实现两种都有。
+  const raw = record.status ?? record.statusCode;
+  // `Number(null) === 0`、`Number(undefined)` 是 NaN —— 没有状态码时要的是
+  // `null`（spec「拿不到响应时为 null」），不是一个假的 0。
+  if (raw === null || raw === undefined) return null;
+  const status = Number(raw);
+  return Number.isFinite(status) ? status : null;
 }
 
 export function setupAgentContainer(
@@ -729,6 +754,178 @@ export function setupAgentContainer(
         );
       }
       await slashCommandManager.executeCommand(target.id, args);
+    },
+  });
+
+  // `$.tool.register` 的桥：工具表在 toolManager，而「哪条 `tool.call` 认领这个
+  // 工具」只有 modManager 知道，两边互相持有会成环（spec「把我们自己的工具交给
+  // 模型」）。
+  modManager.setToolBridge({
+    register: (spec) => {
+      if (toolManager.hasTool(spec.name)) {
+        return { ok: false, reason: `工具名 ${spec.name} 已经被占用了` };
+      }
+      toolManager.register({
+        name: spec.name,
+        config: {
+          type: "function",
+          function: {
+            name: spec.name,
+            description: spec.description,
+            parameters: spec.inputSchema,
+          },
+        },
+        // 执行体不在这里：调用进来时 `ToolManager` 先问 `tool.call`，插件给的
+        // `{ result }` 直接就是结果。走到这里说明分流变了 —— 报错比给一个凭空
+        // 的成功安全。
+        execute: async () => ({
+          success: false,
+          content: "",
+          error: `${spec.name} 是插件注册的工具，但没有一条 tool.call 认领这次调用`,
+        }),
+      });
+      return { ok: true };
+    },
+    unregister: (name) => toolManager.unregister(name),
+  });
+
+  // `$.agent.spawn` 的桥：resolve 在子代理 **started** 之后，不等它跑完 —— 结果
+  // 在它自己的 `turn.complete` 里（spec「派子代理」）。
+  modManager.setAgentBridge({
+    spawn: async (args) => {
+      const requested = args.subagentType ?? "general-purpose";
+      const configuration = await subagentManager.findSubagent(requested);
+      if (!configuration) {
+        const available = subagentManager
+          .getConfigurations()
+          .map((entry) => entry.name)
+          .join(", ");
+        throw new Error(
+          `没有叫 ${requested} 的子代理${available ? `（可用的是 ${available}）` : ""}`,
+        );
+      }
+      const instance = await subagentManager.createInstance(
+        configuration,
+        {
+          description: args.description ?? args.prompt.slice(0, 80),
+          prompt: args.prompt,
+          subagent_type: configuration.name,
+          ...(args.model === undefined ? {} : { model: args.model }),
+          // 深度 1：这个子代理自己的 Agent 工具不再往下派（spec「派子代理」）。
+          modSpawned: true,
+        },
+        // 后台起：`$.agent.spawn` 的语义是「起一个」，不是「跑一个等它」。
+        true,
+      );
+      const settled = subagentManager.executeAgent(
+        instance,
+        args.prompt,
+        undefined,
+        true,
+      );
+      return {
+        model: instance.model ?? aiManager.getModelConfig().model ?? "",
+        agentId: instance.subagentId,
+        settled,
+      };
+    },
+  });
+
+  // `$.model.complete` 的桥（spec「让模型替插件答一次」）：一次一问、不流式。
+  // 门槛（allowlist / 额度 / 参数）在 modManager 那一侧就已经拦掉，到这里只负责
+  // 「发一次请求、把 provider 的结局翻译成 CC 那四档」。
+  modManager.setModelBridge({
+    complete: async (request) => {
+      // allowlist 与 `--model` 是同一份清单，外加**当前会话正在用的那个模型**：
+      // 用户可以用 `--model` 指一个不在 `models` 目录里的名字，那时清单里没有
+      // 它，「问一次当前模型」反而被拒就说不通了。
+      const allowed = configurationService
+        .getConfiguredModels()
+        .map((entry) => entry.name);
+      const currentModel = aiManager.getModelConfig().model;
+      if (currentModel && !allowed.includes(currentModel)) {
+        allowed.unshift(currentModel);
+      }
+      if (!allowed.includes(request.model)) {
+        // allowlist 之外的名字不是「请求失败」，是根本没发这次请求：reject，不
+        // 混进 `{ isAnswered: false }` 那个联合（spec 同段的分工）。
+        throw new Error(
+          `$.model.complete 的模型 ${request.model} 不在可用清单里（可用：${
+            allowed.join(", ") || "无"
+          }）`,
+        );
+      }
+      const emptyUsage = {
+        prompt: 0,
+        completion: 0,
+        cacheRead: 0,
+        cacheCreation: 0,
+      };
+      try {
+        // 配置必须按**请求的那个模型**解析：`callAgent` 用
+        // `modelConfig.capabilities` 选协议分支与缓存标记，`modelConfig.options`
+        // 还会把 `max_tokens` 铺在调用参数后面 —— 拿会话模型的配置发另一个模型
+        // 的请求，缓存与 `maxTokens` 都会跟着错的那一套走。
+        const result = await callAgent({
+          gatewayConfig: aiManager.getGatewayConfig(),
+          modelConfig: configurationService.resolveModelConfig(request.model),
+          messages: [{ role: "user", content: request.prompt }],
+          model: request.model,
+          ...(request.system === undefined
+            ? {}
+            : { systemPrompt: request.system }),
+          maxTokens: request.maxTokens,
+          // 工具的 spawn cwd 同口径：「会动」的那个工作目录。
+          workdir: container.get<string>("CurrentWorkdir") ?? workdir,
+          sessionId: messageManager.getSessionId(),
+          ...(request.signal === undefined
+            ? {}
+            : { abortSignal: request.signal }),
+        });
+        const usage =
+          result.usage === undefined
+            ? emptyUsage
+            : {
+                prompt: result.usage.prompt_tokens,
+                completion: result.usage.completion_tokens,
+                cacheRead: result.usage.cache_read_input_tokens ?? 0,
+                cacheCreation: result.usage.cache_creation_input_tokens ?? 0,
+              };
+        // 这几次调用算进会话总量（spec「让模型替插件答一次」的「记账可见」）：
+        // 不记的话用户的账单与 `$.session.usage()` 都对不上这些请求 —— 插件花
+        // 的是用户的钱。
+        addUsage({
+          prompt_tokens: usage.prompt,
+          completion_tokens: usage.completion,
+          total_tokens: usage.prompt + usage.completion,
+          model: request.model,
+          operation_type: "agent",
+          cache_read_input_tokens: usage.cacheRead,
+          cache_creation_input_tokens: usage.cacheCreation,
+        });
+        const community = withCommunityUsage(usage, request.model);
+        const text = result.content ?? "";
+        return text.trim().length === 0
+          ? { isAnswered: false, reason: "empty-reply", usage: community }
+          : { isAnswered: true, text, usage: community };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        const usage = withCommunityUsage(emptyUsage, request.model);
+        // 我们自己取消的（`timeoutMs` 到期、插件被卸载）落在 `aborted`，其余算
+        // `api-error` 并带上 HTTP 状态（拿不到响应时是 null）。
+        if (request.signal?.aborted) {
+          return { isAnswered: false, reason: "aborted", usage };
+        }
+        const status = errorStatusCodeOf(error);
+        logger.debug(`[Wave] $.model.complete 失败：${message}`);
+        return {
+          isAnswered: false,
+          reason: "api-error",
+          status,
+          error: message,
+          usage,
+        };
+      }
     },
   });
 

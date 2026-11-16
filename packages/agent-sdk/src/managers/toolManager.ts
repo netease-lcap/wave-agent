@@ -121,6 +121,23 @@ function recordContextOf(
 }
 
 /**
+ * 把 mod 给的 `{ result }` 变成模型读到的工具结果文本（spec「把我们自己的工具
+ * 交给模型」：任意 JSON，序列化后交给模型）。
+ *
+ * 字符串原样给出 —— 插件写 `{ result: "42" }` 想要的大概就是那一行 `42`，再套
+ * 一层引号会让模型把它当字段读。序列化失败（含环、BigInt）退化成 `String()`：
+ * 结果里有环是插件的 bug，但让整次调用抛错更糟，模型至少能看到点东西。
+ */
+function renderModToolResult(value: unknown): string {
+  if (typeof value === "string") return value;
+  try {
+    return JSON.stringify(value, null, 2) ?? "null";
+  } catch {
+    return String(value);
+  }
+}
+
+/**
  * Feed an edit tool's line delta into the `wave.lines.changed` counter.
  *
  * Editing tools report `linesAdded` / `linesRemoved` in `result.metadata`;
@@ -232,6 +249,32 @@ class ToolManager {
     if (options?.builtIn === true) {
       this.builtInTools.add(tool);
     }
+  }
+
+  /**
+   * 这个名字是否已经被占了（内置、自定义、MCP 都算）。
+   *
+   * `$.tool.register` 查重用：`list()` 会过滤掉被权限规则禁掉的工具，拿它判重
+   * 会让一个「禁用了但还在表里」的名字被重复注册出来，模型那边看到两条同名的。
+   */
+  public hasTool(name: string): boolean {
+    if (this.toolsRegistry.has(name)) return true;
+    return this.mcpManager
+      .getMcpToolPlugins()
+      .some((tool) => tool.name === name);
+  }
+
+  /**
+   * 把一个工具从注册表里摘掉（插件重载 / 会话结束）。
+   *
+   * 名字不在表里不算错。只动注册表：已经开始的那次调用拿着 plugin 引用照样跑
+   * 完，不被打断。
+   */
+  public unregister(name: string): void {
+    const tool = this.toolsRegistry.get(name);
+    if (!tool) return;
+    this.toolsRegistry.delete(name);
+    this.builtInTools.delete(tool);
   }
 
   /**
@@ -647,6 +690,10 @@ class ToolManager {
             "WorkflowManager",
           )
         : undefined,
+      modManager: this.container.has("ModManager")
+        ? this.container.get<ModManager>("ModManager")
+        : undefined,
+      modAgentDepth: this.container.get<number>("ModAgentDepth") ?? 0,
       sandboxManager: this.container.has("SandboxManager")
         ? this.container.get<
             import("../sandbox/SandboxManager.js").SandboxManager
@@ -671,10 +718,37 @@ class ToolManager {
       hasPermissionManager: !!permissionManager,
     });
 
+    // 插件 MODS 的形状照 Claude Code 的 `ToolCallEnvelope`：工具名、调用 id、
+    // 参数对象，外加把参数在顶层铺一份（社区插件读 `e.command`，不读
+    // `e.input.command`）。两个事件共用同一份（spec「拦下一次工具调用」
+    // 「在工具真正跑之前插一脚」）。
+    const modManager = this.container.has("ModManager")
+      ? this.container.get<ModManager>("ModManager")
+      : undefined;
+    const modToolEvent = {
+      ...args,
+      tool: name,
+      tool_use_id: context.toolCallId ?? "",
+      input: args,
+    };
+
     // Check if it's an MCP tool first. Tool-event hooks for MCP live in
     // `McpManager.executeMcpTool` — the one funnel every MCP call goes through,
     // flat or nested — so they are not run a second time here.
     if (this.mcpManager.isMcpTool(name)) {
+      // `tool.call` 对真 MCP 工具同样要过一遍：mod 工具（名字也带 `mcp__`）
+      // 能被拦、真 MCP 不能，是同名工具两套语义（spec「拦下一次工具调用」说的
+      // 是「一次工具调用执行之前」，没有挑工具从哪来）。`{ result }` 由
+      // `dispatchToolCall` 自己筛掉（只有插件注册的工具认）。
+      const mcpDecision = await modManager?.dispatchToolCall(modToolEvent);
+      if (mcpDecision?.deny !== undefined) {
+        logger?.debug("Tool call denied by plugin mod", { toolName: name });
+        return {
+          success: false,
+          content: mcpDecision.deny,
+          error: mcpDecision.deny,
+        };
+      }
       try {
         const result = await this.mcpManager.executeMcpToolByRegistry(
           name,
@@ -727,26 +801,80 @@ class ToolManager {
         }
       }
 
-      const modManager = this.container.has("ModManager")
-        ? this.container.get<ModManager>("ModManager")
-        : undefined;
-      // 插件 MODS 的形状照 Claude Code 的 `ToolCallEnvelope`：工具名、调用 id、
-      // 参数对象，外加把参数在顶层铺一份（社区插件读 `e.command`，不读
-      // `e.input.command`）。两个事件共用同一份（spec「拦下一次工具调用」
-      // 「在工具真正跑之前插一脚」）。
-      const modToolEvent = {
-        ...args,
-        tool: name,
-        tool_use_id: enhancedContext.toolCallId ?? "",
-        input: args,
-      };
-
       // `tool.call`：执行**之前**问一遍插件，被拦下就不跑（spec「拦下一次工具
       // 调用」）。拦下不是审批失败，模型收到这段文本作为工具错误结果。
-      const modDeny = await modManager?.dispatchToolCall(modToolEvent);
-      if (modDeny !== undefined) {
+      const modDecision = await modManager?.dispatchToolCall(modToolEvent);
+      if (modDecision?.deny !== undefined) {
         logger?.debug("Tool call denied by plugin mod", { toolName: name });
-        return { success: false, content: modDeny, error: modDeny };
+        return {
+          success: false,
+          content: modDecision.deny,
+          error: modDecision.deny,
+        };
+      }
+      if (modManager && modManager.ownsTool(name)) {
+        // 插件带来的工具与 MCP 工具走同一条审批路（spec「把我们自己的工具交给
+        // 模型」）：名字带 `mcp__` 前缀，`isRestrictedTool()` 认它，所以这里要
+        // 真的问一次 —— 否则「用户看得见、能拒」只是句空话。内置工具各自在自己
+        // 的 `execute` 里问，这条路没有 `execute`，只能在这里问。
+        if (permissionManager) {
+          const permissionContext = permissionManager.createContext(
+            name,
+            effectivePermissionMode,
+            canUseToolCallback,
+            args,
+            context.toolCallId,
+          );
+          const permission =
+            await permissionManager.checkPermission(permissionContext);
+          if (permission.behavior === "deny") {
+            const message = `${name} 的调用被拒绝：${
+              permission.message ?? "没有给出原因"
+            }`;
+            return { success: false, content: message, error: message };
+          }
+        }
+        // 插件自己注册的工具没有宿主侧执行体，结果只能由它给 —— 但 `settings.json`
+        // 的 PreToolUse / PostToolUse 照样要跑：用户按 `mcp__.*` 写的拒绝与审计
+        // 对 mod 工具与真 MCP 工具是同一份承诺（spec「把我们自己的工具交给模型」
+        // 的「与 MCP 工具同一条审批路」）。
+        const modHookManager = enhancedContext.hookManager;
+        const blockedByHook = await modHookManager?.executePreToolUseHooks(
+          name,
+          args,
+          enhancedContext,
+        );
+        if (blockedByHook) {
+          return {
+            success: false,
+            content: blockedByHook,
+            error: blockedByHook,
+          };
+        }
+        // 拿到 `{ result }` 就直接交回模型，不再进 `tool.run` —— 那个钩子是
+        // 为「真要执行」准备的，这条路上没有执行体。
+        const modOutcome: ToolResult =
+          modDecision && "result" in modDecision
+            ? {
+                success: true,
+                content: renderModToolResult(modDecision.result),
+              }
+            : // 没人接：`tool.register` 交上去的工具，调用时却没有一条
+              // `tool.call` 认领。按 `{ result: null }` 答，并在插件日志里说明
+              // —— 静默给一个空成功会让作者以为自己的钩子跑过了。
+              { success: true, content: "null" };
+        if (!modDecision || !("result" in modDecision)) {
+          logger?.warn("No mod answered a registered tool call", {
+            toolName: name,
+          });
+        }
+        await modHookManager?.executePostToolUseHooks(
+          name,
+          args,
+          modOutcome,
+          enhancedContext,
+        );
+        return modOutcome;
       }
 
       const hookManager = enhancedContext.hookManager;

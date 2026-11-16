@@ -155,6 +155,30 @@ function host(overrides: Partial<ModRuntimeHost> = {}): ModRuntimeHost {
     registerCommand: vi.fn((spec: ModCommandSpec) => ({ command: spec.name })),
     listCommands: vi.fn(() => []),
     runCommand: vi.fn(async () => {}),
+    // 三个写入型 API 的出口（spec「把我们自己的工具交给模型」「派子代理」
+    // 「让模型替插件答一次」）：默认都成功，断言看各用例怎么改。
+    registerTool: vi.fn(async (spec: { name: string }) => ({
+      name: spec.name,
+    })),
+    spawnAgent: vi.fn(async () => ({
+      model: "test-model",
+      agentId: "agent-1",
+    })),
+    completeModel: vi.fn(async () => ({
+      isAnswered: true as const,
+      text: "ok",
+      usage: {
+        prompt: 1,
+        completion: 1,
+        cacheRead: 0,
+        cacheCreation: 0,
+        input_tokens: 1,
+        output_tokens: 1,
+        cache_read_input_tokens: 0,
+        cache_creation_input_tokens: 0,
+      },
+    })),
+    suggestPrompt: vi.fn(async () => ({ isShown: true })),
     // 默认「有得收」：`$.turn.abort` 的 id 判在宿主那边，这一层只验证原样交下去。
     turnAbort: vi.fn(),
     ...overrides,

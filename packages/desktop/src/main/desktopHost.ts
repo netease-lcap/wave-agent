@@ -61,6 +61,7 @@ import {
   type ModPanelEventPayload,
   type ModPromptFillRequest,
   type ModPromptReadRequest,
+  type ModPromptSuggestRequest,
   type ModCopyRequest,
   type ModNoticePayload,
   type ModStatusPayload,
@@ -2300,6 +2301,18 @@ export class DesktopHost {
         if (paneId) {
           this.postMessage({
             command: "desktopModPromptFill",
+            paneId,
+            payload,
+          });
+        }
+      },
+      // `$.prompt.suggest`（spec「输入框里的建议与焦点」）：与 fill 同一条往返，
+      // 摆没摆上由输入框说了算，回执走 `modPromptSuggestResult`。
+      onModPromptSuggest: (payload: ModPromptSuggestRequest) => {
+        const paneId = paneIdOf();
+        if (paneId) {
+          this.postMessage({
+            command: "desktopModPromptSuggest",
             paneId,
             payload,
           });
@@ -6363,6 +6376,91 @@ export class DesktopHost {
           | undefined;
         if (agent && payload?.modId && payload.paneId) {
           await agent.sendModPanelEvent(payload as ModPanelEventPayload);
+        }
+        break;
+      }
+
+      // 用户在输入框里做完一次编辑（spec「输入框里的建议与焦点」）：方向反过来，
+      // 宿主把这次编辑运进 CLI，插件可以改写它，回包带改写后的草稿。
+      case "modPromptEdit": {
+        const agent = this.agentForPane(pid);
+        const requestId =
+          typeof msg.requestId === "string" ? msg.requestId : undefined;
+        const text = typeof msg.text === "string" ? msg.text : "";
+        const fallback = {
+          command: "modPromptEditResult",
+          ...(requestId === undefined ? {} : { requestId }),
+          text,
+          cursor: typeof msg.cursor === "number" ? msg.cursor : text.length,
+        };
+        if (!agent) {
+          // 没有会话也要回包：输入框在等这一句才决定要不要覆盖。
+          this.postMessage({ ...fallback, paneId: pid });
+          break;
+        }
+        try {
+          const result = await agent.promptEdit({
+            key: msg.key,
+            text,
+            cursor: typeof msg.cursor === "number" ? msg.cursor : text.length,
+            start: typeof msg.start === "number" ? msg.start : text.length,
+            end: typeof msg.end === "number" ? msg.end : text.length,
+            inputText: typeof msg.inputText === "string" ? msg.inputText : "",
+          });
+          this.postMessage({
+            command: "modPromptEditResult",
+            ...(requestId === undefined ? {} : { requestId }),
+            paneId: pid,
+            text: typeof result?.text === "string" ? result.text : text,
+            cursor:
+              typeof result?.cursor === "number" ? result.cursor : text.length,
+          });
+        } catch (error) {
+          // 插件挂掉不该让用户打不了字：按「没人改写」回原样。
+          console.error("[Wave] prompt.edit 失败", error);
+          this.postMessage({ ...fallback, paneId: pid });
+        }
+        break;
+      }
+
+      // 焦点环挪动（spec「输入框里的建议与焦点」）：只读事件，只回一句「挪没挪
+      // 成」，webview 不看也行。
+      case "uiFocus": {
+        const agent = this.agentForPane(pid);
+        const requestId =
+          typeof msg.requestId === "string" ? msg.requestId : "";
+        let deny: string | undefined;
+        if (agent) {
+          try {
+            const result = await agent.uiFocus({
+              component: typeof msg.component === "string" ? msg.component : "",
+              requestId,
+              ...(typeof msg.plugin === "string" ? { plugin: msg.plugin } : {}),
+              ...(typeof msg.element === "string"
+                ? { element: msg.element }
+                : {}),
+            });
+            deny = typeof result?.deny === "string" ? result.deny : undefined;
+          } catch (error) {
+            console.error("[Wave] ui.focus 失败", error);
+          }
+        }
+        this.postMessage({
+          command: "uiFocusResult",
+          paneId: pid,
+          requestId,
+          ...(deny === undefined ? {} : { deny }),
+        });
+        break;
+      }
+
+      // webview 对一次 `$.prompt.suggest` 的回答（spec「输入框里的建议与焦
+      // 点」）：摆没摆上由渲染进程判定，宿主只把这一句运回 CLI。
+      case "modPromptSuggestResult": {
+        const agent = this.agentForPane(pid);
+        const requestId = msg.requestId as string | undefined;
+        if (agent && typeof requestId === "string") {
+          await agent.resolveModPromptSuggest(requestId, msg.isShown === true);
         }
         break;
       }

@@ -1158,6 +1158,74 @@ class MessageHandler(
                 }
             }
 
+            // ── 输入框里的建议与焦点 ───────────────────────────────────
+            // spec ecosystem/plugin-mods.md「输入框里的建议与焦点」：这三条是「mod 能
+            // 看见用户正在输入框里做什么」的宿主侧三个端点。
+            //
+            // `modPromptEdit` 与另外两条方向相反 —— 宿主先说话，答案是插件改写后的草
+            // 稿。**无论成败都要回包**：不回就等于让这次按键一直等回执。没有 agent
+            // （初始化中/已销毁）或 RPC 失败时回原样，等于「这次编辑没被改写」，界面
+            // 按本地结果继续。
+            "modPromptEdit" -> {
+                val requestId = (msg["requestId"] as? JsonPrimitive)?.contentOrNull
+                val text = (msg["text"] as? JsonPrimitive)?.contentOrNull ?: ""
+                val cursor = (msg["cursor"] as? JsonPrimitive)?.intOrNull
+                // 偏移缺省按「插在末尾」算，与 CLI 侧同一套降级。
+                val atEnd = text.length
+                var answer: JsonObject? = null
+                try {
+                    answer = session.agent?.promptEdit(buildJsonObject {
+                        // 粘贴、折起来的一串键没有「那一个按键」，缺省就不带这个字段。
+                        msg["key"]?.takeIf { it !is JsonNull }?.let { put("key", it) }
+                        put("text", text)
+                        put("cursor", cursor ?: atEnd)
+                        put("start", (msg["start"] as? JsonPrimitive)?.intOrNull ?: atEnd)
+                        put("end", (msg["end"] as? JsonPrimitive)?.intOrNull ?: atEnd)
+                        put("inputText", (msg["inputText"] as? JsonPrimitive)?.contentOrNull ?: "")
+                    })
+                } catch (e: StdioClientException) {
+                    LOG.warn("promptEdit failed: ${e.message}")
+                }
+                val rewritten = answer
+                postMessage("modPromptEditResult", buildJsonObject {
+                    requestId?.let { put("requestId", it) }
+                    put("text", (rewritten?.get("text") as? JsonPrimitive)?.contentOrNull ?: text)
+                    put("cursor", (rewritten?.get("cursor") as? JsonPrimitive)?.intOrNull ?: (cursor ?: 0))
+                })
+            }
+            // 焦点环挪动：只读事件，`deny` 只用来表达「这次没挪成」。界面不一定看回
+            // 包内容，但不回会让它干等。
+            "uiFocus" -> {
+                val requestId = (msg["requestId"] as? JsonPrimitive)?.contentOrNull ?: ""
+                var deny: String? = null
+                try {
+                    deny = session.agent?.uiFocus(buildJsonObject {
+                        put("component", (msg["component"] as? JsonPrimitive)?.contentOrNull ?: "")
+                        put("requestId", requestId)
+                        (msg["plugin"] as? JsonPrimitive)?.contentOrNull?.let { put("plugin", it) }
+                        (msg["element"] as? JsonPrimitive)?.contentOrNull?.let { put("element", it) }
+                    })?.get("deny")?.jsonPrimitive?.contentOrNull
+                } catch (e: StdioClientException) {
+                    LOG.warn("uiFocus failed: ${e.message}")
+                }
+                val denyReason = deny
+                postMessage("uiFocusResult", buildJsonObject {
+                    put("requestId", requestId)
+                    denyReason?.let { put("deny", it) }
+                })
+            }
+            // 建议摆没摆上的回执：只把在等回执的那个 mod 放行，无回包（mod 那边超时
+            // 也会按 `{ isShown: false }` 收尾，会话已经不认这个 requestId 时空操作）。
+            "modPromptSuggestResult" -> {
+                val requestId = (msg["requestId"] as? JsonPrimitive)?.contentOrNull ?: return
+                val isShown = (msg["isShown"] as? JsonPrimitive)?.booleanOrNull == true
+                try {
+                    session.agent?.resolveModPromptSuggest(requestId, isShown)
+                } catch (e: StdioClientException) {
+                    LOG.warn("resolveModPromptSuggest failed: ${e.message}")
+                }
+            }
+
             else -> LOG.debug("Unhandled webview command: $command")
         }
     }

@@ -302,6 +302,116 @@ export interface ModAgentInfo {
   type: string;
   status: ModAgentStatus;
   parentAgentId?: string;
+  /** 派它的插件名（mod 自己派的那种才有）。 */
+  plugin?: string;
+}
+
+/**
+ * `$.model.complete` 的结果（spec「让模型替插件答一次」）。
+ *
+ * 形状照 Claude Code 的三档：`api-error` 带状态码与错误分类、`empty-reply` 是
+ * 「模型回了但没有文本块」、`aborted` 是「这次调用被切掉了」。**我们自己的门槛
+ * 不在这里** —— 模型不在 allowlist、额度用完都是当场 reject，因为那两件事意味
+ * 着这次请求根本没发出去。
+ *
+ * `usage` 每一档都带，字段与 `turn.complete` 的同一套（含 CC 别名）。
+ */
+export type ModModelCompleteResult =
+  | {
+      isAnswered: true;
+      /** 回复的正文（文本块拼起来）。 */
+      text: string;
+      usage: ModTokenTotals & ModCommunityTokenTotals;
+    }
+  | {
+      isAnswered: false;
+      reason: "api-error";
+      /** HTTP 状态；拿不到响应（连接断了、provider 超时）时是 `null`。 */
+      status: number | null;
+      /** provider 的错误原文（插件日志/界面上要能显示「为什么没答」）。 */
+      error: string;
+      usage: ModTokenTotals & ModCommunityTokenTotals;
+    }
+  | {
+      isAnswered: false;
+      reason: "empty-reply";
+      usage: ModTokenTotals & ModCommunityTokenTotals;
+    }
+  | {
+      isAnswered: false;
+      reason: "aborted";
+      usage: ModTokenTotals & ModCommunityTokenTotals;
+    };
+
+/**
+ * `prompt.suggest` / `prompt.edit` / `ui.focus` 三处共用的「谁发起的」
+ * （spec「输入框里的建议与焦点」）。
+ *
+ * 三个事件各认其中几个分支，`next(e)` 把它原样传下去：哪个分支由引擎在起点盖
+ * 章，钩子改不动。
+ */
+export type ModPromptOrigin =
+  | { kind: "composer" }
+  | { kind: "suggestion" }
+  | { kind: "person" }
+  | { kind: "plugin"; name: string };
+
+/** `prompt.suggest` 的 `e`（spec「输入框里的建议与焦点」）。 */
+export interface ModPromptSuggestEvent {
+  /** 这次要摆上去的建议（改写它靠 `next({ ...e, text })`）。 */
+  text: string;
+  origin: ModPromptOrigin;
+  [key: string]: unknown;
+}
+
+/** `prompt.edit` 的 `e`（spec「输入框里的建议与焦点」）。 */
+export interface ModPromptEditEvent {
+  origin: ModPromptOrigin;
+  /** 触发这次编辑的那一个按键；粘贴、折起来的一串键没有它。 */
+  key?: unknown;
+  /** 编辑之前的草稿。 */
+  text: string;
+  /** 编辑之前光标在哪。 */
+  cursor: number;
+  /** 被替换的那一段从哪开始。 */
+  start: number;
+  /** 被替换的那一段到哪结束（插入时为 `start`）。 */
+  end: number;
+  /** 中间放进去的字（删除时为 `""`）。 */
+  inputText: string;
+  [key: string]: unknown;
+}
+
+/** `ui.focus` 的 `e`（spec「输入框里的建议与焦点」）。 */
+export interface ModUiFocusEvent {
+  /**
+   * 哪个站点：`Pane`（右侧面板正文）、`AbovePrompt`（输入框上方那条带）或
+   * `Composer`（输入框自己）。失焦不单独派发 —— 事件里没有区分字段。
+   */
+  component: string;
+  /** 画这个站点的那次 `ui.render` 的实例 id。 */
+  requestId: string;
+  /** 拿到焦点环的元素是谁画的；引擎自己的停靠点时没有。 */
+  plugin?: string;
+  /** 拿到焦点环的元素的 `key`。 */
+  element?: string;
+  origin: ModPromptOrigin;
+  [key: string]: unknown;
+}
+
+/**
+ * `$.tool.register()` 的参数（spec「把我们自己的工具交给模型」）。
+ *
+ * 这里**没有 handler**：执行体是同一个 mod 的另一条 `tool.call` 钩子 ——
+ * 与 Claude Code 的 `ToolSpec` 同一个形状，社区插件不用为「写工具」再学一套 API。
+ */
+export interface ModToolRegisterSpec {
+  /** 只能 `[a-zA-Z0-9_-]{1,64}`；模型看到的是 `mcp__<plugin>__<name>`。 */
+  name: string;
+  /** 模型看到的那段，必填非空，≤ 2000 字符。 */
+  description: string;
+  /** JSON Schema 对象（缺省 `{ type: "object" }`），序列化后 ≤ 16 KiB。 */
+  inputSchema?: Record<string, unknown>;
 }
 
 /** `$.session.repo()`：会话所在的 git 仓库；不在仓库里时给 `null`。 */
@@ -351,6 +461,21 @@ export type ModUiCopyResult =
 /** `$.ui.view()` 的结果：`{}` 表示视图已切过去，`{ deny }` 说明为什么没动。 */
 export interface ModUiViewResult {
   deny?: string;
+}
+
+/**
+ * `$.prompt.suggest()` 送达 surface 的一次请求（spec「输入框里的建议与焦点」）。
+ *
+ * 与 `fill` / `read` 同一条「推出去、等回执」的通道：摆不摆得上只有输入框知
+ * 道（它可能正忙、可能没挂上），所以答案走 `resolveModPromptSuggest` 回来。
+ */
+export interface ModPromptSuggestRequest {
+  sessionId: string;
+  requestId: string;
+  /** 要摆上去的那条（`prompt.suggest` 链改写过的就是改写后的版本）。 */
+  text: string;
+  /** 谁提的（`e.origin`）；引擎自己的推荐不走这条通道。 */
+  plugin: string;
 }
 
 /** `$.prompt.read()` 送达 surface 的一次请求（与 `ModPromptFillRequest` 配对）。 */
@@ -1349,6 +1474,20 @@ export const MOD_LIMITS = {
   toastQueueMax: 50,
   /** 一个 mod 注册的命令数上限；超出时 `$.command.register` 报错。 */
   maxCommandsPerMod: 32,
+  /** 一个 mod 注册的工具数上限；超出时 `$.tool.register` 报错。 */
+  modToolsPerMod: 16,
+  /** mod 工具的 `description` 字符上限；超出报错（不截断 —— 截断的描述教错模型）。 */
+  modToolDescriptionChars: 2_000,
+  /** mod 工具的 `inputSchema` 序列化后字节上限；超出报错。 */
+  modToolSchemaBytes: 16 * 1024,
+  /** 一个 mod 同时活跃的子代理数；超出时 `$.agent.spawn` 报错。 */
+  modAgentsPerMod: 4,
+  /** `$.model.complete` 每条会话每个插件的调用次数上限（超出当场 reject）。 */
+  modModelCallsPerSession: 50,
+  /** `$.model.complete` 的 `maxTokens` 上限，更大的夹到这个数。 */
+  modModelMaxTokens: 4096,
+  /** `$.model.complete` 的 `timeoutMs` 上限，更大的夹到这个数（缺省不设超时）。 */
+  modModelMaxTimeoutMs: 300_000,
   /** `$.clock.sleep` 单次等待上限；更长的夹到这个数。 */
   maxSleepMs: 600_000,
   /** 一个 mod 同时未完成的 `$.clock.sleep` 数；与定时器分开计。 */
