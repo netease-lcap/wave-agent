@@ -188,13 +188,10 @@ function createMockAgent(overrides: Record<string, unknown> = {}) {
     isCommandRunning: false,
     queuedMessages: [],
     getBackgroundTasks: vi.fn().mockReturnValue([]),
-    // 设置页三档记忆文件（用户级 / 项目级 / 个人级）：桥只负责把 scope 转成
-    // 对应的方法调用，内容读写归 SDK。
-    readUserMemoryContent: vi.fn().mockResolvedValue(""),
+    // 设置页三档记忆文件（用户级 / 项目级 / 个人级）：读取由桥直读磁盘
+    // （要区分「不存在」与「读不了」），写入仍归 SDK。
     writeUserMemoryContent: vi.fn().mockResolvedValue(undefined),
-    readProjectMemoryContent: vi.fn().mockResolvedValue(""),
     writeProjectMemoryContent: vi.fn().mockResolvedValue(undefined),
-    readLocalMemoryContent: vi.fn().mockResolvedValue(""),
     writeLocalMemoryContent: vi.fn().mockResolvedValue(undefined),
     // 凭据形态（spec desktop-account「认证方式」）：没有凭据的默认形态。
     getGatewayConfig: vi.fn().mockReturnValue({}),
@@ -6016,6 +6013,32 @@ test("the memory tiers anchor to the session start, not to a drifted currentWork
     "/test/workdir",
     "me",
   );
+});
+
+test("getAgentsContent hands the editor the file as written, with @include left unexpanded", async () => {
+  // 编辑器必须看到**原文**：如果这里返回展开后的正文，用户点一次保存就会把被
+  // 引用文件的内容物理写进 AGENTS.md（数据损坏）。桥直读磁盘，所以这条是结构
+  // 性的，但它是那个 bug 唯一的防线，钉住它。
+  const workdir = memoryWorkdir();
+  const source = "# Project\n\nread @./docs/x.md";
+  try {
+    await mkdir(join(workdir, "docs"), { recursive: true });
+    await writeFile(join(workdir, "AGENTS.md"), source, "utf-8");
+    await writeFile(join(workdir, "docs", "x.md"), "REFERENCED BODY", "utf-8");
+    const { bridge } = createBridge();
+
+    const project = (await bridge.handleRequest("getAgentsContent", {
+      scope: "project",
+      workdir,
+    })) as { content: string; hash: string };
+
+    expect(project.content).toBe(source);
+    expect(project.content).not.toContain("REFERENCED BODY");
+    // hash 也必须算在原文上，否则「原样保存」会被自己判成外部改动。
+    expect(project.hash).toBe(memoryHash(source));
+  } finally {
+    await rm(workdir, { recursive: true, force: true });
+  }
 });
 
 test("getAgentsContent reads the personal tier from the workdir, preferring AGENTS.local.md over CLAUDE.local.md", async () => {

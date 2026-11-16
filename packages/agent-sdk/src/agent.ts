@@ -778,45 +778,6 @@ export class Agent {
     return this.messageManager.getCombinedMemory();
   }
 
-  /**
-   * Read the user-level memory file (~/.wave/AGENTS.md) for the settings UI.
-   * Always reads fresh content off disk with `@include` references left
-   * unexpanded — the editor must show (and write back) what the file says, not
-   * the expanded memory that goes into the context.
-   */
-  public async readUserMemoryContent(): Promise<string> {
-    const memoryService =
-      this.container.get<import("./services/memory.js").MemoryService>(
-        "MemoryService",
-      );
-    return (await memoryService?.readRawUserMemory()) ?? "";
-  }
-
-  /**
-   * Read the project-level memory file (<workdir>/AGENTS.md, CLAUDE.md
-   * fallback) for the settings UI. Always reads fresh, unexpanded content.
-   */
-  public async readProjectMemoryContent(workdir: string): Promise<string> {
-    const memoryService =
-      this.container.get<import("./services/memory.js").MemoryService>(
-        "MemoryService",
-      );
-    return (await memoryService?.readRawProjectMemory(workdir)) ?? "";
-  }
-
-  /**
-   * Read the project-level *personal* memory file (<workdir>/AGENTS.local.md,
-   * CLAUDE.local.md fallback) for the settings UI. Always reads fresh,
-   * unexpanded content.
-   */
-  public async readLocalMemoryContent(workdir: string): Promise<string> {
-    const memoryService =
-      this.container.get<import("./services/memory.js").MemoryService>(
-        "MemoryService",
-      );
-    return (await memoryService?.readRawLocalMemory(workdir)) ?? "";
-  }
-
   /** Persist the user-level memory file (~/.wave/AGENTS.md). */
   public async writeUserMemoryContent(content: string): Promise<void> {
     const memoryService =

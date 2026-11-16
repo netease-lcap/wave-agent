@@ -91,7 +91,6 @@ function createHarness() {
     readMemoryFile: vi.fn().mockResolvedValue(PROJECT_MEMORY),
     getUserMemoryContent: vi.fn().mockResolvedValue(USER_MEMORY),
     readLocalMemoryFile: vi.fn().mockResolvedValue(LOCAL_MEMORY),
-    readRawLocalMemory: vi.fn().mockResolvedValue(""),
     getCombinedMemoryContent: vi.fn().mockResolvedValue(""),
     getAutoMemoryDirectory: vi.fn().mockReturnValue("/mock/auto-memory"),
     ensureAutoMemoryDirectory: vi.fn().mockResolvedValue(undefined),
