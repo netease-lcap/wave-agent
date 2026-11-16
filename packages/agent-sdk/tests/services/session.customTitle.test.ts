@@ -108,6 +108,7 @@ import {
   setSessionCustomTitle,
 } from "@/services/session.js";
 import { resumeSnapshotOf } from "../helpers/transcriptScans.js";
+import { METADATA_REAPPEND_THRESHOLD_BYTES } from "@/constants/sessionStorage.js";
 
 const SESSION_ID = "11111111-1111-1111-1111-111111111111";
 // session.ts 用 path.join 拼路径，Windows 上分隔符是 `\`，断言必须同样用 join。
@@ -195,9 +196,9 @@ describe("session custom title", () => {
       expect(mockAppend).toHaveBeenCalledWith(SESSION_FILE, expect.any(Array), {
         atomic: false,
       });
-      // Keeping the title inside the tail window is the job of
-      // reAppendSessionMetadata(), which runs at the sparse flush points; doing
-      // it here would cost a tail read plus a line on every single save.
+      // Keeping the title inside the tail window belongs to
+      // reAppendSessionMetadata(), which runs on bytes written and at flush
+      // points; doing it here would cost a tail read plus a line on every save.
       expect(mockReadCustomTitle).not.toHaveBeenCalled();
       expect(mockAppendCustomTitle).not.toHaveBeenCalled();
     });
@@ -209,7 +210,10 @@ describe("session custom title", () => {
 
       await reAppendSessionMetadata(SESSION_ID, "/repo", "我的标题");
 
-      expect(mockReadCustomTitle).toHaveBeenCalledWith(SESSION_FILE);
+      expect(mockReadCustomTitle).toHaveBeenCalledWith(
+        SESSION_FILE,
+        METADATA_REAPPEND_THRESHOLD_BYTES,
+      );
       expect(mockAppendCustomTitle).toHaveBeenCalledWith(
         SESSION_FILE,
         "我的标题",
@@ -217,15 +221,25 @@ describe("session custom title", () => {
       );
     });
 
-    it("prefers a fresher title written by another process", async () => {
+    it("does not append a duplicate when the tail already carries a title", async () => {
+      // Another process renamed the session, or our own last write is still in
+      // the window: either way the listing already sees it, so a second
+      // identical line would only grow the file.
       mockReadCustomTitle.mockResolvedValue("别处改的");
 
-      await reAppendSessionMetadata(SESSION_ID, "/repo", "我的标题");
-
-      expect(mockAppendCustomTitle).toHaveBeenCalledWith(
-        SESSION_FILE,
-        "别处改的",
+      const appended = await reAppendSessionMetadata(
         SESSION_ID,
+        "/repo",
+        "我的标题",
+      );
+
+      expect(appended).toBe(false);
+      expect(mockAppendCustomTitle).not.toHaveBeenCalled();
+      // Half a window, not the whole one: an entry 32–64 KB from EOF must not
+      // count as "already visible", or the next threshold tick pushes it out.
+      expect(mockReadCustomTitle).toHaveBeenCalledWith(
+        SESSION_FILE,
+        METADATA_REAPPEND_THRESHOLD_BYTES,
       );
     });
 
