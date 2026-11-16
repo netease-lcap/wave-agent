@@ -361,7 +361,7 @@ describe("ModRuntime 的交互路由", () => {
             key: "go",
             label: "Go",
             disabled: false,
-            onPress: function () { $.ui.invalidate("p1"); },
+            onPress: function () { $.ui.invalidate("ui.render"); },
           });
         });
       };
@@ -379,13 +379,31 @@ describe("ModRuntime 的交互路由", () => {
     expect(pressed).toBe(true);
   });
 
+  it("$.ui.invalidate 只认 ui.render，别的目标当场报错", async () => {
+    // 参数是**渲染站点的生产者**，不是面板 id：面板用 `$.ui.open({ id })` 指定。
+    // 老写法 `$.ui.invalidate("p1")` 在 Claude Code 里也是错的，这里不静默接受。
+    const { host: hostApi, mod } = runtime(`
+      exports.register = function ($, on) {
+        on("session.start", function () {
+          $.ui.invalidate("p1");
+        });
+      };
+    `);
+
+    await mod.load();
+    const result = await mod.callHook("session.start", {});
+    expect(result.ok).toBe(false);
+    expect(JSON.stringify(result)).toContain("ui.render");
+    expect(hostApi.invalidate).not.toHaveBeenCalled();
+  });
+
   it("Button 与 Input 撞 key 时按交互种类各自路由", async () => {
     const { host: hostApi, mod } = runtime(`
       exports.register = function ($, on) {
         on("ui.render", function () {
           return __wave.h("Box", null,
-            __wave.h("Button", { key: "same", onPress: function () { $.ui.invalidate("press"); } }),
-            __wave.h("Input", { key: "same", onSubmit: function (v) { $.ui.invalidate(v); } })
+            __wave.h("Button", { key: "same", onPress: function () { $.ui.open({ id: "press", title: "" }); } }),
+            __wave.h("Input", { key: "same", onSubmit: function (v) { $.ui.open({ id: v, title: "" }); } })
           );
         });
       };
@@ -397,8 +415,8 @@ describe("ModRuntime 的交互路由", () => {
     await mod.dispatch("press", "same");
     await mod.dispatch("input", "same", "typed");
 
-    expect(hostApi.invalidate).toHaveBeenNthCalledWith(1, "press");
-    expect(hostApi.invalidate).toHaveBeenNthCalledWith(2, "typed");
+    expect(hostApi.openPane).toHaveBeenNthCalledWith(1, "press", "");
+    expect(hostApi.openPane).toHaveBeenNthCalledWith(2, "typed", "");
   });
 
   it("没有对应处理器时返回 false（元素没写 key / key 变了）", async () => {
@@ -478,7 +496,7 @@ describe("ModRuntime 的 $ 命名空间", () => {
           current.n = 99;                 // 改副本，不应影响宿主
           $.state.set("count", { n: 2 });
           $.ui.open({ id: "p1", title: "待办" });
-          $.ui.invalidate("p1");
+          $.ui.invalidate("ui.render");
           $.store.set("k", 7);
           $.store.delete("gone");
           return {
@@ -505,7 +523,7 @@ describe("ModRuntime 的 $ 命名空间", () => {
     // 副本语义：mod 改的是它自己那份。
     expect(state.get("count")).toEqual({ n: 2 });
     expect(hostApi.openPane).toHaveBeenCalledWith("p1", "待办");
-    expect(hostApi.invalidate).toHaveBeenCalledWith("p1");
+    expect(hostApi.invalidate).toHaveBeenCalledWith("ui.render");
     expect(hostApi.storeDelete).toHaveBeenCalledWith("gone");
   });
 
@@ -562,6 +580,9 @@ describe("ModRuntime 的 $ 命名空间", () => {
             try { $.ui.resolve(bad); messages.push("no error"); }
             catch (e) { messages.push(String(e.message || e)); }
           }
+          // 两个站点都得认：宿主两处都会发 ui.render，漏一个那处的 mod 就全抛错。
+          var band = $.ui.resolve({ surface: "desktop", component: "AbovePrompt" });
+          messages.push("band:" + band.Box + "," + typeof band.Button);
           return messages;
         });
       };
@@ -580,6 +601,9 @@ describe("ModRuntime 的 $ 命名空间", () => {
     // 站点名不认识：说清楚这一端只有什么。
     expect(messages[2]).toContain('不认识站点 "Hint"');
     expect(messages[2]).toContain("Pane");
+    // `AbovePrompt`（输入框上方的带）是第二个站点，必须拿到同一张表。
+    expect(messages[2]).toContain("AbovePrompt");
+    expect(messages[3]).toBe("band:Box,string");
   });
 
   it("$.ui.status 转发到宿主：纯文本、过长的截断、null 与空串都表示清除", async () => {

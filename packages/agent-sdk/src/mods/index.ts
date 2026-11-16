@@ -47,6 +47,11 @@ function element<P>(name: string): ModComponent<P> {
 export interface BoxProps {
   /** 默认 `row`（与 flex 一致）。 */
   flexDirection?: "row" | "column";
+  /** 一排放不下时是否折行（默认 `nowrap`，与 flex 一致）。 */
+  flexWrap?: "wrap" | "nowrap";
+  /** 剩余空间里怎么长/怎么缩。带里的一排按钮默认会被压窄，要它别缩就给 `flexShrink: 0`。 */
+  flexGrow?: number;
+  flexShrink?: number;
   gap?: number | ModSpace;
   columnGap?: number | ModSpace;
   rowGap?: number | ModSpace;
@@ -86,7 +91,8 @@ export interface ButtonProps {
   /** 点击时执行（在 mod 进程内）。 */
   onPress?: () => void;
   disabled?: boolean;
-  variant?: string;
+  /** 画面观感：`primary` 用主题主操作色，`secondary` 与不写时同一中性底。 */
+  variant?: "primary" | "secondary";
   children?: ModChild;
 }
 

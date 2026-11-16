@@ -84,7 +84,7 @@ export function register($, on) {
         label="+1"
         onPress={() => {
           $.state.set("n", ($.state.get("n") ?? 0) + 1);
-          $.ui.invalidate("p1");
+          $.ui.invalidate("ui.render");
         }}
       />
       <Button

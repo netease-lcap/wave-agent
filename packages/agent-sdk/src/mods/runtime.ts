@@ -59,10 +59,12 @@ const SURFACE = "desktop";
 /**
  * 这一端上能画的站点：`ui.render` 的 `e.component`。
  *
- * 一期只有右侧面板一处，所以只有 `Pane`。CC 的表里还有 17 个（`AbovePrompt`、
- * `ToolUse`、`PromptHint`…），加站点时往这里加，别在别处另写一份。
+ * 一期两处：右侧面板（`Pane`）与输入框上方的带（`AbovePrompt`）—— 宿主两处都
+ * 会发 `ui.render`，漏一个就等于让那一处的 mod 在 `$.ui.resolve(e)` 上抛错。
+ * CC 的表里还有 15 个（`ToolUse`、`PromptHint`…），加站点时往这里加，别在别处
+ * 另写一份。
  */
-const RENDER_SITES: readonly string[] = ["Pane"];
+const RENDER_SITES: readonly string[] = ["Pane", "AbovePrompt"];
 
 /**
  * 冻结的元素表：每次 `$.ui.resolve(e)` 返回同一份，mod 改不到它。
@@ -143,7 +145,15 @@ export interface ModDollar {
     open(pane: { id: string; title: string }): void;
     close(id: string): void;
     panes(): string[];
-    invalidate(id: string): void;
+    /**
+     * 「我这个 mod 画的东西过期了」——参数是**渲染站点的生产者**，一期只有
+     * `"ui.render"`（spec「用户交互的结果」）。
+     *
+     * 不是面板 id：一次调用作用于该 mod 的**所有**站点，面板与输入框上方那条
+     * 带都重画。带平时只在 surface 挂载时拉一次，没有这条通道就只能永远停在
+     * 第一帧（Claude Code 的 `$.ui.invalidate("ui.render")` 是同一个形状）。
+     */
+    invalidate(target: string): void;
     /** 输入框下方那一行常驻状态（每个插件一条）；`null` 清除。 */
     status(text: string | null): void;
     /** 输入框下方的短暂提示；`timeoutMs` 默认 4000ms、最多 10 秒。 */
@@ -240,7 +250,7 @@ export interface ModRuntimeHost {
   openPane(paneId: string, title: string): void;
   closePane(paneId: string): void;
   listPanes(): string[];
-  invalidate(paneId: string): void;
+  invalidate(target: string): void;
   /** 输入框下方那一行常驻状态；`null` 清除（spec「状态带、状态行与提示」）。 */
   setStatus(text: string | null): void;
   /** 短暂提示；`timeoutMs` 由 runtime 夹进限额后交下来。 */
@@ -460,7 +470,14 @@ export class ModRuntime {
         open: (pane) => host.openPane(pane.id, pane.title),
         close: (id) => host.closePane(id),
         panes: () => [...host.listPanes()],
-        invalidate: (id) => host.invalidate(id),
+        invalidate: (target) => {
+          if (target !== "ui.render") {
+            throw new Error(
+              `$.ui.invalidate 只认 "ui.render"（一期只有这一个渲染站点生产者），拿到的是 ${JSON.stringify(target)}`,
+            );
+          }
+          host.invalidate(target);
+        },
         // 只推不拉：不产生树、不进上下文，宿主收到就画（spec「状态带、状态行
         // 与提示」）。
         status: (text) => host.setStatus(normalizeStatus(text)),

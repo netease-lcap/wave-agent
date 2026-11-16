@@ -5,6 +5,7 @@ import { DesktopApp } from "../../src/components/DesktopApp";
 import { createMockVscode, sendHostMessage } from "./test-utils";
 import { sessionUi } from "../../src/utils/sessionUiStore";
 import { fixtures } from "wave-webview-fixtures";
+import { MOD_BAND_INSTANCE_ID } from "wave-agent-sdk/types";
 import type { ModPanelTree } from "wave-agent-sdk/types";
 
 /**
@@ -245,6 +246,25 @@ describe("desktop mod band / status / toast", () => {
     expect(text).toContain("…");
     // 240 字符正文 + 插件署名。
     expect(text.length).toBeLessThanOrEqual(240 + "todo".length);
+  });
+
+  it("带自己的 stale（paneId 是 above-prompt）只重拉带，不开面板（场景 7）", () => {
+    // 只画带的 mod 没有面板可挂：这条通知是它唯一的重画通道，而且不该顺手在
+    // 右边开一个空 tab。
+    const { vscode } = renderDesktop();
+    const before = bandRequests(vscode).length;
+    sendHostMessage(
+      fixtures.desktopModPanelUpdate({
+        sessionId: "s1",
+        modId: "todo:band",
+        paneId: MOD_BAND_INSTANCE_ID,
+        title: "",
+        revision: 1,
+        stale: true,
+      }),
+    );
+    expect(bandRequests(vscode).length).toBe(before + 1);
+    expect(screen.queryByTestId("mod-panel")).not.toBeInTheDocument();
   });
 
   it("每次 stale 之后重拉带（带跟着 mod 的重画走）", () => {

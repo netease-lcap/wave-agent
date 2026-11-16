@@ -124,6 +124,49 @@ describe("desktop mod panel", () => {
     expect(screen.getByRole("button", { name: "B" })).toBeInTheDocument();
   });
 
+  it("Button 的 variant 与 Box 的 flex 三个 prop 落到样式上（场景 6）", () => {
+    renderDesktop();
+    const tree: ModPanelTree = {
+      type: "Box",
+      props: { flexDirection: "row", flexWrap: "wrap", flexGrow: 1 },
+      children: [
+        {
+          type: "Button",
+          props: { key: "a", label: "主", variant: "primary" },
+          children: [],
+        },
+        {
+          type: "Button",
+          props: { key: "b", label: "次", variant: "secondary" },
+          children: [],
+        },
+        { type: "Button", props: { key: "c", label: "素" }, children: [] },
+      ],
+    };
+    openPanel(tree);
+
+    const root = screen.getByTestId("mod-panel-root")
+      .firstElementChild as HTMLElement;
+    expect(root.style.flexWrap).toBe("wrap");
+    expect(root.style.flexGrow).toBe("1");
+
+    // 三档外观各一个类名：`primary` 用主题主操作色，`secondary` 与不写都是中性底。
+    expect(screen.getByRole("button", { name: "主" })).toHaveClass(
+      "mod-button",
+      "mod-button-primary",
+    );
+    expect(screen.getByRole("button", { name: "次" })).toHaveClass(
+      "mod-button",
+      "mod-button-secondary",
+    );
+    expect(screen.getByRole("button", { name: "素" })).toHaveClass(
+      "mod-button",
+    );
+    expect(screen.getByRole("button", { name: "素" })).not.toHaveClass(
+      "mod-button-primary",
+    );
+  });
+
   it("点 Button 回传 press，不带 value（场景 1）", () => {
     const { vscode } = renderDesktop();
     openPanel({

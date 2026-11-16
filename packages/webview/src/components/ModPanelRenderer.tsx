@@ -53,12 +53,22 @@ function boxStyle(props: Record<string, unknown>): React.CSSProperties {
   if (direction === "row" || direction === "column") {
     style.flexDirection = direction;
   }
+  // flex 子项默认 `flex-shrink: 1`：带里一排按钮会被压窄到折行。mod 要它别缩
+  // 就得显式给 `flexShrink: 0`（与 Claude Code 同名 props）。
+  if (typeof props.flexGrow === "number") style.flexGrow = props.flexGrow;
+  if (typeof props.flexShrink === "number") style.flexShrink = props.flexShrink;
+  if (props.flexWrap === "wrap" || props.flexWrap === "nowrap") {
+    style.flexWrap = props.flexWrap;
+  }
   const gap = space(props.gap);
   if (gap !== undefined) style.gap = gap;
   const columnGap = space(props.columnGap);
   if (columnGap !== undefined) style.columnGap = columnGap;
   const rowGap = space(props.rowGap);
   if (rowGap !== undefined) style.rowGap = rowGap;
+  // `padding` 是四边的简写（`paddingTop` 等后写，可以单独覆盖某一边）。
+  const padding = space(props.padding);
+  if (padding !== undefined) style.padding = padding;
   for (const side of ["Top", "Right", "Bottom", "Left"] as const) {
     const padding = space(props[`padding${side}`]);
     if (padding !== undefined) style[`padding${side}`] = padding;
@@ -206,10 +216,17 @@ function renderNode(
     case "Button": {
       const key = String(node.props.key ?? "");
       const disabled = node.props.disabled === true;
+      // `variant` 是纯外观：`primary` 用主题强调色，`secondary`/未给用中性底。
+      const variant = node.props.variant;
+      const className =
+        variant === "primary" || variant === "secondary"
+          ? `mod-button mod-button-${variant}`
+          : "mod-button";
       return (
         <button
           key={index}
           type="button"
+          className={className}
           data-mod-key={key}
           disabled={disabled}
           onClick={() => onEvent("press", key)}

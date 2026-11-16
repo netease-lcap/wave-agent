@@ -136,6 +136,13 @@ export class ModManager {
    * 只在这里留住**上一帧成功的树**用于失败兜底 —— 与面板同一条纪律，surface
    * 每次来要都重新跑 `ui.render`，宿主不缓存一份推给别人。
    */
+  /** modId → 那条带正在排队的 stale 通知（合并窗口内的重复 invalidate 丢掉）。 */
+  private readonly bandPending = new Map<
+    string,
+    ReturnType<typeof setTimeout>
+  >();
+  /** modId → 那条带上一次被标 stale 的时刻（只用于算合并窗口）。 */
+  private readonly bandLastRenderAt = new Map<string, number>();
   private readonly bands = new Map<
     string,
     { revision: number; tree: ModPanelTree | null }
@@ -268,7 +275,7 @@ export class ModManager {
               openPane: (paneId, title) => this.openPane(mod.id, paneId, title),
               closePane: (paneId) => this.closePane(mod.id, paneId),
               listPanes: () => this.listPanes(mod.id),
-              invalidate: (paneId) => this.invalidate(mod.id, paneId),
+              invalidate: () => this.invalidate(mod.id),
               setStatus: (text) => this.publishStatus(mod.id, text),
               showToast: (text, timeoutMs) =>
                 this.publishToast(mod.id, text, timeoutMs),
@@ -588,6 +595,10 @@ export class ModManager {
     if (modId === undefined) {
       for (const id of [...this.timers.keys()]) this.cancelAllTimers(id);
       this.timers.clear();
+      // 带上的 stale 通知也一起撤：会话销毁/插件重载后它指向的 mod 已经没了。
+      for (const timer of this.bandPending.values()) clearTimeout(timer);
+      this.bandPending.clear();
+      this.bandLastRenderAt.clear();
       return;
     }
     const set = this.timers.get(modId);
@@ -747,10 +758,19 @@ export class ModManager {
    * 循环里 invalidate，合并能避免把 stdio 打爆。这里**不渲染** —— 树由
    * surface 收到 stale 后自己来要（spec「架构约束」）。
    */
-  private invalidate(modId: string, paneId: string): void {
-    const key = `${modId}\u0000${paneId}`;
-    const pane = this.panes.get(key);
-    if (!pane) return;
+  private invalidate(modId: string): void {
+    const loaded = this.mods.get(modId);
+    if (this.disposed || !loaded || loaded.error || !loaded.runtime) return;
+    // 没注册 `ui.render` 的 mod 什么都画不出来，一次 stale 也是空转。
+    if (!loaded.runtime.hookNames().includes("ui.render")) return;
+    for (const pane of [...this.panes.values()]) {
+      if (pane.modId === modId) this.schedulePaneStale(pane);
+    }
+    this.scheduleBandStale(modId);
+  }
+
+  /** 一个面板的合并窗口：`invalidateIntervalMs` 内的多次调用只发一条。 */
+  private schedulePaneStale(pane: PaneState): void {
     if (pane.pending) return;
     const wait = Math.max(
       0,
@@ -761,6 +781,37 @@ export class ModManager {
       this.publishUpdate(pane, { stale: true });
     }, wait);
     pane.pending.unref?.();
+  }
+
+  /**
+   * 输入框上方那条带的 stale 通知（spec「用户交互的结果」）。
+   *
+   * 带不是 panel，没有 `PaneState` 可挂：这里直接发一条元信息，`paneId` 用固定
+   * 的 `above-prompt`。surface 收到后只重拉带、不建 tab —— 这是只画带的 mod
+   * 唯一的重画通道（否则它永远停在挂载时那一帧）。
+   */
+  private scheduleBandStale(modId: string): void {
+    if (this.bandPending.has(modId)) return;
+    const lastRenderAt = this.bandLastRenderAt.get(modId) ?? 0;
+    const wait = Math.max(
+      0,
+      MOD_LIMITS.invalidateIntervalMs - (Date.now() - lastRenderAt),
+    );
+    const timer = setTimeout(() => {
+      this.bandPending.delete(modId);
+      if (this.disposed) return;
+      this.bandLastRenderAt.set(modId, Date.now());
+      this.options.onPanelUpdate({
+        sessionId: this.options.sessionId,
+        modId,
+        paneId: MOD_BAND_INSTANCE_ID,
+        title: "",
+        revision: this.bands.get(modId)?.revision ?? 0,
+        stale: true,
+      });
+    }, wait);
+    timer.unref?.();
+    this.bandPending.set(modId, timer);
   }
 
   /**

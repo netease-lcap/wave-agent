@@ -1755,6 +1755,12 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         const payload = (message as { payload?: ModPanelUpdatePayload })
           .payload;
         if (!payload?.modId || !payload.paneId) break;
+        // 带不是 pane：`paneId === above-prompt` 时只重拉带，不建 tab、不抢面板。
+        // 这是只画带的 mod 唯一的重画通道（spec「用户交互的结果」）。
+        if (payload.paneId === MOD_BAND_INSTANCE_ID) {
+          if (payload.stale) postModBandRender();
+          break;
+        }
         const tabId = `mod:${payload.modId}:${payload.paneId}`;
         const existed = tabsRef.current.some((t) => t.id === tabId);
         setTabs((prev) => {
@@ -1792,8 +1798,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
             payload: { modId: payload.modId, paneId: payload.paneId },
           });
           // 带也跟着这一次 stale 重拉（spec「状态带、状态行与提示」：surface 每次
-          // `stale` 之后对每个注册了 `ui.render` 的 mod 拉一次）。invalidate 是按
-          // pane 发的，所以这里只拿它当「mod 的画变了」的信号。
+          // 拿到「这个 mod 的画变了」都对每个注册了 `ui.render` 的 mod 拉一次）。
           postModBandRender();
         }
         if (!existed && !payload.closed && !payload.stale) {
@@ -5342,7 +5347,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
       // 表示这一帧还在路上（surface 刚发过请求），别把它画成「没有返回内容」。
       return (
         <div
-          className="mod-panel"
+          className="mod-panel mod-surface"
           style={{ width: common.width }}
           data-testid="mod-panel"
         >

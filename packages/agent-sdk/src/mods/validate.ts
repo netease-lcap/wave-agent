@@ -17,6 +17,50 @@ import { isAllowedUrl } from "./url.js";
 
 const ELEMENT_TYPES = new Set<string>(MOD_ELEMENT_TYPES);
 
+/**
+ * 每个元素认的 prop 名（spec「元素（一期）」那张表）。
+ *
+ * 是白名单，不是「认得的挑出来、别的不出声」：拼错一个 prop（`label2`、或者照
+ * 别的框架习惯写 `className` / `style`）静默丢弃时，作者只看到效果没出现、却
+ * 拿不到任何反馈。Claude Code 的元素校验同样按名字挑（它连 `variant` 的取值
+ * 都会挑出来），这里的错误文案点名元素、prop 和该元素的可用名单。
+ *
+ * `onPress` / `onSubmit` 不列：它们在沙箱的 `h()` 里就被摘进处理函数表了，
+ * 根本到不了树上（见 `ModPropValue`）。
+ */
+const ELEMENT_PROPS: Record<ModElementType, ReadonlySet<string>> = {
+  Box: new Set([
+    "flexDirection",
+    "flexWrap",
+    "flexGrow",
+    "flexShrink",
+    "gap",
+    "padding",
+    "columnGap",
+    "rowGap",
+    "paddingTop",
+    "paddingRight",
+    "paddingBottom",
+    "paddingLeft",
+    "marginTop",
+    "marginRight",
+    "marginBottom",
+    "marginLeft",
+    "width",
+    "height",
+    "borderStyle",
+    "alignItems",
+    "justifyContent",
+    "overflow",
+  ]),
+  Text: new Set(["color", "bold", "italic", "dimColor", "underline", "wrap"]),
+  Button: new Set(["key", "label", "disabled", "variant"]),
+  Input: new Set(["key", "label", "placeholder", "value", "submitLabel"]),
+  Link: new Set(["href", "label"]),
+  Code: new Set(["source", "language", "path", "startLine"]),
+  Markdown: new Set(["text"]),
+};
+
 export type ModTreeValidation =
   | { ok: true; tree: ModTreeNode }
   | { ok: false; error: string };
@@ -79,6 +123,21 @@ function walkNode(
       value !== null
     ) {
       throw new Error(`${type} 的 prop「${name}」不是可序列化的原始值`);
+    }
+  }
+  const allowed = ELEMENT_PROPS[type as ModElementType];
+  for (const name of Object.keys(props)) {
+    // `key` 每个元素都能带：列表里的稳定标识（`<Box key={...}>` 是自然写法，
+    // Claude Code 也保留 Box 的 key）。渲染器不读它。
+    if (name !== "key" && !allowed.has(name)) {
+      throw new Error(
+        `${type} 上没有 prop「${name}」（可用：${[...allowed].join("、")}）`,
+      );
+    }
+  }
+  if (type === "Button" && props.variant !== undefined) {
+    if (props.variant !== "primary" && props.variant !== "secondary") {
+      throw new Error(`Button.variant 只允许 "primary" 或 "secondary"`);
     }
   }
   if (type === "Link") {
