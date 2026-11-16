@@ -404,10 +404,13 @@ describe("ModRuntime 的隔离", () => {
 
   it("未知钩子名被拒绝而不是静默登记", async () => {
     // 钩子名单是白名单（spec「事件」）：Claude Code 有、我们没有的事件名不该
-    // 悄悄生效，否则插件作者会以为那条路径通了。
+    // 悄悄生效，否则插件作者会以为那条路径通了。`classic.` 只镜像「影子事件」
+    // 那张表里的 15 个，其余（`classic.PreToolUse`、`classic.Setup`…）照旧拒。
     const { mod } = runtime(`
       exports.register = function ($, on) {
         on("ui.destroy", function () {});
+        on("classic.PreToolUse", function () {});
+        on("classic.Setup", function () {});
         on("session.start", function () { return "ok"; });
       };
     `);
@@ -439,6 +442,72 @@ describe("ModRuntime 的隔离", () => {
     await expect(
       mod.callHook("tool.call", { tool: "Bash", input: { command: "ls" } }),
     ).resolves.toMatchObject({ ok: true, value: "Bash" });
+  });
+
+  it("影子事件的 15 个 classic.* 镜像都能注册，载荷原样交给 handler", async () => {
+    // spec「影子事件」：全是只读镜像，返回值由宿主丢弃（这里只看名字收下了、
+    // 载荷没被改写）。
+    const names = [
+      "classic.SessionStart",
+      "classic.SessionEnd",
+      "classic.Stop",
+      "classic.StopFailure",
+      "classic.UserPromptSubmit",
+      "classic.Notification",
+      "classic.InstructionsLoaded",
+      "classic.PostModelSwitch",
+      "classic.SubagentStart",
+      "classic.SubagentStop",
+      "classic.PostToolUse",
+      "classic.PostToolUseFailure",
+      "classic.PostToolBatch",
+      "classic.CwdChanged",
+    ];
+    const { mod } = runtime(`
+      exports.register = function ($, on) {
+        ${names
+          .map(
+            (name) =>
+              `on(${JSON.stringify(name)}, function (e) { return e.hook_event_name || "?"; });`,
+          )
+          .join("\n        ")}
+      };
+    `);
+
+    await mod.load();
+    expect(mod.hookNames()).toEqual(names);
+    await expect(
+      mod.callHook("classic.SessionStart", { hook_event_name: "SessionStart" }),
+    ).resolves.toMatchObject({ ok: true, value: "SessionStart" });
+    await expect(
+      mod.callHook("classic.StopFailure", { hook_event_name: "StopFailure" }),
+    ).resolves.toMatchObject({ ok: true, value: "StopFailure" });
+  });
+
+  it("影子事件里只有 PostToolUse 族吃 matcher（按 tool_name 分流）", async () => {
+    // Claude Code 的 matcher 键表对这三个事件列的就是 `tool_name`；其余影子事
+    // 件带 matcher 一律拒收，免得插件作者以为能按 `source` / `reason` 分流。
+    const { mod } = runtime(`
+      exports.register = function ($, on) {
+        on("classic.PostToolUse", { tool_name: ["Write", "Edit"] }, function (e) {
+          return "saw:" + e.tool_name;
+        });
+        on("classic.Stop", { source: "startup" }, function () {
+          return "stop";
+        });
+      };
+    `);
+
+    await mod.load();
+    expect(mod.hookNames()).toEqual(["classic.PostToolUse"]);
+    const matched = await mod.callHook("classic.PostToolUse", {
+      tool_name: "Edit",
+    });
+    expect(matched).toMatchObject({ ok: true, value: "saw:Edit" });
+    const other = await mod.callHook("classic.PostToolUse", {
+      tool_name: "Bash",
+    });
+    expect(other).toMatchObject({ ok: true, value: undefined });
   });
 });
 

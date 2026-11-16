@@ -5,6 +5,7 @@ import {
 } from "../telemetry/failureEvents.js";
 import type { StandardAttributeContext } from "../telemetry/attributes.js";
 import type { ModManager } from "./modManager.js";
+import { MOD_LIMITS } from "../types/mods.js";
 import { validateToolInput } from "../tools/inputValidation.js";
 import { bashTool } from "../tools/bashTool.js";
 import { taskStopTool } from "../tools/taskStopTool.js";
@@ -172,6 +173,17 @@ function recordBashActivity(
  * `error` and a `tool_error` for the same failure.
  */
 const crashReported = new WeakSet<object>();
+
+/**
+ * `classic.PostToolUse` 的 `tool_response`：按 `$.ui.log` 的同一份字符限额截断
+ * （超出加省略号）。这是**刻意偏离** Claude Code 的地方 —— 它的 PostToolUse 给
+ * 全文，但一个 Bash 的输出动辄几十 KB，乘上每个插件的钩子就不该再给全文。
+ */
+function truncateForModEvent(text: string): string {
+  return text.length > MOD_LIMITS.statusChars
+    ? `${text.slice(0, MOD_LIMITS.statusChars)}…`
+    : text;
+}
 
 /**
  * Tool Manager
@@ -437,6 +449,10 @@ class ToolManager {
       recordContextOf(context, this.container),
       () => this.executeTool(name, args, context),
     );
+    // 影子事件 `classic.PostToolUse` / `classic.PostToolUseFailure`（spec「影子
+    // 事件」）：一次调用返回之后。放在这个壳里而不是内置工具那条路上 —— MCP 工
+    // 具走的是另一个漏斗，社区插件不该因为工具来源不同而收不到。
+    this.notifyModToolOutcome(name, args, result);
     // A failure the tool *reported* (`success: false`) is ordinary operation:
     // wrong arguments, a rejected permission, a command that exited non-zero.
     // It goes out as WARN `tool_error`, never as `error` (spec:
@@ -458,8 +474,38 @@ class ToolManager {
   }
 
   /**
-   * Telemetry attribution for a failure in this tool call.
+   * 影子事件 `classic.PostToolUse` / `classic.PostToolUseFailure`（spec「影子
+   * 事件」）：一次工具调用**返回之后**报一次，成功算前者、失败或被拒算后者。
    *
+   * 只读、不阻塞：返回值忽略，`tool_response` 按 `$.ui.log` 的同一份字符限额
+   * 截断（一个 Bash 的完整输出不该整份塞进每个插件的钩子里）。
+   */
+  private notifyModToolOutcome(
+    name: string,
+    args: Record<string, unknown>,
+    result: ToolResult,
+  ): void {
+    const modManager = this.container.has("ModManager")
+      ? this.container.get<ModManager>("ModManager")
+      : undefined;
+    if (!modManager) return;
+    // `permission_mode` 不在这里给：公共字段由 `ModManager.notifyMods` 统一补。
+    const base = { tool_name: name, tool_input: args };
+    if (result.success) {
+      modManager.notifyMods("classic.PostToolUse", {
+        ...base,
+        tool_response: truncateForModEvent(result.content ?? ""),
+      });
+      return;
+    }
+    modManager.notifyMods("classic.PostToolUseFailure", {
+      ...base,
+      error: result.error ?? result.content ?? "",
+    });
+  }
+
+  /**
+   * Telemetry attribution for a failure in this tool call.
    * The session id comes from the call context, not the container: a nested
    * agent or the Exec sandbox runs a tool under its own session, and the event
    * has to point at whichever session actually made the call.

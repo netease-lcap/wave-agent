@@ -4,6 +4,7 @@ import { dirname, join } from "path";
 import { Agent } from "../../src/agent.js";
 import { MemoryRuleManager } from "../../src/managers/MemoryRuleManager.js";
 import { MemoryService } from "../../src/services/memory.js";
+import { ModManager } from "../../src/managers/modManager.js";
 import { pathEncoder } from "../../src/utils/pathEncoder.js";
 
 vi.mock("@/services/aiService", () => ({
@@ -136,6 +137,27 @@ describe("Agent.restoreSession - target workdir", () => {
     expect(load).toHaveBeenCalledWith(targetSessionId, currentWorkdir);
     expect(agent.currentWorkdir).toBe(currentWorkdir);
 
+    await agent.destroy();
+  });
+
+  it("恢复会话时发影子事件 classic.SessionStart(resume)", async () => {
+    // spec「影子事件」：恢复一场旧会话也是「开局」的一种。装配在这里钉，是因为
+    // 它和「从哪个目录恢复」是同一段流程。
+    const notifyMods = vi.spyOn(ModManager.prototype, "notifyMods");
+    const agent = await createAgent();
+    const targetSessionId = randomUUID();
+    await mockTarget(targetSessionId, currentWorkdir);
+    notifyMods.mockClear();
+
+    await agent.restoreSession(targetSessionId);
+
+    expect(
+      notifyMods.mock.calls
+        .filter((call) => call[0] === "classic.SessionStart")
+        .map((call) => call[1]),
+    ).toEqual([{ source: "resume" }]);
+
+    notifyMods.mockRestore();
     await agent.destroy();
   });
 

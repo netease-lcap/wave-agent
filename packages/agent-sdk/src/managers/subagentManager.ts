@@ -676,6 +676,14 @@ export class SubagentManager {
 
       this.instances.set(subagentId, instance);
 
+      // 影子事件 `classic.SubagentStart`（spec「影子事件」）：实例建好就报。只
+      // 读，返回值（CC 的 `additionalContext`）不收 —— 那会改子代理的上下文。
+      this.notifyMods("classic.SubagentStart", {
+        agent_id: subagentId,
+        agent_type: parameters.subagent_type,
+        description: parameters.description,
+      });
+
       return instance;
     } catch (error) {
       // Roll back a worktree we created if the instance could not be built.
@@ -1360,7 +1368,42 @@ export class SubagentManager {
       instance.logStream.destroy();
     }
     instance.logStream = undefined;
+    // 影子事件 `classic.SubagentStop`（spec「影子事件」）：所有结束路径（完成、
+    // 出错、中止、用户停掉）最后都走这里，所以只报一次。`status` 是实例自己记
+    // 下的终态。
+    this.notifyMods("classic.SubagentStop", {
+      agent_id: instance.subagentId,
+      agent_type: instance.subagentType,
+      description: instance.description,
+      status:
+        instance.status === "completed"
+          ? "ok"
+          : instance.status === "error"
+            ? "error"
+            : instance.status === "aborted"
+              ? "aborted"
+              : undefined,
+    });
     this.instances.delete(subagentId);
+  }
+
+  /**
+   * 派发一条只读的影子事件给 mods（spec「影子事件」）。子代理自己的容器里没有
+   * ModManager —— mod 只关心主会话看到的这层，所以走父容器的那个。
+   */
+  private notifyMods(
+    event: "classic.SubagentStart" | "classic.SubagentStop",
+    payload: {
+      agent_id: string;
+      agent_type: string;
+      description: string;
+      status?: "ok" | "error" | "aborted";
+    },
+  ): void {
+    if (!this.container.has("ModManager")) return;
+    this.container
+      .get<import("./modManager.js").ModManager>("ModManager")
+      ?.notifyMods(event, payload);
   }
 
   /**

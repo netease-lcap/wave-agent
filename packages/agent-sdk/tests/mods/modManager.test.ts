@@ -1630,6 +1630,83 @@ exports.register = function ($, on) {
     await manager.dispose();
   });
 
+  it("影子事件的公共五字段由 ModManager 补齐，hook_event_name 不带前缀", async () => {
+    // spec「影子事件」：载荷是 CC 的 hook stdin 形状，`session_id` /
+    // `transcript_path` / `cwd` / `permission_mode` / `hook_event_name` 每条都带
+    // —— 调用点只写自己那几个字段（`source` / `model` / `previous_cwd`）。
+    // `permission_mode` 是**每条** classic 事件都有的（CC 的 base hook input 就
+    // 这么铺），社区守卫靠它判断「有没有人会被问到」。
+    const shadowMod = `
+exports.register = function ($, on) {
+  on("classic.SessionStart", function (e) {
+    $.ui.status([e.session_id, e.hook_event_name, e.source, e.cwd, e.transcript_path, e.permission_mode].join("|"));
+  });
+  on("classic.PostModelSwitch", function (e) {
+    $.ui.status([e.hook_event_name, e.model, String(e.cache_ttl)].join("|"));
+  });
+  on("classic.CwdChanged", function (e) {
+    $.ui.status([e.hook_event_name, e.cwd, e.previous_cwd].join("|"));
+  });
+};
+`;
+    const { manager, statuses } = createManager(
+      { [MOD_PATH]: shadowMod },
+      {
+        workdir: () => ROOT,
+        sessionFacts: {
+          sessionId: () => "s-live",
+          workspaceRoot: () => ROOT,
+          model: () => "",
+          surfaces: () => ["desktop"] as const,
+          env: () => undefined,
+          settings: async () => ({}),
+          turns: () => 0,
+          repo: () => null,
+          version: () => ({ version: "" }),
+          configRows: () => [],
+          toolInfos: () => [],
+          agentInfos: () => [],
+          // 会话 id 取「现取的」那个：`/clear` 之后它变了，镜像不该报旧值。
+          transcriptPath: () => path.join(ROOT, "session.jsonl"),
+          permissionMode: () => "acceptEdits",
+        },
+      },
+    );
+    await manager.loadFromPlugins([
+      plugin([{ id: "todo:panel", path: MOD_PATH }]),
+    ]);
+    await manager.startSession();
+
+    manager.notifyMods("classic.SessionStart", { source: "startup" });
+    await vi.waitFor(() =>
+      expect(statuses.at(-1)?.text).toBe(
+        `s-live|SessionStart|startup|${ROOT}|${path.join(ROOT, "session.jsonl")}|acceptEdits`,
+      ),
+    );
+
+    // `cache_ttl` 恒 `null`：我们不做提示词缓存的 TTL 记账。
+    manager.notifyMods("classic.PostModelSwitch", {
+      model: "wave-pro",
+      cache_ttl: null,
+    });
+    await vi.waitFor(() =>
+      expect(statuses.at(-1)?.text).toBe("PostModelSwitch|wave-pro|null"),
+    );
+
+    // 调用点显式给的字段优先于补齐的那份（`cwd` 就是新的那个）。
+    manager.notifyMods("classic.CwdChanged", {
+      cwd: path.resolve("/fake/after"),
+      previous_cwd: path.resolve("/fake/before"),
+    });
+    await vi.waitFor(() =>
+      expect(statuses.at(-1)?.text).toBe(
+        `CwdChanged|${path.resolve("/fake/after")}|${path.resolve("/fake/before")}`,
+      ),
+    );
+
+    await manager.dispose();
+  });
+
   it("turn.complete.usage 带上 Claude Code 的别名（input_tokens 不含缓存）", async () => {
     const aliasMod = `
 exports.register = function ($, on) {
@@ -2163,6 +2240,8 @@ exports.register = function ($, on) {
           configRows: () => [],
           toolInfos: () => [],
           agentInfos: () => [],
+          transcriptPath: () => "",
+          permissionMode: () => "default",
         },
       },
     );
@@ -2253,6 +2332,8 @@ exports.register = function ($, on) {
               status: "running",
             },
           ],
+          transcriptPath: () => "",
+          permissionMode: () => "default",
         },
       },
     );
@@ -2930,6 +3011,143 @@ exports.register = function (on) {
   it("没人能答（宿主 reject）时守卫按「没人能确认」处理", async () => {
     const { manager } = await buildAsk(new Error("没有界面"));
     expect(await manager.dispatchToolCall(event)).toBe("没人能确认");
+    await manager.dispose();
+  });
+});
+
+describe("ModManager 的 classic.Stop 返回值", () => {
+  /** 收到 `classic.Stop` 记一行状态（观察 `e` 的形状），再按 body 返回。 */
+  const stopMod = (body: string) => `
+exports.register = function ($, on) {
+  on("classic.Stop", function (e) {
+    $.ui.status([e.hook_event_name, String(e.stop_hook_active), e.permission_mode, e.background_tasks.length].join("|"));
+    ${body}
+  });
+};
+`;
+
+  it("按加载顺序拍平 additionalContext，公共五字段与 stop_hook_active 原样", async () => {
+    // spec「一轮收尾时的非错误反馈」：插件要说的话按加载顺序拍平，空串丢掉；
+    // `e` 仍是影子事件的形状（`stop_hook_active` 由调用方给）。
+    const first = path.join(ROOT, "mods", "first.tsx");
+    const second = path.join(ROOT, "mods", "second.tsx");
+    const { manager, statuses } = createManager({
+      [first]: stopMod(
+        `return { additionalContext: [" 先跑测试 ", "", "再看 diff"] };`,
+      ),
+      [second]: stopMod(`return { additionalContext: ["第二个插件"] };`),
+    });
+    await manager.loadFromPlugins([
+      plugin([
+        { id: "todo:first", path: first },
+        { id: "todo:second", path: second },
+      ]),
+    ]);
+    await manager.startSession();
+
+    await expect(
+      manager.collectStopContext({
+        background_tasks: [],
+        stop_hook_active: true,
+      }),
+    ).resolves.toEqual(["先跑测试", "再看 diff", "第二个插件"]);
+    await vi.waitFor(() =>
+      expect(statuses.at(-1)?.text).toBe("Stop|true|default|0"),
+    );
+
+    await manager.dispose();
+  });
+
+  it("decision / preventContinuation 不支持：忽略并记一条 warn", async () => {
+    const { manager } = createManager({
+      [MOD_PATH]: stopMod(
+        `return { decision: "block", reason: "还没完", additionalContext: ["照收"] };`,
+      ),
+    });
+    await manager.loadFromPlugins([
+      plugin([{ id: "todo:panel", path: MOD_PATH }]),
+    ]);
+    await manager.startSession();
+
+    await expect(
+      manager.collectStopContext({
+        background_tasks: [],
+        stop_hook_active: false,
+      }),
+    ).resolves.toEqual(["照收"]);
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.stringContaining("只支持 { additionalContext }"),
+    );
+
+    await manager.dispose();
+  });
+
+  it("非字符串数组的 additionalContext 被丢掉并记一条 warn", async () => {
+    const { manager } = createManager({
+      [MOD_PATH]: stopMod(`return { additionalContext: [1, 2] };`),
+    });
+    await manager.loadFromPlugins([
+      plugin([{ id: "todo:panel", path: MOD_PATH }]),
+    ]);
+    await manager.startSession();
+
+    await expect(
+      manager.collectStopContext({
+        background_tasks: [],
+        stop_hook_active: false,
+      }),
+    ).resolves.toEqual([]);
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.stringContaining("additionalContext 必须是字符串数组"),
+    );
+
+    await manager.dispose();
+  });
+
+  it("一个 mod 抛错只影响自己：另一个 mod 的反馈照收", async () => {
+    const boom = path.join(ROOT, "mods", "boom.tsx");
+    const ok = path.join(ROOT, "mods", "ok.tsx");
+    const { manager } = createManager({
+      [boom]: `
+exports.register = function ($, on) {
+  on("classic.Stop", function () { throw new Error("boom"); });
+};
+`,
+      [ok]: stopMod(`return { additionalContext: ["还好我没事"] };`),
+    });
+    await manager.loadFromPlugins([
+      plugin([
+        { id: "todo:boom", path: boom },
+        { id: "todo:ok", path: ok },
+      ]),
+    ]);
+    await manager.startSession();
+
+    await expect(
+      manager.collectStopContext({
+        background_tasks: [],
+        stop_hook_active: false,
+      }),
+    ).resolves.toEqual(["还好我没事"]);
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.stringContaining("todo:boom 的 classic.Stop 失败"),
+    );
+
+    await manager.dispose();
+  });
+
+  it("没有 mod 注册这条事件时返回空数组（没人说话就照常收尾）", async () => {
+    const { manager } = createManager();
+    await manager.loadFromPlugins([{ name: "plain", path: ROOT } as Plugin]);
+    await manager.startSession();
+
+    await expect(
+      manager.collectStopContext({
+        background_tasks: [],
+        stop_hook_active: false,
+      }),
+    ).resolves.toEqual([]);
+
     await manager.dispose();
   });
 });

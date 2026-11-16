@@ -162,8 +162,17 @@ function buildHarness(
   const notifyMods = vi.fn((event: string) => {
     events.push(`mods:${event}`);
   });
+  // `classic.Stop` 走的是要等返回值的 `collectStopContext`（spec「一轮收尾时的
+  // 非错误反馈」）：默认「没人说话」，这一轮照常收尾。
+  const collectStopContext = vi.fn(async () => {
+    events.push("mods:classic.Stop");
+    return [] as string[];
+  });
   if (withMods) {
-    container.register("ModManager", { notifyMods } as unknown as ModManager);
+    container.register("ModManager", {
+      notifyMods,
+      collectStopContext,
+    } as unknown as ModManager);
   }
   container.register("AgentOptions", {
     callbacks: {
@@ -176,7 +185,14 @@ function buildHarness(
     stream: false,
     subagentType,
   });
-  return { aiManager, messageQueue, messageManager, notifyMods, events };
+  return {
+    aiManager,
+    messageQueue,
+    messageManager,
+    notifyMods,
+    collectStopContext,
+    events,
+  };
 }
 
 /**
@@ -218,6 +234,9 @@ describe("AIManager 的 turn.complete", () => {
       "mods:turn.start",
       "mods:turn.step",
       "mods:session.measure",
+      // `classic.Stop` 要拿返回值才知道这一轮算不算收尾，所以它在释放 loading
+      // 之前、`turn.complete` 之前发（spec「一轮收尾时的非错误反馈」）。
+      "mods:classic.Stop",
       "loading:false",
       "mods:turn.complete",
     ]);
@@ -250,6 +269,39 @@ describe("AIManager 的 turn.complete", () => {
       answer: "",
       usage: { prompt: 0, completion: 0, cacheRead: 0, cacheCreation: 0 },
     });
+  });
+
+  it("影子事件 classic.Stop：答完/中断都发，在 turn.complete 之前", async () => {
+    // spec「影子事件」：`classic.Stop` 是「这一轮可能要收尾了」的镜像，因为插件
+    // 可以返回 `additionalContext` 要求续跑，宿主必须先拿到返回值才知道这一轮算
+    // 不算真的结束 —— 所以它在 `turn.complete` **之前**发；`background_tasks` 是
+    // 还在跑的后台任务（没有时 `[]`）。
+    const { aiManager, collectStopContext, notifyMods } = buildHarness();
+    vi.mocked(callAgent).mockResolvedValue(REPLY);
+
+    await aiManager.sendAIMessage();
+
+    expect(collectStopContext).toHaveBeenCalledWith({
+      background_tasks: [],
+      stop_hook_active: false,
+    });
+    expect(modCalls(notifyMods, "classic.Stop")).toEqual([]);
+    expect(modCalls(notifyMods, "classic.StopFailure")).toEqual([]);
+    expect(modCalls(notifyMods, "turn.complete")).toHaveLength(1);
+  });
+
+  it("影子事件 classic.StopFailure：因错误结束的一轮只发它，kind 取错误分类", async () => {
+    const { aiManager, notifyMods } = buildHarness();
+    vi.mocked(callAgent).mockRejectedValue(
+      Object.assign(new Error("rate limited"), { status: 429 }),
+    );
+
+    await aiManager.sendAIMessage();
+
+    expect(modCalls(notifyMods, "classic.Stop")).toEqual([]);
+    expect(modCalls(notifyMods, "classic.StopFailure")).toEqual([
+      { error: { kind: "rate_limit", message: "rate limited" } },
+    ]);
   });
 
   it("注入通知把循环重开一次时仍算同一轮，只派发一次", async () => {
@@ -389,5 +441,70 @@ describe("AIManager 的 session.measure", () => {
     await aiManager.sendAIMessage();
 
     expect(modCalls(notifyMods, "session.measure")).toEqual([]);
+  });
+});
+
+describe("AIManager 的 classic.Stop 续跑", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("插件返回 additionalContext：注入一条 meta 消息并再跑一轮", async () => {
+    const {
+      aiManager,
+      messageManager,
+      notifyMods,
+      collectStopContext,
+      events,
+    } = buildHarness();
+    vi.mocked(callAgent).mockResolvedValue(REPLY);
+    collectStopContext.mockResolvedValueOnce(["改动里还有一处没跑测试"]);
+
+    await aiManager.sendAIMessage();
+
+    // 两次请求 = 第一次答完 + 插件要求续跑的那一轮。
+    expect(vi.mocked(callAgent)).toHaveBeenCalledTimes(2);
+    expect(messageManager.addUserMessage).toHaveBeenCalledWith({
+      content: expect.stringContaining("改动里还有一处没跑测试"),
+      isMeta: true,
+    });
+    // 续跑那一轮里 `stop_hook_active` 是 true（插件据此收手）。
+    expect(
+      collectStopContext.mock.calls.map((call) => (call as unknown[])[0]),
+    ).toEqual([
+      { background_tasks: [], stop_hook_active: false },
+      { background_tasks: [], stop_hook_active: true },
+    ]);
+    // 续跑不新开一轮：`turn.complete` 仍然只报一次，且在真正收尾之后。
+    expect(modCalls(notifyMods, "turn.complete")).toHaveLength(1);
+    expect(events.slice(-2)).toEqual(["loading:false", "mods:turn.complete"]);
+  });
+
+  it("续跑到上限就不再续，第 9 次的反馈被丢弃", async () => {
+    const { aiManager, notifyMods, collectStopContext } = buildHarness();
+    vi.mocked(callAgent).mockResolvedValue(REPLY);
+    // 无条件要求继续：只有上限能停住它。
+    collectStopContext.mockResolvedValue(["还没完"]);
+
+    await aiManager.sendAIMessage();
+
+    // 1 次模型请求 + 8 次续跑 = 9 次；第 9 次收尾时已达上限，反馈丢弃。
+    expect(collectStopContext).toHaveBeenCalledTimes(9);
+    expect(vi.mocked(callAgent)).toHaveBeenCalledTimes(9);
+    expect(modCalls(notifyMods, "turn.complete")).toHaveLength(1);
+  });
+
+  it("收尾时队列里已有用户消息：不续跑，那条消息下一轮先跑", async () => {
+    const { aiManager, messageQueue, notifyMods, collectStopContext } =
+      buildHarness();
+    vi.mocked(callAgent).mockResolvedValue(REPLY);
+    collectStopContext.mockResolvedValue(["还没完"]);
+    messageQueue.enqueue({ content: "下一个问题", type: "message" });
+
+    await aiManager.sendAIMessage();
+
+    expect(vi.mocked(callAgent)).toHaveBeenCalledTimes(1);
+    expect(modCalls(notifyMods, "turn.complete")).toHaveLength(1);
+    expect(messageQueue.getQueue()).toHaveLength(1);
   });
 });

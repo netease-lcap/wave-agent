@@ -37,6 +37,10 @@ import {
   type ModSessionVersion,
   type ModSettingsSource,
   type ModStatusPayload,
+  type ModClassicEvent,
+  type ModClassicStopEvent,
+  type ModClassicTrigger,
+  type ModStopHookResult,
   type ModToastPayload,
   type ModTokenTotals,
   type ModToolCallEvent,
@@ -62,6 +66,29 @@ import { logger } from "../utils/globalLogger.js";
  * 没有渲染器，放进来会让 `ui.render` 说「这棵树有人画」、实际一个像素都不出。
  */
 type DrawnSurface = Extract<ModRenderSurface, "terminal" | "desktop">;
+
+/**
+ * 能派发的 `classic.*` 名字（spec「影子事件：`classic.*`」）。
+ *
+ * 列在这里而不是从 `HOOK_NAMES` 里筛：两边的用途不同 —— 那张表是「mod 允许注册
+ * 什么」，这里是「宿主会派什么」，改一处不该顺带改另一处。
+ */
+type ClassicEventName =
+  | "classic.PermissionRequest"
+  | "classic.SessionStart"
+  | "classic.SessionEnd"
+  | "classic.Stop"
+  | "classic.StopFailure"
+  | "classic.UserPromptSubmit"
+  | "classic.Notification"
+  | "classic.InstructionsLoaded"
+  | "classic.PostModelSwitch"
+  | "classic.SubagentStart"
+  | "classic.SubagentStop"
+  | "classic.PostToolUse"
+  | "classic.PostToolUseFailure"
+  | "classic.PostToolBatch"
+  | "classic.CwdChanged";
 
 /**
  * 插件 MODS 的宿主侧编排：加载 → 编译 → 沙箱实例 → 事件 → 面板快照。
@@ -120,6 +147,17 @@ export interface ModSessionFacts {
   toolInfos(): ModToolInfo[];
   /** `$.agent.list()`：这条会话派过、还没被丢掉的子代理。 */
   agentInfos(): ModAgentInfo[];
+  /**
+   * 当前会话的转录文件路径（`classic.*` 镜像的 `transcript_path`）。
+   *
+   * 与 settings 钩子收到的同一个值：社区插件拿它去读/扫自己的转录副本。
+   */
+  transcriptPath(): string;
+  /**
+   * 这一刻生效的权限模式（`classic.UserPromptSubmit` / `classic.PostToolUse`
+   * 的 `permission_mode`）。与 `PermissionMode` 的取值同一套。
+   */
+  permissionMode(): string;
 }
 
 export interface ModManagerOptions {
@@ -495,6 +533,9 @@ export class ModManager {
       configRows: () => [],
       toolInfos: () => [],
       agentInfos: () => [],
+      // 影子的公共字段：没数据源时给空串，不编一个路径出来。
+      transcriptPath: () => "",
+      permissionMode: () => "default",
     };
     // cwd 现取现用：`cd` 之后起的脚本落在新目录。
     this.processes = new ModProcessManager(
@@ -744,15 +785,16 @@ export class ModManager {
 
   /**
    * 派发一次只读事件（`turn.start` / `turn.step` / `turn.complete` /
-   * `session.compact` / `classic.PermissionRequest`，spec「事件」「轮次内外的
-   * 事件」「完成与审批的观察」）。
+   * `session.compact`、以及全部 `classic.*` 镜像，spec「事件」「轮次内外的
+   * 事件」「完成与审批的观察」「影子事件」）。
    *
    * 不等 mod、也不返回 Promise：这些时刻都压在宿主的关键路径上（轮次起收尾、
    * 每次请求之前、工具刚跑完、审批卡片即将弹出），mod 在里面做网络上报不能把
    * 用户的中断、下一个请求或那道审批拖住。钩子失败、超时只记一条 warn —— 事件
    * 丢了就丢了，宿主不回滚、不重试、不排队（瞬时事件本来就没有「补发」这回事）。
    * 要等返回值的另外几条：`prompt.submit`（见 {@link collectPromptContext}）、
-   * `session.end`（见 {@link endSession}）、以及决策型的 `tool.call` /
+   * `session.end`（见 {@link endSession}）、`classic.Stop`（见
+   * {@link collectStopContext}）、以及决策型的 `tool.call` /
    * `tool.run`（见 {@link dispatchToolCall} / {@link dispatchToolRun}）。
    */
   notifyMods(
@@ -762,14 +804,15 @@ export class ModManager {
       | "turn.complete"
       | "session.measure"
       | "session.compact"
-      | "classic.PermissionRequest",
+      | ClassicEventName,
     payload:
       | ModTurnStartEvent
       | ModTurnStepEvent
       | ModTurnCompleteTrigger
       | ModSessionMeasureTrigger
       | ModSessionCompactEvent
-      | ModPermissionRequestEvent,
+      | ModPermissionRequestEvent
+      | ModClassicTrigger<ModClassicEvent>,
   ): void {
     if (this.disposed) return;
     // `session.measure` 的载荷里带一份用量快照（社区 mod 在这个事件里读用量，
@@ -788,6 +831,11 @@ export class ModManager {
         ...complete,
         usage: withCommunityUsage(complete.usage, this.usageSnapshot().model),
       };
+    } else if (event.startsWith("classic.")) {
+      enriched = this.withClassicBase(
+        event.slice("classic.".length),
+        payload as object,
+      );
     }
     for (const [modId, loaded] of this.mods) {
       const runtime = loaded.runtime;
@@ -798,6 +846,102 @@ export class ModManager {
         }
       });
     }
+  }
+
+  /**
+   * `classic.*` 的公共五字段（spec「影子事件」）。
+   *
+   * 每条事件的调用点只写它自己那几个字段，公共值统一在这里补；调用点显式给的
+   * 值优先（`classic.PermissionRequest` 就是自己带着完整载荷进来的）。
+   *
+   * `permission_mode` 是公共的而不是某几个事件专属：Claude Code 的
+   * `createBaseHookInput(permissionMode)` 把它写进**每条** hook 的 stdin，社区守
+   * 卫（jr-deploy-guard）靠它判断「此刻有没有人会被问到」。
+   */
+  private withClassicBase(name: string, payload: object): unknown {
+    return {
+      session_id: this.facts.sessionId(),
+      transcript_path: this.facts.transcriptPath(),
+      cwd: this.options.workdir?.() ?? "",
+      permission_mode: this.currentPermissionMode(),
+      hook_event_name: name,
+      ...payload,
+    };
+  }
+
+  /**
+   * 派发 `classic.Stop` 并收集插件塞回来的 `additionalContext`（spec「一轮收尾
+   * 时的非错误反馈」）。
+   *
+   * 与 {@link notifyMods} 的唯一区别是要等返回值：这一轮算不算收尾，取决于插件
+   * 有没有话要说。等是有边界的 —— 每个 mod 各自受 5 秒钩子上限约束，失败或超时
+   * 只记一条 warn（这一轮照常收尾，其余 mod 的反馈照收）。返回值按加载顺序拍平，
+   * 条数与字数沿用 `prompt.submit` 那份限额。
+   */
+  async collectStopContext(
+    payload: ModClassicTrigger<ModClassicStopEvent>,
+  ): Promise<string[]> {
+    if (this.disposed) return [];
+    const event = this.withClassicBase("Stop", payload);
+    const parts = await Promise.all(
+      [...this.mods].map(async ([modId, loaded]) => {
+        const runtime = loaded.runtime;
+        if (!runtime) return [];
+        const result = await runtime.callHook("classic.Stop", event);
+        if (!result.ok) {
+          logger.warn(`[Wave] ${modId} 的 classic.Stop 失败：${result.error}`);
+          return [];
+        }
+        const returned = result.value;
+        if (
+          typeof returned !== "object" ||
+          returned === null ||
+          Array.isArray(returned)
+        ) {
+          return [];
+        }
+        const value = returned as ModStopHookResult & Record<string, unknown>;
+        // `decision: "block"` / `preventContinuation` 是 Claude Code 另外两条
+        // 通道，我们只收 `additionalContext`（spec 同一小节）。
+        if (
+          value.decision !== undefined ||
+          value.preventContinuation !== undefined
+        ) {
+          logger.warn(
+            `[Wave] ${modId} 的 classic.Stop 返回了 decision/preventContinuation：只支持 { additionalContext }，那两项被忽略`,
+          );
+        }
+        const context = value.additionalContext;
+        if (context === undefined) return [];
+        if (
+          !Array.isArray(context) ||
+          context.some((item) => typeof item !== "string")
+        ) {
+          logger.warn(
+            `[Wave] ${modId} 的 classic.Stop 的 additionalContext 必须是字符串数组，已忽略`,
+          );
+          return [];
+        }
+        return context
+          .map((item: string) => item.trim())
+          .filter((item: string) => item.length > 0);
+      }),
+    );
+    const merged = parts.flat();
+    const limited: string[] = [];
+    let chars = 0;
+    for (const part of merged) {
+      if (limited.length >= MOD_LIMITS.promptContextMaxItems) break;
+      if (chars + part.length > MOD_LIMITS.promptContextChars) break;
+      limited.push(part);
+      chars += part.length;
+    }
+    if (limited.length < merged.length) {
+      logger.warn(
+        `[Wave] classic.Stop 的 additionalContext 有 ${merged.length} 条，超过限额，只用了前 ${limited.length} 条`,
+      );
+    }
+    return limited;
   }
 
   /**
@@ -1097,6 +1241,14 @@ export class ModManager {
     this.bands.clear();
     this.statusLines.clear();
     this.disposed = true;
+  }
+
+  /**
+   * 这一刻生效的权限模式，给 `classic.UserPromptSubmit` / `classic.PostToolUse`
+   * 这族载荷用（spec「影子事件」）。取不到时是 `default`。
+   */
+  currentPermissionMode(): string {
+    return this.facts.permissionMode();
   }
 
   /**

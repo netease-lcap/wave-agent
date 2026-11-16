@@ -5,6 +5,7 @@ import type { MessageManager } from "../../src/managers/messageManager.js";
 import type { ToolManager } from "../../src/managers/toolManager.js";
 import type { GatewayConfig, ModelConfig } from "../../src/types/index.js";
 import type { Message } from "../../src/types/messaging.js";
+import type { ModManager } from "../../src/managers/modManager.js";
 import type { NestedMemoryFile } from "../../src/utils/nestedMemory.js";
 import * as aiService from "../../src/services/aiService.js";
 
@@ -153,12 +154,20 @@ function createHarness() {
     drainNotifications: vi.fn().mockReturnValue([]),
   });
 
+  // 影子事件的观察点（spec「影子事件」）：`classic.InstructionsLoaded` 与
+  // `classic.PostToolBatch` 都在这一轮的工具往返里发。
+  const notifyMods = vi.fn();
+  container.register("ModManager", {
+    notifyMods,
+    currentPermissionMode: () => "default",
+  } as unknown as ModManager);
+
   const aiManager = new AIManager(container, {
     workdir: "/test/workdir",
     stream: false,
   });
 
-  return { aiManager, messages, nestedMemoryQueue };
+  return { aiManager, messages, nestedMemoryQueue, notifyMods };
 }
 
 /**
@@ -304,5 +313,45 @@ describe("AIManager nested memory injection", () => {
         "<system-reminder>\nContents of /test/workdir/packages/bar/AGENTS.md:\n\nbar memory\n</system-reminder>",
     });
     expect(requestPayload(1)).toContain("bar memory");
+  });
+
+  it("每注入一份子树记忆就发一条 classic.InstructionsLoaded(nested_read)", async () => {
+    // spec「影子事件」：只有「读到子树后注入」这一档走这里，开局常驻的那几份由
+    // Agent 在启动时统一报（`load_reason: "session_start"`）。
+    const { aiManager, nestedMemoryQueue, notifyMods } = createHarness();
+    readToolCall(nestedMemoryQueue, {
+      path: "/test/workdir/packages/AGENTS.md",
+      content: "packages memory",
+    });
+    textReply();
+
+    await aiManager.sendAIMessage({ recursionDepth: 0 });
+
+    const loaded = notifyMods.mock.calls
+      .filter((call) => call[0] === "classic.InstructionsLoaded")
+      .map((call) => call[1]);
+    expect(loaded).toEqual([
+      {
+        file_path: "/test/workdir/packages/AGENTS.md",
+        load_reason: "nested_read",
+      },
+    ]);
+  });
+
+  it("整批工具跑完后发一次 classic.PostToolBatch，带上每次的 ok", async () => {
+    // spec「影子事件」：一批 = 一次模型响应里的全部工具调用（不是为并发切出来
+    // 的那些小块），`ok` 取那次调用自己的结果。
+    const { aiManager, nestedMemoryQueue, notifyMods } = createHarness();
+    readToolCall(nestedMemoryQueue);
+    textReply();
+
+    await aiManager.sendAIMessage({ recursionDepth: 0 });
+
+    const batches = notifyMods.mock.calls
+      .filter((call) => call[0] === "classic.PostToolBatch")
+      .map((call) => call[1]);
+    expect(batches).toEqual([
+      { tool_calls: [{ tool_name: "Read", tool_use_id: "call_1", ok: true }] },
+    ]);
   });
 });

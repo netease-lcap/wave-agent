@@ -16,10 +16,12 @@ function buildContext(options: { shouldBlock?: boolean } = {}): {
   addUserMessage: ReturnType<typeof vi.fn>;
   sendAIMessage: ReturnType<typeof vi.fn>;
   collectPromptContext: ReturnType<typeof vi.fn>;
+  notifyMods: ReturnType<typeof vi.fn>;
 } {
   const addUserMessage = vi.fn(() => "msg-id");
   const sendAIMessage = vi.fn(async () => {});
   const collectPromptContext = vi.fn(async () => [] as string[]);
+  const notifyMods = vi.fn();
   const context = {
     messageManager: {
       addUserMessage,
@@ -44,12 +46,22 @@ function buildContext(options: { shouldBlock?: boolean } = {}): {
     },
     subagentManager: {},
     taskManager: {},
-    modManager: { collectPromptContext },
+    modManager: {
+      collectPromptContext,
+      notifyMods,
+      currentPermissionMode: () => "acceptEdits",
+    },
     options: {},
     abortMessage: vi.fn(),
     switchWorkdir: vi.fn(async () => {}),
   } as unknown as InteractionContext;
-  return { context, addUserMessage, sendAIMessage, collectPromptContext };
+  return {
+    context,
+    addUserMessage,
+    sendAIMessage,
+    collectPromptContext,
+    notifyMods,
+  };
 }
 
 describe("InteractionService 的 prompt.submit 上下文注入", () => {
@@ -111,5 +123,28 @@ describe("InteractionService 的 prompt.submit 上下文注入", () => {
 
     expect(addUserMessage).toHaveBeenCalledTimes(1);
     expect(sendAIMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it("影子事件 classic.UserPromptSubmit 与 prompt.submit 同一时刻、之后发", async () => {
+    // spec「影子事件」：载荷是 CC 的 stdin 形状，公共字段（含 `permission_mode`）
+    // 由 ModManager 补；只读 —— 不改用户原文、不丢弃这条 prompt。
+    const { context, collectPromptContext, notifyMods } = buildContext();
+
+    await InteractionService.sendMessage(context, "用户原话");
+
+    expect(notifyMods).toHaveBeenCalledWith("classic.UserPromptSubmit", {
+      prompt: "用户原话",
+    });
+    expect(collectPromptContext.mock.invocationCallOrder[0]).toBeLessThan(
+      notifyMods.mock.invocationCallOrder[0]!,
+    );
+  });
+
+  it("prompt 被 hook 拦下时影子事件也不发", async () => {
+    const { context, notifyMods } = buildContext({ shouldBlock: true });
+
+    await InteractionService.sendMessage(context, "用户原话");
+
+    expect(notifyMods).not.toHaveBeenCalled();
   });
 });

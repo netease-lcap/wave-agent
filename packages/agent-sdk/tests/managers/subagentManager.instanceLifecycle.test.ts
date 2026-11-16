@@ -28,6 +28,7 @@ describe("SubagentManager instance lifecycle and tool tracking", () => {
   let subagentManager: SubagentManager;
   let parentToolManager: ToolManager;
   let callbacks: SubagentManagerCallbacks;
+  let notifyMods: ReturnType<typeof vi.fn>;
   let mockGatewayConfig: GatewayConfig;
   let mockModelConfig: ModelConfig;
   let container: Container;
@@ -73,6 +74,13 @@ describe("SubagentManager instance lifecycle and tool tracking", () => {
       "McpManager",
       mockMcpManager as unknown as Record<string, unknown>,
     );
+
+    // 影子事件 `classic.SubagentStart` / `SubagentStop` 的观察点（spec「影子
+    // 事件」）：子代理的结束路径最后都会走 `releaseInstance`。
+    notifyMods = vi.fn();
+    container.register("ModManager", {
+      notifyMods,
+    } as unknown as Record<string, unknown>);
 
     parentToolManager = new ToolManager({
       container,
@@ -133,6 +141,53 @@ describe("SubagentManager instance lifecycle and tool tracking", () => {
     instance.backgroundTaskManager.addTask(task);
     return onStop;
   };
+
+  it("实例建好发 classic.SubagentStart，释放时发 classic.SubagentStop", async () => {
+    const config: SubagentConfiguration = {
+      name: "reporter",
+      description: "报道",
+      systemPrompt: "...",
+      tools: [],
+      model: "inherit",
+      filePath: "/tmp/reporter.md",
+      scope: "project",
+      priority: 1,
+    };
+
+    const instance = await subagentManager.createInstance(config, {
+      description: "查资料",
+      prompt: "查一下",
+      subagent_type: "reporter",
+    });
+
+    const starts = notifyMods.mock.calls
+      .filter((call) => call[0] === "classic.SubagentStart")
+      .map((call) => call[1]);
+    expect(starts).toEqual([
+      {
+        agent_id: instance.subagentId,
+        agent_type: "reporter",
+        description: "查资料",
+      },
+    ]);
+
+    // 完成路径先把实例置成终态，再释放它（`releaseInstance` 是所有结束路径的
+    // 汇合点：完成、出错、中止、用户停掉）。
+    instance.status = "completed";
+    subagentManager.cleanupInstance(instance.subagentId);
+
+    const stops = notifyMods.mock.calls
+      .filter((call) => call[0] === "classic.SubagentStop")
+      .map((call) => call[1]);
+    expect(stops).toEqual([
+      {
+        agent_id: instance.subagentId,
+        agent_type: "reporter",
+        description: "查资料",
+        status: "ok",
+      },
+    ]);
+  });
 
   it("should track last two tool names in subagent instance (ad85945f)", async () => {
     const mockConfig: SubagentConfiguration = {

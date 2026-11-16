@@ -7,6 +7,10 @@
  * 所以这里不许 import 任何 node 模块。
  */
 
+// 影子事件 `classic.StopFailure` 的 `kind` 就是我们遥测那张错误分类闭集。纯类型
+// import，编译后不留下任何依赖。
+import type { ErrorCategory } from "../telemetry/errorCategory.js";
+
 /**
  * 支持的元素。新增一个要同时改 runtime 的工厂与各端的渲染器。
  *
@@ -614,11 +618,199 @@ export interface ModPermissionRequestEvent {
   session_id: string;
   transcript_path: string;
   cwd: string;
+  /** 与 `classic.*` 同一份公共字段（CC 的 base hook input）。 */
+  permission_mode: string;
   hook_event_name: "PermissionRequest";
   tool_name: string;
   tool_input?: unknown;
   plan_file_path?: string;
 }
+
+/**
+ * 每条 `classic.*` 镜像都带的五个字段（spec「影子事件」）。
+ *
+ * 这就是 Claude Code 的 `createBaseHookInput(permissionMode)`：会话 id、转录文件
+ * 路径、当时的（**会动的**那个）工作目录、此刻的权限模式、以及不带前缀的事件名。
+ * 五项都由 `ModManager` 统一补齐 —— 每条事件的调用点只写它自己那几个字段，公共
+ * 值不会各有各的写法。
+ *
+ * `permission_mode` 在这里而不是某几个事件上，因为 CC 就是把它铺进**每条** hook
+ * 的 stdin（`Stop`、`SessionStart`、`PostToolBatch` 都有），而社区守卫（例如
+ * jr-deploy-guard）靠它判断「这一刻有没有人会被问到」。
+ */
+export interface ModClassicEventBase {
+  session_id: string;
+  transcript_path: string;
+  cwd: string;
+  permission_mode: string;
+  hook_event_name: string;
+}
+
+/**
+ * 派发 `classic.*` 时**调用方**给的载荷：事件自己的字段，公共四项可省。
+ *
+ * 省掉的那几项由 `ModManager` 补（它才拿得到会话 id 与转录路径）；调用方愿意
+ * 显式给也会被原样保留。对联合类型要**逐支**做 `Omit`，否则只剩公共键。
+ */
+export type ModClassicTrigger<T extends ModClassicEventBase> = T extends unknown
+  ? Omit<T, keyof ModClassicEventBase> & Partial<ModClassicEventBase>
+  : never;
+
+/** `classic.SessionStart`：会话开始（含 resume / compact / clear 之后）。 */
+export interface ModClassicSessionStartEvent extends ModClassicEventBase {
+  hook_event_name: "SessionStart";
+  /** 照我们 `SessionStart` settings 钩子的四档，不是 CC 的全集。 */
+  source: "startup" | "resume" | "compact" | "clear";
+}
+
+/** `classic.SessionEnd`：会话销毁前。 */
+export interface ModClassicSessionEndEvent extends ModClassicEventBase {
+  hook_event_name: "SessionEnd";
+  reason: "clear" | "exit";
+}
+
+/** `classic.Stop`：模型停下来、这一轮可能要收尾（答完或用户中断）。 */
+export interface ModClassicStopEvent extends ModClassicEventBase {
+  hook_event_name: "Stop";
+  /**
+   * 这一轮结束时还在跑的后台任务；没有时是 `[]`。
+   *
+   * 形状照 Claude Code 的 Stop stdin（`id` / `type` / `status` / `description`
+   * …，与我们自己 Stop 钩子的 `backgroundTasks` 是同一份数据）。
+   */
+  background_tasks: ModBackgroundTask[];
+  /**
+   * 这一轮是不是已经因为 `additionalContext` 续过（spec「一轮收尾时的非错误
+   * 反馈」）。
+   *
+   * 名字与语义照 Claude Code：插件的防死循环开关 —— 它要求续跑一次之后，下一
+   * 次收尾就该看见 `true` 并收手。首次收尾恒为 `false`。
+   */
+  stop_hook_active: boolean;
+}
+
+/**
+ * `classic.Stop` 的返回值：这一轮别急着收尾，把这几句话读给模型听（spec
+ * 「一轮收尾时的非错误反馈」）。
+ *
+ * 只认 `additionalContext`；`{ decision: "block", reason }` 与
+ * `preventContinuation` 是 Claude Code 另外两条通道，我们不支持（返回了只记一条
+ * warn 并忽略）。
+ */
+export interface ModStopHookResult {
+  /** 字符串数组；多项按加载顺序拍平、拼成一条消息，空串丢掉。 */
+  additionalContext?: string[];
+}
+
+/** 影子事件 `classic.Stop` 里的一个后台任务。 */
+export interface ModBackgroundTask {
+  id: string;
+  type: "shell" | "subagent" | "workflow";
+  status: string;
+  description: string;
+  command?: string;
+  agent_type?: string;
+  name?: string;
+}
+
+/** `classic.StopFailure`：一轮**因错误**结束。 */
+export interface ModClassicStopFailureEvent extends ModClassicEventBase {
+  hook_event_name: "StopFailure";
+  error: {
+    /** 我们自己的错误分类（`ErrorCategory` 那个闭集）。 */
+    kind: ErrorCategory;
+    message: string;
+  };
+}
+
+/** `classic.UserPromptSubmit`：用户提交一条 prompt。 */
+export interface ModClassicUserPromptSubmitEvent extends ModClassicEventBase {
+  hook_event_name: "UserPromptSubmit";
+  prompt: string;
+}
+
+/**
+ * `classic.Notification`：宿主给用户弹出一条「要你动手」的东西。
+ *
+ * 只在审批卡片弹出时发，`notification_type` 取 Claude Code 那张取值表里的
+ * `permission_prompt`。`$.ui.ask` 的提问卡片**不**发：CC 对提问不发通知，编一个
+ * 表外的名字（`question`）只会让按 `permission_prompt` / `idle_prompt` 过滤的
+ * 插件永远不触发 —— done-waiting-ping 就是这样被静默跳过的。
+ */
+export interface ModClassicNotificationEvent extends ModClassicEventBase {
+  hook_event_name: "Notification";
+  /** 照 CC 的取值表：我们只会给 `permission_prompt`。 */
+  notification_type: "permission_prompt";
+  message: string;
+}
+
+/** `classic.InstructionsLoaded`：一份指令文件被注入上下文。 */
+export interface ModClassicInstructionsLoadedEvent extends ModClassicEventBase {
+  hook_event_name: "InstructionsLoaded";
+  file_path: string;
+  /** 我们只有两档：开局常驻、读到子树后注入。 */
+  load_reason: "session_start" | "nested_read";
+}
+
+/** `classic.PostModelSwitch`：会话的模型被换掉。 */
+export interface ModClassicPostModelSwitchEvent extends ModClassicEventBase {
+  hook_event_name: "PostModelSwitch";
+  model: string;
+  /** 恒为 `null`：我们不做提示词缓存的 TTL 记账（给假数字更坏）。 */
+  cache_ttl: null;
+}
+
+/** `classic.SubagentStart` / `classic.SubagentStop`：一个子代理起止。 */
+export interface ModClassicSubagentEvent extends ModClassicEventBase {
+  hook_event_name: "SubagentStart" | "SubagentStop";
+  agent_id: string;
+  agent_type: string;
+  description: string;
+  /** 只有 `SubagentStop` 有：`ok` / `error` / `aborted`。 */
+  status?: "ok" | "error" | "aborted";
+}
+
+/** `classic.PostToolUse` / `classic.PostToolUseFailure`：一次工具调用的收尾。 */
+export interface ModClassicToolUseEvent extends ModClassicEventBase {
+  hook_event_name: "PostToolUse" | "PostToolUseFailure";
+  tool_name: string;
+  tool_input: unknown;
+  /** 只有 `PostToolUse` 有：那次工具的结果文本（按限额截断）。 */
+  tool_response?: string;
+  /** 只有 `PostToolUseFailure` 有：失败正文。 */
+  error?: string;
+}
+
+/** `classic.PostToolBatch`：一批工具调用全部跑完。 */
+export interface ModClassicPostToolBatchEvent extends ModClassicEventBase {
+  hook_event_name: "PostToolBatch";
+  tool_calls: Array<{ tool_name: string; tool_use_id: string; ok: boolean }>;
+}
+
+/** `classic.CwdChanged`：会话**会动的**工作目录变了。 */
+export interface ModClassicCwdChangedEvent extends ModClassicEventBase {
+  hook_event_name: "CwdChanged";
+  previous_cwd: string;
+}
+
+/**
+ * 所有 `classic.*` 镜像的并集（`classic.PermissionRequest` 在它自己的类型里）。
+ *
+ * 只用于 `notifyMods` 的载荷签名 —— mod 侧拿到的是对应的那一个。
+ */
+export type ModClassicEvent =
+  | ModClassicSessionStartEvent
+  | ModClassicSessionEndEvent
+  | ModClassicStopEvent
+  | ModClassicStopFailureEvent
+  | ModClassicUserPromptSubmitEvent
+  | ModClassicNotificationEvent
+  | ModClassicInstructionsLoadedEvent
+  | ModClassicPostModelSwitchEvent
+  | ModClassicSubagentEvent
+  | ModClassicToolUseEvent
+  | ModClassicPostToolBatchEvent
+  | ModClassicCwdChangedEvent;
 
 /**
  * `$.ui.ask` 的第二个参数（spec「问用户一个问题」）。
@@ -913,4 +1105,12 @@ export const MOD_LIMITS = {
   promptContextMaxItems: 32,
   /** `prompt.submit` 钩子能塞的上下文总字符上限。 */
   promptContextChars: 100_000,
+  /**
+   * 同一条用户 prompt 里，`classic.Stop` 的 `additionalContext` 最多让这一轮续
+   * 跑几次（spec「一轮收尾时的非错误反馈」）。
+   *
+   * 8 是 Claude Code 的 `CLAUDE_CODE_STOP_HOOK_BLOCK_CAP` 默认值：插件写得再贪
+   * 也不会把用户困在「永远答不完」的循环里。
+   */
+  stopHookContinuationCap: 8,
 } as const;

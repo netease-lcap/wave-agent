@@ -1017,12 +1017,14 @@ export interface ModRuntimeHost {
  * `session.start` / `ui.render` 是「要 mod 做事」的那两个；`turn.complete`、
  * `turn.start`、`turn.step`、`session.measure`、`session.compact`、`session.end`、
  * `ui.close` 与 `classic.PermissionRequest` 是只读的观察事件，返回值一律丢弃。
- * 有返回值语义的四个：`tool.call` / `tool.run` 答 `{ deny }`（拦下这次调用，
+ * 有返回值语义的五个：`tool.call` / `tool.run` 答 `{ deny }`（拦下这次调用，
  * 后者还负责真正执行它）、`prompt.submit` 答 `{ context }`（本轮附加上下文，
- * 不改用户原文）、`command.run` 答 `{ text }`。`classic.` 前缀是照 Claude Code
- * 的规矩：它把每个 settings hook 事件都镜像成 `classic.<Event>`，我们只做这一个
- * 镜像，`e` 的形状也照那份 stdin JSON。别的名字一律拒收，免得插件作者依赖一个
- * 不存在的钩子。
+ * 不改用户原文）、`command.run` 答 `{ text }`、`classic.Stop` 答
+ * `{ additionalContext }`（这一轮别急着收尾，把这几句读给模型听，spec「一轮收
+ * 尾时的非错误反馈」）。`classic.` 前缀是照 Claude Code
+ * 的规矩：它把每个 settings hook 事件都镜像成 `classic.<Event>`，我们镜像其中
+ * 15 个（spec「影子事件」），`e` 的形状也照那份 stdin JSON。别的名字一律拒收，
+ * 免得插件作者依赖一个不存在的钩子。
  */
 const HOOK_NAMES = new Set([
   "session.start",
@@ -1037,21 +1039,40 @@ const HOOK_NAMES = new Set([
   "session.end",
   "tool.call",
   "tool.run",
-  "classic.PermissionRequest",
   "command.run",
+  // 影子事件（spec「影子事件：`classic.*`」）：全是只读镜像，返回值忽略。
+  "classic.PermissionRequest",
+  "classic.SessionStart",
+  "classic.SessionEnd",
+  "classic.Stop",
+  "classic.StopFailure",
+  "classic.UserPromptSubmit",
+  "classic.Notification",
+  "classic.InstructionsLoaded",
+  "classic.PostModelSwitch",
+  "classic.SubagentStart",
+  "classic.SubagentStop",
+  "classic.PostToolUse",
+  "classic.PostToolUseFailure",
+  "classic.PostToolBatch",
+  "classic.CwdChanged",
 ]);
 
 /**
  * 接受 matcher 的事件（其余事件带 matcher 一律拒收并 warn）。
  *
  * matcher 是**事件字段的子集**：`{ component: "Pane" }` 只吃 `component` 是
- * `Pane` 的那些渲染请求。社区 mod 用这三处把「一个事件、多个处理器」分开：
+ * `Pane` 的那些渲染请求。社区 mod 用这几处把「一个事件、多个处理器」分开：
  * `ui.render` 按站点（`component` / `requestId`）、`tool.call` 按工具名、
- * `command.run` 按命令名。
+ * `command.run` 按命令名、`classic.PostToolUse` 族按 `tool_name`（这三条键就是
+ * Claude Code 的 matcher 键表里对这个事件列的全部键）。
  */
 const MATCHER_EVENTS = new Set([
   "command.run",
   "ui.render",
+  "classic.PostToolUse",
+  "classic.PostToolUseFailure",
+  "classic.PostToolBatch",
   "tool.call",
   "tool.run",
 ]);

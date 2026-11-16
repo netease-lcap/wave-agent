@@ -149,6 +149,15 @@ export class InteractionService {
         });
       }
 
+      // 影子事件 `classic.UserPromptSubmit`（spec「影子事件」）：与 `prompt.submit`
+      // 同一时刻、之后发。只读 —— 不改用户原文、不丢弃这条 prompt，与
+      // `prompt.submit` 同一条理由（钩子跑在界面看不到的地方，改/丢用户输入没法
+      // 让用户察觉）。
+      const modManager = context.modManager;
+      if (modManager) {
+        modManager.notifyMods("classic.UserPromptSubmit", { prompt: content });
+      }
+
       // Send AI message
       await aiManager.sendAIMessage();
     } catch (error) {
@@ -272,6 +281,13 @@ export class InteractionService {
         );
       }
     }
+
+    // 影子事件 `classic.SessionStart`（spec「影子事件」）：恢复一场旧会话也是
+    // 「开局」的一种，`source` 就是 `resume`。放在钩子块外面 —— 镜像不依赖
+    // settings 钩子有没有跑成。
+    context.modManager?.notifyMods("classic.SessionStart", {
+      source: "resume",
+    });
 
     // Update task manager with the root session ID to ensure continuity across compactions
     taskManager.setTaskListId(sessionData.id);

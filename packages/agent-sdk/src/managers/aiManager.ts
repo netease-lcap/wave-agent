@@ -90,7 +90,7 @@ import type { CronManager } from "./cronManager.js";
 import type { SkillManager } from "./skillManager.js";
 import type { LiveConfigManager } from "./liveConfigManager.js";
 import type { ModManager } from "./modManager.js";
-import type { ModTokenTotals } from "../types/mods.js";
+import { MOD_LIMITS, type ModTokenTotals } from "../types/mods.js";
 import {
   buildSystemPrompt,
   formatCompactSummary,
@@ -117,6 +117,7 @@ import {
 } from "../telemetry/events.js";
 import { recordTokenUsage } from "../telemetry/metrics.js";
 import { classifyError } from "../telemetry/errorCategory.js";
+import type { ErrorCategory } from "../telemetry/errorCategory.js";
 import { trackCliOperation } from "../telemetry/activity.js";
 import { entrypointOf } from "../telemetry/attributes.js";
 import type { HostEntrypoint } from "../constants/telemetry.js";
@@ -348,6 +349,12 @@ export class AIManager {
    * the start of every user-visible turn.
    */
   private stopHookActive = false;
+  /**
+   * 这一轮里 mods 的 `classic.Stop` 已经让这一轮续跑过几次（spec ecosystem/
+   * plugin-mods.md「一轮收尾时的非错误反馈」）。到 `stopHookContinuationCap` 就
+   * 不再续 —— 插件的 `additionalContext` 写得再贪也不能把用户困在死循环里。
+   */
+  private modStopContextCount = 0;
   private readonly maxTurns?: number;
   /** Start turns without project/user memory injection (`omitAgentsMd` subagents) */
   private readonly omitAgentsMd: boolean;
@@ -2420,6 +2427,7 @@ ${question}`;
       this.liveConfigManager?.onTurnStart();
       // A fresh user turn is never a stop-hook continuation.
       this.stopHookActive = false;
+      this.modStopContextCount = 0;
     }
 
     // Turn boundary for the shared output-token ledger. Only the MAIN agent
@@ -2462,6 +2470,9 @@ ${question}`;
       cacheCreation: 0,
     };
     let turnAborted = false;
+    // 最后一次模型请求的失败原因（成功一次就清空）。决定这一轮收尾发
+    // `classic.Stop` 还是 `classic.StopFailure`（spec「影子事件」）。
+    let turnError: { kind: ErrorCategory; message: string } | undefined;
 
     // Lazy MCP dial (spec ecosystem/mcp.md「按需连接 MCP 服务器」场景 2): the
     // servers were registered at `Agent.create()` but not spawned, because a
@@ -2595,6 +2606,10 @@ ${question}`;
 
       inner: while (true) {
         try {
+          // 这一轮最后为什么结束：跑成功一次请求就清掉，出错就记下来。影子事件
+          // `classic.Stop` / `classic.StopFailure` 靠它二选一（spec「影子事件」）。
+          turnError = undefined;
+
           // Save session in each iteration to ensure message persistence
           await this.messageManager.saveSession();
 
@@ -2629,6 +2644,13 @@ ${question}`;
                 `Contents of ${memory.path}:\n\n${memory.content}`,
               ),
               isMeta: true,
+            });
+            // 影子事件 `classic.InstructionsLoaded`（spec「影子事件」）：这里只
+            // 有「读到子树后注入」这一档（`nested_read`），开局常驻的那几份由
+            // Agent 在启动时统一报。
+            this.getModManager()?.notifyMods("classic.InstructionsLoaded", {
+              file_path: memory.path,
+              load_reason: "nested_read",
             });
           }
 
@@ -3019,6 +3041,11 @@ ${question}`;
             }
 
             // Execute batches sequentially; within a safe batch, tools run in parallel
+            const batchOutcomes: Array<{
+              tool_name: string;
+              tool_use_id: string;
+              ok: boolean;
+            }> = [];
             for (const batch of batches) {
               if (
                 abortController.signal.aborted ||
@@ -3026,25 +3053,35 @@ ${question}`;
               ) {
                 break;
               }
-              if (batch.calls.length === 1) {
-                await this.executeToolCall(
-                  batch.calls[0],
+              const run = async (
+                call: ChatCompletionMessageFunctionToolCall,
+              ) => {
+                const ok = await this.executeToolCall(
+                  call,
                   abortController,
                   toolAbortController,
                   result.finish_reason,
                 );
+                batchOutcomes.push({
+                  tool_name: call.function?.name || "",
+                  tool_use_id: call.id || "",
+                  ok,
+                });
+              };
+              if (batch.calls.length === 1) {
+                await run(batch.calls[0]);
               } else {
-                await Promise.all(
-                  batch.calls.map((call) =>
-                    this.executeToolCall(
-                      call,
-                      abortController,
-                      toolAbortController,
-                      result.finish_reason,
-                    ),
-                  ),
-                );
+                await Promise.all(batch.calls.map((call) => run(call)));
               }
+            }
+
+            // 影子事件 `classic.PostToolBatch`（spec「影子事件」）：这次模型响应
+            // 里的整批工具都跑完之后报一次。「一批」指的是这一批（一次响应），不
+            // 是上面为了并发切出来的那些小块。子代理的嵌套轮次不报。
+            if (batchOutcomes.length > 0 && !this.subagentType) {
+              this.getModManager()?.notifyMods("classic.PostToolBatch", {
+                tool_calls: batchOutcomes,
+              });
             }
           }
 
@@ -3179,6 +3216,12 @@ ${question}`;
             abortController?.signal.aborted === true ||
             toolAbortController?.signal.aborted === true;
           if (!turnAborted) {
+            // 中断不算故障，也不进影子事件：用户按 Esc 收尾的一轮发
+            // `classic.Stop`（`turn.complete` 带 `isAborted`），不发 StopFailure。
+            turnError = {
+              kind: classifyError(error),
+              message: error instanceof Error ? error.message : String(error),
+            };
             logOTelEvent(
               "error",
               {
@@ -3310,6 +3353,54 @@ ${question}`;
           shouldRestart = true;
           turnOffset = 0;
         }
+
+        // 一轮真的要收尾之前，最后问一遍 mods：`classic.Stop` 是唯一带返回通道
+        // 的影子事件（spec ecosystem/plugin-mods.md「一轮收尾时的非错误反馈」）。
+        // 插件要说的话（`additionalContext`）会作为一条 meta 消息回到对话里、这
+        // 一轮继续跑；因此它在这里（`turn.complete` 之前）发 —— 只有拿到返回值
+        // 才知道这一轮算不算收尾，有反馈时 `turn.complete` 留给真正收尾的那一次
+        // 报（`turnUsage` / `turnStartedAt` 跨续跑累计，报的仍是整段）。
+        if (!shouldRestart && !this.subagentType) {
+          const mods = this.getModManager();
+          const backgroundTasks = (
+            this.backgroundTaskManager?.getAllTasks() ?? []
+          )
+            .filter((task) => task.status === "running")
+            .map((task) => mapBackgroundTask(task, this.subagentManager));
+          const stopContexts = turnError
+            ? []
+            : ((await mods?.collectStopContext({
+                background_tasks: backgroundTasks,
+                stop_hook_active:
+                  this.stopHookActive || this.modStopContextCount > 0,
+              })) ?? []);
+          if (stopContexts.length > 0) {
+            // 中断的一轮、以及已有一条用户消息在排队的收尾都不续跑（照 CC 的
+            // 口径：中断就是中断，排队的消息下一轮先跑，否则它会一直饿着）。
+            const queuedUserMessage = messageQueue
+              ?.getQueue()
+              .some((queued) => queued.type !== "notification");
+            if (turnAborted || queuedUserMessage) {
+              logger?.info(
+                `classic.Stop 要求继续，但${turnAborted ? "这一轮被中断" : "队列里有用户消息"} — 照常收尾`,
+              );
+            } else if (
+              this.modStopContextCount >= MOD_LIMITS.stopHookContinuationCap
+            ) {
+              logger?.warn(
+                `classic.Stop 已经让这一轮续跑 ${this.modStopContextCount} 次，达到上限 — 丢弃这次的 additionalContext`,
+              );
+            } else {
+              this.modStopContextCount++;
+              this.injectStopHookContext(stopContexts);
+              // 与后台任务通知同一条重启路径：界面必须重新进入「生成中」。
+              this.setIsLoading(true);
+              myGeneration = this.turnGeneration;
+              shouldRestart = true;
+              turnOffset = 0;
+            }
+          }
+        }
       }
 
       if (!shouldRestart) {
@@ -3330,12 +3421,19 @@ ${question}`;
         // not what the user sees as "the answer finished", and `turnOffset !== 0`
         // leftovers are recursion, not turn ends.
         if (turnOffset === 0 && !this.subagentType) {
-          this.getModManager()?.notifyMods("turn.complete", {
+          const mods = this.getModManager();
+          mods?.notifyMods("turn.complete", {
             isAborted: turnAborted,
             durationMs: Date.now() - turnStartedAt,
             answer: this.lastAssistantText() ?? "",
             usage: turnUsage,
           });
+          // 影子事件（spec「影子事件」）：因错误结束的一轮补发 `StopFailure`
+          // （`classic.Stop` 已经在上面、收尾判断之前发过了 —— 它要拿返回值，见
+          // 那段注释）。
+          if (turnError) {
+            mods?.notifyMods("classic.StopFailure", { error: turnError });
+          }
         }
         break outer;
       }
@@ -3420,6 +3518,22 @@ ${question}`;
       }
     }
     return injected;
+  }
+
+  /**
+   * 把 mods 在 `classic.Stop` 里塞回来的 `additionalContext` 写进对话（spec
+   * ecosystem/plugin-mods.md「一轮收尾时的非错误反馈」）。
+   *
+   * 与后台任务通知同一种形态：`isMeta` 的用户消息 —— 模型会读到它，界面不当成
+   * 用户说的话。开头那一句是给模型看的，说明这不是用户、也不是错误，免得它去
+   * 「道歉并重新开始」。
+   */
+  private injectStopHookContext(contexts: readonly string[]): void {
+    const content = [
+      "插件在这一轮收尾时提醒（不是用户说的话，也不是错误）：",
+      ...contexts.map((text) => `- ${text}`),
+    ].join("\n");
+    this.messageManager.addUserMessage({ content, isMeta: true });
   }
 
   /**
@@ -3552,12 +3666,12 @@ ${question}`;
     abortController: AbortController,
     toolAbortController: AbortController,
     finishReason?: string | null,
-  ): Promise<void> {
+  ): Promise<boolean> {
     const toolId = functionToolCall.id || "";
 
     // Check if already interrupted, skip tool execution if so
     if (abortController.signal.aborted || toolAbortController.signal.aborted) {
-      return;
+      return false;
     }
 
     const toolName = functionToolCall.function?.name || "";
@@ -3597,7 +3711,7 @@ ${question}`;
             compactParams: "",
             timestamp: Date.now(),
           });
-          return;
+          return false;
         }
       }
     }
@@ -3732,6 +3846,7 @@ ${question}`;
       // Write/Edit of the plan file broadcasts the new content so hosts can
       // update an already-open plan panel without waiting for ExitPlanMode.
       await this.notifyPlanFileUpdate(toolName, toolArgs, toolResult.success);
+      return toolResult.success;
     } catch (toolError) {
       const errorMessage =
         toolError instanceof Error ? toolError.message : String(toolError);
@@ -3747,6 +3862,7 @@ ${question}`;
         compactParams,
         timestamp: Date.now(),
       });
+      return false;
     }
   }
 

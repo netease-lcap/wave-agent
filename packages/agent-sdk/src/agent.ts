@@ -409,6 +409,9 @@ export class Agent {
     );
     // 与模型那次提问同一条：不给「一直允许」那一档。
     permissionContext.hidePersistentOption = true;
+    // 这里**不**发 `classic.Notification`：CC 对提问卡片不发通知，它的取值表里也
+    // 没有这一类。编个表外的名字（曾经是 `notification_type: "question"`）只会让
+    // 按真名字过滤的插件永远不触发（spec「影子事件」）。
     const decision = await permissionManager.checkPermission(permissionContext);
     if (decision.behavior === "deny") {
       throw new Error(
@@ -560,6 +563,13 @@ export class Agent {
   public async setModel(model: string): Promise<void> {
     await this.configurationService.setModel(model);
     this.options.callbacks?.onModelChange?.(model);
+    // 影子事件 `classic.PostModelSwitch`（spec「影子事件」）：只在显式换模型时
+    // 发，配置文件热更新换模型不走这条路。`cache_ttl` 恒 `null` —— 我们不做提
+    // 示词缓存的 TTL 记账，给个假数字比给 `null` 更坏。
+    this.modManager.notifyMods("classic.PostModelSwitch", {
+      model,
+      cache_ttl: null,
+    });
   }
 
   /**
@@ -803,9 +813,13 @@ export class Agent {
 
     // Wire up CWD change callback from AIManager to sync Agent's workdir
     this.aiManager.setOnCwdChange((newCwd) => {
+      const previousCwd = this.workdir;
       this.workdir = newCwd;
       this.container.register("CurrentWorkdir", newCwd);
       this.options.callbacks?.onWorkdirChange?.(newCwd);
+      if (newCwd !== previousCwd) {
+        this.notifyCwdChanged(previousCwd);
+      }
     });
 
     // Workspace relocations (EnterWorktree / ExitWorktree) are a different
@@ -973,9 +987,25 @@ export class Agent {
    * @param newCwd - The new working directory
    */
   public setCurrentWorkdir(newCwd: string): void {
+    const previousCwd = this.workdir;
     this.workdir = newCwd;
     this.container.register("CurrentWorkdir", newCwd);
     this.options.callbacks?.onWorkdirChange?.(newCwd);
+    if (newCwd !== previousCwd) {
+      this.notifyCwdChanged(previousCwd);
+    }
+  }
+
+  /**
+   * 影子事件 `classic.CwdChanged`（spec「影子事件」）：只报**会动的**那个目录变
+   * 了（Bash `cd`、进/出 worktree）。工作区根（`WorkspaceRoot`）与会话起点
+   * （`SessionWorkdir`）不动，所以它们变了也不算 —— 见那两个 token 的分工。
+   */
+  private notifyCwdChanged(previousCwd: string): void {
+    this.modManager.notifyMods("classic.CwdChanged", {
+      cwd: this.workdir,
+      previous_cwd: previousCwd,
+    });
   }
 
   /**
@@ -1462,6 +1492,23 @@ export class Agent {
     try {
       await this.modManager.loadFromPlugins(this.pluginManager.getPlugins());
       await this.modManager.startSession();
+      // 影子事件 `classic.SessionStart`（spec「影子事件」）：自有事件
+      // `session.start` 先发、镜像后发。只读，宿主不等。
+      this.modManager.notifyMods("classic.SessionStart", { source: "startup" });
+      // 开局常驻的指令文件：一份一条 `classic.InstructionsLoaded`（同一节）。
+      // 读不到指令文件不该让 mod 层跟着失败，所以单独吞错。
+      const memoryService =
+        this.container.get<import("./services/memory.js").MemoryService>(
+          "MemoryService",
+        );
+      const instructions =
+        (await memoryService?.loadSessionStartInstructions(this.workdir)) ?? [];
+      for (const filePath of instructions) {
+        this.modManager.notifyMods("classic.InstructionsLoaded", {
+          file_path: filePath,
+          load_reason: "session_start",
+        });
+      }
     } catch (error) {
       this.logger?.warn("Plugin mods failed to load:", error);
     }
@@ -1605,6 +1652,10 @@ export class Agent {
         `SessionEnd hooks on clear failed: ${(error as Error).message}`,
       );
     }
+    // 影子事件 `classic.SessionEnd`（spec「影子事件」）：`/clear` 结束掉当前这
+    // 场对话。必须在这里发 —— 下面的 `clearMessages()` 会换掉 session id，镜像
+    // 报的应该是被结束的那一场。
+    this.modManager.notifyMods("classic.SessionEnd", { reason: "clear" });
 
     // Clear messages and generate new session
     this.messageManager.clearMessages();
@@ -1640,6 +1691,11 @@ export class Agent {
         `SessionStart hooks on clear failed: ${(error as Error).message}`,
       );
     }
+
+    // 影子事件 `classic.SessionStart`（spec「影子事件」）：清空之后这场对话算
+    // 重新开局，`source` 就是 `clear`。放在这里而不是 `startSession` 里 —— 那
+    // 条路只在会话创建时走一次。
+    this.modManager.notifyMods("classic.SessionStart", { source: "clear" });
 
     await this.messageManager.saveSession();
   }
@@ -1839,6 +1895,9 @@ export class Agent {
     // `session.end` 是唯一一个 mod **会被等**的事件（「轮次内外的事件」），要在
     // 实例被丢掉之前派发；它自带 5 秒钩子上限，卡住也不会挡住销毁。
     await this.modManager.endSession();
+    // 影子事件 `classic.SessionEnd`（spec「影子事件」）：`session.end` 之后、实
+    // 例被丢掉之前。`dispose` 之后一律静默，所以必须在这里。
+    this.modManager.notifyMods("classic.SessionEnd", { reason: "exit" });
     await this.modManager.dispose();
     // 侧聊段依附于这场对话：销毁时一并丢弃，在途的那一轮随之中止（否则它会带着
     // 网络句柄活过 destroy）。

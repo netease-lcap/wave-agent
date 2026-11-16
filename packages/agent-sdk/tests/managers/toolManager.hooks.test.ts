@@ -5,6 +5,7 @@ import { HookManager } from "../../src/managers/hookManager.js";
 import { HookMatcher } from "../../src/utils/hookMatcher.js";
 import { Container } from "../../src/utils/container.js";
 import { HookBlockedToolError } from "../../src/types/hooks.js";
+import { MOD_LIMITS } from "../../src/types/mods.js";
 import type { ModManager } from "../../src/managers/modManager.js";
 import type { ToolContext, ToolPlugin } from "../../src/tools/types.js";
 import * as hookService from "../../src/services/hook.js";
@@ -62,6 +63,8 @@ function build(
       event: unknown,
       run: () => Promise<unknown>,
     ) => Promise<{ deny?: string }>;
+    /** 影子事件的观察点（`classic.PostToolUse` 族）。 */
+    notifyMods?: (event: string, payload: unknown) => void;
   } = {},
 ) {
   const container = new Container();
@@ -103,7 +106,11 @@ function build(
   container.register("McpManager", mockMcpManager as unknown as McpManager);
   container.register("MessageManager", mockMessageManager);
   container.register("HookManager", hookManager);
-  if (options.dispatchToolCall || options.dispatchToolRun) {
+  if (
+    options.dispatchToolCall ||
+    options.dispatchToolRun ||
+    options.notifyMods
+  ) {
     container.register("ModManager", {
       dispatchToolCall: options.dispatchToolCall ?? (async () => undefined),
       dispatchToolRun:
@@ -112,6 +119,8 @@ function build(
           await run();
           return {};
         }),
+      notifyMods: options.notifyMods ?? vi.fn(),
+      currentPermissionMode: () => "default",
     } as unknown as ModManager);
   }
 
@@ -363,6 +372,72 @@ describe("ToolManager MCP funnel keeps a hook block's wording", () => {
       content: "",
       error: "server gone",
     });
+  });
+});
+
+describe("ToolManager 派发影子事件 classic.PostToolUse 族", () => {
+  it("成功的调用发 PostToolUse，带上工具名、参数与结果", async () => {
+    const notifyMods = vi.fn();
+    const { toolManager, context } = build({ notifyMods });
+
+    await toolManager.execute("FakeTool", { a: 1 }, context);
+
+    expect(notifyMods).toHaveBeenCalledWith("classic.PostToolUse", {
+      tool_name: "FakeTool",
+      tool_input: { a: 1 },
+      tool_response: "done",
+    });
+    expect(notifyMods).not.toHaveBeenCalledWith(
+      "classic.PostToolUseFailure",
+      expect.anything(),
+    );
+  });
+
+  it("工具自己报失败时发 PostToolUseFailure，带上错误正文", async () => {
+    const notifyMods = vi.fn();
+    const { toolManager, context } = build({
+      notifyMods,
+      execute: vi.fn().mockResolvedValue({
+        success: false,
+        content: "boom",
+        error: "boom",
+      }) as unknown as ToolPlugin["execute"],
+    });
+
+    await toolManager.execute("FakeTool", { a: 1 }, context);
+
+    expect(notifyMods).toHaveBeenCalledWith("classic.PostToolUseFailure", {
+      tool_name: "FakeTool",
+      tool_input: { a: 1 },
+      error: "boom",
+    });
+    expect(notifyMods).not.toHaveBeenCalledWith(
+      "classic.PostToolUse",
+      expect.anything(),
+    );
+  });
+
+  it("结果按 $.ui.log 的字符限额截断，不把整份输出塞进钩子", async () => {
+    const notifyMods = vi.fn();
+    const long = "x".repeat(MOD_LIMITS.statusChars + 10);
+    const { toolManager, context } = build({
+      notifyMods,
+      execute: vi
+        .fn()
+        .mockResolvedValue({
+          success: true,
+          content: long,
+        }) as unknown as ToolPlugin["execute"],
+    });
+
+    await toolManager.execute("FakeTool", {}, context);
+
+    const payload = notifyMods.mock.calls.find(
+      (call) => call[0] === "classic.PostToolUse",
+    )?.[1] as { tool_response: string };
+    expect(payload.tool_response).toBe(
+      `${"x".repeat(MOD_LIMITS.statusChars)}…`,
+    );
   });
 });
 

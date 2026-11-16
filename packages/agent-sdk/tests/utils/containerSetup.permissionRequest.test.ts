@@ -20,6 +20,7 @@ function event(
     session_id: "s1",
     transcript_path: "/fake/transcript.jsonl",
     cwd: "/fake/project",
+    permission_mode: "default",
     hook_event_name: "PermissionRequest",
     tool_name: "Bash",
     tool_input: { command: "rm -rf build" },
@@ -39,6 +40,7 @@ describe("notifyModPermissionRequest", () => {
       session_id: "s1",
       transcript_path: "/fake/transcript.jsonl",
       cwd: "/fake/project",
+      permission_mode: "default",
       hook_event_name: "PermissionRequest",
       tool_name: "Bash",
       tool_input: { command: "rm -rf build" },
@@ -51,5 +53,21 @@ describe("notifyModPermissionRequest", () => {
     expect(() =>
       notifyModPermissionRequest(container, event({ tool_name: "Write" })),
     ).not.toThrow();
+  });
+
+  it("同一时刻还发一条 classic.Notification，类型用 CC 的 permission_prompt", () => {
+    // spec「影子事件」：社区插件用它把「有东西在等你动手」推到自己的页面上。
+    // 类型必须是 Claude Code 取值表里的名字 —— 真插件按它过滤（done-waiting-
+    // ping 只认 permission_prompt / idle_prompt 等），表外的名字等于静默死。
+    const container = new Container();
+    const notifyMods = vi.fn();
+    container.register("ModManager", { notifyMods } as unknown as ModManager);
+
+    notifyModPermissionRequest(container, event());
+
+    expect(notifyMods).toHaveBeenCalledWith("classic.Notification", {
+      notification_type: "permission_prompt",
+      message: "Wave needs your permission to use Bash",
+    });
   });
 });

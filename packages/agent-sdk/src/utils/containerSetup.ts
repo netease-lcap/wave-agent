@@ -110,9 +110,17 @@ export function notifyModPermissionRequest(
   container: Container,
   event: ModPermissionRequestEvent,
 ): void {
-  container
-    .get<ModManager>("ModManager")
-    ?.notifyMods("classic.PermissionRequest", event);
+  const modManager = container.get<ModManager>("ModManager");
+  if (!modManager) return;
+  modManager.notifyMods("classic.PermissionRequest", event);
+  // 同一时刻还有一条 `classic.Notification`（spec「影子事件」）：社区插件用它
+  // 把「有东西在等你动手」推到自己的页面上。`permission_prompt` 是 Claude Code
+  // 自己给审批卡片用的那个名字 —— 表外的名字（曾经写成 `permission_request`）
+  // 会让 done-waiting-ping 这类按名字过滤的插件永远不触发。
+  modManager.notifyMods("classic.Notification", {
+    notification_type: "permission_prompt",
+    message: `Wave needs your permission to use ${event.tool_name}`,
+  });
 }
 
 export function setupAgentContainer(
@@ -424,6 +432,8 @@ export function setupAgentContainer(
           session_id: messageManager.getSessionId(),
           transcript_path: messageManager.getTranscriptPath(),
           cwd: workdir,
+          permission_mode:
+            permissionManager.getConfiguredPermissionMode() ?? "default",
           hook_event_name: "PermissionRequest",
           tool_name: context.toolName,
           ...(context.toolInput !== undefined && {
@@ -676,6 +686,11 @@ export function setupAgentContainer(
           mcp: tool.name.startsWith("mcp__"),
         })),
       agentInfos: () => subagentManager.listModAgents(),
+      // 影子的公共字段（spec「影子事件」）：转录路径与 settings 钩子收到的是
+      // 同一个值；权限模式取当前生效的那一档。
+      transcriptPath: () => messageManager.getTranscriptPath(),
+      permissionMode: () =>
+        permissionManager.getConfiguredPermissionMode() ?? "default",
     },
   });
   container.register("ModManager", modManager);
