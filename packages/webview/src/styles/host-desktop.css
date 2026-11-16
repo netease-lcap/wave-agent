@@ -3433,7 +3433,9 @@
   outline-offset: -2px;
 }
 
-[data-host="desktop"] .other-text-input:focus,
+/* 「其他」输入框 2026-11-16 起改走表单字段族（`--cc-field-*`，见下方
+   `other-text-input` 那节），焦点色不再是这里的 `--cc-border-focus`；
+   反馈输入框未点名，保持原档。 */
 [data-host="desktop"] .feedback-textarea:focus {
   outline: none;
   border-color: var(--cc-border-focus, var(--vscode-focusBorder, #005fb8));
@@ -4386,6 +4388,53 @@
 [data-host="desktop"] .other-text-input {
   font-size: 14px;
   line-height: 22px;
+}
+
+/* ═══ 「其他」输入框按表单规范收口（1116 评论）═══
+   她对着 `textarea.other-text-input`（问题卡第 3 问「其他」选中后展开的那个框）说
+   「参考表单规范优化这里的样式」。契约：`codechat-desktop-skill`
+   `references/common-components.md` §Input fields / 同节「Desktop form field colors
+   and focus」（与设置页字段、行内评论框同一份口径）。
+   改前实测（浅 / 深，1440×960）：r4；描边跟着 `--vscode-input-border`
+   （浅 #DCDFE6 / 深 #414649）；面跟 `--vscode-input-background`（浅 #FFF / 深 #313131，
+   比对话框底 #232526 还亮 ⇒ 凸出）；聚焦时描边整条染成 `--cc-border-focus`
+   （浅近黑 #1F2329，比卡片描边重一档）；占位符吃 `--vscode-input-placeholderForeground`
+   #757575。
+   改后：r8（与卡片 r12、按钮 r8、设置页字段 r8 同族）；面 / 描边 / 字 / 占位四件套
+   走 `--cc-field-*`；补 hover（只换描边、不动底）；聚焦改为字段档
+   `--cc-field-border-focus`（浅 #565A60 / 深 #A0A5A8），仍是 1px 沿边、无外扩环、零位移。
+   几何一格未动（内衬 4×8、min-height 26、max-height 160、`field-sizing: content`
+   自动长高）：契约原话是「Keep single-line and multiline geometry distinct /
+   较大的既有控件可保留自己的尺寸档」，这个框是卡片内的行内紧凑档，不并到设置页
+   多行域的 120 高。 */
+[data-host="desktop"] .other-text-input {
+  border-radius: var(--cc-radius-md, 8px);
+  background-color: var(--cc-field-bg);
+  border-color: var(--cc-field-border);
+  color: var(--cc-field-text);
+}
+/* hover：只换描边、不动底色（契约原句 hover changes only border color） */
+[data-host="desktop"] .other-text-input:hover:not(:disabled) {
+  border-color: var(--cc-field-border-hover);
+}
+/* 聚焦排在 hover 之后：两者同时成立时焦点优先；`outline: none` 保留原来那条
+   「不外加环」的口径，只把颜色换成字段档 */
+[data-host="desktop"] .other-text-input:focus:not(:disabled) {
+  outline: none;
+  border-color: var(--cc-field-border-focus);
+}
+/* 占位符：独立占位色 + 显式 opacity 1（避免浏览器再压一层） */
+[data-host="desktop"] .other-text-input::placeholder {
+  color: var(--cc-field-placeholder);
+  opacity: 1;
+}
+/* 停用：专用「面 / 字 / 边」三色，不再靠整块降透明度 */
+[data-host="desktop"] .other-text-input:disabled {
+  background-color: var(--cc-field-bg-disabled);
+  border-color: var(--cc-field-border-disabled);
+  color: var(--cc-field-text-disabled);
+  opacity: 1;
+  cursor: not-allowed;
 }
 
 /* ═══ 1023 skill 契约：桌面端选择控件 + 问题选项卡（`div.options-list`）════════
