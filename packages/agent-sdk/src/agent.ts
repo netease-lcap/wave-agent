@@ -47,6 +47,8 @@ import type {
   PluginReloadResult,
   UserImage,
 } from "./types/index.js";
+import type { PermissionCallback } from "./types/permissions.js";
+import { ASK_USER_QUESTION_TOOL_NAME } from "./constants/tools.js";
 import type { HookEvent, HookEventConfig } from "./types/hooks.js";
 import type { ContextBreakdown } from "./types/contextBreakdown.js";
 import type { BtwHistoryTurn } from "./types/btw.js";
@@ -160,6 +162,8 @@ export class Agent {
     (filled: boolean) => void
   >();
   private modPromptFillSeq = 0;
+  /** `$.ui.ask` 每次提问的 id 序号（与 `toolCallId` 同一处用处）。 */
+  private modAskSeq = 0;
 
   // Configuration options storage for dynamic resolution
   private options: AgentOptions;
@@ -302,6 +306,69 @@ export class Agent {
    */
   public resolveModPromptFill(requestId: string, filled: boolean): void {
     this.settleModPromptFill(requestId, filled);
+  }
+
+  /**
+   * `$.ui.ask` — 一个 mod 问用户一个问题（spec「问用户一个问题」）。
+   *
+   * 走的就是模型那个 `AskUserQuestion` 工具的审批链路：同一个
+   * `PermissionManager.checkPermission`、同一张卡片、同一套「关掉 = 拒绝」。所以
+   * 插件不需要新的界面能力，界面也不需要认出「这张卡片是插件问的」。
+   *
+   * resolve 成用户选中的那个标签（或在「其他」里打的自由文本）；用户关掉对话
+   * 框、这条会话没有界面接手时 reject —— 守卫据此按「没人能答」处理。
+   */
+  private async askModQuestion(
+    question: string,
+    options: { labels: string[]; header?: string; multiSelect?: true },
+  ): Promise<string> {
+    const permissionManager = this.container.has("PermissionManager")
+      ? this.container.get<PermissionManager>("PermissionManager")
+      : undefined;
+    if (!permissionManager) {
+      throw new Error("这条会话没有权限管理器，插件问不了问题");
+    }
+    const permissionMode = this.container.has("PermissionMode")
+      ? this.container.get<PermissionMode>("PermissionMode")
+      : undefined;
+    const canUseToolCallback = this.container.has("CanUseToolCallback")
+      ? this.container.get<PermissionCallback>("CanUseToolCallback")
+      : undefined;
+    const permissionContext = permissionManager.createContext(
+      ASK_USER_QUESTION_TOOL_NAME,
+      permissionMode || "default",
+      canUseToolCallback,
+      {
+        questions: [
+          {
+            question,
+            header: options.header ?? "plugin",
+            options: options.labels.map((label) => ({ label })),
+            ...(options.multiSelect ? { multiSelect: true } : {}),
+          },
+        ],
+      },
+      `mod-ask-${++this.modAskSeq}`,
+    );
+    // 与模型那次提问同一条：不给「一直允许」那一档。
+    permissionContext.hidePersistentOption = true;
+    const decision = await permissionManager.checkPermission(permissionContext);
+    if (decision.behavior === "deny") {
+      throw new Error(
+        "用户没有回答插件的问题（对话框关掉，或这条会话没有界面）",
+      );
+    }
+    const answers = JSON.parse(decision.message || "{}") as Record<
+      string,
+      string | string[]
+    >;
+    const answer = answers[question];
+    // 多选时界面给的是数组：Claude Code 的口径是用逗号连起来。
+    if (Array.isArray(answer)) return answer.join(", ");
+    if (typeof answer !== "string" || answer.trim().length === 0) {
+      throw new Error("用户没有回答插件的问题（回执里没有答案）");
+    }
+    return answer;
   }
 
   /**
@@ -568,6 +635,16 @@ export class Agent {
     // travels out to the surface and back: only the UI knows whether the text
     // landed, so the answer arrives later through `resolveModPromptFill`.
     this.modManager.setPromptFiller((request) => this.fillModPrompt(request));
+
+    // Plugin mods can ask the user a question (`$.ui.ask`, spec
+    // ecosystem/plugin-mods.md「问用户一个问题」). It rides the very same
+    // `AskUserQuestion` permission path the model's tool uses, so every surface
+    // already knows how to draw it and nobody has to learn a second dialog. What
+    // it cannot do is invent an answer when nobody is watching: that rejects,
+    // and a guard reads the rejection as "no".
+    this.modManager.setAskUser((question, options) =>
+      this.askModQuestion(question, options),
+    );
 
     // Wire up CWD change callback from AIManager to sync Agent's workdir
     this.aiManager.setOnCwdChange((newCwd) => {

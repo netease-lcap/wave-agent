@@ -91,6 +91,7 @@ const ELEMENT_PROPS: Record<ModElementType, ReadonlySet<string>> = {
     "plain",
     "dimColor",
     "autoFocus",
+    "hotkey",
   ]),
   Input: new Set([
     "key",
@@ -370,6 +371,15 @@ function checkElementValues(
     if (typeof rows !== "number" || !Number.isInteger(rows) || rows < 1) {
       throw new Error(
         `Input.rows 是 ≥1 的整数，拿到的是 ${JSON.stringify(rows)}`,
+      );
+    }
+  }
+  if (type === "Button" && props.hotkey !== undefined) {
+    // 一个数字或一个小写字母（Claude Code 的取值面）：它是**裸按键**，带修饰键
+    // 的组合归宿主自己（Ctrl+C 那一类）。
+    if (typeof props.hotkey !== "string" || !/^[a-z0-9]$/.test(props.hotkey)) {
+      throw new Error(
+        `Button.hotkey 是一个数字或一个小写字母，拿到的是 ${JSON.stringify(props.hotkey)}`,
       );
     }
   }

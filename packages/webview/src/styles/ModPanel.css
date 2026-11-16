@@ -110,6 +110,18 @@
   );
 }
 
+/* `Button.hotkey` 的键帽（spec「用户交互的结果」）：摆在标签右边，不参与按钮
+   高度（`line-height: 1` + 小字号），否则一排按钮会被它顶高。 */
+.mod-surface .mod-button-hotkey {
+  margin-left: 6px;
+  padding: 0 4px;
+  border: 1px solid var(--cc-border-light, rgba(128, 128, 128, 0.4));
+  border-radius: var(--cc-radius-sm, 4px);
+  font-size: 0.85em;
+  line-height: 1.2;
+  opacity: 0.75;
+}
+
 .mod-surface input,
 .mod-surface textarea {
   font: inherit;

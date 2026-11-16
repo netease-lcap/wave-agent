@@ -187,6 +187,26 @@ export interface ModPanelEventPayload {
 export type ModPromptFillMode = "replace" | "append" | "insert";
 
 /**
+ * 能画 mod 树的一端（spec「会话事实」的 `$.session.surfaces()`）。
+ *
+ * 四个名字照 Claude Code 的 `RenderSurface` 取，`$.ui.resolve(e)` 也按它选
+ * 元素表。一期只有 `desktop` 真的会画：终端 / VS Code / JetBrains 都不画，
+ * 所以它们此刻**不在**数组里（`[]` 就是「没有界面」）。
+ */
+export type ModRenderSurface = "terminal" | "desktop" | "vscode" | "mobile";
+
+/**
+ * `$.ui.open()` 的结果（spec「面板放得下吗」）。
+ *
+ * `isPlaced: false` 时 `reason` 说明为什么没画：没有能画面板的表面（以
+ * `no-surface` 开头，与 Claude Code 同一个词）、会话正在销毁。守卫类插件据此
+ * 决定要不要把命令冻在等人按键上。
+ */
+export type ModUiOpenResult =
+  | { isPlaced: true }
+  | { isPlaced: false; reason: string };
+
+/**
  * `$.prompt.fill` 送达 surface 的一次请求（spec「把草稿填进输入框」）。
  *
  * 这是宿主里唯一一条「mod 提问、界面作答」的通道：CLI 发下去，surface 填完
@@ -420,16 +440,53 @@ export interface ModPermissionRequestEvent {
 }
 
 /**
- * `tool.call` 的载荷：一次工具调用**结束**，结果已经拿到（spec「完成与审批的
- * 观察」）。
+ * `$.ui.ask` 的第二个参数（spec「问用户一个问题」）。
  *
- * 字段照 Claude Code 同名事件的形状取最小集：`tool` 是工具名、`input` 是它收到
- * 的参数。CC 的同名钩子还能返回 `{ deny }` 拦下这次调用，我们只做观察这一半，
- * 返回值丢弃。
+ * 照 Claude Code 的 `AskOptions`：可以直接给标签数组，也可以给
+ * `{ options, header, multiSelect }`。标签少于两个按「是 / 否」补齐，多于四个
+ * 报错（提问卡片画不下）。
+ */
+export type ModAskOptions =
+  | readonly string[]
+  | {
+      options?: readonly string[];
+      /** 那颗小标签；没写用插件名（CLI 会 `.slice(0, 12)`）。 */
+      header?: string;
+      /** 允许多选时多个答案用逗号连接。 */
+      multiSelect?: true;
+    };
+
+/**
+ * `tool.call` / `tool.run` 的载荷：一次工具调用（spec「拦下一次工具调用」
+ * 「在工具真正跑之前插一脚」）。
+ *
+ * 字段照 Claude Code 的 `ToolCallEnvelope`：`tool` 是工具名、`tool_use_id` 是这
+ * 次调用的 id、`input` 是它收到的参数；参数**另外在顶层铺一份**（`e.command`
+ * 就是 Bash 的 `command`），社区插件读写的是顶层那份而不是 `e.input.command`。
+ *
+ * 两个事件的区别只在时机：`tool.call` 在 PreToolUse 钩子之前（「要不要拦」），
+ * `tool.run` 在它之后、工具真正执行之前（`next(e)` 才执行）。
  */
 export interface ModToolCallEvent {
   tool: string;
+  tool_use_id: string;
   input: unknown;
+  /** 工具参数在顶层铺开的副本（见上）。 */
+  [key: string]: unknown;
+}
+
+/** `tool.run` 的载荷：与 {@link ModToolCallEvent} 同形，时机不同。 */
+export type ModToolRunEvent = ModToolCallEvent;
+
+/**
+ * `tool.call` / `tool.run` 钩子的返回值。
+ *
+ * 只认 `{ deny }`：拦下这次调用，模型收到这段文本作为工具错误结果（与「参数
+ * 不合法」同一形态）。改写参数、用自己的结果顶替（`{ result }`）、替用户批准
+ * （`tool.check`）都不做。
+ */
+export interface ModToolDenyResult {
+  deny: string;
 }
 
 /**

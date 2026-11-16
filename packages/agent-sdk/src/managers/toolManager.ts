@@ -664,6 +664,28 @@ class ToolManager {
         }
       }
 
+      const modManager = this.container.has("ModManager")
+        ? this.container.get<ModManager>("ModManager")
+        : undefined;
+      // 插件 MODS 的形状照 Claude Code 的 `ToolCallEnvelope`：工具名、调用 id、
+      // 参数对象，外加把参数在顶层铺一份（社区插件读 `e.command`，不读
+      // `e.input.command`）。两个事件共用同一份（spec「拦下一次工具调用」
+      // 「在工具真正跑之前插一脚」）。
+      const modToolEvent = {
+        ...args,
+        tool: name,
+        tool_use_id: enhancedContext.toolCallId ?? "",
+        input: args,
+      };
+
+      // `tool.call`：执行**之前**问一遍插件，被拦下就不跑（spec「拦下一次工具
+      // 调用」）。拦下不是审批失败，模型收到这段文本作为工具错误结果。
+      const modDeny = await modManager?.dispatchToolCall(modToolEvent);
+      if (modDeny !== undefined) {
+        logger?.debug("Tool call denied by plugin mod", { toolName: name });
+        return { success: false, content: modDeny, error: modDeny };
+      }
+
       const hookManager = enhancedContext.hookManager;
       const blocked = await hookManager?.executePreToolUseHooks(
         name,
@@ -674,27 +696,50 @@ class ToolManager {
         return { success: false, content: blocked, error: blocked };
       }
 
-      let result: ToolResult;
-      try {
-        result = await plugin.execute(args, enhancedContext);
-        recordLinesChangedFromResult(result, context, this.container);
-        recordBashActivity(name, args, result, context, this.container);
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        logger?.error("Tool execution failed", {
-          toolName: name,
-          error: message,
-        });
-        result = { success: false, content: "", error: message };
-        this.reportCrash(name, error, result, context);
+      let result: ToolResult | undefined;
+      /** 真正跑一次工具（`tool.run` 的 `next(e)` 与「没人注册」两条路共用）。 */
+      const runTool = async (): Promise<ToolResult> => {
+        if (result) return result;
+        try {
+          result = await plugin.execute(args, enhancedContext);
+          recordLinesChangedFromResult(result, context, this.container);
+          recordBashActivity(name, args, result, context, this.container);
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : String(error);
+          logger?.error("Tool execution failed", {
+            toolName: name,
+            error: message,
+          });
+          result = { success: false, content: "", error: message };
+          this.reportCrash(name, error, result, context);
+        }
+        return result;
+      };
+
+      // `tool.run`：`next(e)` 就是这次执行本身（spec「在工具真正跑之前插一
+      // 脚」）。没有插件注册时它自己就把工具跑掉。
+      if (modManager) {
+        const decision = await modManager.dispatchToolRun(
+          modToolEvent,
+          runTool,
+        );
+        if (decision.deny !== undefined) {
+          return {
+            success: false,
+            content: decision.deny,
+            error: decision.deny,
+          };
+        }
       }
+      const outcome = result ?? (await runTool());
 
       // PostToolUse hooks run for a failed call too — the tool was attempted,
       // and PostToolUse cannot block anything at this point.
       await hookManager?.executePostToolUseHooks(
         name,
         args,
-        result,
+        outcome,
         enhancedContext,
       );
 
@@ -704,20 +749,12 @@ class ToolManager {
       await appendMemoryCapNotice(
         name,
         args,
-        result,
+        outcome,
         enhancedContext.workdir,
         enhancedContext.autoMemoryDir,
       );
 
-      // 只读观察事件（spec「完成与审批的观察」）：模型这一下工具调用结束了，
-      // 包括被审批拒掉、执行抛错的情况 —— mod 靠它「一有动作就刷新」，不必轮询。
-      // fire-and-forget：mod 在里面做网络上报不能拖住下一次工具调用。
-      if (this.container.has("ModManager")) {
-        this.container
-          .get<ModManager>("ModManager")
-          ?.notifyMods("tool.call", { tool: name, input: args });
-      }
-      return result;
+      return outcome;
     }
 
     logger?.warn("Tool not found", { toolName: name });

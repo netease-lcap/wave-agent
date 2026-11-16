@@ -24,6 +24,7 @@ import {
   type ModPermissionRequestEvent,
   type ModPromptFillMode,
   type ModPromptSubmitResult,
+  type ModRenderSurface,
   type ModSessionCompactEvent,
   type ModSessionMeasureTrigger,
   type ModSessionUsage,
@@ -32,6 +33,7 @@ import {
   type ModToastPayload,
   type ModTokenTotals,
   type ModToolCallEvent,
+  type ModToolRunEvent,
   type ModTurnCompleteEvent,
   type ModTurnCompleteTrigger,
   type ModTurnStartEvent,
@@ -76,6 +78,13 @@ export interface ModSessionFacts {
   workspaceRoot(): string;
   /** 当前生效的模型名；没配时是空串。 */
   model(): string;
+  /**
+   * 这一刻有谁在画（spec「会话事实」的 `$.session.surfaces()`）。
+   *
+   * 接口层没接时给空数组：不认识的宿主入口一律按「不画面板」算，宁可让守卫走
+   * 「没人能确认」的降级，也不要给一个编出来的 `desktop`。
+   */
+  surfaces(): readonly ModRenderSurface[];
   env(name: string): string | undefined;
   settings(query: {
     source?: ModSettingsSource;
@@ -204,6 +213,15 @@ const EMPTY_SESSION_USAGE: ModSessionUsage = {
  * `undefined`，整条带会画出 `NaN`。我们的 `prompt` 含缓存命中、CC 的
  * `input_tokens` 不含，所以是**相减**得来的，不是改名。
  */
+/** 钩子返回值是不是一个 `{ deny: string }`（`tool.call` / `tool.run` 的决议形状）。 */
+function isDeny(value: unknown): value is { deny: string } {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as { deny?: unknown }).deny === "string"
+  );
+}
+
 function withCommunityUsage(
   totals: ModTokenTotals,
   model: string | undefined,
@@ -239,6 +257,52 @@ function renderSiteProps(): Record<string, unknown> {
     scroll: { offset: 0, bodyRows: 8 },
     view: {},
   };
+}
+
+/**
+ * 从 `AbovePromptList` 的返回树里认出「它留下了哪些行」，按出现顺序给下标。
+ *
+ * 按**值**比较（先比引用，再比 JSON）：社区写法 `rows.map(r => r.tree)` 交回来
+ * 的就是收到的那几个节点（引用相等），把它们包进一层 `<Box>` 再排也还是同一批
+ * 节点。改过的副本认不出来 —— 与 Claude Code「改过或重复的一律不算数」同一条
+ * 规则，只是我们这边表现为「这次重排不算数」而不是报错。
+ */
+function pickBandRows(
+  value: unknown,
+  trees: readonly ModPanelTree[],
+): number[] {
+  const picked: number[] = [];
+  const used = new Set<number>();
+  const walk = (node: unknown): void => {
+    if (Array.isArray(node)) {
+      for (const item of node) walk(item);
+      return;
+    }
+    if (typeof node !== "object" || node === null) return;
+    const index = trees.findIndex(
+      (tree, at) => !used.has(at) && sameTree(tree, node),
+    );
+    if (index >= 0) {
+      used.add(index);
+      picked.push(index);
+      return;
+    }
+    const children = (node as { children?: unknown }).children;
+    if (Array.isArray(children)) {
+      for (const child of children) walk(child);
+    }
+  };
+  walk(value);
+  return picked;
+}
+
+function sameTree(tree: ModPanelTree, node: unknown): boolean {
+  if (tree === node) return true;
+  try {
+    return JSON.stringify(tree) === JSON.stringify(node);
+  } catch {
+    return false;
+  }
 }
 
 export class ModManager {
@@ -325,6 +389,17 @@ export class ModManager {
    */
   private logSink?: (text: string) => void;
   /**
+   * `$.ui.ask` 的出口（spec「问用户一个问题」）。
+   *
+   * 提问走的是引擎自己的 `AskUserQuestion` 那条审批链路，只有 `Agent` 那边拿得
+   * 到权限管理器与宿主回调；与 `promptSubmitter` 同一条理由，由 `Agent` 接进来。
+   * 没接上时（纯服务调用）reject —— 守卫据此按「没人能答」处理。
+   */
+  private askUserHandler?: (
+    question: string,
+    options: { labels: string[]; header?: string; multiSelect?: true },
+  ) => Promise<string>;
+  /**
    * `$.command.*` 的桥（spec「注册命令」）。
    *
    * 命令表在 `SlashCommandManager` 里，而「执行一条命令时该问哪个 mod 的钩子」
@@ -343,6 +418,8 @@ export class ModManager {
       sessionId: () => options.sessionId,
       workspaceRoot: () => options.workdir?.() ?? process.cwd(),
       model: () => "",
+      // 没接入口就不画面板：宁可按「没人看得见」降级，也不编一个 desktop。
+      surfaces: () => [],
       env: () => undefined,
       // `key` 由数据源自己取（它有那份配置）；兜底没配置可查，所以带 key 时
       // 与「没这一项」同义。
@@ -367,6 +444,16 @@ export class ModManager {
   /** 接上对话流的写入口（见 `logSink`）。 */
   setLogSink(fn: (text: string) => void): void {
     this.logSink = fn;
+  }
+
+  /** 接上提问通道（见 `askUserHandler`）。 */
+  setAskUser(
+    fn: (
+      question: string,
+      options: { labels: string[]; header?: string; multiSelect?: true },
+    ) => Promise<string>,
+  ): void {
+    this.askUserHandler = fn;
   }
 
   /** 接上命令表（见 `commandBridge`）。 */
@@ -456,11 +543,13 @@ export class ModManager {
               openPane: (paneId, title) => this.openPane(mod.id, paneId, title),
               closePane: (paneId) => this.closePane(mod.id, paneId),
               listPanes: () => this.listPanes(mod.id),
+              surfaces: () => this.facts.surfaces(),
               invalidate: () => this.invalidate(mod.id),
               setStatus: (text) => this.publishStatus(mod.id, text),
               showToast: (text, timeoutMs) =>
                 this.publishToast(mod.id, text, timeoutMs),
               appendLog: (text) => this.appendLog(text),
+              askUser: (question, options) => this.askUser(question, options),
               registerCommand: (spec) =>
                 this.registerCommand(mod.id, plugin.name, spec),
               listCommands: () => this.commandBridge?.list() ?? [],
@@ -551,15 +640,16 @@ export class ModManager {
 
   /**
    * 派发一次只读事件（`turn.start` / `turn.step` / `turn.complete` /
-   * `session.compact` / `tool.call` / `classic.PermissionRequest`，spec「事件」
-   * 「轮次内外的事件」「完成与审批的观察」）。
+   * `session.compact` / `classic.PermissionRequest`，spec「事件」「轮次内外的
+   * 事件」「完成与审批的观察」）。
    *
    * 不等 mod、也不返回 Promise：这些时刻都压在宿主的关键路径上（轮次起收尾、
    * 每次请求之前、工具刚跑完、审批卡片即将弹出），mod 在里面做网络上报不能把
    * 用户的中断、下一个请求或那道审批拖住。钩子失败、超时只记一条 warn —— 事件
    * 丢了就丢了，宿主不回滚、不重试、不排队（瞬时事件本来就没有「补发」这回事）。
-   * 唯一要等返回值的是 `prompt.submit`（见 {@link collectPromptContext}）与
-   * `session.end`（见 {@link endSession}）。
+   * 要等返回值的另外几条：`prompt.submit`（见 {@link collectPromptContext}）、
+   * `session.end`（见 {@link endSession}）、以及决策型的 `tool.call` /
+   * `tool.run`（见 {@link dispatchToolCall} / {@link dispatchToolRun}）。
    */
   notifyMods(
     event:
@@ -568,7 +658,6 @@ export class ModManager {
       | "turn.complete"
       | "session.measure"
       | "session.compact"
-      | "tool.call"
       | "classic.PermissionRequest",
     payload:
       | ModTurnStartEvent
@@ -576,7 +665,6 @@ export class ModManager {
       | ModTurnCompleteTrigger
       | ModSessionMeasureTrigger
       | ModSessionCompactEvent
-      | ModToolCallEvent
       | ModPermissionRequestEvent,
   ): void {
     if (this.disposed) return;
@@ -606,6 +694,135 @@ export class ModManager {
         }
       });
     }
+  }
+
+  /**
+   * 派发 `tool.call`：这次调用**执行之前**问一遍插件，被拦下就不跑（spec
+   * 「拦下一次工具调用」）。
+   *
+   * 返回 `{ deny }` 时 caller 把这段文本当成工具的错误结果交回模型；返回
+   * `undefined` 就是「没人拦」。
+   */
+  async dispatchToolCall(
+    event: ModToolCallEvent,
+    signal?: AbortSignal,
+  ): Promise<string | undefined> {
+    if (this.disposed) return undefined;
+    const decision = await this.runToolHookChain(
+      "tool.call",
+      event,
+      {},
+      signal,
+    );
+    return decision.deny;
+  }
+
+  /**
+   * 派发 `tool.run`：`next(e)` 就是**执行**这次调用（spec「在工具真正跑之前插
+   * 一脚」）。
+   *
+   * `run` 只会被真正调用一次，由 `ToolManager` 保证幂等。没有插件注册时它照常
+   * 跑 —— 这条链的链尾就是那次执行。插件匹配上了却没调 `next(e)`，等于「不放
+   * 行」，返回一条 deny 文本。
+   */
+  async dispatchToolRun(
+    event: ModToolRunEvent,
+    run: () => Promise<unknown>,
+    signal?: AbortSignal,
+  ): Promise<{ deny?: string }> {
+    if (this.disposed) return {};
+    return this.runToolHookChain("tool.run", event, { run }, signal);
+  }
+
+  /**
+   * `tool.call` / `tool.run` 的**跨 mod** 钩子链。
+   *
+   * 链尾（`tail`）有两个：`tool.call` 的「没有意见」（空对象，谁都没拦）与
+   * `tool.run` 的「执行这次调用」。所以 `next(e)` 走到最后一个 mod 之后落到
+   * `tail` 上 —— 事件走到哪一份，`tail` 就拿哪一份。
+   *
+   * 一个 mod 失败（抛错、超时）按 fail-open 处理：记一条 warn，接着问下一个
+   * —— 钩子挂掉不该让对话卡在「工具既不跑也不拒」（要 fail-closed 的守卫用
+   * `.catch` 自己返回 `{ deny }`）。
+   */
+  private async runToolHookChain(
+    name: "tool.call" | "tool.run",
+    event: unknown,
+    tail: { run?: () => Promise<unknown> },
+    signal?: AbortSignal,
+  ): Promise<{ deny?: string }> {
+    const loaded = [...this.mods.values()].filter((item) => item.runtime);
+    let ran = false;
+    // 链尾把**工具结果**交回去：`tool.run` 的 `next(e)` 是「跑这次调用」，社区
+    // 写法就是 `const r = await next(e)` 之后读 `r`。`tool.call` 没有这一步
+    // （`tail.run` 缺省），链尾给「没有意见」的空对象。
+    const runOnce = async () => {
+      if (tail.run && !ran) {
+        ran = true;
+        return await tail.run();
+      }
+      return {};
+    };
+    const fromIndex = async (
+      index: number,
+      current: unknown,
+    ): Promise<unknown> => {
+      for (let i = index; i < loaded.length; i += 1) {
+        const item = loaded[i]!;
+        const runtime = item.runtime!;
+        if (!runtime.matchesHook(name, current)) continue;
+        let nextCalled = false;
+        let innerDeny: string | undefined;
+        const result = await runtime.callHook(name, current, {
+          signal,
+          engine: async (nextEvent) => {
+            // 调了 `next(e)`：控制权交给下面的 mod（最后一个交回链尾）。把内层
+            // 的决议记下来 —— `await next(e)` 之后忘掉返回值的写法很常见，不能
+            // 因此丢掉下面那个 mod 的 `{ deny }`。
+            nextCalled = true;
+            const value = await fromIndex(i + 1, nextEvent);
+            if (isDeny(value)) innerDeny = value.deny;
+            return value;
+          },
+        });
+        if (!result.ok) {
+          logger.warn(`[Wave] ${item.mod.id} 的 ${name} 失败：${result.error}`);
+          continue;
+        }
+        // 交给下面之后，这个 mod 自己的返回值不再算数：`next` 之后 deny 撤不回
+        // 已经跑掉的工具（Claude Code 同口径）。内层的决议说了算。
+        if (nextCalled) return innerDeny ? { deny: innerDeny } : {};
+        if (name === "tool.run" && !isDeny(result.value)) {
+          // 匹配上了却没调 `next(e)`：工具没跑，也就没有结果。按「不放行」报，
+          // 否则模型会拿到一个凭空的成功。
+          return {
+            deny: `${item.plugin} 的 tool.run 钩子没有放行这次调用`,
+          };
+        }
+        return result.value ?? {};
+      }
+      return runOnce();
+    };
+    const value = await fromIndex(0, event);
+    if (isDeny(value)) return { deny: value.deny };
+    return {};
+  }
+
+  /**
+   * `$.ui.ask`：问用户一个问题（spec「问用户一个问题」）。
+   *
+   * 只转一手：真正画卡片、等人按的是界面进程，走的是引擎自己的
+   * `AskUserQuestion` 审批链路（由 `Agent` 接进来）。没接上就是「这条会话没有
+   * 人能回答」，reject —— 守卫据此按拒绝处理。
+   */
+  private async askUser(
+    question: string,
+    options: { labels: string[]; header?: string; multiSelect?: true },
+  ): Promise<string> {
+    if (!this.askUserHandler) {
+      throw new Error("这条会话没有人能回答插件的问题（没有可用的界面）");
+    }
+    return this.askUserHandler(question, options);
   }
 
   /**
@@ -904,7 +1121,17 @@ export class ModManager {
         timer.running = false;
       };
       try {
-        const result = timer.run();
+        // 定时器回调也是 mod 代码：经沙箱那一跳，同步死循环才打得断（与钩子
+        // 同一条洞，见 `ModRuntime.invokeInContext`）。
+        const runtime = this.mods.get(timer.modId)?.runtime;
+        const result =
+          runtime === undefined
+            ? timer.run()
+            : runtime.runSandboxedCallback<unknown>(
+                timer.run as (...args: unknown[]) => unknown,
+                `$.clock.${timer.kind} 的回调`,
+                `${timer.modId}:clock`,
+              );
         if (isThenable(result)) {
           void result.then(
             () => finish(),
@@ -1171,8 +1398,8 @@ export class ModManager {
     this.publishUpdate(pane, { error });
   }
 
-  private openPane(modId: string, paneId: string, title: string): void {
-    if (this.disposed) return;
+  private openPane(modId: string, paneId: string, title: string): boolean {
+    if (this.disposed) return false;
     const key = `${modId}\u0000${paneId}`;
     const existing = this.panes.get(key);
     const pane: PaneState = existing ?? {
@@ -1187,6 +1414,7 @@ export class ModManager {
     this.panes.set(key, pane);
     // 只登记 + 通知 surface 来要树，不在这里渲染（spec「架构约束」）。
     this.publishUpdate(pane, { stale: true });
+    return true;
   }
 
   private closePane(modId: string, paneId: string): void {
@@ -1386,6 +1614,65 @@ export class ModManager {
         revision,
         tree: validated.tree,
       });
+    }
+    return this.applyBandList(bands);
+  }
+
+  /**
+   * 第三个渲染站点 `AbovePromptList`：把这一帧所有行摊给 mod 看，让它重排/隐藏
+   * （spec「状态带、状态行与提示」）。
+   *
+   * 做法与 Claude Code 同一条：行是**交给** mod 的（`e.props.rows[].tree`），mod
+   * 答一棵树回来，宿主从这棵树里认出它留下了哪些行、按什么顺序 —— 「What it
+   * leaves is what core stacks」。所以既有「换个顺序」也有「不把某行放进去」，
+   * 而不需要另一种返回值形状。
+   *
+   * 四个刻意的取舍：
+   *
+   * - **fail-open 只覆盖失败**：钩子抛错/超时按**原顺序**画（把带清空是更坏的
+   *   默认值，用户会以为插件坏了）。想 fail-closed 就在自己 `.catch` 里返回一棵
+   *   不含任何行的树 —— 那被读成「把带清空」，正是 Claude Code 的写法。
+   * - **只问显式注册了这个站点的 mod**（`hasSiteHook`）：没写 matcher 的
+   *   `ui.render` 处理器会收到每一个站点，而「只画自己那一行」的插件在收到这个
+   *   站点时会照样返回自己那棵树 —— 那棵树里恰好有它自己那一行，按「留下哪些
+   *   行」的语义等于把所有别人的行都隐藏了。
+   * - **不支持「包一层再排版」**：跨插件嵌套之后，`revision`、归属、失败隔离都
+   *   要按子树重算；按行重排已经覆盖合并/置顶/折叠。
+   * - **不跨 mod 接力**：第一个给出可认结果的 mod 说了算，`next(e)` 之后没有
+   *   第二个排序器可问（面板与带也是「一个 mod 一份」，只有这一个站点是全体的）。
+   */
+  private async applyBandList(
+    bands: ModBandRenderResult[],
+  ): Promise<ModBandRenderResult[]> {
+    if (this.disposed) return bands;
+    const rows = bands.filter((band) => band.tree !== null);
+    if (rows.length === 0) return bands;
+    const trees = rows.map((row) => row.tree as ModPanelTree);
+    const handed = rows.map((row) => ({ plugin: row.plugin, tree: row.tree }));
+    // 没有树的带不占位置，重排之后按原相对顺序缀在末尾即可。
+    const empty = bands.filter((band) => band.tree === null);
+    for (const [modId, loaded] of this.mods) {
+      if (loaded.error || !loaded.runtime) continue;
+      if (!loaded.runtime.hasSiteHook("ui.render", "AbovePromptList")) continue;
+      const result = await loaded.runtime.callHook("ui.render", {
+        modId,
+        surface: "desktop",
+        component: "AbovePromptList",
+        instance_id: MOD_BAND_INSTANCE_ID,
+        props: { ...renderSiteProps(), rows: handed },
+      });
+      if (!result.ok) {
+        logger.debug(
+          `[Wave] ${loaded.plugin} 的 AbovePromptList 钩子失败，按原顺序画：${result.error}`,
+        );
+        continue;
+      }
+      if (result.value === undefined) continue;
+      // 显式注册过的排序器答了树，就按它留下的行画 —— 一行都没留下就是**把带
+      // 清空**（Claude Code 的「to fail closed, answer no rows in its
+      // `.catch`」正是这么写的）。它想「没有意见」就该返回 `undefined`。
+      const picked = pickBandRows(result.value, trees);
+      return [...picked.map((index) => rows[index]!), ...empty];
     }
     return bands;
   }

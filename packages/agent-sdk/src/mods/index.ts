@@ -2,10 +2,11 @@
  * `wave-agent-sdk/mods` —— 插件 mod 的**书写面**。
  *
  * mod 源码里只需要 `import { Box, Text, Button } from "wave-agent-sdk/mods"`，
- * 然后像写 React 一样写 JSX。这些"组件"的运行时值只是元素名字符串：
- * mod 跑在 agent 进程的 vm 沙箱里，`require("wave-agent-sdk/mods")` 由沙箱自己
- * 的 require 接管、返回同一份表（见 `runtime.ts`），所以**这个文件在沙箱里不会
- * 被真正加载**。它存在的意义是给插件作者的 TypeScript 提供 props 类型。
+ * 然后像写 React 一样写 JSX。这个文件在沙箱里**不会被真正加载**：
+ * `require("wave-agent-sdk/mods")` 由沙箱自己的 require 接管，返回的是 `runtime.ts`
+ * 造的那份表 —— 一个名字对应一个**可调用构造器**，既能当 JSX tag，也能直接调
+ * （`Text({ children: "hi" })`，Claude Code 官方示例就这么写）。这里的导出只给
+ * 插件作者的 TypeScript 提供 props 类型，运行时值就是 tag 名。
  *
  * 因此这里的每个 props 接口都要跟两侧保持一致（名单与 Claude Code 的 `desktop`
  * 表逐项对齐，只差 `Client`）：
@@ -86,7 +87,8 @@ export interface ModElement {
 type ModComponent<P> = (props: P) => ModElement;
 
 function element<P>(name: string): ModComponent<P> {
-  // 运行时值就是 tag 名；`h()` 只认字符串。
+  // 这个文件里的运行时值只是 tag 名（沙箱里由 `runtime.ts` 换成可调用构造器，
+  // 调用式与 JSX 两种写法都落到同一个 `h()` 上 —— 见该文件 `elementTableOf`）。
   return name as unknown as ModComponent<P>;
 }
 
@@ -184,6 +186,14 @@ export interface ButtonProps {
   dimColor?: boolean;
   /** `true` 时把焦点放这里（一个站点里多个只第一个生效）。 */
   autoFocus?: boolean;
+  /**
+   * 一个数字或一个小写字母：面板**有键盘焦点时**按这个键等于点了它
+   * （守卫类插件的 `y` 放行 / `n` 拒绝；spec「用户交互的结果」）。
+   *
+   * 同一个面板里两个可见按钮撞同一个键时，**后写的那个**赢（与 Claude Code 一
+   * 样）；焦点在 `Input` 里时所有可打印键都归输入框。
+   */
+  hotkey?: string;
   /** 改的是 label 的样式。 */
   hover?: TextHover;
   children?: ModChild;

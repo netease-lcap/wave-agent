@@ -610,6 +610,11 @@ function renderNode(
           type="button"
           className={classes.join(" ")}
           data-mod-key={buttonKey}
+          data-mod-hotkey={
+            typeof node.props.hotkey === "string"
+              ? node.props.hotkey
+              : undefined
+          }
           disabled={disabled}
           autoFocus={node.props.autoFocus === true}
           onClick={() => onEvent("press", buttonKey)}
@@ -624,6 +629,11 @@ function renderNode(
                 ? node.props.label
                 : buttonKey}
           </span>
+          {/* 快捷键画成一个小的键帽：不画的话用户无从知道有热键（Claude Code
+              的桌面端也把键摆在标签旁边）。 */}
+          {typeof node.props.hotkey === "string" ? (
+            <kbd className="mod-button-hotkey">{node.props.hotkey}</kbd>
+          ) : null}
         </button>
       );
     }
@@ -709,6 +719,50 @@ function renderNode(
   }
 }
 
+/**
+ * 面板有键盘焦点时按 `Button.hotkey` 等于点了那个按钮（spec「用户交互的结果」）。
+ *
+ * 三条与 Claude Code 同口径的边界：
+ *
+ * - **只在这个渲染器里生效**：监听挂在这棵树的根上，焦点在别处（输入框、消息
+ *   区）时收不到事件，所以不会劫持全局输入。
+ * - **焦点在输入类控件里时一律放行**：`Input` 拿到焦点后每个可打印键都归它，
+ *   否则用户在输入框里打 `y` 会顺手点掉一个按钮。
+ * - **撞键时后写的赢**：`querySelectorAll` 从后往前找第一个没被禁用的。
+ */
+function hotkeyHandler(
+  onEvent: ModPanelRendererProps["onEvent"],
+): (event: React.KeyboardEvent<HTMLDivElement>) => void {
+  return (event) => {
+    // 带修饰键的是宿主的快捷键（Ctrl+C 那类），不是 mod 的热键。
+    if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey)
+      return;
+    const target = event.target as HTMLElement | null;
+    const tag = target?.tagName;
+    if (
+      tag === "INPUT" ||
+      tag === "TEXTAREA" ||
+      tag === "SELECT" ||
+      target?.isContentEditable === true
+    ) {
+      return;
+    }
+    const key = event.key;
+    if (key.length !== 1) return;
+    const hot = key.toLowerCase();
+    const matches = event.currentTarget.querySelectorAll<HTMLElement>(
+      `[data-mod-hotkey="${hot}"]`,
+    );
+    for (let at = matches.length - 1; at >= 0; at -= 1) {
+      const element = matches[at]!;
+      if (element.hasAttribute("disabled")) continue;
+      event.preventDefault();
+      onEvent("press", element.dataset.modKey ?? "");
+      return;
+    }
+  };
+}
+
 export function ModPanelRenderer({
   tree,
   error,
@@ -752,7 +806,11 @@ export function ModPanelRenderer({
           {error}
         </div>
         {tree ? (
-          <div className="mod-panel-root" data-testid="mod-panel-root">
+          <div
+            className="mod-panel-root"
+            data-testid="mod-panel-root"
+            onKeyDown={hotkeyHandler(onEvent)}
+          >
             {renderNode(tree, onEvent, onOpenLink, 0, hover, undefined)}
           </div>
         ) : null}
@@ -763,7 +821,11 @@ export function ModPanelRenderer({
     return <div className="mod-panel-empty">mod 没有返回内容</div>;
   }
   return (
-    <div className="mod-panel-root" data-testid="mod-panel-root">
+    <div
+      className="mod-panel-root"
+      data-testid="mod-panel-root"
+      onKeyDown={hotkeyHandler(onEvent)}
+    >
       {renderNode(tree, onEvent, onOpenLink, 0, hover, undefined)}
     </div>
   );

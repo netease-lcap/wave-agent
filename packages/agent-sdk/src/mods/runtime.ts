@@ -1,6 +1,7 @@
 import * as vm from "node:vm";
 import * as path from "node:path";
 import type {
+  ModAskOptions,
   ModCommandInfo,
   ModCommandSpec,
   ModElementType,
@@ -15,8 +16,10 @@ import type {
   ModProcessExit,
   ModPropValue,
   ModPromptFillMode,
+  ModRenderSurface,
   ModSessionUsage,
   ModSettingsSource,
+  ModUiOpenResult,
 } from "../types/mods.js";
 import { MOD_LIMITS, MOD_SETTINGS_SOURCES } from "../types/mods.js";
 import {
@@ -47,10 +50,93 @@ import { logger } from "../utils/globalLogger.js";
  * 这是**进程内隔离**，不是安全边界：mod 是用户自己装的插件代码，和 hooks /
  * MCP server 同一个信任层级。它挡的是「误写 `process.exit()` 把会话带走」，
  * 不是「恶意代码想跑出去」。
+ *
+ * 与 Claude Code 同一档（它的 `src/utils/vmHardening.ts`），外面多压两层：
+ *
+ * - **所有跨入沙箱的执行都从 `invokeInContext` 进**。`vm` 的 `timeout` 是 V8 的
+ *   terminate，只在 `runInContext` 那一层生效；宿主直接 `fn()` 是裸调，
+ *   `while (true) {}` 能把整个 `wave --stdio` 卡死（5 秒预算的 `setTimeout` 和
+ *   它同一个事件循环，根本轮不到）。
+ * - **本 realm 的内置一律冻结**，并锁掉 `Error.prepareStackTrace` /
+ *   `captureStackTrace`：堆栈是**我们**写日志时要读的东西，mod 能改写它就能让
+ *   排查看到一段假的。
+ *
+ * 没做的是 Claude Code 里那层 `intoEnvironment` 深拷贝 —— 那需要把 `$` 整个搬
+ * 进 vm 里重建才彻底（它把元素构造器也写成 vm 内的 `String.raw` 源码），而我们
+ * 的 `$` 是宿主对象，代价是把几百行有类型检查的代码降级成字符串。`$` 与元素表
+ * 仍然是宿主对象，这条边界按上一段「不是安全边界」接受。
  */
 
 /**
- * 元素构造器：`h()` 只认字符串 tag，所以构造器本身就是 tag 名。
+ * 沙箱里唯一的那一跳：宿主把「要执行什么」放进 `__wave$slot`，这个函数取出来
+ * 调一次，顺手把槽位清干净。
+ *
+ * **它本身必须是 vm 内函数。** 宿主那边的任何函数都带宿主 realm 的
+ * `Function.prototype`，`fn.constructor("return process")()` 一步就出去了 ——
+ * context 的 `codeGeneration.strings=false` 只挡 vm 自己 `new Function`。名字在
+ * context 里指向 vm 自己的函数，便拿不到那条路。
+ */
+const SANDBOX_SLOT = "__wave$slot";
+const SANDBOX_INVOKE = "__wave$invoke";
+
+/** 那一跳本身（不带 timeout，timeout 在每次 `runInContext` 的选项里）。 */
+let invokeScript: vm.Script | undefined;
+function invokeScriptOf(): vm.Script {
+  // 惰性：SDK 模块在 import 时不做任何事（见 AGENTS.md 的「零 import 副作用」）。
+  invokeScript ??= new vm.Script(`${SANDBOX_INVOKE}()`, {
+    filename: "wave:mod-invoke",
+  });
+  return invokeScript;
+}
+
+/**
+ * 装配 + 加固一个新 context：装上那一跳，然后把这个 realm 的内置一律冻结。
+ *
+ * 只碰本 context（每个 mod 一个，见 {@link ModRuntime}）：改的是 vm 自己的
+ * `Object` / `Array` / `Promise`，宿主与其它 mod 都不受影响。
+ *
+ * `Error.prepareStackTrace` 与 `captureStackTrace` 单独处理：堆栈是**我们**
+ * 写日志时要读的东西，mod 能改写它就能让排查看到一段假的。
+ */
+function hardenContext(context: vm.Context): void {
+  vm.runInContext(
+    `(function () {
+      globalThis.${SANDBOX_INVOKE} = function () {
+        var slot = globalThis.${SANDBOX_SLOT};
+        globalThis.${SANDBOX_SLOT} = undefined;
+        if (slot === undefined) throw new Error("沙箱没有拿到要执行的工作");
+        return slot.fn.apply(slot.self, slot.args);
+      };
+
+      Object.defineProperty(Error, "prepareStackTrace", {
+        value: undefined,
+        writable: false,
+        configurable: false,
+      });
+      delete Error.captureStackTrace;
+
+      var intrinsics = [
+        Object, Function, Array, String, Number, Boolean, Symbol, BigInt,
+        RegExp, Date, Map, Set, WeakMap, WeakSet, Promise, JSON, Math, Reflect,
+        ArrayBuffer, DataView, Uint8Array, Int8Array, Uint16Array, Int16Array,
+        Uint32Array, Int32Array, Float32Array, Float64Array,
+        Error, TypeError, RangeError, SyntaxError, ReferenceError, EvalError,
+        URIError, AggregateError,
+      ];
+      for (var i = 0; i < intrinsics.length; i += 1) {
+        var ctor = intrinsics[i];
+        if (ctor === undefined) continue;
+        if (ctor.prototype) Object.freeze(ctor.prototype);
+        Object.freeze(ctor);
+      }
+    })();`,
+    context,
+    { filename: "wave:mod-sandbox" },
+  );
+}
+
+/**
+ * 元素名：`h()` 认的 tag，也是构造器的 `elementType`。
  *
  * 名单不许在这里另写一份 —— `./index.js` 才是插件作者 `import` 的那份（也是
  * `wave-agent-sdk/mods` 子路径的产物），两边漂移会让 `<Text>` 编译出来的 tag
@@ -70,9 +156,18 @@ const ELEMENT_CONSTRUCTORS = [
   Progress,
 ];
 
-const elements = Object.fromEntries(
-  ELEMENT_CONSTRUCTORS.map((name) => [String(name), String(name)]),
-) as Record<ModElementType, ModElementType>;
+/**
+ * `h()` 的 tag：JSX 标签既可能是元素名（`__wave.h("Text", …)`），也可能是构造器
+ * 函数（`__wave.h(t.Text, …)`，`t` 是 `$.ui.resolve(e)` 那张表）。后者按它带的
+ * `elementType` 归一，所以两种写法编出的是同一种节点。
+ */
+function tagOf(type: unknown): string {
+  if (typeof type === "function") {
+    const tag = (type as { elementType?: unknown }).elementType;
+    if (typeof tag === "string") return tag;
+  }
+  return String(type);
+}
 
 /**
  * 画这棵树的那一端 —— `ui.render` 的 `e.surface`，也是 `$.ui.resolve(e)` 选
@@ -83,6 +178,20 @@ const elements = Object.fromEntries(
  * 我们一期只发 `desktop` —— 别的值当错处理，别让它悄悄拿到桌面端的表。
  */
 const SURFACE = "desktop";
+
+/**
+ * 这一刻有谁在画这条会话（spec「会话事实」的 `$.session.surfaces()`）。
+ *
+ * 由宿主入口决定：桌面端会画 mod 的树 ⇒ `["desktop"]`；终端 CLI、`wave -p`、
+ * VS Code / JetBrains 一期都不画 ⇒ `[]`（「没有界面」）。判据是**有没有界面**
+ * 而不是「能不能画面板」：将来终端接上渲染，这里先变成 `["terminal"]`，读它的
+ * 插件不用改（`$.ui.open()` 的 `isPlaced` 与它同一个数据源）。
+ */
+export function renderSurfacesOf(
+  entrypoint: "cli" | "desktop" | "vscode" | "jetbrains" | "remote" | undefined,
+): readonly ModRenderSurface[] {
+  return entrypoint === "desktop" ? ["desktop"] : [];
+}
 
 /** 我们对外推荐的 mod 模块名（`wave-agent-sdk/mods` 子路径）。 */
 const MODULE_SPECIFIER = "wave-agent-sdk/mods";
@@ -98,22 +207,58 @@ const COMMUNITY_MODULE_SPECIFIER = "claude-code";
 /**
  * 这一端上能画的站点：`ui.render` 的 `e.component`。
  *
- * 一期两处：右侧面板（`Pane`）与输入框上方的带（`AbovePrompt`）—— 宿主两处都
- * 会发 `ui.render`，漏一个就等于让那一处的 mod 在 `$.ui.resolve(e)` 上抛错。
+ * 一期三处：右侧面板（`Pane`）、输入框上方的带（`AbovePrompt`）、以及「带里的
+ * 行怎么排」（`AbovePromptList`，见 spec「状态带、状态行与提示」）—— 宿主三处
+ * 都会发 `ui.render`，漏一个就等于让那一处的 mod 在 `$.ui.resolve(e)` 上抛错。
  * CC 的表里还有 15 个（`ToolUse`、`PromptHint`…），加站点时往这里加，别在别处
  * 另写一份。
  */
-const RENDER_SITES: readonly string[] = ["Pane", "AbovePrompt"];
+const RENDER_SITES: readonly string[] = [
+  "Pane",
+  "AbovePrompt",
+  "AbovePromptList",
+];
 
 /**
- * 冻结的元素表：每次 `$.ui.resolve(e)` 返回同一份，mod 改不到它。
+ * 一张元素表（`$.ui.resolve(e)` 与 `require("claude-code")` 拿到的是同一份）。
  *
  * CC 的桌面端表是 11 个，我们放真画得出的那 10 个 —— 只差 `Client`（要在渲染端
  * 执行 mod 附带的第二份模块，spec「交付分层」没做）。给了画不出的名字，mod 编出
  * 的树会被 `validateModTree` 拒掉，错误离原因更远。
+ *
+ * **每个 mod 实例一份、且在构造时冻结**：构造器要闭包住这个实例的 `h()`（事件
+ * 回调登记在实例上），所以不能是模块级共享的那一份。
  */
-const ELEMENT_TABLE: Readonly<Record<ModElementType, ModElementType>> =
-  Object.freeze({ ...elements });
+type ModElementTable = Readonly<Record<ModElementType, ModElementBuilder>>;
+
+/**
+ * 造一套元素构造器：调用式 `Text({ children: "hi" })` 与 JSX `<Text>hi</Text>`
+ * 都落到同一个 `h()` 上。
+ *
+ * `children` 从 props 里摘出来（CC 的调用式把子节点写在 props 上），其余原样交给
+ * `h()`：它才知道哪些 prop 能进树、哪些是回调。
+ */
+function elementTableOf(
+  h: (type: unknown, props: unknown, ...children: unknown[]) => unknown,
+): ModElementTable {
+  const table: Record<string, ModElementBuilder> = {};
+  for (const name of ELEMENT_CONSTRUCTORS) {
+    const elementType = String(name) as ModElementType;
+    const builder = ((props?: Record<string, unknown>) => {
+      const { children, ...rest } = isPlainObject(props) ? props : {};
+      if (children === undefined) return h(elementType, rest);
+      return Array.isArray(children)
+        ? h(elementType, rest, ...children)
+        : h(elementType, rest, children);
+    }) as {
+      (props?: Record<string, unknown>): unknown;
+      elementType: ModElementType;
+    };
+    Object.defineProperty(builder, "elementType", { value: elementType });
+    table[elementType] = builder;
+  }
+  return Object.freeze(table) as ModElementTable;
+}
 
 /**
  * 把 `ui.render` 的事件换成这一端可用的元素表。
@@ -123,7 +268,8 @@ const ELEMENT_TABLE: Readonly<Record<ModElementType, ModElementType>> =
  */
 function resolveElements(
   event: unknown,
-): Readonly<Record<ModElementType, ModElementType>> {
+  table: ModElementTable,
+): ModElementTable {
   const e = (typeof event === "object" && event !== null ? event : {}) as {
     surface?: unknown;
     component?: unknown;
@@ -140,7 +286,7 @@ function resolveElements(
       `$.ui.resolve 不认识站点 "${component}"（一期只画 ${RENDER_SITES.join(" / ")}）`,
     );
   }
-  return ELEMENT_TABLE;
+  return table;
 }
 
 /**
@@ -168,6 +314,79 @@ function toastMs(timeoutMs: unknown): number {
   }
   if (timeoutMs <= 0) return MOD_LIMITS.toastDefaultMs;
   return Math.min(timeoutMs, MOD_LIMITS.toastMaxMs);
+}
+
+/**
+ * 校验 `$.ui.ask` 的参数，归一成宿主那张提问卡片要的形状（spec「问用户一个问题」）。
+ *
+ * Claude Code 的签名是 `ask(question, options?)`，第二个参数可以是标签数组，也可
+ * 以是 `{ options, header, multiSelect }`；标签 2–4 个，少于两个按「是 / 否」补
+ * 齐。`header` 是那颗小标签，CLI 会 `.slice(0, 12).toUpperCase()`，所以这里一定
+ * 给一个字符串（没写就用插件名）。
+ */
+function normalizeAskQuestion(
+  question: unknown,
+  options: unknown,
+  pluginName: string,
+): { question: string; labels: string[]; header: string; multiSelect?: true } {
+  if (typeof question !== "string" || question.trim().length === 0) {
+    throw new Error("$.ui.ask 需要一个问题（非空字符串）");
+  }
+  let rawLabels: unknown = [];
+  let header: unknown;
+  let multiSelect: unknown;
+  if (Array.isArray(options)) {
+    rawLabels = options;
+  } else if (options !== undefined) {
+    if (!isPlainObject(options)) {
+      throw new Error(
+        "$.ui.ask 的第二个参数是标签数组，或者 { options, header, multiSelect }",
+      );
+    }
+    rawLabels = options.options ?? [];
+    header = options.header;
+    multiSelect = options.multiSelect;
+  }
+  if (!Array.isArray(rawLabels)) {
+    throw new Error("$.ui.ask 的 options 必须是字符串数组");
+  }
+  const labels: string[] = [];
+  for (const label of rawLabels) {
+    if (typeof label !== "string" || label.trim().length === 0) {
+      throw new Error(
+        `$.ui.ask 的每个选项都要是非空字符串，拿到的是 ${JSON.stringify(label)}`,
+      );
+    }
+    const trimmed = label.trim();
+    // 同一个标签给两次，用户点了也分不清是哪个。
+    if (labels.includes(trimmed)) {
+      throw new Error(`$.ui.ask 的选项重复了：${trimmed}`);
+    }
+    labels.push(trimmed);
+  }
+  if (labels.length > 4) {
+    throw new Error(
+      `$.ui.ask 最多四个选项（Claude Code 的口径，多出来的提问卡片画不下），拿到 ${labels.length} 个`,
+    );
+  }
+  // 少于两个补成「是 / 否」：卡片上没有「只有一个选项」这种形状。
+  while (labels.length < 2) labels.push(labels.length === 0 ? "是" : "否");
+  if (header !== undefined && typeof header !== "string") {
+    throw new Error("$.ui.ask 的 header 必须是字符串");
+  }
+  if (multiSelect !== undefined && multiSelect !== true) {
+    // CC 的类型就写死 `multiSelect?: true`：给 false 是「单选的默认」，不是错。
+    if (multiSelect !== false) {
+      throw new Error("$.ui.ask 的 multiSelect 只能是 true");
+    }
+  }
+  const trimmedHeader = (header ?? pluginName).trim().slice(0, 12);
+  return {
+    question: question.trim(),
+    labels,
+    header: trimmedHeader.length > 0 ? trimmedHeader : "plugin",
+    ...(multiSelect === true ? { multiSelect: true as const } : {}),
+  };
 }
 
 /** 命令名的合法形状（与 Claude Code 同一条：`/^[a-zA-Z0-9_-]{1,64}$/`）。 */
@@ -255,14 +474,52 @@ export interface ModTimerHandle {
   cancel(): void;
 }
 
+/**
+ * 元素构造器：既能当 JSX 标签用（`<Text>hi</Text>` 编译成 `h(Text, …, "hi")`），
+ * 也能像 Claude Code 的表那样直接调用（`Text({ children: "hi" })`）。
+ *
+ * 两种写法都必须在：社区插件两种都写（`hamzafer` 用 JSX，官方示例
+ * `blast-radius.mjs` 用的是调用）。`elementType` 是 `h()` 认它时用的真名 ——
+ * 调用式 `Text({…})` 与 JSX `<Text>` 编出来的是同一棵树。
+ */
+export interface ModElementBuilder {
+  (props?: Record<string, unknown>): unknown;
+  readonly elementType: ModElementType;
+}
+
 /** 事件钩子能拿到的 `$`（见 spec「$（一期）」）。 */
 export interface ModDollar {
   plugin: { name: string };
   ui: {
     /** `ui.render` 的事件 → 该站点可用的元素构造器表（spec「事件」）。 */
-    resolve(event: unknown): Readonly<Record<ModElementType, ModElementType>>;
-    open(pane: { id: string; title: string }): void;
-    close(id: string): void;
+    resolve(
+      event: unknown,
+    ): Readonly<Record<ModElementType, ModElementBuilder>>;
+    /**
+     * 打开一块面板（spec「面板放得下吗」）。
+     *
+     * 返回「这一帧有人接住了吗」：`isPlaced: false` 带一句 `reason`（没有能画
+     * 面板的表面以 `no-surface` 开头、会话正在销毁）。**不等待用户做任何事**，
+     * 也不表示面板已经可见 —— 守卫类插件据此决定要不要把命令冻在等人按键上。
+     *
+     * `focus` 只接受 `true`（与 Claude Code 一样，传 `false` 报错）：一期桌面端
+     * 每个 mod 面板的第一帧都会激活它的 tab，所以这个字段目前不改变行为，收它
+     * 只为让 CC 插件原样能跑。
+     */
+    open(pane: {
+      id: string;
+      title?: string;
+      focus?: true;
+    }): Promise<ModUiOpenResult>;
+    /** 关掉一块面板（`{ id }` 是 Claude Code 的形状）；没开的 id 什么也不做。 */
+    close(pane: { id: string }): Promise<void>;
+    /**
+     * 这个 mod 自己开着哪些面板。
+     *
+     * 一期返回 pane id 的数组（Claude Code 返回 `{ id, title, isShown,
+     * isFocused, isPlaced }` 对象数组）：后三个字段要等 surface 把「当前显示哪
+     * 个 tab」报上来才编得出来，现在编一个只会让守卫按错的答案放行。
+     */
     panes(): string[];
     /**
      * 「我这个 mod 画的东西过期了」——参数是**渲染站点的生产者**，一期只有
@@ -284,6 +541,13 @@ export interface ModDollar {
      * 但不进模型上下文。一期只有 `to: "transcript"` 这一个落点。
      */
     log(text: string, options?: { to?: "transcript" }): void;
+    /**
+     * 问用户一个问题（spec「问用户一个问题」）。
+     *
+     * resolve 成选中的那个标签，或用户在「其他」里打的自由文本 —— 所以要跟标签
+     * 做**精确**比较。没人能答（没有界面、用户关掉了对话框）时 reject。
+     */
+    ask(question: string, options?: ModAskOptions): Promise<string>;
   };
   state: {
     get(key: string): unknown;
@@ -400,6 +664,13 @@ export interface ModDollar {
     root(): Promise<string>;
     /** 当前生效的模型名（没配时是空串），与 `usage().model` 同一处解析。 */
     model(): Promise<string>;
+    /**
+     * 这一刻有谁在画这条会话（spec「会话事实」）：`["desktop"]` 或 `[]`。
+     *
+     * **永远不会 reject**：空数组是「没有界面」（`wave -p` 也是正常会话），不是
+     * 错误，直接判 `length`。与 `$.ui.open()` 的 `isPlaced` 同一个数据源。
+     */
+    surfaces(): Promise<readonly ModRenderSurface[]>;
   };
   /**
    * 环境变量（spec「环境变量与设置（只读）」）。
@@ -439,9 +710,16 @@ export interface ModDollar {
 /** 沙箱需要宿主提供的全部能力。 */
 export interface ModRuntimeHost {
   pluginName: string;
-  openPane(paneId: string, title: string): void;
+  /** 登记一块面板；返回「挂上了没有」（会话正在销毁时 false）。 */
+  openPane(paneId: string, title: string): boolean;
   closePane(paneId: string): void;
   listPanes(): string[];
+  /**
+   * 这一刻有谁在画（`$.session.surfaces()` 与 `$.ui.open()` 的同一份数据源）。
+   *
+   * 由宿主入口决定，见 {@link renderSurfacesOf}。
+   */
+  surfaces(): readonly ModRenderSurface[];
   invalidate(target: string): void;
   /** 输入框下方那一行常驻状态；`null` 清除（spec「状态带、状态行与提示」）。 */
   setStatus(text: string | null): void;
@@ -449,6 +727,16 @@ export interface ModRuntimeHost {
   showToast(text: string, timeoutMs: number): void;
   /** `$.ui.log`：在对话流里追加一行（长度已由 runtime 夹进限额）。 */
   appendLog(text: string): void;
+  /**
+   * `$.ui.ask`：问用户一个问题，resolve 成选中的那个标签（或用户自己打的文本）。
+   *
+   * 参数已由 runtime 校验并归一成 `{ labels }`；「有没有人能答」「对话框怎么
+   * 画」「用户关掉了算 reject」都是实现方的事（见 spec「问用户一个问题」）。
+   */
+  askUser(
+    question: string,
+    options: { labels: string[]; header?: string; multiSelect?: true },
+  ): Promise<string>;
   stateGet(key: string): unknown;
   stateSet(key: string, value: unknown): void;
   storeGet(key: string): string | undefined;
@@ -524,15 +812,14 @@ export interface ModRuntimeHost {
  * 允许注册的钩子（spec「事件」）。
  *
  * `session.start` / `ui.render` 是「要 mod 做事」的那两个；`turn.complete`、
- * `tool.call`、`turn.start`、`turn.step`、`session.measure`、`session.compact`、
- * `session.end`、`ui.close` 与 `classic.PermissionRequest` 是只读的观察事件，
- * 返回值一律丢弃
- * （`tool.call` 在 Claude Code 里还能返回 `{ deny }` 拦下调用，那是决策型钩子，
- * 我们只做观察这一半）。`classic.` 前缀是照 Claude Code 的规矩：它把每个
- * settings hook 事件都镜像成 `classic.<Event>`，我们只做这一个镜像，`e` 的形状
- * 也照那份 stdin JSON。`prompt.submit` 与 `command.run` 是仅有的两个有返回值
- * 语义的：前者答 `{ context }`（本轮附加上下文，不改用户原文），后者答
- * `{ text }`。别的名字一律拒收，免得插件作者依赖一个不存在的钩子。
+ * `turn.start`、`turn.step`、`session.measure`、`session.compact`、`session.end`、
+ * `ui.close` 与 `classic.PermissionRequest` 是只读的观察事件，返回值一律丢弃。
+ * 有返回值语义的四个：`tool.call` / `tool.run` 答 `{ deny }`（拦下这次调用，
+ * 后者还负责真正执行它）、`prompt.submit` 答 `{ context }`（本轮附加上下文，
+ * 不改用户原文）、`command.run` 答 `{ text }`。`classic.` 前缀是照 Claude Code
+ * 的规矩：它把每个 settings hook 事件都镜像成 `classic.<Event>`，我们只做这一个
+ * 镜像，`e` 的形状也照那份 stdin JSON。别的名字一律拒收，免得插件作者依赖一个
+ * 不存在的钩子。
  */
 const HOOK_NAMES = new Set([
   "session.start",
@@ -546,6 +833,7 @@ const HOOK_NAMES = new Set([
   "session.compact",
   "session.end",
   "tool.call",
+  "tool.run",
   "classic.PermissionRequest",
   "command.run",
 ]);
@@ -558,7 +846,12 @@ const HOOK_NAMES = new Set([
  * `ui.render` 按站点（`component` / `requestId`）、`tool.call` 按工具名、
  * `command.run` 按命令名。
  */
-const MATCHER_EVENTS = new Set(["command.run", "ui.render", "tool.call"]);
+const MATCHER_EVENTS = new Set([
+  "command.run",
+  "ui.render",
+  "tool.call",
+  "tool.run",
+]);
 
 /**
  * matcher 里用的字段名 → 事件的字段名。
@@ -569,6 +862,23 @@ const MATCHER_EVENTS = new Set(["command.run", "ui.render", "tool.call"]);
 const MATCHER_KEY_ALIASES: Record<string, string> = {
   requestId: "instance_id",
 };
+
+/**
+ * 事件里给社区再补一份 Claude Code 的字段名（同一个值两个名字）。
+ *
+ * `ui.render` 的站点实例 id：CC 的**钩子事件**里叫 `requestId`，它的
+ * `ui_render` **消息**里叫 `instance_id`，我们的事件按后者写。社区 mod 在
+ * handler 里比的是前者 —— 官方示例 `blast-radius` 就是
+ * `if (e.requestId !== PANE_ID) return next(e)`，少了这个别名，它的面板永远画
+ * 不出来（`isPlaced` 为真、树却空着）。matcher 那边早就按同一张表归一（见
+ * {@link MATCHER_KEY_ALIASES}），这里补的是 handler 读的那个副本。
+ */
+function withEventAliases(event: unknown): unknown {
+  if (!isPlainObject(event)) return event;
+  if (typeof event.instance_id !== "string") return event;
+  if (event.requestId !== undefined) return event;
+  return { ...event, requestId: event.instance_id };
+}
 
 /** 一个已编译文件：路径 + CJS 源码。 */
 export interface CompiledModule {
@@ -584,6 +894,14 @@ export type ModHookResult =
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
+
+/**
+ * `next.signal` 的缺省：一个永远不 abort 的 signal。
+ *
+ * 只有整条调用真的会被放弃时才有必要造一个控制器；其余事件给这个常量，mod 挂
+ * 监听不会报错，只是永远等不到 abort。
+ */
+const NEVER_ABORTED = new AbortController().signal;
 
 /** `on(...)` 的返回值：只有社区的 `.catch(fn)` 一种用法。 */
 interface HookRegistration {
@@ -791,6 +1109,11 @@ export class ModRuntime {
   private commandHookDepth = 0;
   private readonly dollar: ModDollar;
   private readonly wave: unknown;
+  /**
+   * 元素表：`$.ui.resolve(e)` 与 `require` 拿到的是同一份。**每实例一份**
+   * （不是模块级常量），因为构造器要绑这个实例的 `h`（它记 handlers）。
+   */
+  private readonly elements: ModElementTable;
   /** 当前正在计时的预算（`$.process.spawn` 等输出时会被暂停）。 */
   private budget: HookBudget | undefined;
   /** `$.fs` 的实现，惰性创建：多数 mod 一次都不碰文件。 */
@@ -813,6 +1136,7 @@ export class ModRuntime {
     }
 
     const h = (type: unknown, props: unknown, ...children: unknown[]) => {
+      const tag = tagOf(type);
       const rawProps = isPlainObject(props) ? props : {};
       const key = typeof rawProps.key === "string" ? rawProps.key : undefined;
       const kept: Record<string, ModPropValue> = {};
@@ -828,7 +1152,7 @@ export class ModRuntime {
         if (CALLBACK_PROPS.has(name)) {
           const callback = value as (input?: string) => unknown;
           if (key && typeof callback === "function") {
-            this.handlers.set(`${String(type)}:${key}`, callback);
+            this.handlers.set(`${tag}:${key}`, callback);
           }
           continue;
         }
@@ -853,27 +1177,63 @@ export class ModRuntime {
         // 函数/对象 prop 到不了树上（过不了 RPC）。以前是静默丢弃，作者只看到
         // 「写了没效果、也没有报错」；现在点名，免得对着树猜。
         logger.warn(
-          `[Wave] ${host.pluginName} 的 <${String(type)}${key ? ` key="${key}"` : ""}> 上有个 prop 传不出去：${name}（只有字符串/数字/布尔/null 能进树；对象只有 Select.options 与 hover 两处例外）`,
+          `[Wave] ${host.pluginName} 的 <${tag}${key ? ` key="${key}"` : ""}> 上有个 prop 传不出去：${name}（只有字符串/数字/布尔/null 能进树；对象只有 Select.options 与 hover 两处例外）`,
         );
       }
       const nodeChildren: Array<ModTreeNode | string> = [];
       for (const child of children) appendChildren(nodeChildren, child);
       return {
-        type: String(type),
+        type: tag,
         props: kept,
         ...(hover === undefined ? {} : { hover }),
         children: nodeChildren,
       };
     };
 
+    /** 元素表：`$.ui.resolve(e)` 与 `require("claude-code")` 拿到的是这一份。 */
+    this.elements = elementTableOf(h);
+    const elements = this.elements;
+
     this.wave = { h, Fragment: "Fragment", elements };
 
     this.dollar = {
       plugin: { name: host.pluginName },
       ui: {
-        resolve: resolveElements,
-        open: (pane) => host.openPane(pane.id, pane.title),
-        close: (id) => host.closePane(id),
+        resolve: (event: unknown) => resolveElements(event, elements),
+        // 与 Claude Code 同形：`isPlaced` 说这块面板有没有真的挂到某端上。
+        // 判据是「有没有 surface 在画」，不是「宿主登记成功没」—— 终端里登记
+        // 得到一块永远没人画的面板，守卫若照它等人按键就会把对话挂死。
+        open: async (pane) => {
+          const id = pane?.id;
+          if (typeof id !== "string" || id.length === 0) {
+            throw new Error("$.ui.open 需要一个非空的 pane id");
+          }
+          if (pane.focus !== undefined && pane.focus !== true) {
+            // 与 Claude Code 同一条：`focus` 只收 `true`，要条件式就整字段省略。
+            throw new Error("$.ui.open 的 focus 只能写 true 或者不写");
+          }
+          const title = typeof pane.title === "string" ? pane.title : id;
+          // 登记照做：与 Claude Code 一样「没有 surface 也把面板留着」—— 之后
+          // 有界面挂上来它就画出来，`$.ui.panes()` 也看得到它。`isPlaced` 才是
+          // 诚实的那句话。
+          const registered = host.openPane(id, title);
+          if (host.surfaces().length === 0) {
+            return {
+              isPlaced: false,
+              reason: "no-surface: 这条会话没有能画 mod 面板的表面",
+            };
+          }
+          return registered
+            ? { isPlaced: true }
+            : { isPlaced: false, reason: "会话正在销毁" };
+        },
+        close: async (pane) => {
+          const id = (pane as { id?: unknown } | undefined)?.id;
+          if (typeof id !== "string" || id.length === 0) {
+            throw new Error("$.ui.close 需要一个 { id }");
+          }
+          host.closePane(id);
+        },
         panes: () => [...host.listPanes()],
         invalidate: (target) => {
           if (target !== "ui.render") {
@@ -908,6 +1268,17 @@ export class ModRuntime {
             throw new Error("$.ui.log 需要一段文本");
           }
           host.appendLog(line);
+        },
+        // 借引擎自己的提问通道（`AskUserQuestion` 那条审批链路），所以宿主不
+        // 需要为 mod 单独画一个对话框（spec「问用户一个问题」）。
+        ask: (question, options) => {
+          const { question: text, ...rest } = normalizeAskQuestion(
+            question,
+            options,
+            host.pluginName,
+          );
+          // 等人的时间不算钩子预算：与 `$.process.run` 同一条口径。
+          return this.withBudget(() => host.askUser(text, rest));
         },
       },
       state: {
@@ -998,10 +1369,12 @@ export class ModRuntime {
         usage: () => cloneValue(host.sessionUsage()),
         // 与 `$.fs` 同一份 getter：`cd` 过之后这里立刻是新目录。
         cwd: () => host.workdir(),
-        // 三个事实都异步（Claude Code 同名方法也是异步的），一律现取。
+        // 这几个事实都异步（Claude Code 同名方法也是异步的），一律现取。
         id: async () => host.sessionId(),
         root: async () => host.workspaceRoot(),
         model: async () => host.model(),
+        // 空数组 = 没有界面（`wave -p` 也是正常会话），永远不 reject。
+        surfaces: async () => [...host.surfaces()],
       },
       env: {
         get: async (name) => {
@@ -1076,6 +1449,64 @@ export class ModRuntime {
       // 这个开关限制，所以模块包装器照常执行。
       { codeGeneration: { strings: false, wasm: false } },
     );
+    hardenContext(this.context);
+  }
+
+  /**
+   * 让**宿主持有的** mod 回调也走沙箱那一跳。
+   *
+   * `$.clock.after/every` 的回调由 `ModManager` 的定时器触发，不在钩子链上 ——
+   * 宿主直接 `fn()` 的话，回调里的同步死循环同样能把进程卡死（与钩子同一个洞）。
+   */
+  runSandboxedCallback<T>(
+    fn: (...args: unknown[]) => unknown,
+    label: string,
+    filename: string,
+  ): T {
+    return this.invokeInContext<T>(fn, undefined, [], label, filename);
+  }
+
+  /**
+   * 在沙箱里执行一次工作 —— **所有**跨入都从这里走。
+   *
+   * 为什么不能直接 `fn(...)`：`vm` 的 `timeout` 是 V8 的 terminate，只在
+   * `runInContext` 那一层生效；宿主直接调用一个从 context 里取出来的函数，它会
+   * 一路裸跑，`while (true) {}` 能把 `wave --stdio` 整个卡死（5 秒预算的
+   * `setTimeout` 在同一个事件循环上，根本轮不到）。所以把工作放进槽位、用
+   * `runInContext` 触发，让这段同步执行落在 terminate 的覆盖范围里。
+   *
+   * 覆盖的是**同步段**：`async` 处理函数第一次 `await` 就交回宿主了，那之后的
+   * 时间由 {@link HookBudget} 管（它看的是墙钟；两边互补，缺一边就有洞）。
+   */
+  private invokeInContext<T>(
+    fn: (...args: unknown[]) => unknown,
+    self: unknown,
+    args: unknown[],
+    label: string,
+    filename: string,
+  ): T {
+    const context = this.context as unknown as Record<string, unknown>;
+    context[SANDBOX_SLOT] = { fn, self, args };
+    try {
+      return invokeScriptOf().runInContext(this.context, {
+        filename,
+        timeout: MOD_LIMITS.hookTimeoutMs,
+      }) as T;
+    } catch (error) {
+      if (
+        (error as { code?: unknown } | undefined)?.code ===
+        "ERR_SCRIPT_EXECUTION_TIMEOUT"
+      ) {
+        // vm 的原文是 `Script execution timed out after 5000ms`，既不说谁超时
+        // 也不说卡在哪 —— 换成点名这一跳的说法。
+        throw new Error(
+          `${label} 的同步执行超过 ${MOD_LIMITS.hookTimeoutMs}ms（多半是卡在死循环里）`,
+        );
+      }
+      throw error;
+    } finally {
+      context[SANDBOX_SLOT] = undefined;
+    }
   }
 
   /**
@@ -1120,10 +1551,12 @@ export class ModRuntime {
     };
     const withDollar = bind(true, this.dollar);
     const withOptions = bind(false, this.modOptions);
-    const result = (register as (...args: unknown[]) => unknown).call(
+    const result = this.invokeInContext(
+      register as (...args: unknown[]) => unknown,
       exports,
-      withDollar,
-      withOptions,
+      [withDollar, withOptions],
+      `${this.host.pluginName} 的 register`,
+      `${this.entryPath}:register`,
     );
     if (isThenable(result)) await result;
     return true;
@@ -1214,36 +1647,83 @@ export class ModRuntime {
    * 只能调一次 `next(e)` —— 再调会让同一条链跑两遍。
    */
   private async runChain(
+    name: string,
     entries: HookEntry[],
     start: number,
     event: unknown,
     engine: (finalEvent: unknown) => unknown,
+    signal: AbortSignal,
   ): Promise<unknown> {
     for (let index = start; index < entries.length; index += 1) {
       const entry = entries[index]!;
       if (!matchesEvent(entry.matcher, event)) continue;
       let nextCalled = false;
-      const next = (nextEvent?: unknown) => {
-        if (nextCalled) {
-          throw new Error("next(e) 一次只能调一次：再调会让同一条链跑两遍");
-        }
-        nextCalled = true;
-        return this.runChain(
+      /** 已经交给下层的那次调用的结果（`.catch` 里的重放要用）。 */
+      let nextResult: Promise<unknown> | undefined;
+      const callNext = (nextEvent?: unknown) => {
+        nextResult = this.runChain(
+          name,
           entries,
           index + 1,
           nextEvent === undefined ? event : nextEvent,
           engine,
+          signal,
         );
+        return nextResult;
       };
+      const next = Object.assign(
+        (nextEvent?: unknown) => {
+          if (nextCalled) {
+            throw new Error("next(e) 一次只能调一次：再调会让同一条链跑两遍");
+          }
+          nextCalled = true;
+          return callNext(nextEvent);
+        },
+        {
+          /**
+           * 整条调用被放弃时 abort（会话销毁、插件重载）。长等待挂在它上面，
+           * 才能在会话没了的时候收手。
+           */
+          signal,
+        },
+      );
       try {
-        return entry.isCommunity
-          ? await entry.handler(this.dollar, event, next)
-          : await entry.handler(event);
+        return await this.invokeInContext<unknown>(
+          entry.handler,
+          undefined,
+          entry.isCommunity ? [this.dollar, event, next] : [event],
+          `${name} 的处理函数`,
+          `${this.host.pluginName}:${name}`,
+        );
       } catch (error) {
         if (!entry.onError) throw error;
-        return entry.isCommunityError
-          ? await entry.onError(this.dollar, event)
-          : await entry.onError(error);
+        if (!entry.isCommunityError) {
+          return await this.invokeInContext<unknown>(
+            entry.onError,
+            undefined,
+            [error],
+            `${name} 的 catch`,
+            `${this.host.pluginName}:${name}`,
+          );
+        }
+        // 社区 `.catch(($, e, next) => …)`：这里的 `next` 多两样东西 ——
+        // `error`（为什么失败）与 `called`（失败之前有没有调过 `next`）。
+        // 调过就**重放**那次调用的结果，不把下面的链再跑一遍（CC 的 `Caught`）。
+        const caught = Object.assign(
+          (nextEvent?: unknown) => {
+            if (nextCalled) return nextResult ?? Promise.resolve({});
+            nextCalled = true;
+            return callNext(nextEvent);
+          },
+          { signal, error, called: nextCalled },
+        );
+        return await this.invokeInContext<unknown>(
+          entry.onError,
+          undefined,
+          [this.dollar, event, caught],
+          `${name} 的 catch`,
+          `${this.host.pluginName}:${name}`,
+        );
       }
     }
     // 引擎帧按**走到这里的那份事件**算：`next({ ...e, context })` 改过的内容
@@ -1280,6 +1760,16 @@ export class ModRuntime {
     return {};
   }
 
+  /**
+   * 这个 mod 有没有注册能接下这次事件的钩子。
+   *
+   * `tool.call` / `tool.run` 的链是**跨 mod** 的（`ModManager` 逐个 mod 往下
+   * 走），走到一个压根没注册的 mod 时要能跳过它而不是把它的「空结果」当成决议。
+   */
+  matchesHook(name: string, event: unknown): boolean {
+    return this.matchingHooks(name, event).length > 0;
+  }
+
   /** 该事件上匹配这次事件的处理器（`command.run` 也走这张表）。 */
   private matchingHooks(name: string, event: unknown): HookEntry[] {
     const entries = this.hooks.get(name);
@@ -1287,17 +1777,33 @@ export class ModRuntime {
     return entries.filter((entry) => matchesEvent(entry.matcher, event));
   }
 
-  /** 调一个钩子；没有注册时返回 `{ ok: true, value: undefined }`。 */
-  async callHook(name: string, event: unknown): Promise<ModHookResult> {
+  /**
+   * 调一个钩子；没有注册时返回 `{ ok: true, value: undefined }`。
+   *
+   * `options.engine` 换掉「链尾」—— `tool.call` / `tool.run` 的链尾不是空对象，
+   * 而是「交给下一个 mod」与「真正执行这次调用」（见 `ModManager`）。
+   * `options.signal` 就是 `next.signal`：整条调用被放弃时 abort。
+   */
+  async callHook(
+    name: string,
+    rawEvent: unknown,
+    options: {
+      engine?: (finalEvent: unknown) => unknown;
+      signal?: AbortSignal;
+    } = {},
+  ): Promise<ModHookResult> {
+    const event = withEventAliases(rawEvent);
     const entries = this.matchingHooks(name, event);
     if (entries.length === 0)
       return { ok: true, value: undefined, elapsedMs: 0 };
     const started = Date.now();
+    const engine =
+      options.engine ?? ((e: unknown) => this.engineFrame(name, e));
+    const signal = options.signal ?? NEVER_ABORTED;
     try {
       const value = await this.runWithBudget(
         `${name} 钩子超过 ${MOD_LIMITS.hookTimeoutMs}ms`,
-        () =>
-          this.runChain(entries, 0, event, (e) => this.engineFrame(name, e)),
+        () => this.runChain(name, entries, 0, event, engine, signal),
       );
       return { ok: true, value, elapsedMs: Date.now() - started };
     } catch (error) {
@@ -1330,8 +1836,13 @@ export class ModRuntime {
       const value = await this.runWithBudget(
         `${command} 的命令钩子超过 ${MOD_LIMITS.hookTimeoutMs}ms`,
         () =>
-          this.runChain(entries, 0, event, (e) =>
-            this.engineFrame("command.run", e),
+          this.runChain(
+            "command.run",
+            entries,
+            0,
+            event,
+            (e) => this.engineFrame("command.run", e),
+            NEVER_ABORTED,
           ),
       );
       return { ok: true, value, elapsedMs: Date.now() - started };
@@ -1365,7 +1876,14 @@ export class ModRuntime {
     if (!handler) return false;
     await this.runWithBudget(
       `${kind} 处理超过 ${MOD_LIMITS.hookTimeoutMs}ms`,
-      () => handler(kind === "press" ? undefined : value),
+      () =>
+        this.invokeInContext<unknown>(
+          handler as (...args: unknown[]) => unknown,
+          undefined,
+          [kind === "press" ? undefined : value],
+          `${kind}(${key}) 的交互回调`,
+          `${this.host.pluginName}:${type}:${key}`,
+        ),
     );
     return true;
   }
@@ -1437,6 +1955,20 @@ export class ModRuntime {
     );
   }
 
+  /**
+   * 这个 mod 有没有**显式点名**某个 `ui.render` 站点的钩子（matcher 里写了
+   * `component: "<站点>"`）。
+   *
+   * `AbovePromptList` 用它决定问谁：没写 matcher 的 `ui.render` 处理器会收到
+   * 每一个站点，而一个「只画自己那一行」的插件在收到 `AbovePromptList` 时会
+   * 照样返回自己那棵树 —— 那棵树里恰好有它自己那一行，按「留下哪些行」的语义
+   * 就等于把所有别人的行都隐藏了。所以这个站点只问**显式注册过它**的 mod。
+   */
+  hasSiteHook(name: string, site: string): boolean {
+    const entries = this.hooks.get(name) ?? [];
+    return entries.some((entry) => entry.matcher?.["component"] === site);
+  }
+
   /** 该 mod 用 matcher 注册了哪些命令（宿主清理/诊断用，带斜杠）。 */
   commandHookTargets(): string[] {
     const entries = this.hooks.get("command.run") ?? [];
@@ -1506,7 +2038,7 @@ export class ModRuntime {
         specifier === MODULE_SPECIFIER ||
         specifier === COMMUNITY_MODULE_SPECIFIER
       ) {
-        return { ...elements, Fragment: "Fragment", atom, read, update };
+        return { ...this.elements, Fragment: "Fragment", atom, read, update };
       }
       if (!specifier.startsWith("./") && !specifier.startsWith("../")) {
         throw new Error(
@@ -1528,14 +2060,23 @@ export class ModRuntime {
     const factory = vm.runInContext(wrapper, this.context, {
       filename: resolved,
       timeout: MOD_LIMITS.hookTimeoutMs,
-    }) as (
-      module: unknown,
-      exports: unknown,
-      require: unknown,
-      wave: unknown,
-    ) => void;
-    factory.call(module.exports, module, module.exports, requireFn, this.wave);
-    visiting.delete(resolved);
+    }) as (...args: unknown[]) => unknown;
+    try {
+      this.invokeInContext(
+        factory,
+        module.exports,
+        [module, module.exports, requireFn, this.wave],
+        `模块 ${path.basename(resolved)} 的执行`,
+        resolved,
+      );
+    } catch (error) {
+      // 模块体抛错或超时的，别把半成品留在缓存里：后面 `import` 它的文件会拿到
+      // 一个空 exports，失败点离原因更远。
+      this.modules.delete(resolved);
+      throw error;
+    } finally {
+      visiting.delete(resolved);
+    }
     return module.exports;
   }
 }

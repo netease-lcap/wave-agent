@@ -74,9 +74,11 @@ const ENTRY = path.join(ROOT, "mods", "panel.tsx");
 function host(overrides: Partial<ModRuntimeHost> = {}): ModRuntimeHost {
   return {
     pluginName: "todo",
-    openPane: vi.fn(),
+    openPane: vi.fn(() => true),
     closePane: vi.fn(),
     listPanes: vi.fn(() => []),
+    // 默认「桌面端在画」：`$.ui.open` 的 isPlaced 默认该是 true。
+    surfaces: vi.fn(() => ["desktop"] as const),
     invalidate: vi.fn(),
     setStatus: vi.fn(),
     showToast: vi.fn(),
@@ -114,6 +116,7 @@ function host(overrides: Partial<ModRuntimeHost> = {}): ModRuntimeHost {
       rateLimits: [],
     })),
     appendLog: vi.fn(),
+    askUser: vi.fn(async () => "允许一次"),
     // `$` 上的只读事实（spec「会话事实」「环境变量与设置」）：默认给一份能用的
     // 值，具体断言在各用例里用 `mockReturnValue` 覆盖。
     sessionId: vi.fn(() => "session-1"),
@@ -386,6 +389,86 @@ describe("ModRuntime 的隔离", () => {
     await expect(
       mod.callHook("tool.call", { tool: "Bash", input: { command: "ls" } }),
     ).resolves.toMatchObject({ ok: true, value: "Bash" });
+  });
+});
+
+describe("沙箱加固（对齐 Claude Code 的 vmHardening）", () => {
+  // 这两个用例真的会跑满 `MOD_LIMITS.hookTimeoutMs`：vm 的 timeout 是 V8 的
+  // terminate，只能靠真实时钟打断同步执行，没有加快的办法。
+  it(
+    "钩子里的同步死循环被 timeout 打断，而不是把进程卡死",
+    { timeout: 30_000 },
+    async () => {
+      const { mod } = runtime(`
+        exports.register = function ($, on) {
+          on("session.start", function () {
+            while (true) {}
+          });
+        };
+      `);
+
+      await mod.load();
+      const result = await mod.callHook("session.start", {});
+      // 要点是这一句能返回：改之前这里会挂到 vitest 自己超时。
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error).toBe(
+          `session.start 的处理函数 的同步执行超过 ${MOD_LIMITS.hookTimeoutMs}ms（多半是卡在死循环里）`,
+        );
+      }
+    },
+  );
+
+  it(
+    "模块体里的同步死循环同样被打断（不是只盖住钩子）",
+    { timeout: 30_000 },
+    async () => {
+      const { mod } = runtime(`while (true) {}`);
+
+      await expect(mod.load()).rejects.toThrow(/同步执行超过/);
+    },
+  );
+
+  it("mod 改不动本 realm 的内置，也伪造不了堆栈", async () => {
+    const { mod } = runtime(`
+      exports.register = function ($, on) {
+        on("session.start", function () {
+          Array.prototype.patched = 1;
+          Object.prototype.evil = 1;
+          Error.prepareStackTrace = function () { return "forged"; };
+          var stack = "";
+          try { throw new Error("boom"); } catch (e) { stack = String(e.stack); }
+          return [
+            typeof [].patched,
+            typeof ({}).evil,
+            stack.indexOf("forged") < 0,
+          ].join(",");
+        });
+      };
+    `);
+
+    await mod.load();
+    const result = await mod.callHook("session.start", {});
+    expect(result.ok && result.value).toBe("undefined,undefined,true");
+  });
+
+  it("冻结的是内建清单本身（构造器/prototype 都在位），captureStackTrace 已删", async () => {
+    const { mod } = runtime(`
+      exports.register = function ($, on) {
+        on("session.start", function () {
+          return [
+            typeof Error.captureStackTrace,
+            Object.isFrozen(Object.prototype),
+            Object.isFrozen(Array.prototype),
+            Object.isFrozen(Promise),
+          ].join(",");
+        });
+      };
+    `);
+
+    await mod.load();
+    const result = await mod.callHook("session.start", {});
+    expect(result.ok && result.value).toBe("undefined,true,true,true");
   });
 });
 
@@ -673,20 +756,135 @@ describe("ModRuntime 的 $ 命名空间", () => {
     expect(hostApi.storeDelete).toHaveBeenCalledWith("gone");
   });
 
-  it("ui.close 转发到宿主", async () => {
+  it("ui.close 转发到宿主（`{ id }` 是 Claude Code 的形状）", async () => {
     const hostApi = host();
     const { mod } = runtime(
       `
       exports.register = function ($, on) {
-        on("session.start", function () { $.ui.close("p1"); });
+        on("session.start", function () { return $.ui.close({ id: "p1" }); });
       };
       `,
       { host: hostApi },
     );
 
     await mod.load();
-    await mod.callHook("session.start", {});
+    const result = await mod.callHook("session.start", {});
+    expect(result.ok).toBe(true);
     expect(hostApi.closePane).toHaveBeenCalledWith("p1");
+  });
+
+  it("ui.close 传字符串（旧形状）当场报错，不静默当成 id", async () => {
+    const hostApi = host();
+    const { mod } = runtime(
+      `
+      exports.register = function ($, on) {
+        on("session.start", async function () {
+          try { await $.ui.close("p1"); } catch (e) { return String(e.message); }
+          return "no-error";
+        });
+      };
+      `,
+      { host: hostApi },
+    );
+
+    await mod.load();
+    const result = await mod.callHook("session.start", {});
+    expect(result.ok && result.value).toEqual(
+      expect.stringContaining("$.ui.close 需要一个 { id }"),
+    );
+    expect(hostApi.closePane).not.toHaveBeenCalled();
+  });
+
+  it("$.ui.open 答 isPlaced 与 reason（没有界面时 false + no-surface）", async () => {
+    const noSurface = host({ surfaces: () => [] });
+    const { mod: dark } = runtime(
+      `
+      exports.register = function ($, on) {
+        on("session.start", function () {
+          return $.ui.open({ id: "p1", title: "守卫" });
+        });
+      };
+      `,
+      { host: noSurface },
+    );
+    await dark.load();
+    const opened = await dark.callHook("session.start", {});
+    expect(opened.ok && opened.value).toEqual({
+      isPlaced: false,
+      reason: expect.stringContaining("no-surface"),
+    });
+    // 面板仍然登记着（与 Claude Code 一样「没有 surface 也把面板留着」，之后
+    // 有界面挂上来它就画出来），只是这一次没人接住。
+    expect(noSurface.openPane).toHaveBeenCalledWith("p1", "守卫");
+
+    const desktop = host();
+    const { mod: lit } = runtime(
+      `
+      exports.register = function ($, on) {
+        on("session.start", function () {
+          return $.ui.open({ id: "p1", title: "守卫", focus: true });
+        });
+      };
+      `,
+      { host: desktop },
+    );
+    await lit.load();
+    const placed = await lit.callHook("session.start", {});
+    expect(placed.ok && placed.value).toEqual({ isPlaced: true });
+    expect(desktop.openPane).toHaveBeenCalledWith("p1", "守卫");
+  });
+
+  it("$.ui.open 的 focus 只收 true（与 Claude Code 一样）", async () => {
+    const hostApi = host();
+    const { mod } = runtime(
+      `
+      exports.register = function ($, on) {
+        on("session.start", async function () {
+          try { await $.ui.open({ id: "p1", focus: false }); } catch (e) { return String(e.message); }
+          return "no-error";
+        });
+      };
+      `,
+      { host: hostApi },
+    );
+
+    await mod.load();
+    const result = await mod.callHook("session.start", {});
+    expect(result.ok && result.value).toEqual(
+      expect.stringContaining("focus 只能写 true"),
+    );
+    expect(hostApi.openPane).not.toHaveBeenCalled();
+  });
+
+  it("$.session.surfaces 原样给出宿主入口的答案（空数组也是正常结果）", async () => {
+    const { mod } = runtime(
+      `
+      exports.register = function ($, on) {
+        on("session.start", async function () {
+          var surfaces = await $.session.surfaces();
+          return { count: surfaces.length, first: surfaces[0] };
+        });
+      };
+      `,
+    );
+
+    await mod.load();
+    const result = await mod.callHook("session.start", {});
+    expect(result.ok && result.value).toEqual({ count: 1, first: "desktop" });
+
+    const { mod: dark } = runtime(
+      `
+      exports.register = function ($, on) {
+        on("session.start", async function () {
+          return (await $.session.surfaces()).length;
+        });
+      };
+      `,
+      { host: host({ surfaces: () => [] }) },
+    );
+    await dark.load();
+    const empty = await dark.callHook("session.start", {});
+    expect(empty.ok && empty.value).toBe(0);
   });
 
   it("$.ui.resolve 把 ui.render 的事件换成元素表", async () => {
@@ -712,6 +910,46 @@ describe("ModRuntime 的 $ 命名空间", () => {
     });
   });
 
+  it("$.ui.resolve 的元素表也能直接调用（Claude Code 官方示例的写法）", async () => {
+    // 官方 `mods/blast-radius` 的 `.mjs` 写的是 `const { Box, Text } = t; Text({ children })`，
+    // 不是 JSX —— 两种写法必须编出同一种树，否则「原样能跑」只对社区那半成立。
+    const { mod } = runtime(`
+      exports.register = function ($, on) {
+        on("ui.render", function (e) {
+          var t = $.ui.resolve(e);
+          return t.Box({
+            flexDirection: "column",
+            children: [
+              t.Text({ children: "hi" }),
+              t.Text({ key: "k", children: ["a", "b"] }),
+              t.Button({ key: "go", label: "go", onPress: function () { return "pressed"; } }),
+            ],
+          });
+        });
+      };
+    `);
+
+    await mod.load();
+    const result = await mod.callHook("ui.render", {
+      surface: "desktop",
+      component: "AbovePrompt",
+    });
+    expect(result).toMatchObject({
+      ok: true,
+      value: {
+        type: "Box",
+        props: { flexDirection: "column" },
+        children: [
+          { type: "Text", props: {}, children: ["hi"] },
+          { type: "Text", props: { key: "k" }, children: ["a", "b"] },
+          { type: "Button", props: { key: "go", label: "go" }, children: [] },
+        ],
+      },
+    });
+    // 回调走的是同一个登记表：调用式写出来的按钮也能按。
+    await expect(mod.dispatch("press", "go")).resolves.toBe(true);
+  });
+
   it("$.ui.resolve 传错参数当场报错，不返回半张表", async () => {
     const { mod } = runtime(`
       exports.register = function ($, on) {
@@ -728,7 +966,7 @@ describe("ModRuntime 的 $ 命名空间", () => {
           }
           // 两个站点都得认：宿主两处都会发 ui.render，漏一个那处的 mod 就全抛错。
           var band = $.ui.resolve({ surface: "desktop", component: "AbovePrompt" });
-          messages.push("band:" + band.Box + "," + typeof band.Button);
+          messages.push("band:" + band.Box.elementType + "," + typeof band.Button);
           return messages;
         });
       };
@@ -749,7 +987,7 @@ describe("ModRuntime 的 $ 命名空间", () => {
     expect(messages[2]).toContain("Pane");
     // `AbovePrompt`（输入框上方的带）是第二个站点，必须拿到同一张表。
     expect(messages[2]).toContain("AbovePrompt");
-    expect(messages[3]).toBe("band:Box,string");
+    expect(messages[3]).toBe("band:Box,function");
   });
 
   it("$.ui.status 转发到宿主：纯文本、过长的截断、null 与空串都表示清除", async () => {
@@ -1865,6 +2103,33 @@ describe("兼容社区 mod（spec「兼容社区 mod」）", () => {
     expect(edit.ok && edit.value).toEqual({ saw: "Edit" });
   });
 
+  it("handler 里也能读到 CC 的 requestId（与 instance_id 同一个值）", async () => {
+    // 官方 `blast-radius` 的第一行就是 `if (e.requestId !== PANE_ID) return next(e)`：
+    // 只认 matcher 那一侧不够，handler 读到的副本也得带这个名字。
+    const { mod } = runtime(`
+      exports.register = function (on) {
+        on("ui.render", { component: "Pane" }, function ($, e) {
+          if (e.requestId !== "blast-radius") return __wave.h("Text", null, "not-mine");
+          return __wave.h("Text", null, e.instance_id + "/" + e.requestId);
+        });
+      };
+    `);
+
+    await mod.load();
+    const mine = await mod.callHook("ui.render", {
+      component: "Pane",
+      instance_id: "blast-radius",
+    });
+    expect(mine.ok && mine.value).toMatchObject({
+      children: ["blast-radius/blast-radius"],
+    });
+    const other = await mod.callHook("ui.render", {
+      component: "Pane",
+      instance_id: "other",
+    });
+    expect(other.ok && other.value).toMatchObject({ children: ["not-mine"] });
+  });
+
   it("on(...).catch(handler)：钩子抛错时用兜底，兜底本身不抛就算成功", async () => {
     const { mod } = runtime(`
       exports.register = function (on) {
@@ -1899,6 +2164,175 @@ describe("兼容社区 mod（spec「兼容社区 mod」）", () => {
     if (!result.ok) expect(result.error).toBe("boom");
   });
 
+  it("tool.run 的 next(e) 就是执行本身：拿得到工具结果，next.signal 是 AbortSignal", async () => {
+    const { mod } = runtime(`
+      exports.register = function (on) {
+        on("tool.run", { tool: "Bash" }, async function ($, e, next) {
+          var isSignal = next.signal instanceof AbortSignal;
+          var ran = await next(e);
+          return { isSignal: isSignal, out: ran.stdout };
+        });
+      };
+    `);
+
+    await mod.load();
+    const result = await mod.callHook(
+      "tool.run",
+      { tool: "Bash" },
+      { engine: async () => ({ stdout: "hello" }) },
+    );
+    // `const ran = await next(e)` 之后读 `ran` 是社区的标准写法（CC 里
+    // `next(e)` resolve 出来的就是工具结果），所以链尾必须把结果交回来。
+    expect(result).toMatchObject({
+      ok: true,
+      value: { isSignal: true, out: "hello" },
+    });
+  });
+
+  it(".catch 的 next 带 called / error：调过就重放那次结果，不把下面的链再跑一遍", async () => {
+    const engine = vi.fn(async () => ({ stdout: "hello" }));
+    const { mod } = runtime(`
+      exports.register = function (on) {
+        on("tool.run", { tool: "Bash" }, async function ($, e, next) {
+          await next(e);
+          throw new Error("refresh failed");
+        }).catch(async function ($, e, next) {
+          var again = await next(e);
+          return { called: next.called, reason: next.error.message, again: again.stdout };
+        });
+      };
+    `);
+
+    await mod.load();
+    const result = await mod.callHook("tool.run", { tool: "Bash" }, { engine });
+    expect(engine).toHaveBeenCalledTimes(1);
+    expect(result).toMatchObject({
+      ok: true,
+      value: { called: true, reason: "refresh failed", again: "hello" },
+    });
+  });
+
+  it(".catch 里没调过 next 时 called === false（社区 fail-closed 写法的判据）", async () => {
+    const engine = vi.fn(async () => ({ stdout: "hello" }));
+    const { mod } = runtime(`
+      exports.register = function (on) {
+        on("tool.run", { tool: "Bash" }, async function () {
+          throw new Error("guard broke");
+        }).catch(async function ($, e, next) {
+          // CC 里这条惯用法就是「还没跑过就别跑，直接拒掉」。
+          return next.called ? next(e) : { deny: "guard 自己坏了" };
+        });
+      };
+    `);
+
+    await mod.load();
+    const result = await mod.callHook("tool.run", { tool: "Bash" }, { engine });
+    expect(engine).not.toHaveBeenCalled();
+    expect(result).toEqual({
+      ok: true,
+      value: { deny: "guard 自己坏了" },
+      elapsedMs: expect.any(Number),
+    });
+  });
+
+  it("$.ui.ask 把问题与选项交给宿主：缺省补「是 / 否」，header 缺省是插件名并截到 12", async () => {
+    const asks: unknown[][] = [];
+    const hostApi = host({
+      pluginName: "blast-radius-guard",
+      askUser: vi.fn(async (...args: unknown[]) => {
+        asks.push(args);
+        return "允许一次";
+      }),
+    });
+    const { mod } = runtime(
+      `
+      exports.register = function (on) {
+        on("session.start", async function ($) {
+          var one = await $.ui.ask("要跑 rm -rf 吗？");
+          var two = await $.ui.ask("选一个", { options: ["A", "B"], header: "blast" });
+          return { one: one, two: two };
+        });
+      };
+      `,
+      { host: hostApi },
+    );
+
+    await mod.load();
+    const result = await mod.callHook("session.start", {});
+    expect(result).toMatchObject({
+      ok: true,
+      value: { one: "允许一次", two: "允许一次" },
+    });
+    // 第一个参数的 `question` 被摘出去了，宿主只拿「正文 + 形状」。
+    expect(asks[0]).toEqual([
+      "要跑 rm -rf 吗？",
+      { labels: ["是", "否"], header: "blast-radius" },
+    ]);
+    expect(asks[1]).toEqual([
+      "选一个",
+      { labels: ["A", "B"], header: "blast" },
+    ]);
+  });
+
+  it("$.ui.ask 的非法参数当场报错（空问题 / 超过四个 / 重复 / multiSelect 非 true）", async () => {
+    const { mod } = runtime(`
+      exports.register = function (on) {
+        on("session.start", async function ($) {
+          var errors = [];
+          try { await $.ui.ask("   "); } catch (e) { errors.push(String(e.message)); }
+          try { await $.ui.ask("q", ["1", "2", "3", "4", "5"]); } catch (e) { errors.push(String(e.message)); }
+          try { await $.ui.ask("q", ["A", "A"]); } catch (e) { errors.push(String(e.message)); }
+          try { await $.ui.ask("q", { options: ["A"], multiSelect: "yes" }); } catch (e) { errors.push(String(e.message)); }
+          return errors;
+        });
+      };
+    `);
+
+    await mod.load();
+    const result = await mod.callHook("session.start", {});
+    // 逐条报出原因：拼错的关键字静默当成「没有选项」比报错更难查。
+    expect(result).toMatchObject({
+      ok: true,
+      value: [
+        expect.stringContaining("需要一个问题"),
+        expect.stringContaining("最多四个选项"),
+        expect.stringContaining("选项重复了：A"),
+        expect.stringContaining("multiSelect 只能是 true"),
+      ],
+    });
+  });
+
+  it("$.ui.ask 宿主拒绝时 mod 收到 reject（不吞成空串）", async () => {
+    const hostApi = host({
+      askUser: vi.fn(async () => {
+        throw new Error("没有人能回答这个问题");
+      }),
+    });
+    const { mod } = runtime(
+      `
+      exports.register = function (on) {
+        on("session.start", async function ($) {
+          try {
+            await $.ui.ask("q");
+            return { caught: false };
+          } catch (e) {
+            return { caught: true, message: e.message };
+          }
+        });
+      };
+      `,
+      { host: hostApi },
+    );
+
+    await mod.load();
+    const result = await mod.callHook("session.start", {});
+    // 拒绝必须能让 mod 看见 —— guard 拿到「问不到」就要按拒掉处理。
+    expect(result).toMatchObject({
+      ok: true,
+      value: { caught: true, message: "没有人能回答这个问题" },
+    });
+  });
+
   it("'claude-code' 是 wave-agent-sdk/mods 的别名，atom/read/update 落在 $.store 上", async () => {
     const store = new Map<string, string>();
     const hostApi = host({
@@ -1917,7 +2351,7 @@ describe("兼容社区 mod（spec「兼容社区 mod」）", () => {
           var after = await cc.update($, turns, function (list) {
             return list.concat([1]);
           });
-          return { before: before.length, after: after.length, tag: cc.Box };
+          return { before: before.length, after: after.length, tag: cc.Box.elementType };
         });
       };
       `,

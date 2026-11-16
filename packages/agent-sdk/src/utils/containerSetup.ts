@@ -1,5 +1,6 @@
 import { Container } from "./container.js";
 import { normalizeEntrypoint } from "../constants/telemetry.js";
+import type { HostEntrypoint } from "../constants/telemetry.js";
 import { ForegroundTaskManager } from "../managers/foregroundTaskManager.js";
 import { BackgroundTaskManager } from "../managers/backgroundTaskManager.js";
 import { MessageQueue } from "../managers/messageQueue.js";
@@ -17,6 +18,7 @@ import { SkillManager } from "../managers/skillManager.js";
 import { SlashCommandManager } from "../managers/slashCommandManager.js";
 import { PluginManager } from "../managers/pluginManager.js";
 import { ModManager } from "../managers/modManager.js";
+import { renderSurfacesOf } from "../mods/runtime.js";
 import type { ModPermissionRequestEvent } from "../types/mods.js";
 import { BashModeManager } from "../managers/bashModeManager.js";
 import { CronManager } from "../managers/cronManager.js";
@@ -609,6 +611,13 @@ export function setupAgentContainer(
       // 会话工作根：`EnterWorktree` 会动、`cd` 不动（容器 token 语义见 workdir 规则）。
       workspaceRoot: () => container.get<string>("WorkspaceRoot") ?? workdir,
       model: () => aiManager.getModelConfig().model ?? "",
+      // 这一刻有谁在画（spec「会话事实」）：一期只有桌面端真画 mod 的树。
+      // 数据源是入口标识（谁创建了这条会话），不是进程环境 —— 终端 CLI、
+      // `wave -p`、VS Code / JetBrains 都给空数组。
+      surfaces: () =>
+        renderSurfacesOf(
+          container.get<HostEntrypoint | undefined>("Entrypoint"),
+        ),
       env: (name) => configurationService.getMergedEnv()[name],
       settings: async (query) => {
         const layer = configurationService.readSettingsLayer(

@@ -89,6 +89,25 @@ describe("validateModTree", () => {
       expect(variant("secondary").ok).toBe(true);
       expect(variant("danger").ok).toBe(false);
     });
+
+    it("Button.hotkey 是一个数字或一个小写字母", () => {
+      const hotkey = (value: unknown) =>
+        validateModTree({
+          type: "Button",
+          props: { key: "b1", hotkey: value },
+          children: [],
+        });
+
+      expect(hotkey("a").ok).toBe(true);
+      expect(hotkey("7").ok).toBe(true);
+      // 大写不认：CC 的口径是小写字母 + 数字，且不区分大小写地撞键会让人猜不透。
+      for (const value of ["A", "ab", "", "Enter", 1]) {
+        const result = hotkey(value);
+        expect(result.ok).toBe(false);
+        if (result.ok) continue;
+        expect(result.error).toContain("hotkey");
+      }
+    });
   });
 
   describe("视觉与布局的 prop（spec「元素」）", () => {
