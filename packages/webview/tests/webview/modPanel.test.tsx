@@ -208,6 +208,127 @@ describe("desktop mod panel", () => {
     ]);
   });
 
+  it("Select 画出选项，选中回传 select（值不自己记）", () => {
+    const { vscode } = renderDesktop();
+    openPanel({
+      type: "Select",
+      props: {
+        key: "pick",
+        label: "分支",
+        value: "main",
+        options: [{ value: "main", label: "主干" }, { value: "next" }],
+      },
+      children: [],
+    });
+
+    const select = screen.getByRole("combobox") as HTMLSelectElement;
+    // 选中项由树上的 `value` 决定，label 缺省时画 value 本身。
+    expect(select.value).toBe("main");
+    expect(
+      Array.from(select.options).map((option) => option.textContent),
+    ).toEqual(["主干", "next"]);
+
+    fireEvent.change(select, { target: { value: "next" } });
+    expect(events(vscode)).toEqual([
+      {
+        modId: "todo:panel",
+        paneId: "p1",
+        key: "pick",
+        kind: "select",
+        value: "next",
+      },
+    ]);
+
+    // mod 把 `value` 改过来之前，控件保持原来的选中项（状态归 mod）。
+    sendHostMessage(
+      renderReply(
+        {
+          type: "Select",
+          props: {
+            key: "pick",
+            value: "next",
+            options: [{ value: "main" }, { value: "next" }],
+          },
+          children: [],
+        },
+        { revision: 2 },
+      ),
+    );
+    expect((screen.getByRole("combobox") as HTMLSelectElement).value).toBe(
+      "next",
+    );
+  });
+
+  it("Svg 内联成一张图，宽高与无障碍名落到宿主侧", () => {
+    renderDesktop();
+    openPanel({
+      type: "Box",
+      props: {},
+      children: [
+        {
+          type: "Svg",
+          props: {
+            source:
+              '<svg viewBox="0 0 10 10"><circle cx="5" cy="5" r="4" /></svg>',
+            alt: "CPU 折线",
+            width: 120,
+            height: 40,
+          },
+          children: [],
+        },
+        {
+          type: "Svg",
+          props: {
+            source: '<svg viewBox="0 0 1 1" />',
+            alt: "背景",
+            isInteractive: false,
+          },
+          children: [],
+        },
+      ],
+    });
+
+    // 净化本身是 DOMPurify 的契约（这个 setup 里它是直通 mock，见
+    // `modSvgSanitize.test.tsx`）；这里只钉渲染器自己负责的那层。
+    const chart = screen.getByRole("img", { name: "CPU 折线" });
+    expect(chart.querySelector("circle")).not.toBeNull();
+    expect(chart).toHaveStyle({ width: "120px", height: "40px" });
+    // 非交互的图常被当背景：不该挡着它下面的控件。
+    expect(screen.getByRole("img", { name: "背景" })).toHaveStyle({
+      pointerEvents: "none",
+    });
+  });
+
+  it("Progress 画轨道与百分比，超出的值夹到 100%", () => {
+    renderDesktop();
+    openPanel({
+      type: "Box",
+      props: {},
+      children: [
+        {
+          type: "Progress",
+          props: { label: "构建", value: 3, max: 4 },
+          children: [],
+        },
+        {
+          type: "Progress",
+          props: { label: "部署", value: 9, max: 4, valueText: "9/4" },
+          children: [],
+        },
+      ],
+    });
+
+    expect(screen.getByText("构建")).toBeInTheDocument();
+    // 没给 valueText 时默认画百分比。
+    expect(screen.getByText("75%")).toBeInTheDocument();
+    const bars = screen.getAllByRole("progressbar");
+    expect(bars).toHaveLength(2);
+    expect(bars[0]).toHaveAttribute("aria-valuenow", "75");
+    // 夹到 0–1：`value` 超过 `max` 不该画出 225% 宽的填充。
+    expect(bars[1]).toHaveAttribute("aria-valuenow", "100");
+    expect(screen.getByText("9/4")).toBeInTheDocument();
+  });
+
   it("错误态（mod 加载失败那类）直接画错误，不发起拉取", () => {
     const { vscode } = renderDesktop();
     // 加载失败的 pane 没有可渲染的东西：元信息带 error、不带 stale。

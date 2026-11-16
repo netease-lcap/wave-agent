@@ -59,7 +59,7 @@ export interface ModBandListProps {
   bands: ModBandFrame[];
   onEvent: (
     modId: string,
-    kind: "press" | "input",
+    kind: "press" | "input" | "select",
     key: string,
     value?: string,
   ) => void;

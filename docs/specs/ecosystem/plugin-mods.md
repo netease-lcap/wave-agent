@@ -20,7 +20,7 @@ MODS 补上这两件事：插件带一个 TypeScript 模块（可写 TSX），�
 - **hooks module**：普通的 ES 模块，在 agent 进程内执行。它没有 Node 全局（`fs`/`process`/`setTimeout` 都没有），只能通过 `$` 做事。
 - **render site**：宿主界面上的一个可画点。一期有两个：`Pane`（桌面端右侧面板的一个 tab）与 `AbovePrompt`（输入框上方的状态带）。
 - **surface**：真正画树的渲染端（一期就是桌面端 webview）。树由 surface **拉取**：surface 对每个已挂载的 pane、以及输入框上方那条带各发一次请求，agent 进程才去问 mod；宿主不主动把树推给 surface。
-- **元素树**：`Box`/`Text`/`Button`/`Input`/`Link`/`Code`/`Markdown` 组成的嵌套声明，纯数据，可 JSON 序列化。
+- **元素树**：`Box`/`Text`/`Button`/`Input`/`Select`/`Svg`/`Link`/`Code`/`Markdown`/`Progress` 组成的嵌套声明，纯数据，可 JSON 序列化。
 - **外部进程**：mod 用 `$.process.spawn` 起的子进程。它跑在沙箱外、可以是任何程序（例如连第三方服务的 WebSocket 客户端），与 mod 之间靠输出流回话。
 - **`$`**：hooks module 拿到的能力面，即「mods API」。
 
@@ -63,23 +63,28 @@ MODS 补上这两件事：插件带一个 TypeScript 模块（可写 TSX），�
 
 ## 元素与能力
 
-### 元素（一期）
+### 元素
 
-| 元素       | 主要 props                                                                                                                                                                             | 说明                                                                                                    |
-| ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| `Box`      | `flexDirection`、`flexWrap`、`flexGrow`、`flexShrink`、`gap`/`columnGap`/`rowGap`、`padding*`、`margin*`、`width`、`height`、`borderStyle`、`alignItems`、`justifyContent`、`overflow` | 布局容器，用 CSS flex 实现                                                                              |
-| `Text`     | `color`、`bold`、`italic`、`dimColor`、`underline`、`wrap`                                                                                                                             | 一段文本                                                                                                |
-| `Button`   | `key`、`label`、`onPress`、`disabled`、`variant`（`"primary"`/`"secondary"`）                                                                                                          | 点击后触发 `ui.press`                                                                                   |
-| `Input`    | `key`、`label`、`placeholder`、`value`、`submitLabel`、`onSubmit`                                                                                                                      | 提交后触发 `ui.input`                                                                                   |
-| `Link`     | `href`、`label`                                                                                                                                                                        | 只允许 `https:` 与本地回环 `http:`；点击交给宿主用系统浏览器打开（`openExternal`），不在 webview 里导航 |
-| `Code`     | `source`、`language`、`path`、`startLine`                                                                                                                                              | 一期用 `<pre><code>` 原样展示（不做语法高亮），可选一行文件路径                                         |
-| `Markdown` | `text`                                                                                                                                                                                 | `marked` + `DOMPurify` 渲染（与 webview 既有 markdown 用法同一套）                                      |
+| 元素       | 主要 props                                                                                                                                                                             | 说明                                                                                                       |
+| ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `Box`      | `flexDirection`、`flexWrap`、`flexGrow`、`flexShrink`、`gap`/`columnGap`/`rowGap`、`padding*`、`margin*`、`width`、`height`、`borderStyle`、`alignItems`、`justifyContent`、`overflow` | 布局容器，用 CSS flex 实现                                                                                 |
+| `Text`     | `color`、`bold`、`italic`、`dimColor`、`underline`、`wrap`                                                                                                                             | 一段文本                                                                                                   |
+| `Button`   | `key`、`label`、`onPress`、`disabled`、`variant`（`"primary"`/`"secondary"`）                                                                                                          | 点击后触发 `ui.press`                                                                                      |
+| `Input`    | `key`、`label`、`placeholder`、`value`、`submitLabel`、`onSubmit`                                                                                                                      | 提交后触发 `ui.input`                                                                                      |
+| `Select`   | `key`、`options`、`onSelect`、`label`、`value`、`autoFocus`                                                                                                                            | 下拉选择，选中后触发 `ui.select`；`options` 是 1–64 个 `{ value, label? }`，`value` 唯一                   |
+| `Svg`      | `source`、`alt`、`width`、`height`、`isInteractive`                                                                                                                                    | 一段 SVG 标记内联画出来；`source` 非空且 ≤131072 字符，`alt` 必填（没有它等于没有可读文本）                |
+| `Link`     | `href`、`label`                                                                                                                                                                        | 只允许 `https:` 与本地回环 `http:`；点击交给宿主用系统浏览器打开（`openExternal`），不在 webview 里导航    |
+| `Code`     | `source`、`language`、`path`、`startLine`                                                                                                                                              | 一期用 `<pre><code>` 原样展示（不做语法高亮），可选一行文件路径                                            |
+| `Markdown` | `text`                                                                                                                                                                                 | `marked` + `DOMPurify` 渲染（与 webview 既有 markdown 用法同一套）                                         |
+| `Progress` | `label`、`value`、`max`、`valueText`、`color`                                                                                                                                          | 一条进度：`value/max` 夹到 0–1（`max` 缺省 1），`valueText` 缺省是百分比；有 `value` 时是两行（标签 + 条） |
 
 `Box` 的间距既可写数字（px），也可写 `'xs' | 'sm' | 'md' | 'lg' | 'xl'`。
 
 **props 是白名单，写错要报错**：每个元素只认上表列出的名字，多写一个（拼错、或照别的框架习惯写 `className`/`style`）在 `validateModTree` 阶段就失败并点名那个 prop —— 静默忽略会让作者以为写对了、却看不到任何效果。这条与 Claude Code 的元素校验一致（它的 `Button` 校验连 `variant` 的取值都会挑出来）。
 
 `flexGrow`/`flexShrink`/`flexWrap` 用 Claude Code 的同名 props，作用于**这个 `Box` 在父容器里**怎么伸缩与折行。`Button` 不收这三个名字 —— 宿主给按钮的默认是 `flex: 0 0 auto`，一排按钮不会被压成竖排；带里按钮多到放不下时，给那一行的 `Box` 写 `flexWrap="wrap"` 折到下一行。
+
+`Select` / `Svg` / `Progress` 与前面七个的差别只有一条：**它们的 props 里有非原始值**（`Select.options` 是对象数组）。所以「prop 必须可序列化成原始值」这条规则按元素区分 —— 只有 `Select.options` 走数组，其余元素照旧只认字符串/数字/布尔/null。三个都是**叶子**（带 children 会被校验拒掉），而且它们的语义全在 prop 上（选哪几项、画哪段图、填充到几分之几），所以除了名字白名单还查取值：空 `options`、重复 `value`、超限的 `source`、非数字的 `value/max` 都当场点名。
 
 上面这些名字从 `wave-agent-sdk/mods` 导入，那个子路径就是它们的 props 类型来源（`Box`、`Text`… `Fragment` 加各自的 `*Props`），插件作者写 TSX 时靠它拿类型补全；运行时值只是元素名字符串，实际由沙箱的 `require` 提供同一份表。
 
@@ -102,10 +107,13 @@ MODS 补上这两件事：插件带一个 TypeScript 模块（可写 TSX），�
 
 用户交互**不走** `on`，而是写在元素自己的回调 prop 上（回调用 `key` 与元素绑定，不进树）：
 
-| 回调                    | 触发时机                                               | 返回值 |
-| ----------------------- | ------------------------------------------------------ | ------ |
-| `Button.onPress()`      | 用户点了面板里的一个 `Button`                          | 忽略   |
-| `Input.onSubmit(value)` | 用户提交了面板里的一个 `Input`，`value` 是输入的字符串 | 忽略   |
+| 回调                     | 触发时机                                                     | 返回值 |
+| ------------------------ | ------------------------------------------------------------ | ------ |
+| `Button.onPress()`       | 用户点了面板里的一个 `Button`                                | 忽略   |
+| `Input.onSubmit(value)`  | 用户提交了面板里的一个 `Input`，`value` 是输入的字符串       | 忽略   |
+| `Select.onSelect(value)` | 用户在面板里的 `Select` 选了一项，`value` 是那一项的 `value` | 忽略   |
+
+`Select` 的选中值**不会**自动变成元素自己的 `value`：宿主只报「选了哪个」，下一帧画什么由 `ui.render` 的返回值决定（mod 想让它停在新的选中项，就把 `value` 一起写进状态）。这与 `Input` 提交后清空是同一条纪律 —— 控件的状态归 mod，不归 webview。
 
 ### 完成与审批的观察（只读事件）
 
@@ -149,9 +157,9 @@ MODS 补上这两件事：插件带一个 TypeScript 模块（可写 TSX），�
 | `$.session` | `usage()`：只读的 token 用量快照（见「会话用量」）；`cwd()`：会话**当前**工作目录（与 `$.fs` 相对路径、`$.process` 的缺省 cwd 同一份数据源，会随会话里的 `cd` 变）                                                                                                                                           |
 | `$.command` | `register({ name, description, argumentHint?, immediate? })`、`list()`、`run({ command, args? })`（见「注册命令」）                                                                                                                                                                                          |
 
-`$.ui.resolve(e)` 把 `ui.render` 收到的事件换成**这一端可用的元素表**（`{ Box, Text, Button, Input, Link, Code, Markdown }`，值与从 `wave-agent-sdk/mods` 导入的同名导出是同一份）。表按 `e.surface` 选：一期只发 `desktop`，别的值、以及不认识的 `e.component`，都直接报错并列出可用名单，不返回半张表。
+`$.ui.resolve(e)` 把 `ui.render` 收到的事件换成**这一端可用的元素表**（`{ Box, Text, Button, Input, Select, Svg, Link, Code, Markdown, Progress }`，值与从 `wave-agent-sdk/mods` 导入的同名导出是同一份）。表按 `e.surface` 选：一期只发 `desktop`，别的值、以及不认识的 `e.component`，都直接报错并列出可用名单，不返回半张表。
 
-与 Claude Code 的 `$.ui.resolve(e)` 同一个语义：它同样拿 `ui.render` 的 `e`，按 `e.surface` 选元素表、并要求 `e.component` 是引擎画得出的站点（它的错误文案是 `takes a ui.render argument (e.surface names the surface)`）。区别在覆盖面：CC 的 surface 有 `terminal` / `desktop` / `mobile` / `vscode` 四端，**各端元素表不同** —— `terminal` 有 `Raster` / `Image` 没有 `Svg`，`desktop` 反过来（11 个：多 `Select` / `Svg` / `Progress` / `Client`），`mobile` / `vscode` 有 `Svg` 没有 `Client`；我们一期只发 `desktop`，且表里只放已实现的 7 个 —— 给画不出的名字，mod 编出的树只会被 `validateModTree` 拒掉，错误离原因更远。
+与 Claude Code 的 `$.ui.resolve(e)` 同一个语义：它同样拿 `ui.render` 的 `e`，按 `e.surface` 选元素表、并要求 `e.component` 是引擎画得出的站点（它的错误文案是 `takes a ui.render argument (e.surface names the surface)`）。区别在覆盖面：CC 的 surface 有 `terminal` / `desktop` / `mobile` / `vscode` 四端，**各端元素表不同** —— `terminal` 有 `Raster` / `Image` 没有 `Svg`，`desktop` 反过来（11 个：多 `Select` / `Svg` / `Progress` / `Client`），`mobile` / `vscode` 有 `Svg` 没有 `Client`；我们只发 `desktop`，表里放已实现的 10 个，与 CC 的桌面端表只差 `Client` —— 给画不出的名字，mod 编出的树只会被 `validateModTree` 拒掉，错误离原因更远。
 
 ### 状态带、状态行与提示
 
@@ -333,6 +341,9 @@ mod 的沙箱里没有 `child_process`，要跑外部程序只能走 `$.process.
 | 元素树深度                       | 24                                                                |
 | 树内文本总量                     | 100,000 字符                                                      |
 | `Link.href`                      | 2048 字符                                                         |
+| `Svg.source`                     | 131,072 字符（与 Claude Code 同一个数）                           |
+| `Svg` 的 `width` / `height`      | 各 4096px（同上）                                                 |
+| `Select.options`                 | 1–64 项，`value` 必须唯一                                         |
 | 单个 hook 执行时间               | 5 秒（等外部进程输出的空闲不计；超时视为失败，事件按无 mod 处理） |
 | 面板每次 `invalidate` 的最小间隔 | 100ms（更快的调用合并）                                           |
 | 定时器最小间隔                   | 200ms（更小的值夹到 200ms）                                       |
@@ -373,7 +384,7 @@ mod 的沙箱里没有 `child_process`，要跑外部程序只能走 `$.process.
 
 ## 交付分层（一期不做的事）
 
-不做，且**接口不预留**（避免半成品）：VS Code / JetBrains / 终端渲染、`Client`/`Svg`/`Raster`/`Image`、`$.model`/`$.agent`/`$.mcp`、事件拦截与改写（`prompt.*` 那族、CC 那种能改写放行决定的 `tool.check`、以及 `tool.call` 的 `{ deny }` 决议——我们只发只读事件，见「完成与审批的观察」）、mod 分层与加载期审查。
+不做，且**接口不预留**（避免半成品）：VS Code / JetBrains / 终端渲染、`Client`（要在 webview 里执行 mod 附带的第二份模块，连带 `ui.message` / `ui.fault` 两个事件）、终端专有的 `Raster`/`Image`、`$.model`/`$.agent`/`$.mcp`、事件拦截与改写（`prompt.*` 那族、CC 那种能改写放行决定的 `tool.check`、以及 `tool.call` 的 `{ deny }` 决议——我们只发只读事件，见「完成与审批的观察」）、mod 分层与加载期审查。
 
 **Web 远控页也不显示这三样**：手机上既没有状态带、没有状态行，也没有提示浮层。这是「一期只做桌面端」的下游结果，所以远控页不会因为它们弹「这个操作在 Web 端还没有接通」这类提示 —— 带是页面自己在打开会话、切换会话时取一次的，不是用户点出来的请求，不该在用户眼前报错。
 
@@ -405,6 +416,21 @@ mod 的沙箱里没有 `child_process`，要跑外部程序只能走 `$.process.
 2. **假设**面板里有一个 `Input`，它的 `onSubmit` 把提交值追加进 `$.state` 并 invalidate，**当**用户输入 `hello` 并提交，**则**面板列表新增一行 `hello`，输入框清空。
 3. **假设**同一个按钮被连点三次而 mod 每次只做一次 invalidate，**当**三次点击都到达，**则** mod 的回调被执行三次，宿主把 100ms 内的多次 invalidate 合并成一条 `stale` 通知，面板最终只请求并渲染一次。
 4. **假设**面板里一个按钮的 `onPress` 直接抛错，**当**用户点击它，**则**面板顶部出现一条错误摘要、上一次渲染的按钮与列表仍能继续点，且下一次 `invalidate` 成功后摘要消失。
+
+### 用户故事：画一张图、一个下拉和一个进度条（优先级：P0）
+
+作为插件作者，我希望在面板和带里画一张自己拼出来的 SVG 图、让用户从一组选项里挑一个、并且把「做到哪一步了」画成进度条，以便「用量趋势」「当前口径」「跑到 7/12 了」这类信息不必退化成一行文字。
+
+**为什么是这个优先级**：社区里真正画图的那批 mod 全靠 `Svg`（我们用 33 个热门 mod 仓的源码数过：`<Svg` 6 仓，`<Select` 与 `<Progress` 几乎没有）；没有它，一整类「把数据画出来」的插件移植过来只能降级成文字表。
+
+**验收场景**：
+
+1. **假设**某 mod 的 `ui.render` 返回 `<Svg source={...} alt="近 5 分钟 CPU" width={340} height={96} />`，**当**面板渲染，**则**那段 SVG 内联画在面板里、尺寸就是给的 `width`/`height`；把 `alt` 去掉或写成 `source: ""`，**则**这次渲染失败并在面板顶部说明缺的是哪个 prop。
+2. **假设** `Svg.source` 里带 `<script>` 或 `onload=` 这类可执行内容，**当**面板渲染，**则**画出来的 SVG 被净化过（脚本与外链引用都不生效），宿主进程不受影响；`source` 超过 131072 字符或 `width`/`height` 超过 4096，**则**整棵树被校验拒绝并给出是哪一条超限。
+3. **假设**面板里有 `<Select key="range" value={picked} options={[{value:"1m",label:"1 分钟"},{value:"5m",label:"5 分钟"}]} onSelect={v => { picked = v; $.ui.invalidate("ui.render") }} />`，**当**用户选了「5 分钟」，**则** mod 的 `onSelect` 收到 `"5m"`、下一次渲染的选中项跟着变；`options` 为空、超过 64 项、或有重复 `value`，**则**这次渲染失败并点名是哪一条。
+4. **假设**元素是 `Progress`：`<Progress label="构建" value={7} max={12} />`，**当**面板渲染，**则**画出一条夹在 0–1 的进度（这里约 58%）与标签「构建」；`value` 缺省时只画标签，`valueText` 给出时用它替代默认百分比，`value` 为负数或大于 `max` 时夹到两端而不是画到外面。
+5. **假设**同一棵树里 `Svg` / `Select` / `Progress` 被写成带 children（`<Svg source={…}>x</Svg>`），**当**面板渲染，**则**校验以「Svg 是叶子、不带 children」拒绝，而不是悄悄把 children 丢掉。
+6. **假设**这些元素被用在输入框上方的带里（`e.component === "AbovePrompt"`），**当**带渲染，**则**它们与面板里画出来的一致（同一个渲染器）；`Select` 在带里选中后同样回到 mod。
 
 ### 用户故事：不开面板也能把信息放在用户眼前（优先级：P0）
 

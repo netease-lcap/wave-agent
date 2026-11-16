@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { render, screen, act } from "@testing-library/react";
+import { render, screen, act, fireEvent } from "@testing-library/react";
 import React from "react";
 import { DesktopApp } from "../../src/components/DesktopApp";
 import { createMockVscode, sendHostMessage } from "./test-utils";
@@ -97,6 +97,57 @@ describe("desktop mod band / status / toast", () => {
         kind: "press",
       },
     ]);
+  });
+
+  it("带里同样画得出 Svg / Select（同一个渲染器，场景 6）", () => {
+    const { vscode } = renderDesktop();
+    sendHostMessage(
+      fixtures.desktopModBand([
+        {
+          modId: "pixel:band",
+          plugin: "pixel",
+          revision: 1,
+          tree: {
+            type: "Box",
+            props: { flexDirection: "row" },
+            children: [
+              {
+                type: "Svg",
+                props: {
+                  source:
+                    '<svg viewBox="0 0 3 3"><rect width="3" height="3" /></svg>',
+                  alt: "像素小人",
+                },
+                children: [],
+              },
+              {
+                type: "Select",
+                props: {
+                  key: "mode",
+                  value: "idle",
+                  options: [{ value: "idle" }, { value: "busy" }],
+                },
+                children: [],
+              },
+            ],
+          },
+        },
+      ]),
+    );
+
+    expect(screen.getByRole("img", { name: "像素小人" })).toBeInTheDocument();
+    fireEvent.change(screen.getByRole("combobox"), {
+      target: { value: "busy" },
+    });
+
+    // 控件本身是受控的（值归 mod），这里只钉事件按带的固定 instance 回传。
+    expect(events(vscode)).toContainEqual({
+      modId: "pixel:band",
+      paneId: "above-prompt",
+      key: "mode",
+      kind: "select",
+      value: "busy",
+    });
   });
 
   it("空树 / 没内容的带不占位置，revision 更旧的帧被丢弃", () => {

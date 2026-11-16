@@ -246,7 +246,9 @@ describe("ModRuntime 的 require", () => {
     await mod.load();
     const result = await mod.callHook("ui.render", {});
     expect(result.ok && result.value).toMatchObject({
-      children: ["Box,Button,Code,Fragment,Input,Link,Markdown,Text"],
+      children: [
+        "Box,Button,Code,Fragment,Input,Link,Markdown,Progress,Select,Svg,Text",
+      ],
     });
   });
 
@@ -430,6 +432,72 @@ describe("ModRuntime 的交互路由", () => {
 
     expect(hostApi.openPane).toHaveBeenNthCalledWith(1, "press", "");
     expect(hostApi.openPane).toHaveBeenNthCalledWith(2, "typed", "");
+  });
+
+  it("Select 的 options 是对象数组，照样搬进树里", async () => {
+    // `h()` 对 prop 的默认纪律是「非原始值一律丢」——`options` 是唯一的例外，
+    // 丢了它下拉就是空的（spec「元素」里 `Select` 那一行）。
+    const { mod } = runtime(`
+      exports.register = function ($, on) {
+        on("ui.render", function () {
+          return __wave.h("Select", {
+            key: "s1",
+            value: "b",
+            options: [{ value: "a", label: "A" }, { value: "b" }],
+            onSelect: function () { $.ui.invalidate("ui.render"); },
+          });
+        });
+      };
+    `);
+
+    await mod.load();
+    const result = await mod.callHook("ui.render", {});
+    expect(result.ok && result.value).toEqual({
+      type: "Select",
+      props: {
+        key: "s1",
+        value: "b",
+        options: [{ value: "a", label: "A" }, { value: "b" }],
+      },
+      children: [],
+    });
+  });
+
+  it("options 形状不对时整条丢掉，交给校验器报错", async () => {
+    const { mod } = runtime(`
+      exports.register = function ($, on) {
+        on("ui.render", function () {
+          return __wave.h("Select", { key: "s1", options: ["a", 1] });
+        });
+      };
+    `);
+
+    await mod.load();
+    const result = await mod.callHook("ui.render", {});
+    expect(result.ok && result.value).toMatchObject({
+      props: { key: "s1" },
+    });
+  });
+
+  it("select 事件把选中的值交给 onSelect", async () => {
+    const { host: hostApi, mod } = runtime(`
+      exports.register = function ($, on) {
+        on("ui.render", function () {
+          return __wave.h("Select", {
+            key: "s1",
+            options: [{ value: "a" }, { value: "b" }],
+            onSelect: function () { $.ui.invalidate("ui.render"); },
+          });
+        });
+      };
+    `);
+
+    await mod.load();
+    await mod.callHook("ui.render", {});
+
+    await expect(mod.dispatch("select", "s1", "b")).resolves.toBe(true);
+    // `invalidate` 只认 "ui.render"（一次调用作用到这个 mod 的所有站点）。
+    expect(hostApi.invalidate).toHaveBeenCalledWith("ui.render");
   });
 
   it("没有对应处理器时返回 false（元素没写 key / key 变了）", async () => {

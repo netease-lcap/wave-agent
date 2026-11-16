@@ -7,26 +7,49 @@
  * 所以这里不许 import 任何 node 模块。
  */
 
-/** 一期支持的元素。新增一个要同时改 runtime 的工厂与 webview 的渲染器。 */
+/**
+ * 支持的元素。新增一个要同时改 runtime 的工厂与 webview 的渲染器。
+ *
+ * 与 Claude Code 的 `desktop` 表逐项对齐，只差 `Client`（它要在渲染端执行 mod
+ * 附带的第二份模块，见 spec「交付分层」）；`Raster` / `Image` 只有终端有，不在
+ * 桌面端的表里。
+ */
 export const MOD_ELEMENT_TYPES = [
   "Box",
   "Text",
   "Button",
   "Input",
+  "Select",
+  "Svg",
   "Link",
   "Code",
   "Markdown",
+  "Progress",
 ] as const;
 
 export type ModElementType = (typeof MOD_ELEMENT_TYPES)[number];
 
+/** `Select` 的一项。`value` 在同一棵树里必须唯一，`label` 缺省时画 `value`。 */
+export interface ModSelectOption {
+  value: string;
+  label?: string;
+}
+
 /**
  * 能过 RPC 的 prop 值。
  *
- * 刻意不含函数与 Symbol：`onPress` / `onSubmit` 这类回调在 mod 进程内就被
- * `h()` 摘走、存进该 mod 自己的处理表，树上只留 `key` 作为回传标识。
+ * 刻意不含函数与 Symbol：`onPress` / `onSubmit` / `onSelect` 这类回调在 mod
+ * 进程内就被 `h()` 摘走、存进该 mod 自己的处理表，树上只留 `key` 作为回传标识。
+ *
+ * 只有 `Select.options` 用得上数组：其余元素的 prop 仍然是原始值，校验器按元素
+ * 区分（spec「元素」）。
  */
-export type ModPropValue = string | number | boolean | null;
+export type ModPropValue =
+  | string
+  | number
+  | boolean
+  | null
+  | readonly ModSelectOption[];
 
 /** 元素树节点，已经过形状校验与限额检查。 */
 export interface ModTreeNode {
@@ -121,10 +144,10 @@ export interface ModPanelEventPayload {
   sessionId: string;
   modId: string;
   paneId: string;
-  /** 触发交互的元素 `key`（`Button` / `Input` 必填；`close` 时为空串）。 */
+  /** 触发交互的元素 `key`（`Button` / `Input` / `Select` 必填；`close` 时为空串）。 */
   key: string;
   /** `close` 是用户关掉了面板 tab（mod 的 `ui.close` 钩子据此收到通知）。 */
-  kind: "press" | "input" | "close";
+  kind: "press" | "input" | "select" | "close";
   /** `kind === "input"` 时是用户提交的字符串。 */
   value?: string;
   /** `kind === "close"` 时是谁关的（诊断用；mod 收不到关闭通知，见 spec「事件」）。 */
@@ -408,6 +431,12 @@ export const MOD_LIMITS = {
   treeTextChars: 100_000,
   /** `Link.href` 长度。 */
   hrefChars: 2048,
+  /** `Svg.source` 的字符上限（与 Claude Code 同一个数）。 */
+  svgSourceChars: 131_072,
+  /** `Svg` 的 `width` / `height` 上限（px，同上）。 */
+  svgDimension: 4096,
+  /** `Select.options` 的条数上限（同上）。 */
+  selectOptions: 64,
   /** 单个 hook 执行时间。 */
   hookTimeoutMs: 5_000,
   /** 同一面板两次刷新的最小间隔。 */

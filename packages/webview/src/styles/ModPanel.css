@@ -160,3 +160,81 @@
   color: var(--vscode-descriptionForeground, #888);
   font-size: 12px;
 }
+
+/* ── 二期元素：`Select` / `Svg` / `Progress` ───────────────────────────────
+
+   下面这几条**刻意不套** `.mod-panel` 前缀：同一个渲染器既画在右侧面板里，也
+   画在输入框上方的带里（`.mod-band-item`），而带里没有 `.mod-panel` 祖先 ——
+   套上去带里的下拉就退回浏览器默认样式，与 spec 里「两处画出来一致」相悖。 */
+
+.mod-panel-select {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.mod-panel-select > span {
+  color: var(--vscode-descriptionForeground, #888);
+}
+
+/* 与上面的 `input` 同款边框/圆角/底色，只是元素名不同。 */
+.mod-panel-select select {
+  font: inherit;
+  min-width: 0;
+  padding: 4px 8px;
+  border-radius: var(--cc-radius-sm, 6px);
+  border: 1px solid var(--cc-field-border, var(--vscode-input-border, #d9dbe0));
+  background: var(--cc-field-bg, var(--vscode-input-background, #fff));
+  color: var(--vscode-input-foreground, inherit);
+}
+
+.mod-panel-select select:focus {
+  outline: none;
+  border-color: var(
+    --cc-field-border-focus,
+    var(--vscode-focusBorder, #2f6fdd)
+  );
+}
+
+.mod-panel-svg {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  /* 图里的 `<text>` 常不写 fill：让它跟随所在表面，暗色主题下不会黑字不可见。 */
+  color: inherit;
+}
+
+.mod-panel-svg > svg {
+  display: block;
+  max-width: 100%;
+}
+
+.mod-panel-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.mod-panel-progress-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground, #888);
+}
+
+.mod-panel-progress-track {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--cc-bg-code, rgba(128, 128, 128, 0.18));
+  overflow: hidden;
+}
+
+.mod-panel-progress-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--cc-action-primary, var(--vscode-focusBorder, #2f6fdd));
+  transition: width 120ms ease-out;
+}
