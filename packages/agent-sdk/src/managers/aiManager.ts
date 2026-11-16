@@ -568,7 +568,12 @@ export class AIManager {
 
     const memoryFiles: ContextBreakdown["memoryFiles"] = [];
     try {
-      const workdir = this.getCurrentWorkdir();
+      // 记忆文件属于项目级配置，锚在会话起点（`SessionWorkdir`，「不动」的那个），
+      // 而不是 `getCurrentWorkdir()`（「会动」的那个，Bash `cd` 就改）——注入侧
+      // `getMemoryForInjection()` 读的是 `MessageManager` 的 workdir，它只在切会话
+      // 时移动，所以分项必须读同一个目录，否则报出的路径会指向 `cd` 之后的地方。
+      const workdir =
+        this.container.get<string>("SessionWorkdir") ?? this.originalWorkdir;
       const { prependContent } = this.omitAgentsMd
         ? { prependContent: "" }
         : await this.messageManager.getMemoryForInjection();
@@ -579,6 +584,11 @@ export class AIManager {
         );
         const userTokens = estimateTokens(
           await this.memoryService.getUserMemoryContent(),
+        );
+        // 个人档（AGENTS.local.md）：私有于本用户、但属于本仓库。它同样参与
+        // 注入，所以必须单列 —— 不列就会被算进下面的「差额 = 规则体积」。
+        const localTokens = estimateTokens(
+          await this.memoryService.readLocalMemoryFile(workdir),
         );
         if (projectTokens > 0) {
           memoryFiles.push({
@@ -594,11 +604,18 @@ export class AIManager {
             tokens: userTokens,
           });
         }
-        // 剩下的差额是 `.wave/rules` 里无条件生效的规则；分成两半之外没有别的
+        if (localTokens > 0) {
+          memoryFiles.push({
+            type: "local",
+            path: path.join(workdir, "AGENTS.local.md"),
+            tokens: localTokens,
+          });
+        }
+        // 剩下的差额是 `.wave/rules` 里无条件生效的规则；三档记忆之外没有别的
         // 注入来源，所以差额即规则体积。
         const rulesTokens = Math.max(
           0,
-          totalTokens - projectTokens - userTokens,
+          totalTokens - projectTokens - userTokens - localTokens,
         );
         if (rulesTokens > 0) {
           memoryFiles.push({

@@ -108,7 +108,8 @@ export type RequestMethod =
   | "artifactShareSave"
   | "artifactRevoke"
   | "artifactMembersSearch"
-  // Memory files (user-level ~/.wave/AGENTS.md and project-level <workdir>/AGENTS.md)
+  // Memory files (`scope`: user-level ~/.wave/AGENTS.md, project-level
+  // <workdir>/AGENTS.md, personal <workdir>/AGENTS.local.md)
   | "getAgentsContent"
   | "setAgentsContent"
   // Plugins

@@ -35,9 +35,11 @@ import javax.swing.SwingUtilities
  * Message wiring (settings webview ↔ CLI session):
  * - webview → host: the [JcefBrowserBridge] forwards every message into a dedicated
  *   [MessageHandler] bound to the chat panel's [WaveSession] (or a throwaway session when no chat
- *   exists yet — config RPCs keep working, AGENTS.md RPCs degrade), so the existing
- *   getConfiguration / updateConfiguration / getAgentsContent / setAgentsContent /
- *   closeSettings RPC handlers are reused verbatim.
+ *   exists yet), so the existing getConfiguration / updateConfiguration / getAgentsContent /
+ *   setAgentsContent / closeSettings RPC handlers are reused verbatim. With the throwaway session
+ *   the memory RPCs go through the shared CLI process instead (it reads/writes the files directly
+ *   when no session id is on the envelope), so all three AGENTS.md tiers work before any chat
+ *   exists (spec memory-management「设置页三档记忆编辑器」场景 5).
  * - host → webview: the handler's postMessage callback delivers responses
  *   (configurationResponse / configurationUpdated / configurationError / agentsContentResponse /
  *   agentsContentSaved) straight back to this settings webview via [postMessage].
@@ -70,8 +72,9 @@ class WaveSettingsFileEditor(
         val holder = WavePanelHolder.getInstance(project)
         val chatSession = holder.chatSession()
         // Fall back to an uninitialized throwaway session so the settings tab works standalone
-        // (no active chat): configuration RPCs (getConfiguration/updateConfiguration) need no
-        // agent; AGENTS.md RPCs degrade to empty content / honest save failure.
+        // (no active chat): configuration RPCs need no agent, and the memory RPCs go through the
+        // shared CLI process client instead of a live agent (it reads/writes the file directly
+        // when the envelope carries no session id).
         session = chatSession ?: WaveSession(project, { _, _ -> })
         ownsSession = chatSession == null
         handler = MessageHandler(project, session) { command, payload ->

@@ -45,7 +45,9 @@ import { DesktopHostSelector } from "./DesktopHostSelector";
 import { DesktopShell } from "./DesktopShell";
 import type { AccountCardAccount } from "./AccountCard";
 import SettingsPage from "./SettingsPage";
-import type { NavKey } from "./SettingsPage";
+import type { AgentsConflict, AgentsScope, NavKey } from "./SettingsPage";
+import type { AgentsReadState } from "../utils/agentsReadState";
+import { agentsReadStateFromMessage } from "../utils/agentsReadState";
 import { SessionBoard } from "./SessionBoard";
 import { SessionListPopup } from "./SessionListPopup";
 import type { SessionMetadata } from "wave-agent-sdk/types";
@@ -654,15 +656,31 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     useState<MenuAnchorRect | null>(null);
   /** 用量环元素本身：既是锚点来源，也要交给浮层做「点环不算点外部」的豁免。 */
   const contextRingRef = useRef<HTMLButtonElement>(null);
-  // AGENTS.md editor contents (batch 2 personalization view). null = not yet
-  // loaded; loaded on demand when the settings page opens, saved via the
-  // setAgentsContent RPC.
+  // AGENTS.md editor contents (batch 2 personalization view): 三档 user（用户级）
+  // / project（项目级）/ local（个人级 <workdir>/AGENTS.local.md）。null = not yet
+  // loaded; loaded on demand when the settings page opens (each tab pulls its own
+  // scope), saved via the setAgentsContent RPC.
   const [userAgentsContent, setUserAgentsContent] = useState<string | null>(
     null,
   );
   const [projectAgentsContent, setProjectAgentsContent] = useState<
     string | null
   >(null);
+  const [localAgentsContent, setLocalAgentsContent] = useState<string | null>(
+    null,
+  );
+  // 各档的读状态（是否存在 / 读取是否成功 / 内容 hash），来自 agentsContentResponse：
+  // 决定编辑器能不能写、保存要不要带 expectedHash（spec memory-management 场景
+  // 8–13，判定逻辑在 SettingsPage 与 utils/agentsReadState.ts）。缺项 = 该档还没读到。
+  const [agentsReadState, setAgentsReadState] = useState<
+    Partial<Record<AgentsScope, AgentsReadState | null>>
+  >({});
+  // 保存被并发校验拒绝的档（agentsContentSaved.conflict）：把该档内容置回 null 让设置页
+  // 按「未加载」重读，并由递增 token 触发它保留用户草稿、显示冲突提示（场景 12）。
+  const [agentsConflict, setAgentsConflict] = useState<AgentsConflict | null>(
+    null,
+  );
+  const agentsConflictTokenRef = useRef(0);
   // AGENTS.md 保存进行中（设置「个性化」视图）：点击保存置 pending，host 回发
   // agentsContentSaved 后落定以复位按钮/文本区禁用；保存结果 toast 由宿主发出。
   const [agentsSaving, setAgentsSaving] = useState(false);
@@ -2732,14 +2750,27 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         // settings page (root instance only), so replies are untagged — the
         // pane guard below would drop them in a split-view pane, which is
         // correct: panes never render the settings page.
-        if (message.scope === "project") {
-          setProjectAgentsContent(
-            typeof message.content === "string" ? message.content : "",
-          );
-        } else {
-          setUserAgentsContent(
-            typeof message.content === "string" ? message.content : "",
-          );
+        // 三档分流：project = 项目级 <workdir>/AGENTS.md、local = 个人级
+        // <workdir>/AGENTS.local.md、其余（user）= 用户级 ~/.wave/AGENTS.md。
+        // 落到别档就会把个人档内容显示在项目级编辑器里，故必须逐档显式判定。
+        {
+          // 读状态（exists / readable / hash）与内容同一帧落地：编辑器据此决定
+          // 能否写、保存带什么 expectedHash（spec memory-management 场景 8–13）。
+          const scope: AgentsScope =
+            message.scope === "project"
+              ? "project"
+              : message.scope === "local"
+                ? "local"
+                : "user";
+          const content =
+            typeof message.content === "string" ? message.content : "";
+          if (scope === "project") setProjectAgentsContent(content);
+          else if (scope === "local") setLocalAgentsContent(content);
+          else setUserAgentsContent(content);
+          setAgentsReadState((prev) => ({
+            ...prev,
+            [scope]: agentsReadStateFromMessage(message),
+          }));
         }
         break;
       case "agentsContentSaved":
@@ -2747,6 +2778,27 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         // like agentsContentResponse — resets the save-in-progress flag (结果
         // toast 由宿主在发出本消息时一并推送).
         setAgentsSaving(false);
+        // 并发保护被触发（文件在编辑器打开期间被外部改过）：**不覆盖**磁盘。
+        // 把该档内容置回 null（= 未加载）让设置页的加载 effect 重读这一档，设置页
+        // 随即显示磁盘上的最新内容、把用户刚才的编辑留成可恢复的草稿并给出提示
+        // （spec memory-management 场景 12）。
+        if (message.conflict === true) {
+          const scope: AgentsScope =
+            message.scope === "project"
+              ? "project"
+              : message.scope === "local"
+                ? "local"
+                : "user";
+          if (scope === "project") setProjectAgentsContent(null);
+          else if (scope === "local") setLocalAgentsContent(null);
+          else setUserAgentsContent(null);
+          setAgentsReadState((prev) => ({ ...prev, [scope]: null }));
+          agentsConflictTokenRef.current += 1;
+          setAgentsConflict({
+            scope,
+            token: agentsConflictTokenRef.current,
+          });
+        }
         break;
       case "loginResponse":
         if (message.success) {
@@ -3021,8 +3073,8 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         // Batch 2: desktop opens the settings full-page (spec 场景 1). Load the
         // configuration on entry; the settings page requests the AGENTS.md
         // editor contents itself (its own mount effect pulls each scope while
-        // the value is null — user immediately, project when the 项目级 tab is
-        // first activated). /agents、/skills、/hooks 斜杠命令携带 nav
+        // the value is null — user immediately, project / local（个人级）各在
+        // 自己的 tab 首次激活时)。 /agents、/skills、/hooks 斜杠命令携带 nav
         // (subagents/skills/hooks) 选中对应选项卡（spec agents-command.md /
         // hooks-command.md）。
         //
@@ -3033,6 +3085,11 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         // handleGetAgentsContent）。
         setUserAgentsContent(null);
         setProjectAgentsContent(null);
+        setLocalAgentsContent(null);
+        // 读状态与冲突提示同样逐次作废：缓存内容既然重读，hash 也必须跟着重取
+        // （否则会拿上一轮打开时的 hash 去校验这一轮的写入）。
+        setAgentsReadState({});
+        setAgentsConflict(null);
         setAgentsSaving(false);
         setSettingsOpen(true);
         if (nav) setSettingsNav(nav);
@@ -3699,17 +3756,25 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   );
 
   // 设置「个性化」AGENTS.md 编辑器保存：经 setAgentsContent RPC 写回文件（用户级
-  // ~/.wave/AGENTS.md / 项目级 <workdir>/AGENTS.md），host 回发 agentsContentSaved
-  // 复位 agentsSaving（成功/失败 toast 由宿主在回发时一并发出）。项目作用域携带
-  // 当前 workdir 供 host 解析目标文件。
+  // ~/.wave/AGENTS.md / 项目级 <workdir>/AGENTS.md / 个人级
+  // <workdir>/AGENTS.local.md），host 回发 agentsContentSaved 复位 agentsSaving
+  // （成功/失败 toast 由宿主在回发时一并发出）。除用户级外（项目级 / 个人级）都
+  // 落在某个项目目录里，必须携带当前 workdir 供 host 解析目标文件——个人级漏带
+  // 会被 host 拒绝。
+  //
+  // `expectedHash` 是编辑器打开时读到的那份内容的 hash（`null` = 当时文件不存在）：
+  // 宿主拿它和磁盘现状比对，不一致就拒绝写入（spec memory-management 场景 12）。
+  // `undefined`（宿主没给读状态）时**整个字段不发**，保持老的「不校验」行为
+  // （场景 13：不带 hash 的调用方不得因此保存失败）。
   const handleSaveAgentsContent = useCallback(
-    (scope: "user" | "project", content: string) => {
+    (scope: AgentsScope, content: string, expectedHash?: string | null) => {
       setAgentsSaving(true);
       vscode.postMessage({
         command: "setAgentsContent",
         scope,
         content,
-        workdir: scope === "project" ? effectiveWorkdir : undefined,
+        workdir: scope === "user" ? undefined : effectiveWorkdir,
+        ...(expectedHash === undefined ? {} : { expectedHash }),
       });
     },
     [vscode, effectiveWorkdir],
@@ -5941,6 +6006,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
       onClose={handleCloseSettings}
       userAgentsContent={userAgentsContent}
       projectAgentsContent={projectAgentsContent}
+      localAgentsContent={localAgentsContent}
       onLoadAgentsContent={(scope) =>
         vscode.postMessage({
           command: "getAgentsContent",
@@ -5948,12 +6014,28 @@ export const ChatApp: React.FC<ChatAppProps> = ({
           // desktop host 按聚焦 pane 自行解析项目目录（见 desktopHost
           // handleGetAgentsContent），此处 workdir 仅作插件端备用一致性字段——
           // 用与归属守卫同一「当前项目」身份，避免往线上传 recents 头的旧路径。
-          workdir: scope === "project" ? settingsWorkdir : undefined,
+          // 项目级与个人级都落在项目目录里，只有用户级不带 workdir。
+          workdir: scope === "user" ? undefined : settingsWorkdir,
         })
       }
       onSaveAgentsContent={handleSaveAgentsContent}
+      agentsReadState={agentsReadState}
+      agentsConflict={agentsConflict}
       agentsSaving={agentsSaving}
       workdir={settingsWorkdir}
+      // 聚焦 pane 的项目变了（settingsWorkdir 变化）：项目级 / 个人级缓存按归属键
+      // 作废，由设置页按新项目重读（spec memory-management 场景 6）；用户级与项目
+      // 无关，保持原值。读状态跟着一起作废——旧项目的 hash 不能用来校验新项目的写入。
+      onResetProjectAgentsContent={() => {
+        setProjectAgentsContent(null);
+        setLocalAgentsContent(null);
+        setAgentsReadState((prev) => ({
+          ...prev,
+          project: null,
+          local: null,
+        }));
+        setAgentsConflict(null);
+      }}
       configurationError={state.configurationError}
       initialNav={settingsNav}
       vscode={vscode}

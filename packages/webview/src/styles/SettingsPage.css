@@ -640,6 +640,60 @@
   padding: 12px 0;
 }
 
+/* 个人级（AGENTS.local.md）提示行（spec memory-management「设置页三档记忆编辑器」
+   场景 7：漏配 .gitignore 时给一行可读提示，不拦截保存）。只在个人级 tab 显示，
+   是 `.agents-editor` 的兄弟节点（该容器 `align-items: flex-end` 会把提示行挤到
+   右边，故放在容器外、独占一行左对齐），同 `.settings-remote-note` 的字号档。 */
+.agents-local-hint {
+  margin: 8px 0 0;
+  color: var(--vscode-descriptionForeground);
+  font-size: 12px;
+  line-height: 20px;
+}
+
+/* AGENTS.md 编辑器状态行（spec memory-management 场景 9–11）：读取中 / 无校验值 /
+   读取失败 / 尚未创建。与 `.agents-local-hint` 一样是 `.agents-editor` 的兄弟节点
+   （该容器 `align-items: flex-end` 会把整行挤到右边），独占一行左对齐。读取失败
+   用错误色：它是唯一会让用户误判「文件是空的」的形态。 */
+.agents-editor-status {
+  margin: 8px 0 0;
+  color: var(--vscode-descriptionForeground);
+  font-size: 12px;
+  line-height: 20px;
+}
+
+.agents-editor-status.is-read-error {
+  color: var(--vscode-errorForeground);
+}
+
+/* 并发冲突提示（场景 12）：保存被拒 + 磁盘已重读，草稿还留着可恢复。独占一行，
+   文案与「恢复我的编辑」按钮同一行、按钮跟随文字不换行到下一行右端。 */
+.agents-editor-conflict {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  margin: 8px 0 0;
+  color: var(--vscode-errorForeground);
+  font-size: 12px;
+  line-height: 20px;
+}
+
+.agents-editor-restore {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--vscode-textLink-foreground);
+  font-size: 12px;
+  line-height: 20px;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.agents-editor-restore:hover {
+  color: var(--vscode-textLink-activeForeground);
+}
+
 .project-list {
   display: flex;
   align-self: stretch;

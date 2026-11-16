@@ -24,7 +24,13 @@ const h = vi.hoisted(() => ({
   // path (local uploads write the bytes with the sync API).
   writeFileSyncError: null as Error | null,
   agentInstances: [] as Array<Record<string, unknown>>,
-  clientRequests: [] as Array<{ method: string; params: unknown }>,
+  // `sessionId` is the JSON-RPC envelope's third argument (absent when the host
+  // sent no session) — recorded so tests can pin which session an RPC targeted.
+  clientRequests: [] as Array<{
+    method: string;
+    params: unknown;
+    sessionId?: string;
+  }>,
   // searchFiles 的回包（`@` 下拉）。默认空列表；测试要文件与子代理条目排序
   // 时才给值。
   searchFilesResult: null as null | { files: Array<Record<string, string>> },
@@ -375,10 +381,16 @@ vi.mock("../src/main/stdio/stdioClient", () => ({
     onClosed = vi.fn((handler: (reason: string) => void) => {
       h.stdioClosedHandlers.push(handler);
     });
-    request = vi.fn(async (method: string, params?: unknown) => {
-      h.clientRequests.push({ method, params });
-      return h.handleClientRequest(method, params);
-    });
+    request = vi.fn(
+      async (method: string, params?: unknown, sessionId?: string) => {
+        h.clientRequests.push({
+          method,
+          params,
+          ...(sessionId === undefined ? {} : { sessionId }),
+        });
+        return h.handleClientRequest(method, params);
+      },
+    );
   },
 }));
 
@@ -725,10 +737,16 @@ vi.mock("../src/main/remoteCli", async () => {
           h.closedHandlers.push(handler);
         }),
         dispose: vi.fn(),
-        request: vi.fn(async (method: string, params?: unknown) => {
-          h.clientRequests.push({ method, params });
-          return h.handleClientRequest(method, params);
-        }),
+        request: vi.fn(
+          async (method: string, params?: unknown, sessionId?: string) => {
+            h.clientRequests.push({
+              method,
+              params,
+              ...(sessionId === undefined ? {} : { sessionId }),
+            });
+            return h.handleClientRequest(method, params);
+          },
+        ),
       },
       tunnel: { kill: vi.fn() },
     })),
@@ -5305,6 +5323,359 @@ describe("misc commands", () => {
     expect(sent("agentsContentSaved")[0]).toMatchObject({
       scope: "project",
       ok: true,
+    });
+  });
+
+  // 个人级（第三档，`<workdir>/AGENTS.local.md`）：与项目级同一个 workdir 口径
+  // —— 都用聚焦 pane 的会话稳定根，webview 传的路径不采信。
+  it("getAgentsContent local scope reads the focused pane session's workdir, not the webview-sent path", async () => {
+    const { host, sent } = await readyHost();
+    const orig = h.handleClientRequest;
+    const seen: Array<{ method: string; params: unknown }> = [];
+    h.handleClientRequest = (method, params) => {
+      if (method === "getAgentsContent") {
+        seen.push({ method, params });
+        return { content: "# my personal notes" };
+      }
+      return orig(method, params);
+    };
+    try {
+      await host.handleWebviewMessage({
+        command: "getAgentsContent",
+        scope: "local",
+        workdir: "/work/recents-head",
+      });
+    } finally {
+      h.handleClientRequest = orig;
+    }
+
+    expect(seen).toEqual([
+      {
+        method: "getAgentsContent",
+        params: { scope: "local", workdir: "/work/a" },
+      },
+    ]);
+    expect(sent("agentsContentResponse")[0]).toMatchObject({
+      scope: "local",
+      content: "# my personal notes",
+    });
+  });
+
+  it("setAgentsContent local scope writes to the focused pane session's workdir, not the webview-sent path", async () => {
+    const { host, sent } = await readyHost();
+    const orig = h.handleClientRequest;
+    const seen: Array<{ method: string; params: unknown }> = [];
+    h.handleClientRequest = (method, params) => {
+      if (method === "setAgentsContent") {
+        seen.push({ method, params });
+        return { ok: true };
+      }
+      return orig(method, params);
+    };
+    try {
+      await host.handleWebviewMessage({
+        command: "setAgentsContent",
+        scope: "local",
+        content: "# my personal rules",
+        workdir: "/work/recents-head",
+      });
+    } finally {
+      h.handleClientRequest = orig;
+    }
+
+    expect(seen).toEqual([
+      {
+        method: "setAgentsContent",
+        params: {
+          scope: "local",
+          content: "# my personal rules",
+          workdir: "/work/a",
+        },
+      },
+    ]);
+    expect(shownToasts().some((t) => t.message === "保存成功")).toBe(true);
+    expect(sent("agentsContentSaved")[0]).toMatchObject({
+      scope: "local",
+      ok: true,
+    });
+  });
+
+  it("local scope without a bound pane session falls back exactly like project scope", async () => {
+    const { host } = await readyHost();
+    const orig = h.handleClientRequest;
+    const seen: Array<{ method: string; params: unknown }> = [];
+    h.handleClientRequest = (method, params) => {
+      if (method === "getAgentsContent") {
+        seen.push({ method, params });
+        return { content: "" };
+      }
+      return orig(method, params);
+    };
+    try {
+      // pane-2 上还没有会话：projectRootForPane 只能回落到 host 的 workdir。
+      for (const scope of ["project", "local"] as const) {
+        await host.handleWebviewMessage({
+          command: "getAgentsContent",
+          paneId: "pane-2",
+          scope,
+        });
+      }
+    } finally {
+      h.handleClientRequest = orig;
+    }
+
+    // 两档解析出的 workdir 完全一致（回落口径不许分叉）。
+    expect(seen).toEqual([
+      {
+        method: "getAgentsContent",
+        params: { scope: "project", workdir: "/work/a" },
+      },
+      {
+        method: "getAgentsContent",
+        params: { scope: "local", workdir: "/work/a" },
+      },
+    ]);
+  });
+
+  // 场景 3「保存后记忆缓存失效」在宿主侧的那一环：会话 id 必须随 RPC 信封发出
+  // （`request(method, params, sessionId)`），CLI 据此把请求落到这个 pane 的 live
+  // agent 上 —— 保存走 writeLocalMemoryContent → MemoryService.clearCache。少了它
+  // CLI 走「不带 session」的直写分支，缓存一个字不动，当前会话下一轮注入的还是旧
+  // 内容，只有换会话才看得到。读侧同一个信封字段（读也走 live agent 的 memory
+  // service，口径一致）。
+  it("AGENTS.md read and write carry the pane session id on the RPC envelope", async () => {
+    const { host } = await readyHost();
+    // readyHost 的第一个 agent = pane-1 的会话（initialize 里取 sess-1）。
+    const bound = h.agentInstances[0] as { sessionId?: string };
+    expect(bound.sessionId).toBe("sess-1");
+    h.clientRequests.length = 0;
+
+    await host.handleWebviewMessage({
+      command: "setAgentsContent",
+      scope: "local",
+      content: "# mine",
+    });
+    await host.handleWebviewMessage({
+      command: "getAgentsContent",
+      scope: "local",
+    });
+
+    const calls = h.clientRequests.filter(
+      (r) => r.method === "getAgentsContent" || r.method === "setAgentsContent",
+    );
+    expect(calls.map((r) => r.method)).toEqual([
+      "setAgentsContent",
+      "getAgentsContent",
+    ]);
+    for (const call of calls) {
+      // 信封第三参（不是 params 里的同名字段）：CLI 只认信封那个。
+      expect(call.sessionId).toBe("sess-1");
+      expect(call.params).not.toHaveProperty("sessionId");
+    }
+  });
+
+  it("AGENTS.md RPC omits the session id when the pane has no session yet", async () => {
+    const { host } = await readyHost();
+    h.clientRequests.length = 0;
+
+    // pane-2 上还没有会话：不发会话 id，CLI 走「无 agent 时直读直写文件」的兜底
+    // （spec 场景 5 的既有行为，不能因为补会话 id 变成报错）。
+    await host.handleWebviewMessage({
+      command: "setAgentsContent",
+      paneId: "pane-2",
+      scope: "project",
+      content: "# rules",
+    });
+
+    const call = h.clientRequests.find((r) => r.method === "setAgentsContent");
+    expect(call?.params).toEqual({
+      scope: "project",
+      content: "# rules",
+      workdir: "/work/a",
+    });
+    expect(call?.sessionId).toBeUndefined();
+  });
+
+  // ── 并发保护 / 读状态透传 ───────────────────────────────────────────────
+  //
+  // spec core/memory-management「设置页三档记忆编辑器」场景 8/10/12/13：判定
+  // （hash 是否一致、要不要拒绝写入）全在 CLI，宿主只搬字段 —— 不重算 hash、
+  // 不改判定，但三态（字符串 / null / 省略）必须原样过去，`null` 不许被吞成省略。
+
+  it("getAgentsContent forwards exists/readable/hash/path from the CLI verbatim", async () => {
+    const { host, sent } = await readyHost();
+    const orig = h.handleClientRequest;
+    h.handleClientRequest = (method, params) => {
+      if (method === "getAgentsContent") {
+        return {
+          content: "# rules",
+          path: "/work/a/AGENTS.md",
+          exists: true,
+          readable: true,
+          hash: "sha256:abc123",
+        };
+      }
+      return orig(method, params);
+    };
+    try {
+      await host.handleWebviewMessage({
+        command: "getAgentsContent",
+        scope: "project",
+      });
+    } finally {
+      h.handleClientRequest = orig;
+    }
+
+    const reply = sent("agentsContentResponse")[0] as unknown as Record<
+      string,
+      unknown
+    >;
+    expect(reply).toMatchObject({
+      scope: "project",
+      content: "# rules",
+      path: "/work/a/AGENTS.md",
+      exists: true,
+      readable: true,
+      hash: "sha256:abc123",
+    });
+    expect(reply).not.toHaveProperty("error");
+  });
+
+  // 「读失败」不许被表达成「文件为空」（场景 10）：回包形状与 CLI 自己读不到时
+  // 一致（readable:false + 原因），编辑器据此显示失败态并**禁止保存**。两个布尔
+  // 值必须都在 —— webview 缺了它们就把回包当成「老宿主」并退回可编辑。
+  it("getAgentsContent read failure settles the editor as unreadable", async () => {
+    const { host, sent } = await readyHost();
+    const restore = failRpc("getAgentsContent", "EACCES: permission denied");
+    try {
+      await host.handleWebviewMessage({
+        command: "getAgentsContent",
+        scope: "project",
+      });
+    } finally {
+      restore();
+    }
+
+    const reply = sent("agentsContentResponse")[0] as unknown as Record<
+      string,
+      unknown
+    >;
+    expect(reply).toMatchObject({
+      scope: "project",
+      content: "",
+      exists: true,
+      readable: false,
+      hash: null,
+      error: "EACCES: permission denied",
+    });
+  });
+
+  it("setAgentsContent forwards the expectedHash the webview read with", async () => {
+    const { host, sent } = await readyHost();
+    const orig = h.handleClientRequest;
+    const seen: unknown[] = [];
+    h.handleClientRequest = (method, params) => {
+      if (method === "setAgentsContent") {
+        seen.push(params);
+        return { ok: true };
+      }
+      return orig(method, params);
+    };
+    try {
+      await host.handleWebviewMessage({
+        command: "setAgentsContent",
+        scope: "project",
+        content: "# new rules",
+        expectedHash: "sha256:abc123",
+      });
+    } finally {
+      h.handleClientRequest = orig;
+    }
+
+    expect(seen).toEqual([
+      {
+        scope: "project",
+        content: "# new rules",
+        workdir: "/work/a",
+        expectedHash: "sha256:abc123",
+      },
+    ]);
+    expect(sent("agentsContentSaved")[0]).toMatchObject({
+      scope: "project",
+      ok: true,
+    });
+  });
+
+  // `null` 与「字段不存在」语义不同：null = 编辑时文件还不存在，磁盘上后来
+  // 出现了文件也算冲突；省略 = 不校验（场景 13）。宿主必须把两者分开送出去。
+  it("setAgentsContent keeps an explicit null expectedHash distinct from an omitted one", async () => {
+    const { host } = await readyHost();
+    const orig = h.handleClientRequest;
+    const seen: Array<{ params?: unknown }> = [];
+    h.handleClientRequest = (method, params) => {
+      if (method === "setAgentsContent") {
+        seen.push({ params });
+        return { ok: true };
+      }
+      return orig(method, params);
+    };
+    try {
+      await host.handleWebviewMessage({
+        command: "setAgentsContent",
+        scope: "local",
+        content: "# mine",
+        expectedHash: null,
+      });
+      await host.handleWebviewMessage({
+        command: "setAgentsContent",
+        scope: "local",
+        content: "# mine",
+      });
+    } finally {
+      h.handleClientRequest = orig;
+    }
+
+    const [withNull, without] = seen.map(
+      (call) => call.params as Record<string, unknown>,
+    );
+    expect(withNull).toHaveProperty("expectedHash", null);
+    expect(without).not.toHaveProperty("expectedHash");
+  });
+
+  it("setAgentsContent relays a conflict without claiming the save succeeded", async () => {
+    const { host, sent } = await readyHost();
+    const orig = h.handleClientRequest;
+    h.handleClientRequest = (method, params) => {
+      if (method === "setAgentsContent") {
+        return {
+          ok: false,
+          conflict: true,
+          error: "文件已被外部改动，请重新加载后再编辑",
+        };
+      }
+      return orig(method, params);
+    };
+    try {
+      await host.handleWebviewMessage({
+        command: "setAgentsContent",
+        scope: "project",
+        content: "# new rules",
+        expectedHash: "sha256:stale",
+      });
+    } finally {
+      h.handleClientRequest = orig;
+    }
+
+    expect(shownToasts().some((t) => t.message === "保存成功")).toBe(false);
+    const toast = shownToasts().find((t) => t.type === "error");
+    expect(toast?.message).toBe(
+      "保存失败：文件已被外部改动，请重新加载后再编辑",
+    );
+    expect(sent("agentsContentSaved")[0]).toMatchObject({
+      scope: "project",
+      ok: false,
+      conflict: true,
+      error: "文件已被外部改动，请重新加载后再编辑",
     });
   });
 

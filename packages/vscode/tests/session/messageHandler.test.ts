@@ -1,4 +1,5 @@
 import { describe, test, expect, vi, beforeEach } from "vitest";
+import path from "node:path";
 import { fixtures, type HostToWebviewMessage } from "wave-webview-fixtures";
 
 // ── Mocks ──────────────────────────────────────────────────────
@@ -122,6 +123,9 @@ function createReadySession(): ChatSession {
       })),
       currentWorkdir: "/tmp",
       latestTotalTokens: 0,
+      // 会话 id 是 AGENTS.md 读写 RPC 的第三参（信封字段）：CLI 凭它把请求落到
+      // 这个 live agent 上，保存时才会清掉记忆缓存（spec 场景 3）。
+      sessionId: "sess-memory",
     },
     pendingConfirmations: new Map(),
     tasks: [],
@@ -1413,10 +1417,14 @@ describe("MessageHandler settings tab", () => {
       workdir: "/tmp",
     });
 
-    expect(utilityClient.request).toHaveBeenCalledWith("getAgentsContent", {
-      scope: "project",
-      workdir: "/tmp",
-    });
+    expect(utilityClient.request).toHaveBeenCalledWith(
+      "getAgentsContent",
+      {
+        scope: "project",
+        workdir: "/tmp",
+      },
+      "sess-memory",
+    );
     const posted = (context.postSettingsMessage as ReturnType<typeof vi.fn>)
       .mock.calls[0][0] as {
       command: string;
@@ -1438,11 +1446,15 @@ describe("MessageHandler settings tab", () => {
       content: "# new rules",
     });
 
-    expect(utilityClient.request).toHaveBeenCalledWith("setAgentsContent", {
-      scope: "user",
-      content: "# new rules",
-      workdir: undefined,
-    });
+    expect(utilityClient.request).toHaveBeenCalledWith(
+      "setAgentsContent",
+      {
+        scope: "user",
+        content: "# new rules",
+        workdir: undefined,
+      },
+      "sess-memory",
+    );
     // 保存结果经宿主原生通知提示（spec「设置页反馈语义」）
     expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
       "保存成功",
@@ -1473,6 +1485,402 @@ describe("MessageHandler settings tab", () => {
     expect(posted.command).toBe("agentsContentSaved");
     expect(posted.ok).toBe(false);
     expect(posted.error).toContain("boom");
+  });
+
+  // 第三档「个人级」= <workdir>/AGENTS.local.md（spec core/memory-management
+  // 「设置页三档记忆编辑器」场景 1）。宿主不做读写实现，只把 scope: "local"
+  // 与 workdir 透传给 CLI 的 getAgentsContent/setAgentsContent，并把同一 scope
+  // 回发给 webview 以免第三档的编辑器拿不到内容/保存回执。
+  test("getAgentsContent forwards the personal (local) scope to the settings panel", async () => {
+    const session = createReadySession();
+    const { handler, context, utilityClient } = createReadyHandler(session);
+    const workdir = path.resolve("/fake/project");
+    utilityClient.request.mockResolvedValue({ content: "# personal rules" });
+
+    await handler.handleSettingsMessage({
+      command: "getAgentsContent",
+      scope: "local",
+      workdir,
+    });
+
+    expect(utilityClient.request).toHaveBeenCalledWith(
+      "getAgentsContent",
+      {
+        scope: "local",
+        workdir,
+      },
+      "sess-memory",
+    );
+    const posted = (context.postSettingsMessage as ReturnType<typeof vi.fn>)
+      .mock.calls[0][0] as {
+      command: string;
+      scope: string;
+      content: string;
+    };
+    expect(posted.command).toBe("agentsContentResponse");
+    expect(posted.scope).toBe("local");
+    expect(posted.content).toBe("# personal rules");
+  });
+
+  test("setAgentsContent saves the personal (local) scope and echoes it back", async () => {
+    const session = createReadySession();
+    const { handler, context, utilityClient } = createReadyHandler(session);
+    const workdir = path.resolve("/fake/project");
+
+    await handler.handleSettingsMessage({
+      command: "setAgentsContent",
+      scope: "local",
+      content: "# mine",
+      workdir,
+    });
+
+    expect(utilityClient.request).toHaveBeenCalledWith(
+      "setAgentsContent",
+      {
+        scope: "local",
+        content: "# mine",
+        workdir,
+      },
+      "sess-memory",
+    );
+    const posted = (context.postSettingsMessage as ReturnType<typeof vi.fn>)
+      .mock.calls[0][0] as { command: string; scope: string; ok: boolean };
+    expect(posted.command).toBe("agentsContentSaved");
+    expect(posted.scope).toBe("local");
+    expect(posted.ok).toBe(true);
+  });
+
+  // 聊天 webview 入口是另一套 switch（#2086 的同名漂移曾让两档命令只实现一处），
+  // 个人档同样必须双向透传。
+  test("chat webview getAgentsContent forwards the personal (local) scope", async () => {
+    const session = createReadySession();
+    const { handler, context, utilityClient } = createReadyHandler(session);
+    const workdir = path.resolve("/fake/project");
+    utilityClient.request.mockResolvedValue({ content: "# personal rules" });
+
+    await handler.handleMessage(
+      { command: "getAgentsContent", scope: "local", workdir },
+      "tab",
+    );
+
+    expect(utilityClient.request).toHaveBeenCalledWith(
+      "getAgentsContent",
+      {
+        scope: "local",
+        workdir,
+      },
+      "sess-memory",
+    );
+    const posted = (context.postMessage as ReturnType<typeof vi.fn>).mock
+      .calls[0][0] as { command: string; scope: string; content: string };
+    expect(posted.command).toBe("agentsContentResponse");
+    expect(posted.scope).toBe("local");
+    expect(posted.content).toBe("# personal rules");
+  });
+
+  test("chat webview setAgentsContent saves the personal (local) scope", async () => {
+    const session = createReadySession();
+    const { handler, context, utilityClient } = createReadyHandler(session);
+    const workdir = path.resolve("/fake/project");
+
+    await handler.handleMessage(
+      {
+        command: "setAgentsContent",
+        scope: "local",
+        content: "# mine",
+        workdir,
+      },
+      "tab",
+    );
+
+    expect(utilityClient.request).toHaveBeenCalledWith(
+      "setAgentsContent",
+      {
+        scope: "local",
+        content: "# mine",
+        workdir,
+      },
+      "sess-memory",
+    );
+    const posted = (context.postMessage as ReturnType<typeof vi.fn>).mock
+      .calls[0][0] as { command: string; scope: string; ok: boolean };
+    expect(posted.command).toBe("agentsContentSaved");
+    expect(posted.scope).toBe("local");
+    expect(posted.ok).toBe(true);
+  });
+
+  // 场景 3「保存后记忆缓存失效，下一次请求能看到新内容」的宿主侧那一环：会话 id
+  // 必须随 RPC 信封发出（`request(method, params, sessionId)`），CLI 才走 live
+  // agent 的 writeLocalMemoryContent → MemoryService.clearCache。少了它，CLI 走
+  // 「不带 session」的直写分支，缓存一个字不动，当前会话下一轮注入的还是旧内容。
+  test("both AGENTS.md entries put the session id on the RPC envelope", async () => {
+    const session = createReadySession();
+    const { handler, utilityClient } = createReadyHandler(session);
+    const workdir = path.resolve("/fake/project");
+
+    await handler.handleSettingsMessage({
+      command: "setAgentsContent",
+      scope: "local",
+      content: "# mine",
+      workdir,
+    });
+    await handler.handleMessage(
+      { command: "getAgentsContent", scope: "local", workdir },
+      "tab",
+    );
+
+    // 信封第三参 = 会话 id（不是塞进 params 的同名字段）。
+    for (const call of utilityClient.request.mock.calls) {
+      expect(call[2]).toBe("sess-memory");
+      expect(call[1]).not.toHaveProperty("sessionId");
+    }
+    expect(utilityClient.request).toHaveBeenCalledTimes(2);
+  });
+
+  // 没有活跃会话（会话创建前就打开了设置页）：不发会话 id，CLI 走「无 agent 时
+  // 直读直写文件」的兜底 —— 这正是 spec 场景 5 的既有行为，不能因为补会话 id 而
+  // 变成报错。
+  test("AGENTS.md RPC omits the session id when the chat session has no agent yet", async () => {
+    const session = createReadySession();
+    Object.assign(session, { agent: undefined });
+    const { handler, utilityClient } = createReadyHandler(session);
+    const workdir = path.resolve("/fake/project");
+
+    await handler.handleSettingsMessage({
+      command: "setAgentsContent",
+      scope: "project",
+      content: "# rules",
+      workdir,
+    });
+
+    expect(utilityClient.request).toHaveBeenCalledWith(
+      "setAgentsContent",
+      { scope: "project", content: "# rules", workdir },
+      undefined,
+    );
+  });
+
+  // ── 并发保护 / 读状态透传（两个入口各一遍）──────────────────────────────
+  //
+  // spec core/memory-management「设置页三档记忆编辑器」场景 8/10/12/13：hash 是否
+  // 一致、要不要拒绝写入全由 CLI 判定；宿主只搬字段，但三态（字符串 / null /
+  // 省略）必须原样过去 —— `null` 是「编辑时文件还不存在」，不许被吞成「不校验」。
+
+  test("settings getAgentsContent forwards exists/readable/hash/path verbatim", async () => {
+    const session = createReadySession();
+    const { handler, context, utilityClient } = createReadyHandler(session);
+    utilityClient.request.mockResolvedValue({
+      content: "# rules",
+      path: "/tmp/AGENTS.md",
+      exists: true,
+      readable: true,
+      hash: "sha256:abc123",
+    });
+
+    await handler.handleSettingsMessage({
+      command: "getAgentsContent",
+      scope: "project",
+      workdir: "/tmp",
+    });
+
+    const posted = (context.postSettingsMessage as ReturnType<typeof vi.fn>)
+      .mock.calls[0][0] as Record<string, unknown>;
+    expect(posted).toMatchObject({
+      command: "agentsContentResponse",
+      scope: "project",
+      content: "# rules",
+      path: "/tmp/AGENTS.md",
+      exists: true,
+      readable: true,
+      hash: "sha256:abc123",
+    });
+    expect(posted).not.toHaveProperty("error");
+  });
+
+  // 「读失败」不能被表达成「文件为空」：回包形状与 CLI 自己读不到时一致
+  // （readable:false + 原因），编辑器据此显示失败态并禁止保存。两个布尔值必须都
+  // 在 —— 缺了它们 webview 会把回包当成「老宿主」并退回「可编辑、不校验」。
+  test("settings getAgentsContent reports an unreadable tier", async () => {
+    const session = createReadySession();
+    const { handler, context, utilityClient } = createReadyHandler(session);
+    utilityClient.request.mockRejectedValue(new Error("EACCES"));
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+
+    await handler.handleSettingsMessage({
+      command: "getAgentsContent",
+      scope: "project",
+      workdir: "/tmp",
+    });
+
+    // 读失败照既有一致口径打一条诊断（宿主侧日志，不是给用户的文案）。
+    expect(String(consoleError.mock.calls[0][0])).toContain("AGENTS.md");
+    consoleError.mockRestore();
+
+    const posted = (context.postSettingsMessage as ReturnType<typeof vi.fn>)
+      .mock.calls[0][0] as Record<string, unknown>;
+    expect(posted).toMatchObject({
+      command: "agentsContentResponse",
+      scope: "project",
+      content: "",
+      exists: true,
+      readable: false,
+      hash: null,
+      error: "EACCES",
+    });
+  });
+
+  test("settings setAgentsContent forwards the expectedHash it read with", async () => {
+    const session = createReadySession();
+    const { handler, context, utilityClient } = createReadyHandler(session);
+
+    await handler.handleSettingsMessage({
+      command: "setAgentsContent",
+      scope: "project",
+      content: "# new rules",
+      workdir: "/tmp",
+      expectedHash: "sha256:abc123",
+    });
+
+    expect(utilityClient.request).toHaveBeenCalledWith(
+      "setAgentsContent",
+      {
+        scope: "project",
+        content: "# new rules",
+        workdir: "/tmp",
+        expectedHash: "sha256:abc123",
+      },
+      "sess-memory",
+    );
+    const posted = (context.postSettingsMessage as ReturnType<typeof vi.fn>)
+      .mock.calls[0][0] as Record<string, unknown>;
+    expect(posted).toMatchObject({
+      command: "agentsContentSaved",
+      scope: "project",
+      ok: true,
+    });
+  });
+
+  test("settings setAgentsContent keeps an explicit null expectedHash distinct from an omitted one", async () => {
+    const session = createReadySession();
+    const { handler, utilityClient } = createReadyHandler(session);
+
+    await handler.handleSettingsMessage({
+      command: "setAgentsContent",
+      scope: "local",
+      content: "# mine",
+      workdir: "/tmp",
+      expectedHash: null,
+    });
+    await handler.handleSettingsMessage({
+      command: "setAgentsContent",
+      scope: "local",
+      content: "# mine",
+      workdir: "/tmp",
+    });
+
+    const [withNull, without] = utilityClient.request.mock.calls.map(
+      (call) => call[1] as Record<string, unknown>,
+    );
+    expect(withNull).toHaveProperty("expectedHash", null);
+    expect(without).not.toHaveProperty("expectedHash");
+  });
+
+  test("settings setAgentsContent relays a conflict instead of reporting success", async () => {
+    const session = createReadySession();
+    const { handler, context, utilityClient } = createReadyHandler(session);
+    utilityClient.request.mockResolvedValue({
+      ok: false,
+      conflict: true,
+      error: "文件已被外部改动，请重新加载后再编辑",
+    });
+
+    await handler.handleSettingsMessage({
+      command: "setAgentsContent",
+      scope: "project",
+      content: "# new rules",
+      workdir: "/tmp",
+      expectedHash: "sha256:stale",
+    });
+
+    expect(vscode.window.showInformationMessage).not.toHaveBeenCalledWith(
+      "保存成功",
+    );
+    expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
+      "保存失败：文件已被外部改动，请重新加载后再编辑",
+    );
+    const posted = (context.postSettingsMessage as ReturnType<typeof vi.fn>)
+      .mock.calls[0][0] as Record<string, unknown>;
+    expect(posted).toMatchObject({
+      command: "agentsContentSaved",
+      scope: "project",
+      ok: false,
+      conflict: true,
+      error: "文件已被外部改动，请重新加载后再编辑",
+    });
+  });
+
+  test("chat webview getAgentsContent forwards exists/readable/hash/path verbatim", async () => {
+    const session = createReadySession();
+    const { handler, context, utilityClient } = createReadyHandler(session);
+    const workdir = path.resolve("/fake/project");
+    utilityClient.request.mockResolvedValue({
+      content: "# personal rules",
+      path: path.join(workdir, "AGENTS.local.md"),
+      exists: false,
+      readable: true,
+      hash: null,
+    });
+
+    await handler.handleMessage(
+      { command: "getAgentsContent", scope: "local", workdir },
+      "tab",
+    );
+
+    const posted = (context.postMessage as ReturnType<typeof vi.fn>).mock
+      .calls[0][0] as Record<string, unknown>;
+    expect(posted).toMatchObject({
+      command: "agentsContentResponse",
+      scope: "local",
+      content: "# personal rules",
+      path: path.join(workdir, "AGENTS.local.md"),
+      exists: false,
+      readable: true,
+      hash: null,
+    });
+  });
+
+  test("chat webview setAgentsContent forwards expectedHash and relays a conflict", async () => {
+    const session = createReadySession();
+    const { handler, context, utilityClient } = createReadyHandler(session);
+    const workdir = path.resolve("/fake/project");
+    utilityClient.request.mockResolvedValue({ ok: false, conflict: true });
+
+    await handler.handleMessage(
+      {
+        command: "setAgentsContent",
+        scope: "local",
+        content: "# mine",
+        workdir,
+        expectedHash: null,
+      },
+      "tab",
+    );
+
+    expect(utilityClient.request).toHaveBeenCalledWith(
+      "setAgentsContent",
+      { scope: "local", content: "# mine", workdir, expectedHash: null },
+      "sess-memory",
+    );
+    const posted = (context.postMessage as ReturnType<typeof vi.fn>).mock
+      .calls[0][0] as Record<string, unknown>;
+    expect(posted).toMatchObject({
+      command: "agentsContentSaved",
+      scope: "local",
+      ok: false,
+      conflict: true,
+    });
   });
 
   // Regression (VS Code 插件端 SDD 开关永久置灰): 设置页在独立 settings tab

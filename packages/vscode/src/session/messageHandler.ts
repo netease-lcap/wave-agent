@@ -77,6 +77,29 @@ export interface MessageHandlerContext {
   closeSettings: () => void;
 }
 
+/**
+ * What the CLI answers `getAgentsContent` with (settings-page memory editor).
+ * The host forwards every field verbatim: `hash` drives the editor's
+ * concurrency check, `exists`/`readable` are what let it tell "file missing" and
+ * "read failed" apart from "file is empty" (spec memory-management 场景 8/10).
+ */
+interface AgentsContentReadResult {
+  content?: string;
+  path?: string;
+  exists?: boolean;
+  readable?: boolean;
+  hash?: string | null;
+  error?: string;
+}
+
+/** What the CLI answers `setAgentsContent` with: `ok` plus, on refusal,
+ *  `conflict` (the disk copy no longer matches the hash we read) and a reason. */
+interface AgentsContentWriteResult {
+  ok?: boolean;
+  conflict?: boolean;
+  error?: string;
+}
+
 export class MessageHandler {
   private configService: ConfigurationService;
   private fileService: FileService;
@@ -374,7 +397,7 @@ export class MessageHandler {
         break;
       case "getAgentsContent":
         await this.handleGetAgentsContent(
-          msg.scope as "user" | "project",
+          msg.scope as "user" | "project" | "local",
           msg.workdir as string | undefined,
           viewType,
           windowId,
@@ -382,9 +405,11 @@ export class MessageHandler {
         break;
       case "setAgentsContent":
         await this.handleSetAgentsContent(
-          msg.scope as "user" | "project",
+          msg.scope as "user" | "project" | "local",
           msg.content as string,
           msg.workdir as string | undefined,
+          // 三态：字符串 / `null`（编辑时文件不存在）/ 属性缺失（不校验）。
+          msg.expectedHash as string | null | undefined,
           viewType,
           windowId,
         );
@@ -547,15 +572,17 @@ export class MessageHandler {
         break;
       case "getAgentsContent":
         await this.handleSettingsGetAgentsContent(
-          msg.scope as "user" | "project",
+          msg.scope as "user" | "project" | "local",
           msg.workdir as string | undefined,
         );
         break;
       case "setAgentsContent":
         await this.handleSettingsSetAgentsContent(
-          msg.scope as "user" | "project",
+          msg.scope as "user" | "project" | "local",
           msg.content as string,
           msg.workdir as string | undefined,
+          // 三态：字符串 / `null`（编辑时文件不存在）/ 属性缺失（不校验）。
+          msg.expectedHash as string | null | undefined,
         );
         break;
       case "getProjectSettings":
@@ -828,28 +855,37 @@ export class MessageHandler {
     vscode.window.showErrorMessage(`设置未写入「${label}」：${message}`);
   }
 
-  /** AGENTS.md settings UI: fetch user/project memory file content (settings tab). */
+  /**
+   * AGENTS.md settings UI: fetch the user-level (~/.wave/AGENTS.md),
+   * project-level (<workdir>/AGENTS.md) or personal (<workdir>/AGENTS.local.md)
+   * memory file content via the stdio getAgentsContent RPC.
+   *
+   * The settings tab is session-independent, so it borrows the sidebar chat
+   * session (getSettingsSession) — and its session id rides along on the RPC
+   * envelope. That id is what makes the CLI answer through the live agent (and,
+   * on save, invalidate its memory cache); without it the CLI takes the
+   * no-session branch and the running session keeps injecting the old content
+   * (spec memory-management 场景 3).
+   */
   private async handleSettingsGetAgentsContent(
-    scope: "user" | "project",
+    scope: "user" | "project" | "local",
     workdir: string | undefined,
   ): Promise<void> {
     try {
-      const result = (await this.utilityClient.request("getAgentsContent", {
-        scope,
-        workdir,
-      })) as { content: string; path?: string };
-      this.context.postSettingsMessage({
-        command: "agentsContentResponse",
-        scope,
-        content: result.content,
-      });
+      const result = (await this.utilityClient.request(
+        "getAgentsContent",
+        {
+          scope,
+          workdir,
+        },
+        this.getSettingsSession().agent?.sessionId,
+      )) as AgentsContentReadResult;
+      this.context.postSettingsMessage(this.agentsContentReply(scope, result));
     } catch (error) {
       console.error("获取 AGENTS.md 内容失败:", error);
-      this.context.postSettingsMessage({
-        command: "agentsContentResponse",
-        scope,
-        content: "",
-      });
+      this.context.postSettingsMessage(
+        this.agentsContentFailureReply(scope, error),
+      );
     }
   }
 
@@ -903,26 +939,40 @@ export class MessageHandler {
     }
   }
 
-  /** AGENTS.md settings UI: persist content via the stdio setAgentsContent RPC (settings tab). */
+  /**
+   * AGENTS.md settings UI: persist user/project/personal content via the stdio
+   * setAgentsContent RPC (settings tab). The sidebar session's id rides along on
+   * the envelope so the CLI writes through the live agent and clears its memory
+   * cache — otherwise the running session keeps injecting the old content
+   * (spec memory-management 场景 3).
+   *
+   * `expectedHash` is the concurrency token the webview read with, forwarded
+   * verbatim (string / `null` for "the file did not exist back then" / omitted
+   * for "don't check"), and the CLI's `conflict` verdict comes back untouched.
+   */
   private async handleSettingsSetAgentsContent(
-    scope: "user" | "project",
+    scope: "user" | "project" | "local",
     content: string,
     workdir: string | undefined,
+    expectedHash?: string | null,
   ): Promise<void> {
     try {
-      await this.utilityClient.request("setAgentsContent", {
-        scope,
-        content,
-        workdir,
-      });
+      const result = (await this.utilityClient.request(
+        "setAgentsContent",
+        {
+          scope,
+          content,
+          workdir,
+          ...(expectedHash !== undefined ? { expectedHash } : {}),
+        },
+        this.getSettingsSession().agent?.sessionId,
+      )) as AgentsContentWriteResult | undefined;
       // AGENTS.md 保存结果经宿主原生通知提示（spec「设置页反馈语义」）；
       // agentsContentSaved 仍回发以复位 webview 的保存中状态。
-      vscode.window.showInformationMessage("保存成功");
-      this.context.postSettingsMessage({
-        command: "agentsContentSaved",
-        scope,
-        ok: true,
-      });
+      this.reportAgentsContentSave(result);
+      this.context.postSettingsMessage(
+        this.agentsContentSavedReply(scope, result),
+      );
     } catch (error) {
       console.error("保存 AGENTS.md 失败:", error);
       const message = error instanceof Error ? error.message : String(error);
@@ -934,6 +984,79 @@ export class MessageHandler {
         error: String(error),
       });
     }
+  }
+
+  // ── 三档记忆编辑器的回包构造（设置 tab / chat 两个入口共用）─────────────
+  //
+  // 两个入口各自一套 switch，历史上就因为「只改一处」漂移过（#2086）。读状态与
+  // 并发判定的字段一律由 CLI 决定，宿主只搬：不重算 hash、不改 ok/conflict 判定。
+
+  /** Read reply: the CLI's content + read-state fields, forwarded as-is. */
+  private agentsContentReply(
+    scope: "user" | "project" | "local",
+    result: AgentsContentReadResult,
+  ): Record<string, unknown> {
+    return {
+      command: "agentsContentResponse",
+      scope,
+      content: result.content ?? "",
+      path: result.path,
+      exists: result.exists,
+      readable: result.readable,
+      hash: result.hash,
+      ...(result.error !== undefined ? { error: result.error } : {}),
+    };
+  }
+
+  /**
+   * Read *failure* reply (the RPC itself threw). Same shape the CLI answers with
+   * when it cannot read the file (EACCES/…): `readable: false` + `error`, with
+   * `exists` a placeholder. `readable: false` is what makes the editor show the
+   * failure state and **block saving** (spec 场景 10) — a bare empty `content`
+   * would be indistinguishable from an empty file and one save would wipe it.
+   * Both booleans must be present: the webview treats a reply without them as an
+   * old host and goes back to "editable, no concurrency check".
+   */
+  private agentsContentFailureReply(
+    scope: "user" | "project" | "local",
+    error: unknown,
+  ): Record<string, unknown> {
+    return {
+      command: "agentsContentResponse",
+      scope,
+      content: "",
+      exists: true,
+      readable: false,
+      hash: null,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+
+  /** Save reply: `ok` from the CLI, plus its `conflict`/`error` when refused. */
+  private agentsContentSavedReply(
+    scope: "user" | "project" | "local",
+    result: AgentsContentWriteResult | undefined,
+  ): Record<string, unknown> {
+    return {
+      command: "agentsContentSaved",
+      scope,
+      ok: result?.ok !== false,
+      ...(result?.conflict !== undefined ? { conflict: result.conflict } : {}),
+      ...(result?.error !== undefined ? { error: result.error } : {}),
+    };
+  }
+
+  /** Native notification for a save: success only when the CLI said ok. */
+  private reportAgentsContentSave(
+    result: AgentsContentWriteResult | undefined,
+  ): void {
+    if (result?.ok !== false) {
+      vscode.window.showInformationMessage("保存成功");
+      return;
+    }
+    const reason =
+      result?.error ?? (result?.conflict ? "文件已被外部改动" : "未知错误");
+    vscode.window.showErrorMessage(`保存失败：${reason}`);
   }
 
   /** 技能/子代理/钩子/MCP 管理 RPC 服务端：设置 tab 独立于会话，数据经
@@ -2535,66 +2658,79 @@ export class MessageHandler {
   }
 
   /**
-   * AGENTS.md settings UI: fetch the user-level (~/.wave/AGENTS.md) or
-   * project-level (<workdir>/AGENTS.md) memory file content via the stdio
-   * getAgentsContent RPC.
+   * AGENTS.md settings UI: fetch the user-level (~/.wave/AGENTS.md),
+   * project-level (<workdir>/AGENTS.md) or personal (<workdir>/AGENTS.local.md)
+   * memory file content via the stdio getAgentsContent RPC.
+   *
+   * Chat-webview entry: the session id of *this* view's chat session rides along
+   * on the RPC envelope so the CLI answers through that session's live agent
+   * (spec memory-management 场景 3).
    */
   private async handleGetAgentsContent(
-    scope: "user" | "project",
+    scope: "user" | "project" | "local",
     workdir: string | undefined,
     viewType?: "sidebar" | "tab" | "window",
     windowId?: string,
   ) {
     try {
-      const result = (await this.utilityClient.request("getAgentsContent", {
-        scope,
-        workdir,
-      })) as { content: string; path?: string };
-      this.context.postMessage(
+      const result = (await this.utilityClient.request(
+        "getAgentsContent",
         {
-          command: "agentsContentResponse",
           scope,
-          content: result.content,
+          workdir,
         },
+        this.context.getChatSession(viewType || "tab", windowId).agent
+          ?.sessionId,
+      )) as AgentsContentReadResult;
+      this.context.postMessage(
+        this.agentsContentReply(scope, result),
         viewType,
         windowId,
       );
     } catch (error) {
       console.error("获取 AGENTS.md 内容失败:", error);
       this.context.postMessage(
-        {
-          command: "agentsContentResponse",
-          scope,
-          content: "",
-        },
+        this.agentsContentFailureReply(scope, error),
         viewType,
         windowId,
       );
     }
   }
 
-  /** AGENTS.md settings UI: persist content via the stdio setAgentsContent RPC. */
+  /**
+   * AGENTS.md settings UI: persist user/project/personal content via the stdio
+   * setAgentsContent RPC.
+   *
+   * Chat-webview entry: the session id rides along on the envelope so the CLI
+   * writes through the live agent and clears its memory cache — otherwise the
+   * running session keeps injecting the old content (spec 场景 3).
+   */
   private async handleSetAgentsContent(
-    scope: "user" | "project",
+    scope: "user" | "project" | "local",
     content: string,
     workdir: string | undefined,
+    expectedHash?: string | null,
     viewType?: "sidebar" | "tab" | "window",
     windowId?: string,
   ) {
     try {
-      await this.utilityClient.request("setAgentsContent", {
-        scope,
-        content,
-        workdir,
-      });
-      // AGENTS.md 保存结果经宿主原生通知提示（spec「设置页反馈语义」）
-      vscode.window.showInformationMessage("保存成功");
-      this.context.postMessage(
+      const result = (await this.utilityClient.request(
+        "setAgentsContent",
         {
-          command: "agentsContentSaved",
           scope,
-          ok: true,
+          content,
+          workdir,
+          // 并发令牌原样透传（spec 场景 12/13）：字符串 = 编辑时读到的 hash，
+          // `null` = 编辑时文件还不存在，省略 = 不校验。宿主不重算也不改判。
+          ...(expectedHash !== undefined ? { expectedHash } : {}),
         },
+        this.context.getChatSession(viewType || "tab", windowId).agent
+          ?.sessionId,
+      )) as AgentsContentWriteResult | undefined;
+      // AGENTS.md 保存结果经宿主原生通知提示（spec「设置页反馈语义」）
+      this.reportAgentsContentSave(result);
+      this.context.postMessage(
+        this.agentsContentSavedReply(scope, result),
         viewType,
         windowId,
       );

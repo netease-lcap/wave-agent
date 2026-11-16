@@ -17,11 +17,7 @@ export interface ContextBreakdownInput {
   /** MCP 工具的 schema 体积 */
   mcpTools: Array<{ serverName: string; name: string; tokens: number }>;
   /** 注入的记忆文本体积 */
-  memoryFiles: Array<{
-    type: "project" | "user" | "rules";
-    path: string;
-    tokens: number;
-  }>;
+  memoryFiles: ContextBreakdown["memoryFiles"];
   /** 技能清单（对话里下发的那条元消息）的逐项体积 */
   skills: Array<{ name: string; tokens: number }>;
   /** 子代理清单的逐项体积 */

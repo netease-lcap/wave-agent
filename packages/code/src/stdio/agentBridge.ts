@@ -97,6 +97,7 @@ import {
   METHOD_NOT_FOUND as PROTOCOL_METHOD_NOT_FOUND,
 } from "./protocol.js";
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
   type Dirent,
   mkdirSync,
@@ -660,20 +661,24 @@ export class AgentBridge {
           p.limit as number | undefined,
         );
 
-      // ── Memory files (settings UI — user-level ~/.wave/AGENTS.md and
-      //    project-level <workdir>/AGENTS.md) ──
+      // ── Memory files (settings UI — user-level ~/.wave/AGENTS.md,
+      //    project-level <workdir>/AGENTS.md and the personal tier
+      //    <workdir>/AGENTS.local.md) ──
       case "getAgentsContent":
         return this.getAgentsContent(
-          p.scope as "user" | "project",
+          p.scope as "user" | "project" | "local",
           p.workdir as string | undefined,
           sessionId,
         );
       case "setAgentsContent":
         return this.setAgentsContent(
-          p.scope as "user" | "project",
+          p.scope as "user" | "project" | "local",
           p.content as string,
           p.workdir as string | undefined,
           sessionId,
+          // Omitted by hosts that predate the concurrency guard; `null` there
+          // would mean "the file did not exist when I loaded it".
+          p.expectedHash as string | null | undefined,
         );
 
       // ── Plugins (global — no session required) ──
@@ -3096,79 +3101,129 @@ export class AgentBridge {
   // ── Memory files (settings UI) ───────────────────────────────
 
   /**
-   * Read an AGENTS.md file for the settings UI: user-level reads
-   * ~/.wave/AGENTS.md, project-level reads <workdir>/AGENTS.md. Prefers the
-   * live agent (clears its caches on write) and falls back to direct file
-   * access when no session is bound (e.g. desktop before any session exists).
+   * Read a memory file for the settings UI: user-level reads
+   * ~/.wave/AGENTS.md, project-level reads <workdir>/AGENTS.md, personal reads
+   * <workdir>/AGENTS.local.md (CLAUDE.local.md fallback — private to this user
+   * but specific to this repository).
+   *
+   * The read goes straight to disk, never through the agent: the SDK's
+   * `readRaw*Memory` collapses "file is missing" and "file could not be read"
+   * into `""`, and the editor has to tell those apart (spec 场景 8 / 10 —
+   * reporting a failed read as an empty file invites one save to wipe it).
+   * Reading never creates the file either, so opening the settings page leaves
+   * no untracked file behind.
+   *
+   * The reply carries what the read-only and save guards need: `exists`,
+   * `readable`, and the `hash` of exactly the text returned in `content`
+   * (unexpanded — `@include` references stay as written). A missing file answers
+   * `exists:false, hash:null` — "nothing to edit yet" — deliberately distinct
+   * from an existing but empty file, whose hash is the hash of "".
    */
   private async getAgentsContent(
-    scope: "user" | "project",
+    scope: "user" | "project" | "local",
     workdir?: string,
     sessionId?: string,
-  ): Promise<{ content: string; path?: string }> {
+  ): Promise<{
+    scope: "user" | "project" | "local";
+    content: string;
+    path: string;
+    exists: boolean;
+    readable: boolean;
+    hash: string | null;
+    error?: string;
+  }> {
     const agent = this.sessions.get(sessionId ?? "")?.agent;
-    if (scope === "user") {
-      if (agent) {
-        return { content: await agent.readUserMemoryContent() };
-      }
-      const path = this.getUserMemoryFilePath();
-      return { content: await readTextFileSafe(path), path };
-    }
-    const resolvedWorkdir =
-      workdir || (agent?.currentWorkdir as string | undefined);
-    if (!resolvedWorkdir) {
-      throw new RpcError(
-        PROTOCOL_INVALID_PARAMS,
-        "Project-scope AGENTS.md requires a workdir",
-      );
-    }
-    if (agent) {
-      return {
-        content: await agent.readProjectMemoryContent(resolvedWorkdir),
-      };
-    }
-    const path = join(resolvedWorkdir, "AGENTS.md");
-    return { content: await readTextFileSafe(path), path };
+    // The user tier is exactly the file a save writes. The SDK additionally
+    // falls back to ~/.claude/AGENTS.md while ~/.wave/AGENTS.md still holds the
+    // default template; the editor must not, or it would show one file and save
+    // into another — and the hash of "what you saw" would not be the hash of the
+    // file the save is checked against.
+    const candidates =
+      scope === "user"
+        ? [this.getUserMemoryFilePath()]
+        : memoryTierCandidates(
+            scope,
+            requireMemoryWorkdir(scope, workdir, agent?.sessionWorkdir),
+          );
+    // Content and hash come out of the same read, so "what the editor shows" and
+    // "what a later save has to match" can never drift apart.
+    const snapshot = await readMemoryTierSnapshot(candidates);
+    return { scope, ...snapshot };
   }
 
   /**
-   * Write an AGENTS.md file from the settings UI: user-level writes
-   * ~/.wave/AGENTS.md, project-level writes <workdir>/AGENTS.md. Goes through
-   * the live agent when available so its memory caches are invalidated.
+   * Write a memory file from the settings UI: user-level writes
+   * ~/.wave/AGENTS.md, project-level writes <workdir>/AGENTS.md, personal writes
+   * <workdir>/AGENTS.local.md (never CLAUDE.local.md). Goes through the live
+   * agent when available so its memory caches are invalidated.
+   *
+   * `expectedHash` is the hash the editor loaded (see `getAgentsContent`), and
+   * guards against clobbering a file someone else changed in the meantime:
+   * `null` means "the file did not exist when I loaded it", a hex string means
+   * "…and its content hashed to this". Omitting it keeps the old unguarded
+   * behaviour, so hosts that never learned about hashes still save (spec 场景
+   * 13). A mismatch writes nothing and answers `conflict:true`.
    */
   private async setAgentsContent(
-    scope: "user" | "project",
+    scope: "user" | "project" | "local",
     content: string,
     workdir?: string,
     sessionId?: string,
-  ): Promise<{ ok: boolean; path?: string }> {
+    expectedHash?: string | null,
+  ): Promise<{
+    ok: boolean;
+    scope: "user" | "project" | "local";
+    path?: string;
+    conflict?: boolean;
+    error?: string;
+  }> {
     const agent = this.sessions.get(sessionId ?? "")?.agent;
     if (scope === "user") {
+      const path = this.getUserMemoryFilePath();
+      const guard = await memorySaveConflict([path], expectedHash);
+      if (guard?.kind === "conflict")
+        return { ok: false, scope, path, conflict: true, error: guard.message };
+      if (guard) return { ok: false, scope, path, error: guard.message };
       if (agent) {
         await agent.writeUserMemoryContent(content);
       } else {
-        const path = this.getUserMemoryFilePath();
         await mkdir(dirname(path), { recursive: true });
         await writeFile(path, content, "utf-8");
       }
-      return { ok: true };
+      return { ok: true, scope, path };
     }
-    const resolvedWorkdir =
-      workdir || (agent?.currentWorkdir as string | undefined);
-    if (!resolvedWorkdir) {
-      throw new RpcError(
-        PROTOCOL_INVALID_PARAMS,
-        "Project-scope AGENTS.md requires a workdir",
-      );
-    }
-    if (agent) {
+    // Same anchor as the read path above: project-level config belongs to the
+    // directory the session was opened in (`sessionWorkdir`, the immutable
+    // one), never to `currentWorkdir` — a `cd` in Bash must not redirect a save
+    // into another project's AGENTS.md.
+    const resolvedWorkdir = requireMemoryWorkdir(
+      scope,
+      workdir,
+      agent?.sessionWorkdir,
+    );
+    const candidates = memoryTierCandidates(scope, resolvedWorkdir);
+    // The write always targets the canonical name; the guard compares against the
+    // very same file(s) the editor read, so a save that followed a legacy-file
+    // read (`CLAUDE.md` / `CLAUDE.local.md`) is still recognised as unchanged.
+    const [path] = candidates;
+    const guard = await memorySaveConflict(candidates, expectedHash);
+    if (guard?.kind === "conflict")
+      return { ok: false, scope, path, conflict: true, error: guard.message };
+    if (guard) return { ok: false, scope, path, error: guard.message };
+    if (scope === "local") {
+      if (agent) {
+        await agent.writeLocalMemoryContent(resolvedWorkdir, content);
+      } else {
+        await mkdir(dirname(path), { recursive: true });
+        await writeFile(path, content, "utf-8");
+      }
+    } else if (agent) {
       await agent.writeProjectMemoryContent(resolvedWorkdir, content);
     } else {
-      const path = join(resolvedWorkdir, "AGENTS.md");
       await mkdir(dirname(path), { recursive: true });
       await writeFile(path, content, "utf-8");
     }
-    return { ok: true };
+    return { ok: true, scope, path };
   }
 
   private getUserMemoryFilePath(): string {
@@ -3796,16 +3851,183 @@ function hostOfBaseUrl(baseURL: string | undefined): string | null {
   }
 }
 
-/** Read a text file, returning "" when it does not exist. */
-async function readTextFileSafe(filePath: string): Promise<string> {
-  try {
-    return await readFile(filePath, "utf-8");
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      return "";
-    }
-    throw error;
+/** One memory tier as it sits on disk, as the settings editors need it. */
+interface MemoryTierSnapshot {
+  /** The file actually read (the canonical name, or the legacy fallback). */
+  path: string;
+  exists: boolean;
+  readable: boolean;
+  content: string;
+  /** Hash of exactly `content`; `null` when there is no text to hash. */
+  hash: string | null;
+  /** Human-readable reason, present only when `readable` is false. */
+  error?: string;
+}
+
+/**
+ * Resolve the directory a project- or personal-tier memory file belongs to.
+ *
+ * These files are project-level config, so they anchor to the directory the
+ * session was opened in: `sessionWorkdir` (the immutable one). The three
+ * candidates differ — `currentWorkdir` follows a Bash `cd`, `workspaceRoot`
+ * follows EnterWorktree, and neither answers "which project does this
+ * conversation belong to". Reading (or writing) AGENTS.md next to wherever the
+ * last `cd` landed would show — and let the settings page overwrite — another
+ * project's file.
+ */
+function requireMemoryWorkdir(
+  scope: "project" | "local",
+  workdir: string | undefined,
+  sessionWorkdir: string | undefined,
+): string {
+  const resolvedWorkdir = workdir || sessionWorkdir;
+  if (!resolvedWorkdir) {
+    throw new RpcError(
+      PROTOCOL_INVALID_PARAMS,
+      scope === "local"
+        ? "Local-scope AGENTS.local.md requires a workdir"
+        : "Project-scope AGENTS.md requires a workdir",
+    );
   }
+  return resolvedWorkdir;
+}
+
+/**
+ * Read precedence for a project- or personal-tier memory file: the canonical
+ * name wins, the Claude Code legacy name is the fallback — identical to the
+ * SDK's `readProjectMemorySource` / `readLocalMemorySource`, so the editor shows
+ * the file the agent itself would load. Writes never fall back: `candidates[0]`
+ * is also the canonical write target.
+ */
+function memoryTierCandidates(
+  scope: "project" | "local",
+  workdir: string,
+): string[] {
+  return scope === "local"
+    ? [join(workdir, "AGENTS.local.md"), join(workdir, "CLAUDE.local.md")]
+    : [join(workdir, "AGENTS.md"), join(workdir, "CLAUDE.md")];
+}
+
+/**
+ * Read one memory tier off disk, reporting *how* it went instead of collapsing
+ * every outcome into a string: "missing" (ENOENT everywhere), "read" (content +
+ * hash), or "unreadable" (EACCES / EISDIR / …). The editor needs the difference
+ * — a failed read rendered as an empty file means one save wipes the file.
+ *
+ * A broken candidate falls through to the next one (same shape as the SDK's
+ * personal-tier loop): it only decides the answer when no candidate could be
+ * read at all. The hash is computed from the very string that is returned, so
+ * it never describes a different read of the file.
+ */
+async function readMemoryTierSnapshot(
+  candidates: string[],
+): Promise<MemoryTierSnapshot> {
+  let failure: { path: string; error: unknown } | undefined;
+  for (const filePath of candidates) {
+    try {
+      const content = await readFile(filePath, "utf-8");
+      return {
+        path: filePath,
+        exists: true,
+        readable: true,
+        content,
+        hash: memoryContentHash(content),
+      };
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
+      failure ??= { path: filePath, error };
+    }
+  }
+  if (failure) {
+    return {
+      path: failure.path,
+      // EACCES / EISDIR both mean "something is in the way", which is exactly
+      // what has to stay distinct from ENOENT.
+      exists: true,
+      readable: false,
+      content: "",
+      hash: null,
+      error:
+        failure.error instanceof Error
+          ? failure.error.message
+          : String(failure.error),
+    };
+  }
+  // Nothing exists: answer empty and name the canonical file — reading must not
+  // create it (the settings page shows an empty, creatable editor instead).
+  return {
+    path: candidates[0],
+    exists: false,
+    readable: true,
+    content: "",
+    hash: null,
+  };
+}
+
+/** sha256 of a memory file's text, truncated to 16 hex chars. */
+function memoryContentHash(content: string): string {
+  return createHash("sha256")
+    .update(content, "utf8")
+    .digest("hex")
+    .slice(0, 16);
+}
+
+/**
+ * Optimistic-concurrency gate for a memory save.
+ *
+ * `expectedHash === undefined` means the caller never sent one (a host that
+ * predates the check): no comparison at all, so old clients keep saving
+ * unguarded (spec 场景 13). `null` means "there was no file when I loaded it";
+ * a hex string means "…and it hashed to this".
+ *
+ * Returns the human-readable reason to refuse the write, or `undefined` when the
+ * disk still matches what the editor loaded. `candidates` must be the same list
+ * the read used, or a legacy-fallback read would look like a change.
+ */
+/**
+ * Why a save must not proceed. `conflict` means the file changed on disk since
+ * the editor read it; `unverifiable` means the current state could not be read
+ * at all, so writing would be a blind overwrite. The two report differently:
+ * only `conflict` may tell the user that somebody else edited the file.
+ */
+type MemorySaveGuard =
+  | { kind: "conflict"; message: string }
+  | { kind: "unverifiable"; message: string }
+  | undefined;
+
+async function memorySaveConflict(
+  candidates: string[],
+  expectedHash: string | null | undefined,
+): Promise<MemorySaveGuard> {
+  if (expectedHash === undefined) return undefined;
+  const snapshot = await readMemoryTierSnapshot(candidates);
+  const fileName = basename(snapshot.path);
+  if (!snapshot.readable) {
+    return {
+      kind: "unverifiable",
+      message: `${fileName} could not be read to check for outside changes — reload before saving`,
+    };
+  }
+  if (expectedHash === null) {
+    return snapshot.exists
+      ? {
+          kind: "conflict",
+          message: `${fileName} was created on disk since you opened it`,
+        }
+      : undefined;
+  }
+  if (!snapshot.exists) {
+    return {
+      kind: "conflict",
+      message: `${fileName} was removed on disk since you opened it`,
+    };
+  }
+  return snapshot.hash === expectedHash
+    ? undefined
+    : {
+        kind: "conflict",
+        message: `${fileName} was modified on disk since you opened it`,
+      };
 }
 
 /** Whether `path` exists and is a directory (a missing path simply answers false). */

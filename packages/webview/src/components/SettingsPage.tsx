@@ -12,8 +12,8 @@
  *   更新（仅桌面端渲染，host 直连 configStore 通道即时生效，无保存按钮；
  *   2026-09-08 拍板从「基础设置」拆出）
  * - 项目设置 (project): SDD 内置插件开关（唯一交互控件，即时启停插件）
- * - 个性化 (personalization): AGENTS.md 可编辑（用户级/项目级文本区 + 独立保存，
- *   经 setAgentsContent RPC 写回对应文件——整文件写入，故保留显式保存按钮）
+ * - 个性化 (personalization): AGENTS.md 可编辑（用户级/项目级/个人级三档 tab +
+ *   独立保存，经 setAgentsContent RPC 写回对应文件——整文件写入，故保留显式保存按钮）
  *   + 自动记忆开关/轮次输入（同样即时提交）
  * - 钩子 (hooks): 用户级/项目级双 tab，按来源平铺展示已配置命令
  * - MCP 服务 (mcp): 用户级/项目级双 tab，服务器列表 + 连接状态 + 连接/断开
@@ -63,6 +63,7 @@ import {
   isRemotePageHost,
 } from "../utils/platform";
 import { useLatestRef } from "../utils/useLatestRef";
+import type { AgentsReadState } from "../utils/agentsReadState";
 
 export interface SettingsPageProps {
   /** 当前配置（getConfiguration 已回），null 表示尚未加载 */
@@ -98,17 +99,51 @@ export interface SettingsPageProps {
   userAgentsContent: string | null;
   /** 项目级 AGENTS.md 内容（按当前项目） */
   projectAgentsContent: string | null;
-  /** 加载 AGENTS.md（scope: "user"|"project"），ChatApp 收到 agentsContentResponse 后回填 */
-  onLoadAgentsContent: (scope: "user" | "project") => void;
-  /** 保存 AGENTS.md（scope: "user"|"project"）：经 setAgentsContent RPC 写回
-   *  用户级 ~/.wave/AGENTS.md 或项目级 <workdir>/AGENTS.md，host 回发
-   *  agentsContentSaved 报告结果。未传入 = 宿主不支持写入（降级只读）。 */
-  onSaveAgentsContent?: (scope: "user" | "project", content: string) => void;
+  /** 个人级 AGENTS.md 内容（按当前项目；未传入 / null = 尚未加载） */
+  localAgentsContent?: string | null;
+  /** 加载 AGENTS.md（scope: "user"|"project"|"local"），ChatApp 收到
+   *  agentsContentResponse 后回填 */
+  onLoadAgentsContent: (scope: AgentsScope) => void;
+  /** 各档的**读状态**（是否存在 / 读成功与否 / 内容 hash），由 ChatApp 从
+   *  `agentsContentResponse` 回填（见 utils/agentsReadState.ts）。缺项或整项未传 =
+   *  宿主不提供这套字段（老宿主），该档按原有行为可编辑、保存不带 `expectedHash`。
+   *
+   *  三档缺一不可地用在这里：没有 hash 就没有并发校验的基准，也就不能允许保存
+   *  （spec memory-management 场景 9）；`readable: false` 时内容不可信，显示失败态
+   *  并禁止保存（场景 10）。 */
+  agentsReadState?: Partial<Record<AgentsScope, AgentsReadState | null>>;
+  /** 保存 AGENTS.md（scope: "user"|"project"|"local"）：经 setAgentsContent RPC 写回
+   *  用户级 ~/.wave/AGENTS.md、项目级 <workdir>/AGENTS.md 或个人级
+   *  <workdir>/AGENTS.local.md，host 回发 agentsContentSaved 报告结果。
+   *  未传入 = 宿主不支持写入（降级只读）。
+   *
+   *  `expectedHash` = 打开编辑器时读到的那份内容的 hash（`null` = 当时文件不存在），
+   *  宿主据此拒绝「编辑期间被外部改过」的写入（spec 场景 12）。`undefined` = 不校验
+   *  （宿主没给读状态，老行为，场景 13）。 */
+  onSaveAgentsContent?: (
+    scope: AgentsScope,
+    content: string,
+    expectedHash?: string | null,
+  ) => void;
+  /** 上一次保存因「文件被外部改动」被拒（`agentsContentSaved.conflict`）。`token`
+   *  每次冲突递增，重复冲突也能触发同一个 effect。 */
+  agentsConflict?: AgentsConflict | null;
   /** AGENTS.md 保存进行中（host 回包前为 true，用于禁用文本区与保存按钮；
    *  保存结果反馈由宿主全局 toast 提示，本组件不渲染页面内自建提示） */
   agentsSaving?: boolean;
-  /** 当前工作目录路径（用于个性化项目列表展示项目名），可空 */
+  /** 当前工作目录路径（用于个性化项目列表展示项目名），可空。**同时是项目级 /
+   *  个人级两档 AGENTS.md 的归属键**：它变了说明手上的内容属于上一个项目。 */
   workdir?: string;
+  /** 当前项目变了（`workdir` 变化）：请宿主把**项目级 / 个人级**的 AGENTS.md 缓存
+   *  置回 `null`（用户级 `~/.wave/AGENTS.md` 与项目无关，保持原值），本组件随即按
+   *  新项目重读。不传 = 宿主没有这两档缓存（或不会切项目），本组件仍会清掉自己
+   *  的草稿。
+   *
+   *  为什么必须由宿主清缓存：插件端设置页是**常驻**的编辑器区 tab，每次
+   *  `openSettings` 宿主都重推一份新的 `workdir`（VS Code `chatProvider.openSettings`
+   *  → `settingsState`），而缓存内容本身不会跟着变——不清就等于把 A 项目的正文停在
+   *  编辑器里，用户点一次保存就把 B 项目的 `AGENTS.md` 覆盖成 A 的内容。 */
+  onResetProjectAgentsContent?: () => void;
   /** 初始选中的导航项（/agents → subagents、/skills → skills 斜杠命令唤起时由外层传入） */
   initialNav?: NavKey;
   /** Host 消息桥，供「子代理」「技能」选项卡请求数据 */
@@ -150,7 +185,45 @@ export type NavKey =
   | "hooks"
   | "mcp";
 
-type AgentsScope = "user" | "project";
+/**
+ * 「个性化 → 记忆」AGENTS.md 编辑器的三档作用域（spec memory-management
+ * 「设置页三档记忆编辑器」场景 1）：用户级 `~/.wave/AGENTS.md`、项目级
+ * `<workdir>/AGENTS.md`、个人级 `<workdir>/AGENTS.local.md`。
+ */
+export type AgentsScope = "user" | "project" | "local";
+
+/** 三档作用域的中文标签（tab / 保存按钮 / aria-label / 回包分流的唯一来源）。 */
+export const AGENTS_SCOPE_LABELS: Record<AgentsScope, string> = {
+  user: "用户级",
+  project: "项目级",
+  local: "个人级",
+};
+
+/** tab 顺序（用户级 → 项目级 → 个人级）。 */
+const AGENTS_SCOPES: AgentsScope[] = ["user", "project", "local"];
+
+/**
+ * 编辑器当前该按哪种形态渲染（spec memory-management 场景 9–12）。判定顺序有意
+ * 从「最不确定」往「最确定」排：内容还没回来时，任何一档都不能写。
+ */
+type AgentsEditorMode =
+  /** 内容尚未回来（首帧 / 切项目正在重读）——只读 + 保存禁用（场景 9）。 */
+  | "loading"
+  /** 读到了但没有 hash（宿主未给 or 内容与 hash 状态不一致）——无校验基准 = 只读。 */
+  | "unverified"
+  /** 读取失败（权限 / I/O）——只读 + 失败提示，绝不能当成「空文件」（场景 10）。 */
+  | "read-error"
+  /** 文件不存在——允许编辑与保存，保存时发 `expectedHash: null`（场景 11）。 */
+  | "missing"
+  /** 读到且有 hash——可编辑，保存带 hash（场景 12）。 */
+  | "ready";
+
+/** 保存被宿主按并发校验拒绝（`agentsContentSaved.conflict`）。 */
+export interface AgentsConflict {
+  scope: AgentsScope;
+  /** 递增令牌：同一档连续冲突时 effect 仍能察觉。 */
+  token: number;
+}
 
 /**
  * 用户偏好「未设置」态的表达（spec agent-config「插件端配置入口」场景 7–8）：
@@ -271,10 +344,16 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
   configurationError,
   userAgentsContent,
   projectAgentsContent,
+  // 未传入 = 宿主没有这一档（null 语义与另两份一致：尚未加载）；默认 null 让
+  // 「个人级 tab 首次激活时按需拉取」照常工作。
+  localAgentsContent = null,
   onLoadAgentsContent,
   onSaveAgentsContent,
+  agentsReadState,
+  agentsConflict = null,
   agentsSaving = false,
   workdir,
+  onResetProjectAgentsContent,
   initialNav,
   vscode,
   projectSettings,
@@ -336,10 +415,115 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
   // 项目设置（SDD 开关）：切换中标记，防止重复请求
   const [pluginToggling, setPluginToggling] = useState(false);
 
-  // AGENTS.md 编辑器
+  // AGENTS.md 编辑器（三档各一份草稿：切 tab 只换绑定，不触发保存）
   const [activeScope, setActiveScope] = useState<AgentsScope>("user");
   const [userContent, setUserContent] = useState("");
   const [projectContent, setProjectContent] = useState("");
+  const [localContent, setLocalContent] = useState("");
+
+  /** 当前作用域的草稿（textarea value / 保存载荷共用）。 */
+  const contentForScope = (scope: AgentsScope): string =>
+    scope === "user"
+      ? userContent
+      : scope === "project"
+        ? projectContent
+        : localContent;
+
+  const setContentForScope = (scope: AgentsScope, value: string) => {
+    if (scope === "user") setUserContent(value);
+    else if (scope === "project") setProjectContent(value);
+    else setLocalContent(value);
+  };
+
+  /** 该档的宿主回包内容（`null` = 尚未加载，与草稿区分开）。 */
+  const loadedContentForScope = (scope: AgentsScope): string | null =>
+    scope === "user"
+      ? userAgentsContent
+      : scope === "project"
+        ? projectAgentsContent
+        : localAgentsContent;
+
+  // 草稿的 ref 镜像（每次渲染同步）：冲突回填要在 effect 里读「上一帧的草稿」，而把
+  // 草稿 state 列进那个 effect 的依赖会让它每次键入都重跑（等于边打字边被回包覆盖）。
+  // 与 ChatApp 的 messagesRef 同一套写法。
+  const agentsDraftsRef = useRef<Record<AgentsScope, string>>({
+    user: "",
+    project: "",
+    local: "",
+  });
+  agentsDraftsRef.current = {
+    user: userContent,
+    project: projectContent,
+    local: localContent,
+  };
+
+  /**
+   * 该档的编辑器形态（spec memory-management 场景 8–13）。判定只依赖「内容是否
+   * 已加载」+「读状态」，不看草稿：草稿是用户的、内容与状态是宿主的。
+   */
+  const editorModeFor = (scope: AgentsScope): AgentsEditorMode => {
+    if (loadedContentForScope(scope) === null) return "loading";
+    const read = agentsReadState?.[scope] ?? null;
+    // 宿主不提供读状态（老宿主 / 未升级调用方）：保持原有可编辑行为（场景 13）。
+    if (!read) return "ready";
+    if (!read.readable) return "read-error";
+    if (!read.exists) return "missing";
+    // 有内容却没有 hash：拿不到并发校验的基准，就不能让用户写（场景 9）。
+    if (typeof read.hash !== "string") return "unverified";
+    return "ready";
+  };
+
+  /** 该档此刻能否编辑（`missing` / `ready` 可写，其余一律只读）。 */
+  const isScopeEditable = (scope: AgentsScope): boolean => {
+    const mode = editorModeFor(scope);
+    return mode === "ready" || mode === "missing";
+  };
+
+  /** 保存时该发的 `expectedHash`：`null` = 当时文件不存在；`undefined` = 不校验。 */
+  const expectedHashFor = (scope: AgentsScope): string | null | undefined => {
+    const read = agentsReadState?.[scope] ?? null;
+    if (!read) return undefined;
+    if (!read.exists) return null;
+    return typeof read.hash === "string" ? read.hash : undefined;
+  };
+
+  /**
+   * 编辑器上方的状态说明（spec 场景 9–11）。`null` = 无需提示（可正常编辑）。
+   *
+   * 读失败的文案必须点明「空白 ≠ 文件为空」：这是用户最容易误判的一处，而保存被
+   * 禁用全靠这句话解释——不说清楚，用户会以为自己看到一个空文件、想再存一次。
+   */
+  const agentsEditorStatusText = (scope: AgentsScope): string | null => {
+    switch (editorModeFor(scope)) {
+      case "loading":
+        return "正在读取该文件，读取完成前不可编辑。";
+      case "unverified":
+        return "尚未拿到该文件的校验值，暂不可编辑（保存时无法确认文件在此期间没有被外部改动）。";
+      case "read-error": {
+        const reason = agentsReadState?.[scope]?.error?.trim();
+        return `读取失败：${reason && reason !== "" ? reason : "原因未知"}。编辑器里的空白并不代表文件是空的——保存已禁用，以免把磁盘上现有的内容覆盖掉。`;
+      }
+      case "missing":
+        return "尚未创建。编辑后保存会新建这个文件。";
+      default:
+        return null;
+    }
+  };
+
+  /**
+   * 冲突保存被拒后**留住的用户草稿**（按档）。保存被并发校验拒掉时编辑器会按宿主
+   * 重读的结果换成磁盘上的最新内容——若不留这一份，用户刚写的东西就静默消失了
+   * （spec 场景 12 只要求「拒绝并提示」，但丢掉用户输入不是可接受的处理）。用户可
+   * 点「恢复我的编辑」把这份草稿放回编辑器，再基于新内容重改后保存。
+   */
+  const [conflictDrafts, setConflictDrafts] = useState<
+    Partial<Record<AgentsScope, string>>
+  >({});
+  // 已收到冲突信号、等宿主把新内容送回来的档：草稿被回包覆盖之前先把它存进
+  // conflictDrafts（见下方内容回填 effect）。
+  const pendingConflictScopesRef = useRef<Set<AgentsScope>>(new Set());
+  // 冲突信号的去重令牌（同一档连续冲突时也要再处理一次）。
+  const seenConflictTokenRef = useRef(0);
 
   // 配置数据变化时同步表单草稿（文件里没有的键 → 未设置态，不编造默认值）。
   //
@@ -430,14 +614,80 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
     if (updateChannel) setChannel(updateChannel);
   }, [updateChannel]);
 
-  // AGENTS.md 内容回填后同步 textarea 草稿
+  // AGENTS.md 内容回填后同步 textarea 草稿。
+  //
+  // 冲突保存（场景 12）会先收到 `agentsConflict` 信号、再收到重读回来的内容：那时
+  // textarea 里还是用户刚写的草稿，而这次回填要把它换成磁盘上的最新内容。所以回填
+  // 前先把**即将被覆盖的草稿**存进 conflictDrafts（用户在「恢复我的编辑」里还能拿回
+  // 来）。草稿经 ref 镜像读取而不是进依赖数组：把它列进依赖会让 effect 每次键入都
+  // 重跑，等于边打字边被回包覆盖。
   useEffect(() => {
-    if (userAgentsContent !== null) setUserContent(userAgentsContent);
+    if (userAgentsContent === null) return;
+    if (pendingConflictScopesRef.current.delete("user")) {
+      const draft = agentsDraftsRef.current.user;
+      setConflictDrafts((prev) => ({ ...prev, user: draft }));
+    }
+    setUserContent(userAgentsContent);
   }, [userAgentsContent]);
 
   useEffect(() => {
-    if (projectAgentsContent !== null) setProjectContent(projectAgentsContent);
+    if (projectAgentsContent === null) return;
+    if (pendingConflictScopesRef.current.delete("project")) {
+      const draft = agentsDraftsRef.current.project;
+      setConflictDrafts((prev) => ({ ...prev, project: draft }));
+    }
+    setProjectContent(projectAgentsContent);
   }, [projectAgentsContent]);
+
+  useEffect(() => {
+    if (localAgentsContent === null) return;
+    if (pendingConflictScopesRef.current.delete("local")) {
+      const draft = agentsDraftsRef.current.local;
+      setConflictDrafts((prev) => ({ ...prev, local: draft }));
+    }
+    setLocalContent(localAgentsContent);
+  }, [localAgentsContent]);
+
+  // 保存被并发校验拒绝：标记该档「下一次回填前先存草稿」，并把宿主重读的窗口
+  // 显式记下来（重读本身由父组件把该档内容置回 null 触发——本组件只认 null =
+  // 尚未加载，不自己发请求，避免与父组件的加载 effect 各发一次）。
+  useEffect(() => {
+    if (
+      !agentsConflict ||
+      agentsConflict.token === seenConflictTokenRef.current
+    ) {
+      return;
+    }
+    seenConflictTokenRef.current = agentsConflict.token;
+    pendingConflictScopesRef.current.add(agentsConflict.scope);
+  }, [agentsConflict]);
+
+  // 项目换了（`workdir` 变化）⇒ 手上这两档草稿属于上一个项目，必须当场作废。
+  // 插件端设置页常驻、`workdir` 每次打开都可能换（VS Code / JetBrains 的
+  // `settingsState`）；桌面端切项目/会话也会换。不清就把 A 项目的正文停在编辑器里，
+  // 用户点保存即落到 B 项目（spec memory-management 场景 6「项目级与个人级必须按
+  // 新项目重新读取」）。**用户级不重置**：`~/.wave/AGENTS.md` 与项目无关，同一场景
+  // 明确「用户级不重读」。
+  //
+  // 顺序有意放在下面的加载 effect 之前：本次提交先清草稿 + 请宿主把缓存置回 null
+  // （父组件随即重渲染、prop 变 null），下一轮的加载 effect 才算「尚未加载」并按
+  // 新 workdir 重新拉取——直接在这里发请求会让同一个项目被拉两次。
+  const agentsWorkdirRef = useRef(workdir);
+  const resetProjectAgentsRef = useLatestRef(onResetProjectAgentsContent);
+  useEffect(() => {
+    if (agentsWorkdirRef.current === workdir) return;
+    agentsWorkdirRef.current = workdir;
+    setProjectContent("");
+    setLocalContent("");
+    // 冲突草稿同样按项目归属：A 项目里「恢复我的编辑」的那份不属于 B 项目。
+    setConflictDrafts((prev) => ({
+      ...prev,
+      project: undefined,
+      local: undefined,
+    }));
+    pendingConflictScopesRef.current.clear();
+    resetProjectAgentsRef.current?.();
+  }, [workdir, resetProjectAgentsRef]);
 
   // 下面三个「进视图就拉一次」的 effect 都经 ref 读回调：父组件（ChatApp）传的
   // 是每次渲染新建的内联箭头，把它列进依赖会让「已发出请求、宿主还没回包」的
@@ -447,17 +697,27 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
   const loadProjectSettingsRef = useLatestRef(onLoadProjectSettings);
   const loadConfiguredModelsRef = useLatestRef(onLoadConfiguredModels);
 
-  // 初次进入或切换 tab 时，对应内容尚未加载则请求加载
+  // 初次进入或切换 tab 时，对应内容尚未加载则请求加载（三档各自按需拉取：
+  // 个人级不随项目级一起拉，避免打开设置页就多发一次 RPC）。依赖里的 `workdir`
+  // 不触发请求本身（上面那个 effect 已把 prop 清成 null），它保证「停在项目级 tab
+  // 上换了项目」时这次重读也会被评估——否则 prop 已是 null 而 effect 不重跑，
+  // 编辑器会一直停在空草稿上。
   useEffect(() => {
     if (activeScope === "user") {
       if (userAgentsContent === null) loadAgentsContentRef.current("user");
-    } else if (projectAgentsContent === null) {
-      loadAgentsContentRef.current("project");
+    } else if (activeScope === "project") {
+      if (projectAgentsContent === null) {
+        loadAgentsContentRef.current("project");
+      }
+    } else if (localAgentsContent === null) {
+      loadAgentsContentRef.current("local");
     }
   }, [
     activeScope,
+    workdir,
     userAgentsContent,
     projectAgentsContent,
+    localAgentsContent,
     loadAgentsContentRef,
   ]);
 
@@ -620,10 +880,27 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
 
   const handleSaveAgents = () => {
     if (!onSaveAgentsContent) return;
-    onSaveAgentsContent(
-      activeScope,
-      activeScope === "user" ? userContent : projectContent,
-    );
+    const scope = activeScope;
+    // 只读态（未加载 / 读失败 / 无 hash）下保存按钮本身是禁用的，这里再拦一道：
+    // 键盘触发或状态竞态时也不能把不可信的内容写回文件。
+    if (!isScopeEditable(scope)) return;
+    // 新一轮保存取代上一轮的冲突提示（草稿已经在编辑器里了）。
+    setConflictDrafts((prev) => ({ ...prev, [scope]: undefined }));
+    const expectedHash = expectedHashFor(scope);
+    // `undefined` 不传第三个参数：宿主没给读状态时保存载荷与改造前逐字一致。
+    if (expectedHash === undefined) {
+      onSaveAgentsContent(scope, contentForScope(scope));
+    } else {
+      onSaveAgentsContent(scope, contentForScope(scope), expectedHash);
+    }
+  };
+
+  /** 「恢复我的编辑」：把冲突时留住的草稿放回编辑器（hash 已是磁盘最新那份）。 */
+  const handleRestoreConflictDraft = (scope: AgentsScope) => {
+    const draft = conflictDrafts[scope];
+    if (draft === undefined) return;
+    setContentForScope(scope, draft);
+    setConflictDrafts((prev) => ({ ...prev, [scope]: undefined }));
   };
 
   const handleToggleSdd = () => {
@@ -1043,7 +1320,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
             <div className="settings-view">
               <header className="settings-page-header">
                 <h1>个性化</h1>
-                <p>配置用户级和项目级 AGENTS.md，以及自动记忆规则。</p>
+                <p>配置用户级、项目级和个人级 AGENTS.md，以及自动记忆规则。</p>
               </header>
               <section className="settings-section">
                 <div className="settings-section-heading">
@@ -1056,58 +1333,72 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                     role="tablist"
                     aria-label="规则范围"
                   >
-                    <button
-                      type="button"
-                      role="tab"
-                      aria-selected={activeScope === "user"}
-                      className={`settings-tab${
-                        activeScope === "user" ? " is-active" : ""
-                      }`}
-                      onClick={() => setActiveScope("user")}
-                    >
-                      用户级
-                    </button>
-                    <button
-                      type="button"
-                      role="tab"
-                      aria-selected={activeScope === "project"}
-                      className={`settings-tab${
-                        activeScope === "project" ? " is-active" : ""
-                      }`}
-                      onClick={() => setActiveScope("project")}
-                    >
-                      项目级
-                    </button>
+                    {AGENTS_SCOPES.map((scope) => (
+                      <button
+                        key={scope}
+                        type="button"
+                        role="tab"
+                        aria-selected={activeScope === scope}
+                        className={`settings-tab${
+                          activeScope === scope ? " is-active" : ""
+                        }`}
+                        onClick={() => setActiveScope(scope)}
+                      >
+                        {AGENTS_SCOPE_LABELS[scope]}
+                      </button>
+                    ))}
                   </div>
+                  {activeScope === "local" && (
+                    <p className="agents-local-hint">
+                      个人级记忆只对本项目生效、不进 git；请确认 .gitignore
+                      已包含 AGENTS.local.md，避免把它提交进仓库。
+                    </p>
+                  )}
+                  {agentsEditorStatusText(activeScope) !== null && (
+                    <p
+                      className={`agents-editor-status is-${editorModeFor(activeScope)}`}
+                      role="status"
+                    >
+                      {agentsEditorStatusText(activeScope)}
+                    </p>
+                  )}
+                  {conflictDrafts[activeScope] !== undefined && (
+                    <div className="agents-editor-conflict" role="status">
+                      <span>
+                        该文件在编辑器打开期间被外部修改过，这次保存已被拒绝，已重新加载磁盘上的最新内容。你刚才的编辑仍然保留，可以恢复后再保存。
+                      </span>
+                      <button
+                        type="button"
+                        className="agents-editor-restore"
+                        onClick={() => handleRestoreConflictDraft(activeScope)}
+                      >
+                        恢复我的编辑
+                      </button>
+                    </div>
+                  )}
                   <div className="agents-editor">
                     <textarea
                       className="settings-textarea"
-                      aria-label={
-                        activeScope === "project"
-                          ? "项目级 AGENTS.md 内容"
-                          : "用户级 AGENTS.md 内容"
-                      }
-                      value={
-                        activeScope === "user" ? userContent : projectContent
-                      }
+                      aria-label={`${AGENTS_SCOPE_LABELS[activeScope]} AGENTS.md 内容`}
+                      value={contentForScope(activeScope)}
+                      readOnly={!isScopeEditable(activeScope)}
                       disabled={agentsSaving}
-                      onChange={(e) => {
-                        if (activeScope === "user") {
-                          setUserContent(e.target.value);
-                        } else {
-                          setProjectContent(e.target.value);
-                        }
-                      }}
+                      onChange={(e) =>
+                        setContentForScope(activeScope, e.target.value)
+                      }
                     />
                     <div className="settings-actions">
                       <button
                         type="button"
                         className="settings-save-btn"
-                        disabled={!onSaveAgentsContent || agentsSaving}
+                        disabled={
+                          !onSaveAgentsContent ||
+                          agentsSaving ||
+                          !isScopeEditable(activeScope)
+                        }
                         onClick={handleSaveAgents}
                       >
-                        保存{activeScope === "project" ? "项目级" : "用户级"}
-                        配置
+                        保存{AGENTS_SCOPE_LABELS[activeScope]}配置
                       </button>
                     </div>
                   </div>

@@ -666,18 +666,42 @@ class StdioAgent(
     suspend fun getAuthStatus(): JsonElement =
         client.request("getAuthStatus") ?: JsonObject(emptyMap())
 
+    /**
+     * 读某一档记忆文件（设置页三档编辑器）。`sessionId` 随请求信封下发（见
+     * [com.wave.jetbrains.stdio.StdioClient.request] 的第三参）：CLI 凭它把请求落到
+     * 这个 live agent 上，走的才是 agent 的记忆服务；不带时 CLI 退回直读磁盘。
+     */
     suspend fun getAgentsContent(scope: String, workdir: String? = null): JsonElement =
         client.request("getAgentsContent", buildJsonObject {
             put("scope", scope)
             if (workdir != null) put("workdir", workdir)
-        }) ?: JsonObject(emptyMap())
+        }, sessionId) ?: JsonObject(emptyMap())
 
-    suspend fun setAgentsContent(scope: String, content: String, workdir: String? = null): JsonElement =
+    /**
+     * 写某一档记忆文件。会话 id 是**缓存失效的前提**：带 sessionId 时 CLI 走
+     * `agent.writeLocalMemoryContent(...)` → `MemoryService` 清
+     * `_cachedLocalMemory` / `_cachedCombinedMemory`，当前会话下一轮注入的就是新内容
+     * （spec memory-management「设置页三档记忆编辑器」场景 3）；不带时只直写文件，
+     * 缓存一个字不动，用户要换会话才看得到。
+     *
+     * [expectedHash] 是并发保护的**三态**令牌，三态在 JSON 层必须可区分：
+     * 字符串 = 编辑时读到的内容 hash；`JsonNull` = 编辑时文件还不存在（此后磁盘上
+     * 出现文件也算冲突）；`null`（Kotlin 的 null，即调用方不传）= 不发这个字段 =
+     * 不校验。所以这里只能按 `!= null` 判断「要不要写 key」，绝不能把 `JsonNull`
+     * 当成「没有值」吞掉。
+     */
+    suspend fun setAgentsContent(
+        scope: String,
+        content: String,
+        workdir: String? = null,
+        expectedHash: JsonElement? = null,
+    ): JsonElement =
         client.request("setAgentsContent", buildJsonObject {
             put("scope", scope)
             put("content", content)
             if (workdir != null) put("workdir", workdir)
-        }) ?: JsonObject(emptyMap())
+            if (expectedHash != null) put("expectedHash", expectedHash)
+        }, sessionId) ?: JsonObject(emptyMap())
 
     suspend fun login(): JsonElement =
         client.request("login") ?: JsonObject(emptyMap())
@@ -686,14 +710,18 @@ class StdioAgent(
         client.request("logout") ?: JsonObject(emptyMap())
 
     /**
-     * Global (session-less) RPCs — user preferences.
+     * Global (session-less) RPCs — user preferences and the memory files.
      *
      * They live on the companion object rather than in the instance method table
      * above because every method up there is reached through a live agent, while
-     * these two are deliberately independent of any session: the settings tab
-     * must read/write `~/.wave/settings.json` through the shared CLI process even
-     * when no chat session exists. They still belong here so the host never
-     * hand-writes a stdio RPC name — this file is the method table.
+     * these are deliberately independent of any session: the settings tab must
+     * read/write `~/.wave/settings.json` and the three `AGENTS.md` tiers through
+     * the shared CLI process even when no chat session exists (it is opened
+     * before any session — spec memory-management「设置页三档记忆编辑器」场景 5).
+     * Without a session id the CLI answers memory RPCs by reading/writing the
+     * file directly, which is the same fallback desktop and VS Code rely on.
+     * They still belong here so the host never hand-writes a stdio RPC name —
+     * this file is the method table.
      */
     companion object {
         /** Read user-level preferences (`~/.wave/settings.json`), effective values. */
@@ -704,6 +732,32 @@ class StdioAgent(
         suspend fun updateUserSettings(client: StdioClient, patch: JsonObject) {
             client.request("updateUserSettings", patch)
         }
+
+        /** Read a memory tier with no live session (settings tab opened first).
+         *  The reply carries the read state (`exists` / `readable` / `hash` /
+         *  `error`) — returned whole so the caller can forward it untouched. */
+        suspend fun readAgentsContent(client: StdioClient, scope: String, workdir: String?): JsonObject =
+            client.request("getAgentsContent", buildJsonObject {
+                put("scope", scope)
+                if (workdir != null) put("workdir", workdir)
+            })?.jsonObject ?: JsonObject(emptyMap())
+
+        /** Write a memory tier with no live session (no cache to invalidate).
+         *  [expectedHash] keeps the same three states as the instance method:
+         *  missing key = no check, `JsonNull` = "the file did not exist", string
+         *  = the hash the editor read. */
+        suspend fun writeAgentsContent(
+            client: StdioClient,
+            scope: String,
+            content: String,
+            workdir: String?,
+            expectedHash: JsonElement?,
+        ): JsonObject = client.request("setAgentsContent", buildJsonObject {
+            put("scope", scope)
+            put("content", content)
+            if (workdir != null) put("workdir", workdir)
+            if (expectedHash != null) put("expectedHash", expectedHash)
+        })?.jsonObject ?: JsonObject(emptyMap())
     }
 }
 

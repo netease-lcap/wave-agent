@@ -7,6 +7,11 @@ const mockMemoryServiceInstance = {
   getUserMemoryContent: vi.fn().mockResolvedValue(""),
   ensureUserMemoryFile: vi.fn().mockResolvedValue(undefined),
   readMemoryFile: vi.fn().mockResolvedValue(""),
+  readLocalMemoryFile: vi.fn().mockResolvedValue(""),
+  // 设置页编辑器读的是**原文**（`@include` 不展开），注入侧才走上面两条展开版。
+  readRawUserMemory: vi.fn().mockResolvedValue(""),
+  readRawProjectMemory: vi.fn().mockResolvedValue(""),
+  readRawLocalMemory: vi.fn().mockResolvedValue(""),
   getCombinedMemoryContent: vi.fn().mockResolvedValue(""),
   getAutoMemoryDirectory: vi.fn().mockReturnValue("/mock/auto-memory"),
   ensureAutoMemoryDirectory: vi.fn().mockResolvedValue(undefined),
@@ -61,6 +66,10 @@ describe("Agent Memory Functionality", () => {
     vi.clearAllMocks();
     mockMemoryServiceInstance.getUserMemoryContent.mockResolvedValue("");
     mockMemoryServiceInstance.readMemoryFile.mockResolvedValue("");
+    mockMemoryServiceInstance.readLocalMemoryFile.mockResolvedValue("");
+    mockMemoryServiceInstance.readRawUserMemory.mockResolvedValue("");
+    mockMemoryServiceInstance.readRawProjectMemory.mockResolvedValue("");
+    mockMemoryServiceInstance.readRawLocalMemory.mockResolvedValue("");
     mockMemoryServiceInstance.getCombinedMemoryContent.mockResolvedValue("");
     mockMemoryServiceInstance._cachedProjectMemory = "";
     mockMemoryServiceInstance._cachedUserMemory = "";
@@ -269,6 +278,60 @@ describe("Agent Memory Functionality", () => {
       expect(agent.projectMemory).toBe("");
       expect(agent.userMemory).toBe("");
       expect(await agent.getCombinedMemory()).toBe("");
+
+      await agent.destroy();
+    });
+  });
+
+  describe("T012 - Settings-page memory reads stay raw (unexpanded)", () => {
+    it("delegates read*MemoryContent to readRaw* so a save cannot inline @include content", async () => {
+      // 这条接线是「保存就把 @include 展开的内容物理写进 AGENTS.md」那个数据
+      // 损坏 bug 的唯一防线：编辑器必须读原文，注入侧才读展开版。
+      mockMemoryServiceInstance.readRawUserMemory.mockResolvedValue("user raw");
+      mockMemoryServiceInstance.readRawProjectMemory.mockResolvedValue(
+        "project raw",
+      );
+      mockMemoryServiceInstance.readRawLocalMemory.mockResolvedValue(
+        "local raw",
+      );
+      mockMemoryServiceInstance.getUserMemoryContent.mockResolvedValue(
+        "user expanded",
+      );
+      mockMemoryServiceInstance.readMemoryFile.mockResolvedValue(
+        "project expanded",
+      );
+      mockMemoryServiceInstance.readLocalMemoryFile.mockResolvedValue(
+        "local expanded",
+      );
+
+      const agent = await Agent.create({
+        workdir: mockTempDir,
+        callbacks: mockCallbacks,
+      });
+
+      expect(await agent.readUserMemoryContent()).toBe("user raw");
+      expect(await agent.readProjectMemoryContent(mockTempDir)).toBe(
+        "project raw",
+      );
+      expect(await agent.readLocalMemoryContent(mockTempDir)).toBe("local raw");
+
+      expect(mockMemoryServiceInstance.readRawUserMemory).toHaveBeenCalledTimes(
+        1,
+      );
+      expect(
+        mockMemoryServiceInstance.readRawProjectMemory,
+      ).toHaveBeenCalledWith(mockTempDir);
+      expect(mockMemoryServiceInstance.readRawLocalMemory).toHaveBeenCalledWith(
+        mockTempDir,
+      );
+      // 展开版一条都不许碰 —— 否则编辑器拿到的就是注入侧那份正文。
+      expect(
+        mockMemoryServiceInstance.getUserMemoryContent,
+      ).not.toHaveBeenCalled();
+      expect(mockMemoryServiceInstance.readMemoryFile).not.toHaveBeenCalled();
+      expect(
+        mockMemoryServiceInstance.readLocalMemoryFile,
+      ).not.toHaveBeenCalled();
 
       await agent.destroy();
     });
