@@ -130,6 +130,72 @@ describe("WorkflowManager", () => {
     });
   });
 
+  describe("UI snapshots", () => {
+    const script = `export const meta = { name: "test-wf", description: "A test" };\nreturn 1;`;
+
+    it("keeps a small result verbatim and does not mutate the run", async () => {
+      const run = await manager.createRun(script);
+      run.result = { ok: true };
+
+      const [ui] = await manager.listUiRuns();
+
+      // Under the snippet budget the value is handed over as it is — this is a
+      // transport trim, not a re-shape, so in-process readers (the examples)
+      // keep reading the object.
+      expect(ui.result).toEqual({ ok: true });
+      expect(run.result).toEqual({ ok: true });
+    });
+
+    it("truncates a large result and points at run-state.json", async () => {
+      const run = await manager.createRun(script);
+      const huge = "x".repeat(400_000);
+      run.result = huge;
+
+      const [ui] = await manager.listUiRuns();
+      const text = ui.result as string;
+
+      expect(text.length).toBeLessThan(10_000);
+      expect(text).toContain("result truncated");
+      expect(text).toContain("run-state.json");
+      // Full value survives in memory — the fold only lives in the snapshot.
+      expect(run.result).toBe(huge);
+      expect(manager.getRun(run.runId)?.result).toBe(huge);
+    });
+
+    it("keeps the whole snapshot far under the remote channel's frame budget", async () => {
+      // The remote relay answers an over-budget read with an error instead of a
+      // truncation, so a snapshot that carries the result is simply unreachable
+      // from the phone (spec「工作流管理对话框」场景 7).
+      const run = await manager.createRun(script);
+      run.result = "y".repeat(400_000);
+
+      const snapshot = JSON.stringify(await manager.listUiRuns());
+
+      expect(Buffer.byteLength(snapshot, "utf8")).toBeLessThan(64 * 1024);
+    });
+
+    it("applies the same shape to a single run", async () => {
+      const run = await manager.createRun(script);
+      run.result = "z".repeat(400_000);
+
+      const ui = manager.getUiRun(run.runId);
+      const text = typeof ui?.result === "string" ? ui.result : "";
+
+      expect(text.length).toBeLessThan(10_000);
+      expect(text).toContain("result truncated");
+      expect(manager.getUiRun("wf_missing")).toBeUndefined();
+    });
+
+    it("leaves runs without a result untouched", async () => {
+      const run = await manager.createRun(script);
+
+      const [ui] = await manager.listUiRuns();
+
+      expect(ui.result).toBeUndefined();
+      expect(ui.runId).toBe(run.runId);
+    });
+  });
+
   describe("stale running states", () => {
     const sessionId = "sess-test-0001";
 

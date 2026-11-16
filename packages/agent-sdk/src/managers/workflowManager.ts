@@ -114,6 +114,35 @@ function summarizeRunResult(
   );
 }
 
+/**
+ * The run snapshot a UI reads (`getWorkflowRuns` / `getWorkflowRun`).
+ *
+ * `result` is the script's return value — the whole payload, and the one field
+ * no interface renders: a real 405,600-byte snapshot was 404,371 bytes of it.
+ * Hosts re-push the list on every progress event (a single `log()` line is a
+ * `notifyTasksChange` too), so shipping it in full costs an IPC copy per line on
+ * desktop/IDE and blows the remote channel's 512 KiB single-frame budget
+ * outright — and an over-budget read is answered with an error, never a
+ * truncation, so `/workflows` comes up empty on the phone and stays that way.
+ *
+ * A value the completion notification would not truncate is handed over
+ * **untouched**: this is a transport trim, not a re-shape — `result` keeps its
+ * type and its characters for in-process readers (the `examples/workflow/*`
+ * demos assert on it), and the budget it protects is only spent by the big
+ * ones. Only an over-budget value is replaced by the same snippet the
+ * notification gets (truncated, with the `run-state.json` path), and never by a
+ * mutation of the run itself: the notification and the state file still read
+ * the value in full.
+ * Spec: `multi-agent/workflow.md`「工作流管理对话框」场景 7.
+ */
+function toUiRunSnapshot(run: WorkflowRun): WorkflowRun {
+  const value = run.result;
+  if (value === undefined || value === null) return run;
+  const serialized = typeof value === "string" ? value : JSON.stringify(value);
+  if (serialized.length <= MAX_RESULT_CHARS_IN_SUMMARY) return run;
+  return { ...run, result: summarizeRunResult(run, undefined) };
+}
+
 export class WorkflowManager {
   /**
    * In-memory runs, keyed by the runs directory they belong to — one entry per
@@ -466,8 +495,8 @@ export class WorkflowManager {
 
     // Forward progress events: mirror live counts onto the WorkflowRun and
     // trigger a UI refresh so /workflows updates mid-execution (not just at
-    // completion). The UI reads getWorkflowRuns() -> listRuns(), which returns
-    // these same in-memory run objects.
+    // completion). The UI reads getWorkflowRuns() -> listUiRuns(), which hands
+    // out these same in-memory run objects (minus an over-budget `result`).
     const onProgress = (
       event: import("../workflow/types.js").WorkflowProgressEvent,
     ) => {
@@ -918,6 +947,22 @@ export class WorkflowManager {
     }
 
     return runs;
+  }
+
+  /**
+   * The run list as every UI reads it — same order and same fields as
+   * `listRuns()`, with each run's `result` reduced to a snippet. The hosts call
+   * this rather than `listRuns()` (spec「工作流管理对话框」场景 7).
+   */
+  async listUiRuns(): Promise<WorkflowRun[]> {
+    const runs = await this.listRuns();
+    return runs.map(toUiRunSnapshot);
+  }
+
+  /** One run as a UI reads it; see `listUiRuns`. */
+  getUiRun(runId: string): WorkflowRun | undefined {
+    const run = this.getRun(runId);
+    return run ? toUiRunSnapshot(run) : undefined;
   }
 
   /**

@@ -2659,6 +2659,16 @@
       .catch(function (err) {
         // Best-effort, same as the desktop host: the cached runs stay as the last
         // known state, and an unsupported host simply leaves the list empty.
+        //
+        // But say it once, **visibly**: a silent failure renders exactly like
+        // 「这条会话没有工作流」. That is how an over-budget answer (the relay
+        // answers an oversized read with an error and never a truncation) or an
+        // older host used to hide the real state — `/workflows` just said 「暂无
+        // 工作流运行」 and stayed that way (2026-11-16: 730 KB 的运行列表被回成
+        // -32603，手机上一直是空的). One line, then the console keeps the rest.
+        if (!warned.workflowRuns) {
+          showStatus("工作流运行读取失败：" + err.message, "error");
+        }
         warnOnce("workflowRuns", "工作流运行补读失败：" + err.message);
       });
   }
