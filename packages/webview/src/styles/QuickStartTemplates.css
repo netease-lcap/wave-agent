@@ -61,6 +61,20 @@
   background: var(--vscode-list-hoverBackground);
 }
 
+/* 一级分类胶囊带上图标（设计师 2026-11-16 给件 12 张，16×16 / 描边 1.4）：
+   图标与文字同一个 flex 行、间距 6px；图标走 `currentColor`，随胶囊字色一起变
+   （默认 2 级、hover 与按下提到 1 级），不再单定一份色值。 */
+.quick-start-cat {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.quick-start-cat-icon {
+  display: block;
+  flex: none;
+}
+
 /* 二级子项：hover 用品牌红描边提示「点了会填进输入框」，与侧栏活动器同色。 */
 .quick-start-sub:hover {
   border-color: var(--vscode-brand-primary, #c1292e);

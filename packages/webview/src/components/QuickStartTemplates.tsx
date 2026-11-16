@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { QUICK_START_CATEGORIES } from "../utils/quickStartTemplates";
+import { QuickStartCategoryIcon } from "./QuickStartCategoryIcon";
 import "../styles/QuickStartTemplates.css";
 
 interface QuickStartTemplatesProps {
@@ -113,6 +114,7 @@ export const QuickStartTemplates: React.FC<QuickStartTemplatesProps> = ({
                   data-testid={`quick-start-cat-${category.id}`}
                   onClick={() => setActiveId(category.id)}
                 >
+                  <QuickStartCategoryIcon id={category.id} />
                   {category.label}
                 </button>
               ))
