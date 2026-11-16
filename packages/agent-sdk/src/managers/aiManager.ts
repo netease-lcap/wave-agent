@@ -2942,14 +2942,20 @@ ${question}`;
           const stepModel = currentModelConfig.model?.trim();
           const mods = this.getModManager();
           if (mods && !this.subagentType && stepModel) {
-            const stepped = await mods.dispatchTurnStep({
-              turnId,
-              index: turnSteps,
-              messageCount: this.messageManager.getMessages().length,
-              model: stepModel,
-            });
+            // 宿主与测试会注册 partial 的 ModManager 替身（与上面
+            // `collectNestedMemoryFiles` 同一条纪律）：没有这个方法就等于「没有
+            // 插件要改这次请求的模型」，不能因此掐掉整轮。
+            const stepped =
+              typeof mods.dispatchTurnStep === "function"
+                ? await mods.dispatchTurnStep({
+                    turnId,
+                    index: turnSteps,
+                    messageCount: this.messageManager.getMessages().length,
+                    model: stepModel,
+                  })
+                : undefined;
             turnSteps += 1;
-            if (stepped.model !== stepModel) {
+            if (stepped && stepped.model !== stepModel) {
               // 换了模型就把整份配置重新解析一遍：apiType、上下文窗口、输出
               // 上限都是按模型名查出来的，只换请求里的名字会让限额按旧模型算。
               currentModelConfig = this.configurationService.resolveModelConfig(

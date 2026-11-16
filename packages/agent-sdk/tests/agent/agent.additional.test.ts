@@ -233,8 +233,17 @@ describe("Agent additional coverage", () => {
 
       await vi.waitFor(
         () => {
+          // 只数这条事件落地的那条：同一轮里还会有其它 `isMeta` 的用户消息
+          // （子代理清单之类的注入），它们不是这次唤醒的产物。
           const meta = agent2.messages.filter(
-            (message) => message.role === "user" && message.isMeta,
+            (message) =>
+              message.role === "user" &&
+              message.isMeta &&
+              message.blocks.some(
+                (block) =>
+                  block.type === "text" &&
+                  block.content.includes("<page-comment-event>"),
+              ),
           );
           expect(meta).toHaveLength(1);
           const text = meta[0].blocks

@@ -41,6 +41,10 @@ vi.mock("wave-agent-sdk", async (importOriginal) => {
 vi.mock("../../src/contexts/useChat.js", () => ({
   useChat: () => ({
     permissionMode: "default",
+    // 插件 MODS 的三个面（docs/specs/ecosystem/plugin-mods.md）：没插件在画时分别是「没有面板持焦点 / 没有状态行 / 没有提示」。
+    modFocusPaneId: null,
+    modStatuses: [],
+    modToasts: [],
     setPermissionMode: vi.fn(),
     setIsBtwActive: vi.fn(),
     backgroundTasks: [],

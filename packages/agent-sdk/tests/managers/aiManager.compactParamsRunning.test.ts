@@ -108,6 +108,8 @@ describe("aiManager: running-stage tool block updates carry compactParams", () =
     });
     container.register("BackgroundTaskManager", {
       listTasks: vi.fn().mockReturnValue([]),
+      // 一轮收尾问 mods 的 `classic.Stop` 会带上还在跑的后台任务。
+      getAllTasks: vi.fn().mockReturnValue([]),
     });
     container.register("HookManager", undefined);
     container.register("ReversionManager", undefined);

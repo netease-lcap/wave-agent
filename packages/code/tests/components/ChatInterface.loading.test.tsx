@@ -56,7 +56,7 @@ describe("ChatInterface Loading State", () => {
     modToasts: [],
     setModFocusPaneId: vi.fn(),
     renderModPanel: vi.fn(),
-    renderModBand: vi.fn(),
+    renderModBand: vi.fn().mockResolvedValue([]),
     sendModPanelEvent: vi.fn(),
   } as unknown as ChatContextType;
 

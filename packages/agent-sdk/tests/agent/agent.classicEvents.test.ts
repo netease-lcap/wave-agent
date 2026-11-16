@@ -83,13 +83,15 @@ describe("Agent 派发的影子事件", () => {
     expect(order.indexOf("classic.SessionStart")).toBeGreaterThan(-1);
   });
 
-  it("销毁前发 classic.SessionEnd(reason: exit)", async () => {
+  // `reason` 照 CC 的 SessionEnd 枚举写（`prompt_input_exit` / `clear` /
+  // `logout` / `other`），这里发的是「用户把 CLI 退了」那一档。
+  it("销毁前发 classic.SessionEnd(reason: prompt_input_exit)", async () => {
     agent = await Agent.create({ workdir: WORKDIR });
     await agent.destroy();
     agent = undefined;
 
     expect(classicCalls(notifyMods, "classic.SessionEnd")).toEqual([
-      { reason: "exit" },
+      { reason: "prompt_input_exit" },
     ]);
   });
 

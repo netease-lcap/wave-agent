@@ -14,7 +14,7 @@ const chat = vi.hoisted(() => ({
   modFocusPaneId: null as string | null,
   setModFocusPaneId: vi.fn(),
   renderModPanel: vi.fn(),
-  renderModBand: vi.fn(),
+  renderModBand: vi.fn().mockResolvedValue([]),
   sendModPanelEvent: vi.fn(),
 }));
 

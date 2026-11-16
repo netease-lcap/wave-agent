@@ -58,9 +58,14 @@ function build(
     countUserTurns: () => turns.value,
   } as unknown as MessageManager);
 
+  // 钩子的回执是对象（CC 同形：`description` + 可选 `isDeferred` /
+  // `breakPromptCache`），不是一段字符串。
   const collectToolDescription = vi.fn(
-    async (request: { name: string; description: string }) =>
-      options.describe ? options.describe(request) : request.description,
+    async (request: { name: string; description: string }) => ({
+      description: options.describe
+        ? options.describe(request)
+        : request.description,
+    }),
   );
   if (!options.withoutModManager) {
     container.register("ModManager", {
@@ -135,8 +140,8 @@ describe("tool.describe", () => {
       FakeTool: `${BASE_DESCRIPTION}（插件改过）`,
       OtherTool: "另一个工具的描述（插件改过）",
     });
-    // 新的一轮重新问一次（每个工具一次）。
-    expect(collectToolDescription).toHaveBeenCalledTimes(4);
+    // 描述是会话级缓存：新一轮拿到上一轮问到的答案，不重问。
+    expect(collectToolDescription).toHaveBeenCalledTimes(2);
   });
 
   it("同一个工具一轮只问一次：中间再拼几次 schema 也不会重问", async () => {

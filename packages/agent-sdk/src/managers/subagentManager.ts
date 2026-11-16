@@ -1427,7 +1427,11 @@ export class SubagentManager {
    * 一直是空的。
    */
   private lastAssistantTextOf(instance: SubagentInstance): string | undefined {
-    const lastAssistant = [...instance.messageManager.getMessages()]
+    // 收尾路径上取的，抛出去就是一个没人接的 rejection：拿不到对话（替身只实现
+    // 了一部分、实例没走到建消息那一步）就当没有最后一条，别把整条清理链带塌。
+    const messages = instance.messageManager.getMessages();
+    if (!Array.isArray(messages)) return undefined;
+    const lastAssistant = [...messages]
       .reverse()
       .find((message) => message.role === "assistant");
     if (!lastAssistant) return undefined;

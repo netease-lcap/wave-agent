@@ -493,11 +493,11 @@ describe("AIManager 的 prompt.* 钩子", () => {
     expect(types).not.toContain("claude-md");
   });
 
-  it("prompt.attachment 的 agent-mention 档：改的是那条 @子代理提醒", async () => {
+  it("prompt.attachment 的 agent_mention 档：改的是那条 @子代理提醒", async () => {
     const mods = buildMods({
       rewritePromptAttachment: vi.fn(
         async (attachment: { type: string; text: string }) =>
-          attachment.type === "agent-mention"
+          attachment.type === "agent_mention"
             ? "（插件改写过的子代理提醒）"
             : attachment.text,
       ),
@@ -511,7 +511,7 @@ describe("AIManager 的 prompt.* 钩子", () => {
     await aiManager.sendAIMessage();
 
     const agentMention = mods.rewritePromptAttachment.mock.calls.find(
-      (call) => call[0].type === "agent-mention",
+      (call) => call[0].type === "agent_mention",
     );
     expect(agentMention?.[0].text).toContain("The user explicitly named");
     // 改了提醒不等于压掉了记忆：同一轮里 memory 那条照常在。
@@ -522,11 +522,11 @@ describe("AIManager 的 prompt.* 钩子", () => {
     ).toBe(true);
   });
 
-  it("prompt.attachment 的 nested-memory 档：压掉子目录 AGENTS.md 那一条", async () => {
+  it("prompt.attachment 的 nested_memory 档：压掉子目录 AGENTS.md 那一条", async () => {
     const mods = buildMods({
       rewritePromptAttachment: vi.fn(
         async (attachment: { type: string; text: string }) =>
-          attachment.type === "nested-memory" ? null : attachment.text,
+          attachment.type === "nested_memory" ? null : attachment.text,
       ),
     });
     const { aiManager, messageManager } = buildHarness({ mods });
@@ -539,7 +539,7 @@ describe("AIManager 的 prompt.* 钩子", () => {
     await aiManager.sendAIMessage();
 
     expect(mods.rewritePromptAttachment).toHaveBeenCalledWith({
-      type: "nested-memory",
+      type: "nested_memory",
       text: `Contents of ${join(WORKDIR, "sub", "AGENTS.md")}:\n\n子目录规矩`,
     });
     expect(
