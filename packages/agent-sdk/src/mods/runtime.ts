@@ -1551,6 +1551,22 @@ const MATCHER_EVENTS = new Set([
 
 /** 控件交互事件的三个名字（`plugin` 是钉住的 matcher 键）。 */
 const UI_CONTROL_EVENTS = new Set(["ui.press", "ui.input", "ui.select"]);
+/**
+ * matcher 里用的字段名 → 事件的字段名。
+ *
+ * 社区按 Claude Code 的字段名写 matcher（`requestId` 是渲染请求的实例 id），
+ * 我们的事件里那个字段叫 `instance_id`（与 CC 的 `ui_render` 消息同形）。
+ */
+const MATCHER_KEY_ALIASES: Record<string, string> = {
+  // 只有 `requestId` 这一条：它是同一个字段在 CC 的两处不同名字（钩子事件
+  // 叫 `requestId`、`ui_render` 消息叫 `instance_id`）。
+  //
+  // 事件之间**不做别名**：`agent.offer` 的字段是 `agent`、`agent.spawn` 的是
+  // `subagentType`（CC 那两个事件各自的名字），一个 matcher 写哪把钥匙就只
+  // 能开对应的那把锁 —— 给 `spawn` 补一条 `agent → subagentType` 会让同一份
+  // matcher 在两个事件上表现不一致，那是 CC 面外的行为。
+  requestId: "instance_id",
+};
 
 /**
  * 事件的字段名就是 Claude Code 钩子事件里的名字（`ui.render` 的实例 id 叫
@@ -1657,7 +1673,11 @@ function matchesEvent(
 ): boolean {
   if (!matcher) return true;
   if (!isPlainObject(event)) return false;
-  for (const [key, expected] of Object.entries(matcher)) {
+  for (const [rawKey, expected] of Object.entries(matcher)) {
+    // 事件自己有这个键就按字面用它 —— 别名只在事件缺这个键时兜底（同一字段
+    // 的两个名字，不是两个事件之间的换算）。
+    const key =
+      rawKey in event ? rawKey : (MATCHER_KEY_ALIASES[rawKey] ?? rawKey);
     const actual = event[key];
     if (Array.isArray(expected)) {
       if (!expected.some((value) => matcherValueMatches(key, value, actual))) {
