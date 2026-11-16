@@ -1,5 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { MemoryService } from "@/services/memory.js";
+import {
+  MAX_MEMORY_INCLUDE_BYTES,
+  MAX_MEMORY_INCLUDE_DEPTH,
+  MAX_MEMORY_INCLUDE_TOTAL_BYTES,
+  MemoryService,
+} from "@/services/memory.js";
 import { Container } from "@/utils/container.js";
 import fsPromises from "node:fs/promises";
 import * as path from "node:path";
@@ -47,6 +52,101 @@ vi.mock("@/utils/pathEncoder.js", () => ({
     encodeSync: vi.fn((path) => Buffer.from(path).toString("base64")),
   },
 }));
+
+const WORKDIR = path.resolve("/mock/project");
+const AGENTS = path.join(WORKDIR, "AGENTS.md");
+const LOCAL = path.join(WORKDIR, "AGENTS.local.md");
+const USER_MEMORY = "/mock/user/AGENTS.md";
+
+type MockEntry = {
+  content: string;
+  /** Overrides the byte size reported by `stat` (for the size cap). */
+  size?: number;
+  directory?: boolean;
+  /** Simulated symlink target: what `realpath` reports for this path. */
+  realPath?: string;
+  /** Simulated read failure (e.g. `EACCES`). */
+  readError?: string;
+};
+
+function errnoError(code: string): Error {
+  return Object.assign(new Error(code), { code });
+}
+
+/**
+ * Install an in-memory file system behind the mocked `node:fs/promises`.
+ * Keys are resolved with `path.resolve` so expectations stay cross-platform;
+ * `writeFile` feeds back into the map so an atomic write is visible to the
+ * next read.
+ */
+function mockFileSystem(
+  initial: Record<string, MockEntry | string>,
+): Map<string, MockEntry> {
+  const entries = new Map<string, MockEntry>();
+  for (const [filePath, value] of Object.entries(initial)) {
+    entries.set(
+      path.resolve(filePath),
+      typeof value === "string" ? { content: value } : value,
+    );
+  }
+
+  // `fs.realpath` succeeds on directories too, and both the workdir boundary
+  // check and the cycle guard canonicalize directories; register the parent
+  // chain of every fixture file so those calls resolve like the real thing.
+  for (const filePath of [...entries.keys()]) {
+    let directory = path.dirname(filePath);
+    while (directory !== path.dirname(directory) && !entries.has(directory)) {
+      entries.set(directory, { content: "", directory: true });
+      directory = path.dirname(directory);
+    }
+  }
+
+  const realpath = vi.mocked(
+    fsPromises.realpath as unknown as (target: string) => Promise<string>,
+  );
+  realpath.mockImplementation(async (target) => {
+    const resolved = path.resolve(String(target));
+    const entry = entries.get(resolved);
+    if (!entry) throw errnoError("ENOENT");
+    return entry.realPath ? path.resolve(entry.realPath) : resolved;
+  });
+
+  const stat = vi.mocked(
+    fsPromises.stat as unknown as (
+      target: string,
+    ) => Promise<{ size: number; isDirectory: () => boolean }>,
+  );
+  stat.mockImplementation(async (target) => {
+    const entry = entries.get(path.resolve(String(target)));
+    if (!entry) throw errnoError("ENOENT");
+    return {
+      size: entry.size ?? Buffer.byteLength(entry.content),
+      isDirectory: () => entry.directory === true,
+    };
+  });
+
+  const readFile = vi.mocked(
+    fsPromises.readFile as unknown as (target: string) => Promise<string>,
+  );
+  readFile.mockImplementation(async (target) => {
+    const entry = entries.get(path.resolve(String(target)));
+    if (!entry || entry.directory) throw errnoError("ENOENT");
+    if (entry.readError) throw errnoError(entry.readError);
+    return entry.content;
+  });
+
+  const writeFile = vi.mocked(
+    fsPromises.writeFile as unknown as (
+      target: string,
+      data: string,
+    ) => Promise<void>,
+  );
+  writeFile.mockImplementation(async (target, data) => {
+    entries.set(path.resolve(String(target)), { content: String(data) });
+  });
+
+  return entries;
+}
 
 describe("MemoryService", () => {
   let memoryService: MemoryService;
@@ -572,6 +672,508 @@ describe("MemoryService", () => {
       expect(await memoryService.readMemoryFile("/mock/workdir")).toBe(
         "new content",
       );
+    });
+
+    it("should write personal memory to AGENTS.local.md and drop the local cache", async () => {
+      mockFileSystem({ [LOCAL]: "old personal" });
+      await memoryService.readLocalMemoryFile(WORKDIR);
+
+      await memoryService.writeLocalMemoryContent(WORKDIR, "new personal");
+
+      expect(vi.mocked(fsPromises.mkdir)).toHaveBeenCalledWith(WORKDIR, {
+        recursive: true,
+      });
+      expect(atomicWriteFile).toHaveBeenCalledWith(LOCAL, "new personal");
+      expect(atomicWriteFile).not.toHaveBeenCalledWith(
+        path.join(WORKDIR, "CLAUDE.local.md"),
+        expect.anything(),
+      );
+      // The cache would still hold "old personal" had the write not cleared it.
+      expect(await memoryService.readLocalMemoryFile(WORKDIR)).toBe(
+        "new personal",
+      );
+    });
+
+    it("should invalidate the combined cache when personal memory is written", async () => {
+      mockFileSystem({ [AGENTS]: "project", [LOCAL]: "old personal" });
+      expect(await memoryService.getCombinedMemoryContent(WORKDIR)).toContain(
+        "old personal",
+      );
+
+      await memoryService.writeLocalMemoryContent(
+        WORKDIR,
+        "rewritten personal",
+      );
+
+      expect(await memoryService.getCombinedMemoryContent(WORKDIR)).toContain(
+        "rewritten personal",
+      );
+    });
+  });
+
+  describe("@include references", () => {
+    it("appends the referenced file as its own block with a source marker", async () => {
+      mockFileSystem({
+        [AGENTS]: "# Project\n\nRead @./docs/build.md for the build rules.",
+        [path.join(WORKDIR, "docs/build.md")]: "# Build rules\n\nAlways pnpm.",
+      });
+
+      const result = await memoryService.readMemoryFile(WORKDIR);
+
+      // The `@path` text stays in place — the content is appended, not substituted.
+      expect(result.startsWith("# Project\n\nRead @./docs/build.md")).toBe(
+        true,
+      );
+      expect(result).toContain("<!-- @include: docs/build.md -->");
+      expect(result.indexOf("# Build rules")).toBeGreaterThan(
+        result.indexOf("@./docs/build.md"),
+      );
+    });
+
+    it("accepts @path, @./path, @~/path and @/absolute/path", async () => {
+      const homeFile = path.join(homedir(), "wave-include-fixture.md");
+      const absoluteFile = path.join(WORKDIR, "absolute.md");
+      mockFileSystem({
+        // Personal memory may reference outside the workdir (`~/…` below).
+        [LOCAL]: [
+          "@bare.md",
+          "@./dotted.md",
+          "@~/wave-include-fixture.md",
+          `@${absoluteFile}`,
+        ].join("\n"),
+        [path.join(WORKDIR, "bare.md")]: "BARE CONTENT",
+        [path.join(WORKDIR, "dotted.md")]: "DOTTED CONTENT",
+        [homeFile]: "HOME CONTENT",
+        [absoluteFile]: "ABSOLUTE CONTENT",
+      });
+
+      const result = await memoryService.readLocalMemoryFile(WORKDIR);
+
+      expect(result).toContain("BARE CONTENT");
+      expect(result).toContain("DOTTED CONTENT");
+      expect(result).toContain("HOME CONTENT");
+      expect(result).toContain("ABSOLUTE CONTENT");
+      expect(result).toContain("<!-- @include: ~/wave-include-fixture.md -->");
+    });
+
+    it("unescapes \\  in the path and drops a #anchor fragment", async () => {
+      mockFileSystem({
+        [AGENTS]: "see @./docs/my\\ guide.md#setup please",
+        [path.join(WORKDIR, "docs/my guide.md")]: "GUIDE CONTENT",
+      });
+
+      const result = await memoryService.readMemoryFile(WORKDIR);
+
+      expect(result).toContain("GUIDE CONTENT");
+      expect(result).toContain("<!-- @include: docs/my guide.md -->");
+    });
+
+    it("does not expand @ inside fenced code, inline code or HTML comments", async () => {
+      mockFileSystem({
+        [AGENTS]: [
+          "```md",
+          "@./docs/fenced.md",
+          "```",
+          "",
+          "inline `@./docs/inline.md` stays",
+          "",
+          "<!-- @./docs/comment.md -->",
+          "",
+          "real @./docs/real.md",
+        ].join("\n"),
+        [path.join(WORKDIR, "docs/fenced.md")]: "FENCED CONTENT",
+        [path.join(WORKDIR, "docs/inline.md")]: "INLINE CONTENT",
+        [path.join(WORKDIR, "docs/comment.md")]: "COMMENT CONTENT",
+        [path.join(WORKDIR, "docs/real.md")]: "REAL CONTENT",
+      });
+
+      const result = await memoryService.readMemoryFile(WORKDIR);
+
+      expect(result).toContain("REAL CONTENT");
+      expect(result).not.toContain("FENCED CONTENT");
+      expect(result).not.toContain("INLINE CONTENT");
+      expect(result).not.toContain("COMMENT CONTENT");
+      expect(result.match(/@include/g)).toHaveLength(1);
+    });
+
+    it("does not treat an email address as a reference", async () => {
+      const content = "# Project\n\nContact foo@bar.com for access.\n";
+      mockFileSystem({ [AGENTS]: content });
+
+      const result = await memoryService.readMemoryFile(WORKDIR);
+
+      expect(result).toBe(content);
+      // Only the memory file itself was read: no reference was resolved.
+      expect(vi.mocked(fsPromises.readFile)).toHaveBeenCalledTimes(1);
+    });
+
+    it("skips targets outside the text extension whitelist", async () => {
+      mockFileSystem({
+        [AGENTS]: "logo @./assets/logo.png\nbuild @./Makefile",
+        [path.join(WORKDIR, "assets/logo.png")]: "PNG BYTES",
+        [path.join(WORKDIR, "Makefile")]: "all: build",
+      });
+
+      const result = await memoryService.readMemoryFile(WORKDIR);
+
+      expect(result).toContain(
+        "@include skipped: assets/logo.png — not a text file",
+      );
+      expect(result).toContain("@include skipped: Makefile — not a text file");
+      expect(result).not.toContain("PNG BYTES");
+    });
+
+    it("leaves an in-place note when the target is missing, a directory or unreadable", async () => {
+      mockFileSystem({
+        [AGENTS]: "a @./missing.md\nb @./somedir.md\nc @./locked.md",
+        [path.join(WORKDIR, "somedir.md")]: { content: "", directory: true },
+        [path.join(WORKDIR, "locked.md")]: {
+          content: "LOCKED CONTENT",
+          readError: "EACCES",
+        },
+      });
+
+      const result = await memoryService.readMemoryFile(WORKDIR);
+
+      // The note replaces the `@path` token itself, and the rest of the file survives.
+      expect(
+        result.startsWith(
+          "a <!-- @include skipped: missing.md — not found -->\nb ",
+        ),
+      ).toBe(true);
+      expect(result).toContain("skipped: somedir.md — not a file");
+      expect(result).toContain("skipped: locked.md — read failed");
+      expect(result).not.toContain("LOCKED CONTENT");
+    });
+
+    it("skips a target larger than the size cap", async () => {
+      mockFileSystem({
+        [AGENTS]: "@./package-lock.json",
+        [path.join(WORKDIR, "package-lock.json")]: {
+          content: "{}",
+          size: MAX_MEMORY_INCLUDE_BYTES + 1,
+        },
+      });
+
+      const result = await memoryService.readMemoryFile(WORKDIR);
+
+      expect(result).toContain(
+        "@include skipped: package-lock.json — too large",
+      );
+    });
+
+    it("expands a cyclic reference chain once per file without looping", async () => {
+      mockFileSystem({
+        [AGENTS]: "@./a.md",
+        [path.join(WORKDIR, "a.md")]: "A CONTENT\n@./b.md",
+        [path.join(WORKDIR, "b.md")]: "B CONTENT\n@./a.md",
+      });
+
+      const result = await memoryService.readMemoryFile(WORKDIR);
+
+      expect(result.split("<!-- @include: a.md -->")).toHaveLength(2);
+      expect(result.split("<!-- @include: b.md -->")).toHaveLength(2);
+      expect(result).toContain("A CONTENT");
+      expect(result).toContain("B CONTENT");
+    });
+
+    it("stops expanding past the recursion depth cap", async () => {
+      const files: Record<string, string> = { [AGENTS]: "@./level1.md" };
+      for (let level = 1; level <= MAX_MEMORY_INCLUDE_DEPTH; level += 1) {
+        files[path.join(WORKDIR, `level${level}.md`)] =
+          `LEVEL${level} CONTENT\n@./level${level + 1}.md`;
+      }
+      const beyondCap = MAX_MEMORY_INCLUDE_DEPTH + 1;
+      files[path.join(WORKDIR, `level${beyondCap}.md`)] =
+        `LEVEL${beyondCap} CONTENT`;
+      mockFileSystem(files);
+
+      const result = await memoryService.readMemoryFile(WORKDIR);
+
+      expect(result).toContain(`LEVEL${MAX_MEMORY_INCLUDE_DEPTH} CONTENT`);
+      expect(result).not.toContain(`LEVEL${beyondCap} CONTENT`);
+      expect(result).toContain("max depth reached");
+    });
+
+    it("rejects references outside the workdir for the project tier", async () => {
+      const privateFile = path.join(homedir(), "wave-private-notes.md");
+      const outsideAbsolute = path.resolve("/mock/elsewhere/notes.md");
+      mockFileSystem({
+        [AGENTS]: `@~/wave-private-notes.md\n@${outsideAbsolute}`,
+        [privateFile]: "PRIVATE CONTENT",
+        [outsideAbsolute]: "OUTSIDE CONTENT",
+      });
+
+      const result = await memoryService.readMemoryFile(WORKDIR);
+
+      expect(result).toContain(
+        "skipped: ~/wave-private-notes.md — outside workdir",
+      );
+      expect(result).not.toContain("PRIVATE CONTENT");
+      expect(result).not.toContain("OUTSIDE CONTENT");
+    });
+
+    it("does not let a symlink smuggle the project tier out of the workdir", async () => {
+      const secret = path.join(homedir(), "wave-secret.md");
+      mockFileSystem({
+        [AGENTS]: "@./link.md",
+        [path.join(WORKDIR, "link.md")]: { content: "", realPath: secret },
+        [secret]: "SECRET CONTENT",
+      });
+
+      const result = await memoryService.readMemoryFile(WORKDIR);
+
+      expect(result).toContain("skipped: link.md — outside workdir");
+      expect(result).not.toContain("SECRET CONTENT");
+    });
+
+    it("allows references outside the workdir for the user and local tiers", async () => {
+      const shared = path.join(homedir(), "wave-shared-rules.md");
+      mockFileSystem({
+        [LOCAL]: "personal\n@~/wave-shared-rules.md",
+        [USER_MEMORY]: "user\n@~/wave-shared-rules.md",
+        [shared]: "SHARED RULES CONTENT",
+      });
+
+      const local = await memoryService.readLocalMemoryFile(WORKDIR);
+      expect(local).toContain("SHARED RULES CONTENT");
+      expect(local).toContain("<!-- @include: ~/wave-shared-rules.md -->");
+
+      memoryService.clearCache();
+      const user = await memoryService.getUserMemoryContent();
+      expect(user).toContain("SHARED RULES CONTENT");
+    });
+
+    it("caches the expansion until clearCache() invalidates it", async () => {
+      const entries = mockFileSystem({
+        [AGENTS]: "@./extra.md",
+        [path.join(WORKDIR, "extra.md")]: "FIRST VERSION",
+      });
+
+      expect(await memoryService.readMemoryFile(WORKDIR)).toContain(
+        "FIRST VERSION",
+      );
+
+      entries.set(path.join(WORKDIR, "extra.md"), {
+        content: "SECOND VERSION",
+      });
+      // No hot reload: the expanded result stays cached.
+      expect(await memoryService.readMemoryFile(WORKDIR)).toContain(
+        "FIRST VERSION",
+      );
+
+      memoryService.clearCache();
+      const reread = await memoryService.readMemoryFile(WORKDIR);
+      expect(reread).toContain("SECOND VERSION");
+      expect(reread).not.toContain("FIRST VERSION");
+    });
+
+    it("does not expand a reference after an unclosed fence", async () => {
+      mockFileSystem({
+        // The fence never closes, so the rest of the file stays masked.
+        [AGENTS]: ["# Project", "", "```sh", "@./docs/inside.md"].join("\n"),
+        [path.join(WORKDIR, "docs/inside.md")]: "INSIDE CONTENT",
+      });
+
+      const result = await memoryService.readMemoryFile(WORKDIR);
+
+      expect(result).not.toContain("INSIDE CONTENT");
+    });
+
+    it("does not expand @ inside an indented code block", async () => {
+      mockFileSystem({
+        [AGENTS]: [
+          "# Project",
+          "",
+          "    @./docs/indented.md",
+          "",
+          "real @./docs/real.md",
+        ].join("\n"),
+        [path.join(WORKDIR, "docs/indented.md")]: "INDENTED CONTENT",
+        [path.join(WORKDIR, "docs/real.md")]: "REAL CONTENT",
+      });
+
+      const result = await memoryService.readMemoryFile(WORKDIR);
+
+      expect(result).toContain("REAL CONTENT");
+      expect(result).not.toContain("INDENTED CONTENT");
+    });
+
+    it("does not expand @ inside a fenced block in a blockquote", async () => {
+      mockFileSystem({
+        [AGENTS]: [
+          "> ```md",
+          "> @./docs/quoted.md",
+          "> ```",
+          "",
+          "> > ```",
+          "> > @./docs/nested.md",
+          "> > ```",
+          "",
+          "quoted prose @./docs/real.md",
+        ].join("\n"),
+        [path.join(WORKDIR, "docs/quoted.md")]: "QUOTED CONTENT",
+        [path.join(WORKDIR, "docs/nested.md")]: "NESTED QUOTE CONTENT",
+        [path.join(WORKDIR, "docs/real.md")]: "REAL CONTENT",
+      });
+
+      const result = await memoryService.readMemoryFile(WORKDIR);
+
+      expect(result).toContain("REAL CONTENT");
+      expect(result).not.toContain("QUOTED CONTENT");
+      expect(result).not.toContain("NESTED QUOTE CONTENT");
+    });
+
+    it("still expands a @path on a list item's 4-space continuation line", async () => {
+      mockFileSystem({
+        // Indented, but the previous line is a list item — prose, not code.
+        [AGENTS]: ["- step one", "    @./docs/list.md", "", "- step two"].join(
+          "\n",
+        ),
+        [path.join(WORKDIR, "docs/list.md")]: "LIST CONTENT",
+      });
+
+      const result = await memoryService.readMemoryFile(WORKDIR);
+
+      expect(result).toContain("LIST CONTENT");
+    });
+
+    it("leaves a note when a reference has nothing but an anchor", async () => {
+      mockFileSystem({ [AGENTS]: "jump to @#setup please" });
+
+      const result = await memoryService.readMemoryFile(WORKDIR);
+
+      expect(result).toBe(
+        "jump to <!-- @include skipped: @#setup — empty path --> please",
+      );
+    });
+
+    it("notes every occurrence of a reference that cannot be expanded", async () => {
+      mockFileSystem({
+        [AGENTS]: "a @./logo.png b @./logo.png",
+        [path.join(WORKDIR, "logo.png")]: "PNG BYTES",
+      });
+
+      const result = await memoryService.readMemoryFile(WORKDIR);
+
+      expect(
+        result.match(/skipped: logo\.png — not a text file/g),
+      ).toHaveLength(2);
+    });
+
+    it("expands one file referenced three ways only once", async () => {
+      const target = path.join(WORKDIR, "docs/x.md");
+      mockFileSystem({
+        [AGENTS]: ["@./docs/x.md", "@docs/x.md", `@${target}`].join("\n"),
+        [target]: "X CONTENT",
+      });
+
+      const result = await memoryService.readMemoryFile(WORKDIR);
+
+      expect(result.match(/<!-- @include: /g)).toHaveLength(1);
+      expect(result.split("X CONTENT")).toHaveLength(2);
+    });
+
+    it("appends a nested include after the file that references it", async () => {
+      mockFileSystem({
+        [AGENTS]: "@./a.md",
+        [path.join(WORKDIR, "a.md")]: "A CONTENT\n@./b.md",
+        [path.join(WORKDIR, "b.md")]: "B CONTENT",
+      });
+
+      const result = await memoryService.readMemoryFile(WORKDIR);
+
+      expect(result.indexOf("<!-- @include: a.md -->")).toBeLessThan(
+        result.indexOf("A CONTENT"),
+      );
+      expect(result.indexOf("A CONTENT")).toBeLessThan(
+        result.indexOf("<!-- @include: b.md -->"),
+      );
+      expect(result.indexOf("<!-- @include: b.md -->")).toBeLessThan(
+        result.indexOf("B CONTENT"),
+      );
+    });
+
+    it("shares the expansion scope across the three memory layers", async () => {
+      const shared = path.join(WORKDIR, "shared.md");
+      mockFileSystem({
+        [AGENTS]: "@./shared.md",
+        // The user layer points at the same file by absolute path.
+        [USER_MEMORY]: `@${shared}`,
+        [shared]: "SHARED ONCE",
+      });
+
+      const result = await memoryService.getCombinedMemoryContent(WORKDIR);
+
+      // One block for the whole combined load, not one per layer.
+      expect(result.match(/<!-- @include: /g)).toHaveLength(1);
+      expect(result.split("SHARED ONCE")).toHaveLength(2);
+    });
+
+    it("stops expanding once the whole load exceeds the total budget", async () => {
+      const perFile = MAX_MEMORY_INCLUDE_BYTES;
+      const fitting = Math.floor(MAX_MEMORY_INCLUDE_TOTAL_BYTES / perFile);
+      const files: Record<string, MockEntry | string> = {};
+      const references: string[] = [];
+      for (let index = 1; index <= fitting + 2; index += 1) {
+        references.push(`@./big${index}.md`);
+        files[path.join(WORKDIR, `big${index}.md`)] = {
+          content: `BIG${index} CONTENT`,
+          size: perFile,
+        };
+      }
+      files[AGENTS] = references.join("\n");
+      mockFileSystem(files);
+
+      const result = await memoryService.readMemoryFile(WORKDIR);
+
+      expect(result).toContain(`BIG${fitting} CONTENT`);
+      expect(result).not.toContain(`BIG${fitting + 1} CONTENT`);
+      expect(result).toContain(
+        `skipped: big${fitting + 1}.md — total size limit reached`,
+      );
+    });
+  });
+
+  describe("raw memory reads (settings-page editor)", () => {
+    it("returns the file as written while the loaded memory is expanded", async () => {
+      const entries = mockFileSystem({
+        [AGENTS]: "# Project\n\nread @./docs/x.md",
+        [path.join(WORKDIR, "docs/x.md")]: "EXPANDED BODY",
+        [LOCAL]: "# Personal\n\n@./docs/x.md",
+        [USER_MEMORY]: "# User\n\nno references here",
+      });
+
+      // Warm every expansion cache first: the raw read must ignore it.
+      const combined = await memoryService.getCombinedMemoryContent(WORKDIR);
+      expect(combined).toContain("EXPANDED BODY");
+      expect(combined).toContain("<!-- @include: docs/x.md -->");
+
+      expect(await memoryService.readRawProjectMemory(WORKDIR)).toBe(
+        "# Project\n\nread @./docs/x.md",
+      );
+      expect(await memoryService.readRawLocalMemory(WORKDIR)).toBe(
+        "# Personal\n\n@./docs/x.md",
+      );
+      expect(await memoryService.readRawUserMemory()).toBe(
+        "# User\n\nno references here",
+      );
+
+      // Saving what the editor showed must not inline the referenced body.
+      await memoryService.writeProjectMemoryContent(
+        WORKDIR,
+        await memoryService.readRawProjectMemory(WORKDIR),
+      );
+      expect(entries.get(AGENTS)?.content).toBe(
+        "# Project\n\nread @./docs/x.md",
+      );
+    });
+
+    it("reads a missing personal layer as empty without creating it", async () => {
+      mockFileSystem({ [AGENTS]: "# Project" });
+
+      expect(await memoryService.readRawLocalMemory(WORKDIR)).toBe("");
+      expect(fsPromises.writeFile).not.toHaveBeenCalled();
     });
   });
 });

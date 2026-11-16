@@ -11,6 +11,7 @@ import com.wave.jetbrains.bridge.PlanPreviewBuilder
 import com.wave.jetbrains.ide.IdeContextReader
 import com.wave.jetbrains.ide.IdeService
 import com.wave.jetbrains.stdio.StdioAgent
+import com.wave.jetbrains.stdio.StdioClient
 import com.wave.jetbrains.stdio.StdioClientException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -20,6 +21,7 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonObjectBuilder
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.booleanOrNull
@@ -49,6 +51,16 @@ private const val PLUGIN_RELOADED_MESSAGE = "插件已重载。"
 class MessageHandler(
     private val project: Project,
     private val session: WaveSession,
+    /**
+     * The shared `wave --stdio` connection used by RPCs that must work with **no active
+     * chat session** — the settings tab opens before any session exists (spec
+     * memory-management「设置页三档记忆编辑器」场景 5). Defaults to the project's backend
+     * service (same client every session in this project rides on); a seam so the unit
+     * test can hand over its fake CLI instead of the real backend's downloader.
+     */
+    private val utilityClient: suspend () -> StdioClient = {
+        WaveBackendService.getInstance(project).ensureClient().first
+    },
     private val postMessage: (command: String, JsonObject) -> Unit,
 ) {
     private val LOG = logger<MessageHandler>()
@@ -808,53 +820,82 @@ class MessageHandler(
             }
 
             // ── AGENTS.md (memory files) ───────────────────────────────
-            // VSCE messageHandler.ts → agentsContentResponse { scope, content }
+            // VSCE messageHandler.ts → agentsContentResponse { scope, content,
+            // path, exists, readable, hash, error? }
             "getAgentsContent" -> {
                 val scope = msg["scope"]?.jsonPrimitive?.content ?: return
                 val workdir = msg["workdir"]?.jsonPrimitive?.content
-                val content = try {
-                    session.agent?.getAgentsContent(scope, workdir)?.jsonObject?.get("content")?.jsonPrimitive?.content ?: ""
-                } catch (e: StdioClientException) {
+                try {
+                    val result = readAgentsContent(scope, workdir)
+                    postMessage("agentsContentResponse", buildJsonObject {
+                        put("scope", scope)
+                        put("content", (result["content"] as? JsonPrimitive)?.contentOrNull ?: "")
+                        // 读状态原样透传（spec 场景 8/10）：字段在就照抄，`JsonNull`
+                        // 也照抄 —— `hash: null` = 文件不存在，缺这个字段 = 没有状态
+                        // 可给，两者语义不同。宿主不重算 hash、不改判定。
+                        result.copyPresentFields(this, "path", "exists", "readable", "hash", "error")
+                    })
+                } catch (e: Exception) {
+                    // 读失败**不许**静默回空串：用户会把「读不到」当成「文件是空的」，
+                    // 接着点一次保存就把那份文件覆盖成空。回包仍要发（否则设置页的编辑器
+                    // 停在「尚未加载」），但宿主同时给一条说得清的失败提示，并明说编辑器
+                    // 里的空白不代表磁盘上的内容。
+                    // 回包形状与 CLI 自己「读不到」（EACCES 等）时一致：exists 只是
+                    // 占位，真正让编辑器只读并**禁止保存**的是 readable:false（spec
+                    // 场景 10）。两个布尔值都得在 —— 缺了它们，webview 会把回包当成
+                    // 「老宿主」并退回「可编辑、不校验」。
                     LOG.warn("getAgentsContent failed: ${e.message}")
-                    ""
+                    IdeService.showError(
+                        project,
+                        "读取记忆文件失败：${failureReason(e)}（编辑器显示为空，不代表文件为空，请勿直接保存）",
+                    )
+                    postMessage("agentsContentResponse", buildJsonObject {
+                        put("scope", scope)
+                        put("content", "")
+                        put("exists", true)
+                        put("readable", false)
+                        put("hash", JsonNull)
+                        put("error", failureReason(e))
+                    })
                 }
-                postMessage("agentsContentResponse", buildJsonObject {
-                    put("scope", scope)
-                    put("content", content)
-                })
             }
-            // VSCE messageHandler.ts → agentsContentSaved { scope, ok }
+            // VSCE messageHandler.ts → agentsContentSaved { scope, ok, conflict?, error? }
             "setAgentsContent" -> {
                 val scope = msg["scope"]?.jsonPrimitive?.content ?: return
                 val content = msg["content"]?.jsonPrimitive?.content ?: ""
                 val workdir = msg["workdir"]?.jsonPrimitive?.content
-                val agent = session.agent
-                if (agent == null) {
-                    // No live agent (e.g. settings tab opened standalone without a chat session):
-                    // report an honest failure instead of a false-positive ok=true no-op save.
-                    IdeService.showError(project, "保存失败：智能体未初始化")
-                    postMessage("agentsContentSaved", buildJsonObject {
-                        put("scope", scope)
-                        put("ok", false)
-                        put("error", "智能体未初始化")
-                    })
-                    return
-                }
+                // 三态并发令牌：字段缺失 → Kotlin null（不校验）；显式 null →
+                // JsonNull（编辑时文件还不存在）；其余 → 字符串 hash。
+                val expectedHash = msg["expectedHash"]
                 try {
-                    agent.setAgentsContent(scope, content, workdir)
-                    // 保存结果经宿主通知提示（spec「设置页反馈语义」）
-                    IdeService.showInfo(project, "保存成功")
+                    val result = writeAgentsContent(scope, content, workdir, expectedHash)
+                    val conflict = (result["conflict"] as? JsonPrimitive)?.booleanOrNull == true
+                    val ok = (result["ok"] as? JsonPrimitive)?.booleanOrNull != false
+                    val reason = (result["error"] as? JsonPrimitive)?.contentOrNull
+                    // 保存结果经宿主通知提示（spec「设置页反馈语义」）：冲突/失败的原因
+                    // 是 CLI 给的，原样转述，不自己判「文件被改过」。
+                    if (ok) {
+                        IdeService.showInfo(project, "保存成功")
+                    } else {
+                        IdeService.showError(
+                            project,
+                            "保存失败：${reason ?: if (conflict) "文件已被外部改动" else "未知错误"}",
+                        )
+                    }
                     postMessage("agentsContentSaved", buildJsonObject {
                         put("scope", scope)
-                        put("ok", true)
+                        put("ok", ok)
+                        result.copyPresentFields(this, "conflict", "error")
                     })
-                } catch (e: StdioClientException) {
+                } catch (e: Exception) {
+                    // 失败文案要能让用户分清是「写盘失败」还是「读/连不上 CLI」——原因
+                    // 原样带出来（权限、磁盘、远端连接），不笼统说「保存失败」。
                     LOG.warn("setAgentsContent failed: ${e.message}")
-                    IdeService.showError(project, "保存失败：${e.message}")
+                    IdeService.showError(project, "保存失败：${failureReason(e)}")
                     postMessage("agentsContentSaved", buildJsonObject {
                         put("scope", scope)
                         put("ok", false)
-                        put("error", e.message ?: "保存失败")
+                        put("error", failureReason(e))
                     })
                 }
             }
@@ -1349,6 +1390,73 @@ class MessageHandler(
 
     private fun currentWorkdir(): String =
         session.agent?.sessionCwd ?: session.agent?.currentWorkdir ?: project.basePath ?: System.getProperty("user.dir")
+
+    // ── 三档记忆文件（设置页 AGENTS.md 编辑器）──────────────────────────
+    //
+    // 有 live agent 就经它（`StdioAgent` 把会话 id 放进请求信封，CLI 走 agent 的
+    // 记忆服务——保存时由 MemoryService 清缓存，当前会话下一轮注入的就是新内容）；
+    // 没有就经共享 CLI 进程，CLI 侧在没有 session 时**直读直写文件**，与桌面端 /
+    // VSCE 的兜底同形（spec 场景 5：「无会话时直读直写文件」不是降级，是要求）。
+    // 失败一律抛出，由调用方给出可区分的失败提示。
+
+    private suspend fun readAgentsContent(scope: String, workdir: String?): JsonObject {
+        val wd = resolveMemoryWorkdir(scope, workdir)
+        val agent = session.agent
+        val reply = if (agent != null) {
+            agent.getAgentsContent(scope, wd)
+        } else {
+            StdioAgent.readAgentsContent(utilityClient(), scope, wd)
+        }
+        // 整份回包往下带（content + 读状态），由调用方原样透传给 webview。
+        return reply as? JsonObject ?: JsonObject(emptyMap())
+    }
+
+    private suspend fun writeAgentsContent(
+        scope: String,
+        content: String,
+        workdir: String?,
+        expectedHash: JsonElement?,
+    ): JsonObject {
+        val wd = resolveMemoryWorkdir(scope, workdir)
+        val agent = session.agent
+        val reply = if (agent != null) {
+            agent.setAgentsContent(scope, content, wd, expectedHash)
+        } else {
+            StdioAgent.writeAgentsContent(utilityClient(), scope, content, wd, expectedHash)
+        }
+        // ok / conflict / error 全由 CLI 判定，宿主只搬。
+        return reply as? JsonObject ?: JsonObject(emptyMap())
+    }
+
+    /**
+     * 用户级不需要 workdir；项目级 / 个人级必需 —— CLI 缺省会以 INVALID_PARAMS 拒绝。
+     * webview 平时会带（settingsState 的 workdir），这里只兜「没带」的情况，口径与
+     * 其它项目级 RPC 一致：会话起点 → 工程根目录。
+     */
+    private fun resolveMemoryWorkdir(scope: String, workdir: String?): String? =
+        if (scope == "user") null else workdir ?: currentWorkdir()
+
+    /**
+     * 把 CLI 回包里的可选字段原样抄进宿主回包：字段在就照抄（`JsonNull` 也照抄
+     * ——「值为 null」与「字段缺失」语义不同，例如 `hash: null` 表示文件不存在，
+     * 缺这个字段表示没有这份状态），字段缺失就不放这个 key。
+     */
+    private fun JsonObject.copyPresentFields(
+        target: JsonObjectBuilder,
+        vararg keys: String,
+    ) {
+        for (key in keys) {
+            val value = this[key] ?: continue
+            target.put(key, value)
+        }
+    }
+
+    /** 失败原因首行并截断：RPC 错误常带整段堆栈，提示气泡里读不完（口径同登录失败）。 */
+    private fun failureReason(e: Exception): String {
+        val reason = e.message?.lineSequence()?.firstOrNull()?.trim()
+            ?.takeIf { it.isNotEmpty() } ?: "未知错误"
+        return if (reason.length > 200) reason.take(200) + "…" else reason
+    }
 
     private fun pluginVersion(): String {
         // Read the <version> tag from our own META-INF/plugin.xml: the IntelliJ

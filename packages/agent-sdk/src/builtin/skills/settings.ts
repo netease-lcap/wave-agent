@@ -598,15 +598,21 @@ Wave looks for memory in the following locations, in this order — later entrie
 
 > \`CLAUDE.md\` is also supported as a fallback for **project** memory (\`<workdir>/CLAUDE.md\`), \`CLAUDE.local.md\` for **local** memory, and user memory falls back to \`~/.claude/AGENTS.md\`, for compatibility with existing setups.
 
+## Referencing Other Files
+
+Any memory file (project, user, or local) can pull in another file by writing \`@path\` on its own line or after whitespace — \`@./docs/roster.md\`, \`@~/notes.md\`, \`@/abs/path.md\`, or a bare relative path. The referenced content is injected as a separate block right after the file that references it; the \`@\` line itself stays as written. \`#\` starts a fragment and is dropped; write a space inside a path as \`\\ \`. References inside code blocks and inline code are left alone, so you can document the syntax without triggering it. Only text files are read (no images or binaries), up to 64 KB each, at most 5 levels deep, and a file reachable twice in one load is expanded once.
+
+Out-of-project references (\`@~/…\` or absolute paths outside the project) expand in **user** memory and **local** memory, but are **refused in project memory** — an \`AGENTS.md\` committed by someone else must not be able to make the agent read your private files. A missing, refused, or oversized reference leaves a visible \`<!-- @include skipped: … -->\` note in place and never drops the rest of the memory file.
+
 ## User Memory
 
 Stored at \`~/.wave/AGENTS.md\`. Use it for cross-project preferences and global instructions, e.g. "always write tests for new features", "prefer functional style".
 
 ## Local Memory
 
-Stored at \`AGENTS.local.md\` in the project root. It sits between the shared project file and your global user file: private to you, but specific to this repository — your role and familiarity with the codebase, personal sandbox URLs or test accounts, workflow and communication quirks. Add it to \`.gitignore\` so it is never committed.
+Stored at \`AGENTS.local.md\` in the project root. It sits between the shared project file and your global user file: private to you, but specific to this repository — your role and familiarity with the codebase, personal sandbox URLs or test accounts, workflow and communication quirks. Add it to \`.gitignore\` so it is never committed. Unlike the other files it is never created automatically: write it yourself, or edit it in Settings → Personalization → AGENTS.md (the personal tab), next to the user and project files.
 
-It is read from the session's working directory only (no walk up the tree), so every git worktree needs its own copy. Create it yourself (any editor) — nothing writes it automatically.
+It is read from the session's working directory only (no walk up the tree), so every git worktree needs its own copy.
 
 ## Project Memory
 

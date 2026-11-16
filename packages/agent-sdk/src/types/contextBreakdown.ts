@@ -64,9 +64,9 @@ export interface ContextBreakdown {
   skills: Array<{ name: string; tokens: number }>;
   /** 子代理清单明细，按体积降序 */
   agents: Array<{ name: string; tokens: number }>;
-  /** 注入的记忆明细（项目 / 用户 / 自动规则），按体积降序 */
+  /** 注入的记忆明细（项目 / 用户 / 个人 / 自动规则），按体积降序 */
   memoryFiles: Array<{
-    type: "project" | "user" | "rules";
+    type: "project" | "user" | "local" | "rules";
     path: string;
     tokens: number;
   }>;

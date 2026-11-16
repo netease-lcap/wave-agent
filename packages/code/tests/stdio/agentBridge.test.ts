@@ -102,6 +102,9 @@ vi.mock("node:os", async (importOriginal) => {
   return {
     ...actual,
     tmpdir: vi.fn(() => "/tmp"),
+    // Delegates to the real home by default: only the user-tier memory cases
+    // point `~` somewhere disposable (they write files there).
+    homedir: vi.fn(() => actual.homedir()),
   };
 });
 
@@ -120,7 +123,8 @@ import {
   realpathSync,
   statSync,
 } from "node:fs";
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import type {
@@ -138,11 +142,16 @@ import type {
  *  session-root vs drifted-cwd assertions hold on Windows too. */
 const REPO_ROOT = path.resolve("/fake/repo");
 
+/** The real home, captured before any case points `~` at a temp dir. */
+const REAL_HOME = homedir();
+
 function createMockAgent(overrides: Record<string, unknown> = {}) {
   const messages: Message[] = [];
   const agent = {
     sessionId: "test-session-id",
     currentWorkdir: "/test/workdir",
+    // 会话起点（不随 `cd` 漂移）：设置页三档记忆文件锚在它上面。
+    sessionWorkdir: "/test/workdir",
     latestTotalTokens: 100,
     getContextWindow: vi.fn().mockReturnValue(200000),
     getMaxOutputTokens: vi.fn().mockReturnValue(32_000),
@@ -179,6 +188,14 @@ function createMockAgent(overrides: Record<string, unknown> = {}) {
     isCommandRunning: false,
     queuedMessages: [],
     getBackgroundTasks: vi.fn().mockReturnValue([]),
+    // 设置页三档记忆文件（用户级 / 项目级 / 个人级）：桥只负责把 scope 转成
+    // 对应的方法调用，内容读写归 SDK。
+    readUserMemoryContent: vi.fn().mockResolvedValue(""),
+    writeUserMemoryContent: vi.fn().mockResolvedValue(undefined),
+    readProjectMemoryContent: vi.fn().mockResolvedValue(""),
+    writeProjectMemoryContent: vi.fn().mockResolvedValue(undefined),
+    readLocalMemoryContent: vi.fn().mockResolvedValue(""),
+    writeLocalMemoryContent: vi.fn().mockResolvedValue(undefined),
     // 凭据形态（spec desktop-account「认证方式」）：没有凭据的默认形态。
     getGatewayConfig: vi.fn().mockReturnValue({}),
     ...overrides,
@@ -214,6 +231,8 @@ beforeEach(() => {
 
 afterEach(() => {
   stderrWriteSpy.mockRestore();
+  // 用户级记忆用例把 `~` 指到临时目录（那里会真的落盘），这里复位。
+  vi.mocked(homedir).mockReturnValue(REAL_HOME);
   delete process.env.WAVE_SERVER_URL;
   // 凭据形态会读 OS 环境里的网关凭据（settings.json `env` 的下一层），
   // 逐条删干净，避免用例之间互相污染。
@@ -5794,4 +5813,711 @@ test("getMessages keeps tool image bytes off the wire", async () => {
   // send those bytes to the model.
   const kept = mockAgent.messages[0].blocks[1];
   expect((kept as { images?: unknown[] }).images).toHaveLength(1);
+});
+
+// ── Memory files: user / project / personal tiers (settings UI) ──
+
+/** A throwaway workdir for the memory-file RPCs — same unique /tmp path style
+ *  the transcript fixtures above use (no `mkdtemp`), removed by the test. */
+function memoryWorkdir(): string {
+  // The artifacts cases point `tmpdir` at the remote host's /remote/tmp and
+  // `clearAllMocks` does not restore `mockReturnValue`, so pin it back to the
+  // writable default before deriving the path.
+  vi.mocked(tmpdir).mockReturnValue("/tmp");
+  return join(
+    tmpdir(),
+    `wave-agentbridge-memory-${process.pid}-${Math.random().toString(36).slice(2)}`,
+  );
+}
+
+/** The hash the bridge is contracted to answer for a piece of editor text:
+ *  sha256, first 16 hex chars. Derived here independently of the bridge so the
+ *  formula itself is pinned, not just "two hashes differ". */
+function memoryHash(content: string): string {
+  return createHash("sha256")
+    .update(content, "utf8")
+    .digest("hex")
+    .slice(0, 16);
+}
+
+/** A throwaway `~` (the user tier really reads and writes under it). */
+function fakeUserHome(): string {
+  return join(
+    tmpdir(),
+    `wave-agentbridge-home-${process.pid}-${Math.random().toString(36).slice(2)}`,
+  );
+}
+
+test("getAgentsContent reads each tier off its own file and reports exists, readable and hash", async () => {
+  // 三档各自的文件；回包必须带上编辑器要的三项状态（内容 hash / 是否存在 /
+  // 本次读取是否成功），以及档位与实际读到的路径。
+  const workdir = memoryWorkdir();
+  const home = fakeUserHome();
+  vi.mocked(homedir).mockReturnValue(home);
+  await mkdir(join(home, ".wave"), { recursive: true });
+  await mkdir(workdir, { recursive: true });
+  try {
+    await writeFile(join(home, ".wave", "AGENTS.md"), "user tier", "utf-8");
+    await writeFile(join(workdir, "AGENTS.md"), "project tier", "utf-8");
+    await writeFile(join(workdir, "AGENTS.local.md"), "personal tier", "utf-8");
+    const { bridge } = createBridge();
+
+    // 无会话：三档都直读文件（桌面端在建会话前就打开了设置页）。
+    const user = await bridge.handleRequest("getAgentsContent", {
+      scope: "user",
+      workdir,
+    });
+    const project = await bridge.handleRequest("getAgentsContent", {
+      scope: "project",
+      workdir,
+    });
+    // 个人档复用同一对 RPC，只靠 scope 分流（没有独立的 local 方法）。
+    const local = await bridge.handleRequest("getAgentsContent", {
+      scope: "local",
+      workdir,
+    });
+
+    expect(user).toEqual({
+      scope: "user",
+      content: "user tier",
+      path: join(home, ".wave", "AGENTS.md"),
+      exists: true,
+      readable: true,
+      hash: memoryHash("user tier"),
+    });
+    expect(project).toEqual({
+      scope: "project",
+      content: "project tier",
+      path: join(workdir, "AGENTS.md"),
+      exists: true,
+      readable: true,
+      hash: memoryHash("project tier"),
+    });
+    expect(local).toEqual({
+      scope: "local",
+      content: "personal tier",
+      path: join(workdir, "AGENTS.local.md"),
+      exists: true,
+      readable: true,
+      hash: memoryHash("personal tier"),
+    });
+  } finally {
+    await rm(workdir, { recursive: true, force: true });
+    await rm(home, { recursive: true, force: true });
+  }
+});
+
+test("the read hash tracks exactly the text handed to the editor", async () => {
+  const workdir = memoryWorkdir();
+  await mkdir(workdir, { recursive: true });
+  try {
+    const { bridge } = createBridge();
+    const filePath = join(workdir, "AGENTS.md");
+    await writeFile(filePath, "team", "utf-8");
+
+    const first = (await bridge.handleRequest("getAgentsContent", {
+      scope: "project",
+      workdir,
+    })) as { hash: string | null };
+    // 同一份内容再读一次：hash 必须一样（保存时才对得上）。
+    const second = (await bridge.handleRequest("getAgentsContent", {
+      scope: "project",
+      workdir,
+    })) as { hash: string | null };
+    expect(first.hash).toBe(memoryHash("team"));
+    expect(second.hash).toBe(first.hash);
+
+    // 改一个字符就变（过期的 hash 必须能识别出来）。
+    await writeFile(filePath, "tean", "utf-8");
+    const changed = (await bridge.handleRequest("getAgentsContent", {
+      scope: "project",
+      workdir,
+    })) as { hash: string | null };
+    expect(changed.hash).toBe(memoryHash("tean"));
+    expect(changed.hash).not.toBe(first.hash);
+  } finally {
+    await rm(workdir, { recursive: true, force: true });
+  }
+});
+
+test("a memory tier that cannot be read is reported as unreadable, not as an empty file", async () => {
+  // 目录顶在文件位上：open() 报 EISDIR，形状与 EACCES 一致，又不用 chmod
+  // （Windows 不支持、root 下也无效）。
+  const workdir = memoryWorkdir();
+  await mkdir(join(workdir, "AGENTS.local.md"), { recursive: true });
+  try {
+    const { bridge } = createBridge();
+    const result = (await bridge.handleRequest("getAgentsContent", {
+      scope: "local",
+      workdir,
+    })) as {
+      content: string;
+      hash: string | null;
+      exists: boolean;
+      readable: boolean;
+      error?: string;
+    };
+
+    // 「读失败」不得被表达成「文件为空」——否则一次保存就把磁盘上的文件清空。
+    expect(result).toMatchObject({
+      scope: "local",
+      content: "",
+      path: join(workdir, "AGENTS.local.md"),
+      exists: true,
+      readable: false,
+      hash: null,
+    });
+    expect(result.error).toMatch(/EISDIR|EACCES|EPERM/);
+  } finally {
+    await rm(workdir, { recursive: true, force: true });
+  }
+});
+
+test("the memory tiers anchor to the session start, not to a drifted currentWorkdir", async () => {
+  // 会话里 `cd` 到子目录后打开设置页：项目级配置仍属于会话起点那个仓库，
+  // 否则编辑器会读到（并写回）另一个项目的 AGENTS.md。
+  const { bridge } = createBridge();
+  const mockAgent = createMockAgent({ currentWorkdir: "/drifted/subdir" });
+  vi.mocked(Agent.create).mockResolvedValue(mockAgent);
+  const init = (await bridge.handleRequest("initialize", {
+    workdir: REPO_ROOT,
+  })) as {
+    sessionId: string;
+  };
+
+  const project = (await bridge.handleRequest(
+    "getAgentsContent",
+    { scope: "project" },
+    init.sessionId,
+  )) as { path: string };
+  const local = (await bridge.handleRequest(
+    "getAgentsContent",
+    { scope: "local" },
+    init.sessionId,
+  )) as { path: string };
+  expect(project.path).toBe(join("/test/workdir", "AGENTS.md"));
+  expect(local.path).toBe(join("/test/workdir", "AGENTS.local.md"));
+  await bridge.handleRequest(
+    "setAgentsContent",
+    { scope: "project", content: "p" },
+    init.sessionId,
+  );
+  await bridge.handleRequest(
+    "setAgentsContent",
+    { scope: "local", content: "me" },
+    init.sessionId,
+  );
+
+  expect(mockAgent.writeProjectMemoryContent).toHaveBeenCalledWith(
+    "/test/workdir",
+    "p",
+  );
+  expect(mockAgent.writeLocalMemoryContent).toHaveBeenCalledWith(
+    "/test/workdir",
+    "me",
+  );
+});
+
+test("getAgentsContent reads the personal tier from the workdir, preferring AGENTS.local.md over CLAUDE.local.md", async () => {
+  const workdir = memoryWorkdir();
+  await mkdir(workdir, { recursive: true });
+  try {
+    const { bridge } = createBridge();
+
+    // Legacy-only checkout: CLAUDE.local.md still answers (spec 场景 2 的回退)。
+    await writeFile(
+      join(workdir, "CLAUDE.local.md"),
+      "legacy personal",
+      "utf-8",
+    );
+    const fallback = (await bridge.handleRequest("getAgentsContent", {
+      scope: "local",
+      workdir,
+    })) as { content: string; path?: string };
+    expect(fallback).toEqual({
+      scope: "local",
+      content: "legacy personal",
+      path: join(workdir, "CLAUDE.local.md"),
+      exists: true,
+      readable: true,
+      hash: memoryHash("legacy personal"),
+    });
+
+    // AGENTS.local.md 一出现就压过它（与项目档 AGENTS.md → CLAUDE.md 同规则）。
+    await writeFile(join(workdir, "AGENTS.local.md"), "personal", "utf-8");
+    const preferred = (await bridge.handleRequest("getAgentsContent", {
+      scope: "local",
+      workdir,
+    })) as { content: string; path?: string };
+    expect(preferred).toEqual({
+      scope: "local",
+      content: "personal",
+      path: join(workdir, "AGENTS.local.md"),
+      exists: true,
+      readable: true,
+      hash: memoryHash("personal"),
+    });
+  } finally {
+    await rm(workdir, { recursive: true, force: true });
+  }
+});
+
+test("getAgentsContent reads the project tier from the workdir, preferring AGENTS.md over CLAUDE.md when no session is bound", async () => {
+  // 无会话兜底（桌面端刚打开就开设置页）：与个人档同形的双文件名循环，
+  // 老仓库只有 CLAUDE.md 时不能显示成空编辑器。
+  const workdir = memoryWorkdir();
+  await mkdir(workdir, { recursive: true });
+  try {
+    const { bridge } = createBridge();
+
+    // 两档都不存在：空内容 + 规范路径（读不得建文件）。exists 为 false、hash 为
+    // null —— 「还没有可编辑的版本」，与「存在但为空」区分开。
+    const missing = (await bridge.handleRequest("getAgentsContent", {
+      scope: "project",
+      workdir,
+    })) as { content: string; path?: string };
+    expect(missing).toEqual({
+      scope: "project",
+      content: "",
+      path: join(workdir, "AGENTS.md"),
+      exists: false,
+      readable: true,
+      hash: null,
+    });
+    await expect(stat(join(workdir, "AGENTS.md"))).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+
+    // 只有 legacy 文件：仍要读到。
+    await writeFile(join(workdir, "CLAUDE.md"), "legacy team", "utf-8");
+    const fallback = (await bridge.handleRequest("getAgentsContent", {
+      scope: "project",
+      workdir,
+    })) as { content: string; path?: string };
+    expect(fallback).toEqual({
+      scope: "project",
+      content: "legacy team",
+      path: join(workdir, "CLAUDE.md"),
+      exists: true,
+      readable: true,
+      hash: memoryHash("legacy team"),
+    });
+
+    // AGENTS.md 一出现就压过它（与 SDK 侧 readProjectMemorySource 同优先级）。
+    await writeFile(join(workdir, "AGENTS.md"), "team", "utf-8");
+    const preferred = (await bridge.handleRequest("getAgentsContent", {
+      scope: "project",
+      workdir,
+    })) as { content: string; path?: string };
+    expect(preferred).toEqual({
+      scope: "project",
+      content: "team",
+      path: join(workdir, "AGENTS.md"),
+      exists: true,
+      readable: true,
+      hash: memoryHash("team"),
+    });
+  } finally {
+    await rm(workdir, { recursive: true, force: true });
+  }
+});
+
+test("getAgentsContent shows an empty personal tier without creating the file", async () => {
+  // 桌面端 / VS Code 在建会话之前就打开了设置页：没有会话可问，直读文件。
+  const { bridge } = createBridge();
+  const workdir = memoryWorkdir();
+  try {
+    const result = (await bridge.handleRequest("getAgentsContent", {
+      scope: "local",
+      workdir,
+    })) as { content: string; path?: string };
+
+    // 两档都不存在时显示空内容，并且仍报出规范路径（编辑器绑定的是它）。
+    expect(result).toEqual({
+      scope: "local",
+      content: "",
+      path: join(workdir, "AGENTS.local.md"),
+      exists: false,
+      readable: true,
+      hash: null,
+    });
+    // 读不得顺手建文件：打开设置页不该在仓库里留下未跟踪文件。
+    await expect(stat(join(workdir, "AGENTS.local.md"))).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+    await expect(stat(join(workdir, "CLAUDE.local.md"))).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+  } finally {
+    await rm(workdir, { recursive: true, force: true });
+  }
+});
+
+test("setAgentsContent dispatches user, project and personal scopes to their own agent methods", async () => {
+  const { bridge } = createBridge();
+  const mockAgent = createMockAgent();
+  vi.mocked(Agent.create).mockResolvedValue(mockAgent);
+  const init = (await bridge.handleRequest("initialize", {
+    workdir: REPO_ROOT,
+  })) as {
+    sessionId: string;
+  };
+
+  await bridge.handleRequest(
+    "setAgentsContent",
+    { scope: "user", content: "u" },
+    init.sessionId,
+  );
+  await bridge.handleRequest(
+    "setAgentsContent",
+    { scope: "project", content: "p" },
+    init.sessionId,
+  );
+  await bridge.handleRequest(
+    "setAgentsContent",
+    { scope: "local", content: "me", workdir: REPO_ROOT },
+    init.sessionId,
+  );
+
+  expect(mockAgent.writeUserMemoryContent).toHaveBeenCalledWith("u");
+  expect(mockAgent.writeProjectMemoryContent).toHaveBeenCalledWith(
+    "/test/workdir",
+    "p",
+  );
+  // 个人档带 workdir 时按它落盘，不能借用项目档的方法。
+  expect(mockAgent.writeLocalMemoryContent).toHaveBeenCalledWith(
+    REPO_ROOT,
+    "me",
+  );
+  expect(mockAgent.writeProjectMemoryContent).toHaveBeenCalledTimes(1);
+});
+
+test("setAgentsContent writes the personal tier to AGENTS.local.md, never to the shared AGENTS.md", async () => {
+  // 父目录不存在 → 顺带验证父目录按需创建。
+  const base = memoryWorkdir();
+  const workdir = join(base, "personal", "project");
+  try {
+    const { bridge } = createBridge();
+
+    const saved = await bridge.handleRequest("setAgentsContent", {
+      scope: "local",
+      workdir,
+      content: "my personal notes",
+    });
+    // 回包带上档位与实际落盘路径（宿主据此复位编辑器的绑定）。
+    expect(saved).toEqual({
+      ok: true,
+      scope: "local",
+      path: join(workdir, "AGENTS.local.md"),
+    });
+    expect(await readFile(join(workdir, "AGENTS.local.md"), "utf-8")).toBe(
+      "my personal notes",
+    );
+    // 个人档绝不写团队共用的 AGENTS.md，也不写回退文件名。
+    await expect(stat(join(workdir, "AGENTS.md"))).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+    await expect(stat(join(workdir, "CLAUDE.local.md"))).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+
+    // 同一个 workdir 的项目档仍是 AGENTS.md —— 两档不互相顶替。
+    await bridge.handleRequest("setAgentsContent", {
+      scope: "project",
+      workdir,
+      content: "team notes",
+    });
+    expect(await readFile(join(workdir, "AGENTS.md"), "utf-8")).toBe(
+      "team notes",
+    );
+    expect(await readFile(join(workdir, "AGENTS.local.md"), "utf-8")).toBe(
+      "my personal notes",
+    );
+  } finally {
+    await rm(base, { recursive: true, force: true });
+  }
+});
+
+test("the personal tier requires a workdir just like the project tier", async () => {
+  const { bridge } = createBridge();
+
+  // 无会话、入参也没带 workdir：没有可解析的目录，只能报错（文案沿用英文风格）。
+  await expect(
+    bridge.handleRequest("getAgentsContent", { scope: "local" }),
+  ).rejects.toMatchObject({
+    code: INVALID_PARAMS,
+    message: "Local-scope AGENTS.local.md requires a workdir",
+  });
+  await expect(
+    bridge.handleRequest("setAgentsContent", { scope: "local", content: "x" }),
+  ).rejects.toMatchObject({
+    code: INVALID_PARAMS,
+    message: "Local-scope AGENTS.local.md requires a workdir",
+  });
+  // 项目档那条文案保持不变：新增档位不改既有报错。
+  await expect(
+    bridge.handleRequest("getAgentsContent", { scope: "project" }),
+  ).rejects.toMatchObject({
+    code: INVALID_PARAMS,
+    message: "Project-scope AGENTS.md requires a workdir",
+  });
+});
+
+// ── Memory files: 保存的并发校验（expectedHash） ──
+
+test("setAgentsContent saves when expectedHash still matches the disk", async () => {
+  const workdir = memoryWorkdir();
+  await mkdir(workdir, { recursive: true });
+  try {
+    const { bridge } = createBridge();
+    await writeFile(join(workdir, "AGENTS.local.md"), "as opened", "utf-8");
+    const loaded = (await bridge.handleRequest("getAgentsContent", {
+      scope: "local",
+      workdir,
+    })) as { hash: string | null };
+    expect(loaded.hash).toBe(memoryHash("as opened"));
+
+    const saved = await bridge.handleRequest("setAgentsContent", {
+      scope: "local",
+      workdir,
+      content: "edited",
+      expectedHash: loaded.hash,
+    });
+    expect(saved).toEqual({
+      ok: true,
+      scope: "local",
+      path: join(workdir, "AGENTS.local.md"),
+    });
+    expect(await readFile(join(workdir, "AGENTS.local.md"), "utf-8")).toBe(
+      "edited",
+    );
+  } finally {
+    await rm(workdir, { recursive: true, force: true });
+  }
+});
+
+test("setAgentsContent refuses a stale expectedHash and never touches the disk file", async () => {
+  // 编辑器打开期间文件被外部改过：保存必须被拒绝，磁盘保持外部那一版。
+  const workdir = memoryWorkdir();
+  await mkdir(workdir, { recursive: true });
+  try {
+    const { bridge } = createBridge();
+    const filePath = join(workdir, "AGENTS.local.md");
+    await writeFile(filePath, "as opened", "utf-8");
+    const loaded = (await bridge.handleRequest("getAgentsContent", {
+      scope: "local",
+      workdir,
+    })) as { hash: string | null };
+
+    await writeFile(filePath, "edited elsewhere", "utf-8");
+
+    const saved = (await bridge.handleRequest("setAgentsContent", {
+      scope: "local",
+      workdir,
+      content: "my edit",
+      expectedHash: loaded.hash,
+    })) as { ok: boolean; conflict?: boolean; error?: string };
+    expect(saved.ok).toBe(false);
+    expect(saved.conflict).toBe(true);
+    expect(saved.error).toContain("AGENTS.local.md");
+    expect(saved.error).toContain("modified on disk");
+    // 最要紧的一条：没写盘。
+    expect(await readFile(filePath, "utf-8")).toBe("edited elsewhere");
+    await expect(stat(join(workdir, "AGENTS.md"))).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+  } finally {
+    await rm(workdir, { recursive: true, force: true });
+  }
+});
+
+test("a save whose current state cannot be read fails without claiming a conflict", async () => {
+  // 「读不了 ⇒ 无法校验」与「文件被外部改过」是两件事：报后者会让用户去找谁
+  // 改了文件，而真实原因是根本读不到。所以它不是 conflict。
+  const workdir = memoryWorkdir();
+  const filePath = join(workdir, "AGENTS.local.md");
+  try {
+    await mkdir(workdir, { recursive: true });
+    const { bridge } = createBridge();
+    await writeFile(filePath, "as opened", "utf-8");
+    const loaded = (await bridge.handleRequest("getAgentsContent", {
+      scope: "local",
+      workdir,
+    })) as { hash: string | null };
+
+    // 编辑器打开期间文件被换成了同名目录：保存前的复读会 EISDIR（存在但读不了）。
+    await rm(filePath);
+    await mkdir(filePath);
+
+    const saved = (await bridge.handleRequest("setAgentsContent", {
+      scope: "local",
+      workdir,
+      content: "my edit",
+      expectedHash: loaded.hash,
+    })) as { ok: boolean; conflict?: boolean; error?: string };
+    expect(saved.ok).toBe(false);
+    expect(saved.conflict).toBeUndefined();
+    expect(saved.error).toContain("could not be read");
+  } finally {
+    await rm(workdir, { recursive: true, force: true });
+  }
+});
+
+test("a save that claims the file did not exist is refused once it does", async () => {
+  // 编辑器打开时这一档是空的（hash 为 null = 「当时文件不存在」）；
+  // 期间别人建了这个文件，保存就不能把它盖掉。
+  const workdir = memoryWorkdir();
+  await mkdir(workdir, { recursive: true });
+  try {
+    const { bridge } = createBridge();
+    const loaded = (await bridge.handleRequest("getAgentsContent", {
+      scope: "local",
+      workdir,
+    })) as { hash: string | null; exists: boolean };
+    expect(loaded.exists).toBe(false);
+    expect(loaded.hash).toBeNull();
+
+    const filePath = join(workdir, "AGENTS.local.md");
+    await writeFile(filePath, "created elsewhere", "utf-8");
+
+    const saved = (await bridge.handleRequest("setAgentsContent", {
+      scope: "local",
+      workdir,
+      content: "my edit",
+      expectedHash: null,
+    })) as { ok: boolean; conflict?: boolean; error?: string };
+    expect(saved.ok).toBe(false);
+    expect(saved.conflict).toBe(true);
+    expect(saved.error).toContain("created on disk");
+    expect(await readFile(filePath, "utf-8")).toBe("created elsewhere");
+  } finally {
+    await rm(workdir, { recursive: true, force: true });
+  }
+});
+
+test("a save is refused once the file it was editing disappeared", async () => {
+  const workdir = memoryWorkdir();
+  await mkdir(workdir, { recursive: true });
+  try {
+    const { bridge } = createBridge();
+    const filePath = join(workdir, "AGENTS.md");
+    await writeFile(filePath, "as opened", "utf-8");
+    const loaded = (await bridge.handleRequest("getAgentsContent", {
+      scope: "project",
+      workdir,
+    })) as { hash: string | null };
+
+    await rm(filePath);
+
+    const saved = (await bridge.handleRequest("setAgentsContent", {
+      scope: "project",
+      workdir,
+      content: "my edit",
+      expectedHash: loaded.hash,
+    })) as { ok: boolean; conflict?: boolean; error?: string };
+    expect(saved.ok).toBe(false);
+    expect(saved.conflict).toBe(true);
+    expect(saved.error).toContain("removed on disk");
+    // 冲突就是「什么都没发生」：文件不会被这次保存重新造出来。
+    await expect(stat(filePath)).rejects.toMatchObject({ code: "ENOENT" });
+  } finally {
+    await rm(workdir, { recursive: true, force: true });
+  }
+});
+
+test("a save without expectedHash keeps the old unguarded behaviour", async () => {
+  // 未升级的宿主不传 hash：不做并发校验，保存照旧成功（spec 场景 13）。
+  const workdir = memoryWorkdir();
+  await mkdir(workdir, { recursive: true });
+  try {
+    const { bridge } = createBridge();
+    const filePath = join(workdir, "AGENTS.md");
+    await writeFile(filePath, "older content", "utf-8");
+
+    const saved = await bridge.handleRequest("setAgentsContent", {
+      scope: "project",
+      workdir,
+      content: "new content",
+    });
+    expect(saved).toEqual({
+      ok: true,
+      scope: "project",
+      path: filePath,
+    });
+    expect(await readFile(filePath, "utf-8")).toBe("new content");
+  } finally {
+    await rm(workdir, { recursive: true, force: true });
+  }
+});
+
+test("a save that followed a legacy-file read is accepted and lands in the canonical file", async () => {
+  // 读走的是 CLAUDE.local.md（AGENTS.local.md 不存在），校验必须比同一份文件，
+  // 否则刚从 legacy 文件读来的编辑器一保存就被当成「被外部改过」。
+  const workdir = memoryWorkdir();
+  await mkdir(workdir, { recursive: true });
+  try {
+    const { bridge } = createBridge();
+    await writeFile(join(workdir, "CLAUDE.local.md"), "legacy", "utf-8");
+    const loaded = (await bridge.handleRequest("getAgentsContent", {
+      scope: "local",
+      workdir,
+    })) as { hash: string | null; path: string };
+    expect(loaded.path).toBe(join(workdir, "CLAUDE.local.md"));
+
+    const saved = await bridge.handleRequest("setAgentsContent", {
+      scope: "local",
+      workdir,
+      content: "legacy curated",
+      expectedHash: loaded.hash,
+    });
+    expect(saved).toEqual({
+      ok: true,
+      scope: "local",
+      path: join(workdir, "AGENTS.local.md"),
+    });
+    expect(await readFile(join(workdir, "AGENTS.local.md"), "utf-8")).toBe(
+      "legacy curated",
+    );
+  } finally {
+    await rm(workdir, { recursive: true, force: true });
+  }
+});
+
+test("the user tier is guarded by the same expectedHash check", async () => {
+  const home = fakeUserHome();
+  vi.mocked(homedir).mockReturnValue(home);
+  try {
+    const filePath = join(home, ".wave", "AGENTS.md");
+    await mkdir(join(home, ".wave"), { recursive: true });
+    await writeFile(filePath, "user memory", "utf-8");
+    const { bridge } = createBridge();
+
+    const stale = (await bridge.handleRequest("getAgentsContent", {
+      scope: "user",
+    })) as { hash: string | null };
+    // 外部改动（如代理自己写了一条记忆）之后，编辑器的 hash 已过期。
+    await writeFile(filePath, "user memory + one more", "utf-8");
+    const refused = (await bridge.handleRequest("setAgentsContent", {
+      scope: "user",
+      content: "my edit",
+      expectedHash: stale.hash,
+    })) as { ok: boolean; conflict?: boolean };
+    expect(refused.ok).toBe(false);
+    expect(refused.conflict).toBe(true);
+    expect(await readFile(filePath, "utf-8")).toBe("user memory + one more");
+
+    // 重新加载后（拿到新 hash）同一个保存请求通过。
+    const fresh = (await bridge.handleRequest("getAgentsContent", {
+      scope: "user",
+    })) as { hash: string | null };
+    const saved = await bridge.handleRequest("setAgentsContent", {
+      scope: "user",
+      content: "my edit",
+      expectedHash: fresh.hash,
+    });
+    expect(saved).toEqual({ ok: true, scope: "user", path: filePath });
+    expect(await readFile(filePath, "utf-8")).toBe("my edit");
+  } finally {
+    await rm(home, { recursive: true, force: true });
+  }
 });

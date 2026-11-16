@@ -159,8 +159,9 @@ class WavePanelHolder(private val project: Project) {
 
     /**
      * The chat panel's session (null while no chat exists). The settings tab reuses it for its
-     * RPCs so getAgentsContent/setAgentsContent can reach the live agent; without one the
-     * settings tab still serves configuration RPCs (which need no agent).
+     * RPCs so getAgentsContent/setAgentsContent ride the live agent's session id (a save then
+     * clears that session's memory cache); without one the settings tab falls back to the shared
+     * CLI process for the memory files and keeps serving configuration RPCs (which need no agent).
      */
     fun chatSession(): WaveSession? = panel?.session
 

@@ -1156,17 +1156,30 @@ export interface AuthStatusResponseMessage extends HostToWebviewMessageBase {
 /** Reply to a getAgentsContent request (settings UI AGENTS.md editor). */
 export interface AgentsContentResponseMessage extends HostToWebviewMessageBase {
   command: "agentsContentResponse";
-  /** "user" reads ~/.wave/AGENTS.md, "project" reads <workdir>/AGENTS.md. */
-  scope: "user" | "project";
+  /** "user" reads ~/.wave/AGENTS.md, "project" reads <workdir>/AGENTS.md,
+   *  "local" reads <workdir>/AGENTS.local.md (fallback CLAUDE.local.md). */
+  scope: "user" | "project" | "local";
   content: string;
+  /** 文件是否存在。false = 还没有这个文件（编辑器允许写，保存即新建）。 */
+  exists: boolean;
+  /** 本次读取是否成功。false 时 `content` 不代表文件内容——**不得**当成「文件为空」，
+   *  编辑器必须显示失败态并禁止保存（否则一次保存就把磁盘上的文件覆盖成空）。 */
+  readable: boolean;
+  /** 内容 hash（写入时的并发校验基准）；`null` = 当时文件不存在（`exists: false`）。 */
+  hash: string | null;
+  /** 读失败原因（`readable: false` 时由宿主填写，用于区分失败与空文件）。 */
+  error?: string;
 }
 
 /** Reply to a setAgentsContent request (settings UI AGENTS.md editor). */
 export interface AgentsContentSavedMessage extends HostToWebviewMessageBase {
   command: "agentsContentSaved";
-  scope: "user" | "project";
+  scope: "user" | "project" | "local";
   ok: boolean;
   error?: string;
+  /** 磁盘内容与请求携带的 `expectedHash` 不一致（文件在编辑期间被外部改过）⇒ 拒绝
+   *  写入。webview 不得静默丢弃用户草稿：重新读取该档并给出可读提示。 */
+  conflict?: boolean;
 }
 
 /**

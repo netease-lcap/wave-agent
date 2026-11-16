@@ -19,8 +19,14 @@
 import React, { useEffect, useRef, useState } from "react";
 import ReactDOM from "react-dom/client";
 import SettingsPage from "./components/SettingsPage";
-import type { NavKey } from "./components/SettingsPage";
+import type {
+  AgentsConflict,
+  AgentsScope,
+  NavKey,
+} from "./components/SettingsPage";
 import type { ConfigurationData } from "./types";
+import type { AgentsReadState } from "./utils/agentsReadState";
+import { agentsReadStateFromMessage } from "./utils/agentsReadState";
 import { useHostMessage } from "./utils/useHostMessage";
 import "./styles/globals.css";
 import "./styles/plugin-controls.css";
@@ -55,10 +61,25 @@ function SettingsPreview() {
   const [projectAgentsContent, setProjectAgentsContent] = useState<
     string | null
   >(null);
+  // 个人级 <workdir>/AGENTS.local.md（打开时只预取用户级；项目级与个人级由
+  // SettingsPage 在各自 tab 首次激活时按需拉取）。
+  const [localAgentsContent, setLocalAgentsContent] = useState<string | null>(
+    null,
+  );
   // AGENTS.md 保存进行中（「个性化」视图独立保存）：agentsSaving 在点击保存到
   // host 回发 agentsContentSaved 之间为 true（禁用文本区与保存按钮）；保存结果
   // toast 由宿主发出，本页不渲染页面内提示。
   const [agentsSaving, setAgentsSaving] = useState(false);
+  // 各档读状态（是否存在 / 读取是否成功 / 内容 hash）：决定编辑器能不能写、保存带
+  // 什么 expectedHash（spec memory-management 场景 8–13）。
+  const [agentsReadState, setAgentsReadState] = useState<
+    Partial<Record<AgentsScope, AgentsReadState | null>>
+  >({});
+  // 保存被并发校验拒绝的档：把该档内容置回 null 让设置页按「未加载」重读（场景 12）。
+  const [agentsConflict, setAgentsConflict] = useState<AgentsConflict | null>(
+    null,
+  );
+  const agentsConflictTokenRef = useRef(0);
   // /agents、/skills 斜杠命令经 openSettings(nav) → settingsState 下发，选中对应选项卡
   const [initialNav, setInitialNav] = useState<NavKey | undefined>(undefined);
   // 项目级 enabledPlugins（「项目设置」视图 SDD 开关）；进入该视图时才向 host
@@ -84,8 +105,8 @@ function SettingsPreview() {
     // would leave /mcp、/agents、/skills、/hooks unable to preselect a tab.
     vscode.postMessage({ command: "settingsReady" });
     // On open: pull the configuration + the user-level AGENTS.md (the
-    // personalization view requests the project scope on demand, same as the
-    // desktop full-page does via ChatApp).
+    // personalization view requests the project / local scopes on demand, same
+    // as the desktop full-page does via ChatApp).
     vscode.postMessage({ command: "getConfiguration" });
     vscode.postMessage({ command: "getAgentsContent", scope: "user" });
   }, []);
@@ -113,20 +134,48 @@ function SettingsPreview() {
         );
         break;
       case "agentsContentResponse":
-        if (msg.scope === "project") {
-          setProjectAgentsContent(
-            typeof msg.content === "string" ? msg.content : "",
-          );
-        } else {
-          setUserAgentsContent(
-            typeof msg.content === "string" ? msg.content : "",
-          );
+        // 三档分流（user / project / local）+ 读状态（exists / readable / hash）：
+        // 落到别档会把内容显示在错误的编辑器里，丢了状态则编辑器无法判断能不能写。
+        {
+          const scope: AgentsScope =
+            msg.scope === "project"
+              ? "project"
+              : msg.scope === "local"
+                ? "local"
+                : "user";
+          const content = typeof msg.content === "string" ? msg.content : "";
+          if (scope === "project") setProjectAgentsContent(content);
+          else if (scope === "local") setLocalAgentsContent(content);
+          else setUserAgentsContent(content);
+          setAgentsReadState((prev) => ({
+            ...prev,
+            [scope]: agentsReadStateFromMessage(msg),
+          }));
         }
         break;
       case "agentsContentSaved":
         // 保存结果复位 agentsSaving（按钮/文本区重新可用）；结果 toast 由宿主
         // 在发出本消息时一并推送。
         setAgentsSaving(false);
+        // 并发保护触发：拒绝覆盖磁盘，把该档置回「未加载」让设置页重读并保留草稿
+        // （spec memory-management 场景 12）。
+        if (msg.conflict === true) {
+          const scope: AgentsScope =
+            msg.scope === "project"
+              ? "project"
+              : msg.scope === "local"
+                ? "local"
+                : "user";
+          if (scope === "project") setProjectAgentsContent(null);
+          else if (scope === "local") setLocalAgentsContent(null);
+          else setUserAgentsContent(null);
+          setAgentsReadState((prev) => ({ ...prev, [scope]: null }));
+          agentsConflictTokenRef.current += 1;
+          setAgentsConflict({
+            scope,
+            token: agentsConflictTokenRef.current,
+          });
+        }
         break;
       case "configuredModels":
         // 补全模型下拉只要名字（清单条目 = {name, supportsVision}）。
@@ -162,24 +211,44 @@ function SettingsPreview() {
       onClose={() => vscode.postMessage({ command: "closeSettings" })}
       userAgentsContent={userAgentsContent}
       projectAgentsContent={projectAgentsContent}
+      localAgentsContent={localAgentsContent}
       onLoadAgentsContent={(scope) =>
         vscode.postMessage({
           command: "getAgentsContent",
           scope,
-          workdir: scope === "project" ? workdir : undefined,
+          // 项目级 / 个人级都落在项目目录里，只有用户级不需要 workdir（漏带
+          // 个人级的 workdir 会被宿主拒绝）。
+          workdir: scope === "user" ? undefined : workdir,
         })
       }
-      onSaveAgentsContent={(scope, content) => {
+      onSaveAgentsContent={(scope, content, expectedHash) => {
         setAgentsSaving(true);
         vscode.postMessage({
           command: "setAgentsContent",
           scope,
           content,
-          workdir: scope === "project" ? workdir : undefined,
+          workdir: scope === "user" ? undefined : workdir,
+          // undefined = 宿主没给读状态 ⇒ 不发该字段（老的「不校验」行为）。
+          ...(expectedHash === undefined ? {} : { expectedHash }),
         });
       }}
+      agentsReadState={agentsReadState}
+      agentsConflict={agentsConflict}
       agentsSaving={agentsSaving}
       workdir={workdir}
+      // 项目换了（settingsState 推来新 workdir）：项目级 / 个人级缓存按归属键作废
+      // （见 SettingsPage 的 onResetProjectAgentsContent）；用户级与项目无关，保持。
+      // 读状态一并作废：旧项目的 hash 不能用来校验新项目的写入。
+      onResetProjectAgentsContent={() => {
+        setProjectAgentsContent(null);
+        setLocalAgentsContent(null);
+        setAgentsReadState((prev) => ({
+          ...prev,
+          project: null,
+          local: null,
+        }));
+        setAgentsConflict(null);
+      }}
       configurationError={configurationError}
       initialNav={initialNav}
       vscode={vscode}

@@ -771,6 +771,27 @@ export class DesktopHost {
   }
 
   /**
+   * A pane's live session id — the JSON-RPC envelope field that routes a request
+   * to one specific session inside the host's `wave --stdio` process.
+   *
+   * Session-scoped-but-account-level RPCs (the settings page's AGENTS.md
+   * read/write) go out through `utilityClientFor(host)` rather than through the
+   * pane's `StdioAgent`, but that is **the same process**: `agentForPane` returns
+   * a `StdioAgent` built on `clientFor(host).client` (createAgent), i.e. exactly
+   * the object `utilityClientFor` hands back. So passing this id makes the CLI
+   * resolve the request against that session's live agent — which is what
+   * invalidates its memory cache on save (spec memory-management 场景 3). Without
+   * it the CLI takes the no-session branch and writes the file only, leaving the
+   * running session injecting the old content until it is recreated.
+   *
+   * `undefined` before the pane has a session (or before initialize answers) —
+   * then the CLI's own direct-file fallback applies, same as before.
+   */
+  private sessionIdForPane(paneId?: string): string | undefined {
+    return this.agentForPane(paneId)?.sessionId;
+  }
+
+  /**
    * Key for a pane's input draft. Drafts are per-session (desktop-sessions.md
    * 「会话管理」scenario 11/12): typed-but-unsent text must not leak across
    * sessions shown in the same pane, and follows the session between panes.
@@ -5713,14 +5734,20 @@ export class DesktopHost {
 
       // -- AGENTS.md (memory files) -------------------------------------------
       case "getAgentsContent":
-        await this.handleGetAgentsContent(pid, msg.scope as "user" | "project");
+        await this.handleGetAgentsContent(
+          pid,
+          msg.scope as "user" | "project" | "local",
+        );
         break;
 
       case "setAgentsContent":
         await this.handleSetAgentsContent(
           pid,
-          msg.scope as "user" | "project",
+          msg.scope as "user" | "project" | "local",
           msg.content as string,
+          // 三态：字符串 = 编辑时读到的内容 hash；`null` = 编辑时文件还不存在；
+          // 属性缺失 = 不校验（老 webview）。
+          msg.expectedHash as string | null | undefined,
         );
         break;
 
@@ -8296,36 +8323,59 @@ export class DesktopHost {
   }
 
   /**
-   * AGENTS.md settings UI: fetch user (~/.wave/AGENTS.md) or project
-   * (<workdir>/AGENTS.md) memory file content.
+   * AGENTS.md settings UI: fetch user (~/.wave/AGENTS.md), project
+   * (<workdir>/AGENTS.md) or local / personal (<workdir>/AGENTS.local.md)
+   * memory file content.
    *
-   * The project scope is resolved against the target pane's session *project*
-   * root (projectRootForPane — stable initialize-time cwd), mirroring the other
-   * project-scoped settings RPCs (getProjectSettings/getHooksConfig/
+   * The project and local scopes are resolved against the target pane's session
+   * *project* root (projectRootForPane — stable initialize-time cwd), mirroring
+   * the other project-scoped settings RPCs (getProjectSettings/getHooksConfig/
    * getMcpConfig) — the webview cannot supply a trustworthy workdir because the
    * desktop settings full-page lives on the root instance, which owns no
    * session of its own and must follow the focused pane. Trusting a
    * webview-sent path made the editor read/write whichever directory happened
    * to sit at the head of the window's recents instead of the current
    * project's file.
+   *
+   * The pane's session id rides along on the RPC envelope (sessionIdForPane) so
+   * the CLI answers/saves through that session's live agent — the read sees the
+   * current memory, the save invalidates its cache (spec 场景 3).
    */
   private async handleGetAgentsContent(
     paneId: string,
-    scope: "user" | "project",
+    scope: "user" | "project" | "local",
   ): Promise<void> {
     try {
+      // 只有用户级不带 workdir；项目级与个人级（AGENTS.local.md）都落在当前
+      // 项目的根上，同一个 projectRootForPane。
       const workdir =
-        scope === "project" ? this.projectRootForPane(paneId) : undefined;
+        scope === "user" ? undefined : this.projectRootForPane(paneId);
       const result = (await this.utilityClientFor(
         this.hostForPane(paneId),
-      ).request("getAgentsContent", { scope, workdir })) as {
+      ).request(
+        "getAgentsContent",
+        { scope, workdir },
+        this.sessionIdForPane(paneId),
+      )) as {
         content: string;
         path?: string;
+        exists?: boolean;
+        readable?: boolean;
+        hash?: string | null;
+        error?: string;
       };
       this.postMessage({
         command: "agentsContentResponse",
         scope,
         content: result.content,
+        // 读状态原样透传（spec 场景 8/10）：编辑器靠 hash 做并发校验、靠
+        // exists/readable 区分「文件不存在」「读失败」与「文件是空的」。宿主不
+        // 重算 hash、也不改判定，CLI 给了什么就放什么。
+        path: result.path,
+        exists: result.exists,
+        readable: result.readable,
+        hash: result.hash,
+        ...(result.error !== undefined ? { error: result.error } : {}),
       });
     } catch (error) {
       console.error("[DesktopHost] 获取 AGENTS.md 内容失败:", error);
@@ -8333,38 +8383,72 @@ export class DesktopHost {
         command: "agentsContentResponse",
         scope,
         content: "",
+        // RPC 本身失败 = 读不到。回包形状与 CLI 自己「读不到」（EACCES 等）时
+        // 一致：exists 只是占位，真正让编辑器只读并**禁止保存**的是
+        // `readable: false`（spec 场景 10）——不能只回一个空串，那会被当成空文件。
+        exists: true,
+        readable: false,
+        hash: null,
+        error: error instanceof Error ? error.message : String(error),
       });
     }
   }
 
   /**
    * AGENTS.md settings UI: persist content via the stdio setAgentsContent RPC.
-   * The project workdir is resolved from the target pane's session project root,
-   * same as handleGetAgentsContent (see above).
+   * The workdir for the project scope (<workdir>/AGENTS.md) and the local /
+   * personal scope (<workdir>/AGENTS.local.md) is resolved from the target
+   * pane's session project root, same as handleGetAgentsContent (see above).
+   * The pane's session id rides along on the envelope (sessionIdForPane) so the
+   * CLI writes through the live agent and clears its memory cache — without it
+   * the running session keeps injecting the old content (spec 场景 3).
+   *
+   * Concurrency: the `expectedHash` the webview read with is forwarded verbatim
+   * (absence = no check) and the CLI's `conflict` verdict comes back untouched —
+   * the host never re-hashes a file nor decides who wins.
    */
   private async handleSetAgentsContent(
     paneId: string,
-    scope: "user" | "project",
+    scope: "user" | "project" | "local",
     content: string,
+    expectedHash?: string | null,
   ): Promise<void> {
     try {
       const workdir =
-        scope === "project" ? this.projectRootForPane(paneId) : undefined;
-      await this.utilityClientFor(this.hostForPane(paneId)).request(
+        scope === "user" ? undefined : this.projectRootForPane(paneId);
+      const result = (await this.utilityClientFor(
+        this.hostForPane(paneId),
+      ).request(
         "setAgentsContent",
         {
           scope,
           content,
           workdir,
+          // 并发保护的期望值原样带给 CLI（spec 场景 12/13）。三态必须区分开：
+          // 字符串 = 编辑时读到的内容 hash；`null` = 编辑时文件还不存在（磁盘上
+          // 后来**出现**了文件也算冲突）；属性省略 = 不校验（老 webview）。
+          ...(expectedHash !== undefined ? { expectedHash } : {}),
         },
-      );
+        this.sessionIdForPane(paneId),
+      )) as { ok?: boolean; conflict?: boolean; error?: string } | undefined;
+      const ok = result?.ok !== false;
+      // 冲突与失败都是 CLI 的判定（宿主只转述）：成功才提示保存成功，否则把 CLI
+      // 给的原因原样带出来 —— 冲突时编辑器的正文还在，用户重载即可再编辑。
+      if (ok) {
+        this.showToast({ message: "保存成功", type: "success" });
+      } else {
+        const reason =
+          result?.error ?? (result?.conflict ? "文件已被外部改动" : "未知错误");
+        this.showToast({ message: `保存失败：${reason}`, type: "error" });
+      }
       // AGENTS.md 保存结果经全局 toast 提示（spec「设置页反馈语义」）；
       // agentsContentSaved 仍回发以复位 webview 的保存中状态。
-      this.showToast({ message: "保存成功", type: "success" });
       this.postMessage({
         command: "agentsContentSaved",
         scope,
-        ok: true,
+        ok,
+        conflict: result?.conflict,
+        error: result?.error,
       });
     } catch (error) {
       console.error("[DesktopHost] 保存 AGENTS.md 失败:", error);

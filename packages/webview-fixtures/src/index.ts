@@ -85,6 +85,22 @@ export * from "./types.js";
 
 type Overrides<T> = Partial<T>;
 
+/**
+ * 测试用的内容 hash（FNV-1a 32 位，输出 8 位十六进制）。
+ *
+ * 用途：`agentsContentResponse` 的 `hash` 默认由内容派生，这样同一份内容无论
+ * 出现在哪条用例里都有同一个 hash，断言 `expectedHash` 时可以直接算而不必手写
+ * 魔法字符串。真实宿主用自己那份 hash 算法，**不要**把它当成契约值。
+ */
+export function contentHash(content: string): string {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < content.length; i += 1) {
+    hash ^= content.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return hash.toString(16).padStart(8, "0");
+}
+
 export interface Fixtures {
   setInitialState: (
     overrides?: Overrides<SetInitialStateMessage>,
@@ -93,12 +109,12 @@ export interface Fixtures {
     overrides?: Overrides<AuthStatusResponseMessage>,
   ) => AuthStatusResponseMessage;
   agentsContentResponse: (
-    scope: "user" | "project",
+    scope: "user" | "project" | "local",
     content: string,
     overrides?: Overrides<AgentsContentResponseMessage>,
   ) => AgentsContentResponseMessage;
   agentsContentSaved: (
-    scope: "user" | "project",
+    scope: "user" | "project" | "local",
     overrides?: Overrides<AgentsContentSavedMessage>,
   ) => AgentsContentSavedMessage;
   contextUsage: (
@@ -295,6 +311,10 @@ export const fixtures: Fixtures = {
     command: "agentsContentResponse",
     scope,
     content,
+    // 默认 = 读成功且文件存在（hash 由内容派生），也就是「可编辑 + 可保存」那一档。
+    exists: true,
+    readable: true,
+    hash: contentHash(content),
     ...overrides,
   }),
 
