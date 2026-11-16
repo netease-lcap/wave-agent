@@ -1,7 +1,6 @@
 import type { ToolPlugin, ToolResult, ToolContext } from "./types.js";
 import { EXPLORE_SUBAGENT_TYPE } from "../constants/subagents.js";
 import { AGENT_TOOL_NAME } from "../constants/tools.js";
-import type { SubagentConfiguration } from "../utils/subagentParser.js";
 import type { Message, ReasoningBlock, TextBlock } from "../types/messaging.js";
 import {
   countToolBlocks,
@@ -32,6 +31,21 @@ function findActiveStreamingBlock(
   }
   return undefined;
 }
+
+/**
+ * The subagent list is announced in the conversation (`utils/agentListing.ts`),
+ * not inlined into this description.
+ *
+ * The set moves while a session runs — an MCP server connecting or dropping
+ * takes its agents with it, an in-place plugin reload rebuilds the table, a
+ * permission rule narrows what may be dispatched. This description sits in the
+ * cached `tools[]` prefix, so inlining the list re-billed the whole tool-schema
+ * prefix on every one of those changes. The description is now a constant and
+ * the list is announced at the tail of the history, where an addition
+ * invalidates nothing that already went out.
+ */
+const AGENT_LIST_SECTION =
+  "Available agent types are listed in system-reminder messages in the conversation.";
 
 /**
  * Agent tool plugin for launching specialized agents to handle complex tasks
@@ -77,29 +91,12 @@ export const agentTool: ToolPlugin = {
     },
   },
 
-  leanPrompt: (args?: { availableSubagents?: SubagentConfiguration[] }) => {
-    const subagentList = args?.availableSubagents
-      ? args.availableSubagents
-          .map((config) => {
-            const toolsStr =
-              config.tools && config.tools.length > 0
-                ? ` (Tools: ${config.tools.join(", ")})`
-                : config.disallowedTools && config.disallowedTools.length > 0
-                  ? ` (Tools: All except ${config.disallowedTools.join(", ")})`
-                  : " (Tools: *)";
-            const isolationStr =
-              config.isolation === "worktree" ? " (isolation: worktree)" : "";
-            return `- ${config.name}: ${config.description}${toolsStr}${isolationStr}`;
-          })
-          .join("\n")
-      : "";
-
+  leanPrompt: () => {
     return `Launch a new agent to handle complex, multi-step tasks autonomously. Each agent type has specific capabilities and tools available to it.
 
-Available agent types and the tools they have access to:
-${subagentList || "No agents configured"}
+${AGENT_LIST_SECTION}
 
-You must specify a subagent_type from the list above, choosing the one whose description best matches the task.
+You must specify a subagent_type from that list, choosing the one whose description best matches the task.
 
 - For broad codebase exploration that is not a needle query for a specific file, class, or function, use the ${AGENT_TOOL_NAME} tool with subagent_type=${EXPLORE_SUBAGENT_TYPE} instead of running search commands directly.
 - Prefer this tool over direct search commands for open-ended exploration that would fill your context with raw output.
@@ -107,37 +104,14 @@ You must specify a subagent_type from the list above, choosing the one whose des
 - Use \`isolation: "worktree"\` when several agents will edit files in parallel: each agent then runs in its own temporary git worktree and reports that worktree's path, branch and change counts instead of touching the parent working directory.
 - Avoid duplicating work a subagent is already doing.`;
   },
-  prompt: (args?: { availableSubagents?: SubagentConfiguration[] }) => {
-    const subagentList = args?.availableSubagents
-      ? args.availableSubagents
-          .map((config) => {
-            let toolsStr = "";
-            if (config.tools && config.tools.length > 0) {
-              toolsStr = ` (Tools: ${config.tools.join(", ")})`;
-            } else if (
-              config.disallowedTools &&
-              config.disallowedTools.length > 0
-            ) {
-              toolsStr = ` (Tools: All except ${config.disallowedTools.join(", ")})`;
-            } else {
-              toolsStr = " (Tools: *)";
-            }
-            const isolationStr =
-              config.isolation === "worktree" ? " (isolation: worktree)" : "";
-
-            return `- ${config.name}: ${config.description}${toolsStr}${isolationStr}`;
-          })
-          .join("\n")
-      : "";
-
+  prompt: () => {
     return `Launch a new agent to handle complex, multi-step tasks autonomously.
 
 The Agent tool launches specialized agents (subprocesses) that autonomously handle complex tasks. Each agent type has specific capabilities and tools available to it.
 
-Available agent types and the tools they have access to:
-${subagentList || "No agents configured"}
+${AGENT_LIST_SECTION}
 
-When using the Agent tool, you must specify a subagent_type parameter to select which agent type to use from the list above. Choose the agent whose description best matches the task you want to delegate.
+When using the Agent tool, you must specify a subagent_type parameter to select which agent type to use from that list. Choose the agent whose description best matches the task you want to delegate.
 
 - When doing file search, prefer to use the ${AGENT_TOOL_NAME} tool in order to reduce context usage.
 - You should proactively use the ${AGENT_TOOL_NAME} tool with specialized agents when the task at hand matches the agent's description.

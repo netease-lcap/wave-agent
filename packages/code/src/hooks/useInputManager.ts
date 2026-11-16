@@ -61,6 +61,7 @@ export const useInputManager = (
     onAddDir,
     onRenameSession,
     onPlanCommand,
+    onContextCommand,
     isIdle: isIdleProp,
   } = callbacks;
 
@@ -293,6 +294,8 @@ export const useInputManager = (
                 dispatch({ type: "SET_SHOW_REMOTE_CONTROL", payload: true });
               } else if (command === "plan") {
                 await onPlanCommand?.(effect.args);
+              } else if (command === "context") {
+                await onContextCommand?.();
               }
             }
             break;
@@ -324,6 +327,7 @@ export const useInputManager = (
     onAddDir,
     onRenameSession,
     onPlanCommand,
+    onContextCommand,
   ]);
 
   useEffect(() => {

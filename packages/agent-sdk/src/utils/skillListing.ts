@@ -64,6 +64,21 @@ const MIN_DESCRIPTION_CHARS = 80;
  */
 export const DEFAULT_SKILL_LISTING_CHAR_BUDGET = 8_000;
 
+/**
+ * How many characters the listing may take for a given window: ~2% of it in
+ * characters, with a floor so small-window models still get a usable list.
+ *
+ * Exported because `/context` reports the listing as a category and has to
+ * measure the *same* body the announcement carries — a different budget would
+ * report a size the session never sent.
+ */
+export function resolveSkillListingCharBudget(contextWindow: number): number {
+  return Math.max(
+    DEFAULT_SKILL_LISTING_CHAR_BUDGET,
+    Math.floor(contextWindow * 4 * 0.02),
+  );
+}
+
 /** Squash a description onto one line and cap it. */
 function formatDescription(description: string, maxChars: number): string {
   const oneLine = description.replace(/\s+/g, " ").trim();

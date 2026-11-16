@@ -392,6 +392,13 @@ export class MessageHandler {
       case "getStatus":
         await this.handleGetStatus(viewType, windowId);
         break;
+      case "getContextBreakdown":
+        await this.handleGetContextBreakdown(
+          msg.requestId as string,
+          viewType,
+          windowId,
+        );
+        break;
       case "getMcpServers":
         await this.handleGetMcpServers(viewType, windowId);
         break;
@@ -2751,6 +2758,39 @@ export class MessageHandler {
       viewType,
       windowId,
     );
+  }
+
+  /**
+   * `/context` 面板的取数：转发**本会话** agent 算出的构成（本地估算 + 上次
+   * 响应的实测总量），失败时回 `error` 让面板显示失败并可重试，而不是给一份
+   * 空数据把 0% 画成「你的上下文是空的」。
+   */
+  private async handleGetContextBreakdown(
+    requestId: string,
+    viewType?: "sidebar" | "tab" | "window",
+    windowId?: string,
+  ) {
+    const session = this.context.getChatSession(viewType || "tab", windowId);
+    try {
+      const agent = session.agent;
+      if (!agent) throw new Error("No active session");
+      const breakdown = await agent.getContextBreakdown();
+      this.context.postMessage(
+        { command: "contextBreakdownResponse", requestId, breakdown },
+        viewType,
+        windowId,
+      );
+    } catch (error) {
+      this.context.postMessage(
+        {
+          command: "contextBreakdownResponse",
+          requestId,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        viewType,
+        windowId,
+      );
+    }
   }
 
   private async handleGetMcpServers(

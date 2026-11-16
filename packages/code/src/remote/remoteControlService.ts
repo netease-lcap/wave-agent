@@ -220,6 +220,11 @@ export const REMOTE_ALLOWED_METHODS: ReadonlySet<string> = new Set([
   // （`initialize { workdir, restoreSessionId }`）：恢复出来的是一条新会话，没有
   // 任何已有会话被替换，见 `pickInitializeParams` 的注释。
   "listAllSessions",
+  // ── 第八批：`/context`，把上下文窗口的构成摊开看（spec
+  // commands/context-command.md）──
+  // 读：`getContextBreakdown` 只回该会话自己的分项估算与上次响应的实测总量，
+  // 不收任何路径或参数，也不改任何状态 —— 与 `/status` 同一条「只读观测」判据。
+  "getContextBreakdown",
 ]);
 
 /**

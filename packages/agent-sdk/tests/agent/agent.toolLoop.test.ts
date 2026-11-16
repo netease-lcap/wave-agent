@@ -113,10 +113,11 @@ describe("Agent Tool Recursion Tests", () => {
 
     // Verify first AI call parameters (should contain user message and newly added assistant message)
     const firstCall = mockCallAgent.mock.calls[0][0];
-    // 1 prepend memory message + 1 user message + 1 skill-list announcement.
-    // The list is a meta message now (`utils/skillListing.ts`), not part of the
-    // Skill tool's description, so it rides along in the request itself.
-    expect(firstCall.messages).toHaveLength(3);
+    // 1 prepend memory message + 1 user message + 1 skill-list announcement
+    // + 1 subagent-list announcement. Both lists are meta messages now
+    // (`utils/skillListing.ts` / `utils/agentListing.ts`), not part of the
+    // Skill / Agent tool descriptions, so they ride along in the request itself.
+    expect(firstCall.messages).toHaveLength(4);
     expect(firstCall.messages[0].role).toBe("user"); // prepend memory
     expect(firstCall.messages[1].role).toBe("user"); // actual user message
 

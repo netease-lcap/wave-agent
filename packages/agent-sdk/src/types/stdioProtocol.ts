@@ -63,6 +63,9 @@ export type RequestMethod =
   | "getSlashCommands"
   | "getSubagentConfigurations"
   | "getSkillMetadata"
+  // `/context` 的报告数据：按来源拆开的上下文构成（spec
+  // commands/context-command.md）。只读快照，不触发模型请求。
+  | "getContextBreakdown"
   | "deleteSkill"
   | "deleteSubagent"
   | "getHooksByScope"

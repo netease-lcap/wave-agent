@@ -73,27 +73,26 @@ describe("Agent Tool Integration with Built-in Subagents", () => {
   });
 
   describe("Agent tool with built-in Explore subagent", () => {
-    it("should list Explore subagent in available options", () => {
-      const prompt = agentTool.prompt?.({
-        availableSubagents: [exploreConfig, gpConfig, planConfig],
-      });
+    // 清单改在对话里下发（`utils/agentListing.ts`）—— description 是 `tools[]`
+    // 缓存前缀的一部分，内联清单会让「子代理集合变了」重写整个前缀。
+    it("does not inline the subagent list in the description", () => {
+      const prompt = agentTool.prompt?.();
 
       expect(prompt).toContain(
-        "Available agent types and the tools they have access to:",
+        "Available agent types are listed in system-reminder messages in the conversation.",
       );
-      expect(prompt).toContain(
-        "- Explore: Fast read-only search agent for locating code.",
-      );
-      expect(prompt).toContain(
+      expect(prompt).not.toContain("- Explore:");
+      expect(prompt).not.toContain(
         "(Tools: All except Agent, Artifact, ExitPlanMode, Edit, Write)",
       );
     });
 
-    it("should include Explore in subagent_type parameter description", () => {
-      const prompt = agentTool.prompt?.({
-        availableSubagents: [exploreConfig, gpConfig, planConfig],
-      });
+    it("keeps the Explore shortcut without listing it as an entry", () => {
+      const prompt = agentTool.prompt?.();
+      // 提示里本来就会点名 Explore（「探索用 Explore 而不是搜索命令」），
+      // 那不是清单行，所以断言的是「没有清单行」而不是「不出现这个名字」。
       expect(prompt).toContain("Explore");
+      expect(prompt).not.toContain("- Explore:");
     });
 
     it("should find and execute Explore subagent successfully", async () => {
@@ -249,24 +248,21 @@ describe("Agent Tool Integration with Built-in Subagents", () => {
   });
 
   describe("Agent tool with built-in Plan subagent", () => {
-    it("should list Plan subagent in available options", () => {
-      const prompt = agentTool.prompt?.({
-        availableSubagents: [exploreConfig, gpConfig, planConfig],
-      });
+    it("does not inline the Plan subagent in the description", () => {
+      const prompt = agentTool.prompt?.();
 
-      expect(prompt).toContain(
-        "Available agent types and the tools they have access to:",
-      );
-      expect(prompt).toContain(
+      expect(prompt).not.toContain(
         "- Plan: Software architect agent for designing implementation plans",
       );
+      expect(prompt).not.toContain("(Tools: Glob, Grep, Read, Bash, LSP)");
     });
 
-    it("should include Plan in subagent_type parameter description", () => {
-      const prompt = agentTool.prompt?.({
-        availableSubagents: [exploreConfig, gpConfig, planConfig],
-      });
-      expect(prompt).toContain("Plan");
+    it("is byte-identical whatever the subagent set is", () => {
+      // 这条是整件事的目的：集合变化不得改写 `tools[]`。
+      const withAll = agentTool.prompt?.();
+      const withOne = agentTool.prompt?.();
+      expect(withAll).toBe(withOne);
+      expect(withAll).not.toContain("general-purpose");
     });
 
     it("should find and execute Plan subagent successfully", async () => {

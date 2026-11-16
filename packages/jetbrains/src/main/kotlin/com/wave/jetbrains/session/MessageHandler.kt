@@ -899,6 +899,26 @@ class MessageHandler(
                 }
                 postMessage("skillMetadataResponse", buildJsonObject { put("skills", skills) })
             }
+            // `/context` 面板（spec commands/context-command.md）：转发本会话 agent
+            // 算出的构成。失败回 error 而不是空数据 —— 空数据会把 0% 画成「你的
+            // 上下文是空的」，而真实原因是这次 RPC 没成。
+            "getContextBreakdown" -> {
+                val requestId = msg["requestId"]?.jsonPrimitive?.contentOrNull ?: ""
+                try {
+                    val breakdown = session.agent?.getContextBreakdown()
+                        ?: throw StdioClientException("No active session")
+                    postMessage("contextBreakdownResponse", buildJsonObject {
+                        put("requestId", requestId)
+                        put("breakdown", breakdown)
+                    })
+                } catch (e: StdioClientException) {
+                    LOG.warn("getContextBreakdown failed: ${e.message}")
+                    postMessage("contextBreakdownResponse", buildJsonObject {
+                        put("requestId", requestId)
+                        put("error", e.message ?: "读取上下文失败")
+                    })
+                }
+            }
             "getBackgroundTaskOutput" -> {
                 val taskId = msg["taskId"]?.jsonPrimitive?.content ?: return
                 val output = try {

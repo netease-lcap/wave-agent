@@ -429,6 +429,7 @@ test("getSlashCommands narrows the SDK command to what the page renders", async 
   ]);
   expect(result.commands.slice(2).map((command) => command.id)).toEqual([
     "status",
+    "context",
     "clear",
     "compact",
     "tasks",

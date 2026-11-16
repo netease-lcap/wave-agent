@@ -140,6 +140,10 @@ export interface InputManagerCallbacks {
   onAddDir?: (args?: string) => Promise<void>;
   onRenameSession?: (args?: string) => Promise<void>;
   onPlanCommand?: (args?: string) => Promise<void> | void;
+  /**
+   * `/context`：把上下文构成报告追加成一条只能看、不进上下文的助手消息。
+   */
+  onContextCommand?: () => Promise<void>;
   sessionId?: string;
   workdir?: string;
   logger?: Logger;

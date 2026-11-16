@@ -1,0 +1,246 @@
+/* Context window 浮层（`/context`，spec commands/context-command.md）。
+   锚定在输入框旁的用量环上（`useAnchoredMenuStyle` 给出 position:fixed 的
+   top/left/width/maxHeight），**不是**居中覆盖层：不遮对话、不挡输入框。
+   这里只管壳的样子与内容排版：分段占用条、分类行、可折叠明细。 */
+
+.context-popover {
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  /* 比这更窄的视口（手机远控页 390）收到两边各 8px，横向不再溢出。
+     定位仍按 POPOVER_WIDTH 算，left 已夹到 8，视觉上正好填满。 */
+  max-width: calc(100vw - 16px);
+  padding: 10px 12px 12px;
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: 6px;
+  background-color: var(
+    --vscode-editorWidget-background,
+    var(--vscode-editor-background)
+  );
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.28);
+  color: var(--vscode-foreground);
+}
+
+.context-popover-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-bottom: 8px;
+}
+
+.context-popover-title {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.context-popover-close {
+  background: none;
+  border: none;
+  color: var(--vscode-descriptionForeground);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 2px 4px;
+}
+
+.context-popover-close:hover {
+  color: var(--vscode-foreground);
+}
+
+/* 内容区跟着浮层一起滚（`maxHeight` 挂在浮层上，这里不能再开一层滚动）。 */
+.context-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  font-size: 12px;
+  color: var(--vscode-foreground);
+}
+
+.context-placeholder {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 24px 4px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.context-error {
+  color: var(--vscode-errorForeground, #f14c4c);
+}
+
+.context-retry {
+  background: none;
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: 3px;
+  color: inherit;
+  cursor: pointer;
+  font-size: 12px;
+  padding: 4px 10px;
+}
+
+.context-summary {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.context-model {
+  font-family: var(--vscode-editor-font-family, monospace);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.context-totals {
+  color: var(--vscode-descriptionForeground);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* 分段占用条：每段的宽度就是它在窗口里的份额。`free` 是最淡的一段，
+   观感上要像「底色」而不是一个分类。 */
+.context-meter {
+  display: flex;
+  height: 10px;
+  width: 100%;
+  border-radius: 3px;
+  overflow: hidden;
+  background-color: var(--vscode-panel-border);
+}
+
+.context-meter-segment {
+  flex-basis: 0;
+  min-width: 1px;
+}
+
+.context-segment-free {
+  opacity: 0.25;
+}
+
+.context-segment-buffer {
+  opacity: 0.5;
+}
+
+.context-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.context-legend-row {
+  display: grid;
+  grid-template-columns: 10px 1fr auto auto;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 0;
+}
+
+.context-legend-swatch {
+  display: block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+
+.context-legend-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.context-legend-tokens,
+.context-legend-percent {
+  color: var(--vscode-descriptionForeground);
+  font-variant-numeric: tabular-nums;
+}
+
+.context-legend-percent {
+  min-width: 46px;
+  text-align: right;
+}
+
+.context-threshold {
+  color: var(--vscode-descriptionForeground);
+  font-size: 11px;
+}
+
+.context-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border-top: 1px solid var(--vscode-panel-border);
+  padding-top: 8px;
+}
+
+.context-detail-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 4px 0;
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  font-size: 12px;
+  text-align: left;
+}
+
+.context-detail-caret {
+  width: 10px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.context-detail-name {
+  flex: 1;
+}
+
+.context-detail-meta {
+  color: var(--vscode-descriptionForeground);
+  font-variant-numeric: tabular-nums;
+}
+
+.context-detail-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 2px 0 6px 16px;
+}
+
+.context-detail-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.context-detail-row-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--vscode-editor-font-family, monospace);
+}
+
+.context-detail-row-tokens {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.context-errors {
+  border-top: 1px solid var(--vscode-panel-border);
+  padding-top: 8px;
+  color: var(--vscode-errorForeground, #f14c4c);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.context-footer {
+  margin-top: auto;
+  color: var(--vscode-descriptionForeground);
+  font-size: 11px;
+}

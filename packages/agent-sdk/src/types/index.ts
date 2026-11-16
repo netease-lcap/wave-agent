@@ -45,6 +45,7 @@ export * from "./stdioProtocol.js";
 export * from "./completion.js";
 export * from "./btw.js";
 export * from "./mods.js";
+export * from "./contextBreakdown.js";
 
 // Types UI consumers (vsce, desktop webview) import via the `wave-agent-sdk/types`
 // entry; they live outside this barrel's domain files, so re-export them here

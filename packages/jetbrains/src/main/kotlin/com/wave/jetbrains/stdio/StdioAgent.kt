@@ -356,6 +356,10 @@ class StdioAgent(
     suspend fun getSkillMetadata(): JsonElement? =
         client.request("getSkillMetadata", sessionId = sessionId)
 
+    /** `/context` 面板的取数（spec commands/context-command.md）：本会话的构成。 */
+    suspend fun getContextBreakdown(): JsonElement? =
+        client.request("getContextBreakdown", sessionId = sessionId)
+
     suspend fun updateConfig(params: JsonObject) {
         val oldSessionId = sessionId
         val result = client.request("updateConfig", params, sessionId)?.jsonObject

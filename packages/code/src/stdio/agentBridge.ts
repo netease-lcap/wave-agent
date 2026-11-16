@@ -65,6 +65,7 @@ import {
   type AccountCredential,
   type SubagentConfiguration,
   type SkillMetadata,
+  type ContextBreakdown,
   type PluginReloadResult,
   type RemoteControlSnapshot,
   type CompletionSnippet,
@@ -588,6 +589,8 @@ export class AgentBridge {
         return this.getSubagentConfigurations(sessionId);
       case "getSkillMetadata":
         return this.getSkillMetadata(sessionId);
+      case "getContextBreakdown":
+        return this.getContextBreakdown(sessionId);
       case "deleteSkill":
         return this.deleteSkill(p.name as string, sessionId);
       case "deleteSubagent":
@@ -2646,6 +2649,13 @@ export class AgentBridge {
   private getSkillMetadata(sessionId?: string): { skills: SkillMetadata[] } {
     const entry = this.requireSessionForRead(sessionId);
     return { skills: entry.agent.getSkillMetadata() };
+  }
+
+  private async getContextBreakdown(
+    sessionId?: string,
+  ): Promise<ContextBreakdown> {
+    const entry = this.requireSessionForRead(sessionId);
+    return await entry.agent.getContextBreakdown();
   }
 
   private async deleteSkill(
