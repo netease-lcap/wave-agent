@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { compileMods } from "../../src/mods/compile.js";
 import {
   ModRuntime,
+  renderSurfacesOf,
   type CompiledModule,
   type ModRuntimeHost,
 } from "../../src/mods/runtime.js";
@@ -1271,7 +1272,7 @@ describe("ModRuntime 的 $ 命名空间", () => {
           var messages = [];
           var cases = [
             {},
-            { surface: "vscode", component: "Pane" },
+            { surface: "mobile", component: "Pane" },
             { surface: "desktop", component: "Hint" },
           ];
           for (var bad of cases) {
@@ -1293,12 +1294,12 @@ describe("ModRuntime 的 $ 命名空间", () => {
     const result = await mod.callHook("session.start", {});
     expect(result.ok).toBe(true);
     const messages = (result.ok ? result.value : []) as string[];
-    // 不是 render 事件、或不是我们画的端：同一句，并列出支持的那两端。
+    // 不是 render 事件、或不是我们画的端：同一句，并列出支持的那三端。
     expect(messages[0]).toContain("需要一个 ui.render 的事件");
-    expect(messages[0]).toContain("terminal / desktop");
+    expect(messages[0]).toContain("terminal / desktop / vscode");
     expect(messages[1]).toContain("需要一个 ui.render 的事件");
     // 报错要点名拿到的是什么，否则 mod 作者不知道该改哪。
-    expect(messages[1]).toContain('"vscode"');
+    expect(messages[1]).toContain('"mobile"');
     // 站点名不认识：说清楚这一期只有什么。
     expect(messages[2]).toContain('不认识站点 "Hint"');
     expect(messages[2]).toContain("Pane");
@@ -1307,6 +1308,39 @@ describe("ModRuntime 的 $ 命名空间", () => {
     expect(messages[3]).toBe("band:Box,function");
     // 终端表：Svg 拿不到，Progress 照常有。
     expect(messages[4]).toBe("terminal:undefined,function");
+  });
+
+  it("renderSurfacesOf 把宿主入口映射成 ui.render 的 surface（JetBrains 与 VS Code 同一个）", () => {
+    expect(renderSurfacesOf("desktop")).toEqual(["desktop"]);
+    // VS Code 与 JetBrains 画的是同一份 webview，共用 `vscode`（spec「在 IDE 插件里画」）。
+    expect(renderSurfacesOf("vscode")).toEqual(["vscode"]);
+    expect(renderSurfacesOf("jetbrains")).toEqual(["vscode"]);
+    // 终端与远控页一期不画 mod 的树，宿主也不会来要。
+    expect(renderSurfacesOf("cli")).toEqual([]);
+    expect(renderSurfacesOf("remote")).toEqual([]);
+    expect(renderSurfacesOf(undefined)).toEqual([]);
+  });
+
+  it("$.ui.resolve 认 vscode 这一端（IDE 聊天面板发来的事件）", async () => {
+    const { mod } = runtime(`
+      exports.register = function ($, on) {
+        on("ui.render", function (e) {
+          var t = $.ui.resolve(e);
+          return t.Text({ children: e.surface });
+        });
+      };
+    `);
+
+    await mod.load();
+    await expect(
+      mod.callHook("ui.render", {
+        surface: "vscode",
+        component: "AbovePrompt",
+      }),
+    ).resolves.toMatchObject({
+      ok: true,
+      value: { type: "Text", props: {}, children: ["vscode"] },
+    });
   });
 
   it("$.ui.status 转发到宿主：纯文本、过长的截断、null 与空串都表示清除", async () => {
@@ -1341,17 +1375,22 @@ describe("ModRuntime 的 $ 命名空间", () => {
     );
   });
 
-  it("$.ui.toast 的停留时间：缺省 4000ms、夹到 10 秒、非法值报错", async () => {
+  it("$.ui.toast 的停留时间：`{ timeoutMs }` 与裸数字都认，缺省 4000ms、夹到 10 秒", async () => {
     const hostApi = host();
     const { mod } = runtime(
       `
       exports.register = function ($, on) {
         on("session.start", function () {
           $.ui.toast("已保存");
-          $.ui.toast("等很久", 60000);
-          $.ui.toast("等一下", 1500);
+          // 社区写法（Claude Code 的第二个参数是对象）。
+          $.ui.toast("等很久", { timeoutMs: 60000 });
+          $.ui.toast("等一下", { timeoutMs: 1500 });
+          // 早期的示例写作裸数字：照样认。
+          $.ui.toast("裸数字", 2000);
+          // 对象里没给时长 = 用默认值，不报错。
+          $.ui.toast("没给时长", {});
           var messages = [];
-          for (var bad of ["1200", 0 / 0]) {
+          for (var bad of ["1200", 0 / 0, { timeoutMs: "1200" }]) {
             try { $.ui.toast("x", bad); messages.push("no error"); }
             catch (e) { messages.push(String(e.message || e)); }
           }
@@ -1370,12 +1409,15 @@ describe("ModRuntime 的 $ 命名空间", () => {
       ["已保存", 4000],
       ["等很久", 10000],
       ["等一下", 1500],
+      ["裸数字", 2000],
+      ["没给时长", 4000],
     ]);
     const messages = (result.ok ? result.value : []) as string[];
-    expect(messages[0]).toContain("毫秒数");
-    expect(messages[1]).toContain("毫秒数");
+    expect(messages[0]).toContain("{ timeoutMs }");
+    expect(messages[1]).toContain("{ timeoutMs }");
+    expect(messages[2]).toContain("{ timeoutMs }");
     // 空文本没有可展示的东西：报错，不落一条空白提示。
-    expect(messages[2]).toContain("需要一段文本");
+    expect(messages[3]).toContain("需要一段文本");
   });
 
   it("clock 只登记到宿主，沙箱里没有裸定时器", async () => {
@@ -2839,17 +2881,18 @@ describe("兼容社区 mod（spec「兼容社区 mod」）", () => {
     `);
 
     await mod.load();
-    // `requestId` 是社区的字段名，我们的事件的字段叫 `instance_id`（别名）。
+    // 事件的实例 id 就是 CC 钩子里的 `requestId`（不是 `ui_render` 消息里的
+    // `instance_id`：社区写的 `if (e.requestId !== PANE_ID)` 要能直接读到）。
     const band = await mod.callHook("ui.render", { component: "AbovePrompt" });
     expect(band.ok && band.value).toMatchObject({ children: ["band"] });
     const todo = await mod.callHook("ui.render", {
       component: "Pane",
-      instance_id: "todo",
+      requestId: "todo",
     });
     expect(todo.ok && todo.value).toMatchObject({ children: ["pane-todo"] });
     const other = await mod.callHook("ui.render", {
       component: "Pane",
-      instance_id: "other",
+      requestId: "other",
     });
     expect(other.ok && other.value).toMatchObject({ children: ["pane-other"] });
     // 工具名不在候选里 ⇒ 这条钩子根本不参与这次事件（与 Claude Code 一样：
@@ -2860,31 +2903,78 @@ describe("兼容社区 mod（spec「兼容社区 mod」）", () => {
     expect(edit.ok && edit.value).toEqual({ saw: "Edit" });
   });
 
-  it("handler 里也能读到 CC 的 requestId（与 instance_id 同一个值）", async () => {
-    // 官方 `blast-radius` 的第一行就是 `if (e.requestId !== PANE_ID) return next(e)`：
-    // 只认 matcher 那一侧不够，handler 读到的副本也得带这个名字。
+  it("matcher 也认 ui.press / ui.input / ui.select 的 plugin 与 element", async () => {
+    // Claude Code 的写法是 `on("ui.press", { plugin, element }, …)`：带 matcher 的
+    // 这三个钩子不能被「这个事件不接受 matcher」拒掉，否则社区 mod 的处理器整条
+    // 消失（不是「参与了但没匹配上」，是连注册都没了）。
+    const { mod } = runtime(`
+      exports.register = function (on) {
+        on("ui.press", { plugin: "todo", element: "run" }, function ($, e) {
+          return { hit: "press", value: e.element };
+        });
+        on("ui.input", { plugin: "todo", element: "title" }, function ($, e) {
+          return { hit: "input", value: e.value };
+        });
+        on("ui.select", { plugin: "todo", element: "size" }, function ($, e) {
+          return { hit: "select", value: e.value };
+        });
+      };
+    `);
+
+    await mod.load();
+    const press = await mod.callHook("ui.press", {
+      plugin: "todo",
+      element: "run",
+    });
+    expect(press.ok && press.value).toEqual({ hit: "press", value: "run" });
+    const input = await mod.callHook("ui.input", {
+      plugin: "todo",
+      element: "title",
+      kind: "submit",
+      value: "周报",
+    });
+    expect(input.ok && input.value).toEqual({ hit: "input", value: "周报" });
+    const select = await mod.callHook("ui.select", {
+      plugin: "todo",
+      element: "size",
+      value: "lg",
+    });
+    expect(select.ok && select.value).toEqual({ hit: "select", value: "lg" });
+    // 别的插件画的控件不归它：matcher 不命中就是没注册。
+    const other = await mod.callHook("ui.press", {
+      plugin: "roster",
+      element: "run",
+    });
+    expect(other).toMatchObject({ ok: true, value: undefined });
+  });
+
+  it("handler 里的实例 id 就是 CC 的 requestId（事件里没有 instance_id 这个名字）", async () => {
+    // 官方 `blast-radius` 的第一行就是 `if (e.requestId !== PANE_ID) return next(e)`。
+    // 信封与 CC 一字不差：`{ surface, component, requestId, plugin, viewport, props }`
+    // —— 早先那个 `instance_id`（`ui_render` **消息**里的写法）已经去掉，同一个值
+    // 只留一个名字。
     const { mod } = runtime(`
       exports.register = function (on) {
         on("ui.render", { component: "Pane" }, function ($, e) {
-          if (e.requestId !== "blast-radius") return __wave.h("Text", null, "not-mine");
-          return __wave.h("Text", null, e.instance_id + "/" + e.requestId);
+          return __wave.h("Text", null, Object.keys(e).sort().join(",") + ":" + e.requestId);
         });
       };
     `);
 
     await mod.load();
     const mine = await mod.callHook("ui.render", {
+      surface: "vscode",
       component: "Pane",
-      instance_id: "blast-radius",
+      requestId: "blast-radius",
+      plugin: "todo",
+      viewport: { columns: 120, rows: 40, isFullscreen: true },
+      props: { bodyColumns: 66 },
     });
     expect(mine.ok && mine.value).toMatchObject({
-      children: ["blast-radius/blast-radius"],
+      children: [
+        "component,plugin,props,requestId,surface,viewport:blast-radius",
+      ],
     });
-    const other = await mod.callHook("ui.render", {
-      component: "Pane",
-      instance_id: "other",
-    });
-    expect(other.ok && other.value).toMatchObject({ children: ["not-mine"] });
   });
 
   it("on(...).catch(handler)：钩子抛错时用兜底，兜底本身不抛就算成功", async () => {

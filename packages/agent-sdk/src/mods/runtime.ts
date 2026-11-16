@@ -166,25 +166,31 @@ function tagOf(type: unknown): string {
  * 画这棵树的那一端 —— `ui.render` 的 `e.surface`，也是 `$.ui.resolve(e)` 选
  * 元素表的键。
  *
- * 一期两端：`desktop`（webview 右侧面板与带）与 `terminal`（`wave` 的输入框上方），
- * 各自能画的元素见 `MOD_SURFACE_ELEMENTS`（终端少 `Svg`）。Claude Code 还有
- * `vscode` / `mobile`，我们没接 —— 别的值当错处理，别让它悄悄拿到桌面端的表。
+ * Claude Code 的表里有四端：`terminal` / `desktop` / `mobile` / `vscode`，各自的
+ * 元素集不同（`terminal` 有 `Raster` / `Image` 没有 `Svg`，`desktop` 反过来）。
+ * 我们发三端：`desktop`（webview 右侧面板与带）、`terminal`（`wave` 的输入框
+ * 上方）、`vscode` —— 后者同时覆盖 VS Code 与 JetBrains（spec「在 IDE 插件里
+ * 画」：两端画的是同一份 webview，没有理由分名字）。`mobile` 没接，别的值当错
+ * 处理，别让它悄悄拿到某一张表。
  */
-const SURFACES_WE_DRAW: readonly ModRenderSurface[] = ["terminal", "desktop"];
+const SURFACES: readonly ModRenderSurface[] = ["terminal", "desktop", "vscode"];
 
 /**
  * 这一刻有谁在画这条会话（spec「会话事实」的 `$.session.surfaces()`）。
  *
- * **只是默认值**：宿主在 `AgentOptions.renderSurfaces` 里显式声明时以声明为准
- * （终端 CLI 声明 `["terminal"]`，而 `wave -p` 同样是 `entrypoint: "cli"` 却不画，
- * 所以不能靠入口区分）。没声明时按入口推导：桌面端会画 mod 的树 ⇒ `["desktop"]`；
- * VS Code / JetBrains / 远控 ⇒ `[]`（「没有界面」）。判据是**有没有界面**而不是
- * 「能不能画面板」：`$.ui.open()` 的 `isPlaced` 与它同一个数据源。
+ * 宿主在 `AgentOptions.renderSurfaces` 里显式声明时以声明为准（终端 CLI 声明
+ * `["terminal"]`，而 `wave -p` 同样是 `entrypoint: "cli"` 却不画，所以不能靠入口
+ * 区分）。没声明时按入口推导：桌面端 ⇒ `["desktop"]`；VS Code 与 JetBrains ⇒
+ * `["vscode"]`（两端共用同一个 surface 名，见 spec「在 IDE 插件里画」）；远控 ⇒
+ * `[]`（「没有界面」）。判据是**有没有界面**而不是「能不能画面板」：`$.ui.open()`
+ * 的 `isPlaced` 与它同一个数据源。
  */
 export function renderSurfacesOf(
   entrypoint: "cli" | "desktop" | "vscode" | "jetbrains" | "remote" | undefined,
 ): readonly ModRenderSurface[] {
-  return entrypoint === "desktop" ? ["desktop"] : [];
+  if (entrypoint === "desktop") return ["desktop"];
+  if (entrypoint === "vscode" || entrypoint === "jetbrains") return ["vscode"];
+  return [];
 }
 
 /** 我们对外推荐的 mod 模块名（`wave-agent-sdk/mods` 子路径）。 */
@@ -272,10 +278,12 @@ function resolveElements(
     component?: unknown;
   };
   const surface = typeof e.surface === "string" ? e.surface : undefined;
+  // `SURFACES` 里没有的值到这里也没有表 —— 一条判断同时挡「不是 render 事件」
+  // 与「没见过的那一端」，报错文案由它自己说明名单。
   const table = surface === undefined ? undefined : tables[surface];
-  if (!table) {
+  if (!table || !SURFACES.includes(surface as ModRenderSurface)) {
     throw new Error(
-      `$.ui.resolve 需要一个 ui.render 的事件（e.surface 是画这棵树的那一端，一期只有 ${SURFACES_WE_DRAW.join(" / ")}${surface === undefined ? "" : `，拿到的是 "${surface}"`}）`,
+      `$.ui.resolve 需要一个 ui.render 的事件（e.surface 是画这棵树的那一端，一期有 ${SURFACES.join(" / ")}${surface === undefined ? "" : `，拿到的是 "${surface}"`}）`,
     );
   }
   const component = typeof e.component === "string" ? e.component : "";
@@ -304,14 +312,31 @@ function normalizeStatus(text: unknown): string | null {
     : text;
 }
 
-/** `$.ui.toast` 的停留时间：默认 4000ms，超过上限夹住（都是我们的限额）。 */
-function toastMs(timeoutMs: unknown): number {
-  if (timeoutMs === undefined) return MOD_LIMITS.toastDefaultMs;
-  if (typeof timeoutMs !== "number" || !Number.isFinite(timeoutMs)) {
-    throw new Error("$.ui.toast 的第二个参数是停留毫秒数");
+/**
+ * `$.ui.toast` 的停留时间：默认 4000ms，超过上限夹住（都是我们的限额）。
+ *
+ * 第二个参数是 Claude Code 的 `{ timeoutMs }` —— 社区 mod 一律这么写（
+ * `$.ui.toast("已保存", { timeoutMs: 8000 })`），收成裸数字会让它们的
+ * `session.start` 当场抛错、后面的 `$.ui.open` 都跑不到。裸数字我们早期的示例
+ * 是这么写的，所以照样认（spec「状态带、状态行与提示」）。
+ */
+function toastMs(options: unknown): number {
+  if (options === undefined || options === null) {
+    return MOD_LIMITS.toastDefaultMs;
   }
-  if (timeoutMs <= 0) return MOD_LIMITS.toastDefaultMs;
-  return Math.min(timeoutMs, MOD_LIMITS.toastMaxMs);
+  // 对象里没写 `timeoutMs`（`$.ui.toast("x", {})`）= 用默认值；写了别的东西
+  // （字符串、NaN、`{ timeoutMs: "1200" }`）就报错 —— 拼错一个键名不该安静地
+  // 变成「默认 4 秒」，用户只会看到提示消失得莫名其妙。
+  const raw =
+    typeof options === "object"
+      ? (options as { timeoutMs?: unknown }).timeoutMs
+      : options;
+  if (raw === undefined) return MOD_LIMITS.toastDefaultMs;
+  if (typeof raw !== "number" || !Number.isFinite(raw)) {
+    throw new Error("$.ui.toast 的第二个参数是 { timeoutMs }");
+  }
+  if (raw <= 0) return MOD_LIMITS.toastDefaultMs;
+  return Math.min(raw, MOD_LIMITS.toastMaxMs);
 }
 
 /** `$.ui.copy({ surface })` 的端名是否合法。 */
@@ -785,8 +810,11 @@ export interface ModDollar {
     invalidate(target: string): void;
     /** 输入框下方那一行常驻状态（每个插件一条）；`null` 清除。 */
     status(text: string | null): void;
-    /** 输入框下方的短暂提示；`timeoutMs` 默认 4000ms、最多 10 秒。 */
-    toast(text: string, timeoutMs?: number): void;
+    /**
+     * 输入框下方的短暂提示；`{ timeoutMs }` 与 Claude Code 同形（默认 4000ms、
+     * 最多 10 秒）。裸数字是早期的写法，也认。
+     */
+    toast(text: string, options?: { timeoutMs?: number } | number): void;
     /**
      * 在**对话流**里留一行（spec「在对话流里留一行」）。
      *
@@ -1393,17 +1421,25 @@ export interface ModRuntimeHost {
  * `session.start` / `ui.render` 是「要 mod 做事」的那两个；`turn.complete`、
  * `turn.start`、`turn.step`、`session.measure`、`session.compact`、`session.end`、
  * `ui.close` 与 `classic.PermissionRequest` 之外的大部分 `classic.*` 是只读的
- * 观察事件，返回值一律丢弃。有返回值语义的六个：`tool.call` 答 `{ deny }` 或
- * `{ result }`（拦下这次调用 / 给出它的结果，`next(e)` 就是执行）、`prompt.
- * submit` 答
- * `{ context }`（本轮附加上下文，不改用户原文）、`command.run` 答 `{ text }`、
- * `classic.Stop` 答 `{ additionalContext }`（这一轮别急着收尾，把这几句读给
- * 模型听，spec「一轮收尾时的非错误反馈」）、`classic.PreToolUse` 答 `{ deny }`
- * （与 `tool.call` 是同一条链的另一个名字）。`classic.` 前缀是照 Claude Code
- * 的规矩：它把每个 settings hook 事件都镜像成 `classic.<Event>`，我们镜像其中
- * 20 个（spec「影子事件」），`e` 的形状也照那份 stdin JSON（`PreToolUse` 例外，
- * 照 CC 自己的排法给 `tool.call` 那个信封）。别的名字一律拒收，免得插件作者依
- * 赖一个不存在的钩子。
+ * 观察事件，返回值一律丢弃。有返回值语义的分两类：**改写宿主算出来的东西**
+ * （`tool.check` / `tool.describe` / `prompt.*` / `session.append` / `skill.prompt`
+ * / `command.describe`，见各条 spec 小节），以及**拦下或改写一次流程**
+ * ——`tool.call` 答 `{ deny }` 或 `{ result }`（拦下这次调用 / 给出它的结果，
+ * `next(e)` 就是执行）、`prompt.submit` 答 `{ context }`、`command.run` 答
+ * `{ text }`、`classic.Stop` 答 `{ additionalContext }`（这一轮别急着收尾，把
+ * 这几句读给模型听）、`classic.PreToolUse` 答 `{ deny }`（与 `tool.call` 是同一条
+ * 链的另一个名字）、`ui.press` / `ui.input` / `ui.select` 答 `{ element?, value? }`
+ * （改写这次交互派给哪个控件、带什么值）。`classic.` 前缀是照 Claude Code 的规矩：
+ * 它把每个 settings hook 事件都镜像成 `classic.<Event>`，我们镜像其中 20 个
+ * （spec「影子事件」），`e` 的形状也照那份 stdin JSON（`PreToolUse` 例外，照 CC
+ * 自己的排法给 `tool.call` 那个信封）。别的名字一律拒收，免得插件作者依赖一个
+ * 不存在的钩子。
+ *
+ * 三个 `ui.*` 交互事件是 **Claude Code 的名字**（控件被用掉之前触发，`e.element`
+ * 是控件的 `key`）：没有它们，社区 mod 里 `on("ui.press", …)` 只剩一条 warn、
+ * 按键处理静默失效。`plugin` 是这条事件上**钉住**的 matcher 键（CC 的
+ * `pinnedKeys: ["plugin"]`）：不写 matcher 只收到自己画的控件，写别人插件的名字
+ * 才能看别人的（见 `matchingHooks`）。
  */
 const HOOK_NAMES = new Set([
   "session.start",
@@ -1412,6 +1448,9 @@ const HOOK_NAMES = new Set([
   "turn.step",
   "ui.render",
   "ui.close",
+  "ui.press",
+  "ui.input",
+  "ui.select",
   "turn.complete",
   "session.measure",
   "session.compact",
@@ -1473,7 +1512,9 @@ const HOOK_NAMES = new Set([
  * `ui.render` 按站点（`component` / `requestId`）、`tool.call` /
  * `classic.PreToolUse` 按工具名、`command.run` 按命令名、`classic.PostToolUse`
  * 族按 `tool_name`（这三条键就是 Claude Code 的 matcher 键表里对这个事件列的
- * 全部键）。
+ * 全部键），`tool.check` / `tool.describe` 按 `{ tool }`、`prompt.section` 按
+ * `{ name }`、`prompt.attachment` 按 `{ type }`、`skill.prompt` 按 `{ skill }`，
+ * 控件事件按 `plugin`（钉住的键，见 `matchingHooks`）。
  */
 const MATCHER_EVENTS = new Set([
   "command.run",
@@ -1512,38 +1553,12 @@ const MATCHER_EVENTS = new Set([
 const UI_CONTROL_EVENTS = new Set(["ui.press", "ui.input", "ui.select"]);
 
 /**
- * matcher 里用的字段名 → 事件的字段名。
- *
- * 社区按 Claude Code 的字段名写 matcher（`requestId` 是渲染请求的实例 id），
- * 我们的事件里那个字段叫 `instance_id`（与 CC 的 `ui_render` 消息同形）。
+ * 事件的字段名就是 Claude Code 钩子事件里的名字（`ui.render` 的实例 id 叫
+ * `requestId`，`ui.press` 那几个的控制点叫 `element` …），matcher 与 handler 读到
+ * 的是同一个字段 —— 早期我们用过 `ui_render` **消息**里的 `instance_id`，那让
+ * 社区按钩子写的 `if (e.requestId !== PANE_ID) return next(e)`（官方示例
+ * `blast-radius`）读不到值，已经统一掉了。
  */
-const MATCHER_KEY_ALIASES: Record<string, string> = {
-  // 只有 `requestId` 这一条：它是同一个字段在 CC 的两处不同名字（钩子事件
-  // 叫 `requestId`、`ui_render` 消息叫 `instance_id`）。
-  //
-  // 事件之间**不做别名**：`agent.offer` 的字段是 `agent`、`agent.spawn` 的是
-  // `subagentType`（CC 那两个事件各自的名字），一个 matcher 写哪把钥匙就只
-  // 能开对应的那把锁 —— 给 `spawn` 补一条 `agent → subagentType` 会让同一份
-  // matcher 在两个事件上表现不一致，那是 CC 面外的行为。
-  requestId: "instance_id",
-};
-
-/**
- * 事件里给社区再补一份 Claude Code 的字段名（同一个值两个名字）。
- *
- * `ui.render` 的站点实例 id：CC 的**钩子事件**里叫 `requestId`，它的
- * `ui_render` **消息**里叫 `instance_id`，我们的事件按后者写。社区 mod 在
- * handler 里比的是前者 —— 官方示例 `blast-radius` 就是
- * `if (e.requestId !== PANE_ID) return next(e)`，少了这个别名，它的面板永远画
- * 不出来（`isPlaced` 为真、树却空着）。matcher 那边早就按同一张表归一（见
- * {@link MATCHER_KEY_ALIASES}），这里补的是 handler 读的那个副本。
- */
-function withEventAliases(event: unknown): unknown {
-  if (!isPlainObject(event)) return event;
-  if (typeof event.instance_id !== "string") return event;
-  if (event.requestId !== undefined) return event;
-  return { ...event, requestId: event.instance_id };
-}
 
 /** 一个已编译文件：路径 + CJS 源码。 */
 export interface CompiledModule {
@@ -1642,11 +1657,7 @@ function matchesEvent(
 ): boolean {
   if (!matcher) return true;
   if (!isPlainObject(event)) return false;
-  for (const [rawKey, expected] of Object.entries(matcher)) {
-    // 事件自己有这个键就按字面用它 —— 别名只在事件缺这个键时兜底（同一字段
-    // 的两个名字，不是两个事件之间的换算）。
-    const key =
-      rawKey in event ? rawKey : (MATCHER_KEY_ALIASES[rawKey] ?? rawKey);
+  for (const [key, expected] of Object.entries(matcher)) {
     const actual = event[key];
     if (Array.isArray(expected)) {
       if (!expected.some((value) => matcherValueMatches(key, value, actual))) {
@@ -1950,10 +1961,10 @@ export class ModRuntime {
     this.elements = elementTableOf(h, MOD_ELEMENT_TYPES);
     const elements = this.elements;
     const elementsBySurface: Record<string, ModElementTable> = {};
-    for (const surface of SURFACES_WE_DRAW) {
+    for (const surface of SURFACES) {
       elementsBySurface[surface] = elementTableOf(
         h,
-        MOD_SURFACE_ELEMENTS[surface as "desktop" | "terminal"],
+        MOD_SURFACE_ELEMENTS[surface as "desktop" | "terminal" | "vscode"],
       );
     }
     this.elementsBySurface = Object.freeze(elementsBySurface);
@@ -2013,12 +2024,12 @@ export class ModRuntime {
         // 只推不拉：不产生树、不进上下文，宿主收到就画（spec「状态带、状态行
         // 与提示」）。
         status: (text) => host.setStatus(normalizeStatus(text)),
-        toast: (text, timeoutMs) => {
+        toast: (text, options) => {
           const trimmed = normalizeStatus(text);
           if (trimmed === null) {
             throw new Error("$.ui.toast 需要一段文本");
           }
-          host.showToast(trimmed, toastMs(timeoutMs));
+          host.showToast(trimmed, toastMs(options));
         },
         // 进对话流、不进上下文：长度口径与状态行同一份限额。
         log: (text, options) => {
@@ -2772,13 +2783,12 @@ export class ModRuntime {
    */
   async callHook(
     name: string,
-    rawEvent: unknown,
+    event: unknown,
     options: {
       engine?: (finalEvent: unknown) => unknown;
       signal?: AbortSignal;
     } = {},
   ): Promise<ModHookResult> {
-    const event = withEventAliases(rawEvent);
     const entries = this.matchingHooks(name, event);
     if (entries.length === 0)
       return { ok: true, value: undefined, elapsedMs: 0 };

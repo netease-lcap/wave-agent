@@ -16,6 +16,7 @@ import {
   MOD_LIMITS,
   MOD_RENDER_BAND_ROWS,
   MOD_RENDER_BODY_COLUMNS,
+  MOD_RENDER_INLINE_ROWS,
   MOD_RENDER_PANE_ROWS,
   type ModAgentInfo,
   type ModBandRenderResult,
@@ -27,6 +28,7 @@ import {
   type ModPromptSuggestEvent,
   type ModPanelEventPayload,
   type ModPanelRenderResult,
+  type ModPaneLayout,
   type ModPanelTree,
   type ModPanelUpdatePayload,
   type ModPermissionRequestEvent,
@@ -42,6 +44,7 @@ import {
   type ModSessionMessage,
   type ModSessionMessageBlock,
   type ModSessionRepo,
+  type ModSurfaceMetrics,
   type ModToolCheckDecision,
   type ModToolCheckEvent,
   type ModUiControlEvent,
@@ -72,12 +75,15 @@ import { getEsbuild } from "../utils/esbuild.js";
 import { logger } from "../utils/globalLogger.js";
 
 /**
- * 我们真的会画的那两端（spec「元素表按端分」）。
+ * 我们真的会画的那三端（spec「元素表按端分」）。
  *
- * `renderPane` / `renderBand` 的 `surface` 只收这两个名字：`vscode` / `mobile`
- * 没有渲染器，放进来会让 `ui.render` 说「这棵树有人画」、实际一个像素都不出。
+ * `vscode` 覆盖 VS Code 与 JetBrains（两端画同一份 webview）；`mobile` 没有
+ * 渲染器，放进来会让 `ui.render` 说「这棵树有人画」、实际一个像素都不出。
  */
-type DrawnSurface = Extract<ModRenderSurface, "terminal" | "desktop">;
+type DrawnSurface = Extract<
+  ModRenderSurface,
+  "terminal" | "desktop" | "vscode"
+>;
 
 /**
  * 能派发的 `classic.*` 名字（spec「影子事件：`classic.*`」）。
@@ -556,24 +562,73 @@ export function withCommunityUsage(
 }
 
 /**
- * `ui.render` 事件的 `props`（社区写法会读 `hasSurvey` / `bodyColumns`）。
+ * `Pane` 站点的 `props`（与 Claude Code 的 render sites 表逐字段对齐）：
+ * `title` / `isFocused` / `bodyColumns` / `placement` / `scroll` / `view`。
  *
- * 我们这一侧还没有这些事实：`hasSurvey` 是 Claude Code 偶尔插在输入框上方的
- * 调查横幅（我们没有），`isWorking` 要问 AI 层的加载状态（渲染请求是从 surface
- * 来的，路线上拿不到），`bodyColumns` 见 {@link MOD_RENDER_BODY_COLUMNS}，两个
- * 行数见 {@link MOD_RENDER_PANE_ROWS}。
- * 先给「中性且稳定」的一组值 —— 缺字段会让社区 mod 的 `e.props.hasSurvey` 直接
- * 抛错，那些 mod 连画都画不出来。
+ * 三个值来自 surface 的实测（{@link ModSurfaceMetrics}）：宽度没报时退回
+ * {@link MOD_RENDER_BODY_COLUMNS}，行数按 `placement` 分开（dock 用面板上限，
+ * inline 用 12 行）。`isFocused` 恒 `false`：我们的面板不接管键盘焦点，CC 那边
+ * 这个字段是「这个人把键盘交给面板了没」，我们从来没有。
  */
-function renderSiteProps(rows = MOD_RENDER_BAND_ROWS): Record<string, unknown> {
+function paneSiteProps(
+  title: string,
+  placement: "dock" | "inline",
+  rows: number,
+  bodyColumns: number,
+): Record<string, unknown> {
+  return {
+    title,
+    isFocused: false,
+    bodyColumns,
+    placement,
+    scroll: { offset: 0, bodyRows: rows },
+    view: {},
+  };
+}
+
+/**
+ * `AbovePrompt` 站点的 `props`（CC 的 render sites 表）：`hasSurvey` /
+ * `isCollapsed` / `isWorking` / `maxRows` / `bodyColumns` / `scroll` / `view`。
+ *
+ * 我们这一侧没有这些事实，先给「中性且稳定」的一组值：`hasSurvey` 是 CC 偶尔
+ * 插在输入框上方的调查横幅（我们没有）、`isWorking` 要问 AI 层的加载状态（渲染
+ * 请求是从 surface 来的，路线上拿不到）、`isCollapsed` 是这个人把带折起来了（我们
+ * 不折叠）。缺字段会让社区 mod 的 `e.props.hasSurvey` 直接抛错，那些 mod 连画都
+ * 画不出来。
+ */
+function bandSiteProps(
+  bodyColumns = MOD_RENDER_BODY_COLUMNS,
+  rows = MOD_RENDER_BAND_ROWS,
+): Record<string, unknown> {
   return {
     hasSurvey: false,
+    isCollapsed: false,
     isWorking: false,
-    bodyColumns: MOD_RENDER_BODY_COLUMNS,
+    bodyColumns,
     maxRows: rows,
     scroll: { offset: 0, bodyRows: rows },
     view: {},
   };
+}
+
+/** surface 报上来的数：只认正数，其余当「还没量到」。 */
+function measured(value: number | undefined): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value > 0;
+}
+
+/**
+ * `e.viewport`（spec「`ui.render` 的 `e.props`」）。
+ *
+ * `columns` / `rows` 只在 surface 真报了才带 —— **不填 0 冒充测量结果**，mod 拿
+ * `undefined` 就知道这一端还没量到。`isFullscreen` 是「有没有分屏」，缺省 `false`
+ * 与 Claude Code 的「没有 dock 的 surface 就说 false」同一条。
+ */
+function viewportOf(metrics: ModSurfaceMetrics): Record<string, unknown> {
+  const viewport: Record<string, unknown> = {};
+  if (measured(metrics.columns)) viewport.columns = Math.round(metrics.columns);
+  if (measured(metrics.rows)) viewport.rows = Math.round(metrics.rows);
+  viewport.isFullscreen = metrics.isFullscreen ?? false;
+  return viewport;
 }
 
 /**
@@ -2487,17 +2542,17 @@ export class ModManager {
         : payload.kind === "input"
           ? "ui.input"
           : "ui.select";
-    const component =
-      payload.kind === "press"
-        ? "Button"
-        : payload.kind === "input"
-          ? "Input"
-          : "Select";
     const base: ModUiControlEvent = {
       plugin,
-      component,
+      // 站点与实例 id 与 `ui.render` 同一套：带上的控件属于 `AbovePrompt`。
+      component:
+        payload.paneId === MOD_BAND_INSTANCE_ID ? "AbovePrompt" : "Pane",
       requestId: payload.paneId,
+      surface: this.currentSurface(),
       element: payload.key,
+      // 我们的 `Input` 只有提交一条通道（回车或提交按钮），没有逐次编辑的
+      // `change`（CC 两种都有）：`kind` 恒为 `"submit"`。
+      ...(payload.kind === "input" ? { kind: "submit" as const } : {}),
       ...(payload.value === undefined ? {} : { value: payload.value }),
     };
     const read = (
@@ -3174,6 +3229,20 @@ export class ModManager {
   }
 
   /**
+   * 这一帧由哪一端画：`ui.render` 的 `e.surface`（spec「在 IDE 插件里画」）。
+   *
+   * 一条会话只有一个 surface（桌面端，或 IDE 插件那两端共用的 `vscode`），所以
+   * 直接取 `surfaces()` 的第一个；取不到（终端、`wave -p`）时按 `desktop` 兜底 ——
+   * 那些端根本不会来要树，走到这里只可能是测试或内部调用，不该崩。
+   */
+  private currentSurface(): DrawnSurface {
+    const first = this.facts.surfaces()[0];
+    // `mobile` 之类我们没接的值按桌面端兜底：那些端根本不会来要树，走到这里只
+    // 可能是测试或内部调用，不该崩；但也不能让它拿到一张不存在的元素表。
+    return first === "terminal" || first === "vscode" ? first : "desktop";
+  }
+
+  /**
    * surface 来要树：跑一次 `ui.render` 并把结果回给它（spec「架构约束」）。
    *
    * 失败时返回**上一帧成功的树** + 错误摘要 —— 面板保留可点的内容，错误只
@@ -3182,7 +3251,7 @@ export class ModManager {
   async renderPane(
     modId: string,
     paneId: string,
-    surface: DrawnSurface = "desktop",
+    layout: ModPaneLayout = {},
   ): Promise<ModPanelRenderResult> {
     const key = `${modId}\u0000${paneId}`;
     const pane = this.panes.get(key);
@@ -3196,19 +3265,34 @@ export class ModManager {
     if (loaded.error || !loaded.runtime) {
       return this.renderFailed(pane, loaded.error ?? "mod 未加载");
     }
+    // inline 时正文上限是 12 行（spec「在 IDE 插件里画」）：再高就把输入框挤出
+    // 视口。dock 按面板行数上限。
+    const placement = layout.placement ?? "dock";
+    const rows =
+      placement === "inline" ? MOD_RENDER_INLINE_ROWS : MOD_RENDER_PANE_ROWS;
     const result = await loaded.runtime.callHook("ui.render", {
-      modId: pane.modId,
-      paneId: pane.paneId,
-      // 三个正交的维度（与 CC 的 `ui_render` 消息同形）：`surface` 是画这棵树
-      // 的那一端（决定 `$.ui.resolve(e)` 给哪张元素表），`component` 是画哪个
-      // 站点，`instance_id` 是该站点的哪个实例 —— `Pane` 的实例就是
-      // `$.ui.open({ id })` 的 id，也就是我们的 paneId。
-      surface,
+      // 信封的字段名与 CC 一字不差（它的 `ui.render` 参数就是
+      // `{ surface, component, requestId, plugin, viewport, props }`）：`surface`
+      // 是画这棵树的那一端（决定 `$.ui.resolve(e)` 给哪张元素表），`component`
+      // 是画哪个站点，`requestId` 是该站点的哪个实例 —— `Pane` 的实例就是
+      // `$.ui.open({ id })` 的 id，`plugin` 是这棵树归哪个插件。
+      surface: this.currentSurface(),
       component: "Pane",
-      instance_id: pane.paneId,
+      requestId: pane.paneId,
+      plugin: loaded.plugin,
       // 站点的 `props`：社区 mod 会读 `e.props.bodyColumns` 这类事实（见
-      // `renderSiteProps`）。面板比带高得多，行数分开给。
-      props: renderSiteProps(MOD_RENDER_PANE_ROWS),
+      // `paneSiteProps`）。宽度是 surface 量到的**这块面板自己的宽**，不是视口
+      // 宽。`placement` 是**这一端把它摆在哪**（spec「在 IDE 插件里画」）：宽面板
+      // dock 在对话右侧、窄面板落到输入框上方，mod 可以据此换一种排布；桌面端
+      // 只有 dock 一种。
+      props: paneSiteProps(
+        pane.title,
+        placement,
+        rows,
+        layout.bodyColumns ?? MOD_RENDER_BODY_COLUMNS,
+      ),
+      // 视口事实（与 CC 的 `e.viewport` 同形）：IDE 聊天面板就是整个视口。
+      viewport: viewportOf(layout),
     });
     if (!result.ok) {
       return this.renderFailed(pane, result.error);
@@ -3220,7 +3304,7 @@ export class ModManager {
       pane.revision += 1;
       return { modId, paneId, revision: pane.revision, tree: null };
     }
-    const validated = validateModTree(result.value, surface);
+    const validated = validateModTree(result.value, this.currentSurface());
     if (!validated.ok) {
       return this.renderFailed(pane, validated.error);
     }
@@ -3242,9 +3326,12 @@ export class ModManager {
    *
    * 失败与面板同一条纪律：回**上一帧成功的树** + 错误摘要，不把这条带换成一行
    * 错误文字；也从没成功过时回空树 + 错误。
+   *
+   * `metrics` 是 surface 量到的版面事实（这块带有多宽、这一端多大），与面板同一份
+   * `e.props.bodyColumns` / `e.viewport`。
    */
   async renderBand(
-    surface: DrawnSurface = "desktop",
+    metrics: ModSurfaceMetrics = {},
   ): Promise<ModBandRenderResult[]> {
     if (this.disposed) return [];
     const bands: ModBandRenderResult[] = [];
@@ -3253,13 +3340,14 @@ export class ModManager {
       if (!loaded.runtime.hookNames().includes("ui.render")) continue;
       const previous = this.bands.get(modId);
       const result = await loaded.runtime.callHook("ui.render", {
-        modId,
-        // 与面板同一套三个维度，只是 `component` 换成第二个站点、
-        // `instance_id` 是固定值（一期一个 mod 一条带，不按实例区分）。
-        surface,
+        // 与面板同一个信封，只是 `component` 换成第二个站点、`requestId` 是固定值
+        // （一期一个 mod 一条带，不按实例区分）。
+        surface: this.currentSurface(),
         component: "AbovePrompt",
-        instance_id: MOD_BAND_INSTANCE_ID,
-        props: renderSiteProps(),
+        requestId: MOD_BAND_INSTANCE_ID,
+        plugin: loaded.plugin,
+        props: bandSiteProps(metrics.bodyColumns),
+        viewport: viewportOf(metrics),
       });
       if (!result.ok) {
         bands.push({
@@ -3282,7 +3370,7 @@ export class ModManager {
         });
         continue;
       }
-      const validated = validateModTree(result.value, surface);
+      const validated = validateModTree(result.value, this.currentSurface());
       if (!validated.ok) {
         bands.push({
           modId,
@@ -3301,7 +3389,11 @@ export class ModManager {
         tree: validated.tree,
       });
     }
-    return this.applyBandList(bands, surface);
+    // `AbovePromptList` 只在桌面端发（spec「在 IDE 插件里画」）：IDE 聊天面板
+    // 把行收进输入框上方的栈里画，没有「摊开所有行再让 mod 重排」这一步。
+    return this.currentSurface() === "desktop"
+      ? this.applyBandList(bands, metrics)
+      : bands;
   }
 
   /**
@@ -3329,7 +3421,7 @@ export class ModManager {
    */
   private async applyBandList(
     bands: ModBandRenderResult[],
-    surface: DrawnSurface,
+    metrics: ModSurfaceMetrics,
   ): Promise<ModBandRenderResult[]> {
     if (this.disposed) return bands;
     const rows = bands.filter((band) => band.tree !== null);
@@ -3338,15 +3430,19 @@ export class ModManager {
     const handed = rows.map((row) => ({ plugin: row.plugin, tree: row.tree }));
     // 没有树的带不占位置，重排之后按原相对顺序缀在末尾即可。
     const empty = bands.filter((band) => band.tree === null);
-    for (const [modId, loaded] of this.mods) {
+    for (const loaded of this.mods.values()) {
       if (loaded.error || !loaded.runtime) continue;
       if (!loaded.runtime.hasSiteHook("ui.render", "AbovePromptList")) continue;
       const result = await loaded.runtime.callHook("ui.render", {
-        modId,
-        surface,
+        surface: this.currentSurface(),
         component: "AbovePromptList",
-        instance_id: MOD_BAND_INSTANCE_ID,
-        props: { ...renderSiteProps(), rows: handed },
+        requestId: MOD_BAND_INSTANCE_ID,
+        plugin: loaded.plugin,
+        props: {
+          ...bandSiteProps(metrics.bodyColumns),
+          rows: handed,
+        },
+        viewport: viewportOf(metrics),
       });
       if (!result.ok) {
         logger.debug(

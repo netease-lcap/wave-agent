@@ -12,7 +12,18 @@ import type {
   ToolBlockUpdateCallbackParams,
   NoticeLevel,
   BtwAskOptions,
+  ModPanelUpdatePayload,
+  ModStatusPayload,
+  ModToastPayload,
+  ModPromptFillRequest,
+  ModPromptReadRequest,
   ModPromptSuggestRequest,
+  ModCopyRequest,
+  ModPaneLayout,
+  ModSurfaceMetrics,
+  ModPanelRenderResult,
+  ModBandRenderResult,
+  ModPanelEventPayload,
 } from "wave-agent-sdk/host";
 import { StdioClient } from "../stdio/stdioClient";
 import {
@@ -80,6 +91,21 @@ export interface ChatSessionCallbacks {
     content: string;
     type: "thinking" | "content";
   }) => void;
+  /**
+   * 插件 mod 的那几条推送（spec ecosystem/plugin-mods.md「在 IDE 插件里画」）：
+   * 面板元信息、状态行、短暂提示，以及 `$.prompt.fill` / `$.prompt.read` /
+   * `$.ui.copy` 三条要界面作答的请求。宿主只转发给 webview，自己不存树 ——
+   * 树由 webview 拿到 `stale` 后自己来拉。
+   *
+   * `$.ui.notice`（工具行下面那一行）不在这一端：没有对应回调，调用不报错也不
+   * 显示，与 spec 里「不支持」那一句一致。
+   */
+  onModPanelUpdate?: (payload: ModPanelUpdatePayload) => void;
+  onModStatus?: (payload: ModStatusPayload) => void;
+  onModToast?: (payload: ModToastPayload) => void;
+  onModPromptFill?: (payload: ModPromptFillRequest) => void;
+  onModPromptRead?: (payload: ModPromptReadRequest) => void;
+  onModCopy?: (payload: ModCopyRequest) => void;
   /**
    * 某个 mod 想把一条建议摆进这个面板的输入框（spec `ecosystem/plugin-mods.md`
    * 「输入框里的建议与焦点」）。摆不摆得上只有输入框知道，所以界面收到后要用
@@ -282,6 +308,25 @@ export class ChatSession {
         },
         onBtwContent: (params) => {
           this.callbacks.onBtwContent?.(params);
+        },
+        // 插件 mod 的四条推送（spec「在 IDE 插件里画」）：宿主只转发，不缓存。
+        onModPanelUpdate: (payload) => {
+          this.callbacks.onModPanelUpdate?.(payload);
+        },
+        onModStatus: (payload) => {
+          this.callbacks.onModStatus?.(payload);
+        },
+        onModToast: (payload) => {
+          this.callbacks.onModToast?.(payload);
+        },
+        onModPromptFill: (payload) => {
+          this.callbacks.onModPromptFill?.(payload);
+        },
+        onModPromptRead: (payload) => {
+          this.callbacks.onModPromptRead?.(payload);
+        },
+        onModCopy: (payload) => {
+          this.callbacks.onModCopy?.(payload);
         },
         onModPromptSuggest: (payload) => {
           this.callbacks.onModPromptSuggest?.(payload);
@@ -819,6 +864,69 @@ export class ChatSession {
       return false;
     }
     return await this.agent.stopWorkflowRun(runId);
+  }
+
+  // ── 插件 mod 面板（spec ecosystem/plugin-mods.md「在 IDE 插件里画」）──────
+  // 与桌面端走同一套 RPC：树由 webview 自己来要（宿主不缓存），交互原样退回
+  // CLI 进程里那个 mod。`layout` 只说「这一端把面板摆在哪」，由 webview 量出来
+  // 的宽度决定，进 `e.props.placement` / `e.viewport`。
+
+  public async renderModPanel(
+    modId: string,
+    paneId: string,
+    layout: ModPaneLayout = {},
+  ): Promise<ModPanelRenderResult | null> {
+    if (!this.agent) {
+      return null;
+    }
+    return await this.agent.renderModPanel(modId, paneId, layout);
+  }
+
+  public async renderModBand(
+    metrics: ModSurfaceMetrics = {},
+  ): Promise<ModBandRenderResult[]> {
+    if (!this.agent) {
+      return [];
+    }
+    return await this.agent.renderModBand(metrics);
+  }
+
+  /** 当前所有 mod 面板的快照（webview 重建后补画面板用，spec「生命周期」）。 */
+  public async getModPanels(): Promise<ModPanelUpdatePayload[]> {
+    if (!this.agent) {
+      return [];
+    }
+    return await this.agent.getModPanels();
+  }
+
+  public async sendModPanelEvent(payload: ModPanelEventPayload): Promise<void> {
+    if (!this.agent) {
+      return;
+    }
+    await this.agent.sendModPanelEvent(payload);
+  }
+
+  public async resolveModPromptFill(
+    requestId: string,
+    filled: boolean,
+  ): Promise<void> {
+    await this.agent?.resolveModPromptFill(requestId, filled);
+  }
+
+  public async resolveModPromptRead(
+    requestId: string,
+    text: string,
+    cursor: number,
+  ): Promise<void> {
+    await this.agent?.resolveModPromptRead(requestId, text, cursor);
+  }
+
+  public async resolveModCopy(
+    requestId: string,
+    isCopied: boolean,
+    reason?: string,
+  ): Promise<void> {
+    await this.agent?.resolveModCopy(requestId, isCopied, reason);
   }
 
   public async connectMcpServer(serverName: string): Promise<boolean> {

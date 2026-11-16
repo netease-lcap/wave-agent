@@ -5,6 +5,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -64,12 +65,34 @@ interface AgentCallbacks {
     fun onNotificationMessageAdded(message: JsonObject) {}
     fun onBtwContent(question: String, content: String, type: String, requestId: String?) {}
     /**
+     * 插件 mod 的推送（spec ecosystem/plugin-mods.md「在 IDE 插件里画」）：面板
+     * 元信息、带、状态行、短暂提示，以及 `$.prompt.fill` / `$.prompt.read` /
+     * `$.ui.copy` 三条要界面作答的请求。载荷原样转给 webview —— 宿主不缓存树，
+     * 也不解释任何一个字段。
+     *
+     * `$.ui.notice`（工具行下面那一行）在这一端不显示，所以没有对应回调：mod 那
+     * 一侧调用不报错，只是没人画。
+     */
+    fun onModPanelUpdate(payload: JsonElement?) {}
+
+    fun onModStatus(payload: JsonElement?) {}
+
+    fun onModToast(payload: JsonElement?) {}
+
+    fun onModPromptFill(payload: JsonElement?) {}
+
+    fun onModPromptRead(payload: JsonElement?) {}
+
+    fun onModCopy(payload: JsonElement?) {}
+
+    /**
      * 一个 mod 要往输入框上方摆一条建议（`$.prompt.suggest`；spec
      * ecosystem/plugin-mods.md「输入框里的建议与焦点」）。摆不摆得上只有输入框知道，
      * 所以宿主处理完必须用 `resolveModPromptSuggest` 回执，[payload] 里的
      * `requestId` 要原样送回。
      */
     fun onModPromptSuggest(payload: JsonObject) {}
+
     fun onError(message: String) {}
 }
 
@@ -207,6 +230,14 @@ class StdioAgent(
             "planFileUpdated" -> callbacks.onPlanFileUpdated(
                 params?.jsonObject?.get("content")?.jsonPrimitive?.content ?: ""
             )
+            // 插件 mod（spec ecosystem/plugin-mods.md「在 IDE 插件里画」）：载荷
+            // 就是顶层那张对象，宿主逐个转给 webview。
+            "modPanelUpdate" -> callbacks.onModPanelUpdate(params)
+            "modStatusUpdate" -> callbacks.onModStatus(params)
+            "modToast" -> callbacks.onModToast(params)
+            "modPromptFill" -> callbacks.onModPromptFill(params)
+            "modPromptRead" -> callbacks.onModPromptRead(params)
+            "modCopy" -> callbacks.onModCopy(params)
             // 一条建议要摆进输入框上方（`$.prompt.suggest`）：整份 payload 原样交给宿
             // 主，回执里要一字不差地送回同一个 requestId（spec「输入框里的建议与焦
             // 点」）。
@@ -504,6 +535,68 @@ class StdioAgent(
     suspend fun stopWorkflowRun(runId: String): Boolean {
         val result = client.request("stopWorkflowRun", buildJsonObject { put("runId", runId) }, sessionId)
         return result?.jsonObject?.get("success")?.jsonPrimitive?.booleanOrNull ?: false
+    }
+
+    // ── 插件 mod（spec ecosystem/plugin-mods.md「在 IDE 插件里画」）──────────
+    //
+    // 与桌面端同一套 RPC：树由 webview 自己来要（宿主不缓存），交互原样退回 CLI
+    // 进程里那个 mod。Kotlin 侧只做名字表与转发，字段一个都不解释。
+
+    /**
+     * 要一棵面板的树。`layout` 是「这一端把它摆在哪、有多大」：`placement` /
+     * `bodyColumns` 进 `e.props`，`columns` / `rows` / `isFullscreen` 进
+     * `e.viewport`。这些都只有画它的那一端知道，所以随请求一起上来，宿主不解释。
+     */
+    suspend fun renderModPanel(modId: String, paneId: String, layout: JsonObject? = null): JsonElement? =
+        client.request("modPanelRender", buildJsonObject {
+            put("modId", modId)
+            put("paneId", paneId)
+            layout?.forEach { (key, value) -> put(key, value) }
+        }, sessionId)
+
+    /**
+     * 要输入框上方那条带的树（整表快照，没返回的 mod 这一帧没内容）。`metrics`
+     * 与面板同一条口径：webview 量到的字符宽高，缺的就缺着。
+     */
+    suspend fun renderModBand(metrics: JsonObject = JsonObject(emptyMap())): JsonElement =
+        client.request("modBandRender", metrics, sessionId) ?: JsonArray(emptyList())
+
+    /** 当前所有 mod 面板的快照（webview 重建后补画面板用，spec「生命周期」）。 */
+    suspend fun getModPanels(): JsonElement =
+        client.request("getModPanels", JsonObject(emptyMap()), sessionId) ?: JsonArray(emptyList())
+
+    /** 面板/带里的一次交互：原样交回 mod。 */
+    suspend fun sendModPanelEvent(payload: JsonObject) {
+        client.request("modPanelEvent", payload, sessionId)
+    }
+
+    /** 回答一次 `$.prompt.fill`：草稿落没落地。 */
+    suspend fun resolveModPromptFill(requestId: String, filled: Boolean) {
+        client.request("modPromptFillResult", buildJsonObject {
+            put("requestId", requestId)
+            put("filled", filled)
+        }, sessionId)
+    }
+
+    /** 回答一次 `$.prompt.read`：输入框**此刻**的内容与光标位置。 */
+    suspend fun resolveModPromptRead(requestId: String, text: String, cursor: Int) {
+        client.request("modPromptReadResult", buildJsonObject {
+            put("requestId", requestId)
+            put("text", text)
+            put("cursor", cursor)
+        }, sessionId)
+    }
+
+    /**
+     * 回答一次 `$.ui.copy`。写不进去也是答案：`isCopied = false` 带一句 `reason`
+     * （`no-clipboard` / `refused`），mod 据此换一种交付方式。
+     */
+    suspend fun resolveModCopy(requestId: String, isCopied: Boolean, reason: String?) {
+        client.request("modCopyResult", buildJsonObject {
+            put("requestId", requestId)
+            put("isCopied", isCopied)
+            if (reason != null) put("reason", reason)
+        }, sessionId)
     }
 
     suspend fun connectMcpServer(serverName: String): Boolean {

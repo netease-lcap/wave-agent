@@ -437,6 +437,47 @@ class WaveSession(
         })
     }
 
+    // ── 插件 mod（spec ecosystem/plugin-mods.md「在 IDE 插件里画」）──────────
+    //
+    // 与桌面端共用同一批 webview 消息名（`desktopMod*` 是历史命名，webview 只认
+    // 语义不认宿主）。宿主不缓存树：这里只把 CLI 的推送原样交给 webview，树由它
+    // 拿到 `stale` 后自己来拉。
+    override fun onModPanelUpdate(payload: JsonElement?) {
+        postMessage("desktopModPanelUpdate", buildJsonObject {
+            put("payload", payload ?: JsonObject(emptyMap()))
+        })
+    }
+
+    override fun onModStatus(payload: JsonElement?) {
+        postMessage("desktopModStatus", buildJsonObject {
+            put("payload", payload ?: JsonObject(emptyMap()))
+        })
+    }
+
+    override fun onModToast(payload: JsonElement?) {
+        postMessage("desktopModToast", buildJsonObject {
+            put("payload", payload ?: JsonObject(emptyMap()))
+        })
+    }
+
+    override fun onModPromptFill(payload: JsonElement?) {
+        postMessage("desktopModPromptFill", buildJsonObject {
+            put("payload", payload ?: JsonObject(emptyMap()))
+        })
+    }
+
+    override fun onModPromptRead(payload: JsonElement?) {
+        postMessage("desktopModPromptRead", buildJsonObject {
+            put("payload", payload ?: JsonObject(emptyMap()))
+        })
+    }
+
+    override fun onModCopy(payload: JsonElement?) {
+        postMessage("desktopModCopy", buildJsonObject {
+            put("payload", payload ?: JsonObject(emptyMap()))
+        })
+    }
+
     override fun onPermissionRequest(requestId: String, context: JsonElement?) {
         scope.launch {
             PermissionFlow.handle(project, this@WaveSession, requestId, context)

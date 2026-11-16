@@ -2164,6 +2164,65 @@ describe("remote page shim — the second batch", () => {
     });
     // 停完立刻重读：被停下的那个不再产生进度事件，等推送是等不到的。
     expect(lastRequest(page).method).toBe("getWorkflowRuns");
+
+    // 后台任务变化是同一条刷新源：`WorkflowManager` 每推进一个阶段、每记一行
+    // 日志、跑完都走 `notifyTasksChange()`，桌面端与插件端正是在
+    // `onBackgroundTasksChange` 里重读 `getWorkflowRuns`（`desktopHost.ts` /
+    // `chatSession.ts`）。少了这一步，页面上跑起来的 workflow 在 `/workflows`
+    // 里要等重连 / 重挂才出现。
+    page.reply({ runs: [] });
+    await flush();
+    const before = page.requests().length;
+    page.socket().receive({
+      method: "backgroundTasksChange",
+      params: { tasks: [{ id: "wf_1", type: "workflow", status: "running" }] },
+      sessionId: "s1",
+    });
+    await flush();
+    expect(
+      page
+        .requests()
+        .slice(before)
+        .map((frame) => frame.method),
+    ).toEqual(["getWorkflowRuns"]);
+    page.reply({ runs });
+    await flush();
+    expect(lastPost(page, "updateWorkflowRuns")).toMatchObject({ runs });
+  });
+
+  it("workflows: a failed read says so, instead of looking like a session with no runs", async () => {
+    const page = await openPage();
+
+    // 读失败曾经是纯 console 的：页面停在首屏那份空列表，`/workflows` 写「暂无
+    // 工作流运行」——和「这条会话真的没跑过」一模一样。真实现场是远控通道把超
+    // 预算的读回成 -32603（一次 730 KB 的运行列表），手机上从头到尾看不到。
+    expect(lastRequest(page).method).toBe("getWorkflowRuns");
+    page.replyWithError(
+      "getWorkflowRuns: the answer is larger than the remote channel's frame budget" +
+        " (730397 bytes over the 524288-byte limit) — ask for a smaller page",
+      -32603,
+    );
+    await flush();
+
+    expect(page.banner()).toContain("工作流运行读取失败");
+    expect(page.banner()).toContain("730397");
+    // 列表仍是首屏那份空数组：失败不编造运行，也不清掉已缓存的（这里没有）。
+    expect(lastPost(page, "updateWorkflowRuns")).toBeUndefined();
+
+    // 只通报一次。这一行说的是「这台机器的运行列表读不出来」，不是每次刷新都
+    // 要念一遍的日志；用户关掉之后，下一条同样的失败不该把它叫回来。
+    page.bannerClose()?.click();
+    page.socket().receive({
+      method: "backgroundTasksChange",
+      params: { tasks: [] },
+      sessionId: "s1",
+    });
+    await flush();
+    expect(lastRequest(page).method).toBe("getWorkflowRuns");
+    page.replyWithError("getWorkflowRuns: still over the frame budget", -32603);
+    await flush();
+    expect(page.banner()).toBe("");
+    expect(lastPost(page, "updateWorkflowRuns")).toBeUndefined();
   });
 
   it("@ suggestions: searchFiles anchored to the session workdir, mapped like the desktop", async () => {

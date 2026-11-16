@@ -1129,7 +1129,9 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
           error: "会话还没就绪",
         };
       }
-      return agent.renderModPanel(modId, paneId, "terminal");
+      // 摆法与量到的版面事实都走缺省：终端自己按字符格排版，不上报
+      // `bodyColumns` / `rows`（spec「`ui.render` 的 `e.props`」允许空着）。
+      return agent.renderModPanel(modId, paneId);
     },
     [],
   );
@@ -1139,7 +1141,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   > => {
     const agent = agentRef.current;
     if (!agent) return [];
-    return agent.renderModBand("terminal");
+    return agent.renderModBand();
   }, []);
 
   const sendModPanelEvent = useCallback(

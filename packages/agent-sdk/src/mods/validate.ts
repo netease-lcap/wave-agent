@@ -27,6 +27,8 @@ const ELEMENT_TYPES = new Set<string>(MOD_ELEMENT_TYPES);
  */
 const SURFACE_ELEMENT_SETS: Record<string, ReadonlySet<string>> = {
   desktop: new Set(MOD_SURFACE_ELEMENTS.desktop),
+  // IDE 那两端画的是与桌面端同一份 webview（spec「在 IDE 插件里画」）。
+  vscode: new Set(MOD_SURFACE_ELEMENTS.vscode),
   terminal: new Set(MOD_SURFACE_ELEMENTS.terminal),
 };
 
@@ -466,7 +468,7 @@ interface WalkState {
   nodes: number;
   textChars: number;
   /** 画这棵树的那一端：元素名按它的名单再查一遍（spec「元素表按端分」）。 */
-  surface: Extract<ModRenderSurface, "terminal" | "desktop">;
+  surface: Extract<ModRenderSurface, "terminal" | "desktop" | "vscode">;
 }
 
 function walkNode(
@@ -608,7 +610,10 @@ function walkNode(
 /** 校验一棵树；通过时返回**规范化**后的副本（只保留已知字段）。 */
 export function validateModTree(
   input: unknown,
-  surface: Extract<ModRenderSurface, "terminal" | "desktop"> = "desktop",
+  surface: Extract<
+    ModRenderSurface,
+    "terminal" | "desktop" | "vscode"
+  > = "desktop",
 ): ModTreeValidation {
   try {
     const state: WalkState = { nodes: 0, textChars: 0, surface };

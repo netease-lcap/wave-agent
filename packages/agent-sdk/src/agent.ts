@@ -21,12 +21,14 @@ import type {
   ModPromptOrigin,
   ModPromptSuggestEvent,
   ModPanelRenderResult,
+  ModPaneLayout,
   ModPanelUpdatePayload,
   ModPromptFillMode,
   ModRenderSurface,
   ModStatusPayload,
   ModSessionUsage,
   ModUiCopyResult,
+  ModSurfaceMetrics,
 } from "./types/mods.js";
 import { MOD_LIMITS } from "./types/mods.js";
 import { HookManager } from "./managers/hookManager.js";
@@ -341,25 +343,31 @@ export class Agent {
    * 「架构约束」: trees are pulled, never pushed).
    *
    * Public because the stdio bridge receives the `modPanelRender` RPC and hands
-   * the pane identity straight here.
+   * the pane identity straight here. `layout` 是「这一端把它摆在哪」（spec
+   * 「在 IDE 插件里画」）：宽面板 dock 在对话右侧、窄面板落到输入框上方，
+   * 引擎把它放进 `ui.render` 的 `e.props.placement` 与 `e.viewport`。
    */
   public async renderModPanel(
     modId: string,
     paneId: string,
-    surface: Extract<ModRenderSurface, "terminal" | "desktop"> = "desktop",
+    layout: ModPaneLayout = {},
   ): Promise<ModPanelRenderResult> {
-    return this.modManager.renderPane(modId, paneId, surface);
+    return this.modManager.renderPane(modId, paneId, layout);
   }
 
   /**
    * Produce the trees for the band above the composer (spec
    * `ecosystem/plugin-mods.md` 「状态带、状态行与提示」: same pull discipline as
    * panes — one `ui.render` call per mod that registers it).
+   *
+   * `metrics` is what the surface measured (the band's own width in character
+   * cells, plus the surface's viewport in cells): it becomes `e.props.bodyColumns`
+   * and `e.viewport` for the mod.
    */
   public async renderModBand(
-    surface: Extract<ModRenderSurface, "terminal" | "desktop"> = "desktop",
+    metrics: ModSurfaceMetrics = {},
   ): Promise<ModBandRenderResult[]> {
-    return this.modManager.renderBand(surface);
+    return this.modManager.renderBand(metrics);
   }
 
   /**
@@ -1482,7 +1490,16 @@ export class Agent {
     return this.backgroundTaskManager.stopTask(id);
   }
 
-  /** Get all workflow runs */
+  /**
+   * Get all workflow runs, shaped for a UI.
+   *
+   * `result` is cut down to a snippet once it outgrows the completion
+   * notification's budget: no interface renders it, while it is 99.7% of the
+   * payload and the hosts re-push this list on every progress event (spec
+   * `multi-agent/workflow.md`「工作流管理对话框」场景 7). A value that fits is
+   * handed over untouched; the full value always stays in `run-state.json` and
+   * in the completion notification.
+   */
   public async getWorkflowRuns(): Promise<
     import("./workflow/types.js").WorkflowRun[]
   > {
@@ -1491,10 +1508,10 @@ export class Agent {
       .get<
         import("./managers/workflowManager.js").WorkflowManager
       >("WorkflowManager")!
-      .listRuns();
+      .listUiRuns();
   }
 
-  /** Get a specific workflow run by ID */
+  /** Get a specific workflow run by ID, shaped for a UI (see `getWorkflowRuns`) */
   public getWorkflowRun(
     runId: string,
   ): import("./workflow/types.js").WorkflowRun | undefined {
@@ -1503,7 +1520,7 @@ export class Agent {
       .get<
         import("./managers/workflowManager.js").WorkflowManager
       >("WorkflowManager")!
-      .getRun(runId);
+      .getUiRun(runId);
   }
 
   /** Stop a workflow run */

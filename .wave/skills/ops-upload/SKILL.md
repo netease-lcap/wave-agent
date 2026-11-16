@@ -28,6 +28,15 @@ allowed-tools:
 
 - **两种部署都打企业端域名**：CodeChat 的 `/api/publish/*` 写入口跟着读入口走（2026-11-04 起），SaaS 与私有化都挂在企业端，运维只需要记一本地址。运营端 `neteasecc.*` **不再挂**这组接口（同路径 404）——只有还没升级到该版本镜像的环境，才需要 `--base` 指向运营端过渡。
 - **路径逐字一致，只换 host**：同一份命令在两种部署下都能用。**私有化没有 `--env` 预设**（那是客户自己的域名），必须 `--base https://<客户企业端>` + 该环境的令牌。
+- **私有化域名解析不了时用 `--host-header`**：客户域名常常只在对方的 DNS 里（本机 `getent hosts` 不解析），而 ingress IP 直连可达。这时把 `--base` 给 IP、`--host-header` 给域名：
+
+  ```bash
+  node $S --file … --version … --platform win-exe --channel beta \
+    --base http://220.197.37.34 --host-header codechat.<客户域名> \
+    --token-file <该环境令牌文件>
+  ```
+
+  脚本会起一个本地一次性代理（`Host` 改写成域名、目的地是 `--base` 的 IP），Fetch 照旧 —— 因为 Node 内置 fetch 按规范**静默丢弃**手写的 `Host` 头，直接加 header 是没用的（patch `dns.lookup` 同样无效，undici 用内部 lookup）。`--list` 也走同一条代理，可以先用它空跑验证连通性。**不要**再为此在集群里起一次性 pod / 手改 `/etc/hosts`。
 - ⚠️ 打错环境**不会报错**：对象会静默写进另一个环境。脚本会把解析出的地址打印在第一行，动手前先核一遍。（`--base <URL>` 仍保留，和 `--env` 二选一。）
 
 ### 令牌（`PUBLISH_TOKEN`）

@@ -2034,6 +2034,13 @@
         // workflow 的后台进程。桌面端与插件端都用 `updateBackgroundTasks`
         // 这条 webview 命令投递它，这里照抄同一个名字。
         post({ command: "updateBackgroundTasks", tasks: p.tasks });
+        // 工作流运行搭同一条通知刷新：`WorkflowManager` 每推进一个阶段、每记
+        // 一行日志、结束时都走 `notifyTasksChange()`，桌面端与插件端正是在
+        // `onBackgroundTasksChange` 里重读 `getWorkflowRuns`（`desktopHost.ts` /
+        // `chatSession.ts`）。漏了这一行，页面上刚跑起来或刚跑完的工作流在
+        // `/workflows` 里要等重连 / 重挂才会出现——面板开着也是一直「暂无工作流
+        // 运行」。
+        refreshWorkflowRuns();
         return;
       case "queuedMessagesChange":
         // The webview message carries the queue under `queue` (same as the VSCE
@@ -2652,6 +2659,16 @@
       .catch(function (err) {
         // Best-effort, same as the desktop host: the cached runs stay as the last
         // known state, and an unsupported host simply leaves the list empty.
+        //
+        // But say it once, **visibly**: a silent failure renders exactly like
+        // 「这条会话没有工作流」. That is how an over-budget answer (the relay
+        // answers an oversized read with an error and never a truncation) or an
+        // older host used to hide the real state — `/workflows` just said 「暂无
+        // 工作流运行」 and stayed that way (2026-11-16: 730 KB 的运行列表被回成
+        // -32603，手机上一直是空的). One line, then the console keeps the rest.
+        if (!warned.workflowRuns) {
+          showStatus("工作流运行读取失败：" + err.message, "error");
+        }
         warnOnce("workflowRuns", "工作流运行补读失败：" + err.message);
       });
   }
