@@ -32,6 +32,11 @@ import {
 import type { SkillManager } from "./skillManager.js";
 import type { SkillMetadata } from "../types/skills.js";
 import type { SubagentManager } from "./subagentManager.js";
+import {
+  createForkSubagentConfiguration,
+  FORK_SUBTASK_MAX_TURNS,
+} from "../builtin/forkSubagent.js";
+import { FORK_SUBAGENT_TYPE } from "../constants/subagents.js";
 import type { ModCommandInfo } from "../types/mods.js";
 import { logger } from "../utils/globalLogger.js";
 
@@ -67,6 +72,9 @@ export class SlashCommandManager {
 
   public initialize(): void {
     this.loadCustomCommands();
+    // Registered after the disk-sourced commands: a shipped command of the SDK
+    // is not something a file that happens to use the same name should shadow.
+    this.registerSubtaskCommand();
 
     // Listen for skill refreshes and update skill commands
     const skillManager = this.container.get<SkillManager>("SkillManager");
@@ -91,6 +99,92 @@ export class SlashCommandManager {
 
   private get subagentManager(): SubagentManager {
     return this.container.get<SubagentManager>("SubagentManager")!;
+  }
+
+  /**
+   * `/subtask <task>` — send this conversation off to a background fork.
+   *
+   * Registered in the SDK's own command table rather than in a host's local
+   * one because it needs no host UI: it starts a subagent and the result comes
+   * back as a task notification in this same conversation, so one registration
+   * serves every front end (spec `multi-agent/subtask-command.md`「四个入口看到
+   * 的是同一条命令」).
+   */
+  private registerSubtaskCommand(): void {
+    this.registerCommand({
+      id: "subtask",
+      name: "subtask",
+      // Claude Code's own wording, verbatim.
+      description:
+        "Send a subagent off with your full context; its result comes back here",
+      argumentHint: "<task>",
+      handler: (args?: string) => this.runSubtask(args),
+    });
+  }
+
+  /**
+   * Start the fork and return immediately: the parent conversation never takes
+   * a loading state, so the input stays usable while the subtask runs.
+   *
+   * The fork works on its own copy of the conversation
+   * (`SubagentManager.createInstance` → `inheritParentContext`), which is what
+   * keeps the two apart — this conversation only ever gains the completion's
+   * task notification.
+   */
+  private async runSubtask(args?: string): Promise<void> {
+    const task = args?.trim();
+    if (!task) {
+      this.messageManager.addNoticeBlock("Usage: /subtask <task>", "error");
+      return;
+    }
+
+    // A fork starts from a copy of this conversation, so there must be one.
+    // Narration does not count: these very refusals add notice blocks, and an
+    // empty session must not become forkable through a failed first attempt.
+    const hasConversation = this.messageManager
+      .getMessages()
+      .some(
+        (message) =>
+          message.isMeta !== true &&
+          message.blocks.some((block) => block.type !== "notice"),
+      );
+    if (!hasConversation) {
+      this.messageManager.addNoticeBlock(
+        "Cannot start a subtask before the first conversation turn",
+        "error",
+      );
+      return;
+    }
+
+    try {
+      const subagentManager =
+        this.container.get<SubagentManager>("SubagentManager");
+      if (!subagentManager) {
+        throw new Error("Subagent manager not available");
+      }
+
+      const instance = await subagentManager.createInstance(
+        createForkSubagentConfiguration(),
+        {
+          description: subtaskDescription(task),
+          prompt: task,
+          subagent_type: FORK_SUBAGENT_TYPE,
+          inheritParentContext: true,
+          maxTurns: FORK_SUBTASK_MAX_TURNS,
+        },
+        true,
+      );
+
+      // run-in-background: `executeAgent` returns as soon as the background
+      // task is registered, and the completion (or failure) reaches this
+      // conversation through the parent's message queue.
+      await subagentManager.executeAgent(instance, task, undefined, true);
+    } catch (error) {
+      this.messageManager.addNoticeBlock(
+        `Failed to start the subtask: ${error instanceof Error ? error.message : String(error)}`,
+        "error",
+      );
+    }
   }
 
   /**
@@ -801,4 +895,13 @@ export class SlashCommandManager {
     this.currentCommandAbortController?.abort();
     this.currentCommandAbortController = null;
   }
+}
+
+/**
+ * Background-task title for a `/subtask`: its first line, shortened. The task
+ * list and the completion notification quote it as `Agent task "<desc>"`.
+ */
+function subtaskDescription(task: string): string {
+  const firstLine = task.split("\n")[0].trim();
+  return firstLine.length > 60 ? `${firstLine.slice(0, 60)}…` : firstLine;
 }

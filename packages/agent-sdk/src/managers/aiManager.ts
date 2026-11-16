@@ -3406,6 +3406,7 @@ ${question}`;
           summary: block.summary,
           outputFile: block.outputFile,
           result: block.result,
+          usage: block.usage,
         });
         injected++;
         continue;

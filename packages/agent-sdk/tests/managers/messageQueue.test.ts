@@ -533,4 +533,28 @@ describe("MessageQueue", () => {
       expect(queue.state).toBe("idle");
     });
   });
+
+  describe("enqueueNotification", () => {
+    it("should queue a notification under the cap as-is", () => {
+      const queue = new MessageQueue();
+      const xml =
+        "<task-notification>\n<status>completed</status>\n</task-notification>";
+
+      queue.enqueueNotification(xml);
+
+      expect(queue.drainNotifications()).toEqual([xml]);
+    });
+
+    it("should cap an oversized notification at the shared ceiling", () => {
+      const queue = new MessageQueue();
+      const xml = `<task-notification><result>${"x".repeat(200_000)}</result></task-notification>`;
+
+      queue.enqueueNotification(xml);
+
+      const [queued] = queue.drainNotifications();
+      expect(queued.length).toBeLessThan(xml.length);
+      expect(queued).toContain("</task-notification>");
+      expect(queued).toMatch(/\[truncated \d+ characters\]/);
+    });
+  });
 });

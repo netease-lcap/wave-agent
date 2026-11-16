@@ -12,14 +12,52 @@ export function taskNotificationToXml(block: TaskNotificationBlock): string {
   }
   xml += `<status>${block.status}</status>\n`;
   xml += `<summary>${block.summary}</summary>\n`;
+  if (block.usage) {
+    xml += `<usage>`;
+    xml += `<subagent_tokens>${block.usage.totalTokens}</subagent_tokens>`;
+    xml += `<tool_uses>${block.usage.toolUses}</tool_uses>`;
+    xml += `<duration_ms>${block.usage.durationMs}</duration_ms>`;
+    xml += `</usage>\n`;
+  }
   xml += `</task-notification>`;
   return xml;
+}
+
+/**
+ * A task notification is a message the model reads, so a chatty subagent must
+ * not be able to flood the parent's context with one. Past the ceiling the
+ * middle is dropped and the head and tail are kept — the markup around a
+ * subagent's answer travels in the middle, while the opening identity tags and
+ * the closing `<summary>`/`</task-notification>` are what consumers read.
+ */
+export const MAX_TASK_NOTIFICATION_CHARS = 100_000;
+
+export function capTaskNotification(xml: string): string {
+  if (xml.length <= MAX_TASK_NOTIFICATION_CHARS) return xml;
+  const head = Math.floor(MAX_TASK_NOTIFICATION_CHARS / 2);
+  const tail = MAX_TASK_NOTIFICATION_CHARS - head;
+  const omitted = xml.length - MAX_TASK_NOTIFICATION_CHARS;
+  return `${xml.slice(0, head)}\n[truncated ${omitted} characters]\n${xml.slice(-tail)}`;
 }
 
 function extractTag(xml: string, tag: string): string | null {
   const regex = new RegExp(`<${tag}>(.*?)</${tag}>`, "s");
   const match = xml.match(regex);
   return match ? match[1] : null;
+}
+
+function parseUsage(
+  xml: string,
+): { totalTokens: number; toolUses: number; durationMs: number } | undefined {
+  const raw = ["subagent_tokens", "tool_uses", "duration_ms"].map((tag) =>
+    extractTag(xml, tag),
+  );
+  if (raw.some((value) => value === null)) return undefined;
+  const [totalTokens, toolUses, durationMs] = raw.map(Number);
+  if (![totalTokens, toolUses, durationMs].every(Number.isFinite)) {
+    return undefined;
+  }
+  return { totalTokens, toolUses, durationMs };
 }
 
 export function parseTaskNotificationXml(
@@ -47,6 +85,7 @@ export function parseTaskNotificationXml(
 
     const outputFile = extractTag(xml, "output-file") || undefined;
     const result = extractTag(xml, "result") || undefined;
+    const usage = parseUsage(xml);
 
     return {
       type: "task_notification",
@@ -56,6 +95,7 @@ export function parseTaskNotificationXml(
       summary,
       ...(outputFile && { outputFile }),
       ...(result && { result }),
+      ...(usage && { usage }),
     };
   } catch {
     return null;

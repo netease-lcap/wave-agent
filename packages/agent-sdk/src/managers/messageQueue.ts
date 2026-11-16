@@ -1,4 +1,6 @@
 import type { UserImage } from "../types/index.js";
+import { logger } from "../utils/globalLogger.js";
+import { capTaskNotification } from "../utils/notificationXml.js";
 
 export type QueueState = "idle" | "dispatching" | "running";
 
@@ -123,12 +125,23 @@ export class MessageQueue {
   /**
    * Enqueue a background task notification (XML string). Notifications are
    * not user-editable and not surfaced in the queued-messages UI.
+   *
+   * The cap lives here rather than at each producer: every notification ends
+   * up in the model's context, so a single oversized one (a subagent that
+   * pastes a whole file into its final answer) has to be bounded no matter
+   * which manager wrote it.
    */
   enqueueNotification(xml: string): void {
+    const capped = capTaskNotification(xml);
+    if (capped.length !== xml.length) {
+      logger.warn(
+        `task-notification capped from ${xml.length} to ${capped.length} chars`,
+      );
+    }
     this.queue.push({
       id: `mq-${this.nextId++}`,
       type: "notification",
-      content: xml,
+      content: capped,
       editable: false,
     });
     this.onMessageEnqueued?.();

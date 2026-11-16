@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
+  MAX_TASK_NOTIFICATION_CHARS,
+  capTaskNotification,
   taskNotificationToXml,
   parseTaskNotificationXml,
 } from "../../src/utils/notificationXml.js";
@@ -74,6 +76,75 @@ describe("notificationXml", () => {
 
       expect(xml).not.toContain("<result>");
     });
+
+    it("should render usage when the task reported it", () => {
+      const block: TaskNotificationBlock = {
+        type: "task_notification",
+        taskId: "task_900",
+        taskType: "agent",
+        status: "completed",
+        summary: "Agent done",
+        usage: { totalTokens: 1234, toolUses: 5, durationMs: 6789 },
+      };
+
+      const xml = taskNotificationToXml(block);
+
+      expect(xml).toContain(
+        "<usage><subagent_tokens>1234</subagent_tokens>" +
+          "<tool_uses>5</tool_uses><duration_ms>6789</duration_ms></usage>",
+      );
+    });
+
+    it("should omit usage when the task did not report it", () => {
+      const block: TaskNotificationBlock = {
+        type: "task_notification",
+        taskId: "task_901",
+        taskType: "shell",
+        status: "completed",
+        summary: "Shell done",
+      };
+
+      expect(taskNotificationToXml(block)).not.toContain("<usage>");
+    });
+  });
+
+  describe("capTaskNotification", () => {
+    it("should leave a notification under the ceiling untouched", () => {
+      const xml = taskNotificationToXml({
+        type: "task_notification",
+        taskId: "task_1",
+        taskType: "agent",
+        status: "completed",
+        summary: "Agent done",
+        result: "short answer",
+      });
+
+      expect(capTaskNotification(xml)).toBe(xml);
+    });
+
+    it("should keep the identity tags and the closing summary of an oversized one", () => {
+      const head = "h".repeat(60_000);
+      const tail = "t".repeat(60_000);
+      const xml = `<task-notification>\n<task-id>task_big</task-id>\n<result>${head}${tail}</result>\n<status>completed</status>\n<summary>Agent done</summary>\n</task-notification>`;
+
+      const capped = capTaskNotification(xml);
+
+      expect(capped.length).toBeLessThan(xml.length);
+      expect(capped).toContain("<task-id>task_big</task-id>");
+      expect(capped).toContain("<summary>Agent done</summary>");
+      expect(capped).toContain("</task-notification>");
+      expect(capped).toMatch(/\[truncated \d+ characters\]/);
+    });
+
+    it("should never exceed the ceiling by more than the marker", () => {
+      const xml = `<task-notification>${"x".repeat(MAX_TASK_NOTIFICATION_CHARS * 2)}</task-notification>`;
+      const capped = capTaskNotification(xml);
+      const marker = capped.match(/\[truncated \d+ characters\]/)?.[0] ?? "";
+
+      expect(capped.length - marker.length - 2).toBe(
+        MAX_TASK_NOTIFICATION_CHARS,
+      );
+    });
   });
 
   describe("parseTaskNotificationXml", () => {
@@ -135,6 +206,24 @@ describe("notificationXml", () => {
         status: "completed",
         summary: "Background task done",
         result: "The findings are in /tmp/report.md",
+      });
+    });
+
+    it("should parse the usage section", () => {
+      const xml = `<task-notification>
+<task-id>task_900</task-id>
+<task-type>agent</task-type>
+<status>completed</status>
+<summary>Agent done</summary>
+<usage><subagent_tokens>1234</subagent_tokens><tool_uses>5</tool_uses><duration_ms>6789</duration_ms></usage>
+</task-notification>`;
+
+      const result = parseTaskNotificationXml(xml);
+
+      expect(result?.usage).toEqual({
+        totalTokens: 1234,
+        toolUses: 5,
+        durationMs: 6789,
       });
     });
 

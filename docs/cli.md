@@ -226,6 +226,7 @@ wave daemon restart
 | `/hooks`          | 查看当前生效的钩子配置                                     |
 | `/plan`           | 进入计划模式，或查看当前会话的计划文件                     |
 | `/btw`            | 旁路提问，不调用工具的快速问答                             |
+| `/subtask`        | 把任务连同当前对话的完整上下文派给后台子任务，结果回到这里 |
 
 > 了解更多：详见[功能规格说明：斜杠命令](/specs/commands/slash-commands)
 
