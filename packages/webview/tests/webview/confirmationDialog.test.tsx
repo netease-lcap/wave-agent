@@ -999,7 +999,7 @@ describe("AskUserQuestion Other input", () => {
     const sent = vscode.postMessage.mock.calls.map((c) => c[0]);
     const response = sent.find((m) => m.command === "confirmationResponse");
     expect(response).toBeDefined();
-    const message = JSON.parse(response.decision.message);
+    const message = JSON.parse(response.decision.message).answers;
     expect(message["单选：选哪个方案？"]).toBe("自定义答案");
   });
 
@@ -1193,7 +1193,7 @@ describe("AskUserQuestion Other input", () => {
     const sent = vscode.postMessage.mock.calls.map((c) => c[0]);
     const response = sent.find((m) => m.command === "confirmationResponse");
     expect(response).toBeDefined();
-    const message = JSON.parse(response.decision.message);
+    const message = JSON.parse(response.decision.message).answers;
     expect(message["多选：哪些模块？"]).toEqual(["客户档案"]);
   });
 
@@ -1237,7 +1237,7 @@ describe("AskUserQuestion Other input", () => {
     const sent = vscode.postMessage.mock.calls.map((c) => c[0]);
     const response = sent.find((m) => m.command === "confirmationResponse");
     expect(response).toBeDefined();
-    const message = JSON.parse(response.decision.message);
+    const message = JSON.parse(response.decision.message).answers;
     expect(message["多选：哪些模块？"]).toEqual(["客户档案", "数据看板"]);
   });
 
@@ -1479,7 +1479,7 @@ describe("AskUserQuestion Other input", () => {
     const sent = vscode.postMessage.mock.calls.map((c) => c[0]);
     const response = sent.find((m) => m.command === "confirmationResponse");
     expect(response).toBeDefined();
-    const message = JSON.parse(response.decision.message);
+    const message = JSON.parse(response.decision.message).answers;
     expect(message["单选：选哪个方案？"]).toBe("方案 A");
     expect(message["第二个问题：选择语言？"]).toBe("TypeScript");
     expect(message["第三个问题：确认发布？"]).toBe("是");
@@ -1588,7 +1588,7 @@ describe("AskUserQuestion Other input", () => {
     const sent = vscode.postMessage.mock.calls.map((c) => c[0]);
     const response = sent.find((m) => m.command === "confirmationResponse");
     expect(response).toBeDefined();
-    const message = JSON.parse(response.decision.message);
+    const message = JSON.parse(response.decision.message).answers;
     expect(message["单选：选哪个方案？"]).toBe("方案 A");
     expect(message["第二个问题：选择语言？"]).toBe("TypeScript");
     expect(message["第三个问题：确认发布？"]).toBe("自定义发布");
@@ -1900,7 +1900,7 @@ describe("AskUserQuestion Other input", () => {
       const response = sent.find((m) => m.command === "confirmationResponse");
       expect(response).toBeDefined();
       expect(response.decision.behavior).toBe("allow");
-      const message = JSON.parse(response.decision.message);
+      const message = JSON.parse(response.decision.message).answers;
       expect(message["选哪个方案？"]).toBe("方案 A");
     });
 
@@ -1978,7 +1978,7 @@ describe("AskUserQuestion Other input", () => {
       const sent = vscode.postMessage.mock.calls.map((c) => c[0]);
       const response = sent.find((m) => m.command === "confirmationResponse");
       expect(response).toBeDefined();
-      const message = JSON.parse(response.decision.message);
+      const message = JSON.parse(response.decision.message).answers;
       expect(message["Q1"]).toBe("A");
       expect(message["Q2"]).toBe("C");
     });
@@ -2445,5 +2445,225 @@ describe("hideConfirmation", () => {
       sendCommand("hideConfirmation", { confirmationId: "conf-unknown" });
     });
     expect(document.querySelector(".confirmation-dialog")).toBeInTheDocument();
+  });
+});
+
+describe("AskUserQuestion option preview", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  const showAskUser = (questions: unknown[]) => {
+    act(() => {
+      sendCommand("showConfirmation", {
+        confirmationId: "ask-user-preview",
+        toolName: ASK_USER_QUESTION_TOOL_NAME,
+        confirmationType: "需要确认",
+        toolInput: { questions },
+      });
+    });
+  };
+
+  const previewQuestion = [
+    {
+      question: "选哪个版式？",
+      options: [
+        {
+          label: "方案 A",
+          preview: "### 方案 A\n\n```\n+-----+\n| A   |\n+-----+\n```",
+        },
+        { label: "方案 B", preview: "### 方案 B\n\n两栏布局" },
+      ],
+      multiSelect: false,
+    },
+  ];
+
+  const waitForDialog = () =>
+    waitFor(() => {
+      expect(
+        document.querySelector(".confirmation-dialog"),
+      ).toBeInTheDocument();
+    });
+
+  it("renders a preview panel and drops the Other row", async () => {
+    renderChatApp();
+    showAskUser(previewQuestion);
+    await waitForDialog();
+
+    expect(
+      document.querySelector("[data-testid='option-preview']"),
+    ).toBeInTheDocument();
+    expect(
+      document.querySelector(".question-body.is-preview"),
+    ).toBeInTheDocument();
+    expect(document.querySelector(".other-option")).not.toBeInTheDocument();
+    expect(document.querySelector(".option-notes")).toBeInTheDocument();
+    expect(
+      document.querySelector("[data-testid='option-preview']"),
+    ).toHaveTextContent("方案 A");
+  });
+
+  it("follows focus and hover, not selection", async () => {
+    renderChatApp();
+    showAskUser(previewQuestion);
+    await waitForDialog();
+
+    act(() => {
+      fireEvent.focus(
+        document.querySelector('.option-item[data-option-index="1"]')!,
+      );
+    });
+
+    await waitFor(() => {
+      expect(
+        document.querySelector("[data-testid='option-preview']"),
+      ).toHaveTextContent("两栏布局");
+    });
+
+    // 悬停也切换（对齐 CC 桌面端：onFocus 与 onMouseEnter 是同一个处理函数），
+    // 同样不改选中状态。
+    act(() => {
+      fireEvent.mouseEnter(
+        document.querySelector('.option-item[data-option-index="0"]')!,
+      );
+    });
+
+    await waitFor(() => {
+      expect(
+        document.querySelector("[data-testid='option-preview']"),
+      ).toHaveTextContent("方案 A");
+    });
+    expect(
+      document.querySelector(
+        '.option-item[data-option-index="0"] input[type="radio"]',
+      ),
+    ).not.toBeChecked();
+  });
+
+  it("shows a placeholder when the focused option has no preview text", async () => {
+    renderChatApp();
+    showAskUser([
+      {
+        question: "选哪个版式？",
+        options: [{ label: "方案 A", preview: "### A" }, { label: "方案 B" }],
+      },
+    ]);
+    await waitForDialog();
+
+    act(() => {
+      fireEvent.focus(
+        document.querySelector('.option-item[data-option-index="1"]')!,
+      );
+    });
+
+    await waitFor(() => {
+      expect(
+        document.querySelector(".option-preview-empty"),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("sends the selected preview and the notes back as annotations", async () => {
+    const { vscode } = renderChatApp();
+    showAskUser(previewQuestion);
+    await waitForDialog();
+
+    act(() => {
+      fireEvent.click(
+        document.querySelector(
+          '.option-item[data-option-index="0"] input[type="radio"]',
+        )!,
+      );
+    });
+    act(() => {
+      fireEvent.change(
+        document.querySelector(".option-notes input, .option-notes textarea")!,
+        {
+          target: { value: "列宽再宽一点" },
+        },
+      );
+    });
+
+    vscode.postMessage.mockClear();
+    act(() => {
+      fireEvent.click(document.querySelector(".confirmation-btn-apply")!);
+    });
+
+    const sent = vscode.postMessage.mock.calls.map((c) => c[0]);
+    const response = sent.find((m) => m.command === "confirmationResponse");
+    expect(response).toBeDefined();
+    const payload = JSON.parse(response.decision.message);
+    expect(payload.answers["选哪个版式？"]).toBe("方案 A");
+    expect(payload.annotations["选哪个版式？"]).toEqual({
+      preview: previewQuestion[0].options[0].preview,
+      notes: "列宽再宽一点",
+    });
+  });
+
+  it("stays a plain list when the question is multi-select", async () => {
+    renderChatApp();
+    showAskUser([
+      {
+        question: "选哪些模块？",
+        options: [
+          { label: "模块 A", preview: "### A" },
+          { label: "模块 B", preview: "### B" },
+        ],
+        multiSelect: true,
+      },
+    ]);
+    await waitForDialog();
+
+    expect(
+      document.querySelector("[data-testid='option-preview']"),
+    ).not.toBeInTheDocument();
+    expect(document.querySelector(".other-option")).toBeInTheDocument();
+  });
+
+  it("stays a plain list when every preview is blank", async () => {
+    renderChatApp();
+    showAskUser([
+      {
+        question: "选哪个？",
+        options: [{ label: "A", preview: "   " }, { label: "B" }],
+      },
+    ]);
+    await waitForDialog();
+
+    expect(
+      document.querySelector("[data-testid='option-preview']"),
+    ).not.toBeInTheDocument();
+    expect(document.querySelector(".other-option")).toBeInTheDocument();
+  });
+
+  it("decides preview per question instead of per prompt", async () => {
+    renderChatApp();
+    showAskUser([
+      {
+        question: "选哪个版式？",
+        options: [{ label: "方案 A", preview: "### 方案 A" }],
+      },
+      {
+        question: "选哪个范围？",
+        options: [{ label: "大" }, { label: "小" }],
+      },
+    ]);
+    await waitForDialog();
+
+    expect(
+      document.querySelector("[data-testid='option-preview']"),
+    ).toBeInTheDocument();
+    expect(document.querySelector(".other-option")).not.toBeInTheDocument();
+
+    act(() => {
+      fireEvent.click(document.querySelector('[aria-label="下一个"]')!);
+    });
+
+    await waitFor(() => {
+      expect(
+        document.querySelector("[data-testid='option-preview']"),
+      ).not.toBeInTheDocument();
+      expect(document.querySelector(".other-option")).toBeInTheDocument();
+    });
   });
 });

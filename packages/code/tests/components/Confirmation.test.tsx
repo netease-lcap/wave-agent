@@ -1240,7 +1240,7 @@ describe("Confirmation", () => {
       expect(mockOnDecision).toHaveBeenCalled();
       const call = mockOnDecision.mock.calls[0][0];
       expect(call.behavior).toBe("allow");
-      const message = JSON.parse(call.message!);
+      const message = JSON.parse(call.message!).answers;
       expect(message["What is your favorite color?"]).toBe("Red");
       expect(message["Select your skills"]).toContain("TypeScript");
       expect(message["Select your skills"]).toContain("React");
@@ -1290,7 +1290,7 @@ describe("Confirmation", () => {
       expect(mockOnDecision).toHaveBeenCalled();
       const call = mockOnDecision.mock.calls[0][0];
       expect(call.behavior).toBe("allow");
-      const message = JSON.parse(call.message!);
+      const message = JSON.parse(call.message!).answers;
       expect(message["What is your favorite color?"]).toBe("Green");
     });
 

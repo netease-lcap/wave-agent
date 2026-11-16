@@ -235,7 +235,7 @@ describe("Confirmation Tab Navigation", () => {
     });
 
     const call = mockOnDecision.mock.calls[0][0];
-    const message = JSON.parse(call.message!);
+    const message = JSON.parse(call.message!).answers;
     expect(message["Question 1"]).toBe("A");
     expect(message["Question 2"]).toBe("B");
   });

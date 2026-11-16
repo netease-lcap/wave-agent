@@ -2534,6 +2534,8 @@ body.is-panel-resizing webview {
 
 .desktop-chat-main .input-area-container--confirm .confirmation-dialog-inner {
   flex: 1 1 auto;
-  min-height: 0;
+  /* 桌面端这一档原本是 min-height: 0（允许压到 0）；地板高度（ConfirmationDialog.css
+     的 --approval-dock-floor）要在桌面端也生效，所以这里跟着它走。 */
+  min-height: var(--approval-dock-floor, 0);
   overflow: hidden;
 }

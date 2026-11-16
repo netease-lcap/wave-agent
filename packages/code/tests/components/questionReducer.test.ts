@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import type { Key } from "ink";
 import {
   questionReducer,
   type QuestionAction,
@@ -12,6 +13,9 @@ const initialState: QuestionState = {
   userAnswers: {},
   otherText: "",
   otherCursorPosition: 0,
+  notesText: "",
+  notesCursorPosition: 0,
+  isEditingNotes: false,
   savedStates: {},
   decision: null,
 };
@@ -126,6 +130,8 @@ describe("questionReducer", () => {
             selectedOptionIndices: new Set<number>(),
             otherText: "",
             otherCursorPosition: 0,
+            notesText: "",
+            notesCursorPosition: 0,
           },
         },
       };
@@ -367,7 +373,7 @@ describe("questionReducer", () => {
       });
       expect(result.decision).toEqual({
         behavior: "allow",
-        message: JSON.stringify({ Q1: "A", Q2: "C" }),
+        message: JSON.stringify({ answers: { Q1: "A", Q2: "C" } }),
       });
     });
 
@@ -398,6 +404,8 @@ describe("questionReducer", () => {
             selectedOptionIndices: new Set<number>(),
             otherText: "",
             otherCursorPosition: 0,
+            notesText: "",
+            notesCursorPosition: 0,
           },
         },
       };
@@ -410,7 +418,7 @@ describe("questionReducer", () => {
       });
       expect(result.decision).toEqual({
         behavior: "allow",
-        message: JSON.stringify({ Q2: "C", Q1: "B" }),
+        message: JSON.stringify({ answers: { Q2: "C", Q1: "B" } }),
       });
     });
 
@@ -435,7 +443,7 @@ describe("questionReducer", () => {
       });
       expect(result.decision).toEqual({
         behavior: "allow",
-        message: JSON.stringify({ Q1: "A, B" }),
+        message: JSON.stringify({ answers: { Q1: "A, B" } }),
       });
     });
 
@@ -474,7 +482,7 @@ describe("questionReducer", () => {
       });
       expect(result.decision).toEqual({
         behavior: "allow",
-        message: JSON.stringify({ Q1: "A, Custom" }),
+        message: JSON.stringify({ answers: { Q1: "A, Custom" } }),
       });
     });
 
@@ -503,6 +511,93 @@ describe("questionReducer", () => {
         type: "UNKNOWN",
       } as unknown as QuestionAction);
       expect(result).toBe(initialState);
+    });
+  });
+
+  describe("HANDLE_KEY on a preview question", () => {
+    type Questions = Array<{
+      question: string;
+      options: Array<{ label: string; description?: string; preview?: string }>;
+      multiSelect?: boolean;
+    }>;
+    const optionPreviewA = "```\n+---+\n| A |\n+---+\n```";
+    const previewQuestions: Questions = [
+      {
+        question: "Which layout?",
+        options: [
+          { label: "A", preview: optionPreviewA },
+          { label: "B", preview: "```\n+---+\n| B |\n+---+\n```" },
+        ],
+      },
+    ];
+    const press = (
+      state: QuestionState,
+      input: string,
+      key: Partial<Key>,
+      questions: Questions = previewQuestions,
+    ) =>
+      questionReducer(state, {
+        type: "HANDLE_KEY",
+        input,
+        key: key as Key,
+        questions,
+      });
+
+    it("stops at the last real option instead of an Other row", () => {
+      const once = press(initialState, "", { downArrow: true });
+      expect(once.selectedOptionIndex).toBe(1);
+      const twice = press(once, "", { downArrow: true });
+      expect(twice.selectedOptionIndex).toBe(1);
+    });
+
+    it("submits the focused option with its preview as an annotation", () => {
+      const result = press(initialState, "", { return: true });
+      expect(JSON.parse(result.decision!.message!)).toEqual({
+        answers: { "Which layout?": "A" },
+        annotations: { "Which layout?": { preview: optionPreviewA } },
+      });
+    });
+
+    it("collects notes typed after pressing n and sends them with the answer", () => {
+      let state = press(initialState, "n", {});
+      expect(state.isEditingNotes).toBe(true);
+
+      state = press(state, "wider", {});
+      expect(state.notesText).toBe("wider");
+      // Enter leaves the notes field, it does not submit the question yet.
+      state = press(state, "", { return: true });
+      expect(state.isEditingNotes).toBe(false);
+      expect(state.decision).toBeNull();
+
+      state = press(state, "", { return: true });
+      expect(JSON.parse(state.decision!.message!)).toEqual({
+        answers: { "Which layout?": "A" },
+        annotations: {
+          "Which layout?": { preview: optionPreviewA, notes: "wider" },
+        },
+      });
+    });
+
+    it("leaves the notes field on Esc without cancelling", () => {
+      const state = press(press(initialState, "n", {}), "", { escape: true });
+      expect(state.isEditingNotes).toBe(false);
+    });
+
+    it("ignores n on a question whose options carry no preview", () => {
+      const result = press(initialState, "n", {}, mockQuestions);
+      expect(result.isEditingNotes).toBe(false);
+    });
+
+    it("keeps the Other row when every preview is blank", () => {
+      const blankPreviews = [
+        {
+          question: "Q",
+          options: [{ label: "A", preview: "   " }, { label: "B" }],
+        },
+      ];
+      let state = press(initialState, "", { downArrow: true }, blankPreviews);
+      state = press(state, "", { downArrow: true }, blankPreviews);
+      expect(state.selectedOptionIndex).toBe(2);
     });
   });
 });
