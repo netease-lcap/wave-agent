@@ -1274,20 +1274,15 @@ html[data-theme="dark"] .desktop-session-status-slot {
   flex: 0 0 auto;
 }
 
-/* 分组标题行 = 一颗远程图标 + 标题文字，与「本地」行同构。 */
-.desktop-host-menu-label {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
+/* 分组标题（SSH 主机 / WSL）2026-11-16 起与目录菜单的「最近打开」同一档纯文字
+   分类（评论：「这里是分类，去掉图标，改成（「最近打开」）这里这样」）。原来这里是
+   「一颗远程图标 + 标题文字」的 flex 行（`display:flex / gap:6px` + 让 codicon 跟随
+   标题弱化色），图标撤掉后这三条不再需要，`.desktop-host-menu-label` 退化成纯标记类
+   （测试与封顶测量仍按它定位）。 */
 
-/* .codicon 自带 --vscode-icon-foreground，这里让图标跟随标题的弱化色。 */
-.desktop-host-menu-label .codicon {
-  color: inherit;
-}
-
-/* 组内具体主机名不再带图标，左内距补到与标题文字齐平：12(padding-left) +
-   16(图标) + 6(gap) = 34px，这样主机名缩进在「SSH 主机」标题文字下面。 */
+/* 组内主机名的缩进不动（桌面端由 host-desktop.css 收到 32px）：标题文字回到
+   8px 左内衬后，主机名仍在它右侧一档，与「最近打开」菜单里「标题 17 / 条目 41」
+   的关系一致。 */
 .desktop-host-menu-items .desktop-workdir-menu-item {
   padding-left: 34px;
 }

@@ -417,9 +417,11 @@ export const DesktopHostSelector: React.FC<DesktopHostSelectorProps> = ({
             >
               {block.label && (
                 <div className="desktop-workdir-menu-label desktop-host-menu-label">
-                  {/* 远程图标跟着分组标题走（原来每台主机前面各一颗）：这样
-                      「SSH 主机」标题行与「本地」行都是「一颗图标 + 文字」。 */}
-                  <span className="codicon codicon-remote"></span>
+                  {/* 2026-11-16 评论（对着「SSH 主机」标题）：「这里是分类，去掉图标，
+                      改成（「最近打开」）这里这样」⇒ 分类标题不再带远程图标，与目录
+                      菜单的「最近打开」同一档纯文字分类。原来图标跟着分组标题走（每台
+                      主机前面各一颗的来源）；去掉后标题文字回到 8px 左内衬，组内主机名
+                      仍缩进 32px，与「最近打开」里「标题 17 / 条目 41」的关系一致。 */}
                   {block.label}
                 </div>
               )}
