@@ -974,12 +974,21 @@
 /* Composer 卡片布局：Figma 13439-9245 卡片 768×110 = pad 12 + 输入区 44 +
    gap 8 + 工具行 32 + pad 12（base 实现 86px：无 pad-top、工具行 40 贴底）。
    输入区自带 padding 0 12px（左右留白），pad-top 由卡片承担。
-   z-index 1：灰条是卡片后的兄弟元素，默认绘制在卡片之上会盖住卡片底 18px
-   （Figma 中灰条在卡片后面，顶部 18px 被卡片遮住）——卡片需提到上层；
-   灰条内 dropdown 的 absolute z-index 10000 仍在根层，不受影响。 */
+   z-index：两层原因，取值 30。
+   1）灰条是卡片后的兄弟元素，默认绘制在卡片之上会盖住卡片底 18px（Figma 中灰条在
+      卡片后面，顶部 18px 被卡片遮住）——卡片需提到上层。
+   2）卡片是「向上展开的下拉」的容器（权限模式 / 模型 / 「+」/ 斜杠指令），这些菜单
+      写的是 `position:absolute; z-index:10000`。但这里一旦给了 z-index，卡片本身
+      就成了堆叠上下文，**层叠上下文内的 z-index 只跟兄弟比，出不去卡片** —— 整个
+      卡片（含菜单）按 30 之前的 `1` 参与根层排序，而消息区底部那条渐隐
+      `.jump-to-bottom-layer` 是 `25`，于是菜单被蒙层压住、文字发灰（设计师
+      2026-11-16 评论 `ul.permission-mode-menu`「下拉菜单的层级应该高于对话流的渐变
+      蒙层，现在被蒙层遮挡了」）。
+   取值只需大于消息区最高的浮层 25（`回到最新` 层；sticky 消息卡 20 / 其渐隐 19）。
+   卡片与这些浮层本来就不几何重叠（消息区止于卡片顶边），抬高只是让菜单露出来。 */
 [data-host="desktop"] .input-content {
   position: relative;
-  z-index: 1;
+  z-index: 30;
   padding-top: 12px;
 }
 [data-host="desktop"] .input-buttons-row {
