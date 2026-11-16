@@ -645,10 +645,12 @@
 }
 
 /* 深色模式：--vscode-fill-light 未定义会回退浅灰 #f5f7fa 突兀。
-   浅色条 #f5f7fa 是比画布白暗一档的「略灰」面；卡片同画布（#111314）后
-   对称取 nav 面 #181A1B —— 与画布仅差一档，横条略浮不抢层次 */
+   浅色条 #f5f7fa 是比画布白暗一档的「略灰」面；深色原先对称取 nav 面 #181A1B。
+   设计师 2026-11-16 第二轮「（卡片与灰条）颜色调换一下」⇒ 灰条从 nav 面
+   #181A1B 抬到浮层面 #232526（L* 14.5），卡片落回 nav 面（见上方 `.input-content`
+   深色块）。灰条现在比卡片亮一档，靠卡片 1px 边框 #414649 分界。 */
 [data-host="desktop"][data-theme="dark"] .input-workdir-row {
-  background: var(--cc-bg-navigation, #181a1b);
+  background: var(--cc-bg-overlay, #232526);
 }
 
 /* 灰条内控件按钮化：Figma「本地 / 选择工作目录」按钮 32 高、r8（base
@@ -1021,12 +1023,20 @@
   border-color: #dcdfe6;
 }
 
-/* Composer 卡片深色：同画布色 #111314 + 强边框 #414649（用户 0904 拍板；
-   approved 契约 conversation canvas + border。input-background 是全局 token
-   （Diff/File/Settings/composer 共用）不可整体改 → 局部覆盖，与对话画布融为一体，
-   靠 1px 强边框勾卡） */
+/* Composer 卡片深色：设计师 2026-11-16 两轮评论 —— 先是「给深色模式的 AI 对话框
+   加一个深灰色背景色，类似（下方灰条）这里的颜色，然后再浅一个度，用已有的色彩
+   变量」，看到效果后又补「这里的颜色和（灰条）这里，调换一下」⇒ 最终
+   **卡片取灰条原来的 nav 面 #181A1B，灰条抬到浮层面 #232526**（两条规则一起换，
+   见下方 `.input-workdir-row` 深色块）。
+   面阶实测 L*：画布 `--cc-bg-conversation` #111314 = 5.7 ／ nav #181A1B = 9.1 ／
+   code `--cc-bg-code` #1B1D1E = 10.6 ／ 浮层 `--cc-bg-overlay` #232526 = 14.5。
+   卡片落 9.1（比画布浅 3.4、对比 1.07），灰条落 14.5（比卡片浅 5.4、对比 1.13）
+   —— 层次变成「灰条在卡片之上」，与浅色相反（浅色卡 #FFF 100 > 条 #F5F7FA 97.2），
+   这是她点名调换的结果，不是笔误。
+   input-background 是全局 token（Diff/File/Settings/composer 共用）不可整体改
+   → 局部覆盖；1px 强边框 #414649 保留勾卡。 */
 [data-host="desktop"][data-theme="dark"] .input-content {
-  background-color: var(--cc-bg-conversation, #111314);
+  background-color: var(--cc-bg-navigation, #181a1b);
   border-color: var(--cc-border, #414649);
 }
 
