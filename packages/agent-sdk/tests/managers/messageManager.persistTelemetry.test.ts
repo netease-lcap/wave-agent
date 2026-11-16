@@ -48,7 +48,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockReportPersistFailure.mockResolvedValue(undefined);
   mockReleasePersistFailure.mockResolvedValue(undefined);
-  vi.mocked(sessionService.appendMessages).mockResolvedValue(undefined);
+  vi.mocked(sessionService.appendMessages).mockResolvedValue(0);
 });
 
 describe("saveSession failure telemetry", () => {

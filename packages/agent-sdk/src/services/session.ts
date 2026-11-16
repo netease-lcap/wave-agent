@@ -24,6 +24,7 @@ import { promisify } from "util";
 import type { Message, Usage } from "../types/index.js";
 import { PathEncoder } from "../utils/pathEncoder.js";
 import { JsonlHandler } from "../services/jsonlHandler.js";
+import { METADATA_REAPPEND_THRESHOLD_BYTES } from "../constants/sessionStorage.js";
 import {
   createRewindCutAccumulator,
   forEachTranscriptEntry,
@@ -269,21 +270,23 @@ export async function truncateSession(
  * @param newMessages - Array of messages to append
  * @param workdir - Working directory for the session
  * @param sessionType - Type of session ("main" or "subagent", defaults to "main")
+ * @returns Bytes written (0 when nothing was written). The caller accumulates
+ *          this to decide when the title needs re-appending at EOF.
  */
 export async function appendMessages(
   sessionId: string,
   newMessages: Message[],
   workdir: string,
   sessionType: "main" | "subagent" = "main",
-): Promise<void> {
+): Promise<number> {
   // Do not save session files in test environment
   if (process.env.NODE_ENV === "test") {
-    return;
+    return 0;
   }
 
   // Do not save if there are no messages
   if (newMessages.length === 0) {
-    return;
+    return 0;
   }
 
   const jsonlHandler = new JsonlHandler();
@@ -305,11 +308,12 @@ export async function appendMessages(
   }
 
   // Append only. Keeping the title inside the listing's tail window is the
-  // job of `reAppendSessionMetadata`, which runs at the session's sparse flush
-  // points — not here: appending the entry on every save costs a tail read and
-  // an extra line per save, for a guarantee only needed once the session is
-  // about to be read from disk by someone else.
-  await jsonlHandler.append(filePath, newMessages, {
+  // job of `reAppendSessionMetadata`, which the caller drives by the bytes it
+  // writes (half a tail window) plus the session's flush points — not here:
+  // appending the entry on every save would cost a tail read and an extra line
+  // per save, for a guarantee that only matters once the transcript has grown
+  // far enough to push the previous entry out of the window.
+  return jsonlHandler.append(filePath, newMessages, {
     atomic: false,
   });
 }
@@ -367,20 +371,32 @@ export async function setSessionCustomTitle(
 /**
  * Re-append the session's reserved metadata entries at EOF.
  *
- * A listing reads only the tail window (64 KB) of each session file, so a
- * `custom-title` entry that later messages pushed past that window becomes
- * invisible — the session would flip back to showing its first message. This
- * runs at the session's sparse flush points (spec `session-management.md`
- * 验收场景 5): graceful exit, compaction, taking over a resumed session,
- * switching away from one, and after `/rewind` rewrites the file. Claude Code
- * solves the same problem the same way (`reAppendSessionMetadata`,
- * `sessionStorage.ts:458/983/1533`, `compact.ts:711/1057`).
+ * A listing reads only the tail window (`TAIL_WINDOW_BYTES`, 64 KB) of each
+ * session file, so a `custom-title` entry that later messages pushed past that
+ * window becomes invisible — the session would flip back to showing its first
+ * message. Two things keep the entry inside the window (spec
+ * `session-management.md` 验收场景 5):
+ *
+ * - the caller re-appends once the transcript has grown by
+ *   `METADATA_REAPPEND_THRESHOLD_BYTES` since the last re-append (the main
+ *   trigger: a live session that never exits still stays listable), and
+ * - every flush point re-appends regardless of size: graceful exit,
+ *   compaction, taking over a resumed session, switching away from one, and
+ *   after `/rewind` rewrites the file.
  *
  * The entry is refreshed from the tail first: another process (the CLI session
  * picker, a second host) may have renamed the session while we held it, in
  * which case its value — not our stale in-memory one — is the truth. When the
  * tail holds nothing (already evicted, or never written by anyone else), the
  * caller's in-memory value stands.
+ *
+ * A value still visible near the tail is never written again: it is already
+ * where the listing looks, so a second identical line would only grow the file
+ * every time this runs. Claude Code filters its re-append payload the same way
+ * (`planReAppendSessionMetadata`) — and it decides "already visible" by
+ * scanning only `vE / 2`, not the whole window: accepting an entry that sits
+ * 32–64 KB from EOF would let the next threshold tick push it out of the
+ * listing window entirely.
  *
  * A missing transcript file is a no-op: re-appending must never materialize a
  * session that does not exist.
@@ -389,13 +405,14 @@ export async function setSessionCustomTitle(
  * @param workdir - Working directory the session belongs to
  * @param customTitle - Title held in memory by the caller (may be undefined)
  * @param sessionType - Type of session ("main" or "subagent", defaults to "main")
+ * @returns Whether a title entry was actually appended
  */
 export async function reAppendSessionMetadata(
   sessionId: string,
   workdir: string,
   customTitle: string | undefined,
   sessionType: "main" | "subagent" = "main",
-): Promise<void> {
+): Promise<boolean> {
   const jsonlHandler = new JsonlHandler();
   let filePath = await generateSessionFilePath(sessionId, workdir, sessionType);
 
@@ -408,26 +425,40 @@ export async function reAppendSessionMetadata(
     // in-memory title there is nothing this call could add that the entry
     // already in the file does not say.
     if (!customTitle) {
-      return;
+      return false;
     }
     const fallback = await findSessionFileAcrossProjects(
       sessionId,
       sessionType,
     );
     if (!fallback) {
-      return;
+      return false;
     }
     filePath = fallback;
   }
 
-  // Absorb a fresher value written by another process since we last looked.
-  const tailTitle = await jsonlHandler.readCustomTitle(filePath);
-  const title = tailTitle ?? customTitle;
-  if (!title) {
-    return;
+  // Absorb a fresher value written by another process since we last looked,
+  // and use its presence as the duplicate check: if the tail still carries a
+  // title, that value is what a listing reads right now.
+  //
+  // Look only half a window deep. The listing window is twice this, so a title
+  // this close to EOF cannot be pushed out before the counter reaches the
+  // threshold again; judging by the whole window would let an entry 32–64 KB
+  // from EOF pass as "already visible" and then fall out of the window on the
+  // next tick.
+  const tailTitle = await jsonlHandler.readCustomTitle(
+    filePath,
+    METADATA_REAPPEND_THRESHOLD_BYTES,
+  );
+  if (tailTitle !== undefined) {
+    return false;
+  }
+  if (!customTitle) {
+    return false;
   }
 
-  await jsonlHandler.appendCustomTitle(filePath, title, sessionId);
+  await jsonlHandler.appendCustomTitle(filePath, customTitle, sessionId);
+  return true;
 }
 
 /**

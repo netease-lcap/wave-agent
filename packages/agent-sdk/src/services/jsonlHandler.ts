@@ -21,6 +21,7 @@ import {
 } from "../utils/fileUtils.js";
 
 import type { Message } from "../types/index.js";
+import { TAIL_WINDOW_BYTES } from "../constants/sessionStorage.js";
 import { extractLatestTotalTokens } from "../utils/tokenCalculation.js";
 import type { SessionFilename } from "../types/session.js";
 import {
@@ -63,9 +64,12 @@ export interface SessionMetadataHeader {
  * User-set conversation title, appended as its own JSONL entry on rename.
  * A dedicated entry type (rather than a field on the append-only metadata
  * header) is what lets the title be changed after creation without rewriting
- * the file: it is appended at rename time, and re-appended at EOF at the
- * session's sparse flush points (`reAppendSessionMetadata` — exit, compaction,
- * resume, rewind) rather than on every save.
+ * the file: it is appended at rename time, then re-appended at EOF by
+ * `reAppendSessionMetadata` — once the transcript has grown by half a tail
+ * window since the last re-append, and at every session flush point (exit,
+ * compaction, resume, rewind) — but never when the last half window already
+ * carries one (it is then as close to the listing's eye as a re-append could
+ * put it).
  */
 export interface CustomTitleEntry {
   type: "custom-title";
@@ -116,8 +120,10 @@ export class JsonlHandler {
 
   /**
    * Append a single message to JSONL file
+   *
+   * @returns Bytes written (0 when there is nothing to write)
    */
-  async appendMessage(filePath: string, message: Message): Promise<void> {
+  async appendMessage(filePath: string, message: Message): Promise<number> {
     return this.appendMessages(filePath, [message]);
   }
 
@@ -148,13 +154,24 @@ export class JsonlHandler {
    *
    * Scans the tail and keeps the newest entry, so a rename always wins over an
    * earlier one. Only the tail is read: this is the cheap path used by session
-   * listing and by `reAppendSessionMetadata`'s external-writer refresh, and the
-   * write side re-appends the entry at EOF at its sparse flush points. An entry
-   * that later messages have already pushed out of the window is invisible
-   * here — that is what `readTranscriptForResume` recovers on resume.
+   * listing, and by `reAppendSessionMetadata` both as its external-writer
+   * refresh and as its duplicate check (a value still visible here is already
+   * where the listing looks, so re-writing it would only add a redundant
+   * line). An entry that later messages have already pushed out of the window
+   * is invisible here — that is what `readTranscriptForResume` recovers on
+   * resume.
+   *
+   * @param windowBytes How far from EOF to look. Callers that use the result
+   *        as a "is it close enough already?" verdict pass half the listing
+   *        window: judging by the full window would accept an entry sitting
+   *        32–64 KB from EOF, and the next threshold tick would push it out
+   *        (Claude Code scans `vE / 2` for the same reason).
    */
-  async readCustomTitle(filePath: string): Promise<string | undefined> {
-    for (const line of (await readTailLines(filePath)).reverse()) {
+  async readCustomTitle(
+    filePath: string,
+    windowBytes = TAIL_WINDOW_BYTES,
+  ): Promise<string | undefined> {
+    for (const line of (await readTailLines(filePath, windowBytes)).reverse()) {
       try {
         const parsed = JSON.parse(line) as {
           type?: string;
@@ -173,10 +190,12 @@ export class JsonlHandler {
 
   /**
    * Append multiple messages to JSONL file
+   *
+   * @returns Bytes written (0 when there is nothing to write)
    */
-  async appendMessages(filePath: string, messages: Message[]): Promise<void> {
+  async appendMessages(filePath: string, messages: Message[]): Promise<number> {
     if (messages.length === 0) {
-      return;
+      return 0;
     }
 
     return this.append(filePath, messages);
@@ -184,14 +203,18 @@ export class JsonlHandler {
 
   /**
    * Append messages to JSONL file
+   *
+   * @returns Bytes written (0 when there is nothing to write). The caller needs
+   *          it to know how far the transcript has grown since the last
+   *          metadata re-append (see `reAppendSessionMetadata`).
    */
   async append(
     filePath: string,
     messages: Message[],
     options?: JsonlWriteOptions,
-  ): Promise<void> {
+  ): Promise<number> {
     if (messages.length === 0) {
-      return;
+      return 0;
     }
 
     const opts = { ...this.defaultWriteOptions, ...options };
@@ -222,6 +245,8 @@ export class JsonlHandler {
       // Direct append
       await appendFile(filePath, content, "utf8");
     }
+
+    return Buffer.byteLength(content, "utf8");
   }
 
   /**

@@ -3,6 +3,7 @@ import fsSync from "node:fs";
 import { createReadStream } from "node:fs";
 import path from "node:path";
 import { glob } from "glob";
+import { TAIL_WINDOW_BYTES } from "../constants/sessionStorage.js";
 
 /**
  * Reads the first line of a file efficiently using Node.js readline.
@@ -205,12 +206,12 @@ export async function getLastLine(
  * callers parse them as JSON.
  *
  * @param {string} filePath - The path to the file.
- * @param {number} maxBytes - Size of the tail window (default 64KB).
+ * @param {number} maxBytes - Size of the tail window (default `TAIL_WINDOW_BYTES`).
  * @return {Promise<string[]>} - Trailing non-empty lines, or [] if unreadable.
  */
 export async function readTailLines(
   filePath: string,
-  maxBytes = 64 * 1024,
+  maxBytes = TAIL_WINDOW_BYTES,
 ): Promise<string[]> {
   let fileHandle;
   try {

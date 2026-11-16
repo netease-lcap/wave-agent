@@ -36,6 +36,7 @@ import {
   SessionData,
   SESSION_DIR,
 } from "../services/session.js";
+import { METADATA_REAPPEND_THRESHOLD_BYTES } from "../constants/sessionStorage.js";
 import { ChatCompletionMessageFunctionToolCall } from "openai/resources.js";
 import type { MemoryRuleManager } from "./MemoryRuleManager.js";
 import type { MemoryRule } from "../types/memoryRule.js";
@@ -188,6 +189,14 @@ export class MessageManager {
    * itself can no longer answer "what was this session called".
    */
   private customTitle?: string;
+  /**
+   * Bytes appended to the transcript since the title was last re-appended at
+   * EOF. Once it reaches `METADATA_REAPPEND_THRESHOLD_BYTES` (half the listing
+   * tail window) the title is written again, which is what keeps a *running*
+   * session listable from another process — flush points alone only cover
+   * sessions that exit, compact or get resumed.
+   */
+  private bytesSinceMetadataReAppend = 0;
 
   constructor(
     private container: Container,
@@ -558,7 +567,7 @@ export class MessageManager {
       }
 
       // Use JSONL format for new sessions
-      await appendMessages(
+      const writtenBytes = await appendMessages(
         this.sessionId,
         unsavedMessages,
         this.workdir,
@@ -570,6 +579,19 @@ export class MessageManager {
       // The transcript is writable again — release the dedup slot so a later
       // relapse is reported instead of staying silent forever.
       releasePersistFailure(this.sessionId);
+
+      // Keep the title within the listing's tail window. Doing it by bytes
+      // written (rather than only at flush points) is what makes a session
+      // that never exits still listable from another process: at worst the
+      // entry sits half a window from EOF, well inside the window a listing
+      // reads. The re-append itself is a no-op when the tail already carries
+      // the same title (spec `session-management.md` 验收场景 5).
+      this.bytesSinceMetadataReAppend += writtenBytes;
+      if (
+        this.bytesSinceMetadataReAppend >= METADATA_REAPPEND_THRESHOLD_BYTES
+      ) {
+        await this.reAppendSessionMetadata();
+      }
     } catch (error) {
       logger?.error("Failed to save session:", error);
       // A failure the user can feel (messages stop being persisted) that used
@@ -607,16 +629,24 @@ export class MessageManager {
 
   public setCustomTitle(customTitle: string | undefined): void {
     this.customTitle = customTitle;
+    // A rename appends the entry at the current EOF, so the title starts out
+    // as close to the end as a re-append could put it.
+    this.bytesSinceMetadataReAppend = 0;
   }
 
   /**
    * Re-append the session's metadata entries at EOF, so they stay inside the
-   * tail window the session list reads. Called at the sparse points where the
-   * transcript is about to be read back by another process (exit, compaction,
-   * resume, rewind); doing it per save would cost a tail read plus a line on
-   * every message.
+   * tail window the session list reads. Called when the transcript has grown
+   * by half a window since the last re-append, and at the flush points where
+   * the transcript is about to be read back by another process (exit,
+   * compaction, resume, rewind).
+   *
+   * The counter resets either way: after this call the entry is either freshly
+   * written at EOF or already visible in the tail, so both cases are "as close
+   * to EOF as it can be".
    */
   public async reAppendSessionMetadata(): Promise<void> {
+    this.bytesSinceMetadataReAppend = 0;
     try {
       await reAppendSessionMetadataToFile(
         this.sessionId,
@@ -643,6 +673,7 @@ export class MessageManager {
     // The title belongs to the session that was just abandoned: the new
     // session id starts untitled until the user renames it.
     this.customTitle = undefined;
+    this.bytesSinceMetadataReAppend = 0;
   }
 
   /**
