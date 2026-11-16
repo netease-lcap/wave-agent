@@ -1274,7 +1274,16 @@ export class Agent {
     return this.backgroundTaskManager.stopTask(id);
   }
 
-  /** Get all workflow runs */
+  /**
+   * Get all workflow runs, shaped for a UI.
+   *
+   * `result` is cut down to a snippet once it outgrows the completion
+   * notification's budget: no interface renders it, while it is 99.7% of the
+   * payload and the hosts re-push this list on every progress event (spec
+   * `multi-agent/workflow.md`「工作流管理对话框」场景 7). A value that fits is
+   * handed over untouched; the full value always stays in `run-state.json` and
+   * in the completion notification.
+   */
   public async getWorkflowRuns(): Promise<
     import("./workflow/types.js").WorkflowRun[]
   > {
@@ -1283,10 +1292,10 @@ export class Agent {
       .get<
         import("./managers/workflowManager.js").WorkflowManager
       >("WorkflowManager")!
-      .listRuns();
+      .listUiRuns();
   }
 
-  /** Get a specific workflow run by ID */
+  /** Get a specific workflow run by ID, shaped for a UI (see `getWorkflowRuns`) */
   public getWorkflowRun(
     runId: string,
   ): import("./workflow/types.js").WorkflowRun | undefined {
@@ -1295,7 +1304,7 @@ export class Agent {
       .get<
         import("./managers/workflowManager.js").WorkflowManager
       >("WorkflowManager")!
-      .getRun(runId);
+      .getUiRun(runId);
   }
 
   /** Stop a workflow run */
