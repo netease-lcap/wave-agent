@@ -24,8 +24,10 @@ import { BackgroundTaskManager } from "./backgroundTaskManager.js";
 import { resolveTempDir } from "../utils/tempDir.js";
 import { MessageQueue } from "./messageQueue.js";
 import { logger } from "../utils/globalLogger.js";
+import { taskNotificationToXml } from "../utils/notificationXml.js";
 import {
   UserMessageParams,
+  cloneMessage,
   type ToolBlockUpdateCallbackParams,
 } from "../utils/messageOperations.js";
 
@@ -134,6 +136,12 @@ export interface SubagentInstance {
   logStream?: fs.WriteStream; // Optional log stream for background tasks
   worktree?: SubagentWorktreeState; // Set when the subagent runs in its own worktree
   worktreeSummary?: string; // Worktree report appended to the final result
+  /**
+   * Tokens this subagent spent itself, reported as `<usage>`. A fork inherits
+   * its parent's conversation as history, not as work it did, so only turns
+   * that run after the snapshot are counted here.
+   */
+  usageTotals: { totalTokens: number };
 }
 
 export interface SubagentManagerOptions {
@@ -141,6 +149,22 @@ export interface SubagentManagerOptions {
   callbacks?: SubagentManagerCallbacks; // Use SubagentManagerCallbacks instead of parentCallbacks
   onUsageAdded?: (usage: Usage) => void;
   stream: boolean;
+}
+
+/**
+ * Tool calls in a message list — the `<usage>` counter's unit. Tolerates a
+ * missing list: the counter runs on the notification path, which must not be
+ * the thing that throws when a subagent's history is unavailable.
+ */
+function countToolBlocks(messages: Message[] | undefined): number {
+  if (!messages) return 0;
+  let count = 0;
+  for (const message of messages) {
+    for (const block of message.blocks) {
+      if (block.type === "tool") count++;
+    }
+  }
+  return count;
 }
 
 export class SubagentManager {
@@ -465,6 +489,12 @@ export class SubagentManager {
       maxTurns?: number;
       /** Run this instance in its own temporary git worktree. */
       worktreeIsolation?: boolean;
+      /**
+       * Start from a snapshot of the parent session's messages instead of from
+       * nothing — the fork shape `/subtask` uses. See
+       * {@link seedFromParentContext} for the isolation boundary.
+       */
+      inheritParentContext?: boolean;
     },
     runInBackground?: boolean,
     onUpdate?: () => void,
@@ -619,6 +649,13 @@ export class SubagentManager {
       });
       subagentContainer.register("MessageManager", messageManager);
 
+      // Fork context has to land before `internalExecute` appends the task
+      // prompt, so the inherited conversation reads as history that leads up to
+      // the task rather than as something the subagent did itself.
+      if (parameters.inheritParentContext) {
+        this.seedFromParentContext(messageManager);
+      }
+
       // Create isolated ToolManager for the subagent to ensure it uses the subagent's PermissionManager
       const toolManager = new ToolManager({
         container: subagentContainer,
@@ -629,6 +666,11 @@ export class SubagentManager {
       subagentContainer.register("ToolManager", toolManager);
 
       // Create isolated AIManager for the subagent
+      //
+      // Its usage is tallied per instance on the way to the parent's own
+      // counter: `<usage>` in the completion notification reports what *this*
+      // subagent spent, which is not the same as what the parent session owes.
+      const usageTotals = { totalTokens: 0 };
       const aiManager = new AIManager(subagentContainer, {
         workdir: subagentWorkdir,
         systemPrompt: configuration.systemPrompt,
@@ -638,7 +680,10 @@ export class SubagentManager {
         maxTurns: parameters.maxTurns, // Pass maxTurns limit
         omitAgentsMd: configuration.omitAgentsMd, // Start without project/user memory
         callbacks: {
-          onUsageAdded: this.onUsageAdded,
+          onUsageAdded: (usage) => {
+            usageTotals.totalTokens += usage.total_tokens;
+            this.onUsageAdded?.(usage);
+          },
         },
       });
       subagentContainer.register("AIManager", aiManager);
@@ -672,6 +717,7 @@ export class SubagentManager {
         model: parameters.model, // Store optional model override
         onUpdate,
         worktree: worktreeState,
+        usageTotals,
       };
 
       this.instances.set(subagentId, instance);
@@ -682,6 +728,42 @@ export class SubagentManager {
       await this.finalizeWorktree(subagentId);
       throw error;
     }
+  }
+
+  /**
+   * Give a freshly created subagent a copy of the parent session's messages as
+   * its starting history ("fork" subagents — `/subtask`).
+   *
+   * This method *is* the isolation boundary between the two sessions, so the
+   * three properties below are the contract, not implementation detail:
+   *
+   * - **Snapshot, not a view.** Each message is cloned (`cloneMessage`), so the
+   *   parent can keep streaming, finalize a block or update a tool result
+   *   without any of it showing up in the subagent's list — and everything the
+   *   subagent appends stays in its own manager. Neither side ever sees the
+   *   other's messages; the only thing that crosses back is the task
+   *   notification `internalExecute` enqueues when the subagent finishes.
+   * - **History, not execution.** Tool blocks come over as finished history
+   *   (`stage: "end"` with their results), which is exactly what the API
+   *   conversion turns into tool calls plus matching tool results. No tool is
+   *   re-run here.
+   * - **Taken once.** The copy is made at creation time; messages the parent
+   *   appends while the subagent runs are deliberately not picked up.
+   *
+   * `countLifetime: false` because this is one of the wholesale handovers the
+   * list documents (session restore, compaction, rewind): the inherited rounds
+   * belong to the parent session's lifetime totals, not to this subagent's.
+   */
+  private seedFromParentContext(target: MessageManager): void {
+    const parentMessages = this.container.has("MessageManager")
+      ? this.container.get<MessageManager>("MessageManager")
+      : undefined;
+    if (!parentMessages) {
+      return;
+    }
+    target.setMessages(parentMessages.getMessages().map(cloneMessage), {
+      countLifetime: false,
+    });
   }
 
   /**
@@ -1102,6 +1184,22 @@ export class SubagentManager {
       ]);
     }
 
+    // `<usage>` reports this run: wall clock from here, tokens as the loop
+    // spends them (tallied on the instance), and tool calls counted from the
+    // messages the subagent itself appends — the fork snapshot is already in
+    // there as inherited history and must not be read as work. Declared out
+    // here so the failure path can report the same accounting.
+    const startedAt = Date.now();
+    const toolUsesBefore = countToolBlocks(
+      instance.messageManager.getMessages(),
+    );
+    const runUsage = () => ({
+      totalTokens: instance.usageTotals.totalTokens,
+      toolUses:
+        countToolBlocks(instance.messageManager.getMessages()) - toolUsesBefore,
+      durationMs: Date.now() - startedAt,
+    });
+
     try {
       // Add the user's prompt as a message
       instance.messageManager.addUserMessage({ content: prompt });
@@ -1119,6 +1217,8 @@ export class SubagentManager {
       } else {
         await executeAI;
       }
+
+      const usage = runUsage();
 
       // Get the latest messages to extract the response
       const messages = instance.messageManager.getMessages();
@@ -1185,7 +1285,18 @@ export class SubagentManager {
             if (messageQueue) {
               const summary = `Agent task "${instance.description}" completed${worktreeSummary ? `\n${worktreeSummary}` : ""}`;
               messageQueue.enqueueNotification(
-                `<task-notification>\n<task-id>${instance.backgroundTaskId}</task-id>\n<task-type>agent</task-type>\n<status>completed</status>\n<summary>${summary}</summary>\n</task-notification>`,
+                taskNotificationToXml({
+                  type: "task_notification",
+                  taskId: instance.backgroundTaskId,
+                  taskType: "agent",
+                  status: "completed",
+                  summary,
+                  // The subagent's own answer travels with the notification:
+                  // without it the parent knows only *that* it finished and has
+                  // no way to read what it found (its transcript is its own).
+                  ...(finalResponse && { result: finalResponse }),
+                  usage,
+                }),
               );
             }
           }
@@ -1240,7 +1351,14 @@ export class SubagentManager {
                 error instanceof Error ? error.message : String(error);
               const summary = `Agent task "${instance.description}" failed: ${errorMsg}${worktreeSummary ? `\n${worktreeSummary}` : ""}`;
               messageQueue.enqueueNotification(
-                `<task-notification>\n<task-id>${instance.backgroundTaskId}</task-id>\n<task-type>agent</task-type>\n<status>failed</status>\n<summary>${summary}</summary>\n</task-notification>`,
+                taskNotificationToXml({
+                  type: "task_notification",
+                  taskId: instance.backgroundTaskId,
+                  taskType: "agent",
+                  status: "failed",
+                  summary,
+                  usage: runUsage(),
+                }),
               );
             }
           }

@@ -602,6 +602,7 @@ export interface AddNotificationMessageParams {
   summary: string;
   outputFile?: string;
   result?: string;
+  usage?: TaskNotificationBlock["usage"];
 }
 
 export const addNotificationMessageToMessages = ({
@@ -612,6 +613,7 @@ export const addNotificationMessageToMessages = ({
   summary,
   outputFile,
   result,
+  usage,
 }: AddNotificationMessageParams): Message[] => {
   const block: TaskNotificationBlock = {
     type: "task_notification",
@@ -621,6 +623,7 @@ export const addNotificationMessageToMessages = ({
     summary,
     ...(outputFile !== undefined && { outputFile }),
     ...(result !== undefined && { result }),
+    ...(usage !== undefined && { usage }),
   };
 
   const notificationMessage: Message = {

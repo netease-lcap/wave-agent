@@ -227,7 +227,13 @@ export const useInputManager = (
             break;
           case "EXECUTE_COMMAND":
             if (onSendMessage && onHasSlashCommand?.(effect.command)) {
-              const fullCommand = `/${effect.command}`;
+              // Agent-side commands read their arguments out of the message
+              // text, so they have to travel with it — `/subtask <task>` and
+              // plugin/custom commands are useless without them.
+              const fullCommand =
+                effect.args === undefined || effect.args === ""
+                  ? `/${effect.command}`
+                  : `/${effect.command} ${effect.args}`;
               try {
                 await onSendMessage(fullCommand, undefined, {});
               } catch (error) {

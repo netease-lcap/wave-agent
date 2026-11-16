@@ -153,6 +153,14 @@ describe("SubagentManager - Notification Deduplication", () => {
     expect(enqueueSpy).toHaveBeenCalledWith(
       expect.stringContaining("task_123"),
     );
+    // The answer itself rides along: without it the parent learns only that
+    // the subagent finished, not what it found.
+    expect(enqueueSpy).toHaveBeenCalledWith(
+      expect.stringContaining("<result>Done</result>"),
+    );
+    expect(enqueueSpy).toHaveBeenCalledWith(
+      expect.stringContaining("<usage><subagent_tokens>"),
+    );
   });
 
   it("should enqueue exactly ONE error notification for backgroundInstance path", async () => {
@@ -203,6 +211,10 @@ describe("SubagentManager - Notification Deduplication", () => {
     );
     expect(enqueueSpy).toHaveBeenCalledWith(
       expect.stringContaining("Build failed"),
+    );
+    // A failed run still reports what it spent before it broke.
+    expect(enqueueSpy).toHaveBeenCalledWith(
+      expect.stringContaining("<usage><subagent_tokens>"),
     );
   });
 

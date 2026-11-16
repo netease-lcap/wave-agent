@@ -159,6 +159,7 @@ describe("InputBox 参数提示", () => {
       "compact",
       "plan",
       "rename",
+      "subtask",
     ]);
   });
 });

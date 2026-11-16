@@ -160,4 +160,13 @@ export const AVAILABLE_COMMANDS: SlashCommand[] = [
     argumentHint: "<path> [--remember]",
     handler: () => {}, // Handler here won't be used, actual processing is in the hook
   },
+  {
+    id: "subtask",
+    name: "subtask",
+    // 与 CC 的命令描述逐字一致；执行在 agent 侧（SDK 命令表），这里只为补全。
+    description:
+      "Send a subagent off with your full context; its result comes back here",
+    argumentHint: "<task>",
+    handler: () => {}, // Handler here won't be used, actual processing is in the hook
+  },
 ];

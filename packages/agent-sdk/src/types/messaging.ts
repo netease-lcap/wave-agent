@@ -218,4 +218,14 @@ export interface TaskNotificationBlock {
    * `MAX_RESULT_CHARS_IN_SUMMARY` with a pointer to the full value).
    */
   result?: string;
+  /**
+   * What the task spent on its own work, rendered as `<usage>`. A fork
+   * subagent reports only the turns it ran after the inherited snapshot —
+   * inheriting a conversation is not work the subagent did.
+   */
+  usage?: {
+    totalTokens: number;
+    toolUses: number;
+    durationMs: number;
+  };
 }
