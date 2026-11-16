@@ -16,7 +16,7 @@ MODS 补上这两件事：插件带一个 TypeScript 模块（可写 TSX），�
 
 ## 概念
 
-- **mod**：插件目录下的一个模块文件（`.tsx`/`.ts`/`.jsx`/`.js`），导出 `register($, on)`。一个插件可以有多个 mod。
+- **mod**：插件目录下的一个模块文件（`.tsx`/`.ts`/`.jsx`/`.js`），导出 `register($, on)`。一个插件可以有多个 mod。社区里的写法（`hooks/hooks.json` 的 `modules` 声明 + `register(on, options)` + handler 收 `($, e, next)`）同样认，见「兼容社区 mod」。
 - **hooks module**：普通的 ES 模块，在 agent 进程内执行。它没有 Node 全局（`fs`/`process`/`setTimeout` 都没有），只能通过 `$` 做事。
 - **render site**：宿主界面上的一个可画点。一期有两个：`Pane`（桌面端右侧面板的一个 tab）与 `AbovePrompt`（输入框上方的状态带）。
 - **surface**：真正画树的渲染端（一期就是桌面端 webview）。树由 surface **拉取**：surface 对每个已挂载的 pane、以及输入框上方那条带各发一次请求，agent 进程才去问 mod；宿主不主动把树推给 surface。
@@ -65,26 +65,64 @@ MODS 补上这两件事：插件带一个 TypeScript 模块（可写 TSX），�
 
 ### 元素
 
-| 元素       | 主要 props                                                                                                                                                                             | 说明                                                                                                       |
-| ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `Box`      | `flexDirection`、`flexWrap`、`flexGrow`、`flexShrink`、`gap`/`columnGap`/`rowGap`、`padding*`、`margin*`、`width`、`height`、`borderStyle`、`alignItems`、`justifyContent`、`overflow` | 布局容器，用 CSS flex 实现                                                                                 |
-| `Text`     | `color`、`bold`、`italic`、`dimColor`、`underline`、`wrap`                                                                                                                             | 一段文本                                                                                                   |
-| `Button`   | `key`、`label`、`onPress`、`disabled`、`variant`（`"primary"`/`"secondary"`）                                                                                                          | 点击后触发 `ui.press`                                                                                      |
-| `Input`    | `key`、`label`、`placeholder`、`value`、`submitLabel`、`onSubmit`                                                                                                                      | 提交后触发 `ui.input`                                                                                      |
-| `Select`   | `key`、`options`、`onSelect`、`label`、`value`、`autoFocus`                                                                                                                            | 下拉选择，选中后触发 `ui.select`；`options` 是 1–64 个 `{ value, label? }`，`value` 唯一                   |
-| `Svg`      | `source`、`alt`、`width`、`height`、`isInteractive`                                                                                                                                    | 一段 SVG 标记内联画出来；`source` 非空且 ≤131072 字符，`alt` 必填（没有它等于没有可读文本）                |
-| `Link`     | `href`、`label`                                                                                                                                                                        | 只允许 `https:` 与本地回环 `http:`；点击交给宿主用系统浏览器打开（`openExternal`），不在 webview 里导航    |
-| `Code`     | `source`、`language`、`path`、`startLine`                                                                                                                                              | 一期用 `<pre><code>` 原样展示（不做语法高亮），可选一行文件路径                                            |
-| `Markdown` | `text`                                                                                                                                                                                 | `marked` + `DOMPurify` 渲染（与 webview 既有 markdown 用法同一套）                                         |
-| `Progress` | `label`、`value`、`max`、`valueText`、`color`                                                                                                                                          | 一条进度：`value/max` 夹到 0–1（`max` 缺省 1），`valueText` 缺省是百分比；有 `value` 时是两行（标签 + 条） |
+| 元素       | 主要 props                                                                                                                                                                                                                                                                                                                                                                                                                                                        | 说明                                                                                                       |
+| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `Box`      | `flexDirection`、`flexWrap`、`flexGrow`、`flexShrink`、`gap`/`columnGap`/`rowGap`、`padding`、`paddingX`/`paddingY`、`paddingTop`/`Right`/`Bottom`/`Left`、`margin`、`marginX`/`marginY`、`marginTop`/`Right`/`Bottom`/`Left`、`width`/`height`/`minWidth`/`minHeight`、`borderStyle`、`borderColor`、`borderDimColor`、`backgroundColor`、`alignItems`、`alignSelf`、`justifyContent`、`display`、`position`、`top`/`left`/`right`/`bottom`、`overflow`、`hover` | 布局容器，用 CSS flex 实现                                                                                 |
+| `Text`     | `color`、`backgroundColor`、`weight`、`size`、`bold`、`italic`、`dimColor`、`underline`、`strikethrough`、`inverse`、`wrap`、`hover`                                                                                                                                                                                                                                                                                                                              | 一段文本                                                                                                   |
+| `Button`   | `key`、`label`、`onPress`、`disabled`、`variant`（`"primary"`/`"secondary"`）、`plain`、`dimColor`、`autoFocus`、`hover`                                                                                                                                                                                                                                                                                                                                          | 点击后触发 `ui.press`                                                                                      |
+| `Input`    | `key`、`label`、`placeholder`、`value`、`submitLabel`、`onSubmit`、`autoFocus`、`rows`                                                                                                                                                                                                                                                                                                                                                                            | 提交后触发 `ui.input`                                                                                      |
+| `Select`   | `key`、`options`、`onSelect`、`label`、`value`、`autoFocus`                                                                                                                                                                                                                                                                                                                                                                                                       | 下拉选择，选中后触发 `ui.select`；`options` 是 1–64 个 `{ value, label? }`，`value` 唯一                   |
+| `Svg`      | `source`、`alt`、`width`、`height`、`isInteractive`                                                                                                                                                                                                                                                                                                                                                                                                               | 一段 SVG 标记内联画出来；`source` 非空且 ≤131072 字符，`alt` 必填（没有它等于没有可读文本）                |
+| `Link`     | `href`、`label`                                                                                                                                                                                                                                                                                                                                                                                                                                                   | 只允许 `https:` 与本地回环 `http:`；点击交给宿主用系统浏览器打开（`openExternal`），不在 webview 里导航    |
+| `Code`     | `source`、`language`、`path`、`startLine`、`wrap`                                                                                                                                                                                                                                                                                                                                                                                                                 | 一期用 `<pre><code>` 原样展示（不做语法高亮），可选一行文件路径；`wrap` 只有 `"wrap"`/`"truncate-end"`     |
+| `Markdown` | `text`                                                                                                                                                                                                                                                                                                                                                                                                                                                            | `marked` + `DOMPurify` 渲染（与 webview 既有 markdown 用法同一套）                                         |
+| `Progress` | `label`、`value`、`max`、`valueText`、`color`                                                                                                                                                                                                                                                                                                                                                                                                                     | 一条进度：`value/max` 夹到 0–1（`max` 缺省 1），`valueText` 缺省是百分比；有 `value` 时是两行（标签 + 条） |
 
 `Box` 的间距既可写数字（px），也可写 `'xs' | 'sm' | 'md' | 'lg' | 'xl'`。
 
-**props 是白名单，写错要报错**：每个元素只认上表列出的名字，多写一个（拼错、或照别的框架习惯写 `className`/`style`）在 `validateModTree` 阶段就失败并点名那个 prop —— 静默忽略会让作者以为写对了、却看不到任何效果。这条与 Claude Code 的元素校验一致（它的 `Button` 校验连 `variant` 的取值都会挑出来）。
+**间距的轴写法不是别名**：`paddingX` 设左右、`paddingY` 设上下，与 `paddingLeft` 这类单边写法**各自生效**，生效顺序是 `padding` → `paddingX` → `paddingY` → 单边（后写覆盖先写），与 Claude Code 的 Ink 实现同一顺序。`margin` 同理。这条顺序决定了「`padding={2} paddingX={1}`」得到的是左右 1、上下 2，而不是整块 1。
+
+**`minWidth`/`minHeight`** 与 `width`/`height` 一样收数字或字符串（`'50%'` 这类百分比直接交给 CSS）。**`alignSelf`** 只有 `'flex-start' | 'center' | 'flex-end' | 'auto'`（**没有 `stretch`** —— 那是 `alignItems` 才有的值，照 Claude Code 的契约）。**`display`** 只有 `'flex' | 'none'`，`none` 的 `Box` 不占位置（配合 `hover` 做「悬停才展开的卡片」）。**`position`** 只有 `'relative' | 'absolute'`；`absolute` 时 `top`/`left`/`right`/`bottom` 是数字（px，可负），脱离文档流、不占兄弟位置、被站点区域裁切。
+
+**颜色收两类值**：一类是主题 token（跟随用户的明暗主题），另一类是任何其它字符串（CSS 颜色名/hex，原样用）。token 名单与 Claude Code 的 `ThemeKey` 同名，映射到我们自己的设计变量：
+
+| token                                   | 映射                                                                          |
+| --------------------------------------- | ----------------------------------------------------------------------------- |
+| `text`                                  | `--cc-text-primary`                                                           |
+| `subtle` / `inactive`                   | `--cc-text-secondary` / `--cc-text-placeholder`                               |
+| `inverseText`                           | `--cc-bg-panel`（在反色底上写字）                                             |
+| `suggestion` / `remember` / `merged`    | `--cc-text-link`（我们没有独立的紫/青 token，先用链接色，见「一期不做的事」） |
+| `success` / `autoAccept` / `diffAdded`  | `--cc-color-success`                                                          |
+| `error` / `diffRemoved`                 | `--cc-color-danger`                                                           |
+| `warning` / `permission`                | `--cc-state-waiting`                                                          |
+| `planMode` / `ide`                      | `--cc-color-info`                                                             |
+| `claude`                                | `--cc-action-primary`                                                         |
+| `promptBorder` / `bashBorder`           | `--cc-border`                                                                 |
+| `diffAddedDimmed` / `diffRemovedDimmed` | `--cc-color-success-soft` / `--cc-color-danger-soft`                          |
+| `diffAddedWord` / `diffRemovedWord`     | `--cc-color-success` / `--cc-color-danger`                                    |
+
+表外的字符串（`#f60`、`red`、`rgb(…)`）当裸色用，不做白名单校验 —— 与 Claude Code 的 `Color`（`ThemeKey | string`）一致：认不出的 token 由各端自己决定画什么，而不是让整棵树被拒。
+
+**`Text.weight`** 是枚举 `'regular' | 'medium' | 'semibold' | 'bold'`（不是数字），**`size`** 是语义档 `'caption' | 'footnote' | 'body' | 'heading' | 'title'`（不是字号）。两者缺省都继承外层 `Text`。`bold` 是 `weight` 的旧名（等价 `'semibold'`），显式 `weight` 压过它 —— 老 mod 写 `bold` 仍照常加粗。**`inverse`** 把前景与背景互换（在 `backgroundColor` 之上生效），**`strikethrough`** 画删除线。
+
+**`Button.plain`** 是布尔开关（`true` 才画）：画成一串「字形 + label」的扁平按钮，不带边框与底色（一排 `➤` / `✕` 图标键就用它）；`plain` 为真时 `variant` 不再起作用。**`Button.dimColor`** 让 label 静止时调暗、指针进来时恢复全强度。**`autoFocus`**（`Button` / `Input` / `Select`）只认布尔，`true` 才抢焦点（Claude Code 那边 `false` 会被拒；我们收布尔是因为 `autoFocus={cond}` 是自然写法），一个站点里多个时只有第一个生效。
+
+**`Input.rows`** 是 ≥1 的整数（缺省 1）：从 2 起变成多行输入（等价 `<textarea rows>`），Enter 仍提交、换行按输入框的默认打法。`Code.wrap` 只有 `'wrap' | 'truncate-end'` 两个值（`Text.wrap` 的其它拼法在这里被拒 —— 有行号 gutter 时它们没有意义）。
+
+**`hover` 是节点的独立字段，不在 props 里**：`h()` 把 JSX 上的 `hover={{ … }}` 摘到节点的 `hover`，因为它的值是**对象**（props 只收原始值）。结构是两个封闭的 key 集：
+
+- `Box`：`scope`、`borderStyle`、`borderColor`、`borderDimColor`、`backgroundColor`、`display`（只认 `'flex'`，用来 reveal 一个 `display: "none"` 的 `Box`）、`top`/`left`/`right`/`bottom`（只对 `position: "absolute"` 有效）。**没有一个会让兄弟移位**。
+- `Text` / `Button`：`scope`、`color`、`backgroundColor`、`dimColor`、`bold`、`italic`、`underline`、`strikethrough`、`inverse`（`Button` 的 `hover` 改的是它 label 的样式，不含 `wrap`）。
+
+**生效范围是「最近的带 `key` 的 `Box`」**：指针落在那个 `Box`（含其后代）里时，它自己和所有后代的 `hover` 一起生效；在里面再套一个带 `key` 的 `Box` 就是新的 scope。`scope` 给一个字符串时，这个元素加入**同名 scope** 而不是最近的 `Box` —— 让画在行外的卡片跟着行内元素一起亮。悬停**不跑钩子、不过进程**：它只是 surface 自己按指针位置换一组样式。
+
+**props 是白名单，写错要报错**：每个元素只认上表列出的名字，多写一个（拼错、或照别的框架习惯写 `className`/`style`）在 `validateModTree` 阶段就失败并点名那个 prop —— 静默忽略会让作者以为写对了、却看不到任何效果。这条与 Claude Code 的元素校验一致（它的 `Button` 校验连 `variant` 的取值都会挑出来）。`hover` 的子 key 同样按上表校验，写错 key 也点名。
 
 `flexGrow`/`flexShrink`/`flexWrap` 用 Claude Code 的同名 props，作用于**这个 `Box` 在父容器里**怎么伸缩与折行。`Button` 不收这三个名字 —— 宿主给按钮的默认是 `flex: 0 0 auto`，一排按钮不会被压成竖排；带里按钮多到放不下时，给那一行的 `Box` 写 `flexWrap="wrap"` 折到下一行。
 
 `Select` / `Svg` / `Progress` 与前面七个的差别只有一条：**它们的 props 里有非原始值**（`Select.options` 是对象数组）。所以「prop 必须可序列化成原始值」这条规则按元素区分 —— 只有 `Select.options` 走数组，其余元素照旧只认字符串/数字/布尔/null。三个都是**叶子**（带 children 会被校验拒掉），而且它们的语义全在 prop 上（选哪几项、画哪段图、填充到几分之几），所以除了名字白名单还查取值：空 `options`、重复 `value`、超限的 `source`、非数字的 `value/max` 都当场点名。
+
+**被丢掉的对象 prop 要出声**：`h()` 只留原始值（`Select.options` 与 `hover` 两处例外），其余非原始值到不了树上。这类 prop（`style={{…}}`、`className` 的变体）以前是静默丢弃 —— 作者看到「写了没效果、也没有报错」。现在每丢一个记一条 warn，点名元素与 prop。
 
 上面这些名字从 `wave-agent-sdk/mods` 导入，那个子路径就是它们的 props 类型来源（`Box`、`Text`… `Fragment` 加各自的 `*Props`），插件作者写 TSX 时靠它拿类型补全；运行时值只是元素名字符串，实际由沙箱的 `require` 提供同一份表。
 
@@ -92,22 +130,25 @@ MODS 补上这两件事：插件带一个 TypeScript 模块（可写 TSX），�
 
 `register($, on)` 的 `on(name, handler)` 注册**生命周期钩子**：
 
-| 事件                        | 触发时机                                                                                                                                                                                                                                                                                                         | 钩子可返回                                     |
-| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
-| `session.start`             | 会话初始化完成、第一个 prompt 之前                                                                                                                                                                                                                                                                               | 无（返回值忽略；面板得在这里 `$.ui.open`）     |
-| `prompt.submit`             | 用户审阅并提交一条 prompt（含 mod 自己调 `$.prompt.submit`），**模型请求还没发出之前**，见下                                                                                                                                                                                                                     | `{ context?: string[] }`：塞给模型的额外上下文 |
-| `turn.start`                | 一轮开始（用户消息已进上下文、第一个模型请求之前）                                                                                                                                                                                                                                                               | 无（返回值忽略）                               |
-| `turn.step`                 | 一轮里**每发出一次模型请求之前**（工具循环的每一步），`e.step` 从 1 起                                                                                                                                                                                                                                           | 无（返回值忽略）                               |
-| `ui.render`                 | surface 请求某个 render site 的树时（宿主不缓存，每次请求都重新问 mod）；事件带三个正交的维度：`e.surface` 是画这棵树的那一端（一期只有 `desktop`）、`e.component` 是站点名（一期有 `Pane` / `AbovePrompt`）、`e.instance_id` 是该站点的哪个实例（`Pane` 是 `$.ui.open({ id })` 的 id，带固定是 `above-prompt`） | 元素树                                         |
-| `turn.complete`             | 一轮对话结束（答完，或被用户中断），见下                                                                                                                                                                                                                                                                         | 无（返回值忽略）                               |
-| `session.compact`           | 上下文压缩**完成后**（自动或手动 `/compact`），`e` 是 `{ trigger, tokensBefore, tokensAfter }`                                                                                                                                                                                                                   | 无（返回值忽略）                               |
-| `tool.call`                 | 一次工具调用**结束**后（拿到工具结果、`PostToolUse` 钩子跑完），见下                                                                                                                                                                                                                                             | 无（返回值忽略；**不能**拦下这次调用）         |
-| `classic.PermissionRequest` | 一次工具审批**即将**弹给用户时（`PermissionRequest` 钩子已放行、宿主询问用户之前），见下                                                                                                                                                                                                                         | 无（返回值忽略；**没有**批准/拒绝通道）        |
-| `command.run`               | 用户执行了一个由 `$.command.register` 注册的命令，或 mod 自己调 `$.command.run`（见「注册命令」）                                                                                                                                                                                                                | `{ text }`：这一行要变成的 prompt              |
-| `session.end`               | 会话销毁（关掉这条会话、进程退出）**之前**；返回后该会话的 mod 实例、定时器与外部进程全部撤销，其面板**不再**逐条发 `ui.close`                                                                                                                                                                                   | 无（返回值忽略）                               |
-| `ui.close`                  | 一个**由 mod 打开**的面板被关掉、且 mod 实例还活着：用户点 ×、mod 调 `$.ui.close`、`/reload-plugins`。`e.id` 是 pane id                                                                                                                                                                                          | 无（返回值忽略）                               |
+| 事件                        | 触发时机                                                                                                                                                                                                                                                                                                                                                                             | 钩子可返回                                     |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------- |
+| `session.start`             | 会话初始化完成、第一个 prompt 之前                                                                                                                                                                                                                                                                                                                                                   | 无（返回值忽略；面板得在这里 `$.ui.open`）     |
+| `prompt.submit`             | 用户审阅并提交一条 prompt（含 mod 自己调 `$.prompt.submit`），**模型请求还没发出之前**，见下                                                                                                                                                                                                                                                                                         | `{ context?: string[] }`：塞给模型的额外上下文 |
+| `turn.start`                | 一轮开始（用户消息已进上下文、第一个模型请求之前）                                                                                                                                                                                                                                                                                                                                   | 无（返回值忽略）                               |
+| `turn.step`                 | 一轮里**每发出一次模型请求之前**（工具循环的每一步），`e.step` 从 1 起                                                                                                                                                                                                                                                                                                               | 无（返回值忽略）                               |
+| `ui.render`                 | surface 请求某个 render site 的树时（宿主不缓存，每次请求都重新问 mod）；事件带三个正交的维度：`e.surface` 是画这棵树的那一端（一期只有 `desktop`）、`e.component` 是站点名（一期有 `Pane` / `AbovePrompt`）、`e.instance_id` 是该站点的哪个实例（`Pane` 是 `$.ui.open({ id })` 的 id，带固定是 `above-prompt`）；`e.props` 是站点给的版面事实（`bodyColumns` / `maxRows` 等，见下） | 元素树                                         |
+| `turn.complete`             | 一轮对话结束（答完，或被用户中断），见下                                                                                                                                                                                                                                                                                                                                             | 无（返回值忽略）                               |
+| `session.measure`           | 一次带 usage 的响应回来后、token 计数已更新，见下                                                                                                                                                                                                                                                                                                                                    | 无（返回值忽略）                               |
+| `session.compact`           | 上下文压缩**完成后**（自动或手动 `/compact`），`e` 是 `{ trigger, tokensBefore, tokensAfter }`                                                                                                                                                                                                                                                                                       | 无（返回值忽略）                               |
+| `tool.call`                 | 一次工具调用**结束**后（拿到工具结果、`PostToolUse` 钩子跑完），见下                                                                                                                                                                                                                                                                                                                 | 无（返回值忽略；**不能**拦下这次调用）         |
+| `classic.PermissionRequest` | 一次工具审批**即将**弹给用户时（`PermissionRequest` 钩子已放行、宿主询问用户之前），见下                                                                                                                                                                                                                                                                                             | 无（返回值忽略；**没有**批准/拒绝通道）        |
+| `command.run`               | 用户执行了一个由 `$.command.register` 注册的命令，或 mod 自己调 `$.command.run`（见「注册命令」）                                                                                                                                                                                                                                                                                    | `{ text }`：这一行要变成的 prompt              |
+| `session.end`               | 会话销毁（关掉这条会话、进程退出）**之前**；返回后该会话的 mod 实例、定时器与外部进程全部撤销，其面板**不再**逐条发 `ui.close`                                                                                                                                                                                                                                                       | 无（返回值忽略）                               |
+| `ui.close`                  | 一个**由 mod 打开**的面板被关掉、且 mod 实例还活着：用户点 ×、mod 调 `$.ui.close`、`/reload-plugins`。`e.id` 是 pane id                                                                                                                                                                                                                                                              | 无（返回值忽略）                               |
 
 `ui.render` 的事件要交给 `$.ui.resolve(e)` 换元素表（见下）；表外的元素名会被 `validateModTree` 拦下。
+
+`ui.render` 的 `e.props` 是**站点给的版面事实**，一期四个字段：`bodyColumns`（正文宽度，单位字符）、`maxRows`（这个站点一次最多显示多少行）、`hasSurvey` / `isWorking`（`false`，协议占位）。mod 按 `bodyColumns` 断行、按 `maxRows` 决定要不要自己滚，比猜宽度稳。字段只增不减地往上加，读不到的按缺省处理。
 
 **面板被关掉时有 `ui.close`**（`e.id` 是被关的那个 pane）。Claude Code 同样有这个名字 —— 它的首方插件在自己的 scan 声明里把 `ui.close` 列进可监听钩子，与 `ui.render` 并列。发完之后宿主内部清理（撤销该 pane 的回调表与登记，之后的请求不再返回树）；`ui.close` 只是告知，**不能**拦下关闭。会话销毁时不逐条发它，只发一次 `session.end`（实例马上整体丢弃，逐条通知没有接收方）。mod 想确认面板还在不在，仍可用 `$.ui.panes()` 查。
 
@@ -153,6 +194,7 @@ MODS 补上这两件事：插件带一个 TypeScript 模块（可写 TSX），�
 
 - **只读**：三个事件的返回值都被忽略。`classic.PermissionRequest` **不是**审批通道 —— 批准、拒绝、记住规则都只能由用户在界面上做（或由既有权限规则决定），mod 无法替用户答；`tool.call` 也拦不下调用。
 - **`usage` 是本轮、`$.session.usage()` 是整场**：同名的 `tokens` 字段（`prompt` / `completion` / `cacheRead` / `cacheCreation`），作用域不同，别混用；`prompt` 两侧都**含**缓存命中的 token。
+- **`turn.complete.usage` 同时给 Claude Code 的四个别名**（`input_tokens` / `output_tokens` / `cache_read_input_tokens` / `cache_creation_input_tokens`，外加 `model`）：社区 mod 直接拿 `u.input_tokens` 做加法，缺一个就是 `undefined`、整条带画出 `NaN`。`input_tokens` 是 `prompt - cacheRead - cacheCreation`（**不含**缓存命中，与我们自己的 `prompt` 不是同一个数），所以是换算而不是改名。
 - **不阻塞**：派发是 fire-and-forget，mod 在钩子里做网络上报不会卡住轮次收尾或那张审批卡片；钩子抛错、超时（5 秒）只记一条 warn，本轮照常结束、审批卡片照常弹出。
 - **不重放**：三者都是瞬时事件，surface 后挂上来（切会话、webview 重建）不会补发 —— 它们是「此刻正在发生」，不是像 `$.ui.status` 那样的状态。
 
@@ -230,9 +272,11 @@ on("command.run", { command: "/standup" }, ($, e) => ({
 }));
 ```
 
-**注册只给菜单元数据，逻辑在 `command.run` 钩子里**（与 Claude Code 同一个形状）：`register` 没有 handler，用户敲下 `/standup 3` 后引擎派 `command.run`，matcher 是本条命令（带斜杠，`{ command: "/standup" }`，与 CC 一致），钩子必须返回 `{ text }` —— 这段文字作为**一条用户消息**进会话，模型看到的就是它。
+**注册只给菜单元数据，逻辑在 `command.run` 钩子里**（与 Claude Code 同一个形状）：`register` 没有 handler，用户敲下 `/standup 3` 后引擎派 `command.run`，matcher 写成本条命令（带斜杠，`{ command: "/standup" }`，与 CC 一致；也可以不给 matcher、由钩子自己比 `e.command`，见下），钩子必须返回 `{ text }` —— 这段文字作为**一条用户消息**进会话，模型看到的就是它。
 
 - `args` 是用户敲在命令名后面的原文（`"3"`，没写就是空串）。
+- **matcher 是可选的**：`on("command.run", { command: "/standup" }, handler)` 只接这一条，`on("command.run", handler)` 接这个 mod 注册的**所有**命令（社区 mod 就是一条钩子管自己所有命令、在钩子里比 `e.command`）。派发本来就按 mod 分开，没有 matcher 不会把命令串到别的 mod 上；给了 matcher 但没写 `command` 的，这条注册被忽略并记一条 warn。
+- **事件里的 `e.command` 不带斜杠**（`"standup"`）—— 与 Claude Code 同一个口径，社区 mod 直接比 `e.command === "guard"`；matcher 里写带不带斜杠都认（两边归一后比较）。
 - **钩子没答就不执行**：注册了命令但 `command.run` 没有对应 matcher 的钩子（或钩子返回的不是 `{ text }`），这条命令报错并给一句能照做的提示（缺钩子时照 CC 的文案形状：「registered /name but no command.run hook answered it」）。
 - **重名即拒**：与内置命令、用户/项目 `.wave/commands` 下的自定义命令、技能命令、别的插件的命令同名，注册就失败并在插件日志里说明是谁占了。同一个 mod 用同一份 spec 重复注册是幂等的。
 - **撞宿主本地命令**在宿主侧丢弃：`/config`、`/clear`、`/model` 这类是各前端自己实现的动作（不在 SDK 的命令表里），SDK 检查不到；所以 `getSlashCommands` 合并时，同名 mod 命令被丢掉并记一条 warn。
@@ -342,21 +386,34 @@ mod 的沙箱里没有 `child_process`，要跑外部程序只能走 `$.process.
 
 `$.session.usage()` 返回一份**只读快照**，让 mod 能自己把「这次会话用了多少」画成带、状态行或面板：
 
-| 字段                   | 含义                                                  |
-| ---------------------- | ----------------------------------------------------- |
-| `context.tokens`       | 上下文占用：最近一次带 usage 的响应报出的总数         |
-| `context.window`       | 当前模型的上下文窗口                                  |
-| `context.percent`      | 用量环那个百分比（0–100 整数）                        |
-| `tokens.prompt`        | 整场会话累计的 prompt token（**含**缓存命中的那部分） |
-| `tokens.completion`    | 累计的 completion token                               |
-| `tokens.cacheRead`     | 累计的缓存命中 token                                  |
-| `tokens.cacheCreation` | 累计的缓存写入 token                                  |
-| `model`                | 当前模型名，没配时字段缺省                            |
+| 字段                   | 含义                                                   |
+| ---------------------- | ------------------------------------------------------ |
+| `context.tokens`       | 上下文占用：最近一次带 usage 的响应报出的总数          |
+| `context.window`       | 当前模型的上下文窗口                                   |
+| `context.percent`      | 用量环那个百分比（0–100 整数）                         |
+| `tokens.prompt`        | 整场会话累计的 prompt token（**含**缓存命中的那部分）  |
+| `tokens.completion`    | 累计的 completion token                                |
+| `tokens.cacheRead`     | 累计的缓存命中 token                                   |
+| `tokens.cacheCreation` | 累计的缓存写入 token                                   |
+| `startedAt`            | 这条会话开始的时刻（epoch 毫秒），算「本场跑了多久」用 |
+| `rateLimits`           | 额度窗口数组，一期**恒为 `[]`**，见下                  |
+| `model`                | 当前模型名，没配时字段缺省                             |
 
 - **`percent` 的分母是自动压缩阈值，不是 `window`**：与输入框旁那个用量环同一条规则（`getAutoCompactThreshold`），环画到 100% 正是压缩要发生的地方；换成 `tokens / window` 会让环永远到不了头，两个数字也会对不上。
 - **字段名按我们自己的口径写死**：我们上游的 `prompt_tokens` 已经包含缓存命中，Claude Code 的 `input_tokens` 不包含，两者不能互换，所以这里不叫 `input`/`output`。
-- **现取现算、不订阅**：每次调用返回一份新快照，mod 改它伤不到会话；要看它变化就在 `$.clock` 的节拍里或 `ui.render` 时再问一次。也不产生一次渲染请求——mod 拿到数字后自己决定要不要 `invalidate`。
-- 一期**不给** `rateLimits`（额度与重置时间要先有企业端的额度接口）、不给消息列表与 `send`/`append`（那些是「改会话」，与只读快照不是一回事）。
+- **现取现算、不订阅**：每次调用返回一份新快照，mod 改它伤不到会话；要看它变化就在 `$.clock` 的节拍里或 `ui.render` 时再问一次。也不产生一次渲染请求——mod 拿到数字后自己决定要不要 `invalidate`。要「变化时被叫醒」用下面的 `session.measure`。
+- **`rateLimits` 一期恒为 `[]`**（字段留着，形状是 `{ kind, percentUsed, resetsAt? }[]`）：额度与重置时间要先有企业端的额度接口才有数，填假数字比空数组更糟。不给消息列表与 `send`/`append`（那些是「改会话」，与只读快照不是一回事）。
+
+### 用量的变化（`session.measure`）
+
+`$.session.usage()` 要 mod 主动问，而带式的 mod（输入框上方那条带）只在被要求渲染时才醒 —— 于是「这一轮烧了多少」这类内容会慢半拍。`session.measure` 补这一半：**每次带 usage 的模型响应回来、token 计数更新之后**发一次，`e` 就是那一刻的 `$.session.usage()` 快照外加一个 `changed` 字段：
+
+| 字段      | 含义                                                                |
+| --------- | ------------------------------------------------------------------- |
+| `changed` | 这一拍变了哪些部分，`"context"` / `"tokens"` 的子集（一期两个都给） |
+| 其余      | 与 `$.session.usage()` 的字段逐个相同                               |
+
+它解决的是「被叫醒」，不是「拿到数字」—— handler 里仍可以直接 `$.session.usage()` 再取一份（两者同一处解析，值一致），要重画就 `$.ui.invalidate("ui.render")`。返回值忽略；它是 fire-and-forget 的瞬时事件，不重放（切会话、webview 重建不补发）。名字沿用 Claude Code 的同名事件，`changed` 是它的字段。子代理的嵌套轮次**不报**（它用的是自己的那一层，mod 只关心主会话这一条）。
 
 ### 面板的归属（会话维度）
 
@@ -377,6 +434,37 @@ mod 的沙箱里没有 `child_process`，要跑外部程序只能走 `$.process.
     回复里带递增的 `revision`，webview 丢弃比当前显示版本更旧的回复。
 - 一个 pane 的**第一次** `modPanelRender` 回复到达时，桌面端会展开右侧面板槽并激活该 tab（与用户从「＋」菜单打开同一个效果）—— mod 申请的面板不该还要用户自己去点开。后续回复只更新内容，不抢当前焦点。
 - 回包带 `error` 时，面板顶部叠一条错误摘要，**同一回复里给的是上一帧成功的树**（仍可操作）；下一次请求成功后摘要自动消失。把整棵树换成一行错误文字会让面板一次性报废（用户连别的按钮都点不到），不做。
+
+## 兼容社区 mod（布局、注册签名与裸名 import）
+
+社区里现有的 mod 不是按这份规格写的。为了让**已有的 mod 不改一行就能跑**，加载层认两种形状，语义仍是上面那一套。
+
+**布局**：除 `.wave-plugin/plugin.json` + `mods/*.tsx` 之外，也认 `hooks/hooks.json` 里的模块声明 `{ "modules": ["./register.tsx"] }`（社区插件的写法，一个插件可有多个模块，等价于我们的「一个插件多个 mod」）。**`modules` 里的路径相对 `hooks/` 目录**，不是相对插件根 —— `./register.tsx` 就摆在 `hooks.json` 旁边。同一个 `hooks.json` 里的 `hooks` 段（settings hook 事件）与 `modules` 段互不相干，可以共存；两处指向同一个文件时按 realpath 只收一次，stem 撞名时先到先得并记一条 warn。manifest 目录名两种都认（`.claude-plugin/` 已有回退）。`plugin.json` 里的 `userConfig` 是配置 schema（`type` / `title` / `description` / `default`）：`register` 收到的 `options` 一期**只是 schema 里的 `default`**（没有「用户改值」的存储，界面上也还没有这一栏），schema 里没写 `default` 的键不出现。
+
+**注册签名**（两种都认，按实参形状区分）：
+
+| 形状                    | 谁的   | `$` 从哪来                   |
+| ----------------------- | ------ | ---------------------------- |
+| `register($, on)`       | 我们的 | 第一个参数                   |
+| `register(on, options)` | 社区的 | handler 的第一个参数（见下） |
+
+**handler 签名**（按**哪个实参被当成登记函数**区分，不看形参个数 —— 两种形状互斥：我们的用第二个实参当 `on`，社区的把第一个实参当 `on`，因此同一个 `on` 登记出来的 handler 形状是确定的）：
+
+- `(e)` —— 我们的形状（`register($, on)` 登记），返回值语义仍按「事件」那张表；
+- `($, e, next)` —— 社区的（`register(on, options)` / `Register = on =>` 登记）。**社区 handler 可以只写一个形参**（`on("command.run", matcher, async $ => …)`，社区真 mod 就这么写），那一个形参就是 `$`：按形参个数判形状会把它当成我们的 `(e)`，`$` 会变成事件对象。`next(e)` 把这次事件交给链上的下一个 mod / 引擎：`ui.render` 下它返回**引擎自己那一帧**（只有宿主本来就会画的站点才有；`Pane` / `AbovePrompt` 是留给 mod 的空间，`next(e)` 返回 `undefined`），mod 可以返回自己的树去替换它，也可以把 `next(e)` 的结果包一层再返回；观察型事件（`tool.call` / `turn.*` / `session.*`）下它返回**空对象**而不是 `undefined` —— 社区 mod 会 `await next(e)` 之后读 `ran.deny` / `ran.isError`，给 `undefined` 会当场抛属性错误，空对象正好表达「引擎没有意见（也就没有拒绝、没有报错）」。一次 handler 最多调一次 `next(e)` —— 再调当场报错（否则链会跑两遍）。
+- **`next(e)` 收下改过的事件**：社区最常见的写法是 `return next({ ...e, context: [...] })`（burn-rate 的限额提醒就是这样注入上下文的）。链尾的引擎帧按**走到那里的那份事件**算 —— `prompt.submit` 取 `e.context` 还成 `{ context }`，`command.run` 取 `e.text` 还成 `{ text }`，所以 mod 把改动交给 `next`、自己不拼返回值也能生效。丢掉这份改动会让注入静默失效。
+
+**同一条事件可以挂多个 handler**（不分社区还我们，按注册顺序串成一条链；第一个匹配上的 handler 的返回值就是结果）。`on(name, handler)` 返回一个可以 `.catch(handler)` 的注册凭据：handler 抛错（含 5 秒预算超时）时用它兜底，兜底自己也抛才算这条钩子失败。社区的写法是 `.catch(function ($, e) { … })`，兜底与它所在的那条钩子同形状（同一个 `on` 登记出来的）。
+
+**matcher**（第三个实参，社区写法 `on(name, matcher, handler)`）：只对三个事件有意义 —— `ui.render`（`{ component, requestId }`）、`tool.call`（`{ tool }`）、`command.run`（`{ command }`）。语义是**事件字段的子集匹配**，值可以是一个候选值数组（命中任一即匹配）；`requestId` 是 `instance_id` 的别名。没匹配上的钩子**不参与**这次事件（不是「参与但拿不到值」）。`command.run` 的 matcher **可省**：省了就是「这个 mod 注册的每条命令都问它」，钩子自己比 `e.command`（社区真 mod 就这么写）；写了就带不带斜杠都认、内部归一。给别的配对不上 matcher 的钩子传 matcher 会记一条 warn 并忽略这条注册。
+
+**裸名 import**：`wave-agent-sdk/mods` 是我们对外推荐的名字；社区的 `'claude-code'` 作为**别名**解析到同一个模块 —— 不引入那个 npm 包，也不解析 `node_modules`。除元素构造器，该模块还导出三个助手：
+
+- `atom({ plugin, key }, initial)`：声明一个存在 `$.store` 里的值（键是 `<plugin>/<key>`）；
+- `read($, atom)`：读出来；键不存在或 JSON 解析失败都返回 `initial`；
+- `update($, atom, value | (prev) => next)`：写回去。
+
+`atom` 的值走 JSON 序列化，因此受 `$.store` 的体积约束（见「限额」）。
 
 ## 限额
 
@@ -420,7 +508,7 @@ mod 的沙箱里没有 `child_process`，要跑外部程序只能走 `$.process.
 
 ## 加载纪律
 
-- mod 的 import 只允许**相对路径**与 `wave-agent-sdk/mods`（元素构造器表）；其他裸包名直接报错。
+- mod 的 import 只允许**相对路径**与 `wave-agent-sdk/mods`（元素构造器表 + `atom`/`read`/`update`）；社区的 `'claude-code'` 是它的别名，其他裸包名直接报错。
 - 动态 `import()` 在 CJS 产物里同样变成 `require`，因此受同一条白名单约束。
 - 相对 import 只在**该插件本次参与编译的文件集合**里解析（不读 `node_modules`）；出现环形 import 直接报错。
 - 文件解析走 `realpath`，解析结果必须落在插件目录内，越界即拒绝。
@@ -508,6 +596,23 @@ Claude Code 的 `$` 有 23 个命名空间，我们一期覆盖 12 个（`ui` / 
 7. **假设**一个只画带、从不开面板的 mod 用 `$.clock.every(2000, …)` 每两秒调一次 `$.ui.invalidate("ui.render")`，**当**第二拍到达，**则**这条带重画成新内容 —— 不需要任何面板存在（surface 平时只在挂载时拉一次带，`invalidate` 是它唯一的重画通道）。
 8. **假设**某 mod 的带钩子抛错，**当** surface 重画，**则**只有那条带显示错误摘要，其余带与所有 status 行照常显示，会话不中断。
 9. **假设** mod 只在 `session.start` 里贴了一次 status、之后再也不写，**当**桌面端挂上这条会话（新建、切回来、webview 重建），**则**那一行照样出现 —— surface 要面板快照时 agent 会把它重放一次；`toast` 不重放，那时的提示早已过期。
+
+### 用户故事：面板能跟着指针和主题变色（优先级：P1）
+
+作为插件作者，我希望用社区同一套 prop 名写出「悬停才亮的删除键」「大号小标题」「整行变色的卡片」，以便把我为 Claude Code 写好的界面原样搬过来。
+
+**为什么是这个优先级**：社区里 6103 个带 TSX 的 mod 中，`Box.paddingX` 出现在 1645 个、`Box.borderColor` 996 个、`Text.backgroundColor` 729 个、`Box.minWidth` 334 个 —— 白名单不认它们时**整棵树被拒**，面板一片空白（真机上 `ideas-shelf` 就是这样：只因为一个 `paddingX`）。它们全是纯绘制，不引入新事件。
+
+**验收场景**：
+
+1. **假设**某个 `Box` 写 `padding={2} paddingX={1}`，**当**面板渲染，**则**它上下各 2、左右各 1（轴写法在四边简写之后生效）；再补 `paddingLeft={3}` **则**左边变 3、其余边不变。
+2. **假设** `<Text color="suggestion">` 与 `<Text color="#f60">` 各一段，**当**面板渲染，**则**前者画成主题的链接色（toggle 明暗主题时跟着变）、后者原样是 `#f60`；写一个表里没有的 token（`color="chartreuse"`）**则**按裸色画，不拒整棵树。
+3. **假设** `<Text weight="bold" size="title" strikethrough>已完成</Text>`，**当**面板渲染，**则**这段字是粗体、标题档字号、带删除线；把 `weight` 写成 `600`（数字）**则**整棵树被拒并点名 `weight`（它只收那四个枚举）。
+4. **假设** `<Box key="row" hover={{ backgroundColor: "error" }}><Button label="✕" plain dimColor hover={{ color: "error" }} /></Box>`，**当**指针移进这一行，**则**整行换底色、按钮的 `✕` 由暗变亮并转成错误色；指针移出**则**恢复静止样子，**且这个过程不产生 `ui.render` 重画、不跑任何 mod 钩子**。
+5. **假设** `<Box key="k"><Text>glyph</Text><Box position="absolute" top={-2} left={2} display="none" hover={{ display: "flex" }}>卡片</Box></Box>`，**当**指针落在 `glyph` 上，**则**卡片出现并画在行外上方，指针移出**则**收回 —— 行内其它元素位置不动（`hover` 里没有会让兄弟移位的 key）。
+6. **假设**按钮写 `plain`（`<Button label="✕" plain onPress={…} />`），**当**面板渲染，**则**它是一个无边框、无底色的字形键，一排三个能挤在行尾；同时写 `plain` 与 `variant="primary"` **则**按 `plain` 画。
+7. **假设** `hover` 里写错一个 key（`hover={{ colour: "red" }}`），**当**这一帧被校验，**则**整棵树被拒并在面板顶部点名那个 key 与可用名单，不静默忽略。
+8. **假设** `<Input key="note" rows={3} onSubmit={…} />`，**当**面板渲染，**则**输入框高 3 行、Enter 仍提交；同一站点里两个元素都写 `autoFocus` **则**只有第一个拿到焦点。
 
 ### 用户故事：面板跟着外部程序的状态走（优先级：P0）
 
@@ -711,3 +816,18 @@ Claude Code 的 `$` 有 23 个命名空间，我们一期覆盖 12 个（`ui` / 
 1. **假设**用户把 `MY_WATCH=1` 写进 `settings.json` 的 `env` 段，**当** mod 调 `$.env.get("MY_WATCH")`，**则**拿到 `"1"`；没设置的名字返回 `undefined`（不抛错），`|| 默认值` 就能兜底。
 2. **假设** mod 调 `$.settings.read({ source: "project", key: "permissions" })` 而 `project` 层没有这个键，**当**调用发生，**则**得到 `undefined`；把 `source` 写成 `"policy"`（我们没有这一层）**则**抛错并列出 `user` / `project` / `local` 三个可用值。
 3. **假设** mod 需要给会话打标，**当**它调 `$.session.id()` / `root()` / `model()`，**则**分别拿到当前会话 id（`/clear` 之后是新值）、会话工作根（`cd` 之后不变）、当前生效的模型名；三者都不改变会话任何状态。
+
+### 用户故事：把社区里已有的 mod 原样装上就能跑（优先级：P0）
+
+作为想试用社区 mod 的用户，我希望能直接把我找到的插件装上（它的目录布局和注册写法是冲着 Claude Code 的），不用请作者为我改一版，也不用我手动改 import。
+
+**验收场景**：
+
+1. **假设**插件是社区写法（`.claude-plugin/plugin.json` + `hooks/hooks.json` 的 `{"modules": ["./register.tsx"]}`，模块 `export const register = (on, options) => …`），**当**用户把它作为插件目录加载并开一个会话，**则**模块被加载、`register` 被调用、里面的 `on(...)` 与 `$.` 调用照常生效，一行都不用改。
+2. **假设**社区 mod 的 handler 是 `($, e, next)` 且站点是 `Pane`，**当** `ui.render` 触发，**则** `$` 是那个 mod 的能力面、`next(e)` 返回 `undefined`（这块地方本来就归 mod），mod 返回自己的树；**当**站点是宿主自己会画的（后续期），**则** `next(e)` 返回引擎那一帧，mod 的返回值可以替换它。
+3. **假设** mod 写 `import { atom, read, update } from 'claude-code'`，**当**加载，**则**解析到 `wave-agent-sdk/mods`（同一个虚拟模块），`read($, atom)` 取值、`update($, atom, …)` 写回都落在 `$.store` 上；**当**那个键还没有值，**则** `read` 返回 `atom` 声明的初值。
+4. **假设** `plugin.json` 声明了 `userConfig.enabled`（`default: true`），**当** mod 在 `register(on, options)` 里读 `options.enabled`，**则**拿到 `true`；schema 里没写 `default` 的键**则**不在 `options` 里（一期没有「用户改值」的存储，见「布局」）。
+5. **假设**同一个 handler 调了两次 `next(e)`，**当**第二次调用，**则**当场报错（链只走一次），日志点名 mod 与事件名。
+6. **假设**一个 mod 用 `on("tool.call", { tool: ["Bash", "Edit"] }, handler)` 注册、另一个用 `on("ui.render", { component: "AbovePrompt", requestId: "above-prompt" }, handler)`，**当**一次 Bash 调用结束、带站点第三次重画，**则**两条钩子各自只在自己匹配的事件上被调用；**当**换成 `Read` 调用，**则**第一条不被调用（matcher 没命中 = 这次事件与它无关）。
+7. **假设** mod 写 `on("session.measure", handler).catch((e) => …)`，**当**一次带 usage 的响应回来，**则** handler 收到的 `e` 里既有 `changed`、也有与 `$.session.usage()` 相同的 `context` / `tokens` / `startedAt` / `rateLimits`；**当** handler 抛错，**则** `.catch` 里那个被调用，会话照常继续。
+8. **假设**一个社区 mod 在 `turn.complete` 里读 `e.usage.input_tokens` / `output_tokens` / `cache_read_input_tokens` / `cache_creation_input_tokens` / `usage.model`，并按 `e.command === "guard"` 认自己的命令，**当**一轮答完、用户敲 `/guard off`，**则**五个字段都有数字（`input_tokens` = 本轮 `prompt` 减去两份缓存）、`e.command` 是不带斜杠的 `"guard"`、`e.args` 是 `"off"`。

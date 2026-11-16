@@ -95,7 +95,23 @@
   opacity: 0.5;
 }
 
-.mod-surface input {
+/* `plain`：没有边框和底色的按钮，靠文字本身看（工具栏里一排开关用它）。悬停
+   时给一层极淡的底，否则「指上去什么都没发生」。 */
+.mod-surface .mod-button-plain {
+  padding: 2px 4px;
+  border-color: transparent;
+  background: transparent;
+}
+
+.mod-surface .mod-button-plain:hover:not(:disabled) {
+  background: var(
+    --cc-action-secondary-hover,
+    var(--vscode-button-secondaryHoverBackground, rgba(128, 128, 128, 0.12))
+  );
+}
+
+.mod-surface input,
+.mod-surface textarea {
   font: inherit;
   padding: 4px 8px;
   border-radius: var(--cc-radius-sm, 6px);
@@ -104,7 +120,8 @@
   color: var(--vscode-input-foreground, inherit);
 }
 
-.mod-surface input:focus {
+.mod-surface input:focus,
+.mod-surface textarea:focus {
   outline: none;
   border-color: var(
     --cc-field-border-focus,

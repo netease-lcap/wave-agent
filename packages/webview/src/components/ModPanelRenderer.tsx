@@ -51,7 +51,80 @@ function space(value: unknown): number | undefined {
   return undefined;
 }
 
-function boxStyle(props: Record<string, unknown>): React.CSSProperties {
+/**
+ * 主题色名 → 我们自己的 CSS 变量（spec「颜色收两类值」）。
+ *
+ * mod 写 `color="success"` 是想说「用主题的绿」，不是想让宿主的绿恰好也叫
+ * success；所以这里把 Claude Code 的 24 个主题键翻成 `--cc-*`，宿主（桌面端 /
+ * VS Code / JB）按自己的主题给值，没给就走括号里的兜底。变量名对不上是刻意
+ * 的：键名是 CC 的公开契约，变量名是我们宿主的主题系统。
+ */
+const TOKEN_COLORS: Record<string, string> = {
+  text: "var(--cc-text-primary, inherit)",
+  subtle: "var(--cc-text-secondary, #6c7076)",
+  inactive: "var(--cc-text-placeholder, #858b8f)",
+  inverseText: "var(--cc-bg-panel, #fff)",
+  suggestion: "var(--cc-text-link, #2f6fdd)",
+  remember: "var(--cc-text-link, #2f6fdd)",
+  merged: "var(--cc-text-link, #2f6fdd)",
+  success: "var(--cc-color-success, #2e7d32)",
+  autoAccept: "var(--cc-color-success, #2e7d32)",
+  warning: "var(--cc-state-waiting, #b26a00)",
+  permission: "var(--cc-state-waiting, #b26a00)",
+  error: "var(--cc-color-danger, #c62828)",
+  planMode: "var(--cc-color-info, #1565c0)",
+  ide: "var(--cc-color-info, #1565c0)",
+  claude: "var(--cc-action-primary, #2f6fdd)",
+  promptBorder: "var(--cc-border, #d9dbe0)",
+  bashBorder: "var(--cc-border, #d9dbe0)",
+  diffAdded: "var(--cc-color-success, #2e7d32)",
+  diffRemoved: "var(--cc-color-danger, #c62828)",
+  diffAddedDimmed: "var(--cc-color-success-soft, rgba(46, 125, 50, 0.14))",
+  diffRemovedDimmed: "var(--cc-color-danger-soft, rgba(198, 40, 40, 0.14))",
+  diffAddedWord: "var(--cc-color-success, #2e7d32)",
+  diffRemovedWord: "var(--cc-color-danger, #c62828)",
+};
+
+/** 主题键取变量，其余（`#rgb` / `rgb()` / `red`）原样交给 CSS 判是否合法。 */
+function modColor(value: unknown): string | undefined {
+  if (typeof value !== "string" || value === "") return undefined;
+  return TOKEN_COLORS[value] ?? value;
+}
+
+const TEXT_WEIGHTS: Record<string, number> = {
+  regular: 400,
+  medium: 500,
+  semibold: 600,
+  bold: 700,
+};
+
+const TEXT_SIZES: Record<string, number> = {
+  caption: 11,
+  footnote: 12,
+  body: 13,
+  heading: 16,
+  title: 20,
+};
+
+/**
+ * `hover` 与基准 props 的合并：hover 只覆盖它写了的键。
+ *
+ * 校验器已经把 hover 的键卡进该元素的白名单（`Box` 只认边框/底色/显隐，
+ * `Text` 只认字色/字重），所以这里的覆盖是同类替换，不会把 `hover` 里的
+ * `color` 贴到 `Box` 上。
+ */
+function mergeHover(
+  props: Record<string, unknown>,
+  hover: Record<string, unknown> | undefined,
+): Record<string, unknown> {
+  return hover === undefined ? props : { ...props, ...hover };
+}
+
+function boxStyle(
+  props: Record<string, unknown>,
+  hover?: Record<string, unknown>,
+): React.CSSProperties {
+  props = mergeHover(props, hover);
   const style: React.CSSProperties = { display: "flex", minWidth: 0 };
   const direction = props.flexDirection;
   if (direction === "row" || direction === "column") {
@@ -70,9 +143,33 @@ function boxStyle(props: Record<string, unknown>): React.CSSProperties {
   if (columnGap !== undefined) style.columnGap = columnGap;
   const rowGap = space(props.rowGap);
   if (rowGap !== undefined) style.rowGap = rowGap;
-  // `padding` 是四边的简写（`paddingTop` 等后写，可以单独覆盖某一边）。
+  // 间距的轴写法**不是**别名：后写的那层覆盖先写的（`padding` → `paddingX`/
+  // `paddingY` → 单边），与 Claude Code 的解析顺序一致。CSS 里没有 `paddingX`
+  // 这个属性，所以只能在这里展开成左右/上下。
   const padding = space(props.padding);
   if (padding !== undefined) style.padding = padding;
+  const paddingX = space(props.paddingX);
+  if (paddingX !== undefined) {
+    style.paddingLeft = paddingX;
+    style.paddingRight = paddingX;
+  }
+  const paddingY = space(props.paddingY);
+  if (paddingY !== undefined) {
+    style.paddingTop = paddingY;
+    style.paddingBottom = paddingY;
+  }
+  const margin = space(props.margin);
+  if (margin !== undefined) style.margin = margin;
+  const marginX = space(props.marginX);
+  if (marginX !== undefined) {
+    style.marginLeft = marginX;
+    style.marginRight = marginX;
+  }
+  const marginY = space(props.marginY);
+  if (marginY !== undefined) {
+    style.marginTop = marginY;
+    style.marginBottom = marginY;
+  }
   for (const side of ["Top", "Right", "Bottom", "Left"] as const) {
     const padding = space(props[`padding${side}`]);
     if (padding !== undefined) style[`padding${side}`] = padding;
@@ -82,31 +179,82 @@ function boxStyle(props: Record<string, unknown>): React.CSSProperties {
   if (props.width !== undefined) style.width = props.width as number | string;
   if (props.height !== undefined)
     style.height = props.height as number | string;
+  if (props.minWidth !== undefined) {
+    style.minWidth = props.minWidth as number | string;
+  }
+  if (props.minHeight !== undefined) {
+    style.minHeight = props.minHeight as number | string;
+  }
   if (props.alignItems !== undefined) {
     style.alignItems = props.alignItems as React.CSSProperties["alignItems"];
+  }
+  if (props.alignSelf !== undefined) {
+    style.alignSelf = props.alignSelf as React.CSSProperties["alignSelf"];
   }
   if (props.justifyContent !== undefined) {
     style.justifyContent =
       props.justifyContent as React.CSSProperties["justifyContent"];
   }
+  if (props.display === "none") style.display = "none";
   if (props.overflow === "hidden" || props.overflow === "auto") {
     style.overflow = props.overflow;
   }
+  if (props.position === "absolute" || props.position === "relative") {
+    style.position = props.position;
+    for (const edge of ["top", "right", "bottom", "left"] as const) {
+      const offset = space(props[edge]);
+      if (offset !== undefined) style[edge] = offset;
+    }
+  }
+  const background = modColor(props.backgroundColor);
+  if (background !== undefined) style.background = background;
   if (props.borderStyle === "single" || props.borderStyle === "round") {
-    style.border = "1px solid var(--vscode-panel-border, #3c3c3c)";
+    const borderColor = modColor(props.borderColor);
+    style.border =
+      borderColor === undefined
+        ? "1px solid var(--vscode-panel-border, #3c3c3c)"
+        : `1px solid ${borderColor}`;
     style.borderRadius = props.borderStyle === "round" ? 8 : 0;
+    if (props.borderDimColor === true) style.opacity = 0.65;
   }
   return style;
 }
 
-function textStyle(props: Record<string, unknown>): React.CSSProperties {
+function textStyle(
+  props: Record<string, unknown>,
+  hover?: Record<string, unknown>,
+): React.CSSProperties {
+  const merged = mergeHover(props, hover);
   const style: React.CSSProperties = {};
-  if (typeof props.color === "string") style.color = props.color;
-  if (props.bold === true) style.fontWeight = 600;
-  if (props.italic === true) style.fontStyle = "italic";
-  if (props.underline === true) style.textDecoration = "underline";
-  if (props.dimColor === true) style.opacity = 0.65;
-  if (props.wrap === false) {
+  const color = modColor(merged.color);
+  if (color !== undefined) style.color = color;
+  const background = modColor(merged.backgroundColor);
+  if (background !== undefined) style.background = background;
+  const weight = merged.weight;
+  if (typeof weight === "string" && TEXT_WEIGHTS[weight] !== undefined) {
+    style.fontWeight = TEXT_WEIGHTS[weight];
+  }
+  // `bold` 是旧写法、语义等于 `semibold`；两个都写时 `weight` 更具体。
+  if (merged.bold === true && style.fontWeight === undefined) {
+    style.fontWeight = 600;
+  }
+  const size = merged.size;
+  if (typeof size === "string" && TEXT_SIZES[size] !== undefined) {
+    style.fontSize = TEXT_SIZES[size];
+  }
+  if (merged.italic === true) style.fontStyle = "italic";
+  const decorations: string[] = [];
+  if (merged.underline === true) decorations.push("underline");
+  if (merged.strikethrough === true) decorations.push("line-through");
+  if (decorations.length > 0) style.textDecoration = decorations.join(" ");
+  // `inverse` 是终端那套「反显」：字色与底色对调。没有底色的文字按面板底色算，
+  // 否则反显出来的字会看不见。
+  if (merged.inverse === true) {
+    style.color = background ?? "var(--cc-bg-panel, #fff)";
+    style.background = color ?? "var(--cc-text-primary, #1f2329)";
+  }
+  if (merged.dimColor === true) style.opacity = 0.65;
+  if (merged.wrap === false) {
     style.whiteSpace = "nowrap";
     style.overflow = "hidden";
     style.textOverflow = "ellipsis";
@@ -130,6 +278,12 @@ function ModInput({
     typeof node.props.label === "string" ? node.props.label : undefined;
   const placeholder =
     typeof node.props.placeholder === "string" ? node.props.placeholder : "";
+  // `rows` ≥ 2 换多行输入框：回车仍是提交（这是本组件的既有语义，多行输入框
+  // 若把回车吃掉，提交动作就只剩那个按钮可点了），换行走 Shift+Enter。
+  const rows =
+    typeof node.props.rows === "number" && node.props.rows >= 2
+      ? Math.floor(node.props.rows)
+      : 0;
   const submit = () => {
     onEvent("input", key, value);
     // 提交即清空（spec 场景 2「输入框清空」）：值已经交给 mod，留在这里只会让
@@ -146,13 +300,31 @@ function ModInput({
       }}
     >
       {label ? <span>{label}</span> : null}
-      <input
-        value={value}
-        placeholder={placeholder}
-        data-mod-key={key}
-        onChange={(event) => setValue(event.target.value)}
-        style={{ flex: 1, minWidth: 0 }}
-      />
+      {rows > 0 ? (
+        <textarea
+          value={value}
+          rows={rows}
+          placeholder={placeholder}
+          data-mod-key={key}
+          autoFocus={node.props.autoFocus === true}
+          onChange={(event) => setValue(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key !== "Enter" || event.shiftKey) return;
+            event.preventDefault();
+            submit();
+          }}
+          style={{ flex: 1, minWidth: 0, resize: "vertical" }}
+        />
+      ) : (
+        <input
+          value={value}
+          placeholder={placeholder}
+          data-mod-key={key}
+          autoFocus={node.props.autoFocus === true}
+          onChange={(event) => setValue(event.target.value)}
+          style={{ flex: 1, minWidth: 0 }}
+        />
+      )}
       <button type="submit" data-mod-key={`${key}:submit`}>
         {typeof node.props.submitLabel === "string"
           ? node.props.submitLabel
@@ -283,9 +455,9 @@ function ModProgress({ node }: { node: ModTreeNode }): React.ReactElement {
             className="mod-panel-progress-fill"
             style={{
               width: `${ratio * 100}%`,
-              ...(typeof node.props.color === "string"
-                ? { background: node.props.color }
-                : {}),
+              ...(modColor(node.props.color) === undefined
+                ? {}
+                : { background: modColor(node.props.color) }),
             }}
           />
         </div>
@@ -324,54 +496,134 @@ function ModMarkdown({
   );
 }
 
+/**
+ * 悬停态。规范在 spec「元素」里：`hover` 是节点的**独立字段**，作用域是离它
+ * 最近的带 `key` 的 `Box`（或者它自己写的 `hover.scope`）。所以「指着这一行，
+ * 行里某个字变色」不用在树上重复写作用域 ID —— 作用域由树的形状决定，跟
+ * Claude Code 的口径一致。
+ *
+ * 状态挂在 {@link ModPanelRenderer} 上（而不是每个节点各持一份），否则同一个
+ * 作用域里的几个节点会各自算自己的悬停、指针一移就闪。
+ */
+interface HoverCtx {
+  active: ReadonlySet<string>;
+  enter: (scope: string) => void;
+  leave: (scope: string) => void;
+}
+
+/** 去掉 `hover.scope`（它是作用域声明，不是样式）。 */
+function styleHover(
+  hover: Record<string, unknown> | undefined,
+): Record<string, unknown> | undefined {
+  if (hover === undefined) return undefined;
+  const rest: Record<string, unknown> = {};
+  for (const [name, value] of Object.entries(hover)) {
+    if (name !== "scope") rest[name] = value;
+  }
+  return rest;
+}
+
 function renderNode(
   node: ModTreeNode | string,
   onEvent: ModPanelRendererProps["onEvent"],
   onOpenLink: ((href: string) => void) | undefined,
   index: number,
+  hover: HoverCtx,
+  scope: string | undefined,
 ): React.ReactNode {
   if (typeof node === "string") {
     return <React.Fragment key={index}>{node}</React.Fragment>;
   }
+  const nodeHover = node.hover;
+  const key = typeof node.props.key === "string" ? node.props.key : undefined;
+  const explicitScope =
+    typeof nodeHover?.scope === "string" ? nodeHover.scope : undefined;
+  // 解析顺序：`hover.scope` > 自己带字符串 key 的 `Box`（自己就是宿主）> 祖先。
+  const nodeScope =
+    explicitScope ??
+    (node.type === "Box" && key !== undefined ? key : undefined) ??
+    scope;
+  const hovered =
+    nodeHover !== undefined &&
+    nodeScope !== undefined &&
+    hover.active.has(nodeScope);
+  const activeHover = hovered ? styleHover(nodeHover) : undefined;
+  // 指针进出只挂在**作用域宿主**上：给叶子节点也挂一遍会让进入子节点时先触发
+  // 父节点 leave（React 的 pointerenter/leave 不冒泡，但宿主重复绑定会互相抵消）。
+  const isScopeHost =
+    nodeScope !== undefined &&
+    (explicitScope !== undefined || (node.type === "Box" && key === nodeScope));
+  const hoverHandlers =
+    isScopeHost && nodeScope !== undefined
+      ? {
+          onPointerEnter: () => hover.enter(nodeScope),
+          onPointerLeave: () => hover.leave(nodeScope),
+        }
+      : {};
   const children = node.children.map((child, childIndex) =>
-    renderNode(child, onEvent, onOpenLink, childIndex),
+    renderNode(child, onEvent, onOpenLink, childIndex, hover, nodeScope),
   );
   switch (node.type) {
     case "Box":
       return (
-        <div key={index} style={boxStyle(node.props)}>
+        <div
+          key={index}
+          style={boxStyle(node.props, activeHover)}
+          {...hoverHandlers}
+        >
           {children}
         </div>
       );
     case "Text":
       return (
-        <span key={index} style={textStyle(node.props)}>
+        <span
+          key={index}
+          style={textStyle(node.props, activeHover)}
+          {...hoverHandlers}
+        >
           {children}
         </span>
       );
     case "Button": {
-      const key = String(node.props.key ?? "");
+      const buttonKey = String(node.props.key ?? "");
       const disabled = node.props.disabled === true;
       // `variant` 是纯外观：`primary` 用主题强调色，`secondary`/未给用中性底。
       const variant = node.props.variant;
-      const className =
-        variant === "primary" || variant === "secondary"
-          ? `mod-button mod-button-${variant}`
-          : "mod-button";
+      // `plain`：去掉边框与底色的按钮（工具栏里那一排「开关」用它）。它与
+      // `variant` 互斥 —— 没有底色的按钮谈不上「主操作色」。
+      const plain = node.props.plain === true;
+      const classes = ["mod-button"];
+      if (plain) {
+        classes.push("mod-button-plain");
+      } else if (variant === "primary" || variant === "secondary") {
+        classes.push(`mod-button-${variant}`);
+      }
+      // `dimColor` 是「静止时调暗」：指针进来就恢复全强度（否则悬停上去还是
+      // 半透明的字，看不出被指着）。
+      const labelProps =
+        node.props.dimColor === true && hovered
+          ? { ...node.props, dimColor: false }
+          : node.props;
       return (
         <button
           key={index}
           type="button"
-          className={className}
-          data-mod-key={key}
+          className={classes.join(" ")}
+          data-mod-key={buttonKey}
           disabled={disabled}
-          onClick={() => onEvent("press", key)}
+          autoFocus={node.props.autoFocus === true}
+          onClick={() => onEvent("press", buttonKey)}
+          {...hoverHandlers}
         >
-          {children.length > 0
-            ? children
-            : typeof node.props.label === "string"
-              ? node.props.label
-              : key}
+          {/* 标签一律包一层 span：`hover` 在 `Button` 上改的是**字**（字色/字重），
+              与 Claude Code 的 `ButtonHoverProps` 同一套。 */}
+          <span style={textStyle(labelProps, activeHover)}>
+            {children.length > 0
+              ? children
+              : typeof node.props.label === "string"
+                ? node.props.label
+                : buttonKey}
+          </span>
         </button>
       );
     }
@@ -409,8 +661,25 @@ function renderNode(
       const language =
         typeof node.props.language === "string" ? node.props.language : "";
       const path = typeof node.props.path === "string" ? node.props.path : "";
+      // `wrap`：终端里 `truncate-end` 是「一行、超出打点」，`wrap` 是折行。
+      const wrap = node.props.wrap;
+      const wrapStyle: React.CSSProperties =
+        wrap === "wrap"
+          ? { whiteSpace: "pre-wrap" }
+          : wrap === "truncate-end"
+            ? {
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+              }
+            : {};
       return (
-        <pre key={index} className="mod-panel-code" data-language={language}>
+        <pre
+          key={index}
+          className="mod-panel-code"
+          data-language={language}
+          style={Object.keys(wrapStyle).length > 0 ? wrapStyle : undefined}
+        >
           {path ? <div className="mod-panel-code-path">{path}</div> : null}
           <code>
             {typeof node.props.source === "string" ? node.props.source : ""}
@@ -446,6 +715,28 @@ export function ModPanelRenderer({
   onEvent,
   onOpenLink,
 }: ModPanelRendererProps): React.ReactElement {
+  // 悬停作用域的集合挂在这里：一帧树里可能有多个作用域同时被指（指针在嵌套的
+  // 两个 Box 里），所以是 Set 不是一个值。
+  const [hovered, setHovered] = useState<ReadonlySet<string>>(
+    () => new Set<string>(),
+  );
+  const hover = useMemo<HoverCtx>(
+    () => ({
+      active: hovered,
+      enter: (scope: string) =>
+        setHovered((prev) =>
+          prev.has(scope) ? prev : new Set(prev).add(scope),
+        ),
+      leave: (scope: string) =>
+        setHovered((prev) => {
+          if (!prev.has(scope)) return prev;
+          const next = new Set(prev);
+          next.delete(scope);
+          return next;
+        }),
+    }),
+    [hovered],
+  );
   if (error) {
     // 错误条**叠在**上一帧树上，而不是顶掉它。`error` 有两个来源：加载/校验
     // 失败（这时还没有树），以及元素回调抛错（树是上一次成功渲染的那份）。
@@ -462,7 +753,7 @@ export function ModPanelRenderer({
         </div>
         {tree ? (
           <div className="mod-panel-root" data-testid="mod-panel-root">
-            {renderNode(tree, onEvent, onOpenLink, 0)}
+            {renderNode(tree, onEvent, onOpenLink, 0, hover, undefined)}
           </div>
         ) : null}
       </>
@@ -473,7 +764,7 @@ export function ModPanelRenderer({
   }
   return (
     <div className="mod-panel-root" data-testid="mod-panel-root">
-      {renderNode(tree, onEvent, onOpenLink, 0)}
+      {renderNode(tree, onEvent, onOpenLink, 0, hover, undefined)}
     </div>
   );
 }

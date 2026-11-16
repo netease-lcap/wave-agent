@@ -13,6 +13,7 @@ import { validateModTree } from "../mods/validate.js";
 import {
   MOD_BAND_INSTANCE_ID,
   MOD_LIMITS,
+  MOD_RENDER_BODY_COLUMNS,
   type ModBandRenderResult,
   type ModCommandBridge,
   type ModCommandSpec,
@@ -24,12 +25,15 @@ import {
   type ModPromptFillMode,
   type ModPromptSubmitResult,
   type ModSessionCompactEvent,
+  type ModSessionMeasureTrigger,
   type ModSessionUsage,
   type ModSettingsSource,
   type ModStatusPayload,
   type ModToastPayload,
+  type ModTokenTotals,
   type ModToolCallEvent,
   type ModTurnCompleteEvent,
+  type ModTurnCompleteTrigger,
   type ModTurnStartEvent,
   type ModTurnStepEvent,
   type PluginMod,
@@ -187,9 +191,55 @@ interface SleepWait {
 
 /** 没接上用量来源时的快照：全 0，`window: 0` 表示「还不知道」。 */
 const EMPTY_SESSION_USAGE: ModSessionUsage = {
+  startedAt: 0,
   context: { tokens: 0, window: 0, percent: 0 },
   tokens: { prompt: 0, completion: 0, cacheRead: 0, cacheCreation: 0 },
+  rateLimits: [],
 };
+
+/**
+ * `turn.complete.usage` 上补一份 Claude Code 的别名（spec「兼容社区 mod」）。
+ *
+ * 社区 mod 直接 `u.input_tokens` / `u.output_tokens` 做加法，缺一个就是
+ * `undefined`，整条带会画出 `NaN`。我们的 `prompt` 含缓存命中、CC 的
+ * `input_tokens` 不含，所以是**相减**得来的，不是改名。
+ */
+function withCommunityUsage(
+  totals: ModTokenTotals,
+  model: string | undefined,
+): ModTurnCompleteEvent["usage"] {
+  return {
+    ...totals,
+    input_tokens: Math.max(
+      0,
+      totals.prompt - totals.cacheRead - totals.cacheCreation,
+    ),
+    output_tokens: totals.completion,
+    cache_read_input_tokens: totals.cacheRead,
+    cache_creation_input_tokens: totals.cacheCreation,
+    ...(model === undefined ? {} : { model }),
+  };
+}
+
+/**
+ * `ui.render` 事件的 `props`（社区写法会读 `hasSurvey` / `bodyColumns`）。
+ *
+ * 我们这一侧还没有这些事实：`hasSurvey` 是 Claude Code 偶尔插在输入框上方的
+ * 调查横幅（我们没有），`isWorking` 要问 AI 层的加载状态（渲染请求是从 surface
+ * 来的，路线上拿不到），`bodyColumns` 见 {@link MOD_RENDER_BODY_COLUMNS}。
+ * 先给「中性且稳定」的一组值 —— 缺字段会让社区 mod 的 `e.props.hasSurvey` 直接
+ * 抛错，那些 mod 连画都画不出来。
+ */
+function renderSiteProps(): Record<string, unknown> {
+  return {
+    hasSurvey: false,
+    isWorking: false,
+    bodyColumns: MOD_RENDER_BODY_COLUMNS,
+    maxRows: 8,
+    scroll: { offset: 0, bodyRows: 8 },
+    view: {},
+  };
+}
 
 export class ModManager {
   private readonly mods = new Map<string, LoadedMod>();
@@ -441,8 +491,7 @@ export class ModManager {
               workdir: () => this.options.workdir?.() ?? process.cwd(),
               submitPrompt: (text) => this.submitPrompt(mod.id, text),
               fillPrompt: (request) => this.fillPrompt(request),
-              sessionUsage: () =>
-                this.sessionUsageProvider?.() ?? EMPTY_SESSION_USAGE,
+              sessionUsage: () => this.usageSnapshot(),
               sessionId: () => this.facts.sessionId(),
               workspaceRoot: () => this.facts.workspaceRoot(),
               model: () => this.facts.model(),
@@ -452,6 +501,9 @@ export class ModManager {
             },
             mod.path,
             compiled,
+            // `register(on, options)` 拿到的就是它（`plugin.json` 的 userConfig
+            // 当前取值），spec「兼容社区 mod」。
+            plugin.modOptions,
           );
           const registered = await runtime.load();
           if (!registered) {
@@ -514,27 +566,56 @@ export class ModManager {
       | "turn.start"
       | "turn.step"
       | "turn.complete"
+      | "session.measure"
       | "session.compact"
       | "tool.call"
       | "classic.PermissionRequest",
     payload:
       | ModTurnStartEvent
       | ModTurnStepEvent
-      | ModTurnCompleteEvent
+      | ModTurnCompleteTrigger
+      | ModSessionMeasureTrigger
       | ModSessionCompactEvent
       | ModToolCallEvent
       | ModPermissionRequestEvent,
   ): void {
     if (this.disposed) return;
+    // `session.measure` 的载荷里带一份用量快照（社区 mod 在这个事件里读用量，
+    // 不自己轮询）：快照的数据源挂在 agent 上，只有这里拿得到。
+    let enriched: unknown = payload;
+    if (event === "session.measure") {
+      enriched = {
+        ...(payload as ModSessionMeasureTrigger),
+        ...this.usageSnapshot(),
+      };
+    } else if (event === "turn.complete") {
+      // 社区的 `turn.complete` 读 Claude Code 那份 snake_case 的 usage：补上
+      // 别名（见 `withCommunityUsage`），我们自己的四个字段照旧给。
+      const complete = payload as ModTurnCompleteTrigger;
+      enriched = {
+        ...complete,
+        usage: withCommunityUsage(complete.usage, this.usageSnapshot().model),
+      };
+    }
     for (const [modId, loaded] of this.mods) {
       const runtime = loaded.runtime;
       if (!runtime) continue;
-      void runtime.callHook(event, payload).then((result) => {
+      void runtime.callHook(event, enriched).then((result) => {
         if (!result.ok) {
           logger.warn(`[Wave] ${modId} 的 ${event} 失败：${result.error}`);
         }
       });
     }
+  }
+
+  /**
+   * `$.session.usage()` / `session.measure` 用的那份快照（零值兜底）。
+   *
+   * 数据源由 `Agent` 接进来（`setSessionUsageProvider`）：纯服务调用与测试里
+   * 没有 agent，那时给零值 —— mod 读到的是一份合法但空的用量。
+   */
+  private usageSnapshot(): ModSessionUsage {
+    return this.sessionUsageProvider?.() ?? EMPTY_SESSION_USAGE;
   }
 
   /**
@@ -1213,6 +1294,9 @@ export class ModManager {
       surface: "desktop",
       component: "Pane",
       instance_id: pane.paneId,
+      // 站点的 `props`：社区 mod 会读 `e.props.bodyColumns` 这类事实（见
+      // `renderSiteProps`）。
+      props: renderSiteProps(),
     });
     if (!result.ok) {
       return this.renderFailed(pane, result.error);
@@ -1261,6 +1345,7 @@ export class ModManager {
         surface: "desktop",
         component: "AbovePrompt",
         instance_id: MOD_BAND_INSTANCE_ID,
+        props: renderSiteProps(),
       });
       if (!result.ok) {
         bands.push({

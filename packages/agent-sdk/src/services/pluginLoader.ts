@@ -325,7 +325,13 @@ export class PluginLoader {
   }
 
   /**
-   * Collect the mod files under `<pluginRoot>/mods/`.
+   * Collect the mod files of a plugin, from either layout.
+   *
+   * Two layouts are accepted (spec「兼容社区 mod」): our `<pluginRoot>/mods/`
+   * directory, whose file stems are the mod names, and the community's
+   * `<pluginRoot>/hooks/hooks.json` declaring `{ "modules": ["./register.tsx"] }`
+   * — the entry paths are relative to the plugin root. Both end up in the same
+   * list, sharing one id namespace, one set of limits and one set of checks.
    *
    * Only paths and sizes are gathered here — compilation needs esbuild, an
    * on-demand runtime dependency that may not be installed yet, so it happens
@@ -342,7 +348,6 @@ export class PluginLoader {
     pluginPath: string,
     pluginName: string,
   ): Promise<PluginMod[]> {
-    const modsPath = path.join(pluginPath, "mods");
     const mods: PluginMod[] = [];
     let realRoot: string;
     try {
@@ -351,31 +356,19 @@ export class PluginLoader {
       return mods;
     }
 
-    // 排序也放在这个 try 里：读目录失败与「结果不可迭代」同属「这个插件没有
-    // mod」，与 `loadSkills` / `loadAgents` 的口径一致 —— 插件加载不该因为一次
-    // 目录读取问题整体失败（那会连带丢掉命令、技能等已就绪的能力）。
-    let entries;
-    try {
-      entries = await fs.readdir(modsPath, { withFileTypes: true });
-      entries = entries.sort((a, b) => a.name.localeCompare(b.name));
-    } catch {
-      // No mods directory — the common case.
-      return mods;
-    }
+    const candidates = await this.collectModCandidates(pluginPath);
+    if (candidates.length === 0) return mods;
 
     let totalBytes = 0;
-    for (const entry of entries) {
-      if (!entry.isFile()) continue;
-      if (!MOD_LOADER_EXTENSIONS.has(path.extname(entry.name).toLowerCase())) {
-        continue;
-      }
+    const seenPaths = new Set<string>();
+    const seenIds = new Set<string>();
+    for (const filePath of candidates) {
       if (mods.length >= MOD_LIMITS.fileCount) {
         logger?.warn(
           `插件 ${pluginName} 的 mod 文件超过 ${MOD_LIMITS.fileCount} 个，其余被忽略`,
         );
         break;
       }
-      const filePath = path.join(modsPath, entry.name);
       try {
         const realPath = await fs.realpath(filePath);
         if (
@@ -385,10 +378,23 @@ export class PluginLoader {
           logger?.warn(`忽略越出插件目录的 mod 文件：${filePath}`);
           continue;
         }
+        // 两种布局可能指向同一个文件（社区插件常常两处都放），也允许同一个
+        // 目录被写两遍：同一个 realpath 只收一次。
+        if (seenPaths.has(realPath)) continue;
         const stat = await fs.stat(realPath);
         if (stat.size > MOD_LIMITS.fileBytes) {
           logger?.warn(
             `忽略超过 ${MOD_LIMITS.fileBytes} 字节的 mod 文件：${filePath}`,
+          );
+          continue;
+        }
+        const stem = path.parse(filePath).name;
+        const id = `${pluginName}:${stem}`;
+        // id 是面板/命令的归属键，重名会让两个文件互相顶掉：先到先得，后来的
+        // 记一条 warn 丢掉。
+        if (seenIds.has(id)) {
+          logger?.warn(
+            `插件 ${pluginName} 有两个同名 mod 文件（${stem}），跳过：${filePath}`,
           );
           continue;
         }
@@ -399,9 +405,11 @@ export class PluginLoader {
           );
           break;
         }
+        seenPaths.add(realPath);
+        seenIds.add(id);
         mods.push({
-          id: `${pluginName}:${path.parse(entry.name).name}`,
-          name: path.parse(entry.name).name,
+          id,
+          name: stem,
           path: realPath,
           pluginRoot: pluginPath,
         });
@@ -412,6 +420,67 @@ export class PluginLoader {
       }
     }
     return mods;
+  }
+
+  /**
+   * 两种布局下的候选入口文件（绝对路径，按稳定顺序）。
+   *
+   * 读失败一律当「这个布局没有 mod」：与 `loadSkills` / `loadAgents` 的口径
+   * 一致 —— 插件加载不该因为一次目录/文件读取问题整体失败（那会连带丢掉命令、
+   * 技能等已就绪的能力）。
+   */
+  private static async collectModCandidates(
+    pluginPath: string,
+  ): Promise<string[]> {
+    const candidates: string[] = [];
+
+    // 我们的布局：`mods/` 目录里的每个文件都是一个 mod，文件名排序即加载顺序。
+    const modsPath = path.join(pluginPath, "mods");
+    try {
+      const entries = (
+        await fs.readdir(modsPath, { withFileTypes: true })
+      ).sort((a, b) => a.name.localeCompare(b.name));
+      for (const entry of entries) {
+        if (!entry.isFile()) continue;
+        if (
+          !MOD_LOADER_EXTENSIONS.has(path.extname(entry.name).toLowerCase())
+        ) {
+          continue;
+        }
+        candidates.push(path.join(modsPath, entry.name));
+      }
+    } catch {
+      // No mods directory — the common case.
+    }
+
+    // 社区的布局：`hooks/hooks.json` 声明模块入口。同一个文件里 `hooks` 段
+    // （settings hook 事件）与 `modules` 段（mod 入口）互不相干，可以共存。
+    // `modules` 里的路径**相对 `hooks/` 目录**（`./register.tsx` 就摆在
+    // `hooks.json` 旁边），不是相对插件根 —— 社区抓取脚本同样是这么拼的。
+    const hooksDir = path.join(pluginPath, "hooks");
+    const hooksPath = path.join(hooksDir, "hooks.json");
+    try {
+      const parsed: unknown = JSON.parse(await fs.readFile(hooksPath, "utf-8"));
+      const modules =
+        parsed && typeof parsed === "object" && "modules" in parsed
+          ? (parsed as { modules?: unknown }).modules
+          : undefined;
+      if (Array.isArray(modules)) {
+        for (const entry of modules) {
+          if (typeof entry !== "string" || entry.length === 0) {
+            logger?.warn(
+              `插件 ${pluginPath} 的 hooks.json 里有非字符串的 modules 项，已忽略`,
+            );
+            continue;
+          }
+          candidates.push(path.resolve(hooksDir, entry));
+        }
+      }
+    } catch {
+      // 没有 hooks.json，或它不是合法 JSON：这个布局没有 mod。
+    }
+
+    return candidates;
   }
 
   /**

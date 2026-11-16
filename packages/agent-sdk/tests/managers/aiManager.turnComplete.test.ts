@@ -217,6 +217,7 @@ describe("AIManager 的 turn.complete", () => {
       "loading:true",
       "mods:turn.start",
       "mods:turn.step",
+      "mods:session.measure",
       "loading:false",
       "mods:turn.complete",
     ]);
@@ -349,5 +350,44 @@ describe("AIManager 的 turn.complete", () => {
     vi.mocked(callAgent).mockResolvedValue(REPLY);
 
     await expect(aiManager.sendAIMessage()).resolves.toBeUndefined();
+  });
+});
+
+describe("AIManager 的 session.measure", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("一次带 usage 的响应发一次，载荷只有 changed", async () => {
+    const { aiManager, notifyMods } = buildHarness();
+    vi.mocked(callAgent).mockResolvedValue(REPLY);
+
+    await aiManager.sendAIMessage();
+
+    // 其余字段（context / tokens / startedAt / rateLimits）由 ModManager 用它
+    // 自己的数据源补齐 —— AIManager 只报「刚量到一次」。
+    expect(modCalls(notifyMods, "session.measure")).toEqual([
+      { changed: ["context", "tokens"] },
+    ]);
+  });
+
+  it("响应里没有 usage 时不发（没量到东西）", async () => {
+    const { aiManager, notifyMods } = buildHarness();
+    vi.mocked(callAgent).mockResolvedValue({ ...REPLY, usage: undefined });
+
+    await aiManager.sendAIMessage();
+
+    expect(modCalls(notifyMods, "session.measure")).toEqual([]);
+  });
+
+  it("子代理的嵌套轮次不报（mod 只关心主会话）", async () => {
+    const { aiManager, notifyMods } = buildHarness({
+      subagentType: "general-purpose",
+    });
+    vi.mocked(callAgent).mockResolvedValue(REPLY);
+
+    await aiManager.sendAIMessage();
+
+    expect(modCalls(notifyMods, "session.measure")).toEqual([]);
   });
 });

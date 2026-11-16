@@ -42,7 +42,8 @@ export interface ModSelectOption {
  * 进程内就被 `h()` 摘走、存进该 mod 自己的处理表，树上只留 `key` 作为回传标识。
  *
  * 只有 `Select.options` 用得上数组：其余元素的 prop 仍然是原始值，校验器按元素
- * 区分（spec「元素」）。
+ * 区分（spec「元素」）。`hover` 的值是对象，所以它根本不走 props —— 见
+ * {@link ModTreeNode.hover}。
  */
 export type ModPropValue =
   | string
@@ -51,10 +52,23 @@ export type ModPropValue =
   | null
   | readonly ModSelectOption[];
 
+/**
+ * 悬停态（spec「元素」的 `hover`）。
+ *
+ * 它是节点的**独立字段**，不在 `props` 里：值是对象，而 props 只收原始值。
+ * key 集按元素区分（`Box` 一套、`Text` / `Button` 一套），由校验器按名字把关。
+ *
+ * 生效范围是「指针落在最近的带 `key` 的 `Box` 里」；`scope` 给字符串时加入
+ * 那个同名的 scope，用来让画在行外的卡片跟着行内元素一起亮。
+ */
+export type ModHoverProps = Record<string, string | number | boolean>;
+
 /** 元素树节点，已经过形状校验与限额检查。 */
 export interface ModTreeNode {
   type: ModElementType;
   props: Record<string, ModPropValue>;
+  /** 悬停态；缺省就是这一帧不随指针变化（spec「元素」）。 */
+  hover?: ModHoverProps;
   /** 子节点；字符串是文本节点。 */
   children: Array<ModTreeNode | string>;
 }
@@ -120,6 +134,16 @@ export interface ModBandRenderResult {
 
 /** `AbovePrompt` 站点的 `instance_id`（spec「状态带、状态行与提示」）。 */
 export const MOD_BAND_INSTANCE_ID = "above-prompt";
+
+/**
+ * `ui.render` 事件里 `props.bodyColumns` 的取值。
+ *
+ * surface 目前不在渲染请求里报自己的宽度（面板宽度由用户拖，带宽度跟窗口走），
+ * 而社区 mod 会拿它决定「画 8 格还是 12 格的进度条」「这半句要不要省略」。给一
+ * 个中性的默认值总比给 `undefined` 好：后者会让 `e.props.bodyColumns >= 110`
+ * 恒假，宽窗口上也永远画窄版。
+ */
+export const MOD_RENDER_BODY_COLUMNS = 100;
 
 /** `$.ui.status(text)` 的推送：每个插件一条常驻行，`text: null` 表示清除。 */
 export interface ModStatusPayload {
@@ -285,12 +309,34 @@ export interface ModFetchResult {
  *   的），对应 Claude Code 的 `input_tokens` 是**不含**的那种，两者不能互换。
  */
 export interface ModSessionUsage {
+  /**
+   * 会话开始的时间（毫秒）。社区 mod 用它算「$/小时」这类速率
+   * （burn-rate 的 `(now - startedAt)`），所以形状照 Claude Code 给。
+   */
+  startedAt: number;
   /** 上下文占用：`tokens` 是最近一次带 usage 的响应报出的总数。 */
   context: { tokens: number; window: number; percent: number };
   /** 整场会话累计的 token（跨轮相加，含压缩轮）。 */
   tokens: ModTokenTotals;
+  /**
+   * 额度窗口（Claude Code 的 `five_hour` / `seven_day`）。
+   *
+   * 我们还没有企业端的额度接口，所以**恒为空数组** —— 形状留着是为了让社区
+   * mod 不用改一行（它们直接 `.reduce` 这个字段），语义留白由空数组表达。
+   */
+  rateLimits: ModRateLimitWindow[];
   /** 当前模型名；没配时是 `undefined`。 */
   model?: string;
+}
+
+/** 一个额度窗口的用量（spec「会话用量」）。 */
+export interface ModRateLimitWindow {
+  /** `five_hour` / `seven_day` 这类窗口名。 */
+  kind: string;
+  /** 已用百分比，0–100。 */
+  percentUsed: number;
+  /** 下次重置时间（毫秒）。 */
+  resetsAt?: number;
 }
 
 /**
@@ -308,6 +354,20 @@ export interface ModTokenTotals {
 }
 
 /**
+ * 同一份用量的 Claude Code 别名（spec「兼容社区 mod」）。
+ *
+ * 社区 mod 读的是这几个 snake_case 字段，而且 `input_tokens` **不含**缓存
+ * 命中 —— 与我们的 `prompt`（含）不是同一个数，直接把 `prompt` 改个名字会让
+ * 它们把缓存重复算一遍。所以两套并存，换算在这里一次做完。
+ */
+export interface ModCommunityTokenTotals {
+  input_tokens: number;
+  output_tokens: number;
+  cache_read_input_tokens: number;
+  cache_creation_input_tokens: number;
+}
+
+/**
  * `turn.complete` 的载荷（spec「完成与审批的观察」）。
  *
  * 与 Claude Code 同名事件对齐的部分是 `isAborted` / `durationMs` / `answer` /
@@ -321,9 +381,24 @@ export interface ModTurnCompleteEvent {
   durationMs: number;
   /** 这一轮最后一条 assistant 消息的正文；中断时可能为空串。 */
   answer: string;
-  /** 本轮所有模型请求的 token 合计（含工具循环里的每一次与每次重开）。 */
-  usage: ModTokenTotals;
+  /**
+   * 本轮所有模型请求的 token 合计（含工具循环里的每一次与每次重开）。
+   *
+   * 两套字段并存：我们自己那四个（`prompt` 含缓存），外加 Claude Code 的
+   * {@link ModCommunityTokenTotals} 别名与 `model`，让社区 mod 原样能跑。
+   */
+  usage: ModTokenTotals & ModCommunityTokenTotals & { model?: string };
 }
+
+/**
+ * 派发 `turn.complete` 时**调用方**给的载荷（`AIManager` 只算得出本轮合计）。
+ *
+ * Claude Code 那几个别名由 `ModManager` 补齐（它才拿得到模型名），与
+ * `session.measure` 同一条做法。
+ */
+export type ModTurnCompleteTrigger = Omit<ModTurnCompleteEvent, "usage"> & {
+  usage: ModTokenTotals;
+};
 
 /**
  * `classic.PermissionRequest` 的载荷：一次工具审批**即将**弹给用户。
@@ -402,6 +477,29 @@ export interface ModSessionCompactEvent {
 
 /** `session.end` 的载荷：会话销毁之前（没有字段，形状留位）。 */
 export type ModSessionEndEvent = Record<string, never>;
+
+/**
+ * `session.measure` 的载荷（spec「会话用量」）。
+ *
+ * 「量了一次」= 刚收到一次带 usage 的响应。载荷就是一份 `$.session.usage()`
+ * 快照（`context` / `tokens` / `rateLimits` / `startedAt`），外加 `changed`
+ * 说明这次变的是哪几项 —— 社区 mod 用它决定要不要重画，不自己轮询。
+ * 我们**没有**成本账本，所以快照里没有 `cost`（社区 mod 的写法是
+ * `usage.cost ? … : null`，缺字段与「没有账本」同义）。
+ */
+export interface ModSessionMeasureEvent extends ModSessionUsage {
+  /** 这次测量里变了的项。 */
+  changed: Array<"context" | "tokens">;
+}
+
+/**
+ * 派发 `session.measure` 时**调用方**给的最小载荷（`AIManager` 只知道
+ * 「刚量到一次用量」）。
+ *
+ * 其余字段由 `ModManager` 用用量快照补齐（它才握着数据源），所以这里是
+ * {@link ModSessionMeasureEvent} 的子集而不是另立一套形状。
+ */
+export type ModSessionMeasureTrigger = Pick<ModSessionMeasureEvent, "changed">;
 
 /** `ui.close` 的载荷：一个由 mod 打开的面板被关掉。 */
 export interface ModPaneCloseEvent {

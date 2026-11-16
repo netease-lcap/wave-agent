@@ -1248,8 +1248,10 @@ exports.register = function ($, on) {
   it("接上取数点后 mod 拿到真实数字", async () => {
     const { manager } = createManager({ [MOD_PATH]: USAGE_MOD });
     manager.setSessionUsageProvider(() => ({
+      startedAt: 1_700_000_000_000,
       context: { tokens: 83_500, window: 200_000, percent: 50 },
       tokens: { prompt: 300, completion: 30, cacheRead: 40, cacheCreation: 5 },
+      rateLimits: [],
       model: "some-model",
     }));
     await manager.loadFromPlugins([
@@ -1263,6 +1265,41 @@ exports.register = function ($, on) {
       props: {},
       children: ["50%|83500/200000|300+30+40+5|some-model"],
     });
+
+    await manager.dispose();
+  });
+
+  it("session.measure 的载荷里带一份用量快照（spec「用量的变化」）", async () => {
+    const measureMod = `
+exports.register = function ($, on) {
+  on("session.measure", function (e) {
+    $.ui.status(
+      e.changed.join("+") + "|" + e.context.tokens + "|" +
+      e.tokens.prompt + "|" + e.rateLimits.length + "|" + e.startedAt);
+  });
+};
+`;
+    const { manager, statuses } = createManager({ [MOD_PATH]: measureMod });
+    manager.setSessionUsageProvider(() => ({
+      startedAt: 1_700_000_000_000,
+      context: { tokens: 42_000, window: 200_000, percent: 25 },
+      tokens: { prompt: 700, completion: 70, cacheRead: 500, cacheCreation: 0 },
+      rateLimits: [],
+    }));
+    await manager.loadFromPlugins([
+      plugin([{ id: "todo:panel", path: MOD_PATH }]),
+    ]);
+    await manager.startSession();
+
+    // 调用方（`AIManager`）只报「刚量到一次」，其余字段由 ModManager 补齐 ——
+    // 社区 mod 在这个事件里直接读 `e.context` / `e.tokens`，缺一个就是 undefined。
+    manager.notifyMods("session.measure", { changed: ["context", "tokens"] });
+
+    await vi.waitFor(() =>
+      expect(statuses.at(-1)?.text).toBe(
+        "context+tokens|42000|700|0|1700000000000",
+      ),
+    );
 
     await manager.dispose();
   });
@@ -1349,6 +1386,51 @@ exports.register = function ($, on) {
     });
     await vi.waitFor(() =>
       expect(statuses.at(-1)?.text).toBe("tool:Write:a.ts"),
+    );
+
+    await manager.dispose();
+  });
+
+  it("turn.complete.usage 带上 Claude Code 的别名（input_tokens 不含缓存）", async () => {
+    const aliasMod = `
+exports.register = function ($, on) {
+  on("turn.complete", function (e) {
+    var u = e.usage;
+    $.ui.status(
+      u.input_tokens + "|" + u.output_tokens + "|" +
+      u.cache_read_input_tokens + "|" + u.cache_creation_input_tokens + "|" + u.model);
+  });
+};
+`;
+    const { manager, statuses } = createManager({ [MOD_PATH]: aliasMod });
+    manager.setSessionUsageProvider(() => ({
+      startedAt: 1_700_000_000_000,
+      context: { tokens: 0, window: 200_000, percent: 0 },
+      tokens: { prompt: 0, completion: 0, cacheRead: 0, cacheCreation: 0 },
+      rateLimits: [],
+      model: "some-model",
+    }));
+    await manager.loadFromPlugins([
+      plugin([{ id: "todo:panel", path: MOD_PATH }]),
+    ]);
+    await manager.startSession();
+
+    // 我们的 `prompt` 含缓存命中（1200 = 900 缓存读 + 100 缓存写 + 200 未命中），
+    // 社区的 `input_tokens` 不含 —— 差值是减出来的，不是改名。
+    manager.notifyMods("turn.complete", {
+      isAborted: false,
+      durationMs: 42,
+      answer: "done",
+      usage: {
+        prompt: 1200,
+        completion: 300,
+        cacheRead: 900,
+        cacheCreation: 100,
+      },
+    });
+
+    await vi.waitFor(() =>
+      expect(statuses.at(-1)?.text).toBe("200|300|900|100|some-model"),
     );
 
     await manager.dispose();
