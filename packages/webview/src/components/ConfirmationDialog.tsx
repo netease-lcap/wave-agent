@@ -68,12 +68,32 @@ const PLAN_ALLOWED_TAGS = [
 ];
 const PLAN_ALLOWED_ATTR = ["href", "title", "align"];
 
-const renderPlanHtml = (planContent: string): string =>
-  DOMPurify.sanitize(marked.parse(planContent) as string, {
+/**
+ * Render model-authored markdown to sanitised HTML. Used for the plan body and
+ * for option previews — both are markdown the model wrote, so they share one
+ * allowlist rather than two sets that drift apart.
+ */
+const renderMarkdownHtml = (content: string): string =>
+  DOMPurify.sanitize(marked.parse(content) as string, {
     ALLOWED_TAGS: PLAN_ALLOWED_TAGS,
     ALLOWED_ATTR: PLAN_ALLOWED_ATTR,
     ALLOW_DATA_ATTR: false,
   });
+
+/** The preview text of one option, or "" when it has none (blank counts as none). */
+const optionPreview = (option: { preview?: string }): string =>
+  typeof option.preview === "string" ? option.preview : "";
+
+/**
+ * Whether this question switches to the preview layout: single-select only, and
+ * only when at least one option carries a non-blank preview. A question whose
+ * previews are all empty/whitespace stays a plain list (spec
+ * `ask-user-tool.md`「选项预览与备注」场景 1 / 12).
+ */
+const questionHasPreview = (
+  q: AskUserQuestionInput["questions"][number],
+): boolean =>
+  !q.multiSelect && q.options.some((o) => optionPreview(o).trim() !== "");
 
 // Selector for the dialog's focusable elements. Used by the modal focus trap:
 // Tab/Shift+Tab cycle within the dialog so focus never leaks into the message
@@ -236,6 +256,12 @@ const ConfirmationDialogImpl: React.FC<ConfirmationDialogProps> = ({
   const [otherSelected, setOtherSelected] = useState<Record<string, boolean>>(
     {},
   );
+  // 预览态（见 ask-user-tool.md「选项预览与备注」）：右侧预览面板跟着**焦点**
+  // 走而不是跟着选中走 —— 用户要在没定下来之前就来回比较。切题时重置为该题
+  // 默认聚焦项。
+  const [previewFocusIndex, setPreviewFocusIndex] = useState(0);
+  // 预览态下「其他」被一行备注取代，按题干存（与 otherInputs 同构，切题不丢）。
+  const [notesInputs, setNotesInputs] = useState<Record<string, string>>({});
   const [feedback, setFeedback] = useState("");
   const [showFeedbackInput, setShowFeedbackInput] = useState(false);
   const [isComposing, setIsComposing] = useState(false);
@@ -276,13 +302,18 @@ const ConfirmationDialogImpl: React.FC<ConfirmationDialogProps> = ({
   // 下一个确认因此自动回到展开态。
   const [optionsCollapsed, setOptionsCollapsed] = useState(false);
   // display:none 会丢掉列表的滚动位置（浏览器不保留被折叠元素的滚动状态），
-  // 折叠时记下、展开后回填（场景 3「折叠前选项区的滚动位置不丢失」）。
+  // 折叠时记下、展开后回填（场景 3「折叠前选项区的滚动位置不丢失」）。预览面板
+  // 与选项列各滚各的，两栏位置都要留（ask-user-tool.md 边界「两栏滚动位置保持」）。
   const optionsScrollTopRef = useRef(0);
+  const previewScrollTopRef = useRef(0);
+  const previewRef = useRef<HTMLDivElement>(null);
 
   const toggleOptionsCollapsed = useCallback(() => {
     if (!optionsCollapsed) {
       const el = questionsListRef.current;
       if (el) optionsScrollTopRef.current = el.scrollTop;
+      const previewEl = previewRef.current;
+      if (previewEl) previewScrollTopRef.current = previewEl.scrollTop;
     }
     setOptionsCollapsed((prev) => !prev);
   }, [optionsCollapsed]);
@@ -291,6 +322,8 @@ const ConfirmationDialogImpl: React.FC<ConfirmationDialogProps> = ({
     if (optionsCollapsed) return;
     const el = questionsListRef.current;
     if (el) el.scrollTop = optionsScrollTopRef.current;
+    const previewEl = previewRef.current;
+    if (previewEl) previewEl.scrollTop = previewScrollTopRef.current;
   }, [optionsCollapsed]);
 
   // The element focused before the dialog took focus; restored on dismiss.
@@ -439,6 +472,7 @@ const ConfirmationDialogImpl: React.FC<ConfirmationDialogProps> = ({
       prevQuestionIndexRef.current = currentQuestionIndex;
       wasOtherSelectedRef.current = isOtherChecked;
       const focusIndex = getDefaultOptionFocus(q);
+      setPreviewFocusIndex(focusIndex);
       questionsListRef.current
         ?.querySelector<HTMLElement>(
           `[data-option-index="${
@@ -574,6 +608,8 @@ const ConfirmationDialogImpl: React.FC<ConfirmationDialogProps> = ({
     } else if (confirmation.toolName === ASK_USER_QUESTION_TOOL_NAME) {
       // Combine selected options and "Other" inputs
       const finalAnswers: Record<string, string | string[]> = { ...answers };
+      const annotations: Record<string, { preview?: string; notes?: string }> =
+        {};
       const questions = (
         confirmation.toolInput as unknown as AskUserQuestionInput
       ).questions;
@@ -595,11 +631,30 @@ const ConfirmationDialogImpl: React.FC<ConfirmationDialogProps> = ({
         } else if (finalAnswers[qKey] === "__other__") {
           finalAnswers[qKey] = otherVal || "";
         }
+
+        // 预览态：把选中项的预览全文与备注随答案一起回传，模型拿到的不是一个
+        // 光秃秃的标签（ask-user-tool.md「选项预览与备注」场景 9）。空预览 /
+        // 空备注不进 annotations，避免给模型塞无内容的骨架。
+        if (!questionHasPreview(q)) return;
+        const answer = finalAnswers[qKey];
+        const label = typeof answer === "string" ? answer : "";
+        const selected = q.options.find((o) => o.label === label);
+        const preview = selected ? optionPreview(selected) : "";
+        const notes = (notesInputs[qKey] || "").trim();
+        if (preview.trim() || notes) {
+          annotations[qKey] = {
+            ...(preview.trim() ? { preview } : {}),
+            ...(notes ? { notes } : {}),
+          };
+        }
       });
 
       onConfirm(confirmation.confirmationId, {
         behavior: "allow",
-        message: JSON.stringify(finalAnswers),
+        message: JSON.stringify({
+          answers: finalAnswers,
+          ...(Object.keys(annotations).length > 0 ? { annotations } : {}),
+        }),
       });
     } else {
       onConfirm(confirmation.confirmationId);
@@ -612,6 +667,7 @@ const ConfirmationDialogImpl: React.FC<ConfirmationDialogProps> = ({
     answers,
     otherInputs,
     otherSelected,
+    notesInputs,
     restoreFocus,
   ]);
 
@@ -712,9 +768,9 @@ const ConfirmationDialogImpl: React.FC<ConfirmationDialogProps> = ({
         <h3>计划内容：</h3>
         <div
           className="markdown-content"
-          // Sanitised in renderPlanHtml (DOMPurify allowlist, same set as the
-          // message renderer).
-          dangerouslySetInnerHTML={{ __html: renderPlanHtml(planContent) }}
+          // Sanitised in renderMarkdownHtml (DOMPurify allowlist shared with
+          // option previews).
+          dangerouslySetInnerHTML={{ __html: renderMarkdownHtml(planContent) }}
         />
       </div>
     );
@@ -733,6 +789,14 @@ const ConfirmationDialogImpl: React.FC<ConfirmationDialogProps> = ({
     ).questions;
     const q = questions[currentQuestionIndex];
     if (!q) return null;
+
+    // 预览态：单选 + 至少一个选项带非空白 preview。多选题目一律忽略 preview
+    // （ask-user-tool.md「选项预览与备注」场景 1）。
+    const isPreviewQuestion = questionHasPreview(q);
+    // 预览跟焦点走 —— 用户还没选定就要能来回比较（场景 6）。
+    const activePreview = isPreviewQuestion
+      ? optionPreview(q.options[previewFocusIndex] ?? q.options[0])
+      : "";
 
     return (
       <div className="ask-user-questions">
@@ -770,121 +834,59 @@ const ConfirmationDialogImpl: React.FC<ConfirmationDialogProps> = ({
               {q.question}
             </span>
           </div>
-          <div className="options-list" ref={questionsListRef}>
-            {q.options.map((opt, oIndex) => (
-              <label
-                key={oIndex}
-                data-option-index={oIndex}
-                className={`option-item ${
-                  (
-                    q.multiSelect
-                      ? ((answers[q.question] as string[]) || []).includes(
-                          opt.label,
-                        )
-                      : answers[q.question] === opt.label
-                  )
-                    ? "selected"
-                    : ""
-                }`}
-                tabIndex={optionsCollapsed ? -1 : 0}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    // Enter 仅用于提交：全部题目已答完时提交，未答完时
-                    // 无动作，不改变选中状态（不把 Enter 当作选中键）。
-                    e.preventDefault();
-                    if (!isConfirmDisabled()) {
-                      handleConfirm();
-                    }
-                  } else if (e.key === " ") {
-                    e.preventDefault();
-                    handleOptionChange(
-                      q.question,
-                      opt.label,
-                      !!q.multiSelect,
+          <div
+            className={`question-body${isPreviewQuestion ? " is-preview" : ""}`}
+          >
+            <div className="options-list" ref={questionsListRef}>
+              {q.options.map((opt, oIndex) => (
+                <label
+                  key={oIndex}
+                  data-option-index={oIndex}
+                  className={`option-item ${
+                    (
                       q.multiSelect
-                        ? !((answers[q.question] as string[]) || []).includes(
+                        ? ((answers[q.question] as string[]) || []).includes(
                             opt.label,
                           )
-                        : true,
-                    );
-                  }
-                }}
-              >
-                <input
-                  type={q.multiSelect ? "checkbox" : "radio"}
-                  name={`question-${currentQuestionIndex}`}
-                  className="option-input-hidden"
-                  tabIndex={-1}
-                  checked={
-                    q.multiSelect
-                      ? ((answers[q.question] as string[]) || []).includes(
-                          opt.label,
-                        )
-                      : answers[q.question] === opt.label
-                  }
-                  onChange={(e) =>
-                    handleOptionChange(
-                      q.question,
-                      opt.label,
-                      !!q.multiSelect,
-                      e.target.checked,
+                        : answers[q.question] === opt.label
                     )
-                  }
-                />
-                <div className="option-row">
-                  <div className="option-indicator">
-                    <OptionIndicator
-                      multiSelect={!!q.multiSelect}
-                      checked={
-                        q.multiSelect
-                          ? ((answers[q.question] as string[]) || []).includes(
-                              opt.label,
-                            )
-                          : answers[q.question] === opt.label
-                      }
-                    />
-                  </div>
-                  <div className="option-label">{opt.label}</div>
-                </div>
-                {opt.description && (
-                  <div className="option-description">{opt.description}</div>
-                )}
-              </label>
-            ))}
-            {(() => {
-              const isOtherChecked = q.multiSelect
-                ? !!otherSelected[q.question]
-                : answers[q.question] === "__other__";
-              return (
-                <label
-                  data-option-index="other"
-                  className={`option-item other-option ${
-                    isOtherChecked ? "selected" : ""
+                      ? "selected"
+                      : ""
                   }`}
                   tabIndex={optionsCollapsed ? -1 : 0}
+                  // 焦点或**悬停**决定右侧预览显示哪一个（对齐 CC 桌面端：它的
+                  // onFocus 与 onMouseEnter 是同一个处理函数；鼠标移出只清悬停态，
+                  // 不改预览）。两者都不改选中状态。
+                  onFocus={
+                    isPreviewQuestion
+                      ? () => setPreviewFocusIndex(oIndex)
+                      : undefined
+                  }
+                  onMouseEnter={
+                    isPreviewQuestion
+                      ? () => setPreviewFocusIndex(oIndex)
+                      : undefined
+                  }
                   onKeyDown={(e) => {
-                    // The Other textarea stopPropagation's its own keys, so
-                    // keydown here always originates from the label itself.
                     if (e.key === "Enter") {
-                      // Enter 仅用于提交（与普通选项一致）：答完提交、未答
-                      // 完无动作，不负责选中「其他」。
+                      // Enter 仅用于提交：全部题目已答完时提交，未答完时
+                      // 无动作，不改变选中状态（不把 Enter 当作选中键）。
                       e.preventDefault();
                       if (!isConfirmDisabled()) {
                         handleConfirm();
                       }
                     } else if (e.key === " ") {
                       e.preventDefault();
-                      if (q.multiSelect) {
-                        setOtherSelected((prev) => ({
-                          ...prev,
-                          [q.question]: !prev[q.question],
-                        }));
-                      } else {
-                        setAnswers((prev) => ({
-                          ...prev,
-                          [q.question]: "__other__",
-                        }));
-                      }
+                      handleOptionChange(
+                        q.question,
+                        opt.label,
+                        !!q.multiSelect,
+                        q.multiSelect
+                          ? !((answers[q.question] as string[]) || []).includes(
+                              opt.label,
+                            )
+                          : true,
+                      );
                     }
                   }}
                 >
@@ -893,71 +895,211 @@ const ConfirmationDialogImpl: React.FC<ConfirmationDialogProps> = ({
                     name={`question-${currentQuestionIndex}`}
                     className="option-input-hidden"
                     tabIndex={-1}
-                    checked={isOtherChecked}
-                    onChange={(e) => {
-                      if (q.multiSelect) {
-                        setOtherSelected((prev) => ({
-                          ...prev,
-                          [q.question]: e.target.checked,
-                        }));
-                      } else {
-                        setAnswers((prev) => ({
-                          ...prev,
-                          [q.question]: "__other__",
-                        }));
-                      }
-                    }}
+                    checked={
+                      q.multiSelect
+                        ? ((answers[q.question] as string[]) || []).includes(
+                            opt.label,
+                          )
+                        : answers[q.question] === opt.label
+                    }
+                    onChange={(e) =>
+                      handleOptionChange(
+                        q.question,
+                        opt.label,
+                        !!q.multiSelect,
+                        e.target.checked,
+                      )
+                    }
                   />
                   <div className="option-row">
                     <div className="option-indicator">
                       <OptionIndicator
                         multiSelect={!!q.multiSelect}
-                        checked={isOtherChecked}
+                        checked={
+                          q.multiSelect
+                            ? (
+                                (answers[q.question] as string[]) || []
+                              ).includes(opt.label)
+                            : answers[q.question] === opt.label
+                        }
                       />
                     </div>
-                    <div className="option-label">其他</div>
+                    <div className="option-label">{opt.label}</div>
                   </div>
-                  {isOtherChecked ? (
-                    <div className="option-other-body">
-                      <textarea
-                        className="other-text-input"
-                        placeholder="输入自定义回答..."
-                        value={otherInputs[q.question] || ""}
-                        ref={otherInputRef}
-                        onChange={(e) => {
-                          handleOtherInputChange(q.question, e.target.value);
-                        }}
-                        onKeyDown={(e) => {
-                          // Inside the textarea every key is text editing;
-                          // keep it from reaching dialog-level shortcuts
-                          // (matches Claude's IDE/desktop AskUserQuestion).
-                          if (!e.metaKey && !e.ctrlKey) e.stopPropagation();
-                          if (e.key === "Enter" && !e.shiftKey) {
-                            if (e.nativeEvent.isComposing) return;
-                            e.preventDefault();
-                            // Enter submits only when every question has a
-                            // valid answer; it never advances to the next
-                            // question (see "多问题循环轮播" spec).
-                            const applyBtn =
-                              dialogRef.current?.querySelector<HTMLButtonElement>(
-                                ".confirmation-btn-apply",
-                              );
-                            if (applyBtn && !applyBtn.disabled) {
-                              applyBtn.click();
-                            }
-                          }
-                        }}
-                        onCompositionStart={handleCompositionStart}
-                        onCompositionEnd={handleCompositionEnd}
-                      />
-                    </div>
-                  ) : (
-                    <div className="option-description">输入自定义回答...</div>
+                  {opt.description && (
+                    <div className="option-description">{opt.description}</div>
                   )}
                 </label>
-              );
-            })()}
+              ))}
+              {!isPreviewQuestion &&
+                (() => {
+                  const isOtherChecked = q.multiSelect
+                    ? !!otherSelected[q.question]
+                    : answers[q.question] === "__other__";
+                  return (
+                    <label
+                      data-option-index="other"
+                      className={`option-item other-option ${
+                        isOtherChecked ? "selected" : ""
+                      }`}
+                      tabIndex={optionsCollapsed ? -1 : 0}
+                      onKeyDown={(e) => {
+                        // The Other textarea stopPropagation's its own keys, so
+                        // keydown here always originates from the label itself.
+                        if (e.key === "Enter") {
+                          // Enter 仅用于提交（与普通选项一致）：答完提交、未答
+                          // 完无动作，不负责选中「其他」。
+                          e.preventDefault();
+                          if (!isConfirmDisabled()) {
+                            handleConfirm();
+                          }
+                        } else if (e.key === " ") {
+                          e.preventDefault();
+                          if (q.multiSelect) {
+                            setOtherSelected((prev) => ({
+                              ...prev,
+                              [q.question]: !prev[q.question],
+                            }));
+                          } else {
+                            setAnswers((prev) => ({
+                              ...prev,
+                              [q.question]: "__other__",
+                            }));
+                          }
+                        }
+                      }}
+                    >
+                      <input
+                        type={q.multiSelect ? "checkbox" : "radio"}
+                        name={`question-${currentQuestionIndex}`}
+                        className="option-input-hidden"
+                        tabIndex={-1}
+                        checked={isOtherChecked}
+                        onChange={(e) => {
+                          if (q.multiSelect) {
+                            setOtherSelected((prev) => ({
+                              ...prev,
+                              [q.question]: e.target.checked,
+                            }));
+                          } else {
+                            setAnswers((prev) => ({
+                              ...prev,
+                              [q.question]: "__other__",
+                            }));
+                          }
+                        }}
+                      />
+                      <div className="option-row">
+                        <div className="option-indicator">
+                          <OptionIndicator
+                            multiSelect={!!q.multiSelect}
+                            checked={isOtherChecked}
+                          />
+                        </div>
+                        <div className="option-label">其他</div>
+                      </div>
+                      {isOtherChecked ? (
+                        <div className="option-other-body">
+                          <textarea
+                            className="other-text-input"
+                            placeholder="输入自定义回答..."
+                            value={otherInputs[q.question] || ""}
+                            ref={otherInputRef}
+                            onChange={(e) => {
+                              handleOtherInputChange(
+                                q.question,
+                                e.target.value,
+                              );
+                            }}
+                            onKeyDown={(e) => {
+                              // Inside the textarea every key is text editing;
+                              // keep it from reaching dialog-level shortcuts
+                              // (matches Claude's IDE/desktop AskUserQuestion).
+                              if (!e.metaKey && !e.ctrlKey) e.stopPropagation();
+                              if (e.key === "Enter" && !e.shiftKey) {
+                                if (e.nativeEvent.isComposing) return;
+                                e.preventDefault();
+                                // Enter submits only when every question has a
+                                // valid answer; it never advances to the next
+                                // question (see "多问题循环轮播" spec).
+                                const applyBtn =
+                                  dialogRef.current?.querySelector<HTMLButtonElement>(
+                                    ".confirmation-btn-apply",
+                                  );
+                                if (applyBtn && !applyBtn.disabled) {
+                                  applyBtn.click();
+                                }
+                              }
+                            }}
+                            onCompositionStart={handleCompositionStart}
+                            onCompositionEnd={handleCompositionEnd}
+                          />
+                        </div>
+                      ) : (
+                        <div className="option-description">
+                          输入自定义回答...
+                        </div>
+                      )}
+                    </label>
+                  );
+                })()}
+            </div>
+            {isPreviewQuestion && (
+              <div
+                className="option-preview"
+                role="region"
+                aria-label="选项预览"
+                data-testid="option-preview"
+                ref={previewRef}
+              >
+                {activePreview.trim() ? (
+                  <div
+                    className="markdown-content option-preview-body"
+                    // 预览是模型写的 markdown，按文本渲染（白名单同计划正文），
+                    // 不执行其中任何内容、也不让它改写弹窗自身样式。
+                    dangerouslySetInnerHTML={{
+                      __html: renderMarkdownHtml(activePreview),
+                    }}
+                  />
+                ) : (
+                  <div className="option-preview-empty">这个选项没有预览</div>
+                )}
+              </div>
+            )}
           </div>
+          {isPreviewQuestion && (
+            <div className="option-notes">
+              <div className="option-notes-label">备注</div>
+              <textarea
+                className="other-text-input"
+                placeholder="可选，补充说明..."
+                aria-label="备注"
+                value={notesInputs[q.question] || ""}
+                onChange={(e) =>
+                  setNotesInputs((prev) => ({
+                    ...prev,
+                    [q.question]: e.target.value,
+                  }))
+                }
+                onKeyDown={(e) => {
+                  // 与「其他」输入框同一套按键语义：内部按键不冒泡到弹窗级
+                  // 快捷键，Enter 只在全部答完时提交。
+                  if (!e.metaKey && !e.ctrlKey) e.stopPropagation();
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    if (e.nativeEvent.isComposing) return;
+                    e.preventDefault();
+                    const applyBtn =
+                      dialogRef.current?.querySelector<HTMLButtonElement>(
+                        ".confirmation-btn-apply",
+                      );
+                    if (applyBtn && !applyBtn.disabled) {
+                      applyBtn.click();
+                    }
+                  }
+                }}
+              />
+            </div>
+          )}
         </div>
       </div>
     );

@@ -1,5 +1,5 @@
-import React, { useEffect, useReducer } from "react";
-import { Box, Text, useInput, usePaste } from "ink";
+import React, { useEffect, useMemo, useReducer } from "react";
+import { Box, Text, useInput, usePaste, useWindowSize } from "ink";
 import type { Key } from "ink";
 import type {
   PermissionDecision,
@@ -15,7 +15,67 @@ import {
   ASK_USER_QUESTION_TOOL_NAME,
 } from "wave-agent-sdk";
 import { confirmationReducer } from "../reducers/confirmationReducer.js";
-import { questionReducer } from "../reducers/questionReducer.js";
+import {
+  isPreviewQuestion,
+  questionReducer,
+} from "../reducers/questionReducer.js";
+import { renderMarkdownToAnsi } from "./Markdown.js";
+
+/** Fixed width of the option list when a question is in preview mode. */
+const PREVIEW_LEFT_WIDTH = 30;
+/** Blank columns between the option list and the preview panel. */
+const PREVIEW_GAP = 4;
+const PREVIEW_MIN_WIDTH = 20;
+/** Shown when the focused option carries no preview (or only whitespace). */
+const NO_PREVIEW_PLACEHOLDER = "(这个选项没有预览)";
+
+/**
+ * A preview panel: markdown rendered to ANSI, framed with a top and a bottom
+ * rule only (CLI components never draw side borders). Content longer than
+ * `maxLines` is truncated with a "N more lines" rule, matching Claude Code's
+ * CLI preview box.
+ */
+const OptionPreview: React.FC<{
+  content: string;
+  width: number;
+  maxLines: number;
+}> = ({ content, width, maxLines }) => {
+  const isPlaceholder = content.trim() === "";
+  const lines = useMemo(
+    () =>
+      isPlaceholder
+        ? [NO_PREVIEW_PLACEHOLDER]
+        : renderMarkdownToAnsi(content, width).split("\n"),
+    [content, width, isPlaceholder],
+  );
+  const hidden = Math.max(0, lines.length - maxLines);
+  const shown = hidden > 0 ? lines.slice(0, maxLines) : lines;
+  const rule = "─".repeat(Math.max(1, width));
+
+  return (
+    <Box flexDirection="column">
+      {/* Every row is `truncate`: a preview line must never wrap, or the panel
+          shifts the rows below it (the cut-off marker used to wrap its trailing
+          padding onto a second line and push the bottom rule down). */}
+      <Text dimColor wrap="truncate">
+        {rule}
+      </Text>
+      {shown.map((line, index) => (
+        <Text key={index} dimColor={isPlaceholder} wrap="truncate">
+          {line || " "}
+        </Text>
+      ))}
+      {hidden > 0 && (
+        <Text dimColor wrap="truncate">
+          {`─── ✂ 还有 ${hidden} 行`}
+        </Text>
+      )}
+      <Text dimColor wrap="truncate">
+        {rule}
+      </Text>
+    </Box>
+  );
+};
 
 const getHeaderColor = (header: string) => {
   const colors = ["red", "green", "blue", "magenta", "cyan"] as const;
@@ -74,6 +134,9 @@ export const ConfirmationSelector: React.FC<ConfirmationSelectorProps> = ({
     userAnswers: {},
     otherText: "",
     otherCursorPosition: 0,
+    notesText: "",
+    notesCursorPosition: 0,
+    isEditingNotes: false,
     savedStates: {},
     decision: null,
   });
@@ -148,7 +211,9 @@ export const ConfirmationSelector: React.FC<ConfirmationSelectorProps> = ({
   };
 
   useInput((input, key) => {
-    if (key.escape) {
+    // Esc leaves the notes field first; only outside it does it cancel the
+    // whole prompt.
+    if (key.escape && !questionState.isEditingNotes) {
       onCancel();
       return;
     }
@@ -165,6 +230,29 @@ export const ConfirmationSelector: React.FC<ConfirmationSelectorProps> = ({
   const showPlaceholder =
     state.selectedOption === "alternative" && !state.hasUserInput;
 
+  // Terminal budget for the side-by-side layout: the left column is fixed so
+  // the option list cannot shift the preview, and the preview gets whatever
+  // width is left. Rows for the header, options, notes and hint are reserved
+  // before handing the rest to the preview content.
+  const { rows, columns } = useWindowSize();
+  const previewQuestion =
+    !!currentQuestion && isPreviewQuestion(currentQuestion);
+  const leftWidth = Math.min(
+    PREVIEW_LEFT_WIDTH,
+    Math.max(12, columns - PREVIEW_MIN_WIDTH - PREVIEW_GAP),
+  );
+  const previewWidth = Math.max(
+    PREVIEW_MIN_WIDTH,
+    columns - leftWidth - PREVIEW_GAP,
+  );
+  const previewMaxLines = Math.max(3, Math.min(20, rows - 16));
+  const activeOption =
+    previewQuestion && currentQuestion
+      ? currentQuestion.options[questionState.selectedOptionIndex]
+      : undefined;
+  const activePreview =
+    typeof activeOption?.preview === "string" ? activeOption.preview : "";
+
   return (
     <Box flexDirection="column">
       {toolName === ASK_USER_QUESTION_TOOL_NAME &&
@@ -179,20 +267,28 @@ export const ConfirmationSelector: React.FC<ConfirmationSelectorProps> = ({
                 <Text bold>{currentQuestion.question}</Text>
               </Box>
             </Box>
-            <Box flexDirection="column">
-              {[...currentQuestion.options, { label: "Other" }].map(
-                (option, index) => {
+            <Box flexDirection={previewQuestion ? "row" : "column"}>
+              <Box
+                flexDirection="column"
+                width={previewQuestion ? leftWidth : undefined}
+              >
+                {(previewQuestion
+                  ? currentQuestion.options
+                  : [...currentQuestion.options, { label: "Other" }]
+                ).map((option, index) => {
                   const isSelected =
                     questionState.selectedOptionIndex === index;
                   const isChecked = currentQuestion.multiSelect
                     ? questionState.selectedOptionIndices.has(index)
                     : isSelected;
                   const isOther = index === currentQuestion.options.length;
+                  const isPreview = previewQuestion;
                   return (
                     <Box key={index}>
                       <Text
                         color={isSelected ? "black" : "white"}
                         backgroundColor={isSelected ? "yellow" : undefined}
+                        wrap={isPreview ? "truncate" : undefined}
                       >
                         {isSelected ? "> " : "  "}
                         {currentQuestion.multiSelect
@@ -200,6 +296,10 @@ export const ConfirmationSelector: React.FC<ConfirmationSelectorProps> = ({
                             ? "[x] "
                             : "[ ] "
                           : ""}
+                        {/* Preview questions number their options so the label
+                            never has to shout; the plain list keeps its
+                            existing shape. */}
+                        {isPreview ? `${index + 1}. ` : ""}
                         {option.label}
                         {option.description ? ` - ${option.description}` : ""}
                         {isOther && isSelected && (
@@ -230,15 +330,61 @@ export const ConfirmationSelector: React.FC<ConfirmationSelectorProps> = ({
                       </Text>
                     </Box>
                   );
-                },
+                })}
+              </Box>
+              {previewQuestion && (
+                <Box
+                  flexDirection="column"
+                  marginLeft={PREVIEW_GAP}
+                  flexGrow={1}
+                >
+                  <OptionPreview
+                    content={activePreview}
+                    width={previewWidth}
+                    maxLines={previewMaxLines}
+                  />
+                  <Box marginTop={1}>
+                    <Text color="cyan">Notes: </Text>
+                    {questionState.isEditingNotes ? (
+                      <Text
+                        wrap="truncate"
+                        backgroundColor="black"
+                        color="white"
+                      >
+                        {questionState.notesText.slice(
+                          0,
+                          questionState.notesCursorPosition,
+                        )}
+                        <Text backgroundColor="white" color="black">
+                          {questionState.notesText[
+                            questionState.notesCursorPosition
+                          ] || " "}
+                        </Text>
+                        {questionState.notesText.slice(
+                          questionState.notesCursorPosition + 1,
+                        )}
+                      </Text>
+                    ) : (
+                      <Text dimColor>
+                        {questionState.notesText || "press n to add notes"}
+                      </Text>
+                    )}
+                  </Box>
+                </Box>
               )}
             </Box>
             <Box marginTop={1}>
               <Text dimColor>
                 Question {questionState.currentQuestionIndex + 1} of{" "}
                 {questions.length} •
-                {currentQuestion.multiSelect ? " Space to toggle •" : ""} Use ↑↓
-                or Tab to navigate • Enter to confirm
+                {currentQuestion.multiSelect ? " Space to toggle •" : ""}
+                {previewQuestion
+                  ? questionState.isEditingNotes
+                    ? " Enter or Esc to leave notes • Ctrl+C to cancel"
+                    : ` Enter to select • ↑↓ to navigate • n to add notes${
+                        questions.length > 1 ? " • Tab to switch questions" : ""
+                      } • Esc to cancel`
+                  : " Use ↑↓ or Tab to navigate • Enter to confirm"}
               </Text>
             </Box>
           </Box>

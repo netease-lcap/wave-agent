@@ -6,9 +6,17 @@
   /* The container receives programmatic focus on open (tabIndex=-1) so the
      initial focus never lands on the primary action; no focus ring. */
   outline: none;
+  /* 确认区的容器查询锚点：卡片宽度不跟视口走（侧栏 / 分屏 / 远控页各不同），
+     地板高度那一档（见下方 @container）按「卡片自己多宽」判。宽度来自父级的
+     stretch，与内容无关，可以当容器。 */
+  container-type: inline-size;
 }
 
 .confirmation-dialog-inner {
+  /* 底部确认区的地板高度（抄 CC 桌面端的 --approval-dock-floor）：卡片内容再少
+     也占这么高，确认卡出现 / 消失、或换题时下方消息区不跟着抖。窄容器抬到
+     208px，见下面的 @container 一档。 */
+  --approval-dock-floor: 144px;
   max-width: 640px;
   max-height: min(70vh, 560px);
   margin: 0 auto;
@@ -17,7 +25,7 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
-  min-height: 0;
+  min-height: var(--approval-dock-floor);
   position: relative;
   background-color: var(--vscode-menu-background);
   border: 1px solid var(--vscode-widget-border);
@@ -25,6 +33,14 @@
   border-radius: 12px;
   padding: 8px 12px 16px;
   box-shadow: 0 12px 40px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.36));
+}
+
+/* 窄容器（插件端侧栏、桌面端分屏、远控页）：地板抬高到 CC 的同值 208px ——
+   窄屏里卡片再矮就只剩标题和一行选项，按钮得滚才够得着。 */
+@container (max-width: 500px) {
+  .confirmation-dialog-inner {
+    --approval-dock-floor: 208px;
+  }
 }
 
 /* Scrollable body: header, questions and diff grow here; the action bar below
@@ -197,6 +213,10 @@
   gap: 8px;
   flex: 1 1 auto;
   min-height: 0;
+  /* 预览态「堆叠 / 并排」按题目这一列有多宽判（见下方 .question-body.is-preview
+     的 @container 一档）：它的宽度 = 卡片内宽，正是 CC 桌面端量 @[30rem] 的那一层。
+     宽度来自父级的 stretch，与内容无关，可以当容器。 */
+  container-type: inline-size;
 }
 
 /* 滚动条那一列**按需**让出来（0923 评论「进度条和文案不能右侧也拉齐吗」）：
@@ -296,6 +316,143 @@
 [data-host="desktop"] .question-item.is-list-scrollable .options-list {
   margin-right: -12px;
   padding-right: 4px;
+}
+
+/* ---- 选项预览（preview / Notes，见 ask-user-tool.md「选项预览与备注」）---- */
+
+/* 预览态的高度由底部确认区（dock）定，不跟内容走：焦点在两个长度悬殊的预览之间
+   切换时，卡片会从 560 掉到 444（实测），把按钮栏和下方消息区一起带着抖。
+   这里把卡片钉在 dock 上限（与 max-height 同值），预览多长都在面板里滚。
+   折叠态是例外 —— 折叠本来就是为了把空间还回去，见下方 is-options-collapsed。 */
+.confirmation-dialog-inner:has(.question-body.is-preview) {
+  height: min(70vh, 560px);
+}
+
+/* 选项区与预览面板的容器。普通态只是透明的一层：高度预算还得继续往下传给
+   .options-list（它才是滚动容器），所以这一层也要 flex: 1 1 auto + min-height: 0，
+   否则列表退回按内容高度撑开、由 .confirmation-body 接管滚动。 */
+.question-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* 预览态的两种形态按容器宽 480px（CC 的 30rem）分档，直接抄 CC 桌面端的
+   AskUserQuestion 组件（~/github/claude-ai/shared-5-CA2c2Bqw.js）：
+     `flex flex-col gap-1.5 @[30rem]:flex-row`     ← 窄档堆叠、宽档并排
+     `min-w-0 @[30rem]:w-2/5 @[30rem]:shrink-0`    ← 选项列：窄档自然高度、宽档 40%
+   窄档（插件端侧栏、桌面端分屏、760×600 这类窗口）选项在上、预览在下，预览吃掉
+   剩余高度并自己滚。**选项列走自然高度（flex: 0 1 auto）是关键**：早前那版用
+   45% 硬切高度，第二个选项被裁掉 33px、看着像被预览面板盖住 —— 错在切法，不在
+   堆叠，所以这里不切，只让预览领剩余额度。 */
+.question-body.is-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.question-body.is-preview .options-list {
+  min-width: 0;
+  /* 自然高度：选项先占满自己需要的行数，极端情况下才在自己内部滚；
+     保底一行（40px = 桌面一个选项高，场景 3）。 */
+  flex: 0 1 auto;
+  min-height: 40px;
+}
+
+.question-body.is-preview .option-preview {
+  /* 堆叠档：预览只领选项之后的剩余额度并自己滚。basis 必须是 0 而不是 auto ——
+     预览内容动辄上千像素，basis: auto 会拿内容高度去和选项列抢收缩量，选项列
+     于是被压到保底 40px、一行都露不全（实测 760×600：列表只剩 40px）。basis: 0
+     时它只在真正有剩余空间时才长。
+     CC 窄档给预览列 `max-h-[min(16rem,35vh)]` + overflow-y-auto 当上界，我们这一档
+     的上界由上面钉住的卡片高度给出（:has(.question-body.is-preview) 那条）。 */
+  flex: 1 1 0;
+  min-height: 60px;
+}
+
+/* 并排档（容器 ≥480px）：左选项 40% / 右预览 60%，两栏都被卡片高度夹住、各滚各的。
+   用 grid 而不是 flex —— 行高 minmax(0, 1fr) 才有上界；flex 的纵轴没有 shrink，
+   长预览会把行顶到内容高度、越过容器盖到备注行上。
+   CC 宽档对预览列是 `@[30rem]:max-h-none @[30rem]:min-h-40`（去掉封顶、给 10rem
+   下限），这里同值 160px。 */
+@container (min-width: 480px) {
+  .question-body.is-preview {
+    display: grid;
+    grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+    grid-template-rows: minmax(40px, 1fr);
+    gap: 8px;
+  }
+
+  .question-body.is-preview .option-preview {
+    min-height: 160px;
+  }
+}
+
+/* 预览面板：自己滚，不参与选项区的滚动。 */
+.option-preview {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 8px 10px;
+  border: 1px solid var(--vscode-widget-border);
+  border-radius: 4px;
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.option-preview-body {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* 面板只有 12px 字号，正文块的默认上下外边距会把内容挤得只剩两三行。 */
+.option-preview-body > :first-child {
+  margin-top: 0;
+}
+
+.option-preview-body > :last-child {
+  margin-bottom: 0;
+}
+
+.option-preview-body pre {
+  overflow-x: auto;
+}
+
+.option-preview-empty {
+  color: var(--vscode-descriptionForeground);
+  font-style: italic;
+}
+
+/* 预览态下「其他」被这一行备注取代：可留空，留空不影响提交（场景 8）。 */
+.option-notes {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.option-notes-label {
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.option-notes .other-text-input {
+  margin-top: 0;
+}
+
+/* 折叠收起的是整个选项交互区：预览面板与备注一并收起，不留半截
+   （见「预览态与折叠」边界）。折叠后卡片高度交回内容，不再钉在 dock 上限。 */
+.confirmation-dialog.is-options-collapsed .confirmation-dialog-inner {
+  height: auto;
+}
+
+.confirmation-dialog.is-options-collapsed .option-preview,
+.confirmation-dialog.is-options-collapsed .option-notes {
+  display: none;
 }
 
 .option-item {

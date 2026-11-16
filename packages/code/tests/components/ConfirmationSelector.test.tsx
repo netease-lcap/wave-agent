@@ -663,7 +663,7 @@ describe("ConfirmationSelector Additional Coverage", () => {
 
       const call = mockOnDecision.mock.calls[0][0];
       expect(call.behavior).toBe("allow");
-      const message = JSON.parse(call.message!);
+      const message = JSON.parse(call.message!).answers;
       expect(message["Are you sure?"]).toBe("Yes");
     });
 
@@ -751,7 +751,7 @@ describe("ConfirmationSelector Additional Coverage", () => {
       });
 
       const call = mockOnDecision.mock.calls[0][0];
-      const message = JSON.parse(call.message!);
+      const message = JSON.parse(call.message!).answers;
       // Both TypeScript (checked via space) and Python (typed in Other)
       expect(message["Pick skills"]).toContain("TypeScript");
       expect(message["Pick skills"]).toContain("Python");
@@ -831,6 +831,222 @@ describe("ConfirmationSelector Additional Coverage", () => {
       );
       const frame = lastFrame();
       expect(frame).toBe("");
+    });
+  });
+
+  describe("AskUserQuestion option preview", () => {
+    const previewInput = {
+      questions: [
+        {
+          question: "选哪个版式？",
+          header: "Layout",
+          options: [
+            { label: "方案 A", preview: "预览内容 A" },
+            { label: "方案 B", preview: "预览内容 B" },
+          ],
+        },
+      ],
+    };
+
+    const renderPreview = () =>
+      render(
+        <ConfirmationSelector
+          toolName="AskUserQuestion"
+          toolInput={previewInput as unknown as Record<string, unknown>}
+          onDecision={mockOnDecision}
+          onCancel={mockOnCancel}
+        />,
+      );
+
+    it("renders the side-by-side preview and drops the Other row", async () => {
+      const { lastFrame } = renderPreview();
+
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain("预览内容 A");
+      });
+
+      const frame = stripAnsiColors(lastFrame() || "");
+      expect(frame).toContain("1. 方案 A");
+      expect(frame).toContain("Notes:");
+      expect(frame).toContain("press n to add notes");
+      expect(frame).toContain("n to add notes");
+      expect(frame).not.toContain("Other");
+    });
+
+    it("switches the preview when the focus moves", async () => {
+      const { stdin, lastFrame } = renderPreview();
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain("预览内容 A");
+      });
+
+      stdin.write("\u001b[B");
+
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain("预览内容 B");
+      });
+    });
+
+    it("sends the selected preview and notes back as annotations", async () => {
+      const { stdin, lastFrame } = renderPreview();
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain("预览内容 A");
+      });
+
+      stdin.write("n");
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).not.toContain(
+          "press n to add notes",
+        );
+      });
+
+      stdin.write("wider columns");
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain("wider columns");
+      });
+
+      stdin.write("\r"); // leave the notes field
+      stdin.write("\r"); // submit
+
+      await vi.waitFor(() => {
+        expect(mockOnDecision).toHaveBeenCalled();
+      });
+      const payload = JSON.parse(mockOnDecision.mock.calls[0][0].message!);
+      expect(payload.answers["选哪个版式？"]).toBe("方案 A");
+      expect(payload.annotations["选哪个版式？"]).toEqual({
+        preview: "预览内容 A",
+        notes: "wider columns",
+      });
+    });
+
+    it("truncates a long preview and reports how many lines are hidden", async () => {
+      // The harness fixes rows at 24, so the panel keeps 8 content lines.
+      const lines = Array.from(
+        { length: 12 },
+        (_, index) => `- 第 ${index + 1} 行`,
+      );
+      const { lastFrame, settle } = render(
+        <ConfirmationSelector
+          toolName="AskUserQuestion"
+          toolInput={
+            {
+              questions: [
+                {
+                  question: "选哪个版式？",
+                  header: "Layout",
+                  options: [{ label: "方案 A", preview: lines.join("\n") }],
+                },
+              ],
+            } as unknown as Record<string, unknown>
+          }
+          onDecision={mockOnDecision}
+          onCancel={mockOnCancel}
+        />,
+      );
+
+      await settle();
+      const frame = stripAnsiColors(lastFrame() || "");
+      expect(frame).toContain("第 1 行");
+      expect(frame).not.toContain("第 12 行");
+      expect(frame).toContain("还有 4 行");
+    });
+
+    it("shows a placeholder when the focused option has no preview", async () => {
+      const { lastFrame, stdin, settle } = render(
+        <ConfirmationSelector
+          toolName="AskUserQuestion"
+          toolInput={
+            {
+              questions: [
+                {
+                  question: "选哪个版式？",
+                  header: "Layout",
+                  options: [
+                    { label: "方案 A", preview: "预览内容 A" },
+                    { label: "方案 B" },
+                  ],
+                },
+              ],
+            } as unknown as Record<string, unknown>
+          }
+          onDecision={mockOnDecision}
+          onCancel={mockOnCancel}
+        />,
+      );
+
+      await settle();
+      expect(stripAnsiColors(lastFrame() || "")).toContain("预览内容 A");
+
+      stdin.write("\u001b[B");
+      await settle();
+      expect(stripAnsiColors(lastFrame() || "")).toContain(
+        "(这个选项没有预览)",
+      );
+    });
+
+    it("keeps the plain list when the question is multi-select", async () => {
+      const { lastFrame, settle } = render(
+        <ConfirmationSelector
+          toolName="AskUserQuestion"
+          toolInput={
+            {
+              questions: [
+                {
+                  question: "选哪些模块？",
+                  header: "Modules",
+                  multiSelect: true,
+                  options: [
+                    { label: "模块 A", preview: "预览内容 A" },
+                    { label: "模块 B", preview: "预览内容 B" },
+                  ],
+                },
+              ],
+            } as unknown as Record<string, unknown>
+          }
+          onDecision={mockOnDecision}
+          onCancel={mockOnCancel}
+        />,
+      );
+
+      await settle();
+      const frame = stripAnsiColors(lastFrame() || "");
+      expect(frame).not.toContain("预览内容 A");
+      expect(frame).toContain("Other");
+    });
+
+    it("decides preview per question instead of per prompt", async () => {
+      const { lastFrame, stdin, settle } = render(
+        <ConfirmationSelector
+          toolName="AskUserQuestion"
+          toolInput={
+            {
+              questions: [
+                {
+                  question: "选哪个版式？",
+                  header: "Layout",
+                  options: [{ label: "方案 A", preview: "预览内容 A" }],
+                },
+                {
+                  question: "选哪个范围？",
+                  header: "Scope",
+                  options: [{ label: "大" }, { label: "小" }],
+                },
+              ],
+            } as unknown as Record<string, unknown>
+          }
+          onDecision={mockOnDecision}
+          onCancel={mockOnCancel}
+        />,
+      );
+
+      await settle();
+      expect(stripAnsiColors(lastFrame() || "")).toContain("预览内容 A");
+
+      stdin.write("\t");
+      await settle();
+      const afterTab = stripAnsiColors(lastFrame() || "");
+      expect(afterTab).toContain("选哪个范围？");
+      expect(afterTab).toContain("Other");
+      expect(afterTab).not.toContain("预览内容 A");
     });
   });
 });

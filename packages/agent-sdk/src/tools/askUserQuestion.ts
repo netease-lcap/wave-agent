@@ -1,5 +1,8 @@
 import { ToolPlugin } from "./types.js";
-import { AskUserQuestionInput } from "../types/tools.js";
+import {
+  AskUserQuestionAnnotation,
+  AskUserQuestionInput,
+} from "../types/tools.js";
 import { ASK_USER_QUESTION_TOOL_NAME } from "../constants/tools.js";
 
 /**
@@ -32,6 +35,41 @@ function collectOptionLabelErrors(
     });
   });
   return errors;
+}
+
+/**
+ * Split the confirmation payload into answers plus optional annotations.
+ *
+ * The current shape is `{ answers, annotations? }`. Hosts and the CLI used to
+ * send the answers map on its own, so that shape is still accepted: an old
+ * client that knows nothing about previews keeps working instead of having its
+ * answers read as a single question literally named "answers".
+ */
+function parseDecisionPayload(payload: unknown): {
+  answers: Record<string, string | string[]>;
+  annotations?: Record<string, AskUserQuestionAnnotation>;
+} {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return { answers: {} };
+  }
+  const record = payload as Record<string, unknown>;
+  const answers = record.answers;
+  if (!answers || typeof answers !== "object" || Array.isArray(answers)) {
+    return { answers: record as Record<string, string | string[]> };
+  }
+  const rawAnnotations = record.annotations;
+  const annotations =
+    rawAnnotations &&
+    typeof rawAnnotations === "object" &&
+    !Array.isArray(rawAnnotations)
+      ? (rawAnnotations as Record<string, AskUserQuestionAnnotation>)
+      : undefined;
+  return {
+    answers: answers as Record<string, string | string[]>,
+    ...(annotations && Object.keys(annotations).length > 0
+      ? { annotations }
+      : {}),
+  };
 }
 
 export const askUserQuestionTool: ToolPlugin = {
@@ -83,6 +121,11 @@ export const askUserQuestionTool: ToolPlugin = {
                         description:
                           "Explanation of what this option means or what will happen if chosen. Useful for providing context about trade-offs or implications.",
                       },
+                      preview: {
+                        type: "string",
+                        description:
+                          "Optional markdown preview of this option, shown beside the option list so the user can compare concrete artifacts: ASCII layout sketches, code snippets of different implementations, diagram variations, config examples. Single-select questions only — ignored when multiSelect is true. Not a substitute for label/description: the label still carries the choice.",
+                      },
                     },
                     required: ["label"],
                   },
@@ -101,6 +144,26 @@ export const askUserQuestionTool: ToolPlugin = {
             type: "object",
             additionalProperties: { type: "string" },
             description: "User answers collected by the permission component",
+          },
+          annotations: {
+            type: "object",
+            additionalProperties: {
+              type: "object",
+              properties: {
+                preview: {
+                  type: "string",
+                  description:
+                    "The preview content of the selected option, if the question used previews.",
+                },
+                notes: {
+                  type: "string",
+                  description:
+                    "Free-text notes the user added to their selection.",
+                },
+              },
+            },
+            description:
+              "Per-question annotations returned by the UI (selected option's preview and the user's notes), keyed by question text",
           },
           metadata: {
             type: "object",
@@ -130,6 +193,15 @@ Usage notes:
 - Use multiSelect: true to allow multiple answers to be selected for a question
 - If you recommend a specific option, make that the first option in the list and add "(Recommended)" at the end of the label
 
+Preview feature:
+Use the optional \`preview\` field on options when presenting concrete artifacts that users need to visually compare:
+- ASCII mockups of UI layouts or components
+- Code snippets showing different implementations
+- Diagram variations
+- Configuration examples
+
+Preview content is rendered as markdown in a panel beside the option list, following whichever option the user is on. On those questions the "Other" box is replaced by a notes field, and the option you selected plus any notes come back to you in the tool result — so write the preview for a human comparing options, not as prose for yourself. Do not use previews for simple preference questions where labels and descriptions suffice. Previews are only supported for single-select questions (not multiSelect).
+
 Plan mode note: In plan mode, use this tool to clarify requirements or choose between approaches BEFORE finalizing your plan. Do NOT use this tool to ask "Is my plan ready?" or "Should I proceed?" - use ExitPlanMode for plan approval.
 `,
   leanPrompt: `Use this tool when you need to ask the user questions during execution: preferences, clarifications, decisions on implementation choices, or a choice of direction.
@@ -137,6 +209,7 @@ Plan mode note: In plan mode, use this tool to clarify requirements or choose be
 - Users can always select "Other" to provide custom text input.
 - \`multiSelect: true\` allows multiple answers to be selected for a question.
 - If you recommend an option, put it first and append "(Recommended)" to its label.
+- Add \`preview\` (markdown) to options when the user must compare concrete artifacts — layout sketches, code snippets, config samples. Single-select only; on preview questions "Other" becomes a notes field and the selected preview comes back to you.
 In plan mode, use it to clarify requirements or choose between approaches before finalizing the plan — never to ask whether the plan is ready; that is what ExitPlanMode is for.`,
   execute: async (args, context) => {
     const {
@@ -195,10 +268,12 @@ In plan mode, use it to clarify requirements or choose between approaches before
     // The answers are expected to be returned in the decision message or a specialized field
     // For now, we assume the UI returns the answers as a JSON string in the message
     try {
-      const answers = JSON.parse(decision.message || "{}");
+      const payload = parseDecisionPayload(
+        JSON.parse(decision.message || "{}"),
+      );
       return {
         success: true,
-        content: JSON.stringify({ answers }),
+        content: JSON.stringify(payload),
       };
     } catch {
       return {

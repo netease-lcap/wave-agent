@@ -293,4 +293,103 @@ describe("AskUserQuestion Tool", () => {
       expect(mockPermissionManager.createContext).toHaveBeenCalled();
     });
   });
+
+  describe("option preview and annotations", () => {
+    type JsonSchema = {
+      properties: Record<
+        string,
+        {
+          items?: { properties: Record<string, unknown> };
+          additionalProperties?: { properties: Record<string, unknown> };
+        }
+      >;
+    };
+    const schema = askUserQuestionTool.config.function
+      .parameters as unknown as JsonSchema;
+
+    const runWith = async (payload: unknown) => {
+      const mockPermissionManager = {
+        createContext: vi.fn().mockReturnValue({}),
+        checkPermission: vi.mocked(vi.fn()).mockResolvedValue({
+          behavior: "allow",
+          message:
+            typeof payload === "string" ? payload : JSON.stringify(payload),
+        }),
+      };
+      const context = {
+        permissionManager: mockPermissionManager,
+        permissionMode: "default",
+      } as unknown as ToolContext;
+      return askUserQuestionTool.execute(
+        {
+          questions: [
+            {
+              question: "Which layout?",
+              options: [{ label: "A" }, { label: "B" }],
+            },
+          ],
+        } as unknown as Record<string, unknown>,
+        context,
+      );
+    };
+
+    it("declares preview on each option and an annotations echo", () => {
+      const questionProps = schema.properties.questions.items!.properties as {
+        options: { items: { properties: Record<string, unknown> } };
+      };
+      expect(questionProps.options.items.properties).toHaveProperty("preview");
+      expect(schema.properties).toHaveProperty("annotations");
+      expect(
+        schema.properties.annotations.additionalProperties?.properties,
+      ).toHaveProperty("notes");
+    });
+
+    it("mentions the preview feature in the tool prompt", () => {
+      expect(askUserQuestionTool.prompt?.()).toContain("preview");
+    });
+
+    it("returns the selected preview and notes alongside the answers", async () => {
+      const result = await runWith({
+        answers: { "Which layout?": "A" },
+        annotations: {
+          "Which layout?": {
+            preview: "```\n+-----+\n| A   |\n+-----+\n```",
+            notes: "wider columns please",
+          },
+        },
+      });
+
+      expect(result.success).toBe(true);
+      expect(JSON.parse(result.content)).toEqual({
+        answers: { "Which layout?": "A" },
+        annotations: {
+          "Which layout?": {
+            preview: "```\n+-----+\n| A   |\n+-----+\n```",
+            notes: "wider columns please",
+          },
+        },
+      });
+    });
+
+    it("still accepts a bare answers map from an older client", async () => {
+      const result = await runWith({ "Which layout?": "B" });
+
+      expect(result.success).toBe(true);
+      expect(JSON.parse(result.content)).toEqual({
+        answers: { "Which layout?": "B" },
+      });
+    });
+
+    it("drops an empty annotations object instead of echoing it", async () => {
+      const result = await runWith({
+        answers: { "Which layout?": "B" },
+        annotations: {},
+      });
+
+      expect(result.success).toBe(true);
+      expect(JSON.parse(result.content)).toEqual({
+        answers: { "Which layout?": "B" },
+      });
+    });
+  });
 });
