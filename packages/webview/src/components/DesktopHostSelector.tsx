@@ -7,7 +7,12 @@ import React, {
   useMemo,
 } from "react";
 import { useRovingMenu } from "../utils/useRovingMenu";
-import { ContextLocalIcon, PermCaretIcon, QueueEditIcon } from "./HeaderIcons";
+import {
+  ContextLocalIcon,
+  PermCaretIcon,
+  QueueEditIcon,
+  SshHostIcon,
+} from "./HeaderIcons";
 import { DesktopSshConnectionDialog } from "./DesktopSshConnectionDialog";
 import type {
   DesktopHostOption,
@@ -215,6 +220,11 @@ export const DesktopHostSelector: React.FC<DesktopHostSelectorProps> = ({
   const isLocal = host === "local";
   const current = options.find((o) => o.id === host);
   const triggerText = isLocal ? "本地" : (hostLabel ?? current?.label ?? host);
+  // 1116 第三条评论（她点收起态那颗图标）：「收起态本地图标也换一下」⇒ 触发键的
+  // 图标跟着当前主机种类走：选中的是 SSH 主机就换成菜单里同款的「SSH主机」颗
+  // （同 16×16 盒、同 currentColor，所以名称与箭头的 x 一格不动）。
+  // 本地仍是桌面图标；WSL 没配图标件（这次只给了 SSH 一张），继续用桌面图标。
+  const triggerKind = isLocal ? "local" : (current?.kind ?? "ssh");
 
   // 菜单切成「本地」+「每个主机分组」若干块：块里的**分组标题固定**，只有组内
   // 的具体主机条目滚动（规格 scene 26：上百台主机时用户滚到哪儿都还看得见
@@ -331,6 +341,14 @@ export const DesktopHostSelector: React.FC<DesktopHostSelectorProps> = ({
         // `desktop-host-icon` 类 → 同 16×16 盒、同色、同几何）。
         <ContextLocalIcon className="desktop-host-icon" />
       )}
+      {/* 1116 评论（她点 `div.desktop-workdir-menu-item`「local」，即 SSH 条目）：
+          「主机名称前面加个图标，名称位置不变」⇒ SSH 条目补上「SSH主机」颗。
+          位置靠行内那 32px 左内衬吃下来（8 padding + 16 图标 + 8 gap 原样等于
+          32），所以名称左缘一格不动；图标列与「本地」行、分组标题文字同一条 495
+          竖线（见 host-desktop.css 里 `.desktop-host-menu-items` 那条）。 */}
+      {row.option.kind === "ssh" && (
+        <SshHostIcon className="desktop-host-icon" />
+      )}
       <span className="desktop-workdir-menu-name">{row.option.label}</span>
       {row.option.disabled && row.option.hint && (
         <span className="desktop-host-item-hint">{row.option.hint}</span>
@@ -385,7 +403,11 @@ export const DesktopHostSelector: React.FC<DesktopHostSelectorProps> = ({
         role="button"
         tabIndex={0}
       >
-        <ContextLocalIcon className="desktop-host-icon" />
+        {triggerKind === "ssh" ? (
+          <SshHostIcon className="desktop-host-icon" />
+        ) : (
+          <ContextLocalIcon className="desktop-host-icon" />
+        )}
         <span className="desktop-host-name">{triggerText}</span>
         <PermCaretIcon className="desktop-host-caret" />
       </div>

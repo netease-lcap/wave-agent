@@ -463,6 +463,60 @@ export const ContextDirectoryIcon: React.FC<IconProps> = ({
   </svg>
 );
 
+// 主机菜单 SSH 条目 — 设计师 2026-11-16 给件「类型=SSH主机.svg」（机架：两节柱体
+// + 两枚指示灯 + 底座横线，16×16，描边 1.4）。主机菜单里本来只有「本地」行带图标，
+// SSH 条目靠 32px 左内衬让名称与「本地」对齐；这颗补进那 32px 里（8 内衬 + 16 图标
+// + 8 gap），名称左缘不动。
+// 件里两节柱体只写了 stroke-linejoin（闭合路径，linecap 不起作用），这里与同文件
+// 其它描边图标一样统一挂 round/round。
+export const SshHostIcon: React.FC<IconProps> = ({
+  className = "header-icon",
+}) => (
+  <svg
+    width="16"
+    height="16"
+    viewBox="0 0 16 16"
+    fill="none"
+    className={className}
+  >
+    <path
+      d="M12.3403 5.47117L3.44648 5.47116C2.72851 5.47116 2.14648 4.88913 2.14648 4.17116V3.14766C2.14648 2.42969 2.72851 1.84766 3.44648 1.84766L12.3403 1.84766C13.0582 1.84766 13.6403 2.42969 13.6403 3.14766V4.17117C13.6403 4.88914 13.0582 5.47117 12.3403 5.47117Z"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M12.3403 11.2495L3.44648 11.2495C2.72851 11.2495 2.14648 10.6675 2.14648 9.94948V8.92598C2.14648 8.20801 2.72851 7.62598 3.44648 7.62598L12.3403 7.62598C13.0582 7.62598 13.6403 8.20801 13.6403 8.92598V9.94949C13.6403 10.6675 13.0582 11.2495 12.3403 11.2495Z"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M4.34473 3.65918H5.4941"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M4.34473 9.4375H5.4941"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M13.8535 14.1523L2.35975 14.1523"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
+
 // Queue header chevron — Figma content-tight right arrow (5.28539 x 9.95205) centered
 // in a padded 16x16 box. Points right by default; rotate via CSS for expanded state.
 export const QueueChevronIcon: React.FC<IconProps> = ({
