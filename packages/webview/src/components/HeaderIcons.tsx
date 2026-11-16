@@ -1902,26 +1902,6 @@ export const SettingsGearIcon: React.FC<IconProps> = ({
   </svg>
 );
 
-/** 账户更多-企业控制台（lucide house，24 viewBox stroke 2） */
-export const HouseIcon: React.FC<IconProps> = ({
-  className = "header-icon",
-}) => (
-  <svg
-    width={16}
-    height={16}
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth={2}
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    className={className}
-  >
-    <path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8" />
-    <path d="M3 10a2 2 0 0 1 .709-1.528l7-6a2 2 0 0 1 2.582 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-  </svg>
-);
-
 /** 账户更多-帮助文档（lucide file-text 文档，24 viewBox stroke 2） */
 export const FileTextIcon: React.FC<IconProps> = ({
   className = "header-icon",
@@ -1942,6 +1922,149 @@ export const FileTextIcon: React.FC<IconProps> = ({
     <path d="M10 9H8" />
     <path d="M16 13H8" />
     <path d="M16 17H8" />
+  </svg>
+);
+
+/* 账户「更多」菜单这一族统一走 16 viewBox / 描边 1.4 / 圆头圆角 / currentColor。
+   前三颗是官方件（设计师 2026-11-16 提供），路径与附件逐字节一致，只把写死的
+   `#565A60` 换成 `currentColor` —— 菜单项 hover 时图标要跟着字色一起变。它们
+   不复用上面的 lucide 同名件（`SettingsGearIcon` / `FileTextIcon` 还在设置页、
+   文件列表里用着，那几处是 24 viewBox / stroke 2 的另一版）。
+
+   行尾箭头与「退出登录」没有官方件，见各自注释里的换算口径。 */
+
+/** 账户更多-设置（官方件：齿轮） */
+export const MoreMenuSettingsIcon: React.FC<IconProps> = ({
+  className = "header-icon",
+}) => (
+  <svg
+    width={16}
+    height={16}
+    viewBox="0 0 16 16"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={1.4}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+  >
+    <circle cx="7.99889" cy="8.00036" r="2.11803" />
+    <path d="M13.2142 11.0103L14.3275 8.95122C14.6484 8.35767 14.6484 7.64233 14.3275 7.04878L13.2142 4.98972L11.9876 2.99605C11.6341 2.42136 11.0146 2.06368 10.3401 2.04483L8.00024 1.97943L5.6604 2.04483C4.98592 2.06368 4.36641 2.42135 4.01284 2.99605L2.78628 4.98972L1.67299 7.04878C1.35208 7.64233 1.35208 8.35767 1.67299 8.95122L2.78628 11.0103L4.01284 13.0039C4.36641 13.5786 4.98592 13.9363 5.6604 13.9552L8.00024 14.0206L10.3401 13.9552C11.0146 13.9363 11.6341 13.5786 11.9876 13.0039L13.2142 11.0103Z" />
+  </svg>
+);
+
+/** 账户更多-企业控制台（官方件：楼宇）。前两条轮廓件没有 round 端点，保持原样。 */
+export const MoreMenuConsoleIcon: React.FC<IconProps> = ({
+  className = "header-icon",
+}) => (
+  <svg
+    width={16}
+    height={16}
+    viewBox="0 0 16 16"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={1.4}
+    className={className}
+  >
+    <path
+      d="M8.95996 14.1434C6.31851 14.1434 4.83755 14.1434 2.1961 14.1434L2.1961 5.80108C2.1961 5.51108 2.34651 5.24183 2.59345 5.08977L7.68664 1.95371C8.24319 1.61102 8.95995 2.01142 8.95995 2.66501L8.95996 14.1434Z"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M8.95997 5.81982L13.4978 8.80394C13.7327 8.95842 13.8741 9.22072 13.8741 9.50188L13.8741 14.1435L8.95996 14.1435L8.95997 5.81982Z"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M4.66504 7.65625L6.49228 7.65626"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M4.66504 10.5193L6.49228 10.5193"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <path d="M1 14.1433H15" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+
+/** 账户更多-帮助文档（官方件：折角文档 + 两行正文） */
+export const MoreMenuHelpDocsIcon: React.FC<IconProps> = ({
+  className = "header-icon",
+}) => (
+  <svg
+    width={16}
+    height={16}
+    viewBox="0 0 16 16"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={1.4}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+  >
+    <path d="M8.20233 14.2729H4.5C3.39543 14.2729 2.5 13.3775 2.5 12.2729V8.00011V3.7273C2.5 2.62273 3.39543 1.72729 4.5 1.72729H7.69073H9.96414C10.3678 1.72729 10.7544 1.89 11.0367 2.17863L13.0725 4.2608C13.3466 4.54107 13.5 4.91755 13.5 5.30953V8.00011V12.2729C13.5 13.3775 12.6046 14.2729 11.5 14.2729H8.20233Z" />
+    <path d="M9.60352 1.84985V4.33057C9.60352 5.15899 10.2751 5.83057 11.1035 5.83057H12.763" />
+    <path d="M6.19434 10.8096L9.80565 10.8096" />
+    <path d="M6.19434 8L9.80565 8" />
+  </svg>
+);
+
+/**
+ * 账户更多-行尾外链箭头（↗）。**没有官方件**，按同一族口径处理：
+ *
+ * 改前用的是上面的 `ExternalLinkIcon` —— 那颗是 Figma 导出的**实心**字形
+ * （`fill` 无描边、尖角、约 1px 粗），与刚换成 1.4 描边的三颗官方件并排明显更轻更尖。
+ * 这里直接沿用 2026-11-10 她在 `button.write-preview-open` 那轮裁过的同一颗箭头：
+ * 同一条中心线（4.1→11.9）+ 同一副箭头（6.3→11.9→9.7），描边 1.4、圆头圆角，
+ * 墨迹仍是 9.2px 见方（与改前的实心箭头同墨迹）。形状不是新画的，只是把那轮
+ * 已确认的矢量搬到菜单这一族里。
+ *
+ * `ExternalLinkIcon` 本身不动：`WriteToolPreview` 的插件端分支仍用它，与改动前逐像素一致。
+ */
+export const MoreMenuExternalLinkIcon: React.FC<IconProps> = ({
+  className = "header-icon",
+}) => (
+  <svg
+    width={16}
+    height={16}
+    viewBox="0 0 16 16"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={1.4}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+    aria-hidden="true"
+  >
+    <path d="M4.1 11.9L11.9 4.1" />
+    <path d="M6.3 4.1H11.9V9.7" />
+  </svg>
+);
+
+/**
+ * 账户更多-退出登录（箭头出门）。**没有官方件**，是 lucide `log-out` 按同一族网格
+ * **等比换算**（24 → 16 viewBox，所有坐标 ×2/3，2 位小数）：形状与改前逐点同比例，
+ * 渲染盒 16×16、墨迹 12×12、四边偏移各 2px 全部不变；唯一变化是描边——改前 24 网格里
+ * 的 2 换算下来是 1.333px，现在统一到 1.4px（重 5%），与同菜单另外四颗同档。
+ */
+export const MoreMenuLogOutIcon: React.FC<IconProps> = ({
+  className = "header-icon",
+}) => (
+  <svg
+    width={16}
+    height={16}
+    viewBox="0 0 16 16"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={1.4}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+  >
+    <path d="m10.6667 11.3333 3.3333-3.3333-3.3333-3.3333" />
+    <path d="M14 8H6" />
+    <path d="M6 14H3.3333a1.3333 1.3333 0 0 1-1.3333-1.3333V3.3333a1.3333 1.3333 0 0 1 1.3333-1.3333H6" />
   </svg>
 );
 
@@ -1986,27 +2109,6 @@ export const GatewayIcon: React.FC<IconProps> = ({
     <rect width="20" height="8" x="2" y="14" rx="2" ry="2" />
     <path d="M6 6h.01" />
     <path d="M6 18h.01" />
-  </svg>
-);
-
-/** 账户更多-退出登录（lucide log-out，24 viewBox stroke 2） */
-export const LogOutIcon: React.FC<IconProps> = ({
-  className = "header-icon",
-}) => (
-  <svg
-    width={16}
-    height={16}
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth={2}
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    className={className}
-  >
-    <path d="m16 17 5-5-5-5" />
-    <path d="M21 12H9" />
-    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
   </svg>
 );
 
