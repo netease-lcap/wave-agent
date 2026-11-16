@@ -395,6 +395,14 @@ export class DesktopHost {
   private router: NotificationRouter | null = null;
   private initPromise: Promise<void> | null = null;
 
+  /**
+   * 上一条已弹过的 license 拦截文案（spec enterprise/server-managed-config
+   * 「私有化未授权时给出一次性提示」）。本地 / WSL / 远端各有自己的 CLI 进程，
+   * 同一个拦截会被每个连上的主机各报一次；窗口级 toast 只留一条，文案相同就不再
+   * 弹。SDK 侧已按 code 去重、成功拉取后重新武装，故这里只做跨进程去重。
+   */
+  private lastLicenseToast: string | null = null;
+
   // Remote (ssh) host infrastructure: host name → its own shared JSON-RPC
   // client. Each remote host runs a `wave --daemon` (nohup, survives this app),
   // reached through a unix-socket ssh tunnel — so sessions on different hosts
@@ -1619,7 +1627,7 @@ export class DesktopHost {
             .catch((error) => this.reportExternalOpenFailure(error));
         }
       });
-      this.registerStartupStageHandler(this.router, LOCAL_HOST);
+      this.registerHostGlobalHandlers(this.router, LOCAL_HOST);
       this.router.attach();
     })();
 
@@ -1633,11 +1641,16 @@ export class DesktopHost {
   }
 
   /**
-   * 订阅 CLI 侧的启动阶段（spec ui/stdio-transport.md）：工具依赖下载与「正在启动
-   * 会话…」都发生在任何会话绑定之前，通知不带 sessionId，走全局处理器。
-   * 宿主管不了 CLI 报什么，只负责按主机归属到分屏。
+   * 订阅 CLI 侧的进程级事件：它们是这件事**只在这个进程里知道**、且早于任何会话
+   * 绑定的，通知不带 sessionId，走全局处理器。
+   *
+   * - `startupStage`（spec ui/stdio-transport.md）：工具依赖下载与「正在启动
+   *   会话…」；宿主管不了 CLI 报什么，只负责按主机归属到分屏。
+   * - `licenseBlocked`（spec enterprise/server-managed-config.md「私有化未授权时
+   *   给出一次性提示」）：托管配置被授权闸门拦下时弹一条错误 toast，文案取服务端
+   *   原文、不自造；同一句只弹一次（多主机各有进程，避免重复）。
    */
-  private registerStartupStageHandler(
+  private registerHostGlobalHandlers(
     router: NotificationRouter,
     host: string,
   ): void {
@@ -1645,6 +1658,14 @@ export class DesktopHost {
       const stage = (params as { stage?: string })?.stage;
       if (typeof stage !== "string") return;
       this.reportStartupStage(host, stage as StartupStage);
+    });
+    router.registerGlobal("licenseBlocked", (params) => {
+      const p = params as { code?: string; message?: string };
+      const message = typeof p?.message === "string" ? p.message.trim() : "";
+      if (!message) return;
+      if (this.lastLicenseToast === message) return;
+      this.lastLicenseToast = message;
+      this.showToast({ message, type: "error" });
     });
   }
 
@@ -1747,7 +1768,7 @@ export class DesktopHost {
             .catch((error) => this.reportExternalOpenFailure(error));
         }
       });
-      this.registerStartupStageHandler(router, host);
+      this.registerHostGlobalHandlers(router, host);
       router.attach();
       entry.client = client;
       entry.router = router;
@@ -1825,7 +1846,7 @@ export class DesktopHost {
         // the browser (spec: SSO 登录 scenario 8).
         if (p?.url) void this.handleRemoteAuthUrl(host, p.url);
       });
-      this.registerStartupStageHandler(router, host);
+      this.registerHostGlobalHandlers(router, host);
       router.attach();
       entry.client = client;
       entry.router = router;

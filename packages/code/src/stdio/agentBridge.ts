@@ -54,6 +54,7 @@ import {
   type SlashCommandInfo,
   type ConfiguredModel,
   loadUserConfigEnv,
+  onLicenseBlocked,
   loadWaveConfigFromFile,
   getUserConfigPaths,
   getProjectConfigPaths,
@@ -361,6 +362,9 @@ export class AgentBridge {
     if (userEnv.WAVE_SERVER_URL) {
       process.env.WAVE_SERVER_URL = userEnv.WAVE_SERVER_URL;
     }
+    // License 拦截（私有化未授权）：托管配置的拉取是进程级、早于任何会话，所以
+    // 只能走不带 sessionId 的全局通知。SDK 侧已按 code 去重，这里原样转发。
+    onLicenseBlocked((block) => this.emit("licenseBlocked", block));
   }
 
   // ── Public API ────────────────────────────────────────────────

@@ -70,6 +70,9 @@ const ALL_NOTIFICATION_METHODS: readonly ServerNotificationMethod[] = [
   // Global (no sessionId): the CLI's own startup steps, emitted before any
   // session exists. Delivered to the `registerGlobal` handler.
   "startupStage",
+  // Global (no sessionId): the private-deployment license gate rejected the
+  // managed-config fetch. Also emitted before any session is bound.
+  "licenseBlocked",
 ] as const;
 
 export class NotificationRouter {

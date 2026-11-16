@@ -38,11 +38,11 @@ describe("Notifications Component", () => {
     expect(lastFrame()).not.toContain("Type /login to authenticate");
   });
 
-  // 插件变更提示（docs/specs/ecosystem/plugin.md「插件变更提示」）：一次性中性
-  // 提示，由宿主设置；不设置时不出现。
+  // 一次性提示（docs/specs/ecosystem/plugin.md「插件变更提示」）：同一格还会承载
+  // 私有化未授权文案，两种来源共用；不设置时不出现。
   it("should show the plugin hint when one is set", () => {
     const { lastFrame } = render(
-      <Notifications pluginHint="插件已变更。运行 /reload-plugins 使其生效。" />,
+      <Notifications hint="插件已变更。运行 /reload-plugins 使其生效。" />,
     );
 
     expect(lastFrame()).toContain(

@@ -315,6 +315,20 @@ export type ServerNotificationMethod =
    */
   | "startupStage"
   /**
+   * The private-deployment license gate rejected the managed-config fetch
+   * (spec `enterprise/server-managed-config.md`「私有化未授权时给出一次性提示」).
+   * **Global** — no `sessionId`: the fetch is process-level and fires before any
+   * session is bound (startup, SSO login, hourly poll), so the router hands it
+   * to the global handler. Params: `{ code, message }`, where `code` is one of
+   * the three `LICENSE_*` codes and `message` is the server's own `error` text
+   * verbatim — the host renders it as-is and never composes its own copy.
+   *
+   * Already de-duplicated in the SDK (one emission per code, re-armed by a
+   * successful fetch); consumers only have to show it once. Report-only: a
+   * dropped or unhandled notification changes nothing but the notice.
+   */
+  | "licenseBlocked"
+  /**
    * Structural notice, **content-free** (`{}`). The bridge sends it only on the
    * `restoreSession` re-attach branch — a catch-up for a client whose router
    * registered after `initialize` returned — never on the message stream's beat.

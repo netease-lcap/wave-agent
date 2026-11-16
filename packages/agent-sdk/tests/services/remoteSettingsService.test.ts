@@ -49,6 +49,7 @@ import {
   onSettingsUpdate,
   ensureAuthChangeRefresh,
   resetAuthChangeRefresh,
+  onLicenseBlocked,
   remoteSettingsService,
 } from "../../src/services/remoteSettingsService.js";
 
@@ -359,6 +360,149 @@ describe("remoteSettingsService", () => {
       const result = await refresh();
       expect(result.success).toBe(false);
       expect(result.error).toBe("HTTP 503");
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // license blocks (spec enterprise/server-managed-config「私有化未授权时给出一次性提示」)
+  // ---------------------------------------------------------------------------
+  describe("license blocks", () => {
+    const blockResponse = (code: string, error: string) => ({
+      status: 403,
+      ok: false,
+      text: () => Promise.resolve(JSON.stringify({ code, error })),
+    });
+
+    const authenticate = () => {
+      (authService.isSSOAuthenticated as Mock).mockReturnValue(true);
+      (authService.getSSOToken as Mock).mockReturnValue("token123");
+      (authService.getServerUrl as Mock).mockReturnValue("https://server.test");
+    };
+
+    // 订阅是模块级的，订阅者出错或残留会串到后面的用例：逐个记下并在收尾退订。
+    const unsubscribers: Array<() => void> = [];
+    const subscribe = (
+      callback: (block: { code: string; message: string }) => void,
+    ) => {
+      unsubscribers.push(onLicenseBlocked(callback));
+    };
+    afterEach(() => {
+      for (const off of unsubscribers.splice(0)) off();
+    });
+
+    it("notifies once with the server's own copy for a licensed block code", async () => {
+      authenticate();
+      const seen: Array<{ code: string; message: string }> = [];
+      subscribe((block) => seen.push(block));
+      vi.stubGlobal(
+        "fetch",
+        vi
+          .fn()
+          .mockResolvedValue(
+            blockResponse(
+              "LICENSE_MISSING",
+              "产品尚未授权，请联系企业管理员上传 license",
+            ),
+          ),
+      );
+
+      const result = await refresh();
+
+      // 提示不改变控制流：仍是失败 + 缓存兜底。
+      expect(result.success).toBe(false);
+      expect(seen).toEqual([
+        {
+          code: "LICENSE_MISSING",
+          message: "产品尚未授权，请联系企业管理员上传 license",
+        },
+      ]);
+    });
+
+    it("does not repeat the same code on the next poll", async () => {
+      authenticate();
+      const seen: string[] = [];
+      subscribe((block) => seen.push(block.code));
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue(blockResponse("LICENSE_MISSING", "尚未授权")),
+      );
+
+      await refresh();
+      await refresh();
+
+      expect(seen).toEqual(["LICENSE_MISSING"]);
+    });
+
+    it("notifies again when the code changes", async () => {
+      authenticate();
+      const seen: string[] = [];
+      subscribe((block) => seen.push(block.code));
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce(blockResponse("LICENSE_EXPIRED", "已到期"))
+        .mockResolvedValueOnce(blockResponse("LICENSE_MISSING", "尚未授权"));
+      vi.stubGlobal("fetch", fetchMock);
+
+      await refresh();
+      await refresh();
+
+      expect(seen).toEqual(["LICENSE_EXPIRED", "LICENSE_MISSING"]);
+    });
+
+    it("re-arms after a successful fetch", async () => {
+      authenticate();
+      const seen: string[] = [];
+      subscribe((block) => seen.push(block.code));
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce(blockResponse("LICENSE_MISSING", "尚未授权"))
+        .mockResolvedValueOnce({
+          status: 200,
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              uuid: "u1",
+              checksum: "abc",
+              settings: { model: "m" },
+            }),
+        })
+        .mockResolvedValueOnce(blockResponse("LICENSE_MISSING", "尚未授权"));
+      vi.stubGlobal("fetch", fetchMock);
+
+      await refresh();
+      await refresh();
+      await refresh();
+
+      // 授权修好（200）后再失效，同一句要能重新提示。
+      expect(seen).toEqual(["LICENSE_MISSING", "LICENSE_MISSING"]);
+    });
+
+    it("stays silent for an unknown code or a non-403", async () => {
+      authenticate();
+      const seen: string[] = [];
+      subscribe((block) => seen.push(block.code));
+      vi.stubGlobal(
+        "fetch",
+        vi
+          .fn()
+          .mockResolvedValueOnce(blockResponse("SOME_FUTURE_CODE", "未来新增"))
+          .mockResolvedValueOnce({
+            status: 500,
+            ok: false,
+            text: () => Promise.resolve("server error"),
+          })
+          .mockResolvedValueOnce({
+            status: 403,
+            ok: false,
+            text: () => Promise.resolve("not json"),
+          }),
+      );
+
+      await refresh();
+      await refresh();
+      await refresh();
+
+      expect(seen).toEqual([]);
     });
   });
 
@@ -1131,6 +1275,7 @@ describe("remoteSettingsService", () => {
       expect(remoteSettingsService.clear).toBeTypeOf("function");
       expect(remoteSettingsService.shutdown).toBeTypeOf("function");
       expect(remoteSettingsService.mergeRemoteSettings).toBeTypeOf("function");
+      expect(remoteSettingsService.onLicenseBlocked).toBeTypeOf("function");
     });
   });
 

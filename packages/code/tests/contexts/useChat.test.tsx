@@ -26,6 +26,12 @@ vi.mock("ink", async () => {
   };
 });
 
+// License 拦截的订阅者：真实实现在 SDK 里由托管配置的 403 触发（那条链路在 SDK
+// 的用例里覆盖），这里只验证 useChat 把它变成一次性提示。
+const license = vi.hoisted(() => ({
+  subscribers: [] as Array<(block: { code: string; message: string }) => void>,
+}));
+
 // Mock wave-agent-sdk
 vi.mock("wave-agent-sdk", async () => {
   const actual = await vi.importActual("wave-agent-sdk");
@@ -34,6 +40,15 @@ vi.mock("wave-agent-sdk", async () => {
     Agent: {
       create: vi.fn(),
     },
+    onLicenseBlocked: vi.fn(
+      (callback: (block: { code: string; message: string }) => void) => {
+        license.subscribers.push(callback);
+        return () => {
+          const index = license.subscribers.indexOf(callback);
+          if (index >= 0) license.subscribers.splice(index, 1);
+        };
+      },
+    ),
   };
 });
 
@@ -136,6 +151,7 @@ describe("ChatProvider", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.clearAllMocks();
+    license.subscribers.length = 0;
     // Reset the shared mock agent's message list and session id — tests mutate
     // them (Object.assign, session switches) and the initial pull at mount
     // reads the current values.
@@ -186,6 +202,31 @@ describe("ChatProvider", () => {
     await vi.waitFor(() => {
       expect(Agent.create).toHaveBeenCalled();
       expect(lastValue?.sessionId).toBe("test-session");
+    });
+  });
+
+  it("shows the private-deployment license block as a one-off hint", async () => {
+    let lastValue: ChatContextType | undefined;
+    renderWithProvider((val) => {
+      lastValue = val;
+    });
+    await vi.waitFor(() => {
+      expect(license.subscribers).toHaveLength(1);
+    });
+
+    // 服务端原文原样显示（spec「私有化未授权时给出一次性提示」场景 1）。
+    const message = "产品尚未授权，请联系企业管理员上传 license";
+    license.subscribers.forEach((notify) =>
+      notify({ code: "LICENSE_MISSING", message }),
+    );
+    await vi.waitFor(() => {
+      expect(lastValue?.hint).toBe(message);
+    });
+
+    // 一次性：数秒后自行消失，不留常驻标识。
+    await vi.advanceTimersByTimeAsync(8000);
+    await vi.waitFor(() => {
+      expect(lastValue?.hint).toBeNull();
     });
   });
 

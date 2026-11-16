@@ -38,6 +38,7 @@ import {
   extractLatestTotalTokens,
   PLUGIN_CHANGE_PENDING_MESSAGE,
   PLUGIN_RELOADED_MESSAGE,
+  onLicenseBlocked,
 } from "wave-agent-sdk";
 import { logger } from "../utils/logger.js";
 import { displayUsageSummary } from "../utils/usageSummary.js";
@@ -200,7 +201,7 @@ export interface ChatContextType {
   // Plugin in-place reload (docs/specs/ecosystem/plugin.md「插件变更的就地重载」)
   reloadPlugins: () => Promise<void>;
   notifyPluginChange: () => void;
-  pluginHint: string | null;
+  hint: string | null;
 }
 
 const ChatContext = createContext<ChatContextType | null>(null);
@@ -1006,24 +1007,33 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     ],
   );
 
-  // 插件变更落盘后只置一个「待应用」信号并提示一次，不再重建 Agent；真正换装由
-  // 用户敲 /reload-plugins 触发，在当前会话内完成（docs/specs/ecosystem/plugin.md
-  // 「插件变更的就地重载」：会…不重建、不打断回合、不新建会话）。
-  const [pluginHint, setPluginHint] = useState<string | null>(null);
-  const pluginHintTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // 一次性提示（Notifications 行那一格灰字）：多来源共用同一个槽位，谁最后设置谁
+  // 显示，数秒后自行消失。既有来源是插件变更 / 重载完成（docs/specs/ecosystem/
+  // plugin.md「插件变更提示」），2026-11-16 起加上私有化未授权拦截
+  // （docs/specs/enterprise/server-managed-config.md「私有化未授权时给出一次性提示」）。
+  const [hint, setHint] = useState<string | null>(null);
+  const hintTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const showPluginHint = useCallback((message: string) => {
-    setPluginHint(message);
-    if (pluginHintTimer.current) {
-      clearTimeout(pluginHintTimer.current);
+  const showHint = useCallback((message: string) => {
+    setHint(message);
+    if (hintTimer.current) {
+      clearTimeout(hintTimer.current);
     }
-    // 一次性提示：数秒后自行消失，不留常驻标识（spec「插件变更提示」）。
-    pluginHintTimer.current = setTimeout(() => setPluginHint(null), 8000);
+    // 一次性提示：数秒后自行消失，不留常驻标识。
+    hintTimer.current = setTimeout(() => setHint(null), 8000);
   }, []);
 
   const notifyPluginChange = useCallback(() => {
-    showPluginHint(PLUGIN_CHANGE_PENDING_MESSAGE);
-  }, [showPluginHint]);
+    showHint(PLUGIN_CHANGE_PENDING_MESSAGE);
+  }, [showHint]);
+
+  // 私有化未授权的提示是**进程级**事件（拉托管配置被授权闸门拦下，早于任何会话），
+  // 由 SDK 在识别出 license 码时回调一次；同码只报一次、拉到成功响应后重新武装。
+  // 文案是服务端原文，这里不加工（spec「私有化未授权时给出一次性提示」场景 1）。
+  useEffect(
+    () => onLicenseBlocked((block) => showHint(block.message)),
+    [showHint],
+  );
 
   const reloadPlugins = useCallback(async () => {
     const agent = agentRef.current;
@@ -1036,20 +1046,20 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
       setSkills(agent.getSkillMetadata?.() || []);
       if (result.failures.length > 0) {
         // 失败不回滚：如实提示，会话继续可用（spec 场景 11）。
-        showPluginHint(
+        showHint(
           `${PLUGIN_RELOADED_MESSAGE}部分插件加载失败：${result.failures
             .map((failure) => `${failure.path}: ${failure.error}`)
             .join("；")}`,
         );
       } else {
-        showPluginHint(PLUGIN_RELOADED_MESSAGE);
+        showHint(PLUGIN_RELOADED_MESSAGE);
       }
     } catch (error) {
-      showPluginHint(
+      showHint(
         `插件重载失败：${error instanceof Error ? error.message : String(error)}`,
       );
     }
-  }, [showPluginHint]);
+  }, [showHint]);
 
   // Run initial agent creation
   useEffect(() => {
@@ -1694,7 +1704,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     workdir,
     reloadPlugins,
     notifyPluginChange,
-    pluginHint,
+    hint,
   };
 
   return (

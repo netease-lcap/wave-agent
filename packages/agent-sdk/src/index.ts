@@ -67,6 +67,13 @@ export {
   REMOTE_CONTROL_DEFAULT_ENABLED,
   isRemoteControlEnabled,
 } from "./services/remoteControlAvailability.js";
+// License 拦截的一次性提示（spec enterprise/server-managed-config「私有化未授权
+// 时给出一次性提示」）：CLI 的 hint 行与 stdio 转发各订阅一次，SDK 只负责识别码、
+// 去重和给出服务端原文。
+export {
+  onLicenseBlocked,
+  type LicenseBlock,
+} from "./services/remoteSettingsService.js";
 export {
   getUserConfigPaths,
   getProjectConfigPaths,

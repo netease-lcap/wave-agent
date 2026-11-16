@@ -7,6 +7,7 @@ import com.intellij.notification.NotificationType
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.project.Project
+import com.wave.jetbrains.ide.IdeService
 import com.wave.jetbrains.session.WaveSession
 import com.wave.jetbrains.stdio.BinaryResolver
 import com.wave.jetbrains.stdio.NotificationRouter
@@ -95,6 +96,16 @@ class WaveBackendService(private val project: Project) : Disposable {
                     r.registerGlobal("startupStage") { p ->
                         val stage = p?.jsonObject?.get("stage")?.jsonPrimitive?.content
                         if (!stage.isNullOrEmpty()) reportStage(stage)
+                    }
+                    // 私有化未授权（spec enterprise/server-managed-config.md「私有化
+                    // 未授权时给出一次性提示」）：拉托管配置被授权闸门拦下，同样发生在
+                    // 任何会话之前。文案是服务端原文，不自造；SDK 已按 code 去重，这里
+                    // 直接转成 IDE 的错误气泡（与 VSCE 的 showErrorMessage 同档）。
+                    r.registerGlobal("licenseBlocked") { p ->
+                        val message = p?.jsonObject?.get("message")?.jsonPrimitive?.content
+                        if (!message.isNullOrBlank()) {
+                            Edt.invokeLater { IdeService.showError(project, message) }
+                        }
                     }
                     sharedClient = c
                     router = r

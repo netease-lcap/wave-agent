@@ -109,7 +109,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
     setModel,
     reloadPlugins,
     notifyPluginChange,
-    pluginHint,
+    hint,
     recallQueuedMessage,
     queuedMessages,
     setIsBtwActive,
@@ -557,7 +557,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
                     contextWindow={contextWindow}
                     maxOutputTokens={maxOutputTokens}
                     showLoginHint={showLoginHint}
-                    pluginHint={pluginHint}
+                    hint={hint}
                   />
                 </Box>
               </Box>

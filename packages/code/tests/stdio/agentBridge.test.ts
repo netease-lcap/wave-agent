@@ -21,6 +21,7 @@ import {
   readRecentWorkdirs,
   rememberRecentWorkdir,
   forgetRecentWorkdir,
+  onLicenseBlocked,
   type ClientNotificationMethod,
   type RequestMethod,
 } from "wave-agent-sdk";
@@ -218,6 +219,33 @@ afterEach(() => {
   // 逐条删干净，避免用例之间互相污染。
   delete process.env.WAVE_API_KEY;
   delete process.env.WAVE_BASE_URL;
+});
+
+// ── license 拦截 ─────────────────────────────────────────────────
+
+test("forwards a private-deployment license block as a global notification", () => {
+  const { notifications } = createBridge();
+  // 构造时订阅了 SDK 的进程级事件；这里手动触发它，验证桥把它变成不带
+  // sessionId 的通知（spec enterprise/server-managed-config「私有化未授权时给出
+  // 一次性提示」：拉配置早于任何会话，只能走全局通道）。
+  const notify = vi.mocked(onLicenseBlocked).mock.calls[0]?.[0];
+  expect(notify).toBeTypeOf("function");
+
+  notify?.({
+    code: "LICENSE_MISSING",
+    message: "产品尚未授权，请联系企业管理员上传 license",
+  });
+
+  expect(notifications).toEqual([
+    {
+      method: "licenseBlocked",
+      params: {
+        code: "LICENSE_MISSING",
+        message: "产品尚未授权，请联系企业管理员上传 license",
+      },
+      sessionId: undefined,
+    },
+  ]);
 });
 
 // ── initialize ───────────────────────────────────────────────────

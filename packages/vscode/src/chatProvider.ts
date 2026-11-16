@@ -223,6 +223,15 @@ export class ChatProvider implements vscode.WebviewViewProvider {
           text: startupStageText(stage as StartupStage),
         });
       });
+      // 私有化未授权（spec enterprise/server-managed-config.md「私有化未授权时给出
+      // 一次性提示」）：托管配置被授权闸门拦下，同样是进程级、无 sessionId 的通知。
+      // 文案是服务端原文，不自造；SDK 已按 code 去重（同一句在下一个轮询里不会再发），
+      // 这里直接转成编辑器的错误通知。
+      this.notificationRouter.registerGlobal("licenseBlocked", (params) => {
+        const message = (params as { message?: string })?.message;
+        if (typeof message !== "string" || !message.trim()) return;
+        void vscode.window.showErrorMessage(message);
+      });
 
       // 用户偏好（语言/上下文长度/自动记忆）落点为用户级 ~/.wave/settings.json，
       // 经该共享客户端（= 会话所在进程）读写，宿主 globalState 不再是第二真源。

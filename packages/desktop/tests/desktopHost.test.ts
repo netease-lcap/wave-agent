@@ -6568,6 +6568,66 @@ describe("startup progress line", () => {
 });
 
 // ---------------------------------------------------------------------------
+// 私有化未授权的一次性提示
+// (spec enterprise/server-managed-config.md「私有化未授权时给出一次性提示」)
+// ---------------------------------------------------------------------------
+
+describe("license block toast", () => {
+  const LICENSE_MESSAGE = "产品尚未授权，请联系企业管理员上传 license";
+
+  it("surfaces the CLI-side license block as an error toast, verbatim", async () => {
+    const { sent } = await readyHost();
+
+    h.globalHandlers.licenseBlocked?.({
+      code: "LICENSE_MISSING",
+      message: LICENSE_MESSAGE,
+    });
+
+    const toasts = sent("showToast");
+    expect(toasts).toHaveLength(1);
+    expect(toasts[0]?.toast.message).toBe(LICENSE_MESSAGE);
+    expect(toasts[0]?.toast.type).toBe("error");
+  });
+
+  it("shows each distinct copy once, and never repeats the same one", async () => {
+    const { sent } = await readyHost();
+
+    h.globalHandlers.licenseBlocked?.({
+      code: "LICENSE_MISSING",
+      message: LICENSE_MESSAGE,
+    });
+    // 同一个码在下一个轮询里再到一次：SDK 已去重，主机侧兜住多主机（本地/WSL/
+    // 远端各一个 CLI 进程）重复上报的同一条。
+    h.globalHandlers.licenseBlocked?.({
+      code: "LICENSE_MISSING",
+      message: LICENSE_MESSAGE,
+    });
+    // 换成过期的码 = 新情况，文案不同，再弹一次。
+    h.globalHandlers.licenseBlocked?.({
+      code: "LICENSE_EXPIRED",
+      message: "您的订阅已到期，不可使用该产品!",
+    });
+
+    expect(sent("showToast").map((m) => m.toast.message)).toEqual([
+      LICENSE_MESSAGE,
+      "您的订阅已到期，不可使用该产品!",
+    ]);
+  });
+
+  it("ignores a notification without copy", async () => {
+    const { sent } = await readyHost();
+
+    h.globalHandlers.licenseBlocked?.({ code: "LICENSE_MISSING" });
+    h.globalHandlers.licenseBlocked?.({
+      code: "LICENSE_MISSING",
+      message: "  ",
+    });
+
+    expect(sent("showToast")).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // /resume disk session picker (desktop-sessions.md「跨客户端会话来源」)
 // ---------------------------------------------------------------------------
 
