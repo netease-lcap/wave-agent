@@ -1018,6 +1018,102 @@ class MessageHandler(
                     put("success", success)
                 })
             }
+            // ── 插件 mod（spec ecosystem/plugin-mods.md「在 IDE 插件里画」）──────
+            // 与桌面端同一套协议、同一批消息名（`desktopMod*` 是历史命名，webview
+            // 只认语义不认宿主）。插件端的 webview 与这条会话一一对应，所以回包里
+            // 没有 paneId —— 归属键是 tab（`mod:<modId>:<paneId>`，与 webview 同一
+            // 套写法，晚到的旧回包只能落回它自己的 tab）。
+            "modPanelRender" -> {
+                val payload = msg["payload"]?.jsonObject ?: return
+                val modId = payload["modId"]?.jsonPrimitive?.contentOrNull ?: return
+                val paneId = payload["paneId"]?.jsonPrimitive?.contentOrNull ?: return
+                // 摆法与量到的版面事实都由 webview 现量（`placement` /
+                // `bodyColumns` 进 `e.props`，`columns` / `rows` / `isFullscreen`
+                // 进 `e.viewport`）；缺哪个就不发哪个，引擎按缺省值处理。
+                val layout = buildJsonObject {
+                    payload["placement"]?.jsonPrimitive?.contentOrNull?.let { put("placement", it) }
+                    payload["isFullscreen"]?.jsonPrimitive?.booleanOrNull?.let { put("isFullscreen", it) }
+                    payload["columns"]?.jsonPrimitive?.intOrNull?.let { put("columns", it) }
+                    payload["rows"]?.jsonPrimitive?.intOrNull?.let { put("rows", it) }
+                    payload["bodyColumns"]?.jsonPrimitive?.intOrNull?.let { put("bodyColumns", it) }
+                }
+                val result = try {
+                    session.agent?.renderModPanel(modId, paneId, layout)?.jsonObject
+                } catch (e: StdioClientException) {
+                    LOG.warn("modPanelRender failed: ${e.message}")
+                    null
+                }
+                if (result != null) {
+                    postMessage("desktopModPanelRender", buildJsonObject {
+                        put("tabId", "mod:$modId:$paneId")
+                        put("revision", result["revision"] ?: JsonNull)
+                        put("tree", result["tree"] ?: JsonNull)
+                        put("error", result["error"] ?: JsonNull)
+                    })
+                }
+            }
+            "modBandRender" -> {
+                // 带与面板同一条口径：webview 量到的字符宽高原样转交（宿主不解释）。
+                val metrics = buildJsonObject {
+                    val payload = msg["payload"]?.jsonObject
+                    payload?.get("columns")?.jsonPrimitive?.intOrNull?.let { put("columns", it) }
+                    payload?.get("rows")?.jsonPrimitive?.intOrNull?.let { put("rows", it) }
+                    payload?.get("bodyColumns")?.jsonPrimitive?.intOrNull?.let { put("bodyColumns", it) }
+                    payload?.get("isFullscreen")?.jsonPrimitive?.booleanOrNull?.let { put("isFullscreen", it) }
+                }
+                val bands = try {
+                    session.agent?.renderModBand(metrics) ?: JsonArray(emptyList())
+                } catch (e: StdioClientException) {
+                    LOG.warn("modBandRender failed: ${e.message}")
+                    JsonArray(emptyList())
+                }
+                postMessage("desktopModBand", buildJsonObject { put("bands", bands) })
+            }
+            // 面板/带里的一次交互：载荷原样退回 CLI 进程里那个 mod（宿主不解释
+            // 字段 —— `paneId` 可能是带自己的固定值 `above-prompt`）。
+            "modPanelEvent" -> {
+                val payload = msg["payload"]?.jsonObject ?: return
+                try {
+                    session.agent?.sendModPanelEvent(payload)
+                } catch (e: StdioClientException) {
+                    LOG.warn("modPanelEvent failed: ${e.message}")
+                }
+            }
+            // `$.prompt.fill` / `$.prompt.read` / `$.ui.copy` 三条回执：webview 作答
+            // 之后原样交回，mod 那一侧才不至于等到超时。
+            "modPromptFillResult" -> {
+                val requestId = msg["requestId"]?.jsonPrimitive?.contentOrNull ?: return
+                val filled = msg["filled"]?.jsonPrimitive?.booleanOrNull == true
+                try {
+                    session.agent?.resolveModPromptFill(requestId, filled)
+                } catch (e: StdioClientException) {
+                    LOG.warn("modPromptFillResult failed: ${e.message}")
+                }
+            }
+            "modPromptReadResult" -> {
+                val requestId = msg["requestId"]?.jsonPrimitive?.contentOrNull ?: return
+                try {
+                    session.agent?.resolveModPromptRead(
+                        requestId,
+                        msg["text"]?.jsonPrimitive?.contentOrNull ?: "",
+                        msg["cursor"]?.jsonPrimitive?.intOrNull ?: 0,
+                    )
+                } catch (e: StdioClientException) {
+                    LOG.warn("modPromptReadResult failed: ${e.message}")
+                }
+            }
+            "modCopyResult" -> {
+                val requestId = msg["requestId"]?.jsonPrimitive?.contentOrNull ?: return
+                try {
+                    session.agent?.resolveModCopy(
+                        requestId,
+                        msg["isCopied"]?.jsonPrimitive?.booleanOrNull == true,
+                        msg["reason"]?.jsonPrimitive?.contentOrNull,
+                    )
+                } catch (e: StdioClientException) {
+                    LOG.warn("modCopyResult failed: ${e.message}")
+                }
+            }
             // VSCE :158/:736 → connect; SDK onMcpServersChange pushes update
             "connectMcpServer" -> {
                 val name = msg["serverName"]?.jsonPrimitive?.content ?: return
@@ -1701,6 +1797,18 @@ class MessageHandler(
         // the incoming session.
         session.agent?.contextUsagePercent?.let { percent ->
             postMessage("contextUsage", buildJsonObject { put("percent", percent) })
+        }
+        // 插件 mod 面板（spec ecosystem/plugin-mods.md「生命周期」）：webview 重建
+        // 之后靠这份元信息把 mod tab 补回来，否则用户要等 mod 下一次
+        // `$.ui.invalidate` 才能再看到面板。回放的都是 `stale` 帧（新 surface 手里
+        // 没有树），由 webview 自己来要。
+        try {
+            val panels = session.agent?.getModPanels()?.jsonArray ?: JsonArray(emptyList())
+            for (panel in panels) {
+                postMessage("desktopModPanelUpdate", buildJsonObject { put("payload", panel) })
+            }
+        } catch (e: StdioClientException) {
+            LOG.warn("getModPanels on webviewReady failed: ${e.message}")
         }
     }
 

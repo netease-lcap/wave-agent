@@ -89,6 +89,13 @@
   min-width: 0;
 }
 
+/* 宽面板 + 有 mod 面板时才转一行：对话在左、mod 面板 dock 在右
+   （spec ecosystem/plugin-mods.md「在 IDE 插件里画」）。没有面板时保持
+   flex-column，欢迎页的居中依赖它。 */
+.ide-chat-wrap[data-mod-dock="true"] {
+  flex-direction: row;
+}
+
 /* Welcome page (plugin hosts): brand mark + input card center as one group —
    same layout as the desktop welcome scene. The header is taken out of flow
    (pinned to the top) so the group centers against the whole viewport;

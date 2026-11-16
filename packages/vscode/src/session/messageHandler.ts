@@ -20,6 +20,7 @@ import type {
   RemoteControlSnapshot,
   ConfiguredModel,
   BtwHistoryTurn,
+  ModPanelEventPayload,
 } from "wave-agent-sdk/host";
 import {
   PLUGIN_CHANGE_PENDING_MESSAGE,
@@ -540,6 +541,134 @@ export class MessageHandler {
           viewType,
           windowId,
         );
+        break;
+      }
+      // ── 插件 mod（spec ecosystem/plugin-mods.md「在 IDE 插件里画」）──────
+      // 与桌面端同一套协议，消息名也共用（`desktopMod*` 是历史命名，webview 只认
+      // 语义不认宿主）。差别只有一处：这里没有 pane id —— 一个插件端 webview 就是
+      // 一条会话，`postMessage` 已经按视图投递。
+      case "modPanelRender": {
+        const session = this.context.getChatSession(
+          viewType || "tab",
+          windowId,
+        );
+        // `placement` / `isFullscreen` 是「这一端把它摆在哪」，`columns` /
+        // `rows` / `bodyColumns` 是 webview 现量出来的字符宽高（spec「`ui.render`
+        // 的 `e.props`」）：全部原样转交，引擎不再自己猜这一端多大。
+        const payload = msg.payload as
+          | {
+              modId?: string;
+              paneId?: string;
+              placement?: "dock" | "inline";
+              isFullscreen?: boolean;
+              columns?: number;
+              rows?: number;
+              bodyColumns?: number;
+            }
+          | undefined;
+        if (payload?.modId && payload.paneId) {
+          const result = await session.renderModPanel(
+            payload.modId,
+            payload.paneId,
+            {
+              placement: payload.placement,
+              isFullscreen: payload.isFullscreen,
+              columns: payload.columns,
+              rows: payload.rows,
+              bodyColumns: payload.bodyColumns,
+            },
+          );
+          if (result) {
+            this.context.postMessage(
+              {
+                command: "desktopModPanelRender",
+                // 归属键与 webview 的 tab id 同一套写法（`mod:<modId>:<paneId>`）：
+                // 晚到的旧回包只能落回它自己的 tab。
+                tabId: `mod:${payload.modId}:${payload.paneId}`,
+                revision: result.revision,
+                tree: result.tree,
+                error: result.error,
+              },
+              viewType,
+              windowId,
+            );
+          }
+        }
+        break;
+      }
+      case "modBandRender": {
+        const session = this.context.getChatSession(
+          viewType || "tab",
+          windowId,
+        );
+        // 带与面板同一条口径：webview 量到的字符宽高原样转交（缺的就缺着，
+        // 引擎按缺省值处理）。
+        const metrics = (msg.payload ?? {}) as {
+          columns?: number;
+          rows?: number;
+          bodyColumns?: number;
+          isFullscreen?: boolean;
+        };
+        const bands = await session.renderModBand(metrics);
+        this.context.postMessage(
+          { command: "desktopModBand", bands },
+          viewType,
+          windowId,
+        );
+        break;
+      }
+      case "modPanelEvent": {
+        const session = this.context.getChatSession(
+          viewType || "tab",
+          windowId,
+        );
+        const payload = msg.payload as
+          | { modId?: string; paneId?: string; key?: string; kind?: string }
+          | undefined;
+        if (payload?.modId && payload.paneId) {
+          await session.sendModPanelEvent(payload as ModPanelEventPayload);
+        }
+        break;
+      }
+      case "modPromptFillResult": {
+        const session = this.context.getChatSession(
+          viewType || "tab",
+          windowId,
+        );
+        const requestId = msg.requestId as string | undefined;
+        if (typeof requestId === "string") {
+          await session.resolveModPromptFill(requestId, msg.filled === true);
+        }
+        break;
+      }
+      case "modPromptReadResult": {
+        const session = this.context.getChatSession(
+          viewType || "tab",
+          windowId,
+        );
+        const requestId = msg.requestId as string | undefined;
+        if (typeof requestId === "string") {
+          await session.resolveModPromptRead(
+            requestId,
+            typeof msg.text === "string" ? msg.text : "",
+            typeof msg.cursor === "number" ? msg.cursor : 0,
+          );
+        }
+        break;
+      }
+      case "modCopyResult": {
+        const session = this.context.getChatSession(
+          viewType || "tab",
+          windowId,
+        );
+        const requestId = msg.requestId as string | undefined;
+        if (typeof requestId === "string") {
+          await session.resolveModCopy(
+            requestId,
+            msg.isCopied === true,
+            typeof msg.reason === "string" ? msg.reason : undefined,
+          );
+        }
         break;
       }
     }
@@ -2554,6 +2683,23 @@ export class MessageHandler {
         windowId,
       );
     }
+
+    // 插件 mod 面板（spec ecosystem/plugin-mods.md「生命周期」）：webview 重建
+    // 之后靠这份元信息把 mod tab 补回来，否则用户要等 mod 下一次
+    // `$.ui.invalidate` 才能再看到面板。回放的都是 `stale` 帧（新 surface 手里
+    // 没有树），由 webview 自己来要。
+    void session
+      .getModPanels()
+      .then((panels) => {
+        for (const payload of panels) {
+          this.context.postMessage(
+            { command: "desktopModPanelUpdate", payload },
+            viewType,
+            windowId,
+          );
+        }
+      })
+      .catch(() => {});
 
     // 初始状态已送达 = 这条启动阶段流结束（webview 侧的 setInitialState 也会
     // 自己清一次；这里清的是宿主缓存，别让下一个挂载的面板看到过期的文案）。

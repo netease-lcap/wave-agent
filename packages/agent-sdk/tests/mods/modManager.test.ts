@@ -2,6 +2,7 @@ import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ModManager } from "../../src/managers/modManager.js";
 import type { ModManagerOptions } from "../../src/managers/modManager.js";
+import type { ModSessionFacts } from "../../src/managers/modManager.js";
 import { logger } from "../../src/utils/globalLogger.js";
 import { MOD_BAND_INSTANCE_ID, MOD_LIMITS } from "../../src/types/mods.js";
 import type {
@@ -96,12 +97,12 @@ exports.register = function ($, on) {
 };
 `;
 
-  it("带只问注册了 ui.render 的 mod，且携带 AbovePrompt 站点与固定 instance_id", async () => {
+  it("带只问注册了 ui.render 的 mod，且携带 AbovePrompt 站点与固定 requestId", async () => {
     const withBand = path.join(ROOT, "mods", "band.tsx");
     const paneOnly = path.join(ROOT, "mods", "pane-only.tsx");
     const { manager } = createManager({
       [withBand]: bandMod(
-        'return __wave.h("Text", null, e.surface + ":" + e.component + ":" + e.instance_id);',
+        'return __wave.h("Text", null, e.surface + ":" + e.component + ":" + e.requestId);',
       ),
       [paneOnly]: `
 exports.register = function ($, on) {
@@ -136,6 +137,32 @@ exports.register = function ($, on) {
     // 每次拉取 revision 都涨（surface 靠它丢晚到的旧帧）。
     const again = await manager.renderBand();
     expect(again.find((b) => b.modId === "todo:band")?.revision).toBe(2);
+
+    await manager.dispose();
+  });
+
+  it("IDE 聊天面板：带与面板的 e.surface 都是 vscode，不是 desktop", async () => {
+    const ideMod = path.join(ROOT, "mods", "ide.tsx");
+    const { manager } = createManager(
+      {
+        [ideMod]: `
+exports.register = function ($, on) {
+  on("session.start", function () { $.ui.open({ id: "p1", title: "IDE" }); });
+  on("ui.render", function (e) {
+    return __wave.h("Text", null, e.surface + ":" + e.component);
+  });
+};
+`,
+      },
+      { sessionFacts: factsWith({ surfaces: () => ["vscode"] as const }) },
+    );
+    await manager.loadFromPlugins([plugin([{ id: "todo:ide", path: ideMod }])]);
+    await manager.startSession();
+
+    const frame = await manager.renderPane("todo:ide", "p1");
+    expect(frame.tree).toMatchObject({ children: ["vscode:Pane"] });
+    const bands = await manager.renderBand();
+    expect(bands[0]?.tree).toMatchObject({ children: ["vscode:AbovePrompt"] });
 
     await manager.dispose();
   });
@@ -188,14 +215,17 @@ exports.register = function ($, on) {
     expect(JSON.stringify(band.tree)).toContain("n=1");
   });
 
-  it("ui.render 的 props 报站点行数：面板 24 行、带 8 行", async () => {
+  it("ui.render 的 props 按站点给：面板是 Pane 的那几个字段、带是 AbovePrompt 的", async () => {
+    // 字段集与 Claude Code 的 render sites 表逐项对齐：`maxRows` / `hasSurvey` /
+    // `isWorking` 是 `AbovePrompt` 的，`Pane` 没有它们（多给会让照 CC 写的 mod 在
+    // 我们这里能跑、到 CC 上读不到，那就不是它的子集了）。
     const rows = path.join(ROOT, "mods", "rows.tsx");
     const { manager } = createManager({
       [rows]: `
 exports.register = function ($, on) {
   on("session.start", function () { $.ui.open({ id: "p1", title: "行数" }); });
   on("ui.render", function (e) {
-    return __wave.h("Text", null, e.component + ":" + e.props.maxRows + ":" + e.props.scroll.bodyRows);
+    return __wave.h("Text", null, e.component + ":" + Object.keys(e.props).sort().join(",") + ":" + e.props.scroll.bodyRows);
   });
 };
 `,
@@ -204,12 +234,86 @@ exports.register = function ($, on) {
     await manager.startSession();
 
     const pane = await manager.renderPane("todo:rows", "p1");
-    // 面板高得多：插件按 24 行分页，一开始就不会溢出（值本身是保守默认值，
-    // 不是量出来的 —— spec「ui.render 的 props」）。
-    expect(pane.tree).toMatchObject({ children: ["Pane:24:24"] });
+    // 面板高得多：插件按 24 行分页，一开始就不会溢出（surface 没报尺寸时用的
+    // 保守缺省值 —— spec「ui.render 的 props」）。
+    expect(pane.tree).toMatchObject({
+      children: ["Pane:bodyColumns,isFocused,placement,scroll,title,view:24"],
+    });
 
     const [band] = await manager.renderBand();
-    expect(band?.tree).toMatchObject({ children: ["AbovePrompt:8:8"] });
+    expect(band?.tree).toMatchObject({
+      children: [
+        "AbovePrompt:bodyColumns,hasSurvey,isCollapsed,isWorking,maxRows,scroll,view:8",
+      ],
+    });
+
+    await manager.dispose();
+  });
+
+  it("surface 报了尺寸就用它：视口进 e.viewport、pane 的宽进 bodyColumns、inline 12 行", async () => {
+    const layout = path.join(ROOT, "mods", "layout.tsx");
+    const { manager } = createManager({
+      [layout]: `
+exports.register = function ($, on) {
+  on("session.start", function () { $.ui.open({ id: "p1", title: "版面" }); });
+  on("ui.render", function (e) {
+    // 用分隔符拼，避免断言依赖 JSON 的键序。
+    return __wave.h("Text", null, [
+      e.component,
+      e.props.placement,
+      e.props.bodyColumns,
+      e.props.scroll.bodyRows,
+      e.viewport.columns,
+      e.viewport.rows,
+      e.viewport.isFullscreen,
+    ].join("|"));
+  });
+};
+`,
+    });
+    await manager.loadFromPlugins([
+      plugin([{ id: "todo:layout", path: layout }]),
+    ]);
+    await manager.startSession();
+
+    // dock：面板 24 行、视口 120×40、这一块正文 66 列。
+    const dock = await manager.renderPane("todo:layout", "p1", {
+      placement: "dock",
+      isFullscreen: true,
+      columns: 120,
+      rows: 40,
+      bodyColumns: 66,
+    });
+    expect(dock.tree).toMatchObject({
+      children: ["Pane|dock|66|24|120|40|true"],
+    });
+
+    // inline：落在输入框上方，正文 12 行封顶（`scroll.bodyRows` 也是 12）。
+    const inline = await manager.renderPane("todo:layout", "p1", {
+      placement: "inline",
+      columns: 60,
+      rows: 30,
+      bodyColumns: 58,
+    });
+    expect(inline.tree).toMatchObject({
+      children: ["Pane|inline|58|12|60|30|false"],
+    });
+
+    // 什么都没报：摆法退回 dock，视口只剩 `isFullscreen: false`（不填 0 冒充量到）。
+    const bare = await manager.renderPane("todo:layout", "p1");
+    expect(bare.tree).toMatchObject({
+      children: ["Pane|dock|100|24|||false"],
+    });
+
+    // 带同一条链路：`bodyColumns` 是带自己那列，行数固定 8。
+    const [band] = await manager.renderBand({
+      columns: 120,
+      rows: 40,
+      bodyColumns: 72,
+    });
+    expect(band?.tree).toMatchObject({
+      children: ["AbovePrompt||72|8|120|40|false"],
+    });
 
     await manager.dispose();
   });
@@ -589,6 +693,25 @@ function storeFile(name: string): string {
   return path.join(STORE_ROOT, `${name}.json`);
 }
 
+/** 一份「什么都读得到」的会话事实；默认入口是桌面端，按需覆盖。 */
+function factsWith(overrides: Partial<ModSessionFacts> = {}): ModSessionFacts {
+  return {
+    sessionId: () => "s1",
+    workspaceRoot: () => ROOT,
+    model: () => "wave-pro",
+    surfaces: () => ["desktop"] as const,
+    env: () => undefined,
+    settings: async (query) => (query.key === undefined ? {} : undefined),
+    turns: () => 0,
+    repo: () => null,
+    version: () => ({ version: "1.6.6" }),
+    configRows: () => [],
+    toolInfos: () => [],
+    agentInfos: () => [],
+    ...overrides,
+  };
+}
+
 /** 只看面板那一条：一次 invalidate 之后带也会收到一条（`paneId` 固定值）。 */
 function paneUpdates(
   updates: ModPanelUpdatePayload[],
@@ -671,16 +794,16 @@ describe("ModManager.loadFromPlugins", () => {
     expect((await pull(manager)).revision).toBe(2);
   });
 
-  it("ui.render 的事件带 surface / component / instance_id，$.ui.resolve 靠它取元素表", async () => {
+  it("ui.render 的事件带 surface / component / requestId，$.ui.resolve 靠它取元素表", async () => {
     // mod 不写死元素名字符串：这是 `$.ui.resolve(e)` 唯一的用法。
-    // 事件里的三个维度都用一遍：surface 拿去换表，component / instance_id 用来
+    // 事件里的三个维度都用一遍：surface 拿去换表，component / requestId 用来
     // 认出「这是哪一端的哪个面板」—— mod 靠它们分派，不用自己猜。
     const siteMod = `
 exports.register = function ($, on) {
   on("session.start", function () { $.ui.open({ id: "p1", title: "站点" }); });
   on("ui.render", function (e) {
     var t = $.ui.resolve(e);
-    return __wave.h(t.Text, null, e.surface + ":" + e.component + ":" + e.instance_id);
+    return __wave.h(t.Text, null, e.surface + ":" + e.component + ":" + e.requestId);
   });
 };
 `;
@@ -863,6 +986,98 @@ exports.register = function ($, on) {
     const frame = await pull(manager);
     expect(frame.error).toBeUndefined();
     expect(frame.tree).not.toBeNull();
+  });
+
+  it("控件交互先给 mod 一条 ui.press / ui.input / ui.select（e 与 CC 的 Ui*Argument 同形）", async () => {
+    // 名字与字段集都照 Claude Code：三个事件在控件的回调**之前**跑，`e.element`
+    // 是那个控件的 `key`（`ui.input` 还带 `e.value` 与 `kind`）。只发给拥有这块
+    // 面板的 mod —— CC 默认也只对自己画的控件触发。
+    const interaction = `
+var seen = [];
+exports.register = function ($, on) {
+  on("session.start", function () { $.ui.open({ id: "p1", title: "交互" }); });
+  on("ui.press", function (e) {
+    seen.push("press:" + e.element + "@" + e.plugin + "/" + e.component + "/" + e.requestId + "/" + e.surface);
+  });
+  on("ui.input", function (e) { seen.push("input:" + e.element + "=" + e.value + "/" + e.kind); });
+  on("ui.select", function (e) {
+    seen.push("select:" + e.element + "=" + e.value + "/" + (e.kind === undefined ? "-" : e.kind));
+  });
+  on("ui.render", function () {
+    return __wave.h("Box", null,
+      __wave.h("Button", { key: "run", label: "跑", onPress: function () {
+        seen.push("callback:run");
+      }}),
+      __wave.h("Input", { key: "title", onSubmit: function () {
+        seen.push("callback:title");
+      }}),
+      __wave.h("Select", { key: "size", options: [{ value: "sm" }, { value: "lg" }], onSelect: function () {
+        seen.push("callback:size");
+      }}),
+      __wave.h("Text", null, seen.join(","))
+    );
+  });
+};
+`;
+    const { manager } = createManager({ [MOD_PATH]: interaction });
+    await manager.loadFromPlugins([
+      plugin([{ id: "todo:panel", path: MOD_PATH }]),
+    ]);
+    await manager.startSession();
+    // 先真画一帧：元素回调是在 `h()` 里登记进 mod 处理表的。
+    await pull(manager);
+
+    await manager.handlePanelEvent({
+      sessionId: "s1",
+      modId: "todo:panel",
+      paneId: "p1",
+      key: "run",
+      kind: "press",
+    });
+    await manager.handlePanelEvent({
+      sessionId: "s1",
+      modId: "todo:panel",
+      paneId: "p1",
+      key: "title",
+      kind: "input",
+      value: "周报",
+    });
+    await manager.handlePanelEvent({
+      sessionId: "s1",
+      modId: "todo:panel",
+      paneId: "p1",
+      key: "size",
+      kind: "select",
+      value: "lg",
+    });
+    // 同一条带上的控件：`component` 换成那个站点（`requestId` 是它的固定实例）。
+    await manager.handlePanelEvent({
+      sessionId: "s1",
+      modId: "todo:panel",
+      paneId: MOD_BAND_INSTANCE_ID,
+      key: "run",
+      kind: "press",
+    });
+
+    const frame = await pull(manager);
+    const text = JSON.stringify(frame.tree);
+    // 每条都是「钩子先、回调后」；钩子的字段集与 CC 的 `Ui*Argument` 同形
+    // （`plugin` / `element` / `component` / `requestId` / `surface`，`ui.input`
+    // 多 `kind` 与 `value`、`ui.select` 多 `value`）。
+    expect(text).toContain(
+      [
+        "press:run@todo/Pane/p1/desktop",
+        "callback:run",
+        "input:title=周报/submit",
+        "callback:title",
+        "select:size=lg/-",
+        "callback:size",
+        "press:run@todo/AbovePrompt/above-prompt/desktop",
+        "callback:run",
+      ].join(","),
+    );
+
+    await manager.dispose();
   });
 
   it("拉取失败时回上一帧成功的树 + 错误摘要（面板不报废）", async () => {

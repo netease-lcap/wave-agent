@@ -537,6 +537,52 @@ export class ChatProvider implements vscode.WebviewViewProvider {
           windowId,
         );
       },
+      // 插件 mod（spec ecosystem/plugin-mods.md「在 IDE 插件里画」）：消息名与
+      // 桌面端共用一套（`desktopMod*`，历史原因），webview 侧按同一条协议消费 ——
+      // 那边不区分是哪个宿主推来的，只认「这一帧属于哪条会话」。不带 `paneId`：
+      // 插件端的 webview 与这条会话一一对应，`postMessage` 已经按视图投递了。
+      onModPanelUpdate: (payload) => {
+        this.webviewManager.postMessage(
+          { command: "desktopModPanelUpdate", payload },
+          viewType,
+          windowId,
+        );
+      },
+      onModStatus: (payload) => {
+        this.webviewManager.postMessage(
+          { command: "desktopModStatus", payload },
+          viewType,
+          windowId,
+        );
+      },
+      onModToast: (payload) => {
+        this.webviewManager.postMessage(
+          { command: "desktopModToast", payload },
+          viewType,
+          windowId,
+        );
+      },
+      onModPromptFill: (payload) => {
+        this.webviewManager.postMessage(
+          { command: "desktopModPromptFill", payload },
+          viewType,
+          windowId,
+        );
+      },
+      onModPromptRead: (payload) => {
+        this.webviewManager.postMessage(
+          { command: "desktopModPromptRead", payload },
+          viewType,
+          windowId,
+        );
+      },
+      onModCopy: (payload) => {
+        this.webviewManager.postMessage(
+          { command: "desktopModCopy", payload },
+          viewType,
+          windowId,
+        );
+      },
     });
   }
 

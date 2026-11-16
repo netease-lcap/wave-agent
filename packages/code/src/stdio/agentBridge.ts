@@ -89,6 +89,8 @@ import {
   type ModPromptReadRequest,
   type ModCopyRequest,
   type ModNoticePayload,
+  type ModPaneLayout,
+  type ModSurfaceMetrics,
 } from "wave-agent-sdk";
 import {
   type ClientNotificationMethod,
@@ -526,16 +528,37 @@ export class AgentBridge {
         return agent.getModPanels();
       }
       // 树由 surface 拉取（spec「架构约束」）：每次请求都真跑一次 `ui.render`。
+      // `placement` / `isFullscreen` 是「这一端把它摆在哪」（spec「在 IDE 插件里
+      // 画」）：宿主原样转发，引擎把它放进 `e.props.placement` 与 `e.viewport`。
       case "modPanelRender": {
-        const request = p as { modId: string; paneId: string };
+        // 摆法与量到的版面事实都原样转交（spec「`ui.render` 的 `e.props`」）：
+        // surface 报什么，mod 的 `e.props` / `e.viewport` 就看见什么，中间不改写。
+        const request = p as unknown as {
+          modId: string;
+          paneId: string;
+        } & ModPaneLayout;
         return this.requireSession(sessionId).agent.renderModPanel(
           request.modId,
           request.paneId,
+          {
+            placement: request.placement,
+            isFullscreen: request.isFullscreen,
+            columns: request.columns,
+            rows: request.rows,
+            bodyColumns: request.bodyColumns,
+          },
         );
       }
       // 输入框上方那条带走同一条拉取链路（spec「状态带、状态行与提示」）。
-      case "modBandRender":
-        return this.requireSession(sessionId).agent.renderModBand();
+      case "modBandRender": {
+        const metrics = p as ModSurfaceMetrics;
+        return this.requireSession(sessionId).agent.renderModBand({
+          columns: metrics.columns,
+          rows: metrics.rows,
+          bodyColumns: metrics.bodyColumns,
+          isFullscreen: metrics.isFullscreen,
+        });
+      }
       // surface 对一次 `$.prompt.fill` 的回答（spec「把草稿填进输入框」）：
       // 只用来把在等回执的那个 mod 放行，不产生别的状态。
       case "modPromptFillResult": {

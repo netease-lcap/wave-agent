@@ -49,11 +49,16 @@ const STATUS_GAP = 8;
 const STATUS_REST_RESERVE = 40;
 /** 提示正文的字符上限：CC 的 toast 在 240 字符后补省略号（`du`）。 */
 const TOAST_TEXT_MAX = 240;
+/**
+ * IDE 聊天面板那两档上限（spec「在 IDE 插件里画」）：状态行 200 字符、toast
+ * 500 —— 都是 Claude Code 扩展里的数（`SAn` 与面板那条 toast）。桌面端沿用
+ * 240 / 不截断状态行，因为那两处各有自己的空间。
+ */
+const IDE_STATUS_TEXT_MAX = 200;
+export const IDE_TOAST_TEXT_MAX = 500;
 
-const clipToastText = (text: string): string =>
-  text.length <= TOAST_TEXT_MAX
-    ? text
-    : `${text.slice(0, TOAST_TEXT_MAX - 1)}…`;
+const clipText = (text: string, max: number): string =>
+  text.length <= max ? text : `${text.slice(0, max - 1)}…`;
 
 export interface ModBandListProps {
   bands: ModBandFrame[];
@@ -98,19 +103,31 @@ export function ModBandList({
   );
 }
 
-/** 输入框**下方**那一行常驻状态，每个插件一段 `plugin: text`。 */
+/**
+ * 常驻状态，每个插件一段 `plugin: text`。
+ *
+ * 两种形态：`inline`（桌面端，输入框下方那一行：右对齐、单行省略、放不下的收成
+ * `+N`）与 `stack`（IDE 聊天面板，收进输入框上方的栈里：每个插件一行、最多两行
+ * 正文、200 字符封顶 —— spec「在 IDE 插件里画」）。栈里不做 `+N` 收起：竖排本来
+ * 就有位置，藏起别人的状态行反而让人以为插件没跑。
+ */
 export function ModStatusLines({
   lines,
+  variant = "inline",
 }: {
   lines: ModStatusFrame[];
+  variant?: "inline" | "stack";
 }): React.ReactElement | null {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const measureRef = useRef<HTMLSpanElement | null>(null);
   // null = 还没量出宽度（首帧 / jsdom 没有布局）→ 全部显示。宁可不收，也不能在
   // 没有依据的情况下把行藏掉。
   const [shown, setShown] = useState<number | null>(null);
+  const stack = variant === "stack";
 
   useLayoutEffect(() => {
+    // 栈里不做 `+N`：全部显示，也就不需要量宽度。
+    if (stack) return;
     const container = containerRef.current;
     const measure = measureRef.current;
     if (!container || !measure) return;
@@ -142,18 +159,22 @@ export function ModStatusLines({
     const observer = new ResizeObserver(compute);
     observer.observe(container);
     return () => observer.disconnect();
-  }, [lines]);
+  }, [lines, stack]);
 
   if (lines.length === 0) return null;
 
-  const visibleCount =
-    shown === null ? lines.length : Math.min(shown, lines.length);
+  const visibleCount = stack
+    ? lines.length
+    : shown === null
+      ? lines.length
+      : Math.min(shown, lines.length);
   const hidden = lines.length - visibleCount;
 
   return (
     <div
       className="mod-status"
       data-testid="mod-status"
+      {...(stack ? { "data-variant": "stack" } : {})}
       // 有段被收起来才给每段 32ch 的天花板（CC 的 `isCapped` 口径）。
       {...(hidden > 0 ? { "data-capped": "" } : {})}
       ref={containerRef}
@@ -168,7 +189,9 @@ export function ModStatusLines({
           {/* 谁贴的要看得出：`plugin: text`（CC 的 `Hl` 就是这个拼法）。
               纯文本，不渲染 markdown —— mod 写不了 HTML，这里也不给它这个口子。 */}
           <span className="mod-status-plugin">{line.plugin}:</span>
-          <span className="mod-status-text">{line.text}</span>
+          <span className="mod-status-text">
+            {stack ? clipText(line.text, IDE_STATUS_TEXT_MAX) : line.text}
+          </span>
         </div>
       ))}
       {hidden > 0 && (
@@ -196,13 +219,21 @@ export function ModStatusLines({
   );
 }
 
-/** 右下角浮层里的短暂提示；到点由 ChatApp 从队列里摘掉，也可以手动关。 */
+/**
+ * 短暂提示；到点由 ChatApp 从队列里摘掉，也可以手动关。
+ *
+ * `maxChars` 是正文的字符上限：桌面端 240（右下角固定浮层，宽 360px），IDE 聊天
+ * 面板 500 —— 那里的提示在输入框上方的栈里、可用宽度更大（spec「在 IDE 插件里
+ * 画」）。
+ */
 export function ModToastStack({
   toasts,
   onDismiss,
+  maxChars = TOAST_TEXT_MAX,
 }: {
   toasts: ModToastFrame[];
   onDismiss?: (id: number) => void;
+  maxChars?: number;
 }): React.ReactElement | null {
   if (toasts.length === 0) return null;
   return (
@@ -217,7 +248,9 @@ export function ModToastStack({
           <InfoIcon className="mod-toast-icon" />
           <div className="mod-toast-body">
             <div className="mod-toast-title">{toast.plugin}</div>
-            <div className="mod-toast-text">{clipToastText(toast.text)}</div>
+            <div className="mod-toast-text">
+              {clipText(toast.text, maxChars)}
+            </div>
           </div>
           {onDismiss && (
             <button
