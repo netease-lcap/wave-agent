@@ -211,6 +211,49 @@ interface WorktreeInfo {
   hookBased?: boolean;
 }
 
+/**
+ * 「换文件夹继续」的搬迁 RPC（CLI 侧把转录搬到新目录并改写转录头）。
+ *
+ * 方法名先落在一个 `string` 常量上：这条 RPC 与它往 `RequestMethod` 联合里加的
+ * 那个成员是同一期在宿主侧（`packages/code/src/stdio/agentBridge.ts`）落的，本
+ * 分支的联合还没有它；联合合进来之后这层断言可以删掉，方法名不用改。
+ */
+const RELOCATE_SESSION_TRANSCRIPT_RPC: string = "relocateSessionTranscript";
+
+/** `relocateSessionTranscript` 的成功回执（CLI 侧 `RelocateSessionResult`）。 */
+interface RelocateSessionResult {
+  /** 真的搬了文件（`from` 与 `to` 不同且源存在）。 */
+  relocated: boolean;
+  /** 搬过去的文件数（正常 1；源不存在 0）。 */
+  copiedFiles: number;
+  /** 源转录的绝对路径（找不到时为 undefined）。 */
+  from?: string;
+  /** 目标转录的绝对路径。 */
+  to: string;
+  /** 转录头的 workdir 是否已改写成新目录。老转录没有 metadata 头时为 false —
+   *  调用方据此告警「历史可能无法在重启后保留」。 */
+  headerUpdated: boolean;
+}
+
+/** 三种**预期内**的拒绝（不是异常）：目标目录不在、会话还活着、转录找不到。 */
+interface RelocateSessionRefusal {
+  ok: false;
+  reason: "target_missing" | "busy" | "not_found";
+}
+
+/** 拒绝原因 → 人话（toast 文案里用，不把 `snake_case` 直接抛给用户）。 */
+const RELOCATE_REFUSAL_TEXT: Record<RelocateSessionRefusal["reason"], string> = {
+  target_missing: "目标文件夹不可用",
+  busy: "该会话仍在运行中，请稍后再试",
+  not_found: "找不到该会话的会话记录",
+};
+
+function relocateRefusalText(reason: RelocateSessionRefusal["reason"]): string {
+  // 写的是 `??`：wire 上的 reason 只是本端的一份约定，真收到没登记的值时宁可
+  // 把原文抛出来，也不要显示 "undefined"。
+  return RELOCATE_REFUSAL_TEXT[reason] ?? reason;
+}
+
 const execFileAsync = promisify(execFile);
 
 /** Upper bound on a deep-link clone before the child is killed. Generous: a
@@ -551,6 +594,8 @@ export class DesktopHost {
       running: boolean;
       waitingConfirmation: boolean;
       newCompleted: boolean;
+      /** 探测结果（只有本地会话才下结论）：目录已不存在，行上标「目录缺失」。 */
+      folderMissing?: boolean;
     }>;
   }> = [];
   /**
@@ -2173,6 +2218,12 @@ export class DesktopHost {
                 this.configStore
                   .getSessionIndex()
                   .find((e) => e.sessionId === sessionId)?.title || undefined,
+              ...(this.folderMissingFor(
+                this.hostForAgent(agentRef),
+                this.sessionRootOf(agentRef),
+              ) === true
+                ? { folderMissing: true }
+                : {}),
             } as SessionMetadata,
           });
           this.pushPanes();
@@ -4253,6 +4304,15 @@ export class DesktopHost {
                 .getSessionIndex()
                 .find((e) => e.sessionId === pending.sessionId)?.title ||
               undefined,
+            // 恢复落地前就要把「目录缺失」带给渲染端：点进一条目录没了的
+            // 会话时，扫光遮罩下面/落地之后都该是恢复提示，而不是一个能打字的
+            // 输入框（spec「会话目录缺失后的恢复」场景 3）。
+            ...(this.folderMissingFor(
+              this.hostState.get(paneId) ?? LOCAL_HOST,
+              pending.workdir,
+            ) === true
+              ? { folderMissing: true }
+              : {}),
           }
         : current?.sessionId
           ? {
@@ -4269,6 +4329,12 @@ export class DesktopHost {
                   .getSessionIndex()
                   .find((e) => e.sessionId === current.sessionId)?.title ||
                 undefined,
+              ...(this.folderMissingFor(
+                this.hostForAgent(current),
+                this.sessionRootOf(current),
+              ) === true
+                ? { folderMissing: true }
+                : {}),
             }
           : undefined,
       pendingConfirmations,
@@ -4321,6 +4387,23 @@ export class DesktopHost {
    * moves entries — so the keyboard cycle order always matches what the
    * sidebar shows.
    */
+  /**
+   * 会话目录是否已经不在了 —— **只有本机会话才下这个结论**。
+   *
+   * 远端主机探测不到（隧道断了 / daemon 没起来）与「目录确实不存在」在传输层是
+   * 两件事，而这里只能同步判一次；远端一律返回 `undefined`（= 不置字段），
+   * 免得把「主机不可达」渲染成「目录缺失」并给出恢复入口
+   * （desktop-sessions.md「会话目录缺失后的恢复（换文件夹继续）」场景 1 末句、
+   * desktop-remote.md「远端主机不可达时不得删除会话」）。
+   */
+  private folderMissingFor(
+    host: string,
+    dir: string | undefined,
+  ): boolean | undefined {
+    if (host !== LOCAL_HOST || !dir) return undefined;
+    return !fs.existsSync(dir);
+  }
+
   private refreshSessionTree(): void {
     const index = this.configStore.getSessionIndex();
     // Sessions on different hosts never share a group, even at the same path.
@@ -4357,6 +4440,9 @@ export class DesktopHost {
       workdir,
       sessions: sorted.map((s) => {
         const agent = this.agents.get(this.agentKey(s.host, s.sessionId));
+        // The directory this session actually lives in — the worktree path for a
+        // worktree session, not its grouping key.
+        const missing = this.folderMissingFor(host, s.cwd ?? s.workdir);
         return {
           sessionId: s.sessionId,
           title: s.title,
@@ -4370,6 +4456,8 @@ export class DesktopHost {
             ? agentsWithPendingConfirmation.has(agent)
             : false,
           newCompleted: agent ? this.newCompletedAgents.has(agent) : false,
+          // 只置 true：`false` 与「没探过（远端）」在渲染端同义，没必要多一个字段。
+          ...(missing === true ? { folderMissing: true } : {}),
         };
       }),
     }));
@@ -4591,6 +4679,14 @@ export class DesktopHost {
           lastActiveAt: new Date(),
           latestTotalTokens: agent.latestTotalTokens,
           customTitle: title,
+          // 标题更新不能顺带把「目录缺失」抹掉：渲染端按这个字段决定要不要显示
+          // 恢复提示，缺字段等于「目录正常」。
+          ...(this.folderMissingFor(
+            this.hostForAgent(agent),
+            this.sessionRootOf(agent),
+          ) === true
+            ? { folderMissing: true }
+            : {}),
         } as SessionMetadata,
       });
     }
@@ -4712,15 +4808,192 @@ export class DesktopHost {
 
     const worktree = entry?.worktree;
     if (worktree) {
-      void destroyPromise.then(() =>
-        this.removeWorktree(host, {
-          path: worktree.path,
-          branch: worktree.branch,
-          repoRoot: worktree.repoRoot,
-          hookBased: worktree.hookBased,
-        }),
-      );
+      // `git worktree remove` on a directory that is already gone fails with
+      // "not a working tree" and leaves nothing to clean — the common case
+      // since「换文件夹继续」: the user deletes a worktree session whose
+      // directory was removed by hand (spec desktop-sessions.md 边界情况
+      // 「删除 worktree 会话时 worktree 已被外部删除：git 清理命令失败不得
+      // 阻塞删除流程」). Probe first and skip the doomed cleanup entirely; an
+      // unreachable host is not a verdict about the directory, so it keeps the
+      // attempt (removeWorktree reports the failure).
+      let worktreeExists = true;
+      try {
+        worktreeExists = await this.pathExistsOn(host, worktree.path);
+      } catch (error) {
+        if (!(error instanceof RemoteHostUnreachableError)) throw error;
+        console.warn(
+          `[DesktopHost] 删除会话时无法连接主机 ${host}，仍尝试清理 worktree ${worktree.path}`,
+        );
+      }
+      if (worktreeExists) {
+        void destroyPromise.then(() =>
+          this.removeWorktree(host, {
+            path: worktree.path,
+            branch: worktree.branch,
+            repoRoot: worktree.repoRoot,
+            hookBased: worktree.hookBased,
+          }),
+        );
+      }
     }
+  }
+
+  /**
+   * 「换文件夹继续」（spec desktop-sessions.md「会话目录缺失后的恢复（换文件夹
+   * 继续）」场景 4/5/6）：把一条本地会话的转录搬进新目录、把它重新锚定到那儿，
+   * 再在新目录里重新拉起这条会话。
+   *
+   * 顺序是有意的：先拆活 agent（CLI 的 `busy` 拒绝判的就是它还握着旧路径、会继续
+   * 往旧转录追加），再让 CLI 搬文件，**最后**才动索引并 respawn。任何一步失败都
+   * 停在那儿 —— 索引不改、不 respawn，会话仍是那条能进入、历史读得到的缺目录会话。
+   */
+  private async handleRelocateSession(
+    sessionId: string,
+    workdir?: string,
+  ): Promise<void> {
+    if (!this.configStore || !sessionId) return;
+    const entry = this.configStore
+      .getSessionIndex()
+      .find((e) => e.sessionId === sessionId);
+    if (!entry) {
+      this.showToast({ message: "找不到该会话", type: "error" });
+      return;
+    }
+    const host = entry.host;
+    // 会话文件所在的目录：worktree 会话在 worktree 路径（cwd）下，不是分组用的
+    // 仓库根（workdir）。
+    const fromDir = entry.cwd ?? entry.worktree?.path ?? entry.workdir;
+    if (host !== LOCAL_HOST) {
+      // 本期范围：远端会话的目录缺失检测与恢复都不做（spec 边界情况如实记为
+      // 限制）—— 给一条明确的拒绝，别让按钮静默失败。
+      this.showToast({ message: "远端会话暂不支持更换目录", type: "error" });
+      return;
+    }
+
+    let newDir = workdir;
+    if (!newDir) {
+      if (!this.mainWindow) return;
+      const picked = await dialog.showOpenDialog(this.mainWindow, {
+        title: "选择新的工作目录",
+        properties: ["openDirectory", "createDirectory"],
+      });
+      // 取消是用户改主意，不是失败：不提示、不动任何状态。
+      if (picked.canceled || !picked.filePaths[0]) return;
+      newDir = picked.filePaths[0];
+    }
+    let isDirectory = false;
+    try {
+      isDirectory = (await fs.promises.stat(newDir)).isDirectory();
+    } catch {
+      isDirectory = false;
+    }
+    if (!isDirectory) {
+      this.showToast({
+        message: `目标文件夹不存在：${newDir}`,
+        type: "error",
+      });
+      return;
+    }
+    // 已经就是这个目录：没有要搬的东西，也不算失败。
+    if (path.resolve(newDir) === path.resolve(fromDir)) return;
+
+    // 活 agent 必须先拆掉——CLI 的 `busy` 拒绝判的就是它。销毁路径与
+    // handleDeleteSession 一致（池子 + 工作树记录 + 终端），但**不删索引、不关
+    // pane**：这条会话马上要在新目录里被重新拉起来。
+    const live = this.agents.get(this.agentKey(host, sessionId));
+    const paneIds = this.panes
+      .filter(
+        (p) =>
+          p.agent !== null &&
+          (p.agent === live || p.agent.sessionId === sessionId),
+      )
+      .map((p) => p.paneId);
+    const pid = paneIds[0] ?? this.focusedPaneId;
+    // 还有一次恢复在飞的话，它指向旧目录、落地后会把会话按旧目录重新登记回来 ——
+    // 清掉，让下面这次 respawn 独占这个分屏。
+    if (this.pendingRestores.get(pid)?.sessionId === sessionId) {
+      this.pendingRestores.delete(pid);
+    }
+    if (live) {
+      this.agents.delete(this.agentKey(host, sessionId));
+      this.agentHosts.delete(live);
+      this.agentWorktreeInfo.delete(live);
+      for (const paneId of paneIds) {
+        // 终端跟着会话走：新绑定的会话组会自己重开一个（同 handleDeleteSession）。
+        this.terminalManager.killForPane(paneId);
+        this.bindAgentToPane(paneId, null);
+      }
+      await this.destroyAgent(live, `relocate session ${sessionId}`);
+    }
+    // 失败时把刚才拆掉的活会话按原目录还回去：会话必须仍是「能进入、历史读得到」
+    // 的缺目录态（spec 场景 6），而不是被这次失败的搬迁留在空分屏里。
+    const putBackLiveSession = (): void => {
+      if (!live) return;
+      this.startPaneRestore(pid, { sessionId, workdir: fromDir, host });
+      void this.runPaneRestore(pid, { sessionId, workdir: fromDir, host, entry });
+    };
+
+    let reply: RelocateSessionResult | RelocateSessionRefusal;
+    try {
+      reply = (await this.utilityClientFor(host).request(
+        RELOCATE_SESSION_TRANSCRIPT_RPC as RequestMethod,
+        { sessionId, fromWorkdir: fromDir, toWorkdir: newDir },
+      )) as RelocateSessionResult | RelocateSessionRefusal;
+    } catch (error) {
+      putBackLiveSession();
+      this.showToast({
+        message: `更换目录失败：${error instanceof Error ? error.message : String(error)}`,
+        type: "error",
+      });
+      return;
+    }
+    // 判别口径：成功回执**没有** `ok` 字段，只有拒绝回执才带 `ok: false`
+    // （别写成 `ok !== true`，那会把每一次成功都当拒绝）。
+    if ("ok" in reply && reply.ok === false) {
+      putBackLiveSession();
+      this.showToast({
+        message: `更换目录失败：${relocateRefusalText(reply.reason)}`,
+        type: "error",
+      });
+      return;
+    }
+    const result = reply as RelocateSessionResult;
+
+    // 索引跟着搬：分组键（workdir）与实际工作目录（cwd）都换成新目录。worktree
+    // 记录作废——那棵树已经不在原来那个仓库里了，留着只会让「删除会话」去清理
+    // 一个不存在的 worktree。
+    const moved: SessionIndexEntry = {
+      ...entry,
+      workdir: newDir,
+      cwd: newDir,
+      worktree: undefined,
+    };
+    this.configStore.upsertSession(moved);
+
+    // 在新目录里重新拉起这条会话，回到它原来的分屏：startPaneRestore 先让界面
+    // 切到目标会话（扫光遮罩），runPaneRestore 在后台 spawn + restore。
+    this.startPaneRestore(pid, { sessionId, workdir: newDir, host });
+    void this.runPaneRestore(pid, {
+      sessionId,
+      workdir: newDir,
+      host,
+      entry: moved,
+    });
+    this.refreshSessionTree();
+
+    if (result.headerUpdated === false) {
+      // 老转录没有 metadata 头：「重启后靠头里的 workdir 选目录」那步会退回调用
+      // 方目录，历史不一定还找得到（spec 场景 5 要求的告警）。
+      this.showToast({
+        message: "会话已在新目录，但历史可能无法在重启后保留。",
+        type: "info",
+      });
+      return;
+    }
+    this.showToast({
+      message: `会话已移到 ${newDir}，已复制 ${result.copiedFiles} 个文件`,
+      type: "info",
+    });
   }
 
   /**
@@ -5236,6 +5509,16 @@ export class DesktopHost {
       // -- sessions -------------------------------------------------------
       case "desktopDeleteSession":
         await this.handleDeleteSession(msg.sessionId as string);
+        break;
+
+      // 「换文件夹继续」：会话所属目录没了之后，把它搬到用户新选的文件夹继续
+      // （spec desktop-sessions.md「会话目录缺失后的恢复（换文件夹继续）」）。
+      // 不传 workdir 时宿主自己弹目录选择框。
+      case "desktopRelocateSession":
+        await this.handleRelocateSession(
+          msg.sessionId as string,
+          msg.workdir as string | undefined,
+        );
         break;
 
       case "renameSession":
@@ -7393,7 +7676,13 @@ export class DesktopHost {
       const result = (await this.utilityClientFor(host).request(
         "listAllSessions",
       )) as { sessions?: SessionMetadata[] };
-      const sessions = result.sessions ?? [];
+      const sessions = (result.sessions ?? []).map((session) => {
+        // `/resume` 行也标「目录不存在」：与侧栏用同一个字段、同一条判据
+        // （只有本机会话才探，远端不置）。行本身必须保留，点它照样进去
+        // （desktop-sessions.md「会话目录缺失后的恢复」场景 1/2）。
+        const missing = this.folderMissingFor(host, session.workdir);
+        return missing === true ? { ...session, folderMissing: true } : session;
+      });
       this.postMessage({
         command: "desktopResumeSessions",
         paneId: pid,
@@ -7423,9 +7712,11 @@ export class DesktopHost {
    * session tree, the session may have no index entry at all, so the host comes
    * from the conversation's pane and the workdir from the session's own header.
    *
-   * The directory is probed up front: a missing folder means the session cannot
-   * run, and this path must say so instead of bouncing the user through an
-   * optimistic pane switch (spec「跨客户端会话来源」场景 6). Registration into
+   * The directory is probed up front. A missing folder used to end the switch
+   * with a toast; since「换文件夹继续」 a **local** session still enters — its
+   * transcript is fine, the pane shows the recovery prompt instead of the
+   * composer (desktop-sessions.md「会话目录缺失后的恢复」场景 2/3). Remote
+   * sessions keep the old verdict (this release's scope). Registration into
    * the session index happens in runPaneRestore (ensureSessionRegistered) once
    * the transcript is actually restored.
    */
@@ -7453,7 +7744,7 @@ export class DesktopHost {
       });
       return;
     }
-    if (!exists) {
+    if (!exists && host !== LOCAL_HOST) {
       this.showToast({
         message: `该会话的目录已不存在：${workdir}`,
         type: "error",
@@ -7546,7 +7837,12 @@ export class DesktopHost {
         });
         return;
       }
-      if (!exists) {
+      // 目录没了：**本机会话照样进去**（「换文件夹继续」，desktop-sessions.md
+      // 「会话目录缺失后的恢复」场景 2/3）——转录还在 `~/.wave/projects` 下，
+      // 历史读得到，界面把输入框换成恢复提示，让用户换个文件夹继续。索引条目、
+      // 草稿、最近目录一律不动，也不取消这次 restore。远端会话保持旧行为（本期
+      // 范围外）：取消 restore、清索引、提示删除。
+      if (!exists && host !== LOCAL_HOST) {
         // Directory gone — cancel the still-in-flight restore so the overlay
         // drops and the previous agent falls back, then auto-clear the stale
         // index entry (worktree or not, per FR-020 stale-directory behavior).

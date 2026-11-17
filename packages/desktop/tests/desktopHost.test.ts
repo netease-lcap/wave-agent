@@ -146,6 +146,19 @@ const h = vi.hoisted(() => ({
       case "forgetRecentWorkdir":
         if (h.forgetRecentWorkdirError) throw h.forgetRecentWorkdirError;
         return null;
+      // 「换文件夹继续」：CLI 把转录搬进新目录并改写转录头。默认回执是成功形状
+      // （没有 `ok` 字段——只有拒绝回执才带 `ok: false`）。
+      case "relocateSessionTranscript":
+        if (h.relocateError) throw h.relocateError;
+        return (
+          h.relocateResult ?? {
+            relocated: true,
+            copiedFiles: 1,
+            from: (params as { fromWorkdir?: string } | undefined)?.fromWorkdir,
+            to: (params as { toWorkdir?: string } | undefined)?.toWorkdir ?? "",
+            headerUpdated: true,
+          }
+        );
       default:
         return {};
     }
@@ -201,6 +214,11 @@ const h = vi.hoisted(() => ({
   // When set, the getWorkspaceDiff RPC rejects (host unreachable, daemon gone,
   // workdir not a repo) — the panel must fall back to the non-repo placeholder.
   workspaceDiffError: null as Error | null,
+  // relocateSessionTranscript 的回执（换文件夹继续）。null = 成功形状的默认回执；
+  // 设成 `{ ok: false, reason }` 就模拟 CLI 的预期内拒绝。
+  relocateResult: null as unknown,
+  // When set, the relocateSessionTranscript RPC rejects (transport failure).
+  relocateError: null as Error | null,
   // When set, the removeWorktree RPC awaits this promise (simulates a slow
   // multi-second git worktree remove in the shared stdio process).
   removeWorktreeGate: null as Promise<void> | null,
@@ -928,6 +946,16 @@ function lastAgent() {
   };
 }
 
+/** 每次 spawn 时 `initialize` 拿到的 workdir（跨所有 mock agent，按时间序）。 */
+function initializedWorkdirs(): string[] {
+  return h.agentInstances.flatMap((agent) => {
+    const initialize = agent.initialize as ReturnType<typeof vi.fn>;
+    return initialize.mock.calls.map(
+      (call: unknown[]) => (call[0] as { workdir?: string }).workdir ?? "",
+    );
+  });
+}
+
 /** Mirror what the real StdioAgent does on sessionIdChange: set the field, then fire. */
 function fireSessionId(agent: ReturnType<typeof lastAgent>, sessionId: string) {
   agent.sessionId = sessionId;
@@ -1019,6 +1047,8 @@ beforeEach(() => {
   h.dirListRelease = null;
   h.workspaceDiffResult = null;
   h.workspaceDiffError = null;
+  h.relocateResult = null;
+  h.relocateError = null;
   h.removeWorktreeGate = null;
   h.removeWorktreeError = null;
   h.worktreeChangesResult = null;
@@ -6408,7 +6438,7 @@ describe("session tree", () => {
     });
   });
 
-  it("desktopSelectSession with a gone directory drops the index entry and the recent", async () => {
+  it("desktopSelectSession with a gone directory still enters the session", async () => {
     const { host, store, sent } = await readyHost();
     store.upsertSession(makeIndexEntry("sess-z", "/gone"));
 
@@ -6418,26 +6448,106 @@ describe("session tree", () => {
       sessionId: "sess-z",
     });
 
-    // The probe + cleanup run in the background behind the optimistic switch.
+    // 「换文件夹继续」：目录没了不等于会话没了 —— 转录还在
+    // `~/.wave/projects/<…>/<sessionId>.jsonl` 里，历史读得到，所以本地会话照样
+    // spawn + restore，界面把输入框换成恢复提示（desktop-sessions.md「会话目录
+    // 缺失后的恢复（换文件夹继续）」场景 2/3）。
     await vi.waitFor(() => {
-      expect(
-        store.getSessionIndex().some((e) => e.sessionId === "sess-z"),
-      ).toBe(false);
-      expect(store.getRecentWorkdirs()).not.toEqual(
-        expect.arrayContaining([{ host: "local", path: "/gone" }]),
+      expect(lastAgent().initialize).toHaveBeenCalledWith(
+        expect.objectContaining({ workdir: "/gone" }),
       );
-      expect(lastAgent().restoreSession).not.toHaveBeenCalled();
-      expect(
-        shownToasts().some((t) =>
-          t.message.includes("已从最近列表与会话列表移除"),
-        ),
-      ).toBe(true);
-      expect(
-        sent("appendMessage").filter((m) =>
-          JSON.stringify(m).includes("已从最近列表与会话列表移除"),
-        ),
-      ).toHaveLength(0);
+      expect(lastAgent().restoreSession).toHaveBeenCalledWith("sess-z");
     });
+    // 索引条目与最近目录一律不动，也不再弹「已从会话列表移除」这类删除提示。
+    expect(
+      store.getSessionIndex().some((e) => e.sessionId === "sess-z"),
+    ).toBe(true);
+    expect(store.getRecentWorkdirs()).toEqual(
+      expect.arrayContaining([{ host: "local", path: "/work/a" }]),
+    );
+    expect(
+      shownToasts().some((t) => t.message.includes("已从最近列表与会话列表移除")),
+    ).toBe(false);
+    // 扫光遮罩期间的这一帧就要带上「目录缺失」：遮罩下面/落地之后都该是恢复
+    // 提示，而不是一个能打字的输入框。
+    expect(
+      sent("setInitialState").filter((s) => s?.session?.id === "sess-z")[0],
+    ).toMatchObject({
+      isRestoring: true,
+      session: { folderMissing: true },
+    });
+  });
+
+  it("desktopSelectSession keeps folderMissing on session/title updates (local only)", async () => {
+    const { host, store, sent } = await readyHost();
+    store.upsertSession(makeIndexEntry("sess-live", "/gone"));
+
+    await host.handleWebviewMessage({
+      command: "desktopSelectSession",
+      workdir: "/gone",
+      sessionId: "sess-live",
+    });
+    await vi.waitFor(() => {
+      expect(lastAgent().restoreSession).toHaveBeenCalledWith("sess-live");
+    });
+
+    // sessionIdChange 推的当前会话也要带标记（宿主只在这个字段上表达侧栏那张
+    // 「目录缺失」的恢复提示，缺字段等于「目录正常」）。
+    fireSessionId(lastAgent(), "sess-live");
+    expect(sent("updateCurrentSession").at(-1)?.session).toMatchObject({
+      id: "sess-live",
+      folderMissing: true,
+    });
+
+    // 改名只换标题：不能顺手把「目录缺失」抹掉，否则恢复入口会在改名后消失。
+    await host.handleWebviewMessage({
+      command: "renameSession",
+      sessionId: "sess-live",
+      title: "新标题",
+      requestId: "req-rename",
+    });
+    expect(sent("updateCurrentSession").at(-1)?.session).toMatchObject({
+      id: "sess-live",
+      customTitle: "新标题",
+      folderMissing: true,
+    });
+  });
+
+  it("marks a session whose directory is gone as folderMissing (local only)", async () => {
+    const { host, store, sent } = createHost();
+    h.existingPaths.add("/work/a");
+    store.upsertSession(makeIndexEntry("sess-ok", "/work/a", { createdAt: 1 }));
+    store.upsertSession(
+      makeIndexEntry("sess-gone", "/gone", { createdAt: 2 }),
+    );
+    // 远端目录在这里无从探测（探测是异步 RPC，且「连不上」不等于「目录没了」），
+    // 所以远端会话一律不置字段 —— 条目照样留在树上。
+    store.upsertSession(
+      makeIndexEntry("sess-remote", "/work/remote-x", {
+        host: "ssh.example",
+        createdAt: 3,
+      }),
+    );
+
+    await host.handleWebviewMessage({ command: "desktopReady" });
+    await host.handleWebviewMessage({ command: "webviewReady" });
+
+    await vi.waitFor(() => {
+      expect(sent("desktopSessionTree").length).toBeGreaterThanOrEqual(1);
+    });
+    const sessions = (sent("desktopSessionTree").at(-1)?.groups ?? []).flatMap(
+      (group) => group.sessions,
+    );
+    expect(sessions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ sessionId: "sess-gone", folderMissing: true }),
+        expect.objectContaining({ sessionId: "sess-ok" }),
+        expect.objectContaining({ sessionId: "sess-remote" }),
+      ]),
+    );
+    const byId = (id: string) => sessions.find((s) => s.sessionId === id);
+    expect(byId("sess-ok")).not.toHaveProperty("folderMissing");
+    expect(byId("sess-remote")).not.toHaveProperty("folderMissing");
   });
 
   it("refreshes the tree when a turn ends (touchSessionInIndex)", async () => {
@@ -7201,6 +7311,10 @@ describe("/resume disk sessions", () => {
 
   it("lists every project on disk (sessions the app never created) and replies with them", async () => {
     const { host, sent } = await readyHost();
+    // Both projects still exist on this machine — nothing gets marked as
+    // missing (that flag is covered in the case below).
+    h.existingPaths.add("/other/project");
+    h.existingPaths.add("/another/project");
     h.allSessions = [
       diskSession("cli-1", "/other/project"),
       diskSession("cli-2", "/another/project"),
@@ -7389,9 +7503,8 @@ describe("/resume disk sessions", () => {
     });
   });
 
-  it("refuses a session whose directory is gone (no switch, no index change)", async () => {
+  it("resumes a local session whose directory is gone (recovery prompt)", async () => {
     const { host, store } = await readyHost();
-    const before = h.agentInstances.length;
 
     await host.handleWebviewMessage({
       command: "desktopResumeSession",
@@ -7399,15 +7512,94 @@ describe("/resume disk sessions", () => {
       workdir: "/gone",
     });
 
+    // 本地会话的目录没了照样进（「换文件夹继续」）：转录还在磁盘上，界面给的是
+    // 恢复提示而不是一条拒绝（desktop-sessions.md「会话目录缺失后的恢复」场景
+    // 2/3）。远端保持旧行为，见下一个用例。
+    await vi.waitFor(() => {
+      expect(lastAgent().initialize).toHaveBeenCalledWith(
+        expect.objectContaining({ workdir: "/gone" }),
+      );
+      expect(lastAgent().restoreSession).toHaveBeenCalledWith("cli-1");
+    });
+    expect(
+      shownToasts().some((t) => t.message.includes("该会话的目录已不存在")),
+    ).toBe(false);
+    // 恢复落地后会登记进索引（缺目录不影响登记，恢复入口靠它留下来）。
+    await vi.waitFor(() => {
+      expect(
+        store.getSessionIndex().some((e) => e.sessionId === "cli-1"),
+      ).toBe(true);
+    });
+  });
+
+  it("refuses a remote session whose directory is gone (this release's scope)", async () => {
+    seedSshConfig("Host prod\n  HostName 10.0.0.1\n");
+    const { host, sent } = await readyHost();
+    await host.handleWebviewMessage({
+      command: "desktopSelectHost",
+      host: "prod",
+    });
+    const before = h.agentInstances.length;
+    // The remote probe says the directory is gone (a transport failure is a
+    // different verdict — the next test).
+    h.dirListResults.push(new Error("目录不存在或不可读：/work/remote-tmp"));
+
+    await host.handleWebviewMessage({
+      command: "desktopResumeSession",
+      sessionId: "cli-1",
+      workdir: "/work/remote-tmp",
+    });
+
     expect(
       shownToasts().some((t) =>
-        t.message.includes("该会话的目录已不存在：/gone"),
+        t.message.includes("该会话的目录已不存在：/work/remote-tmp"),
       ),
     ).toBe(true);
     expect(h.agentInstances).toHaveLength(before);
-    expect(store.getSessionIndex().some((e) => e.sessionId === "cli-1")).toBe(
-      false,
-    );
+    expect(
+      sent("setInitialState").some((s) => s?.session?.id === "cli-1"),
+    ).toBe(false);
+  });
+
+  it("marks resume rows whose directory is gone (local only)", async () => {
+    const { host, sent } = await readyHost();
+    h.allSessions = [diskSession("cli-1", "/gone"), diskSession("cli-2", "/work/a")];
+
+    await host.handleWebviewMessage({
+      command: "desktopListResumeSessions",
+      requestId: "req-missing",
+    });
+
+    // 行本身保留（点它照样能进，进的是恢复提示），只是多一个「目录缺失」标记，
+    // 让选择器能把恢复入口和正常会话区分开（desktop-sessions.md「会话目录缺失后
+    // 的恢复」场景 1）。
+    const rows = sent("desktopResumeSessions").at(-1)?.sessions ?? [];
+    expect(rows).toEqual([
+      expect.objectContaining({ id: "cli-1", folderMissing: true }),
+      expect.objectContaining({ id: "cli-2" }),
+    ]);
+    expect(rows[1]).not.toHaveProperty("folderMissing");
+  });
+
+  it("does not mark resume rows on a remote host", async () => {
+    // 远端的同一个不存在的路径也不能标：那边只能探测一次 RPC，而「探测不到」不等于
+    // 「目录没了」（desktop-remote.md「远端主机不可达时不得删除会话」）。
+    seedSshConfig("Host prod\n  HostName 10.0.0.1\n");
+    const { host, sent } = await readyHost();
+    await host.handleWebviewMessage({
+      command: "desktopSelectHost",
+      host: "prod",
+    });
+    h.allSessions = [diskSession("cli-1", "/gone"), diskSession("cli-2", "/work/a")];
+
+    await host.handleWebviewMessage({
+      command: "desktopListResumeSessions",
+      requestId: "req-remote",
+    });
+
+    const rows = sent("desktopResumeSessions").at(-1)?.sessions ?? [];
+    expect(rows.map((s) => s.id)).toEqual(["cli-1", "cli-2"]);
+    expect(rows.some((s) => "folderMissing" in s)).toBe(false);
   });
 
   it("refuses the switch when the conversation's host is unreachable", async () => {
@@ -7688,7 +7880,7 @@ describe("session switch shortcut (FR-038)", () => {
     });
   });
 
-  it("drops a stale-directory entry encountered while cycling (same as clicking it)", async () => {
+  it("enters a stale-directory entry encountered while cycling (same as clicking it)", async () => {
     const ctx = createHost();
     ctx.store.addRecentWorkdir({ host: "local", path: "/work/a" });
     h.existingPaths.add("/work/a");
@@ -7696,32 +7888,24 @@ describe("session switch shortcut (FR-038)", () => {
     ctx.store.upsertSession(entry("s2", "/gone", 3000)); // /gone leads the tree
     await ctx.host.handleWebviewMessage({ command: "desktopReady" });
     await ctx.host.handleWebviewMessage({ command: "webviewReady" });
-    // The fresh-launch auto new-session agent is bound to the pane at /work/a;
-    // cycling must drop the stale /gone entry WITHOUT spawning any restore agent.
-    const autoAgents = h.agentInstances.length;
-    expect(autoAgents).toBe(1);
+    // The fresh-launch auto new-session agent is bound to the pane at /work/a.
+    expect(h.agentInstances).toHaveLength(1);
 
     await ctx.host.activateAdjacentSession(1);
-    // 目录探测在遮罩后面异步跑（本地也是 existsSync 之后的一个微任务），断言要
-    // 等它落地，不能赌微任务顺序。
+    // 「换文件夹继续」：循环到一条目录没了的会话与点击它同义 —— 照样进去（在新
+    // 目录里继续），索引条目留着当恢复入口，而不是把会话从列表里删掉。
     await vi.waitFor(() => {
-      expect(
-        ctx.store.getSessionIndex().some((e) => e.sessionId === "s2"),
-      ).toBe(false);
+      expect(lastAgent().initialize).toHaveBeenCalledWith(
+        expect.objectContaining({ workdir: "/gone" }),
+      );
+      expect(lastAgent().restoreSession).toHaveBeenCalledWith("s2");
     });
-    expect(h.agentInstances).toHaveLength(autoAgents);
     expect(
-      shownToasts().some((t) =>
-        t.message.includes("已从最近列表与会话列表移除"),
-      ),
+      ctx.store.getSessionIndex().some((e) => e.sessionId === "s2"),
     ).toBe(true);
     expect(
-      ctx
-        .sent("appendMessage")
-        .filter((m) =>
-          JSON.stringify(m).includes("已从最近列表与会话列表移除"),
-        ),
-    ).toHaveLength(0);
+      shownToasts().some((t) => t.message.includes("已从最近列表与会话列表移除")),
+    ).toBe(false);
   });
 });
 
@@ -8159,8 +8343,8 @@ describe("worktree flow", () => {
     );
   });
 
-  it("desktopSelectSession with a gone worktree drops the index entry only", async () => {
-    const { host, store, sent } = await readyHost();
+  it("desktopSelectSession with a gone worktree still enters the session", async () => {
+    const { host, store } = await readyHost();
     store.upsertSession({
       sessionId: "sess-wt",
       title: "wt",
@@ -8183,25 +8367,25 @@ describe("worktree flow", () => {
       sessionId: "sess-wt",
     });
 
-    // The probe + cleanup run in the background behind the optimistic switch.
+    // 「换文件夹继续」同样适用于外部删掉的 worktree：会话照样进去（在新目录里
+    // 继续），索引条目保留 —— 这是恢复入口的前提（desktop-sessions.md
+    //「会话目录缺失后的恢复」场景 1/2）。
     await vi.waitFor(() => {
-      expect(
-        store.getSessionIndex().some((e) => e.sessionId === "sess-wt"),
-      ).toBe(false);
-      // Repo root stays in recents — only the stale index entry is dropped.
-      expect(store.getRecentWorkdirs()).toEqual(
-        expect.arrayContaining([{ host: "local", path: "/work/a" }]),
+      expect(lastAgent().initialize).toHaveBeenCalledWith(
+        expect.objectContaining({ workdir: worktree.path }),
       );
-      expect(lastAgent().restoreSession).not.toHaveBeenCalled();
-      expect(
-        shownToasts().some((t) => t.message.includes("worktree 目录不存在")),
-      ).toBe(true);
-      expect(
-        sent("appendMessage").filter((m) =>
-          JSON.stringify(m).includes("worktree 目录不存在"),
-        ),
-      ).toHaveLength(0);
+      expect(lastAgent().restoreSession).toHaveBeenCalledWith("sess-wt");
     });
+    expect(
+      store.getSessionIndex().some((e) => e.sessionId === "sess-wt"),
+    ).toBe(true);
+    // Repo root stays in recents, and nothing claims the session was removed.
+    expect(store.getRecentWorkdirs()).toEqual(
+      expect.arrayContaining([{ host: "local", path: "/work/a" }]),
+    );
+    expect(
+      shownToasts().some((t) => t.message.includes("worktree 目录不存在")),
+    ).toBe(false);
   });
 
   it("desktopGetWorktreeChanges answers with the worktree's loss summary", async () => {
@@ -8299,6 +8483,9 @@ describe("worktree flow", () => {
 
   it("desktopDeleteSession on a worktree session requests removeWorktree", async () => {
     const { host, store } = await readyHost();
+    // The worktree still exists — the cleanup is scheduled (a missing one is
+    // skipped, see below).
+    h.existingPaths.add(worktree.path);
     store.upsertSession({
       sessionId: "sess-wt",
       title: "wt",
@@ -8332,9 +8519,48 @@ describe("worktree flow", () => {
     });
   });
 
+  it("desktopDeleteSession skips worktree cleanup when the directory is already gone", async () => {
+    const { host, store } = await readyHost();
+    store.upsertSession({
+      sessionId: "sess-wt-gone",
+      title: "wt",
+      workdir: worktree.repoRoot,
+      cwd: worktree.path,
+      createdAt: Date.now(),
+      lastActiveAt: Date.now(),
+      worktree: {
+        path: worktree.path,
+        branch: worktree.branch,
+        baseBranch: "main",
+        repoRoot: worktree.repoRoot,
+      },
+    });
+    // 目录已被外部删掉（「换文件夹继续」之后最常见的一种会话形态）。
+
+    await host.handleWebviewMessage({
+      command: "desktopDeleteSession",
+      sessionId: "sess-wt-gone",
+    });
+
+    // 删除本身照常完成（索引移除、分屏重置），但不再发一条注定失败的
+    // `git worktree remove`（desktop-sessions.md 边界情况「删除 worktree 会话时
+    // worktree 已被外部删除：git 清理命令失败不得阻塞删除流程」）。
+    expect(
+      store.getSessionIndex().some((e) => e.sessionId === "sess-wt-gone"),
+    ).toBe(false);
+    expect(h.clientRequests.some((r) => r.method === "removeWorktree")).toBe(
+      false,
+    );
+    expect(consoleSpies[0]).not.toHaveBeenCalled();
+    expect(consoleSpies[1]).not.toHaveBeenCalled();
+  });
+
   it("logs a failed removeWorktree request instead of swallowing it", async () => {
     const { host, store } = await readyHost();
     h.removeWorktreeError = new Error("Host unreachable");
+    // The directory is still there (only the RPC fails), so the cleanup is
+    // attempted and its failure has to be logged.
+    h.existingPaths.add(worktree.path);
     store.upsertSession({
       sessionId: "sess-wt-fail",
       title: "wt",
@@ -8368,6 +8594,7 @@ describe("worktree flow", () => {
 
   it("desktopDeleteSession refreshes the tree without waiting for worktree removal", async () => {
     const { host, store, sent } = await readyHost();
+    h.existingPaths.add(worktree.path);
     store.upsertSession({
       sessionId: "sess-wt-slow",
       title: "wt",
@@ -8506,6 +8733,367 @@ describe("worktree flow", () => {
 
     expect(store.getSessionIndex().some((e) => e.sessionId === "live-wt")).toBe(
       false,
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 换文件夹继续 (desktop-sessions.md「会话目录缺失后的恢复（换文件夹继续）」)
+// ---------------------------------------------------------------------------
+
+describe("relocate session (换文件夹继续)", () => {
+  type OpenResult = Awaited<ReturnType<typeof dialog.showOpenDialog>>;
+
+  const indexEntry = (
+    sessionId: string,
+    workdir: string,
+    overrides: Record<string, unknown> = {},
+  ) => ({
+    sessionId,
+    title: `Session ${sessionId}`,
+    workdir,
+    cwd: workdir,
+    createdAt: 1,
+    lastActiveAt: 2,
+    ...overrides,
+  });
+
+  const relocateRequests = () =>
+    h.clientRequests.filter((r) => r.method === "relocateSessionTranscript");
+
+  it("moves the transcript, re-anchors the index and respawns in the new folder", async () => {
+    const { host, store, sent } = await readyHost();
+    store.upsertSession(indexEntry("sess-move", "/gone"));
+    h.existingPaths.add("/work/new");
+    h.dirPaths.add("/work/new");
+
+    await host.handleWebviewMessage({
+      command: "desktopRelocateSession",
+      sessionId: "sess-move",
+      workdir: "/work/new",
+    });
+
+    // 搬迁由 CLI 做（宿主不碰文件）：源目录 = 会话文件所在的目录。
+    expect(relocateRequests()).toEqual([
+      {
+        method: "relocateSessionTranscript",
+        params: {
+          sessionId: "sess-move",
+          fromWorkdir: "/gone",
+          toWorkdir: "/work/new",
+        },
+      },
+    ]);
+    // 索引跟着搬：分组键（workdir）与实际工作目录（cwd）都换掉。
+    const moved = store
+      .getSessionIndex()
+      .find((e) => e.sessionId === "sess-move");
+    expect(moved).toMatchObject({ workdir: "/work/new", cwd: "/work/new" });
+    // 重启这条会话时遮罩下面报的也是新目录（不是那个已经没了的旧目录）。
+    expect(
+      sent("setInitialState").filter((s) => s?.session?.id === "sess-move")[0],
+    ).toMatchObject({ isRestoring: true, session: { workdir: "/work/new" } });
+    // 随后在新目录里重新拉起同一条会话（不是留在空分屏里）。
+    await vi.waitFor(() => {
+      expect(lastAgent().initialize).toHaveBeenCalledWith(
+        expect.objectContaining({ workdir: "/work/new" }),
+      );
+      expect(lastAgent().restoreSession).toHaveBeenCalledWith("sess-move");
+    });
+    // 侧栏跟着更新到新目录。
+    expect(sent("desktopSessionTree").at(-1)?.groups).toEqual([
+      expect.objectContaining({ workdir: "/work/new" }),
+    ]);
+    expect(shownToasts()).toContainEqual(
+      expect.objectContaining({
+        message: "会话已移到 /work/new，已复制 1 个文件",
+      }),
+    );
+  });
+
+  it("moves a worktree session out of the worktree path and drops the worktree record", async () => {
+    const { host, store } = await readyHost();
+    const worktreePath = "/work/a/.wave/worktrees/gone-feat";
+    store.upsertSession(
+      indexEntry("sess-wt-move", "/work/a", {
+        cwd: worktreePath,
+        worktree: {
+          path: worktreePath,
+          branch: "worktree-gone-feat",
+          baseBranch: "main",
+          repoRoot: "/work/a",
+        },
+      }),
+    );
+    h.existingPaths.add("/work/new");
+    h.dirPaths.add("/work/new");
+
+    await host.handleWebviewMessage({
+      command: "desktopRelocateSession",
+      sessionId: "sess-wt-move",
+      workdir: "/work/new",
+    });
+
+    // 源目录是 worktree 路径（会话文件在那儿），不是分组用的仓库根。
+    expect(relocateRequests()).toEqual([
+      {
+        method: "relocateSessionTranscript",
+        params: {
+          sessionId: "sess-wt-move",
+          fromWorkdir: worktreePath,
+          toWorkdir: "/work/new",
+        },
+      },
+    ]);
+    const moved = store
+      .getSessionIndex()
+      .find((e) => e.sessionId === "sess-wt-move");
+    expect(moved).toMatchObject({ workdir: "/work/new", cwd: "/work/new" });
+    // 那棵树已经不在原来那个仓库里了 —— 留着只会让「删除会话」去清理一个不存在
+    // 的 worktree。
+    expect(moved?.worktree).toBeUndefined();
+    await vi.waitFor(() => {
+      expect(lastAgent().initialize).toHaveBeenCalledWith(
+        expect.objectContaining({ workdir: "/work/new" }),
+      );
+      expect(lastAgent().restoreSession).toHaveBeenCalledWith("sess-wt-move");
+    });
+  });
+
+  it("warns when the transcript header could not be rewritten", async () => {
+    const { host, store } = await readyHost();
+    store.upsertSession(indexEntry("sess-old", "/gone"));
+    h.existingPaths.add("/work/new");
+    h.dirPaths.add("/work/new");
+    // 老转录没有 metadata 头：文件搬了，但重启后靠头里的 workdir 选目录那步会
+    // 退回调用方目录，历史不一定还找得到（spec 场景 5 要求的告警）。
+    h.relocateResult = {
+      relocated: true,
+      copiedFiles: 1,
+      to: "/work/new",
+      headerUpdated: false,
+    };
+
+    await host.handleWebviewMessage({
+      command: "desktopRelocateSession",
+      sessionId: "sess-old",
+      workdir: "/work/new",
+    });
+
+    expect(shownToasts()).toContainEqual(
+      expect.objectContaining({
+        message: "会话已在新目录，但历史可能无法在重启后保留。",
+      }),
+    );
+    // 不要同时报「已复制 N 个文件」—— 两条提示互相矛盾。
+    expect(
+      shownToasts().some((t) => t.message.includes("已复制")),
+    ).toBe(false);
+    expect(
+      store.getSessionIndex().find((e) => e.sessionId === "sess-old")?.workdir,
+    ).toBe("/work/new");
+  });
+
+  it("keeps everything in place when the CLI refuses the move", async () => {
+    const { host, store } = await readyHost();
+    store.upsertSession(indexEntry("sess-busy", "/gone"));
+    h.existingPaths.add("/work/new");
+    h.dirPaths.add("/work/new");
+    const before = h.agentInstances.length;
+    // 预期内的拒绝（不是异常）：CLI 说这条会话还活着。
+    h.relocateResult = { ok: false, reason: "busy" };
+
+    await host.handleWebviewMessage({
+      command: "desktopRelocateSession",
+      sessionId: "sess-busy",
+      workdir: "/work/new",
+    });
+
+    // 索引不改、不 respawn —— 会话仍是那条能进入的缺目录会话，可以重试。
+    expect(
+      store.getSessionIndex().find((e) => e.sessionId === "sess-busy"),
+    ).toMatchObject({ workdir: "/gone", cwd: "/gone" });
+    expect(h.agentInstances).toHaveLength(before);
+    expect(shownToasts()).toContainEqual(
+      expect.objectContaining({
+        message: "更换目录失败：该会话仍在运行中，请稍后再试",
+        type: "error",
+      }),
+    );
+  });
+
+  it("reports a transport failure and puts the live session back in its old folder", async () => {
+    const { host, store } = await readyHost();
+    store.upsertSession(indexEntry("sess-down", "/gone"));
+    // 先进入这条缺目录会话：搬迁时它有一个活着的 agent，必须先拆掉（CLI 的
+    // `busy` 拒绝判的就是它还握着旧路径）。
+    await host.handleWebviewMessage({
+      command: "desktopSelectSession",
+      workdir: "/gone",
+      sessionId: "sess-down",
+    });
+    await vi.waitFor(() => {
+      expect(lastAgent().restoreSession).toHaveBeenCalledWith("sess-down");
+    });
+    const liveAgent = lastAgent();
+    h.existingPaths.add("/work/new");
+    h.dirPaths.add("/work/new");
+    h.relocateError = new Error("daemon not running");
+
+    await host.handleWebviewMessage({
+      command: "desktopRelocateSession",
+      sessionId: "sess-down",
+      workdir: "/work/new",
+    });
+
+    expect(liveAgent.destroy).toHaveBeenCalled();
+    expect(shownToasts()).toContainEqual(
+      expect.objectContaining({
+        message: "更换目录失败：daemon not running",
+        type: "error",
+      }),
+    );
+    expect(
+      store.getSessionIndex().find((e) => e.sessionId === "sess-down"),
+    ).toMatchObject({ workdir: "/gone", cwd: "/gone" });
+    // 一次都不许在新目录里 spawn。
+    expect(initializedWorkdirs()).not.toContain("/work/new");
+    // 被拆掉的会话按原目录还回来：仍是「能进入、历史读得到」的缺目录态。
+    await vi.waitFor(() => {
+      expect(lastAgent().initialize).toHaveBeenCalledWith(
+        expect.objectContaining({ workdir: "/gone" }),
+      );
+      expect(lastAgent().restoreSession).toHaveBeenCalledWith("sess-down");
+    });
+  });
+
+  it("asks the user for a folder when no workdir is given", async () => {
+    const { host, store } = await readyHost();
+    store.upsertSession(indexEntry("sess-pick", "/gone"));
+    h.existingPaths.add("/work/picked");
+    h.dirPaths.add("/work/picked");
+    vi.mocked(dialog.showOpenDialog).mockImplementationOnce(
+      async () =>
+        ({ canceled: false, filePaths: ["/work/picked"] }) as unknown as OpenResult,
+    );
+
+    await host.handleWebviewMessage({
+      command: "desktopRelocateSession",
+      sessionId: "sess-pick",
+    });
+
+    expect(dialog.showOpenDialog).toHaveBeenCalledTimes(1);
+    expect(dialog.showOpenDialog).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ properties: ["openDirectory", "createDirectory"] }),
+    );
+    expect(relocateRequests()).toEqual([
+      {
+        method: "relocateSessionTranscript",
+        params: {
+          sessionId: "sess-pick",
+          fromWorkdir: "/gone",
+          toWorkdir: "/work/picked",
+        },
+      },
+    ]);
+  });
+
+  it("does nothing when the folder picker is cancelled", async () => {
+    const { host, store } = await readyHost();
+    store.upsertSession(indexEntry("sess-cancel", "/gone"));
+
+    await host.handleWebviewMessage({
+      command: "desktopRelocateSession",
+      sessionId: "sess-cancel",
+    });
+
+    // 取消是用户改主意，不是失败：不提示、不动任何状态、不发 RPC。
+    expect(dialog.showOpenDialog).toHaveBeenCalledTimes(1);
+    expect(relocateRequests()).toHaveLength(0);
+    expect(shownToasts()).toHaveLength(0);
+    expect(
+      store.getSessionIndex().find((e) => e.sessionId === "sess-cancel")
+        ?.workdir,
+    ).toBe("/gone");
+  });
+
+  it("refuses a target that is not an existing directory", async () => {
+    const { host, store } = await readyHost();
+    store.upsertSession(indexEntry("sess-bad", "/gone"));
+
+    await host.handleWebviewMessage({
+      command: "desktopRelocateSession",
+      sessionId: "sess-bad",
+      workdir: "/work/nowhere",
+    });
+
+    expect(relocateRequests()).toHaveLength(0);
+    expect(shownToasts()).toContainEqual(
+      expect.objectContaining({
+        message: "目标文件夹不存在：/work/nowhere",
+        type: "error",
+      }),
+    );
+    expect(
+      store.getSessionIndex().find((e) => e.sessionId === "sess-bad")
+        ?.workdir,
+    ).toBe("/gone");
+  });
+
+  it("treats the session's own folder as a no-op", async () => {
+    const { host, store } = await readyHost();
+    store.upsertSession(indexEntry("sess-same", "/work/a"));
+    h.dirPaths.add("/work/a");
+
+    await host.handleWebviewMessage({
+      command: "desktopRelocateSession",
+      sessionId: "sess-same",
+      workdir: "/work/a",
+    });
+
+    expect(relocateRequests()).toHaveLength(0);
+    expect(shownToasts()).toHaveLength(0);
+  });
+
+  it("refuses a remote session (this release's scope)", async () => {
+    const { host, store } = await readyHost();
+    store.upsertSession(
+      indexEntry("sess-remote", "/work/remote", {
+        host: "ssh.example",
+        cwd: "/work/remote",
+      }),
+    );
+    h.existingPaths.add("/work/new");
+    h.dirPaths.add("/work/new");
+
+    await host.handleWebviewMessage({
+      command: "desktopRelocateSession",
+      sessionId: "sess-remote",
+      workdir: "/work/new",
+    });
+
+    expect(relocateRequests()).toHaveLength(0);
+    expect(shownToasts()).toContainEqual(
+      expect.objectContaining({
+        message: "远端会话暂不支持更换目录",
+        type: "error",
+      }),
+    );
+  });
+
+  it("reports an unknown session instead of failing silently", async () => {
+    const { host } = await readyHost();
+
+    await host.handleWebviewMessage({
+      command: "desktopRelocateSession",
+      sessionId: "no-such-session",
+      workdir: "/work/new",
+    });
+
+    expect(relocateRequests()).toHaveLength(0);
+    expect(shownToasts()).toContainEqual(
+      expect.objectContaining({ message: "找不到该会话", type: "error" }),
     );
   });
 });
