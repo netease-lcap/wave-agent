@@ -139,6 +139,26 @@ function plainTextNodes(source: string): Node[] {
   return nodes;
 }
 
+/**
+ * 输入框「可见内容是空的」判据 —— 决定灰字占位（`data-placeholder`）出不出现。
+ *
+ * **不能只看 `:empty`**：contenteditable 在清空、换行、宿主回填草稿之后经常留下
+ * 空壳节点（`<br>`、空 `<div>`、空 `<span>`），或者干脆只剩一个看不见的字符
+ * （`\u200b` 零宽空格、软连字符 —— 从别的应用复制文本时常见）。
+ * 这两种情况下 `:empty` 为假、`trim()` 也不为空，占位从此再也不出现（缺陷：
+ * 输入文字后手动清空，占位文案不再显示）。
+ *
+ * 所以判据只问「有没有可见文本」，且任何引用标签 / 图片都算内容（标签在时不该
+ * 显示占位）。结果由 `data-empty` 承载（见组件的 MutationObserver）。
+ */
+const COMPOSER_CONTENT_SELECTOR = ".context-tag-container, img";
+const INVISIBLE_ONLY_TEXT =
+  /^[\s\u00ad\u180e\u200b-\u200f\u2060-\u2064\ufeff]*$/;
+function isComposerVisuallyEmpty(el: HTMLElement): boolean {
+  if (el.querySelector(COMPOSER_CONTENT_SELECTOR)) return false;
+  return INVISIBLE_ONLY_TEXT.test(el.textContent ?? "");
+}
+
 // Map a {node, offset} position inside `container` back to a flat character
 // offset in the container's text — the inverse of findTextOffset. Used to
 // remember the caret across blur so async insertions (upload success,
@@ -2193,22 +2213,40 @@ export const MessageInput = forwardRef<
     requestSlashCommands,
   ]);
 
+  /**
+   * 占位文案的开关：`data-empty` 由**可见内容**算出来（见 `isComposerVisuallyEmpty`），
+   * CSS 用 `[data-empty="true"]::before` 画灰字，不再靠 `:empty` 猜。
+   *
+   * 维护方式选 MutationObserver 而不是逐个写点补一句同步：会改写输入框 DOM 的路径
+   * 有十来条（用户输入、IME、粘贴/拖放、`renderDraftContent` 回填草稿、`loadDraft`、
+   * `appendText`、`fillDraft`、插件 `prompt.edit` 改写、引用标签增删、撤销……），
+   * 漏一处就是「占位不见」再复现一次。子节点与文本都在观察范围内，所有路径自动覆盖。
+   */
+  useEffect(() => {
+    const div = textareaRef.current;
+    if (!div) return;
+    const syncEmptyState = () => {
+      if (isComposerVisuallyEmpty(div)) div.setAttribute("data-empty", "true");
+      else div.removeAttribute("data-empty");
+    };
+    syncEmptyState();
+    const observer = new MutationObserver(syncEmptyState);
+    observer.observe(div, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+    });
+    return () => observer.disconnect();
+  }, []);
+
   const handleInput = useCallback(
     (event: React.FormEvent<HTMLDivElement>) => {
       const target = event.currentTarget;
       const newValue = target.innerText;
 
-      // 输入删空后 contenteditable 常残留 <br>/空 div，`:empty` 不再匹配，
-      // 占位文案随之消失（用户反馈：输入内容再删除后占位文案不应消失）。
-      // 仅剩空标记时清空子节点让占位符恢复；img/附件等实质内容不受影响。
-      if (
-        newValue.trim() === "" &&
-        Array.from(target.children).every(
-          (el) =>
-            el.tagName === "BR" ||
-            (el.tagName === "DIV" && (el.textContent ?? "").trim() === ""),
-        )
-      ) {
+      // 输入删空后 contenteditable 常残留 `<br>` / 空 div / 零宽字符：清掉这些空壳，
+      // 草稿序列化才干净（占位文案本身不再依赖这一步，判据见 `isComposerVisuallyEmpty`）。
+      if (isComposerVisuallyEmpty(target)) {
         target.replaceChildren();
       }
 
