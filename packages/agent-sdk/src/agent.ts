@@ -1553,6 +1553,26 @@ export class Agent {
       .getUiRun(runId);
   }
 
+  /**
+   * Tail of one agent's activity log — what the workflow detail view tails
+   * while that agent runs (spec `multi-agent/workflow.md`「查看单个 agent 的执行详情」).
+   *
+   * An unknown run, an index that never started or a replayed (cached) agent all
+   * answer with an empty tail rather than an error: the panel degrades to "no
+   * activity" instead of blanking.
+   */
+  public getWorkflowAgentActivity(
+    runId: string,
+    agentIndex: number,
+  ): { activity: string } {
+    if (!this.container.has("WorkflowManager")) return { activity: "" };
+    return this.container
+      .get<
+        import("./managers/workflowManager.js").WorkflowManager
+      >("WorkflowManager")!
+      .getAgentActivity(runId, agentIndex);
+  }
+
   /** Stop a workflow run */
   public stopWorkflowRun(runId: string): void {
     if (!this.container.has("WorkflowManager")) return;

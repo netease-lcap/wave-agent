@@ -948,6 +948,23 @@ export class StdioAgent {
     return result?.success ?? false;
   }
 
+  /**
+   * Tail of one agent's activity log (spec `multi-agent/workflow.md`
+   * 「查看单个 agent 的执行详情」). Missing run/index/file answers with an empty
+   * tail instead of an error.
+   */
+  async getWorkflowAgentActivity(
+    runId: string,
+    agentIndex: number,
+  ): Promise<{ activity: string }> {
+    const result = (await this.client.request(
+      "getWorkflowAgentActivity",
+      { runId, agentIndex },
+      this.sessionId,
+    )) as { activity?: string };
+    return { activity: result?.activity ?? "" };
+  }
+
   // ── MCP ───────────────────────────────────────────────────────
 
   async getMcpServers(): Promise<McpServerStatus[]> {

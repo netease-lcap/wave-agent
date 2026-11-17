@@ -3565,6 +3565,39 @@
           });
         return;
 
+      case "getWorkflowAgentActivity":
+        // 单个 agent 的活动日志尾部（spec「查看单个 agent 的执行详情」）：页面
+        // 在 agent 运行期间按 1.5 秒重读，requestId 原样带回，晚到的旧回包由
+        // 页面丢弃。读不到就是空串 —— 面板显示「暂无活动」而不是报错。
+        request("getWorkflowAgentActivity", {
+          runId: msg.runId,
+          agentIndex: msg.agentIndex,
+        })
+          .then(function (result) {
+            post({
+              command: "workflowAgentActivity",
+              requestId: msg.requestId,
+              runId: msg.runId,
+              agentIndex: msg.agentIndex,
+              activity: (result && result.activity) || "",
+            });
+          })
+          .catch(function (err) {
+            post({
+              command: "workflowAgentActivity",
+              requestId: msg.requestId,
+              runId: msg.runId,
+              agentIndex: msg.agentIndex,
+              activity: "",
+            });
+            // 轮询失败不刷屏（1.5 秒一次），一行提示就够。
+            warnOnce(
+              "workflowAgentActivity",
+              failureText("读取 agent 活动", err),
+            );
+          });
+        return;
+
       case "getImagePreview": {
         // 点消息里的图片路径看原图（spec remote/remote-web.md「点消息里的图片
         // 路径看原图」）：页面自己没有文件系统，字节只能向宿主按需要。宿主读盘、

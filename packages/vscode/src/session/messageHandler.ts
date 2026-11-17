@@ -530,6 +530,30 @@ export class MessageHandler {
         );
         break;
       }
+      case "getWorkflowAgentActivity": {
+        const session = this.context.getChatSession(
+          viewType || "tab",
+          windowId,
+        );
+        const runId = msg.runId as string;
+        const agentIndex = msg.agentIndex as number;
+        const activity = await session.getWorkflowAgentActivity(
+          runId,
+          agentIndex,
+        );
+        this.context.postMessage(
+          {
+            command: "workflowAgentActivity",
+            requestId: msg.requestId as string,
+            runId,
+            agentIndex,
+            activity,
+          },
+          viewType,
+          windowId,
+        );
+        break;
+      }
       case "stopWorkflowRun": {
         const session = this.context.getChatSession(
           viewType || "tab",

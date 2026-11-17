@@ -16,7 +16,7 @@
 import React from "react";
 import { Box, Text } from "ink";
 import { getLastLines } from "wave-agent-sdk";
-import type { WorkflowRun } from "wave-agent-sdk";
+import type { WorkflowRun, WorkflowAgentState } from "wave-agent-sdk";
 import {
   WORKFLOW_SIZE_WARNING_AGENTS,
   WORKFLOW_SIZE_WARNING_TOKENS,
@@ -65,7 +65,31 @@ export const workflowStatusColor = (
  */
 export const MAX_RUN_LOG_LINES = 10;
 
-const WorkflowRunDetail: React.FC<{ run: WorkflowRun }> = ({ run }) => {
+/** Status colour for one agent's row / card (same palette as the run's). */
+export const agentStatusColor = (
+  status: WorkflowAgentState["status"],
+): "green" | "blue" | "red" | "yellow" => {
+  switch (status) {
+    case "running":
+      return "green";
+    case "completed":
+      return "blue";
+    case "failed":
+    case "interrupted":
+      return "red";
+    case "skipped":
+      return "yellow";
+  }
+};
+
+const WorkflowRunDetail: React.FC<{
+  run: WorkflowRun;
+  /**
+   * Highlighted agent row (the CLI's ↑/↓ selection). Left out when the panel
+   * has no agent drill-down — the list still renders, just without a cursor.
+   */
+  agentSelectionIndex?: number;
+}> = ({ run, agentSelectionIndex }) => {
   // The thresholds the run was actually judged against: they can be overridden
   // through `WAVE_WORKFLOW_SIZE_WARNING_*`, and printing the constants then
   // would name a number that never applied.
@@ -179,6 +203,51 @@ const WorkflowRunDetail: React.FC<{ run: WorkflowRun }> = ({ run }) => {
               </Text>
             </Box>
           ))}
+        </Box>
+      )}
+
+      {/* Agent list (spec「查看单个 agent 的执行详情」场景 1): one row per started
+          agent, same fields and order as the webview. A run without any drops
+          the block — an empty "Agents:" title reads as missing data. */}
+      {(run.agents ?? []).length > 0 && (
+        <Box flexDirection="column" marginTop={1}>
+          <Text color="cyan" bold>
+            Agents:
+          </Text>
+          {(run.agents ?? []).map((agent, position) => {
+            const selected = position === agentSelectionIndex;
+            // Duration reads only when both ends exist: a running agent's
+            // elapsed time would otherwise freeze at whatever frame drew it.
+            const duration =
+              agent.startTime !== undefined && agent.endTime !== undefined
+                ? formatDuration(agent.endTime - agent.startTime)
+                : "";
+            // Zero counts are dropped so an agent that has not called a tool
+            // yet does not claim "0 tools".
+            const meta = [
+              agent.tokens ? `${formatTokens(agent.tokens)} tokens` : "",
+              agent.toolUses
+                ? `${agent.toolUses} ${agent.toolUses === 1 ? "tool" : "tools"}`
+                : "",
+              duration,
+            ].filter(Boolean);
+            return (
+              <Box key={agent.index} marginLeft={2}>
+                <Text>
+                  {selected ? "▶ " : "  "}
+                  {agent.index + 1}.{" "}
+                  <Text color="blue">
+                    {agent.label || agent.agentType || "agent"}
+                  </Text>
+                  {" · "}
+                  <Text color={agentStatusColor(agent.status)}>
+                    {agent.status}
+                  </Text>
+                  {meta.length > 0 && ` · ${meta.join(" · ")}`}
+                </Text>
+              </Box>
+            );
+          })}
         </Box>
       )}
 

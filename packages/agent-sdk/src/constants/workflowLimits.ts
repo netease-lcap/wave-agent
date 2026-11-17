@@ -37,6 +37,25 @@ export interface WorkflowSizeLimits {
 }
 
 /**
+ * 单个 agent 活动日志读多少字节的尾部。
+ *
+ * 与 Claude Code 读 shell 任务输出同样的量级（8192）：一行是一条工具调用，
+ * 8 KiB 足够填满任何面板的可见行数，而 `getWorkflowAgentActivity` 在 agent
+ * 运行期间是**轮询**的（1.5s），单帧越大越容易撞上远控的 512 KiB 预算。
+ */
+export const WORKFLOW_AGENT_LOG_TAIL_BYTES = 8 * 1024;
+
+/**
+ * 运行快照里每个 agent 的 prompt / 结果预览上限（字符）。
+ *
+ * 快照在每次进度事件上被整份重发（还可能是远控的一个帧），而 agent 的提示词
+ * 与结果正文可以任意长；预览只回答「这个 agent 被要求做什么 / 得出了什么」，
+ * 超出部分以 `…` 收尾。全文的出口是运行目录里的 `agents/<序号>.meta.json`
+ * 与 `journal.jsonl`。
+ */
+export const WORKFLOW_AGENT_PREVIEW_CHARS = 400;
+
+/**
  * 只认正的有限数：`0`、空串、`"abc"` 一律当作没设，回退到默认值。
  *
  * 与 Claude Code 的 `_Y()` 同口径 —— 那边同样把 `0` 当无效，因为「阈值设成

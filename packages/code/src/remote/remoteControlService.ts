@@ -162,6 +162,11 @@ export const REMOTE_ALLOWED_METHODS: ReadonlySet<string> = new Set([
   "getBackgroundTaskOutput",
   "stopBackgroundTask",
   "getWorkflowRuns",
+  // 单个 agent 的活动日志尾部（spec「查看单个 agent 的执行详情」）：只读、按
+  // 8 KiB 截断，页面上的 agent 卡片靠它显示「它刚才做了什么」。与
+  // `getBackgroundTaskOutput` 同一条判据 —— 它读的是运行目录里 agent 自己的日志
+  // 文件，参数只有一个序号，够不到别的文件。
+  "getWorkflowAgentActivity",
   "stopWorkflowRun",
   "backgroundCurrentTask",
   // `@` 文件建议与历史提示词：都只读，锚在信封 sessionId 的 workdir 上。

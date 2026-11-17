@@ -146,6 +146,18 @@ export class ProgressReporter {
     return [...this.phases];
   }
 
+  /**
+   * Title of the phase an `agent()` call starting right now belongs to —
+   * `undefined` before any phase was declared (a script that never calls
+   * `phase()` and whose `meta` declares none). The agent list uses it as the
+   * default for `opts.phase`, so an agent started inside `phase("设计")` is
+   * filed under it without the script repeating the title.
+   */
+  getCurrentPhaseTitle(): string | undefined {
+    if (this.currentPhaseIndex < 0) return undefined;
+    return this.phases[this.currentPhaseIndex]?.title;
+  }
+
   get totalAgents(): number {
     return this.agentCounter;
   }

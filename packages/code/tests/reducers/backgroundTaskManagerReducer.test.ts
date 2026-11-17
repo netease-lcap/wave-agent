@@ -6,6 +6,7 @@ import {
   BackgroundTaskManagerAction,
 } from "../../src/reducers/backgroundTaskManagerReducer.js";
 import { Key } from "ink";
+import { initialWorkflowAgentView } from "../../src/reducers/workflowAgentView.js";
 
 describe("backgroundTaskManagerReducer", () => {
   const mockTasks: Task[] = [
@@ -19,6 +20,7 @@ describe("backgroundTaskManagerReducer", () => {
     viewMode: "list",
     detailTaskId: null,
     detailOutput: null,
+    agentView: initialWorkflowAgentView,
     pendingEffect: null,
   };
 

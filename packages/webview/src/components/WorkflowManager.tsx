@@ -106,7 +106,7 @@ const WorkflowManager: React.FC<
                 {selectedRun.status}
               </span>
             </div>
-            <WorkflowRunProgress run={selectedRun} />
+            <WorkflowRunProgress run={selectedRun} vscode={vscode} />
           </div>
           <div className="mcp-server-actions">
             {selectedRun.status === "running" && (

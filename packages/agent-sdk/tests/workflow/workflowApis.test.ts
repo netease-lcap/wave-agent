@@ -20,6 +20,8 @@ import type {
   ToolBlock,
 } from "../../src/types/messaging.js";
 import * as fs from "fs/promises";
+import { WORKFLOW_AGENT_PREVIEW_CHARS } from "../../src/constants/workflowLimits.js";
+import type { WorkflowAgentState } from "../../src/workflow/types.js";
 import * as path from "path";
 import * as os from "os";
 
@@ -1019,6 +1021,144 @@ describe("createWorkflowApis", () => {
       expect(meta.transcriptPath).toContain(".jsonl");
 
       await fs.rm(runDir, { recursive: true, force: true });
+    });
+  });
+
+  describe("agent state and activity log", () => {
+    // A real directory: the whole point of the log is that it lands on disk in
+    // the run's own folder, which is where `WorkflowManager.getAgentActivity`
+    // reads it back from in the next process.
+    async function createRunDir(): Promise<string> {
+      const runDir = await fs.mkdtemp(path.join(os.tmpdir(), "wave-agentlog-"));
+      await fs.mkdir(path.join(runDir, "agents"), { recursive: true });
+      return runDir;
+    }
+
+    function collectStates() {
+      const states: WorkflowAgentState[] = [];
+      return {
+        states,
+        onAgentState: (state: WorkflowAgentState) => states.push(state),
+      };
+    }
+
+    it("reports running then completed, and closes the log with a terminal line", async () => {
+      const runDir = await createRunDir();
+      const { states, onAgentState } = collectStates();
+      const { ctx } = createTestContext({ runDir, onAgentState });
+      const apis = createWorkflowApis(ctx);
+
+      await apis.agent("analyse the diff", {
+        label: "scout",
+        agentType: "code",
+        phase: "review",
+      });
+
+      expect(states.map((s) => s.status)).toEqual(["running", "completed"]);
+      expect(states[0]).toMatchObject({
+        index: 0,
+        label: "scout",
+        agentType: "code",
+        phase: "review",
+        status: "running",
+        promptPreview: "analyse the diff",
+      });
+      expect(states[0].startTime).toBeGreaterThan(0);
+      expect(states[1]).toMatchObject({
+        status: "completed",
+        resultPreview: "agent-result",
+        // The manager upserts the agent entry, so a terminal report that drops
+        // this field makes the card lose the Prompt block it just showed.
+        promptPreview: "analyse the diff",
+      });
+      expect(states[1].endTime).toBeGreaterThanOrEqual(states[1].startTime!);
+
+      const logPath = path.join(runDir, "agents", "0.log");
+      await vi.waitFor(async () => {
+        expect(await fs.readFile(logPath, "utf-8")).toContain(
+          "Agent completed",
+        );
+      });
+
+      await fs.rm(runDir, { recursive: true, force: true });
+    });
+
+    it("reports the failure and its message, and closes the log the same way", async () => {
+      const runDir = await createRunDir();
+      const { states, onAgentState } = collectStates();
+      const { ctx, subagentManager } = createTestContext({
+        runDir,
+        onAgentState,
+      });
+      mockOf(subagentManager).executeAgent.mockRejectedValueOnce(
+        new Error("boom"),
+      );
+      const apis = createWorkflowApis(ctx);
+
+      await expect(apis.agent("doomed")).rejects.toThrow("boom");
+
+      expect(states.map((s) => s.status)).toEqual(["running", "failed"]);
+      expect(states[1].error).toBe("boom");
+      expect(states[1].promptPreview).toBe("doomed");
+
+      const logPath = path.join(runDir, "agents", "0.log");
+      await vi.waitFor(async () => {
+        expect(await fs.readFile(logPath, "utf-8")).toContain(
+          "Agent failed: boom",
+        );
+      });
+
+      await fs.rm(runDir, { recursive: true, force: true });
+    });
+
+    it("marks a replayed agent as cached and writes no activity log for it", async () => {
+      const runDir = await createRunDir();
+      const { states, onAgentState } = collectStates();
+      const { ctx } = createTestContext({
+        runDir,
+        onAgentState,
+        journal: {
+          init: vi.fn(),
+          append: vi.fn(),
+          getCachedResult: vi.fn().mockReturnValue("cached-result"),
+          getCachedToolUses: vi.fn().mockReturnValue(0),
+          close: vi.fn(),
+          get length() {
+            return 1;
+          },
+        } as unknown as Journal,
+      });
+      const apis = createWorkflowApis(ctx);
+
+      await apis.agent("already done");
+
+      expect(states).toHaveLength(1);
+      expect(states[0]).toMatchObject({
+        status: "completed",
+        cached: true,
+        // A replayed agent never runs, so its prompt comes from the script's own
+        // call — without it the card would show an outcome with no Prompt block.
+        promptPreview: "already done",
+      });
+      // No subagent ran, so there is nothing to tail: the card drops the
+      // Activity block instead of showing an empty one.
+      await expect(
+        fs.readFile(path.join(runDir, "agents", "0.log"), "utf-8"),
+      ).rejects.toThrow();
+
+      await fs.rm(runDir, { recursive: true, force: true });
+    });
+
+    it("bounds the prompt preview so the run snapshot stays light", async () => {
+      const { states, onAgentState } = collectStates();
+      const { ctx } = createTestContext({ onAgentState });
+      const apis = createWorkflowApis(ctx);
+
+      await apis.agent("x".repeat(900), { label: "big" });
+
+      const preview = states[0].promptPreview ?? "";
+      expect(preview).toHaveLength(WORKFLOW_AGENT_PREVIEW_CHARS + 1);
+      expect(preview.endsWith("…")).toBe(true);
     });
   });
 

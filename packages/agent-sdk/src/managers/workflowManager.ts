@@ -20,13 +20,15 @@ import {
   parseScript,
   executeScript,
 } from "../workflow/scriptRuntime.js";
-import type { WorkflowRun } from "../workflow/types.js";
+import type { WorkflowRun, WorkflowAgentState } from "../workflow/types.js";
 import { RunStateStore } from "../workflow/runState.js";
 import { isWorkflowRunOversized } from "../workflow/workflowErrors.js";
 import {
   resolveWorkflowSizeLimits,
+  WORKFLOW_AGENT_LOG_TAIL_BYTES,
   type WorkflowSizeLimits,
 } from "../constants/workflowLimits.js";
+import { readTailTextSync } from "../utils/fileUtils.js";
 import type { ConfigurationService } from "../services/configurationService.js";
 import {
   sanitizeWorkflowName,
@@ -460,6 +462,7 @@ export class WorkflowManager {
       args,
       startTime: Date.now(),
       phases: [],
+      agents: [],
       totalAgents: 0,
       totalTokens: 0,
       sizeLimits: this.sizeLimits(),
@@ -616,6 +619,20 @@ export class WorkflowManager {
       onScheduledAgents: (total: number) => {
         run.scheduledAgents = total;
         this.logSizeCrossing(run);
+        this.backgroundTaskManager.notifyTasksChange();
+      },
+      // One entry per `agent()` call, upserted by its index: the run snapshot a
+      // UI reads carries the per-agent state, and the activity log's tail is
+      // read separately (`getAgentActivity`) so a long log never rides along
+      // with every progress push (spec「查看单个 agent 的执行详情」场景 1).
+      onAgentState: (state: WorkflowAgentState) => {
+        const agents = (run.agents ??= []);
+        const at = agents.findIndex((agent) => agent.index === state.index);
+        if (at >= 0) {
+          agents[at] = state;
+        } else {
+          agents.push(state);
+        }
         this.backgroundTaskManager.notifyTasksChange();
       },
     });
@@ -1001,6 +1018,28 @@ export class WorkflowManager {
   }
 
   /**
+   * The tail of one agent's activity log, for the agent card
+   * (spec「查看单个 agent 的执行详情」场景 2).
+   *
+   * Read on demand rather than shipped in the run snapshot: a log grows with
+   * every tool call, and the run list is re-pushed on every progress event.
+   * Bounded to the last `WORKFLOW_AGENT_LOG_TAIL_BYTES` on disk, so a huge log
+   * costs one short read instead of being loaded whole.
+   */
+  getAgentActivity(runId: string, agentIndex: number): { activity: string } {
+    const run = this.getRun(runId);
+    if (!run) return { activity: "" };
+    // A missing file is the normal case (agent never started, or replayed from a
+    // journal); `readTailTextSync` answers "" for it and for anything unreadable.
+    return {
+      activity: readTailTextSync(
+        path.join(this.runDirOf(run), "agents", `${agentIndex}.log`),
+        WORKFLOW_AGENT_LOG_TAIL_BYTES,
+      ),
+    };
+  }
+
+  /**
    * Turn a stale `running` run into an aborted one, in place. The status word is
    * the existing `aborted` (the same state a user-requested stop produces) — the
    * difference from a stop is the error text, which says who ended it.
@@ -1009,6 +1048,16 @@ export class WorkflowManager {
     run.status = "aborted";
     run.endTime = run.endTime ?? Date.now();
     run.error = "interrupted: the process that was running it exited";
+    // The agents that were in flight died with the process: leaving them
+    // `running` would show a spinner nothing will ever advance
+    // (spec「查看单个 agent 的执行详情」场景 2 的 Outcome).
+    const endTime = run.endTime;
+    for (const agent of run.agents ?? []) {
+      if (agent.status !== "running") continue;
+      agent.status = "interrupted";
+      agent.endTime = agent.endTime ?? endTime;
+      agent.error ??= run.error;
+    }
   }
 
   /**

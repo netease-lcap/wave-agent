@@ -6217,6 +6217,25 @@ export class DesktopHost {
         break;
       }
 
+      case "getWorkflowAgentActivity": {
+        const paneAgent = this.agentForPane(pid);
+        const runId = msg.runId as string;
+        const agentIndex = msg.agentIndex as number;
+        const activity = paneAgent
+          ? (await paneAgent.getWorkflowAgentActivity(runId, agentIndex))
+              .activity
+          : "";
+        this.postMessage({
+          command: "workflowAgentActivity",
+          paneId: pid,
+          requestId: msg.requestId as string,
+          runId,
+          agentIndex,
+          activity,
+        });
+        break;
+      }
+
       case "stopWorkflowRun": {
         const paneAgent = this.agentForPane(pid);
         const success = paneAgent

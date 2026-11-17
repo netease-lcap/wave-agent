@@ -73,6 +73,64 @@
   margin: 0;
 }
 
+/* ---- agent 列表与 agent 卡片（spec「查看单个 agent 的执行详情」）----
+   行是一个按钮：点它切到该 agent 的卡片，所以外观按行做、但保留键盘可达性。 */
+.workflow-agent-row {
+  display: block;
+  width: 100%;
+  text-align: left;
+  margin-left: 8px;
+  margin-bottom: 2px;
+  padding: 2px 4px;
+  background: none;
+  border: none;
+  border-radius: 4px;
+  color: inherit;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12px;
+}
+
+.workflow-agent-row:hover {
+  background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.08));
+}
+
+.workflow-agent-row:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder, #007acc);
+}
+
+.workflow-agent-index {
+  color: #569cd6;
+}
+
+.workflow-agent-meta {
+  color: var(--vscode-descriptionForeground);
+}
+
+.workflow-agent-card-title {
+  font-size: 12px;
+  color: #4ec9b0;
+  margin-bottom: 4px;
+}
+
+.workflow-agent-empty {
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground);
+  margin-left: 8px;
+}
+
+.workflow-agent-back {
+  margin-top: 12px;
+  background: none;
+  border: 1px solid var(--vscode-button-border, transparent);
+  border-radius: 4px;
+  color: inherit;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12px;
+  padding: 2px 8px;
+}
+
 /* ---- 桌面 · 后台任务面板：接 token ----
    角色口径同 BackgroundTasksPane.css：行 = 辅助 12/20；Logs = 代码 13/20
    （`--vscode-editor-font-size` 跟宿主编辑器字号，`--cc-font-size-*` 没有 13 这档）；

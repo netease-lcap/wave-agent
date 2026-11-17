@@ -1005,6 +1005,26 @@ class MessageHandler(
                 }
                 postMessage("workflowRunsResponse", buildJsonObject { put("runs", runs ?: JsonNull) })
             }
+            "getWorkflowAgentActivity" -> {
+                val runId = msg["runId"]?.jsonPrimitive?.contentOrNull ?: return
+                val agentIndex = msg["agentIndex"]?.jsonPrimitive?.intOrNull ?: return
+                // 回包带上页面生成的 requestId：1.5 秒一次轮询，中途可以换 agent，
+                // 晚到的旧回包由页面按它丢弃。
+                val requestId = msg["requestId"]?.jsonPrimitive?.contentOrNull
+                val activity = try {
+                    session.agent?.getWorkflowAgentActivity(runId, agentIndex)
+                } catch (e: StdioClientException) {
+                    LOG.warn("getWorkflowAgentActivity failed: ${e.message}")
+                    null
+                }
+                postMessage("workflowAgentActivity", buildJsonObject {
+                    requestId?.let { put("requestId", it) }
+                    put("runId", runId)
+                    put("agentIndex", agentIndex)
+                    // 读不到就是空串：契约里 activity 恒为字符串，页面据此显示「暂无活动」。
+                    put("activity", activity ?: "")
+                })
+            }
             "stopWorkflowRun" -> {
                 val runId = msg["runId"]?.jsonPrimitive?.content ?: return
                 val success = try {
