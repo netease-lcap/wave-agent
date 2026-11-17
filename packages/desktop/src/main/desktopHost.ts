@@ -4901,6 +4901,19 @@ export class DesktopHost {
     // handleDeleteSession 一致（池子 + 工作树记录 + 终端），但**不删索引、不关
     // pane**：这条会话马上要在新目录里被重新拉起来。
     const live = this.agents.get(this.agentKey(host, sessionId));
+    // 正在生成 / 挂着待确认时不许搬：下一步是「先拆掉活 agent」，那一轮的输出与
+    // 用户还没答的确认会被静默扔掉。等这一轮收尾再搬（比 CLI 的 `busy` 拒绝更靠
+    // 前——桌面端自己先拆，CLI 那层根本见不到 busy）。
+    const waitingConfirmation =
+      live !== undefined &&
+      [...this.pendingConfirmations.values()].some((p) => p.agent === live);
+    if (live && (live.isStreaming || waitingConfirmation)) {
+      this.showToast({
+        message: "该会话仍在运行中，请等这一轮结束后再换目录",
+        type: "error",
+      });
+      return;
+    }
     const paneIds = this.panes
       .filter(
         (p) =>
