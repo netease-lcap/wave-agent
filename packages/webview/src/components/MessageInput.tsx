@@ -1273,7 +1273,13 @@ export const MessageInput = forwardRef<
         tagSpan.innerText = `[@file:${filePath}]`;
 
         const root = ReactDOM.createRoot(tagSpan);
-        root.render(<ContextTag name={fileName} path={filePath} />);
+        // 同步提交：末尾那次 `input` 事件里 `handleInput` 会读 `innerText` 当镜像
+        // 文本（也随 `prompt.edit` 上报给插件）。渲染晚一步提交，读到的就是上面那句
+        // 内部占位符 `[@file:…]` —— 插件的拼写/改写会按标记串算偏移，一次改写落地
+        // 就把文件引用压成字面量（#2950 B2，与已修的图片粘贴同一个根因）。
+        flushSync(() => {
+          root.render(<ContextTag name={fileName} path={filePath} />);
+        });
 
         range.insertNode(tagSpan);
         range.setStartAfter(tagSpan);
@@ -1349,20 +1355,25 @@ export const MessageInput = forwardRef<
       tagSpan.innerText = `[Selection: ${selection.filePath}|${fileName}#${selection.startLine}-${selection.endLine}]`;
 
       const root = ReactDOM.createRoot(tagSpan);
-      root.render(
-        <ContextTag
-          name={displayName}
-          path={selection.filePath}
-          onClick={() => {
-            vscode.postMessage({
-              command: "openFile",
-              path: selection.filePath,
-              startLine: selection.startLine,
-              endLine: selection.endLine,
-            });
-          }}
-        />,
-      );
+      // 同步提交，理由同 `insertUploadedFilePaths`：下面紧接着派发的 `input`
+      // 事件会读 `innerText`，晚一步读到的是 `[Selection: …]` 这段内部标记
+      // （#2950 B2）。
+      flushSync(() => {
+        root.render(
+          <ContextTag
+            name={displayName}
+            path={selection.filePath}
+            onClick={() => {
+              vscode.postMessage({
+                command: "openFile",
+                path: selection.filePath,
+                startLine: selection.startLine,
+                endLine: selection.endLine,
+              });
+            }}
+          />,
+        );
+      });
 
       range.deleteContents();
       range.insertNode(tagSpan);
@@ -1600,6 +1611,9 @@ export const MessageInput = forwardRef<
       tagSpan.className = "context-tag-container"; // Wrapper for React component
       tagSpan.contentEditable = "false";
 
+      // 标签的 React 内容按分支先算出来，下面统一同步提交（#2950 B2）。
+      let tagContent: React.ReactElement;
+
       // 子代理条目：标签只留点名标记，判定与注入都在 SDK（spec
       // multi-agent/subagent.md「显式子代理调用」）。
       const agentName = file.agentName;
@@ -1609,8 +1623,8 @@ export const MessageInput = forwardRef<
         tagSpan.setAttribute("data-name", agentName);
         tagSpan.setAttribute("data-is-image", "false");
         tagSpan.innerText = `[@agent:${agentName}]`;
-        ReactDOM.createRoot(tagSpan).render(
-          <ContextTag name={agentName} path={`agent:${agentName}`} />,
+        tagContent = (
+          <ContextTag name={agentName} path={`agent:${agentName}`} />
         );
       } else {
         // IDE 上下文条目（@终端 / @问题）：不是文件引用，标签只留一个标记，内容
@@ -1625,8 +1639,8 @@ export const MessageInput = forwardRef<
           tagSpan.setAttribute("data-name", ideInfo.label);
           tagSpan.setAttribute("data-is-image", "false");
           tagSpan.innerText = ideContextMarker(ideProvider);
-          ReactDOM.createRoot(tagSpan).render(
-            <ContextTag name={ideInfo.label} path={`ide:${ideProvider}`} />,
+          tagContent = (
+            <ContextTag name={ideInfo.label} path={`ide:${ideProvider}`} />
           );
         } else {
           tagSpan.setAttribute("data-path", file.relativePath);
@@ -1635,11 +1649,15 @@ export const MessageInput = forwardRef<
 
           // 普通文件引用：图片文件也一样，不可点击、没有预览入口
           // （spec ui/file-selector.md 场景 1）。
-          ReactDOM.createRoot(tagSpan).render(
-            <ContextTag name={file.name} path={file.relativePath} />,
-          );
+          tagContent = <ContextTag name={file.name} path={file.relativePath} />;
         }
       }
+
+      // 同步提交，理由同 `insertUploadedFilePaths`：下面那次 `input` 会读
+      // `innerText`，晚一步提交读到的就是 `[@agent:…]` / `[@file:…]` / ide marker
+      // 这些内部标记，随 `prompt.edit` 报给插件（#2950 B2）。
+      const root = ReactDOM.createRoot(tagSpan);
+      flushSync(() => root.render(tagContent));
 
       // Locate the '@' + filter text to replace. Prefer the live DOM selection
       // when it still points into the input's text node (keyboard Enter): the
