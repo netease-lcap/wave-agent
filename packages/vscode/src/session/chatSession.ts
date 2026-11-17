@@ -869,6 +869,17 @@ export class ChatSession {
     return await this.agent.getWorkflowRuns();
   }
 
+  public async getWorkflowAgentActivity(
+    runId: string,
+    agentIndex: number,
+  ): Promise<string> {
+    if (!this.agent) {
+      return "";
+    }
+    const result = await this.agent.getWorkflowAgentActivity(runId, agentIndex);
+    return result.activity;
+  }
+
   public async stopWorkflowRun(runId: string): Promise<boolean> {
     if (!this.agent) {
       return false;

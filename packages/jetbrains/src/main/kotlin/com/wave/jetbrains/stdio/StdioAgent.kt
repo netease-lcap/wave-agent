@@ -534,6 +534,17 @@ class StdioAgent(
     suspend fun getWorkflowRuns(): JsonElement? =
         client.request("getWorkflowRuns", sessionId = sessionId)?.jsonObject?.get("runs")
 
+    /** 单个 agent 的活动日志尾部（spec「查看单个 agent 的执行详情」）。 */
+    suspend fun getWorkflowAgentActivity(runId: String, agentIndex: Int): String? =
+        client.request(
+            "getWorkflowAgentActivity",
+            buildJsonObject {
+                put("runId", runId)
+                put("agentIndex", agentIndex)
+            },
+            sessionId,
+        )?.jsonObject?.get("activity")?.jsonPrimitive?.contentOrNull
+
     suspend fun stopWorkflowRun(runId: String): Boolean {
         val result = client.request("stopWorkflowRun", buildJsonObject { put("runId", runId) }, sessionId)
         return result?.jsonObject?.get("success")?.jsonPrimitive?.booleanOrNull ?: false

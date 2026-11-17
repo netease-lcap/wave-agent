@@ -1,5 +1,10 @@
 import { Key } from "ink";
 import type { WorkflowRun } from "wave-agent-sdk";
+import {
+  handleWorkflowAgentKey,
+  initialWorkflowAgentView,
+  type WorkflowAgentView,
+} from "./workflowAgentView.js";
 
 export type PendingEffect =
   | { type: "CANCEL" }
@@ -10,6 +15,8 @@ export interface WorkflowManagerState {
   selectedIndex: number;
   viewMode: "list" | "detail";
   detailRunId: string | null;
+  /** Where the user is inside the open run's agent list. */
+  agentView: WorkflowAgentView;
   pendingEffect: PendingEffect | null;
 }
 
@@ -68,6 +75,7 @@ export function workflowManagerReducer(
           ...state,
           detailRunId: state.runs[state.selectedIndex].runId,
           viewMode: "detail",
+          agentView: initialWorkflowAgentView,
         };
       }
       return state;
@@ -78,6 +86,7 @@ export function workflowManagerReducer(
         ...state,
         viewMode: "list",
         detailRunId: null,
+        agentView: initialWorkflowAgentView,
       };
     case "HANDLE_KEY": {
       const { input, key } = action;
@@ -91,6 +100,7 @@ export function workflowManagerReducer(
               ...state,
               detailRunId: state.runs[state.selectedIndex].runId,
               viewMode: "detail",
+              agentView: initialWorkflowAgentView,
             };
           }
           return state;
@@ -133,11 +143,27 @@ export function workflowManagerReducer(
           return state;
         }
       } else if (state.viewMode === "detail") {
+        // Agent list / card first: its ↑/↓/Enter/Esc belong to the agent the
+        // user is looking at, and only the keys it does not consume fall
+        // through to the run's own (Esc back, k stop).
+        if (state.detailRunId) {
+          const run = state.runs.find((r) => r.runId === state.detailRunId);
+          const agentResult = handleWorkflowAgentKey(
+            state.agentView,
+            key,
+            run?.agents?.length ?? 0,
+          );
+          if (agentResult.handled) {
+            return { ...state, agentView: agentResult.view };
+          }
+        }
+
         if (key.escape) {
           return {
             ...state,
             viewMode: "list",
             detailRunId: null,
+            agentView: initialWorkflowAgentView,
           };
         }
 

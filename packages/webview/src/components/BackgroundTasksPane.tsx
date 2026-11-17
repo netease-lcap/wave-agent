@@ -276,7 +276,7 @@ export const BackgroundTasksPane: React.FC<BackgroundTasksPaneProps> = ({
       )}
 
       {selectedWorkflowRun ? (
-        <WorkflowRunProgress run={selectedWorkflowRun} />
+        <WorkflowRunProgress run={selectedWorkflowRun} vscode={vscode} />
       ) : (
         <>
           <div className="background-task-block-title">输出（最近 20 行）:</div>

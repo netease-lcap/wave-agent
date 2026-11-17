@@ -10,12 +10,17 @@
  * `multi-agent/workflow`「在后台任务面板里看到工作流进度」场景 1).
  */
 
-import React from "react";
+import React, { useState } from "react";
 import {
   WORKFLOW_SIZE_WARNING_AGENTS,
   WORKFLOW_SIZE_WARNING_TOKENS,
 } from "wave-agent-sdk/constants";
-import type { SerializableWorkflowRun } from "../types";
+import type { SerializableWorkflowRun, WorkflowAgentState } from "../types";
+import { getLastLines } from "../utils/useBackgroundTaskDetail";
+import {
+  useWorkflowAgentActivity,
+  WORKFLOW_AGENT_ACTIVITY_LINES,
+} from "../utils/useWorkflowAgentActivity";
 import "../styles/WorkflowRunProgress.css";
 
 export const formatDuration = (ms: number): string => {
@@ -46,25 +51,187 @@ export const workflowStatusColor = (status: string): string => {
       return "#569cd6";
     case "failed":
     case "aborted":
+    case "interrupted":
       return "#f48771";
     case "paused":
+    case "skipped":
       return "#dcdcaa";
     default:
       return "var(--vscode-descriptionForeground)";
   }
 };
 
-// 2026-11-11 走查（评论点后台任务面板的 workflow 详情）：「这里也检查并修复」。
-// 原来这一整块是内联 style、颜色写死成 VS Code **暗色**调色板（标签 #569cd6 /
-// 段落标题 #4ec9b0 / 错误 #f48771），放到浅色面上分别只有 2.95 / 2.04 / 2.46，
-// 三个都过不了 AA 4.5。改成类名后样式集中在 styles/WorkflowRunProgress.css：
-// 基档（无宿主前缀）逐值保留旧内联值 —— 这个组件还被 /workflows 对话框和插件端
-// 的旧任务弹窗复用，那两处本轮不动，外观必须零变化；桌面端后台任务面板内的
-// 覆写才换 token（见该 CSS 的 `[data-host="desktop"] .background-tasks-pane` 段）。
+/** What one agent's Outcome block says, in the order the states can degrade. */
+export const agentOutcomeText = (agent: WorkflowAgentState): string => {
+  // A resumed run replays journal entries: no subagent ran, so there is no
+  // result to preview and no log to tail (spec 场景 2).
+  if (agent.cached) return "来自恢复日志";
+  switch (agent.status) {
+    case "completed":
+      return agent.resultPreview || "已完成";
+    case "failed":
+      return agent.error || "失败";
+    case "skipped":
+      return agent.error ? `已被跳过：${agent.error}` : "已被跳过";
+    case "interrupted":
+      return agent.error || "进程已结束";
+    default:
+      return "仍在运行";
+  }
+};
 
-const WorkflowRunProgress: React.FC<{ run: SerializableWorkflowRun }> = ({
-  run,
-}) => {
+/**
+ * One agent's card: what it was asked to do, what it has been doing, and how it
+ * ended. The activity is the tail of its log file — the same simplification the
+ * spec chooses over rendering the agent's transcript (spec 边界情况「agent 卡片是
+ * 够定位而不是全转录」).
+ */
+const WorkflowAgentCard: React.FC<{
+  runId: string;
+  agent: WorkflowAgentState;
+  vscode: { postMessage: (msg: unknown) => void };
+  onBack: () => void;
+}> = ({ runId, agent, vscode, onBack }) => {
+  const activity = useWorkflowAgentActivity({
+    runId,
+    agentIndex: agent.index,
+    running: agent.status === "running",
+    vscode,
+  });
+  const lines = getLastLines(activity, WORKFLOW_AGENT_ACTIVITY_LINES).trim();
+  const outcome = agentOutcomeText(agent);
+
+  return (
+    <>
+      <div className="workflow-agent-card-title">
+        Agent #{agent.index + 1} · {agent.label || agent.agentType || "agent"} ·{" "}
+        <span style={{ color: workflowStatusColor(agent.status) }}>
+          {agent.status}
+        </span>
+      </div>
+
+      {agent.promptPreview && (
+        <div className="workflow-run-section">
+          <div className="workflow-run-section-title">Prompt:</div>
+          <div className="workflow-run-row workflow-run-script">
+            {agent.promptPreview}
+          </div>
+        </div>
+      )}
+
+      {/* No log file exists for an agent replayed from the journal, so the
+          block is dropped rather than shown empty (spec 场景 2/5). */}
+      {!agent.cached && (
+        <div
+          className="workflow-run-section"
+          data-testid="workflow-agent-activity"
+        >
+          <div className="workflow-run-section-title">
+            Activity (last {WORKFLOW_AGENT_ACTIVITY_LINES} lines):
+          </div>
+          {lines ? (
+            <pre className="workflow-run-logs">{lines}</pre>
+          ) : (
+            <div className="workflow-agent-empty">暂无活动</div>
+          )}
+        </div>
+      )}
+
+      <div className="workflow-run-section">
+        <div className="workflow-run-section-title">Outcome:</div>
+        <div className="workflow-run-row">{outcome}</div>
+      </div>
+
+      <button
+        type="button"
+        className="workflow-agent-back"
+        onClick={onBack}
+        data-testid="workflow-agent-back"
+      >
+        返回运行详情
+      </button>
+    </>
+  );
+};
+
+/**
+ * The run's agent list: one row per started `agent()` call, same fields and
+ * order as the CLI panel (spec 场景 1).
+ */
+const WorkflowAgentList: React.FC<{
+  agents: WorkflowAgentState[];
+  onSelect: (agentIndex: number) => void;
+}> = ({ agents, onSelect }) => (
+  <div className="workflow-run-section" data-testid="workflow-agent-list">
+    <div className="workflow-run-section-title">Agents:</div>
+    {agents.map((agent) => {
+      // Duration reads only when both ends exist: a running agent's elapsed
+      // time would otherwise freeze at whatever frame it was rendered.
+      const duration =
+        agent.startTime !== undefined && agent.endTime !== undefined
+          ? formatDuration(agent.endTime - agent.startTime)
+          : "";
+      // Zero counts are dropped so an agent that has not called a tool yet does
+      // not claim "0 tools".
+      const meta = [
+        agent.status,
+        agent.tokens ? `${formatTokens(agent.tokens)} tokens` : "",
+        agent.toolUses
+          ? `${agent.toolUses} ${agent.toolUses === 1 ? "tool" : "tools"}`
+          : "",
+        duration,
+      ].filter(Boolean);
+      return (
+        <button
+          key={agent.index}
+          type="button"
+          className="workflow-agent-row"
+          onClick={() => onSelect(agent.index)}
+          data-testid={`workflow-agent-row-${agent.index}`}
+        >
+          <span className="workflow-agent-index">#{agent.index + 1}</span>{" "}
+          {agent.label || agent.agentType || "agent"}{" "}
+          <span className="workflow-agent-meta">{meta.join(" · ")}</span>
+        </button>
+      );
+    })}
+  </div>
+);
+
+const WorkflowRunProgress: React.FC<{
+  run: SerializableWorkflowRun;
+  vscode: { postMessage: (msg: unknown) => void };
+}> = ({ run, vscode }) => {
+  const [selectedAgentIndex, setSelectedAgentIndex] = useState<number | null>(
+    null,
+  );
+  const agents = run.agents ?? [];
+  const selectedAgent =
+    selectedAgentIndex === null
+      ? null
+      : (agents.find((a) => a.index === selectedAgentIndex) ?? null);
+
+  // An agent card replaces the run detail (spec 场景 2): the panel is one
+  // surface, and the two views would otherwise compete for the same height.
+  if (selectedAgent) {
+    return (
+      <WorkflowAgentCard
+        runId={run.runId}
+        agent={selectedAgent}
+        vscode={vscode}
+        onBack={() => setSelectedAgentIndex(null)}
+      />
+    );
+  }
+
+  // 2026-11-11 走查（评论点后台任务面板的 workflow 详情）：「这里也检查并修复」。
+  // 原来这一整块是内联 style、颜色写死成 VS Code **暗色**调色板（标签 #569cd6 /
+  // 段落标题 #4ec9b0 / 错误 #f48771），放到浅色面上分别只有 2.95 / 2.04 / 2.46，
+  // 三个都过不了 AA 4.5。改成类名后样式集中在 styles/WorkflowRunProgress.css：
+  // 基档（无宿主前缀）逐值保留旧内联值 —— 这个组件还被 /workflows 对话框和插件端
+  // 的旧任务弹窗复用，那两处本轮不动，外观必须零变化；桌面端后台任务面板内的
+  // 覆写才换 token（见该 CSS 的 `[data-host="desktop"] .background-tasks-pane` 段）。
+
   const elapsed = run.endTime
     ? run.endTime - run.startTime
     : Date.now() - run.startTime;
@@ -165,6 +332,16 @@ const WorkflowRunProgress: React.FC<{ run: SerializableWorkflowRun }> = ({
             </div>
           ))}
         </div>
+      )}
+
+      {/* Agent list (spec「查看单个 agent 的执行详情」场景 1): only agents that
+          actually started appear, and a run without any drops the block
+          entirely — an empty "Agents:" title reads as missing data. */}
+      {agents.length > 0 && (
+        <WorkflowAgentList
+          agents={agents}
+          onSelect={(agentIndex) => setSelectedAgentIndex(agentIndex)}
+        />
       )}
 
       {logs.length > 0 && (

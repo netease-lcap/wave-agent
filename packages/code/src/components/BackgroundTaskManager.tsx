@@ -10,6 +10,8 @@ import WorkflowRunDetail, {
   formatDuration,
   formatTime,
 } from "./WorkflowRunDetail.js";
+import WorkflowAgentDetail from "./WorkflowAgentDetail.js";
+import { initialWorkflowAgentView } from "../reducers/workflowAgentView.js";
 
 export interface BackgroundTaskManagerProps {
   onCancel: () => void;
@@ -32,6 +34,7 @@ export const BackgroundTaskManager: React.FC<BackgroundTaskManagerProps> = ({
     viewMode: "list",
     detailTaskId: null,
     detailOutput: null,
+    agentView: initialWorkflowAgentView,
     pendingEffect: null,
   } as BackgroundTaskManagerState);
 
@@ -52,7 +55,24 @@ export const BackgroundTaskManager: React.FC<BackgroundTaskManagerProps> = ({
     }
   }, [state.pendingEffect, onCancel, stopBackgroundTask]);
 
-  const { tasks, selectedIndex, viewMode, detailTaskId, detailOutput } = state;
+  const {
+    tasks,
+    selectedIndex,
+    viewMode,
+    detailTaskId,
+    detailOutput,
+    agentView,
+  } = state;
+
+  // The open workflow run, when the selected task is a workflow: the panel is
+  // the only place that joins a task id onto the run list (a workflow task's id
+  // IS its run id), so the agent keys are dispatched with its agent count.
+  const openWorkflowRun =
+    viewMode === "detail" && detailTaskId
+      ? tasks.find((t) => t.id === detailTaskId)?.type === "workflow"
+        ? (workflowRuns.find((r) => r.runId === detailTaskId) ?? null)
+        : null
+      : null;
 
   // Convert backgroundTasks to local Task format
   useEffect(() => {
@@ -90,7 +110,12 @@ export const BackgroundTaskManager: React.FC<BackgroundTaskManagerProps> = ({
   const visibleTasks = tasks.slice(startIndex, startIndex + MAX_VISIBLE_ITEMS);
 
   useInput((input, key) => {
-    dispatch({ type: "HANDLE_KEY", input, key });
+    dispatch({
+      type: "HANDLE_KEY",
+      input,
+      key,
+      workflowAgentCount: openWorkflowRun?.agents?.length ?? 0,
+    });
   });
 
   if (viewMode === "detail" && detailTaskId && detailOutput) {
@@ -104,9 +129,13 @@ export const BackgroundTaskManager: React.FC<BackgroundTaskManagerProps> = ({
     // real progress instead of the (always empty) text output: the same run
     // fields `/workflows` shows, via the same component. Absent run (e.g. the
     // session was cleared) falls back to the plain task detail below.
-    const selectedRun =
-      task.type === "workflow"
-        ? (workflowRuns.find((r) => r.runId === task.id) ?? null)
+    const selectedRun = openWorkflowRun;
+
+    // The agent card replaces the run detail, same as `/workflows` (spec
+    // 「查看单个 agent 的执行详情」场景 2).
+    const openAgent =
+      selectedRun && agentView.openIndex !== null
+        ? ((selectedRun.agents ?? [])[agentView.openIndex] ?? null)
         : null;
 
     return (
@@ -175,8 +204,17 @@ export const BackgroundTaskManager: React.FC<BackgroundTaskManagerProps> = ({
           )}
         </Box>
 
-        {selectedRun ? (
-          <WorkflowRunDetail run={selectedRun} />
+        {openAgent && selectedRun ? (
+          <WorkflowAgentDetail runId={selectedRun.runId} agent={openAgent} />
+        ) : selectedRun ? (
+          <WorkflowRunDetail
+            run={selectedRun}
+            agentSelectionIndex={
+              (selectedRun.agents ?? []).length > 0
+                ? agentView.selectedIndex
+                : undefined
+            }
+          />
         ) : (
           <>
             {detailOutput.stdout && (
@@ -207,7 +245,9 @@ export const BackgroundTaskManager: React.FC<BackgroundTaskManagerProps> = ({
 
         <Box marginTop={1}>
           <Text dimColor>
-            {task.status === "running" ? "k to stop · " : ""}Esc to go back
+            {openAgent
+              ? "Esc back to run detail"
+              : `${selectedRun && (selectedRun.agents ?? []).length > 0 ? "↑/↓ agent · Enter agent detail · " : ""}${task.status === "running" ? "k to stop · " : ""}Esc to go back`}
           </Text>
         </Box>
       </Box>

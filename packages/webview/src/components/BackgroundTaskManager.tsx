@@ -180,7 +180,10 @@ const BackgroundTaskManager: React.FC<
                     </div>
                   )}
                   {selectedWorkflowRun && (
-                    <WorkflowRunProgress run={selectedWorkflowRun} />
+                    <WorkflowRunProgress
+                      run={selectedWorkflowRun}
+                      vscode={vscode}
+                    />
                   )}
                 </div>
                 <div className="mcp-server-actions">

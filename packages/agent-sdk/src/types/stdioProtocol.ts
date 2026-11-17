@@ -141,6 +141,7 @@ export type RequestMethod =
   // Move the current turn's work into a background task (Ctrl+B in the CLI).
   | "backgroundCurrentTask"
   | "getWorkflowRuns"
+  | "getWorkflowAgentActivity"
   | "stopWorkflowRun"
   // Git / worktree (global — no session required)
   | "listGitBranches"

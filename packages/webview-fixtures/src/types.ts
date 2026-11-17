@@ -1920,6 +1920,23 @@ export interface ImagePreviewResponseMessage extends HostToWebviewMessageBase {
   error?: string;
 }
 
+/**
+ * 工作流里单个 agent 的活动日志尾部（spec
+ * `multi-agent/workflow.md`「查看单个 agent 的执行详情」）。
+ *
+ * 运行中的 agent 每 1.5 秒被重读一次，而用户可以在这 1.5 秒里换到另一个
+ * agent（甚至另一个 run），所以回复必须能被认出来是「哪一笔请求的」——
+ * `requestId` 由页面生成、宿主原样带回。
+ */
+export interface WorkflowAgentActivityMessage extends HostToWebviewMessageBase {
+  command: "workflowAgentActivity";
+  requestId: string;
+  runId: string;
+  agentIndex: number;
+  /** 活动日志的尾部（宿主已按 8 KiB 截断）；读不到时是空串。 */
+  activity: string;
+}
+
 /** Reply to a requestHistory / searchHistory query that failed. */
 export interface HistoryErrorMessage extends HostToWebviewMessageBase {
   command: "historyError";
@@ -2032,6 +2049,7 @@ export type HostToWebviewMessage =
   | SlashCommandsErrorMessage
   | RecentWorkdirsMessage
   | ImagePreviewResponseMessage
+  | WorkflowAgentActivityMessage
   | UploadSuccessMessage
   | UploadErrorMessage
   | DesktopRemoteDirListMessage
@@ -2140,6 +2158,9 @@ type ReplyAttribution = {
   // 远控页点图片路径取图：一次点击一笔请求，同一张图可被反复点、也可以连着点
   // 好几张，晚到的旧回复必须按 requestId 丢弃（否则会把上一张图弹在当前这张上）。
   imagePreviewResponse: "requestId";
+  // agent 活动日志尾部：1.5 秒一次轮询，中途可以换 agent / 换 run，晚到的旧
+  // 回复必须按 requestId 丢弃（否则会把上一个 agent 的活动贴到刚选中的这个上）。
+  workflowAgentActivity: "requestId";
   // 上翻取更早：请求生成 id 原样带回。用户停在顶部会连续翻页，且「翻更早」与
   // 「重连补差 / 整表替换」共用同一份列表，晚到的旧页必须按 requestId 丢弃
   // （否则会把上一页 prepend 到已经翻走的位置上）。
@@ -2216,6 +2237,7 @@ export const replyAttributionLocked = {
   desktopArtifactCategoriesSaved: true,
   recentWorkdirsResponse: true,
   imagePreviewResponse: true,
+  workflowAgentActivity: true,
   earlierMessages: true,
   desktopSessionContentMatches: true,
   desktopModPanelRender: true,

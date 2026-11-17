@@ -10,6 +10,8 @@ import WorkflowRunDetail, {
   formatTokens,
   workflowStatusColor,
 } from "./WorkflowRunDetail.js";
+import WorkflowAgentDetail from "./WorkflowAgentDetail.js";
+import { initialWorkflowAgentView } from "../reducers/workflowAgentView.js";
 
 export interface WorkflowManagerProps {
   onCancel: () => void;
@@ -36,6 +38,7 @@ export const WorkflowManager: React.FC<WorkflowManagerProps> = ({
     selectedIndex: 0,
     viewMode: "list",
     detailRunId: null,
+    agentView: initialWorkflowAgentView,
     pendingEffect: null,
   } as WorkflowManagerState);
   const [saveDialog, setSaveDialog] = useState<SaveDialogState | null>(null);
@@ -58,7 +61,7 @@ export const WorkflowManager: React.FC<WorkflowManagerProps> = ({
     }
   }, [state.pendingEffect, onCancel, stopWorkflowRun]);
 
-  const { runs, selectedIndex, viewMode, detailRunId } = state;
+  const { runs, selectedIndex, viewMode, detailRunId, agentView } = state;
 
   // Sync workflowRuns from context
   useEffect(() => {
@@ -163,6 +166,15 @@ export const WorkflowManager: React.FC<WorkflowManagerProps> = ({
       return null;
     }
 
+    const runAgents = run.agents ?? [];
+    // The card is a lens on the row the user opened; if the run's agent list
+    // changed underneath (`/clear`, a re-read of the run list) the position may
+    // no longer exist and the panel falls back to the run detail.
+    const openAgent =
+      agentView.openIndex === null
+        ? null
+        : (runAgents[agentView.openIndex] ?? null);
+
     return (
       <Box
         flexDirection="column"
@@ -180,7 +192,20 @@ export const WorkflowManager: React.FC<WorkflowManagerProps> = ({
           </Text>
         </Box>
 
-        <WorkflowRunDetail run={run} />
+        {/* 下钻到单个 agent 时，卡片取代运行详情（spec「查看单个 agent 的执行
+            详情」场景 2）：同一块面板只画一层，否则两层的操作提示会打架。 */}
+        {openAgent ? (
+          <WorkflowAgentDetail runId={run.runId} agent={openAgent} />
+        ) : (
+          <WorkflowRunDetail
+            run={run}
+            agentSelectionIndex={
+              (run.agents ?? []).length > 0
+                ? agentView.selectedIndex
+                : undefined
+            }
+          />
+        )}
 
         {saveDialog && (
           <Box flexDirection="column">
@@ -200,7 +225,9 @@ export const WorkflowManager: React.FC<WorkflowManagerProps> = ({
           <Text dimColor>
             {saveDialog
               ? "Enter save · Tab scope · Esc cancel"
-              : `${run.status === "running" ? "k to stop · " : ""}s save script · Esc back`}
+              : openAgent
+                ? "Esc back to run detail"
+                : `${runAgents.length > 0 ? "↑/↓ agent · Enter agent detail · " : ""}${run.status === "running" ? "k to stop · " : ""}s save script · Esc back`}
           </Text>
         </Box>
       </Box>

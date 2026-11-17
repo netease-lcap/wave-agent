@@ -908,6 +908,12 @@ export class AgentBridge {
 
       case "getWorkflowRuns":
         return this.getWorkflowRuns(sessionId);
+      case "getWorkflowAgentActivity":
+        return this.getWorkflowAgentActivity(
+          p.runId as string,
+          p.agentIndex as number,
+          sessionId,
+        );
       case "stopWorkflowRun":
         return this.stopWorkflowRun(p.runId as string, sessionId);
 
@@ -2582,6 +2588,15 @@ export class AgentBridge {
         return rest;
       }),
     };
+  }
+
+  private getWorkflowAgentActivity(
+    runId: string,
+    agentIndex: number,
+    sessionId?: string,
+  ): { activity: string } {
+    const entry = this.requireSessionForRead(sessionId);
+    return entry.agent.getWorkflowAgentActivity(runId, agentIndex);
   }
 
   private stopWorkflowRun(

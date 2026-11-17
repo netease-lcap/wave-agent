@@ -6,6 +6,7 @@ import {
 } from "../../src/reducers/workflowManagerReducer.js";
 import { Key } from "ink";
 import type { WorkflowRun, WorkflowMeta } from "wave-agent-sdk";
+import { initialWorkflowAgentView } from "../../src/reducers/workflowAgentView.js";
 
 describe("workflowManagerReducer", () => {
   const mockMeta: WorkflowMeta = { name: "test", description: "test workflow" };
@@ -38,6 +39,7 @@ describe("workflowManagerReducer", () => {
     selectedIndex: 0,
     viewMode: "list",
     detailRunId: null,
+    agentView: initialWorkflowAgentView,
     pendingEffect: null,
   };
 

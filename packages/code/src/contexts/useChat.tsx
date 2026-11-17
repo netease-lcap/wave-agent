@@ -128,6 +128,7 @@ export interface ChatContextType {
   backgroundTasks: BackgroundTask[];
   // Workflow runs
   workflowRuns: WorkflowRun[];
+  getWorkflowAgentActivity: (runId: string, agentIndex: number) => string;
   stopWorkflowRun: (runId: string) => void;
   saveWorkflowScript: (
     runId: string,
@@ -1586,6 +1587,17 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     return agentRef.current.stopBackgroundTask(taskId);
   }, []);
 
+  // 单个 agent 的活动日志尾部（spec multi-agent/workflow.md「查看单个 agent 的
+  // 执行详情」）：CLI 内嵌 Agent，所以直接读，不经过命令通道。读不到就是空串。
+  const getWorkflowAgentActivity = useCallback(
+    (runId: string, agentIndex: number) => {
+      if (!agentRef.current) return "";
+      return agentRef.current.getWorkflowAgentActivity(runId, agentIndex)
+        .activity;
+    },
+    [],
+  );
+
   const stopWorkflowRun = useCallback((runId: string) => {
     agentRef.current?.stopWorkflowRun(runId);
   }, []);
@@ -1870,6 +1882,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     disconnectMcpServer,
     backgroundTasks,
     workflowRuns,
+    getWorkflowAgentActivity,
     stopWorkflowRun,
     saveWorkflowScript,
     tasks,
