@@ -132,6 +132,10 @@ describe("Agent Tool Integration with Built-in Subagents", () => {
           prompt: "Search for all .ts files in the src directory",
           subagent_type: "Explore",
           worktreeIsolation: false,
+          // The subagent's own `model` is passed through to `createInstance`
+          // now that `agent.spawn` can rewrite it; built-in Explore declares
+          // `inherit`.
+          model: "inherit",
         },
         undefined,
         expect.any(Function),
@@ -300,6 +304,8 @@ describe("Agent Tool Integration with Built-in Subagents", () => {
           prompt: "Design implementation plan for adding authentication",
           subagent_type: "Plan",
           worktreeIsolation: false,
+          // Built-in Plan declares `model: inherit`, same pass-through as above.
+          model: "inherit",
         },
         undefined,
         expect.any(Function),

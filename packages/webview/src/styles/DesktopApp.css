@@ -2506,31 +2506,6 @@ body.is-panel-resizing webview {
   font-size: 12px;
 }
 
-/* An inline ConfirmationDialog (plan preview / permission / AskUserQuestions)
-   can grow taller than the pane; let the input area shrink within the flex
-   column and the dialog body scroll, instead of overflowing onto the panels.
-   Scoped under .desktop-chat-main so VSCE/JB (full-height chat column) stay
-   on the inline auto-height path. */
-.desktop-chat-main .input-area-container--confirm {
-  flex: 0 1 auto;
-  min-height: 0;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-}
-
-.desktop-chat-main .input-area-container--confirm .confirmation-dialog {
-  flex: 0 1 auto;
-  min-height: 0;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-}
-
-.desktop-chat-main .input-area-container--confirm .confirmation-dialog-inner {
-  flex: 1 1 auto;
-  /* 桌面端这一档原本是 min-height: 0（允许压到 0）；地板高度（ConfirmationDialog.css
-     的 --approval-dock-floor）要在桌面端也生效，所以这里跟着它走。 */
-  min-height: var(--approval-dock-floor, 0);
-  overflow: hidden;
-}
+/* 确认卡的收缩链（输入区可缩 → 卡片可缩 → 弹窗主体内部滚）已移到
+   ChatApp.css 的 .input-area-container--confirm，四端同一套；这里不再留
+   桌面专属副本。 */

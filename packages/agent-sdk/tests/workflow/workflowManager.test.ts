@@ -4,6 +4,7 @@ import { TurnBudgetLedger } from "../../src/managers/turnBudgetLedger.js";
 import { RunStateStore } from "../../src/workflow/runState.js";
 import { parseTaskNotificationXml } from "../../src/utils/notificationXml.js";
 import type { WorkflowRun } from "../../src/workflow/types.js";
+import { WORKFLOW_AGENT_LOG_TAIL_BYTES } from "../../src/constants/workflowLimits.js";
 import { Container } from "../../src/utils/container.js";
 import * as fs from "fs";
 import * as path from "path";
@@ -258,6 +259,36 @@ describe("WorkflowManager", () => {
       }
     });
 
+    it("sweeps the agents that were in flight to interrupted, not left running", async () => {
+      const tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "wf-"));
+      try {
+        const { store, run } = persistedRunningRun(tmpDir);
+        run.agents = [
+          { index: 0, status: "running", startTime: 1000 },
+          { index: 1, status: "completed", startTime: 1000, endTime: 1500 },
+        ];
+        await store.save(run);
+
+        const reloaded = createMockContainer(tmpDir);
+        const [swept] = await new WorkflowManager(
+          reloaded.container,
+        ).listRuns();
+
+        // A spinner nothing will ever advance is worse than "it died with the
+        // process" (spec「查看单个 agent 的执行详情」场景 2 的 Outcome).
+        expect(swept.agents?.[0].status).toBe("interrupted");
+        expect(swept.agents?.[0].endTime).toBeDefined();
+        expect(swept.agents?.[0].error).toContain("interrupted");
+        // Agents that already ended keep what they reported.
+        expect(swept.agents?.[1]).toMatchObject({
+          status: "completed",
+          endTime: 1500,
+        });
+      } finally {
+        await fs.promises.rm(tmpDir, { recursive: true });
+      }
+    });
+
     it("leaves a run this process is executing alone", async () => {
       const tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "wf-"));
       try {
@@ -277,6 +308,48 @@ describe("WorkflowManager", () => {
       } finally {
         await fs.promises.rm(tmpDir, { recursive: true });
       }
+    });
+  });
+
+  describe("getAgentActivity", () => {
+    const script = `export const meta = { name: "activity-wf", description: "d" };\nreturn 1;`;
+
+    it("reads back the tail of the agent's own log file", async () => {
+      const run = await manager.createRun(script);
+      const logPath = path.join(
+        path.dirname(run.scriptPath),
+        "agents",
+        "0.log",
+      );
+      // One line per finished tool call, exactly what the subagent writes.
+      const lines = Array.from(
+        { length: 2000 },
+        (_, i) => `[2026-01-01T00:00:00.000Z] Read file-${i}.ts`,
+      );
+      await fs.promises.mkdir(path.dirname(logPath), { recursive: true });
+      await fs.promises.writeFile(logPath, `${lines.join("\n")}\n`, "utf-8");
+
+      const { activity } = manager.getAgentActivity(run.runId, 0);
+
+      expect(activity).toContain(
+        "[2026-01-01T00:00:00.000Z] Read file-1999.ts",
+      );
+      // Bounded: the panel re-reads this on a 1.5 s cadence while the agent
+      // runs, so one reply is a tail, not the whole file.
+      expect(Buffer.byteLength(activity, "utf8")).toBeLessThanOrEqual(
+        WORKFLOW_AGENT_LOG_TAIL_BYTES,
+      );
+    });
+
+    it("answers empty for an unknown run or an agent that never logged", async () => {
+      const run = await manager.createRun(script);
+
+      expect(manager.getAgentActivity("wf_missing", 0)).toEqual({
+        activity: "",
+      });
+      // A cached (replayed) agent has no log file at all — the card degrades to
+      // "no activity" instead of throwing.
+      expect(manager.getAgentActivity(run.runId, 7)).toEqual({ activity: "" });
     });
   });
 

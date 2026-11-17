@@ -991,6 +991,17 @@ button.reasoning-header {
   display: block;
 }
 
+/* 预览题上用户填的备注。模型拿得到它，回显里也得有——否则用户回看历史会以为
+   备注没提交上去。弱化成说明文字，不跟答案框抢同一档视觉重量。 */
+.ask-user-result-notes {
+  color: var(--vscode-descriptionForeground);
+  font-size: 12px;
+  line-height: 16px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+
 .tool-result-inline {
   color: var(--vscode-descriptionForeground);
   font-weight: normal;

@@ -1,11 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
+  createMockVscode,
   renderChatApp,
   screen,
   act,
   fireEvent,
   sendCommand,
 } from "./test-utils";
+import { BACKGROUND_TASK_OUTPUT_POLL_MS } from "../../src/utils/useBackgroundTaskDetail";
 import type { SerializableWorkflowRun } from "../../src/types";
 
 const BASE = 1_000;
@@ -33,6 +35,23 @@ function openWorkflowsDialog(runs: SerializableWorkflowRun[]) {
   act(() => {
     sendCommand("showDialog", { dialogType: "workflows" });
   });
+}
+
+/** Activity requests the card posted, oldest first. */
+function postedActivityRequests(vscode: ReturnType<typeof createMockVscode>) {
+  return vscode.postMessage.mock.calls
+    .map((call) => call[0] as { command?: string; requestId?: string })
+    .filter(
+      (message) => message.command === "getWorkflowAgentActivity",
+    ) as Array<{
+    requestId: string;
+  }>;
+}
+
+/** The last activity request the panel posted (the one the open card waits on). */
+function lastActivityRequest(vscode: ReturnType<typeof createMockVscode>) {
+  const posted = postedActivityRequests(vscode);
+  return posted[posted.length - 1];
 }
 
 describe("Workflow manager dialog", () => {
@@ -273,6 +292,209 @@ describe("Workflow manager dialog", () => {
       "pipeline[2] failed: 代理未返回结构化结果",
     );
     expect(screen.getByText("failed")).toBeInTheDocument();
+  });
+
+  it("lists each started agent with its counters, and drops the block when none started", () => {
+    renderChatApp();
+    openWorkflowsDialog([
+      makeRun({
+        agents: [
+          {
+            index: 0,
+            label: "scout",
+            agentType: "Explore",
+            status: "completed",
+            startTime: BASE,
+            endTime: BASE + 42000,
+            tokens: 12300,
+            toolUses: 7,
+          },
+          {
+            // No label: the row falls back to the agent type (spec 场景 1).
+            index: 1,
+            agentType: "general-purpose",
+            status: "running",
+            startTime: BASE,
+          },
+          {
+            // A single tool use reads as "1 tool", not "1 tools".
+            index: 2,
+            label: "sum",
+            status: "completed",
+            startTime: BASE,
+            endTime: BASE + 1000,
+            toolUses: 1,
+          },
+        ],
+      }),
+    ]);
+
+    const list = screen.getByTestId("workflow-agent-list");
+    expect(list).toHaveTextContent("Agents:");
+    // Fields in the spec's order: label, status, tokens, tool uses, duration —
+    // zero counts are dropped rather than rendered as "0 tools".
+    expect(screen.getByTestId("workflow-agent-row-0")).toHaveTextContent(
+      "#1 scout completed · 12.3k tokens · 7 tools · 42s",
+    );
+    expect(screen.getByTestId("workflow-agent-row-1")).toHaveTextContent(
+      "#2 general-purpose running",
+    );
+    // A running agent has no end time, so it claims no duration.
+    expect(screen.getByTestId("workflow-agent-row-1")).not.toHaveTextContent(
+      "0ms",
+    );
+    expect(screen.getByTestId("workflow-agent-row-2")).toHaveTextContent(
+      /· 1 tool ·/,
+    );
+
+    // A run that never started an agent drops the block entirely.
+    renderChatApp();
+    openWorkflowsDialog([makeRun({ agents: [] })]);
+    expect(screen.queryByTestId("workflow-agent-list")).toBeNull();
+  });
+
+  it("opens an agent card with its prompt, activity and outcome", () => {
+    const { vscode } = renderChatApp();
+    openWorkflowsDialog([
+      makeRun({
+        agents: [
+          {
+            index: 0,
+            label: "scout",
+            agentType: "Explore",
+            status: "completed",
+            startTime: BASE,
+            endTime: BASE + 42000,
+            tokens: 12300,
+            toolUses: 7,
+            promptPreview: "阅读 src/workflow 下的实现并总结",
+            resultPreview: "共 5 个文件，无循环依赖",
+          },
+        ],
+      }),
+    ]);
+
+    fireEvent.click(screen.getByTestId("workflow-agent-row-0"));
+
+    // The card replaces the run detail: one panel, one layer.
+    expect(screen.queryByText(/Run ID:/)).toBeNull();
+    expect(screen.getByText(/Agent #1/)).toHaveTextContent(
+      "Agent #1 · scout · completed",
+    );
+    expect(screen.getByText("Prompt:")).toBeInTheDocument();
+    expect(
+      screen.getByText("阅读 src/workflow 下的实现并总结"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Outcome:")).toBeInTheDocument();
+    expect(screen.getByText("共 5 个文件，无循环依赖")).toBeInTheDocument();
+
+    // The activity is whatever the host answered for the request the card made.
+    const request = vscode.postMessage.mock.calls
+      .map((call) => call[0] as { command?: string; requestId?: string })
+      .find((message) => message.command === "getWorkflowAgentActivity");
+    expect(request).toMatchObject({ runId: "wf_abc12345", agentIndex: 0 });
+
+    act(() => {
+      sendCommand("workflowAgentActivity", {
+        requestId: request!.requestId,
+        runId: "wf_abc12345",
+        agentIndex: 0,
+        activity: "[2026-01-01T00:00:00.000Z] Read a.ts\nAgent completed",
+      });
+    });
+    const activity = screen.getByTestId("workflow-agent-activity");
+    expect(activity).toHaveTextContent("Read a.ts");
+    expect(activity).toHaveTextContent("Agent completed");
+
+    // Back returns to the run detail it came from.
+    fireEvent.click(screen.getByTestId("workflow-agent-back"));
+    expect(screen.getByText(/Run ID:/)).toBeInTheDocument();
+  });
+
+  it("keeps the newest activity reply and drops a stale one", () => {
+    const { vscode } = renderChatApp();
+    openWorkflowsDialog([
+      makeRun({
+        agents: [
+          { index: 0, status: "running", startTime: BASE },
+          { index: 1, status: "running", startTime: BASE },
+        ],
+      }),
+    ]);
+
+    fireEvent.click(screen.getByTestId("workflow-agent-row-0"));
+    const first = lastActivityRequest(vscode)!;
+    fireEvent.click(screen.getByTestId("workflow-agent-back"));
+    fireEvent.click(screen.getByTestId("workflow-agent-row-1"));
+    const second = lastActivityRequest(vscode)!;
+    expect(second.requestId).not.toBe(first.requestId);
+
+    // The answer for agent #1 arrives after the user moved to #2: it must not
+    // be painted onto the card that is open now.
+    act(() => {
+      sendCommand("workflowAgentActivity", {
+        requestId: first.requestId,
+        runId: "wf_abc12345",
+        agentIndex: 0,
+        activity: "stale line from agent 1",
+      });
+      sendCommand("workflowAgentActivity", {
+        requestId: second.requestId,
+        runId: "wf_abc12345",
+        agentIndex: 1,
+        activity: "fresh line from agent 2",
+      });
+    });
+
+    const activity = screen.getByTestId("workflow-agent-activity");
+    expect(activity).toHaveTextContent("fresh line from agent 2");
+    expect(activity).not.toHaveTextContent("stale line from agent 1");
+  });
+
+  it("re-reads the activity of a running agent on the polling cadence and stops at a terminal state", () => {
+    vi.useFakeTimers();
+    try {
+      const { vscode } = renderChatApp();
+      openWorkflowsDialog([
+        makeRun({
+          agents: [{ index: 0, status: "running", startTime: BASE }],
+        }),
+      ]);
+
+      fireEvent.click(screen.getByTestId("workflow-agent-row-0"));
+      expect(postedActivityRequests(vscode)).toHaveLength(1);
+
+      act(() => {
+        vi.advanceTimersByTime(BACKGROUND_TASK_OUTPUT_POLL_MS);
+      });
+      expect(postedActivityRequests(vscode)).toHaveLength(2);
+
+      // The run snapshot flips the agent to completed: one last read lands and
+      // the cadence stops (polling a terminal agent only costs frames).
+      act(() => {
+        sendCommand("updateWorkflowRuns", {
+          runs: [
+            makeRun({
+              agents: [
+                {
+                  index: 0,
+                  status: "completed",
+                  startTime: BASE,
+                  endTime: BASE + 1000,
+                },
+              ],
+            }),
+          ],
+        });
+      });
+      const afterTerminal = postedActivityRequests(vscode).length;
+      act(() => {
+        vi.advanceTimersByTime(BACKGROUND_TASK_OUTPUT_POLL_MS * 3);
+      });
+      expect(postedActivityRequests(vscode)).toHaveLength(afterTerminal);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("stops a running run by its run id", () => {

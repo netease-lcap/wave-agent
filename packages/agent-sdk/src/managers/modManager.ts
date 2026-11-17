@@ -31,6 +31,8 @@ import {
   type ModPanelEventPayload,
   type ModPanelRenderResult,
   type ModPaneLayout,
+  type ModPaneRef,
+  type ModPaneViewPayload,
   type ModPanelTree,
   type ModPanelUpdatePayload,
   type ModPermissionRequestEvent,
@@ -50,6 +52,7 @@ import {
   type ModToolCheckDecision,
   type ModToolCheckEvent,
   type ModUiControlEvent,
+  type ModUiPane,
   type ModSessionUsage,
   type ModSessionVersion,
   type ModSettingsSource,
@@ -57,6 +60,7 @@ import {
   type ModClassicEvent,
   type ModClassicPreToolUseEvent,
   type ModClassicStopEvent,
+  type ModClassicSubagentStopEvent,
   type ModClassicTrigger,
   type ModStopHookResult,
   type ModToastPayload,
@@ -206,6 +210,7 @@ export interface ModToolBridge {
     description: string;
     inputSchema: Record<string, unknown>;
     plugin: string;
+    isDeferred?: boolean;
   }): { ok: true } | { ok: false; reason: string };
   /** 撤销（插件重载、会话结束）。名字不在表里不算错。 */
   unregister(name: string): void;
@@ -281,6 +286,16 @@ export interface ModManagerOptions {
   sessionFacts?: ModSessionFacts;
   /** 覆盖 store 根目录（测试用）。 */
   storeRoot?: string;
+}
+
+/**
+ * 面板台账的键：`<modId>\0<paneId>`。
+ *
+ * 两个 mod 都能开 `p1`，所以 `paneId` 单独用不够；`\0` 是不可打印字符，不会
+ * 和 id 里允许的字符撞上。
+ */
+function paneKeyOf(modId: string, paneId: string): string {
+  return `${modId}\u0000${paneId}`;
 }
 
 interface PaneState {
@@ -581,18 +596,21 @@ export function withCommunityUsage(
  *
  * 三个值来自 surface 的实测（{@link ModSurfaceMetrics}）：宽度没报时退回
  * {@link MOD_RENDER_BODY_COLUMNS}，行数按 `placement` 分开（dock 用面板上限，
- * inline 用 12 行）。`isFocused` 恒 `false`：我们的面板不接管键盘焦点，CC 那边
- * 这个字段是「这个人把键盘交给面板了没」，我们从来没有。
+ * inline 用 12 行）。`isFocused` 与 `$.ui.panes()` 的同一个字段同源 —— 都是
+ * surface 上报的「键盘在这块 pane 的正文里」（{@link setPaneView}），零上报时
+ * 就是 `false`（不编值）。它是**拉这一帧那一刻**的事实：焦点变了要由 surface
+ * 补拉一帧才看得到新值（surface 侧已接这条触发，见 spec「面板的显示与焦点」）。
  */
 function paneSiteProps(
   title: string,
+  isFocused: boolean,
   placement: "dock" | "inline",
   rows: number,
   bodyColumns: number,
 ): Record<string, unknown> {
   return {
     title,
-    isFocused: false,
+    isFocused,
     bodyColumns,
     placement,
     scroll: { offset: 0, bodyRows: rows },
@@ -720,6 +738,15 @@ export class ModManager {
   private readonly mods = new Map<string, LoadedMod>();
   private readonly panes = new Map<string, PaneState>();
   /**
+   * 这一端此刻摊开的是哪个面板、键盘在哪个（spec「面板的显示与焦点」）。
+   *
+   * 存 `<modId>\0<paneId>`，与 `panes` 的键同一个拼法。**只有一组**：一条会话
+   * 可能同时被两端挂着，后上报的生效 —— 与 Claude Code 只存一组 `shownId` /
+   * `focusedId` 同一条。`null` = 这一端没显示任何面板 / 键盘不在面板里。
+   */
+  private shownPaneKey: string | null = null;
+  private focusedPaneKey: string | null = null;
+  /**
    * modId → 输入框上方那条带的上一帧（spec「状态带、状态行与提示」）。
    *
    * 只在这里留住**上一帧成功的树**用于失败兜底 —— 与面板同一条纪律，surface
@@ -818,7 +845,15 @@ export class ModManager {
     text: string | null,
   ) => void;
   /**
-   * `$.ui.copy` 的出口（spec「剪贴板与视图」）。
+   * 每个 `tool_use_id` 上**当前**贴着 notice 的插件名（spec「工具行下面的一行」）。
+   *
+   * 工具结束由宿主替插件撤掉那一行，所以宿主得知道谁贴过：同一个工具可以被几个
+   * mod 各贴一行，收口时要逐条发 `text: null`。插件自己 `undefined` 撤掉时同步
+   * 从集合里删掉，免得清理时多出一条重复的 null。
+   */
+  private readonly noticeOwners = new Map<string, Set<string>>();
+  /**
+   * `$.ui.copy` 的出口（spec「剪贴板」）。
    *
    * 要等回执（谁写、写没写成都在界面那一端），所以是个 Promise；没接上时按
    * `no-surface` 作答。
@@ -1008,6 +1043,44 @@ export class ModManager {
     this.noticeSink = fn;
   }
 
+  /**
+   * `$.ui.notice` 的唯一出口：记账之后照旧交给 `noticeSink`。
+   *
+   * 账照记不误，哪怕 sink 没接（终端就没有工具块）：清理时自然是一条空操作，
+   * 但这里不为它特判 —— 「谁贴过」是宿主自己的事实，与有没有人画无关。
+   */
+  private publishNotice(
+    pluginName: string,
+    toolUseId: string,
+    text: string | null,
+  ): void {
+    const owners = this.noticeOwners.get(toolUseId);
+    if (text === null) {
+      if (owners) {
+        owners.delete(pluginName);
+        if (owners.size === 0) this.noticeOwners.delete(toolUseId);
+      }
+    } else if (owners) {
+      owners.add(pluginName);
+    } else {
+      this.noticeOwners.set(toolUseId, new Set([pluginName]));
+    }
+    this.noticeSink?.(pluginName, toolUseId, text);
+  }
+
+  /**
+   * 工具调用结束（成功或失败都算）：把它身上贴着的 notice 全部撤掉（spec
+   * 「工具行下面的一行」），插件不必在 `turn.complete` 里自己清理。
+   *
+   * 直接发 `text: null`、不走 `publishNotice`：这一步只是撤，不该再记一笔账。
+   */
+  clearToolNotices(toolUseId: string): void {
+    const owners = this.noticeOwners.get(toolUseId);
+    if (!owners || owners.size === 0) return;
+    for (const plugin of owners) this.noticeSink?.(plugin, toolUseId, null);
+    this.noticeOwners.delete(toolUseId);
+  }
+
   /** 接上剪贴板通道（见 `copySink`）。 */
   setCopySink(
     fn: (request: {
@@ -1156,7 +1229,7 @@ export class ModManager {
               listSessionMessages: () => this.facts.sessionMessages(),
               readPromptDraft: () => this.readPromptDraft(),
               showNotice: (toolUseId, text) =>
-                this.noticeSink?.(plugin.name, toolUseId, text),
+                this.publishNotice(plugin.name, toolUseId, text),
               copyText: (request) => this.copyText(request),
               envGet: (name) => this.facts.env(name),
               settingsRead: (query) => this.facts.settings(query),
@@ -1334,15 +1407,37 @@ export class ModManager {
   async collectStopContext(
     payload: ModClassicTrigger<ModClassicStopEvent>,
   ): Promise<string[]> {
+    return this.collectStopAdditionalContext("Stop", payload);
+  }
+
+  /**
+   * 派发 `classic.SubagentStop` 并收集 `additionalContext`（同一小节：子代理自己
+   * 那一轮的续跑）。
+   *
+   * 形状、纪律、限额与 `classic.Stop` 完全一致，只是一个进主对话、一个进那个子
+   * 代理自己的对话。
+   */
+  async collectSubagentStopContext(
+    payload: ModClassicTrigger<ModClassicSubagentStopEvent>,
+  ): Promise<string[]> {
+    return this.collectStopAdditionalContext("SubagentStop", payload);
+  }
+
+  /** 两条收尾事件共用的实现：等返回值、只认 `additionalContext`、按限额拍平。 */
+  private async collectStopAdditionalContext(
+    name: "Stop" | "SubagentStop",
+    payload: object,
+  ): Promise<string[]> {
     if (this.disposed) return [];
-    const event = this.withClassicBase("Stop", payload);
+    const hookName = `classic.${name}`;
+    const event = this.withClassicBase(name, payload);
     const parts = await Promise.all(
       [...this.mods].map(async ([modId, loaded]) => {
         const runtime = loaded.runtime;
         if (!runtime) return [];
-        const result = await runtime.callHook("classic.Stop", event);
+        const result = await runtime.callHook(hookName, event);
         if (!result.ok) {
-          logger.warn(`[Wave] ${modId} 的 classic.Stop 失败：${result.error}`);
+          logger.warn(`[Wave] ${modId} 的 ${hookName} 失败：${result.error}`);
           return [];
         }
         const returned = result.value;
@@ -1361,7 +1456,7 @@ export class ModManager {
           value.preventContinuation !== undefined
         ) {
           logger.warn(
-            `[Wave] ${modId} 的 classic.Stop 返回了 decision/preventContinuation：只支持 { additionalContext }，那两项被忽略`,
+            `[Wave] ${modId} 的 ${hookName} 返回了 decision/preventContinuation：只支持 { additionalContext }，那两项被忽略`,
           );
         }
         const context = value.additionalContext;
@@ -1371,7 +1466,7 @@ export class ModManager {
           context.some((item) => typeof item !== "string")
         ) {
           logger.warn(
-            `[Wave] ${modId} 的 classic.Stop 的 additionalContext 必须是字符串数组，已忽略`,
+            `[Wave] ${modId} 的 ${hookName} 的 additionalContext 必须是字符串数组，已忽略`,
           );
           return [];
         }
@@ -1391,7 +1486,7 @@ export class ModManager {
     }
     if (limited.length < merged.length) {
       logger.warn(
-        `[Wave] classic.Stop 的 additionalContext 有 ${merged.length} 条，超过限额，只用了前 ${limited.length} 条`,
+        `[Wave] ${hookName} 的 additionalContext 有 ${merged.length} 条，超过限额，只用了前 ${limited.length} 条`,
       );
     }
     return limited;
@@ -2147,14 +2242,23 @@ export class ModManager {
    *
    * 每场会话问一次，答案由 `ToolManager` 存着；`breakPromptCache: true` 是插
    * 件声明「这份别存」，那一次请求之后就重新问。`$.ui.invalidate("tool.describe")`
-   * 是同一条路的重问入口（见上）。
+   * 是同一条路的重问入口（见上）。答案里的 `isDeferred` 决定这个工具平铺还是
+   * 藏进 `Exec` 池（同轮生效，`Exec` 自身等结构豁免翻不动）。
    */
   async collectToolDescription(
     tool: { name: string; description: string },
     signal?: AbortSignal,
-  ): Promise<{ description: string; breakPromptCache?: boolean }> {
+  ): Promise<{
+    description: string;
+    isDeferred?: boolean;
+    breakPromptCache?: boolean;
+  }> {
     if (this.disposed) return { description: tool.description };
-    type Described = { description: string; breakPromptCache?: boolean };
+    type Described = {
+      description: string;
+      isDeferred?: boolean;
+      breakPromptCache?: boolean;
+    };
     return this.runValueHookChain<Described>(
       "tool.describe",
       { tool: tool.name, description: tool.description },
@@ -2162,24 +2266,28 @@ export class ModManager {
         isPlainRecord(current) && typeof current.description === "string"
           ? { description: current.description }
           : { description: tool.description },
-      (modId, value, fallback) => {
+      (_modId, value, fallback) => {
         if (!isPlainRecord(value)) return fallback;
-        if (value.isDeferred !== undefined) {
-          // 我们没有 tool search：`true` 等于把工具下架，`false` 没有意义。
-          logger.warn(
-            `[Wave] ${modId} 的 tool.describe 返回了 isDeferred：我们没有 tool search，这一项被忽略`,
-          );
-        }
         const description =
           typeof value.description === "string"
             ? value.description
             : fallback.description;
+        // 放置（平铺 / 进 Exec 池）由插件裁决，链上最后一环说话算数；没给就沿用
+        // 前面的答案。`ToolManager` 那边还要过一遍判定表，`Exec` 之类翻不动。
+        const isDeferred =
+          typeof value.isDeferred === "boolean"
+            ? value.isDeferred
+            : fallback.isDeferred;
         // `breakPromptCache: true` 是「这一份别缓存」的声明，链上任何一环说了
         // 都算数 —— 丢掉它就等于把插件的时间戳又缓存住了一整场会话。
-        return value.breakPromptCache === true ||
+        return {
+          description,
+          ...(isDeferred === undefined ? {} : { isDeferred }),
+          ...(value.breakPromptCache === true ||
           fallback.breakPromptCache === true
-          ? { description, breakPromptCache: true }
-          : { description };
+            ? { breakPromptCache: true }
+            : {}),
+        };
       },
       signal,
     );
@@ -2730,6 +2838,8 @@ export class ModManager {
     this.closeAllPanes(false);
     this.bands.clear();
     this.statusLines.clear();
+    // 会话都没了，工具行也没了：`noticeSink` 那头不必再收一轮 null。
+    this.noticeOwners.clear();
     this.disposed = true;
   }
 
@@ -3076,7 +3186,7 @@ export class ModManager {
   }
 
   /**
-   * 把一段文本交给界面写进剪贴板（spec「剪贴板与视图」）。
+   * 把一段文本交给界面写进剪贴板（spec「剪贴板」）。
    *
    * 三种失败态都由界面那一端判；没接通道时是 `no-surface` —— 「没有人能接」
    * 与「接了但写不进去」是两句话，别混成一个 `false`。
@@ -3120,6 +3230,8 @@ export class ModManager {
       if (pane.pending) clearTimeout(pane.pending);
     }
     this.panes.clear();
+    this.shownPaneKey = null;
+    this.focusedPaneKey = null;
     // 只让界面把 tab 关掉（`closed: true`）；`notifyMods` 由调用方决定 ——
     // 插件重载时 mod 还活着，逐个发 `ui.close`；会话销毁只发一次 `session.end`。
     for (const pane of closing) {
@@ -3178,10 +3290,39 @@ export class ModManager {
     }
   }
 
-  private listPanes(modId: string): string[] {
+  private listPanes(modId: string): readonly ModUiPane[] {
+    // `isPlaced` 与 `$.ui.open()` 同一个判据（spec「面板放得下吗」）：这一帧有没有
+    // 表面在画，不是「宿主登记成功没」。
+    const isPlaced = !this.disposed && this.facts.surfaces().length > 0;
     return [...this.panes.values()]
       .filter((pane) => pane.modId === modId)
-      .map((pane) => pane.paneId);
+      .map((pane) => {
+        const key = paneKeyOf(modId, pane.paneId);
+        return {
+          id: pane.paneId,
+          title: pane.title,
+          isPlaced,
+          isShown: this.shownPaneKey === key,
+          isFocused: this.focusedPaneKey === key,
+        };
+      });
+  }
+
+  /**
+   * surface 上报「现在摊开的是哪个、键盘在哪个」（spec「面板的显示与焦点」）。
+   *
+   * 台账里没有的 pane 一律归成 `null` —— 与 Claude Code 的「An id not open changes
+   * nothing」同一个效果：刚关掉的那个不会因为一条迟到的上报又「活过来」。
+   */
+  setPaneView(view: ModPaneViewPayload): void {
+    this.shownPaneKey = this.knownPaneKey(view.shown);
+    this.focusedPaneKey = this.knownPaneKey(view.focused);
+  }
+
+  private knownPaneKey(ref: ModPaneRef | null | undefined): string | null {
+    if (!ref) return null;
+    const key = paneKeyOf(ref.modId, ref.paneId);
+    return this.panes.has(key) ? key : null;
   }
 
   /**
@@ -3211,7 +3352,7 @@ export class ModManager {
     focus = false,
   ): boolean {
     if (this.disposed) return false;
-    const key = `${modId}\u0000${paneId}`;
+    const key = paneKeyOf(modId, paneId);
     const existing = this.panes.get(key);
     const pane: PaneState = existing ?? {
       modId,
@@ -3226,17 +3367,24 @@ export class ModManager {
     // invalidate 一次就把用户的输入焦点抢走一次。
     pane.focus = focus;
     this.panes.set(key, pane);
+    // 新开一块、且键盘没有人持着 ⇒ 它就是摊开的那个（spec「面板的显示与焦点」，
+    // 与 Claude Code 的 `shownId: focusedId ?? 新 id` 同一条）。重新打开不算。
+    if (!existing && this.focusedPaneKey === null) this.shownPaneKey = key;
     // 只登记 + 通知 surface 来要树，不在这里渲染（spec「架构约束」）。
     this.publishUpdate(pane, { stale: true, focus });
     return true;
   }
 
   private closePane(modId: string, paneId: string): void {
-    const key = `${modId}\u0000${paneId}`;
+    const key = paneKeyOf(modId, paneId);
     const pane = this.panes.get(key);
     if (!pane) return;
     if (pane.pending) clearTimeout(pane.pending);
     this.panes.delete(key);
+    // 关掉的正是摊开 / 持着键盘的那个 ⇒ 两个标记一起清空，不自动顶到相邻 tab
+    // （随后由该端上报它实际显示的那一个，spec「面板的显示与焦点」）。
+    if (this.shownPaneKey === key) this.shownPaneKey = null;
+    if (this.focusedPaneKey === key) this.focusedPaneKey = null;
     this.notifyPaneClosed(pane);
     this.publishUpdate(pane, { closed: true });
   }
@@ -3382,6 +3530,7 @@ export class ModManager {
       // 只有 dock 一种。
       props: paneSiteProps(
         pane.title,
+        this.focusedPaneKey === key,
         placement,
         rows,
         layout.bodyColumns ?? MOD_RENDER_BODY_COLUMNS,
@@ -3644,6 +3793,7 @@ export class ModManager {
       name: string;
       description: string;
       inputSchema: Record<string, unknown>;
+      isDeferred?: boolean;
     },
   ): Promise<{ name: string }> {
     const bridge = this.toolBridge;

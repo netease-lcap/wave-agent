@@ -66,12 +66,9 @@ interface AgentCallbacks {
     fun onBtwContent(question: String, content: String, type: String, requestId: String?) {}
     /**
      * 插件 mod 的推送（spec ecosystem/plugin-mods.md「在 IDE 插件里画」）：面板
-     * 元信息、带、状态行、短暂提示，以及 `$.prompt.fill` / `$.prompt.read` /
-     * `$.ui.copy` 三条要界面作答的请求。载荷原样转给 webview —— 宿主不缓存树，
-     * 也不解释任何一个字段。
-     *
-     * `$.ui.notice`（工具行下面那一行）在这一端不显示，所以没有对应回调：mod 那
-     * 一侧调用不报错，只是没人画。
+     * 元信息、带、状态行、短暂提示、`$.ui.notice` 贴在工具行下面的那一行，以及
+     * `$.prompt.fill` / `$.prompt.read` / `$.ui.copy` 三条要界面作答的请求。载荷
+     * 原样转给 webview —— 宿主不缓存树，也不解释任何一个字段。
      */
     fun onModPanelUpdate(payload: JsonElement?) {}
 
@@ -84,6 +81,8 @@ interface AgentCallbacks {
     fun onModPromptRead(payload: JsonElement?) {}
 
     fun onModCopy(payload: JsonElement?) {}
+
+    fun onModNotice(payload: JsonElement?) {}
 
     /**
      * 一个 mod 要往输入框上方摆一条建议（`$.prompt.suggest`；spec
@@ -238,6 +237,9 @@ class StdioAgent(
             "modPromptFill" -> callbacks.onModPromptFill(params)
             "modPromptRead" -> callbacks.onModPromptRead(params)
             "modCopy" -> callbacks.onModCopy(params)
+            // 工具行下面那一行（`$.ui.notice`）：载荷就是顶层那张对象（裸 payload，
+            // 没有更外一层），与 SDK 侧 `params as ModNoticePayload` 同一口径。
+            "modNotice" -> callbacks.onModNotice(params)
             // 一条建议要摆进输入框上方（`$.prompt.suggest`）：整份 payload 原样交给宿
             // 主，回执里要一字不差地送回同一个 requestId（spec「输入框里的建议与焦
             // 点」）。
@@ -532,6 +534,17 @@ class StdioAgent(
     suspend fun getWorkflowRuns(): JsonElement? =
         client.request("getWorkflowRuns", sessionId = sessionId)?.jsonObject?.get("runs")
 
+    /** 单个 agent 的活动日志尾部（spec「查看单个 agent 的执行详情」）。 */
+    suspend fun getWorkflowAgentActivity(runId: String, agentIndex: Int): String? =
+        client.request(
+            "getWorkflowAgentActivity",
+            buildJsonObject {
+                put("runId", runId)
+                put("agentIndex", agentIndex)
+            },
+            sessionId,
+        )?.jsonObject?.get("activity")?.jsonPrimitive?.contentOrNull
+
     suspend fun stopWorkflowRun(runId: String): Boolean {
         val result = client.request("stopWorkflowRun", buildJsonObject { put("runId", runId) }, sessionId)
         return result?.jsonObject?.get("success")?.jsonPrimitive?.booleanOrNull ?: false
@@ -568,6 +581,14 @@ class StdioAgent(
     /** 面板/带里的一次交互：原样交回 mod。 */
     suspend fun sendModPanelEvent(payload: JsonObject) {
         client.request("modPanelEvent", payload, sessionId)
+    }
+
+    /**
+     * 这一端摊开的是哪个 mod 面板、键盘在哪个（spec「面板的显示与焦点」）。
+     * 全量快照、不是增量 —— `$.ui.panes()` 的 `isShown` / `isFocused` 靠它。
+     */
+    suspend fun setModPaneView(view: JsonObject) {
+        client.request("modPaneView", view, sessionId)
     }
 
     /** 回答一次 `$.prompt.fill`：草稿落没落地。 */

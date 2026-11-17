@@ -19,11 +19,13 @@ import type {
   ModPromptReadRequest,
   ModPromptSuggestRequest,
   ModCopyRequest,
+  ModNoticePayload,
   ModPaneLayout,
   ModSurfaceMetrics,
   ModPanelRenderResult,
   ModBandRenderResult,
   ModPanelEventPayload,
+  ModPaneViewPayload,
 } from "wave-agent-sdk/host";
 import { StdioClient } from "../stdio/stdioClient";
 import {
@@ -93,12 +95,9 @@ export interface ChatSessionCallbacks {
   }) => void;
   /**
    * 插件 mod 的那几条推送（spec ecosystem/plugin-mods.md「在 IDE 插件里画」）：
-   * 面板元信息、状态行、短暂提示，以及 `$.prompt.fill` / `$.prompt.read` /
-   * `$.ui.copy` 三条要界面作答的请求。宿主只转发给 webview，自己不存树 ——
-   * 树由 webview 拿到 `stale` 后自己来拉。
-   *
-   * `$.ui.notice`（工具行下面那一行）不在这一端：没有对应回调，调用不报错也不
-   * 显示，与 spec 里「不支持」那一句一致。
+   * 面板元信息、状态行、短暂提示、`$.ui.notice` 贴在工具行下面的那一行，以及
+   * `$.prompt.fill` / `$.prompt.read` / `$.ui.copy` 三条要界面作答的请求。宿主
+   * 只转发给 webview，自己不存树 —— 树由 webview 拿到 `stale` 后自己来拉。
    */
   onModPanelUpdate?: (payload: ModPanelUpdatePayload) => void;
   onModStatus?: (payload: ModStatusPayload) => void;
@@ -106,6 +105,8 @@ export interface ChatSessionCallbacks {
   onModPromptFill?: (payload: ModPromptFillRequest) => void;
   onModPromptRead?: (payload: ModPromptReadRequest) => void;
   onModCopy?: (payload: ModCopyRequest) => void;
+  /** 工具行下面那一行：只推不拉，webview 按 `toolUseId` 落一份、`text: null` 撤掉。 */
+  onModNotice?: (payload: ModNoticePayload) => void;
   /**
    * 某个 mod 想把一条建议摆进这个面板的输入框（spec `ecosystem/plugin-mods.md`
    * 「输入框里的建议与焦点」）。摆不摆得上只有输入框知道，所以界面收到后要用
@@ -309,7 +310,7 @@ export class ChatSession {
         onBtwContent: (params) => {
           this.callbacks.onBtwContent?.(params);
         },
-        // 插件 mod 的四条推送（spec「在 IDE 插件里画」）：宿主只转发，不缓存。
+        // 插件 mod 的这几条推送（spec「在 IDE 插件里画」）：宿主只转发，不缓存。
         onModPanelUpdate: (payload) => {
           this.callbacks.onModPanelUpdate?.(payload);
         },
@@ -327,6 +328,9 @@ export class ChatSession {
         },
         onModCopy: (payload) => {
           this.callbacks.onModCopy?.(payload);
+        },
+        onModNotice: (payload) => {
+          this.callbacks.onModNotice?.(payload);
         },
         onModPromptSuggest: (payload) => {
           this.callbacks.onModPromptSuggest?.(payload);
@@ -456,9 +460,15 @@ export class ChatSession {
     }
   }
 
+  /**
+   * Drop whatever is still queued because this conversation is being replaced
+   * (clear chat / restore session / config rebuild) — not because the user
+   * pressed Stop: a plain interrupt keeps the queue and drains it afterwards
+   * (core/agent-lifecycle.md 中断只中止当前轮).
+   */
   private async clearQueue() {
     if (this.agent && this.agent.queuedMessages.length > 0) {
-      await this.agent.abortMessage();
+      await this.agent.abortMessage({ clearQueue: true, resumeQueue: false });
     } else if (this.messageQueue.length > 0) {
       this.messageQueue = [];
       this.callbacks.onQueueChange(this.messageQueue);
@@ -859,6 +869,17 @@ export class ChatSession {
     return await this.agent.getWorkflowRuns();
   }
 
+  public async getWorkflowAgentActivity(
+    runId: string,
+    agentIndex: number,
+  ): Promise<string> {
+    if (!this.agent) {
+      return "";
+    }
+    const result = await this.agent.getWorkflowAgentActivity(runId, agentIndex);
+    return result.activity;
+  }
+
   public async stopWorkflowRun(runId: string): Promise<boolean> {
     if (!this.agent) {
       return false;
@@ -904,6 +925,14 @@ export class ChatSession {
       return;
     }
     await this.agent.sendModPanelEvent(payload);
+  }
+
+  /**
+   * 报「这一端摊开的是哪个 mod 面板、键盘在哪个」（spec「面板的显示与焦点」）：
+   * 全量快照原样转交，引擎只存一组、后报的生效。
+   */
+  public async setModPaneView(view: ModPaneViewPayload): Promise<void> {
+    await this.agent?.setModPaneView(view);
   }
 
   public async resolveModPromptFill(

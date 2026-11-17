@@ -59,6 +59,7 @@ import {
   startupStageText,
   type ModPanelUpdatePayload,
   type ModPanelEventPayload,
+  type ModPaneViewPayload,
   type ModPromptFillRequest,
   type ModPromptReadRequest,
   type ModPromptSuggestRequest,
@@ -2330,7 +2331,7 @@ export class DesktopHost {
           });
         }
       },
-      // `$.ui.copy`（spec「剪贴板与视图」）：剪贴板在渲染进程手里，回执走
+      // `$.ui.copy`（spec「剪贴板」）：剪贴板在渲染进程手里，回执走
       // `modCopyResult`。没有 pane 就等于没人接 —— Agent 那边按 `no-surface` 收口。
       onModCopy: (payload: ModCopyRequest) => {
         const paneId = paneIdOf();
@@ -6216,6 +6217,25 @@ export class DesktopHost {
         break;
       }
 
+      case "getWorkflowAgentActivity": {
+        const paneAgent = this.agentForPane(pid);
+        const runId = msg.runId as string;
+        const agentIndex = msg.agentIndex as number;
+        const activity = paneAgent
+          ? (await paneAgent.getWorkflowAgentActivity(runId, agentIndex))
+              .activity
+          : "";
+        this.postMessage({
+          command: "workflowAgentActivity",
+          paneId: pid,
+          requestId: msg.requestId as string,
+          runId,
+          agentIndex,
+          activity,
+        });
+        break;
+      }
+
       case "stopWorkflowRun": {
         const paneAgent = this.agentForPane(pid);
         const success = paneAgent
@@ -6380,6 +6400,18 @@ export class DesktopHost {
         break;
       }
 
+      // 这一端摊开的是哪个 mod 面板、键盘在哪个（spec「面板的显示与焦点」）：
+      // 全量快照原样转交，引擎只存一组、后报的生效 —— `$.ui.panes()` 的
+      // `isShown` / `isFocused` 就靠这条。
+      case "modPaneView": {
+        const agent = this.agentForPane(pid);
+        const view = msg.payload as ModPaneViewPayload | undefined;
+        if (agent && view) {
+          await agent.setModPaneView(view);
+        }
+        break;
+      }
+
       // 用户在输入框里做完一次编辑（spec「输入框里的建议与焦点」）：方向反过来，
       // 宿主把这次编辑运进 CLI，插件可以改写它，回包带改写后的草稿。
       case "modPromptEdit": {
@@ -6460,7 +6492,7 @@ export class DesktopHost {
         break;
       }
 
-      // webview 对一次 `$.ui.copy` 的回答（spec「剪贴板与视图」）：写没写进去
+      // webview 对一次 `$.ui.copy` 的回答（spec「剪贴板」）：写没写进去
       // 由渲染进程判定，拒绝也是一种答案。
       case "modCopyResult": {
         const agent = this.agentForPane(pid);
@@ -7775,12 +7807,18 @@ export class DesktopHost {
     }
   }
 
+  /**
+   * Drop whatever is still queued because the conversation is being replaced
+   * (config rebuild) — not because the user pressed Stop: a plain interrupt
+   * keeps the queue and drains it afterwards (core/agent-lifecycle.md
+   * 中断只中止当前轮).
+   */
   private async clearQueue(): Promise<void> {
     for (const pane of this.panes) {
       const agent = pane.agent;
       if (agent && agent.queuedMessages.length > 0) {
         try {
-          await agent.abortMessage();
+          await agent.abortMessage({ clearQueue: true, resumeQueue: false });
         } catch (error) {
           // The pane's session may be gone (recreate failed above) — one dead
           // session must not fail the rest of the queue drain.

@@ -338,6 +338,44 @@ export type ModUiOpenResult =
   | { isPlaced: false; reason: string };
 
 /**
+ * `$.ui.panes()` 的一项（spec「面板的显示与焦点」）。
+ *
+ * 形状与字段口径照 Claude Code 的 `UiPane`：`id` / `title` 是 `$.ui.open()` 登记
+ * 时给的，`isPlaced` 与 `$.ui.open()` 的返回值同一个判据，`isShown` / `isFocused`
+ * 是**这一端的事实**（surface 上报，没人报过就是 `false`，不编值）。
+ */
+export interface ModUiPane {
+  id: string;
+  title: string;
+  isPlaced: boolean;
+  isShown: boolean;
+  isFocused: boolean;
+}
+
+/**
+ * 一块面板在会话里的定位（`modPaneView` 上报用）。
+ *
+ * 用 `modId` + `paneId` 而不是单个 id：两个 mod 都能开 `p1`，拼起来才是会话内
+ * 唯一的那个 pane。
+ */
+export interface ModPaneRef {
+  modId: string;
+  paneId: string;
+}
+
+/**
+ * surface 上报「现在摊开的是哪个、键盘在哪个」（spec「面板的显示与焦点」）。
+ *
+ * 一次报**全量快照**、不是两个增量：`null` 表示这一端此刻没有显示（或没有把
+ * 键盘放在）任何面板里。两端同时挂一条会话时后报的生效 —— 与 Claude Code 只存
+ * 一组 `shownId` / `focusedId` 同一条。
+ */
+export interface ModPaneViewPayload {
+  shown: ModPaneRef | null;
+  focused: ModPaneRef | null;
+}
+
+/**
  * `$.config.list()` 的一行（spec「配了哪些、能调什么、有谁在跑」）。
  *
  * 形状照 Claude Code 的 `ConfigRow`：`key` 是行名，`kind` 说这一行的值怎么
@@ -482,6 +520,13 @@ export interface ModToolRegisterSpec {
   description: string;
   /** JSON Schema 对象（缺省 `{ type: "object" }`），序列化后 ≤ 16 KiB。 */
   inputSchema?: Record<string, unknown>;
+  /**
+   * 平铺还是藏进 `Exec` 池（缺省 `true`，与 MCP 工具一致）。
+   *
+   * `true`：模型只看到名字，要经 `Exec` 里的 `tools.ToolSearch` 取签名再调；
+   * `false`：像内置工具一样直接进 `tools[]`。会话没有 `Exec` 池时一律平铺。
+   */
+  isDeferred?: boolean;
 }
 
 /** `$.session.repo()`：会话所在的 git 仓库；不在仓库里时给 `null`。 */
@@ -527,11 +572,6 @@ export interface ModFsAncestor {
 export type ModUiCopyResult =
   | { isCopied: true }
   | { isCopied: false; reason: "no-surface" | "no-clipboard" | "refused" };
-
-/** `$.ui.view()` 的结果：`{}` 表示视图已切过去，`{ deny }` 说明为什么没动。 */
-export interface ModUiViewResult {
-  deny?: string;
-}
 
 /**
  * `$.prompt.suggest()` 送达 surface 的一次请求（spec「输入框里的建议与焦点」）。
@@ -905,12 +945,13 @@ export interface ModClassicStopEvent extends ModClassicEventBase {
 }
 
 /**
- * `classic.Stop` 的返回值：这一轮别急着收尾，把这几句话读给模型听（spec
- * 「一轮收尾时的非错误反馈」）。
+ * `classic.Stop` / `classic.SubagentStop` 的返回值：这一轮别急着收尾，把这几句
+ * 话读给模型听（spec「一轮收尾时的非错误反馈」）。
  *
  * 只认 `additionalContext`；`{ decision: "block", reason }` 与
  * `preventContinuation` 是 Claude Code 另外两条通道，我们不支持（返回了只记一条
- * warn 并忽略）。
+ * warn 并忽略）。两条事件共用这一份形状：`classic.Stop` 注入主对话，
+ * `classic.SubagentStop` 注入那个子代理自己的对话。
  */
 export interface ModStopHookResult {
   /** 字符串数组；多项按加载顺序拍平、拼成一条消息，空串丢掉。 */
@@ -1002,16 +1043,19 @@ export interface ModClassicSubagentStartEvent extends ModClassicEventBase {
   agent_type: string;
 }
 
-/** `classic.SubagentStop`：一个子代理结束（完成 / 出错 / 中止 / 用户停掉）。 */
+/** `classic.SubagentStop`：子代理**每次**收尾（答完 / 用户中断 / 被钩子拦停后重来）。 */
 export interface ModClassicSubagentStopEvent extends ModClassicEventBase {
   hook_event_name: "SubagentStop";
   agent_id: string;
   agent_type: string;
   /**
-   * 恒 `false`：这条事件在我们这里没有续跑通道（`additionalContext` 不收），
-   * 字段照 CC 给，是为了让读它的插件拿到一个布尔值而不是 `undefined`。
+   * 这一次收尾是不是已经被要求续过（`classic.Stop` 同一口径）。
+   *
+   * 与 settings 的 `SubagentStop` 钩子共用这一个状态：`additionalContext` 让子
+   * 代理续跑一轮、或 settings 钩子把它拦停一次之后，下一次收尾就是 `true`。出错 /
+   * 中止路径在实例释放时补报的那一次恒为 `false` —— 那一刻没有收尾可言。
    */
-  stop_hook_active: false;
+  stop_hook_active: boolean;
   /** 子代理停下来之前最后一条 assistant 消息的正文（插件不必去解转录）。 */
   last_assistant_message?: string;
   /**
@@ -1204,8 +1248,15 @@ export interface ModSessionAppendEvent {
  * 只列我们给得出的档；CC 另有 `tool-message`（子代理的工具消息）、`command`
  * （斜杠命令的回显）、`notice`（系统提示行）、`compaction`（压缩摘要）、
  * `delivery`（投递给子代理的附件）、`hook-context`（钩子塞进来的上下文）、
- * `attachment`（宿主自己渲染的附件）七档，我们没有对应的行，就不放进类型里
- * 装作有 —— 压缩摘要那一行本来就不问 `session.append`。
+ * `attachment`（宿主自己渲染的附件）、`queue`（队列记录）八档（`note` 见下），
+ * 我们没有对应的行，就不放进类型里装作有 —— 压缩摘要那一行本来就不问
+ * `session.append`。
+ *
+ * **没有 `note`**，这一档曾按「宿主自己塞进去的行」放进来，是错的，也已删掉：
+ * CC 的 `note` 专指**插件自己**经 `$.session.append({ message })` 写进会话的那
+ * 一行（引擎把 door 置 `note`、origin 置调用它的插件），而那个写入口我们没做。
+ * 宿主注入的行（记忆注入、系统提醒）都是 `isMeta`，既不进 `$.session.messages()`
+ * 也不过 `session.append`，所以它们根本没有门。
  */
 export type ModSessionAppendDoor =
   // 用户提交的一句话
@@ -1213,9 +1264,7 @@ export type ModSessionAppendDoor =
   // 模型的回答
   | "response"
   // 工具结果（CC 里是带 tool_result 块的 user 行）
-  | "tool-result"
-  // 宿主自己塞进去、不来自人的行（记忆注入、系统提醒）
-  | "note";
+  | "tool-result";
 
 /** `tool.check` 能给出的决定（spec「第二判定源」）。 */
 export type ModToolCheckDecision = "allow" | "ask" | "deny";

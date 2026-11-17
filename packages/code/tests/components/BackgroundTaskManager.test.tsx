@@ -557,8 +557,8 @@ describe("BackgroundTaskManager", () => {
       logs: ["scanning files", "found 3 issues"],
     };
 
-    const setup = async (runs: WorkflowRun[]) => {
-      vi.mocked(Agent.create).mockResolvedValue({
+    const setup = async (runs: WorkflowRun[], activity = "") => {
+      const agent = {
         ...mockAgent,
         getWorkflowRuns: vi.fn(async () => runs),
         // A workflow task carries no text output, exactly like the real one.
@@ -567,7 +567,9 @@ describe("BackgroundTaskManager", () => {
           stderr: "",
           status: "running",
         })),
-      } as unknown as Agent);
+        getWorkflowAgentActivity: vi.fn(() => ({ activity })),
+      };
+      vi.mocked(Agent.create).mockResolvedValue(agent as unknown as Agent);
 
       const result = render(
         <AppProvider>
@@ -587,7 +589,7 @@ describe("BackgroundTaskManager", () => {
       ] as unknown as BackgroundTask[]);
 
       await vi.waitFor(() => expect(result.lastFrame()).toContain("wf_123"));
-      return result;
+      return { ...result, agent };
     };
 
     it("should render the run's progress on Enter instead of an empty output", async () => {
@@ -663,6 +665,70 @@ describe("BackgroundTaskManager", () => {
       const frame = lastFrame() ?? "";
       expect(frame).toContain("Status: running");
       expect(frame).not.toContain("Phases:");
+    });
+
+    // Same drill level as `/workflows` (both render `WorkflowRunDetail` and
+    // `WorkflowAgentDetail`), reached from the task list: task → run → agent.
+    it("should drill from the task into one of the run's agents", async () => {
+      const runWithAgents: WorkflowRun = {
+        ...workflowRun,
+        agents: [
+          {
+            index: 0,
+            label: "scout",
+            status: "completed",
+            startTime: 1000,
+            endTime: 1000 + 1500,
+            tokens: 900,
+            toolUses: 2,
+            promptPreview: "Scan the repo for TODOs",
+            resultPreview: "Found 3 issues",
+          },
+          {
+            index: 1,
+            agentType: "general-purpose",
+            status: "running",
+            startTime: 2000,
+            promptPreview: "Fix them",
+          },
+        ],
+      };
+      const { lastFrame, stdin, agent } = await setup(
+        [runWithAgents],
+        "[t] Read src/a.ts\n[t] Grep TODO",
+      );
+
+      stdin.write("\r");
+      await vi.waitFor(() => {
+        expect(lastFrame()).toContain("Background Task Details: wf_123");
+      });
+      const detail = lastFrame() ?? "";
+      expect(detail).toMatch(/Agents: *\n/);
+      expect(detail).toContain(
+        "1. scout · completed · 900 tokens · 2 tools · 2s",
+      );
+      expect(detail).toContain("↑/↓ agent · Enter agent detail");
+
+      stdin.write("\r");
+      await vi.waitFor(() => {
+        expect(lastFrame()).toContain("Agent #1");
+      });
+      const card = (lastFrame() ?? "").replace(/\s+/g, " ");
+      expect(card).toContain("Prompt: Scan the repo for TODOs");
+      expect(card).toContain("[t] Grep TODO");
+      expect(card).toContain("Outcome: Found 3 issues");
+      expect(card).toContain("Esc back to run detail");
+      // The read names the run behind the task, not the task id.
+      expect(agent.getWorkflowAgentActivity).toHaveBeenCalledWith("wf_123", 0);
+
+      // Esc goes back one level (to the run detail), not out of the panel.
+      stdin.write("\x1b");
+      await vi.waitFor(() => {
+        expect(lastFrame()).not.toContain("Agent #1");
+      });
+      const back = lastFrame() ?? "";
+      expect(back).toContain("Background Task Details: wf_123");
+      expect(back).toMatch(/Agents: *\n/);
     });
   });
 });

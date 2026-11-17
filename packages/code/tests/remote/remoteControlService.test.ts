@@ -491,6 +491,7 @@ describe("RemoteControlService", () => {
       "getSessionWorktreeChanges",
       "getSlashCommands",
       "getTextPreview",
+      "getWorkflowAgentActivity",
       "getWorkflowRuns",
       "initialize",
       "listAllSessions",

@@ -91,6 +91,63 @@ export interface WorkflowRun {
   failedAgentIndex?: number;
   /** Error message from the failed agent */
   failedAgentError?: string;
+  /**
+   * Per-agent state, one entry per `agent()` call that got as far as starting
+   * (or being replayed from the resume journal). Read by the workflow detail
+   * view's agent list — spec `multi-agent/workflow.md`「查看单个 agent 的执行详情」.
+   *
+   * Deliberately lightweight: the hosts re-push the whole run list on every
+   * progress event (and the remote page gets it as one frame), so this carries
+   * counters and ≤400-char previews, never tool-call lines or full results. The
+   * agent's activity log (`agents/<index>.log`) is read on demand instead.
+   *
+   * Optional so runs persisted before the field existed stay valid — read it as
+   * `run.agents ?? []`.
+   */
+  agents?: WorkflowAgentState[];
+}
+
+/**
+ * One agent's entry in a run's agent list.
+ *
+ * `status` mirrors what happened to this `agent()` call: `running` while the
+ * subagent is in flight, `completed` when it returned a result, `failed` when
+ * the error propagated, `skipped` when the user skipped it (the only path that
+ * resolves to `null`), and `interrupted` when the process ended under it (the
+ * run itself is swept to `aborted` on the next read).
+ */
+export type WorkflowAgentStatus =
+  | "running"
+  | "completed"
+  | "failed"
+  | "skipped"
+  | "interrupted";
+
+export interface WorkflowAgentState {
+  /** The `agent()` call index within the run (also the activity log's file name). */
+  index: number;
+  /** `opts.label`, when the script gave one. */
+  label?: string;
+  agentType?: string;
+  /** Phase the agent started in (explicit `opts.phase`, else the current one). */
+  phase?: string;
+  model?: string;
+  status: WorkflowAgentStatus;
+  startTime?: number;
+  endTime?: number;
+  tokens?: number;
+  toolUses?: number;
+  /** First {@link WORKFLOW_AGENT_PREVIEW_CHARS} chars of the prompt it received. */
+  promptPreview?: string;
+  /** First {@link WORKFLOW_AGENT_PREVIEW_CHARS} chars of its result (or error). */
+  resultPreview?: string;
+  /** Failure message, for `failed` / `skipped` / `interrupted` entries. */
+  error?: string;
+  /**
+   * Replayed from a previous run's journal: no subagent ran, so there is no
+   * activity log to show.
+   */
+  cached?: boolean;
 }
 
 /**

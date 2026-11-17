@@ -1091,6 +1091,75 @@ function noticeSignature(
   return parts.join("\u0001");
 }
 
+/** 历史回显里的一条问答：题面、用户选的答案、预览题上填的备注。 */
+type AskUserResultItem = {
+  question: string;
+  answer: unknown;
+  notes?: string;
+};
+
+/**
+ * 结果载荷 → 问答对。
+ *
+ * 形状是 `{ answers, annotations? }`（选项预览落地后 SDK 的形态）；旧宿主 / CLI
+ * 只发 `answers` 整张表，两种都要认。判据是「有 `answers` 这个键」，而**不是**
+ * 「整个对象只有这一个键」——后者一加 `annotations` 就把整份载荷当成答案表，
+ * 历史里会多出两条题面叫 `answers` / `annotations`、答案为 JSON 的假问答。
+ */
+const parseAskUserAnswerMap = (
+  payload: unknown,
+): AskUserResultItem[] | null => {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return null;
+  }
+  const record = payload as Record<string, unknown>;
+  const answerMap =
+    record.answers &&
+    typeof record.answers === "object" &&
+    !Array.isArray(record.answers)
+      ? (record.answers as Record<string, unknown>)
+      : record;
+  const annotations =
+    record.annotations &&
+    typeof record.annotations === "object" &&
+    !Array.isArray(record.annotations)
+      ? (record.annotations as Record<string, { notes?: unknown }>)
+      : {};
+  return Object.entries(answerMap).map(([question, answer]) => {
+    const notes = annotations[question]?.notes;
+    return {
+      question,
+      answer,
+      ...(typeof notes === "string" && notes.trim() ? { notes } : {}),
+    };
+  });
+};
+
+/**
+ * 解析 AskUserQuestion 的结果：宿主给的可能是 JSON 串（可能前后带杂字符），
+ * 也可能是已解析对象。解析不出来返回 null，调用方回退成原始文本。
+ */
+const parseAskUserResult = (result: unknown): AskUserResultItem[] | null => {
+  if (typeof result === "object" && result !== null) {
+    return parseAskUserAnswerMap(result);
+  }
+  if (typeof result !== "string") return null;
+  const trimmed = result.trim();
+  if (!trimmed.startsWith("{")) return null;
+  try {
+    return parseAskUserAnswerMap(JSON.parse(trimmed));
+  } catch {
+    const start = trimmed.indexOf("{");
+    const end = trimmed.lastIndexOf("}");
+    if (start === -1 || end <= start) return null;
+    try {
+      return parseAskUserAnswerMap(JSON.parse(trimmed.slice(start, end + 1)));
+    } catch {
+      return null;
+    }
+  }
+};
+
 export const Message: React.FC<MessageProps> = React.memo(
   (props: MessageProps) => {
     const {
@@ -1702,91 +1771,38 @@ export const Message: React.FC<MessageProps> = React.memo(
 
       // For AskUserQuestion tools, show the user's answers
       if (toolBlock.name === ASK_USER_QUESTION_TOOL_NAME) {
-        let answers: Record<string, unknown> = {};
-        let isParsed = false;
-        try {
-          const result = toolBlock.shortResult || toolBlock.result;
-          if (typeof result === "string") {
-            const trimmed = result.trim();
-            if (trimmed.startsWith("{")) {
-              try {
-                let parsed = JSON.parse(trimmed);
-                // Handle nested "answers" key if it's the only key
-                if (
-                  parsed &&
-                  typeof parsed === "object" &&
-                  Object.keys(parsed).length === 1 &&
-                  parsed.answers &&
-                  typeof parsed.answers === "object"
-                ) {
-                  parsed = parsed.answers;
-                }
-                answers = parsed;
-                isParsed = true;
-              } catch {
-                // Try to find the first { and last }
-                const start = trimmed.indexOf("{");
-                const end = trimmed.lastIndexOf("}");
-                if (start !== -1 && end !== -1 && end > start) {
-                  let parsed = JSON.parse(trimmed.substring(start, end + 1));
-                  if (
-                    parsed &&
-                    typeof parsed === "object" &&
-                    Object.keys(parsed).length === 1 &&
-                    parsed.answers &&
-                    typeof parsed.answers === "object"
-                  ) {
-                    parsed = parsed.answers;
-                  }
-                  answers = parsed;
-                  isParsed = true;
-                }
-              }
-            }
-          } else if (typeof result === "object" && result !== null) {
-            let parsed: Record<string, unknown> = result as Record<
-              string,
-              unknown
-            >;
-            if (
-              Object.keys(parsed).length === 1 &&
-              parsed.answers &&
-              typeof parsed.answers === "object"
-            ) {
-              parsed = parsed.answers as Record<string, unknown>;
-            }
-            answers = parsed;
-            isParsed = true;
-          }
-        } catch {
-          // Fallback to raw result
-        }
-
         const result = toolBlock.shortResult || toolBlock.result;
+        const qa = parseAskUserResult(result);
         return (
           <div key={index} className="tool-container">
             {toolHeader}
             {!errorContent && result && (
               <div className="tool-result-block">
-                {isParsed ? (
-                  Object.entries(answers).map(([question, answer], aIndex) => (
+                {qa ? (
+                  qa.map((item, aIndex) => (
                     <div key={aIndex} className="ask-user-result-item">
                       <span
                         className="ask-user-result-q"
                         style={{ whiteSpace: "pre-wrap" }}
                       >
-                        {question}
+                        {item.question}
                       </span>
                       <span
                         className="ask-user-result-a"
                         style={{ whiteSpace: "pre-wrap" }}
                       >
-                        {Array.isArray(answer)
-                          ? answer.join(", ")
-                          : typeof answer === "object" && answer !== null
-                            ? JSON.stringify(answer)
-                            : String(answer)}
+                        {Array.isArray(item.answer)
+                          ? item.answer.join(", ")
+                          : typeof item.answer === "object" &&
+                              item.answer !== null
+                            ? JSON.stringify(item.answer)
+                            : String(item.answer)}
                       </span>
+                      {item.notes && (
+                        <span className="ask-user-result-notes">
+                          备注：{item.notes}
+                        </span>
+                      )}
                     </div>
                   ))
                 ) : (

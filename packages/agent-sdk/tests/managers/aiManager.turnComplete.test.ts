@@ -170,6 +170,8 @@ function buildHarness(
   // 观测顺序用：loading 的两次翻转与 mod 事件落在同一个序列里，才能钉住「先
   // 回到可输入状态，再通知 mod」。
   const events: string[] = [];
+  // 收尾事件派发过的通知：`SubagentManager` 用它决定实例释放时要不要补报。
+  const onSubagentStopDispatched = vi.fn();
   const notifyMods = vi.fn((event: string) => {
     events.push(`mods:${event}`);
   });
@@ -177,6 +179,12 @@ function buildHarness(
   // 非错误反馈」）：默认「没人说话」，这一轮照常收尾。
   const collectStopContext = vi.fn(async () => {
     events.push("mods:classic.Stop");
+    return [] as string[];
+  });
+  // 子代理那一份（`classic.SubagentStop`）：同样是「要等返回值」的收尾通道，只是
+  // 注入的是子代理自己的对话。
+  const collectSubagentStopContext = vi.fn(async () => {
+    events.push("mods:classic.SubagentStop");
     return [] as string[];
   });
   // `turn.step` 是生成器事件，宿主等它答完才知道这次请求用哪个模型：没人改就
@@ -192,6 +200,7 @@ function buildHarness(
     container.register("ModManager", {
       notifyMods,
       collectStopContext,
+      collectSubagentStopContext,
       dispatchTurnStep,
       // 提示词类钩子原样放行 = 「没有插件改东西」，与不挂 ModManager 时同形。
       collectPromptSections: vi.fn(async (sections) => sections),
@@ -206,10 +215,16 @@ function buildHarness(
     },
   });
 
-  const aiManager = new AIManager(container, {
+  // 子代理的 AIManager 跑在**子容器**里（真实现是 `container.createChild()`），
+  // ModManager 只注册在父容器上 —— 走 fallback 取到父那一份。这一层正是
+  // `classic.SubagentStop` 能派发出来的前提，所以照真形状搭。
+  const aiContainer = subagentType ? container.createChild() : container;
+  const aiManager = new AIManager(aiContainer, {
     workdir: "/test/workdir",
     stream: false,
     subagentType,
+    ...(subagentType ? { subagentId: "sub-1" } : {}),
+    onSubagentStopDispatched,
   });
   return {
     aiManager,
@@ -217,6 +232,8 @@ function buildHarness(
     messageManager,
     notifyMods,
     collectStopContext,
+    collectSubagentStopContext,
+    onSubagentStopDispatched,
     dispatchTurnStep,
     configurationService,
     events,
@@ -600,6 +617,85 @@ describe("AIManager 的 classic.Stop 续跑", () => {
     expect(vi.mocked(callAgent)).toHaveBeenCalledTimes(1);
     expect(modCalls(notifyMods, "turn.complete")).toHaveLength(1);
     expect(messageQueue.getQueue()).toHaveLength(1);
+  });
+});
+
+describe("AIManager 的 classic.SubagentStop 续跑", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("子代理收尾派发 classic.SubagentStop，不派发 classic.Stop", async () => {
+    // spec「一轮收尾时的非错误反馈」：子代理那一轮也能被插件拦下来续跑，所以它
+    // 的收尾走自己的名字，而不是主会话的 `classic.Stop`。
+    const {
+      aiManager,
+      collectStopContext,
+      collectSubagentStopContext,
+      onSubagentStopDispatched,
+    } = buildHarness({ subagentType: "reporter" });
+    vi.mocked(callAgent).mockResolvedValue(REPLY);
+
+    await aiManager.sendAIMessage();
+
+    expect(collectSubagentStopContext).toHaveBeenCalledWith({
+      agent_id: "sub-1",
+      agent_type: "reporter",
+      stop_hook_active: false,
+    });
+    expect(collectStopContext).not.toHaveBeenCalled();
+    // 派发过：实例释放时不再补报一次。
+    expect(onSubagentStopDispatched).toHaveBeenCalledTimes(1);
+  });
+
+  it("插件返回 additionalContext：注入子代理自己的对话并再跑一轮", async () => {
+    const { aiManager, messageManager, collectSubagentStopContext } =
+      buildHarness({ subagentType: "reporter" });
+    vi.mocked(callAgent).mockResolvedValue(REPLY);
+    collectSubagentStopContext.mockResolvedValueOnce(["测试还没跑"]);
+
+    await aiManager.sendAIMessage();
+
+    // 两次请求 = 子代理答完 + 插件要求它接着干的那一轮。
+    expect(vi.mocked(callAgent)).toHaveBeenCalledTimes(2);
+    expect(messageManager.addUserMessage).toHaveBeenCalledWith({
+      content: expect.stringContaining("测试还没跑"),
+      isMeta: true,
+    });
+    // 续跑那一轮里 `stop_hook_active` 是 true（插件据此收手）。
+    expect(
+      collectSubagentStopContext.mock.calls.map(
+        (call) => (call as unknown[])[0],
+      ),
+    ).toEqual([
+      { agent_id: "sub-1", agent_type: "reporter", stop_hook_active: false },
+      { agent_id: "sub-1", agent_type: "reporter", stop_hook_active: true },
+    ]);
+  });
+
+  it("续跑到上限就不再续，第 9 次的反馈被丢弃", async () => {
+    const { aiManager, collectSubagentStopContext } = buildHarness({
+      subagentType: "reporter",
+    });
+    vi.mocked(callAgent).mockResolvedValue(REPLY);
+    // 无条件要求继续：只有上限能停住它。
+    collectSubagentStopContext.mockResolvedValue(["还没完"]);
+
+    await aiManager.sendAIMessage();
+
+    expect(collectSubagentStopContext).toHaveBeenCalledTimes(9);
+    expect(vi.mocked(callAgent)).toHaveBeenCalledTimes(9);
+  });
+
+  it("主代理的收尾不碰 classic.SubagentStop", async () => {
+    const { aiManager, collectStopContext, collectSubagentStopContext } =
+      buildHarness();
+    vi.mocked(callAgent).mockResolvedValue(REPLY);
+
+    await aiManager.sendAIMessage();
+
+    expect(collectStopContext).toHaveBeenCalledTimes(1);
+    expect(collectSubagentStopContext).not.toHaveBeenCalled();
   });
 });
 

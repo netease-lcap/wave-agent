@@ -773,6 +773,10 @@ export function setupAgentContainer(
             parameters: spec.inputSchema,
           },
         },
+        // 第三方工具与 MCP 同一条默认：进 `Exec` 池、模型按需取签名。要平铺就
+        // 在 `$.tool.register` 里给 `isDeferred: false`（spec「把我们自己的工具
+        // 交给模型」）。
+        defer: spec.isDeferred !== false,
         // 执行体不在这里：调用进来时 `ToolManager` 先问 `tool.call`，插件给的
         // `{ result }` 直接就是结果。走到这里说明分流变了 —— 报错比给一个凭空
         // 的成功安全。

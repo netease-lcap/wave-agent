@@ -53,6 +53,7 @@ import type {
   ModPanelEventPayload,
   ModPanelRenderResult,
   ModPaneLayout,
+  ModPaneViewPayload,
   ModSurfaceMetrics,
   ModPanelUpdatePayload,
   ModPromptFillRequest,
@@ -238,7 +239,7 @@ export interface StdioAgentCallbacks {
    */
   onModPromptSuggest?: (payload: ModPromptSuggestRequest) => void;
   /**
-   * A mod wants text on the clipboard (`$.ui.copy`; spec「剪贴板与视图」). The
+   * A mod wants text on the clipboard (`$.ui.copy`; spec「剪贴板」). The
    * host answers with the `modCopyResult` RPC.
    */
   onModCopy?: (payload: ModCopyRequest) => void;
@@ -501,8 +502,17 @@ export class StdioAgent {
     await this.client.request("bang", { command }, this.sessionId);
   }
 
-  async abortMessage(): Promise<void> {
-    await this.client.request("abortMessage", undefined, this.sessionId);
+  /**
+   * Interrupt the running turn. Queued input survives unless the caller asks
+   * for it to be dropped too — hosts use `{ clearQueue: true, resumeQueue:
+   * false }` for "this conversation is being replaced" paths (clear chat,
+   * restore session, config rebuild), not for a plain Stop.
+   */
+  async abortMessage(options?: {
+    clearQueue?: boolean;
+    resumeQueue?: boolean;
+  }): Promise<void> {
+    await this.client.request("abortMessage", options, this.sessionId);
   }
 
   async clearMessages(): Promise<void> {
@@ -726,6 +736,21 @@ export class StdioAgent {
     )) as ModBandRenderResult[];
   }
 
+  /**
+   * 告诉引擎「这一端摊开的是哪个面板、键盘在哪个」（spec「面板的显示与焦点」）。
+   *
+   * `$.ui.panes()` 的 `isShown` / `isFocused` 就靠这条通道 —— 这两个是**这一端
+   * 的事实**，只有 surface 知道。全量快照、不是增量：`null` 表示没显示任何面板 /
+   * 键盘回到输入框。切换 tab、点进面板正文、`Esc` 把键盘交回输入框各报一次。
+   */
+  async setModPaneView(view: ModPaneViewPayload): Promise<void> {
+    await this.client.request(
+      "modPaneView",
+      { shown: view.shown, focused: view.focused },
+      this.sessionId,
+    );
+  }
+
   /** 当前所有 mod 面板的快照（宿主重连后补画面板用）。 */
   async getModPanels(): Promise<ModPanelUpdatePayload[]> {
     return (await this.client.request(
@@ -808,7 +833,7 @@ export class StdioAgent {
   }
 
   /**
-   * 回答一次 `$.ui.copy`（spec「剪贴板与视图」）。
+   * 回答一次 `$.ui.copy`（spec「剪贴板」）。
    *
    * 写不进去也是答案：`isCopied: false` 带一句 `reason`（`no-clipboard` /
    * `refused`），mod 据此换一种交付方式，不当异常处理。
@@ -921,6 +946,23 @@ export class StdioAgent {
       this.sessionId,
     )) as { success: boolean };
     return result?.success ?? false;
+  }
+
+  /**
+   * Tail of one agent's activity log (spec `multi-agent/workflow.md`
+   * 「查看单个 agent 的执行详情」). Missing run/index/file answers with an empty
+   * tail instead of an error.
+   */
+  async getWorkflowAgentActivity(
+    runId: string,
+    agentIndex: number,
+  ): Promise<{ activity: string }> {
+    const result = (await this.client.request(
+      "getWorkflowAgentActivity",
+      { runId, agentIndex },
+      this.sessionId,
+    )) as { activity?: string };
+    return { activity: result?.activity ?? "" };
   }
 
   // ── MCP ───────────────────────────────────────────────────────

@@ -16,6 +16,7 @@ import type {
   ModPanelUpdatePayload,
   ModStatusPayload,
   ModToastPayload,
+  ModUiPane,
 } from "../../src/types/mods.js";
 import type { Plugin } from "../../src/types/plugins.js";
 
@@ -2533,7 +2534,7 @@ exports.register = function ($, on) {
   });
 });
 
-describe("ModManager 的清单、草稿、工具行与剪贴板（spec「配了哪些、能调什么、有谁在跑」「输入框里现在有什么」「工具行下面的一行」「剪贴板与视图」）", () => {
+describe("ModManager 的清单、草稿、工具行与剪贴板（spec「配了哪些、能调什么、有谁在跑」「输入框里现在有什么」「工具行下面的一行」「剪贴板」）", () => {
   const PANEL_MOD = `
 exports.register = function ($, on) {
   on("session.start", function () { $.ui.open({ id: "p1", title: "面板" }); });
@@ -2690,6 +2691,99 @@ exports.register = function ($, on) {
     expect(String((frame.tree as { children: string[] }).children[0])).toBe(
       "半句话@3",
     );
+
+    await manager.dispose();
+  });
+});
+
+/**
+ * 工具行上那一行的收口（spec「工具行下面的一行」）：工具结束由宿主撤，插件不必
+ * 自己清理。所以宿主得记「哪个 tool_use_id 上是谁贴的」—— 同一个工具可以被几个
+ * mod 各贴一行，收口时要逐条发 `text: null`；插件自己撤掉的那条不能再撤一遍。
+ */
+describe("ModManager 自动撤除工具行上的 notice", () => {
+  /** 在 `session.start` 里贴一行的 mod。 */
+  const noticeAtStart = (line: string) => `
+exports.register = function ($, on) {
+  on("session.start", function () {
+    ${line}
+  });
+};
+`;
+
+  /** 接上 notice 出口的 manager：`sources` 是「插件名 → 这个插件的 mod 源码」。 */
+  async function sinkManager(sources: Record<string, string>) {
+    const notices: Array<[string, string, string | null]> = [];
+    const files: Record<string, string> = {};
+    const plugins: Plugin[] = [];
+    for (const [name, source] of Object.entries(sources)) {
+      const file = path.join(ROOT, "mods", `${name}.tsx`);
+      files[file] = source;
+      plugins.push(namedPlugin(name, [{ id: `${name}:panel`, path: file }]));
+    }
+    const { manager } = createManager(files);
+    manager.setNoticeSink((pluginName, toolUseId, text) =>
+      notices.push([pluginName, toolUseId, text]),
+    );
+    await manager.loadFromPlugins(plugins);
+    await manager.startSession();
+    return { manager, notices };
+  }
+
+  it("工具结束时逐条撤：同一个工具上两个插件各收到一条 null", async () => {
+    const { manager, notices } = await sinkManager({
+      todo: noticeAtStart('$.ui.notice("tool-1", "todo 贴的");'),
+      guard: noticeAtStart('$.ui.notice("tool-1", "guard 贴的");'),
+    });
+    await vi.waitFor(() => expect(notices).toHaveLength(2));
+
+    manager.clearToolNotices("tool-1");
+
+    // 顺序跟着记账的迭代走，不按下标断言：按内容认。
+    const cleared = notices.slice(2);
+    expect(cleared).toHaveLength(2);
+    expect(cleared).toEqual(
+      expect.arrayContaining([
+        ["todo", "tool-1", null],
+        ["guard", "tool-1", null],
+      ]),
+    );
+
+    await manager.dispose();
+  });
+
+  it("没有贴过的工具、以及清完再清一次：都不发 null（幂等）", async () => {
+    const { manager, notices } = await sinkManager({
+      todo: noticeAtStart('$.ui.notice("tool-1", "已校验");'),
+    });
+    await vi.waitFor(() => expect(notices).toHaveLength(1));
+
+    manager.clearToolNotices("tool-2");
+    expect(notices).toHaveLength(1);
+
+    manager.clearToolNotices("tool-1");
+    expect(notices).toHaveLength(2);
+
+    manager.clearToolNotices("tool-1");
+    expect(notices).toHaveLength(2);
+
+    await manager.dispose();
+  });
+
+  it("插件自己先撤掉的那一行，收口时不会多出一条 null", async () => {
+    const { manager, notices } = await sinkManager({
+      todo: noticeAtStart(
+        '$.ui.notice("tool-1", "已校验"); $.ui.notice("tool-1", undefined);',
+      ),
+    });
+    await vi.waitFor(() => expect(notices).toHaveLength(2));
+
+    manager.clearToolNotices("tool-1");
+
+    expect(notices).toEqual([
+      ["todo", "tool-1", "已校验"],
+      ["todo", "tool-1", null],
+    ]);
 
     await manager.dispose();
   });
@@ -3713,6 +3807,68 @@ exports.register = function ($, on) {
   });
 });
 
+describe("ModManager 的 classic.SubagentStop 返回值", () => {
+  /** 收到 `classic.SubagentStop` 记一行状态（观察 `e` 的形状），再按 body 返回。 */
+  const subagentStopMod = (body: string) => `
+exports.register = function ($, on) {
+  on("classic.SubagentStop", function (e) {
+    $.ui.status([e.hook_event_name, e.agent_id, e.agent_type, String(e.stop_hook_active), String(e.background_tasks)].join("|"));
+    ${body}
+  });
+};
+`;
+
+  it("派发 classic.SubagentStop 并收集 additionalContext（子代理那一份载荷）", async () => {
+    // spec「一轮收尾时的非错误反馈」：子代理那一轮和主会话同一条通道，只是事件
+    // 名字与载荷换成子代理的（没有 `background_tasks` / `session_crons` 这两格）。
+    const { manager, statuses } = createManager({
+      [MOD_PATH]: subagentStopMod(
+        `return { additionalContext: ["先把测试补上"] };`,
+      ),
+    });
+    await manager.loadFromPlugins([
+      plugin([{ id: "todo:panel", path: MOD_PATH }]),
+    ]);
+    await manager.startSession();
+
+    await expect(
+      manager.collectSubagentStopContext({
+        agent_id: "sub-1",
+        agent_type: "reporter",
+        stop_hook_active: false,
+      }),
+    ).resolves.toEqual(["先把测试补上"]);
+    await vi.waitFor(() =>
+      expect(statuses.at(-1)?.text).toBe(
+        "SubagentStop|sub-1|reporter|false|undefined",
+      ),
+    );
+
+    await manager.dispose();
+  });
+
+  it("两个名字互不串台：classic.Stop 的收集不会打到 SubagentStop 钩子上", async () => {
+    const { manager } = createManager({
+      [MOD_PATH]: subagentStopMod(
+        `return { additionalContext: ["子代理专属"] };`,
+      ),
+    });
+    await manager.loadFromPlugins([
+      plugin([{ id: "todo:panel", path: MOD_PATH }]),
+    ]);
+    await manager.startSession();
+
+    await expect(
+      manager.collectStopContext({
+        background_tasks: [],
+        stop_hook_active: false,
+      }),
+    ).resolves.toEqual([]);
+
+    await manager.dispose();
+  });
+});
+
 describe("插件自己的工具、子代理与模型通道", () => {
   /** 交一个自己的工具、并在 `tool.call` 里把结果答掉（spec「把我们自己的工具交给模型」）。 */
   const LOOKUP_MOD = `
@@ -3773,6 +3929,78 @@ exports.register = function ($, on) {
     await manager.reload([{ name: "plain", path: ROOT } as Plugin]);
     expect(unregister).toHaveBeenCalledWith("mcp__todo__lookup_ticket");
     expect(manager.ownsTool("mcp__todo__lookup_ticket")).toBe(false);
+
+    await manager.dispose();
+  });
+
+  it("isDeferred 跟着规格透传：false 才平铺，缺省不带这一位（= 进池）", async () => {
+    const { manager } = createManager({
+      [MOD_PATH]: `
+exports.register = function ($, on) {
+  on("tool.register", function () {
+    $.tool.register({
+      name: "flat_one",
+      description: "平铺的",
+      isDeferred: false
+    });
+    $.tool.register({ name: "pooled_one", description: "进池的" });
+  });
+};
+`,
+    });
+    const registered: Array<{ name: string; isDeferred?: boolean }> = [];
+    manager.setToolBridge({
+      register: (spec) => {
+        registered.push(spec);
+        return { ok: true };
+      },
+      unregister: vi.fn(),
+    });
+    await manager.loadFromPlugins([
+      plugin([{ id: "todo:panel", path: MOD_PATH }]),
+    ]);
+    await manager.startSession();
+    await manager.dispatchToolRegister();
+
+    expect(registered).toHaveLength(2);
+    expect(registered[0]).toMatchObject({
+      name: "mcp__todo__flat_one",
+      isDeferred: false,
+    });
+    // 缺省不编造这一位：默认延迟由工具表那边判（与 MCP 同一条默认）。
+    expect("isDeferred" in registered[1]).toBe(false);
+
+    await manager.dispose();
+  });
+
+  it("isDeferred 不是布尔时当场失败，不挂进工具表", async () => {
+    const { manager } = createManager({
+      [MOD_PATH]: `
+exports.register = function ($, on) {
+  on("tool.register", function () {
+    // await + catch：错误要是「当场抛」，而不是悄悄放过这一位。
+    return $.tool.register({
+      name: "bad_one",
+      description: "写错了的",
+      isDeferred: "yes"
+    }).then(
+      function () { return "registered"; },
+      function (error) { return error.message; }
+    );
+  });
+};
+`,
+    });
+    const register = vi.fn().mockReturnValue({ ok: true });
+    manager.setToolBridge({ register, unregister: vi.fn() });
+    await manager.loadFromPlugins([
+      plugin([{ id: "todo:panel", path: MOD_PATH }]),
+    ]);
+    await manager.startSession();
+    await manager.dispatchToolRegister();
+
+    expect(register).not.toHaveBeenCalled();
+    expect(manager.ownsTool("mcp__todo__bad_one")).toBe(false);
 
     await manager.dispose();
   });
@@ -4403,25 +4631,50 @@ ${["tool.check", "tool.call", "agent.spawn"]
 });
 
 /**
+ * `tool.describe` 的答案：描述是文本，`isDeferred` 是放置裁决。
+ */
+describe("tool.describe 的答案", () => {
+  it("isDeferred 跟着答案付出去；没给就不编造这一位", async () => {
+    const { manager } = createManager({
+      [MOD_PATH]: `
+exports.register = function ($, on) {
+  on("tool.describe", { tool: "mcp__todo__flat" }, function () {
+    return { description: "改过的", isDeferred: false };
+  });
+};
+`,
+    });
+    await manager.loadFromPlugins([
+      plugin([{ id: "todo:panel", path: MOD_PATH }]),
+    ]);
+    await manager.startSession();
+
+    await expect(
+      manager.collectToolDescription({
+        name: "mcp__todo__flat",
+        description: "宿主给的",
+      }),
+    ).resolves.toEqual({ description: "改过的", isDeferred: false });
+    // 没人接的工具原样返回，不带 isDeferred —— 默认延迟由判定表给。
+    await expect(
+      manager.collectToolDescription({
+        name: "Bash",
+        description: "宿主给的",
+      }),
+    ).resolves.toEqual({ description: "宿主给的" });
+
+    await manager.dispose();
+  });
+});
+
+/**
  * `$.ui.invalidate("tool.describe")`：插件声明「我给的描述过期了」。
  *
  * describe 缓存是会话级的（工具表由 `ToolManager` 拼），所以这条要连着真的
  * `ToolManager` 一起验：光看 `ModManager` 记了几次账证明不了「真的重问」。
  */
 describe('$.ui.invalidate("tool.describe")', () => {
-  /**
-   * 让 `tool.describe` 那次问答落地。
-   *
-   * 这里不能只清微任务：`callHook` 里是 `Promise.race` + 定时器、钩子还跑在沙箱
-   * 里，答案要跨几个宏任务才写进 staged。等它落地再翻轮次，否则翻到的是旧答案。
-   */
-  async function settleDescribe(): Promise<void> {
-    for (let i = 0; i < 3; i += 1) {
-      await new Promise((resolve) => setTimeout(resolve, 0));
-    }
-  }
-
-  it("下一次拼工具表时重问描述，新答案在下一轮生效", async () => {
+  it("下一次组装请求前重问描述，新答案当次生效", async () => {
     const container = new Container();
     container.register("PermissionManager", {
       isToolDenied: () => false,
@@ -4429,6 +4682,8 @@ describe('$.ui.invalidate("tool.describe")', () => {
     });
     container.register("McpManager", {
       getMcpToolsConfig: () => [],
+      getMcpToolPlugins: () => [],
+      getMcpToolOutputSchemas: () => new Map(),
     } as unknown as McpManager);
     const turns = { value: 1 };
     container.register("MessageManager", {
@@ -4457,7 +4712,11 @@ exports.register = function ($, on) {
       name: "FakeTool",
       config: {
         type: "function",
-        function: { name: "FakeTool", description: "", parameters: {} },
+        function: {
+          name: "FakeTool",
+          description: "宿主的描述",
+          parameters: {},
+        },
       } as ToolPlugin["config"],
       prompt: () => "宿主的描述",
       execute: vi.fn(),
@@ -4472,24 +4731,252 @@ exports.register = function ($, on) {
     await manager.loadFromPlugins([
       plugin([{ id: "todo:panel", path: MOD_PATH }]),
     ]);
-    // 第一次拼表：问一次，答案要下一轮才 pin 上（工具表是本轮开头 pin 的快照）。
+    // 会话里先拼过一次表（早于这次组装）：宿主的原文。
     expect(descriptionOf()).toBe("宿主的描述");
-    await settleDescribe();
+    // 组装请求前 `await`：问一次，答案这一次请求就生效。
+    await toolManager.prepareToolDescriptions();
+    expect(asked).toHaveBeenCalledTimes(1);
+    expect(descriptionOf()).toBe("宿主的描述#0");
+
+    // 再拼一次表也不重问：描述是会话级缓存。
+    await toolManager.prepareToolDescriptions();
     expect(asked).toHaveBeenCalledTimes(1);
 
     // 插件声明过期（`session.start` 里就是这句）。
     await manager.startSession();
     expect(manager.toolDescribeInvalidationCount()).toBe(1);
 
-    // 第二次拼表：不再吃「问过没」那份缓存，重问一遍。
-    descriptionOf();
-    await settleDescribe();
+    // 下一次组装前重问一遍，新答案当次生效（不是再等一轮）。
+    await toolManager.prepareToolDescriptions();
     expect(asked).toHaveBeenCalledTimes(2);
-
-    // 重问到的答案照样在下一轮 pin 上（清缓存不等于把描述弄丢）。
-    turns.value = 2;
     expect(descriptionOf()).toBe("宿主的描述#1");
 
     await manager.dispose();
+  });
+});
+
+describe("ModManager 的面板显示与焦点（$.ui.panes）", () => {
+  /** 开两块、并把 `$.ui.panes()` 原样画成一格文本 —— mod 只有这一个入口看得到。 */
+  const PANES_MOD = `
+exports.register = function ($, on) {
+  on("session.start", function () {
+    $.ui.open({ id: "p1", title: "一" });
+    $.ui.open({ id: "p2", title: "二" });
+  });
+  on("ui.render", async function () {
+    return __wave.h("Text", null, JSON.stringify(await $.ui.panes()));
+  });
+};
+`;
+
+  async function opened(facts: ModSessionFacts = factsWith()) {
+    const created = createManager(
+      { [MOD_PATH]: PANES_MOD },
+      { sessionFacts: facts },
+    );
+    await created.manager.loadFromPlugins([
+      plugin([{ id: "todo:panel", path: MOD_PATH }]),
+    ]);
+    await created.manager.startSession();
+    return created;
+  }
+
+  /** 从 mod 那一侧读一眼台账：渲染一帧，再把那格 JSON 解回来。 */
+  async function panesSeenByMod(manager: ModManager): Promise<ModUiPane[]> {
+    const frame = await manager.renderPane("todo:panel", "p1");
+    const node = frame.tree as unknown as { children?: unknown[] };
+    return JSON.parse(String(node.children?.[0]));
+  }
+
+  it("没人上报过时 isShown / isFocused 都是 false；新开的那块自带 shown", async () => {
+    const { manager } = await opened();
+
+    // 打开第二块时键盘还没人持着 ⇒ 它就是摊开的那个（与 CC 的
+    // `shownId: focusedId ?? 新 id` 同一条）；`isFocused` 不猜，等 surface 报。
+    expect(await panesSeenByMod(manager)).toEqual([
+      {
+        id: "p1",
+        title: "一",
+        isPlaced: true,
+        isShown: false,
+        isFocused: false,
+      },
+      {
+        id: "p2",
+        title: "二",
+        isPlaced: true,
+        isShown: true,
+        isFocused: false,
+      },
+    ]);
+  });
+
+  it("surface 上报是全量快照：换一个 tab 就翻转，键盘回输入框只动 isFocused", async () => {
+    const { manager } = await opened();
+
+    manager.setPaneView({
+      shown: { modId: "todo:panel", paneId: "p1" },
+      focused: { modId: "todo:panel", paneId: "p1" },
+    });
+    expect(await panesSeenByMod(manager)).toMatchObject([
+      { id: "p1", isShown: true, isFocused: true },
+      { id: "p2", isShown: false, isFocused: false },
+    ]);
+
+    // 终端 Esc：面板还摊着，只是键盘回到输入框（`focused: null`）。
+    manager.setPaneView({
+      shown: { modId: "todo:panel", paneId: "p1" },
+      focused: null,
+    });
+    expect(await panesSeenByMod(manager)).toMatchObject([
+      { id: "p1", isShown: true, isFocused: false },
+      { id: "p2", isShown: false, isFocused: false },
+    ]);
+  });
+
+  it("台账里没有的 ref 一律归 null：迟到的上报不会把刚关掉的那块说活", async () => {
+    const { manager } = await opened();
+    await manager.handlePanelEvent({
+      sessionId: "s1",
+      modId: "todo:panel",
+      paneId: "p2",
+      key: "",
+      kind: "close",
+      origin: "person",
+    });
+
+    manager.setPaneView({
+      shown: { modId: "todo:panel", paneId: "p2" },
+      focused: { modId: "todo:panel", paneId: "p2" },
+    });
+    expect(await panesSeenByMod(manager)).toEqual([
+      {
+        id: "p1",
+        title: "一",
+        isPlaced: true,
+        isShown: false,
+        isFocused: false,
+      },
+    ]);
+
+    // 名字撞上但 mod 不对也算「不在台账里」：两个字段各管各的，不互相顶。
+    manager.setPaneView({
+      shown: { modId: "ghost", paneId: "p1" },
+      focused: { modId: "todo:panel", paneId: "p1" },
+    });
+    expect(await panesSeenByMod(manager)).toMatchObject([
+      { id: "p1", isShown: false, isFocused: true },
+    ]);
+  });
+
+  it("`e.props.isFocused` 与 `$.ui.panes()` 同源：只在持键盘的那块上是 true", async () => {
+    // 渲染站点给的面板事实里也有这一项（spec「`ui.render` 的 `e.props`」）。它
+    // 不能是常量：社区里那条用法就是「键盘在面板里时才提示按 Esc 返回对话」。
+    const renderFocusMod = `
+exports.register = function ($, on) {
+  on("session.start", function () {
+    $.ui.open({ id: "p1", title: "一" });
+    $.ui.open({ id: "p2", title: "二" });
+  });
+  on("ui.render", function (e) {
+    return __wave.h("Text", null, e.requestId + ":" + e.props.isFocused);
+  });
+};
+`;
+    const seen = async (manager: ModManager, paneId: string) => {
+      const frame = await manager.renderPane("todo:panel", paneId);
+      const node = frame.tree as unknown as { children?: unknown[] };
+      return String(node.children?.[0]);
+    };
+    const { manager } = createManager(
+      { [MOD_PATH]: renderFocusMod },
+      { sessionFacts: factsWith() },
+    );
+    await manager.loadFromPlugins([
+      plugin([{ id: "todo:panel", path: MOD_PATH }]),
+    ]);
+    await manager.startSession();
+
+    // 还没人报过：不编值。
+    expect(await seen(manager, "p1")).toBe("p1:false");
+    expect(await seen(manager, "p2")).toBe("p2:false");
+
+    // 键盘落在 p2 ⇒ 只有 p2 那一帧是 true（按 pane 各算各的）。
+    manager.setPaneView({
+      shown: { modId: "todo:panel", paneId: "p2" },
+      focused: { modId: "todo:panel", paneId: "p2" },
+    });
+    expect(await seen(manager, "p1")).toBe("p1:false");
+    expect(await seen(manager, "p2")).toBe("p2:true");
+
+    // Esc 把键盘交回输入框：下一帧又回到 false（surface 会在这一刻补拉一帧）。
+    manager.setPaneView({
+      shown: { modId: "todo:panel", paneId: "p2" },
+      focused: null,
+    });
+    expect(await seen(manager, "p2")).toBe("p2:false");
+  });
+
+  it("迟到的上报不会在重新打开之后「活过来」", async () => {
+    const { manager } = await opened();
+    await manager.handlePanelEvent({
+      sessionId: "s1",
+      modId: "todo:panel",
+      paneId: "p2",
+      key: "",
+      kind: "close",
+      origin: "person",
+    });
+    // 关掉之后还有一条迟到的上报，说它还持着键盘。
+    manager.setPaneView({
+      shown: { modId: "todo:panel", paneId: "p2" },
+      focused: { modId: "todo:panel", paneId: "p2" },
+    });
+
+    // mod 重新打开它（`session.start` 再来一次是真实路径：插件重载）。
+    await manager.startSession();
+
+    // 新开的那块是 shown（没人持着键盘），但**不是** focused —— 没人说它在。
+    expect(await panesSeenByMod(manager)).toMatchObject([
+      { id: "p1", isShown: false, isFocused: false },
+      { id: "p2", isShown: true, isFocused: false },
+    ]);
+  });
+
+  it("关掉摊开的那块：两个标记都清空，不自动顶到相邻 tab", async () => {
+    const { manager } = await opened();
+    manager.setPaneView({
+      shown: { modId: "todo:panel", paneId: "p2" },
+      focused: { modId: "todo:panel", paneId: "p2" },
+    });
+
+    await manager.handlePanelEvent({
+      sessionId: "s1",
+      modId: "todo:panel",
+      paneId: "p2",
+      key: "",
+      kind: "close",
+      origin: "person",
+    });
+
+    // 剩下那块也报 false：谁也没说它是摊开的，不替 surface 猜。
+    expect(await panesSeenByMod(manager)).toEqual([
+      {
+        id: "p1",
+        title: "一",
+        isPlaced: true,
+        isShown: false,
+        isFocused: false,
+      },
+    ]);
+  });
+
+  it("isPlaced 跟「这一帧有没有表面在画」走，不是登记成功没", async () => {
+    const { manager } = await opened(
+      factsWith({ surfaces: () => [] as const }),
+    );
+    expect(
+      (await panesSeenByMod(manager)).map((pane) => pane.isPlaced),
+    ).toEqual([false, false]);
   });
 });

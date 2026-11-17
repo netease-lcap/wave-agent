@@ -8,7 +8,8 @@ import { ConcurrencyLimiter } from "./concurrencyLimiter.js";
 import type { TurnBudgetLedger } from "../managers/turnBudgetLedger.js";
 import { ProgressReporter } from "./progressReporter.js";
 import { Journal } from "./journal.js";
-import type { BudgetInfo, AgentMeta } from "./types.js";
+import type { BudgetInfo, AgentMeta, WorkflowAgentState } from "./types.js";
+import { WORKFLOW_AGENT_PREVIEW_CHARS } from "../constants/workflowLimits.js";
 import {
   WORKFLOW_AGENT_CALL_CAP,
   WorkflowAgentCapError,
@@ -76,6 +77,13 @@ interface WorkflowApiContext {
   runDir: string;
   /** Per-agent abort controllers for kill/skip support */
   agentControllers: Map<number, AbortController>;
+  /**
+   * Called whenever one agent's entry changes (started / finished / failed /
+   * skipped, or replayed from the resume journal). The manager mirrors it onto
+   * the run's `agents` list, which the workflow detail view renders — spec
+   * `multi-agent/workflow.md`「查看单个 agent 的执行详情」.
+   */
+  onAgentState?: (state: WorkflowAgentState) => void;
 }
 
 interface AgentOpts {
@@ -161,6 +169,107 @@ export function createWorkflowApis(ctx: WorkflowApiContext): WorkflowApis {
       stats.empty++;
     } else {
       stats.completed++;
+    }
+  };
+
+  /**
+   * Single-line preview of a prompt / result for the run snapshot.
+   *
+   * The snapshot is re-pushed on every progress event (and reaches the remote
+   * page as one frame), so a whole prompt or a research report cannot ride on
+   * it: `WORKFLOW_AGENT_PREVIEW_CHARS` bounds each preview, and the full text
+   * stays in `agents/<index>.meta.json` / `journal.jsonl` (spec
+   * 「查看单个 agent 的执行详情」场景 6).
+   */
+  const previewText = (value: unknown): string | undefined => {
+    let text: string;
+    if (typeof value === "string") {
+      text = value;
+    } else if (value === undefined || value === null) {
+      text = "";
+    } else {
+      try {
+        text = JSON.stringify(value) ?? String(value);
+      } catch {
+        text = String(value);
+      }
+    }
+    const collapsed = text.replace(/\s+/g, " ").trim();
+    if (!collapsed) return undefined;
+    return collapsed.length > WORKFLOW_AGENT_PREVIEW_CHARS
+      ? `${collapsed.slice(0, WORKFLOW_AGENT_PREVIEW_CHARS)}…`
+      : collapsed;
+  };
+
+  const reportAgentState = (state: WorkflowAgentState): void => {
+    try {
+      ctx.onAgentState?.(state);
+    } catch (err) {
+      // The agent list is a lens on the run, not part of it: a broken listener
+      // must never fail the agent it was reporting on.
+      logger.warn(
+        `[Workflow] agent state listener threw: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  };
+
+  /**
+   * Attach an activity log to one agent — the same file shape the background
+   * subagent detail reads (`wave-subagent-<id>.log`): the subagent's own
+   * callbacks write one line per finished tool call into `instance.logStream`.
+   *
+   * It lives in the RUN directory rather than `/tmp` so the detail view can
+   * still tail it after the process that owned the run is gone (spec
+   * 「查看单个 agent 的执行详情」场景 4).
+   */
+  const openAgentLog = (index: number, instance: SubagentInstance): void => {
+    const logPath = path.join(ctx.runDir, "agents", `${index}.log`);
+    try {
+      const stream = fs.createWriteStream(logPath, { flags: "w" });
+      stream.on("error", (err: Error) => {
+        logger.warn(
+          `[Workflow] agent(${index}) activity log failed: ${err.message}`,
+        );
+      });
+      instance.logStream = stream;
+    } catch (err) {
+      logger.warn(
+        `[Workflow] agent(${index}) activity log not opened: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  };
+
+  /**
+   * Close one agent's activity log with a terminal line. The subagent itself
+   * only writes that line when it was backgrounded (`backgroundTaskId`), so a
+   * workflow agent's file would otherwise end mid-activity.
+   *
+   * The stream may already be gone: a skip / run-level stop aborts the agent,
+   * and the subagent manager destroys the instance's stream on abort. In that
+   * case the line is appended to the file directly, so every agent that ran has
+   * a terminal line (spec「查看单个 agent 的执行详情」场景 4).
+   */
+  const closeAgentLog = (
+    index: number,
+    instance: SubagentInstance | undefined,
+    line: string,
+  ): void => {
+    const entry = `[${new Date().toISOString()}] ${line}\n`;
+    const stream = instance?.logStream;
+    try {
+      if (stream && !stream.destroyed && !stream.writableEnded) {
+        stream.write(entry);
+        stream.end();
+        // Keep `logStream` on the instance: `releaseInstance` reports its path
+        // as the subagent's `agent_transcript_path`, and an ended stream is not
+        // destroyed a second time.
+        return;
+      }
+      fs.appendFileSync(path.join(ctx.runDir, "agents", `${index}.log`), entry);
+    } catch (err) {
+      logger.warn(
+        `[Workflow] agent activity log not closed: ${err instanceof Error ? err.message : String(err)}`,
+      );
     }
   };
 
@@ -285,6 +394,15 @@ export function createWorkflowApis(ctx: WorkflowApiContext): WorkflowApis {
     }
 
     const index = agentCounter++;
+    // Built here, before any report: the manager UPSERTS the agent entry by
+    // index, so every report has to carry the fields the UI shows — a terminal
+    // report that omitted the preview made a completed agent lose the Prompt
+    // block the running one had.
+    let effectivePrompt = prompt;
+    if (opts?.schema) {
+      effectivePrompt += createStructuredOutputPrompt(opts.schema);
+    }
+
     // Cache lookups are keyed by call order WITHIN this execution (0, 1, 2, …):
     // a resumed run numbers its agents past the replayed ones (`initialAgentCount`,
     // so `getAgentCount()`/the cap see the real total), while the previous
@@ -308,6 +426,19 @@ export function createWorkflowApis(ctx: WorkflowApiContext): WorkflowApis {
       // the journal — otherwise a resumed run would report 0 tool uses for work
       // it did pay for.
       stats.toolUses += ctx.journal.getCachedToolUses(cacheIndex);
+      // No subagent ran for this slot, so there is no activity log: the agent
+      // list marks it as replayed instead of showing an empty one.
+      reportAgentState({
+        index,
+        label: opts?.label,
+        agentType: opts?.agentType || "general-purpose",
+        phase: opts?.phase ?? ctx.progressReporter.getCurrentPhaseTitle(),
+        model: opts?.model,
+        status: "completed",
+        endTime: Date.now(),
+        cached: true,
+        promptPreview: previewText(effectivePrompt),
+      });
       return cached;
     }
 
@@ -325,6 +456,11 @@ export function createWorkflowApis(ctx: WorkflowApiContext): WorkflowApis {
     const onRunAbort = () => agentController.abort();
     ctx.abortSignal.addEventListener("abort", onRunAbort);
 
+    // Hoisted out of the try so the failure path can still close this agent's
+    // activity log when the error came from anything after instance creation.
+    let agentInstance: SubagentInstance | undefined;
+    const agentStartTime = Date.now();
+
     try {
       // Resolve subagent type
       const subagentType = opts?.agentType || "general-purpose";
@@ -339,12 +475,6 @@ export function createWorkflowApis(ctx: WorkflowApiContext): WorkflowApis {
         if (!configuration) {
           throw new Error(`No subagent type available for agent call`);
         }
-      }
-
-      // Build the effective prompt
-      let effectivePrompt = prompt;
-      if (opts?.schema) {
-        effectivePrompt += createStructuredOutputPrompt(opts.schema);
       }
 
       // Set phase if specified
@@ -364,6 +494,22 @@ export function createWorkflowApis(ctx: WorkflowApiContext): WorkflowApis {
       // Capture subagent linkage info
       const subagentId = instance.subagentId;
       const transcriptPath = instance.messageManager.getTranscriptPath();
+      agentInstance = instance;
+
+      // Attach the activity log and register the running agent: the detail view
+      // tails this file and lists the agent from this moment on (spec
+      // 「查看单个 agent 的执行详情」场景 1/4).
+      openAgentLog(index, instance);
+      reportAgentState({
+        index,
+        label: opts?.label,
+        agentType: subagentType,
+        phase: opts?.phase ?? ctx.progressReporter.getCurrentPhaseTitle(),
+        model: opts?.model,
+        status: "running",
+        startTime: agentStartTime,
+        promptPreview: previewText(effectivePrompt),
+      });
 
       // If schema provided, register the StructuredOutput tool on the subagent's
       // tool manager. The model is asked — not forced — to call it: the tool
@@ -464,8 +610,27 @@ export function createWorkflowApis(ctx: WorkflowApiContext): WorkflowApis {
         );
       }
 
+      // Close the activity log BEFORE cleanup: `cleanupInstance` destroys the
+      // instance's stream, so the terminal line would otherwise never land.
+      closeAgentLog(index, instance, "Agent completed");
+
       // Cleanup
       ctx.subagentManager.cleanupInstance(instance.subagentId);
+
+      reportAgentState({
+        index,
+        label: opts?.label,
+        agentType: subagentType,
+        phase: opts?.phase ?? ctx.progressReporter.getCurrentPhaseTitle(),
+        model: opts?.model,
+        status: "completed",
+        startTime: agentStartTime,
+        endTime: Date.now(),
+        tokens,
+        toolUses,
+        resultPreview: previewText(finalResult),
+        promptPreview: previewText(effectivePrompt),
+      });
 
       countAgentResult(finalResult);
       return finalResult;
@@ -482,6 +647,24 @@ export function createWorkflowApis(ctx: WorkflowApiContext): WorkflowApis {
 
       // Emit progress event for agent failure
       ctx.progressReporter.agentFailed(index);
+
+      closeAgentLog(
+        index,
+        agentInstance,
+        skip ? `Agent skipped: ${errorMsg}` : `Agent failed: ${errorMsg}`,
+      );
+      reportAgentState({
+        index,
+        label: opts?.label,
+        agentType: opts?.agentType || "general-purpose",
+        phase: opts?.phase ?? ctx.progressReporter.getCurrentPhaseTitle(),
+        model: opts?.model,
+        status: skip ? "skipped" : "failed",
+        startTime: agentStartTime,
+        endTime: Date.now(),
+        error: errorMsg,
+        promptPreview: previewText(effectivePrompt),
+      });
 
       // A user skip (skipAgent aborts this agent's controller) and a run-level
       // stop are the ONLY failures that resolve to null: the script sees "no

@@ -1,5 +1,5 @@
 import { describe, test, expect, vi, beforeEach } from "vitest";
-import type { Message } from "wave-agent-sdk/host";
+import type { Message, ModNoticePayload } from "wave-agent-sdk/host";
 
 // ChatProvider's module graph imports the real "vscode" module; stub the API
 // surface reachable at import time / via the context methods under test.
@@ -9,17 +9,24 @@ vi.mock("vscode", () => ({
     showInformationMessage: vi.fn(),
   },
   commands: { executeCommand: vi.fn() },
+  // ChatSession.initialize reads the first workspace folder for `workdir`.
+  workspace: { workspaceFolders: [] },
 }));
 
 import { ChatProvider } from "../../src/chatProvider";
 import type { MessageHandlerContext } from "../../src/session/messageHandler";
-import type { ChatSessionCallbacks } from "../../src/session/chatSession";
+import type {
+  ChatSession,
+  ChatSessionCallbacks,
+} from "../../src/session/chatSession";
+import type { StdioClient } from "../../src/stdio/stdioClient";
+import type { NotificationRouter } from "wave-agent-sdk/host";
 
 type BareProvider = {
   createMessageHandlerContext: () => MessageHandlerContext;
   openSettings: ReturnType<typeof vi.fn>;
   webviewManager: { postMessage: ReturnType<typeof vi.fn> };
-  createChatSession: (viewType: "sidebar" | "tab" | "window") => object;
+  createChatSession: (viewType: "sidebar" | "tab" | "window") => ChatSession;
 };
 
 function makeBareProvider(): BareProvider {
@@ -64,8 +71,9 @@ describe("ChatProvider message-handler context", () => {
   test("onMessagesReplaced pushes the full list as updateMessages", () => {
     const provider = makeBareProvider();
     const session = provider.createChatSession("tab");
-    const callbacks = (session as { callbacks: ChatSessionCallbacks })
-      .callbacks;
+    const callbacks = (
+      session as unknown as { callbacks: ChatSessionCallbacks }
+    ).callbacks;
     const messages = [
       { id: "m1", role: "user", blocks: [] },
     ] as unknown as Message[];
@@ -74,6 +82,48 @@ describe("ChatProvider message-handler context", () => {
 
     expect(provider.webviewManager.postMessage).toHaveBeenCalledWith(
       { command: "updateMessages", messages },
+      "tab",
+      undefined,
+    );
+  });
+
+  // `$.ui.notice`（spec「工具行下面的一行」）：CLI 的 `modNotice` 通知经 StdioAgent
+  // → ChatSession 回调落到这里，再以桌面端那个消息名推给同一份 webview（IDE 端没有
+  // pane，所以不带 paneId）。命令名与载荷形状钉在这里 —— host→webview 的命令没有
+  // 审计脚本，漏改只会静默不显示。
+  test("modNotice 通知推成 desktopModNotice，payload 原样、不带 paneId", async () => {
+    const provider = makeBareProvider();
+    const session = provider.createChatSession("tab");
+    const request = vi.fn(async (method: string) => {
+      if (method === "initialize") {
+        return {
+          sessionId: "sess-1",
+          currentWorkdir: "/test-workspace",
+          permissionMode: "default",
+          latestTotalTokens: 0,
+        };
+      }
+      return {};
+    });
+    await session.initialize(
+      undefined,
+      { request } as unknown as StdioClient,
+      {
+        register: vi.fn(),
+        unregister: vi.fn(),
+      } as unknown as NotificationRouter,
+    );
+
+    const payload: ModNoticePayload = {
+      sessionId: "sess-1",
+      plugin: "ideas-shelf",
+      toolUseId: "tool-1",
+      text: "已校验",
+    };
+    session.agent!.handleNotification("modNotice", payload);
+
+    expect(provider.webviewManager.postMessage).toHaveBeenCalledWith(
+      { command: "desktopModNotice", payload },
       "tab",
       undefined,
     );

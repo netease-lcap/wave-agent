@@ -50,6 +50,8 @@ vi.mock("wave-agent-sdk", async () => {
         }),
         renderModBand: vi.fn().mockResolvedValue([]),
         handleModPanelEvent: vi.fn(),
+        // 这一端摊开的是哪个面板、键盘在哪个（`$.ui.panes()` 的后两项）。
+        setModPaneView: vi.fn(),
       }),
     },
     hasUncommittedChanges: vi.fn(),

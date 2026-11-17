@@ -2,12 +2,21 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import React from "react";
 import { render } from "../helpers/inkHarness.js";
 import { WorkflowManager } from "../../src/components/WorkflowManager.js";
+import {
+  AGENT_ACTIVITY_POLL_MS,
+  MAX_AGENT_ACTIVITY_LINES,
+} from "../../src/components/WorkflowAgentDetail.js";
 import type { WorkflowRun } from "wave-agent-sdk";
 
 // Mock useChat with mutable state
 let mockWorkflowRuns: WorkflowRun[] = [];
 const mockStopWorkflowRun = vi.fn();
 const mockSaveWorkflowScript = vi.fn();
+// One stable function on purpose: `WorkflowAgentDetail` reads through it from an
+// effect keyed on it, so a per-call closure would re-arm the effect every render.
+const mockGetWorkflowAgentActivity = vi.fn<
+  (runId: string, agentIndex: number) => string
+>(() => "");
 
 vi.mock("../../src/contexts/useChat.js", () => ({
   useChat: () => ({
@@ -16,6 +25,7 @@ vi.mock("../../src/contexts/useChat.js", () => ({
     },
     stopWorkflowRun: mockStopWorkflowRun,
     saveWorkflowScript: mockSaveWorkflowScript,
+    getWorkflowAgentActivity: mockGetWorkflowAgentActivity,
   }),
 }));
 
@@ -440,6 +450,208 @@ describe("WorkflowManager", () => {
         scope: "project",
         overwrite: true,
       });
+    });
+  });
+
+  // Drilling into one agent (spec multi-agent/workflow「查看单个 agent 的执行详情」):
+  // run detail → agent list → agent card. The card is a lens on the same run, so
+  // the run-level keys keep working while it is open.
+  describe("agent drill-down", () => {
+    const agentsRun: WorkflowRun = {
+      ...mockRuns[0],
+      agents: [
+        {
+          index: 0,
+          label: "scout",
+          agentType: "general-purpose",
+          status: "completed",
+          startTime: 1000,
+          endTime: 1000 + 42_000,
+          tokens: 12_300,
+          toolUses: 7,
+          promptPreview: "Look through the repo for TODOs",
+          resultPreview: "Found 3 issues",
+        },
+        {
+          index: 1,
+          agentType: "general-purpose",
+          status: "running",
+          startTime: 2000,
+          promptPreview: "Fix the first one",
+        },
+      ],
+    };
+
+    const openDetail = async (runs: WorkflowRun[]) => {
+      mockWorkflowRuns = runs;
+      const result = render(<WorkflowManager onCancel={onCancel} />);
+      // The run list sorts newest first, so wait for that run's own row.
+      const name = runs[0].meta.name;
+      await vi.waitFor(() => {
+        expect(result.lastFrame()).toContain(name);
+      });
+      result.stdin.write("\r");
+      await vi.waitFor(() => {
+        expect(result.lastFrame()).toContain("Workflow Details");
+      });
+      return result;
+    };
+
+    it("lists every started agent with its counters", async () => {
+      const { lastFrame } = await openDetail([agentsRun]);
+      const frame = lastFrame() ?? "";
+      expect(frame).toMatch(/Agents: *\n/);
+      expect(frame).toContain(
+        "1. scout · completed · 12.3k tokens · 7 tools · 42s",
+      );
+      // A running agent has no end time yet, so it claims no duration.
+      expect(frame).toContain("2. general-purpose · running");
+      // The highlight starts on the first row.
+      expect(frame).toContain("▶ 1. scout");
+      expect(frame).toContain("↑/↓ agent · Enter agent detail");
+    });
+
+    it("counts a single tool use as `1 tool`", async () => {
+      const { lastFrame } = await openDetail([
+        {
+          ...agentsRun,
+          agents: [
+            {
+              index: 0,
+              label: "scout",
+              status: "completed",
+              startTime: 1000,
+              endTime: 2000,
+              toolUses: 1,
+            },
+          ],
+        },
+      ]);
+      expect(lastFrame()).toMatch(/· 1 tool ·/);
+    });
+
+    it("drops the agent block for a run that started none", async () => {
+      const { lastFrame } = await openDetail([mockRuns[1]]);
+      // The run's own header also says "Agents: 1 |" — what must be absent is
+      // the list block, whose title is a line of its own.
+      expect(lastFrame()).not.toMatch(/Agents: *\n/);
+      expect(lastFrame()).not.toContain("Enter agent detail");
+    });
+
+    it("opens the highlighted agent's card and returns on Escape", async () => {
+      mockGetWorkflowAgentActivity.mockReturnValue(
+        [
+          "[t] Bash ls",
+          "[t] Read src/a.ts",
+          "[t] Grep TODO",
+          ...Array.from({ length: 20 }, (_, i) => `[t] Edit line ${i}`),
+        ].join("\n"),
+      );
+      const { lastFrame, stdin } = await openDetail([agentsRun]);
+
+      stdin.write("\r");
+      await vi.waitFor(() => {
+        expect(lastFrame()).toContain("Agent #1");
+      });
+      const frame = (lastFrame() ?? "").replace(/\s+/g, " ");
+      expect(frame).toContain("Agent #1 scout · completed");
+      expect(frame).toContain("Prompt: Look through the repo for TODOs");
+      expect(frame).toContain(
+        `Activity (last ${MAX_AGENT_ACTIVITY_LINES} lines):`,
+      );
+      // The tail, not the head: a TUI panel cannot scroll.
+      expect(frame).toContain("Edit line 19");
+      expect(frame).not.toContain("Bash ls");
+      expect(frame).toContain("Outcome: Found 3 issues");
+      expect(frame).toContain("Esc back to run detail");
+      // The activity is read for the agent the card shows, on its own index.
+      expect(mockGetWorkflowAgentActivity).toHaveBeenCalledWith("run-1", 0);
+
+      stdin.write("\x1b");
+      await vi.waitFor(() => {
+        expect(lastFrame()).not.toContain("Agent #1");
+      });
+      expect(lastFrame()).toContain("Agents:");
+    });
+
+    it("says there is no activity yet, and keeps the run's stop key working", async () => {
+      mockGetWorkflowAgentActivity.mockReturnValue("");
+      const { lastFrame, stdin } = await openDetail([agentsRun]);
+
+      // Down to the running agent, then into its card.
+      stdin.write("\u001B[B");
+      await vi.waitFor(() => {
+        expect(lastFrame()).toContain("▶ 2.");
+      });
+      stdin.write("\r");
+      await vi.waitFor(() => {
+        expect(lastFrame()).toContain("Agent #2");
+      });
+      expect(lastFrame()).toContain("暂无活动");
+      expect((lastFrame() ?? "").replace(/\s+/g, " ")).toContain(
+        "Outcome: 仍在运行",
+      );
+
+      // The card is a lens on the run, not a separate screen: `k` still stops it.
+      stdin.write("k");
+      await vi.waitFor(() => {
+        expect(mockStopWorkflowRun).toHaveBeenCalledWith("run-1");
+      });
+    });
+
+    it("re-reads a running agent's activity on the panel cadence", async () => {
+      mockGetWorkflowAgentActivity.mockReturnValue("[t] still working");
+      const { lastFrame, stdin, unmount } = await openDetail([
+        { ...agentsRun, agents: [agentsRun.agents![1]] },
+      ]);
+
+      stdin.write("\r");
+      await vi.waitFor(() => {
+        expect(lastFrame()).toContain("Agent #2");
+      });
+      expect(mockGetWorkflowAgentActivity).toHaveBeenCalledTimes(1);
+
+      // One cadence later the panel has read again; the timeout allows for the
+      // frame that follows the read.
+      await vi.waitFor(
+        () => {
+          expect(mockGetWorkflowAgentActivity).toHaveBeenCalledTimes(2);
+        },
+        { timeout: AGENT_ACTIVITY_POLL_MS * 3 },
+      );
+
+      // Leaving the card is what stops the polling — drop the tree so a live
+      // interval cannot read into the next test.
+      unmount();
+    });
+
+    it("replays a cached agent without an activity block", async () => {
+      const { lastFrame, stdin } = await openDetail([
+        {
+          ...mockRuns[1],
+          agents: [
+            {
+              index: 0,
+              label: "scout",
+              status: "completed",
+              cached: true,
+              promptPreview: "Look through the repo",
+            },
+          ],
+        },
+      ]);
+
+      stdin.write("\r");
+      await vi.waitFor(() => {
+        expect(lastFrame()).toContain("Agent #1");
+      });
+      // No subagent ran on the resume, so there is no log to tail — the block is
+      // dropped rather than shown empty (spec 场景 2/5).
+      expect(lastFrame()).not.toContain("Activity (last");
+      expect((lastFrame() ?? "").replace(/\s+/g, " ")).toContain(
+        "Outcome: 来自恢复日志",
+      );
+      expect(mockGetWorkflowAgentActivity).not.toHaveBeenCalled();
     });
   });
 });

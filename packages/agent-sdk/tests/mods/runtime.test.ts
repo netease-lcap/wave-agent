@@ -873,6 +873,15 @@ describe("ModRuntime 的 $ 命名空间", () => {
   it("ui / state / store 全部转发到宿主，值跨 realm 拷贝", async () => {
     const state = new Map<string, unknown>([["count", { n: 1 }]]);
     const store = new Map<string, unknown>();
+    const ledger = [
+      {
+        id: "p1",
+        title: "待办",
+        isPlaced: true,
+        isShown: true,
+        isFocused: false,
+      },
+    ];
     const hostApi = host({
       stateGet: (key) => state.get(key),
       stateSet: vi.fn((key: string, value: unknown) => {
@@ -886,7 +895,7 @@ describe("ModRuntime 的 $ 命名空间", () => {
         store.delete(key);
       }),
       storeKeys: () => [...store.keys()],
-      listPanes: () => ["p1"],
+      listPanes: () => ledger,
     });
     const { mod } = runtime(
       `
@@ -900,6 +909,8 @@ describe("ModRuntime 的 $ 命名空间", () => {
           // 任意 JSON：对象原样存，不当成 "[object Object]"。
           await $.store.set("k", { n: 7 });
           await $.store.delete("gone");
+          var panes = await $.ui.panes();
+          panes.length = 0;               // 改副本，不动台账
           return {
             plugin: $.plugin.name,
             root: $.plugin.root,
@@ -919,13 +930,23 @@ describe("ModRuntime 的 $ 命名空间", () => {
       plugin: "todo",
       // 插件自己的根目录（`mods/` 的上一级）：社区插件拿它拼自己那几份资源。
       root: ROOT,
-      panes: ["p1"],
+      // `$.ui.panes()` 与 CC 的 `UiPane` 逐字段同形：id / title + 三项事实。
+      panes: [
+        {
+          id: "p1",
+          title: "待办",
+          isPlaced: true,
+          isShown: true,
+          isFocused: false,
+        },
+      ],
       keys: ["k"],
       stored: { n: 7 },
     });
 
     // 副本语义：mod 改的是它自己那份。
     expect(state.get("count")).toEqual({ n: 2 });
+    expect(ledger).toHaveLength(1);
     expect(hostApi.openPane).toHaveBeenCalledWith("p1", "待办", false);
     expect(hostApi.invalidate).toHaveBeenCalledWith("ui.render");
     expect(hostApi.storeDelete).toHaveBeenCalledWith("gone");
@@ -2314,7 +2335,7 @@ describe("ModRuntime 的 $.session 事实与 $.env / $.settings", () => {
   });
 });
 
-describe("ModRuntime 的只读清单与 UI 小件（spec「配了哪些、能调什么、有谁在跑」「工具行下面的一行」「剪贴板与视图」）", () => {
+describe("ModRuntime 的只读清单与 UI 小件（spec「配了哪些、能调什么、有谁在跑」「工具行下面的一行」「剪贴板」）", () => {
   it("$.config.list / $.tool.list / $.agent.list 原样给出宿主的三份清单，且是副本", async () => {
     const hostApi = host({
       listConfigRows: vi.fn(() => [
@@ -2599,24 +2620,6 @@ describe("ModRuntime 的只读清单与 UI 小件（spec「配了哪些、能调
     if (!result.ok) return;
     expect((result.value as string[]).length).toBe(3);
     expect(copyText).not.toHaveBeenCalled();
-  });
-
-  it("$.ui.view 一期一律答 deny，说明为什么没切", async () => {
-    const { mod } = runtime(`
-      exports.register = function ($, on) {
-        on("session.start", async function () {
-          return await $.ui.view({ agentId: "a1" });
-        });
-      };
-    `);
-
-    await mod.load();
-    const result = await mod.callHook("session.start", {});
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(String((result.value as { deny?: string }).deny)).toContain(
-      "子代理",
-    );
   });
 });
 

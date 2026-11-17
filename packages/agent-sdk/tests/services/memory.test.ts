@@ -733,13 +733,18 @@ describe("MemoryService", () => {
     it("accepts @path, @./path, @~/path and @/absolute/path", async () => {
       const homeFile = path.join(homedir(), "wave-include-fixture.md");
       const absoluteFile = path.join(WORKDIR, "absolute.md");
+      // `\` is the escape character of the import syntax (its only legal use is
+      // `\ ` for a space — Claude Code's `(?:^|\s)@((?:[^\s\\]|\\ )+)`), so an
+      // absolute path is written with forward slashes, Windows drive letters
+      // included. `path.resolve` folds them back into the platform separator.
+      const absoluteRef = absoluteFile.replace(/\\/g, "/");
       mockFileSystem({
         // Personal memory may reference outside the workdir (`~/…` below).
         [LOCAL]: [
           "@bare.md",
           "@./dotted.md",
           "@~/wave-include-fixture.md",
-          `@${absoluteFile}`,
+          `@${absoluteRef}`,
         ].join("\n"),
         [path.join(WORKDIR, "bare.md")]: "BARE CONTENT",
         [path.join(WORKDIR, "dotted.md")]: "DOTTED CONTENT",

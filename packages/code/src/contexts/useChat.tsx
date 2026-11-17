@@ -128,6 +128,7 @@ export interface ChatContextType {
   backgroundTasks: BackgroundTask[];
   // Workflow runs
   workflowRuns: WorkflowRun[];
+  getWorkflowAgentActivity: (runId: string, agentIndex: number) => string;
   stopWorkflowRun: (runId: string) => void;
   saveWorkflowScript: (
     runId: string,
@@ -224,6 +225,11 @@ export interface ChatContextType {
   modStatuses: import("wave-agent-sdk").ModStatusPayload[];
   /** 短暂提示（`$.ui.toast`），到点自己消失。 */
   modToasts: import("wave-agent-sdk").ModToastPayload[];
+  /** 上报这一端摊开的是哪个面板、键盘在哪个（`$.ui.panes()` 的 `isShown` / `isFocused`）。 */
+  reportModPaneView: (
+    shown: import("wave-agent-sdk").ModPaneRef | null,
+    focused: import("wave-agent-sdk").ModPaneRef | null,
+  ) => void;
   renderModPanel: (
     modId: string,
     paneId: string,
@@ -1168,6 +1174,19 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     [],
   );
 
+  // 这一端摊开的是哪个面板、键盘在哪个（spec「面板的显示与焦点」）：全量快照、
+  // 只存一组，`$.ui.panes()` 的 `isShown` / `isFocused` 就从这儿来。终端是
+  // **进程内** surface，直接打在 agent 上，没有 stdio 那一层。
+  const reportModPaneView = useCallback(
+    (
+      shown: import("wave-agent-sdk").ModPaneRef | null,
+      focused: import("wave-agent-sdk").ModPaneRef | null,
+    ) => {
+      agentRef.current?.setModPaneView({ shown, focused });
+    },
+    [],
+  );
+
   const notifyPluginChange = useCallback(() => {
     showHint(PLUGIN_CHANGE_PENDING_MESSAGE);
   }, [showHint]);
@@ -1568,6 +1587,17 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     return agentRef.current.stopBackgroundTask(taskId);
   }, []);
 
+  // 单个 agent 的活动日志尾部（spec multi-agent/workflow.md「查看单个 agent 的
+  // 执行详情」）：CLI 内嵌 Agent，所以直接读，不经过命令通道。读不到就是空串。
+  const getWorkflowAgentActivity = useCallback(
+    (runId: string, agentIndex: number) => {
+      if (!agentRef.current) return "";
+      return agentRef.current.getWorkflowAgentActivity(runId, agentIndex)
+        .activity;
+    },
+    [],
+  );
+
   const stopWorkflowRun = useCallback((runId: string) => {
     agentRef.current?.stopWorkflowRun(runId);
   }, []);
@@ -1852,6 +1882,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     disconnectMcpServer,
     backgroundTasks,
     workflowRuns,
+    getWorkflowAgentActivity,
     stopWorkflowRun,
     saveWorkflowScript,
     tasks,
@@ -1895,6 +1926,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     setModFocusPaneId,
     modStatuses,
     modToasts,
+    reportModPaneView,
     renderModPanel,
     renderModBand,
     sendModPanelEvent,

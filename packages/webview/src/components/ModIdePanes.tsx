@@ -47,6 +47,12 @@ export interface ModIdePanesProps {
    * —— 量到之后 ChatApp 会再拉一帧。
    */
   onMeasure?: (cells: { columns: number; rows: number }) => void;
+  /**
+   * 键盘进了 / 离开了面板正文（tab id，离开时 `null`）。`$.ui.panes()` 的
+   * `isFocused` 靠它（spec「面板的显示与焦点」）—— 非激活的 pane 是
+   * `display: none`，不可能拿到焦点，所以进来的那个就是 `active`。
+   */
+  onFocusChange?: (tabId: string | null) => void;
 }
 
 export function ModIdePanes({
@@ -58,6 +64,7 @@ export function ModIdePanes({
   onEvent,
   onOpenLink,
   onMeasure,
+  onFocusChange,
 }: ModIdePanesProps): React.ReactElement | null {
   const observerRef = React.useRef<ResizeObserver | null>(null);
   // 回调 ref：元素一挂上量一次，之后靠 ResizeObserver（拖宽窗口、切 dock/inline、
@@ -127,7 +134,18 @@ export function ModIdePanes({
           <CloseTabIcon className="mod-ide-pane-close-icon" />
         </button>
       </div>
-      <div className="mod-ide-panes-body">
+      {/* 键盘进正文就报「焦点在这块」（spec「面板的显示与焦点」）：挂在这层而不是
+          整个 section —— tab 行与关闭按钮不算「在面板正文里」。焦点在正文内部怎么
+          挪都还算在里面，所以 `focusout` 冒泡上来时要看它是不是跑到了外面。 */}
+      <div
+        className="mod-ide-panes-body"
+        onFocus={() => onFocusChange?.(active.id)}
+        onBlur={(event) => {
+          if (event.currentTarget.contains(event.relatedTarget as Node | null))
+            return;
+          onFocusChange?.(null);
+        }}
+      >
         {panes.map((pane) => (
           <div
             key={pane.id}

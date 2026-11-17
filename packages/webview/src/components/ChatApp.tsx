@@ -97,6 +97,7 @@ import type {
   ModBandRenderResult,
   ModPanelTree,
   ModPanelUpdatePayload,
+  ModPaneRef,
   ModPromptFillRequest,
   ModPromptReadRequest,
   ModPromptSuggestRequest,
@@ -378,6 +379,42 @@ function canonicalForwardUrl(raw: string): string {
  */
 function isFileDragEvent(e: React.DragEvent): boolean {
   return e.dataTransfer.types.includes("Files");
+}
+
+/**
+ * 一次拖放里有什么：要上传的文件 + 认出来的文件夹名。
+ *
+ * 文件夹只能从 `DataTransferItem.webkitGetAsEntry()` 认出来：`dataTransfer.files`
+ * 里那一项看着就是个普通 `File`（`size` 0、没有 `type`），当文件读只会得到空内容。
+ * 而 `webkitGetAsEntry()` 只在 drop 事件派发期间有效，所以必须在 handler 里同步读完。
+ * 这一端不支持文件夹（spec desktop-file-panel.md 场景 8），只把名字带下去让输入框给提示。
+ */
+function dropContents(dataTransfer: DataTransfer | null): {
+  files: File[];
+  folders: string[];
+} {
+  const items = dataTransfer?.items;
+  const files: File[] = [];
+  const folders: string[] = [];
+  let readEntries = false;
+  for (const item of items ? Array.from(items) : []) {
+    if (item.kind !== "file") continue;
+    const entry = item.webkitGetAsEntry?.();
+    if (entry?.isDirectory) {
+      readEntries = true;
+      folders.push(entry.name || "未命名文件夹");
+      continue;
+    }
+    // 文件照收 —— 也包括 `webkitGetAsEntry()` 认不出的虚拟文件（浏览器拖来的
+    // 图片之类），那些条目 `getAsFile()` 仍给得出内容。
+    const file = item.getAsFile();
+    if (file) files.push(file);
+    if (entry) readEntries = true;
+  }
+  // 引擎没有 `webkitGetAsEntry`：目录照样认不出来，退回 `files`，至少文件能传。
+  if (!readEntries)
+    return { files: Array.from(dataTransfer?.files ?? []), folders };
+  return { files, folders };
 }
 
 /**
@@ -1164,6 +1201,11 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   );
   const activeTabIdRef = useRef(activeTabId);
   activeTabIdRef.current = activeTabId;
+  /**
+   * 键盘现在在哪块 mod 面板里（tab id）。`$.ui.panes()` 的 `isFocused` 靠它
+   * —— 这份状态只有 surface 知道（spec「面板的显示与焦点」）。
+   */
+  const [modFocusedTabId, setModFocusedTabId] = useState<string | null>(null);
   // Remote forward replies (desktopForwardPortResult) carry the requestId minted
   // in acquireForward; the map routes the reply to the preview tab that asked
   // for the tunnel so a sibling preview tab's URL is never overwritten.
@@ -1219,10 +1261,11 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     e.preventDefault();
     dragCounterRef.current = 0;
     setDragActive(false);
-    const files = e.dataTransfer.files;
-    if (files && files.length > 0) {
-      messageInputRef.current?.uploadFiles(files);
-    }
+    const dropped = dropContents(e.dataTransfer);
+    // 纯文件夹拖入（0 个文件）也要往下走：输入框要能告诉用户「文件夹没被添加」，
+    // 而不是松开鼠标后什么都不发生（spec desktop-file-panel.md 场景 8）。
+    if (dropped.files.length === 0 && dropped.folders.length === 0) return;
+    messageInputRef.current?.uploadFiles(dropped);
   }, []);
   const panelWidthRef = useRef(panelWidth);
   const panelWidthManualRef = useRef(panelWidthManual);
@@ -2139,7 +2182,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         break;
       }
       case "desktopModCopy": {
-        // `$.ui.copy`（spec「剪贴板与视图」）：写进本端剪贴板后回执。浏览器拒绝
+        // `$.ui.copy`（spec「剪贴板」）：写进本端剪贴板后回执。浏览器拒绝
         // （没有剪贴板权限 / 非安全上下文）也要作答，`reason` 用协议里那两个词。
         if (!forThisPane(message)) break;
         const payload = (message as { payload?: ModCopyRequest }).payload;
@@ -3041,6 +3084,42 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     },
     [vscode],
   );
+
+  // ── 告诉引擎「这一端摊开的是哪个 mod 面板、键盘在哪个」 ──
+  // `$.ui.panes()` 的 `isShown` / `isFocused` 是**这一端的事实**，只有 surface
+  // 知道（spec「面板的显示与焦点」）。发全量快照、内容没变就不发：切 tab、面板槽
+  // 展开收起、键盘进出面板各触发一次。
+  //
+  // 这两个值在 render 里现算（下面两条 effect 共用：一条发快照，一条在焦点真的
+  // 变了之后补拉一帧，见 `requestModPaneRender`）。
+  const activeModTab = tabs.find((tab) => tab.id === activeTabId);
+  const activeModPane: ModPaneRef | null =
+    activeModTab?.kind === "mod" && activeModTab.modId && activeModTab.modPaneId
+      ? { modId: activeModTab.modId, paneId: activeModTab.modPaneId }
+      : null;
+  // 桌面端：槽收起时面板没有画出来，就不算「正被看着」；IDE 端只要 tab 激活
+  // 就在画（dock 在右侧或落到输入框上方）。
+  const shownModPane =
+    activeModPane && (isDesktop ? panelExpanded : true) ? activeModPane : null;
+  // 焦点永远落在正显示着的那块上：切走 tab 时浏览器会把焦点交回，blur 已清，
+  // 这里再收敛一次，避免一条晚到的上报把焦点记在隐藏的面板上。
+  const focusedModPane =
+    shownModPane && activeModTab && modFocusedTabId === activeModTab.id
+      ? activeModPane
+      : null;
+  const modPaneViewRef = useRef<string>("");
+  useEffect(() => {
+    const key = JSON.stringify({
+      shown: shownModPane,
+      focused: focusedModPane,
+    });
+    if (key === modPaneViewRef.current) return;
+    modPaneViewRef.current = key;
+    postToHost({
+      command: "modPaneView",
+      payload: { shown: shownModPane, focused: focusedModPane },
+    });
+  }, [shownModPane, focusedModPane, postToHost]);
 
   // 输入框上方那条带由本实例**主动拉取**（spec「状态带、状态行与提示」）：宿主
   // 不缓存树，每次请求都真跑一遍每个 mod 的 `ui.render`。带和面板一样要报这一端
@@ -5684,6 +5763,19 @@ export const ChatApp: React.FC<ChatAppProps> = ({
           className="mod-panel mod-surface"
           style={{ width: common.width }}
           data-testid="mod-panel"
+          // 键盘进了面板正文就报「焦点在这块」（spec「面板的显示与焦点」）：
+          // `focusout` 会冒泡，焦点在面板内部挪（输入框 → 按钮）不算离开，所以
+          // 判断是不是跑到了这块容器外面。
+          onFocus={() => setModFocusedTabId(tab.id)}
+          onBlur={(event) => {
+            if (
+              event.currentTarget.contains(event.relatedTarget as Node | null)
+            )
+              return;
+            setModFocusedTabId((current) =>
+              current === tab.id ? null : current,
+            );
+          }}
         >
           {tab.modTree === undefined && !tab.modError ? (
             <div className="mod-panel-empty">正在渲染…</div>
@@ -5929,6 +6021,22 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   const modPaneCellsRef = useRef<{ columns: number; rows: number } | null>(
     null,
   );
+  /** 向宿主要一块 pane 的一帧树（`e.props` / `e.viewport` 里的版面事实随行带上）。 */
+  const requestModPaneRender = useCallback(
+    (modId: string, paneId: string) => {
+      postToHost({
+        command: "modPanelRender",
+        payload: {
+          modId,
+          paneId,
+          // 摆法只在 IDE 聊天面板要报（spec「在 IDE 插件里画」）：桌面端只有右侧
+          // 面板槽一种放法。
+          ...(isDesktop ? {} : modPaneLayout()),
+        },
+      });
+    },
+    [isDesktop, postToHost],
+  );
   const handleModPaneMeasure = useCallback(
     (cells: { columns: number; rows: number }) => {
       const previous = modPaneCellsRef.current;
@@ -5939,23 +6047,34 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         (tab) => tab.kind === "mod" && tab.modId && tab.modPaneId,
       );
       for (const tab of open) {
-        postToHost({
-          command: "modPanelRender",
-          payload: {
-            modId: tab.modId,
-            paneId: tab.modPaneId,
-            ...modPaneLayout(),
-          },
-        });
+        requestModPaneRender(tab.modId as string, tab.modPaneId as string);
       }
     },
-    [isDesktop, postToHost],
+    [isDesktop, requestModPaneRender],
   );
+
+  // 键盘真的翻进 / 翻出某块 mod 面板时，给那（最多两块）补拉一帧：`e.props.isFocused`
+  // 是**拉这一帧那一刻**算的（spec「`ui.render` 的 `e.props`」），不补拉的话 mod 要等
+  // 下一次无关的重画才看到新值 —— Claude Code 那边 props 一变就重画，这里补的是同一
+  // 个语义。只跟「真的变了」走（同一个快照按值比），所以点按钮、打字这类不翻焦点的
+  // 动作不会多发一次往返；上面那条上报 effect 在同一次提交里先跑，引擎收到快照之后
+  // 才处理这次拉取。
+  const modFocusPullRef = useRef<string>("null");
+  useEffect(() => {
+    const key = JSON.stringify(focusedModPane);
+    if (key === modFocusPullRef.current) return;
+    const previous = JSON.parse(modFocusPullRef.current) as ModPaneRef | null;
+    modFocusPullRef.current = key;
+    for (const pane of [previous, focusedModPane]) {
+      if (pane) requestModPaneRender(pane.modId, pane.paneId);
+    }
+  }, [focusedModPane, requestModPaneRender]);
 
   const modPaneHost = {
     onActivate: handleActivatePanel,
     onClose: handleCloseTab,
     onMeasure: handleModPaneMeasure,
+    onFocusChange: setModFocusedTabId,
     onEvent: (
       pane: ModIdePaneFrame,
       kind: "press" | "input" | "select",
@@ -6097,7 +6216,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
           只让 LoadingLogo 单独占据主体；就绪后由欢迎页/消息列表带出输入框。 */}
       {showWelcomeReady || !showWelcome ? (
         <div
-          className={`input-area-container${isDesktop && state.pendingConfirmations.length > 0 ? " input-area-container--confirm" : ""}`}
+          className={`input-area-container${state.pendingConfirmations.length > 0 ? " input-area-container--confirm" : ""}`}
         >
           <div
             style={{

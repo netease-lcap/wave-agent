@@ -1319,6 +1319,28 @@ test("abortMessage calls agent.abortMessage", async () => {
   expect(mockAgent.abortMessage).toHaveBeenCalled();
 });
 
+test("abortMessage forwards the queue options a host sends", async () => {
+  const { bridge } = createBridge();
+  const mockAgent = createMockAgent();
+  vi.mocked(Agent.create).mockResolvedValue(mockAgent);
+
+  const result = await bridge.handleRequest("initialize", {});
+  const sessionId = (result as { sessionId: string }).sessionId;
+  // "This conversation is being replaced" (VS Code clearChat / restoreSession /
+  // updateConfig, desktop config rebuild) — see
+  // core/agent-lifecycle.md 中断只中止当前轮, 边界情况.
+  await bridge.handleRequest(
+    "abortMessage",
+    { clearQueue: true, resumeQueue: false },
+    sessionId,
+  );
+
+  expect(mockAgent.abortMessage).toHaveBeenCalledWith({
+    clearQueue: true,
+    resumeQueue: false,
+  });
+});
+
 test("clearMessages calls agent.clearMessages", async () => {
   const { bridge } = createBridge();
   const mockAgent = createMockAgent();
@@ -4282,8 +4304,10 @@ test("sendMessage with force aborts before sending", async () => {
   );
 
   // "Send now" interrupts the running turn but must not clear the queue: the
-  // rest of the queued messages belong to the user and go out afterwards.
-  expect(mockAgent.abortMessage).toHaveBeenCalledWith({ keepQueue: true });
+  // rest of the queued messages belong to the user and go out afterwards. It
+  // also must not resume the queue here — this call is the sender, so a resume
+  // would let the queue's next item start a turn ahead of "hello".
+  expect(mockAgent.abortMessage).toHaveBeenCalledWith({ resumeQueue: false });
   expect(mockAgent.sendMessage).toHaveBeenCalledWith("hello", undefined);
 });
 

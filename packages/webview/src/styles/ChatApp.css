@@ -202,6 +202,35 @@
   flex-direction: column;
   padding: 0 10px;
 }
+
+/* 确认卡出现时的收缩链（四端同一套）：问句卡高度跟内容走、不再封顶，内容超过
+   面板可用高度时就靠这条链让出高度 —— 输入区可缩 → 卡片可缩 → 弹窗主体内部滚，
+   底部按钮栏与卡头按钮因此始终可达（spec ui/ask-user-tool.md「提问卡片高度跟内容、
+   不再固定封顶」场景 2 / 4）。插件端此前没有这条链（卡片只按 max-height 走，
+   顶出面板后按钮栏就够不着），现在与桌面端同语义。 */
+.input-area-container--confirm {
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.input-area-container--confirm .confirmation-dialog {
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.input-area-container--confirm .confirmation-dialog-inner {
+  flex: 1 1 auto;
+  /* 地板高度：卡片再矮也占 --approval-dock-floor（144px / 窄容器 208px），
+     确认卡出现、消失、换题时下方消息区不跟着抖。 */
+  min-height: var(--approval-dock-floor, 0);
+  overflow: hidden;
+}
 .queue-edit-warning-banner {
   display: flex;
   align-items: center;

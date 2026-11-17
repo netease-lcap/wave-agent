@@ -231,6 +231,8 @@
     modBandRender: "Web 端不显示插件 mod 的状态带（一期只做桌面端）",
     modPanelRender: "Web 端不显示插件 mod 的面板（一期只做桌面端）",
     modPanelEvent: "Web 端没有插件 mod 的交互入口（一期只做桌面端）",
+    // 挂载时也会主动报一次「这一端摊开的是哪个面板」（全 null），同样静默丢弃。
+    modPaneView: "Web 端不追踪插件 mod 面板的显示与焦点（一期只做桌面端）",
   };
   /**
    * "The channel would carry this method, but **this host** has not implemented
@@ -3560,6 +3562,39 @@
               success: false,
             });
             showStatus(failureText("停止工作流", err));
+          });
+        return;
+
+      case "getWorkflowAgentActivity":
+        // 单个 agent 的活动日志尾部（spec「查看单个 agent 的执行详情」）：页面
+        // 在 agent 运行期间按 1.5 秒重读，requestId 原样带回，晚到的旧回包由
+        // 页面丢弃。读不到就是空串 —— 面板显示「暂无活动」而不是报错。
+        request("getWorkflowAgentActivity", {
+          runId: msg.runId,
+          agentIndex: msg.agentIndex,
+        })
+          .then(function (result) {
+            post({
+              command: "workflowAgentActivity",
+              requestId: msg.requestId,
+              runId: msg.runId,
+              agentIndex: msg.agentIndex,
+              activity: (result && result.activity) || "",
+            });
+          })
+          .catch(function (err) {
+            post({
+              command: "workflowAgentActivity",
+              requestId: msg.requestId,
+              runId: msg.runId,
+              agentIndex: msg.agentIndex,
+              activity: "",
+            });
+            // 轮询失败不刷屏（1.5 秒一次），一行提示就够。
+            warnOnce(
+              "workflowAgentActivity",
+              failureText("读取 agent 活动", err),
+            );
           });
         return;
 

@@ -91,6 +91,7 @@ import {
   type ModCopyRequest,
   type ModNoticePayload,
   type ModPaneLayout,
+  type ModPaneViewPayload,
   type ModSurfaceMetrics,
 } from "wave-agent-sdk";
 import {
@@ -472,7 +473,13 @@ export class AgentBridge {
       case "closeBtw":
         return this.closeBtw(p.segmentId as string, sessionId);
       case "abortMessage":
-        return this.abortMessage(sessionId);
+        return this.abortMessage(
+          {
+            clearQueue: p.clearQueue as boolean | undefined,
+            resumeQueue: p.resumeQueue as boolean | undefined,
+          },
+          sessionId,
+        );
       case "clearMessages":
         return this.clearMessages(sessionId);
       case "rewindToMessage":
@@ -514,6 +521,12 @@ export class AgentBridge {
       case "modPanelEvent":
         return this.requireSession(sessionId).agent.handleModPanelEvent(
           p as unknown as ModPanelEventPayload,
+        );
+      // surface 报「摊开的是哪个面板、键盘在哪个」（spec「面板的显示与焦点」）：
+      // 全量快照原样转交，引擎只存一组、后报的生效。
+      case "modPaneView":
+        return this.requireSession(sessionId).agent.setModPaneView(
+          p as unknown as ModPaneViewPayload,
         );
       case "getModPanels": {
         const agent = this.requireSessionForRead(sessionId).agent;
@@ -623,7 +636,7 @@ export class AgentBridge {
           inputText: typeof event.inputText === "string" ? event.inputText : "",
         });
       }
-      // surface 对一次 `$.ui.copy` 的回答（spec「剪贴板与视图」）。
+      // surface 对一次 `$.ui.copy` 的回答（spec「剪贴板」）。
       case "modCopyResult": {
         const request = p as {
           requestId?: string;
@@ -895,6 +908,12 @@ export class AgentBridge {
 
       case "getWorkflowRuns":
         return this.getWorkflowRuns(sessionId);
+      case "getWorkflowAgentActivity":
+        return this.getWorkflowAgentActivity(
+          p.runId as string,
+          p.agentIndex as number,
+          sessionId,
+        );
       case "stopWorkflowRun":
         return this.stopWorkflowRun(p.runId as string, sessionId);
 
@@ -2267,14 +2286,15 @@ export class AgentBridge {
       // rest of the queue — the host removes the picked item separately, and
       // everything it did not touch must still be delivered afterwards.
       //
-      // The abort must be immediately followed by `sendMessage` with nothing
-      // awaited in between: the abort resets the loading flag, which is the gate
-      // a queued item waits behind, so any await here lets the *next* queued
-      // message start a turn first — the picked one would then be enqueued at
-      // the tail instead of going out now (realhost smoke: with the history
-      // write above the abort, a `deleteQueuedMessageById` landing in that gap
+      // `resumeQueue: false` because this call is itself the sender of the next
+      // message: resuming the queue inside the abort would start the *next*
+      // queued item's turn first and push the picked one to the tail. The abort
+      // must be immediately followed by `sendMessage` with nothing awaited in
+      // between — the abort resets the loading flag, which is the gate a queued
+      // item waits behind (realhost smoke: with a history write between the
+      // abort and the send, a `deleteQueuedMessageById` landing in that gap
       // started the remaining message immediately).
-      entry.agent.abortMessage({ keepQueue: true });
+      entry.agent.abortMessage({ resumeQueue: false });
     }
     await entry.agent.sendMessage(
       params.text,
@@ -2373,9 +2393,12 @@ export class AgentBridge {
     return null;
   }
 
-  private async abortMessage(sessionId?: string): Promise<null> {
+  private async abortMessage(
+    params: { clearQueue?: boolean; resumeQueue?: boolean } | undefined,
+    sessionId?: string,
+  ): Promise<null> {
     const entry = this.requireSession(sessionId);
-    entry.agent.abortMessage();
+    entry.agent.abortMessage(params);
     return null;
   }
 
@@ -2565,6 +2588,15 @@ export class AgentBridge {
         return rest;
       }),
     };
+  }
+
+  private getWorkflowAgentActivity(
+    runId: string,
+    agentIndex: number,
+    sessionId?: string,
+  ): { activity: string } {
+    const entry = this.requireSessionForRead(sessionId);
+    return entry.agent.getWorkflowAgentActivity(runId, agentIndex);
   }
 
   private stopWorkflowRun(
@@ -3807,7 +3839,7 @@ export class AgentBridge {
           ctx.registeredSessionId,
         );
       },
-      // 剪贴板（spec「剪贴板与视图」）：同样是「推出去、等回执」，只是回执带的
+      // 剪贴板（spec「剪贴板」）：同样是「推出去、等回执」，只是回执带的
       // 是成没成。
       onModCopy: (payload: ModCopyRequest) => {
         this.emit(

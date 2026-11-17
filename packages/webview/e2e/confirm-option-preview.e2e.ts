@@ -64,6 +64,28 @@ const previewQuestions = [
 ];
 
 /**
+ * 没包代码围栏的 ASCII 版式稿：三行、每行都有前导空格。
+ * markdown 默认把单换行当软换行、把连续空格折叠 —— 那这块就会渲染成**一行**。
+ * 用渲染后的行数（段落高度 ÷ 行高）验「预览按等宽排版、保留换行与缩进」。
+ */
+const ASCII_PREVIEW = [
+  "  +--------+   +--------+",
+  "  | 左栏   |   | 右栏   |",
+  "  +--------+   +--------+",
+].join("\n");
+
+const asciiQuestions = [
+  {
+    question: "哪种对齐？",
+    options: [
+      { label: "等宽对齐", description: "保留缩进", preview: ASCII_PREVIEW },
+      { label: "普通排版", description: "折叠空白", preview: "只有一行" },
+    ],
+    multiSelect: false,
+  },
+];
+
+/**
  * 选项多到选项列自己滚的那一档（折叠用例专用）。
  * 堆叠档里选项列吃满整条卡片宽度，行矮、两行不再溢出 —— 但「折叠前后两栏的
  * 滚动位置都保持」这条还得有会滚的列表才验得出来，所以这里给足六行。
@@ -319,35 +341,92 @@ test.describe("AskUserQuestion option preview", () => {
     expect(checked).toBe(false);
   });
 
-  test("keeps the card height when the preview length changes, in both layouts", async ({
+  test("keeps the preview's line breaks and indentation, in a monospace box", async ({
+    webviewPage,
+  }) => {
+    await webviewPage.setViewportSize(WIDE);
+    await openPreviewQuestion(webviewPage, "preview-ascii", asciiQuestions);
+
+    const ascii = await webviewPage.evaluate(() => {
+      const pane = document.querySelector(
+        "[data-testid='option-preview']",
+      ) as HTMLElement;
+      const para = pane.querySelector(".option-preview-body p") as HTMLElement;
+      const style = getComputedStyle(para);
+      return {
+        whiteSpace: style.whiteSpace,
+        fontFamily: getComputedStyle(pane).fontFamily,
+        // 行高与段落高度：换行被保住 ⇒ 3 行；被当软换行折叠 ⇒ 1 行。
+        lineHeight: parseFloat(style.lineHeight),
+        paraHeight: para.getBoundingClientRect().height,
+        text: para.textContent ?? "",
+      };
+    });
+
+    // 等宽：ASCII 稿的列位置才对得上（比例字体下 +----+ 的角就对不齐了）。
+    expect(ascii.fontFamily).toMatch(/mono/i);
+    // 换行与缩进保住：三个源行渲染成三个视觉行。
+    expect(ascii.whiteSpace).toBe("pre-wrap");
+    expect(ascii.paraHeight).toBeGreaterThan(ascii.lineHeight * 2.5);
+    // 前导空格没被吞（缩进还在 ⇒ 三行宽度对得上）。
+    expect(ascii.text).toContain("  | 左栏");
+  });
+
+  test("sizes the preview panel from the longest preview, so switching options never resizes the card", async ({
     webviewPage,
   }) => {
     await webviewPage.setViewportSize(WIDE);
     await openPreviewQuestion(webviewPage, "preview-height");
 
-    const cap = Math.min(WIDE.height * 0.7, 560);
-    // 40 行长预览在焦点上：卡片被 dock 上限顶住。
+    /**
+     * 预览面板的高度上限：行数（该题最长那条预览）× 18px 行高 + 20px 边框内衬，
+     * 再夹视口比例（堆叠 35vh / 并排 40vh）。行数由组件写进 --preview-lines。
+     */
+    const lines = Number(
+      await webviewPage.evaluate(() =>
+        getComputedStyle(
+          document.querySelector(
+            "[data-testid='option-preview']",
+          ) as HTMLElement,
+        ).getPropertyValue("--preview-lines"),
+      ),
+    );
+    expect(lines).toBeGreaterThan(40);
+    const capOf = (viewport: { height: number }, ratio: number) =>
+      Math.min(lines * 18 + 20, viewport.height * ratio);
+    const cardCap = Math.min(WIDE.height * 0.7, 560);
+
+    // 40 行长预览在焦点上：面板停在上限处、内容在面板内滚。
     const longFocus = await measure(webviewPage);
     expect(longFocus.previewText).toContain("方案 A");
-    expect(longFocus.card!.height).toBeCloseTo(cap, 0);
+    expect(longFocus.preview!.height).toBeLessThanOrEqual(capOf(WIDE, 0.4) + 1);
+    expect(longFocus.preview!.scrollHeight).toBeGreaterThan(
+      longFocus.preview!.clientHeight,
+    );
+    // 卡片跟内容走：旧封顶（`min(70vh, 560px)`）会把它钉在 560，现在内容多高就
+    // 多高 —— 这一档实测**高于** 560，正是「上限已放开」的直接证据；同时不出现
+    // 卡内滚动（高度就是「题干 + 选项 + 有上限的面板 + 备注」）。
+    expect(longFocus.card!.height).toBeGreaterThan(cardCap);
+    expect(longFocus.card!.scrollHeight).toBe(longFocus.card!.clientHeight);
+    expect(longFocus.preview!.bottom).toBeLessThanOrEqual(longFocus.notes!.top);
 
-    // 焦点切到只有几行的短预览：卡片高度与备注行位置都不许动
-    // —（预览态改前这里跟着内容走，长 → 短会从 560 掉到 444，
-    //    把按钮栏和下方消息区一起带着抖）。
+    // 焦点切到只有几行的短预览：上限按**整题最长那条**算，所以面板高度不变、
+    // 卡片也不变 —— 长 → 短预览不会让整张卡片突然塌下去（spec 场景 2）。
     await webviewPage.locator('.option-item[data-option-index="1"]').focus();
     await expect
       .poll(async () => (await measure(webviewPage)).previewText)
       .toContain("方案 B");
     const shortFocus = await measure(webviewPage);
-
+    expect(shortFocus.preview!.height).toBeCloseTo(
+      longFocus.preview!.height,
+      0,
+    );
     expect(shortFocus.card!.height).toBeCloseTo(longFocus.card!.height, 0);
-    expect(shortFocus.notes!.top).toBeCloseTo(longFocus.notes!.top, 0);
     expect(shortFocus.preview!.bottom).toBeLessThanOrEqual(
       shortFocus.notes!.top,
     );
 
-    // 堆叠档同样钉住：窄窗口里长 → 短预览来回切也不许改卡片高度
-    //（堆叠档给选项列表自然高度、预览只领剩余额度，高度差全落在预览面板里）。
+    // 堆叠档同一套口径：面板仍被同一上限夹住，换选项高度同样不变，选项一行都不裁。
     await webviewPage.setViewportSize(NARROW);
     await webviewPage.waitForTimeout(150);
     await webviewPage.locator('.option-item[data-option-index="0"]').focus();
@@ -355,9 +434,12 @@ test.describe("AskUserQuestion option preview", () => {
       .poll(async () => (await measure(webviewPage)).previewText)
       .toContain("方案 A");
     const stackedLong = await measure(webviewPage);
-    expect(stackedLong.card!.height).toBeCloseTo(
-      Math.min(NARROW.height * 0.7, 560),
-      0,
+    expect(stackedLong.preview!.height).toBeLessThanOrEqual(
+      capOf(NARROW, 0.35) + 1,
+    );
+    expect(stackedLong.optionsFullyVisible).toEqual([true, true]);
+    expect(stackedLong.preview!.bottom).toBeLessThanOrEqual(
+      stackedLong.notes!.top,
     );
 
     await webviewPage.locator('.option-item[data-option-index="1"]').focus();
@@ -365,8 +447,14 @@ test.describe("AskUserQuestion option preview", () => {
       .poll(async () => (await measure(webviewPage)).previewText)
       .toContain("方案 B");
     const stackedShort = await measure(webviewPage);
-    expect(stackedShort.card!.height).toBeCloseTo(stackedLong.card!.height, 0);
-    expect(stackedShort.notes!.top).toBeCloseTo(stackedLong.notes!.top, 0);
+    expect(stackedShort.preview!.height).toBeCloseTo(
+      stackedLong.preview!.height,
+      0,
+    );
+    expect(stackedShort.optionsFullyVisible).toEqual([true, true]);
+    expect(stackedShort.preview!.bottom).toBeLessThanOrEqual(
+      stackedShort.notes!.top,
+    );
   });
 
   test("collapsing hides the preview panel together with the option list", async ({
@@ -383,16 +471,23 @@ test.describe("AskUserQuestion option preview", () => {
       webviewPage.locator("[data-testid='option-preview']"),
     ).toBeVisible();
 
-    // display:none 会丢掉滚动位置：折叠前把两栏都滚走，展开后要回到原处。
+    // display:none 会丢掉滚动位置：折叠前把预览面板与选项列都滚走，展开后要回到
+    // 原处。选项列这一档**会**滚 —— 六行选项超过它的 30vh 上限，正是「选项多时
+    // 列表自己在内部滚」那条新口径的现场（以前它不封顶，靠外层卡片滚）。
     const scrolled = await webviewPage.evaluate(() => {
       const list = document.querySelector(".options-list") as HTMLElement;
       const preview = document.querySelector(
         "[data-testid='option-preview']",
       ) as HTMLElement;
-      list.scrollTop = 40;
       preview.scrollTop = 120;
-      return { list: list.scrollTop, preview: preview.scrollTop };
+      list.scrollTop = 30;
+      return {
+        listScrollable: list.scrollHeight > list.clientHeight + 1,
+        list: list.scrollTop,
+        preview: preview.scrollTop,
+      };
     });
+    expect(scrolled.listScrollable).toBe(true);
     expect(scrolled.list).toBeGreaterThan(0);
     expect(scrolled.preview).toBeGreaterThan(0);
 
@@ -402,8 +497,8 @@ test.describe("AskUserQuestion option preview", () => {
       webviewPage.locator("[data-testid='option-preview']"),
     ).toBeHidden();
 
-    // 折叠是「把空间还回去」：预览态钉住的 dock 高度要跟着松开
-    //（否则收起选项后卡片还是满高，消息区拿不回高度）。
+    // 折叠是「把空间还回去」：卡片高度跟着内容回落（问句卡本来就跟内容走，
+    // 收起选项交互区之后自然矮下去），消息区拿回高度。
     const collapsedCard = await cardHeight(webviewPage);
     expect(collapsedCard).toBeLessThan(expandedCard - 80);
 
@@ -412,16 +507,16 @@ test.describe("AskUserQuestion option preview", () => {
       webviewPage.locator("[data-testid='option-preview']"),
     ).toBeVisible();
 
-    // 展开后高度回到 dock 上限（与折叠前那一次相同）。
+    // 展开后高度回到与折叠前相同（同一份内容 ⇒ 同一高度）。
     expect(await cardHeight(webviewPage)).toBeCloseTo(expandedCard, 0);
 
     const restored = await webviewPage.evaluate(() => ({
-      list: (document.querySelector(".options-list") as HTMLElement).scrollTop,
       preview: (
         document.querySelector("[data-testid='option-preview']") as HTMLElement
       ).scrollTop,
+      list: (document.querySelector(".options-list") as HTMLElement).scrollTop,
     }));
-    expect(restored.list).toBe(scrolled.list);
     expect(restored.preview).toBe(scrolled.preview);
+    expect(restored.list).toBe(scrolled.list);
   });
 });

@@ -1005,6 +1005,26 @@ class MessageHandler(
                 }
                 postMessage("workflowRunsResponse", buildJsonObject { put("runs", runs ?: JsonNull) })
             }
+            "getWorkflowAgentActivity" -> {
+                val runId = msg["runId"]?.jsonPrimitive?.contentOrNull ?: return
+                val agentIndex = msg["agentIndex"]?.jsonPrimitive?.intOrNull ?: return
+                // 回包带上页面生成的 requestId：1.5 秒一次轮询，中途可以换 agent，
+                // 晚到的旧回包由页面按它丢弃。
+                val requestId = msg["requestId"]?.jsonPrimitive?.contentOrNull
+                val activity = try {
+                    session.agent?.getWorkflowAgentActivity(runId, agentIndex)
+                } catch (e: StdioClientException) {
+                    LOG.warn("getWorkflowAgentActivity failed: ${e.message}")
+                    null
+                }
+                postMessage("workflowAgentActivity", buildJsonObject {
+                    requestId?.let { put("requestId", it) }
+                    put("runId", runId)
+                    put("agentIndex", agentIndex)
+                    // 读不到就是空串：契约里 activity 恒为字符串，页面据此显示「暂无活动」。
+                    put("activity", activity ?: "")
+                })
+            }
             "stopWorkflowRun" -> {
                 val runId = msg["runId"]?.jsonPrimitive?.content ?: return
                 val success = try {
@@ -1050,6 +1070,20 @@ class MessageHandler(
                         put("tree", result["tree"] ?: JsonNull)
                         put("error", result["error"] ?: JsonNull)
                     })
+                }
+            }
+            "modPaneView" -> {
+                // 这一端摊开的是哪个面板、键盘在哪个（spec「面板的显示与焦点」）：
+                // 全量快照原样转交（`shown` / `focused` 各是一个 `{ modId, paneId }`
+                // 或 null），引擎只存一组、后报的生效。
+                val payload = msg["payload"]?.jsonObject ?: return
+                try {
+                    session.agent?.setModPaneView(buildJsonObject {
+                        put("shown", payload["shown"] ?: JsonNull)
+                        put("focused", payload["focused"] ?: JsonNull)
+                    })
+                } catch (e: StdioClientException) {
+                    LOG.warn("modPaneView failed: ${e.message}")
                 }
             }
             "modBandRender" -> {

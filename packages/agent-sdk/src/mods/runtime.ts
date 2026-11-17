@@ -37,7 +37,7 @@ import type {
   ModTraceEntry,
   ModTraceOutcome,
   ModUiCopyResult,
-  ModUiViewResult,
+  ModUiPane,
   ModUiOpenResult,
 } from "../types/mods.js";
 import {
@@ -532,10 +532,15 @@ function validateCommandSpec(spec: unknown): ModCommandSpec {
 function normalizeToolRegisterSpec(
   spec: unknown,
   pluginName: string,
-): { name: string; description: string; inputSchema: Record<string, unknown> } {
+): {
+  name: string;
+  description: string;
+  inputSchema: Record<string, unknown>;
+  isDeferred?: boolean;
+} {
   if (!isPlainObject(spec)) {
     throw new Error(
-      "$.tool.register 需要一个对象：{ name, description, inputSchema? }",
+      "$.tool.register 需要一个对象：{ name, description, inputSchema?, isDeferred? }",
     );
   }
   const name = spec.name;
@@ -559,6 +564,10 @@ function normalizeToolRegisterSpec(
   if (inputSchema !== undefined && !isPlainObject(inputSchema)) {
     throw new Error("$.tool.register 的 inputSchema 是一个 JSON Schema 对象");
   }
+  const isDeferred = spec.isDeferred;
+  if (isDeferred !== undefined && typeof isDeferred !== "boolean") {
+    throw new Error("$.tool.register 的 isDeferred 只能是 true 或 false");
+  }
   const schema = (inputSchema as Record<string, unknown> | undefined) ?? {
     type: "object",
   };
@@ -573,6 +582,7 @@ function normalizeToolRegisterSpec(
     name: `mcp__${owner}__${name}`,
     description: description.trim(),
     inputSchema: schema,
+    ...(isDeferred === undefined ? {} : { isDeferred }),
   };
 }
 
@@ -797,13 +807,13 @@ export interface ModDollar {
     /** 关掉一块面板（`{ id }` 是 Claude Code 的形状）；没开的 id 什么也不做。 */
     close(pane: { id: string }): Promise<void>;
     /**
-     * 这个 mod 自己开着哪些面板。
+     * 这个 mod 自己开着哪些面板（spec「面板的显示与焦点」）。
      *
-     * 一期返回 pane id 的数组（Claude Code 返回 `{ id, title, isShown,
-     * isFocused, isPlaced }` 对象数组）：后三个字段要等 surface 把「当前显示哪
-     * 个 tab」报上来才编得出来，现在编一个只会让守卫按错的答案放行。
+     * 每项 `{ id, title, isPlaced, isShown, isFocused }`，与 Claude Code 的
+     * `UiPane` 逐字段同形同义。`isShown` / `isFocused` 是这一端的事实（surface
+     * 上报），没人报过就是 `false` —— 不编「看起来像真的」的值。
      */
-    panes(): Promise<string[]>;
+    panes(): Promise<readonly ModUiPane[]>;
     /**
      * 「我这个 mod 画的东西过期了」——参数是**渲染站点的生产者**：`"ui.render"`
      * （spec「用户交互的结果」）或 `"tool.describe"`（工具行上那段描述）。
@@ -843,7 +853,7 @@ export interface ModDollar {
      */
     notice(toolUseId: string, text: string | undefined): void;
     /**
-     * 把文本写进剪贴板（spec「剪贴板与视图」）。
+     * 把文本写进剪贴板（spec「剪贴板」）。
      *
      * 拿不到剪贴板（终端 CLI、用户拒绝）也走返回值、不 reject —— 失败是正常
      * 结果，插件据此换一种交付方式（与 `prompt.fill` 同一条纪律）。
@@ -852,12 +862,6 @@ export interface ModDollar {
       text: string;
       surface?: ModRenderSurface;
     }): Promise<ModUiCopyResult>;
-    /**
-     * 把主视图切到某个子代理的转录（spec「剪贴板与视图」）。
-     *
-     * 一期一律答 `{ deny }`：还没有「在一个会话里切视角」的界面。
-     */
-    view(view: { agentId?: string }): Promise<ModUiViewResult>;
   };
   state: {
     get(key: string): unknown;
@@ -1199,7 +1203,12 @@ export interface ModRuntimeHost {
    */
   openPane(paneId: string, title: string, focus?: boolean): boolean;
   closePane(paneId: string): void;
-  listPanes(): string[];
+  /**
+   * `$.ui.panes()`：这个插件的面板台账，每项含「放得下吗 / 摊开的是哪个 / 键盘
+   * 在哪个」（spec「面板的显示与焦点」）。后两项由 surface 经 `modPaneView`
+   * 上报，宿主没报过时是 `false`。
+   */
+  listPanes(): readonly ModUiPane[];
   /**
    * 这一刻有谁在画（`$.session.surfaces()` 与 `$.ui.open()` 的同一份数据源）。
    *
@@ -1399,7 +1408,7 @@ export interface ModRuntimeHost {
    * `$.ui.copy()`：把文本写进某一端的剪贴板。
    *
    * 返回值是结果而不是抛错：`no-surface` / `no-clipboard` / `refused` 三种
-   * 失败态都由实现方判（spec「剪贴板与视图」）。
+   * 失败态都由实现方判（spec「剪贴板」）。
    */
   copyText(request: {
     text: string;
@@ -2131,7 +2140,8 @@ export class ModRuntime {
           host.closePane(id);
         },
         // 异步与 Claude Code 同形状：社区写法是 `await`/`.then`，同步数组
-        // 会让 `.then` 当场报错。
+        // 会让 `.then` 当场报错。复制一份再交出去 —— mod 改到的是它自己的数组，
+        // 动不了台账。
         panes: async () => [...host.listPanes()],
         invalidate: (target) => {
           if (!INVALIDATE_TARGETS.has(target)) {
@@ -2196,7 +2206,7 @@ export class ModRuntime {
           host.showNotice(toolUseId, text === undefined ? null : text);
         },
         // 剪贴板：哪一端接得住由宿主判，失败也走返回值不走抛错
-        // （spec「剪贴板与视图」）。
+        // （spec「剪贴板」）。
         copy: (args) => {
           const request = args as
             | { text?: unknown; surface?: unknown }
@@ -2218,11 +2228,6 @@ export class ModRuntime {
           }
           return this.withBudget(() => host.copyText({ text, surface }));
         },
-        // 一期一律拒绝：还没有「在一个会话里切换看哪个 agent」的界面。形状
-        // 先对上，能力后补 —— 与 `$.ui.panes()` 只回 id 数组同一条纪律。
-        view: async (): Promise<ModUiViewResult> => ({
-          deny: "还不能把主视图切到子代理的转录（这条会话没有多 agent 视图）",
-        }),
       },
       state: {
         get: (key) => cloneValue(host.stateGet(key)),

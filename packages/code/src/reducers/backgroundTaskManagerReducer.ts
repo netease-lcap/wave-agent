@@ -1,4 +1,9 @@
 import { Key } from "ink";
+import {
+  handleWorkflowAgentKey,
+  initialWorkflowAgentView,
+  type WorkflowAgentView,
+} from "./workflowAgentView.js";
 
 export interface Task {
   id: string;
@@ -28,6 +33,8 @@ export interface BackgroundTaskManagerState {
   viewMode: "list" | "detail";
   detailTaskId: string | null;
   detailOutput: DetailOutput | null;
+  /** Where the user is inside the open run's agent list (workflow tasks only). */
+  agentView: WorkflowAgentView;
   pendingEffect: PendingEffect | null;
 }
 
@@ -41,7 +48,18 @@ export type BackgroundTaskManagerAction =
   | { type: "SET_DETAIL_TASK_ID"; id: string | null }
   | { type: "SET_DETAIL_OUTPUT"; output: DetailOutput | null }
   | { type: "RESET_DETAIL" }
-  | { type: "HANDLE_KEY"; input: string; key: Key }
+  | {
+      type: "HANDLE_KEY";
+      input: string;
+      key: Key;
+      /**
+       * Agent count of the open workflow run, when the detail view is showing
+       * one. The panel is the only place that knows which task is a workflow
+       * (it joins the task id onto `workflowRuns`), so it hands the count in
+       * rather than the reducer keeping a second copy of the run list.
+       */
+      workflowAgentCount?: number;
+    }
   | { type: "CLEAR_PENDING_EFFECT" };
 
 export function backgroundTaskManagerReducer(
@@ -84,6 +102,7 @@ export function backgroundTaskManagerReducer(
         viewMode: "list",
         detailTaskId: null,
         detailOutput: null,
+        agentView: initialWorkflowAgentView,
       };
     case "HANDLE_KEY": {
       const { input, key } = action;
@@ -97,6 +116,7 @@ export function backgroundTaskManagerReducer(
               ...state,
               detailTaskId: state.tasks[state.selectedIndex].id,
               viewMode: "detail",
+              agentView: initialWorkflowAgentView,
             };
           }
           return state;
@@ -139,12 +159,25 @@ export function backgroundTaskManagerReducer(
           return state;
         }
       } else if (state.viewMode === "detail") {
+        // Agent list / card first (a workflow task's run detail): its
+        // ↑/↓/Enter/Esc belong to the agent being looked at, and anything it
+        // does not consume falls through to the task's own keys.
+        const agentResult = handleWorkflowAgentKey(
+          state.agentView,
+          key,
+          action.workflowAgentCount ?? 0,
+        );
+        if (agentResult.handled) {
+          return { ...state, agentView: agentResult.view };
+        }
+
         if (key.escape) {
           return {
             ...state,
             viewMode: "list",
             detailTaskId: null,
             detailOutput: null,
+            agentView: initialWorkflowAgentView,
           };
         }
 

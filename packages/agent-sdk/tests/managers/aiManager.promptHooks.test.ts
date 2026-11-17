@@ -100,6 +100,9 @@ type PromptMods = {
   collectSkillText: ReturnType<typeof vi.fn>;
   notifyMods: ReturnType<typeof vi.fn>;
   collectStopContext: ReturnType<typeof vi.fn>;
+  // 工具跑完撤掉贴在它下面的 notice（spec「工具行下面的一行」）。这个用例集
+  // 不关心这件事，但缺了方法会让调用点抛错，整轮工具的后续被静默中断。
+  clearToolNotices: ReturnType<typeof vi.fn>;
 };
 
 /**
@@ -121,6 +124,7 @@ function buildMods(overrides: Partial<PromptMods> = {}): PromptMods {
     collectSkillText: vi.fn(async (skill: { text: string }) => skill.text),
     notifyMods: vi.fn(),
     collectStopContext: vi.fn(async () => [] as string[]),
+    clearToolNotices: vi.fn(),
     ...overrides,
   };
 }

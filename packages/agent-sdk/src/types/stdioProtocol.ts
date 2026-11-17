@@ -141,6 +141,7 @@ export type RequestMethod =
   // Move the current turn's work into a background task (Ctrl+B in the CLI).
   | "backgroundCurrentTask"
   | "getWorkflowRuns"
+  | "getWorkflowAgentActivity"
   | "stopWorkflowRun"
   // Git / worktree (global — no session required)
   | "listGitBranches"
@@ -218,7 +219,7 @@ export type RequestMethod =
   // Params: `{ requestId, text, cursor }`. An unknown `requestId` (the 3 s limit
   // already answered an empty draft) is ignored rather than an error.
   | "modPromptReadResult"
-  // The surface's answer to a `modCopy` push (spec「剪贴板与视图」). Params:
+  // The surface's answer to a `modCopy` push (spec「剪贴板」). Params:
   // `{ requestId, isCopied, reason? }`. A refusal is a normal answer.
   | "modCopyResult"
   // The surface's answer to a `modPromptSuggest` push (spec「输入框里的建议与焦
@@ -230,7 +231,14 @@ export type RequestMethod =
   // `{ key?, text, cursor, start, end, inputText }`（`text`/`cursor` 是编辑**之
   // 前**的草稿与光标）；返回 `{ text, cursor }` 是插件改写后的结果，宿主照它
   // 覆盖输入框。终端不存在这条调用。
-  | "promptEdit";
+  | "promptEdit"
+  // The surface's view of the panes: which one it has open in front and where
+  // its keyboard is (spec「面板的显示与焦点」). Feeds `$.ui.panes()` 的
+  // `isShown` / `isFocused`. Params: `ModPaneViewPayload` — a **full snapshot**
+  // (`{ shown, focused }`, each a `{ modId, paneId }` or `null`), not an
+  // increment. Two surfaces on one session overwrite each other; the last report
+  // wins, same as Claude Code keeps a single `shownId` / `focusedId`.
+  | "modPaneView";
 
 // ── Client → Server notification methods ────────────────────────
 
@@ -404,7 +412,7 @@ export type ServerNotificationMethod =
    */
   | "modPromptRead"
   /**
-   * A mod wants text on the clipboard (`$.ui.copy`; spec「剪贴板与视图」).
+   * A mod wants text on the clipboard (`$.ui.copy`; spec「剪贴板」).
    * Params: `ModCopyRequest`; answered with the `modCopyResult` RPC.
    */
   | "modCopy"

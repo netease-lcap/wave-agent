@@ -333,6 +333,20 @@ export interface AIManagerOptions {
    * `omitClaudeMd`.
    */
   omitAgentsMd?: boolean;
+  /**
+   * 子代理自己的 id（`classic.SubagentStop` 的 `agent_id`）。父代理不传。
+   */
+  subagentId?: string;
+  /**
+   * 子代理日志文件的路径（`classic.SubagentStop` 的 `agent_transcript_path`）。
+   * 只有跑在后台、宿主为它开了日志流的子代理才有值，所以用闭包现取。
+   */
+  subagentTranscriptPath?: () => string | undefined;
+  /**
+   * 收尾事件 `classic.SubagentStop` 已经派发过。`SubagentManager` 用它让实例释放
+   * 时不再补报一次 —— 补报只留给「没走到收尾」的出错 / 中止路径。
+   */
+  onSubagentStopDispatched?: () => void;
 }
 
 export class AIManager {
@@ -343,6 +357,11 @@ export class AIManager {
   private toolAbortController: AbortController | null = null;
   private systemPrompt?: string;
   private subagentType?: string; // Store subagent type for hook context
+  /** 子代理自己的 id 与日志路径（`classic.SubagentStop` 的 `agent_id` / `agent_transcript_path`） */
+  private subagentId?: string;
+  private subagentTranscriptPath?: () => string | undefined;
+  /** 收尾事件派发过的通知，见 `AIManagerOptions.onSubagentStopDispatched` */
+  private onSubagentStopDispatched?: () => void;
   private stream: boolean; // Streaming mode flag
   private modelOverride?: string;
   private _onCwdChange?: (newCwd: string) => void; // Store callback for CWD changes
@@ -418,6 +437,9 @@ export class AIManager {
   ) {
     this.systemPrompt = options.systemPrompt;
     this.subagentType = options.subagentType; // Store subagent type
+    this.subagentId = options.subagentId;
+    this.subagentTranscriptPath = options.subagentTranscriptPath;
+    this.onSubagentStopDispatched = options.onSubagentStopDispatched;
     this.stream = options.stream ?? true; // Default to true if not specified
     this.callbacks = options.callbacks ?? {};
     this.modelOverride = options.modelOverride;
@@ -1825,6 +1847,21 @@ export class AIManager {
   }
 
   /**
+   * 拼 `tools[]` 之前先把 `tool.describe` 问定（描述与放置）。
+   *
+   * 与 CC 的 `resolveToolDescription` 同一个时机：`await` 完再组装，所以插件给
+   * 的新描述、新放置**这次请求**就生效，不是下一次。问过就锁住，稳态下每场会话
+   * 只多这一次等待。
+   *
+   * 可选通道：宿主或测试替身没有这个方法，就等于「没有插件要问」。
+   * `/context` 的估算刻意不走这里 —— 那是诊断读数，不是发请求。
+   */
+  private async prepareToolDescriptions(): Promise<void> {
+    if (typeof this.toolManager?.prepareToolDescriptions !== "function") return;
+    await this.toolManager.prepareToolDescriptions();
+  }
+
+  /**
    * The tool set the system prompt is built from, plus the declaration set the
    * request carries. Two different questions, deliberately answered separately:
    *
@@ -1905,6 +1942,7 @@ export class AIManager {
 
     forkMessages.push({ role: "user", content: prompt });
 
+    await this.prepareToolDescriptions();
     const { toolsConfig, reachableToolPlugins } = this.resolveFilteredTools();
     const systemPrompt = await this.buildMainSystemPrompt(reachableToolPlugins);
 
@@ -2260,6 +2298,7 @@ ${question}`;
       segment?.controller.signal,
     ]);
 
+    await this.prepareToolDescriptions();
     const { toolsConfig, reachableToolPlugins } = this.resolveFilteredTools();
     const systemPrompt = await this.buildMainSystemPrompt(reachableToolPlugins);
 
@@ -2934,6 +2973,7 @@ ${question}`;
           // no-op, not an extra yield point.
           if (mcpDial) await mcpDial;
 
+          await this.prepareToolDescriptions();
           const { toolsConfig, toolNames, reachableToolPlugins } =
             this.resolveFilteredTools();
 
@@ -3650,30 +3690,56 @@ ${question}`;
           turnOffset = 0;
         }
 
-        // 一轮真的要收尾之前，最后问一遍 mods：`classic.Stop` 是唯一带返回通道
-        // 的影子事件（spec ecosystem/plugin-mods.md「一轮收尾时的非错误反馈」）。
-        // 插件要说的话（`additionalContext`）会作为一条 meta 消息回到对话里、这
-        // 一轮继续跑；因此它在这里（`turn.complete` 之前）发 —— 只有拿到返回值
-        // 才知道这一轮算不算收尾，有反馈时 `turn.complete` 留给真正收尾的那一次
-        // 报（`turnUsage` / `turnStartedAt` 跨续跑累计，报的仍是整段）。
-        if (!shouldRestart && !this.subagentType) {
+        // 一轮真的要收尾之前，最后问一遍 mods：`classic.Stop` / `classic.SubagentStop`
+        // 是仅有的两条带返回通道的影子事件（spec ecosystem/plugin-mods.md「一轮收尾
+        // 时的非错误反馈」）。插件要说的话（`additionalContext`）会作为一条 meta 消息
+        // 回到对话里（子代理那条回到**子代理自己的**对话）、这一轮继续跑；因此它在这
+        // 里（`turn.complete` 之前）发 —— 只有拿到返回值才知道这一轮算不算收尾，有反
+        // 馈时 `turn.complete` 留给真正收尾的那一次报（`turnUsage` / `turnStartedAt`
+        // 跨续跑累计，报的仍是整段）。
+        if (!shouldRestart) {
           const mods = this.getModManager();
+          const hookLabel = this.subagentType
+            ? "classic.SubagentStop"
+            : "classic.Stop";
           const lastAnswer = this.lastAssistantText();
-          const backgroundTasks = (
-            this.backgroundTaskManager?.getAllTasks() ?? []
-          )
-            .filter((task) => task.status === "running")
-            .map((task) => mapBackgroundTask(task, this.subagentManager));
-          const stopContexts = turnError
-            ? []
-            : ((await mods?.collectStopContext({
-                background_tasks: backgroundTasks,
-                stop_hook_active:
-                  this.stopHookActive || this.modStopContextCount > 0,
-                // 已经有答案就交出去（`last_assistant_message`，CC 同名字段）：
-                // 插件不必自己去读转录解 JSONL。中断的一轮可能没有答案，省略。
+          // 这次收尾是不是已经处在一次续跑里（与 settings 钩子共用同一个状态）。
+          const stopHookActive =
+            this.stopHookActive || this.modStopContextCount > 0;
+          let stopContexts: string[] = [];
+          // 因错误结束的一轮不发这条通道（主代理发的是 `classic.StopFailure`，子代理
+          // 由实例释放时的补报兜底）。
+          if (mods && !turnError) {
+            if (this.subagentType) {
+              const transcriptPath = this.subagentTranscriptPath?.();
+              stopContexts = await mods.collectSubagentStopContext({
+                // 子代理的 id 由 `SubagentManager` 在构造时给；父代理一个子代理都不
+                // 管，所以真正派发时它一定在。
+                agent_id: this.subagentId ?? "",
+                agent_type: this.subagentType,
+                stop_hook_active: stopHookActive,
+                // 已经有答案就交出去（`last_assistant_message`，CC 同名字段）：插件
+                // 不必自己去读转录解 JSONL。中断的一轮可能没有答案，省略。
                 ...(lastAnswer ? { last_assistant_message: lastAnswer } : {}),
-              })) ?? []);
+                ...(transcriptPath
+                  ? { agent_transcript_path: transcriptPath }
+                  : {}),
+              });
+              // 收尾事件已经报过：实例释放时不再补一次（补报只给出错 / 中止路径）。
+              this.onSubagentStopDispatched?.();
+            } else {
+              const backgroundTasks = (
+                this.backgroundTaskManager?.getAllTasks() ?? []
+              )
+                .filter((task) => task.status === "running")
+                .map((task) => mapBackgroundTask(task, this.subagentManager));
+              stopContexts = await mods.collectStopContext({
+                background_tasks: backgroundTasks,
+                stop_hook_active: stopHookActive,
+                ...(lastAnswer ? { last_assistant_message: lastAnswer } : {}),
+              });
+            }
+          }
           if (stopContexts.length > 0) {
             // 中断的一轮、以及已有一条用户消息在排队的收尾都不续跑（照 CC 的
             // 口径：中断就是中断，排队的消息下一轮先跑，否则它会一直饿着）。
@@ -3682,13 +3748,13 @@ ${question}`;
               .some((queued) => queued.type !== "notification");
             if (turnAborted || queuedUserMessage) {
               logger?.info(
-                `classic.Stop 要求继续，但${turnAborted ? "这一轮被中断" : "队列里有用户消息"} — 照常收尾`,
+                `${hookLabel} 要求继续，但${turnAborted ? "这一轮被中断" : "队列里有用户消息"} — 照常收尾`,
               );
             } else if (
               this.modStopContextCount >= MOD_LIMITS.stopHookContinuationCap
             ) {
               logger?.warn(
-                `classic.Stop 已经让这一轮续跑 ${this.modStopContextCount} 次，达到上限 — 丢弃这次的 additionalContext`,
+                `${hookLabel} 已经让这一轮续跑 ${this.modStopContextCount} 次，达到上限 — 丢弃这次的 additionalContext`,
               );
             } else {
               this.modStopContextCount++;
@@ -4246,6 +4312,14 @@ ${question}`;
         timestamp: Date.now(),
       });
 
+      // 工具调用结束（成功或失败都算）：把 mod 贴在这次调用下面的 notice 撤掉
+      // （spec「工具行下面的一行」）。位置就是「结果块定型之后」——
+      // `classic.PostToolUse` 与 PostToolUse 钩子都在 `toolManager.execute()` 里
+      // 就报完了（toolManager 那边 `notifyModToolOutcome` 与钩子都在 execute 返回
+      // 之前），所以那一刻贴的行到这里也算「工具已经结束」，一并收掉；插件不必在
+      // `turn.complete` 里自己清理。
+      this.getModManager()?.clearToolNotices(toolId);
+
       // Plan panel refresh (spec: 计划文件更新后刷新计划面板): a successful
       // Write/Edit of the plan file broadcasts the new content so hosts can
       // update an already-open plan panel without waiting for ExitPlanMode.
@@ -4274,6 +4348,9 @@ ${question}`;
         compactParams,
         timestamp: Date.now(),
       });
+      // 同一条收口也走异常路径：mod 可能在这个工具里已经贴过一行，工具抛了不该
+      // 把它留在块下面（spec「工具行下面的一行」：成功与失败都算结束）。
+      this.getModManager()?.clearToolNotices(toolId);
       return { ok: false, toolInput: toolArgs };
     }
   }
