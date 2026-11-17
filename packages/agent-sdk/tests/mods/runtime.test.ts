@@ -2335,7 +2335,7 @@ describe("ModRuntime 的 $.session 事实与 $.env / $.settings", () => {
   });
 });
 
-describe("ModRuntime 的只读清单与 UI 小件（spec「配了哪些、能调什么、有谁在跑」「工具行下面的一行」「剪贴板与视图」）", () => {
+describe("ModRuntime 的只读清单与 UI 小件（spec「配了哪些、能调什么、有谁在跑」「工具行下面的一行」「剪贴板」）", () => {
   it("$.config.list / $.tool.list / $.agent.list 原样给出宿主的三份清单，且是副本", async () => {
     const hostApi = host({
       listConfigRows: vi.fn(() => [
@@ -2620,24 +2620,6 @@ describe("ModRuntime 的只读清单与 UI 小件（spec「配了哪些、能调
     if (!result.ok) return;
     expect((result.value as string[]).length).toBe(3);
     expect(copyText).not.toHaveBeenCalled();
-  });
-
-  it("$.ui.view 一期一律答 deny，说明为什么没切", async () => {
-    const { mod } = runtime(`
-      exports.register = function ($, on) {
-        on("session.start", async function () {
-          return await $.ui.view({ agentId: "a1" });
-        });
-      };
-    `);
-
-    await mod.load();
-    const result = await mod.callHook("session.start", {});
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(String((result.value as { deny?: string }).deny)).toContain(
-      "子代理",
-    );
   });
 });
 

@@ -222,7 +222,7 @@ export class Agent {
   >();
   private modPromptSuggestSeq = 0;
   /**
-   * `$.ui.copy` requests waiting for the surface's answer (spec「剪贴板与视图」).
+   * `$.ui.copy` requests waiting for the surface's answer (spec「剪贴板」).
    */
   private readonly modCopies = new Map<
     string,
@@ -496,7 +496,7 @@ export class Agent {
   }
 
   /**
-   * Settle a `$.ui.copy` (spec `ecosystem/plugin-mods.md`「剪贴板与视图」).
+   * Settle a `$.ui.copy` (spec `ecosystem/plugin-mods.md`「剪贴板」).
    *
    * A refusal is an answer, not an error: `isCopied: false` with a `reason` is
    * exactly what the mod compares against.
@@ -692,7 +692,7 @@ export class Agent {
   }
 
   /**
-   * Ask the surface to put text on the clipboard (spec「剪贴板与视图」).
+   * Ask the surface to put text on the clipboard (spec「剪贴板」).
    *
    * Refuses politely where there is no clipboard: no surface wired, or an answer
    * that never arrives, both read as `no-surface` rather than an error.
@@ -1005,7 +1005,7 @@ export class Agent {
       });
     });
 
-    // `$.ui.copy` — put text on the surface's clipboard (spec「剪贴板与视图」).
+    // `$.ui.copy` — put text on the surface's clipboard (spec「剪贴板」).
     // A refusal travels back as `isCopied: false`, never as a rejection.
     this.modManager.setCopySink((request) => this.copyModText(request));
 

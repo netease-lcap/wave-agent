@@ -11,7 +11,7 @@ import type { Message as MessageType } from "../../src/types";
 
 /**
  * 三个 mod 小件在 surface 这一侧的行为（spec `ecosystem/plugin-mods.md`
- * 「工具行下面的一行」「输入框里现在有什么」「剪贴板与视图」）：
+ * 「工具行下面的一行」「输入框里现在有什么」「剪贴板」）：
  *
  * - `$.ui.notice` 贴在工具块下面（按 tool_use id）；
  * - `$.prompt.read` 读的是输入框此刻的内容，**一定作答**；

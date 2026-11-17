@@ -38,7 +38,6 @@ import type {
   ModTraceOutcome,
   ModUiCopyResult,
   ModUiPane,
-  ModUiViewResult,
   ModUiOpenResult,
 } from "../types/mods.js";
 import {
@@ -854,7 +853,7 @@ export interface ModDollar {
      */
     notice(toolUseId: string, text: string | undefined): void;
     /**
-     * 把文本写进剪贴板（spec「剪贴板与视图」）。
+     * 把文本写进剪贴板（spec「剪贴板」）。
      *
      * 拿不到剪贴板（终端 CLI、用户拒绝）也走返回值、不 reject —— 失败是正常
      * 结果，插件据此换一种交付方式（与 `prompt.fill` 同一条纪律）。
@@ -863,12 +862,6 @@ export interface ModDollar {
       text: string;
       surface?: ModRenderSurface;
     }): Promise<ModUiCopyResult>;
-    /**
-     * 把主视图切到某个子代理的转录（spec「剪贴板与视图」）。
-     *
-     * 一期一律答 `{ deny }`：还没有「在一个会话里切视角」的界面。
-     */
-    view(view: { agentId?: string }): Promise<ModUiViewResult>;
   };
   state: {
     get(key: string): unknown;
@@ -1415,7 +1408,7 @@ export interface ModRuntimeHost {
    * `$.ui.copy()`：把文本写进某一端的剪贴板。
    *
    * 返回值是结果而不是抛错：`no-surface` / `no-clipboard` / `refused` 三种
-   * 失败态都由实现方判（spec「剪贴板与视图」）。
+   * 失败态都由实现方判（spec「剪贴板」）。
    */
   copyText(request: {
     text: string;
@@ -2213,7 +2206,7 @@ export class ModRuntime {
           host.showNotice(toolUseId, text === undefined ? null : text);
         },
         // 剪贴板：哪一端接得住由宿主判，失败也走返回值不走抛错
-        // （spec「剪贴板与视图」）。
+        // （spec「剪贴板」）。
         copy: (args) => {
           const request = args as
             | { text?: unknown; surface?: unknown }
@@ -2235,11 +2228,6 @@ export class ModRuntime {
           }
           return this.withBudget(() => host.copyText({ text, surface }));
         },
-        // 一期一律拒绝：还没有「在一个会话里切换看哪个 agent」的界面。形状
-        // 先对上，能力后补 —— 与 `$.ui.panes()` 只回 id 数组同一条纪律。
-        view: async (): Promise<ModUiViewResult> => ({
-          deny: "还不能把主视图切到子代理的转录（这条会话没有多 agent 视图）",
-        }),
       },
       state: {
         get: (key) => cloneValue(host.stateGet(key)),

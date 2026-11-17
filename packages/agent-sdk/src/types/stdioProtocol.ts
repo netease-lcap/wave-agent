@@ -218,7 +218,7 @@ export type RequestMethod =
   // Params: `{ requestId, text, cursor }`. An unknown `requestId` (the 3 s limit
   // already answered an empty draft) is ignored rather than an error.
   | "modPromptReadResult"
-  // The surface's answer to a `modCopy` push (spec「剪贴板与视图」). Params:
+  // The surface's answer to a `modCopy` push (spec「剪贴板」). Params:
   // `{ requestId, isCopied, reason? }`. A refusal is a normal answer.
   | "modCopyResult"
   // The surface's answer to a `modPromptSuggest` push (spec「输入框里的建议与焦
@@ -411,7 +411,7 @@ export type ServerNotificationMethod =
    */
   | "modPromptRead"
   /**
-   * A mod wants text on the clipboard (`$.ui.copy`; spec「剪贴板与视图」).
+   * A mod wants text on the clipboard (`$.ui.copy`; spec「剪贴板」).
    * Params: `ModCopyRequest`; answered with the `modCopyResult` RPC.
    */
   | "modCopy"

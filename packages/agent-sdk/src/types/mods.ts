@@ -573,11 +573,6 @@ export type ModUiCopyResult =
   | { isCopied: true }
   | { isCopied: false; reason: "no-surface" | "no-clipboard" | "refused" };
 
-/** `$.ui.view()` 的结果：`{}` 表示视图已切过去，`{ deny }` 说明为什么没动。 */
-export interface ModUiViewResult {
-  deny?: string;
-}
-
 /**
  * `$.prompt.suggest()` 送达 surface 的一次请求（spec「输入框里的建议与焦点」）。
  *

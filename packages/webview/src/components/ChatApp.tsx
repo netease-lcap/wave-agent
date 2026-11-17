@@ -2145,7 +2145,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         break;
       }
       case "desktopModCopy": {
-        // `$.ui.copy`（spec「剪贴板与视图」）：写进本端剪贴板后回执。浏览器拒绝
+        // `$.ui.copy`（spec「剪贴板」）：写进本端剪贴板后回执。浏览器拒绝
         // （没有剪贴板权限 / 非安全上下文）也要作答，`reason` 用协议里那两个词。
         if (!forThisPane(message)) break;
         const payload = (message as { payload?: ModCopyRequest }).payload;
