@@ -502,8 +502,17 @@ export class StdioAgent {
     await this.client.request("bang", { command }, this.sessionId);
   }
 
-  async abortMessage(): Promise<void> {
-    await this.client.request("abortMessage", undefined, this.sessionId);
+  /**
+   * Interrupt the running turn. Queued input survives unless the caller asks
+   * for it to be dropped too — hosts use `{ clearQueue: true, resumeQueue:
+   * false }` for "this conversation is being replaced" paths (clear chat,
+   * restore session, config rebuild), not for a plain Stop.
+   */
+  async abortMessage(options?: {
+    clearQueue?: boolean;
+    resumeQueue?: boolean;
+  }): Promise<void> {
+    await this.client.request("abortMessage", options, this.sessionId);
   }
 
   async clearMessages(): Promise<void> {

@@ -170,7 +170,7 @@ export class Agent {
   private dispatchPromise: Promise<void> | null = null; // Track current dispatch for teardown
   private isAborting = false; // Transient guard: prevents tryDispatch from firing during abortMessage (reset when the abort completes)
   private isDestroyed = false; // Terminal guard: set in destroy(), never reset — no dispatch may ever start after destroy
-  private dispatchAborted = false; // Set on abort while a dispatch is running: suppress the .finally re-check so preserved notifications don't get dispatched after abort
+  private abortedDispatchPending = false; // An interrupt hit an in-flight dispatch: that dispatch's .finally re-check resumes user input only (never a notification, which would start a turn the user just stopped)
   private asyncWorkRegistry: import("./utils/asyncWorkRegistry.js").AsyncWorkRegistry; // Registry of live async work that destroy() drains before returning
   private memoryRuleManager: MemoryRuleManager; // Add memory rule manager instance
   private liveConfigManager: LiveConfigManager; // Add live configuration manager
@@ -1405,8 +1405,7 @@ export class Agent {
    */
   private tryDispatch(): void {
     if (this.isDestroyed) return; // Terminal: agent destroyed, never dispatch again
-    if (this.isAborting) return; // Suppress dispatch during abort to prevent queued notifications from being dispatched as a side-effect
-    if (this.dispatchAborted) return; // Aborted mid-dispatch: don't start a new dispatch (the user interrupted this turn)
+    if (this.isAborting) return; // Suppress dispatch during abort; the abort's own tail resumes the queue (see abortMessage)
     if (this.messageQueue.state !== "idle") return;
     if (!this.messageQueue.hasPending()) return;
     if (this.aiManager.isLoading || this.isCommandRunning) return;
@@ -1420,10 +1419,17 @@ export class Agent {
         .finally(() => {
           this.messageQueue.transitionTo("idle");
           this.dispatchPromise = null;
-          if (!this.dispatchAborted) {
-            this.tryDispatch(); // Re-check after processing
+          if (this.abortedDispatchPending) {
+            // This dispatch was interrupted: resume the user's own input only.
+            // A pending background-task notification waits for the next real
+            // input instead of starting a turn the user just stopped.
+            this.abortedDispatchPending = false;
+            if (this.hasPendingUserInput()) {
+              this.tryDispatch();
+            }
+            return;
           }
-          this.dispatchAborted = false;
+          this.tryDispatch(); // Re-check after processing
         }),
     );
   }
@@ -1961,36 +1967,45 @@ export class Agent {
   }
 
   /**
-   * Unified interrupt method, interrupts both AI messages and command execution
+   * Unified interrupt method: aborts the running turn (AI, bash, slash command)
+   * and nothing else.
    *
-   * @param options.keepQueue - Keep the user's queued messages instead of
-   * clearing them. "Send now" uses this: it is an interrupt, not a Stop — the
-   * message the user picked goes out now, and everything else stays queued and
-   * is delivered in order afterwards.
+   * Queued user input survives an interrupt (spec
+   * `core/agent-lifecycle.md`「中断只中止当前轮」, matching Claude Code: Esc while
+   * streaming keeps the queue and drains it right after). The tail of this
+   * method resumes that queue — `isAborting` swallowed the dispatch that
+   * `abortAIMessage` → `setIsLoading(false)` would otherwise have triggered.
+   *
+   * @param options.clearQueue - Also drop the queued user input. Only for a
+   * caller that is replacing the conversation itself (VS Code `clearChat` /
+   * `restoreSession` / `updateConfig`, desktop config rebuild) — a plain Stop
+   * never sets it, because those items were typed into a conversation that
+   * still exists.
+   * @param options.resumeQueue - Whether to keep going with the queue right
+   * after the interrupt (default `true`). "Send now" passes `false`: it sends
+   * the picked message itself, and a resume here would let the *next* queued
+   * item start a turn first, pushing the picked one to the tail.
    */
-  public abortMessage(options?: { keepQueue?: boolean }): void {
-    const keepQueue = options?.keepQueue ?? false;
+  public abortMessage(options?: {
+    clearQueue?: boolean;
+    resumeQueue?: boolean;
+  }): void {
+    const clearQueue = options?.clearQueue ?? false;
+    const resumeQueue = options?.resumeQueue ?? true;
     // Guard: prevent tryDispatch (triggered by abortAIMessage → setIsLoading(false))
-    // from dispatching preserved notifications as a new AI turn during the abort.
+    // from dispatching the queue in the middle of the interrupt.
     this.isAborting = true;
     try {
-      // If a queued dispatch is in flight (e.g. a notification turn was being
-      // processed), remember the abort so the .finally re-check won't start a
-      // new dispatch with the preserved notifications right after aborting.
-      //
-      // A "send now" interrupt is the exception: it keeps the queue and the
-      // caller sends the picked message right away, so the queue still owes
-      // work and the `.finally` re-check must run once the picked turn ends —
-      // leaving the latch set there would swallow that re-check when the
-      // aborted dispatch happens to unwind after the new turn already ended,
-      // and the remaining messages would sit in the queue until the next event.
-      if (this.dispatchPromise && !keepQueue) {
-        this.dispatchAborted = true;
+      if (this.dispatchPromise) {
+        // This dispatch unwinds after the interrupt: remember it so its
+        // .finally re-check resumes user input without turning a pending
+        // notification into a fresh turn.
+        this.abortedDispatchPending = true;
       }
-      if (!keepQueue && (this.aiManager.isLoading || this.isCommandRunning)) {
-        // Clear user-facing queue items first to prevent processQueuedMessage
-        // from dequeuing when abortAIMessage triggers onLoadingChange(false).
-        // Notifications are preserved so background task results aren't lost.
+      if (clearQueue && (this.aiManager.isLoading || this.isCommandRunning)) {
+        // Clearing first prevents processQueuedMessage from dequeuing when
+        // abortAIMessage triggers onLoadingChange(false). Notifications are
+        // preserved so background task results aren't lost.
         this.messageQueue.clear();
         this.options.callbacks?.onQueuedMessagesChange?.(this.queuedMessages);
       }
@@ -2001,6 +2016,18 @@ export class Agent {
     } finally {
       this.isAborting = false;
     }
+
+    // Keep going with the queue, but only for user input: an interrupt must not
+    // turn a pending background-task notification into a fresh AI turn of its
+    // own — a notification waits for the next real input.
+    if (resumeQueue && this.hasPendingUserInput()) {
+      this.tryDispatch();
+    }
+  }
+
+  /** Whether the queue holds user input (message / bang) as opposed to only background-task notifications. */
+  private hasPendingUserInput(): boolean {
+    return this.messageQueue.getQueue().some((m) => m.type !== "notification");
   }
 
   /** Interrupt bash command execution */

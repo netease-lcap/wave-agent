@@ -7788,12 +7788,18 @@ export class DesktopHost {
     }
   }
 
+  /**
+   * Drop whatever is still queued because the conversation is being replaced
+   * (config rebuild) — not because the user pressed Stop: a plain interrupt
+   * keeps the queue and drains it afterwards (core/agent-lifecycle.md
+   * 中断只中止当前轮).
+   */
   private async clearQueue(): Promise<void> {
     for (const pane of this.panes) {
       const agent = pane.agent;
       if (agent && agent.queuedMessages.length > 0) {
         try {
-          await agent.abortMessage();
+          await agent.abortMessage({ clearQueue: true, resumeQueue: false });
         } catch (error) {
           // The pane's session may be gone (recreate failed above) — one dead
           // session must not fail the rest of the queue drain.
