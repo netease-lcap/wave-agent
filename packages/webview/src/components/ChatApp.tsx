@@ -382,6 +382,42 @@ function isFileDragEvent(e: React.DragEvent): boolean {
 }
 
 /**
+ * 一次拖放里有什么：要上传的文件 + 认出来的文件夹名。
+ *
+ * 文件夹只能从 `DataTransferItem.webkitGetAsEntry()` 认出来：`dataTransfer.files`
+ * 里那一项看着就是个普通 `File`（`size` 0、没有 `type`），当文件读只会得到空内容。
+ * 而 `webkitGetAsEntry()` 只在 drop 事件派发期间有效，所以必须在 handler 里同步读完。
+ * 这一端不支持文件夹（spec desktop-file-panel.md 场景 8），只把名字带下去让输入框给提示。
+ */
+function dropContents(dataTransfer: DataTransfer | null): {
+  files: File[];
+  folders: string[];
+} {
+  const items = dataTransfer?.items;
+  const files: File[] = [];
+  const folders: string[] = [];
+  let readEntries = false;
+  for (const item of items ? Array.from(items) : []) {
+    if (item.kind !== "file") continue;
+    const entry = item.webkitGetAsEntry?.();
+    if (entry?.isDirectory) {
+      readEntries = true;
+      folders.push(entry.name || "未命名文件夹");
+      continue;
+    }
+    // 文件照收 —— 也包括 `webkitGetAsEntry()` 认不出的虚拟文件（浏览器拖来的
+    // 图片之类），那些条目 `getAsFile()` 仍给得出内容。
+    const file = item.getAsFile();
+    if (file) files.push(file);
+    if (entry) readEntries = true;
+  }
+  // 引擎没有 `webkitGetAsEntry`：目录照样认不出来，退回 `files`，至少文件能传。
+  if (!readEntries)
+    return { files: Array.from(dataTransfer?.files ?? []), folders };
+  return { files, folders };
+}
+
+/**
  * IDE 插件端 mod 面板的摆放断点（spec `ecosystem/plugin-mods.md`「在 IDE 插件
  * 里画」）：宽于 800px 时 dock 在对话右侧，否则落到输入框上方。800 与 Claude Code
  * 扩展里那条媒体查询同一个数，mod 侧读到的 `e.props.placement` 就由它决定。
@@ -1225,10 +1261,11 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     e.preventDefault();
     dragCounterRef.current = 0;
     setDragActive(false);
-    const files = e.dataTransfer.files;
-    if (files && files.length > 0) {
-      messageInputRef.current?.uploadFiles(files);
-    }
+    const dropped = dropContents(e.dataTransfer);
+    // 纯文件夹拖入（0 个文件）也要往下走：输入框要能告诉用户「文件夹没被添加」，
+    // 而不是松开鼠标后什么都不发生（spec desktop-file-panel.md 场景 8）。
+    if (dropped.files.length === 0 && dropped.folders.length === 0) return;
+    messageInputRef.current?.uploadFiles(dropped);
   }, []);
   const panelWidthRef = useRef(panelWidth);
   const panelWidthManualRef = useRef(panelWidthManual);
