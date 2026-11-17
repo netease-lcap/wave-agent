@@ -3871,6 +3871,78 @@ exports.register = function ($, on) {
     await manager.dispose();
   });
 
+  it("isDeferred 跟着规格透传：false 才平铺，缺省不带这一位（= 进池）", async () => {
+    const { manager } = createManager({
+      [MOD_PATH]: `
+exports.register = function ($, on) {
+  on("tool.register", function () {
+    $.tool.register({
+      name: "flat_one",
+      description: "平铺的",
+      isDeferred: false
+    });
+    $.tool.register({ name: "pooled_one", description: "进池的" });
+  });
+};
+`,
+    });
+    const registered: Array<{ name: string; isDeferred?: boolean }> = [];
+    manager.setToolBridge({
+      register: (spec) => {
+        registered.push(spec);
+        return { ok: true };
+      },
+      unregister: vi.fn(),
+    });
+    await manager.loadFromPlugins([
+      plugin([{ id: "todo:panel", path: MOD_PATH }]),
+    ]);
+    await manager.startSession();
+    await manager.dispatchToolRegister();
+
+    expect(registered).toHaveLength(2);
+    expect(registered[0]).toMatchObject({
+      name: "mcp__todo__flat_one",
+      isDeferred: false,
+    });
+    // 缺省不编造这一位：默认延迟由工具表那边判（与 MCP 同一条默认）。
+    expect("isDeferred" in registered[1]).toBe(false);
+
+    await manager.dispose();
+  });
+
+  it("isDeferred 不是布尔时当场失败，不挂进工具表", async () => {
+    const { manager } = createManager({
+      [MOD_PATH]: `
+exports.register = function ($, on) {
+  on("tool.register", function () {
+    // await + catch：错误要是「当场抛」，而不是悄悄放过这一位。
+    return $.tool.register({
+      name: "bad_one",
+      description: "写错了的",
+      isDeferred: "yes"
+    }).then(
+      function () { return "registered"; },
+      function (error) { return error.message; }
+    );
+  });
+};
+`,
+    });
+    const register = vi.fn().mockReturnValue({ ok: true });
+    manager.setToolBridge({ register, unregister: vi.fn() });
+    await manager.loadFromPlugins([
+      plugin([{ id: "todo:panel", path: MOD_PATH }]),
+    ]);
+    await manager.startSession();
+    await manager.dispatchToolRegister();
+
+    expect(register).not.toHaveBeenCalled();
+    expect(manager.ownsTool("mcp__todo__bad_one")).toBe(false);
+
+    await manager.dispose();
+  });
+
   it("对任何工具返回 { result } 都算这次调用的结果（CC 同口径）", async () => {
     // `next(e)` 真的执行之后，mod 拿到结果再改写是正常写法；自己造一份同样是
     // CC 允许的。宿主只看「这次调用的结果是什么」，不再按工具归属筛。
@@ -4497,25 +4569,50 @@ ${["tool.check", "tool.call", "agent.spawn"]
 });
 
 /**
+ * `tool.describe` 的答案：描述是文本，`isDeferred` 是放置裁决。
+ */
+describe("tool.describe 的答案", () => {
+  it("isDeferred 跟着答案付出去；没给就不编造这一位", async () => {
+    const { manager } = createManager({
+      [MOD_PATH]: `
+exports.register = function ($, on) {
+  on("tool.describe", { tool: "mcp__todo__flat" }, function () {
+    return { description: "改过的", isDeferred: false };
+  });
+};
+`,
+    });
+    await manager.loadFromPlugins([
+      plugin([{ id: "todo:panel", path: MOD_PATH }]),
+    ]);
+    await manager.startSession();
+
+    await expect(
+      manager.collectToolDescription({
+        name: "mcp__todo__flat",
+        description: "宿主给的",
+      }),
+    ).resolves.toEqual({ description: "改过的", isDeferred: false });
+    // 没人接的工具原样返回，不带 isDeferred —— 默认延迟由判定表给。
+    await expect(
+      manager.collectToolDescription({
+        name: "Bash",
+        description: "宿主给的",
+      }),
+    ).resolves.toEqual({ description: "宿主给的" });
+
+    await manager.dispose();
+  });
+});
+
+/**
  * `$.ui.invalidate("tool.describe")`：插件声明「我给的描述过期了」。
  *
  * describe 缓存是会话级的（工具表由 `ToolManager` 拼），所以这条要连着真的
  * `ToolManager` 一起验：光看 `ModManager` 记了几次账证明不了「真的重问」。
  */
 describe('$.ui.invalidate("tool.describe")', () => {
-  /**
-   * 让 `tool.describe` 那次问答落地。
-   *
-   * 这里不能只清微任务：`callHook` 里是 `Promise.race` + 定时器、钩子还跑在沙箱
-   * 里，答案要跨几个宏任务才写进 staged。等它落地再翻轮次，否则翻到的是旧答案。
-   */
-  async function settleDescribe(): Promise<void> {
-    for (let i = 0; i < 3; i += 1) {
-      await new Promise((resolve) => setTimeout(resolve, 0));
-    }
-  }
-
-  it("下一次拼工具表时重问描述，新答案在下一轮生效", async () => {
+  it("下一次组装请求前重问描述，新答案当次生效", async () => {
     const container = new Container();
     container.register("PermissionManager", {
       isToolDenied: () => false,
@@ -4523,6 +4620,8 @@ describe('$.ui.invalidate("tool.describe")', () => {
     });
     container.register("McpManager", {
       getMcpToolsConfig: () => [],
+      getMcpToolPlugins: () => [],
+      getMcpToolOutputSchemas: () => new Map(),
     } as unknown as McpManager);
     const turns = { value: 1 };
     container.register("MessageManager", {
@@ -4551,7 +4650,11 @@ exports.register = function ($, on) {
       name: "FakeTool",
       config: {
         type: "function",
-        function: { name: "FakeTool", description: "", parameters: {} },
+        function: {
+          name: "FakeTool",
+          description: "宿主的描述",
+          parameters: {},
+        },
       } as ToolPlugin["config"],
       prompt: () => "宿主的描述",
       execute: vi.fn(),
@@ -4566,22 +4669,24 @@ exports.register = function ($, on) {
     await manager.loadFromPlugins([
       plugin([{ id: "todo:panel", path: MOD_PATH }]),
     ]);
-    // 第一次拼表：问一次，答案要下一轮才 pin 上（工具表是本轮开头 pin 的快照）。
+    // 会话里先拼过一次表（早于这次组装）：宿主的原文。
     expect(descriptionOf()).toBe("宿主的描述");
-    await settleDescribe();
+    // 组装请求前 `await`：问一次，答案这一次请求就生效。
+    await toolManager.prepareToolDescriptions();
+    expect(asked).toHaveBeenCalledTimes(1);
+    expect(descriptionOf()).toBe("宿主的描述#0");
+
+    // 再拼一次表也不重问：描述是会话级缓存。
+    await toolManager.prepareToolDescriptions();
     expect(asked).toHaveBeenCalledTimes(1);
 
     // 插件声明过期（`session.start` 里就是这句）。
     await manager.startSession();
     expect(manager.toolDescribeInvalidationCount()).toBe(1);
 
-    // 第二次拼表：不再吃「问过没」那份缓存，重问一遍。
-    descriptionOf();
-    await settleDescribe();
+    // 下一次组装前重问一遍，新答案当次生效（不是再等一轮）。
+    await toolManager.prepareToolDescriptions();
     expect(asked).toHaveBeenCalledTimes(2);
-
-    // 重问到的答案照样在下一轮 pin 上（清缓存不等于把描述弄丢）。
-    turns.value = 2;
     expect(descriptionOf()).toBe("宿主的描述#1");
 
     await manager.dispose();

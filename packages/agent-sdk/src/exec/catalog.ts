@@ -93,10 +93,15 @@ export interface ExecPoolCandidate extends DeferralSubject {
 export function buildExecPool(
   candidates: readonly ExecPoolCandidate[],
   nonDeferrable: ReadonlySet<string>,
+  placement?: (name: string) => boolean | undefined,
 ): ExecPoolEntry[] {
   const pool: ExecPoolEntry[] = [];
   for (const candidate of candidates) {
-    if (!isDeferredTool(candidate, nonDeferrable)) continue;
+    // A mod's `tool.describe` answer wins over the judgment table (spec
+    // 「给工具、技能、命令写描述」); `undefined` means it had no opinion.
+    const deferred =
+      placement?.(candidate.name) ?? isDeferredTool(candidate, nonDeferrable);
+    if (!deferred) continue;
     if (candidate.name === EXEC_SEARCH_NAME) {
       throw new Error(
         `Tool "${EXEC_SEARCH_NAME}" cannot be loaded on demand, because the sandbox exposes its own search entry under that name. ` +

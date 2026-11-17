@@ -533,10 +533,15 @@ function validateCommandSpec(spec: unknown): ModCommandSpec {
 function normalizeToolRegisterSpec(
   spec: unknown,
   pluginName: string,
-): { name: string; description: string; inputSchema: Record<string, unknown> } {
+): {
+  name: string;
+  description: string;
+  inputSchema: Record<string, unknown>;
+  isDeferred?: boolean;
+} {
   if (!isPlainObject(spec)) {
     throw new Error(
-      "$.tool.register 需要一个对象：{ name, description, inputSchema? }",
+      "$.tool.register 需要一个对象：{ name, description, inputSchema?, isDeferred? }",
     );
   }
   const name = spec.name;
@@ -560,6 +565,10 @@ function normalizeToolRegisterSpec(
   if (inputSchema !== undefined && !isPlainObject(inputSchema)) {
     throw new Error("$.tool.register 的 inputSchema 是一个 JSON Schema 对象");
   }
+  const isDeferred = spec.isDeferred;
+  if (isDeferred !== undefined && typeof isDeferred !== "boolean") {
+    throw new Error("$.tool.register 的 isDeferred 只能是 true 或 false");
+  }
   const schema = (inputSchema as Record<string, unknown> | undefined) ?? {
     type: "object",
   };
@@ -574,6 +583,7 @@ function normalizeToolRegisterSpec(
     name: `mcp__${owner}__${name}`,
     description: description.trim(),
     inputSchema: schema,
+    ...(isDeferred === undefined ? {} : { isDeferred }),
   };
 }
 

@@ -31,6 +31,7 @@ import {
 import { isLeanPromptEnabled } from "../services/leanPrompt.js";
 import { buildExecPool } from "../exec/catalog.js";
 import type { ExecPoolCandidate, ExecPoolEntry } from "../exec/catalog.js";
+import { STRUCTURAL_NON_DEFERRABLE } from "../exec/deferral.js";
 import { EXEC_TOOL_NAME } from "../constants/tools.js";
 // New tools
 import { globTool } from "../tools/globTool.js";
@@ -79,6 +80,16 @@ import type { RecordContext } from "../telemetry/metrics.js";
 import { entrypointOf } from "../telemetry/attributes.js";
 import { detectBashActivity } from "../telemetry/toolActivity.js";
 import { trackCliOperation } from "../telemetry/activity.js";
+
+/** `tool.describe` 给这一场会话的那一份答案（spec「给工具、技能、命令写描述」）。 */
+interface DescribedTool {
+  description: string;
+  /**
+   * 插件对「平铺还是进 `Exec` 池」的最终裁决；没给就是没意见。它覆盖延迟判定
+   * 表的结论，唯一翻不动的是结构豁免（`Exec` 自己）。
+   */
+  isDeferred?: boolean;
+}
 
 export interface ToolManagerOptions {
   container: Container;
@@ -233,16 +244,16 @@ class ToolManager {
   /**
    * `tool.describe` 的快照（spec「给工具、技能、命令写描述」）。
    *
-   * 这件事天生异步，而工具 schema 是同步拼的（`getToolsConfig` 被宿主的请求
-   * 组装同步调用），所以留两层：`staged` 是「问到的答案」，`pinned` 是「这一轮
-   * 真正发出去的那一份」。进入新一轮时把 staged 铺开成 pinned，本轮所有请求都
-   * 读同一份 —— 同一轮里描述不会中途变（一次请求里既有 A 又有 B 更不可能），
-   * 插件改过的描述下一轮生效。
+   * 描述与放置（平铺 / 进 Exec 池）都靠这件事问定，而工具 schema 是同步拼的
+   * （`getToolsConfig` 被宿主的请求组装同步调用）：组装**之前** `await`
+   * `prepareToolDescriptions()` 把答案问回来铺进两套表，本次请求就用新值 ——
+   * `staged` 是「问到的答案」，`pinned` 是「这次发出去的那一份」，同轮生效。
+   * 问过就锁住（`describeAsked`），插件不能靠每次回答搅动缓存前缀。
    */
   private describeEpoch?: number;
-  private describePinned = new Map<string, string>();
-  private describeStaged = new Map<string, string>();
-  /** 这一轮已经问过的工具（含还在飞的）—— 一轮一个工具只问一次。 */
+  private describePinned = new Map<string, DescribedTool>();
+  private describeStaged = new Map<string, DescribedTool>();
+  /** 这场会话已经问过的工具（含还在飞的）—— 每场会话一个工具只问一次。 */
   private describeAsked = new Set<string>();
   /**
    * 上一次看到的「描述缓存被声明过期」次数
@@ -253,6 +264,8 @@ class ToolManager {
    * 说明有插件声明它给的描述过期了，重问一遍。
    */
   private describeInvalidations = 0;
+  /** 「想藏但没有池」已经告诫过的工具（同一句 warn 不刷屏）。 */
+  private deferredWarned = new Set<string>();
 
   constructor(options: ToolManagerOptions) {
     this.container = options.container;
@@ -1123,6 +1136,8 @@ class ToolManager {
     return buildExecPool(
       this.deferralCandidates(),
       getNonDeferrableBuiltins(this.container.get<string>("CurrentWorkdir")),
+      // 插件在 `tool.describe` 里给过裁决就用它（spec「给工具、技能、命令写描述」）。
+      (name) => this.placementOverride(name),
     );
   }
 
@@ -1219,17 +1234,15 @@ class ToolManager {
   }
 
   /**
-   * 翻到新一轮（`tool.describe` 的翻转点）。
+   * 进入新一轮时把 `staged` 铺成 `pinned`（兜底）。
    *
-   * 「一轮」用 `MessageManager.countUserTurns()` 认 —— 它只数用户真发出来的
-   * prompt（`isMeta` 的注入不算），所以一轮里那些中间请求、工具结果、重开的
-   * `sendAIMessage` 都落在同一个 epoch 上。没有 MessageManager 的容器（单测、
-   * 独立用 ToolManager 的调用方）恒为 0，也就是「整场一轮」。
+   * 正常路径是请求组装前 `prepareToolDescriptions()` 自己铺一次，同轮生效；这里
+   * 只为那些绕过预热的同步调用方（例如 `/context` 的估算、直接 `getToolsConfig`
+   * 的测试）保持同一份口径。没有 MessageManager 的容器恒为 0，也就是「整场一轮」。
    *
-   * 这里只把上一轮的答案翻成「这一轮要用的」：`describeAsked` **不清** ——
-   * 描述是会话级缓存（每个工具每场会话问一次），清了就等于每轮重问，插件的
-   * 时间戳/计数器会把提示词缓存一直打断。要重问只有两条路：换一场会话，或者
-   * 插件在答案里说 `breakPromptCache: true`。
+   * `describeAsked` **不清** —— 描述是会话级缓存（每个工具每场会话问一次），清了
+   * 就等于每轮重问，插件的时间戳/计数器会把提示词缓存一直打断。要重问只有两条
+   * 路：换一场会话，或者插件在答案里说 `breakPromptCache: true`。
    */
   private rollDescribeEpoch(): void {
     const epoch = this.container.has("MessageManager")
@@ -1258,17 +1271,29 @@ class ToolManager {
   }
 
   /**
-   * 一个工具要发给模型的描述：这一轮 pin 的快照里有就用它，没有的用宿主自己
-   * 的；这个工具还没问过就问一次（异步落地，供**下一轮**用）。
+   * 一个工具要发给模型的描述：这一轮 pin 的快照里有就用它，没有的用宿主自己的。
    *
-   * 两个「不」写在 spec 里：同一个工具一场会话只问一次（描述是会话级缓存，见
-   * `rollDescribeEpoch`），以及刚开始问的那一次改不了本轮的工具表 —— schema 是
-   * 本轮开头 pin 的快照，改过的描述下一轮生效。
+   * 问答案不在这里：`prepareToolDescriptions` 在组装请求之前 `await` 一遍（同轮
+   * 生效，见 spec「给工具、技能、命令写描述」），这里只读结果，保持同步 ——
+   * `getToolsConfig` 是同步 API，工具名列表还有别的调用方。
    */
   private describeTool(
     name: string,
     base: string | undefined,
   ): string | undefined {
+    return this.describePinned.get(name)?.description ?? base;
+  }
+
+  /**
+   * 把这场会话每一个候选（平铺的、池里的、MCP 的、mod 自己注册的）的描述与
+   * 放置问定，然后立刻铺进 `describePinned` —— 与 CC 的 `resolveToolDescription`
+   * 同一条时机：`await` 完再组装，这次请求就用新值，不是下一次。
+   *
+   * 问过就锁住（`describeAsked`）：每轮重问会让插件的时间戳/计数器不断改写缓存
+   * 前缀。要重问只有 `breakPromptCache: true` 与
+   * `$.ui.invalidate("tool.describe")` 两条路。
+   */
+  async prepareToolDescriptions(): Promise<void> {
     const modManager = this.container.has("ModManager")
       ? this.container.get<ModManager>("ModManager")
       : undefined;
@@ -1276,12 +1301,11 @@ class ToolManager {
       !modManager ||
       typeof modManager.collectToolDescription !== "function"
     ) {
-      return base;
+      return;
     }
     // 插件声明过描述过期（`$.ui.invalidate("tool.describe")`）：把「问过没」清
-    // 掉，下面这一段就会把每个工具重问一遍。比的是计数而不是「装没装过回调」，
-    // 因为声明可能发生在第一次拼工具表之前（mod 在 `session.start` 里就会这么
-    // 干），那时装配还没轮到 ToolManager 这边。
+    // 掉，下面就会把每个工具重问一遍。比的是计数而不是「装没装过回调」，因为
+    // 声明可能发生在第一次拼工具表之前（mod 在 `session.start` 里就会这么干）。
     if (typeof modManager.toolDescribeInvalidationCount === "function") {
       const invalidations = modManager.toolDescribeInvalidationCount();
       if (invalidations !== this.describeInvalidations) {
@@ -1289,26 +1313,81 @@ class ToolManager {
         this.clearDescribeCache();
       }
     }
-    if (!this.describeAsked.has(name)) {
-      this.describeAsked.add(name);
-      modManager
-        .collectToolDescription({ name, description: base ?? "" })
-        .then((described) => {
-          // `breakPromptCache: true` 是插件说「这份答案别存」：把「问过了」
-          // 撤掉，下一次请求再问一遍；答案本身也不进本轮的快照。
-          if (described.breakPromptCache === true) {
-            this.describeAsked.delete(name);
-            return;
-          }
-          this.describeStaged.set(name, described.description);
-        })
-        .catch((error: unknown) => {
-          // `tool.describe` 自己 fail-open，这里只是兜住一个不该发生的拒绝：
-          // 描述写不进去就继续用宿主那一份，不能把请求拖垮。
-          logger?.warn("tool.describe failed", { toolName: name, error });
-        });
+    await Promise.all(
+      this.deferralCandidates().map((candidate) =>
+        this.askToolDescription(
+          modManager,
+          candidate.name,
+          candidate.description,
+        ),
+      ),
+    );
+    // 同轮生效：这一份就是本轮所有请求要用的。
+    this.describePinned = new Map(this.describeStaged);
+    this.warnPlacementWithoutPool();
+  }
+
+  private async askToolDescription(
+    modManager: ModManager,
+    name: string,
+    base: string | undefined,
+  ): Promise<void> {
+    if (this.describeAsked.has(name)) return;
+    this.describeAsked.add(name);
+    try {
+      const described = await modManager.collectToolDescription({
+        name,
+        description: base ?? "",
+      });
+      // `breakPromptCache: true` 是插件说「这份答案别存」：把「问过了」撤掉，
+      // 下一次请求再问一遍；答案本身也不进本轮的快照。
+      if (described.breakPromptCache === true) {
+        this.describeAsked.delete(name);
+        return;
+      }
+      const isDeferred =
+        typeof described.isDeferred === "boolean"
+          ? described.isDeferred
+          : undefined;
+      this.describeStaged.set(name, {
+        description: described.description,
+        ...(isDeferred === undefined ? {} : { isDeferred }),
+      });
+    } catch (error) {
+      // `tool.describe` 自己 fail-open，这里只是兜住一个不该发生的拒绝：描述
+      // 写不进去就继续用宿主那一份，不能把请求拖垮。
+      logger?.warn("tool.describe failed", { toolName: name, error });
     }
-    return this.describePinned.get(name) ?? base;
+  }
+
+  /**
+   * 插件对放置的裁决；没意见就给 `undefined`（判定表说了算）。
+   *
+   * 两条护栏：结构豁免（`Exec` 是池的载体，进池等于脚本调脚本）翻不动；没有
+   * 池（`enableExec: false`、或 Exec 被权限禁掉）时 `true` 无处可去，只能保持
+   * 平铺 —— 不能因为一句「藏起来」就把工具下架。
+   */
+  private placementOverride(name: string): boolean | undefined {
+    if (STRUCTURAL_NON_DEFERRABLE.includes(name)) return undefined;
+    const isDeferred = this.describePinned.get(name)?.isDeferred;
+    if (isDeferred === undefined) return undefined;
+    if (isDeferred && !this.isExecDeclared()) return undefined;
+    return isDeferred;
+  }
+
+  /** 插件想把工具藏起来、但这场会话没有池：保持平铺，每个工具只说一次。 */
+  private warnPlacementWithoutPool(): void {
+    if (this.isExecDeclared()) return;
+    for (const [name, described] of this.describePinned) {
+      if (described.isDeferred !== true || this.deferredWarned.has(name)) {
+        continue;
+      }
+      if (STRUCTURAL_NON_DEFERRABLE.includes(name)) continue;
+      this.deferredWarned.add(name);
+      logger?.warn(
+        `[Wave] tool.describe 要求把 ${name} 设为延迟，但这个会话没有 Exec 池，保持平铺`,
+      );
+    }
   }
 
   /**

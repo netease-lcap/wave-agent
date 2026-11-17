@@ -209,6 +209,7 @@ export interface ModToolBridge {
     description: string;
     inputSchema: Record<string, unknown>;
     plugin: string;
+    isDeferred?: boolean;
   }): { ok: true } | { ok: false; reason: string };
   /** 撤销（插件重载、会话结束）。名字不在表里不算错。 */
   unregister(name: string): void;
@@ -2218,14 +2219,23 @@ export class ModManager {
    *
    * 每场会话问一次，答案由 `ToolManager` 存着；`breakPromptCache: true` 是插
    * 件声明「这份别存」，那一次请求之后就重新问。`$.ui.invalidate("tool.describe")`
-   * 是同一条路的重问入口（见上）。
+   * 是同一条路的重问入口（见上）。答案里的 `isDeferred` 决定这个工具平铺还是
+   * 藏进 `Exec` 池（同轮生效，`Exec` 自身等结构豁免翻不动）。
    */
   async collectToolDescription(
     tool: { name: string; description: string },
     signal?: AbortSignal,
-  ): Promise<{ description: string; breakPromptCache?: boolean }> {
+  ): Promise<{
+    description: string;
+    isDeferred?: boolean;
+    breakPromptCache?: boolean;
+  }> {
     if (this.disposed) return { description: tool.description };
-    type Described = { description: string; breakPromptCache?: boolean };
+    type Described = {
+      description: string;
+      isDeferred?: boolean;
+      breakPromptCache?: boolean;
+    };
     return this.runValueHookChain<Described>(
       "tool.describe",
       { tool: tool.name, description: tool.description },
@@ -2233,24 +2243,28 @@ export class ModManager {
         isPlainRecord(current) && typeof current.description === "string"
           ? { description: current.description }
           : { description: tool.description },
-      (modId, value, fallback) => {
+      (_modId, value, fallback) => {
         if (!isPlainRecord(value)) return fallback;
-        if (value.isDeferred !== undefined) {
-          // 我们没有 tool search：`true` 等于把工具下架，`false` 没有意义。
-          logger.warn(
-            `[Wave] ${modId} 的 tool.describe 返回了 isDeferred：我们没有 tool search，这一项被忽略`,
-          );
-        }
         const description =
           typeof value.description === "string"
             ? value.description
             : fallback.description;
+        // 放置（平铺 / 进 Exec 池）由插件裁决，链上最后一环说话算数；没给就沿用
+        // 前面的答案。`ToolManager` 那边还要过一遍判定表，`Exec` 之类翻不动。
+        const isDeferred =
+          typeof value.isDeferred === "boolean"
+            ? value.isDeferred
+            : fallback.isDeferred;
         // `breakPromptCache: true` 是「这一份别缓存」的声明，链上任何一环说了
         // 都算数 —— 丢掉它就等于把插件的时间戳又缓存住了一整场会话。
-        return value.breakPromptCache === true ||
+        return {
+          description,
+          ...(isDeferred === undefined ? {} : { isDeferred }),
+          ...(value.breakPromptCache === true ||
           fallback.breakPromptCache === true
-          ? { description, breakPromptCache: true }
-          : { description };
+            ? { breakPromptCache: true }
+            : {}),
+        };
       },
       signal,
     );
@@ -3756,6 +3770,7 @@ export class ModManager {
       name: string;
       description: string;
       inputSchema: Record<string, unknown>;
+      isDeferred?: boolean;
     },
   ): Promise<{ name: string }> {
     const bridge = this.toolBridge;
