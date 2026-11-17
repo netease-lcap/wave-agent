@@ -390,7 +390,16 @@
   }
 }
 
-/* 预览面板：自己滚，不参与选项区的滚动。 */
+/* 预览面板：自己滚，不参与选项区的滚动。
+   字号**跟随宿主正文角色**，不自成 12px 一档。改前面板写死 `font-size: 12px`
+   —— 它只压得住继承它的 p / li / 引用，压不住代码：代码角色是绝对值（桌面层
+   F-04 给 13/20），于是 12px 正文配 13px 代码，代码比正文还大、主次颠倒
+   （评论锚点：代码块比上面那句「单点覆盖，只动这一处：」还大）。
+   `inherit` 直接吃 body 的 `--vscode-font-size`，与各宿主自己的正文档一致：
+   桌面 14 / 插件宿主注入 13 / 远控 15，一个值都不用维护第二份
+   （正文角色见 conversation-typography.md「段落 / 列表正文 / 引用正文 /
+   表格单元格 = 14/22」，代码 13/20，比例回到正文 > 代码）。行高不由面板
+   声明，交给各宿主已有的 markdown 规则（桌面 22px、插件 U+7、远控 1.5）。 */
 .option-preview {
   display: flex;
   flex-direction: column;
@@ -399,9 +408,26 @@
   overflow-y: auto;
   padding: 8px 10px;
   border: 1px solid var(--vscode-widget-border);
-  border-radius: 4px;
-  font-size: 12px;
-  line-height: 18px;
+  /* 内容面板档（design-system.md「Content panel radius: 8px」）；base 原先是 4px
+     —— 系统里只有行内 code chip 用这个档，带描边的面板没有第二个 4px。 */
+  border-radius: 8px;
+  font-size: inherit;
+}
+
+/* 桌面端：圆角与描边都跟同列的选项卡同源（.option-item 那两条都定在
+   host-desktop.css 的 1023 契约段里）。
+   圆角 4px 在 12px 的卡片旁边是族外孤儿 ⇒ r12。
+   描边：base 那条走 `--vscode-widget-border`，桌面桥接把它指到
+   `--cc-border-light`（#E4E7ED / #34393C，quiet lines 档），而选项卡在 1023 那轮
+   已经挪到 `--cc-border`（#DCDEE6 / #414649，强边界档）—— 于是并排的两个 1px 盒子
+   是两条深浅不同的线：浅色差 8/255、深色差 13/255（实测 #E4E7ED vs #DCDEE6、
+   #34393C vs #414649），深色下肉眼就能看出面板那圈更虚。这里补回同一档，
+   「选项 → 备注输入框 → 预览面板」三块竖着排下来是同一条线。
+   插件端与远控不写：那两个宿主没有 `--cc-*` 层，base 的 `--vscode-widget-border`
+   本来就与选项卡同值（实测都是 #313131 / #E2E2E5），改了反而错。 */
+[data-host="desktop"] .option-preview {
+  border-radius: 12px;
+  border-color: var(--cc-border, #dcdfe6);
 }
 
 .option-preview-body {
@@ -409,7 +435,7 @@
   min-height: 0;
 }
 
-/* 面板只有 12px 字号，正文块的默认上下外边距会把内容挤得只剩两三行。 */
+/* 面板的正文块默认上下外边距会把内容挤得只剩两三行（首末块归零）。 */
 .option-preview-body > :first-child {
   margin-top: 0;
 }
@@ -422,8 +448,11 @@
   overflow-x: auto;
 }
 
+/* 空态是辅助信息（12/20）：面板不再声明根行高，这里单独给紧凑刻度。 */
 .option-preview-empty {
   color: var(--vscode-descriptionForeground);
+  font-size: 12px;
+  line-height: 20px;
   font-style: italic;
 }
 
