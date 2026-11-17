@@ -14,6 +14,7 @@ import { ChatHeader } from "./ChatHeader";
 import { Tooltip } from "./Tooltip";
 import { TaskList } from "./TaskList";
 import { QueuedMessageList } from "./QueuedMessageList";
+import { SessionFolderRecovery } from "./SessionFolderRecovery";
 import { ConfirmationDialog } from "./ConfirmationDialog";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { RewindPopup } from "./RewindPopup";
@@ -682,6 +683,16 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         : (host?.recentWorkdirs?.[0] ?? host?.workdir)
       : effectiveWorkdir;
   const isDesktop = host?.type === "desktop";
+  // 会话目录缺失（spec desktop/desktop-sessions.md「会话目录缺失后的恢复（换文件夹
+  // 继续）」场景 1/2）：宿主探测到这条会话的目录已不存在，会话本身仍可进入（读历史），
+  // 但输入框位置要换成恢复提示——先把「用什么目录继续」解决掉。字段只有桌面端下发，
+  // 插件端 / 远控页恒为 undefined，这里不按端分叉，判据就是字段本身。
+  const sessionFolderMissing =
+    isDesktop && state.currentSession?.folderMissing === true;
+  // 恢复提示与确认卡都占 composer 那个槽位，同时出会互相顶掉：有待确认的卡片时
+  // 先让卡片出来（用户得先处理掉那个请求），处理完再出恢复提示。
+  const showFolderRecovery =
+    sessionFolderMissing && state.pendingConfirmations.length === 0;
   // 文件面板列表态的数据（spec desktop-file-panel.md「文件面板列出当前对话的文
   // 件」）：本对话读过/写过的文件，从消息流派生——宿主没有「本对话涉及的文件」
   // 这条数据，派生也就顺带让它对远程会话与所有宿主都成立。插件端没有该面板，
@@ -1640,6 +1651,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   // 草稿、也摆不上建议。`$.prompt.fill` 与 `prompt.suggest` 两处共用同一份判据，
   // 免得两条通道对「界面现在能不能接」给出不同答案。
   const composerBlockedByDialog = () =>
+    sessionFolderMissing ||
     state.pendingConfirmations.length > 0 ||
     pendingRewindId !== null ||
     pendingClearConfirm ||
@@ -6218,182 +6230,209 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         <div
           className={`input-area-container${state.pendingConfirmations.length > 0 ? " input-area-container--confirm" : ""}`}
         >
-          <div
-            style={{
-              display:
-                state.pendingConfirmations.length === 0 ? "block" : "none",
-            }}
-          >
-            <TaskList
-              // 按会话 id 重挂载：切换会话时重置“观察过未完成任务”的跟踪，
-              // 使全部已完成的新会话立即隐藏，而不是沿用上一会话的 5 秒宽限
-              key={state.currentSession?.id}
-              tasks={state.tasks}
-              isCollapsed={state.isTaskListCollapsed}
-              onToggleCollapse={() =>
-                dispatch({ type: "TOGGLE_TASK_LIST_COLLAPSE" })
+          {showFolderRecovery ? (
+            /* 目录缺失：composer 整块不挂载（连 `/` 面板、附件、模型选择的入口
+               一起消失），换恢复提示。占的是同一个流内槽位，消息列表高度与滚动
+               位置都不动，提示也不会盖住消息。 */
+            <SessionFolderRecovery
+              workdir={state.currentSession?.workdir ?? state.workdir}
+              onChooseFolder={() =>
+                postToHost({
+                  command: "desktopRelocateSession",
+                  sessionId: state.currentSession?.id,
+                })
+              }
+              onDelete={() =>
+                postToHost({
+                  command: "desktopDeleteSession",
+                  sessionId: state.currentSession?.id,
+                })
               }
             />
-            <QueuedMessageList
-              queuedMessages={state.queuedMessages}
-              isCollapsed={state.isQueueCollapsed}
-              onToggleCollapse={() =>
-                dispatch({ type: "TOGGLE_QUEUE_COLLAPSE" })
-              }
-              onEdit={handleEditQueuedMessage}
-              onSend={handleSendQueuedMessage}
-              onDelete={handleDeleteQueuedMessage}
-              editingQueuedId={state.editingQueuedId}
-              vscode={vscode}
-            />
-          </div>
-
-          <div
-            style={{
-              display:
-                state.pendingConfirmations.length === 0 ? "block" : "none",
-            }}
-          >
-            {/* 输入框上方那一块：桌面端是带；IDE 聊天面板把窄面板、带、状态行
-                与 toast 收进同一个栈（spec「在 IDE 插件里画」）。 */}
-            {isDesktop ? modBandList : modIdeStack}
-            <MessageInput
-              ref={messageInputRef}
-              onSendMessage={handleSendMessage}
-              isStreaming={state.isStreaming}
-              onAbortMessage={handleAbortMessage}
-              onSubmitQueuedEdit={handleSubmitQueuedEdit}
-              editingQueuedId={state.editingQueuedId}
-              onCancelQueuedEdit={handleCancelQueuedEdit}
-              shouldClearInput={state.shouldClearInput}
-              onInputCleared={handleInputCleared}
-              vscode={vscode}
-              selection={state.selection}
-              inputContent={state.inputContent}
-              sessionId={state.currentSession?.id}
-              permissionMode={state.permissionMode}
-              models={configuredModels}
-              currentModel={currentModel}
-              onSelectModel={handleModelSelect}
-              initialAttachedImages={state.attachedImages}
-              paneId={paneId}
-              contextUsage={contextUsage}
-              showContextUsage={hasVisibleMessages}
-              onOpenContextPanel={toggleContextPanel}
-              contextPanelOpen={state.activeDialog === "context"}
-              contextRingRef={contextRingRef}
-              disabled={inputDisabled}
-              placeholder={inputDisabledReason}
-              modSuggestion={modSuggestion}
-              onModSuggestionDismiss={() => setModSuggestion(null)}
-              workdirSelector={
-                host?.type === "desktop" &&
-                isNewSessionState(paneHasContent, state.messages) ? (
-                  <>
-                    <DesktopHostSelector
-                      host={effectiveHost}
-                      hosts={host.hosts}
-                      hostOptions={host.hostOptions}
-                      sshConnections={host.sshConnections}
-                      hostLabel={effectiveHostLabel}
-                      onSelectHost={host.onSelectHost}
-                      onSaveSshConnection={host.onSaveSshConnection}
-                      onDeleteSshConnection={host.onDeleteSshConnection}
-                    />
-                    <DesktopWorkdirSelector
-                      host={effectiveHost}
-                      workdir={pickerWorkdir}
-                      recentWorkdirs={host.recentWorkdirs}
-                      onSelectWorkdir={host.onSelectWorkdir}
-                      onSelectRemotePath={(path) =>
-                        host.onSelectRemotePath(path, effectiveHost)
-                      }
-                      onListRemoteDir={(path, requestId) =>
-                        host.onListRemoteDir(path, effectiveHost, requestId)
-                      }
-                      onSelectRecentWorkdir={host.onSelectRecentWorkdir}
-                      onRemoveRecentWorkdir={host.onRemoveRecentWorkdir}
-                      guide={
-                        // 只在**还没有目录**的新会话里引导选目录（用户 2026-10-13 口径：
-                        // 已有目录时不再多一次确认——宿主自动带出的最近目录直接可用，
-                        // 不打扰；自己选的目录更是明确意图）。选到目录后 guide 因
-                        // effectiveWorkdir 非空自动消失。
-                        !workdirGuideDismissed && !effectiveWorkdir
-                          ? {
-                              text: "请先选择要开发的文件夹",
-                              onDismiss: () => setWorkdirGuideDismissed(true),
-                            }
-                          : undefined
-                      }
-                    />
-                    {gitBranches ? (
-                      <DesktopWorktreeControls
-                        branches={gitBranches.branches}
-                        branch={worktreeBranch || gitBranches.current || ""}
-                        worktreeChecked={worktreeChecked}
-                        creating={worktreeCreating}
-                        onBranchChange={setWorktreeBranch}
-                        onWorktreeChange={setWorktreeChecked}
-                      />
-                    ) : branchesLoading ? (
-                      // 分支查询在等的是「主机连上」（首次连远程主机要建隧道、推
-                      // 运行时与 CLI，几十秒），所以宿主报了阶段进度就照它说，别
-                      // 把这段等待说成 git 的事（spec ui/stdio-transport.md 场景 9）。
-                      // 位置、行数、高度都不变：文案换字而已；宿主收口时给 null，
-                      // 这一行退回「分支加载中…」。
-                      <div
-                        className="desktop-branches-loading"
-                        data-testid="desktop-branches-loading"
-                      >
-                        {state.loadingStage ?? "分支加载中…"}
-                      </div>
-                    ) : null}
-                  </>
-                ) : undefined
-              }
-              rewindPopup={
-                <RewindPopup
-                  isVisible={rewindPopupOpen}
-                  isLoading={rewindCheckpointsLoading}
-                  checkpoints={rewindCheckpoints}
-                  onSelect={handleRewindCheckpointSelect}
-                  onClose={handleRewindPopupClose}
+          ) : (
+            <>
+              <div
+                style={{
+                  display:
+                    state.pendingConfirmations.length === 0 ? "block" : "none",
+                }}
+              >
+                <TaskList
+                  // 按会话 id 重挂载：切换会话时重置“观察过未完成任务”的跟踪，
+                  // 使全部已完成的新会话立即隐藏，而不是沿用上一会话的 5 秒宽限
+                  key={state.currentSession?.id}
+                  tasks={state.tasks}
+                  isCollapsed={state.isTaskListCollapsed}
+                  onToggleCollapse={() =>
+                    dispatch({ type: "TOGGLE_TASK_LIST_COLLAPSE" })
+                  }
                 />
-              }
-              btwPopup={
-                btwPanel ? (
-                  <BtwPanel
-                    turns={btwPanel.turns}
-                    draft={btwPanel.draft}
-                    onDraftChange={handleBtwDraftChange}
-                    onSubmit={askBtw}
-                    onClose={handleBtwClose}
-                  />
-                ) : undefined
-              }
-            />
-            {/* 输入框下方的常驻状态行与短暂提示（spec「状态带、状态行与提示」）：
+                <QueuedMessageList
+                  queuedMessages={state.queuedMessages}
+                  isCollapsed={state.isQueueCollapsed}
+                  onToggleCollapse={() =>
+                    dispatch({ type: "TOGGLE_QUEUE_COLLAPSE" })
+                  }
+                  onEdit={handleEditQueuedMessage}
+                  onSend={handleSendQueuedMessage}
+                  onDelete={handleDeleteQueuedMessage}
+                  editingQueuedId={state.editingQueuedId}
+                  vscode={vscode}
+                />
+              </div>
+
+              <div
+                style={{
+                  display:
+                    state.pendingConfirmations.length === 0 ? "block" : "none",
+                }}
+              >
+                {/* 输入框上方那一块：桌面端是带；IDE 聊天面板把窄面板、带、状态行
+                与 toast 收进同一个栈（spec「在 IDE 插件里画」）。 */}
+                {isDesktop ? modBandList : modIdeStack}
+                <MessageInput
+                  ref={messageInputRef}
+                  onSendMessage={handleSendMessage}
+                  isStreaming={state.isStreaming}
+                  onAbortMessage={handleAbortMessage}
+                  onSubmitQueuedEdit={handleSubmitQueuedEdit}
+                  editingQueuedId={state.editingQueuedId}
+                  onCancelQueuedEdit={handleCancelQueuedEdit}
+                  shouldClearInput={state.shouldClearInput}
+                  onInputCleared={handleInputCleared}
+                  vscode={vscode}
+                  selection={state.selection}
+                  inputContent={state.inputContent}
+                  sessionId={state.currentSession?.id}
+                  permissionMode={state.permissionMode}
+                  models={configuredModels}
+                  currentModel={currentModel}
+                  onSelectModel={handleModelSelect}
+                  initialAttachedImages={state.attachedImages}
+                  paneId={paneId}
+                  contextUsage={contextUsage}
+                  showContextUsage={hasVisibleMessages}
+                  onOpenContextPanel={toggleContextPanel}
+                  contextPanelOpen={state.activeDialog === "context"}
+                  contextRingRef={contextRingRef}
+                  disabled={inputDisabled}
+                  placeholder={inputDisabledReason}
+                  modSuggestion={modSuggestion}
+                  onModSuggestionDismiss={() => setModSuggestion(null)}
+                  workdirSelector={
+                    host?.type === "desktop" &&
+                    isNewSessionState(paneHasContent, state.messages) ? (
+                      <>
+                        <DesktopHostSelector
+                          host={effectiveHost}
+                          hosts={host.hosts}
+                          hostOptions={host.hostOptions}
+                          sshConnections={host.sshConnections}
+                          hostLabel={effectiveHostLabel}
+                          onSelectHost={host.onSelectHost}
+                          onSaveSshConnection={host.onSaveSshConnection}
+                          onDeleteSshConnection={host.onDeleteSshConnection}
+                        />
+                        <DesktopWorkdirSelector
+                          host={effectiveHost}
+                          workdir={pickerWorkdir}
+                          recentWorkdirs={host.recentWorkdirs}
+                          onSelectWorkdir={host.onSelectWorkdir}
+                          onSelectRemotePath={(path) =>
+                            host.onSelectRemotePath(path, effectiveHost)
+                          }
+                          onListRemoteDir={(path, requestId) =>
+                            host.onListRemoteDir(path, effectiveHost, requestId)
+                          }
+                          onSelectRecentWorkdir={host.onSelectRecentWorkdir}
+                          onRemoveRecentWorkdir={host.onRemoveRecentWorkdir}
+                          guide={
+                            // 只在**还没有目录**的新会话里引导选目录（用户 2026-10-13 口径：
+                            // 已有目录时不再多一次确认——宿主自动带出的最近目录直接可用，
+                            // 不打扰；自己选的目录更是明确意图）。选到目录后 guide 因
+                            // effectiveWorkdir 非空自动消失。
+                            !workdirGuideDismissed && !effectiveWorkdir
+                              ? {
+                                  text: "请先选择要开发的文件夹",
+                                  onDismiss: () =>
+                                    setWorkdirGuideDismissed(true),
+                                }
+                              : undefined
+                          }
+                        />
+                        {gitBranches ? (
+                          <DesktopWorktreeControls
+                            branches={gitBranches.branches}
+                            branch={worktreeBranch || gitBranches.current || ""}
+                            worktreeChecked={worktreeChecked}
+                            creating={worktreeCreating}
+                            onBranchChange={setWorktreeBranch}
+                            onWorktreeChange={setWorktreeChecked}
+                          />
+                        ) : branchesLoading ? (
+                          // 分支查询在等的是「主机连上」（首次连远程主机要建隧道、推
+                          // 运行时与 CLI，几十秒），所以宿主报了阶段进度就照它说，别
+                          // 把这段等待说成 git 的事（spec ui/stdio-transport.md 场景 9）。
+                          // 位置、行数、高度都不变：文案换字而已；宿主收口时给 null，
+                          // 这一行退回「分支加载中…」。
+                          <div
+                            className="desktop-branches-loading"
+                            data-testid="desktop-branches-loading"
+                          >
+                            {state.loadingStage ?? "分支加载中…"}
+                          </div>
+                        ) : null}
+                      </>
+                    ) : undefined
+                  }
+                  rewindPopup={
+                    <RewindPopup
+                      isVisible={rewindPopupOpen}
+                      isLoading={rewindCheckpointsLoading}
+                      checkpoints={rewindCheckpoints}
+                      onSelect={handleRewindCheckpointSelect}
+                      onClose={handleRewindPopupClose}
+                    />
+                  }
+                  btwPopup={
+                    btwPanel ? (
+                      <BtwPanel
+                        turns={btwPanel.turns}
+                        draft={btwPanel.draft}
+                        onDraftChange={handleBtwDraftChange}
+                        onSubmit={askBtw}
+                        onClose={handleBtwClose}
+                      />
+                    ) : undefined
+                  }
+                />
+                {/* 输入框下方的常驻状态行与短暂提示（spec「状态带、状态行与提示」）：
                 只推不拉、纯文本、不进对话上下文；每个插件一段/一签。提示是右下角
                 固定浮层，不占输入区布局。IDE 聊天面板把这两样收进输入框上方的
                 同一个栈（见 `modIdeStack`）。 */}
-            {isDesktop && (
-              <>
-                <ModStatusLines lines={modStatuses} />
-                <ModToastStack toasts={modToasts} onDismiss={dismissModToast} />
-              </>
-            )}
-          </div>
+                {isDesktop && (
+                  <>
+                    <ModStatusLines lines={modStatuses} />
+                    <ModToastStack
+                      toasts={modToasts}
+                      onDismiss={dismissModToast}
+                    />
+                  </>
+                )}
+              </div>
 
-          {state.pendingConfirmations.length > 0 && (
-            <ConfirmationDialog
-              key={state.pendingConfirmations[0].confirmationId}
-              data-confirmation-id={
-                state.pendingConfirmations[0].confirmationId
-              }
-              confirmation={state.pendingConfirmations[0]}
-              onConfirm={handleConfirmation}
-              onReject={handleRejection}
-            />
+              {state.pendingConfirmations.length > 0 && (
+                <ConfirmationDialog
+                  key={state.pendingConfirmations[0].confirmationId}
+                  data-confirmation-id={
+                    state.pendingConfirmations[0].confirmationId
+                  }
+                  confirmation={state.pendingConfirmations[0]}
+                  onConfirm={handleConfirmation}
+                  onReject={handleRejection}
+                />
+              )}
+            </>
           )}
         </div>
       ) : null}

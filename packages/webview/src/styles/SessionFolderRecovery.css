@@ -1,0 +1,68 @@
+/* 会话目录缺失后的恢复提示（desktop-sessions.md「会话目录缺失后的恢复（换文件夹
+   继续）」）：占 composer 那个槽位——输入区仍是 `.input-area-container` 的常规
+   流内子元素，所以消息列表高度不受影响、提示也不会盖住消息。 */
+
+.session-folder-recovery {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 12px 14px;
+  /* 底色跟 composer 同一块面板（提示就摆在输入框的位置上），警示只靠左侧 3px
+     竖条表达——`--vscode-inputValidation-warningBackground` 在本主题下是整片
+     芥末黄，铺满整卡会把它变成横幅警报，与旁边正常的对话格格不入。 */
+  border: 1px solid var(--cc-border, var(--vscode-widget-border));
+  border-left: 3px solid var(--vscode-inputValidation-warningBorder, #e6a23c);
+  border-radius: 8px;
+  background-color: var(--vscode-panel-background);
+}
+
+.session-folder-recovery-text {
+  margin: 0;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--vscode-foreground);
+}
+
+/* 旧路径：一行、尾部省略，全文在 title 上。 */
+.session-folder-recovery-path {
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--vscode-descriptionForeground);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.session-folder-recovery-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.session-folder-recovery-btn {
+  padding: 5px 12px;
+  border: 1px solid var(--vscode-button-border, transparent);
+  border-radius: 6px;
+  background-color: var(--vscode-button-secondaryBackground, transparent);
+  color: var(--vscode-button-secondaryForeground, inherit);
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 18px;
+  cursor: pointer;
+}
+
+.session-folder-recovery-btn--primary {
+  background-color: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+}
+
+/* 「删除会话」是破坏性动作：软危险底 + 危险字，与确认对话框的删除键同一语义
+   （见 ConfirmDialog.css 的 soft-danger 变体）。 */
+.session-folder-recovery-btn:not(.session-folder-recovery-btn--primary) {
+  background-color: var(--cc-color-danger-soft, rgba(220, 38, 38, 0.1));
+  color: var(--cc-color-danger, #dc2626);
+}

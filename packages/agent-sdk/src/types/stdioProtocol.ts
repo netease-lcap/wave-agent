@@ -27,6 +27,11 @@ export type RequestMethod =
   | "listSessions"
   | "listAllSessions"
   | "renameSession"
+  // 「换文件夹继续」: move a session's transcript into a new directory and
+  // re-anchor it there. Host-level like `renameSession` (the target session is
+  // normally not live), and the only RPC whose reply may be a refusal
+  // (`{ok:false, reason}`) instead of the operation's result.
+  | "relocateSessionTranscript"
   | "getSessionInfo"
   | "sendMessage"
   | "bang"

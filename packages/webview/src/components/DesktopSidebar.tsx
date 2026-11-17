@@ -733,10 +733,13 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
           ? "running"
           : null;
     const isRenaming = renameTarget?.sessionId === session.sessionId;
+    // 宿主探测到该会话的目录已不存在（只有探测过且探到不存在才置 true；探测失败
+    // 留空，见 SessionMetadata 的字段注释）。
+    const folderMissing = session.folderMissing === true;
     return (
       <li
         key={session.sessionId}
-        className={`desktop-session-item${isCurrent ? " desktop-session-item--current" : ""}${isVisible ? " desktop-session-item--visible" : ""}${status ? " desktop-session-item--status" : ""}`}
+        className={`desktop-session-item${isCurrent ? " desktop-session-item--current" : ""}${isVisible ? " desktop-session-item--visible" : ""}${status ? " desktop-session-item--status" : ""}${folderMissing ? " desktop-session-item--folder-missing" : ""}`}
         // 弹窗开着时该行不做整行拖拽：拖起会把焦点从输入框抢走。
         draggable={!isRenaming}
         onDragStart={(e) => {
@@ -797,6 +800,23 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
             <span className="desktop-session-title">
               {session.title || "新对话"}
             </span>
+            {/*
+              目录缺失缀标（spec desktop-sessions.md「会话目录缺失后的恢复（换文件夹
+              继续）」场景 1）：标题后面的行内缀标，**不是**行右端那个 24px 状态槽——
+              两者可以同时出现（后台正在生成的缺失会话既有 loading 环也有这个标），
+              互不压制：该行仍让位 32px（见 DesktopApp.css 的
+              `.desktop-session-item--folder-missing`），缀标因此停在状态槽左侧。
+              行照旧可点：点进去才有恢复入口。
+            */}
+            {folderMissing && (
+              <span
+                className="desktop-session-folder-missing"
+                title={`目录缺失：${group.workdir}（点击会话后可换个文件夹继续）`}
+                data-testid={`desktop-session-folder-missing-${session.sessionId}`}
+              >
+                目录缺失
+              </span>
+            )}
           </button>
         </Tooltip>
         {status && (

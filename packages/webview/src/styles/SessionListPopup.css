@@ -140,6 +140,24 @@ html[data-theme="dark"] .session-list-item-status {
   font-weight: 500;
 }
 
+/* 目录缺失（desktop `/resume`）：红点 + 「目录不存在」。与上面那个状态槽是两件事
+   —— 状态槽是远控页的「待确认 / 运行中」，这里说的是会话的目录在磁盘上没了。 */
+.session-list-item-folder-missing {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--cc-color-danger, var(--vscode-errorForeground, #dc2626));
+}
+
+.session-list-item-folder-missing-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: currentColor;
+}
+
 .session-list-item-time {
   font-size: 12px;
   color: var(--vscode-descriptionForeground);

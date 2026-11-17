@@ -8,6 +8,8 @@ import {
   listAllSessions,
   setSessionCustomTitle,
   readSessionWorkdir,
+  relocateSessionTranscript,
+  type RelocateSessionResult,
   searchFiles,
   generateRandomName,
   getDefaultRemoteBranch,
@@ -4129,6 +4131,207 @@ test("renameSession routes a live session through its agent", async () => {
 
   expect(renameSession).toHaveBeenCalledWith("My title");
   expect(setSessionCustomTitle).not.toHaveBeenCalled();
+});
+
+// ── relocateSessionTranscript（换文件夹继续，spec desktop-sessions.md）──
+//
+// The move itself (file placement, header rewrite, atomicity) belongs to the SDK
+// and is covered by its own suite; here the bridge is only asked to gate it —
+// is the destination a directory, is the session still live here, was there a
+// transcript at all — and to forward the result untouched.
+
+/**
+ * A throwaway directory that really exists, for the target of a move.
+ *
+ * Anchored on `process.cwd()` rather than `tmpdir()` on purpose: `tmpdir` is
+ * mocked in this file and other suites repoint it (`/remote/...`), so a real
+ * mkdir through it would depend on which test ran first.
+ */
+function tempDirPath(label: string): string {
+  return join(process.cwd(), `.tmp-agentbridge-${label}-${process.pid}`);
+}
+
+async function makeTempDir(label: string): Promise<string> {
+  const dir = tempDirPath(label);
+  await mkdir(dir, { recursive: true });
+  return dir;
+}
+
+test("relocateSessionTranscript forwards the move and returns the SDK result verbatim", async () => {
+  const { bridge } = createBridge();
+  const target = await makeTempDir("relocate-ok");
+  const result: RelocateSessionResult = {
+    relocated: true,
+    copiedFiles: 2,
+    from: "/old/project/enc/abc.jsonl",
+    to: join(target, "enc", "abc.jsonl"),
+    headerUpdated: true,
+  };
+  vi.mocked(relocateSessionTranscript).mockResolvedValue(result);
+  try {
+    const reply = await bridge.handleRequest("relocateSessionTranscript", {
+      sessionId: "abc",
+      fromWorkdir: "/old/project",
+      toWorkdir: target,
+    });
+
+    expect(relocateSessionTranscript).toHaveBeenCalledWith(
+      "abc",
+      "/old/project",
+      target,
+    );
+    // Fields are not normalised or filtered: `headerUpdated:false` is how the
+    // SDK says "moved, but an old transcript had no header to rewrite", and the
+    // host has to be able to see it to warn.
+    expect(reply).toEqual(result);
+  } finally {
+    await rm(target, { recursive: true, force: true });
+  }
+});
+
+test("relocateSessionTranscript refuses a destination that is not an existing directory", async () => {
+  const { bridge } = createBridge();
+  const target = tempDirPath("relocate-gone");
+
+  // Nothing is moved and nothing is even looked up: a destination that vanished
+  // between the folder picker and the call must leave the session untouched.
+  await expect(
+    bridge.handleRequest("relocateSessionTranscript", {
+      sessionId: "abc",
+      fromWorkdir: "/old/project",
+      toWorkdir: target,
+    }),
+  ).resolves.toEqual({ ok: false, reason: "target_missing" });
+  expect(relocateSessionTranscript).not.toHaveBeenCalled();
+});
+
+test("relocateSessionTranscript expands ~ in the destination before checking it", async () => {
+  const fakeHome = await makeTempDir("relocate-home");
+  const target = join(fakeHome, "next");
+  await mkdir(target, { recursive: true });
+  vi.mocked(homedir).mockReturnValue(fakeHome);
+  const { bridge } = createBridge();
+  vi.mocked(relocateSessionTranscript).mockResolvedValue({
+    relocated: true,
+    copiedFiles: 1,
+    from: "/old/project/enc/abc.jsonl",
+    to: join(target, "enc", "abc.jsonl"),
+    headerUpdated: true,
+  });
+  try {
+    await bridge.handleRequest("relocateSessionTranscript", {
+      sessionId: "abc",
+      fromWorkdir: "/old/project",
+      toWorkdir: "~/next",
+    });
+
+    // The SDK encodes the path it is given into the project directory, so it must
+    // receive the expanded path — a literal `~` would land the transcript under
+    // a project dir nobody would ever look up again.
+    expect(relocateSessionTranscript).toHaveBeenCalledWith(
+      "abc",
+      "/old/project",
+      target,
+    );
+  } finally {
+    await rm(fakeHome, { recursive: true, force: true });
+  }
+});
+
+test("relocateSessionTranscript reports not_found when no transcript exists anywhere", async () => {
+  const { bridge } = createBridge();
+  const target = await makeTempDir("relocate-missing");
+  // SDK contract for "source not found": relocated:false, copiedFiles:0 and NO
+  // `from` (the field is only set once a source transcript was located).
+  vi.mocked(relocateSessionTranscript).mockResolvedValue({
+    relocated: false,
+    copiedFiles: 0,
+    to: join(target, "enc", "abc.jsonl"),
+    headerUpdated: false,
+  });
+  try {
+    const reply = await bridge.handleRequest("relocateSessionTranscript", {
+      sessionId: "abc",
+      fromWorkdir: "/old/project",
+      toWorkdir: target,
+    });
+
+    expect(reply).toEqual({ ok: false, reason: "not_found" });
+  } finally {
+    await rm(target, { recursive: true, force: true });
+  }
+});
+
+test("relocateSessionTranscript does not mistake an in-place header rewrite for not_found", async () => {
+  const { bridge } = createBridge();
+  const target = await makeTempDir("relocate-inplace");
+  // Two different workdirs can encode to the same project directory; the SDK then
+  // rewrites the header where the file already is. Same relocated/copiedFiles as
+  // the not_found answer above — `from` is what tells them apart.
+  const inPlace: RelocateSessionResult = {
+    relocated: false,
+    copiedFiles: 0,
+    from: "/old/project/enc/abc.jsonl",
+    to: "/old/project/enc/abc.jsonl",
+    headerUpdated: true,
+  };
+  vi.mocked(relocateSessionTranscript).mockResolvedValue(inPlace);
+  try {
+    const reply = await bridge.handleRequest("relocateSessionTranscript", {
+      sessionId: "abc",
+      fromWorkdir: "/old/project",
+      toWorkdir: target,
+    });
+
+    expect(reply).toEqual(inPlace);
+  } finally {
+    await rm(target, { recursive: true, force: true });
+  }
+});
+
+test("relocateSessionTranscript refuses a session this process is still hosting", async () => {
+  const { bridge } = createBridge();
+  const target = await makeTempDir("relocate-busy");
+  vi.mocked(Agent.create).mockResolvedValue(
+    createMockAgent({ sessionId: "live-1" }),
+  );
+  await bridge.handleRequest("initialize", { workdir: "/old/project" });
+  try {
+    // A live agent keeps appending to the OLD transcript path (it is fixed at
+    // creation), so moving the file under it would split one conversation into
+    // two transcripts. The desktop destroys the session first; this gate is what
+    // makes a skipped destroy step fail loudly instead of corrupting history.
+    const reply = await bridge.handleRequest("relocateSessionTranscript", {
+      sessionId: "live-1",
+      fromWorkdir: "/old/project",
+      toWorkdir: target,
+    });
+
+    expect(reply).toEqual({ ok: false, reason: "busy" });
+    expect(relocateSessionTranscript).not.toHaveBeenCalled();
+  } finally {
+    await rm(target, { recursive: true, force: true });
+  }
+});
+
+test("relocateSessionTranscript rejects non-string params", async () => {
+  const { bridge } = createBridge();
+
+  await expect(
+    bridge.handleRequest("relocateSessionTranscript", {
+      sessionId: "abc",
+      fromWorkdir: "/old/project",
+      // A missing toWorkdir must not reach path handling as `undefined`.
+    }),
+  ).rejects.toThrow("relocateSessionTranscript requires sessionId");
+  await expect(
+    bridge.handleRequest("relocateSessionTranscript", {
+      sessionId: 42,
+      fromWorkdir: "/old/project",
+      toWorkdir: "/new/project",
+    }),
+  ).rejects.toMatchObject({ code: INVALID_PARAMS });
+  expect(relocateSessionTranscript).not.toHaveBeenCalled();
 });
 
 test("updateConfig destroys and recreates agent with merged config", async () => {
