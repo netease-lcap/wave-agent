@@ -24,6 +24,7 @@ import type {
   ModPanelRenderResult,
   ModBandRenderResult,
   ModPanelEventPayload,
+  ModPaneViewPayload,
 } from "wave-agent-sdk/host";
 import { StdioClient } from "../stdio/stdioClient";
 import {
@@ -904,6 +905,14 @@ export class ChatSession {
       return;
     }
     await this.agent.sendModPanelEvent(payload);
+  }
+
+  /**
+   * 报「这一端摊开的是哪个 mod 面板、键盘在哪个」（spec「面板的显示与焦点」）：
+   * 全量快照原样转交，引擎只存一组、后报的生效。
+   */
+  public async setModPaneView(view: ModPaneViewPayload): Promise<void> {
+    await this.agent?.setModPaneView(view);
   }
 
   public async resolveModPromptFill(

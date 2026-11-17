@@ -41,6 +41,7 @@ export const ModSurface: React.FC<ModSurfaceProps> = ({ part }) => {
     renderModPanel,
     renderModBand,
     sendModPanelEvent,
+    reportModPaneView,
   } = useChat();
   const { rows } = useWindowSize();
 
@@ -80,6 +81,39 @@ export const ModSurface: React.FC<ModSurfaceProps> = ({ part }) => {
     },
   );
 
+  // 这一端摊开的是哪个面板、键盘在哪个（spec「面板的显示与焦点」）：`$.ui.panes()`
+  // 的 `isShown` / `isFocused` 只认这条通道。`Esc` 收起后面板不再画，两个都报
+  // `null` —— 和「没人上报过就是 false」同一个判据。
+  const shownPane = isDismissed ? undefined : activePane;
+  const focusedPane =
+    shownPane && modFocusPaneId === shownPane.paneId ? shownPane : undefined;
+  const reportedView = useRef("");
+  const reportedFocus = useRef(JSON.stringify(null));
+  // 焦点真的翻转之后加一，让 `ModPane` 重拉一帧（`e.props.isFocused` 是拉取那
+  // 一刻算的，不重拉 mod 就看不到新值；Claude Code 那边 props 一变就重画）。
+  const [pullToken, setPullToken] = useState(0);
+  useEffect(() => {
+    // 只由画面板的那一份上报（`part === "band"` 的兄弟与这件事无关，它一说话就把
+    // 真值盖成 null 了）。
+    if (part !== "pane") return;
+    const shown = shownPane
+      ? { modId: shownPane.modId, paneId: shownPane.paneId }
+      : null;
+    const focused = focusedPane
+      ? { modId: focusedPane.modId, paneId: focusedPane.paneId }
+      : null;
+    // 每帧都会重跑：同一份快照不重复上报（按值比较，不赌引用相等）。
+    const key = JSON.stringify({ shown, focused });
+    if (key === reportedView.current) return;
+    const focusedKey = JSON.stringify(focused);
+    const focusChanged = focusedKey !== reportedFocus.current;
+    reportedView.current = key;
+    reportedFocus.current = focusedKey;
+    reportModPaneView(shown, focused);
+    // **报完再拉**：引擎要先拿到新的焦点，`ui.render` 才填得出 `e.props.isFocused`。
+    if (focusChanged) setPullToken((token) => token + 1);
+  }, [part, shownPane, focusedPane, reportModPaneView]);
+
   if (part === "pane") {
     if (!activePane || isDismissed) return null;
     // 高度：终端 2/3 减去输入区，剩下的给面板；空间不够时面板先压到最低 6 行，
@@ -116,6 +150,7 @@ export const ModSurface: React.FC<ModSurfaceProps> = ({ part }) => {
             panel={activePane}
             focused={modFocusPaneId === activePane.paneId}
             maxRows={paneRows}
+            pullToken={pullToken}
             renderTree={renderModPanel}
             onEvent={(kind, key, value) =>
               void sendModPanelEvent(

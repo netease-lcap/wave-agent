@@ -22,6 +22,7 @@ import type {
   ModPromptSuggestEvent,
   ModPanelRenderResult,
   ModPaneLayout,
+  ModPaneViewPayload,
   ModPanelUpdatePayload,
   ModPromptFillMode,
   ModRenderSurface,
@@ -325,6 +326,19 @@ export class Agent {
   /** Panel snapshots for panels opened before the host attached (resync). */
   public getModPanels(): ModPanelUpdatePayload[] {
     return this.modManager.paneSnapshots();
+  }
+
+  /**
+   * What the surface currently shows and where its keyboard is (spec
+   * `ecosystem/plugin-mods.md`「面板的显示与焦点」).
+   *
+   * Feeds `$.ui.panes()` 的 `isShown` / `isFocused`. A full snapshot, not an
+   * increment: `null` means "this surface shows no pane / the keyboard is back
+   * in the composer". Public because the stdio bridge receives the
+   * `modPaneView` RPC and hands the payload straight here.
+   */
+  public setModPaneView(view: ModPaneViewPayload): void {
+    this.modManager.setPaneView(view);
   }
 
   /**

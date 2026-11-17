@@ -1052,6 +1052,20 @@ class MessageHandler(
                     })
                 }
             }
+            "modPaneView" -> {
+                // 这一端摊开的是哪个面板、键盘在哪个（spec「面板的显示与焦点」）：
+                // 全量快照原样转交（`shown` / `focused` 各是一个 `{ modId, paneId }`
+                // 或 null），引擎只存一组、后报的生效。
+                val payload = msg["payload"]?.jsonObject ?: return
+                try {
+                    session.agent?.setModPaneView(buildJsonObject {
+                        put("shown", payload["shown"] ?: JsonNull)
+                        put("focused", payload["focused"] ?: JsonNull)
+                    })
+                } catch (e: StdioClientException) {
+                    LOG.warn("modPaneView failed: ${e.message}")
+                }
+            }
             "modBandRender" -> {
                 // 带与面板同一条口径：webview 量到的字符宽高原样转交（宿主不解释）。
                 val metrics = buildJsonObject {

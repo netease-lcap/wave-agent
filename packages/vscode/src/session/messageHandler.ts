@@ -21,6 +21,7 @@ import type {
   ConfiguredModel,
   BtwHistoryTurn,
   ModPanelEventPayload,
+  ModPaneViewPayload,
 } from "wave-agent-sdk/host";
 import {
   PLUGIN_CHANGE_PENDING_MESSAGE,
@@ -669,6 +670,17 @@ export class MessageHandler {
           | undefined;
         if (payload?.modId && payload.paneId) {
           await session.sendModPanelEvent(payload as ModPanelEventPayload);
+        }
+        break;
+      }
+      case "modPaneView": {
+        const session = this.context.getChatSession(
+          viewType || "tab",
+          windowId,
+        );
+        const payload = msg.payload as ModPaneViewPayload | undefined;
+        if (payload) {
+          await session.setModPaneView(payload);
         }
         break;
       }

@@ -231,6 +231,8 @@
     modBandRender: "Web 端不显示插件 mod 的状态带（一期只做桌面端）",
     modPanelRender: "Web 端不显示插件 mod 的面板（一期只做桌面端）",
     modPanelEvent: "Web 端没有插件 mod 的交互入口（一期只做桌面端）",
+    // 挂载时也会主动报一次「这一端摊开的是哪个面板」（全 null），同样静默丢弃。
+    modPaneView: "Web 端不追踪插件 mod 面板的显示与焦点（一期只做桌面端）",
   };
   /**
    * "The channel would carry this method, but **this host** has not implemented

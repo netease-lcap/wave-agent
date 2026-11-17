@@ -59,6 +59,7 @@ import {
   startupStageText,
   type ModPanelUpdatePayload,
   type ModPanelEventPayload,
+  type ModPaneViewPayload,
   type ModPromptFillRequest,
   type ModPromptReadRequest,
   type ModPromptSuggestRequest,
@@ -6376,6 +6377,18 @@ export class DesktopHost {
           | undefined;
         if (agent && payload?.modId && payload.paneId) {
           await agent.sendModPanelEvent(payload as ModPanelEventPayload);
+        }
+        break;
+      }
+
+      // 这一端摊开的是哪个 mod 面板、键盘在哪个（spec「面板的显示与焦点」）：
+      // 全量快照原样转交，引擎只存一组、后报的生效 —— `$.ui.panes()` 的
+      // `isShown` / `isFocused` 就靠这条。
+      case "modPaneView": {
+        const agent = this.agentForPane(pid);
+        const view = msg.payload as ModPaneViewPayload | undefined;
+        if (agent && view) {
+          await agent.setModPaneView(view);
         }
         break;
       }

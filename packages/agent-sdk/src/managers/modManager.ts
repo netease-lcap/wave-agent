@@ -31,6 +31,8 @@ import {
   type ModPanelEventPayload,
   type ModPanelRenderResult,
   type ModPaneLayout,
+  type ModPaneRef,
+  type ModPaneViewPayload,
   type ModPanelTree,
   type ModPanelUpdatePayload,
   type ModPermissionRequestEvent,
@@ -50,6 +52,7 @@ import {
   type ModToolCheckDecision,
   type ModToolCheckEvent,
   type ModUiControlEvent,
+  type ModUiPane,
   type ModSessionUsage,
   type ModSessionVersion,
   type ModSettingsSource,
@@ -281,6 +284,16 @@ export interface ModManagerOptions {
   sessionFacts?: ModSessionFacts;
   /** 覆盖 store 根目录（测试用）。 */
   storeRoot?: string;
+}
+
+/**
+ * 面板台账的键：`<modId>\0<paneId>`。
+ *
+ * 两个 mod 都能开 `p1`，所以 `paneId` 单独用不够；`\0` 是不可打印字符，不会
+ * 和 id 里允许的字符撞上。
+ */
+function paneKeyOf(modId: string, paneId: string): string {
+  return `${modId}\u0000${paneId}`;
 }
 
 interface PaneState {
@@ -581,18 +594,21 @@ export function withCommunityUsage(
  *
  * 三个值来自 surface 的实测（{@link ModSurfaceMetrics}）：宽度没报时退回
  * {@link MOD_RENDER_BODY_COLUMNS}，行数按 `placement` 分开（dock 用面板上限，
- * inline 用 12 行）。`isFocused` 恒 `false`：我们的面板不接管键盘焦点，CC 那边
- * 这个字段是「这个人把键盘交给面板了没」，我们从来没有。
+ * inline 用 12 行）。`isFocused` 与 `$.ui.panes()` 的同一个字段同源 —— 都是
+ * surface 上报的「键盘在这块 pane 的正文里」（{@link setPaneView}），零上报时
+ * 就是 `false`（不编值）。它是**拉这一帧那一刻**的事实：焦点变了要由 surface
+ * 补拉一帧才看得到新值（surface 侧已接这条触发，见 spec「面板的显示与焦点」）。
  */
 function paneSiteProps(
   title: string,
+  isFocused: boolean,
   placement: "dock" | "inline",
   rows: number,
   bodyColumns: number,
 ): Record<string, unknown> {
   return {
     title,
-    isFocused: false,
+    isFocused,
     bodyColumns,
     placement,
     scroll: { offset: 0, bodyRows: rows },
@@ -719,6 +735,15 @@ function mergeTurnStep(
 export class ModManager {
   private readonly mods = new Map<string, LoadedMod>();
   private readonly panes = new Map<string, PaneState>();
+  /**
+   * 这一端此刻摊开的是哪个面板、键盘在哪个（spec「面板的显示与焦点」）。
+   *
+   * 存 `<modId>\0<paneId>`，与 `panes` 的键同一个拼法。**只有一组**：一条会话
+   * 可能同时被两端挂着，后上报的生效 —— 与 Claude Code 只存一组 `shownId` /
+   * `focusedId` 同一条。`null` = 这一端没显示任何面板 / 键盘不在面板里。
+   */
+  private shownPaneKey: string | null = null;
+  private focusedPaneKey: string | null = null;
   /**
    * modId → 输入框上方那条带的上一帧（spec「状态带、状态行与提示」）。
    *
@@ -3120,6 +3145,8 @@ export class ModManager {
       if (pane.pending) clearTimeout(pane.pending);
     }
     this.panes.clear();
+    this.shownPaneKey = null;
+    this.focusedPaneKey = null;
     // 只让界面把 tab 关掉（`closed: true`）；`notifyMods` 由调用方决定 ——
     // 插件重载时 mod 还活着，逐个发 `ui.close`；会话销毁只发一次 `session.end`。
     for (const pane of closing) {
@@ -3178,10 +3205,39 @@ export class ModManager {
     }
   }
 
-  private listPanes(modId: string): string[] {
+  private listPanes(modId: string): readonly ModUiPane[] {
+    // `isPlaced` 与 `$.ui.open()` 同一个判据（spec「面板放得下吗」）：这一帧有没有
+    // 表面在画，不是「宿主登记成功没」。
+    const isPlaced = !this.disposed && this.facts.surfaces().length > 0;
     return [...this.panes.values()]
       .filter((pane) => pane.modId === modId)
-      .map((pane) => pane.paneId);
+      .map((pane) => {
+        const key = paneKeyOf(modId, pane.paneId);
+        return {
+          id: pane.paneId,
+          title: pane.title,
+          isPlaced,
+          isShown: this.shownPaneKey === key,
+          isFocused: this.focusedPaneKey === key,
+        };
+      });
+  }
+
+  /**
+   * surface 上报「现在摊开的是哪个、键盘在哪个」（spec「面板的显示与焦点」）。
+   *
+   * 台账里没有的 pane 一律归成 `null` —— 与 Claude Code 的「An id not open changes
+   * nothing」同一个效果：刚关掉的那个不会因为一条迟到的上报又「活过来」。
+   */
+  setPaneView(view: ModPaneViewPayload): void {
+    this.shownPaneKey = this.knownPaneKey(view.shown);
+    this.focusedPaneKey = this.knownPaneKey(view.focused);
+  }
+
+  private knownPaneKey(ref: ModPaneRef | null | undefined): string | null {
+    if (!ref) return null;
+    const key = paneKeyOf(ref.modId, ref.paneId);
+    return this.panes.has(key) ? key : null;
   }
 
   /**
@@ -3211,7 +3267,7 @@ export class ModManager {
     focus = false,
   ): boolean {
     if (this.disposed) return false;
-    const key = `${modId}\u0000${paneId}`;
+    const key = paneKeyOf(modId, paneId);
     const existing = this.panes.get(key);
     const pane: PaneState = existing ?? {
       modId,
@@ -3226,17 +3282,24 @@ export class ModManager {
     // invalidate 一次就把用户的输入焦点抢走一次。
     pane.focus = focus;
     this.panes.set(key, pane);
+    // 新开一块、且键盘没有人持着 ⇒ 它就是摊开的那个（spec「面板的显示与焦点」，
+    // 与 Claude Code 的 `shownId: focusedId ?? 新 id` 同一条）。重新打开不算。
+    if (!existing && this.focusedPaneKey === null) this.shownPaneKey = key;
     // 只登记 + 通知 surface 来要树，不在这里渲染（spec「架构约束」）。
     this.publishUpdate(pane, { stale: true, focus });
     return true;
   }
 
   private closePane(modId: string, paneId: string): void {
-    const key = `${modId}\u0000${paneId}`;
+    const key = paneKeyOf(modId, paneId);
     const pane = this.panes.get(key);
     if (!pane) return;
     if (pane.pending) clearTimeout(pane.pending);
     this.panes.delete(key);
+    // 关掉的正是摊开 / 持着键盘的那个 ⇒ 两个标记一起清空，不自动顶到相邻 tab
+    // （随后由该端上报它实际显示的那一个，spec「面板的显示与焦点」）。
+    if (this.shownPaneKey === key) this.shownPaneKey = null;
+    if (this.focusedPaneKey === key) this.focusedPaneKey = null;
     this.notifyPaneClosed(pane);
     this.publishUpdate(pane, { closed: true });
   }
@@ -3382,6 +3445,7 @@ export class ModManager {
       // 只有 dock 一种。
       props: paneSiteProps(
         pane.title,
+        this.focusedPaneKey === key,
         placement,
         rows,
         layout.bodyColumns ?? MOD_RENDER_BODY_COLUMNS,

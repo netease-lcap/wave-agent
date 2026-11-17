@@ -78,6 +78,7 @@ describe("TaskList Integration", () => {
       renderModPanel: vi.fn().mockResolvedValue({ tree: null }),
       renderModBand: vi.fn().mockResolvedValue([]),
       handleModPanelEvent: vi.fn().mockResolvedValue(undefined),
+      setModPaneView: vi.fn(),
       destroy: vi.fn(),
     } as unknown as Agent;
 

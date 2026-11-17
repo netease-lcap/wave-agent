@@ -570,6 +570,14 @@ class StdioAgent(
         client.request("modPanelEvent", payload, sessionId)
     }
 
+    /**
+     * 这一端摊开的是哪个 mod 面板、键盘在哪个（spec「面板的显示与焦点」）。
+     * 全量快照、不是增量 —— `$.ui.panes()` 的 `isShown` / `isFocused` 靠它。
+     */
+    suspend fun setModPaneView(view: JsonObject) {
+        client.request("modPaneView", view, sessionId)
+    }
+
     /** 回答一次 `$.prompt.fill`：草稿落没落地。 */
     suspend fun resolveModPromptFill(requestId: String, filled: Boolean) {
         client.request("modPromptFillResult", buildJsonObject {

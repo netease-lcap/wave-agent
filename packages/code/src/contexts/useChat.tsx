@@ -224,6 +224,11 @@ export interface ChatContextType {
   modStatuses: import("wave-agent-sdk").ModStatusPayload[];
   /** 短暂提示（`$.ui.toast`），到点自己消失。 */
   modToasts: import("wave-agent-sdk").ModToastPayload[];
+  /** 上报这一端摊开的是哪个面板、键盘在哪个（`$.ui.panes()` 的 `isShown` / `isFocused`）。 */
+  reportModPaneView: (
+    shown: import("wave-agent-sdk").ModPaneRef | null,
+    focused: import("wave-agent-sdk").ModPaneRef | null,
+  ) => void;
   renderModPanel: (
     modId: string,
     paneId: string,
@@ -1168,6 +1173,19 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     [],
   );
 
+  // 这一端摊开的是哪个面板、键盘在哪个（spec「面板的显示与焦点」）：全量快照、
+  // 只存一组，`$.ui.panes()` 的 `isShown` / `isFocused` 就从这儿来。终端是
+  // **进程内** surface，直接打在 agent 上，没有 stdio 那一层。
+  const reportModPaneView = useCallback(
+    (
+      shown: import("wave-agent-sdk").ModPaneRef | null,
+      focused: import("wave-agent-sdk").ModPaneRef | null,
+    ) => {
+      agentRef.current?.setModPaneView({ shown, focused });
+    },
+    [],
+  );
+
   const notifyPluginChange = useCallback(() => {
     showHint(PLUGIN_CHANGE_PENDING_MESSAGE);
   }, [showHint]);
@@ -1895,6 +1913,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     setModFocusPaneId,
     modStatuses,
     modToasts,
+    reportModPaneView,
     renderModPanel,
     renderModBand,
     sendModPanelEvent,

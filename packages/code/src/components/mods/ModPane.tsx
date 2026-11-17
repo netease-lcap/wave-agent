@@ -38,6 +38,14 @@ export interface ModPaneProps {
   focused: boolean;
   /** 正文行数上限（终端高度换算出来的）。 */
   maxRows: number;
+  /**
+   * 外面要求重拉一帧的令牌（焦点翻转之后由 `ModSurface` 加一）。
+   *
+   * 不直接拿 `focused` 当重拉的依赖：本组件是 `ModSurface` 的子组件，子组件的
+   * effect 先跑，那时 `reportModPaneView` 还没把新焦点送到引擎，拉回来的
+   * `e.props.isFocused` 会是旧值。父组件「报完之后再把令牌加一」才有正确顺序。
+   */
+  pullToken?: number;
   renderTree: (modId: string, paneId: string) => Promise<ModPanelRenderResult>;
   /** 用户交互回传给 mod；`value` 只有 `input`（提交的文字）与 `select`（选中项）才有。 */
   onEvent: (
@@ -58,6 +66,7 @@ export const ModPane: React.FC<ModPaneProps> = ({
   panel,
   focused,
   maxRows,
+  pullToken,
   renderTree,
   onEvent,
   onDismiss,
@@ -84,7 +93,8 @@ export const ModPane: React.FC<ModPaneProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [panel.modId, panel.paneId, panel.revision, renderTree]);
+    // `pullToken`：焦点翻了一帧就要重算（`e.props.isFocused` 只在拉取时出生）。
+  }, [panel.modId, panel.paneId, panel.revision, pullToken, renderTree]);
 
   useEffect(() => {
     if (panel.error !== undefined) setError(panel.error);
