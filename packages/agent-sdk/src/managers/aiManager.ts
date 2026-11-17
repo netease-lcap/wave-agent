@@ -21,6 +21,7 @@ import { estimateTokens } from "../utils/tokenEstimate.js";
 import {
   pickQuotaHeaders,
   quotaHeadersFromError,
+  type QuotaHeaders,
 } from "../utils/quotaHeaders.js";
 import {
   getTaskReminderTurnCounts,
@@ -916,8 +917,31 @@ export class AIManager {
     this._onCwdChange = callback;
   }
 
+  /**
+   * 最后一次调用过后已知的额度头（按字段合并，见 `rememberQuotaHeaders`）。
+   * `Agent.getSessionUsage()` 用它填 `$.session.usage().rateLimits`——
+   * 宿主收到的 `onQuotaHeaders` 是「这一刻的读数」，而 mod 问的是「现在是多少」，
+   * 所以这里必须留一份，不能让回调一闪而过。
+   */
+  public getLastQuotaHeaders(): QuotaHeaders | undefined {
+    return this.lastQuotaHeaders;
+  }
+
+  /**
+   * 为什么要合并、不是整批覆盖：这批头是**按维度按需发**的（`api-*` 只在判定走
+   * API 时发，`weekly-*` / `monthly-*` 只在有生效套餐时发）。整批替换会让一次
+   * 「只带 status + api-*」的调用把上一条已知的周/月窗口抹掉，rateLimits 突然变空。
+   * 桌面端映射（`desktop/src/main/accountUsage.ts`）对同一个问题也是「头里没给的
+   * 字段保留上次值」，这里沿用同一条纪律。
+   */
+  private rememberQuotaHeaders(headers: QuotaHeaders): void {
+    this.lastQuotaHeaders = { ...this.lastQuotaHeaders, ...headers };
+  }
+
   private isCompacting: boolean = false;
   private callbacks: AIManagerCallbacks;
+  /** 额度头的最新已知值（见 `rememberQuotaHeaders`）；私有化部署下恒为 undefined。 */
+  private lastQuotaHeaders?: QuotaHeaders;
 
   /**
    * Get filtered tool configuration based on tools list
@@ -3138,7 +3162,12 @@ ${question}`;
           // desktop/desktop-account.md「额度响应头」）：原样交给宿主，由它映射成
           // 账户卡片的读数。头是热路径上的免费输出，这里只做前缀筛选。
           const quotaHeaders = pickQuotaHeaders(result.response_headers);
-          if (quotaHeaders) this.callbacks?.onQuotaHeaders?.(quotaHeaders);
+          if (quotaHeaders) {
+            // 留一份给 `$.session.usage()`（mod 读的是「现在多少」，不是这一次的
+            // 回调），同时照旧交给宿主映射账户卡片。
+            this.rememberQuotaHeaders(quotaHeaders);
+            this.callbacks?.onQuotaHeaders?.(quotaHeaders);
+          }
 
           // Record the token kinds this response consumed, by model — the
           // fleet-level view of cost.
@@ -3464,8 +3493,10 @@ ${question}`;
           // ——「被限流 / 被阻断」这一刻正是用户最需要看到读数的时刻
           // （spec: desktop/desktop-account.md「额度响应头」）。
           const errorQuotaHeaders = quotaHeadersFromError(error);
-          if (errorQuotaHeaders)
+          if (errorQuotaHeaders) {
+            this.rememberQuotaHeaders(errorQuotaHeaders);
             this.callbacks?.onQuotaHeaders?.(errorQuotaHeaders);
+          }
 
           // 用户取消不是故障（spec: enterprise/opentelemetry.md「事件级别与错误的
           // 可监控性」）：中断不记 error 事件，否则每按一次 Esc 都往监控里灌一条

@@ -719,10 +719,12 @@ export interface ModSessionUsage {
   /** 整场会话累计的 token（跨轮相加，含压缩轮）。 */
   tokens: ModTokenTotals;
   /**
-   * 额度窗口（Claude Code 的 `five_hour` / `seven_day`）。
+   * 额度窗口（我们对齐 Claude Code 的 `rateLimits` 形状，窗口名用自己的）。
    *
-   * 我们还没有企业端的额度接口，所以**恒为空数组** —— 形状留着是为了让社区
-   * mod 不用改一行（它们直接 `.reduce` 这个字段），语义留白由空数组表达。
+   * 数据来自模型响应的 `x-codechat-quota-*` 头（每次调用都带，成功与失败两条
+   * 路径都有）：`weekly` / `monthly` 两个窗口，顺序固定。**没有这批头的环境
+   * 就是空数组** —— 私有化部署与自定义网关不经过那层 proxy，这是真实读法
+   * （「这个账号没有配额窗口可报」），不是缺陷。
    */
   rateLimits: ModRateLimitWindow[];
   /** 当前模型名；没配时是 `undefined`。 */
@@ -731,7 +733,12 @@ export interface ModSessionUsage {
 
 /** 一个额度窗口的用量（spec「会话用量」）。 */
 export interface ModRateLimitWindow {
-  /** `five_hour` / `seven_day` 这类窗口名。 */
+  /**
+   * 窗口名，取上游的真名：`weekly` / `monthly`。
+   *
+   * **不是** Claude Code 的 `five_hour` / `seven_day` —— 我们的计费窗口是自
+   * 然周与滚动月，硬套 CC 的两个名字会让 `kind === "five_hour"` 的判断永远假。
+   */
   kind: string;
   /** 已用百分比，0–100。 */
   percentUsed: number;
@@ -1488,6 +1495,122 @@ export interface ModCommandBridge {
   list(): ModCommandInfo[];
   /** 以 mod 身份执行一条命令；不存在时抛错。 */
   run(command: string, args?: string): Promise<void>;
+}
+
+/**
+ * 层级（Claude Code 的 `Tier` 的**子集**）。
+ *
+ * 只有两档：`core` 是引擎自己，`user` 是**所有** mod —— 我们这一版 mod 全在同
+ * 一层里，正好等于 Claude Code 的 `user`。`prepend` / `append` / `builtin` 要
+ * 一整套分层与让位机制，本轮不做；先造出这三个值只会让人以为有派发语义。
+ */
+export type ModTier = "core" | "user";
+
+/** 谁发起了这次派发（Claude Code 的 `Origin`）：插件名，加它所在的层。 */
+export interface ModHookOrigin {
+  /** 引擎自己发起时是 `"engine"`；某个 mod 用 `$` 主动进链时是那个 mod 的名字。 */
+  readonly plugin: string;
+  readonly tier: ModTier;
+}
+
+/**
+ * `next.budget`（Claude Code 的 `NextBudget`）：这个钩子**这次派发**的时间预算。
+ *
+ * `ms` 是这次派发的总额度（0 表示没人计量），`remainingMs` 是现在还剩多少。
+ * 我们的钩子一律计量（`MOD_LIMITS.hookTimeoutMs`），所以 `ms` 恒为那个数。
+ *
+ * 与 CC 同一条口径：**这个钟只算这个钩子自己的时间**，它调 `next(e)` 期间、
+ * 以及它调 `$`（等外部进程、等模型）期间都停表 —— 下游有几个 mod、跑多久都
+ * 不吃本层的额度（CC 的 `HookBudget` 原文是 "A hook's budget per dispatch"）。
+ * 所以一条链的总耗时可以超过 `ms`。
+ *
+ * 与 CC 的差别：CC 是 10 秒，我们是 5 秒；CC 的 `.catch` 另有 1 秒宽限
+ * （`catchMs`），我们没有——兜底跑在预算停表之后，不被计时。
+ */
+export interface ModHookBudget {
+  readonly ms: number;
+  readonly remainingMs: number;
+}
+
+/**
+ * 一条 `next.trace` 记录的结局。
+ *
+ * 只有我们**真能判定**的三档（Claude Code 的 `TraceOutcome` 的子集）：
+ * `returned` 自己给了结果、`caught` 抛了但被 `.catch` 接住并给了结果、
+ * `rejected` 抛了且没人接（错误继续往上走）。
+ * CC 另外四个（`passed` / `kept` / `expired` / `skipped`）分别要「返回值是不是
+ * 就是 `next` 的结果」「失败前后的结果留存」「逐层预算记账」「层间让位」，这几
+ * 样我们都没有 —— 不编假值，缺就是缺。
+ */
+export type ModTraceOutcome = "caught" | "rejected" | "returned";
+
+/**
+ * `next.trace` 的一条：这条链上**已经跑完**的一层（Claude Code 的 `TraceEntry`）。
+ *
+ * 只给真拿得到的字段。CC 还有 `reason`（这层被跳过时写「被谁 bypass」）、
+ * `chunks`、`received`、`returned`：我们没有层间让位、也没按层记块数，不给。
+ */
+export interface ModTraceEntry {
+  /**
+   * 在这条链上第几个跑完，**0 是第一个跑完的**（嵌套链里最内层先完成，所以
+   * 0 往往是最内层）；matcher 没选中的层不占号，因此不会出现空洞。
+   *
+   * 不是「第几层」（CC 的 `TraceEntry.index` 是链上的位置，我们是完成顺序）：
+   * 我们记的是「已经跑完的层」，一个正挂在 `next` 上的层还没资格进 trace。
+   */
+  readonly index: number;
+  /** 这一层属于哪个插件。 */
+  readonly plugin: string;
+  /** 这一层在哪一档（我们的 mod 一律 `user`）。 */
+  readonly tier: ModTier;
+  /** 这次派发的事件名。 */
+  readonly event: string;
+  readonly outcome: ModTraceOutcome;
+  /**
+   * 这一层花掉的墙钟毫秒。
+   *
+   * 与 CC 的 `ms` 同名字、同含义，但**不**扣掉它调 `next` 时下面那几层的时间
+   * （要扣得逐次记住 `next` 的在飞时长，等真有需要再补）。
+   */
+  readonly ms: number;
+}
+
+/**
+ * 钩子链的 `next`：一次派发里「交给下面」的那一帧（Claude Code 2.1.323 的
+ * `Next` / `GlobNext` 里我们支持的那部分）。
+ *
+ * 可调用 —— `next(e)` 把控制权交给链上的下一层，最后是引擎自己那一帧；另外挂
+ * 着五个只读成员。CC 还有 `to(e, tier)`（跳到更深的某一层），那要 entry 打 tier
+ * 且两个 chain driver 都支持跳层；我们所有 mod 同层，本轮**没有** `to`，不是漏。
+ *
+ * `.catch` 那一帧在此之上多 `error` / `called`（CC 的 `Caught`），主帧没有它们。
+ */
+export interface ModHookNext {
+  /** 交给链上的下一层；链尾是引擎那一帧（`ui.render` 是 `undefined`）。 */
+  (event?: unknown): unknown;
+  /** 整条调用被放弃时 abort（用户中断、会话销毁、插件重载）。 */
+  readonly signal: AbortSignal;
+  /** 这次派发的事件名，给「一条钩子管多个事件」的写法记日志 / 分支。 */
+  readonly event: string;
+  /** 谁发起了这次派发（引擎自己，还是某个 mod 的 `$` 调用）。 */
+  readonly origin: ModHookOrigin;
+  /** 这条链上已经跑完的层；读一次给一次只读快照。 */
+  readonly trace: readonly ModTraceEntry[];
+  /**
+   * 这次派发的时间预算；读一次算一次。
+   *
+   * 只在整个 mod 都停着等人时静止（`$` 调用、等进程输出那种）；`next` 在飞时
+   * **不停表** —— 停了就等于每层各有一份完整额度，那正是本轮修掉的东西。
+   */
+  readonly budget: ModHookBudget;
+  /**
+   * 这次派发的事件是不是被 `pattern` 选中：`next.is("tool.call", e)`。
+   *
+   * 认的 pattern 与我们 `on()` 认的**完全一致**（事件名，或 `"classic.*"`）：
+   * CC 的 `"*"` 与 `"!tool.*"` 我们派发侧还不支持，认下来等于骗人 —— 传别的
+   * 模式当场抛错，而不是安静答 `false`。
+   */
+  is(pattern: string, event: unknown): boolean;
 }
 
 /** 限额（spec「限额」表）。宿主与编译器共用同一份数字。 */

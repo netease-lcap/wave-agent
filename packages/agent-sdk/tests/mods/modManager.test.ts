@@ -3,6 +3,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ModManager } from "../../src/managers/modManager.js";
 import type { ModManagerOptions } from "../../src/managers/modManager.js";
 import type { ModSessionFacts } from "../../src/managers/modManager.js";
+import { ToolManager } from "../../src/managers/toolManager.js";
+import type { McpManager } from "../../src/managers/mcpManager.js";
+import type { MessageManager } from "../../src/managers/messageManager.js";
+import type { ToolPlugin } from "../../src/tools/types.js";
+import { Container } from "../../src/utils/container.js";
 import { logger } from "../../src/utils/globalLogger.js";
 import { MOD_BAND_INSTANCE_ID, MOD_LIMITS } from "../../src/types/mods.js";
 import type {
@@ -3413,6 +3418,52 @@ exports.register = function (on) {
 
     await manager.dispose();
   });
+  it("next.trace 跨 mod：外层跑完之后看得到下游那个 mod 的那一层", async () => {
+    // Claude Code 的 trace 是整条链的一份（跨插件都算），社区用 `next.trace`
+    // 回答「下面是谁炸的」。我们的链是 `ModManager` 逐个 mod 串起来的，每个 mod
+    // 是**不同的** `ModRuntime` 实例，所以这条用例钉住「跨实例仍是同一份」。
+    //
+    // 只收「已经跑完」的层：内层读的时候外层还挂在 `await next(e)` 上，所以内层
+    // 看到的是 0 条；外层 `await` 回来才看得到内层那一条。
+    const second = path.join(ROOT, "mods", "second.tsx");
+    const { manager, statuses } = createManager({
+      [MOD_PATH]: `
+exports.register = function (on) {
+  on("tool.call", async function ($, e, next) {
+    var below = await next(e);
+    var layer = next.trace[0];
+    $.ui.status("outer:" + next.trace.length + ":" + layer.index + ":" +
+      layer.plugin + ":" + layer.tier + ":" + layer.event + ":" + layer.outcome);
+    return below;
+  });
+};
+`,
+      [second]: `
+exports.register = function (on) {
+  on("tool.call", async function ($, e, next) {
+    $.ui.status("inner:" + next.trace.length);
+    return next(e);
+  });
+};
+`,
+    });
+    await manager.loadFromPlugins([
+      plugin([
+        { id: "todo:panel", path: MOD_PATH },
+        { id: "todo:second", path: second },
+      ]),
+    ]);
+    await manager.startSession();
+
+    expect(await denyOf(manager, bashEvent("ls"))).toBeUndefined();
+    await vi.waitFor(() => expect(statuses.length).toBe(2));
+    expect(statuses.map((line) => line.text)).toEqual([
+      "inner:0",
+      "outer:1:0:todo:user:tool.call:returned",
+    ]);
+
+    await manager.dispose();
+  });
 });
 
 describe("ModManager 的 $.turn.abort", () => {
@@ -4250,5 +4301,195 @@ exports.register = function ($, on) {
       expect(text).toContain("bad=");
       expect(text).toContain("tool 必须是非空字符串");
     }
+  });
+});
+
+/**
+ * 跨 mod 的链由 `ModManager` 自己用 `for` 循环驱动（`runtime.callHook` 只问一个
+ * mod），所以「谁发起了这次派发」只能由入口一路传下去 —— `next.origin` 就是它。
+ *
+ * 两档：引擎自己发起（执行工具、算提示词段、摆建议）是 `{ engine, core }`；
+ * mod 用 `$` 主动进链是它自己（`{ <插件名>, user }`）。链上的守卫靠这个值区分
+ * 「引擎在干活」和「插件自己来问」。
+ *
+ * 别和事件体里的 `e.origin` 混：那是 `prompt.suggest` 的「谁提的建议」。
+ */
+describe("跨 mod 链的 next.origin", () => {
+  /** 每条链的钩子都把 `next.origin` 贴成一行状态（发起者 + 哪一层）。 */
+  const reportHook = (label: string) =>
+    `  on("${label}", function (e, next) {
+    $.ui.status("${label}:" + next.origin.plugin + "/" + next.origin.tier);
+  });`;
+
+  it("引擎发起时是 { engine, core }", async () => {
+    const { manager, statuses } = createManager({
+      [MOD_PATH]: `
+exports.register = function ($, on) {
+${["tool.check", "tool.call", "prompt.suggest"]
+  .map((name) => reportHook(name))
+  .join("\n")}
+};
+`,
+    });
+    await manager.loadFromPlugins([
+      plugin([{ id: "todo:panel", path: MOD_PATH }]),
+    ]);
+    await manager.startSession();
+
+    // 三条都是宿主的入口：审批时装工具表、执行工具、把建议摆进输入框。
+    await manager.dispatchToolCheck({
+      tool: "Bash",
+      tool_use_id: "call-1",
+      input: { command: "ls" },
+      decision: "allow",
+    });
+    await manager.dispatchToolCall({
+      tool: "Bash",
+      tool_use_id: "call-1",
+      input: { command: "ls" },
+    });
+    await manager.dispatchPromptSuggest(
+      { text: "收尾", origin: { kind: "suggestion" } },
+      async () => ({ isShown: true }),
+    );
+
+    expect(statuses.map((entry) => entry.text).sort()).toEqual([
+      "prompt.suggest:engine/core",
+      "tool.call:engine/core",
+      "tool.check:engine/core",
+    ]);
+
+    await manager.dispose();
+  });
+
+  it("mod 用 $.tool.check / $.tool.call / $.agent.spawn 主动进链时是它自己 + user", async () => {
+    const { manager, statuses } = createManager({
+      [MOD_PATH]: `
+exports.register = function ($, on) {
+${["tool.check", "tool.call", "agent.spawn"]
+  .map((name) => reportHook(name))
+  .join("\n")}
+  on("session.start", function () {
+    $.tool.check({ tool: "Bash" });
+    $.tool.call({ tool: "Bash" });
+    $.agent.spawn({ prompt: "跑一下" });
+  });
+};
+`,
+    });
+    // 子代理永远不结束：证明 `spawn` 的 resolve 与它的结局无关（同别的用例）。
+    manager.setAgentBridge({
+      spawn: vi.fn(async () => ({
+        model: "test-model",
+        agentId: "agent-1",
+        settled: new Promise<void>(() => {}),
+      })),
+    });
+    await manager.loadFromPlugins([
+      plugin([{ id: "todo:panel", path: MOD_PATH }]),
+    ]);
+    await manager.startSession();
+
+    await vi.waitFor(() => expect(statuses).toHaveLength(3));
+    // 发起者是**这个 mod**（`todo` 插件），不是引擎 —— 三条链都一样。
+    expect(statuses.map((entry) => entry.text).sort()).toEqual([
+      "agent.spawn:todo/user",
+      "tool.call:todo/user",
+      "tool.check:todo/user",
+    ]);
+
+    await manager.dispose();
+  });
+});
+
+/**
+ * `$.ui.invalidate("tool.describe")`：插件声明「我给的描述过期了」。
+ *
+ * describe 缓存是会话级的（工具表由 `ToolManager` 拼），所以这条要连着真的
+ * `ToolManager` 一起验：光看 `ModManager` 记了几次账证明不了「真的重问」。
+ */
+describe('$.ui.invalidate("tool.describe")', () => {
+  /**
+   * 让 `tool.describe` 那次问答落地。
+   *
+   * 这里不能只清微任务：`callHook` 里是 `Promise.race` + 定时器、钩子还跑在沙箱
+   * 里，答案要跨几个宏任务才写进 staged。等它落地再翻轮次，否则翻到的是旧答案。
+   */
+  async function settleDescribe(): Promise<void> {
+    for (let i = 0; i < 3; i += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+  }
+
+  it("下一次拼工具表时重问描述，新答案在下一轮生效", async () => {
+    const container = new Container();
+    container.register("PermissionManager", {
+      isToolDenied: () => false,
+      getCurrentEffectiveMode: () => "default",
+    });
+    container.register("McpManager", {
+      getMcpToolsConfig: () => [],
+    } as unknown as McpManager);
+    const turns = { value: 1 };
+    container.register("MessageManager", {
+      countUserTurns: () => turns.value,
+    } as unknown as MessageManager);
+
+    const { manager } = createManager({
+      [MOD_PATH]: `
+exports.register = function ($, on) {
+  on("session.start", function () {
+    // 换一个答案再声明过期：重问要能看见「新值」，不能只看见「又问了一次」。
+    $.state.set("desc", 1);
+    $.ui.invalidate("tool.describe");
+  });
+  on("tool.describe", function (e) {
+    return { description: e.description + "#" + ($.state.get("desc") || 0) };
+  });
+};
+`,
+    });
+    // 装配处（真实运行时是 `containerSetup`）把两边接进同一个容器：
+    // `ToolManager` 靠它找到「该问哪个 mod 的钩子」。
+    container.register("ModManager", manager);
+    const toolManager = new ToolManager({ container });
+    toolManager.register({
+      name: "FakeTool",
+      config: {
+        type: "function",
+        function: { name: "FakeTool", description: "", parameters: {} },
+      } as ToolPlugin["config"],
+      prompt: () => "宿主的描述",
+      execute: vi.fn(),
+    });
+    const asked = vi.spyOn(manager, "collectToolDescription");
+    const descriptionOf = () =>
+      toolManager
+        .getToolsConfig()
+        .find((tool) => tool.function.name === "FakeTool")?.function
+        .description;
+
+    await manager.loadFromPlugins([
+      plugin([{ id: "todo:panel", path: MOD_PATH }]),
+    ]);
+    // 第一次拼表：问一次，答案要下一轮才 pin 上（工具表是本轮开头 pin 的快照）。
+    expect(descriptionOf()).toBe("宿主的描述");
+    await settleDescribe();
+    expect(asked).toHaveBeenCalledTimes(1);
+
+    // 插件声明过期（`session.start` 里就是这句）。
+    await manager.startSession();
+    expect(manager.toolDescribeInvalidationCount()).toBe(1);
+
+    // 第二次拼表：不再吃「问过没」那份缓存，重问一遍。
+    descriptionOf();
+    await settleDescribe();
+    expect(asked).toHaveBeenCalledTimes(2);
+
+    // 重问到的答案照样在下一轮 pin 上（清缓存不等于把描述弄丢）。
+    turns.value = 2;
+    expect(descriptionOf()).toBe("宿主的描述#1");
+
+    await manager.dispose();
   });
 });
