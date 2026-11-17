@@ -180,6 +180,17 @@ const permissionModeIcon = (m?: PermissionMode): React.ReactNode => {
   }
 };
 
+/**
+ * 一次拖放的内容：要上传的文件，加上拖进来的文件夹名。
+ *
+ * 文件夹只带名字 —— 这一端不支持拖入文件夹（spec desktop-file-panel.md 场景 8），
+ * 不读它的内容，也不上传它。`folders` 非空时要给用户一条提示。
+ */
+export interface DroppedSelection {
+  files: FileList | File[];
+  folders: string[];
+}
+
 export interface MessageInputHandle {
   focus: () => void;
   triggerShortcut: (name: string) => void;
@@ -191,7 +202,7 @@ export interface MessageInputHandle {
   loadDraft: (text: string) => void;
   /** Upload a dropped file selection to the host, tagging this pane so the
    *  uploadSuccess reply routes back only to this input. */
-  uploadFiles: (files: FileList | File[]) => void;
+  uploadFiles: (selection: DroppedSelection) => void;
   /**
    * Put a plain-text draft into the input without sending it, and report whether
    * it landed (`$.prompt.fill`, spec ecosystem/plugin-mods.md「把草稿填进输入框」).
@@ -708,9 +719,9 @@ export const MessageInput = forwardRef<
     // Called via ref from ChatApp so it only affects this pane's input, not every
     // pane in a split-view layout (window.postMessage would be received by all panes).
     loadQueuedEditContent,
-    // Upload a dropped file selection (desktop drag-and-drop).
-    uploadFiles: (files: FileList | File[]) => {
-      readAndUploadFiles(files);
+    // Upload a dropped selection (desktop drag-and-drop).
+    uploadFiles: (selection: DroppedSelection) => {
+      readAndUploadFiles(selection);
     },
     fillDraft,
     getContextAnchorRect,
@@ -1429,8 +1440,18 @@ export const MessageInput = forwardRef<
   // tagged on the request so the host can echo it back on uploadSuccess and
   // only the originating pane's input inserts the path chips (split view).
   const readAndUploadFiles = useCallback(
-    (files: FileList | File[]) => {
+    ({ files, folders }: DroppedSelection) => {
       const fileArray = Array.from(files);
+      if (folders.length > 0) {
+        // 拖入的东西里有文件夹：这一端不读目录、也不上传它，直接说清楚
+        // （spec desktop-file-panel.md 场景 8）。复用宿主既有的用户可见错误通道
+        // ——VS Code/JetBrains 通知、桌面端系统消息，不新开一种 UI。
+        vscode.postMessage({
+          command: "showError",
+          message: `不支持拖入文件夹：${folders.join("、")}`,
+        });
+      }
+      // 混合拖拽时文件照常上传，部分成功不回滚（同场景 9）。
       if (fileArray.length === 0) return;
       const readers = fileArray.map((file) => {
         return new Promise((resolve, reject) => {
@@ -1443,7 +1464,9 @@ export const MessageInput = forwardRef<
               data: reader.result,
             });
           };
-          reader.onerror = reject;
+          // `onerror` 的入参是事件而不是错误，直接 reject 它会让下面拿不到 message
+          // （提示里打出 `undefined`）；真正的错误在 `reader.error` 上。
+          reader.onerror = () => reject(reader.error ?? new Error("读取失败"));
           reader.readAsArrayBuffer(file);
         });
       });
@@ -1460,7 +1483,9 @@ export const MessageInput = forwardRef<
           console.error("Error reading files:", error);
           vscode.postMessage({
             command: "showError",
-            message: "读取文件失败: " + error.message,
+            message:
+              "读取文件失败: " +
+              (error instanceof Error ? error.message : String(error)),
           });
         });
     },
@@ -1478,7 +1503,8 @@ export const MessageInput = forwardRef<
     fileInput.onchange = (event) => {
       const files = (event.target as HTMLInputElement).files;
       if (files && files.length > 0) {
-        readAndUploadFiles(files);
+        // 选择器只能选文件（没有 webkitdirectory），所以这里永远没有文件夹。
+        readAndUploadFiles({ files, folders: [] });
       }
 
       // Cleanup

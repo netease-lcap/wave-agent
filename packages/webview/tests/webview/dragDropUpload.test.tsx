@@ -1,6 +1,6 @@
 import { render, waitFor, act } from "@testing-library/react";
 import React from "react";
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { ChatApp } from "../../src/components/ChatApp";
 import { SESSION_DRAG_MIME } from "../../src/components/DesktopSidebar";
 import { createMockVscode, sendCommand } from "./test-utils";
@@ -79,9 +79,71 @@ const dragEnter = (container: Element, types: string[] = ["Files"]) =>
 const dragLeave = (container: Element, types: string[] = ["Files"]) =>
   fireDrag(container, "dragleave", makeDataTransfer(types));
 
+/**
+ * A DataTransfer carrying folders. You cannot put a directory into a
+ * `DataTransfer` programmatically (`items.add()` only takes a `File`), so the
+ * directory side has to be stubbed — but not by replacing the global: Chromium's
+ * `DragEvent` init rejects anything that isn't a real `DataTransfer`. The real
+ * instance keeps its identity while `types`/`items`/`files` are redefined on it,
+ * and each item's `webkitGetAsEntry()` answers the `FileSystemEntry` shape the
+ * drop handler reads (`isDirectory` is the only reliable folder signal; a
+ * dropped folder looks like an ordinary empty `File` in `dataTransfer.files`).
+ */
+const makeDropDataTransfer = ({
+  files = [],
+  folders = [],
+}: { files?: File[]; folders?: string[] } = {}) => {
+  const dataTransfer = new DataTransfer();
+  const items = [
+    ...folders.map((name) => ({
+      kind: "file",
+      type: "",
+      getAsFile: () => null,
+      webkitGetAsEntry: () => ({
+        isFile: false,
+        isDirectory: true,
+        name,
+      }),
+    })),
+    ...files.map((file) => ({
+      kind: "file",
+      type: file.type,
+      getAsFile: () => file,
+      webkitGetAsEntry: () => ({
+        isFile: true,
+        isDirectory: false,
+        name: file.name,
+      }),
+    })),
+  ];
+  Object.defineProperty(dataTransfer, "types", { value: ["Files"] });
+  Object.defineProperty(dataTransfer, "items", { value: items });
+  Object.defineProperty(dataTransfer, "files", { value: files });
+  return dataTransfer;
+};
+
+const droppedMessages = (
+  vscode: ReturnType<typeof createMockVscode>,
+  command: string,
+) =>
+  vscode.postMessage.mock.calls
+    .map(
+      (call) =>
+        call[0] as {
+          command?: string;
+          message?: string;
+          files?: Array<{ name: string }>;
+        },
+    )
+    .filter((message) => message.command === command);
+
 describe("Desktop file drag-and-drop upload", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 
   it("shows the overlay while a file hovers the pane and hides it when fully left", () => {
@@ -159,6 +221,106 @@ describe("Desktop file drag-and-drop upload", () => {
     );
     expect(upload.files).toHaveLength(1);
     expect(upload.files[0].name).toBe("a.txt");
+  });
+
+  it("a dropped folder is reported, never uploaded (spec 场景 8)", async () => {
+    const { vscode } = renderPane("pane-1");
+    const chatContainer = document.querySelector(
+      '[data-testid="chat-container"]',
+    )!;
+
+    dragEnter(chatContainer);
+    expect(containerHasOverlay(chatContainer)).toBe(true);
+    fireDrag(
+      chatContainer,
+      "drop",
+      makeDropDataTransfer({ folders: ["reports"] }),
+    );
+    // Overlay must clear even though the drop carried 0 files.
+    expect(containerHasOverlay(chatContainer)).toBe(false);
+
+    await waitFor(() => {
+      expect(droppedMessages(vscode, "showError")).toHaveLength(1);
+    });
+    const [notice] = droppedMessages(vscode, "showError");
+    expect(notice.message).toContain("不支持拖入文件夹");
+    expect(notice.message).toContain("reports");
+    // Nothing to read, so nothing gets read: no upload reaches the host.
+    expect(droppedMessages(vscode, "uploadFilesToArtifacts")).toHaveLength(0);
+  });
+
+  it("a mixed drop uploads the files and reports the folders (spec 场景 9)", async () => {
+    const { vscode } = renderPane("pane-1");
+    const chatContainer = document.querySelector(
+      '[data-testid="chat-container"]',
+    )!;
+
+    const file = new File(["hello"], "a.txt", { type: "text/plain" });
+    dragEnter(chatContainer);
+    fireDrag(
+      chatContainer,
+      "drop",
+      makeDropDataTransfer({ files: [file], folders: ["reports", "logs"] }),
+    );
+    expect(containerHasOverlay(chatContainer)).toBe(false);
+
+    await waitFor(() => {
+      expect(droppedMessages(vscode, "uploadFilesToArtifacts")).toHaveLength(1);
+    });
+    const [upload] = droppedMessages(vscode, "uploadFilesToArtifacts");
+    // Only the file travels; the folders are not read as (empty) files.
+    const uploadedFiles = upload.files ?? [];
+    expect(uploadedFiles).toHaveLength(1);
+    expect(uploadedFiles[0].name).toBe("a.txt");
+
+    const notices = droppedMessages(vscode, "showError");
+    expect(notices).toHaveLength(1);
+    expect(notices[0].message).toContain("不支持拖入文件夹");
+    expect(notices[0].message).toContain("reports");
+    expect(notices[0].message).toContain("logs");
+  });
+
+  it("a read failure reports a readable reason, not `undefined` (spec 场景 10)", async () => {
+    // A real FileReader only fails on sources we cannot build in a test (a file
+    // deleted behind the reference, a decryption failure), so the failing read
+    // is simulated: `error` is set before `onerror` fires, exactly like the
+    // real one (`reader.onerror` itself receives an event, which has no
+    // `message` — that mismatch is what printed `undefined`).
+    class FailingFileReader {
+      result: ArrayBuffer | null = null;
+      error: DOMException | null = null;
+      onload: (() => void) | null = null;
+      onerror: ((event: ProgressEvent) => void) | null = null;
+      readAsArrayBuffer() {
+        this.error = new DOMException("磁盘读取失败", "NotReadableError");
+        this.onerror?.(new ProgressEvent("error"));
+      }
+    }
+    vi.stubGlobal("FileReader", FailingFileReader);
+
+    const { vscode } = renderPane("pane-1");
+    const chatContainer = document.querySelector(
+      '[data-testid="chat-container"]',
+    )!;
+
+    dragEnter(chatContainer);
+    fireDrag(
+      chatContainer,
+      "drop",
+      makeDropDataTransfer({
+        files: [new File(["hello"], "a.txt", { type: "text/plain" })],
+      }),
+    );
+    expect(containerHasOverlay(chatContainer)).toBe(false);
+
+    await waitFor(() => {
+      expect(droppedMessages(vscode, "showError")).toHaveLength(1);
+    });
+    const [notice] = droppedMessages(vscode, "showError");
+    expect(notice.message).toContain("读取文件失败");
+    expect(notice.message).toContain("磁盘读取失败");
+    expect(notice.message).not.toContain("undefined");
+    expect(droppedMessages(vscode, "uploadFilesToArtifacts")).toHaveLength(0);
   });
 
   it("uploadSuccess routes by paneId: another pane's reply is ignored", async () => {
