@@ -294,21 +294,27 @@ describe("SubagentManager - inheritParentContext", () => {
 
 describe("SlashCommandManager - /subtask", () => {
   let addNoticeBlock: ReturnType<typeof vi.fn>;
+  let addUserMessage: ReturnType<typeof vi.fn>;
   let createInstance: ReturnType<typeof vi.fn>;
   let executeAgent: ReturnType<typeof vi.fn>;
   let slashCommandManager: SlashCommandManager;
 
+  // A real id is a UUID; only its last four characters are ever shown.
+  const SUBAGENT_ID = "subagent-9f2d";
+
   function build(messages: Message[]): void {
     const container = new Container();
     addNoticeBlock = vi.fn();
+    addUserMessage = vi.fn().mockReturnValue("msg-receipt");
     const messageManager = {
       getMessages: () => messages,
       addNoticeBlock,
+      addUserMessage,
       saveSession: vi.fn().mockResolvedValue(undefined),
     } as unknown as MessageManager;
     container.register("MessageManager", messageManager);
 
-    createInstance = vi.fn().mockResolvedValue({ subagentId: "subagent-1" });
+    createInstance = vi.fn().mockResolvedValue({ subagentId: SUBAGENT_ID });
     executeAgent = vi.fn().mockResolvedValue("task-1");
     container.register("SubagentManager", {
       createInstance,
@@ -422,12 +428,42 @@ describe("SlashCommandManager - /subtask", () => {
     expect(parameters.permissionModeOverride).toBeUndefined();
 
     expect(executeAgent).toHaveBeenCalledWith(
-      { subagentId: "subagent-1" },
+      { subagentId: SUBAGENT_ID },
       "帮我改接口\n然后跑一下测试",
       undefined,
       true,
     );
-    // Nothing failed, so the parent never touched a loading state or AI turn.
-    expect(addNoticeBlock).not.toHaveBeenCalled();
+    // Nothing failed, so the parent never took a loading state, never ran an
+    // AI turn, and reported no error to the user.
+    expect(addNoticeBlock).not.toHaveBeenCalledWith(
+      expect.any(String),
+      "error",
+    );
+  });
+
+  it("leaves a receipt the user can see and the model is told about", async () => {
+    build(parentMessages);
+
+    await slashCommandManager.executeCommand(
+      "subtask",
+      "帮我改接口\n然后跑一下测试",
+    );
+
+    // The user-facing half: one line saying the fork went out, in the
+    // non-error level (a notice never reaches `convertMessagesForAPI`).
+    expect(addNoticeBlock).toHaveBeenCalledTimes(1);
+    expect(addNoticeBlock).toHaveBeenCalledWith(
+      "⑂ forked 帮我改接口 (9f2d)",
+      "info",
+    );
+
+    // The model-facing half: hidden from the transcript, read by the model.
+    expect(addUserMessage).toHaveBeenCalledTimes(1);
+    const [receipt] = addUserMessage.mock.calls[0] as [
+      { content: string; isMeta?: boolean },
+    ];
+    expect(receipt.isMeta).toBe(true);
+    expect(receipt.content).toContain("帮我改接口");
+    expect(receipt.content).toContain("后台任务通知");
   });
 });

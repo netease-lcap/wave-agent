@@ -180,6 +180,26 @@ export class SlashCommandManager {
       // task is registered, and the completion (or failure) reaches this
       // conversation through the parent's message queue.
       await subagentManager.executeAgent(instance, task, undefined, true);
+
+      // Leave a receipt behind. A subtask has no parent turn, so nothing else
+      // marks it: without this the conversation looks like the user typed
+      // nothing, and the only way to find out is opening the background-task
+      // panel. Two carriers for two readers — the notice is what the user
+      // sees (`convertMessagesForAPI` never reads notices), the `isMeta` user
+      // message is what tells the model a task is running, since otherwise its
+      // next turn reads as if the user had said nothing at all.
+      const title = subtaskDescription(task);
+      this.messageManager.addNoticeBlock(
+        `\u2442 forked ${title} (${instance.subagentId.slice(-4)})`,
+        "info",
+      );
+      this.messageManager.addUserMessage({
+        content:
+          `子任务已派到后台（不是用户说的话，也不是错误）：用户起了后台子任务「${title}」，` +
+          "它带着这段对话的完整上下文在跑，结果会以后台任务通知的形式回到这里。" +
+          "不用等它，也不要重复做这件事。",
+        isMeta: true,
+      });
     } catch (error) {
       this.messageManager.addNoticeBlock(
         `Failed to start the subtask: ${error instanceof Error ? error.message : String(error)}`,
