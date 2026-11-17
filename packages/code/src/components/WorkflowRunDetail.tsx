@@ -66,6 +66,13 @@ export const workflowStatusColor = (
 export const MAX_RUN_LOG_LINES = 10;
 
 const WorkflowRunDetail: React.FC<{ run: WorkflowRun }> = ({ run }) => {
+  // The thresholds the run was actually judged against: they can be overridden
+  // through `WAVE_WORKFLOW_SIZE_WARNING_*`, and printing the constants then
+  // would name a number that never applied.
+  const limits = run.sizeLimits ?? {
+    agents: WORKFLOW_SIZE_WARNING_AGENTS,
+    tokens: WORKFLOW_SIZE_WARNING_TOKENS,
+  };
   const elapsed = run.endTime
     ? run.endTime - run.startTime
     : Date.now() - run.startTime;
@@ -121,10 +128,9 @@ const WorkflowRunDetail: React.FC<{ run: WorkflowRun }> = ({ run }) => {
         {run.sizeWarning && (
           <Box>
             <Text color="yellow">
-              ⚠ Large run: {run.totalAgents} agents /{" "}
-              {formatTokens(run.totalTokens)} tokens — over the{" "}
-              {WORKFLOW_SIZE_WARNING_AGENTS} agents /{" "}
-              {formatTokens(WORKFLOW_SIZE_WARNING_TOKENS)} tokens threshold.
+              ⚠ Large run: {run.scheduledAgents ?? run.totalAgents} agents /{" "}
+              {formatTokens(run.totalTokens)} tokens — over the {limits.agents}{" "}
+              agents / {formatTokens(limits.tokens)} tokens threshold.
               {run.status === "running" && " Press k to stop it."}
             </Text>
           </Box>

@@ -16,6 +16,17 @@ export class ProgressReporter {
    * warning both read this number.
    */
   private tokenCounter = 0;
+  /**
+   * Agent slots the script has declared but not necessarily started yet.
+   *
+   * `parallel()` / `pipeline()` know their full width the moment they are
+   * called, which is what lets the size warning fire before a wide run has
+   * actually spent anything. Claude Code derives the same axis from the
+   * `workflow_agent` entries it has recorded, including ones still queued.
+   * Accumulated across calls: a second `parallel()` declares more slots on top
+   * of the first, exactly like a second batch of recorded entries.
+   */
+  private scheduledCounter = 0;
   private listeners: Array<(event: WorkflowProgressEvent) => void> = [];
   private runId: string;
 
@@ -141,6 +152,23 @@ export class ProgressReporter {
 
   get totalTokens(): number {
     return this.tokenCounter;
+  }
+
+  /**
+   * Record that the script has just declared `count` more agent slots
+   * (`parallel()` / `pipeline()` at their entry, before any of them starts).
+   */
+  noteScheduledAgents(count: number): void {
+    if (count > 0) this.scheduledCounter += count;
+  }
+
+  /**
+   * Slots known so far, never below the number of agents already started: a
+   * script that only calls `agent()` in a loop declares nothing, and there the
+   * started count is the best estimate available.
+   */
+  get scheduledAgents(): number {
+    return Math.max(this.scheduledCounter, this.agentCounter);
   }
 
   onEvent(listener: (event: WorkflowProgressEvent) => void): void {

@@ -70,6 +70,13 @@ const WorkflowRunProgress: React.FC<{ run: SerializableWorkflowRun }> = ({
     : Date.now() - run.startTime;
   const logs = run.logs ?? [];
   const failures = run.failures ?? [];
+  // The thresholds the run was actually judged against: they can be overridden
+  // through `WAVE_WORKFLOW_SIZE_WARNING_*`, and printing the constants then
+  // would name a number that never applied (spec「预算与规模硬上限」场景 7).
+  const limits = run.sizeLimits ?? {
+    agents: WORKFLOW_SIZE_WARNING_AGENTS,
+    tokens: WORKFLOW_SIZE_WARNING_TOKENS,
+  };
 
   return (
     <>
@@ -119,9 +126,9 @@ const WorkflowRunProgress: React.FC<{ run: SerializableWorkflowRun }> = ({
           <span role="img" aria-label="运行过大">
             ⚠
           </span>{" "}
-          运行过大：{run.totalAgents} agents / {formatTokens(run.totalTokens)}{" "}
-          tokens · 越过阈值 {WORKFLOW_SIZE_WARNING_AGENTS} agents /{" "}
-          {formatTokens(WORKFLOW_SIZE_WARNING_TOKENS)} tokens
+          运行过大：{run.scheduledAgents ?? run.totalAgents} agents /{" "}
+          {formatTokens(run.totalTokens)} tokens · 越过阈值 {limits.agents}{" "}
+          agents / {formatTokens(limits.tokens)} tokens
           {run.status === "running" && " · 运行中，可点「停止」按钮中止"}
         </div>
       )}

@@ -618,6 +618,41 @@ describe("createWorkflowApis", () => {
       await expect(apis.parallel([])).resolves.toEqual([]);
     });
 
+    it("declares its width before the first thunk runs", async () => {
+      // The slot axis is only useful early: `parallel([...30])` has to be
+      // reported as 30 slots while it is still scheduling, not after 30 agents
+      // have spent their tokens (Claude Code records the queued
+      // `workflow_agent` entries the same way).
+      const onScheduledAgents = vi.fn();
+      const { ctx } = createTestContext({ onScheduledAgents });
+      const apis = createWorkflowApis(ctx);
+
+      let announcedBeforeFirstThunk: number | undefined;
+      await apis.parallel([
+        async () => {
+          announcedBeforeFirstThunk = onScheduledAgents.mock.calls[0]?.[0];
+          return "a";
+        },
+        async () => "b",
+      ]);
+
+      expect(onScheduledAgents).toHaveBeenCalledWith(2);
+      expect(announcedBeforeFirstThunk).toBe(2);
+    });
+
+    it("accumulates the slots of successive batches", async () => {
+      // A second batch declares more slots on top of the first — the counter is
+      // a total, like the recorded-entry count it stands in for.
+      const onScheduledAgents = vi.fn();
+      const { ctx } = createTestContext({ onScheduledAgents });
+      const apis = createWorkflowApis(ctx);
+
+      await apis.parallel([async () => 1, async () => 2]);
+      await apis.parallel([async () => 3, async () => 4, async () => 5]);
+
+      expect(onScheduledAgents).toHaveBeenLastCalledWith(5);
+    });
+
     it("throws when an element is a promise instead of a function", async () => {
       const { ctx } = createTestContext();
       const apis = createWorkflowApis(ctx);
@@ -698,6 +733,24 @@ describe("createWorkflowApis", () => {
   });
 
   describe("pipeline", () => {
+    it("declares items × stages as its slot count", async () => {
+      // Every item may pass through every stage, so the product is the widest
+      // count this call can reach. It is an upper bound (a stage returning null
+      // skips the rest for that item) — the same over-estimate Claude Code
+      // accepts when it records the batch up front.
+      const onScheduledAgents = vi.fn();
+      const { ctx } = createTestContext({ onScheduledAgents });
+      const apis = createWorkflowApis(ctx);
+
+      await apis.pipeline(
+        [1, 2, 3],
+        async (prev) => prev,
+        async (prev) => prev,
+      );
+
+      expect(onScheduledAgents).toHaveBeenCalledWith(6);
+    });
+
     it("seeds the first stage with the item itself", async () => {
       const { ctx } = createTestContext();
       const apis = createWorkflowApis(ctx);
