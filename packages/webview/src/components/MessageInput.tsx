@@ -564,6 +564,19 @@ export const MessageInput = forwardRef<
    * 不能拿它与当前 DOM 文本比：两次之间输入框里可能长出别的东西。
    */
   const lastEditExpectedTextRef = useRef<string | null>(null);
+  /**
+   * 草稿版本号（单调递增）：**每一次改写草稿**都 ++ —— 用户输入、`$.prompt.fill`、
+   * 设置页回填、宿主切会话回填、插件改写落地、发送后清空。它与 `editSeqRef`
+   * 刻意分开：后者只数「用户输入」这一种，前者数「这份草稿被谁动过」。
+   */
+  const draftVersionRef = useRef(0);
+  /**
+   * 最后一次 `prompt.edit` 上报时草稿所处的版本号。回执落地前要拿它与当前版本比：
+   * 相等 = 这份草稿还是当初上报的那一份，改写可以按它算的偏移落地；不等 = 期间
+   * 已被别人写过（`$.prompt.fill` 刚填了正文 / 用户切了会话 / 已经发送清空），
+   * 那份改写落在一条已经不存在的基线上，套用只会把新内容整份盖掉。
+   */
+  const lastEditDraftVersionRef = useRef<number>(-1);
   /** 触发这次编辑的那一个按键（粘贴没有 keydown，就是 `undefined`）。 */
   const lastEditKeyRef = useRef<unknown>(undefined);
   const inputContentTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -601,6 +614,9 @@ export const MessageInput = forwardRef<
     ({ text, mode }: { text: string; mode: ModPromptFillMode }): boolean => {
       const div = textareaRef.current;
       if (!div) return false;
+
+      // 草稿被写改：在飞的那份 `prompt.edit` 改写从此落在旧基线上（见 ref 注释）。
+      draftVersionRef.current++;
 
       const selection = window.getSelection();
       const range =
@@ -658,9 +674,13 @@ export const MessageInput = forwardRef<
           after.addRange(end);
         }
       }
+      // 建议只在空草稿上摆（判据在 ChatApp 的 `desktopModPromptSuggest`）；草稿
+      // 现在有内容了，那份建议就得让位 —— 否则暗字/让位态与真草稿并存，用户按
+      // Tab 还会拿过期的建议把插件刚填的正文整份换掉（#2950 B4）。
+      onModSuggestionDismiss?.();
       return true;
     },
-    [vscode, sessionId, draftScopeKey],
+    [vscode, sessionId, draftScopeKey, onModSuggestionDismiss],
   );
 
   // Expose focus method to parent component
@@ -683,6 +703,7 @@ export const MessageInput = forwardRef<
     appendText: (text: string) => {
       const div = textareaRef.current;
       if (!div || !text) return;
+      draftVersionRef.current++;
       if ((div.textContent ?? "").trim() === "") {
         div.replaceChildren();
       } else {
@@ -722,6 +743,7 @@ export const MessageInput = forwardRef<
     loadDraft: (text: string) => {
       const div = textareaRef.current;
       if (!div) return;
+      draftVersionRef.current++;
       div.replaceChildren(...plainTextNodes(text));
       const mirror = div.innerText ?? div.textContent ?? "";
       setMessage(mirror);
@@ -786,6 +808,11 @@ export const MessageInput = forwardRef<
       if (requestId !== lastEditRequestIdRef.current) return false;
       const div = textareaRef.current;
       if (!div) return false;
+      // 只比 requestId 不够：`$.prompt.fill`、宿主换会话回填、发送后清空都不改
+      // requestId，但它们已经换掉了这份草稿 —— 回执按旧草稿算的偏移落在新内容上
+      // = 把用户/插件刚写的东西整份盖掉（#2950 B6 / B5）。
+      if (draftVersionRef.current !== lastEditDraftVersionRef.current)
+        return false;
       // 没人改写这次编辑（钩子没返回、或返回的就是原文）：别动 DOM —— 重建会
       // 吃掉用户此刻的选区，看起来像「打着字光标突然跳”。
       //
@@ -823,6 +850,8 @@ export const MessageInput = forwardRef<
       lastSelectionChangePosRef.current = null;
       draftCursorRef.current = offset;
       prevEditTextRef.current = text;
+      // 改写落地本身也是一次改写草稿：同一次上报若再来一份回执，不能重复套用。
+      draftVersionRef.current++;
       onModSuggestionDismiss?.();
       return true;
     },
@@ -878,6 +907,12 @@ export const MessageInput = forwardRef<
       // 这一份已在下面按「旧 sessionId + 实时文本」补发，待发记录随之作废，
       // 免得卸载时的补发把它重复报到新会话名下。
       pendingDraftRef.current = null;
+      // 换会话就是换了一份草稿：旧会话那次编辑的改写回执此刻「仍然是最新的一次」
+      // （`lastEditRequestIdRef` 只在输入时更新），若照单收下就会把旧会话的改写写进
+      // 新会话的输入框（#2950 B5）。两处基线一起清。
+      lastEditRequestIdRef.current = null;
+      lastEditExpectedTextRef.current = null;
+      lastEditDraftVersionRef.current = -1;
       const div = textareaRef.current;
       const text = div
         ? serializeInputDraft(div, draftImageScopeKey(prevSession, paneId))
@@ -902,6 +937,9 @@ export const MessageInput = forwardRef<
     ) {
       inputContentRef.current = inputContent ?? "";
       setMessage(inputContent ?? "");
+      // 草稿由宿主回填（切会话 / 首次挂载带草稿）：同样是一次改写草稿，在飞的
+      // `prompt.edit` 回执从此落在旧基线上（与上面清 requestId 是同一件事的两面）。
+      draftVersionRef.current++;
       // 内容由宿主回填、未经过用户输入：让光标位置追踪失效，否则新会话里第一次
       // 输入会撞上旧会话留下的偏移量而被判成「光标没动」，弹窗不再出现。
       lastSelectionChangePosRef.current = null;
@@ -964,6 +1002,7 @@ export const MessageInput = forwardRef<
       setMessage(prompt);
       // DOM 被整体替换（非用户输入），光标追踪随之失效。
       lastSelectionChangePosRef.current = null;
+      draftVersionRef.current++;
 
       // Update extension state
       vscode.postMessage({
@@ -998,6 +1037,7 @@ export const MessageInput = forwardRef<
       textareaRef.current.innerHTML = "";
       // DOM 被重建（非用户输入），光标追踪随之失效。
       lastSelectionChangePosRef.current = null;
+      draftVersionRef.current++;
 
       const chip = document.createElement("span");
       chip.className = "queued-edit-chip";
@@ -1139,6 +1179,8 @@ export const MessageInput = forwardRef<
   useEffect(() => {
     if (shouldClearInput) {
       setMessage("");
+      // 草稿被清空也是一次改写：在飞的 `prompt.edit` 回执不能再落进来。
+      draftVersionRef.current++;
       // Clear persisted input content
       vscode.postMessage({
         command: "updateInputContent",
@@ -1273,7 +1315,13 @@ export const MessageInput = forwardRef<
         tagSpan.innerText = `[@file:${filePath}]`;
 
         const root = ReactDOM.createRoot(tagSpan);
-        root.render(<ContextTag name={fileName} path={filePath} />);
+        // 同步提交：末尾那次 `input` 事件里 `handleInput` 会读 `innerText` 当镜像
+        // 文本（也随 `prompt.edit` 上报给插件）。渲染晚一步提交，读到的就是上面那句
+        // 内部占位符 `[@file:…]` —— 插件的拼写/改写会按标记串算偏移，一次改写落地
+        // 就把文件引用压成字面量（#2950 B2，与已修的图片粘贴同一个根因）。
+        flushSync(() => {
+          root.render(<ContextTag name={fileName} path={filePath} />);
+        });
 
         range.insertNode(tagSpan);
         range.setStartAfter(tagSpan);
@@ -1349,20 +1397,25 @@ export const MessageInput = forwardRef<
       tagSpan.innerText = `[Selection: ${selection.filePath}|${fileName}#${selection.startLine}-${selection.endLine}]`;
 
       const root = ReactDOM.createRoot(tagSpan);
-      root.render(
-        <ContextTag
-          name={displayName}
-          path={selection.filePath}
-          onClick={() => {
-            vscode.postMessage({
-              command: "openFile",
-              path: selection.filePath,
-              startLine: selection.startLine,
-              endLine: selection.endLine,
-            });
-          }}
-        />,
-      );
+      // 同步提交，理由同 `insertUploadedFilePaths`：下面紧接着派发的 `input`
+      // 事件会读 `innerText`，晚一步读到的是 `[Selection: …]` 这段内部标记
+      // （#2950 B2）。
+      flushSync(() => {
+        root.render(
+          <ContextTag
+            name={displayName}
+            path={selection.filePath}
+            onClick={() => {
+              vscode.postMessage({
+                command: "openFile",
+                path: selection.filePath,
+                startLine: selection.startLine,
+                endLine: selection.endLine,
+              });
+            }}
+          />,
+        );
+      });
 
       range.deleteContents();
       range.insertNode(tagSpan);
@@ -1600,6 +1653,9 @@ export const MessageInput = forwardRef<
       tagSpan.className = "context-tag-container"; // Wrapper for React component
       tagSpan.contentEditable = "false";
 
+      // 标签的 React 内容按分支先算出来，下面统一同步提交（#2950 B2）。
+      let tagContent: React.ReactElement;
+
       // 子代理条目：标签只留点名标记，判定与注入都在 SDK（spec
       // multi-agent/subagent.md「显式子代理调用」）。
       const agentName = file.agentName;
@@ -1609,8 +1665,8 @@ export const MessageInput = forwardRef<
         tagSpan.setAttribute("data-name", agentName);
         tagSpan.setAttribute("data-is-image", "false");
         tagSpan.innerText = `[@agent:${agentName}]`;
-        ReactDOM.createRoot(tagSpan).render(
-          <ContextTag name={agentName} path={`agent:${agentName}`} />,
+        tagContent = (
+          <ContextTag name={agentName} path={`agent:${agentName}`} />
         );
       } else {
         // IDE 上下文条目（@终端 / @问题）：不是文件引用，标签只留一个标记，内容
@@ -1625,8 +1681,8 @@ export const MessageInput = forwardRef<
           tagSpan.setAttribute("data-name", ideInfo.label);
           tagSpan.setAttribute("data-is-image", "false");
           tagSpan.innerText = ideContextMarker(ideProvider);
-          ReactDOM.createRoot(tagSpan).render(
-            <ContextTag name={ideInfo.label} path={`ide:${ideProvider}`} />,
+          tagContent = (
+            <ContextTag name={ideInfo.label} path={`ide:${ideProvider}`} />
           );
         } else {
           tagSpan.setAttribute("data-path", file.relativePath);
@@ -1635,11 +1691,15 @@ export const MessageInput = forwardRef<
 
           // 普通文件引用：图片文件也一样，不可点击、没有预览入口
           // （spec ui/file-selector.md 场景 1）。
-          ReactDOM.createRoot(tagSpan).render(
-            <ContextTag name={file.name} path={file.relativePath} />,
-          );
+          tagContent = <ContextTag name={file.name} path={file.relativePath} />;
         }
       }
+
+      // 同步提交，理由同 `insertUploadedFilePaths`：下面那次 `input` 会读
+      // `innerText`，晚一步提交读到的就是 `[@agent:…]` / `[@file:…]` / ide marker
+      // 这些内部标记，随 `prompt.edit` 报给插件（#2950 B2）。
+      const root = ReactDOM.createRoot(tagSpan);
+      flushSync(() => root.render(tagContent));
 
       // Locate the '@' + filter text to replace. Prefer the live DOM selection
       // when it still points into the input's text node (keyboard Enter): the
@@ -1880,6 +1940,9 @@ export const MessageInput = forwardRef<
         textareaRef.current.innerHTML = "";
         // 发送后静默清空：下一次从这里开始输入是「新的一次编辑」，光标追踪必须失效。
         lastSelectionChangePosRef.current = null;
+        // 刚打的那句话已经发出去了：在飞的 `prompt.edit` 回执若此刻落地，会在空
+        // 输入框里凭空复活一句旧话（同一份基线已被清空）。
+        draftVersionRef.current++;
         setMessage("");
         // Clear persisted input content
         vscode.postMessage({
@@ -2028,7 +2091,13 @@ export const MessageInput = forwardRef<
       ) {
         event.preventDefault();
         event.stopPropagation();
-        fillDraft({ text: modSuggestion.text, mode: "replace" });
+        // 建议只在**空草稿**上摆（判据在 ChatApp 的 `desktopModPromptSuggest`）。
+        // 摆上之后、按下 Tab 之前，草稿可能已被别人写过（`$.prompt.fill` 填了正文、
+        // 宿主回填），此刻再按建议整份替换 = 吃掉那份正文（#2950 B4）。只接受
+        // 「草稿仍然是空的」这一种情况，其余只撤建议。
+        if ((textareaRef.current?.innerText ?? "").trim() === "") {
+          fillDraft({ text: modSuggestion.text, mode: "replace" });
+        }
         onModSuggestionDismiss?.();
         return;
       }
@@ -2275,6 +2344,8 @@ export const MessageInput = forwardRef<
           const requestId = `prompt-edit-${++editSeqRef.current}`;
           const inputText = newValue.slice(start, newValue.length - suffix);
           lastEditRequestIdRef.current = requestId;
+          // 这一次编辑就是一份新草稿：版本 ++，并记下回执落地前它必须是哪个版本。
+          lastEditDraftVersionRef.current = ++draftVersionRef.current;
           // 插件没改写时回执的全文就是它；回执按这一份判「有没有改写」。
           lastEditExpectedTextRef.current =
             prevText.slice(0, start) +

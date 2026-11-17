@@ -21,6 +21,10 @@
  *     字面量 → 跑 `node scripts/audit-webview-commands.mjs` 会列出它在哪些宿主路由
  *     漏注册 → 逐个补齐（chat 类补 vscode_chat+desktop+jetbrains，设置页类还要补
  *     vscode settings 路由）。
+ *   - **别忘第五个宿主**：手机页（`packages/webview/remote/shim.js`）跑的是同一份
+ *     bundle，webview 在非桌面宿主发的命令它都会收到。要么给 shim 加 `case` 转中继，
+ *     要么登记进 shim 的 `UNSUPPORTED_NO_REPLY`（静默丢弃，不贴「还没有接通」）。
+ *     两条都占不上，3c 断言会红。
  *   - host 侧主动发起/遗留命令（webview 不发，如 getAuthStatus/getWorkflowRuns）：
  *     不会漏报；但若在 host 开关里新增一个 webview 永不发送的 case，本脚本会红，
  *     需把它登记进 LEGACY_HOST_CASES（附注释）或删除该 case。
@@ -221,6 +225,62 @@ const HANDLED_OFF_SWITCH = {
   ]),
 };
 
+/**
+ * 手机页（第五个宿主）**收得到但没人接**的命令 —— 3c 断言的豁免表，按原因分组。
+ *
+ * 3c 的口径：webview 在非桌面宿主会发的命令，shim 必须二选一 —— 有 `case`（真的
+ * 转中继）或登记在 shim 的 `UNSUPPORTED_NO_REPLY`（明确「这一端没有」，静默丢弃）。
+ * 两条都不占就落到 `default:`，把「这个操作在 Web 端还没有接通：X」贴到屏幕顶上。
+ * 断言是 2026-11-18 补的（#2950 B1 的根因：`modPromptEdit` 每次编辑都无条件发，
+ * 而 shim 没接、审计又查不到第五宿主）。**补的时候只修了那一条**，其余按当时的
+ * 实测结论登记在这里，没有再往下改（详见 #2950 审计报告）：
+ *
+ *   - 前四组是静态扫描的**误报**（发送点自身有门控，脚本看不出来），
+ *   - 最后一组是**真老账**：手机页真会发，只是本期不修。
+ *
+ * 新命令落进 `default:` 时不要顺手往这里塞 —— 先判断它在手机页到底可不可达：
+ * 可达就得给 shim 一个说法（转中继或静默），不可达才归到上面那几组里。
+ */
+const REMOTE_PAGE_UNREACHABLE = [
+  {
+    reason:
+      "回执类：只在收到同族的宿主消息后才发，而手机页收不到那族消息（mods 一期只做桌面端）",
+    commands: [
+      "modCopyResult",
+      "modPromptFillResult",
+      "modPromptReadResult",
+      "modPromptSuggestResult",
+    ],
+  },
+  {
+    reason:
+      "桌面全页设置 / 插件端设置页外壳专属：手机页没有设置页（ChatApp 的 settingsPage 只在 isDesktop 时渲染）",
+    commands: [
+      "getAgentsContent",
+      "getConfiguration",
+      "getProjectSettings",
+      "setAgentsContent",
+      "setBuiltinPluginEnabled",
+      "updateConfiguration",
+    ],
+  },
+  {
+    reason:
+      "发送点被宿主能力判断挡住：手机页不渲染设置入口（MoreMenu）/ 没有编辑器上下文（isIdeContextAvailable）",
+    commands: ["openSettings", "requestIdeContext"],
+  },
+  {
+    reason:
+      "发送点被 !isRemotePage 的宿主本地命令拦截挡住（/reload-plugins、/plan 在手机页不拦截）",
+    commands: ["planCommand", "reloadPlugins"],
+  },
+  {
+    reason:
+      "老账（真可达、本期未修）：手机页上传/粘贴被拒时这条错误消息没人接，用户看到的是「还没有接通」红条而不是原因",
+    commands: ["showError"],
+  },
+];
+
 // ────────────────────────────────────────────────────────────────────────────
 // 工具：剥注释（保留字符串与代码，仅把注释替换成空白，行号对齐便于报错）
 // ────────────────────────────────────────────────────────────────────────────
@@ -403,6 +463,30 @@ function collectHostCases() {
   return result;
 }
 
+/**
+ * 手机页 shim 的静默表（`UNSUPPORTED_NO_REPLY`）：这些命令 shim 收到后**明确
+ * 丢弃、不播报**（「这一端本来就没有这个东西」）。3c 把它与 `case` 一起算作
+ * 「shim 对这条命令有说法」。只扫表体，`showStatus` 的文案里也可能出现命令名。
+ */
+function collectShimSilent() {
+  const silent = new Set();
+  const shim = stripComments(readFileSync(REMOTE_PAGE_SHIM, "utf8"));
+  const start = shim.indexOf("var UNSUPPORTED_NO_REPLY = {");
+  const end = shim.indexOf("\n  };", start);
+  if (start === -1 || end === -1) {
+    console.error(
+      `  ! ${REMOTE_PAGE_SHIM.replace(ROOT, "")} 里找不到 UNSUPPORTED_NO_REPLY，手机页静默表无法核对`,
+    );
+    process.exitCode = 1;
+    return silent;
+  }
+  for (const m of shim
+    .slice(start, end)
+    .matchAll(/^\s+([A-Za-z][A-Za-z0-9_]*):/gm))
+    silent.add(m[1]);
+  return silent;
+}
+
 // ────────────────────────────────────────────────────────────────────────────
 // 3) 断言
 // ────────────────────────────────────────────────────────────────────────────
@@ -492,12 +576,58 @@ function main() {
     }
   }
 
+  // 3c) 第五个宿主：webview 在非桌面宿主会发的命令，shim 必须有说法
+  //
+  // 手机页加载的是同一份 bundle（同 entry、同 ChatApp），所以这里「webview 会发」
+  // 就等于「手机页会收到」—— 除非发送点自己有门控（静态看不出来，见
+  // REMOTE_PAGE_UNREACHABLE）。收得到却没人接 ⇒ 落到 shim 的 `default:` ⇒ 屏幕
+  // 顶上贴一条「这个操作在 Web 端还没有接通」（#2950 B1：`modPromptEdit` 每次
+  // 编辑都发，手机页敲第一个字就弹，而这个断言当时不存在，所以审计一直绿）。
+  //
+  // 排除「设置页外壳」：`Settings*View` 只在设置页挂载，手机页没有设置页
+  // （ChatApp 的 `settingsPage` 只在 `isDesktop` 时渲染），它的命令进不了 shim。
+  const shimSilent = collectShimSilent();
+  const unReachable = new Map();
+  for (const group of REMOTE_PAGE_UNREACHABLE) {
+    for (const c of group.commands) unReachable.set(c, group.reason);
+  }
+  for (const [cmd, surfaces] of surfacesByCmd) {
+    if (cmd.startsWith("desktop") || DESKTOP_GATED_NON_PREFIX.has(cmd))
+      continue;
+    if (!surfaces.chat.length && !surfaces.chrome.length) continue;
+    if (unReachable.has(cmd)) continue;
+    if (hostCases.remote_page.has(cmd) || shimSilent.has(cmd)) continue;
+    problems.push(
+      `  [手机页] ${cmd.padEnd(24)} webview 会无条件发它，但 ${REMOTE_PAGE_SHIM.replace(ROOT, "")}\n` +
+        `         既没有 case（转中继），也没登记进 UNSUPPORTED_NO_REPLY（静默丢弃）\n` +
+        `         ⇒ 手机上每发一次就在屏幕顶上贴一条「这个操作在 Web 端还没有接通：${cmd}」\n` +
+        `         webview 发送方: ${[...senderByCmd.get(cmd)].join(", ")}\n` +
+        `         修法：要么给 shim 加 case 转中继，要么加进静默表（附一句为什么这一端没有）；\n` +
+        `         确认手机页根本不可达才登记进脚本 REMOTE_PAGE_UNREACHABLE。`,
+    );
+  }
+  // 3c 的反向：豁免表里的条目必须仍然「既没 case 也没静默」且 webview 还在发，
+  // 否则那条豁免就是过期注释，删掉它（留着会掩盖后来新接上的 case）。
+  for (const [cmd, reason] of unReachable) {
+    if (!senderByCmd.has(cmd)) {
+      problems.push(
+        `  [过期豁免] REMOTE_PAGE_UNREACHABLE 登记了 webview 已不再发送的命令 "${cmd}"（${reason}）。请删掉该条目。`,
+      );
+    } else if (hostCases.remote_page.has(cmd) || shimSilent.has(cmd)) {
+      problems.push(
+        `  [过期豁免] REMOTE_PAGE_UNREACHABLE 登记了 "${cmd}"，但 shim 已经接住了它（case 或静默表）。请删掉该条目。`,
+      );
+    }
+  }
+
   // 汇报
   console.log(
     `webview→host 命令审计（${universe.size} 条 webview 发送命令，${checked} 条路由要求）`,
   );
   if (problems.length) {
-    console.log(`\n✗ 发现 ${problems.length} 处路由漏接/死注册：\n`);
+    console.log(
+      `\n✗ 发现 ${problems.length} 处路由漏接 / 死注册 / 手机页无说法：\n`,
+    );
     console.log([...new Set(problems)].join("\n"));
     process.exit(1);
   }
@@ -510,6 +640,9 @@ function main() {
     );
   }
   console.log("✓ host 独有 case 全部登记在 legacy 豁免清单");
+  console.log(
+    `✓ 手机页（shim）对 webview 会发的命令都有说法（case / 静默表 / ${unReachable.size} 条已核对不可达）`,
+  );
 }
 
 main();
