@@ -11,12 +11,13 @@
   max-width: 800px;
   margin: 0 auto;
   padding: 12px 14px;
-  border: 1px solid var(--vscode-inputValidation-warningBorder, #e6a23c);
+  /* 底色跟 composer 同一块面板（提示就摆在输入框的位置上），警示只靠左侧 3px
+     竖条表达——`--vscode-inputValidation-warningBackground` 在本主题下是整片
+     芥末黄，铺满整卡会把它变成横幅警报，与旁边正常的对话格格不入。 */
+  border: 1px solid var(--cc-border, var(--vscode-widget-border));
+  border-left: 3px solid var(--vscode-inputValidation-warningBorder, #e6a23c);
   border-radius: 8px;
-  background-color: var(
-    --vscode-inputValidation-warningBackground,
-    rgba(230, 162, 60, 0.08)
-  );
+  background-color: var(--vscode-panel-background);
 }
 
 .session-folder-recovery-text {
