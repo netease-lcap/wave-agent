@@ -295,6 +295,77 @@ describe("AIManager", () => {
     });
   });
 
+  it("keeps the last quota headers for $.session.usage(), merging field-wise", async () => {
+    // `$.session.usage().rateLimits` 读的是「现在多少」，所以最后一次读数必须留在
+    // manager 上，而不是随着宿主回调一闪而过。
+    vi.mocked(aiService.callAgent).mockImplementationOnce(async () => ({
+      content: "Test response",
+      usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
+      tool_calls: [],
+      response_headers: {
+        "x-codechat-quota-status": "allowed",
+        "x-codechat-quota-weekly-utilization": "0.25",
+        "x-codechat-quota-weekly-reset": "1767225600",
+      },
+    }));
+    const manager = new AIManager(container, {
+      workdir: "/test/workdir",
+      stream: false,
+    });
+
+    expect(manager.getLastQuotaHeaders()).toBeUndefined();
+    await manager.sendAIMessage();
+    expect(manager.getLastQuotaHeaders()).toEqual({
+      "x-codechat-quota-status": "allowed",
+      "x-codechat-quota-weekly-utilization": "0.25",
+      "x-codechat-quota-weekly-reset": "1767225600",
+    });
+
+    // 头按维度按需发：这次判定降到 API 维度，只带 `api-*`。整批覆盖会让上一条
+    // 已知的周窗口消失（rateLimits 突然变空），所以必须是按字段合并。
+    vi.mocked(aiService.callAgent).mockImplementationOnce(async () => ({
+      content: "Test response",
+      usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
+      tool_calls: [],
+      response_headers: {
+        "x-codechat-quota-status": "allowed_warning",
+        "x-codechat-quota-api-limit": "unlimited",
+        "x-codechat-quota-api-used": "12",
+      },
+    }));
+    await manager.sendAIMessage();
+    expect(manager.getLastQuotaHeaders()).toEqual({
+      "x-codechat-quota-status": "allowed_warning",
+      "x-codechat-quota-weekly-utilization": "0.25",
+      "x-codechat-quota-weekly-reset": "1767225600",
+      "x-codechat-quota-api-limit": "unlimited",
+      "x-codechat-quota-api-used": "12",
+    });
+  });
+
+  it("keeps quota headers carried by an error response as well", async () => {
+    // 402 / 429 那一次的头同样是有效读数（「被拦下」正是最该报窗口的时刻）。
+    vi.mocked(aiService.callAgent).mockImplementationOnce(async () => {
+      throw Object.assign(new Error("weekly quota exceeded"), {
+        headers: new Headers({
+          "x-codechat-quota-status": "rejected",
+          "x-codechat-quota-weekly-utilization": "1",
+        }),
+      });
+    });
+    const manager = new AIManager(container, {
+      workdir: "/test/workdir",
+      stream: false,
+    });
+
+    await manager.sendAIMessage();
+
+    expect(manager.getLastQuotaHeaders()).toEqual({
+      "x-codechat-quota-status": "rejected",
+      "x-codechat-quota-weekly-utilization": "1",
+    });
+  });
+
   it("does not send disableThinkingOptions in the agent loop", async () => {
     await aiManager.sendAIMessage();
     const options = vi.mocked(aiService.callAgent).mock.calls[0][0];

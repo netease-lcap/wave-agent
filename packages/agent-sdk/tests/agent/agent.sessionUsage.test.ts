@@ -40,6 +40,15 @@ function pin(
   });
 }
 
+/** 钉住 AIManager 上「最后一次额度头」——`getSessionUsage()` 的唯一额度来源。 */
+function pinQuotaHeaders(agent: Agent, headers?: Record<string, string>) {
+  const { aiManager } = agent as unknown as { aiManager: object };
+  vi.spyOn(
+    aiManager as { getLastQuotaHeaders: () => unknown },
+    "getLastQuotaHeaders",
+  ).mockReturnValue(headers);
+}
+
 describe("Agent getSessionUsage ($.session.usage 的数据源)", () => {
   let activeAgent: Agent | undefined;
 
@@ -102,6 +111,56 @@ describe("Agent getSessionUsage ($.session.usage 的数据源)", () => {
       context: { tokens: 0, window: 200_000, percent: 0 },
       tokens: { prompt: 0, completion: 0, cacheRead: 0, cacheCreation: 0 },
     });
+  });
+
+  it("把额度头解析成窗口：kind 用上游的 weekly / monthly，resetsAt 从 unix 秒换成毫秒", async () => {
+    const agent = await Agent.create({ workdir });
+    activeAgent = agent;
+    pin(agent, { latestTotalTokens: 0, usages: [] });
+    pinQuotaHeaders(agent, {
+      "x-codechat-quota-status": "allowed_warning",
+      "x-codechat-quota-weekly-utilization": "0.625",
+      "x-codechat-quota-weekly-reset": "1767225600", // 2026-01-01T00:00:00Z
+      // 月窗口没有 utilization：按 used / limit 现算 400 / 1000 = 40%。
+      "x-codechat-quota-monthly-used": "400",
+      "x-codechat-quota-monthly-limit": "1000",
+      "x-codechat-quota-monthly-reset": "1769904000",
+    });
+
+    expect(agent.getSessionUsage().rateLimits).toEqual([
+      { kind: "weekly", percentUsed: 62.5, resetsAt: 1_767_225_600_000 },
+      { kind: "monthly", percentUsed: 40, resetsAt: 1_769_904_000_000 },
+    ]);
+  });
+
+  it("没有可算比例的窗口就不报（unlimited / api 余额），超额夹在 100", async () => {
+    const agent = await Agent.create({ workdir });
+    activeAgent = agent;
+    pin(agent, { latestTotalTokens: 0, usages: [] });
+    pinQuotaHeaders(agent, {
+      "x-codechat-quota-status": "allowed",
+      // 周窗口不限额：没有分母，也没有 utilization，这个窗口整个不报。
+      "x-codechat-quota-weekly-limit": "unlimited",
+      "x-codechat-quota-weekly-used": "50",
+      // 月窗口超额：字段契约是 0–100，夹住而不是透传 105。
+      "x-codechat-quota-monthly-utilization": "1.05",
+      // `api-*` 是充值余额（没有重置时刻），不是额度窗口。
+      "x-codechat-quota-api-limit": "unlimited",
+      "x-codechat-quota-api-used": "12",
+    });
+
+    expect(agent.getSessionUsage().rateLimits).toEqual([
+      { kind: "monthly", percentUsed: 100 },
+    ]);
+  });
+
+  it("一个额度头都没有时是空数组（私有化 / 自定义网关的真实读法）", async () => {
+    const agent = await Agent.create({ workdir });
+    activeAgent = agent;
+    pin(agent, { latestTotalTokens: 0, usages: [] });
+    pinQuotaHeaders(agent, undefined);
+
+    expect(agent.getSessionUsage().rateLimits).toEqual([]);
   });
 
   it("构造时就把这个取数点接到 ModManager 上", async () => {

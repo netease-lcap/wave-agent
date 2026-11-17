@@ -694,7 +694,7 @@ describe("ModRuntime 的交互路由", () => {
     );
   });
 
-  it("$.ui.invalidate 只认 ui.render，别的目标当场报错", async () => {
+  it("$.ui.invalidate 只认认识的渲染站点，别的目标当场报错", async () => {
     // 参数是**渲染站点的生产者**，不是面板 id：面板用 `$.ui.open({ id })` 指定。
     // 老写法 `$.ui.invalidate("p1")` 在 Claude Code 里也是错的，这里不静默接受。
     const { host: hostApi, mod } = runtime(`
@@ -710,6 +710,25 @@ describe("ModRuntime 的交互路由", () => {
     expect(result.ok).toBe(false);
     expect(JSON.stringify(result)).toContain("ui.render");
     expect(hostApi.invalidate).not.toHaveBeenCalled();
+  });
+
+  it("$.ui.invalidate 也认 tool.describe，并原样交给宿主", async () => {
+    // 工具行上那段描述也是「生产者 → 站点」的一条：mod 改了自己的工具描述后
+    // 要能叫那一行重画，否则只能等下一次整屏刷新。
+    const { host: hostApi, mod } = runtime(`
+      exports.register = function ($, on) {
+        on("session.start", function () {
+          $.ui.invalidate("ui.render");
+          $.ui.invalidate("tool.describe");
+        });
+      };
+    `);
+
+    await mod.load();
+    const result = await mod.callHook("session.start", {});
+    expect(result.ok).toBe(true);
+    expect(hostApi.invalidate).toHaveBeenNthCalledWith(1, "ui.render");
+    expect(hostApi.invalidate).toHaveBeenNthCalledWith(2, "tool.describe");
   });
 
   it("Button 与 Input 撞 key 时按交互种类各自路由", async () => {
@@ -2860,6 +2879,309 @@ describe("兼容社区 mod（spec「兼容社区 mod」）", () => {
     const result = await mod.callHook("session.start", {});
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error).toMatch(/一次只能调一次/);
+  });
+
+  it("next.event 是这次派发的事件名；next.is 认 on() 认的那套模式", async () => {
+    const { mod } = runtime(`
+      exports.register = function ($, on) {
+        on("classic.PreToolUse", function (e, next) {
+          return {
+            event: next.event,
+            own: next.is("classic.PreToolUse", e),
+            other: next.is("classic.PostToolUse", e),
+            glob: next.is("classic.*", e),
+          };
+        });
+      };
+    `);
+
+    await mod.load();
+    await expect(
+      mod.callHook("classic.PreToolUse", { tool_name: "Bash" }),
+    ).resolves.toMatchObject({
+      ok: true,
+      value: {
+        event: "classic.PreToolUse",
+        own: true,
+        other: false,
+        glob: true,
+      },
+    });
+  });
+
+  it('next.is 不认我们在派发侧还不支持的模式（"*" / 别的 glob / 取反），当场报错', async () => {
+    // 认下来但派发侧不支持 = 让 mod 静默跳过自己该管的活；答 false 也一样难查。
+    const { mod } = runtime(`
+      exports.register = function ($, on) {
+        on("session.start", function (e, next) {
+          var out = [];
+          ["*", "tool.*", "!tool.*", "nope.event"].forEach(function (pattern) {
+            try {
+              next.is(pattern, e);
+              out.push(pattern + ":no-error");
+            } catch (err) {
+              out.push(pattern + ":" + (err.message.indexOf("只认 on() 也认的模式") !== -1 ? "refused" : "other"));
+            }
+          });
+          return out.join(" | ");
+        });
+      };
+    `);
+
+    await mod.load();
+    await expect(mod.callHook("session.start", {})).resolves.toMatchObject({
+      ok: true,
+      value:
+        "*:refused | tool.*:refused | !tool.*:refused | nope.event:refused",
+    });
+  });
+
+  it("next.origin：引擎发起是 {engine, core}，callHook 能把发起者换掉", async () => {
+    const { mod } = runtime(`
+      exports.register = function ($, on) {
+        on("session.start", function (e, next) {
+          return next.origin;
+        });
+      };
+    `);
+
+    await mod.load();
+    await expect(mod.callHook("session.start", {})).resolves.toMatchObject({
+      ok: true,
+      value: { plugin: "engine", tier: "core" },
+    });
+    await expect(
+      mod.callHook(
+        "session.start",
+        {},
+        {
+          origin: { plugin: "todo", tier: "user" },
+        },
+      ),
+    ).resolves.toMatchObject({
+      ok: true,
+      value: { plugin: "todo", tier: "user" },
+    });
+  });
+
+  it("$.tool.check / $.tool.call 把自己的身份交给宿主（origin 的第二实参）", async () => {
+    const { mod, host: hostApi } = runtime(`
+      exports.register = function ($, on) {
+        on("session.start", async function () {
+          await $.tool.check({ tool: "Bash" });
+          await $.tool.call({ tool: "Bash" });
+        });
+      };
+    `);
+
+    await mod.load();
+    await mod.callHook("session.start", {});
+    // 发起者是**这个 mod**（tier 是我们唯一的那一层 user），不是引擎。
+    expect(hostApi.checkTool).toHaveBeenCalledWith(
+      { tool: "Bash" },
+      { plugin: "todo", tier: "user" },
+    );
+    expect(hostApi.callTool).toHaveBeenCalledWith(
+      { tool: "Bash" },
+      { plugin: "todo", tier: "user" },
+    );
+  });
+
+  it("next.budget 是这一层自己的额度：next() 串到另一个 mod 时它拿到新的一份满额", async () => {
+    vi.useFakeTimers();
+    // 睡眠走宿主（沙箱里没有 setTimeout）：`.sleep` 不暂停本层预算，所以它真的
+    // 从这层的 5 秒里扣时间。
+    const sleep = (ms: number) =>
+      new Promise<void>((resolve) => setTimeout(resolve, ms));
+    const outer = runtime(
+      `
+      exports.register = function ($, on) {
+        on("session.start", async function (e, next) {
+          var started = next.budget.remainingMs;
+          await $.clock.sleep(3000);
+          var spent = next.budget.remainingMs;
+          var inner = await next(e);
+          return { started: started, spent: spent, inner: inner };
+        });
+      };
+    `,
+      { host: host({ sleep }) },
+    );
+    const inner = runtime(`
+      exports.register = function ($, on) {
+        on("session.start", function (e, next) {
+          return { ms: next.budget.ms, remainingMs: next.budget.remainingMs };
+        });
+      };
+    `);
+
+    await outer.mod.load();
+    await inner.mod.load();
+    const pending = outer.mod.callHook(
+      "session.start",
+      {},
+      {
+        engine: async () => inner.mod.callHook("session.start", {}),
+      },
+    );
+    await vi.advanceTimersByTimeAsync(3000);
+
+    const answer = await pending;
+    expect(answer.ok).toBe(true);
+    const seen = answer.ok
+      ? (answer.value as {
+          started: number;
+          spent: number;
+          inner: { ok: boolean; value: { ms: number; remainingMs: number } };
+        })
+      : undefined;
+    // 外层那份在自己的 handler 里是真的在走：睡了 3 秒，读数掉了。
+    expect(seen?.started).toBe(MOD_LIMITS.hookTimeoutMs);
+    expect(seen?.spent).toBeGreaterThan(0);
+    expect(seen?.spent).toBeLessThan(MOD_LIMITS.hookTimeoutMs);
+    // 每层各一份：内层读到的仍是完整的一份 5 秒，不是外层扣剩下的。
+    expect(seen?.inner.value.ms).toBe(MOD_LIMITS.hookTimeoutMs);
+    expect(seen?.inner.value.remainingMs).toBe(MOD_LIMITS.hookTimeoutMs);
+  });
+
+  it("next() 在飞时本层停表：外层 3 秒 + 内层 3 秒，两层都不超时", async () => {
+    vi.useFakeTimers();
+    const sleep = (ms: number) =>
+      new Promise<void>((resolve) => setTimeout(resolve, ms));
+    const outer = runtime(
+      `
+      exports.register = function ($, on) {
+        on("session.start", async function (e, next) {
+          await $.clock.sleep(3000);
+          return next(e);
+        });
+      };
+    `,
+      { host: host({ sleep }) },
+    );
+    const inner = runtime(
+      `
+      exports.register = function ($, on) {
+        on("session.start", async function () {
+          await $.clock.sleep(3000);
+          return { done: true };
+        });
+      };
+    `,
+      { host: host({ sleep }) },
+    );
+
+    await outer.mod.load();
+    await inner.mod.load();
+    let nested: Awaited<ReturnType<typeof inner.mod.callHook>> | undefined;
+    const pending = outer.mod.callHook(
+      "session.start",
+      {},
+      {
+        engine: async () => {
+          nested = await inner.mod.callHook("session.start", {});
+          return nested;
+        },
+      },
+    );
+    // 外层睡 3 秒 → 交棒时停表；内层自己再睡 3 秒 = 自己的钟只走了 3 秒。
+    await vi.advanceTimersByTimeAsync(3000);
+    await vi.advanceTimersByTimeAsync(3000);
+
+    // 整条链走了 6 秒，越过一个 5 秒 —— 但没有哪一层自己被扣满 5 秒。
+    await expect(pending).resolves.toMatchObject({ ok: true });
+    expect(nested).toMatchObject({ ok: true });
+  });
+
+  it("next.trace 是这条链上已经跑完的层（只读快照，外层能看到内层）", async () => {
+    const { mod } = runtime(`
+      exports.register = function ($, on) {
+        on("session.start", async function (e, next) {
+          var before = next.trace.length;
+          await next(e);
+          var after = next.trace;
+          return {
+            before: before,
+            size: after.length,
+            frozenArray: Object.isFrozen(after),
+            entry: after[0],
+          };
+        });
+        on("session.start", function (e, next) {
+          return { innerSees: next.trace.length };
+        });
+      };
+    `);
+
+    await mod.load();
+    const result = await mod.callHook("session.start", {});
+    expect(result).toMatchObject({
+      ok: true,
+      value: {
+        before: 0,
+        size: 1,
+        frozenArray: true,
+        entry: {
+          index: 0,
+          plugin: "todo",
+          tier: "user",
+          event: "session.start",
+          outcome: "returned",
+        },
+      },
+    });
+    if (result.ok) {
+      const entry = (result.value as { entry: { ms: number } }).entry;
+      expect(entry.ms).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  it("next.trace 的 outcome：下面那层抛了没人接是 rejected，接了是 caught", async () => {
+    const rejected = runtime(`
+      exports.register = function ($, on) {
+        on("session.start", async function (e, next) {
+          try {
+            await next(e);
+            return { message: "no-error" };
+          } catch (err) {
+            return { message: err.message, outcome: next.trace[0].outcome };
+          }
+        });
+        on("session.start", function () {
+          throw new Error("boom");
+        });
+      };
+    `);
+
+    await rejected.mod.load();
+    await expect(
+      rejected.mod.callHook("session.start", {}),
+    ).resolves.toMatchObject({
+      ok: true,
+      value: { message: "boom", outcome: "rejected" },
+    });
+
+    const caught = runtime(`
+      exports.register = function ($, on) {
+        on("session.start", async function (e, next) {
+          await next(e);
+          return { outcome: next.trace[0].outcome };
+        });
+        on("session.start", function () {
+          throw new Error("boom");
+        }).catch(function () {
+          return { rescued: true };
+        });
+      };
+    `);
+
+    await caught.mod.load();
+    await expect(
+      caught.mod.callHook("session.start", {}),
+    ).resolves.toMatchObject({
+      ok: true,
+      value: { outcome: "caught" },
+    });
   });
 
   it("matcher 按事件字段分流：ui.render 的站点、tool.call 的工具名", async () => {

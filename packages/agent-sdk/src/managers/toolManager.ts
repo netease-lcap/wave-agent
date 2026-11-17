@@ -244,6 +244,15 @@ class ToolManager {
   private describeStaged = new Map<string, string>();
   /** 这一轮已经问过的工具（含还在飞的）—— 一轮一个工具只问一次。 */
   private describeAsked = new Set<string>();
+  /**
+   * 上一次看到的「描述缓存被声明过期」次数
+   * （`ModManager.toolDescribeInvalidationCount`）。
+   *
+   * 插件调 `$.ui.invalidate("tool.describe")` 时我们这边不收到回调 —— 缓存挂在
+   * 两个 manager 手里，互相持有会成环 —— 所以每次拼表先比对一次这个数：变了就
+   * 说明有插件声明它给的描述过期了，重问一遍。
+   */
+  private describeInvalidations = 0;
 
   constructor(options: ToolManagerOptions) {
     this.container = options.container;
@@ -1234,6 +1243,21 @@ class ToolManager {
   }
 
   /**
+   * 让会话级的描述缓存过期：下一次拼工具表时每个工具都重问一遍
+   * （`$.ui.invalidate("tool.describe")`，spec「给工具、技能、命令写描述」）。
+   *
+   * 只清 `describeAsked`，**不**清 `describeStaged` / `describePinned`：后两者的
+   * 区别是「手上最新的答案」与「本轮已经发出去的那一份」，而
+   * `rollDescribeEpoch` 是整份**替换**（`pinned = new Map(staged)`）—— 清空
+   * staged 会让下一轮**所有**工具的描述一起退回宿主给的原文，而不只是声明过期
+   * 的那几个。旧答案留着由重问来的新值覆盖，与 `breakPromptCache: true` 的处理
+   * 完全一致（那一条同样只 delete `describeAsked`）。
+   */
+  clearDescribeCache(): void {
+    this.describeAsked.clear();
+  }
+
+  /**
    * 一个工具要发给模型的描述：这一轮 pin 的快照里有就用它，没有的用宿主自己
    * 的；这个工具还没问过就问一次（异步落地，供**下一轮**用）。
    *
@@ -1253,6 +1277,17 @@ class ToolManager {
       typeof modManager.collectToolDescription !== "function"
     ) {
       return base;
+    }
+    // 插件声明过描述过期（`$.ui.invalidate("tool.describe")`）：把「问过没」清
+    // 掉，下面这一段就会把每个工具重问一遍。比的是计数而不是「装没装过回调」，
+    // 因为声明可能发生在第一次拼工具表之前（mod 在 `session.start` 里就会这么
+    // 干），那时装配还没轮到 ToolManager 这边。
+    if (typeof modManager.toolDescribeInvalidationCount === "function") {
+      const invalidations = modManager.toolDescribeInvalidationCount();
+      if (invalidations !== this.describeInvalidations) {
+        this.describeInvalidations = invalidations;
+        this.clearDescribeCache();
+      }
     }
     if (!this.describeAsked.has(name)) {
       this.describeAsked.add(name);

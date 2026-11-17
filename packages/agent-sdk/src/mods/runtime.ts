@@ -12,6 +12,9 @@ import type {
   ModFsAncestor,
   ModFsEntry,
   ModFsStat,
+  ModHookBudget,
+  ModHookNext,
+  ModHookOrigin,
   ModModelCompleteResult,
   ModPromptBox,
   ModRunOptions,
@@ -31,6 +34,8 @@ import type {
   ModSettingsSource,
   ModToolCheckDecision,
   ModToolRegisterSpec,
+  ModTraceEntry,
+  ModTraceOutcome,
   ModUiCopyResult,
   ModUiViewResult,
   ModUiOpenResult,
@@ -800,8 +805,8 @@ export interface ModDollar {
      */
     panes(): Promise<string[]>;
     /**
-     * 「我这个 mod 画的东西过期了」——参数是**渲染站点的生产者**，一期只有
-     * `"ui.render"`（spec「用户交互的结果」）。
+     * 「我这个 mod 画的东西过期了」——参数是**渲染站点的生产者**：`"ui.render"`
+     * （spec「用户交互的结果」）或 `"tool.describe"`（工具行上那段描述）。
      *
      * 不是面板 id：一次调用作用于该 mod 的**所有**站点，面板与输入框上方那条
      * 带都重画。带平时只在 surface 挂载时拉一次，没有这条通道就只能永远停在
@@ -1109,6 +1114,11 @@ export interface ModDollar {
      *
      * 只跑 `tool.check` 那条链，**不执行工具**：基底是 `allow`（没有真实调用
      * 就没有宿主的决定），链上只会让它更严或更松。
+     *
+     * 发起者（`next.origin`）由宿主按「发起这次 `$` 调用的那个 mod」派生，**不
+     * 是参数**：Claude Code 的 `Origin` 写的是 "Set by the host alone … nothing
+     * a plugin writes reaches it"，让我们收一个 origin 只会邀请作者伪造
+     * `{ plugin: "engine", tier: "core" }`。
      */
     check(request: {
       tool: string;
@@ -1119,7 +1129,7 @@ export interface ModDollar {
      * 问一次工具面」）。
      *
      * 同样不执行工具：链尾在这条路上没有宿主侧执行体，`next(e)` 走到尾是空对
-     * 象，所以返回里没有 `{ result }`。
+     * 象，所以返回里没有 `{ result }`。发起者同 {@link check}。
      */
     call(request: {
       tool: string;
@@ -1196,6 +1206,12 @@ export interface ModRuntimeHost {
    * 由宿主入口决定，见 {@link renderSurfacesOf}。
    */
   surfaces(): readonly ModRenderSurface[];
+  /**
+   * `$.ui.invalidate`：某个渲染站点的生产者过期了。
+   *
+   * runtime 已经按白名单（`"ui.render"` / `"tool.describe"`）卡过参数，这里收到
+   * 什么就照着重画什么，不要再自己猜别的站点名。
+   */
   invalidate(target: string): void;
   /** 输入框下方那一行常驻状态；`null` 清除（spec「状态带、状态行与提示」）。 */
   setStatus(text: string | null): void;
@@ -1296,22 +1312,31 @@ export interface ModRuntimeHost {
    * **不执行工具**，也不读权限规则：没有真实调用就没有宿主的决定，基底按
    * `allow` 起算，链上只会让它更严或更松。要看真实决定得在 `tool.check` 事件
    * 里看 —— 那时 `decision` 是规则与权限模式算出来的。
+   *
+   * `origin` 原样进这条链的 `next.origin`：`$` 主动问的那次是 `{ plugin: mod 名,
+   * tier: "user" }`，与引擎自己发起的 `{ plugin: "engine", tier: "core" }` 区分开。
    */
-  checkTool(request: {
-    tool: string;
-    input?: unknown;
-  }): Promise<{ decision: ModToolCheckDecision; reason?: string }>;
+  checkTool(
+    request: {
+      tool: string;
+      input?: unknown;
+    },
+    origin: ModHookOrigin,
+  ): Promise<{ decision: ModToolCheckDecision; reason?: string }>;
   /**
    * `$.tool.call`：跑一遍 `tool.call` + `classic.PreToolUse` 链（spec「主动问
    * 一次工具面」）。
    *
    * 同样**不执行工具**：链尾在 mod 主动发起时没有宿主侧执行体，`next(e)` 走到
-   * 尾是空对象。想真的做事用 `$.process` / `$.fs` / `$.http`。
+   * 尾是空对象。想真的做事用 `$.process` / `$.fs` / `$.http`。`origin` 同上。
    */
-  callTool(request: {
-    tool: string;
-    input?: unknown;
-  }): Promise<{ deny?: string }>;
+  callTool(
+    request: {
+      tool: string;
+      input?: unknown;
+    },
+    origin: ModHookOrigin,
+  ): Promise<{ deny?: string }>;
   /**
    * `$.agent.spawn`：派一个子代理，resolve 在它**started** 之后（spec「派子
    * 代理」）。
@@ -1551,6 +1576,22 @@ const MATCHER_EVENTS = new Set([
 
 /** 控件交互事件的三个名字（`plugin` 是钉住的 matcher 键）。 */
 const UI_CONTROL_EVENTS = new Set(["ui.press", "ui.input", "ui.select"]);
+/**
+ * matcher 里用的字段名 → 事件的字段名。
+ *
+ * 社区按 Claude Code 的字段名写 matcher（`requestId` 是渲染请求的实例 id），
+ * 我们的事件里那个字段叫 `instance_id`（与 CC 的 `ui_render` 消息同形）。
+ */
+const MATCHER_KEY_ALIASES: Record<string, string> = {
+  // 只有 `requestId` 这一条：它是同一个字段在 CC 的两处不同名字（钩子事件
+  // 叫 `requestId`、`ui_render` 消息叫 `instance_id`）。
+  //
+  // 事件之间**不做别名**：`agent.offer` 的字段是 `agent`、`agent.spawn` 的是
+  // `subagentType`（CC 那两个事件各自的名字），一个 matcher 写哪把钥匙就只
+  // 能开对应的那把锁 —— 给 `spawn` 补一条 `agent → subagentType` 会让同一份
+  // matcher 在两个事件上表现不一致，那是 CC 面外的行为。
+  requestId: "instance_id",
+};
 
 /**
  * 事件的字段名就是 Claude Code 钩子事件里的名字（`ui.render` 的实例 id 叫
@@ -1582,6 +1623,74 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
  * 监听不会报错，只是永远等不到 abort。
  */
 const NEVER_ABORTED = new AbortController().signal;
+
+/**
+ * 我们这一版所有 mod 所在的层（见 `ModTier`）。
+ *
+ * 全同层：Claude Code 的 `prepend` / `user` / `append` / `builtin` / `core` 五档
+ * 我们只有「引擎自己」与「所有 mod」两档，后者正好等于 CC 的 `user`。别在这里
+ * 长出别的值 —— 那些档位要真的有让位语义才有意义。
+ */
+const MOD_TIER = "user" as const;
+
+/**
+ * 引擎自己发起派发时的 `next.origin`（CC 里同一个字面值）。
+ *
+ * `ModManager` 的几条派发入口也用它当缺省值，所以导出 —— 但**不进公共面**：
+ * `src/mods/index.ts` 不转发 `runtime.ts` 的导出，mod 的 `wave-agent-sdk/mods`
+ * 里看不到这个名字。
+ */
+export const ENGINE_ORIGIN: ModHookOrigin = Object.freeze({
+  plugin: "engine",
+  tier: "core",
+});
+
+/** `on()` 认的唯一 glob（`classic.*`）——`next.is` 认的 glob 也就是它。 */
+const CLASSIC_GLOB = "classic.*";
+
+/** `$.ui.invalidate` 认的渲染站点生产者。 */
+const INVALIDATE_TARGETS = new Set(["ui.render", "tool.describe"]);
+
+/**
+ * 当前这一层的时间预算（`next.budget` 与暂停/恢复都读它）。
+ *
+ * **一层一份**：`ModRuntime.runWithBudget` 在每次派发时新建，`AsyncLocalStorage`
+ * 的嵌套语义让内层覆盖外层、返回后自动恢复外层。放模块级而不是实例字段，是因为
+ * 跨 mod 的链长这样 —— A 的钩子在 `next()` 里调起 B 的 `callHook`，B 是**另一个**
+ * `ModRuntime` 实例，实例字段在那边根本看不见。同一条链跑在同一个异步上下文里，
+ * 所以并发的两条链各拿各的那份，不会互相扣时间。
+ */
+const chainBudget = new AsyncLocalStorage<HookBudget>();
+
+/**
+ * 一条链上各层共用的东西：谁发起的、跑的是哪个事件、已经跑过哪些层。
+ *
+ * 递归的 `runChainStream` 每往下一层就多传一个实参太散，打包成一个对象：
+ * `origin` 一出入口就定死，`trace` 是这条链唯一的那个数组（各层读同一份，
+ * 谁跑完谁往里 push）。
+ */
+interface ChainScope {
+  readonly origin: ModHookOrigin;
+  /**
+   * 这条链跑的是哪个事件。
+   *
+   * 跨 mod 的链是 `ModManager` 逐个 mod 各调一次 `callHook` 串起来的，那边认
+   * 「还是同一条链」的唯一依据就是这个事件名：`$.ui.ask` 这类在钩子里顺手派发
+   * 的别的事件属于另一条链，不该把自己的层混进上面那条的 `trace`。
+   */
+  readonly event: string;
+  readonly trace: ModTraceEntry[];
+}
+
+/**
+ * 当前这条链的 {@link ChainScope}（`next.trace` / `next.origin` 读它）。
+ *
+ * 与 `chainBudget` 同一个理由：`tool.call` 这种链是 `ModManager` 按 mod 循环、
+ * 每层调一次 `callHook` 串起来的，B 的钩子跑在**另一个** `ModRuntime` 实例上，
+ * 放实例字段就看不见 A 已经跑完的层。而 Claude Code 的 trace 是整条链的一份
+ * （跨插件也算），社区 mod 靠它回答「下面是谁炸的」，所以只能挂在异步上下文上。
+ */
+const chainScope = new AsyncLocalStorage<ChainScope>();
 
 /** `on(...)` 的返回值：只有社区的 `.catch(fn)` 一种用法。 */
 interface HookRegistration {
@@ -1657,7 +1766,11 @@ function matchesEvent(
 ): boolean {
   if (!matcher) return true;
   if (!isPlainObject(event)) return false;
-  for (const [key, expected] of Object.entries(matcher)) {
+  for (const [rawKey, expected] of Object.entries(matcher)) {
+    // 事件自己有这个键就按字面用它 —— 别名只在事件缺这个键时兜底（同一字段
+    // 的两个名字，不是两个事件之间的换算）。
+    const key =
+      rawKey in event ? rawKey : (MATCHER_KEY_ALIASES[rawKey] ?? rawKey);
     const actual = event[key];
     if (Array.isArray(expected)) {
       if (!expected.some((value) => matcherValueMatches(key, value, actual))) {
@@ -1878,8 +1991,15 @@ export class ModRuntime {
   private readonly elements: ModElementTable;
   /** 按端裁剪后的表：`$.ui.resolve(e)` 按 `e.surface` 取这一份。 */
   private readonly elementsBySurface: Readonly<Record<string, ModElementTable>>;
-  /** 当前正在计时的预算（`$.process.spawn` 等输出时会被暂停）。 */
-  private budget: HookBudget | undefined;
+  /**
+   * 当前这条链的预算（`next.budget` 读它；`$.process.spawn` 等输出时也暂停它）。
+   *
+   * 从 `chainBudget` 现取而不是自己存一个字段：链是「A 的钩子调起 B 的钩子」这
+   * 样跨实例走下来的，每个实例各自存一份就回到「每个 mod 各 5 秒」的老样子。
+   */
+  private get budget(): HookBudget | undefined {
+    return chainBudget.getStore();
+  }
   /** `$.fs` 的实现，惰性创建：多数 mod 一次都不碰文件。 */
   private fileApiHolder: ModFs | undefined;
 
@@ -2014,9 +2134,9 @@ export class ModRuntime {
         // 会让 `.then` 当场报错。
         panes: async () => [...host.listPanes()],
         invalidate: (target) => {
-          if (target !== "ui.render") {
+          if (!INVALIDATE_TARGETS.has(target)) {
             throw new Error(
-              `$.ui.invalidate 只认 "ui.render"（一期只有这一个渲染站点生产者），拿到的是 ${JSON.stringify(target)}`,
+              `$.ui.invalidate 只认 ${[...INVALIDATE_TARGETS].map((item) => JSON.stringify(item)).join(" 与 ")}（参数是渲染站点的生产者，不是面板 id），拿到的是 ${JSON.stringify(target)}`,
             );
           }
           host.invalidate(target);
@@ -2303,12 +2423,14 @@ export class ModRuntime {
           ),
         // 方法形态的两个探针（spec「主动问一次工具面」）：只跑链、不执行工具。
         // 与 `register` 一样要过预算闸 —— 它们会跑别的 mod 的钩子，那 5 秒上限
-        // 是整条链的事，不是「谁发起」的事。
+        // 是整条链的事，不是「谁发起」的事。发起者是**这个 mod**（`next.origin`
+        // 的 `tier: "user"`）：链上的守卫要靠它认出「这是插件自己来问的」。
         check: (request) =>
           this.withBudget(() => {
             this.assertNotNestedHook("tool.check", "$.tool.check");
             return host.checkTool(
               normalizeToolProbeRequest(request, "$.tool.check"),
+              { plugin: host.pluginName, tier: MOD_TIER },
             );
           }),
         call: (request) =>
@@ -2316,6 +2438,7 @@ export class ModRuntime {
             this.assertNotNestedHook("tool.call", "$.tool.call");
             return host.callTool(
               normalizeToolProbeRequest(request, "$.tool.call"),
+              { plugin: host.pluginName, tier: MOD_TIER },
             );
           }),
       },
@@ -2592,9 +2715,10 @@ export class ModRuntime {
     event: unknown,
     engine: (finalEvent: unknown) => unknown,
     signal: AbortSignal,
+    scope: ChainScope,
   ): Promise<unknown> {
     return drainHookStream(
-      this.runChainStream(name, entries, start, event, engine, signal),
+      this.runChainStream(name, entries, start, event, engine, signal, scope),
     );
   }
 
@@ -2609,6 +2733,10 @@ export class ModRuntime {
    * 什么」也是「下游中途产出了什么」。宿主用 `gen.next()` 循环驱动（见
    * `ModManager.dispatchTurnStep`），所以 `next()` 返回的东西必须同时是
    * thenable（`await next(e)`）与 async iterable（`yield* next(e)`）。
+   *
+   * 每一层跑完往 `scope.trace` 里留一条（`next.trace` 读它）；一层抛错又没人
+   * `.catch` 时也留一条 `rejected` 再往上抛 —— 外面那层接住之后读 `next.trace`
+   * 就能看见「下面是谁炸的」。
    */
   private async *runChainStream(
     name: string,
@@ -2617,6 +2745,7 @@ export class ModRuntime {
     event: unknown,
     engine: (finalEvent: unknown) => unknown,
     signal: AbortSignal,
+    scope: ChainScope,
   ): AsyncGenerator<unknown, unknown> {
     for (let index = start; index < entries.length; index += 1) {
       const entry = entries[index]!;
@@ -2625,34 +2754,30 @@ export class ModRuntime {
       /** 已经交给下层的那次调用的结果（`.catch` 里的重放要用）。 */
       let nextResult: HookStream | undefined;
       const callNext = (nextEvent?: unknown) => {
-        nextResult = new HookStream(
-          this.runChainStream(
-            name,
-            entries,
-            index + 1,
-            nextEvent === undefined ? event : nextEvent,
-            engine,
-            signal,
-          ),
+        // 交给下游期间本层停表：Claude Code 的 `HookBudget` 写的是「`next(e)`
+        // 或这个钩子的任何 `$` 调用在飞时，钟不走」——下游有几个 mod、跑多久
+        // 都不该算进本层的 5 秒。不暂停的话「A 交给 B，B 自己花 4 秒」会让 A
+        // 也吃 4 秒，A 的 `next.budget.remainingMs` 读出来是个假数。
+        const budget = chainBudget.getStore();
+        const inner = this.runChainStream(
+          name,
+          entries,
+          index + 1,
+          nextEvent === undefined ? event : nextEvent,
+          engine,
+          signal,
+          scope,
         );
+        nextResult = new HookStream(budget ? pauseWhile(inner, budget) : inner);
         return nextResult;
       };
-      const next = Object.assign(
-        (nextEvent?: unknown) => {
-          if (nextCalled) {
-            throw new Error("next(e) 一次只能调一次：再调会让同一条链跑两遍");
-          }
-          nextCalled = true;
-          return callNext(nextEvent);
-        },
-        {
-          /**
-           * 整条调用被放弃时 abort（会话销毁、插件重载）。长等待挂在它上面，
-           * 才能在会话没了的时候收手。
-           */
-          signal,
-        },
-      );
+      const next = this.hookNext(name, signal, scope, (nextEvent) => {
+        if (nextCalled) {
+          throw new Error("next(e) 一次只能调一次：再调会让同一条链跑两遍");
+        }
+        nextCalled = true;
+        return callNext(nextEvent);
+      });
       try {
         const outcome = await this.invokeInContext<unknown>(
           entry.handler,
@@ -2663,45 +2788,114 @@ export class ModRuntime {
           `${name} 的处理函数`,
           `${this.host.pluginName}:${name}`,
         );
-        return yield* asHookStream(outcome);
+        // 生成器钩子（`turn.step` 那几个）在这一句里才真的跑完，所以先接完流
+        // 再记账：`trace` 的 `ms` 覆盖的是这一层从头到尾的时间，不是「函数被
+        // 调用」那一下。
+        const settled = yield* asHookStream(outcome);
+        scope.trace.push(this.traceEntry(name, "returned", scope));
+        return settled;
       } catch (error) {
-        if (!entry.onError) throw error;
-        if (!entry.isCommunityError) {
-          return yield* asHookStream(
-            await this.invokeInContext<unknown>(
-              entry.onError,
-              undefined,
-              [error],
-              `${name} 的 catch`,
-              `${this.host.pluginName}:${name}`,
-            ),
-          );
+        if (!entry.onError) {
+          scope.trace.push(this.traceEntry(name, "rejected", scope));
+          throw error;
         }
         // 社区 `.catch(($, e, next) => …)`：这里的 `next` 多两样东西 ——
         // `error`（为什么失败）与 `called`（失败之前有没有调过 `next`）。
         // 调过就**重放**那次调用的结果，不把下面的链再跑一遍（CC 的 `Caught`）。
+        // 我们自己的形状没有 `$`，但事件与 `next` 照给：spec 写的是「兜底与它
+        // 所在的那条钩子同形状」（`(e, next)`），只塞一个 `error` 会让仓外的
+        // 自家插件在兜底里拿不到任何上下文。
         const caught = Object.assign(
-          (nextEvent?: unknown) => {
+          this.hookNext(name, signal, scope, (nextEvent) => {
             if (nextCalled) return nextResult ?? Promise.resolve({});
             nextCalled = true;
             return callNext(nextEvent);
-          },
-          { signal, error, called: nextCalled },
+          }),
+          { error, called: nextCalled },
         );
-        return yield* asHookStream(
-          await this.invokeInContext<unknown>(
+        let fallback: unknown;
+        try {
+          fallback = await this.invokeInContext<unknown>(
             entry.onError,
             undefined,
-            [this.dollar, event, caught],
+            entry.isCommunityError
+              ? [this.dollar, event, caught]
+              : [event, caught],
             `${name} 的 catch`,
             `${this.host.pluginName}:${name}`,
-          ),
-        );
+          );
+        } catch (handlerError) {
+          // 兜底自己也炸了：这一层的结局还是「抛了」。
+          scope.trace.push(this.traceEntry(name, "rejected", scope));
+          throw handlerError;
+        }
+        scope.trace.push(this.traceEntry(name, "caught", scope));
+        return yield* asHookStream(fallback);
       }
     }
     // 引擎帧按**走到这里的那份事件**算：`next({ ...e, context })` 改过的内容
     // 必须在链尾出现，否则注入静默失效。
     return await engine(event);
+  }
+
+  /**
+   * 造一帧 `next`（见 {@link ModHookNext}）。
+   *
+   * `trace` / `budget` 必须**每次读取现算**（链还在往下跑、预算在走），所以走
+   * `defineProperties` 而不是 `Object.assign` —— 后者会把 getter 读成常量。
+   */
+  private hookNext(
+    name: string,
+    signal: AbortSignal,
+    scope: ChainScope,
+    call: (nextEvent?: unknown) => unknown,
+  ): ModHookNext {
+    const next = Object.assign((nextEvent?: unknown) => call(nextEvent), {
+      signal,
+      event: name,
+      origin: scope.origin,
+      is: (pattern: string) => selectedByPattern(pattern, name),
+    });
+    Object.defineProperties(next, {
+      trace: {
+        get: () => Object.freeze([...scope.trace]),
+        enumerable: true,
+      },
+      budget: {
+        get: () => budgetSnapshot(chainBudget.getStore()),
+        enumerable: true,
+      },
+    });
+    // `trace` / `budget` 由上面那两个 getter 提供，TS 看不见 `defineProperties`
+    // 加上的成员 —— 这里补一次类型（要先过 `unknown`，否则 TS 判两个类型不重叠），
+    // 成员本身在上面已经齐了。
+    return next as unknown as ModHookNext;
+  }
+
+  /** `next.trace` 的一条（见 {@link ModTraceEntry}）。 */
+  /**
+   * `next.trace` 的一条（见 {@link ModTraceEntry}）。
+   *
+   * `ms` 报的是**这一层自己**花了多久：`next()` 在飞（下游那几个 mod 在跑）、
+   * `$` 调用在等的时候本层的钟是停的（见 {@link HookBudget}）。按墙钟算会把
+   * 下游的时间也算到外层头上，读 `next.trace` 的人会以为这一层自己跑了那么久。
+   */
+  private traceEntry(
+    event: string,
+    outcome: ModTraceOutcome,
+    scope: ChainScope,
+  ): ModTraceEntry {
+    const budget = chainBudget.getStore();
+    return Object.freeze({
+      // 按「第几个跑完」编号而不是 entry 的下标：matcher 没选中的不算一层，
+      // 用下标会留下洞（CC 的 `index` 也是「在链上的位置」）。
+      index: scope.trace.length,
+      plugin: this.host.pluginName,
+      tier: MOD_TIER,
+      event,
+      outcome,
+      ms: budget ? budget.ms - budget.remainingMs : 0,
+    });
   }
 
   /**
@@ -2780,6 +2974,9 @@ export class ModRuntime {
    * `options.engine` 换掉「链尾」—— `tool.call` 的链尾不是空对象，而是「交给
    * 下一个 mod」与「真正执行这次调用」（见 `ModManager`）。
    * `options.signal` 就是 `next.signal`：整条调用被放弃时 abort。
+   * `options.origin` 是谁发起了这次派发（`next.origin`）：缺省是引擎自己
+   * `{ plugin: "engine", tier: "core" }`，某个 mod 用 `$` 主动进链时由那条路径
+   * 传 `{ plugin: <那个 mod>, tier: "user" }`。
    */
   async callHook(
     name: string,
@@ -2787,6 +2984,7 @@ export class ModRuntime {
     options: {
       engine?: (finalEvent: unknown) => unknown;
       signal?: AbortSignal;
+      origin?: ModHookOrigin;
     } = {},
   ): Promise<ModHookResult> {
     const entries = this.matchingHooks(name, event);
@@ -2796,12 +2994,29 @@ export class ModRuntime {
     const engine =
       options.engine ?? ((e: unknown) => this.engineFrame(name, e));
     const signal = options.signal ?? NEVER_ABORTED;
+    // 已经在这条链上（同一个事件名、同一条异步上下文）就接着用那一份：`origin`
+    // 只在链入口定一次，`trace` 各层往里 push 同一个数组。
+    const inherited = chainScope.getStore();
+    const scope: ChainScope =
+      inherited && inherited.event === name
+        ? inherited
+        : {
+            // `next.origin` 整条链共享，必须冻住：不冻的话上游 mod 在 vm 里一句
+            // `next.origin.plugin = "engine"` 就能让下游读到伪造的发起者，
+            // 而 Claude Code 的 `Origin` 明确是 "Set by the host alone …
+            // nothing a plugin writes reaches it"。
+            origin: Object.freeze({ ...(options.origin ?? ENGINE_ORIGIN) }),
+            event: name,
+            trace: [],
+          };
     const running = this.hookContext.getStore() ?? [];
     try {
       const value = await this.hookContext.run([...running, name], () =>
-        this.runWithBudget(
-          `${name} 钩子超过 ${MOD_LIMITS.hookTimeoutMs}ms`,
-          () => this.runChain(name, entries, 0, event, engine, signal),
+        chainScope.run(scope, () =>
+          this.runWithBudget(
+            `${name} 钩子超过 ${MOD_LIMITS.hookTimeoutMs}ms`,
+            () => this.runChain(name, entries, 0, event, engine, signal, scope),
+          ),
         ),
       );
       return { ok: true, value, elapsedMs: Date.now() - started };
@@ -2831,18 +3046,28 @@ export class ModRuntime {
       return { ok: true, value: undefined, elapsedMs: 0 };
     const started = Date.now();
     this.commandHookDepth += 1;
+    // `command.run` 不从别的链里进来（宿主派发命令是入口），所以直接起一份新的；
+    // 仍挂进上下文，好让命令钩子里 `$.tool.call` 之类派发出去的链认得自己的父级。
+    const scope: ChainScope = {
+      origin: ENGINE_ORIGIN,
+      event: "command.run",
+      trace: [],
+    };
     try {
-      const value = await this.runWithBudget(
-        `${command} 的命令钩子超过 ${MOD_LIMITS.hookTimeoutMs}ms`,
-        () =>
-          this.runChain(
-            "command.run",
-            entries,
-            0,
-            event,
-            (e) => this.engineFrame("command.run", e),
-            NEVER_ABORTED,
-          ),
+      const value = await chainScope.run(scope, () =>
+        this.runWithBudget(
+          `${command} 的命令钩子超过 ${MOD_LIMITS.hookTimeoutMs}ms`,
+          () =>
+            this.runChain(
+              "command.run",
+              entries,
+              0,
+              event,
+              (e) => this.engineFrame("command.run", e),
+              NEVER_ABORTED,
+              scope,
+            ),
+        ),
       );
       return { ok: true, value, elapsedMs: Date.now() - started };
     } catch (error) {
@@ -2890,30 +3115,35 @@ export class ModRuntime {
   /**
    * 在一份可暂停的预算里跑 mod 的代码（spec「限额」的 5 秒）。
    *
-   * `this.budget` 是当前正在计时的那个：`$.process.spawn` 的迭代在等输出时
-   * 通过它暂停/恢复（见 {@link streamWithBudget}）。钩子不嵌套调用，所以只需
-   * 记一层，恢复回上一个即可。
+   * **每次派发一份**，与 Claude Code 的 `HookBudget.ms` 同一个口径（那个类型
+   * 写的是 "A hook's budget per dispatch, from its call to its return"）：A 的
+   * 钩子里 `next()` 到 B，B 拿的是**自己**的 5 秒，A 的钟在 B 跑的时候停着
+   * （见 {@link runChainStream} 里的 `callNext`）。
+   *
+   * 曾经试过「整条链共用一份」：那是把 `NextBudget` 的注释读成了「链级」——
+   * 它只在 `session.end` 这种「整个派发统一限时」的场合才指整条链。共用一份
+   * 的后果是链一长、里面还真要跑工具（`tool.call` 的链尾就是工具执行体），
+   * 额度会先被钩子耗光，然后工具超时、外层再跑一遍（`runTool` 的 memo 守卫
+   * 那时还拿不到结果）。所以这里按「每层一份」建，链的总时长可以超过 5 秒。
+   *
+   * `chainBudget` 仍然要用：`this.budget`（`$.process.spawn` 等输出、`$` 调用
+   * 在飞时的暂停）从里面现取。`AsyncLocalStorage` 的嵌套语义正好给出「每层
+   * 一份、内层覆盖外层、返回后恢复外层」，不用自己维护栈。
    */
   private async runWithBudget<T>(
     message: string,
     work: () => Promise<T> | T,
   ): Promise<T> {
     const budget = new HookBudget(MOD_LIMITS.hookTimeoutMs, message);
-    const outer = this.budget;
-    this.budget = budget;
-    try {
-      return await withBudget(budget, work);
-    } finally {
-      this.budget = outer;
-    }
+    return chainBudget.run(budget, () => withBudget(budget, work));
   }
 
   /**
    * 包一层「等输出不算预算」的进程流。
    *
    * 暂停/恢复发生在**每一次** `next()` 上：mod 可能把迭代器留到钩子返回之后
-   * 再用（`$.clock.every` 里一拍读一次），那时 `this.budget` 已经是别的预算或
-   * 没有预算，暂停就自然不生效。
+   * 再用（`$.clock.every` 里一拍读一次），那时整条链早结束了、`chainBudget` 里
+   * 没有值，暂停就自然不生效（那条链的 5 秒也不再计）。
    *
    * 手写迭代器而不是 `async *`：mod 对这层调 `return()`（Cancel 按钮）时，必须
    * 立刻转给内层的 pull/close 协议去杀进程。写成生成器的话 `return()` 会被排在
@@ -3173,40 +3403,71 @@ function moduleCandidates(target: string): string[] {
  * 时，停在「等下一块输出」上的时间是**空闲**，不是失控的循环。只把 mod 自己
  * 干活的时间算进 5 秒里，否则「起一个连接、逐块消费」这种最正常的写法一动就
  * 超时。这与 Claude Code 把 `process.spawn` 的预算标成 `pull` 是同一条规则。
+ *
+ * 一份预算对应**一层**（一次派发，见 `ModRuntime.runWithBudget`）：
+ * `ms` / `remainingMs` 就是 `next.budget` 的两个字段。
  */
 class HookBudget {
-  private remainingMs: number;
+  private leftMs: number;
   private timer: NodeJS.Timeout | undefined;
   private armedAt = 0;
   private paused = false;
+  /**
+   * 嵌套的暂停有几层。
+   *
+   * mod 并发调两个 `$` 方法（`Promise.all([$.fs.read(a), $.fs.read(b)])`）时，
+   * 两个 `withBudget` 会各自 pause 一次：先回来的那个若直接 resume，另一个还在
+   * 飞就已经重新计时，本该不计的空闲被算进 5 秒里，写起来最正常的并发读会莫名
+   * 超时。只有最外层那次恢复才真正开表。
+   */
+  private pauseDepth = 0;
   private stopped = false;
   private rejectExpiry!: (error: Error) => void;
   /** 到期时 reject；调用方拿它和实际工作 race。 */
   readonly expiry: Promise<never>;
 
   constructor(
-    private readonly totalMs: number,
+    /** 这一层这次派发的总预算（`next.budget.ms`）。 */
+    readonly ms: number,
     private readonly message: string,
   ) {
-    this.remainingMs = totalMs;
+    this.leftMs = ms;
     this.expiry = new Promise<never>((_, reject) => {
       this.rejectExpiry = reject;
     });
     this.arm();
   }
 
+  /**
+   * 现在还剩多少（`next.budget.remainingMs`），下限 0。
+   *
+   * 暂停中或已停表时读的是定格那一刻的快照：`$` 调用、等进程输出这些「不是
+   * mod 自己在跑」的时间不该从这条链里扣，读数也就该停在那儿。
+   */
+  get remainingMs(): number {
+    const left =
+      this.paused || this.stopped
+        ? this.leftMs
+        : this.leftMs - (Date.now() - this.armedAt);
+    return Math.max(0, left);
+  }
+
   pause(): void {
-    if (this.stopped || this.paused) return;
+    if (this.stopped) return;
+    this.pauseDepth += 1;
+    if (this.pauseDepth > 1) return;
     this.paused = true;
-    this.remainingMs -= Date.now() - this.armedAt;
+    this.leftMs -= Date.now() - this.armedAt;
     this.clear();
   }
 
   resume(): void {
-    if (this.stopped || !this.paused) return;
+    if (this.stopped || this.pauseDepth === 0) return;
+    this.pauseDepth -= 1;
+    if (this.pauseDepth > 0) return;
     this.paused = false;
     // 暂停期间已经超了：立刻到期，不必再等一轮。
-    if (this.remainingMs <= 0) {
+    if (this.leftMs <= 0) {
       this.fire();
       return;
     }
@@ -3215,13 +3476,16 @@ class HookBudget {
 
   /** 工作结束（成功或失败）：停表。 */
   stop(): void {
+    // 先定格剩下的时间：链结束后 `next` 还挂在 mod 手里，那时再读 `budget`
+    // 该读到「结束那一刻还剩多少」，而不是一个继续往下走的数。
+    this.leftMs = this.remainingMs;
     this.stopped = true;
     this.clear();
   }
 
   private arm(): void {
     this.armedAt = Date.now();
-    this.timer = setTimeout(() => this.fire(), this.remainingMs);
+    this.timer = setTimeout(() => this.fire(), this.leftMs);
     this.timer.unref?.();
   }
 
@@ -3234,21 +3498,86 @@ class HookBudget {
 
   private fire(): void {
     this.clear();
+    this.leftMs = this.remainingMs;
     this.stopped = true;
     this.rejectExpiry(new Error(this.message));
   }
 }
 
-/** 把一份工作跑在预算里：到期即以 `message` 失败。 */
+/** 把一份工作跑在预算里：到期即以 `message` 失败，结束时停表。 */
 async function withBudget<T>(
   budget: HookBudget,
   work: () => Promise<T> | T,
 ): Promise<T> {
   try {
-    return await Promise.race([Promise.resolve().then(work), budget.expiry]);
+    return await raceBudget(budget, work);
   } finally {
     budget.stop();
   }
+}
+
+/**
+ * 把工作时长和「到期」赛跑，**不停表**（停表是调用方 `withBudget` 的事）。
+ *
+ * 工作正常结束时由调用方 `stop()` 定格；先到期就是这一层失败，`remainingMs`
+ * 停在 0。
+ */
+async function raceBudget<T>(
+  budget: HookBudget,
+  work: () => Promise<T> | T,
+): Promise<T> {
+  return await Promise.race([Promise.resolve().then(work), budget.expiry]);
+}
+
+/**
+ * 把下游那条流跑在「本层预算暂停」的状态里（`next(e)` 在飞的那段时间）。
+ *
+ * 写成生成器而不是 `await` 包一层：`next()` 的返回值既是 thenable 也是 async
+ * iterable（见 {@link HookStream}），`yield*` 写法的 mod 走的是迭代器那条路，
+ * 用 `promise.finally` 包的话那条路根本不会触发恢复 —— 本层的钟会永远停着，
+ * 5 秒再也不到期。`finally` 对「跑完 / 抛错 / 被 `return()` 取消」三种收场都成立。
+ */
+async function* pauseWhile<T>(
+  gen: AsyncGenerator<unknown, T>,
+  budget: HookBudget,
+): AsyncGenerator<unknown, T> {
+  budget.pause();
+  try {
+    return yield* gen;
+  } finally {
+    budget.resume();
+  }
+}
+
+/** `next.budget` 的读数：读一次算一次（见 `ModHookBudget`）。 */
+function budgetSnapshot(budget: HookBudget | undefined): ModHookBudget {
+  // 不在链上（钩子把 `next` 存下来、链早跑完了，或压根是引擎侧的直接调用）：
+  // 按 Claude Code 的口径报「没人计量」—— `ms` 0、`remainingMs` 无穷。
+  if (!budget) return { ms: 0, remainingMs: Number.POSITIVE_INFINITY };
+  return { ms: budget.ms, remainingMs: budget.remainingMs };
+}
+
+/**
+ * `next.is(pattern, e)` 的判定（见 `ModHookNext.is`）。
+ *
+ * 运行时只看**这次派发的事件名**；`e` 在 Claude Code 那边就是类型收窄的载体
+ * （`e is Frozen<Args<Selected<M>>>`），运行期不参与判定 —— 所以这里也不该因为
+ * 「`e` 不是对象」答 `false`：那会让 `next.is("tool.call")`（漏传第二参）静默
+ * 变成「不是」，正好是难查的那种失效。
+ *
+ * 认的 pattern 与 `on()` 完全一致：事件名，或 `classic.*`（`on()` 唯一认的
+ * glob）。CC 的 `"*"` 与 `"!tool.*"` 我们派发侧还不支持 —— 认下来等于让 mod
+ * 静默跳过自己该管的活，所以当场抛错，比答 `false` 更容易查。
+ */
+function selectedByPattern(pattern: string, eventName: string): boolean {
+  if (!(pattern === CLASSIC_GLOB || HOOK_NAMES.has(pattern))) {
+    throw new Error(
+      `next.is 只认 on() 也认的模式（事件名或 "${CLASSIC_GLOB}"），拿到的是 ${JSON.stringify(pattern)}`,
+    );
+  }
+  return pattern === CLASSIC_GLOB
+    ? eventName.startsWith("classic.")
+    : pattern === eventName;
 }
 
 /**

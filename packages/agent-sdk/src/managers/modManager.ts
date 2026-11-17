@@ -4,6 +4,7 @@ import { homedir } from "node:os";
 import { compileMods, type ModSourceFile } from "../mods/compile.js";
 import { ModProcessManager } from "../mods/processes.js";
 import {
+  ENGINE_ORIGIN,
   ModRuntime,
   errorMessage,
   isThenable,
@@ -23,6 +24,7 @@ import {
   type ModCommandBridge,
   type ModCommandSpec,
   type ModConfigRow,
+  type ModHookOrigin,
   type ModModelCompleteResult,
   type ModPromptEditEvent,
   type ModPromptSuggestEvent,
@@ -414,6 +416,18 @@ type ModValueHookName =
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
+
+/**
+ * 本文件驱动的是**跨 mod 的链**：一次 `callHook` 只问一个 mod，链上的下一层由
+ * 这里 `for` 循环再叫起来，所以发起者只能由入口一路传下去。引擎执行工具、引擎
+ * 算提示词段时发起者是引擎（`ENGINE_ORIGIN`，与 `ModRuntime` 共用同一个冻结
+ * 常量）；mod 用 `$.tool.check` / `$.tool.call` / `$.agent.spawn` 主动进链时换成
+ * 它自己（`{ plugin: <插件名>, tier: "user" }`，由 `ModRuntimeHost` 的第二实参
+ * 带进来）。链上的守卫靠这个值区分「这是引擎在执行」还是「这是插件自己来问的」。
+ *
+ * 别和事件体里的 `e.origin` 混：那是 `prompt.suggest` 的「谁提的建议」
+ * （`{ kind: "plugin" | "suggestion", name? }`），语义完全不同。
+ */
 
 /**
  * 把我们的消息转成 mods 面看到的形状（spec「会话消息」）。
@@ -868,6 +882,16 @@ export class ModManager {
    * 按**插件**而不是按 mod 数：一个插件拆成三个 mod，用户看的还是这一个插件。
    */
   private readonly modModelCalls = new Map<string, number>();
+  /**
+   * `$.ui.invalidate("tool.describe")` 被声明过多少次（只增不减）。
+   *
+   * 缓存本体在 `ToolManager`（工具表是它拼的），而它每次拼表都会去容器里取本
+   * manager —— 两边互相持有会成环（与 `ModToolBridge` 同一条理由），所以这里只
+   * 留一个单调计数当「过期记号」：`ToolManager` 上一次看到的值变了就重问。
+   * 用计数而不是回调，是因为记账天然覆盖「还没人拼过工具表时就声明过期」这种
+   * 先后顺序（mod 在 `session.start` 里就会这么干）。
+   */
+  private toolDescribeInvalidations = 0;
   private disposed = false;
 
   constructor(private readonly options: ModManagerOptions) {
@@ -1071,7 +1095,7 @@ export class ModManager {
               closePane: (paneId) => this.closePane(mod.id, paneId),
               listPanes: () => this.listPanes(mod.id),
               surfaces: () => this.facts.surfaces(),
-              invalidate: () => this.invalidate(mod.id),
+              invalidate: (target) => this.invalidate(mod.id, target),
               setStatus: (text) => this.publishStatus(mod.id, text),
               showToast: (text, timeoutMs) =>
                 this.publishToast(mod.id, text, timeoutMs),
@@ -1119,8 +1143,11 @@ export class ModManager {
               listAgentInfos: () => this.facts.agentInfos(),
               registerTool: (spec) =>
                 this.registerModTool(mod.id, plugin.name, spec),
-              checkTool: (request) => this.checkModTool(request),
-              callTool: (request) => this.callModTool(request),
+              // 第二实参是发起这次询问的 mod 自己（`next.origin` 的
+              // `tier: "user"`）：链上的守卫靠它认出「这是插件自己来问的」。
+              checkTool: (request, origin) =>
+                this.checkModTool(request, origin),
+              callTool: (request, origin) => this.callModTool(request, origin),
               spawnAgent: (args) =>
                 this.spawnModAgent(mod.id, plugin.name, args),
               completeModel: (request) =>
@@ -1395,17 +1422,24 @@ export class ModManager {
       signal?: AbortSignal;
       /** 链尾的执行体：`next(e)` 走到最后一个 mod 之后调它，返回这次调用的结果。 */
       run?: () => Promise<unknown>;
+      /**
+       * 谁发起了这次派发（见 {@link ENGINE_ORIGIN}）：引擎执行工具时缺省，mod
+       * 用 `$.tool.call` 自己来问时是它自己（见 `callModTool`）。
+       */
+      origin?: ModHookOrigin;
     } = {},
   ): Promise<ModToolCallDecision> {
     if (this.disposed) return {};
     // 链尾把结果包成 `{ result }`：mod 的 `await next(e)` 读 `below.result` 就是
     // 这次调用的结果（与它自己 `return { result }` 的形状一致）。
     const run = options.run;
+    const origin = options.origin ?? ENGINE_ORIGIN;
     const decision = await this.runToolHookChain(
       "tool.call",
       event,
       run ? { run: async () => ({ result: await run() }) } : {},
       options.signal,
+      origin,
     );
     if (decision.deny !== undefined) return { deny: decision.deny };
     if ("result" in decision) return { result: decision.result };
@@ -1416,6 +1450,7 @@ export class ModManager {
       event as ModClassicPreToolUseEvent,
       {},
       options.signal,
+      origin,
     );
     return classic.deny === undefined ? {} : { deny: classic.deny };
   }
@@ -1483,6 +1518,8 @@ export class ModManager {
     event: unknown,
     tail: (event: unknown) => Promise<unknown>,
     signal?: AbortSignal,
+    /** 谁发起了这次派发（见 {@link ENGINE_ORIGIN}）：`$.agent.spawn` 是那个 mod。 */
+    origin: ModHookOrigin = ENGINE_ORIGIN,
   ): Promise<{ deny?: string; value?: { model: string; agentId?: string } }> {
     if (this.disposed) return {};
     const loaded = [...this.mods.values()].filter((item) => item.runtime);
@@ -1497,6 +1534,7 @@ export class ModManager {
         let inner: unknown;
         const result = await runtime.callHook("agent.spawn", current, {
           signal,
+          origin,
           engine: async (nextEvent) => {
             // `next()` 不带参数 = 「按现在这份继续」。漏了兜底，下层收到的是
             // `undefined`，链尾也按 `tail(undefined)` 算，整段事件凭空消失
@@ -1595,6 +1633,8 @@ export class ModManager {
       current: unknown,
     ) => { isShown: boolean } | Promise<{ isShown: boolean }>,
     signal?: AbortSignal,
+    /** 谁发起了这次派发（见 {@link ENGINE_ORIGIN}）：建议一律由引擎摆上来。 */
+    origin: ModHookOrigin = ENGINE_ORIGIN,
   ): Promise<{ isShown: boolean; text: string }> {
     if (this.disposed) return { isShown: false, text: event.text };
     // 这条链不走 `runValueHookChain`：链尾是**一次宿主往返**（问输入框摆不
@@ -1613,6 +1653,7 @@ export class ModManager {
         let inner: { isShown: boolean } | undefined;
         const result = await runtime.callHook("prompt.suggest", current, {
           signal,
+          origin,
           engine: async (nextEvent) => {
             // `next()` 不带参数 = 「按现在这份继续」。漏了兜底，下层收到的是
             // `undefined`，链尾也按 `tail(undefined)` 算，整段事件凭空消失
@@ -1669,6 +1710,8 @@ export class ModManager {
   async dispatchToolCheck(
     event: ModToolCheckEvent,
     signal?: AbortSignal,
+    /** 谁发起了这次派发（见 {@link ENGINE_ORIGIN}）：`$.tool.check` 是那个 mod。 */
+    origin: ModHookOrigin = ENGINE_ORIGIN,
   ): Promise<{ decision: ModToolCheckDecision; reason?: string }> {
     const base: { decision: ModToolCheckDecision; reason?: string } = {
       decision: event.decision,
@@ -1739,6 +1782,7 @@ export class ModManager {
           }`,
         };
       },
+      origin,
     );
   }
 
@@ -1749,16 +1793,24 @@ export class ModManager {
    * 点是「还没人拦」。`tool_use_id` 编一个稳定的临时值 —— 事件形状要求它，但
    * 它不会出现在任何 `ui.notice` 上。
    */
-  async checkModTool(request: {
-    tool: string;
-    input?: unknown;
-  }): Promise<{ decision: ModToolCheckDecision; reason?: string }> {
-    return this.dispatchToolCheck({
-      tool: request.tool,
-      tool_use_id: `mod:${request.tool}`,
-      input: request.input,
-      decision: "allow",
-    });
+  async checkModTool(
+    request: {
+      tool: string;
+      input?: unknown;
+    },
+    /** 发起者就是这个 mod（`ModRuntimeHost.checkTool` 的第二实参）。 */
+    origin: ModHookOrigin,
+  ): Promise<{ decision: ModToolCheckDecision; reason?: string }> {
+    return this.dispatchToolCheck(
+      {
+        tool: request.tool,
+        tool_use_id: `mod:${request.tool}`,
+        input: request.input,
+        decision: "allow",
+      },
+      undefined,
+      origin,
+    );
   }
 
   /**
@@ -1768,15 +1820,22 @@ export class ModManager {
    * **不传 `run`**：mod 主动发起时没有宿主侧执行体，链尾是空对象 —— 这条方法
    * 不会真的执行工具，想做事用 `$.process` / `$.fs` / `$.http`。
    */
-  async callModTool(request: {
-    tool: string;
-    input?: unknown;
-  }): Promise<{ deny?: string }> {
-    const decision = await this.dispatchToolCall({
-      tool: request.tool,
-      tool_use_id: `mod:${request.tool}`,
-      input: request.input,
-    });
+  async callModTool(
+    request: {
+      tool: string;
+      input?: unknown;
+    },
+    /** 发起者就是这个 mod（`ModRuntimeHost.callTool` 的第二实参）。 */
+    origin: ModHookOrigin,
+  ): Promise<{ deny?: string }> {
+    const decision = await this.dispatchToolCall(
+      {
+        tool: request.tool,
+        tool_use_id: `mod:${request.tool}`,
+        input: request.input,
+      },
+      { origin },
+    );
     return decision.deny === undefined ? {} : { deny: decision.deny };
   }
 
@@ -2072,11 +2131,23 @@ export class ModManager {
   }
 
   /**
+   * `tool.describe` 的缓存被声明过期的次数（`$.ui.invalidate("tool.describe")`，
+   * 见 {@link ModManager.invalidate}）。
+   *
+   * 由 `ToolManager` 在拼工具表之前读一次：值变了就把「问过没」清掉，这一轮把
+   * 每个工具的描述重问一遍。读它不改它 —— 谁读、读几次都不影响结果。
+   */
+  toolDescribeInvalidationCount(): number {
+    return this.toolDescribeInvalidations;
+  }
+
+  /**
    * 派发 `tool.describe`：一个工具的描述第一次要发给模型时（spec「给工具、技
    * 能、命令写描述」）。
    *
    * 每场会话问一次，答案由 `ToolManager` 存着；`breakPromptCache: true` 是插
-   * 件声明「这份别存」，那一次请求之后就重新问。
+   * 件声明「这份别存」，那一次请求之后就重新问。`$.ui.invalidate("tool.describe")`
+   * 是同一条路的重问入口（见上）。
    */
   async collectToolDescription(
     tool: { name: string; description: string },
@@ -2232,6 +2303,7 @@ export class ModManager {
     event: unknown,
     tail: { run?: () => Promise<unknown> },
     signal?: AbortSignal,
+    origin: ModHookOrigin = ENGINE_ORIGIN,
   ): Promise<{ deny?: string; result?: unknown }> {
     const loaded = [...this.mods.values()].filter((item) => item.runtime);
     let ran = false;
@@ -2274,6 +2346,7 @@ export class ModManager {
         let innerValue: unknown;
         const result = await runtime.callHook(name, current, {
           signal,
+          origin,
           engine: async (nextEvent) => {
             // 调了 `next(e)`：控制权交给下面的 mod（最后一个交回链尾）。把内层
             // 的答案记下来 —— `await next(e)` 之后忘掉返回值的写法很常见，不能
@@ -2363,6 +2436,8 @@ export class ModManager {
      * 案」，跳过才是对的。
      */
     onFailure?: (modId: string, error: unknown, fallback: T) => T | undefined,
+    /** 谁发起了这次派发（见 {@link ENGINE_ORIGIN}）：缺省是引擎自己。 */
+    origin: ModHookOrigin = ENGINE_ORIGIN,
   ): Promise<T> {
     const loaded = [...this.mods.values()].filter((item) => item.runtime);
     const fromIndex = async (index: number, current: unknown): Promise<T> => {
@@ -2373,6 +2448,7 @@ export class ModManager {
         let inner: T | undefined;
         const result = await runtime.callHook(name, current, {
           signal,
+          origin,
           engine: async (nextEvent) => {
             // `next()` 不带参数 = 「按现在这份继续」。漏了兜底，下层收到的是
             // `undefined`，链尾也按 `tail(undefined)` 算，整段事件凭空消失
@@ -3171,8 +3247,27 @@ export class ModManager {
    * mod 在一次交互里改三个 state 再 invalidate 一次是常态，但如果它在一个
    * 循环里 invalidate，合并能避免把 stdio 打爆。这里**不渲染** —— 树由
    * surface 收到 stale 后自己来要（spec「架构约束」）。
+   *
+   * `target` 是**渲染站点的生产者**，两个目标各管各的：
+   *
+   * - `"ui.render"`：面板与带的树过期，走下面的 stale 通知；
+   * - `"tool.describe"`：工具表里的描述过期，缓存不在本 manager（工具表由
+   *   `ToolManager` 拼），所以这里只把计数加一，由它下一次拼表时发现并重问
+   *   （见 {@link ModManager.toolDescribeInvalidationCount}）。
+   *
+   * 其余 CC 认的目标（`prompt.section` / `prompt.context` /
+   * `prompt.attachment` / `tool.list` / `command.describe` / `config.describe`）
+   * 本轮**不做**，而且不是「懒得做」：`prompt.*` 与 `command.describe` 每次现算、
+   * 根本没有缓存可清，硬加进来只会是一个什么都不做的空动作 —— 那比一个明确的
+   * 报错更难查（作者会以为自己清干净了）。runtime 那边照旧对白名单外的目标抛错。
    */
-  private invalidate(modId: string): void {
+  private invalidate(modId: string, target: string): void {
+    if (target === "tool.describe") {
+      // 不要求这个 mod 画面板：描述与面板是两个站点，只声明描述过期的 mod 也
+      // 该生效。
+      this.toolDescribeInvalidations += 1;
+      return;
+    }
     const loaded = this.mods.get(modId);
     if (this.disposed || !loaded || loaded.error || !loaded.runtime) return;
     // 没注册 `ui.render` 的 mod 什么都画不出来，一次 stale 也是空转。
@@ -3667,6 +3762,10 @@ export class ModManager {
           settled = spawned.settled;
           return { model: spawned.model, agentId: spawned.agentId };
         },
+        // 发起者是**这个 mod**，不是引擎：`$.agent.spawn` 是它主动来派的
+        // （`next.origin` 的 `tier: "user"`），链上的守卫靠它认出这一层。
+        undefined,
+        { plugin, tier: "user" },
       );
       if (decision.deny) throw new Error(decision.deny);
       // 链没走到尾（有钩子自己答了个 `{ model }` 却没 `next`）＝ 一个子代理都
@@ -3753,6 +3852,10 @@ export class ModManager {
           return { isShown: false };
         }
       },
+      // 这条链是**这个 mod** 主动进的（两处 origin 别混：实参里那个
+      // `{ kind, name }` 是「谁提的建议」，这是「谁发起了这次派发」）。
+      undefined,
+      { plugin: request.plugin, tier: "user" },
     );
     return { isShown: result.isShown };
   }

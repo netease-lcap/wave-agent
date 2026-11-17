@@ -69,6 +69,7 @@ import type { BackgroundTask } from "./types/processes.js";
 import { MemoryRuleManager } from "./managers/MemoryRuleManager.js";
 import { LiveConfigManager } from "./managers/liveConfigManager.js";
 import { configValidator } from "./utils/configValidator.js";
+import { rateLimitWindowsFromQuotaHeaders } from "./utils/quotaHeaders.js";
 import { SkillManager } from "./managers/skillManager.js";
 import { TaskManager } from "./services/taskManager.js";
 import type { WorktreeSession } from "./utils/worktreeSession.js";
@@ -1090,6 +1091,11 @@ export class Agent {
    * `tokens.*` 是整场会话的累计值，其中 `prompt` **含**缓存命中的 token ——
    * 我们上游的 `prompt_tokens` 就是含的，别按 Claude Code 的 `input_tokens`
    * （不含）去对。
+   *
+   * `rateLimits` 来自模型响应上的 `x-codechat-quota-*`（AIManager 留存的最后一批，
+   * 窗口名是上游的 `weekly` / `monthly`，**不是** CC 的 `five_hour` / `seven_day`）。
+   * 私有化 / 自定义网关不发这批头 → 空数组：那是「这个账号没有配额窗口可报」的
+   * 真实读法，不是缺陷，所以不报错也不打日志。
    */
   public getSessionUsage(): ModSessionUsage {
     const tokens = this.latestTotalTokens;
@@ -1110,9 +1116,13 @@ export class Agent {
         percent: contextUsagePercent(tokens, window, this.getMaxOutputTokens()),
       },
       tokens: totals,
-      // 额度窗口要企业端的额度接口，我们没有；空数组表示「这个账号没有配额
-      // 窗口可报」，形状与社区一致（它们直接 `.reduce` 这个字段）。
-      rateLimits: [],
+      // 额度窗口：AIManager 在每次模型调用后留下最后一批 `x-codechat-quota-*`
+      // （成功与错误两条路径），这里把它们解析成 mod 认的窗口形状。
+      // 没有任何头（私有化 / 自定义网关）→ 空数组，形状与社区一致
+      // （它们直接 `.reduce` 这个字段）。
+      rateLimits: rateLimitWindowsFromQuotaHeaders(
+        this.aiManager.getLastQuotaHeaders(),
+      ),
     };
     const model = this.getModelConfig().model;
     if (model !== undefined) usage.model = model;
