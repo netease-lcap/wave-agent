@@ -581,6 +581,7 @@ describe("AIManager - compactConversation", () => {
         "compact",
         "test-session-id",
         "/test/transcript.json",
+        mockMessageManager,
         undefined,
       );
     });

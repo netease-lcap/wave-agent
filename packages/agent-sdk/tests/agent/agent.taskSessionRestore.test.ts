@@ -231,6 +231,7 @@ describe("Agent - Task Session Restoration", () => {
       "resume",
       targetSessionId,
       expect.any(String),
+      expect.anything(),
     );
 
     // additionalContext is injected as a meta user message into the restored conversation
@@ -244,6 +245,124 @@ describe("Agent - Task Session Restoration", () => {
     expect(
       (injected.blocks[0] as { type: "text"; content: string }).content,
     ).toContain("Restored session context");
+
+    await agent.destroy();
+  });
+
+  it("should inject initialUserMessage on restore, exactly like the other three paths", async () => {
+    const { handleSessionRestoration, loadSessionFromJsonl } = await import(
+      "../../src/services/session.js"
+    );
+    vi.mocked(handleSessionRestoration).mockResolvedValue({
+      id: randomUUID(),
+      messages: [],
+      metadata: {
+        workdir: testWorkdir,
+        lastActiveAt: new Date().toISOString(),
+        latestTotalTokens: 0,
+      },
+    });
+    vi.mocked(loadSessionFromJsonl).mockResolvedValue({
+      id: randomUUID(),
+      messages: [],
+      metadata: {
+        workdir: testWorkdir,
+        lastActiveAt: new Date().toISOString(),
+        latestTotalTokens: 0,
+      },
+    });
+
+    const agent = await Agent.create({
+      apiKey: "test-key",
+      baseURL: "https://test.com",
+      workdir: testWorkdir,
+    });
+    const hookManager = (agent as unknown as { hookManager: HookManager })
+      .hookManager;
+    vi.spyOn(hookManager, "executeSessionStartHooks").mockResolvedValue({
+      results: [],
+      initialUserMessage: "Start with a plan",
+    });
+
+    await agent.restoreSession(randomUUID());
+
+    const messageManager = (
+      agent as unknown as { messageManager: MessageManager }
+    ).messageManager;
+    const messages = messageManager.getMessages();
+    const injected = messages[messages.length - 1];
+    expect(injected.isMeta).toBe(true);
+    expect(
+      (injected.blocks[0] as { type: "text"; content: string }).content,
+    ).toBe("Start with a plan");
+
+    await agent.destroy();
+  });
+
+  it("should not inject the same initialUserMessage twice into one session", async () => {
+    const { handleSessionRestoration, loadSessionFromJsonl } = await import(
+      "../../src/services/session.js"
+    );
+    vi.mocked(handleSessionRestoration).mockResolvedValue({
+      id: randomUUID(),
+      messages: [],
+      metadata: {
+        workdir: testWorkdir,
+        lastActiveAt: new Date().toISOString(),
+        latestTotalTokens: 0,
+      },
+    });
+    // The target transcript already carries what an earlier resume injected:
+    // it is an ordinary meta user message, so it is on disk like any other.
+    vi.mocked(loadSessionFromJsonl).mockResolvedValue({
+      id: randomUUID(),
+      messages: [
+        {
+          id: "msg-injected",
+          role: "user",
+          blocks: [
+            { type: "text", content: "Start with a plan", stage: "end" },
+          ],
+          timestamp: new Date().toISOString(),
+          isMeta: true,
+        },
+      ],
+      metadata: {
+        workdir: testWorkdir,
+        lastActiveAt: new Date().toISOString(),
+        latestTotalTokens: 0,
+      },
+    });
+
+    const agent = await Agent.create({
+      apiKey: "test-key",
+      baseURL: "https://test.com",
+      workdir: testWorkdir,
+    });
+    const hookManager = (agent as unknown as { hookManager: HookManager })
+      .hookManager;
+    vi.spyOn(hookManager, "executeSessionStartHooks").mockResolvedValue({
+      results: [],
+      initialUserMessage: "Start with a plan",
+    });
+
+    await agent.restoreSession(randomUUID());
+
+    const messageManager = (
+      agent as unknown as { messageManager: MessageManager }
+    ).messageManager;
+    const occurrences = messageManager
+      .getMessages()
+      .filter(
+        (message) =>
+          message.isMeta === true &&
+          message.blocks.some(
+            (block) =>
+              block.type === "text" &&
+              block.content.trim() === "Start with a plan",
+          ),
+      );
+    expect(occurrences).toHaveLength(1);
 
     await agent.destroy();
   });

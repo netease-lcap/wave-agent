@@ -1455,6 +1455,7 @@ export class AIManager {
               "compact",
               newSessionId,
               this.messageManager.getTranscriptPath(),
+              this.messageManager,
               this.subagentType,
             );
           if (sessionStartResult.additionalContext) {

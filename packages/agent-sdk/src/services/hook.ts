@@ -270,6 +270,11 @@ export async function executeCommand(
         // must be able to reference their own paths regardless of where the
         // model last ran `cd`.
         WAVE_PROJECT_DIR: context.sessionRoot ?? context.projectDir,
+        // Claude Code's name for the same value, written alongside ours the way
+        // `CLAUDE_PLUGIN_ROOT` is: a hook written for Claude Code reads
+        // `$CLAUDE_PROJECT_DIR`, and having only our own name leaves
+        // `cd $CLAUDE_PROJECT_DIR`-style scripts with an empty path.
+        CLAUDE_PROJECT_DIR: context.sessionRoot ?? context.projectDir,
       },
     });
 

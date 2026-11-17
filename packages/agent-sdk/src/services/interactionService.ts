@@ -269,6 +269,7 @@ export class InteractionService {
           "resume",
           sessionData.id,
           messageManager.getTranscriptPath(),
+          messageManager,
         );
         if (sessionStartResult.additionalContext) {
           // `prompt.attachment` 的 `session-start` 档（spec
@@ -286,6 +287,23 @@ export class InteractionService {
               isMeta: true,
             });
           }
+        }
+
+        // `initialUserMessage`：与 startup / clear / compact 三条路径一样注入成
+        // meta 消息。resume 是唯一「消息列表已经从盘上载入」的路径，所以这里要
+        // 去重：上一次 resume 注入的那条已经是 transcript 里的普通消息，同一场
+        // 会话反复 resume（A→B→A）会把同一段指令一层层叠上去。
+        if (
+          sessionStartResult.initialUserMessage &&
+          !InteractionService.hasMetaUserMessage(
+            messageManager,
+            sessionStartResult.initialUserMessage,
+          )
+        ) {
+          messageManager.addUserMessage({
+            content: sessionStartResult.initialUserMessage,
+            isMeta: true,
+          });
         }
       } catch (error) {
         logger?.warn(
@@ -307,5 +325,32 @@ export class InteractionService {
     // 10. Load tasks for the restored session
     const tasks = await taskManager.listTasks();
     options.callbacks?.onTasksChange?.(tasks);
+  }
+
+  /**
+   * Is this exact text already in the session as a host-injected (meta) user
+   * message?
+   *
+   * The key is the text itself, scoped to the session that was just loaded: the
+   * message list here *is* that session, so the same hook output on another
+   * session is untouched. Reading the loaded transcript instead of keeping a set
+   * in memory is also what makes it survive a restart — an injected meta message
+   * is persisted like any other.
+   */
+  private static hasMetaUserMessage(
+    messageManager: MessageManager,
+    content: string,
+  ): boolean {
+    const text = content.trim();
+    return messageManager
+      .getMessages()
+      .some(
+        (message) =>
+          message.role === "user" &&
+          message.isMeta === true &&
+          message.blocks.some(
+            (block) => block.type === "text" && block.content.trim() === text,
+          ),
+      );
   }
 }

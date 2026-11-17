@@ -179,7 +179,7 @@ Hooks can also be browsed and edited in the settings page's Hooks view, and in t
 
 ## Hook Configuration Fields
 
-- \`matcher\`: (Optional) A pattern to match against the tool name (e.g., "Write", "Read*", "/^Edit/"). Only applicable for \`PreToolUse\`, \`PostToolUse\`, and \`PermissionRequest\`.
+- \`matcher\`: (Optional) A pattern to match against the tool name (e.g., "Write", "Read*", "/^Edit/"). Applicable for \`PreToolUse\`, \`PostToolUse\`, and \`PermissionRequest\`; for \`SessionStart\` it is matched against the firing \`source\` (\`startup\`, \`resume\`, \`clear\`, \`compact\`), same as Claude Code. Omit it to match every value.
 - \`hooks\`: An array of hook commands to execute.
   - \`type\`: \`"command"\` (required).
   - \`command\`: The shell command to execute.
@@ -307,12 +307,14 @@ For \`UserPromptSubmit\`, a stdout that is *not* JSON keeps its own meaning: the
 
 Hook stdout is processed as follows:
 - If stdout is valid JSON with \`hookSpecificOutput.additionalContext\` (Claude Code format), that value is injected as additional context.
-- If stdout is valid JSON with \`initialUserMessage\` at the top level, that value is injected as the initial user message.
+- If stdout is valid JSON with \`hookSpecificOutput.initialUserMessage\` (Claude Code format), that value is injected as the initial user message. It stays a \`meta\` message: the agent sees it, but no turn is started on its behalf.
 - If stdout is not JSON, the entire output is appended as additional context.
+
+A hook that fails (non-zero exit code, timeout, or stdout that looks like JSON but does not parse) shows up as an error line in the conversation. It never blocks the session from starting.
 
 Example hook output:
 \`\`\`json
-{"hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": "User prefers concise responses"}, "initialUserMessage": "Here is my current task..."}
+{"hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": "User prefers concise responses", "initialUserMessage": "Here is my current task..."}}
 \`\`\`
 
 ### Example Configuration

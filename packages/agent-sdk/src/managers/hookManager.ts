@@ -46,6 +46,11 @@ function summarizeHookResults(results: HookExecutionResult[]) {
   }));
 }
 
+/** Append one hook's text to a running collector, newline-separated. */
+function appendHookText(current: string | undefined, text: string) {
+  return current ? `${current}\n${text}` : text;
+}
+
 export class HookManager {
   private configuration: PartialHookConfiguration | undefined;
   private programmaticHooks: PartialHookConfiguration = {};
@@ -196,7 +201,9 @@ export class HookManager {
       const config = eventConfigs[configIndex];
 
       // Check if this config applies to the current context
-      if (!this.configApplies(config, event, context.toolName)) {
+      if (
+        !this.configApplies(config, event, this.matchValueFor(event, context))
+      ) {
         continue;
       }
 
@@ -882,14 +889,14 @@ export class HookManager {
   /**
    * Check if hooks are configured for an event/tool combination
    */
-  hasHooks(event: HookEvent, toolName?: string): boolean {
+  hasHooks(event: HookEvent, matchValue?: string): boolean {
     if (!this.configuration) return false;
 
     const eventConfigs = this.configuration[event];
     if (!eventConfigs || eventConfigs.length === 0) return false;
 
     return eventConfigs.some((config) =>
-      this.configApplies(config, event, toolName),
+      this.configApplies(config, event, matchValue),
     );
   }
 
@@ -1138,12 +1145,30 @@ export class HookManager {
   }
 
   /**
+   * The value a config's `matcher` is tested against, per event.
+   *
+   * Tool events match the tool name. `SessionStart` matches the firing `source`
+   * (`startup` / `resume` / `clear` / `compact`) — Claude Code's `SessionStart`
+   * matcher semantics, so a config written for it (`{"matcher": "compact"}`)
+   * means the same thing here. Every other event has no matcher value.
+   */
+  private matchValueFor(
+    event: HookEvent,
+    context: HookExecutionContext | ExtendedHookExecutionContext,
+  ): string | undefined {
+    if (event === "SessionStart") {
+      return "source" in context ? context.source : undefined;
+    }
+    return context.toolName;
+  }
+
+  /**
    * Check if a hook configuration applies to the current context
    */
   private configApplies(
     config: HookEventConfig,
     event: HookEvent,
-    toolName?: string,
+    matchValue?: string,
   ): boolean {
     // For events that don't use matchers, config always applies
     if (
@@ -1153,7 +1178,6 @@ export class HookManager {
       event === "WorktreeCreate" ||
       event === "WorktreeRemove" ||
       event === "CwdChanged" ||
-      event === "SessionStart" ||
       event === "SessionEnd" ||
       event === "PreCompact" ||
       event === "PostCompact"
@@ -1161,23 +1185,25 @@ export class HookManager {
       return true;
     }
 
-    // For tool-based events, check matcher if present
+    // Tool events and SessionStart, the two events whose config may carry a
+    // matcher: the tool name for the former, the firing `source` for the latter.
     if (
       event === "PreToolUse" ||
       event === "PostToolUse" ||
-      event === "PermissionRequest"
+      event === "PermissionRequest" ||
+      event === "SessionStart"
     ) {
       if (!config.matcher) {
-        // No matcher means applies to all tools
+        // No matcher means applies to every value (Claude Code's default too)
         return true;
       }
 
-      if (!toolName) {
-        // No tool name provided, cannot match
+      if (!matchValue) {
+        // No value to match against, cannot match
         return false;
       }
 
-      return this.matcher.matches(config.matcher, toolName);
+      return this.matcher.matches(config.matcher, matchValue);
     }
 
     return false;
@@ -1199,11 +1225,14 @@ export class HookManager {
       return errors;
     }
 
-    // Validate matcher requirements
+    // Validate matcher requirements. SessionStart accepts a matcher too: it is
+    // matched against the firing `source` (Claude Code semantics), so a config
+    // carried over from Claude Code must load instead of failing validation.
     if (
       (event === "PreToolUse" ||
         event === "PostToolUse" ||
-        event === "PermissionRequest") &&
+        event === "PermissionRequest" ||
+        event === "SessionStart") &&
       config.matcher
     ) {
       if (!this.matcher.isValidPattern(config.matcher)) {
@@ -1218,7 +1247,6 @@ export class HookManager {
         event === "SubagentStop" ||
         event === "WorktreeCreate" ||
         event === "WorktreeRemove" ||
-        event === "SessionStart" ||
         event === "SessionEnd" ||
         event === "PreCompact" ||
         event === "PostCompact") &&
@@ -1390,11 +1418,16 @@ export class HookManager {
   /**
    * Execute SessionStart hooks during initialization.
    * Collects additionalContext and initialUserMessage from hook stdout.
+   *
+   * @param messageManager Where a failing hook's report goes. Without it the
+   *   hook still runs, it just has nowhere to complain to.
+   * @param agentType Set when the firing agent is a subagent (compact path).
    */
   async executeSessionStartHooks(
     source: SessionStartSource,
     sessionId: string,
     transcriptPath: string,
+    messageManager?: MessageManager,
     agentType?: string,
   ): Promise<{
     results: HookExecutionResult[];
@@ -1417,33 +1450,112 @@ export class HookManager {
 
     const results = await this.executeHooks("SessionStart", context);
 
+    if (messageManager) {
+      this.reportSessionStartFailures(results, messageManager);
+    }
+
     let additionalContext: string | undefined;
     let initialUserMessage: string | undefined;
 
-    // Process stdout from successful hooks
     for (const result of results) {
-      if (result.success && result.stdout?.trim()) {
-        const trimmed = result.stdout.trim();
-        // Try to parse as JSON for structured output
-        try {
-          const parsed = JSON.parse(trimmed);
-          if (parsed.hookSpecificOutput?.additionalContext) {
-            additionalContext =
-              (additionalContext ? additionalContext + "\n" : "") +
-              parsed.hookSpecificOutput.additionalContext;
-          }
-          if (parsed.initialUserMessage) {
-            initialUserMessage = parsed.initialUserMessage;
-          }
-        } catch {
-          // Not JSON, treat as additional context
-          additionalContext =
-            (additionalContext ? additionalContext + "\n" : "") + trimmed;
+      if (!result.success || !result.stdout?.trim()) continue;
+
+      const trimmed = result.stdout.trim();
+      const parsed = this.parseStdoutJson(result);
+
+      if (!parsed) {
+        if (!trimmed.startsWith("{")) {
+          // Not structured output at all: on SessionStart the whole stdout is
+          // context (spec `automation/session-hooks`).
+          additionalContext = appendHookText(additionalContext, trimmed);
+          continue;
         }
+        // Shaped like structured output but is not JSON — a broken hook rather
+        // than context, so the blob is reported instead of fed to the model.
+        if (messageManager) {
+          this.handleNonBlockingError(
+            {
+              ...result,
+              stderr: `SessionStart hook printed malformed JSON: ${trimmed.slice(0, 200)}`,
+            },
+            messageManager,
+          );
+        }
+        continue;
+      }
+
+      const hookSpecificOutput = parsed.hookSpecificOutput;
+      if (
+        typeof hookSpecificOutput === "object" &&
+        hookSpecificOutput !== null
+      ) {
+        const output = hookSpecificOutput as Record<string, unknown>;
+
+        const contextText = output.additionalContext;
+        if (typeof contextText === "string" && contextText.trim()) {
+          additionalContext = appendHookText(additionalContext, contextText);
+        }
+
+        // Claude Code reads `initialUserMessage` from *inside*
+        // `hookSpecificOutput` (2.1.326: `oe.initialUserMessage =
+        // _e.hookSpecificOutput.initialUserMessage`); reading only the top level
+        // silently dropped every hook written against the documented contract.
+        if (
+          typeof output.initialUserMessage === "string" &&
+          output.initialUserMessage.trim()
+        ) {
+          initialUserMessage = output.initialUserMessage;
+        }
+      }
+
+      // Tolerated fallback, NOT a Claude Code contract: the top-level position
+      // our own settings skill documented before this alignment. Kept so hooks
+      // written against it keep working; the inner position wins when both are
+      // present.
+      if (
+        initialUserMessage === undefined &&
+        typeof parsed.initialUserMessage === "string" &&
+        parsed.initialUserMessage.trim()
+      ) {
+        initialUserMessage = parsed.initialUserMessage;
       }
     }
 
     return { results, additionalContext, initialUserMessage };
+  }
+
+  /**
+   * Make a broken `SessionStart` hook visible.
+   *
+   * This is the one event that never goes through `processHookResults`, so a
+   * failing hook used to vanish without a trace: the collection loop only reads
+   * `success` results, which drops exit-2 stdout along with every stderr, and
+   * the user is left with "my hook did not work" and nothing to go on. Running
+   * the results through the shared handler gives a failure the same presentation
+   * every other event has — one `error` notice block — while startup stays
+   * unblocked (`handleBlockingError`'s `SessionStart` branch returns
+   * `shouldBlock: false`). `systemMessage` rides along on the same pass.
+   */
+  private reportSessionStartFailures(
+    results: HookExecutionResult[],
+    messageManager: MessageManager,
+  ): void {
+    if (results.length === 0) return;
+
+    this.processHookResults("SessionStart", results, messageManager);
+
+    // The handler cannot see a timeout: the child is killed and `close` still
+    // reports exit code 0, which reads as a success there.
+    for (const result of results) {
+      if (result.success || result.exitCode !== 0) continue;
+      this.handleNonBlockingError(
+        {
+          ...result,
+          stderr: result.stderr?.trim() || "SessionStart hook timed out",
+        },
+        messageManager,
+      );
+    }
   }
 
   /**

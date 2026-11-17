@@ -55,6 +55,7 @@ describe("HookManager - SessionStart hooks", () => {
         "compact",
         "test-session-id",
         "/test/transcript.md",
+        undefined,
         "general-purpose",
       );
 

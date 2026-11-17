@@ -225,6 +225,7 @@ export class InitializationService {
         "startup",
         messageManager.getSessionId(),
         messageManager.getTranscriptPath(),
+        messageManager,
       );
 
       // Inject additionalContext as a meta user message (matches Claude Code)

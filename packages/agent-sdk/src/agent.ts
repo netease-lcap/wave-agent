@@ -1927,6 +1927,7 @@ export class Agent {
           "clear",
           newSessionId,
           this.messageManager.getTranscriptPath(),
+          this.messageManager,
         );
 
       // Inject additionalContext as a meta user message

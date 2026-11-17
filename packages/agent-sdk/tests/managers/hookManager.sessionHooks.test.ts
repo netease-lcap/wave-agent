@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { HookManager } from "../../src/managers/hookManager.js";
 import { Container } from "../../src/utils/container.js";
 import { HookMatcher } from "../../src/utils/hookMatcher.js";
+import type { MessageManager } from "../../src/managers/messageManager.js";
 import * as hookService from "../../src/services/hook.js";
 
 vi.mock("../../src/utils/globalLogger.js", () => ({
@@ -129,6 +130,7 @@ describe("HookManager session hooks", () => {
         "startup",
         "session-123",
         "/path/to/transcript.json",
+        undefined,
         "planner",
       );
       expect(result.initialUserMessage).toBe("Hello from hook");
@@ -231,6 +233,82 @@ describe("HookManager session hooks", () => {
       expect(result.initialUserMessage).toBe("Start with a plan");
     });
 
+    it("should read initialUserMessage from inside hookSpecificOutput", async () => {
+      mockExecuteCommand.mockResolvedValue({
+        success: true,
+        duration: 100,
+        timedOut: false,
+        exitCode: 0,
+        // Claude Code's documented position: inside `hookSpecificOutput`
+        stdout: JSON.stringify({
+          hookSpecificOutput: {
+            hookEventName: "SessionStart",
+            initialUserMessage: "Start with a plan",
+          },
+        }),
+        stderr: "",
+      });
+      manager.loadConfiguration({
+        SessionStart: [
+          { hooks: [{ type: "command" as const, command: "echo json" }] },
+        ],
+      });
+      const result = await manager.executeSessionStartHooks(
+        "startup",
+        "session-123",
+        "/path/to/transcript.json",
+      );
+      expect(result.initialUserMessage).toBe("Start with a plan");
+    });
+
+    it("should prefer the inner initialUserMessage when both positions are present", async () => {
+      mockExecuteCommand.mockResolvedValue({
+        success: true,
+        duration: 100,
+        timedOut: false,
+        exitCode: 0,
+        stdout: JSON.stringify({
+          hookSpecificOutput: { initialUserMessage: "inner" },
+          initialUserMessage: "top level",
+        }),
+        stderr: "",
+      });
+      manager.loadConfiguration({
+        SessionStart: [
+          { hooks: [{ type: "command" as const, command: "echo json" }] },
+        ],
+      });
+      const result = await manager.executeSessionStartHooks(
+        "startup",
+        "session-123",
+        "/path/to/transcript.json",
+      );
+      expect(result.initialUserMessage).toBe("inner");
+    });
+
+    it("should still accept the tolerated top-level initialUserMessage", async () => {
+      // Not a Claude Code contract — the position our own docs used to teach.
+      mockExecuteCommand.mockResolvedValue({
+        success: true,
+        duration: 100,
+        timedOut: false,
+        exitCode: 0,
+        stdout: JSON.stringify({ initialUserMessage: "legacy" }),
+        stderr: "",
+      });
+      manager.loadConfiguration({
+        SessionStart: [
+          { hooks: [{ type: "command" as const, command: "echo json" }] },
+        ],
+      });
+      const result = await manager.executeSessionStartHooks(
+        "startup",
+        "session-123",
+        "/path/to/transcript.json",
+      );
+      expect(result.initialUserMessage).toBe("legacy");
+    });
+
     it("should skip failed hooks when collecting additionalContext", async () => {
       let callCount = 0;
       mockExecuteCommand.mockImplementation(async () => {
@@ -328,6 +406,246 @@ describe("HookManager session hooks", () => {
       expect(result.additionalContext).toBe(
         "JSON context\nPlain text context\nMore JSON",
       );
+    });
+  });
+
+  describe("SessionStart matcher (matched against source)", () => {
+    it("should load a SessionStart config that carries a matcher", () => {
+      const validation = manager.validateConfiguration({
+        hooks: {
+          SessionStart: [
+            {
+              matcher: "startup",
+              hooks: [{ type: "command", command: "echo hi" }],
+            },
+          ],
+        },
+      });
+      expect(validation.errors).toHaveLength(0);
+      expect(validation.valid).toBe(true);
+
+      expect(() =>
+        manager.loadConfiguration({
+          SessionStart: [
+            {
+              matcher: "startup",
+              hooks: [{ type: "command" as const, command: "echo hi" }],
+            },
+          ],
+        }),
+      ).not.toThrow();
+    });
+
+    it("should only run the config whose matcher matches the firing source", async () => {
+      manager.loadConfiguration({
+        SessionStart: [
+          {
+            matcher: "startup",
+            hooks: [{ type: "command" as const, command: "echo startup" }],
+          },
+          {
+            matcher: "resume",
+            hooks: [{ type: "command" as const, command: "echo resume" }],
+          },
+        ],
+      });
+
+      await manager.executeSessionStartHooks(
+        "resume",
+        "session-123",
+        "/path/to/transcript.json",
+      );
+
+      expect(mockExecuteCommand).toHaveBeenCalledTimes(1);
+      expect(mockExecuteCommand).toHaveBeenCalledWith(
+        "echo resume",
+        expect.objectContaining({ event: "SessionStart", source: "resume" }),
+        undefined,
+      );
+    });
+
+    it("should run an unmatched-only config for no source", async () => {
+      manager.loadConfiguration({
+        SessionStart: [
+          {
+            matcher: "compact",
+            hooks: [{ type: "command" as const, command: "echo compact" }],
+          },
+        ],
+      });
+
+      await manager.executeSessionStartHooks(
+        "startup",
+        "session-123",
+        "/path/to/transcript.json",
+      );
+
+      expect(mockExecuteCommand).not.toHaveBeenCalled();
+    });
+
+    it("should keep running a config without a matcher for every source", async () => {
+      manager.loadConfiguration({
+        SessionStart: [
+          { hooks: [{ type: "command" as const, command: "echo always" }] },
+          {
+            matcher: "resume",
+            hooks: [{ type: "command" as const, command: "echo resume" }],
+          },
+        ],
+      });
+
+      await manager.executeSessionStartHooks(
+        "startup",
+        "session-123",
+        "/path/to/transcript.json",
+      );
+
+      expect(mockExecuteCommand).toHaveBeenCalledTimes(1);
+      expect(mockExecuteCommand).toHaveBeenCalledWith(
+        "echo always",
+        expect.objectContaining({ source: "startup" }),
+        undefined,
+      );
+    });
+  });
+
+  describe("SessionStart failure visibility", () => {
+    let mockMessageManager: {
+      addUserMessage: ReturnType<typeof vi.fn>;
+      addNoticeBlock: ReturnType<typeof vi.fn>;
+      removeLastUserMessage: ReturnType<typeof vi.fn>;
+      updateToolBlock: ReturnType<typeof vi.fn>;
+    };
+
+    beforeEach(() => {
+      mockMessageManager = {
+        addUserMessage: vi.fn(),
+        addNoticeBlock: vi.fn(),
+        removeLastUserMessage: vi.fn(),
+        updateToolBlock: vi.fn(),
+      };
+      manager.loadConfiguration({
+        SessionStart: [
+          { hooks: [{ type: "command" as const, command: "echo hook" }] },
+        ],
+      });
+    });
+
+    const run = () =>
+      manager.executeSessionStartHooks(
+        "startup",
+        "session-123",
+        "/path/to/transcript.json",
+        mockMessageManager as unknown as MessageManager,
+      );
+
+    it("should show stderr of an exit-2 hook and not block startup", async () => {
+      mockExecuteCommand.mockResolvedValue({
+        success: false,
+        duration: 10,
+        timedOut: false,
+        exitCode: 2,
+        stdout: "",
+        stderr: "node is too old for this project",
+      });
+
+      const result = await run();
+
+      expect(mockMessageManager.addNoticeBlock).toHaveBeenCalledWith(
+        "node is too old for this project",
+        "error",
+      );
+      expect(result.results).toHaveLength(1);
+    });
+
+    it("should show stderr of a hook that exits with any other non-zero code", async () => {
+      mockExecuteCommand.mockResolvedValue({
+        success: false,
+        duration: 10,
+        timedOut: false,
+        exitCode: 1,
+        stdout: "",
+        stderr: "command not found: preflight",
+      });
+
+      await run();
+
+      expect(mockMessageManager.addNoticeBlock).toHaveBeenCalledWith(
+        "command not found: preflight",
+        "error",
+      );
+    });
+
+    it("should show a timed-out hook, which reports exit code 0", async () => {
+      mockExecuteCommand.mockResolvedValue({
+        success: false,
+        duration: 5000,
+        timedOut: true,
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+      });
+
+      await run();
+
+      expect(mockMessageManager.addNoticeBlock).toHaveBeenCalledWith(
+        "SessionStart hook timed out",
+        "error",
+      );
+    });
+
+    it("should report JSON-shaped stdout that does not parse, instead of injecting it", async () => {
+      mockExecuteCommand.mockResolvedValue({
+        success: true,
+        duration: 10,
+        timedOut: false,
+        exitCode: 0,
+        stdout: '{"hookSpecificOutput": ',
+        stderr: "",
+      });
+
+      const result = await run();
+
+      expect(mockMessageManager.addNoticeBlock).toHaveBeenCalledWith(
+        expect.stringContaining("malformed JSON"),
+        "error",
+      );
+      expect(result.additionalContext).toBeUndefined();
+    });
+
+    it("should stay silent when the hook succeeds", async () => {
+      mockExecuteCommand.mockResolvedValue({
+        success: true,
+        duration: 10,
+        timedOut: false,
+        exitCode: 0,
+        stdout: "Plain text context",
+        stderr: "",
+      });
+
+      const result = await run();
+
+      expect(mockMessageManager.addNoticeBlock).not.toHaveBeenCalled();
+      expect(result.additionalContext).toBe("Plain text context");
+    });
+
+    it("should keep running without a messageManager", async () => {
+      mockExecuteCommand.mockResolvedValue({
+        success: false,
+        duration: 10,
+        timedOut: false,
+        exitCode: 1,
+        stdout: "",
+        stderr: "boom",
+      });
+
+      const result = await manager.executeSessionStartHooks(
+        "startup",
+        "session-123",
+        "/path/to/transcript.json",
+      );
+
+      expect(result.results).toHaveLength(1);
     });
   });
 
