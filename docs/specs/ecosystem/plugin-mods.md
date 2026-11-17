@@ -130,7 +130,11 @@ mod 跑在 `node:vm` 的独立 context 里（每个 mod 一个）：没有 `proc
 
 **`Input.rows`** 是 ≥1 的整数（缺省 1）：从 2 起变成多行输入（等价 `<textarea rows>`），Enter 仍提交、换行按输入框的默认打法。`Code.wrap` 只有 `'wrap' | 'truncate-end'` 两个值（`Text.wrap` 的其它拼法在这里被拒 —— 有行号 gutter 时它们没有意义）。
 
+::: v-pre
+
 **`hover` 是节点的独立字段，不在 props 里**：`h()` 把 JSX 上的 `hover={{ … }}` 摘到节点的 `hover`，因为它的值是**对象**（props 只收原始值）。结构是两个封闭的 key 集：
+
+:::
 
 - `Box`：`scope`、`borderStyle`、`borderColor`、`borderDimColor`、`backgroundColor`、`display`（只认 `'flex'`，用来 reveal 一个 `display: "none"` 的 `Box`）、`top`/`left`/`right`/`bottom`（只对 `position: "absolute"` 有效）。**没有一个会让兄弟移位**。
 - `Text` / `Button`：`scope`、`color`、`backgroundColor`、`dimColor`、`bold`、`italic`、`underline`、`strikethrough`、`inverse`（`Button` 的 `hover` 改的是它 label 的样式，不含 `wrap`）。
@@ -145,7 +149,11 @@ mod 跑在 `node:vm` 的独立 context 里（每个 mod 一个）：没有 `proc
 
 `Select` / `Svg` / `Progress` 与前面七个的差别只有两条：**它们的 props 里有非原始值**（`Select.options` 是对象数组 —— 全表唯一一处），以及**三个都是叶子**（带 children 会被校验拒掉）。所以「prop 必须可序列化成原始值」这条规则按元素区分 —— 只有 `Select.options` 走数组，其余元素照旧只认字符串/数字/布尔/null。叶子的语义全在 prop 上（选哪几项、画哪段图、进度到哪），所以除了名字白名单还查取值：空 `options`、重复 `value`、超限的 `source`、非数字的 `value`/`max`、缺 `label` 的进度条，都当场点名。
 
+::: v-pre
+
 **被丢掉的对象 prop 要出声**：`h()` 只留原始值（`Select.options` 与 `hover` 两处例外），其余非原始值到不了树上。这类 prop（`style={{…}}`、`className` 的变体）以前是静默丢弃 —— 作者看到「写了没效果、也没有报错」。现在每丢一个记一条 warn，点名元素与 prop。
+
+:::
 
 上面这些名字从 `wave-agent-sdk/mods` 导入，那个子路径就是它们的 props 类型来源（`Box`、`Text`… `Fragment` 加各自的 `*Props`），插件作者写 TSX 时靠它拿类型补全；运行时值由沙箱的 `require` 提供同一份表（`$.ui.resolve(e)` 拿到的也是它）。**两种写法编出同一种树**：JSX（`<Text>hi</Text>`，编译器把 tag 交给 `__wave.h`）与调用式（`Text({ children: "hi" })`，Claude Code 官方示例就这么写）—— 构造器带 `elementType`，`h()` 按它归一，所以画出来的节点类型都是 `Text`。
 
@@ -1137,6 +1145,8 @@ Claude Code 的 `$` 有 23 个命名空间，我们覆盖 16 个（`ui` / `sessi
 
 **验收场景**：
 
+::: v-pre
+
 1. **假设**某个 `Box` 写 `padding={2} paddingX={1}`，**当**面板渲染，**则**它上下各 2、左右各 1（轴写法在四边简写之后生效）；再补 `paddingLeft={3}` **则**左边变 3、其余边不变。
 2. **假设** `<Text color="suggestion">` 与 `<Text color="#f60">` 各一段，**当**面板渲染，**则**前者画成主题的链接色（toggle 明暗主题时跟着变）、后者原样是 `#f60`；写一个表里没有的 token（`color="chartreuse"`）**则**按裸色画，不拒整棵树。
 3. **假设** `<Text weight="bold" size="title" strikethrough>已完成</Text>`，**当**面板渲染，**则**这段字是粗体、标题档字号、带删除线；把 `weight` 写成 `600`（数字）**则**整棵树被拒并点名 `weight`（它只收那四个枚举）。
@@ -1146,6 +1156,8 @@ Claude Code 的 `$` 有 23 个命名空间，我们覆盖 16 个（`ui` / `sessi
 7. **假设** `hover` 里写错一个 key（`hover={{ colour: "red" }}`），**当**这一帧被校验，**则**整棵树被拒并在面板顶部点名那个 key 与可用名单，不静默忽略。
 8. **假设** `<Input key="note" rows={3} onSubmit={…} />`，**当**面板渲染，**则**输入框高 3 行、Enter 仍提交；同一站点里两个元素都写 `autoFocus` **则**只有第一个拿到焦点。
 9. **假设** `<Button key="close" label="关闭" role="dismiss" plain onPress={() => $.ui.close({ id })} />`，**当**面板渲染，**则**那里是那颗 × 关闭控件（不画「关闭」两个字）、无障碍名是「关闭」、点击照常触发 `ui.press`；把 `role` 写成 `"cancel"` 之类**则**整棵树被拒并点名 `Button.role 只允许 "dismiss"`。
+
+:::
 
 ### 用户故事：面板跟着外部程序的状态走（优先级：P0）
 
