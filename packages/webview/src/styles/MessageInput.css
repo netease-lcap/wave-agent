@@ -83,7 +83,12 @@
   field-sizing: content;
 }
 
-.content-editable-input:empty:before {
+/* 占位灰字。判据是 JS 算出的 `data-empty`（无可见文本且没有引用标签/图片，见
+   MessageInput.tsx 的 `isComposerVisuallyEmpty`）；`:empty` 只兜「观察器还没跑」的
+   首次渲染。别只写 `:empty` —— contenteditable 清空后常剩空壳节点或零宽字符，
+   `:empty` 为假，占位就再也不出现（缺陷：输入文字后手动清空，占位不再提示）。 */
+.content-editable-input:empty:before,
+.content-editable-input[data-empty="true"]:before {
   content: attr(data-placeholder);
   color: var(--vscode-input-placeholderForeground);
   pointer-events: none;

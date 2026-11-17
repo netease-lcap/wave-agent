@@ -1026,11 +1026,17 @@
 }
 
 /* placeholder：Figma #8B8F95（base 用 input-placeholderForeground 偏暗）；
-   深色取 placeholder token #858B8F（approved 文字梯度） */
-[data-host="desktop"][data-theme="light"] .content-editable-input:empty:before {
+   深色取 placeholder token #858B8F（approved 文字梯度）。
+   占位显示的两个判据见 MessageInput.css：`[data-empty]` 与 `:empty` 都要覆盖，
+   否则走 JS 判据的那一次会掉回 base 色。 */
+[data-host="desktop"][data-theme="light"] .content-editable-input:empty:before,
+[data-host="desktop"][data-theme="light"]
+  .content-editable-input[data-empty="true"]:before {
   color: #8b8f95;
 }
-[data-host="desktop"][data-theme="dark"] .content-editable-input:empty:before {
+[data-host="desktop"][data-theme="dark"] .content-editable-input:empty:before,
+[data-host="desktop"][data-theme="dark"]
+  .content-editable-input[data-empty="true"]:before {
   color: var(--cc-text-placeholder, #858b8f);
 }
 
