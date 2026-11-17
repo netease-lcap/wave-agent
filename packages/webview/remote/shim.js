@@ -233,6 +233,11 @@
     modPanelEvent: "Web 端没有插件 mod 的交互入口（一期只做桌面端）",
     // 挂载时也会主动报一次「这一端摊开的是哪个面板」（全 null），同样静默丢弃。
     modPaneView: "Web 端不追踪插件 mod 面板的显示与焦点（一期只做桌面端）",
+    // `prompt.edit`：**每次编辑**都无条件上报（`MessageInput` 的 `handleInput`
+    // 不判宿主、不判有没有装 mod），所以它不是「将来某个操作才会点到的」，而是
+    // 手机页上敲第一个字就发。落到 `default:` 就是每敲一下在屏幕顶上弹一条
+    // 「还没有接通」——用户读起来像页面坏了（#2950 B1）。
+    modPromptEdit: "Web 端不跑插件 mod（一期只做桌面端）",
   };
   /**
    * "The channel would carry this method, but **this host** has not implemented
