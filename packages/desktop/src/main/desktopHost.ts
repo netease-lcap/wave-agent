@@ -212,13 +212,12 @@ interface WorktreeInfo {
 }
 
 /**
- * 「换文件夹继续」的搬迁 RPC（CLI 侧把转录搬到新目录并改写转录头）。
- *
- * 方法名先落在一个 `string` 常量上：这条 RPC 与它往 `RequestMethod` 联合里加的
- * 那个成员是同一期在宿主侧（`packages/code/src/stdio/agentBridge.ts`）落的，本
- * 分支的联合还没有它；联合合进来之后这层断言可以删掉，方法名不用改。
+ * 「换文件夹继续」的搬迁 RPC（CLI 侧把转录搬到新目录并改写转录头，见
+ * `packages/code/src/stdio/agentBridge.ts`）。类型标成 `RequestMethod`，调用处
+ * 不需要断言、方法名写错就是编译错误。
  */
-const RELOCATE_SESSION_TRANSCRIPT_RPC: string = "relocateSessionTranscript";
+const RELOCATE_SESSION_TRANSCRIPT_RPC: RequestMethod =
+  "relocateSessionTranscript";
 
 /** `relocateSessionTranscript` 的成功回执（CLI 侧 `RelocateSessionResult`）。 */
 interface RelocateSessionResult {
@@ -242,11 +241,12 @@ interface RelocateSessionRefusal {
 }
 
 /** 拒绝原因 → 人话（toast 文案里用，不把 `snake_case` 直接抛给用户）。 */
-const RELOCATE_REFUSAL_TEXT: Record<RelocateSessionRefusal["reason"], string> = {
-  target_missing: "目标文件夹不可用",
-  busy: "该会话仍在运行中，请稍后再试",
-  not_found: "找不到该会话的会话记录",
-};
+const RELOCATE_REFUSAL_TEXT: Record<RelocateSessionRefusal["reason"], string> =
+  {
+    target_missing: "目标文件夹不可用",
+    busy: "该会话仍在运行中，请稍后再试",
+    not_found: "找不到该会话的会话记录",
+  };
 
 function relocateRefusalText(reason: RelocateSessionRefusal["reason"]): string {
   // 写的是 `??`：wire 上的 reason 只是本端的一份约定，真收到没登记的值时宁可
@@ -4930,13 +4930,18 @@ export class DesktopHost {
     const putBackLiveSession = (): void => {
       if (!live) return;
       this.startPaneRestore(pid, { sessionId, workdir: fromDir, host });
-      void this.runPaneRestore(pid, { sessionId, workdir: fromDir, host, entry });
+      void this.runPaneRestore(pid, {
+        sessionId,
+        workdir: fromDir,
+        host,
+        entry,
+      });
     };
 
     let reply: RelocateSessionResult | RelocateSessionRefusal;
     try {
       reply = (await this.utilityClientFor(host).request(
-        RELOCATE_SESSION_TRANSCRIPT_RPC as RequestMethod,
+        RELOCATE_SESSION_TRANSCRIPT_RPC,
         { sessionId, fromWorkdir: fromDir, toWorkdir: newDir },
       )) as RelocateSessionResult | RelocateSessionRefusal;
     } catch (error) {
@@ -4992,7 +4997,7 @@ export class DesktopHost {
     }
     this.showToast({
       message: `会话已移到 ${newDir}，已复制 ${result.copiedFiles} 个文件`,
-      type: "info",
+      type: "success",
     });
   }
 
