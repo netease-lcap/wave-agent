@@ -16,6 +16,7 @@ import type {
   ModPanelUpdatePayload,
   ModStatusPayload,
   ModToastPayload,
+  ModUiPane,
 } from "../../src/types/mods.js";
 import type { Plugin } from "../../src/types/plugins.js";
 
@@ -4491,5 +4492,231 @@ exports.register = function ($, on) {
     expect(descriptionOf()).toBe("宿主的描述#1");
 
     await manager.dispose();
+  });
+});
+
+describe("ModManager 的面板显示与焦点（$.ui.panes）", () => {
+  /** 开两块、并把 `$.ui.panes()` 原样画成一格文本 —— mod 只有这一个入口看得到。 */
+  const PANES_MOD = `
+exports.register = function ($, on) {
+  on("session.start", function () {
+    $.ui.open({ id: "p1", title: "一" });
+    $.ui.open({ id: "p2", title: "二" });
+  });
+  on("ui.render", async function () {
+    return __wave.h("Text", null, JSON.stringify(await $.ui.panes()));
+  });
+};
+`;
+
+  async function opened(facts: ModSessionFacts = factsWith()) {
+    const created = createManager(
+      { [MOD_PATH]: PANES_MOD },
+      { sessionFacts: facts },
+    );
+    await created.manager.loadFromPlugins([
+      plugin([{ id: "todo:panel", path: MOD_PATH }]),
+    ]);
+    await created.manager.startSession();
+    return created;
+  }
+
+  /** 从 mod 那一侧读一眼台账：渲染一帧，再把那格 JSON 解回来。 */
+  async function panesSeenByMod(manager: ModManager): Promise<ModUiPane[]> {
+    const frame = await manager.renderPane("todo:panel", "p1");
+    const node = frame.tree as unknown as { children?: unknown[] };
+    return JSON.parse(String(node.children?.[0]));
+  }
+
+  it("没人上报过时 isShown / isFocused 都是 false；新开的那块自带 shown", async () => {
+    const { manager } = await opened();
+
+    // 打开第二块时键盘还没人持着 ⇒ 它就是摊开的那个（与 CC 的
+    // `shownId: focusedId ?? 新 id` 同一条）；`isFocused` 不猜，等 surface 报。
+    expect(await panesSeenByMod(manager)).toEqual([
+      {
+        id: "p1",
+        title: "一",
+        isPlaced: true,
+        isShown: false,
+        isFocused: false,
+      },
+      {
+        id: "p2",
+        title: "二",
+        isPlaced: true,
+        isShown: true,
+        isFocused: false,
+      },
+    ]);
+  });
+
+  it("surface 上报是全量快照：换一个 tab 就翻转，键盘回输入框只动 isFocused", async () => {
+    const { manager } = await opened();
+
+    manager.setPaneView({
+      shown: { modId: "todo:panel", paneId: "p1" },
+      focused: { modId: "todo:panel", paneId: "p1" },
+    });
+    expect(await panesSeenByMod(manager)).toMatchObject([
+      { id: "p1", isShown: true, isFocused: true },
+      { id: "p2", isShown: false, isFocused: false },
+    ]);
+
+    // 终端 Esc：面板还摊着，只是键盘回到输入框（`focused: null`）。
+    manager.setPaneView({
+      shown: { modId: "todo:panel", paneId: "p1" },
+      focused: null,
+    });
+    expect(await panesSeenByMod(manager)).toMatchObject([
+      { id: "p1", isShown: true, isFocused: false },
+      { id: "p2", isShown: false, isFocused: false },
+    ]);
+  });
+
+  it("台账里没有的 ref 一律归 null：迟到的上报不会把刚关掉的那块说活", async () => {
+    const { manager } = await opened();
+    await manager.handlePanelEvent({
+      sessionId: "s1",
+      modId: "todo:panel",
+      paneId: "p2",
+      key: "",
+      kind: "close",
+      origin: "person",
+    });
+
+    manager.setPaneView({
+      shown: { modId: "todo:panel", paneId: "p2" },
+      focused: { modId: "todo:panel", paneId: "p2" },
+    });
+    expect(await panesSeenByMod(manager)).toEqual([
+      {
+        id: "p1",
+        title: "一",
+        isPlaced: true,
+        isShown: false,
+        isFocused: false,
+      },
+    ]);
+
+    // 名字撞上但 mod 不对也算「不在台账里」：两个字段各管各的，不互相顶。
+    manager.setPaneView({
+      shown: { modId: "ghost", paneId: "p1" },
+      focused: { modId: "todo:panel", paneId: "p1" },
+    });
+    expect(await panesSeenByMod(manager)).toMatchObject([
+      { id: "p1", isShown: false, isFocused: true },
+    ]);
+  });
+
+  it("`e.props.isFocused` 与 `$.ui.panes()` 同源：只在持键盘的那块上是 true", async () => {
+    // 渲染站点给的面板事实里也有这一项（spec「`ui.render` 的 `e.props`」）。它
+    // 不能是常量：社区里那条用法就是「键盘在面板里时才提示按 Esc 返回对话」。
+    const renderFocusMod = `
+exports.register = function ($, on) {
+  on("session.start", function () {
+    $.ui.open({ id: "p1", title: "一" });
+    $.ui.open({ id: "p2", title: "二" });
+  });
+  on("ui.render", function (e) {
+    return __wave.h("Text", null, e.requestId + ":" + e.props.isFocused);
+  });
+};
+`;
+    const seen = async (manager: ModManager, paneId: string) => {
+      const frame = await manager.renderPane("todo:panel", paneId);
+      const node = frame.tree as unknown as { children?: unknown[] };
+      return String(node.children?.[0]);
+    };
+    const { manager } = createManager(
+      { [MOD_PATH]: renderFocusMod },
+      { sessionFacts: factsWith() },
+    );
+    await manager.loadFromPlugins([
+      plugin([{ id: "todo:panel", path: MOD_PATH }]),
+    ]);
+    await manager.startSession();
+
+    // 还没人报过：不编值。
+    expect(await seen(manager, "p1")).toBe("p1:false");
+    expect(await seen(manager, "p2")).toBe("p2:false");
+
+    // 键盘落在 p2 ⇒ 只有 p2 那一帧是 true（按 pane 各算各的）。
+    manager.setPaneView({
+      shown: { modId: "todo:panel", paneId: "p2" },
+      focused: { modId: "todo:panel", paneId: "p2" },
+    });
+    expect(await seen(manager, "p1")).toBe("p1:false");
+    expect(await seen(manager, "p2")).toBe("p2:true");
+
+    // Esc 把键盘交回输入框：下一帧又回到 false（surface 会在这一刻补拉一帧）。
+    manager.setPaneView({
+      shown: { modId: "todo:panel", paneId: "p2" },
+      focused: null,
+    });
+    expect(await seen(manager, "p2")).toBe("p2:false");
+  });
+
+  it("迟到的上报不会在重新打开之后「活过来」", async () => {
+    const { manager } = await opened();
+    await manager.handlePanelEvent({
+      sessionId: "s1",
+      modId: "todo:panel",
+      paneId: "p2",
+      key: "",
+      kind: "close",
+      origin: "person",
+    });
+    // 关掉之后还有一条迟到的上报，说它还持着键盘。
+    manager.setPaneView({
+      shown: { modId: "todo:panel", paneId: "p2" },
+      focused: { modId: "todo:panel", paneId: "p2" },
+    });
+
+    // mod 重新打开它（`session.start` 再来一次是真实路径：插件重载）。
+    await manager.startSession();
+
+    // 新开的那块是 shown（没人持着键盘），但**不是** focused —— 没人说它在。
+    expect(await panesSeenByMod(manager)).toMatchObject([
+      { id: "p1", isShown: false, isFocused: false },
+      { id: "p2", isShown: true, isFocused: false },
+    ]);
+  });
+
+  it("关掉摊开的那块：两个标记都清空，不自动顶到相邻 tab", async () => {
+    const { manager } = await opened();
+    manager.setPaneView({
+      shown: { modId: "todo:panel", paneId: "p2" },
+      focused: { modId: "todo:panel", paneId: "p2" },
+    });
+
+    await manager.handlePanelEvent({
+      sessionId: "s1",
+      modId: "todo:panel",
+      paneId: "p2",
+      key: "",
+      kind: "close",
+      origin: "person",
+    });
+
+    // 剩下那块也报 false：谁也没说它是摊开的，不替 surface 猜。
+    expect(await panesSeenByMod(manager)).toEqual([
+      {
+        id: "p1",
+        title: "一",
+        isPlaced: true,
+        isShown: false,
+        isFocused: false,
+      },
+    ]);
+  });
+
+  it("isPlaced 跟「这一帧有没有表面在画」走，不是登记成功没", async () => {
+    const { manager } = await opened(
+      factsWith({ surfaces: () => [] as const }),
+    );
+    expect(
+      (await panesSeenByMod(manager)).map((pane) => pane.isPlaced),
+    ).toEqual([false, false]);
   });
 });

@@ -91,6 +91,7 @@ import {
   type ModCopyRequest,
   type ModNoticePayload,
   type ModPaneLayout,
+  type ModPaneViewPayload,
   type ModSurfaceMetrics,
 } from "wave-agent-sdk";
 import {
@@ -514,6 +515,12 @@ export class AgentBridge {
       case "modPanelEvent":
         return this.requireSession(sessionId).agent.handleModPanelEvent(
           p as unknown as ModPanelEventPayload,
+        );
+      // surface 报「摊开的是哪个面板、键盘在哪个」（spec「面板的显示与焦点」）：
+      // 全量快照原样转交，引擎只存一组、后报的生效。
+      case "modPaneView":
+        return this.requireSession(sessionId).agent.setModPaneView(
+          p as unknown as ModPaneViewPayload,
         );
       case "getModPanels": {
         const agent = this.requireSessionForRead(sessionId).agent;

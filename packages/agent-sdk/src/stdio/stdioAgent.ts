@@ -53,6 +53,7 @@ import type {
   ModPanelEventPayload,
   ModPanelRenderResult,
   ModPaneLayout,
+  ModPaneViewPayload,
   ModSurfaceMetrics,
   ModPanelUpdatePayload,
   ModPromptFillRequest,
@@ -724,6 +725,21 @@ export class StdioAgent {
       { ...metrics },
       this.sessionId,
     )) as ModBandRenderResult[];
+  }
+
+  /**
+   * 告诉引擎「这一端摊开的是哪个面板、键盘在哪个」（spec「面板的显示与焦点」）。
+   *
+   * `$.ui.panes()` 的 `isShown` / `isFocused` 就靠这条通道 —— 这两个是**这一端
+   * 的事实**，只有 surface 知道。全量快照、不是增量：`null` 表示没显示任何面板 /
+   * 键盘回到输入框。切换 tab、点进面板正文、`Esc` 把键盘交回输入框各报一次。
+   */
+  async setModPaneView(view: ModPaneViewPayload): Promise<void> {
+    await this.client.request(
+      "modPaneView",
+      { shown: view.shown, focused: view.focused },
+      this.sessionId,
+    );
   }
 
   /** 当前所有 mod 面板的快照（宿主重连后补画面板用）。 */

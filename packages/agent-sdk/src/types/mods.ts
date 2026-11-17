@@ -338,6 +338,44 @@ export type ModUiOpenResult =
   | { isPlaced: false; reason: string };
 
 /**
+ * `$.ui.panes()` 的一项（spec「面板的显示与焦点」）。
+ *
+ * 形状与字段口径照 Claude Code 的 `UiPane`：`id` / `title` 是 `$.ui.open()` 登记
+ * 时给的，`isPlaced` 与 `$.ui.open()` 的返回值同一个判据，`isShown` / `isFocused`
+ * 是**这一端的事实**（surface 上报，没人报过就是 `false`，不编值）。
+ */
+export interface ModUiPane {
+  id: string;
+  title: string;
+  isPlaced: boolean;
+  isShown: boolean;
+  isFocused: boolean;
+}
+
+/**
+ * 一块面板在会话里的定位（`modPaneView` 上报用）。
+ *
+ * 用 `modId` + `paneId` 而不是单个 id：两个 mod 都能开 `p1`，拼起来才是会话内
+ * 唯一的那个 pane。
+ */
+export interface ModPaneRef {
+  modId: string;
+  paneId: string;
+}
+
+/**
+ * surface 上报「现在摊开的是哪个、键盘在哪个」（spec「面板的显示与焦点」）。
+ *
+ * 一次报**全量快照**、不是两个增量：`null` 表示这一端此刻没有显示（或没有把
+ * 键盘放在）任何面板里。两端同时挂一条会话时后报的生效 —— 与 Claude Code 只存
+ * 一组 `shownId` / `focusedId` 同一条。
+ */
+export interface ModPaneViewPayload {
+  shown: ModPaneRef | null;
+  focused: ModPaneRef | null;
+}
+
+/**
  * `$.config.list()` 的一行（spec「配了哪些、能调什么、有谁在跑」）。
  *
  * 形状照 Claude Code 的 `ConfigRow`：`key` 是行名，`kind` 说这一行的值怎么

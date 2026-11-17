@@ -58,6 +58,7 @@ describe("ChatInterface Loading State", () => {
     renderModPanel: vi.fn(),
     renderModBand: vi.fn().mockResolvedValue([]),
     sendModPanelEvent: vi.fn(),
+    reportModPaneView: vi.fn(),
   } as unknown as ChatContextType;
 
   const mockInputManager = {

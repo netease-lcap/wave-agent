@@ -97,6 +97,7 @@ import type {
   ModBandRenderResult,
   ModPanelTree,
   ModPanelUpdatePayload,
+  ModPaneRef,
   ModPromptFillRequest,
   ModPromptReadRequest,
   ModPromptSuggestRequest,
@@ -1164,6 +1165,11 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   );
   const activeTabIdRef = useRef(activeTabId);
   activeTabIdRef.current = activeTabId;
+  /**
+   * 键盘现在在哪块 mod 面板里（tab id）。`$.ui.panes()` 的 `isFocused` 靠它
+   * —— 这份状态只有 surface 知道（spec「面板的显示与焦点」）。
+   */
+  const [modFocusedTabId, setModFocusedTabId] = useState<string | null>(null);
   // Remote forward replies (desktopForwardPortResult) carry the requestId minted
   // in acquireForward; the map routes the reply to the preview tab that asked
   // for the tunnel so a sibling preview tab's URL is never overwritten.
@@ -3041,6 +3047,42 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     },
     [vscode],
   );
+
+  // ── 告诉引擎「这一端摊开的是哪个 mod 面板、键盘在哪个」 ──
+  // `$.ui.panes()` 的 `isShown` / `isFocused` 是**这一端的事实**，只有 surface
+  // 知道（spec「面板的显示与焦点」）。发全量快照、内容没变就不发：切 tab、面板槽
+  // 展开收起、键盘进出面板各触发一次。
+  //
+  // 这两个值在 render 里现算（下面两条 effect 共用：一条发快照，一条在焦点真的
+  // 变了之后补拉一帧，见 `requestModPaneRender`）。
+  const activeModTab = tabs.find((tab) => tab.id === activeTabId);
+  const activeModPane: ModPaneRef | null =
+    activeModTab?.kind === "mod" && activeModTab.modId && activeModTab.modPaneId
+      ? { modId: activeModTab.modId, paneId: activeModTab.modPaneId }
+      : null;
+  // 桌面端：槽收起时面板没有画出来，就不算「正被看着」；IDE 端只要 tab 激活
+  // 就在画（dock 在右侧或落到输入框上方）。
+  const shownModPane =
+    activeModPane && (isDesktop ? panelExpanded : true) ? activeModPane : null;
+  // 焦点永远落在正显示着的那块上：切走 tab 时浏览器会把焦点交回，blur 已清，
+  // 这里再收敛一次，避免一条晚到的上报把焦点记在隐藏的面板上。
+  const focusedModPane =
+    shownModPane && activeModTab && modFocusedTabId === activeModTab.id
+      ? activeModPane
+      : null;
+  const modPaneViewRef = useRef<string>("");
+  useEffect(() => {
+    const key = JSON.stringify({
+      shown: shownModPane,
+      focused: focusedModPane,
+    });
+    if (key === modPaneViewRef.current) return;
+    modPaneViewRef.current = key;
+    postToHost({
+      command: "modPaneView",
+      payload: { shown: shownModPane, focused: focusedModPane },
+    });
+  }, [shownModPane, focusedModPane, postToHost]);
 
   // 输入框上方那条带由本实例**主动拉取**（spec「状态带、状态行与提示」）：宿主
   // 不缓存树，每次请求都真跑一遍每个 mod 的 `ui.render`。带和面板一样要报这一端
@@ -5684,6 +5726,19 @@ export const ChatApp: React.FC<ChatAppProps> = ({
           className="mod-panel mod-surface"
           style={{ width: common.width }}
           data-testid="mod-panel"
+          // 键盘进了面板正文就报「焦点在这块」（spec「面板的显示与焦点」）：
+          // `focusout` 会冒泡，焦点在面板内部挪（输入框 → 按钮）不算离开，所以
+          // 判断是不是跑到了这块容器外面。
+          onFocus={() => setModFocusedTabId(tab.id)}
+          onBlur={(event) => {
+            if (
+              event.currentTarget.contains(event.relatedTarget as Node | null)
+            )
+              return;
+            setModFocusedTabId((current) =>
+              current === tab.id ? null : current,
+            );
+          }}
         >
           {tab.modTree === undefined && !tab.modError ? (
             <div className="mod-panel-empty">正在渲染…</div>
@@ -5929,6 +5984,22 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   const modPaneCellsRef = useRef<{ columns: number; rows: number } | null>(
     null,
   );
+  /** 向宿主要一块 pane 的一帧树（`e.props` / `e.viewport` 里的版面事实随行带上）。 */
+  const requestModPaneRender = useCallback(
+    (modId: string, paneId: string) => {
+      postToHost({
+        command: "modPanelRender",
+        payload: {
+          modId,
+          paneId,
+          // 摆法只在 IDE 聊天面板要报（spec「在 IDE 插件里画」）：桌面端只有右侧
+          // 面板槽一种放法。
+          ...(isDesktop ? {} : modPaneLayout()),
+        },
+      });
+    },
+    [isDesktop, postToHost],
+  );
   const handleModPaneMeasure = useCallback(
     (cells: { columns: number; rows: number }) => {
       const previous = modPaneCellsRef.current;
@@ -5939,23 +6010,34 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         (tab) => tab.kind === "mod" && tab.modId && tab.modPaneId,
       );
       for (const tab of open) {
-        postToHost({
-          command: "modPanelRender",
-          payload: {
-            modId: tab.modId,
-            paneId: tab.modPaneId,
-            ...modPaneLayout(),
-          },
-        });
+        requestModPaneRender(tab.modId as string, tab.modPaneId as string);
       }
     },
-    [isDesktop, postToHost],
+    [isDesktop, requestModPaneRender],
   );
+
+  // 键盘真的翻进 / 翻出某块 mod 面板时，给那（最多两块）补拉一帧：`e.props.isFocused`
+  // 是**拉这一帧那一刻**算的（spec「`ui.render` 的 `e.props`」），不补拉的话 mod 要等
+  // 下一次无关的重画才看到新值 —— Claude Code 那边 props 一变就重画，这里补的是同一
+  // 个语义。只跟「真的变了」走（同一个快照按值比），所以点按钮、打字这类不翻焦点的
+  // 动作不会多发一次往返；上面那条上报 effect 在同一次提交里先跑，引擎收到快照之后
+  // 才处理这次拉取。
+  const modFocusPullRef = useRef<string>("null");
+  useEffect(() => {
+    const key = JSON.stringify(focusedModPane);
+    if (key === modFocusPullRef.current) return;
+    const previous = JSON.parse(modFocusPullRef.current) as ModPaneRef | null;
+    modFocusPullRef.current = key;
+    for (const pane of [previous, focusedModPane]) {
+      if (pane) requestModPaneRender(pane.modId, pane.paneId);
+    }
+  }, [focusedModPane, requestModPaneRender]);
 
   const modPaneHost = {
     onActivate: handleActivatePanel,
     onClose: handleCloseTab,
     onMeasure: handleModPaneMeasure,
+    onFocusChange: setModFocusedTabId,
     onEvent: (
       pane: ModIdePaneFrame,
       kind: "press" | "input" | "select",
