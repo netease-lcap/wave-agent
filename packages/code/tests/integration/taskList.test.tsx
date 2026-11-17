@@ -73,6 +73,11 @@ describe("TaskList Integration", () => {
         fastModel: "test-fast-model",
       }),
       getConfiguredModels: vi.fn().mockReturnValue([]),
+      // Mod 面（`ChatInterface` 会挂 `ModSurface`）：一条 band 都没有时不该
+      // 被问到，但补上这份 mock 免得将来有 band 的用例被一个 TypeError 打断。
+      renderModPanel: vi.fn().mockResolvedValue({ tree: null }),
+      renderModBand: vi.fn().mockResolvedValue([]),
+      handleModPanelEvent: vi.fn().mockResolvedValue(undefined),
       destroy: vi.fn(),
     } as unknown as Agent;
 

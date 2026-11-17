@@ -190,22 +190,32 @@ describe("ConfirmationSelector Esc Integration", () => {
    * ConfirmationSelector cancel on Esc, but only the selector's handler reacts to
    * a bare Esc (the provider one is keyed on ctrl+o and checks escape later), so
    * "Esc and no ctrl" selects exactly the selector's.
+   *
+   * `ink`'s `useInput` re-registers on every render, so one component that
+   * re-renders (a state update while the confirmation is opening) leaves two
+   * entries with the same source. Dedupe by source: what must be unique is the
+   * *branch*, not the number of renders — two different sources still mean the
+   * lookup can no longer tell the handlers apart.
    */
   function pressEscapeOnConfirmationSelector() {
-    const selectorHandlers = vi
-      .mocked(useInput)
-      .mock.calls.map(([handler]) => handler)
-      .filter((handler) => {
-        const source = handler.toString();
-        return source.includes("key.escape") && !source.includes("key.ctrl");
-      });
+    const selectorHandlers = new Map(
+      vi
+        .mocked(useInput)
+        .mock.calls.map(([handler]) => handler)
+        .filter((handler) => {
+          const source = handler.toString();
+          return source.includes("key.escape") && !source.includes("key.ctrl");
+        })
+        // The last registration for a given source is the one ink would call.
+        .map((handler) => [handler.toString(), handler] as const),
+    );
 
-    // Exactly one handler must match: zero means the Esc branch moved, two means
-    // the lookup is no longer able to tell them apart.
-    expect(selectorHandlers).toHaveLength(1);
-    selectorHandlers[0]("", {
+    // Exactly one branch must match: zero means the Esc branch moved.
+    const handlers = [...selectorHandlers.values()];
+    expect(handlers).toHaveLength(1);
+    handlers[0]("", {
       escape: true,
-    } as Parameters<(typeof selectorHandlers)[0]>[1]);
+    } as Parameters<(typeof handlers)[0]>[1]);
   }
 
   it("Esc on ConfirmationSelector should cancel but NOT call abortMessage", async () => {
