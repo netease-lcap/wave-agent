@@ -1413,7 +1413,7 @@ describe("ChatProvider", () => {
     });
   });
 
-  it("clears queuedMessages when abortMessage is called", async () => {
+  it("mirrors the SDK's queued-message snapshots after abortMessage", async () => {
     let lastValue: ChatContextType | undefined;
     const onHookValue = (val: ChatContextType) => {
       lastValue = val;
@@ -1436,10 +1436,12 @@ describe("ChatProvider", () => {
       expect(lastValue?.queuedMessages[0].content).toBe("Second message");
     });
 
-    // Call abortMessage (SDK clears queue and fires onQueuedMessagesChange)
+    // Call abortMessage. The SDK keeps queued user input across an interrupt
+    // (core/agent-lifecycle.md 中断只中止当前轮), so what the host shows is
+    // whatever snapshot the SDK sends next — never a client-side guess.
     lastValue?.abortMessage();
 
-    // Simulate the SDK firing the callback after clearing
+    // Simulate the SDK firing the callback after it drains the queue
     callbacks.onQueuedMessagesChange!([]);
 
     await vi.waitFor(() => {

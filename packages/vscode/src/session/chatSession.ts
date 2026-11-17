@@ -460,9 +460,15 @@ export class ChatSession {
     }
   }
 
+  /**
+   * Drop whatever is still queued because this conversation is being replaced
+   * (clear chat / restore session / config rebuild) — not because the user
+   * pressed Stop: a plain interrupt keeps the queue and drains it afterwards
+   * (core/agent-lifecycle.md 中断只中止当前轮).
+   */
   private async clearQueue() {
     if (this.agent && this.agent.queuedMessages.length > 0) {
-      await this.agent.abortMessage();
+      await this.agent.abortMessage({ clearQueue: true, resumeQueue: false });
     } else if (this.messageQueue.length > 0) {
       this.messageQueue = [];
       this.callbacks.onQueueChange(this.messageQueue);

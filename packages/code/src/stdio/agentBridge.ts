@@ -473,7 +473,13 @@ export class AgentBridge {
       case "closeBtw":
         return this.closeBtw(p.segmentId as string, sessionId);
       case "abortMessage":
-        return this.abortMessage(sessionId);
+        return this.abortMessage(
+          {
+            clearQueue: p.clearQueue as boolean | undefined,
+            resumeQueue: p.resumeQueue as boolean | undefined,
+          },
+          sessionId,
+        );
       case "clearMessages":
         return this.clearMessages(sessionId);
       case "rewindToMessage":
@@ -2274,14 +2280,15 @@ export class AgentBridge {
       // rest of the queue — the host removes the picked item separately, and
       // everything it did not touch must still be delivered afterwards.
       //
-      // The abort must be immediately followed by `sendMessage` with nothing
-      // awaited in between: the abort resets the loading flag, which is the gate
-      // a queued item waits behind, so any await here lets the *next* queued
-      // message start a turn first — the picked one would then be enqueued at
-      // the tail instead of going out now (realhost smoke: with the history
-      // write above the abort, a `deleteQueuedMessageById` landing in that gap
+      // `resumeQueue: false` because this call is itself the sender of the next
+      // message: resuming the queue inside the abort would start the *next*
+      // queued item's turn first and push the picked one to the tail. The abort
+      // must be immediately followed by `sendMessage` with nothing awaited in
+      // between — the abort resets the loading flag, which is the gate a queued
+      // item waits behind (realhost smoke: with a history write between the
+      // abort and the send, a `deleteQueuedMessageById` landing in that gap
       // started the remaining message immediately).
-      entry.agent.abortMessage({ keepQueue: true });
+      entry.agent.abortMessage({ resumeQueue: false });
     }
     await entry.agent.sendMessage(
       params.text,
@@ -2380,9 +2387,12 @@ export class AgentBridge {
     return null;
   }
 
-  private async abortMessage(sessionId?: string): Promise<null> {
+  private async abortMessage(
+    params: { clearQueue?: boolean; resumeQueue?: boolean } | undefined,
+    sessionId?: string,
+  ): Promise<null> {
     const entry = this.requireSession(sessionId);
-    entry.agent.abortMessage();
+    entry.agent.abortMessage(params);
     return null;
   }
 

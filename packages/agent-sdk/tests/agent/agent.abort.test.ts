@@ -395,7 +395,7 @@ describe("Agent - Abort Handling", () => {
     expect(true).toBe(true); // Test passes if no exception was thrown
   });
 
-  it("should clear message queue before aborting AI to prevent race condition", async () => {
+  it("should keep queued user input when aborting a busy turn", async () => {
     const mockCallbacks = {
       onLoadingChange: vi.fn(),
       onQueuedMessagesChange: vi.fn(),
@@ -464,12 +464,24 @@ describe("Agent - Abort Handling", () => {
 
     expect(queuedMessages).toHaveLength(2);
 
-    // Now abortMessage() should clear queue BEFORE triggering onLoadingChange
+    // Keep the dispatch from really running so the assertion below stays about
+    // the interrupt's queue handling.
+    vi.spyOn(aiManager, "sendAIMessage").mockResolvedValue(undefined);
+
+    // Interrupting one turn must not throw away what the user already typed
+    // (spec core/agent-lifecycle.md: 中断只中止当前轮).
+    const clearSpy = vi.spyOn(
+      (testAgent as unknown as { messageQueue: { clear: () => void } })
+        .messageQueue,
+      "clear",
+    );
     testAgent.abortMessage();
 
-    // After abort, queue should be empty
-    expect(queuedMessages).toHaveLength(0);
-    expect(mockCallbacks.onQueuedMessagesChange).toHaveBeenCalledWith([]);
+    // Nothing was dropped: the head starts the next turn immediately, the rest
+    // keeps its order.
+    expect(clearSpy).not.toHaveBeenCalled();
+    expect(mockCallbacks.onQueuedMessagesChange).not.toHaveBeenCalledWith([]);
+    expect(queuedMessages.map((m) => m.content)).toEqual(["queued msg 2"]);
   });
 
   describe("abortMessage queue behavior", () => {
@@ -551,7 +563,7 @@ describe("Agent - Abort Handling", () => {
       clearSpy.mockRestore();
     });
 
-    it("should clear queue when agent is busy (loading)", async () => {
+    it("should keep the queue and resume it when agent is busy (loading)", async () => {
       const mockCallbacks = {
         onLoadingChange: vi.fn(),
         onQueuedMessagesChange: vi.fn(),
@@ -613,16 +625,19 @@ describe("Agent - Abort Handling", () => {
       const aiManager = (testAgent as unknown as { aiManager: AIManager })
         .aiManager;
       aiManager.setIsLoading(true);
+      vi.spyOn(aiManager, "sendAIMessage").mockResolvedValue(undefined);
 
       // Call abortMessage while busy
       testAgent.abortMessage();
 
-      // Queue should be cleared
-      expect(messageQueue.hasPending()).toBe(false);
-      expect(messageQueue.getQueue()).toHaveLength(0);
+      // Queue survives the interrupt, and the abort's own tail drains it: the
+      // head starts the next turn right away, the tail keeps its order.
+      expect(messageQueue.getQueue().map((m) => m.content)).toEqual([
+        "queued msg 2",
+      ]);
     });
 
-    it("should keep queue when interrupting on behalf of send-now (keepQueue)", async () => {
+    it("should keep queue when interrupting on behalf of send-now (resumeQueue: false)", async () => {
       const mockCallbacks = {
         onLoadingChange: vi.fn(),
         onQueuedMessagesChange: vi.fn(),
@@ -683,8 +698,10 @@ describe("Agent - Abort Handling", () => {
         .aiManager;
       aiManager.setIsLoading(true);
 
-      // "Send now" for one item: the interrupt must not touch the queue
-      testAgent.abortMessage({ keepQueue: true });
+      // "Send now" for one item: the interrupt must not touch the queue, and
+      // must not resume it either — the caller sends the picked message itself,
+      // so a resume here would let the *next* item start a turn first.
+      testAgent.abortMessage({ resumeQueue: false });
 
       // Everything the user did not pick is still queued, in order
       expect(messageQueue.getQueue().map((m) => m.content)).toEqual([
@@ -693,6 +710,79 @@ describe("Agent - Abort Handling", () => {
         "<task_notification/>",
       ]);
       expect(mockCallbacks.onQueuedMessagesChange).not.toHaveBeenCalledWith([]);
+    });
+
+    it("should drop queued user input when the caller replaces the conversation (clearQueue)", async () => {
+      const mockCallbacks = {
+        onLoadingChange: vi.fn(),
+        onQueuedMessagesChange: vi.fn(),
+      };
+
+      const testAgent = await Agent.create({
+        apiKey: "test-key",
+        workdir: "/tmp/test-abort-queue-clear",
+        callbacks: mockCallbacks,
+      });
+
+      activeTestAgent = testAgent;
+      const container = (testAgent as unknown as { container: Container })
+        .container;
+      container.register("ToolManager", mockToolManagerInstance);
+      container.register("McpManager", {
+        isMcpTool: vi.fn().mockReturnValue(false),
+        getMcpToolPlugins: vi.fn().mockReturnValue([]),
+        getMcpToolsConfig: vi.fn().mockReturnValue([]),
+      });
+      container.register("SubagentManager", {
+        getConfigurations: vi.fn().mockReturnValue([]),
+        initialize: vi.fn().mockResolvedValue(undefined),
+      });
+      container.register("SkillManager", {
+        getAvailableSkills: vi.fn().mockReturnValue([]),
+        initialize: vi.fn().mockResolvedValue(undefined),
+      });
+      container.register("ConfigurationService", {
+        resolveGatewayConfig: () => testAgent.getGatewayConfig(),
+        resolveModelConfig: () => testAgent.getModelConfig(),
+        resolveContextWindow: () => testAgent.getContextWindow(),
+        resolveMaxOutputTokens: () => 4096,
+        resolveAutoMemoryEnabled: () => true,
+        resolveLanguage: () => testAgent.getLanguage(),
+        getEnvironmentVars: () =>
+          (
+            testAgent as unknown as {
+              configurationService: {
+                getEnvironmentVars: () => Record<string, string>;
+              };
+            }
+          ).configurationService.getEnvironmentVars(),
+      });
+
+      const messageQueue = (
+        testAgent as unknown as {
+          messageQueue: import("@/managers/messageQueue.js").MessageQueue;
+        }
+      ).messageQueue;
+      messageQueue.onMessageEnqueued = undefined;
+
+      messageQueue.enqueue({ content: "queued msg 1" });
+      messageQueue.enqueue({ content: "queued msg 2" });
+
+      const aiManager = (testAgent as unknown as { aiManager: AIManager })
+        .aiManager;
+      aiManager.setIsLoading(true);
+      const sendSpy = vi
+        .spyOn(aiManager, "sendAIMessage")
+        .mockResolvedValue(undefined);
+
+      // Clear chat / restore session / config rebuild: the conversation these
+      // items were typed into is gone, so they must not run in the new one.
+      testAgent.abortMessage({ clearQueue: true, resumeQueue: false });
+
+      expect(messageQueue.getQueue()).toHaveLength(0);
+      expect(mockCallbacks.onQueuedMessagesChange).toHaveBeenCalledWith([]);
+      // Nothing was resumed afterwards either.
+      expect(sendSpy).not.toHaveBeenCalled();
     });
 
     it("should not dispatch queued notification during abort", async () => {
@@ -1676,11 +1766,17 @@ describe("Agent - Abort Handling", () => {
         messageQueue.enqueueNotification(
           "<task-notification><task-id>bg-1</task-id><task-type>shell</task-type><status>completed</status><summary>Done</summary></task-notification>",
         );
+        // Send-now picks one queued item: the host removes it from the queue
+        // (`deleteQueuedMessageById`) and then sends it itself, so the queue no
+        // longer holds a duplicate of what is about to be sent.
+        expect(messageQueue.removeAt(0)).toBe(true);
 
         // Force-send, no gap: abortMessage() then immediately sendMessage().
         // The message goes direct (abort reset loading to false), so loop B
-        // (call 1) starts while loop #0 is still unwinding.
-        agent.abortMessage();
+        // (call 1) starts while loop #0 is still unwinding. `resumeQueue:
+        // false` mirrors agentBridge: this abort's caller is the sender, so it
+        // must not let the queue's next item start a turn ahead of it.
+        agent.abortMessage({ resumeQueue: false });
         sendPromise = agent.sendMessage("queued msg 1");
         await awaitUntil(() => callStarted[1] === true);
 
