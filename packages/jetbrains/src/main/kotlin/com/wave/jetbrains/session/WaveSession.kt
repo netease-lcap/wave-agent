@@ -478,6 +478,17 @@ class WaveSession(
         })
     }
 
+    /**
+     * `$.ui.notice`（spec「工具行下面的一行」）：消息名与桌面端一致，同一份
+     * webview 按这个名字收，payload 原样转发（`text: null` 由界面自己撤掉那一行）。
+     * 插件端没有 pane，也就没有 paneId 可带。
+     */
+    override fun onModNotice(payload: JsonElement?) {
+        postMessage("desktopModNotice", buildJsonObject {
+            put("payload", payload ?: JsonObject(emptyMap()))
+        })
+    }
+
     override fun onPermissionRequest(requestId: String, context: JsonElement?) {
         scope.launch {
             PermissionFlow.handle(project, this@WaveSession, requestId, context)

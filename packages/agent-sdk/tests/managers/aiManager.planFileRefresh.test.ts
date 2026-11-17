@@ -13,6 +13,7 @@ import { AIManager } from "../../src/managers/aiManager.js";
 import { readFile } from "node:fs/promises";
 import { callAgent } from "../../src/services/aiService.js";
 import type { MessageManager } from "../../src/managers/messageManager.js";
+import type { ModManager } from "../../src/managers/modManager.js";
 import type { ToolManager } from "../../src/managers/toolManager.js";
 import type { PermissionManager } from "../../src/managers/permissionManager.js";
 import type { PlanManager } from "../../src/managers/planManager.js";
@@ -42,6 +43,7 @@ describe("AIManager plan file refresh", () => {
   const PLAN_PATH = "/home/user/.wave/plans/bold-low-stream.md";
 
   let aiManager: AIManager;
+  let container: Container;
   let onPlanFileUpdated: Mock<(content: string) => void>;
   let mockMessageManager: Mocked<MessageManager>;
   let mockToolManager: Mocked<ToolManager>;
@@ -127,7 +129,7 @@ describe("AIManager plan file refresh", () => {
       consumePlanEntryReminder: vi.fn(),
     } as unknown as Mocked<PlanManager>;
 
-    const container = new Container();
+    container = new Container();
     container.register("ConfigurationService", {
       resolveGatewayConfig: vi.fn().mockReturnValue({}),
       resolveModelConfig: vi.fn().mockReturnValue({ model: "gpt-4" }),
@@ -255,5 +257,54 @@ describe("AIManager plan file refresh", () => {
     await aiManager.sendAIMessage();
 
     expect(onPlanFileUpdated).toHaveBeenCalledWith("");
+  });
+
+  /**
+   * 一个「只看 clearToolNotices、其余原样放行」的 ModManager：这一轮的每个 mod
+   * 钩子都还在，漏一个这一轮就会炸（`notifyMods` 是 `turn.start` 的第一句）。
+   */
+  function fakeMods() {
+    const clearToolNotices = vi.fn();
+    container.register("ModManager", {
+      clearToolNotices,
+      notifyMods: vi.fn(),
+      collectStopContext: vi.fn(async () => []),
+      dispatchTurnStep: vi.fn(async (event: unknown) => event),
+      collectPromptSections: vi.fn(async (sections: unknown) => sections),
+      collectPromptSection: vi.fn(
+        async (section: { text: string }) => section.text,
+      ),
+      collectSessionContextBlocks: vi.fn(async () => []),
+      rewritePromptAttachment: vi.fn(
+        async (attachment: { text: string }) => attachment.text,
+      ),
+    } as unknown as ModManager);
+    return clearToolNotices;
+  }
+
+  /**
+   * 同一条收口（spec「工具行下面的一行」）：工具结束时宿主替插件撤掉它贴的那
+   * 一行。派发点在结果块定型之后 —— 借这棵树里唯一一条会真正走完
+   * `executeToolCall` 的用例把它钉住，不为它另建一套 fixture。
+   */
+  it("工具块定型之后，把这次调用上贴着的 notice 撤掉", async () => {
+    const clearToolNotices = fakeMods();
+    respondWithToolCall("Bash", { command: "ls" });
+
+    await aiManager.sendAIMessage();
+
+    expect(clearToolNotices).toHaveBeenCalledWith("call-1");
+  });
+
+  // 「成功与失败都算」的另一半：工具抛出去走的是异常分支，那条路上也得收口，
+  // 否则贴过的那一行会留在一条已经失败的工具块下面。
+  it("工具执行抛出去也照样收口", async () => {
+    const clearToolNotices = fakeMods();
+    vi.mocked(mockToolManager.execute).mockRejectedValue(new Error("boom"));
+    respondWithToolCall("Bash", { command: "ls" });
+
+    await aiManager.sendAIMessage();
+
+    expect(clearToolNotices).toHaveBeenCalledWith("call-1");
   });
 });

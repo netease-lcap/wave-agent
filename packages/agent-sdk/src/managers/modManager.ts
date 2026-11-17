@@ -843,6 +843,14 @@ export class ModManager {
     text: string | null,
   ) => void;
   /**
+   * 每个 `tool_use_id` 上**当前**贴着 notice 的插件名（spec「工具行下面的一行」）。
+   *
+   * 工具结束由宿主替插件撤掉那一行，所以宿主得知道谁贴过：同一个工具可以被几个
+   * mod 各贴一行，收口时要逐条发 `text: null`。插件自己 `undefined` 撤掉时同步
+   * 从集合里删掉，免得清理时多出一条重复的 null。
+   */
+  private readonly noticeOwners = new Map<string, Set<string>>();
+  /**
    * `$.ui.copy` 的出口（spec「剪贴板与视图」）。
    *
    * 要等回执（谁写、写没写成都在界面那一端），所以是个 Promise；没接上时按
@@ -1033,6 +1041,44 @@ export class ModManager {
     this.noticeSink = fn;
   }
 
+  /**
+   * `$.ui.notice` 的唯一出口：记账之后照旧交给 `noticeSink`。
+   *
+   * 账照记不误，哪怕 sink 没接（终端就没有工具块）：清理时自然是一条空操作，
+   * 但这里不为它特判 —— 「谁贴过」是宿主自己的事实，与有没有人画无关。
+   */
+  private publishNotice(
+    pluginName: string,
+    toolUseId: string,
+    text: string | null,
+  ): void {
+    const owners = this.noticeOwners.get(toolUseId);
+    if (text === null) {
+      if (owners) {
+        owners.delete(pluginName);
+        if (owners.size === 0) this.noticeOwners.delete(toolUseId);
+      }
+    } else if (owners) {
+      owners.add(pluginName);
+    } else {
+      this.noticeOwners.set(toolUseId, new Set([pluginName]));
+    }
+    this.noticeSink?.(pluginName, toolUseId, text);
+  }
+
+  /**
+   * 工具调用结束（成功或失败都算）：把它身上贴着的 notice 全部撤掉（spec
+   * 「工具行下面的一行」），插件不必在 `turn.complete` 里自己清理。
+   *
+   * 直接发 `text: null`、不走 `publishNotice`：这一步只是撤，不该再记一笔账。
+   */
+  clearToolNotices(toolUseId: string): void {
+    const owners = this.noticeOwners.get(toolUseId);
+    if (!owners || owners.size === 0) return;
+    for (const plugin of owners) this.noticeSink?.(plugin, toolUseId, null);
+    this.noticeOwners.delete(toolUseId);
+  }
+
   /** 接上剪贴板通道（见 `copySink`）。 */
   setCopySink(
     fn: (request: {
@@ -1181,7 +1227,7 @@ export class ModManager {
               listSessionMessages: () => this.facts.sessionMessages(),
               readPromptDraft: () => this.readPromptDraft(),
               showNotice: (toolUseId, text) =>
-                this.noticeSink?.(plugin.name, toolUseId, text),
+                this.publishNotice(plugin.name, toolUseId, text),
               copyText: (request) => this.copyText(request),
               envGet: (name) => this.facts.env(name),
               settingsRead: (query) => this.facts.settings(query),
@@ -2755,6 +2801,8 @@ export class ModManager {
     this.closeAllPanes(false);
     this.bands.clear();
     this.statusLines.clear();
+    // 会话都没了，工具行也没了：`noticeSink` 那头不必再收一轮 null。
+    this.noticeOwners.clear();
     this.disposed = true;
   }
 

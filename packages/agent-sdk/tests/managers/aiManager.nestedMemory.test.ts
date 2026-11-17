@@ -167,6 +167,9 @@ function createHarness() {
     collectSessionContextBlocks: vi.fn(async () => []),
     rewritePromptAttachment: vi.fn(async (attachment) => attachment.text),
     currentPermissionMode: () => "default",
+    // 工具跑完撤掉贴在它下面的 notice（spec「工具行下面的一行」）：这个用例集
+    // 关心的是往返里发出的影子事件，缺了方法会让调用点抛错、把后续全打断。
+    clearToolNotices: vi.fn(),
   } as unknown as ModManager);
 
   const aiManager = new AIManager(container, {

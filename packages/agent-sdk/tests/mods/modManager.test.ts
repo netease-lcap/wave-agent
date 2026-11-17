@@ -2696,6 +2696,99 @@ exports.register = function ($, on) {
   });
 });
 
+/**
+ * 工具行上那一行的收口（spec「工具行下面的一行」）：工具结束由宿主撤，插件不必
+ * 自己清理。所以宿主得记「哪个 tool_use_id 上是谁贴的」—— 同一个工具可以被几个
+ * mod 各贴一行，收口时要逐条发 `text: null`；插件自己撤掉的那条不能再撤一遍。
+ */
+describe("ModManager 自动撤除工具行上的 notice", () => {
+  /** 在 `session.start` 里贴一行的 mod。 */
+  const noticeAtStart = (line: string) => `
+exports.register = function ($, on) {
+  on("session.start", function () {
+    ${line}
+  });
+};
+`;
+
+  /** 接上 notice 出口的 manager：`sources` 是「插件名 → 这个插件的 mod 源码」。 */
+  async function sinkManager(sources: Record<string, string>) {
+    const notices: Array<[string, string, string | null]> = [];
+    const files: Record<string, string> = {};
+    const plugins: Plugin[] = [];
+    for (const [name, source] of Object.entries(sources)) {
+      const file = path.join(ROOT, "mods", `${name}.tsx`);
+      files[file] = source;
+      plugins.push(namedPlugin(name, [{ id: `${name}:panel`, path: file }]));
+    }
+    const { manager } = createManager(files);
+    manager.setNoticeSink((pluginName, toolUseId, text) =>
+      notices.push([pluginName, toolUseId, text]),
+    );
+    await manager.loadFromPlugins(plugins);
+    await manager.startSession();
+    return { manager, notices };
+  }
+
+  it("工具结束时逐条撤：同一个工具上两个插件各收到一条 null", async () => {
+    const { manager, notices } = await sinkManager({
+      todo: noticeAtStart('$.ui.notice("tool-1", "todo 贴的");'),
+      guard: noticeAtStart('$.ui.notice("tool-1", "guard 贴的");'),
+    });
+    await vi.waitFor(() => expect(notices).toHaveLength(2));
+
+    manager.clearToolNotices("tool-1");
+
+    // 顺序跟着记账的迭代走，不按下标断言：按内容认。
+    const cleared = notices.slice(2);
+    expect(cleared).toHaveLength(2);
+    expect(cleared).toEqual(
+      expect.arrayContaining([
+        ["todo", "tool-1", null],
+        ["guard", "tool-1", null],
+      ]),
+    );
+
+    await manager.dispose();
+  });
+
+  it("没有贴过的工具、以及清完再清一次：都不发 null（幂等）", async () => {
+    const { manager, notices } = await sinkManager({
+      todo: noticeAtStart('$.ui.notice("tool-1", "已校验");'),
+    });
+    await vi.waitFor(() => expect(notices).toHaveLength(1));
+
+    manager.clearToolNotices("tool-2");
+    expect(notices).toHaveLength(1);
+
+    manager.clearToolNotices("tool-1");
+    expect(notices).toHaveLength(2);
+
+    manager.clearToolNotices("tool-1");
+    expect(notices).toHaveLength(2);
+
+    await manager.dispose();
+  });
+
+  it("插件自己先撤掉的那一行，收口时不会多出一条 null", async () => {
+    const { manager, notices } = await sinkManager({
+      todo: noticeAtStart(
+        '$.ui.notice("tool-1", "已校验"); $.ui.notice("tool-1", undefined);',
+      ),
+    });
+    await vi.waitFor(() => expect(notices).toHaveLength(2));
+
+    manager.clearToolNotices("tool-1");
+
+    expect(notices).toEqual([
+      ["todo", "tool-1", "已校验"],
+      ["todo", "tool-1", null],
+    ]);
+
+    await manager.dispose();
+  });
+});
+
 describe("ModManager 的轮次事件（turn.start / turn.step / session.compact）", () => {
   const TIMELINE_MOD = `
 exports.register = function ($, on) {
