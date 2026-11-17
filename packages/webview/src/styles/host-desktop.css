@@ -2889,7 +2889,7 @@
 /* 主机菜单的分组标题：2026-11-16 评论撤掉远程图标（「这里是分类，去掉图标，改成
    『最近打开』这里这样」）⇒ 标题行不再是 flex，`gap` 也撤掉；组内条目名的 32px
    缩进保留（让条目名落在标题文字右侧一档，与「最近打开」菜单「标题 17 / 条目 41」
-   同构）。没有图标的种类（WSL）继续吃这条。 */
+   同构）。1117 起三种 kind 都带图标，缩进都走下面那条 8px 规则。 */
 [data-host="desktop"] .desktop-host-menu-items .desktop-workdir-menu-item {
   padding-left: 32px;
 }
@@ -2897,11 +2897,16 @@
    「主机名称前面加个图标，名称位置不变」⇒ SSH 条目补上「SSH主机」颗，正好把这
    32px 吃满：左内衬 8 + 图标 16 + 行内 gap 8 = 32，名称左缘一格不动（1440 视口
    下改前后都在 x920）。图标列因此与「本地」行图标、分组标题文字同一条竖线。
-   必须按 kind 收窄：WSL 条目没有图标，若也降到 8px，名称会整体左移 24px
-   （实测 tmp-1109-host-wsl：名字 x519 → 495）。 */
+   必须按 kind 收窄：没有图标的种类若也降到 8px，名称会整体左移 24px
+   （实测 tmp-1109-host-wsl：名字 x519 → 495）。
+   1117：WSL 也补了图标（企鹅），一并纳入这条；三种 kind 的 8 + 16 + 8 拆法与
+   名称左缘现在完全一致。 */
 [data-host="desktop"]
   .desktop-host-menu-items
-  .desktop-workdir-menu-item[data-host-kind="ssh"] {
+  .desktop-workdir-menu-item[data-host-kind="ssh"],
+[data-host="desktop"]
+  .desktop-host-menu-items
+  .desktop-workdir-menu-item[data-host-kind="wsl"] {
   padding-left: 8px;
 }
 
