@@ -156,6 +156,23 @@ export const SessionList: React.FC<SessionListProps> = ({
                     </div>
                   )}
                 </div>
+                {/* 目录缺失（spec desktop/desktop-sessions.md「会话目录缺失后的恢复
+                    （换文件夹继续）」场景 1）：桌面端宿主的探测结果，行上给一条
+                    独立的红点 + 文案。**不并进** `.session-list-item-status`：那个
+                    槽是远控页「待确认 / 运行中」用的，两种标记的来源与含义都不同，
+                    这里也不受 `sessionStatus` 传不传影响。行照旧可点。 */}
+                {session.folderMissing === true && (
+                  <div
+                    className="session-list-item-folder-missing"
+                    data-testid={`session-list-folder-missing-${session.id}`}
+                  >
+                    <span
+                      className="session-list-item-folder-missing-dot"
+                      aria-hidden="true"
+                    />
+                    目录不存在
+                  </div>
+                )}
                 {showProject && session.workdir && (
                   <div
                     className="session-list-item-project"
