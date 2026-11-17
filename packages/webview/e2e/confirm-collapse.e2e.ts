@@ -12,9 +12,9 @@ const WORKDIR = "/Users/dev/projects/wave-agent";
  * 弹窗整体变矮、被它挤住的消息列表拿回高度。jsdom 不解析外部样式表，
  * 单元测试只能断状态类/aria/DOM 归属与 Tab 序列，几何断言落在这里。
  *
- * 视口取「笔记本小屏」形态：高度 520px 时 min(70vh, 560px) 的 cap 恰好
- * 是绑定的那一侧（70vh = 364px < 560px），也就是用户报的「确认弹窗几乎
- * 占满屏幕、消息列表看不见」的真实场景。
+ * 视口取「笔记本小屏」形态（900×520）：问句卡不封顶、高度跟内容走，这一档里
+ * 四个选项的卡片比面板可用高度还高，消息列表被挤到 0 —— 也就是用户报的
+ * 「确认弹窗几乎占满屏幕、消息列表看不见」的真实场景。
  */
 const SHORT_VIEWPORT = { width: 900, height: 520 };
 
@@ -145,11 +145,18 @@ test.describe("AskUserQuestion options collapse", () => {
     await webviewPage.waitForSelector(".confirmation-dialog");
 
     const expanded = await measure(webviewPage);
-    const cap = Math.min(SHORT_VIEWPORT.height * 0.7, 560);
-    // 前提：展开态被 cap 顶住 —— 否则这不是用户报的那个场景，折叠也没什么可省的。
-    expect(expanded.dialogInner).toBeGreaterThan(cap - 8);
+    const pane = await webviewPage.evaluate(
+      () =>
+        (
+          document.querySelector(".desktop-chat-main") as HTMLElement
+        ).getBoundingClientRect().height,
+    );
+    // 前提：展开态卡片跟内容长高、顶到面板可用高度（问句卡不再有
+    // min(70vh, 560px) 封顶），消息列表因此被挤到几乎看不见 —— 否则这不是用户
+    // 报的那个场景，折叠也没什么可省的。
+    expect(expanded.dialogInner).toBeGreaterThan(pane * 0.8);
     expect(expanded.optionsVisible).toBe(true);
-    expect(expanded.messages).toBeGreaterThan(0);
+    expect(expanded.messages).toBeLessThan(pane * 0.1);
 
     // 关闭键的设计师对齐口径（host-desktop.css「关闭按钮对齐」top 22 / right 16）
     // 现在落在按钮组上：关闭键是组内最后一项，右缘 = 组右缘，折叠键只在它左侧
@@ -179,10 +186,14 @@ test.describe("AskUserQuestion options collapse", () => {
     expect(header.closeSize).toEqual([20, 20]);
 
     // 收起前先给选项列表一个真实滚动位置（jsdom 侧只能存值，这里是真的滚）。
-    await webviewPage.evaluate(() => {
+    // 读回来的是**夹住之后**的值：列表只剩一屏多一点点时 max scrollTop 可能
+    // 到不了 60，断言还原的是「折叠前那个位置」，不是写进去的那个数。
+    const listScrollTop = await webviewPage.evaluate(() => {
       const list = document.querySelector(".options-list") as HTMLElement;
       list.scrollTop = 60;
+      return list.scrollTop;
     });
+    expect(listScrollTop).toBeGreaterThan(0);
 
     await webviewPage.getByTestId("confirmation-collapse-toggle").click();
     // 折叠是同步的（React 状态 + CSS），但高度收缩带 8px transition 之外的
@@ -218,14 +229,14 @@ test.describe("AskUserQuestion options collapse", () => {
     );
     const reopened = await measure(webviewPage);
     expect(reopened.optionsVisible).toBe(true);
-    expect(reopened.dialogInner).toBeGreaterThan(cap - 8);
+    expect(reopened.dialogInner).toBeGreaterThan(pane * 0.8);
     expect(Math.abs(reopened.messages - expanded.messages)).toBeLessThan(2);
     expect(
       await webviewPage.evaluate(
         () =>
           (document.querySelector(".options-list") as HTMLElement).scrollTop,
       ),
-    ).toBe(60);
+    ).toBe(listScrollTop);
   });
 
   test("answer draft (selection, Other text, current question) survives a fold", async ({

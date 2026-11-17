@@ -6179,7 +6179,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
           只让 LoadingLogo 单独占据主体；就绪后由欢迎页/消息列表带出输入框。 */}
       {showWelcomeReady || !showWelcome ? (
         <div
-          className={`input-area-container${isDesktop && state.pendingConfirmations.length > 0 ? " input-area-container--confirm" : ""}`}
+          className={`input-area-container${state.pendingConfirmations.length > 0 ? " input-area-container--confirm" : ""}`}
         >
           <div
             style={{

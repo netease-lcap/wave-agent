@@ -18,6 +18,9 @@
      208px，见下面的 @container 一档。 */
   --approval-dock-floor: 144px;
   max-width: 640px;
+  /* 通用确认卡的封顶。问句卡例外：AskUserQuestion 高度跟内容走（见下方
+     .is-ask-user），对齐 CC 桌面端的 .epitaxy-question-card{max-height:none}；
+     它的通用审批卡仍是 max-h-[60vh]。 */
   max-height: min(70vh, 560px);
   margin: 0 auto;
   width: 100%;
@@ -41,6 +44,15 @@
   .confirmation-dialog-inner {
     --approval-dock-floor: 208px;
   }
+}
+
+/* 问句卡不封顶（spec ui/ask-user-tool.md「提问卡片高度跟内容、不再固定封顶」）：
+   选项多、题干长时卡片按内容长高，不再停在 560px 里让用户在卡内小滚动框里翻。
+   超面板高度由「卡片收缩 + 弹窗主体内部滚」承担 —— 载体是 .input-area-container--confirm
+   这条收缩链（ChatApp.css），四端齐备才成立；缺一端就会顶出面板、按钮栏不可达。
+   只放开 AskUserQuestion：其余确认类型的卡体是审批依据，越界时卡内滚代价更低。 */
+.confirmation-dialog-inner.is-ask-user {
+  max-height: none;
 }
 
 /* Scrollable body: header, questions and diff grow here; the action bar below
@@ -289,8 +301,8 @@
 }
 
 /* 折叠态：只收起选项交互区，题干 chip、进度条与底部三按钮留在原位，弹窗高度
-   随之收缩、把空间还给消息列表（小屏笔记本上弹窗上限 min(70vh, 560px) 可吃掉
-   面板约 70%）。折叠键本身不在这里，见 .confirmation-header-actions。
+   随之收缩、把空间还给消息列表（选项多时卡片跟内容长高，会把面板可用高度吃满）。
+   折叠键本身不在这里，见 .confirmation-header-actions。
    收起后选项不再 Tab 可达（tabIndex 由组件一并改掉，光靠 display:none 会让
    焦点圈的 first/last 落到隐藏元素上）。 */
 .confirmation-dialog.is-options-collapsed .options-list {
@@ -320,13 +332,10 @@
 
 /* ---- 选项预览（preview / Notes，见 ask-user-tool.md「选项预览与备注」）---- */
 
-/* 预览态的高度由底部确认区（dock）定，不跟内容走：焦点在两个长度悬殊的预览之间
-   切换时，卡片会从 560 掉到 444（实测），把按钮栏和下方消息区一起带着抖。
-   这里把卡片钉在 dock 上限（与 max-height 同值），预览多长都在面板里滚。
-   折叠态是例外 —— 折叠本来就是为了把空间还回去，见下方 is-options-collapsed。 */
-.confirmation-dialog-inner:has(.question-body.is-preview) {
-  height: min(70vh, 560px);
-}
+/* 预览态的上界从「卡片钉高」下移到了预览面板自身（见下方 .option-preview 的高度）：
+   卡片不再封顶，钉卡高会与「跟内容走」冲突。焦点在两个长度悬殊的预览之间切换时，
+   钉住的是面板而不是整张卡，卡片只随「选项 + 定高的预览」长高，不会再出现从 560
+   掉到 444 那种整卡抖动。 */
 
 /* 选项区与预览面板的容器。普通态只是透明的一层：高度预算还得继续往下传给
    .options-list（它才是滚动容器），所以这一层也要 flex: 1 1 auto + min-height: 0，
@@ -355,51 +364,79 @@
 
 .question-body.is-preview .options-list {
   min-width: 0;
-  /* 自然高度：选项先占满自己需要的行数，极端情况下才在自己内部滚；
-     保底一行（40px = 桌面一个选项高，场景 3）。 */
-  flex: 0 1 auto;
+  /* 自然高度且不参与压缩：选项是判断依据，先压的是下面那块预览面板。
+     「按比例切高度」那一版把选项压到只剩半行（第二个选项被裁 33px），
+     所以这里连 shrink 都不给；空间真的不够时由 .confirmation-body 整体滚。 */
+  flex: 0 0 auto;
   min-height: 40px;
+  /* 但自然高度也得有上界：选项 8 项、描述又长时，不封顶就是把整张卡片撑到没有边，
+     预览面板反而被挤没。超出时列表自己在内部滚（CC VS Code 的两档同值是 30/40vh）。 */
+  max-height: 30vh;
 }
 
 .question-body.is-preview .option-preview {
-  /* 堆叠档：预览只领选项之后的剩余额度并自己滚。basis 必须是 0 而不是 auto ——
-     预览内容动辄上千像素，basis: auto 会拿内容高度去和选项列抢收缩量，选项列
-     于是被压到保底 40px、一行都露不全（实测 760×600：列表只剩 40px）。basis: 0
-     时它只在真正有剩余空间时才长。
-     CC 窄档给预览列 `max-h-[min(16rem,35vh)]` + overflow-y-auto 当上界，我们这一档
-     的上界由上面钉住的卡片高度给出（:has(.question-body.is-preview) 那条）。 */
-  flex: 1 1 0;
+  /* 堆叠档：预览是这一列里**唯一**可压缩的一层 —— 卡片跟内容走后，空间不足时
+     先压面板（低到 60px 保底、内部滚），选项一行都不让。
+     高度本身由下面 .option-preview 的 height 定（不随内容变）；grow 1 让 dock
+     地板撑出的余量落在这里，而不是底部留一条空白。 */
+  flex: 1 1 auto;
   min-height: 60px;
 }
 
-/* 并排档（容器 ≥480px）：左选项 40% / 右预览 60%，两栏都被卡片高度夹住、各滚各的。
-   用 grid 而不是 flex —— 行高 minmax(0, 1fr) 才有上界；flex 的纵轴没有 shrink，
-   长预览会把行顶到内容高度、越过容器盖到备注行上。
+/* 并排档（容器 ≥480px）：左选项 40% / 右预览 60%，各滚各的。
+   用 grid 而不是 flex —— 行高有上界；flex 的纵轴没有 shrink，长预览会把行顶到
+   内容高度、越过容器盖到备注行上。卡片跟内容走之后行是 auto（两栏取较高者），
+   预览的高度改由它自己的 height 给；之前是 minmax(0, 1fr) + 钉高的卡片。
    CC 宽档对预览列是 `@[30rem]:max-h-none @[30rem]:min-h-40`（去掉封顶、给 10rem
    下限），这里同值 160px。 */
 @container (min-width: 480px) {
   .question-body.is-preview {
     display: grid;
     grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
-    grid-template-rows: minmax(40px, 1fr);
+    grid-template-rows: minmax(40px, auto);
     gap: 8px;
   }
 
   .question-body.is-preview .option-preview {
     min-height: 160px;
+    /* 并排档两栏各有自己的份额：左列最多 40vh、右面板 40vh（面板高度上限同样
+       来自 --preview-lines，这里只换视口比例那一档）。 */
+    height: min(calc(var(--preview-lines, 8) * 1.5em + 1.7em), 40vh);
+    max-height: 40vh;
+  }
+
+  .question-body.is-preview .options-list {
+    max-height: 40vh;
   }
 }
 
-/* 预览面板：自己滚，不参与选项区的滚动。 */
+/* 预览面板：自己滚，不参与选项区的滚动。
+   高度上限由组件写进 `--preview-lines`（该题**最长**那条预览的行数 +1，最少 3），
+   这里折算成高度：行高 18px = 1.5em、边框+内衬 20px ≈ 1.7em，再夹 35vh。
+   取最长而不是当前项，是为了同一题内换选项时面板不高不矮（spec 场景 2）；算法与
+   CC VS Code 的 `--preview-lines` 同源（那边用 1.3em + 3em，因为它带一条 caption）。 */
 .option-preview {
   display: flex;
   flex-direction: column;
   min-width: 0;
   min-height: 0;
-  overflow-y: auto;
+  /* 上限按**边框盒**算：面板自己有 8/10 的内衬与 1px 描边，content-box 会让
+     实际占高多出 18px。 */
+  box-sizing: border-box;
+  /* 高度**定**成「该题最长那条预览的行数」而不是让内容撑：只写 max-height 的话，
+     长预览被夹在上限、短预览回落到内容高度，换选项时面板照样跳（宽档实测跳 200px）。
+     CC VS Code 靠 `contain:size` + flex-basis 达到同一效果。 */
+  height: min(calc(var(--preview-lines, 8) * 1.5em + 1.7em), 35vh);
+  /* 卡片被 dock 地板撑高时余量会落到面板上（见下方 flex: 1 1 auto），别越过视口。 */
+  max-height: 35vh;
+  /* 纵向滚长预览、横向滚超宽的 ASCII 稿（下面 p 用 pre-wrap，但含不可断词的
+     长行仍可能超出面板宽度）。 */
+  overflow: auto;
   padding: 8px 10px;
   border: 1px solid var(--vscode-widget-border);
   border-radius: 4px;
+  /* 预览里放的多是版式稿与代码片段：比例字体下各行列位置对不上。 */
+  font-family: var(--vscode-editor-font-family, ui-monospace, monospace);
   font-size: 12px;
   line-height: 18px;
 }
@@ -416,6 +453,12 @@
 
 .option-preview-body > :last-child {
   margin-bottom: 0;
+}
+
+/* 段落保留原始换行与缩进：markdown 默认把单换行当软换行折叠成空格，对齐好的
+   ASCII 版式稿会散成一行。pre-wrap 而不是 pre —— 长行仍软换行，不逼出横向滚动。 */
+.option-preview-body :is(p, li) {
+  white-space: pre-wrap;
 }
 
 .option-preview-body pre {
@@ -445,11 +488,8 @@
 }
 
 /* 折叠收起的是整个选项交互区：预览面板与备注一并收起，不留半截
-   （见「预览态与折叠」边界）。折叠后卡片高度交回内容，不再钉在 dock 上限。 */
-.confirmation-dialog.is-options-collapsed .confirmation-dialog-inner {
-  height: auto;
-}
-
+   （见「预览态与折叠」边界）。卡片本来就按内容长高（问句卡不封顶），
+   收起选项后高度自然回落，不需要额外覆写 height。 */
 .confirmation-dialog.is-options-collapsed .option-preview,
 .confirmation-dialog.is-options-collapsed .option-notes {
   display: none;

@@ -95,6 +95,24 @@ const questionHasPreview = (
 ): boolean =>
   !q.multiSelect && q.options.some((o) => optionPreview(o).trim() !== "");
 
+/**
+ * 预览面板的高度上限折成行数：取**该题所有选项里最长那条 preview** 的行数 +1
+ * （给末行留一格），最少 3 行。CSS 变量 `--preview-lines` 由它写入，CSS 再折算成
+ * 高度（`行数 × 1.5em + 1.7em`）。取最大值而不是当前项的行数，是为了换选项时
+ * 面板高度不变 —— 否则长 → 短预览一换，整张卡片会跟着突然变矮（spec
+ * `ask-user-tool.md`「选项预览与备注」场景 2）。同一算法见 CC VS Code 的
+ * `--preview-lines`（`index.js` 里 `Math.max(3, ...options.map(...))`）。
+ */
+const previewPanelLines = (
+  q: AskUserQuestionInput["questions"][number],
+): number =>
+  Math.max(
+    3,
+    ...q.options.map(
+      (o) => optionPreview(o).replace(/\n+$/, "").split("\n").length + 1,
+    ),
+  );
+
 // Selector for the dialog's focusable elements. Used by the modal focus trap:
 // Tab/Shift+Tab cycle within the dialog so focus never leaks into the message
 // list behind it. Elements with an explicit tabIndex="-1" (the hidden radio /
@@ -797,6 +815,8 @@ const ConfirmationDialogImpl: React.FC<ConfirmationDialogProps> = ({
     const activePreview = isPreviewQuestion
       ? optionPreview(q.options[previewFocusIndex] ?? q.options[0])
       : "";
+    // 面板高度上限按整题最长预览算（同一题内换选项不高不矮），见 previewPanelLines。
+    const previewLines = isPreviewQuestion ? previewPanelLines(q) : 0;
 
     return (
       <div className="ask-user-questions">
@@ -1051,6 +1071,11 @@ const ConfirmationDialogImpl: React.FC<ConfirmationDialogProps> = ({
                 aria-label="选项预览"
                 data-testid="option-preview"
                 ref={previewRef}
+                style={
+                  {
+                    "--preview-lines": previewLines,
+                  } as React.CSSProperties
+                }
               >
                 {activePreview.trim() ? (
                   <div
@@ -1217,7 +1242,15 @@ const ConfirmationDialogImpl: React.FC<ConfirmationDialogProps> = ({
       }`}
       tabIndex={-1}
     >
-      <div className="confirmation-dialog-inner">
+      {/* is-ask-user：问句卡不限高（高度跟内容走），其余确认类型保留
+          min(70vh, 560px) 封顶 —— 见 ConfirmationDialog.css。 */}
+      <div
+        className={`confirmation-dialog-inner${
+          confirmation.toolName === ASK_USER_QUESTION_TOOL_NAME
+            ? " is-ask-user"
+            : ""
+        }`}
+      >
         <div className="confirmation-body">
           <div className="confirmation-header">
             <div className="confirmation-header-top">
