@@ -43,6 +43,8 @@ import {
   forgetRecentWorkdir,
   setSessionCustomTitle,
   readSessionWorkdir,
+  relocateSessionTranscript,
+  type RelocateSessionResult,
   searchFiles,
   generateRandomName,
   getDefaultRemoteBranch,
@@ -117,7 +119,7 @@ import {
 } from "node:fs";
 import { mkdir, open, readFile, stat, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
-import { basename, dirname, extname, join } from "node:path";
+import { basename, dirname, extname, join, resolve } from "node:path";
 import {
   createWorktree,
   deriveWorktreeInfo,
@@ -218,6 +220,24 @@ interface SearchFilesParams {
   query: string;
   maxResults?: number;
   workdir?: string;
+}
+
+/**
+ * Why `relocateSessionTranscript` refused to move a session. A refusal is a
+ * normal answer, not a protocol error — the desktop renders each reason as a
+ * message and leaves the session exactly as it was:
+ *
+ * - `target_missing`: the destination directory does not exist (it was deleted
+ *   or mistyped between the picker and the call).
+ * - `busy`: this process still hosts a live agent for that session, which keeps
+ *   appending to the old transcript path. The host destroys it first; seeing
+ *   this means that step was skipped or had not finished.
+ * - `not_found`: no transcript for that session in the given workdir or in any
+ *   project directory on this host — nothing to move.
+ */
+export interface RelocateSessionRefusal {
+  ok: false;
+  reason: "target_missing" | "busy" | "not_found";
 }
 
 interface SessionEntry {
@@ -414,6 +434,24 @@ export class AgentBridge {
           p.workdir as string,
           p.title as string,
         );
+      case "relocateSessionTranscript": {
+        // Host-level for the same reason as renameSession: the session being
+        // moved is normally NOT live (the desktop destroys it first), so the
+        // three paths come from the caller. Validated here, where the params are
+        // still `unknown` — a non-string would otherwise reach path handling.
+        const { sessionId: targetId, fromWorkdir, toWorkdir } = p;
+        if (
+          typeof targetId !== "string" ||
+          typeof fromWorkdir !== "string" ||
+          typeof toWorkdir !== "string"
+        ) {
+          throw new RpcError(
+            PROTOCOL_INVALID_PARAMS,
+            "relocateSessionTranscript requires sessionId, fromWorkdir and toWorkdir (all strings)",
+          );
+        }
+        return this.relocateSessionTranscript(targetId, fromWorkdir, toWorkdir);
+      }
       case "getSessionInfo":
         return this.getSessionInfo(sessionId);
       case "listPendingPermissions":
@@ -1673,6 +1711,70 @@ export class AgentBridge {
       return;
     }
     await setSessionCustomTitle(sessionId, workdir, title);
+  }
+
+  /**
+   * 「换文件夹继续」: move a session's transcript into a new directory and
+   * re-anchor the session there (spec desktop/desktop-sessions.md
+   * 「会话目录缺失后的恢复（换文件夹继续）」).
+   *
+   * Why the file really has to move: the transcript's path is derived from the
+   * workdir (`<sessionDir>/<encodeWorkdir(workdir)>/<id>.jsonl`), so leaving it
+   * behind while only rewriting an index would make the session unloadable —
+   * and its metadata header (whose `workdir` the SDK rewrites) is what
+   * `restoreWorkdirFor` reads on every later re-attach.
+   *
+   * Three refusals come back as a **successful reply carrying
+   * `{ok:false, reason}`**, not as a thrown error: "that folder is gone" /
+   * "there is no transcript" / "this process is still running it" are expected
+   * states the host renders as a message. A throw still means the move itself
+   * failed (the SDK rolls any partial state back before throwing), which is a
+   * different thing to report.
+   */
+  private async relocateSessionTranscript(
+    sessionId: string,
+    fromWorkdir: string,
+    toWorkdir: string,
+  ): Promise<RelocateSessionResult | RelocateSessionRefusal> {
+    // `~` is expanded the way the directory pickers' RPC does it, and the SDK is
+    // handed the resolved, expanded path: what gets encoded into the project
+    // directory has to be the path we just checked, or the transcript would land
+    // under a literal `~` project dir.
+    const target = resolve(
+      toWorkdir === "~" || toWorkdir.startsWith("~/")
+        ? join(homedir(), toWorkdir.slice(1))
+        : toWorkdir,
+    );
+    if (!(await isDirectory(target))) {
+      return { ok: false, reason: "target_missing" };
+    }
+    // Defensive, not the normal path: the desktop destroys the session before
+    // calling this. A live agent keeps appending to the OLD path (its transcript
+    // path is fixed at creation), so moving the file underneath it would split
+    // one conversation into two files — the moved copy plus everything the
+    // agent writes from now on, which no reload would ever join back up.
+    // `sessions` is keyed by the session id the agent currently reports
+    // (re-keyed on `onSessionIdChange`), so a hit is exactly "this process holds
+    // this session" — including an entry mid-`updateConfig` rebuild, which will
+    // recreate the agent at the same old anchor.
+    if (this.sessions.has(sessionId)) {
+      return { ok: false, reason: "busy" };
+    }
+    const result = await relocateSessionTranscript(
+      sessionId,
+      fromWorkdir,
+      target,
+    );
+    // `from` is the discriminator, not the two counters: a from/to pair that
+    // encodes to the same project directory is rewritten in place and also
+    // reports relocated:false / copiedFiles:0, but it does know its source.
+    // Only "no transcript anywhere" leaves `from` undefined — that lookup is the
+    // SDK's (fromWorkdir's project dir, then every project dir on this host) and
+    // is deliberately not re-implemented here.
+    if (!result.relocated && result.copiedFiles === 0 && !result.from) {
+      return { ok: false, reason: "not_found" };
+    }
+    return result;
   }
 
   // ── Git / worktree ────────────────────────────────────────────
