@@ -242,7 +242,7 @@ export interface AgentCallbacks
   ) => void;
   /**
    * A plugin mod asked to put text on the clipboard (`$.ui.copy`; spec
-   * 「剪贴板与视图」).
+   * 「剪贴板」).
    *
    * Reply with `Agent.resolveModCopy(requestId, isCopied, reason?)` — a refusal
    * is an answer, not an error.

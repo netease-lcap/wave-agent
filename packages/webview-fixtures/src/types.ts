@@ -622,7 +622,7 @@ export interface DesktopModPromptReadMessage extends HostToWebviewMessageBase {
 }
 
 /**
- * A mod wants text on the clipboard (`$.ui.copy`; spec「剪贴板与视图」). The
+ * A mod wants text on the clipboard (`$.ui.copy`; spec「剪贴板」). The
  * webview writes it and answers `modCopyResult`; a refusal is a normal answer.
  */
 export interface DesktopModCopyMessage extends HostToWebviewMessageBase {

@@ -2534,7 +2534,7 @@ exports.register = function ($, on) {
   });
 });
 
-describe("ModManager 的清单、草稿、工具行与剪贴板（spec「配了哪些、能调什么、有谁在跑」「输入框里现在有什么」「工具行下面的一行」「剪贴板与视图」）", () => {
+describe("ModManager 的清单、草稿、工具行与剪贴板（spec「配了哪些、能调什么、有谁在跑」「输入框里现在有什么」「工具行下面的一行」「剪贴板」）", () => {
   const PANEL_MOD = `
 exports.register = function ($, on) {
   on("session.start", function () { $.ui.open({ id: "p1", title: "面板" }); });

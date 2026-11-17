@@ -636,7 +636,7 @@ export class AgentBridge {
           inputText: typeof event.inputText === "string" ? event.inputText : "",
         });
       }
-      // surface 对一次 `$.ui.copy` 的回答（spec「剪贴板与视图」）。
+      // surface 对一次 `$.ui.copy` 的回答（spec「剪贴板」）。
       case "modCopyResult": {
         const request = p as {
           requestId?: string;
@@ -3824,7 +3824,7 @@ export class AgentBridge {
           ctx.registeredSessionId,
         );
       },
-      // 剪贴板（spec「剪贴板与视图」）：同样是「推出去、等回执」，只是回执带的
+      // 剪贴板（spec「剪贴板」）：同样是「推出去、等回执」，只是回执带的
       // 是成没成。
       onModCopy: (payload: ModCopyRequest) => {
         this.emit(

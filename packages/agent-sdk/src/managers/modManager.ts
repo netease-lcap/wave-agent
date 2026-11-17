@@ -853,7 +853,7 @@ export class ModManager {
    */
   private readonly noticeOwners = new Map<string, Set<string>>();
   /**
-   * `$.ui.copy` 的出口（spec「剪贴板与视图」）。
+   * `$.ui.copy` 的出口（spec「剪贴板」）。
    *
    * 要等回执（谁写、写没写成都在界面那一端），所以是个 Promise；没接上时按
    * `no-surface` 作答。
@@ -3186,7 +3186,7 @@ export class ModManager {
   }
 
   /**
-   * 把一段文本交给界面写进剪贴板（spec「剪贴板与视图」）。
+   * 把一段文本交给界面写进剪贴板（spec「剪贴板」）。
    *
    * 三种失败态都由界面那一端判；没接通道时是 `no-surface` —— 「没有人能接」
    * 与「接了但写不进去」是两句话，别混成一个 `false`。

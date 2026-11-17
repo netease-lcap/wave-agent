@@ -2331,7 +2331,7 @@ export class DesktopHost {
           });
         }
       },
-      // `$.ui.copy`（spec「剪贴板与视图」）：剪贴板在渲染进程手里，回执走
+      // `$.ui.copy`（spec「剪贴板」）：剪贴板在渲染进程手里，回执走
       // `modCopyResult`。没有 pane 就等于没人接 —— Agent 那边按 `no-surface` 收口。
       onModCopy: (payload: ModCopyRequest) => {
         const paneId = paneIdOf();
@@ -6473,7 +6473,7 @@ export class DesktopHost {
         break;
       }
 
-      // webview 对一次 `$.ui.copy` 的回答（spec「剪贴板与视图」）：写没写进去
+      // webview 对一次 `$.ui.copy` 的回答（spec「剪贴板」）：写没写进去
       // 由渲染进程判定，拒绝也是一种答案。
       case "modCopyResult": {
         const agent = this.agentForPane(pid);

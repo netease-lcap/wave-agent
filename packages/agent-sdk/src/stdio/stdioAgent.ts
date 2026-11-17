@@ -239,7 +239,7 @@ export interface StdioAgentCallbacks {
    */
   onModPromptSuggest?: (payload: ModPromptSuggestRequest) => void;
   /**
-   * A mod wants text on the clipboard (`$.ui.copy`; spec「剪贴板与视图」). The
+   * A mod wants text on the clipboard (`$.ui.copy`; spec「剪贴板」). The
    * host answers with the `modCopyResult` RPC.
    */
   onModCopy?: (payload: ModCopyRequest) => void;
@@ -833,7 +833,7 @@ export class StdioAgent {
   }
 
   /**
-   * 回答一次 `$.ui.copy`（spec「剪贴板与视图」）。
+   * 回答一次 `$.ui.copy`（spec「剪贴板」）。
    *
    * 写不进去也是答案：`isCopied: false` 带一句 `reason`（`no-clipboard` /
    * `refused`），mod 据此换一种交付方式，不当异常处理。
