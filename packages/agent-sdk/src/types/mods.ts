@@ -1242,8 +1242,15 @@ export interface ModSessionAppendEvent {
  * 只列我们给得出的档；CC 另有 `tool-message`（子代理的工具消息）、`command`
  * （斜杠命令的回显）、`notice`（系统提示行）、`compaction`（压缩摘要）、
  * `delivery`（投递给子代理的附件）、`hook-context`（钩子塞进来的上下文）、
- * `attachment`（宿主自己渲染的附件）七档，我们没有对应的行，就不放进类型里
- * 装作有 —— 压缩摘要那一行本来就不问 `session.append`。
+ * `attachment`（宿主自己渲染的附件）、`queue`（队列记录）八档（`note` 见下），
+ * 我们没有对应的行，就不放进类型里装作有 —— 压缩摘要那一行本来就不问
+ * `session.append`。
+ *
+ * **没有 `note`**，这一档曾按「宿主自己塞进去的行」放进来，是错的，也已删掉：
+ * CC 的 `note` 专指**插件自己**经 `$.session.append({ message })` 写进会话的那
+ * 一行（引擎把 door 置 `note`、origin 置调用它的插件），而那个写入口我们没做。
+ * 宿主注入的行（记忆注入、系统提醒）都是 `isMeta`，既不进 `$.session.messages()`
+ * 也不过 `session.append`，所以它们根本没有门。
  */
 export type ModSessionAppendDoor =
   // 用户提交的一句话
@@ -1251,9 +1258,7 @@ export type ModSessionAppendDoor =
   // 模型的回答
   | "response"
   // 工具结果（CC 里是带 tool_result 块的 user 行）
-  | "tool-result"
-  // 宿主自己塞进去、不来自人的行（记忆注入、系统提醒）
-  | "note";
+  | "tool-result";
 
 /** `tool.check` 能给出的决定（spec「第二判定源」）。 */
 export type ModToolCheckDecision = "allow" | "ask" | "deny";
