@@ -99,6 +99,13 @@ export interface SessionMetadata {
    * worktree paths. Absent means "not a worktree, or unknown".
    */
   repoRoot?: string;
+  /**
+   * 宿主探测结果：该会话所属目录已不存在。磁盘层永远不填——只有真的探测过
+   * 且探到「不存在」的宿主才置 true；探测失败（主机不可达）必须留空，不能
+   * 据此判定目录缺失（desktop-sessions.md「会话目录缺失后的恢复（换文件夹
+   * 继续）」场景 1）。
+   */
+  folderMissing?: boolean;
 }
 
 /**

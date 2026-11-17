@@ -586,6 +586,10 @@ export interface DesktopSessionEntry {
    *  host sets it when a turn ends while no pane shows this session, and clears it
    *  once the session is opened/focused in a pane.  */
   newCompleted?: boolean;
+  /** True when the host probed the session's directory and found it gone —
+   *  行上标「目录缺失」，点击仍然进入会话（desktop-sessions.md「会话目录缺失
+   *  后的恢复（换文件夹继续）」）。宿主探测失败（主机不可达）时必须留空。 */
+  folderMissing?: boolean;
 }
 
 /**
