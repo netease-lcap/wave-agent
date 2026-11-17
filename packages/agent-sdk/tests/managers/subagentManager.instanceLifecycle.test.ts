@@ -23,12 +23,28 @@ vi.mock("../../src/utils/subagentParser.js", () => ({
   loadSubagentConfigurations: vi.fn().mockResolvedValue([]),
   findSubagentByName: vi.fn().mockResolvedValue(null),
 }));
+// 真跑一轮子代理（下面那条端到端用例）时模型这一层答一句话就够了：要验的是收尾
+// 事件在谁手里派发、派发几次，不是回答内容。
+vi.mock("../../src/services/aiService.js", () => ({
+  callAgent: vi.fn().mockResolvedValue({
+    content: "查完了",
+    usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+    tool_calls: [],
+  }),
+  compactMessages: vi.fn().mockResolvedValue({
+    content: "",
+    usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
+  }),
+  transformMessagesForExplicitCache: vi.fn((messages) => messages),
+  extendUsageWithCacheMetrics: vi.fn((usage) => usage),
+}));
 
 describe("SubagentManager instance lifecycle and tool tracking", () => {
   let subagentManager: SubagentManager;
   let parentToolManager: ToolManager;
   let callbacks: SubagentManagerCallbacks;
   let notifyMods: ReturnType<typeof vi.fn>;
+  let collectSubagentStopContext: ReturnType<typeof vi.fn>;
   let mockGatewayConfig: GatewayConfig;
   let mockModelConfig: ModelConfig;
   let container: Container;
@@ -49,6 +65,16 @@ describe("SubagentManager instance lifecycle and tool tracking", () => {
       getPlanFilePath: vi.fn().mockReturnValue(undefined),
     } as unknown as Record<string, unknown>);
     container.register("TaskManager", {} as unknown as Record<string, unknown>);
+    container.register("MemoryService", {
+      getCombinedMemoryContent: vi.fn().mockResolvedValue(""),
+      getAutoMemoryDirectory: vi.fn().mockReturnValue("/mock/auto-memory"),
+      ensureAutoMemoryDirectory: vi.fn().mockResolvedValue(undefined),
+      getAutoMemoryContent: vi.fn().mockResolvedValue(""),
+    } as unknown as Record<string, unknown>);
+    container.register("SkillManager", {
+      getAvailableSkills: vi.fn().mockReturnValue([]),
+      listSkillSources: vi.fn().mockReturnValue([]),
+    } as unknown as Record<string, unknown>);
     container.register(
       "ReversionManager",
       {} as unknown as Record<string, unknown>,
@@ -78,8 +104,19 @@ describe("SubagentManager instance lifecycle and tool tracking", () => {
     // 影子事件 `classic.SubagentStart` / `SubagentStop` 的观察点（spec「影子
     // 事件」）：子代理的结束路径最后都会走 `releaseInstance`。
     notifyMods = vi.fn();
+    // 真跑一轮子代理时 AIManager 会调这一套（提示词分段、上下文块、收尾通道…）：
+    // 少了任何一个，请求就会在构造提示词时抛错、走不到收尾。
+    collectSubagentStopContext = vi.fn(async () => []);
     container.register("ModManager", {
       notifyMods,
+      collectStopContext: vi.fn(async () => []),
+      collectSubagentStopContext,
+      collectSessionContextBlocks: vi.fn(async () => []),
+      collectPromptSections: vi.fn(async (sections) => sections),
+      collectPromptSection: vi.fn(async (section) => section.text),
+      rewritePromptAttachment: vi.fn(async (attachment) => attachment.text),
+      dispatchTurnStep: vi.fn(async (event) => event),
+      clearToolNotices: vi.fn(),
     } as unknown as Record<string, unknown>);
 
     parentToolManager = new ToolManager({
@@ -102,6 +139,8 @@ describe("SubagentManager instance lifecycle and tool tracking", () => {
       resolveContextWindow: () => 1000,
       resolveAutoMemoryEnabled: () => true,
       resolveLanguage: () => undefined,
+      resolveMaxOutputTokens: () => 4096,
+      getMergedEnv: () => ({}),
     });
 
     subagentManager = new SubagentManager(container, {
@@ -142,7 +181,7 @@ describe("SubagentManager instance lifecycle and tool tracking", () => {
     return onStop;
   };
 
-  it("实例建好发 classic.SubagentStart，释放时发 classic.SubagentStop", async () => {
+  it("实例建好发 classic.SubagentStart，没走到收尾就释放时补报一次 classic.SubagentStop", async () => {
     const config: SubagentConfiguration = {
       name: "reporter",
       description: "报道",
@@ -178,8 +217,9 @@ describe("SubagentManager instance lifecycle and tool tracking", () => {
     const stops = notifyMods.mock.calls
       .filter((call) => call[0] === "classic.SubagentStop")
       .map((call) => call[1]);
-    // CC 的 SubagentStop 载荷：`stop_hook_active` 恒 false（我们不在子代理收尾
-    // 时跑 Stop 钩子）；没有产出、也没有日志流时那两个可选字段不出现。
+    // 收尾事件由子代理自己的 AIManager 在收尾点派发（可多次、能续跑），这里走的
+    // 是「没走到收尾」的兜底补报：终局通知，`stop_hook_active` 恒 false；没有产出、
+    // 也没有日志流时那两个可选字段不出现。
     expect(stops).toEqual([
       {
         agent_id: instance.subagentId,
@@ -187,6 +227,83 @@ describe("SubagentManager instance lifecycle and tool tracking", () => {
         stop_hook_active: false,
       },
     ]);
+  });
+
+  it("收尾事件已经派发过：释放时不再补报一次", async () => {
+    // 正常答完的子代理在收尾点报过 `classic.SubagentStop`（那一次可以续跑），实例
+    // 释放只是清理现场，不该再给插件一次「结束了」。补报只留给没走到收尾的出错 /
+    // 中止路径。
+    const config: SubagentConfiguration = {
+      name: "reporter",
+      description: "报道",
+      systemPrompt: "...",
+      tools: [],
+      model: "inherit",
+      filePath: "/tmp/reporter.md",
+      scope: "project",
+      priority: 1,
+    };
+    const instance = await subagentManager.createInstance(config, {
+      description: "查资料",
+      prompt: "查一下",
+      subagent_type: "reporter",
+    });
+    instance.modStopDispatched = true;
+    // 终态才允许释放（`cleanupInstance` 的守卫），否则这条路根本不会走到
+    // `releaseInstance` —— 断言会变成「什么都没发生」的假绿。
+    instance.status = "completed";
+
+    subagentManager.cleanupInstance(instance.subagentId);
+
+    const stops = notifyMods.mock.calls.filter(
+      (call) => call[0] === "classic.SubagentStop",
+    );
+    expect(stops).toEqual([]);
+  });
+
+  it("真答完的子代理：收尾问一次 classic.SubagentStop，释放时不再补报", async () => {
+    // 端到端把三处接线一起钉住：`agent_id` / `agent_type` 传到了子代理的 AIManager、
+    // 收尾点真的问了这条通道（带最后一条正文）、收尾回调让 `SubagentManager` 记下
+    // 「报过了」所以释放时不再补报。真正的派发（→ `notifyMods("classic.SubagentStop")`）
+    // 由 modManager.test.ts 用真 ModManager 覆盖，这里用 stub 记参数。
+    const config: SubagentConfiguration = {
+      name: "reporter",
+      description: "报道",
+      systemPrompt: "...",
+      tools: [],
+      model: "inherit",
+      filePath: "/tmp/reporter.md",
+      scope: "project",
+      priority: 1,
+    };
+    const instance = await subagentManager.createInstance(config, {
+      description: "查资料",
+      prompt: "查一下",
+      subagent_type: "reporter",
+    });
+    notifyMods.mockClear();
+
+    await subagentManager.executeAgent(instance, "查一下");
+
+    expect(
+      collectSubagentStopContext.mock.calls.map((call) => call[0]),
+    ).toEqual([
+      {
+        agent_id: instance.subagentId,
+        agent_type: "reporter",
+        stop_hook_active: false,
+        last_assistant_message: "查完了",
+      },
+    ]);
+
+    // 收尾已经报过 ⇒ 释放只剩清理现场，不再补一次「结束了」。
+    instance.status = "completed";
+    subagentManager.cleanupInstance(instance.subagentId);
+    expect(
+      notifyMods.mock.calls.filter(
+        (call) => call[0] === "classic.SubagentStop",
+      ),
+    ).toEqual([]);
   });
 
   it("classic.SubagentStop 带上最后一条正文（插件不必自己去读转录）", async () => {

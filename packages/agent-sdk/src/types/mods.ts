@@ -950,12 +950,13 @@ export interface ModClassicStopEvent extends ModClassicEventBase {
 }
 
 /**
- * `classic.Stop` 的返回值：这一轮别急着收尾，把这几句话读给模型听（spec
- * 「一轮收尾时的非错误反馈」）。
+ * `classic.Stop` / `classic.SubagentStop` 的返回值：这一轮别急着收尾，把这几句
+ * 话读给模型听（spec「一轮收尾时的非错误反馈」）。
  *
  * 只认 `additionalContext`；`{ decision: "block", reason }` 与
  * `preventContinuation` 是 Claude Code 另外两条通道，我们不支持（返回了只记一条
- * warn 并忽略）。
+ * warn 并忽略）。两条事件共用这一份形状：`classic.Stop` 注入主对话，
+ * `classic.SubagentStop` 注入那个子代理自己的对话。
  */
 export interface ModStopHookResult {
   /** 字符串数组；多项按加载顺序拍平、拼成一条消息，空串丢掉。 */
@@ -1047,16 +1048,19 @@ export interface ModClassicSubagentStartEvent extends ModClassicEventBase {
   agent_type: string;
 }
 
-/** `classic.SubagentStop`：一个子代理结束（完成 / 出错 / 中止 / 用户停掉）。 */
+/** `classic.SubagentStop`：子代理**每次**收尾（答完 / 用户中断 / 被钩子拦停后重来）。 */
 export interface ModClassicSubagentStopEvent extends ModClassicEventBase {
   hook_event_name: "SubagentStop";
   agent_id: string;
   agent_type: string;
   /**
-   * 恒 `false`：这条事件在我们这里没有续跑通道（`additionalContext` 不收），
-   * 字段照 CC 给，是为了让读它的插件拿到一个布尔值而不是 `undefined`。
+   * 这一次收尾是不是已经被要求续过（`classic.Stop` 同一口径）。
+   *
+   * 与 settings 的 `SubagentStop` 钩子共用这一个状态：`additionalContext` 让子
+   * 代理续跑一轮、或 settings 钩子把它拦停一次之后，下一次收尾就是 `true`。出错 /
+   * 中止路径在实例释放时补报的那一次恒为 `false` —— 那一刻没有收尾可言。
    */
-  stop_hook_active: false;
+  stop_hook_active: boolean;
   /** 子代理停下来之前最后一条 assistant 消息的正文（插件不必去解转录）。 */
   last_assistant_message?: string;
   /**

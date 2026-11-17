@@ -60,6 +60,7 @@ import {
   type ModClassicEvent,
   type ModClassicPreToolUseEvent,
   type ModClassicStopEvent,
+  type ModClassicSubagentStopEvent,
   type ModClassicTrigger,
   type ModStopHookResult,
   type ModToastPayload,
@@ -1406,15 +1407,37 @@ export class ModManager {
   async collectStopContext(
     payload: ModClassicTrigger<ModClassicStopEvent>,
   ): Promise<string[]> {
+    return this.collectStopAdditionalContext("Stop", payload);
+  }
+
+  /**
+   * 派发 `classic.SubagentStop` 并收集 `additionalContext`（同一小节：子代理自己
+   * 那一轮的续跑）。
+   *
+   * 形状、纪律、限额与 `classic.Stop` 完全一致，只是一个进主对话、一个进那个子
+   * 代理自己的对话。
+   */
+  async collectSubagentStopContext(
+    payload: ModClassicTrigger<ModClassicSubagentStopEvent>,
+  ): Promise<string[]> {
+    return this.collectStopAdditionalContext("SubagentStop", payload);
+  }
+
+  /** 两条收尾事件共用的实现：等返回值、只认 `additionalContext`、按限额拍平。 */
+  private async collectStopAdditionalContext(
+    name: "Stop" | "SubagentStop",
+    payload: object,
+  ): Promise<string[]> {
     if (this.disposed) return [];
-    const event = this.withClassicBase("Stop", payload);
+    const hookName = `classic.${name}`;
+    const event = this.withClassicBase(name, payload);
     const parts = await Promise.all(
       [...this.mods].map(async ([modId, loaded]) => {
         const runtime = loaded.runtime;
         if (!runtime) return [];
-        const result = await runtime.callHook("classic.Stop", event);
+        const result = await runtime.callHook(hookName, event);
         if (!result.ok) {
-          logger.warn(`[Wave] ${modId} 的 classic.Stop 失败：${result.error}`);
+          logger.warn(`[Wave] ${modId} 的 ${hookName} 失败：${result.error}`);
           return [];
         }
         const returned = result.value;
@@ -1433,7 +1456,7 @@ export class ModManager {
           value.preventContinuation !== undefined
         ) {
           logger.warn(
-            `[Wave] ${modId} 的 classic.Stop 返回了 decision/preventContinuation：只支持 { additionalContext }，那两项被忽略`,
+            `[Wave] ${modId} 的 ${hookName} 返回了 decision/preventContinuation：只支持 { additionalContext }，那两项被忽略`,
           );
         }
         const context = value.additionalContext;
@@ -1443,7 +1466,7 @@ export class ModManager {
           context.some((item) => typeof item !== "string")
         ) {
           logger.warn(
-            `[Wave] ${modId} 的 classic.Stop 的 additionalContext 必须是字符串数组，已忽略`,
+            `[Wave] ${modId} 的 ${hookName} 的 additionalContext 必须是字符串数组，已忽略`,
           );
           return [];
         }
@@ -1463,7 +1486,7 @@ export class ModManager {
     }
     if (limited.length < merged.length) {
       logger.warn(
-        `[Wave] classic.Stop 的 additionalContext 有 ${merged.length} 条，超过限额，只用了前 ${limited.length} 条`,
+        `[Wave] ${hookName} 的 additionalContext 有 ${merged.length} 条，超过限额，只用了前 ${limited.length} 条`,
       );
     }
     return limited;
