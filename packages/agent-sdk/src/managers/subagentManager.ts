@@ -148,6 +148,12 @@ export interface SubagentInstance {
    * that run after the snapshot are counted here.
    */
   usageTotals: { totalTokens: number };
+  /**
+   * `classic.SubagentStop` 的收尾事件已经派发过。收尾可能不止一次（被
+   * `additionalContext` 续跑后再收尾），这个标记只回答「派发过没有」—— 实例释放
+   * 时据此决定要不要为此前没走到收尾的出错 / 中止路径补报一次。
+   */
+  modStopDispatched?: boolean;
 }
 
 export interface SubagentManagerOptions {
@@ -701,6 +707,18 @@ export class SubagentManager {
         stream: parameters.stream ?? this.stream, // Pass streaming mode flag
         maxTurns: parameters.maxTurns, // Pass maxTurns limit
         omitAgentsMd: configuration.omitAgentsMd, // Start without project/user memory
+        subagentId,
+        // 收尾事件 `classic.SubagentStop` 的 `agent_transcript_path`：只有跑在后台、
+        // 宿主为它开了日志流的子代理才有，所以每次现取（logStream 在后台化时才建）。
+        subagentTranscriptPath: () => {
+          const path = this.instances.get(subagentId)?.logStream?.path;
+          return typeof path === "string" ? path : undefined;
+        },
+        // 收尾事件已经派发过 ⇒ 实例释放时不再补报（补报只给出错 / 中止路径）。
+        onSubagentStopDispatched: () => {
+          const dispatched = this.instances.get(subagentId);
+          if (dispatched) dispatched.modStopDispatched = true;
+        },
         callbacks: {
           onUsageAdded: (usage) => {
             usageTotals.totalTokens += usage.total_tokens;
@@ -1518,22 +1536,25 @@ export class SubagentManager {
       instance.logStream.destroy();
     }
     instance.logStream = undefined;
-    // 影子事件 `classic.SubagentStop`（spec「影子事件」）：所有结束路径（完成、
-    // 出错、中止、用户停掉）最后都走这里，所以只报一次。载荷照 CC：没有
-    // `description` / `status`（那是我们自造的，插件按 CC 的名字读不到），
-    // `stop_hook_active` 恒 `false` —— 我们这条没有续跑通道，给确定值而不是
-    // `undefined`。
-    this.notifyMods("classic.SubagentStop", {
-      agent_id: instance.subagentId,
-      agent_type: instance.subagentType,
-      stop_hook_active: false,
-      ...(lastAssistantMessage === undefined
-        ? {}
-        : { last_assistant_message: lastAssistantMessage }),
-      ...(transcriptPath === undefined
-        ? {}
-        : { agent_transcript_path: transcriptPath }),
-    });
+    // 影子事件 `classic.SubagentStop`（spec「影子事件」）：**收尾**那一份由子代理
+    // 自己的 AIManager 在收尾点派发（可多次、带 `additionalContext` 续跑），这里只
+    // 给「没走到收尾」的出错 / 中止 / 用户停掉补报一次 —— 否则插件在失败路径上就聋
+    // 了。补报是终局通知，没有「再跑一轮」的落点，`stop_hook_active` 恒 `false`（那
+    // 一刻没有收尾可言）。载荷照 CC：没有 `description` / `status`（那是我们自造的，
+    // 插件按 CC 的名字读不到）。
+    if (!instance.modStopDispatched) {
+      this.notifyMods("classic.SubagentStop", {
+        agent_id: instance.subagentId,
+        agent_type: instance.subagentType,
+        stop_hook_active: false,
+        ...(lastAssistantMessage === undefined
+          ? {}
+          : { last_assistant_message: lastAssistantMessage }),
+        ...(transcriptPath === undefined
+          ? {}
+          : { agent_transcript_path: transcriptPath }),
+      });
+    }
     this.instances.delete(subagentId);
   }
 

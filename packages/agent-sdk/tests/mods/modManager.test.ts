@@ -3807,6 +3807,68 @@ exports.register = function ($, on) {
   });
 });
 
+describe("ModManager 的 classic.SubagentStop 返回值", () => {
+  /** 收到 `classic.SubagentStop` 记一行状态（观察 `e` 的形状），再按 body 返回。 */
+  const subagentStopMod = (body: string) => `
+exports.register = function ($, on) {
+  on("classic.SubagentStop", function (e) {
+    $.ui.status([e.hook_event_name, e.agent_id, e.agent_type, String(e.stop_hook_active), String(e.background_tasks)].join("|"));
+    ${body}
+  });
+};
+`;
+
+  it("派发 classic.SubagentStop 并收集 additionalContext（子代理那一份载荷）", async () => {
+    // spec「一轮收尾时的非错误反馈」：子代理那一轮和主会话同一条通道，只是事件
+    // 名字与载荷换成子代理的（没有 `background_tasks` / `session_crons` 这两格）。
+    const { manager, statuses } = createManager({
+      [MOD_PATH]: subagentStopMod(
+        `return { additionalContext: ["先把测试补上"] };`,
+      ),
+    });
+    await manager.loadFromPlugins([
+      plugin([{ id: "todo:panel", path: MOD_PATH }]),
+    ]);
+    await manager.startSession();
+
+    await expect(
+      manager.collectSubagentStopContext({
+        agent_id: "sub-1",
+        agent_type: "reporter",
+        stop_hook_active: false,
+      }),
+    ).resolves.toEqual(["先把测试补上"]);
+    await vi.waitFor(() =>
+      expect(statuses.at(-1)?.text).toBe(
+        "SubagentStop|sub-1|reporter|false|undefined",
+      ),
+    );
+
+    await manager.dispose();
+  });
+
+  it("两个名字互不串台：classic.Stop 的收集不会打到 SubagentStop 钩子上", async () => {
+    const { manager } = createManager({
+      [MOD_PATH]: subagentStopMod(
+        `return { additionalContext: ["子代理专属"] };`,
+      ),
+    });
+    await manager.loadFromPlugins([
+      plugin([{ id: "todo:panel", path: MOD_PATH }]),
+    ]);
+    await manager.startSession();
+
+    await expect(
+      manager.collectStopContext({
+        background_tasks: [],
+        stop_hook_active: false,
+      }),
+    ).resolves.toEqual([]);
+
+    await manager.dispose();
+  });
+});
+
 describe("插件自己的工具、子代理与模型通道", () => {
   /** 交一个自己的工具、并在 `tool.call` 里把结果答掉（spec「把我们自己的工具交给模型」）。 */
   const LOOKUP_MOD = `
