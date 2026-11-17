@@ -23,6 +23,7 @@ import type { MenuAnchorRect } from "../utils/anchoredMenu";
 import { viewportSize } from "../utils/viewport";
 import { useClickOutside } from "../utils/useClickOutside";
 import { useHostMessage } from "../utils/useHostMessage";
+import { ConversationCloseIcon } from "./HeaderIcons";
 import type { ContextDialogProps } from "../types";
 import "../styles/ContextDialog.css";
 
@@ -370,7 +371,10 @@ const ContextDialog: React.FC<
           onClick={onClose}
           aria-label="关闭"
         >
-          ×
+          {/* 与弹窗右上角 / pane 头部 / toast 同一官方矢量（0916 关闭族）。
+              原先这里是文本「×」字符：字形 8.19×16、盒 16.19×18、无圆角无 hover 面，
+              与族内 20×20 + r8 + fill-hover 的按钮不是一套。 */}
+          <ConversationCloseIcon className="context-popover-close-icon" />
         </button>
       </div>
 

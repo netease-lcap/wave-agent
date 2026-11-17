@@ -12,14 +12,38 @@
      定位仍按 POPOVER_WIDTH 算，left 已夹到 8，视觉上正好填满。 */
   max-width: calc(100vw - 16px);
   padding: 10px 12px 12px;
-  border: 1px solid var(--vscode-panel-border);
+  /* 壳的三件套按 design-system.md「Menus」收口：「Container: bg-overlay,
+     1px lighter border, 12px radius, shadow-popover and 8px inset」。
+     改前是 `--vscode-panel-border` + 写死 6px + `--vscode-editorWidget-background`：
+     桌面端浅色落在 #E4E7ED / #FAFAFD、深色 #34393C / #202020，与同屏「+」菜单
+     （#EBEEF5 / #FFFFFF、r12）不是一套 —— 浮层面比画布/导航面还灰，圆角也只有菜单
+     的一半。三处都改走 `--cc-*` 语义档，非桌面宿主取 fallback 仍是原值（零变化）。
+     阴影按她的范围「其他先不改」保持原样（`0 4px 16px rgba(0,0,0,.28)` 不是
+     `--cc-shadow-popover`，另开一轮再议）。 */
+  border: 1px solid var(--cc-border-lighter, var(--vscode-panel-border));
   border-radius: 6px;
   background-color: var(
-    --vscode-editorWidget-background,
-    var(--vscode-editor-background)
+    --cc-bg-overlay,
+    var(--vscode-editorWidget-background, var(--vscode-editor-background))
   );
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.28);
   color: var(--vscode-foreground);
+}
+
+/* 菜单容器圆角（同上「Menus」契约 12px）。base 保持 6px 是为了不改插件端 /
+   远控页：那两个宿主没有 `--cc-radius-lg`，写进 base 就等于把兜底 12px 强加给
+   它们；桌面端才是这轮点名的宿主。 */
+[data-host="desktop"] .context-popover {
+  border-radius: var(--cc-radius-lg, 12px);
+}
+
+/* 深色档的菜单描边跟族内现状走 12% 白（`.plus-menu` / `.permission-mode-menu` /
+   `.session-board-filter-menu` 三处都是这么写的），`--cc-border-lighter` 的深色档
+   #2D3133 比它深 16/255 —— 同屏两个菜单并排时能看出两条线不一样重。浅色档没有这
+   层分歧（token = #EBEEF5，与「+」菜单逐值相等），所以只在深色覆盖。
+   token 与族现状不一致这件事本身归 skill 侧收口，见报告待裁。 */
+[data-host="desktop"][data-theme="dark"] .context-popover {
+  border-color: rgba(255, 255, 255, 0.12);
 }
 
 .context-popover-header {
@@ -35,18 +59,58 @@
   font-weight: 600;
 }
 
+/* 关闭键：字形从文本「×」换成关闭族的官方矢量后，原来那套「字符盒」参数
+   （font-size 14 / line-height 1 / padding 2·4）就失去意义了 —— 24 的图标盒塞进
+   带内衬的字符盒会被撑成 32×28。这里换成图标按钮的盒子：20×20 居中。
+   圆角各宿主不同（插件端 4px、桌面 8px，见下方覆盖）。 */
 .context-popover-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  /* 20 的盒子比原来的字符盒（18 高）高 2px，会把标题行从 26 顶到 28、连带整块
+     浮层长 2px。上下各 -1 抵掉占位，盒子本身仍是 20×20 —— 溢出的那 1px 落在标题行
+     的下内衬里，那里没有别的元素。 */
+  margin: -1px 0;
   background: none;
   border: none;
+  border-radius: 4px;
   color: var(--vscode-descriptionForeground);
   cursor: pointer;
-  font-size: 14px;
-  line-height: 1;
-  padding: 2px 4px;
 }
 
 .context-popover-close:hover {
   color: var(--vscode-foreground);
+}
+
+/* 桌面端按「关闭族」收口（`.confirm-dialog-close` / `.ssh-conn-close` /
+   `.confirmation-close-btn` 同一套）：20×20 盒、8px 圆角、`--cc-text-regular`
+   字形、hover 出 `--cc-fill-hover` 面并把字形抬到 primary、focus-visible 走 2px
+   中性焦点环。改前这里只有字色一条 hover —— 鼠标移上去除了字变深没有任何可点
+   区域提示，而族内另外三处都已经有底色面。 */
+[data-host="desktop"] .context-popover-close {
+  border-radius: var(--cc-radius-md, 8px);
+  color: var(--cc-text-regular);
+}
+[data-host="desktop"] .context-popover-close:hover {
+  background-color: var(--cc-fill-hover, #eef0f3);
+  color: var(--cc-text-primary);
+}
+[data-host="desktop"][data-theme="dark"] .context-popover-close:hover {
+  background-color: rgb(255 255 255 / 8%);
+}
+[data-host="desktop"] .context-popover-close:focus-visible {
+  outline: 2px solid var(--cc-border-focus, #2f5edb);
+  outline-offset: 2px;
+}
+/* 24 的图标盒在 20 的按钮里会被 flex 压小（0916 踩过：字形被压到 0.83 倍） */
+/* 24 的图标盒在 20 的按钮里会被 flex 压成 20×24（0916 踩过：字形被压到 0.83
+   倍）。这条必须留在 base —— 插件端 / 远控页用的是同一个 20 盒，只有桌面端挂
+   shrink 的话那两个宿主的关闭图标会横向被压扁。 */
+.context-popover-close-icon {
+  flex-shrink: 0;
 }
 
 /* 内容区跟着浮层一起滚（`maxHeight` 挂在浮层上，这里不能再开一层滚动）。 */
