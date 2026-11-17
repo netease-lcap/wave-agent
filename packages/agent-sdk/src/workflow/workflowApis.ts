@@ -63,6 +63,13 @@ interface WorkflowApiContext {
   abortSignal: AbortSignal;
   args: unknown;
   onLog?: (message: string) => void;
+  /**
+   * Called when the script declares more agent slots than before
+   * (`parallel()` / `pipeline()` at their entry). The manager mirrors the number
+   * onto the run and re-runs the size check, so a wide batch is flagged before
+   * its first agent has spent anything.
+   */
+  onScheduledAgents?: (total: number) => void;
   /** When resuming, offset the agent counter by this many existing entries */
   initialAgentCount?: number;
   /** Per-run directory for writing agent metadata sidecars */
@@ -522,6 +529,13 @@ export function createWorkflowApis(ctx: WorkflowApiContext): WorkflowApis {
       }
     }
 
+    // The width is known before the first thunk runs, and that is the point of
+    // this axis: Claude Code records the whole batch as queued `workflow_agent`
+    // entries, so a 33-slot script is flagged up front instead of after it has
+    // burned the tokens to prove it (see `isWorkflowRunOversized`).
+    ctx.progressReporter.noteScheduledAgents(thunks.length);
+    ctx.onScheduledAgents?.(ctx.progressReporter.scheduledAgents);
+
     // Note: thunks typically call agent() which acquires its own slot,
     // so parallel does NOT acquire a slot per thunk to avoid deadlock.
     const settled = await Promise.allSettled(thunks.map((thunk) => thunk()));
@@ -571,6 +585,13 @@ export function createWorkflowApis(ctx: WorkflowApiContext): WorkflowApis {
         );
       }
     }
+
+    // Every item may pass through every stage, so that product is the widest
+    // slot count this call can reach. A stage returning null skips the rest for
+    // that item, which makes the number an upper bound — the same over-estimate
+    // Claude Code accepts when it records the batch up front.
+    ctx.progressReporter.noteScheduledAgents(items.length * stages.length);
+    ctx.onScheduledAgents?.(ctx.progressReporter.scheduledAgents);
 
     // Run each item through all stages, items are independent.
     // Note: agent() inside stages acquires its own concurrency slot,

@@ -30,6 +30,25 @@ export interface WorkflowRun {
   phases: WorkflowPhaseState[];
   totalAgents: number;
   totalTokens: number;
+  /**
+   * Agent slots the script has declared, including ones not started yet —
+   * `parallel()` / `pipeline()` report their width the moment they are called.
+   * Never below `totalAgents`: a script that only loops on `agent()` declares
+   * nothing, and there the started count is the best estimate there is.
+   *
+   * Optional so hosts that build run objects themselves (older persisted
+   * run-state.json, UI fixtures) stay valid — read it as `run.scheduledAgents ??
+   * run.totalAgents`.
+   */
+  scheduledAgents?: number;
+  /**
+   * The thresholds this run was judged against, after the
+   * `WAVE_WORKFLOW_SIZE_WARNING_*` env overrides. Carried on the snapshot so the
+   * UI can print the numbers that actually applied instead of the constants
+   * (spec「预算与规模硬上限」场景 7). Optional for the same reason as above —
+   * read it as `run.sizeLimits ?? <the constants>`.
+   */
+  sizeLimits?: { agents: number; tokens: number };
   result?: unknown;
   error?: string;
   /**

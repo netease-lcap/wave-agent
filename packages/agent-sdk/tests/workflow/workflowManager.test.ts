@@ -1082,6 +1082,8 @@ return 1;`;
     const buildContainer = (
       sessionDir: string,
       getAgentMessages: () => unknown[],
+      /** Runs at the very start of every subagent call — a probe for what the run looked like mid-flight. */
+      onAgentCall?: () => void,
     ) => {
       const enqueueNotification = vi.fn();
       const container = new Container();
@@ -1105,7 +1107,12 @@ return 1;`;
             getTranscriptPath: vi.fn().mockReturnValue(undefined),
           },
         }),
-        executeAgent: vi.fn().mockResolvedValue("result"),
+        executeAgent: onAgentCall
+          ? vi.fn().mockImplementation(async () => {
+              onAgentCall();
+              return "result";
+            })
+          : vi.fn().mockResolvedValue("result"),
         cleanupInstance: vi.fn(),
       });
       container.register("MessageManager", {
@@ -1173,6 +1180,51 @@ return 1;`;
         expect(
           xmls.some((xml) => xml.includes("<status>completed</status>")),
         ).toBe(true);
+      } finally {
+        await fs.promises.rm(tmpDir, { recursive: true, force: true });
+      }
+    });
+
+    it("marks a wide parallel batch on its declared width, before it finishes", async () => {
+      const tmpDir = await fs.promises.mkdtemp(
+        path.join(os.tmpdir(), "wf-size-"),
+      );
+      try {
+        // Read the marker from inside the FIRST subagent call: 30 slots have
+        // been declared, none has finished. Before the slot axis existed this
+        // waited until 26 agents had actually started, i.e. until the money was
+        // already spent.
+        const probe: {
+          manager?: WorkflowManager;
+          runId?: string;
+          marked?: boolean;
+        } = {};
+        const { container } = buildContainer(
+          tmpDir,
+          () => [],
+          () => {
+            if (probe.marked === undefined && probe.manager && probe.runId) {
+              probe.marked =
+                probe.manager.getRun(probe.runId)?.sizeWarning === true;
+            }
+          },
+        );
+        const sizeManager = new WorkflowManager(container);
+        probe.manager = sizeManager;
+
+        const script = [
+          "export const meta = { name: 'wide-wf', description: 'd' }",
+          "await parallel(Array.from({ length: 30 }, (_, i) => async () => agent('t' + i)));",
+          "return 'done'",
+        ].join("\n");
+
+        const run = await sizeManager.createRun(script);
+        probe.runId = run.runId;
+        await sizeManager.startRun(run.runId);
+        await run.completionPromise;
+
+        expect(probe.marked).toBe(true);
+        expect(sizeManager.getRun(run.runId)?.scheduledAgents).toBe(30);
       } finally {
         await fs.promises.rm(tmpDir, { recursive: true, force: true });
       }

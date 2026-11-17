@@ -24,6 +24,11 @@ import type { WorkflowRun } from "../workflow/types.js";
 import { RunStateStore } from "../workflow/runState.js";
 import { isWorkflowRunOversized } from "../workflow/workflowErrors.js";
 import {
+  resolveWorkflowSizeLimits,
+  type WorkflowSizeLimits,
+} from "../constants/workflowLimits.js";
+import type { ConfigurationService } from "../services/configurationService.js";
+import {
   sanitizeWorkflowName,
   WorkflowRegistry,
   type NamedWorkflow,
@@ -249,6 +254,20 @@ export class WorkflowManager {
     return this.container.get<MessageQueue>("MessageQueue")!;
   }
 
+  /**
+   * 本次生效的规模预警阈值（常量 + 环境变量覆盖）。
+   *
+   * 走会话的 env 快照而不是 `process.env`：`settings.json` 的 `env` 是会话级
+   * 的，读进程环境会让写在那里的覆盖悄悄失效（见 `configurationService` 的
+   * 「会话级 env 快照」）。宿主没注册配置服务时回退到默认常量。
+   */
+  private sizeLimits(): WorkflowSizeLimits {
+    const configurationService = this.container.get<ConfigurationService>(
+      "ConfigurationService",
+    );
+    return resolveWorkflowSizeLimits(configurationService?.getMergedEnv());
+  }
+
   private get subagentManager(): SubagentManager {
     return this.container.get<SubagentManager>("SubagentManager")!;
   }
@@ -443,6 +462,7 @@ export class WorkflowManager {
       phases: [],
       totalAgents: 0,
       totalTokens: 0,
+      sizeLimits: this.sizeLimits(),
       failures: [],
       resumeFromRunId: opts?.resumeFromRunId,
       logs: [],
@@ -506,6 +526,7 @@ export class WorkflowManager {
       run.phases = progressReporter.getPhaseStates();
       run.totalAgents = progressReporter.totalAgents;
       run.totalTokens = progressReporter.totalTokens;
+      run.scheduledAgents = progressReporter.scheduledAgents;
       this.logSizeCrossing(run);
       this.backgroundTaskManager.notifyTasksChange();
     };
@@ -586,6 +607,15 @@ export class WorkflowManager {
         // Push the new line. The progress events push on every phase/agent
         // change, but a script that only logs between agents would otherwise
         // leave both dialogs on a stale tail until the next phase flips.
+        this.backgroundTaskManager.notifyTasksChange();
+      },
+      // A declared batch (`parallel` / `pipeline`) can cross the size threshold
+      // on its width alone, before its first agent has reported anything — that
+      // is the whole point of the slot axis, so it has to reach the run (and the
+      // UI) right there rather than at the next progress event.
+      onScheduledAgents: (total: number) => {
+        run.scheduledAgents = total;
+        this.logSizeCrossing(run);
         this.backgroundTaskManager.notifyTasksChange();
       },
     });
@@ -942,7 +972,12 @@ export class WorkflowManager {
     // marked exactly like a live one, and nothing has to be persisted
     // (spec「预算与规模硬上限」场景 7).
     const runs = Array.from(this.runs.values());
+    // A run read back from disk predates the field (or came from a host that
+    // builds snapshots itself), so pin the thresholds now — the UI reads them
+    // off the snapshot to print the numbers that actually applied.
+    const limits = this.sizeLimits();
     for (const run of runs) {
+      run.sizeLimits ??= limits;
       run.sizeWarning = isWorkflowRunOversized(run);
     }
 

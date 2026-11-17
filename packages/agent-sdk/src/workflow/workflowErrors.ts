@@ -9,30 +9,62 @@
  */
 
 import {
-  WORKFLOW_SIZE_WARNING_AGENTS,
-  WORKFLOW_SIZE_WARNING_TOKENS,
+  resolveWorkflowSizeLimits,
+  type WorkflowSizeLimits,
 } from "../constants/workflowLimits.js";
 
 /** Claude Code's per-run `agent()` call cap (verbatim). */
 export const WORKFLOW_AGENT_CALL_CAP = 1000;
 
 /**
- * Whether a run has crossed either size threshold (`constants/workflowLimits`,
- * where the numbers and their provenance live). Not the hard cap —
- * `WORKFLOW_AGENT_CALL_CAP` and the turn's token budget stay the only things
- * that actually stop a run; this only says whether the UI should mark it big.
+ * Token estimate for one agent before any has finished (Claude Code's `z1t`).
  *
- * A pure function of the snapshot's counters, so the marker needs no
- * "already warned" flag and stays correct for a run read back from disk: the
+ * Only used for the projection below, and only while nothing has reported a
+ * spend yet — once one agent is done its real average takes over.
+ */
+const TOKENS_PER_AGENT_GUESS = 70_000;
+
+/**
+ * Whether a run has crossed the scale warning (Claude Code 2.1.325's `NH`).
+ *
+ * Three axes, OR'd, because they answer three different questions:
+ *
+ * - **slots** — `scheduledAgents` counts what the script has declared
+ *   (`parallel()` / `pipeline()` report their width on entry), so a 33-slot
+ *   script is flagged before it has run anything. A script that only loops on
+ *   `agent()` declares nothing and this axis falls back to the started count.
+ * - **spent** — the tokens actually burned so far.
+ * - **projected** — `max(spent, mean × slots)`: what it will have cost if the
+ *   rest of the declared slots cost what the finished ones did. Before any
+ *   agent finishes the mean is guessed at 70k, which is why this axis can fire
+ *   early on an expensive run rather than after the money is gone.
+ *
+ * Not the hard cap — `WORKFLOW_AGENT_CALL_CAP` and the turn's token budget stay
+ * the only things that actually stop a run; this only says whether the UI should
+ * mark it big. A pure function of the snapshot's counters, so the marker needs
+ * no "already warned" flag and stays correct for a run read back from disk: the
  * counters only grow, so the verdict is sticky on its own.
  */
 export function isWorkflowRunOversized(run: {
   totalAgents: number;
   totalTokens: number;
+  /** Slots the script declared; defaults to the started count. */
+  scheduledAgents?: number;
+  /** Effective thresholds; defaults to the constants plus their env overrides. */
+  sizeLimits?: WorkflowSizeLimits;
 }): boolean {
+  const limits = run.sizeLimits ?? resolveWorkflowSizeLimits(process.env);
+  const slots = Math.max(run.scheduledAgents ?? 0, run.totalAgents);
+  const mean =
+    run.totalAgents > 0
+      ? run.totalTokens / run.totalAgents
+      : TOKENS_PER_AGENT_GUESS;
+  const projected = Math.max(run.totalTokens, Math.round(mean * slots));
+
   return (
-    run.totalAgents > WORKFLOW_SIZE_WARNING_AGENTS ||
-    run.totalTokens > WORKFLOW_SIZE_WARNING_TOKENS
+    slots > limits.agents ||
+    run.totalTokens > limits.tokens ||
+    projected > limits.tokens
   );
 }
 
