@@ -3118,6 +3118,37 @@
      （design-system.md `## Menus`：hover = fill-hover + text-primary）。 */
   color: var(--cc-text-primary, #e5e7e8);
 }
+/* 主机下拉的禁用条目（如「Ubuntu 18.04 (WSL) · WSL 1 不支持」）：2026-11-17 评论
+   （她点 `div.desktop-workdir-menu-item-disabled`）「禁用不应该有 hover 背景色，
+   鼠标要变禁用，检查禁用字体颜色是否符合规范并优化」。
+   ① 为什么会漏：DesktopApp.css 里那条 `.desktop-workdir-menu-item-disabled:hover
+   { background: transparent }` 是 (0,2,0)，压不过桌面端带宿主前缀的
+   `.desktop-workdir-menu-item:hover`（0,3,0）与深色那条（0,4,0）⇒ hover 仍有底色，
+   而且字色被抬到 hover 档（浅色 #1F2329 / 深色 #E5E7E8），比静止态还深。
+   这里用双类名 + 排在两条 hover 规则之后接管，深浅两档都不再变色。
+   ② 指针 = not-allowed（禁用）。
+   ③ 字色接语义 token `--cc-text-disabled`（浅 #BEC1C6 / 深 #62686B），替掉原先
+   「常规字色 + opacity .45」的混色写法（实测混出 #B3B5B7 / #6A6C6E，两端都不落在
+   任何一档上）；opacity 归 1，避免再叠一层。11px 的原因文案继承同色、保留 .8。 */
+[data-host="desktop"]
+  .desktop-workdir-menu-item.desktop-workdir-menu-item-disabled,
+[data-host="desktop"]
+  .desktop-workdir-menu-item.desktop-workdir-menu-item-disabled:hover,
+[data-host="desktop"][data-theme="dark"]
+  .desktop-workdir-menu-item.desktop-workdir-menu-item-disabled:hover {
+  background: transparent;
+  color: var(--cc-text-disabled);
+  opacity: 1;
+  cursor: not-allowed;
+}
+/* 同一行的原因文案（`WSL 1 不支持`）不要再用 .8 opacity 削弱：design-system.md 的
+   `--cc-text-disabled` 注记写明「same-role descriptions use the same semantic color
+   without extra text/ancestor opacity」。禁用行里名称与原因同属一档，直接同色。 */
+[data-host="desktop"]
+  .desktop-workdir-menu-item-disabled
+  .desktop-host-item-hint {
+  opacity: 1;
+}
 [data-host="desktop"][data-theme="dark"] .session-list-item--selected,
 [data-host="desktop"][data-theme="dark"] .session-list-item--current,
 [data-host="desktop"][data-theme="dark"] .slash-command-item.selected,
