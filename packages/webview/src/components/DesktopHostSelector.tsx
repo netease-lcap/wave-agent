@@ -12,6 +12,7 @@ import {
   PermCaretIcon,
   QueueEditIcon,
   SshHostIcon,
+  WslHostIcon,
 } from "./HeaderIcons";
 import { DesktopSshConnectionDialog } from "./DesktopSshConnectionDialog";
 import type {
@@ -223,7 +224,7 @@ export const DesktopHostSelector: React.FC<DesktopHostSelectorProps> = ({
   // 1116 第三条评论（她点收起态那颗图标）：「收起态本地图标也换一下」⇒ 触发键的
   // 图标跟着当前主机种类走：选中的是 SSH 主机就换成菜单里同款的「SSH主机」颗
   // （同 16×16 盒、同 currentColor，所以名称与箭头的 x 一格不动）。
-  // 本地仍是桌面图标；WSL 没配图标件（这次只给了 SSH 一张），继续用桌面图标。
+  // 本地仍是桌面图标；WSL 走 1117 补的企鹅颗（同盒同色，名称与箭头的 x 不动）。
   const triggerKind = isLocal ? "local" : (current?.kind ?? "ssh");
 
   // 菜单切成「本地」+「每个主机分组」若干块：块里的**分组标题固定**，只有组内
@@ -349,6 +350,12 @@ export const DesktopHostSelector: React.FC<DesktopHostSelectorProps> = ({
       {row.option.kind === "ssh" && (
         <SshHostIcon className="desktop-host-icon" />
       )}
+      {/* 1117 评论：「你帮我按照现在的图标规范补充个图标我看下效果」⇒ WSL 条目补
+         上企鹅那颗（同 16×16 盒、同 1.4 描边、同 currentColor）。同样落进 32px
+          左内衬里（8 + 16 + 8），名称左缘与 SSH 条目、本地条目同一条竖线。 */}
+      {row.option.kind === "wsl" && (
+        <WslHostIcon className="desktop-host-icon" />
+      )}
       <span className="desktop-workdir-menu-name">{row.option.label}</span>
       {row.option.disabled && row.option.hint && (
         <span className="desktop-host-item-hint">{row.option.hint}</span>
@@ -405,6 +412,8 @@ export const DesktopHostSelector: React.FC<DesktopHostSelectorProps> = ({
       >
         {triggerKind === "ssh" ? (
           <SshHostIcon className="desktop-host-icon" />
+        ) : triggerKind === "wsl" ? (
+          <WslHostIcon className="desktop-host-icon" />
         ) : (
           <ContextLocalIcon className="desktop-host-icon" />
         )}

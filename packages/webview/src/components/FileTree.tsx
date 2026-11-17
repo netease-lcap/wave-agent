@@ -305,19 +305,64 @@ export const FileTree: React.FC<FileTreeProps> = ({
     [files, selectedIndex, onSelectedIndexChange, onPickResult, onFilterChange],
   );
 
+  const filterInput = (
+    <input
+      ref={filterInputRef}
+      className="file-tree-filter"
+      data-testid="file-tree-filter"
+      placeholder="筛选文件…"
+      value={filter}
+      onChange={(e) => onFilterChange(e.target.value)}
+      onKeyDown={handleFilterKeyDown}
+      aria-label="筛选文件"
+    />
+  );
+
   return (
     <div className="file-tree" data-testid="file-pane-tree">
       <div className="file-tree-filter-row">
-        <input
-          ref={filterInputRef}
-          className="file-tree-filter"
-          data-testid="file-tree-filter"
-          placeholder="筛选文件…"
-          value={filter}
-          onChange={(e) => onFilterChange(e.target.value)}
-          onKeyDown={handleFilterKeyDown}
-          aria-label="筛选文件"
-        />
+        {/* 2026-11-17 评论（她点 `input.file-tree-filter`）：「按输入框规范优化这里的
+            样式，这里可以不用加搜索按钮，需要支持清空，参考
+            `div.desktop-sidebar-search-field` 这里」⇒ 桌面端按侧栏「搜索会话」字段的
+            形制包一层：放大镜 + 有内容时的清空键。**放大镜随后被她拿掉**（「放大镜
+            可以拿掉」）—— 这个框本来就是给目录树就地筛选的，位置已经说明它是筛选框，
+            不占一颗图标；清空键保留。参照物只存在于桌面端，故结构也只在桌面端渲染，
+            插件端与远控维持原来的单颗 input（与设置页插件市场搜索框同一处理）。 */}
+        {isDesktopHost() ? (
+          <div className="file-tree-filter-field">
+            {filterInput}
+            {filter !== "" && (
+              <button
+                type="button"
+                className="file-tree-filter-clear"
+                data-testid="file-tree-filter-clear"
+                aria-label="清除筛选"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => {
+                  onFilterChange("");
+                  filterInputRef.current?.focus();
+                }}
+              >
+                <svg
+                  width={12}
+                  height={12}
+                  viewBox="0 0 12 12"
+                  aria-hidden="true"
+                >
+                  <path
+                    d="M2.6 2.6 L9.4 9.4 M9.4 2.6 L2.6 9.4"
+                    stroke="currentColor"
+                    strokeWidth={1.5}
+                    strokeLinecap="round"
+                    fill="none"
+                  />
+                </svg>
+              </button>
+            )}
+          </div>
+        ) : (
+          filterInput
+        )}
       </div>
       {filtering ? (
         <div

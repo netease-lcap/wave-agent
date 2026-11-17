@@ -34,7 +34,12 @@ import type { MarketplaceInfo, PluginInfo, PluginScope } from "../types";
 import { isDesktopHost } from "../utils/platform";
 import { useHostMessage } from "../utils/useHostMessage";
 import { ConfirmDialog } from "./ConfirmDialog";
-import { CloseIcon, SettingsAddIcon, SettingsGearIcon } from "./HeaderIcons";
+import {
+  CloseIcon,
+  SearchIcon,
+  SettingsAddIcon,
+  SettingsGearIcon,
+} from "./HeaderIcons";
 import { SettingsTabs, type SettingsTabDef } from "./SettingsManageComponents";
 import { Tooltip } from "./Tooltip";
 import "../styles/ConfigurationDialog.css";
@@ -196,6 +201,8 @@ const SettingsPluginView: React.FC<SettingsPluginViewProps> = ({ vscode }) => {
   // 目录选择器的请求关联（host 回发 pluginMarketFolderSelected 带 requestId）
   const folderRequestRef = useRef("");
   const folderSeqRef = useRef(0);
+  // 桌面端搜索框的清空键点完把焦点交还输入框（与侧栏搜索字段同一做法）
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
   // 新建市场后待选中的市场名快照（spec 场景 18）：webview 只消费列表快照、拿不到
   // host 侧 addMarketplace 的返回值，而市场名由市场自身清单决定（A-011）⇒ 只能以
   // 「发请求时的市场名快照」为准，回包中出现快照外的新名字即刚添加的那个市场。
@@ -477,6 +484,22 @@ const SettingsPluginView: React.FC<SettingsPluginViewProps> = ({ vscode }) => {
     );
   });
 
+  /**
+   * 搜索框本体：桌面端被外面那层字段盒（放大镜 + 清空键）包住，插件端单独使用。
+   * 抽成一个元素是为了两处 DOM 完全一致 —— 只有外层结构随宿主变。
+   */
+  const pluginSearchInput = (
+    <input
+      ref={searchInputRef}
+      type="search"
+      className="settings-text-input settings-plugin-search"
+      aria-label="搜索插件"
+      placeholder="搜索插件"
+      value={searchQuery}
+      onChange={(e) => setSearchQuery(e.target.value)}
+    />
+  );
+
   const renderPlugin = (plugin: PluginInfo) => {
     const version = pluginVersion(plugin);
     const updatable = version?.updatable === true;
@@ -716,15 +739,54 @@ const SettingsPluginView: React.FC<SettingsPluginViewProps> = ({ vscode }) => {
             {checkingUpdates && (
               <span className="settings-plugin-checking">检查更新中…</span>
             )}
-            {/* 搜索框贴该行最右端（margin-left: auto 吃掉剩余空间） */}
-            <input
-              type="search"
-              className="settings-text-input settings-plugin-search"
-              aria-label="搜索插件"
-              placeholder="搜索插件"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
+            {/* 搜索框贴该行最右端（margin-left: auto 吃掉剩余空间）。
+                桌面端（设计师 2026-11-16 两条评论：先点
+                `input.settings-text-input.settings-plugin-search`「优化搜索框样式和」，
+                再点 `div.desktop-sidebar-search-field`「这里保持一致」）按侧栏「搜索会话」
+                字段的形制包一层：左侧放大镜（同一颗 `SearchIcon`）+ 有内容时的清空键，
+                盒高 / 圆角 / 描边 / 底色 / hover 与聚焦全部走同一套 `--cc-field-*`。
+                参照物只存在于桌面端，故结构也只在桌面端渲染；插件端维持原来的单颗 input。 */}
+            {isDesktopHost() ? (
+              <div className="settings-plugin-search-field">
+                <span
+                  className="settings-plugin-search-icon"
+                  aria-hidden="true"
+                >
+                  <SearchIcon />
+                </span>
+                {pluginSearchInput}
+                {searchQuery !== "" && (
+                  <button
+                    type="button"
+                    className="settings-plugin-search-clear"
+                    data-testid="plugins-search-clear"
+                    aria-label="清除搜索"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => {
+                      setSearchQuery("");
+                      searchInputRef.current?.focus();
+                    }}
+                  >
+                    <svg
+                      width={12}
+                      height={12}
+                      viewBox="0 0 12 12"
+                      aria-hidden="true"
+                    >
+                      <path
+                        d="M2.6 2.6 L9.4 9.4 M9.4 2.6 L2.6 9.4"
+                        stroke="currentColor"
+                        strokeWidth={1.5}
+                        strokeLinecap="round"
+                        fill="none"
+                      />
+                    </svg>
+                  </button>
+                )}
+              </div>
+            ) : (
+              pluginSearchInput
+            )}
           </div>
         )}
 

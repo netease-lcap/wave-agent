@@ -414,7 +414,9 @@
    高度上限由组件写进 `--preview-lines`（该题**最长**那条预览的行数 +1，最少 3），
    这里折算成高度：行高 18px = 1.5em、边框+内衬 20px ≈ 1.7em，再夹 35vh。
    取最长而不是当前项，是为了同一题内换选项时面板不高不矮（spec 场景 2）；算法与
-   CC VS Code 的 `--preview-lines` 同源（那边用 1.3em + 3em，因为它带一条 caption）。 */
+   CC VS Code 的 `--preview-lines` 同源（那边用 1.3em + 3em，因为它带一条 caption）。
+   字号固定 12/18 是这条折算的前提（1.5em = 18px 行高）：字号一改，上面的行数 →
+   高度就不再成立，要同步改这段。 */
 .option-preview {
   display: flex;
   flex-direction: column;
@@ -434,11 +436,29 @@
   overflow: auto;
   padding: 8px 10px;
   border: 1px solid var(--vscode-widget-border);
-  border-radius: 4px;
+  /* 内容面板档（design-system.md「Content panel radius: 8px」）；base 原先是 4px
+     —— 系统里只有行内 code chip 用这个档，带描边的面板没有第二个 4px。 */
+  border-radius: 8px;
   /* 预览里放的多是版式稿与代码片段：比例字体下各行列位置对不上。 */
   font-family: var(--vscode-editor-font-family, ui-monospace, monospace);
   font-size: 12px;
   line-height: 18px;
+}
+
+/* 桌面端：圆角与描边都跟同列的选项卡同源（.option-item 那两条都定在
+   host-desktop.css 的 1023 契约段里）。
+   圆角 4px 在 12px 的卡片旁边是族外孤儿 ⇒ r12。
+   描边：base 那条走 `--vscode-widget-border`，桌面桥接把它指到
+   `--cc-border-light`（#E4E7ED / #34393C，quiet lines 档），而选项卡在 1023 那轮
+   已经挪到 `--cc-border`（#DCDEE6 / #414649，强边界档）—— 于是并排的两个 1px 盒子
+   是两条深浅不同的线：浅色差 8/255、深色差 13/255（实测 #E4E7ED vs #DCDEE6、
+   #34393C vs #414649），深色下肉眼就能看出面板那圈更虚。这里补回同一档，
+   「选项 → 备注输入框 → 预览面板」三块竖着排下来是同一条线。
+   插件端与远控不写：那两个宿主没有 `--cc-*` 层，base 的 `--vscode-widget-border`
+   本来就与选项卡同值（实测都是 #313131 / #E2E2E5），改了反而错。 */
+[data-host="desktop"] .option-preview {
+  border-radius: 12px;
+  border-color: var(--cc-border, #dcdfe6);
 }
 
 .option-preview-body {
@@ -446,7 +466,7 @@
   min-height: 0;
 }
 
-/* 面板只有 12px 字号，正文块的默认上下外边距会把内容挤得只剩两三行。 */
+/* 面板的正文块默认上下外边距会把内容挤得只剩两三行（首末块归零）。 */
 .option-preview-body > :first-child {
   margin-top: 0;
 }
@@ -465,8 +485,11 @@
   overflow-x: auto;
 }
 
+/* 空态是辅助信息（12/20）：面板不再声明根行高，这里单独给紧凑刻度。 */
 .option-preview-empty {
   color: var(--vscode-descriptionForeground);
+  font-size: 12px;
+  line-height: 20px;
   font-style: italic;
 }
 

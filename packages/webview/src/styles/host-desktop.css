@@ -2087,21 +2087,90 @@
 }
 
 /* 字号（设计师 1029 评论「同一面板还有两处也改」）：13 → 14，与面板其它正文档
-   文本一致（契约里 UI 文本只有正文档 14 与辅助档 12，13 只属等宽代码角色）。 */
-[data-host="desktop"] .file-tree-filter {
-  height: 28px;
+   文本一致（契约里 UI 文本只有正文档 14 与辅助档 12，13 只属等宽代码角色）。
+
+   2026-11-17 评论（她点 `input.file-tree-filter`）：「按输入框规范优化这里的样式，
+   这里可以不用加搜索按钮，需要支持清空，参考 `div.desktop-sidebar-search-field`
+   这里」⇒ 外框从 input 移到外面包的 `.file-tree-filter-field`，按桌面表单字段族
+   （`--cc-field-*`）重做，与侧栏「搜索会话」字段 / 设置页插件市场搜索框同一套。
+   改前实测（188×28 盒，树列 201）：
+     · 底 `--cc-fill` 浅 #F0F2F5 / 深 #25292B —— 那是「用户气泡」档，比画布还灰
+       （参照物是白 / #1B1D1E）
+     · 描边 1px transparent，浅深都一样 ⇒ 没有边界，hover 也没有任何反馈
+     · 聚焦描边 `--cc-border-focus` 浅 #1F2329（近黑）
+     · 圆角 6、占位 #8B8F95 / #858B8F、无放大镜、无清空键
+   改后与参照物逐值相等：30 高 / r8 / `--cc-field-bg` / 1px `--cc-field-border` /
+   hover 只换描边 `--cc-field-border-hover` / 聚焦 `--cc-field-border-focus`（1px 就地，
+   不外扩环）/ 占位 `--cc-field-placeholder` / 0 8 内衬 / gap 6。字号保持 14（1029 已定，
+   参照物同档），不复位。**放大镜没要**（她：「放大镜可以拿掉」）—— 这颗框就在目录树
+   正上方、placeholder 也写着「筛选文件…」，不需要再花 16px 说明它是筛选框；参照物
+   有放大镜、本处按她的裁定不跟。
+   盒高 28 → 30 取参照物档位；行容器内衬 6 6 4 不动（整行 38 → 40，树体随之下移 2px）。 */
+[data-host="desktop"] .file-tree-filter-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
   padding: 0 8px;
-  border: 1px solid transparent;
-  border-radius: 6px;
-  background: var(--cc-fill);
-  color: var(--cc-text-primary);
+  box-sizing: border-box;
+  border: 1px solid var(--cc-field-border, #c5c9ce);
+  border-radius: var(--cc-radius-md, 8px);
+  background: var(--cc-field-bg);
+}
+
+/* hover 只换描边、不动底色（契约明写）；`:not(:focus-within)` 让聚焦优先，
+   否则「鼠标压在已聚焦的框上」会掉回 hover 色。 */
+[data-host="desktop"] .file-tree-filter-field:hover:not(:focus-within) {
+  border-color: var(--cc-field-border-hover, #6c7076);
+}
+
+/* 聚焦：就地 1px 变色（与既有边对齐），不外扩环、不位移 */
+[data-host="desktop"] .file-tree-filter-field:focus-within {
+  border-color: var(--cc-field-border-focus, #565a60);
+}
+
+/* 盒里只剩输入区：把 input 自带的外框 / 内衬收回，字色与占位接桌面字段映射。
+   `min-width: 0` 让它在窄列里让位给右侧清空键，而不是把盒子撑出列宽。 */
+[data-host="desktop"] .file-tree-filter {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--cc-field-text);
   font-size: 14px;
 }
 [data-host="desktop"] .file-tree-filter::placeholder {
-  color: var(--cc-text-placeholder, #a0a5a8);
+  color: var(--cc-field-placeholder);
+  opacity: 1;
 }
-[data-host="desktop"] .file-tree-filter:focus {
-  border-color: var(--cc-border-focus, #a0a5a8);
+/* 清空键：形态同 `.desktop-sidebar-search-clear` / 设置页插件搜索框那一颗 ——
+   16×16 命中盒 / 12×12 墨水 / 1.5 描边 / r4，有内容才出现；点它不搬焦点
+   （`onMouseDown` 拦默认），清空后焦点交还输入框。 */
+[data-host="desktop"] .file-tree-filter-clear {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--cc-text-secondary, #6c7076);
+  cursor: pointer;
+}
+[data-host="desktop"] .file-tree-filter-clear:hover {
+  color: var(--cc-text-primary, #1f2329);
+  background: var(--cc-fill-hover, #eef0f3);
+}
+/* 键盘焦点：外移 1px 环、走 `--cc-border-focus`（同一行其它控件的既有语言） */
+[data-host="desktop"] .file-tree-filter-clear:focus-visible {
+  outline: 2px solid var(--cc-border-focus, var(--vscode-focusBorder, #005fb8));
+  outline-offset: 1px;
 }
 /* 字号 12 → 14（1029 第五轮，设计师评论「这里也改14」指着目录树那一列）：
    节点名（目录与文件）统一到正文档；行高 24 / 圆角 6 / 缩进 / 图标 16 都不动。
@@ -2889,7 +2958,7 @@
 /* 主机菜单的分组标题：2026-11-16 评论撤掉远程图标（「这里是分类，去掉图标，改成
    『最近打开』这里这样」）⇒ 标题行不再是 flex，`gap` 也撤掉；组内条目名的 32px
    缩进保留（让条目名落在标题文字右侧一档，与「最近打开」菜单「标题 17 / 条目 41」
-   同构）。没有图标的种类（WSL）继续吃这条。 */
+   同构）。1117 起三种 kind 都带图标，缩进都走下面那条 8px 规则。 */
 [data-host="desktop"] .desktop-host-menu-items .desktop-workdir-menu-item {
   padding-left: 32px;
 }
@@ -2897,11 +2966,16 @@
    「主机名称前面加个图标，名称位置不变」⇒ SSH 条目补上「SSH主机」颗，正好把这
    32px 吃满：左内衬 8 + 图标 16 + 行内 gap 8 = 32，名称左缘一格不动（1440 视口
    下改前后都在 x920）。图标列因此与「本地」行图标、分组标题文字同一条竖线。
-   必须按 kind 收窄：WSL 条目没有图标，若也降到 8px，名称会整体左移 24px
-   （实测 tmp-1109-host-wsl：名字 x519 → 495）。 */
+   必须按 kind 收窄：没有图标的种类若也降到 8px，名称会整体左移 24px
+   （实测 tmp-1109-host-wsl：名字 x519 → 495）。
+   1117：WSL 也补了图标（企鹅），一并纳入这条；三种 kind 的 8 + 16 + 8 拆法与
+   名称左缘现在完全一致。 */
 [data-host="desktop"]
   .desktop-host-menu-items
-  .desktop-workdir-menu-item[data-host-kind="ssh"] {
+  .desktop-workdir-menu-item[data-host-kind="ssh"],
+[data-host="desktop"]
+  .desktop-host-menu-items
+  .desktop-workdir-menu-item[data-host-kind="wsl"] {
   padding-left: 8px;
 }
 
@@ -3112,6 +3186,37 @@
      高半档，浅色档 hover 恰好就是 primary（#1F2329），两侧轻重才对得齐
      （design-system.md `## Menus`：hover = fill-hover + text-primary）。 */
   color: var(--cc-text-primary, #e5e7e8);
+}
+/* 主机下拉的禁用条目（如「Ubuntu 18.04 (WSL) · WSL 1 不支持」）：2026-11-17 评论
+   （她点 `div.desktop-workdir-menu-item-disabled`）「禁用不应该有 hover 背景色，
+   鼠标要变禁用，检查禁用字体颜色是否符合规范并优化」。
+   ① 为什么会漏：DesktopApp.css 里那条 `.desktop-workdir-menu-item-disabled:hover
+   { background: transparent }` 是 (0,2,0)，压不过桌面端带宿主前缀的
+   `.desktop-workdir-menu-item:hover`（0,3,0）与深色那条（0,4,0）⇒ hover 仍有底色，
+   而且字色被抬到 hover 档（浅色 #1F2329 / 深色 #E5E7E8），比静止态还深。
+   这里用双类名 + 排在两条 hover 规则之后接管，深浅两档都不再变色。
+   ② 指针 = not-allowed（禁用）。
+   ③ 字色接语义 token `--cc-text-disabled`（浅 #BEC1C6 / 深 #62686B），替掉原先
+   「常规字色 + opacity .45」的混色写法（实测混出 #B3B5B7 / #6A6C6E，两端都不落在
+   任何一档上）；opacity 归 1，避免再叠一层。11px 的原因文案继承同色、保留 .8。 */
+[data-host="desktop"]
+  .desktop-workdir-menu-item.desktop-workdir-menu-item-disabled,
+[data-host="desktop"]
+  .desktop-workdir-menu-item.desktop-workdir-menu-item-disabled:hover,
+[data-host="desktop"][data-theme="dark"]
+  .desktop-workdir-menu-item.desktop-workdir-menu-item-disabled:hover {
+  background: transparent;
+  color: var(--cc-text-disabled);
+  opacity: 1;
+  cursor: not-allowed;
+}
+/* 同一行的原因文案（`WSL 1 不支持`）不要再用 .8 opacity 削弱：design-system.md 的
+   `--cc-text-disabled` 注记写明「same-role descriptions use the same semantic color
+   without extra text/ancestor opacity」。禁用行里名称与原因同属一档，直接同色。 */
+[data-host="desktop"]
+  .desktop-workdir-menu-item-disabled
+  .desktop-host-item-hint {
+  opacity: 1;
 }
 [data-host="desktop"][data-theme="dark"] .session-list-item--selected,
 [data-host="desktop"][data-theme="dark"] .session-list-item--current,

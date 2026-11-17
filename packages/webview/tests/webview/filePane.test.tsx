@@ -888,6 +888,35 @@ describe("FilePane", () => {
       expect(onOpenFileInPanel).toHaveBeenCalledWith("/work/a/src/App.tsx");
     });
 
+    it("桌面端：有内容时出现清空键，点它清空筛选并把焦点交还输入框", async () => {
+      // 清空键随字段壳只在桌面端渲染（参照物 `div.desktop-sidebar-search-field`
+      // 仅存在于桌面端，与设置页插件市场搜索框同一处理）。
+      window.waveHostType = "desktop";
+      try {
+        const vscode = makeVscode();
+        renderTree({ vscode });
+        const input = screen.getByTestId("file-tree-filter");
+        expect(
+          screen.queryByTestId("file-tree-filter-clear"),
+        ).not.toBeInTheDocument();
+
+        fireEvent.change(input, { target: { value: "app" } });
+        const reqId = await waitForSearchRequest(vscode, "app");
+        sendSuggestionsResponse(reqId, [
+          makeFileItem("App.tsx", "/work/a/src/App.tsx", "src/App.tsx"),
+        ]);
+        await screen.findAllByTestId("file-tree-filter-result");
+
+        fireEvent.click(screen.getByTestId("file-tree-filter-clear"));
+        await waitFor(() => expect(input).toHaveValue(""));
+        // 清空即回到目录树，焦点留在输入框（清空键不是焦点终点）。
+        expect(screen.getByTestId("file-tree-rows")).toBeInTheDocument();
+        expect(document.activeElement).toBe(input);
+      } finally {
+        delete window.waveHostType;
+      }
+    });
+
     it("目录建议不出现在结果里（只列文件，场景 2）", async () => {
       const vscode = makeVscode();
       renderTree({ vscode });
