@@ -583,6 +583,15 @@ export class ChatProvider implements vscode.WebviewViewProvider {
           windowId,
         );
       },
+      // `$.ui.notice`（spec「工具行下面的一行」）：消息名与桌面端一致，同一份
+      // webview 按这个名字收；插件端没有 pane，也就没有 paneId 可带。
+      onModNotice: (payload) => {
+        this.webviewManager.postMessage(
+          { command: "desktopModNotice", payload },
+          viewType,
+          windowId,
+        );
+      },
       // `$.prompt.suggest`（spec ecosystem/plugin-mods.md「输入框里的建议与焦
       // 点」）：消息名与桌面端一致，同一份 webview 按这个名字收。插件端没有
       // pane，也就没有 paneId 可带。

@@ -579,7 +579,7 @@ on("tool.call", { tool: "Bash" }, async ($, e, next) => {
 
 - 与其他三处贴字的地方都不同：`status` 是输入框下方常驻一行、`toast` 是右下角浮层、`log` 是对话流里独立一条；`notice` 挂在**已经存在的那一行工具**上，用户收起工具块时它跟着看不见。
 - `tool_use_id` 就是工具结果事件里那个 id。**对不上就当场报错**（Claude Code 是「refused」）：默默丢掉会让作者以为画上了。
-- 工具调用结束时宿主自己撤掉这一行（CC 同语义），插件不必在 `turn.complete` 里清理。
+- 工具调用结束（成功与失败都算）时宿主自己撤掉这一行，插件不必在 `turn.complete` 里清理。时机精确到「工具执行完、结果块定型之后」：`classic.PostToolUse` / `classic.PostToolUseFailure` 与 `PostToolUse` 钩子在那之前就已经报过（它们在工具执行那一层返回时就发），所以 `tool.call` 里、工具跑的过程中贴的行用户看得到；在 `classic.PostToolUse` 里贴的行属于「工具已经结束」，会被这次收口一并撤掉。
 - 一行纯文本，不换行、不解析 markdown，超出宽度省略。
 
 ### 剪贴板与视图
@@ -1026,7 +1026,7 @@ IDE 聊天面板（VS Code 与 JetBrains）是第二个 surface，`e.surface` �
 - **`Pane` 按聊天面板的宽度挑一种放法**，断点 `(min-width: 800px)`（与 Claude Code 同一个数）：宽于 800px 时 dock 在对话右侧、`e.props.placement === "dock"`，同时开着多个 pane 时出 tab 栏；更窄时落到输入框上方、`placement === "inline"`，显示 12 行后整体滚。`e.viewport` 在这一端**总是有值**（桌面端要等窗口量完），`columns` / `rows` / `e.props.bodyColumns` 都是这一端量出来的字符宽高 —— 窄面板的 `bodyColumns` 与 `viewport.columns` 差得很远，mod 正好可以据此换排布。
 - **带、状态行、toast 在同一个栈里**，位置在输入框正上方；桌面端的三处落点（带在上、状态行在下、toast 右下角）到这里收成一处。每个插件一行 status（200 字符或 2 行截断），toast 500 字符截断（桌面端是 240）。有审批或对话弹窗时整个栈收起。
 - **不生效的绘制 prop**：`Button` 的 `plain` / `variant` / `role` / `hotkey` / `autoFocus` / `action`、`Box` 的 `position` 与 `hover`、`Text` 的 `size` / `mono` / `tabular`。**按不写它画，不拒整棵树** —— 与 Claude Code 扩展同一个口径：这一端的按钮画成普通的可点方块，用户点击或按 Enter，不假装有快捷键。
-- **不支持的能力**：`$.ui.notice`（工具行下面那一行，调用不报错也不显示）、`AbovePromptList` 站点（只在桌面端发）。`$.prompt.read` / `$.prompt.fill` / `$.ui.copy` 照常可用。
+- **不支持的能力**：`AbovePromptList` 站点（只在桌面端发）。`$.ui.notice` / `$.prompt.read` / `$.prompt.fill` / `$.ui.copy` 照常可用 —— `notice` 那行跟桌面端一样挂在同名工具块下面（同一份 webview、同一个 `toolUseId` 键），只是两端宿主都没有 pane，消息里不带 `paneId`。
 
 **为什么 JetBrains 也归到 `vscode` 这个 surface 名下**：Claude Code 的 JetBrains 插件没有自己的聊天面板（它的 JB 端是内嵌终端，报 `terminal`），而我们的 JB 插件有真 webview 面板、与 VS Code 复用同一份产物。名字的作用是告诉插件「这一端能画什么」—— 两端能画的完全一样，所以共用一个名字，既不新增 Claude Code 面外的名字，也不让插件为两个宿主写分支。
 
@@ -1132,7 +1132,7 @@ Claude Code 的 `$` 有 23 个命名空间，我们覆盖 16 个（`ui` / `sessi
 1. **假设**插件在 `session.start` 里 `$.ui.open({ id: "p1", title: "待办" })`，**当**用户在 VS Code 或 JetBrains 里打开会话且聊天面板宽于 800px，**则**面板 dock 在对话右侧、出现「待办」tab，树与桌面端渲染结果一致；把面板拖窄到 800px 以下**则**它落到输入框上方、显示 12 行后整体滚，`e.props.placement` 从 `dock` 变成 `inline`。
 2. **假设**同一个 mod 画一条带、设一行 status、弹一条 toast，**当**IDE 聊天面板渲染，**则**三样都在输入框上方的那一个栈里（带在上、status 在下、toast 插在其中），不是桌面端的三处落点；status 超过 200 字符或 2 行时截断，toast 超过 500 字符时截断。
 3. **假设**守卫类 mod 在 `tool.call` 里先 `await $.session.surfaces()`，**当**这条会话在 VS Code 或 JetBrains 里跑，**则**都拿到 `["vscode"]` 并照常 `$.ui.open`（`isPlaced: true`）；同一条会话在 `wave -p` 里仍拿到 `[]`，走「没人看得见」的拒绝分支。
-4. **假设**mod 的按钮写了 `variant="primary"` 与 `hotkey="y"`，**当**IDE 聊天面板渲染，**则**它画成普通的可点按钮（不拒树、不报错），点击照常回 `ui.press`；`$.ui.notice` 在这一端调用不报错也不显示。
+4. **假设**mod 的按钮写了 `variant="primary"` 与 `hotkey="y"`，**当**IDE 聊天面板渲染，**则**它画成普通的可点按钮（不拒树、不报错），点击照常回 `ui.press`；**当**同一个 mod 对某个工具调用的 id 调 `$.ui.notice(id, "已校验")`，**则**这一端的工具块下面也出现那一行灰字（与桌面端同一份 webview，宿主按 `desktopModNotice` 把它转给面板），`$.ui.notice(id, undefined)` 后这行消失。
 5. **假设**同一个插件在桌面端、VS Code、JetBrains 各开一次会话，**当**三端都渲染，**则**`ui.render` 的 `e.surface` 分别是 `desktop` / `vscode` / `vscode`，`$.ui.resolve(e)` 在三端都返回同一张 10 个元素的表。
 6. **假设**mod 按 `e.viewport.columns` / `e.props.bodyColumns` 换排布，**当**IDE 聊天面板分别以宽（dock）与窄（inline）两种摆法渲染，**则** `e.viewport.isFullscreen === true`、`columns` / `rows` 是按这一端字体的字宽与行高折算出的真实字符数（不是缺省 100 / 24），`bodyColumns` 量的是面板自己那一列（dock 时明显小于 `viewport.columns`，inline 时与输入区同宽）；把面板拖宽后下一次渲染数字跟着变。
 7. **假设**mod 的 `Box` 写了 `flexDirection="row-reverse"`（RTL 的一排按钮），**当**IDE 聊天面板渲染，**则**子元素从右往左排，与桌面端一致 —— 不是被当成缺省 `row` 静默丢掉。

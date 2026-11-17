@@ -66,12 +66,9 @@ interface AgentCallbacks {
     fun onBtwContent(question: String, content: String, type: String, requestId: String?) {}
     /**
      * 插件 mod 的推送（spec ecosystem/plugin-mods.md「在 IDE 插件里画」）：面板
-     * 元信息、带、状态行、短暂提示，以及 `$.prompt.fill` / `$.prompt.read` /
-     * `$.ui.copy` 三条要界面作答的请求。载荷原样转给 webview —— 宿主不缓存树，
-     * 也不解释任何一个字段。
-     *
-     * `$.ui.notice`（工具行下面那一行）在这一端不显示，所以没有对应回调：mod 那
-     * 一侧调用不报错，只是没人画。
+     * 元信息、带、状态行、短暂提示、`$.ui.notice` 贴在工具行下面的那一行，以及
+     * `$.prompt.fill` / `$.prompt.read` / `$.ui.copy` 三条要界面作答的请求。载荷
+     * 原样转给 webview —— 宿主不缓存树，也不解释任何一个字段。
      */
     fun onModPanelUpdate(payload: JsonElement?) {}
 
@@ -84,6 +81,8 @@ interface AgentCallbacks {
     fun onModPromptRead(payload: JsonElement?) {}
 
     fun onModCopy(payload: JsonElement?) {}
+
+    fun onModNotice(payload: JsonElement?) {}
 
     /**
      * 一个 mod 要往输入框上方摆一条建议（`$.prompt.suggest`；spec
@@ -238,6 +237,9 @@ class StdioAgent(
             "modPromptFill" -> callbacks.onModPromptFill(params)
             "modPromptRead" -> callbacks.onModPromptRead(params)
             "modCopy" -> callbacks.onModCopy(params)
+            // 工具行下面那一行（`$.ui.notice`）：载荷就是顶层那张对象（裸 payload，
+            // 没有更外一层），与 SDK 侧 `params as ModNoticePayload` 同一口径。
+            "modNotice" -> callbacks.onModNotice(params)
             // 一条建议要摆进输入框上方（`$.prompt.suggest`）：整份 payload 原样交给宿
             // 主，回执里要一字不差地送回同一个 requestId（spec「输入框里的建议与焦
             // 点」）。

@@ -4246,6 +4246,14 @@ ${question}`;
         timestamp: Date.now(),
       });
 
+      // 工具调用结束（成功或失败都算）：把 mod 贴在这次调用下面的 notice 撤掉
+      // （spec「工具行下面的一行」）。位置就是「结果块定型之后」——
+      // `classic.PostToolUse` 与 PostToolUse 钩子都在 `toolManager.execute()` 里
+      // 就报完了（toolManager 那边 `notifyModToolOutcome` 与钩子都在 execute 返回
+      // 之前），所以那一刻贴的行到这里也算「工具已经结束」，一并收掉；插件不必在
+      // `turn.complete` 里自己清理。
+      this.getModManager()?.clearToolNotices(toolId);
+
       // Plan panel refresh (spec: 计划文件更新后刷新计划面板): a successful
       // Write/Edit of the plan file broadcasts the new content so hosts can
       // update an already-open plan panel without waiting for ExitPlanMode.
@@ -4274,6 +4282,9 @@ ${question}`;
         compactParams,
         timestamp: Date.now(),
       });
+      // 同一条收口也走异常路径：mod 可能在这个工具里已经贴过一行，工具抛了不该
+      // 把它留在块下面（spec「工具行下面的一行」：成功与失败都算结束）。
+      this.getModManager()?.clearToolNotices(toolId);
       return { ok: false, toolInput: toolArgs };
     }
   }
