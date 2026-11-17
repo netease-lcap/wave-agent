@@ -93,7 +93,6 @@ const LEGACY_HOST_CASES = {
   desktop: new Set([
     "deleteQueuedMessage", // 历史遗留，同 vscode_chat
     "desktopPreviewState", // 历史遗留：预览面板旧协议（webview 现用 desktopPanelState）
-    "desktopRelocateSession", // 「换文件夹继续」：webview 的恢复提示按钮发它（同一期落，登记豁免防死注册误报）
     "enablePlugin", // 历史遗留，同 vscode_chat
     "disablePlugin", // 同上
     "getAuthStatus", // 宿主主动发起，同 vscode_chat
