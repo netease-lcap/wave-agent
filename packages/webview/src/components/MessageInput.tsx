@@ -33,6 +33,7 @@ import { useHostMessage } from "../utils/useHostMessage";
 import { ContextTag } from "./ContextTag";
 import { Tooltip } from "./Tooltip";
 import ReactDOM from "react-dom/client";
+import { flushSync } from "react-dom";
 import type {
   MessageInputProps,
   FileItem,
@@ -538,6 +539,11 @@ export const MessageInput = forwardRef<
   /** 递增的编辑序号：回执只认最后一次，晚到的旧回执不能盖掉用户新打的字。 */
   const editSeqRef = useRef(0);
   const lastEditRequestIdRef = useRef<string | null>(null);
+  /**
+   * 最后一次编辑**上报时**算出的全文（`prompt.edit` 回执按它判「插件有没有改写」）。
+   * 不能拿它与当前 DOM 文本比：两次之间输入框里可能长出别的东西。
+   */
+  const lastEditExpectedTextRef = useRef<string | null>(null);
   /** 触发这次编辑的那一个按键（粘贴没有 keydown，就是 `undefined`）。 */
   const lastEditKeyRef = useRef<unknown>(undefined);
   const inputContentTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -762,6 +768,13 @@ export const MessageInput = forwardRef<
       if (!div) return false;
       // 没人改写这次编辑（钩子没返回、或返回的就是原文）：别动 DOM —— 重建会
       // 吃掉用户此刻的选区，看起来像「打着字光标突然跳”。
+      //
+      // 判据用**上报时算出的全文**，不是当前 DOM 的文本：两者之间插进来的东西
+      // 会让比较假性不等（粘贴图片的标签先以占位符 `[image]` 被读走、React 随后
+      // 才把可见文本换成 `@ 图片 1`），于是「插件没改写」被当成改写，整份输入框
+      // 按纯文本重建，图片标签连同字节一起消失（桌面端 1.7.0 的「粘贴截图后只剩
+      // `[image]`」就是这么来的）。
+      if (text === lastEditExpectedTextRef.current) return false;
       if (text === (div.innerText ?? div.textContent ?? "")) return false;
 
       div.replaceChildren(...plainTextNodes(text));
@@ -2222,7 +2235,13 @@ export const MessageInput = forwardRef<
             suffix++;
           }
           const requestId = `prompt-edit-${++editSeqRef.current}`;
+          const inputText = newValue.slice(start, newValue.length - suffix);
           lastEditRequestIdRef.current = requestId;
+          // 插件没改写时回执的全文就是它；回执按这一份判「有没有改写」。
+          lastEditExpectedTextRef.current =
+            prevText.slice(0, start) +
+            inputText +
+            prevText.slice(prevText.length - suffix);
           vscode.postMessage({
             command: "modPromptEdit",
             sessionId,
@@ -2235,7 +2254,7 @@ export const MessageInput = forwardRef<
             cursor: draftCursorRef.current,
             start,
             end: prevText.length - suffix,
-            inputText: newValue.slice(start, newValue.length - suffix),
+            inputText,
           });
         }
         lastEditKeyRef.current = undefined;
@@ -2362,14 +2381,21 @@ export const MessageInput = forwardRef<
           tagSpan.innerText = `[image]`;
 
           const root = ReactDOM.createRoot(tagSpan);
-          root.render(
-            <ContextTag
-              name={displayName}
-              path={`pasted-image-${Date.now()}.png`}
-              isImage={true}
-              onClick={() => handleImagePreview(dataUrl, displayName)}
-            />,
-          );
+          // 同步提交：下面紧接着派发的 `input` 事件会读 `innerText` 当镜像文本
+          // （也随 `prompt.edit` 上报给插件）。渲染若晚一步提交，读到的是上面那句
+          // 占位符 `[image]` —— 那段错误文本会被宿主原样回执，回执又据此把输入框
+          // 按纯文本重建，图片标签连同字节一起消失（桌面端 1.7.0 的「粘贴截图后
+          // 只剩 `[image]`」）。同步提交后，读到的就是标签的最终可见文本。
+          flushSync(() => {
+            root.render(
+              <ContextTag
+                name={displayName}
+                path={`pasted-image-${Date.now()}.png`}
+                isImage={true}
+                onClick={() => handleImagePreview(dataUrl, displayName)}
+              />,
+            );
+          });
 
           range.deleteContents();
           range.insertNode(tagSpan);
