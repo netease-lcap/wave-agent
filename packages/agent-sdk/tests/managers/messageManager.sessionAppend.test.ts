@@ -5,7 +5,10 @@ import { toModSessionMessages } from "../../src/managers/modManager.js";
 import * as sessionService from "../../src/services/session.js";
 import { Container } from "../../src/utils/container.js";
 import type { Message } from "../../src/types/index.js";
-import type { ModSessionMessage } from "../../src/types/mods.js";
+import type {
+  ModSessionAppendDoor,
+  ModSessionMessage,
+} from "../../src/types/mods.js";
 
 const { mockWarn } = vi.hoisted(() => ({ mockWarn: vi.fn() }));
 
@@ -59,7 +62,11 @@ function toolMessage(id: string): Message {
 
 /** 一个只答 `session.append` 的假 ModManager（真的那套要编译 mods）。 */
 function containerWith(
-  dispatch: (event: never) => Promise<unknown>,
+  dispatch: (
+    message: ModSessionMessage,
+    door: ModSessionAppendDoor,
+    agentId?: string,
+  ) => Promise<unknown>,
 ): Container {
   const container = new Container();
   container.register("ModManager", { dispatchSessionAppend: dispatch });
@@ -140,6 +147,50 @@ describe("session.append：消息落进转录之前", () => {
         { type: "tool_result", tool_use_id: "call_1", content: "a.ts" },
       ],
     });
+  });
+
+  it("door 只有 prompt / response / tool-result 三档，宿主注入的行没有门", async () => {
+    const doors: string[] = [];
+    const dispatch = vi.fn(
+      async (message: ModSessionMessage, door: ModSessionAppendDoor) => {
+        doors.push(door);
+        return { message };
+      },
+    );
+    const prompt: Message = { ...textMessage("m1", "用户敲的"), role: "user" };
+    const toolResult: Message = {
+      id: "m3",
+      role: "user",
+      blocks: [
+        {
+          type: "tool",
+          id: "call_1",
+          name: "Bash",
+          parameters: '{"command":"ls"}',
+          result: "a.ts",
+          stage: "end",
+        },
+      ],
+      timestamp: new Date(0).toISOString(),
+    };
+    const meta: Message = {
+      ...textMessage("m4", "记忆注入"),
+      role: "user",
+      isMeta: true,
+    };
+
+    const manager = createManager(containerWith(dispatch), [
+      prompt,
+      textMessage("m2", "模型的回答"),
+      toolResult,
+      meta,
+    ]);
+
+    await manager.saveSession();
+
+    // `note` 不在这张表里：宿主注入的行（`isMeta`）压根不派发，
+    // CC 那一档是插件自己写行的门，我们没有那个入口。
+    expect(doors).toEqual(["prompt", "response", "tool-result"]);
   });
 
   it("插件返回 { deny }：这一行不存，但仍留在界面上（验收场景 2）", async () => {

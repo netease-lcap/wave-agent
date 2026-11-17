@@ -2017,16 +2017,20 @@ function lastIndexById(list: readonly Message[], id: string): number {
  * 这一行进转录时走的是哪条门（`session.append` 的 `door`，与 CC 的 `doorOf` 同名）。
  *
  * 我们的行只有 user / assistant 两种角色：带工具结果的 user 行是 `tool-result`、
- * 宿主自己塞进去的（记忆注入、系统提醒）是 `note`、剩下的是用户敲的那句
- * `prompt`；assistant 一律是 `response`。压缩摘要不走这条通道，所以没有
- * `compaction` 一档。
+ * 剩下的是用户敲的那句 `prompt`；assistant 一律是 `response`。压缩摘要走
+ * `compact` 块、不问这条通道，所以没有 `compaction` 一档。
+ *
+ * 到这里的 `isMeta` 行已经在 `rewriteBeforeAppend` 里被投影挡掉了（它们不进
+ * `$.session.messages()`），所以宿主注入的行没有门 —— CC 那边这种行归
+ * `attachment` / `hook-context`，而 `note` 是**插件自己写行**的档（我们没有那个
+ * 写入口，见 `ModSessionAppendDoor` 的注释）。
  */
 function sessionAppendDoorOf(message: Message): ModSessionAppendDoor {
   if (message.role === "assistant") return "response";
   if (message.blocks.some((block) => block.type === "tool")) {
     return "tool-result";
   }
-  return message.isMeta ? "note" : "prompt";
+  return "prompt";
 }
 
 /**
