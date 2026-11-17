@@ -1317,6 +1317,109 @@
   flex: 0 0 auto;
 }
 
+/* ── 桌面端：插件市场搜索框按侧栏「搜索会话」字段的形制重做 ────────────────────
+   设计师 2026-11-16 两条评论：先点 `input.settings-text-input.settings-plugin-search`
+   「优化搜索框样式和」，再点 `div.desktop-sidebar-search-field`「这里保持一致」。
+   参照物（侧栏字段，见 SidebarSessionSearch.css）实测：191×30 / r8 / 描边
+   --cc-field-border / 底 --cc-field-bg / 0 8 内衬 / gap 6 / 放大镜 16×16 取
+   --cc-text-secondary / 14·400 / 占位 --cc-field-placeholder / hover 只换描边
+   --cc-field-border-hover / 聚焦 --cc-field-border-focus（1px，无外扩环）。
+   改前实测（浅色）：180×32 / 描边 #DCDFE6（hover 无任何反馈）/ 聚焦近黑 #1F2329 +
+   3px 外框 / 底 #FFFFFF / 占位 #606060 / 没有放大镜 / 有内容时是浏览器原生 search
+   的蓝色 ✕；深色底 #313131（参照物是 #1B1D1E）、描边 #414649、占位 #A0A5A8。
+   圆角改前已是 8（设置页桌面档此前已收到 --cc-radius-md，不是 6）。
+
+   几何 30：照参照物那一档（设置页其它字段是 32，两者差 2 —— 这里跟参照物走）。
+   几何与配色都只挂桌面端点名的那一颗，不扩散到设置页其它字段。 */
+[data-host="desktop"] .settings-plugin-search-field {
+  margin-left: auto;
+  width: 180px;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 8px;
+  box-sizing: border-box;
+  border: 1px solid var(--cc-field-border, #c5c9ce);
+  border-radius: var(--cc-radius-md, 8px);
+  background: var(--cc-field-bg);
+  /* 盒色同时供左侧放大镜取色（次级文字档，与侧栏字段同一个取值） */
+  color: var(--cc-text-secondary, #6c7076);
+}
+
+/* hover 只换描边、不动底色；`:not(:focus-within)` 让聚焦优先 */
+[data-host="desktop"] .settings-plugin-search-field:hover:not(:focus-within) {
+  border-color: var(--cc-field-border-hover, #6c7076);
+}
+
+/* 聚焦：就地 1px 变色（与既有边对齐），不外扩环、不位移 */
+[data-host="desktop"] .settings-plugin-search-field:focus-within {
+  border-color: var(--cc-field-border-focus, #565a60);
+}
+
+[data-host="desktop"] .settings-plugin-search-icon {
+  display: flex;
+  flex: none;
+}
+
+/* 盒里只剩输入区：把 `.settings-text-input` 自带的外框 / 内衬 / 32 最小高全部收回，
+   字色与占位接桌面字段映射。 */
+[data-host="desktop"] .settings-plugin-search {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  margin-left: 0;
+  width: auto;
+  padding: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--cc-field-text);
+  font-size: 14px;
+}
+
+[data-host="desktop"] .settings-plugin-search::placeholder {
+  color: var(--cc-field-placeholder);
+  opacity: 1;
+}
+
+/* 清空键改用自绘那颗（形态同 `.desktop-sidebar-search-clear` / 创作集 SearchField：
+   16×16 命中盒 / 12×12 墨水 / 1.5 描边 / r4），并把浏览器原生 search 的 ✕ 与装饰关掉，
+   免得两颗 ✕ 并排。 */
+[data-host="desktop"] .settings-plugin-search::-webkit-search-cancel-button,
+[data-host="desktop"] .settings-plugin-search::-webkit-search-decoration {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+[data-host="desktop"] .settings-plugin-search-clear {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--cc-text-secondary, #6c7076);
+  cursor: pointer;
+}
+
+[data-host="desktop"] .settings-plugin-search-clear:hover {
+  color: var(--cc-text-primary, #1f2329);
+  background: var(--cc-fill-hover, #eef0f3);
+}
+
+/* 键盘焦点：外移 1px 环、走 --cc-border-focus（同一行其它控件的既有语言） */
+[data-host="desktop"] .settings-plugin-search-clear:focus-visible {
+  outline: 2px solid var(--cc-border-focus, var(--vscode-focusBorder, #005fb8));
+  outline-offset: 1px;
+}
+
 /* 打开视图触发的后台清单刷新进行中（spec 插件市场场景 12）：界面内轻量状态，
    不阻塞列表浏览与操作，刷新完成后由宿主补发的列表（refreshed 标记）收起它。
    归辅助档 12/20，与 .settings-plugin-desc 同口径。 */

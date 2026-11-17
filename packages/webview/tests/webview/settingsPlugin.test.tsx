@@ -1676,6 +1676,66 @@ describe("SettingsPage 插件市场视图", () => {
 });
 
 /**
+ * 设计师 2026-11-16 两条评论：点 `input.settings-text-input.settings-plugin-search`
+ * 「优化搜索框样式和」，再点 `div.desktop-sidebar-search-field`「这里保持一致」——
+ * 桌面端搜索框改成与侧栏「搜索会话」字段同一形制（外层字段盒 + 放大镜 + 有内容时的
+ * 清空键），插件端维持原来的单颗 input。这里钉住结构与清空行为。
+ */
+describe("插件市场搜索框：桌面端按侧栏搜索字段的形制", () => {
+  const asDesktop = () => {
+    window.waveHostType = "desktop";
+  };
+  beforeEach(() => {
+    delete window.waveHostType;
+  });
+  afterEach(() => {
+    delete window.waveHostType;
+  });
+
+  it("插件端只有单颗 input，没有外层字段盒与放大镜", async () => {
+    await mountWithData();
+    expect(screen.getByLabelText("搜索插件")).toBeInTheDocument();
+
+    expect(document.querySelector(".settings-plugin-search-field")).toBeNull();
+    expect(document.querySelector(".settings-plugin-search-icon")).toBeNull();
+  });
+
+  it("桌面端多一层字段盒与放大镜，输入框仍在盒内", async () => {
+    asDesktop();
+    await mountWithData();
+
+    const field = document.querySelector(".settings-plugin-search-field");
+    expect(field).not.toBeNull();
+    expect(
+      field!.querySelector(".settings-plugin-search-icon svg"),
+    ).not.toBeNull();
+    expect(field!.querySelector("input.settings-plugin-search")).not.toBeNull();
+  });
+
+  it("有内容才出现清空键，点它清空关键词并把焦点交还输入框", async () => {
+    asDesktop();
+    await mountWithData();
+    const search = screen.getByLabelText("搜索插件");
+    expect(screen.queryByTestId("plugins-search-clear")).toBeNull();
+
+    await act(async () => {
+      fireEvent.change(search, { target: { value: "审查" } });
+    });
+    const clear = screen.getByTestId("plugins-search-clear");
+    expect(clear).toHaveAttribute("aria-label", "清除搜索");
+
+    await act(async () => {
+      fireEvent.click(clear);
+    });
+    expect((search as HTMLInputElement).value).toBe("");
+    expect(screen.queryByTestId("plugins-search-clear")).toBeNull();
+    // 清空后列表回到全部插件（关键词确实失效了，不是只清了个 DOM 值）
+    expect(screen.getByText("Git Workflow")).toBeInTheDocument();
+    expect(document.activeElement).toBe(search);
+  });
+});
+
+/**
  * spec ecosystem/plugin.md 场景 3 + A-016：入口按宿主分工，同一宿主只保留一个——
  * 桌面端靠侧边栏整页（场景 1），设置页左侧导航不再重复一个「插件市场」项；
  * VSCE / JetBrains 没有侧边栏整页，设置页这项是它们唯一入口，必须保留。
