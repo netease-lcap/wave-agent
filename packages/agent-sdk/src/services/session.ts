@@ -15,11 +15,13 @@
  * - Full backward compatibility maintained
  */
 
-import { promises as fs } from "fs";
-import { join } from "path";
+import { createReadStream, createWriteStream, promises as fs } from "fs";
+import type { Dirent } from "fs";
+import { dirname, join, resolve } from "path";
 import { homedir } from "os";
 import { randomUUID } from "crypto";
 import { execFile } from "child_process";
+import { pipeline } from "stream/promises";
 import { promisify } from "util";
 import type { Message, Usage } from "../types/index.js";
 import { PathEncoder } from "../utils/pathEncoder.js";
@@ -590,6 +592,373 @@ export async function readSessionWorkdir(
     // 问不到就是问不到：这张是「有没有」的问题，不是「对不对」的问题。
     return undefined;
   }
+}
+
+/**
+ * 「换文件夹继续」的结果。
+ */
+export interface RelocateSessionResult {
+  /** 真的搬了文件（from 与 to 不同且源存在）。 */
+  relocated: boolean;
+  /** 搬过去的文件数（正常 1；源不存在 0）。 */
+  copiedFiles: number;
+  /** 源转录的绝对路径（找不到时为 undefined）。 */
+  from?: string;
+  /** 目标转录的绝对路径。 */
+  to: string;
+  /**
+   * 转录头 `{"type":"metadata",...}` 的 workdir 是否已改写成新目录。
+   * 老转录没有 metadata 头时为 false —— 调用方据此告警「历史可能无法在重启后保留」。
+   */
+  headerUpdated: boolean;
+}
+
+/** 一个要跟着会话一起搬的转录文件。 */
+interface TranscriptMove {
+  from: string;
+  to: string;
+}
+
+/** 已经写好的临时文件，等 rename 到位。 */
+interface PreparedTranscript {
+  move: TranscriptMove;
+  tempPath: string;
+  headerUpdated: boolean;
+  bytesWritten: number;
+}
+
+/**
+ * 把一个会话的转录从 `fromWorkdir` 搬到 `toWorkdir`（「换文件夹继续」）。
+ *
+ * 为什么必须改写转录头：`JsonlHandler.readMetadata` 只读第一行，而重启后
+ * `readSessionWorkdir` 拿它当会话的锚点（`agentBridge.restoreWorkdirFor` 据此决定
+ * 把会话恢复到哪个目录）。头不改，搬到哪都白搬——重启后会话仍然锚回旧目录，
+ * 而旧目录里已经没有文件了。
+ *
+ * 原子性：目标目录写临时文件 → rename 到位 → 校验字节数 → 才 unlink 源。任何一步
+ * 失败都清理临时文件并抛错，源文件保持原样——绝不留下"半搬"的会话（转录在新
+ * 目录、索引还指着旧目录，或者反过来）。
+ *
+ * 老转录（没有 metadata 头）也照搬，只是 `headerUpdated` 为 false：**不补**一个头，
+ * 那会改变 `listSessions` 的语义（`createdAt` / `branch` 的来源）。
+ *
+ * @param sessionId - UUID session identifier
+ * @param fromWorkdir - 会话现在的工作目录（转录查找起点，找不到时跨 project 目录兜底）
+ * @param toWorkdir - 新的工作目录
+ * @returns 搬迁结果；源转录不存在时不抛错，返回 `relocated: false`
+ */
+export async function relocateSessionTranscript(
+  sessionId: string,
+  fromWorkdir: string,
+  toWorkdir: string,
+): Promise<RelocateSessionResult> {
+  const to = await generateSessionFilePath(sessionId, toWorkdir);
+
+  const [resolvedFrom, resolvedTo] = await Promise.all([
+    resolveWorkdirForComparison(fromWorkdir),
+    resolveWorkdirForComparison(toWorkdir),
+  ]);
+  if (resolvedFrom === resolvedTo) {
+    // 同一个目录：一个字节都不动（连头也不改——它已经指向这个目录了，
+    // 只是字符串写法可能不同）。
+    return { relocated: false, copiedFiles: 0, to, headerUpdated: true };
+  }
+
+  // 源定位与 `loadSessionFromJsonl` 同口径：先按 fromWorkdir 的 project 目录找，
+  // 找不到再跨 project 目录扫一遍（会话可能是在别的 cwd / 兄弟 worktree 里建的）。
+  let from: string | null = await generateSessionFilePath(
+    sessionId,
+    fromWorkdir,
+  );
+  if (!(await pathExists(from))) {
+    from = await findSessionFileAcrossProjects(sessionId, "main");
+  }
+  if (!from) {
+    return { relocated: false, copiedFiles: 0, to, headerUpdated: false };
+  }
+
+  // 两个不同的 workdir 可能编码到同一个 project 目录（编码是有损的）。此时目标
+  // 就是源文件本身：改头就地重写，不搬、更不能 unlink 源。
+  const inPlace = resolve(from) === resolve(to);
+  if (!inPlace && (await pathExists(to))) {
+    throw new Error(
+      `Failed to relocate session ${sessionId}: target already exists at ${to}`,
+    );
+  }
+
+  // 伴随转录排在前面：主转录的 unlink 是这次搬迁的"不可回头点"，它放最后。
+  const moves: TranscriptMove[] = inPlace
+    ? []
+    : await findCompanionTranscripts(dirname(from), dirname(to), sessionId);
+  const allMoves = [...moves, { from, to }];
+  const targetPaths = inPlace ? [] : [to, ...moves.map((move) => move.to)];
+
+  const prepared: PreparedTranscript[] = [];
+  const placed: string[] = [];
+  // 临时文件在建之前就登记：写入本身失败时那份**已经建出来**的临时文件也必须被清掉。
+  const tempPaths: string[] = [];
+  try {
+    // 阶段 1：全部先写成目标目录里的临时文件（源一个字节都还没动）。
+    for (const move of allMoves) {
+      await fs.mkdir(dirname(move.to), { recursive: true });
+      const tempPath = `${move.to}.tmp.${process.pid}.${randomUUID()}`;
+      tempPaths.push(tempPath);
+      const copied = await copyTranscriptWithWorkdir(
+        move.from,
+        tempPath,
+        toWorkdir,
+      );
+      // 落盘字节数与复制的记账必须一致：短写（磁盘满、被截断）就在这里停下。
+      const stat = await fs.stat(tempPath);
+      if (stat.size !== copied.bytesWritten) {
+        throw new Error(
+          `short write for ${tempPath}: expected ${copied.bytesWritten} bytes, wrote ${stat.size}`,
+        );
+      }
+      prepared.push({ move, tempPath, ...copied });
+    }
+
+    // 阶段 2：全部 rename 到位（同目录 rename 是原子的，读者看不到半份文件）。
+    for (const entry of prepared) {
+      await fs.rename(entry.tempPath, entry.move.to);
+      placed.push(entry.move.to);
+    }
+  } catch (error) {
+    // 源一个都还没删 ⇒ 把落地的目标与残留的临时文件清掉，就回到了搬前的状态。
+    await removeFilesQuietly([...tempPaths, ...targetPaths]);
+    throw new Error(
+      `Failed to relocate session ${sessionId} from ${from} to ${to}: ${errorMessageOf(error)}`,
+    );
+  }
+
+  const mainMove = prepared[prepared.length - 1];
+
+  if (inPlace) {
+    // 就地改头：文件没换位置，也就没有"搬过去的文件数"。
+    return {
+      relocated: false,
+      copiedFiles: 0,
+      from,
+      to,
+      headerUpdated: mainMove.headerUpdated,
+    };
+  }
+
+  // 阶段 3：删源（主转录先删——它才是"搬完了"的那个判据；删不掉说明源还在，
+  // 那就把已放好的目标全部撤掉，回到原状再报错）。
+  try {
+    await fs.unlink(from);
+  } catch (error) {
+    await removeFilesQuietly(placed);
+    throw new Error(
+      `Failed to relocate session ${sessionId}: could not remove ${from}: ${errorMessageOf(error)}`,
+    );
+  }
+
+  // 伴随转录的旧副本删不掉只是留了一份多余的子代理转录，不影响这场对话本身，
+  // 记一条 warn 继续。
+  for (const move of moves) {
+    try {
+      await fs.unlink(move.from);
+    } catch (error) {
+      logger.warn(
+        `Relocated session ${sessionId}: could not remove companion transcript ${move.from}: ${errorMessageOf(error)}`,
+      );
+    }
+  }
+
+  return {
+    relocated: true,
+    copiedFiles: allMoves.length,
+    from,
+    to,
+    headerUpdated: mainMove.headerUpdated,
+  };
+}
+
+/**
+ * 用于比较两个 workdir 是不是同一个目录：realpath（解开符号链接、抹平 `..` 与
+ * 结尾斜杠），目录已不存在时退回 `resolve`。
+ */
+async function resolveWorkdirForComparison(workdir: string): Promise<string> {
+  try {
+    return await fs.realpath(workdir);
+  } catch {
+    return resolve(workdir);
+  }
+}
+
+/** 路径上是否有东西（只有 ENOENT 算没有，其余错误如实抛出）。 */
+async function pathExists(targetPath: string): Promise<boolean> {
+  try {
+    await fs.access(targetPath);
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return false;
+    }
+    throw error;
+  }
+}
+
+function errorMessageOf(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+/** 尽力而为地删一串文件：清理失败不能盖住真正的错误。 */
+async function removeFilesQuietly(paths: readonly (string | undefined)[]) {
+  for (const targetPath of paths) {
+    if (!targetPath) continue;
+    try {
+      await fs.unlink(targetPath);
+    } catch {
+      // 清理是尽力而为——原始错误更重要。
+    }
+  }
+}
+
+/**
+ * 同 project 目录下**可归属**给 `sessionId` 的伴随转录（子代理的转录）。
+ *
+ * 仓库现有的命名约定里只有两处把文件归到某个会话：
+ * - `subagent-<sessionId>.jsonl`：文件名里带着这个会话 id（`generateSubagentFilename`）；
+ * - 以会话 id 命名的目录 `<sessionId>/`：目录名即归属声明，只搬它**顶层**的
+ *   `.jsonl`（更深层次没有既有语义，不猜）。
+ *
+ * 子代理自己的 session id 是独立生成的（`subagentManager` 用 `randomUUID()`），
+ * 所以同目录下别的 `subagent-*.jsonl` 归不到这个会话——一律不碰，绝不搬别人的文件。
+ */
+async function findCompanionTranscripts(
+  sourceProjectDir: string,
+  targetProjectDir: string,
+  sessionId: string,
+): Promise<TranscriptMove[]> {
+  const moves: TranscriptMove[] = [];
+
+  const subagentName = generateSubagentFilename(sessionId);
+  const subagentPath = join(sourceProjectDir, subagentName);
+  if (await pathExists(subagentPath)) {
+    moves.push({
+      from: subagentPath,
+      to: join(targetProjectDir, subagentName),
+    });
+  }
+
+  const companionDir = join(sourceProjectDir, sessionId);
+  let entries: Dirent[];
+  try {
+    entries = await fs.readdir(companionDir, { withFileTypes: true });
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    // 没有这个目录（或同名的是个文件）就是没有伴随转录。
+    if (code === "ENOENT" || code === "ENOTDIR") {
+      return moves;
+    }
+    throw error;
+  }
+  for (const entry of entries) {
+    if (!entry.isFile() || !entry.name.endsWith(".jsonl")) continue;
+    moves.push({
+      from: join(companionDir, entry.name),
+      to: join(targetProjectDir, sessionId, entry.name),
+    });
+  }
+
+  return moves;
+}
+
+/**
+ * 逐字节复制一份转录，顺手把首行 metadata 头里的 `workdir` 换成新目录。
+ *
+ * 流式：转录是只增不减的（线上见过 40 MB 以上的文件），整份读进内存的峰值是
+ * 文件大小的好几倍，这里只把第一行攒起来解析，其余按块原样搬运。
+ *
+ * 不是 metadata 头（老转录）就整份原样复制，`headerUpdated: false`。
+ */
+async function copyTranscriptWithWorkdir(
+  sourcePath: string,
+  targetPath: string,
+  workdir: string,
+): Promise<{ headerUpdated: boolean; bytesWritten: number }> {
+  const state = { headerUpdated: false, bytesWritten: 0 };
+  await pipeline(
+    transcriptChunksWithRewrittenHeader(sourcePath, workdir, state),
+    createWriteStream(targetPath),
+  );
+  return state;
+}
+
+async function* transcriptChunksWithRewrittenHeader(
+  sourcePath: string,
+  workdir: string,
+  state: { headerUpdated: boolean; bytesWritten: number },
+): AsyncGenerator<Buffer> {
+  let pending: Buffer = Buffer.alloc(0);
+  let headerHandled = false;
+
+  for await (const chunk of createReadStream(sourcePath)) {
+    const buffer = chunk as Buffer;
+    if (headerHandled) {
+      state.bytesWritten += buffer.length;
+      yield buffer;
+      continue;
+    }
+
+    pending = pending.length === 0 ? buffer : Buffer.concat([pending, buffer]);
+    const newlineIndex = pending.indexOf(0x0a);
+    if (newlineIndex === -1) {
+      // 第一行还没读完（或者这份文件根本没有换行）。
+      continue;
+    }
+
+    const rawHeader = pending.subarray(0, newlineIndex).toString("utf8");
+    const rewritten = rewriteMetadataHeaderWorkdir(rawHeader, workdir);
+    state.headerUpdated = rewritten !== null;
+    const header = Buffer.from(rewritten ?? rawHeader, "utf8");
+    // 换行之后的部分逐字节照搬。
+    const output = Buffer.concat([header, pending.subarray(newlineIndex)]);
+    pending = Buffer.alloc(0);
+    headerHandled = true;
+    state.bytesWritten += output.length;
+    yield output;
+  }
+
+  if (!headerHandled && pending.length > 0) {
+    // 整个文件就一行、且没有结尾换行（中断的写入留下的残片）：原样搬过去。
+    state.bytesWritten += pending.length;
+    yield pending;
+  }
+}
+
+/**
+ * 把 metadata 头那一行的 `workdir` 换成 `workdir`，其余字段原样保留。
+ *
+ * 只有 `{"type":"metadata",...}` 才算头；老转录的第一行是消息，返回 null 表示
+ * "没改"（调用方据此报 `headerUpdated: false`）。
+ */
+function rewriteMetadataHeaderWorkdir(
+  line: string,
+  workdir: string,
+): string | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(line);
+  } catch {
+    return null;
+  }
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    return null;
+  }
+
+  const header = parsed as Record<string, unknown>;
+  if (header.type !== "metadata") {
+    return null;
+  }
+
+  // 给已有键赋新值是保序的，所以 `createdAt` / `gitBranch`（以及将来新增的字段）
+  // 的键序与取值都不变。
+  header.workdir = workdir;
+  return JSON.stringify(header);
 }
 
 /**
