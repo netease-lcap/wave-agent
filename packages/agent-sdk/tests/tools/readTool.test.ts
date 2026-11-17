@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { readTool } from "@/tools/readTool.js";
 import { TaskManager } from "@/services/taskManager.js";
-import { readFile, stat } from "fs/promises";
+import { open, readFile, stat } from "fs/promises";
 import type { ToolContext } from "@/tools/types.js";
 import type { MessageManager } from "@/managers/messageManager.js";
 import { Container } from "@/utils/container.js";
@@ -10,6 +10,7 @@ import { Container } from "@/utils/container.js";
 vi.mock("fs/promises", () => ({
   readFile: vi.fn(),
   stat: vi.fn(),
+  open: vi.fn(),
 }));
 
 // Mock messageOperations for image conversion
@@ -66,6 +67,29 @@ Multi-byte: café naïve résumé`,
 
 const mockReadFile = vi.mocked(readFile);
 const mockStat = vi.mocked(stat);
+const mockOpen = vi.mocked(open);
+
+/**
+ * Serve head reads (the byte-cap path) from the mocked file contents: the
+ * reader asks for a prefix of the file and gets exactly that many bytes back.
+ */
+function mockHeadReads() {
+  mockOpen.mockImplementation(async (path) => {
+    const content = mockFiles[path as string];
+    if (content === undefined) {
+      throw new Error(`ENOENT: no such file or directory, open '${path}'`);
+    }
+    const bytes = Buffer.from(content, "utf-8");
+    return {
+      read: async (buffer: Buffer, _offset: number, length: number) => {
+        const head = bytes.subarray(0, length);
+        head.copy(buffer, 0);
+        return { bytesRead: head.length, buffer };
+      },
+      close: async () => {},
+    } as unknown as Awaited<ReturnType<typeof open>>;
+  });
+}
 
 describe("readTool", () => {
   beforeEach(() => {
@@ -94,6 +118,8 @@ describe("readTool", () => {
         mtime: { getTime: () => 1000 },
       } as unknown as Awaited<ReturnType<typeof stat>>;
     });
+
+    mockHeadReads();
   });
 
   afterEach(() => {
@@ -660,7 +686,7 @@ describe("readTool", () => {
   });
 
   describe("Edge Cases", () => {
-    it("should reject very large single-line files that exceed token limit", async () => {
+    it("should truncate a single line that cannot fit the token budget", async () => {
       const largeContent = "a".repeat(150 * 1024); // 150KB single line
       mockReadFile.mockResolvedValue(largeContent);
 
@@ -669,9 +695,13 @@ describe("readTool", () => {
         testContext,
       );
 
-      // 150KB / 4 bytesPerToken = ~38400 tokens, exceeds default 25000 limit
-      expect(result.success).toBe(false);
-      expect(result.error).toContain("exceeds maximum allowed tokens");
+      // 150KB / 4 bytesPerToken = ~38400 tokens, over the default 25000 cap:
+      // the read returns a partial view instead of failing, so the model never
+      // has to route around Read with `sed`/`head` in Bash.
+      expect(result.success).toBe(true);
+      expect(result.content).toContain("[Truncated: PARTIAL view —");
+      expect(result.content).toContain("cannot be paged by line");
+      expect(result.metadata?.truncatedByTokenCap).toBe(true);
     });
 
     it("should be able to read lines beyond the first 100KB", async () => {
@@ -713,7 +743,7 @@ describe("readTool", () => {
       expect(result.error).toContain("Failed to read file: String error");
     });
 
-    it("should dedup when the same partial range is read twice", async () => {
+    it("returns the content again when the same partial range is read twice", async () => {
       const readFileState = new Map<
         string,
         {
@@ -735,17 +765,18 @@ describe("readTool", () => {
       expect(result1.metadata?.type).toBe("text");
       expect(readFileState.has(filePath)).toBe(true);
 
-      // Second read of the same range (unchanged) — should dedup
+      // Second read of the same range — the model gets the content again, not a
+      // "file unchanged, refer to the earlier result" stub.
       const result2 = await readTool.execute(
         { file_path: filePath, offset: 10, limit: 5 },
         { ...testContext, readFileState },
       );
       expect(result2.success).toBe(true);
-      expect(result2.metadata?.type).toBe("file_unchanged");
-      expect(result2.content).toContain("has not changed");
+      expect(result2.metadata?.type).toBe("text");
+      expect(result2.content).toContain("Line 10");
     });
 
-    it("should dedup a full read (offset=undefined) on second read", async () => {
+    it("returns the content again when a full read is repeated", async () => {
       const readFileState = new Map<
         string,
         {
@@ -766,13 +797,14 @@ describe("readTool", () => {
       expect(result1.success).toBe(true);
       expect(result1.metadata?.type).toBe("text");
 
-      // Second full read — same range, unchanged, should dedup
+      // Second full read — unchanged file, still the full content
       const result2 = await readTool.execute(
         { file_path: filePath },
         { ...testContext, readFileState },
       );
       expect(result2.success).toBe(true);
-      expect(result2.metadata?.type).toBe("file_unchanged");
+      expect(result2.metadata?.type).toBe("text");
+      expect(result2.content).toContain("Line 5");
     });
 
     it("should NOT dedup a partial read after a full read (different range)", async () => {
@@ -805,7 +837,7 @@ describe("readTool", () => {
       expect(result2.content).toContain("Line 10");
     });
 
-    it("should enforce resource limits", async () => {
+    it("pages past the byte cap instead of failing", async () => {
       const filePath = "/test/workdir/small.txt";
       const fileReadingLimits = { maxSizeBytes: 10, maxTokens: 100 };
 
@@ -814,9 +846,28 @@ describe("readTool", () => {
         { ...testContext, fileReadingLimits },
       );
 
-      expect(result.success).toBe(false);
-      expect(result.metadata?.type).toBe("error_limit_exceeded");
-      expect(result.error).toContain("exceeds limit");
+      // Only the 10-byte head is read, and the result says so rather than
+      // telling the model to go use Bash.
+      expect(result.success).toBe(true);
+      expect(result.metadata?.type).toBe("text");
+      expect(result.content).toContain("[Truncated: PARTIAL view —");
+      expect(result.content).toContain("read cap");
+    });
+
+    it("serves an explicit range from the whole file, not the head", async () => {
+      const filePath = "/test/workdir/medium.txt";
+      const fileReadingLimits = { maxSizeBytes: 10, maxTokens: 100 };
+
+      const result = await readTool.execute(
+        { file_path: filePath, offset: 10, limit: 5 },
+        { ...testContext, fileReadingLimits },
+      );
+
+      // An explicit range is served from the whole file, so the byte cap does
+      // not turn it into a head-only page.
+      expect(result.success).toBe(true);
+      expect(result.content).toContain("Line 10");
+      expect(result.content).not.toContain("read cap");
     });
   });
 
@@ -976,7 +1027,7 @@ describe("readTool", () => {
       expect(triggerNestedMemory).not.toHaveBeenCalled();
     });
 
-    it("does not trigger for a deduplicated (unchanged) read", async () => {
+    it("returns content and re-probes on a repeated read", async () => {
       const triggerNestedMemory = vi.fn();
       const readFileState = new Map<
         string,
@@ -1009,8 +1060,11 @@ describe("readTool", () => {
         },
       );
 
-      expect(second.metadata?.type).toBe("file_unchanged");
-      expect(triggerNestedMemory).not.toHaveBeenCalled();
+      // A repeat read is a real read now: content comes back, and the probe
+      // runs again (the manager's own pending set dedups the injection).
+      expect(second.metadata?.type).toBe("text");
+      expect(second.content).toContain("Line 1");
+      expect(triggerNestedMemory).toHaveBeenCalledWith(filePath);
     });
   });
 
@@ -1059,7 +1113,7 @@ describe("readTool", () => {
       expect(triggerSkillDiscovery).not.toHaveBeenCalled();
     });
 
-    it("does not record a deduplicated read", async () => {
+    it("records a repeated read too", async () => {
       const triggerSkillDiscovery = vi.fn();
       const readFileState = new Map<
         string,
@@ -1092,8 +1146,9 @@ describe("readTool", () => {
         },
       );
 
-      // Nothing new reached that directory, so nothing new can be discovered.
-      expect(triggerSkillDiscovery).not.toHaveBeenCalled();
+      // A repeat read returns content like any other read, so it is recorded
+      // like any other read; the manager dedups the walk itself.
+      expect(triggerSkillDiscovery).toHaveBeenCalledWith(filePath);
     });
   });
 });

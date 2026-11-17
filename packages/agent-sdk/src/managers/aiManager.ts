@@ -1342,8 +1342,11 @@ export class AIManager {
       );
 
       // Clear readFileState after compaction (aligned with Claude Code's
-      // compact flow): a file_unchanged stub would otherwise reference Read
-      // results that were just folded away. Clearing forces a real re-read.
+      // compact flow): the entries outlive the transcript that justified them.
+      // The cached content is the diff baseline for the changed-files reminder,
+      // and the entries double as the "already in context" check that suppresses
+      // re-injecting nested AGENTS.md — both reference reads that were just
+      // folded away, so they would silently lose or misattribute content.
       this.readFileState.clear();
 
       // Re-add plan mode reminder as persistent meta message after compaction
