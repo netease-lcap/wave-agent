@@ -520,6 +520,13 @@ export interface ModToolRegisterSpec {
   description: string;
   /** JSON Schema 对象（缺省 `{ type: "object" }`），序列化后 ≤ 16 KiB。 */
   inputSchema?: Record<string, unknown>;
+  /**
+   * 平铺还是藏进 `Exec` 池（缺省 `true`，与 MCP 工具一致）。
+   *
+   * `true`：模型只看到名字，要经 `Exec` 里的 `tools.ToolSearch` 取签名再调；
+   * `false`：像内置工具一样直接进 `tools[]`。会话没有 `Exec` 池时一律平铺。
+   */
+  isDeferred?: boolean;
 }
 
 /** `$.session.repo()`：会话所在的 git 仓库；不在仓库里时给 `null`。 */

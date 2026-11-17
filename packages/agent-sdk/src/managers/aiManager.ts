@@ -1825,6 +1825,21 @@ export class AIManager {
   }
 
   /**
+   * 拼 `tools[]` 之前先把 `tool.describe` 问定（描述与放置）。
+   *
+   * 与 CC 的 `resolveToolDescription` 同一个时机：`await` 完再组装，所以插件给
+   * 的新描述、新放置**这次请求**就生效，不是下一次。问过就锁住，稳态下每场会话
+   * 只多这一次等待。
+   *
+   * 可选通道：宿主或测试替身没有这个方法，就等于「没有插件要问」。
+   * `/context` 的估算刻意不走这里 —— 那是诊断读数，不是发请求。
+   */
+  private async prepareToolDescriptions(): Promise<void> {
+    if (typeof this.toolManager?.prepareToolDescriptions !== "function") return;
+    await this.toolManager.prepareToolDescriptions();
+  }
+
+  /**
    * The tool set the system prompt is built from, plus the declaration set the
    * request carries. Two different questions, deliberately answered separately:
    *
@@ -1905,6 +1920,7 @@ export class AIManager {
 
     forkMessages.push({ role: "user", content: prompt });
 
+    await this.prepareToolDescriptions();
     const { toolsConfig, reachableToolPlugins } = this.resolveFilteredTools();
     const systemPrompt = await this.buildMainSystemPrompt(reachableToolPlugins);
 
@@ -2260,6 +2276,7 @@ ${question}`;
       segment?.controller.signal,
     ]);
 
+    await this.prepareToolDescriptions();
     const { toolsConfig, reachableToolPlugins } = this.resolveFilteredTools();
     const systemPrompt = await this.buildMainSystemPrompt(reachableToolPlugins);
 
@@ -2934,6 +2951,7 @@ ${question}`;
           // no-op, not an extra yield point.
           if (mcpDial) await mcpDial;
 
+          await this.prepareToolDescriptions();
           const { toolsConfig, toolNames, reachableToolPlugins } =
             this.resolveFilteredTools();
 
