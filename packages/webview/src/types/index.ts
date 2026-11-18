@@ -680,6 +680,11 @@ export interface MessageListProps {
   onRewindToMessage?: (messageId: string) => void;
   /** 把这一轮正在前台跑的工具转到后台（CLI 的 Ctrl-B 在界面上的入口）。 */
   onBackgroundCurrentTask?: () => void;
+  /** 打开后台任务面并定位到某个任务（已后台化的工具行上的入口，见
+   *  multi-agent/task-background-execution.md「从工具行进入后台任务详情」）。 */
+  onOpenBackgroundTask?: (taskId: string) => void;
+  /** 该任务是否还在本会话的任务列表里：不在就不给入口（重开会话后的历史消息）。 */
+  hasBackgroundTask?: (taskId: string) => boolean;
   workdir?: string;
   /** Desktop host only: open a localhost URL in the preview pane. */
   onOpenPreview?: (url: string) => void;
@@ -717,6 +722,10 @@ export interface MessageProps {
    * 远控页同样提供——手机键盘没有 Ctrl/Cmd+B。
    */
   onBackgroundCurrentTask?: () => void;
+  /** 打开后台任务面并定位到某个任务（已后台化的工具行上的入口）。 */
+  onOpenBackgroundTask?: (taskId: string) => void;
+  /** 该任务是否还在本会话的任务列表里：不在就不给入口。 */
+  hasBackgroundTask?: (taskId: string) => boolean;
   /**
    * 是不是列表里的最后一条消息。后台按钮只长在最后一条上：前台任务只可能属于
    * 正在生成的这一轮，历史消息不该出现一个作用对象已经变了的入口。
@@ -910,6 +919,12 @@ export interface PanelTab {
   modTree?: ModPanelTree | null;
   /** mod tab: compile / validation / hook failure, shown instead of the tree. */
   modError?: string;
+  /** tasks tab: a one-shot request to jump straight into this task's detail
+   *  (a transcript tool row or the Workflow row opened it — spec
+   *  multi-agent/task-background-execution.md「从工具行进入后台任务详情」).
+   *  Consumed by the pane and cleared right after, so restoring the tab later
+   *  (session switch) still lands on the list. */
+  tasksFocus?: { taskId: string };
 }
 
 /**
@@ -1187,7 +1202,6 @@ export interface ChatState {
     | "status"
     | "context"
     | "tasks"
-    | "workflows"
     // 远控 Web 页顶栏「新建对话」重绑的弹窗（initialize 建新会话，非 clearChat）。
     | "remoteNewSession"
     | null;
@@ -1370,10 +1384,10 @@ export interface ContextDialogProps extends StatusDialogProps {
 
 export interface BackgroundTaskManagerProps {
   onClose: () => void;
-}
-
-export interface WorkflowManagerProps {
-  onCancel: () => void;
+  /** 打开时直接进入这个任务的详情（工具行入口）；任务不在列表里则停在列表。 */
+  focus?: { taskId: string } | null;
+  /** 定位已应用：上层把请求清掉，避免下次挂载又跳一次。 */
+  onFocusConsumed?: () => void;
 }
 
 export type ChatAction =

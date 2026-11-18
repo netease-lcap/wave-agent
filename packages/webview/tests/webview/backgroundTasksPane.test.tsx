@@ -39,6 +39,17 @@ const finishedTask: BackgroundTaskSummary = {
   description: "explore the repo",
 };
 
+/** 同属 Bash 组、且比 `runningTask` 更早启动的已结束任务。 */
+const alreadyFinishedShell: BackgroundTaskSummary = {
+  id: "bg-3",
+  type: "shell",
+  status: "completed",
+  startTime: 200,
+  runtime: 1000,
+  exitCode: 0,
+  command: "npm ci",
+};
+
 function renderDesktop() {
   const vscode = createMockVscode();
   const view = render(<DesktopApp vscode={vscode} />);
@@ -110,14 +121,16 @@ describe("Desktop background tasks pane", () => {
     expect(screen.queryByTestId("panel-tab-tasks-2")).toBeNull();
   });
 
-  it("groups running tasks before finished ones", async () => {
+  it("groups tasks by type, running ones first inside a group", async () => {
     renderDesktop();
     act(() => {
       sendCommand("updateBackgroundTasks", { tasks: [finishedTask] });
     });
     act(() => {
+      // 一个更早结束的 shell：分组维度是类型，跑完不换组，只改变组内名次，
+      // 所以在 Bash 组里它排在更晚启动、仍在运行的那条之后。
       sendCommand("updateBackgroundTasks", {
-        tasks: [finishedTask, runningTask],
+        tasks: [alreadyFinishedShell, finishedTask, runningTask],
       });
     });
 
@@ -126,11 +139,18 @@ describe("Desktop background tasks pane", () => {
     });
 
     const groups = screen
-      .getAllByText(/^(运行中|已结束)$/)
+      .getAllByText(/^(Bash|子 Agent|工作流) \(\d+\)$/)
       .map((el) => el.textContent);
-    expect(groups).toEqual(["运行中", "已结束"]);
-    expect(screen.getByTestId("tasks-pane-row-bg-1")).toBeInTheDocument();
-    expect(screen.getByTestId("tasks-pane-row-bg-2")).toBeInTheDocument();
+    expect(groups).toEqual(["Bash (2)", "子 Agent (1)"]);
+    expect(
+      screen
+        .getAllByTestId(/^tasks-pane-row-bg-/)
+        .map((el) => el.getAttribute("data-testid")),
+    ).toEqual([
+      "tasks-pane-row-bg-1",
+      "tasks-pane-row-bg-3",
+      "tasks-pane-row-bg-2",
+    ]);
   });
 
   it("opens a detail view with the command block and returns to the list", async () => {
@@ -216,5 +236,99 @@ describe("Desktop background tasks pane", () => {
     fireEvent.click(screen.getByTestId("panel-tab-close-tasks-1"));
 
     expect(screen.queryByTestId("desktop-panel-slot")).toBeNull();
+  });
+
+  it("treats /workflows as another name for the same tab", async () => {
+    renderDesktop();
+    act(() => {
+      sendCommand("updateBackgroundTasks", {
+        tasks: [
+          {
+            id: "wf_1",
+            type: "workflow",
+            status: "running",
+            startTime: 1000,
+            description: "Workflow: audit-and-fix",
+          },
+        ],
+      });
+    });
+
+    await act(async () => {
+      await sendSlash("/workflows");
+    });
+
+    // 同一个承载：一个 tab、停在列表（命令没有作用对象，直达只来自工具行）。
+    expect(screen.getAllByTestId("panel-tab-tasks-1")).toHaveLength(1);
+    expect(visiblePane("tasks-pane")).toHaveTextContent("audit-and-fix");
+
+    await act(async () => {
+      await sendSlash("/tasks");
+    });
+    expect(screen.getAllByTestId("panel-tab-tasks-1")).toHaveLength(1);
+    expect(screen.queryByTestId("panel-tab-tasks-2")).toBeNull();
+  });
+
+  it("marks an oversized workflow run on its task row", async () => {
+    renderDesktop();
+    act(() => {
+      sendCommand("updateBackgroundTasks", {
+        tasks: [
+          {
+            id: "wf_big",
+            type: "workflow",
+            status: "running",
+            startTime: 1000,
+            description: "Workflow: deep-research",
+          },
+          {
+            id: "wf_small",
+            type: "workflow",
+            status: "running",
+            startTime: 1000,
+            description: "Workflow: migrate-config",
+          },
+        ],
+      });
+      sendCommand("updateWorkflowRuns", {
+        runs: [
+          {
+            runId: "wf_big",
+            meta: { name: "deep-research", description: "深调研" },
+            status: "running",
+            scriptPath: "/runs/wf_big/script.js",
+            startTime: 1000,
+            phases: [],
+            totalAgents: 26,
+            totalTokens: 6_300_000,
+            sizeWarning: true,
+          },
+          {
+            runId: "wf_small",
+            meta: { name: "migrate-config", description: "迁移" },
+            status: "running",
+            scriptPath: "/runs/wf_small/script.js",
+            startTime: 1000,
+            phases: [],
+            totalAgents: 3,
+            totalTokens: 31000,
+          },
+        ],
+      });
+    });
+
+    act(() => {
+      fireEvent.click(screen.getByTestId("panel-toggle-btn"));
+    });
+    await act(async () => {
+      await sendSlash("/tasks");
+    });
+
+    // 标记只落在越线的那个运行所在的任务行上：运行过大是「停在哪儿」的信息，
+    // 而用户挑任务看的就是这些行。
+    expect(screen.getAllByTestId("tasks-pane-oversized-wf_big")).toHaveLength(
+      1,
+    );
+    expect(screen.queryByTestId("tasks-pane-oversized-wf_small")).toBeNull();
   });
 });

@@ -306,6 +306,12 @@ export const workflowTool: ToolPlugin = {
           .filter(Boolean)
           .join("\n"),
         shortResult: `Workflow started: ${run.meta.name} (${run.runId})`,
+        // The run IS a background task, and its task id IS the runId (see
+        // `workflowManager.startRun`). Handing the id out here is what lets the
+        // tool row itself be an entry into the task pane, instead of making the
+        // UI parse it back out of `content` (spec multi-agent/workflow「从
+        // Workflow 工具行直达运行详情」场景 1).
+        backgroundTaskId: run.runId,
       };
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);

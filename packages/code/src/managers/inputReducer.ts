@@ -118,7 +118,6 @@ export interface InputManagerCallbacks {
   onStatusCommandStateChange?: (show: boolean) => void;
   onPluginManagerStateChange?: (show: boolean) => void;
   onModelSelectorStateChange?: (show: boolean) => void;
-  onWorkflowManagerStateChange?: (show: boolean) => void;
   onImagesStateChange?: (images: AttachedImage[]) => void;
   onSendMessage?: (
     content: string,
@@ -184,7 +183,6 @@ export interface InputState {
   showLoginCommand: boolean;
   showPluginManager: boolean;
   showModelSelector: boolean;
-  showWorkflowManager: boolean;
   showSkillsManager: boolean;
   showHooksManager: boolean;
   permissionMode: PermissionMode;
@@ -226,7 +224,6 @@ export const initialState: InputState = {
   showLoginCommand: false,
   showPluginManager: false,
   showModelSelector: false,
-  showWorkflowManager: false,
   showSkillsManager: false,
   showHooksManager: false,
   permissionMode: "default",
@@ -529,7 +526,6 @@ export type InputAction =
   | { type: "SET_SHOW_LOGIN_COMMAND"; payload: boolean }
   | { type: "SET_SHOW_PLUGIN_MANAGER"; payload: boolean }
   | { type: "SET_SHOW_MODEL_SELECTOR"; payload: boolean }
-  | { type: "SET_SHOW_WORKFLOW_MANAGER"; payload: boolean }
   | { type: "SET_SHOW_SKILLS_MANAGER"; payload: boolean }
   | { type: "SET_SHOW_HOOKS_MANAGER"; payload: boolean }
   | { type: "SET_PERMISSION_MODE"; payload: PermissionMode }
@@ -767,12 +763,6 @@ export function inputReducer(
       return {
         ...state,
         showModelSelector: action.payload,
-        selectorJustUsed: !action.payload ? true : state.selectorJustUsed,
-      };
-    case "SET_SHOW_WORKFLOW_MANAGER":
-      return {
-        ...state,
-        showWorkflowManager: action.payload,
         selectorJustUsed: !action.payload ? true : state.selectorJustUsed,
       };
     case "SET_SHOW_SKILLS_MANAGER":
@@ -1169,8 +1159,7 @@ export function inputReducer(
             state.showRemoteControl ||
             state.showLoginCommand ||
             state.showPluginManager ||
-            state.showModelSelector ||
-            state.showWorkflowManager
+            state.showModelSelector
           )
         ) {
           // While AI is running (or any busy state) Esc keeps the abort

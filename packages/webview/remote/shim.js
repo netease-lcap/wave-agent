@@ -2041,7 +2041,7 @@
         // workflow 的后台进程。桌面端与插件端都用 `updateBackgroundTasks`
         // 这条 webview 命令投递它，这里照抄同一个名字。
         post({ command: "updateBackgroundTasks", tasks: p.tasks });
-        // 工作流运行搭同一条通知刷新：`WorkflowManager` 每推进一个阶段、每记
+        // 工作流运行搭同一条通知刷新：SDK 的工作流管理器每推进一个阶段、每记
         // 一行日志、结束时都走 `notifyTasksChange()`，桌面端与插件端正是在
         // `onBackgroundTasksChange` 里重读 `getWorkflowRuns`（`desktopHost.ts` /
         // `chatSession.ts`）。漏了这一行，页面上刚跑起来或刚跑完的工作流在
@@ -2644,7 +2644,8 @@
   }
 
   /**
-   * 工作流运行（`/workflows` 弹窗的数据）：
+   * 工作流运行（后台任务面里 workflow 任务那一行的数据，`/workflows` 与
+   * `/tasks` 是同一个弹窗）：
    *
    * 桌面端拿到它的方式是同一件事——后台任务通知或切会话时调
    * `agent.getWorkflowRuns()`，再推 `updateWorkflowRuns`（`desktopHost.ts` 的
@@ -3546,27 +3547,6 @@
               success: false,
             });
             showStatus(failureText("停止后台任务", err));
-          });
-        return;
-
-      case "stopWorkflowRun":
-        request("stopWorkflowRun", { runId: msg.runId })
-          .then(function (result) {
-            post({
-              command: "workflowRunStopped",
-              runId: msg.runId,
-              success: !!(result && result.success),
-            });
-            // 停完立刻重读一次：被停下的那个不再产生进度事件，等推送是等不到的。
-            refreshWorkflowRuns();
-          })
-          .catch(function (err) {
-            post({
-              command: "workflowRunStopped",
-              runId: msg.runId,
-              success: false,
-            });
-            showStatus(failureText("停止工作流", err));
           });
         return;
 

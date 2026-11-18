@@ -44,6 +44,21 @@ export interface UseBackgroundTaskDetailOptions {
   tasks: BackgroundTaskSummary[];
   workflowRuns: SerializableWorkflowRun[];
   vscode: { postMessage: (msg: unknown) => void };
+  /**
+   * Open straight into this task's detail — the transcript's tool row (or the
+   * Workflow row) knows which task the user means, so the surface does not have
+   * to make them find it again in the list (spec
+   * `multi-agent/task-background-execution.md`「从工具行进入后台任务详情」).
+   *
+   * Identity is the request: a NEW object selects again even when it names the
+   * task already on screen, which is what makes clicking the same row twice
+   * work. An id that is no longer in `tasks` falls through to the list (the
+   * detail view renders only when the task resolves), never an empty pane.
+   */
+  focus?: { taskId: string } | null;
+  /** Called once the focus request has been applied, so the owner can drop it —
+   *  a re-mounted surface (session switch) must land on the list again. */
+  onFocusConsumed?: () => void;
 }
 
 export interface BackgroundTaskDetailState {
@@ -63,6 +78,8 @@ export function useBackgroundTaskDetail({
   tasks,
   workflowRuns,
   vscode,
+  focus,
+  onFocusConsumed,
 }: UseBackgroundTaskDetailOptions): BackgroundTaskDetailState {
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [output, setOutput] = useState<BackgroundTaskOutput | null>(null);
@@ -78,6 +95,17 @@ export function useBackgroundTaskDetail({
   } | null>(null);
 
   const selectedTask = tasks.find((t) => t.id === selectedTaskId) || null;
+
+  // Apply an incoming focus request once per request object. `onFocusConsumed`
+  // is held in a ref so a parent that passes a fresh inline callback each
+  // render cannot re-run the effect and undo the user's "back to list".
+  const onFocusConsumedRef = useRef(onFocusConsumed);
+  onFocusConsumedRef.current = onFocusConsumed;
+  useEffect(() => {
+    if (!focus) return;
+    setSelectedTaskId(focus.taskId);
+    onFocusConsumedRef.current?.();
+  }, [focus]);
 
   /**
    * The run behind the selected task, when the selected task IS a workflow: a

@@ -1,13 +1,14 @@
 /**
  * WorkflowRunProgress - the progress block for one workflow run.
  *
- * Shared by the two places a run is inspected: the detail view of the
- * `/workflows` dialog, and the `/tasks` panel when the selected task is a
- * workflow. Both read the same run object out of chat state (a workflow
- * background task's id IS its runId), so rendering it through one component is
- * what keeps the two from drifting apart — a workflow task that renders "no
- * output" next to a live progress panel elsewhere reads as stuck (spec
- * `multi-agent/workflow`「在后台任务面板里看到工作流进度」场景 1).
+ * Rendered wherever a run is inspected: the background-task surface (the
+ * desktop right panel's tab, the plugin host's dialog) when the selected task is
+ * a workflow, and the agent drill-down inside it. `/workflows` is an alias for
+ * that same surface (2026-11-18: the standalone workflow dialog is gone). A
+ * workflow background task's id IS its runId, so the run comes straight out of
+ * chat state and one component keeps every host from drifting apart — a workflow
+ * task that renders "no output" next to a live progress panel reads as stuck
+ * (spec `multi-agent/workflow`「在后台任务面板里看到工作流进度」场景 1).
  */
 
 import React, { useState } from "react";
@@ -228,9 +229,9 @@ const WorkflowRunProgress: React.FC<{
   // 原来这一整块是内联 style、颜色写死成 VS Code **暗色**调色板（标签 #569cd6 /
   // 段落标题 #4ec9b0 / 错误 #f48771），放到浅色面上分别只有 2.95 / 2.04 / 2.46，
   // 三个都过不了 AA 4.5。改成类名后样式集中在 styles/WorkflowRunProgress.css：
-  // 基档（无宿主前缀）逐值保留旧内联值 —— 这个组件还被 /workflows 对话框和插件端
-  // 的旧任务弹窗复用，那两处本轮不动，外观必须零变化；桌面端后台任务面板内的
-  // 覆写才换 token（见该 CSS 的 `[data-host="desktop"] .background-tasks-pane` 段）。
+  // 基档（无宿主前缀）逐值保留旧内联值 —— 这个组件也还长在插件端的任务对话框
+  // 里，那处不动，外观必须零变化；桌面端后台任务面板内的覆写才换 token
+  // （见该 CSS 的 `[data-host="desktop"] .background-tasks-pane` 段）。
 
   const elapsed = run.endTime
     ? run.endTime - run.startTime
@@ -282,9 +283,10 @@ const WorkflowRunProgress: React.FC<{
       {/* Oversized marker (spec「预算与规模硬上限」场景 7): past the thresholds is
           the human's cue to stop the run, and the model is never told, so the
           line has to state the scale and the thresholds itself. It renders in
-          both panels that inspect a run (`/workflows` detail and `/tasks`
-          detail), and both show their own 停止 button while a run is running —
-          so the hint points at that button rather than at another panel. */}
+          the run detail of every host that inspects a run (desktop panel tab,
+          plugin dialog), each of which shows its own 停止 button while the run
+          is running — so the hint points at that button, not at another panel.
+          The row-level marker lives in the task list (`BackgroundTasksPane`). */}
       {run.sizeWarning && (
         <div
           data-testid="workflow-oversized"

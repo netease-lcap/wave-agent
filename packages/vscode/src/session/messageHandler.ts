@@ -554,20 +554,6 @@ export class MessageHandler {
         );
         break;
       }
-      case "stopWorkflowRun": {
-        const session = this.context.getChatSession(
-          viewType || "tab",
-          windowId,
-        );
-        const runId = msg.runId as string;
-        const success = await session.stopWorkflowRun(runId);
-        this.context.postMessage(
-          { command: "workflowRunStopped", runId, success },
-          viewType,
-          windowId,
-        );
-        break;
-      }
       // ── 插件 mod（spec ecosystem/plugin-mods.md「在 IDE 插件里画」）──────
       // 与桌面端同一套协议，消息名也共用（`desktopMod*` 是历史命名，webview 只认
       // 语义不认宿主）。差别只有一处：这里没有 pane id —— 一个插件端 webview 就是

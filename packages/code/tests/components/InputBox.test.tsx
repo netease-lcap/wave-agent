@@ -61,6 +61,9 @@ vi.mock("../../src/contexts/useChat.js", () => ({
     setPermissionMode: mockSetPermissionMode,
     setIsBtwActive: vi.fn(),
     backgroundTasks: mockBackgroundTasks,
+    // 后台任务面板把 workflow 任务的 id 对到运行列表上（任务 id 即 runId），
+    // 所以这份 mock 也得给出这条状态，否则面板一渲染就撞 undefined。
+    workflowRuns: [],
     messages: mockMessages,
     handleRewindSelect: mockHandleRewindSelect,
     getRewindCheckpoints: mockGetRewindCheckpoints,

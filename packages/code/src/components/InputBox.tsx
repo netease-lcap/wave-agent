@@ -18,7 +18,6 @@ import { RemoteControlView } from "./RemoteControlView.js";
 import { LoginCommand } from "./LoginCommand.js";
 import { PluginManagerShell } from "./PluginManagerShell.js";
 import { ModelSelector } from "./ModelSelector.js";
-import { WorkflowManager } from "./WorkflowManager.js";
 import { StatusLine } from "./StatusLine.js";
 import { Notifications } from "./Notifications.js";
 import { BtwDisplay } from "./BtwDisplay.js";
@@ -172,7 +171,6 @@ export const InputBox: React.FC<InputBoxProps> = ({
     showLoginCommand,
     showPluginManager,
     showModelSelector,
-    showWorkflowManager,
     showSkillsManager,
     showHooksManager,
     setShowBackgroundTaskManager,
@@ -186,7 +184,6 @@ export const InputBox: React.FC<InputBoxProps> = ({
     setShowLoginCommand,
     setShowPluginManager,
     setShowModelSelector,
-    setShowWorkflowManager,
     setShowSkillsManager,
     setShowHooksManager,
     // Permission mode
@@ -259,7 +256,6 @@ export const InputBox: React.FC<InputBoxProps> = ({
       showBackgroundTaskManager ||
       showMcpManager ||
       showAgentsManager ||
-      showWorkflowManager ||
       showSkillsManager ||
       showHooksManager ||
       showRemoteControl,
@@ -446,10 +442,6 @@ export const InputBox: React.FC<InputBoxProps> = ({
         />
       )}
 
-      {showWorkflowManager && (
-        <WorkflowManager onCancel={() => setShowWorkflowManager(false)} />
-      )}
-
       {showRewindManager && (
         <RewindCommand
           onSelect={handleRewindSelectWithClose}
@@ -527,7 +519,6 @@ export const InputBox: React.FC<InputBoxProps> = ({
             showLoginCommand ||
             showPluginManager ||
             showModelSelector ||
-            showWorkflowManager ||
             showRemoteControl || (
               <Box flexDirection="column">
                 {escClearPending && (

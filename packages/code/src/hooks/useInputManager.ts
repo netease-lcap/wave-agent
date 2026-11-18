@@ -41,7 +41,6 @@ export const useInputManager = (
     onStatusCommandStateChange,
     onPluginManagerStateChange,
     onModelSelectorStateChange,
-    onWorkflowManagerStateChange,
     onImagesStateChange,
     onSendMessage,
     onHasSlashCommand,
@@ -279,7 +278,12 @@ export const useInputManager = (
               } else if (command === "model") {
                 dispatch({ type: "SET_SHOW_MODEL_SELECTOR", payload: true });
               } else if (command === "workflows") {
-                dispatch({ type: "SET_SHOW_WORKFLOW_MANAGER", payload: true });
+                // 与 `/tasks` 同一承载：独立工作流面板已删除（spec
+                // multi-agent/workflow.md「工作流管理入口」）。
+                dispatch({
+                  type: "SET_SHOW_BACKGROUND_TASK_MANAGER",
+                  payload: true,
+                });
               } else if (command === "skills") {
                 dispatch({ type: "SET_SHOW_SKILLS_MANAGER", payload: true });
               } else if (command === "hooks") {
@@ -400,10 +404,6 @@ export const useInputManager = (
   useEffect(() => {
     onModelSelectorStateChange?.(state.showModelSelector);
   }, [state.showModelSelector, onModelSelectorStateChange]);
-
-  useEffect(() => {
-    onWorkflowManagerStateChange?.(state.showWorkflowManager);
-  }, [state.showWorkflowManager, onWorkflowManagerStateChange]);
 
   useEffect(() => {
     onImagesStateChange?.(state.attachedImages);
@@ -557,10 +557,6 @@ export const useInputManager = (
     dispatch({ type: "SET_SHOW_MODEL_SELECTOR", payload: show });
   }, []);
 
-  const setShowWorkflowManager = useCallback((show: boolean) => {
-    dispatch({ type: "SET_SHOW_WORKFLOW_MANAGER", payload: show });
-  }, []);
-
   const setShowSkillsManager = useCallback((show: boolean) => {
     dispatch({ type: "SET_SHOW_SKILLS_MANAGER", payload: show });
   }, []);
@@ -697,7 +693,6 @@ export const useInputManager = (
     showLoginCommand: state.showLoginCommand,
     showPluginManager: state.showPluginManager,
     showModelSelector: state.showModelSelector,
-    showWorkflowManager: state.showWorkflowManager,
     showSkillsManager: state.showSkillsManager,
     showHooksManager: state.showHooksManager,
     permissionMode: state.permissionMode,
@@ -746,7 +741,6 @@ export const useInputManager = (
     setShowLoginCommand,
     setShowPluginManager,
     setShowModelSelector,
-    setShowWorkflowManager,
     setShowResumeSelector,
     setShowSkillsManager,
     setShowHooksManager,

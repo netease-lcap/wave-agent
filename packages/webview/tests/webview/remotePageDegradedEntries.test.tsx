@@ -815,7 +815,8 @@ describe("entries that can only fail on the page", () => {
     await act(async () => {
       await typeAndSend("/workflows");
     });
-    expect(screen.getByTestId("workflow-manager")).toBeInTheDocument();
+    // `/workflows` 与 `/tasks` 是同一承载的别名（独立工作流对话框已删除）。
+    expect(screen.getByTestId("background-task-manager")).toBeInTheDocument();
 
     // /clear 是写操作（换绑 sessionId + 跑 Session hooks）：先弹一次确认，确认
     // 之后才发 `clearChat`。

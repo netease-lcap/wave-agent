@@ -93,6 +93,8 @@ export const MessageList = forwardRef<
     vscode,
     onRewindToMessage,
     onBackgroundCurrentTask,
+    onOpenBackgroundTask,
+    hasBackgroundTask,
     workdir,
     onOpenPreview,
     onOpenFile,
@@ -950,6 +952,8 @@ export const MessageList = forwardRef<
                     vscode={vscode}
                     onRewindToMessage={onRewindToMessage}
                     onBackgroundCurrentTask={onBackgroundCurrentTask}
+                    onOpenBackgroundTask={onOpenBackgroundTask}
+                    hasBackgroundTask={hasBackgroundTask}
                     isLastMessage={row.index === visibleMessages.length - 1}
                     workdir={workdir}
                     onOpenPreview={onOpenPreview}

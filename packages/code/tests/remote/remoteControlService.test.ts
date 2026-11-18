@@ -511,7 +511,6 @@ describe("RemoteControlService", () => {
       "setModel",
       "setPermissionMode",
       "stopBackgroundTask",
-      "stopWorkflowRun",
       "updateQueuedMessage",
     ]);
   });

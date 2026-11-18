@@ -332,6 +332,11 @@
 
 /* Tools */
 .tool-block {
+  /* flex + 可截断的文字那半：行尾的入口按钮（`.tool-background-task-link`）
+     不会被长参数挤出视野，行高仍由下面的 18px 固定。 */
+  display: flex;
+  align-items: baseline;
+  min-width: 0;
   color: var(--vscode-editor-foreground);
   font-weight: 600;
   font-size: 13px;
@@ -345,6 +350,49 @@
 
 .tool-status-dot {
   font-size: 10px;
+}
+
+/* 行尾那颗「查看实时输出」入口（spec multi-agent/task-background-execution.md
+   「从工具行进入后台任务详情」）：形态照 CC 桌面端的「View live output」——
+   一枚行内文本链接（primary 色、hover 下划线），不是带边框的 chip。工具行本体
+   仍是单行固定 18px 高，所以文字那半自己截断、链接永远留在行尾，长参数不会把它
+   挤没。 */
+.tool-block-text {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tool-background-task-link {
+  flex: 0 0 auto;
+  /* 与文字那半的 18px 行框对齐，不额外撑高工具行 */
+  line-height: 18px;
+  margin-left: 6px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--vscode-textLink-foreground);
+  /* 字号跟 `.compact-params` 同档（辅助信息刻度），不跟工具名那档：链接是粘在
+     参数摘要后面的，比参数大一号就会在那行里跳出来。桌面端另有 12px 覆盖。 */
+  font-family: inherit;
+  font-size: 11px;
+  /* 工具行本体是 600 粗体：链接保持常规字重，才和工具名分得开 */
+  font-weight: normal;
+  cursor: pointer;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.tool-background-task-link:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.tool-background-task-link:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: 1px;
 }
 
 .tool-error {

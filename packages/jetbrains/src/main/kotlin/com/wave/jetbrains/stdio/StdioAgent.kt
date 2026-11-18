@@ -545,11 +545,6 @@ class StdioAgent(
             sessionId,
         )?.jsonObject?.get("activity")?.jsonPrimitive?.contentOrNull
 
-    suspend fun stopWorkflowRun(runId: String): Boolean {
-        val result = client.request("stopWorkflowRun", buildJsonObject { put("runId", runId) }, sessionId)
-        return result?.jsonObject?.get("success")?.jsonPrimitive?.booleanOrNull ?: false
-    }
-
     // ── 插件 mod（spec ecosystem/plugin-mods.md「在 IDE 插件里画」）──────────
     //
     // 与桌面端同一套 RPC：树由 webview 自己来要（宿主不缓存），交互原样退回 CLI

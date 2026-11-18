@@ -1167,6 +1167,8 @@ export const Message: React.FC<MessageProps> = React.memo(
       isQueued = false,
       onRewindToMessage,
       onBackgroundCurrentTask,
+      onOpenBackgroundTask,
+      hasBackgroundTask,
       isLastMessage = false,
       workdir,
     } = props;
@@ -1569,16 +1571,51 @@ export const Message: React.FC<MessageProps> = React.memo(
             : ""
           : toolBlock.compactParams || "";
       const toolStatusColor = getToolStatusColor(toolBlock);
+      // 已后台化的工具行是本轮任务在消息流里唯一还看得见的东西，所以行尾就是
+      // 进后台任务面的入口（spec task-background-execution.md「从工具行进入
+      // 后台任务详情」）。只在任务仍在本会话列表里时给：重开会话后的历史消息
+      // 留着 `backgroundTaskId`，但那个任务已经不在了，点了只会落到空处。
+      const backgroundTaskId = toolBlock.backgroundTaskId;
+      const backgroundTaskEntry =
+        backgroundTaskId && onOpenBackgroundTask && hasBackgroundTask
+          ? hasBackgroundTask(backgroundTaskId)
+            ? backgroundTaskId
+            : null
+          : null;
       const toolHeader = (
         <div key={index} className="tool-block">
-          <span className="tool-status-dot" style={{ color: toolStatusColor }}>
-            ●
-          </span>{" "}
-          {toolBlock.name || "Tool"}
-          {compactInfo ? (
-            <span className="compact-params"> {compactInfo}</span>
-          ) : (
-            ""
+          <span className="tool-block-text">
+            <span
+              className="tool-status-dot"
+              style={{ color: toolStatusColor }}
+            >
+              ●
+            </span>{" "}
+            {toolBlock.name || "Tool"}
+            {compactInfo ? (
+              <span className="compact-params"> {compactInfo}</span>
+            ) : (
+              ""
+            )}
+          </span>
+          {backgroundTaskEntry && (
+            // 行尾这颗入口照 CC 桌面端的样子做成一枚**文本链接**（它那边是
+            // 「View live output」），而不是带边框的 chip：同一个位置上，标签感
+            // 来自边框和底色，去掉之后它读起来就是这行文字的一部分。
+            <button
+              type="button"
+              className="tool-background-task-link"
+              data-testid={`tool-background-task-${backgroundTaskEntry}`}
+              aria-label={`查看后台任务 ${backgroundTaskEntry} 的实时输出`}
+              onClick={(e) => {
+                // 行本身不是可点区域，但这颗按钮在工具容器里：别让点击冒泡到
+                // 任何上层手势（复制、折叠）。
+                e.stopPropagation();
+                onOpenBackgroundTask?.(backgroundTaskEntry);
+              }}
+            >
+              查看实时输出
+            </button>
           )}
         </div>
       );
@@ -2257,6 +2294,10 @@ export const Message: React.FC<MessageProps> = React.memo(
       prev.isLastMessage === next.isLastMessage &&
       prev.onRewindToMessage === next.onRewindToMessage &&
       prev.onBackgroundCurrentTask === next.onBackgroundCurrentTask &&
+      // 这两个决定工具行尾那颗「后台任务」入口的显隐：任务被清掉时列表要跟着
+      // 收回去，所以不能漏比（两者都是稳定引用，只在任务 id 集合变化时变）。
+      prev.onOpenBackgroundTask === next.onOpenBackgroundTask &&
+      prev.hasBackgroundTask === next.hasBackgroundTask &&
       // 工具块下面的 notice 只按本消息那些 id 比较：整份 map 一变就重渲全部行太贵。
       (prev.modNotices === next.modNotices ||
         noticeSignature(prev.modNotices, prev.message.blocks) ===

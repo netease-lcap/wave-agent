@@ -58,6 +58,10 @@ describe("workflowTool", () => {
       },
     );
     expect(mockManager.startRun).toHaveBeenCalledWith("wf_test123");
+    // The run IS a background task and its task id IS the runId, so the tool row
+    // can be an entry into the background-task surface (spec
+    // multi-agent/workflow「从 Workflow 工具行直达运行详情」场景 1).
+    expect(result.backgroundTaskId).toBe("wf_test123");
   });
 
   it("names the turn's token target in the receipt when the user gave one", async () => {

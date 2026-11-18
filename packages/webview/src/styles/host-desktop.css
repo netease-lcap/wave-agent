@@ -1593,6 +1593,12 @@
   line-height: 20px;
 }
 
+/* 工具行尾的「查看实时输出」：字号跟上面的 `.compact-params` 一起走辅助刻度，
+   行高仍留 18px（工具行是固定单行盒，撑高会顶开相邻行）。 */
+[data-host="desktop"] .tool-background-task-link {
+  font-size: 12px;
+}
+
 /* ── 辅助信息角色收口（用户 2026-09-10 指示「.tool-result-block、
    .compact-params 统一为辅助 12/20」）──
    .compact-params 已由 F-13 取 12/20（上方规则）；.tool-result-block

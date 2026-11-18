@@ -25,7 +25,6 @@ import StatusDialog from "./StatusDialog";
 import ContextDialog from "./ContextDialog";
 import BackgroundTaskManager from "./BackgroundTaskManager";
 import BackgroundTasksPane from "./BackgroundTasksPane";
-import WorkflowManager from "./WorkflowManager";
 import RemoteNewSessionDialog from "./RemoteNewSessionDialog";
 import RemoteSessionListPage from "./RemoteSessionListPage";
 import RemoteResumeListPage from "./RemoteResumeListPage";
@@ -1292,6 +1291,11 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   const tryOpenPanelRef = useRef<(kind: DesktopPanelKind) => boolean>(
     () => false,
   );
+  // Same TDZ pattern for "open the background-task surface, optionally focused
+  // on one task": the `/tasks` / `/workflows` routes and the transcript's tool
+  // rows reach it before `openTasksSurface` is defined (spec
+  // multi-agent/task-background-execution.md「从工具行进入后台任务详情」).
+  const openTasksSurfaceRef = useRef<(taskId?: string) => void>(() => {});
   const panelDisabledRef = useRef<DesktopPanelKind[]>([]);
   const messageInputRef = useRef<MessageInputHandle>(null);
   const messageListRef = useRef<{
@@ -3759,15 +3763,15 @@ export const ChatApp: React.FC<ChatAppProps> = ({
       // 空间守卫 / 逐会话记忆，不再弹居中对话框盖住会话。插件端与远控页没有
       // 面板机制，保持对话框。
       if (trimmedText === "/tasks") {
-        if (isDesktop) {
-          tryOpenPanelRef.current("tasks");
-        } else {
-          dispatch({ type: "SHOW_DIALOG", payload: { type: "tasks" } });
-        }
+        openTasksSurfaceRef.current();
         return;
       }
+      // `/workflows` 与 `/tasks` 是同一承载的别名（2026-11-18：工作流就是后台
+      // 任务的一种，任务 id 即 runId，独立工作流面板已删除——spec
+      // multi-agent/workflow.md「工作流管理入口」）。命令本身没有作用对象，
+      // 所以停在列表；要直达某个运行，走工具行上的那个入口。
       if (trimmedText === "/workflows" || trimmedText === "/workflows ") {
-        dispatch({ type: "SHOW_DIALOG", payload: { type: "workflows" } });
+        openTasksSurfaceRef.current();
         return;
       }
       // `/diff` 只列给桌面端（见 `hostSlashCommands.ts`）：差异面板就是右侧面板
@@ -4019,7 +4023,18 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     dispatch({ type: "SET_EDITING_QUEUED_ID", payload: null });
   }, []);
 
+  // 「打开后台任务面并定位到这个任务」的一次性请求：桌面端挂在 tab 上
+  // （`PanelTab.tasksFocus`），这里给没有面板机制的宿主（插件端 / 远控页）用。
+  // 消费即清，关掉对话框也清——下次打开该是列表态。
+  const [tasksDialogFocus, setTasksDialogFocus] = useState<{
+    taskId: string;
+  } | null>(null);
+  const handleTasksFocusConsumed = useCallback(() => {
+    setTasksDialogFocus(null);
+  }, []);
+
   const handleDialogClose = useCallback(() => {
+    setTasksDialogFocus(null);
     dispatch({ type: "HIDE_DIALOG" });
   }, []);
 
@@ -4698,6 +4713,65 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   useEffect(() => {
     tryOpenPanelRef.current = tryOpenPanel;
   }, [tryOpenPanel]);
+
+  // 面板上的一次性定位请求消费掉：留着它，切走会话再切回来会又跳一次详情
+  // （spec desktop/desktop-right-panel.md 场景 15 要求回来时是列表态）。
+  const clearTabTasksFocus = useCallback((tabId: string) => {
+    setTabs((prev) =>
+      prev.map((t) =>
+        t.id === tabId && t.tasksFocus ? { ...t, tasksFocus: undefined } : t,
+      ),
+    );
+  }, []);
+
+  // 后台任务面只有一个承载：桌面端是右侧面板的 tab，其余宿主是对话框
+  // （插件端与远控页没有面板机制）。带 id 打开时直接进那个任务的详情——对话里
+  // 已后台化的工具行、Workflow 工具行都从这里进来（spec
+  // multi-agent/task-background-execution.md「从工具行进入后台任务详情」）。
+  const openTasksSurface = useCallback(
+    (taskId?: string) => {
+      const focus = taskId ? { taskId } : null;
+      if (isDesktop) {
+        // 单实例：已有 tab 就激活并换掉它上面的定位请求（新对象 = 新请求，
+        // 因此再点一次同一行也有效）。
+        const tabId = ensureUniqueTab("tasks");
+        if (tabId && focus) {
+          setTabs((prev) =>
+            prev.map((t) => (t.id === tabId ? { ...t, tasksFocus: focus } : t)),
+          );
+        }
+        return;
+      }
+      setTasksDialogFocus(focus);
+      dispatch({ type: "SHOW_DIALOG", payload: { type: "tasks" } });
+    },
+    [isDesktop, ensureUniqueTab],
+  );
+
+  useEffect(() => {
+    openTasksSurfaceRef.current = openTasksSurface;
+  }, [openTasksSurface]);
+
+  // 「这个任务还在不在本会话的任务列表里」——工具行尾那颗入口按它显隐。
+  // 按 id 集合的字符串 memo：任务状态每帧都在推（工作流的进度事件尤其密），
+  // 但 id 集合只在任务增删时变，所以这条判据不会把消息列表拖进每帧重渲。
+  const backgroundTaskIdKey = useMemo(
+    () => state.backgroundTasks.map((t) => t.id).join("\u0000"),
+    [state.backgroundTasks],
+  );
+  const backgroundTaskIds = useMemo(
+    () =>
+      new Set(backgroundTaskIdKey ? backgroundTaskIdKey.split("\u0000") : []),
+    [backgroundTaskIdKey],
+  );
+  const hasBackgroundTask = useCallback(
+    (taskId: string) => backgroundTaskIds.has(taskId),
+    [backgroundTaskIds],
+  );
+  const handleOpenBackgroundTask = useCallback(
+    (taskId: string) => openTasksSurfaceRef.current(taskId),
+    [],
+  );
 
   // Close one tab: removes it from the open set; closing the active tab falls
   // back to its left neighbor (PreviewPane closeTab convention). Browser-tab
@@ -5824,6 +5898,8 @@ export const ChatApp: React.FC<ChatAppProps> = ({
           tasks={state.backgroundTasks}
           workflowRuns={state.workflowRuns}
           vscode={vscode}
+          focus={tab.tasksFocus}
+          onFocusConsumed={() => clearTabTasksFocus(id)}
           {...common}
         />
       );
@@ -6195,6 +6271,8 @@ export const ChatApp: React.FC<ChatAppProps> = ({
           // 一次再发——文案由 `pendingRewindId` 那个 ConfirmDialog 按端切。
           onRewindToMessage={handleRewindToMessage}
           onBackgroundCurrentTask={handleBackgroundCurrentTask}
+          onOpenBackgroundTask={handleOpenBackgroundTask}
+          hasBackgroundTask={hasBackgroundTask}
           // 上翻取更早：滚到顶时这里会拿到一条「要一页更早的」请求，锚点是当前
           // 已加载的第一条（spec ui/message-rendering-system.md「首屏一页，上翻按需
           // 取更早」）。
@@ -6670,13 +6748,8 @@ export const ChatApp: React.FC<ChatAppProps> = ({
           workflowRuns={state.workflowRuns}
           vscode={vscode}
           onClose={handleDialogClose}
-        />
-      )}
-      {state.activeDialog === "workflows" && (
-        <WorkflowManager
-          runs={state.workflowRuns}
-          vscode={vscode}
-          onCancel={handleDialogClose}
+          focus={tasksDialogFocus}
+          onFocusConsumed={handleTasksFocusConsumed}
         />
       )}
       {state.activeDialog === "remoteNewSession" && (

@@ -2139,7 +2139,7 @@ describe("remote page shim — the second batch", () => {
     });
   });
 
-  it("workflows: runs are read (there is no push), and stopping re-reads", async () => {
+  it("workflows: runs are read (there is no push)", async () => {
     const page = await openPage();
 
     // 快照之后紧跟一条读：工作流运行没有「变化就推」的通道（bridge 只为后台任务
@@ -2150,22 +2150,7 @@ describe("remote page shim — the second batch", () => {
     await flush();
     expect(lastPost(page, "updateWorkflowRuns")).toMatchObject({ runs });
 
-    page.post({ command: "stopWorkflowRun", runId: "run-1" });
-    await flush();
-    expect(lastRequest(page)).toMatchObject({
-      method: "stopWorkflowRun",
-      params: { runId: "run-1" },
-    });
-    page.reply({ success: true });
-    await flush();
-    expect(lastPost(page, "workflowRunStopped")).toMatchObject({
-      runId: "run-1",
-      success: true,
-    });
-    // 停完立刻重读：被停下的那个不再产生进度事件，等推送是等不到的。
-    expect(lastRequest(page).method).toBe("getWorkflowRuns");
-
-    // 后台任务变化是同一条刷新源：`WorkflowManager` 每推进一个阶段、每记一行
+    // 后台任务变化是同一条刷新源：SDK 的工作流管理器每推进一个阶段、每记一行
     // 日志、跑完都走 `notifyTasksChange()`，桌面端与插件端正是在
     // `onBackgroundTasksChange` 里重读 `getWorkflowRuns`（`desktopHost.ts` /
     // `chatSession.ts`）。少了这一步，页面上跑起来的 workflow 在 `/workflows`

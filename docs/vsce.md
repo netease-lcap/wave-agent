@@ -210,9 +210,9 @@ const label = ▍ // ← 建议给出 formatPrice({ cents: amount, currency }, "
 
 <figure><img src="/screenshots/spec-background-task-workflow.webp" alt="后台任务管理 - 工作流进度" /><figcaption>后台任务管理 - 工作流进度</figcaption></figure>
 
-<figure><img src="/screenshots/spec-workflow-list.webp" alt="工作流管理 - 列表" /><figcaption>工作流管理 - 列表</figcaption></figure>
+<figure><img src="/screenshots/spec-workflow-list.webp" alt="后台任务里的工作流 - 列表" /><figcaption>后台任务里的工作流 - 列表（<code>/workflows</code> 与 <code>/tasks</code> 是同一个对话框）</figcaption></figure>
 
-<figure><img src="/screenshots/spec-workflow-detail.webp" alt="工作流管理 - 详情" /><figcaption>工作流管理 - 详情</figcaption></figure>
+<figure><img src="/screenshots/spec-workflow-detail.webp" alt="后台任务里的工作流 - 详情" /><figcaption>后台任务里的工作流 - 详情</figcaption></figure>
 
 </div>
 
