@@ -118,7 +118,7 @@ function TestComponent({
   return null;
 }
 
-describe("ConfirmationSelector Esc Integration", () => {
+describe("ConfirmationSelector Esc", () => {
   const mockAgent = {
     sessionId: "test-session",
     messages: [],

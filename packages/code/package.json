@@ -33,9 +33,8 @@
     "type-check": "tsrs --noEmit",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
-    "test:unit": "vitest run --exclude 'tests/integration/**' --exclude '**/*.integration.test.ts'",
-    "test:unit:coverage": "vitest run --coverage --exclude 'tests/integration/**' --exclude '**/*.integration.test.ts'",
-    "test:integration": "vitest run tests/integration .integration.test",
+    "test:unit": "vitest run",
+    "test:unit:coverage": "vitest run --coverage",
     "lint": "oxlint",
     "format": "prettier --write .",
     "prepublishOnly": "pnpm run build"

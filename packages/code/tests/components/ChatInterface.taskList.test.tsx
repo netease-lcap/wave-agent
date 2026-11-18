@@ -18,7 +18,7 @@ vi.mock("wave-agent-sdk", async (importOriginal) => {
   };
 });
 
-describe("TaskList Integration", () => {
+describe("ChatInterface task list", () => {
   const mockTasks: Task[] = [
     {
       id: "task-1",
