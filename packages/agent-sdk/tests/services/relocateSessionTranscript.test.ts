@@ -289,9 +289,7 @@ describe("relocateSessionTranscript", () => {
     expect(await fs.readFile(targetPath, "utf8")).toBe(targetBefore);
   });
 
-  it("目标目录不可写时抛错、源保持原样", async () => {
-    const isRoot =
-      typeof process.getuid === "function" && process.getuid() === 0;
+  it("目标落点被同名目录占住时回滚：源不动、目标不落地、临时文件清空", async () => {
     const sessionId = randomUUID();
     const fromWorkdir = await makeWorkdir("from");
     const toWorkdir = await makeWorkdir("to");
@@ -299,55 +297,72 @@ describe("relocateSessionTranscript", () => {
       messageLine("m1", "user", "源"),
     ]);
     const sourceBefore = await fs.readFile(sourcePath, "utf8");
+    // 子代理转录排在建搬名单前面，于是"第一个撞墙的"是它。
+    const companionSource = join(
+      dirname(sourcePath),
+      `subagent-${sessionId}.jsonl`,
+    );
+    const companionLine = messageLine("s1", "user", "子代理");
+    await fs.writeFile(companionSource, companionLine, "utf8");
+
     const expectedTarget = await generateSessionFilePath(sessionId, toWorkdir);
     const targetDir = dirname(expectedTarget);
-    await fs.mkdir(targetDir, { recursive: true });
-    await fs.chmod(targetDir, 0o500);
+    const blockedTarget = join(targetDir, `subagent-${sessionId}.jsonl`);
+    // 在**目标**一侧的伴随转录落点放一个同名目录：实现只检查源侧有没有这份伴随
+    // 转录（`findCompanionTranscripts` 不看目标侧），所以阶段 1 会把两份临时
+    // 文件都写出来，直到阶段 2 的 `rename` 才撞上它。Windows 上 `rename`
+    // 文件到已存在目录报 EPERM、POSIX 报 EISDIR —— 都是失败，只是码不同。
+    // 不用目录权限造这个失败：Windows 上权限位不拦人（`chmod 0o500` 的目录里
+    // 照样能建文件），那样搬迁会一路成功，连源都被删掉。
+    await fs.mkdir(blockedTarget, { recursive: true });
 
-    try {
-      // root 无视目录权限，这条失败路径对它不成立。
-      if (!isRoot) {
-        await expect(
-          relocateSessionTranscript(sessionId, fromWorkdir, toWorkdir),
-        ).rejects.toThrow(/Failed to relocate session/);
-        expect(await fs.readFile(sourcePath, "utf8")).toBe(sourceBefore);
-        expect(await exists(expectedTarget)).toBe(false);
-      }
-    } finally {
-      await fs.chmod(targetDir, 0o700);
-    }
+    await expect(
+      relocateSessionTranscript(sessionId, fromWorkdir, toWorkdir),
+    ).rejects.toThrow(/Failed to relocate session/);
+
+    // 一份源都没删：主转录与子代理转录都还在，一个字节都没动。
+    expect(await fs.readFile(sourcePath, "utf8")).toBe(sourceBefore);
+    expect(await fs.readFile(companionSource, "utf8")).toBe(companionLine);
+    // 主转录的落点没留下文件，占位目录里也没被塞进东西。
+    expect(await exists(expectedTarget)).toBe(false);
+    expect(await fs.readdir(blockedTarget)).toEqual([]);
+    // 阶段 1 已经写出的临时文件必须被回滚清掉。
+    expect(
+      (await fs.readdir(targetDir)).filter((name) => name.includes(".tmp.")),
+    ).toEqual([]);
   });
 
-  it("读源失败（临时文件已建出来）时清掉临时文件、源保持原样", async () => {
-    const isRoot =
-      typeof process.getuid === "function" && process.getuid() === 0;
-    // root 无视文件权限，造不出"读到一半失败"。
-    if (isRoot) return;
+  it("源读不出来（源位置是个同名目录）时清掉临时文件、源保持原样", async () => {
     const sessionId = randomUUID();
     const fromWorkdir = await makeWorkdir("from");
     const toWorkdir = await makeWorkdir("to");
-    const sourcePath = await seedTranscript(sessionId, fromWorkdir, [
-      messageLine("m1", "user", "源"),
-    ]);
-    const sourceBefore = await fs.readFile(sourcePath, "utf8");
     const expectedTarget = await generateSessionFilePath(sessionId, toWorkdir);
     const targetDir = dirname(expectedTarget);
-    await fs.chmod(sourcePath, 0o000);
+    // 源位置放一个同名**目录**：`pathExists(from)` 照样为真（实现靠它定位源），
+    // 而 `createReadStream(dir)` 在 open 之后读取时抛 EISDIR —— Windows 与
+    // POSIX 都是这个行为（实测过，不是靠权限位造的：Windows 上 `chmod 0o000`
+    // 的文件照样读得出来）。于是失败发生在 `createWriteStream` 已经把临时文件
+    // 建出来之后，正是这条用例要测的顺序。
+    const sourcePath = await generateSessionFilePath(sessionId, fromWorkdir);
+    await fs.mkdir(sourcePath, { recursive: true });
+    const sourceSentinel = join(sourcePath, "keep.txt");
+    await fs.writeFile(sourceSentinel, "源仍在", "utf8");
 
-    try {
-      await expect(
-        relocateSessionTranscript(sessionId, fromWorkdir, toWorkdir),
-      ).rejects.toThrow(/Failed to relocate session/);
-    } finally {
-      await fs.chmod(sourcePath, 0o600);
-    }
+    // `EISDIR` 出现在消息里 = 失败确实发生在「读源」这一步，而不是后面
+    // 「删源」那一步（后者是 `could not remove ...`：源是个目录，删它也会失败，
+    // 但那时临时文件已经被 rename 走了，断言会一起空转）。
+    await expect(
+      relocateSessionTranscript(sessionId, fromWorkdir, toWorkdir),
+    ).rejects.toThrow(/Failed to relocate session[\s\S]*EISDIR/);
 
     // 临时文件已经建出来了（`createWriteStream` 先开文件）⇒ 搬家失败必须把它清掉。
     expect(
       (await fs.readdir(targetDir)).filter((name) => name.includes(".tmp.")),
     ).toEqual([]);
     expect(await exists(expectedTarget)).toBe(false);
-    expect(await fs.readFile(sourcePath, "utf8")).toBe(sourceBefore);
+    // 源一个字节都还没动：它还在、里面的东西也还在。
+    expect((await fs.stat(sourcePath)).isDirectory()).toBe(true);
+    expect(await fs.readFile(sourceSentinel, "utf8")).toBe("源仍在");
   });
 
   it("可归属的子代理转录一起搬；归不了的同目录子代理转录不碰", async () => {
