@@ -803,6 +803,13 @@ export interface ModDollar {
       id: string;
       title?: string;
       focus?: true;
+      /**
+       * 申报高度（spec「面板放得下吗」）：这块面板画这么多行才够。
+       *
+       * 是申报不是命令 —— surface 取它与「这一端放得下多少」里较小的那个。只
+       * 收 ≥1 的整数，写别的当场点名。内容变高变矮时再 `open` 一次覆盖它。
+       */
+      rows?: number;
     }): Promise<ModUiOpenResult>;
     /** 关掉一块面板（`{ id }` 是 Claude Code 的形状）；没开的 id 什么也不做。 */
     close(pane: { id: string }): Promise<void>;
@@ -1201,7 +1208,12 @@ export interface ModRuntimeHost {
    * `focus` 是 `$.ui.open({ focus: true })` 的那一次要求：surface 收到推送里的
    * `focus: true` 就把键盘直接送进这块面板（spec「终端形态」）。之后的重绘不带。
    */
-  openPane(paneId: string, title: string, focus?: boolean): boolean;
+  openPane(
+    paneId: string,
+    title: string,
+    focus?: boolean,
+    rows?: number,
+  ): boolean;
   closePane(paneId: string): void;
   /**
    * `$.ui.panes()`：这个插件的面板台账，每项含「放得下吗 / 摊开的是哪个 / 键盘
@@ -2117,11 +2129,27 @@ export class ModRuntime {
             // 与 Claude Code 同一条：`focus` 只收 `true`，要条件式就整字段省略。
             throw new Error("$.ui.open 的 focus 只能写 true 或者不写");
           }
+          // `rows` 是申报高度：只收 ≥1 的整数。静默忽略会让作者以为申报生效了、
+          // 面板却还是默认那几行（spec「面板放得下吗」）。
+          const rows = pane.rows;
+          if (
+            rows !== undefined &&
+            (typeof rows !== "number" ||
+              !Number.isSafeInteger(rows) ||
+              rows < 1)
+          ) {
+            throw new Error("$.ui.open 的 rows 是 1 或更大的整数");
+          }
           const title = typeof pane.title === "string" ? pane.title : id;
           // 登记照做：与 Claude Code 一样「没有 surface 也把面板留着」—— 之后
           // 有界面挂上来它就画出来，`$.ui.panes()` 也看得到它。`isPlaced` 才是
           // 诚实的那句话。
-          const registered = host.openPane(id, title, pane.focus === true);
+          const registered = host.openPane(
+            id,
+            title,
+            pane.focus === true,
+            rows,
+          );
           if (host.surfaces().length === 0) {
             return {
               isPlaced: false,

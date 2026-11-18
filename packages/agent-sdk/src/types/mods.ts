@@ -107,6 +107,14 @@ export interface ModPanelUpdatePayload {
    * 忽略（它的 tab 本来就是激活态，spec「面板的归属」）。
    */
   focus?: boolean;
+  /**
+   * 插件申报的面板高度（`$.ui.open({ rows })`）：这块面板画这么多行才够。
+   *
+   * 是**申报**不是命令 —— surface 取它与「这一端放得下多少」里较小的那个（终端
+   * 仍受 2/3 屏幕与最低 6 行的约束，见 spec「终端形态」的「高度」）。缺省时
+   * 由各端按自己的默认值处理。
+   */
+  rows?: number;
   /** 面板被关掉时宿主发这一条，`closed: true`。 */
   closed?: boolean;
   /** 失败原因（编译失败 / 校验超限 / 钩子异常）。surface 画错误条，树保留。 */
@@ -1517,6 +1525,20 @@ export interface ModCommandInfo {
 }
 
 /**
+ * `command.run` 钩子答的结论（spec「注册命令」）。
+ *
+ * 两档，与 Claude Code 同一个形状：
+ * - `{ text }`：这段文字作为**一条用户消息**进会话，模型看得到；
+ * - `{}`（没有 `text`）：这次命令只是插件自己的动作（开关一块面板、刷新一次
+ *   状态），**不发消息、不进对话**。差异插件的 `/diff` 就是这一档 —— 它只切
+ *   面板，不该每敲一次就给模型发一轮。
+ *
+ * 「钩子没答」（`undefined`）与 `{}` 是两件事：前者报「注册了但没人回答」，
+ * 后者是有人回答了、只是没有话要说。
+ */
+export type ModCommandRunOutcome = { text: string } | { text?: undefined };
+
+/**
  * `ModManager` 与斜杠命令表之间的桥（spec「注册命令」）。
  *
  * 命令表在 `SlashCommandManager`，而「执行这条命令该问哪个 mod」只有
@@ -1535,8 +1557,11 @@ export interface ModCommandBridge {
     immediate?: boolean;
     /** 注册者插件名，用于命令的归属（重名判定的「插件 X 已注册」）。 */
     plugin: string;
-    /** 用户执行这条命令时调用；返回 `undefined` 表示没有钩子回答。 */
-    run: (args: string) => Promise<string | undefined>;
+    /**
+     * 用户执行这条命令时调用；`undefined` 表示没有钩子回答（这是个错误，
+     * 会报给用户看）。答 `{ text }` 发一条消息，答 `{}` 只是本地动作。
+     */
+    run: (args: string) => Promise<ModCommandRunOutcome | undefined>;
   }): { ok: true } | { ok: false; reason: string };
   /** 撤销一条 mod 命令（插件重载 / 会话销毁）。 */
   unregister(name: string): void;

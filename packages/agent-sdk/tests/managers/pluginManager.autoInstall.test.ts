@@ -25,7 +25,10 @@ describe("PluginManager Auto-install", () => {
   const workdir = "/test/workdir";
 
   beforeEach(() => {
-    vi.clearAllMocks();
+    // `reset` 而不是 `clear`：各用例给 `PluginLoader.loadManifest` 装的返回值
+    // 不能被下一个用例捡到 —— 内置插件（默认开）也会走 `loadSinglePlugin`，
+    // 泄漏的 manifest 会让它被注册成上一个用例的名字。
+    vi.resetAllMocks();
 
     const mockConfigurationService = {
       getMergedEnabledPlugins: vi.fn().mockReturnValue({}),

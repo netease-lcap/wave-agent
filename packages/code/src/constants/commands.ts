@@ -60,12 +60,6 @@ export const AVAILABLE_COMMANDS: SlashCommand[] = [
     handler: () => {}, // Handler here won't be used, actual processing is in the hook
   },
   {
-    id: "diff",
-    name: "diff",
-    description: "View uncommitted changes and per-turn diffs",
-    handler: () => {}, // Handler here won't be used, actual processing is in the hook
-  },
-  {
     id: "plugin",
     name: "plugin",
     description: "View and manage plugins",

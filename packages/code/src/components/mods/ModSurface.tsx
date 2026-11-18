@@ -118,8 +118,16 @@ export const ModSurface: React.FC<ModSurfaceProps> = ({ part }) => {
     if (!activePane || isDismissed) return null;
     // 高度：终端 2/3 减去输入区，剩下的给面板；空间不够时面板先压到最低 6 行，
     // 再不够就面板内部滚（spec「终端形态」的「高度」）。
+    //
+    // 插件可以用 `$.ui.open({ rows })` 申报一个更大的高度（差异面板那种「一块块
+    // 读」的东西）：申报值是**上限意愿**，取它与默认封顶里大的那个，再被可用空间
+    // 夹住 —— 所以申报小了不会挤、申报大了也不会撑破版面（spec「面板放得下吗」）。
     const budget = Math.floor((rows * 2) / 3) - INPUT_AREA_ROWS;
-    const paneRows = Math.min(PANE_MAX_ROWS, Math.max(PANE_MIN_ROWS, budget));
+    const declared = activePane.rows ?? 0;
+    const paneRows = Math.min(
+      Math.max(PANE_MAX_ROWS, declared),
+      Math.max(PANE_MIN_ROWS, budget),
+    );
     return (
       <Box flexDirection="column">
         {panes.length > 1 ? (

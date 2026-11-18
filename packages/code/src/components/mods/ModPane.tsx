@@ -14,19 +14,19 @@ import type {
 import { ModTreeView, collectFocusKeys } from "./ModTreeView.js";
 import { ScrolledContent } from "../ScrolledContent.js";
 
-/** 面板正文自己有滚动条，量出来的高度这里不用。 */
-const noopRows = () => {};
-
 /**
  * 终端里的一个 mod 面板（spec `ecosystem/plugin-mods.md`「终端形态」）。
  *
  * 与桌面端的 `ModPanel` 同一个数据契约：宿主只推**元信息**（`revision` /
  * `stale` / `error`），树由这里拉（spec「架构约束」: 树永远是 surface 拉的）。
- * 区别只在交互：终端没有指针，所以「点击」变成「焦点 + 键盘」——
+ * 区别只在交互：终端没有指针，所以「点击」变成「焦点 + 键盘」。键位与 Claude
+ * Code 的 `Pane` context 同义（spec「终端形态」逐字引了那张表）——
+ * **方向键归滚动，不归焦点**，焦点用 `Tab` 走：
  *
- * - `↑`/`↓` 在可交互节点之间移动，`Enter` 触发按钮 / 提交 `Input` / 确认 `Select`；
+ * - `↑`/`↓` 滚正文，`PageUp`/`PageDown` 翻页，`Home`/`End` 到顶/到底；
+ * - `Tab`/`Shift+Tab` 在可交互节点之间移动，`Enter` 触发按钮 / 提交 `Input` /
+ *   确认 `Select`（`Select` 展开时 `↑`/`↓` 归候选，局部优先）；
  * - `hotkey` 字母直接触发对应按钮；
- * - `PageUp`/`PageDown` 翻正文（面板正文封顶 `maxRows` 行）；
  * - `Esc` 先收起展开的 `Select`，再按一次收起面板并把键盘还给输入框。
  *
  * 收起面板**不发 `ui.close`**：这是这一端不再画它，与桌面端关掉 tab 同一纪律
@@ -77,6 +77,9 @@ export const ModPane: React.FC<ModPaneProps> = ({
   const [draft, setDraft] = useState("");
   const [openSelect, setOpenSelect] = useState<OpenSelect | null>(null);
   const [offset, setOffset] = useState(0);
+  // 正文实测行数（`ScrolledContent` 报回来的）：`End` 与翻页到最底都要知道内容
+  // 有多长，否则会滚出一屏空白。
+  const [totalRows, setTotalRows] = useState(0);
   // 每次拉树带一个序号：慢的回复不能盖掉新的那一帧（`revision` 单调，但两个
   // 请求可能乱序回来）。
   const pullSeq = useRef(0);
@@ -93,8 +96,11 @@ export const ModPane: React.FC<ModPaneProps> = ({
     return () => {
       cancelled = true;
     };
-    // `pullToken`：焦点翻了一帧就要重算（`e.props.isFocused` 只在拉取时出生）。
-  }, [panel.modId, panel.paneId, panel.revision, pullToken, renderTree]);
+    // 依赖是**推送本身**（`panel` 的引用），不是 `panel.revision`：`revision` 是
+    // 上一次回包时算出来的，第二次 `$.ui.invalidate` 推送带的还是同一个值，
+    // 照它判重就会漏掉那一帧（桌面端是「收到 `stale` 就拉」，同一条纪律）。
+    // `pullToken`：焦点翻了一帧也要重算（`e.props.isFocused` 只在拉取时出生）。
+  }, [panel, pullToken, renderTree]);
 
   useEffect(() => {
     if (panel.error !== undefined) setError(panel.error);
@@ -122,9 +128,13 @@ export const ModPane: React.FC<ModPaneProps> = ({
     }
   }, [activeNode]);
 
-  useEffect(() => {
-    setOffset(0);
-  }, [focusKey]);
+  // 滚动位置与焦点无关（`↑`/`↓` 滚正文、`Tab` 换焦点），所以换焦点不重置它。
+  // 渲染前按实测行数再夹一次：内容变短或终端变高时，不会停在一个已被裁掉的偏移上。
+  // 换了一帧（mod 改了内容 / 换了文件）就回到顶部 —— 新内容停在旧偏移上等于
+  // 从一个随机的中间开始读。判据与拉树同一个：一条推送 = mod 说内容变了。
+  useEffect(() => setOffset(0), [panel]);
+  const maxOffset = Math.max(0, totalRows - maxRows);
+  const scrollOffset = Math.min(offset, maxOffset);
 
   const press = useCallback(
     (key: string) => {
@@ -172,27 +182,45 @@ export const ModPane: React.FC<ModPaneProps> = ({
         }
       }
 
+      // 焦点：`Tab` / `Shift+Tab`。Claude Code 的 `Pane` context 里就是
+      // `tab`/`shift+tab` → `abovePrompt:next/previous`，`↑`/`↓` 不归焦点。
+      if (key.tab) {
+        setOpenSelect(null);
+        setFocusIndex((index) => {
+          if (focusKeys.length === 0) return 0;
+          const step = key.shift ? -1 : 1;
+          return (
+            (Math.min(index, focusKeys.length - 1) + step + focusKeys.length) %
+            focusKeys.length
+          );
+        });
+        return;
+      }
+
+      // 正文滚动：逐行 / 翻页 / 到顶到底，三档步长与 Claude Code 的
+      // `pane:scrollUp` / `pageUp` / `top` 同义，一律夹在 `[0, maxOffset]` 里。
       if (key.upArrow) {
-        setFocusIndex((index) =>
-          focusKeys.length === 0
-            ? 0
-            : (Math.min(index, focusKeys.length - 1) - 1 + focusKeys.length) %
-              focusKeys.length,
-        );
+        setOffset(Math.max(0, scrollOffset - 1));
         return;
       }
       if (key.downArrow) {
-        setFocusIndex((index) =>
-          focusKeys.length === 0 ? 0 : (index + 1) % focusKeys.length,
-        );
+        setOffset(Math.min(maxOffset, scrollOffset + 1));
         return;
       }
       if (key.pageUp) {
-        setOffset((value) => Math.max(0, value - maxRows + 1));
+        setOffset(Math.max(0, scrollOffset - maxRows + 1));
         return;
       }
       if (key.pageDown) {
-        setOffset((value) => value + maxRows - 1);
+        setOffset(Math.min(maxOffset, scrollOffset + maxRows - 1));
+        return;
+      }
+      if (key.home) {
+        setOffset(0);
+        return;
+      }
+      if (key.end) {
+        setOffset(maxOffset);
         return;
       }
 
@@ -239,9 +267,11 @@ export const ModPane: React.FC<ModPaneProps> = ({
         if (hotkey !== undefined) press(hotkey);
       }
     },
-    { isActive: focused },
+    { isActive: focused && maxRows > 0 },
   );
 
+  // 面板没画出来时不占键盘（`maxRows` 为 0 说明这一帧没有正文空间）——
+  // 上面 `useInput` 的 `isActive` 就是这个判据。
   const visible = maxRows > 0;
 
   return (
@@ -251,8 +281,8 @@ export const ModPane: React.FC<ModPaneProps> = ({
         // `ScrolledContent` 才是「封顶但不多占」：内容短时保持自然高度，超了才裁。
         <ScrolledContent
           visibleRows={maxRows}
-          scrollOffset={offset}
-          onMeasuredRows={noopRows}
+          scrollOffset={scrollOffset}
+          onMeasuredRows={setTotalRows}
         >
           {tree === null ? (
             <Text dimColor>…</Text>

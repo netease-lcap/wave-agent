@@ -749,8 +749,21 @@ describe("ModRuntime 的交互路由", () => {
     await mod.dispatch("press", "same");
     await mod.dispatch("input", "same", "typed");
 
-    expect(hostApi.openPane).toHaveBeenNthCalledWith(1, "press", "", false);
-    expect(hostApi.openPane).toHaveBeenNthCalledWith(2, "typed", "", false);
+    // 第四位是申报高度（`rows`），这两次都没申报。
+    expect(hostApi.openPane).toHaveBeenNthCalledWith(
+      1,
+      "press",
+      "",
+      false,
+      undefined,
+    );
+    expect(hostApi.openPane).toHaveBeenNthCalledWith(
+      2,
+      "typed",
+      "",
+      false,
+      undefined,
+    );
   });
 
   it("Select 的 options 是对象数组，照样搬进树里", async () => {
@@ -947,7 +960,12 @@ describe("ModRuntime 的 $ 命名空间", () => {
     // 副本语义：mod 改的是它自己那份。
     expect(state.get("count")).toEqual({ n: 2 });
     expect(ledger).toHaveLength(1);
-    expect(hostApi.openPane).toHaveBeenCalledWith("p1", "待办", false);
+    expect(hostApi.openPane).toHaveBeenCalledWith(
+      "p1",
+      "待办",
+      false,
+      undefined,
+    );
     expect(hostApi.invalidate).toHaveBeenCalledWith("ui.render");
     expect(hostApi.storeDelete).toHaveBeenCalledWith("gone");
   });
@@ -1169,7 +1187,12 @@ describe("ModRuntime 的 $ 命名空间", () => {
     });
     // 面板仍然登记着（与 Claude Code 一样「没有 surface 也把面板留着」，之后
     // 有界面挂上来它就画出来），只是这一次没人接住。
-    expect(noSurface.openPane).toHaveBeenCalledWith("p1", "守卫", false);
+    expect(noSurface.openPane).toHaveBeenCalledWith(
+      "p1",
+      "守卫",
+      false,
+      undefined,
+    );
 
     const desktop = host();
     const { mod: lit } = runtime(
@@ -1186,7 +1209,48 @@ describe("ModRuntime 的 $ 命名空间", () => {
     const placed = await lit.callHook("session.start", {});
     expect(placed.ok && placed.value).toEqual({ isPlaced: true });
     // `focus: true` 要原样透给宿主：surface 靠它把键盘直接送进这块面板。
-    expect(desktop.openPane).toHaveBeenCalledWith("p1", "守卫", true);
+    expect(desktop.openPane).toHaveBeenCalledWith(
+      "p1",
+      "守卫",
+      true,
+      undefined,
+    );
+  });
+
+  it("$.ui.open 的 rows 是申报高度：原样交给宿主，非整数当场点名", async () => {
+    // spec「面板放得下吗」：申报值是上限意愿，取不取由 surface 决定，但 runtime
+    // 必须把它交给宿主 —— 静默丢掉会让作者以为申报生效了，面板还是默认那几行。
+    const hostApi = host();
+    const { mod } = runtime(
+      `
+      exports.register = function ($, on) {
+        on("session.start", function () {
+          return $.ui.open({ id: "diff", title: "差异", rows: 24 });
+        });
+      };
+      `,
+      { host: hostApi },
+    );
+    await mod.load();
+    await mod.callHook("session.start", {});
+    expect(hostApi.openPane).toHaveBeenCalledWith("diff", "差异", false, 24);
+
+    const bad = runtime(
+      `
+      exports.register = function ($, on) {
+        on("session.start", async function () {
+          try { await $.ui.open({ id: "p1", rows: 0 }); } catch (e) { return String(e.message); }
+          return "no-error";
+        });
+      };
+      `,
+      { host: host({}) },
+    );
+    await bad.mod.load();
+    const result = await bad.mod.callHook("session.start", {});
+    expect(result.ok && result.value).toEqual(
+      expect.stringContaining("1 或更大的整数"),
+    );
   });
 
   it("$.ui.open 的 focus 只收 true（与 Claude Code 一样）", async () => {

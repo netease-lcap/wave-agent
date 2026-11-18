@@ -120,7 +120,7 @@ const ELEMENT_PROPS: Record<ModElementType, ReadonlySet<string>> = {
   Select: new Set(["key", "label", "options", "value", "autoFocus"]),
   Svg: new Set(["source", "alt", "width", "height", "isInteractive"]),
   Link: new Set(["href", "label"]),
-  Code: new Set(["source", "language", "path", "startLine", "wrap"]),
+  Code: new Set(["source", "language", "path", "startLine", "format", "wrap"]),
   Markdown: new Set(["text"]),
   Progress: new Set(["label", "value", "max", "valueText", "color"]),
 };
@@ -333,6 +333,7 @@ const ENUM_PROPS: Readonly<
     size: ["caption", "footnote", "body", "heading", "title"],
   },
   Code: {
+    format: ["diff"],
     wrap: ["wrap", "truncate-end"],
   },
 };
