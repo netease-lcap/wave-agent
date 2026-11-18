@@ -76,6 +76,10 @@
      指「按 skill 引入」。值 = skill tokens/tokens.css:130（浅）/
      theme/desktop-colors.css:174（深，见 dark 块）。 */
   --cc-shadow-popover: 0 0 12px rgb(0 0 0 / 12%);
+  /* composer（AI 对话框）那档柔影：原来这组值只在 `.input-content:focus-within`
+     里以字面量出现（另见深色档），2026-11-18 设计师要求在「会话目录缺失」的
+     恢复卡上用同一档阴影 ⇒ 提成角色，composer 与恢复卡共用一个值，改一处两边同步。 */
+  --cc-shadow-composer: 0 0 12px rgb(31 35 41 / 12%);
   /* 焦点环（浅色档）：skill tokens.css:84 / desktop-colors.css:64 均为
      var(--cc-action-primary)。此前浅色档未定义本角色，只有深色档有，
      于是 --vscode-focusBorder 桥接在浅色取不到值。 */
@@ -126,6 +130,12 @@
      bg + icon/text 并存」；toast/状态反馈消费（0909 第 4 轮引入） */
   --cc-color-success: #16a34a; /* = cc state-succeeded / session-succeeded */
   --cc-color-success-soft: #f0fdf4;
+  /* 警示（warning）角色：skill tokens.css:38 的角色名 `--cc-color-warning`。
+     仓库此前没有这个角色（警示只散着用 host 的 inputValidation-warningBorder），
+     值直接挂到状态色族的 amber 上——同一个 amber 就是侧栏「等待确认」那颗点的
+     颜色，避免同一片界面里出现两种黄。深色档由暗块里的 `--cc-state-waiting`
+     （#E8BF78）接管，恰好等于 skill 的 warning 深色值。 */
+  --cc-color-warning: var(--cc-state-waiting);
   --cc-color-danger: #dc2626;
   --cc-color-danger-soft: #fef2f2;
   /* 危险档的 hover/active 与浮层阴影：值取自 skill 权威表（theme/desktop-colors.css
@@ -202,6 +212,9 @@
   --cc-border-translucent: rgb(255 255 255 / 12%); /* derived 浮层边 */
   /* 浮层阴影深色档（浅色档见上文注释）：skill theme/desktop-colors.css:174 */
   --cc-shadow-popover: 0 12px 30px rgb(0 0 0 / 40%);
+  /* composer 柔影深色档：画布 #111314 上 12% 黑几乎不可见 ⇒ 40% 黑（同 composer
+     聚焦档既有取值，见 .input-content:focus-within 深色规则）。 */
+  --cc-shadow-composer: 0 0 12px rgb(0 0 0 / 40%);
 
   /* 桥接：组件消费的 host token → 语义值（desktop deep 全面覆盖） */
   --vscode-button-background: var(--cc-action-primary);
@@ -244,6 +257,9 @@
      #F19B95 → #FC4E52（skill `91b70e4` / PR #6，user-approved 2026-10-14）。
      连带：所有消费该 token 的深色前景（toast error / 设置页错误提示等）同步变化。 */
   --cc-color-success: #83d6a0;
+  /* 警示角色深色档：这里必须再声明一次 —— 主题属性挂在包裹 div 上而不是 :root，
+     写在一处时 var() 会在 :root 处解析成浅色值再继承下去（实测卡片仍拿 #E6A23C）。 */
+  --cc-color-warning: var(--cc-state-waiting);
   --cc-color-success-soft: #192b21;
   --cc-color-danger: #fc4e52;
   --cc-color-danger-soft: #332021;
@@ -340,16 +356,17 @@
   padding: 0 12px;
 }
 
-/* 输入卡聚焦：codechat 聚焦用 popover 级柔影，而非高对比描边 */
+/* 输入卡聚焦：codechat 聚焦用 popover 级柔影，而非高对比描边。
+   值已提成 `--cc-shadow-composer`（恢复卡共用同一档，见 SessionFolderRecovery.css）。 */
 [data-host="desktop"] .input-content:focus-within {
-  box-shadow: 0 0 12px rgb(31 35 41 / 12%);
+  box-shadow: var(--cc-shadow-composer, 0 0 12px rgb(31 35 41 / 12%));
 }
 /* 深色画布（#111314）上 12% 黑柔影不可见 → 提亮为浮层同款 40% 黑柔影；
    边框同时落 focus 中性灰（MessageInput base 用 foreground color-mix 在暗面
    过淡）。selector 含 :focus-within，specificity 高于常驻 .input-content dark
    块，无需考虑书写先后。 */
 [data-host="desktop"][data-theme="dark"] .input-content:focus-within {
-  box-shadow: 0 0 12px rgb(0 0 0 / 40%);
+  box-shadow: var(--cc-shadow-composer, 0 0 12px rgb(0 0 0 / 40%));
   border-color: var(--cc-border-focus, #a0a5a8);
 }
 
