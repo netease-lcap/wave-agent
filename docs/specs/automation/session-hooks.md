@@ -57,7 +57,7 @@ order: 20
 1. **假设**以 `Agent.create({ restoreSessionId })` 启动且 SessionStart 钩子输出了 `additionalContext`，**当**初始化完成时，**则**该上下文以 `<system-reminder>` 包裹的 meta 用户消息落在恢复出的消息**之后**（列表末尾）
 2. **假设**以 `Agent.create({ restoreSessionId })` 启动，**当**钩子执行时，**则** `source` 为 `"resume"`，且钩子的 `sessionId` / `transcriptPath` 指向**恢复出来的那个会话**（不是创建时那个新会话）
 3. **假设**以 `Agent.create({ continueLastSession: true })` 启动，**当**初始化完成时，**则**行为与场景 1、2 相同（`source` 为 `"resume"`、上下文落在恢复出的消息之后）
-4. **假设**不恢复（新会话），**当**初始化完成时，**则** `source` 仍为 `"startup"`，上下文注入到（空的）消息列表，`initialUserMessage` 照旧注入
+4. **假设**不恢复（新会话），**当**初始化完成时，**则** `source` 仍为 `"startup"`，上下文注入到（空的）消息列表；`initialUserMessage` 也只在这是空表时才注入（见「边界情况」的 `initialUserMessage` 一条）
 5. **假设**恢复出的对话里已有一条完全相同的 SessionStart 上下文，**当**本次初始化的钩子输出内容相同时，**则**不追加第二份（同一套平台层去重，不按 source 特判）
 6. **假设**创建时恢复**不**触发 `SessionEnd` 钩子（对话还没开始过），**当**初始化完成时，**则**只有 `SessionStart` 执行过一次
 
@@ -85,7 +85,7 @@ order: 20
 - **去重比的是内存里的当前列表**，不是会话文件：会话文件追加式保存，压缩后的旧行可能还在文件里，但它已不在列表中，所以下一次注入照常落地
 - 四个 source 各就各位：`startup` / `clear` 时列表为空（或刚被清空）→ 照常注入；`compact` 之后列表被折成 `[摘要, ...最近两轮]`、旧副本已被折进摘要 → 照常注入；`resume` 时恢复出的列表里带着上次那份 → 内容相同则跳过
 - 目标会话加载失败（不存在或文件损坏）：抛出 `Session not found`，当前会话状态不被修改
-- **创建时恢复不注入 `initialUserMessage`**（保持现状）：Claude Code 文档把 `initialUserMessage` 定为非交互 `-p` 模式专用（`"becomes the first turn even if you pass no prompt"`），恢复出的对话已经有自己的第一轮，所以这条路径只在 `startup` 注入。这是 Wave 比 Claude Code 更宽的一处（`resume` 也注入），记录在案、本轮不改
+- **`initialUserMessage` 只在会话起点注入，恢复与压缩都不注入**：Claude Code 文档把它定为非交互 `-p` 模式专用（`"String used as the first user message of the session, in non-interactive mode with the -p flag. It becomes the first turn even if you pass no prompt."`）。能让它成立的只有「消息列表为空」的那两个 source —— `startup`（新会话）与 `clear`（刚被清空，语义等同 startup）；`resume`（运行时 `restoreSession` 与创建时 `restoreSessionId` / `continueLastSession`）与 `compact` 的消息列表里都已经有自己的第一轮，往里塞「开场消息」没有语义，所以**一律不注入**。`additionalContext` 不受这条限制（四个 source 都注入 + 平台层去重）
 
 ### 测试验证需求
 
@@ -94,4 +94,5 @@ order: 20
 - 必须通过「恢复出的对话末尾已有一条完全相同的上下文」的用例验证不追加第二份，并用「钩子输出变了」的对照组验证刷新；压缩后重新注入要用**真实 MessageManager** 实证（内存列表在压缩时被替换，这条不能只靠代码推断）
 - 必须通过 `Agent.create({ restoreSessionId })`（以及 `continueLastSession`）验证：钩子在恢复**之后**执行（`additionalContext` 是恢复会话的最后一条消息）、`source` 为 `"resume"`、钩子的 sessionId/transcriptPath 指向恢复出的会话，且不执行 SessionEnd；对照组（不恢复）验证 `"startup"` 与空表注入不变
 - 必须通过传入与当前会话相同的 sessionId 验证无操作路径不执行任何钩子
+- 必须用「钩子返回 `initialUserMessage`」的用例验证**不注入**的范围：运行时 `restoreSession`、创建时 `restoreSessionId`、`compact` 三条路径恢复/压缩后的消息列表里都不得出现那段文本（同时验证 `additionalContext` 照常注入）；对照组验证 `startup` 与 `/clear` 仍然注入
 - 必须通过 `hookManager.executeSessionStartHooks("resume", ...)` 与 `executeSessionEndHooks("resume", ...)` 的单元测试验证钩子上下文中的 `source` / `end_source` 字段透传

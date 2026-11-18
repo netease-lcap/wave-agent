@@ -1474,12 +1474,9 @@ export class AIManager {
               );
             }
           }
-          if (sessionStartResult.initialUserMessage) {
-            this.messageManager.addUserMessage({
-              content: sessionStartResult.initialUserMessage,
-              isMeta: true,
-            });
-          }
+          // `initialUserMessage` 不注入：压缩不是会话起点（对话早有第一轮），
+          // Claude Code 把这个字段定为非交互 `-p` 模式专用。`additionalContext`
+          // 才是压缩后重注的正经用途，保持原样。
         } catch (error) {
           logger?.warn(
             `SessionStart hooks on compact failed: ${(error as Error).message}`,

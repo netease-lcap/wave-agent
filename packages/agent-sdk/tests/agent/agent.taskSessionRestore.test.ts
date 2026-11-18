@@ -249,7 +249,12 @@ describe("Agent - Task Session Restoration", () => {
     await agent.destroy();
   });
 
-  it("should inject initialUserMessage on restore, exactly like the other three paths", async () => {
+  /**
+   * `initialUserMessage` 只在 `startup` / `clear` 注入：Claude Code 把它定为
+   * 非交互 `-p` 模式专用（"becomes the first turn even if you pass no prompt"），
+   * 而恢复出来的对话已经有自己的第一轮。`additionalContext` 不受影响。
+   */
+  it("should NOT inject initialUserMessage on restore", async () => {
     const { handleSessionRestoration, loadSessionFromJsonl } = await import(
       "../../src/services/session.js"
     );
@@ -281,6 +286,7 @@ describe("Agent - Task Session Restoration", () => {
       .hookManager;
     vi.spyOn(hookManager, "executeSessionStartHooks").mockResolvedValue({
       results: [],
+      additionalContext: "Restored session context",
       initialUserMessage: "Start with a plan",
     });
 
@@ -290,21 +296,29 @@ describe("Agent - Task Session Restoration", () => {
       agent as unknown as { messageManager: MessageManager }
     ).messageManager;
     const messages = messageManager.getMessages();
+    const texts = messages.flatMap((message) =>
+      message.blocks.flatMap((block) =>
+        block.type === "text" ? [block.content] : [],
+      ),
+    );
+    // The `-p` field must not become a turn of a resumed conversation…
+    expect(texts).not.toContain("Start with a plan");
+    // …while `additionalContext` still lands, as a meta user message.
     const injected = messages[messages.length - 1];
     expect(injected.isMeta).toBe(true);
-    expect(
-      (injected.blocks[0] as { type: "text"; content: string }).content,
-    ).toBe("Start with a plan");
+    expect(texts[texts.length - 1]).toContain("Restored session context");
 
     await agent.destroy();
   });
 
-  it("should not inject the same initialUserMessage twice into one session", async () => {
+  it("should never inject initialUserMessage across repeated restores (A→B→A)", async () => {
     const { handleSessionRestoration, loadSessionFromJsonl } = await import(
       "../../src/services/session.js"
     );
+    const sessionA = randomUUID();
+    const sessionB = randomUUID();
     vi.mocked(handleSessionRestoration).mockResolvedValue({
-      id: randomUUID(),
+      id: sessionA,
       messages: [],
       metadata: {
         workdir: testWorkdir,
@@ -312,27 +326,20 @@ describe("Agent - Task Session Restoration", () => {
         latestTotalTokens: 0,
       },
     });
-    // The target transcript already carries what an earlier resume injected:
-    // it is an ordinary meta user message, so it is on disk like any other.
-    vi.mocked(loadSessionFromJsonl).mockResolvedValue({
-      id: randomUUID(),
-      messages: [
-        {
-          id: "msg-injected",
-          role: "user",
-          blocks: [
-            { type: "text", content: "Start with a plan", stage: "end" },
-          ],
-          timestamp: new Date().toISOString(),
-          isMeta: true,
-        },
-      ],
+    // Neither transcript carries the text: nothing can mask a stray injection
+    // behind `addMetaMessageIfAbsent`.
+    const sessionData = (id: string) => ({
+      id,
+      messages: [],
       metadata: {
         workdir: testWorkdir,
         lastActiveAt: new Date().toISOString(),
         latestTotalTokens: 0,
       },
     });
+    vi.mocked(loadSessionFromJsonl).mockImplementation(async (id: string) =>
+      sessionData(id),
+    );
 
     const agent = await Agent.create({
       apiKey: "test-key",
@@ -346,24 +353,23 @@ describe("Agent - Task Session Restoration", () => {
       initialUserMessage: "Start with a plan",
     });
 
-    await agent.restoreSession(randomUUID());
-
     const messageManager = (
       agent as unknown as { messageManager: MessageManager }
     ).messageManager;
-    // Same judge as the SessionStart copy above: exact text, via the shared
-    // `addMetaMessageIfAbsent` — no second implementation to drift.
-    const occurrences = messageManager
-      .getMessages()
-      .filter(
-        (message) =>
-          message.isMeta === true &&
+    const occurrences = () =>
+      messageManager
+        .getMessages()
+        .filter((message) =>
           message.blocks.some(
             (block) =>
               block.type === "text" && block.content === "Start with a plan",
           ),
-      );
-    expect(occurrences).toHaveLength(1);
+        );
+
+    await agent.restoreSession(sessionB);
+    expect(occurrences()).toHaveLength(0);
+    await agent.restoreSession(sessionA);
+    expect(occurrences()).toHaveLength(0);
 
     await agent.destroy();
   });

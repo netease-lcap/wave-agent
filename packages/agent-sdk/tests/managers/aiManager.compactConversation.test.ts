@@ -602,6 +602,26 @@ describe("AIManager - compactConversation", () => {
       );
     });
 
+    it("should not inject initialUserMessage after compaction", async () => {
+      // 压缩不是会话起点：`initialUserMessage` 是 Claude Code 非交互 `-p` 专用的
+      // 字段，压缩后把它当成一轮用户输入塞进对话没有语义。
+      vi.mocked(mockHookManager.executeSessionStartHooks).mockResolvedValue({
+        results: [],
+        additionalContext: "Project context",
+        initialUserMessage: "Start with a plan",
+      });
+
+      await aiManager.compactConversation();
+
+      expect(mockMessageManager.addUserMessage).not.toHaveBeenCalledWith(
+        expect.objectContaining({ content: "Start with a plan" }),
+      );
+      // `additionalContext` 照旧（压缩后重注是它的正经用途）。
+      expect(mockMessageManager.addMetaMessageIfAbsent).toHaveBeenCalledWith(
+        `<system-reminder>\nSessionStart hook additional context: Project context\n</system-reminder>`,
+      );
+    });
+
     it("should add nothing when a plugin drops the session-start attachment", async () => {
       // `rewritePromptAttachment` 返回 `null` 是「这条不要」：去重不能把它绕过去。
       container.register("ModManager", {
