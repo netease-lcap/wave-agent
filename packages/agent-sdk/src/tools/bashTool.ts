@@ -49,8 +49,9 @@ const DISALLOWED_AUTO_BACKGROUND_COMMANDS = ["sleep"];
  * Names the search surface this session actually offers.
  *
  * The dedicated `Grep` / `Glob` tools are not part of the default tool set
- * (`core/fs-tools.md`「默认工具集不含搜索工具」); they come back only when
- * `--tools` names them. The description has to follow, or it would tell the
+ * (`core/fs-tools.md`「默认工具集不含搜索工具」); they come back when `--tools`
+ * names them, or when the session has no bash to shadow `grep` / `find` with.
+ * The description has to follow, or it would tell the
  * model to call tools that are not there — or to keep hand-rolling `ls` when
  * `grep` in Bash is already .gitignore-aware.
  *

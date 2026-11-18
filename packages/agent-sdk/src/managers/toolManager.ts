@@ -69,6 +69,7 @@ import { Container } from "../utils/container.js";
 import { appendMemoryCapNotice } from "../utils/memoryCapNotices.js";
 
 import { logger } from "../utils/globalLogger.js";
+import { shouldRegisterSearchTools } from "../utils/searchToolsRegistration.js";
 
 import type { SubagentConfiguration } from "../utils/subagentParser.js";
 import type { SkillMetadata } from "../types/skills.js";
@@ -364,12 +365,13 @@ class ToolManager {
       workflowTool,
     ];
 
-    // Grep / Glob are not part of the default tool set: content and file search
-    // run through the Bash tool's `grep` / `find` shadows
-    // (core/fs-tools.md「默认工具集不含搜索工具」). Naming either one in `--tools`
-    // is the only way back; `--allowedTools` is a permission allow-list and does
-    // not affect registration.
-    if (this.namesSearchTool()) {
+    // Grep / Glob are off by default: search runs through the Bash tool's
+    // `grep` / `find` shadows, which are the thing being paid for instead.
+    // See `shouldRegisterSearchTools`: naming either one in `--tools` asks for
+    // the structured form, and a session with no usable bash gets them
+    // regardless — there is no shadow to search with. `--allowedTools` is a
+    // permission allow-list and does not affect registration.
+    if (shouldRegisterSearchTools(this.tools)) {
       builtInTools.push(globTool, grepTool);
     }
 
@@ -452,25 +454,6 @@ class ToolManager {
   /**
    * Check if a tool should be enabled based on tools configuration and permission rules
    */
-  /**
-   * Whether the caller named `Grep` or `Glob` in the `tools` whitelist.
-   *
-   * These two are the only built-ins that are off unless asked for: search runs
-   * in the Bash tool now (`core/fs-tools.md`), and a session that wants the
-   * structured alternative names it. The check reads the opt-in list directly
-   * rather than going through {@link shouldEnableTool} because that method's
-   * "no list means everything" default is precisely what must not apply here.
-   */
-  private namesSearchTool(): boolean {
-    return (this.tools ?? []).some((name) => {
-      const lower = name.toLowerCase();
-      return (
-        lower === globTool.name.toLowerCase() ||
-        lower === grepTool.name.toLowerCase()
-      );
-    });
-  }
-
   private shouldEnableTool(name: string): boolean {
     const permissionManager =
       this.container.get<PermissionManager>("PermissionManager");
