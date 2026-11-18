@@ -7818,6 +7818,27 @@
 }
 [data-host="desktop"] .slash-command-name {
   line-height: 22px;
+  /* 2026-11-18 评论（`div.slash-commands-popup`「按规范优化这个下拉菜单选项默认字体
+     颜色和 hover、选中时的字体颜色」）：这枚名字自己写 `--vscode-foreground`，把容器
+     的字色盖住了 —— 浅色档该变量没桥到 token（落到宿主注入的 #202020，比容器
+     --cc-text-regular #565A60 深一档）、深色档桥到 primary #E5E7E8（比容器 #C4C7C9
+     亮一档）；两种情形下「常态」都等于「hover / 选中」的字色，三态只剩底色在变。
+     改成 inherit：常态吃容器（= text-regular），hover / 选中吃 item 上的
+     text-primary（`## Menus`：hover/selection 都用 text-primary），与族内其它
+     菜单项逐值一致。分组标题仍走 text-secondary，符合 Group headings 那条。 */
+  color: inherit;
+}
+/* base（SlashCommandsPopup.css 的 `.slash-command-item.selected .slash-command-name`）
+   给选中项的名字单独取 `--vscode-list-activeSelectionForeground`：桌面端浅色解析成
+   #202020，与 item 的 #1F2329 差两个通道值。统一回继承，两主题都吃 item 的 1 级字。 */
+[data-host="desktop"] .slash-command-item.selected .slash-command-name {
+  color: inherit;
+}
+/* 浅色档的 hover 只写了底色、没写字色（深色档在下面的家族块里带了 text-primary），
+   于是 hover 时名字不变色。补一档，三态阶梯才算完整。 */
+[data-host="desktop"][data-theme="light"] .slash-command-item:hover {
+  color: var(--cc-text-primary);
+}
 [data-host="desktop"] .slash-group-title {
   padding: 0 8px;
   color: var(--cc-text-secondary);
