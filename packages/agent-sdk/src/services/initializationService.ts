@@ -1,4 +1,4 @@
-import { handleSessionRestoration } from "./session.js";
+import { handleSessionRestoration, type SessionData } from "./session.js";
 import { setGlobalLogger } from "../utils/globalLogger.js";
 import { LspManager } from "../managers/lspManager.js";
 import { USER_MEMORY_FILE } from "../utils/constants.js";
@@ -219,43 +219,6 @@ export class InitializationService {
     // cached/merged settings.
     remoteSettingsService.startBackgroundFetch();
 
-    // Execute SessionStart hooks
-    try {
-      const phaseStart = performance.now();
-      const sessionStartResult = await hookManager.executeSessionStartHooks(
-        "startup",
-        messageManager.getSessionId(),
-        messageManager.getTranscriptPath(),
-        messageManager,
-      );
-
-      // Inject additionalContext as a meta user message (matches Claude Code).
-      // `wrapInSystemReminder` rather than a literal: the four injection
-      // sources must write byte-identical text, or the dedupe in
-      // `addMetaMessageIfAbsent` stops matching across them.
-      if (sessionStartResult.additionalContext) {
-        messageManager.addMetaMessageIfAbsent(
-          wrapInSystemReminder(
-            `SessionStart hook additional context: ${sessionStartResult.additionalContext}`,
-          ),
-        );
-      }
-
-      // Inject initialUserMessage as a meta user message
-      if (sessionStartResult.initialUserMessage) {
-        messageManager.addUserMessage({
-          content: sessionStartResult.initialUserMessage,
-          isMeta: true,
-        });
-      }
-
-      logger?.debug(
-        `Initialization Phase [SessionStart Hooks] took ${(performance.now() - phaseStart).toFixed(2)}ms`,
-      );
-    } catch (error) {
-      logger?.warn("SessionStart hooks execution failed:", error);
-    }
-
     // Resolve and validate configuration after loading settings.json
     resolveAndValidateConfig();
 
@@ -311,6 +274,7 @@ export class InitializationService {
 
     // Handle session restoration or set provided messages
     const sessionPhaseStart = performance.now();
+    let restoredSession: SessionData | undefined;
     if (options?.messages) {
       // If messages are provided, use them directly (useful for testing)
       messageManager.setMessages(options.messages);
@@ -318,7 +282,7 @@ export class InitializationService {
       messageManager.rebuildUsageFromMessages(options.messages);
     } else {
       // Otherwise, handle session restoration
-      const sessionToRestore = await handleSessionRestoration(
+      restoredSession = await handleSessionRestoration(
         options?.restoreSessionId,
         options?.continueLastSession,
         messageManager.getCurrentWorkdir(),
@@ -326,15 +290,15 @@ export class InitializationService {
       // Rebuild usage array from what the loader collected while scanning the
       // transcript (falls back to the messages when there was nothing to restore).
       messageManager.rebuildUsageFromMessages(
-        sessionToRestore?.messages || [],
-        sessionToRestore?.usages,
+        restoredSession?.messages || [],
+        restoredSession?.usages,
       );
 
-      if (sessionToRestore) {
-        messageManager.initializeFromSession(sessionToRestore);
+      if (restoredSession) {
+        messageManager.initializeFromSession(restoredSession);
 
         // Update task manager with the root session ID to ensure continuity across compactions
-        taskManager.setTaskListId(sessionToRestore.id);
+        taskManager.setTaskListId(restoredSession.id);
 
         // After session is initialized, load tasks for the session
         const tasks = await taskManager.listTasks();
@@ -344,6 +308,54 @@ export class InitializationService {
     logger?.debug(
       `Initialization Phase [Session Restoration] took ${(performance.now() - sessionPhaseStart).toFixed(2)}ms`,
     );
+
+    // Execute SessionStart hooks — **after** restoration, like Claude Code
+    // ("a conversation you resumed appears without waiting for the hooks …
+    // their context reaches Claude", hooks.md; `SessionStart` runs again on
+    // resume with `source: "resume"` so hooks can refresh their context).
+    // Restoring replaces the whole message list, so injecting before it dropped
+    // the context of every `restoreSessionId` / `continueLastSession` startup.
+    try {
+      const phaseStart = performance.now();
+      const sessionStartResult = await hookManager.executeSessionStartHooks(
+        restoredSession ? "resume" : "startup",
+        // A resumed hook must describe the session we just adopted, not the
+        // empty one this Agent was created with (same as
+        // `InteractionService.restoreSession`, which passes `sessionData.id`).
+        restoredSession?.id ?? messageManager.getSessionId(),
+        messageManager.getTranscriptPath(),
+        messageManager,
+      );
+
+      // Inject additionalContext as a meta user message (matches Claude Code).
+      // `wrapInSystemReminder` rather than a literal: the four injection
+      // sources must write byte-identical text, or the dedupe in
+      // `addMetaMessageIfAbsent` stops matching across them. No per-source
+      // branch: on resume the restored list already ends with the copy from
+      // the previous run and this dedupe skips it.
+      if (sessionStartResult.additionalContext) {
+        messageManager.addMetaMessageIfAbsent(
+          wrapInSystemReminder(
+            `SessionStart hook additional context: ${sessionStartResult.additionalContext}`,
+          ),
+        );
+      }
+
+      // Inject initialUserMessage as a meta user message. Startup only: on a
+      // resume the restored conversation already has its own first turn.
+      if (!restoredSession && sessionStartResult.initialUserMessage) {
+        messageManager.addUserMessage({
+          content: sessionStartResult.initialUserMessage,
+          isMeta: true,
+        });
+      }
+
+      logger?.debug(
+        `Initialization Phase [SessionStart Hooks] took ${(performance.now() - phaseStart).toFixed(2)}ms`,
+      );
+    } catch (error) {
+      logger?.warn("SessionStart hooks execution failed:", error);
+    }
 
     logger?.debug(
       `Total Initialization took ${(performance.now() - startTime).toFixed(2)}ms`,
