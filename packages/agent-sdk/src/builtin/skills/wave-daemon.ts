@@ -37,11 +37,15 @@ One-off edge: \`stop\` / \`restart\` cannot stop a daemon that predates the \`sh
 ## 2. Creating a session
 
 \`\`\`bash
-wave daemon create --worktree [name] --workdir <dir> --permission-mode bypassPermissions
+wave daemon create --worktree [name] --name <name> --workdir <dir> --permission-mode bypassPermissions
+wave daemon rename <session> <new name>
 \`\`\`
 
-- Prints the new sessionId on the first line (scripts read it from there), plus a second line with the worktree path and branch when \`--worktree\` was used.
-- \`--worktree\` creates the session in a fresh git worktree, so it never touches your main checkout. The name is optional — one is generated when omitted.
+- **Addressing.** Every \`<sessionId>\` in this skill also accepts a unique id prefix (at least 4 characters of hex) or the session's name — the three are interchangeable, and the full id always works (use that in scripts). \`wave daemon list\` prints the name.
+- **Names never guess.** An ambiguous reference fails with the candidates listed (id, name, status, working directory, last message) and the command is **not** run; a name that matches nothing fails with \`No session id, id prefix or name matches "x". Known names: …\`. Duplicate names are allowed (a warning at create time), and they collide exactly here.
+- Prints the new sessionId on the first line (scripts read it from there), then \`Name: <name>\`, then the worktree path and branch when \`--worktree\` was used.
+- \`--name <name>\` sets the session's name; without it the name is the worktree name, else \`<workdir basename>-<n>\` with n picked so the name is not taken. \`rename\` changes it later — the name **is** the session title the desktop app and IDE plugins show, so a rename shows up there too.
+- \`--worktree\` creates the session in a fresh git worktree, so it never touches your main checkout.
 - \`--permission-mode\` defaults to \`bypassPermissions\` for daemon-created sessions, so a session created this way raises no approval prompts at all. Passing the flag explicitly is redundant but fine and self-documenting. Valid modes: \`default\`, \`bypassPermissions\`, \`acceptEdits\`, \`plan\`, \`dontAsk\`.
 - \`--workdir\` defaults to the current directory.
 
@@ -74,7 +78,7 @@ wave daemon send <sessionId> <corrected task>
 ## 5. Monitoring
 
 \`\`\`bash
-wave daemon list                   # sessions currently live in the daemon's in-memory registry
+wave daemon list                   # live sessions: id, name, status, message count, working directory
 wave daemon status <sessionId>     # one session: status, pending approvals, and the last message
 wave daemon wait <sessionId>       # block until it settles, then print that same snapshot
 wave daemon status <id> --lines 0  # status line only — no message text (single-shot snapshot)
