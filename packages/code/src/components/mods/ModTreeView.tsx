@@ -28,7 +28,9 @@ const TOKEN_COLORS: Record<string, string> = {
   warning: "yellow",
   permission: "yellow",
   error: "red",
-  planMode: "blue",
+  // ANSI 4 号蓝在深色终端上几乎读不出来（差异面板的 `@@` hunk 头就靠它），归到
+  // info 色该有的那档青。
+  planMode: "cyan",
   ide: "blue",
   claude: "cyan",
   promptBorder: "gray",
