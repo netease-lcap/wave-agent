@@ -945,6 +945,22 @@ html[data-theme="dark"] .desktop-session-status-slot {
   white-space: nowrap;
 }
 
+/* 基准分支 / 分支列表的图标：2026-11-17 起换成与空态「快捷方式」第 8 个分类
+   「Git 工作流」同一份矢量（`QuickStartCategoryIcon` 导出的 `GitBranchIcon`），
+   原来是 codicon 字体字形 `codicon-git-branch`（设计师评论：点触发器前的
+   `span.codicon.codicon-git-branch`「这里的图标和」+ 点快捷方式那颗
+   `svg.quick-start-cat-icon`「这个 保持一致」）。
+   盒仍是 16×16 —— 与 `.codicon[class*='codicon-']` 的 `font: 16px/1` 同栅格 ——
+   所以触发器（左内衬 6 / 图标→名称 6）与菜单项（图标→名称 8）的排布一格不动；
+   取色沿用字形原来那一档 `--vscode-icon-foreground`（浅 #606060 / 深 #CCCCCC），
+   换件不改颜色（桌面端触发器另有指定，见 host-desktop.css 的图标色组）。
+   `flex: none`：字体字形在 flex 行里默认可压，矢量按 16px 固定，窄窗口不再缩。 */
+.desktop-branch-icon {
+  display: block;
+  flex: none;
+  color: var(--vscode-icon-foreground);
+}
+
 .desktop-workdir-caret {
   opacity: 0.6;
   font-size: 12px;
@@ -1187,6 +1203,15 @@ html[data-theme="dark"] .desktop-session-status-slot {
   flex: 1;
   display: flex;
   flex-direction: column;
+  min-width: 0;
+}
+
+/* 分支名被省略时的全文气泡容器（2026-11-18）：`Tooltip` 自带的
+   `.tooltip-container` 是 `inline-flex; flex-shrink: 0` —— 作为菜单行的 flex 子项
+   它不肯缩，长名会顶出菜单。这里只把它改回「占满剩余宽度、可缩」，行内排版与
+   原来的 `.desktop-workdir-menu-path` 一致（path 自己不缩、尾部省略）。 */
+.desktop-workdir-menu-item .desktop-branch-name-tip {
+  flex: 1 1 0;
   min-width: 0;
 }
 
