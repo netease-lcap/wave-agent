@@ -1465,11 +1465,13 @@ export class AIManager {
               "session-start",
               `SessionStart hook additional context: ${sessionStartResult.additionalContext}`,
             );
+            // The head copy was folded into the summary, so the list no longer
+            // holds it and this injection lands again (Claude Code behaves the
+            // same after auto-compaction).
             if (sessionStartText !== null) {
-              this.messageManager.addUserMessage({
-                content: wrapInSystemReminder(sessionStartText),
-                isMeta: true,
-              });
+              this.messageManager.addMetaMessageIfAbsent(
+                wrapInSystemReminder(sessionStartText),
+              );
             }
           }
           if (sessionStartResult.initialUserMessage) {

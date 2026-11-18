@@ -351,6 +351,8 @@ describe("Agent - Task Session Restoration", () => {
     const messageManager = (
       agent as unknown as { messageManager: MessageManager }
     ).messageManager;
+    // Same judge as the SessionStart copy above: exact text, via the shared
+    // `addMetaMessageIfAbsent` — no second implementation to drift.
     const occurrences = messageManager
       .getMessages()
       .filter(
@@ -358,12 +360,110 @@ describe("Agent - Task Session Restoration", () => {
           message.isMeta === true &&
           message.blocks.some(
             (block) =>
-              block.type === "text" &&
-              block.content.trim() === "Start with a plan",
+              block.type === "text" && block.content === "Start with a plan",
           ),
       );
     expect(occurrences).toHaveLength(1);
 
     await agent.destroy();
+  });
+
+  /**
+   * 平台层去重（对齐 Claude Code 2.1.295）：`resume` 是往**已有**对话尾部追加，
+   * 上一次运行注入的那份副本还在列表里，所以同内容不再加第二份；内容变了就刷新。
+   */
+  describe("SessionStart resume injection dedupe", () => {
+    const startCopy = (context: string) =>
+      `<system-reminder>\nSessionStart hook additional context: ${context}\n</system-reminder>`;
+
+    const metaTextsOf = (messageManager: MessageManager) =>
+      messageManager
+        .getMessages()
+        .filter((message) => message.isMeta)
+        .flatMap((message) =>
+          message.blocks.flatMap((block) =>
+            block.type === "text" ? [block.content] : [],
+          ),
+        );
+
+    async function restoreWith(history: unknown[], context: string) {
+      const initialSessionId = randomUUID();
+      const targetSessionId = randomUUID();
+      const { handleSessionRestoration, loadSessionFromJsonl } = await import(
+        "../../src/services/session.js"
+      );
+      vi.mocked(handleSessionRestoration).mockResolvedValue({
+        id: initialSessionId,
+        messages: [],
+        metadata: {
+          workdir: testWorkdir,
+          lastActiveAt: new Date().toISOString(),
+          latestTotalTokens: 0,
+        },
+      });
+      vi.mocked(loadSessionFromJsonl).mockResolvedValue({
+        id: targetSessionId,
+        messages: history,
+        metadata: {
+          workdir: testWorkdir,
+          lastActiveAt: new Date().toISOString(),
+          latestTotalTokens: 0,
+        },
+      } as unknown as Awaited<ReturnType<typeof loadSessionFromJsonl>>);
+
+      const agent = await Agent.create({
+        apiKey: "test-key",
+        baseURL: "https://test.com",
+        workdir: testWorkdir,
+      });
+      vi.spyOn(
+        (agent as unknown as { hookManager: HookManager }).hookManager,
+        "executeSessionEndHooks",
+      ).mockResolvedValue([]);
+      vi.spyOn(
+        (agent as unknown as { hookManager: HookManager }).hookManager,
+        "executeSessionStartHooks",
+      ).mockResolvedValue({ results: [], additionalContext: context });
+
+      await agent.restoreSession(targetSessionId);
+      const messageManager = (
+        agent as unknown as { messageManager: MessageManager }
+      ).messageManager;
+      const texts = metaTextsOf(messageManager);
+      const total = messageManager.getMessages().length;
+      await agent.destroy();
+      return { texts, total };
+    }
+
+    const previousRunCopy = () => ({
+      id: "msg-previous-run",
+      role: "user" as const,
+      blocks: [{ type: "text" as const, content: startCopy("Cached context") }],
+      timestamp: new Date().toISOString(),
+      isMeta: true,
+    });
+
+    it("keeps the copy the previous run injected instead of appending a second one", async () => {
+      const { texts, total } = await restoreWith(
+        [previousRunCopy()],
+        "Cached context",
+      );
+
+      expect(texts).toEqual([startCopy("Cached context")]);
+      expect(total).toBe(1);
+    });
+
+    it("appends when the hook's context changed, so the stale copy is refreshed", async () => {
+      const { texts, total } = await restoreWith(
+        [previousRunCopy()],
+        "Fresh context",
+      );
+
+      expect(texts).toEqual([
+        startCopy("Cached context"),
+        startCopy("Fresh context"),
+      ]);
+      expect(total).toBe(2);
+    });
   });
 });
