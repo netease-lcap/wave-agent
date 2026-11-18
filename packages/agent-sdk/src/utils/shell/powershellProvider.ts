@@ -26,6 +26,38 @@ export const POWERSHELL_SPAWN_FLAGS = [
 ] as const;
 
 /**
+ * The statement a **hook** command needs appended, and why it differs from the
+ * tool's `$_ec` probe.
+ *
+ * A hook's verdict is its exit code, and the protocol's "block" verdict is 2.
+ * PowerShell flattens a native program's code: measured on 5.1,
+ * `powershell -Command 'cmd /c exit 2'` exits 1, and with this statement it
+ * exits 2 again (design §7.0). Only the 2 is restored — every other failure
+ * already exits 1, which is the "failed, do not block" outcome the protocol
+ * wants.
+ *
+ * It must read `$?`, not `$LASTEXITCODE`, on success: a hook that runs
+ * `git --nosuch; Write-Output ok` ends with a stale 128 in `$LASTEXITCODE`, and
+ * a probe that preferred it would report 128 for a hook whose last statement
+ * succeeded. The tool's probe prefers `$LASTEXITCODE` for the opposite reason —
+ * a tool call reports the command's own process status.
+ *
+ * Same order as Claude Code's hook branch (`hooks.ts:967`, binary
+ * `@328877015`), which appends `; if (-not $?) { if ($LASTEXITCODE -eq 2) {
+ * exit 2 } }`. CC also appends `; if (-not $?) { exit 1 }` and an AST check
+ * over the script body; the first is redundant here (PS already exits 1 on a
+ * failed statement) and the second belongs to CC's `$claudeNoVerdict` protocol,
+ * which wave has no counterpart for.
+ */
+export const POWERSHELL_HOOK_EXIT_WRAPPER =
+  "\n; if (-not $?) { if ($LASTEXITCODE -eq 2) { exit 2 } }";
+
+/** Append {@link POWERSHELL_HOOK_EXIT_WRAPPER} to a hook command. */
+export function withHookExitCode(command: string): string {
+  return `${command}${POWERSHELL_HOOK_EXIT_WRAPPER}`;
+}
+
+/**
  * Append the exit-code probe and the CWD tracker to the command.
  *
  * Both are statements after the user's command, in one `-Command` string, so

@@ -1,5 +1,5 @@
 import { readFileSync, writeFileSync, mkdirSync } from "fs";
-import { exec } from "child_process";
+import { execFile } from "child_process";
 import { promisify } from "util";
 import { join } from "path";
 import { tmpdir } from "os";
@@ -10,9 +10,10 @@ import {
 } from "../constants/toolLimits.js";
 import { logger } from "./globalLogger.js";
 import { parseFrontmatterYaml, splitFrontmatter } from "./frontmatterYaml.js";
-import { resolveShellPath } from "./shellResolver.js";
+import { resolveSessionShell } from "./shell/shellToolGate.js";
+import { POWERSHELL_SPAWN_FLAGS } from "./shell/powershellProvider.js";
 
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 interface ParsedMarkdownFile {
   content: string;
@@ -281,8 +282,6 @@ export async function executeBashCommands(
   const results: BashCommandResult[] = [];
 
   for (const originalCommand of commands) {
-    // Judge the command as written, before the Windows fallback rewrites it
-    // into a `chcp 65001 && …` wrapper.
     if (gate) {
       const decision = await gate.check(originalCommand, workdir);
       if (decision.behavior === "deny") {
@@ -290,29 +289,38 @@ export async function executeBashCommands(
       }
     }
 
-    let command = originalCommand;
-    const execOptions: { cwd: string; timeout: number; shell?: string } = {
-      cwd: workdir,
-      timeout,
-    };
+    const command = originalCommand;
 
-    // Skill templates (e.g. !`gh pr view ... 2>/dev/null || echo '{}'`) use
-    // bash-only syntax. On Windows, child_process.exec defaults to cmd.exe,
-    // where `/dev/null` fails with a localized "path not found" error whose
-    // GBK bytes get mis-decoded as UTF-8 (mojibake). Run through Git Bash
-    // when available (same contract as the bash tool); otherwise force the
-    // UTF-8 codepage so cmd's own messages decode correctly.
-    if (process.platform === "win32") {
-      const bashPath = resolveShellPath();
-      if (bashPath) {
-        execOptions.shell = bashPath;
-      } else {
-        command = `chcp 65001 >NUL && ${command}`;
-      }
+    // Skill templates (e.g. !`gh pr view ... 2>/dev/null || echo '{}'`) are
+    // written in bash: `2>/dev/null`, `&&`, `$VAR`. cmd.exe mis-parses all of
+    // them, and its localized "path not found" message for `/dev/null` arrives
+    // as mojibake (GBK bytes decoded as UTF-8). The command therefore runs in
+    // the session's own shell — the same decision that runs hooks and registered
+    // the shell tool (`utils/shell/shellToolGate.ts`). A machine with neither
+    // shell says so instead of silently degrading to cmd.exe.
+    const sessionShell = resolveSessionShell(workdir);
+    if ("problem" in sessionShell) {
+      throw new Error(sessionShell.problem);
     }
+    const spawnArgs =
+      sessionShell.kind === "bash"
+        ? // Passed through unchanged, as before: a skill author writes a bash
+          // command and already writes it in POSIX form.
+          ["-c", command]
+        : [...POWERSHELL_SPAWN_FLAGS, command];
 
     try {
-      const { stdout, stderr } = await execAsync(command, execOptions);
+      const { stdout, stderr } = await execFileAsync(
+        sessionShell.shellPath,
+        spawnArgs,
+        {
+          cwd: workdir,
+          timeout,
+          // The desktop main process has no console; without this every
+          // skill-injected command allocates a visible console window.
+          windowsHide: true,
+        },
+      );
       results.push({
         command,
         output: (stdout + (stderr || "")).trim(),

@@ -522,4 +522,105 @@ describe("markdownParser", () => {
       expect(result.commands).toEqual(["echo hi"]);
     });
   });
+
+  // Which shell runs an injected command is the session's own (P5: no
+  // `cmd.exe` downgrade). Both branches are asserted with a fake
+  // `child_process` so the argv shape is visible without spawning anything, and
+  // the "no shell" case — a machine with neither Git Bash nor PowerShell — is
+  // asserted as the actionable error it throws.
+  describe("executeBashCommands shell routing", () => {
+    type Recorded = {
+      file: string;
+      args: string[];
+      options: { cwd?: string; timeout?: number; windowsHide?: boolean };
+    };
+
+    /** Re-import markdownParser with a fake child_process that records argv. */
+    const loadWithFakeExec = async (sessionShell: unknown) => {
+      const recorded: Recorded[] = [];
+      vi.resetModules();
+      vi.doMock("../../src/utils/shell/shellToolGate.js", () => ({
+        resolveSessionShell: () => sessionShell,
+      }));
+      vi.doMock("child_process", async () => {
+        const { promisify } = await import("node:util");
+        const execFile = (() => {
+          throw new Error("execFile is only reached through promisify here");
+        }) as unknown as Record<symbol, unknown>;
+        // Node's real `execFile` resolves through `promisify.custom` to
+        // `{ stdout, stderr }`; a fake without that hook hands promisify the raw
+        // callback values instead, and the code under test reads neither.
+        execFile[promisify.custom] = (
+          file: string,
+          args: string[],
+          options: Recorded["options"],
+        ) => {
+          recorded.push({ file, args, options });
+          return Promise.resolve({ stdout: "ok", stderr: "" });
+        };
+        return { execFile };
+      });
+      const { executeBashCommands: execute } = await import(
+        "../../src/utils/markdownParser.js"
+      );
+      return { recorded, execute };
+    };
+
+    afterEach(() => {
+      vi.doUnmock("../../src/utils/shell/shellToolGate.js");
+      vi.doUnmock("child_process");
+      vi.resetModules();
+    });
+
+    it("runs the command through the bash binary with -c", async () => {
+      const { recorded, execute } = await loadWithFakeExec({
+        kind: "bash",
+        shellPath: "/usr/bin/bash",
+      });
+
+      const results = await execute(["gh pr view 2>/dev/null"], "/work");
+
+      expect(results[0]!.output).toBe("ok");
+      expect(recorded).toHaveLength(1);
+      expect(recorded[0]!.file).toBe("/usr/bin/bash");
+      expect(recorded[0]!.args).toEqual(["-c", "gh pr view 2>/dev/null"]);
+      expect(recorded[0]!.options).toMatchObject({
+        cwd: "/work",
+        windowsHide: true,
+      });
+    });
+
+    it("runs the command through PowerShell with the one-shot argv, unrewritten", async () => {
+      const { recorded, execute } = await loadWithFakeExec({
+        kind: "powershell",
+        shellPath: "C:\\Program Files\\PowerShell\\7\\pwsh.exe",
+      });
+
+      // A Windows path, deliberately: only the bash branch rewrites paths.
+      await execute(["Get-ChildItem C:\\temp"], "/work");
+
+      expect(recorded[0]!.file).toBe(
+        "C:\\Program Files\\PowerShell\\7\\pwsh.exe",
+      );
+      expect(recorded[0]!.args).toEqual([
+        "-NoProfile",
+        "-NonInteractive",
+        "-NoLogo",
+        "-Command",
+        "Get-ChildItem C:\\temp",
+      ]);
+    });
+
+    it("refuses to run when the session has no shell", async () => {
+      const { recorded, execute } = await loadWithFakeExec({
+        problem:
+          "No shell is available to run this command: Git Bash was not found and the PowerShell tool is off.",
+      });
+
+      await expect(execute(["echo hi"], "/work")).rejects.toThrow(
+        "No shell is available",
+      );
+      expect(recorded).toHaveLength(0);
+    });
+  });
 });

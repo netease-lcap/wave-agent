@@ -2,9 +2,14 @@ import { describe, expect, it, vi } from "vitest";
 import {
   collectShellToolGateInput,
   isPowerShellToolEnabled,
+  MSG_NO_SHELL,
+  MSG_POWERSHELL_MISSING,
+  resolveSessionShell,
   resolveShellKind,
 } from "../../../src/utils/shell/shellToolGate.js";
 import { isBashAvailable } from "../../../src/utils/bashAvailability.js";
+import { resolveShellPath } from "../../../src/utils/shellResolver.js";
+import { getPowerShellPath } from "../../../src/utils/shell/powershellDetection.js";
 import { loadMergedWaveConfig } from "../../../src/services/configurationService.js";
 
 vi.mock("../../../src/utils/bashAvailability.js", () => ({
@@ -13,6 +18,14 @@ vi.mock("../../../src/utils/bashAvailability.js", () => ({
 
 vi.mock("../../../src/services/configurationService.js", () => ({
   loadMergedWaveConfig: vi.fn(),
+}));
+
+vi.mock("../../../src/utils/shellResolver.js", () => ({
+  resolveShellPath: vi.fn(),
+}));
+
+vi.mock("../../../src/utils/shell/powershellDetection.js", () => ({
+  getPowerShellPath: vi.fn(),
 }));
 
 const gate = (
@@ -135,5 +148,102 @@ describe("collectShellToolGateInput", () => {
     expect(collectShellToolGateInput("/work").envValue).toBe("1");
 
     vi.unstubAllEnvs();
+  });
+});
+
+describe("resolveSessionShell", () => {
+  /** Pin the platform for one case; `restore()` puts it back. */
+  const pinPlatform = (platform: NodeJS.Platform) => {
+    const original = process.platform;
+    Object.defineProperty(process, "platform", { value: platform });
+    return () =>
+      Object.defineProperty(process, "platform", { value: original });
+  };
+
+  it("returns the Git Bash binary for a bash session", () => {
+    const restore = pinPlatform("win32");
+    vi.mocked(loadMergedWaveConfig).mockReturnValue({});
+    vi.mocked(isBashAvailable).mockReturnValue(true);
+    vi.mocked(resolveShellPath).mockReturnValue(
+      "C:\\Program Files\\Git\\bin\\bash.exe",
+    );
+
+    expect(resolveSessionShell("/work")).toEqual({
+      kind: "bash",
+      shellPath: "C:\\Program Files\\Git\\bin\\bash.exe",
+    });
+
+    restore();
+  });
+
+  it("returns the PowerShell binary for a PowerShell session", () => {
+    const restore = pinPlatform("win32");
+    vi.mocked(loadMergedWaveConfig).mockReturnValue({});
+    vi.mocked(isBashAvailable).mockReturnValue(false);
+    vi.mocked(getPowerShellPath).mockReturnValue(
+      "C:\\Program Files\\PowerShell\\7\\pwsh.exe",
+    );
+
+    expect(resolveSessionShell("/work")).toEqual({
+      kind: "powershell",
+      shellPath: "C:\\Program Files\\PowerShell\\7\\pwsh.exe",
+    });
+
+    restore();
+  });
+
+  it("separates 'the gate chose PowerShell but it is not installed' from 'no shell at all'", () => {
+    const restore = pinPlatform("win32");
+    vi.mocked(loadMergedWaveConfig).mockReturnValue({});
+    vi.mocked(isBashAvailable).mockReturnValue(false);
+    vi.mocked(getPowerShellPath).mockReturnValue(undefined);
+
+    // The two have different fixes ("install PowerShell 7" vs "install Git for
+    // Windows"), so one shared message would send half the readers the wrong way.
+    expect(resolveSessionShell("/work")).toEqual({
+      problem: MSG_POWERSHELL_MISSING,
+    });
+
+    restore();
+  });
+
+  it("reports no shell when both are absent", () => {
+    const restore = pinPlatform("win32");
+    vi.mocked(loadMergedWaveConfig).mockReturnValue({});
+    vi.mocked(isBashAvailable).mockReturnValue(false);
+    vi.stubEnv("WAVE_USE_POWERSHELL_TOOL", "0");
+
+    expect(resolveSessionShell("/work")).toEqual({ problem: MSG_NO_SHELL });
+
+    vi.unstubAllEnvs();
+    restore();
+  });
+
+  it("reports no shell when the gate says bash but no binary was found", () => {
+    // Off Windows there is no PowerShell branch, so a box without bash/zsh is
+    // the same dead end as a Windows box without Git for Windows.
+    const restore = pinPlatform("linux");
+    vi.mocked(loadMergedWaveConfig).mockReturnValue({});
+    vi.mocked(isBashAvailable).mockReturnValue(false);
+    vi.mocked(resolveShellPath).mockReturnValue(undefined);
+
+    expect(resolveSessionShell("/work")).toEqual({ problem: MSG_NO_SHELL });
+
+    restore();
+  });
+
+  it("reads the settings of the workdir it was given", () => {
+    const restore = pinPlatform("win32");
+    vi.mocked(loadMergedWaveConfig).mockReturnValue({});
+    vi.mocked(isBashAvailable).mockReturnValue(true);
+    vi.mocked(resolveShellPath).mockReturnValue("/usr/bin/bash");
+
+    resolveSessionShell("/work/project");
+
+    // The workdir decides which settings.json is read, so a per-project opt-out
+    // is honoured here exactly as the tool registry honours it.
+    expect(loadMergedWaveConfig).toHaveBeenCalledWith("/work/project");
+
+    restore();
   });
 });

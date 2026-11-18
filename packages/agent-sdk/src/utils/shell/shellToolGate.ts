@@ -34,6 +34,8 @@
 
 import { loadMergedWaveConfig } from "../../services/configurationService.js";
 import { isBashAvailable } from "../bashAvailability.js";
+import { resolveShellPath } from "../shellResolver.js";
+import { getPowerShellPath } from "./powershellDetection.js";
 
 /** Opt-in / opt-out switch for the PowerShell tool. */
 export const POWERSHELL_TOOL_ENV_VAR = "WAVE_USE_POWERSHELL_TOOL";
@@ -116,4 +118,57 @@ export function collectShellToolGateInput(
     envValue: fromSettings ?? process.env[POWERSHELL_TOOL_ENV_VAR],
     hasGitBash: isBashAvailable(),
   };
+}
+
+/**
+ * The binary that will actually run a command for this session, or an
+ * actionable message why there is none.
+ *
+ * Callers that must spawn a shell themselves — hooks, the telemetry helper,
+ * skill-injected `!`cmd`` blocks — used to pick a shell on their own, on
+ * Windows with a `cmd.exe` fallback when Git Bash was missing. That fallback is
+ * what this function removes: it was a silent downgrade (hooks are written in
+ * bash syntax; `cmd /c` does not even strip quotes after the first token, issue
+ * #1773) and it let a session be judged in one shell and executed in another.
+ * Claude Code's Bash-hook branch throws in the same situation and never reaches
+ * for cmd.exe (`src/utils/hooks.ts:976`).
+ *
+ * The two failure modes stay distinct on purpose — "install Git for Windows"
+ * and "the PowerShell tool is on but PowerShell is not on PATH" have different
+ * fixes, and one message for both would send half the users to the wrong one.
+ */
+export type SessionShell =
+  | { kind: "bash" | "powershell"; shellPath: string }
+  | { problem: string };
+
+/** Neither shell: no Git Bash, and the PowerShell tool is off or impossible. */
+export const MSG_NO_SHELL =
+  "No shell is available to run this command: Git Bash was not found and the PowerShell tool is off. " +
+  "Install Git for Windows (https://git-scm.com/downloads/win), or set " +
+  `"env": { "${POWERSHELL_TOOL_ENV_VAR}": "1" } in settings.json.`;
+
+/** The gate selected PowerShell, but no binary is on PATH. */
+export const MSG_POWERSHELL_MISSING =
+  "The PowerShell tool is enabled but no PowerShell executable (pwsh or powershell) was found on PATH. " +
+  "Install PowerShell 7, or set " +
+  `"env": { "${POWERSHELL_TOOL_ENV_VAR}": "0" } in settings.json to use Git Bash.`;
+
+/**
+ * Resolve the session's shell binary. `workdir` decides which project
+ * `settings.json` is read, so a per-project `WAVE_USE_POWERSHELL_TOOL` is
+ * honoured here exactly as it is by the tool registry.
+ */
+export function resolveSessionShell(workdir?: string): SessionShell {
+  const kind = resolveShellKind(collectShellToolGateInput(workdir));
+  if (kind === "powershell") {
+    const shellPath = getPowerShellPath();
+    return shellPath
+      ? { kind, shellPath }
+      : { problem: MSG_POWERSHELL_MISSING };
+  }
+  if (kind === "bash") {
+    const shellPath = resolveShellPath();
+    return shellPath ? { kind, shellPath } : { problem: MSG_NO_SHELL };
+  }
+  return { problem: MSG_NO_SHELL };
 }
