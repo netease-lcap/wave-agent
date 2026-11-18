@@ -1,5 +1,6 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useRef } from "react";
 import { useRovingMenu } from "../utils/useRovingMenu";
+import { useTruncation } from "../utils/useTruncation";
 import { isDesktopHost } from "../utils/platform";
 import { PermCaretIcon } from "./HeaderIcons";
 import { GitBranchIcon } from "./QuickStartCategoryIcon";
@@ -40,14 +41,11 @@ export const DesktopWorktreeControls: React.FC<
   const triggerRef = useRef<HTMLDivElement>(null);
 
   // 分支名 hover 出全文气泡（设计师 2026-11-18：菜单宽度「要参考规范…超出的字符
-  // 省略，hover 通过 tooltip 提示」，同轮答复「只在被省略时出」）。
-  // 口径沿用 0917 排队消息那条「字数少就不应该有气泡」：逐条量名称节点的
-  // scrollWidth > clientWidth，只在结果变化时 setState，避免与 ResizeObserver 互打。
+  // 省略，hover 通过 tooltip 提示」，同轮答复「只在被省略时出」，并在第二轮把主机 /
+  // 最近打开两条菜单一起点名要求补上 ⇒ 三处共用 utils/useTruncation）。
   // 只在桌面端挂 —— 插件端原生 `title` 本来就看得见，桌面端 webview 里看不到
   // （1029 评论「我这还是看不到，换成桌面端自绘的 Tooltip」），所以两端各用各的。
   const desktopHost = isDesktopHost();
-  const nameRefs = useRef(new Map<string, HTMLSpanElement>());
-  const [truncatedNames, setTruncatedNames] = useState<string[]>([]);
 
   // Opening focuses the currently selected branch (permission-mode dropdown
   // precedent), so Enter re-confirms it and Arrow keys move from there.
@@ -64,31 +62,10 @@ export const DesktopWorktreeControls: React.FC<
     },
   );
 
-  useEffect(() => {
-    if (!open || !desktopHost) return;
-    const measure = () => {
-      const next: string[] = [];
-      nameRefs.current.forEach((el, name) => {
-        if (el.scrollWidth > el.clientWidth + 1) next.push(name);
-      });
-      setTruncatedNames((prev) =>
-        prev.length === next.length && prev.every((v, i) => v === next[i])
-          ? prev
-          : next,
-      );
-    };
-    // 菜单刚挂载的同一帧还量不到宽度，下一帧再量；之后宽度变化由 RO 兜住。
-    const raf = requestAnimationFrame(measure);
-    if (typeof ResizeObserver === "undefined") {
-      return () => cancelAnimationFrame(raf);
-    }
-    const ro = new ResizeObserver(measure);
-    nameRefs.current.forEach((el) => ro.observe(el));
-    return () => {
-      cancelAnimationFrame(raf);
-      ro.disconnect();
-    };
-  }, [open, branches, desktopHost]);
+  const { register: registerName, truncated } = useTruncation(
+    open && desktopHost,
+    branches.join("\n"),
+  );
 
   // 原生控件（语义 / 键盘 / 命中层），两个宿主共用同一份 JSX —— 桌面端只是把它
   // 视觉隐藏、由 `.desktop-worktree-check` 画框，插件端仍是它自己画。
@@ -146,17 +123,14 @@ export const DesktopWorktreeControls: React.FC<
                 <span className="desktop-workdir-menu-path">
                   <span
                     className="desktop-workdir-menu-name"
-                    ref={(el) => {
-                      if (el) nameRefs.current.set(b, el);
-                      else nameRefs.current.delete(b);
-                    }}
+                    ref={registerName(b)}
                   >
                     {b}
                   </span>
                 </span>
               );
               // 被省略的那几条才包气泡（同一行其余的悬停事件不额外挂东西）。
-              const showTip = desktopHost && truncatedNames.includes(b);
+              const showTip = truncated.includes(b);
               return (
                 <div
                   key={b}

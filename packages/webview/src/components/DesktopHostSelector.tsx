@@ -7,6 +7,9 @@ import React, {
   useMemo,
 } from "react";
 import { useRovingMenu } from "../utils/useRovingMenu";
+import { useTruncation } from "../utils/useTruncation";
+import { isDesktopHost } from "../utils/platform";
+import { Tooltip } from "./Tooltip";
 import {
   ContextLocalIcon,
   PermCaretIcon,
@@ -137,6 +140,8 @@ export const DesktopHostSelector: React.FC<DesktopHostSelectorProps> = ({
    */
   const [editing, setEditing] = useState<{ id?: string } | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  /** 菜单外框：气泡的水平锚点（压在名称节点自己右缘会上内衬，见分支菜单同款注释）。 */
+  const menuBoxRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLDivElement>(null);
 
   // Selectable entries. Some mount paths render before the host list arrives
@@ -203,6 +208,15 @@ export const DesktopHostSelector: React.FC<DesktopHostSelectorProps> = ({
         closeReturningFocus();
       },
     },
+  );
+
+  // 主机名被省略时补自绘气泡（设计师 2026-11-18 第三轮：菜单定宽 260 之后
+  // 「把省略没有气泡提示的问题都补上」）。口径与分支菜单同一份 utils/useTruncation；
+  // 插件端仍走原生 title（那边原生提示看得见），所以只在桌面端量、只在桌面端挂。
+  const desktopHost = isDesktopHost();
+  const { register: registerName, truncated } = useTruncation(
+    open && desktopHost,
+    options.map((option) => option.id).join("\n"),
   );
 
   const openEdit = useCallback(
@@ -314,76 +328,111 @@ export const DesktopHostSelector: React.FC<DesktopHostSelectorProps> = ({
     );
   }, [open, scrollBlocks, resizeTick]);
 
-  const renderOption = (row: OptionRow) => (
-    <div
-      key={row.option.id}
-      className={`desktop-workdir-menu-item${
-        row.option.disabled ? " desktop-workdir-menu-item-disabled" : ""
-      }`}
-      role="option"
-      aria-selected={row.option.id === host}
-      aria-disabled={row.option.disabled ? true : undefined}
-      {...getItemProps(row.itemIndex)}
-      title={row.option.disabled ? row.option.hint : row.option.label}
-      data-testid={
-        row.option.kind === "local" ? "desktop-host-local" : "desktop-host-item"
-      }
-      data-host-id={row.option.id}
-      data-host-kind={row.option.kind}
-    >
-      {/* 只有「本地」那一行带图标（与触发键同款，见下）；具体主机名不再各带一颗
+  const renderOption = (row: OptionRow) => {
+    const showTip = desktopHost && truncated.includes(row.option.id);
+    const name = (
+      <span
+        className="desktop-workdir-menu-name"
+        ref={registerName(row.option.id)}
+      >
+        {row.option.label}
+      </span>
+    );
+    return (
+      <div
+        key={row.option.id}
+        className={`desktop-workdir-menu-item${
+          row.option.disabled ? " desktop-workdir-menu-item-disabled" : ""
+        }`}
+        role="option"
+        aria-selected={row.option.id === host}
+        aria-disabled={row.option.disabled ? true : undefined}
+        {...getItemProps(row.itemIndex)}
+        title={
+          desktopHost
+            ? undefined
+            : row.option.disabled
+              ? row.option.hint
+              : row.option.label
+        }
+        data-testid={
+          row.option.kind === "local"
+            ? "desktop-host-local"
+            : "desktop-host-item"
+        }
+        data-host-id={row.option.id}
+        data-host-kind={row.option.kind}
+      >
+        {/* 只有「本地」那一行带图标（与触发键同款，见下）；具体主机名不再各带一颗
           ——远程图标挪到分组标题「SSH 主机」前面，标题行和「本地」行一样是
           「一颗图标 + 文字」，主机名缩进到与标题文字对齐。 */}
-      {row.option.kind === "local" && (
-        // 1030 评论（她点 `span.codicon.codicon-device-desktop`，指「这里」
-        // 为触发键上那颗 `svg.desktop-host-icon`）：「这个图标和一下一致」——
-        // 菜单里「本地」原来画 codicon-device-desktop 字体字形，与收起态触发键
-        // 的官方 `ContextLocalIcon` 不是一套；这里换成同一颗 svg（同一个
-        // `desktop-host-icon` 类 → 同 16×16 盒、同色、同几何）。
-        <ContextLocalIcon className="desktop-host-icon" />
-      )}
-      {/* 1116 评论（她点 `div.desktop-workdir-menu-item`「local」，即 SSH 条目）：
+        {row.option.kind === "local" && (
+          // 1030 评论（她点 `span.codicon.codicon-device-desktop`，指「这里」
+          // 为触发键上那颗 `svg.desktop-host-icon`）：「这个图标和一下一致」——
+          // 菜单里「本地」原来画 codicon-device-desktop 字体字形，与收起态触发键
+          // 的官方 `ContextLocalIcon` 不是一套；这里换成同一颗 svg（同一个
+          // `desktop-host-icon` 类 → 同 16×16 盒、同色、同几何）。
+          <ContextLocalIcon className="desktop-host-icon" />
+        )}
+        {/* 1116 评论（她点 `div.desktop-workdir-menu-item`「local」，即 SSH 条目）：
           「主机名称前面加个图标，名称位置不变」⇒ SSH 条目补上「SSH主机」颗。
           位置靠行内那 32px 左内衬吃下来（8 padding + 16 图标 + 8 gap 原样等于
           32），所以名称左缘一格不动；图标列与「本地」行、分组标题文字同一条 495
           竖线（见 host-desktop.css 里 `.desktop-host-menu-items` 那条）。 */}
-      {row.option.kind === "ssh" && (
-        <SshHostIcon className="desktop-host-icon" />
-      )}
-      {/* 1117 评论：「你帮我按照现在的图标规范补充个图标我看下效果」⇒ WSL 条目补
+        {row.option.kind === "ssh" && (
+          <SshHostIcon className="desktop-host-icon" />
+        )}
+        {/* 1117 评论：「你帮我按照现在的图标规范补充个图标我看下效果」⇒ WSL 条目补
          上企鹅那颗（同 16×16 盒、同 1.4 描边、同 currentColor）。同样落进 32px
           左内衬里（8 + 16 + 8），名称左缘与 SSH 条目、本地条目同一条竖线。 */}
-      {row.option.kind === "wsl" && (
-        <WslHostIcon className="desktop-host-icon" />
-      )}
-      <span className="desktop-workdir-menu-name">{row.option.label}</span>
-      {row.option.disabled && row.option.hint && (
-        <span className="desktop-host-item-hint">{row.option.hint}</span>
-      )}
-      {/* 编辑入口：SSH 条目才有（本地/WSL 不是连接库里的东西）。常驻但默认透明，
+        {row.option.kind === "wsl" && (
+          <WslHostIcon className="desktop-host-icon" />
+        )}
+        {showTip ? (
+          <Tooltip
+            text={row.option.label}
+            position="right"
+            /* 水平锚点交给菜单外框：按名称节点自己的右缘算会压进右内衬（1116
+             斜杠指令弹层同一个坑，口径「距下拉面板 4px 的右侧」）。 */
+            rightEdgeRef={menuBoxRef}
+            className="desktop-row-name-tip"
+            /* 默认单行气泡（nowrap + max-width 250 + 省略号）会把要提示的全文再截
+             一次 —— 主机名本身带空格，开 multiline 按 360 封顶自然折行即可。 */
+            multiline
+          >
+            {name}
+          </Tooltip>
+        ) : (
+          name
+        )}
+        {row.option.disabled && row.option.hint && (
+          <span className="desktop-host-item-hint">{row.option.hint}</span>
+        )}
+        {/* 编辑入口：SSH 条目才有（本地/WSL 不是连接库里的东西）。常驻但默认透明，
           指针停到这一行、或键盘焦点进到这一行/这颗按钮上才显形——与行内 ✕ 同一
           套显隐规则；点击不能冒泡成「选中该主机」。
           1113 评论（她点 `div.desktop-workdir-menu-item`「本地」+ `button.queued-action-button`
           「同步图标、交互样式等」）：图标从 codicon 字体字形换成队列动作键同款矢量
           （`QueueEditIcon`：16 网格 / stroke 1.4 圆头），盒 20×20 / r0 / 无底色改成
           24×24 / r8 / hover 浅底（见 host-desktop.css），与 `queued-action-button` 同族。 */}
-      {row.option.kind === "ssh" && (
-        <button
-          type="button"
-          className="desktop-host-item-edit"
-          data-testid="desktop-host-edit"
-          aria-label={`编辑连接 ${row.option.label}`}
-          title="编辑连接"
-          onClick={(e) => {
-            e.stopPropagation();
-            openEdit(row.option.id);
-          }}
-        >
-          <QueueEditIcon />
-        </button>
-      )}
-    </div>
-  );
+        {row.option.kind === "ssh" && (
+          <button
+            type="button"
+            className="desktop-host-item-edit"
+            data-testid="desktop-host-edit"
+            aria-label={`编辑连接 ${row.option.label}`}
+            title="编辑连接"
+            onClick={(e) => {
+              e.stopPropagation();
+              openEdit(row.option.id);
+            }}
+          >
+            <QueueEditIcon />
+          </button>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div className="desktop-host-container" ref={menuRef}>
@@ -424,6 +473,7 @@ export const DesktopHostSelector: React.FC<DesktopHostSelectorProps> = ({
         <div
           className="desktop-workdir-menu desktop-host-menu"
           role="listbox"
+          ref={menuBoxRef}
           data-testid="desktop-host-menu"
         >
           {/* 菜单四段：顶部「本地」、每个分组的分组标题（如「SSH 主机」）与

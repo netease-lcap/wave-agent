@@ -3025,16 +3025,35 @@
 /* 工作目录族菜单的宽度钉死（设计师 2026-11-18 点分支下拉 `div.desktop-workdir-menu`：
    「宽度要参考规范，超出的字符省略，hover 通过 tooltip 提示，而不是里面内容多宽
    就是多宽」；她随后裁定取本族下限 220，并补「默认宽度可以和主机、项目选择的下拉
-   宽度保持一致」）。
-   base 是 `min-width: 220px / max-width: 340px` ⇒ 内容一长菜单就跟着撑：改前实测
-   分支菜单外框 358（比触发器右缘多出 115.7）、主机菜单 273.8、最近打开菜单 275 ——
-   三处各不相同且都随内容浮动。这里把**内容宽**钉在 220（内容盒 = 220，加左右内衬
-   8 + 1px 边框 ⇒ 外框 238），三条菜单从此同宽；超长内容在项内尾部省略
-   （`.desktop-workdir-menu-name` 本来就有 ellipsis），完整值走 hover 气泡。 */
+   宽度保持一致」；第三轮点 `div.desktop-host-trigger`「本地」把三条一起改到 260：
+   「这里3个选项的下拉菜单宽度统一到260，把省略没有气泡提示的问题都补上」）。
+   base 是 `min-width: 220px / max-width: 340px` ⇒ 内容一长菜单就跟着撑：第一轮
+   实测分支菜单外框 358（比触发器右缘多出 115.7）、主机菜单 273.8、最近打开菜单
+   275 —— 三处各不相同且都随内容浮动。这里把**内容宽**钉在 260（内容盒 = 260，
+   加左右内衬 8 + 1px 边框 ⇒ 外框 278），三条菜单从此同宽；超长内容在项内尾部省略
+   （`.desktop-workdir-menu-name` 本来就有 ellipsis），完整值走 hover 气泡
+   （`utils/useTruncation` 逐条量，只在真被省略时出）。 */
 [data-host="desktop"] .desktop-workdir-menu {
-  width: 220px;
-  min-width: 220px;
-  max-width: 220px;
+  width: 260px;
+  min-width: 260px;
+  max-width: 260px;
+}
+
+/* 被省略行的气泡容器：`Tooltip` 自带的 `.tooltip-container` 是
+   `inline-flex; flex-shrink: 0` —— 作为菜单行的 flex 子项它不肯缩，长名字会顶出
+   菜单（第一轮分支菜单踩过的同一个坑）。名称行收回「占满剩余宽度、可缩」；
+   主机行的名称是容器的直接子项，还要给它 `min-width: 0` 才能在 inline-flex 里
+   缩到比内容窄、让 ellipsis 生效（最近打开那条的 `.desktop-workdir-menu-path`
+   自带 `min-width: 0`，不用再补）。 */
+[data-host="desktop"] .desktop-workdir-menu-item .desktop-row-name-tip {
+  flex: 1 1 0;
+  min-width: 0;
+}
+[data-host="desktop"]
+  .desktop-workdir-menu-item
+  .desktop-row-name-tip
+  > .desktop-workdir-menu-name {
+  min-width: 0;
 }
 
 /* 简单菜单项：28px 高 / 14px / 400 / r6 / 默认 #565A60（0908 第 4 轮：

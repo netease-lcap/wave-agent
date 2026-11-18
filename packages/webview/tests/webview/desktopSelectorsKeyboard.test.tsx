@@ -735,3 +735,127 @@ describe("desktop worktree checkbox indicator", () => {
     expect(label.querySelector(".desktop-worktree-check-wrap")).toBeNull();
   });
 });
+
+/**
+ * 菜单定宽 260 之后「把省略没有气泡提示的问题都补上」（设计师 2026-11-18 第三轮，
+ * 点 `div.desktop-host-trigger`「本地」）。三条工作目录菜单共用
+ * `utils/useTruncation`：只有真被省略的行才包自绘气泡，插件端仍走原生 title。
+ */
+describe("desktop host / workdir menu truncation tooltips", () => {
+  const LONG_HOST = "Ubuntu Studio 22.04 LTS workstation (WSL 2)";
+  const LONG_DIR =
+    "/Users/ailsa/Documents/07-AI/CC02/wave-agent/worktrees/desktop-session-folder-recovery";
+
+  /** jsdom/浏览器都不排版：把命中这些文本的节点的 scrollWidth 假装成 400。 */
+  const fakeTruncation = (...texts: string[]) => {
+    Object.defineProperty(HTMLElement.prototype, "scrollWidth", {
+      configurable: true,
+      get(this: HTMLElement) {
+        return texts.includes(this.textContent ?? "") ? 400 : 0;
+      },
+    });
+  };
+  const restoreTruncation = () => {
+    Reflect.deleteProperty(HTMLElement.prototype, "scrollWidth");
+  };
+  const flushMeasure = () =>
+    act(
+      () =>
+        new Promise<void>((resolve) => requestAnimationFrame(() => resolve())),
+    );
+
+  const openMenus = () => {
+    renderDesktopApp();
+    sendCommand("desktopWorkdirState", {
+      host: "local",
+      hosts: ["local"],
+      hostOptions: [
+        { id: "local", label: "本地", kind: "local" },
+        { id: "wsl:studio", label: LONG_HOST, kind: "wsl" },
+      ],
+      workdir: "/work/a",
+      recentWorkdirs: [LONG_DIR, "/work/a"],
+    });
+    sendCommand("setInitialState", { messages: [] });
+  };
+
+  it("host menu: the ellipsized row gets a self-drawn tooltip, others do not", async () => {
+    window.waveHostType = "desktop";
+    fakeTruncation(LONG_HOST);
+    try {
+      openMenus();
+      fireEvent.click(screen.getByTestId("desktop-host"));
+      await flushMeasure();
+
+      const rows = screen.getAllByTestId("desktop-host-item");
+      const longRow = rows.find(
+        (row) =>
+          row.querySelector(".desktop-workdir-menu-name")?.textContent ===
+          LONG_HOST,
+      );
+      expect(longRow?.querySelector(".desktop-row-name-tip")).not.toBeNull();
+      // 主机名带空格，开 multiline 才不会在 250px 处被气泡自己再截一次。
+      expect(longRow?.querySelector(".tooltip-box")).toHaveClass(
+        "tooltip-multiline",
+      );
+      // 桌面端同一触发点不留原生 title（那边根本显示不出来）。
+      expect(longRow).not.toHaveAttribute("title");
+
+      const localRow = screen.getByTestId("desktop-host-local");
+      expect(localRow.querySelector(".desktop-row-name-tip")).toBeNull();
+    } finally {
+      restoreTruncation();
+      delete window.waveHostType;
+    }
+  });
+
+  it("workdir menu: an ellipsized path line gets the tooltip with the full dir", async () => {
+    window.waveHostType = "desktop";
+    // 被量的是两行各自的节点（名称 = basename、父路径 = 上一级），不是整条目录
+    fakeTruncation("desktop-session-folder-recovery");
+    try {
+      openMenus();
+      fireEvent.click(screen.getByTestId("desktop-workdir"));
+      await flushMeasure();
+
+      const items = screen.getAllByTestId("desktop-workdir-recent-item");
+      const longItem = items.find((item) =>
+        item.textContent?.includes("desktop-session-folder-recovery"),
+      );
+      const tip = longItem?.querySelector(".desktop-row-name-tip");
+      expect(tip).not.toBeNull();
+      expect(tip?.querySelector(".tooltip-box")).toHaveClass(
+        "tooltip-multiline",
+      );
+      // 气泡文案是完整目录（名称与父路径各自被省略时都靠它兜）
+      expect(tip?.querySelector(".tooltip-box")?.textContent).toBe(LONG_DIR);
+
+      // 没被省略的行不出气泡
+      const shortItem = items.find((item) => item !== longItem);
+      expect(shortItem?.querySelector(".desktop-row-name-tip")).toBeNull();
+    } finally {
+      restoreTruncation();
+      delete window.waveHostType;
+    }
+  });
+
+  it("keeps native titles and adds no tooltip outside the desktop host", async () => {
+    fakeTruncation(LONG_HOST);
+    try {
+      openMenus();
+      fireEvent.click(screen.getByTestId("desktop-host"));
+      await flushMeasure();
+
+      const rows = screen.getAllByTestId("desktop-host-item");
+      const longRow = rows.find(
+        (row) =>
+          row.querySelector(".desktop-workdir-menu-name")?.textContent ===
+          LONG_HOST,
+      );
+      expect(longRow).toHaveAttribute("title", LONG_HOST);
+      expect(longRow?.querySelector(".desktop-row-name-tip")).toBeNull();
+    } finally {
+      restoreTruncation();
+    }
+  });
+});
