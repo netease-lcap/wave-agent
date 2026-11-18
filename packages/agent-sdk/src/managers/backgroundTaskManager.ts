@@ -1,4 +1,4 @@
-import { spawn, type ChildProcess } from "child_process";
+import { spawn, type ChildProcess, type SpawnOptions } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
 import { BackgroundTask, BackgroundShell } from "../types/processes.js";
@@ -144,21 +144,31 @@ export class BackgroundTaskManager {
     command: string,
     timeout?: number,
     cwd?: string,
-    options?: { env?: Record<string, string>; onExit?: () => void },
+    options?: {
+      env?: Record<string, string>;
+      onExit?: () => void;
+      /**
+       * How to start the shell, when the default — `shell: <bash path>` — is
+       * not what this shell needs. PowerShell has to be started with its own
+       * argv (`-NoProfile -NonInteractive -NoLogo -Command <command>`): handing
+       * its binary to spawn's `shell` option gives it cmd.exe's `/d /s /c`
+       * instead, which Windows PowerShell 5.1 answers with no output and exit
+       * code 0.
+       */
+      shell?: { file: string; args: string[]; detached: boolean };
+    },
   ): { id: string; child: ChildProcess; detach: () => void } {
     const id = this.generateId();
     const startTime = Date.now();
 
     // fd0 is /dev/null (see bashTool): a background command that reads stdin
     // would otherwise sit there forever holding a pipe nobody writes to.
-    const child = spawn(command, {
-      shell: resolveShellPath() ?? true,
+    const spawnOptions: SpawnOptions = {
       stdio: ["ignore", "pipe", "pipe"],
-      detached: true,
-      // No-op in combination with `detached`: Windows ignores CREATE_NO_WINDOW
-      // whenever DETACHED_PROCESS is set, so this does not hide anything. Kept
-      // because it is harmless and a no-op on POSIX; hiding a detached child
-      // would need ConPTY / `Start-Process -WindowStyle Hidden`.
+      // No-op in combination with a detached child: Windows ignores
+      // CREATE_NO_WINDOW whenever DETACHED_PROCESS is set, so this does not
+      // hide anything there. Kept because it is what hides the child when the
+      // shell is started without `detached` (the PowerShell branch).
       windowsHide: true,
       cwd: cwd ?? this.workdir,
       env: {
@@ -166,7 +176,17 @@ export class BackgroundTaskManager {
         ...this.sessionEnv,
         ...options?.env,
       },
-    });
+    };
+    const child = options?.shell
+      ? spawn(options.shell.file, options.shell.args, {
+          ...spawnOptions,
+          detached: options.shell.detached,
+        })
+      : spawn(command, {
+          ...spawnOptions,
+          shell: resolveShellPath() ?? true,
+          detached: true,
+        });
 
     if (options?.onExit) {
       const onExit = options.onExit;

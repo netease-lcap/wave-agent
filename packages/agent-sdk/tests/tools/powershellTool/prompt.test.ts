@@ -131,6 +131,35 @@ describe("powershellPrompt", () => {
     expect(powershellPrompt()).not.toContain("LASTEXITCODE");
     expect(powershellLeanPrompt()).not.toContain("LASTEXITCODE");
   });
+
+  describe("background tasks", () => {
+    it("offers run_in_background the way CC's note does", () => {
+      vi.mocked(getPowerShellEdition).mockReturnValue("desktop");
+
+      const prompt = powershellPrompt();
+
+      expect(prompt).toContain("`run_in_background` parameter");
+      expect(prompt).toContain("you'll be notified when it finishes");
+      expect(prompt).not.toContain("CLAUDE_CODE_DISABLE_BACKGROUND_TASKS");
+    });
+
+    it("says Start-Sleep, not sleep, because there is no bash here", () => {
+      vi.mocked(getPowerShellEdition).mockReturnValue("desktop");
+
+      const prompt = powershellPrompt();
+
+      expect(prompt).toContain("# Avoid unnecessary sleep commands");
+      expect(prompt).toContain("Do not `Start-Sleep` between commands");
+      expect(prompt).toContain("diagnose the root cause");
+      expect(prompt).toContain("keep the duration short (1-5 seconds)");
+    });
+
+    it("mentions run_in_background once in the lean prompt too", () => {
+      vi.mocked(getPowerShellEdition).mockReturnValue("desktop");
+
+      expect(powershellLeanPrompt()).toContain("`run_in_background`");
+    });
+  });
 });
 
 describe("powershellLeanPrompt", () => {

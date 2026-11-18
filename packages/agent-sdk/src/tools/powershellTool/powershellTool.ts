@@ -8,7 +8,7 @@ import { terminateChildProcessTree } from "../../utils/terminateProcessTree.js";
 import { processToolResult } from "../../utils/toolResultStorage.js";
 import { probeTempDir, resolveTempDir } from "../../utils/tempDir.js";
 import { BASH_MAX_OUTPUT_CHARS } from "../../constants/toolLimits.js";
-import { POWERSHELL_TOOL_NAME } from "../../constants/tools.js";
+import { POWERSHELL_TOOL_NAME, READ_TOOL_NAME } from "../../constants/tools.js";
 import {
   POWERSHELL_DEFAULT_TIMEOUT_MS,
   POWERSHELL_MAX_TIMEOUT_MS,
@@ -96,6 +96,10 @@ export const powershellTool: ToolPlugin = {
             description:
               "Clear, concise description of what this command does in 5-10 words.",
           },
+          run_in_background: {
+            type: "boolean",
+            description: `Set to true to run this command in the background. Use ${READ_TOOL_NAME} to read the output later.`,
+          },
         },
         required: ["command"],
       },
@@ -109,8 +113,14 @@ export const powershellTool: ToolPlugin = {
   ): Promise<ToolResult> => {
     const command = args.command;
     const description = args.description as string | undefined;
-    const timeout =
-      (args.timeout as number | undefined) ?? POWERSHELL_DEFAULT_TIMEOUT_MS;
+    const runInBackground = args.run_in_background as boolean | undefined;
+    // Background runs carry no default timeout: the default exists to stop a
+    // foreground command from blocking the turn, and a background task is
+    // exactly the case where the user asked it to take its time (Bash does the
+    // same). An explicit `timeout` still applies.
+    const timeout = runInBackground
+      ? (args.timeout as number | undefined)
+      : ((args.timeout as number | undefined) ?? POWERSHELL_DEFAULT_TIMEOUT_MS);
 
     if (!command || typeof command !== "string") {
       return {
@@ -169,6 +179,49 @@ export const powershellTool: ToolPlugin = {
           error: "Permission check failed",
         };
       }
+    }
+
+    if (runInBackground) {
+      const backgroundTaskManager = context.backgroundTaskManager;
+      if (!backgroundTaskManager) {
+        return {
+          success: false,
+          content: "",
+          error: "Background task manager not available",
+        };
+      }
+
+      // No CWD tracking and no exit probe for a background task: the process
+      // outlives this call, so a tracked-cwd temp file would never be read, and
+      // the manager reports the shell's own exit code anyway (the Bash tool's
+      // background branch skips the wrapper for the same reason).
+      const { id: taskId } = backgroundTaskManager.startShell(
+        command,
+        timeout,
+        context.workdir,
+        {
+          shell: {
+            file: provider.shellPath,
+            args: provider.getSpawnArgs(command),
+            // Measured: a detached Windows PowerShell 5.1 child never runs the
+            // command at all (exit 0, no output, no side effect) — DETACHED_PROCESS
+            // gives it no console and 5.1's `-Command` then does nothing. So the
+            // PowerShell branch stays attached, where `windowsHide` does its job.
+            detached: false,
+          },
+        },
+      );
+      const task = backgroundTaskManager.getTask(taskId);
+      const outputPath = task?.outputPath;
+      const backgroundMsg = outputPath
+        ? `Command running in background with ID: ${taskId}. Output is being written to: ${outputPath}`
+        : `Command running in background with ID: ${taskId}. Use ${READ_TOOL_NAME} tool with task_id="${taskId}" to read the output.`;
+      return {
+        success: true,
+        content: backgroundMsg,
+        shortResult: `Background process ${taskId} started${outputPath ? ` → ${outputPath}` : ""}`,
+        backgroundTaskId: taskId,
+      };
     }
 
     // The working directory is tracked through a temp file, exactly as the Bash

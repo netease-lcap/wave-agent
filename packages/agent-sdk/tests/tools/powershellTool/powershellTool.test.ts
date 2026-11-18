@@ -128,7 +128,7 @@ describe("powershellTool", () => {
   });
 
   describe("schema", () => {
-    it("is the PowerShell tool with only command, timeout and description", () => {
+    it("is the PowerShell tool with command, timeout, description and run_in_background", () => {
       expect(powershellTool.name).toBe("PowerShell");
       expect(powershellTool.config.function.name).toBe("PowerShell");
 
@@ -140,6 +140,7 @@ describe("powershellTool", () => {
       expect(Object.keys(parameters.properties).sort()).toEqual([
         "command",
         "description",
+        "run_in_background",
         "timeout",
       ]);
       expect(parameters.required).toEqual(["command"]);
@@ -544,6 +545,100 @@ describe("powershellTool", () => {
     const result = await promise;
 
     expect(result.shortResult).toBe("... +2 lines\nc\nd\ne");
+  });
+
+  describe("background", () => {
+    function backgroundManager(outputPath?: string) {
+      return {
+        startShell: vi.fn(() => ({ id: "task_1_2" })),
+        getTask: vi.fn(() => ({ outputPath })),
+      };
+    }
+
+    function withBackground(manager: ReturnType<typeof backgroundManager>) {
+      return context({
+        backgroundTaskManager:
+          manager as unknown as ToolContext["backgroundTaskManager"],
+      });
+    }
+
+    it("hands the shell's own argv to the manager instead of spawn's shell option", async () => {
+      const manager = backgroundManager("C:\\temp\\wave-task-1.log");
+
+      const result = await powershellTool.execute(
+        { command: "Start-Sleep -Seconds 5", run_in_background: true },
+        withBackground(manager),
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.backgroundTaskId).toBe("task_1_2");
+      expect(spawn).not.toHaveBeenCalled();
+      expect(manager.startShell).toHaveBeenCalledWith(
+        "Start-Sleep -Seconds 5",
+        // No default timeout for a background task.
+        undefined,
+        "/work/project",
+        {
+          shell: {
+            file: PS_PATH,
+            args: [
+              "-NoProfile",
+              "-NonInteractive",
+              "-NoLogo",
+              "-Command",
+              "Start-Sleep -Seconds 5",
+            ],
+            // A detached 5.1 child never runs its command (measured), so the
+            // background process stays attached and windowsHide hides it.
+            detached: false,
+          },
+        },
+      );
+    });
+
+    it("reports the log path the manager allocated", async () => {
+      const manager = backgroundManager("C:\\temp\\wave-task-1.log");
+
+      const result = await powershellTool.execute(
+        { command: "Get-ChildItem -Recurse", run_in_background: true },
+        withBackground(manager),
+      );
+
+      expect(result.content).toContain("background with ID: task_1_2");
+      expect(result.content).toContain("C:\\temp\\wave-task-1.log");
+      expect(result.shortResult).toContain("task_1_2");
+    });
+
+    it("falls back to the Read hint when the manager allocated no log", async () => {
+      const result = await powershellTool.execute(
+        { command: "Get-ChildItem -Recurse", run_in_background: true },
+        withBackground(backgroundManager(undefined)),
+      );
+
+      expect(result.content).toContain('task_id="task_1_2"');
+    });
+
+    it("keeps an explicit timeout and refuses to start without a manager", async () => {
+      const manager = backgroundManager("C:\\temp\\wave-task-1.log");
+
+      await powershellTool.execute(
+        { command: "Get-ChildItem", run_in_background: true, timeout: 5000 },
+        withBackground(manager),
+      );
+      expect(manager.startShell).toHaveBeenCalledWith(
+        "Get-ChildItem",
+        5000,
+        "/work/project",
+        expect.anything(),
+      );
+
+      const result = await powershellTool.execute(
+        { command: "Get-ChildItem", run_in_background: true },
+        context(),
+      );
+      expect(result.success).toBe(false);
+      expect(result.error).toBe("Background task manager not available");
+    });
   });
 
   it("prefers the description over the command in the compact label", () => {

@@ -1,9 +1,10 @@
 /**
  * The PowerShell tool's description.
  *
- * Modelled on Claude Code's `tools/PowerShellTool/prompt.ts`, minus the two
- * blocks that need machinery wave does not have yet (`run_in_background` and
- * the sleep guidance it justifies — P5). Two things are wave's own:
+ * Modelled on Claude Code's `tools/PowerShellTool/prompt.ts`, including its
+ * `run_in_background` note and the `Start-Sleep` guidance that note justifies
+ * (CC's `getBackgroundUsageNote()` / `getSleepGuidance()`, same bullets). Two
+ * things are wave's own:
  *
  * - the dedicated-tool list depends on which tools this session registered
  *   (`Grep` / `Glob` are opt-in, see `utils/searchToolsRegistration.ts`), so it
@@ -111,7 +112,8 @@ export function powershellLeanPrompt(): string {
 
 - ${editionSummary(getPowerShellEdition())}
 - Quote paths with spaces; call a native exe with the call operator: \`& "C:\\Program Files\\App\\app.exe" arg1\`.
-- One command per call. \`timeout\` is milliseconds: default ${POWERSHELL_DEFAULT_TIMEOUT_MS}, max ${POWERSHELL_MAX_TIMEOUT_MS}. Output over ${BASH_MAX_OUTPUT_CHARS.toLocaleString()} characters is truncated and saved to a file the ${READ_TOOL_NAME} tool can read.`;
+- One command per call. \`timeout\` is milliseconds: default ${POWERSHELL_DEFAULT_TIMEOUT_MS}, max ${POWERSHELL_MAX_TIMEOUT_MS}. Output over ${BASH_MAX_OUTPUT_CHARS.toLocaleString()} characters is truncated and saved to a file the ${READ_TOOL_NAME} tool can read.
+- \`run_in_background\` runs the command in the background so you can keep working; you are notified when it finishes. No \`Start-Process\` needed.`;
 }
 
 export function powershellPrompt(args?: ToolPromptArgs): string {
@@ -164,6 +166,7 @@ Usage notes:
    - You may specify an optional timeout in milliseconds (up to ${POWERSHELL_MAX_TIMEOUT_MS}ms / ${POWERSHELL_MAX_TIMEOUT_MS / 60000} minutes). By default a command times out after ${POWERSHELL_DEFAULT_TIMEOUT_MS}ms (${POWERSHELL_DEFAULT_TIMEOUT_MS / 60000} minutes).
    - It is very helpful if you write a clear, concise description of what this command does.
    - If the output exceeds ${BASH_MAX_OUTPUT_CHARS.toLocaleString()} characters, it is truncated and the full output persisted to a file you can read with the ${READ_TOOL_NAME} tool.
+   - You can use the \`run_in_background\` parameter to run the command in the background. Only use this if you don't need the result immediately and are OK being notified when the command completes later. You do not need to check the output right away — you'll be notified when it finishes.
    - Avoid using ${POWERSHELL_TOOL_NAME} to run commands that have dedicated tools, unless explicitly instructed:
 ${dedicatedToolLines(args).join("\n")}
    - When issuing multiple commands:
@@ -175,5 +178,13 @@ ${dedicatedToolLines(args).join("\n")}
    - For git commands:
      - Prefer to create a new commit rather than amending an existing one.
      - Before running a destructive operation (\`git reset --hard\`, \`git push --force\`, \`git checkout --\`), consider whether a safer alternative reaches the same goal. Only use destructive operations when they really are the best approach.
-     - Never skip hooks (\`--no-verify\`) or bypass signing (\`--no-gpg-sign\`, \`-c commit.gpgsign=false\`) unless the user explicitly asked for it. If a hook fails, investigate and fix the underlying issue.`;
+     - Never skip hooks (\`--no-verify\`) or bypass signing (\`--no-gpg-sign\`, \`-c commit.gpgsign=false\`) unless the user explicitly asked for it. If a hook fails, investigate and fix the underlying issue.
+
+# Avoid unnecessary sleep commands
+   - Do not \`Start-Sleep\` between commands that can run immediately — just run them.
+   - If your command is long running and you would like to be notified when it finishes — use \`run_in_background\`. No sleep needed.
+   - Do not retry failing commands in a sleep loop — diagnose the root cause.
+   - If waiting for a background task you started with \`run_in_background\`, you will be notified when it completes — do not poll.
+   - If you must poll an external process, use a check command rather than sleeping first.
+   - If you must sleep, keep the duration short (1-5 seconds) to avoid blocking the user.`;
 }

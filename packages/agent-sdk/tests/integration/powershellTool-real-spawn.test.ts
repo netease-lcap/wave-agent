@@ -15,6 +15,8 @@ import * as path from "path";
 
 import { powershellTool } from "../../src/tools/powershellTool/powershellTool.js";
 import type { ToolContext } from "../../src/tools/types.js";
+import { BackgroundTaskManager } from "../../src/managers/backgroundTaskManager.js";
+import { Container } from "../../src/utils/container.js";
 import { createMockTaskManager } from "../helpers/mockFactories.js";
 
 const isWindows = process.platform === "win32";
@@ -76,6 +78,35 @@ describe.skipIf(!isWindows)("PowerShell tool with real shell spawn", () => {
 
     expect(exitCodeOf(result)).toBe(1);
     expect(result.success).toBe(false);
+  });
+
+  it("runs a background command as a real, attached PowerShell process", async () => {
+    const manager = new BackgroundTaskManager(new Container(), { workdir });
+    const marker = path.join(workdir, "bg-marker.txt");
+
+    const result = await powershellTool.execute(
+      {
+        command: `Set-Content -Path '${marker}' -Value done -Encoding utf8; Write-Output bg-ok`,
+        run_in_background: true,
+      },
+      { ...makeContext(workdir), backgroundTaskManager: manager },
+    );
+
+    expect(result.success).toBe(true);
+    const taskId = result.backgroundTaskId;
+    if (!taskId) throw new Error("no background task id was returned");
+    // The manager's own state is the signal: a detached child would report
+    // "completed" without ever having run the command (measured), so the marker
+    // file below is what makes this a proof rather than a status check.
+    await vi.waitFor(
+      () => expect(manager.getTask(taskId)?.status).toBe("completed"),
+      { timeout: 30000 },
+    );
+    expect(fs.readFileSync(marker, "utf8").trim()).toBe("done");
+    const outputPath = manager.getTask(taskId)?.outputPath;
+    if (!outputPath) throw new Error("background task has no log path");
+    expect(fs.readFileSync(outputPath, "utf8").trim()).toBe("bg-ok");
+    manager.cleanup();
   });
 
   it("keeps a Set-Location for the next call via onCwdChange", async () => {
