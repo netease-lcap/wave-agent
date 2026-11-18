@@ -12,7 +12,7 @@ import {
 import { getShellProvider } from "../utils/shell/resolveProvider.js";
 import { toWindowsPath } from "../utils/path.js";
 import { WindowsStreamDecoder } from "../utils/encoding.js";
-import { killProcessTree } from "../utils/killProcessTree.js";
+import { terminateChildProcessTree } from "../utils/terminateProcessTree.js";
 import { processToolResult } from "../utils/toolResultStorage.js";
 import { BASH_MAX_OUTPUT_CHARS } from "../constants/toolLimits.js";
 import type {
@@ -617,48 +617,9 @@ The working directory persists between commands, but shell state (environment va
 
           // Terminate the shell *and its descendants* (issue #2742): killing
           // only the direct child leaves `npm → node → vitest worker` running
-          // as orphans on Windows. See killProcessTree for the per-platform
-          // mechanics (POSIX process group / Windows taskkill /T).
-          const abortPid = child.pid;
-          if (abortPid) {
-            // Graceful first, forced after 1s. On Windows both phases are the
-            // same `taskkill /T /F`; the retry then reports "not-found".
-            void killProcessTree(abortPid, "SIGTERM").then((outcome) => {
-              if (outcome !== "failed") return;
-              // The tree kill could not signal the group at all — fall back to
-              // taking the direct child down, as the old code path did.
-              try {
-                logger.error(
-                  `Failed to terminate the process tree of pid ${abortPid}; killing the shell only`,
-                );
-                child.kill("SIGTERM");
-              } catch (directKillError) {
-                logger.error("Failed to kill child process:", directKillError);
-              }
-            });
-
-            // Set timeout for force kill
-            setTimeout(() => {
-              if (child.killed) return;
-              void killProcessTree(abortPid, "SIGKILL").then((outcome) => {
-                if (outcome !== "failed" || child.killed) return;
-                try {
-                  child.kill("SIGKILL");
-                } catch (forceKillError) {
-                  logger.error(
-                    "Failed to force kill child process:",
-                    forceKillError,
-                  );
-                }
-              });
-            }, 1000);
-          } else {
-            try {
-              child.kill("SIGTERM");
-            } catch (directKillError) {
-              logger.error("Failed to kill child process:", directKillError);
-            }
-          }
+          // as orphans on Windows. The escalation lives in
+          // `terminateChildProcessTree` so the PowerShell tool aborts the same way.
+          terminateChildProcessTree(child);
 
           cleanupTempFile();
           if (sandboxed && sandbox) sandbox.cleanup();

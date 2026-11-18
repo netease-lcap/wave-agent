@@ -3,10 +3,17 @@ import * as os from "os";
 import * as path from "path";
 import { createBashProvider } from "../../../src/utils/shell/bashProvider.js";
 import { getShellProvider } from "../../../src/utils/shell/resolveProvider.js";
+import { getPowerShellPath } from "../../../src/utils/shell/powershellDetection.js";
 import { buildSearchShellPrelude } from "../../../src/utils/searchShell.js";
 
 vi.mock("../../../src/utils/searchShell.js", () => ({
   buildSearchShellPrelude: vi.fn(),
+}));
+
+// Discovery stats every `PATH` entry; the dispatch test asks only whether a
+// found binary produces a provider.
+vi.mock("../../../src/utils/shell/powershellDetection.js", () => ({
+  getPowerShellPath: vi.fn(),
 }));
 
 const SHELL = "/bin/bash";
@@ -117,12 +124,21 @@ describe("bashProvider", () => {
 });
 
 describe("getShellProvider", () => {
-  it("returns a bash provider only for the bash kind", () => {
+  it("returns a bash provider for the bash kind", () => {
     const provider = getShellProvider("bash");
 
     expect(provider?.type).toBe("bash");
-    // The PowerShell provider lands with the PowerShell tool; until then the
-    // dispatch must answer "not available" rather than guess.
+  });
+
+  it("returns a PowerShell provider only when a binary was found", () => {
+    vi.mocked(getPowerShellPath).mockReturnValue(undefined);
     expect(getShellProvider("powershell")).toBeUndefined();
+
+    vi.mocked(getPowerShellPath).mockReturnValue("C:\\pwsh.exe");
+
+    const provider = getShellProvider("powershell");
+
+    expect(provider?.type).toBe("powershell");
+    expect(provider?.shellPath).toBe("C:\\pwsh.exe");
   });
 });

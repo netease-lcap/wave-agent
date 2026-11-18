@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { PermissionManager } from "../../src/managers/permissionManager.js";
+import { POWERSHELL_TOOL_NAME } from "../../src/constants/tools.js";
 import type { PermissionCallback } from "../../src/types/permissions.js";
 import { Container } from "../../src/utils/container.js";
 import { parsePowerShellCommand } from "../../src/utils/powershellStructure/psParser.js";
@@ -69,18 +70,28 @@ describe("PermissionManager — PowerShell branch", () => {
   });
 
   it("should derive the shell kind from the tool name", () => {
-    const context = manager.createContext("PowerShell", "default", undefined, {
-      command: "Get-ChildItem src",
-    });
+    const context = manager.createContext(
+      POWERSHELL_TOOL_NAME,
+      "default",
+      undefined,
+      {
+        command: "Get-ChildItem src",
+      },
+    );
     expect(context.shellKind).toBe("powershell");
   });
 
   it("should allow a read-only command without asking", async () => {
     const callback = vi.fn<PermissionCallback>();
-    const context = manager.createContext("PowerShell", "default", callback, {
-      command: "Get-ChildItem src",
-      workdir: WORKDIR,
-    });
+    const context = manager.createContext(
+      POWERSHELL_TOOL_NAME,
+      "default",
+      callback,
+      {
+        command: "Get-ChildItem src",
+        workdir: WORKDIR,
+      },
+    );
 
     const result = await manager.checkPermission(context);
 
@@ -90,10 +101,15 @@ describe("PermissionManager — PowerShell branch", () => {
 
   it("should deny by a PowerShell deny rule", async () => {
     manager.updateDeniedRules(["PowerShell(iex*)"]);
-    const context = manager.createContext("PowerShell", "default", undefined, {
-      command: "iex 'evil'",
-      workdir: WORKDIR,
-    });
+    const context = manager.createContext(
+      POWERSHELL_TOOL_NAME,
+      "default",
+      undefined,
+      {
+        command: "iex 'evil'",
+        workdir: WORKDIR,
+      },
+    );
 
     const result = await manager.checkPermission(context);
 
@@ -106,10 +122,15 @@ describe("PermissionManager — PowerShell branch", () => {
     const callback = vi.fn<PermissionCallback>(async () => ({
       behavior: "allow",
     }));
-    const context = manager.createContext("PowerShell", "default", callback, {
-      command: "Set-Content -Path a.txt -Value x",
-      workdir: WORKDIR,
-    });
+    const context = manager.createContext(
+      POWERSHELL_TOOL_NAME,
+      "default",
+      callback,
+      {
+        command: "Set-Content -Path a.txt -Value x",
+        workdir: WORKDIR,
+      },
+    );
 
     const result = await manager.checkPermission(context);
 
@@ -123,10 +144,15 @@ describe("PermissionManager — PowerShell branch", () => {
 
   it("should still deny an ask-worthy command in dontAsk mode", async () => {
     mockParse(leaf("Set-Content", ["-Path", "a.txt", "-Value", "x"]));
-    const context = manager.createContext("PowerShell", "dontAsk", undefined, {
-      command: "Set-Content -Path a.txt -Value x",
-      workdir: WORKDIR,
-    });
+    const context = manager.createContext(
+      POWERSHELL_TOOL_NAME,
+      "dontAsk",
+      undefined,
+      {
+        command: "Set-Content -Path a.txt -Value x",
+        workdir: WORKDIR,
+      },
+    );
 
     const result = await manager.checkPermission(context);
 
@@ -140,10 +166,15 @@ describe("PermissionManager — PowerShell branch", () => {
       behavior: "deny",
       message: "no",
     }));
-    const context = manager.createContext("PowerShell", "default", callback, {
-      command: "Set-Content -Path a.txt -Value x",
-      workdir: WORKDIR,
-    });
+    const context = manager.createContext(
+      POWERSHELL_TOOL_NAME,
+      "default",
+      callback,
+      {
+        command: "Set-Content -Path a.txt -Value x",
+        workdir: WORKDIR,
+      },
+    );
 
     const result = await manager.checkPermission(context);
 

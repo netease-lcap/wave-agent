@@ -36,9 +36,10 @@ export const KB_SUGGEST_TOOL_NAME = "kb_suggest";
  * these by shell *kind* (`ToolPermissionContext.shellKind`) rather than by
  * name, so a new shell tool is added here and nowhere else.
  *
- * `PowerShell` has no tool registered yet (the tool itself lands with the
- * PowerShell provider); the name is defined early because permission rules,
- * the built-in skills and the settings documentation all key off it.
+ * `PowerShell` is registered only when the session's shell is PowerShell
+ * (`utils/shell/shellToolGate.ts`); the name is a constant regardless, because
+ * permission rules, the built-in skills and the settings documentation all key
+ * off it.
  */
 export const SHELL_TOOL_NAMES = [BASH_TOOL_NAME, POWERSHELL_TOOL_NAME] as const;
 

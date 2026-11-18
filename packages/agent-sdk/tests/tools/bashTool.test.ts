@@ -77,12 +77,14 @@ vi.mock("../../src/utils/tempDir.js", async () => {
   };
 });
 
-// The abort path terminates the process *tree* through a platform-aware
-// helper (POSIX process group / Windows `taskkill /T`). Mocking it keeps these
-// tests free of real signals and of platform branches — the helper's own
-// branches are covered in tests/utils/killProcessTree.test.ts.
-vi.mock("../../src/utils/killProcessTree.js", () => ({
-  killProcessTree: vi.fn(async () => "killed"),
+// The abort path hands the child to `terminateChildProcessTree`, which walks
+// the process *tree* (POSIX process group / Windows `taskkill /T`) and
+// escalates to SIGKILL after a second. Mocking it keeps these tests free of
+// real signals and platform branches; the escalation itself is covered in
+// tests/utils/terminateProcessTree.test.ts, and what this file asserts is that
+// the abort *reaches* it.
+vi.mock("../../src/utils/terminateProcessTree.js", () => ({
+  terminateChildProcessTree: vi.fn(),
 }));
 
 import { spawn } from "child_process";
@@ -91,9 +93,9 @@ import { logger } from "../../src/utils/globalLogger.js";
 import { resolveShellPath } from "../../src/utils/shellResolver.js";
 import * as shellResolver from "../../src/utils/shellResolver.js";
 import { probeTempDir, readDiskPressure } from "../../src/utils/tempDir.js";
-import { killProcessTree } from "../../src/utils/killProcessTree.js";
+import { terminateChildProcessTree } from "../../src/utils/terminateProcessTree.js";
 const mockSpawn = vi.mocked(spawn);
-const mockKillProcessTree = vi.mocked(killProcessTree);
+const mockTerminateTree = vi.mocked(terminateChildProcessTree);
 
 describe("bashTool", () => {
   let backgroundTaskManager: BackgroundTaskManager;
@@ -104,7 +106,6 @@ describe("bashTool", () => {
     // clearAllMocks keeps mockReturnValue, so re-arm the per-test defaults.
     vi.mocked(probeTempDir).mockReturnValue({ writable: true });
     vi.mocked(readDiskPressure).mockReturnValue({});
-    mockKillProcessTree.mockResolvedValue("killed");
     const container = new Container();
     backgroundTaskManager = new BackgroundTaskManager(container, {
       workdir: "/test/workdir",
@@ -1443,68 +1444,36 @@ EOF
       };
     }
 
-    it("kills the whole process tree, graceful first and forced after 1s", async () => {
-      vi.useFakeTimers();
-
+    it("hands the child to the shared tree-kill helper on abort", async () => {
       const mockProcess = mockAbortedChild();
       const { controller, testContext } = abortedContext();
 
       const promise = bashTool.execute({ command: "sleep 10" }, testContext);
       controller.abort();
 
-      expect(mockKillProcessTree).toHaveBeenCalledWith(1234, "SIGTERM");
-      // The shell-only path must not be taken while the tree kill works.
-      expect(mockProcess.kill).not.toHaveBeenCalled();
+      // The escalation (SIGTERM → SIGKILL → shell-only fallback) belongs to
+      // the helper; this file only asserts the abort reaches it, with the
+      // child that was spawned.
+      expect(mockTerminateTree).toHaveBeenCalledTimes(1);
+      expect(mockTerminateTree).toHaveBeenCalledWith(mockProcess);
 
-      // Advance past the 1-second force-kill timeout
-      await vi.advanceTimersByTimeAsync(1000);
-
-      expect(mockKillProcessTree).toHaveBeenCalledWith(1234, "SIGKILL");
       const result = await promise;
       expect(result.success).toBe(false);
+      expect(result.error).toBe("Command execution was aborted");
       expect(logger.error).not.toHaveBeenCalled();
-
-      vi.useRealTimers();
     });
 
-    it("falls back to killing the shell when the tree kill fails", async () => {
-      vi.useFakeTimers();
-      mockKillProcessTree.mockResolvedValue("failed");
-
-      const mockProcess = mockAbortedChild();
-      const { controller, testContext } = abortedContext();
-
-      const promise = bashTool.execute({ command: "sleep 10" }, testContext);
-      controller.abort();
-      await vi.advanceTimersByTimeAsync(1000);
-
-      await promise;
-
-      expect(mockProcess.kill).toHaveBeenCalledWith("SIGTERM");
-      expect(logger.error).toHaveBeenCalledWith(
-        expect.stringContaining(
-          "Failed to terminate the process tree of pid 1234",
-        ),
-      );
-
-      vi.useRealTimers();
-    });
-
-    it("does not log an error when the tree kill succeeds", async () => {
-      vi.useFakeTimers();
-
+    it("resolves once and does not terminate twice when abort fires again", async () => {
       mockAbortedChild();
       const { controller, testContext } = abortedContext();
 
       const promise = bashTool.execute({ command: "sleep 10" }, testContext);
       controller.abort();
-      await vi.advanceTimersByTimeAsync(1000);
+      controller.abort();
 
-      const result = await promise;
-      expect(result.success).toBe(false);
-      expect(logger.error).not.toHaveBeenCalled();
+      await promise;
 
-      vi.useRealTimers();
+      expect(mockTerminateTree).toHaveBeenCalledTimes(1);
     });
   });
 });

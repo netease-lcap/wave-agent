@@ -8,6 +8,7 @@ import type { ModManager } from "./modManager.js";
 import { truncateForModEvent } from "../mods/text.js";
 import { validateToolInput } from "../tools/inputValidation.js";
 import { bashTool } from "../tools/bashTool.js";
+import { powershellTool } from "../tools/powershellTool/powershellTool.js";
 import { taskStopTool } from "../tools/taskStopTool.js";
 import { editTool } from "../tools/editTool.js";
 import { writeTool } from "../tools/writeTool.js";
@@ -23,6 +24,10 @@ import { execTool } from "../tools/execTool.js";
 import { isArtifactEnabled } from "../services/artifactAvailability.js";
 import { isKnowledgeBaseEnabled } from "../services/knowledgeBaseAvailability.js";
 import { isTaskToolsEnabled } from "../services/taskToolsAvailability.js";
+import {
+  collectShellToolGateInput,
+  isPowerShellToolEnabled,
+} from "../utils/shell/shellToolGate.js";
 import { knowledgeBaseTools } from "../tools/knowledgeBase/index.js";
 import {
   getNonDeferrableBuiltins,
@@ -375,6 +380,18 @@ class ToolManager {
       builtInTools.push(globTool, grepTool);
     }
 
+    // PowerShell: present only in a session whose shell it is — no Git Bash on
+    // Windows, or `WAVE_USE_POWERSHELL_TOOL` asked for it anyway. The registry
+    // and every command router read the same gate (`utils/shell/shellToolGate.ts`),
+    // so the tool is never listed without being runnable.
+    if (
+      isPowerShellToolEnabled(
+        collectShellToolGateInput(this.container.get<string>("CurrentWorkdir")),
+      )
+    ) {
+      builtInTools.push(powershellTool);
+    }
+
     // Artifact is a feature-gated tool: on by default for a logged-in account,
     // opt-in via enableArtifact: true for anyone else, opt-out via false.
     if (isArtifactEnabled(this.container.get<string>("CurrentWorkdir"))) {
@@ -429,14 +446,17 @@ class ToolManager {
    * Re-evaluate feature-gated built-in tools after a live configuration
    * reload. Currently gates the Artifact tool on settings.json
    * `enableArtifact`, the Exec tool on `enableExec`, the three knowledge-base
-   * tools on `enableKnowledgeBase`, and the four task-list tools on
-   * `env.WAVE_ENABLE_TASK_TOOLS`. Safe to call multiple times: gated tools are
-   * removed from the registry first, then initializeBuiltInTools() re-registers
-   * them only if still enabled (so toggling a flag off actually unregisters).
+   * tools on `enableKnowledgeBase`, the four task-list tools on
+   * `env.WAVE_ENABLE_TASK_TOOLS`, and the PowerShell tool on
+   * `env.WAVE_USE_POWERSHELL_TOOL` (or the absence of Git Bash). Safe to call
+   * multiple times: gated tools are removed from the registry first, then
+   * initializeBuiltInTools() re-registers them only if still enabled (so
+   * toggling a flag off actually unregisters).
    */
   public reloadFeatureGatedTools(): void {
     this.toolsRegistry.delete(artifactTool.name);
     this.toolsRegistry.delete(execTool.name);
+    this.toolsRegistry.delete(powershellTool.name);
     for (const tool of knowledgeBaseTools) {
       this.toolsRegistry.delete(tool.name);
     }
