@@ -37,11 +37,15 @@ One-off edge: \`stop\` / \`restart\` cannot stop a daemon that predates the \`sh
 ## 2. Creating a session
 
 \`\`\`bash
-wave daemon create --worktree [name] --workdir <dir> --permission-mode bypassPermissions
+wave daemon create --worktree [name] [--name <name>] --workdir <dir> --permission-mode bypassPermissions
+wave daemon rename <session> <new name>
 \`\`\`
 
-- Prints the new sessionId on the first line (scripts read it from there), plus a second line with the worktree path and branch when \`--worktree\` was used.
-- \`--worktree\` creates the session in a fresh git worktree, so it never touches your main checkout. The name is optional — one is generated when omitted.
+- **Addressing.** Every \`<sessionId>\` in this skill also accepts a unique id prefix (at least 4 characters of hex) or the session's name — the three are interchangeable, and the full id always works (use that in scripts). \`wave daemon list\` prints the name.
+- **Names never guess.** An ambiguous reference fails with the candidates listed (id, name, status, working directory, last message) and the command is **not** run; a name that matches nothing fails with \`No session id, id prefix or name matches "x". Known names: …\`. Duplicate names are allowed (a warning at create time), and they collide exactly here.
+- Prints the new sessionId on the first line (scripts read it from there), then \`Name: <name>\`, then the worktree path and branch when \`--worktree\` was used.
+- \`--name <name>\` sets the session's name; without it the name is the worktree name, else \`<workdir basename>-<n>\` with n picked so the name is not taken. \`rename\` changes it later — the name **is** the session title the desktop app and IDE plugins show, so a rename shows up there too.
+- \`--worktree\` creates the session in a fresh git worktree, so it never touches your main checkout.
 - \`--permission-mode\` defaults to \`bypassPermissions\` for daemon-created sessions, so a session created this way raises no approval prompts at all. Passing the flag explicitly is redundant but fine and self-documenting. Valid modes: \`default\`, \`bypassPermissions\`, \`acceptEdits\`, \`plan\`, \`dontAsk\`.
 - \`--workdir\` defaults to the current directory.
 
@@ -60,21 +64,23 @@ wave daemon send <sessionId> <message> --wait 600     # wait up to 600s and prin
 
 To block on the work instead of checking it, follow the send with \`wave daemon wait <sessionId> --from-busy\` — the flag covers the moment right after an async send where the session still reports idle (§5).
 
-## 4. Changing your mind: abort first
+## 4. Changing your mind: send --now
 
-A \`send\` to a *generating* session is queued, not applied immediately — the current turn runs to completion first. To correct a task or change its scope mid-flight:
+A \`send\` to a *generating* session is queued, not applied immediately — the current turn runs to completion first. To correct a task or change its scope mid-flight, send it with \`--now\`:
 
 \`\`\`bash
-wave daemon abort <sessionId>     # interrupt in-flight generation (subagents, bash commands and queued messages included)
-wave daemon send <sessionId> <corrected task>
+wave daemon send <sessionId> <corrected task> --now                      # interrupt the current turn, start this
+wave daemon send <sessionId> <corrected task> --now --wait 600           # ...and wait for its reply
 \`\`\`
 
-\`abort\` is idempotent and a no-op on an idle session, so it is safe to run without checking first. It does not clear completed history, and it does **not** touch the session's permission mode — the session stays live in the daemon's memory.
+\`--now\` interrupts the running turn (its unfinished output is discarded), **keeps** the rest of the queue, and starts this message immediately. Use it for a changed requirement, a narrower scope, or a wrong direction.
+
+Do **not** reproduce it as \`abort\` + \`send\`: a plain \`abort\` lets the queue resume on its own, so a message already waiting can start a turn ahead of your correction. Reach for \`wave daemon abort <sessionId>\` only when you want the session **stopped** — no next turn — e.g. to look at the state by hand first. \`abort\` is idempotent and a no-op on an idle session; neither command clears completed history or touches the permission mode.
 
 ## 5. Monitoring
 
 \`\`\`bash
-wave daemon list                   # sessions currently live in the daemon's in-memory registry
+wave daemon list                   # live sessions: id, name, status, message count, working directory
 wave daemon status <sessionId>     # one session: status, pending approvals, and the last message
 wave daemon wait <sessionId>       # block until it settles, then print that same snapshot
 wave daemon status <id> --lines 0  # status line only — no message text (single-shot snapshot)

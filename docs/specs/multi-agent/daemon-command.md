@@ -10,7 +10,7 @@ order: 95
 
 ## 概述
 
-`wave --daemon <socket>` 在主机上启动一个 JSON-RPC over 本机 socket（POSIX：unix domain socket；Windows：命名管道）的 daemon，托管后台 agent 会话（桌面端经 SSH 隧道访问）。目前除了 `--daemon` 启动标志外，没有任何面向用户的 CLI 命令可以查看 daemon 里托管了哪些会话、会话进度如何、或向会话注入消息继续对话——这些能力只存在于 JSON-RPC 协议层，普通用户与脚本无法直接使用。本规格定义 `wave daemon` 子命令组，将已验证的协议流程（创建会话 → attach → 读消息 → 阻塞等待空闲 → 注入消息 → 审批挂起的权限请求 → 中断生成 → 销毁会话 → 优雅停止/重启 daemon 进程）封装为十条命令（`create` / `list` / `status` / `wait` / `send` / `respond` / `abort` / `destroy` / `stop` / `restart`），供用户在远端主机直接执行（或经 `ssh <host> wave daemon ...` 在远端主机上执行）；运行位置不限远端——本机跑 daemon（内置 wave-daemon 技能把长任务委派给后台会话）与远端主机是同一套命令，平台差异只体现在默认 socket 的形态上（见「平台适配：默认 socket 的形态」故事）。daemon 一经拉起即常驻（空闲不退出，仅在被 stop/restart 优雅关闭、kill / 升级重启 / 机器重启后消失）——除 `stop` 外，任一子命令连接 socket 失败（daemon 未运行）时自动以 nohup 方式拉起 daemon（`wave --daemon ~/.wave/daemon.sock`）并重试连接，按需即用；`stop` 永不自动拉起，daemon 未运行时幂等成功（restart 未运行时等价于直接拉起）。
+`wave --daemon <socket>` 在主机上启动一个 JSON-RPC over 本机 socket（POSIX：unix domain socket；Windows：命名管道）的 daemon，托管后台 agent 会话（桌面端经 SSH 隧道访问）。目前除了 `--daemon` 启动标志外，没有任何面向用户的 CLI 命令可以查看 daemon 里托管了哪些会话、会话进度如何、或向会话注入消息继续对话——这些能力只存在于 JSON-RPC 协议层，普通用户与脚本无法直接使用。本规格定义 `wave daemon` 子命令组，将已验证的协议流程（创建会话 → attach → 读消息 → 阻塞等待空闲 → 注入消息 → 审批挂起的权限请求 → 中断生成 → 销毁会话 → 优雅停止/重启 daemon 进程）封装为十一条命令（`create` / `list` / `status` / `wait` / `send` / `respond` / `abort` / `destroy` / `rename` / `stop` / `restart`），并让每条命令的会话参数同时接受完整 sessionId、唯一 id 前缀与会话名字（见「按名字寻址会话」故事），供用户在远端主机直接执行（或经 `ssh <host> wave daemon ...` 在远端主机上执行）；运行位置不限远端——本机跑 daemon（内置 wave-daemon 技能把长任务委派给后台会话）与远端主机是同一套命令，平台差异只体现在默认 socket 的形态上（见「平台适配：默认 socket 的形态」故事）。daemon 一经拉起即常驻（空闲不退出，仅在被 stop/restart 优雅关闭、kill / 升级重启 / 机器重启后消失）——除 `stop` 外，任一子命令连接 socket 失败（daemon 未运行）时自动以 nohup 方式拉起 daemon（`wave --daemon ~/.wave/daemon.sock`）并重试连接，按需即用；`stop` 永不自动拉起，daemon 未运行时幂等成功（restart 未运行时等价于直接拉起）。
 
 ## 用户场景与测试 _（必填）_
 
@@ -18,7 +18,7 @@ order: 95
 
 作为在远端主机上使用 daemon 的用户，我希望通过 `wave daemon` 子命令组（`create` / `list` / `status` / `wait` / `send` / `respond` / `abort` / `destroy` / `stop` / `restart`）访问 daemon，固定连接默认 socket，以便无需了解 JSON-RPC 协议即可创建、查看、阻塞等待空闲、续聊、审批、中断、销毁与优雅停止/重启后台会话。
 
-**为什么是这个优先级**：这是整个命令组的地基——没有统一的命令入口与 socket 寻址规则，create/list/status/wait/send/respond/abort/destroy/stop/restart 无从谈起；daemon 只监听本机 socket、不暴露网络端口，因此客户端命令一律连接默认 socket（POSIX `~/.wave/daemon.sock`；Windows 是同一默认值的管道形态，见「平台适配：默认 socket 的形态」故事），不提供 `--socket` 覆盖参数，避免支持本地转发 socket 等非目标用法。daemon 一经拉起即常驻运行（空闲不退出）：除 `stop` 外任一子命令连接失败时自动以 nohup 方式拉起 daemon（`wave --daemon ~/.wave/daemon.sock`，nohup+重定向使启动器立即返回）并重试连接，按需即用——`stop` 不会拉起 daemon（未运行时幂等成功），`restart` 未运行时等价于直接拉起。
+**为什么是这个优先级**：这是整个命令组的地基——没有统一的命令入口与 socket 寻址规则，create/list/status/wait/send/respond/abort/destroy/rename/stop/restart 无从谈起；daemon 只监听本机 socket、不暴露网络端口，因此客户端命令一律连接默认 socket（POSIX `~/.wave/daemon.sock`；Windows 是同一默认值的管道形态，见「平台适配：默认 socket 的形态」故事），不提供 `--socket` 覆盖参数，避免支持本地转发 socket 等非目标用法。daemon 一经拉起即常驻运行（空闲不退出）：除 `stop` 外任一子命令连接失败时自动以 nohup 方式拉起 daemon（`wave --daemon ~/.wave/daemon.sock`，nohup+重定向使启动器立即返回）并重试连接，按需即用——`stop` 不会拉起 daemon（未运行时幂等成功），`restart` 未运行时等价于直接拉起。
 
 **独立测试**：在远端启动 daemon 后运行 `wave daemon list` 能列出会话；daemon 未运行时运行任一子命令会自动拉起 daemon 并重试连接（成功则命令照常执行，失败则给出明确错误提示）。
 
@@ -75,33 +75,57 @@ order: 95
 
 ### 用户故事：创建新会话（优先级：P0）
 
-作为在远端主机启动后台任务的用户，我希望 `wave daemon create` 在 daemon 中创建一个新会话（可指定 `--worktree` 把会话建在新的 git worktree 里）并输出 sessionId，以便将后续的 send/abort/destroy 等操作指向该会话。
+作为在远端主机启动后台任务的用户，我希望 `wave daemon create` 在 daemon 中创建一个新会话（可指定 `--worktree` 把会话建在新的 git worktree 里、可用 `--name` 给它起一个人能念的名字）并输出 sessionId 与名字，以便将后续的 send/abort/destroy 等操作指向该会话。
 
 **为什么是这个优先级**：在原有命令之外补全会话生命周期——此前会话只能由桌面端/IDE 经 `initialize` 创建，纯 CLI 用户没有入口；协议层 `initialize` 不带 `restoreSessionId` 即无条件新建会话（无 attach 分支，无需存在性检查），命令是参数转发 + 输出 sessionId 的薄封装。默认 `workdir=当前目录`、`permissionMode=bypassPermissions` 对齐 daemon 后台任务用例（与 `wave -p --dangerously-skip-permissions` 的批处理心智一致）。
 
-**独立测试**：运行 `wave daemon create` 输出新 sessionId，随后 `wave daemon status <sessionId>` 能看到该会话；`--workdir` / `--permission-mode` / `--model` 参数正确透传到新会话；`--worktree [name]` 会先经协议 `createWorktree` 创建 git worktree，再用 worktree 路径作为 workdir 创建会话。
+**独立测试**：运行 `wave daemon create` 输出新 sessionId 与名字，随后 `wave daemon status <sessionId>` 与 `wave daemon status <名字>` 都能看到该会话；`--workdir` / `--permission-mode` / `--model` / `--name` 参数正确透传到新会话；`--worktree [name]` 会先经协议 `createWorktree` 创建 git worktree，再用 worktree 路径作为 workdir 创建会话，且默认取 worktree 名作会话名。
 
 **验收场景**：
 
-1. **假设** daemon 正在运行，**当** 用户运行 `wave daemon create` 时，**则** 命令经协议 `initialize`（不带 `restoreSessionId`，因此总是新建而非 attach）在 daemon 中创建一个新会话，stdout 输出新会话的 sessionId（退出码 0），供后续 `status` / `send` / `abort` / `destroy` 使用。
+1. **假设** daemon 正在运行，**当** 用户运行 `wave daemon create` 时，**则** 命令经协议 `initialize`（不带 `restoreSessionId`，因此总是新建而非 attach）在 daemon 中创建一个新会话，stdout 第一行输出新会话的 sessionId、第二行输出 `Name: <名字>`（退出码 0），二者都可交给后续 `status` / `send` / `abort` / `destroy` / `rename` 使用。「创建即有名」是本命令的一部分：名字的取值规则、重复名字的处理见「按名字寻址会话」故事。
 2. **假设** 用户未显式传参，**当** 运行 `wave daemon create` 时，**则** 新会话默认 `workdir` 为命令运行时的当前目录、默认 `permissionMode` 为 `bypassPermissions`（无需审批即可后台执行，对齐 `wave -p --dangerously-skip-permissions` 批处理心智）。
 3. **假设** 用户传入 `--workdir <路径>` / `--permission-mode <模式>` / `--model <模型>`，**当** 运行 `wave daemon create` 时，**则** 新会话以对应值创建（`permissionMode` 支持 default/bypassPermissions/acceptEdits/plan/dontAsk，非法值报错并以非零退出码退出，校验先于连接、不会拉起 daemon）。
 4. **假设** daemon 未运行，**当** 用户运行 `wave daemon create` 时，**则** 命令自动拉起 daemon 并重试连接（与其余子命令一致的按需启动语义）；仅当拉起的 daemon 在启动超时内未就绪时才以非零退出码退出。
-5. **假设** 用户传入 `--worktree [name]`，**当** 运行 `wave daemon create --worktree` 时，**则** 命令先经协议 `createWorktree`（params: workdir + name，name 缺省时由服务端自动生成）在目标仓库创建新的 git worktree，再用返回的 worktree path 作为 workdir 调 `initialize` 创建会话；stdout 依次输出 sessionId（第一行，保持脚本兼容）与 `Worktree: <path> (branch: <branch>)`。会话的 workdir 是 worktree 路径本身（`git rev-parse --show-toplevel` 从该目录的返回，即链接 worktree 的顶层），与 `--workdir` 不共存（同时给出时 `--worktree` 优先）。
+5. **假设** 用户传入 `--worktree [name]`，**当** 运行 `wave daemon create --worktree` 时，**则** 命令先经协议 `createWorktree`（params: workdir + name，name 缺省时由服务端自动生成）在目标仓库创建新的 git worktree，再用返回的 worktree path 作为 workdir 调 `initialize` 创建会话；stdout 依次输出 sessionId（第一行，保持脚本兼容）、`Name: <worktree 名>`（第二行）与 `Worktree: <path> (branch: <branch>)`（第三行）。会话的 workdir 是 worktree 路径本身（`git rev-parse --show-toplevel` 从该目录的返回，即链接 worktree 的顶层），与 `--workdir` 不共存（同时给出时 `--worktree` 优先）。
+
+---
+
+### 用户故事：按名字寻址会话（优先级：P0）
+
+作为在远端主机用 `wave daemon` 派活和盯进度的用户，我希望每条会话都有一个可以说出口的名字（`wave daemon create --name fix-1275`，或用 `wave daemon rename <会话> <新名字>` 事后命名），并且**每个子命令都能用这个名字代替 sessionId**（完整 sessionId 与唯一 id 前缀照旧可用），以便我能对着终端说「看一眼 fix-1275 的进度」，而不是念一串 36 位 UUID。
+
+**为什么是这个优先级**：寻址是所有子命令的入口，而 sessionId 不可念、不可记、不可手打——「这个对话短 ID 特别不方便，我总不能把 ID 全部念出来」。做成产品能力而不是给每条会话再建一张名字表：**名字就是会话已有的标题**（转录里的 `custom-title` 条目，即 `customTitle`），因此桌面端侧边栏、IDE 插件、会话选择器看到的是同一个标签，改名不需要新文件、新协议方法或新存储，`renameSession` 协议方法本来就存在。三层解析必须**顺序固定且只在一处决策**：完整 id → 唯一 id 前缀 → 精确名字——**名字不能覆盖前缀的含义**（把会话命名为 `c530` 不得让 `c530` 从「某会话 id 的前缀」变成「那条会话」）；反过来，一个**猜出来的**会话比一条错误信息危险得多（`send` 会把活派错人、`destroy --remove-worktree` 会删错工作树），因此歧义与未命中都必须**报错并列出候选**，绝不挑选。
+
+**独立测试**：`create --name fix-1275` 后 `send fix-1275` / `wait fix-1275` / `status fix-1275` / `destroy fix-1275` 全部指向同一会话；不传 `--name` 时 `create` 打印的默认名字可用于后续寻址；两条同名会话下 `send <该名字>` 以非零退出码失败、stderr 列出两条候选（含 sessionId），而两条的 sessionId 仍各自可用；`rename <旧名字> <新名字>` 后旧名字失配、新名字可用；`daemon restart` 后仍可用名字寻址（会话不在内存里，靠磁盘索引解析）；一个字母都不同名的历史会话（无标题）仍可只用完整 sessionId 寻址。
+
+**验收场景**：
+
+1. **假设** 用户运行 `wave daemon create --name fix-1275`，**当** 命令成功时，**则** 新会话的标题（`customTitle`）被设为 `fix-1275`，且命令的输出在 sessionId 之后另起一行打印 `Name: fix-1275`（sessionId 仍是第一行，脚本兼容）；随后 `wave daemon list` 的 `Name` 列显示 `fix-1275`，并且 `status` / `wait` / `send` / `respond` / `abort` / `destroy` / `rename` 都可以用 `fix-1275` 代替 sessionId。
+2. **假设** 用户运行 `wave daemon create` 而**不传** `--name`，**当** 会话创建成功时，**则** 名字按下述顺序取：① `--worktree <name>` 的 worktree 名（如 `--worktree mods-x` → 名字 `mods-x`）；② 否则为 `<会话工作目录的 basename>-<n>`（如 `wave-agent-3`），其中 `n` 从 1 起、**跳过已被占用的名字**，保证默认名字自己不会撞名——用户看不到默认名字被选中的过程，等他看到警告时已经晚了；默认名字同样受长度上限约束（超长截断）
+3. **假设** 用户传入的名字为空 / 只有空白 / 含换行 / 超过 64 个字符，**当** 运行 `create --name` 或 `rename` 时，**则** 命令以非零退出码拒绝并给出具体原因（名字允许包含空格，引号是 shell 的事），且**校验先于连接**——名字非法时不会拉起 daemon、不会创建会话。
+4. **假设** 机器上已有另一条同名会话（标题允许重复，桌面端本来就允许），**当** 用户 `create --name` 或 `rename` 到一个已存在的名字时，**则** 命令**照常执行**并在 stderr 警告「另一个会话已经叫这个名字，用该名字寻址会报歧义」，不把重复当失败——改名/命名的主目标是「可念」，不是唯一性约束。
+5. **假设** 用户给某子命令的会话参数，**当** 该参数可被多种方式解释时，**则** 解析顺序固定为：① 完整 sessionId（精确匹配，**永不**再被当作名字）；② sessionId 的唯一前缀（十六进制、至少 4 个字符，多个匹配即歧义）；③ 名字的精确匹配（不做前缀、不做大小写折叠）。顺序不可颠倒：一条被命名为 `c530` 的会话不得抢走 `c530` 这个前缀的含义；反过来，形似 UUID 的**引用**（完整 id）不再被当作名字。
+6. **假设** 引用的名字命中多条会话（或前缀命中多条），**当** 执行任一子命令时，**则** 命令**不得自行挑选**：以非零退出码失败，stderr 打印 `Ambiguous session reference "<引用>": matches N sessions by name|session-id prefix` 与一张候选表——每行含 sessionId、名字、状态（idle/generating，非本 daemon 托管的会话显示 not hosted）、工作目录、最后一条消息摘要（截断到一行，用来分辨两条同名会话）——并且**不执行任何动作**（不派单、不销毁、不改名）。候选的 sessionId 可直接复制使用：歧义只拦住名字/前缀，id 仍各自可用。
+7. **假设** 引用既不是任何会话的 id/前缀，也不是任何会话的名字，**当** 执行 `status` / `wait` / `send` / `respond` / `rename` 时，**则** 以非零退出码失败，stderr 为 `Session not found or not hosted by this daemon: <引用>` 并附一行提示：说明「没有任何 id、id 前缀或名字匹配」并列出本机现存的名字（重打错字时一眼能看出来）。即使引用不是 UUID 形状（名字通常都不是），也必须报这个「未命中」而不是底层 SDK 的 `Invalid session ID format`。
+8. **假设** 引用未命中，**当** 执行 `wave daemon destroy <引用>` 时，**则** 保持既有的**幂等 no-op** 语义（退出码 0、输出 `Destroyed session: <引用>`），只额外在 stderr 打印场景 7 的提示——把未命中变成失败会破坏「清理脚本直接调用 destroy 即可」的既有约定。
+9. **假设** 用户运行 `wave daemon rename <会话> <新名字>`，**当** 会话存在（本 daemon 托管，或只存在于磁盘且名字可解析）时，**则** 命令经协议的 `renameSession` 写标题（托管中的会话经 agent 内存 + 转录、非托管的直接写转录），输出 `Renamed session: <sessionId> -> <新名字>` 并以退出码 0 结束；此后**旧名字立即失配**（落到场景 7 的未命中提示），新名字立即可用于所有子命令。
+10. **假设** 会话在磁盘上有转录（含 `custom-title` 条目）但当前**不在** daemon 的内存注册表里（daemon 重启后、或从未被本 daemon 载入），**当** 用它的名字执行任一子命令时，**则** 名字解析会查磁盘索引（`listAllSessions`）并命中，命令照常工作（attach 语义把它重新载入内存）；**只查 `main` 会话**——子代理转录没有自己的对话可 attach，不得被名字命中。内存里已托管的会话优先：一条同名记录即使还在磁盘索引里，也不会把它变成歧义。
+11. **假设** 脚本或调用方（含仓库外消费者）一直用完整 sessionId 调用，**当** 升级到本改动后，**则** 行为逐字不变：完整 id 在所有子命令里照旧精确命中（含重启后从磁盘重新载入的历史会话）；历史会话即使从未命名也仍可用完整 id 寻址，并可在之后用 `rename` 补一个名字。`list` 只是在既有列中**新增** `Name` 列（从未命名显示 `-`），其余列与含义不变，不改变任何既有解析约定。
 
 ---
 
 ### 用户故事：列出 daemon 托管的会话（优先级：P0）
 
-作为在远端主机检查后台任务进度的用户，我希望 `wave daemon list` 列出当前 daemon 托管的会话（会话 ID、工作目录、状态、消息数），以便找到目标会话并决定查看或续聊哪一条。
+作为在远端主机检查后台任务进度的用户，我希望 `wave daemon list` 列出当前 daemon 托管的会话（会话 ID、名字、工作目录、状态、消息数），以便找到目标会话并决定查看或续聊哪一条——名字列就是「可以直接拿去当参数」的那一列。
 
 **为什么是这个优先级**：查看进度与继续对话都先要找到会话。会话不归属于某个 daemon 进程——daemon 进程退出/重启（被 kill / 升级重启 / 机器重启）会清空内存注册表，但磁盘上的历史会话转录仍会保留、可随时重新载入。因此「daemon 托管」的准确语义是「当前 daemon 进程内存中 live 的会话」（经 `initialize`/`restoreSession` 载入且仍存活于该进程，即 agentBridge 的会话注册表），`list` 直接暴露该注册表即可，不扫磁盘索引、不需要新增 `listAllSessions` 协议方法，也天然不会列出 daemon 之外的对话（普通 `wave` TUI 创建的会话不在列表中）。
 
-**独立测试**：在 daemon 中创建/恢复两条会话后运行 `wave daemon list`，验证两条会话都出现，且每条含会话 ID、工作目录、状态与消息数；daemon 重启（被 kill / 升级重启 / 机器重启）后运行 `wave daemon list` 显示 No sessions（退出码 0）。
+**独立测试**：在 daemon 中创建/恢复两条会话后运行 `wave daemon list`，验证两条会话都出现，且每条含会话 ID、名字、工作目录、状态与消息数；daemon 重启（被 kill / 升级重启 / 机器重启）后运行 `wave daemon list` 显示 No sessions（退出码 0）。
 
 **验收场景**：
 
-1. **假设** daemon 进程内存中托管了多条会话（不同 workdir 下经 `initialize`/`restoreSession` 载入且仍存活），**当** 用户运行 `wave daemon list` 时，**则** 列出当前进程内存中的全部会话，每条显示会话 ID、工作目录、状态（generating/idle）与消息数，不扫磁盘索引、不列出 daemon 之外的对话。
+1. **假设** daemon 进程内存中托管了多条会话（不同 workdir 下经 `initialize`/`restoreSession` 载入且仍存活），**当** 用户运行 `wave daemon list` 时，**则** 列出当前进程内存中的全部会话，每条显示会话 ID、名字（`Name` 列，从未命名的会话显示 `-`）、工作目录、状态（generating/idle）与消息数，不扫磁盘索引、不列出 daemon 之外的对话。
 2. **假设** daemon 托管了多条会话，**当** 用户运行 `wave daemon list` 时，**则** 会话按注册顺序展示（内存态无磁盘索引的 lastActiveAt，不做最后活跃时间排序）。
 3. **假设** daemon 重启后（进程内存清空；被 kill / 升级重启 / 机器重启）或尚无任何会话，**当** 用户运行 `wave daemon list` 时，**则** 输出空结果（显示 No sessions），退出码为 0——列表为空符合预期而非错误。
 4. **假设** 磁盘上存在历史会话（含 daemon 重启前托管过、或普通 `wave` TUI 创建的会话），**当** 用户运行 `wave daemon list` 时，**则** 这些会话不出现于列表；用户知道 sessionId 时仍可经 `wave daemon status <sessionId>` / `send <sessionId>` attach（`restoreSession` 会重新载入内存），无需依赖 `list` 找回。
@@ -194,7 +218,7 @@ order: 95
 
 ### 用户故事：向会话注入消息派单（优先级：P0）
 
-作为在远端主机派单后台任务的用户，我希望 `wave daemon send <sessionId> <消息>` 默认以异步派单方式向指定会话注入一条用户消息并立即返回（发完即退，不等待回复、不输出回复文本），需要同步收尾时再用 `--wait <秒>` 等待该消息对应的回复完成并输出助手最终回复，以便不打开完整 UI 即可驱动后台 agent 继续工作。
+作为在远端主机派单后台任务的用户，我希望 `wave daemon send <sessionId> <消息>` 默认以异步派单方式向指定会话注入一条用户消息并立即返回（发完即退，不等待回复、不输出回复文本），需要同步收尾时再用 `--wait <秒>` 等待该消息对应的回复完成并输出助手最终回复，中途要换方向时用 `--now` 立即发送（中断当前轮并让这条先起跑），以便不打开完整 UI 即可驱动后台 agent 继续工作。
 
 **为什么是这个优先级**：这是「继续对话/派单」的核心命令，也是用户「本地电脑关机后从另一台机器驱动 daemon 会话」场景的最终诉求；派单方（如主代理对委托会话转达消息）是 fire-and-forget 心智——消息送达即完成，进度用 `status` 盯——同步等待语义（默认 600 秒超时）反而让每条派单都阻塞到超时才返回，因此默认改为异步派单，`--wait <秒>` 保留显式等待能力（复用已验证的 attach → `sendMessage` → 流式通知 → `loadingChange:false` 收尾流程，非交互式运行便于脚本调用）。
 
@@ -211,23 +235,27 @@ order: 95
 7. **假设** 指定的 sessionId 不存在于该 daemon（无论是否传 `--wait`），**当** 用户运行 `wave daemon send <sessionId> "消息"` 时，**则** 以非零退出码退出并给出明确错误，不注入任何消息。
 8. **假设** send 命令完成或失败退出后，**当** 命令结束时，**则** 断开与 daemon 的连接，会话在 daemon 中继续存活、不因客户端退出而终止（与 attach 语义一致；异步派单模式下回复仍在 daemon 中照常生成，可用 `status` 查看）。
 9. **假设** 用户传入 `--wait <N>` 且等待期间回复被中断（如另一客户端对该会话运行 `wave daemon abort`，最终 assistant 消息只有 reasoning、无正文），**当** 命令收尾时，**则** 命令明确提示已中断（stderr 输出「Message aborted before producing a reply」）并以非零退出码退出，而不是静默以退出码 0 退出且无输出。
+10. **假设** 目标会话正在生成、用户传入 `--now`，**当** 运行 `wave daemon send <会话> "改个方向" --now` 时，**则** 命令经协议 `sendMessage`（携带 `force: true`，与桌面端 / IDE 的「立即发送」同一条路径，而不是 CLI 侧自己「先 abort 再 send」）中断当前轮——被打断那轮未完成的产出丢弃、不再产生回复正文，这条消息立刻成为下一个起跑的回合（`status` 仍显示 `generating`，最新一条 user 消息是这条）。
+11. **假设** 队列里已有更早排队的用户消息，**当** 用户对同一会话运行 `--now` 发送时，**则** 队列里其余消息**一条都不丢**、顺序不变，并在这一轮结束后按原序照常起跑；`--now` 只中断当前轮、只让自己这条插到最前。
+12. **假设** 用户不带 `--now`，**当** 目标会话正在生成时运行 `wave daemon send` 时，**则** 行为与今天一致：消息入队排队、当前轮跑完才生效，且协议参数里**不出现** `force` 字段（默认路径不得悄悄变成中断）。
+13. **假设** 用户同时传入 `--now` 与 `--wait <N>`，**当** 命令等待回复时，**则** 等到的仍是「这条消息」对应的回复（既不是被打断那轮的，也不是队列里更早消息的），stdout 输出该回复文本后以退出码 0 结束。
 
 ---
 
 ### 用户故事：中断会话正在生成的消息（优先级：P0）
 
-作为在远端主机驱动后台会话的用户，我希望 `wave daemon abort <sessionId>` 中断指定会话正在生成的回复（含子代理、bash 命令与排队消息），以便在模型走偏、回复过长或需要及时止损时打断当前生成，而不必等待其自然完成。
+作为在远端主机驱动后台会话的用户，我希望 `wave daemon abort <sessionId>` 中断指定会话正在生成的回复（含子代理与 bash 命令），以便在模型走偏、回复过长或需要及时止损时打断当前生成，而不必等待其自然完成。
 
-**为什么是这个优先级**：这是「控制后台会话」的核心能力——`send` 能注入消息但无法打断；协议层已有 `abortMessage` 方法（agentBridge 已实现：统一中断 AI 消息、bash 命令、slash 命令与子代理，并清空消息队列，见 protocol.ts / agentBridge.ts），只缺 CLI 封装。中断是幂等操作——在空闲会话上调用是安全 no-op，命令仍成功返回，因此无需校验会话是否正在生成，`abort` 是短暂的 attach 访问、随用随断。
+**为什么是这个优先级**：这是「控制后台会话」的核心能力——`send` 能注入消息但无法打断；协议层已有 `abortMessage` 方法（agentBridge 已实现：统一中断 AI 消息、bash 命令、slash 命令与子代理；排队中的用户消息默认保留并在中断后续跑，见 protocol.ts / agentBridge.ts），只缺 CLI 封装。中断是幂等操作——在空闲会话上调用是安全 no-op，命令仍成功返回，因此无需校验会话是否正在生成，`abort` 是短暂的 attach 访问、随用随断。
 
 **独立测试**：对一条正在生成回复的会话运行 `wave daemon abort <sessionId>`，验证会话停止生成回到空闲、命令输出确认并以退出码 0 结束；对一条空闲会话运行同一命令，验证命令同样成功退出（幂等 no-op）且不报错。
 
 **验收场景**：
 
-1. **假设** 目标会话正在生成回复（含子代理运行中），**当** 用户运行 `wave daemon abort <sessionId>` 时，**则** 命令经 attach（`initialize {restoreSessionId}` + `restoreSession`）后调用协议 `abortMessage` 方法，会话中断当前生成（含子代理与排队消息）回到空闲，命令输出确认信息并以退出码 0 结束。
+1. **假设** 目标会话正在生成回复（含子代理运行中），**当** 用户运行 `wave daemon abort <sessionId>` 时，**则** 命令经 attach（`initialize {restoreSessionId}` + `restoreSession`）后调用协议 `abortMessage` 方法，会话中断当前生成（含子代理）回到空闲，命令输出确认信息并以退出码 0 结束。中断只中止当前轮：**排队中的用户消息不丢弃**，中断后队列自行续跑（这也正是「打断并立刻换方向」要用 `send --now` 而不是 `abort` + `send` 的原因——否则已排队的消息会抢在那条纠正前面起跑）。
 2. **假设** 目标会话空闲（未在生成），**当** 用户运行 `wave daemon abort <sessionId>` 时，**则** 中断是幂等 no-op，命令仍输出确认信息并以退出码 0 结束，不报错。
 3. **假设** 指定的 sessionId 不存在于该 daemon，**当** 用户运行 `wave daemon abort <sessionId>` 时，**则** 以非零退出码退出并给出明确错误（Session not found or not hosted by this daemon），不调用中断。
-4. **假设** abort 命令完成（成功或失败）后，**当** 命令退出时，**则** 断开与 daemon 的连接（attach 是短暂访问，不常驻），会话在 daemon 中继续存活、不因客户端退出而终止；中断不清除已完成的对话历史，只打断进行中的生成与排队消息。
+4. **假设** abort 命令完成（成功或失败）后，**当** 命令退出时，**则** 断开与 daemon 的连接（attach 是短暂访问，不常驻），会话在 daemon 中继续存活、不因客户端退出而终止；中断不清除已完成的对话历史，也不丢弃排队中的用户消息，只打断进行中的生成。
 
 ---
 
@@ -275,11 +303,15 @@ order: 95
 
 ### 边界情况
 
+- **名字是既有标题，不是新存储**：会话名字就是转录里的 `custom-title` 条目（`customTitle`）——桌面端、IDE 插件、会话选择器与本命令组看到的是同一个标签。因此本能力不新增名字表、不新增持久化文件、不新增协议方法：`create --name` / `rename` 都走既有的 `renameSession` 协议（托管中的会话经 agent 内存并随下次存盘写回，非托管的直接追加转录条目），名字在 daemon 重启后仍然有效。
+- **解析在客户端，不在协议层**：三层解析（完整 id → 唯一前缀 → 名字）由每个子命令在发请求前完成，命中后**一律按 sessionId 发协议请求**。因此新 CLI 连上**旧 daemon**时名字照样可用（旧 daemon 只认 sessionId，正是客户端解析后发给它的东西），不需要协议升级、也不会出现「daemon 太旧所以名字失效」。
+- **前缀匹配的范围是「本 daemon 当前托管的会话」**：`list` 只列托管会话，用户手里的前缀也来自那里；未托管的会话由「完整 id」（永远可用，attach 会把它重新载入）与「名字」覆盖。名字解析在托管会话里没命中时才去查磁盘索引（`listAllSessions`，只取 `main` 且带标题的会话，并排除已托管的 id），因此一次普通寻址不会因为磁盘上历史会话多而变慢或产生歧义。
+- **大小写与形状**：名字匹配是精确匹配（不做前缀、不做大小写折叠）——名字是用户自己起的标签，放宽匹配会让「差一个字符」的两个名字互相顶替。id 前缀匹配不区分大小写，但只接受十六进制、至少 4 个字符，避免把一条名字叫 `a` 的会话变得不可寻址。形如完整 UUID 的引用只按 id 解释，不再按名字解释。
 - **daemon 未运行 / socket 不存在（按需即用）**：除 `stop` 外，任一子命令连接失败时自动以 nohup 方式拉起 daemon（`wave --daemon ~/.wave/daemon.sock`，nohup+重定向分离会话）并重试连接——daemon 一经拉起即常驻（空闲不退出），仅在被 stop/restart 优雅关闭、kill / 升级重启 / 机器重启后消失，届时下一次子命令连接失败会再次自动拉起；拉起的 daemon 在启动超时（默认 10 秒）内仍未就绪时，命令才以非零退出码 + stderr 明确提示退出，不得挂起或进入 TUI。`stop` 不自动拉起（未运行即幂等成功退出 0）；`restart` 未运行时等价于直接拉起。
 - **默认 socket 固定，形态随平台**：所有 `wave daemon` 子命令一律连接默认 socket、不提供 `--socket` 覆盖参数；POSIX 是文件形态的 `~/.wave/daemon.sock`，Windows 是命名管道 `\\.\pipe\wave-daemon-<家目录路径派生的摘要>`（管道名是机器全局命名空间，必须带用户唯一成分，且不能直接拼路径——`\` 与 `:` 在管道名中非法）。服务端与客户端共用同一个映射函数。不面向本地转发的 socket；手工 `wave --daemon <path>` 仍按调用方给的名字启动，不做映射。
 - **daemon 宿主平台**：POSIX（Linux / macOS）与 Windows **本机**都支持跑 daemon（内置 wave-daemon 技能把任务委派给本机 daemon 是受支持的用法，两个平台一致）。桌面端的 **SSH 远端主机仍限 POSIX**：OpenSSH 无法把 `-L` 转发指向 Windows 命名管道，且远端的启动/探活/重启依赖 `nohup`、`test -S`、`pkill -f` 与登录 shell（`bash/zsh -lic`）——因此 Windows 只能作为**客户端**连 POSIX 远端主机（这条已支持：本地转发端用 127.0.0.1 TCP 端口），不能作为远端主机被连（见 desktop-remote.md）。
 - **按需拉起的诊断性**：拉起 daemon 时子进程的 stderr 落到 `~/.wave/logs/daemon.log`（追加、拉起前超阈值轮换一代），不用管道常连（常驻 daemon 比客户端活得久，父进程退出后写 stderr 会 EPIPE）。子进程在启动窗口内非零退出时，给 1-2 秒撮合窗口（覆盖并发拉起的胜者尚未就绪）后立即失败，不等满启动超时；失败文案含 socket 名字、子进程退出码与 stderr 最后一行，不得只报首连错误码。日志目录不可写时降级为既有文案、不因此失败。
-- **`wave daemon` 与 `wave --daemon` 语义冲突**：前者是客户端子命令组（create/list/status/wait/send/respond/abort/destroy/stop/restart），后者是服务端启动标志（也是客户端连接失败时自动拉起的后台进程）；帮助文本须写明差异，避免误用。
+- **`wave daemon` 与 `wave --daemon` 语义冲突**：前者是客户端子命令组（create/list/status/wait/send/respond/abort/destroy/rename/stop/restart），后者是服务端启动标志（也是客户端连接失败时自动拉起的后台进程）；帮助文本须写明差异，避免误用。
 - **stop/restart 是优雅关闭，非强杀**：`stop`/`restart` 经协议 `shutdown` 让 daemon 先销毁全部会话（各自存盘收尾）再退出，取代仓库旧的 `daemon:kill` pkill 脚本；停止完成的判定是「socket 消失」而非 shutdown RPC 响应（daemon 销毁会话后即退出，可能来不及应答）。桌面端 SSH 远端 daemon 的升级重启走另一既有机制（ensureRemoteDaemon / killRemoteDaemon，见 desktop-distribution.md「内置 CLI 一致保障」），不受本命令影响。
 - **重启保持远程控制状态，但不构成开机自启**：远程控制开着这件事只活在 daemon 进程里（`RemoteControlService` 在 `--daemon` 启动时按 `enableRemoteControl` 建出、拨号是 `remoteControlConnect` 的动作），所以换进程就丢——`restart` 因此在 stop **之前**采样、在新 daemon 就绪后**只由这一条命令**拨回。三个边界必须守住：① **不落盘**任何「上次是开的」标记（`~/.wave/remote-control.json` 只存机器身份；restart 只从里面读 name 这个显示名，读它不会让任何进程启动时拨号），因为意图标记会让「进程启动」也能读到它，等于把用户亲手删掉的开机自启绕回来；② 采样与恢复都不在其它路径上（开机、按需拉起、`stop`），`off`、`error` 与「根本没有 daemon」三种情形一律什么都不做；③ 只恢复 `online` / `connecting`——`error`（多是凭证被吊销 / 过期）属于「坏了」，替用户重拨是修复动作，不是保持状态。恢复失败的告警与退出码口径见「停止与重启 daemon」场景 7。
 - **list 仅反映当前进程内存态**：`list` 展示的是当前 daemon 进程内 live 的会话（`initialize`/`restoreSession` 载入且仍存活），不扫磁盘索引；daemon 重启（被 kill / 升级重启 / 机器重启）后内存清空、列表为空是正常现象。磁盘上的历史会话（含普通 `wave` TUI 创建的）不在列表中，但知道 sessionId 仍可经 `status`/`send` attach（`restoreSession` 重新载入），无需依赖 `list` 找回。
