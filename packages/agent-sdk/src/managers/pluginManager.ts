@@ -9,6 +9,7 @@ import { PluginLoader } from "../services/pluginLoader.js";
 import * as path from "path";
 import { existsSync, readdirSync } from "fs";
 import { getBuiltinPluginsDir } from "../utils/configPaths.js";
+import { isBuiltinPluginEnabled } from "../builtin/pluginPolicies.js";
 import { SkillManager } from "./skillManager.js";
 import { HookManager } from "./hookManager.js";
 import { LspManager } from "./lspManager.js";
@@ -470,9 +471,11 @@ export class PluginManager {
 
   /**
    * Load built-in plugins bundled with the SDK (e.g. sdd).
-   * Opt-in via `enabledPlugins`, keyed `<name>@builtin` (default off, consistent
-   * with marketplace plugins). Lowest priority: explicit config and marketplace
-   * plugins win on name conflicts (loadSinglePlugin skips duplicates).
+   * Opt-in via `enabledPlugins`, keyed `<name>@builtin`; a plugin with no entry
+   * falls back to its own `defaultEnabled` policy (off unless it declares one —
+   * see `builtin/pluginPolicies.ts`). Lowest priority: explicit config and
+   * marketplace plugins win on name conflicts (loadSinglePlugin skips
+   * duplicates).
    */
   private async loadBuiltinPlugins(): Promise<void> {
     try {
@@ -482,7 +485,7 @@ export class PluginManager {
       // The builtin plugin directory name is the plugin name by convention.
       for (const entry of readdirSync(builtinDir, { withFileTypes: true })) {
         if (!entry.isDirectory()) continue;
-        if (this.enabledPlugins[`${entry.name}@builtin`] !== true) continue;
+        if (!isBuiltinPluginEnabled(entry.name, this.enabledPlugins)) continue;
         await this.loadSinglePlugin(path.join(builtinDir, entry.name));
         // Register allow rules only after the plugin actually loaded, so a
         // failed load never leaves permission grants behind.
