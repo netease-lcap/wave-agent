@@ -54,6 +54,7 @@ import {
 } from "../utils/bashParser.js";
 import type { BashLeaf } from "../utils/bashStructure/index.js";
 import { analyzeShellCommand } from "../utils/shell/shellCommandAnalysis.js";
+import { evaluatePowerShellCommand } from "../tools/powershellTool/permissions.js";
 import type { ShellType } from "../utils/shell/shellProvider.js";
 import { isPathInside } from "../utils/pathSafety.js";
 import { toWindowsPath } from "../utils/path.js";
@@ -1215,6 +1216,71 @@ export class PermissionManager {
       }
     }
 
+    // 1.15 PowerShell commands are read by their own engine.
+    //
+    // Everything below this point reasons about bash text: `isAllowedByRule`
+    // cuts a command with the bash parser and matches `Bash(…)` globs against
+    // the whole string, and `PowerShell(Get-ChildItem*)` matching the entire
+    // text would happily cover `Get-ChildItem; iex evil`. So a PowerShell
+    // command is decided here and does not fall through: the engine's `ask` is
+    // the dialog's `ask`, with the pre-filled rule text already on the context.
+    if (this.isPowerShellShellContext(context) && context.toolInput?.command) {
+      const verdict = await evaluatePowerShellCommand({
+        command: String(context.toolInput.command),
+        workdir: context.toolInput?.workdir as string | undefined,
+        allowedRules: [
+          ...this.instanceAllowedRules,
+          ...this.temporaryRules,
+          ...this.allowedRules,
+        ],
+        deniedRules: [...this.instanceDeniedRules, ...this.deniedRules],
+        isInsideSafeZone: (target) =>
+          this.isInsideSafeZone(
+            target,
+            context.toolInput?.workdir as string | undefined,
+          ).isInside,
+      });
+
+      if (verdict.decision === "allow") {
+        return { decision: "allow", source: "config", reason: verdict.reason };
+      }
+
+      if (verdict.decision === "deny") {
+        return {
+          decision: "deny",
+          message: verdict.message ?? "This PowerShell command was denied.",
+          reason: verdict.reason,
+          source: "config",
+          denyReason: "denied_by_rule",
+        };
+      }
+
+      // `ask`: carry what the dialog needs, then let the mode decide who
+      // answers. `dontAsk` denies here exactly as step 2.1 would.
+      context.suggestedPrefix =
+        verdict.suggestedPrefix ?? context.suggestedPrefix;
+      if (verdict.hidePersistentOption) context.hidePersistentOption = true;
+
+      if (context.permissionMode === "dontAsk") {
+        logger?.info("Restricted tool automatically denied in dontAsk mode", {
+          toolName: context.toolName,
+        });
+        return {
+          decision: "deny",
+          message: `Tool '${context.toolName}' was automatically denied because 'dontAsk' permission mode is active and no pre-approved rule matches this call.`,
+          reason: "dontAsk",
+          source: "config",
+          denyReason: "denied_by_mode",
+        };
+      }
+
+      return {
+        decision: "ask",
+        reason: context.permissionMode,
+        source: "config",
+      };
+    }
+
     // 1.2 Check if tool call is allowed by persistent or temporary rules
     if (this.isAllowedByRule(context)) {
       // Which source the matching rule came from is not recoverable: the rules
@@ -1301,6 +1367,19 @@ export class PermissionManager {
   private isBashShellContext(context: ToolPermissionContext): boolean {
     return (
       isShellToolName(context.toolName) && this.shellKindOf(context) === "bash"
+    );
+  }
+
+  /**
+   * true when the context is a shell tool driven by PowerShell.
+   *
+   * Used to route the command to its own permission engine before any of the
+   * bash-specific reasoning below runs — see step 1.15 in `resolvePermission`.
+   */
+  private isPowerShellShellContext(context: ToolPermissionContext): boolean {
+    return (
+      isShellToolName(context.toolName) &&
+      this.shellKindOf(context) === "powershell"
     );
   }
 
@@ -1499,6 +1578,21 @@ export class PermissionManager {
       // is checked first so path-specific rules (e.g. deny rules on
       // `git -C /secret status`) still match.
       return regex.test(stripGitScopePrefix(processedPart));
+    }
+
+    // Handle PowerShell command rules (`PowerShell(Get-ChildItem*)`). PowerShell
+    // is case-insensitive, so the whole comparison is; `*` still matches
+    // everything. This branch exists for the deny rules that run before the
+    // PowerShell engine is reached — the engine does the per-leaf work.
+    if (
+      isShellToolName(toolName) &&
+      this.shellKindOf(context) === "powershell"
+    ) {
+      const command = String(context.toolInput?.command || "");
+      const regexPattern = pattern
+        .replace(/[.+^${}()|[\]\\?]/g, "\\$&")
+        .replace(/\*/g, ".*");
+      return new RegExp(`^${regexPattern}$`, "is").test(command);
     }
 
     // Handle path-based rules (e.g., "Read(**/*.env)")
