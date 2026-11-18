@@ -1,6 +1,7 @@
 import type { SearchToolPaths } from "./searchTools.js";
 import { getSearchTools } from "./searchTools.js";
 import { getRgPath } from "./ripgrep.js";
+import { VCS_DIRECTORIES } from "./vcsDirectories.js";
 
 /**
  * The shell prelude that makes wave's own search binaries win over the system
@@ -62,9 +63,6 @@ import { getRgPath } from "./ripgrep.js";
  * Windows packs ugrep only — bfs has no Windows build, and msys `find` already
  * *is* GNU find, which is the semantics the find shadow imitates.
  */
-
-/** VCS directories the Grep tool excludes; mirrored here so bash matches it. */
-const VCS_DIRECTORIES = [".git", ".svn", ".hg", ".bzr", ".jj", ".sl"];
 
 /**
  * grep arguments ugrep must not interpret: output formats the caller's pipeline
