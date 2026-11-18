@@ -252,6 +252,25 @@ describe("Agent - clear/compact ignored while running", () => {
     expect(agent.messages).toHaveLength(1);
   });
 
+  it("/clear 仍注入 initialUserMessage（清空后的空表 = 会话起点，对齐 -p 语义）", async () => {
+    const hookManager = (agent as unknown as { hookManager: HookManager })
+      .hookManager;
+    vi.spyOn(hookManager, "executeSessionStartHooks").mockResolvedValue({
+      results: [],
+      initialUserMessage: "Start with a plan",
+    });
+
+    await agent.clearMessages();
+
+    // `startup` 与 `clear` 是仅有的两个「列表为空」的 source；恢复与压缩都不注入。
+    expect(agent.messages).toHaveLength(1);
+    expect(agent.messages[0].isMeta).toBe(true);
+    expect(agent.messages[0].blocks[0]).toMatchObject({
+      type: "text",
+      content: "Start with a plan",
+    });
+  });
+
   it("/clear while idle still works — messages cleared, new session ID", async () => {
     // Complete a normal turn first.
     await agent.sendMessage("Test message");

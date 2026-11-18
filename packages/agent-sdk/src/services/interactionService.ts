@@ -292,16 +292,10 @@ export class InteractionService {
           }
         }
 
-        // `initialUserMessage`：与 startup / clear / compact 三条路径一样注入成
-        // meta 消息。resume 是唯一「消息列表已经从盘上载入」的路径，所以靠
-        // `addMetaMessageIfAbsent` 去重：上一次 resume 注入的那条已经是
-        // transcript 里的普通消息，同一场会话反复 resume（A→B→A）会把同一段
-        // 指令一层层叠上去。
-        if (sessionStartResult.initialUserMessage) {
-          messageManager.addMetaMessageIfAbsent(
-            sessionStartResult.initialUserMessage,
-          );
-        }
+        // `initialUserMessage` 在恢复路径上不注入：Claude Code 把它定为非交互
+        // `-p` 模式专用（"becomes the first turn even if you pass no prompt"），
+        // 而恢复出来的对话已经有自己的第一轮。`additionalContext` 不受影响，
+        // 照旧注入 + 平台层去重。
       } catch (error) {
         logger?.warn(
           `SessionStart hooks on restore failed: ${(error as Error).message}`,
