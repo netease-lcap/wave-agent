@@ -17,6 +17,7 @@ import {
   ASK_USER_QUESTION_TOOL_NAME,
   ARTIFACT_TOOL_NAME,
 } from "../constants/tools.js";
+import type { ShellType } from "../utils/shell/shellProvider.js";
 
 /** Permission mode configuration */
 export type PermissionMode =
@@ -89,6 +90,16 @@ export interface ToolPermissionContext {
   canUseToolCallback?: PermissionCallback;
   /** Tool input parameters for better context */
   toolInput?: Record<string, unknown>;
+  /**
+   * Which shell a shell tool drives (see `SHELL_TOOL_NAMES`). Set by
+   * `PermissionManager.createContext` from the tool name, never from tool
+   * input — the model must not be able to choose the rules it is judged by.
+   * Absent means `"bash"`: a context built by hand (tests, hosts, the CLI's own
+   * entry points) predates the PowerShell tool and keeps its behaviour.
+   *
+   * Internal contract, not a configuration knob.
+   */
+  shellKind?: ShellType;
   /** Suggested prefix for bash commands */
   suggestedPrefix?: string;
   /** Whether to hide the persistent permission option (e.g., "Don't ask again") in the UI */
