@@ -880,13 +880,6 @@ export class ChatSession {
     return result.activity;
   }
 
-  public async stopWorkflowRun(runId: string): Promise<boolean> {
-    if (!this.agent) {
-      return false;
-    }
-    return await this.agent.stopWorkflowRun(runId);
-  }
-
   // ── 插件 mod 面板（spec ecosystem/plugin-mods.md「在 IDE 插件里画」）──────
   // 与桌面端走同一套 RPC：树由 webview 自己来要（宿主不缓存），交互原样退回
   // CLI 进程里那个 mod。`layout` 只说「这一端把面板摆在哪」，由 webview 量出来

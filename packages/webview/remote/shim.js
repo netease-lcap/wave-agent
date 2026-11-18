@@ -3550,27 +3550,6 @@
           });
         return;
 
-      case "stopWorkflowRun":
-        request("stopWorkflowRun", { runId: msg.runId })
-          .then(function (result) {
-            post({
-              command: "workflowRunStopped",
-              runId: msg.runId,
-              success: !!(result && result.success),
-            });
-            // 停完立刻重读一次：被停下的那个不再产生进度事件，等推送是等不到的。
-            refreshWorkflowRuns();
-          })
-          .catch(function (err) {
-            post({
-              command: "workflowRunStopped",
-              runId: msg.runId,
-              success: false,
-            });
-            showStatus(failureText("停止工作流", err));
-          });
-        return;
-
       case "getWorkflowAgentActivity":
         // 单个 agent 的活动日志尾部（spec「查看单个 agent 的执行详情」）：页面
         // 在 agent 运行期间按 1.5 秒重读，requestId 原样带回，晚到的旧回包由

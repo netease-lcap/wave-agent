@@ -594,7 +594,6 @@ vi.mock("wave-agent-sdk/host", async (importOriginal) => ({
     getBackgroundTaskOutput = vi.fn(async () => null);
     stopBackgroundTask = vi.fn(async () => true);
     getWorkflowRuns = vi.fn(async () => []);
-    stopWorkflowRun = vi.fn(async () => true);
     getMcpServers = vi.fn(async () => []);
     connectMcpServer = vi.fn(async () => true);
     disconnectMcpServer = vi.fn(async () => true);

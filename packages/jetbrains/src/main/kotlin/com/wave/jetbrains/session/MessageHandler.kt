@@ -1025,19 +1025,6 @@ class MessageHandler(
                     put("activity", activity ?: "")
                 })
             }
-            "stopWorkflowRun" -> {
-                val runId = msg["runId"]?.jsonPrimitive?.content ?: return
-                val success = try {
-                    session.agent?.stopWorkflowRun(runId) ?: false
-                } catch (e: StdioClientException) {
-                    LOG.warn("stopWorkflowRun failed: ${e.message}")
-                    false
-                }
-                postMessage("workflowRunStopped", buildJsonObject {
-                    put("runId", runId)
-                    put("success", success)
-                })
-            }
             // ── 插件 mod（spec ecosystem/plugin-mods.md「在 IDE 插件里画」）──────
             // 与桌面端同一套协议、同一批消息名（`desktopMod*` 是历史命名，webview
             // 只认语义不认宿主）。插件端的 webview 与这条会话一一对应，所以回包里

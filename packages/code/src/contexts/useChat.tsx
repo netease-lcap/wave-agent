@@ -129,7 +129,6 @@ export interface ChatContextType {
   // Workflow runs
   workflowRuns: WorkflowRun[];
   getWorkflowAgentActivity: (runId: string, agentIndex: number) => string;
-  stopWorkflowRun: (runId: string) => void;
   saveWorkflowScript: (
     runId: string,
     options: { name: string; scope: "project" | "user"; overwrite?: boolean },
@@ -1598,10 +1597,6 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     [],
   );
 
-  const stopWorkflowRun = useCallback((runId: string) => {
-    agentRef.current?.stopWorkflowRun(runId);
-  }, []);
-
   const saveWorkflowScript = useCallback(
     async (
       runId: string,
@@ -1883,7 +1878,6 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     backgroundTasks,
     workflowRuns,
     getWorkflowAgentActivity,
-    stopWorkflowRun,
     saveWorkflowScript,
     tasks,
     getBackgroundTaskOutput,

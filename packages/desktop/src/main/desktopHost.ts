@@ -6537,20 +6537,6 @@ export class DesktopHost {
         break;
       }
 
-      case "stopWorkflowRun": {
-        const paneAgent = this.agentForPane(pid);
-        const success = paneAgent
-          ? await paneAgent.stopWorkflowRun(msg.runId as string)
-          : false;
-        this.postMessage({
-          command: "workflowRunStopped",
-          paneId: pid,
-          runId: msg.runId,
-          success,
-        });
-        break;
-      }
-
       // -- prompt history --------------------------------------------------------------
       case "requestHistory":
         await this.handleRequestHistory(msg.requestId as string);
