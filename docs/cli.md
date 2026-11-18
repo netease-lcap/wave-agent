@@ -169,6 +169,8 @@ wave daemon wait <sessionId> [--lines 1] [--from-busy] [--timeout 600]
 wave daemon send <sessionId> "继续"
 # 需要同步等待回复时传 --wait <秒>：等待该消息对应的回复完成后输出助手最终回复
 wave daemon send <sessionId> "继续" --wait 600
+# 立即发送（--now）：中断当前轮（其未完成产出丢弃）、保留其余排队消息，这条立刻开始跑
+wave daemon send <sessionId> "改个方向" --now
 
 # 处理会话挂起的权限请求：允许 / 拒绝（可附原因）
 wave daemon respond <sessionId> <requestId> --allow
@@ -198,8 +200,9 @@ wave daemon restart
 - **无人值守监控不需要外层 shell 轮询脚本**：`wave daemon wait` 的三种终止已覆盖全部终止情形——`0`=目标会话完成（stdout 即最终快照）、`3`=卡在审批（去 `respond` 后续等）、`1`=出错（含等待期间该会话被其它客户端 `destroy`：命令会按「会话已不存在」明确报错退出，绝不挂住、也绝不把已消失的会话误报成「已完成」；daemon 侧保证销毁是「先摘注册表条目、再做耗时收尾」，因此整个销毁窗口内该会话都已按「不存在」对待）。因此调用方直接 `msg=$(wave daemon wait <id>)` 取汇报、按退出码分支即可；权限审批与会话是否仍存活这两类事实施信不了推送（会话被销毁只伴随一次 `loadingChange:false`，与「本轮生成结束」同形），由同一个 2 秒兜底查询覆盖（不是每 N 秒查一次 `status` 的状态轮询）
 - **换键与就地重建不等于销毁**：会话在存活期间可以换 sessionId（清空对话铸出新 id）——daemon 会广播新 id，`wait` / `send --wait` 跟着重绑到同一个会话（不因旧 id 消失而报退出码 1 / 假超时）；配置保存触发的**就地重建**期间会话仍在注册表中并被报为「生成中」（绝不出现「条目在 + 未生成」这个会被误判成空闲的组合），读类请求照常、写类请求以可重试错误拒绝，重建完成后照常判定，只有重建**失败**才会话消失（走「已不存在」退出码 1）
 - `wave daemon send` 默认异步派单：注入消息后立即退出码 0（stdout 输出 `Sent message to session: <sessionId>` 确认，不等待回复、不输出回复文本），消息照常在 daemon 中处理，进度用 `wave daemon status` 查看；需要同步等待回复时传 `--wait <秒>`（如 `--wait 600`，等待超过 N 秒无回复即以非零退出码退出；会话挂起等待审批时超时退出，提示先经 `wave daemon respond` 处理）
+- `--now` 是「立即发送」：给正在生成的会话发消息时，默认行为是排队等当前轮跑完，`--now` 改为**中断当前轮**（被打断那轮未完成的产出丢弃）、**保留**队列里其余消息、这条立刻起跑；可与 `--wait` 组合。它与 `abort` + `send` 不等价：单独 `abort` 会让队列自己续跑，已排队的消息可能抢在纠正消息前面起跑；只想停下来（不接着跑）时仍用 `wave daemon abort`
 - `wave daemon respond` 按工具智能补全决策：`EnterPlanMode` 的 `--allow` 自动附带 plan 模式切换；`AskUserQuestion` 需用 `--answer '{"问题":"答案"}'` 提供答案；`--rule "Bash(ls)"` 持久化允许规则（后续同类调用不再询问）；`--mode acceptEdits` 切换会话权限模式
-- `wave daemon abort` 中断指定会话正在生成的回复（含子代理、bash 命令与排队消息），不清除已完成的对话历史；对空闲会话是幂等 no-op（仍成功退出）；sessionId 不存在时以非零退出码报错；attach 是短暂访问、随用随断，中断后会话在 daemon 中继续存活
+- `wave daemon abort` 中断指定会话正在生成的回复（含子代理与 bash 命令），不清除已完成的对话历史，**也不丢弃**排队中的用户消息（中断后队列自行续跑，所以「打断并立刻换方向」用 `send --now`）；对空闲会话是幂等 no-op（仍成功退出）；sessionId 不存在时以非零退出码报错；attach 是短暂访问、随用随断，中断后会话在 daemon 中继续存活
 - `wave daemon stop` 优雅关闭 daemon（非强杀）：先销毁全部托管会话（各自存盘收尾）再退出；daemon 未运行时幂等成功（不自动拉起）；`wave daemon restart` 先优雅停掉旧 daemon、再以当前 CLI 拉起新 daemon（未运行时等价于直接拉起）——CLI 升级后运行它让 daemon 跑新代码
 
 ---

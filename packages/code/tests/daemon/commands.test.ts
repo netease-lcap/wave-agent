@@ -176,6 +176,7 @@ import {
 } from "../../src/daemon/commands.js";
 import { createWorktree, removeWorktree } from "../../src/utils/worktree.js";
 import { daemonLogFile } from "../../src/daemon/daemonLog.js";
+import { JsonRpcClient } from "../../src/daemon/jsonRpcClient.js";
 import { isWindowsPipeName } from "../../src/daemon/socketPath.js";
 import { remoteRestorePolicy } from "../../src/remote/remoteControlRestore.js";
 import type { RemoteControlSink } from "../../src/remote/remoteControlSink.js";
@@ -2285,6 +2286,94 @@ test("send: default async also returns immediately when the session is busy (mes
     daemonSendCommand(socketPath, "test-session-id", "继续"),
   ).rejects.toThrow("exit(0)");
   expect(stdoutLines()).toEqual(["Sent message to session: test-session-id"]);
+  expect(exitSpy).toHaveBeenCalledWith(0);
+});
+
+test("send --now asks the daemon to interrupt (force: true) and hands the send to the SDK", async () => {
+  const agent = createMockAgent({ isLoading: true });
+  agent.sendMessage = vi.fn(async () => {});
+  vi.mocked(Agent.create).mockResolvedValue(agent);
+
+  const requestSpy = vi.spyOn(JsonRpcClient.prototype, "request");
+  try {
+    const client = connectClient(socketPath);
+    await client.send({ id: 1, method: "initialize", params: {} });
+    client.close();
+
+    await expect(
+      daemonSendCommand(socketPath, "test-session-id", "改个方向", {
+        wait: 0,
+        now: true,
+      }),
+    ).rejects.toThrow("exit(0)");
+
+    const sent = requestSpy.mock.calls.filter(
+      ([method]) => method === "sendMessage",
+    );
+    expect(sent).toHaveLength(1);
+    // Everything else is the daemon's: `force` is the existing protocol flag
+    // whose handler already does "abort the running turn, then send" with
+    // nothing awaited in between (agentBridge `sendMessage`). The CLI only has
+    // to ask for it.
+    expect(sent[0][1]).toEqual({ text: "改个方向", force: true });
+  } finally {
+    requestSpy.mockRestore();
+  }
+});
+
+test("send without --now sends no force field — the default path never interrupts", async () => {
+  const agent = createMockAgent({ isLoading: true });
+  agent.sendMessage = vi.fn(async () => {});
+  vi.mocked(Agent.create).mockResolvedValue(agent);
+
+  const requestSpy = vi.spyOn(JsonRpcClient.prototype, "request");
+  try {
+    const client = connectClient(socketPath);
+    await client.send({ id: 1, method: "initialize", params: {} });
+    client.close();
+
+    await expect(
+      daemonSendCommand(socketPath, "test-session-id", "继续"),
+    ).rejects.toThrow("exit(0)");
+
+    const sent = requestSpy.mock.calls.filter(
+      ([method]) => method === "sendMessage",
+    );
+    expect(sent).toHaveLength(1);
+    // Absent, not `false`: a default send must stay a pure enqueue, so the flag
+    // that would interrupt the running turn never reaches the daemon.
+    expect(Object.keys(sent[0][1] as object)).toEqual(["text"]);
+  } finally {
+    requestSpy.mockRestore();
+  }
+});
+
+test("send --now --wait prints the reply to THIS message", async () => {
+  let callbacks!: AgentCallbacks;
+  vi.mocked(Agent.create).mockImplementation(async (options) => {
+    callbacks = options.callbacks!;
+    const agent = createMockAgent({ isLoading: true });
+    agent.sendMessage = vi.fn(async () => {
+      agent.messages.push(userMsg("u1", "改个方向"));
+      agent.messages.push(assistantMsg("a1", "好，改成 B 方案。"));
+      callbacks.onUserMessageAdded?.({ content: "改个方向" });
+      callbacks.onAssistantMessageAdded?.("a1");
+      callbacks.onLoadingChange?.(false);
+    });
+    return agent;
+  });
+
+  const client = connectClient(socketPath);
+  await client.send({ id: 1, method: "initialize", params: {} });
+  client.close();
+
+  await expect(
+    daemonSendCommand(socketPath, "test-session-id", "改个方向", {
+      wait: 5,
+      now: true,
+    }),
+  ).rejects.toThrow("exit(0)");
+  expect(stdoutLines()).toEqual(["好，改成 B 方案。"]);
   expect(exitSpy).toHaveBeenCalledWith(0);
 });
 

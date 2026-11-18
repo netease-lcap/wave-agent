@@ -422,6 +422,12 @@ export async function main() {
                       "Seconds to wait for the reply and print it (0 = fire-and-forget, the default)",
                     default: 0,
                     type: "number",
+                  })
+                  .option("now", {
+                    describe:
+                      "Send now: interrupt the running turn (its unfinished output is discarded), keep the rest of the queue, and start this message immediately — instead of queueing it behind the current turn. Unlike `abort` (which lets the queue resume), no other queued message can jump ahead",
+                    default: false,
+                    type: "boolean",
                   });
               },
               async (argv) => {
@@ -431,7 +437,7 @@ export async function main() {
                   DEFAULT_DAEMON_SOCKET,
                   argv.sessionId as string,
                   argv.message as string,
-                  { wait: argv.wait as number },
+                  { wait: argv.wait as number, now: argv.now as boolean },
                 );
               },
             )

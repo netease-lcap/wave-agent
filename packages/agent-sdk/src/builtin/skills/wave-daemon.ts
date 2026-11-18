@@ -37,7 +37,7 @@ One-off edge: \`stop\` / \`restart\` cannot stop a daemon that predates the \`sh
 ## 2. Creating a session
 
 \`\`\`bash
-wave daemon create --worktree [name] --name <name> --workdir <dir> --permission-mode bypassPermissions
+wave daemon create --worktree [name] [--name <name>] --workdir <dir> --permission-mode bypassPermissions
 wave daemon rename <session> <new name>
 \`\`\`
 
@@ -64,16 +64,18 @@ wave daemon send <sessionId> <message> --wait 600     # wait up to 600s and prin
 
 To block on the work instead of checking it, follow the send with \`wave daemon wait <sessionId> --from-busy\` — the flag covers the moment right after an async send where the session still reports idle (§5).
 
-## 4. Changing your mind: abort first
+## 4. Changing your mind: send --now
 
-A \`send\` to a *generating* session is queued, not applied immediately — the current turn runs to completion first. To correct a task or change its scope mid-flight:
+A \`send\` to a *generating* session is queued, not applied immediately — the current turn runs to completion first. To correct a task or change its scope mid-flight, send it with \`--now\`:
 
 \`\`\`bash
-wave daemon abort <sessionId>     # interrupt in-flight generation (subagents, bash commands and queued messages included)
-wave daemon send <sessionId> <corrected task>
+wave daemon send <sessionId> <corrected task> --now                      # interrupt the current turn, start this
+wave daemon send <sessionId> <corrected task> --now --wait 600           # ...and wait for its reply
 \`\`\`
 
-\`abort\` is idempotent and a no-op on an idle session, so it is safe to run without checking first. It does not clear completed history, and it does **not** touch the session's permission mode — the session stays live in the daemon's memory.
+\`--now\` interrupts the running turn (its unfinished output is discarded), **keeps** the rest of the queue, and starts this message immediately. Use it for a changed requirement, a narrower scope, or a wrong direction.
+
+Do **not** reproduce it as \`abort\` + \`send\`: a plain \`abort\` lets the queue resume on its own, so a message already waiting can start a turn ahead of your correction. Reach for \`wave daemon abort <sessionId>\` only when you want the session **stopped** — no next turn — e.g. to look at the state by hand first. \`abort\` is idempotent and a no-op on an idle session; neither command clears completed history or touches the permission mode.
 
 ## 5. Monitoring
 

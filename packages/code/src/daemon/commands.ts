@@ -1518,6 +1518,14 @@ export interface SendOptions {
   /** Seconds to wait for the reply; 0 (default) = async dispatch: inject the
    * message and exit immediately without waiting (fire-and-forget). */
   wait: number;
+  /**
+   * `--now`: interrupt the turn that is running right now (its unfinished
+   * output is discarded) and dispatch this message instead of queueing it
+   * behind that turn. Queued messages that are not this one are kept and go
+   * out afterwards (the daemon's `sendMessage {force}` path — the same one the
+   * desktop app's "send now" uses).
+   */
+  now?: boolean;
 }
 
 /**
@@ -1528,6 +1536,13 @@ export interface SendOptions {
  * message is delivered (the message lands in history on an idle session, or is
  * enqueued when the session is busy) — the sender never blocks on the reply,
  * progress is tracked via `status` (spec: send 默认异步派单).
+ *
+ * `--now` changes *where the message lands*, not how the command waits: the
+ * running turn is interrupted (its unfinished output is discarded), the rest of
+ * the queue is kept, and this message starts immediately. That is the daemon's
+ * `force` path — the same one the desktop app's "send now" uses — rather than
+ * "abort, then send" from the shell, which would let the abort resume the queue
+ * and push this message to the tail (spec: send --now).
  *
  * Completion detection (wait mode): `sendMessage` on an idle session resolves
  * only after the whole turn finishes (InteractionService awaits
@@ -1620,6 +1635,17 @@ export async function daemonSendCommand(
     fail(`wave daemon send failed: ${(err as Error).message}`);
   }
 
+  // `--now` is the only thing that ever sets `force`: the daemon's `force`
+  // handler already does the whole "interrupt the running turn (without
+  // resuming the queue), then send this message" sequence in one go
+  // (agentBridge `sendMessage` — the path the desktop app's "send now" uses),
+  // so the CLI has nothing to re-implement. Without the flag the key is absent,
+  // so the default path stays byte-identical to before — a default send must
+  // never quietly start interrupting turns.
+  const sendParams = options.now
+    ? { text: message, force: true }
+    : { text: message };
+
   if (options.wait <= 0) {
     // Async dispatch mode (default, --wait 0): exit as soon as the message is
     // DELIVERED, not when the turn completes. The sendMessage RPC resolves only
@@ -1630,11 +1656,7 @@ export async function daemonSendCommand(
     // itself (busy: enqueued immediately). The daemon keeps running the turn
     // after this client disconnects (attach 语义) — progress is tracked via
     // `status` (spec: send 默认异步派单).
-    const sendPromise = client.request(
-      "sendMessage",
-      { text: message },
-      watch.id,
-    );
+    const sendPromise = client.request("sendMessage", sendParams, watch.id);
     const userMessage = new Promise<"userMessageAdded">((resolve) => {
       client.onNotification("userMessageAdded", (params, sessionId) => {
         if (!filter.accepts(sessionId)) return;
@@ -1653,7 +1675,7 @@ export async function daemonSendCommand(
   }
 
   try {
-    await client.request("sendMessage", { text: message }, watch.id);
+    await client.request("sendMessage", sendParams, watch.id);
   } catch (err) {
     client.dispose();
     fail(`wave daemon send failed: ${(err as Error).message}`);
