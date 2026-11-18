@@ -132,7 +132,8 @@ export const HOST_SLASH_COMMANDS: readonly HostSlashCommandSpec[] = [
   },
   {
     id: "workflows",
-    description: "查看工作流运行",
+    // 与 `/tasks` 都落到后台任务面（spec multi-agent/workflow.md「工作流管理入口」）。
+    description: "在后台任务里查看工作流运行",
     runOnSelect: true,
     surfaces: ALL,
   },

@@ -396,7 +396,9 @@ export const handleCommandSelect = (
         } else if (command === "model") {
           dispatch({ type: "SET_SHOW_MODEL_SELECTOR", payload: true });
         } else if (command === "workflows") {
-          dispatch({ type: "SET_SHOW_WORKFLOW_MANAGER", payload: true });
+          // 与 `/tasks` 同一个承载（spec multi-agent/workflow.md「工作流管理入口」）：
+          // 工作流就是后台任务的一种，独立工作流面板已删除。
+          dispatch({ type: "SET_SHOW_BACKGROUND_TASK_MANAGER", payload: true });
         } else if (command === "clear") {
           await callbacks.onClearMessages?.();
         } else if (command === "compact") {
@@ -760,8 +762,7 @@ export const handleInput = async (
         state.showDiffManager ||
         state.showRemoteControl ||
         state.showPluginManager ||
-        state.showModelSelector ||
-        state.showWorkflowManager
+        state.showModelSelector
       )
     ) {
       callbacks.onAbortMessage?.();
@@ -787,8 +788,7 @@ export const handleInput = async (
     state.showDiffManager ||
     state.showRemoteControl ||
     state.showPluginManager ||
-    state.showModelSelector ||
-    state.showWorkflowManager
+    state.showModelSelector
   ) {
     if (
       state.showBackgroundTaskManager ||
@@ -800,8 +800,7 @@ export const handleInput = async (
       state.showDiffManager ||
       state.showRemoteControl ||
       state.showPluginManager ||
-      state.showModelSelector ||
-      state.showWorkflowManager
+      state.showModelSelector
     ) {
       return true;
     }

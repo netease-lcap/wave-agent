@@ -106,7 +106,8 @@ export const AVAILABLE_COMMANDS: SlashCommand[] = [
   {
     id: "workflows",
     name: "workflows",
-    description: "View and manage workflow runs",
+    // 与 `/tasks` 同一个面板（独立工作流面板已删除）：这里只说明它落到哪。
+    description: "View workflow runs in the background tasks panel",
     handler: () => {}, // Handler here won't be used, actual processing is in the hook
   },
   {

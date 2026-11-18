@@ -2165,7 +2165,7 @@ describe("remote page shim — the second batch", () => {
     // 停完立刻重读：被停下的那个不再产生进度事件，等推送是等不到的。
     expect(lastRequest(page).method).toBe("getWorkflowRuns");
 
-    // 后台任务变化是同一条刷新源：`WorkflowManager` 每推进一个阶段、每记一行
+    // 后台任务变化是同一条刷新源：SDK 的工作流管理器每推进一个阶段、每记一行
     // 日志、跑完都走 `notifyTasksChange()`，桌面端与插件端正是在
     // `onBackgroundTasksChange` 里重读 `getWorkflowRuns`（`desktopHost.ts` /
     // `chatSession.ts`）。少了这一步，页面上跑起来的 workflow 在 `/workflows`

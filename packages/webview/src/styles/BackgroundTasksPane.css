@@ -267,6 +267,12 @@
   color: var(--vscode-descriptionForeground);
 }
 
+/* 规模预警标记（原先挂在独立的工作流对话框列表行上，面板合并后落到这里，
+   与 `WorkflowRunProgress` 详情里那条警告同一套警示色）。 */
+.background-task-row-oversized {
+  color: var(--vscode-editorWarning-foreground, #cca700);
+}
+
 .background-task-stop {
   flex-shrink: 0;
   align-self: center;

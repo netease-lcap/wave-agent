@@ -4,8 +4,9 @@
  *
  * Same data and semantics as the `BackgroundTaskManager` dialog that the
  * panel-less hosts keep using (both run on `useBackgroundTaskDetail`): the
- * list groups running tasks first, a task opens a detail view with its command,
- * status, log tail and — for a workflow — its structured progress.
+ * list groups tasks by type (Bash / 子 Agent / 工作流, running first inside a
+ * group), a task opens a detail view with its command, status, log tail and —
+ * for a workflow — its structured progress.
  *
  * Two things are panel-specific:
  * - the command block and the output block each cap their own height and
@@ -25,6 +26,7 @@ import WorkflowRunProgress, {
   formatTime,
 } from "./WorkflowRunProgress";
 import { ansiToHtml } from "../utils/ansiText";
+import { groupBackgroundTasks } from "../utils/groupBackgroundTasks";
 import { TOOL_STATUS_COLORS } from "../utils/statusColors";
 import {
   getLastLines,
@@ -49,6 +51,12 @@ export interface BackgroundTasksPaneProps {
   workflowRuns: SerializableWorkflowRun[];
   vscode: { postMessage: (msg: unknown) => void };
   width: number;
+  /** Open straight into this task's detail (a transcript tool row / the Workflow
+   *  row asked for it). Absent = the tab opens on the list. */
+  focus?: { taskId: string } | null;
+  /** The focus request has been applied — the tab clears it so restoring the
+   *  tab later (session switch) lands on the list again. */
+  onFocusConsumed?: () => void;
 }
 
 /* 1111 评论（点 `.background-task-dot` 与 `.background-task-status`）：「参考活动那里
@@ -81,6 +89,8 @@ export const BackgroundTasksPane: React.FC<BackgroundTasksPaneProps> = ({
   workflowRuns,
   vscode,
   width,
+  focus,
+  onFocusConsumed,
 }) => {
   const {
     selectedTask,
@@ -91,7 +101,13 @@ export const BackgroundTasksPane: React.FC<BackgroundTasksPaneProps> = ({
     selectTask,
     backToList,
     handleStop,
-  } = useBackgroundTaskDetail({ tasks, workflowRuns, vscode });
+  } = useBackgroundTaskDetail({
+    tasks,
+    workflowRuns,
+    vscode,
+    focus,
+    onFocusConsumed,
+  });
 
   const outputRef = useRef<HTMLPreElement>(null);
   // Whether the user is parked at the bottom of the output block. Starts true
@@ -99,8 +115,18 @@ export const BackgroundTasksPane: React.FC<BackgroundTasksPaneProps> = ({
   // on every scroll (spec 场景 14).
   const followBottomRef = useRef(true);
 
+  // Which task rows are oversized workflow runs. A workflow task's id IS its
+  // runId, so this is a plain join against the run list.
+  const sizeWarningTaskIds = useMemo(
+    () =>
+      new Set(workflowRuns.filter((r) => r.sizeWarning).map((r) => r.runId)),
+    [workflowRuns],
+  );
+
   const runningTasks = tasks.filter((t) => t.status === "running");
-  const finishedTasks = tasks.filter((t) => t.status !== "running");
+  // 列表按任务类型分组（Bash / 子 Agent / 工作流），组内运行中在前 —— 分组维度
+  // 与插件端对话框、CLI 弹层是同一套口径，见 `utils/groupBackgroundTasks.ts`。
+  const groups = useMemo(() => groupBackgroundTasks(tasks), [tasks]);
 
   const outputHtml = useMemo(
     () =>
@@ -182,6 +208,21 @@ export const BackgroundTasksPane: React.FC<BackgroundTasksPaneProps> = ({
         <span className="background-task-row-meta">
           启动 {formatTime(task.startTime)}
           {task.runtime !== undefined && ` · ${formatDuration(task.runtime)}`}
+          {/* The oversized marker used to live on the standalone workflow
+              dialog's list row; that dialog is gone, and the run is this row
+              now, so the signal comes along (spec multi-agent/workflow「预算与
+              规模硬上限」场景 7). */}
+          {sizeWarningTaskIds.has(task.id) && (
+            <span
+              className="background-task-row-oversized"
+              data-testid={`tasks-pane-oversized-${task.id}`}
+              role="img"
+              aria-label="运行过大"
+            >
+              {" "}
+              ⚠ 运行过大
+            </span>
+          )}
         </span>
       </div>
       {task.status === "running" && (
@@ -359,18 +400,14 @@ export const BackgroundTasksPane: React.FC<BackgroundTasksPaneProps> = ({
         detail
       ) : (
         <div className="background-tasks-list">
-          {runningTasks.length > 0 && (
-            <>
-              <div className="background-tasks-group">运行中</div>
-              {runningTasks.map(renderRow)}
-            </>
-          )}
-          {finishedTasks.length > 0 && (
-            <>
-              <div className="background-tasks-group">已结束</div>
-              {finishedTasks.map(renderRow)}
-            </>
-          )}
+          {groups.map((group) => (
+            <React.Fragment key={group.type}>
+              <div className="background-tasks-group">
+                {group.label} ({group.tasks.length})
+              </div>
+              {group.tasks.map(renderRow)}
+            </React.Fragment>
+          ))}
         </div>
       )}
     </PaneShell>

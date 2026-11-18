@@ -6,15 +6,47 @@ test.describe("Workflow Manager Demo", () => {
     // Dialog min-width is 560px, wider than the default 400px demo viewport — widen so the full dialog is captured
     await webviewPage.setViewportSize({ width: 800, height: 700 });
 
-    // 1. Open the dialog via showDialog
+    // 1. Open the background-task dialog: `/workflows` and `/tasks` are the same
+    //    surface (2026-11-18 — a workflow run IS a background task, its task id
+    //    is the runId), so the workflow runs show up as rows in this list.
     await webviewPage.evaluate(() => {
       window.simulateExtensionMessage({
         command: "showDialog",
-        dialogType: "workflows",
+        dialogType: "tasks",
       });
     });
 
-    // 2. Simulate extension pushing workflow runs
+    // 2. Simulate extension pushing the workflow tasks (ids = runIds)
+    await webviewPage.evaluate(() => {
+      window.simulateExtensionMessage({
+        command: "updateBackgroundTasks",
+        tasks: [
+          {
+            id: "run-abc12345-def67890",
+            type: "workflow",
+            status: "running",
+            startTime: Date.now() - 120000,
+            description: "Workflow: audit-and-fix",
+          },
+          {
+            id: "run-98765432-fedcba10",
+            type: "workflow",
+            status: "completed",
+            startTime: Date.now() - 600000,
+            description: "Workflow: migrate-config",
+          },
+          {
+            id: "run-failed00012345",
+            type: "workflow",
+            status: "failed",
+            startTime: Date.now() - 900000,
+            description: "Workflow: deep-research",
+          },
+        ],
+      });
+    });
+
+    // 3. Then the runs themselves
     await webviewPage.evaluate(() => {
       window.simulateExtensionMessage({
         command: "updateWorkflowRuns",
@@ -138,18 +170,20 @@ test.describe("Workflow Manager Demo", () => {
     });
 
     // Verify dialog is visible
-    await expect(webviewPage.getByTestId("workflow-manager")).toBeVisible();
+    await expect(
+      webviewPage.getByTestId("background-task-manager"),
+    ).toBeVisible();
 
     // Screenshot the list view
-    const dialog = webviewPage.getByTestId("workflow-manager");
+    const dialog = webviewPage.getByTestId("background-task-manager");
     await elementScreenshotWebp(
       dialog,
       "../../docs/public/screenshots/spec-workflow-list.webp",
     );
 
-    // 3. Click the running run to enter detail view (the row is labelled by the
-    // workflow name, not the run id)
-    await dialog.getByText("audit-and-fix").click();
+    // 4. Click the running run to enter detail view (the row names the task id,
+    // which for a workflow is its run id, plus the run's own description)
+    await dialog.getByText("Workflow: audit-and-fix").click();
     await expect(webviewPage.getByText("Phases:")).toBeVisible();
     await expect(webviewPage.getByText("Logs:")).toBeVisible();
 

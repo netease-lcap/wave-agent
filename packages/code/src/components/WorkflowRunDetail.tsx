@@ -1,10 +1,11 @@
 /**
  * WorkflowRunDetail - one workflow run's own fields, rendered for the terminal.
  *
- * Shared by the two CLI panels that inspect a run: the `/workflows` detail view,
- * and the `/tasks` detail view when the selected task is a workflow (a workflow
- * background task's id IS its run id, so the two panels join on it). Both render
- * this component, so they cannot disagree about what a run's progress looks like.
+ * Rendered by the CLI's background-task panel when the selected task is a
+ * workflow (a workflow background task's id IS its run id, so the panel joins on
+ * it); `/workflows` opens that same panel (2026-11-18: the standalone workflow
+ * panel is gone). One component, so the two commands cannot disagree about what
+ * a run's progress looks like.
  *
  * The information set matches what the webview renders through
  * `WorkflowRunProgress` — same fields, same order, same zero-value rules — but

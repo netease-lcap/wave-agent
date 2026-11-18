@@ -221,7 +221,7 @@ wave daemon restart
 | `/mcp`            | 管理 MCP 服务器连接                                        |
 | `/plugin`         | 管理插件                                                   |
 | `/reload-plugins` | 就地重新加载插件（不重启会话）                             |
-| `/workflows`      | 查看和管理工作流运行                                       |
+| `/workflows`      | 在后台任务面板里查看工作流运行（与 `/tasks` 同一个面板）   |
 | `/rewind`         | 回滚到历史检查点                                           |
 | `/resume`         | 恢复历史对话（会话内切换，无需退出进程）                   |
 | `/rename`         | 给当前对话设自定义标题                                     |
@@ -378,7 +378,9 @@ wave -w my-feature
 
 ### 7.9 Workflow 工作流 {#workflow}
 
-通过 `/workflows` 查看和管理正在运行的工作流。工作流支持多阶段编排、并行执行和确定性控制流。
+通过 `/workflows` 查看正在运行的工作流。工作流支持多阶段编排、并行执行和确定性控制流。
+
+工作流就是后台任务的一种（任务 id 即 runId），所以 `/workflows` 与 `/tasks` 打开的是同一个面板：列表里多出一条类型为 `workflow` 的任务，选中它即看到阶段、agent、token 与脚本日志；`s` 把脚本存进脚本库，`k` 停止运行。
 
 ### 7.10 后台任务 {#background-tasks}
 

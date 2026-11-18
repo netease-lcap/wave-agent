@@ -225,6 +225,18 @@
   border-radius: 4px;
 }
 
+/* 后台任务对话框的类型分组标题（Bash / 子 Agent / 工作流）：列表是 gap:8px 的
+   flex 列，标题自己再往上要一点间距，才看得出它属于下一组而不是上一组。 */
+.background-task-group-title {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.background-task-group-title:first-child {
+  margin-top: 0;
+}
+
 .mcp-server-info {
   display: flex;
   flex-direction: column;

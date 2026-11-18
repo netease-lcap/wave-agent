@@ -10,7 +10,7 @@
  * drift between them.
  */
 
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useMemo, useRef } from "react";
 import { useClickOutside } from "../utils/useClickOutside";
 import {
   BackgroundTaskManagerProps,
@@ -22,6 +22,7 @@ import WorkflowRunProgress, {
   formatTime,
 } from "./WorkflowRunProgress";
 import { ansiToHtml } from "../utils/ansiText";
+import { groupBackgroundTasks } from "../utils/groupBackgroundTasks";
 import {
   getLastLines,
   useBackgroundTaskDetail,
@@ -34,7 +35,7 @@ const BackgroundTaskManager: React.FC<
     workflowRuns: SerializableWorkflowRun[];
     vscode: { postMessage: (msg: unknown) => void };
   }
-> = ({ onClose, tasks, workflowRuns, vscode }) => {
+> = ({ onClose, tasks, workflowRuns, vscode, focus, onFocusConsumed }) => {
   const {
     selectedTask,
     selectedTaskId,
@@ -45,8 +46,16 @@ const BackgroundTaskManager: React.FC<
     selectTask,
     backToList,
     handleStop,
-  } = useBackgroundTaskDetail({ tasks, workflowRuns, vscode });
+  } = useBackgroundTaskDetail({
+    tasks,
+    workflowRuns,
+    vscode,
+    focus,
+    onFocusConsumed,
+  });
   const dialogRef = useRef<HTMLDivElement>(null);
+  // 列表按任务类型分组（Bash / 子 Agent / 工作流），组内运行中在前。
+  const groups = useMemo(() => groupBackgroundTasks(tasks), [tasks]);
   // Click-outside close (listener registered one tick later inside the hook,
   // so the click that opened this dialog doesn't immediately close it).
   useClickOutside({
@@ -279,79 +288,91 @@ const BackgroundTaskManager: React.FC<
             </div>
           ) : (
             <div className="mcp-server-list">
-              {tasks.map((task) => (
-                <div
-                  key={task.id}
-                  className="mcp-server-item"
-                  style={{ cursor: "pointer" }}
-                  onClick={() => selectTask(task.id)}
-                >
-                  <div className="mcp-server-info">
-                    <div className="mcp-server-header">
-                      <span style={{ color: statusColor(task.status) }}>●</span>
-                      <span className="mcp-server-name">
-                        [{task.id}] {task.type}
-                      </span>
-                      <span
-                        style={{
-                          color: statusColor(task.status),
-                          fontSize: "12px",
-                        }}
-                      >
-                        {task.status}
-                      </span>
-                    </div>
-                    {task.description && (
-                      <div
-                        style={{
-                          fontSize: "12px",
-                          color: "var(--vscode-descriptionForeground)",
-                        }}
-                      >
-                        {task.description}
-                      </div>
-                    )}
-                    {task.command && (
-                      <div
-                        style={{
-                          fontSize: "12px",
-                          color: "var(--vscode-descriptionForeground)",
-                          fontFamily:
-                            "var(--vscode-editor-font-family, monospace)",
-                          wordBreak: "break-all",
-                        }}
-                      >
-                        $ {task.command}
-                      </div>
-                    )}
+              {/* 按任务类型分组（Bash / 子 Agent / 工作流），组内运行中在前 ——
+                  与桌面端面板、CLI 弹层同一套口径，见
+                  `utils/groupBackgroundTasks.ts`。 */}
+              {groups.map((group) => (
+                <React.Fragment key={group.type}>
+                  <div className="background-task-group-title">
+                    {group.label} ({group.tasks.length})
+                  </div>
+                  {group.tasks.map((task) => (
                     <div
-                      style={{
-                        fontSize: "12px",
-                        color: "var(--vscode-descriptionForeground)",
-                      }}
+                      key={task.id}
+                      className="mcp-server-item"
+                      style={{ cursor: "pointer" }}
+                      onClick={() => selectTask(task.id)}
                     >
-                      Started: {formatTime(task.startTime)}
-                      {task.runtime !== undefined &&
-                        ` · ${formatDuration(task.runtime)}`}
-                      {task.exitCode !== undefined &&
-                        ` · exit ${task.exitCode}`}
+                      <div className="mcp-server-info">
+                        <div className="mcp-server-header">
+                          <span style={{ color: statusColor(task.status) }}>
+                            ●
+                          </span>
+                          <span className="mcp-server-name">
+                            [{task.id}] {task.type}
+                          </span>
+                          <span
+                            style={{
+                              color: statusColor(task.status),
+                              fontSize: "12px",
+                            }}
+                          >
+                            {task.status}
+                          </span>
+                        </div>
+                        {task.description && (
+                          <div
+                            style={{
+                              fontSize: "12px",
+                              color: "var(--vscode-descriptionForeground)",
+                            }}
+                          >
+                            {task.description}
+                          </div>
+                        )}
+                        {task.command && (
+                          <div
+                            style={{
+                              fontSize: "12px",
+                              color: "var(--vscode-descriptionForeground)",
+                              fontFamily:
+                                "var(--vscode-editor-font-family, monospace)",
+                              wordBreak: "break-all",
+                            }}
+                          >
+                            $ {task.command}
+                          </div>
+                        )}
+                        <div
+                          style={{
+                            fontSize: "12px",
+                            color: "var(--vscode-descriptionForeground)",
+                          }}
+                        >
+                          Started: {formatTime(task.startTime)}
+                          {task.runtime !== undefined &&
+                            ` · ${formatDuration(task.runtime)}`}
+                          {task.exitCode !== undefined &&
+                            ` · exit ${task.exitCode}`}
+                        </div>
+                      </div>
+                      <div className="mcp-server-actions">
+                        {task.status === "running" && (
+                          <button
+                            className="mcp-disconnect-btn"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleStop(task.id);
+                            }}
+                            disabled={stoppingId === task.id}
+                          >
+                            {stoppingId === task.id ? "停止中..." : "停止"}
+                          </button>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                  <div className="mcp-server-actions">
-                    {task.status === "running" && (
-                      <button
-                        className="mcp-disconnect-btn"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleStop(task.id);
-                        }}
-                        disabled={stoppingId === task.id}
-                      >
-                        {stoppingId === task.id ? "停止中..." : "停止"}
-                      </button>
-                    )}
-                  </div>
-                </div>
+                  ))}
+                </React.Fragment>
               ))}
             </div>
           )}

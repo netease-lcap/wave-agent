@@ -342,8 +342,26 @@ test.describe("Desktop 任务/多Agent/工作流 screenshots", () => {
     await webviewPage.setViewportSize({ width: 960, height: 720 });
     await setup(webviewPage, injector);
 
-    await injector.simulateExtensionMessage("showDialog", {
-      dialogType: "workflows",
+    // 工作流就是后台任务的一种（任务 id 即 runId），独立工作流对话框已删除：
+    // 图片拍的是右侧面板「后台任务」tab 里选中 workflow 任务后的进度详情。
+    await injector.simulateExtensionMessage("updateBackgroundTasks", {
+      tasks: [
+        {
+          id: "run-abc12345-def67890",
+          type: "workflow",
+          status: "running",
+          startTime: Date.now() - 120000,
+          description: "Workflow: audit-and-fix",
+        },
+        {
+          id: "run-98765432-fedcba10",
+          type: "workflow",
+          status: "completed",
+          startTime: Date.now() - 600000,
+          runtime: 120000,
+          description: "Workflow: migrate-config",
+        },
+      ],
     });
     await injector.simulateExtensionMessage("updateWorkflowRuns", {
       runs: [
@@ -410,7 +428,13 @@ test.describe("Desktop 任务/多Agent/工作流 screenshots", () => {
         },
       ],
     });
-    await expect(webviewPage.getByTestId("workflow-manager")).toBeVisible();
+    await webviewPage.getByTestId("panel-toggle-btn").click();
+    await webviewPage.getByTestId("panel-empty-item-tasks").click();
+    await webviewPage
+      .getByTestId("tasks-pane-row-run-abc12345-def67890")
+      .click();
+    await expect(webviewPage.getByTestId("tasks-pane-detail")).toBeVisible();
+    await expect(webviewPage.getByText("Phases:")).toBeVisible();
     await screenshotWebp(
       webviewPage,
       "../../docs/public/screenshots/desktop-workflow-manager.webp",

@@ -188,6 +188,75 @@ describe("BackgroundTaskManager", () => {
     });
   });
 
+  it("groups the list by task type, running ones first inside a group", async () => {
+    // 故意把「更晚启动但已结束」的那条排在前面：组内名次由状态决定，不由数组顺序。
+    const mixedTasks: Partial<BackgroundTask>[] = [
+      {
+        id: "task-workflow",
+        type: "workflow" as const,
+        description: "audit the repo",
+        status: "completed" as const,
+        startTime: Date.now() - 1000,
+        runtime: 500,
+      },
+      {
+        id: "task-done",
+        type: "shell" as const,
+        command: "npm ci",
+        description: "npm ci",
+        status: "completed" as const,
+        startTime: Date.now() - 2000,
+        exitCode: 0,
+        runtime: 300,
+        stdout: "",
+        stderr: "",
+      },
+      {
+        id: "task-running",
+        type: "shell" as const,
+        command: "sleep 100",
+        description: "sleep 100",
+        status: "running" as const,
+        startTime: Date.now() - 5000,
+        stdout: "",
+        stderr: "",
+      },
+    ];
+
+    const { lastFrame } = render(
+      <AppProvider>
+        <ChatProvider>
+          <BackgroundTaskManager onCancel={vi.fn()} />
+        </ChatProvider>
+      </AppProvider>,
+    );
+
+    await vi.waitFor(() => {
+      expect(Agent.create).toHaveBeenCalled();
+    });
+
+    const callbacks = vi.mocked(Agent.create).mock.calls[0][0].callbacks!;
+    callbacks.onBackgroundTasksChange!(
+      mixedTasks as unknown as BackgroundTask[],
+    );
+
+    await vi.waitFor(() => expect(lastFrame()).toContain("[task-running]"));
+
+    const output = lastFrame()!;
+    const bashGroup = output.indexOf("Bash (2)");
+    const runningRow = output.indexOf("[task-running]");
+    const doneRow = output.indexOf("[task-done]");
+    const workflowGroup = output.indexOf("Workflows (1)");
+    const workflowRow = output.indexOf("[task-workflow]");
+    // 组标题带条数、打在该组第一行之前；Bash 组整体在 Workflows 组之前。
+    expect(bashGroup).toBeGreaterThan(-1);
+    expect(bashGroup).toBeLessThan(runningRow);
+    // 同组内运行中在前，哪怕它启动更早。
+    expect(runningRow).toBeLessThan(doneRow);
+    expect(doneRow).toBeLessThan(workflowGroup);
+    expect(workflowGroup).toBeLessThan(workflowRow);
+  });
+
   it("should navigate the list and show details", async () => {
     const { lastFrame, stdin } = render(
       <AppProvider>
@@ -568,6 +637,10 @@ describe("BackgroundTaskManager", () => {
           status: "running",
         })),
         getWorkflowAgentActivity: vi.fn(() => ({ activity })),
+        saveWorkflowScript: vi.fn(async (_runId: string, options: any) => ({
+          name: options.name,
+          path: `/proj/.wave/workflows/${options.name}.js`,
+        })),
       };
       vi.mocked(Agent.create).mockResolvedValue(agent as unknown as Agent);
 
@@ -729,6 +802,87 @@ describe("BackgroundTaskManager", () => {
       const back = lastFrame() ?? "";
       expect(back).toContain("Background Task Details: wf_123");
       expect(back).toMatch(/Agents: *\n/);
+    });
+
+    // The script library entry point used to live on the standalone workflow
+    // panel; it moved here with the merge (spec workflow「工作流管理入口」场景 8).
+    it("saves a workflow task's script by name and scope from its detail", async () => {
+      const { lastFrame, stdin, agent } = await setup([workflowRun]);
+
+      stdin.write("\r");
+      await vi.waitFor(() => {
+        expect(lastFrame()).toContain("Background Task Details: wf_123");
+      });
+
+      stdin.write("s");
+      await vi.waitFor(() => {
+        expect(lastFrame()).toContain("Save dynamic workflow");
+      });
+      // The name starts as the run's meta.name and the scope as project.
+      expect(lastFrame()).toContain("Name: audit-and-fix");
+      expect(lastFrame()).toContain("Scope: project");
+
+      stdin.write("\t");
+      await vi.waitFor(() => {
+        expect(lastFrame()).toContain("Scope: user");
+      });
+
+      stdin.write("\r");
+      await vi.waitFor(() => {
+        expect(agent.saveWorkflowScript).toHaveBeenCalledWith("wf_123", {
+          name: "audit-and-fix",
+          scope: "user",
+          overwrite: false,
+        });
+      });
+      await vi.waitFor(() => {
+        expect(lastFrame()).toContain('Saved "audit-and-fix" to ');
+      });
+    });
+
+    it("turns a name conflict into an overwrite on the next Enter", async () => {
+      const { lastFrame, stdin, agent } = await setup([workflowRun]);
+      agent.saveWorkflowScript
+        .mockRejectedValueOnce(
+          new Error(
+            'Dynamic workflow "audit-and-fix" already exists at /proj/.wave/workflows/audit-and-fix.js. Use a different name or overwrite.',
+          ),
+        )
+        .mockResolvedValueOnce({
+          name: "audit-and-fix",
+          path: "/proj/.wave/workflows/audit-and-fix.js",
+        });
+
+      stdin.write("\r");
+      await vi.waitFor(() => {
+        expect(lastFrame()).toContain("Background Task Details: wf_123");
+      });
+      stdin.write("s");
+      await vi.waitFor(() => {
+        expect(lastFrame()).toContain("Save dynamic workflow");
+      });
+
+      stdin.write("\r");
+      await vi.waitFor(() => {
+        expect(lastFrame()).toContain("already exists");
+      });
+
+      // Second Enter retries as an overwrite instead of failing the same way.
+      stdin.write("\r");
+      await vi.waitFor(() => {
+        expect(agent.saveWorkflowScript).toHaveBeenLastCalledWith("wf_123", {
+          name: "audit-and-fix",
+          scope: "project",
+          overwrite: true,
+        });
+      });
+    });
+
+    it("marks an oversized run on its task row", async () => {
+      const oversized: WorkflowRun = { ...workflowRun, sizeWarning: true };
+      const { lastFrame } = await setup([oversized]);
+
+      expect(lastFrame()).toContain("⚠ Large");
     });
   });
 });
