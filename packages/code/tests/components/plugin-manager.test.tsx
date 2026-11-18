@@ -11,7 +11,7 @@ vi.mock("../../src/hooks/usePluginManager.js", () => ({
 
 import { usePluginManager } from "../../src/hooks/usePluginManager.js";
 
-describe("PluginManager Integration", () => {
+describe("PluginManager", () => {
   const mockActions = {
     setView: vi.fn(),
     setSelectedId: vi.fn(),
