@@ -25,12 +25,14 @@ export interface MockCase {
   /** 工具条下拉框中显示的描述（可选） */
   description?: string;
   /**
-   * 用例运行的宿主外壳："desktop" 渲染桌面端外壳（侧边栏/账户卡片），
-   * "editor"（缺省）走插件端那一档（VS Code / JetBrains 共用）。
-   * 不用 "ide"（会和产品名 CodeWave IDE 混），也不用 "plugin"（那个词在仓库里
-   * 专指插件市场里可安装的插件：installPlugin / skillSource: "plugin"）。
+   * 用例自带的宿主外壳："desktop" 渲染桌面端外壳（侧边栏/账户卡片）；
+   * "editor"（缺省）走插件端那一档（VS Code / JetBrains 共用）；"plugin" /
+   * "ide" 是 "editor" 的同义词，历史上按市场词写过，入口会一并归一。
+   * 移动端（远控 Web 页）不由用例声明，只能在工具条的宿主下拉里临时切。
+   * 不用 "ide" 作规范值（会和产品名 CodeWave IDE 混），也不用 "plugin"（那个词
+   * 在仓库里专指插件市场里可安装的插件：installPlugin / skillSource: "plugin"）。
    */
-  host?: "desktop" | "editor";
+  host?: "desktop" | "editor" | "plugin" | "ide";
   /** 用例激活时按序发送的 host → webview 消息 */
   messages?: MockMessage[];
   /**
