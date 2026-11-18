@@ -63,6 +63,17 @@ import {
   shouldRestoreRemoteControl,
 } from "../remote/remoteControlRestore.js";
 import { readStoredRemoteControlName } from "../remote/remoteControlConfig.js";
+import {
+  describeNotFound,
+  isFullSessionId,
+  matchByName,
+  matchBySessionId,
+  normalizeSessionName,
+  pickDefaultSessionName,
+  renderAmbiguousRef,
+  type RefMatch,
+  type SessionCandidate,
+} from "./sessionRef.js";
 
 /**
  * Fixed default daemon socket (spec: 默认 socket 固定，无 --socket 覆盖). The
@@ -256,6 +267,15 @@ interface DaemonSessionEntry {
   hasRunningBackgroundWork?: boolean;
   hasPendingMessages?: boolean;
   messageCount: number;
+  /**
+   * The session's title — what `wave daemon` subcommands accept in place of a
+   * sessionId (see ./sessionRef.ts). Absent for a session that was never named,
+   * and absent from a daemon older than this field (the daemon outlives CLI
+   * upgrades), which degrades to id/prefix addressing.
+   */
+  customTitle?: string;
+  /** First real user message — the label when no title is set. */
+  firstMessage?: string;
 }
 
 /**
@@ -318,6 +338,27 @@ function sessionNotificationFilter(): {
 }
 
 /**
+ * Whether an attach error means "there is nothing to attach to", in either of
+ * the two shapes the SDK uses:
+ *
+ * - `Session not found`: a well-formed id with no transcript;
+ * - `Invalid session ID format`: the reference is not even a UUID — which is
+ *   what a *name* (or a typo of one) looks like to the SDK, and it is refused
+ *   before any transcript lookup.
+ *
+ * Both are reported as the miss the caller is prepared for (spec: 会话不存在错误);
+ * letting the raw error through would tell a user who typed a name that their
+ * "session ID format" is wrong.
+ */
+function isMissError(err: unknown): boolean {
+  const message = (err as Error).message;
+  return (
+    message.includes("Session not found") ||
+    message.includes("Invalid session ID format")
+  );
+}
+
+/**
  * Attach to a session; returns the initialized sessionId + working directory.
  * Exits (nonzero) with the spec'd error when the session exists neither in the
  * daemon registry nor on disk, destroying the fresh session that `initialize`
@@ -335,26 +376,50 @@ async function attachSession(
      * (see `sessionNotificationFilter`).
      */
     onInitialized?: (sessionId: string) => void;
+    /**
+     * Extra line appended to the not-found error — the reference the user typed
+     * was not a sessionId it could attach by, so name resolution already ran
+     * and knows what to suggest (see `resolveSessionRef`).
+     */
+    notFoundHint?: string;
   } = {},
 ): Promise<{ sessionId: string; currentWorkdir: string }> {
-  const init = (await client.request("initialize", {
-    workdir: process.cwd(),
-    restoreSessionId: sessionId,
-    // A daemon restart leaves the session on disk and re-hosts it here; the
-    // re-hosting client is the CLI, and the session file carries no record of
-    // its original creator (see the entrypoint story in the telemetry spec).
-    entrypoint: "cli",
-  })) as { sessionId: string; currentWorkdir: string };
+  /** The spec'd miss, with whatever name resolution knows appended. */
+  const failMiss = (): never =>
+    fail(
+      `Session not found or not hosted by this daemon: ${sessionId}${
+        options.notFoundHint ? `\n${options.notFoundHint}` : ""
+      }`,
+    );
+
+  let init: { sessionId: string; currentWorkdir: string };
+  try {
+    init = (await client.request("initialize", {
+      workdir: process.cwd(),
+      restoreSessionId: sessionId,
+      // A daemon restart leaves the session on disk and re-hosts it here; the
+      // re-hosting client is the CLI, and the session file carries no record of
+      // its original creator (see the entrypoint story in the telemetry spec).
+      entrypoint: "cli",
+    })) as { sessionId: string; currentWorkdir: string };
+  } catch (err) {
+    // A reference that is not even a UUID never gets as far as a transcript
+    // lookup: `initialize` itself throws (the SDK validates the id while
+    // resolving the restore workdir). Nothing was registered, so there is no
+    // junk session to clean up.
+    if (isMissError(err)) failMiss();
+    throw err;
+  }
   const initId = init.sessionId;
   options.onInitialized?.(initId);
   try {
     await client.request("restoreSession", { sessionId }, initId);
   } catch (err) {
-    if ((err as Error).message.includes("Session not found")) {
+    if (isMissError(err)) {
       // initialize silently started a junk fresh session — remove it from the
       // registry so the failed attach leaves no trace (spec: 会话不存在错误).
       await client.request("destroy", undefined, initId).catch(() => {});
-      fail(`Session not found or not hosted by this daemon: ${sessionId}`);
+      failMiss();
     }
     throw err;
   }
@@ -394,10 +459,231 @@ async function findHostedSession(
   client: SocketClient,
   sessionId: string,
 ): Promise<DaemonSessionEntry | undefined> {
+  return (await listHostedSessions(client)).find(
+    (s) => s.sessionId === sessionId,
+  );
+}
+
+// ── Session references (id / id prefix / name) ─────────────────
+
+/**
+ * The daemon's in-memory registry — the authority on which sessions are live,
+ * and where the live half of name resolution comes from.
+ */
+async function listHostedSessions(
+  client: SocketClient,
+): Promise<DaemonSessionEntry[]> {
   const result = (await client.request("listDaemonSessions")) as {
     sessions: DaemonSessionEntry[];
   };
-  return (result.sessions ?? []).find((s) => s.sessionId === sessionId);
+  return result.sessions ?? [];
+}
+
+function liveCandidates(rows: DaemonSessionEntry[]): SessionCandidate[] {
+  return rows.map((row) => ({
+    sessionId: row.sessionId,
+    ...(row.customTitle ? { name: row.customTitle } : {}),
+    workdir: row.sessionCwd,
+    live: true,
+    // Same idle predicate `status` / `wait` / `list` share, so the candidate
+    // table cannot disagree with them about a session that ended its turn but
+    // still owns running background work.
+    status: isIdleSession(row) ? "idle" : "generating",
+  }));
+}
+
+/**
+ * Named sessions from the on-disk index, minus the ones already listed as live
+ * (a live session is also on disk; its in-memory title is the authoritative
+ * one). This is what keeps a name usable across a daemon restart: the session
+ * is re-hosted by the attach that follows, but nothing in memory knows its name
+ * until that happens.
+ *
+ * Only named rows are returned — unnamed ones cannot be addressed by name, and
+ * the id prefixes they could offer are deliberately answered by the live
+ * registry alone (spec: 前缀匹配作用于 daemon 当前托管或按 id 可寻址的会话).
+ */
+async function diskNameCandidates(
+  client: SocketClient,
+  liveIds: Set<string>,
+): Promise<SessionCandidate[]> {
+  const result = (await client.request("listAllSessions")) as {
+    sessions: Array<{
+      id: string;
+      sessionType?: string;
+      workdir: string;
+      customTitle?: string;
+    }>;
+  };
+  return (result.sessions ?? [])
+    .filter(
+      (session) =>
+        session.sessionType === "main" &&
+        !liveIds.has(session.id) &&
+        !!session.customTitle,
+    )
+    .map((session) => ({
+      sessionId: session.id,
+      name: session.customTitle,
+      workdir: session.workdir,
+      live: false,
+    }));
+}
+
+/**
+ * How a subcommand's session argument resolved. `not-found` is deliberately not
+ * a hard failure here: `destroy` is idempotent on unknown sessions and the
+ * attach-based commands already fail with the spec'd error (and clean up the
+ * junk session `initialize` created) — a miss only adds the hint.
+ */
+type SessionRefResolution =
+  | {
+      kind: "found";
+      sessionId: string;
+      workdir: string;
+      /** The session's current name, absent when it was never named. */
+      name?: string;
+      matchedBy: "id" | "id-prefix" | "name";
+    }
+  | {
+      kind: "ambiguous";
+      ref: string;
+      match: Extract<RefMatch, { kind: "ambiguous" }>;
+    }
+  | { kind: "not-found"; ref: string; hint: string };
+
+/**
+ * Resolve a session *reference* — a complete sessionId, a unique sessionId
+ * prefix, or a session's name (its `customTitle`) — to one session.
+ *
+ * Order (see ./sessionRef.ts): complete id → unique id prefix → exact name.
+ * Ids come first so that naming a session `c530` cannot steal the prefix
+ * meaning of `c530`, and a miss never guesses: it reports what was tried.
+ *
+ * The on-disk index is only read when the reference is not a live session — a
+ * session that exists on disk but is not hosted right now is re-hosted by the
+ * attach that follows (spec: 重托管以会话记录的工作目录为准), so its name has to
+ * resolve before that happens.
+ */
+async function resolveSessionRef(
+  client: SocketClient,
+  ref: string,
+): Promise<SessionRefResolution> {
+  const live = liveCandidates(await listHostedSessions(client));
+  const byId = matchBySessionId(live, ref);
+  if (byId?.kind === "found") {
+    const found = live.find((c) => c.sessionId === byId.sessionId);
+    return {
+      kind: "found",
+      sessionId: byId.sessionId,
+      workdir: found?.workdir ?? "",
+      ...(found?.name ? { name: found.name } : {}),
+      matchedBy: byId.matchedBy,
+    };
+  }
+  if (byId?.kind === "ambiguous") {
+    return { kind: "ambiguous", ref, match: byId };
+  }
+
+  const liveByName = matchByName(live, ref);
+  if (liveByName?.kind === "found") {
+    const found = live.find((c) => c.sessionId === liveByName.sessionId);
+    return {
+      kind: "found",
+      sessionId: liveByName.sessionId,
+      workdir: found?.workdir ?? "",
+      ...(found?.name ? { name: found.name } : {}),
+      matchedBy: "name",
+    };
+  }
+  if (liveByName?.kind === "ambiguous") {
+    return { kind: "ambiguous", ref, match: liveByName };
+  }
+
+  const disk = await diskNameCandidates(
+    client,
+    new Set(live.map((c) => c.sessionId)),
+  );
+  // A complete id is an id — never reinterpreted as a name (a session titled
+  // with a UUID string is not addressable by that title).
+  const diskByName = isFullSessionId(ref) ? undefined : matchByName(disk, ref);
+  if (diskByName?.kind === "found") {
+    const found = disk.find((c) => c.sessionId === diskByName.sessionId);
+    return {
+      kind: "found",
+      sessionId: diskByName.sessionId,
+      workdir: found?.workdir ?? "",
+      ...(found?.name ? { name: found.name } : {}),
+      matchedBy: "name",
+    };
+  }
+  if (diskByName?.kind === "ambiguous") {
+    return { kind: "ambiguous", ref, match: diskByName };
+  }
+
+  const knownNames = [
+    ...live.map((c) => c.name),
+    ...disk.map((c) => c.name),
+  ].filter((name): name is string => !!name);
+  return {
+    kind: "not-found",
+    ref,
+    hint: describeNotFound(ref, [...new Set(knownNames)].sort()),
+  };
+}
+
+/**
+ * The last message of each ambiguous candidate, for the disambiguation table —
+ * two sessions can share a name, and what each is currently working on is what
+ * tells them apart. Read against the candidate's own sessionId (both are live
+ * in the daemon's registry, so no attach is needed) and only for the handful of
+ * rows an ambiguity error renders.
+ */
+async function lastMessagesOf(
+  client: SocketClient,
+  candidates: SessionCandidate[],
+): Promise<Map<string, string>> {
+  const messages = new Map<string, string>();
+  for (const candidate of candidates) {
+    if (!candidate.live) continue;
+    try {
+      const page = (await client.request(
+        "getMessages",
+        { limit: 1 },
+        candidate.sessionId,
+      )) as { messages?: Message[] };
+      const text = (page.messages ?? [])
+        .map((m) => getMessageContent(m).replace(/\s+/g, " ").trim())
+        .filter(Boolean)
+        .pop();
+      if (text) messages.set(candidate.sessionId, summarize(text));
+    } catch {
+      // A session that vanished between listing and reading simply has no
+      // message to show; the table still separates the others.
+    }
+  }
+  return messages;
+}
+
+/** One-line cell for the candidate table: keep the row scannable. */
+function summarize(text: string, max = 60): string {
+  return text.length > max ? `${text.slice(0, max)}…` : text;
+}
+
+/**
+ * The failure text for an ambiguous reference. Never resolves to a "most
+ * likely" session: the listed table is the only acceptable answer, because the
+ * caller is about to address (or destroy) exactly one session.
+ */
+async function renderAmbiguousFailure(
+  client: SocketClient,
+  ref: string,
+  match: Extract<RefMatch, { kind: "ambiguous" }>,
+): Promise<string> {
+  const lastMessages = await lastMessagesOf(client, match.candidates);
+  return renderAmbiguousRef(ref, match, (candidate) =>
+    lastMessages.get(candidate.sessionId),
+  );
 }
 
 function sleep(ms: number): Promise<void> {
@@ -427,6 +713,24 @@ export interface CreateOptions {
   model?: string;
   /** Create the session in a new git worktree (name auto-generated when omitted). */
   worktree?: string;
+  /** Name to give the session (default: the worktree name, else `<dir>-<n>`). */
+  name?: string;
+}
+
+/** Names taken on this machine — live sessions plus the on-disk index. */
+async function takenSessionNames(client: SocketClient): Promise<string[]> {
+  const live = await listHostedSessions(client);
+  const names = live
+    .map((row) => row.customTitle)
+    .filter((name): name is string => !!name);
+  const disk = await diskNameCandidates(
+    client,
+    new Set(live.map((row) => row.sessionId)),
+  );
+  for (const candidate of disk) {
+    if (candidate.name) names.push(candidate.name);
+  }
+  return names;
 }
 
 /**
@@ -435,8 +739,16 @@ export interface CreateOptions {
  * are needed. Defaults mirror the daemon's background-task use case: workdir =
  * current directory, permissionMode = bypassPermissions. With --worktree the
  * daemon first creates a git worktree (protocol createWorktree) and the session
- * is created inside it. Prints the new sessionId (first line, for scripts),
- * plus the worktree path/branch when --worktree was used.
+ * is created inside it. Prints the new sessionId (first line, for scripts), then
+ * its name, plus the worktree path/branch when --worktree was used.
+ *
+ * Every new session gets a name, because a sessionId is not something a user can
+ * dictate or remember (spec: 按名字寻址会话) — `--name` when given, the
+ * worktree's name next, and `<workdir basename>-<n>` (n chosen to avoid names
+ * already in use) otherwise. The name is the session's `customTitle`, written
+ * through the same `renameSession` RPC the desktop app uses, so every host and
+ * the session picker show it. A name that is already in use is only warned
+ * about (titles are allowed to repeat); resolution then reports the ambiguity.
  */
 export async function daemonCreateCommand(
   socketPath: string,
@@ -448,20 +760,39 @@ export async function daemonCreateCommand(
       `Invalid permission mode: ${mode} (options: ${PERMISSION_MODES.join(", ")})`,
     );
   }
+  // Validated before connecting: a bad name must not start a daemon, exactly
+  // like a bad permission mode.
+  let requestedName: string | undefined;
+  if (options.name !== undefined) {
+    const validated = normalizeSessionName(options.name);
+    if ("error" in validated) {
+      fail(`Invalid --name: ${validated.error}`);
+    }
+    requestedName = validated.name;
+  }
   let client: SocketClient | undefined;
   try {
     client = await connectDaemonOrExit(socketPath);
     let workdir = options.workdir ?? process.cwd();
     let worktreePath: string | undefined;
     let worktreeBranch: string | undefined;
+    let worktreeName: string | undefined;
     if (options.worktree !== undefined) {
       const wt = (await client.request("createWorktree", {
         workdir,
         name: options.worktree,
-      })) as { name: string; path: string; branch: string; repoRoot: string };
+      })) as {
+        name: string;
+        path: string;
+        branch: string;
+        repoRoot: string;
+      };
       workdir = wt.path;
       worktreePath = wt.path;
       worktreeBranch = wt.branch;
+      // The name the worktree actually got: the given one, or the one the
+      // daemon generated for a bare `--worktree`.
+      worktreeName = wt.name;
     }
     const result = (await client.request("initialize", {
       workdir,
@@ -470,8 +801,32 @@ export async function daemonCreateCommand(
       // The daemon hosts sessions built from several front ends; this one is
       // being created by the CLI (`wave daemon create`).
       entrypoint: "cli",
-    })) as { sessionId: string };
-    console.log(result.sessionId);
+    })) as { sessionId: string; currentWorkdir?: string };
+    const sessionId = result.sessionId;
+
+    const taken = await takenSessionNames(client);
+    const name =
+      requestedName ??
+      worktreeName ??
+      pickDefaultSessionName(
+        path.basename(result.currentWorkdir ?? workdir),
+        taken,
+      );
+    if (taken.includes(name)) {
+      // Not a failure: two sessions may share a title (the desktop app allows
+      // it). It does mean the name alone can no longer address this one.
+      console.error(
+        `Warning: another session is already named "${name}"; addressing it by that name will report an ambiguity (use the sessionId, or \`wave daemon rename\` one of them)`,
+      );
+    }
+    await client.request("renameSession", {
+      sessionId,
+      workdir: result.currentWorkdir ?? workdir,
+      title: name,
+    });
+
+    console.log(sessionId);
+    console.log(`Name: ${name}`);
     if (worktreePath !== undefined) {
       console.log(`Worktree: ${worktreePath} (branch: ${worktreeBranch})`);
     }
@@ -497,6 +852,9 @@ export async function daemonListCommand(socketPath: string): Promise<void> {
     if (sessions.length > 0) {
       const rows = sessions.map((s) => ({
         sessionId: s.sessionId,
+        // The name subcommands accept in place of a sessionId (`-` = never
+        // named: such a session is addressable by id / id prefix only).
+        name: s.customTitle ?? "-",
         // Same idle predicate as `status` / `wait` (`isIdleSession`), so the
         // three cannot disagree about a session that ended its turn but still
         // owns running background work.
@@ -509,11 +867,11 @@ export async function daemonListCommand(socketPath: string): Promise<void> {
       const pad = (value: string, w: number) => value.padEnd(w);
 
       console.log(
-        `${pad("Session", width("sessionId"))}  ${pad("Status", width("status"))}  ${pad("Messages", width("messageCount"))}  Working directory`,
+        `${pad("Session", width("sessionId"))}  ${pad("Name", width("name"))}  ${pad("Status", width("status"))}  ${pad("Messages", width("messageCount"))}  Working directory`,
       );
       for (const r of rows) {
         console.log(
-          `${pad(r.sessionId, width("sessionId"))}  ${pad(r.status, width("status"))}  ${pad(r.messageCount, width("messageCount"))}  ${r.sessionCwd}`,
+          `${pad(r.sessionId, width("sessionId"))}  ${pad(r.name, width("name"))}  ${pad(r.status, width("status"))}  ${pad(r.messageCount, width("messageCount"))}  ${r.sessionCwd}`,
         );
       }
     } else {
@@ -708,12 +1066,21 @@ function renderSessionSnapshot(snapshot: SessionSnapshot): void {
  */
 export async function daemonStatusCommand(
   socketPath: string,
-  sessionId: string,
+  sessionRef: string,
   lines = 1,
 ): Promise<void> {
   let client: SocketClient | undefined;
   try {
     client = await connectDaemonOrExit(socketPath);
+
+    // Accept a name (or a unique id prefix) wherever a sessionId is documented:
+    // same for every subcommand, resolved in one place (see resolveSessionRef).
+    const resolved = await resolveSessionRef(client, sessionRef);
+    if (resolved.kind === "ambiguous") {
+      fail(await renderAmbiguousFailure(client, sessionRef, resolved.match));
+    }
+    const sessionId =
+      resolved.kind === "found" ? resolved.sessionId : sessionRef;
 
     // Subscribe BEFORE initialize/restoreSession so the replayed loadingChange
     // snapshot is captured (spec: 依据重放的 loadingChange 快照显示状态); drop
@@ -728,6 +1095,7 @@ export async function daemonStatusCommand(
 
     const init = await attachSession(client, sessionId, {
       onInitialized: filter.bind,
+      ...(resolved.kind === "not-found" ? { notFoundHint: resolved.hint } : {}),
     });
     const initId = init.sessionId;
 
@@ -849,7 +1217,7 @@ export const waitPollInterval = { ms: 2_000 };
  */
 export async function daemonWaitCommand(
   socketPath: string,
-  sessionId: string,
+  sessionRef: string,
   options: WaitOptions = {},
 ): Promise<void> {
   const lines = options.lines ?? 1;
@@ -862,6 +1230,15 @@ export async function daemonWaitCommand(
   try {
     const socket = await connectDaemonOrExit(socketPath);
     client = socket;
+
+    // Name / id-prefix addressing, resolved once up front — everything below
+    // (attach, registry reads, re-key following) works on the sessionId.
+    const resolved = await resolveSessionRef(socket, sessionRef);
+    if (resolved.kind === "ambiguous") {
+      fail(await renderAmbiguousFailure(socket, sessionRef, resolved.match));
+    }
+    const sessionId =
+      resolved.kind === "found" ? resolved.sessionId : sessionRef;
 
     let sawBusy = false;
     // Push-driven wake: the deferred is re-armed on every bump and the loop
@@ -930,6 +1307,7 @@ export async function daemonWaitCommand(
         watch.id = id;
         filter.bind(id);
       },
+      ...(resolved.kind === "not-found" ? { notFoundHint: resolved.hint } : {}),
     });
 
     // Read against the tracked session, retrying when a re-key lands while the
@@ -1168,12 +1546,26 @@ export interface SendOptions {
  */
 export async function daemonSendCommand(
   socketPath: string,
-  sessionId: string,
+  sessionRef: string,
   message: string,
   options: SendOptions = { wait: 0 },
 ): Promise<void> {
   // connectDaemonOrExit exits on failure — no client to dispose in that case.
   const client = await connectDaemonOrExit(socketPath);
+
+  // Name / id-prefix addressing (see resolveSessionRef); everything below —
+  // attach, `Sent message to session:` — reports the resolved sessionId.
+  const resolved = await resolveSessionRef(client, sessionRef);
+  if (resolved.kind === "ambiguous") {
+    const message = await renderAmbiguousFailure(
+      client,
+      sessionRef,
+      resolved.match,
+    );
+    client.dispose();
+    fail(message);
+  }
+  const sessionId = resolved.kind === "found" ? resolved.sessionId : sessionRef;
 
   let loading = false;
   let sent = false;
@@ -1220,6 +1612,7 @@ export async function daemonSendCommand(
         watch.id = id;
         filter.bind(id);
       },
+      ...(resolved.kind === "not-found" ? { notFoundHint: resolved.hint } : {}),
     });
     sent = true;
   } catch (err) {
@@ -1336,7 +1729,7 @@ export interface RespondOptions {
 
 export async function daemonRespondCommand(
   socketPath: string,
-  sessionId: string,
+  sessionRef: string,
   requestId: string,
   options: RespondOptions,
 ): Promise<void> {
@@ -1346,6 +1739,20 @@ export async function daemonRespondCommand(
   let client: SocketClient | undefined;
   try {
     client = await connectDaemonOrExit(socketPath);
+
+    // Name / id-prefix addressing (see resolveSessionRef). A pending request's
+    // owning session is always live, so a miss here is a real miss — no point
+    // in checking the request list first.
+    const resolved = await resolveSessionRef(client, sessionRef);
+    if (resolved.kind === "ambiguous") {
+      fail(await renderAmbiguousFailure(client, sessionRef, resolved.match));
+    }
+    if (resolved.kind === "not-found") {
+      fail(
+        `Session not found or not hosted by this daemon: ${sessionRef}\n${resolved.hint}`,
+      );
+    }
+    const sessionId = resolved.sessionId;
 
     // The server silently ignores permissionResponse for unknown requestIds —
     // validate first so the user is never misled into thinking approval landed.
@@ -1409,12 +1816,21 @@ export async function daemonRespondCommand(
 
 export async function daemonAbortCommand(
   socketPath: string,
-  sessionId: string,
+  sessionRef: string,
 ): Promise<void> {
   let client: SocketClient | undefined;
   try {
     client = await connectDaemonOrExit(socketPath);
-    const init = await attachSession(client, sessionId);
+    // Name / id-prefix addressing (see resolveSessionRef).
+    const resolved = await resolveSessionRef(client, sessionRef);
+    if (resolved.kind === "ambiguous") {
+      fail(await renderAmbiguousFailure(client, sessionRef, resolved.match));
+    }
+    const sessionId =
+      resolved.kind === "found" ? resolved.sessionId : sessionRef;
+    const init = await attachSession(client, sessionId, {
+      ...(resolved.kind === "not-found" ? { notFoundHint: resolved.hint } : {}),
+    });
     // abortMessage is idempotent: a no-op on idle sessions, interrupts
     // in-flight generation (incl. subagents / bash / slash / queued messages)
     // otherwise (spec: 中断幂等，无需先确认是否正在生成).
@@ -1543,12 +1959,25 @@ function reportSurvivingWorktree(worktree: {
  */
 export async function daemonDestroyCommand(
   socketPath: string,
-  sessionId: string,
+  sessionRef: string,
   options: DestroyOptions = {},
 ): Promise<void> {
   let client: SocketClient | undefined;
   try {
     client = await connectDaemonOrExit(socketPath);
+    // Name / id-prefix addressing (see resolveSessionRef). A miss keeps the
+    // idempotent no-op below — an unknown reference is not an error here (spec:
+    // 销毁幂等) — but says so on stderr instead of letting a typo look like a
+    // successful destroy.
+    const resolved = await resolveSessionRef(client, sessionRef);
+    if (resolved.kind === "ambiguous") {
+      fail(await renderAmbiguousFailure(client, sessionRef, resolved.match));
+    }
+    if (resolved.kind === "not-found") {
+      console.error(resolved.hint);
+    }
+    const sessionId =
+      resolved.kind === "found" ? resolved.sessionId : sessionRef;
     // Resolve before destroying: both refusals inside mean "do nothing at
     // all", and a session that is already gone cannot be resolved any more.
     let worktree:
@@ -1598,6 +2027,68 @@ export async function daemonDestroyCommand(
     }
   } catch (err) {
     fail(`wave daemon destroy failed: ${(err as Error).message}`);
+  } finally {
+    await client?.dispose();
+  }
+  process.exit(0);
+}
+
+// ── rename ─────────────────────────────────────────────────────
+
+/**
+ * `wave daemon rename <会话> <新名字>` — set a session's name.
+ *
+ * The name is the session's existing title (`customTitle`), written through the
+ * same `renameSession` RPC the desktop app's sidebar uses, so the rename shows up
+ * everywhere that reads the transcript (and survives a daemon restart). Works on
+ * any session this machine knows: a live one keeps the title in memory and
+ * writes it back at its next flush point, a session that is only on disk gets
+ * the `custom-title` entry appended directly.
+ *
+ * Unlike `create`, a duplicate name is warned about rather than refused: the
+ * whole point of `rename` is to *fix* addressing, so the caller must learn that
+ * the name it picked will not address one session alone. The rename is still
+ * applied (titles may repeat) — and so is a `create` that picks a taken name,
+ * because neither command can know which of the two the user meant to keep.
+ */
+export async function daemonRenameCommand(
+  socketPath: string,
+  sessionRef: string,
+  newName: string,
+): Promise<void> {
+  const validated = normalizeSessionName(newName);
+  if ("error" in validated) {
+    fail(`Invalid session name: ${validated.error}`);
+  }
+  const name = validated.name;
+  let client: SocketClient | undefined;
+  try {
+    client = await connectDaemonOrExit(socketPath);
+    const resolved = await resolveSessionRef(client, sessionRef);
+    if (resolved.kind === "ambiguous") {
+      fail(await renderAmbiguousFailure(client, sessionRef, resolved.match));
+    }
+    if (resolved.kind === "not-found") {
+      fail(
+        `Session not found or not hosted by this daemon: ${sessionRef}\n${resolved.hint}`,
+      );
+    }
+    if (resolved.name !== name) {
+      const takenBy = await takenSessionNames(client);
+      if (takenBy.includes(name)) {
+        console.error(
+          `Warning: another session is already named "${name}"; addressing either of them by that name will report an ambiguity`,
+        );
+      }
+    }
+    await client.request("renameSession", {
+      sessionId: resolved.sessionId,
+      workdir: resolved.workdir,
+      title: name,
+    });
+    console.log(`Renamed session: ${resolved.sessionId} -> ${name}`);
+  } catch (err) {
+    fail(`wave daemon rename failed: ${(err as Error).message}`);
   } finally {
     await client?.dispose();
   }

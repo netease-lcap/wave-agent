@@ -283,9 +283,14 @@ export async function main() {
             .help()
             .command(
               "create",
-              "Create a new session hosted by the daemon and print its sessionId",
+              "Create a new session hosted by the daemon and print its sessionId and name",
               (yargs) => {
                 return yargs
+                  .option("name", {
+                    describe:
+                      "Name for the new session — every subcommand accepts it in place of a sessionId (default: the worktree name, else <workdir basename>-<n>)",
+                    type: "string",
+                  })
                   .option("workdir", {
                     describe:
                       "Working directory for the new session (default: current directory)",
@@ -315,6 +320,7 @@ export async function main() {
                   permissionMode: argv.permissionMode as string | undefined,
                   model: argv.model as string | undefined,
                   worktree: argv.worktree as string | undefined,
+                  name: argv.name as string | undefined,
                 });
               },
             )
@@ -334,7 +340,8 @@ export async function main() {
               (yargs) => {
                 return yargs
                   .positional("sessionId", {
-                    describe: "Session ID hosted by the daemon",
+                    describe:
+                      "Session hosted by the daemon — its sessionId, a unique id prefix, or its name",
                     type: "string",
                   })
                   .option("lines", {
@@ -360,7 +367,8 @@ export async function main() {
               (yargs) => {
                 return yargs
                   .positional("sessionId", {
-                    describe: "Session ID hosted by the daemon",
+                    describe:
+                      "Session hosted by the daemon — its sessionId, a unique id prefix, or its name",
                     type: "string",
                   })
                   .option("lines", {
@@ -401,7 +409,8 @@ export async function main() {
               (yargs) => {
                 return yargs
                   .positional("sessionId", {
-                    describe: "Session ID hosted by the daemon",
+                    describe:
+                      "Session hosted by the daemon — its sessionId, a unique id prefix, or its name",
                     type: "string",
                   })
                   .positional("message", {
@@ -432,7 +441,8 @@ export async function main() {
               (yargs) => {
                 return yargs
                   .positional("sessionId", {
-                    describe: "Session ID hosting the pending request",
+                    describe:
+                      "Session hosting the pending request — its sessionId, a unique id prefix, or its name",
                     type: "string",
                   })
                   .positional("requestId", {
@@ -488,7 +498,8 @@ export async function main() {
               "Abort the session's in-flight message generation",
               (yargs) => {
                 return yargs.positional("sessionId", {
-                  describe: "Session ID hosted by the daemon",
+                  describe:
+                    "Session hosted by the daemon — its sessionId, a unique id prefix, or its name",
                   type: "string",
                 });
               },
@@ -507,7 +518,8 @@ export async function main() {
               (yargs) => {
                 return yargs
                   .positional("sessionId", {
-                    describe: "Session ID of the session to destroy",
+                    describe:
+                      "Session to destroy — its sessionId, a unique id prefix, or its name",
                     type: "string",
                   })
                   .option("remove-worktree", {
@@ -525,6 +537,32 @@ export async function main() {
                   {
                     removeWorktree: argv.removeWorktree as boolean | undefined,
                   },
+                );
+              },
+            )
+            .command(
+              "rename <sessionId> <name>",
+              "Give a session a name (or rename it) — names are addressable in every other subcommand",
+              (yargs) => {
+                return yargs
+                  .positional("sessionId", {
+                    describe:
+                      "Session to rename — its sessionId, a unique id prefix, or its current name",
+                    type: "string",
+                  })
+                  .positional("name", {
+                    describe:
+                      "New name (single line, at most 64 characters; spaces are allowed)",
+                    type: "string",
+                  });
+              },
+              async (argv) => {
+                const { daemonRenameCommand, DEFAULT_DAEMON_SOCKET } =
+                  await import("./daemon/commands.js");
+                await daemonRenameCommand(
+                  DEFAULT_DAEMON_SOCKET,
+                  argv.sessionId as string,
+                  argv.name as string,
                 );
               },
             )

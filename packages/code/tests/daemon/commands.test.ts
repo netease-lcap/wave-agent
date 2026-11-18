@@ -22,6 +22,8 @@ import { execFile, spawn, type ChildProcess } from "node:child_process";
 import {
   Agent,
   hasWorktreeCreateHook,
+  listAllSessions,
+  readSessionWorkdir,
   loadUserConfigEnv,
   validateWorktreeRemovalPath,
   type AgentCallbacks,
@@ -45,6 +47,16 @@ vi.mock("wave-agent-sdk", async (importOriginal) => {
     hasWorktreeCreateHook: vi.fn(() => false),
     loadMergedWaveConfig: vi.fn(() => ({})),
     validateWorktreeRemovalPath: vi.fn(),
+    // Name resolution reads the on-disk index for sessions this daemon is not
+    // hosting (that is what keeps a name usable across a daemon restart).
+    // Answering it here keeps the suite off the developer's real ~/.wave/projects;
+    // a test that needs disk sessions sets them (see `diskSessions`).
+    listAllSessions: vi.fn(async () => []),
+    // `initialize` resolves a restore's directory from the transcript header
+    // before it creates the agent — the lookup that throws for a reference that
+    // is not a UUID. `null` = "no recorded workdir", the answer for a session
+    // this suite never wrote to disk.
+    readSessionWorkdir: vi.fn(async () => null),
   };
 });
 
@@ -155,6 +167,7 @@ import {
   daemonSendCommand,
   daemonRespondCommand,
   daemonAbortCommand,
+  daemonRenameCommand,
   daemonStopCommand,
   daemonRestartCommand,
   daemonStartTimeout,
@@ -297,14 +310,30 @@ function createMockAgent(
   const messages: Message[] = [];
   // Kept out of the spread below: a data property would shadow the accessor and
   // freeze the flag.
-  const { isLoading: initialLoading, ...rest } = overrides;
+  const {
+    isLoading: initialLoading,
+    customTitle: initialTitle,
+    ...rest
+  } = overrides;
   let isLoading = Boolean(initialLoading);
+  // A session's name is its `customTitle`, and the registry reports it
+  // (`listDaemonSessions` → `entry.agent.customTitle`) — so it has to be a live
+  // value here too, or `renameSession` would look like it did nothing.
+  let customTitle = initialTitle as string | undefined;
   const agent = {
     sessionId: "test-session-id",
     currentWorkdir: "/test/workdir",
     latestTotalTokens: 0,
     getContextWindow: vi.fn().mockReturnValue(200000),
     messages,
+    get customTitle(): string | undefined {
+      return customTitle;
+    },
+    /** `wave daemon create --name` / `rename` land here (the bridge routes a
+     * live session's title through the agent, not straight to the file). */
+    renameSession: vi.fn(async (title: string) => {
+      customTitle = title;
+    }),
     get isLoading(): boolean {
       return isLoading;
     },
@@ -517,6 +546,10 @@ beforeEach(async () => {
   storedRemoteControlName = undefined;
   vi.mocked(loadUserConfigEnv).mockReturnValue({});
   vi.mocked(Agent.create).mockResolvedValue(createMockAgent());
+  // The on-disk session index is a per-test fact: `vi.clearAllMocks` keeps
+  // implementations, so a test that set it would otherwise leak disk sessions
+  // into every test after it (name resolution reads it).
+  vi.mocked(listAllSessions).mockResolvedValue([]);
   // The auto-start child's stderr goes to a log file under this dir; keep it out
   // of the real ~/.wave/logs and per-test clean.
   process.env.WAVE_LOGS_DIR = logsDir;
@@ -699,7 +732,10 @@ test("list: an unwritable log directory degrades instead of blocking the start",
 
 test("create: prints the new sessionId, uses defaults, and hosts the session", async () => {
   await expect(daemonCreateCommand(socketPath)).rejects.toThrow("exit(0)");
-  expect(stdoutLines()).toEqual(["test-session-id"]);
+  // sessionId first (script-compatible), then the name every other subcommand
+  // accepts in its place — no `--worktree` here, so the name comes from the
+  // session's working directory.
+  expect(stdoutLines()).toEqual(["test-session-id", "Name: workdir-1"]);
   const options = vi.mocked(Agent.create).mock.calls[0][0];
   expect(options.workdir).toBe(process.cwd());
   expect(options.permissionMode).toBe("bypassPermissions");
@@ -2893,9 +2929,10 @@ test("create: --worktree creates a worktree first, then the session inside it", 
   await expect(
     daemonCreateCommand(socketPath, { worktree: "feature-x" }),
   ).rejects.toThrow("exit(0)");
-  // sessionId first (script-compatible), worktree info second.
+  // sessionId first (script-compatible), name second, worktree info last.
   expect(stdoutLines()).toEqual([
     "test-session-id",
+    "Name: feature-x",
     "Worktree: /repo/main/.wave/worktrees/feature-x (branch: feature-x)",
   ]);
   expect(vi.mocked(createWorktree)).toHaveBeenCalledWith(
@@ -3430,4 +3467,438 @@ test("restart: a dial still in flight warns without telling the user to re-dial"
   expect(warning).not.toContain("wave remote-control on");
   // One dial, not a retry loop: the budget is a single wait, ~4s in production.
   expect(autoStartRemoteSink.connects).toBe(1);
+});
+
+// ── session names: 按名字寻址会话 ──────────────────────────────
+//
+// A sessionId cannot be dictated, remembered, or typed from memory, so every
+// subcommand also accepts a session's **name** (its `customTitle`) and a unique
+// id prefix. The resolution rules themselves are pinned in ./sessionRef.test.ts;
+// what follows is the part only the commands can show: that each `case` in the
+// dispatch actually resolves, and that an ambiguous reference never picks one.
+
+const ID_A = "c530abcd-1111-4111-8111-aaaaaaaaaaaa";
+const ID_B = "c530ffff-2222-4222-8222-bbbbbbbbbbbb";
+const ID_C = "7e112233-3333-4333-8333-cccccccccccc";
+
+/** A session on the on-disk index (what a daemon restart leaves behind). */
+function diskSession(fields: {
+  id: string;
+  customTitle?: string;
+  sessionType?: "main" | "subagent";
+  workdir?: string;
+}) {
+  return {
+    id: fields.id,
+    sessionType: fields.sessionType ?? "main",
+    workdir: fields.workdir ?? "/repo/c",
+    customTitle: fields.customTitle,
+  };
+}
+
+function mockDiskSessions(
+  sessions: Array<ReturnType<typeof diskSession>>,
+): void {
+  vi.mocked(listAllSessions).mockResolvedValue(
+    sessions as unknown as Awaited<ReturnType<typeof listAllSessions>>,
+  );
+}
+
+/**
+ * Host sessions in this daemon with the ids/names a test wants. `initialize`
+ * registers a session under its *agent's* sessionId, so handing out prepared
+ * mocks in order is the only way to give two sessions in one daemon distinct
+ * ids.
+ *
+ * An attach to an unknown reference still mints a junk fresh session (that is
+ * the protocol's behaviour, cleaned up by the command), so the mock keeps
+ * answering after the prepared agents run out — with an agent whose
+ * `restoreSession` fails the way the real one does for a session that is on
+ * neither disk nor in memory.
+ */
+async function hostSessions(
+  ...sessions: Array<{
+    sessionId: string;
+    name?: string;
+    workdir?: string;
+    overrides?: Record<string, unknown>;
+  }>
+): Promise<Array<ReturnType<typeof createMockAgent>>> {
+  const agents = sessions.map((session) => {
+    const agent = createMockAgent({
+      sessionId: session.sessionId,
+      ...(session.workdir ? { currentWorkdir: session.workdir } : {}),
+      ...(session.name ? { customTitle: session.name } : {}),
+      ...session.overrides,
+    });
+    return agent;
+  });
+  let next = 0;
+  vi.mocked(Agent.create).mockImplementation(async () => {
+    const prepared = agents[next];
+    next += 1;
+    return (
+      prepared ??
+      createMockAgent({
+        sessionId: "junk-attach",
+        restoreSession: vi
+          .fn()
+          .mockRejectedValue(new Error("Session not found: junk-attach")),
+      })
+    );
+  });
+  const client = connectClient(socketPath);
+  for (let i = 0; i < sessions.length; i++) {
+    await client.send({ id: i + 1, method: "initialize", params: {} });
+  }
+  client.close();
+  return agents;
+}
+
+test("create --name: the name is printed, recorded on the session, and listed", async () => {
+  const agent = createMockAgent({ sessionId: ID_A });
+  vi.mocked(Agent.create).mockResolvedValue(agent);
+
+  expect(
+    await stdoutOf(() => daemonCreateCommand(socketPath, { name: "fix-1275" })),
+  ).toEqual([ID_A, "Name: fix-1275"]);
+
+  // The name is the session's existing title, written through the same RPC the
+  // desktop sidebar uses — that is what makes it visible to every host.
+  expect(agent.renameSession).toHaveBeenCalledWith("fix-1275");
+  const listed = await stdoutOf(() => daemonListCommand(socketPath));
+  expect(listed[0]).toContain("Name");
+  expect(listed[1]).toContain("fix-1275");
+});
+
+test("create: no --name gets <dir>-<n>, and the next one does not reuse it", async () => {
+  const queue = [
+    createMockAgent({ sessionId: ID_A }),
+    createMockAgent({ sessionId: ID_B }),
+  ];
+  vi.mocked(Agent.create).mockImplementation(async () => queue.shift()!);
+
+  // The default name must be unambiguous on its own: the user never sees it
+  // being chosen, so a warning would arrive too late to act on.
+  expect(await stdoutOf(() => daemonCreateCommand(socketPath))).toEqual([
+    ID_A,
+    "Name: workdir-1",
+  ]);
+  expect(await stdoutOf(() => daemonCreateCommand(socketPath))).toEqual([
+    ID_B,
+    "Name: workdir-2",
+  ]);
+});
+
+test("create: a --name another session already has is warned about, not refused", async () => {
+  const queue = [
+    createMockAgent({ sessionId: ID_A }),
+    createMockAgent({ sessionId: ID_B }),
+  ];
+  vi.mocked(Agent.create).mockImplementation(async () => queue.shift()!);
+
+  await stdoutOf(() => daemonCreateCommand(socketPath, { name: "t1" }));
+  expect(stderrText()).not.toContain("already named");
+
+  await stdoutOf(() => daemonCreateCommand(socketPath, { name: "t1" }));
+  expect(stderrText()).toContain(
+    'Warning: another session is already named "t1"',
+  );
+  // Both exist: a title may repeat, addressing by it is what reports ambiguity.
+  const listed = await stdoutOf(() => daemonListCommand(socketPath));
+  expect(listed.filter((line) => line.includes("t1"))).toHaveLength(2);
+});
+
+test("create: an invalid --name fails without connecting or creating", async () => {
+  await expect(
+    daemonCreateCommand(socketPath, { name: "a".repeat(65) }),
+  ).rejects.toThrow("exit(1)");
+  expect(stderrText()).toContain(
+    "Invalid --name: Session name must be at most 64 characters (got 65)",
+  );
+  expect(vi.mocked(Agent.create)).not.toHaveBeenCalled();
+});
+
+test("send: a live session is addressed by its name", async () => {
+  const [agent] = await hostSessions({ sessionId: ID_A, name: "t1" });
+
+  await expect(daemonSendCommand(socketPath, "t1", "继续")).rejects.toThrow(
+    "exit(0)",
+  );
+  // The confirmation reports the sessionId that was actually addressed, so the
+  // name never hides which session received the message.
+  expect(stdoutLines()).toEqual([`Sent message to session: ${ID_A}`]);
+  expect(agent.sendMessage).toHaveBeenCalledWith("继续", undefined);
+});
+
+test("wait / status / abort / destroy: every subcommand resolves a name", async () => {
+  const [agentA] = await hostSessions(
+    { sessionId: ID_A, name: "t1", workdir: "/repo/a" },
+    { sessionId: ID_B, name: "t2", workdir: "/repo/b" },
+  );
+
+  expect(
+    await stdoutOf(() => daemonStatusCommand(socketPath, "t1", 2)),
+  ).toContain(`Session: ${ID_A}`);
+  expect(await stdoutOf(() => daemonWaitCommand(socketPath, "t1"))).toContain(
+    "Status: idle",
+  );
+  expect(await stdoutOf(() => daemonAbortCommand(socketPath, "t1"))).toContain(
+    "Aborted session: " + ID_A,
+  );
+  expect(agentA.abortMessage).toHaveBeenCalled();
+
+  expect(await stdoutOf(() => daemonDestroyCommand(socketPath, "t2"))).toEqual([
+    `Destroyed session: ${ID_B}`,
+  ]);
+  const listed = await stdoutOf(() => daemonListCommand(socketPath));
+  expect(listed.join("\n")).toContain(ID_A);
+  expect(listed.join("\n")).not.toContain(ID_B);
+});
+
+test("destroy: a unique id prefix is enough to address a session", async () => {
+  await hostSessions({ sessionId: ID_A, name: "t1" }, { sessionId: ID_C });
+
+  await expect(daemonDestroyCommand(socketPath, "c530ab")).rejects.toThrow(
+    "exit(0)",
+  );
+  expect(logSpy).toHaveBeenCalledWith(`Destroyed session: ${ID_A}`);
+});
+
+test("send: two sessions sharing a name are reported, never guessed at", async () => {
+  const [agentA, agentB] = await hostSessions(
+    {
+      sessionId: ID_A,
+      name: "t1",
+      workdir: "/repo/a",
+      // The Last-message column is what tells two same-named sessions apart, so
+      // each candidate answers the newest-message read (`getMessages {limit:1}`).
+      overrides: {
+        getMessagePage: vi.fn(() => ({
+          messages: [userMsg("u1", "在改单测")],
+          hasMore: false,
+        })),
+      },
+    },
+    {
+      sessionId: ID_B,
+      name: "t1",
+      workdir: "/repo/b",
+      overrides: {
+        getMessagePage: vi.fn(() => ({
+          messages: [userMsg("u2", "在跑集成")],
+          hasMore: false,
+        })),
+      },
+    },
+  );
+
+  await expect(daemonSendCommand(socketPath, "t1", "继续")).rejects.toThrow(
+    "exit(1)",
+  );
+  const out = stderrText();
+  expect(out).toContain(
+    'Ambiguous session reference "t1": matches 2 sessions by name',
+  );
+  expect(out).toContain(ID_A);
+  expect(out).toContain(ID_B);
+  expect(out).toContain("/repo/a");
+  expect(out).toContain("/repo/b");
+  expect(out).toContain("在改单测");
+  expect(out).toContain("在跑集成");
+  // Nothing was dispatched to either one.
+  expect(agentA.sendMessage).not.toHaveBeenCalled();
+  expect(agentB.sendMessage).not.toHaveBeenCalled();
+
+  // The ids keep working — that is the way out of an ambiguity.
+  await expect(daemonSendCommand(socketPath, ID_B, "继续")).rejects.toThrow(
+    "exit(0)",
+  );
+  expect(agentB.sendMessage).toHaveBeenCalledWith("继续", undefined);
+  expect(agentA.sendMessage).not.toHaveBeenCalled();
+});
+
+test("destroy: a shared id prefix is ambiguous and destroys nothing", async () => {
+  await hostSessions(
+    { sessionId: ID_A, name: "a" },
+    { sessionId: ID_B, name: "b" },
+  );
+
+  await expect(daemonDestroyCommand(socketPath, "c530")).rejects.toThrow(
+    "exit(1)",
+  );
+  expect(stderrText()).toContain("by session-id prefix");
+  const listed = await stdoutOf(() => daemonListCommand(socketPath));
+  expect(listed.join("\n")).toContain(ID_A);
+  expect(listed.join("\n")).toContain(ID_B);
+});
+
+test("destroy: a name only the on-disk index knows still resolves (daemon restart)", async () => {
+  // After a restart the session is not hosted here any more; its name lives in
+  // the transcript. Resolution reads the index rather than declaring a miss.
+  mockDiskSessions([diskSession({ id: ID_C, customTitle: "old-one" })]);
+
+  await expect(daemonDestroyCommand(socketPath, "old-one")).rejects.toThrow(
+    "exit(0)",
+  );
+  expect(logSpy).toHaveBeenCalledWith(`Destroyed session: ${ID_C}`);
+});
+
+test("destroy: a subagent transcript is not addressable by its name", async () => {
+  // Only `main` sessions are addressable: a subagent has no conversation of its
+  // own to attach to, so naming it must not resolve to something destroyable.
+  mockDiskSessions([
+    diskSession({ id: ID_C, customTitle: "sub", sessionType: "subagent" }),
+  ]);
+
+  await expect(daemonDestroyCommand(socketPath, "sub")).rejects.toThrow(
+    "exit(0)",
+  );
+  expect(logSpy).toHaveBeenCalledWith("Destroyed session: sub");
+  expect(stderrText()).toContain(
+    'No session id, id prefix or name matches "sub"',
+  );
+});
+
+test("a name resolves to the live session, not to a stale on-disk row with it", async () => {
+  const [agent] = await hostSessions({ sessionId: ID_A, name: "t1" });
+  // Same name, different session, not hosted: the live one is the answer, and
+  // it must not turn into an ambiguity.
+  mockDiskSessions([diskSession({ id: ID_C, customTitle: "t1" })]);
+
+  await expect(daemonSendCommand(socketPath, "t1", "继续")).rejects.toThrow(
+    "exit(0)",
+  );
+  expect(stdoutLines()).toEqual([`Sent message to session: ${ID_A}`]);
+  expect(agent.sendMessage).toHaveBeenCalled();
+});
+
+test("a miss names the sessions that do exist instead of guessing", async () => {
+  await hostSessions(
+    { sessionId: ID_A, name: "fix-1275" },
+    { sessionId: ID_B, name: "mods-x" },
+  );
+
+  await expect(
+    daemonDestroyCommand(socketPath, "fix-1275-typo"),
+  ).rejects.toThrow("exit(0)");
+  expect(stderrText()).toContain(
+    'No session id, id prefix or name matches "fix-1275-typo". Known names: fix-1275, mods-x',
+  );
+});
+
+test("a name-shaped miss reports the miss and the known names, not an id-format error", async () => {
+  await hostSessions({ sessionId: ID_A, name: "t1" });
+  // A name is not a UUID, and `initialize` resolves the restore directory before
+  // it creates any agent — so a typed name (or a typo of one) fails there, with
+  // the SDK's "Invalid session ID format". That must still read as the miss it
+  // is, next to the names that do exist.
+  vi.mocked(readSessionWorkdir).mockRejectedValue(
+    new Error(
+      "Failed to load session t2: Error: Invalid session ID format: t2",
+    ),
+  );
+
+  await expect(daemonSendCommand(socketPath, "t2", "x")).rejects.toThrow(
+    "exit(1)",
+  );
+  const out = stderrText();
+  expect(out).toContain("Session not found or not hosted by this daemon: t2");
+  expect(out).toContain("Known names: t1");
+  // Nothing was registered for the failed attach: only t1 is listed.
+  const listed = await stdoutOf(() => daemonListCommand(socketPath));
+  expect(listed.join("\n")).toContain(ID_A);
+  expect(listed).toHaveLength(2);
+});
+
+test("rename: the old name stops resolving and the new one works", async () => {
+  const [agent] = await hostSessions({ sessionId: ID_A, name: "t1" });
+
+  expect(
+    await stdoutOf(() => daemonRenameCommand(socketPath, "t1", "t1-renamed")),
+  ).toEqual([`Renamed session: ${ID_A} -> t1-renamed`]);
+  expect(agent.renameSession).toHaveBeenCalledWith("t1-renamed");
+
+  // The old name is gone...
+  await expect(daemonSendCommand(socketPath, "t1", "x")).rejects.toThrow(
+    "exit(1)",
+  );
+  expect(stderrText()).toContain(
+    'No session id, id prefix or name matches "t1". Known names: t1-renamed',
+  );
+  // ...and the new one addresses the same session.
+  await expect(
+    daemonSendCommand(socketPath, "t1-renamed", "x"),
+  ).rejects.toThrow("exit(0)");
+  expect(stdoutLines()).toEqual([
+    `Renamed session: ${ID_A} -> t1-renamed`,
+    `Sent message to session: ${ID_A}`,
+  ]);
+});
+
+test("rename: renaming onto a taken name warns, and the name is then ambiguous", async () => {
+  await hostSessions(
+    { sessionId: ID_A, name: "a" },
+    { sessionId: ID_B, name: "b" },
+  );
+
+  await stdoutOf(() => daemonRenameCommand(socketPath, "a", "b"));
+  expect(stderrText()).toContain(
+    'Warning: another session is already named "b"',
+  );
+
+  await expect(daemonSendCommand(socketPath, "b", "x")).rejects.toThrow(
+    "exit(1)",
+  );
+  expect(stderrText()).toContain('Ambiguous session reference "b"');
+});
+
+test("rename: renaming to its own name is a no-op without a warning", async () => {
+  await hostSessions({ sessionId: ID_A, name: "t1" });
+
+  await stdoutOf(() => daemonRenameCommand(socketPath, "t1", "t1"));
+  expect(stderrText()).not.toContain("already named");
+});
+
+test("rename: an invalid name fails before touching the daemon", async () => {
+  await expect(daemonRenameCommand(socketPath, "t1", "  ")).rejects.toThrow(
+    "exit(1)",
+  );
+  expect(stderrText()).toContain(
+    "Invalid session name: Session name must not be empty or blank",
+  );
+});
+
+test("rename: an unknown reference fails with the names that do exist", async () => {
+  await hostSessions({ sessionId: ID_A, name: "t1" });
+
+  await expect(daemonRenameCommand(socketPath, "ghost", "x")).rejects.toThrow(
+    "exit(1)",
+  );
+  expect(stderrText()).toContain(
+    "Session not found or not hosted by this daemon: ghost",
+  );
+  expect(stderrText()).toContain("Known names: t1");
+});
+
+test("list: the Name column shows the name, and '-' for a session never named", async () => {
+  await hostSessions(
+    { sessionId: ID_A, name: "t1", workdir: "/repo/a" },
+    { sessionId: ID_C, workdir: "/repo/c" },
+  );
+
+  const out = await stdoutOf(() => daemonListCommand(socketPath));
+  expect(out[0].split(/\s{2,}/)).toEqual([
+    "Session",
+    "Name",
+    "Status",
+    "Messages",
+    "Working directory",
+  ]);
+  const named = out.find((line) => line.includes(ID_A))!;
+  const unnamed = out.find((line) => line.includes(ID_C))!;
+  expect(named.split(/\s{2,}/)).toEqual([ID_A, "t1", "idle", "0", "/repo/a"]);
+  // `-` (not a synthesized name): an unnamed session is addressable by id or id
+  // prefix only, and the column must not suggest otherwise.
+  expect(unnamed.split(/\s{2,}/)).toEqual([ID_C, "-", "idle", "0", "/repo/c"]);
 });
