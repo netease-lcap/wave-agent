@@ -282,6 +282,12 @@ export interface CodeProps {
   /** 可选的一行文件路径，画在代码上方。 */
   path?: string;
   startLine?: number;
+  /**
+   * 只有 `"diff"`：`source` 是一段统一差异文本（行首 `+`/`-`/` `/`@@`），
+   * surface 按行首着色（`+` 绿、`-` 红、`@@` 青）。不写就是纯文本 ——
+   * 颜色不从内容猜，必须声明（spec「元素」）。
+   */
+  format?: "diff";
   /** 只有这两个值（`Text.wrap` 的其它拼法在这里没有意义）。 */
   wrap?: "wrap" | "truncate-end";
 }

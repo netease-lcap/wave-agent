@@ -1002,7 +1002,7 @@ describe("SlashCommandManager", () => {
       name: "standup",
       description: "站会摘要",
       plugin: "todo",
-      run: vi.fn(async () => "总结今天的提交"),
+      run: vi.fn(async () => ({ text: "总结今天的提交" })),
       ...overrides,
     });
 
@@ -1057,7 +1057,9 @@ describe("SlashCommandManager", () => {
     });
 
     it("执行时把钩子答的文字当用户消息送进主对话", async () => {
-      const run = vi.fn(async (args: string) => `总结 ${args} 的提交`);
+      const run = vi.fn(async (args: string) => ({
+        text: `总结 ${args} 的提交`,
+      }));
       slashCommandManager.registerModCommand(modCommand({ run }));
 
       await slashCommandManager.executeCommand("standup", "周一");
@@ -1081,6 +1083,20 @@ describe("SlashCommandManager", () => {
       expect(notice.level).toBe("error");
       expect(notice.content).toContain("没有任何 command.run 钩子回答它");
       expect(notice.content).toContain(`{ command: "/standup" }`);
+      expect(aiManager.sendAIMessage).not.toHaveBeenCalled();
+    });
+
+    it("返回 `{}` 是本地动作：什么都不发，也不报「没人回答」", async () => {
+      // spec「注册命令」：`/diff` 那种「只开面板、不进对话」的命令就是这一档，
+      // 与 Claude Code 同形 —— 它不是「钩子没答」，不该长出错误提示。
+      const before = messageManager.getMessages().length;
+      slashCommandManager.registerModCommand(
+        modCommand({ run: vi.fn(async () => ({})) }),
+      );
+
+      await slashCommandManager.executeCommand("standup", "");
+
+      expect(messageManager.getMessages()).toHaveLength(before);
       expect(aiManager.sendAIMessage).not.toHaveBeenCalled();
     });
 

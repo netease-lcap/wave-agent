@@ -38,7 +38,7 @@ import {
   FORK_SUBTASK_MAX_TURNS,
 } from "../builtin/forkSubagent.js";
 import { FORK_SUBAGENT_TYPE } from "../constants/subagents.js";
-import type { ModCommandInfo } from "../types/mods.js";
+import type { ModCommandInfo, ModCommandRunOutcome } from "../types/mods.js";
 import { logger } from "../utils/globalLogger.js";
 
 export interface SlashCommandManagerOptions {
@@ -521,7 +521,7 @@ export class SlashCommandManager {
     argumentHint?: string;
     immediate?: boolean;
     plugin: string;
-    run: (args: string) => Promise<string | undefined>;
+    run: (args: string) => Promise<ModCommandRunOutcome | undefined>;
   }): { ok: true } | { ok: false; reason: string } {
     const name = input.name;
     const owner = this.modCommandPlugins.get(name);
@@ -551,15 +551,22 @@ export class SlashCommandManager {
       immediate: input.immediate ?? false,
       handler: async (args?: string) => {
         // 注册只给菜单元数据，逻辑在 command.run 钩子里（与 CC 同形状）。
-        const text = await input.run(args ?? "");
-        if (text === undefined) {
+        const outcome = await input.run(args ?? "");
+        if (outcome === undefined) {
           this.messageManager.addNoticeBlock(
             `/${name} 已注册，但没有任何 command.run 钩子回答它：在插件里补 on("command.run", { command: "/${name}" }, ($, e) => ({ text: ... }))`,
             "error",
           );
           return;
         }
-        await this.executeCustomCommandInMainAgent(name, text, undefined, args);
+        // `{}`：这次命令只是插件自己的动作（开关面板之类），不进对话、不发消息。
+        if (outcome.text === undefined) return;
+        await this.executeCustomCommandInMainAgent(
+          name,
+          outcome.text,
+          undefined,
+          args,
+        );
       },
     });
     return { ok: true };

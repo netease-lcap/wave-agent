@@ -77,6 +77,20 @@ function progressBar(ratio: number, cells: number): string {
   return "█".repeat(filled) + "░".repeat(Math.max(0, cells - filled));
 }
 
+/**
+ * `Code format="diff"` 的行着色（spec「元素」的 `Code.format`）：`+` 绿、`-` 红、
+ * `@@` 用 `planMode`，其余保持原色。
+ *
+ * **不从内容猜**：只有 mod 自己声明了 `format="diff"` 才走到这里，一段以 `+` 开头
+ * 的普通文本不会被染绿。
+ */
+function diffLineColor(line: string): string | undefined {
+  if (line.startsWith("+")) return modColor("diffAdded");
+  if (line.startsWith("-")) return modColor("diffRemoved");
+  if (line.startsWith("@@")) return modColor("planMode");
+  return undefined;
+}
+
 export interface ModTreeViewProps {
   node: ModTreeNode | string;
   /**
@@ -305,11 +319,16 @@ export const ModTreeView: React.FC<ModTreeViewProps> = ({
     case "Code": {
       const source = typeof props.source === "string" ? props.source : "";
       const path = typeof props.path === "string" ? props.path : "";
+      const diff = props.format === "diff";
       return (
         <Box flexDirection="column">
           {path ? <Text dimColor>{path}</Text> : null}
           {source.split("\n").map((line, index) => (
-            <Text key={index} wrap={props.wrap === "wrap" ? "wrap" : undefined}>
+            <Text
+              key={index}
+              color={diff ? diffLineColor(line) : undefined}
+              wrap={props.wrap === "wrap" ? "wrap" : undefined}
+            >
               {line}
             </Text>
           ))}

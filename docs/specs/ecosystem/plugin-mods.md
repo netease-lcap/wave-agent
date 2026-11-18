@@ -95,7 +95,7 @@ mod 跑在 `node:vm` 的独立 context 里（每个 mod 一个）：没有 `proc
 | `Select`   | `key`、`options`、`onSelect`、`label`、`value`、`autoFocus`                                                                                                                                                                                                                                                                                                                                                                                                                                                        | 下拉选择，选中后触发 `ui.select`；`options` 是 1–64 个 `{ value, label? }`，`value` 唯一                                                       |
 | `Svg`      | `source`、`alt`、`width`、`height`、`isInteractive`                                                                                                                                                                                                                                                                                                                                                                                                                                                                | 一段 SVG 标记内联画出来；`source` 非空且 ≤131072 字符，`alt` 必填（没有它等于没有可读文本）。**桌面端与 IDE 端有，终端的元素表里没有这个名字** |
 | `Link`     | `href`、`label`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | 只允许 `https:` 与本地回环 `http:`；点击交给宿主用系统浏览器打开（`openExternal`），不在 webview 里导航                                        |
-| `Code`     | `source`、`language`、`path`、`startLine`、`wrap`                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | 一期用 `<pre><code>` 原样展示（不做语法高亮），可选一行文件路径；`wrap` 只有 `"wrap"`/`"truncate-end"`                                         |
+| `Code`     | `source`、`language`、`path`、`startLine`、`format`、`wrap`                                                                                                                                                                                                                                                                                                                                                                                                                                                        | 一期用 `<pre><code>` 原样展示（不做语法高亮），可选一行文件路径；`wrap` 只有 `"wrap"`/`"truncate-end"`；`format` 只有 `"diff"`（见下）         |
 | `Markdown` | `text`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | `marked` + `DOMPurify` 渲染（与 webview 既有 markdown 用法同一套）                                                                             |
 | `Progress` | `label`、`value`、`max`、`valueText`、`color`                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | 一条进度：`value/max` 夹到 0–1（`max` 缺省 1），`valueText` 缺省是百分比；`label` 必填（说什么在做）；有 `value` 时是两行（标签 + 条）         |
 
@@ -129,6 +129,13 @@ mod 跑在 `node:vm` 的独立 context 里（每个 mod 一个）：没有 `proc
 **`Button.plain`** 是布尔开关（`true` 才画）：画成一串「字形 + label」的扁平按钮，不带边框与底色（一排 `➤` / `✕` 图标键就用它）；`plain` 为真时 `variant` 不再起作用。**`Button.dimColor`** 让 label 静止时调暗、指针进来时恢复全强度。**`Button.role`** 只有一个值 `"dismiss"`，含义是「这个按钮关闭它所在的站点」——**纯绘制提示、不改行为**（关了之后发生什么由 mod 自己的 `onPress` 决定）：桌面端把它画成那颗关闭控件（与面板页签的 × 同一颗），`label` 不再作为文本画出、改当它的无障碍名（`aria-label`），`plain`/`variant` 随之失效；写成别的值当场点名（`Button.role 只允许 "dismiss"`）。**`autoFocus`**（`Button` / `Input` / `Select`）只认布尔，`true` 才抢焦点（Claude Code 那边 `false` 会被拒；我们收布尔是因为 `autoFocus={cond}` 是自然写法），一个站点里多个时只有第一个生效。
 
 **`Input.rows`** 是 ≥1 的整数（缺省 1）：从 2 起变成多行输入（等价 `<textarea rows>`），Enter 仍提交、换行按输入框的默认打法。`Code.wrap` 只有 `'wrap' | 'truncate-end'` 两个值（`Text.wrap` 的其它拼法在这里被拒 —— 有行号 gutter 时它们没有意义）。
+
+**`Code.format`** 目前只有一个值 `"diff"`，与 Claude Code 同名同形 —— 它的差异插件画正文就是 `<Code source={…} format="diff" path={…}>`（2.1.327 二进制核对）：`source` 是一段**统一差异文本**（`git diff` 那套，行首 `+`/`-`/` `/`@@`），surface 按行首着色 —— `+` 行绿（`diffAdded`）、`-` 行红（`diffRemoved`）、`@@` 行青（`planMode`），其余原色。没有它时 `Code` 是纯文本（见上表 `language` 也不做高亮），所以差异必须声明 `format="diff"` 才有颜色 —— 不靠内容猜。写别的值当场点名（取值表里只有这一个）。
+
+两处与 Claude Code 的差，都是**有意**的：
+
+- **不校验 `source` 能否 parse**。CC 的引擎在 `format: "diff"` 时先确认 `source` 是合法的 hunk 再交给 surface；我们只按行首着色 —— 着色本来就不依赖解析，而校验不过的代价是整棵树被拒（第三方插件一个字写错就什么都画不出来），观感上两边都是「颜色不对」。
+- **只有终端画这套着色**。差异插件只在 `terminal` 注册面板，桌面端收到同一个 `format` 不报错、按纯文本画 —— 缺的是那一端的渲染，不是契约（元素表对四端是同一份）。
 
 ::: v-pre
 
@@ -179,10 +186,10 @@ mod 跑在 `node:vm` 的独立 context 里（每个 mod 一个）：没有 `proc
 
 - **一次显示一个 pane**。同时登记了多个时，pane 区顶部多一行 tab：`1: 待办   2: 检查`，数字是该 pane 在当前列表里的序号（超过 9 个只列前 9 个）。只有一个 pane 时不画 tab 行。
 - **默认不抢焦点**：面板出现后键盘还在输入框里，用户可以接着打字。`$.ui.open({ focus: true })`（或用户敲的 `/命令` 带出来的面板）才把焦点直接送进面板。
-- **焦点在面板时**：`↑`/`↓` 在控件之间移动，`Enter` 触发按钮或提交 `Input`，`hotkey` 字母直接触发对应按钮，`PageUp`/`PageDown` 翻页，数字键 `1`–`9` 切到对应面板；焦点在 `Input` 里时所有可打印键归输入框（与桌面端同一条纪律）。
+- **焦点在面板时**：`↑`/`↓` 滚正文（`Home`/`End` 到顶/到底），`PageUp`/`PageDown` 翻页，`Tab`/`Shift+Tab` 在控件之间移动，`Enter` 触发按钮或提交 `Input`，`hotkey` 字母直接触发对应按钮，数字键 `1`–`9` 切到对应面板；焦点在 `Input` 里时所有可打印键归输入框（与桌面端同一条纪律）。这条与 Claude Code 的 `Pane` 键位表逐字对齐：它那边 `up`/`down`/`pageup`/`pagedown`/`home`/`end` 分别绑 `pane:scrollUp`/`scrollDown`/`pageUp`/`pageDown`/`top`/`bottom`，焦点移动是 `tab`/`shift+tab`（`abovePrompt:next`/`previous`）。**滚动归这一端、不归 mod**：mod 拿不到原始方向键（Claude Code 也拿不到），要跟着滚动走的信息从 `ui.render` 的 `e.props`（可见行数）里读；需要「上一条/下一条」这类动作时用 `Button` 的 `hotkey` 或 `Select`，别指望方向键。
 - **退出用 `Esc`**：焦点在面板时按 `Esc` **收起这个面板并把焦点还给输入框**（只是这一端不再画它，mod 不会收到 `ui.close` —— 与桌面端关掉 tab 同一纪律；mod 下一次 `$.ui.open` / `invalidate` 会重新出现）。焦点在输入框时 `Esc` 完全归输入框（清空提示那套语义照旧），不碰面板。`Ctrl+C` 等宿主键不受影响。
-- **高度**：面板正文封顶 12 行、带每条封顶 6 行（终端比这矮时按实际可用高度缩，缩不下就滚）。两者与输入区合计不得超过终端 `rows` 的 2/3：先压带（每条最低 3 行）、再压面板（最低 6 行），仍放不下时面板内部滚动，消息区不被挤出去。
-- **不做**：手动把焦点移进面板的独立键（裸 `Tab` 已是补全/选择确认的键，不抢）、焦点在输入框时用 `Esc` 收盘；侧栏两栏与拖动宽度、按列数决定的出现阈值、`$.ui.open` 的 `rows`/`columns` 字段（我们本来就不收）、`Raster`/`Image`、重绘对话流里的消息与工具行。
+- **高度**：面板正文的高度取**插件申报值与可用空间里较小的那个**。申报走 `$.ui.open({ rows })`（见「面板放得下吗」），省略时按 12 行；带每条封顶 6 行。两者与输入区合计不得超过终端 `rows` 的 2/3：先压带（每条最低 3 行）、再压面板（最低 6 行），仍放不下时面板内部滚动，消息区不被挤出去。所以「一张差异面板要占大半屏」只需 `rows` 申报，不用改这一端的策略 —— 上限仍是 2/3，终端太矮时它照样缩。
+- **不做**：手动把焦点移进面板的独立键（裸 `Tab` 已是补全/选择确认的键，不抢 —— 面板拿到键盘之后 `Tab` 才归面板）、焦点在输入框时用 `Esc` 收盘；侧栏两栏与拖动宽度、按列数决定的出现阈值、`$.ui.open` 的 `columns` 字段、`Raster`/`Image`、重绘对话流里的消息与工具行。
 
 ### 事件（一期）
 
@@ -213,7 +220,7 @@ mod 跑在 `node:vm` 的独立 context 里（每个 mod 一个）：没有 `proc
 | `agent.spawn`                         | Agent 工具（或 `$.agent.spawn`）即将起一个子代理、模型还没解析时，见「派子代理」                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | `next(e)` 解析到 `{ model, agentId? }`；改 `e.prompt` / `e.description` 就是子代理真正拿到的东西                                                                                                                                                                   |
 | `classic.PermissionRequest`           | 一次工具审批**即将**弹给用户时（`PermissionRequest` 钩子已放行、宿主询问用户之前），见下                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | 无（返回值忽略；**没有**批准/拒绝通道）                                                                                                                                                                                                                            |
 | `classic.*`（19 个镜像）              | 各自挂在宿主已有的某个时刻上（会话开局/销毁、一轮收尾、用户提交、换模型、工具跑完、压缩前后、目录变了…），逐条见「影子事件」                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | 只有三条有返回通道，且都是我们本来就有的能力换了个名字：`classic.Stop` / `classic.SubagentStop` 的 `{ additionalContext }` 让这一轮（子代理的那一轮）续跑、`classic.PreToolUse` 的 `{ deny }` 在工具跑之前拦下它。其余返回值一律忽略                               |
-| `command.run`                         | 用户执行了一个由 `$.command.register` 注册的命令，或 mod 自己调 `$.command.run`（见「注册命令」）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | `{ text }`：这一行要变成的 prompt                                                                                                                                                                                                                                  |
+| `command.run`                         | 用户执行了一个由 `$.command.register` 注册的命令，或 mod 自己调 `$.command.run`（见「注册命令」）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | `{ text }`：这一行要变成的 prompt；`{}`：只是插件自己的动作（开关面板等），不发消息也不进对话。钩子没答（`undefined`）才是「没人回答」                                                                                                                             |
 | `command.describe`                    | 命令列表要画时，每个命令（内置、插件、`$.command.register` 注册的）问一次，宿主等答案再画                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | `{ description, argumentHint, isHidden }`（见「给工具、技能、命令写描述」）                                                                                                                                                                                        |
 | `skill.prompt`                        | 一个技能的正文被展开给模型时（`/名字` 调用、或模型自己调）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | `{ text }`：换掉技能正文                                                                                                                                                                                                                                           |
 | `session.end`                         | 会话销毁（关掉这条会话、进程退出）**之前**；返回后该会话的 mod 实例、定时器与外部进程全部撤销，其面板**不再**逐条发 `ui.close`                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | 无（返回值忽略）                                                                                                                                                                                                                                                   |
@@ -510,6 +517,14 @@ Claude Code 把**每个** settings hook 事件都镜像成 `classic.<Event>`，�
 
 `focus: true` 表示用户点了按钮/命令带出来的面板（抢焦点）；省略表示 mod 自己的意愿（不抢焦点）。**只收 `true`**：写 `focus: false` 与不写是两件事（后者是「没有意见」、前者是想显式表达「别抢」），CC 也是在 `false` 上报错，所以两边同一个口径。**桌面端**首帧打开面板本来就是激活这个 tab，因此 `focus: true` 在桌面端是 no-op —— 收它只为让照 CC 写的插件原样能跑；**终端**里它才真的有第二种行为：键盘焦点直接进面板，省略时焦点留在输入框、面板只显示（见「终端形态」）。
 
+**`rows`（申报高度）**：`$.ui.open({ id, title, rows })` 让插件告诉 surface「这块面板画这么多行才够」，与 Claude Code 的 `openPane({ …, rows })` 同名同义 —— 它的差异插件每次开面板都传一个按内容算出来的行数。口径有三条：
+
+- **是申报，不是命令**。surface 取「申报值」与「这一端放得下多少」里较小的那个：终端仍受 2/3 屏幕与最低 6 行的约束（见「终端形态」的「高度」），桌面端 tab 高度由面板区自己决定、这个字段是 no-op。所以申报小了会挤、申报大了会被压，不会撑坏版面。
+- **只对写它的那一帧生效，之后按最后申报值**。内容变高变矮时再 `$.ui.open` 一次更新（Claude Code 的差异插件就是这么做的：算出来的行数与上次不同才重开），不是每帧都传。
+- **必须是 ≥1 的整数**。写 `0`、负数、小数、字符串都当场点名 —— 与 `Input.rows` 同一条校验纪律（静默忽略会让作者以为申报生效了、面板却还是 12 行）。
+
+`closeOnEscape`（CC 的同一个入参）我们**不收也不校验**：这一端的 `Esc` 恒收起面板（见「终端形态」），没有「关不掉」的档，所以照 CC 写的插件传了它也只是被忽略，不会报错。
+
 ### 面板的显示与焦点（`$.ui.panes`）
 
 `$.ui.panes()` → `Promise<readonly ModUiPane[]>`，每一项 `{ id, title, isShown, isFocused, isPlaced }`。列的是**这个 mod 自己的**面板（按插件过滤，不是会话里的全部），顺序按打开先后。
@@ -639,12 +654,17 @@ on("command.run", { command: "/standup" }, ($, e) => ({
 }));
 ```
 
-**注册只给菜单元数据，逻辑在 `command.run` 钩子里**（与 Claude Code 同一个形状）：`register` 没有 handler，用户敲下 `/standup 3` 后引擎派 `command.run`，matcher 写成本条命令（带斜杠，`{ command: "/standup" }`，与 CC 一致；也可以不给 matcher、由钩子自己比 `e.command`，见下），钩子必须返回 `{ text }` —— 这段文字作为**一条用户消息**进会话，模型看到的就是它。
+**注册只给菜单元数据，逻辑在 `command.run` 钩子里**（与 Claude Code 同一个形状）：`register` 没有 handler，用户敲下 `/standup 3` 后引擎派 `command.run`，matcher 写成本条命令（带斜杠，`{ command: "/standup" }`，与 CC 一致；也可以不给 matcher、由钩子自己比 `e.command`，见下），钩子返回两档之一：
+
+- **`{ text }`**：这段文字作为**一条用户消息**进会话，模型看到的就是它；
+- **`{}`**（没有 `text`）：这次命令**只是插件自己的动作** —— 开关一块面板、刷新一次状态 —— 不发消息、不进对话。差异插件的 `/diff` 就是这一档（见 [diff-command](../commands/diff-command.md)），否则每敲一次就给模型白送一轮。
+
+`{}` 与「没答」（`undefined`）是两件事：前者是有人回答了、只是没有话要说，后者才会报错（见下）。
 
 - `args` 是用户敲在命令名后面的原文（`"3"`，没写就是空串）。
 - **matcher 是可选的**：`on("command.run", { command: "/standup" }, handler)` 只接这一条，`on("command.run", handler)` 接这个 mod 注册的**所有**命令（社区 mod 就是一条钩子管自己所有命令、在钩子里比 `e.command`）。派发本来就按 mod 分开，没有 matcher 不会把命令串到别的 mod 上；给了 matcher 但没写 `command` 的，这条注册被忽略并记一条 warn。
 - **事件里的 `e.command` 不带斜杠**（`"standup"`）—— 与 Claude Code 同一个口径，社区 mod 直接比 `e.command === "guard"`；matcher 里写带不带斜杠都认（两边归一后比较）。
-- **钩子没答就不执行**：注册了命令但 `command.run` 没有对应 matcher 的钩子（或钩子返回的不是 `{ text }`），这条命令报错并给一句能照做的提示（缺钩子时照 CC 的文案形状：「registered /name but no command.run hook answered it」）。
+- **钩子没答就不执行**：注册了命令但 `command.run` 没有对应 matcher 的钩子（返回 `undefined`），这条命令报错并给一句能照做的提示（缺钩子时照 CC 的文案形状：「registered /name but no command.run hook answered it」）。
 - **重名即拒**：与内置命令、用户/项目 `.wave/commands` 下的自定义命令、技能命令、别的插件的命令同名，注册就失败并在插件日志里说明是谁占了。同一个 mod 用同一份 spec 重复注册是幂等的。
 - **撞宿主本地命令**在宿主侧丢弃：`/config`、`/clear`、`/model` 这类是各前端自己实现的动作（不在 SDK 的命令表里），SDK 检查不到；所以 `getSlashCommands` 合并时，同名 mod 命令被丢掉并记一条 warn。
 - **不能在 `command.run` 钩子里调 `$.prompt.submit`**：钩子正持有用户打出的这一轮，再投一条会等自己（CC 的原文案是「would wait on the turn this hook is holding」）。要在这之后继续，就存到状态里、在 `turn.complete` 里投。
@@ -1041,6 +1061,17 @@ mod 的沙箱里没有 `child_process`，要跑外部程序只能走 `$.process.
 - 文件解析走 `realpath`，解析结果必须落在插件目录内，越界即拒绝。
 - 编译或加载失败：该 mod 不生效，其余 mod 与插件其他能力不受影响；失败原文进 `wave` 日志，并**占一个错误面板**（`paneId` 为 `error`，标题是文件名，内容是一行摘要）—— 否则用户只会看到「面板没出现」。
 - 只注册 `ui.render` 而从不 `$.ui.open` 的 mod 不产生面板，日志记一条 debug。
+
+## 内置插件与默认开关
+
+内置插件是随二进制分发、不可卸载的那一档，以 `<name>@builtin` 登记（`sdd`、`diff`）。它们的**默认开关由插件自己声明**，不写死一个全局值：
+
+| 插件   | `defaultEnabled` | 理由                                                                                                  |
+| ------ | ---------------- | ----------------------------------------------------------------------------------------------------- |
+| `sdd`  | `false`          | 规格优先工作流会改变模型的写码节奏，用户得主动选用；不想要的人不该被它影响                            |
+| `diff` | `true`           | 它就是终端 `/diff` 的载体（见 [diff-command](../commands/diff-command.md)），关掉等于删掉一条内置命令 |
+
+判定顺序是「显式配置 > 插件策略 > 关」：`enabledPlugins["<name>@builtin"]` 写了布尔值就照它（`true` 开、`false` 关），没写才落到 `defaultEnabled`，策略里也没写就是关。**与 Claude Code 同一条口径**（它那边是 `defaultEnabled ?? true`，我们缺省取 `false` 只是因为不想让「新增内置插件」默认改变用户行为，所以每个想默认开的都必须在策略表里写明）。写 `false` 显式关掉一个 `defaultEnabled: true` 的插件是受支持的档，设置页里它与 `sdd` 一样能切。
 
 ## 生命周期
 

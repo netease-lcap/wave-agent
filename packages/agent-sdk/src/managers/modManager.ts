@@ -22,6 +22,7 @@ import {
   type ModAgentInfo,
   type ModBandRenderResult,
   type ModCommandBridge,
+  type ModCommandRunOutcome,
   type ModCommandSpec,
   type ModConfigRow,
   type ModHookOrigin,
@@ -313,6 +314,13 @@ interface PaneState {
    * 「终端形态」）。只在打开那一条推送里透传一次，之后不再带。
    */
   focus?: boolean;
+  /**
+   * `$.ui.open({ rows })` 申报的高度（spec「终端形态」的「高度」）。
+   *
+   * 与 `focus` 不同：它是**持续状态**，内容变高变矮时 mod 再 `openPane` 一次
+   * 覆盖它，之后每一帧推送都带着 —— surface 每帧都要按它排版，不是只认第一帧。
+   */
+  rows?: number;
   pending?: NodeJS.Timeout;
 }
 
@@ -1163,8 +1171,8 @@ export class ModManager {
               // `$.plugin.root`：插件自己的目录（`plugin.json` 那个），不是会话
               // 工作目录 —— 后者会随 `cd` 动，拼出来的插件资源必然找不到。
               pluginRoot: plugin.path,
-              openPane: (paneId, title, focus) =>
-                this.openPane(mod.id, paneId, title, focus),
+              openPane: (paneId, title, focus, rows) =>
+                this.openPane(mod.id, paneId, title, focus, rows),
               closePane: (paneId) => this.closePane(mod.id, paneId),
               listPanes: () => this.listPanes(mod.id),
               surfaces: () => this.facts.surfaces(),
@@ -3350,6 +3358,7 @@ export class ModManager {
     paneId: string,
     title: string,
     focus = false,
+    rows?: number,
   ): boolean {
     if (this.disposed) return false;
     const key = paneKeyOf(modId, paneId);
@@ -3366,6 +3375,8 @@ export class ModManager {
     // 只有**这一次**打开要求了焦点才带：之后的重绘都清成 false，否则 mod 每
     // invalidate 一次就把用户的输入焦点抢走一次。
     pane.focus = focus;
+    // `rows` 相反：它是持续状态，`undefined`（没申报）才清掉，否则覆盖下去。
+    if (rows !== undefined) pane.rows = rows;
     this.panes.set(key, pane);
     // 新开一块、且键盘没有人持着 ⇒ 它就是摊开的那个（spec「面板的显示与焦点」，
     // 与 Claude Code 的 `shownId: focusedId ?? 新 id` 同一条）。重新打开不算。
@@ -3728,6 +3739,7 @@ export class ModManager {
       ...(extra.stale ? { stale: true } : {}),
       ...(extra.closed ? { closed: true } : {}),
       ...(extra.focus ? { focus: true } : {}),
+      ...(pane.rows !== undefined ? { rows: pane.rows } : {}),
       ...(pane.error ? { error: pane.error } : {}),
     };
   }
@@ -4052,17 +4064,19 @@ export class ModManager {
   }
 
   /**
-   * 派一条 `command.run` 钩子，取出它答的那段文字。
+   * 派一条 `command.run` 钩子，取出它答的结论。
    *
-   * 三种「没人答得上来」都返回 `undefined`：mod 没注册对应 matcher、钩子抛错、
-   * 返回的不是 `{ text: string }`。由命令表那边统一报「注册了但没钩子回答」，
-   * 免得同一件事在两处给两种文案。
+   * 两档（spec「注册命令」）：`{ text }` 是给模型的一句话，`{}`（没有 `text`）是
+   * 「这次命令只是我自己的动作」—— 差异插件的 `/diff` 就靠后一档只切面板、不
+   * 发消息。三种「没人答得上来」都返回 `undefined`：mod 没注册对应 matcher、
+   * 钩子抛错、返回的既不是 `{ text: string }` 也不是对象。由命令表那边统一报
+   * 「注册了但没钩子回答」，免得同一件事在两处给两种文案。
    */
   private async runCommandHook(
     modId: string,
     name: string,
     args: string,
-  ): Promise<string | undefined> {
+  ): Promise<ModCommandRunOutcome | undefined> {
     const runtime = this.mods.get(modId)?.runtime;
     if (!runtime) return undefined;
     const result = await runtime.callCommandHook(`/${name}`, args);
@@ -4071,13 +4085,12 @@ export class ModManager {
       return undefined;
     }
     const value = result.value;
-    if (
-      typeof value === "object" &&
-      value !== null &&
-      typeof (value as { text?: unknown }).text === "string"
-    ) {
-      return (value as { text: string }).text;
-    }
+    if (typeof value !== "object" || value === null) return undefined;
+    const text = (value as { text?: unknown }).text;
+    if (typeof text === "string") return { text };
+    // 没有 `text` 键的对象 = Claude Code 的 `{}`：本地动作，不发消息。写了
+    // `text` 却不是字符串说明作者写错了，按「没回答」处理，让它报出来。
+    if (!("text" in value)) return {};
     return undefined;
   }
 

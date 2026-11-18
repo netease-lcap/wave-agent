@@ -13,6 +13,7 @@ import { MOD_BAND_INSTANCE_ID, MOD_LIMITS } from "../../src/types/mods.js";
 import type {
   ModCommandBridge,
   ModCommandInfo,
+  ModCommandRunOutcome,
   ModPanelUpdatePayload,
   ModStatusPayload,
   ModToastPayload,
@@ -2073,13 +2074,19 @@ function createCommandBridge(): {
   bridge: ModCommandBridge;
   rows: Map<
     string,
-    { info: ModCommandInfo; run: (args: string) => Promise<string | undefined> }
+    {
+      info: ModCommandInfo;
+      run: (args: string) => Promise<ModCommandRunOutcome | undefined>;
+    }
   >;
   removed: string[];
 } {
   const rows = new Map<
     string,
-    { info: ModCommandInfo; run: (args: string) => Promise<string | undefined> }
+    {
+      info: ModCommandInfo;
+      run: (args: string) => Promise<ModCommandRunOutcome | undefined>;
+    }
   >();
   const removed: string[] = [];
   const bridge: ModCommandBridge = {
@@ -2178,12 +2185,39 @@ exports.register = function ($, on) {
       source: "plugin",
     });
     // 命令表执行它时问回注册者：钩子答的那段文字就是要送进会话的 prompt。
-    await expect(rows.get("standup")?.run("上周")).resolves.toBe(
-      "总结 上周 的提交",
-    );
+    await expect(rows.get("standup")?.run("上周")).resolves.toEqual({
+      text: "总结 上周 的提交",
+    });
     expect(logger.info).toHaveBeenCalledWith(
       expect.stringContaining("$.command.register (todo): /standup listed"),
     );
+
+    await manager.dispose();
+  });
+
+  it("command.run 答 `{}` 是本地动作（解析成空对象，不是「没人回答」）", async () => {
+    // spec「注册命令」：`/diff` 这种只开面板的命令返回 `{}`，命令表据此不发消息。
+    const quietMod = path.join(ROOT, "mods", "quiet.tsx");
+    const { manager } = createManager({
+      [quietMod]: `
+exports.register = function ($, on) {
+  on("session.start", function () {
+    $.command.register({ name: "diff", description: "看差异" });
+  });
+  on("command.run", { command: "/diff" }, function () {
+    return {};
+  });
+};
+`,
+    });
+    const { bridge, rows } = createCommandBridge();
+    manager.setCommandBridge(bridge);
+    await manager.loadFromPlugins([
+      plugin([{ id: "todo:quiet", path: quietMod }]),
+    ]);
+    await manager.startSession();
+
+    await expect(rows.get("diff")?.run("")).resolves.toEqual({});
 
     await manager.dispose();
   });
