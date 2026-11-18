@@ -878,6 +878,36 @@ export class MessageManager {
   }
 
   /**
+   * Append a meta (invisible to the user) user message, unless a user message
+   * with exactly this text is already in the conversation.
+   *
+   * This is the platform-level dedupe Claude Code does for SessionStart
+   * `additionalContext` (changelog 2.1.295), so hook authors don't have to
+   * care: `resume` appends to a conversation that already holds the copy, so
+   * without this the same block piles up once per resume; `compact` folds the
+   * list to `[summary, ...kept rounds]`, which drops that copy, so the next
+   * injection lands again; changed content is different text, so it refreshes.
+   *
+   * Judged on the final text that would be written (i.e. after any plugin
+   * rewrite), so a plugin replacing the original still dedupes.
+   *
+   * @returns whether a message was actually appended.
+   */
+  public addMetaMessageIfAbsent(content: string): boolean {
+    const alreadyPresent = this.messages.some(
+      (message) =>
+        message.role === "user" &&
+        message.isMeta === true &&
+        message.blocks.some(
+          (block) => block.type === "text" && block.content === content,
+        ),
+    );
+    if (alreadyPresent) return false;
+    this.addUserMessage({ content, isMeta: true });
+    return true;
+  }
+
+  /**
    * Update an existing user message by its ID.
    */
   public updateUserMessage(

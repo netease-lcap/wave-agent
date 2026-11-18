@@ -1927,6 +1927,7 @@ export class Agent {
           "clear",
           newSessionId,
           this.messageManager.getTranscriptPath(),
+          this.messageManager,
         );
 
       // Inject additionalContext as a meta user message
@@ -1937,11 +1938,13 @@ export class Agent {
           type: "session-start",
           text: `SessionStart hook additional context: ${sessionStartResult.additionalContext}`,
         });
+        // `/clear` emptied the list, so this always lands — the call is the
+        // same shape as the other three sources on purpose (no per-source
+        // special case).
         if (sessionStartText !== null) {
-          this.messageManager.addUserMessage({
-            content: wrapInSystemReminder(sessionStartText),
-            isMeta: true,
-          });
+          this.messageManager.addMetaMessageIfAbsent(
+            wrapInSystemReminder(sessionStartText),
+          );
         }
       }
 

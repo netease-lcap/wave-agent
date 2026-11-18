@@ -12,6 +12,7 @@ import { createMockToolManager } from "../helpers/mockFactories.js";
 import { Container } from "@/utils/container.js";
 import { AIManager } from "@/managers/aiManager.js";
 import { ModManager } from "@/managers/modManager.js";
+import type { HookManager } from "@/managers/hookManager.js";
 
 import type { NoticeBlock, Usage } from "@/types/index.js";
 
@@ -222,6 +223,33 @@ describe("Agent - clear/compact ignored while running", () => {
     ]);
 
     notifyMods.mockRestore();
+  });
+
+  it("/clear 之后的 SessionStart 上下文照常重新注入（列表已清空）", async () => {
+    // 去重看的是当前列表：`/clear` 把它清空了，所以即便内容与上一次完全相同，
+    // 下一份也照常落地（这是四个 source 共用同一份判断的必然结果）。
+    const hookManager = (agent as unknown as { hookManager: HookManager })
+      .hookManager;
+    vi.spyOn(hookManager, "executeSessionStartHooks").mockResolvedValue({
+      results: [],
+      additionalContext: "Cached context",
+    });
+    const injected = `<system-reminder>\nSessionStart hook additional context: Cached context\n</system-reminder>`;
+    const metaTexts = () =>
+      agent.messages
+        .filter((message) => message.isMeta)
+        .flatMap((message) =>
+          message.blocks.flatMap((block) =>
+            block.type === "text" ? [block.content] : [],
+          ),
+        );
+
+    await agent.clearMessages();
+    expect(metaTexts()).toEqual([injected]);
+
+    await agent.clearMessages();
+    expect(metaTexts()).toEqual([injected]);
+    expect(agent.messages).toHaveLength(1);
   });
 
   it("/clear while idle still works — messages cleared, new session ID", async () => {

@@ -114,6 +114,7 @@ describe("AIManager - compactConversation", () => {
       compactMessagesAndUpdateSession: vi.fn(),
       addNoticeBlock: vi.fn(),
       addUserMessage: vi.fn(),
+      addMetaMessageIfAbsent: vi.fn(),
       getRecentFileReads: vi.fn().mockReturnValue([]),
       getInvokedSkills: vi.fn().mockReturnValue([]),
       getMemoryForInjection: vi.fn().mockResolvedValue({ prependContent: "" }),
@@ -581,8 +582,45 @@ describe("AIManager - compactConversation", () => {
         "compact",
         "test-session-id",
         "/test/transcript.json",
+        mockMessageManager,
         undefined,
       );
+    });
+
+    it("should re-inject SessionStart context through the dedupe path", async () => {
+      // 压缩把头部那份副本折进了摘要，所以这条要走 `addMetaMessageIfAbsent`
+      // 重新落地（去重判据在那里；列表里已经没有旧副本 → 必然加）。
+      vi.mocked(mockHookManager.executeSessionStartHooks).mockResolvedValue({
+        results: [],
+        additionalContext: "Project context",
+      });
+
+      await aiManager.compactConversation();
+
+      expect(mockMessageManager.addMetaMessageIfAbsent).toHaveBeenCalledWith(
+        `<system-reminder>\nSessionStart hook additional context: Project context\n</system-reminder>`,
+      );
+    });
+
+    it("should add nothing when a plugin drops the session-start attachment", async () => {
+      // `rewritePromptAttachment` 返回 `null` 是「这条不要」：去重不能把它绕过去。
+      container.register("ModManager", {
+        notifyMods: vi.fn(),
+        collectPromptSections: vi.fn(async (sections) => sections),
+        collectPromptSection: vi.fn(async (section) => section.text),
+        collectSessionContextBlocks: vi.fn(async () => []),
+        rewritePromptAttachment: vi.fn(async () => null),
+        collectSkillText: vi.fn(async (request) => request.text),
+        collectStopContext: vi.fn(async () => []),
+      });
+      vi.mocked(mockHookManager.executeSessionStartHooks).mockResolvedValue({
+        results: [],
+        additionalContext: "Project context",
+      });
+
+      await aiManager.compactConversation();
+
+      expect(mockMessageManager.addMetaMessageIfAbsent).not.toHaveBeenCalled();
     });
 
     it("should skip if already compacting", async () => {

@@ -23,6 +23,7 @@ import type { LiveConfigManager } from "../managers/liveConfigManager.js";
 import type { TaskManager } from "./taskManager.js";
 import type { PermissionManager } from "../managers/permissionManager.js";
 import { remoteSettingsService } from "./remoteSettingsService.js";
+import { wrapInSystemReminder } from "../prompts/planModeReminders.js";
 
 export interface InitializationContext {
   skillManager: SkillManager;
@@ -225,14 +226,19 @@ export class InitializationService {
         "startup",
         messageManager.getSessionId(),
         messageManager.getTranscriptPath(),
+        messageManager,
       );
 
-      // Inject additionalContext as a meta user message (matches Claude Code)
+      // Inject additionalContext as a meta user message (matches Claude Code).
+      // `wrapInSystemReminder` rather than a literal: the four injection
+      // sources must write byte-identical text, or the dedupe in
+      // `addMetaMessageIfAbsent` stops matching across them.
       if (sessionStartResult.additionalContext) {
-        messageManager.addUserMessage({
-          content: `<system-reminder>\nSessionStart hook additional context: ${sessionStartResult.additionalContext}\n</system-reminder>`,
-          isMeta: true,
-        });
+        messageManager.addMetaMessageIfAbsent(
+          wrapInSystemReminder(
+            `SessionStart hook additional context: ${sessionStartResult.additionalContext}`,
+          ),
+        );
       }
 
       // Inject initialUserMessage as a meta user message

@@ -269,6 +269,7 @@ export class InteractionService {
           "resume",
           sessionData.id,
           messageManager.getTranscriptPath(),
+          messageManager,
         );
         if (sessionStartResult.additionalContext) {
           // `prompt.attachment` 的 `session-start` 档（spec
@@ -280,12 +281,26 @@ export class InteractionService {
                 text: `SessionStart hook additional context: ${sessionStartResult.additionalContext}`,
               })
             : `SessionStart hook additional context: ${sessionStartResult.additionalContext}`;
+          // `addMetaMessageIfAbsent`: the restored list already ends with the
+          // copy from the previous run, so re-adding it would cost the same
+          // ~0.8k tokens on every resume (Claude Code dedupes at this layer
+          // too, changelog 2.1.295).
           if (sessionStartText !== null) {
-            messageManager.addUserMessage({
-              content: wrapInSystemReminder(sessionStartText),
-              isMeta: true,
-            });
+            messageManager.addMetaMessageIfAbsent(
+              wrapInSystemReminder(sessionStartText),
+            );
           }
+        }
+
+        // `initialUserMessage`：与 startup / clear / compact 三条路径一样注入成
+        // meta 消息。resume 是唯一「消息列表已经从盘上载入」的路径，所以靠
+        // `addMetaMessageIfAbsent` 去重：上一次 resume 注入的那条已经是
+        // transcript 里的普通消息，同一场会话反复 resume（A→B→A）会把同一段
+        // 指令一层层叠上去。
+        if (sessionStartResult.initialUserMessage) {
+          messageManager.addMetaMessageIfAbsent(
+            sessionStartResult.initialUserMessage,
+          );
         }
       } catch (error) {
         logger?.warn(

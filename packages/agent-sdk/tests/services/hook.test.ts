@@ -329,6 +329,9 @@ describe("Hook Services", () => {
       expect(spawnEnv!.HOOK_EVENT).toBe("PostToolUse");
       expect(spawnEnv!.HOOK_TOOL_NAME).toBe("Edit");
       expect(spawnEnv!.WAVE_PROJECT_DIR).toBe("/test/project");
+      // Claude Code's name for the same value: a hook written for CC reads
+      // `$CLAUDE_PROJECT_DIR`, so it must not be empty here.
+      expect(spawnEnv!.CLAUDE_PROJECT_DIR).toBe("/test/project");
     });
 
     it("should anchor WAVE_PROJECT_DIR to sessionRoot, not the drifting cwd", async () => {
@@ -357,6 +360,7 @@ describe("Hook Services", () => {
       await resultPromise;
 
       expect(spawnEnv!.WAVE_PROJECT_DIR).toBe(sessionRoot);
+      expect(spawnEnv!.CLAUDE_PROJECT_DIR).toBe(sessionRoot);
     });
 
     it("should handle context without tool name", async () => {

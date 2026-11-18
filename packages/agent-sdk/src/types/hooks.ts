@@ -66,7 +66,13 @@ export interface HookCommand {
 
 // Hook event configuration with optional pattern matching
 export interface HookEventConfig {
-  matcher?: string; // Required for PreToolUse/PostToolUse, omitted for others
+  /**
+   * Tool events (`PreToolUse` / `PostToolUse` / `PermissionRequest`): matched
+   * against the tool name. `SessionStart`: matched against the firing `source`
+   * (`startup` / `resume` / `clear` / `compact`), same as Claude Code. Omitted
+   * means "every value". Other events have no matcher.
+   */
+  matcher?: string;
   hooks: HookCommand[];
 }
 
@@ -323,5 +329,6 @@ export interface ExtendedHookExecutionContext extends HookExecutionContext {
 // Environment variables injected into hook processes
 export interface HookEnvironment {
   WAVE_PROJECT_DIR: string; // Stable session root (see HookExecutionContext.sessionRoot)
+  CLAUDE_PROJECT_DIR: string; // Same value under Claude Code's name
   [key: string]: string; // Inherit all parent process environment variables
 }

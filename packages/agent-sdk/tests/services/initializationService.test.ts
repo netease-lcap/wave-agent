@@ -37,6 +37,7 @@ describe("InitializationService", () => {
     container.register("MemoryService", mockMemoryService);
 
     const mockAddUserMessage = vi.fn();
+    const mockAddMetaMessageIfAbsent = vi.fn();
 
     context = {
       skillManager: {
@@ -81,6 +82,7 @@ describe("InitializationService", () => {
         rebuildUsageFromMessages: vi.fn(),
         getCurrentWorkdir: vi.fn().mockReturnValue("/test/workdir"),
         addUserMessage: mockAddUserMessage,
+        addMetaMessageIfAbsent: mockAddMetaMessageIfAbsent,
       } as unknown as InitializationContext["messageManager"],
       memoryRuleManager: {
         discoverRules: vi.fn(),
@@ -159,10 +161,13 @@ describe("InitializationService", () => {
 
       await InitializationService.initialize(context);
 
-      expect(context.messageManager.addUserMessage).toHaveBeenCalledWith({
-        content: `<system-reminder>\nSessionStart hook additional context: Project context from hook\n</system-reminder>`,
-        isMeta: true,
-      });
+      // The wrapped text is what lands; the "already there → skip" decision
+      // lives inside `addMetaMessageIfAbsent` (messageManager's own test).
+      expect(
+        context.messageManager.addMetaMessageIfAbsent,
+      ).toHaveBeenCalledWith(
+        `<system-reminder>\nSessionStart hook additional context: Project context from hook\n</system-reminder>`,
+      );
     });
 
     it("should inject initialUserMessage as a meta user message", async () => {
@@ -192,12 +197,12 @@ describe("InitializationService", () => {
 
       await InitializationService.initialize(context);
 
-      expect(context.messageManager.addUserMessage).toHaveBeenCalledTimes(2);
-      expect(context.messageManager.addUserMessage).toHaveBeenNthCalledWith(1, {
-        content: `<system-reminder>\nSessionStart hook additional context: Extra context\n</system-reminder>`,
-        isMeta: true,
-      });
-      expect(context.messageManager.addUserMessage).toHaveBeenNthCalledWith(2, {
+      expect(
+        context.messageManager.addMetaMessageIfAbsent,
+      ).toHaveBeenCalledWith(
+        `<system-reminder>\nSessionStart hook additional context: Extra context\n</system-reminder>`,
+      );
+      expect(context.messageManager.addUserMessage).toHaveBeenCalledWith({
         content: "Initial message",
         isMeta: true,
       });
@@ -213,6 +218,9 @@ describe("InitializationService", () => {
       await InitializationService.initialize(context);
 
       expect(context.messageManager.addUserMessage).not.toHaveBeenCalled();
+      expect(
+        context.messageManager.addMetaMessageIfAbsent,
+      ).not.toHaveBeenCalled();
     });
 
     it("should continue initialization when SessionStart hooks fail", async () => {

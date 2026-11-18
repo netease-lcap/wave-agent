@@ -32,13 +32,17 @@ order: 20
 
 **为什么是这个优先级**：钩子输出的上下文只有在真正进入恢复后的对话消息流时才有价值；丢失注入会导致钩子语义不完整。消息以 meta 用户消息承载，不会作为真实用户输入参与后续流程。
 
+**同一份内容不重复叠加（平台层去重）**：`resume` 是往**已有**对话尾部追加，所以「恢复一次多一份」会永久占着上下文（一段 ~2.6 KB 的上下文字节约合 0.8k token/次）。这件事由平台统一处理，钩子作者不需要自己判断，语义与 Claude Code 的平台层去重一致（changelog 2.1.295 / `SubagentStart` 的同套投递语义）：**同一份内容已在对话里就不再加；内容变了就刷新；压缩把副本丢了之后下次再加回来。** 四个注入点（`startup` / `resume` / `clear` / `compact`）共用同一份判断，不按 source 特判。
+
 **独立测试**：配置输出 additionalContext 的 SessionStart 钩子，调用 `restoreSession` 后检查恢复会话的最后一条消息为 `isMeta: true` 的 user 消息且其文本块内容包含钩子输出的 additionalContext。
 
 **验收场景**：
 
 1. **假设**SessionStart 钩子输出了 `additionalContext`，**当**运行时恢复会话完成后，**则**该上下文以 `<system-reminder>` 包裹的 meta 用户消息追加到恢复会话消息列表末尾，且位于该会话原有消息之后
-2. **假设**SessionStart 钩子未输出 `additionalContext`，**当**运行时恢复会话完成时，**则**不注入任何额外消息
-3. **假设**钩子执行失败（如命令不存在），**当**运行时恢复会话时，**则**不注入消息、记录警告日志，且恢复流程继续完成
+2. **假设**恢复出的对话里已经有一条**完全相同**的 SessionStart 上下文（上一次运行恢复时注入的那份），**当**本次恢复的钩子输出内容相同时，**则**不追加第二份，恢复后的列表里仍然只有那一份
+3. **假设**恢复出的对话里那份副本的内容与本次钩子输出不同（钩子输出变了，或插件改写了正文），**当**本次恢复完成时，**则**追加新的那份，旧副本保留在历史里
+4. **假设**SessionStart 钩子未输出 `additionalContext`，**当**运行时恢复会话完成时，**则**不注入任何额外消息
+5. **假设**钩子执行失败（如命令不存在），**当**运行时恢复会话时，**则**不注入消息、记录警告日志，且恢复流程继续完成
 
 ### 用户故事：启动恢复行为保持不变（优先级：P2）
 
@@ -73,12 +77,16 @@ order: 20
 - 恢复过程中 SessionStart 钩子执行失败：仅记录警告，不注入上下文，恢复的会话仍可用
 - 钩子输出的 `additionalContext` 为空字符串：视为未输出，不注入消息
 - 注入的 meta 用户消息仅存在于恢复后的会话内存消息流中；后续 `saveSession` 会将其持久化到该会话的 transcript
+- **去重的判据是「最终要写入的那串文本」**：即经过 `prompt.attachment` 的 `session-start` 档改写之后、`<system-reminder>` 包裹之后的结果。插件改写掉正文时按改写后的文本判断；`rewritePromptAttachment` 返回 `null`（这条不要）时根本不写，也不参与去重
+- **去重比的是内存里的当前列表**，不是会话文件：会话文件追加式保存，压缩后的旧行可能还在文件里，但它已不在列表中，所以下一次注入照常落地
+- 四个 source 各就各位：`startup` / `clear` 时列表为空（或刚被清空）→ 照常注入；`compact` 之后列表被折成 `[摘要, ...最近两轮]`、旧副本已被折进摘要 → 照常注入；`resume` 时恢复出的列表里带着上次那份 → 内容相同则跳过
 - 目标会话加载失败（不存在或文件损坏）：抛出 `Session not found`，当前会话状态不被修改
 
 ### 测试验证需求
 
 - 必须通过 `agent.restoreSession()` 触发并 spy `hookManager.executeSessionEndHooks` / `executeSessionStartHooks`，验证调用顺序为 SessionEnd 先于 SessionStart，且参数分别为（`"resume"`, 当前 sessionId, transcriptPath）与（`"resume"`, 目标 sessionId, transcriptPath）
 - 必须通过检查恢复后最后一条消息为 `role: "user"`、`isMeta: true` 且 `blocks[0].content` 包含 additionalContext 文本来验证注入
+- 必须通过「恢复出的对话末尾已有一条完全相同的上下文」的用例验证不追加第二份，并用「钩子输出变了」的对照组验证刷新；压缩后重新注入要用**真实 MessageManager** 实证（内存列表在压缩时被替换，这条不能只靠代码推断）
 - 必须通过 `Agent.create({ restoreSessionId })` 验证启动路径 SessionStart 以 `"startup"` source 执行且不执行 SessionEnd
 - 必须通过传入与当前会话相同的 sessionId 验证无操作路径不执行任何钩子
 - 必须通过 `hookManager.executeSessionStartHooks("resume", ...)` 与 `executeSessionEndHooks("resume", ...)` 的单元测试验证钩子上下文中的 `source` / `end_source` 字段透传
