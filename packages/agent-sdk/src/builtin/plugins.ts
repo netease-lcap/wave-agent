@@ -246,3 +246,657 @@ order: [数字，控制组内排序]
 - **[问题？]** [答案/处理方式]
 `,
 };
+
+/**
+ * 内置 diff 插件（spec `commands/diff-command.md`）。
+ *
+ * 只在终端里注册 `/diff`（`session.start` 里看 `$.session.surfaces()` 有没有
+ * `terminal`）：桌面端与 IDE 已经有原生差异面板，再挂一个 mod 面板就是同一份
+ * 东西画两遍。默认开（见 `pluginPolicies.ts`）—— 它在别的端与别的轮次里一个
+ * 钩子都不会跑，代价只是多一条命令。
+ */
+export const diffPlugin: Record<string, string> = {
+  "plugins/diff/.wave-plugin/plugin.json": `{
+  "name": "diff",
+  "description": "Show uncommitted changes and per-turn edits in a terminal pane.",
+  "version": "1.0.0",
+  "author": {
+    "name": "Wave Team"
+  }
+}
+`,
+  "plugins/diff/mods/diff.tsx": `const PANE_ID = "diff";
+const TITLE = "差异";
+const LIST_WINDOW = 8;
+const MAX_LINES = 400;
+const MAX_CHARS = 60000;
+const MAX_CELLS = 40000;
+const MAX_UNTRACKED = 20;
+const MAX_SOURCES = 63;
+const DETAIL_MAX_ROWS = 20;
+
+let sourceKey = "current";
+let view = "list";
+let selectedPath = "";
+let listTop = 0;
+let cache = { current: { files: [], note: "" }, turns: [] };
+let declaredRows = 0;
+
+function splitLines(text) {
+  if (typeof text !== "string" || text === "") return [];
+  const parts = text.split("\\n");
+  if (parts.length > 0 && parts[parts.length - 1] === "") parts.pop();
+  return parts;
+}
+
+function countKinds(lines) {
+  let added = 0;
+  let removed = 0;
+  for (let index = 0; index < lines.length; index = index + 1) {
+    const first = lines[index].charAt(0);
+    if (first === "+") added = added + 1;
+    else if (first === "-") removed = removed + 1;
+  }
+  return { added: added, removed: removed };
+}
+
+// 行数与字符两条线一起截，谁先到算谁（\`Code\` 走树内文本预算，一条巨大的 diff
+// 必须在这里就夹住，而不是等校验器整棵拒掉）。
+function makeFile(path, lines, note) {
+  const kept = [];
+  let chars = 0;
+  let truncated = false;
+  for (let index = 0; index < lines.length; index = index + 1) {
+    const line = lines[index];
+    if (kept.length >= MAX_LINES || chars + line.length > MAX_CHARS) {
+      truncated = true;
+      break;
+    }
+    kept.push(line);
+    chars = chars + line.length + 1;
+  }
+  const counts = countKinds(kept);
+  return {
+    path: path,
+    additions: counts.added,
+    deletions: counts.removed,
+    text: kept.join("\\n"),
+    truncated: truncated,
+    note: note,
+  };
+}
+
+// 行级 LCS：先剥掉公共前后缀（改动通常只占一小段），中段再做 DP。中段大到
+// 装不下表时退化成「整段删 + 整段增」，结果仍是合法 diff，只是没那么精细。
+function diffBody(oldText, newText) {
+  const before = splitLines(oldText);
+  const after = splitLines(newText);
+  const out = [];
+  let head = 0;
+  while (
+    head < before.length &&
+    head < after.length &&
+    before[head] === after[head]
+  ) {
+    out.push(" " + before[head]);
+    head = head + 1;
+  }
+  let endBefore = before.length;
+  let endAfter = after.length;
+  const tail = [];
+  while (
+    endBefore > head &&
+    endAfter > head &&
+    before[endBefore - 1] === after[endAfter - 1]
+  ) {
+    endBefore = endBefore - 1;
+    endAfter = endAfter - 1;
+    tail.unshift(" " + before[endBefore]);
+  }
+  const midBefore = before.slice(head, endBefore);
+  const midAfter = after.slice(head, endAfter);
+  if (midBefore.length * midAfter.length > MAX_CELLS) {
+    for (let i = 0; i < midBefore.length; i = i + 1) {
+      out.push("-" + midBefore[i]);
+    }
+    for (let j = 0; j < midAfter.length; j = j + 1) {
+      out.push("+" + midAfter[j]);
+    }
+  } else if (midBefore.length > 0 || midAfter.length > 0) {
+    const table = [];
+    for (let i = 0; i <= midBefore.length; i = i + 1) {
+      const row = [];
+      for (let j = 0; j <= midAfter.length; j = j + 1) row.push(0);
+      table.push(row);
+    }
+    for (let i = midBefore.length - 1; i >= 0; i = i - 1) {
+      for (let j = midAfter.length - 1; j >= 0; j = j - 1) {
+        table[i][j] =
+          midBefore[i] === midAfter[j]
+            ? table[i + 1][j + 1] + 1
+            : Math.max(table[i + 1][j], table[i][j + 1]);
+      }
+    }
+    let i = 0;
+    let j = 0;
+    while (i < midBefore.length && j < midAfter.length) {
+      if (midBefore[i] === midAfter[j]) {
+        out.push(" " + midBefore[i]);
+        i = i + 1;
+        j = j + 1;
+      } else if (table[i + 1][j] >= table[i][j + 1]) {
+        out.push("-" + midBefore[i]);
+        i = i + 1;
+      } else {
+        out.push("+" + midAfter[j]);
+        j = j + 1;
+      }
+    }
+    while (i < midBefore.length) {
+      out.push("-" + midBefore[i]);
+      i = i + 1;
+    }
+    while (j < midAfter.length) {
+      out.push("+" + midAfter[j]);
+      j = j + 1;
+    }
+  }
+  for (let k = 0; k < tail.length; k = k + 1) out.push(tail[k]);
+  return out;
+}
+
+// 读 git 的 unified diff：一个文件一块，块内只留 \`@@\` 与正文行。行首那个空格
+// 是 diff 格式的一部分（上下文行的第一个字符就是空格），不能吃掉。
+function parsePatch(text) {
+  const files = [];
+  let file = null;
+  let inHunks = false;
+  const lines = splitLines(text);
+  for (let index = 0; index < lines.length; index = index + 1) {
+    const line = lines[index];
+    if (line.indexOf("diff --git ") === 0) {
+      file = { path: "", lines: [], binary: false };
+      files.push(file);
+      inHunks = false;
+      continue;
+    }
+    if (file === null) continue;
+    if (!inHunks) {
+      if (line.indexOf("+++ ") === 0) {
+        const name = line.slice(4).trim();
+        if (name !== "/dev/null") {
+          file.path = name.indexOf("b/") === 0 ? name.slice(2) : name;
+        }
+        continue;
+      }
+      if (line.indexOf("--- ") === 0) {
+        const name = line.slice(4).trim();
+        if (name !== "/dev/null" && file.path === "") {
+          file.path = name.indexOf("a/") === 0 ? name.slice(2) : name;
+        }
+        continue;
+      }
+      if (line.indexOf("Binary files ") === 0) {
+        file.binary = true;
+        continue;
+      }
+      if (line.indexOf("@@") === 0) inHunks = true;
+      else continue;
+    }
+    if (line.indexOf("@@") === 0) {
+      file.lines.push(line);
+      continue;
+    }
+    if (line === "") continue;
+    const first = line.charAt(0);
+    // \`\\ No newline at end of file\` 这类注解不进视图。
+    if (first === "\\\\") continue;
+    if (first === " " || first === "+" || first === "-") {
+      file.lines.push(line);
+      continue;
+    }
+    file.lines.push(" " + line);
+  }
+  const out = [];
+  for (let index = 0; index < files.length; index = index + 1) {
+    const entry = files[index];
+    if (entry.path === "") continue;
+    if (entry.binary) {
+      out.push({
+        path: entry.path,
+        additions: 0,
+        deletions: 0,
+        text: "",
+        truncated: false,
+        note: "binary",
+      });
+      continue;
+    }
+    out.push(makeFile(entry.path, entry.lines, ""));
+  }
+  return out;
+}
+
+// 工具入参里的路径通常是绝对路径，展示与合并都按会话工作根相对化。
+function displayPath(path, root) {
+  if (typeof path !== "string" || path === "") return "";
+  if (typeof root !== "string" || root === "") return path;
+  if (path.indexOf(root + "/") === 0) return path.slice(root.length + 1);
+  return path;
+}
+
+async function readUntracked($, root, path) {
+  let text = null;
+  try {
+    text = await $.fs.read(root + "/" + path);
+  } catch (error) {
+    return null;
+  }
+  if (typeof text !== "string") return null;
+  if (text.indexOf("\\u0000") >= 0) {
+    return {
+      path: path,
+      additions: 0,
+      deletions: 0,
+      text: "",
+      truncated: false,
+      note: "binary",
+    };
+  }
+  const lines = splitLines(text);
+  const added = [];
+  for (let index = 0; index < lines.length; index = index + 1) {
+    added.push("+" + lines[index]);
+  }
+  return makeFile(path, added, "untracked");
+}
+
+// 「Current」：工作区相对 HEAD 的改动，外加还没 \`git add\` 的新文件。
+async function loadCurrent($, root) {
+  const repo = await $.session.repo();
+  if (repo === null) {
+    return { files: [], note: "不在 git 仓库里，没有可比较的改动" };
+  }
+  const head = await $.process.run(["git", "rev-parse", "--verify", "HEAD"], {
+    cwd: root,
+  });
+  const args = ["git", "diff"];
+  if (head.exitCode === 0) args.push("HEAD");
+  args.push("--no-color", "--no-ext-diff", "--no-renames", "--unified=3");
+  const patch = await $.process.run(args, { cwd: root });
+  if (patch.exitCode !== 0) {
+    const detail = (patch.stderr || "").trim();
+    return { files: [], note: detail === "" ? "git diff 失败" : detail };
+  }
+  const files = parsePatch(patch.stdout);
+  const status = await $.process.run(["git", "status", "--porcelain"], {
+    cwd: root,
+  });
+  const statusLines = splitLines(status.stdout);
+  let untracked = 0;
+  for (let index = 0; index < statusLines.length; index = index + 1) {
+    const line = statusLines[index];
+    if (line.slice(0, 2) !== "??") continue;
+    if (untracked >= MAX_UNTRACKED) break;
+    const name = line.slice(3).trim();
+    if (name === "") continue;
+    untracked = untracked + 1;
+    const file = await readUntracked($, root, name);
+    if (file !== null) files.push(file);
+  }
+  return { files: files, note: "" };
+}
+
+// 一轮里的改动：\`Edit\` 用旧文/新文重算行 diff，\`Write\` 全是新增，\`MultiEdit\` 逐条拼。
+function editOf(block) {
+  if (!block || block.type !== "tool_use") return null;
+  const input =
+    block.input !== null && typeof block.input === "object" ? block.input : {};
+  const path = typeof input.file_path === "string" ? input.file_path : "";
+  if (path === "") return null;
+  if (
+    block.name === "Edit" &&
+    typeof input.old_string === "string" &&
+    typeof input.new_string === "string"
+  ) {
+    return { path: path, body: diffBody(input.old_string, input.new_string) };
+  }
+  if (block.name === "Write" && typeof input.content === "string") {
+    const lines = splitLines(input.content);
+    const body = [];
+    for (let index = 0; index < lines.length; index = index + 1) {
+      body.push("+" + lines[index]);
+    }
+    return { path: path, body: body };
+  }
+  if (block.name === "MultiEdit" && Array.isArray(input.edits)) {
+    let body = [];
+    for (let index = 0; index < input.edits.length; index = index + 1) {
+      const edit = input.edits[index];
+      if (
+        edit === null ||
+        typeof edit !== "object" ||
+        typeof edit.old_string !== "string" ||
+        typeof edit.new_string !== "string"
+      ) {
+        continue;
+      }
+      body = body.concat(diffBody(edit.old_string, edit.new_string));
+    }
+    return body.length === 0 ? null : { path: path, body: body };
+  }
+  return null;
+}
+
+// 按用户轮切分：每次用户说话起一轮，最新的一轮排在最前。
+async function loadTurns($, root) {
+  const messages = await $.session.messages();
+  const turns = [];
+  let turn = null;
+  let index = 0;
+  for (let m = 0; m < messages.length; m = m + 1) {
+    const message = messages[m];
+    const blocks = Array.isArray(message.content) ? message.content : [];
+    if (message.role === "user") {
+      let text = "";
+      for (let b = 0; b < blocks.length; b = b + 1) {
+        if (blocks[b].type !== "text") continue;
+        text = text === "" ? blocks[b].text : text + " " + blocks[b].text;
+      }
+      text = text.replace(/\\s+/g, " ").trim();
+      if (text.length > 40) text = text.slice(0, 39) + "…";
+      index = index + 1;
+      turn = { index: index, preview: text, files: [], byPath: {} };
+      turns.push(turn);
+      continue;
+    }
+    if (turn === null || message.role !== "assistant") continue;
+    for (let b = 0; b < blocks.length; b = b + 1) {
+      const edit = editOf(blocks[b]);
+      if (edit === null) continue;
+      const path = displayPath(edit.path, root);
+      let entry = turn.byPath[path];
+      if (entry === undefined) {
+        entry = makeFile(path, [], "");
+        turn.byPath[path] = entry;
+        turn.files.push(entry);
+      }
+      const counts = countKinds(edit.body);
+      entry.additions = entry.additions + counts.added;
+      entry.deletions = entry.deletions + counts.removed;
+      // 同一轮里改同一个文件多次：正文拼起来（截断只在这一步判一次）。
+      const merged =
+        entry.text === "" ? edit.body : splitLines(entry.text).concat(edit.body);
+      const next = makeFile(path, merged, "");
+      entry.text = next.text;
+      entry.truncated = entry.truncated || next.truncated;
+    }
+  }
+  return turns.reverse();
+}
+
+function currentSource() {
+  if (sourceKey === "current") return cache.current;
+  for (let index = 0; index < cache.turns.length; index = index + 1) {
+    if (String(cache.turns[index].index) === sourceKey) return cache.turns[index];
+  }
+  return { files: [], note: "" };
+}
+
+function selectedFile() {
+  const files = currentSource().files;
+  for (let index = 0; index < files.length; index = index + 1) {
+    if (files[index].path === selectedPath) return files[index];
+  }
+  return null;
+}
+
+function clampTop(top, total) {
+  const maxTop = total > LIST_WINDOW ? total - LIST_WINDOW : 0;
+  if (top < 0) return 0;
+  return top > maxTop ? maxTop : top;
+}
+
+// 面板要占几行：列表按文件名数，详情按差异行数（多出来的由面板自己滚）。
+// 小于默认封顶（12 行）时申报不影响版面（\`ModSurface\` 取两者里大的），所以这里
+// 只求准 —— 值准了，列表与详情之间的高度差才只在真需要时才重开面板。
+function desiredRows() {
+  if (view === "detail") {
+    const file = selectedFile();
+    if (file === null) return 4;
+    const lines = file.text === "" ? 1 : splitLines(file.text).length;
+    const shown = lines > DETAIL_MAX_ROWS ? DETAIL_MAX_ROWS : lines;
+    return 1 + shown + (file.truncated ? 1 : 0);
+  }
+  const source = currentSource();
+  const files = source.files.length;
+  const shown = files > LIST_WINDOW ? LIST_WINDOW : files;
+  const turn = sourceKey === "current" ? null : source;
+  return (
+    1 +
+    shown +
+    (source.note === "" ? 0 : 1) +
+    (turn !== null && turn.preview !== "" ? 1 : 0) +
+    (files > LIST_WINDOW ? 2 : 0)
+  );
+}
+
+// 申报高度：变了才重开（\`openPane\` 会催一次重拉，每帧都调就成了循环）。
+async function syncRows($) {
+  const rows = desiredRows();
+  if (rows === declaredRows) return;
+  declaredRows = rows;
+  await $.ui.open({ id: PANE_ID, title: TITLE, rows: rows }).catch(function () {});
+}
+
+// 换视图之后固定动作：先改高度（它自己会催一次重拉），再标记树过期。
+async function rerender($) {
+  await syncRows($);
+  $.ui.invalidate("ui.render");
+}
+
+function sourceOptions() {
+  const options = [{ value: "current", label: "Current" }];
+  const turns = cache.turns;
+  for (
+    let index = 0;
+    index < turns.length && index < MAX_SOURCES;
+    index = index + 1
+  ) {
+    options.push({
+      value: String(turns[index].index),
+      label: "T" + String(turns[index].index),
+    });
+  }
+  return options;
+}
+
+function renderList($, e) {
+  const { Box, Text, Button, Select } = $.ui.resolve(e);
+  const source = currentSource();
+  const files = source.files;
+  const top = clampTop(listTop, files.length);
+  const below = files.length - top - LIST_WINDOW;
+  const windowFiles = files.slice(top, top + LIST_WINDOW);
+  let added = 0;
+  let removed = 0;
+  for (let index = 0; index < files.length; index = index + 1) {
+    added = added + files[index].additions;
+    removed = removed + files[index].deletions;
+  }
+  const turn = sourceKey === "current" ? null : source;
+  return (
+    <Box flexDirection="column">
+      <Box flexDirection="row" gap={1}>
+        <Select
+          key="source"
+          label="来源"
+          options={sourceOptions()}
+          value={sourceKey}
+          onSelect={function (value) {
+            return selectSource($, value);
+          }}
+        />
+        <Text dimColor>{String(files.length) + " files changed"}</Text>
+        {added > 0 ? <Text color="diffAdded">{"+" + String(added)}</Text> : null}
+        {removed > 0 ? (
+          <Text color="diffRemoved">{"-" + String(removed)}</Text>
+        ) : null}
+      </Box>
+      {turn !== null && turn.preview !== "" ? (
+        <Text dimColor>{turn.preview}</Text>
+      ) : null}
+      {source.note !== "" ? <Text dimColor>{source.note}</Text> : null}
+      {top > 0 ? (
+        <Button
+          key="list-up"
+          plain
+          dimColor
+          onPress={function () {
+            return scrollList($, -LIST_WINDOW);
+          }}
+        >
+          {"↑ " + String(top) + " more above"}
+        </Button>
+      ) : null}
+      {windowFiles.map(function (file) {
+        return (
+          <Button
+            key={"file:" + file.path}
+            onPress={function () {
+              return openFile($, file.path);
+            }}
+          >
+            <Text>{file.path}</Text>
+            <Text> </Text>
+            {file.additions > 0 ? (
+              <Text color="diffAdded">{"+" + String(file.additions)}</Text>
+            ) : null}
+            {file.additions > 0 && file.deletions > 0 ? <Text> </Text> : null}
+            {file.deletions > 0 ? (
+              <Text color="diffRemoved">{"-" + String(file.deletions)}</Text>
+            ) : null}
+          </Button>
+        );
+      })}
+      {below > 0 ? (
+        <Button
+          key="list-down"
+          plain
+          dimColor
+          onPress={function () {
+            return scrollList($, LIST_WINDOW);
+          }}
+        >
+          {"↓ " + String(below) + " more"}
+        </Button>
+      ) : null}
+    </Box>
+  );
+}
+
+function renderDetail($, e) {
+  const { Box, Text, Button, Code } = $.ui.resolve(e);
+  const file = selectedFile();
+  if (file === null) return renderList($, e);
+  return (
+    <Box flexDirection="column">
+      <Box flexDirection="row" gap={1}>
+        <Button
+          key="back"
+          hotkey="b"
+          onPress={function () {
+            return showList($);
+          }}
+        >
+          {"← 返回列表"}
+        </Button>
+        <Text dimColor>{file.path}</Text>
+      </Box>
+      {file.text === "" ? (
+        <Text dimColor>
+          {"没有可显示的文本差异（" +
+            (file.note === "" ? "空文件" : file.note) +
+            "）"}
+        </Text>
+      ) : (
+        <Code source={file.text} format="diff" />
+      )}
+      {file.truncated ? (
+        <Text dimColor>
+          {"差异已截断，只显示前 " + String(MAX_LINES) + " 行"}
+        </Text>
+      ) : null}
+    </Box>
+  );
+}
+
+function showList($) {
+  view = "list";
+  selectedPath = "";
+  return rerender($);
+}
+
+function openFile($, path) {
+  selectedPath = path;
+  view = "detail";
+  return rerender($);
+}
+
+function scrollList($, delta) {
+  listTop = clampTop(listTop + delta, currentSource().files.length);
+  $.ui.invalidate("ui.render");
+  return Promise.resolve();
+}
+
+function selectSource($, value) {
+  sourceKey = typeof value === "string" ? value : "current";
+  view = "list";
+  selectedPath = "";
+  listTop = 0;
+  return rerender($);
+}
+
+export function register($, on) {
+  // 只在终端里注册 \`/diff\`：桌面端与 IDE 有原生的差异面板，再挂一个 mod 面板
+  // 就是同一份东西画两遍。\`$.session.surfaces()\` 是「这一刻有没有界面、是哪一端」
+  // 的唯一数据源（\`wave -p\` 也是正常会话，但它是空数组）。
+  on("session.start", async function () {
+    const surfaces = await $.session.surfaces();
+    if (surfaces.indexOf("terminal") < 0) return;
+    $.command.register({
+      name: "diff",
+      description: "查看未提交改动与每一轮的改动",
+    });
+  });
+
+  // \`/diff\` 是一个纯开关动作：只开面板，**不往对话里发消息**（返回 \`{}\`）。
+  on("command.run", { command: "diff" }, async function () {
+    const root = await $.session.root();
+    cache = {
+      current: await loadCurrent($, root),
+      turns: await loadTurns($, root),
+    };
+    sourceKey = "current";
+    view = "list";
+    selectedPath = "";
+    listTop = 0;
+    declaredRows = desiredRows();
+    const placed = await $.ui.open({
+      id: PANE_ID,
+      title: TITLE,
+      focus: true,
+      rows: declaredRows,
+    });
+    if (!placed.isPlaced) $.ui.status("差异面板需要终端界面");
+    $.ui.invalidate("ui.render");
+    return {};
+  });
+
+  on("ui.render", { component: "Pane", requestId: PANE_ID }, function (e) {
+    if (!e) return undefined;
+    return view === "detail" ? renderDetail($, e) : renderList($, e);
+  });
+}
+`,
+};

@@ -16,6 +16,10 @@ export const BUILTIN_PLUGIN_POLICIES: Record<string, BuiltinPluginPolicy> = {
   // otherwise inject guidance into every repository. Declared here so the value
   // lives beside the plugin rather than hard-coded in the loader.
   sdd: { defaultEnabled: false },
+  // The diff pane is on by default: it registers nothing but a `/diff` command
+  // and only on the terminal surface (the mod itself checks
+  // `$.session.surfaces()`), so no other surface and no other turn pays for it.
+  diff: { defaultEnabled: true },
 };
 
 export function getBuiltinPluginPolicy(name: string): BuiltinPluginPolicy {

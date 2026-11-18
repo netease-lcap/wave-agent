@@ -1056,7 +1056,7 @@ The canonical key is \`plugin-name@marketplace-name\`; a plugin with no marketpl
 
 ### Built-in Plugins
 
-Some plugins ship inside Wave itself instead of coming from a marketplace. They are **off by default** and use the reserved marketplace segment \`builtin\` as their key:
+Some plugins ship inside Wave itself instead of coming from a marketplace. They use the reserved marketplace segment \`builtin\` as their key:
 
 \`\`\`json
 {
@@ -1066,19 +1066,25 @@ Some plugins ship inside Wave itself instead of coming from a marketplace. They 
 }
 \`\`\`
 
+Whether one loads without any entry depends on the plugin: \`sdd\` is **off by default** (it changes how the model works), \`diff\` is **on by default** (it is the only carrier of the terminal \`/diff\` command). Write \`true\` to turn one on, \`false\` to turn a default-on one off.
+
 The plain-name form (\`"sdd": true\`) does **not** work for these — it resolves to no marketplace, so nothing loads (and, since \`@builtin\` is a well-formed \`name@marketplace\` key, misspelling it this way produces no warning either). A marketplace plugin with the same name still wins; built-in plugins load last, at the lowest priority.
 
 Built-in plugins are not listed in \`~/.wave/plugins/installed_plugins.json\`, are not installed or updated over the network, and are not tied to a registered marketplace.
 
 #### \`sdd\` — Spec-First Workflow
 
-The one built-in plugin today is \`sdd\`. Enabling it adds:
+Enabling it adds:
 
 - a \`SessionStart\` hook that injects the spec-first workflow guidance (update the spec before the code) into every session's context
 - the \`specify\` skill, which creates or updates spec files under \`docs/specs/\` (falling back to \`specs/\`)
 - an allow rule for \`Bash(node *spec-count.js*)\`, so the bundled spec validator runs without a permission prompt
 
 **Enable it per project, not globally.** Its whole purpose is to gate work on that project's own spec directory, and the hook fires in *every* session the scope covers — so \`"sdd@builtin": true\` belongs in \`<workdir>/.wave/settings.json\` (or \`settings.local.json\`), not in \`~/.wave/settings.json\`. In a user-scope enable it would inject spec-first instructions into unrelated repositories that have no specs directory at all.
+
+#### \`diff\` — Terminal Diff Pane
+
+\`diff\` is on by default because it is the only thing that provides \`/diff\` in the terminal: it registers nothing but that one command, only on the terminal surface (desktop and IDE sessions load it but it stays silent there — their diff pane is the host's own). Turning it off with \`"diff@builtin": false\` removes \`/diff\` from the terminal and nothing else.
 
 ### \`\${WAVE_PLUGIN_ROOT}\` Placeholder
 
