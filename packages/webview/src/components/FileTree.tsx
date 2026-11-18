@@ -10,8 +10,8 @@ import type { FileTreeEntry } from "wave-webview-fixtures";
 import { childPath, baseNameOf } from "../utils/fileTreePaths";
 import { isDesktopHost } from "../utils/platform";
 import { ChevronIcon } from "./ChevronIcon";
+import { FileTypeIcon } from "./FileTypeIcon";
 import { FolderIcon } from "./FolderIcon";
-import { PanelKindIcon } from "./PanelKindIcon";
 
 /** Per-directory listing state, keyed by the directory's absolute path. */
 export interface DirEntryState {
@@ -467,8 +467,9 @@ export const FileTree: React.FC<FileTreeProps> = ({
                   )}
                   {/* 文件夹 / 文件图标（1029 第十三轮）：桌面端换成产品里已在用的两颗
                       官方矢量 —— 目录 = FolderIcon（与侧栏会话分组头、工作目录下拉同一颗，
-                      展开 / 收起就是文件夹开合），文件 = PanelKindIcon kind="file"
-                      （与文件标签页、面板标签同一颗）。codicon 是字体字形：笔画由字体
+                      展开 / 收起就是文件夹开合），文件 = 按文件类型解析的 FileTypeIcon
+                      （spec「文件行按类型显示图标」；数据来自 @pierre/trees 的图标集，
+                      与 Claude 桌面端文件树同一套图形/配色）。codicon 是字体字形：笔画由字体
                       决定（约 1.0px），与这两处的 1.4 描边不是一套，颜色也吃
                       `--vscode-icon-foreground` 比文字浅一档。插件端保留 codicon。 */}
                   {isDesktopHost() ? (
@@ -478,8 +479,8 @@ export const FileTree: React.FC<FileTreeProps> = ({
                         className="file-tree-icon"
                       />
                     ) : (
-                      <PanelKindIcon
-                        kind="file"
+                      <FileTypeIcon
+                        fileName={row.name}
                         size={16}
                         className="file-tree-icon"
                       />
