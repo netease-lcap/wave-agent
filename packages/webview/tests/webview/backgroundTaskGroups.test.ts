@@ -25,7 +25,7 @@ describe("groupBackgroundTasks", () => {
       task({ id: "s", type: "shell" }),
     ]);
 
-    expect(groups.map((g) => g.label)).toEqual(["Bash", "子 Agent", "工作流"]);
+    expect(groups.map((g) => g.label)).toEqual(["Shell", "子 Agent", "工作流"]);
     expect(groups.map((g) => g.tasks.map((t) => t.id))).toEqual([
       ["s"],
       ["a"],
@@ -57,7 +57,7 @@ describe("groupBackgroundTasks", () => {
       task({ id: "s" }),
     ]);
 
-    expect(groups.map((g) => g.label)).toEqual(["Bash", "monitor"]);
+    expect(groups.map((g) => g.label)).toEqual(["Shell", "monitor"]);
     expect(groups[1].tasks.map((t) => t.id)).toEqual(["future"]);
   });
 

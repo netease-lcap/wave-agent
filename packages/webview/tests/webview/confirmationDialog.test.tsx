@@ -11,6 +11,7 @@ import {
 import {
   EDIT_TOOL_NAME,
   BASH_TOOL_NAME,
+  POWERSHELL_TOOL_NAME,
   WRITE_TOOL_NAME,
   EXIT_PLAN_MODE_TOOL_NAME,
   ASK_USER_QUESTION_TOOL_NAME,
@@ -701,6 +702,46 @@ describe("Confirmation Dialog", () => {
         newPermissionMode: "bypassPermissions",
       },
     });
+  });
+
+  // PS 会话的确认卡：同一套卡片、同一个「不再询问」按钮，但写回去的规则必须
+  // 是 `PowerShell(...)`——`Bash(Get-ChildItem*)` 在 PS 会话里永远不匹配，等于
+  // 让用户点了个不生效的「不再询问」。
+  it("suggests a PowerShell(...) rule for a PowerShell confirmation", async () => {
+    const { vscode } = renderChatApp();
+    vscode.postMessage.mockClear();
+
+    await act(async () => {
+      sendCommand("showConfirmation", {
+        confirmationId: "test_ps_rule",
+        toolName: POWERSHELL_TOOL_NAME,
+        confirmationType: "命令执行待确认",
+        toolInput: { command: "Get-ChildItem -Recurse -Filter *.ts" },
+        suggestedPrefix: "Get-ChildItem",
+      });
+    });
+
+    // The command line is rendered by the shared shell branch.
+    expect(document.querySelector(".confirmation-command")).toHaveTextContent(
+      "Get-ChildItem -Recurse -Filter *.ts",
+    );
+
+    const autoButton = Array.from(
+      document.querySelectorAll<HTMLButtonElement>(".confirmation-btn-auto"),
+    ).find((b) => b.textContent?.includes("不再询问：Get-ChildItem"))!;
+    expect(autoButton).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(autoButton);
+    });
+
+    const sentMessages = vscode.postMessage.mock.calls.map((c) => c[0]);
+    const response = sentMessages.find(
+      (m) => m.command === "confirmationResponse",
+    );
+    expect(response.decision.newPermissionRule).toBe(
+      "PowerShell(Get-ChildItem)",
+    );
   });
 
   it("should show bypass button even when persistent option is hidden", async () => {

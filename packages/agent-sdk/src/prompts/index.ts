@@ -2,6 +2,11 @@ import * as os from "node:os";
 import { ToolPlugin } from "../tools/types.js";
 import type { ModPromptSection } from "../types/mods.js";
 import { isGitRepository } from "../utils/gitUtils.js";
+import { getPowerShellEdition } from "../utils/shell/powershellDetection.js";
+import {
+  collectShellToolGateInput,
+  resolveShellKind,
+} from "../utils/shell/shellToolGate.js";
 import type { WorktreeSession } from "../utils/worktreeSession.js";
 import { buildAutoMemoryPrompt } from "./autoMemory.js";
 import {
@@ -14,11 +19,11 @@ import {
   WRITE_TOOL_NAME,
   EXIT_PLAN_MODE_TOOL_NAME,
   AGENT_TOOL_NAME,
-  BASH_TOOL_NAME,
   READ_TOOL_NAME,
   GLOB_TOOL_NAME,
   GREP_TOOL_NAME,
   TASK_CREATE_TOOL_NAME,
+  isShellToolName,
 } from "../constants/tools.js";
 
 export const BASE_SYSTEM_PROMPT = `You are a coding agent developed by NetEase that helps users with software engineering tasks. Use the instructions below and the tools available to you to assist the user.`;
@@ -90,13 +95,15 @@ export function buildUsingToolsPrompt(tools: ToolPlugin[]): string {
 
   const entries: string[] = [];
 
-  if (has(BASH_TOOL_NAME)) {
+  // One shell tool per session (Bash or PowerShell), so the section names the
+  // one that is actually registered instead of assuming Bash.
+  const shellTool = tools.find((tool) => isShellToolName(tool.name));
+  if (shellTool) {
     const names = dedicated.length > 0 ? ` (${dedicated.join(", ")})` : "";
     entries.push(
-      `Prefer dedicated tools over ${BASH_TOOL_NAME} when one fits${names} — reserve ${BASH_TOOL_NAME} for shell-only operations.`,
+      `Prefer dedicated tools over ${shellTool.name} when one fits${names} — reserve ${shellTool.name} for shell-only operations.`,
     );
   }
-
   if (has(TASK_CREATE_TOOL_NAME)) {
     entries.push(
       `Use ${TASK_CREATE_TOOL_NAME} to plan and track work. Mark each task completed as soon as it's done; don't batch.`,
@@ -422,16 +429,35 @@ Rules:
  * Code's enhanceSystemPromptWithEnvDetails().
  */
 const SUBAGENT_ENV_NOTES = `Notes:
-- Agent threads always have their cwd reset between bash calls, as a result please only use absolute file paths.
+- Agent threads always have their cwd reset between shell calls, as a result please only use absolute file paths.
 - In your final response, share file paths (always absolute, never relative) that are relevant to the task. Include code snippets only when the exact text is load-bearing (e.g., a bug you found, a function signature the caller asked for) — do not recap code you merely read.
 - For clear communication with the user the assistant MUST avoid using emojis.
 - Do not use a colon before tool calls. Text like "Let me read the file:" followed by a read tool call should just be "Let me read the file." with a period.`;
 
 /**
- * Shell info line, aligned with Claude Code's getShellInfoLine(). On win32 an
- * extra Unix-syntax hint is appended.
+ * Shell info line, aligned with Claude Code's getShellInfoLine() but reporting
+ * the shell that actually runs this session's commands rather than `$SHELL`:
+ * a Windows GUI host exports no `$SHELL`, and once the executor is PowerShell
+ * the Unix-syntax hint would point the model the wrong way.
  */
-function getShellInfoLine(): string {
+export function getShellInfoLine(workdir?: string): string {
+  const kind = resolveShellKind(collectShellToolGateInput(workdir));
+
+  if (kind === "none") {
+    return "Shell: none available (no Git Bash and the PowerShell tool is off — shell commands cannot run; use the file tools instead)";
+  }
+
+  if (kind === "powershell") {
+    const edition = getPowerShellEdition();
+    if (edition === "core") {
+      return "Shell: PowerShell 7 (pwsh — `&&` and `||` are available)";
+    }
+    if (edition === "desktop") {
+      return "Shell: Windows PowerShell 5.1 (no `&&` / `||` — chain with `A; if ($?) { B }`)";
+    }
+    return "Shell: PowerShell (version unknown — assume Windows PowerShell 5.1, so no `&&` / `||`)";
+  }
+
   const shell = process.env.SHELL || "unknown";
   const shellName = shell.includes("zsh")
     ? "zsh"
@@ -545,7 +571,9 @@ export function buildSystemPromptSections(
   if (options.workdir) {
     const isGitRepo = isGitRepository(options.workdir);
     const platform = os.platform();
-    const shellInfo = getShellInfoLine();
+    const shellInfo = getShellInfoLine(
+      options.originalWorkdir ?? options.workdir,
+    );
     const osVersion = getUnameSR();
     const primaryWorkdir = options.originalWorkdir ?? options.workdir;
     const worktreeSession = options.worktreeSession;

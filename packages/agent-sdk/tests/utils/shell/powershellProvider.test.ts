@@ -45,7 +45,7 @@ describe("powershellProvider", () => {
     );
   });
 
-  it("adds no CWD prologue yet, and asks the temp dir only for the file path", () => {
+  it("appends the exit probe and the CWD tracker, in that order", () => {
     const provider = createPowerShellProvider(SHELL);
 
     const exec = provider.buildExecCommand("Get-Location", {
@@ -53,7 +53,36 @@ describe("powershellProvider", () => {
       cwdTracking: true,
     });
 
-    expect(exec.commandString).toBe("Get-Location");
-    expect(exec.cwdFilePath).toBe(path.join(TEMP_DIR, "wave_ps_cwd.tmp"));
+    expect(
+      exec.cwdFilePath.startsWith(path.join(TEMP_DIR, "wave_ps_cwd_")),
+    ).toBe(true);
+    // The probe has to run before the Out-File line, or the write itself would
+    // decide the exit status.
+    const probeAt = exec.commandString.indexOf("$_ec = if ($null -ne");
+    const cwdAt = exec.commandString.indexOf("| Out-File -FilePath");
+    expect(exec.commandString.startsWith("Get-Location")).toBe(true);
+    expect(probeAt).toBeGreaterThan(0);
+    expect(cwdAt).toBeGreaterThan(probeAt);
+    // $LASTEXITCODE first (only a native program sets it), then $?, then exit.
+    expect(exec.commandString).toContain(
+      "$_ec = if ($null -ne $LASTEXITCODE) { $LASTEXITCODE } elseif ($?) { 0 } else { 1 }",
+    );
+    expect(exec.commandString).toContain(
+      `Out-File -FilePath '${exec.cwdFilePath}' -Encoding utf8 -NoNewline`,
+    );
+    expect(exec.commandString.trimEnd().endsWith("exit $_ec")).toBe(true);
+  });
+
+  it("keeps the exit probe when CWD tracking is off", () => {
+    const provider = createPowerShellProvider(SHELL);
+
+    const exec = provider.buildExecCommand("Get-Location", {
+      tempDir: () => TEMP_DIR,
+      cwdTracking: false,
+    });
+
+    expect(exec.commandString).toContain("elseif ($?) { 0 } else { 1 }");
+    expect(exec.commandString).not.toContain("Out-File");
+    expect(exec.commandString.trimEnd().endsWith("exit $_ec")).toBe(true);
   });
 });

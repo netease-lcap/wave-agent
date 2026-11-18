@@ -38,6 +38,8 @@ import { marked } from "marked";
 import DOMPurify from "dompurify";
 import {
   BASH_TOOL_NAME,
+  SHELL_TOOL_NAMES,
+  AGENT_TOOL_NAME,
   LSP_TOOL_NAME,
   WRITE_TOOL_NAME,
   EDIT_TOOL_NAME,
@@ -46,6 +48,7 @@ import {
   ASK_USER_QUESTION_TOOL_NAME,
   EXIT_PLAN_MODE_TOOL_NAME,
   isImageFileExtension,
+  isShellToolName,
 } from "wave-agent-sdk/constants";
 import type {
   Message as MessageType,
@@ -1022,10 +1025,15 @@ const isRewindTargetMessage = (message: MessageType): boolean =>
   !!message.id &&
   !message.blocks.some((b) => b.type === "task_notification");
 
-// 与前台的 `ForegroundTask` 注册点一一对应（`bashTool` 与 `agentTool` 各一处）：
-// 能「转到后台」的只有这两个工具——别把判据放宽到所有工具，那会让按钮在一个
-// 点了什么都不会发生的回合里出现（spec: task-background-execution.md 场景 4）。
-const BACKGROUNDABLE_TOOL_NAMES = new Set(["Bash", "Agent"]);
+// 与前台的 `ForegroundTask` 注册点一一对应（`bashTool` / `powershellTool` 与
+// `agentTool` 各一处）：能「转到后台」的只有这两个工具族——别把判据放宽到所有
+// 工具，那会让按钮在一个点了什么都不会发生的回合里出现（spec:
+// task-background-execution.md 场景 4）。shell 一族取常量表，PS 工具进后台时
+// 不需要再改这里。
+const BACKGROUNDABLE_TOOL_NAMES = new Set<string>([
+  ...SHELL_TOOL_NAMES,
+  AGENT_TOOL_NAME,
+]);
 
 /**
  * 这条助手消息里还有正在跑、且能转到后台的工具块吗？
@@ -1485,7 +1493,7 @@ export const Message: React.FC<MessageProps> = React.memo(
       );
     };
 
-    const renderBashIO = (toolBlock: ToolBlock) => {
+    const renderShellIO = (toolBlock: ToolBlock) => {
       const stage = toolBlock.stage;
 
       // Parse the command from parameters. AI-invoked bash calls carry JSON
@@ -1508,13 +1516,18 @@ export const Message: React.FC<MessageProps> = React.memo(
         hasValidCommand = !!command;
       }
 
-      // Only render bash-specific content if we have a valid command and appropriate stage
+      // Only render shell-specific content if we have a valid command and appropriate stage
       if ((stage === "running" || stage === "end") && hasValidCommand) {
         const result = (toolBlock.result || toolBlock.shortResult || "").trim();
         // 命令按 shell 语法着色（specs/ui/message-rendering-system.md「Bash 工具
-        // 命令行的语法高亮」）：两条入口（AI 调用的 Bash 工具、bash 模式的 `!`
-        // 命令）都落在 renderBashIO，含输出与只有命令两种形态共用这一份 HTML。
-        const commandHtml = highlightBashCommandBody(command);
+        // 命令行的语法高亮」）：所有 shell 工具（Bash / PowerShell）与 bash 模式的
+        // `!` 命令都落在这里，含输出与只有命令两种形态共用这一份 HTML。
+        // PowerShell 先按纯文本转义——hljs 没有 powershell 语法，"用 bash 着色器
+        // 硬染" 会把 `-Param`、`$var:` 染成错的颜色，不如不着色。
+        const commandHtml =
+          toolBlock.name === BASH_TOOL_NAME
+            ? highlightBashCommandBody(command)
+            : escapeHtml(command);
 
         if (result) {
           // Show both input and output if result is present (even if running)
@@ -1630,14 +1643,14 @@ export const Message: React.FC<MessageProps> = React.memo(
         </div>
       ) : null;
 
-      // For Bash tools, add the bash-specific content below the header
-      if (toolBlock.name === BASH_TOOL_NAME) {
-        const bashContent = renderBashIO(toolBlock);
-        if (bashContent || errorContent) {
+      // For shell tools, add the command/output block below the header
+      if (toolBlock.name && isShellToolName(toolBlock.name)) {
+        const shellContent = renderShellIO(toolBlock);
+        if (shellContent || errorContent) {
           return (
             <div key={index} className="tool-container">
               {toolHeader}
-              {bashContent}
+              {shellContent}
               {errorContent}
             </div>
           );

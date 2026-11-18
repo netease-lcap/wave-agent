@@ -1,13 +1,13 @@
 import React, { useEffect, useState } from "react";
 import { Box, Text, useInput, useWindowSize } from "ink";
 import {
-  BASH_TOOL_NAME,
   EDIT_TOOL_NAME,
   WRITE_TOOL_NAME,
   EXIT_PLAN_MODE_TOOL_NAME,
   ENTER_PLAN_MODE_TOOL_NAME,
   ASK_USER_QUESTION_TOOL_NAME,
   ARTIFACT_TOOL_NAME,
+  isShellToolName,
 } from "wave-agent-sdk";
 import { buildDiffLinesFromParams } from "./DiffDisplay.js";
 import { renderMarkdownToAnsi } from "./Markdown.js";
@@ -23,9 +23,13 @@ const getActionDescription = (
     return "Execute operation";
   }
 
+  // Shell tools (Bash / PowerShell) share one line: the command is what the user
+  // is being asked to approve, whatever shell will run it.
+  if (isShellToolName(toolName)) {
+    return `Execute command: ${toolInput.command || "unknown command"}`;
+  }
+
   switch (toolName) {
-    case BASH_TOOL_NAME:
-      return `Execute command: ${toolInput.command || "unknown command"}`;
     case EDIT_TOOL_NAME:
       return `Edit file: ${toolInput.file_path || "unknown file"}`;
     case WRITE_TOOL_NAME:
@@ -130,7 +134,7 @@ export const ConfirmationDetails: React.FC<ConfirmationDetailsProps> = ({
     toolName !== EXIT_PLAN_MODE_TOOL_NAME &&
     toolName !== ENTER_PLAN_MODE_TOOL_NAME &&
     toolName !== ASK_USER_QUESTION_TOOL_NAME &&
-    toolName !== BASH_TOOL_NAME &&
+    !isShellToolName(toolName) &&
     !!toolInput;
 
   const jsonLines = showToolInput

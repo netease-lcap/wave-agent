@@ -154,6 +154,29 @@ describe("Confirmation", () => {
       );
     });
 
+    // PowerShell 是同一族 shell 工具：折叠成同一套卡片，别让 PS 会话的确认
+    // 少掉「不再询问」与「跳过权限确认」两档。
+    it("should treat PowerShell like Bash in the option list", async () => {
+      const { lastFrame } = render(
+        <Confirmation
+          toolName="PowerShell"
+          toolInput={{ command: "Get-ChildItem -Recurse" }}
+          onDecision={mockOnDecision}
+          onCancel={mockOnCancel}
+        />,
+      );
+
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain(
+          "Yes, and don't ask again for this command in this workdir",
+        );
+      });
+
+      const frame = stripAnsiColors(lastFrame() || "");
+      expect(frame).toContain("Execute command: Get-ChildItem -Recurse");
+      expect(frame).toContain("Yes, and bypass permissions");
+    });
+
     it("should hide auto-accept option when hidePersistentOption is true", async () => {
       const { lastFrame } = render(
         <Confirmation

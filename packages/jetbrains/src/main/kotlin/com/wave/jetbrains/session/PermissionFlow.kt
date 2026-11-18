@@ -182,7 +182,7 @@ object PermissionFlow {
 
     private fun confirmationTypeFor(toolName: String): String = when (toolName) {
         "Edit", "Write", "MultiEdit", "NotebookEdit" -> "代码修改待确认"
-        "Bash", "BashOutput" -> "命令执行待确认"
+        "Bash", "BashOutput", "PowerShell" -> "命令执行待确认"
         "ExitPlanMode", "EnterPlanMode" -> "计划待确认"
         "AskUserQuestion" -> "问题待回答"
         else -> "操作待确认"

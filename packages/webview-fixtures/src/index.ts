@@ -643,6 +643,23 @@ export const fixtureConfirmation = (
   toolInput: { command: "ls" },
   ...overrides,
 });
+/**
+ * The same card as `fixtureConfirmation`, from a Windows session whose shell is
+ * PowerShell. The title is the one the hosts actually build (`命令执行待确认`),
+ * because a PowerShell confirmation must not fall through to the generic
+ * `操作待确认` bucket.
+ */
+export const fixturePowerShellConfirmation = (
+  overrides: Partial<ConfirmationRequest> = {},
+): ConfirmationRequest =>
+  fixtureConfirmation({
+    confirmationId: "confirm-ps-1",
+    toolName: "PowerShell",
+    confirmationType: "命令执行待确认",
+    toolInput: { command: "Get-ChildItem -Recurse -Filter *.ts" },
+    suggestedPrefix: "Get-ChildItem",
+    ...overrides,
+  });
 export const fixtureQueuedMessage = (
   content: string,
   overrides: Partial<QueuedMessage> = {},

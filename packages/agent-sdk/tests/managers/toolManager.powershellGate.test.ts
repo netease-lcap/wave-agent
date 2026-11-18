@@ -83,4 +83,33 @@ describe("the PowerShell tool is registered by the shell gate", () => {
     toolManager.reloadFeatureGatedTools();
     expect(names(toolManager)).not.toContain("PowerShell");
   });
+
+  describe("a session with no shell at all", () => {
+    it("lists neither shell tool when PowerShell is off and there is no Git Bash", () => {
+      vi.mocked(isBashAvailable).mockReturnValue(false);
+      process.env[POWERSHELL_TOOL_ENV_VAR] = "0";
+
+      const toolManager = build();
+      toolManager.initializeBuiltInTools();
+
+      const registered = names(toolManager);
+      expect(registered).not.toContain("PowerShell");
+      // A listed tool the model cannot run is worse than one it never sees.
+      expect(registered).not.toContain("Bash");
+    });
+
+    it("drops the Bash tool on a live reload once the flag forbids the only shell left", () => {
+      vi.mocked(isBashAvailable).mockReturnValue(false);
+      const toolManager = build();
+      toolManager.initializeBuiltInTools();
+      expect(names(toolManager)).toContain("PowerShell");
+
+      process.env[POWERSHELL_TOOL_ENV_VAR] = "0";
+      toolManager.reloadFeatureGatedTools();
+
+      const registered = names(toolManager);
+      expect(registered).not.toContain("PowerShell");
+      expect(registered).not.toContain("Bash");
+    });
+  });
 });

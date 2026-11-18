@@ -1,4 +1,5 @@
 import { EventEmitter } from "events";
+import * as fs from "fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ChildProcess } from "child_process";
 import { powershellTool } from "../../../src/tools/powershellTool/powershellTool.js";
@@ -30,8 +31,27 @@ vi.mock("../../../src/utils/shell/resolveProvider.js", () => ({
   getShellProvider: vi.fn(),
 }));
 
+vi.mock("../../../src/utils/tempDir.js", () => ({
+  resolveTempDir: () => "C:\\temp",
+  probeTempDir: () => ({ writable: true }),
+}));
+
+vi.mock("fs", async () => {
+  const actual = await vi.importActual<typeof import("fs")>("fs");
+  return {
+    ...actual,
+    existsSync: vi.fn(),
+    readFileSync: vi.fn(),
+    unlinkSync: vi.fn(),
+    accessSync: vi.fn(),
+    constants: { F_OK: 0 },
+  };
+});
+
 const PS_PATH =
   "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe";
+
+const CWD_FILE = "C:\\temp\\wave_ps_cwd.tmp";
 
 const provider: ShellProvider = {
   type: "powershell",
@@ -40,7 +60,7 @@ const provider: ShellProvider = {
   prepareCommand: (command: string) => command,
   buildExecCommand: (command: string) => ({
     commandString: command,
-    cwdFilePath: "C:\\temp\\wave_ps_cwd.tmp",
+    cwdFilePath: CWD_FILE,
   }),
   getSpawnArgs: (command: string) => [
     "-NoProfile",
@@ -99,6 +119,8 @@ describe("powershellTool", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(getShellProvider).mockReturnValue(provider);
+    // No tracked cwd file unless a test says so.
+    vi.mocked(fs.existsSync).mockReturnValue(false);
   });
 
   afterEach(() => {
@@ -350,6 +372,92 @@ describe("powershellTool", () => {
       expect(result.success).toBe(false);
       expect(result.error).toBe("Permission check failed");
       expect(spawn).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("working directory tracking", () => {
+    function withTrackedCwd(trackedCwd: string, cwdIsAllowed: boolean) {
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+      vi.mocked(fs.readFileSync).mockReturnValue(trackedCwd);
+      const onCwdChange = vi.fn();
+      return {
+        onCwdChange,
+        context: context({
+          onCwdChange,
+          originalWorkdir: "/work/project",
+          permissionManager: {
+            createContext: vi.fn(() => ({
+              toolName: "PowerShell",
+              permissionMode: "default",
+            })),
+            checkPermission: vi.fn(async () => ({ behavior: "allow" })),
+            isPathInWorkingDirectory: () => cwdIsAllowed,
+          } as unknown as ToolContext["permissionManager"],
+        }),
+      };
+    }
+
+    /**
+     * The permission check is async, so `execute` only attaches the child's
+     * listeners once `spawn` runs — arming the mock up front and awaiting the
+     * spawn keeps `finish(0)` from landing on an unattached emitter.
+     */
+    async function runToCompletion(command: string, ctx: ToolContext) {
+      const child = spawnChild();
+      const promise = powershellTool.execute({ command }, ctx);
+      await vi.waitFor(() => expect(spawn).toHaveBeenCalled());
+      child.finish(0);
+      return promise;
+    }
+
+    it("reports the tracked cwd and says so in the output", async () => {
+      const tracked = withTrackedCwd("/work/project/sub", true);
+
+      const result = await runToCompletion("Set-Location sub", tracked.context);
+
+      expect(tracked.onCwdChange).toHaveBeenCalledWith("/work/project/sub");
+      expect(result.content).toContain(
+        "Shell working directory changed to /work/project/sub",
+      );
+      // The temp file is read once and then removed.
+      expect(fs.unlinkSync).toHaveBeenCalledWith(CWD_FILE);
+    });
+
+    it("strips the BOM 5.1 writes for Out-File -Encoding utf8", async () => {
+      const tracked = withTrackedCwd("\uFEFF/work/project/sub", true);
+
+      await runToCompletion("Set-Location sub", tracked.context);
+
+      expect(tracked.onCwdChange).toHaveBeenCalledWith("/work/project/sub");
+    });
+
+    it("resets to the original workdir when the cwd only sits in an internal grant", async () => {
+      const tracked = withTrackedCwd("/work/project/.wave/memory", false);
+
+      const result = await runToCompletion(
+        "Set-Location .wave/memory",
+        tracked.context,
+      );
+
+      expect(tracked.onCwdChange).toHaveBeenCalledWith("/work/project");
+      expect(result.content).toContain("Shell cwd was reset to /work/project");
+    });
+
+    it("ignores a tracked cwd that no longer exists", async () => {
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+      vi.mocked(fs.readFileSync).mockReturnValue("/work/project/gone");
+      vi.mocked(fs.accessSync).mockImplementationOnce(() => {
+        throw new Error("ENOENT");
+      });
+      const onCwdChange = vi.fn();
+
+      const result = await runToCompletion(
+        "Set-Location gone",
+        context({ onCwdChange, originalWorkdir: "/work/project" }),
+      );
+
+      expect(onCwdChange).not.toHaveBeenCalled();
+      expect(result.success).toBe(true);
     });
   });
 

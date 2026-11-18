@@ -349,8 +349,18 @@ class ToolManager {
    * ```
    */
   public initializeBuiltInTools(): void {
+    // One read of the gate for the whole registry: the Bash tool is listed iff
+    // its shell exists, the PowerShell tool iff the gate turns it on. Together
+    // these cover the third answer — no Git Bash and PowerShell withheld — where
+    // neither shell tool is registered, because a listed tool the model cannot
+    // run is worse than a tool it never sees.
+    const shellGateInput = collectShellToolGateInput(
+      this.container.get<string>("CurrentWorkdir"),
+    );
+    const hasBash = shellGateInput.hasGitBash;
+    const hasPowerShell = isPowerShellToolEnabled(shellGateInput);
+
     const builtInTools = [
-      bashTool,
       taskStopTool,
       editTool,
       writeTool,
@@ -370,6 +380,10 @@ class ToolManager {
       workflowTool,
     ];
 
+    if (hasBash) {
+      builtInTools.push(bashTool);
+    }
+
     // Grep / Glob are off by default: search runs through the Bash tool's
     // `grep` / `find` shadows, which are the thing being paid for instead.
     // See `shouldRegisterSearchTools`: naming either one in `--tools` asks for
@@ -384,11 +398,7 @@ class ToolManager {
     // Windows, or `WAVE_USE_POWERSHELL_TOOL` asked for it anyway. The registry
     // and every command router read the same gate (`utils/shell/shellToolGate.ts`),
     // so the tool is never listed without being runnable.
-    if (
-      isPowerShellToolEnabled(
-        collectShellToolGateInput(this.container.get<string>("CurrentWorkdir")),
-      )
-    ) {
+    if (hasPowerShell) {
       builtInTools.push(powershellTool);
     }
 
@@ -447,8 +457,8 @@ class ToolManager {
    * reload. Currently gates the Artifact tool on settings.json
    * `enableArtifact`, the Exec tool on `enableExec`, the three knowledge-base
    * tools on `enableKnowledgeBase`, the four task-list tools on
-   * `env.WAVE_ENABLE_TASK_TOOLS`, and the PowerShell tool on
-   * `env.WAVE_USE_POWERSHELL_TOOL` (or the absence of Git Bash). Safe to call
+   * `env.WAVE_ENABLE_TASK_TOOLS`, and the two shell tools on the shell gate
+   * (`env.WAVE_USE_POWERSHELL_TOOL` / whether Git Bash exists). Safe to call
    * multiple times: gated tools are removed from the registry first, then
    * initializeBuiltInTools() re-registers them only if still enabled (so
    * toggling a flag off actually unregisters).
@@ -456,7 +466,11 @@ class ToolManager {
   public reloadFeatureGatedTools(): void {
     this.toolsRegistry.delete(artifactTool.name);
     this.toolsRegistry.delete(execTool.name);
+    // Both shell tools are gate-dependent: enabling PowerShell on a machine
+    // without Git Bash, or disabling it on one with Git Bash, changes which of
+    // the two is listed — and "neither" is a legal outcome.
     this.toolsRegistry.delete(powershellTool.name);
+    this.toolsRegistry.delete(bashTool.name);
     for (const tool of knowledgeBaseTools) {
       this.toolsRegistry.delete(tool.name);
     }
