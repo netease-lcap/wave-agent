@@ -15,6 +15,11 @@
  * `valid: true` means "the parser understood the command", not "the command is
  * harmless"; `statements: []` on a valid parse is also not evidence of
  * harmlessness (`using module` and `#Requires` produce no statements).
+ *
+ * Alongside the parser:
+ *   canonical.ts        — alias → cmdlet, module-prefix stripping
+ *   dangerousCmdlets.ts — hazard groups, and the names a rule is never suggested for
+ *   staticPrefix.ts     — the pre-filled "don't ask again" rule text
  */
 
 import { parsePowerShellCommand } from "./psParser.js";
@@ -47,6 +52,28 @@ export {
   transformRedirections,
   transformStatement,
 } from "./transform.js";
+export { COMMON_ALIASES, aliasesOf, resolveToCanonical } from "./canonical.js";
+export {
+  ARG_GATED_CMDLETS,
+  ALIAS_HIJACK_CMDLETS,
+  DANGEROUS_CMDLET_GROUPS,
+  DANGEROUS_CMDLET_NAMES,
+  DANGEROUS_SCRIPT_BLOCK_CMDLETS,
+  FILEPATH_EXECUTION_CMDLETS,
+  MODULE_LOADING_CMDLETS,
+  NEVER_SUGGEST,
+  NETWORK_CMDLETS,
+  SHELLS_AND_SPAWNERS,
+  WMI_CIM_CMDLETS,
+  dangerousCmdletGroup,
+} from "./dangerousCmdlets.js";
+export type { DangerousCmdletCategory } from "./dangerousCmdlets.js";
+export {
+  collectCommands,
+  splitCommandBoundaries,
+  suggestPrefix,
+  suggestRulePrefixes,
+} from "./staticPrefix.js";
 export type {
   ParsedCommandElement,
   ParsedPowerShellCommand,
