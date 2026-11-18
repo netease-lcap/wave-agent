@@ -15,8 +15,17 @@
      竖条表达——`--vscode-inputValidation-warningBackground` 在本主题下是整片
      芥末黄，铺满整卡会把它变成横幅警报，与旁边正常的对话格格不入。 */
   border: 1px solid var(--cc-border, var(--vscode-widget-border));
-  border-left: 3px solid var(--vscode-inputValidation-warningBorder, #e6a23c);
-  border-radius: 8px;
+  /* 警示条走 warning 角色（`--cc-color-warning` → 状态色族的 amber）：原来直接吃
+     host 的 `--vscode-inputValidation-warningBorder`，桌面桥接在浅/深两档分别给
+     #B69500 / #B89500（偏橄榄的暗黄），与侧栏「等待确认」那颗点的 #E6A23C 不是
+     同一支黄。1218 评论「左侧边框警示色应该用 warning」。 */
+  border-left: 3px solid var(--cc-color-warning, #e6a23c);
+  /* 圆角与阴影跟 AI 对话框同一个面（2026-11-18 设计师：「这里圆角应该和 AI 对话框
+     圆角一致，加阴影」）：圆角 = `.input-content` 的 r16；阴影吃 composer 那档柔影
+     `--cc-shadow-composer`（浅 0 0 12px / 41 35 41 12%，深 0 0 12px / 黑 40%），
+     与输入卡聚焦时是同一枚 token — 两者本来就在同一个槽位上下相邻。 */
+  border-radius: 16px;
+  box-shadow: var(--cc-shadow-composer, 0 0 12px rgb(31 35 41 / 12%));
   background-color: var(--vscode-panel-background);
 }
 
@@ -43,26 +52,71 @@
   gap: 8px;
 }
 
+/* ── 动作键 ──────────────────────────────────────────────────────────
+   两颗键按 skill common-components.md「Buttons」的标准桌面动作键落地：
+   32px 高 / 14px·22px / 字重 500 / r8 / 12px 内衬，交互态走 token 角色而不是
+   host 桥接（`--vscode-button-*` 只给静态两档，hover/active 在桌面端缺角色）。
+   与同族确认对话框的键（`.confirmation-btn`、`.confirm-dialog-btn`）逐值同档。 */
 .session-folder-recovery-btn {
-  padding: 5px 12px;
-  border: 1px solid var(--vscode-button-border, transparent);
-  border-radius: 6px;
-  background-color: var(--vscode-button-secondaryBackground, transparent);
-  color: var(--vscode-button-secondaryForeground, inherit);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid transparent;
+  border-radius: var(--cc-radius-md, 8px);
   font-family: inherit;
-  font-size: 13px;
-  line-height: 18px;
+  font-size: var(--cc-font-size-md, 14px);
+  line-height: 22px;
+  font-weight: 500;
   cursor: pointer;
+  transition:
+    background-color 0.1s ease,
+    color 0.1s ease;
 }
 
+/* 主键 = 普通填充主按钮档（action-primary 三角色）：hover 换底色、pressed 再深一档。
+   浅色档未定义 --cc-action-primary-active（与 .confirm-dialog-btn-confirm 同处境的
+   既有口径），fallback 取 skill 浅色字面量 #111318；深色档有该 token 自动生效。 */
 .session-folder-recovery-btn--primary {
-  background-color: var(--vscode-button-background);
-  color: var(--vscode-button-foreground);
+  background-color: var(--cc-action-primary, var(--vscode-button-background));
+  color: var(--cc-action-primary-text, var(--vscode-button-foreground));
+}
+.session-folder-recovery-btn--primary:not(:disabled):hover {
+  background-color: var(
+    --cc-action-primary-hover,
+    var(--vscode-button-hoverBackground)
+  );
+}
+.session-folder-recovery-btn--primary:not(:disabled):active {
+  background-color: var(--cc-action-primary-active, #111318);
 }
 
-/* 「删除会话」是破坏性动作：软危险底 + 危险字，与确认对话框的删除键同一语义
-   （见 ConfirmDialog.css 的 soft-danger 变体）。 */
+/* 「删除会话」是破坏性动作：soft-danger 变体（软底 + 危险字，无红描边）——
+   与 `.confirm-dialog-btn-confirm.is-destructive`、`.ssh-conn-btn--danger-solid`
+   同一配方：hover/pressed 只提字色（danger-hover / danger-active），软底不变，
+   不吃中性 hover 面。 */
 .session-folder-recovery-btn:not(.session-folder-recovery-btn--primary) {
   background-color: var(--cc-color-danger-soft, rgba(220, 38, 38, 0.1));
   color: var(--cc-color-danger, #dc2626);
+}
+.session-folder-recovery-btn:not(.session-folder-recovery-btn--primary):not(
+    :disabled
+  ):hover {
+  background-color: var(--cc-color-danger-soft, rgba(220, 38, 38, 0.1));
+  color: var(--cc-color-danger-hover, #b91c1c);
+}
+.session-folder-recovery-btn:not(.session-folder-recovery-btn--primary):not(
+    :disabled
+  ):active {
+  background-color: var(--cc-color-danger-soft, rgba(220, 38, 38, 0.1));
+  color: var(--cc-color-danger-active, #991b1b);
+}
+
+/* 键盘焦点：2px 中性焦点环（不借用危险红，soft-danger 档尤其不能），
+   与桌面端确认对话框的键同一口径（`.confirm-dialog-btn:focus-visible`）。 */
+.session-folder-recovery-btn:focus-visible {
+  outline: 2px solid var(--cc-border-focus, #2f5edb);
+  outline-offset: 2px;
 }

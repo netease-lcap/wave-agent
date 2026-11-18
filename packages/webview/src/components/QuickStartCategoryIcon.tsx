@@ -100,4 +100,32 @@ export const QuickStartCategoryIcon: React.FC<{ id: string }> = ({ id }) => {
   );
 };
 
+/**
+ * 只在「快捷方式」之外复用的一颗：`git`（Git 工作流）。
+ *
+ * 设计师 2026-11-17 两条评论 —— 点输入框下方基准分支前的
+ * `span.codicon.codicon-git-branch`「这里的图标和」、点空态第 8 个分类的
+ * `svg.quick-start-cat-icon`「这个 保持一致」：分支触发器与分支列表改用同一份矢量。
+ * 几何完全照 CATEGORY_PATHS.git（16×16 / 描边 1.4 圆头），与原 codicon 的 16×16
+ * 栅格同尺寸，换件不动排版；颜色仍走 `currentColor`，由所在行决定。
+ * 类名由调用方给（不复用 `.quick-start-cat-icon`，那套是胶囊内的 display/flex 契约）。
+ */
+export const GitBranchIcon: React.FC<{ className?: string }> = ({
+  className,
+}) => (
+  <svg
+    width="16"
+    height="16"
+    viewBox="0 0 16 16"
+    fill="none"
+    aria-hidden="true"
+    focusable="false"
+    className={className}
+  >
+    {CATEGORY_PATHS.git.map((d) => (
+      <path key={d} d={d} {...STROKE} />
+    ))}
+  </svg>
+);
+
 export default QuickStartCategoryIcon;

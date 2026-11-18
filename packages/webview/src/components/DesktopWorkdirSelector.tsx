@@ -1,5 +1,8 @@
 import React, { useState, useRef, useCallback } from "react";
 import { useRovingMenu } from "../utils/useRovingMenu";
+import { useTruncation } from "../utils/useTruncation";
+import { isDesktopHost } from "../utils/platform";
+import { Tooltip } from "./Tooltip";
 import { useClickOutside } from "../utils/useClickOutside";
 import { splitWorkdir } from "../utils/workdirPath";
 import { ContextDirectoryIcon, PermCaretIcon, CloseIcon } from "./HeaderIcons";
@@ -79,6 +82,8 @@ export const DesktopWorkdirSelector: React.FC<DesktopWorkdirSelectorProps> = ({
 }) => {
   const [browsing, setBrowsing] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  /** 菜单外框：气泡的水平锚点，避免压在菜单右内衬上（分支菜单同款口径）。 */
+  const menuBoxRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLDivElement>(null);
   const lastPathRef = useRef("~");
   // Directory listing request ids: allocated HERE, in the component that owns
@@ -116,6 +121,17 @@ export const DesktopWorkdirSelector: React.FC<DesktopWorkdirSelectorProps> = ({
       }
     },
   });
+
+  // 目录名 / 父路径被省略时补自绘气泡（设计师 2026-11-18 第三轮：菜单定宽 260 后
+  // 「把省略没有气泡提示的问题都补上」）。两行各自量：名称与父路径的省略互不相关，
+  // 任一行被省略就给整条路径出气泡。只在桌面端挂，插件端仍走原生 title。
+  const desktopHost = isDesktopHost();
+  const { register: registerTruncation, truncated } = useTruncation(
+    menuOpen && desktopHost,
+    recents.join("\n"),
+  );
+  const nameKey = (dir: string) => `${dir}\u0000name`;
+  const parentKey = (dir: string) => `${dir}\u0000parent`;
 
   // Only the remote browser owns click-outside here — closing the main menu
   // on outside clicks is handled inside useRovingMenu. Listener registered
@@ -227,6 +243,7 @@ export const DesktopWorkdirSelector: React.FC<DesktopWorkdirSelectorProps> = ({
         <div
           className="desktop-workdir-menu"
           role="listbox"
+          ref={menuBoxRef}
           data-testid="desktop-workdir-menu"
         >
           {recents.length > 0 && (
@@ -241,6 +258,27 @@ export const DesktopWorkdirSelector: React.FC<DesktopWorkdirSelectorProps> = ({
             // Nested remove button owns its own keys — the row's roving key
             // handling must ignore events bubbling up from it.
             const itemProps = getItemProps(i);
+            const pathLabel = (
+              <span className="desktop-workdir-menu-path">
+                <span
+                  className="desktop-workdir-menu-name"
+                  ref={registerTruncation(nameKey(dir))}
+                >
+                  {base}
+                </span>
+                {parent && (
+                  <span
+                    className="desktop-workdir-menu-parent"
+                    ref={registerTruncation(parentKey(dir))}
+                  >
+                    {parent}
+                  </span>
+                )}
+              </span>
+            );
+            const showTip =
+              truncated.includes(nameKey(dir)) ||
+              truncated.includes(parentKey(dir));
             return (
               <div
                 key={dir}
@@ -251,21 +289,28 @@ export const DesktopWorkdirSelector: React.FC<DesktopWorkdirSelectorProps> = ({
                   if (e.target !== e.currentTarget) return;
                   itemProps.onKeyDown(e);
                 }}
-                title={dir}
+                title={desktopHost ? undefined : dir}
                 data-testid="desktop-workdir-recent-item"
               >
                 {/* 1029 评论（她点 `span.codicon.codicon-folder`）：「替换图标，展开收起的
                     都换」⇒ 最近打开项（收起态）与「浏览…」（展开态）都换成设计源矢量，
                     见 FolderIcon。原来这两处是 codicon 字体字形。 */}
                 <FolderIcon />
-                <span className="desktop-workdir-menu-path">
-                  <span className="desktop-workdir-menu-name">{base}</span>
-                  {parent && (
-                    <span className="desktop-workdir-menu-parent">
-                      {parent}
-                    </span>
-                  )}
-                </span>
+                {showTip ? (
+                  <Tooltip
+                    text={dir}
+                    position="right"
+                    rightEdgeRef={menuBoxRef}
+                    className="desktop-row-name-tip"
+                    /* 目录路径没有空格：单行气泡会在 250px 处再截一次，开 multiline
+                       按 360 折行（overflow-wrap: anywhere 才断得开长串）。 */
+                    multiline
+                  >
+                    {pathLabel}
+                  </Tooltip>
+                ) : (
+                  pathLabel
+                )}
                 <button
                   className="desktop-workdir-menu-remove"
                   title="从列表移除"

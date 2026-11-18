@@ -63,23 +63,16 @@ export function resolveInitialCase(
   return { key: first, fallback: first !== "", staleSelection };
 }
 
-/** 工具条上的状态徽标：只在「这次选择另有隐情」时出现，正常记住的选择不留噪音。 */
+/** 工具条上的状态徽标：只在「这次选择另有隐情」时出现，正常记住的选择不留噪音。
+ *  外观走 preview-bar.css 的 `.pv-badge`（与工具条同一套字段/边框 token）。 */
 export const SelectionBadges: React.FC<{ selection: CaseSelection }> = ({
   selection,
 }) => {
-  const badge: React.CSSProperties = {
-    padding: "1px 6px",
-    borderRadius: 4,
-    border: "1px solid var(--vscode-widget-border, #555)",
-    color: "var(--vscode-descriptionForeground, #8b8b8b)",
-    fontSize: 11,
-    whiteSpace: "nowrap",
-  };
   return (
     <>
       {selection.staleSelection && (
         <span
-          style={badge}
+          className="pv-badge"
           data-testid="preview-case-stale"
           title="上次选中的用例文件已不存在（mock/ 下被删或改名），已重新选一个"
         >
@@ -88,7 +81,7 @@ export const SelectionBadges: React.FC<{ selection: CaseSelection }> = ({
       )}
       {selection.fallback && (
         <span
-          style={badge}
+          className="pv-badge"
           data-testid="preview-case-fallback"
           title={`默认用例 ${DEFAULT_CASE_KEY} 不存在，已兜底选中 mock 列表里的第一个`}
         >
@@ -97,7 +90,7 @@ export const SelectionBadges: React.FC<{ selection: CaseSelection }> = ({
       )}
       {!selection.key && (
         <span
-          style={{ ...badge, color: "var(--vscode-errorForeground, #f48771)" }}
+          className="pv-badge pv-badge--danger"
           data-testid="preview-case-missing"
           title="mock/ 目录下没有任何用例文件，页面收不到宿主消息"
         >
