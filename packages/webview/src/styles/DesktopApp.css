@@ -573,8 +573,25 @@ html[data-host="desktop"][data-theme="dark"] .desktop-session-group-host {
   background-color: var(--cc-color-danger-soft, rgba(220, 38, 38, 0.1));
 }
 
-.desktop-session-item--folder-missing .desktop-session-item-main {
-  padding-right: 32px;
+/* 缀标 ↔ 行右端图标（状态槽 / hover 出的「⋯」）留 4px：两者同为 right:8 / 24 宽，
+   所以整行让位 = 8 边距 + 24 图标 + 4 间隙 = 36px（原来 32 = 缀标盒正好贴住图标盒，
+   1218 评论「目录缺失到图标中间的间距 4px」）。
+   选择器多挂一个 `.desktop-session-item`：否则同特异性的 `--status`（:827）与 hover
+   （:832）两条 32px 规则会把它压回去，只有「既无状态点又不 hover」的行才吃到 36。 */
+.desktop-session-item.desktop-session-item--folder-missing
+  .desktop-session-item-main {
+  padding-right: 36px;
+}
+
+/* hover / 键盘焦点时右端换成「⋯」（它盖住状态槽），让位量不变：缀标 ↔ ⋯ 仍是 4px。
+   这一条必须挂上 `:hover` / `:has()` 才够特异性压过 :832 那条 32px 的通用规则。 */
+.desktop-session-item.desktop-session-item--folder-missing:hover
+  .desktop-session-item-main,
+.desktop-session-item.desktop-session-item--folder-missing:has(
+    .desktop-session-item-main:focus-visible
+  )
+  .desktop-session-item-main {
+  padding-right: 36px;
 }
 
 .desktop-session-more-btn {
