@@ -7082,7 +7082,7 @@ export class DesktopHost {
       this.hostForAgent(active) !== host
     ) {
       this.bindAgentToPane(pid, null);
-      this.pushPaneSessionState(pid);
+      void this.pushPaneSessionState(pid);
     }
     this.hostState.set(pid, host);
     // The picker's default workdir is the new host's first recent directory

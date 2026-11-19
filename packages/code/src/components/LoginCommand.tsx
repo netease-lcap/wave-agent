@@ -41,7 +41,7 @@ export const LoginCommand: React.FC<LoginCommandProps> = ({ onCancel }) => {
         onCancel();
       }
       if (key.return) {
-        handleEnter();
+        void handleEnter();
       }
       return;
     }

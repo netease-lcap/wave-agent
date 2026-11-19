@@ -1132,21 +1132,21 @@
             // Deltas extend a snapshot the app does not have. Rebuild it, which
             // is also what retries the read that failed (spec 场景 4).
             needsSnapshot = false;
-            pullSnapshot();
+            void pullSnapshot();
           } else {
-            resync();
+            void resync();
             // …but a delta carries no state, and the turn the user came back to
             // may be one that started while the connection was down — its
             // `loadingChange` was never delivered. See `refreshStreaming`.
-            refreshStreaming();
+            void refreshStreaming();
             // Same reason, and the cost of missing it is higher: an approval that
             // asked while the link was down was dropped, and no amount of message
             // delta brings it back. See `refreshPending`.
-            refreshPending();
+            void refreshPending();
             // …and the session-state family (mode, todo list, compaction, command
             // running, queue) was equally dropped mid-change, leaving the page on
             // values the session no longer has. See `refreshSessionState`.
-            refreshSessionState();
+            void refreshSessionState();
           }
         }
         connectedOnce = true;
@@ -1155,7 +1155,7 @@
           // previous machine's view, and no `webviewReady` will come to replace
           // it — this pull is that replacement (spec「机器列表与切换」场景 5).
           needsSnapshot = false;
-          pullSnapshot();
+          void pullSnapshot();
         }
         return;
       case "pong":
@@ -1183,7 +1183,7 @@
         // The relay dropped frames for a slow subscriber. The delta anchor is
         // no longer trustworthy, so this is the full re-pull.
         warnOnce("resync_required", "中继丢弃了积压的帧，正在重拉快照。");
-        pullSnapshot();
+        void pullSnapshot();
         return;
       default:
         warnOnce("ctrl:" + frame.type, "未识别的中继控制帧：" + frame.type);
@@ -1955,7 +1955,7 @@
       // 的那一半。重读一次而不是就地删 id：一个会话可能同时挂着不止一条请求
       // （并行工具调用），标记的判据是「这个会话还有没有待审批」，只有读能回答。
       // 审批是人的节奏，这一次读不会成为流量负担。
-      if (method === "permissionResolved") refreshPending();
+      if (method === "permissionResolved") void refreshPending();
       return;
     }
 
@@ -1985,9 +1985,9 @@
           // have been an approval request (those carry the command and the
           // diff), so re-reading only the messages is not enough — the whole
           // snapshot, pending approvals included, is what makes it recoverable.
-          pullSnapshot();
+          void pullSnapshot();
         } else {
-          resync();
+          void resync();
         }
         return;
       case "userMessageAdded":
@@ -2047,7 +2047,7 @@
         // `chatSession.ts`）。漏了这一行，页面上刚跑起来或刚跑完的工作流在
         // `/workflows` 里要等重连 / 重挂才会出现——面板开着也是一直「暂无工作流
         // 运行」。
-        refreshWorkflowRuns();
+        void refreshWorkflowRuns();
         return;
       case "queuedMessagesChange":
         // The webview message carries the queue under `queue` (same as the VSCE
@@ -2277,7 +2277,7 @@
         if (typeof usage === "number")
           post({ command: "contextUsage", percent: usage });
         // After the snapshot, so `updateWorkflowRuns` can never land first.
-        refreshWorkflowRuns();
+        void refreshWorkflowRuns();
         // Only the list read counts as "the first screen is up": the chain below
         // it runs on an empty registry too (`pickSession` answers `false`, the
         // reads are skipped, and `setInitialState` still paints a blank page).
@@ -2399,7 +2399,7 @@
     if (snapshotRetryTimer) clearTimeout(snapshotRetryTimer);
     snapshotRetryTimer = setTimeout(function () {
       snapshotRetryTimer = null;
-      pullSnapshot();
+      void pullSnapshot();
     }, delay);
   }
 
@@ -2606,7 +2606,7 @@
     var asked = sessionId;
     if (!asked) return Promise.resolve();
     // 工作流运行与它同一次对齐（两条独立读，不值得为它们串成一条链）。
-    refreshWorkflowRuns();
+    void refreshWorkflowRuns();
     return request("getSessionInfo", {})
       .then(function (info) {
         // The request named the session it was asked for: a pick that moved on
@@ -3009,23 +3009,23 @@
           if (snapshotPending()) {
             // Same reasoning as the reconnect path: a re-mounted reducer and no
             // snapshot behind it means the deltas have nothing to extend.
-            pullSnapshot();
+            void pullSnapshot();
           } else {
-            resync();
+            void resync();
             // A re-mounted app reset its own reducer to idle, so the flag is
             // re-stated even if this page believes it already said so.
-            refreshStreaming(true);
+            void refreshStreaming(true);
             // …and its copy of the pending approvals went with it. This side keeps
             // the same list, which is now a list of cards that are not on screen.
-            refreshPending(true);
+            void refreshPending(true);
             // …as did the session-state family: the remounted reducer is back at
             // its defaults while the session may be mid-compaction with a todo
             // list and a queue. See `refreshSessionState`.
-            refreshSessionState();
+            void refreshSessionState();
           }
         } else {
           openedOnce = true;
-          pullSnapshot();
+          void pullSnapshot();
         }
         return;
 
@@ -3146,7 +3146,7 @@
         // Re-pull instead of asking the machine to switch: the target is already
         // live, so its tail and its pending approvals come through the same
         // `getMessages` + `listPendingPermissions` path a cold start uses.
-        pullSnapshot();
+        void pullSnapshot();
         return;
       }
 
@@ -3156,7 +3156,7 @@
       // 在列表里仍叫「新对话」（那一行的标题取自 `firstMessage`，新建成功那一刻它
       // 还是空的），要等下一次快照才更新。
       case "refreshSessionList":
-        refreshSessionList();
+        void refreshSessionList();
         return;
 
       // ── 会话列表行级动作：删除（spec remote/remote-web.md「手机端的会话列表与
@@ -3213,7 +3213,7 @@
                 // page stays where it is (spec 场景 11：不自动跳进别的会话).
                 sessionId = "";
                 picked = true;
-                pullSnapshot();
+                void pullSnapshot();
               }
             });
           })
@@ -3865,7 +3865,7 @@
             sessionId = result.sessionId;
             picked = true;
             resetMessages();
-            pullSnapshot();
+            void pullSnapshot();
             // 把用户选的那个目录记进机器侧的最近目录（spec
             // core/recent-workdirs.md）：记的是 `msg.workdir`——worktree 时它是
             // 仓库根，不是上面 `createParams.workdir` 里那个工作树路径。写失败
@@ -3940,7 +3940,7 @@
             sessionId = result.sessionId;
             picked = true;
             resetMessages();
-            pullSnapshot();
+            void pullSnapshot();
             post({
               command: "resumeDiskSessionResult",
               requestId: msg.requestId,
@@ -4305,13 +4305,13 @@
       if (snapshotPending()) {
         // The link is fine; the first screen is not. Same call as the other two
         // alignment paths: rebuild rather than extend (spec 场景 4).
-        pullSnapshot();
+        void pullSnapshot();
         return;
       }
-      resync();
-      refreshStreaming(true);
-      refreshPending(true);
-      refreshSessionState();
+      void resync();
+      void refreshStreaming(true);
+      void refreshPending(true);
+      void refreshSessionState();
       return;
     }
     // Waiting in the backoff (or sitting between attempts): the phone coming

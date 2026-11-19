@@ -316,7 +316,7 @@ export const useInputManager = (
       }
     };
 
-    runEffect();
+    void runEffect();
   }, [
     state.pendingEffect,
     onSendMessage,

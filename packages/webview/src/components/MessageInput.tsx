@@ -2557,7 +2557,7 @@ export const MessageInput = forwardRef<
         event.preventDefault();
         const fileList = new DataTransfer();
         files.forEach((file) => fileList.items.add(file));
-        handleImagePaste(fileList.files);
+        void handleImagePaste(fileList.files);
       } else {
         // Handle text paste to avoid rich text styles
         const text = event.clipboardData?.getData("text/plain");

@@ -729,7 +729,11 @@ export const MessageList = forwardRef<
     if (!container) return;
     const repin = () => followToBottom("auto");
     container.addEventListener("load", repin, true);
-    document.fonts?.ready.then(repin);
+    document.fonts?.ready
+      .then(repin)
+      // `repin` 是同步的 scroll 计算，抛出即真空指针/几何异常：接住并记一行，
+      // 别让它变成 `fonts.ready` 链上的未处理 rejection。
+      .catch((err) => console.error("Fonts re-pin failed:", err));
     return () => container.removeEventListener("load", repin, true);
   }, [followToBottom, containerRef]);
 

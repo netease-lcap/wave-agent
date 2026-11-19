@@ -31,7 +31,7 @@ export const HistorySearch: React.FC<HistorySearchProps> = ({
       const results = await PromptHistoryManager.searchHistory(searchQuery);
       dispatch({ type: "SET_ITEMS", items: results.slice(0, 20) });
     };
-    fetchHistory();
+    void fetchHistory();
   }, [searchQuery]);
 
   // Handle decisions from reducer

@@ -1217,7 +1217,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
 
   // Run initial agent creation
   useEffect(() => {
-    initializeAgent();
+    void initializeAgent();
   }, [initializeAgent]);
 
   // Cleanup on unmount
@@ -1748,7 +1748,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   remoteNotifyRef.current = remoteControl.notify;
 
   const backgroundCurrentTask = useCallback(() => {
-    agentRef.current?.backgroundCurrentTask();
+    void agentRef.current?.backgroundCurrentTask();
   }, []);
 
   const handleRewindSelect = useCallback(

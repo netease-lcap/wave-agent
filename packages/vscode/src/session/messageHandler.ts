@@ -2096,7 +2096,7 @@ export class MessageHandler {
     windowId?: string,
   ) {
     const session = this.context.getChatSession(viewType || "tab", windowId);
-    session.deleteQueuedMessage(index);
+    await session.deleteQueuedMessage(index);
   }
 
   private async handleUpdateQueuedMessage(
@@ -2161,7 +2161,7 @@ export class MessageHandler {
     windowId?: string,
   ) {
     const session = this.context.getChatSession(viewType || "tab", windowId);
-    session.abortMessage();
+    await session.abortMessage();
   }
 
   /**
@@ -2562,7 +2562,7 @@ export class MessageHandler {
       }
     } else {
       pending.resolve({ behavior: "deny", message: "用户拒绝了操作" });
-      session.abortMessage();
+      await session.abortMessage();
     }
     this.context.postMessage({ command: "focusInput" }, viewType, windowId);
     this.context.postMessage({ command: "scrollToBottom" }, viewType, windowId);

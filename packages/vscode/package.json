@@ -115,7 +115,7 @@
   },
   "scripts": {
     "build": "pnpm run compile",
-    "lint": "oxlint",
+    "lint": "oxlint --type-aware",
     "format": "prettier --write .",
     "clean": "node -e \"import('fs').then(fs => ['dist', 'webview/dist'].forEach(d => {try{fs.rmSync(d, {recursive:true, force:true})}catch(e){}}))\"",
     "prepackage": "pnpm run clean",

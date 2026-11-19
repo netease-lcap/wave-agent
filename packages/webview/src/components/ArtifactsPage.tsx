@@ -2045,7 +2045,7 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({
                               onKeyDown={(event) => {
                                 if (event.key === "Enter") {
                                   event.preventDefault();
-                                  commitRename();
+                                  void commitRename();
                                 } else if (event.key === "Escape") {
                                   event.preventDefault();
                                   cancelRename();

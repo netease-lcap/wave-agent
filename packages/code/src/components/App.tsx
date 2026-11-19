@@ -55,7 +55,7 @@ const ChatWithExitPrompt: React.FC<{
     // While the /btw overlay is up it owns the keys; Ctrl+C must not quit
     if (btwOverlayActiveRef.current) return;
     if (input === "c" && key.ctrl) {
-      handleSignal();
+      void handleSignal();
     }
   });
 

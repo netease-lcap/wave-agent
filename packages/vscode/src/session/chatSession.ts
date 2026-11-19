@@ -302,6 +302,11 @@ export class ChatSession {
               if (decision) {
                 this.agent?.sendPermissionResponse(requestId, decision);
               }
+            })
+            // 弹窗侧失败（例如面板在这一问期间被关掉）必须留下痕迹：不接住就是
+            // 一条未处理的 rejection，而这条链背后的模型正停在等待批准上。
+            .catch((err) => {
+              console.error("处理工具授权请求失败:", err);
             });
         },
         onPermissionResolved: (requestId) => {

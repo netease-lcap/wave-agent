@@ -107,4 +107,32 @@ describe("ConcurrencyLimiter", () => {
     expect(limiter.activeCount).toBe(1);
     limiter.release();
   });
+
+  it("track cleans up a rejecting promise without producing an unhandled rejection", async () => {
+    const limiter = new ConcurrencyLimiter(1);
+    const unhandled: unknown[] = [];
+    const onUnhandled = (reason: unknown) => unhandled.push(reason);
+    const activeSet = (
+      limiter as unknown as { activeSet: Set<Promise<unknown>> }
+    ).activeSet;
+
+    process.on("unhandledRejection", onUnhandled);
+    try {
+      // The caller does handle the promise it hands over, so the only way a
+      // rejection can escape is through whatever `track` derives from it —
+      // which is exactly what the old `finally()` implementation did.
+      const tracked = Promise.reject(new Error("tracked rejected"));
+      void limiter.track(tracked).catch(() => {});
+      expect(activeSet.size).toBe(1);
+
+      // unhandledRejection is emitted at the end of the current turn, so one
+      // full macrotask turn is the window this assertion observes.
+      await new Promise((resolve) => setImmediate(resolve));
+
+      expect(unhandled).toEqual([]);
+      expect(activeSet.size).toBe(0);
+    } finally {
+      process.off("unhandledRejection", onUnhandled);
+    }
+  });
 });
