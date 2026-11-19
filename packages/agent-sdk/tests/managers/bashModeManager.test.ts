@@ -1,17 +1,31 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
-// Mock bashTool so no real shell is spawned in tests.
+// Mock both shell tools so no real shell is spawned in tests.
 vi.mock("@/tools/bashTool", () => ({
   bashTool: { execute: vi.fn() },
+}));
+
+vi.mock("@/tools/powershellTool/powershellTool", () => ({
+  powershellTool: { execute: vi.fn() },
+}));
+
+// The shell kind is the subject of the routing cases below, so it is pinned
+// instead of depending on whether this machine happens to have Git Bash.
+vi.mock("@/utils/shell/shellToolGate", () => ({
+  collectShellToolGateInput: vi.fn(() => ({})),
+  resolveShellKind: vi.fn(() => "bash"),
 }));
 
 import { BashModeManager } from "@/managers/bashModeManager.js";
 import type { MessageManager } from "@/managers/messageManager.js";
 import { Container } from "@/utils/container.js";
 import { bashTool } from "@/tools/bashTool.js";
-import { BASH_TOOL_NAME } from "@/constants/tools.js";
+import { powershellTool } from "@/tools/powershellTool/powershellTool.js";
+import { BASH_TOOL_NAME, POWERSHELL_TOOL_NAME } from "@/constants/tools.js";
+import { resolveShellKind } from "@/utils/shell/shellToolGate.js";
 
 const mockExecute = vi.mocked(bashTool.execute);
+const mockPowerShellExecute = vi.mocked(powershellTool.execute);
 
 const createMockMessageManager = (): MessageManager => {
   const mock = {
@@ -29,6 +43,7 @@ describe("BashModeManager", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(resolveShellKind).mockReturnValue("bash");
     mockMessageManager = createMockMessageManager();
 
     const container = new Container();
@@ -71,9 +86,9 @@ describe("BashModeManager", () => {
 
       const exitCode = await bashModeManager.executeCommand(command);
 
-      // Command runs through the shared bash tool engine.
+      // Command runs through the shell tool this session has.
       expect(mockExecute).toHaveBeenCalledWith(
-        { command },
+        { command, dangerouslyDisableSandbox: true },
         expect.objectContaining({
           workdir: testWorkdir,
           abortSignal: expect.any(AbortSignal),
@@ -206,6 +221,52 @@ describe("BashModeManager", () => {
         metadata: { exitCode: 0 },
       });
       await first;
+    });
+  });
+
+  describe("shell routing", () => {
+    it("runs a PowerShell session's command through the PowerShell tool", async () => {
+      vi.mocked(resolveShellKind).mockReturnValue("powershell");
+      mockPowerShellExecute.mockResolvedValue({
+        success: true,
+        content: "ps output\n",
+        metadata: { exitCode: 0 },
+      } as never);
+
+      const exitCode = await bashModeManager.executeCommand("Get-ChildItem");
+
+      expect(mockPowerShellExecute).toHaveBeenCalledWith(
+        { command: "Get-ChildItem", dangerouslyDisableSandbox: true },
+        expect.objectContaining({ workdir: testWorkdir }),
+      );
+      expect(mockExecute).not.toHaveBeenCalled();
+      // The block is named after the tool that ran, so the UI shows what the
+      // user actually executed instead of a Bash block with PS syntax in it.
+      expect(mockMessageManager.addToolBlockToMessage).toHaveBeenCalledWith(
+        "msg-1",
+        {
+          name: POWERSHELL_TOOL_NAME,
+          parameters: "Get-ChildItem",
+          stage: "running",
+        },
+      );
+      expect(exitCode).toBe(0);
+    });
+
+    it("keeps using the Bash tool while the session's shell is bash", async () => {
+      mockExecute.mockResolvedValue({
+        success: true,
+        content: "",
+        metadata: { exitCode: 0 },
+      } as never);
+
+      await bashModeManager.executeCommand("ls");
+
+      expect(mockPowerShellExecute).not.toHaveBeenCalled();
+      expect(mockMessageManager.addToolBlockToMessage).toHaveBeenCalledWith(
+        "msg-1",
+        expect.objectContaining({ name: BASH_TOOL_NAME }),
+      );
     });
   });
 

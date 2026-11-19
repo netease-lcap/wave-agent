@@ -22,7 +22,8 @@ import { type ChildProcess } from "node:child_process";
 import { spawnHidden } from "../utils/execFileHidden.js";
 import type { HeadersProvider } from "../types/telemetry.js";
 import { logger } from "../utils/globalLogger.js";
-import { resolveShellPath } from "../utils/shellResolver.js";
+import { resolveSessionShell } from "../utils/shell/shellToolGate.js";
+import { POWERSHELL_SPAWN_FLAGS } from "../utils/shell/powershellProvider.js";
 import { toPosixCommand } from "../utils/windowsPaths.js";
 
 /** How long a single helper run may take before it is killed. */
@@ -114,9 +115,11 @@ function resolveRefreshMs(override?: number): number {
 /**
  * Run the helper command through a shell.
  *
- * The shell plumbing mirrors hook execution (Git Bash + POSIX path conversion
- * on Windows, `/bin/sh` elsewhere) so a command written for one place behaves
- * the same here. Windows without Git Bash falls back to `cmd.exe`, as hooks do.
+ * The shell is the session's own, the same decision that runs hooks
+ * (`utils/shell/shellToolGate.ts`): Git Bash with POSIX path conversion when the
+ * session has bash, PowerShell otherwise. There is no `cmd.exe` downgrade any
+ * more — a machine with neither shell reports it as a spawn error instead of
+ * silently running the command with different parsing (issue #1773).
  */
 function runHelperCommand(
   command: string,
@@ -127,31 +130,22 @@ function runHelperCommand(
     let stderr = "";
     let timedOut = false;
 
-    const isWindows = process.platform === "win32";
-    const bashPath = isWindows ? resolveShellPath() : undefined;
-    let shell: string;
-    let shellFlag: string;
-    let finalCommand: string;
-    if (bashPath) {
-      shell = bashPath;
-      shellFlag = "-c";
-      finalCommand = toPosixCommand(command);
-    } else if (isWindows) {
-      shell = "cmd.exe";
-      shellFlag = "/c";
-      finalCommand = command;
-    } else {
-      shell = "/bin/sh";
-      shellFlag = "-c";
-      finalCommand = command;
-    }
-
+    const sessionShell = resolveSessionShell(options.cwd);
     let child: ChildProcess;
     try {
-      child = spawnHidden(shell, [shellFlag, finalCommand], {
+      if ("problem" in sessionShell) {
+        throw new Error(sessionShell.problem);
+      }
+      const spawnArgs =
+        sessionShell.kind === "bash"
+          ? ["-c", toPosixCommand(command)]
+          : // No path conversion and no verdict wrapper: PowerShell reads
+            // `C:\...` natively, and this command's exit code only decides
+            // "headers or no headers", which any non-zero value already says.
+            [...POWERSHELL_SPAWN_FLAGS, command];
+      child = spawnHidden(sessionShell.shellPath, spawnArgs, {
         stdio: ["ignore", "pipe", "pipe"],
         cwd: options.cwd ?? process.cwd(),
-        windowsHide: true,
         env: { ...process.env, ...options.env },
       });
     } catch (error) {

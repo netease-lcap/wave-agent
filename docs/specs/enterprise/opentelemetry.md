@@ -46,7 +46,7 @@ order: 30
 - 采纳类：`wave.completion.outcome`（计数，按 `outcome`：displayed / accepted，外加 `model`、`language`，来源为编辑器宿主的补全建议生命周期，见「补全建议的采纳度量」）
 - 采纳类：`wave.next_edit.outcome`（计数，按同上两个 `outcome` 与同两组属性，来源为编辑器宿主的下一步编辑建议生命周期，见「下一步编辑建议的采纳度量」；**与补全分列两条序列**，不得合并成同一条比率）
 
-其中 `wave.commits` / `wave.pull_requests` 对齐 Claude Code 的 `commit.count` / `pull_request.count` 口径：**只认「经由工具、且成功」的创建动作**，不看结果是否被合并、不依赖任何托管平台（私有化 GitLab 与 GitHub 同等成立），也不按托管平台或仓库拆分序列；标准归属属性按「统一的归属属性面」一节统一附带。
+其中 `wave.commits` / `wave.pull_requests` 对齐 Claude Code 的 `commit.count` / `pull_request.count` 口径：**只认「经由工具、且成功」的创建动作**，不看结果是否被合并、不依赖任何托管平台（私有化 GitLab 与 GitHub 同等成立），也不按托管平台或仓库拆分序列；标准归属属性按「统一的归属属性面」一节统一附带。这两个计数与 shell 无关——bash 会话的 `Bash` 与 PowerShell 会话的 `PowerShell` 同等计数，因为判据是命令文本（`git` / `gh` / `glab` 在两种 shell 里是同一批外部可执行文件）。
 
 `wave.active_time` 对位 Claude Code 的 `active_time.total`，但**口径按会话而不是按进程**：同一进程承载多个会话时（daemon、桌面端远程主机），每个会话各自一段区间、各自归属自己的 `session.id`，因此多会话并发时按会话求和会大于进程墙钟——这是刻意的，它回答「这个会话干了多久」，不回答「进程活了多久」。`type=cli` 只计 agent 实际在跑的区间（模型调用、工具执行），**弹窗等待用户决策与提问等待的时间被排除**；并行与嵌套操作按墙钟只计一次。`type=user` 只计相邻两次用户输入间隔**小于 5 秒**的那段，长间隔视为挂机不计——该口径与 Claude Code 一致。
 
@@ -64,7 +64,7 @@ order: 30
 4. **假设** 用户没有配置任何自己的导出器（`OTEL_METRICS_EXPORTER` / `OTEL_LOGS_EXPORTER` 均未设），**当**会话进行时，**则**不产生任何**走用户导出器**的指标与事件——用户面默认仍是不导出（首方出口是独立的一条，见「默认上报到 Wave 服务端」）。
 5. **假设** 一轮会话里发生自动压缩，**当**压缩完成后，**则**压缩后的 token 计数继续累计在同一会话的 `wave.tokens` 上（压缩不重置指标、不产生负值）。
 6. **假设** 指标导出所需的耗时与错误信息（如失败原因字符串）存在，**则** 指标不携带提示词、文件内容或其它内容级数据，只带低基数归属属性。
-7. **假设** OTEL 指标已启用，**当** agent 经由 Bash 工具成功创建了一个提交（含 `git -C <dir> commit`、前导环境变量赋值、`--amend`、以及 `git add -A && git commit -m x` 这类复合命令）时，**则** `wave.commits` 递增一次；一次工具调用无论涉及多少个提交动作，最多只计一次。
+7. **假设** OTEL 指标已启用，**当** agent 经由 shell 工具（`Bash`，或 PowerShell 会话里的 `PowerShell`）成功创建了一个提交（含 `git -C <dir> commit`、前导环境变量赋值、`--amend`、以及 `git add -A && git commit -m x` 这类复合命令）时，**则** `wave.commits` 递增一次；一次工具调用无论涉及多少个提交动作，最多只计一次。
 8. **假设** 创建提交的命令执行失败（非 0 退出），**则** `wave.commits` 不递增；由脚本内部或非提交类命令（如 `git merge`）间接产生的提交也不计——口径与 Claude Code 一致，只认「经由工具、且成功」的建提交动作。
 9. **假设** OTEL 指标已启用，**当** agent 经由 shell 命令（如 `gh pr create`、`glab mr create`）或 MCP 的建 PR/MR 工具成功创建了一个 PR 或 MR 时，**则** `wave.pull_requests` 递增一次；创建失败的调用不计；PR 与 MR 不作区分，同一个计数。
 10. **假设** 这两个指标已启用，**则** 它们不带模型维度、也不因托管平台不同而分裂序列，并且不依赖任何 Git 托管平台的 API 或凭据——私有化 GitLab 与公有 GitHub 场景下行为一致；标准归属属性（会话与身份）按统一规则附带。
@@ -73,7 +73,8 @@ order: 30
 13. **假设** 一次工具调用在权限弹窗上等待用户批准（或等待问答工具的回答），**当** 该轮结束时，**则** 等待的这段时间不计入 `wave.active_time{type=cli}`；同一段时间也不会以 `type=user` 重复计入。
 14. **假设** 同一进程里两个会话同时在跑 agent（daemon 承载多会话），**当** 两个会话各自结束时，**则** 各自按自己的会话归属记一段 `type=cli` 的活跃时长，两条数据点带各自的 `session.id`，互不串味；此时按会话求和可以大于进程墙钟时间——该指标回答的是会话活跃时长，不是进程在线时长。
 15. **假设** OTEL 指标已启用，**当** 用户对一次 `Edit` 调用做了权限决策时，**则** `wave.code_edit_tool.decision` 记一次，`decision` 为 `accept` 或 `reject`（被拒绝同样计数），并带上 `source`（`config` / `hook` / `user_permanent` / `user_temporary` / `user_abort` / `user_reject` / `unknown`）与 `tool_name`；能从目标文件路径推出语言时再带 `language`，推不出时不带该属性。
-16. **假设** 一次会话里发生 `Bash`、`Read` 与 MCP 工具的权限决策，**当** 记录指标时，**则** 这些工具**不**产生 `wave.code_edit_tool.decision`——该指标只覆盖编辑类工具（`Edit` / `Write`）。
+16. **假设** 一次会话里发生 shell 工具（`Bash` 或 `PowerShell`）、`Read` 与 MCP 工具的权限决策，**当** 记录指标时，**则** 这些工具**不**产生 `wave.code_edit_tool.decision`——该指标只覆盖编辑类工具（`Edit` / `Write`），判据是工具名白名单而非「像不像写操作」（`packages/agent-sdk/src/telemetry/metrics.ts:44-49`）。
+17. **假设** 会话的 shell 是 PowerShell（Windows 上没有 Git Bash，或 `WAVE_USE_POWERSHELL_TOOL` 显式开启），**当** agent 用 `PowerShell` 工具跑出 `git commit`、`gh pr create` 或 `glab mr create` 时，**则** 计数与 bash 会话完全一致；判据是**命令文本**而不是工具名（`git` / `gh` / `glab` 在两种 shell 里是同一批外部可执行文件），闸门只认「是 shell 工具 + 调用成功」这两件事（`packages/agent-sdk/src/managers/toolManager.ts:221`），`&` 调用运算符开头的命令（`& git commit -m x`）同样识别（`packages/agent-sdk/src/telemetry/toolActivity.ts:21-31`）。
 
 ---
 

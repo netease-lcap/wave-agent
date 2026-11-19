@@ -2,7 +2,7 @@
    --vscode semantic colors where available, static fallbacks otherwise.
    挂四处：文件面板的代码视图、远控页预览弹层的代码档（`IdeContextPreview` 的
    `codePath`）、对话流里的围栏代码块（`Message.tsx` 的 `renderer.code`）、
-   Bash 工具的命令行（`Message.tsx` 的 `renderBashIO`）——同一份配色，不是四套
+   Bash 工具的命令行（`Message.tsx` 的 `renderShellIO`）——同一份配色，不是四套
    主题。命令行与围栏代码块同源：同一份 hljs 注册表、同一套 hljs token 类名，
    差别只在命令行不链接化、也不带语言类名。
    单独成文件的理由：对话流与文件面板在插件端各自独立加载（VS Code 的 webview

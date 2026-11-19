@@ -74,6 +74,44 @@ describe("Bang Command", () => {
     expect(outputEl).toHaveTextContent(/total 0/);
   });
 
+  it("should render a PowerShell session's bang block through the same shell IO", async () => {
+    renderChatApp();
+
+    const messages = [
+      MockDataGenerator.createBangMessage(
+        "Get-ChildItem -Name",
+        "AGENTS.md\npackage.json",
+        false,
+        0,
+        "PowerShell",
+      ),
+    ];
+
+    await act(async () => {
+      window.dispatchEvent(
+        new MessageEvent("message", {
+          data: { command: "updateMessages", messages },
+        }),
+      );
+    });
+
+    // bashModeManager names the block after the tool that ran it, so the whole
+    // `!` rendering path (`isShellToolName` → renderShellIO) must accept the
+    // PowerShell name too — a Bash-only branch would drop the command/output.
+    await waitFor(() => {
+      const shellBlock = document.querySelector(".bash-command-unified");
+      expect(shellBlock).toBeInTheDocument();
+    });
+
+    const shellBlock = document.querySelector(".bash-command-unified")!;
+    expect(shellBlock.querySelector(".bash-command")).toHaveTextContent(
+      "Get-ChildItem -Name",
+    );
+    expect(shellBlock.querySelector(".bash-command-output")).toHaveTextContent(
+      /AGENTS\.md/,
+    );
+  });
+
   it("should handle long output with scrolling", async () => {
     renderChatApp();
 

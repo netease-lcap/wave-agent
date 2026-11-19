@@ -1,0 +1,471 @@
+import { type ChildProcess, type SpawnOptions } from "child_process";
+import * as fs from "fs";
+import { Readable } from "stream";
+import { logger } from "../../utils/globalLogger.js";
+import { spawnHidden } from "../../utils/execFileHidden.js";
+import { getShellProvider } from "../../utils/shell/resolveProvider.js";
+import { WindowsStreamDecoder } from "../../utils/encoding.js";
+import { terminateChildProcessTree } from "../../utils/terminateProcessTree.js";
+import { processToolResult } from "../../utils/toolResultStorage.js";
+import { probeTempDir, resolveTempDir } from "../../utils/tempDir.js";
+import { BASH_MAX_OUTPUT_CHARS } from "../../constants/toolLimits.js";
+import { POWERSHELL_TOOL_NAME, READ_TOOL_NAME } from "../../constants/tools.js";
+import {
+  POWERSHELL_DEFAULT_TIMEOUT_MS,
+  POWERSHELL_MAX_TIMEOUT_MS,
+  powershellPrompt,
+} from "./prompt.js";
+import type { ToolPlugin, ToolResult, ToolContext } from "../types.js";
+
+// Same valve as the Bash tool: the child's 'exit' event fires before its stdio
+// pipes have drained, so the buffers are read only after the streams emit
+// 'end' — with a bound, because a grandchild that inherited the pipe write ends
+// (`Start-Process` with a redirected stream, a detached `cmd /c`) would delay
+// 'end' indefinitely.
+const STREAM_FLUSH_TIMEOUT_MS = 100;
+
+/**
+ * Read the CWD the shell wrote, then delete the file.
+ *
+ * Best-effort, like the Bash tool's reader: a target directory that no longer
+ * exists (a removed worktree, a `cd` into a deleted path) must not turn a
+ * finished command into a failure, so every failure path returns `undefined`.
+ */
+function readTrackedCwd(cwdFilePath: string): string | undefined {
+  try {
+    if (!fs.existsSync(cwdFilePath)) return undefined;
+    // 5.1's `Out-File -Encoding utf8` writes a BOM; PowerShell 7 does not.
+    const trackedCwd = fs
+      .readFileSync(cwdFilePath, "utf8")
+      .replace(/^\uFEFF/, "")
+      .trim();
+    if (!trackedCwd) return undefined;
+    fs.accessSync(trackedCwd, fs.constants.F_OK);
+    return trackedCwd;
+  } catch (error) {
+    logger.debug(
+      `[PowerShell] Could not read or validate the tracked cwd from ${cwdFilePath}:`,
+      error,
+    );
+    return undefined;
+  } finally {
+    try {
+      fs.unlinkSync(cwdFilePath);
+    } catch {
+      // Best-effort cleanup: the file may never have been written.
+    }
+  }
+}
+
+/**
+ * The PowerShell tool: one command, one `powershell.exe -Command`, one result.
+ *
+ * Registration is gated (`utils/shell/shellToolGate.ts`): the tool only exists
+ * in a session whose shell is PowerShell, so its absence and the shell choice
+ * can never disagree. The working directory is tracked the same way the Bash
+ * tool tracks it — the provider appends a `(Get-Location).Path | Out-File`
+ * statement and this file reports the change through `onCwdChange`. What P5 adds
+ * is background execution, not CWD memory.
+ *
+ * Permission goes through `PermissionManager`, whose PowerShell branch
+ * (`tools/powershellTool/permissions.ts`) does the real work: this file hands it
+ * the command and spawns what survives.
+ */
+export const powershellTool: ToolPlugin = {
+  name: POWERSHELL_TOOL_NAME,
+  searchHint: "run a PowerShell command",
+  isConcurrencySafe: false,
+  config: {
+    type: "function",
+    function: {
+      name: POWERSHELL_TOOL_NAME,
+      description: "Run PowerShell command",
+      parameters: {
+        type: "object",
+        properties: {
+          command: {
+            type: "string",
+            description: "The PowerShell command to execute",
+          },
+          timeout: {
+            type: "number",
+            description: `Optional timeout in milliseconds (max ${POWERSHELL_MAX_TIMEOUT_MS})`,
+          },
+          description: {
+            type: "string",
+            description:
+              "Clear, concise description of what this command does in 5-10 words.",
+          },
+          run_in_background: {
+            type: "boolean",
+            description: `Set to true to run this command in the background. Use ${READ_TOOL_NAME} to read the output later.`,
+          },
+        },
+        required: ["command"],
+      },
+    },
+  },
+  // No `leanPrompt`: CC's PowerShellTool has none either (`@343320400`), and a
+  // condensed variant would hide the bash → PowerShell table from every lean
+  // session — which is the default. See `./prompt.ts`.
+  prompt: powershellPrompt,
+  execute: async (
+    args: Record<string, unknown>,
+    context: ToolContext,
+  ): Promise<ToolResult> => {
+    const command = args.command;
+    const description = args.description as string | undefined;
+    const runInBackground = args.run_in_background as boolean | undefined;
+    // Background runs carry no default timeout: the default exists to stop a
+    // foreground command from blocking the turn, and a background task is
+    // exactly the case where the user asked it to take its time (Bash does the
+    // same). An explicit `timeout` still applies.
+    const timeout = runInBackground
+      ? (args.timeout as number | undefined)
+      : ((args.timeout as number | undefined) ?? POWERSHELL_DEFAULT_TIMEOUT_MS);
+
+    if (!command || typeof command !== "string") {
+      return {
+        success: false,
+        content: "",
+        error: "Command parameter is required and must be a string",
+      };
+    }
+
+    // The binary behind this provider is resolved by the same module the
+    // parser uses (`getPowerShellPath`), so "the shell that judges" and "the
+    // shell that runs" cannot end up being different PowerShell versions.
+    const provider = getShellProvider("powershell");
+    if (!provider) {
+      return {
+        success: false,
+        content: "",
+        error:
+          "PowerShell not found. Install PowerShell 7 (pwsh) or enable Windows PowerShell, then retry.",
+      };
+    }
+
+    // Type only, like Bash: no upper bound is enforced (the tool description
+    // states one, the schema is the model's job to respect).
+    if (timeout !== undefined && (typeof timeout !== "number" || timeout < 0)) {
+      return {
+        success: false,
+        content: "",
+        error: "Timeout must be a non-negative number of milliseconds",
+      };
+    }
+
+    if (context.permissionManager) {
+      try {
+        const permissionContext = context.permissionManager.createContext(
+          POWERSHELL_TOOL_NAME,
+          context.permissionMode || "default",
+          context.canUseToolCallback,
+          { command, description, timeout, workdir: context.workdir },
+          context.toolCallId,
+        );
+        const permissionResult =
+          await context.permissionManager.checkPermission(permissionContext);
+
+        if (permissionResult.behavior === "deny") {
+          return {
+            success: false,
+            content: "",
+            error: `${POWERSHELL_TOOL_NAME} operation denied by user, reason: ${permissionResult.message || "No reason provided"}`,
+          };
+        }
+      } catch {
+        return {
+          success: false,
+          content: "",
+          error: "Permission check failed",
+        };
+      }
+    }
+
+    if (runInBackground) {
+      const backgroundTaskManager = context.backgroundTaskManager;
+      if (!backgroundTaskManager) {
+        return {
+          success: false,
+          content: "",
+          error: "Background task manager not available",
+        };
+      }
+
+      // No CWD tracking and no exit probe for a background task: the process
+      // outlives this call, so a tracked-cwd temp file would never be read, and
+      // the manager reports the shell's own exit code anyway (the Bash tool's
+      // background branch skips the wrapper for the same reason).
+      const { id: taskId } = backgroundTaskManager.startShell(
+        command,
+        timeout,
+        context.workdir,
+        {
+          shell: {
+            file: provider.shellPath,
+            args: provider.getSpawnArgs(command),
+            // Measured: a detached Windows PowerShell 5.1 child never runs the
+            // command at all (exit 0, no output, no side effect) — DETACHED_PROCESS
+            // gives it no console and 5.1's `-Command` then does nothing. So the
+            // PowerShell branch stays attached, where `windowsHide` does its job.
+            detached: false,
+          },
+        },
+      );
+      const task = backgroundTaskManager.getTask(taskId);
+      const outputPath = task?.outputPath;
+      const backgroundMsg = outputPath
+        ? `Command running in background with ID: ${taskId}. Output is being written to: ${outputPath}`
+        : `Command running in background with ID: ${taskId}. Use ${READ_TOOL_NAME} tool with task_id="${taskId}" to read the output.`;
+      return {
+        success: true,
+        content: backgroundMsg,
+        shortResult: `Background process ${taskId} started${outputPath ? ` → ${outputPath}` : ""}`,
+        backgroundTaskId: taskId,
+      };
+    }
+
+    // The working directory is tracked through a temp file, exactly as the Bash
+    // tool does it; an unwritable temp dir turns tracking off rather than
+    // failing the command (the exit probe still runs — the provider appends it
+    // either way).
+    const tempDir = resolveTempDir();
+    const tempDirProbe = probeTempDir(tempDir);
+    const exec = provider.buildExecCommand(command, {
+      tempDir: () => tempDir,
+      cwdTracking: !tempDirProbe || tempDirProbe.writable,
+    });
+    const wrappedCommand = exec.commandString;
+    const tempCwdFile = exec.cwdFilePath;
+
+    return new Promise<ToolResult>((resolve) => {
+      const spawnOptions: SpawnOptions = {
+        // fd0 is never a live pipe: nothing writes to the command's stdin, and
+        // a command that prompts would otherwise hang until the timeout.
+        stdio: ["ignore", "pipe", "pipe"],
+        // `spawnHidden` forces `windowsHide: true` — the host main process has
+        // no console, so without it every command allocates a visible one.
+        // The command is already an argv entry (`-Command <string>`); letting
+        // spawn prepend a shell would re-quote it a third time.
+        shell: false,
+        cwd: context.workdir,
+        env: { ...process.env, ...context.sessionEnv },
+      };
+
+      let child: ChildProcess;
+      try {
+        child = spawnHidden(
+          provider.shellPath,
+          provider.getSpawnArgs(wrappedCommand),
+          spawnOptions,
+        );
+      } catch (error) {
+        resolve({
+          success: false,
+          content: "",
+          error: `Failed to execute command: ${(error as Error).message}`,
+        });
+        return;
+      }
+
+      let outputBuffer = "";
+      let errorBuffer = "";
+      let isAborted = false;
+      let timeoutHandle: NodeJS.Timeout | undefined;
+      let finished = false;
+
+      // Windows PowerShell 5.1 writes GBK (cp936) for native tools it calls and
+      // the console's code page in general — not UTF-8, which is what 7 writes.
+      // `WindowsStreamDecoder` decides per stream, so both editions work.
+      const stdoutDecoder =
+        process.platform === "win32" ? new WindowsStreamDecoder() : null;
+      const stderrDecoder =
+        process.platform === "win32" ? new WindowsStreamDecoder() : null;
+
+      const describeOutput = (): string =>
+        outputBuffer + (errorBuffer ? "\n" + errorBuffer : "");
+
+      const cleanupTempFile = () => {
+        try {
+          fs.unlinkSync(tempCwdFile);
+        } catch {
+          // Best-effort cleanup: the file may never have been written.
+        }
+      };
+
+      const handleAbort = (reason = "Command execution was aborted") => {
+        if (finished || isAborted) return;
+        isAborted = true;
+        if (timeoutHandle) clearTimeout(timeoutHandle);
+        terminateChildProcessTree(child);
+        cleanupTempFile();
+
+        const processedOutput = processToolResult(
+          describeOutput(),
+          BASH_MAX_OUTPUT_CHARS,
+          "powershell",
+        );
+        resolve({
+          success: false,
+          content: processedOutput ? `${processedOutput}\n\n${reason}` : reason,
+          error: reason,
+          metadata: { exitCode: 130 },
+        });
+      };
+
+      if (context.abortSignal) {
+        if (context.abortSignal.aborted) {
+          handleAbort();
+          return;
+        }
+        context.abortSignal.addEventListener("abort", () => handleAbort(), {
+          once: true,
+        });
+      }
+
+      if (timeout && timeout > 0) {
+        timeoutHandle = setTimeout(() => {
+          handleAbort(
+            `Command timed out after ${Math.round(timeout / 1000)}s. Consider breaking the command into smaller steps or increasing the timeout.`,
+          );
+        }, timeout);
+      }
+
+      child.stdout?.on("data", (data) => {
+        if (isAborted) return;
+        outputBuffer += stdoutDecoder
+          ? stdoutDecoder.push(data)
+          : data.toString();
+      });
+
+      child.stderr?.on("data", (data) => {
+        if (isAborted) return;
+        errorBuffer += stderrDecoder
+          ? stderrDecoder.push(data)
+          : data.toString();
+      });
+
+      /**
+       * Read the buffers once the pipes are done, not when the process exits:
+       * `-Command` writes its last line and exits in the same breath, so at
+       * 'exit' the trailing chunk can still be in flight. The valve covers
+       * pipes held open by a grandchild.
+       */
+      const finalize = (code: number | null): void => {
+        if (finished) return;
+        finished = true;
+        if (timeoutHandle) clearTimeout(timeoutHandle);
+
+        if (stdoutDecoder) outputBuffer += stdoutDecoder.flush();
+        if (stderrDecoder) errorBuffer += stderrDecoder.flush();
+
+        const exitCode = code ?? 0;
+        const combinedOutput = describeOutput();
+
+        // Same contract as the Bash tool: the shell wrote its final location to
+        // a temp file, which is the only way a `Set-Location` survives the
+        // process it ran in.
+        const newCwd = readTrackedCwd(tempCwdFile);
+        let cwdMessage: string | undefined;
+        if (newCwd && newCwd !== context.workdir && context.onCwdChange) {
+          // Working directories only: an internal grant (the auto-memory
+          // directory) must not become where the shell lives, or every later
+          // relative path would resolve there.
+          const isInWorkingDirectory =
+            context.permissionManager?.isPathInWorkingDirectory?.(newCwd) ??
+            true;
+          if (!isInWorkingDirectory && context.originalWorkdir) {
+            context.onCwdChange(context.originalWorkdir);
+            cwdMessage = `Shell cwd was reset to ${context.originalWorkdir}`;
+          } else {
+            context.onCwdChange(newCwd);
+            cwdMessage = `Shell working directory changed to ${newCwd}`;
+          }
+        }
+
+        const content = processToolResult(
+          (cwdMessage ? cwdMessage + "\n" : "") +
+            (combinedOutput || `Command executed with exit code: ${exitCode}`),
+          BASH_MAX_OUTPUT_CHARS,
+          "powershell",
+        );
+
+        const lines = combinedOutput.trim().split("\n");
+        const shortResult =
+          lines.length <= 3
+            ? lines.join("\n")
+            : `... +${lines.length - 3} lines\n` + lines.slice(-3).join("\n");
+
+        resolve({
+          success: exitCode === 0,
+          content,
+          shortResult: shortResult || undefined,
+          // The provider appends the exit probe, so this is the status the
+          // command's own process ended with ($LASTEXITCODE when a native
+          // program ran) — the same meaning the Bash tool reports.
+          error:
+            exitCode !== 0
+              ? `Command failed with exit code: ${exitCode}`
+              : undefined,
+          metadata: { exitCode },
+        });
+      };
+
+      child.on("exit", (code) => {
+        if (isAborted) return;
+
+        const pendingStreams = [child.stdout, child.stderr].filter(
+          (stream): stream is Readable =>
+            !!stream &&
+            !stream.readableEnded &&
+            typeof stream.once === "function",
+        );
+        if (pendingStreams.length === 0) {
+          finalize(code);
+          return;
+        }
+
+        let drained = false;
+        let flushTimer: NodeJS.Timeout | undefined;
+        const finish = () => {
+          if (drained) return;
+          drained = true;
+          if (flushTimer) clearTimeout(flushTimer);
+          finalize(code);
+        };
+        const remaining = new Set(pendingStreams);
+        for (const stream of pendingStreams) {
+          const onDone = () => {
+            remaining.delete(stream);
+            if (remaining.size === 0) finish();
+          };
+          stream.once("end", onDone);
+          stream.once("error", onDone);
+        }
+        flushTimer = setTimeout(() => {
+          if (!drained) setImmediate(finish);
+        }, STREAM_FLUSH_TIMEOUT_MS);
+      });
+
+      child.on("error", (error) => {
+        if (finished || isAborted) return;
+        finished = true;
+        if (timeoutHandle) clearTimeout(timeoutHandle);
+        cleanupTempFile();
+        logger.debug(`[PowerShell] spawn error: ${error.message}`);
+        resolve({
+          success: false,
+          content: "",
+          error: `Failed to execute command: ${error.message}`,
+        });
+      });
+    });
+  },
+  formatCompactParams: (params: Record<string, unknown>) => {
+    const description = params.description as string;
+    const command = params.command as string;
+
+    return description || command;
+  },
+};

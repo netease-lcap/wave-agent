@@ -1965,6 +1965,7 @@ describe("PermissionManager", () => {
       expect(RESTRICTED_TOOLS).toEqual([
         "Edit",
         "Bash",
+        "PowerShell",
         "Write",
         "EnterPlanMode",
         "ExitPlanMode",

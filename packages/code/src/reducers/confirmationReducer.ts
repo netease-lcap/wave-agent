@@ -1,11 +1,11 @@
 import { Key } from "ink";
 import type { PermissionDecision, PermissionMode } from "wave-agent-sdk";
 import {
-  BASH_TOOL_NAME,
   EDIT_TOOL_NAME,
   EXIT_PLAN_MODE_TOOL_NAME,
   ENTER_PLAN_MODE_TOOL_NAME,
   WRITE_TOOL_NAME,
+  isShellToolName,
 } from "wave-agent-sdk";
 
 export interface ConfirmationState {
@@ -114,7 +114,7 @@ export function confirmationReducer(
             decision = { behavior: "allow" };
           }
         } else if (state.selectedOption === "auto") {
-          if (toolName === BASH_TOOL_NAME) {
+          if (isShellToolName(toolName)) {
             const command = (toolInput?.command as string) || "";
             if (command.trim().startsWith("mkdir")) {
               decision = {
@@ -122,9 +122,13 @@ export function confirmationReducer(
                 newPermissionMode: "acceptEdits",
               };
             } else {
+              // The rule namespace is the tool that will read it back: a
+              // `Bash(…)` rule is invisible to the PowerShell evaluator, whose
+              // `rulePattern()` requires the prefix to name its own tool. Same
+              // shape as the webview's `handleAutoConfirm`.
               const rule = suggestedPrefix
-                ? `Bash(${suggestedPrefix})`
-                : `Bash(${toolInput?.command})`;
+                ? `${toolName}(${suggestedPrefix})`
+                : `${toolName}(${toolInput?.command})`;
               decision = { behavior: "allow", newPermissionRule: rule };
             }
           } else if (toolName === ENTER_PLAN_MODE_TOOL_NAME) {
@@ -198,7 +202,7 @@ export function confirmationReducer(
       if (!hidePersistentOption) availableOptions.push("auto");
       if (
         toolName === EXIT_PLAN_MODE_TOOL_NAME ||
-        (toolName === BASH_TOOL_NAME && permissionMode !== "plan")
+        (isShellToolName(toolName) && permissionMode !== "plan")
       )
         availableOptions.push("bypass");
       availableOptions.push("alternative");

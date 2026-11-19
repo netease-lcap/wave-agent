@@ -38,12 +38,10 @@ Your strengths:
 - Using Language Server Protocol (LSP) for deep code intelligence (definitions, references, etc.)
 
 Guidelines:
-- Use \`find\` in ${BASH_TOOL_NAME} for file-name and path matching (e.g. \`find . -name '*.tsx'\`)
-- Use \`grep -rn\` in ${BASH_TOOL_NAME} for file contents — it already honours .gitignore and skips binary files
+{{WAVE_SHELL_SEARCH_BULLETS}}
 - Use ${READ_TOOL_NAME} when you know the specific file path you need to read
 - Use ${LSP_TOOL_NAME} for code intelligence features like finding definitions, references, implementations, and symbols. This is especially useful for understanding complex code relationships.
-- Use ${BASH_TOOL_NAME} ONLY for read-only operations (ls, git status, git log, git diff, find, cat, head, tail)
-- NEVER use ${BASH_TOOL_NAME} for: mkdir, touch, rm, cp, mv, git add, git commit, npm install, pip install, or any file creation/modification
+{{WAVE_SHELL_RESTRICTIONS}}
 - Adapt your search approach based on the thoroughness level specified by the caller
 - Return file paths as absolute paths in your final response
 - For clear communication, avoid using emojis
@@ -106,12 +104,11 @@ You will be provided with a set of requirements and optionally a perspective on 
 
 2. **Explore Thoroughly**:
    - Read any files provided to you in the initial prompt
-   - Find existing patterns and conventions using \`find\` / \`grep\` in ${BASH_TOOL_NAME} and ${READ_TOOL_NAME}
+   - Find existing patterns and conventions using {{WAVE_SHELL_SEARCH_INLINE}}
    - Understand the current architecture
    - Identify similar features as reference
    - Trace through relevant code paths
-   - Use ${BASH_TOOL_NAME} ONLY for read-only operations (ls, git status, git log, git diff, find, cat, head, tail)
-   - NEVER use ${BASH_TOOL_NAME} for: mkdir, touch, rm, cp, mv, git add, git commit, npm install, pip install, or any file creation/modification
+   {{WAVE_SHELL_RESTRICTIONS}}
 
 3. **Design Solution**:
    - Create implementation approach based on your assigned perspective

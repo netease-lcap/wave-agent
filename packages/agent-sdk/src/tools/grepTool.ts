@@ -1,26 +1,15 @@
 import type { ToolPlugin, ToolResult, ToolContext } from "./types.js";
-import { spawnHidden } from "../utils/execFileHidden.js";
 import { getRgPath } from "../utils/ripgrep.js";
 import { ensureRuntimeDeps } from "../utils/runtimeDeps.js";
 import { getDisplayPath } from "../utils/path.js";
+import { runCommand } from "../utils/runCommand.js";
+import { VCS_DIRECTORIES } from "../utils/vcsDirectories.js";
 import { logger } from "../utils/globalLogger.js";
 import {
   GREP_TOOL_NAME,
   BASH_TOOL_NAME,
   AGENT_TOOL_NAME,
 } from "../constants/tools.js";
-
-// Version control system directories to exclude from searches.
-// These are excluded automatically because they create noise in search results.
-// Mirrors Claude Code's VCS_DIRECTORIES_TO_EXCLUDE.
-const VCS_DIRECTORIES_TO_EXCLUDE = [
-  ".git",
-  ".svn",
-  ".hg",
-  ".bzr",
-  ".jj",
-  ".sl",
-] as const;
 
 /**
  * Grep tool plugin - powerful search tool based on ripgrep
@@ -189,7 +178,7 @@ export const grepTool: ToolPlugin = {
 
       // Exclude VCS directories to avoid noise from version control metadata.
       // --hidden above would otherwise traverse .git/.svn/etc.
-      for (const dir of VCS_DIRECTORIES_TO_EXCLUDE) {
+      for (const dir of VCS_DIRECTORIES) {
         rgArgs.push("--glob", `!${dir}`);
       }
 
@@ -256,7 +245,7 @@ export const grepTool: ToolPlugin = {
         rgArgs.push(".");
       }
 
-      const result = await executeCommand(rgPath, rgArgs, workdir);
+      const result = await runCommand(rgPath, rgArgs, workdir);
 
       // Only a process-level spawn failure (exitCode null) is a hard error.
       // rg exit 2 means some files were unreadable (e.g. device-name files
@@ -370,54 +359,3 @@ export const grepTool: ToolPlugin = {
     return result;
   },
 };
-
-/**
- * Execute command and return result
- */
-function executeCommand(
-  command: string,
-  args: string[],
-  cwd: string,
-): Promise<{
-  stdout: string;
-  stderr: string;
-  exitCode: number | null;
-  error: boolean;
-}> {
-  return new Promise((resolve) => {
-    const child = spawnHidden(command, args, {
-      cwd,
-      stdio: ["ignore", "pipe", "pipe"],
-      windowsHide: true,
-    });
-
-    let stdout = "";
-    let stderr = "";
-
-    child.stdout?.on("data", (data) => {
-      stdout += data.toString();
-    });
-
-    child.stderr?.on("data", (data) => {
-      stderr += data.toString();
-    });
-
-    child.on("close", (code) => {
-      resolve({
-        stdout,
-        stderr,
-        exitCode: code,
-        error: code !== 0 && code !== 1, // rg returns 1 for no matches, not an error
-      });
-    });
-
-    child.on("error", (err) => {
-      resolve({
-        stdout,
-        stderr: err.message,
-        exitCode: null,
-        error: true,
-      });
-    });
-  });
-}

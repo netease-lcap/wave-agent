@@ -11,12 +11,24 @@
  * - The action is recognized from **the command the tool was asked to run**,
  *   not from repository state. `git rev-parse HEAD` before and after a call
  *   would also see commits a build script made on its own, and would spend a
- *   git process on every Bash call; "created through Wave" is a property of
+ *   git process on every shell call; "created through Wave" is a property of
  *   the invocation.
  *
  * The command is read through the same parser the permission rules use, so
  * `git add -A && git commit`, `git -C <dir> commit` and a leading
  * `GIT_AUTHOR_NAME=…` are recognized, while `git log --grep commit` is not.
+ *
+ * The caller is every shell tool (`Bash`, `PowerShell`), so the input is a
+ * command line from either shell. `git`/`gh`/`glab` are external binaries
+ * invoked with the same argv in both, which is what makes one parser enough;
+ * the one operator whose meaning really differs is `&` — in bash it chains, in
+ * PowerShell it prefixes a command as the call operator (`& git commit`). The
+ * splitter treats it as a chain separator either way, and both readings leave
+ * the same leaf behind (`& git commit` → `git commit`), so nothing is invented.
+ * What it does cost is the opposite direction: a PowerShell path invocation
+ * (`& "C:\Program Files\Git\bin\git.exe" commit`) stays one leaf whose program
+ * name is not `git`, so that commit is not counted — a conservative miss, in
+ * line with the rest of this module never guessing.
  */
 
 import {
@@ -93,11 +105,11 @@ function isPullRequestCommand(leaf: string): boolean {
 }
 
 /**
- * What one Bash command line created. Every leaf of a chain is judged, so
+ * What one shell command line created. Every leaf of a chain is judged, so
  * `git add -A && gh pr create` scores both — but each action is a boolean, so
  * a call can never count twice no matter how many commits it makes.
  */
-export function detectBashActivity(command: string): ToolActivity {
+export function detectShellActivity(command: string): ToolActivity {
   const leaves = splitBashCommand(command);
   return {
     commits: leaves.some((leaf) => gitSubcommand(leaf) === "commit"),

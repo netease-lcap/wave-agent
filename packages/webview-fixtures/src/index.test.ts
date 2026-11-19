@@ -3,6 +3,7 @@ import {
   fixtures,
   fixtureSession,
   fixtureConfirmation,
+  fixturePowerShellConfirmation,
   fixtureQueuedMessage,
 } from "./index.js";
 
@@ -128,6 +129,15 @@ describe("fixtures factory", () => {
     expect(fixtureConfirmation()).toMatchObject({
       confirmationId: "confirm-1",
       toolName: "Bash",
+    });
+    // A PowerShell card differs only in the tool name and the rule it suggests
+    // — the shell-specific rendering keys off `toolName`, nothing else.
+    expect(fixturePowerShellConfirmation()).toMatchObject({
+      confirmationId: "confirm-ps-1",
+      toolName: "PowerShell",
+      confirmationType: "命令执行待确认",
+      suggestedPrefix: "Get-ChildItem",
+      toolInput: { command: "Get-ChildItem -Recurse -Filter *.ts" },
     });
     expect(fixtureQueuedMessage("hi")).toMatchObject({
       content: "hi",

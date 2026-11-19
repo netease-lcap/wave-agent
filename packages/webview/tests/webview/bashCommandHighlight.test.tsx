@@ -3,7 +3,7 @@ import { render } from "@testing-library/react";
 import React from "react";
 import { Message } from "../../src/components/Message";
 import { createMockVscode } from "./test-utils";
-import { BASH_TOOL_NAME } from "wave-agent-sdk/constants";
+import { BASH_TOOL_NAME, POWERSHELL_TOOL_NAME } from "wave-agent-sdk/constants";
 import type { Message as MessageType } from "../../src/types";
 
 // Bash 工具命令行的语法高亮（specs/ui/message-rendering-system.md「Bash 工具
@@ -86,6 +86,63 @@ describe("bash command syntax highlighting", () => {
   it("escapes markup in a command so nothing but spans survives", () => {
     const command = 'echo "<img src=x onerror=alert(1)>"';
     const { input } = renderBashCommand(command, { result: "ok\n" });
+
+    expect(input?.querySelector("img")).toBeNull();
+    expect(input?.textContent).toBe(command);
+  });
+});
+
+// PowerShell 与 Bash 共用一套块（`isShellToolName`），但**不**共用着色器：
+// hljs 没有 powershell 语法，用 bash 硬染会把 `-Param`、`$env:PATH` 染成错的
+// 颜色。所以 PS 走纯文本转义，形状与 Bash 一致、token 为零。
+describe("PowerShell tool blocks render as shell blocks", () => {
+  function renderPowerShellCommand(command: string, result?: string) {
+    const message = {
+      id: "msg-ps-command-1",
+      role: "assistant",
+      blocks: [
+        {
+          type: "tool",
+          name: POWERSHELL_TOOL_NAME,
+          parameters: JSON.stringify({ command }),
+          compactParams: command,
+          stage: "end",
+          success: true,
+          result,
+        },
+      ],
+    } as unknown as MessageType;
+    const { container } = render(
+      <Message message={message} vscode={createMockVscode()} />,
+    );
+    return {
+      container,
+      input: container.querySelector(".bash-command") as HTMLElement | null,
+    };
+  }
+
+  it("renders the command in the same shell block as Bash", () => {
+    const command = "Get-ChildItem -Recurse -Filter *.ts";
+    const { container, input } = renderPowerShellCommand(command, "a.ts\n");
+
+    expect(container.querySelector(".bash-command-unified")).not.toBeNull();
+    expect(input?.textContent).toBe(command);
+    expect(container.querySelector(".bash-command-output")).toHaveTextContent(
+      "a.ts",
+    );
+  });
+
+  it("leaves a PowerShell command as plain text instead of bash-highlighting it", () => {
+    const command = 'Write-Output "$env:PATH"';
+    const { input } = renderPowerShellCommand(command);
+
+    expect(input?.textContent).toBe(command);
+    expect(input?.querySelectorAll("span").length).toBe(0);
+  });
+
+  it("still escapes markup in a PowerShell command", () => {
+    const command = 'Write-Output "<img src=x onerror=alert(1)>"';
+    const { input } = renderPowerShellCommand(command);
 
     expect(input?.querySelector("img")).toBeNull();
     expect(input?.textContent).toBe(command);

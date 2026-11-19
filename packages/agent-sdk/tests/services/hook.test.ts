@@ -24,7 +24,7 @@ import {
   executeCommands,
   isCommandSafe,
 } from "../../src/services/hook.js";
-import { resolveShellPath } from "../../src/utils/shellResolver.js";
+import { resolveSessionShell } from "../../src/utils/shell/shellToolGate.js";
 import type {
   HookExecutionContext,
   ExtendedHookExecutionContext,
@@ -42,9 +42,11 @@ vi.mock("child_process", () => ({
   spawn: vi.fn(),
 }));
 
-// Mock shell resolver so Git Bash detection is deterministic in tests
-vi.mock("../../src/utils/shellResolver.js", () => ({
-  resolveShellPath: vi.fn(),
+// Mock the shell decision so "which shell does this session have" is
+// deterministic here: this file tests how a hook *uses* that answer, and the
+// decision itself is covered by tests/utils/shell/shellToolGate.test.ts.
+vi.mock("../../src/utils/shell/shellToolGate.js", () => ({
+  resolveSessionShell: vi.fn(),
 }));
 
 const mockSpawn = spawn as unknown as MockedFunction<
@@ -102,6 +104,13 @@ describe("Hook Services", () => {
     consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
     vi.clearAllMocks();
+
+    // Default: a POSIX session with bash. The shell-selection cases below
+    // override this; every other test only cares that *some* shell ran.
+    vi.mocked(resolveSessionShell).mockReturnValue({
+      kind: "bash",
+      shellPath: "/bin/sh",
+    });
   });
 
   afterEach(() => {
@@ -526,13 +535,14 @@ describe("Hook Services", () => {
     });
   });
 
-  describe("cross-platform support", () => {
-    it("should use Git Bash with POSIX command on Windows when available", async () => {
+  describe("shell selection", () => {
+    it("runs a Windows session's hook through Git Bash with a POSIX command", async () => {
       const originalPlatform = process.platform;
       Object.defineProperty(process, "platform", { value: "win32" });
-      vi.mocked(resolveShellPath).mockReturnValue(
-        "C:\\Program Files\\Git\\bin\\bash.exe",
-      );
+      vi.mocked(resolveSessionShell).mockReturnValue({
+        kind: "bash",
+        shellPath: "C:\\Program Files\\Git\\bin\\bash.exe",
+      });
 
       const mockProcess = new MockChildProcess();
       mockProcess.stdin = new MockStdin();
@@ -562,12 +572,11 @@ describe("Hook Services", () => {
       Object.defineProperty(process, "platform", { value: originalPlatform });
     });
 
-    it("should prepend bash for .sh hook commands on Windows", async () => {
-      const originalPlatform = process.platform;
-      Object.defineProperty(process, "platform", { value: "win32" });
-      vi.mocked(resolveShellPath).mockReturnValue(
-        "C:\\Program Files\\Git\\bin\\bash.exe",
-      );
+    it("prepends bash for .sh hook commands", async () => {
+      vi.mocked(resolveSessionShell).mockReturnValue({
+        kind: "bash",
+        shellPath: "C:\\Program Files\\Git\\bin\\bash.exe",
+      });
 
       const mockProcess = new MockChildProcess();
       mockProcess.stdin = new MockStdin();
@@ -594,15 +603,13 @@ describe("Hook Services", () => {
         "-c",
         "bash /c/plugins/setup-worktree.sh",
       ]);
-
-      // Restore original platform
-      Object.defineProperty(process, "platform", { value: originalPlatform });
     });
 
-    it("should fall back to cmd.exe on Windows when Git Bash is missing", async () => {
-      const originalPlatform = process.platform;
-      Object.defineProperty(process, "platform", { value: "win32" });
-      vi.mocked(resolveShellPath).mockReturnValue(undefined);
+    it("runs a PowerShell session's hook through pwsh with the verdict wrapper", async () => {
+      vi.mocked(resolveSessionShell).mockReturnValue({
+        kind: "powershell",
+        shellPath: "C:\\Program Files\\PowerShell\\7\\pwsh.exe",
+      });
 
       const mockProcess = new MockChildProcess();
       mockProcess.stdin = new MockStdin();
@@ -613,7 +620,12 @@ describe("Hook Services", () => {
         return mockProcess;
       });
 
-      const resultPromise = executeCommand("echo test", mockContext);
+      // A Windows path, deliberately: the PowerShell branch must NOT rewrite it
+      // to `/c/temp` the way the bash branch does.
+      const resultPromise = executeCommand(
+        "Get-ChildItem C:\\temp",
+        mockContext,
+      );
 
       setImmediate(() => {
         mockProcess.emit("close", 0);
@@ -622,27 +634,34 @@ describe("Hook Services", () => {
       await resultPromise;
 
       expect(spawnArgs).toBeDefined();
-      expect(spawnArgs![0]).toBe("cmd.exe");
-      expect(spawnArgs![1]).toEqual(["/c", "echo test"]);
-
-      // Restore original platform
-      Object.defineProperty(process, "platform", { value: originalPlatform });
+      expect(spawnArgs![0]).toBe("C:\\Program Files\\PowerShell\\7\\pwsh.exe");
+      // The wrapper is what carries a hook's `exit 2` verdict out of PowerShell:
+      // `powershell -Command 'cmd /c exit 2'` exits 1 on its own (5.1, measured),
+      // which the protocol reads as "failed", not "block".
+      expect(spawnArgs![1]).toEqual([
+        "-NoProfile",
+        "-NonInteractive",
+        "-NoLogo",
+        "-Command",
+        "Get-ChildItem C:\\temp\n; if (-not $?) { if ($LASTEXITCODE -eq 2) { exit 2 } }",
+      ]);
     });
 
-    it("should use correct shell for Unix systems", async () => {
-      const originalPlatform = process.platform;
-      Object.defineProperty(process, "platform", { value: "linux" });
+    it("asks the shell decision about the session root, not the drifting cwd", async () => {
+      vi.mocked(resolveSessionShell).mockReturnValue({
+        kind: "bash",
+        shellPath: "/bin/sh",
+      });
 
       const mockProcess = new MockChildProcess();
       mockProcess.stdin = new MockStdin();
-      let spawnArgs: Parameters<typeof spawn> | undefined;
+      mockSpawn.mockReturnValue(mockProcess);
 
-      mockSpawn.mockImplementation((...args) => {
-        spawnArgs = args as Parameters<typeof spawn>;
-        return mockProcess;
+      const resultPromise = executeCommand("echo test", {
+        ...mockContext,
+        projectDir: "/test/project/sub",
+        sessionRoot: "/test/project",
       });
-
-      const resultPromise = executeCommand("echo test", mockContext);
 
       setImmediate(() => {
         mockProcess.emit("close", 0);
@@ -650,12 +669,19 @@ describe("Hook Services", () => {
 
       await resultPromise;
 
-      expect(spawnArgs).toBeDefined();
-      expect(spawnArgs![0]).toBe("/bin/sh");
-      expect(spawnArgs![1]).toEqual(["-c", "echo test"]);
+      expect(resolveSessionShell).toHaveBeenCalledWith("/test/project");
+    });
 
-      // Restore original platform
-      Object.defineProperty(process, "platform", { value: originalPlatform });
+    it("refuses to run when the session has no shell at all", async () => {
+      vi.mocked(resolveSessionShell).mockReturnValue({
+        problem:
+          "No shell is available to run this command: Git Bash was not found and the PowerShell tool is off.",
+      });
+
+      await expect(executeCommand("echo test", mockContext)).rejects.toThrow(
+        "No shell is available",
+      );
+      expect(mockSpawn).not.toHaveBeenCalled();
     });
   });
 

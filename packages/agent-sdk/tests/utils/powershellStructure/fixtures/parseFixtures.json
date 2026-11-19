@@ -1,0 +1,3119 @@
+[
+  {
+    "id": "get-childitem",
+    "command": "Get-ChildItem -Path . -Recurse",
+    "raw": {
+      "hasStopParsing": false,
+      "statements": [
+        {
+          "elements": [
+            {
+              "redirections": [],
+              "commandElements": [
+                {
+                  "value": "Get-ChildItem",
+                  "type": "StringConstantExpressionAst",
+                  "text": "Get-ChildItem"
+                },
+                {
+                  "text": "-Path",
+                  "type": "CommandParameterAst"
+                },
+                {
+                  "value": ".",
+                  "type": "StringConstantExpressionAst",
+                  "text": "."
+                },
+                {
+                  "text": "-Recurse",
+                  "type": "CommandParameterAst"
+                }
+              ],
+              "type": "CommandAst",
+              "text": "Get-ChildItem -Path . -Recurse"
+            }
+          ],
+          "type": "PipelineAst",
+          "text": "Get-ChildItem -Path . -Recurse"
+        }
+      ],
+      "errors": [],
+      "originalCommand": "Get-ChildItem -Path . -Recurse",
+      "valid": true,
+      "variables": []
+    },
+    "parsed": {
+      "valid": true,
+      "errors": [],
+      "statements": [
+        {
+          "statementType": "PipelineAst",
+          "commands": [
+            {
+              "name": "Get-ChildItem",
+              "nameType": "cmdlet",
+              "elementType": "CommandAst",
+              "args": ["-Path", ".", "-Recurse"],
+              "text": "Get-ChildItem -Path . -Recurse",
+              "elementTypes": [
+                "StringConstant",
+                "Parameter",
+                "StringConstant",
+                "Parameter"
+              ],
+              "redirections": []
+            }
+          ],
+          "redirections": [],
+          "text": "Get-ChildItem -Path . -Recurse"
+        }
+      ],
+      "variables": [],
+      "hasStopParsing": false,
+      "originalCommand": "Get-ChildItem -Path . -Recurse"
+    }
+  },
+  {
+    "id": "pipeline-scriptblock",
+    "command": "Get-Process | Where-Object { $_.CPU -gt 10 } | Select-Object -First 5",
+    "raw": {
+      "hasStopParsing": false,
+      "statements": [
+        {
+          "securityPatterns": {
+            "hasMemberInvocations": true,
+            "hasScriptBlocks": true
+          },
+          "elements": [
+            {
+              "redirections": [],
+              "commandElements": [
+                {
+                  "value": "Get-Process",
+                  "type": "StringConstantExpressionAst",
+                  "text": "Get-Process"
+                }
+              ],
+              "type": "CommandAst",
+              "text": "Get-Process"
+            },
+            {
+              "redirections": [],
+              "commandElements": [
+                {
+                  "value": "Where-Object",
+                  "type": "StringConstantExpressionAst",
+                  "text": "Where-Object"
+                },
+                {
+                  "text": "{ $_.CPU -gt 10 }",
+                  "type": "ScriptBlockExpressionAst"
+                }
+              ],
+              "type": "CommandAst",
+              "text": "Where-Object { $_.CPU -gt 10 }"
+            },
+            {
+              "redirections": [],
+              "commandElements": [
+                {
+                  "value": "Select-Object",
+                  "type": "StringConstantExpressionAst",
+                  "text": "Select-Object"
+                },
+                {
+                  "text": "-First",
+                  "type": "CommandParameterAst"
+                },
+                {
+                  "text": "5",
+                  "type": "ConstantExpressionAst"
+                }
+              ],
+              "type": "CommandAst",
+              "text": "Select-Object -First 5"
+            }
+          ],
+          "type": "PipelineAst",
+          "text": "Get-Process | Where-Object { $_.CPU -gt 10 } | Select-Object -First 5"
+        }
+      ],
+      "errors": [],
+      "originalCommand": "Get-Process | Where-Object { $_.CPU -gt 10 } | Select-Object -First 5",
+      "valid": true,
+      "variables": [
+        {
+          "isSplatted": false,
+          "path": "_"
+        }
+      ]
+    },
+    "parsed": {
+      "valid": true,
+      "errors": [],
+      "statements": [
+        {
+          "statementType": "PipelineAst",
+          "commands": [
+            {
+              "name": "Get-Process",
+              "nameType": "cmdlet",
+              "elementType": "CommandAst",
+              "args": [],
+              "text": "Get-Process",
+              "elementTypes": ["StringConstant"],
+              "redirections": []
+            },
+            {
+              "name": "Where-Object",
+              "nameType": "cmdlet",
+              "elementType": "CommandAst",
+              "args": ["{ $_.CPU -gt 10 }"],
+              "text": "Where-Object { $_.CPU -gt 10 }",
+              "elementTypes": ["StringConstant", "ScriptBlock"],
+              "redirections": []
+            },
+            {
+              "name": "Select-Object",
+              "nameType": "cmdlet",
+              "elementType": "CommandAst",
+              "args": ["-First", "5"],
+              "text": "Select-Object -First 5",
+              "elementTypes": ["StringConstant", "Parameter", "Other"],
+              "redirections": []
+            }
+          ],
+          "redirections": [],
+          "text": "Get-Process | Where-Object { $_.CPU -gt 10 } | Select-Object -First 5",
+          "securityPatterns": {
+            "hasMemberInvocations": true,
+            "hasScriptBlocks": true
+          }
+        }
+      ],
+      "variables": [
+        {
+          "path": "_",
+          "isSplatted": false
+        }
+      ],
+      "hasStopParsing": false,
+      "originalCommand": "Get-Process | Where-Object { $_.CPU -gt 10 } | Select-Object -First 5"
+    }
+  },
+  {
+    "id": "redirect-out",
+    "command": "Get-Content foo.txt > out.txt",
+    "raw": {
+      "hasStopParsing": false,
+      "statements": [
+        {
+          "redirections": [
+            {
+              "fromStream": "Output",
+              "locationText": "out.txt",
+              "type": "FileRedirectionAst",
+              "append": false
+            }
+          ],
+          "elements": [
+            {
+              "redirections": [
+                {
+                  "fromStream": "Output",
+                  "locationText": "out.txt",
+                  "type": "FileRedirectionAst",
+                  "append": false
+                }
+              ],
+              "commandElements": [
+                {
+                  "value": "Get-Content",
+                  "type": "StringConstantExpressionAst",
+                  "text": "Get-Content"
+                },
+                {
+                  "value": "foo.txt",
+                  "type": "StringConstantExpressionAst",
+                  "text": "foo.txt"
+                }
+              ],
+              "type": "CommandAst",
+              "text": "Get-Content foo.txt > out.txt"
+            }
+          ],
+          "type": "PipelineAst",
+          "text": "Get-Content foo.txt > out.txt"
+        }
+      ],
+      "errors": [],
+      "originalCommand": "Get-Content foo.txt > out.txt",
+      "valid": true,
+      "variables": []
+    },
+    "parsed": {
+      "valid": true,
+      "errors": [],
+      "statements": [
+        {
+          "statementType": "PipelineAst",
+          "commands": [
+            {
+              "name": "Get-Content",
+              "nameType": "cmdlet",
+              "elementType": "CommandAst",
+              "args": ["foo.txt"],
+              "text": "Get-Content foo.txt > out.txt",
+              "elementTypes": ["StringConstant", "StringConstant"],
+              "redirections": [
+                {
+                  "operator": ">",
+                  "target": "out.txt",
+                  "isMerging": false
+                }
+              ]
+            }
+          ],
+          "redirections": [
+            {
+              "operator": ">",
+              "target": "out.txt",
+              "isMerging": false
+            }
+          ],
+          "text": "Get-Content foo.txt > out.txt"
+        }
+      ],
+      "variables": [],
+      "hasStopParsing": false,
+      "originalCommand": "Get-Content foo.txt > out.txt"
+    }
+  },
+  {
+    "id": "redirect-append-error",
+    "command": "Get-Content foo.txt 2>> err.txt",
+    "raw": {
+      "hasStopParsing": false,
+      "statements": [
+        {
+          "redirections": [
+            {
+              "fromStream": "Error",
+              "locationText": "err.txt",
+              "type": "FileRedirectionAst",
+              "append": true
+            }
+          ],
+          "elements": [
+            {
+              "redirections": [
+                {
+                  "fromStream": "Error",
+                  "locationText": "err.txt",
+                  "type": "FileRedirectionAst",
+                  "append": true
+                }
+              ],
+              "commandElements": [
+                {
+                  "value": "Get-Content",
+                  "type": "StringConstantExpressionAst",
+                  "text": "Get-Content"
+                },
+                {
+                  "value": "foo.txt",
+                  "type": "StringConstantExpressionAst",
+                  "text": "foo.txt"
+                }
+              ],
+              "type": "CommandAst",
+              "text": "Get-Content foo.txt 2>> err.txt"
+            }
+          ],
+          "type": "PipelineAst",
+          "text": "Get-Content foo.txt 2>> err.txt"
+        }
+      ],
+      "errors": [],
+      "originalCommand": "Get-Content foo.txt 2>> err.txt",
+      "valid": true,
+      "variables": []
+    },
+    "parsed": {
+      "valid": true,
+      "errors": [],
+      "statements": [
+        {
+          "statementType": "PipelineAst",
+          "commands": [
+            {
+              "name": "Get-Content",
+              "nameType": "cmdlet",
+              "elementType": "CommandAst",
+              "args": ["foo.txt"],
+              "text": "Get-Content foo.txt 2>> err.txt",
+              "elementTypes": ["StringConstant", "StringConstant"],
+              "redirections": [
+                {
+                  "operator": "2>>",
+                  "target": "err.txt",
+                  "isMerging": false
+                }
+              ]
+            }
+          ],
+          "redirections": [
+            {
+              "operator": "2>>",
+              "target": "err.txt",
+              "isMerging": false
+            }
+          ],
+          "text": "Get-Content foo.txt 2>> err.txt"
+        }
+      ],
+      "variables": [],
+      "hasStopParsing": false,
+      "originalCommand": "Get-Content foo.txt 2>> err.txt"
+    }
+  },
+  {
+    "id": "redirect-merge-and-file",
+    "command": "echo hi 2>&1 > file.txt",
+    "raw": {
+      "hasStopParsing": false,
+      "statements": [
+        {
+          "redirections": [
+            {
+              "fromStream": "Output",
+              "locationText": "file.txt",
+              "type": "FileRedirectionAst",
+              "append": false
+            }
+          ],
+          "elements": [
+            {
+              "redirections": [
+                {
+                  "fromStream": "Output",
+                  "locationText": "file.txt",
+                  "type": "FileRedirectionAst",
+                  "append": false
+                },
+                {
+                  "type": "MergingRedirectionAst"
+                }
+              ],
+              "commandElements": [
+                {
+                  "value": "echo",
+                  "type": "StringConstantExpressionAst",
+                  "text": "echo"
+                },
+                {
+                  "value": "hi",
+                  "type": "StringConstantExpressionAst",
+                  "text": "hi"
+                }
+              ],
+              "type": "CommandAst",
+              "text": "echo hi 2>&1 > file.txt"
+            }
+          ],
+          "type": "PipelineAst",
+          "text": "echo hi 2>&1 > file.txt"
+        }
+      ],
+      "errors": [],
+      "originalCommand": "echo hi 2>&1 > file.txt",
+      "valid": true,
+      "variables": []
+    },
+    "parsed": {
+      "valid": true,
+      "errors": [],
+      "statements": [
+        {
+          "statementType": "PipelineAst",
+          "commands": [
+            {
+              "name": "echo",
+              "nameType": "unknown",
+              "elementType": "CommandAst",
+              "args": ["hi"],
+              "text": "echo hi 2>&1 > file.txt",
+              "elementTypes": ["StringConstant", "StringConstant"],
+              "redirections": [
+                {
+                  "operator": ">",
+                  "target": "file.txt",
+                  "isMerging": false
+                },
+                {
+                  "operator": "2>&1",
+                  "target": "",
+                  "isMerging": true
+                }
+              ]
+            }
+          ],
+          "redirections": [
+            {
+              "operator": ">",
+              "target": "file.txt",
+              "isMerging": false
+            },
+            {
+              "operator": "2>&1",
+              "target": "",
+              "isMerging": true
+            }
+          ],
+          "text": "echo hi 2>&1 > file.txt"
+        }
+      ],
+      "variables": [],
+      "hasStopParsing": false,
+      "originalCommand": "echo hi 2>&1 > file.txt"
+    }
+  },
+  {
+    "id": "semicolon-chain",
+    "command": "cd C:\\Windows; dir",
+    "raw": {
+      "hasStopParsing": false,
+      "statements": [
+        {
+          "elements": [
+            {
+              "redirections": [],
+              "commandElements": [
+                {
+                  "value": "cd",
+                  "type": "StringConstantExpressionAst",
+                  "text": "cd"
+                },
+                {
+                  "value": "C:\\Windows",
+                  "type": "StringConstantExpressionAst",
+                  "text": "C:\\Windows"
+                }
+              ],
+              "type": "CommandAst",
+              "text": "cd C:\\Windows"
+            }
+          ],
+          "type": "PipelineAst",
+          "text": "cd C:\\Windows"
+        },
+        {
+          "elements": [
+            {
+              "redirections": [],
+              "commandElements": [
+                {
+                  "value": "dir",
+                  "type": "StringConstantExpressionAst",
+                  "text": "dir"
+                }
+              ],
+              "type": "CommandAst",
+              "text": "dir"
+            }
+          ],
+          "type": "PipelineAst",
+          "text": "dir"
+        }
+      ],
+      "errors": [],
+      "originalCommand": "cd C:\\Windows; dir",
+      "valid": true,
+      "variables": []
+    },
+    "parsed": {
+      "valid": true,
+      "errors": [],
+      "statements": [
+        {
+          "statementType": "PipelineAst",
+          "commands": [
+            {
+              "name": "cd",
+              "nameType": "unknown",
+              "elementType": "CommandAst",
+              "args": ["C:\\Windows"],
+              "text": "cd C:\\Windows",
+              "elementTypes": ["StringConstant", "StringConstant"],
+              "redirections": []
+            }
+          ],
+          "redirections": [],
+          "text": "cd C:\\Windows"
+        },
+        {
+          "statementType": "PipelineAst",
+          "commands": [
+            {
+              "name": "dir",
+              "nameType": "unknown",
+              "elementType": "CommandAst",
+              "args": [],
+              "text": "dir",
+              "elementTypes": ["StringConstant"],
+              "redirections": []
+            }
+          ],
+          "redirections": [],
+          "text": "dir"
+        }
+      ],
+      "variables": [],
+      "hasStopParsing": false,
+      "originalCommand": "cd C:\\Windows; dir"
+    }
+  },
+  {
+    "id": "assignment",
+    "command": "$x = Get-Process",
+    "raw": {
+      "hasStopParsing": false,
+      "statements": [
+        {
+          "nestedCommands": [
+            {
+              "redirections": [],
+              "commandElements": [
+                {
+                  "value": "Get-Process",
+                  "type": "StringConstantExpressionAst",
+                  "text": "Get-Process"
+                }
+              ],
+              "type": "CommandAst",
+              "text": "Get-Process"
+            }
+          ],
+          "type": "AssignmentStatementAst",
+          "text": "$x = Get-Process"
+        }
+      ],
+      "errors": [],
+      "originalCommand": "$x = Get-Process",
+      "valid": true,
+      "variables": [
+        {
+          "isSplatted": false,
+          "path": "x"
+        }
+      ]
+    },
+    "parsed": {
+      "valid": true,
+      "errors": [],
+      "statements": [
+        {
+          "statementType": "AssignmentStatementAst",
+          "commands": [],
+          "redirections": [],
+          "text": "$x = Get-Process",
+          "nestedCommands": [
+            {
+              "name": "Get-Process",
+              "nameType": "cmdlet",
+              "elementType": "CommandAst",
+              "args": [],
+              "text": "Get-Process",
+              "elementTypes": ["StringConstant"],
+              "redirections": []
+            }
+          ]
+        }
+      ],
+      "variables": [
+        {
+          "path": "x",
+          "isSplatted": false
+        }
+      ],
+      "hasStopParsing": false,
+      "originalCommand": "$x = Get-Process"
+    }
+  },
+  {
+    "id": "if-body",
+    "command": "if (Test-Path x) { Remove-Item x } else { Write-Output 'no' }",
+    "raw": {
+      "hasStopParsing": false,
+      "statements": [
+        {
+          "nestedCommands": [
+            {
+              "redirections": [],
+              "commandElements": [
+                {
+                  "value": "Test-Path",
+                  "type": "StringConstantExpressionAst",
+                  "text": "Test-Path"
+                },
+                {
+                  "value": "x",
+                  "type": "StringConstantExpressionAst",
+                  "text": "x"
+                }
+              ],
+              "type": "CommandAst",
+              "text": "Test-Path x"
+            },
+            {
+              "redirections": [],
+              "commandElements": [
+                {
+                  "value": "Remove-Item",
+                  "type": "StringConstantExpressionAst",
+                  "text": "Remove-Item"
+                },
+                {
+                  "value": "x",
+                  "type": "StringConstantExpressionAst",
+                  "text": "x"
+                }
+              ],
+              "type": "CommandAst",
+              "text": "Remove-Item x"
+            },
+            {
+              "redirections": [],
+              "commandElements": [
+                {
+                  "value": "Write-Output",
+                  "type": "StringConstantExpressionAst",
+                  "text": "Write-Output"
+                },
+                {
+                  "value": "no",
+                  "type": "StringConstantExpressionAst",
+                  "text": "'no'"
+                }
+              ],
+              "type": "CommandAst",
+              "text": "Write-Output 'no'"
+            }
+          ],
+          "type": "IfStatementAst",
+          "text": "if (Test-Path x) { Remove-Item x } else { Write-Output 'no' }"
+        }
+      ],
+      "errors": [],
+      "originalCommand": "if (Test-Path x) { Remove-Item x } else { Write-Output 'no' }",
+      "valid": true,
+      "variables": []
+    },
+    "parsed": {
+      "valid": true,
+      "errors": [],
+      "statements": [
+        {
+          "statementType": "IfStatementAst",
+          "commands": [],
+          "redirections": [],
+          "text": "if (Test-Path x) { Remove-Item x } else { Write-Output 'no' }",
+          "nestedCommands": [
+            {
+              "name": "Test-Path",
+              "nameType": "cmdlet",
+              "elementType": "CommandAst",
+              "args": ["x"],
+              "text": "Test-Path x",
+              "elementTypes": ["StringConstant", "StringConstant"],
+              "redirections": []
+            },
+            {
+              "name": "Remove-Item",
+              "nameType": "cmdlet",
+              "elementType": "CommandAst",
+              "args": ["x"],
+              "text": "Remove-Item x",
+              "elementTypes": ["StringConstant", "StringConstant"],
+              "redirections": []
+            },
+            {
+              "name": "Write-Output",
+              "nameType": "cmdlet",
+              "elementType": "CommandAst",
+              "args": ["no"],
+              "text": "Write-Output 'no'",
+              "elementTypes": ["StringConstant", "StringConstant"],
+              "redirections": []
+            }
+          ]
+        }
+      ],
+      "variables": [],
+      "hasStopParsing": false,
+      "originalCommand": "if (Test-Path x) { Remove-Item x } else { Write-Output 'no' }"
+    }
+  },
+  {
+    "id": "foreach-body",
+    "command": "foreach ($f in Get-ChildItem *.txt) { Remove-Item $f }",
+    "raw": {
+      "hasStopParsing": false,
+      "statements": [
+        {
+          "nestedCommands": [
+            {
+              "redirections": [],
+              "commandElements": [
+                {
+                  "value": "Get-ChildItem",
+                  "type": "StringConstantExpressionAst",
+                  "text": "Get-ChildItem"
+                },
+                {
+                  "value": "*.txt",
+                  "type": "StringConstantExpressionAst",
+                  "text": "*.txt"
+                }
+              ],
+              "type": "CommandAst",
+              "text": "Get-ChildItem *.txt"
+            },
+            {
+              "redirections": [],
+              "commandElements": [
+                {
+                  "value": "Remove-Item",
+                  "type": "StringConstantExpressionAst",
+                  "text": "Remove-Item"
+                },
+                {
+                  "text": "$f",
+                  "type": "VariableExpressionAst"
+                }
+              ],
+              "type": "CommandAst",
+              "text": "Remove-Item $f"
+            }
+          ],
+          "type": "ForEachStatementAst",
+          "text": "foreach ($f in Get-ChildItem *.txt) { Remove-Item $f }"
+        }
+      ],
+      "errors": [],
+      "originalCommand": "foreach ($f in Get-ChildItem *.txt) { Remove-Item $f }",
+      "valid": true,
+      "variables": [
+        {
+          "isSplatted": false,
+          "path": "f"
+        },
+        {
+          "isSplatted": false,
+          "path": "f"
+        }
+      ]
+    },
+    "parsed": {
+      "valid": true,
+      "errors": [],
+      "statements": [
+        {
+          "statementType": "ForEachStatementAst",
+          "commands": [],
+          "redirections": [],
+          "text": "foreach ($f in Get-ChildItem *.txt) { Remove-Item $f }",
+          "nestedCommands": [
+            {
+              "name": "Get-ChildItem",
+              "nameType": "cmdlet",
+              "elementType": "CommandAst",
+              "args": ["*.txt"],
+              "text": "Get-ChildItem *.txt",
+              "elementTypes": ["StringConstant", "StringConstant"],
+              "redirections": []
+            },
+            {
+              "name": "Remove-Item",
+              "nameType": "cmdlet",
+              "elementType": "CommandAst",
+              "args": ["$f"],
+              "text": "Remove-Item $f",
+              "elementTypes": ["StringConstant", "Variable"],
+              "redirections": []
+            }
+          ]
+        }
+      ],
+      "variables": [
+        {
+          "path": "f",
+          "isSplatted": false
+        },
+        {
+          "path": "f",
+          "isSplatted": false
+        }
+      ],
+      "hasStopParsing": false,
+      "originalCommand": "foreach ($f in Get-ChildItem *.txt) { Remove-Item $f }"
+    }
+  },
+  {
+    "id": "subexpression",
+    "command": "Write-Output $(Get-Date)",
+    "raw": {
+      "hasStopParsing": false,
+      "statements": [
+        {
+          "nestedCommands": [
+            {
+              "redirections": [],
+              "commandElements": [
+                {
+                  "value": "Get-Date",
+                  "type": "StringConstantExpressionAst",
+                  "text": "Get-Date"
+                }
+              ],
+              "type": "CommandAst",
+              "text": "Get-Date"
+            }
+          ],
+          "securityPatterns": {
+            "hasSubExpressions": true
+          },
+          "elements": [
+            {
+              "redirections": [],
+              "commandElements": [
+                {
+                  "value": "Write-Output",
+                  "type": "StringConstantExpressionAst",
+                  "text": "Write-Output"
+                },
+                {
+                  "text": "$(Get-Date)",
+                  "type": "SubExpressionAst"
+                }
+              ],
+              "type": "CommandAst",
+              "text": "Write-Output $(Get-Date)"
+            }
+          ],
+          "type": "PipelineAst",
+          "text": "Write-Output $(Get-Date)"
+        }
+      ],
+      "errors": [],
+      "originalCommand": "Write-Output $(Get-Date)",
+      "valid": true,
+      "variables": []
+    },
+    "parsed": {
+      "valid": true,
+      "errors": [],
+      "statements": [
+        {
+          "statementType": "PipelineAst",
+          "commands": [
+            {
+              "name": "Write-Output",
+              "nameType": "cmdlet",
+              "elementType": "CommandAst",
+              "args": ["$(Get-Date)"],
+              "text": "Write-Output $(Get-Date)",
+              "elementTypes": ["StringConstant", "SubExpression"],
+              "redirections": []
+            }
+          ],
+          "redirections": [],
+          "text": "Write-Output $(Get-Date)",
+          "nestedCommands": [
+            {
+              "name": "Get-Date",
+              "nameType": "cmdlet",
+              "elementType": "CommandAst",
+              "args": [],
+              "text": "Get-Date",
+              "elementTypes": ["StringConstant"],
+              "redirections": []
+            }
+          ],
+          "securityPatterns": {
+            "hasSubExpressions": true
+          }
+        }
+      ],
+      "variables": [],
+      "hasStopParsing": false,
+      "originalCommand": "Write-Output $(Get-Date)"
+    }
+  },
+  {
+    "id": "here-string",
+    "command": "@\"\nhello\n\"@",
+    "raw": {
+      "hasStopParsing": false,
+      "statements": [
+        {
+          "elements": [
+            {
+              "expressionType": "StringConstantExpressionAst",
+              "redirections": [],
+              "type": "CommandExpressionAst",
+              "text": "@\"\nhello\n\"@"
+            }
+          ],
+          "type": "PipelineAst",
+          "text": "@\"\nhello\n\"@"
+        }
+      ],
+      "errors": [],
+      "originalCommand": "@\"\nhello\n\"@",
+      "valid": true,
+      "variables": []
+    },
+    "parsed": {
+      "valid": true,
+      "errors": [],
+      "statements": [
+        {
+          "statementType": "PipelineAst",
+          "commands": [
+            {
+              "name": "",
+              "nameType": "unknown",
+              "elementType": "CommandExpressionAst",
+              "args": [],
+              "text": "@\"\nhello\n\"@",
+              "elementTypes": ["StringConstant"],
+              "redirections": []
+            }
+          ],
+          "redirections": [],
+          "text": "@\"\nhello\n\"@"
+        }
+      ],
+      "variables": [],
+      "hasStopParsing": false,
+      "originalCommand": "@\"\nhello\n\"@"
+    }
+  },
+  {
+    "id": "stop-parsing",
+    "command": "cmd.exe --% /c echo one two",
+    "raw": {
+      "hasStopParsing": true,
+      "statements": [
+        {
+          "elements": [
+            {
+              "redirections": [],
+              "commandElements": [
+                {
+                  "value": "cmd.exe",
+                  "type": "StringConstantExpressionAst",
+                  "text": "cmd.exe"
+                },
+                {
+                  "value": "--%",
+                  "type": "StringConstantExpressionAst",
+                  "text": "--%"
+                },
+                {
+                  "value": "/c echo one two",
+                  "type": "StringConstantExpressionAst",
+                  "text": "/c echo one two"
+                }
+              ],
+              "type": "CommandAst",
+              "text": "cmd.exe --% /c echo one two"
+            }
+          ],
+          "type": "PipelineAst",
+          "text": "cmd.exe --% /c echo one two"
+        }
+      ],
+      "errors": [],
+      "originalCommand": "cmd.exe --% /c echo one two",
+      "valid": true,
+      "variables": []
+    },
+    "parsed": {
+      "valid": true,
+      "errors": [],
+      "statements": [
+        {
+          "statementType": "PipelineAst",
+          "commands": [
+            {
+              "name": "cmd.exe",
+              "nameType": "application",
+              "elementType": "CommandAst",
+              "args": ["--%", "/c echo one two"],
+              "text": "cmd.exe --% /c echo one two",
+              "elementTypes": [
+                "StringConstant",
+                "StringConstant",
+                "StringConstant"
+              ],
+              "redirections": []
+            }
+          ],
+          "redirections": [],
+          "text": "cmd.exe --% /c echo one two"
+        }
+      ],
+      "variables": [],
+      "hasStopParsing": true,
+      "originalCommand": "cmd.exe --% /c echo one two"
+    }
+  },
+  {
+    "id": "syntax-error-andand",
+    "command": "Get-ChildItem && Remove-Item x",
+    "raw": {
+      "hasStopParsing": false,
+      "statements": [
+        {
+          "elements": [
+            {
+              "redirections": [],
+              "commandElements": [
+                {
+                  "value": "Get-ChildItem",
+                  "type": "StringConstantExpressionAst",
+                  "text": "Get-ChildItem"
+                }
+              ],
+              "type": "CommandAst",
+              "text": "Get-ChildItem"
+            },
+            {
+              "redirections": [],
+              "commandElements": [
+                {
+                  "value": "Remove-Item",
+                  "type": "StringConstantExpressionAst",
+                  "text": "Remove-Item"
+                },
+                {
+                  "value": "x",
+                  "type": "StringConstantExpressionAst",
+                  "text": "x"
+                }
+              ],
+              "type": "CommandAst",
+              "text": "Remove-Item x"
+            }
+          ],
+          "type": "PipelineAst",
+          "text": "Get-ChildItem && Remove-Item x"
+        }
+      ],
+      "errors": [
+        {
+          "errorId": "InvalidEndOfLine",
+          "message": "标记“&&”不是此版本中的有效语句分隔符。"
+        }
+      ],
+      "originalCommand": "Get-ChildItem && Remove-Item x",
+      "valid": false,
+      "variables": []
+    },
+    "parsed": {
+      "valid": false,
+      "errors": [
+        {
+          "message": "标记“&&”不是此版本中的有效语句分隔符。",
+          "errorId": "InvalidEndOfLine"
+        }
+      ],
+      "statements": [
+        {
+          "statementType": "PipelineAst",
+          "commands": [
+            {
+              "name": "Get-ChildItem",
+              "nameType": "cmdlet",
+              "elementType": "CommandAst",
+              "args": [],
+              "text": "Get-ChildItem",
+              "elementTypes": ["StringConstant"],
+              "redirections": []
+            },
+            {
+              "name": "Remove-Item",
+              "nameType": "cmdlet",
+              "elementType": "CommandAst",
+              "args": ["x"],
+              "text": "Remove-Item x",
+              "elementTypes": ["StringConstant", "StringConstant"],
+              "redirections": []
+            }
+          ],
+          "redirections": [],
+          "text": "Get-ChildItem && Remove-Item x"
+        }
+      ],
+      "variables": [],
+      "hasStopParsing": false,
+      "originalCommand": "Get-ChildItem && Remove-Item x"
+    }
+  },
+  {
+    "id": "module-qualified",
+    "command": "Microsoft.PowerShell.Management\\Get-ChildItem",
+    "raw": {
+      "hasStopParsing": false,
+      "statements": [
+        {
+          "elements": [
+            {
+              "redirections": [],
+              "commandElements": [
+                {
+                  "value": "Microsoft.PowerShell.Management\\Get-ChildItem",
+                  "type": "StringConstantExpressionAst",
+                  "text": "Microsoft.PowerShell.Management\\Get-ChildItem"
+                }
+              ],
+              "type": "CommandAst",
+              "text": "Microsoft.PowerShell.Management\\Get-ChildItem"
+            }
+          ],
+          "type": "PipelineAst",
+          "text": "Microsoft.PowerShell.Management\\Get-ChildItem"
+        }
+      ],
+      "errors": [],
+      "originalCommand": "Microsoft.PowerShell.Management\\Get-ChildItem",
+      "valid": true,
+      "variables": []
+    },
+    "parsed": {
+      "valid": true,
+      "errors": [],
+      "statements": [
+        {
+          "statementType": "PipelineAst",
+          "commands": [
+            {
+              "name": "Get-ChildItem",
+              "nameType": "cmdlet",
+              "elementType": "CommandAst",
+              "args": [],
+              "text": "Microsoft.PowerShell.Management\\Get-ChildItem",
+              "elementTypes": ["StringConstant"],
+              "redirections": []
+            }
+          ],
+          "redirections": [],
+          "text": "Microsoft.PowerShell.Management\\Get-ChildItem"
+        }
+      ],
+      "variables": [],
+      "hasStopParsing": false,
+      "originalCommand": "Microsoft.PowerShell.Management\\Get-ChildItem"
+    }
+  },
+  {
+    "id": "ampersand-scriptblock",
+    "command": "& { Remove-Item x }",
+    "raw": {
+      "hasStopParsing": false,
+      "statements": [
+        {
+          "nestedCommands": [
+            {
+              "redirections": [],
+              "commandElements": [
+                {
+                  "value": "Remove-Item",
+                  "type": "StringConstantExpressionAst",
+                  "text": "Remove-Item"
+                },
+                {
+                  "value": "x",
+                  "type": "StringConstantExpressionAst",
+                  "text": "x"
+                }
+              ],
+              "type": "CommandAst",
+              "text": "Remove-Item x"
+            }
+          ],
+          "securityPatterns": {
+            "hasScriptBlocks": true
+          },
+          "elements": [
+            {
+              "redirections": [],
+              "commandElements": [
+                {
+                  "text": "{ Remove-Item x }",
+                  "type": "ScriptBlockExpressionAst"
+                }
+              ],
+              "type": "CommandAst",
+              "text": "& { Remove-Item x }"
+            }
+          ],
+          "type": "PipelineAst",
+          "text": "& { Remove-Item x }"
+        }
+      ],
+      "errors": [],
+      "originalCommand": "& { Remove-Item x }",
+      "valid": true,
+      "variables": []
+    },
+    "parsed": {
+      "valid": true,
+      "errors": [],
+      "statements": [
+        {
+          "statementType": "PipelineAst",
+          "commands": [
+            {
+              "name": "{ Remove-Item x }",
+              "nameType": "unknown",
+              "elementType": "CommandAst",
+              "args": [],
+              "text": "& { Remove-Item x }",
+              "elementTypes": ["ScriptBlock"],
+              "redirections": []
+            }
+          ],
+          "redirections": [],
+          "text": "& { Remove-Item x }",
+          "nestedCommands": [
+            {
+              "name": "Remove-Item",
+              "nameType": "cmdlet",
+              "elementType": "CommandAst",
+              "args": ["x"],
+              "text": "Remove-Item x",
+              "elementTypes": ["StringConstant", "StringConstant"],
+              "redirections": []
+            }
+          ],
+          "securityPatterns": {
+            "hasScriptBlocks": true
+          }
+        }
+      ],
+      "variables": [],
+      "hasStopParsing": false,
+      "originalCommand": "& { Remove-Item x }"
+    }
+  },
+  {
+    "id": "param-default",
+    "command": "param($Path = (Remove-Item /)) Get-Process",
+    "raw": {
+      "hasStopParsing": false,
+      "statements": [
+        {
+          "elements": [
+            {
+              "redirections": [],
+              "commandElements": [
+                {
+                  "value": "Get-Process",
+                  "type": "StringConstantExpressionAst",
+                  "text": "Get-Process"
+                }
+              ],
+              "type": "CommandAst",
+              "text": "Get-Process"
+            }
+          ],
+          "type": "PipelineAst",
+          "text": "Get-Process"
+        },
+        {
+          "nestedCommands": [
+            {
+              "redirections": [],
+              "commandElements": [
+                {
+                  "value": "Remove-Item",
+                  "type": "StringConstantExpressionAst",
+                  "text": "Remove-Item"
+                },
+                {
+                  "value": "/",
+                  "type": "StringConstantExpressionAst",
+                  "text": "/"
+                }
+              ],
+              "type": "CommandAst",
+              "text": "Remove-Item /"
+            }
+          ],
+          "securityPatterns": {
+            "hasSubExpressions": true
+          },
+          "type": "ParamBlockAst",
+          "text": "param($Path = (Remove-Item /))"
+        }
+      ],
+      "errors": [],
+      "originalCommand": "param($Path = (Remove-Item /)) Get-Process",
+      "valid": true,
+      "variables": [
+        {
+          "isSplatted": false,
+          "path": "Path"
+        }
+      ]
+    },
+    "parsed": {
+      "valid": true,
+      "errors": [],
+      "statements": [
+        {
+          "statementType": "PipelineAst",
+          "commands": [
+            {
+              "name": "Get-Process",
+              "nameType": "cmdlet",
+              "elementType": "CommandAst",
+              "args": [],
+              "text": "Get-Process",
+              "elementTypes": ["StringConstant"],
+              "redirections": []
+            }
+          ],
+          "redirections": [],
+          "text": "Get-Process"
+        },
+        {
+          "statementType": "ParamBlockAst",
+          "commands": [],
+          "redirections": [],
+          "text": "param($Path = (Remove-Item /))",
+          "nestedCommands": [
+            {
+              "name": "Remove-Item",
+              "nameType": "cmdlet",
+              "elementType": "CommandAst",
+              "args": ["/"],
+              "text": "Remove-Item /",
+              "elementTypes": ["StringConstant", "StringConstant"],
+              "redirections": []
+            }
+          ],
+          "securityPatterns": {
+            "hasSubExpressions": true
+          }
+        }
+      ],
+      "variables": [
+        {
+          "path": "Path",
+          "isSplatted": false
+        }
+      ],
+      "hasStopParsing": false,
+      "originalCommand": "param($Path = (Remove-Item /)) Get-Process"
+    }
+  },
+  {
+    "id": "function-def",
+    "command": "function f { Remove-Item x } f",
+    "raw": {
+      "hasStopParsing": false,
+      "statements": [
+        {
+          "nestedCommands": [
+            {
+              "redirections": [],
+              "commandElements": [
+                {
+                  "value": "Remove-Item",
+                  "type": "StringConstantExpressionAst",
+                  "text": "Remove-Item"
+                },
+                {
+                  "value": "x",
+                  "type": "StringConstantExpressionAst",
+                  "text": "x"
+                }
+              ],
+              "type": "CommandAst",
+              "text": "Remove-Item x"
+            }
+          ],
+          "type": "FunctionDefinitionAst",
+          "text": "function f { Remove-Item x }"
+        },
+        {
+          "elements": [
+            {
+              "redirections": [],
+              "commandElements": [
+                {
+                  "value": "f",
+                  "type": "StringConstantExpressionAst",
+                  "text": "f"
+                }
+              ],
+              "type": "CommandAst",
+              "text": "f"
+            }
+          ],
+          "type": "PipelineAst",
+          "text": "f"
+        }
+      ],
+      "errors": [],
+      "originalCommand": "function f { Remove-Item x } f",
+      "valid": true,
+      "variables": []
+    },
+    "parsed": {
+      "valid": true,
+      "errors": [],
+      "statements": [
+        {
+          "statementType": "FunctionDefinitionAst",
+          "commands": [],
+          "redirections": [],
+          "text": "function f { Remove-Item x }",
+          "nestedCommands": [
+            {
+              "name": "Remove-Item",
+              "nameType": "cmdlet",
+              "elementType": "CommandAst",
+              "args": ["x"],
+              "text": "Remove-Item x",
+              "elementTypes": ["StringConstant", "StringConstant"],
+              "redirections": []
+            }
+          ]
+        },
+        {
+          "statementType": "PipelineAst",
+          "commands": [
+            {
+              "name": "f",
+              "nameType": "unknown",
+              "elementType": "CommandAst",
+              "args": [],
+              "text": "f",
+              "elementTypes": ["StringConstant"],
+              "redirections": []
+            }
+          ],
+          "redirections": [],
+          "text": "f"
+        }
+      ],
+      "variables": [],
+      "hasStopParsing": false,
+      "originalCommand": "function f { Remove-Item x } f"
+    }
+  },
+  {
+    "id": "invoke-expression",
+    "command": "Invoke-Expression \"Get-Process\"",
+    "raw": {
+      "hasStopParsing": false,
+      "statements": [
+        {
+          "elements": [
+            {
+              "redirections": [],
+              "commandElements": [
+                {
+                  "value": "Invoke-Expression",
+                  "type": "StringConstantExpressionAst",
+                  "text": "Invoke-Expression"
+                },
+                {
+                  "value": "Get-Process",
+                  "type": "StringConstantExpressionAst",
+                  "text": "\"Get-Process\""
+                }
+              ],
+              "type": "CommandAst",
+              "text": "Invoke-Expression \"Get-Process\""
+            }
+          ],
+          "type": "PipelineAst",
+          "text": "Invoke-Expression \"Get-Process\""
+        }
+      ],
+      "errors": [],
+      "originalCommand": "Invoke-Expression \"Get-Process\"",
+      "valid": true,
+      "variables": []
+    },
+    "parsed": {
+      "valid": true,
+      "errors": [],
+      "statements": [
+        {
+          "statementType": "PipelineAst",
+          "commands": [
+            {
+              "name": "Invoke-Expression",
+              "nameType": "cmdlet",
+              "elementType": "CommandAst",
+              "args": ["Get-Process"],
+              "text": "Invoke-Expression \"Get-Process\"",
+              "elementTypes": ["StringConstant", "StringConstant"],
+              "redirections": []
+            }
+          ],
+          "redirections": [],
+          "text": "Invoke-Expression \"Get-Process\""
+        }
+      ],
+      "variables": [],
+      "hasStopParsing": false,
+      "originalCommand": "Invoke-Expression \"Get-Process\""
+    }
+  },
+  {
+    "id": "static-method",
+    "command": "[System.IO.File]::Delete(\"x\")",
+    "raw": {
+      "hasStopParsing": false,
+      "statements": [
+        {
+          "securityPatterns": {
+            "hasMemberInvocations": true
+          },
+          "elements": [
+            {
+              "expressionType": "InvokeMemberExpressionAst",
+              "redirections": [],
+              "type": "CommandExpressionAst",
+              "text": "[System.IO.File]::Delete(\"x\")"
+            }
+          ],
+          "type": "PipelineAst",
+          "text": "[System.IO.File]::Delete(\"x\")"
+        }
+      ],
+      "errors": [],
+      "originalCommand": "[System.IO.File]::Delete(\"x\")",
+      "valid": true,
+      "variables": []
+    },
+    "parsed": {
+      "valid": true,
+      "errors": [],
+      "statements": [
+        {
+          "statementType": "PipelineAst",
+          "commands": [
+            {
+              "name": "",
+              "nameType": "unknown",
+              "elementType": "CommandExpressionAst",
+              "args": [],
+              "text": "[System.IO.File]::Delete(\"x\")",
+              "elementTypes": ["MemberInvocation"],
+              "redirections": []
+            }
+          ],
+          "redirections": [],
+          "text": "[System.IO.File]::Delete(\"x\")",
+          "securityPatterns": {
+            "hasMemberInvocations": true
+          }
+        }
+      ],
+      "variables": [],
+      "hasStopParsing": false,
+      "originalCommand": "[System.IO.File]::Delete(\"x\")"
+    }
+  },
+  {
+    "id": "iex-variable",
+    "command": "iex $cmd",
+    "raw": {
+      "hasStopParsing": false,
+      "statements": [
+        {
+          "elements": [
+            {
+              "redirections": [],
+              "commandElements": [
+                {
+                  "value": "iex",
+                  "type": "StringConstantExpressionAst",
+                  "text": "iex"
+                },
+                {
+                  "text": "$cmd",
+                  "type": "VariableExpressionAst"
+                }
+              ],
+              "type": "CommandAst",
+              "text": "iex $cmd"
+            }
+          ],
+          "type": "PipelineAst",
+          "text": "iex $cmd"
+        }
+      ],
+      "errors": [],
+      "originalCommand": "iex $cmd",
+      "valid": true,
+      "variables": [
+        {
+          "isSplatted": false,
+          "path": "cmd"
+        }
+      ]
+    },
+    "parsed": {
+      "valid": true,
+      "errors": [],
+      "statements": [
+        {
+          "statementType": "PipelineAst",
+          "commands": [
+            {
+              "name": "iex",
+              "nameType": "unknown",
+              "elementType": "CommandAst",
+              "args": ["$cmd"],
+              "text": "iex $cmd",
+              "elementTypes": ["StringConstant", "Variable"],
+              "redirections": []
+            }
+          ],
+          "redirections": [],
+          "text": "iex $cmd"
+        }
+      ],
+      "variables": [
+        {
+          "path": "cmd",
+          "isSplatted": false
+        }
+      ],
+      "hasStopParsing": false,
+      "originalCommand": "iex $cmd"
+    }
+  },
+  {
+    "id": "bare-application",
+    "command": "curl -o x http://example.com",
+    "raw": {
+      "hasStopParsing": false,
+      "statements": [
+        {
+          "elements": [
+            {
+              "redirections": [],
+              "commandElements": [
+                {
+                  "value": "curl",
+                  "type": "StringConstantExpressionAst",
+                  "text": "curl"
+                },
+                {
+                  "text": "-o",
+                  "type": "CommandParameterAst"
+                },
+                {
+                  "value": "x",
+                  "type": "StringConstantExpressionAst",
+                  "text": "x"
+                },
+                {
+                  "value": "http://example.com",
+                  "type": "StringConstantExpressionAst",
+                  "text": "http://example.com"
+                }
+              ],
+              "type": "CommandAst",
+              "text": "curl -o x http://example.com"
+            }
+          ],
+          "type": "PipelineAst",
+          "text": "curl -o x http://example.com"
+        }
+      ],
+      "errors": [],
+      "originalCommand": "curl -o x http://example.com",
+      "valid": true,
+      "variables": []
+    },
+    "parsed": {
+      "valid": true,
+      "errors": [],
+      "statements": [
+        {
+          "statementType": "PipelineAst",
+          "commands": [
+            {
+              "name": "curl",
+              "nameType": "unknown",
+              "elementType": "CommandAst",
+              "args": ["-o", "x", "http://example.com"],
+              "text": "curl -o x http://example.com",
+              "elementTypes": [
+                "StringConstant",
+                "Parameter",
+                "StringConstant",
+                "StringConstant"
+              ],
+              "redirections": []
+            }
+          ],
+          "redirections": [],
+          "text": "curl -o x http://example.com"
+        }
+      ],
+      "variables": [],
+      "hasStopParsing": false,
+      "originalCommand": "curl -o x http://example.com"
+    }
+  },
+  {
+    "id": "colon-bound-param",
+    "command": "Get-ChildItem -Path:$env:TEMP",
+    "raw": {
+      "hasStopParsing": false,
+      "statements": [
+        {
+          "elements": [
+            {
+              "redirections": [],
+              "commandElements": [
+                {
+                  "value": "Get-ChildItem",
+                  "type": "StringConstantExpressionAst",
+                  "text": "Get-ChildItem"
+                },
+                {
+                  "text": "-Path:$env:TEMP",
+                  "type": "CommandParameterAst"
+                }
+              ],
+              "type": "CommandAst",
+              "text": "Get-ChildItem -Path:$env:TEMP"
+            }
+          ],
+          "type": "PipelineAst",
+          "text": "Get-ChildItem -Path:$env:TEMP"
+        }
+      ],
+      "errors": [],
+      "originalCommand": "Get-ChildItem -Path:$env:TEMP",
+      "valid": true,
+      "variables": [
+        {
+          "isSplatted": false,
+          "path": "env:TEMP"
+        }
+      ]
+    },
+    "parsed": {
+      "valid": true,
+      "errors": [],
+      "statements": [
+        {
+          "statementType": "PipelineAst",
+          "commands": [
+            {
+              "name": "Get-ChildItem",
+              "nameType": "cmdlet",
+              "elementType": "CommandAst",
+              "args": ["-Path:$env:TEMP"],
+              "text": "Get-ChildItem -Path:$env:TEMP",
+              "elementTypes": ["StringConstant", "Parameter"],
+              "redirections": []
+            }
+          ],
+          "redirections": [],
+          "text": "Get-ChildItem -Path:$env:TEMP"
+        }
+      ],
+      "variables": [
+        {
+          "path": "env:TEMP",
+          "isSplatted": false
+        }
+      ],
+      "hasStopParsing": false,
+      "originalCommand": "Get-ChildItem -Path:$env:TEMP"
+    }
+  },
+  {
+    "id": "start-process",
+    "command": "Start-Process powershell -ArgumentList '-Command','x'",
+    "raw": {
+      "hasStopParsing": false,
+      "statements": [
+        {
+          "elements": [
+            {
+              "redirections": [],
+              "commandElements": [
+                {
+                  "value": "Start-Process",
+                  "type": "StringConstantExpressionAst",
+                  "text": "Start-Process"
+                },
+                {
+                  "value": "powershell",
+                  "type": "StringConstantExpressionAst",
+                  "text": "powershell"
+                },
+                {
+                  "text": "-ArgumentList",
+                  "type": "CommandParameterAst"
+                },
+                {
+                  "text": "'-Command','x'",
+                  "type": "ArrayLiteralAst"
+                }
+              ],
+              "type": "CommandAst",
+              "text": "Start-Process powershell -ArgumentList '-Command','x'"
+            }
+          ],
+          "type": "PipelineAst",
+          "text": "Start-Process powershell -ArgumentList '-Command','x'"
+        }
+      ],
+      "errors": [],
+      "originalCommand": "Start-Process powershell -ArgumentList '-Command','x'",
+      "valid": true,
+      "variables": []
+    },
+    "parsed": {
+      "valid": true,
+      "errors": [],
+      "statements": [
+        {
+          "statementType": "PipelineAst",
+          "commands": [
+            {
+              "name": "Start-Process",
+              "nameType": "cmdlet",
+              "elementType": "CommandAst",
+              "args": ["powershell", "-ArgumentList", "'-Command','x'"],
+              "text": "Start-Process powershell -ArgumentList '-Command','x'",
+              "elementTypes": [
+                "StringConstant",
+                "StringConstant",
+                "Parameter",
+                "Other"
+              ],
+              "redirections": []
+            }
+          ],
+          "redirections": [],
+          "text": "Start-Process powershell -ArgumentList '-Command','x'"
+        }
+      ],
+      "variables": [],
+      "hasStopParsing": false,
+      "originalCommand": "Start-Process powershell -ArgumentList '-Command','x'"
+    }
+  },
+  {
+    "id": "remove-root",
+    "command": "Remove-Item -Recurse -Force C:\\",
+    "raw": {
+      "hasStopParsing": false,
+      "statements": [
+        {
+          "elements": [
+            {
+              "redirections": [],
+              "commandElements": [
+                {
+                  "value": "Remove-Item",
+                  "type": "StringConstantExpressionAst",
+                  "text": "Remove-Item"
+                },
+                {
+                  "text": "-Recurse",
+                  "type": "CommandParameterAst"
+                },
+                {
+                  "text": "-Force",
+                  "type": "CommandParameterAst"
+                },
+                {
+                  "value": "C:\\",
+                  "type": "StringConstantExpressionAst",
+                  "text": "C:\\"
+                }
+              ],
+              "type": "CommandAst",
+              "text": "Remove-Item -Recurse -Force C:\\"
+            }
+          ],
+          "type": "PipelineAst",
+          "text": "Remove-Item -Recurse -Force C:\\"
+        }
+      ],
+      "errors": [],
+      "originalCommand": "Remove-Item -Recurse -Force C:\\",
+      "valid": true,
+      "variables": []
+    },
+    "parsed": {
+      "valid": true,
+      "errors": [],
+      "statements": [
+        {
+          "statementType": "PipelineAst",
+          "commands": [
+            {
+              "name": "Remove-Item",
+              "nameType": "cmdlet",
+              "elementType": "CommandAst",
+              "args": ["-Recurse", "-Force", "C:\\"],
+              "text": "Remove-Item -Recurse -Force C:\\",
+              "elementTypes": [
+                "StringConstant",
+                "Parameter",
+                "Parameter",
+                "StringConstant"
+              ],
+              "redirections": []
+            }
+          ],
+          "redirections": [],
+          "text": "Remove-Item -Recurse -Force C:\\"
+        }
+      ],
+      "variables": [],
+      "hasStopParsing": false,
+      "originalCommand": "Remove-Item -Recurse -Force C:\\"
+    }
+  },
+  {
+    "id": "alias-rm",
+    "command": "rm -r .\\build",
+    "raw": {
+      "hasStopParsing": false,
+      "statements": [
+        {
+          "elements": [
+            {
+              "redirections": [],
+              "commandElements": [
+                {
+                  "value": "rm",
+                  "type": "StringConstantExpressionAst",
+                  "text": "rm"
+                },
+                {
+                  "text": "-r",
+                  "type": "CommandParameterAst"
+                },
+                {
+                  "value": ".\\build",
+                  "type": "StringConstantExpressionAst",
+                  "text": ".\\build"
+                }
+              ],
+              "type": "CommandAst",
+              "text": "rm -r .\\build"
+            }
+          ],
+          "type": "PipelineAst",
+          "text": "rm -r .\\build"
+        }
+      ],
+      "errors": [],
+      "originalCommand": "rm -r .\\build",
+      "valid": true,
+      "variables": []
+    },
+    "parsed": {
+      "valid": true,
+      "errors": [],
+      "statements": [
+        {
+          "statementType": "PipelineAst",
+          "commands": [
+            {
+              "name": "rm",
+              "nameType": "unknown",
+              "elementType": "CommandAst",
+              "args": ["-r", ".\\build"],
+              "text": "rm -r .\\build",
+              "elementTypes": ["StringConstant", "Parameter", "StringConstant"],
+              "redirections": []
+            }
+          ],
+          "redirections": [],
+          "text": "rm -r .\\build"
+        }
+      ],
+      "variables": [],
+      "hasStopParsing": false,
+      "originalCommand": "rm -r .\\build"
+    }
+  },
+  {
+    "id": "cmd-exit-code",
+    "command": "cmd /c exit 7",
+    "raw": {
+      "hasStopParsing": false,
+      "statements": [
+        {
+          "elements": [
+            {
+              "redirections": [],
+              "commandElements": [
+                {
+                  "value": "cmd",
+                  "type": "StringConstantExpressionAst",
+                  "text": "cmd"
+                },
+                {
+                  "value": "/c",
+                  "type": "StringConstantExpressionAst",
+                  "text": "/c"
+                },
+                {
+                  "value": "exit",
+                  "type": "StringConstantExpressionAst",
+                  "text": "exit"
+                },
+                {
+                  "text": "7",
+                  "type": "ConstantExpressionAst"
+                }
+              ],
+              "type": "CommandAst",
+              "text": "cmd /c exit 7"
+            }
+          ],
+          "type": "PipelineAst",
+          "text": "cmd /c exit 7"
+        }
+      ],
+      "errors": [],
+      "originalCommand": "cmd /c exit 7",
+      "valid": true,
+      "variables": []
+    },
+    "parsed": {
+      "valid": true,
+      "errors": [],
+      "statements": [
+        {
+          "statementType": "PipelineAst",
+          "commands": [
+            {
+              "name": "cmd",
+              "nameType": "unknown",
+              "elementType": "CommandAst",
+              "args": ["/c", "exit", "7"],
+              "text": "cmd /c exit 7",
+              "elementTypes": [
+                "StringConstant",
+                "StringConstant",
+                "StringConstant",
+                "Other"
+              ],
+              "redirections": []
+            }
+          ],
+          "redirections": [],
+          "text": "cmd /c exit 7"
+        }
+      ],
+      "variables": [],
+      "hasStopParsing": false,
+      "originalCommand": "cmd /c exit 7"
+    }
+  },
+  {
+    "id": "expandable-redirect-target",
+    "command": "Get-ChildItem > \"$env:TEMP\\out.txt\"",
+    "raw": {
+      "hasStopParsing": false,
+      "statements": [
+        {
+          "redirections": [
+            {
+              "fromStream": "Output",
+              "locationText": "\"$env:TEMP\\out.txt\"",
+              "type": "FileRedirectionAst",
+              "append": false
+            }
+          ],
+          "securityPatterns": {
+            "hasExpandableStrings": true
+          },
+          "elements": [
+            {
+              "redirections": [
+                {
+                  "fromStream": "Output",
+                  "locationText": "\"$env:TEMP\\out.txt\"",
+                  "type": "FileRedirectionAst",
+                  "append": false
+                }
+              ],
+              "commandElements": [
+                {
+                  "value": "Get-ChildItem",
+                  "type": "StringConstantExpressionAst",
+                  "text": "Get-ChildItem"
+                }
+              ],
+              "type": "CommandAst",
+              "text": "Get-ChildItem > \"$env:TEMP\\out.txt\""
+            }
+          ],
+          "type": "PipelineAst",
+          "text": "Get-ChildItem > \"$env:TEMP\\out.txt\""
+        }
+      ],
+      "errors": [],
+      "originalCommand": "Get-ChildItem > \"$env:TEMP\\out.txt\"",
+      "valid": true,
+      "variables": [
+        {
+          "isSplatted": false,
+          "path": "env:TEMP"
+        }
+      ]
+    },
+    "parsed": {
+      "valid": true,
+      "errors": [],
+      "statements": [
+        {
+          "statementType": "PipelineAst",
+          "commands": [
+            {
+              "name": "Get-ChildItem",
+              "nameType": "cmdlet",
+              "elementType": "CommandAst",
+              "args": [],
+              "text": "Get-ChildItem > \"$env:TEMP\\out.txt\"",
+              "elementTypes": ["StringConstant"],
+              "redirections": [
+                {
+                  "operator": ">",
+                  "target": "$env:TEMP\\out.txt",
+                  "isMerging": false
+                }
+              ]
+            }
+          ],
+          "redirections": [
+            {
+              "operator": ">",
+              "target": "$env:TEMP\\out.txt",
+              "isMerging": false
+            }
+          ],
+          "text": "Get-ChildItem > \"$env:TEMP\\out.txt\"",
+          "securityPatterns": {
+            "hasExpandableStrings": true
+          }
+        }
+      ],
+      "variables": [
+        {
+          "path": "env:TEMP",
+          "isSplatted": false
+        }
+      ],
+      "hasStopParsing": false,
+      "originalCommand": "Get-ChildItem > \"$env:TEMP\\out.txt\""
+    }
+  },
+  {
+    "id": "alias-percent",
+    "command": "ls | % { $_.Name }",
+    "raw": {
+      "hasStopParsing": false,
+      "statements": [
+        {
+          "securityPatterns": {
+            "hasMemberInvocations": true,
+            "hasScriptBlocks": true
+          },
+          "elements": [
+            {
+              "redirections": [],
+              "commandElements": [
+                {
+                  "value": "ls",
+                  "type": "StringConstantExpressionAst",
+                  "text": "ls"
+                }
+              ],
+              "type": "CommandAst",
+              "text": "ls"
+            },
+            {
+              "redirections": [],
+              "commandElements": [
+                {
+                  "value": "%",
+                  "type": "StringConstantExpressionAst",
+                  "text": "%"
+                },
+                {
+                  "text": "{ $_.Name }",
+                  "type": "ScriptBlockExpressionAst"
+                }
+              ],
+              "type": "CommandAst",
+              "text": "% { $_.Name }"
+            }
+          ],
+          "type": "PipelineAst",
+          "text": "ls | % { $_.Name }"
+        }
+      ],
+      "errors": [],
+      "originalCommand": "ls | % { $_.Name }",
+      "valid": true,
+      "variables": [
+        {
+          "isSplatted": false,
+          "path": "_"
+        }
+      ]
+    },
+    "parsed": {
+      "valid": true,
+      "errors": [],
+      "statements": [
+        {
+          "statementType": "PipelineAst",
+          "commands": [
+            {
+              "name": "ls",
+              "nameType": "unknown",
+              "elementType": "CommandAst",
+              "args": [],
+              "text": "ls",
+              "elementTypes": ["StringConstant"],
+              "redirections": []
+            },
+            {
+              "name": "%",
+              "nameType": "unknown",
+              "elementType": "CommandAst",
+              "args": ["{ $_.Name }"],
+              "text": "% { $_.Name }",
+              "elementTypes": ["StringConstant", "ScriptBlock"],
+              "redirections": []
+            }
+          ],
+          "redirections": [],
+          "text": "ls | % { $_.Name }",
+          "securityPatterns": {
+            "hasMemberInvocations": true,
+            "hasScriptBlocks": true
+          }
+        }
+      ],
+      "variables": [
+        {
+          "path": "_",
+          "isSplatted": false
+        }
+      ],
+      "hasStopParsing": false,
+      "originalCommand": "ls | % { $_.Name }"
+    }
+  },
+  {
+    "id": "line-continuation",
+    "command": "Get-Process `\n  -Name pwsh",
+    "raw": {
+      "hasStopParsing": false,
+      "statements": [
+        {
+          "elements": [
+            {
+              "redirections": [],
+              "commandElements": [
+                {
+                  "value": "Get-Process",
+                  "type": "StringConstantExpressionAst",
+                  "text": "Get-Process"
+                },
+                {
+                  "text": "-Name",
+                  "type": "CommandParameterAst"
+                },
+                {
+                  "value": "pwsh",
+                  "type": "StringConstantExpressionAst",
+                  "text": "pwsh"
+                }
+              ],
+              "type": "CommandAst",
+              "text": "Get-Process `\n  -Name pwsh"
+            }
+          ],
+          "type": "PipelineAst",
+          "text": "Get-Process `\n  -Name pwsh"
+        }
+      ],
+      "errors": [],
+      "originalCommand": "Get-Process `\n  -Name pwsh",
+      "valid": true,
+      "variables": []
+    },
+    "parsed": {
+      "valid": true,
+      "errors": [],
+      "statements": [
+        {
+          "statementType": "PipelineAst",
+          "commands": [
+            {
+              "name": "Get-Process",
+              "nameType": "cmdlet",
+              "elementType": "CommandAst",
+              "args": ["-Name", "pwsh"],
+              "text": "Get-Process `\n  -Name pwsh",
+              "elementTypes": ["StringConstant", "Parameter", "StringConstant"],
+              "redirections": []
+            }
+          ],
+          "redirections": [],
+          "text": "Get-Process `\n  -Name pwsh"
+        }
+      ],
+      "variables": [],
+      "hasStopParsing": false,
+      "originalCommand": "Get-Process `\n  -Name pwsh"
+    }
+  },
+  {
+    "id": "try-catch",
+    "command": "try { Remove-Item x } catch { Write-Error $_ }",
+    "raw": {
+      "hasStopParsing": false,
+      "statements": [
+        {
+          "nestedCommands": [
+            {
+              "redirections": [],
+              "commandElements": [
+                {
+                  "value": "Remove-Item",
+                  "type": "StringConstantExpressionAst",
+                  "text": "Remove-Item"
+                },
+                {
+                  "value": "x",
+                  "type": "StringConstantExpressionAst",
+                  "text": "x"
+                }
+              ],
+              "type": "CommandAst",
+              "text": "Remove-Item x"
+            },
+            {
+              "redirections": [],
+              "commandElements": [
+                {
+                  "value": "Write-Error",
+                  "type": "StringConstantExpressionAst",
+                  "text": "Write-Error"
+                },
+                {
+                  "text": "$_",
+                  "type": "VariableExpressionAst"
+                }
+              ],
+              "type": "CommandAst",
+              "text": "Write-Error $_"
+            }
+          ],
+          "type": "TryStatementAst",
+          "text": "try { Remove-Item x } catch { Write-Error $_ }"
+        }
+      ],
+      "errors": [],
+      "originalCommand": "try { Remove-Item x } catch { Write-Error $_ }",
+      "valid": true,
+      "variables": [
+        {
+          "isSplatted": false,
+          "path": "_"
+        }
+      ]
+    },
+    "parsed": {
+      "valid": true,
+      "errors": [],
+      "statements": [
+        {
+          "statementType": "TryStatementAst",
+          "commands": [],
+          "redirections": [],
+          "text": "try { Remove-Item x } catch { Write-Error $_ }",
+          "nestedCommands": [
+            {
+              "name": "Remove-Item",
+              "nameType": "cmdlet",
+              "elementType": "CommandAst",
+              "args": ["x"],
+              "text": "Remove-Item x",
+              "elementTypes": ["StringConstant", "StringConstant"],
+              "redirections": []
+            },
+            {
+              "name": "Write-Error",
+              "nameType": "cmdlet",
+              "elementType": "CommandAst",
+              "args": ["$_"],
+              "text": "Write-Error $_",
+              "elementTypes": ["StringConstant", "Variable"],
+              "redirections": []
+            }
+          ]
+        }
+      ],
+      "variables": [
+        {
+          "path": "_",
+          "isSplatted": false
+        }
+      ],
+      "hasStopParsing": false,
+      "originalCommand": "try { Remove-Item x } catch { Write-Error $_ }"
+    }
+  },
+  {
+    "id": "using-namespace",
+    "command": "using namespace System.Text",
+    "raw": {
+      "hasStopParsing": false,
+      "statements": [],
+      "errors": [],
+      "originalCommand": "using namespace System.Text",
+      "valid": true,
+      "variables": []
+    },
+    "parsed": {
+      "valid": true,
+      "errors": [],
+      "statements": [],
+      "variables": [],
+      "hasStopParsing": false,
+      "originalCommand": "using namespace System.Text"
+    }
+  },
+  {
+    "id": "requires",
+    "command": "#Requires -Version 5.1",
+    "raw": {
+      "hasStopParsing": false,
+      "statements": [],
+      "errors": [],
+      "originalCommand": "#Requires -Version 5.1",
+      "valid": true,
+      "variables": []
+    },
+    "parsed": {
+      "valid": true,
+      "errors": [],
+      "statements": [],
+      "variables": [],
+      "hasStopParsing": false,
+      "originalCommand": "#Requires -Version 5.1"
+    }
+  },
+  {
+    "id": "splatting",
+    "command": "$args = @('-Recurse'); Remove-Item @args",
+    "raw": {
+      "hasStopParsing": false,
+      "statements": [
+        {
+          "securityPatterns": {
+            "hasSubExpressions": true
+          },
+          "type": "AssignmentStatementAst",
+          "text": "$args = @('-Recurse')"
+        },
+        {
+          "elements": [
+            {
+              "redirections": [],
+              "commandElements": [
+                {
+                  "value": "Remove-Item",
+                  "type": "StringConstantExpressionAst",
+                  "text": "Remove-Item"
+                },
+                {
+                  "text": "@args",
+                  "type": "VariableExpressionAst"
+                }
+              ],
+              "type": "CommandAst",
+              "text": "Remove-Item @args"
+            }
+          ],
+          "type": "PipelineAst",
+          "text": "Remove-Item @args"
+        }
+      ],
+      "errors": [],
+      "originalCommand": "$args = @('-Recurse'); Remove-Item @args",
+      "valid": true,
+      "variables": [
+        {
+          "isSplatted": false,
+          "path": "args"
+        },
+        {
+          "isSplatted": true,
+          "path": "args"
+        }
+      ]
+    },
+    "parsed": {
+      "valid": true,
+      "errors": [],
+      "statements": [
+        {
+          "statementType": "AssignmentStatementAst",
+          "commands": [],
+          "redirections": [],
+          "text": "$args = @('-Recurse')",
+          "securityPatterns": {
+            "hasSubExpressions": true
+          }
+        },
+        {
+          "statementType": "PipelineAst",
+          "commands": [
+            {
+              "name": "Remove-Item",
+              "nameType": "cmdlet",
+              "elementType": "CommandAst",
+              "args": ["@args"],
+              "text": "Remove-Item @args",
+              "elementTypes": ["StringConstant", "Variable"],
+              "redirections": []
+            }
+          ],
+          "redirections": [],
+          "text": "Remove-Item @args"
+        }
+      ],
+      "variables": [
+        {
+          "path": "args",
+          "isSplatted": false
+        },
+        {
+          "path": "args",
+          "isSplatted": true
+        }
+      ],
+      "hasStopParsing": false,
+      "originalCommand": "$args = @('-Recurse'); Remove-Item @args"
+    }
+  },
+  {
+    "id": "syntax-error-unclosed",
+    "command": "Get-ChildItem -Path 'unclosed",
+    "raw": {
+      "hasStopParsing": false,
+      "statements": [
+        {
+          "elements": [
+            {
+              "redirections": [],
+              "commandElements": [
+                {
+                  "value": "Get-ChildItem",
+                  "type": "StringConstantExpressionAst",
+                  "text": "Get-ChildItem"
+                },
+                {
+                  "text": "-Path",
+                  "type": "CommandParameterAst"
+                },
+                {
+                  "value": "unclosed",
+                  "type": "StringConstantExpressionAst",
+                  "text": "'unclosed"
+                }
+              ],
+              "type": "CommandAst",
+              "text": "Get-ChildItem -Path 'unclosed"
+            }
+          ],
+          "type": "PipelineAst",
+          "text": "Get-ChildItem -Path 'unclosed"
+        }
+      ],
+      "errors": [
+        {
+          "errorId": "TerminatorExpectedAtEndOfString",
+          "message": "字符串缺少终止符: '。"
+        }
+      ],
+      "originalCommand": "Get-ChildItem -Path 'unclosed",
+      "valid": false,
+      "variables": []
+    },
+    "parsed": {
+      "valid": false,
+      "errors": [
+        {
+          "message": "字符串缺少终止符: '。",
+          "errorId": "TerminatorExpectedAtEndOfString"
+        }
+      ],
+      "statements": [
+        {
+          "statementType": "PipelineAst",
+          "commands": [
+            {
+              "name": "Get-ChildItem",
+              "nameType": "cmdlet",
+              "elementType": "CommandAst",
+              "args": ["-Path", "unclosed"],
+              "text": "Get-ChildItem -Path 'unclosed",
+              "elementTypes": ["StringConstant", "Parameter", "StringConstant"],
+              "redirections": []
+            }
+          ],
+          "redirections": [],
+          "text": "Get-ChildItem -Path 'unclosed"
+        }
+      ],
+      "variables": [],
+      "hasStopParsing": false,
+      "originalCommand": "Get-ChildItem -Path 'unclosed"
+    }
+  },
+  {
+    "id": "empty",
+    "command": "",
+    "raw": {
+      "hasStopParsing": false,
+      "statements": [],
+      "errors": [],
+      "originalCommand": "",
+      "valid": true,
+      "variables": []
+    },
+    "parsed": {
+      "valid": true,
+      "errors": [],
+      "statements": [],
+      "variables": [],
+      "hasStopParsing": false,
+      "originalCommand": ""
+    }
+  },
+  {
+    "id": "member-invocation",
+    "command": "$x.ToString().Trim()",
+    "raw": {
+      "hasStopParsing": false,
+      "statements": [
+        {
+          "securityPatterns": {
+            "hasMemberInvocations": true
+          },
+          "elements": [
+            {
+              "expressionType": "InvokeMemberExpressionAst",
+              "redirections": [],
+              "type": "CommandExpressionAst",
+              "text": "$x.ToString().Trim()"
+            }
+          ],
+          "type": "PipelineAst",
+          "text": "$x.ToString().Trim()"
+        }
+      ],
+      "errors": [],
+      "originalCommand": "$x.ToString().Trim()",
+      "valid": true,
+      "variables": [
+        {
+          "isSplatted": false,
+          "path": "x"
+        }
+      ]
+    },
+    "parsed": {
+      "valid": true,
+      "errors": [],
+      "statements": [
+        {
+          "statementType": "PipelineAst",
+          "commands": [
+            {
+              "name": "",
+              "nameType": "unknown",
+              "elementType": "CommandExpressionAst",
+              "args": [],
+              "text": "$x.ToString().Trim()",
+              "elementTypes": ["MemberInvocation"],
+              "redirections": []
+            }
+          ],
+          "redirections": [],
+          "text": "$x.ToString().Trim()",
+          "securityPatterns": {
+            "hasMemberInvocations": true
+          }
+        }
+      ],
+      "variables": [
+        {
+          "path": "x",
+          "isSplatted": false
+        }
+      ],
+      "hasStopParsing": false,
+      "originalCommand": "$x.ToString().Trim()"
+    }
+  },
+  {
+    "id": "switch-body",
+    "command": "switch ($x) { 1 { Remove-Item a } default { Remove-Item b } }",
+    "raw": {
+      "hasStopParsing": false,
+      "statements": [
+        {
+          "nestedCommands": [
+            {
+              "redirections": [],
+              "commandElements": [
+                {
+                  "value": "Remove-Item",
+                  "type": "StringConstantExpressionAst",
+                  "text": "Remove-Item"
+                },
+                {
+                  "value": "a",
+                  "type": "StringConstantExpressionAst",
+                  "text": "a"
+                }
+              ],
+              "type": "CommandAst",
+              "text": "Remove-Item a"
+            },
+            {
+              "redirections": [],
+              "commandElements": [
+                {
+                  "value": "Remove-Item",
+                  "type": "StringConstantExpressionAst",
+                  "text": "Remove-Item"
+                },
+                {
+                  "value": "b",
+                  "type": "StringConstantExpressionAst",
+                  "text": "b"
+                }
+              ],
+              "type": "CommandAst",
+              "text": "Remove-Item b"
+            }
+          ],
+          "type": "SwitchStatementAst",
+          "text": "switch ($x) { 1 { Remove-Item a } default { Remove-Item b } }"
+        }
+      ],
+      "errors": [],
+      "originalCommand": "switch ($x) { 1 { Remove-Item a } default { Remove-Item b } }",
+      "valid": true,
+      "variables": [
+        {
+          "isSplatted": false,
+          "path": "x"
+        }
+      ]
+    },
+    "parsed": {
+      "valid": true,
+      "errors": [],
+      "statements": [
+        {
+          "statementType": "SwitchStatementAst",
+          "commands": [],
+          "redirections": [],
+          "text": "switch ($x) { 1 { Remove-Item a } default { Remove-Item b } }",
+          "nestedCommands": [
+            {
+              "name": "Remove-Item",
+              "nameType": "cmdlet",
+              "elementType": "CommandAst",
+              "args": ["a"],
+              "text": "Remove-Item a",
+              "elementTypes": ["StringConstant", "StringConstant"],
+              "redirections": []
+            },
+            {
+              "name": "Remove-Item",
+              "nameType": "cmdlet",
+              "elementType": "CommandAst",
+              "args": ["b"],
+              "text": "Remove-Item b",
+              "elementTypes": ["StringConstant", "StringConstant"],
+              "redirections": []
+            }
+          ]
+        }
+      ],
+      "variables": [
+        {
+          "path": "x",
+          "isSplatted": false
+        }
+      ],
+      "hasStopParsing": false,
+      "originalCommand": "switch ($x) { 1 { Remove-Item a } default { Remove-Item b } }"
+    }
+  },
+  {
+    "id": "while-body",
+    "command": "while ($true) { Get-Process }",
+    "raw": {
+      "hasStopParsing": false,
+      "statements": [
+        {
+          "nestedCommands": [
+            {
+              "redirections": [],
+              "commandElements": [
+                {
+                  "value": "Get-Process",
+                  "type": "StringConstantExpressionAst",
+                  "text": "Get-Process"
+                }
+              ],
+              "type": "CommandAst",
+              "text": "Get-Process"
+            }
+          ],
+          "type": "WhileStatementAst",
+          "text": "while ($true) { Get-Process }"
+        }
+      ],
+      "errors": [],
+      "originalCommand": "while ($true) { Get-Process }",
+      "valid": true,
+      "variables": [
+        {
+          "isSplatted": false,
+          "path": "true"
+        }
+      ]
+    },
+    "parsed": {
+      "valid": true,
+      "errors": [],
+      "statements": [
+        {
+          "statementType": "WhileStatementAst",
+          "commands": [],
+          "redirections": [],
+          "text": "while ($true) { Get-Process }",
+          "nestedCommands": [
+            {
+              "name": "Get-Process",
+              "nameType": "cmdlet",
+              "elementType": "CommandAst",
+              "args": [],
+              "text": "Get-Process",
+              "elementTypes": ["StringConstant"],
+              "redirections": []
+            }
+          ]
+        }
+      ],
+      "variables": [
+        {
+          "path": "true",
+          "isSplatted": false
+        }
+      ],
+      "hasStopParsing": false,
+      "originalCommand": "while ($true) { Get-Process }"
+    }
+  },
+  {
+    "id": "redirection-all-streams",
+    "command": "Get-Process *> all.txt",
+    "raw": {
+      "hasStopParsing": false,
+      "statements": [
+        {
+          "redirections": [
+            {
+              "fromStream": "All",
+              "locationText": "all.txt",
+              "type": "FileRedirectionAst",
+              "append": false
+            }
+          ],
+          "elements": [
+            {
+              "redirections": [
+                {
+                  "fromStream": "All",
+                  "locationText": "all.txt",
+                  "type": "FileRedirectionAst",
+                  "append": false
+                }
+              ],
+              "commandElements": [
+                {
+                  "value": "Get-Process",
+                  "type": "StringConstantExpressionAst",
+                  "text": "Get-Process"
+                }
+              ],
+              "type": "CommandAst",
+              "text": "Get-Process *> all.txt"
+            }
+          ],
+          "type": "PipelineAst",
+          "text": "Get-Process *> all.txt"
+        }
+      ],
+      "errors": [],
+      "originalCommand": "Get-Process *> all.txt",
+      "valid": true,
+      "variables": []
+    },
+    "parsed": {
+      "valid": true,
+      "errors": [],
+      "statements": [
+        {
+          "statementType": "PipelineAst",
+          "commands": [
+            {
+              "name": "Get-Process",
+              "nameType": "cmdlet",
+              "elementType": "CommandAst",
+              "args": [],
+              "text": "Get-Process *> all.txt",
+              "elementTypes": ["StringConstant"],
+              "redirections": [
+                {
+                  "operator": "*>",
+                  "target": "all.txt",
+                  "isMerging": false
+                }
+              ]
+            }
+          ],
+          "redirections": [
+            {
+              "operator": "*>",
+              "target": "all.txt",
+              "isMerging": false
+            }
+          ],
+          "text": "Get-Process *> all.txt"
+        }
+      ],
+      "variables": [],
+      "hasStopParsing": false,
+      "originalCommand": "Get-Process *> all.txt"
+    }
+  },
+  {
+    "id": "env-assignment-prefix",
+    "command": "$env:FOO = 'bar'; Get-ChildItem",
+    "raw": {
+      "hasStopParsing": false,
+      "statements": [
+        {
+          "text": "$env:FOO = 'bar'",
+          "type": "AssignmentStatementAst"
+        },
+        {
+          "elements": [
+            {
+              "redirections": [],
+              "commandElements": [
+                {
+                  "value": "Get-ChildItem",
+                  "type": "StringConstantExpressionAst",
+                  "text": "Get-ChildItem"
+                }
+              ],
+              "type": "CommandAst",
+              "text": "Get-ChildItem"
+            }
+          ],
+          "type": "PipelineAst",
+          "text": "Get-ChildItem"
+        }
+      ],
+      "errors": [],
+      "originalCommand": "$env:FOO = 'bar'; Get-ChildItem",
+      "valid": true,
+      "variables": [
+        {
+          "isSplatted": false,
+          "path": "env:FOO"
+        }
+      ]
+    },
+    "parsed": {
+      "valid": true,
+      "errors": [],
+      "statements": [
+        {
+          "statementType": "AssignmentStatementAst",
+          "commands": [],
+          "redirections": [],
+          "text": "$env:FOO = 'bar'"
+        },
+        {
+          "statementType": "PipelineAst",
+          "commands": [
+            {
+              "name": "Get-ChildItem",
+              "nameType": "cmdlet",
+              "elementType": "CommandAst",
+              "args": [],
+              "text": "Get-ChildItem",
+              "elementTypes": ["StringConstant"],
+              "redirections": []
+            }
+          ],
+          "redirections": [],
+          "text": "Get-ChildItem"
+        }
+      ],
+      "variables": [
+        {
+          "path": "env:FOO",
+          "isSplatted": false
+        }
+      ],
+      "hasStopParsing": false,
+      "originalCommand": "$env:FOO = 'bar'; Get-ChildItem"
+    }
+  }
+]

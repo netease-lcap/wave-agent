@@ -251,15 +251,16 @@ export class MockDataGenerator {
     };
   }
   /**
-   * Create a bang command message — a user message carrying a bash tool block
-   * (bangManager now executes through bashTool and surfaces the output as a
-   * user-message tool block, same rendering as /plan outputs).
+   * Create a bang command message — a user message carrying the shell tool
+   * block that ran it (bashModeManager routes `!` by shell kind, so the name is
+   * `Bash` in a bash session and `PowerShell` in a PowerShell one).
    */
   static createBangMessage(
     command: string,
     output: string,
     isRunning: boolean = false,
     exitCode: number | null = 0,
+    toolName: string = BASH_TOOL_NAME,
   ): Message {
     return {
       id: `msg_${Math.random().toString(36).substring(2, 9)}`,
@@ -268,7 +269,7 @@ export class MockDataGenerator {
       blocks: [
         {
           type: "tool",
-          name: BASH_TOOL_NAME,
+          name: toolName,
           parameters: command,
           stage: isRunning ? "running" : "end",
           result:

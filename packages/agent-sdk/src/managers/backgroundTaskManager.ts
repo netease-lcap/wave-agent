@@ -1,4 +1,4 @@
-import { type ChildProcess } from "child_process";
+import { type ChildProcess, type SpawnOptions } from "child_process";
 import { spawnHidden } from "../utils/execFileHidden.js";
 import * as fs from "fs";
 import * as path from "path";
@@ -66,12 +66,27 @@ export class BackgroundTaskManager {
   /**
    * Stop handler shared by `startShell` and `adoptProcess`.
    *
-   * Terminates the task's whole process tree rather than just the shell: both
-   * spawn sites use `detached: true`, so on POSIX the child leads its own
-   * process group and on Windows `taskkill /T` walks the parent/child relation
-   * (issue #2742 — killing only bash.exe left `npm → node` grandchildren
-   * running as orphans). Graceful first, forced after 1s; on Windows both
-   * phases are the same force kill and the retry reports "not-found".
+   * Terminates the task's whole process tree rather than just the shell. The two
+   * shells reach that by different means, and the difference starts in
+   * `startShell` below — the `options.shell` branch (`:195-199`, taken by
+   * PowerShell, whose own argv it must use) passes the provider's flag through,
+   * while the default bash branch (`:200-204`) hardcodes `detached: true`. The
+   * providers decide those flags (`utils/shell/bashProvider.ts:50` true;
+   * `utils/shell/powershellProvider.ts:114` false on purpose — a detached Windows
+   * PowerShell 5.1 child never runs its `-Command` at all):
+   *
+   * - bash: the child leads its own process group on POSIX, so the group can be
+   *   signalled as a unit.
+   * - PowerShell: `detached: false`, so there is no group to signal and the tree
+   *   is walked through the parent/child relation instead.
+   * - `adoptProcess` (a foreground command moved to the background) adds no
+   *   third case: it takes over a child one of these two providers spawned, so
+   *   the same two shapes apply.
+   *
+   * On Windows the tree is walked either way: `taskkill /T` follows parent/child
+   * (issue #2742 — killing only bash.exe left `npm → node` grandchildren running
+   * as orphans). Graceful first, forced after 1s; on Windows both phases are the
+   * same force kill and the retry reports "not-found".
    */
   private createStopHandler(
     child: ChildProcess,
@@ -145,29 +160,49 @@ export class BackgroundTaskManager {
     command: string,
     timeout?: number,
     cwd?: string,
-    options?: { env?: Record<string, string>; onExit?: () => void },
+    options?: {
+      env?: Record<string, string>;
+      onExit?: () => void;
+      /**
+       * How to start the shell, when the default — `shell: <bash path>` — is
+       * not what this shell needs. PowerShell has to be started with its own
+       * argv (`-NoProfile -NonInteractive -NoLogo -Command <command>`): handing
+       * its binary to spawn's `shell` option gives it cmd.exe's `/d /s /c`
+       * instead, which Windows PowerShell 5.1 answers with no output and exit
+       * code 0.
+       */
+      shell?: { file: string; args: string[]; detached: boolean };
+    },
   ): { id: string; child: ChildProcess; detach: () => void } {
     const id = this.generateId();
     const startTime = Date.now();
 
     // fd0 is /dev/null (see bashTool): a background command that reads stdin
     // would otherwise sit there forever holding a pipe nobody writes to.
-    const child = spawnHidden(command, {
-      shell: resolveShellPath() ?? true,
+    const spawnOptions: SpawnOptions = {
       stdio: ["ignore", "pipe", "pipe"],
-      detached: true,
-      // No-op in combination with `detached`: Windows ignores CREATE_NO_WINDOW
-      // whenever DETACHED_PROCESS is set, so this does not hide anything. Kept
-      // because it is harmless and a no-op on POSIX; hiding a detached child
-      // would need ConPTY / `Start-Process -WindowStyle Hidden`.
-      windowsHide: true,
+      // `spawnHidden` forces `windowsHide: true`. In combination with a
+      // detached child that key is a no-op on Windows — CREATE_NO_WINDOW is
+      // ignored whenever DETACHED_PROCESS is set — so it only ever matters for
+      // the non-detached PowerShell branch, which is exactly where it is
+      // needed.
       cwd: cwd ?? this.workdir,
       env: {
         ...process.env,
         ...this.sessionEnv,
         ...options?.env,
       },
-    });
+    };
+    const child = options?.shell
+      ? spawnHidden(options.shell.file, options.shell.args, {
+          ...spawnOptions,
+          detached: options.shell.detached,
+        })
+      : spawnHidden(command, {
+          ...spawnOptions,
+          shell: resolveShellPath() ?? true,
+          detached: true,
+        });
 
     if (options?.onExit) {
       const onExit = options.onExit;

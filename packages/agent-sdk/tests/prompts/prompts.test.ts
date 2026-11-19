@@ -1,15 +1,25 @@
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import {
   buildSystemPrompt,
   DEFAULT_SYSTEM_PROMPT,
+  getShellInfoLine,
   type SystemPromptBlock,
 } from "../../src/prompts/index.js";
 import * as os from "node:os";
 import { isGitRepository } from "../../src/utils/gitUtils.js";
+import { resolveShellKind } from "../../src/utils/shell/shellToolGate.js";
+import { getPowerShellEdition } from "../../src/utils/shell/powershellDetection.js";
 import type { WorktreeSession } from "../../src/utils/worktreeSession.js";
 
 vi.mock("node:os");
 vi.mock("../../src/utils/gitUtils.js");
+vi.mock("../../src/utils/shell/shellToolGate.js", () => ({
+  collectShellToolGateInput: vi.fn(),
+  resolveShellKind: vi.fn(),
+}));
+vi.mock("../../src/utils/shell/powershellDetection.js", () => ({
+  getPowerShellEdition: vi.fn(),
+}));
 
 /** Flatten SystemPromptBlock[] into a single string for string-based assertions */
 function flattenBlocks(blocks: SystemPromptBlock[]): string {
@@ -26,6 +36,11 @@ const worktreeSessionActive: WorktreeSession = {
 };
 
 describe("prompts", () => {
+  beforeEach(() => {
+    // A POSIX session by default; the shell-info cases below pick their own.
+    vi.mocked(resolveShellKind).mockReturnValue("bash");
+  });
+
   afterEach(() => {
     vi.restoreAllMocks();
   });
@@ -195,7 +210,7 @@ describe("prompts", () => {
 
       expect(result).toContain("Notes:");
       expect(result).toContain(
-        "Agent threads always have their cwd reset between bash calls",
+        "Agent threads always have their cwd reset between shell calls",
       );
       expect(result).toContain(
         "Here is useful information about the environment you are running in:",
@@ -280,6 +295,55 @@ describe("prompts", () => {
       );
 
       process.env.SHELL = originalShell;
+    });
+
+    describe("getShellInfoLine", () => {
+      it("names PowerShell 7 and says && is available", () => {
+        vi.mocked(resolveShellKind).mockReturnValue("powershell");
+        vi.mocked(getPowerShellEdition).mockReturnValue("core");
+
+        expect(getShellInfoLine("/some/path")).toBe(
+          "Shell: PowerShell 7 (pwsh — `&&` and `||` are available)",
+        );
+      });
+
+      it("warns a 5.1 session that && is not available", () => {
+        vi.mocked(resolveShellKind).mockReturnValue("powershell");
+        vi.mocked(getPowerShellEdition).mockReturnValue("desktop");
+
+        expect(getShellInfoLine("/some/path")).toBe(
+          "Shell: Windows PowerShell 5.1 (no `&&` / `||` — chain with `A; if ($?) { B }`)",
+        );
+      });
+
+      it("assumes 5.1 when the PowerShell edition could not be detected", () => {
+        vi.mocked(resolveShellKind).mockReturnValue("powershell");
+        vi.mocked(getPowerShellEdition).mockReturnValue(undefined);
+
+        expect(getShellInfoLine("/some/path")).toContain(
+          "assume Windows PowerShell 5.1",
+        );
+      });
+
+      it("reports a session that has no shell at all", () => {
+        vi.mocked(resolveShellKind).mockReturnValue("none");
+
+        const line = getShellInfoLine("/some/path");
+        expect(line).toContain("Shell: none available");
+        // Nothing to teach: no syntax advice for a shell that cannot run.
+        expect(line).not.toContain("Unix shell syntax");
+      });
+
+      it("keeps the Unix-syntax hint only for a Git Bash executor on win32", () => {
+        const originalShell = process.env.SHELL;
+        process.env.SHELL = "/bin/bash";
+        vi.mocked(os.platform).mockReturnValue("win32");
+        vi.mocked(resolveShellKind).mockReturnValue("bash");
+
+        expect(getShellInfoLine("/some/path")).toContain("Unix shell syntax");
+
+        process.env.SHELL = originalShell;
+      });
     });
 
     it("should use friendly OS version on win32", () => {

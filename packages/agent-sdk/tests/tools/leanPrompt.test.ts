@@ -3,7 +3,7 @@ import { ToolManager } from "@/managers/toolManager.js";
 import { Container } from "@/utils/container.js";
 import { artifactTool } from "@/tools/artifactTool.js";
 import { execTool } from "@/tools/execTool.js";
-import { SKILL_TOOL_NAME } from "@/constants/tools.js";
+import { SKILL_TOOL_NAME, POWERSHELL_TOOL_NAME } from "@/constants/tools.js";
 
 const { isLeanPromptEnabled } = vi.hoisted(() => ({
   isLeanPromptEnabled: vi.fn(() => false),
@@ -61,7 +61,13 @@ describe("lean prompt mode", () => {
     // `Skill` is the deliberate exception: its full description is already two
     // sentences — the skill list it used to carry is announced as a meta message
     // per turn (`utils/skillListing.ts`), so there is nothing left to condense.
-    const exempt = new Set([SKILL_TOOL_NAME]);
+    // `PowerShell` is the other one, and its reason is upstream: CC's
+    // PowerShellTool has no lean variant (`@343320400` — its `prompt` takes no
+    // `leanPrompt` argument, unlike BashTool's `@330422200`), and its full
+    // description carries the bash → PowerShell mapping table that lean would
+    // otherwise drop. Only registered on a PowerShell session, so a bash-less
+    // Windows run is where this entry matters.
+    const exempt = new Set([SKILL_TOOL_NAME, POWERSHELL_TOOL_NAME]);
     const missing = manager
       .list()
       .filter((tool) => tool.leanPrompt === undefined && !exempt.has(tool.name))

@@ -47,10 +47,10 @@ import type {
 import {
   EDIT_TOOL_NAME,
   WRITE_TOOL_NAME,
-  BASH_TOOL_NAME,
   EXIT_PLAN_MODE_TOOL_NAME,
   ENTER_PLAN_MODE_TOOL_NAME,
   ASK_USER_QUESTION_TOOL_NAME,
+  isShellToolName,
   PLUGIN_RELOADED_MESSAGE,
   StdioAgent,
   NotificationRouter,
@@ -3899,7 +3899,7 @@ export class DesktopHost {
     let confirmationType: string;
     if ([EDIT_TOOL_NAME, WRITE_TOOL_NAME].includes(context.toolName)) {
       confirmationType = "代码修改待确认";
-    } else if (context.toolName === BASH_TOOL_NAME) {
+    } else if (isShellToolName(context.toolName)) {
       confirmationType = "命令执行待确认";
     } else if (
       context.toolName === EXIT_PLAN_MODE_TOOL_NAME ||

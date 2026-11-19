@@ -10,7 +10,10 @@ import type { BackgroundTaskSummary } from "../types";
  * 稳定，状态只改它在本组里的名次。
  */
 const TYPE_LABELS: ReadonlyArray<{ type: string; label: string }> = [
-  { type: "shell", label: "Bash" },
+  // 分组标签按**能力**取词，不按工具名：同一个 `shell` 组在 Windows 上可能是
+  // PowerShell 跑出来的，写 "Bash" 会让那一组的标题指向一个本会话并不存在的
+  // 工具（`BackgroundTaskSummary` 里没有工具名，解析不出更细的档）。
+  { type: "shell", label: "Shell" },
   { type: "subagent", label: "子 Agent" },
   { type: "workflow", label: "工作流" },
 ];

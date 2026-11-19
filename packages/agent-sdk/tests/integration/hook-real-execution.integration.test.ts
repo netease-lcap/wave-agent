@@ -20,6 +20,11 @@ import * as path from "path";
 import { Agent } from "../../src/agent.js";
 import * as aiService from "../../src/services/aiService.js";
 import type { PartialHookConfiguration } from "../../src/types/hooks.js";
+import { getPowerShellPath } from "../../src/utils/shell/powershellDetection.js";
+import {
+  collectShellToolGateInput,
+  POWERSHELL_TOOL_ENV_VAR,
+} from "../../src/utils/shell/shellToolGate.js";
 import { longFormTempDir } from "../helpers/tempDir.js";
 
 vi.mock("../../src/services/aiService.js", async (importOriginal) => {
@@ -138,6 +143,65 @@ describe("Hook real-command execution (spec automation/hooks.md)", () => {
     // The AI loop continued after the block (second call happened).
     expect(callAgent).toHaveBeenCalledTimes(2);
   });
+
+  it.runIf(process.platform === "win32" && getPowerShellPath())(
+    "blocks the tool when a PowerShell session's PreToolUse exits 2",
+    async () => {
+      // The same contract as the test above, one shell over: the hook runs
+      // through PowerShell, and its block verdict has to survive the trip. It
+      // only does because the PowerShell branch appends the `$LASTEXITCODE`
+      // statement — plain `powershell -Command 'cmd /c exit 2'` exits 1, which
+      // reads as "failed, do not block" and would let the Write through.
+      fs.mkdirSync(path.join(workdir, ".wave"), { recursive: true });
+      fs.writeFileSync(
+        path.join(workdir, ".wave", "settings.json"),
+        JSON.stringify({ env: { [POWERSHELL_TOOL_ENV_VAR]: "1" } }),
+      );
+      // Verify the pin before trusting the outcome: if this settings file did
+      // not take, the hook falls back to Git Bash, where the PowerShell branch's
+      // wrapper line is a bash syntax error — and bash also exits 2 for a syntax
+      // error, so the test would pass for the wrong reason.
+      expect(collectShellToolGateInput(workdir).envValue).toBe("1");
+      const hooks: PartialHookConfiguration = {
+        PreToolUse: [
+          {
+            matcher: "Write",
+            hooks: [{ type: "command", command: "cmd /c exit 2" }],
+          },
+        ],
+      };
+      agent = await Agent.create({ workdir, hooks });
+
+      const target = path.join(workdir, "ps-blocked.txt");
+      callAgent
+        .mockResolvedValueOnce({
+          content: "",
+          tool_calls: [
+            {
+              id: "call_ps_hook",
+              type: "function" as const,
+              function: {
+                name: "Write",
+                arguments: JSON.stringify({
+                  file_path: target,
+                  content: "should not be written",
+                }),
+              },
+            },
+          ],
+          finish_reason: "tool_calls",
+        })
+        .mockResolvedValueOnce({
+          content: "I could not write the file.",
+          finish_reason: "stop",
+        });
+
+      await agent.sendMessage("write the file");
+
+      expect(fs.existsSync(target)).toBe(false);
+      expect(callAgent).toHaveBeenCalledTimes(2);
+    },
+  );
 
   it("injects UserPromptSubmit stdout as a second user message (hooks.md / Hook 成功反馈 / 场景 1)", async () => {
     const hooks: PartialHookConfiguration = {

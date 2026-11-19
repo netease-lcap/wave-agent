@@ -173,6 +173,30 @@ order: 130
 2. **假设**显示了 `Bash` 命令 `ls` 的确认提示，**当**用户选择"是，不再询问..."时，**则**命令被执行，`Bash(ls)` 被添加到 `.wave/settings.local.json` 的 `permissions.allow` 数组中。
 3. **假设** `Bash(ls)` 在本地项目设置的 `permissions.allow` 数组中，**当** agent 尝试命令为 `ls` 的 `Bash` 操作时，**则**它被执行而不提示。
 
+### 用户故事：第二个 shell 工具（PowerShell）的权限与持久化（优先级：P1）
+
+作为没有 Git Bash 的 Windows 用户，我希望 PowerShell 命令经过与 `Bash` 同等强度的判定——只读的自动放行、破坏性的必须确认、危险形态直接拒绝——而不是因为换了执行器就少一道闸；同时「不再询问」落下的规则必须能在下次真的命中。
+
+**优先级原因**：PowerShell 是第二个 shell 工具，不是 bash 的别名：它有对象管道、脚本块、别名与参数缩写，bash 的结构感知判定套不上去（解析器都不同）。判定若不独立实现，就会出现两种坏结果——把 `Invoke-Expression` 当普通命令放行，或者把只读的 `Get-ChildItem` 每次都拦。持久化规则也必须按工具命名空间隔离，否则一条 `Bash(...)` 规则会悄悄授权 PowerShell 里语义不同的命令。
+
+**独立测试**：在 PowerShell 会话里依次执行 `Get-ChildItem`、`Get-Content C:\Windows\win.ini`、`Set-Content note.txt x`、`Invoke-Expression $cmd`、`powershell -EncodedCommand <base64>`、`Remove-Item -Recurse -Force C:\`，核对依次为「不问直接放行」「询问」「询问且不给不再询问」「询问但保留不再询问」「直接拒绝」「直接拒绝」；再对复合命令选择「不再询问」，核对落盘的是每段一条 `PowerShell(...)` 规则且重跑不再询问。
+
+**验收场景**：
+
+1. **假设** 规则写成 `PowerShell(...)`，**当** 判定 PowerShell 命令时，**则** 必须以 `PowerShell` 为命名空间匹配，`Bash(...)` 规则一律不匹配（`packages/agent-sdk/src/tools/powershellTool/permissions.ts:75-87`）；反之 bash 上下文也不读 `PowerShell(...)` 规则（`packages/agent-sdk/src/managers/permissionManager.ts:1557`、`:1587-1600`）。
+2. **假设** 存在 deny 规则，**当** 判定开始时，**则** 必须先对原始命令文本跑 deny，再进入解析——解析器读不懂的命令也不能绕过 deny（`packages/agent-sdk/src/tools/powershellTool/permissions.ts:192-203`）。
+3. **假设** 命令无法被解析（语法错、解析超时、没有 PowerShell），**当** 判定时，**则** 永不得自动放行，只能按语句边界再跑一遍 deny 后询问，并隐藏「不再询问」选项（`packages/agent-sdk/src/tools/powershellTool/permissions.ts:205-224`）。
+4. **假设** 所有叶子命令都是只读 cmdlet（如 `Get-ChildItem`、`Get-Content`、`Select-Object`、`Test-Path`，共 42 项白名单）、参数里没有脚本块/子表达式、抽出的每个路径都在安全区域内、且没有文件重定向，**当** 判定时，**则** 必须不问直接放行；任一条件不满足都不得自动放行（`packages/agent-sdk/src/tools/powershellTool/readOnly.ts:31-79`、`packages/agent-sdk/src/tools/powershellTool/permissions.ts:157-173`、`:287-294`）。
+5. **假设** 只读 cmdlet 的参数是安全区域之外的路径（如 `Get-Content C:\Windows\win.ini`），**当** 判定时，**则** 必须询问——只读不等于可越界（`packages/agent-sdk/src/tools/powershellTool/permissions.ts:165-172`、`packages/agent-sdk/src/managers/permissionManager.ts:661-715`）。
+6. **假设** 命令使用 `-EncodedCommand`（含 `-enc` 等缩写）或同一条语句里「下载并执行」，**当** 判定时，**则** 必须直接拒绝且不给「不再询问」（`packages/agent-sdk/src/tools/powershellTool/security.ts:114-162`）。
+7. **假设** 命令使用脚本块或动态执行（`Invoke-Expression`、`Invoke-Command`、`Start-Job`、`Register-*Event`、`New-Object -ComObject` 等），**当** 判定时，**则** 必须询问但**保留**「不再询问」——落盘的是这条精确命令（`packages/agent-sdk/src/tools/powershellTool/security.ts:164-203`）。
+8. **假设** 破坏性 cmdlet 的目标是文件系统根、用户主目录或其等价写法（`~`、`$HOME`、`%USERPROFILE%`）、或 `Windows`/`System32`/`Program Files` 这类系统目录本身，**当** 判定时，**则** 必须直接拒绝，规则不可覆盖；系统目录**之下**的普通路径仍走询问（`packages/agent-sdk/src/tools/powershellTool/pathValidation.ts:27-61`、`:92-120`）。
+9. **假设** 存在 allow 规则，**当** 判定复合命令时，**则** 必须要求每个叶子都被覆盖才放行——一条规则不能带走第二条命令（`packages/agent-sdk/src/tools/powershellTool/permissions.ts:268-283`）。
+10. **假设** 命令进入询问，**当** 提示是否给出建议前缀时，**则** 只有单叶子命令才给；多叶子命令一律不给前缀，但仍可写整条命令的精确规则（`packages/agent-sdk/src/tools/powershellTool/permissions.ts:299-304`）。
+11. **假设** 用户选择「不再询问」，**当** 落盘规则时，**则** 必须按叶子拆分：每个 `CommandAst` 叶子各一条 `PowerShell(<leaf.text>)`；命令不可解析时一条都不写（`packages/agent-sdk/src/managers/permissionManager.ts:1941-1963`、`:1979-1987`）。
+12. **假设** 危险 cmdlet 出现在命令里，**当** 生成建议时，**则** 只有两档抑制、且必须区分：命中通配前缀黑名单（`Invoke-Expression`、`Start-Process`、`ForEach-Object` 等）只是不给 `*` 前缀，「不再询问」照常可用；命中破坏性黑名单（`Remove-Item`、`Set-Content`、`Out-File` 等，含别名）才连「不再询问」一并隐藏；含文件写重定向的命令同样隐藏（`packages/agent-sdk/src/utils/powershellStructure/dangerousCmdlets.ts:257-261`、`:278-279`、`packages/agent-sdk/src/tools/powershellTool/permissions.ts:331-339`）。
+13. **假设** 权限模式为 `dontAsk` 且没有匹配的 allow 规则，**当** 判定结果为询问时，**则** 必须按拒绝处理，用户不会被提示（`packages/agent-sdk/src/managers/permissionManager.ts:1223-1286`）。
+
 ### 用户故事：安全区域内的自动文件编辑（优先级：P1）
 
 作为用户，我希望 agent 在我的项目目录或明确允许的目录内自动应用文件编辑，而无需每次都征求我的许可，这样当我信任 agent 的更改时可以提高工作效率。
@@ -265,6 +289,7 @@ _已移除。基于 Heredoc 的 bash 命令不再被自动拒绝。用户应依�
 - **权限规则**：定义允许或拒绝操作的字符串（如 `Bash(git *)`、`Read(**/*.env)`）。
 - **简单命令**：从管道中提取的带参数的单个可执行命令。
 - **智能通配符**：用 `*` 替换动态参数的启发式生成模式。
+- **两档危险命令集合（shell 工具共用同一套语义）**：`NO_PREFIX_SUGGEST` 只抑制通配**前缀**（建议值退化为这条精确命令，「不再询问」仍可点）；`BLOCK_PERSIST` 是其子集，额外抑制**整个「不再询问」选项**（判据是破坏性且不可逆）。两套集合都做别名展开。Bash 侧由 `DANGEROUS_COMMANDS` 等黑名单承担同一角色，PowerShell 侧见 `packages/agent-sdk/src/utils/powershellStructure/dangerousCmdlets.ts:257-261`、`:278-279`。
 - **PermissionDecision**：权限检查的结果，扩展为包含可选的 `newPermissionMode`、`newPermissionRule` 与 `newAdditionalDirectory`（会话级地把指定目录加入安全区域）以通知系统更新其状态。`newAdditionalDirectory` 同时登记该目录下 `Edit`/`Write` 的会话级允许规则，使"允许本会话编辑"的承诺对后续编辑同样成立（`default` 模式本就对每次 `Edit`/`Write` 要求确认，仅加入安全区域不足以免除后续确认）。
 - **安全区域**：允许 agent 执行文件操作而无需每次操作都经用户明确确认的文件系统路径集合。
 - **附加目录**：用户可配置的路径列表，将安全区域扩展到默认工作目录之外。可通过 `settings.json` 的 `permissions.additionalDirectories`、CLI 的 `--add-dir` 启动选项、`/add-dir` 斜杠命令（会话级）或越界确认弹窗的"允许本会话编辑 `<目录名>/`"选项（会话级）加入；其中 `--add-dir` 与 `/add-dir` 为 CLI 专属入口，弹窗选项为三端 GUI 与交互式 CLI 共有（两者都不写配置文件）。路径支持相对路径（相对工作目录解析）与 `~`/`~/` 前缀（按用户主目录展开）。
@@ -277,6 +302,8 @@ _已移除。基于 Heredoc 的 bash 命令不再被自动拒绝。用户应依�
 - **优先级**：拒绝规则始终优先于允许规则。
 - **绕过授权不豁免的检查**：穿透权限检查的判定（`bypassPermissions` 模式，或 `plan` 模式下持有绕过授权的会话）不豁免三类拦截：实例与配置的 deny 规则、worktree 内对主仓库的越界写保护、以及需要用户交互的工具（`AskUserQuestion`、`ExitPlanMode`——后者即计划批准，离开计划模式始终是用户决定）。
 - **敏感命令**：如 `rm` 等命令被列入智能通配符建议的黑名单，以防止意外的广泛权限。
+- **PowerShell 的「解析失败」不是放行**：bash 用结构感知解析器，PowerShell 用自己的 AST 解析器（需 spawn 一次 `pwsh`/`powershell`，超时 5 秒、超时重试一次、结果进 256 项 LRU）；解析失败或没有 PowerShell 可用时一律回落到询问并隐藏「不再询问」，绝不自动放行（`packages/agent-sdk/src/tools/powershellTool/permissions.ts:205-224`、`packages/agent-sdk/src/utils/powershellStructure/psParser.ts:35-50`）。
+- **规则命名空间互不可见**：`Bash(...)` 与 `PowerShell(...)` 各自只被同名工具的判定读取，一次「不再询问」不会跨执行器生效（见 [powershell-tool.md](powershell-tool.md)「持久化规则按叶子拆分」）。
 - **转义字符**：`echo "&&"` 必须被视为单个命令，不得拆分。
 - **缺少 `.wave` 目录**：如果用户选择持久化 Bash 选项且 `.wave` 不存在，系统应该创建它。
 - **格式错误的 `settings.json`**：如果设置文件格式错误，系统应该优雅地处理。

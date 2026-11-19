@@ -430,6 +430,72 @@ describe("confirmationReducer", () => {
     });
   });
 
+  describe("HANDLE_KEY auto option rule namespace", () => {
+    const autoKey = { return: true } as unknown as Key;
+
+    function autoDecision(
+      toolName: string,
+      toolInput: Record<string, unknown>,
+      suggestedPrefix?: string,
+    ) {
+      return confirmationReducer(
+        { ...initialState, selectedOption: "auto" },
+        {
+          type: "HANDLE_KEY",
+          input: "",
+          key: autoKey,
+          toolName,
+          toolInput,
+          suggestedPrefix,
+        },
+      ).decision;
+    }
+
+    it("should namespace the rule as Bash for the Bash tool", () => {
+      expect(autoDecision("Bash", { command: "ls -la" }, "ls")).toEqual({
+        behavior: "allow",
+        newPermissionRule: "Bash(ls)",
+      });
+      expect(autoDecision("Bash", { command: "ls -la" })).toEqual({
+        behavior: "allow",
+        newPermissionRule: "Bash(ls -la)",
+      });
+    });
+
+    it("should namespace the rule as PowerShell for the PowerShell tool", () => {
+      // A `Bash(…)` rule is invisible to the PowerShell evaluator, so "don't ask
+      // again" would silently never fire again — the rule must name the tool
+      // that reads it back.
+      expect(
+        autoDecision(
+          "PowerShell",
+          { command: "Invoke-Expression 'Get-Date'" },
+          undefined,
+        ),
+      ).toEqual({
+        behavior: "allow",
+        newPermissionRule: "PowerShell(Invoke-Expression 'Get-Date')",
+      });
+      expect(
+        autoDecision(
+          "PowerShell",
+          { command: "Get-ChildItem src" },
+          "Get-ChildItem",
+        ),
+      ).toEqual({
+        behavior: "allow",
+        newPermissionRule: "PowerShell(Get-ChildItem)",
+      });
+    });
+
+    it("should keep the mkdir short-circuit for the Bash tool", () => {
+      expect(autoDecision("Bash", { command: "mkdir -p build" })).toEqual({
+        behavior: "allow",
+        newPermissionMode: "acceptEdits",
+      });
+    });
+  });
+
   describe("default action", () => {
     it("should return state unchanged for unknown action", () => {
       const result = confirmationReducer(initialState, {

@@ -17,7 +17,11 @@ import {
   type HookJsonInput,
 } from "../types/hooks.js";
 import { generateSessionFilePath } from "./session.js";
-import { resolveShellPath } from "../utils/shellResolver.js";
+import { resolveSessionShell } from "../utils/shell/shellToolGate.js";
+import {
+  POWERSHELL_SPAWN_FLAGS,
+  withHookExitCode,
+} from "../utils/shell/powershellProvider.js";
 import { toPosixCommand } from "../utils/windowsPaths.js";
 
 // =============================================================================
@@ -211,39 +215,47 @@ export async function executeCommand(
     let stderr = "";
     let timedOut = false;
 
-    // Parse command for shell execution.
+    // Which shell runs a hook command — the session's own, decided in one place
+    // (`utils/shell/shellToolGate.ts`). Two things this replaced:
     //
-    // Windows uses Git Bash (POSIX shell) instead of cmd.exe: cmd.exe's `/c`
-    // does not strip quotes from arguments after the first token, so commands
-    // like `node "C:\path\script.js"` silently fail (issue #1773). Git Bash
-    // parses quotes correctly, and Windows paths in the command are converted
-    // to POSIX form first (Git Bash resolves `/c/Users/...` and translates it
-    // back to a Windows path when spawning native executables like node.exe).
-    // Falls back to cmd.exe when no Git Bash is installed.
-    const isWindows = process.platform === "win32";
-    const bashPath = isWindows ? resolveShellPath() : undefined;
-    let shell: string;
-    let shellFlag: string;
-    let finalCommand: string;
-    if (bashPath) {
-      shell = bashPath;
-      shellFlag = "-c";
-      finalCommand = toPosixCommand(command);
+    // - cmd.exe as the `/c` shell. Its `/c` does not strip quotes from arguments
+    //   after the first token, so `node "C:\path\script.js"` silently fails
+    //   (issue #1773); it also mis-parses every bash construct a hook is written
+    //   with (`2>/dev/null`, `&&`, `$VAR`).
+    // - A silent downgrade when Git Bash was missing. Claude Code throws in that
+    //   situation and never reaches for cmd.exe (`src/utils/hooks.ts:976`), and
+    //   keeping the downgrade would also let a session be judged in one shell and
+    //   executed in another.
+    //
+    // A hook has no `shell` field to pick with (Claude Code added one; wave
+    // deliberately does not, design §13-4), so it follows the session — the same
+    // decision that registered the shell tool.
+    const sessionShell = resolveSessionShell(
+      context.sessionRoot ?? context.projectDir,
+    );
+    if ("problem" in sessionShell) {
+      throw new Error(sessionShell.problem);
+    }
+    let spawnArgs: string[];
+    if (sessionShell.kind === "bash") {
+      // Windows paths in the command are converted to POSIX form first (Git Bash
+      // resolves `/c/Users/...` and translates it back to a Windows path when
+      // spawning native executables like node.exe).
+      let bashCommand = toPosixCommand(command);
       // Windows .sh scripts aren't directly executable — run them via bash
       // when the command itself is a .sh file (e.g. `${WAVE_PLUGIN_ROOT}/x.sh`).
-      const trimmed = finalCommand.trim();
+      const trimmed = bashCommand.trim();
       const firstToken = trimmed.match(/^("([^"]*)"|'([^']*)'|\S+)/)?.[0] ?? "";
       if (firstToken.endsWith(".sh") && !trimmed.startsWith("bash ")) {
-        finalCommand = `bash ${finalCommand}`;
+        bashCommand = `bash ${bashCommand}`;
       }
-    } else if (isWindows) {
-      shell = "cmd.exe";
-      shellFlag = "/c";
-      finalCommand = command;
+      spawnArgs = ["-c", bashCommand];
     } else {
-      shell = "/bin/sh";
-      shellFlag = "-c";
-      finalCommand = command;
+      // No path conversion: PowerShell reads `C:\...` natively, and a POSIX
+      // `/c/...` path would resolve against the drive root. The appended
+      // statement is what carries a hook's `exit 2` verdict (the protocol's block
+      // code) out of PowerShell — see `POWERSHELL_HOOK_EXIT_WRAPPER`.
+      spawnArgs = [...POWERSHELL_SPAWN_FLAGS, withHookExitCode(command)];
     }
 
     // Hook scripts run in projectDir (the session's current workdir), matching
@@ -257,14 +269,16 @@ export async function executeCommand(
     );
 
     const childProcess: ChildProcess = spawnHidden(
-      shell,
-      [shellFlag, finalCommand],
+      sessionShell.shellPath,
+      spawnArgs,
       {
         stdio: ["pipe", "pipe", "pipe"],
         cwd: spawnCwd,
-        // No-op off Windows. The desktop main process has no console, so without
-        // this every hook spawn gets a visible console window allocated.
-        windowsHide: true,
+        // `spawnHidden` forces `windowsHide: true`. No-op off Windows; the
+        // desktop main process has no console, so without it every hook spawn
+        // would get a visible console window allocated. `stdio` is spelled out
+        // because hooks write the payload to fd0 — an explicit layout is what
+        // keeps the wrapper from pointing fd0 at /dev/null.
         env: {
           ...process.env, // Environment variables from process.env
           ...("env" in context ? context.env || {} : {}), // Additional environment variables from configuration (if ExtendedHookExecutionContext)

@@ -7,11 +7,11 @@ import React, {
 } from "react";
 import {
   ASK_USER_QUESTION_TOOL_NAME,
-  BASH_TOOL_NAME,
   ENTER_PLAN_MODE_TOOL_NAME,
   EXIT_PLAN_MODE_TOOL_NAME,
   EDIT_TOOL_NAME,
   WRITE_TOOL_NAME,
+  isShellToolName,
 } from "wave-agent-sdk/constants";
 import {
   CloseIcon,
@@ -595,7 +595,7 @@ const ConfirmationDialogImpl: React.FC<ConfirmationDialogProps> = ({
       });
     } else if (
       confirmation.toolName === EXIT_PLAN_MODE_TOOL_NAME ||
-      confirmation.toolName === BASH_TOOL_NAME ||
+      isShellToolName(confirmation.toolName) ||
       [EDIT_TOOL_NAME, WRITE_TOOL_NAME].includes(confirmation.toolName)
     ) {
       if (showFeedbackInput) {
@@ -692,10 +692,10 @@ const ConfirmationDialogImpl: React.FC<ConfirmationDialogProps> = ({
   const handleAutoConfirm = useCallback(() => {
     restoreFocus();
     let decision: unknown;
-    if (confirmation.toolName === BASH_TOOL_NAME) {
+    if (isShellToolName(confirmation.toolName)) {
       const rule = confirmation.suggestedPrefix
-        ? `Bash(${confirmation.suggestedPrefix})`
-        : `Bash(${confirmation.toolInput?.command})`;
+        ? `${confirmation.toolName}(${confirmation.suggestedPrefix})`
+        : `${confirmation.toolName}(${confirmation.toolInput?.command})`;
       decision = {
         behavior: "allow",
         newPermissionRule: rule,
@@ -746,7 +746,7 @@ const ConfirmationDialogImpl: React.FC<ConfirmationDialogProps> = ({
   ]);
 
   const getAutoOptionText = () => {
-    if (confirmation.toolName === BASH_TOOL_NAME) {
+    if (isShellToolName(confirmation.toolName)) {
       if (confirmation.suggestedPrefix) {
         return `是，且不再询问：${confirmation.suggestedPrefix}`;
       }
@@ -1224,7 +1224,7 @@ const ConfirmationDialogImpl: React.FC<ConfirmationDialogProps> = ({
       confirmation.toolName === ENTER_PLAN_MODE_TOOL_NAME;
     if (
       (isPlanModeTool ||
-        confirmation.toolName === BASH_TOOL_NAME ||
+        isShellToolName(confirmation.toolName) ||
         [EDIT_TOOL_NAME, WRITE_TOOL_NAME].includes(confirmation.toolName) ||
         confirmation.toolName.startsWith("mcp__")) &&
       showFeedbackInput
@@ -1258,7 +1258,7 @@ const ConfirmationDialogImpl: React.FC<ConfirmationDialogProps> = ({
                 {confirmation.confirmationType}
               </div>
             </div>
-            {confirmation.toolName === BASH_TOOL_NAME &&
+            {isShellToolName(confirmation.toolName) &&
               !!confirmation.toolInput?.command && (
                 <div className="confirmation-command">
                   {String(confirmation.toolInput.command)}
@@ -1309,7 +1309,7 @@ const ConfirmationDialogImpl: React.FC<ConfirmationDialogProps> = ({
             {!showFeedbackInput ? (
               <>
                 {(confirmation.toolName === EXIT_PLAN_MODE_TOOL_NAME ||
-                  confirmation.toolName === BASH_TOOL_NAME ||
+                  isShellToolName(confirmation.toolName) ||
                   [EDIT_TOOL_NAME, WRITE_TOOL_NAME].includes(
                     confirmation.toolName,
                   ) ||
@@ -1323,7 +1323,7 @@ const ConfirmationDialogImpl: React.FC<ConfirmationDialogProps> = ({
                 )}
 
                 {(confirmation.toolName === EXIT_PLAN_MODE_TOOL_NAME ||
-                  (confirmation.toolName === BASH_TOOL_NAME &&
+                  (isShellToolName(confirmation.toolName) &&
                     confirmation.permissionMode !== "plan")) && (
                   <button
                     className="confirmation-btn confirmation-btn-auto"
@@ -1388,7 +1388,7 @@ const ConfirmationDialogImpl: React.FC<ConfirmationDialogProps> = ({
                   <span className="btn-text">
                     {confirmation.toolName === EXIT_PLAN_MODE_TOOL_NAME ||
                     confirmation.toolName === ENTER_PLAN_MODE_TOOL_NAME ||
-                    confirmation.toolName === BASH_TOOL_NAME ||
+                    isShellToolName(confirmation.toolName) ||
                     [EDIT_TOOL_NAME, WRITE_TOOL_NAME].includes(
                       confirmation.toolName,
                     ) ||

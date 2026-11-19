@@ -1,8 +1,7 @@
-import { type ChildProcess } from "child_process";
+import { type ChildProcess, type SpawnOptions } from "child_process";
 import { spawnHidden } from "../utils/execFileHidden.js";
 import { Readable } from "stream";
 import * as fs from "fs";
-import * as path from "path";
 import { logger } from "../utils/globalLogger.js";
 import {
   resolveTempDir,
@@ -11,10 +10,10 @@ import {
   describeDiskPressure,
   readDiskPressure,
 } from "../utils/tempDir.js";
-import { resolveShellPath } from "../utils/shellResolver.js";
-import { toPosixPath, toWindowsPath } from "../utils/path.js";
+import { getShellProvider } from "../utils/shell/resolveProvider.js";
+import { toWindowsPath } from "../utils/path.js";
 import { WindowsStreamDecoder } from "../utils/encoding.js";
-import { killProcessTree } from "../utils/killProcessTree.js";
+import { terminateChildProcessTree } from "../utils/terminateProcessTree.js";
 import { processToolResult } from "../utils/toolResultStorage.js";
 import { BASH_MAX_OUTPUT_CHARS } from "../constants/toolLimits.js";
 import type {
@@ -23,7 +22,6 @@ import type {
   ToolContext,
   ToolPromptArgs,
 } from "./types.js";
-import { buildSearchShellPrelude } from "../utils/searchShell.js";
 import {
   BASH_TOOL_NAME,
   GLOB_TOOL_NAME,
@@ -45,25 +43,6 @@ const BASH_MAX_TIMEOUT_MS = 600000;
 // that case the shell's own output is returned, matching pre-existing behavior.
 const SHELL_STREAM_FLUSH_TIMEOUT_MS = 100;
 
-/**
- * Wrap a user command so we can append CWD tracking (`&& pwd -P`) without the
- * appended part being affected by trailing here-docs, unbalanced quotes, or
- * multi-line syntax in the user command.
- *
- * The command is single-quoted (with embedded single quotes escaped via the
- * classic `'"'"'` sequence) and run through `eval`. Because the entire user
- * command becomes a single literal argument to `eval`, any here-doc inside it
- * only opens/closes during eval's own second parse pass and cannot leak out to
- * clobber the trailing `&& pwd -P`. Works on sh/dash/bash and Git Bash.
- */
-function wrapCommandForCwdTracking(
-  command: string,
-  cwdFileForBash: string,
-): string {
-  const escaped = command.replace(/'/g, `'"'"'`);
-  return `eval '${escaped}' && pwd -P >| ${cwdFileForBash}`;
-}
-
 // Commands that should not be auto-backgrounded on timeout (e.g. sleep should just be killed)
 const DISALLOWED_AUTO_BACKGROUND_COMMANDS = ["sleep"];
 
@@ -71,8 +50,9 @@ const DISALLOWED_AUTO_BACKGROUND_COMMANDS = ["sleep"];
  * Names the search surface this session actually offers.
  *
  * The dedicated `Grep` / `Glob` tools are not part of the default tool set
- * (`core/fs-tools.md`「默认工具集不含搜索工具」); they come back only when
- * `--tools` names them. The description has to follow, or it would tell the
+ * (`core/fs-tools.md`「默认工具集不含搜索工具」); they come back when `--tools`
+ * names them, or when the session has no bash to shadow `grep` / `find` with.
+ * The description has to follow, or it would tell the
  * model to call tools that are not there — or to keep hand-rolling `ls` when
  * `grep` in Bash is already .gitignore-aware.
  *
@@ -126,20 +106,6 @@ function searchPromptLines(args?: ToolPromptArgs): {
     - To search for files use \`find\` here (NOT ls); for file contents use \`grep -rn\` here (NOT a bare \`rg\`)
     - Reserve using the ${BASH_TOOL_NAME} exclusively for system commands and terminal operations that require shell execution.`,
   };
-}
-
-/**
- * Prepend wave's search shadows to [command] (`utils/searchShell.ts`).
- *
- * Every Bash call is a fresh shell, so — unlike Claude Code, which writes one
- * shell snapshot per session — the prelude goes in per spawn. It sits inside the
- * command string rather than in front of the spawn so that it also survives the
- * sandbox wrapper, which runs the command under its own `bash -c`.
- */
-function withSearchShadows(command: string): string {
-  const prelude = buildSearchShellPrelude();
-  if (!prelude) return command;
-  return `${prelude}\n${command}`;
 }
 
 function isAutobackgroundingAllowed(command: string): boolean {
@@ -301,9 +267,9 @@ The working directory persists between commands, but shell state (environment va
       ? `Note: working directory ${cwdRecovery.from} no longer exists; session working directory recovered to ${cwdRecovery.to}.\n`
       : "";
 
-    // Resolve shell path: on Windows, use Git Bash; on macOS/Linux, use bash or zsh
-    const shellPath = resolveShellPath();
-    if (!shellPath) {
+    // Resolve the shell provider: on Windows, Git Bash; on macOS/Linux, bash or zsh
+    const provider = getShellProvider("bash");
+    if (!provider) {
       return {
         success: false,
         content: "",
@@ -313,6 +279,7 @@ The working directory persists between commands, but shell state (environment va
             : "No suitable shell found. Please ensure bash or zsh is installed, or set WAVE_SHELL environment variable.",
       };
     }
+    const shellPath = provider.shellPath;
 
     // Validate the timeout's type only. An upper bound is deliberately not
     // enforced (matching Claude Code, which leaves the type check to its zod
@@ -387,7 +354,7 @@ The working directory persists between commands, but shell state (environment va
 
     // Search shadows are added only now: the permission gate above matches the
     // command the model wrote, not the prelude wave wraps around it.
-    const shadowed = withSearchShadows(command);
+    const shadowed = provider.prepareCommand(command);
 
     /**
      * Wrap a command for the sandbox when the decision said so.
@@ -487,43 +454,51 @@ The working directory persists between commands, but shell state (environment va
         : "";
     const cwdTrackingEnabled = !tempDirProbe || tempDirProbe.writable;
 
-    return new Promise((resolve) => {
-      // Create a temporary file to store the CWD. Inside the sandbox it must
-      // live in the sandbox-writable temp dir, otherwise the wrapper cannot
-      // write it and `cd` would stop being tracked.
-      const tempDir =
-        sandboxed && sandbox ? sandbox.getTempDir() : resolveTempDir();
-      const tempCwdFile = path.join(
-        tempDir,
-        `wave_cwd_${Date.now()}_${Math.random().toString(36).substring(2, 11)}.tmp`,
-      );
-      const tempCwdFileForBash = toPosixPath(tempCwdFile);
-      const wrappedCommand = cwdTrackingEnabled
-        ? wrapCommandForCwdTracking(foregroundCommand, tempCwdFileForBash)
-        : foregroundCommand;
+    // The sandbox has its own temp dir; inside it the CWD file must live there,
+    // otherwise the wrapper cannot write it and `cd` would stop being tracked.
+    const tempDir =
+      sandboxed && sandbox ? sandbox.getTempDir() : resolveTempDir();
+    const exec = provider.buildExecCommand(foregroundCommand, {
+      tempDir: () => tempDir,
+      cwdTracking: cwdTrackingEnabled,
+    });
+    const tempCwdFile = exec.cwdFilePath;
+    const wrappedCommand = exec.commandString;
 
+    return new Promise((resolve) => {
       // fd0 is /dev/null, never a live pipe: nothing writes to the command's
       // stdin, so a pipe would only ever deliver a hang. Commands that read
       // stdin (a bare `cat`, `rg foo` with no path arg, an editor, a pager)
       // would block until the tool timeout while looking like a slow search.
       // With /dev/null they get EOF immediately — the same trade-off Claude
       // Code makes by appending `< /dev/null` to every command.
-      const child: ChildProcess = spawnHidden(wrappedCommand, {
-        shell: shellPath,
+      // The provider that supplies argv runs the shell itself; the one that
+      // returns no argv lets spawn's `shell` option prepend the binary (bash
+      // today, so this branch stays cold). Both go through `spawnHidden` — the
+      // wrapper is the only place `windowsHide` is decided.
+      const spawnArgs = provider.getSpawnArgs(wrappedCommand);
+      const spawnOptions: SpawnOptions = {
         stdio: ["ignore", "pipe", "pipe"],
-        detached: true,
-        // No-op in combination with `detached`: Windows ignores CREATE_NO_WINDOW
-        // whenever DETACHED_PROCESS is set, so a console window cannot be
-        // suppressed from this option — that would need ConPTY or
-        // `Start-Process -WindowStyle Hidden`. Kept as harmless intent.
-        windowsHide: true,
+        detached: provider.detached,
+        // `spawnHidden` forces `windowsHide: true`. No-op in combination with
+        // `detached`: Windows ignores CREATE_NO_WINDOW whenever DETACHED_PROCESS
+        // is set, so a console window cannot be suppressed from that option —
+        // that would need ConPTY or `Start-Process -WindowStyle Hidden`. It is
+        // still the key that hides the child when the provider is not detached.
         cwd: context.workdir,
         env: {
           ...process.env,
           ...context.sessionEnv,
+          ...provider.getEnvironmentOverrides(command),
           ...foregroundEnv,
         },
-      });
+      };
+      const child: ChildProcess = spawnArgs.length
+        ? spawnHidden(provider.shellPath, [...spawnArgs, wrappedCommand], {
+            ...spawnOptions,
+            shell: false,
+          })
+        : spawnHidden(wrappedCommand, { ...spawnOptions, shell: shellPath });
 
       let outputBuffer = "";
       let errorBuffer = "";
@@ -644,48 +619,9 @@ The working directory persists between commands, but shell state (environment va
 
           // Terminate the shell *and its descendants* (issue #2742): killing
           // only the direct child leaves `npm → node → vitest worker` running
-          // as orphans on Windows. See killProcessTree for the per-platform
-          // mechanics (POSIX process group / Windows taskkill /T).
-          const abortPid = child.pid;
-          if (abortPid) {
-            // Graceful first, forced after 1s. On Windows both phases are the
-            // same `taskkill /T /F`; the retry then reports "not-found".
-            void killProcessTree(abortPid, "SIGTERM").then((outcome) => {
-              if (outcome !== "failed") return;
-              // The tree kill could not signal the group at all — fall back to
-              // taking the direct child down, as the old code path did.
-              try {
-                logger.error(
-                  `Failed to terminate the process tree of pid ${abortPid}; killing the shell only`,
-                );
-                child.kill("SIGTERM");
-              } catch (directKillError) {
-                logger.error("Failed to kill child process:", directKillError);
-              }
-            });
-
-            // Set timeout for force kill
-            setTimeout(() => {
-              if (child.killed) return;
-              void killProcessTree(abortPid, "SIGKILL").then((outcome) => {
-                if (outcome !== "failed" || child.killed) return;
-                try {
-                  child.kill("SIGKILL");
-                } catch (forceKillError) {
-                  logger.error(
-                    "Failed to force kill child process:",
-                    forceKillError,
-                  );
-                }
-              });
-            }, 1000);
-          } else {
-            try {
-              child.kill("SIGTERM");
-            } catch (directKillError) {
-              logger.error("Failed to kill child process:", directKillError);
-            }
-          }
+          // as orphans on Windows. The escalation lives in
+          // `terminateChildProcessTree` so the PowerShell tool aborts the same way.
+          terminateChildProcessTree(child);
 
           cleanupTempFile();
           if (sandboxed && sandbox) sandbox.cleanup();

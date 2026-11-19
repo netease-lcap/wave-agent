@@ -21,7 +21,7 @@ order: 120
 **验收场景**：
 
 1. **假设** CLI 使用 `--tools "Read,Edit"` 启动，**当** agent 被要求执行任务时，**则**它应该只能访问"Read"和"Edit"工具。
-2. **假设** CLI 使用 `--tools "Bash"` 启动，**当** agent 被要求读取文件时，**则**它应该失败或报告工具不可用。
+2. **假设** CLI 使用 `--tools "Edit"` 启动，**当** agent 被要求读取文件时，**则**它应该失败或报告工具不可用。
 
 ---
 
@@ -49,7 +49,7 @@ order: 120
 
 **验收场景**：
 
-1. **假设** CLI 使用 `--tools "default"` 启动，**当** agent 初始化时，**则**它应该可以访问完整的标准工具套件（Bash、Edit、Read、Glob、Grep 等）。
+1. **假设** CLI 使用 `--tools "default"` 启动，**当** agent 初始化时，**则**它应该可以访问完整的标准工具套件（Edit、Read、shell 工具与 `Grep` / `Glob` 等）——其中 shell 工具是**会话实际拥有的那一个**：bash 会话是 `Bash`，Windows 无 Git Bash 的 PowerShell 会话是 `PowerShell`，两者都没有时一个都没有；名字要按这个名字写，`--tools` 里写另一个 shell 工具的名字不会换出它（`packages/agent-sdk/src/managers/toolManager.ts:357-403`、`packages/agent-sdk/src/constants/tools.ts:44`）。
 
 ---
 

@@ -1,5 +1,8 @@
+import type { ShellType } from "../utils/shell/shellProvider.js";
+
 export const ASK_USER_QUESTION_TOOL_NAME = "AskUserQuestion";
 export const BASH_TOOL_NAME = "Bash";
+export const POWERSHELL_TOOL_NAME = "PowerShell";
 export const TASK_STOP_TOOL_NAME = "TaskStop";
 export const EDIT_TOOL_NAME = "Edit";
 export const ENTER_PLAN_MODE_TOOL_NAME = "EnterPlanMode";
@@ -27,3 +30,34 @@ export const EXEC_TOOL_NAME = "Exec";
 export const KB_SEARCH_TOOL_NAME = "kb_search";
 export const KB_GET_DOC_TOOL_NAME = "kb_get_doc";
 export const KB_SUGGEST_TOOL_NAME = "kb_suggest";
+
+/**
+ * Every tool that runs a command through a shell. The permission layer judges
+ * these by shell *kind* (`ToolPermissionContext.shellKind`) rather than by
+ * name, so a new shell tool is added here and nowhere else.
+ *
+ * `PowerShell` is registered only when the session's shell is PowerShell
+ * (`utils/shell/shellToolGate.ts`); the name is a constant regardless, because
+ * permission rules, the built-in skills and the settings documentation all key
+ * off it.
+ */
+export const SHELL_TOOL_NAMES = [BASH_TOOL_NAME, POWERSHELL_TOOL_NAME] as const;
+
+export type ShellToolName = (typeof SHELL_TOOL_NAMES)[number];
+
+/** true when [toolName] names a shell tool (and so runs a command line). */
+export function isShellToolName(toolName: string): toolName is ShellToolName {
+  return (SHELL_TOOL_NAMES as readonly string[]).includes(toolName);
+}
+
+/** Which shell [toolName] drives; `undefined` for every other tool. */
+export function shellKindOfTool(toolName: string): ShellType | undefined {
+  switch (toolName) {
+    case BASH_TOOL_NAME:
+      return "bash";
+    case POWERSHELL_TOOL_NAME:
+      return "powershell";
+    default:
+      return undefined;
+  }
+}

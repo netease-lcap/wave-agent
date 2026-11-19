@@ -1,13 +1,28 @@
-import { glob } from "glob";
-import { stat } from "fs/promises";
+import { isAbsolute, join } from "path";
 import type { ToolPlugin, ToolResult, ToolContext } from "./types.js";
 import { resolvePath, getDisplayPath } from "../utils/path.js";
 import { GLOB_TOOL_NAME } from "../constants/tools.js";
+import { getRgPath } from "../utils/ripgrep.js";
+import { ensureRuntimeDeps } from "../utils/runtimeDeps.js";
+import { runCommand } from "../utils/runCommand.js";
+import {
+  buildGlobArgs,
+  extractGlobBaseDirectory,
+} from "../utils/globSearch.js";
+import { logger } from "../utils/globalLogger.js";
 
 /**
  * Maximum number of files returned by glob tool
  */
 const MAX_GLOB_RESULTS = 100;
+
+/**
+ * Appended when the walk found more files than `limit`. Removing the cap would
+ * flood the context with the whole tree, so the model is told to narrow instead;
+ * wording matches Claude Code's Glob.
+ */
+const TRUNCATED_NOTICE =
+  "(Results are truncated. Consider using a more specific path or pattern.)";
 
 /**
  * Glob Tool Plugin - Fast file pattern matching
@@ -45,11 +60,11 @@ export const globTool: ToolPlugin = {
   prompt:
     () => `- Fast file pattern matching tool that works with any codebase size
 - Supports glob patterns like "**/*.js" or "src/**/*.ts"
-- Returns matching file paths sorted by modification time
+- Returns matching file paths sorted by modification time (oldest first)
 - Use this tool when you need to find files by name patterns
 - When you are doing an open ended search that may require multiple rounds of globbing and grepping, use the Agent tool instead
 - You can call multiple tools in a single response. It is always better to speculatively perform multiple searches in parallel if they are potentially useful.`,
-  leanPrompt: `Fast file pattern matching. Supports glob patterns like "**/*.js" or "src/**/*.ts". Returns matching file paths sorted by modification time, up to \`limit\` files (default ${MAX_GLOB_RESULTS}).`,
+  leanPrompt: `Fast file pattern matching. Supports glob patterns like "**/*.js" or "src/**/*.ts". Returns matching file paths sorted by modification time (oldest first), up to \`limit\` files (default ${MAX_GLOB_RESULTS}).`,
   execute: async (
     args: Record<string, unknown>,
     context: ToolContext,
@@ -67,21 +82,74 @@ export const globTool: ToolPlugin = {
       };
     }
 
+    // Resolved per call, not at import time: the CLI installs this dependency
+    // itself, possibly after the module graph has been evaluated.
+    const rgPath = getRgPath();
+    if (!rgPath) {
+      // Cover the entry points that do not await the installer at startup.
+      void ensureRuntimeDeps();
+      return {
+        success: false,
+        content: "",
+        error:
+          "ripgrep is not available. Please install @vscode/ripgrep package.",
+      };
+    }
+
     try {
-      // Determine search directory
-      const workdir = searchPath
+      // The walk root. `path` wins when given; an absolute pattern points
+      // somewhere of its own and overrides it, since only the part below the
+      // walk root can be a glob.
+      let searchDir = searchPath
         ? resolvePath(searchPath, context.workdir)
         : context.workdir;
+      let relativePattern = pattern;
 
-      // Execute glob search using glob package
-      const matches = await glob(pattern, {
-        cwd: workdir,
-        nodir: true,
-        dot: true,
-        ignore: ["**/.git/**"],
-      });
+      if (isAbsolute(pattern)) {
+        const { baseDir, relativePattern: remainder } =
+          extractGlobBaseDirectory(pattern);
+        if (baseDir) {
+          searchDir = baseDir;
+          relativePattern = remainder;
+        }
+      }
 
-      if (matches.length === 0) {
+      const result = await runCommand(
+        rgPath,
+        buildGlobArgs(relativePattern),
+        searchDir,
+      );
+
+      // A null exit code is a spawn failure; anything above 1 means the walk
+      // itself reported a problem (a walk root that does not exist, say) and
+      // must not be reported as "no files".
+      if (
+        result.exitCode === null ||
+        (result.exitCode > 1 && !result.stdout.trim())
+      ) {
+        return {
+          success: false,
+          content: "",
+          error: `Glob search failed: ${result.stderr.trim() || "ripgrep exited with an error"}`,
+        };
+      }
+
+      if (result.exitCode > 1) {
+        logger.debug(
+          `ripgrep exited with code ${result.exitCode}, keeping partial results: ${result.stderr.trim()}`,
+        );
+      }
+
+      // ripgrep answers with paths relative to the walk root; make them absolute
+      // first so display can decide between relative and absolute, exactly as
+      // the other file tools do.
+      const absoluteFiles = result.stdout
+        .split("\n")
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .map((file) => (isAbsolute(file) ? file : join(searchDir, file)));
+
+      if (absoluteFiles.length === 0) {
         return {
           success: true,
           content: "No files match the pattern",
@@ -89,58 +157,24 @@ export const globTool: ToolPlugin = {
         };
       }
 
-      // Get file modification time and sort
-      const filesWithStats = await Promise.allSettled(
-        matches.map(async (file) => {
-          try {
-            const fullPath = resolvePath(file, workdir);
-            const stats = await stat(fullPath);
-            return {
-              path: file,
-              mtime: stats.mtime,
-            };
-          } catch {
-            // If unable to get file stats, use current time
-            return {
-              path: file,
-              mtime: new Date(),
-            };
-          }
-        }),
-      );
-
-      // Filter successful results and sort by modification time
-      const sortedFiles = filesWithStats
-        .filter((result) => result.status === "fulfilled")
-        .map(
-          (result) =>
-            (result as PromiseFulfilledResult<{ path: string; mtime: Date }>)
-              .value,
-        )
-        .sort((a, b) => b.mtime.getTime() - a.mtime.getTime()) // Most recently modified files first
-        .map((item) => item.path);
-
-      const totalCount = sortedFiles.length;
-      const finalFiles = sortedFiles.slice(0, limit);
-
-      // Format output
-      const output = finalFiles
-        .map((file, index) => `${index + 1}. ${file}`)
-        .join("\n");
-
+      const totalCount = absoluteFiles.length;
       const isTruncated = totalCount > limit;
-      const shortResult = isTruncated
-        ? `Found ${totalCount} files (showing first ${limit})`
-        : `Found ${totalCount} file${totalCount === 1 ? "" : "s"}`;
+      const files = absoluteFiles
+        .slice(0, limit)
+        .map((file) => getDisplayPath(file, context.workdir));
 
-      const durationMs = Date.now() - startTime;
+      const content = isTruncated
+        ? `${files.join("\n")}\n${TRUNCATED_NOTICE}`
+        : files.join("\n");
 
       return {
         success: true,
-        content: output,
-        shortResult,
+        content,
+        shortResult: isTruncated
+          ? `Found ${totalCount} files (showing first ${limit})`
+          : `Found ${totalCount} file${totalCount === 1 ? "" : "s"}`,
         metadata: {
-          durationMs,
+          durationMs: Date.now() - startTime,
           numFiles: totalCount,
           truncated: isTruncated,
         },

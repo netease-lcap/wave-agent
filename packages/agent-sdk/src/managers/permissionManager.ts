@@ -52,10 +52,14 @@ import {
   PATH_COMMANDS,
   extractPathArgs,
 } from "../utils/bashParser.js";
+import type { BashLeaf } from "../utils/bashStructure/index.js";
+import { analyzeShellCommand } from "../utils/shell/shellCommandAnalysis.js";
+import { evaluatePowerShellCommand } from "../tools/powershellTool/permissions.js";
 import {
-  parseBashStructure,
-  type BashLeaf,
-} from "../utils/bashStructure/index.js";
+  collectCommands,
+  parsePowerShellCommand,
+} from "../utils/powershellStructure/index.js";
+import type { ShellType } from "../utils/shell/shellProvider.js";
 import { isPathInside } from "../utils/pathSafety.js";
 import { toWindowsPath } from "../utils/path.js";
 import {
@@ -65,6 +69,9 @@ import {
   WRITE_TOOL_NAME,
   READ_TOOL_NAME,
   WORKFLOW_TOOL_NAME,
+  isShellToolName,
+  shellKindOfTool,
+  type ShellToolName,
 } from "../constants/tools.js";
 import { Container } from "../utils/container.js";
 import { ConfigurationService } from "../services/configurationService.js";
@@ -1130,7 +1137,7 @@ export class PermissionManager {
     // deny rules at step 0 have already won. Plan mode keeps asking: a sandboxed
     // command can still write inside the worktree, which plan mode forbids.
     if (
-      context.toolName === BASH_TOOL_NAME &&
+      this.isBashShellContext(context) &&
       context.permissionMode !== "plan" &&
       context.toolInput?.sandboxed === true &&
       this.isSandboxAutoAllowEnabled()
@@ -1179,7 +1186,7 @@ export class PermissionManager {
       }
 
       // Special case for mkdir in Bash tool
-      if (context.toolName === BASH_TOOL_NAME && context.toolInput?.command) {
+      if (this.isBashShellContext(context) && context.toolInput?.command) {
         const command = String(context.toolInput.command).trim();
         if (command.startsWith("mkdir ")) {
           const parts = splitBashCommand(command);
@@ -1211,6 +1218,71 @@ export class PermissionManager {
           }
         }
       }
+    }
+
+    // 1.15 PowerShell commands are read by their own engine.
+    //
+    // Everything below this point reasons about bash text: `isAllowedByRule`
+    // cuts a command with the bash parser and matches `Bash(…)` globs against
+    // the whole string, and `PowerShell(Get-ChildItem*)` matching the entire
+    // text would happily cover `Get-ChildItem; iex evil`. So a PowerShell
+    // command is decided here and does not fall through: the engine's `ask` is
+    // the dialog's `ask`, with the pre-filled rule text already on the context.
+    if (this.isPowerShellShellContext(context) && context.toolInput?.command) {
+      const verdict = await evaluatePowerShellCommand({
+        command: String(context.toolInput.command),
+        workdir: context.toolInput?.workdir as string | undefined,
+        allowedRules: [
+          ...this.instanceAllowedRules,
+          ...this.temporaryRules,
+          ...this.allowedRules,
+        ],
+        deniedRules: [...this.instanceDeniedRules, ...this.deniedRules],
+        isInsideSafeZone: (target) =>
+          this.isInsideSafeZone(
+            target,
+            context.toolInput?.workdir as string | undefined,
+          ).isInside,
+      });
+
+      if (verdict.decision === "allow") {
+        return { decision: "allow", source: "config", reason: verdict.reason };
+      }
+
+      if (verdict.decision === "deny") {
+        return {
+          decision: "deny",
+          message: verdict.message ?? "This PowerShell command was denied.",
+          reason: verdict.reason,
+          source: "config",
+          denyReason: "denied_by_rule",
+        };
+      }
+
+      // `ask`: carry what the dialog needs, then let the mode decide who
+      // answers. `dontAsk` denies here exactly as step 2.1 would.
+      context.suggestedPrefix =
+        verdict.suggestedPrefix ?? context.suggestedPrefix;
+      if (verdict.hidePersistentOption) context.hidePersistentOption = true;
+
+      if (context.permissionMode === "dontAsk") {
+        logger?.info("Restricted tool automatically denied in dontAsk mode", {
+          toolName: context.toolName,
+        });
+        return {
+          decision: "deny",
+          message: `Tool '${context.toolName}' was automatically denied because 'dontAsk' permission mode is active and no pre-approved rule matches this call.`,
+          reason: "dontAsk",
+          source: "config",
+          denyReason: "denied_by_mode",
+        };
+      }
+
+      return {
+        decision: "ask",
+        reason: context.permissionMode,
+        source: "config",
+      };
     }
 
     // 1.2 Check if tool call is allowed by persistent or temporary rules
@@ -1277,6 +1349,45 @@ export class PermissionManager {
   }
 
   /**
+   * Which shell a shell-tool context drives.
+   *
+   * `createContext` sets it from the tool name; a context built by hand (tests,
+   * hosts, entry points written before the PowerShell tool) falls back to bash
+   * so its behaviour is unchanged.
+   */
+  private shellKindOf(context: ToolPermissionContext): ShellType {
+    return context.shellKind ?? "bash";
+  }
+
+  /**
+   * true when the context is a shell tool driven by bash.
+   *
+   * Every bash-specific rule below — the sandbox auto-allow, the acceptEdits
+   * `mkdir` exception, prefix suggestions, the dangerous-command heuristics —
+   * reasons about bash syntax, so it must ask for the shell kind, not merely
+   * "is this a shell tool". PowerShell gets its own readers once its parser
+   * lands, and until then falls through to the generic ask.
+   */
+  private isBashShellContext(context: ToolPermissionContext): boolean {
+    return (
+      isShellToolName(context.toolName) && this.shellKindOf(context) === "bash"
+    );
+  }
+
+  /**
+   * true when the context is a shell tool driven by PowerShell.
+   *
+   * Used to route the command to its own permission engine before any of the
+   * bash-specific reasoning below runs — see step 1.15 in `resolvePermission`.
+   */
+  private isPowerShellShellContext(context: ToolPermissionContext): boolean {
+    return (
+      isShellToolName(context.toolName) &&
+      this.shellKindOf(context) === "powershell"
+    );
+  }
+
+  /**
    * `sandbox.autoAllowBashIfSandboxed`, read live so a settings edit lands
    * without restarting the agent.
    */
@@ -1328,8 +1439,13 @@ export class PermissionManager {
     toolCallId?: string,
     planContent?: string,
   ): ToolPermissionContext {
+    // Derived from the tool name, never from `toolInput`: tool input comes from
+    // the model, and the model must not pick the shell whose rules judge it.
+    const shellKind = shellKindOfTool(toolName);
+    const isBashShell = shellKind === "bash";
+
     let suggestedPrefix: string | undefined;
-    if (toolName === BASH_TOOL_NAME && toolInput?.command) {
+    if (isBashShell && toolInput?.command) {
       const command = String(toolInput.command);
       const parts = splitBashCommand(command);
       // Only suggest prefix for single commands to avoid confusion with complex chains
@@ -1346,6 +1462,7 @@ export class PermissionManager {
       permissionMode,
       canUseToolCallback: callback,
       toolInput,
+      shellKind,
       suggestedPrefix,
       toolCallId,
       planContent,
@@ -1372,7 +1489,7 @@ export class PermissionManager {
     }
 
     // Set hidePersistentOption for dangerous or out-of-bounds bash commands
-    if (toolName === BASH_TOOL_NAME && toolInput?.command) {
+    if (isBashShell && toolInput?.command) {
       const command = String(toolInput.command);
       const workdir = toolInput.workdir as string | undefined;
       const parts = splitBashCommand(command);
@@ -1434,8 +1551,10 @@ export class PermissionManager {
       return false;
     }
 
-    // Handle Bash command rules
-    if (toolName === BASH_TOOL_NAME) {
+    // Handle shell command rules (`Bash(git status*)`, …). The pattern is
+    // matched with bash syntax, so only a bash-driven context may use this
+    // branch — a rule named after another shell's tool already returned above.
+    if (isShellToolName(toolName) && this.shellKindOf(context) === "bash") {
       const command = String(context.toolInput?.command || "");
       const hasWriteInPattern = hasWriteRedirections(pattern);
       const hasWriteInCommand = hasWriteRedirections(command);
@@ -1463,6 +1582,21 @@ export class PermissionManager {
       // is checked first so path-specific rules (e.g. deny rules on
       // `git -C /secret status`) still match.
       return regex.test(stripGitScopePrefix(processedPart));
+    }
+
+    // Handle PowerShell command rules (`PowerShell(Get-ChildItem*)`). PowerShell
+    // is case-insensitive, so the whole comparison is; `*` still matches
+    // everything. This branch exists for the deny rules that run before the
+    // PowerShell engine is reached — the engine does the per-leaf work.
+    if (
+      isShellToolName(toolName) &&
+      this.shellKindOf(context) === "powershell"
+    ) {
+      const command = String(context.toolInput?.command || "");
+      const regexPattern = pattern
+        .replace(/[.+^${}()|[\]\\?]/g, "\\$&")
+        .replace(/\*/g, ".*");
+      return new RegExp(`^${regexPattern}$`, "is").test(command);
     }
 
     // Handle path-based rules (e.g., "Read(**/*.env)")
@@ -1610,27 +1744,28 @@ export class PermissionManager {
       ...this.allowedRules,
     ];
 
-    if (context.toolName === BASH_TOOL_NAME && context.toolInput?.command) {
+    if (isShellToolName(context.toolName) && context.toolInput?.command) {
       const command = String(context.toolInput.command);
       const workdir = context.toolInput?.workdir as string | undefined;
 
       // Structure-aware expansion: compound commands and command substitutions
       // are reduced to their leaf simple commands; each leaf is classified
       // exactly like a top-level part of a chained command would be (spec:
-      // "复合命令与命令替换的结构感知判定").
-      const structure = parseBashStructure(command);
-      if (structure.status === "ok") {
-        if (structure.leaves.length === 0) return false;
-        return structure.leaves.every((leaf) =>
+      // "复合命令与命令替换的结构感知判定"). The cutting is per shell — see
+      // `analyzeShellCommand`.
+      const analysis = analyzeShellCommand(this.shellKindOf(context), command);
+      if (analysis.status === "ok") {
+        if (analysis.leaves.length === 0) return false;
+        return analysis.leaves.every((leaf) =>
           this.isBashLeafAllowed(leaf, workdir, context, explicitRules),
         );
       }
 
       // Fail-closed (heredoc / process substitution / arithmetic / brace /
-      // parse failure / eval / trap / …): the command cannot be statically
-      // reduced to leaves, so it is never auto-allowed and never matches the
-      // built-in default rules. Only an explicit user rule covering the whole
-      // command may allow it.
+      // parse failure / eval / trap / … — and any shell without a parser):
+      // the command cannot be statically reduced to leaves, so it is never
+      // auto-allowed and never matches the built-in default rules. Only an
+      // explicit user rule covering the whole command may allow it.
       const wholeContext = {
         ...context,
         toolInput: { ...context.toolInput, command },
@@ -1725,13 +1860,26 @@ export class PermissionManager {
    * @returns Array of permission rules in "Bash(cmd)" format
    */
   public expandBashRule(command: string, workdir: string): string[] {
+    return this.expandBashShellRule(command, workdir);
+  }
+
+  /**
+   * Expand a bash command into the permission rules to persist, one per part.
+   *
+   * PowerShell does not share this path: its rules are expanded per leaf in
+   * [`expandPowerShellRule`], which needs the (async) PowerShell parser, so
+   * `addPermissionRule` dispatches by shell kind.
+   */
+  private expandBashShellRule(command: string, workdir: string): string[] {
+    const toolName = BASH_TOOL_NAME;
+
     // Expand compound commands structurally when possible so control-structure
     // keywords (do/done/then/…) never leak into persisted rules. Constructs the
     // parser cannot reduce fall back to the legacy textual part splitter.
-    const structure = parseBashStructure(command);
+    const analysis = analyzeShellCommand("bash", command);
     const parts =
-      structure.status === "ok" && structure.leaves.length > 0
-        ? structure.leaves.map((leaf) => leaf.text)
+      analysis.status === "ok" && analysis.leaves.length > 0
+        ? analysis.leaves.map((leaf) => leaf.text)
         : splitBashCommand(command);
     const rules: string[] = [];
 
@@ -1760,14 +1908,58 @@ export class PermissionManager {
 
         const smartPrefix = hasWrite ? null : getSmartPrefix(processedPart);
         if (smartPrefix) {
-          rules.push(`Bash(${smartPrefix}*)`);
+          rules.push(`${toolName}(${smartPrefix}*)`);
         } else {
-          rules.push(`Bash(${hasWrite ? stripEnvVars(part) : processedPart})`);
+          rules.push(
+            `${toolName}(${hasWrite ? stripEnvVars(part) : processedPart})`,
+          );
         }
       }
     }
 
     return rules;
+  }
+
+  /**
+   * Expand a PowerShell command into the permission rules to persist: one
+   * `PowerShell(<leaf>)` rule per leaf command.
+   *
+   * A PowerShell rule is matched **per leaf** (`evaluatePowerShellCommand`'s
+   * `leaves.every(...)`), so a rule carrying the whole command text can never
+   * cover a compound command: `PowerShell(Get-ChildItem | Select-Object -First 3)`
+   * equals no leaf, and the next identical run asks again. The leaves come from
+   * the same collection the gate read — `collectCommands(...)` filtered to
+   * `CommandAst` — so every rule written here was already looked at by
+   * `BLOCK_PERSIST`.
+   *
+   * No dangerous-leaf skip, unlike the bash branch above. Bash expands text its
+   * splitter hands back, so it re-checks each part; here the option only appears
+   * when *every* leaf is persistable, and a command with one `BLOCK_PERSIST`
+   * leaf never gets this far. The two ways around that gate — `respond --rule`
+   * and a hand-edited `settings.local.json` — write what the caller asked for.
+   */
+  private async expandPowerShellRule(
+    toolName: ShellToolName,
+    command: string,
+  ): Promise<string[]> {
+    const parsed = await parsePowerShellCommand(command);
+    if (!parsed.valid) {
+      // Unreachable by construction: an unparsable command is asked about with
+      // `hidePersistentOption: true` (`permissions.ts`, reason "unparsable"),
+      // and the parse is memoized, so this second call sees the very verdict the
+      // gate saw. Persisting the whole text would write a rule that matches no
+      // leaf — the bug this expansion exists to fix — so write nothing.
+      this._logger?.debug(
+        "No PowerShell rule persisted for an unparsable command",
+        { command },
+      );
+      return [];
+    }
+
+    const leaves = collectCommands(parsed).filter(
+      (leaf) => leaf.elementType === "CommandAst",
+    );
+    return leaves.map((leaf) => `${toolName}(${leaf.text})`);
   }
 
   /**
@@ -1780,12 +1972,18 @@ export class PermissionManager {
       throw new Error("Working directory not set in PermissionManager");
     }
 
-    // 1. Expand rule if it's a Bash command
+    // 1. Expand the rule if it names a shell tool (`Bash(cmd)`, `PowerShell(cmd)`).
+    //    Each shell expands by its own structure: bash textually, PowerShell once
+    //    per leaf (see `expandPowerShellRule`).
     let rulesToAdd = [rule];
-    const bashMatch = rule.match(/^Bash\((.*)\)$/);
-    if (bashMatch) {
-      const command = bashMatch[1];
-      rulesToAdd = this.expandBashRule(command, workdir);
+    const shellRuleMatch = rule.match(/^([\w.:-]+)\((.*)\)$/);
+    if (shellRuleMatch && isShellToolName(shellRuleMatch[1])) {
+      const shellTool = shellRuleMatch[1];
+      const shellCommand = shellRuleMatch[2];
+      rulesToAdd =
+        shellKindOfTool(shellTool) === "bash"
+          ? this.expandBashShellRule(shellCommand, workdir)
+          : await this.expandPowerShellRule(shellTool, shellCommand);
     }
 
     const configurationService = this.container.get<ConfigurationService>(

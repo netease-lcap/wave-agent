@@ -32,6 +32,22 @@ vi.mock("os", async (importOriginal) => {
   return { ...actual, homedir: () => "/home/testuser" };
 });
 
+// The session's shell decides the shell-dependent lines of the builtin prompts.
+// Resolving it for real would probe the filesystem (Git Bash discovery), which
+// is both slow here and machine-dependent — and `fs` is mocked in this file.
+const shellKind = vi.hoisted(() => ({
+  current: "bash" as "bash" | "powershell" | "none",
+}));
+
+vi.mock("../../src/utils/shell/shellToolGate.js", () => ({
+  collectShellToolGateInput: () => ({
+    platform: "linux" as NodeJS.Platform,
+    envValue: undefined,
+    hasGitBash: true,
+  }),
+  resolveShellKind: () => shellKind.current,
+}));
+
 describe("SubagentParser with Built-ins", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -577,6 +593,79 @@ Prompt.`);
 
       expect(config?.omitAgentsMd).toBeUndefined();
       expect(config?.disallowedTools).toBeUndefined();
+    });
+  });
+
+  describe("shell-dependent prompt lines", () => {
+    // The same file, parsed by two sessions that run different shells: the
+    // builtin prompt names whichever shell tool that session registered.
+    const loadExplore = async (content: string) => {
+      const mockFs = await import("fs");
+      const builtinDir = "/builtin/subagents";
+
+      vi.mocked(configPaths.getBuiltinSubagentsDir).mockReturnValue(builtinDir);
+      vi.mocked(mockFs.readdirSync).mockImplementation((dirPath) => {
+        if (dirPath === builtinDir) {
+          return ["explore.md"] as unknown as ReturnType<
+            typeof import("fs").readdirSync
+          >;
+        }
+        return [] as unknown as ReturnType<typeof import("fs").readdirSync>;
+      });
+      vi.mocked(mockFs.statSync).mockReturnValue({
+        isFile: () => true,
+      } as import("fs").Stats);
+      vi.mocked(mockFs.readFileSync).mockImplementation((filePath) => {
+        if (filePath === path.join(builtinDir, "explore.md")) {
+          return content;
+        }
+        return "";
+      });
+
+      const configs = await loadSubagentConfigurations("/test/workdir");
+      return configs.find((c) => c.name === "explore");
+    };
+
+    const content = `---
+name: explore
+description: Explore
+---
+Search with:
+{{WAVE_SHELL_SEARCH_BULLETS}}
+- Use Read for a known path
+{{WAVE_SHELL_RESTRICTIONS}}`;
+
+    beforeEach(() => {
+      shellKind.current = "bash";
+    });
+
+    it("resolves the lines for a bash session", async () => {
+      const config = await loadExplore(content);
+
+      expect(config?.systemPrompt).toContain("- Use `find` in Bash for");
+      expect(config?.systemPrompt).toContain("- Use Bash ONLY for read-only");
+      expect(config?.systemPrompt).not.toContain("PowerShell");
+    });
+
+    it("resolves the lines for a PowerShell session", async () => {
+      shellKind.current = "powershell";
+      const config = await loadExplore(content);
+
+      expect(config?.systemPrompt).toContain("- Use Glob for broad file");
+      expect(config?.systemPrompt).toContain(
+        "- Use PowerShell ONLY for read-only operations (Get-ChildItem",
+      );
+      expect(config?.systemPrompt).not.toContain("mkdir, touch");
+    });
+
+    it("says there is no shell when the session has neither", async () => {
+      shellKind.current = "none";
+      const config = await loadExplore(content);
+
+      expect(config?.systemPrompt).toContain(
+        "- This session has no shell tool",
+      );
+      expect(config?.systemPrompt).not.toContain("{{WAVE_");
     });
   });
 });

@@ -243,14 +243,16 @@ describe("BackgroundTaskManager", () => {
     await vi.waitFor(() => expect(lastFrame()).toContain("[task-running]"));
 
     const output = lastFrame()!;
-    const bashGroup = output.indexOf("Bash (2)");
+    // 组标题按能力取词（`utils/backgroundTaskGroups.ts`）：同一个 shell 组在
+    // Windows 上可能是 PowerShell 跑出来的，所以标题是 "Shell" 而不是 "Bash"。
+    const shellGroup = output.indexOf("Shell (2)");
     const runningRow = output.indexOf("[task-running]");
     const doneRow = output.indexOf("[task-done]");
     const workflowGroup = output.indexOf("Workflows (1)");
     const workflowRow = output.indexOf("[task-workflow]");
-    // 组标题带条数、打在该组第一行之前；Bash 组整体在 Workflows 组之前。
-    expect(bashGroup).toBeGreaterThan(-1);
-    expect(bashGroup).toBeLessThan(runningRow);
+    // 组标题带条数、打在该组第一行之前；Shell 组整体在 Workflows 组之前。
+    expect(shellGroup).toBeGreaterThan(-1);
+    expect(shellGroup).toBeLessThan(runningRow);
     // 同组内运行中在前，哪怕它启动更早。
     expect(runningRow).toBeLessThan(doneRow);
     expect(doneRow).toBeLessThan(workflowGroup);

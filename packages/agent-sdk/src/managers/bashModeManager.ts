@@ -1,7 +1,13 @@
 import type { MessageManager } from "./messageManager.js";
 import { Container } from "../utils/container.js";
 import { bashTool } from "../tools/bashTool.js";
-import { BASH_TOOL_NAME } from "../constants/tools.js";
+import { powershellTool } from "../tools/powershellTool/powershellTool.js";
+import { BASH_TOOL_NAME, POWERSHELL_TOOL_NAME } from "../constants/tools.js";
+import {
+  collectShellToolGateInput,
+  resolveShellKind,
+} from "../utils/shell/shellToolGate.js";
+import type { ToolPlugin } from "../tools/types.js";
 import type { ConfigurationService } from "../services/configurationService.js";
 import type { TaskManager } from "../services/taskManager.js";
 
@@ -16,10 +22,16 @@ export interface CommandExecutionResult {
 
 /**
  * Bash mode (`!command`) execution. The command is surfaced as a user-message
- * tool block (name: BASH_TOOL_NAME) — the same rendering as fork-skill / `/plan`
- * outputs (⎿ prefix + markdown, result enters the model context via the
- * generic `<local-command-stdout>` rule) — and executed through the shared
- * bash tool engine (shell resolution, CWD tracking, timeout, output handling).
+ * tool block — the same rendering as fork-skill / `/plan` outputs (⎿ prefix +
+ * markdown, result enters the model context via the generic
+ * `<local-command-stdout>` rule) — and executed through the shell tool this
+ * session actually has (shell resolution, CWD tracking, timeout, output
+ * handling).
+ *
+ * The `!` syntax, the manager's name and the rendering are unchanged; only the
+ * engine behind them is chosen by shell kind, the way Claude Code picks
+ * `PowerShellTool` or `BashTool` for the same input
+ * (`utils/processUserInput/processBashCommand.tsx:26,81`).
  */
 export class BashModeManager {
   private workdir: string;
@@ -56,6 +68,26 @@ export class BashModeManager {
     this.onCommandRunningChange?.(isRunning);
   }
 
+  /**
+   * The shell tool a `!` command runs through, and the name its block carries.
+   *
+   * One decision, shared with the tool registry (`utils/shell/shellToolGate.ts`),
+   * so a `!` command can never drive a shell the session does not have, and the
+   * block is labelled after the tool that actually ran — a PowerShell session
+   * shows a `PowerShell` block, its result formats through the same tool.
+   *
+   * A missing binary is deliberately not handled here: each tool already returns
+   * the message that says what to install ("Git Bash not found…" /
+   * "PowerShell not found. Install PowerShell 7…"), and a third one in this file
+   * would be the one that goes stale.
+   */
+  private resolveShellTool(): { tool: ToolPlugin; name: string } {
+    const kind = resolveShellKind(collectShellToolGateInput(this.workdir));
+    return kind === "powershell"
+      ? { tool: powershellTool, name: POWERSHELL_TOOL_NAME }
+      : { tool: bashTool, name: BASH_TOOL_NAME };
+  }
+
   public async executeCommand(command: string): Promise<number> {
     if (this.isCommandRunning) {
       throw new Error("Command already running");
@@ -64,6 +96,8 @@ export class BashModeManager {
     this.setCommandRunning(true);
 
     try {
+      const shell = this.resolveShellTool();
+
       // User message + running tool block. The user text mirrors the command
       // itself (`!ls` renders as `!ls`); the output lands on that block once,
       // when the command ends.
@@ -71,7 +105,7 @@ export class BashModeManager {
         content: command,
       });
       const blockId = this.messageManager.addToolBlockToMessage(messageId, {
-        name: BASH_TOOL_NAME,
+        name: shell.name,
         parameters: command,
         stage: "running",
       });
@@ -81,8 +115,15 @@ export class BashModeManager {
       const taskManager = this.container.get<TaskManager>("TaskManager")!;
       // No permissionManager in the context: bash mode is an explicit user
       // command, it must not be blocked by the permission gate.
-      const result = await bashTool.execute(
-        { command },
+      const result = await shell.tool.execute(
+        {
+          command,
+          // The user typed this command themselves, so it runs outside the
+          // sandbox when policy allows it — the same flag Claude Code passes to
+          // both shell tools. `sandbox.allowUnsandboxedCommands: false` still
+          // wins inside the sandbox manager.
+          dangerouslyDisableSandbox: true,
+        },
         {
           workdir: this.workdir,
           taskManager,

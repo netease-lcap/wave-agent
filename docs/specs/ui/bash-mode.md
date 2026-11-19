@@ -1,6 +1,6 @@
 ---
 name: "Bash 模式"
-description: "`!` 前缀在聊天输入直接执行 shell 命令，输出以 bash tool block 全量展示并进入模型上下文，命令可中止"
+description: "`!` 前缀在聊天输入直接执行 shell 命令，由会话自己的 shell 工具（`Bash` 或 `PowerShell`）执行，输出以该工具的 tool block 全量展示并进入模型上下文，命令可中止"
 order: 140
 ---
 
@@ -8,7 +8,7 @@ order: 140
 
 **创建日期**：2026-03-25
 
-**最近更新**：2026-08-26（改名 Bang → Bash 模式；输出统一为 user 消息 bash tool block 承载，执行复用 bash 工具）
+**最近更新**：2026-08-26（改名 Bang → Bash 模式；输出统一为 user 消息 tool block 承载，执行复用 shell 工具）；2026-11-19（执行器与会话 shell 对齐：`!` 命令走会话实际拥有的那个 shell 工具，块名随之取 `Bash` 或 `PowerShell`）
 
 ## 用户场景与测试 _（必填）_
 
@@ -22,7 +22,7 @@ order: 140
 
 **验收场景**：
 
-1. **假设**聊天输入为空，**当**用户输入 `!ls -la` 并按下 Enter 时，**则**命令 `ls -la` 在当前工作目录中执行，对话中出现一条 user 消息（内容为 `ls -la`），其下以 bash tool block 形态显示命令输出。
+1. **假设**聊天输入为空，**当**用户输入 `!ls -la` 并按下 Enter 时，**则**命令 `ls -la` 在当前工作目录中执行，对话中出现一条 user 消息（内容为 `ls -la`），其下以会话 shell 工具的 tool block 形态显示命令输出（bash 会话为 `Bash`，PowerShell 会话为 `PowerShell`；`packages/agent-sdk/src/managers/bashModeManager.ts:84-89`、`:107-111`、`packages/agent-sdk/src/constants/tools.ts:44`）。
 2. **假设**命令正在执行中，**当**用户输入另一个命令时，**则**系统应该防止并发执行并显示错误消息。
 
 ---
@@ -31,7 +31,7 @@ order: 140
 
 作为用户，我希望 shell 命令的输出完整显示在对话中，以便我可以随时回溯查看完整结果。
 
-**为什么是这个优先级**：bash 模式输出作为 user 消息 tool block 承载，复用 bash 工具块渲染规则——result 全量展示不截断。原始 bang spec 的「20 行只显示最后 3 行」截断规则因渲染统一而移除。
+**为什么是这个优先级**：bash 模式输出作为 user 消息 tool block 承载，复用 shell 工具（`Bash` / `PowerShell`）的 tool block 渲染规则——result 全量展示不截断。原始 bang spec 的「20 行只显示最后 3 行」截断规则因渲染统一而移除。
 
 **独立测试**：可以通过执行具有多行输出的命令（如 `!seq 1 100`）并验证全部 100 行都显示在消息流中来测试。
 
@@ -64,9 +64,9 @@ order: 140
 
 ## 实现说明（开发者视角，非验收行为）
 
-- **消息承载**：bash 模式消息不再使用独立 `BangBlock` 块类型，改为 user 消息 + bash tool block（`name: "Bash"`（`BASH_TOOL_NAME`），parameters 存命令，result 存输出）。消息文本块忠实回显命令本身。
-- **执行复用**：bash 模式执行复用 bash 工具执行引擎（shell 解析、CWD 追踪、超时、输出处理），不再维护独立 spawn 逻辑。运行期间**不**写 tool block，输出只在命令结束时一次性写入（见 [Bash 工具](../core/bash-tools.md) 的「输出在命令结束时一次性下发」）。
+- **消息承载**：bash 模式消息不再使用独立 `BangBlock` 块类型，改为 user 消息 + 会话 shell 工具的 tool block（`name` 取**会话实际执行 `!` 命令的那个工具**——bash 会话 `Bash`（`BASH_TOOL_NAME`）、PowerShell 会话 `PowerShell`（`POWERSHELL_TOOL_NAME`），parameters 存命令，result 存输出；`packages/agent-sdk/src/managers/bashModeManager.ts:84-89`）。消息文本块忠实回显命令本身。
+- **执行复用**：bash 模式执行复用**当前会话 shell 工具**的执行引擎（shell 解析、CWD 追踪、超时、输出处理），不再维护独立 spawn 逻辑——用哪个工具与注册、hook、技能注入读同一个三态判定（`packages/agent-sdk/src/managers/bashModeManager.ts:84-89`、`packages/agent-sdk/src/utils/shell/shellToolGate.ts`）。运行期间**不**写 tool block，输出只在命令结束时一次性写入（见 [Bash 工具](../core/bash-tools.md) 的「输出在命令结束时一次性下发」）。
 - **输出进上下文**：user 消息 tool block 的 result 经 `<local-command-stdout>` 规则进入模型上下文（convertMessagesForAPI 通用逻辑）；不触发 AI 回复。
 - **退出码呈现**：成功（exit 0）不标注；失败在 result 文本前缀标注 `[exit code: N]`。
-- **中止**：复用 bash 工具的 abort 机制（AbortSignal，SIGINT 退出码 130）。
+- **中止**：复用会话 shell 工具的 abort 机制（AbortSignal，SIGINT 退出码 130）。
 - **回滚检查点**：bash 模式命令消息是用户真实输入，与 fork 技能命令消息一致，可作为 /rewind 检查点（系统生成的输出块不作为检查点依据）。

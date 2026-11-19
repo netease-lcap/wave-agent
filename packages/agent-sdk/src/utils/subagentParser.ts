@@ -9,6 +9,12 @@ import {
   type ParsedFrontmatter,
 } from "./frontmatterYaml.js";
 import { getBuiltinSubagentsDir } from "./configPaths.js";
+import { renderShellGuidance } from "./shellPromptGuidance.js";
+import {
+  collectShellToolGateInput,
+  resolveShellKind,
+  type ShellKindChoice,
+} from "./shell/shellToolGate.js";
 
 /** Isolation mode a subagent can opt into. Only `worktree` is recognized. */
 export type SubagentIsolation = "worktree";
@@ -169,10 +175,16 @@ function validateConfiguration(
 
 /**
  * Parse a single subagent markdown file with optional pluginRoot support
+ *
+ * `shellKind` is the session's shell (see `shellPromptGuidance`): the builtin
+ * Explore / Plan prompts carry a placeholder for the parts that name a shell,
+ * because the same prompt has to describe PowerShell on a machine without Git
+ * Bash.
  */
 function parseSubagentFile(
   filePath: string,
   scope: "project" | "user" | "builtin" | "plugin",
+  shellKind: ShellKindChoice,
   pluginRoot?: string,
 ): SubagentConfiguration {
   try {
@@ -195,7 +207,7 @@ function parseSubagentFile(
     if (scope === "builtin") priority = 3;
     if (scope === "plugin") priority = 2; // Same priority as user-level
 
-    let systemPrompt = body;
+    let systemPrompt = renderShellGuidance(body, shellKind);
 
     // Substitute ${WAVE_PLUGIN_ROOT} for plugin scope at parse time
     if (scope === "plugin" && pluginRoot) {
@@ -235,7 +247,16 @@ export function parseAgentFile(
   scope: "plugin",
   pluginRoot: string,
 ): SubagentConfiguration {
-  return parseSubagentFile(filePath, scope, pluginRoot);
+  // Plugin agents are not builtin content, so they carry no shell placeholder,
+  // and this entry point has no session workdir — the process-level gate is the
+  // only answer available. Resolution runs anyway, so a plugin that copied a
+  // builtin prompt still gets a token-free system prompt.
+  return parseSubagentFile(
+    filePath,
+    scope,
+    resolveShellKind(collectShellToolGateInput()),
+    pluginRoot,
+  );
 }
 
 /**
@@ -244,6 +265,7 @@ export function parseAgentFile(
 function scanSubagentDirectory(
   dirPath: string,
   scope: "project" | "user" | "builtin",
+  shellKind: ShellKindChoice,
 ): SubagentConfiguration[] {
   const configurations: SubagentConfiguration[] = [];
 
@@ -256,7 +278,7 @@ function scanSubagentDirectory(
 
       if (stat.isFile() && extname(entry) === ".md") {
         try {
-          const config = parseSubagentFile(fullPath, scope);
+          const config = parseSubagentFile(fullPath, scope, shellKind);
           configurations.push(config);
         } catch (parseError) {
           // Log error but continue with other files
@@ -295,8 +317,13 @@ export async function loadSubagentConfigurations(
   const userClaudeDir = join(homedir(), ".claude", "agents");
   const builtinDir = getBuiltinSubagentsDir();
 
+  // One shell decision for every file this session parses: the builtin prompts
+  // name the shell tool, and which tool that is belongs to the session, not to
+  // the process (`resolveShellKind`, the same gate that registered the tool).
+  const shellKind = resolveShellKind(collectShellToolGateInput(workdir));
+
   // Load configurations from all sources
-  let builtinConfigs = scanSubagentDirectory(builtinDir, "builtin");
+  let builtinConfigs = scanSubagentDirectory(builtinDir, "builtin", shellKind);
   // Conditional registration: builtin subagents whose frontmatter requires the
   // WAVE_VISION_MODEL env var (`model: visionModel`) are only loaded when it is
   // set — otherwise the main model would delegate image recognition to a
@@ -306,13 +333,22 @@ export async function loadSubagentConfigurations(
       (config) => config.model !== "visionModel",
     );
   }
-  const userClaudeConfigs = scanSubagentDirectory(userClaudeDir, "user");
-  const userWaveConfigs = scanSubagentDirectory(userWaveDir, "user");
+  const userClaudeConfigs = scanSubagentDirectory(
+    userClaudeDir,
+    "user",
+    shellKind,
+  );
+  const userWaveConfigs = scanSubagentDirectory(userWaveDir, "user", shellKind);
   const projectClaudeConfigs = scanSubagentDirectory(
     projectClaudeDir,
     "project",
+    shellKind,
   );
-  const projectWaveConfigs = scanSubagentDirectory(projectWaveDir, "project");
+  const projectWaveConfigs = scanSubagentDirectory(
+    projectWaveDir,
+    "project",
+    shellKind,
+  );
 
   // Merge configurations, with .wave taking priority over .claude
   const configMap = new Map<string, SubagentConfiguration>();

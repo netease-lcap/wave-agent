@@ -7,12 +7,12 @@ import type {
   AskUserQuestionInput,
 } from "wave-agent-sdk";
 import {
-  BASH_TOOL_NAME,
   EDIT_TOOL_NAME,
   EXIT_PLAN_MODE_TOOL_NAME,
   ENTER_PLAN_MODE_TOOL_NAME,
   WRITE_TOOL_NAME,
   ASK_USER_QUESTION_TOOL_NAME,
+  isShellToolName,
 } from "wave-agent-sdk";
 import { confirmationReducer } from "../reducers/confirmationReducer.js";
 import {
@@ -162,7 +162,7 @@ export const ConfirmationSelector: React.FC<ConfirmationSelectorProps> = ({
     if (toolName === EXIT_PLAN_MODE_TOOL_NAME) {
       return "Yes, auto-accept edits";
     }
-    if (toolName === BASH_TOOL_NAME) {
+    if (isShellToolName(toolName)) {
       const command = (toolInput?.command as string) || "";
       if (command.trim().startsWith("mkdir")) {
         return "Yes, and auto-accept edits";
@@ -443,7 +443,7 @@ export const ConfirmationSelector: React.FC<ConfirmationSelectorProps> = ({
               </Box>
             )}
             {(toolName === EXIT_PLAN_MODE_TOOL_NAME ||
-              (toolName === BASH_TOOL_NAME && permissionMode !== "plan")) && (
+              (isShellToolName(toolName) && permissionMode !== "plan")) && (
               <Box key="bypass-option">
                 <Text
                   color={state.selectedOption === "bypass" ? "black" : "white"}

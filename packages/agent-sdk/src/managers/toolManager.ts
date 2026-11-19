@@ -8,6 +8,7 @@ import type { ModManager } from "./modManager.js";
 import { truncateForModEvent } from "../mods/text.js";
 import { validateToolInput } from "../tools/inputValidation.js";
 import { bashTool } from "../tools/bashTool.js";
+import { powershellTool } from "../tools/powershellTool/powershellTool.js";
 import { taskStopTool } from "../tools/taskStopTool.js";
 import { editTool } from "../tools/editTool.js";
 import { writeTool } from "../tools/writeTool.js";
@@ -23,6 +24,10 @@ import { execTool } from "../tools/execTool.js";
 import { isArtifactEnabled } from "../services/artifactAvailability.js";
 import { isKnowledgeBaseEnabled } from "../services/knowledgeBaseAvailability.js";
 import { isTaskToolsEnabled } from "../services/taskToolsAvailability.js";
+import {
+  collectShellToolGateInput,
+  isPowerShellToolEnabled,
+} from "../utils/shell/shellToolGate.js";
 import { knowledgeBaseTools } from "../tools/knowledgeBase/index.js";
 import {
   getNonDeferrableBuiltins,
@@ -32,7 +37,7 @@ import { isLeanPromptEnabled } from "../services/leanPrompt.js";
 import { buildExecPool } from "../exec/catalog.js";
 import type { ExecPoolCandidate, ExecPoolEntry } from "../exec/catalog.js";
 import { STRUCTURAL_NON_DEFERRABLE } from "../exec/deferral.js";
-import { EXEC_TOOL_NAME } from "../constants/tools.js";
+import { EXEC_TOOL_NAME, isShellToolName } from "../constants/tools.js";
 // New tools
 import { globTool } from "../tools/globTool.js";
 import { grepTool } from "../tools/grepTool.js";
@@ -69,6 +74,7 @@ import { Container } from "../utils/container.js";
 import { appendMemoryCapNotice } from "../utils/memoryCapNotices.js";
 
 import { logger } from "../utils/globalLogger.js";
+import { shouldRegisterSearchTools } from "../utils/searchToolsRegistration.js";
 
 import type { SubagentConfiguration } from "../utils/subagentParser.js";
 import type { SkillMetadata } from "../types/skills.js";
@@ -78,7 +84,7 @@ import {
 } from "../telemetry/metrics.js";
 import type { RecordContext } from "../telemetry/metrics.js";
 import { entrypointOf } from "../telemetry/attributes.js";
-import { detectBashActivity } from "../telemetry/toolActivity.js";
+import { detectShellActivity } from "../telemetry/toolActivity.js";
 import { trackCliOperation } from "../telemetry/activity.js";
 
 /** `tool.describe` 给这一场会话的那一份答案（spec「给工具、技能、命令写描述」）。 */
@@ -194,22 +200,29 @@ function recordLinesChangedFromResult(
 }
 
 /**
- * Count the commit / PR-MR a Bash call created (see `detectBashActivity`).
+ * Count the commit / PR-MR a shell call created (see `detectShellActivity`).
  * Recognition is of the command the tool was asked to run, so a failed call
  * created nothing and records nothing — the same gate as the line delta above.
+ *
+ * "A shell call", not "a Bash call": `git commit` typed into a PowerShell
+ * session creates the same commit, and the command line reads the same to
+ * `detectShellActivity` whichever shell ran it (both invoke git/gh/glab as
+ * external binaries). Gating on the name `Bash` is how those commits used to be
+ * dropped, so the gate is the shell-tool set, read from `constants/tools.ts`
+ * where a future shell tool is added.
  */
-function recordBashActivity(
+function recordShellActivity(
   name: string,
   args: Record<string, unknown>,
   result: ToolResult,
   context: { sessionId?: string; workdir?: string },
   container: Container,
 ): void {
-  if (name !== "Bash" || !result.success) return;
+  if (!isShellToolName(name) || !result.success) return;
   const command = typeof args.command === "string" ? args.command : "";
   if (!command) return;
   recordToolActivity(
-    detectBashActivity(command),
+    detectShellActivity(command),
     recordContextOf(context, container),
   );
 }
@@ -343,8 +356,18 @@ class ToolManager {
    * ```
    */
   public initializeBuiltInTools(): void {
+    // One read of the gate for the whole registry: the Bash tool is listed iff
+    // its shell exists, the PowerShell tool iff the gate turns it on. Together
+    // these cover the third answer — no Git Bash and PowerShell withheld — where
+    // neither shell tool is registered, because a listed tool the model cannot
+    // run is worse than a tool it never sees.
+    const shellGateInput = collectShellToolGateInput(
+      this.container.get<string>("CurrentWorkdir"),
+    );
+    const hasBash = shellGateInput.hasGitBash;
+    const hasPowerShell = isPowerShellToolEnabled(shellGateInput);
+
     const builtInTools = [
-      bashTool,
       taskStopTool,
       editTool,
       writeTool,
@@ -364,13 +387,26 @@ class ToolManager {
       workflowTool,
     ];
 
-    // Grep / Glob are not part of the default tool set: content and file search
-    // run through the Bash tool's `grep` / `find` shadows
-    // (core/fs-tools.md「默认工具集不含搜索工具」). Naming either one in `--tools`
-    // is the only way back; `--allowedTools` is a permission allow-list and does
-    // not affect registration.
-    if (this.namesSearchTool()) {
+    if (hasBash) {
+      builtInTools.push(bashTool);
+    }
+
+    // Grep / Glob are off by default: search runs through the Bash tool's
+    // `grep` / `find` shadows, which are the thing being paid for instead.
+    // See `shouldRegisterSearchTools`: naming either one in `--tools` asks for
+    // the structured form, and a session with no usable bash gets them
+    // regardless — there is no shadow to search with. `--allowedTools` is a
+    // permission allow-list and does not affect registration.
+    if (shouldRegisterSearchTools(this.tools)) {
       builtInTools.push(globTool, grepTool);
+    }
+
+    // PowerShell: present only in a session whose shell it is — no Git Bash on
+    // Windows, or `WAVE_USE_POWERSHELL_TOOL` asked for it anyway. The registry
+    // and every command router read the same gate (`utils/shell/shellToolGate.ts`),
+    // so the tool is never listed without being runnable.
+    if (hasPowerShell) {
+      builtInTools.push(powershellTool);
     }
 
     // Artifact is a feature-gated tool: on by default for a logged-in account,
@@ -427,14 +463,21 @@ class ToolManager {
    * Re-evaluate feature-gated built-in tools after a live configuration
    * reload. Currently gates the Artifact tool on settings.json
    * `enableArtifact`, the Exec tool on `enableExec`, the three knowledge-base
-   * tools on `enableKnowledgeBase`, and the four task-list tools on
-   * `env.WAVE_ENABLE_TASK_TOOLS`. Safe to call multiple times: gated tools are
-   * removed from the registry first, then initializeBuiltInTools() re-registers
-   * them only if still enabled (so toggling a flag off actually unregisters).
+   * tools on `enableKnowledgeBase`, the four task-list tools on
+   * `env.WAVE_ENABLE_TASK_TOOLS`, and the two shell tools on the shell gate
+   * (`env.WAVE_USE_POWERSHELL_TOOL` / whether Git Bash exists). Safe to call
+   * multiple times: gated tools are removed from the registry first, then
+   * initializeBuiltInTools() re-registers them only if still enabled (so
+   * toggling a flag off actually unregisters).
    */
   public reloadFeatureGatedTools(): void {
     this.toolsRegistry.delete(artifactTool.name);
     this.toolsRegistry.delete(execTool.name);
+    // Both shell tools are gate-dependent: enabling PowerShell on a machine
+    // without Git Bash, or disabling it on one with Git Bash, changes which of
+    // the two is listed — and "neither" is a legal outcome.
+    this.toolsRegistry.delete(powershellTool.name);
+    this.toolsRegistry.delete(bashTool.name);
     for (const tool of knowledgeBaseTools) {
       this.toolsRegistry.delete(tool.name);
     }
@@ -452,25 +495,6 @@ class ToolManager {
   /**
    * Check if a tool should be enabled based on tools configuration and permission rules
    */
-  /**
-   * Whether the caller named `Grep` or `Glob` in the `tools` whitelist.
-   *
-   * These two are the only built-ins that are off unless asked for: search runs
-   * in the Bash tool now (`core/fs-tools.md`), and a session that wants the
-   * structured alternative names it. The check reads the opt-in list directly
-   * rather than going through {@link shouldEnableTool} because that method's
-   * "no list means everything" default is precisely what must not apply here.
-   */
-  private namesSearchTool(): boolean {
-    return (this.tools ?? []).some((name) => {
-      const lower = name.toLowerCase();
-      return (
-        lower === globTool.name.toLowerCase() ||
-        lower === grepTool.name.toLowerCase()
-      );
-    });
-  }
-
   private shouldEnableTool(name: string): boolean {
     const permissionManager =
       this.container.get<PermissionManager>("PermissionManager");
@@ -883,7 +907,7 @@ class ToolManager {
         try {
           result = await plugin.execute(args, enhancedContext);
           recordLinesChangedFromResult(result, context, this.container);
-          recordBashActivity(name, args, result, context, this.container);
+          recordShellActivity(name, args, result, context, this.container);
         } catch (error) {
           const message =
             error instanceof Error ? error.message : String(error);

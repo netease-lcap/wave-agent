@@ -8,8 +8,10 @@
 /** 分组顺序照 CC 后台任务弹层：bash → agent → workflow。 */
 const TYPE_ORDER = ["shell", "subagent", "workflow"] as const;
 
+// 分组标签按能力取词，不按工具名：同一个  组在 Windows 上可能是
+// PowerShell 跑出来的，写 "Bash" 会指向本会话并不存在的工具。
 const TYPE_LABELS: Record<string, string> = {
-  shell: "Bash",
+  shell: "Shell",
   subagent: "Agents",
   workflow: "Workflows",
 };
