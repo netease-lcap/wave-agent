@@ -1324,6 +1324,44 @@ html[data-host="desktop"][data-theme="dark"] .artifacts-file-icon {
   position: relative;
 }
 
+/* 1119 评论（点 `select`「最新版本v3 · 加入深色模式v2 · 补充分享弹层v1」）：
+   「这个选择器下拉列表的面板参考规范」——原生 select 的弹层由 UA 绘制，位置/宽度/
+   圆角/阴影/项高/hover 一律不可控，桌面端因此换成 `SettingsSelect`（自绘 listbox，
+   弹层皮肤见 host-desktop.css 的 `.settings-select-menu` 一族：白面 + #EBEEF5 边 +
+   r12 + 12% 柔影，项 28/r6/14 + hover #EEF0F3 + 选中 fill-pressed token；深色走
+   `--cc-bg-overlay` + 12% 白边 + 40% 黑柔影）。插件端组件内部仍渲染原生 select。
+   下面这几条只负责**触发器**：把设置页那套控件盒（r6 + `--vscode-input-*`）换成
+   创作集字段的控件盒，与改前原生 select 逐值相同（510×32 / r8 / 1px / 14px /
+   `--cc-field-*`）；三角由组件自带的 `::after`（同一条官方矢量、右内缘 8px）接替上面
+   `.artifacts-field:has(> select)::after` 那条，位置与颜色同档。 */
+[data-host="desktop"] .artifacts-field .settings-select-field {
+  width: 100%;
+}
+
+[data-host="desktop"] .artifacts-field .settings-select-trigger {
+  height: 32px;
+  box-sizing: border-box;
+  padding: 4px 24px 4px 8px; /* 右 24 = 8 内衬 + 8 三角 + 8 间隔（与原生 select 同） */
+  border-radius: 8px;
+  border: 1px solid var(--cc-field-border, rgba(127, 127, 127, 0.35));
+  background: var(--cc-field-bg, var(--vscode-input-background, transparent));
+  color: var(
+    --cc-field-text,
+    var(--vscode-input-foreground, var(--vscode-foreground))
+  );
+  font-size: 14px;
+}
+
+[data-host="desktop"] .artifacts-field .settings-select-trigger:hover:not(:focus) {
+  border-color: var(--cc-field-border-hover, var(--cc-field-border));
+}
+
+/* 输入类控件的焦点语言（鼠标点也算）——与同字段的 input / select 同一条 fallback 链。 */
+[data-host="desktop"] .artifacts-field .settings-select-trigger:focus {
+  outline: none;
+  border-color: var(--cc-field-border-focus, var(--vscode-focusBorder));
+}
+
 [data-host="desktop"] .artifacts-field select {
   -webkit-appearance: none;
   appearance: none;

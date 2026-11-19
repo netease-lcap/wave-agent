@@ -18,6 +18,7 @@ import {
   SearchIcon,
   SidebarExpandIcon,
 } from "./HeaderIcons";
+import { SettingsSelect } from "./SettingsSelect";
 import { Tooltip } from "./Tooltip";
 import { ToastGlyph } from "./ToastStack";
 import { useHostMessage } from "../utils/useHostMessage";
@@ -2682,21 +2683,30 @@ const ShareDialog: React.FC<ShareDialogProps> = ({
             </div>
           )}
 
-          <label className="artifacts-field">
+          {/* 设计师 2026-11-19 预览评论（点 `select`「最新版本v3 · 加入深色模式v2 ·
+              补充分享弹层v1」）：「这个选择器下拉列表的面板参考规范」。
+              原生 select 的弹层由 Chromium/系统绘制，位置/宽度/圆角/阴影/项高/hover
+              一律不受 CSS 控制 ⇒ 桌面端换成自绘 listbox（复用 `SettingsSelect`，弹层
+              皮肤与设置页、会话看板筛选同一条声明；组件内部已按宿主分叉，插件端仍是
+              原生 select）。触发器盒由 ArtifactsPage.css 里 `.artifacts-field
+              .settings-select-trigger` 接管，与改前逐值相同。包裹元素同时从 `<label>`
+              改成 `<div>`：内部不再是表单控件而是按钮，label 会让整行点击都触发按钮。 */}
+          <div className="artifacts-field">
             <span>查看者版本</span>
-            <select
+            <SettingsSelect
+              label="查看者版本"
               value={pinnedVersion}
-              onChange={(event) => setPinnedVersion(event.target.value)}
-              data-testid="artifacts-share-version"
-            >
-              <option value="">最新版本</option>
-              {versions.map((version) => (
-                <option key={version.version} value={String(version.version)}>
-                  {`v${version.version}${version.label ? ` · ${version.label}` : ""}`}
-                </option>
-              ))}
-            </select>
-          </label>
+              testId="artifacts-share-version"
+              onChange={setPinnedVersion}
+              options={[
+                { value: "", label: "最新版本" },
+                ...versions.map((version) => ({
+                  value: String(version.version),
+                  label: `v${version.version}${version.label ? ` · ${version.label}` : ""}`,
+                })),
+              ]}
+            />
+          </div>
 
           {saveError && <p className="artifacts-form-error">{saveError}</p>}
         </div>
