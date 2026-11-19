@@ -1,7 +1,8 @@
 import React from "react";
 import type { ConversationFileEntry } from "../utils/conversationFiles";
+import { baseNameOf } from "../utils/fileTreePaths";
 import { FileTextIcon } from "./HeaderIcons";
-import { PanelKindIcon } from "./PanelKindIcon";
+import { FileTypeIcon } from "./FileTypeIcon";
 import { isDesktopHost } from "../utils/platform";
 
 interface ConversationFileListProps {
@@ -38,11 +39,12 @@ export const ConversationFileList: React.FC<ConversationFileListProps> = ({
           onClick={() => onOpenFile(file.path)}
         >
           {isDesktopHost() ? (
-            // 桌面端与会话面板标签、文件空态用同一颗官方「文件」图标（PanelKindIcon
-            // kind="file"，Figma Component 12 · 13561:39702）；1029 第十轮设计师评论
-            // 「和这里保持一致」指的就是面板标签那颗。插件端保留原 feather 图标。
-            <PanelKindIcon
-              kind="file"
+            // 桌面端按文件名解析的类型图标（与右侧 `Project files` 文件树同一颗、
+            // 同一套配色）：设计师 2026-11-18 截图指出「同一个界面里两套图标」。
+            // 盒仍是 16×16（改前是 PanelKindIcon kind="file" size={16}）⇒ 行高与
+            // 文件名左缘零变化。插件端保留原 feather 图标。
+            <FileTypeIcon
+              fileName={baseNameOf(file.absolutePath)}
               size={16}
               className="file-pane-conversation-file-icon"
             />

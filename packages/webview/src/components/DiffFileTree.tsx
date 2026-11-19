@@ -1,8 +1,8 @@
 import React, { useMemo, useState } from "react";
 import type { WorkspaceDiffFile } from "./DiffPane";
 import { ChevronIcon } from "./ChevronIcon";
+import { FileTypeIcon } from "./FileTypeIcon";
 import { FolderIcon } from "./FolderIcon";
-import { PanelKindIcon } from "./PanelKindIcon";
 import { isDesktopHost } from "../utils/platform";
 
 interface DiffTreeNode {
@@ -135,7 +135,14 @@ export const DiffFileTree: React.FC<DiffFileTreeProps> = ({
             <span className="diff-tree-caret" aria-hidden="true" />
           )}
           {isDesktopHost() && (
-            <PanelKindIcon kind="file" size={16} className="diff-tree-icon" />
+            // 与文件树同一颗：桌面端文件行按文件名解析类型图标（对齐 CC 桌面端差异
+            // 面板——它的文件行用同一颗类型图标组件再叠 diff 计数）。盒仍是 16×16
+            // （改前是 PanelKindIcon kind="file" size={16}），行高 28px 不变。
+            <FileTypeIcon
+              fileName={node.name}
+              size={16}
+              className="diff-tree-icon"
+            />
           )}
           <span className="diff-tree-name">{node.name}</span>
           <span className="diff-file-stats">
