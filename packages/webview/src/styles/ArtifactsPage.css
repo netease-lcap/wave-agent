@@ -1513,18 +1513,45 @@ html[data-host="desktop"][data-theme="dark"] .artifacts-file-icon {
   width: 100%;
 }
 
+/* 已添加成员块（设计师 2026-11-19 预览评论，锚点 `div.artifacts-selected-members`
+   「已添加的成员在搜索成员的下方显示，新增一个背景色块来承载已添加的成员，且支持
+   内部滚动」）：
+   ① 位置：原来是搜索框上方的一行裸胶囊，挪到**候选列表下方**（候选列表紧贴搜索框，
+      新增成员不再把候选列表往下推）；markup 里已移。
+   ② 承载形式：设计师 2026-11-19「这里用分割线的形式，不要边框线我看看效果」⇒
+      去掉四边描边与圆角，改成**一条上分割线**（1px `--vscode-panel-border`）：
+      无底色（上一版叠的灰洗已撤）、无圆角、左右内衬归 0 —— 胶囊与上面的候选行、
+      搜索框左缘对齐，分割线横贯 picker 内容宽；竖向只留 `padding-top: 8`（+ picker
+      的 8 gap ⇒ 候选列表到胶囊共 17px，其中分割线居中）。要回退成色块：把
+      `border`/`border-radius`/`padding`/`background` 换回上一版即可（见 git 历史）。
+   ③ 内部滚动：封顶 4 行胶囊 = 4×28（胶囊实测高）+ 3×6（行距）+ 8（上内衬）+
+      1（分割线）= 139px（`box-sizing: border-box`，否则内衬与描边会撑出去）；
+      胶囊换行由 flex-wrap 负责（`align-content: flex-start` 让行贴顶，不随滚动轴拉伸）；
+      `overscroll-behavior: contain` 滚到底不漏给弹层。 */
 .artifacts-selected-members {
   display: flex;
   flex-wrap: wrap;
+  align-content: flex-start;
   gap: 6px;
+  padding: 8px 0 0;
+  border: none;
+  border-top: 1px solid var(--vscode-panel-border, rgba(127, 127, 127, 0.18));
+  border-radius: 0;
+  box-sizing: border-box;
+  max-height: 139px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
+/* 已添加成员胶囊。设计师 2026-11-19：「选项圆角和选择器保持一致」⇒ 原来 999px 全圆角，
+   改成与同屏选择器一档的 8px（成员选择器容器 8 / 搜索框 8 / 查看者版本下拉 8 / 刚加的
+   已添加块 8），同一屏只剩一种圆角。几何其余不动（高 28 / 内衬 3×8 / 12px 字）。 */
 .artifacts-chip {
   display: inline-flex;
   align-items: center;
   gap: 4px;
   padding: 3px 8px;
-  border-radius: 999px;
+  border-radius: var(--cc-radius-md, 8px);
   background: rgba(127, 127, 127, 0.18);
   font-size: 12px;
 }

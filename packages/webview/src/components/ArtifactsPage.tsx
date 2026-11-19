@@ -2607,22 +2607,6 @@ const ShareDialog: React.FC<ShareDialogProps> = ({
               className="artifacts-member-picker"
               data-testid="artifacts-member-picker"
             >
-              {selectedMembers.length > 0 && (
-                <div className="artifacts-selected-members">
-                  {selectedMembers.map((member) => (
-                    <span key={member.userId} className="artifacts-chip">
-                      {member.email}
-                      <button
-                        type="button"
-                        aria-label={`取消选择 ${member.email}`}
-                        onClick={() => toggleMember(member)}
-                      >
-                        ×
-                      </button>
-                    </span>
-                  ))}
-                </div>
-              )}
               <SearchField
                 value={memberQuery}
                 onChange={setMemberQuery}
@@ -2675,6 +2659,25 @@ const ShareDialog: React.FC<ShareDialogProps> = ({
                     })
                   )}
                 </ul>
+              )}
+              {/* 设计师 2026-11-19 预览评论：已添加的成员放在搜索/候选**下方**，
+                  并由一个背景色块承载、内部滚动（版式与取值见 ArtifactsPage.css
+                  的 `.artifacts-selected-members` 注释）。 */}
+              {selectedMembers.length > 0 && (
+                <div className="artifacts-selected-members">
+                  {selectedMembers.map((member) => (
+                    <span key={member.userId} className="artifacts-chip">
+                      {member.email}
+                      <button
+                        type="button"
+                        aria-label={`取消选择 ${member.email}`}
+                        onClick={() => toggleMember(member)}
+                      >
+                        ×
+                      </button>
+                    </span>
+                  ))}
+                </div>
               )}
             </div>
           )}
