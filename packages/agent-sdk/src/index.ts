@@ -58,6 +58,10 @@ export type { RuntimeDepsResult } from "./utils/runtimeDeps.js";
 // a caller-supplied byte budget. See `shrinkImageForTransport`.
 export { shrinkImageForTransport } from "./utils/imageRewrite.js";
 export type { TransportShrinkOutcome } from "./utils/imageRewrite.js";
+// A clipboard image saved as BMP is readable but not sendable (the APIs take
+// jpeg/png/gif/webp), so the Linux reader rewrites it — same as Claude Code,
+// except that a missing codec keeps the BMP instead of failing the read.
+export { transcodeBmpToPng } from "./utils/bmpTranscode.js";
 export * from "./utils/worktreeSession.js";
 export * from "./utils/worktreeRemoval.js";
 export * from "./utils/worktreeUtils.js";

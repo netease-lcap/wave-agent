@@ -8,9 +8,12 @@ import {
 // Mock all the dependencies - use vi.hoisted for proper hoisting
 const mockExecAsync = vi.hoisted(() => vi.fn());
 const mockExecFileAsync = vi.hoisted(() => vi.fn());
+const mockTranscodeBmpToPng = vi.hoisted(() => vi.fn());
 const mockExistsSync = vi.hoisted(() => vi.fn());
 const mockStatSync = vi.hoisted(() => vi.fn());
 const mockUnlinkSync = vi.hoisted(() => vi.fn());
+const mockReadFileSync = vi.hoisted(() => vi.fn());
+const mockWriteFileSync = vi.hoisted(() => vi.fn());
 const mockJoin = vi.hoisted(() => vi.fn());
 const mockTmpdir = vi.hoisted(() => vi.fn());
 
@@ -19,9 +22,14 @@ const mockTmpdir = vi.hoisted(() => vi.fn());
 // point is the wrapper's own module. Two separate mocks on purpose: `exec` runs
 // through a shell (`xclip`, `wl-paste`, `osascript`), `execFile` is argv-only
 // (`powershell.exe`), and a shared mock cannot tell the two apart.
+//
+// `transcodeBmpToPng` rides along in the same module: the BMP → PNG rewrite is
+// the SDK's (it owns the codec), and mocking it here is what keeps this suite
+// able to say "the codec refused" without a native module.
 vi.mock("wave-agent-sdk", () => ({
   execAsyncHidden: mockExecAsync,
   execFileAsyncHidden: mockExecFileAsync,
+  transcodeBmpToPng: mockTranscodeBmpToPng,
 }));
 
 // Mock fs module
@@ -29,6 +37,8 @@ vi.mock("fs", () => ({
   existsSync: mockExistsSync,
   statSync: mockStatSync,
   unlinkSync: mockUnlinkSync,
+  readFileSync: mockReadFileSync,
+  writeFileSync: mockWriteFileSync,
 }));
 
 // Mock path module
@@ -46,6 +56,12 @@ describe("Clipboard Utils", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    // `clearAllMocks` keeps implementations, so the three BMP-transcode doubles
+    // are reset outright: the default has to be "no codec" (undefined), not
+    // whatever the previous case made them return.
+    mockReadFileSync.mockReset();
+    mockWriteFileSync.mockReset();
+    mockTranscodeBmpToPng.mockReset();
     // Setup default mock returns
     mockTmpdir.mockReturnValue("/tmp");
     mockJoin.mockImplementation((...paths) => paths.join("/"));
@@ -352,6 +368,98 @@ describe("Clipboard Utils", () => {
           "xclip -selection clipboard -t image/bmp -o >",
           "wl-paste --type image/bmp >",
         ]);
+      });
+
+      describe("bmp transcode", () => {
+        // A BMP-only clipboard is readable but not sendable: the model APIs take
+        // jpeg/png/gif/webp only. Claude Code rewrites the bytes it just read
+        // (`bin@323223290`), and so does this — via the SDK helper, which owns
+        // both the magic-byte test and the codec.
+        const BMP_BYTES = Buffer.from([0x42, 0x4d, 0x36, 0x00, 0x00, 0x00]);
+        const PNG_BYTES = Buffer.from([
+          0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+        ]);
+
+        beforeEach(() => {
+          mockExecAsync
+            .mockResolvedValueOnce({ stdout: "image/bmp\n" }) // probe
+            .mockResolvedValueOnce({ stdout: "" }); // save image
+          mockReadFileSync.mockReturnValue(BMP_BYTES);
+        });
+
+        it("should report a transcoded bmp as png and rewrite the file", async () => {
+          mockTranscodeBmpToPng.mockResolvedValue(PNG_BYTES);
+
+          const result = await readClipboardImage();
+
+          // The saved bytes are the ones handed to the codec.
+          expect(mockTranscodeBmpToPng).toHaveBeenCalledWith(BMP_BYTES);
+          expect(mockReadFileSync).toHaveBeenCalledWith(
+            expect.stringMatching(/^\/tmp\/clipboard-image-\d+\.bmp$/),
+          );
+
+          expect(result.success).toBe(true);
+          expect(result.mimeType).toBe("image/png");
+          expect(result.imagePath).toMatch(/\.png$/);
+
+          // The PNG (magic 89 50 4e 47) is what lands next to the BMP…
+          const [[writtenPath, written]] = mockWriteFileSync.mock.calls;
+          expect(writtenPath).toBe(result.imagePath);
+          expect(Array.from((written as Buffer).subarray(0, 4))).toEqual([
+            0x89, 0x50, 0x4e, 0x47,
+          ]);
+
+          // …and the BMP is dropped: callers only clean up the path they get
+          // back, so leaving it behind would leak one temp file per paste.
+          expect(mockUnlinkSync).toHaveBeenCalledWith(
+            expect.stringMatching(/^\/tmp\/clipboard-image-\d+\.bmp$/),
+          );
+        });
+
+        it("should keep the bmp when no codec is available", async () => {
+          // sharp is optional: a host process may have no platform build, and
+          // that is a runtime state, not an error. Claude Code fails the paste
+          // here (its reader returns null); we keep the honest file instead.
+          mockTranscodeBmpToPng.mockResolvedValue(undefined);
+
+          const result = await readClipboardImage();
+
+          expect(result.success).toBe(true);
+          expect(result.mimeType).toBe("image/bmp");
+          expect(result.imagePath).toMatch(/\.bmp$/);
+          expect(mockWriteFileSync).not.toHaveBeenCalled();
+          expect(mockUnlinkSync).not.toHaveBeenCalled();
+        });
+
+        it("should keep the bmp when the rewrite fails", async () => {
+          const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+          mockTranscodeBmpToPng.mockRejectedValue(new Error("codec exploded"));
+
+          const result = await readClipboardImage();
+
+          expect(result.success).toBe(true);
+          expect(result.mimeType).toBe("image/bmp");
+          expect(mockWriteFileSync).not.toHaveBeenCalled();
+          expect(warn).toHaveBeenCalledWith(
+            "Failed to transcode clipboard BMP image:",
+            expect.any(Error),
+          );
+          warn.mockRestore();
+        });
+
+        it("should not run the codec for a png clipboard", async () => {
+          mockExecAsync.mockReset();
+          mockExecAsync
+            .mockResolvedValueOnce({ stdout: "image/png\n" })
+            .mockResolvedValueOnce({ stdout: "" });
+
+          const result = await readClipboardImage();
+
+          expect(result.mimeType).toBe("image/png");
+          expect(mockTranscodeBmpToPng).not.toHaveBeenCalled();
+          expect(mockReadFileSync).not.toHaveBeenCalled();
+          expect(mockWriteFileSync).not.toHaveBeenCalled();
+        });
       });
 
       it("should not promise a read for formats the save chain cannot fetch", async () => {
