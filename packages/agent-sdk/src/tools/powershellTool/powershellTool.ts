@@ -12,7 +12,6 @@ import { POWERSHELL_TOOL_NAME, READ_TOOL_NAME } from "../../constants/tools.js";
 import {
   POWERSHELL_DEFAULT_TIMEOUT_MS,
   POWERSHELL_MAX_TIMEOUT_MS,
-  powershellLeanPrompt,
   powershellPrompt,
 } from "./prompt.js";
 import type { ToolPlugin, ToolResult, ToolContext } from "../types.js";
@@ -105,7 +104,9 @@ export const powershellTool: ToolPlugin = {
       },
     },
   },
-  leanPrompt: powershellLeanPrompt,
+  // No `leanPrompt`: CC's PowerShellTool has none either (`@343320400`), and a
+  // condensed variant would hide the bash → PowerShell table from every lean
+  // session — which is the default. See `./prompt.ts`.
   prompt: powershellPrompt,
   execute: async (
     args: Record<string, unknown>,

@@ -1,8 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import {
-  powershellLeanPrompt,
-  powershellPrompt,
-} from "../../../src/tools/powershellTool/prompt.js";
+import { powershellPrompt } from "../../../src/tools/powershellTool/prompt.js";
 import { getPowerShellEdition } from "../../../src/utils/shell/powershellDetection.js";
 import type { ToolPromptArgs } from "../../../src/tools/types.js";
 
@@ -189,7 +186,6 @@ describe("powershellPrompt", () => {
 
     // The provider appends the probe; a paragraph here would be stale advice.
     expect(powershellPrompt()).not.toContain("LASTEXITCODE");
-    expect(powershellLeanPrompt()).not.toContain("LASTEXITCODE");
   });
 
   describe("background tasks", () => {
@@ -213,29 +209,5 @@ describe("powershellPrompt", () => {
       expect(prompt).toContain("diagnose the root cause");
       expect(prompt).toContain("keep the duration short (1-5 seconds)");
     });
-
-    it("mentions run_in_background once in the lean prompt too", () => {
-      vi.mocked(getPowerShellEdition).mockReturnValue("desktop");
-
-      expect(powershellLeanPrompt()).toContain("`run_in_background`");
-    });
-  });
-});
-
-describe("powershellLeanPrompt", () => {
-  it("carries the edition limit but not the long-form guidance", () => {
-    vi.mocked(getPowerShellEdition).mockReturnValue("desktop");
-
-    const lean = powershellLeanPrompt();
-
-    expect(lean).toContain("Windows PowerShell 5.1");
-    expect(lean).toContain("one PowerShell command");
-    expect(lean.length).toBeLessThan(powershellPrompt().length / 4);
-  });
-
-  it("says && works on PowerShell 7", () => {
-    vi.mocked(getPowerShellEdition).mockReturnValue("core");
-
-    expect(powershellLeanPrompt()).toContain("`&&` / `||` work like bash");
   });
 });

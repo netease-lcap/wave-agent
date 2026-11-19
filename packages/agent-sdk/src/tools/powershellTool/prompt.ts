@@ -28,6 +28,15 @@
  * is talking to: 5.1 rejects `&&` with a parser error, while 7 supports the
  * bash-like operators. Feeding the wrong one costs a round trip on every chained
  * command.
+ *
+ * There is no lean variant, and that is deliberate: CC's PowerShellTool has none.
+ * Its definition (`@343320400`) is `async prompt(e){return kta(zCe(e?.tools??[]))}`
+ * — `prompt` takes no `leanPrompt` argument and never calls the `jM` gate that
+ * `BashTool` (`@330422200`) consults, so CC's PowerShell description is the same
+ * text in both prompt tiers. Since this tool's description is where the
+ * bash → PowerShell table lives, a condensed variant would have dropped it for
+ * every lean session — which is the default. `leanPrompt` mode therefore leaves
+ * this tool's description alone, like CC does.
  */
 
 import { BASH_MAX_OUTPUT_CHARS } from "../../constants/toolLimits.js";
@@ -74,14 +83,6 @@ function editionSection(edition: PowerShellEdition | undefined): string {
    - Do NOT redirect a native executable's stderr (\`2>&1\`), and pass \`-Encoding utf8\` to \`Out-File\` / \`Set-Content\` — the 5.1 defaults (\`$?\` clobbered by NativeCommandError, UTF-16 LE files) are the ones that break other tools.`;
 }
 
-/** One-line edition constraint for the lean prompt. */
-function editionSummary(edition: PowerShellEdition | undefined): string {
-  if (edition === "core") return "PowerShell 7+: `&&` / `||` work like bash.";
-  if (edition === "desktop")
-    return "Windows PowerShell 5.1: no `&&` / `||` / `?:` / `??` — chain with `A; if ($?) { B }`. Do not redirect native stderr (`2>&1`); pass `-Encoding utf8` to `Out-File` / `Set-Content`.";
-  return "Assume Windows PowerShell 5.1: no `&&` / `||` / `?:` / `??` — chain with `A; if ($?) { B }`.";
-}
-
 /** Whether the session registered the structured search tools. */
 function hasSearchTools(args?: ToolPromptArgs): boolean {
   const available = args?.availableTools ?? [];
@@ -113,16 +114,6 @@ function dedicatedToolLines(args?: ToolPromptArgs): string[] {
     `    - Write files: Use ${WRITE_TOOL_NAME} (NOT \`Set-Content\` / \`Out-File\`)`,
     "    - Communication: output text directly (NOT `Write-Output` / `Write-Host`)",
   ];
-}
-
-/** Lean variant: one call, absolute paths, and the edition's hard limits. */
-export function powershellLeanPrompt(): string {
-  return `Runs one PowerShell command in a fresh, non-interactive process and returns its output. The working directory persists between calls; shell state (variables, functions, aliases) does not.
-
-- ${editionSummary(getPowerShellEdition())}
-- Quote paths with spaces; call a native exe with the call operator: \`& "C:\\Program Files\\App\\app.exe" arg1\`.
-- One command per call. \`timeout\` is milliseconds: default ${POWERSHELL_DEFAULT_TIMEOUT_MS}, max ${POWERSHELL_MAX_TIMEOUT_MS}. Output over ${BASH_MAX_OUTPUT_CHARS.toLocaleString()} characters is truncated and saved to a file the ${READ_TOOL_NAME} tool can read.
-- \`run_in_background\` runs the command in the background so you can keep working; you are notified when it finishes. No \`Start-Process\` needed.`;
 }
 
 export function powershellPrompt(args?: ToolPromptArgs): string {
