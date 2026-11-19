@@ -721,6 +721,23 @@ export class MemoryService {
    * 来，读失败也不进来。
    */
   private _loadedInstructionFiles = new Set<string>();
+  /**
+   * Auto-memory directory per workdir, resolved once per session.
+   *
+   * Deriving one costs a `git rev-parse --git-common-dir` subprocess — two when
+   * the workdir is not a repository, because `getGitCommonDir` falls back to a
+   * second `git rev-parse --show-toplevel` — and callers ask for it on every
+   * system-prompt build, at every turn end (auto-memory hooks) and in the tool
+   * loop's safe-zone check. That is 5-6 spawns per turn: ~100ms each on Windows,
+   * enough to push a single integration test past vitest's 5s timeout.
+   *
+   * The answer is a session-stable identity (which repository this directory
+   * belongs to, since worktrees share their common dir), so resolve it once per
+   * workdir instead of once per call. Deliberately not cleared by `clearCache()`:
+   * that drops memory *content*, and re-running git for a path that cannot have
+   * changed would only buy back the cost.
+   */
+  private _autoMemoryDirs = new Map<string, string>();
 
   constructor(private container: Container) {}
 
@@ -746,13 +763,27 @@ export class MemoryService {
    * Uses the git common directory to ensure worktrees share the same memory.
    */
   getAutoMemoryDirectory(workdir: string): string {
+    // Keyed by the workdir as given: callers hand over the session workdir
+    // unchanged, and `getGitCommonDir` resolves relative paths itself, so
+    // normalizing here would only make the answer disagree with the argument.
+    const cached = this._autoMemoryDirs.get(workdir);
+    if (cached !== undefined) return cached;
+
     const commonDir = getGitCommonDir(workdir);
     // If the common directory is a .git directory, use its parent as the project root
     // for a cleaner encoded name while maintaining stability across worktrees.
     const projectRoot =
       path.basename(commonDir) === ".git" ? path.dirname(commonDir) : commonDir;
     const encodedName = pathEncoder.encodeSync(projectRoot);
-    return path.join(homedir(), ".wave", "projects", encodedName, "memory");
+    const memoryDir = path.join(
+      homedir(),
+      ".wave",
+      "projects",
+      encodedName,
+      "memory",
+    );
+    this._autoMemoryDirs.set(workdir, memoryDir);
+    return memoryDir;
   }
 
   /**
