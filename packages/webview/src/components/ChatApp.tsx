@@ -1272,7 +1272,60 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   // （spec desktop-preview.md 场景 9）。生成与斜杠命令都算——用户从浮动框发出的
   // 两者都必须看得见「已经发出去了」。
   const turnRunning = state.isStreaming || state.isCommandRunning;
-  const chatContainerRef = useRef<HTMLDivElement>(null);
+  const chatContainerRef = useRef<HTMLDivElement | null>(null);
+  /**
+   * 行宽（`.chat-container` = 对话列 + 面板槽），用来按 spec
+   * desktop-right-panel.md 场景 4 派生面板**有效宽度**。派生只作用在渲染期，绝不
+   * 写回 `sessionUi`：窗口缩小得到的临时压缩，窗口放大后要回到用户设定的宽度。
+   *
+   * 采集对齐 Claude 桌面端（ResizeObserver + `window.resize` 双通道）：只听
+   * window resize 会漏掉「分屏拖分隔条」「折叠面板」这类不改窗口却改行宽的路径。
+   */
+  const [chatRowWidth, setChatRowWidth] = useState<number | null>(null);
+  const rowResizeObserverRef = useRef<ResizeObserver | null>(null);
+  const rowResizeCleanupRef = useRef<(() => void) | null>(null);
+  // 回调 ref：元素挂上/摘下时同步建立与拆除监听（组件在多处 return 分支里渲染，
+  // effect 依赖数组追不上这些分支切换）。
+  const attachChatContainer = useCallback((el: HTMLDivElement | null) => {
+    chatContainerRef.current = el;
+    rowResizeObserverRef.current?.disconnect();
+    rowResizeObserverRef.current = null;
+    rowResizeCleanupRef.current?.();
+    rowResizeCleanupRef.current = null;
+    if (!el) return;
+    const report = (): void => {
+      const width = Math.round(el.getBoundingClientRect().width);
+      // 只在整数像素变化时 setState：拖分隔条时宽度每帧都在变，亚像素抖动会让
+      // 整个 ChatApp 无条件重渲染。
+      setChatRowWidth((prev) => (prev === width ? prev : width));
+    };
+    report();
+    if (typeof ResizeObserver !== "undefined") {
+      const observer = new ResizeObserver(report);
+      observer.observe(el);
+      rowResizeObserverRef.current = observer;
+    }
+    window.addEventListener("resize", report);
+    rowResizeCleanupRef.current = () =>
+      window.removeEventListener("resize", report);
+  }, []);
+  /**
+   * 面板有效宽度 = `clamp(记忆宽度, PANEL_MIN_WIDTH, 行宽 − CHAT_MAIN_MIN_WIDTH)`
+   * （spec desktop-right-panel.md 场景 4）。行宽还没量到（首帧 / 非桌面端）时退回
+   * 记忆宽度。三个宽度出口 —— 槽位 inline `width`、面板 body 的 `common.width`、
+   * 活动 preview guest 的 `width` —— 必须同源：否则被裁切时 guest 仍按记忆宽度
+   * 排版，页面内容与可见区域错位。
+   */
+  const effectivePanelWidth =
+    chatRowWidth === null
+      ? panelWidth
+      : Math.max(
+          PANEL_MIN_WIDTH,
+          Math.min(
+            panelWidth,
+            Math.max(PANEL_MIN_WIDTH, chatRowWidth - CHAT_MAIN_MIN_WIDTH),
+          ),
+        );
   // The shared panel slot; its left-edge drag handle (rendered once on the slot,
   // see .panel-slot-drag-handle) anchors on this element's fixed right edge.
   const panelSlotRef = useRef<HTMLDivElement>(null);
@@ -5748,7 +5801,12 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     let clamped = Math.max(width, PANEL_MIN_WIDTH);
     const containerW = chatContainerRef.current?.getBoundingClientRect().width;
     if (containerW) {
-      clamped = Math.min(clamped, containerW - CHAT_MAIN_MIN_WIDTH);
+      // 行宽装不下两列下限时上界就是下限本身（`max` 兜住负值），窗口缩小后拖拽
+      // 不会把记忆宽度写成「行宽 − 360」这种会卡住面板的负空间值。
+      clamped = Math.min(
+        clamped,
+        Math.max(PANEL_MIN_WIDTH, containerW - CHAT_MAIN_MIN_WIDTH),
+      );
     }
     setPanelWidth(clamped);
   }, []);
@@ -5766,8 +5824,12 @@ export const ChatApp: React.FC<ChatAppProps> = ({
       // inline background is needed here.
       document.body.classList.add("is-panel-resizing");
       const rect = panelSlotRef.current?.getBoundingClientRect();
+      // 行宽装不下两列下限时槽位右缘被行级裁切到可视区外，`rect.right` 就不再
+      // 是用户看到的右缘 —— 取两者的较小值，拖拽才和可见边界一致。
+      const containerRect = chatContainerRef.current?.getBoundingClientRect();
+      const right = Math.min(rect?.right ?? 0, containerRect?.right ?? 0);
       const onMove = (ev: MouseEvent) => {
-        handlePanelWidthChange((rect?.right ?? 0) - ev.clientX);
+        handlePanelWidthChange(right - ev.clientX);
       };
       const onUp = () => {
         document.body.classList.remove("is-panel-resizing");
@@ -5938,7 +6000,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     const { id, kind } = tab;
     const isActive = activeTabId === id;
     const common = {
-      width: panelWidth,
+      width: effectivePanelWidth,
     };
 
     if (kind === "preview") {
@@ -6226,7 +6288,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
       if (tab.kind !== "preview") continue;
       push(stateGuestGroup, tab, {
         parked: !panelExpanded || activeTabId !== tab.id,
-        width: panelWidth,
+        width: effectivePanelWidth,
         originalUrl: currentForward?.originalUrl,
         onRetry: currentForward ? handleRemotePreviewRetry : undefined,
         live: true,
@@ -7065,7 +7127,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
           : ""
       }${dragActive ? " drag-active" : ""}`}
       data-testid="chat-container"
-      ref={isDesktop ? chatContainerRef : undefined}
+      ref={isDesktop ? attachChatContainer : undefined}
       onDragEnter={isDesktop ? handleDragEnter : undefined}
       onDragOver={isDesktop ? handleDragOver : undefined}
       onDragLeave={isDesktop ? handleDragLeave : undefined}
@@ -7251,7 +7313,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
               className="desktop-panel-slot"
               data-testid="desktop-panel-slot"
               style={{
-                width: panelWidth,
+                width: effectivePanelWidth,
                 // Collapsed: keep the slot mounted (display:none) so preview
                 // guests / terminal PTYs survive; the next expand restores it
                 // instantly with tabs, active tab and width intact. When there

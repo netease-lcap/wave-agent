@@ -47,17 +47,24 @@
   flex: 1;
   height: auto;
   align-items: center;
+  /* 欢迎组（品牌 + 输入卡 + 快捷方式）默认在行内水平居中。行宽装不下「对话列
+     360 + 面板 202」时两列自己就溢出，居中会把溢出均分到两侧——对话列被推到侧边
+     栏底下（左侧文字被裁），与 spec「窗口缩小的压力只落在面板一侧」相反。
+     `safe center` 只在装得下时居中，溢出时退化为左对齐。 */
   justify-content: center;
+  justify-content: safe center;
 }
 .chat-container--welcome .desktop-chat-main {
   /* flex:1 (not flex:none + width:100%) so an open side panel shares the row:
      with no panel it fills the whole body (basis 0 + grow), with a panel the
      welcome group centers inside the remaining column instead of spilling
      left over the sidebar (the row-level justify-content:center would center
-     chat-main(100%) + panel as one overflowing group). min-width:0 lets the
-     column shrink to the panel's width. */
+     chat-main(100%) + panel as one overflowing group).
+     min-width stays at the 360px floor (spec desktop-right-panel.md 场景 4/6):
+     欢迎页与普通会话共用同一条「窗口缩小的压力只落在面板」规则，窗口缩小时欢迎
+     列同样不得被压成竖排。 */
   flex: 1;
-  min-width: 0;
+  min-width: 360px;
   height: auto;
   /* Figma 13498:18408 itemSpacing 40（logo → composer） */
   gap: 40px;
