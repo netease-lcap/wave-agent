@@ -11,6 +11,7 @@
 
 import * as fs from "fs";
 import * as os from "os";
+import * as path from "path";
 import { buildSshSpawnArgs, LOCAL_HOST, shellQuote } from "./sshHosts";
 import { parseWslHostId, wslExePath } from "./wslHosts";
 
@@ -63,6 +64,34 @@ function defaultShell(): { file: string; args: string[] } {
       return { file: candidate, args: ["-l"] };
   }
   return { file: "/bin/sh", args: ["-l"] };
+}
+
+/**
+ * `ssh` executable for the remote-session PTY bridge.
+ *
+ * POSIX resolves a bare `ssh` against PATH at spawn time, so the bare name is
+ * right there. Windows does not: node-pty resolves the relative filename
+ * itself, by joining it onto every `Path` entry **without** appending PATHEXT
+ * (node-pty 1.2 `path_util::get_shell_path`), so `ssh` never matches the
+ * `ssh.exe` that OpenSSH actually installs — the lookup comes back empty and
+ * the panel dies with `终端启动失败：File not found: ` (empty target). Resolve
+ * to an absolute ssh.exe: the first PATH hit (the ssh the user's own terminal
+ * would run), then the OpenSSH client Windows ships. The bare `ssh.exe`
+ * fallback at least makes the failure name a real file.
+ */
+function sshExecutable(): string {
+  if (process.platform !== "win32") return "ssh";
+  const searchPath = process.env.Path ?? process.env.PATH ?? "";
+  for (const dir of searchPath.split(";")) {
+    const entry = dir.trim().replace(/^"|"$/g, "");
+    if (!entry) continue;
+    const candidate = path.win32.join(entry, "ssh.exe");
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  const root =
+    process.env.SystemRoot ?? process.env.SYSTEMROOT ?? "C:\\Windows";
+  const shipped = path.win32.join(root, "System32", "OpenSSH", "ssh.exe");
+  return fs.existsSync(shipped) ? shipped : "ssh.exe";
 }
 
 /**
@@ -166,7 +195,7 @@ export class TerminalManager {
               // is irrelevant (any existing directory works); the real working
               // directory is applied on the remote side by remoteShellCommand.
               pty.spawn(
-                "ssh",
+                sshExecutable(),
                 ["-t", ...buildSshSpawnArgs(host, remoteShellCommand(cwd))],
                 {
                   name: "xterm-256color",
