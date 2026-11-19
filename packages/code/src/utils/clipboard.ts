@@ -1,4 +1,4 @@
-import { unlinkSync, existsSync } from "fs";
+import { unlinkSync, existsSync, statSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 // 静态导入，不走 `await import("child_process")`：本文件顶部已经静态 import 了
@@ -235,62 +235,128 @@ async function readClipboardImageWindows(): Promise<ClipboardImageResult> {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Linux clipboard image reading.
+//
+// The two backends are xclip (X11) and wl-paste (wl-clipboard, Wayland). Both
+// are tried on every read, in that order, with the shell's `||` doing the
+// fallback — exactly how Claude Code does it. There is deliberately **no**
+// `which xclip` gate in front: "xclip is not installed" and "xclip is installed
+// but this is a Wayland-only session, so it sees no clipboard" both make the
+// first command fail, and both must fall through to `wl-paste` instead of
+// aborting with an "install xclip" hint that sends the user down the wrong path.
+// ---------------------------------------------------------------------------
+
+const LINUX_PNG_TARGET = "image/png";
+const LINUX_BMP_TARGET = "image/bmp";
+
+/** Lists the clipboard's advertised targets and keeps the image ones. Claude
+ *  Code's `checkImage`, verbatim (its non-WSL branch). The exit status comes
+ *  from the trailing `grep`, so "xclip missing", "no $DISPLAY", "no compositor"
+ *  and "the clipboard holds plain text" are all the same failure — which is
+ *  what makes the `||` half reachable for every one of them. */
+const LINUX_CHECK_IMAGE_COMMAND =
+  'xclip -selection clipboard -t TARGETS -o 2>/dev/null | grep -E "image/(png|jpeg|jpg|gif|webp|bmp)" || wl-paste -l 2>/dev/null | grep -E "image/(png|jpeg|jpg|gif|webp|bmp)"';
+
+/** Claude Code's `saveImage`, verbatim: png via xclip, else png via wl-paste,
+ *  else the same two for bmp. Redirect placement and `2>/dev/null` match, so a
+ *  failing attempt is silent and the next one starts from a clean file. */
+function linuxSaveImageCommand(imagePath: string): string {
+  return (
+    `xclip -selection clipboard -t ${LINUX_PNG_TARGET} -o > "${imagePath}" 2>/dev/null || ` +
+    `wl-paste --type ${LINUX_PNG_TARGET} > "${imagePath}" 2>/dev/null || ` +
+    `xclip -selection clipboard -t ${LINUX_BMP_TARGET} -o > "${imagePath}" 2>/dev/null || ` +
+    `wl-paste --type ${LINUX_BMP_TARGET} > "${imagePath}"`
+  );
+}
+
+/**
+ * Probe what the clipboard advertises, narrowed to the formats the save chain
+ * can read back.
+ *
+ * - `image/png` / `image/bmp` — readable (CC only reads these two, even though
+ *   the probe also matches jpeg/gif/webp)
+ * - `null` — an image is there, but in a format we cannot read
+ * - `undefined` — the probe itself failed: no tool, no display session, or an
+ *   empty clipboard. Those three are indistinguishable from the exit status
+ *   alone; callers that need to tell them apart look at `PATH` afterwards.
+ *
+ * Only `readClipboardImageLinux` consumes the narrowing;
+ * `hasClipboardImageLinux` deliberately uses the raw exit status instead, so the
+ * two disagree for jpeg-only clipboards the same way Claude Code does.
+ */
+async function probeLinuxClipboardImageType(): Promise<
+  string | null | undefined
+> {
+  let probe: { stdout: string };
+  try {
+    probe = await execAsyncHidden(LINUX_CHECK_IMAGE_COMMAND);
+  } catch {
+    return undefined;
+  }
+
+  if (probe.stdout.includes(LINUX_PNG_TARGET)) return LINUX_PNG_TARGET;
+  if (probe.stdout.includes(LINUX_BMP_TARGET)) return LINUX_BMP_TARGET;
+  return null;
+}
+
+/**
+ * Message for "both read paths failed". Only reached after the read already
+ * failed, and only used to pick wording — a `which` here never gates a read.
+ * Neither tool on `PATH` means the user needs to install one; otherwise the
+ * clipboard simply had nothing we could read.
+ */
+async function linuxClipboardEmptyReason(): Promise<string> {
+  try {
+    // Exits 0 when either tool resolves (`which a || which b`).
+    await execAsyncHidden("which xclip || which wl-paste");
+    return "No image found in clipboard";
+  } catch {
+    return "No clipboard tool found on Linux. Install xclip (X11) or wl-clipboard (Wayland): sudo apt-get install xclip wl-clipboard";
+  }
+}
+
 /**
  * Read clipboard image on Linux
  */
 async function readClipboardImageLinux(): Promise<ClipboardImageResult> {
   try {
-    // Linux can use tools like xclip or wl-clipboard
-    // Check if xclip is available
-    try {
-      await execAsyncHidden("which xclip");
-    } catch {
+    const mimeType = await probeLinuxClipboardImageType();
+
+    if (mimeType === undefined) {
+      return { success: false, error: await linuxClipboardEmptyReason() };
+    }
+
+    if (mimeType === null) {
       return {
         success: false,
         error:
-          "xclip is required for clipboard image operations on Linux. Please install it: sudo apt-get install xclip",
+          "Clipboard image is not available as PNG or BMP, which is all that can be read on Linux",
       };
     }
 
-    // Check if clipboard contains image
+    const tempFilePath = join(
+      tmpdir(),
+      `clipboard-image-${Date.now()}.${mimeType === LINUX_BMP_TARGET ? "bmp" : "png"}`,
+    );
+
     try {
-      await execAsyncHidden(
-        "xclip -selection clipboard -t image/png -o > /dev/null 2>&1",
-      );
+      await execAsyncHidden(linuxSaveImageCommand(tempFilePath));
     } catch {
+      return { success: false, error: await linuxClipboardEmptyReason() };
+    }
+
+    // The chain truncates the file before each attempt, so a failed attempt can
+    // leave a zero-byte file behind. The exit status above is the real gate;
+    // this keeps a 0-byte "image" from being reported as a successful read.
+    if (!existsSync(tempFilePath) || statSync(tempFilePath).size === 0) {
       return {
         success: false,
-        error: "No image found in clipboard",
+        error: "Failed to save clipboard image to temporary file",
       };
     }
 
-    // Generate temporary file path
-    const tempFilePath = join(tmpdir(), `clipboard-image-${Date.now()}.png`);
-
-    // Use xclip to save clipboard image
-    try {
-      await execAsyncHidden(
-        `xclip -selection clipboard -t image/png -o > "${tempFilePath}"`,
-      );
-
-      if (!existsSync(tempFilePath)) {
-        return {
-          success: false,
-          error: "Failed to save clipboard image to temporary file",
-        };
-      }
-
-      return {
-        success: true,
-        imagePath: tempFilePath,
-        mimeType: "image/png",
-      };
-    } catch (err) {
-      return {
-        success: false,
-        error: `Failed to save clipboard image: ${err instanceof Error ? err.message : String(err)}`,
-      };
-    }
+    return { success: true, imagePath: tempFilePath, mimeType };
   } catch (err) {
     return {
       success: false,
@@ -371,25 +437,23 @@ async function hasClipboardImageWindows(): Promise<boolean> {
 
 /**
  * Check if clipboard contains image on Linux
+ *
+ * Exactly Claude Code's `checkImage`: whatever the probe's `grep -E
+ * "image/(png|jpeg|jpg|gif|webp|bmp)"` accepted counts, and only its exit status
+ * matters. So a jpeg-only clipboard answers `true` here while
+ * `readClipboardImageLinux` fails — CC's `saveImage` only reads PNG and BMP
+ * (`bin@323222200`), and its reader returns null after a passing
+ * `checkImage` whenever `saveImage` fails (`bin@323223290`:
+ * `if((await w(r.checkImage)).exitCode!==0)return null; … (await w(r.saveImage)).exitCode!==0 … return null`).
+ *
+ * That `has = true` / `read = 失败` gap is upstream behaviour on purpose. Do not
+ * narrow this predicate to png/bmp to make the two agree — aligning with Claude
+ * Code is the requirement, and narrowing it hides an image the user can see.
  */
 async function hasClipboardImageLinux(): Promise<boolean> {
   try {
-    // Check if xclip is available
-    try {
-      await execAsyncHidden("which xclip");
-    } catch {
-      return false;
-    }
-
-    // Check if clipboard contains image
-    try {
-      await execAsyncHidden(
-        "xclip -selection clipboard -t image/png -o > /dev/null 2>&1",
-      );
-      return true;
-    } catch {
-      return false;
-    }
+    await execAsyncHidden(LINUX_CHECK_IMAGE_COMMAND);
+    return true;
   } catch {
     return false;
   }

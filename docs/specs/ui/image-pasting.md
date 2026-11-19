@@ -85,7 +85,7 @@ order: 40
 
 1. **假设** 用户在 macOS 上，**当** 他们粘贴图片，**则** 使用 `osascript` 读取剪贴板。
 2. **假设** 用户在 Windows 上，**当** 他们按 `Alt+V` 粘贴图片，**则** 使用 PowerShell 读取剪贴板。_Windows 终端将 `Ctrl+V` 保留为系统文本粘贴，按键不会到达 CLI，因此 CLI 侧使用 `Alt+V`（与 Claude Code 一致）；终端若透传 `Ctrl+V` 亦可用。_
-3. **假设** 用户在 Linux 上，**当** 他们粘贴图片，**则** 使用 `xclip` 读取剪贴板。
+3. **假设** 用户在 Linux 上，**当** 他们粘贴图片，**则** 优先用 `xclip`（X11）读取，失败时回落 `wl-paste`（Wayland）；两者都不在 PATH 上时提示安装 xclip 或 wl-clipboard。
 
 ---
 
