@@ -125,7 +125,14 @@ describe("powershellPrompt", () => {
       expect(prompt).toContain(
         "suppresses error OUTPUT but the cmdlet failure still causes this tool to report exit 1",
       );
-      expect(prompt).toContain("try { Cmdlet ... -ErrorAction Stop } catch {}");
+      // The recipe needs a statement in `catch`: an empty block does not reset
+      // `$?`, so `catch {}` still reported exit 1 (measured on PowerShell 5.1).
+      expect(prompt).toContain(
+        "try { Cmdlet ... -ErrorAction Stop } catch { $null }",
+      );
+      expect(prompt).toContain("the `catch` block may not be left empty");
+      // Regression guard — no empty catch block anywhere in the description.
+      expect(prompt.match(/catch\s*\{\s*\}/g) ?? []).toEqual([]);
     });
   });
 

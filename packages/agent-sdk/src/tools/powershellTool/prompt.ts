@@ -24,6 +24,16 @@
  * thing — it explains why a cmdlet failure survives `-ErrorAction
  * SilentlyContinue`.
  *
+ * The note's recipe is CC's sentence with one correction: CC ends it in an
+ * empty `catch`, which does not reset `$?`, so its "truly non-fatal" recipe
+ * still reported exit 1 — in CC exactly as here, since both append the same
+ * probe (`$_ec = if ($null -ne $LASTEXITCODE) { $LASTEXITCODE } elseif ($?) { 0 }
+ * else { 1 }`). Measured on Windows PowerShell 5.1: `Get-Item C:/nope
+ * -ErrorAction SilentlyContinue` → 1, `try { … -ErrorAction Stop } catch {}` →
+ * 1, the same with `catch { $null }` → 0. The advice is corrected rather than
+ * dropped because "promote to terminating before swallowing" is still right —
+ * only the swallow needs a statement to count as handled.
+ *
  * The edition section exists because the model cannot tell which PowerShell it
  * is talking to: 5.1 rejects `&&` with a parser error, while 7 supports the
  * bash-like operators. Feeding the wrong one costs a round trip on every chained
@@ -153,7 +163,7 @@ Unix commands that DO NOT exist in PowerShell — use the equivalent instead:
    - VAR=x cmd → \`$env:VAR = 'x'; cmd\` (PowerShell has no inline env-var prefix)
    - Bash control flow (\`if [ -f x ]\`, \`for x in *\`, backtick \`\`cmd\`\` substitution) is a parser error — use \`if (Test-Path x)\`, \`foreach ($x in ...)\`, \`$(cmd)\`
 
-Exit-code note: \`-ErrorAction SilentlyContinue\` suppresses error OUTPUT but the cmdlet failure still causes this tool to report exit 1. To make a cmdlet failure truly non-fatal, promote it to terminating and swallow it: \`try { Cmdlet ... -ErrorAction Stop } catch {}\` (without \`-ErrorAction Stop\`, non-terminating errors skip the \`catch\` and still exit 1).
+Exit-code note: \`-ErrorAction SilentlyContinue\` suppresses error OUTPUT but the cmdlet failure still causes this tool to report exit 1. To make a cmdlet failure truly non-fatal, promote it to terminating and swallow it with a statement inside \`catch\`: \`try { Cmdlet ... -ErrorAction Stop } catch { $null }\` (without \`-ErrorAction Stop\`, non-terminating errors skip the \`catch\` and still exit 1; and the \`catch\` block may not be left empty, because an empty block does not reset \`$?\` and the call still reports exit 1).
 
 Interactive and blocking commands (this tool runs with \`-NonInteractive\`, so they hang):
    - NEVER use \`Read-Host\`, \`Get-Credential\`, \`Out-GridView\`, \`$Host.UI.PromptForChoice\`, or \`pause\`
