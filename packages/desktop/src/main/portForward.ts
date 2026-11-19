@@ -13,7 +13,9 @@
  */
 
 import * as net from "net";
-import { spawn, type ChildProcess } from "child_process";
+import { type ChildProcess } from "child_process";
+import { spawnHidden } from "wave-agent-sdk/host";
+
 import { LOCAL_HOST, SSH_BASE_OPTIONS } from "./sshHosts";
 
 /** Local port assignment attempts (remote port, remote port+1, …) before failing. */
@@ -262,7 +264,7 @@ export class PortForwardManager {
         : `localhost:${entry.remotePort}`;
     // `-N -L` are ssh OPTIONS and must precede the hostname — buildSshSpawnArgs
     // (remote-command form) is not applicable here.
-    const proc = spawn(
+    const proc = spawnHidden(
       "ssh",
       [
         ...SSH_BASE_OPTIONS,

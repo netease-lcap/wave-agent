@@ -1,4 +1,5 @@
-import { spawn, ChildProcess } from "child_process";
+import { type ChildProcess } from "child_process";
+import { spawnHidden } from "../utils/execFileHidden.js";
 import { Readable } from "stream";
 import * as fs from "fs";
 import * as path from "path";
@@ -507,7 +508,7 @@ The working directory persists between commands, but shell state (environment va
       // would block until the tool timeout while looking like a slow search.
       // With /dev/null they get EOF immediately — the same trade-off Claude
       // Code makes by appending `< /dev/null` to every command.
-      const child: ChildProcess = spawn(wrappedCommand, {
+      const child: ChildProcess = spawnHidden(wrappedCommand, {
         shell: shellPath,
         stdio: ["ignore", "pipe", "pipe"],
         detached: true,

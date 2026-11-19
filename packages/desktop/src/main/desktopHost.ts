@@ -140,8 +140,9 @@ import type {
   DesktopHostOption,
   FileTreeEntry,
 } from "wave-webview-fixtures";
-import { execFile, type ChildProcess } from "child_process";
-import { promisify } from "util";
+import { type ChildProcess } from "child_process";
+import { execFileAsyncHidden } from "wave-agent-sdk/host";
+
 import { hostLog } from "./hostLog";
 import { type SessionMessageStat, type MessageStats } from "./memorySampler";
 import {
@@ -253,8 +254,6 @@ function relocateRefusalText(reason: RelocateSessionRefusal["reason"]): string {
   // 把原文抛出来，也不要显示 "undefined"。
   return RELOCATE_REFUSAL_TEXT[reason] ?? reason;
 }
-
-const execFileAsync = promisify(execFile);
 
 /** Upper bound on a deep-link clone before the child is killed. Generous: a
  *  large repository over a slow link is normal, a hung one is not. */
@@ -7610,7 +7609,7 @@ export class DesktopHost {
       type: "info",
     });
     try {
-      await execFileAsync(
+      await execFileAsyncHidden(
         "git",
         [
           "clone",

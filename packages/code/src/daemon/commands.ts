@@ -28,7 +28,7 @@
  * must be destroyed via the envelope sessionId returned by `initialize`.
  */
 
-import { spawn, type ChildProcess } from "node:child_process";
+import { type ChildProcess } from "node:child_process";
 import * as fs from "node:fs";
 import net from "node:net";
 import path from "node:path";
@@ -38,6 +38,7 @@ import {
   EXIT_PLAN_MODE_TOOL_NAME,
   execFileHidden,
   getGitMainRepoRoot,
+  spawnHidden,
   getMessageContent,
   hasWorktreeCreateHook,
   loadMergedWaveConfig,
@@ -142,7 +143,7 @@ function startDaemon(socketPath: string): LaunchedDaemon {
     fail("Cannot start the wave daemon: unknown CLI entry path");
   }
   const log = openDaemonLogForChild();
-  const child = spawn(process.execPath, [entry, "--daemon", socketPath], {
+  const child = spawnHidden(process.execPath, [entry, "--daemon", socketPath], {
     detached: true,
     // No-op here, kept for intent only: `windowsHide` reaches the child as
     // CREATE_NO_WINDOW, which Windows ignores when DETACHED_PROCESS is also

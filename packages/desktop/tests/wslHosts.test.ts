@@ -13,10 +13,20 @@ const h = vi.hoisted(() => ({
   emitError: false,
 }));
 
-vi.mock("child_process", () => ({
-  // sshHosts.ts (imported for LOCAL_HOST/shellQuote) promisifies execFile at
-  // module scope; it is never called from the WSL paths under test.
-  execFile: vi.fn(),
+vi.mock("node:child_process", () => ({
+  // sshHosts.ts (imported for LOCAL_HOST/shellQuote) resolves the remote login
+  // shell through `execFileAsyncHidden`, which only settles when the callback
+  // runs — a bare `vi.fn()` would hang the test instead of failing it. Answer
+  // off-path calls with a rejection so a WSL path that ever starts probing the
+  // shell fails loudly (the real caller falls back to /bin/sh).
+  execFile: vi.fn(
+    (
+      _file: string,
+      _args: string[],
+      _options: unknown,
+      cb?: (error: Error | null, stdout?: string, stderr?: string) => void,
+    ) => cb?.(new Error("execFile is not stubbed in this test")),
+  ),
   spawn: vi.fn((file: string, args: string[]) => {
     h.spawnCalls.push({ file, args });
     const listeners = new Map<string, Array<(arg?: unknown) => void>>();

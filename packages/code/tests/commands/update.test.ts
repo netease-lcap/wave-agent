@@ -7,7 +7,11 @@ const { spawnSync, spawn, fetchMock, unref } = vi.hoisted(() => ({
   unref: vi.fn(),
 }));
 
-vi.mock("child_process", () => ({ spawnSync, spawn }));
+// The wrapper dereferences `node:child_process` (see
+// `agent-sdk/src/utils/execFileHidden.ts`), so stub the same specifier it reads.
+// (Vitest resolves the bare `child_process` spelling to the same module, so
+// either would intercept; matching the wrapper keeps the two obviously tied.)
+vi.mock("node:child_process", () => ({ spawnSync, spawn }));
 
 import { updateCommand } from "../../src/commands/update.js";
 
@@ -137,7 +141,8 @@ describe("updateCommand registry", () => {
     expect(installCall()).toEqual([
       "npm",
       ["install", "-g", "wave-code@latest", `--registry=${MIRROR}`],
-      { stdio: "inherit" },
+      // `windowsHide` comes from `spawnSyncHidden`, not from this call site.
+      { stdio: "inherit", windowsHide: true },
     ]);
     // In-process install off Windows: nothing detached.
     expect(spawn).not.toHaveBeenCalled();
@@ -152,7 +157,8 @@ describe("updateCommand registry", () => {
     expect(installCall()).toEqual([
       "pnpm",
       ["add", "-g", "wave-code@latest", `--registry=${MIRROR}`],
-      { stdio: "inherit" },
+      // `windowsHide` comes from `spawnSyncHidden`, not from this call site.
+      { stdio: "inherit", windowsHide: true },
     ]);
   });
 
@@ -165,7 +171,8 @@ describe("updateCommand registry", () => {
     expect(installCall()).toEqual([
       "yarn",
       ["global", "add", "wave-code@latest", `--registry=${MIRROR}`],
-      { stdio: "inherit" },
+      // `windowsHide` comes from `spawnSyncHidden`, not from this call site.
+      { stdio: "inherit", windowsHide: true },
     ]);
   });
 

@@ -6,7 +6,7 @@ import { EventEmitter } from "events";
 const mockSpawn = vi.hoisted(() => vi.fn());
 const mockCreateInterface = vi.hoisted(() => vi.fn());
 
-vi.mock("child_process", () => ({
+vi.mock("node:child_process", () => ({
   default: { spawn: mockSpawn },
   spawn: mockSpawn,
 }));

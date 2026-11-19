@@ -20,6 +20,65 @@
       }
     ],
     "typescript/ban-ts-comment": "error",
+    "no-restricted-imports": [
+      "error",
+      {
+        "paths": [
+          {
+            "name": "node:child_process",
+            "importNames": [
+              "execFile",
+              "execFileSync",
+              "exec",
+              "execSync",
+              "spawn",
+              "spawnSync"
+            ],
+            "message": "子进程一律走 wrapper（utils/execFileHidden.ts）：短命令用 execFileHidden / execFileSyncHidden / execFileAsyncHidden / execAsyncHidden，常驻与流式进程用 spawnHidden / spawnSyncHidden。windowsHide 默认 false，宿主主进程没有控制台，漏一个 key 就是 Windows 上闪一次控制台窗口。"
+          },
+          {
+            "name": "child_process",
+            "importNames": [
+              "execFile",
+              "execFileSync",
+              "exec",
+              "execSync",
+              "spawn",
+              "spawnSync"
+            ],
+            "message": "子进程一律走 wrapper（utils/execFileHidden.ts）：短命令用 execFileHidden / execFileSyncHidden / execFileAsyncHidden / execAsyncHidden，常驻与流式进程用 spawnHidden / spawnSyncHidden。windowsHide 默认 false，宿主主进程没有控制台，漏一个 key 就是 Windows 上闪一次控制台窗口。"
+          }
+        ]
+      }
+    ],
+    "no-restricted-properties": [
+      "error",
+      {
+        "object": "childProcess",
+        "property": "execFile",
+        "message": "改用 execFileHidden / execFileAsyncHidden（windowsHide 默认 false）"
+      },
+      {
+        "object": "childProcess",
+        "property": "execFileSync",
+        "message": "改用 execFileSyncHidden（windowsHide 默认 false）"
+      },
+      {
+        "object": "childProcess",
+        "property": "exec",
+        "message": "改用 execAsyncHidden（windowsHide 默认 false）"
+      },
+      {
+        "object": "childProcess",
+        "property": "spawn",
+        "message": "改用 spawnHidden（windowsHide 默认 false；同时把未声明的 fd0 指到 /dev/null）"
+      },
+      {
+        "object": "childProcess",
+        "property": "spawnSync",
+        "message": "改用 spawnSyncHidden（windowsHide 默认 false；同时把未声明的 fd0 指到 /dev/null）"
+      }
+    ],
     "react/rules-of-hooks": "error",
     "react/exhaustive-deps": "warn",
     "react/globals": "off",
@@ -60,6 +119,20 @@
       "files": ["**/*.d.ts"],
       "rules": {
         "typescript/triple-slash-reference": "off"
+      }
+    },
+    {
+      "files": [
+        "**/src/utils/execFileHidden.ts",
+        "**/remote/build.mjs",
+        "**/tests/**/*",
+        "**/e2e/**/*",
+        "**/scripts/**/*",
+        "**/examples/**/*"
+      ],
+      "rules": {
+        "no-restricted-imports": "off",
+        "no-restricted-properties": "off"
       }
     }
   ]

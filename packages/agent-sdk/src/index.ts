@@ -32,12 +32,15 @@ export * from "./utils/hookMatcher.js";
 export * from "./utils/tokenCalculation.js";
 export * from "./utils/gitUtils.js";
 // `child_process` with `windowsHide: true` forced in — the only sanctioned way
-// to run a short-lived child process. See the module for why it cannot be left
-// to each call site.
+// to run a child process. See the module for why it cannot be left to each call
+// site.
 export {
+  execAsyncHidden,
   execFileAsyncHidden,
   execFileHidden,
   execFileSyncHidden,
+  spawnHidden,
+  spawnSyncHidden,
 } from "./utils/execFileHidden.js";
 export * from "./utils/nameGenerator.js";
 export * from "./utils/pathEncoder.js";

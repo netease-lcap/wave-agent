@@ -23,11 +23,11 @@
  * effects — hence `node:` builtins only and nothing executed at module scope.
  */
 
-import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { execFileHidden } from "./execFileHidden.js";
 import { resolveShellPath } from "./shellResolver.js";
 
 /** Result of one successful probe. */
@@ -186,14 +186,16 @@ function defaultExecFile(
   options: { env: NodeJS.ProcessEnv; timeout: number },
 ): Promise<string> {
   return new Promise((resolve, reject) => {
-    execFile(
+    // `windowsHide` is not passed here: `execFileHidden` spreads the caller's
+    // options and then forces it, so the guarantee cannot be dropped by a future
+    // edit at this call site.
+    execFileHidden(
       file,
       args,
       {
         encoding: "utf8",
         timeout: options.timeout,
         env: options.env,
-        windowsHide: true,
       },
       (error, stdout) => {
         if (!error) {

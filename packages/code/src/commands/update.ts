@@ -1,4 +1,4 @@
-import { spawn, spawnSync } from "child_process";
+import { spawnHidden, spawnSyncHidden } from "wave-agent-sdk";
 import chalk from "chalk";
 import { isUpdateAvailable } from "../utils/version.js";
 import { readNearestPackageJson } from "../utils/readPackageJson.js";
@@ -69,7 +69,7 @@ function errorText(error: unknown): string {
 
 function detectPackageManager(): "npm" | "pnpm" | "yarn" {
   // Check if wave-code is installed globally with pnpm
-  const pnpmList = spawnSync("pnpm", ["list", "-g", "wave-code"], {
+  const pnpmList = spawnSyncHidden("pnpm", ["list", "-g", "wave-code"], {
     encoding: "utf-8",
   });
   if (pnpmList.status === 0 && pnpmList.stdout?.includes("wave-code")) {
@@ -77,7 +77,9 @@ function detectPackageManager(): "npm" | "pnpm" | "yarn" {
   }
 
   // Check if wave-code is installed globally with yarn
-  const yarnList = spawnSync("yarn", ["global", "list"], { encoding: "utf-8" });
+  const yarnList = spawnSyncHidden("yarn", ["global", "list"], {
+    encoding: "utf-8",
+  });
   if (yarnList.status === 0 && yarnList.stdout?.includes("wave-code")) {
     return "yarn";
   }
@@ -133,7 +135,7 @@ export async function updateCommand() {
           "The update will finish in the background. Close and reopen wave afterwards.",
         ),
       );
-      const child = spawn(
+      const child = spawnHidden(
         "cmd.exe",
         ["/c", `timeout /t 2 /nobreak >nul & ${updateCmd} ${args.join(" ")}`],
         { detached: true, stdio: "ignore", windowsHide: true },
@@ -142,7 +144,7 @@ export async function updateCommand() {
       process.exit(0);
     }
 
-    const result = spawnSync(updateCmd, args, { stdio: "inherit" });
+    const result = spawnSyncHidden(updateCmd, args, { stdio: "inherit" });
 
     if (result.status === 0) {
       console.log(chalk.green("WAVE Code updated successfully!"));

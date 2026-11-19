@@ -1,5 +1,6 @@
 /**
- * `execFile` / `execFileSync` with `windowsHide: true` forced in.
+ * The `child_process` family — `execFile` / `execFileSync` / `exec` (promise
+ * form) / `spawn` / `spawnSync` — with `windowsHide: true` forced in.
  *
  * Why this module exists
  * ----------------------
@@ -23,13 +24,34 @@
  * 1. `windowsHide: true` is spread **after** the caller's options, so a caller
  *    cannot opt out (`{ windowsHide: false }` is overwritten). That is the whole
  *    point — the guarantee must not depend on the call site.
- * 2. Nothing else is added or defaulted. `cwd` / `env` / `timeout` / `stdio` /
- *    `maxBuffer` / `encoding` and the resulting return types behave exactly as
- *    `child_process` does, so migrating a call site is a rename, not a rewrite.
+ * 2. Apart from the one fd0 default described next, nothing is added or
+ *    defaulted. `cwd` / `env` / `timeout` / `stdio` / `maxBuffer` / `encoding`
+ *    and the resulting return types behave exactly as `child_process` does, so
+ *    migrating a call site is a rename, not a rewrite.
  *
- * Long-lived / streaming processes (a Bash tool command, a background task, the
- * daemon it re-execs) do NOT belong here: they set their own spawn options and
- * simply pass `windowsHide: true` themselves.
+ * The whole family, not just `execFile`
+ * ------------------------------------
+ * `spawn` / `spawnSync` need the same key, and they were in fact the larger
+ * half of the problem: a Bash tool command, a background task, an LSP server, a
+ * hook runner all flash a console window when the parent has none (Electron
+ * main, VS Code extension host). So `spawnHidden` / `spawnSyncHidden` live here
+ * too, and `.oxlintrc.json` bans importing those names outright — the ban is
+ * what makes the guarantee hold, this file is only where the fixed version
+ * lives. (`execAsyncHidden` covers `exec`, which runs through a shell.)
+ *
+ * fd0 is the one defaulted option
+ * ------------------------------
+ * `spawn` with no `stdio` gets `["pipe", "pipe", "pipe"]`, i.e. fd0 is a pipe
+ * that nobody writes and never closes — so any command that reads stdin (a bare
+ * `cat`, `rg` with no path, a pager) blocks until the timeout (fb0034cb3, where
+ * `rg` sat for the full 5000ms). `spawnHidden` therefore supplies
+ * `["ignore", "pipe", "pipe"]` — fd0 is `/dev/null`, the same trade Claude Code
+ * makes by appending `< /dev/null` — **but only when the caller did not spell
+ * `stdio` out**. An explicit layout stays untouched because it is a decision:
+ * the LSP client and the hook runner really do write JSON to fd0, and the mod
+ * process API really does feed a one-shot `stdin`. A caller that needs to write
+ * stdin must say so by declaring `stdio`; forgetting now fails loudly on a null
+ * `child.stdin` instead of silently hanging.
  *
  * Never `promisify` a wrapper from this module
  * -------------------------------------------
@@ -53,9 +75,14 @@
 import * as childProcess from "node:child_process";
 import type {
   ChildProcess,
+  ExecException,
   ExecFileException,
   ExecFileOptions,
   ExecFileSyncOptions,
+  ExecOptions,
+  SpawnOptions,
+  SpawnSyncOptions,
+  StdioOptions,
 } from "node:child_process";
 
 type NodeStyleCallback = (
@@ -222,5 +249,104 @@ export function execFileAsyncHidden(
       }
       resolve({ stdout, stderr });
     });
+  });
+}
+
+/**
+ * Node's default fd0 for a spawn: a pipe that nobody writes and never closes,
+ * so a command that reads stdin waits for input that will never come. Pointing
+ * it at `/dev/null` gives those commands EOF immediately instead — same trade
+ * Claude Code makes by appending `< /dev/null` to every Bash command.
+ */
+const STDIO_WITHOUT_STDIN: StdioOptions = ["ignore", "pipe", "pipe"];
+
+function spawnHiddenImpl(
+  command: string,
+  argsOrOptions?: readonly string[] | SpawnOptions | null,
+  maybeOptions?: SpawnOptions | null,
+): ChildProcess {
+  const hasArgs = Array.isArray(argsOrOptions);
+  const args = (hasArgs ? argsOrOptions : []) as readonly string[];
+  const options = (hasArgs ? maybeOptions : argsOrOptions) ?? {};
+
+  // Spread first, force after: the caller's `windowsHide` never wins.
+  const forced: SpawnOptions = { ...options, windowsHide: true };
+  // Only when the caller said nothing about stdio — an explicit layout (a pipe
+  // the caller writes to, `"inherit"`, `"ignore"`) is their decision.
+  forced.stdio ??= STDIO_WITHOUT_STDIN;
+
+  return childProcess.spawn(command, args, forced);
+}
+
+function spawnSyncHiddenImpl(
+  command: string,
+  argsOrOptions?: readonly string[] | SpawnSyncOptions | null,
+  maybeOptions?: SpawnSyncOptions | null,
+) {
+  const hasArgs = Array.isArray(argsOrOptions);
+  const args = (hasArgs ? argsOrOptions : []) as readonly string[];
+  const options = (hasArgs ? maybeOptions : argsOrOptions) ?? {};
+
+  // Spread first, force after: the caller's `windowsHide` never wins.
+  const forced: SpawnSyncOptions = { ...options, windowsHide: true };
+  forced.stdio ??= STDIO_WITHOUT_STDIN;
+
+  return childProcess.spawnSync(command, args, forced);
+}
+
+/**
+ * `child_process.spawn` with `windowsHide: true` forced, and fd0 defaulted to
+ * `/dev/null` when the caller did not declare `stdio`. Same overloads and same
+ * return type as the original.
+ *
+ * This is for long-lived / streaming processes too — a Bash command, a
+ * background task, an LSP server. They differ only in the options they pass,
+ * not in whether the console window should be hidden.
+ */
+export const spawnHidden =
+  spawnHiddenImpl as unknown as typeof childProcess.spawn;
+
+/** `child_process.spawnSync`, same contract as `spawnHidden`. */
+export const spawnSyncHidden =
+  spawnSyncHiddenImpl as unknown as typeof childProcess.spawnSync;
+
+/** `exec` hands the callback an error with **no** `stdout` / `stderr`; the
+ *  promisified form attaches them, and so does `execAsyncHidden`. */
+type ExecFailure = Omit<ExecException, "stdout" | "stderr"> & {
+  stdout?: string | Buffer;
+  stderr?: string | Buffer;
+};
+
+/**
+ * Promise form of `child_process.exec` with `windowsHide: true` forced.
+ *
+ * Hand-written for the same reason as `execFileAsyncHidden`: `promisify(exec)`
+ * resolves `{ stdout, stderr }` only because of `util.promisify.custom`, which a
+ * wrapper does not inherit — the generic path would resolve `stdout` alone and
+ * `const { stdout, stderr } = await …` would silently yield `stderr: undefined`.
+ *
+ * Typed as the utf8 form (`promisify(exec)`'s default); pass `encoding: "buffer"`
+ * and the values are Buffers at runtime, so widen at the call site if you do.
+ */
+export function execAsyncHidden(
+  command: string,
+  options?: ExecOptions,
+): Promise<{ stdout: string; stderr: string }> {
+  return new Promise((resolve, reject) => {
+    // Spread first, force after: the caller's `windowsHide` never wins.
+    childProcess.exec(
+      command,
+      { ...options, windowsHide: true },
+      (error, stdout, stderr) => {
+        if (error) {
+          const failure = error as ExecFailure;
+          failure.stdout = stdout;
+          failure.stderr = stderr;
+          reject(failure);
+          return;
+        }
+        resolve({ stdout: stdout as string, stderr: stderr as string });
+      },
+    );
   });
 }

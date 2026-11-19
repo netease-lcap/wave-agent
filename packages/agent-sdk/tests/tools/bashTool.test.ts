@@ -259,7 +259,9 @@ describe("bashTool", () => {
       expect(typeof spawnCallArgs[0]).toBe("string");
       expect(spawnCallArgs[0]).toContain("echo hello");
       expect(spawnCallArgs[0]).toContain("pwd -P");
-      expect(spawnCallArgs[1]).toMatchObject({
+      // `spawnHidden` forwards as `spawn(command, [], options)` — the options
+      // land in the third slot, already carrying the forced `windowsHide`.
+      expect(spawnCallArgs[2]).toMatchObject({
         shell: resolveShellPath() || true,
         stdio: ["ignore", "pipe", "pipe"],
         cwd: "/test/workdir",
@@ -328,7 +330,7 @@ describe("bashTool", () => {
 
       await bashTool.execute({ command: "rg pattern" }, context);
 
-      expect(mockSpawn.mock.calls[0][1]).toMatchObject({
+      expect(mockSpawn.mock.calls[0][2]).toMatchObject({
         stdio: ["ignore", "pipe", "pipe"],
       });
     });
@@ -468,7 +470,7 @@ describe("bashTool", () => {
       const spawnCallArgs = mockSpawn.mock.calls[0];
       // Background shell must inherit the session current workdir (worktree),
       // NOT fall back to the BTM construction-time workdir (base repo root).
-      expect(spawnCallArgs[1]).toMatchObject({
+      expect(spawnCallArgs[2]).toMatchObject({
         cwd: "/base/repo/root/.wave/worktrees/feat-x",
       });
 

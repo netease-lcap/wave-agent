@@ -11,7 +11,7 @@
  * 互不碰撞（发行版名叫 `local` 也不会被误认成本地）。
  */
 
-import { spawn } from "child_process";
+import { spawnHidden } from "wave-agent-sdk/host";
 import * as fs from "fs";
 import * as path from "path";
 import { LOCAL_HOST, shellQuote } from "./sshHosts";
@@ -126,7 +126,7 @@ function runWslRaw(args: string[]): Promise<{ code: number; stdout: Buffer }> {
   return new Promise((resolve, reject) => {
     let child;
     try {
-      child = spawn(wslExePath(), args, {
+      child = spawnHidden(wslExePath(), args, {
         stdio: ["ignore", "pipe", "pipe"],
         windowsHide: true,
         // WSL_UTF8 makes wsl.exe emit UTF-8; decodeWslOutput still handles the

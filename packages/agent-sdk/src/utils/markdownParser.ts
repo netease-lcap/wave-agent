@@ -1,6 +1,4 @@
 import { readFileSync, writeFileSync, mkdirSync } from "fs";
-import { exec } from "child_process";
-import { promisify } from "util";
 import { join } from "path";
 import { tmpdir } from "os";
 import type { CustomSlashCommandConfig } from "../types/index.js";
@@ -9,10 +7,9 @@ import {
   PREVIEW_SIZE_BYTES,
 } from "../constants/toolLimits.js";
 import { logger } from "./globalLogger.js";
+import { execAsyncHidden } from "./execFileHidden.js";
 import { parseFrontmatterYaml, splitFrontmatter } from "./frontmatterYaml.js";
 import { resolveShellPath } from "./shellResolver.js";
-
-const execAsync = promisify(exec);
 
 interface ParsedMarkdownFile {
   content: string;
@@ -312,7 +309,7 @@ export async function executeBashCommands(
     }
 
     try {
-      const { stdout, stderr } = await execAsync(command, execOptions);
+      const { stdout, stderr } = await execAsyncHidden(command, execOptions);
       results.push({
         command,
         output: (stdout + (stderr || "")).trim(),

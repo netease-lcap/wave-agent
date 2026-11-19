@@ -1,4 +1,5 @@
-import { spawn, type ChildProcess } from "child_process";
+import { type ChildProcess } from "child_process";
+import { spawnHidden } from "../utils/execFileHidden.js";
 import * as fs from "fs";
 import * as path from "path";
 import { BackgroundTask, BackgroundShell } from "../types/processes.js";
@@ -151,7 +152,7 @@ export class BackgroundTaskManager {
 
     // fd0 is /dev/null (see bashTool): a background command that reads stdin
     // would otherwise sit there forever holding a pipe nobody writes to.
-    const child = spawn(command, {
+    const child = spawnHidden(command, {
       shell: resolveShellPath() ?? true,
       stdio: ["ignore", "pipe", "pipe"],
       detached: true,

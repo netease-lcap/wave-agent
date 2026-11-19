@@ -1,4 +1,5 @@
-import { ChildProcess, spawn } from "child_process";
+import { type ChildProcess } from "child_process";
+import { spawnHidden } from "../utils/execFileHidden.js";
 import {
   LspConfig,
   LspServerConfig,
@@ -158,7 +159,7 @@ export class LspManager implements ILspManager {
           }
         }
       }
-      const proc = spawn(command, args, {
+      const proc = spawnHidden(command, args, {
         cwd: config.workspaceFolder || this.workdir,
         env,
         stdio: ["pipe", "pipe", "pipe"],

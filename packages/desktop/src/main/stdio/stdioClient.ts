@@ -7,7 +7,9 @@
  * the rich error message that rejects pending requests when the process exits.
  */
 
-import { type ChildProcess, spawn } from "child_process";
+import { type ChildProcess } from "child_process";
+import { spawnHidden } from "wave-agent-sdk/host";
+
 import { hostLog } from "../hostLog";
 import { JsonRpcClient } from "./jsonRpcClient";
 
@@ -69,7 +71,7 @@ export class StdioClient extends JsonRpcClient {
     const shell = options.shell ?? (!isScript && process.platform === "win32");
     const spawnCommand =
       shell && process.platform === "win32" ? `"${command}"` : command;
-    this.proc = spawn(spawnCommand, spawnArgs, {
+    this.proc = spawnHidden(spawnCommand, spawnArgs, {
       stdio: ["pipe", "pipe", "pipe"],
       env: spawnEnv,
       shell,

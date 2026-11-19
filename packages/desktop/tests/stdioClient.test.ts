@@ -9,7 +9,7 @@ const h = vi.hoisted(() => ({
   spawnMock: vi.fn(),
 }));
 
-vi.mock("child_process", () => ({
+vi.mock("node:child_process", () => ({
   spawn: h.spawnMock,
 }));
 

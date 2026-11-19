@@ -12,7 +12,9 @@
  * `obj.method` as a plain string and looks it up in the handler map.
  */
 
-import { type ChildProcess, spawn } from "child_process";
+import { type ChildProcess } from "child_process";
+import { spawnHidden } from "wave-agent-sdk/host";
+
 import { createInterface } from "readline";
 import type {
   ClientNotificationMethod,
@@ -80,7 +82,7 @@ export class StdioClient {
     const shell = !isScript && process.platform === "win32";
     const spawnCommand =
       shell && process.platform === "win32" ? `"${command}"` : command;
-    this.proc = spawn(spawnCommand, spawnArgs, {
+    this.proc = spawnHidden(spawnCommand, spawnArgs, {
       stdio: ["pipe", "pipe", "pipe"],
       env: { ...process.env, ...env },
       shell,

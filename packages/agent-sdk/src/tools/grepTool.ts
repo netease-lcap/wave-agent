@@ -1,5 +1,5 @@
 import type { ToolPlugin, ToolResult, ToolContext } from "./types.js";
-import { spawn } from "child_process";
+import { spawnHidden } from "../utils/execFileHidden.js";
 import { getRgPath } from "../utils/ripgrep.js";
 import { ensureRuntimeDeps } from "../utils/runtimeDeps.js";
 import { getDisplayPath } from "../utils/path.js";
@@ -385,7 +385,7 @@ function executeCommand(
   error: boolean;
 }> {
   return new Promise((resolve) => {
-    const child = spawn(command, args, {
+    const child = spawnHidden(command, args, {
       cwd,
       stdio: ["ignore", "pipe", "pipe"],
       windowsHide: true,

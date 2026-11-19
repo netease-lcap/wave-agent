@@ -11,7 +11,7 @@ const h = vi.hoisted(() => ({
   SocketClient: vi.fn(),
 }));
 
-vi.mock("child_process", () => ({
+vi.mock("node:child_process", () => ({
   execFile: h.execFile,
   spawn: h.spawn,
 }));
@@ -65,20 +65,24 @@ const RUNTIME_INSTALLED: StubResult = {
 };
 
 /** Queue-driven execFile mock; when the queue runs dry, `dry` decides. */
+/** node's real `execFile` callback: `(error, stdout, stderr)` — three arguments,
+ *  not a merged `{ stdout }` object (that was the promisify-era fake). */
+type ExecFileCallback = (
+  error: Error | null,
+  stdout: string,
+  stderr: string,
+) => void;
+
 function stubExec(results: StubResult[], dry: "success" | "fail" = "success") {
   const queue = [...results];
   h.execFile.mockImplementation(
-    (
-      _cmd: string,
-      _args: string[],
-      _opts: unknown,
-      cb: (err: Error | null, result: { stdout: string }) => void,
-    ) => {
+    (_cmd: string, _args: string[], _opts: unknown, cb: ExecFileCallback) => {
       const next =
         queue.shift() ??
         (dry === "fail" ? { error: SOCKET_MISSING } : { stdout: "" });
-      if (next.error) cb(next.error, { stdout: "" });
-      else cb(null, { stdout: next.stdout ?? "" });
+      // node's own callback shape: `(error, stdout, stderr)`.
+      if (next.error) cb(next.error, "", "");
+      else cb(null, next.stdout ?? "", "");
     },
   );
 }
