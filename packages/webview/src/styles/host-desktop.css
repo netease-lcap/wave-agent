@@ -4488,22 +4488,26 @@
 [data-host="desktop"] .task-list-chevron,
 [data-host="desktop"] .queued-chevron,
 [data-host="desktop"] .queued-action-button,
-[data-host="desktop"] .desktop-host-item-edit {
+[data-host="desktop"] .desktop-host-item-edit,
+[data-host="desktop"] .artifacts-rename-btn {
   color: #565a60;
 }
 [data-host="desktop"][data-theme="dark"] .task-list-chevron,
 [data-host="desktop"][data-theme="dark"] .queued-chevron,
 [data-host="desktop"][data-theme="dark"] .queued-action-button,
-[data-host="desktop"][data-theme="dark"] .desktop-host-item-edit {
+[data-host="desktop"][data-theme="dark"] .desktop-host-item-edit,
+[data-host="desktop"][data-theme="dark"] .artifacts-rename-btn {
   color: #9a9ea5;
 }
 [data-host="desktop"][data-theme="light"] .queued-action-button:hover,
-[data-host="desktop"][data-theme="light"] .desktop-host-item-edit:hover {
+[data-host="desktop"][data-theme="light"] .desktop-host-item-edit:hover,
+[data-host="desktop"][data-theme="light"] .artifacts-rename-btn:hover {
   background-color: #e7e9ed;
   color: #1f2329;
 }
 [data-host="desktop"][data-theme="dark"] .queued-action-button:hover,
-[data-host="desktop"][data-theme="dark"] .desktop-host-item-edit:hover {
+[data-host="desktop"][data-theme="dark"] .desktop-host-item-edit:hover,
+[data-host="desktop"][data-theme="dark"] .artifacts-rename-btn:hover {
   background-color: rgba(255, 255, 255, 0.12);
   color: #ffffff;
 }
@@ -4570,6 +4574,34 @@
   .desktop-host-item-edit,
 [data-host="desktop"] .desktop-host-item-edit:focus-visible {
   opacity: 1;
+}
+
+/* 创作集表格行「重命名」并进同一族（1118 评论：锚点 `button.artifacts-rename-btn`
+   「这里的图标和交互样式参考」+ `button.queued-action-button`「参考这里」）。
+   改前：18×18 盒 / r4 / 14px 的 lucide 铅笔（24 网格、stroke 2 —— 14px 渲染时有效
+   笔画约 1.17，比同面 16 网格 / stroke 1.4 的矢量铅笔比例不同）、常态取
+   `--vscode-descriptionForeground`（light #606060 / dark #a0a5a8，同屏另两颗行内灰是
+   #565a60 / #9a9ea5）、hover 底 `rgba(127,127,127,.14)` 是中性叠加、不随主题分档。
+   改后：图标换 `QueueEditIcon`（16 网格 / stroke 1.4 圆头；组件本身按宿主分叉，插件端
+   仍是原填充字形），盒 24×24 / r8 / 图标 16，颜色与 hover 底色并入上面三条同组选择器
+   —— 两端 computed 逐值相等，不是抄一份十六进制。
+   内衬保持 base 的 0（参照物是 2）：两者都是「24 盒内居中一颗 16px 图标」，见尺寸相同，
+   墨迹位置一致，不必为对齐内衬改掉 base。
+   行高不动：`.artifacts-file-cell` 内容高 20 → 24，所在 td 上下内距 9 + 1px 分隔线，
+   行仍 45px（探针 before/after 逐值核过）。铅笔常占宽度 18 → 24，两种形态（展示/编辑）
+   共用同一宽度、只切 opacity，所以行 hover 时文件名不左右跳。 */
+[data-host="desktop"] .artifacts-rename-btn {
+  width: 24px;
+  height: 24px;
+  box-sizing: border-box;
+  border-radius: var(--cc-radius-md, 8px);
+  /* 盒宽 18 → 24、图标在内侧留白 2 → 4，所以把 base 的 margin-left 2px 收成 0：
+     文件名到墨迹的视觉间距仍是 8px（gap 4 + 内衬 4），只有可点区变大。 */
+  margin-left: 0;
+}
+[data-host="desktop"] .artifacts-rename-btn svg {
+  width: 16px;
+  height: 16px;
 }
 /* 指针停在操作按钮组上时压掉「整条 hover 显示完整文案」的气泡（只隐藏，不动结构）。
    曾用 Tooltip 的 disabled 实现 → 会把外层 tooltip-container 卸载/重建，行子树连按钮

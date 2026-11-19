@@ -11,7 +11,6 @@ import {
   ArtifactsIcon,
   FileCodeIcon,
   MoreIcon,
-  PencilIcon,
   PlusIcon,
   QueueEditIcon,
   QueueTrashIcon,
@@ -2104,7 +2103,7 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({
                                   startRename(item.slug, item.title)
                                 }
                               >
-                                <PencilIcon className="artifacts-rename-icon" />
+                                <QueueEditIcon className="artifacts-rename-icon" />
                               </button>
                             )}
                           </div>

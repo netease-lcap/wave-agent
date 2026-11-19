@@ -693,7 +693,8 @@ html[data-host="desktop"][data-theme="dark"] .artifacts-file-icon {
  * 两种形态共用 `.artifacts-file-cell`：
  *   ① 展示态 = 文件按钮 + 右侧铅笔（`item.rel === "mine"` 才有）；
  *   ② 编辑态 = 文件图标 + 输入框（+ 下方绝对定位的错误提示）。
- * 铅笔常占 18px 宽度、只切 opacity，所以行 hover 时文件名不会左右跳。
+ * 铅笔常占固定宽度（插件端 18px / 桌面端 24px，见 host-desktop.css 那一族）、只切
+ * opacity，所以行 hover 时文件名不会左右跳。
  * 服务端暂无改标题接口，这一段目前是交互原型（只改本页 state，刷新还原）。 */
 
 .artifacts-file-cell {
