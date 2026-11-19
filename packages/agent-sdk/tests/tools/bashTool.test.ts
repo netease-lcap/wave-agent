@@ -106,6 +106,15 @@ describe("bashTool", () => {
     // clearAllMocks keeps mockReturnValue, so re-arm the per-test defaults.
     vi.mocked(probeTempDir).mockReturnValue({ writable: true });
     vi.mocked(readDiskPressure).mockReturnValue({});
+    // `fs` is mocked in this file, so shell discovery reads no real file: state
+    // the shell instead of inheriting whatever the host has installed. While
+    // shell resolution went through a *default* `fs` import it silently saw the
+    // real filesystem here (this mock's `importActual` spread carries a
+    // `default`), so the file only passed on machines that have Git Bash. Both
+    // env vars name the same binary because Windows reads `WAVE_GIT_BASH_PATH`
+    // and POSIX reads `WAVE_SHELL`; `spawn` is mocked, so nothing is executed.
+    vi.stubEnv("WAVE_GIT_BASH_PATH", "/bin/bash");
+    vi.stubEnv("WAVE_SHELL", "/bin/bash");
     const container = new Container();
     backgroundTaskManager = new BackgroundTaskManager(container, {
       workdir: "/test/workdir",
