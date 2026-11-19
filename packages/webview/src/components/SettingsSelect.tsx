@@ -1,6 +1,11 @@
-import React, { useLayoutEffect, useRef, useState } from "react";
+import React, { useRef } from "react";
 import { isDesktopHost } from "../utils/platform";
 import { useRovingMenu } from "../utils/useRovingMenu";
+import {
+  SELECT_MENU_ANCHOR_GAP,
+  useAnchoredMenuStyle,
+  useAnchorRect,
+} from "../utils/anchoredMenu";
 
 export interface SettingsSelectOption {
   value: string;
@@ -53,6 +58,9 @@ export const SettingsSelect: React.FC<SettingsSelectProps> = (props) =>
     </select>
   );
 
+/** 菜单关闭时的占位锚点：定位 hook 必须无条件调用。 */
+const EMPTY_ANCHOR_RECT = { top: 0, bottom: 0, left: 0, right: 0 };
+
 const DesktopSettingsSelect: React.FC<SettingsSelectProps> = ({
   label,
   value,
@@ -65,11 +73,7 @@ const DesktopSettingsSelect: React.FC<SettingsSelectProps> = ({
   // 因此点触发器不会被当成外部点击（先关后开的抖动）。
   const containerRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
-  const [anchor, setAnchor] = useState<{
-    top: number;
-    right: number;
-    width: number;
-  } | null>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   const selectedIndex = options.findIndex((option) => option.value === value);
 
@@ -88,30 +92,21 @@ const DesktopSettingsSelect: React.FC<SettingsSelectProps> = ({
   );
 
   // 弹层定位。设置卡片 `.settings-card` 是 overflow:hidden，absolute 会被裁掉，
-  // 故用 fixed + 触发器 rect（与侧栏会话菜单同法）。设置内容区可滚动：跟随重算，
-  // 避免弹层与触发器脱开。
-  useLayoutEffect(() => {
-    if (!open) {
-      setAnchor(null);
-      return;
-    }
-    const place = () => {
-      const rect = triggerRef.current?.getBoundingClientRect();
-      if (!rect) return;
-      setAnchor({
-        top: rect.bottom + 2,
-        right: window.innerWidth - rect.right,
-        width: rect.width,
-      });
-    };
-    place();
-    window.addEventListener("scroll", place, true);
-    window.addEventListener("resize", place);
-    return () => {
-      window.removeEventListener("scroll", place, true);
-      window.removeEventListener("resize", place);
-    };
-  }, [open]);
+  // 故用 fixed + 触发器 rect（与侧栏会话菜单同法）。
+  //
+  // 触发器位置由 `useAnchorRect` 在打开期间持续跟踪（滚动 / 缩放 / 内容回流都会重算），
+  // 纵向摆放交给 `useAnchoredMenuStyle`（与侧栏会话菜单、创作集分类菜单同一套）：
+  // 下方放得下就贴在触发器下缘 +2px；下方放不下、上方放得下就**整个翻到上方**；
+  // 上下都放不下才收到可用高度并让菜单内部滚动。原来这里写死「始终向下」，
+  // 窗口一矮（实测 700px 高时溢出视口 11px）末项就被切掉。
+  const anchorRect = useAnchorRect(triggerRef, open);
+  const menuStyle = useAnchoredMenuStyle(
+    menuRef,
+    anchorRect ?? EMPTY_ANCHOR_RECT,
+    anchorRect ? anchorRect.right - anchorRect.left : 0,
+    "right",
+    SELECT_MENU_ANCHOR_GAP,
+  );
 
   // 与原生 select 同一套显示语义：`value` 不在选项里时控件显示**第一项**
   // （浏览器就是这么渲染 selectedIndex = -1 的），不是空白控件。
@@ -142,13 +137,14 @@ const DesktopSettingsSelect: React.FC<SettingsSelectProps> = ({
       >
         <span className="settings-select-value">{current?.label ?? ""}</span>
       </button>
-      {open && anchor && (
+      {open && anchorRect && (
         <div
+          ref={menuRef}
           className="settings-select-menu"
           role="listbox"
           aria-label={label}
           data-testid={`${testId}-menu`}
-          style={{ top: anchor.top, right: anchor.right, width: anchor.width }}
+          style={menuStyle}
         >
           {options.map((option, index) => (
             <div

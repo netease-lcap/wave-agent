@@ -388,4 +388,55 @@ describe("/context command", () => {
       "fresh-model",
     );
   });
+
+  /**
+   * 宽度：460 是上限，对话区（输入卡）比它窄时跟着收窄
+   * （设计师 2026-11-18 点 `div.context-popover`：「这里是最大值，在AI对话区域
+   * 宽度不足时，要跟着收窄，文本重叠时省略展示」）。收窄后谁让位由 CSS 决定
+   * （名称列省略、数字列不缩），这里只钉宽度这条几何。
+   */
+  it("对话区比 460 窄时浮层跟着收窄，更宽时仍按 460 的上限", async () => {
+    const composer = () => document.querySelector(".input-wrapper")!;
+    const realRect = Element.prototype.getBoundingClientRect;
+    /** 只改输入卡的量测（锚点与宽度都从它身上取），其余元素保持真实布局。 */
+    const fakeComposerWidth = (width: number) => {
+      Element.prototype.getBoundingClientRect = function (
+        this: Element,
+      ): DOMRect {
+        if (this !== composer()) return realRect.call(this);
+        const left = 40;
+        return {
+          x: left,
+          y: 700,
+          top: 700,
+          left,
+          right: left + width,
+          bottom: 800,
+          width,
+          height: 100,
+          toJSON: () => ({}),
+        } as DOMRect;
+      };
+    };
+    const dialogWidth = async () => {
+      const { unmount } = renderChatApp();
+      const ring = startConversationWithRing();
+      await act(async () => {
+        fireEvent.click(ring);
+      });
+      const dialog = await screen.findByTestId("context-dialog");
+      const width = parseFloat(dialog.style.width);
+      unmount();
+      return width;
+    };
+
+    try {
+      fakeComposerWidth(320);
+      expect(await dialogWidth()).toBeCloseTo(320, 0);
+      fakeComposerWidth(768);
+      expect(await dialogWidth()).toBeCloseTo(460, 0);
+    } finally {
+      Element.prototype.getBoundingClientRect = realRect;
+    }
+  });
 });
