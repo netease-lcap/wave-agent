@@ -974,9 +974,35 @@ html[data-host="desktop"][data-theme="dark"] .artifacts-file-icon {
   background: var(--cc-fill-pressed, var(--cc-fill-hover));
 }
 
+/* 1119 评论（点 `button.artifacts-secondary-btn`「修改分类」）：「参考按钮规范，
+   检查按钮样式，特别是禁用态，并优化」。
+   改前是**整颗 `opacity: .6`**，把字色/描边一起混到页面上：实测浅色合成
+   #797B7F（4.25:1）、深色 #909293（5.98:1）—— 两端都不落在任何一档 token 上，
+   浅色比规范禁用档更淡、深色反而比可用态更亮，两主题观感不对等；而契约
+   common-components.md:185 明确「Never combine text-disabled with whole-container
+   opacity」。现在按 dark-theme.md:56 的禁用键配方落地：`fill-light` 底 +
+   `text-disabled` 字 + `border-lighter` 边，opacity 归 1。
+   静止与 hover 逐值相同（hover / pressed 面已被 `:not(:disabled)` 摘掉），
+   指针 not-allowed，不响应点击（原生 disabled）。
+   仓库内先例：host-desktop.css:3366 工作目录菜单禁用行同一修法。 */
 [data-host="desktop"] .artifacts-secondary-btn:disabled {
-  opacity: 0.6;
+  background: var(--cc-fill-light, #f5f7fa);
+  border-color: var(--cc-border-lighter, #ebeef5);
+  color: var(--cc-text-disabled, #bec1c6);
+  opacity: 1;
   cursor: not-allowed;
+}
+
+/* 键盘焦点：契约 common-components.md:23「2px border-focus 环、0 offset，环贴住
+   按钮边缘」。改前这三颗动作键都没有这条，落的是浏览器 UA 的 `1px auto` 蓝环
+   （#005FCC）—— 深色档压在同色系深底上几乎看不见，也与全仓焦点语言不一致
+   （本页图标键 / 设置页控件都走 `--cc-border-focus`）。弹窗页脚那档另有 2px 外扩
+   的既有规则（host-desktop.css:6671，1022 已验收），特异性更高，保持原样。 */
+[data-host="desktop"] .artifacts-primary-btn:focus-visible,
+[data-host="desktop"] .artifacts-secondary-btn:focus-visible,
+[data-host="desktop"] .artifacts-danger-btn:focus-visible {
+  outline: 2px solid var(--cc-border-focus, #2f5edb);
+  outline-offset: 0;
 }
 
 /* 危险键本轮的**只改盒**（同族行口径），颜色维持 #d93025 —— 危险红要不要统一到

@@ -56,6 +56,11 @@
   --cc-fill: #f0f2f5; /* 用户气泡 */
   --cc-fill-hover: #eef0f3; /* hover 面 */
   --cc-fill-pressed: #e7e9ed; /* 按下/选中 */
+  /* 禁用态实底。契约 dark-theme.md:56「Disabled action = fill-light + text-disabled
+     + border-lighter」把这一枚点名为禁用键的底；skill theme/desktop-colors.css:51
+     （浅 #F5F7FA）/ :167（深 #1B1D1E）。仓库此前没有它，禁用键只能整颗 opacity 混色。
+     深色档见 dark 块。 */
+  --cc-fill-light: #f5f7fa;
   /* 主按钮 */
   --cc-action-primary: #1f2329; /* 炭黑（wave 现值） */
   --cc-action-primary-hover: #34383f;
@@ -196,6 +201,7 @@
   --cc-fill: #25292b; /* derived：气泡面（codex 效果 = 浮层面一档） */
   --cc-fill-hover: #303436;
   --cc-fill-pressed: #393e41;
+  --cc-fill-light: #1b1d1e; /* 禁用态实底，见浅色块注记（skill :167） */
   /* 主按钮 —— user-approved：浅灰底 + 深字（dark 反转浅色炭黑钮） */
   --cc-action-primary: #e0e3e5;
   --cc-action-primary-hover: #f0f2f3;
