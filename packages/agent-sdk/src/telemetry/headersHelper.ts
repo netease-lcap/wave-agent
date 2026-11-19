@@ -18,7 +18,8 @@
  * object (for callers and tests) but is deliberately not logged either.
  */
 
-import { spawn, type ChildProcess } from "node:child_process";
+import { type ChildProcess } from "node:child_process";
+import { spawnHidden } from "../utils/execFileHidden.js";
 import type { HeadersProvider } from "../types/telemetry.js";
 import { logger } from "../utils/globalLogger.js";
 import { resolveShellPath } from "../utils/shellResolver.js";
@@ -147,7 +148,7 @@ function runHelperCommand(
 
     let child: ChildProcess;
     try {
-      child = spawn(shell, [shellFlag, finalCommand], {
+      child = spawnHidden(shell, [shellFlag, finalCommand], {
         stdio: ["ignore", "pipe", "pipe"],
         cwd: options.cwd ?? process.cwd(),
         windowsHide: true,

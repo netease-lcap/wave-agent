@@ -27,7 +27,7 @@
  */
 
 import { createHash } from "crypto";
-import { spawn } from "child_process";
+import { spawnHidden } from "./execFileHidden.js";
 import fuzzysort from "fuzzysort";
 import { getRgPath } from "./ripgrep.js";
 import { logger } from "./globalLogger.js";
@@ -170,7 +170,7 @@ export async function getAllFiles(workdir: string): Promise<string[]> {
   ];
 
   return new Promise((resolve, reject) => {
-    const child = spawn(rgBinary, rgArgs, {
+    const child = spawnHidden(rgBinary, rgArgs, {
       cwd: workdir,
       stdio: ["ignore", "pipe", "pipe"],
       windowsHide: true,

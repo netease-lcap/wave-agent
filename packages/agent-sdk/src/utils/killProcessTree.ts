@@ -14,7 +14,7 @@
  * relation instead and is the Windows equivalent of "kill the whole tree".
  */
 
-import { spawn } from "child_process";
+import { spawnHidden } from "./execFileHidden.js";
 import { WindowsStreamDecoder } from "./encoding.js";
 import { logger } from "./globalLogger.js";
 
@@ -117,7 +117,7 @@ function killTreeOnWindows(
 
     let taskkill;
     try {
-      taskkill = spawn("taskkill", args, {
+      taskkill = spawnHidden("taskkill", args, {
         windowsHide: true,
         stdio: ["ignore", "pipe", "pipe"],
       });

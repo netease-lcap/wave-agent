@@ -16,14 +16,10 @@ const { mockAuthService } = vi.hoisted(() => ({
 
 vi.mock("wave-agent-sdk", () => ({
   authService: mockAuthService,
-}));
-
-vi.mock("child_process", () => ({
-  execFile: vi.fn(
-    (_cmd: string, _args: string[], cb: (err: Error | null) => void) => {
-      cb(null);
-    },
-  ),
+  // `openBrowser` launches the browser through the SDK wrapper (the raw
+  // `execFile` import is banned: `windowsHide` must not depend on the call
+  // site). Opening a browser is not what this test asserts, so resolve at once.
+  execFileAsyncHidden: vi.fn(async () => ({ stdout: "", stderr: "" })),
 }));
 
 describe("LoginCommand", () => {

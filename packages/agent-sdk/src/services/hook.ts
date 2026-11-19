@@ -6,7 +6,8 @@
  * management to ConfigurationService.
  */
 
-import { spawn, type ChildProcess } from "child_process";
+import { type ChildProcess } from "child_process";
+import { spawnHidden } from "../utils/execFileHidden.js";
 import { existsSync } from "node:fs";
 import {
   type HookExecutionContext,
@@ -255,28 +256,32 @@ export async function executeCommand(
       process.cwd(),
     );
 
-    const childProcess: ChildProcess = spawn(shell, [shellFlag, finalCommand], {
-      stdio: ["pipe", "pipe", "pipe"],
-      cwd: spawnCwd,
-      // No-op off Windows. The desktop main process has no console, so without
-      // this every hook spawn gets a visible console window allocated.
-      windowsHide: true,
-      env: {
-        ...process.env, // Environment variables from process.env
-        ...("env" in context ? context.env || {} : {}), // Additional environment variables from configuration (if ExtendedHookExecutionContext)
-        HOOK_EVENT: context.event,
-        HOOK_TOOL_NAME: context.toolName || "",
-        // The stable session root, not the (drifting) spawn cwd: hook commands
-        // must be able to reference their own paths regardless of where the
-        // model last ran `cd`.
-        WAVE_PROJECT_DIR: context.sessionRoot ?? context.projectDir,
-        // Claude Code's name for the same value, written alongside ours the way
-        // `CLAUDE_PLUGIN_ROOT` is: a hook written for Claude Code reads
-        // `$CLAUDE_PROJECT_DIR`, and having only our own name leaves
-        // `cd $CLAUDE_PROJECT_DIR`-style scripts with an empty path.
-        CLAUDE_PROJECT_DIR: context.sessionRoot ?? context.projectDir,
+    const childProcess: ChildProcess = spawnHidden(
+      shell,
+      [shellFlag, finalCommand],
+      {
+        stdio: ["pipe", "pipe", "pipe"],
+        cwd: spawnCwd,
+        // No-op off Windows. The desktop main process has no console, so without
+        // this every hook spawn gets a visible console window allocated.
+        windowsHide: true,
+        env: {
+          ...process.env, // Environment variables from process.env
+          ...("env" in context ? context.env || {} : {}), // Additional environment variables from configuration (if ExtendedHookExecutionContext)
+          HOOK_EVENT: context.event,
+          HOOK_TOOL_NAME: context.toolName || "",
+          // The stable session root, not the (drifting) spawn cwd: hook commands
+          // must be able to reference their own paths regardless of where the
+          // model last ran `cd`.
+          WAVE_PROJECT_DIR: context.sessionRoot ?? context.projectDir,
+          // Claude Code's name for the same value, written alongside ours the way
+          // `CLAUDE_PLUGIN_ROOT` is: a hook written for Claude Code reads
+          // `$CLAUDE_PROJECT_DIR`, and having only our own name leaves
+          // `cd $CLAUDE_PROJECT_DIR`-style scripts with an empty path.
+          CLAUDE_PROJECT_DIR: context.sessionRoot ?? context.projectDir,
+        },
       },
-    });
+    );
 
     // Handle stdin errors (e.g. EPIPE if the process closes stdin early)
     if (childProcess.stdin) {

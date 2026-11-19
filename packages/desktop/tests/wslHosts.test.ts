@@ -13,7 +13,7 @@ const h = vi.hoisted(() => ({
   emitError: false,
 }));
 
-vi.mock("child_process", () => ({
+vi.mock("node:child_process", () => ({
   // sshHosts.ts (imported for LOCAL_HOST/shellQuote) promisifies execFile at
   // module scope; it is never called from the WSL paths under test.
   execFile: vi.fn(),
