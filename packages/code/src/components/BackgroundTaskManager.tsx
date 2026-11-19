@@ -17,6 +17,26 @@ import {
   taskGroupLabel,
 } from "../utils/backgroundTaskGroups.js";
 
+/**
+ * A shell task's command on one line for the list row. Multi-line commands are
+ * folded so a heredoc cannot push the row (and its selection marker) apart; the
+ * full text lives in the detail view's `Command:` line, which the terminal wraps.
+ *
+ * The row used to show `description` only, and shell tasks carry `command`
+ * rather than `description` — so `/tasks` showed no command line at all, in a
+ * bash session just as in a PowerShell one (the webview panes show
+ * `$ {command}`; this is the CLI side of the same field).
+ */
+const COMMAND_ROW_MAX_CHARS = 60;
+const foldCommand = (command: string): string =>
+  command.replace(/\s+/g, " ").trim();
+const oneLineCommand = (command: string): string => {
+  const folded = foldCommand(command);
+  return folded.length > COMMAND_ROW_MAX_CHARS
+    ? folded.slice(0, COMMAND_ROW_MAX_CHARS - 1) + "…"
+    : folded;
+};
+
 export interface BackgroundTaskManagerProps {
   onCancel: () => void;
 }
@@ -106,6 +126,7 @@ export const BackgroundTaskManager: React.FC<BackgroundTaskManagerProps> = ({
         backgroundTasks.map((task) => ({
           id: task.id,
           type: task.type,
+          command: task.command,
           description: task.description,
           status: task.status,
           startTime: task.startTime,
@@ -277,6 +298,13 @@ export const BackgroundTaskManager: React.FC<BackgroundTaskManagerProps> = ({
             <Box>
               <Text>
                 <Text color="blue">Description:</Text> {task.description}
+              </Text>
+            </Box>
+          )}
+          {task.command && (
+            <Box>
+              <Text>
+                <Text color="blue">Command:</Text> $ {foldCommand(task.command)}
               </Text>
             </Box>
           )}
@@ -468,7 +496,11 @@ export const BackgroundTaskManager: React.FC<BackgroundTaskManagerProps> = ({
               >
                 {isSelected ? "▶ " : "  "}
                 {actualIndex + 1}. [{task.id}] {task.type}
-                {task.description ? `: ${task.description}` : ""}
+                {task.description
+                  ? `: ${task.description}`
+                  : task.command
+                    ? `: $ ${oneLineCommand(task.command)}`
+                    : ""}
                 <Text
                   color={
                     task.status === "running"

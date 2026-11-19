@@ -8,6 +8,8 @@ import {
 export interface Task {
   id: string;
   type: string;
+  /** The command line a shell task ran — set for both shells (`type: "shell"`). */
+  command?: string;
   description?: string;
   status: "running" | "completed" | "failed" | "killed";
   startTime: number;
