@@ -32,6 +32,16 @@ export interface TranscriptOutlineProps {
    * 颜色要深一些，可以用现在的 hover 色」）。宽度不参与——宽度只归节奏与悬停。
    */
   visibleIds?: readonly string[];
+  /**
+   * 正在为这条消息取页（点了还没加载的刻度，spec 场景 17）：那一格给进行中指示。
+   * 请求期间刻度保持可点、面板不关闭，所以只换这一格的画法。
+   */
+  pendingId?: string;
+  /**
+   * 取页失败（那条消息已被 rewind / clear 删掉，重试也没成，spec 场景 17）：在这一
+   * 格旁边停一次失败提示。复用预览卡那块面，不新造一套浮层。
+   */
+  failedId?: string;
   /** 内容列的实际宽度，决定大纲显不显示。0 = 还没测到。 */
   columnWidth: number;
   /** 滚动容器的可视高度，决定刻度间距、垂直居中位置与刻度条的最大高度。 */
@@ -58,6 +68,8 @@ export function TranscriptOutline({
   items,
   activeId,
   visibleIds,
+  pendingId,
+  failedId,
   columnWidth,
   columnInset,
   viewportHeight,
@@ -68,6 +80,10 @@ export function TranscriptOutline({
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const hoveredIndex =
     hoveredId === null ? -1 : items.findIndex((i) => i.id === hoveredId);
+  // 取页失败的那一格：指针不在刻度上时也把提示画出来（它是「点了一下没成」的
+  // 唯一可感知反馈，不能等悬停）。归属由父组件按秒级超时清掉。
+  const failedIndex =
+    failedId === undefined ? -1 : items.findIndex((i) => i.id === failedId);
   // 刻度条自身滚动：滚到哪儿了、两头是否还能再滚（决定箭头是否可用）。
   const ticksRef = useRef<HTMLDivElement | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
@@ -347,15 +363,18 @@ export function TranscriptOutline({
             const distance =
               hoveredIndex < 0 ? -1 : Math.abs(index - hoveredIndex);
             const tickWidth = outlineTickWidth(distance, index);
+            const pending = item.id === pendingId;
             return (
               <button
                 key={item.id}
                 type="button"
                 className={`outline-tick${active ? " outline-tick--active" : ""}${
                   inView ? " outline-tick--in-view" : ""
-                }`}
+                }${pending ? " outline-tick--pending" : ""}`}
                 data-testid="outline-tick"
                 data-message-id={item.id}
+                // 进行中与「还没加载」都是给读屏的语义提示，不只靠颜色。
+                aria-busy={pending ? "true" : undefined}
                 // 语义上的「当前这一轮」始终标出来（读屏要靠它），只是**不画**：
                 // 视觉上的选中态见上面的 `active`。
                 aria-current={isCurrent ? "true" : undefined}
@@ -406,6 +425,24 @@ export function TranscriptOutline({
             <span className="outline-card-question">
               {items[hoveredIndex]?.question}
             </span>
+          </span>
+        )}
+        {/* 取页失败的提示：指针压在刻度上时让预览卡说话，否则在这里补一句
+            （spec 场景 17「给一次可感知的失败提示」）。 */}
+        {hoveredIndex < 0 && failedIndex >= 0 && (
+          <span
+            className="outline-card outline-card--failed"
+            data-testid="outline-jump-failed"
+            role="status"
+            aria-live="polite"
+            style={{
+              maxWidth: cardMaxWidth,
+              top:
+                outlineCardTop(failedIndex, scrollTop) +
+                (overflows ? OUTLINE_RAIL_ARROW_SLOT_PX : 0),
+            }}
+          >
+            <span className="outline-card-question">这一页取不到</span>
           </span>
         )}
       </div>

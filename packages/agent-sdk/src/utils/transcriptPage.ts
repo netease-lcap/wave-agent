@@ -37,6 +37,8 @@ export interface TranscriptPage {
   anchorLost?: boolean;
   /** `since` 锚点不在转录里（或落后太多）：调用方整份重取尾页。 */
   reset?: boolean;
+  /** 这一页之后还有更新的消息（只有 `from` 取页会给）。 */
+  hasLater?: boolean;
 }
 
 interface CursorHit {
@@ -218,6 +220,48 @@ async function skipToAnchor(
   }
 }
 
+/**
+ * 以 `from` 为起点往后收一页（**含锚点**）。
+ *
+ * 文件是往回读的，所以「锚点之后的消息」反而是先遇到的：一路收到锚点为止，再取
+ * 最靠近锚点的那 `limit` 条。成本是 O(锚点之后的字节)——跳得越远读得越多，与参考
+ * 物按锚点分页的成本同阶。
+ *
+ * 三种结果：读到文件头都没遇到锚点 → `anchorLost`（被 rewind / clear 删掉了）；
+ * 锚点之后不足一页 → 全给、`hasLater` 为假；超过一页 → 只给紧接锚点的那一页、
+ * `hasLater` 为真（界面据此知道窗口停在历史里，场景 18）。
+ */
+async function collectForward(
+  cursor: TranscriptCursor,
+  from: string,
+  limit: number,
+): Promise<TranscriptPage> {
+  /** 倒序（最新在前），只留最近 `limit` 条；更远的那些只计数。 */
+  const recent: Message[] = [];
+  /** 因为太新而被裁掉的条数：非零就说明页尾之下还有内容。 */
+  let dropped = 0;
+  for (;;) {
+    const hit = await cursor.nextMessage();
+    if (!hit) return { messages: [], hasMore: false, anchorLost: true };
+    recent.push(hit.message);
+    if (hit.message.id === from) break;
+    // 批量裁，而不是逐条 shift：`limit` 最多 1000，逐条挪数组在长会话里是平方级。
+    if (recent.length > limit) {
+      const cut = recent.length - limit;
+      recent.splice(0, cut);
+      dropped += cut;
+    }
+  }
+  // 锚点之上再探一条：答「这一页之前还有更早」用，探到的这条不属于本页。
+  const probe = await cursor.nextMessage();
+  const page = recent.slice(Math.max(0, recent.length - limit)).reverse();
+  return {
+    messages: page,
+    hasMore: probe !== undefined,
+    hasLater: dropped > 0,
+  };
+}
+
 export interface ReadTranscriptPageOptions {
   chunkBytes?: number;
 }
@@ -251,6 +295,9 @@ export async function readTranscriptPage(
       }
       return { messages: collected.reverse(), hasMore: false };
     }
+
+    // `from` 与 `before` 语义互斥，同时传时以 `from` 为准（见 MessageWindow）。
+    if (window.from) return await collectForward(cursor, window.from, limit);
 
     if (window.before && !(await skipToAnchor(cursor, window.before))) {
       // 锚点不在了：不判「到底」，让调用方换一个更早的已知 id 重试。

@@ -346,3 +346,245 @@ describe("transcript outline", () => {
     );
   });
 });
+
+/**
+ * 刻度覆盖**整条会话**（spec ui/transcript-outline.md 场景 9 / 16 / 17 / 18）：
+ * 索引来自宿主，点还没加载的刻度时先取那一页，回来整表替换再落位；窗口停在历史
+ * 里时底部入口换成「回到最新一页」。
+ */
+describe("transcript outline — 整条会话的刻度", () => {
+  /** 某一类 webview→host 命令的调用载荷，按发出顺序。 */
+  const posted = (
+    vscode: ReturnType<typeof renderChatApp>["vscode"],
+    command: string,
+  ): Record<string, unknown>[] =>
+    (vscode.postMessage.mock.calls as unknown[][])
+      .map((call) => call[0] as Record<string, unknown>)
+      .filter((message) => message?.command === command);
+
+  const lastRequestId = (
+    vscode: ReturnType<typeof renderChatApp>["vscode"],
+    command: string,
+  ): string => {
+    const calls = posted(vscode, command);
+    return calls[calls.length - 1]?.requestId as string;
+  };
+
+  /** 索引：窗口之外还有两条更早的问句，然后是窗口里的这两条。 */
+  const outlineWithHistory = (requestId: string) => ({
+    command: "transcriptOutline",
+    requestId,
+    items: [
+      { id: "u-old-1", text: "很早的问题 1" },
+      { id: "u-old-2", text: "很早的问题 2" },
+      { id: "u0", text: "问题 0" },
+      { id: "u1", text: "问题 1" },
+    ],
+  });
+
+  it("画索引里的全部刻度，不只画已加载的那一页", async () => {
+    const { vscode } = renderChatApp();
+    act(() => {
+      sendCommand("updateMessages", { messages: rounds(2) });
+    });
+    await waitFor(() =>
+      expect(posted(vscode, "getTranscriptOutline")).toHaveLength(1),
+    );
+
+    act(() => {
+      sendCommand(
+        "transcriptOutline",
+        outlineWithHistory(lastRequestId(vscode, "getTranscriptOutline")),
+      );
+    });
+
+    // 四条刻度：两条还没加载进窗口的也在（场景 9）。
+    await waitFor(() =>
+      expect(screen.getAllByTestId("outline-tick")).toHaveLength(4),
+    );
+    const ticks = screen.getAllByTestId("outline-tick");
+    expect(ticks.map((tick) => tick.dataset.messageId)).toEqual([
+      "u-old-1",
+      "u-old-2",
+      "u0",
+      "u1",
+    ]);
+    // 没加载的那条，预览卡用索引里的文本（场景 16：索引只带文本首段）。
+    fireEvent.mouseEnter(ticks[0]);
+    expect(screen.getByTestId("outline-card")).toHaveTextContent(
+      "很早的问题 1",
+    );
+  });
+
+  it("点还没加载的刻度时先要那一页，回来整表替换并落位", async () => {
+    const { vscode } = renderChatApp();
+    act(() => {
+      sendCommand("updateMessages", { messages: rounds(2) });
+    });
+    await waitFor(() =>
+      expect(posted(vscode, "getTranscriptOutline")).toHaveLength(1),
+    );
+    act(() => {
+      sendCommand(
+        "transcriptOutline",
+        outlineWithHistory(lastRequestId(vscode, "getTranscriptOutline")),
+      );
+    });
+    await waitFor(() =>
+      expect(screen.getAllByTestId("outline-tick")).toHaveLength(4),
+    );
+    pinMessageListViewport(screen.getByTestId("messages-container"), 200);
+
+    fireEvent.click(screen.getAllByTestId("outline-tick")[0]);
+
+    // 参数是锚点 id（场景 17）：宿主按「从这条往后收满一页」取。
+    await waitFor(() =>
+      expect(posted(vscode, "loadMessagePage")).toHaveLength(1),
+    );
+    expect(posted(vscode, "loadMessagePage")[0]).toMatchObject({
+      from: "u-old-1",
+    });
+    // 请求期间这一格是「进行中」，不是静默等（场景 17）。
+    await waitFor(() =>
+      expect(document.querySelector(".outline-tick--pending")).not.toBeNull(),
+    );
+
+    // 回包：以 u-old-1 为起点的一页，页尾之后还有内容。
+    act(() => {
+      sendCommand("messagePage", {
+        requestId: lastRequestId(vscode, "loadMessagePage"),
+        from: "u-old-1",
+        messages: rounds(8).map((message) =>
+          message.id === "u0" ? { ...message, id: "u-old-1" } : message,
+        ),
+        hasMore: false,
+        hasLater: true,
+      });
+    });
+
+    // 整表替换 + 落位：被点的那条成为「当前这一轮」的刻度（场景 6 的判据）。
+    await waitFor(() =>
+      expect(currentTick()?.dataset.messageId).toBe("u-old-1"),
+    );
+    // 进行中指示跟着回包一起消失。
+    expect(document.querySelector(".outline-tick--pending")).toBeNull();
+
+    // 窗口停在历史里：底部入口是「回到最新一页」，请求不带 from（场景 18）。
+    fireEvent.click(screen.getByTestId("jump-to-bottom"));
+    await waitFor(() =>
+      expect(posted(vscode, "loadMessagePage")).toHaveLength(2),
+    );
+    expect(posted(vscode, "loadMessagePage")[1]).not.toHaveProperty("from");
+  });
+
+  it("锚点被删掉时换下一条仍存在的刻度重试", async () => {
+    const { vscode } = renderChatApp();
+    act(() => {
+      sendCommand("updateMessages", { messages: rounds(2) });
+    });
+    await waitFor(() =>
+      expect(posted(vscode, "getTranscriptOutline")).toHaveLength(1),
+    );
+    act(() => {
+      sendCommand(
+        "transcriptOutline",
+        outlineWithHistory(lastRequestId(vscode, "getTranscriptOutline")),
+      );
+    });
+    await waitFor(() =>
+      expect(screen.getAllByTestId("outline-tick")).toHaveLength(4),
+    );
+
+    fireEvent.click(screen.getAllByTestId("outline-tick")[0]);
+    await waitFor(() =>
+      expect(posted(vscode, "loadMessagePage")).toHaveLength(1),
+    );
+
+    // anchorLost：那条消息已经不在转录里（rewind / clear），换成索引里的下一条。
+    act(() => {
+      sendCommand("messagePage", {
+        requestId: lastRequestId(vscode, "loadMessagePage"),
+        from: "u-old-1",
+        messages: [],
+        hasMore: false,
+        hasLater: false,
+        anchorLost: true,
+      });
+    });
+
+    await waitFor(() =>
+      expect(posted(vscode, "loadMessagePage")).toHaveLength(2),
+    );
+    expect(posted(vscode, "loadMessagePage")[1]).toMatchObject({
+      from: "u-old-2",
+    });
+  });
+});
+
+describe("transcript outline — 取页失败", () => {
+  it("三次都丢锚点之后停在原地并给一次失败提示", async () => {
+    const posted = (
+      vscode: ReturnType<typeof renderChatApp>["vscode"],
+      command: string,
+    ): Record<string, unknown>[] =>
+      (vscode.postMessage.mock.calls as unknown[][])
+        .map((call) => call[0] as Record<string, unknown>)
+        .filter((message) => message?.command === command);
+
+    const { vscode } = renderChatApp();
+    act(() => {
+      sendCommand("updateMessages", { messages: rounds(2) });
+    });
+    await waitFor(() =>
+      expect(posted(vscode, "getTranscriptOutline")).toHaveLength(1),
+    );
+    act(() => {
+      sendCommand("transcriptOutline", {
+        requestId: posted(vscode, "getTranscriptOutline")[0].requestId,
+        items: [
+          { id: "gone-1", text: "被删掉的问题 1" },
+          { id: "gone-2", text: "被删掉的问题 2" },
+          { id: "gone-3", text: "被删掉的问题 3" },
+          { id: "gone-4", text: "被删掉的问题 4" },
+          { id: "u0", text: "问题 0" },
+          { id: "u1", text: "问题 1" },
+        ],
+      });
+    });
+    await waitFor(() =>
+      expect(screen.getAllByTestId("outline-tick")).toHaveLength(6),
+    );
+
+    fireEvent.click(screen.getAllByTestId("outline-tick")[0]);
+
+    // 每一次都回 anchorLost：换成索引里的下一条重试，最多三次，然后收手。
+    for (let attempt = 0; attempt < 4; attempt++) {
+      await waitFor(() =>
+        expect(posted(vscode, "loadMessagePage")).toHaveLength(attempt + 1),
+      );
+      const request = posted(vscode, "loadMessagePage")[attempt];
+      act(() => {
+        sendCommand("messagePage", {
+          requestId: request.requestId,
+          from: request.from,
+          messages: [],
+          hasMore: false,
+          hasLater: false,
+          anchorLost: true,
+        });
+      });
+    }
+
+    // 四次请求之后停手：不再发第五次，也不再挂着「进行中」。
+    await waitFor(() =>
+      expect(posted(vscode, "loadMessagePage")).toHaveLength(4),
+    );
+    expect(document.querySelector(".outline-tick--pending")).toBeNull();
+    // 失败可感知（场景 17）：提示挂在那一格旁边，而不是静默清空列表。
+    expect(screen.getByTestId("outline-jump-failed")).toHaveTextContent(
+      "这一页取不到",
+    );
+    // 当前窗口仍在：刻度还是那六条。
+    expect(screen.getAllByTestId("outline-tick")).toHaveLength(6);
+  });
+});

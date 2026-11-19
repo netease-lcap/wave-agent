@@ -268,6 +268,30 @@
   background: var(--vscode-foreground);
 }
 
+/* 正在取页：点了还没加载进窗口的刻度，回包到达前那一格给「进行中」（spec 场景
+   17，与上翻取页同一档：不新造视觉语言）。颜色提到次要档、透明度做一次呼吸；
+   宽度仍归节奏与悬停涟漪，所以这一格不会把整列排布顶歪。 */
+.outline-tick--pending::before {
+  background: var(--cc-text-secondary, var(--vscode-descriptionForeground));
+  animation: outline-tick-pending 0.9s ease-in-out infinite;
+}
+
+@keyframes outline-tick-pending {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .outline-tick--pending::before {
+    animation: none;
+  }
+}
+
 /* 悬停预览卡：**皮肤整套照 Tooltip 走**（设计师 1110：「hover 气泡的样式包括里面的
    文本参考 tooltip」）。取值逐项对 `host-desktop.css` 里 `[data-host="desktop"]
    .tooltip-box` 那一档（skill references/dark-theme.md:38：Tooltip = bg-overlay、
@@ -315,4 +339,11 @@
   -webkit-box-orient: vertical;
   overflow: hidden;
   overflow-wrap: anywhere;
+}
+
+/* 取页失败的提示（spec 场景 17）：同一块浮层面、同一套字阶，只是字落到次要档——
+   读起来是「这一下没成」的状态，不是一条提问。不另造一条红黄提示带：这一列里
+   只该有一种浮层。 */
+.outline-card--failed .outline-card-question {
+  color: var(--cc-text-secondary, var(--vscode-descriptionForeground));
 }

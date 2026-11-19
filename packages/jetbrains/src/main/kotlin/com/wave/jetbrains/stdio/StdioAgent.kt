@@ -332,6 +332,14 @@ class StdioAgent(
         return res
     }
 
+    /**
+     * `getTranscriptOutline` RPC：整条会话的用户消息索引（只有 `id` 与文本首段，读的是
+     * 转录而不是已加载的那一页），给滚动条刻度当数据源（spec
+     * ui/transcript-outline.md「刻度覆盖整条会话」）。
+     */
+    suspend fun getTranscriptOutline(): JsonElement =
+        client.request("getTranscriptOutline", null, sessionId) ?: JsonObject(emptyMap())
+
     suspend fun compact(customInstructions: String? = null) {
         client.request("compact", buildJsonObject {
             if (customInstructions != null) put("customInstructions", customInstructions)

@@ -197,8 +197,12 @@ export function outlineCardTop(index: number, scrollTop: number): number {
 export interface TranscriptOutlineItem {
   /** 目标消息 id（`scrollToMessage` 的入参）。 */
   id: string;
-  /** 在 `visibleMessages` 里的下标，仅供调试与断言。 */
-  index: number;
+  /**
+   * 在 `visibleMessages` 里的下标，仅供调试与断言。**没加载进当前窗口时是
+   * `undefined`**——刻度覆盖整条会话，而窗口只有一页（spec 场景 9 / 17），
+   * 所以「有没有下标」就是「点了要不要先取页」。
+   */
+  index?: number;
   /** 该轮用户消息的文本（截断）。卡片只显示这一条。 */
   question: string;
 }

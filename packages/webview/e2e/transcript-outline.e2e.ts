@@ -1,4 +1,5 @@
 import { test, expect } from "./utils/webviewTestHarness.js";
+import type { Page } from "@playwright/test";
 import { MessageInjector } from "./utils/messageInjector.js";
 import { Message } from "wave-agent-sdk";
 
@@ -149,5 +150,120 @@ test.describe("transcript outline", () => {
 
     await webviewPage.setViewportSize({ width: 1000, height: 800 });
     await expect(ticks).toHaveCount(PAIRS);
+  });
+});
+
+/**
+ * 刻度覆盖整条会话（spec 场景 9 / 16 / 17 / 18）：索引来自宿主的一次转录查询，
+ * 点在还没加载进窗口的刻度上时，页面按「以它为起点的一页」取回来再落位。
+ *
+ * jsdom 里断过一遍结构（tests/webview/transcriptOutline.test.tsx）；这里补的是只有
+ * 真排版能回答的一件：整条会话的刻度装不下时，刻度条自己变成可滚区。
+ */
+test.describe("transcript outline — 整条会话", () => {
+  /** webview 发出去的命令（真事件循环里排过序）。 */
+  const sent = (webviewPage: Page) =>
+    webviewPage.evaluate(
+      () =>
+        (
+          window as unknown as {
+            getTestMessages?: () => Record<string, unknown>[];
+          }
+        ).getTestMessages?.() ?? [],
+    );
+
+  const lastRequestId = async (
+    webviewPage: Page,
+    command: string,
+  ): Promise<string> => {
+    const messages = await sent(webviewPage);
+    const request = [...messages].reverse().find((m) => m.command === command);
+    return String(request?.requestId ?? "");
+  };
+
+  /** 整条会话的索引：`count` 条问句（比窗口里的那些更早）。 */
+  const historyItems = (count: number) =>
+    Array.from({ length: count }, (_, i) => ({
+      id: `h${i}`,
+      text: `很早的问题 ${i}`,
+    }));
+
+  /** 以 `from` 为起点的一页：首条（含它自己）用锚点 id。 */
+  const pageFrom = (from: string, pairs: number): Message[] =>
+    buildMessages(pairs).map((message, index) => ({
+      ...message,
+      id: index === 0 ? from : `${from}-${index}`,
+    }));
+
+  test("只在已加载的一页里的会话，刻度仍按整条转录画，且刻度条自己滚", async ({
+    webviewPage,
+  }) => {
+    const injector = new MessageInjector(webviewPage);
+    await initWithMessages(injector, buildMessages(2));
+
+    await injector.simulateExtensionMessage("transcriptOutline", {
+      requestId: await lastRequestId(webviewPage, "getTranscriptOutline"),
+      items: historyItems(60),
+    });
+
+    const ticks = webviewPage.locator('[data-testid="outline-tick"]');
+    // 60 条索引 + 窗口里那 2 条（它们比索引新，追加在末尾）。
+    await expect(ticks).toHaveCount(62);
+    // 装不下：刻度条自己成了可滚区，上下箭头出现（场景 13）。
+    await expect(
+      webviewPage.locator('[data-testid="outline-scroll-up"]'),
+    ).toBeVisible();
+    await expect(
+      webviewPage.locator('[data-testid="outline-scroll-down"]'),
+    ).toBeVisible();
+    // 没加载的那几条，预览卡用的是索引里的文本（场景 16）。
+    await ticks.nth(0).hover();
+    await expect(
+      webviewPage.locator('[data-testid="outline-card"]'),
+    ).toContainText("很早的问题 0");
+  });
+
+  test("点没加载的刻度：先取页，回来整表替换并停到历史里", async ({
+    webviewPage,
+  }) => {
+    const injector = new MessageInjector(webviewPage);
+    await initWithMessages(injector, buildMessages(2));
+
+    await injector.simulateExtensionMessage("transcriptOutline", {
+      requestId: await lastRequestId(webviewPage, "getTranscriptOutline"),
+      items: historyItems(10),
+    });
+    const ticks = webviewPage.locator('[data-testid="outline-tick"]');
+    // 10 条还没加载的历史 + 窗口里的那 2 条。
+    await expect(ticks).toHaveCount(12);
+
+    await ticks.nth(0).click();
+
+    // 请求带锚点 id；请求期间那一格是「进行中」。
+    await expect
+      .poll(async () => {
+        const messages = await sent(webviewPage);
+        return messages.filter((m) => m.command === "loadMessagePage");
+      })
+      .toHaveLength(1);
+    const requestId = await lastRequestId(webviewPage, "loadMessagePage");
+    await expect(ticks.nth(0)).toHaveClass(/outline-tick--pending/);
+
+    // 回包：以 h0 为起点的一页，页尾之后还有内容（窗口停在历史里）。
+    await injector.simulateExtensionMessage("messagePage", {
+      requestId,
+      from: "h0",
+      messages: pageFrom("h0", 8),
+      hasMore: true,
+      hasLater: true,
+    });
+
+    // 整表替换 + 落位：这一页的第一条成了「当前这一轮」的刻度。
+    await expect(ticks.nth(0)).toHaveAttribute("aria-current", "true");
+    await expect(ticks.nth(0)).not.toHaveClass(/outline-tick--pending/);
+    // 底部入口换成「回到最新一页」（场景 18）。
+    await expect(
+      webviewPage.locator('[data-testid="jump-to-bottom"]'),
+    ).toHaveAttribute("data-historical", "true");
   });
 });

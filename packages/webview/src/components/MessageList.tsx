@@ -93,6 +93,8 @@ export const MessageList = forwardRef<
   {
     scrollToBottom: (behavior?: ScrollBehavior) => void;
     pinToBottom: (behavior?: ScrollBehavior) => void;
+    /** 取回一页之后落位（大纲点到还没加载的刻度，spec 场景 17）。 */
+    jumpToMessage: (id: string) => void;
   },
   MessageListProps
 >(function MessageList(
@@ -113,6 +115,12 @@ export const MessageList = forwardRef<
     hasEarlier,
     isLoadingEarlier,
     onLoadEarlier,
+    outlineEntries,
+    pendingJumpId,
+    failedJumpId,
+    onJumpToMessage,
+    hasLater,
+    onReturnToLatest,
     initialFind,
     modNotices,
   },
@@ -588,24 +596,50 @@ export const MessageList = forwardRef<
    * = 一个刻度。判据复用 `stickyAnchorText`——「哪些消息能当锚点」只允许有这
    * 一份定义，否则吸顶条认它、大纲不认它这种分叉迟早会出现。
    *
+   * 刻度覆盖**整条会话**（场景 9）：主体是宿主给的转录索引，已加载的那一份只
+   * 用来补两件事——文本（索引里是截断的首段）与该消息在窗口里的下标（有下标
+   * 才能直接落位，没有就先取页）。索引之外**多出来的已加载用户消息**（流式期间
+   * 比转录早一步落进页面、或索引还没刷新的那几条）追加在末尾：它们一定比索引里
+   * 的任何一条都新，位置就是列表尾部（场景 19）。
+   *
    * 刻度只带问题、不带助手回答（spec 场景 5）：卡片里只放一条消息的文本，两段
    * 内容在这么小的一块地方只会显得重复。
    */
   const outlineItems = useMemo((): TranscriptOutlineItem[] => {
-    const items: TranscriptOutlineItem[] = [];
+    const loaded = new Map<string, number>();
     for (let index = 0; index < visibleMessages.length; index++) {
       const message = visibleMessages[index];
       if (message.role !== "user") continue;
-      const question = stickyAnchorText(message);
-      if (!question) continue;
+      if (!stickyAnchorText(message)) continue;
+      loaded.set(message.id, index);
+    }
+    const items: TranscriptOutlineItem[] = [];
+    const seen = new Set<string>();
+    for (const entry of outlineEntries ?? []) {
+      if (seen.has(entry.id)) continue;
+      seen.add(entry.id);
+      const index = loaded.get(entry.id);
+      const loadedText =
+        index === undefined ? "" : stickyAnchorText(visibleMessages[index]);
       items.push({
-        id: message.id,
+        id: entry.id,
+        ...(index === undefined ? {} : { index }),
+        question: (loadedText || entry.text).slice(0, OUTLINE_QUESTION_LIMIT),
+      });
+    }
+    for (const [id, index] of loaded) {
+      if (seen.has(id)) continue;
+      items.push({
+        id,
         index,
-        question: question.slice(0, OUTLINE_QUESTION_LIMIT),
+        question: stickyAnchorText(visibleMessages[index]).slice(
+          0,
+          OUTLINE_QUESTION_LIMIT,
+        ),
       });
     }
     return items;
-  }, [visibleMessages]);
+  }, [visibleMessages, outlineEntries]);
 
   /**
    * 大纲的高亮项：点击钉住优先（场景 6），否则用滚动判据（场景 4）。钉住的目标
@@ -787,7 +821,13 @@ export const MessageList = forwardRef<
       const container = containerRef.current;
       if (!container) return;
       const index = visibleMessagesRef.current.findIndex((m) => m.id === id);
-      if (index < 0) return;
+      if (index < 0) {
+        // 刻度覆盖整条会话，这一条还在转录里、没进当前窗口（spec 场景 17）：
+        // 交给父组件去取「以它为起点的一页」，回包整表替换后再由 jumpToMessage
+        // 落位——这里不能静默返回，否则点了一下什么都不会发生。
+        onJumpToMessage?.(id);
+        return;
+      }
       // Clicking the sticky bar is an explicit "I'm leaving the bottom" intent,
       // exactly like scrolling up: opt out of following FIRST — otherwise the
       // streaming bottom-pin fires on the next chunk and yanks the viewport
@@ -808,7 +848,7 @@ export const MessageList = forwardRef<
       pinnedOutlineRef.current = { id, scrollTop: container.scrollTop };
       setPinnedOutlineId(id);
     },
-    [containerRef, scrollToIndex, unpin],
+    [containerRef, scrollToIndex, unpin, onJumpToMessage],
   );
 
   /**
@@ -822,11 +862,15 @@ export const MessageList = forwardRef<
    */
   const followToBottom = useCallback(
     (behavior: ScrollBehavior, pinFirst = false) => {
+      // 窗口停在历史里时「列表末尾」不是「会话末尾」（spec 场景 18）：此刻跟着
+      // 末尾走只会把读者从刚跳到的位置挤开，而且停在的地方仍是历史。回到最新
+      // 只有一条路——底部入口重新取尾页（见 jumpToBottom）。
+      if (hasLater) return;
       if (pinFirst) pin();
       if (!isPinned()) return;
       scrollToEnd(behavior);
     },
-    [isPinned, pin, scrollToEnd],
+    [hasLater, isPinned, pin, scrollToEnd],
   );
 
   /**
@@ -860,10 +904,17 @@ export const MessageList = forwardRef<
   }, [containerRef, visualOffset]);
 
   const jumpToBottom = useCallback(() => {
+    // 窗口停在历史里时这颗按钮的语义从「滚到内容末尾」变成「回到最新一页」
+    // （spec 场景 18）：历史窗口的末尾并不等于会话的末尾，滚到底只是走到这一页
+    // 的尾巴。重新取尾页交给父组件。
+    if (hasLater) {
+      onReturnToLatest?.();
+      return;
+    }
     // 与「用户自己发消息」同一条路：先重新钉上再滚，否则滚到底之前到来的流式
     // chunk 会按旧的松手状态把视口留在原地，用户看到的是「点了一下没反应」。
     followToBottom("smooth", true);
-  }, [followToBottom]);
+  }, [followToBottom, hasLater, onReturnToLatest]);
 
   // Expose ONE explicit "bring me to the bottom" request to the parent (host
   // commands: confirmation shown, pane/session bound, after rewind, settings
@@ -878,6 +929,13 @@ export const MessageList = forwardRef<
   useImperativeHandle(ref, () => ({
     scrollToBottom: (behavior: ScrollBehavior = "smooth") => {
       followToBottom(behavior);
+    },
+    /**
+     * 取回一页之后落位（spec 场景 17）：父组件整表替换窗口、等渲染提交完再叫
+     * 这一下，走的正是点刻度那条路（落位 + 钉住高亮 + 松开跟随）。
+     */
+    jumpToMessage: (id: string) => {
+      scrollToMessage(id);
     },
     /**
      * 用户在确认弹窗里作答（提交回答 / 批准 / 拒绝 / 提供反馈）：视口回到底部并
@@ -1151,6 +1209,8 @@ export const MessageList = forwardRef<
         items={outlineItems}
         activeId={outlineActive}
         visibleIds={visibleOutlineIds}
+        pendingId={pendingJumpId}
+        failedId={failedJumpId}
         columnWidth={columnWidth}
         columnInset={columnInset}
         viewportHeight={listViewportHeight}
@@ -1271,6 +1331,9 @@ export const MessageList = forwardRef<
             tabIndex={showJumpToBottom ? 0 : -1}
             // 流式中（AI 还在输出）箭头让位给三个点的 loading；取值交给 CSS。
             data-streaming={isStreaming ? "true" : "false"}
+            // 窗口停在历史里时这颗按钮是「回到最新**一页**」——外观与位置不变，
+            // 语义换成重新取尾页（spec 场景 18）。
+            data-historical={hasLater ? "true" : "false"}
             onClick={jumpToBottom}
           >
             {/* 桌面端用与 composer 发送箭头同几何的下箭头（设计师 2026-11-10：

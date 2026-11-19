@@ -533,6 +533,30 @@ class WaveSession(
         put("limit", HISTORY_PAGE_SIZE)
     })
 
+    /**
+     * 从锚点（含锚点那条）往后取一页：滚动条刻度跳到还没加载的历史时用（spec
+     * ui/transcript-outline.md「刻度覆盖整条会话」场景 17）。锚点丢了 SDK 回
+     * `anchorLost`，界面按失败处理。
+     */
+    suspend fun fetchPageFrom(from: String): JsonObject? = fetchPage(buildJsonObject {
+        put("from", from)
+        put("limit", HISTORY_PAGE_SIZE)
+    })
+
+    /**
+     * 整条会话的用户消息索引（只读 `id` 与文本首段）。取不到回 null，界面回落到
+     * 「只画已加载的消息」这一档（同一个 spec 场景 20）。
+     */
+    suspend fun fetchTranscriptOutline(): JsonArray? {
+        val agent = agent ?: return null
+        return try {
+            agent.getTranscriptOutline().jsonObject["items"] as? JsonArray
+        } catch (e: Exception) {
+            LOG.warn("getTranscriptOutline failed: ${e.message}")
+            null
+        }
+    }
+
     private suspend fun fetchPage(window: JsonObject): JsonObject? {
         val agent = agent ?: return null
         return try {

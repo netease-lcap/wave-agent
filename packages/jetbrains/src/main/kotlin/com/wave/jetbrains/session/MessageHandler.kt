@@ -354,6 +354,18 @@ class MessageHandler(
                 val requestId = msg["requestId"]?.jsonPrimitive?.contentOrNull ?: return
                 handleLoadEarlierMessages(before, requestId)
             }
+            // 滚动条刻度的两个数据面（spec ui/transcript-outline.md「刻度覆盖整条
+            // 会话」）：索引只有 id + 文本首段；点在还没加载的刻度上时按从锚点往后
+            // 的一页取，回包整表替换当前窗口。
+            "getTranscriptOutline" -> {
+                val requestId = msg["requestId"]?.jsonPrimitive?.contentOrNull ?: return
+                handleGetTranscriptOutline(requestId)
+            }
+            "loadMessagePage" -> {
+                val from = msg["from"]?.jsonPrimitive?.contentOrNull
+                val requestId = msg["requestId"]?.jsonPrimitive?.contentOrNull ?: return
+                handleLoadMessagePage(from, requestId)
+            }
             "getConfiguredModels" -> handleGetConfiguredModels()
             "setModel" -> {
                 val model = msg["model"]?.jsonPrimitive?.content ?: return
@@ -1749,6 +1761,39 @@ class MessageHandler(
      * 取不到（RPC 失败）也回一页空的：界面收到带 requestId 的回包才会清掉「正在加载」，
      * 不回就等于把它卡在加载态。
      */
+    /**
+     * 整条会话的用户消息索引（spec ui/transcript-outline.md 场景 16）。取不到就回
+     * 空列表：界面按「只画已加载的消息」降级（场景 20），不报错、不隐藏刻度。
+     */
+    private suspend fun handleGetTranscriptOutline(requestId: String) {
+        val items = session.fetchTranscriptOutline() ?: JsonArray(emptyList())
+        postMessage("transcriptOutline", buildJsonObject {
+            put("requestId", requestId)
+            put("items", items)
+        })
+    }
+
+    /**
+     * 从锚点往后的一页（同一份 spec 场景 17）：整表替换当前窗口。`hasLater` 表示
+     * 这一页的末尾之后还有内容（此时底部的入口该变成「回到最新一页」）。
+     * 不带 `from` = 尾页（「回到最新一页」，场景 18）。
+     */
+    private suspend fun handleLoadMessagePage(from: String?, requestId: String) {
+        val page = if (from == null) session.fetchInitialPage() else session.fetchPageFrom(from)
+        val messages = page?.get("messages") as? JsonArray
+        val hasMore = (page?.get("hasMore") as? JsonPrimitive)?.booleanOrNull ?: false
+        val hasLater = (page?.get("hasLater") as? JsonPrimitive)?.booleanOrNull ?: false
+        val anchorLost = (page?.get("anchorLost") as? JsonPrimitive)?.booleanOrNull ?: false
+        postMessage("messagePage", buildJsonObject {
+            put("requestId", requestId)
+            if (from != null) put("from", from)
+            put("messages", messages ?: JsonArray(emptyList()))
+            put("hasMore", hasMore)
+            put("hasLater", hasLater)
+            put("anchorLost", anchorLost)
+        })
+    }
+
     private suspend fun handleLoadEarlierMessages(before: String, requestId: String) {
         val page = session.fetchEarlierPage(before)
         val messages = page?.get("messages") as? JsonArray
