@@ -1,4 +1,4 @@
-import fs from "fs";
+import { accessSync, constants, existsSync } from "fs";
 import path from "path";
 import { execFileSyncHidden } from "./execFileHidden.js";
 
@@ -23,7 +23,7 @@ const FIXED_SHELL_DIRS = [
 
 function isExecutable(shellPath: string): boolean {
   try {
-    fs.accessSync(shellPath, fs.constants.X_OK);
+    accessSync(shellPath, constants.X_OK);
     return true;
   } catch {
     return false;
@@ -58,7 +58,7 @@ function inferGitBashFromGit(): string | undefined {
   // 1. Common git.exe locations
   let gitExe: string | undefined;
   for (const candidate of WINDOWS_GIT_EXE_PATHS) {
-    if (fs.existsSync(candidate)) {
+    if (existsSync(candidate)) {
       gitExe = candidate;
       break;
     }
@@ -85,7 +85,7 @@ function inferGitBashFromGit(): string | undefined {
   // join treats git.exe as a segment, so ".." cancels it (→ cmd dir),
   // the second ".." cancels cmd (→ <install>), then bin/bash.exe.
   const bashPath = path.win32.join(gitExe, "..", "..", "bin", "bash.exe");
-  if (fs.existsSync(bashPath)) {
+  if (existsSync(bashPath)) {
     return bashPath;
   }
   return undefined;
@@ -173,7 +173,7 @@ function resolveWindowsShell(): string | undefined {
   ].filter(Boolean) as string[];
 
   for (const p of paths) {
-    if (fs.existsSync(p)) {
+    if (existsSync(p)) {
       return p;
     }
   }
