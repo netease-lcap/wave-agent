@@ -37,6 +37,7 @@ import type {
   SkillMetadata,
   UserPreferenceKey,
   UserPreferenceSource,
+  TranscriptOutlineEntry,
 } from "wave-agent-sdk/types";
 import type { SessionMetadata, SessionData } from "wave-agent-sdk/types";
 import type { ToolBlockUpdateCallbackParams } from "wave-agent-sdk/types";
@@ -697,6 +698,22 @@ export interface MessageListProps {
   isLoadingEarlier?: boolean;
   /** 要一页更早的，锚点是当前已加载的第一条；调用方负责发请求与去重。 */
   onLoadEarlier?: (before: string) => void;
+  /**
+   * 整条会话的用户消息索引（宿主 `getTranscriptOutline` 的回包）：大纲用它把刻度
+   * 铺满整份转录，而不是只画已加载的那一页（spec ui/transcript-outline.md 场景 9 /
+   * 16）。缺席或为空 = 老宿主 / 新会话，退回到「只画已加载的」那一档（场景 20）。
+   */
+  outlineEntries?: readonly TranscriptOutlineEntry[];
+  /** 正在为这条消息取页：它的刻度上给出进行中指示（场景 17）。 */
+  pendingJumpId?: string;
+  /** 取页失败（锚点已被删掉、重试也没成）：那一格停一次可感知的失败提示（场景 17）。 */
+  failedJumpId?: string;
+  /** 点了还没加载进窗口的刻度：先向宿主取那一页（场景 17）。 */
+  onJumpToMessage?: (id: string) => void;
+  /** 窗口停在历史里（这一页之后还有内容）：底部入口改成「回到最新一页」（场景 18）。 */
+  hasLater?: boolean;
+  /** 「回到最新一页」：重新取尾页并整表替换，而不是在历史窗口里滚到底。 */
+  onReturnToLatest?: () => void;
   /**
    * 外部要求就地打开查找条并落在指定命中上（侧栏「内容命中」点进来的一路，
    * spec desktop/desktop-sessions.md 场景 6）。`nonce` 让「点了两次同一处」也能

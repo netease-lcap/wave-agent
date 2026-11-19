@@ -54,6 +54,7 @@ import type {
   MessageWindow,
   MessageWindowResult,
 } from "../types/messageWindow.js";
+import type { TranscriptOutlineEntry } from "../types/transcriptOutline.js";
 import type { RewindCheckpoint } from "../utils/rewindCheckpoints.js";
 import {
   releasePersistFailure,
@@ -1616,6 +1617,25 @@ export class MessageManager {
   ): Promise<MessageWindowResult> {
     const list = this.messages;
 
+    // 大纲点了一条**还没加载**的刻度（spec ui/transcript-outline.md 场景 17）：
+    // 从这条往后取一页（含它本身）。锚点还在内存窗口里时直接切内存，省一次读盘；
+    // 切出来的页可能落在窗口中间，所以 `hasLater` 要按内存里还剩多少算。
+    if (window.from) {
+      const limit = window.limit ?? MESSAGE_PAGE_SIZE;
+      const at = lastIndexById(list, window.from);
+      if (at !== -1) {
+        const page = list.slice(at, at + limit);
+        return {
+          messages: page,
+          // 内存列表从最近一次压缩开始，上面通常还有转录里的历史：与上翻取页
+          // 一样保守判「还有更早」，让调用方按需再要一次，别把历史判没了。
+          hasMore: true,
+          hasLater: at + page.length < list.length,
+        };
+      }
+      return this.readOlderPage(window);
+    }
+
     if (window.since) {
       const at = lastIndexById(list, window.since);
       // Anchor gone (compaction / rewind / another session): ask the caller to
@@ -1686,7 +1706,34 @@ export class MessageManager {
       messages: page.messages,
       hasMore: page.hasMore,
       ...(page.anchorLost ? { anchorLost: true } : {}),
+      ...(page.hasLater ? { hasLater: true } : {}),
     };
+  }
+
+  /**
+   * 会话消息大纲的索引（spec ui/transcript-outline.md 场景 16）：整份转录里每一
+   * 条带文本用户消息的 id 与文本首段。
+   *
+   * 与 `readOlderPage` 一样做会话 revalidation：读盘期间会话可能已经被换掉，那份
+   * 索引属于上一个会话，发给页面就会把别人的问句画成刻度。变了就按新路径重读一次。
+   *
+   * 索引**不**掺内存里还没落盘的新消息：那部分由页面把已加载的用户消息并进来
+   * （场景 19），SDK 这边只对转录负责。
+   */
+  public async getTranscriptOutline(): Promise<TranscriptOutlineEntry[]> {
+    const { readTranscriptOutline } = await import(
+      "../utils/transcriptIndex.js"
+    );
+    const sessionId = this.sessionId;
+    try {
+      const items = await readTranscriptOutline(this.transcriptPath);
+      if (this.sessionId === sessionId) return items;
+      return await readTranscriptOutline(this.transcriptPath);
+    } catch {
+      // 索引是「尽力而为」：读盘抖动、坏行都不该让大纲变成错误框。页面拿不到
+      // 索引时退回到已加载的那一份（场景 20），这里给空数组就是把这条路让出来。
+      return [];
+    }
   }
 
   /**

@@ -33,6 +33,22 @@ describe("normalizeMessageWindow", () => {
       before: "m3",
       limit: 200,
     });
+    // 大纲跳转：从锚点往后（含锚点）取一页。
+    expect(normalizeMessageWindow({ from: "m3", limit: 200 })).toEqual({
+      from: "m3",
+      limit: 200,
+    });
+  });
+
+  it("rejects from mixed with the other two anchors", () => {
+    // `from` 是第三种「从哪算起」，方向与 `before` 相反、与 `since` 的补差语义
+    // 也不同：混着传说明调用方把两条路搞混了。
+    expect(() => normalizeMessageWindow({ from: "m1", since: "m2" })).toThrow(
+      InvalidMessageWindowError,
+    );
+    expect(() => normalizeMessageWindow({ from: "m1", before: "m2" })).toThrow(
+      InvalidMessageWindowError,
+    );
   });
 
   it("rejects since and before together — two anchors, one direction", () => {

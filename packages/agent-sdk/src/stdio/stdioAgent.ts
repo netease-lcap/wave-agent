@@ -48,6 +48,7 @@ import type {
   MessageWindow,
   MessageWindowResult,
   MessageThreadSummary,
+  TranscriptOutlineEntry,
   UserImage,
   ModBandRenderResult,
   ModPanelEventPayload,
@@ -624,6 +625,21 @@ export class StdioAgent {
     // session's number would paint the ring with someone else's usage.
     this.contextUsagePercent = result.contextUsagePercent;
     return window ? result : result.messages;
+  }
+
+  /**
+   * 会话消息大纲的索引（spec ui/transcript-outline.md 场景 16）：整份转录里每条
+   * 带文本用户消息的 id 与文本首段，按出现顺序。
+   *
+   * 与 `getMessages` 不同，它不刷新 `threadSummary` / `contextUsagePercent`——那两
+   * 项状态属于消息取数，索引只回答「有哪些问句」。
+   */
+  async getTranscriptOutline(): Promise<TranscriptOutlineEntry[]> {
+    return (await this.client.request(
+      "getTranscriptOutline",
+      undefined,
+      this.sessionId,
+    )) as TranscriptOutlineEntry[];
   }
 
   async listRewindCheckpoints(): Promise<{

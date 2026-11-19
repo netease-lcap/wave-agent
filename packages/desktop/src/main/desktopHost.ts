@@ -43,6 +43,7 @@ import type {
   MessageWindowResult,
   StartupStage,
   BtwHistoryTurn,
+  TranscriptOutlineEntry,
 } from "wave-agent-sdk/host";
 import {
   EDIT_TOOL_NAME,
@@ -1489,6 +1490,82 @@ export class DesktopHost {
       requestId,
       messages,
       hasMore,
+      ...(anchorLost ? { anchorLost: true } : {}),
+    });
+  }
+
+  /**
+   * 会话消息大纲的索引（spec ui/transcript-outline.md 场景 16）：整份转录里每条
+   * 带文本用户消息的 id 与文本首段。
+   *
+   * 失败不报错、给空数组：页面拿不到索引时会退回到「只列已加载的消息」（场景
+   * 20），把一次读盘抖动升级成「大纲整个消失」比少画几个刻度糟糕得多。
+   */
+  private async handleGetTranscriptOutline(
+    requestId: string,
+    paneId?: string,
+  ): Promise<void> {
+    const pid = paneId ?? this.focusedPaneId;
+    const agent = this.agentForPane(pid);
+    let items: TranscriptOutlineEntry[] = [];
+    if (agent) {
+      try {
+        items = await agent.getTranscriptOutline();
+      } catch (error) {
+        console.warn("[DesktopHost] 取会话消息大纲失败:", error);
+      }
+    }
+    // 读盘期间可能换了绑定：那份索引属于上一个会话，不能画进当前这条。
+    if (this.agentForPane(pid) !== agent) return;
+    this.postMessage({
+      command: "transcriptOutline",
+      paneId: pid,
+      requestId,
+      items,
+    });
+  }
+
+  /**
+   * 大纲点了一条**还没加载**的刻度（场景 17）：从锚点往后取一页（锚点含在这一
+   * 页里）。回包带着 `hasLater`——页面据此知道窗口停在了历史里，底部入口要按
+   * 「回到最新一页」处理（场景 18）。
+   */
+  private async handleLoadMessagePage(
+    from: string | undefined,
+    requestId: string,
+    paneId?: string,
+  ): Promise<void> {
+    const pid = paneId ?? this.focusedPaneId;
+    const agent = this.agentForPane(pid);
+    let messages: Message[] = [];
+    let hasMore = false;
+    let hasLater = false;
+    let anchorLost = false;
+    if (agent) {
+      try {
+        // 不带 `from` = 尾页（「回到最新一页」，场景 18）：它和首屏取的是同一页，
+        // 只是这一次由页面主动要，而不是等宿主推快照。
+        const page = (await agent.getMessages({
+          ...(from === undefined ? {} : { from }),
+          limit: MESSAGE_PAGE_SIZE,
+        })) as MessageWindowResult;
+        messages = page.messages;
+        hasMore = page.hasMore === true;
+        hasLater = page.hasLater === true;
+        anchorLost = page.anchorLost === true;
+      } catch (error) {
+        console.warn("[DesktopHost] 跳转到历史消息失败:", error);
+      }
+    }
+    if (this.agentForPane(pid) !== agent) return;
+    this.postMessage({
+      command: "messagePage",
+      paneId: pid,
+      requestId,
+      ...(from === undefined ? {} : { from }),
+      messages,
+      hasMore,
+      hasLater,
       ...(anchorLost ? { anchorLost: true } : {}),
     });
   }
@@ -5445,6 +5522,21 @@ export class DesktopHost {
       case "loadEarlierMessages":
         await this.handleLoadEarlierMessages(
           msg.before as string,
+          msg.requestId as string,
+          pid,
+        );
+        break;
+
+      // 大纲的两个入口（spec ui/transcript-outline.md）：先问「整条会话有哪些
+      // 问句」，再从某个问句往后取一页。前者是只读索引，后者是普通取页，两个都
+      // 不动上下文。
+      case "getTranscriptOutline":
+        await this.handleGetTranscriptOutline(msg.requestId as string, pid);
+        break;
+
+      case "loadMessagePage":
+        await this.handleLoadMessagePage(
+          msg.from as string | undefined,
           msg.requestId as string,
           pid,
         );

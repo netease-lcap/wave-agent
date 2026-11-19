@@ -332,3 +332,66 @@ describe("transcriptLinesBackward", () => {
     expect(lines).toEqual(["b", "a"]);
   });
 });
+
+/**
+ * `from` 是「以这条为起点往后取一页」——会话消息大纲点一条**还没加载**的刻度时
+ * 走它（spec ui/transcript-outline.md 场景 17）。与 `before` 方向相反，而且锚点
+ * **含**在这一页里：点刻度是为了看这条问句本身。
+ *
+ * 三条边界在这里钉住：页尾不足一页时不补齐、超过一页时只给紧接锚点的那批（不是
+ * 最新的那批）、向下还有内容时 `hasLater` 必须为真（界面据此知道窗口停在历史里）。
+ */
+describe("readTranscriptPage — from", () => {
+  beforeEach(() => {
+    vi.mocked(open).mockReset();
+  });
+
+  it("starts the page at the anchor, anchor included", async () => {
+    serve(transcript(["m0", "m1", "m2", "m3", "m4"]));
+
+    const page = await readTranscriptPage(FILE, { from: "m2", limit: 3 });
+
+    expect(ids(page.messages)).toEqual(["m2", "m3", "m4"]);
+    // 锚点之上还有 m0/m1。
+    expect(page.hasMore).toBe(true);
+    // 锚点之下没有更content了。
+    expect(page.hasLater).toBe(false);
+  });
+
+  it("gives the rows right after the anchor, not the newest ones", async () => {
+    // 只有 2 条一页时，锚点之后还有 6 条：要的是紧跟 m2 的那两条，不是 m8。
+    const all = ["m0", "m1", "m2", "m3", "m4", "m5", "m6", "m7", "m8"];
+    serve(transcript(all));
+
+    const page = await readTranscriptPage(FILE, { from: "m2", limit: 2 });
+
+    expect(ids(page.messages)).toEqual(["m2", "m3"]);
+    expect(page.hasLater).toBe(true);
+  });
+
+  it("reports the anchor as lost instead of answering the tail", async () => {
+    // 锚点被 rewind 裁掉了：答一份尾页会让页面「跳过去了，却落在别的轮次上」。
+    serve(transcript(["m0", "m1", "m2"]));
+
+    const page = await readTranscriptPage(FILE, { from: "gone", limit: 2 });
+
+    expect(page.messages).toEqual([]);
+    expect(page.anchorLost).toBe(true);
+  });
+
+  it("answers an empty transcript as anchor lost, not as an empty page", async () => {
+    serve("");
+    const page = await readTranscriptPage(FILE, { from: "m2", limit: 2 });
+    expect(page.anchorLost).toBe(true);
+  });
+
+  it("keeps working when the anchor is the newest row", async () => {
+    serve(transcript(["m0", "m1", "m2"]));
+
+    const page = await readTranscriptPage(FILE, { from: "m2", limit: 10 });
+
+    expect(ids(page.messages)).toEqual(["m2"]);
+    expect(page.hasMore).toBe(true);
+    expect(page.hasLater).toBe(false);
+  });
+});

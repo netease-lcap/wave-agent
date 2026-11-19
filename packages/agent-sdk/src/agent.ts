@@ -66,6 +66,7 @@ import type {
   MessageWindow,
   MessageWindowResult,
 } from "./types/messageWindow.js";
+import type { TranscriptOutlineEntry } from "./types/transcriptOutline.js";
 import type { Task } from "./types/tasks.js";
 import type { BackgroundTask } from "./types/processes.js";
 import { MemoryRuleManager } from "./managers/MemoryRuleManager.js";
@@ -1095,6 +1096,15 @@ export class Agent {
 
   public get sessionFilePath(): string {
     return this.messageManager.getTranscriptPath();
+  }
+
+  /**
+   * 会话消息大纲的索引（spec ui/transcript-outline.md 场景 16）：整份转录里每条
+   * 带文本用户消息的 id 与文本首段。只读快照——不触发模型请求、不动上下文，页面
+   * 拿它画左边缘那列刻度、点击时再用 `from` 取那一页。
+   */
+  public getTranscriptOutline(): Promise<TranscriptOutlineEntry[]> {
+    return this.messageManager.getTranscriptOutline();
   }
 
   public get latestTotalTokens(): number {
