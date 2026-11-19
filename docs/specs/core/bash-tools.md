@@ -24,7 +24,7 @@ order: 20
 1. **假设** 有要执行的命令，**当** 调用 `Bash` 工具时，**则** 它必须返回命令的输出（stdout 和 stderr）。
 2. **假设** 前台命令耗时较长，**当** 超过超时时，**则** 它必须被自动转为后台（如果命令允许）或终止（如果不允许，例如 `sleep`），且返回结果必须标记为成功（`success: true`），不得视为错误。
 3. **假设** 前台命令超时并被自动转为后台，**则** 代理必须收到一条消息，指示进程仍在后台运行、完成时会收到通知，并包含其任务 ID 和输出路径；消息不得使用 "timed out" 等暗示失败的措辞。
-4. **假设** 命令把 shell 的当前目录 `cd` 到工作目录、或用户显式加入的附加目录（配置 `additionalDirectories`、`/add-dir`、会话内批准）之内，**当** 命令结束时，**则** 后续命令必须在该目录执行，并在结果里回告 `Shell working directory changed to <dir>`。
+4. **假设** 命令把 shell 的当前目录 `cd` 到工作目录、或用户显式加入的附加目录（配置 `additionalDirectories`、`/add-dir`、会话内批准）之内，**当** 命令结束时，**则** 后续命令必须在该目录执行，并在结果里回告 `Shell working directory changed to <dir>`；PowerShell 会话同形——同一对文案、同一套安全区域判据，见 [powershell-tool.md](./powershell-tool.md)「工作目录追踪」。
 5. **假设** `cd` 的目标落在上述目录之外——**包括自动记忆目录这类仅供免权限提示的内部目录**，**当** 命令结束时，**则** 后续命令必须回到会话原工作目录，并在结果里回告 `Shell cwd was reset to <dir>`；内部目录只是权限白名单，不构成 shell 可停留的目录（与 Claude Code 对齐：否则后续相对路径与注入的技能命令都会跑在记忆目录里）。
 
 ---
@@ -130,7 +130,7 @@ order: 20
 **验收场景**：
 
 1. **假设** 运行在 Windows 系统上，**当** Git Bash 已安装时，**则** Bash 工具必须使用 Git Bash 而非 cmd.exe 执行命令。
-2. **假设** 运行在 Windows 系统上，**当** Git Bash 未安装时，**则** 系统必须返回清晰的错误消息，提示用户安装 Git for Windows。
+2. **假设** 运行在 Windows 系统上，**当** Git Bash 未安装时，**则** `Bash` 工具不得注册，命令改由 `PowerShell` 工具执行——无 Git Bash 时 PowerShell 工具默认开启（三态门控见 [powershell-tool.md](./powershell-tool.md)「三态 shell 门控」）；只有当 PowerShell 工具被显式关闭（`WAVE_USE_POWERSHELL_TOOL=0`）、或机器上找不到 `pwsh` / `powershell` 时，才由执行点返回「装什么」的清晰错误，任何情况下都不得静默降级到 cmd.exe。
 3. **假设** 运行在 Windows 系统上，**当** 执行包含 POSIX 语法的命令（如 `pwd -P >| file`）时，**则** 命令必须正常执行并返回正确结果。
 4. **假设** 运行在 Windows 系统上，**当** 命令执行后检测 CWD 时，**则** CWD 追踪机制必须正常工作——临时文件路径需转换为正斜杠格式以兼容 Git Bash，且临时文件在命令结束后必须被清理，不得残留在项目目录中。
 5. **假设** Git 安装在非标准路径但 `git` 在 PATH 中，**当** 调用 Bash 工具时，**则** 系统必须通过从 `git` 可执行文件位置反推（`<git 目录>/../../bin/bash.exe`）定位 Git Bash，而非仅依赖常见安装路径。
@@ -213,7 +213,7 @@ order: 20
 - **超时取值范围**：未指定时前台命令使用默认 120000ms（2 分钟），对外宣传的上限为 600000ms（10 分钟）。该上限必须在 schema 参数描述与函数说明两处引用同一常量，不得把默认值当作上限展示。运行时只校验类型与负值（非数字或负数报错），**不校验上限**——超过 600000 的值按给定值执行（与 Claude Code 对齐）。
 - **后台无超时**：当 `run_in_background` 明确为 `true` 时，任何超时（默认或显式）必须被取消——进程无限期运行直到完成或手动停止。
 - **Windows 路径转换**：在 Windows 上使用 Git Bash 时，临时 CWD 文件路径必须从 Windows 路径（`C:\Users\...`）转换为 POSIX 路径（`C:/Users/...`），否则 Bash 会将反斜杠视为转义字符导致路径损坏、临时文件泄漏到项目目录中；反向转换同样必要——`pwd -P` 输出的 POSIX 路径（`/c/Users/...`）必须转换回原生 Windows 路径后再校验与回调。
-- **Git Bash 未安装**：Windows 上未检测到 Git Bash 时，必须返回错误而非静默降级到 cmd.exe。
+- **Git Bash 未安装**：Windows 上未检测到 Git Bash 时，`Bash` 工具不注册，命令改由 `PowerShell` 工具执行（见 [powershell-tool.md](./powershell-tool.md)）——会话实际用哪个 shell 由三态判定给出（`powershell` / `bash` / `none`）。cmd.exe 不再作为任何一条路径的兜底：hook、技能/命令注入、`otelHeadersHelper` 的 cmd.exe 降级都已删除，只有在「没有 Git Bash 且 PowerShell 工具也关掉（或机器上没有 PowerShell）」时才以带安装指引的错误失败。
 - **搜索命令的退出码差异**：内嵌 `grep` 在「只命中被 `.gitignore` 忽略的文件」时退出码是 1（与「没匹配到」同一语义），系统 `grep` 在同一情形下是 0。依赖 `grep -q` 做门禁的脚本（例如部署前检查某个 key 是否泄漏到构建产物）在 Bash 工具里执行与在终端执行可能得到相反结论；工具不为此额外提示，输出与退出码原样透出。
 - **Windows 上 `grep` 影子的残留差异**：`ugrep` 的 Windows 构建无法用 `exec -a` 改写 `argv[0]`（Windows 创建进程时 `argv[0]` 恒为可执行文件路径），影子里的 `exec -a grep` 在 Git Bash 上是空操作，`ugrep` 以自身模式运行——BRE 口径由固定注入的 `-G` 保证，输出本就是 `file:line:内容` 形态，`-q`/`-l`/`-v`/`-i`/`-E`/`-c`/`-o`/`-A` 与退出码 0/1/2 实测一致。残留差异两处：路径分隔符可能混用（参数前缀保留正斜杠、子路径为反斜杠，如 `packages/agent-sdk/src\tools\bashTool.ts`），错误消息前缀是 `ugrep:` 而非 `grep:`（解析 stderr 字样的脚本会看到不同文本）。
 - **`find -regex` 的 dialect**：内嵌 `bfs` 固定带 `-regextype findutils-default`，把默认方言对齐成 GNU `find` 的 emacs flavour（`\|` 表示或），因此 `find . -regex '.*\.\(js\|ts\)'` 在两边给出同样的结果；调用方后续再传 `-regextype` 仍以它为准。这份能力来自编译期静态链接的 Oniguruma，随二进制一起分发，不要求用户机器上存在 `libonig`。残留差异只有 alternation 的匹配策略：Oniguruma 取 leftmost-first，POSIX 取 leftmost-longest，当某一分支是另一分支的前缀（`\(ts\|tsx\)`）时结果可能与系统 `find` 不同——把较长的分支写在前面即可，工具不为此改写调用方的模式。
@@ -225,7 +225,7 @@ order: 20
 
 - 代理具有在目标环境中执行 bash 命令所需的权限。
 - 在 Linux/macOS 上，系统必须显式解析 bash 或 zsh 作为执行 shell；`/bin/sh` 可能是 dash 或 POSIX 模式 bash，不保证兼容 bashism。
-- 在 Windows 上，用户已安装 Git for Windows（提供 Git Bash）。
+- 在 Windows 上，用户已安装 Git for Windows（提供 Git Bash）时 `Bash` 是默认执行器；未安装时由 `PowerShell` 工具接管（见 [powershell-tool.md](./powershell-tool.md)）。
 - 「命令环境」与「CLI 运行时解析」是两件事：宿主采纳登录 shell 环境只影响子进程的可执行文件与变量解析，不改变内置/托管 Node 运行时的选取——后者不读登录 shell（见 [stdio-transport.md](../ui/stdio-transport.md) 场景 10），两者不冲突。
 - 登录 shell 环境的探测每个宿主进程只做一次（失败按上限重试），不随会话、不随命令重复。
 - `PermissionManager` 将在任何命令实际执行之前处理安全检查。
