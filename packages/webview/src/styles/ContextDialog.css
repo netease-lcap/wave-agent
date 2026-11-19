@@ -152,14 +152,22 @@
   gap: 12px;
 }
 
+/* 收窄时谁让位（设计师 2026-11-18 点 `div.context-popover`「Context window」：
+   「这里是最大值，在AI对话区域宽度不足时，要跟着收窄，文本重叠时省略展示」）。
+   口径：一行里**名称**是可伸缩的那一段，尾部省略；数字列（tokens / 百分比）
+   不缩不让，否则会先丢数字、或者被压得和名称压在一起。下面几处可伸缩的列
+   都显式给了 `min-width: 0` —— flex / grid 子项的自动最小尺寸是内容宽，不给
+   0 的话 `text-overflow: ellipsis` 根本不会生效（子项被内容顶住不缩）。 */
 .context-model {
   font-family: var(--vscode-editor-font-family, monospace);
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .context-totals {
+  flex-shrink: 0;
   color: var(--vscode-descriptionForeground);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
@@ -197,7 +205,9 @@
 
 .context-legend-row {
   display: grid;
-  grid-template-columns: 10px 1fr auto auto;
+  /* 名称列 `minmax(0, 1fr)`（不是 `1fr`）：后者的最小尺寸是内容宽，窄宽下
+     名称会把 tokens / 百分比两列挤出浮层。 */
+  grid-template-columns: 10px minmax(0, 1fr) auto auto;
   align-items: center;
   gap: 8px;
   padding: 3px 0;
@@ -220,6 +230,7 @@
 .context-legend-percent {
   color: var(--vscode-descriptionForeground);
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .context-legend-percent {
@@ -261,11 +272,17 @@
 
 .context-detail-name {
   flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .context-detail-meta {
+  flex-shrink: 0;
   color: var(--vscode-descriptionForeground);
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .context-detail-rows {
@@ -283,6 +300,8 @@
 }
 
 .context-detail-row-name {
+  flex: 1 1 auto;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -290,6 +309,7 @@
 }
 
 .context-detail-row-tokens {
+  flex-shrink: 0;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }

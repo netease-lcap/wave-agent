@@ -15,7 +15,13 @@
  * 打开时取一次，本轮结束后（宿主回报空闲）再取一次，其余靠用户重开。
  */
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import type { RefObject } from "react";
 import type { ContextBreakdown, ContextCategory } from "wave-agent-sdk/types";
 import { useAnchoredMenuStyle } from "../utils/anchoredMenu";
@@ -30,7 +36,11 @@ import "../styles/ContextDialog.css";
 /** 明细分组最多显示的行数；超过就前 5 行 + 一行 `Other`（对齐 CC 的 `C = 6`）。 */
 const DETAIL_LIMIT = 6;
 
-/** 浮层宽度；比它窄的视口由 CSS `max-width` 收到 `100vw - 16px`（手机远控页）。 */
+/**
+ * 浮层宽度的**上限**。对话区（输入卡）比它窄时跟着收窄 —— 窄窗口、右侧面板
+ * 展开都会让对话区变窄；不收的话 460 会被视口留白夹取推到侧边栏上，浮层就跨出
+ * 对话区了。视口本身更窄时再由 CSS `max-width` 收到 `100vw - 16px`（手机远控页）。
+ */
 const POPOVER_WIDTH = 460;
 
 /**
@@ -180,13 +190,44 @@ const ContextDialog: React.FC<
   const toggleGroup = (id: string) =>
     setOpenGroups((prev) => ({ ...prev, [id]: !prev[id] }));
 
+  /**
+   * 对话区宽度：输入卡（composer）的横向跨度。锚点矩形本来就是从它身上取的
+   * （`getContextAnchorRect`：left/right = composer 的左右缘），所以打开那一帧
+   * 先用它，随后由 `ResizeObserver` 盯住输入卡 —— 右侧面板开合、窗口缩放不会
+   * 重新打开浮层，宽度得自己跟着变。
+   */
+  const [dialogAreaWidth, setDialogAreaWidth] = useState<number | null>(() => {
+    const span = anchorRect ? anchorRect.right - anchorRect.left : 0;
+    return span > 0 ? span : null;
+  });
+  useLayoutEffect(() => {
+    const composer = anchorRef?.current?.closest(".input-wrapper");
+    const sync = () => {
+      const width = composer?.getBoundingClientRect().width ?? 0;
+      // 量到 0（隐藏 / 无布局环境）就保留上一个值，别把浮层缩成一条线。
+      if (width > 0) setDialogAreaWidth(width);
+    };
+    // layout effect 在绘制前跑完，避免「先按 460 画一帧再收窄」的闪动。
+    sync();
+    if (!composer || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(sync);
+    observer.observe(composer);
+    return () => observer.disconnect();
+  }, [anchorRef]);
+
+  // 460 是上限；对话区更窄时取对话区宽度，左缘仍对齐它的左缘。
+  const popoverWidth = Math.max(
+    1,
+    Math.min(POPOVER_WIDTH, dialogAreaWidth ?? POPOVER_WIDTH),
+  );
+
   // 定位：锚点矩形缺失（环没渲染 / 首帧还没量到布局）时用右下角兜底。
   // 左对齐输入框左缘（`align: "left"`），与 `.rewind-popup` / `.btw-panel` /
   // `.model-picker-menu` 这几个输入框上方的浮层同一族 —— 右对齐会悬在中间。
   const popoverStyle = useAnchoredMenuStyle(
     dialogRef,
     anchorRect ?? fallbackAnchorRect(),
-    POPOVER_WIDTH,
+    popoverWidth,
     "left",
   );
 
