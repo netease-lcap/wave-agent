@@ -122,9 +122,13 @@ export function confirmationReducer(
                 newPermissionMode: "acceptEdits",
               };
             } else {
+              // The rule namespace is the tool that will read it back: a
+              // `Bash(…)` rule is invisible to the PowerShell evaluator, whose
+              // `rulePattern()` requires the prefix to name its own tool. Same
+              // shape as the webview's `handleAutoConfirm`.
               const rule = suggestedPrefix
-                ? `Bash(${suggestedPrefix})`
-                : `Bash(${toolInput?.command})`;
+                ? `${toolName}(${suggestedPrefix})`
+                : `${toolName}(${toolInput?.command})`;
               decision = { behavior: "allow", newPermissionRule: rule };
             }
           } else if (toolName === ENTER_PLAN_MODE_TOOL_NAME) {
