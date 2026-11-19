@@ -39,7 +39,7 @@ const finishedTask: BackgroundTaskSummary = {
   description: "explore the repo",
 };
 
-/** 同属 Bash 组、且比 `runningTask` 更早启动的已结束任务。 */
+/** 同属 Shell 组、且比 `runningTask` 更早启动的已结束任务。 */
 const alreadyFinishedShell: BackgroundTaskSummary = {
   id: "bg-3",
   type: "shell",
@@ -128,7 +128,7 @@ describe("Desktop background tasks pane", () => {
     });
     act(() => {
       // 一个更早结束的 shell：分组维度是类型，跑完不换组，只改变组内名次，
-      // 所以在 Bash 组里它排在更晚启动、仍在运行的那条之后。
+      // 所以在 Shell 组里它排在更晚启动、仍在运行的那条之后。
       sendCommand("updateBackgroundTasks", {
         tasks: [alreadyFinishedShell, finishedTask, runningTask],
       });
@@ -138,10 +138,12 @@ describe("Desktop background tasks pane", () => {
       await sendSlash("/tasks");
     });
 
+    // 组标题按能力取词（`utils/groupBackgroundTasks.ts`）：同一个 shell 组在
+    // Windows 上可能是 PowerShell 跑出来的，所以标题是 "Shell" 而不是 "Bash"。
     const groups = screen
-      .getAllByText(/^(Bash|子 Agent|工作流) \(\d+\)$/)
+      .getAllByText(/^(Shell|子 Agent|工作流) \(\d+\)$/)
       .map((el) => el.textContent);
-    expect(groups).toEqual(["Bash (2)", "子 Agent (1)"]);
+    expect(groups).toEqual(["Shell (2)", "子 Agent (1)"]);
     expect(
       screen
         .getAllByTestId(/^tasks-pane-row-bg-/)

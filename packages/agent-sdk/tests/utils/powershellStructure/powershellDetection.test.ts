@@ -45,7 +45,11 @@ function setPath(...directories: string[]): void {
 }
 
 beforeEach(() => {
-  vi.clearAllMocks();
+  // `resetAllMocks`, not `clearAllMocks`: one case installs a throwing
+  // `accessSync` and `clearAllMocks` leaves implementations in place, so that
+  // stub outlived its test and made every later lookup of the same path fail —
+  // visible only on the platform where that case runs (Linux).
+  vi.resetAllMocks();
   resetPowerShellCache();
   // The well-known location must not fire unless a test asks for it.
   delete process.env.SystemRoot;

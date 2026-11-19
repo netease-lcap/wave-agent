@@ -179,7 +179,7 @@ describe("Bash description follows the search tools it can reach", () => {
     return container;
   };
 
-  const bashDescription = (tools?: string[]) => {
+  const shellDescription = (toolName: string, tools?: string[]) => {
     const toolManager = new ToolManager({
       container: createContainer(),
       tools,
@@ -187,8 +187,11 @@ describe("Bash description follows the search tools it can reach", () => {
     toolManager.initializeBuiltInTools();
     return toolManager
       .getToolsConfig()
-      .find((config) => config.function.name === "Bash")?.function.description;
+      .find((config) => config.function.name === toolName)?.function
+      .description;
   };
+
+  const bashDescription = (tools?: string[]) => shellDescription("Bash", tools);
 
   it("points at find/grep in Bash when Grep and Glob are absent", () => {
     const description = bashDescription()!;
@@ -198,13 +201,24 @@ describe("Bash description follows the search tools it can reach", () => {
     expect(description).not.toContain("Use Glob (NOT find or ls)");
   });
 
-  it("flips to Glob/Grep guidance on a session with no bash", () => {
-    vi.mocked(isBashAvailable).mockReturnValue(false);
+  it("flips the shell that replaces Bash to Glob/Grep guidance", () => {
+    // A session with no bash has no Bash tool, so that description cannot carry
+    // the flip: the shell tool is PowerShell (a Windows shape — on POSIX a
+    // missing bash leaves no shell tool at all), and its description is what has
+    // to name the search tools that came back.
+    const originalPlatform = process.platform;
+    Object.defineProperty(process, "platform", { value: "win32" });
+    try {
+      vi.mocked(isBashAvailable).mockReturnValue(false);
 
-    const description = bashDescription()!;
+      const description = shellDescription("PowerShell")!;
 
-    expect(description).toContain("Use Glob (NOT find or ls)");
-    expect(description).not.toContain("`grep -rn` in Bash");
+      expect(description).toContain("Use Glob (NOT `Get-ChildItem -Recurse`)");
+      expect(description).toContain("Use Grep (NOT `Select-String`)");
+      expect(description).not.toContain("no Glob tool");
+    } finally {
+      Object.defineProperty(process, "platform", { value: originalPlatform });
+    }
   });
 
   it("points back at Glob/Grep once they are registered", () => {
