@@ -17,6 +17,7 @@ import { wrapInSystemReminder } from "./prompts/planModeReminders.js";
 import type {
   ModBandRenderResult,
   ModPanelEventPayload,
+  ModPanelEventResult,
   ModPromptEditEvent,
   ModPromptOrigin,
   ModPromptSuggestEvent,
@@ -316,11 +317,14 @@ export class Agent {
    *
    * Public because the stdio bridge is a different layer: it receives the
    * `modPanelEvent` RPC and hands the payload straight here.
+   *
+   * 返回值只有 `ui.focus` 用得上：插件接没接这一下方向键、接到哪个控件
+   * （spec「方向键先问 mod」）。
    */
   public async handleModPanelEvent(
     payload: ModPanelEventPayload,
-  ): Promise<void> {
-    await this.modManager.handlePanelEvent(payload);
+  ): Promise<Partial<ModPanelEventResult>> {
+    return this.modManager.handlePanelEvent(payload);
   }
 
   /** Panel snapshots for panels opened before the host attached (resync). */

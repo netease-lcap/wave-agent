@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { Box, useWindowSize } from "ink";
+import { Box } from "ink";
+import { useTerminalSize } from "../contexts/useTerminalSize.js";
 import { authService } from "wave-agent-sdk";
 import { MessageList } from "./MessageList.js";
 import { InputBox } from "./InputBox.js";
@@ -44,7 +45,7 @@ export const ChatInterface: React.FC = () => {
 
   const displayMessages = messages;
 
-  const { rows } = useWindowSize();
+  const { rows } = useTerminalSize();
 
   // Reserve terminal rows for the pending tool block in the message list and
   // the ConfirmationSelector, so the confirmation details stay within Ink's

@@ -1,5 +1,6 @@
 import React, { useState } from "react";
-import { Box, Text, useInput, useWindowSize } from "ink";
+import { Box, Text, useInput } from "ink";
+import { useTerminalSize } from "../contexts/useTerminalSize.js";
 import { useLineScroll } from "../hooks/useLineScroll.js";
 import { ScrolledContent } from "./ScrolledContent.js";
 
@@ -35,7 +36,7 @@ export const PlanView: React.FC<PlanViewProps> = ({
   maxHeight,
   onCancel,
 }) => {
-  const { rows } = useWindowSize();
+  const { rows } = useTerminalSize();
   const overlayMaxHeight =
     maxHeight ?? Math.max(Math.round(rows * PLAN_OVERLAY_HEIGHT_RATIO), 10);
 

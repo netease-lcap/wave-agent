@@ -5,9 +5,9 @@ import {
   useBoxMetrics,
   useInput,
   usePaste,
-  useWindowSize,
   type DOMElement,
 } from "ink";
+import { useTerminalSize } from "../contexts/useTerminalSize.js";
 import type { Key } from "ink";
 import type {
   PermissionDecision,
@@ -255,7 +255,7 @@ export const ConfirmationSelector: React.FC<ConfirmationSelectorProps> = ({
   // the option list cannot shift the preview, and the preview gets whatever
   // width is left. Rows for the header, options, notes and hint are reserved
   // before handing the rest to the preview content.
-  const { rows, columns } = useWindowSize();
+  const { rows, columns } = useTerminalSize();
   const previewQuestion =
     !!currentQuestion && isPreviewQuestion(currentQuestion);
   const leftWidth = Math.min(

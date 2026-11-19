@@ -8,7 +8,7 @@ import {
 } from "../../src/components/TaskList.js";
 import { useTasks } from "../../src/hooks/useTasks.js";
 import { ChatContextType, useChat } from "../../src/contexts/useChat.js";
-import { useWindowSize } from "ink";
+import { useTerminalSize } from "../../src/contexts/useTerminalSize.js";
 import type { Task } from "wave-agent-sdk";
 
 vi.mock("../../src/hooks/useTasks.js", () => ({
@@ -19,11 +19,13 @@ vi.mock("../../src/contexts/useChat.js", () => ({
   useChat: vi.fn(),
 }));
 
-vi.mock("ink", async () => {
-  const actual = await vi.importActual("ink");
+vi.mock("../../src/contexts/useTerminalSize.js", async () => {
+  const actual = await vi.importActual<
+    typeof import("../../src/contexts/useTerminalSize.js")
+  >("../../src/contexts/useTerminalSize.js");
   return {
     ...actual,
-    useWindowSize: vi.fn(() => ({ columns: 80, rows: 24 })),
+    useTerminalSize: vi.fn(() => ({ columns: 80, rows: 24 })),
   };
 });
 
@@ -42,6 +44,7 @@ function makeTask(overrides: Partial<Task> & { id: string }): Task {
 describe("TaskList", () => {
   beforeEach(() => {
     vi.mocked(useTasks).mockReturnValue([]);
+    vi.mocked(useTerminalSize).mockReturnValue({ columns: 80, rows: 24 });
     vi.mocked(useChat).mockReturnValue({
       isTaskListVisible: true,
     } as unknown as ChatContextType);
@@ -186,7 +189,7 @@ describe("TaskList", () => {
   });
 
   it("should limit displayed tasks based on terminal height", () => {
-    vi.mocked(useWindowSize).mockReturnValue({ columns: 80, rows: 16 });
+    vi.mocked(useTerminalSize).mockReturnValue({ columns: 80, rows: 16 });
 
     const mockTasks: Task[] = Array.from({ length: 8 }, (_, i) =>
       makeTask({
@@ -209,7 +212,7 @@ describe("TaskList", () => {
   });
 
   it("should show nothing when terminal rows <= 10", () => {
-    vi.mocked(useWindowSize).mockReturnValue({ columns: 80, rows: 10 });
+    vi.mocked(useTerminalSize).mockReturnValue({ columns: 80, rows: 10 });
 
     const mockTasks: Task[] = [
       makeTask({ id: "1", subject: "Task 1", status: "pending" }),
@@ -227,7 +230,7 @@ describe("TaskList", () => {
 
   it("should show summary line for hidden tasks", () => {
     // Use rows=16 → displayLimit=3 to force truncation with mixed statuses
-    vi.mocked(useWindowSize).mockReturnValue({ columns: 80, rows: 16 });
+    vi.mocked(useTerminalSize).mockReturnValue({ columns: 80, rows: 16 });
 
     const mockTasks: Task[] = [
       makeTask({ id: "1", subject: "Working", status: "in_progress" }),

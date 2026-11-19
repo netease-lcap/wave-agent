@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
-import { Box, Text, useInput, useWindowSize } from "ink";
+import { Box, Text, useInput } from "ink";
+import { useTerminalSize } from "../contexts/useTerminalSize.js";
 import {
   EDIT_TOOL_NAME,
   WRITE_TOOL_NAME,
@@ -105,7 +106,7 @@ export const ConfirmationDetails: React.FC<ConfirmationDetailsProps> = ({
 
   // Terminal width is needed to render the plan's Markdown (table column widths
   // are computed from it), matching <Markdown>'s own default.
-  const { columns: terminalColumns } = useWindowSize();
+  const { columns: terminalColumns } = useTerminalSize();
   const columns = terminalColumns || 80;
 
   const headerRows = 2 + (warning ? 1 : 0);

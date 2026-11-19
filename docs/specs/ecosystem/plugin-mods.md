@@ -126,7 +126,7 @@ mod 跑在 `node:vm` 的独立 context 里（每个 mod 一个）：没有 `proc
 
 **`Text.weight`** 是枚举 `'regular' | 'medium' | 'semibold' | 'bold'`（不是数字），**`size`** 是语义档 `'caption' | 'footnote' | 'body' | 'heading' | 'title'`（不是字号）。两者缺省都继承外层 `Text`。`bold` 是 `weight` 的旧名（等价 `'semibold'`），显式 `weight` 压过它 —— 老 mod 写 `bold` 仍照常加粗。**`inverse`** 把前景与背景互换（在 `backgroundColor` 之上生效），**`strikethrough`** 画删除线。
 
-**`Button.plain`** 是布尔开关（`true` 才画）：画成一串「字形 + label」的扁平按钮，不带边框与底色（一排 `➤` / `✕` 图标键就用它）；`plain` 为真时 `variant` 不再起作用。**`Button.dimColor`** 让 label 静止时调暗、指针进来时恢复全强度。**`Button.role`** 只有一个值 `"dismiss"`，含义是「这个按钮关闭它所在的站点」——**纯绘制提示、不改行为**（关了之后发生什么由 mod 自己的 `onPress` 决定）：桌面端把它画成那颗关闭控件（与面板页签的 × 同一颗），`label` 不再作为文本画出、改当它的无障碍名（`aria-label`），`plain`/`variant` 随之失效；写成别的值当场点名（`Button.role 只允许 "dismiss"`）。**`autoFocus`**（`Button` / `Input` / `Select`）只认布尔，`true` 才抢焦点（Claude Code 那边 `false` 会被拒；我们收布尔是因为 `autoFocus={cond}` 是自然写法），一个站点里多个时只有第一个生效。
+**`Button.plain`** 是布尔开关（`true` 才画）：画成一串「字形 + label」的扁平按钮，不带边框与底色（一排 `➤` / `✕` 图标键就用它）；`plain` 为真时 `variant` 不再起作用。**`Button.dimColor`** 让 label 静止时调暗、指针进来时恢复全强度。**`Button.role`** 只有一个值 `"dismiss"`，含义是「这个按钮关闭它所在的站点」——**纯绘制提示、不改行为**（关了之后发生什么由 mod 自己的 `onPress` 决定）：桌面端把它画成那颗关闭控件（与面板页签的 × 同一颗），`label` 不再作为文本画出、改当它的无障碍名（`aria-label`），`plain`/`variant` 随之失效；写成别的值当场点名（`Button.role 只允许 "dismiss"`）。**`autoFocus`**（`Button` / `Input` / `Select`）只认布尔，`true` 才抢焦点（Claude Code 那边 `false` 会被拒；我们收布尔是因为 `autoFocus={cond}` 是自然写法），一个站点里多个时只有第一个生效。**它是这一站点的初始焦点**：面板刚打开、还没有人移过焦点时，焦点环就落在标了它的那个控件上（桌面端走 DOM 的 `autoFocus`，终端在第一次拿到树时按同一规则选种子），标了它是为了「别把焦点放在第一个按钮上」这类排布。
 
 **`Input.rows`** 是 ≥1 的整数（缺省 1）：从 2 起变成多行输入（等价 `<textarea rows>`），Enter 仍提交、换行按输入框的默认打法。`Code.wrap` 只有 `'wrap' | 'truncate-end'` 两个值（`Text.wrap` 的其它拼法在这里被拒 —— 有行号 gutter 时它们没有意义）。
 
@@ -186,8 +186,8 @@ mod 跑在 `node:vm` 的独立 context 里（每个 mod 一个）：没有 `proc
 
 - **一次显示一个 pane**。同时登记了多个时，pane 区顶部多一行 tab：`1: 待办   2: 检查`，数字是该 pane 在当前列表里的序号（超过 9 个只列前 9 个）。只有一个 pane 时不画 tab 行。
 - **默认不抢焦点**：面板出现后键盘还在输入框里，用户可以接着打字。`$.ui.open({ focus: true })`（或用户敲的 `/命令` 带出来的面板）才把焦点直接送进面板。
-- **焦点在面板时**：`↑`/`↓` 滚正文（`Home`/`End` 到顶/到底），`PageUp`/`PageDown` 翻页，`Tab`/`Shift+Tab` 在控件之间移动，`Enter` 触发按钮或提交 `Input`，`hotkey` 字母直接触发对应按钮，数字键 `1`–`9` 切到对应面板；焦点在 `Input` 里时所有可打印键归输入框（与桌面端同一条纪律）。这条与 Claude Code 的 `Pane` 键位表逐字对齐：它那边 `up`/`down`/`pageup`/`pagedown`/`home`/`end` 分别绑 `pane:scrollUp`/`scrollDown`/`pageUp`/`pageDown`/`top`/`bottom`，焦点移动是 `tab`/`shift+tab`（`abovePrompt:next`/`previous`）。**滚动归这一端、不归 mod**：mod 拿不到原始方向键（Claude Code 也拿不到），要跟着滚动走的信息从 `ui.render` 的 `e.props`（可见行数）里读；需要「上一条/下一条」这类动作时用 `Button` 的 `hotkey` 或 `Select`，别指望方向键。
-- **退出用 `Esc`**：焦点在面板时按 `Esc` **收起这个面板并把焦点还给输入框**（只是这一端不再画它，mod 不会收到 `ui.close` —— 与桌面端关掉 tab 同一纪律；mod 下一次 `$.ui.open` / `invalidate` 会重新出现）。焦点在输入框时 `Esc` 完全归输入框（清空提示那套语义照旧），不碰面板。`Ctrl+C` 等宿主键不受影响。
+- **焦点在面板时**：`↑`/`↓` **先问一遍 mod**（`ui.focus`，见「控件的交互事件」）—— 插件返回落点就把焦点换到那个控件（列表型面板靠这条做选中），不返回就归这一端滚正文（`PageUp`/`PageDown` 翻页，`Home`/`End` 到顶/到底）。滚之前还会**再问一句 `ui.scroll`**（见「`ui.scroll`：mod 自己滚」）：想自己分页的插件接住这一下就由它挪窗口，不接才落回这一端的偏移。`Tab`/`Shift+Tab` 在任何情况下都只管移焦点，`Enter` 触发按钮或提交 `Input`，`hotkey` 字母直接触发对应按钮，数字键 `1`–`9` 切到对应面板；焦点在 `Input` 里时所有可打印键归输入框（与桌面端同一条纪律）。这条与 Claude Code 的 **inline（`/tui classic`）分支**一致：它那边方向键先变成 `ui.focus` 问插件，插件接住就换选中项，不接就落回 surface 的默认滚动；它的 fullscreen（右侧栏）分支是另一套（`↑`/`↓` 恒滚正文、`Tab` 移焦点），我们不跟。**mod 仍然拿不到原始方向键**：它收到的只是「候选落点」与「这一下要滚几行」，要跟着滚动走的信息从 `ui.render` 的 `e.props`（可见行数）里读。
+- **退出用 `Esc`**：焦点在面板时按 `Esc` **先问一遍 mod**（`ui.close`，见「`ui.close`：mod 能拦下关闭」）—— 插件返回 `{ deny }` 就留在原地（详情页返回列表这类用法），否则收起这个面板并把焦点还给输入框（只是这一端不再画它；mod 下一次 `$.ui.open` / `invalidate` 会重新出现）。焦点在输入框时 `Esc` 完全归输入框（清空提示那套语义照旧），不碰面板。`Ctrl+C` 等宿主键不受影响。
 - **高度**：面板正文的高度取**插件申报值与可用空间里较小的那个**。申报走 `$.ui.open({ rows })`（见「面板放得下吗」），省略时按 12 行；带每条封顶 6 行。两者与输入区合计不得超过终端 `rows` 的 2/3：先压带（每条最低 3 行）、再压面板（最低 6 行），仍放不下时面板内部滚动，消息区不被挤出去。所以「一张差异面板要占大半屏」只需 `rows` 申报，不用改这一端的策略 —— 上限仍是 2/3，终端太矮时它照样缩。
 - **不做**：手动把焦点移进面板的独立键（裸 `Tab` 已是补全/选择确认的键，不抢 —— 面板拿到键盘之后 `Tab` 才归面板）、焦点在输入框时用 `Esc` 收盘；侧栏两栏与拖动宽度、按列数决定的出现阈值、`$.ui.open` 的 `columns` 字段、`Raster`/`Image`、重绘对话流里的消息与工具行。
 
@@ -224,18 +224,20 @@ mod 跑在 `node:vm` 的独立 context 里（每个 mod 一个）：没有 `proc
 | `command.describe`                    | 命令列表要画时，每个命令（内置、插件、`$.command.register` 注册的）问一次，宿主等答案再画                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | `{ description, argumentHint, isHidden }`（见「给工具、技能、命令写描述」）                                                                                                                                                                                        |
 | `skill.prompt`                        | 一个技能的正文被展开给模型时（`/名字` 调用、或模型自己调）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | `{ text }`：换掉技能正文                                                                                                                                                                                                                                           |
 | `session.end`                         | 会话销毁（关掉这条会话、进程退出）**之前**；返回后该会话的 mod 实例、定时器与外部进程全部撤销，其面板**不再**逐条发 `ui.close`                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | 无（返回值忽略）                                                                                                                                                                                                                                                   |
-| `ui.close`                            | 一个**由 mod 打开**的面板被关掉、且 mod 实例还活着：用户点 ×、mod 调 `$.ui.close`、`/reload-plugins`。`e.id` 是 pane id                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | 无（返回值忽略）                                                                                                                                                                                                                                                   |
+| `ui.close`                            | 一个**由 mod 打开**的面板被关掉、且 mod 实例还活着：用户按 `Esc` / 点 ×、mod 调 `$.ui.close`、`/reload-plugins`。`e.id` 是 pane id                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | `{ deny }`：拦下这次关闭（`deny` 是字符串时当理由记进调试日志，`true` 也认）。**只有「用户按下去的那一下」问这个**：终端 `Esc` 与端点报上来的 × 关闭会等回执；`$.ui.close`、`/reload-plugins`、会话销毁不问，直接关（见「`ui.close`：mod 能拦下关闭」）            |
 | `ui.press` / `ui.input` / `ui.select` | 用户用了 mod 画的一个控件（`Button` 点下去、`Input` 提交、`Select` 选中），**在控件自己的回调之前**触发；事件与 Claude Code 的 `UiPressArgument` / `UiInputArgument` / `UiSelectArgument` 同形：`plugin`（谁画的）、`element`（控件的 `key`）、`component`（`Pane` 或 `AbovePrompt`）、`requestId`（哪个实例，也就是 pane id）、`surface`，`ui.input` 另有 `kind`（我们只有提交一条通道，恒为 `"submit"`）与 `value`，`ui.select` 另有 `value`，见「控件的交互事件」                                                                                                                                        | `{ element?, value? }`：改写这次交互派给哪个控件、带什么值                                                                                                                                                                                                         |
+| `ui.focus`                            | 焦点在面板里、用户按了 `↑` / `↓`：surface 把方向键算出的**候选落点**（下一个可聚焦控件的 `key`）先问一遍 mod，`e` 与 `ui.press` 同形（`element` 是候选落点）。改 `element` 往下交就是「接住这次方向键、把焦点放到这儿」，返回 `{}` 就是「接住但不动」，原样交下去就是「我不管」，由 surface 滚正文。`plugin` 同样是钉住的 matcher 键                                                                                                                                                                                                                                                                        | `{ element? }`：给了落点就是「接住并换焦点」，返回 `{}` 是「接住但不动」，原样 `next(e)` 或不返回才是「我不管」。宿主归一成 `{ handled, element? }` 交给 surface                                                                                                   |
+| `ui.scroll`                           | 焦点在面板里、用户按了滚动键（`↑` / `↓` / `PageUp` / `PageDown` / `Home` / `End`）：surface 把这一下算出来的位移**先问一遍 mod**（`e.by` / `e.offset` / `e.contentRows` / `e.bodyRows`，见「`ui.scroll`：mod 自己滚」）。`plugin` 同样是钉住的 matcher 键，`{ requestId }` 可以把这条钉到某一块面板上                                                                                                                                                                                                                                                                                                       | `{}`：接住这一下（mod 自己挪窗口）。原样 `next(e)` 或不返回 = 我不管，surface 按自己的滚动模型走。宿主归一成 `{ handled }` 交给 surface                                                                                                                            |
 
 `ui.render` 的事件要交给 `$.ui.resolve(e)` 换元素表（见下）；表外的元素名会被 `validateModTree` 拦下。
 
 `ui.render` 的 `e.props` 是**站点给的版面事实**，字段按站点分，与 Claude Code 的 render sites 表逐项对齐：`Pane` 是 `title`、`isFocused`（键盘是不是在这块面板的正文里，与 `$.ui.panes()` 的同一个字段同源，见「面板的显示与焦点」）、`bodyColumns`（正文宽度，单位字符）、`placement`、`scroll`（`{ offset, bodyRows }`）、`view`；`AbovePrompt` / `AbovePromptList` 是 `hasSurvey` / `isCollapsed` / `isWorking`（都是 `false`，协议占位）、`maxRows`（这条带一次最多显示多少行）、`bodyColumns`、`scroll`、`view`。mod 按 `bodyColumns` 断行、按 `scroll.bodyRows` 决定要不要自己滚，比猜宽度稳。**不跨站点多给字段**：给 `Pane` 塞 `maxRows` 会让照 CC 写的 mod 在我们这里能跑、到 CC 上读到 `undefined`。
 
-**桌面端与 IDE 端的数字由 surface 实测上报**：`e.viewport` 是**这一端有多大** —— `{ columns, rows, isFullscreen }`，`columns` / `rows` 是画布的字符宽高（按它所画字体的字宽 / 行高折算），`isFullscreen` 是「这一端有没有分屏」。三个字段与 Claude Code 同形，缺了就说明这个 surface 还没量到（不填 `false` 冒充测量结果）。surface 在请求树时把量到的字符宽高带上来（`modPanelRender` / `modBandRender` 的 `columns` / `rows` / `bodyColumns`），引擎把它原样填进 `e.viewport` 与 `e.props.bodyColumns`；`bodyColumns` 量的是**这块面板自己的宽**（dock 时右侧那一列、inline 与带时输入区那一列），窄到一列按钮摆不下时 mod 自己能换排布。surface 没报的字段按缺省值处理（正文 100 字符、面板 24 行、带 8 行），所以「宿主还没量到」不会让面板变空；`placement: "inline"` 时 `scroll.bodyRows` 是那个 **12 行**上限（见「在 IDE 插件里画」），dock 时仍是面板的行数上限。
+**桌面端与 IDE 端的数字由 surface 实测上报**：`e.viewport` 是**这一端有多大** —— `{ columns, rows, isFullscreen }`，`columns` / `rows` 是画布的字符宽高（按它所画字体的字宽 / 行高折算），`isFullscreen` 是「这一端有没有分屏」。三个字段与 Claude Code 同形，缺了就说明这个 surface 还没量到（不填 `false` 冒充测量结果）。surface 在请求树时把量到的字符宽高带上来（`modPanelRender` / `modBandRender` 的 `columns` / `rows` / `bodyColumns`），引擎把它原样填进 `e.viewport` 与 `e.props.bodyColumns`；`bodyColumns` 量的是**这块面板自己的宽**（dock 时右侧那一列、inline 与带时输入区那一列），窄到一列按钮摆不下时 mod 自己能换排布。surface 没报的字段按缺省值处理（正文 100 字符、面板 24 行、带 8 行），所以「宿主还没量到」不会让面板变空；`placement: "inline"` 时 `scroll.bodyRows` 是那个 **12 行**上限（见「在 IDE 插件里画」），dock 时仍是面板的行数上限。面板正文的行数另有一条通道：surface 报 `bodyRows`（`modPanelRender` 的第四个版面事实）时它就是 `scroll.bodyRows`，只有没报时才按上面那两条缺省值算 —— 它与 `e.viewport.rows` 不是一个数（后者是整块画布，前者只算面板正文）。
 
-**终端这边量得到，就直接报真实值**：Ink 侧拿得到终端行列数，所以 `bodyColumns` 是这块区域的真实宽度（减掉边框）、`maxRows` 与 `scroll.bodyRows` 是终端这块的实际可用行数（见「终端形态」的高度上限）。插件在终端里按这两个数分页是准的，在桌面端与 IDE 端仍要按「可能比实际矮」来写。
+**终端这边量得到，就直接报真实值**：Ink 侧拿得到终端行列数，所以 `bodyColumns` 是这块区域的真实宽度（减掉边框）、`bodyRows` 与 `scroll.bodyRows` 是终端这块的实际可用行数（见「终端形态」的高度上限）—— 插件的窗口按它算，屏幕多高就画几行。插件在终端里按这两个数分页是准的，在桌面端与 IDE 端仍要按「可能比实际矮」来写。
 
-**面板被关掉时有 `ui.close`**（`e.id` 是被关的那个 pane）。Claude Code 同样有这个名字 —— 它的首方插件在自己的 scan 声明里把 `ui.close` 列进可监听钩子，与 `ui.render` 并列。发完之后宿主内部清理（撤销该 pane 的回调表与登记，之后的请求不再返回树）；`ui.close` 只是告知，**不能**拦下关闭。会话销毁时不逐条发它，只发一次 `session.end`（实例马上整体丢弃，逐条通知没有接收方）。mod 想确认面板还在不在，仍可用 `$.ui.panes()` 查。
+**面板被关掉时有 `ui.close`**（`e.id` 是被关的那个 pane）。Claude Code 同样有这个名字 —— 它的首方插件在自己的 scan 声明里把 `ui.close` 列进可监听钩子，与 `ui.render` 并列。发完之后宿主内部清理（撤销该 pane 的回调表与登记，之后的请求不再返回树）。拦截只在**用户按下去的那一下**有意义（见下一节）。会话销毁时不逐条发它，只发一次 `session.end`（实例马上整体丢弃，逐条通知没有接收方）。mod 想确认面板还在不在，仍可用 `$.ui.panes()` 查。
 
 用户交互**不走** `on`，而是写在元素自己的回调 prop 上（回调用 `key` 与元素绑定，不进树）：
 
@@ -284,9 +286,41 @@ mod 跑在 `node:vm` 的独立 context 里（每个 mod 一个）：没有 `proc
 - **`value` 不合法就退回原值**：`ui.input` / `ui.select` 的 `value` 必须是字符串，别的形状（数字、对象）丢掉这一项并 warn，控件回调仍拿到用户原本的值。
 - **三端一致**：桌面端、webview 与终端都发（终端里的输入/选择走同一条 `modPanelEvent`），没有 `prompt.edit` 那种「终端不发」的差异 —— 这里观察的是**已经发生的**一次控件操作，不与用户正在打字冲突。
 
+#### `ui.focus`：方向键先问 mod
+
+`ui.focus` 是同一族里的第四个（Claude Code 同名）：**终端里焦点在面板、用户按了 `↑` / `↓` 时**，surface 不自己决定这一下是「换选中项」还是「滚正文」，而是把方向键算出来的**候选落点**（下一个可聚焦控件的 `key`）发给插件问一句。
+
+- **`e` 与 `ui.press` 同形**：`{ plugin, component, requestId, surface, element }`，`element` 是候选落点而不是「用户按下的控件」。`plugin` 是钉住的 matcher 键，语义与上面三条一致。
+- **接住有三档**（判据与 Claude Code 一样：看这条链最后流下去的是什么）：`return next({ ...e, element })` 或直接 `return { element }` = 接住并把焦点放到这个 `key` 上；`return {}` = 接住但不动（不换焦点、也不滚正文）；原样 `return next(e)`（或什么都不返回）= 我不管。
+- **不接 = 滚正文一行**：详情/正文型面板（diff 面板的详情视图）什么都不返回即可，surface 落到默认行为。
+- **只在终端发**：桌面端与 IDE 端用指针，没有方向键焦点模型；`surface` 字段仍在（值为 `terminal`），别按「三端都会发」写。
+- **不改元素树**：接住时插件自己决定要不要 `$.ui.invalidate` 把 `❯` 这类选中标记重画；返回的 `element` 只对这一次方向键生效。
+- **surface 拿到的回执是 `{ handled, element? }`**：`handled` 为真就是「这一下方向键归 mod」（`element` 缺省表示原地不动、也不滚正文），为假就是没人接、surface 走默认滚动。给它 `element` 但那个 `key` 这一帧还不在树里时（插件顺手让窗口挪了一格、落点是下一帧才进来的行）surface 记下它，等下一帧的树到了再落上去。
+
+#### `ui.scroll`：mod 自己滚
+
+`ui.scroll` 是同一族里的第五个（Claude Code 同名）：**终端里焦点在面板、用户按下滚动键时**（`↑` / `↓` 走完 `ui.focus` 没人接之后，以及 `PageUp` / `PageDown` / `Home` / `End`），surface 把这一下算出来的位移先问一遍 mod，由它决定「这一下归谁滚」。
+
+- **为什么要有它**：宿主自带的滚动层只能滚**整棵子树**，钉在底部的行（详情视图的键位提示）会跟着一起滚走。想「正文滚、提示钉住」只能由 mod 自己分页 —— 它的树永远只画一屏，宿主那层对它来说是空的。
+- **`e` 是一次滚动的实数**：`{ plugin, component, requestId, surface, origin, by, offset, contentRows, bodyRows }`。`by` 是这一下要挪几行（正数往下），`offset` 是 surface 按自己的模型算出来的目标位置，`contentRows` / `bodyRows` 是它数到的内容行数与可见行数。`Home` / `End` 用 `by: ±Number.MAX_SAFE_INTEGER` 表达「到顶/到底」（Claude Code 的插件也是这么认的），mod 自己按它那份内容夹住。
+- **接住只有一档**：返回 `{}` 就是接住（这一下归自己，记得 `$.ui.invalidate` 重画）；原样 `next(e)` 或什么都不返回就是我不管，surface 落到自己的偏移上（`↑`/`↓` 一行、翻页一屏、`Home`/`End` 到两头）。
+- **只在终端发**：桌面端与 IDE 端由浏览器自己滚，没有这条事件；`surface` 字段仍在（值为 `terminal`），别按「三端都会发」写。
+- **要把窗口算准就用 `e.props.scroll.bodyRows`**：那是这块面板正文这一帧真能画多少行（见「`ui.render` 的 `e.props`」）。用它算「一屏几行」，再把树裁到那一屏，提示行就钉在面板底边不动了。
+- **`{ requestId }` 可以钉住面板**：一条 mod 开两块面板时，不写 matcher 只收到自己那几块的滚动；写了别人的面板名才会收到别人的。
+
+#### `ui.close`：mod 能拦下关闭
+
+Claude Code 的 `ui.close` 有返回值：返回 `{ deny }` 就不关。我们跟同一条：**终端里焦点在面板时按 `Esc`**，surface 先把这次关闭发给插件、等回执再决定收不收。
+
+- **`{ deny }` 就是拦下**：`deny` 是字符串时当理由（记进调试日志，不弹给用户），`true` 也认；返回 `{}` / `undefined` / 原样 `next(e)` 都是「不拦」。形状不对（`deny: 42`）按不拦处理并记一条 warn —— 一个坏掉的 mod 不该把面板永久钉在屏幕上。
+- **拦下之后 surface 什么都不做**：面板还在、焦点仍在面板里，`isShown` / `isFocused` 都不变。
+- **典型用法是「返回上一级」**：详情视图里按 `Esc` 回列表（`return { deny: "back to the file list" }`），列表里再按 `Esc` 才真的收起来 —— 内置差异插件就是这么做的。
+- **只有「等得起回执的那一下」问**：终端的 `Esc` 会等；`$.ui.close`、`/reload-plugins`、会话销毁不问（那是 mod 或宿主的决定，问了也没人能改主意），`ui.close` 在那几条路上仍是纯通知。
+- **桌面端与 IDE 端不等回执**：那边的 tab × 关闭是乐观的（webview 先删 tab 再发 `modPanelEvent`），在这里拦下只会让下一次推送把 tab 又画回来。所以 `deny` 在那一端**没有效果**，关掉照旧、`ui.close` 只是通知。要让两端一致，得先让那两个端点改成「等回执再收 tab」。
+
 ### 轮次内外的事件（只读）
 
-`prompt.submit` / `turn.start` / `turn.step` / `session.compact` / `session.end` / `ui.close` 六个事件回答「一轮对话里正在发生什么」「会话什么时候没了」。有返回通道的只有两个：`prompt.submit` 往上下文里塞文本、`turn.step` 改写这一次请求用的模型或推理强度；其余返回值一律忽略。
+`prompt.submit` / `turn.start` / `turn.step` / `session.compact` / `session.end` / `ui.close` 六个事件回答「一轮对话里正在发生什么」「会话什么时候没了」。有返回通道的只有两个：`prompt.submit` 往上下文里塞文本、`turn.step` 改写这一次请求用的模型或推理强度；`ui.close` 另有一条「拦下这次关闭」的通道（见「`ui.close`：mod 能拦下关闭」），其余返回值一律忽略。
 
 - **`prompt.submit` 只在用户敲的那条 prompt 上触发**：mod 自己经 `$.prompt.submit` 投进来的**不再触发**它 —— 否则 handler 里再 submit 一次就是无限环。触发点在「用户消息已进上下文、本轮第一个模型请求还没发出」之间，与 Claude Code 同一个位置（它的 `prompt.submit` 钩子在 `next(e)` 里跑完 `classic.UserPromptSubmit` 之后、请求发出之前）。
 - **返回值只认 `context`**：`{ context?: string[] }`，字符串数组，合起来受限额（见「限额」）。宿主把它们当作**本轮**的附加上下文，在请求边界并入（与后台任务通知同一个注入点，见「轮次内注入」），模型下一个请求就能看到；不写进用户消息原文。
@@ -523,7 +557,7 @@ Claude Code 把**每个** settings hook 事件都镜像成 `classic.<Event>`，�
 - **只对写它的那一帧生效，之后按最后申报值**。内容变高变矮时再 `$.ui.open` 一次更新（Claude Code 的差异插件就是这么做的：算出来的行数与上次不同才重开），不是每帧都传。
 - **必须是 ≥1 的整数**。写 `0`、负数、小数、字符串都当场点名 —— 与 `Input.rows` 同一条校验纪律（静默忽略会让作者以为申报生效了、面板却还是 12 行）。
 
-`closeOnEscape`（CC 的同一个入参）我们**不收也不校验**：这一端的 `Esc` 恒收起面板（见「终端形态」），没有「关不掉」的档，所以照 CC 写的插件传了它也只是被忽略，不会报错。
+`closeOnEscape`（CC 的同一个入参）我们**不收也不校验**：这一端的 `Esc` 归 `ui.close` 那条通道（默认收起，见「终端形态」与「`ui.close`：mod 能拦下关闭」），所以照 CC 写的插件传了它也只是被忽略，不会报错；想「关不掉」就在 `ui.close` 里返回 `{ deny }`。
 
 ### 面板的显示与焦点（`$.ui.panes`）
 
@@ -542,7 +576,7 @@ Claude Code 把**每个** settings hook 事件都镜像成 `classic.<Event>`，�
 - **单一真值、最后上报者胜**：一条会话可能同时被两端挂着（桌面端 + 终端），引擎只存一组「当前显示 / 当前焦点」—— 与 Claude Code 一致（它的 pane 状态也只有一组 `shownId` / `focusedId`）。
 - **新开的面板在没人持焦点时自动成为 shown**（与 CC 的 `shownId: focusedId ?? 新 id` 同一条）：mod 连开两个，用户看到的是后开的那个；键盘已经有人持着就不抢。
 - **关掉 shown / focused 的那个 pane**：两个标记一起清成 `null`，不自动顶到相邻 tab（随后由该端上报它实际显示的那一个）。
-- **终端按 `Esc` 收起面板不发 `ui.close`**（见「终端形态」），但会把 `isFocused` 报成 `false`：面板还开着、键盘回输入框，此时 `isShown` 也是 `false`（这一端没在显示任何面板）。
+- **终端按 `Esc` 收起面板**（见「终端形态」）：先走 `ui.close` 问一句，被 `{ deny }` 拦下时什么都不变；真收起来之后把 `isFocused` 报成 `false`，此时 `isShown` 也是 `false`（这一端没在显示任何面板）。
 
 同一个事实也出现在面板的渲染 props 里：`ui.render` 的 `e.props.isFocused` 与 `$.ui.panes()` 的 `isFocused` **同源同值**，不另立一套口径。区别只在时效 —— 树是 surface 拉出来的，`e.props` 是**拉那一帧那一刻**的事实，所以 surface 在焦点真的翻转之后会给翻转的那块（最多两块：让出焦点的、拿到焦点的）**补拉一帧**，mod 不必轮询。这条触发只在值变了时发（同一份快照按值比较），点按钮、打字这类不会翻焦点的动作不会多一次往返；Claude Code 那边是同一条语义 —— 它的渲染站点以 `isFocused` 为 memo 依赖，焦点一变就重画一次，并靠「props 没变就复用上一次结果」的缓存压住重复派发。
 
@@ -910,7 +944,7 @@ mod 的沙箱里没有 `child_process`，要跑外部程序只能走 `$.process.
 - **`prompt.edit` 的改写**：`next({ ...e, text })` 是「把这次编辑应用到另一份草稿上」、`next({ ...e, inputText })` 是「换成别的字」，光标落在它后面；不调 `next` 直接返回 `{ text: e.text, cursor: e.cursor }` 等于**吃掉这次按键**（拼写检查、语法闸门就这么写）。
 - **`prompt.suggest` 不返回文本**：换一个建议靠 `next({ ...e, text })`。返回 `{ isShown: boolean }` 且不调 `next` 就是**最终答案**：`false` 是不摆，`true` 是「我摆上了」—— 宿主不再自己问输入框（CC 的 core 以 `isShown` 为结果键，谁给出合法的它，链就收敛）。要问宿主摆不摆就别返回它，走 `next(e)`。宿主摆不上有确定的原因：输入框里已有字、一轮正在跑、文本是空白、没有输入框（headless）、对话框占着键或输入框被禁用（此刻用户看不见草稿）。
 - **三端差异**：桌面端与 webview 两件都发；**终端一律不发**（`prompt.edit` / `prompt.suggest` 与用户正在打字直接冲突，与 `$.prompt.read` 在终端「刻意不做」是同一条理由）。mod 用 `$.session.surfaces()` 判断要不要挂这些钩子。
-- **焦点不在这条通道上**：CC 另有一个 `ui.focus` 事件（焦点环落到插件画的 `Pane` / `AbovePrompt` 里的某个元素时通知 mod），我们**不做** —— 它的另一半是 `$.ui.focus` 方法（mod 把环挪到自己元素上），而宿主与 webview 从没产生过这类事件，留着就是一个永不触发的钩子。要看「用户在打字」用 `prompt.edit`。
+- **焦点不在这条通道上**：`prompt.edit` 问的是「用户正在改输入框」，与面板里的焦点无关 —— 焦点环的事归 `ui.focus`（见「控件的交互事件」，我们只做它的事件形态）。要看「用户在打字」用 `prompt.edit`。
 - **与 `$.prompt.fill` 的关系**：`prompt.suggest` 只是「提议」，用户按 Tab 采纳才进输入框；mod 想直接写进去仍要调 `$.prompt.fill`（同一条草稿状态，所以两边不会打架）。`$.prompt.suggest({ text })` 是这条事件的方法形态，与引擎自己的推荐走同一条链，`e.origin` 标明是谁提的 —— 否则 mod 容易自己触发自己。
 
 ### 会话用量
@@ -1096,7 +1130,7 @@ IDE 聊天面板（VS Code 与 JetBrains）是第二个 surface，`e.surface` �
 
 ## 交付分层（一期不做的事）
 
-不做，且**接口不预留**（避免半成品）：终端专有的 `Raster`/`Image`、终端的侧栏两栏与拖动宽度、按列数决定的出现阈值、对话流消息/工具行/spinner 的重绘站点、`Client`（要在 webview 里执行 mod 附带的第二份模块，连带 `ui.message` / `ui.fault` 两个事件）、`$.mcp`、`$.agent.register`、`tool.call` 的**改写参数**（`updatedInput`）与**替用户批准**、`prompt.submit` 的改写 `text` 与 `drop`、`$.prompt.compose` 这个**方法**（要做的是同名的 `prompt.compose` / `prompt.section` **事件**，不是让 mod 自己拼提示词）、把焦点环挪到某个元素上（CC 的 `$.ui.focus` 方法连同它的 `ui.focus` 事件）、`prompt.autocomplete`（CC 那个「一次给一批补全候选」的事件：候选下拉的承载在多端宿主的文件补全通道里，mod 没有参与点，给个同名事件就是永不触发的空钩子）、mod 分层与加载期审查。
+不做，且**接口不预留**（避免半成品）：终端专有的 `Raster`/`Image`、终端的侧栏两栏与拖动宽度、按列数决定的出现阈值、对话流消息/工具行/spinner 的重绘站点、`Client`（要在 webview 里执行 mod 附带的第二份模块，连带 `ui.message` / `ui.fault` 两个事件）、`$.mcp`、`$.agent.register`、`tool.call` 的**改写参数**（`updatedInput`）与**替用户批准**、`prompt.submit` 的改写 `text` 与 `drop`、`$.prompt.compose` 这个**方法**（要做的是同名的 `prompt.compose` / `prompt.section` **事件**，不是让 mod 自己拼提示词）、把焦点环挪到某个元素上（CC 的 `$.ui.focus` 方法：`ui.focus` **事件**我们做，见「控件的交互事件」；让 mod 主动挪环不做）、`prompt.autocomplete`（CC 那个「一次给一批补全候选」的事件：候选下拉的承载在多端宿主的文件补全通道里，mod 没有参与点，给个同名事件就是永不触发的空钩子）、mod 分层与加载期审查。
 
 终端已有的降级（做，但不追平桌面端）：`Svg` 不画（见「终端渲染」）、`hover` 与 `absolute` 无效果、`$.prompt.fill` 仍返回 `{ isFilled: false }`、`$.prompt.read` 仍返回空草稿（终端的输入框状态没接到那条 RPC 上）——前三者是终端表达不出，最后一条是刻意不做：mod 替用户改输入框，在终端里与「用户正在打字」的冲突没法让它察觉。
 
@@ -1136,11 +1170,13 @@ Claude Code 的 `$` 有 23 个命名空间，我们覆盖 16 个（`ui` / `sessi
 2. **假设**同一个 mod 在 `ui.render` 里判断 `e.surface`，**当**树被终端拉取，**则**它按 `"terminal"` 分支返回的那棵树被画出来（不是桌面端那张）。
 3. **假设**面板是 `$.ui.open({ id: "p1" })` 打开的（没有 `focus: true`），**当**用户接着在输入框里打字，**则**字进输入框、面板不抢键盘；**当**换成 `$.ui.open({ id: "p2", focus: true })`，**则**焦点直接进面板，按 `hotkey` 触发对应按钮、按 `Esc` 收起面板并让焦点回到输入框，输入框内容不变。
 4. **假设**两个面板同时登记，**当**终端画出这一帧，**则**面板区顶部有一行 `1: 待办  2: 检查`，焦点在面板时按 `2` 切到第二个面板；切完之后 `$.ui.panes()` 里第一个的 `isShown` 变 `false`、第二个变 `true`，`isFocused` 跟着键盘走 —— 按 `Esc` 收起面板后两者都是 `false`。
-5. **假设**焦点在输入框、上方有面板，**当**用户按 `Esc`，**则**只走输入框自己的清空语义、面板不动；**当** mod 调 `$.ui.close({ id })`，**则**面板消失（终端这一端照桌面端一样，收起的动作本身不触发 `ui.close`）。
+5. **假设**焦点在输入框、上方有面板，**当**用户按 `Esc`，**则**只走输入框自己的清空语义、面板不动；**当** mod 调 `$.ui.close({ id })`，**则**面板消失，mod 收到一条 `ui.close` 通知 —— 这条路上没有回执，返回 `{ deny }` 也不影响关闭。
 6. **假设**某个照桌面端写的 mod 在 `ui.render` 里 `const { Svg } = $.ui.resolve(e)`，**当**这条会话在终端里画，**则** `Svg` 是 `undefined`、那次渲染在终端那块区域显示一条错误摘要，不画空白；把同一个 mod 改成 `e.surface === "terminal"` 时改画几行 `Text`，**则**终端里正常显示那几行。同一棵树里的 `Progress` 不必分支 —— 终端照常把它画成一行字符条。
 7. **假设**面板的 `ui.render` 返回 60 行内容、且带里某条 mod 返回 20 行，**当**终端画这一帧，**则**面板正文只占 12 行、带每条只占 6 行，剩下的在各自区域内滚动（焦点在面板时 `↑`/`↓` 与 `PageUp`/`PageDown`），消息区仍有高度。
 8. **假设**终端正在画这条会话，**当** mod 读 `$.session.surfaces()` 与 `$.ui.open` 的返回值，**则**前者含 `"terminal"`、后者是 `{ isPlaced: true }`；同一条会话换成 `wave -p`，**则**前者是空数组、后者是 `{ isPlaced: false, reason: … }`，且不抛错。
 9. **假设** mod 调 `$.ui.status("sonnet · 62%")` 与 `$.ui.toast("已保存", 2000)`，**当**终端画出这一帧，**则**输入框下方那一行出现 `插件名: sonnet · 62%`（左侧的权限模式提示不动），提示 `插件名: 已保存` 复用这一行的提示槽位、约 2 秒后自己消失，两者都不进对话上下文、也不把输入区顶高。
+10. **假设** mod 在 `ui.close` 里判断「现在是详情页」就返回 `{ deny: "back to the file list" }` 并 `$.ui.invalidate` 把面板画回列表，**当**焦点在面板时用户按 `Esc`，**则**面板还在、画面换成列表、`$.ui.panes()` 的 `isFocused` 仍是 `true`；**当**用户在列表里再按一次 `Esc`（这次不 deny），**则**面板收起、焦点回输入框。同一份 mod 在桌面端关 tab 时 `deny` 不生效，tab 照常关掉（见「`ui.close`：mod 能拦下关闭」）。
+11. **假设**某个面板把正文裁到「表头 + 一屏 + 底部提示」（一屏几行取自 `e.props.scroll.bodyRows`）并在 `ui.scroll` 里挪自己的窗口，**当**焦点在面板时按 `↓` / `PgDn` / `End`，**则** `ui.scroll` 依次收到 `by: 1` / `by: (可见行数-1)` / `by: Number.MAX_SAFE_INTEGER` 与当前的 `contentRows` / `bodyRows`，插件重画后面板正文换了一屏、底部提示仍在最后一行；**当**插件什么都不返回（不接），**则**由这一端按自己的偏移滚整棵树。
 
 ### 用户故事：照 Claude Code 写的守卫能问清自己的面板状态（优先级：P1）
 

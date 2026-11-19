@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useReducer } from "react";
-import { Box, Text, useInput, useWindowSize } from "ink";
+import { Box, Text, useInput } from "ink";
+import { useTerminalSize } from "../contexts/useTerminalSize.js";
 import {
   HOOK_EVENT_SUMMARIES,
   type HookEvent,
@@ -60,7 +61,7 @@ export const HooksManager: React.FC<HooksManagerProps> = ({
   hooks,
 }) => {
   const [state, dispatch] = useReducer(hooksManagerReducer, initialState);
-  const { rows } = useWindowSize();
+  const { rows } = useTerminalSize();
 
   // Handle pending effects
   useEffect(() => {

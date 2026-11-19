@@ -1,5 +1,6 @@
 import React, { useState } from "react";
-import { Box, Text, useWindowSize } from "ink";
+import { Box, Text } from "ink";
+import { useTerminalSize } from "../contexts/useTerminalSize.js";
 import { Markdown } from "./Markdown.js";
 import { ScrolledContent } from "./ScrolledContent.js";
 import { useLineScroll } from "../hooks/useLineScroll.js";
@@ -41,7 +42,7 @@ interface BtwDisplayProps {
  * only Esc — dismisses the overlay.
  */
 export const BtwDisplay: React.FC<BtwDisplayProps> = ({ btwState, rows }) => {
-  const { rows: terminalRows } = useWindowSize();
+  const { rows: terminalRows } = useTerminalSize();
   const availableRows = rows ?? terminalRows;
   const viewportRows = Math.max(
     BTW_MIN_VIEWPORT_ROWS,
