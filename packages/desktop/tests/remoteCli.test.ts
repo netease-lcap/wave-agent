@@ -10,7 +10,7 @@ const h = vi.hoisted(() => ({
   fsExists: vi.fn(() => true),
 }));
 
-vi.mock("child_process", () => ({
+vi.mock("node:child_process", () => ({
   execFile: h.execFile,
   spawn: h.spawn,
 }));
@@ -62,7 +62,7 @@ const HOME = "/home/user";
 /** The managed node the CLI runs on, derived from HOME. */
 const RUNTIME_NODE = remoteRuntimeNodePath(HOME);
 
-type StubResult = { stdout?: string; error?: Error };
+type StubResult = { stdout?: string; stderr?: string; error?: Error };
 
 /** Login shell probe (`echo $SHELL`) precedes every remote probe command. */
 const LOGIN_SHELL: StubResult = { stdout: "/bin/bash" };
@@ -134,20 +134,25 @@ function stubMirror(
  * callback (promisify(execFile) resolves through the callback, not the mock's
  * returned promise).
  */
+/** node's real `execFile` callback: `(error, stdout, stderr)` — three arguments,
+ *  not a merged `{ stdout }` object (that was the promisify-era fake). */
+type ExecFileCallback = (
+  error: Error | null,
+  stdout: string,
+  stderr: string,
+) => void;
+
 function stubExec(results: StubResult[]) {
   const queue = [...results];
   h.execFile.mockImplementation(
-    (
-      _cmd: string,
-      _args: string[],
-      _opts: unknown,
-      cb: (err: Error | null, result: { stdout: string }) => void,
-    ) => {
+    (_cmd: string, _args: string[], _opts: unknown, cb: ExecFileCallback) => {
       const next = queue.shift() ?? { stdout: "" };
+      // node's own callback shape: `(error, stdout, stderr)` — one value each,
+      // not a merged object. The wrapper reads the three arguments verbatim.
       if (next.error) {
-        cb(next.error, { stdout: "" });
+        cb(next.error, "", next.stderr ?? "");
       } else {
-        cb(null, { stdout: next.stdout ?? "" });
+        cb(null, next.stdout ?? "", "");
       }
     },
   );
@@ -851,7 +856,14 @@ describe("readRemoteFile", () => {
   });
 
   it("throws a user-facing error when the ssh connection fails", async () => {
-    stubExec([LOGIN_SHELL, { error: CONNECT_FAIL }]);
+    // A real `ssh` writes its failure to stderr, and node hands that back as
+    // `error.stderr` (with `error.message` holding `Command failed: …`), which
+    // is what `describeError` prefers. Keeping the text on stderr is what makes
+    // this case exercise the real precedence instead of a fake one.
+    stubExec([
+      LOGIN_SHELL,
+      { error: CONNECT_FAIL, stderr: CONNECT_FAIL.message },
+    ]);
     await expect(readRemoteFile("prod", "/x/y.ts")).rejects.toThrow(
       "读取远端文件失败：ssh: connect to host failed",
     );

@@ -22,7 +22,7 @@
  * writeSession 降级：dev 有存储（记忆上次用例/拖拽位置），沙箱无存储则回退
  * 默认。
  */
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { ChatApp } from "../src/components/ChatApp";
 import { DesktopApp } from "../src/components/DesktopApp";
@@ -31,6 +31,16 @@ import "../src/styles/host-desktop.css";
 import "@vscode/codicons/dist/codicon.css";
 import "../theme/theme-base-light.css";
 import "../theme/theme-base-dark.css";
+// 远控 Web 页（移动端档）的样式：真机由 remote/build.mjs 打进 chat.js 旁的
+// chat.css，这里直接引源码。**必须排在 theme-base 之后**——远控页的手机档是靠
+// `[data-remote-page][data-theme]` 覆写 `--vscode-font-size` 等 token 的，与主题的
+// `:root[data-theme="dark"]` 特异性相同、靠源码顺序取胜；真机的 pageCss 也是
+// 「两份主题在前、chat.css 在后」（remote/build.mjs 的 emit）。放在前面会让手机档
+// 的 token 静默输给主题值。它只在 data-remote-page 命中时生效，另两端零影响。
+import "../src/styles/remote-page.css";
+// 工具条自己的样式（浮层面 + 28px 字段档 + 深色 color-scheme）。全部挂在 `.pv-*`
+// 上，不进产品命名空间；排最后，免得被上面几张表里同特异性的规则抢先。
+import "./preview-bar.css";
 import type { MockCase, MockHelpers } from "./types";
 import {
   CASE_STORAGE_KEY,
@@ -129,6 +139,105 @@ class PreviewBoundary extends React.Component<
   }
 }
 
+// ── 宿主三档：桌面端 / 插件端 / 移动端 ─────────────────────────────────
+// 用例可以自带 host（mock 里声明），工具条的下拉是**临时覆盖**：换用例即回到它
+// 自带的端，免得上一轮手选的端串到下一份用例上。
+type PreviewHost = "desktop" | "editor" | "remote";
+
+const HOST_OPTIONS: ReadonlyArray<{ value: PreviewHost; label: string }> = [
+  { value: "desktop", label: "桌面端" },
+  { value: "editor", label: "插件端" },
+  { value: "remote", label: "移动端" },
+];
+
+/** 用例声明的宿主 → 三档。mock 里的 "plugin" / "ide" 是 "editor" 的同义词。 */
+function caseHostOf(activeCase: MockCase | undefined): PreviewHost {
+  if (activeCase?.host === "desktop") return "desktop";
+  if (activeCase?.host) return "editor";
+  return initialHostType === "desktop" ? "desktop" : "editor";
+}
+
+/**
+ * 把宿主写进全局与 <html>——必须在子树 render **之前**调用。
+ *
+ * `isDesktopHost()` / `isRemotePageHost()` 是在 render 里读的（ChatApp 直接调），
+ * 放在 useEffect 里就晚了一拍：子树先按旧标记渲染完、标记再改，而 host 是父组件的
+ * 常量、不会再触发渲染，要等一条宿主消息把状态推一下才自愈。所以做成幂等赋值，
+ * 在组件体里直接调。
+ *
+ * 移动端一档逐项对齐 `remote/shim.js`：`waveHostType` 故意**不设**（远控页不归属
+ * 任何一端）、`waveRemotePage = true`、`data-remote-page="1"`；密度档仍落
+ * `data-host="editor"`（远控页属于插件端那一档，见 src/index.tsx 与
+ * src/styles/remote-page.css 头注释）。桌面端的 data-host 是 host-desktop.css 的
+ * 桌面语义层开关（--cc-* → --vscode-* 桥接），缺了它预览会退回 theme-base 的
+ * VS Code 配色（蓝按钮等），与真机观感不一致。
+ */
+function applyHost(host: PreviewHost) {
+  const root = document.documentElement;
+  if (host === "remote") {
+    window.waveHostType = undefined;
+    setRemotePageFlag(true);
+    root.setAttribute("data-remote-page", "1");
+    root.dataset.host = "editor";
+    hoistRemotePageSheet();
+    return;
+  }
+  setRemotePageFlag(false);
+  window.waveHostType = host;
+  root.removeAttribute("data-remote-page");
+  root.dataset.host = host;
+}
+
+/**
+ * 把 dev 下 Vite 注入的 remote-page.css 那张表挪到 <head> 末尾。
+ *
+ * 为什么需要：远控页的手机档靠 `[data-remote-page][data-theme]` 覆写
+ * `--vscode-font-size` / `--vscode-editor-font-size`，它与主题的
+ * `:root[data-theme="…"]` **特异性相同**，靠源码顺序决胜。真机的 pageCss 是
+ * 「两份主题在前、chat.css 在后」（remote/build.mjs 的 emit），所以手机档赢；
+ * dev 里 Vite 按模块图注入，theme-base 那两张表最后才落进 <head>，于是手机档
+ * 反而输给主题 —— token 停在 13px/12px，代码块与 mermaid 的字号就不是手机档。
+ * 元素级字号（body 15px 等）不受影响，只有 token 会被压住，所以现象很隐蔽。
+ *
+ * 只动 dev 注入的那张 <style>（带 data-vite-dev-id），不碰任何产品 CSS；
+ * 非 dev（build 产物）里找不到这个标签，函数直接返回。
+ */
+function hoistRemotePageSheet() {
+  const tag = document.querySelector<HTMLStyleElement>(
+    'style[data-vite-dev-id$="/styles/remote-page.css"]',
+  );
+  if (!tag || tag.parentElement?.lastElementChild === tag) return;
+  document.head.appendChild(tag);
+}
+
+/**
+ * `waveRemotePage` 只能经 defineProperty 写。
+ *
+ * 本地 mock 支撑文件 `mock/_shared/mockShared.ts` 在模块体里把同名属性定义成
+ * **只读 getter**（它按用例名前缀自己推断远控页，那是工具条还没有宿主开关时的
+ * 权宜做法）。只读 getter 上直接赋值会抛 TypeError，整个 AppShell 崩掉、页面白屏
+ * —— 所以这里改成可写的数据属性：mock 那边的 `if (!descriptor.get)` 判断不会再
+ * 命中，工具条成为唯一真相源（远控相关用例仍可用，只是改由下拉切）。
+ */
+function setRemotePageFlag(on: boolean) {
+  Object.defineProperty(window, "waveRemotePage", {
+    value: on,
+    writable: true,
+    configurable: true,
+  });
+}
+
+/** 某个端可用的 mock 用例。
+ *
+ *  移动端与插件端同一份清单：远控页跑的就是插件端那一档（`data-host="editor"`，
+ *  同一份 chat.css 基线），只多一层 `remote-page.css` 手机档覆写；桌面端的用例
+ *  在它上面渲染不出来（桌面态是 DesktopApp 那一侧消费的，且 `--cc-*` 语义 token
+ *  只挂在 `[data-host="desktop"]` 上）。 */
+const casesForHost = (host: PreviewHost) =>
+  mockCases.filter(
+    (c) => caseHostOf(getCase(c.key)) === (host === "remote" ? "editor" : host),
+  );
+
 // ── 应用外壳：activeKey 驱动用例，key 重挂载子树实现状态归零 ──────
 const vscode = window.acquireVsCodeApi();
 
@@ -138,15 +247,42 @@ function AppShell() {
   // resolveInitialCase 决定，之后随用户的显式选择清空——工具条据此给出提示，
   // 免得到排查时把兜底选中的用例误当成用户自己选的。
   const [selection, setSelection] = useState<CaseSelection>(initialSelection);
+  // 工具条手选的端（null = 跟用例走）。不持久化：刷新/新开页面回到用例自带的端，
+  // 免得上次为了看一眼移动端而留下的选择，让下次打开时外壳莫名换了。
+  // 一旦手选就钉住：之后在同一个端的用例清单里换用例，端不跟着用例变。
+  const [hostOverride, setHostOverride] = useState<PreviewHost | null>(null);
+  // 每个端各自记住上次看的用例（只在本页会话内）：端来回切时不会被打回第一条。
+  // 首屏这一份要先记上——否则从桌面端切走再切回来，就落到清单第一条去了。
+  const lastCaseByHost = useRef<Partial<Record<PreviewHost, string>>>(
+    initialSelection.key
+      ? { [caseHostOf(getCase(initialSelection.key))]: initialSelection.key }
+      : {},
+  );
   const activeCase = getCase(activeKey);
+  const host = hostOverride ?? caseHostOf(activeCase);
+  applyHost(host);
 
-  const selectCase = (key: string) => {
+  const applyCase = (key: string, hostKey: PreviewHost) => {
     writeSession(CASE_STORAGE_KEY, key); // dev 记忆；沙箱静默降级
     mockWin.__waveMockResponders = getCase(key)?.responders || {}; // 预注册，先于新子树挂载
+    lastCaseByHost.current[hostKey] = key;
     setActiveKey(key);
     setSelection({ key, fallback: false, staleSelection: false });
   };
 
+  const selectCase = (key: string) => applyCase(key, host);
+
+  // 换端：当前用例若不在新端的清单里，就补到该端上次看的 / 第一条。
+  // 空串（「无 mock」）与新端的清单永远兼容——那个选项一直在。
+  const selectHost = (next: PreviewHost) => {
+    setHostOverride(next);
+    const list = casesForHost(next);
+    if (!activeKey || list.some((c) => c.key === activeKey)) return;
+    applyCase(lastCaseByHost.current[next] ?? list[0]?.key ?? "", next);
+  };
+
+  // host 在依赖里：换端会重挂载子树（外壳不同），旧子树收到的对话流不会跟过去，
+  // 必须按同一份用例脚本重放一遍。
   useEffect(() => {
     mockWin.__waveMockCancelPending(); // 取消旧用例未触发的延时消息（防串台）
     mockWin.__waveMockResponders = activeCase?.responders || {}; // 幂等兜底（「无 mock」清空）
@@ -163,28 +299,11 @@ function AppShell() {
       if (i >= 0) mockWin.__waveMockReadyCallbacks.splice(i, 1);
       mockWin.__waveMockCancelPending();
     };
-  }, [activeKey, activeCase]);
+  }, [activeKey, activeCase, host]);
 
-  const host =
-    activeCase?.host === "desktop"
-      ? "desktop"
-      : activeCase?.host === "editor"
-        ? "editor"
-        : initialHostType === "desktop"
-          ? "desktop"
-          : "editor";
-  // 同步宿主类型：真实 Electron preload 会设置 window.waveHostType，原型里
-  // 桌面用例需手动注入，否则 Message 链接点击/拖拽等 desktop-gated 行为不生效。
-  // data-host 同步置上（真机在 src/index.tsx）：host-desktop.css 的桌面语义层
-  // （--cc-* → --vscode-* 桥接）挂在 :root[data-host="desktop"] 上，缺了它预览
-  // 会退回 theme-base 的 VS Code 配色（蓝按钮等），与真机观感不一致。
-  useEffect(() => {
-    window.waveHostType = host;
-    document.documentElement.dataset.host = host;
-  }, [host]);
   return (
     <>
-      <PreviewBoundary key={activeKey}>
+      <PreviewBoundary key={`${activeKey}|${host}`}>
         {/* 一个用例都没加载到（mock/ 目录空）时给一个带说明的空态：留在应用外壳
             里就是「没有任何宿主消息」的空白页，深色主题下看起来就是黑屏。 */}
         {mockKeys.length === 0 ? (
@@ -197,31 +316,50 @@ function AppShell() {
       </PreviewBoundary>
       <PreviewBar
         activeKey={activeKey}
+        cases={casesForHost(host)}
         selection={selection}
         onSelectCase={selectCase}
+        host={host}
+        onSelectHost={selectHost}
       />
     </>
   );
 }
 
-// ── 预览工具条（用例切换 / 主题切换 / 拖拽移动）──────────────────────
+// ── 预览工具条（用例切换 / 宿主切换 / 主题切换 / 拖拽移动）────────────
 const BAR_POS_KEY = "wave-preview-bar-pos";
+
+/** 用例下拉固定宽度（设计要求 280）：用例名长短差很多，让它自己撑会把工具条顶宽。 */
+const CASE_SELECT_WIDTH = 280;
 
 function PreviewBar({
   activeKey,
+  cases,
   selection,
   onSelectCase,
+  host,
+  onSelectHost,
 }: {
   activeKey: string;
+  cases: ReadonlyArray<{ key: string; name: string }>;
   selection: CaseSelection;
   onSelectCase: (key: string) => void;
+  host: PreviewHost;
+  onSelectHost: (host: PreviewHost) => void;
 }) {
   const [theme, setTheme] = useState(() =>
     document.documentElement.getAttribute("data-theme") === "light"
       ? "light"
       : "dark",
   );
-  const cases = useMemo(() => mockCases, []);
+  // 远控页的手机密度档挂在 `@media (pointer: coarse), (hover: none)` 上（见
+  // remote-page.css 头注释），鼠标操作的桌面浏览器不命中 ⇒ 字号停在插件端那一档。
+  // 只在「选了移动端但媒体查询没命中」时提示，免得把 13px 当成手机档去验。
+  // 每次渲染现读（matchMedia 很轻），免得 DevTools 切换设备模拟后要刷新页面才更新。
+  const phoneDensityAvailable =
+    typeof window.matchMedia !== "function" ||
+    window.matchMedia("(pointer: coarse)").matches ||
+    window.matchMedia("(hover: none)").matches;
   const barRef = useRef<HTMLDivElement>(null);
   // 拖拽位置（null = 默认右上角），拖完持久化到 sessionStorage（沙箱降级）。
   const [pos, setPos] = useState<{ x: number; y: number } | null>(() => {
@@ -289,24 +427,11 @@ function PreviewBar({
   return (
     <div
       ref={barRef}
-      style={{
-        position: "fixed",
-        ...(pos
-          ? { left: pos.x, top: pos.y, right: "auto" }
-          : { top: 8, right: 8 }),
-        zIndex: 100000,
-        display: "flex",
-        gap: 6,
-        alignItems: "center",
-        background: "var(--vscode-editor-background, #1e1e1e)",
-        border: "1px solid var(--vscode-widget-border, #555)",
-        borderRadius: 6,
-        padding: "6px 8px",
-        fontSize: 12,
-        boxShadow: "0 2px 8px rgba(0,0,0,.35)",
-        maxWidth: "40vw",
-        cursor: "default",
-      }}
+      className="pv-bar"
+      // 外观全在 preview-bar.css（需要伪类与 color-scheme）；这里只留拖拽位置。
+      style={
+        pos ? { left: pos.x, top: pos.y, right: "auto" } : { top: 8, right: 8 }
+      }
     >
       <span
         role="button"
@@ -316,50 +441,57 @@ function PreviewBar({
         onPointerMove={onDragMove}
         onPointerUp={onDragEnd}
         onPointerCancel={onDragEnd}
-        style={{
-          cursor: "grab",
-          color: "var(--vscode-descriptionForeground, #888)",
-          userSelect: "none",
-          touchAction: "none",
-          display: "inline-flex",
-          alignItems: "center",
-        }}
+        className="pv-grip"
       >
         <i className="codicon codicon-gripper" />
       </span>
-      <select
-        aria-label="mock 用例"
-        value={activeKey}
-        onChange={(e) => onSelectCase(e.target.value)}
-        style={{
-          font: "inherit",
-          border: "1px solid var(--vscode-widget-border, #555)",
-          borderRadius: 4,
-          background: "var(--vscode-input-background, #333)",
-          color: "inherit",
-          padding: "2px 6px",
-        }}
-      >
-        <option value="">— 无 mock（宿主无消息）—</option>
-        {cases.map((c) => (
-          <option key={c.key} value={c.key}>
-            {c.name}
-          </option>
-        ))}
-      </select>
+      <span className="pv-select">
+        <select
+          aria-label="宿主"
+          title="先选端：桌面端 / 插件端 / 移动端（远控 Web 页）。右边只列这个端的 mock 用例"
+          value={host}
+          onChange={(e) => onSelectHost(e.target.value as PreviewHost)}
+          className="pv-control"
+        >
+          {HOST_OPTIONS.map((h) => (
+            <option key={h.value} value={h.value}>
+              {h.label}
+            </option>
+          ))}
+        </select>
+      </span>
+      <span className="pv-select">
+        <select
+          aria-label="mock 用例"
+          title={cases.find((c) => c.key === activeKey)?.name ?? "无 mock"}
+          value={activeKey}
+          onChange={(e) => onSelectCase(e.target.value)}
+          className="pv-control"
+          style={{ width: CASE_SELECT_WIDTH }}
+        >
+          <option value="">— 无 mock（宿主无消息）—</option>
+          {cases.map((c) => (
+            <option key={c.key} value={c.key}>
+              {c.name}
+            </option>
+          ))}
+        </select>
+      </span>
+      {host === "remote" && !phoneDensityAvailable && (
+        <span
+          className="pv-hint"
+          title="远控页的手机字号档由 @media (pointer: coarse), (hover: none) 触发，鼠标操作的桌面浏览器不会命中，现在看到的是插件端那一档字号。用浏览器 DevTools 的设备模拟（切到手机档）才看得到真实档位。"
+        >
+          <i className="codicon codicon-warning pv-hint-icon" />
+          手机档需设备模拟
+        </span>
+      )}
       <SelectionBadges selection={selection} />
       <button
         type="button"
         onClick={switchTheme}
         title="切换深色/浅色主题"
-        style={{
-          font: "inherit",
-          border: "1px solid var(--vscode-widget-border, #555)",
-          borderRadius: 4,
-          background: "var(--vscode-input-background, #333)",
-          color: "inherit",
-          padding: "2px 6px",
-        }}
+        className="pv-control pv-control--action"
       >
         {theme === "dark" ? "深色" : "浅色"}
       </button>
@@ -367,6 +499,6 @@ function PreviewBar({
   );
 }
 
-// ── 渲染（与 src/index.tsx 相同分支逻辑；mock 用例可声明 host 覆盖）──
+// ── 渲染（与 src/index.tsx 相同分支逻辑；宿主由用例声明 + 工具条覆盖）──
 const root = createRoot(document.getElementById("root")!);
 root.render(<AppShell />);

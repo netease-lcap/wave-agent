@@ -535,31 +535,38 @@ describe("markdownParser", () => {
       options: { cwd?: string; timeout?: number; windowsHide?: boolean };
     };
 
-    /** Re-import markdownParser with a fake child_process that records argv. */
+    /**
+     * Re-import markdownParser with a fake child_process that records argv.
+     *
+     * The code under test runs its command through `execFileAsyncHidden`
+     * (utils/execFileHidden.ts), which calls `execFile(file, args, options,
+     * callback)` itself one tick later — so the fake is callback-shaped and
+     * answers through the callback. `windowsHide` still reaches `options`, and
+     * the spread-then-force in the wrapper is what puts it there, which is what
+     * the assertions below pin. Both module spellings are faked because the
+     * wrapper imports `node:child_process` while the test names
+     * `child_process`.
+     */
     const loadWithFakeExec = async (sessionShell: unknown) => {
       const recorded: Recorded[] = [];
       vi.resetModules();
       vi.doMock("../../src/utils/shell/shellToolGate.js", () => ({
         resolveSessionShell: () => sessionShell,
       }));
-      vi.doMock("child_process", async () => {
-        const { promisify } = await import("node:util");
-        const execFile = (() => {
-          throw new Error("execFile is only reached through promisify here");
-        }) as unknown as Record<symbol, unknown>;
-        // Node's real `execFile` resolves through `promisify.custom` to
-        // `{ stdout, stderr }`; a fake without that hook hands promisify the raw
-        // callback values instead, and the code under test reads neither.
-        execFile[promisify.custom] = (
+      const execFileFake = () => ({
+        execFile: (
           file: string,
           args: string[],
           options: Recorded["options"],
+          callback: (error: null, stdout: string, stderr: string) => void,
         ) => {
           recorded.push({ file, args, options });
-          return Promise.resolve({ stdout: "ok", stderr: "" });
-        };
-        return { execFile };
+          callback(null, "ok", "");
+          return {};
+        },
       });
+      vi.doMock("child_process", execFileFake);
+      vi.doMock("node:child_process", execFileFake);
       const { executeBashCommands: execute } = await import(
         "../../src/utils/markdownParser.js"
       );
@@ -569,6 +576,7 @@ describe("markdownParser", () => {
     afterEach(() => {
       vi.doUnmock("../../src/utils/shell/shellToolGate.js");
       vi.doUnmock("child_process");
+      vi.doUnmock("node:child_process");
       vi.resetModules();
     });
 

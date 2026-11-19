@@ -95,6 +95,7 @@ import {
   type ModPaneLayout,
   type ModPaneViewPayload,
   type ModSurfaceMetrics,
+  execFileSyncHidden,
 } from "wave-agent-sdk";
 import {
   type ClientNotificationMethod,
@@ -105,7 +106,6 @@ import {
   INTERNAL_ERROR as PROTOCOL_INTERNAL_ERROR,
   METHOD_NOT_FOUND as PROTOCOL_METHOD_NOT_FOUND,
 } from "./protocol.js";
-import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   type Dirent,
@@ -1889,15 +1889,16 @@ export class AgentBridge {
     if (!workdir) {
       throw new RpcError(PROTOCOL_INTERNAL_ERROR, "workdir is required");
     }
+    // `windowsHide` is forced by `execFileSyncHidden`; `stdio[0] = "ignore"`
+    // stays here because it is this call site's choice (no one writes stdin).
     const gitOpts = {
       cwd: workdir,
       encoding: "utf8" as const,
       stdio: ["ignore", "pipe", "pipe"] as ["ignore", "pipe", "pipe"],
-      windowsHide: true,
     };
     let branchesRaw: string;
     try {
-      branchesRaw = execFileSync(
+      branchesRaw = execFileSyncHidden(
         "git",
         ["for-each-ref", "--format=%(refname:short)", "refs/heads"],
         gitOpts,
@@ -1916,7 +1917,7 @@ export class AgentBridge {
       : [];
     let current: string | null = null;
     try {
-      const head = execFileSync(
+      const head = execFileSyncHidden(
         "git",
         ["rev-parse", "--abbrev-ref", "HEAD"],
         gitOpts,

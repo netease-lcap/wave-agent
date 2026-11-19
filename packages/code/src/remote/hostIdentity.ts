@@ -21,10 +21,9 @@
  * keeping its identity across a lost state file.
  */
 
-import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import * as fs from "node:fs";
-import { authService } from "wave-agent-sdk";
+import { authService, execFileSyncHidden } from "wave-agent-sdk";
 
 /**
  * Namespace for every derived host id. **Changing it changes the identity of
@@ -101,7 +100,7 @@ function readLinuxMachineId(): string | undefined {
 
 /** macOS: the platform UUID, which survives reboots and OS updates. */
 function readDarwinMachineId(): string | undefined {
-  const output = execFileSync(
+  const output = execFileSyncHidden(
     "ioreg",
     ["-rd1", "-c", "IOPlatformExpertDevice"],
     {
@@ -115,14 +114,14 @@ function readDarwinMachineId(): string | undefined {
 
 /** Windows: the registry's machine GUID. */
 function readWindowsMachineId(): string | undefined {
-  const output = execFileSync(
+  // `windowsHide` is forced by `execFileSyncHidden`, so it is not spelled here.
+  const output = execFileSyncHidden(
     "reg",
     ["query", "HKLM\\SOFTWARE\\Microsoft\\Cryptography", "/v", "MachineGuid"],
     {
       encoding: "utf8",
       timeout: READ_TIMEOUT_MS,
       stdio: ["ignore", "pipe", "ignore"],
-      windowsHide: true,
     },
   );
   return /MachineGuid\s+REG_SZ\s+(\S+)/.exec(output)?.[1];

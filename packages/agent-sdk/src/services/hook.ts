@@ -6,7 +6,8 @@
  * management to ConfigurationService.
  */
 
-import { spawn, type ChildProcess } from "child_process";
+import { type ChildProcess } from "child_process";
+import { spawnHidden } from "../utils/execFileHidden.js";
 import { existsSync } from "node:fs";
 import {
   type HookExecutionContext,
@@ -267,15 +268,17 @@ export async function executeCommand(
       process.cwd(),
     );
 
-    const childProcess: ChildProcess = spawn(
+    const childProcess: ChildProcess = spawnHidden(
       sessionShell.shellPath,
       spawnArgs,
       {
         stdio: ["pipe", "pipe", "pipe"],
         cwd: spawnCwd,
-        // No-op off Windows. The desktop main process has no console, so without
-        // this every hook spawn gets a visible console window allocated.
-        windowsHide: true,
+        // `spawnHidden` forces `windowsHide: true`. No-op off Windows; the
+        // desktop main process has no console, so without it every hook spawn
+        // would get a visible console window allocated. `stdio` is spelled out
+        // because hooks write the payload to fd0 — an explicit layout is what
+        // keeps the wrapper from pointing fd0 at /dev/null.
         env: {
           ...process.env, // Environment variables from process.env
           ...("env" in context ? context.env || {} : {}), // Additional environment variables from configuration (if ExtendedHookExecutionContext)

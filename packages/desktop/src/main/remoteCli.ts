@@ -34,9 +34,10 @@
  * Pure file-transfer commands (tar push) need no login shell and skip it.
  */
 
-import { execFile, spawn, type ChildProcess } from "child_process";
+import { type ChildProcess } from "child_process";
+import { execFileAsyncHidden, spawnHidden } from "wave-agent-sdk/host";
+
 import { createHash } from "crypto";
-import { promisify } from "util";
 import * as fs from "fs";
 import * as net from "net";
 import * as os from "os";
@@ -58,8 +59,6 @@ import {
   parseWslHostId,
   withWslLoginShell,
 } from "./wslHosts";
-
-const execFileAsync = promisify(execFile);
 
 /**
  * The Node version Wave ships to hosts without one (spec:
@@ -185,7 +184,11 @@ async function execOnHost(
   options: { timeout?: number; maxBuffer?: number } = {},
 ): Promise<{ stdout: string; stderr: string }> {
   const spec = await hostCommandSpec(host, command);
-  const { stdout, stderr } = await execFileAsync(spec.file, spec.args, options);
+  const { stdout, stderr } = await execFileAsyncHidden(
+    spec.file,
+    spec.args,
+    options,
+  );
   return { stdout: stdout as string, stderr: stderr as string };
 }
 
@@ -633,7 +636,7 @@ async function hostStreamCommand(
   return new Promise((resolve, reject) => {
     let child: ChildProcess;
     try {
-      child = spawn(spec.file, spec.args, {
+      child = spawnHidden(spec.file, spec.args, {
         stdio: ["pipe", "ignore", "pipe"],
         windowsHide: true,
       });
@@ -992,7 +995,7 @@ export async function remoteDaemonAlive(
 ): Promise<boolean> {
   const probeScript = `const s=require('net').connect(${JSON.stringify(socketPath)});s.on('connect',()=>process.exit(0));s.on('error',()=>process.exit(1));setTimeout(()=>process.exit(1),3000)`;
   try {
-    await execFileAsync(
+    await execFileAsyncHidden(
       "ssh",
       await remoteCommand(
         host,
@@ -1024,7 +1027,7 @@ export async function startRemoteDaemon(
   socketPath: string,
 ): Promise<void> {
   const command = `nohup ${nodeCommand(runtimePath)} ${shellQuote(binaryPath)} --daemon ${shellQuote(socketPath)} </dev/null >/dev/null 2>&1 &`;
-  await execFileAsync("ssh", await remoteCommand(host, command), {
+  await execFileAsyncHidden("ssh", await remoteCommand(host, command), {
     timeout: PROBE_TIMEOUT_MS,
   });
 }
@@ -1057,7 +1060,7 @@ export async function killRemoteDaemon(
   socketPath: string,
 ): Promise<void> {
   const pattern = `[w]ave.*--daemon.*${socketPath}`;
-  await execFileAsync(
+  await execFileAsyncHidden(
     "ssh",
     await remoteCommand(host, `pkill -f ${shellQuote(pattern)} || true`),
     {
@@ -1193,7 +1196,7 @@ export async function connectRemoteDaemon(
  * unix socket via `ssh -N -L`, then wrap the local socket in a SocketClient.
  * The tunnel keeps running until the caller disposes both — killing only the
  * client would close the socket but leave the ssh process lingering. Plain
- * `spawn('ssh', …)` (no login shell): `-N` tunnels never run a remote command.
+ * `spawnHidden('ssh', …)` (no login shell): `-N` tunnels never run a remote command.
  */
 export async function connectRemoteDaemonSocket(
   host: string,
@@ -1205,7 +1208,7 @@ export async function connectRemoteDaemonSocket(
   } catch {
     // no stale local socket
   }
-  const tunnel = spawn(
+  const tunnel = spawnHidden(
     "ssh",
     buildSshTunnelArgs(host, localSocket, remoteSocketPath),
     {
@@ -1273,7 +1276,7 @@ export async function connectRemoteDaemonTcp(
   remoteSocketPath: string,
 ): Promise<RemoteDaemonConnection> {
   const port = await allocateLoopbackPort();
-  const tunnel = spawn(
+  const tunnel = spawnHidden(
     "ssh",
     buildSshTunnelArgs(host, `127.0.0.1:${port}`, remoteSocketPath),
     {

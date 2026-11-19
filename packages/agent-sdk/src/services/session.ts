@@ -20,10 +20,9 @@ import type { Dirent } from "fs";
 import { dirname, join, resolve } from "path";
 import { homedir } from "os";
 import { randomUUID } from "crypto";
-import { execFile } from "child_process";
 import { pipeline } from "stream/promises";
-import { promisify } from "util";
 import type { Message, Usage } from "../types/index.js";
+import { execFileAsyncHidden } from "../utils/execFileHidden.js";
 import { PathEncoder } from "../utils/pathEncoder.js";
 import { JsonlHandler } from "../services/jsonlHandler.js";
 import { METADATA_REAPPEND_THRESHOLD_BYTES } from "../constants/sessionStorage.js";
@@ -41,8 +40,6 @@ import {
   type RewindCheckpoint,
   toRewindCheckpoint,
 } from "../utils/rewindCheckpoints.js";
-
-const execFileAsync = promisify(execFile);
 
 export interface SessionData {
   id: string;
@@ -194,7 +191,7 @@ export async function getSessionFilePath(
  */
 async function getGitBranch(workdir: string): Promise<string | undefined> {
   try {
-    const { stdout } = await execFileAsync(
+    const { stdout } = await execFileAsyncHidden(
       "git",
       ["-C", workdir, "branch", "--show-current"],
       { timeout: 2000, windowsHide: true },

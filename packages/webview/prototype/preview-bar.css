@@ -1,0 +1,220 @@
+/* 原型预览工具条（本地 mock 切换用，非产品功能）。
+ *
+ * 为什么单独一份样式表：需要 `:hover` / `:focus` / 原生 `<select>` 的
+ * `color-scheme` 三态，内联 style 写不了伪类。
+ *
+ * 取值口径（全部按设计系统落地，不自造数值）：
+ * - 容器 = 非模态浮层面 `--vscode-editorWidget-background`（bridge 表里映射到
+ *   `--cc-bg-overlay`）、1px `--cc-border-light`、`--cc-radius-lg` 12px、
+ *   `--cc-shadow-popover` 浮动阴影。**深浅两档阴影不同值**：浅色 `0 0 12px / 12%`
+ *   是柔光晕，深色 `0 12px 30px / 40%` 才压得住暗底。
+ * - 控件 = 字段族 `--cc-field-*`：28px 高（用户 2026-11-18 定「最多 28px」）、
+ *   `--cc-radius-md` 8px（契约「select trigger 与单行字段共用 8px」）、
+ *   14px/22px 标签（compact 28px 档保留 14px 标签）。
+ *   底色用 `--cc-field-bg` 而不是 `--vscode-input-background`：后者深色是
+ *   #313131，比浮层面还浅、在这条深色工具条上亮成一块灰板 —— 产品侧同一个坑
+ *   已于 host-desktop.css:3157 用 `--cc-field-bg`（深 #1b1d1e）修过，这里沿用。
+ * - `color-scheme` 必须显式给：真机主题文件不声明它，深色下浏览器仍按浅色画
+ *   原生下拉的箭头与弹层 —— 深色工具条里就成了黑箭头 + 白弹层（用户 2026-11-18
+ *   「深色模式下选择器的颜色比较违和」）。
+ *
+ * `--cc-*` 只在 `:root[data-host="desktop"]` 下定义，插件端 / 远控页没有；所以
+ * 每条都写成 `var(--cc-x, <设计系统同档字面值>)`，两种宿主取值一致、单靠深色块
+ * 切换字面值。
+ */
+
+.pv-bar {
+  color-scheme: light;
+
+  --pv-bar-bg: var(--vscode-editorWidget-background, #fafafd);
+  --pv-bar-border: var(--cc-border-light, #e4e5e6);
+  --pv-bar-shadow: var(--cc-shadow-popover, 0 0 12px rgb(0 0 0 / 12%));
+  --pv-field-bg: var(--cc-field-bg, #ffffff);
+  --pv-field-border: var(--cc-field-border, #c5c9ce);
+  --pv-field-border-hover: var(--cc-field-border-hover, #6c7076);
+  --pv-field-border-focus: var(--cc-field-border-focus, #565a60);
+  --pv-field-text: var(--cc-field-text, #1f2329);
+  --pv-text-secondary: var(--cc-text-secondary, #6c7076);
+  --pv-text-primary: var(--cc-text-primary, #1f2329);
+  /* 警示字形用状态色本身（非文字图形下限 3:1：浅 #d97706 = 3.06、深 #cca700 =
+     7.06），**文字**仍走次级文字色 —— 状态色当可读小字不够 4.5:1。 */
+  --pv-warning: var(--cc-color-warning, #d97706);
+  --pv-danger: var(--cc-color-danger, #dc2626);
+}
+
+:root[data-theme="dark"] .pv-bar {
+  color-scheme: dark;
+
+  --pv-bar-bg: var(--vscode-editorWidget-background, #202020);
+  --pv-bar-border: var(--cc-border, #414649);
+  --pv-bar-shadow: var(--cc-shadow-popover, 0 12px 30px rgb(0 0 0 / 40%));
+  --pv-field-bg: var(--cc-field-bg, #1b1d1e);
+  --pv-field-border: var(--cc-field-border, #414649);
+  --pv-field-border-hover: var(--cc-field-border-hover, #858b8f);
+  --pv-field-border-focus: var(--cc-field-border-focus, #a0a5a8);
+  --pv-field-text: var(--cc-field-text, #e5e7e8);
+  --pv-text-secondary: var(--cc-text-secondary, #a0a5a8);
+  --pv-text-primary: var(--cc-text-primary, #e5e7e8);
+  --pv-warning: var(--cc-color-warning, #cca700);
+  --pv-danger: var(--cc-color-danger, #fc4e52);
+}
+
+.pv-bar {
+  position: fixed;
+  z-index: 100000;
+  display: flex;
+  /* 多了宿主下拉与「手机档」提示，40vw 装不下（用例名本身就能很长）：
+     放到近满宽并允许折行，窄窗口下不会溢出到屏幕外。 */
+  max-width: calc(100vw - 24px);
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--cc-space-2, 8px);
+  padding: 6px var(--cc-space-2, 8px);
+  box-sizing: border-box;
+  background: var(--pv-bar-bg);
+  border: 1px solid var(--pv-bar-border);
+  border-radius: var(--cc-radius-lg, 12px);
+  box-shadow: var(--pv-bar-shadow);
+  color: var(--pv-text-primary);
+  font-family: var(--cc-font-family, -apple-system, "system-ui", sans-serif);
+  font-size: var(--cc-font-size-xs, 12px);
+  line-height: var(--cc-line-height-tight, 20px);
+  cursor: default;
+}
+
+/* 工具条里所有下拉/按钮共用一个外观：选中框与按钮同高同圆角，读起来是一件
+   控件，不是一个框加一颗胶囊。 */
+.pv-control {
+  box-sizing: border-box;
+  height: 28px;
+  padding: 0 var(--cc-space-2, 8px);
+  font: inherit;
+  border: 1px solid var(--pv-field-border);
+  border-radius: var(--cc-radius-md, 8px);
+  background: var(--pv-field-bg);
+  color: var(--pv-field-text);
+  cursor: pointer;
+}
+
+/* ---- 下拉三角：自绘，不用原生外观 -------------------------------------------
+   原生外观的三角被浏览器钉在右框内缘，`padding` 管不到它（产品侧实测浅色档
+   墨迹右内衬只有 3.5px，而文字左内衬 13px）。这正是设置页 0921 那条评论
+   「下拉菜单的左右边距不一致」的原因，配方沿用 `.settings-control::after`：
+     墨迹 8×4.5（会话分组 chevron 的同一条官方矢量，朝下）、
+     `right: 9px`（1px 边框 + 内缘 8px，与文字左内衬对称）、
+     `background` 取字段字色、SVG 走 mask —— 背景图里的 SVG 不继承
+     `currentColor`（会渲染成黑），所以必须「独立元素 + mask」才能跟主题变色。
+   原生 select 换不了自己的伪元素 ⇒ 每个下拉外面包一层 `.pv-select`。 */
+.pv-select {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+}
+
+.pv-select > .pv-control {
+  -webkit-appearance: none;
+  appearance: none;
+  /* 8 内衬 + 8 三角 + 8 间隔 */
+  padding-right: 24px;
+}
+
+.pv-select::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  right: 9px;
+  width: 8px;
+  height: 4.5px;
+  transform: translateY(-50%);
+  background: var(--pv-field-text);
+  -webkit-mask: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'><g transform='translate(0,16) scale(1,-1)'><path d='M7.99977 7.22354L5.17108 10.0522C4.91078 10.3125 4.48875 10.3125 4.22844 10.0522C3.96813 9.79192 3.96812 9.36988 4.22843 9.10957L7.29266 6.04533C7.68318 5.65481 8.31635 5.65481 8.70687 6.04534L11.7711 9.10957C12.0314 9.36988 12.0314 9.79192 11.7711 10.0522C11.5108 10.3125 11.0888 10.3125 10.8285 10.0522L7.99977 7.22354Z' fill='%23000'/></g></svg>")
+    center / 16px 16px no-repeat;
+  mask: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'><g transform='translate(0,16) scale(1,-1)'><path d='M7.99977 7.22354L5.17108 10.0522C4.91078 10.3125 4.48875 10.3125 4.22844 10.0522C3.96813 9.79192 3.96812 9.36988 4.22843 9.10957L7.29266 6.04533C7.68318 5.65481 8.31635 5.65481 8.70687 6.04534L11.7711 9.10957C12.0314 9.36988 12.0314 9.79192 11.7711 10.0522C11.5108 10.3125 11.0888 10.3125 10.8285 10.0522L7.99977 7.22354Z' fill='%23000'/></g></svg>")
+    center / 16px 16px no-repeat;
+  pointer-events: none; /* 只是装饰：点击照旧落到原生 select */
+}
+
+.pv-control:hover {
+  border-color: var(--pv-field-border-hover);
+}
+
+/* 字段族不画外扩焦点环：焦点只换描边（与产品输入框同一写法，见
+   host-desktop.css 的 `--cc-field-border-focus` 段），描边对底色对比度
+   浅色 6.4:1 / 深色 6.9:1，满足「可见焦点」。 */
+select.pv-control:focus,
+select.pv-control:focus-visible {
+  outline: none;
+  border-color: var(--pv-field-border-focus);
+}
+
+/* 按钮不是字段，按 action 档走键盘焦点环：2px `--cc-border-focus`、0 偏移
+   （契约「ring touches the button edge」）。只认 :focus-visible —— 鼠标点完
+   主题框不该一直挂着焦点描边。 */
+.pv-control--action:focus {
+  outline: none;
+}
+
+.pv-control--action:focus-visible {
+  outline: 2px solid var(--cc-border-focus, #1f2329);
+  outline-offset: 0;
+}
+
+/* 按钮不是字段：横向内衬按 action 档 12px，读起来比下拉稍宽一点。 */
+.pv-control--action {
+  padding: 0 var(--cc-space-3, 12px);
+}
+
+.pv-grip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 28px;
+  color: var(--pv-text-secondary);
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+}
+
+.pv-grip:hover {
+  color: var(--pv-text-primary);
+}
+
+.pv-grip:active {
+  cursor: grabbing;
+}
+
+/* 「手机档需设备模拟」：小字说明 + 上色字形，文字本身用次级文字色保证可读。 */
+.pv-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--cc-space-1, 4px);
+  font-size: var(--cc-font-size-xs, 12px);
+  line-height: var(--cc-line-height-tight, 20px);
+  color: var(--pv-text-secondary);
+  white-space: nowrap;
+  cursor: help;
+}
+
+.pv-hint-icon {
+  color: var(--pv-warning);
+}
+
+/* 只在「这次选择另有隐情」时出现的状态徽标（兜底 / 失效 / 无用例）。 */
+.pv-badge {
+  padding: 0 var(--cc-space-1, 4px);
+  box-sizing: border-box;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--pv-bar-border);
+  border-radius: var(--cc-radius-sm, 6px);
+  color: var(--pv-text-secondary);
+  font-size: var(--cc-font-size-xs, 12px);
+  line-height: var(--cc-line-height-tight, 20px);
+  white-space: nowrap;
+}
+
+.pv-badge--danger {
+  color: var(--pv-danger);
+}

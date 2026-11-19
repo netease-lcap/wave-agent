@@ -1,4 +1,4 @@
-import { spawn } from "child_process";
+import { spawnHidden } from "./execFileHidden.js";
 
 export interface CommandResult {
   stdout: string;
@@ -16,6 +16,10 @@ export interface CommandResult {
  * not an error: `rg` uses it for "no matches", which is a normal answer to a
  * search. A `null` exit code is the only true spawn failure — the caller reads
  * `stderr` for the reason.
+ *
+ * `spawnHidden` (not `child_process.spawn`) because this is a spawn point like
+ * any other: the wrapper forces `windowsHide` and keeps fd0 at /dev/null, which
+ * is what `stdio` here already asks for.
  */
 export function runCommand(
   command: string,
@@ -23,10 +27,9 @@ export function runCommand(
   cwd: string,
 ): Promise<CommandResult> {
   return new Promise((resolve) => {
-    const child = spawn(command, args, {
+    const child = spawnHidden(command, args, {
       cwd,
       stdio: ["ignore", "pipe", "pipe"],
-      windowsHide: true,
     });
 
     let stdout = "";

@@ -26,6 +26,12 @@ const auth = vi.hoisted(() => ({
 
 vi.mock("wave-agent-sdk", () => ({
   authService: { getAuthUser: auth.getAuthUser },
+  // `hostIdentity` queries the OS through the SDK's `windowsHide`-forcing
+  // wrapper rather than `node:child_process` directly (the raw import is banned
+  // by `.oxlintrc.json`). Aliasing it to the same `vi.fn` keeps the `ioreg` /
+  // `reg` assertions below meaningful; the forcing itself is covered by
+  // `agent-sdk`'s own `execFileHidden.test.ts`.
+  execFileSyncHidden: proc.execFileSync,
 }));
 
 import {

@@ -1,14 +1,29 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { execFile, execFileSync } from "node:child_process";
 import {
+  exec,
+  execFile,
+  execFileSync,
+  spawn,
+  spawnSync,
+} from "node:child_process";
+import {
+  execAsyncHidden,
   execFileAsyncHidden,
   execFileHidden,
   execFileSyncHidden,
+  spawnHidden,
+  spawnSyncHidden,
 } from "../../src/utils/execFileHidden.js";
 
+// Every stubbed name is here because the wrapper dereferences the module at call
+// time: a factory that only lists half of them still satisfies the wrapper, and
+// that is deliberate (see the module doc).
 vi.mock("node:child_process", () => ({
+  exec: vi.fn(),
   execFile: vi.fn(),
   execFileSync: vi.fn(),
+  spawn: vi.fn(),
+  spawnSync: vi.fn(),
 }));
 
 /** node's real callback shape: `(error, stdout, stderr)` — three arguments. */
@@ -234,5 +249,182 @@ describe("execFileSyncHidden", () => {
       encoding: "utf8",
       windowsHide: true,
     });
+  });
+});
+
+describe("spawnHidden", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(spawn).mockReturnValue({
+      pid: 4242,
+    } as unknown as ReturnType<typeof spawn>);
+  });
+
+  it("forces windowsHide: true when the caller passes no options", () => {
+    spawnHidden("rg", ["--version"]);
+    expect(spawn).toHaveBeenCalledWith("rg", ["--version"], {
+      stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true,
+    });
+  });
+
+  it("still forces windowsHide: true when the caller asks for false", () => {
+    spawnHidden("rg", ["foo"], { windowsHide: false, cwd: "/repo" });
+    expect(spawn).toHaveBeenCalledWith("rg", ["foo"], {
+      cwd: "/repo",
+      stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true,
+    });
+  });
+
+  /**
+   * fd0: node defaults it to a pipe nobody writes, so `rg` with no path waits
+   * for stdin until the timeout (fb0034cb3). A caller that did not say anything
+   * about stdio gets `/dev/null` instead.
+   */
+  it("points fd0 at /dev/null when the caller declares no stdio", () => {
+    spawnHidden("rg", ["wave_no_such_symbol_xyzq"]);
+    expect(spawn).toHaveBeenCalledWith("rg", ["wave_no_such_symbol_xyzq"], {
+      stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true,
+    });
+  });
+
+  it("leaves an explicit pipe fd0 alone — that caller writes stdin", () => {
+    spawnHidden("tsserver", [], { stdio: ["pipe", "pipe", "pipe"] });
+    expect(spawn).toHaveBeenCalledWith("tsserver", [], {
+      stdio: ["pipe", "pipe", "pipe"],
+      windowsHide: true,
+    });
+  });
+
+  it("leaves an inherited stdio alone — the child shares the terminal", () => {
+    spawnHidden("git", ["pull"], { stdio: "inherit" });
+    expect(spawn).toHaveBeenCalledWith("git", ["pull"], {
+      stdio: "inherit",
+      windowsHide: true,
+    });
+  });
+
+  it("returns the ChildProcess spawn returns", () => {
+    const child = spawnHidden("rg", []);
+    expect(child).toEqual({ pid: 4242 });
+  });
+
+  it("accepts options in the args slot, like spawn does", () => {
+    spawnHidden("rg", { cwd: "/repo" });
+    expect(spawn).toHaveBeenCalledWith("rg", [], {
+      cwd: "/repo",
+      stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true,
+    });
+  });
+});
+
+describe("spawnSyncHidden", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(spawnSync).mockReturnValue({
+      pid: 1,
+      status: 0,
+      stdout: "out",
+      stderr: "",
+    } as unknown as ReturnType<typeof spawnSync>);
+  });
+
+  it("forces windowsHide: true when the caller passes no options", () => {
+    spawnSyncHidden("taskkill", ["/pid", "1", "/T", "/F"]);
+    expect(spawnSync).toHaveBeenCalledWith(
+      "taskkill",
+      ["/pid", "1", "/T", "/F"],
+      {
+        stdio: ["ignore", "pipe", "pipe"],
+        windowsHide: true,
+      },
+    );
+  });
+
+  it("still forces windowsHide: true when the caller asks for false", () => {
+    spawnSyncHidden("pnpm", ["list", "-g"], {
+      encoding: "utf-8",
+      windowsHide: false,
+    });
+    expect(spawnSync).toHaveBeenCalledWith("pnpm", ["list", "-g"], {
+      encoding: "utf-8",
+      stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true,
+    });
+  });
+
+  it("leaves an explicit stdio alone", () => {
+    spawnSyncHidden("npm", ["install", "-g"], { stdio: "inherit" });
+    expect(spawnSync).toHaveBeenCalledWith("npm", ["install", "-g"], {
+      stdio: "inherit",
+      windowsHide: true,
+    });
+  });
+
+  it("accepts options in the args slot, like spawnSync does", () => {
+    spawnSyncHidden("git", { encoding: "utf8", stdio: "ignore" });
+    expect(spawnSync).toHaveBeenCalledWith("git", [], {
+      encoding: "utf8",
+      stdio: "ignore",
+      windowsHide: true,
+    });
+  });
+});
+
+describe("execAsyncHidden", () => {
+  type ExecCallback = (
+    error: Error | null,
+    stdout: string,
+    stderr: string,
+  ) => void;
+
+  /** node hands the streams to the callback only; the error carries none. */
+  function stubExec(succeed = true) {
+    vi.mocked(exec).mockImplementation((_command, _options, cb) => {
+      const callback = cb as unknown as ExecCallback;
+      if (succeed) {
+        callback(null, "out", "err");
+      } else {
+        const error = Object.assign(new Error("command failed"), { code: 2 });
+        callback(error, "partial out", "boom");
+      }
+      return {} as unknown as ReturnType<typeof exec>;
+    });
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    stubExec();
+  });
+
+  it("forces windowsHide: true", async () => {
+    await execAsyncHidden("echo hi", { cwd: "/repo" });
+    expect(exec).toHaveBeenCalledWith(
+      "echo hi",
+      { cwd: "/repo", windowsHide: true },
+      expect.any(Function),
+    );
+  });
+
+  it("resolves an object carrying both streams", async () => {
+    const result = await execAsyncHidden("echo hi");
+    expect(result).toEqual({ stdout: "out", stderr: "err" });
+  });
+
+  it("rejects with stdout and stderr attached to the error", async () => {
+    stubExec(false);
+
+    const error = await execAsyncHidden("nope").then(
+      () => null,
+      (rejection: unknown) =>
+        rejection as { stdout?: string; stderr?: string; code?: number },
+    );
+
+    expect(error?.code).toBe(2);
+    expect(error?.stdout).toBe("partial out");
+    expect(error?.stderr).toBe("boom");
   });
 });

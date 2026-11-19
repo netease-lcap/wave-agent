@@ -1,4 +1,5 @@
-import { spawn, type ChildProcess, type SpawnOptions } from "child_process";
+import { type ChildProcess, type SpawnOptions } from "child_process";
+import { spawnHidden } from "../utils/execFileHidden.js";
 import * as fs from "fs";
 import * as path from "path";
 import { BackgroundTask, BackgroundShell } from "../types/processes.js";
@@ -180,11 +181,11 @@ export class BackgroundTaskManager {
     // would otherwise sit there forever holding a pipe nobody writes to.
     const spawnOptions: SpawnOptions = {
       stdio: ["ignore", "pipe", "pipe"],
-      // No-op in combination with a detached child: Windows ignores
-      // CREATE_NO_WINDOW whenever DETACHED_PROCESS is set, so this does not
-      // hide anything there. Kept because it is what hides the child when the
-      // shell is started without `detached` (the PowerShell branch).
-      windowsHide: true,
+      // `spawnHidden` forces `windowsHide: true`. In combination with a
+      // detached child that key is a no-op on Windows — CREATE_NO_WINDOW is
+      // ignored whenever DETACHED_PROCESS is set — so it only ever matters for
+      // the non-detached PowerShell branch, which is exactly where it is
+      // needed.
       cwd: cwd ?? this.workdir,
       env: {
         ...process.env,
@@ -193,11 +194,11 @@ export class BackgroundTaskManager {
       },
     };
     const child = options?.shell
-      ? spawn(options.shell.file, options.shell.args, {
+      ? spawnHidden(options.shell.file, options.shell.args, {
           ...spawnOptions,
           detached: options.shell.detached,
         })
-      : spawn(command, {
+      : spawnHidden(command, {
           ...spawnOptions,
           shell: resolveShellPath() ?? true,
           detached: true,

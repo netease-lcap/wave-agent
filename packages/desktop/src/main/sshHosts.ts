@@ -10,13 +10,11 @@
  * upgrade import of the pre-existing hosts (spec scenario 32).
  */
 
-import { execFile } from "child_process";
-import { promisify } from "util";
+import { execFileAsyncHidden } from "wave-agent-sdk/host";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 
-const execFileAsync = promisify(execFile);
 const SHELL_PROBE_TIMEOUT_MS = 15_000;
 
 /** Sentinel host name for local (non-remote) sessions. */
@@ -313,9 +311,13 @@ export function resetRemoteShellCache(): void {
 export function getRemoteLoginShell(host: string): Promise<string> {
   let cached = loginShellCache.get(host);
   if (!cached) {
-    cached = execFileAsync("ssh", buildSshSpawnArgs(host, "echo $SHELL"), {
-      timeout: SHELL_PROBE_TIMEOUT_MS,
-    })
+    cached = execFileAsyncHidden(
+      "ssh",
+      buildSshSpawnArgs(host, "echo $SHELL"),
+      {
+        timeout: SHELL_PROBE_TIMEOUT_MS,
+      },
+    )
       .then(({ stdout }) => stdout.trim() || "/bin/sh")
       .catch(() => "/bin/sh");
     loginShellCache.set(host, cached);

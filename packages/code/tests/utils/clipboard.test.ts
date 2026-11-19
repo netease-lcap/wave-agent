@@ -6,21 +6,21 @@ import {
 } from "../../src/utils/clipboard.js";
 
 // Mock all the dependencies - use vi.hoisted for proper hoisting
-const mockExec = vi.hoisted(() => vi.fn());
+const mockExecAsync = vi.hoisted(() => vi.fn());
+const mockExecFileAsync = vi.hoisted(() => vi.fn());
 const mockExistsSync = vi.hoisted(() => vi.fn());
 const mockUnlinkSync = vi.hoisted(() => vi.fn());
 const mockJoin = vi.hoisted(() => vi.fn());
 const mockTmpdir = vi.hoisted(() => vi.fn());
 
-// Mock child_process with dynamic import support
-vi.mock("child_process", () => ({
-  exec: mockExec,
-  execFile: mockExec,
-}));
-
-// Mock util module
-vi.mock("util", () => ({
-  promisify: vi.fn(() => mockExec),
+// The clipboard code goes through the SDK's wrapper family (execAsyncHidden /
+// execFileAsyncHidden), not raw `child_process` + `promisify` — so the mount
+// point is the wrapper's own module. Two separate mocks on purpose: `exec` runs
+// through a shell (`which xclip`, `osascript`), `execFile` is argv-only
+// (`powershell.exe`), and a shared mock cannot tell the two apart.
+vi.mock("wave-agent-sdk", () => ({
+  execAsyncHidden: mockExecAsync,
+  execFileAsyncHidden: mockExecFileAsync,
 }));
 
 // Mock fs module
@@ -96,7 +96,7 @@ describe("Clipboard Utils", () => {
       });
 
       it("should return error when no image in clipboard", async () => {
-        mockExec.mockResolvedValueOnce({ stdout: "false" });
+        mockExecAsync.mockResolvedValueOnce({ stdout: "false" });
 
         const result = await readClipboardImage();
 
@@ -105,7 +105,7 @@ describe("Clipboard Utils", () => {
       });
 
       it("should successfully read image from clipboard", async () => {
-        mockExec
+        mockExecAsync
           .mockResolvedValueOnce({ stdout: "true" }) // hasImage check
           .mockResolvedValueOnce({ stdout: "success" }); // saveScript
         mockExistsSync.mockReturnValue(true);
@@ -118,7 +118,7 @@ describe("Clipboard Utils", () => {
       });
 
       it("should handle save script failure", async () => {
-        mockExec
+        mockExecAsync
           .mockResolvedValueOnce({ stdout: "true" }) // hasImage check
           .mockRejectedValueOnce(new Error("Save failed"));
 
@@ -131,7 +131,7 @@ describe("Clipboard Utils", () => {
       });
 
       it("should handle file not created", async () => {
-        mockExec
+        mockExecAsync
           .mockResolvedValueOnce({ stdout: "true" }) // hasImage check
           .mockResolvedValueOnce({ stdout: "success" }); // saveScript
         mockExistsSync.mockReturnValue(false);
@@ -145,7 +145,7 @@ describe("Clipboard Utils", () => {
       });
 
       it("should handle unexpected errors in readClipboardImageMac", async () => {
-        mockExec
+        mockExecAsync
           .mockResolvedValueOnce({ stdout: "true" }) // hasImage check
           .mockImplementationOnce(() => {
             throw new Error("Unexpected error");
@@ -161,7 +161,7 @@ describe("Clipboard Utils", () => {
       });
 
       it("should handle hasImage check failure", async () => {
-        mockExec.mockRejectedValueOnce(new Error("Check failed"));
+        mockExecAsync.mockRejectedValueOnce(new Error("Check failed"));
 
         const result = await readClipboardImage();
 
@@ -179,7 +179,7 @@ describe("Clipboard Utils", () => {
       });
 
       it("should return error when no image in clipboard", async () => {
-        mockExec.mockResolvedValueOnce({ stdout: "false" });
+        mockExecFileAsync.mockResolvedValueOnce({ stdout: "false" });
 
         const result = await readClipboardImage();
 
@@ -188,7 +188,7 @@ describe("Clipboard Utils", () => {
       });
 
       it("should successfully read image from clipboard", async () => {
-        mockExec
+        mockExecFileAsync
           .mockResolvedValueOnce({ stdout: "true" }) // hasImage check
           .mockResolvedValueOnce({ stdout: "true" }); // saveScript
         mockExistsSync.mockReturnValue(true);
@@ -201,7 +201,7 @@ describe("Clipboard Utils", () => {
       });
 
       it("should handle PowerShell access failure", async () => {
-        mockExec.mockRejectedValueOnce(new Error("PowerShell failed"));
+        mockExecFileAsync.mockRejectedValueOnce(new Error("PowerShell failed"));
 
         const result = await readClipboardImage();
 
@@ -210,7 +210,7 @@ describe("Clipboard Utils", () => {
       });
 
       it("should handle save failure", async () => {
-        mockExec
+        mockExecFileAsync
           .mockResolvedValueOnce({ stdout: "true" }) // hasImage check
           .mockResolvedValueOnce({ stdout: "false" }); // saveScript failed
 
@@ -227,7 +227,7 @@ describe("Clipboard Utils", () => {
         // line (`powershell -Command "..."` via exec), which routes through
         // cmd /c and mangles the nested double quotes — PowerShell then exits
         // 0 with empty output, so every paste silently failed on Windows.
-        mockExec
+        mockExecFileAsync
           .mockResolvedValueOnce({ stdout: "true" }) // hasImage check
           .mockResolvedValueOnce({ stdout: "true" }); // saveScript
         mockExistsSync.mockReturnValue(true);
@@ -235,7 +235,7 @@ describe("Clipboard Utils", () => {
         const result = await readClipboardImage();
 
         expect(result.success).toBe(true);
-        expect(mockExec).toHaveBeenCalledWith(
+        expect(mockExecFileAsync).toHaveBeenCalledWith(
           "powershell.exe",
           expect.arrayContaining([
             "-NoProfile",
@@ -246,16 +246,19 @@ describe("Clipboard Utils", () => {
       });
 
       it("should handle unexpected errors in readClipboardImageWindows", async () => {
-        // Mock promisify to throw
-        const { promisify } = await import("util");
-        vi.mocked(promisify).mockImplementationOnce(() => {
-          throw new Error("Promisify failed");
+        // A launcher that throws synchronously (not a rejection) must land in
+        // the same catch. This is the branch the old "make `promisify` throw"
+        // case reached through module init — with a static import there is no
+        // module-init step left, so the throw moves to the call itself.
+        mockExecFileAsync.mockImplementationOnce(() => {
+          throw new Error("PowerShell launcher failed");
         });
 
         const result = await readClipboardImage();
 
         expect(result.success).toBe(false);
         expect(result.error).toContain("Failed to access clipboard on Windows");
+        expect(result.error).toContain("PowerShell launcher failed");
       });
     });
 
@@ -268,7 +271,7 @@ describe("Clipboard Utils", () => {
       });
 
       it("should return error when xclip not available", async () => {
-        mockExec.mockRejectedValueOnce(new Error("xclip not found"));
+        mockExecAsync.mockRejectedValueOnce(new Error("xclip not found"));
 
         const result = await readClipboardImage();
 
@@ -277,7 +280,7 @@ describe("Clipboard Utils", () => {
       });
 
       it("should return error when no image in clipboard", async () => {
-        mockExec
+        mockExecAsync
           .mockResolvedValueOnce({ stdout: "xclip found" }) // which xclip
           .mockRejectedValueOnce(new Error("No image")); // clipboard check
 
@@ -288,7 +291,7 @@ describe("Clipboard Utils", () => {
       });
 
       it("should successfully read image from clipboard", async () => {
-        mockExec
+        mockExecAsync
           .mockResolvedValueOnce({ stdout: "xclip found" }) // which xclip
           .mockResolvedValueOnce({ stdout: "has image" }) // clipboard check
           .mockResolvedValueOnce({ stdout: "saved" }); // save image
@@ -302,7 +305,7 @@ describe("Clipboard Utils", () => {
       });
 
       it("should handle save failure", async () => {
-        mockExec
+        mockExecAsync
           .mockResolvedValueOnce({ stdout: "xclip found" }) // which xclip
           .mockResolvedValueOnce({ stdout: "has image" }) // clipboard check
           .mockRejectedValueOnce(new Error("Save failed")); // save image fails
@@ -314,7 +317,7 @@ describe("Clipboard Utils", () => {
       });
 
       it("should handle file not created after save", async () => {
-        mockExec
+        mockExecAsync
           .mockResolvedValueOnce({ stdout: "xclip found" }) // which xclip
           .mockResolvedValueOnce({ stdout: "has image" }) // clipboard check
           .mockResolvedValueOnce({ stdout: "saved" }); // save image
@@ -329,42 +332,16 @@ describe("Clipboard Utils", () => {
       });
 
       it("should handle unexpected errors in readClipboardImageLinux", async () => {
-        // Mock the first exec call (which xclip) to throw an error that is NOT caught by the inner try-catch
-        // Actually, the first try-catch in readClipboardImageLinux catches the error and returns a specific message.
-        // To reach the outer catch in readClipboardImage, we need something to throw outside the inner try-catches
-        // or make one of the inner try-catches rethrow.
-        // But wait, the outer catch is in readClipboardImage, not readClipboardImageLinux.
-        // readClipboardImageLinux has its own try-catch that covers everything.
-
-        // Let's look at readClipboardImageLinux again:
-        /*
-        async function readClipboardImageLinux(): Promise<ClipboardImageResult> {
-          try {
-            const { exec } = await import("child_process");
-            ...
-          } catch (err) {
-            return {
-              success: false,
-              error: `Failed to read clipboard image on Linux: ...`,
-            };
-          }
-        }
-        */
-        // So it should return "Failed to read clipboard image on Linux".
-        // The reason it returns "xclip is required..." is because mockExec.mockImplementationOnce
-        // is being called for `await execAsync("which xclip");` which is INSIDE a try-catch that returns the xclip message.
-
-        // To trigger the catch(err) at the end of readClipboardImageLinux, we need to throw BEFORE the first inner try-catch.
-        // The first inner try-catch starts at line 211.
-        // Line 206-208 are:
-        // const { exec } = await import("child_process");
-        // const { promisify } = await import("util");
-        // const execAsync = promisify(exec);
-
-        // If we mock promisify to throw, it should work.
-        const { promisify } = await import("util");
-        vi.mocked(promisify).mockImplementationOnce(() => {
-          throw new Error("Promisify failed");
+        // The outer catch only sees what the two inner try/catches do not, i.e.
+        // the `tmpdir()` / `join()` pair that builds the temp path between them.
+        // That used to be the `await import("child_process")` + `promisify`
+        // pair at the top of the function — a static import leaves no such
+        // module-init seam, so the injection moves to the one call still there.
+        mockExecAsync
+          .mockResolvedValueOnce({ stdout: "xclip found" }) // which xclip
+          .mockResolvedValueOnce({ stdout: "has image" }); // clipboard check
+        mockTmpdir.mockImplementationOnce(() => {
+          throw new Error("Unexpected failure");
         });
 
         const result = await readClipboardImage();
@@ -373,7 +350,7 @@ describe("Clipboard Utils", () => {
         expect(result.error).toContain(
           "Failed to read clipboard image on Linux",
         );
-        expect(result.error).toContain("Promisify failed");
+        expect(result.error).toContain("Unexpected failure");
       });
     });
   });
@@ -398,28 +375,28 @@ describe("Clipboard Utils", () => {
       });
 
       it("should return true when image is available", async () => {
-        mockExec.mockResolvedValueOnce({ stdout: "true" });
+        mockExecAsync.mockResolvedValueOnce({ stdout: "true" });
 
         const result = await hasClipboardImage();
         expect(result).toBe(true);
       });
 
       it("should return false when no image available", async () => {
-        mockExec.mockResolvedValueOnce({ stdout: "false" });
+        mockExecAsync.mockResolvedValueOnce({ stdout: "false" });
 
         const result = await hasClipboardImage();
         expect(result).toBe(false);
       });
 
       it("should return false on error", async () => {
-        mockExec.mockRejectedValueOnce(new Error("Script failed"));
+        mockExecAsync.mockRejectedValueOnce(new Error("Script failed"));
 
         const result = await hasClipboardImage();
         expect(result).toBe(false);
       });
 
       it("should return false when stdout is empty", async () => {
-        mockExec.mockResolvedValueOnce({ stdout: "" });
+        mockExecAsync.mockResolvedValueOnce({ stdout: "" });
 
         const result = await hasClipboardImage();
         expect(result).toBe(false);
@@ -435,21 +412,21 @@ describe("Clipboard Utils", () => {
       });
 
       it("should return true when image is available", async () => {
-        mockExec.mockResolvedValueOnce({ stdout: "true" });
+        mockExecFileAsync.mockResolvedValueOnce({ stdout: "true" });
 
         const result = await hasClipboardImage();
         expect(result).toBe(true);
       });
 
       it("should return false when no image available", async () => {
-        mockExec.mockResolvedValueOnce({ stdout: "false" });
+        mockExecFileAsync.mockResolvedValueOnce({ stdout: "false" });
 
         const result = await hasClipboardImage();
         expect(result).toBe(false);
       });
 
       it("should return false on unexpected error", async () => {
-        mockExec.mockImplementationOnce(() => {
+        mockExecFileAsync.mockImplementationOnce(() => {
           throw new Error("Unexpected error");
         });
 
@@ -467,14 +444,14 @@ describe("Clipboard Utils", () => {
       });
 
       it("should return false when xclip not available", async () => {
-        mockExec.mockRejectedValueOnce(new Error("xclip not found"));
+        mockExecAsync.mockRejectedValueOnce(new Error("xclip not found"));
 
         const result = await hasClipboardImage();
         expect(result).toBe(false);
       });
 
       it("should return true when image is available", async () => {
-        mockExec
+        mockExecAsync
           .mockResolvedValueOnce({ stdout: "xclip found" }) // which xclip
           .mockResolvedValueOnce({ stdout: "has image" }); // clipboard check
 
@@ -483,7 +460,7 @@ describe("Clipboard Utils", () => {
       });
 
       it("should return false when no image available", async () => {
-        mockExec
+        mockExecAsync
           .mockResolvedValueOnce({ stdout: "xclip found" }) // which xclip
           .mockRejectedValueOnce(new Error("No image")); // clipboard check
 
@@ -492,7 +469,7 @@ describe("Clipboard Utils", () => {
       });
 
       it("should return false on unexpected error", async () => {
-        mockExec.mockImplementationOnce(() => {
+        mockExecAsync.mockImplementationOnce(() => {
           throw new Error("Unexpected error");
         });
 

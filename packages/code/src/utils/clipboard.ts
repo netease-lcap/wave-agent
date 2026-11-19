@@ -1,6 +1,12 @@
 import { unlinkSync, existsSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
+// 静态导入，不走 `await import("child_process")`：本文件顶部已经静态 import 了
+// `fs` / `path` / `os`，为 `child_process` 单独绕动态 import 没有任何隔离收益，
+// 反而绕开了 .oxlintrc.json 里「子进程一律走 wrapper」的规则 —— exec 的
+// `windowsHide` 默认同样是 false，桌面托管的 `wave --stdio` 没有控制台，少一个
+// key 就是一次闪窗（Windows 分支这里直接跑 powershell.exe）。
+import { execAsyncHidden, execFileAsyncHidden } from "wave-agent-sdk";
 
 export interface ClipboardImageResult {
   success: boolean;
@@ -62,10 +68,6 @@ export async function readClipboardImage(): Promise<ClipboardImageResult> {
  * Read clipboard image on macOS
  */
 async function readClipboardImageMac(): Promise<ClipboardImageResult> {
-  const { exec } = await import("child_process");
-  const { promisify } = await import("util");
-  const execAsync = promisify(exec);
-
   try {
     // Try to read image data directly to check if image exists
     const testScript = `
@@ -81,7 +83,7 @@ async function readClipboardImageMac(): Promise<ClipboardImageResult> {
 
     let hasImage = false;
     try {
-      const { stdout: testResult } = await execAsync(
+      const { stdout: testResult } = await execAsyncHidden(
         `osascript -e '${testScript}'`,
       );
       hasImage = testResult.trim() === "true";
@@ -117,7 +119,7 @@ async function readClipboardImageMac(): Promise<ClipboardImageResult> {
       end tell
     `;
 
-    await execAsync(`osascript -e '${saveScript}'`);
+    await execAsyncHidden(`osascript -e '${saveScript}'`);
 
     // Verify if file was created successfully
     if (!existsSync(tempFilePath)) {
@@ -149,10 +151,7 @@ async function readClipboardImageMac(): Promise<ClipboardImageResult> {
  * and exits 0 with empty output — image paste silently failed on Windows.
  */
 async function runPowerShellScript(script: string): Promise<string> {
-  const { execFile } = await import("child_process");
-  const { promisify } = await import("util");
-  const execFileAsync = promisify(execFile);
-  const { stdout } = await execFileAsync("powershell.exe", [
+  const { stdout } = await execFileAsyncHidden("powershell.exe", [
     "-NoProfile",
     "-Command",
     script,
@@ -242,13 +241,9 @@ async function readClipboardImageWindows(): Promise<ClipboardImageResult> {
 async function readClipboardImageLinux(): Promise<ClipboardImageResult> {
   try {
     // Linux can use tools like xclip or wl-clipboard
-    const { exec } = await import("child_process");
-    const { promisify } = await import("util");
-    const execAsync = promisify(exec);
-
     // Check if xclip is available
     try {
-      await execAsync("which xclip");
+      await execAsyncHidden("which xclip");
     } catch {
       return {
         success: false,
@@ -259,7 +254,7 @@ async function readClipboardImageLinux(): Promise<ClipboardImageResult> {
 
     // Check if clipboard contains image
     try {
-      await execAsync(
+      await execAsyncHidden(
         "xclip -selection clipboard -t image/png -o > /dev/null 2>&1",
       );
     } catch {
@@ -274,7 +269,7 @@ async function readClipboardImageLinux(): Promise<ClipboardImageResult> {
 
     // Use xclip to save clipboard image
     try {
-      await execAsync(
+      await execAsyncHidden(
         `xclip -selection clipboard -t image/png -o > "${tempFilePath}"`,
       );
 
@@ -345,10 +340,6 @@ export async function hasClipboardImage(): Promise<boolean> {
  */
 async function hasClipboardImageMac(): Promise<boolean> {
   try {
-    const { exec } = await import("child_process");
-    const { promisify } = await import("util");
-    const execAsync = promisify(exec);
-
     const checkScript = `
       tell application "System Events"
         try
@@ -360,7 +351,7 @@ async function hasClipboardImageMac(): Promise<boolean> {
       end tell
     `;
 
-    const { stdout } = await execAsync(`osascript -e '${checkScript}'`);
+    const { stdout } = await execAsyncHidden(`osascript -e '${checkScript}'`);
     return stdout.trim() === "true";
   } catch {
     return false;
@@ -383,20 +374,16 @@ async function hasClipboardImageWindows(): Promise<boolean> {
  */
 async function hasClipboardImageLinux(): Promise<boolean> {
   try {
-    const { exec } = await import("child_process");
-    const { promisify } = await import("util");
-    const execAsync = promisify(exec);
-
     // Check if xclip is available
     try {
-      await execAsync("which xclip");
+      await execAsyncHidden("which xclip");
     } catch {
       return false;
     }
 
     // Check if clipboard contains image
     try {
-      await execAsync(
+      await execAsyncHidden(
         "xclip -selection clipboard -t image/png -o > /dev/null 2>&1",
       );
       return true;

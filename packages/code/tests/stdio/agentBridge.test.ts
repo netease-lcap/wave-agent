@@ -20,6 +20,7 @@ import {
   updateUserPreferenceSettings,
   normalizeEntrypoint,
   getAutoCompactThreshold,
+  execFileSyncHidden,
   readRecentWorkdirs,
   rememberRecentWorkdir,
   forgetRecentWorkdir,
@@ -27,7 +28,6 @@ import {
   type ClientNotificationMethod,
   type RequestMethod,
 } from "wave-agent-sdk";
-import { execFileSync } from "node:child_process";
 import path from "node:path";
 import {
   createWorktree,
@@ -42,14 +42,6 @@ import { logger } from "../../src/utils/logger.js";
 
 // Mock the Agent SDK
 vi.mock("wave-agent-sdk");
-
-vi.mock("node:child_process", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("node:child_process")>();
-  return {
-    ...actual,
-    execFileSync: vi.fn(),
-  };
-});
 
 vi.mock("../../src/utils/worktree.js", async (importOriginal) => {
   const actual =
@@ -4823,7 +4815,7 @@ test("notifications route by sessionId when callbacks fire", async () => {
 test("listGitBranches returns branches and current branch", async () => {
   const { bridge } = createBridge();
 
-  vi.mocked(execFileSync)
+  vi.mocked(execFileSyncHidden)
     // git for-each-ref
     .mockReturnValueOnce("main\ndev\nfeature-x\n")
     // git rev-parse --abbrev-ref HEAD
@@ -4836,12 +4828,12 @@ test("listGitBranches returns branches and current branch", async () => {
   expect(result.branches).toEqual(["main", "dev", "feature-x"]);
   expect(result.current).toBe("dev");
 
-  expect(execFileSync).toHaveBeenCalledWith(
+  expect(execFileSyncHidden).toHaveBeenCalledWith(
     "git",
     ["for-each-ref", "--format=%(refname:short)", "refs/heads"],
     expect.objectContaining({ cwd: "/repo" }),
   );
-  expect(execFileSync).toHaveBeenCalledWith(
+  expect(execFileSyncHidden).toHaveBeenCalledWith(
     "git",
     ["rev-parse", "--abbrev-ref", "HEAD"],
     expect.objectContaining({ cwd: "/repo" }),
@@ -4857,7 +4849,7 @@ test("listGitBranches throws when workdir is missing", async () => {
 
 test("listGitBranches throws when not a git repo", async () => {
   const { bridge } = createBridge();
-  vi.mocked(execFileSync).mockImplementation(() => {
+  vi.mocked(execFileSyncHidden).mockImplementation(() => {
     throw new Error("not a git repository");
   });
 
@@ -4868,7 +4860,7 @@ test("listGitBranches throws when not a git repo", async () => {
 
 test("listGitBranches returns null current on detached HEAD", async () => {
   const { bridge } = createBridge();
-  vi.mocked(execFileSync)
+  vi.mocked(execFileSyncHidden)
     .mockReturnValueOnce("main\n")
     .mockReturnValueOnce("HEAD\n");
 
@@ -4881,7 +4873,7 @@ test("listGitBranches returns null current on detached HEAD", async () => {
 
 test("listGitBranches returns null current when rev-parse fails", async () => {
   const { bridge } = createBridge();
-  vi.mocked(execFileSync)
+  vi.mocked(execFileSyncHidden)
     .mockReturnValueOnce("main\n")
     .mockImplementationOnce(() => {
       throw new Error("rev-parse failed");
@@ -4897,7 +4889,9 @@ test("listGitBranches returns null current when rev-parse fails", async () => {
 
 test("listGitBranches returns an empty list when the repo has no refs", async () => {
   const { bridge } = createBridge();
-  vi.mocked(execFileSync).mockReturnValueOnce("").mockReturnValueOnce("main\n");
+  vi.mocked(execFileSyncHidden)
+    .mockReturnValueOnce("")
+    .mockReturnValueOnce("main\n");
 
   const result = (await bridge.handleRequest("listGitBranches", {
     workdir: "/repo",

@@ -1,7 +1,8 @@
-import { spawn, type ChildProcess, type SpawnOptions } from "child_process";
+import { type ChildProcess, type SpawnOptions } from "child_process";
 import * as fs from "fs";
 import { Readable } from "stream";
 import { logger } from "../../utils/globalLogger.js";
+import { spawnHidden } from "../../utils/execFileHidden.js";
 import { getShellProvider } from "../../utils/shell/resolveProvider.js";
 import { WindowsStreamDecoder } from "../../utils/encoding.js";
 import { terminateChildProcessTree } from "../../utils/terminateProcessTree.js";
@@ -243,7 +244,8 @@ export const powershellTool: ToolPlugin = {
         // fd0 is never a live pipe: nothing writes to the command's stdin, and
         // a command that prompts would otherwise hang until the timeout.
         stdio: ["ignore", "pipe", "pipe"],
-        windowsHide: true,
+        // `spawnHidden` forces `windowsHide: true` — the host main process has
+        // no console, so without it every command allocates a visible one.
         // The command is already an argv entry (`-Command <string>`); letting
         // spawn prepend a shell would re-quote it a third time.
         shell: false,
@@ -253,7 +255,7 @@ export const powershellTool: ToolPlugin = {
 
       let child: ChildProcess;
       try {
-        child = spawn(
+        child = spawnHidden(
           provider.shellPath,
           provider.getSpawnArgs(wrappedCommand),
           spawnOptions,

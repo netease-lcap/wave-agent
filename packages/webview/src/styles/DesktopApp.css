@@ -573,8 +573,25 @@ html[data-host="desktop"][data-theme="dark"] .desktop-session-group-host {
   background-color: var(--cc-color-danger-soft, rgba(220, 38, 38, 0.1));
 }
 
-.desktop-session-item--folder-missing .desktop-session-item-main {
-  padding-right: 32px;
+/* 缀标 ↔ 行右端图标（状态槽 / hover 出的「⋯」）留 4px：两者同为 right:8 / 24 宽，
+   所以整行让位 = 8 边距 + 24 图标 + 4 间隙 = 36px（原来 32 = 缀标盒正好贴住图标盒，
+   1218 评论「目录缺失到图标中间的间距 4px」）。
+   选择器多挂一个 `.desktop-session-item`：否则同特异性的 `--status`（:827）与 hover
+   （:832）两条 32px 规则会把它压回去，只有「既无状态点又不 hover」的行才吃到 36。 */
+.desktop-session-item.desktop-session-item--folder-missing
+  .desktop-session-item-main {
+  padding-right: 36px;
+}
+
+/* hover / 键盘焦点时右端换成「⋯」（它盖住状态槽），让位量不变：缀标 ↔ ⋯ 仍是 4px。
+   这一条必须挂上 `:hover` / `:has()` 才够特异性压过 :832 那条 32px 的通用规则。 */
+.desktop-session-item.desktop-session-item--folder-missing:hover
+  .desktop-session-item-main,
+.desktop-session-item.desktop-session-item--folder-missing:has(
+    .desktop-session-item-main:focus-visible
+  )
+  .desktop-session-item-main {
+  padding-right: 36px;
 }
 
 .desktop-session-more-btn {
@@ -945,6 +962,22 @@ html[data-theme="dark"] .desktop-session-status-slot {
   white-space: nowrap;
 }
 
+/* 基准分支 / 分支列表的图标：2026-11-17 起换成与空态「快捷方式」第 8 个分类
+   「Git 工作流」同一份矢量（`QuickStartCategoryIcon` 导出的 `GitBranchIcon`），
+   原来是 codicon 字体字形 `codicon-git-branch`（设计师评论：点触发器前的
+   `span.codicon.codicon-git-branch`「这里的图标和」+ 点快捷方式那颗
+   `svg.quick-start-cat-icon`「这个 保持一致」）。
+   盒仍是 16×16 —— 与 `.codicon[class*='codicon-']` 的 `font: 16px/1` 同栅格 ——
+   所以触发器（左内衬 6 / 图标→名称 6）与菜单项（图标→名称 8）的排布一格不动；
+   取色沿用字形原来那一档 `--vscode-icon-foreground`（浅 #606060 / 深 #CCCCCC），
+   换件不改颜色（桌面端触发器另有指定，见 host-desktop.css 的图标色组）。
+   `flex: none`：字体字形在 flex 行里默认可压，矢量按 16px 固定，窄窗口不再缩。 */
+.desktop-branch-icon {
+  display: block;
+  flex: none;
+  color: var(--vscode-icon-foreground);
+}
+
 .desktop-workdir-caret {
   opacity: 0.6;
   font-size: 12px;
@@ -1187,6 +1220,15 @@ html[data-theme="dark"] .desktop-session-status-slot {
   flex: 1;
   display: flex;
   flex-direction: column;
+  min-width: 0;
+}
+
+/* 分支名被省略时的全文气泡容器（2026-11-18）：`Tooltip` 自带的
+   `.tooltip-container` 是 `inline-flex; flex-shrink: 0` —— 作为菜单行的 flex 子项
+   它不肯缩，长名会顶出菜单。这里只把它改回「占满剩余宽度、可缩」，行内排版与
+   原来的 `.desktop-workdir-menu-path` 一致（path 自己不缩、尾部省略）。 */
+.desktop-workdir-menu-item .desktop-branch-name-tip {
+  flex: 1 1 0;
   min-width: 0;
 }
 

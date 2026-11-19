@@ -1,4 +1,5 @@
-import { spawn, ChildProcess, SpawnOptions } from "child_process";
+import { type ChildProcess, type SpawnOptions } from "child_process";
+import { spawnHidden } from "../utils/execFileHidden.js";
 import { Readable } from "stream";
 import * as fs from "fs";
 import { logger } from "../utils/globalLogger.js";
@@ -473,16 +474,17 @@ The working directory persists between commands, but shell state (environment va
       // Code makes by appending `< /dev/null` to every command.
       // The provider that supplies argv runs the shell itself; the one that
       // returns no argv lets spawn's `shell` option prepend the binary (bash
-      // today, so this branch stays cold).
+      // today, so this branch stays cold). Both go through `spawnHidden` — the
+      // wrapper is the only place `windowsHide` is decided.
       const spawnArgs = provider.getSpawnArgs(wrappedCommand);
       const spawnOptions: SpawnOptions = {
         stdio: ["ignore", "pipe", "pipe"],
         detached: provider.detached,
-        // No-op in combination with `detached`: Windows ignores CREATE_NO_WINDOW
-        // whenever DETACHED_PROCESS is set, so a console window cannot be
-        // suppressed from this option — that would need ConPTY or
-        // `Start-Process -WindowStyle Hidden`. Kept as harmless intent.
-        windowsHide: true,
+        // `spawnHidden` forces `windowsHide: true`. No-op in combination with
+        // `detached`: Windows ignores CREATE_NO_WINDOW whenever DETACHED_PROCESS
+        // is set, so a console window cannot be suppressed from that option —
+        // that would need ConPTY or `Start-Process -WindowStyle Hidden`. It is
+        // still the key that hides the child when the provider is not detached.
         cwd: context.workdir,
         env: {
           ...process.env,
@@ -492,11 +494,11 @@ The working directory persists between commands, but shell state (environment va
         },
       };
       const child: ChildProcess = spawnArgs.length
-        ? spawn(provider.shellPath, [...spawnArgs, wrappedCommand], {
+        ? spawnHidden(provider.shellPath, [...spawnArgs, wrappedCommand], {
             ...spawnOptions,
             shell: false,
           })
-        : spawn(wrappedCommand, { ...spawnOptions, shell: shellPath });
+        : spawnHidden(wrappedCommand, { ...spawnOptions, shell: shellPath });
 
       let outputBuffer = "";
       let errorBuffer = "";

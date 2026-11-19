@@ -1,6 +1,4 @@
 import { readFileSync, writeFileSync, mkdirSync } from "fs";
-import { execFile } from "child_process";
-import { promisify } from "util";
 import { join } from "path";
 import { tmpdir } from "os";
 import type { CustomSlashCommandConfig } from "../types/index.js";
@@ -9,11 +7,10 @@ import {
   PREVIEW_SIZE_BYTES,
 } from "../constants/toolLimits.js";
 import { logger } from "./globalLogger.js";
+import { execFileAsyncHidden } from "./execFileHidden.js";
 import { parseFrontmatterYaml, splitFrontmatter } from "./frontmatterYaml.js";
 import { resolveSessionShell } from "./shell/shellToolGate.js";
 import { POWERSHELL_SPAWN_FLAGS } from "./shell/powershellProvider.js";
-
-const execFileAsync = promisify(execFile);
 
 interface ParsedMarkdownFile {
   content: string;
@@ -310,16 +307,15 @@ export async function executeBashCommands(
         : [...POWERSHELL_SPAWN_FLAGS, command];
 
     try {
-      const { stdout, stderr } = await execFileAsync(
+      // argv form, not `exec`: the shell is chosen explicitly (bash `-c` /
+      // PowerShell `-Command`), so the command never reaches cmd.exe's parser.
+      // The wrapper forces `windowsHide` — the desktop main process has no
+      // console, so without it every skill-injected command allocates a visible
+      // console window.
+      const { stdout, stderr } = await execFileAsyncHidden(
         sessionShell.shellPath,
         spawnArgs,
-        {
-          cwd: workdir,
-          timeout,
-          // The desktop main process has no console; without this every
-          // skill-injected command allocates a visible console window.
-          windowsHide: true,
-        },
+        { cwd: workdir, timeout },
       );
       results.push({
         command,

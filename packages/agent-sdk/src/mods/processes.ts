@@ -11,7 +11,8 @@
  * 状态留给 mod 自己维护。
  */
 
-import { spawn, spawnSync, type ChildProcess } from "node:child_process";
+import { type ChildProcess } from "node:child_process";
+import { spawnHidden, spawnSyncHidden } from "../utils/execFileHidden.js";
 import type {
   ModProcessChunk,
   ModProcessExit,
@@ -96,7 +97,7 @@ export class ModProcessManager {
 
     return new Promise<ModRunResult>((resolve, reject) => {
       const [command, ...args] = parsed.argv;
-      const child = spawn(command, args, {
+      const child = spawnHidden(command, args, {
         cwd: parsed.cwd,
         env: { ...process.env, ...parsed.env },
         stdio: ["pipe", "pipe", "pipe"],
@@ -205,7 +206,7 @@ export class ModProcessManager {
     }
 
     const [command, ...args] = parsed.argv;
-    const child = spawn(command, args, {
+    const child = spawnHidden(command, args, {
       cwd: parsed.cwd,
       env: { ...process.env, ...parsed.env },
       stdio: ["pipe", "pipe", "pipe"],
@@ -344,7 +345,7 @@ function killTree(child: ChildProcess): void {
   if (child.pid === undefined || child.exitCode !== null) return;
   try {
     if (process.platform === "win32") {
-      spawnSync("taskkill", ["/pid", String(child.pid), "/T", "/F"], {
+      spawnSyncHidden("taskkill", ["/pid", String(child.pid), "/T", "/F"], {
         stdio: "ignore",
       });
     } else {

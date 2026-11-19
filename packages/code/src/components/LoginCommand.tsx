@@ -1,19 +1,15 @@
 import React, { useRef, useState } from "react";
 import { Box, Text, useInput, usePaste } from "ink";
-import { execFile } from "child_process";
-import { promisify } from "util";
-import { authService } from "wave-agent-sdk";
-
-const execFileAsync = promisify(execFile);
+import { authService, execFileAsyncHidden } from "wave-agent-sdk";
 
 function openBrowser(url: string): void {
   const platform = process.platform;
   if (platform === "darwin") {
-    execFileAsync("open", [url]).catch(() => {});
+    execFileAsyncHidden("open", [url]).catch(() => {});
   } else if (platform === "win32") {
-    execFileAsync("cmd", ["/c", "start", "", url]).catch(() => {});
+    execFileAsyncHidden("cmd", ["/c", "start", "", url]).catch(() => {});
   } else {
-    execFileAsync("xdg-open", [url]).catch(() => {});
+    execFileAsyncHidden("xdg-open", [url]).catch(() => {});
   }
   // Failures are ignored — URL is still displayed in the UI for manual copy
 }

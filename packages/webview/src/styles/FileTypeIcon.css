@@ -1,0 +1,17 @@
+/* 文件类型图标（组件见 components/FileTypeIcon.tsx，spec desktop-file-panel.md
+   「文件行按类型显示图标」场景 6）。
+
+   颜色由组件按图标名内联给出 `--fti-light` / `--fti-dark`（图标集自带的成对
+   配色），这里只负责按当前主题挑一个：桌面端 / JetBrains 把主题写在
+   `<html data-theme>` 上，宿主切主题只改这个属性、不触发 React 重渲染，所以换色
+   必须落在 CSS 上。数据集里没有配色的图标（font / stylelint / nextjs）不写这两个
+   变量，回落到 `currentColor`（即行上的 `--cc-text-secondary`）。
+   盒尺寸与 display 由既有规则给（FilePane.css 的 `.file-tree-icon`、
+   host-desktop.css 的 16×16 兜底），这里只管颜色。 */
+.file-type-icon {
+  --fti-fill: var(--fti-light, currentColor);
+}
+
+html[data-theme="dark"] .file-type-icon {
+  --fti-fill: var(--fti-dark, currentColor);
+}

@@ -38,7 +38,7 @@ class FakeServer extends EventEmitter {
   }
 }
 
-vi.mock("child_process", () => ({ spawn: h.spawn, execFile: h.execFile }));
+vi.mock("node:child_process", () => ({ spawn: h.spawn, execFile: h.execFile }));
 
 vi.mock("net", () => ({
   connect: (opts: { port: number }) => {

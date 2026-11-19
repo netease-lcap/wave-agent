@@ -8,6 +8,8 @@
  *   - `./types`：协议与消息类型
  *   - `./utils/errorUtils`：日志里序列化 Error（宿主自己的 hostLog 也要用同一套，
  *     否则嵌套的 Error 会被 `JSON.stringify` 吞成 `{}`）
+ *   - `./utils/execFileHidden`：唯一允许启动子进程的入口（`windowsHide` 强制为
+ *     true）——宿主主进程没有控制台，裸 `spawn`/`execFile` 在 Windows 上就是一次闪窗
  *
  * 为什么要有这个入口：桶入口会把整套 agent 运行时（工具、供应商 SDK、OTel…）连成
  * 一张图，而图里有些模块在**求值期**就会抛（可选原生包缺席时，如 `sharp`）。
@@ -24,5 +26,6 @@ export * from "../constants/index.js";
 export * from "../stdio/index.js";
 export * from "../types/index.js";
 export * from "../utils/errorUtils.js";
+export * from "../utils/execFileHidden.js";
 export * from "../utils/loginShellEnv.js";
 export * from "../utils/messageWindow.js";

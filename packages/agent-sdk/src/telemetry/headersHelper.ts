@@ -18,7 +18,8 @@
  * object (for callers and tests) but is deliberately not logged either.
  */
 
-import { spawn, type ChildProcess } from "node:child_process";
+import { type ChildProcess } from "node:child_process";
+import { spawnHidden } from "../utils/execFileHidden.js";
 import type { HeadersProvider } from "../types/telemetry.js";
 import { logger } from "../utils/globalLogger.js";
 import { resolveSessionShell } from "../utils/shell/shellToolGate.js";
@@ -142,10 +143,9 @@ function runHelperCommand(
             // `C:\...` natively, and this command's exit code only decides
             // "headers or no headers", which any non-zero value already says.
             [...POWERSHELL_SPAWN_FLAGS, command];
-      child = spawn(sessionShell.shellPath, spawnArgs, {
+      child = spawnHidden(sessionShell.shellPath, spawnArgs, {
         stdio: ["ignore", "pipe", "pipe"],
         cwd: options.cwd ?? process.cwd(),
-        windowsHide: true,
         env: { ...process.env, ...options.env },
       });
     } catch (error) {

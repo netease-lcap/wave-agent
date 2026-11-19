@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { render, fireEvent, screen } from "@testing-library/react";
+import { render, fireEvent, screen, act } from "@testing-library/react";
 import React from "react";
 import { DesktopApp } from "../../src/components/DesktopApp";
 import { createMockVscode, sendCommand } from "./test-utils";
@@ -582,5 +582,280 @@ describe("desktop selector keyboard accessibility", () => {
     expect(document.activeElement).toBe(
       screen.getByTestId("desktop-branch-selector"),
     );
+  });
+});
+
+/**
+ * 分支名被省略时的全文气泡（设计师 2026-11-18：「宽度要参考规范，超出的字符省略，
+ * hover 通过 tooltip 提示」，同轮答复「只在被省略时出」）。
+ *
+ * 宽度本身由 `host-desktop.css` 的 `width/min-width/max-width: 220px` 钉住，jsdom
+ * 不算样式、也不做布局，这里只钉行为：气泡跟着「真的被省略」走，没被省略的行一颗
+ * 都不出；桌面端同时撤掉原生 `title`（它在桌面 webview 里不显示），插件端保持原样。
+ */
+describe("desktop branch name truncation tooltip", () => {
+  const LONG = "feature/desktop-session-folder-recovery-relocate-worktree";
+  const SHORT = "main";
+
+  /**
+   * jsdom 里 `scrollWidth`/`clientWidth` 恒为 0，永远不会「被省略」。这里只把名称
+   * 节点的 `scrollWidth` 假装成 400（其余节点仍返回 0，与 jsdom 默认一致）。
+   */
+  const fakeTruncation = () => {
+    Object.defineProperty(HTMLElement.prototype, "scrollWidth", {
+      configurable: true,
+      get(this: HTMLElement) {
+        return this.classList?.contains("desktop-workdir-menu-name") &&
+          this.textContent === LONG
+          ? 400
+          : 0;
+      },
+    });
+  };
+  const restoreTruncation = () => {
+    Reflect.deleteProperty(HTMLElement.prototype, "scrollWidth");
+  };
+
+  const openBranchMenu = () => {
+    renderDesktopApp();
+    sendCommand("desktopWorkdirState", {
+      workdir: "/work/a",
+      recentWorkdirs: ["/work/a"],
+    });
+    sendCommand("setInitialState", { messages: [] });
+    sendCommand("desktopGitBranches", {
+      workdir: "/work/a",
+      result: { branches: [LONG, SHORT], current: SHORT },
+    });
+    fireEvent.click(screen.getByTestId("desktop-branch-selector"));
+    return screen.getAllByTestId("desktop-branch-item");
+  };
+
+  /** 量宽在 rAF 里，setState 之后要等一帧 + act 才看得到气泡。 */
+  const flushMeasure = () =>
+    act(
+      () =>
+        new Promise<void>((resolve) => requestAnimationFrame(() => resolve())),
+    );
+
+  it("wraps only the ellipsized row in a self-drawn tooltip on the desktop host", async () => {
+    window.waveHostType = "desktop";
+    fakeTruncation();
+    try {
+      const [longItem, shortItem] = openBranchMenu();
+      await flushMeasure();
+
+      const tip = longItem.querySelector(".desktop-branch-name-tip");
+      expect(tip).not.toBeNull();
+      // 路径型分支名没有空格：气泡必须开 multiline（nowrap + 省略号会把要提示
+      // 的全文再截一次）。
+      expect(tip?.querySelector(".tooltip-box")).toHaveClass(
+        "tooltip-multiline",
+      );
+      // 桌面端同一触发点不留原生 title（原生提示在桌面 webview 里不显示）。
+      expect(longItem).not.toHaveAttribute("title");
+
+      // 没被省略的行不出气泡，也没有原生 title。
+      expect(shortItem.querySelector(".desktop-branch-name-tip")).toBeNull();
+      expect(shortItem).not.toHaveAttribute("title");
+    } finally {
+      restoreTruncation();
+      delete window.waveHostType;
+    }
+  });
+
+  it("keeps the native title and adds no tooltip outside the desktop host", async () => {
+    fakeTruncation();
+    try {
+      const [longItem] = openBranchMenu();
+      await flushMeasure();
+
+      expect(longItem).toHaveAttribute("title", LONG);
+      expect(longItem.querySelector(".desktop-branch-name-tip")).toBeNull();
+    } finally {
+      restoreTruncation();
+    }
+  });
+});
+
+/**
+ * worktree 勾选框换成规范里的 16×16 指示器（设计师 2026-11-18：「这个 checkbox
+ * 也按规范优化一下」）。jsdom/浏览器都不算样式，所以这里只钉结构契约：
+ * 桌面端有自绘指示器 + 同一份勾矢量，原生 input 仍是唯一语义来源；插件端保持
+ * 原样（契约里 choice 控件的视觉归宿主）。
+ */
+describe("desktop worktree checkbox indicator", () => {
+  const CHECK_PATH = "M4 8 L6.75 10.75 L12 5.5";
+
+  const openWorktreeControls = () => {
+    renderDesktopApp();
+    sendCommand("desktopWorkdirState", {
+      workdir: "/work/a",
+      recentWorkdirs: ["/work/a"],
+    });
+    sendCommand("setInitialState", { messages: [] });
+    sendCommand("desktopGitBranches", {
+      workdir: "/work/a",
+      result: { branches: ["main", "dev"], current: "main" },
+    });
+    return screen.getByTestId("desktop-worktree-checkbox");
+  };
+
+  it("draws the 16×16 indicator with the contract check path on the desktop host", () => {
+    window.waveHostType = "desktop";
+    try {
+      const label = openWorktreeControls();
+
+      // 原生控件还在（语义 / 键盘 / 命中层），状态仍归它
+      const input = label.querySelector('input[type="checkbox"]');
+      expect(input).toBeInTheDocument();
+      expect(input).toBeChecked();
+
+      // 指示器是纯装饰：aria-hidden，勾的路径与契约一致
+      const indicator = label.querySelector(".desktop-worktree-check");
+      expect(indicator).not.toBeNull();
+      expect(indicator).toHaveAttribute("aria-hidden", "true");
+      expect(indicator?.querySelector("path")).toHaveAttribute("d", CHECK_PATH);
+
+      // 标签文字仍是直接子节点，指示器包裹不吞掉它
+      expect(label).toHaveTextContent("worktree");
+      expect(
+        label.querySelector(":scope > span:not(.desktop-worktree-check-wrap)"),
+      ).toHaveTextContent("worktree");
+    } finally {
+      delete window.waveHostType;
+    }
+  });
+
+  it("keeps the bare native checkbox outside the desktop host", () => {
+    const label = openWorktreeControls();
+
+    expect(label.querySelector('input[type="checkbox"]')).toBeChecked();
+    expect(label.querySelector(".desktop-worktree-check")).toBeNull();
+    expect(label.querySelector(".desktop-worktree-check-wrap")).toBeNull();
+  });
+});
+
+/**
+ * 菜单定宽 260 之后「把省略没有气泡提示的问题都补上」（设计师 2026-11-18 第三轮，
+ * 点 `div.desktop-host-trigger`「本地」）。三条工作目录菜单共用
+ * `utils/useTruncation`：只有真被省略的行才包自绘气泡，插件端仍走原生 title。
+ */
+describe("desktop host / workdir menu truncation tooltips", () => {
+  const LONG_HOST = "Ubuntu Studio 22.04 LTS workstation (WSL 2)";
+  const LONG_DIR =
+    "/Users/ailsa/Documents/07-AI/CC02/wave-agent/worktrees/desktop-session-folder-recovery";
+
+  /** jsdom/浏览器都不排版：把命中这些文本的节点的 scrollWidth 假装成 400。 */
+  const fakeTruncation = (...texts: string[]) => {
+    Object.defineProperty(HTMLElement.prototype, "scrollWidth", {
+      configurable: true,
+      get(this: HTMLElement) {
+        return texts.includes(this.textContent ?? "") ? 400 : 0;
+      },
+    });
+  };
+  const restoreTruncation = () => {
+    Reflect.deleteProperty(HTMLElement.prototype, "scrollWidth");
+  };
+  const flushMeasure = () =>
+    act(
+      () =>
+        new Promise<void>((resolve) => requestAnimationFrame(() => resolve())),
+    );
+
+  const openMenus = () => {
+    renderDesktopApp();
+    sendCommand("desktopWorkdirState", {
+      host: "local",
+      hosts: ["local"],
+      hostOptions: [
+        { id: "local", label: "本地", kind: "local" },
+        { id: "wsl:studio", label: LONG_HOST, kind: "wsl" },
+      ],
+      workdir: "/work/a",
+      recentWorkdirs: [LONG_DIR, "/work/a"],
+    });
+    sendCommand("setInitialState", { messages: [] });
+  };
+
+  it("host menu: the ellipsized row gets a self-drawn tooltip, others do not", async () => {
+    window.waveHostType = "desktop";
+    fakeTruncation(LONG_HOST);
+    try {
+      openMenus();
+      fireEvent.click(screen.getByTestId("desktop-host"));
+      await flushMeasure();
+
+      const rows = screen.getAllByTestId("desktop-host-item");
+      const longRow = rows.find(
+        (row) =>
+          row.querySelector(".desktop-workdir-menu-name")?.textContent ===
+          LONG_HOST,
+      );
+      expect(longRow?.querySelector(".desktop-row-name-tip")).not.toBeNull();
+      // 主机名带空格，开 multiline 才不会在 250px 处被气泡自己再截一次。
+      expect(longRow?.querySelector(".tooltip-box")).toHaveClass(
+        "tooltip-multiline",
+      );
+      // 桌面端同一触发点不留原生 title（那边根本显示不出来）。
+      expect(longRow).not.toHaveAttribute("title");
+
+      const localRow = screen.getByTestId("desktop-host-local");
+      expect(localRow.querySelector(".desktop-row-name-tip")).toBeNull();
+    } finally {
+      restoreTruncation();
+      delete window.waveHostType;
+    }
+  });
+
+  it("workdir menu: an ellipsized path line gets the tooltip with the full dir", async () => {
+    window.waveHostType = "desktop";
+    // 被量的是两行各自的节点（名称 = basename、父路径 = 上一级），不是整条目录
+    fakeTruncation("desktop-session-folder-recovery");
+    try {
+      openMenus();
+      fireEvent.click(screen.getByTestId("desktop-workdir"));
+      await flushMeasure();
+
+      const items = screen.getAllByTestId("desktop-workdir-recent-item");
+      const longItem = items.find((item) =>
+        item.textContent?.includes("desktop-session-folder-recovery"),
+      );
+      const tip = longItem?.querySelector(".desktop-row-name-tip");
+      expect(tip).not.toBeNull();
+      expect(tip?.querySelector(".tooltip-box")).toHaveClass(
+        "tooltip-multiline",
+      );
+      // 气泡文案是完整目录（名称与父路径各自被省略时都靠它兜）
+      expect(tip?.querySelector(".tooltip-box")?.textContent).toBe(LONG_DIR);
+
+      // 没被省略的行不出气泡
+      const shortItem = items.find((item) => item !== longItem);
+      expect(shortItem?.querySelector(".desktop-row-name-tip")).toBeNull();
+    } finally {
+      restoreTruncation();
+      delete window.waveHostType;
+    }
+  });
+
+  it("keeps native titles and adds no tooltip outside the desktop host", async () => {
+    fakeTruncation(LONG_HOST);
+    try {
+      openMenus();
+      fireEvent.click(screen.getByTestId("desktop-host"));
+      await flushMeasure();
+
+      const rows = screen.getAllByTestId("desktop-host-item");
+      const longRow = rows.find(
+        (row) =>
+          row.querySelector(".desktop-workdir-menu-name")?.textContent ===
+          LONG_HOST,
+      );
+      expect(longRow).toHaveAttribute("title", LONG_HOST);
+      expect(longRow?.querySelector(".desktop-row-name-tip")).toBeNull();
+    } finally {
+      restoreTruncation();
+    }
   });
 });
