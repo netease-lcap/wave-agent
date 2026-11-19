@@ -266,7 +266,7 @@ export const diffPlugin: Record<string, string> = {
 }
 `,
   "plugins/diff/mods/diff.tsx": `const PANE_ID = "diff";
-const TITLE = "差异";
+const TITLE = "Diff";
 const LIST_WINDOW = 8;
 const MAX_LINES = 400;
 const MAX_CHARS = 60000;
@@ -274,13 +274,24 @@ const MAX_CELLS = 40000;
 const MAX_UNTRACKED = 20;
 const MAX_SOURCES = 63;
 const DETAIL_MAX_ROWS = 20;
+// 键位提示（插件自己画的普通 \`Text\`，spec「键位提示」）。位置按视图分：列表一屏
+// 画得下、永不滚动，放面板底部（与 Claude Code 一致）；详情里整棵树归 surface 滚，
+// 放底部要滚到最后一屏才看得见，所以放在表头下一行 —— 进详情的第一屏就有。
+const HINT_LIST = "↑/↓ to select · Enter to view · Esc to close";
+const HINT_DETAIL = "↑/↓ to scroll · Esc to back";
 
 let sourceKey = "current";
 let view = "list";
 let selectedPath = "";
 let listTop = 0;
+// 详情视图自己的滚动偏移。它不交给 surface 滚：详情整棵树必须**装得下**，
+// 底部的键位提示才钉得住（spec「ui.scroll：mod 自己滚」）。
+let detailTop = 0;
 let cache = { current: { files: [], note: "" }, turns: [] };
 let declaredRows = 0;
+// 面板正文一次能画多少行（e.props.scroll.bodyRows，surface 量到的）：详情靠它
+// 算窗口。0 = 还没量到，按默认封顶折算。
+let bodyRows = 0;
 
 function splitLines(text) {
   if (typeof text !== "string" || text === "") return [];
@@ -515,7 +526,7 @@ async function readUntracked($, root, path) {
 async function loadCurrent($, root) {
   const repo = await $.session.repo();
   if (repo === null) {
-    return { files: [], note: "不在 git 仓库里，没有可比较的改动" };
+    return { files: [], note: "not a git repository; nothing to compare" };
   }
   const head = await $.process.run(["git", "rev-parse", "--verify", "HEAD"], {
     cwd: root,
@@ -526,7 +537,7 @@ async function loadCurrent($, root) {
   const patch = await $.process.run(args, { cwd: root });
   if (patch.exitCode !== 0) {
     const detail = (patch.stderr || "").trim();
-    return { files: [], note: detail === "" ? "git diff 失败" : detail };
+    return { files: [], note: detail === "" ? "git diff failed" : detail };
   }
   const files = parsePatch(patch.stdout);
   const status = await $.process.run(["git", "status", "--porcelain"], {
@@ -657,23 +668,43 @@ function clampTop(top, total) {
   return top > maxTop ? maxTop : top;
 }
 
+// 详情视图的正文窗口：面板正文行数扣掉表头（返回按钮 + 路径，1 行）、底部键位
+// 提示（1 行），被截断时再扣一行说明。剩下的才是能放 diff 的行数。
+function detailWindow(file) {
+  const rows = bodyRows > 0 ? bodyRows : DETAIL_MAX_ROWS + 2;
+  const reserved = 2 + (file !== null && file.truncated ? 1 : 0);
+  const window = rows - reserved;
+  return window > 0 ? window : 1;
+}
+
+// 详情里要画的那一段（detailTop 已经夹在 [0, maxTop] 之间）。
+function detailSlice(lines, window) {
+  const maxTop = lines.length > window ? lines.length - window : 0;
+  const top = detailTop > maxTop ? maxTop : detailTop;
+  return { top: top, lines: lines.slice(top, top + window) };
+}
+
 // 面板要占几行：列表按文件名数，详情按差异行数（多出来的由面板自己滚）。
 // 小于默认封顶（12 行）时申报不影响版面（\`ModSurface\` 取两者里大的），所以这里
 // 只求准 —— 值准了，列表与详情之间的高度差才只在真需要时才重开面板。
+//
+// 详情这里按**内容**算（上限 \`DETAIL_MAX_ROWS\`），不按「一屏现在能放几行」：
+// 一屏的行数来自 surface 报的 \`bodyRows\`，而 \`bodyRows\` 又是按申报的高度算的 ——
+// 拿它算申报就成了自己咬自己，终端加高之后窗口永远停在老大小。
 function desiredRows() {
   if (view === "detail") {
     const file = selectedFile();
     if (file === null) return 4;
     const lines = file.text === "" ? 1 : splitLines(file.text).length;
     const shown = lines > DETAIL_MAX_ROWS ? DETAIL_MAX_ROWS : lines;
-    return 1 + shown + (file.truncated ? 1 : 0);
+    return 2 + shown + (file.truncated ? 1 : 0);
   }
   const source = currentSource();
   const files = source.files.length;
   const shown = files > LIST_WINDOW ? LIST_WINDOW : files;
   const turn = sourceKey === "current" ? null : source;
   return (
-    1 +
+    2 +
     shown +
     (source.note === "" ? 0 : 1) +
     (turn !== null && turn.preview !== "" ? 1 : 0) +
@@ -730,7 +761,7 @@ function renderList($, e) {
       <Box flexDirection="row" gap={1}>
         <Select
           key="source"
-          label="来源"
+          label="Source"
           options={sourceOptions()}
           value={sourceKey}
           onSelect={function (value) {
@@ -759,10 +790,13 @@ function renderList($, e) {
           {"↑ " + String(top) + " more above"}
         </Button>
       ) : null}
-      {windowFiles.map(function (file) {
+      {/* 面板打开时焦点落在第一个文件上（autoFocus）：不这么写它落在来源下拉上，
+          Enter 会展开下拉而不是打开文件。 */}
+      {windowFiles.map(function (file, index) {
         return (
           <Button
             key={"file:" + file.path}
+            autoFocus={index === 0}
             onPress={function () {
               return openFile($, file.path);
             }}
@@ -791,6 +825,7 @@ function renderList($, e) {
           {"↓ " + String(below) + " more"}
         </Button>
       ) : null}
+      <Text dimColor>{HINT_LIST}</Text>
     </Box>
   );
 }
@@ -799,6 +834,9 @@ function renderDetail($, e) {
   const { Box, Text, Button, Code } = $.ui.resolve(e);
   const file = selectedFile();
   if (file === null) return renderList($, e);
+  const lines = splitLines(file.text);
+  const window = detailWindow(file);
+  const slice = detailSlice(lines, window);
   return (
     <Box flexDirection="column">
       <Box flexDirection="row" gap={1}>
@@ -809,24 +847,25 @@ function renderDetail($, e) {
             return showList($);
           }}
         >
-          {"← 返回列表"}
+          {"← Back"}
         </Button>
         <Text dimColor>{file.path}</Text>
       </Box>
       {file.text === "" ? (
         <Text dimColor>
-          {"没有可显示的文本差异（" +
-            (file.note === "" ? "空文件" : file.note) +
-            "）"}
+          {"No text diff to show (" +
+            (file.note === "" ? "empty file" : file.note) +
+            ")"}
         </Text>
       ) : (
-        <Code source={file.text} format="diff" />
+        <Code source={slice.lines.join("\\n")} format="diff" />
       )}
       {file.truncated ? (
         <Text dimColor>
-          {"差异已截断，只显示前 " + String(MAX_LINES) + " 行"}
+          {"Diff truncated: showing the first " + String(MAX_LINES) + " lines"}
         </Text>
       ) : null}
+      <Text dimColor>{HINT_DETAIL}</Text>
     </Box>
   );
 }
@@ -834,12 +873,14 @@ function renderDetail($, e) {
 function showList($) {
   view = "list";
   selectedPath = "";
+  detailTop = 0;
   return rerender($);
 }
 
 function openFile($, path) {
   selectedPath = path;
   view = "detail";
+  detailTop = 0;
   return rerender($);
 }
 
@@ -854,7 +895,36 @@ function selectSource($, value) {
   view = "list";
   selectedPath = "";
   listTop = 0;
+  detailTop = 0;
   return rerender($);
+}
+
+// 方向键的落点（spec「ui.focus：方向键先问 mod」）：列表视图里 \`↑\`/\`↓\` 归文件
+// 列表 —— 候选落在一个文件行上就接住、把焦点挪过去。候选落在翻页行上说明用户
+// 走出了当前窗口，这时按方向键带着窗口一起挪（落点是刚进来的那一行），与 Claude
+// Code 的 inline 分支一致；详情视图与其它情况一概不接，落回 surface 自己滚正文。
+function focusLanding($, e) {
+  if (view !== "list") return undefined;
+  const candidate = typeof e.element === "string" ? e.element : "";
+  const files = currentSource().files;
+  const top = clampTop(listTop, files.length);
+  const visible = files.slice(top, top + LIST_WINDOW);
+  for (let index = 0; index < visible.length; index += 1) {
+    if ("file:" + visible[index].path === candidate) {
+      return { element: candidate };
+    }
+  }
+  if (candidate === "list-down" && top + LIST_WINDOW < files.length) {
+    listTop = top + 1;
+    $.ui.invalidate("ui.render");
+    return { element: "file:" + files[top + LIST_WINDOW].path };
+  }
+  if ((candidate === "list-up" || candidate === "source") && top > 0) {
+    listTop = top - 1;
+    $.ui.invalidate("ui.render");
+    return { element: "file:" + files[top - 1].path };
+  }
+  return undefined;
 }
 
 export function register($, on) {
@@ -866,7 +936,7 @@ export function register($, on) {
     if (surfaces.indexOf("terminal") < 0) return;
     $.command.register({
       name: "diff",
-      description: "查看未提交改动与每一轮的改动",
+      description: "Show uncommitted changes and edits from earlier turns",
     });
   });
 
@@ -881,6 +951,7 @@ export function register($, on) {
     view = "list";
     selectedPath = "";
     listTop = 0;
+    detailTop = 0;
     declaredRows = desiredRows();
     const placed = await $.ui.open({
       id: PANE_ID,
@@ -888,14 +959,55 @@ export function register($, on) {
       focus: true,
       rows: declaredRows,
     });
-    if (!placed.isPlaced) $.ui.status("差异面板需要终端界面");
+    if (!placed.isPlaced) $.ui.status("The diff panel needs a terminal UI");
     $.ui.invalidate("ui.render");
     return {};
   });
 
   on("ui.render", { component: "Pane", requestId: PANE_ID }, function (e) {
     if (!e) return undefined;
+    // 正文能画多少行由 surface 量（spec「ui.render 的 e.props」）：详情按它剪窗口，
+    // 剪完的树正好装得下，底部的键位提示才钉得住。
+    const rows = e.props && e.props.scroll ? e.props.scroll.bodyRows : 0;
+    if (typeof rows === "number" && rows > 0) bodyRows = rows;
     return view === "detail" ? renderDetail($, e) : renderList($, e);
+  });
+
+  // 方向键先问一遍插件（spec「ui.focus」）：接住就换选中项，不接就归 surface
+  // 滚正文 —— 这就是列表里 \`↑\`/\`↓\` 换文件、详情里滚正文的那条分岔。
+  on("ui.focus", { component: "Pane", requestId: PANE_ID }, function (e) {
+    if (!e) return undefined;
+    return focusLanding($, e);
+  });
+
+  // 滚动先问一遍插件（spec「ui.scroll」）：详情里收下它 —— 面板自己挪窗口、
+  // 重画一帧，于是整棵树永远装得下，键位提示钉在面板底边；列表视图不接，落回
+  // surface 的默认滚动（列表本来就只有一屏，没有可滚的）。
+  on("ui.scroll", { component: "Pane", requestId: PANE_ID }, function (e) {
+    if (!e || view !== "detail") return undefined;
+    const file = selectedFile();
+    if (file === null) return undefined;
+    const lines = splitLines(file.text);
+    const window = detailWindow(file);
+    const maxTop = lines.length > window ? lines.length - window : 0;
+    const by = typeof e.by === "number" ? e.by : 0;
+    const next = detailTop + by;
+    const top = next < 0 ? 0 : next > maxTop ? maxTop : next;
+    // 到顶 / 到底也接住：这一下归插件，surface 不必再滚（它的滚动层对详情是空的）。
+    if (top === detailTop) return {};
+    detailTop = top;
+    $.ui.invalidate("ui.render");
+    return {};
+  });
+
+  // \`Esc\` 先问能不能关（spec「ui.close」）：详情里它不是收盘，是**回列表** ——
+  // 拦下这次关闭、把面板画回列表（与 Claude Code 的 \`deny\` 同一种用法）。列表里
+  // 不拦，让它照常关掉。
+  on("ui.close", function (e) {
+    if (!e || e.id !== PANE_ID) return undefined;
+    if (view !== "detail") return undefined;
+    void showList($);
+    return { deny: "back to the file list" };
   });
 }
 `,

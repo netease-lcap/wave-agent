@@ -14,7 +14,9 @@ import type {
   ModCommandBridge,
   ModCommandInfo,
   ModCommandRunOutcome,
+  ModPanelEventResult,
   ModPanelUpdatePayload,
+  ModRenderSurface,
   ModStatusPayload,
   ModToastPayload,
   ModUiPane,
@@ -310,6 +312,19 @@ exports.register = function ($, on) {
     const bare = await manager.renderPane("todo:layout", "p1");
     expect(bare.tree).toMatchObject({
       children: ["Pane|dock|100|24|||false"],
+    });
+
+    // 报了自己正文的行数就用它 —— 与视口的 `rows` 不是一个数（终端里面板只占
+    // 视口里的一截，自己分页的 mod 要的是这一截）。
+    const measuredRows = await manager.renderPane("todo:layout", "p1", {
+      placement: "inline",
+      columns: 60,
+      rows: 30,
+      bodyRows: 9,
+      bodyColumns: 58,
+    });
+    expect(measuredRows.tree).toMatchObject({
+      children: ["Pane|inline|58|9|60|30|false"],
     });
 
     // 带同一条链路：`bodyColumns` 是带自己那列，行数固定 8。
@@ -1398,7 +1413,10 @@ exports.register = function ($, on) {
     return manager;
   }
 
-  function press(manager: ModManager, key: string): Promise<void> {
+  function press(
+    manager: ModManager,
+    key: string,
+  ): Promise<Partial<ModPanelEventResult>> {
     return manager.handlePanelEvent({
       sessionId: "s1",
       modId: "todo:panel",
@@ -2367,7 +2385,10 @@ exports.register = function ($, on) {
     return manager;
   }
 
-  function press(manager: ModManager, key = "run"): Promise<void> {
+  function press(
+    manager: ModManager,
+    key = "run",
+  ): Promise<Partial<ModPanelEventResult>> {
     return manager.handlePanelEvent({
       sessionId: "s1",
       modId: "todo:panel",
@@ -4449,6 +4470,284 @@ exports.register = function ($, on) {
     });
 
     expect(statuses).toEqual([]);
+
+    await manager.dispose();
+  });
+});
+
+describe("ModManager 的方向键落点事件（ui.focus）", () => {
+  async function opened(hooks: string) {
+    const created = createManager({ [MOD_PATH]: controlsMod(hooks) });
+    await created.manager.loadFromPlugins([
+      plugin([{ id: "todo:panel", path: MOD_PATH }]),
+    ]);
+    await created.manager.startSession();
+    await vi.waitFor(() => expect(created.updates).toHaveLength(1));
+    // 元素要渲染过才在树里（surface 拉一帧，和真的面板一样）。
+    await pull(created.manager);
+    return created;
+  }
+
+  /** 一次方向键：`key` 是 surface 算出来的候选落点。 */
+  function focus(manager: ModManager, key = "other") {
+    return manager.handlePanelEvent({
+      sessionId: "s1",
+      modId: "todo:panel",
+      paneId: "p1",
+      key,
+      kind: "focus",
+    });
+  }
+
+  it("没人接就什么都不回（surface 落回滚正文）", async () => {
+    const { manager } = await opened("");
+
+    expect(await focus(manager)).toEqual({});
+
+    await manager.dispose();
+  });
+
+  it("返回 { element } = 接住并给出落点", async () => {
+    const { manager } = await opened(`
+  on("ui.focus", function (e) { return { element: "go" }; });
+`);
+
+    expect(await focus(manager)).toEqual({ handled: true, element: "go" });
+
+    await manager.dispose();
+  });
+
+  it("next({ ...e, element }) 与直接返回同义（CC 的写法）", async () => {
+    const { manager } = await opened(`
+  on("ui.focus", function (e, next) { return next({ ...e, element: e.element + "-next" }); });
+`);
+
+    expect(await focus(manager)).toEqual({
+      handled: true,
+      element: "other-next",
+    });
+
+    await manager.dispose();
+  });
+
+  it("原样 next(e) = 我不管", async () => {
+    const { manager } = await opened(`
+  on("ui.focus", function (e, next) { return next(e); });
+`);
+
+    expect(await focus(manager)).toEqual({});
+
+    await manager.dispose();
+  });
+
+  it("返回 {} = 接住但不动（不滚正文）", async () => {
+    const { manager } = await opened(`
+  on("ui.focus", function () { return {}; });
+`);
+
+    expect(await focus(manager)).toEqual({ handled: true });
+
+    await manager.dispose();
+  });
+
+  it("e 与 ui.press 同形：element 是候选落点、plugin 钉住来源", async () => {
+    const { manager, statuses } = await opened(`
+  on("ui.focus", function (e) {
+    $.ui.status([e.plugin, e.component, e.requestId, e.surface, e.element].join("|"));
+  });
+`);
+
+    await focus(manager, "go");
+    expect(statuses.map((entry) => entry.text)).toEqual([
+      // 这个测试装置默认报 `desktop`（`currentSurface()` 的空档值）。
+      "todo|Pane|p1|desktop|go",
+    ]);
+
+    await manager.dispose();
+  });
+});
+
+describe("ModManager 的滚动事件（ui.scroll）", () => {
+  async function opened(hooks: string) {
+    const created = createManager({ [MOD_PATH]: controlsMod(hooks) });
+    await created.manager.loadFromPlugins([
+      plugin([{ id: "todo:panel", path: MOD_PATH }]),
+    ]);
+    await created.manager.startSession();
+    await vi.waitFor(() => expect(created.updates).toHaveLength(1));
+    await pull(created.manager);
+    return created;
+  }
+
+  /** 终端里按一下 `↓`：surface 算出来的位移与版面事实一起上来。 */
+  function scroll(manager: ModManager, by = 1) {
+    return manager.handlePanelEvent({
+      sessionId: "s1",
+      modId: "todo:panel",
+      paneId: "p1",
+      key: "",
+      kind: "scroll",
+      scroll: { by, offset: 0, contentRows: 40, bodyRows: 10 },
+    });
+  }
+
+  it("没人接就不接管（surface 照自己的滚动模型走）", async () => {
+    const { manager } = await opened("");
+
+    expect(await scroll(manager)).toEqual({});
+
+    await manager.dispose();
+  });
+
+  it("返回 {} = 接住（这一下归 mod 自己滚）", async () => {
+    const { manager } = await opened(`
+  on("ui.scroll", function () { return {}; });
+`);
+
+    expect(await scroll(manager)).toEqual({ handled: true });
+
+    await manager.dispose();
+  });
+
+  it("原样 next(e) = 我不管", async () => {
+    const { manager } = await opened(`
+  on("ui.scroll", function (e, next) { return next(e); });
+`);
+
+    expect(await scroll(manager)).toEqual({});
+
+    await manager.dispose();
+  });
+
+  it("e 带的是这次滚动的实数（plugin / 站点 / by / 版面）", async () => {
+    const { manager, statuses } = await opened(`
+  on("ui.scroll", function (e) {
+    $.ui.status([e.plugin, e.component, e.requestId, e.origin.kind, e.by, e.bodyRows, e.contentRows].join("|"));
+  });
+`);
+
+    await scroll(manager, 5);
+    expect(statuses.map((entry) => entry.text)).toEqual([
+      "todo|Pane|p1|person|5|10|40",
+    ]);
+
+    await manager.dispose();
+  });
+});
+
+describe("ModManager 的关闭请求（ui.close 的 deny）", () => {
+  /**
+   * 拦住关闭只在终端有意义（那边按 `Esc` 是「问一句」的形态），所以这一组默认把
+   * surface 报成 `terminal`；桌面端那条用例自己报 `desktop`。
+   */
+  async function opened(hooks: string, surface: ModRenderSurface = "terminal") {
+    const created = createManager(
+      { [MOD_PATH]: controlsMod(hooks) },
+      { sessionFacts: factsWith({ surfaces: () => [surface] as const }) },
+    );
+    await created.manager.loadFromPlugins([
+      plugin([{ id: "todo:panel", path: MOD_PATH }]),
+    ]);
+    await created.manager.startSession();
+    await vi.waitFor(() => expect(created.updates).toHaveLength(1));
+    await pull(created.manager);
+    return created;
+  }
+
+  /** 用户收起面板（终端 `Esc`、桌面关 tab）：走的是同一个 `close` 事件。 */
+  function close(manager: ModManager) {
+    return manager.handlePanelEvent({
+      sessionId: "s1",
+      modId: "todo:panel",
+      paneId: "p1",
+      key: "",
+      kind: "close",
+      origin: "person",
+    });
+  }
+
+  it("没人拦就关掉：回空、面板没了", async () => {
+    const { manager } = await opened("");
+
+    expect(await close(manager)).toEqual({});
+    expect((await pull(manager)).tree).toBeNull();
+
+    await manager.dispose();
+  });
+
+  it("返回 { deny } = 拦下，面板留着（CC 里「Esc 回列表」的用法）", async () => {
+    const { manager, statuses } = await opened(`
+  on("ui.close", function (e) {
+    $.ui.status("asked:" + e.id);
+    return { deny: "back to the file list" };
+  });
+`);
+
+    expect(await close(manager)).toEqual({ handled: true });
+    expect(statuses.map((entry) => entry.text)).toEqual(["asked:p1"]);
+    expect((await pull(manager)).tree).not.toBeNull();
+
+    await manager.dispose();
+  });
+
+  it("deny: true 也算拦下（不给理由）", async () => {
+    const { manager } = await opened(`
+  on("ui.close", function () { return { deny: true }; });
+`);
+
+    expect(await close(manager)).toEqual({ handled: true });
+    expect((await pull(manager)).tree).not.toBeNull();
+
+    await manager.dispose();
+  });
+
+  it("原样 next(e) = 不拦", async () => {
+    const { manager } = await opened(`
+  on("ui.close", function (e, next) { return next(e); });
+`);
+
+    expect(await close(manager)).toEqual({});
+    expect((await pull(manager)).tree).toBeNull();
+
+    await manager.dispose();
+  });
+
+  it("deny 形状不对就按不拦处理（坏掉的 mod 不能把面板钉死）", async () => {
+    const { manager } = await opened(`
+  on("ui.close", function () { return { deny: 42 }; });
+`);
+
+    expect(await close(manager)).toEqual({});
+    expect((await pull(manager)).tree).toBeNull();
+
+    await manager.dispose();
+  });
+
+  it("一次关闭只让 mod 看见一条 ui.close", async () => {
+    const { manager, statuses } = await opened(`
+  on("ui.close", function (e) { $.ui.status("close:" + e.id); });
+`);
+
+    await close(manager);
+    expect(statuses.map((entry) => entry.text)).toEqual(["close:p1"]);
+
+    await manager.dispose();
+  });
+
+  it("桌面端不等回执：deny 也照样关，ui.close 只是通知", async () => {
+    const { manager, statuses } = await opened(
+      `
+  on("ui.close", function (e) {
+    $.ui.status("close:" + e.id);
+    return { deny: "back to the file list" };
+  });
+`,
+      "desktop",
+    );
+
+    expect(await close(manager)).toEqual({});
+    expect((await pull(manager)).tree).toBeNull();
+    expect(statuses.map((entry) => entry.text)).toEqual(["close:p1"]);
 
     await manager.dispose();
   });

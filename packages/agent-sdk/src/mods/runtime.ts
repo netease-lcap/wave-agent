@@ -1526,6 +1526,8 @@ const HOOK_NAMES = new Set([
   "ui.press",
   "ui.input",
   "ui.select",
+  "ui.focus",
+  "ui.scroll",
   // 影子事件（spec「影子事件：`classic.*`」）：除 `PreToolUse` / `Stop` 外都是
   // 只读镜像，返回值忽略。
   "classic.PermissionRequest",
@@ -1593,10 +1595,22 @@ const MATCHER_EVENTS = new Set([
   "ui.press",
   "ui.input",
   "ui.select",
+  // `ui.focus` 在同一组里（spec「`ui.focus`：方向键先问 mod」）：方向键的
+  // 候选落点先问一遍 mod，接住就换选中、不接就落回 surface 的滚动。
+  "ui.focus",
+  // `ui.scroll` 也是（spec「`ui.scroll`：mod 自己滚」）：想自己分页的插件按
+  // `{ requestId }` 钉住自己那块面板，别人的滚动请求不该叫醒它。
+  "ui.scroll",
 ]);
 
-/** 控件交互事件的三个名字（`plugin` 是钉住的 matcher 键）。 */
-const UI_CONTROL_EVENTS = new Set(["ui.press", "ui.input", "ui.select"]);
+/** 控件交互事件的五个名字（`plugin` 是钉住的 matcher 键）。 */
+const UI_CONTROL_EVENTS = new Set([
+  "ui.press",
+  "ui.input",
+  "ui.select",
+  "ui.focus",
+  "ui.scroll",
+]);
 /**
  * matcher 里用的字段名 → 事件的字段名。
  *

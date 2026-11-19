@@ -1,5 +1,6 @@
 import React from "react";
-import { Box, Text, useWindowSize } from "ink";
+import { Box, Text } from "ink";
+import { useTerminalSize } from "../../contexts/useTerminalSize.js";
 import type { ModTreeNode } from "wave-agent-sdk/types";
 import { Markdown } from "../Markdown.js";
 
@@ -112,7 +113,7 @@ export const ModTreeView: React.FC<ModTreeViewProps> = ({
   draft,
   openSelect,
 }) => {
-  const { columns } = useWindowSize();
+  const { columns } = useTerminalSize();
 
   if (typeof node === "string") return <Text>{node}</Text>;
 

@@ -51,6 +51,7 @@ import type {
   UserImage,
   ModBandRenderResult,
   ModPanelEventPayload,
+  ModPanelEventResult,
   ModPanelRenderResult,
   ModPaneLayout,
   ModPaneViewPayload,
@@ -695,10 +696,17 @@ export class StdioAgent {
    * 把面板里的一次交互交回给 mod（spec `ecosystem/plugin-mods.md`）。
    *
    * 宿主只负责运这一趟：mod 的代码与它的状态都在 CLI 进程里，宿主没有
-   * 任何可以本地判断的东西。
+   * 任何可以本地判断的东西。返回值只有 `ui.focus` 用得上 —— 插件接没接这一下
+   * 方向键、接到哪个控件，surface 据此决定换焦点还是滚正文。
    */
-  async sendModPanelEvent(payload: ModPanelEventPayload): Promise<void> {
-    await this.client.request("modPanelEvent", payload, this.sessionId);
+  async sendModPanelEvent(
+    payload: ModPanelEventPayload,
+  ): Promise<Partial<ModPanelEventResult>> {
+    return (await this.client.request(
+      "modPanelEvent",
+      payload,
+      this.sessionId,
+    )) as Partial<ModPanelEventResult>;
   }
 
   /**

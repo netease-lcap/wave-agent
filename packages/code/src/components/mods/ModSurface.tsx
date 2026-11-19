@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Box, Text, useInput, useWindowSize } from "ink";
+import { Box, Text, useInput } from "ink";
+import { useTerminalSize } from "../../contexts/useTerminalSize.js";
 import { MOD_BAND_INSTANCE_ID } from "wave-agent-sdk";
 import type { ModBandRenderResult } from "wave-agent-sdk";
 import { useChat } from "../../contexts/useChat.js";
@@ -43,7 +44,7 @@ export const ModSurface: React.FC<ModSurfaceProps> = ({ part }) => {
     sendModPanelEvent,
     reportModPaneView,
   } = useChat();
-  const { rows } = useWindowSize();
+  const { rows } = useTerminalSize();
 
   const panes = useMemo(
     () => modPanes.filter((pane) => pane.paneId !== MOD_BAND_INSTANCE_ID),
@@ -160,13 +161,14 @@ export const ModSurface: React.FC<ModSurfaceProps> = ({ part }) => {
             maxRows={paneRows}
             pullToken={pullToken}
             renderTree={renderModPanel}
-            onEvent={(kind, key, value) =>
-              void sendModPanelEvent(
+            onEvent={(kind, key, value, scroll) =>
+              sendModPanelEvent(
                 activePane.modId,
                 activePane.paneId,
                 kind,
                 key,
                 value,
+                scroll,
               )
             }
             onDismiss={() => {

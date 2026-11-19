@@ -57,7 +57,8 @@ const renderTree = vi.fn(
 );
 
 function mount(overrides: Partial<React.ComponentProps<typeof ModPane>> = {}) {
-  const onEvent = vi.fn();
+  // 方向键会先问一遍 mod（`ui.focus`）：默认「我不管」，交给 surface 滚正文。
+  const onEvent = vi.fn(async () => ({}));
   const onDismiss = vi.fn();
   const result = render(
     <ModPane
@@ -120,7 +121,7 @@ describe("ModPane（终端里的插件面板）", () => {
     expect(onEvent).toHaveBeenCalledWith("press", "add");
   });
 
-  it("↑ / ↓ 滚正文而不是移焦点，换一帧回到顶部", async () => {
+  it("↑ / ↓ 先问 mod 落点，没人接才滚正文；换一帧回到顶部", async () => {
     // 20 行内容 + 视口 5 行，首尾各一个按钮：方向键若在移焦点，第一行不会被裁掉。
     const lines = Array.from({ length: 20 }, (_, index) =>
       node("Text", {}, [`行 ${index}`]),
@@ -148,8 +149,10 @@ describe("ModPane（终端里的插件面板）", () => {
     const { stdin, lastFrame, settle, rerender, onEvent, onDismiss } = mounted;
 
     stdin.write("\u001B[B"); // ↓ 逐行滚
-    await settle();
-    expect(lastFrame()).not.toContain("顶部按钮");
+    // 方向键先问一遍 mod（候选落点是相邻的可聚焦节点）；它没接，才落回滚动。
+    // 问与答走一条异步的往返，帧要等它回来才变。
+    await vi.waitFor(() => expect(lastFrame()).not.toContain("顶部按钮"));
+    expect(onEvent).toHaveBeenCalledWith("focus", "bottom");
     expect(lastFrame()).not.toContain("▸ 底部按钮");
 
     stdin.write("\u001B[F"); // End 到最底
@@ -173,6 +176,110 @@ describe("ModPane（终端里的插件面板）", () => {
     await vi.waitFor(() => {
       expect(lastFrame()).toContain("顶部按钮");
     });
+  });
+
+  it("mod 接住方向键（ui.focus）就把焦点落到它给的控件，正文不滚", async () => {
+    // 两个按钮 + 一行正文：都在视口里，所以「焦点挪过去了」与「没有滚」同时可断言。
+    const short = node("Box", { flexDirection: "column" }, [
+      node("Button", { key: "top", label: "顶部按钮" }),
+      node("Text", {}, ["中间的正文"]),
+      node("Button", { key: "bottom", label: "底部按钮" }),
+    ]);
+    const shortRender = vi.fn(
+      async (modId: string, paneId: string): Promise<ModPanelRenderResult> => ({
+        modId,
+        paneId,
+        revision: 1,
+        tree: short,
+      }),
+    );
+    const onEvent = vi.fn(async (kind: string, key: string) =>
+      kind === "focus" ? { handled: true, element: key } : {},
+    );
+    const mounted = mount({ maxRows: 3, renderTree: shortRender, onEvent });
+    for (let pass = 0; pass < 3; pass++) await mounted.flush();
+    const { stdin, lastFrame } = mounted;
+    expect(lastFrame()).toContain("▸ 顶部按钮");
+
+    stdin.write("\u001B[B"); // ↓：候选落点是 `bottom`，mod 接住
+    await vi.waitFor(() => expect(lastFrame()).toContain("▸ 底部按钮"));
+    expect(onEvent).toHaveBeenCalledWith("focus", "bottom");
+    // 接住了就不滚：顶部那行还在。
+    expect(lastFrame()).toContain("顶部按钮");
+  });
+
+  it("autoFocus 决定面板打开时焦点落在哪（不是第一个可聚焦节点）", async () => {
+    const withAuto = node("Box", { flexDirection: "column" }, [
+      node("Button", { key: "first", label: "第一个" }),
+      node("Button", { key: "second", label: "第二个", autoFocus: true }),
+    ]);
+    const autoRender = vi.fn(
+      async (modId: string, paneId: string): Promise<ModPanelRenderResult> => ({
+        modId,
+        paneId,
+        revision: 1,
+        tree: withAuto,
+      }),
+    );
+    const { stdin, lastFrame, onEvent, settle } = mount({
+      renderTree: autoRender,
+    });
+    await vi.waitFor(() => expect(lastFrame()).toContain("第二个"));
+    // 焦点环在 `second` 上：它前面那个按钮没写 `autoFocus`。
+    expect(lastFrame()).toContain("▸ 第二个");
+    expect(lastFrame()).not.toContain("▸ 第一个");
+
+    stdin.write("\r");
+    await settle();
+    expect(onEvent).toHaveBeenCalledWith("press", "second");
+  });
+
+  it("滚动先问 mod（ui.scroll）：它收下就由它自己滚，正文不动", async () => {
+    // 20 行内容、视口 5 行：只要这一端真滚了，顶部那行就会消失。
+    const lines = Array.from({ length: 20 }, (_, index) =>
+      node("Text", {}, [`行 ${index}`]),
+    );
+    const tall = node("Box", { flexDirection: "column" }, [
+      node("Button", { key: "top", label: "顶部按钮" }),
+      ...lines,
+    ]);
+    const tallRender = vi.fn(
+      async (modId: string, paneId: string): Promise<ModPanelRenderResult> => ({
+        modId,
+        paneId,
+        revision: 1,
+        tree: tall,
+      }),
+    );
+    const onEvent = vi.fn(async (kind: string) =>
+      kind === "scroll" ? { handled: true } : {},
+    );
+    const mounted = mount({ maxRows: 5, renderTree: tallRender, onEvent });
+    for (let pass = 0; pass < 3; pass++) await mounted.flush();
+    const { stdin, lastFrame } = mounted;
+
+    stdin.write("\u001B[B"); // ↓
+    await vi.waitFor(() => {
+      expect(onEvent).toHaveBeenCalledWith(
+        "scroll",
+        "",
+        undefined,
+        expect.objectContaining({ by: 1, bodyRows: 5 }),
+      );
+    });
+    // mod 收下了这一下：这一端不该再滚一遍。
+    expect(lastFrame()).toContain("顶部按钮");
+
+    stdin.write("\u001B[F"); // End：给一个「要多少滚多少」的极大步长
+    await vi.waitFor(() => {
+      expect(onEvent).toHaveBeenCalledWith(
+        "scroll",
+        "",
+        undefined,
+        expect.objectContaining({ by: Number.MAX_SAFE_INTEGER }),
+      );
+    });
+    expect(lastFrame()).toContain("顶部按钮");
   });
 
   it("hotkey 字母直接触发对应按钮", async () => {
@@ -221,14 +328,29 @@ describe("ModPane（终端里的插件面板）", () => {
     expect(onEvent).toHaveBeenCalledWith("select", "level", "high");
   });
 
-  it("Esc 收起面板（不发 ui.close，交给 mod 自己决定）", async () => {
-    const { stdin, onDismiss } = await mountReady();
+  it("Esc 先问 mod：不拦才收起面板", async () => {
+    const { stdin, onEvent, onDismiss } = await mountReady();
     stdin.write("\u001B");
     // 孤立的一个 ESC 要等 ink 的转义缓冲判完才知道是「Esc 键」还是某个序列的
     // 前缀 —— 那是真实的时间等待，不是帧，所以这里等 promise 而不刷帧。
     await vi.waitFor(() => {
       expect(onDismiss).toHaveBeenCalled();
     });
+    expect(onEvent).toHaveBeenCalledWith("close", "");
+  });
+
+  it("mod 拦下这次关闭（ui.close 的 deny）就不收面板", async () => {
+    const deny = vi.fn(
+      async (
+        kind: "press" | "input" | "select" | "focus" | "close" | "scroll",
+      ) => (kind === "close" ? { handled: true } : {}),
+    );
+    const { stdin, onDismiss } = await mountReady({ onEvent: deny });
+    stdin.write("\u001B");
+    await vi.waitFor(() => {
+      expect(deny).toHaveBeenCalledWith("close", "");
+    });
+    expect(onDismiss).not.toHaveBeenCalled();
   });
 
   it("没拿到键盘时一个键都不接", async () => {

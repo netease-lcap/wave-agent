@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useReducer } from "react";
-import { Box, Text, useInput, useWindowSize } from "ink";
+import { Box, Text, useInput } from "ink";
+import { useTerminalSize } from "../contexts/useTerminalSize.js";
 import type { SkillMetadata } from "wave-agent-sdk";
 import {
   skillsManagerReducer,
@@ -55,7 +56,7 @@ export const SkillsManager: React.FC<SkillsManagerProps> = ({
   skills,
 }) => {
   const [state, dispatch] = useReducer(skillsManagerReducer, initialState);
-  const { rows } = useWindowSize();
+  const { rows } = useTerminalSize();
 
   // Handle pending effects
   useEffect(() => {
