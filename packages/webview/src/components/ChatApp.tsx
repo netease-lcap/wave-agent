@@ -81,6 +81,7 @@ import type {
   ConfigurationData,
   DesktopPanelKind,
   FileViewState,
+  Message,
   OpenFileTab,
   PanelTab,
   PrefillDraftRequest,
@@ -175,6 +176,40 @@ export const PANEL_LABELS: Record<DesktopPanelKind, string> = {
 // 上翻时锚点在转录里失效了（rewind / 截断）之后，换下一个已加载 id 重试的次数上限。
 // 三次足够跳过「被裁掉的那几条」，又不至于把一次坏锚点变成一个请求风暴。
 const EARLIER_ANCHOR_RETRY_LIMIT = 3;
+
+/**
+ * 回滚回填时要交给输入框的那几张图（spec `commands/rewind-command.md` 场景 10）。
+ *
+ * 草稿字符串里只有 `[imageN]` 这个位置标记，字节留在**被回滚那条消息**的图片
+ * 块里；`[imageN]` 的 N 按图片块顺序对位（与 `parseMentions` 的序号口径一致）。
+ * 三类取不到字节的情况一律给 `null`（= 维持老行为，`[imageN]` 按文本留下）：
+ * 图片块里是文件路径（前台 CLI 粘贴的图）、远控页回放的字节已被清空、锚点不在
+ * 已加载的这一页里。
+ */
+function rewindDraftFor(
+  messages: Message[],
+  anchorId: string,
+): { content: string; images: ReadonlyArray<string | undefined> } | null {
+  // 与截断同一个定位口径（同一条消息可能因压缩出现多次，取最后一条）。
+  const index = messages.map((m) => m.id).lastIndexOf(anchorId);
+  const anchor = index === -1 ? undefined : messages[index];
+  if (!anchor) return null;
+  // 正文取第一段文本块，与宿主存的草稿（SDK 的 `getMessageContent`）逐字一致。
+  const textBlock = anchor.blocks.find((block) => block.type === "text");
+  const content = textBlock && "content" in textBlock ? textBlock.content : "";
+  if (!content.includes("[image")) return null;
+
+  const imageUrls: string[] = [];
+  for (const block of anchor.blocks) {
+    if (block.type === "image" && "imageUrls" in block) {
+      imageUrls.push(...(block.imageUrls ?? []));
+    }
+  }
+  const images = imageUrls.map((url) =>
+    url.startsWith("data:") ? url : undefined,
+  );
+  return images.some((url) => url !== undefined) ? { content, images } : null;
+}
 
 /** 右侧面板（含空态）的最小宽度：拖拽下限、自动分栏下限、开面板空间守卫共用。
     设计师 2026-10-30 评论 `div.desktop-panel-empty`「这页的最小宽度可以再窄一些，
@@ -556,6 +591,13 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   const [pluginChangePending, setPluginChangePending] = useState(false);
   // /rewind popup: checkpoint list requested from the host on open.
   const [rewindPopupOpen, setRewindPopupOpen] = useState(false);
+  // 回滚回填要用的那几张图的字节（spec commands/rewind-command.md 场景 10）：
+  // 草稿字符串里只有 `[imageN]`，字节取自被回滚那条消息的图片块，只在输入框
+  // 填的草稿与它逐字相同时用上；换会话即作废。
+  const [rewindDraft, setRewindDraft] = useState<{
+    content: string;
+    images: ReadonlyArray<string | undefined>;
+  } | null>(null);
   const [rewindCheckpoints, setRewindCheckpoints] = useState<
     RewindCheckpoint[]
   >([]);
@@ -1324,6 +1366,12 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   useEffect(() => {
     stateRef.current = state;
   }, [state]);
+
+  // 回滚回填的图片字节只服务于那一份草稿（它不会进宿主草稿）：换会话就当它没
+  // 发生过，别让上一会话的图片留在内存里等一次文本巧合。
+  useEffect(() => {
+    setRewindDraft(null);
+  }, [state.currentSession?.id]);
 
   // 建议的前提是「一轮没在跑、草稿是空的」：开跑或换会话之后它就不成立了，
   // 留着会让用户按 Tab 把上一轮的建议填进新一轮的输入框。
@@ -2415,6 +2463,9 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         // the list is cut locally rather than re-sent (rewind carries no
         // payload). A failure leaves the list exactly as it was.
         if (message.ok === true) {
+          // 回填正文里的 `[imageN]` 要靠被回滚那条消息的图片块（字节不在草稿
+          // 字符串里）：截断之前按锚点 id 取出来交给输入框，宿主与协议都不变。
+          setRewindDraft(rewindDraftFor(messagesRef.current, anchor));
           dispatch({
             type: "TRUNCATE_MESSAGES",
             payload: { messageId: anchor },
@@ -6381,6 +6432,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
                   vscode={vscode}
                   selection={state.selection}
                   inputContent={state.inputContent}
+                  rewindDraft={rewindDraft}
                   sessionId={state.currentSession?.id}
                   permissionMode={state.permissionMode}
                   models={configuredModels}
