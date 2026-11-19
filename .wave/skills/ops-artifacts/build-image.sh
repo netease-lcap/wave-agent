@@ -73,8 +73,8 @@ SKILL_DIR=$(cd "$(dirname "$0")" && pwd)
 # 版本号：默认 `<物料版本>-<YYYYMMDDHHmm>-multi`，与 codechat-enterprise / codechat-ops 的
 # tag 形态一致（`v1.6.5-202611050847-multi`）。
 #
-# ⚠️ 时间戳不是装饰，也不能省：物料版本（桌面端 tag）**不等于**物料内容版本 —— 同一份 1.6.1 里
-#    docs 包的版本号来自仓库 package.json（与桌面端不同步）、远控页与插件市场快照每次重打都是新的。
+# ⚠️ 时间戳不是装饰，也不能省：同一个 tag 重打时内容并不保证逐字节相同 —— 插件市场快照取上游仓
+#    某个 commit（与 wave-agent 的 tag 无对应），docs / 远控页是重新构建的（截图与构建环境都可能变）。
 #    用纯版本号做 tag 就会出现「tag 没变、内容变了」：harbor 上被覆盖（失去可追溯），客户节点上
 #    `imagePullPolicy: IfNotPresent` 不会重拉（静默用旧物料）。所以**每次构建一个新 tag，永不覆盖**。
 if [ -z "$TAG" ]; then

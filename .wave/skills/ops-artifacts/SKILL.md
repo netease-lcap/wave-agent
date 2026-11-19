@@ -24,7 +24,7 @@ bundle 结构与上传契约由 **CodeChat 服务端**定义（它那边 `docs/s
 ## 一句话流程
 
 ```
-gh release download（桌面端三件套）
+git switch --detach "$TAG"（锁源码，§0a）→ gh release download（桌面端三件套，来自该 tag 的 Release）
 docs:pack（文档站）→ pack:remote（远控页）→ 上游仓整树打 zip（插件市场）
 → 组装成 bundle（MANIFEST.tsv + sha256sums.txt + README.md + upload-all.sh + release-notes.md）
 → build-image.sh → 多架构镜像推 harbor（第 7 节）
@@ -46,10 +46,37 @@ mkdir -p "$DL" "$WORK/bundle/$BUNDLE/artifacts"/{desktop,docs,remote,plugin-mark
 sha_of() { if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | cut -d' ' -f1; else shasum -a 256 "$1" | cut -d' ' -f1; fi; }
 ```
 
+## 0a. 锁源码到 tag（出旧版本必做）
+
+**唯一输入是桌面端 tag，它只当源码锚点**：物料内容一律取自它（桌面端从它的 Release 下，docs / 远控页在它的
+源码上构建），但各产物自己显示的版本号保持原来的来源（docs 来自 `package.json`、远控页与插件市场本来就独立）
+—— **不要求与 tag 对齐，也不做对齐校验**。源码不在 tag 上就会新旧混装（实测出 1.6.8 时，安装包是 1.6.8、
+文档站却是 working tree 的 1.7.0），所以先锁源码再动手。
+
+```bash
+# 出包工具（技能脚本）跟出包机走、不跟 tag 走：先备份，切 tag 后仍用这份（老 tag 上没有 Dockerfile 或多架构段）
+SKILL=$WORK/skill; mkdir -p "$SKILL" && cp -a .wave/skills/ops-artifacts/. "$SKILL"/
+
+git fetch --tags --prune
+git status --porcelain | head -5                  # 必须为空；有改动先 git stash -u，跑完 git stash pop
+BEFORE=$(git rev-parse HEAD)
+git switch --detach "$TAG"
+git diff --quiet "$BEFORE" "$TAG" -- pnpm-lock.yaml || pnpm install --frozen-lockfile
+
+# 判据：源码必须正好在这个 tag 上，否则后面全是白干
+[ "$(git rev-parse HEAD)" = "$(git rev-parse "$TAG^{commit}")" ] || echo "✗ 源码不在 $TAG 上，停下"
+```
+
+不想动主仓工作区（还有别的事在跑）：上面 `BEFORE/switch/diff` 三行换成
+`git worktree add "$WORK/src" "$TAG" && cd "$WORK/src" && pnpm install --frozen-lockfile`，
+之后产物（`docs-*.tar.gz`、`packages/webview/remote/dist/`）都在这个目录里，别去主仓找；出包工具仍用 `$SKILL`。
+出完包 `git worktree remove "$WORK/src"` 收尾。
+
 ## 1. 桌面端安装包（~350MB，重跑别重复下）
 
 ```bash
-# 已有文件就跳过这步（--desktop-dir 的等价做法），否则从 GitHub Release 下
+# 已有文件就跳过这步（--desktop-dir 的等价做法），否则从该 tag 的 GitHub Release 下。
+# 桌面端不本地构建，所以 §0a 的源码锁定只影响下面第 2/3 步。
 gh release download "$TAG" -R netease-lcap/wave-agent \
   --pattern '*.exe' --pattern '*.dmg' --pattern '*.zip' --dir "$DL" --clobber
 ls -l "$DL"
@@ -91,8 +118,10 @@ need_build packages/agent-sdk && pnpm -F wave-agent-sdk build
 
 # 2b. 截图（docs/public/screenshots/ 是 gitignored 的构建产物）：按 docs 实际引用的文件名逐张查，
 #     比「目录非空」准 —— 缺一张就会让 vitepress 在「未解析 import」上炸。
+#     切过 tag 就先删掉重跑：旧图是上一个源码的 UI，文件名对得上、查不出来（多 1.3 分钟换截图同源）。
 #     只认「Markdown 图片」与「<img src>」两种引用（口径同 scripts/check-docs-screenshots.mjs）：
 #     specs 正文里当示例提到的 /screenshots/x.webp 是纯文本，全文 grep 会把它当成缺图。
+rm -rf docs/public/screenshots
 scan_missing() {
   find docs -path docs/.vitepress/dist -prune -o -type f \( -name '*.md' -o -name '*.vue' \) -print0 \
     | xargs -0 grep -hoE '!\[[^]]*\]\([^)[:space:]]+|<img[^>]+src="[^"]+"' \
@@ -120,8 +149,9 @@ tar -tzf "$DOCS" | grep -qx './index.html' || echo "✗ $DOCS 根层没有 index
 - demo 套件并发下有偶发失败（2026-11-05 实测 2/118 失败：`agents-dialog` / `mcp-server-tab`，
   单跑立刻通过、184 张图其实都出来了）。**判据是截图齐不齐**，不是 demo 的退出码：失败后重查
   `scan_missing`，空了就继续，别卡在这一步、也别去改 demo。
-- 文档包版本取自仓库根 `package.json`，与桌面端 tag **不同步是正常的**（实测 docs 1.6.0 / desktop 1.6.1），
-  别拿它当交付版本号。
+- 文档包版本取自**该 tag 上**的仓库根 `package.json`（实测 1.6.7 / 1.6.8 / 1.7.0 三个 tag 都停在 1.6.4），
+  别拿它当交付版本号。**不要求与桌面端 tag 对齐、也不校验对齐**：tag 只是源码锚点，内容一致性由 §0a 的
+  `HEAD == $TAG` 保证。
 
 ## 3. 远控页 Web 包
 
@@ -129,11 +159,22 @@ tar -tzf "$DOCS" | grep -qx './index.html' || echo "✗ $DOCS 根层没有 index
 pnpm -F wave-webview run pack:remote     # → packages/webview/remote/dist/remote-page.zip，根层 index.html
 ```
 
+源码已在 §0a 锁到 tag，直接打就是该 tag 的远控页（走了 worktree 则产物在 `$WORK/src/packages/webview/remote/dist/`）。
+
 ## 4. 插件市场快照（上游仓整树打 zip）
 
+上游是独立仓库（`wave-plugins-official`），**与 wave-agent 的 tag 没有对应关系 ⇒ 永远取上游 `main` 最新**，
+不做成可配置项；实际打包的 commit 短 sha 记进 README 与汇报，只为可追溯。
+
 ```bash
-PM=/mnt/c/Users/<你>/github/wave-plugins-official   # WSL 上通常在这；macOS 一般是 ~/github/wave-plugins-official
+PM=${PM:-$HOME/github/wave-plugins-official}      # WSL 上一般在 /mnt/c/Users/<你>/github/…
 [ -f "$PM/.wave-plugin/marketplace.json" ] || echo "✗ 根层没有 .wave-plugin/marketplace.json，停下确认仓库"
+
+git -C "$PM" fetch --prune 2>/dev/null || echo "⚠️ 拉不到远端，用本地已有的 main"
+git -C "$PM" checkout --detach origin/main 2>/dev/null || git -C "$PM" checkout --detach main
+[ -z "$(git -C "$PM" status --porcelain)" ] || echo "⚠️ 上游仓有未提交改动，快照与下面这个 commit 不一致"
+PM_SHA=$(git -C "$PM" rev-parse HEAD); PM_SHORT=${PM_SHA:0:7}
+echo "plugin-market ← wave-plugins-official@$PM_SHORT（main）"
 
 # 用 python3 打（WSL 上 zip/unzip 常常没装 —— 2026-11-05 实测 `zip: command not found`）
 PLUGZIP=$WORK/wave-plugins-official.zip
@@ -162,6 +203,7 @@ EOF
 ```
 
 没有 python3 时（少见）退回 `zip`：`(cd "$PM" && zip -rX "$PLUGZIP" . -x '.git/*' -x '*/node_modules/*' -x '*.DS_Store')`。
+上游仓原来是分支的，出完包 `git -C "$PM" switch -` 还原。
 
 ## 5. 组装
 
@@ -180,16 +222,18 @@ PMZIP="wave-plugins-official-$(sha_of "$PLUGZIP" | cut -c 1-12).zip"
 cp "$PLUGZIP" "$B/artifacts/plugin-market/$PMZIP"
 printf 'plugin-market\tplugin-market/%s\t\t\t\t%s\n' "$PMZIP" "$(sha_of "$B/artifacts/plugin-market/$PMZIP")" >> "$B/MANIFEST.tsv"
 
-# 上传器随镜像分发，必须有可执行位
-cp .wave/skills/ops-artifacts/upload-all.sh "$B/" && chmod 755 "$B/upload-all.sh"
+# 上传器随镜像分发，必须有可执行位。用 §0a 备份的那份（出包工具不跟 tag 走）
+cp "$SKILL/upload-all.sh" "$B/" && chmod 755 "$B/upload-all.sh"
 
 # 变更记录：本版本相对**上一个 wave-desktop@* tag** 的增量，客户端「重启以完成更新」里展示。
 # 没有它，私有化客户点了重启也看不到「本次更新内容」（不影响更新本身）。
-# 「上一个版本」的取法与 `publish.yml` 逐字一致（按版本号排序的上一条 tag，**不是**
-# git describe —— tag 不都在同一条祖先链上，describe 会跳过版本）：
-# 出包前先 `git fetch --tags`。首个版本取不到上一版时脚本不产出文件，这里补一个空文件占位 ——
+# 「上一个版本」= 版本号排序里紧挨 TAG 的**下一条**，所以用 grep -A1 -x 取邻居：出旧版本时
+# `grep -v | head -1` 会拿到列表最高那条（出 1.6.8 时给的是 1.7.2，错的）。
+# 取不到上一版（最老的 tag）时 PREV 会等于 TAG 自己，清空后脚本不产出文件 —— 下面补空文件占位，
 # Dockerfile 的 COPY 需要它，upload-all.sh 见到空文件就不提交 releaseNotes。
-PREV=$(git tag --sort=-v:refname --list 'wave-desktop@*' | grep -v "^${TAG}$" | head -1) || true
+# 出很早的 tag 时，那个 tag 上未必有 release-notes.mjs（`|| true` 兜住，同样退化成空文件）。
+# （`publish.yml` 里的 `grep -v | head -1` 只处理最新 tag，那种场景结果相同，别为此改 CI。）
+PREV=$(git tag --sort=-v:refname --list 'wave-desktop@*' | grep -A1 -x "$TAG" | tail -1); [ "$PREV" = "$TAG" ] && PREV=
 node packages/desktop/scripts/release-notes.mjs --since "${PREV:-}" --to "$TAG" --out "$B/release-notes.md" || true
 [ -f "$B/release-notes.md" ] || : > "$B/release-notes.md"
 
@@ -206,8 +250,12 @@ cat > "$B/README.md" <<EOF
 
 四类产物在容器内 \`/artifacts/artifacts/\`：桌面端安装包 / 文档站 / 远控页 / 插件市场快照。
 
+物料全部来自同一份源码快照，可复现：
+
+- wave-agent $TAG（$(git rev-parse --short "$TAG")）
+- wave-plugins-official $PM_SHORT（快照所在 commit）
 - 桌面端 $VER
-- 文档站 $(basename "$DOCS" | sed 's/^docs-//; s/\.tar\.gz$//')（版本取自 wave-agent 仓 package.json，与桌面端不同步属正常）
+- 文档站 $(basename "$DOCS" | sed 's/^docs-//; s/\.tar\.gz$//')（版本取自该 tag 的 package.json）
 
 ## 用法
 
@@ -230,6 +278,9 @@ EOF
 ## 6. 自检（出包机上必跑，别跳）
 
 ```bash
+# 唯一判据：源码正好在 TAG 上（各产物自己的版本号不参与校验）；在仓库里跑，别 cd 进 bundle
+[ "$(git rev-parse HEAD)" = "$(git rev-parse "$TAG^{commit}")" ] || echo "✗ 源码不在 $TAG 上"
+
 cd "$B"
 sha256sum -c sha256sums.txt 2>/dev/null || shasum -a 256 -c sha256sums.txt   # macOS 用后者
 awk -F'\t' 'NF!=6{print "✗ 列数不是 6: "$0}' MANIFEST.tsv                     # 必须无输出
@@ -241,6 +292,7 @@ du -sh "$B"                                                                   # 
 然后给用户这几行：
 
 ```
+源码    wave-agent $TAG @ <tag 的短 sha> + wave-plugins-official $PM_SHORT（实际打包的 commit）
 bundle  $WORK/bundle/$BUNDLE（镜像的构建输入，不再打 tar）
 镜像    harbor.cloud.netease.com/qzlowcode/codechat-artifacts:<ver>-<YYYYMMDDHHmm>-multi
 自查    docker buildx imagetools inspect <镜像>
@@ -261,15 +313,17 @@ bundle 打成多架构镜像推到内网 harbor：物料 + `upload-all.sh` + `re
 ### 7a. 构建并推送（走脚本，别手拼命令）
 
 ```bash
-./.wave/skills/ops-artifacts/build-image.sh "$WORK/bundle/$BUNDLE"
-# → harbor.cloud.netease.com/qzlowcode/codechat-artifacts:<物料版本>-<YYYYMMDDHHmm>-multi
+"$SKILL/build-image.sh" "$WORK/bundle/$BUNDLE"
+# → harbor.cloud.netease.com/qzlowcode/codechat-artifacts:<ver>-<YYYYMMDDHHmm>-multi
 #   例：1.6.1-202611061529-multi（amd64 + arm64）
 ```
 
-**tag 里的时间戳不能省**，也别手工改回纯版本号：物料版本（桌面端 tag）≠ 物料内容版本 —— 同一份 1.6.1 里
-docs 包的版本号来自仓库 `package.json`（与桌面端不同步）、远控页和插件市场快照每次重打都是新的。用纯版本号
-就会出现「tag 没变、内容变了」：harbor 上被覆盖（丢掉可追溯），客户节点上 `imagePullPolicy: IfNotPresent`
-不会重拉（**静默用旧物料**）。**物料重打就出新 tag**，一个 tag 只对应一次构建。
+**物料版本 = 桌面端 tag**：安装包取自它的 Release、docs / 远控页在它的源码上构建、插件市场快照取上游
+`main` 最新（§4），镜像 tag 的前缀就是这个 tag，别再引入第二个版本号。但**镜像 tag 仍必须是
+`<ver>-<时间戳>-multi`，时间戳不能省** —— 同一个 tag 重打时插件市场快照跟着上游仓走、docs / 远控页是重新
+构建的（截图与构建环境都可能变），内容不保证逐字节相同。用纯版本号就会出现「tag 没变、内容变了」：
+harbor 上被覆盖（丢掉可追溯），客户节点上 `imagePullPolicy: IfNotPresent` 不会重拉（**静默用旧物料**）。
+**物料重打就出新 tag**，一个镜像 tag 只对应一次构建。
 
 可选参数：`--tag <tag>`（完整 tag，默认按上面规则自动拼）、`--registry <host/project>`、
 `--platforms`（默认 `linux/amd64,linux/arm64`，**必须是双架构**）、`--no-push`
@@ -300,7 +354,7 @@ docs 包的版本号来自仓库 `package.json`（与桌面端不同步）、远
 构建完先在本地验一遍（只读、零写入）：
 
 ```bash
-./.wave/skills/ops-artifacts/build-image.sh "$WORK/bundle/$BUNDLE" --no-push
+"$SKILL/build-image.sh" "$WORK/bundle/$BUNDLE" --no-push
 docker load -i "$WORK/bundle/$BUNDLE.oci.tar"
 docker run --rm -e CODECHAT_BASE=<可达的企业端地址> -e PUBLISH_TOKEN=<令牌> <镜像> --dry-run
 ```
@@ -335,7 +389,7 @@ codechat-artifacts-<YYYYMMDD>-desktop<ver>/
 
 - `kind` 枚举：`desktop` / `docs` / `remote-page` / `plugin-market`（`upload-all.sh` 按它分派）。
 - `MANIFEST.tsv` 的列顺序与行内字段都不许改：`upload-all.sh` 的 `read` 与它逐列对应。
-- 桌面端版本号来自 tag；文档包版本号来自 `package.json`，两者不同步是正常的。
+- 桌面端版本号来自 tag，文档包版本号来自**该 tag 上**的 `package.json`；两者不要求对齐，只要求内容来自该 tag。
 - `release-notes.md` 不在 `MANIFEST.tsv` 里（它不是物料，是随 init 提交的元数据），也不进
   `sha256sums.txt`；它由 `upload-all.sh` 在 desktop init 时读。三个平台行共用同一份文本 ——
   服务端按**版本**存一份，与通道、平台无关。
@@ -381,7 +435,8 @@ codechat-artifacts-<YYYYMMDD>-desktop<ver>/
 
 1. **fixtures 必须先 build**：`wave-webview-fixtures/dist` 不存在时 demo 的 type-check 报
    `Cannot find module 'wave-webview-fixtures'`。
-2. **截图是 gitignored 的**：首次出包必须跑 `docs:screenshots`（实测 184 张图、约 1.3 分钟）。
+2. **截图是 gitignored 的**：切过 tag 就先删掉重跑（§2b，实测 184 张图、约 1.3 分钟）——
+   复用旧图会拿到上一个源码的 UI，而 `scan_missing` 只按文件名查，看不出来。
 3. **`docs/public/screenshots` 空目录不等于齐**：按 docs 引用的文件名逐个 `test -f`（步骤 2b），
    否则等到 vitepress 构建才炸。**但别全文 grep `/screenshots/*.webp`**：`docs/specs/ui/file-path-links.md`
    正文里举例提到的 `/home/u/repo/docs/public/screenshots/x.webp` 会被当成缺图（2026-11-05 实测误报，
@@ -399,6 +454,9 @@ codechat-artifacts-<YYYYMMDD>-desktop<ver>/
 10. **binfmt 注册不持久**：`binfmt_misc` 是内核态，WSL 重启 / 换机器就没了，所以 `build-image.sh`
     每次都注册一遍（幂等）。手动拼 `buildx build` 前也要先 `--install all`，否则 arm64 的
     `apk add` 直接 `exec format error`。其余构建参数坑见 7c。
+11. **物料跟 tag、工具跟出包机**：docs / 远控页是本地构建，源码不切到 tag 就会新旧混装（实测出 1.6.8
+    时出了个 1.7.0 的文档站）；但切了 tag 后 `.wave/skills/ops-artifacts/` 也一起退回，老 tag 上未必有能用
+    的出包脚本，所以脚本一律从 §0a 备份的 `$SKILL` 取。
 
 ## 验收（出包机上跑一遍）
 
@@ -412,7 +470,9 @@ codechat-artifacts-<YYYYMMDD>-desktop<ver>/
    传完 `--base …/latest.yml` 里该版本能看到 `releaseNotes`（客户环境 codechat 含变更记录支持时）；
 4. 同一份包第二遍：桌面端按台账跳过、docs / remote / 插件市场整包重传，退出码 0；
 5. 出包过程**不出现**需要手工预构建的报错；
-6. （走镜像时）`docker buildx imagetools inspect <镜像>` 能看到 `linux/amd64` 与 `linux/arm64`
+6. **内容来源 = 指定 tag**：出包时源码的 `HEAD` 就是 `$TAG` 那个 commit（各产物自己的版本号不校验对齐），
+   `README.md` 里记下了 `$TAG` 的 commit 与插件市场快照的 commit（汇报里也给了这两个）；
+7. （走镜像时）`docker buildx imagetools inspect <镜像>` 能看到 `linux/amd64` 与 `linux/arm64`
    两个平台；`--no-push` 出的 oci tar 能 `docker load` 起来，`docker run … --dry-run` 识别到六条物料。
 
 ## 与本仓其它技能的关系
