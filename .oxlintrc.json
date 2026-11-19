@@ -20,6 +20,31 @@
       }
     ],
     "typescript/ban-ts-comment": "error",
+    "no-restricted-imports": [
+      "error",
+      {
+        "paths": [
+          {
+            "name": "node:child_process",
+            "importNames": ["execFile", "execFileSync", "exec", "execSync"],
+            "message": "短命令走 execFileHidden / execFileSyncHidden / execFileAsyncHidden：windowsHide 默认 false，漏一个 key 就是 Windows 上闪一次控制台窗口。常驻/流式的 spawn 不受此限（自己传 windowsHide）。"
+          }
+        ]
+      }
+    ],
+    "no-restricted-properties": [
+      "error",
+      {
+        "object": "childProcess",
+        "property": "execFile",
+        "message": "改用 execFileHidden / execFileAsyncHidden（windowsHide 默认 false）"
+      },
+      {
+        "object": "childProcess",
+        "property": "execFileSync",
+        "message": "改用 execFileSyncHidden（windowsHide 默认 false）"
+      }
+    ],
     "react/rules-of-hooks": "error",
     "react/exhaustive-deps": "warn",
     "react/globals": "off",
@@ -60,6 +85,20 @@
       "files": ["**/*.d.ts"],
       "rules": {
         "typescript/triple-slash-reference": "off"
+      }
+    },
+    {
+      "files": [
+        "**/src/utils/execFileHidden.ts",
+        "**/remote/build.mjs",
+        "**/tests/**/*",
+        "**/e2e/**/*",
+        "**/scripts/**/*",
+        "**/examples/**/*"
+      ],
+      "rules": {
+        "no-restricted-imports": "off",
+        "no-restricted-properties": "off"
       }
     }
   ]
