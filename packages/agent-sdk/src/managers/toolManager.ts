@@ -37,7 +37,7 @@ import { isLeanPromptEnabled } from "../services/leanPrompt.js";
 import { buildExecPool } from "../exec/catalog.js";
 import type { ExecPoolCandidate, ExecPoolEntry } from "../exec/catalog.js";
 import { STRUCTURAL_NON_DEFERRABLE } from "../exec/deferral.js";
-import { EXEC_TOOL_NAME } from "../constants/tools.js";
+import { EXEC_TOOL_NAME, isShellToolName } from "../constants/tools.js";
 // New tools
 import { globTool } from "../tools/globTool.js";
 import { grepTool } from "../tools/grepTool.js";
@@ -84,7 +84,7 @@ import {
 } from "../telemetry/metrics.js";
 import type { RecordContext } from "../telemetry/metrics.js";
 import { entrypointOf } from "../telemetry/attributes.js";
-import { detectBashActivity } from "../telemetry/toolActivity.js";
+import { detectShellActivity } from "../telemetry/toolActivity.js";
 import { trackCliOperation } from "../telemetry/activity.js";
 
 /** `tool.describe` 给这一场会话的那一份答案（spec「给工具、技能、命令写描述」）。 */
@@ -200,22 +200,29 @@ function recordLinesChangedFromResult(
 }
 
 /**
- * Count the commit / PR-MR a Bash call created (see `detectBashActivity`).
+ * Count the commit / PR-MR a shell call created (see `detectShellActivity`).
  * Recognition is of the command the tool was asked to run, so a failed call
  * created nothing and records nothing — the same gate as the line delta above.
+ *
+ * "A shell call", not "a Bash call": `git commit` typed into a PowerShell
+ * session creates the same commit, and the command line reads the same to
+ * `detectShellActivity` whichever shell ran it (both invoke git/gh/glab as
+ * external binaries). Gating on the name `Bash` is how those commits used to be
+ * dropped, so the gate is the shell-tool set, read from `constants/tools.ts`
+ * where a future shell tool is added.
  */
-function recordBashActivity(
+function recordShellActivity(
   name: string,
   args: Record<string, unknown>,
   result: ToolResult,
   context: { sessionId?: string; workdir?: string },
   container: Container,
 ): void {
-  if (name !== "Bash" || !result.success) return;
+  if (!isShellToolName(name) || !result.success) return;
   const command = typeof args.command === "string" ? args.command : "";
   if (!command) return;
   recordToolActivity(
-    detectBashActivity(command),
+    detectShellActivity(command),
     recordContextOf(context, container),
   );
 }
@@ -900,7 +907,7 @@ class ToolManager {
         try {
           result = await plugin.execute(args, enhancedContext);
           recordLinesChangedFromResult(result, context, this.container);
-          recordBashActivity(name, args, result, context, this.container);
+          recordShellActivity(name, args, result, context, this.container);
         } catch (error) {
           const message =
             error instanceof Error ? error.message : String(error);

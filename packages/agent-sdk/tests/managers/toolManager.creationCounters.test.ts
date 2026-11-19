@@ -117,6 +117,70 @@ describe("ToolManager creation counters", () => {
     expect(recordLinesChanged).not.toHaveBeenCalled();
   });
 
+  it("records the commit a successful PowerShell call created", async () => {
+    const manager = buildManager("PowerShell", ok);
+
+    await manager.execute(
+      "PowerShell",
+      { command: 'git add . ; git commit -m "feat: x"' },
+      baseContext,
+    );
+
+    expect(recordToolActivity).toHaveBeenCalledWith(
+      { commits: true, pullRequests: false },
+      baseRecordContext,
+    );
+  });
+
+  it("records the pull request a successful PowerShell call created", async () => {
+    const manager = buildManager("PowerShell", ok);
+
+    await manager.execute(
+      "PowerShell",
+      { command: "git push -u origin HEAD; gh pr create --fill" },
+      baseContext,
+    );
+
+    expect(recordToolActivity).toHaveBeenCalledWith(
+      { commits: false, pullRequests: true },
+      baseRecordContext,
+    );
+
+    // A merge request goes to the same counter.
+    recordToolActivity.mockClear();
+    await manager.execute(
+      "PowerShell",
+      { command: "glab mr create -t x" },
+      baseContext,
+    );
+
+    expect(recordToolActivity).toHaveBeenCalledWith(
+      { commits: false, pullRequests: true },
+      baseRecordContext,
+    );
+  });
+
+  it("stays silent when a PowerShell call never ran the command", async () => {
+    // The tool's own pre-flight failures (shell not found, spawn error,
+    // denied by permission, non-zero exit) all resolve `success: false` with
+    // the message in `error` — there is no "succeeded with no output" shape
+    // for it to slip through, so the shared success gate covers them.
+    const manager = buildManager("PowerShell", {
+      success: false,
+      content: "",
+      error:
+        "PowerShell not found. Install PowerShell 7 (pwsh) or enable Windows PowerShell, then retry.",
+    });
+
+    await manager.execute(
+      "PowerShell",
+      { command: "git commit -m x" },
+      baseContext,
+    );
+
+    expect(recordToolActivity).not.toHaveBeenCalled();
+  });
+
   it("stays silent when the commit command failed", async () => {
     const manager = buildManager("Bash", {
       success: false,
@@ -129,7 +193,7 @@ describe("ToolManager creation counters", () => {
     expect(recordToolActivity).not.toHaveBeenCalled();
   });
 
-  it("stays silent for a non-Bash tool that happens to take a command", async () => {
+  it("stays silent for a non-shell tool that happens to take a command", async () => {
     const manager = buildManager("Edit", ok);
 
     await manager.execute("Edit", { command: "git commit -m x" }, baseContext);
