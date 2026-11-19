@@ -61,18 +61,78 @@ describe("powershellPrompt", () => {
     });
   });
 
-  describe("bash habits mapped to PowerShell", () => {
-    it("maps the three idioms that silently do the wrong thing", () => {
+  describe("CC's unix → PowerShell table", () => {
+    /** Every entry, verbatim from CC (binary `@343205396`). */
+    const ENTRIES = [
+      "- head / tail → `Get-Content file -TotalCount N` / `-Tail N`; piped: `| Select-Object -First N` / `-Last N`",
+      "- which → `(Get-Command name).Source`",
+      "- touch → `if (-not (Test-Path path)) { New-Item -ItemType File path }` (NEVER use `New-Item -Force` on a file — it truncates existing content)",
+      "- wc -l → `(Get-Content file | Measure-Object -Line).Lines`",
+      "- mkdir -p → `New-Item -ItemType Directory -Force path` (`-p` is not a PowerShell flag)",
+      "- rm -rf → `Remove-Item -Recurse -Force path`",
+      "- ln -s → `New-Item -ItemType SymbolicLink -Path link -Target target`",
+      "- chmod / chown → not applicable on Windows; use `icacls` only if ACL changes are required",
+      "- 2>/dev/null → `2>$null` (but stderr is captured for you — usually unnecessary)",
+      "- VAR=x cmd → `$env:VAR = 'x'; cmd` (PowerShell has no inline env-var prefix)",
+      "- Bash control flow (`if [ -f x ]`, `for x in *`, backtick ``cmd`` substitution) is a parser error — use `if (Test-Path x)`, `foreach ($x in ...)`, `$(cmd)`",
+    ];
+
+    it("carries the heading and all eleven mappings", () => {
       vi.mocked(getPowerShellEdition).mockReturnValue("desktop");
 
       const prompt = powershellPrompt();
 
-      expect(prompt).toContain("`cmd 2>/dev/null || true`");
-      expect(prompt).toContain("2>$null; if (-not $?)");
-      expect(prompt).toContain("heredoc `<<'EOF'`");
-      expect(prompt).toContain("`cmd1 && cmd2`");
+      expect(prompt).toContain(
+        "Unix commands that DO NOT exist in PowerShell — use the equivalent instead:",
+      );
+      for (const entry of ENTRIES) {
+        expect(prompt).toContain(entry);
+      }
     });
 
+    it("is edition-independent, like CC's (it sits outside the edition branch)", () => {
+      const render = (edition: "core" | "desktop" | undefined) => {
+        vi.mocked(getPowerShellEdition).mockReturnValue(edition);
+        const prompt = powershellPrompt();
+        return prompt.slice(
+          prompt.indexOf("Unix commands that DO NOT exist"),
+          prompt.indexOf("Interactive and blocking commands"),
+        );
+      };
+
+      const core = render("core");
+      expect(render("desktop")).toBe(core);
+      expect(render(undefined)).toBe(core);
+    });
+
+    it("maps each bash idiom in exactly one place", () => {
+      vi.mocked(getPowerShellEdition).mockReturnValue("desktop");
+
+      const prompt = powershellPrompt();
+      const occurrences = (needle: string) => prompt.split(needle).length - 1;
+
+      // `2>/dev/null` used to be described a second time under "Bash habits";
+      // the table is now the only copy, and `VAR=x cmd` moved here out of the
+      // environment-variable bullet.
+      expect(occurrences("2>/dev/null →")).toBe(1);
+      expect(occurrences("VAR=x cmd")).toBe(1);
+      expect(occurrences("Bash habits that do not carry over")).toBe(0);
+    });
+
+    it("adds the exit-code note about -ErrorAction SilentlyContinue", () => {
+      vi.mocked(getPowerShellEdition).mockReturnValue("desktop");
+
+      const prompt = powershellPrompt();
+
+      expect(prompt).toContain("Exit-code note:");
+      expect(prompt).toContain(
+        "suppresses error OUTPUT but the cmdlet failure still causes this tool to report exit 1",
+      );
+      expect(prompt).toContain("try { Cmdlet ... -ErrorAction Stop } catch {}");
+    });
+  });
+
+  describe("heredoc → here-string", () => {
     it("spells out the here-string closing rule with an example", () => {
       vi.mocked(getPowerShellEdition).mockReturnValue("desktop");
 

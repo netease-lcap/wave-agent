@@ -10,10 +10,19 @@
  *   (`Grep` / `Glob` are opt-in, see `utils/searchToolsRegistration.ts`), so it
  *   cannot be a constant string.
  *
- * The exit status is NOT described here on purpose: the provider appends its own
- * probe (`utils/shell/powershellProvider.ts`), so the tool reports a native
- * program's code without the model doing anything — telling it to end commands
- * with `exit $LASTEXITCODE` would be advice for a problem that no longer exists.
+ * The "Unix commands that DO NOT exist in PowerShell" table and the exit-code
+ * note after it are copied verbatim from CC's prompt (binary `@343205396` and
+ * `@343206581`). The table is what lets the builtin skill and command bodies stay
+ * single-source: they are written in bash, and CC relies on the model reading
+ * them and translating with this table rather than shipping a PowerShell twin of
+ * every body.
+ *
+ * Telling the model to *end* commands with `exit $LASTEXITCODE` is still absent
+ * on purpose: the provider appends its own probe
+ * (`utils/shell/powershellProvider.ts`), so the tool reports a native program's
+ * code without the model doing anything. The exit-code note is a different
+ * thing — it explains why a cmdlet failure survives `-ErrorAction
+ * SilentlyContinue`.
  *
  * The edition section exists because the model cannot tell which PowerShell it
  * is talking to: 5.1 rejects `&&` with a parser error, while 7 supports the
@@ -136,9 +145,24 @@ PowerShell syntax notes:
    - The escape character is the backtick, not the backslash
    - The pipe passes objects, not text: filter and transform with \`Select-Object\` / \`Where-Object\` / \`ForEach-Object\`
    - String interpolation: \`"Hello $name"\` or \`"Hello $($obj.Property)"\`
-   - Environment variables: read with \`$env:NAME\`, set with \`$env:NAME = "value"\` (NOT \`Set-Variable\`, and NOT either of the bash forms \`export\` / \`VAR=x cmd\`)
+   - Environment variables: read with \`$env:NAME\`, set with \`$env:NAME = "value"\` (NOT \`Set-Variable\` or bash \`export\`)
    - Registry access uses PSDrive prefixes — \`HKLM:\\SOFTWARE\\...\`, \`HKCU:\\...\` — NOT raw \`HKEY_LOCAL_MACHINE\\...\`
    - Call a native exe whose path has spaces with the call operator: \`& "C:\\Program Files\\App\\app.exe" arg1 arg2\`
+
+Unix commands that DO NOT exist in PowerShell — use the equivalent instead:
+   - head / tail → \`Get-Content file -TotalCount N\` / \`-Tail N\`; piped: \`| Select-Object -First N\` / \`-Last N\`
+   - which → \`(Get-Command name).Source\`
+   - touch → \`if (-not (Test-Path path)) { New-Item -ItemType File path }\` (NEVER use \`New-Item -Force\` on a file — it truncates existing content)
+   - wc -l → \`(Get-Content file | Measure-Object -Line).Lines\`
+   - mkdir -p → \`New-Item -ItemType Directory -Force path\` (\`-p\` is not a PowerShell flag)
+   - rm -rf → \`Remove-Item -Recurse -Force path\`
+   - ln -s → \`New-Item -ItemType SymbolicLink -Path link -Target target\`
+   - chmod / chown → not applicable on Windows; use \`icacls\` only if ACL changes are required
+   - 2>/dev/null → \`2>$null\` (but stderr is captured for you — usually unnecessary)
+   - VAR=x cmd → \`$env:VAR = 'x'; cmd\` (PowerShell has no inline env-var prefix)
+   - Bash control flow (\`if [ -f x ]\`, \`for x in *\`, backtick \`\`cmd\`\` substitution) is a parser error — use \`if (Test-Path x)\`, \`foreach ($x in ...)\`, \`$(cmd)\`
+
+Exit-code note: \`-ErrorAction SilentlyContinue\` suppresses error OUTPUT but the cmdlet failure still causes this tool to report exit 1. To make a cmdlet failure truly non-fatal, promote it to terminating and swallow it: \`try { Cmdlet ... -ErrorAction Stop } catch {}\` (without \`-ErrorAction Stop\`, non-terminating errors skip the \`catch\` and still exit 1).
 
 Interactive and blocking commands (this tool runs with \`-NonInteractive\`, so they hang):
    - NEVER use \`Read-Host\`, \`Get-Credential\`, \`Out-GridView\`, \`$Host.UI.PromptForChoice\`, or \`pause\`
@@ -155,11 +179,6 @@ Second line with $literal dollar signs.
 </example>
    - Use \`@'...'@\` (single-quoted, literal) rather than \`@"..."@\` (double-quoted, interpolated) unless you need expansion
    - For arguments containing \`-\`, \`@\` or other characters PowerShell reads as operators, use the stop-parsing token: \`git log --% --format=%H\`
-
-Bash habits that do not carry over:
-   - \`cmd 2>/dev/null || true\` → \`cmd 2>$null; if (-not $?) { }\`
-   - heredoc \`<<'EOF'\` → here-string \`@'…'@\`
-   - \`cmd1 && cmd2\` → \`cmd1; if ($?) { cmd2 }\` (or \`&&\` on PowerShell 7+)
 
 Usage notes:
    - The command argument is required.
