@@ -9,6 +9,7 @@ import {
 const mockExecAsync = vi.hoisted(() => vi.fn());
 const mockExecFileAsync = vi.hoisted(() => vi.fn());
 const mockExistsSync = vi.hoisted(() => vi.fn());
+const mockStatSync = vi.hoisted(() => vi.fn());
 const mockUnlinkSync = vi.hoisted(() => vi.fn());
 const mockJoin = vi.hoisted(() => vi.fn());
 const mockTmpdir = vi.hoisted(() => vi.fn());
@@ -16,7 +17,7 @@ const mockTmpdir = vi.hoisted(() => vi.fn());
 // The clipboard code goes through the SDK's wrapper family (execAsyncHidden /
 // execFileAsyncHidden), not raw `child_process` + `promisify` — so the mount
 // point is the wrapper's own module. Two separate mocks on purpose: `exec` runs
-// through a shell (`which xclip`, `osascript`), `execFile` is argv-only
+// through a shell (`xclip`, `wl-paste`, `osascript`), `execFile` is argv-only
 // (`powershell.exe`), and a shared mock cannot tell the two apart.
 vi.mock("wave-agent-sdk", () => ({
   execAsyncHidden: mockExecAsync,
@@ -26,6 +27,7 @@ vi.mock("wave-agent-sdk", () => ({
 // Mock fs module
 vi.mock("fs", () => ({
   existsSync: mockExistsSync,
+  statSync: mockStatSync,
   unlinkSync: mockUnlinkSync,
 }));
 
@@ -48,6 +50,7 @@ describe("Clipboard Utils", () => {
     mockTmpdir.mockReturnValue("/tmp");
     mockJoin.mockImplementation((...paths) => paths.join("/"));
     mockExistsSync.mockReturnValue(true);
+    mockStatSync.mockReturnValue({ size: 128 });
   });
 
   afterEach(() => {
@@ -270,57 +273,143 @@ describe("Clipboard Utils", () => {
         });
       });
 
-      it("should return error when xclip not available", async () => {
-        mockExecAsync.mockRejectedValueOnce(new Error("xclip not found"));
+      // Both backends live in the same shell command, so "xclip first, wl-paste
+      // only if xclip fails" is carried by the command text itself: the order of
+      // the `||` operands. These helpers pin that text.
+      const commandsRun = () =>
+        mockExecAsync.mock.calls.map(([command]) => command);
 
-        const result = await readClipboardImage();
+      const expectFragmentsInOrder = (command: string, fragments: string[]) => {
+        let previous = -1;
+        for (const fragment of fragments) {
+          const at = command.indexOf(fragment);
+          expect(at).toBeGreaterThan(previous);
+          previous = at;
+        }
+      };
 
-        expect(result.success).toBe(false);
-        expect(result.error).toContain("xclip is required");
-      });
-
-      it("should return error when no image in clipboard", async () => {
+      it("should probe xclip first and keep wl-paste as the shell fallback", async () => {
         mockExecAsync
-          .mockResolvedValueOnce({ stdout: "xclip found" }) // which xclip
-          .mockRejectedValueOnce(new Error("No image")); // clipboard check
-
-        const result = await readClipboardImage();
-
-        expect(result.success).toBe(false);
-        expect(result.error).toContain("No image found in clipboard");
-      });
-
-      it("should successfully read image from clipboard", async () => {
-        mockExecAsync
-          .mockResolvedValueOnce({ stdout: "xclip found" }) // which xclip
-          .mockResolvedValueOnce({ stdout: "has image" }) // clipboard check
-          .mockResolvedValueOnce({ stdout: "saved" }); // save image
-        mockExistsSync.mockReturnValue(true);
+          .mockResolvedValueOnce({ stdout: "image/png\n" }) // probe
+          .mockResolvedValueOnce({ stdout: "" }); // save image
 
         const result = await readClipboardImage();
 
         expect(result.success).toBe(true);
         expect(result.imagePath).toContain("/tmp/clipboard-image-");
+        expect(result.imagePath).toMatch(/\.png$/);
         expect(result.mimeType).toBe("image/png");
+
+        const [probe, save] = commandsRun();
+        expectFragmentsInOrder(probe, [
+          'xclip -selection clipboard -t TARGETS -o 2>/dev/null | grep -E "image/(png|jpeg|jpg|gif|webp|bmp)"',
+          'wl-paste -l 2>/dev/null | grep -E "image/(png|jpeg|jpg|gif|webp|bmp)"',
+        ]);
+        expectFragmentsInOrder(save, [
+          "xclip -selection clipboard -t image/png -o >",
+          "wl-paste --type image/png >",
+          "xclip -selection clipboard -t image/bmp -o >",
+          "wl-paste --type image/bmp >",
+        ]);
+        // The temp path is handed to both halves of the save chain — a second
+        // file would leave a stray artifact per failed attempt.
+        expect(save).toContain(result.imagePath);
       });
 
-      it("should handle save failure", async () => {
+      it("should not gate the read on a `which xclip` check", async () => {
+        // Regression: the read used to start with `which xclip` and return
+        // "xclip is required…" on failure, so a Wayland session with xclip
+        // installed never reached wl-paste. The first thing run must be the
+        // probe, with no PATH check ahead of it.
         mockExecAsync
-          .mockResolvedValueOnce({ stdout: "xclip found" }) // which xclip
-          .mockResolvedValueOnce({ stdout: "has image" }) // clipboard check
-          .mockRejectedValueOnce(new Error("Save failed")); // save image fails
+          .mockResolvedValueOnce({ stdout: "image/png\n" })
+          .mockResolvedValueOnce({ stdout: "" });
+
+        await readClipboardImage();
+
+        const commands = commandsRun();
+        expect(commands[0]).toContain("xclip -selection clipboard -t TARGETS");
+        expect(commands.some((command) => command.startsWith("which"))).toBe(
+          false,
+        );
+      });
+
+      it("should read bmp when the clipboard only advertises bmp", async () => {
+        mockExecAsync
+          .mockResolvedValueOnce({ stdout: "image/bmp\n" })
+          .mockResolvedValueOnce({ stdout: "" });
+
+        const result = await readClipboardImage();
+
+        expect(result.success).toBe(true);
+        expect(result.mimeType).toBe("image/bmp");
+        expect(result.imagePath).toMatch(/\.bmp$/);
+        // Same four-way chain either way; the bytes on disk and the reported
+        // mimeType are what stay in sync.
+        expectFragmentsInOrder(commandsRun()[1], [
+          "xclip -selection clipboard -t image/png -o >",
+          "wl-paste --type image/png >",
+          "xclip -selection clipboard -t image/bmp -o >",
+          "wl-paste --type image/bmp >",
+        ]);
+      });
+
+      it("should not promise a read for formats the save chain cannot fetch", async () => {
+        // The probe matches jpeg/gif/webp but only png and bmp can be saved, so
+        // this has to be its own answer instead of a broken temp file.
+        mockExecAsync.mockResolvedValueOnce({ stdout: "image/jpeg\n" });
 
         const result = await readClipboardImage();
 
         expect(result.success).toBe(false);
-        expect(result.error).toContain("Failed to save clipboard image");
+        expect(result.error).toContain("PNG or BMP");
+        expect(mockExecAsync).toHaveBeenCalledTimes(1);
+      });
+
+      it("should name both backends when neither tool is installed", async () => {
+        // Probe fails, and the follow-up `which` says nothing is on PATH.
+        mockExecAsync
+          .mockRejectedValueOnce(new Error("xclip not found"))
+          .mockRejectedValueOnce(new Error("not found"));
+
+        const result = await readClipboardImage();
+
+        expect(result.success).toBe(false);
+        expect(result.error).toContain("No clipboard tool found");
+        expect(result.error).toContain("xclip");
+        expect(result.error).toContain("wl-clipboard");
+        // The install hint only shows up once both read paths are exhausted.
+        expect(commandsRun()[0]).toContain("wl-paste -l");
+      });
+
+      it("should report an empty clipboard when a tool is installed", async () => {
+        mockExecAsync
+          .mockRejectedValueOnce(new Error("No image"))
+          .mockResolvedValueOnce({ stdout: "/usr/bin/xclip" });
+
+        const result = await readClipboardImage();
+
+        expect(result.success).toBe(false);
+        expect(result.error).toBe("No image found in clipboard");
+      });
+
+      it("should fall back to the empty reason when the save chain fails", async () => {
+        mockExecAsync
+          .mockResolvedValueOnce({ stdout: "image/png\n" }) // probe
+          .mockRejectedValueOnce(new Error("Save failed")) // all four attempts
+          .mockResolvedValueOnce({ stdout: "/usr/bin/xclip" }); // diagnosis
+
+        const result = await readClipboardImage();
+
+        expect(result.success).toBe(false);
+        expect(result.error).toBe("No image found in clipboard");
+        expect(commandsRun()[2]).toBe("which xclip || which wl-paste");
       });
 
       it("should handle file not created after save", async () => {
         mockExecAsync
-          .mockResolvedValueOnce({ stdout: "xclip found" }) // which xclip
-          .mockResolvedValueOnce({ stdout: "has image" }) // clipboard check
-          .mockResolvedValueOnce({ stdout: "saved" }); // save image
+          .mockResolvedValueOnce({ stdout: "image/png\n" }) // probe
+          .mockResolvedValueOnce({ stdout: "" }); // save image
         mockExistsSync.mockReturnValue(false);
 
         const result = await readClipboardImage();
@@ -331,15 +420,26 @@ describe("Clipboard Utils", () => {
         );
       });
 
-      it("should handle unexpected errors in readClipboardImageLinux", async () => {
-        // The outer catch only sees what the two inner try/catches do not, i.e.
-        // the `tmpdir()` / `join()` pair that builds the temp path between them.
-        // That used to be the `await import("child_process")` + `promisify`
-        // pair at the top of the function — a static import leaves no such
-        // module-init seam, so the injection moves to the one call still there.
+      it("should reject a zero-byte save", async () => {
+        // The chain truncates the file before each attempt, so four failed
+        // attempts can leave an empty file that still "exists".
         mockExecAsync
-          .mockResolvedValueOnce({ stdout: "xclip found" }) // which xclip
-          .mockResolvedValueOnce({ stdout: "has image" }); // clipboard check
+          .mockResolvedValueOnce({ stdout: "image/png\n" })
+          .mockResolvedValueOnce({ stdout: "" });
+        mockStatSync.mockReturnValue({ size: 0 });
+
+        const result = await readClipboardImage();
+
+        expect(result.success).toBe(false);
+        expect(result.error).toContain(
+          "Failed to save clipboard image to temporary file",
+        );
+      });
+
+      it("should handle unexpected errors in readClipboardImageLinux", async () => {
+        // The outer catch only sees what the inner try/catches do not — the
+        // `tmpdir()` / `join()` pair that builds the temp path after the probe.
+        mockExecAsync.mockResolvedValueOnce({ stdout: "image/png\n" });
         mockTmpdir.mockImplementationOnce(() => {
           throw new Error("Unexpected failure");
         });
@@ -443,26 +543,46 @@ describe("Clipboard Utils", () => {
         });
       });
 
-      it("should return false when xclip not available", async () => {
-        mockExecAsync.mockRejectedValueOnce(new Error("xclip not found"));
+      it("should return true when the clipboard advertises png", async () => {
+        // One command: the probe carries both the xclip half and the wl-paste
+        // half, and there is no `which xclip` in front of it any more.
+        mockExecAsync.mockResolvedValueOnce({ stdout: "image/png\n" });
 
         const result = await hasClipboardImage();
-        expect(result).toBe(false);
+        expect(result).toBe(true);
+        expect(mockExecAsync).toHaveBeenCalledTimes(1);
+        expect(mockExecAsync.mock.calls[0][0]).toContain(
+          "xclip -selection clipboard -t TARGETS",
+        );
       });
 
-      it("should return true when image is available", async () => {
-        mockExecAsync
-          .mockResolvedValueOnce({ stdout: "xclip found" }) // which xclip
-          .mockResolvedValueOnce({ stdout: "has image" }); // clipboard check
+      it("should count every image format the probe accepts (Claude Code parity)", async () => {
+        // CC's `checkImage` greps png|jpeg|jpg|gif|webp|bmp and its reader only
+        // looks at the exit status, so any of these answers `true` — including
+        // the ones `readClipboardImage` cannot save.
+        mockExecAsync.mockResolvedValueOnce({ stdout: "image/jpeg\n" });
 
         const result = await hasClipboardImage();
         expect(result).toBe(true);
       });
 
-      it("should return false when no image available", async () => {
+      it("should disagree with readClipboardImage on formats it cannot save", async () => {
+        // The asymmetry is CC's, not a bug: check passes, save (png/bmp only)
+        // fails, and its reader returns null. Pinned here so nobody "fixes" the
+        // predicate back to png/bmp.
         mockExecAsync
-          .mockResolvedValueOnce({ stdout: "xclip found" }) // which xclip
-          .mockRejectedValueOnce(new Error("No image")); // clipboard check
+          .mockResolvedValueOnce({ stdout: "image/jpeg\n" }) // has: probe
+          .mockResolvedValueOnce({ stdout: "image/jpeg\n" }); // read: probe
+
+        expect(await hasClipboardImage()).toBe(true);
+
+        const read = await readClipboardImage();
+        expect(read.success).toBe(false);
+        expect(read.error).toContain("PNG or BMP");
+      });
+
+      it("should return false when both backends fail", async () => {
+        mockExecAsync.mockRejectedValueOnce(new Error("No image"));
 
         const result = await hasClipboardImage();
         expect(result).toBe(false);
