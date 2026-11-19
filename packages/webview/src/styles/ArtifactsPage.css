@@ -744,31 +744,80 @@ html[data-host="desktop"][data-theme="dark"] .artifacts-file-icon {
 }
 
 /* 输入框高度对齐原文件按钮（14px 字号一行 + 边框），换形态时行高不变。
-   项目没有全局 border-box，这里显式声明，height 才真的是 22px。 */
+   项目没有全局 border-box，这里显式声明，height 才真的是 22px。
+
+   1119 预览评论（锚点 `span.artifacts-file-name`）：「检查这里输入激活后的表单是否
+   符合表单样式规范并优化」⇒ 按 skill `common-components.md` §Input fields /
+   §Desktop form field colors and focus / §Field compound-state checks 收口：
+     · 底 / 边 / 字三件套改走 `--cc-field-*`，与同页 `.artifacts-search`、
+       `.artifacts-field` 的 input 用同一条 fallback 链。改前吃的是
+       `--vscode-focusBorder`（桌面端浅色档解析成 #1F2329 ≈ 1 级字色）⇒ 等于
+       「没聚焦也一直挂着一条近黑的深边」，和同页其它字段的默认边 #C5C9CE 不成一档；
+     · 圆角 4 → 8：文本字段共享的输入圆角（role contract，不随高度变）；
+     · 补 hover（只换描边、不换底）与 focus 两态；`:focus` 保持 1px 就地变色、
+       `outline: none`（无外扩环、无位移）；
+     · 高度仍 22：契约的 32px 是推荐值，这一格的高度由表格行高反推
+       （22 + 单元格 9×2 内衬 = 40 档），改成 32 会让编辑态整表跳 10px；
+     · 内衬仍 0 6px：契约未规定行内编辑框的横向内衬，改 8px 会把文字起点再推 2px、
+       与展示态文件名的起点拉开，属没人点名的位移。 */
 .artifacts-rename-input {
   flex: 1 1 auto;
   min-width: 0;
   box-sizing: border-box;
   height: 22px;
   padding: 0 6px;
-  border: 1px solid var(--vscode-focusBorder, #007fd4);
-  border-radius: 4px;
-  background: var(--vscode-input-background, #ffffff);
-  color: var(--vscode-input-foreground, #202020);
+  border: 1px solid var(--cc-field-border, rgba(127, 127, 127, 0.35));
+  border-radius: 8px;
+  background: var(--cc-field-bg, var(--vscode-input-background, #ffffff));
+  color: var(
+    --cc-field-text,
+    var(--vscode-input-foreground, var(--vscode-foreground, #202020))
+  );
   font: inherit;
   font-size: 14px;
   outline: none;
 }
 
-/* 校验失败时输入框同步变红，让「哪一格错了」在浮层之外也有落点。 */
-.artifacts-rename-input[aria-invalid="true"] {
-  border-color: #e5484d;
+/* hover 只换描边，不换底（契约 §Desktop form field colors and focus）。 */
+.artifacts-rename-input:hover:not(:focus) {
+  border-color: var(--cc-field-border-hover, var(--cc-field-border));
 }
 
-/* 保存中：输入框禁用（不再接受编辑、也不会发第二次），光标给「忙」而不是「禁止」。 */
+/* 聚焦（点开即 autoFocus）：仍是 1px 就地变色，不加外扩光环。 */
+.artifacts-rename-input:focus {
+  border-color: var(--cc-field-border-focus, var(--vscode-focusBorder));
+}
+
+/* 占位符只允许 `--cc-field-placeholder`，并显式 opacity 1（禁再叠一层浏览器压暗）。 */
+.artifacts-rename-input::placeholder {
+  color: var(--cc-field-placeholder, var(--vscode-input-placeholderForeground));
+  opacity: 1;
+}
+
+/* 校验失败时输入框同步变红，让「哪一格错了」在浮层之外也有落点。
+   危险红走 `--cc-color-danger`；`:hover` / `:focus` 两个组合必须显式列出，
+   否则会被上面 `:hover:not(:focus)`（0,3,0）盖掉（同页 `.artifacts-field`
+   的错误态注释记过同一个坑）。错误态在聚焦、hover 下都不清除。 */
+.artifacts-rename-input[aria-invalid="true"],
+.artifacts-rename-input[aria-invalid="true"]:hover,
+.artifacts-rename-input[aria-invalid="true"]:focus {
+  border-color: var(--cc-color-danger, var(--vscode-errorForeground, #d93025));
+}
+
+/* 保存中：输入框禁用（不再接受编辑、也不会发第二次）。
+   契约 §Desktop form field colors and focus：禁用态用专用的面 / 字 / 边三件套，
+   不得把整块字段一起调淡（改前是 `opacity: .7`，会把底色与文字一起压暗、
+   也与相邻行的同一颗控件不同档）。光标仍给「忙」而不是「禁止」—— 这里的禁用
+   语义是 busy（同时带 aria-busy），不是「这个字段永远不可用」。 */
 .artifacts-rename-input:disabled {
-  opacity: 0.7;
+  background: var(--cc-field-bg-disabled, var(--cc-field-bg));
+  color: var(--cc-field-text-disabled, var(--cc-field-text, #a8abb2));
+  border-color: var(--cc-field-border-disabled, var(--cc-field-border));
   cursor: progress;
+}
+
+.artifacts-rename-input:disabled:hover {
+  border-color: var(--cc-field-border-disabled, var(--cc-field-border));
 }
 
 /* 错误提示浮在输入框下方：表格行高保持稳态，提示出现/消失不让整表跳动。
@@ -792,7 +841,9 @@ html[data-host="desktop"][data-theme="dark"] .artifacts-file-icon {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
   color: #e5484d;
   font-size: 12px;
-  line-height: 16px;
+  /* 契约 §Field validation：行内校验文案 12/20（改前 12/16，比同页其它 12px
+     辅助文案紧一档、两行时字挤。浮层是 absolute，行高变了也不推表格行）。 */
+  line-height: 20px;
   white-space: nowrap;
 }
 
@@ -810,7 +861,9 @@ html[data-host="desktop"][data-theme="dark"] .artifacts-file-icon {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
   color: var(--vscode-descriptionForeground, #6c6e73);
   font-size: 12px;
-  line-height: 16px;
+  /* 契约 §Field validation：行内校验文案 12/20（改前 12/16，比同页其它 12px
+     辅助文案紧一档、两行时字挤。浮层是 absolute，行高变了也不推表格行）。 */
+  line-height: 20px;
   white-space: nowrap;
 }
 
