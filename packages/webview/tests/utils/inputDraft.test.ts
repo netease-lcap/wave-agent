@@ -1,5 +1,6 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { act } from "@testing-library/react";
+import { fireEvent } from "@testing-library/react";
 import path from "node:path";
 import { renderDraftContent } from "../../src/utils/inputDraft";
 import { serializeInputDraft } from "../../src/utils/messageUtils";
@@ -100,5 +101,78 @@ describe("输入框草稿的序列化与还原", () => {
     });
 
     expect(input.childNodes).toHaveLength(0);
+  });
+});
+
+/**
+ * 回滚回填的图片（spec commands/rewind-command.md 场景 10、
+ * ui/image-pasting.md「草稿里的图片」场景 6）：`[imageN]` 的字节从来不在草稿
+ * 字符串里，回填时由调用方把**被回滚那条消息**的图片块当一次性字节表传进来。
+ * 拿不到字节就还是老行为（纯文本占位）。
+ */
+describe("回滚回填：给了字节就是真图片标签", () => {
+  const PNG =
+    "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+  const imageChips = (el: HTMLElement): HTMLElement[] =>
+    Array.from(
+      el.querySelectorAll<HTMLElement>(
+        '.context-tag-container[data-is-image="true"]',
+      ),
+    );
+
+  it("按 [imageN] 的位置还原成可点开预览的图片标签", async () => {
+    const onImageClick = vi.fn();
+    const input = document.createElement("div");
+    await act(async () => {
+      renderDraftContent(input, "这张图是什么 [image1]", {
+        onImageClick,
+        images: [PNG],
+      });
+    });
+
+    const chips = imageChips(input);
+    expect(chips).toHaveLength(1);
+    expect(chips[0].getAttribute("data-image-url")).toBe(PNG);
+    // 占位文本不再以纯文本残留在正文里
+    expect(input.textContent).not.toContain("[image1]");
+
+    const tag = chips[0].querySelector<HTMLElement>(".context-tag");
+    expect(tag?.className).toMatch(/clickable/);
+    await act(async () => {
+      fireEvent.click(tag!);
+    });
+    expect(onImageClick).toHaveBeenCalledWith(PNG, "图片 1");
+  });
+
+  it("字节表按位置对位：没有字节的那一张仍是占位文本", async () => {
+    const input = document.createElement("div");
+    await act(async () => {
+      renderDraftContent(input, "[image1] 和 [image2]", { images: [PNG] });
+    });
+
+    expect(imageChips(input)).toHaveLength(1);
+    expect(input.textContent).toContain("[image2]");
+    expect(input.textContent).not.toContain("[image1]");
+  });
+
+  it("回填后再序列化：字节登记进本地存储，草稿写成 [@image:<id>]", async () => {
+    const input = document.createElement("div");
+    await act(async () => {
+      renderDraftContent(input, "看图 [image1]", { images: [PNG] });
+    });
+
+    expect(serializeInputDraft(input, "session:s1")).toMatch(
+      /^看图 \[@image:dimg-/,
+    );
+  });
+
+  it("没有字节表时保持现状（不在草稿字符串里塞数据）", async () => {
+    const input = document.createElement("div");
+    await act(async () => {
+      renderDraftContent(input, "[image1] 这张图是什么", { images: [] });
+    });
+
+    expect(imageChips(input)).toEqual([]);
+    expect(input.textContent).toContain("[image1]");
   });
 });

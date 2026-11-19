@@ -89,6 +89,18 @@ interface MessageInputPropsWithCompress extends MessageInputProps {
   modSuggestion?: { requestId: string; text: string } | null;
   /** 建议被采纳或作废之后回一手：ChatApp 拿它清掉 `modSuggestion`。 */
   onModSuggestionDismiss?: () => void;
+  /**
+   * 回滚回填的一次性图片字节表（spec `commands/rewind-command.md` 场景 10）。
+   *
+   * `content` 是被回滚那条用户消息的正文——它也正是宿主/receipt 随后要回填的
+   * 那份草稿，只有两者逐字相同时才把 `images` 按 `[imageN]` 的位置用上，避免
+   * 把字节错挂到别的草稿上。取不到字节（远控页图片被清空、块里只有文件路径、
+   * 锚点不在已加载的那一页）时 ChatApp 给 `null`，这里就什么都不变。
+   */
+  rewindDraft?: {
+    content: string;
+    images: ReadonlyArray<string | undefined>;
+  } | null;
 }
 
 interface AtMentionState {
@@ -310,6 +322,7 @@ export const MessageInput = forwardRef<
     contextRingRef,
     modSuggestion,
     onModSuggestionDismiss,
+    rewindDraft,
   } = props;
   const [message, setMessage] = useState("");
 
@@ -891,6 +904,11 @@ export const MessageInput = forwardRef<
   // 下面的值相等守卫会跳过首次播种，草稿留在宿主里、界面上却是空的（spec
   // desktop-sessions.md「会话管理」场景 23）。
   const initialSeedPendingRef = useRef(!!inputContent);
+  // 上一次渲染时用上的那份回滚字节表：它可能晚于草稿到达（宿主先推快照、回执
+  // 后到，或反过来），草稿没变也得把那个位置重新渲染成真标签。
+  const appliedRewindImagesRef = useRef<
+    ReadonlyArray<string | undefined> | undefined
+  >(undefined);
   useEffect(() => {
     const prevSession = prevSessionRef.current;
     const sessionChanged = prevSession !== sessionId;
@@ -930,11 +948,22 @@ export const MessageInput = forwardRef<
     // 首次挂载带着草稿那一次也照写（见 initialSeedPendingRef）。
     const seedOnMount = initialSeedPendingRef.current;
     initialSeedPendingRef.current = false;
+    // 回滚回填的图片字节（spec commands/rewind-command.md 场景 10）：只在草稿
+    // 与那条被回滚消息的正文逐字相同时才算「同一份草稿」，否则宁可不用。
+    const rewindImages =
+      rewindDraft && rewindDraft.content === (inputContent ?? "")
+        ? rewindDraft.images
+        : undefined;
     if (
       sessionChanged ||
       seedOnMount ||
-      (inputContent !== undefined && inputContent !== inputContentRef.current)
+      (inputContent !== undefined &&
+        inputContent !== inputContentRef.current) ||
+      // 字节表晚到：草稿值没变，但那次是用文本占位渲染的，得补渲染一次。
+      (rewindImages !== undefined &&
+        rewindImages !== appliedRewindImagesRef.current)
     ) {
+      appliedRewindImagesRef.current = rewindImages;
       inputContentRef.current = inputContent ?? "";
       setMessage(inputContent ?? "");
       // 草稿由宿主回填（切会话 / 首次挂载带草稿）：同样是一次改写草稿，在飞的
@@ -947,13 +976,29 @@ export const MessageInput = forwardRef<
         // 草稿里带引用标记（`[@file:…]` / `[Selection: …]` / `[@ide:…]` / 图片）
         // 时必须还原成标签——直接写 innerText 会把它们变成纯文本，引用随消息
         // 发出去时就失效了（缺陷 3503216687855872）。
-        renderDraftContent(textareaRef.current, inputContent ?? "", {
-          scopeKey: draftScopeKey,
-          onImageClick: (url, name) => handleImagePreviewRef.current(url, name),
-        });
+        const seeded = renderDraftContent(
+          textareaRef.current,
+          inputContent ?? "",
+          {
+            scopeKey: draftScopeKey,
+            images: rewindImages,
+            onImageClick: (url, name) =>
+              handleImagePreviewRef.current(url, name),
+          },
+        );
+        // 回填的图片被还原成真标签后，立刻把草稿按同一条序列化上报一次：宿主
+        // 那份草稿就地升级成 `[@image:<id>]`（字节同时登记进本地存储），这样
+        // 重挂载 / 开设置页回来仍是图片，而不是只剩 `[imageN]` 这段文本。
+        if (seeded > 0) {
+          vscode.postMessage({
+            command: "updateInputContent",
+            sessionId,
+            content: serializeInputDraft(textareaRef.current, draftScopeKey),
+          });
+        }
       }
     }
-  }, [inputContent, sessionId, paneId, vscode, draftScopeKey]);
+  }, [inputContent, sessionId, paneId, vscode, draftScopeKey, rewindDraft]);
 
   // Initialize attached images from initialAttachedImages prop
   useEffect(() => {

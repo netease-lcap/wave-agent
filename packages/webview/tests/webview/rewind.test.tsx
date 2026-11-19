@@ -455,6 +455,78 @@ describe("Rewind Feature", () => {
       expect(transcriptText()).toContain("Message 2");
     });
 
+    it("restores the anchor's image as a clickable tag and sends it as an image block", async () => {
+      const { vscode } = renderChatApp();
+      const PNG =
+        "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+      const imageMessage: Message = {
+        id: "msg-img",
+        role: "user",
+        timestamp: "2024-01-01T00:00:00.000Z",
+        blocks: [
+          { type: "text", content: "这张图是什么 [image1]" },
+          { type: "image", imageUrls: [PNG] },
+        ],
+      };
+      const requestId = await requestRewind(
+        vscode,
+        [
+          imageMessage,
+          MockDataGenerator.createAssistantMessage("一张 1x1 的图", "msg-a1"),
+        ],
+        0,
+      );
+
+      // 桌面 / 插件端的回执不带草稿（草稿在宿主侧、随下一次快照回放）：字节
+      // 只在那条被回滚消息的图片块里，webview 自己把它接回 `[image1]` 的位置
+      //（spec commands/rewind-command.md 场景 10）。
+      act(() => {
+        sendCommand("rewindResult", {
+          requestId,
+          messageId: "msg-img",
+          ok: true,
+        });
+      });
+
+      act(() => {
+        sendCommand("setInitialState", {
+          messages: [],
+          keepMessages: true,
+          inputContent: "这张图是什么 [image1]",
+          tasks: [],
+          isStreaming: false,
+          sessions: [],
+          configurationData: { language: "zh-CN", permissionMode: "ask" },
+        });
+      });
+
+      const input = screen.getByTestId("message-input");
+      const chip = await vi.waitFor(() => {
+        const found = input.querySelector<HTMLElement>(
+          '.context-tag-container[data-is-image="true"]',
+        );
+        expect(found).not.toBeNull();
+        return found!;
+      });
+      expect(chip.getAttribute("data-image-url")).toBe(PNG);
+      expect(chip.querySelector(".context-tag")?.className).toMatch(
+        /clickable/,
+      );
+      expect(input.textContent).not.toContain("[image1]");
+
+      // 再发送：图片仍作为图片块发出（模型看得到），不是一个文件路径/占位文本。
+      vscode.postMessage.mockClear();
+      await act(async () => {
+        fireEvent.click(screen.getByTestId("send-btn"));
+      });
+      const sendMessage = vscode.postMessage.mock.calls
+        .map((c) => c[0])
+        .find((m: Record<string, unknown>) => m.command === "sendMessage");
+      expect(sendMessage).toBeDefined();
+      expect(sendMessage!.images).toHaveLength(1);
+      expect(sendMessage!.images[0].data).toBe(PNG);
+    });
+
     it("keeps the list when a snapshot arrives with keepMessages", async () => {
       const { vscode } = renderChatApp();
       const requestId = await requestRewind(vscode, four(), 1);

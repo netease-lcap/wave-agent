@@ -117,7 +117,55 @@ export interface RenderDraftOptions {
   scopeKey?: string;
   /** 点图片标签时的预览回调，与刚粘贴时那个预览一致。 */
   onImageClick?: (dataUrl: string, name: string) => void;
+  /**
+   * 回滚回填用的一次性字节表（spec `commands/rewind-command.md` 场景 10）：
+   * 按 `[imageN]` 的 N 取 `images[N - 1]`，拿到 data URL 就把那个位置渲染成真
+   * 图片标签，拿不到就仍按占位文本留在正文里（与没有这张表时一模一样）。
+   *
+   * 字节来自**被回滚那条消息**的图片块——草稿字符串里永远只有 `[imageN]`
+   * 这个位置标记（见 `ui/image-pasting.md`「草稿里的图片」）。
+   */
+  images?: ReadonlyArray<string | undefined>;
 }
+
+/**
+ * 按 `[imageN]` 的位置造一个与粘贴图片同形的真标签：可见部分由 `ContextTag`
+ * 画，`data-image-url` 让发送/序列化拿得到字节。
+ *
+ * 与下面 `hydrateDraftImages`（按 id 从本地存储取）分工不同：这条是**同步**
+ * 渲染，字节此刻就在手上，不必先建占位标签再异步回填。
+ */
+const appendSeededImageChip = (
+  container: HTMLElement,
+  dataUrl: string,
+  name: string,
+  onImageClick?: (dataUrl: string, name: string) => void,
+): void => {
+  const chip = document.createElement("span");
+  chip.className = "context-tag-container";
+  chip.contentEditable = "false";
+  chip.setAttribute("data-is-image", "true");
+  // 与 `hydrateDraftImages` 同一条口径：`data-path` 只是标签的占位路径，
+  // 序列化图片标签只认 `data-image-url`。
+  chip.setAttribute("data-path", "pasted-image.png");
+  chip.setAttribute("data-name", name);
+  chip.setAttribute("data-image-url", dataUrl);
+  ReactDOM.createRoot(chip).render(
+    createElement(ContextTag, {
+      name,
+      path: "pasted-image.png",
+      isImage: true,
+      onClick: onImageClick ? () => onImageClick(dataUrl, name) : undefined,
+    }),
+  );
+  container.appendChild(chip);
+};
+
+/** `[imageN]` 里的 N（1 起）；不是这个形状就给 `undefined`。 */
+const imageMarkerIndex = (content: string): number | undefined => {
+  const match = /^\[image(\d+)\]$/.exec(content);
+  return match ? Number(match[1]) : undefined;
+};
 
 /**
  * 把本地存储里的图片填进占位标签。取不到（存储不可用 / 记录已被淘汰 / 换了
@@ -196,16 +244,21 @@ const appendTextWithMarkers = (
  *
  * 认不出来的标记按纯文本插入：宁可让它以原文留在正文里，也不静默吞掉用户
  * 看到过的东西。
+ *
+ * 返回值是**按字节表还原成真标签的图片张数**：`> 0` 时调用方该把草稿重新序列化
+ * 上报一次（`[imageN]` → `[@image:<id>]`，字节同时登记进本地存储），否则那几张
+ * 图只活在这一次 DOM 里，重挂载又变回占位文本。
  */
 export const renderDraftContent = (
   container: HTMLElement,
   draft: string,
   options: RenderDraftOptions = {},
-): void => {
+): number => {
   container.replaceChildren();
-  if (!draft) return;
+  if (!draft) return 0;
 
   const pendingImages: PendingDraftImage[] = [];
+  let seededImages = 0;
 
   for (const part of parseMentions(draft)) {
     if (
@@ -241,10 +294,28 @@ export const renderDraftContent = (
         ? `${ideContextMarker(part.ideContext)}${part.content}${IDE_CONTEXT_BLOCK_END}`
         : part.content;
       appendText(container, block);
+    } else if (part.isImage) {
+      // `[imageN]`：字节表里有这一张就还原成真标签，否则按占位文本留下（与没有
+      // 字节表时完全一致）。位置对位、不按顺序对齐——N 就是消息里图片块的序号。
+      const index = imageMarkerIndex(part.content);
+      const dataUrl =
+        index === undefined ? undefined : options.images?.[index - 1];
+      if (dataUrl) {
+        appendSeededImageChip(
+          container,
+          dataUrl,
+          part.path ?? "图片",
+          options.onImageClick,
+        );
+        seededImages++;
+      } else {
+        appendText(container, part.content);
+      }
     } else {
       appendTextWithMarkers(container, part.content, pendingImages);
     }
   }
 
   hydrateDraftImages(container, pendingImages, options);
+  return seededImages;
 };
