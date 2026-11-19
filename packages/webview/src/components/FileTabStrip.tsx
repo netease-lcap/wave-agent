@@ -12,7 +12,7 @@ import { baseNameOf } from "../utils/fileTreePaths";
 import { CloseIcon, MoreIcon } from "./HeaderIcons";
 import { CloseTabIcon } from "./CloseTabIcon";
 import { createPortal } from "react-dom";
-import { PanelKindIcon } from "./PanelKindIcon";
+import { FileTypeIcon } from "./FileTypeIcon";
 import { isDesktopHost } from "../utils/platform";
 import { useClickOutside } from "../utils/useClickOutside";
 
@@ -256,10 +256,12 @@ export const FileTabStrip: React.FC<FileTabStripProps> = ({
               }}
             >
               {isDesktopHost() ? (
-                // 桌面端与面板标签同一颗官方「文件」图标（PanelKindIcon kind="file"），
-                // 1029 第十轮设计师评论「和这里保持一致」；插件端保留 codicon 字形。
-                <PanelKindIcon
-                  kind="file"
+                // 桌面端按文件名解析的类型图标（与文件面板右侧目录树同一颗）：设计师
+                // 2026-11-18 截图指出标签上的通用方框与树里同名文件的彩色图标不一致。
+                // 盒仍是 16×16（改前是 PanelKindIcon kind="file" size={16}），标签高
+                // 24px 不变；插件端保留 codicon 字形。
+                <FileTypeIcon
+                  fileName={label?.name ?? baseNameOf(file.path)}
                   size={16}
                   className="file-tab-icon"
                 />
