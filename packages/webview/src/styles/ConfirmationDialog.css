@@ -703,6 +703,17 @@
   flex: 1;
 }
 
+/* 「还有 N 题未答」旁注：主按钮不再因未答禁用，未答数只能靠这行文字表达
+   （ask-user-tool.md「多问题循环轮播」场景 7）。颜色走既有 dim 变量。 */
+.question-navigation-hint {
+  flex: 0 0 auto;
+  align-self: center;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--vscode-descriptionForeground);
+  white-space: nowrap;
+}
+
 .confirmation-diff-viewer {
   width: 100%;
 }

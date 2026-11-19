@@ -24,6 +24,7 @@ import {
 } from "wave-agent-sdk";
 import { confirmationReducer } from "../reducers/confirmationReducer.js";
 import {
+  initialQuestionState,
   isPreviewQuestion,
   questionReducer,
 } from "../reducers/questionReducer.js";
@@ -36,6 +37,8 @@ const PREVIEW_GAP = 4;
 const PREVIEW_MIN_WIDTH = 20;
 /** Shown when the focused option carries no preview (or only whitespace). */
 const NO_PREVIEW_PLACEHOLDER = "(这个选项没有预览)";
+/** Shown before any option is focused: a preview question starts with none. */
+const NO_FOCUS_PLACEHOLDER = "(↑↓ 选一个选项查看预览)";
 /** The preview body is never allotted fewer rows than this… */
 const PREVIEW_MIN_LINES = 3;
 /** …nor more than this, however tall the terminal is. */
@@ -58,14 +61,16 @@ const OptionPreview: React.FC<{
   content: string;
   width: number;
   maxLines: number;
-}> = ({ content, width, maxLines }) => {
+  /** Stand-in line when `content` is blank; defaults to "this option has none". */
+  placeholder?: string;
+}> = ({ content, width, maxLines, placeholder = NO_PREVIEW_PLACEHOLDER }) => {
   const isPlaceholder = content.trim() === "";
   const lines = useMemo(
     () =>
       isPlaceholder
-        ? [NO_PREVIEW_PLACEHOLDER]
+        ? [placeholder]
         : renderMarkdownToAnsi(content, width).split("\n"),
-    [content, width, isPlaceholder],
+    [content, width, isPlaceholder, placeholder],
   );
   const hidden = Math.max(0, lines.length - maxLines);
   const shown = hidden > 0 ? lines.slice(0, maxLines) : lines;
@@ -148,13 +153,10 @@ export const ConfirmationSelector: React.FC<ConfirmationSelectorProps> = ({
 
   const [questionState, questionDispatch] = useReducer(questionReducer, {
     currentQuestionIndex: 0,
-    selectedOptionIndex: 0,
-    selectedOptionIndices: new Set<number>(),
+    // The first question decides whether anything starts out focused: a preview
+    // question starts with no focus, Enter then submits only the notes.
+    ...initialQuestionState(questions[0]),
     userAnswers: {},
-    otherText: "",
-    otherCursorPosition: 0,
-    notesText: "",
-    notesCursorPosition: 0,
     isEditingNotes: false,
     savedStates: {},
     decision: null,
@@ -398,6 +400,11 @@ export const ConfirmationSelector: React.FC<ConfirmationSelectorProps> = ({
                     content={activePreview}
                     width={previewWidth}
                     maxLines={previewMaxLines}
+                    placeholder={
+                      questionState.selectedOptionIndex < 0
+                        ? NO_FOCUS_PLACEHOLDER
+                        : undefined
+                    }
                   />
                   <Box marginTop={1}>
                     <Text color="cyan">Notes: </Text>
@@ -437,7 +444,7 @@ export const ConfirmationSelector: React.FC<ConfirmationSelectorProps> = ({
                 {previewQuestion
                   ? questionState.isEditingNotes
                     ? " Enter or Esc to leave notes • Ctrl+C to cancel"
-                    : ` Enter to select • ↑↓ to navigate • n to add notes${
+                    : ` ↑↓ to select • Enter to confirm • n to add notes${
                         questions.length > 1 ? " • Tab to switch questions" : ""
                       } • Esc to cancel`
                   : " Use ↑↓ or Tab to navigate • Enter to confirm"}

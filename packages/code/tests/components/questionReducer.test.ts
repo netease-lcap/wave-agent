@@ -1,11 +1,18 @@
 import { describe, it, expect } from "vitest";
 import type { Key } from "ink";
 import {
+  initialQuestionState,
+  NOTES_ONLY_ANSWER,
   questionReducer,
   type QuestionAction,
   type QuestionState,
 } from "../../src/reducers/questionReducer.js";
 
+/**
+ * Starting state of a plain (non-preview) list: its first row is focused, so
+ * Enter answers it without touching an arrow key. Preview questions start at
+ * `-1` instead — see `initialQuestionState`.
+ */
 const initialState: QuestionState = {
   currentQuestionIndex: 0,
   selectedOptionIndex: 0,
@@ -18,6 +25,15 @@ const initialState: QuestionState = {
   isEditingNotes: false,
   savedStates: {},
   decision: null,
+};
+
+/** The same state for a preview question: nothing is focused yet. */
+const previewInitialState: QuestionState = {
+  ...initialState,
+  ...initialQuestionState({
+    question: "Which layout?",
+    options: [{ label: "A", preview: "```\n+---+\n```" }],
+  }),
 };
 
 const mockQuestions = [
@@ -138,7 +154,7 @@ describe("questionReducer", () => {
       const result = questionReducer(state, {
         type: "CYCLE_QUESTION",
         shift: false,
-        questionCount: 2,
+        questions: mockQuestions,
       });
       expect(result.currentQuestionIndex).toBe(1);
       expect(result.selectedOptionIndex).toBe(0);
@@ -156,7 +172,7 @@ describe("questionReducer", () => {
       const result = questionReducer(state, {
         type: "CYCLE_QUESTION",
         shift: false,
-        questionCount: 2,
+        questions: mockQuestions,
       });
       expect(result.currentQuestionIndex).toBe(0);
     });
@@ -165,7 +181,7 @@ describe("questionReducer", () => {
       const result = questionReducer(initialState, {
         type: "CYCLE_QUESTION",
         shift: true,
-        questionCount: 2,
+        questions: mockQuestions,
       });
       expect(result.currentQuestionIndex).toBe(1);
     });
@@ -174,10 +190,39 @@ describe("questionReducer", () => {
       const result = questionReducer(initialState, {
         type: "CYCLE_QUESTION",
         shift: false,
-        questionCount: 1,
+        questions: [mockQuestions[0]],
       });
       expect(result.currentQuestionIndex).toBe(0);
       expect(result).toBe(initialState);
+    });
+
+    it("should start a never-visited preview question with nothing focused", () => {
+      const questions = [
+        { question: "Q1", options: [{ label: "A" }] },
+        { question: "Q2", options: [{ label: "B", preview: "预览 B" }] },
+      ];
+      const result = questionReducer(initialState, {
+        type: "CYCLE_QUESTION",
+        shift: true,
+        questions,
+      });
+      expect(result.currentQuestionIndex).toBe(1);
+      expect(result.selectedOptionIndex).toBe(-1);
+    });
+
+    it("should keep the focus the user left on an already visited question", () => {
+      const state: QuestionState = {
+        ...previewInitialState,
+        currentQuestionIndex: 1,
+        savedStates: { 0: { ...previewInitialState, selectedOptionIndex: 1 } },
+      };
+      const result = questionReducer(state, {
+        type: "CYCLE_QUESTION",
+        shift: true,
+        questions: [mockQuestions[0], mockQuestions[1]],
+      });
+      expect(result.currentQuestionIndex).toBe(0);
+      expect(result.selectedOptionIndex).toBe(1);
     });
   });
 
@@ -377,7 +422,7 @@ describe("questionReducer", () => {
       });
     });
 
-    it("should return state unchanged if Other answer is empty", () => {
+    it("should stay on a non-last question whose only answer is an empty Other", () => {
       const state: QuestionState = {
         ...initialState,
         selectedOptionIndex: 2, // Other, but no text
@@ -486,8 +531,9 @@ describe("questionReducer", () => {
       });
     });
 
-    it("should not submit if not all questions answered", () => {
-      // Start at Q2, answer Q2, but Q1 was never answered
+    it("submits from the last question even when an earlier one is unanswered", () => {
+      // Start at Q2, answer Q2, but Q1 was never answered: the submission is no
+      // longer blocked, the unanswered question is simply left out.
       const state: QuestionState = {
         ...initialState,
         currentQuestionIndex: 1,
@@ -501,7 +547,46 @@ describe("questionReducer", () => {
         isMultiSelect: false,
         questions: mockQuestions,
       });
-      expect(result.decision).toBeNull();
+      expect(result.decision).toEqual({
+        behavior: "allow",
+        message: JSON.stringify({ answers: { Q2: "C" } }),
+      });
+    });
+
+    it("submits the last question with nothing answered at all", () => {
+      const questions = [{ question: "Q1", options: [{ label: "A" }] }];
+      const state: QuestionState = {
+        ...initialState,
+        selectedOptionIndex: 1, // Other, left empty
+      };
+      const result = questionReducer(state, {
+        type: "CONFIRM_ANSWER",
+        currentQuestion: questions[0],
+        options: [{ label: "A" }, { label: "Other" }],
+        isMultiSelect: false,
+        questions,
+      });
+      expect(result.decision).toEqual({
+        behavior: "allow",
+        message: JSON.stringify({ answers: {} }),
+      });
+    });
+
+    it("omits a multi-select question where nothing was checked", () => {
+      const questions = [
+        { question: "Q1", options: [{ label: "A" }], multiSelect: true },
+      ];
+      const result = questionReducer(initialState, {
+        type: "CONFIRM_ANSWER",
+        currentQuestion: questions[0],
+        options: [{ label: "A" }, { label: "Other" }],
+        isMultiSelect: true,
+        questions,
+      });
+      expect(result.decision).toEqual({
+        behavior: "allow",
+        message: JSON.stringify({ answers: {} }),
+      });
     });
   });
 
@@ -543,23 +628,91 @@ describe("questionReducer", () => {
         questions,
       });
 
+    it("starts with nothing focused, and either arrow key focuses the first option", () => {
+      expect(previewInitialState.selectedOptionIndex).toBe(-1);
+      expect(
+        press(previewInitialState, "", { downArrow: true }).selectedOptionIndex,
+      ).toBe(0);
+      expect(
+        press(previewInitialState, "", { upArrow: true }).selectedOptionIndex,
+      ).toBe(0);
+    });
+
+    it("keeps the first option focused on a plain (non-preview) question", () => {
+      // 回归：非预览题首屏仍是 0，回车直接答第一项。
+      const questions: Questions = [
+        { question: "Q1", options: [{ label: "A" }, { label: "B" }] },
+      ];
+      expect(initialQuestionState(questions[0]).selectedOptionIndex).toBe(0);
+      const result = press(initialState, "", { return: true }, questions);
+      expect(JSON.parse(result.decision!.message!)).toEqual({
+        answers: { Q1: "A" },
+      });
+    });
+
+    it("starts a never-visited preview question with nothing focused when tabbing", () => {
+      const questions: Questions = [
+        { question: "Q1", options: [{ label: "A" }] },
+        { question: "Q2", options: [{ label: "B", preview: "预览 B" }] },
+      ];
+      const state = press(initialState, "", { tab: true }, questions);
+      expect(state.currentQuestionIndex).toBe(1);
+      expect(state.selectedOptionIndex).toBe(-1);
+    });
+
     it("stops at the last real option instead of an Other row", () => {
-      const once = press(initialState, "", { downArrow: true });
-      expect(once.selectedOptionIndex).toBe(1);
-      const twice = press(once, "", { downArrow: true });
-      expect(twice.selectedOptionIndex).toBe(1);
+      const focused = press(previewInitialState, "", { downArrow: true });
+      expect(focused.selectedOptionIndex).toBe(0);
+      const last = press(focused, "", { downArrow: true });
+      expect(last.selectedOptionIndex).toBe(1);
+      const past = press(last, "", { downArrow: true });
+      expect(past.selectedOptionIndex).toBe(1);
     });
 
     it("submits the focused option with its preview as an annotation", () => {
-      const result = press(initialState, "", { return: true });
+      const focused = press(previewInitialState, "", { downArrow: true });
+      const result = press(focused, "", { return: true });
       expect(JSON.parse(result.decision!.message!)).toEqual({
         answers: { "Which layout?": "A" },
         annotations: { "Which layout?": { preview: optionPreviewA } },
       });
     });
 
+    it("submits an empty answers map when nothing is focused and no notes were typed", () => {
+      const result = press(previewInitialState, "", { return: true });
+      expect(JSON.parse(result.decision!.message!)).toEqual({ answers: {} });
+    });
+
+    it("submits the notes alone as the (notes only) sentinel", () => {
+      let state = press(previewInitialState, "n", {});
+      expect(state.isEditingNotes).toBe(true);
+      state = press(state, "only notes", {});
+      // Enter leaves the notes field, the next one submits.
+      state = press(state, "", { return: true });
+      expect(state.decision).toBeNull();
+      state = press(state, "", { return: true });
+      expect(JSON.parse(state.decision!.message!)).toEqual({
+        answers: { "Which layout?": NOTES_ONLY_ANSWER },
+        annotations: { "Which layout?": { notes: "only notes" } },
+      });
+    });
+
+    it("treats the notes alone as an answer when advancing to the next question", () => {
+      const questions: Questions = [
+        ...previewQuestions,
+        { question: "After", options: [{ label: "X" }] },
+      ];
+      let state = press(previewInitialState, "n", {}, questions);
+      state = press(state, "just notes", {}, questions);
+      state = press(state, "", { return: true }, questions); // leave notes
+      state = press(state, "", { return: true }, questions); // advance
+      expect(state.currentQuestionIndex).toBe(1);
+      expect(state.userAnswers["Which layout?"]).toBe(NOTES_ONLY_ANSWER);
+    });
+
     it("collects notes typed after pressing n and sends them with the answer", () => {
-      let state = press(initialState, "n", {});
+      let state = press(previewInitialState, "", { downArrow: true });
+      state = press(state, "n", {});
       expect(state.isEditingNotes).toBe(true);
 
       state = press(state, "wider", {});
@@ -579,7 +732,9 @@ describe("questionReducer", () => {
     });
 
     it("leaves the notes field on Esc without cancelling", () => {
-      const state = press(press(initialState, "n", {}), "", { escape: true });
+      const state = press(press(previewInitialState, "n", {}), "", {
+        escape: true,
+      });
       expect(state.isEditingNotes).toBe(false);
     });
 

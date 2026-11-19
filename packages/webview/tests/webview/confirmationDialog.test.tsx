@@ -1345,11 +1345,15 @@ describe("AskUserQuestion Other input", () => {
           ".question-navigation .confirmation-btn",
         ),
       ).map((b) => b.textContent!.trim());
+    const navHint = () =>
+      document.querySelector("[data-testid='question-navigation-hint']");
 
     // Q1: the carousel shows all three buttons — DOM/visual order is
-    // 上一个 → 下一个 → 提交回答 (primary last). 提交 disabled until every
-    // question is answered; 上一个/下一个 always enabled regardless of answer state.
-    expect(navButtonLabels()).toEqual(["上一个", "下一个", "提交回答"]);
+    // 上一个 → 下一个 → 提交回答 (primary last). 提交恒可点（未答只给「还有 N
+    // 题未答」提示，ask-user-tool.md「多问题循环轮播」场景 7）；上一个/下一个
+    // always enabled regardless of answer state.
+    expect(navButtonLabels()).toEqual(["上一个", "下一个", "提交回答⏎"]);
+    expect(navHint()).toHaveTextContent("还有 3 题未答");
     const nextBtn = document.querySelector(
       '.question-navigation .confirmation-btn-secondary[aria-label="下一个"]',
     ) as HTMLButtonElement;
@@ -1361,13 +1365,14 @@ describe("AskUserQuestion Other input", () => {
     const submitBtn = document.querySelector(
       ".question-navigation .confirmation-btn-apply",
     ) as HTMLButtonElement;
-    expect(submitBtn.disabled).toBe(true);
-    // The ⏎ hint only shows when submit is enabled.
+    expect(submitBtn.disabled).toBe(false);
+    // 提交恒可点，所以 ⏎ 提示恒在。
     expect(
       document.querySelector(".question-navigation .btn-enter-hint"),
-    ).not.toBeInTheDocument();
+    ).toBeInTheDocument();
 
-    // Answer Q1 -> 提交 still disabled (Q2/Q3 unanswered); click into Q2
+    // Answer Q1 -> 提交 still clickable (Q2/Q3 unanswered, hint follows); click
+    // into Q2
     act(() => {
       fireEvent.click(
         document.querySelector(
@@ -1375,7 +1380,7 @@ describe("AskUserQuestion Other input", () => {
         )!,
       );
     });
-    expect(submitBtn.disabled).toBe(true);
+    expect(navHint()).toHaveTextContent("还有 2 题未答");
     act(() => {
       fireEvent.click(nextBtn);
     });
@@ -1385,9 +1390,11 @@ describe("AskUserQuestion Other input", () => {
       );
     });
 
-    // Q2 (middle question): the same fixed three buttons — 提交 disabled, both
-    // nav buttons enabled (上一个 always lets you revisit previous answers).
-    expect(navButtonLabels()).toEqual(["上一个", "下一个", "提交回答"]);
+    // Q2 (middle question): the same fixed three buttons — both nav buttons
+    // enabled (上一个 always lets you revisit previous answers), 提交 still
+    // clickable with the unanswered hint.
+    expect(navButtonLabels()).toEqual(["上一个", "下一个", "提交回答⏎"]);
+    expect(navHint()).toHaveTextContent("还有 2 题未答");
     expect(prevBtn.disabled).toBe(false);
     const nextBtn2 = document.querySelector(
       '.question-navigation .confirmation-btn-secondary[aria-label="下一个"]',
@@ -1462,10 +1469,11 @@ describe("AskUserQuestion Other input", () => {
       );
     });
 
-    // Q3 (last question): same fixed buttons — 提交 disabled until every
-    // question has a valid answer
-    expect(navButtonLabels()).toEqual(["上一个", "下一个", "提交回答"]);
-    expect(submitBtn.disabled).toBe(true);
+    // Q3 (last question): same fixed buttons — 提交 clickable, hint still says
+    // how many are unanswered
+    expect(navButtonLabels()).toEqual(["上一个", "下一个", "提交回答⏎"]);
+    expect(submitBtn.disabled).toBe(false);
+    expect(navHint()).toHaveTextContent("还有 2 题未答");
 
     // Jump back to Q2 via the progress bar, answer it, then return to Q3.
     act(() => {
@@ -1483,7 +1491,7 @@ describe("AskUserQuestion Other input", () => {
         )!,
       );
     });
-    expect(submitBtn.disabled).toBe(true); // Q3 still unanswered
+    expect(navHint()).toHaveTextContent("还有 1 题未答"); // Q3 still unanswered
     act(() => {
       fireEvent.click(segs[2]);
     });
@@ -1493,7 +1501,7 @@ describe("AskUserQuestion Other input", () => {
       );
     });
 
-    // Answer Q3 -> submit enabled with the ⏎ hint; clicking submits all answers
+    // Answer Q3 -> all answered, hint disappears; clicking submits all answers
     // at once
     act(() => {
       fireEvent.click(
@@ -1506,6 +1514,7 @@ describe("AskUserQuestion Other input", () => {
     expect(
       document.querySelector(".question-navigation .btn-enter-hint"),
     ).toBeInTheDocument();
+    expect(navHint()).toBeNull();
     // Every answered segment is marked done.
     expect(
       Array.from(
@@ -1526,7 +1535,7 @@ describe("AskUserQuestion Other input", () => {
     expect(message["第三个问题：确认发布？"]).toBe("是");
   });
 
-  it("carousel: Enter inside the Other textarea submits only when all questions are answered", async () => {
+  it("carousel: Enter inside the Other textarea submits even with questions left unanswered", async () => {
     const { vscode } = renderChatApp();
     showAskUser([
       ...singleQuestion,
@@ -1578,52 +1587,18 @@ describe("AskUserQuestion Other input", () => {
       });
     });
 
-    // Enter with questions still unanswered: no action (no submission).
+    // Enter 与「提交回答」等价：Q2 未答也照常提交，未答的题在载荷里整条省略
+    // （ask-user-tool.md「多问题循环轮播」场景 8 / 10）。
     vscode.postMessage.mockClear();
     act(() => {
       fireEvent.keyDown(document.querySelector(".other-text-input")!, {
         key: "Enter",
       });
     });
-    expect(vscode.postMessage).not.toHaveBeenCalled();
-    expect(document.querySelector(".confirmation-dialog")).toBeInTheDocument();
-
-    // Answer Q2, come back to Q3, Enter now submits everything at once.
-    act(() => {
-      fireEvent.click(
-        document.querySelectorAll<HTMLButtonElement>(
-          ".question-progress-seg",
-        )[1],
-      );
-    });
     await waitFor(() => {
-      expect(document.querySelector(".question-header-chip")).toHaveTextContent(
-        "第二个问题",
-      );
-    });
-    act(() => {
-      fireEvent.click(
-        document.querySelector(
-          '.option-item[data-option-index="0"] input[type="radio"]',
-        )!,
-      );
-    });
-    act(() => {
-      fireEvent.click(
-        document.querySelectorAll<HTMLButtonElement>(
-          ".question-progress-seg",
-        )[2],
-      );
-    });
-    await waitFor(() => {
-      expect(document.querySelector(".question-header-chip")).toHaveTextContent(
-        "第三个问题",
-      );
-    });
-    act(() => {
-      fireEvent.keyDown(document.querySelector(".other-text-input")!, {
-        key: "Enter",
-      });
+      expect(
+        document.querySelector(".confirmation-dialog"),
+      ).not.toBeInTheDocument();
     });
 
     const sent = vscode.postMessage.mock.calls.map((c) => c[0]);
@@ -1631,8 +1606,8 @@ describe("AskUserQuestion Other input", () => {
     expect(response).toBeDefined();
     const message = JSON.parse(response.decision.message).answers;
     expect(message["单选：选哪个方案？"]).toBe("方案 A");
-    expect(message["第二个问题：选择语言？"]).toBe("TypeScript");
     expect(message["第三个问题：确认发布？"]).toBe("自定义发布");
+    expect("第二个问题：选择语言？" in message).toBe(false);
   });
 
   it("should focus the other textarea when Other is selected (mouse or Space)", async () => {
@@ -1885,7 +1860,7 @@ describe("AskUserQuestion Other input", () => {
       ).toBeChecked();
     });
 
-    it("Enter on an option while unanswered does nothing (no select, no submit)", async () => {
+    it("Enter on an option submits even while unanswered (no select)", async () => {
       const { vscode } = renderChatApp();
       showAskUser(twoOptionQuestion);
       await waitFor(() => {
@@ -1894,18 +1869,24 @@ describe("AskUserQuestion Other input", () => {
         ).toBeInTheDocument();
       });
       const labels = optionLabels();
-      vscode.postMessage.mockClear();
-      // 未答完时 Enter 无动作：不选中该选项，也不提交。
-      act(() => {
-        fireEvent.keyDown(labels[0], { key: "Enter" });
-      });
       expect(
         document.querySelector('.option-item[data-option-index="0"] input')!,
       ).not.toBeChecked();
-      expect(
-        document.querySelector(".confirmation-dialog"),
-      ).toBeInTheDocument();
-      expect(vscode.postMessage).not.toHaveBeenCalled();
+      vscode.postMessage.mockClear();
+      // Enter 与「提交回答」等价：未答也提交（整条省略），但它不负责选中
+      // 选项（ask-user-tool.md「多问题循环轮播」场景 10）。
+      act(() => {
+        fireEvent.keyDown(labels[0], { key: "Enter" });
+      });
+      await waitFor(() => {
+        expect(
+          document.querySelector(".confirmation-dialog"),
+        ).not.toBeInTheDocument();
+      });
+      const sent = vscode.postMessage.mock.calls.map((c) => c[0]);
+      const response = sent.find((m) => m.command === "confirmationResponse");
+      expect(response).toBeDefined();
+      expect(JSON.parse(response.decision.message).answers).toEqual({});
     });
 
     it("Enter on an option submits once the single question is answered (does not change selection)", async () => {
@@ -1945,7 +1926,7 @@ describe("AskUserQuestion Other input", () => {
       expect(message["选哪个方案？"]).toBe("方案 A");
     });
 
-    it("multi-question: Enter on an option submits all answers only when every question is answered", async () => {
+    it("multi-question: Enter on an option submits the answered questions and omits the rest", async () => {
       const { vscode } = renderChatApp();
       showAskUser([
         {
@@ -1980,37 +1961,7 @@ describe("AskUserQuestion Other input", () => {
       act(() => {
         fireEvent.keyDown(q1FirstOption, { key: "Enter" });
       });
-      expect(
-        document.querySelector(".confirmation-dialog"),
-      ).toBeInTheDocument();
-      expect(vscode.postMessage).not.toHaveBeenCalled();
-
-      // 切到 Q2 答完，再在选项上按 Enter → 一次性提交全部答案。
-      act(() => {
-        fireEvent.click(
-          document.querySelector(
-            ".question-navigation .confirmation-btn-secondary",
-          )!,
-        );
-      });
-      await waitFor(() => {
-        expect(
-          document.querySelector(".question-header-chip"),
-        ).toHaveTextContent("Q2");
-      });
-      act(() => {
-        fireEvent.click(
-          document.querySelector(
-            '.option-item[data-option-index="0"] input[type="radio"]',
-          )!,
-        );
-      });
-      const q2FirstOption = document.querySelector<HTMLElement>(
-        '.option-item[data-option-index="0"]',
-      )!;
-      act(() => {
-        fireEvent.keyDown(q2FirstOption, { key: "Enter" });
-      });
+      // Q2 未答不再拦截提交：Enter 与「提交回答」等价，未答的题整条省略。
       await waitFor(() => {
         expect(
           document.querySelector(".confirmation-dialog"),
@@ -2021,7 +1972,7 @@ describe("AskUserQuestion Other input", () => {
       expect(response).toBeDefined();
       const message = JSON.parse(response.decision.message).answers;
       expect(message["Q1"]).toBe("A");
-      expect(message["Q2"]).toBe("C");
+      expect("Q2" in message).toBe(false);
     });
 
     it("Tab cycles inside the dialog (modal trap): last element wraps to first", async () => {
@@ -2034,8 +1985,8 @@ describe("AskUserQuestion Other input", () => {
       });
       const dialog = document.querySelector(".confirmation-dialog")!;
       // With the question unanswered the enabled focusables are the collapse
-      // toggle, the three option labels and the close button (nav + submit
-      // disabled).
+      // toggle, the three option labels, the submit button (now always
+      // clickable) and the close button.
       const enabled = Array.from(
         dialog.querySelectorAll<HTMLElement>(
           'button:not([disabled]), [tabindex]:not([tabindex="-1"])',
@@ -2043,7 +1994,7 @@ describe("AskUserQuestion Other input", () => {
       ).filter((el) => el.tabIndex !== -1);
       const first = enabled[0];
       const last = enabled[enabled.length - 1];
-      expect(enabled.length).toBe(5);
+      expect(enabled.length).toBe(6);
 
       // Tab from the last wraps to the first.
       last.focus();
@@ -2253,7 +2204,7 @@ describe("AskUserQuestion 选项区折叠", () => {
     expect(document.querySelector(".question-header-chip")).toHaveTextContent(
       "Q1 选哪个？",
     );
-    expect(navLabels()).toEqual(["上一个", "下一个", "提交回答"]);
+    expect(navLabels()).toEqual(["上一个", "下一个", "提交回答⏎"]);
     // 折叠键自身转为「展开」语义。
     expect(toggle()).toHaveAttribute("aria-expanded", "false");
     expect(toggle()).toHaveAccessibleName("展开选项");
@@ -2344,7 +2295,7 @@ describe("AskUserQuestion 选项区折叠", () => {
     }
   });
 
-  it("drops the folded options from the Tab cycle (wrap goes close → collapse toggle)", async () => {
+  it("drops the folded options from the Tab cycle (wrap goes close → submit)", async () => {
     renderChatApp();
     showAskUser([questions[0]]);
     await waitForDialog();
@@ -2366,7 +2317,11 @@ describe("AskUserQuestion 选项区折叠", () => {
     act(() => {
       fireEvent.keyDown(window, { key: "Tab" });
     });
-    expect(document.activeElement).toBe(toggle());
+    // 回绕到第一个可聚焦元素：主按钮现在恒可点，折叠后它排在导航栏最前
+    // （单题时导航栏只有它），所以不再是折叠键。
+    expect(document.activeElement).toBe(
+      document.querySelector(".question-navigation .confirmation-btn-apply"),
+    );
   });
 
   it("renders the collapse toggle only for AskUserQuestion", async () => {
