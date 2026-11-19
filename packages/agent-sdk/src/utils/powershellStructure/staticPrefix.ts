@@ -12,7 +12,9 @@
  * Cmdlets need no depth at all: `Verb-Noun` *is* the granularity. `Get-Process`
  * is suggested as `Get-Process`, never as something shorter, and the cmdlets
  * whose name alone means "anything goes" (`Remove-Item`, `Invoke-Expression`)
- * are refused by `NEVER_SUGGEST` instead.
+ * are refused by `NO_PREFIX_SUGGEST` instead — that list withholds the
+ * *wildcard*, not the "don't ask again" option (`BLOCK_PERSIST` is the smaller
+ * list that withholds both).
  *
  * Suggested prefixes are always canonical: `ls` suggests `Get-ChildItem`.
  * A rule is persisted and matched later, and a canonical name cannot be
@@ -33,7 +35,7 @@ import {
   resolveToCanonical,
   stripModulePrefix,
 } from "./canonical.js";
-import { NEVER_SUGGEST } from "./dangerousCmdlets.js";
+import { NO_PREFIX_SUGGEST } from "./dangerousCmdlets.js";
 import type { ParsedCommandElement, ParsedPowerShellCommand } from "./types.js";
 
 /**
@@ -89,7 +91,7 @@ export function suggestPrefix(command: ParsedCommandElement): string | null {
   const canonical = resolveToCanonical(name);
 
   if (classifyCommandName(canonical) === "cmdlet") {
-    return NEVER_SUGGEST.has(canonical.toLowerCase()) ? null : canonical;
+    return NO_PREFIX_SUGGEST.has(canonical.toLowerCase()) ? null : canonical;
   }
 
   // An external program. Its arguments have to be literals for the prefix to

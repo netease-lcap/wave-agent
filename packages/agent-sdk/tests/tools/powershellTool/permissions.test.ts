@@ -231,16 +231,38 @@ describe("evaluatePowerShellCommand", () => {
     expect(result).toEqual({ decision: "allow", reason: "allowed-by-rule" });
   });
 
-  it("should ask for Invoke-Expression and offer no persistence option", async () => {
-    mockParse(parseOk(statement(leaf("iex", ["$payload"]))));
-    const result = await evaluatePowerShellCommand(request("iex $payload"));
+  it("should ask for Invoke-Expression with no prefix but keep persistence", async () => {
+    mockParse(parseOk(statement(leaf("Invoke-Expression", ["'Get-Date'"]))));
+    const result = await evaluatePowerShellCommand(
+      request("Invoke-Expression 'Get-Date'"),
+    );
 
     expect(result).toMatchObject({
       decision: "ask",
       reason: "dynamic-execution",
-      hidePersistentOption: true,
     });
-    // `iex` is never suggested as a rule prefix.
+    // `Invoke-Expression*` would approve code nobody has read, so no prefix is
+    // pre-filled …
+    expect(result.suggestedPrefix).toBeUndefined();
+    // … but "don't ask again" is still offered: the rule it writes is this exact
+    // command, which pins the code. These are two decisions, not one.
+    expect(result.hidePersistentOption).toBe(false);
+  });
+
+  it("should ask for a destructive delete and offer no persistence option", async () => {
+    mockParse(
+      parseOk(
+        statement(leaf("Remove-Item", ["-Recurse", "-Force", "temp/out"])),
+      ),
+    );
+    const result = await evaluatePowerShellCommand(
+      request("Remove-Item -Recurse -Force temp/out"),
+    );
+
+    expect(result.decision).toBe("ask");
+    // The contrast with `Invoke-Expression`: a standing yes to this command is a
+    // standing yes to deleting whatever the next one names.
+    expect(result.hidePersistentOption).toBe(true);
     expect(result.suggestedPrefix).toBeUndefined();
   });
 
@@ -292,7 +314,7 @@ describe("evaluatePowerShellCommand", () => {
     });
   });
 
-  it("should ask and suggest a prefix for an ordinary write", async () => {
+  it("should ask for a destructive write with no prefix and no persistence", async () => {
     mockParse(
       parseOk(
         statement(leaf("Set-Content", ["-Path", "a.txt", "-Value", "x"])),
@@ -303,8 +325,10 @@ describe("evaluatePowerShellCommand", () => {
     );
 
     expect(result.decision).toBe("ask");
-    // `Set-Content` is a destructive cmdlet: no rule is ever suggested for it.
+    // `Set-Content` is destructive: no prefix is suggested and no rule may be
+    // persisted — it sits in both sets.
     expect(result.suggestedPrefix).toBeUndefined();
+    expect(result.hidePersistentOption).toBe(true);
   });
 
   it("should ask with no suggestion when the command has several leaves", async () => {

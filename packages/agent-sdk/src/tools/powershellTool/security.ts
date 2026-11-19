@@ -162,8 +162,9 @@ export function inspectPowerShellCommand(
   }
 
   // 3. Execution, spawning and friend: allowed to run, but only after a person
-  //    looked at the arguments, and never via a rule that would approve the
-  //    arguments of a future call. `New-Object` is here only in its COM form —
+  //    looked at the arguments, and never via a *prefix* rule that would approve
+  //    the arguments of a future call (that gate is `suggestRulePrefixes`).
+  //    `New-Object` is here only in its COM form —
   //    `New-Object System.Collections.ArrayList` is ordinary code and gets the
   //    ordinary treatment.
   for (const leaf of commands) {
@@ -190,7 +191,13 @@ export function inspectPowerShellCommand(
             ? "script-block"
             : "dynamic-execution",
         message: `${leaf.name} runs code that this session cannot inspect in advance.`,
-        hidePersistentOption: true,
+        // Deliberately *not* `true`: whether a permanent rule may be offered is
+        // a different question (`isPersistableAsRule` / `BLOCK_PERSIST`), and the
+        // two must not be answered by the same finding — that conflation is what
+        // used to strip "don't ask again" from `Invoke-Expression` entirely.
+        // A rule for the exact command text pins the code it was handed, which is
+        // the same line CC draws. The wildcard prefix is refused elsewhere.
+        hidePersistentOption: false,
       };
     }
   }

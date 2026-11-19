@@ -221,26 +221,59 @@ const DESTRUCTIVE_CMDLETS = [
  * so `Get-ChildItem | % Delete` calls `FileInfo.Delete()` with nothing in the
  * command text that says so. Scriptblock and member-name forms are the same
  * cmdlet and the parser cannot tell which one a rule would be approving.
+ *
+ * Only the *prefix* is refused: a rule for the exact command text pins both the
+ * scriptblock and the member name that were read.
  */
-const NEVER_SUGGEST_EXTRA = ["foreach-object"] as const;
+const NO_PREFIX_EXTRA = ["foreach-object"] as const;
+
+/** Expand a name set with every alias `canonical.ts` can resolve to it. */
+function withAliases(names: Iterable<string>): ReadonlySet<string> {
+  const set = new Set(names);
+  for (const name of [...set]) {
+    for (const alias of aliasesOf(name)) set.add(alias);
+  }
+  return set;
+}
 
 /**
- * Commands a wildcard rule must never be suggested for, aliases included:
- * `del:*` is as bad as `Remove-Item:*`.
+ * Commands a **wildcard** rule must never be suggested for, aliases included:
+ * `del*` is as bad as `Remove-Item*`.
+ *
+ * This is the **downgrade-only** list: the prompt still offers "don't ask
+ * again", it just cannot pre-fill a `*` prefix, so the rule it writes is the
+ * exact command the person is looking at. Same split as CC, where this set only
+ * reaches the prefix extractor: `PowerShellPermissionRequest` seeds its editable
+ * prefix from `getCompoundCommandPrefixesStatic` (`<prefix>:*`), that call goes
+ * through `NEVER_SUGGEST` in `utils/powershell/staticPrefix.ts`, and when it
+ * yields nothing the input keeps the raw command — so `iex 'Get-Date'` is still
+ * offered "don't ask again", for that command.
  *
  * Derived, not maintained: add a cmdlet to a group above (or to
  * `DESTRUCTIVE_CMDLETS`) and it appears here. The only manual step is the
  * reverse index in `canonical.ts` — an alias that is not in `COMMON_ALIASES`
  * stays unresolved and therefore never reaches this set.
  */
-export const NEVER_SUGGEST: ReadonlySet<string> = (() => {
-  const names = new Set<string>([
-    ...DANGEROUS_CMDLET_NAMES,
-    ...DESTRUCTIVE_CMDLETS,
-    ...NEVER_SUGGEST_EXTRA,
-  ]);
-  for (const name of [...names]) {
-    for (const alias of aliasesOf(name)) names.add(alias);
-  }
-  return names;
-})();
+export const NO_PREFIX_SUGGEST: ReadonlySet<string> = withAliases([
+  ...DANGEROUS_CMDLET_NAMES,
+  ...DESTRUCTIVE_CMDLETS,
+  ...NO_PREFIX_EXTRA,
+]);
+
+/**
+ * The subset of {@link NO_PREFIX_SUGGEST} that must also lose "don't ask
+ * again", aliases included.
+ *
+ * Criterion: destructive and irreversible. A permanent yes to the exact
+ * command still deletes or overwrites whatever that command names, and the next
+ * invocation names something the person never saw — `Remove-Item -Recurse
+ * -Force C:/tmp/x` approved forever is a standing yes to deleting `C:/tmp/y`.
+ * wave's bash side refuses the same rule for `rm` (it is in
+ * `DANGEROUS_COMMANDS`, so no prefix and no exact rule either).
+ *
+ * Everything else stays out on purpose. `Invoke-Expression 'Get-Date'` is
+ * arbitrary code in general, but a rule for *that* command text pins the code
+ * it runs, so it is only denied a wildcard — the same split CC makes.
+ */
+export const BLOCK_PERSIST: ReadonlySet<string> =
+  withAliases(DESTRUCTIVE_CMDLETS);

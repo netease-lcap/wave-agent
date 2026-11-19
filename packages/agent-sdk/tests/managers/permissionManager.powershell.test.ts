@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { PermissionManager } from "../../src/managers/permissionManager.js";
 import { POWERSHELL_TOOL_NAME } from "../../src/constants/tools.js";
 import type { PermissionCallback } from "../../src/types/permissions.js";
+import type { ConfigurationService } from "../../src/services/configurationService.js";
 import { Container } from "../../src/utils/container.js";
 import { parsePowerShellCommand } from "../../src/utils/powershellStructure/psParser.js";
 import type {
@@ -54,18 +55,31 @@ function mockParse(...commands: ParsedCommandElement[]) {
   vi.mocked(parsePowerShellCommand).mockResolvedValue(parsed);
 }
 
-function createManager() {
+function createManager(): {
+  manager: PermissionManager;
+  configurationService: { addAllowedRule: ReturnType<typeof vi.fn> };
+} {
   const container = new Container();
   container.register("CurrentWorkdir", WORKDIR);
-  return new PermissionManager(container);
+  const configurationService = {
+    addAllowedRule: vi.fn().mockResolvedValue(undefined),
+  } as unknown as ConfigurationService;
+  container.register("ConfigurationService", configurationService);
+  return {
+    manager: new PermissionManager(container),
+    configurationService: configurationService as unknown as {
+      addAllowedRule: ReturnType<typeof vi.fn>;
+    },
+  };
 }
 
 describe("PermissionManager — PowerShell branch", () => {
   let manager: PermissionManager;
+  let configurationService: { addAllowedRule: ReturnType<typeof vi.fn> };
 
   beforeEach(() => {
     vi.clearAllMocks();
-    manager = createManager();
+    ({ manager, configurationService } = createManager());
     mockParse(leaf("Get-ChildItem", ["src"]));
   });
 
@@ -117,7 +131,7 @@ describe("PermissionManager — PowerShell branch", () => {
     expect(result.message).toContain("iex*");
   });
 
-  it("should carry the suggested prefix into the prompt", async () => {
+  it("should hide the persistence option for a destructive cmdlet", async () => {
     mockParse(leaf("Set-Content", ["-Path", "a.txt", "-Value", "x"]));
     const callback = vi.fn<PermissionCallback>(async () => ({
       behavior: "allow",
@@ -140,6 +154,19 @@ describe("PermissionManager — PowerShell branch", () => {
     // `Set-Content` is destructive: the prompt must not offer a permanent rule.
     expect(asked.hidePersistentOption).toBe(true);
     expect(asked.suggestedPrefix).toBeUndefined();
+  });
+
+  it("should persist an Invoke-Expression rule as the exact command", async () => {
+    // What "Yes, and don't ask again" writes for a downgrade-only cmdlet: the
+    // command text verbatim, so the rule pins the code that was read. No
+    // wildcard, which is why offering persistence there is honest.
+    await manager.addPermissionRule(`PowerShell(Invoke-Expression 'Get-Date')`);
+
+    expect(configurationService.addAllowedRule).toHaveBeenCalledTimes(1);
+    expect(configurationService.addAllowedRule).toHaveBeenCalledWith(
+      WORKDIR,
+      `PowerShell(Invoke-Expression 'Get-Date')`,
+    );
   });
 
   it("should still deny an ask-worthy command in dontAsk mode", async () => {

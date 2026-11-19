@@ -33,7 +33,7 @@ import {
   suggestRulePrefixes,
   splitCommandBoundaries,
 } from "../../utils/powershellStructure/staticPrefix.js";
-import { NEVER_SUGGEST } from "../../utils/powershellStructure/dangerousCmdlets.js";
+import { BLOCK_PERSIST } from "../../utils/powershellStructure/dangerousCmdlets.js";
 import type { ParsedCommandElement } from "../../utils/powershellStructure/types.js";
 import {
   describeDangerousTarget,
@@ -313,10 +313,17 @@ export async function evaluatePowerShellCommand(
  *
  * The bash side answers this in `PermissionManager.createContext`: a command in
  * `DANGEROUS_COMMANDS`, a write redirection, or a path outside the Safe Zone
- * hides the option. The PowerShell equivalents are a cmdlet that is destructive
- * or never suggestible at all (`NEVER_SUGGEST`) and a write redirection. Saying
- * yes to `Set-Content` once is fine; a rule that keeps saying yes to it forever
- * is what this refuses to offer.
+ * hides the option. The PowerShell equivalents are a cmdlet in
+ * `BLOCK_PERSIST` — destructive and irreversible — and a write redirection.
+ * Saying yes to `Set-Content` once is fine; a rule that keeps saying yes to it
+ * forever is what this refuses to offer.
+ *
+ * `NO_PREFIX_SUGGEST` is deliberately **not** consulted here. A cmdlet on that
+ * list (`Invoke-Expression`, `Start-Process`, `ForEach-Object`) only loses the
+ * wildcard pre-fill: the rule then written is the exact command text, which
+ * pins the code, the target and the scriptblock the person just read. CC draws
+ * the line in the same place, which is why its `Invoke-Expression` prompt still
+ * has "don't ask again".
  *
  * Asking stays useful without the option — the person is answering for this one
  * command, not for a rule they cannot judge from one example.
@@ -327,7 +334,7 @@ function isPersistableAsRule(
 ): boolean {
   if (writes) return false;
   return leaves.every(
-    (leaf) => !NEVER_SUGGEST.has(resolveToCanonical(leaf.name).toLowerCase()),
+    (leaf) => !BLOCK_PERSIST.has(resolveToCanonical(leaf.name).toLowerCase()),
   );
 }
 

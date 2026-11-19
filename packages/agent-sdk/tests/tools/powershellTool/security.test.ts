@@ -106,14 +106,17 @@ describe("inspectPowerShellCommand", () => {
     ).toBeUndefined();
   });
 
-  it("should ask for Invoke-Expression without a persistence option", () => {
+  it("should ask for Invoke-Expression without withdrawing persistence", () => {
     const finding = inspectPowerShellCommand(
       parsed(statement(leaf("iex", ["'Get-Date'"]))),
     );
+    // The withdrawal is the *prefix* suggestion's job (see
+    // `suggestRulePrefixes`); a rule for the exact command is still honest, so
+    // this finding must not hide the option.
     expect(finding).toMatchObject({
       decision: "ask",
       reason: "dynamic-execution",
-      hidePersistentOption: true,
+      hidePersistentOption: false,
     });
   });
 
@@ -138,7 +141,7 @@ describe("inspectPowerShellCommand", () => {
     expect(finding).toMatchObject({
       decision: "ask",
       reason: "script-block",
-      hidePersistentOption: true,
+      hidePersistentOption: false,
     });
   });
 
