@@ -1,7 +1,10 @@
 import type { Container } from "./container.js";
 import type { BashCommandGate } from "./markdownParser.js";
 import type { PermissionManager } from "../managers/permissionManager.js";
-import type { PermissionMode } from "../types/permissions.js";
+import type {
+  PermissionCallback,
+  PermissionMode,
+} from "../types/permissions.js";
 import { BASH_TOOL_NAME, POWERSHELL_TOOL_NAME } from "../constants/tools.js";
 import {
   collectShellToolGateInput,
@@ -21,11 +24,15 @@ import {
  * reason — or, worse, let a `Bash(...)` allow rule authorize a command that the
  * PowerShell tool would then run with different parsing.
  *
- * No permission callback is passed on purpose: injected commands run while a
- * skill or command is being loaded, before the model is involved, so there is
- * no tool call to attach an interactive prompt to. An unmatched command is
- * therefore denied rather than silently executed (spec
- * `ecosystem/agent-skills` / 注入命令执行前的权限校验).
+ * The host's `CanUseToolCallback` is passed through, so a command no rule covers
+ * reaches the person who is waiting — the same card the shell tool would raise.
+ * Without it `PermissionManager` has nobody to ask and answers itself with a
+ * deny ("No permission callback configured"), which is what used to make a
+ * skill's own injected commands fail outright in a session whose rules name the
+ * other shell (`Bash(...)` rules are silently inert under PowerShell, exactly as
+ * they are in Claude Code). Claude Code asks in that situation; so does wave
+ * now. A deny the person actually answered (or a `dontAsk` mode) still aborts
+ * the injection.
  *
  * Returns `undefined` when no permission manager is registered (bare SDK usage
  * without the container wired), which leaves injected commands ungated exactly
@@ -55,11 +62,20 @@ export function createBashCommandGate(
         resolveShellKind(collectShellToolGateInput(workdir)) === "powershell"
           ? POWERSHELL_TOOL_NAME
           : BASH_TOOL_NAME;
+      // Read per call: the host installs the callback after the agent exists.
+      const canUseToolCallback = container.has("CanUseToolCallback")
+        ? container.get<PermissionCallback>("CanUseToolCallback")
+        : undefined;
       const decision = await permissionManager.checkPermission(
-        permissionManager.createContext(toolName, effectiveMode, undefined, {
-          command,
-          workdir,
-        }),
+        permissionManager.createContext(
+          toolName,
+          effectiveMode,
+          canUseToolCallback,
+          {
+            command,
+            workdir,
+          },
+        ),
       );
       return decision.behavior === "allow"
         ? { behavior: "allow" }

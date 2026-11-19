@@ -8,7 +8,9 @@
  */
 
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import type { Container } from "../../src/utils/container.js";
+import { Container } from "../../src/utils/container.js";
+import { PermissionManager } from "../../src/managers/permissionManager.js";
+import type { PermissionCallback } from "../../src/types/permissions.js";
 import { createBashCommandGate } from "../../src/utils/bashCommandGate.js";
 import {
   BASH_TOOL_NAME,
@@ -50,10 +52,14 @@ const createPermissionManager = () => ({
 
 const createContainer = (
   permissionManager: ReturnType<typeof createPermissionManager>,
+  canUseToolCallback?: unknown,
 ) =>
   ({
-    has: (key: string) => key === "PermissionManager",
-    get: () => permissionManager,
+    has: (key: string) =>
+      key === "PermissionManager" ||
+      (key === "CanUseToolCallback" && canUseToolCallback !== undefined),
+    get: (key: string) =>
+      key === "CanUseToolCallback" ? canUseToolCallback : permissionManager,
   }) as unknown as Container;
 
 describe("createBashCommandGate", () => {
@@ -110,6 +116,24 @@ describe("createBashCommandGate", () => {
     });
   });
 
+  it("hands the host's permission callback to the decision", async () => {
+    const permissionManager = createPermissionManager();
+    permissionManager.checkPermission.mockResolvedValue({ behavior: "allow" });
+    const canUseToolCallback = vi.fn();
+    const gate = createBashCommandGate(
+      createContainer(permissionManager, canUseToolCallback),
+    );
+
+    await gate!.check("gh pr view", "/work");
+
+    expect(permissionManager.createContext).toHaveBeenCalledWith(
+      BASH_TOOL_NAME,
+      "default",
+      canUseToolCallback,
+      { command: "gh pr view", workdir: "/work" },
+    );
+  });
+
   it("returns no gate when there is no permission manager to ask", () => {
     const gate = createBashCommandGate({
       has: () => false,
@@ -117,5 +141,46 @@ describe("createBashCommandGate", () => {
     } as unknown as Container);
 
     expect(gate).toBeUndefined();
+  });
+});
+
+describe("createBashCommandGate with a real PermissionManager", () => {
+  // The whole point of forwarding the callback: without it an uncovered command
+  // is denied by the manager itself ("No permission callback configured"), with
+  // it the person is asked — Claude Code asks in the same situation.
+  const workdir = process.cwd();
+
+  const createRealContainer = (canUseToolCallback?: PermissionCallback) => {
+    const container = new Container();
+    const permissionManager = new PermissionManager(container);
+    container.register("PermissionManager", permissionManager);
+    if (canUseToolCallback) {
+      container.register("CanUseToolCallback", canUseToolCallback);
+    }
+    return container;
+  };
+
+  it("denies an uncovered command when nobody can be asked", async () => {
+    const gate = createBashCommandGate(createRealContainer());
+
+    const decision = await gate!.check("gh pr view 42", workdir);
+
+    expect(decision).toEqual({
+      behavior: "deny",
+      message:
+        "Tool 'Bash' requires permission approval. No permission callback configured.",
+    });
+  });
+
+  it("asks the person when the host registered a callback", async () => {
+    const canUseToolCallback = vi.fn(async () => ({
+      behavior: "allow" as const,
+    }));
+    const gate = createBashCommandGate(createRealContainer(canUseToolCallback));
+
+    const decision = await gate!.check("gh pr view 42", workdir);
+
+    expect(canUseToolCallback).toHaveBeenCalledTimes(1);
+    expect(decision).toEqual({ behavior: "allow" });
   });
 });
