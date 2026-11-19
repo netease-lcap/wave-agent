@@ -1,5 +1,13 @@
-import React, { useEffect, useMemo, useReducer } from "react";
-import { Box, Text, useInput, usePaste, useWindowSize } from "ink";
+import React, { useEffect, useMemo, useReducer, useRef } from "react";
+import {
+  Box,
+  Text,
+  useBoxMetrics,
+  useInput,
+  usePaste,
+  useWindowSize,
+  type DOMElement,
+} from "ink";
 import type { Key } from "ink";
 import type {
   PermissionDecision,
@@ -28,6 +36,17 @@ const PREVIEW_GAP = 4;
 const PREVIEW_MIN_WIDTH = 20;
 /** Shown when the focused option carries no preview (or only whitespace). */
 const NO_PREVIEW_PLACEHOLDER = "(这个选项没有预览)";
+/** The preview body is never allotted fewer rows than this… */
+const PREVIEW_MIN_LINES = 3;
+/** …nor more than this, however tall the terminal is. */
+const PREVIEW_MAX_LINES = 20;
+/**
+ * Rows the card spends on everything except the option list and the preview
+ * body: top margin (1), header line + its margin (2), the preview's two rules
+ * and its cut-off marker (3), the Notes row with its margin (2), the key hint
+ * with its margin (2).
+ */
+const PREVIEW_CHROME_ROWS = 10;
 
 /**
  * A preview panel: markdown rendered to ANSI, framed with a top and a bottom
@@ -245,7 +264,25 @@ export const ConfirmationSelector: React.FC<ConfirmationSelectorProps> = ({
     PREVIEW_MIN_WIDTH,
     columns - leftWidth - PREVIEW_GAP,
   );
-  const previewMaxLines = Math.max(3, Math.min(20, rows - 16));
+  // The option list is rendered at its natural height (labels wrap instead of
+  // being truncated), so the preview gets whatever is left of the terminal
+  // once the list has been laid out. The height is read back from the layout
+  // rather than predicted from the labels: by the time `useBoxMetrics` reports,
+  // Yoga has already wrapped them to the column width. Until the first
+  // measurement arrives, one row per option is the lower bound — the preview is
+  // then a few rows too tall for a single frame instead of the card overflowing
+  // the screen.
+  const optionListRef = useRef<DOMElement | null>(null);
+  const { height: optionListHeight, hasMeasured: optionListMeasured } =
+    useBoxMetrics(optionListRef);
+  const optionListRows =
+    optionListMeasured && optionListHeight > 0
+      ? Math.round(optionListHeight)
+      : (currentQuestion?.options.length ?? 1);
+  const previewMaxLines = Math.max(
+    PREVIEW_MIN_LINES,
+    Math.min(PREVIEW_MAX_LINES, rows - PREVIEW_CHROME_ROWS - optionListRows),
+  );
   const activeOption =
     previewQuestion && currentQuestion
       ? currentQuestion.options[questionState.selectedOptionIndex]
@@ -267,9 +304,22 @@ export const ConfirmationSelector: React.FC<ConfirmationSelectorProps> = ({
                 <Text bold>{currentQuestion.question}</Text>
               </Box>
             </Box>
-            <Box flexDirection={previewQuestion ? "row" : "column"}>
+            {/* `flex-start` (not the default `stretch`) is what keeps the
+                measurement stable: a stretched option column would report the
+                preview panel's height as its own, the preview would shrink to
+                make room, and the two would oscillate for ever. */}
+            <Box
+              flexDirection={previewQuestion ? "row" : "column"}
+              alignItems={previewQuestion ? "flex-start" : undefined}
+            >
               <Box
+                ref={optionListRef}
                 flexDirection="column"
+                // Fixed width means fixed: without this the preview column's
+                // unwrapped content (truncated only at paint time) makes Yoga
+                // shrink the list, and a narrow terminal silently drops it to
+                // ~20 columns while ten columns go unused.
+                flexShrink={0}
                 width={previewQuestion ? leftWidth : undefined}
               >
                 {(previewQuestion
@@ -285,10 +335,14 @@ export const ConfirmationSelector: React.FC<ConfirmationSelectorProps> = ({
                   const isPreview = previewQuestion;
                   return (
                     <Box key={index}>
+                      {/* Preview questions wrap long labels inside the fixed
+                          left column instead of truncating them, and drop the
+                          description: the preview panel already carries what
+                          the option looks like, so the label only has to be
+                          readable in full. */}
                       <Text
                         color={isSelected ? "black" : "white"}
                         backgroundColor={isSelected ? "yellow" : undefined}
-                        wrap={isPreview ? "truncate" : undefined}
                       >
                         {isSelected ? "> " : "  "}
                         {currentQuestion.multiSelect
@@ -301,7 +355,9 @@ export const ConfirmationSelector: React.FC<ConfirmationSelectorProps> = ({
                             existing shape. */}
                         {isPreview ? `${index + 1}. ` : ""}
                         {option.label}
-                        {option.description ? ` - ${option.description}` : ""}
+                        {option.description && !isPreview
+                          ? ` - ${option.description}`
+                          : ""}
                         {isOther && isSelected && (
                           <Text>
                             :{" "}

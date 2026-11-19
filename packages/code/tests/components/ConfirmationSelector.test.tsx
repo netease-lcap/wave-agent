@@ -919,9 +919,10 @@ describe("ConfirmationSelector Additional Coverage", () => {
     });
 
     it("truncates a long preview and reports how many lines are hidden", async () => {
-      // The harness fixes rows at 24, so the panel keeps 8 content lines.
+      // The harness fixes rows at 24; one option occupies one row and the card
+      // spends 10 rows on chrome, so the preview body keeps 13 content lines.
       const lines = Array.from(
-        { length: 12 },
+        { length: 20 },
         (_, index) => `- 第 ${index + 1} 行`,
       );
       const { lastFrame, settle } = render(
@@ -946,8 +947,192 @@ describe("ConfirmationSelector Additional Coverage", () => {
       await settle();
       const frame = stripAnsiColors(lastFrame() || "");
       expect(frame).toContain("第 1 行");
-      expect(frame).not.toContain("第 12 行");
-      expect(frame).toContain("还有 4 行");
+      expect(frame).not.toContain("第 20 行");
+      expect(frame).toContain("还有 7 行");
+    });
+
+    it("wraps a long option label instead of truncating it", async () => {
+      const label =
+        "方案 A：把侧边栏整体挪到左侧，并把预览面板拉到右侧吃满剩余宽度";
+      const { lastFrame, settle } = render(
+        <ConfirmationSelector
+          toolName="AskUserQuestion"
+          toolInput={
+            {
+              questions: [
+                {
+                  question: "选哪个版式？",
+                  header: "Layout",
+                  options: [
+                    { label, preview: "预览内容 A" },
+                    { label: "方案 B", preview: "预览内容 B" },
+                  ],
+                },
+              ],
+            } as unknown as Record<string, unknown>
+          }
+          onDecision={mockOnDecision}
+          onCancel={mockOnCancel}
+        />,
+      );
+
+      await settle();
+      const frame = stripAnsiColors(lastFrame() || "");
+      // The tail is what a single truncated row would have eaten.
+      expect(frame).toContain("剩余宽度");
+      expect(frame).not.toContain("…");
+    });
+
+    it("drops the option description in preview mode only", async () => {
+      const { lastFrame, settle } = render(
+        <ConfirmationSelector
+          toolName="AskUserQuestion"
+          toolInput={
+            {
+              questions: [
+                {
+                  question: "选哪个版式？",
+                  header: "Layout",
+                  options: [
+                    {
+                      label: "方案 A",
+                      description: "紧凑版侧的预览说明",
+                      preview: "预览内容 A",
+                    },
+                    { label: "方案 B", preview: "预览内容 B" },
+                  ],
+                },
+              ],
+            } as unknown as Record<string, unknown>
+          }
+          onDecision={mockOnDecision}
+          onCancel={mockOnCancel}
+        />,
+      );
+
+      await settle();
+      expect(stripAnsiColors(lastFrame() || "")).not.toContain(
+        "紧凑版侧的预览说明",
+      );
+
+      const plain = render(
+        <ConfirmationSelector
+          toolName="AskUserQuestion"
+          toolInput={
+            {
+              questions: [
+                {
+                  question: "选哪些模块？",
+                  header: "Modules",
+                  multiSelect: true,
+                  options: [
+                    {
+                      label: "模块 A",
+                      description: "紧凑版侧的预览说明",
+                      preview: "预览内容 A",
+                    },
+                    { label: "模块 B", preview: "预览内容 B" },
+                  ],
+                },
+              ],
+            } as unknown as Record<string, unknown>
+          }
+          onDecision={mockOnDecision}
+          onCancel={mockOnCancel}
+        />,
+      );
+
+      await plain.settle();
+      expect(stripAnsiColors(plain.lastFrame() || "")).toContain(
+        "紧凑版侧的预览说明",
+      );
+    });
+
+    it("shrinks the preview when the option list wraps taller", async () => {
+      const preview = Array.from(
+        { length: 30 },
+        (_, index) => `- 第 ${index + 1} 行`,
+      ).join("\n");
+      const hiddenLines = (frame: string) => {
+        const match = frame.match(/还有 (\d+) 行/);
+        return match ? Number(match[1]) : 0;
+      };
+      const renderWith = async (labels: string[]) => {
+        const view = render(
+          <ConfirmationSelector
+            toolName="AskUserQuestion"
+            toolInput={
+              {
+                questions: [
+                  {
+                    question: "选哪个版式？",
+                    header: "Layout",
+                    options: labels.map((label) => ({ label, preview })),
+                  },
+                ],
+              } as unknown as Record<string, unknown>
+            }
+            onDecision={mockOnDecision}
+            onCancel={mockOnCancel}
+          />,
+        );
+        await view.settle();
+        return () => hiddenLines(stripAnsiColors(view.lastFrame() || ""));
+      };
+
+      const shortLabels = await renderWith(["方案 A", "方案 B"]);
+      const longLabels = await renderWith([
+        "方案 A：把侧边栏整体挪到左侧并把预览面板拉到右侧吃满剩余宽度",
+        "方案 B：保持上下堆叠，选项在上预览在下",
+      ]);
+
+      const shortHidden = shortLabels();
+      expect(shortHidden).toBeGreaterThan(0);
+      // The wrapped labels only show up once the measured height has landed, so
+      // this waits on the layout commit rather than on a rendered frame.
+      await vi.waitFor(() => expect(longLabels()).toBeGreaterThan(shortHidden));
+    });
+
+    it("keeps the fixed option column on a narrow terminal", async () => {
+      // 60 columns: 30 for the list, 4 blank, 26 for the preview. The preview's
+      // content is truncated only when painting, so its unwrapped width used to
+      // make Yoga shrink the fixed column to ~20 columns while ten columns went
+      // unused — the label then wrapped a line earlier than 30 columns allow.
+      const { lastFrame, settle } = render(
+        <ConfirmationSelector
+          toolName="AskUserQuestion"
+          toolInput={
+            {
+              questions: [
+                {
+                  question: "选哪个版式？",
+                  header: "Layout",
+                  options: [
+                    {
+                      label:
+                        "方案 A：把侧边栏整体挪到左侧，并把预览面板拉到右侧吃满剩余宽度",
+                      preview: Array.from(
+                        { length: 10 },
+                        (_, index) =>
+                          `- 预览第 ${index + 1} 行：这一行够长，用来占住列宽看看会不会换行`,
+                      ).join("\n"),
+                    },
+                    { label: "方案 B", preview: "预览内容 B" },
+                  ],
+                },
+              ],
+            } as unknown as Record<string, unknown>
+          }
+          onDecision={mockOnDecision}
+          onCancel={mockOnCancel}
+        />,
+        { columns: 60 },
+      );
+
+      await settle();
+      const frame = stripAnsiColors(lastFrame() || "");
+      // 30 cells — exactly what only a 30-column list can hold on one row.
+      expect(frame).toContain("预览面板拉到右侧吃满剩余宽度");
     });
 
     it("shows a placeholder when the focused option has no preview", async () => {
