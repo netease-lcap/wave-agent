@@ -8,8 +8,9 @@ const { spawnSync, spawn, fetchMock, unref } = vi.hoisted(() => ({
 }));
 
 // The wrapper dereferences `node:child_process` (see
-// `agent-sdk/src/utils/execFileHidden.ts`), so that is the specifier to stub —
-// mocking the bare `child_process` alias leaves the real one in place.
+// `agent-sdk/src/utils/execFileHidden.ts`), so stub the same specifier it reads.
+// (Vitest resolves the bare `child_process` spelling to the same module, so
+// either would intercept; matching the wrapper keeps the two obviously tied.)
 vi.mock("node:child_process", () => ({ spawnSync, spawn }));
 
 import { updateCommand } from "../../src/commands/update.js";

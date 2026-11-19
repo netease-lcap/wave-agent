@@ -16,15 +16,22 @@ import type { NoticeBlock, TextBlock } from "../../src/types/index.js";
 import type { MemoryService } from "../../src/services/memory.js";
 import { BASH_TOOL_NAME } from "../../src/constants/tools.js";
 import type { PermissionManager } from "../../src/managers/permissionManager.js";
-// Mock child_process for bash command execution tests
-const mockExec = vi.hoisted(() => vi.fn());
-vi.mock("child_process", () => ({
-  exec: mockExec,
-  execFile: mockExec,
-}));
-vi.mock("util", () => ({
-  promisify: vi.fn(() => mockExec),
-}));
+// 子进程都经 utils/execFileHidden 的 wrapper 出去，所以要挂在这一层。
+//
+// 唯一真正会跑到的子进程是会话落盘时探测 git 分支（MessageManager 保存首条
+// 消息 → src/services/session.ts 的 getGitBranch → execFileAsyncHidden）。
+// 返回空 stdout = 「不在 git 仓库里」，与测试 workdir（/test/workdir）的真实
+// 结果一致。wrapper 是手写的 `new Promise`，只有回调被调用才会 settle，所以
+// 这个 mock 必须 resolve —— 返回 undefined 会让 await 永久挂住。
+const mockExecFileAsyncHidden = vi.hoisted(() => vi.fn());
+vi.mock("../../src/utils/execFileHidden.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../../src/utils/execFileHidden.js")>();
+  return {
+    ...actual,
+    execFileAsyncHidden: mockExecFileAsyncHidden,
+  };
+});
 
 vi.mock("../../src/utils/markdownParser.js", async (importOriginal) => {
   const actual = (await importOriginal()) as Record<string, unknown>;
@@ -51,6 +58,8 @@ describe("SlashCommandManager", () => {
   beforeEach(() => {
     // Reset mocks
     vi.clearAllMocks();
+    // 「不在 git 仓库里」：清空调用记录后要把默认实现装回去。
+    mockExecFileAsyncHidden.mockResolvedValue({ stdout: "", stderr: "" });
     container = new Container();
     // Create MessageManager with necessary callbacks
     messageManager = new MessageManager(container, {
