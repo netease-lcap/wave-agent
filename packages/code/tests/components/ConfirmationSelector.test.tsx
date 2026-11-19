@@ -667,7 +667,7 @@ describe("ConfirmationSelector Additional Coverage", () => {
       expect(message["Are you sure?"]).toBe("Yes");
     });
 
-    it("should not submit when multi-select has no selections", async () => {
+    it("submits with no answer when a multi-select question has no selections", async () => {
       const mockQuestions = {
         questions: [
           {
@@ -692,14 +692,60 @@ describe("ConfirmationSelector Additional Coverage", () => {
         expect(stripAnsiColors(lastFrame() || "")).toContain("Pick skills");
       });
 
-      // Press Enter without selecting anything - should not submit
+      // 最后一题回车照常提交：一题都没勾就是「没答」，整条省略而不是写空串。
       stdin.write("\r");
 
       await vi.waitFor(() => {
-        // Verify still on the question, not submitted
-        expect(stripAnsiColors(lastFrame() || "")).toContain("Pick skills");
+        expect(mockOnDecision).toHaveBeenCalled();
       });
-      expect(mockOnDecision).not.toHaveBeenCalled();
+      const payload = JSON.parse(mockOnDecision.mock.calls[0][0].message!);
+      expect(payload.answers).toEqual({});
+    });
+
+    it("submits from the last question while an earlier one is unanswered", async () => {
+      const mockQuestions = {
+        questions: [
+          {
+            question: "Pick a layout",
+            header: "Layout",
+            options: [
+              { label: "紧凑", preview: "预览内容 A" },
+              { label: "宽松", preview: "预览内容 B" },
+            ],
+          },
+          {
+            question: "Pick a size",
+            header: "Size",
+            options: [{ label: "S" }, { label: "M" }],
+          },
+        ],
+      };
+
+      const { stdin, lastFrame } = render(
+        <ConfirmationSelector
+          toolName="AskUserQuestion"
+          toolInput={mockQuestions as unknown as Record<string, unknown>}
+          onDecision={mockOnDecision}
+          onCancel={mockOnCancel}
+        />,
+      );
+
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain("Pick a layout");
+      });
+
+      // 预览题首屏没有聚焦项，直接 Tab 到最后一题：第一题既没选也没备注。
+      stdin.write("\t");
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain("Pick a size");
+      });
+      stdin.write("\r"); // 回车不再被未答的第一题拦下
+
+      await vi.waitFor(() => {
+        expect(mockOnDecision).toHaveBeenCalled();
+      });
+      const payload = JSON.parse(mockOnDecision.mock.calls[0][0].message!);
+      expect(payload.answers).toEqual({ "Pick a size": "S" });
     });
 
     it("should submit multi-select with Other text combined", async () => {
@@ -859,22 +905,45 @@ describe("ConfirmationSelector Additional Coverage", () => {
       );
 
     it("renders the side-by-side preview and drops the Other row", async () => {
-      const { lastFrame } = renderPreview();
+      const { lastFrame, settle } = renderPreview();
+
+      await settle();
+      const frame = stripAnsiColors(lastFrame() || "");
+      expect(frame).toContain("1. 方案 A");
+      // 首屏没有聚焦项：没有任何一行高亮，预览区是「先选一个」的占位。
+      expect(frame).not.toContain("> 1. 方案 A");
+      expect(frame).toContain("(↑↓ 选一个选项查看预览)");
+      expect(frame).toContain("Notes:");
+      expect(frame).toContain("press n to add notes");
+      expect(frame).toContain("↑↓ to select • Enter to confirm");
+      expect(frame).not.toContain("Other");
+    });
+
+    it("previews an option once an arrow key focuses it", async () => {
+      const { stdin, lastFrame } = renderPreview();
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain(
+          "(↑↓ 选一个选项查看预览)",
+        );
+      });
+
+      stdin.write("\u001b[B");
 
       await vi.waitFor(() => {
         expect(stripAnsiColors(lastFrame() || "")).toContain("预览内容 A");
       });
-
-      const frame = stripAnsiColors(lastFrame() || "");
-      expect(frame).toContain("1. 方案 A");
-      expect(frame).toContain("Notes:");
-      expect(frame).toContain("press n to add notes");
-      expect(frame).toContain("n to add notes");
-      expect(frame).not.toContain("Other");
+      expect(stripAnsiColors(lastFrame() || "")).toContain("> 1. 方案 A");
     });
 
     it("switches the preview when the focus moves", async () => {
       const { stdin, lastFrame } = renderPreview();
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain(
+          "(↑↓ 选一个选项查看预览)",
+        );
+      });
+
+      stdin.write("\u001b[B");
       await vi.waitFor(() => {
         expect(stripAnsiColors(lastFrame() || "")).toContain("预览内容 A");
       });
@@ -886,8 +955,49 @@ describe("ConfirmationSelector Additional Coverage", () => {
       });
     });
 
+    it("submits the notes alone when no option was ever focused", async () => {
+      const { stdin, lastFrame } = renderPreview();
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain(
+          "(↑↓ 选一个选项查看预览)",
+        );
+      });
+
+      stdin.write("n");
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).not.toContain(
+          "press n to add notes",
+        );
+      });
+
+      stdin.write("just notes");
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain("just notes");
+      });
+
+      stdin.write("\r"); // leave the notes field
+      stdin.write("\r"); // submit
+
+      await vi.waitFor(() => {
+        expect(mockOnDecision).toHaveBeenCalled();
+      });
+      const payload = JSON.parse(mockOnDecision.mock.calls[0][0].message!);
+      // 备注就是答案，答案位上写明确的「未选选项」哨兵而不是空串。
+      expect(payload.answers["选哪个版式？"]).toBe("(notes only)");
+      expect(payload.annotations["选哪个版式？"]).toEqual({
+        notes: "just notes",
+      });
+    });
+
     it("sends the selected preview and notes back as annotations", async () => {
       const { stdin, lastFrame } = renderPreview();
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain(
+          "(↑↓ 选一个选项查看预览)",
+        );
+      });
+
+      stdin.write("\u001b[B"); // focus 方案 A
       await vi.waitFor(() => {
         expect(stripAnsiColors(lastFrame() || "")).toContain("预览内容 A");
       });
@@ -925,7 +1035,7 @@ describe("ConfirmationSelector Additional Coverage", () => {
         { length: 20 },
         (_, index) => `- 第 ${index + 1} 行`,
       );
-      const { lastFrame, settle } = render(
+      const { lastFrame, settle, stdin } = render(
         <ConfirmationSelector
           toolName="AskUserQuestion"
           toolInput={
@@ -944,6 +1054,7 @@ describe("ConfirmationSelector Additional Coverage", () => {
         />,
       );
 
+      stdin.write("\u001b[B"); // focus the only option
       await settle();
       const frame = stripAnsiColors(lastFrame() || "");
       expect(frame).toContain("第 1 行");
@@ -1076,6 +1187,7 @@ describe("ConfirmationSelector Additional Coverage", () => {
             onCancel={mockOnCancel}
           />,
         );
+        view.stdin.write("\u001b[B"); // focus the first option so its preview renders
         await view.settle();
         return () => hiddenLines(stripAnsiColors(view.lastFrame() || ""));
       };
@@ -1159,6 +1271,13 @@ describe("ConfirmationSelector Additional Coverage", () => {
       );
 
       await settle();
+      // 首屏还没有聚焦项：预览区先给「先选一个」的占位。
+      expect(stripAnsiColors(lastFrame() || "")).toContain(
+        "(↑↓ 选一个选项查看预览)",
+      );
+
+      stdin.write("\u001b[B");
+      await settle();
       expect(stripAnsiColors(lastFrame() || "")).toContain("预览内容 A");
 
       stdin.write("\u001b[B");
@@ -1224,14 +1343,17 @@ describe("ConfirmationSelector Additional Coverage", () => {
       );
 
       await settle();
-      expect(stripAnsiColors(lastFrame() || "")).toContain("预览内容 A");
+      // 预览题首屏无聚焦项，预览区只有占位；切题后整块预览面板消失。
+      expect(stripAnsiColors(lastFrame() || "")).toContain(
+        "(↑↓ 选一个选项查看预览)",
+      );
 
       stdin.write("\t");
       await settle();
       const afterTab = stripAnsiColors(lastFrame() || "");
       expect(afterTab).toContain("选哪个范围？");
       expect(afterTab).toContain("Other");
-      expect(afterTab).not.toContain("预览内容 A");
+      expect(afterTab).not.toContain("Notes:");
     });
   });
 });

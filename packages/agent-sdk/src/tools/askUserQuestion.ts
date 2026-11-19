@@ -143,7 +143,8 @@ export const askUserQuestionTool: ToolPlugin = {
           answers: {
             type: "object",
             additionalProperties: { type: "string" },
-            description: "User answers collected by the permission component",
+            description:
+              "User answers collected by the permission component. Questions the user left unanswered are omitted; the value `(notes only)` means the user wrote notes instead of picking an option (their text is under `annotations`).",
           },
           annotations: {
             type: "object",
@@ -158,7 +159,7 @@ export const askUserQuestionTool: ToolPlugin = {
                 notes: {
                   type: "string",
                   description:
-                    "Free-text notes the user added to their selection.",
+                    "Free-text notes the user added to their selection. Present on preview questions even when no option was picked — then the answer is `(notes only)`.",
                 },
               },
             },
@@ -200,7 +201,7 @@ Use the optional \`preview\` field on options when presenting concrete artifacts
 - Diagram variations
 - Configuration examples
 
-Preview content is rendered as markdown in a panel beside the option list, following whichever option the user is on. On those questions the "Other" box is replaced by a notes field, and the option you selected plus any notes come back to you in the tool result — so write the preview for a human comparing options, not as prose for yourself. Do not use previews for simple preference questions where labels and descriptions suffice. Previews are only supported for single-select questions (not multiSelect).
+Preview content is rendered as markdown in a panel beside the option list, following whichever option the user is on. On those questions the "Other" box is replaced by a notes field, and the option you selected plus any notes come back to you in the tool result — so write the preview for a human comparing options, not as prose for yourself. If the user writes notes but picks no option, that question's answer comes back as \`(notes only)\` with their text in \`annotations\`. Do not use previews for simple preference questions where labels and descriptions suffice. Previews are only supported for single-select questions (not multiSelect).
 
 Plan mode note: In plan mode, use this tool to clarify requirements or choose between approaches BEFORE finalizing your plan. Do NOT use this tool to ask "Is my plan ready?" or "Should I proceed?" - use ExitPlanMode for plan approval.
 `,
@@ -209,7 +210,7 @@ Plan mode note: In plan mode, use this tool to clarify requirements or choose be
 - Users can always select "Other" to provide custom text input.
 - \`multiSelect: true\` allows multiple answers to be selected for a question.
 - If you recommend an option, put it first and append "(Recommended)" to its label.
-- Add \`preview\` (markdown) to options when the user must compare concrete artifacts — layout sketches, code snippets, config samples. Single-select only; on preview questions "Other" becomes a notes field and the selected preview comes back to you.
+- Add \`preview\` (markdown) to options when the user must compare concrete artifacts — layout sketches, code snippets, config samples. Single-select only; on preview questions "Other" becomes a notes field and the selected preview comes back to you. Notes with no option picked come back as \`(notes only)\`.
 In plan mode, use it to clarify requirements or choose between approaches before finalizing the plan — never to ask whether the plan is ready; that is what ExitPlanMode is for.`,
   execute: async (args, context) => {
     const {

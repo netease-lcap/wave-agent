@@ -4,6 +4,14 @@ import type { PermissionDecision } from "wave-agent-sdk";
 /** The single-select-only "Other" row appended after the real options. */
 export const OTHER_OPTION_LABEL = "Other";
 
+/**
+ * 预览题「只写了备注、一个选项都没选」时答案位上的哨兵值（与 CC 2.1.327 的
+ * `"(notes only)"` 同形，webview 用同一个字符串）。备注本身就算一份有效答案，
+ * 这里给模型一个明确的「未选选项」标记，而不是空串 —— 空串读起来像「答了但
+ * 内容为空」（spec `ask-user-tool.md`「选项预览与备注」场景 9 / 10）。
+ */
+export const NOTES_ONLY_ANSWER = "(notes only)";
+
 export interface QuestionOption {
   label: string;
   description?: string;
@@ -37,9 +45,16 @@ const navigableOptions = (q: QuestionLike): QuestionOption[] =>
     ? q.options
     : [...q.options, { label: OTHER_OPTION_LABEL }];
 
-/** Per-question buffers restored when navigating to a question for the first time. */
-const emptyQuestionState = (): QuestionSavedState => ({
-  selectedOptionIndex: 0,
+/**
+ * Per-question buffers restored when navigating to a question for the first time.
+ * The starting focus depends on the question type: a preview question starts
+ * with **nothing** focused (`-1`), because Enter there only submits the focused
+ * option — with nothing focused it submits the notes (or nothing at all), which
+ * is what CC 2.1.327 does. A plain list keeps its first row focused, so Enter
+ * still answers the first option without touching an arrow key.
+ */
+export const initialQuestionState = (q?: QuestionLike): QuestionSavedState => ({
+  selectedOptionIndex: q && isPreviewQuestion(q) ? -1 : 0,
   selectedOptionIndices: new Set<number>(),
   otherText: "",
   otherCursorPosition: 0,
@@ -80,7 +95,7 @@ export type QuestionAction =
       type: "TOGGLE_MULTI_SELECT";
       optionsLength: number;
     }
-  | { type: "CYCLE_QUESTION"; shift: boolean; questionCount: number }
+  | { type: "CYCLE_QUESTION"; shift: boolean; questions: QuestionLike[] }
   | { type: "INSERT_OTHER"; text: string; optionsLength: number }
   | { type: "DELETE_OTHER"; optionsLength: number }
   | { type: "MOVE_OTHER_LEFT"; optionsLength: number }
@@ -100,29 +115,40 @@ export type QuestionAction =
       questions: QuestionLike[];
     };
 
-function buildAnswerFromSavedState(
+/**
+ * The answer a question's buffers imply, or "" when nothing is answerable.
+ * `options` is the caller's row list when it already holds one (the same list
+ * `navigableOptions` would build) — the focus index points into that list.
+ */
+function answerFromBuffers(
   q: QuestionLike,
   s: QuestionSavedState,
+  options: QuestionOption[] = navigableOptions(q),
 ): string {
-  const opts = navigableOptions(q);
-  let a = "";
+  let answer = "";
   if (q.multiSelect) {
     const selectedLabels = Array.from(s.selectedOptionIndices)
       .filter((i) => i < q.options.length)
       .map((i) => q.options[i].label);
-    const isOtherChecked = s.selectedOptionIndices.has(opts.length - 1);
-    if (isOtherChecked && s.otherText.trim()) {
+    if (s.selectedOptionIndices.has(options.length - 1) && s.otherText.trim()) {
       selectedLabels.push(s.otherText.trim());
     }
-    a = selectedLabels.join(", ");
+    answer = selectedLabels.join(", ");
+  } else if (
+    // The last row is "Other" only when the question is not in preview mode —
+    // a preview question's last row is a real option.
+    !isPreviewQuestion(q) &&
+    s.selectedOptionIndex === options.length - 1
+  ) {
+    answer = s.otherText.trim();
   } else {
-    if (s.selectedOptionIndex === opts.length - 1) {
-      a = s.otherText.trim();
-    } else {
-      a = opts[s.selectedOptionIndex]?.label ?? "";
-    }
+    answer = options[s.selectedOptionIndex]?.label ?? "";
   }
-  return a;
+  if (answer) return answer;
+  // Notes alone are a valid answer on a preview question: the sentinel tells the
+  // model "nothing picked" instead of looking like an empty answer (spec
+  // 「选项预览与备注」场景 9 / 10).
+  return isPreviewQuestion(q) && s.notesText.trim() ? NOTES_ONLY_ANSWER : "";
 }
 
 /**
@@ -182,36 +208,13 @@ const currentSave = (state: QuestionState): QuestionSavedState => ({
   notesCursorPosition: state.notesCursorPosition,
 });
 
-/** The answer implied by the current focus, or "" when nothing is answerable. */
-function deriveAnswer(
-  state: QuestionState,
-  q: QuestionLike,
-  options: QuestionOption[],
-): string {
-  if (q.multiSelect) {
-    const selectedLabels = Array.from(state.selectedOptionIndices)
-      .filter((i) => i < q.options.length)
-      .map((i) => q.options[i].label);
-    const isOtherChecked = state.selectedOptionIndices.has(options.length - 1);
-    if (isOtherChecked && state.otherText.trim()) {
-      selectedLabels.push(state.otherText.trim());
-    }
-    return selectedLabels.join(", ");
-  }
-  // The last row is "Other" only when the question is not in preview mode —
-  // a preview question's last row is a real option.
-  if (
-    !isPreviewQuestion(q) &&
-    state.selectedOptionIndex === options.length - 1
-  ) {
-    return state.otherText.trim();
-  }
-  return options[state.selectedOptionIndex]?.label ?? "";
-}
-
 /**
  * Answer the current question: record it, then either advance to the next one
- * or, on the last question, emit the decision once every question is answered.
+ * or, on the last question, emit the decision. Unanswered questions no longer
+ * block the submission — the last question's Enter submits whatever was
+ * answered and omits the rest (spec「多问题循环轮播」场景 8 / 10). Every other
+ * question keeps the old feel: Enter with nothing answerable is a no-op, so the
+ * user can still walk the questionnaire forward one question at a time.
  */
 function commitAnswer(
   state: QuestionState,
@@ -219,38 +222,46 @@ function commitAnswer(
   cq: QuestionLike,
   options: QuestionOption[],
 ): QuestionState {
-  const answer = deriveAnswer(state, cq, options);
-  if (!answer) return state;
-
-  const newAnswers = { ...state.userAnswers, [cq.question]: answer };
   const savedStates = {
     ...state.savedStates,
     [state.currentQuestionIndex]: currentSave(state),
   };
+  const answer = answerFromBuffers(cq, currentSave(state), options);
+  const isLastQuestion = state.currentQuestionIndex >= questions.length - 1;
+  if (!answer && !isLastQuestion) return state;
 
-  if (state.currentQuestionIndex < questions.length - 1) {
+  const userAnswers = answer
+    ? { ...state.userAnswers, [cq.question]: answer }
+    : state.userAnswers;
+
+  if (!isLastQuestion) {
     const nextIndex = state.currentQuestionIndex + 1;
-    const nextState = savedStates[nextIndex] || emptyQuestionState();
+    const nextState =
+      savedStates[nextIndex] || initialQuestionState(questions[nextIndex]);
     return {
       ...state,
       currentQuestionIndex: nextIndex,
       ...nextState,
       isEditingNotes: false,
-      userAnswers: newAnswers,
+      userAnswers,
       savedStates,
     };
   }
 
-  const finalAnswers = { ...newAnswers };
+  // 未答且无备注的题在结果里整条省略：空串不算答案（spec「多问题循环轮播」
+  // 场景 8）。
+  const finalAnswers: Record<string, string> = {};
+  for (const [key, value] of Object.entries(userAnswers)) {
+    if (value) finalAnswers[key] = value;
+  }
   for (const [idxStr, s] of Object.entries(savedStates)) {
     const idx = parseInt(idxStr, 10);
     const q = questions[idx];
     if (q && !finalAnswers[q.question]) {
-      const a = buildAnswerFromSavedState(q, s);
+      const a = answerFromBuffers(q, s);
       if (a) finalAnswers[q.question] = a;
     }
   }
-  if (!questions.every((q) => finalAnswers[q.question])) return state;
   return {
     ...state,
     userAnswers: finalAnswers,
@@ -296,8 +307,8 @@ export function questionReducer(
     case "CYCLE_QUESTION": {
       const direction = action.shift ? -1 : 1;
       let nextIndex = state.currentQuestionIndex + direction;
-      if (nextIndex < 0) nextIndex = action.questionCount - 1;
-      if (nextIndex >= action.questionCount) nextIndex = 0;
+      if (nextIndex < 0) nextIndex = action.questions.length - 1;
+      if (nextIndex >= action.questions.length) nextIndex = 0;
       if (nextIndex === state.currentQuestionIndex) return state;
       const savedStates = {
         ...state.savedStates,
@@ -310,7 +321,9 @@ export function questionReducer(
           notesCursorPosition: state.notesCursorPosition,
         },
       };
-      const nextState = savedStates[nextIndex] || emptyQuestionState();
+      const nextState =
+        savedStates[nextIndex] ||
+        initialQuestionState(action.questions[nextIndex]);
       return {
         ...state,
         currentQuestionIndex: nextIndex,
@@ -477,7 +490,8 @@ export function questionReducer(
           ...state.savedStates,
           [state.currentQuestionIndex]: currentSave(state),
         };
-        const nextState = savedStates[nextIndex] || emptyQuestionState();
+        const nextState =
+          savedStates[nextIndex] || initialQuestionState(questions[nextIndex]);
         return {
           ...state,
           currentQuestionIndex: nextIndex,

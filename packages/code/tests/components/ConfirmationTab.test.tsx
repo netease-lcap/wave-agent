@@ -223,10 +223,11 @@ describe("Confirmation Tab Navigation", () => {
       />,
     );
 
-    // Tab to Q2, press Enter (should not submit), Tab back to Q1, press Enter (should move to Q2), press Enter (should submit)
+    // Tab to Q2, Tab back to Q1, press Enter on Q1 (moves to Q2), press Enter on
+    // Q2 (the last question always submits — see ask-user-tool.md「多问题循环
+    // 轮播」场景 10; it no longer waits for Q1 to be answered because Q1 is).
     stdin.write("\t"); // Q2
-    stdin.write("\r"); // Enter on Q2 (unanswered Q1)
-    stdin.write("\t"); // Q1
+    stdin.write("\t"); // back to Q1
     stdin.write("\r"); // Enter on Q1 (select A)
     stdin.write("\r"); // Enter on Q2 (select B)
 

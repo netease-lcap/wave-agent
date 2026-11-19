@@ -85,6 +85,14 @@ const optionPreview = (option: { preview?: string }): string =>
   typeof option.preview === "string" ? option.preview : "";
 
 /**
+ * 预览态「只写了备注、一个选项都没选」时答案位置上的哨兵值（与 CC 2.1.327 的
+ * `"(notes only)"` 同形）。备注本身就算一份有效答案，这里给模型一个明确的
+ * 「未选选项」标记，而不是空串 —— 空串读起来像「答了但内容为空」
+ * （spec `ask-user-tool.md`「选项预览与备注」场景 9 / 10）。
+ */
+const NOTES_ONLY_ANSWER = "(notes only)";
+
+/**
  * Whether this question switches to the preview layout: single-select only, and
  * only when at least one option carries a non-blank preview. A question whose
  * previews are all empty/whitespace stays a plain list (spec
@@ -646,19 +654,36 @@ const ConfirmationDialogImpl: React.FC<ConfirmationDialogProps> = ({
           ) {
             finalAnswers[qKey] = [...current, otherVal];
           }
+          // 一个都没勾 = 没答：整条省略，别把空数组当答案交给模型。
+          const merged = (finalAnswers[qKey] as string[]) || [];
+          if (merged.length === 0) delete finalAnswers[qKey];
         } else if (finalAnswers[qKey] === "__other__") {
-          finalAnswers[qKey] = otherVal || "";
+          // 「其他」被选中却一个字都没填 = 没答：整个 key 删掉（不是写空串），
+          // 模型才分得清「没选」与「没答」（ask-user-tool.md「多问题循环轮播」
+          // 场景 8）。
+          if (otherVal && otherVal.trim()) {
+            finalAnswers[qKey] = otherVal;
+          } else {
+            delete finalAnswers[qKey];
+          }
         }
 
         // 预览态：把选中项的预览全文与备注随答案一起回传，模型拿到的不是一个
-        // 光秃秃的标签（ask-user-tool.md「选项预览与备注」场景 9）。空预览 /
+        // 光秃秃的标签（ask-user-tool.md「选项预览与备注」场景 9 / 10）。空预览 /
         // 空备注不进 annotations，避免给模型塞无内容的骨架。
         if (!questionHasPreview(q)) return;
+        const notes = (notesInputs[qKey] || "").trim();
         const answer = finalAnswers[qKey];
         const label = typeof answer === "string" ? answer : "";
         const selected = q.options.find((o) => o.label === label);
+        // 备注本身就是一种有效答案：没选选项、只写了备注时答案位置写哨兵值，
+        // 备注进 annotations。
+        if (!selected && !label && notes) {
+          finalAnswers[qKey] = NOTES_ONLY_ANSWER;
+          annotations[qKey] = { notes };
+          return;
+        }
         const preview = selected ? optionPreview(selected) : "";
-        const notes = (notesInputs[qKey] || "").trim();
         if (preview.trim() || notes) {
           annotations[qKey] = {
             ...(preview.trim() ? { preview } : {}),
@@ -889,8 +914,9 @@ const ConfirmationDialogImpl: React.FC<ConfirmationDialogProps> = ({
                   }
                   onKeyDown={(e) => {
                     if (e.key === "Enter") {
-                      // Enter 仅用于提交：全部题目已答完时提交，未答完时
-                      // 无动作，不改变选中状态（不把 Enter 当作选中键）。
+                      // Enter 与「提交回答」等价（按钮恒可点，未答完也提交，
+                      // 未答的题整条省略），但不改变选中状态（不把 Enter 当作
+                      // 选中键）。
                       e.preventDefault();
                       if (!isConfirmDisabled()) {
                         handleConfirm();
@@ -967,8 +993,8 @@ const ConfirmationDialogImpl: React.FC<ConfirmationDialogProps> = ({
                         // The Other textarea stopPropagation's its own keys, so
                         // keydown here always originates from the label itself.
                         if (e.key === "Enter") {
-                          // Enter 仅用于提交（与普通选项一致）：答完提交、未答
-                          // 完无动作，不负责选中「其他」。
+                          // Enter 与「提交回答」等价（与普通选项一致，未答完也
+                          // 提交），不负责选中「其他」。
                           e.preventDefault();
                           if (!isConfirmDisabled()) {
                             handleConfirm();
@@ -1039,9 +1065,9 @@ const ConfirmationDialogImpl: React.FC<ConfirmationDialogProps> = ({
                               if (e.key === "Enter" && !e.shiftKey) {
                                 if (e.nativeEvent.isComposing) return;
                                 e.preventDefault();
-                                // Enter submits only when every question has a
-                                // valid answer; it never advances to the next
-                                // question (see "多问题循环轮播" spec).
+                                // Enter 与「提交回答」等价：未答的题不阻塞提交
+                                // （整条省略），它也从不让输入框跳到下一题（见
+                                //「多问题循环轮播」spec）。
                                 const applyBtn =
                                   dialogRef.current?.querySelector<HTMLButtonElement>(
                                     ".confirmation-btn-apply",
@@ -1108,7 +1134,7 @@ const ConfirmationDialogImpl: React.FC<ConfirmationDialogProps> = ({
                 }
                 onKeyDown={(e) => {
                   // 与「其他」输入框同一套按键语义：内部按键不冒泡到弹窗级
-                  // 快捷键，Enter 只在全部答完时提交。
+                  // 快捷键，Enter 与「提交回答」等价（未答的题不阻塞提交）。
                   if (!e.metaKey && !e.ctrlKey) e.stopPropagation();
                   if (e.key === "Enter" && !e.shiftKey) {
                     if (e.nativeEvent.isComposing) return;
@@ -1142,7 +1168,8 @@ const ConfirmationDialogImpl: React.FC<ConfirmationDialogProps> = ({
     ).questions;
     if (!questions || questions.length === 0) return null;
     const multi = questions.length > 1;
-    const canSubmit = !isConfirmDisabled();
+    // 未答不再禁用主按钮，改由按钮旁这行提示表达（场景 7）。
+    const unanswered = unansweredCount();
     return (
       <div className="question-navigation">
         {multi && (
@@ -1177,13 +1204,23 @@ const ConfirmationDialogImpl: React.FC<ConfirmationDialogProps> = ({
           type="button"
           className="confirmation-btn confirmation-btn-apply"
           onClick={handleConfirm}
-          disabled={!canSubmit}
+          disabled={isConfirmDisabled()}
         >
           <span className="btn-text">
             提交回答
-            {canSubmit && <span className="btn-enter-hint">⏎</span>}
+            <span className="btn-enter-hint">⏎</span>
           </span>
         </button>
+        {/* 排在按钮簇之后：三按钮保持等宽相邻，提示只是贴在主按钮右侧的旁注
+            （不可聚焦，不影响 Tab 顺序）。 */}
+        {unanswered > 0 && (
+          <span
+            className="question-navigation-hint"
+            data-testid="question-navigation-hint"
+          >
+            还有 {unanswered} 题未答
+          </span>
+        )}
       </div>
     );
   };
@@ -1204,21 +1241,33 @@ const ConfirmationDialogImpl: React.FC<ConfirmationDialogProps> = ({
           (otherSelected[q.question] && !!other && !!other.trim())
         );
       }
+      // 预览态下备注也是一份有效答案：只写备注、没选选项同样算答过
+      // （ask-user-tool.md「选项预览与备注」场景 9）。
+      if (questionHasPreview(q) && !!notesInputs[q.question]?.trim()) {
+        return true;
+      }
       return (
         !!(answer && answer !== "__other__") ||
         (answer === "__other__" && !!other && !!other.trim())
       );
     },
-    [confirmation, answers, otherInputs, otherSelected],
+    [confirmation, answers, otherInputs, otherSelected, notesInputs],
   );
 
+  /** 未答题数：底部「还有 N 题未答」提示用，口径与进度条 / 提交完全一致。 */
+  const unansweredCount = useCallback((): number => {
+    if (confirmation.toolName !== ASK_USER_QUESTION_TOOL_NAME) return 0;
+    const questions = (
+      confirmation.toolInput as unknown as AskUserQuestionInput
+    ).questions;
+    return questions.filter((_, i) => !isQuestionAnswered(i)).length;
+  }, [confirmation, isQuestionAnswered]);
+
   const isConfirmDisabled = useCallback(() => {
-    if (confirmation.toolName === ASK_USER_QUESTION_TOOL_NAME) {
-      const questions = (
-        confirmation.toolInput as unknown as AskUserQuestionInput
-      ).questions;
-      return !questions.every((q, i) => isQuestionAnswered(i));
-    }
+    // 提问卡不再因未答而禁用提交：未答只给「还有 N 题未答」提示，提交时把
+    // 未答的题整条省略（ask-user-tool.md「多问题循环轮播」场景 7 / 8，与 CLI
+    // 「未答不阻塞回车提交」同一语义）。
+    if (confirmation.toolName === ASK_USER_QUESTION_TOOL_NAME) return false;
     const isPlanModeTool =
       confirmation.toolName === EXIT_PLAN_MODE_TOOL_NAME ||
       confirmation.toolName === ENTER_PLAN_MODE_TOOL_NAME;
@@ -1232,7 +1281,7 @@ const ConfirmationDialogImpl: React.FC<ConfirmationDialogProps> = ({
       return !feedback.trim();
     }
     return false;
-  }, [confirmation, showFeedbackInput, feedback, isQuestionAnswered]);
+  }, [confirmation, showFeedbackInput, feedback]);
 
   return (
     <div
