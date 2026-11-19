@@ -182,6 +182,8 @@ order: 20
 
 ### 用户故事：内嵌搜索命令（优先级：P1）
 
+**适用范围**：本节描述的是 **Git Bash 会话**的行为；PowerShell 会话没有内嵌搜索工具（`grep` / `find` / `rg` 影子都不注入，`.gitignore` 口径也无从谈起），搜索走 `Grep` / `Glob`（无可用 bash 时自动注册回来，见 [fs-tools.md](./fs-tools.md)「高效代码探索」）或 PowerShell 自己的 `Get-ChildItem` / `Select-String`，见 [powershell-tool.md](./powershell-tool.md)。
+
 作为 AI 代理，我希望 Bash 工具里的 `grep` / `find` / `rg` 是 wave 自带的可控实现，以便在不额外调用搜索工具的前提下，拿到与 `.gitignore` 一致的搜索结果。
 
 **优先级原因**：默认工具集不再提供 `Grep` / `Glob`（有可用 bash 时；见 [fs-tools.md](./fs-tools.md)「高效代码探索」），搜索全部落在 Bash 上。若直接用系统命令，macOS 的 BSD grep 缺少 `--include` 等 GNU 参数、各平台 `find` 语法也不一致，同一条命令会在不同机器上出现不同的失败形态；固定一套内嵌实现能让同一命令在所有受支持平台上行为一致，也把「哪些文件算可搜索」收敛到与 `Grep` 工具相同的 `.gitignore` 口径。

@@ -16,11 +16,11 @@ order: 70
 
 **为什么是这个优先级**：这是保护用户免受 agent 意外或潜在有害操作的核心功能。
 
-**独立测试**：可以通过触发受限工具（Bash、Write、Edit）、验证确认 UI 出现并显示正确详情以及选择不同选项来全面测试。
+**独立测试**：可以通过触发受限工具（shell 命令、Write、Edit）、验证确认 UI 出现并显示正确详情以及选择不同选项来全面测试。
 
 **验收场景**：
 
-1. **假设** agent 尝试运行 `npm install`，**当**确认 UI 出现时，**则**显示工具名称 "Bash" 和命令详情，并提供允许、自动接受或提供替代输入的选项。
+1. **假设** agent 尝试运行 `npm install`，**当**确认 UI 出现时，**则**显示命令详情，并提供允许、自动接受或提供替代输入的选项；头部怎么标取决于端，但**shell 工具共用同一张卡**：CLI 头部是 `Tool: <实际工具名>`（bash 会话 `Tool: Bash`、PowerShell 会话 `Tool: PowerShell`，动作行统一为 `Execute command: …`），图形界面（桌面端 / VS Code / JetBrains / 远控页）的卡片标题是按确认类型取的固定文案「命令执行待确认」，下面显示命令原文——不含工具名（`packages/code/src/components/ConfirmationDetails.tsx:26-30`、`:220-223`、`packages/desktop/src/main/desktopHost.ts:3900-3904`、`packages/vscode/src/chatProvider.ts:828-832`、`packages/webview/src/components/ConfirmationDialog.tsx:1255-1266`）。
 2. **假设**确认已显示，**当**用户按下 ESC 或点弹窗右上角的关闭键（未填写任何反馈）时，**则**操作被取消、agent 被通知拒绝，**并且本轮立即中止**——会话回到空闲，模型不会带着「用户拒绝了」这条结果继续往下做。**带反馈的拒绝是另一条语义**：用户在「提供反馈」里输入文本后发送，则只拒绝这一次工具调用、模型收到这段反馈后继续。判据是「有没有给出反馈」，不是「点了哪个键」。**依据**：Claude Code 的取消（Esc / Ctrl+C / 无反馈关闭）走 `cancelAndAbort` 直接 `abortController.abort()` 结束本轮，只有带 feedback 的拒绝才把拒绝结果交回模型继续；其 VS Code 插件的取消帧同样带 `interrupt: true`，中断由 CLI 侧执行。
 3. **假设**确认已显示，**当**用户在替代选项上聚焦时输入文本，**则**文本被捕获为 agent 的反馈。
 4. **假设** agent 尝试 `Write`/`Edit` 工作目录之外的文件，**当**确认 UI 出现时（交互式 CLI 或三端 GUI），**则**在允许与自动接受之外额外提供"允许本会话编辑 `<目录名>/`"选项，选择它把该目录加入当前会话的安全区域且不写任何配置文件；目标文件在安全区域内时不出现该选项。
@@ -39,7 +39,7 @@ order: 70
 **验收场景**：
 
 1. **假设** agent 尝试运行 `mkdir -p src/components`，**当**用户选择"是，不再询问：mkdir"时，**则**后续 mkdir 命令在此会话中不再提示确认。
-2. **假设** agent 尝试运行带有建议前缀的 Bash 命令，**当**用户选择带有前缀的自动接受选项时，**则**所有匹配该前缀的命令被自动批准。
+2. **假设** agent 尝试运行带有建议前缀的 shell 命令，**当**用户选择带有前缀的自动接受选项时，**则**所有匹配该前缀的命令被自动批准。
 
 ---
 
@@ -81,11 +81,11 @@ order: 70
 
 **为什么是这个优先级**：按钮是确认弹窗的核心操作区，布局规则影响每次确认的操作效率与键盘可达性；视觉上与主流桌面交互（macOS/Windows 对话框主按钮在右）一致，键盘顺序对齐 Claude 的确认 UI——claude.ai 工具确认卡与桌面原生授权弹窗均为「次按钮（Deny/Cancel）先 Tab、主按钮（Allow once/Allow）最后、默认焦点落在次按钮（安全侧）」，DOM 顺序=视觉顺序，无方向反转。
 
-**独立测试**：触发 Bash/Write/Edit 权限确认，验证按钮横向排列且主按钮「批准并继续」在最右侧；按 Tab 验证焦点顺序与视觉一致、主按钮最后（最次 → 次 → 主）；进入反馈流程验证「取消/发送反馈」布局；验证各按钮启用/禁用状态。
+**独立测试**：触发 shell 命令 / Write / Edit 权限确认，验证按钮横向排列且主按钮「批准并继续」在最右侧；按 Tab 验证焦点顺序与视觉一致、主按钮最后（最次 → 次 → 主）；进入反馈流程验证「取消/发送反馈」布局；验证各按钮启用/禁用状态。
 
 **验收场景**：
 
-1. **假设** 确认弹窗显示（Bash/Write/Edit/MCP/计划审批），**当** 用户查看操作区，**则** 按钮横向排列（非纵向堆叠），主按钮「批准并继续」位于最右侧，次要操作依次向左，如 `[提供反馈] [自动接受/跳过确认] [批准并继续]`（最次、次、主）；越界 `Write`/`Edit` 的「是，且允许本会话编辑 `<目录名>/`」（见 `docs/specs/core/tool-permission-system.md`）同属次要操作。
+1. **假设** 确认弹窗显示（shell 命令 / Write / Edit / MCP / 计划审批），**当** 用户查看操作区，**则** 按钮横向排列（非纵向堆叠），主按钮「批准并继续」位于最右侧，次要操作依次向左，如 `[提供反馈] [自动接受/跳过确认] [批准并继续]`（最次、次、主）；越界 `Write`/`Edit` 的「是，且允许本会话编辑 `<目录名>/`」（见 `docs/specs/core/tool-permission-system.md`）同属次要操作。
 2. **假设** 确认弹窗显示，**当** 用户按 Tab 遍历按钮，**则** 焦点按视觉从左到右顺序遍历：`[提供反馈]` → `[自动接受/跳过确认]`（越界时含「是，且允许本会话编辑 `<目录名>/`」）→ 主按钮「批准并继续」（主按钮最后）；Shift+Tab 反向（主按钮最先），Tab 陷阱仍限于弹窗内。
 3. **假设** 主按钮「批准并继续」显示，**当** 用户查看其状态，**则** 始终可点击（不因权限模式变化禁用）。
 4. **假设** 「自动接受/跳过确认」类按钮显示，**当** 当前权限模式允许自动接受时，**则** 按钮可用；**当** 权限模式不允许时，**则** 按钮禁用（不可点击）。
@@ -150,17 +150,17 @@ order: 70
 
 ---
 
-### 用户故事：从 Bash 确认切换到 Bypass Permissions 模式（优先级：P2）
+### 用户故事：从 shell 命令确认切换到 Bypass Permissions 模式（优先级：P2）
 
-作为用户，我希望在 Bash 命令确认对话框中直接开启 bypass permissions 模式，以便在信任当前任务流程时无需先解决确认再按 Shift+Tab 切换模式。CLI 和 IDE（VS Code / JetBrains webview）都必须支持。
+作为用户，我希望在 shell 命令（`Bash` 或 `PowerShell`）的确认对话框中直接开启 bypass permissions 模式，以便在信任当前任务流程时无需先解决确认再按 Shift+Tab 切换模式。CLI 和 IDE（VS Code / JetBrains webview）都必须支持。
 
 **为什么是这个优先级**：这是便利性改进；用户已可通过 Shift+Tab（CLI）或状态栏模式切换（IDE）随时切换模式，此选项只是减少操作步骤。
 
-**独立测试**：触发一个需要确认的 Bash 命令，选择 bypass 选项，验证命令被执行且后续工具调用不再提示确认。
+**独立测试**：触发一个需要确认的 shell 命令，选择 bypass 选项，验证命令被执行且后续工具调用不再提示确认。
 
 **验收场景**：
 
-1. **假设** agent 尝试运行需要确认的 Bash 命令，**当**确认 UI 出现时，**则**CLI 显示 "Yes, and bypass permissions" 选项，IDE 显示对应的 bypass permissions 按钮。
+1. **假设** agent 尝试运行需要确认的 shell 命令（bash 会话 `Bash`、PowerShell 会话 `PowerShell`，两者的卡片同形），**当**确认 UI 出现时，**则**CLI 显示 "Yes, and bypass permissions" 选项，IDE 显示对应的 bypass permissions 按钮（`packages/code/src/components/ConfirmationSelector.tsx:445-447`、`packages/webview/src/components/ConfirmationDialog.tsx:1325-1333`）。
 2. **假设**确认 UI 已显示，**当**用户选择 bypass permissions 选项时，**则**当前命令被允许执行，且权限模式切换为 bypassPermissions。
 3. **假设**权限模式已切换为 bypassPermissions，**当**后续工具调用发生时，**则**不再显示确认 UI。
 
@@ -181,7 +181,7 @@ order: 70
 3. **假设** 确认弹窗打开期间，**当** 用户连续按 Tab 时，**则** 焦点始终不落入背景消息列表、输入框或侧边栏。
 4. **假设** 确认被解决（允许/拒绝/Escape 关闭），**当** 弹窗卸载时，**则** 焦点归还打开弹窗前的位置（触发元素）；若触发元素已不可见或卸载，则焦点移到主界面默认位置（如消息输入框）。
 5. **假设** AskUserQuestion 分页切换（上一题/下一题），**当** 用户点击导航按钮时，**则** 题目切换完成后焦点移到新题第一个（或已选中）选项上，不丢失到弹窗外（与 `ask-user-tool.md`「选项组键盘可达」场景 7 一致）。
-6. **假设** 确认类型为按钮式选项（Bash/Write/Edit/MCP/计划审批等，选项为 2~4 个平铺按钮），**当** 弹窗打开时，**则** 这些按钮在 trap 循环内按序 Tab 可达，无需额外的组内 roving（数量少，Tab 一步即到；AskUserQuestion 选项同样逐个 Tab 可达，见 `ask-user-tool.md`）。
+6. **假设** 确认类型为按钮式选项（shell 命令 / Write / Edit / MCP / 计划审批等，选项为 2~4 个平铺按钮），**当** 弹窗打开时，**则** 这些按钮在 trap 循环内按序 Tab 可达，无需额外的组内 roving（数量少，Tab 一步即到；AskUserQuestion 选项同样逐个 Tab 可达，见 `ask-user-tool.md`）。
 
 ---
 

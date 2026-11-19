@@ -65,12 +65,27 @@ export class BackgroundTaskManager {
   /**
    * Stop handler shared by `startShell` and `adoptProcess`.
    *
-   * Terminates the task's whole process tree rather than just the shell: both
-   * spawn sites use `detached: true`, so on POSIX the child leads its own
-   * process group and on Windows `taskkill /T` walks the parent/child relation
-   * (issue #2742 — killing only bash.exe left `npm → node` grandchildren
-   * running as orphans). Graceful first, forced after 1s; on Windows both
-   * phases are the same force kill and the retry reports "not-found".
+   * Terminates the task's whole process tree rather than just the shell. The two
+   * shells reach that by different means, and the difference starts in
+   * `startShell` below — the `options.shell` branch (`:195-199`, taken by
+   * PowerShell, whose own argv it must use) passes the provider's flag through,
+   * while the default bash branch (`:200-204`) hardcodes `detached: true`. The
+   * providers decide those flags (`utils/shell/bashProvider.ts:50` true;
+   * `utils/shell/powershellProvider.ts:114` false on purpose — a detached Windows
+   * PowerShell 5.1 child never runs its `-Command` at all):
+   *
+   * - bash: the child leads its own process group on POSIX, so the group can be
+   *   signalled as a unit.
+   * - PowerShell: `detached: false`, so there is no group to signal and the tree
+   *   is walked through the parent/child relation instead.
+   * - `adoptProcess` (a foreground command moved to the background) adds no
+   *   third case: it takes over a child one of these two providers spawned, so
+   *   the same two shapes apply.
+   *
+   * On Windows the tree is walked either way: `taskkill /T` follows parent/child
+   * (issue #2742 — killing only bash.exe left `npm → node` grandchildren running
+   * as orphans). Graceful first, forced after 1s; on Windows both phases are the
+   * same force kill and the retry reports "not-found".
    */
   private createStopHandler(
     child: ChildProcess,

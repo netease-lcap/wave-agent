@@ -73,7 +73,7 @@ order: 30
 13. **假设** 一次工具调用在权限弹窗上等待用户批准（或等待问答工具的回答），**当** 该轮结束时，**则** 等待的这段时间不计入 `wave.active_time{type=cli}`；同一段时间也不会以 `type=user` 重复计入。
 14. **假设** 同一进程里两个会话同时在跑 agent（daemon 承载多会话），**当** 两个会话各自结束时，**则** 各自按自己的会话归属记一段 `type=cli` 的活跃时长，两条数据点带各自的 `session.id`，互不串味；此时按会话求和可以大于进程墙钟时间——该指标回答的是会话活跃时长，不是进程在线时长。
 15. **假设** OTEL 指标已启用，**当** 用户对一次 `Edit` 调用做了权限决策时，**则** `wave.code_edit_tool.decision` 记一次，`decision` 为 `accept` 或 `reject`（被拒绝同样计数），并带上 `source`（`config` / `hook` / `user_permanent` / `user_temporary` / `user_abort` / `user_reject` / `unknown`）与 `tool_name`；能从目标文件路径推出语言时再带 `language`，推不出时不带该属性。
-16. **假设** 一次会话里发生 `Bash`、`Read` 与 MCP 工具的权限决策，**当** 记录指标时，**则** 这些工具**不**产生 `wave.code_edit_tool.decision`——该指标只覆盖编辑类工具（`Edit` / `Write`）。
+16. **假设** 一次会话里发生 shell 工具（`Bash` 或 `PowerShell`）、`Read` 与 MCP 工具的权限决策，**当** 记录指标时，**则** 这些工具**不**产生 `wave.code_edit_tool.decision`——该指标只覆盖编辑类工具（`Edit` / `Write`），判据是工具名白名单而非「像不像写操作」（`packages/agent-sdk/src/telemetry/metrics.ts:44-49`）。
 
 ---
 

@@ -32,13 +32,13 @@ Plan 子 agent 严格限制为只读操作，确保它们可以探索和分析�
 
 **为什么是这个优先级**：对于维护计划模式的完整性至关重要，防止在设计阶段意外更改代码。
 
-**独立测试**：可以通过尝试各种文件修改操作（Write、Edit、有副作用的 Bash 命令）并验证全部被阻止来进行测试。
+**独立测试**：可以通过尝试各种文件修改操作（`Write`、`Edit`、有副作用的 shell 命令）并验证结果来进行测试：`Write`/`Edit` 是硬约束（工具不在池里，调用失败），shell 侧由系统提示词里的只读清单与禁用清单约束，越界命令仍会走正常的权限确认（`packages/agent-sdk/src/builtin/subagents.ts:81`、`:88-97`）。
 
 **验收场景**：
 
 1. **假设** Plan 子 agent 正在运行，**当**子 agent 尝试使用 Write 工具时，**则**工具不可用且操作失败
 2. **假设** Plan 子 agent 正在运行，**当**子 agent 尝试使用 Edit 工具时，**则**工具不可用且操作失败
-3. **假设** Plan 子 agent 正在运行，**当**子 agent 尝试 bash 命令如 mkdir、touch 或 rm 时，**则**系统提供清晰的指导，说明只允许只读 bash 操作
+3. **假设** Plan 子 agent 正在运行，**当**子 agent 尝试 `mkdir`、`touch`、`rm` 这类写命令时，**则**系统提供清晰的指导，说明只允许只读的 shell 操作，并按**会话自己的 shell** 给出清单——bash 会话点的是 `Bash` 与 `ls`/`cat`/`find` 一串命令，PowerShell 会话点的是 `PowerShell` 与 `Get-ChildItem`/`Get-Content`/`Select-Object` 一串 cmdlet；两套是各自维护的独立清单（不是同一份白名单的方言），共享的只有末尾那条 `git add` / `git commit` / 包安装类禁用句（`packages/agent-sdk/src/utils/shellPromptGuidance.ts:43-50`、`:74-92`、`packages/agent-sdk/src/builtin/subagents.ts:111`）
 
 ---
 
@@ -52,7 +52,7 @@ Plan 子 agent 严格限制为只读操作，确保它们可以探索和分析�
 
 **验收场景**：
 
-1. **假设** Plan 子代理启动，**当** 模型看到工具列表，**则** 采用黑名单式限制（`Agent`、`Artifact`、`ExitPlanMode`、`Edit`、`Write` 以及恒定拒绝的 Task 工具不可用），`WebFetch`/`WebSearch`/`Skill`/`LSP`/`Bash` 均可用。
+1. **假设** Plan 子代理启动，**当** 模型看到工具列表，**则** 采用黑名单式限制（`Agent`、`Artifact`、`ExitPlanMode`、`Edit`、`Write` 以及恒定拒绝的 Task 工具不可用），`WebFetch`/`WebSearch`/`Skill`/`LSP` 均可用，shell 工具按会话实际拥有的那个放行（bash 会话是 `Bash`，PowerShell 会话是 `PowerShell`；两者都拿不到时也不会有 shell）（`packages/agent-sdk/src/builtin/subagents.ts:81`、`packages/agent-sdk/src/utils/shellPromptGuidance.ts:74-92`）。
 2. **假设** Plan 子代理启动，**当** 它发出第一次请求，**则** 不注入项目 `AGENTS.md` 与 `.wave/rules` 的无条件规则（定义文件带 `omitAgentsMd: true`）。
 3. **假设** 用户自定义了同名 `Plan` 子代理，**当** 它被派发，**则** 遵守用户自己的定义（白名单/黑名单与 `omitAgentsMd` 都以用户文件为准），内置行为不覆盖用户文件。
 
