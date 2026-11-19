@@ -1,4 +1,10 @@
-import { unlinkSync, existsSync, statSync } from "fs";
+import {
+  unlinkSync,
+  existsSync,
+  readFileSync,
+  statSync,
+  writeFileSync,
+} from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 // 静态导入，不走 `await import("child_process")`：本文件顶部已经静态 import 了
@@ -6,7 +12,11 @@ import { tmpdir } from "os";
 // 反而绕开了 .oxlintrc.json 里「子进程一律走 wrapper」的规则 —— exec 的
 // `windowsHide` 默认同样是 false，桌面托管的 `wave --stdio` 没有控制台，少一个
 // key 就是一次闪窗（Windows 分支这里直接跑 powershell.exe）。
-import { execAsyncHidden, execFileAsyncHidden } from "wave-agent-sdk";
+import {
+  execAsyncHidden,
+  execFileAsyncHidden,
+  transcodeBmpToPng,
+} from "wave-agent-sdk";
 
 export interface ClipboardImageResult {
   success: boolean;
@@ -317,6 +327,54 @@ async function linuxClipboardEmptyReason(): Promise<string> {
 }
 
 /**
+ * Rewrite a just-saved BMP as PNG next to it and return the new path.
+ *
+ * `image/bmp` is readable but not *sendable*: the model APIs take jpeg / png /
+ * gif / webp only, so a BMP handed upstream is a read that looks successful and
+ * then fails. Claude Code rewrites the bytes it just read (`bin@323223290`:
+ * `if(l.length>=2&&l[0]===66&&l[1]===77)l=await(await UX())(l).png().toBuffer()`)
+ * and reports PNG from then on; this does the same via the SDK helper, which owns
+ * the magic-byte test and the codec access.
+ *
+ * Returns `undefined` — keeping the `.bmp` — when the bytes are not BMP, the BMP
+ * variant is unsupported, no image codec is installed (normal in host processes),
+ * or the rewrite failed. Those are runtime states, not errors: the read still
+ * succeeded, the file on disk is honest about what it is, and the rejection now
+ * happens one layer down where it can be seen.
+ */
+async function replaceBmpWithPng(bmpPath: string): Promise<string | undefined> {
+  let png: Buffer | undefined;
+  try {
+    png = await transcodeBmpToPng(readFileSync(bmpPath));
+  } catch (error) {
+    console.warn("Failed to transcode clipboard BMP image:", error);
+    return undefined;
+  }
+
+  if (png === undefined) return undefined;
+
+  // Never resolve to the same path: writing the PNG over the source and then
+  // unlinking it would delete the only copy.
+  const pngPath = `${bmpPath.replace(/\.bmp$/i, "")}.png`;
+  try {
+    writeFileSync(pngPath, png);
+  } catch (error) {
+    console.warn("Failed to write transcoded clipboard image:", error);
+    return undefined;
+  }
+
+  // Callers only ever clean up the path they get back, so the BMP has to go here
+  // or every BMP paste leaks one temp file.
+  try {
+    unlinkSync(bmpPath);
+  } catch {
+    // Best effort: a stray temp file is not worth failing the paste over.
+  }
+
+  return pngPath;
+}
+
+/**
  * Read clipboard image on Linux
  */
 async function readClipboardImageLinux(): Promise<ClipboardImageResult> {
@@ -354,6 +412,17 @@ async function readClipboardImageLinux(): Promise<ClipboardImageResult> {
         success: false,
         error: "Failed to save clipboard image to temporary file",
       };
+    }
+
+    if (mimeType === LINUX_BMP_TARGET) {
+      const pngPath = await replaceBmpWithPng(tempFilePath);
+      if (pngPath !== undefined) {
+        return {
+          success: true,
+          imagePath: pngPath,
+          mimeType: LINUX_PNG_TARGET,
+        };
+      }
     }
 
     return { success: true, imagePath: tempFilePath, mimeType };

@@ -62,8 +62,23 @@ export interface SharpImage {
   toBuffer(): Promise<Buffer>;
 }
 
+/**
+ * Raw-pixel input. The prebuilt libvips has no BMP loader (see
+ * `utils/bmpTranscode.ts`), so a clipboard BMP reaches the encoder as pixels
+ * instead of bytes — that is the only reason this option exists.
+ */
+export interface SharpRawInput {
+  width: number;
+  height: number;
+  channels: 3 | 4;
+}
+
+export interface SharpInputOptions {
+  raw?: SharpRawInput;
+}
+
 export interface SharpFactory {
-  (input: Buffer): SharpImage;
+  (input: Buffer, options?: SharpInputOptions): SharpImage;
   /** Populated at require time; `vips` doubles as a "the native side loaded" check. */
   versions?: { vips?: string };
 }
