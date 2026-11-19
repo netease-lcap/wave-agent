@@ -16,6 +16,8 @@ import {
   BASH_TOOL_NAME,
   POWERSHELL_TOOL_NAME,
 } from "../../src/constants/tools.js";
+import { parsePowerShellCommand } from "../../src/utils/powershellStructure/psParser.js";
+import type { ParsedPowerShellCommand } from "../../src/utils/powershellStructure/types.js";
 
 vi.mock("../../src/utils/globalLogger.js", () => ({
   logger: {
@@ -25,6 +27,35 @@ vi.mock("../../src/utils/globalLogger.js", () => ({
     error: vi.fn(),
   },
 }));
+
+/**
+ * The real parser spawns `pwsh`, so a unit test must not depend on whether the
+ * runner has one. The default is a failed parse — the engine's fail-closed
+ * "ask", which is how a fake PowerShell context is judged anyway — and the
+ * persistence cases below install the parse they need.
+ */
+vi.mock(
+  "../../src/utils/powershellStructure/psParser.js",
+  async (importOriginal) => {
+    const actual =
+      await importOriginal<
+        typeof import("../../src/utils/powershellStructure/psParser.js")
+      >();
+    return {
+      ...actual,
+      parsePowerShellCommand: vi.fn(
+        async (command: string): Promise<ParsedPowerShellCommand> => ({
+          valid: false,
+          errors: [{ errorId: "NoPowerShell", message: "stubbed in tests" }],
+          statements: [],
+          variables: [],
+          hasStopParsing: false,
+          originalCommand: command,
+        }),
+      ),
+    };
+  },
+);
 
 const WORKDIR = "/fake/project";
 
@@ -191,13 +222,44 @@ describe("PermissionManager - shell kind dispatch", () => {
       );
     });
 
-    it("keeps a PowerShell rule on the whole command", async () => {
-      // Bash would split `Get-ChildItem -Recurse .` and derive a wildcard from
-      // its prefix. PowerShell has no expander yet, so the rule stays exact.
+    it("expands a PowerShell rule through its own parser, not bash", async () => {
+      // Bash would derive the wildcard `Bash(Get-ChildItem*)` from this text.
+      // PowerShell has no prefix rule: the leaf text *is* the rule, and a
+      // pipeline yields one rule per leaf (a rule carrying `|` matches no leaf,
+      // see `permissionManager.powershell.test.ts`).
+      vi.mocked(parsePowerShellCommand).mockResolvedValueOnce({
+        valid: true,
+        errors: [],
+        statements: [
+          {
+            statementType: "PipelineAst",
+            commands: [
+              {
+                name: "Get-ChildItem",
+                nameType: "cmdlet",
+                elementType: "CommandAst",
+                args: ["-Recurse", "."],
+                text: "Get-ChildItem -Recurse .",
+                elementTypes: [
+                  "StringConstant",
+                  "StringConstant",
+                  "StringConstant",
+                ],
+              },
+            ],
+            redirections: [],
+            text: "Get-ChildItem -Recurse .",
+          },
+        ],
+        variables: [],
+        hasStopParsing: false,
+        originalCommand: "Get-ChildItem -Recurse .",
+      });
       const { manager: fresh, configurationService } = createManager();
 
       await fresh.addPermissionRule("PowerShell(Get-ChildItem -Recurse .)");
 
+      expect(configurationService.addAllowedRule).toHaveBeenCalledTimes(1);
       expect(configurationService.addAllowedRule).toHaveBeenCalledWith(
         WORKDIR,
         "PowerShell(Get-ChildItem -Recurse .)",

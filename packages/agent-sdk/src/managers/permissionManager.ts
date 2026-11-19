@@ -55,6 +55,10 @@ import {
 import type { BashLeaf } from "../utils/bashStructure/index.js";
 import { analyzeShellCommand } from "../utils/shell/shellCommandAnalysis.js";
 import { evaluatePowerShellCommand } from "../tools/powershellTool/permissions.js";
+import {
+  collectCommands,
+  parsePowerShellCommand,
+} from "../utils/powershellStructure/index.js";
 import type { ShellType } from "../utils/shell/shellProvider.js";
 import { isPathInside } from "../utils/pathSafety.js";
 import { toWindowsPath } from "../utils/path.js";
@@ -1856,23 +1860,18 @@ export class PermissionManager {
    * @returns Array of permission rules in "Bash(cmd)" format
    */
   public expandBashRule(command: string, workdir: string): string[] {
-    return this.expandShellRule(BASH_TOOL_NAME, command, workdir);
+    return this.expandBashShellRule(command, workdir);
   }
 
   /**
-   * Expand a shell command into the permission rules to persist under
-   * [toolName]. Bash carries the structural expansion below; PowerShell keeps
-   * the whole command until its own expander lands, so a `PowerShell(…)` rule
-   * is never a wildcard it did not earn.
+   * Expand a bash command into the permission rules to persist, one per part.
+   *
+   * PowerShell does not share this path: its rules are expanded per leaf in
+   * [`expandPowerShellRule`], which needs the (async) PowerShell parser, so
+   * `addPermissionRule` dispatches by shell kind.
    */
-  private expandShellRule(
-    toolName: ShellToolName,
-    command: string,
-    workdir: string,
-  ): string[] {
-    if (shellKindOfTool(toolName) !== "bash") {
-      return [`${toolName}(${command})`];
-    }
+  private expandBashShellRule(command: string, workdir: string): string[] {
+    const toolName = BASH_TOOL_NAME;
 
     // Expand compound commands structurally when possible so control-structure
     // keywords (do/done/then/…) never leak into persisted rules. Constructs the
@@ -1922,6 +1921,48 @@ export class PermissionManager {
   }
 
   /**
+   * Expand a PowerShell command into the permission rules to persist: one
+   * `PowerShell(<leaf>)` rule per leaf command.
+   *
+   * A PowerShell rule is matched **per leaf** (`evaluatePowerShellCommand`'s
+   * `leaves.every(...)`), so a rule carrying the whole command text can never
+   * cover a compound command: `PowerShell(Get-ChildItem | Select-Object -First 3)`
+   * equals no leaf, and the next identical run asks again. The leaves come from
+   * the same collection the gate read — `collectCommands(...)` filtered to
+   * `CommandAst` — so every rule written here was already looked at by
+   * `BLOCK_PERSIST`.
+   *
+   * No dangerous-leaf skip, unlike the bash branch above. Bash expands text its
+   * splitter hands back, so it re-checks each part; here the option only appears
+   * when *every* leaf is persistable, and a command with one `BLOCK_PERSIST`
+   * leaf never gets this far. The two ways around that gate — `respond --rule`
+   * and a hand-edited `settings.local.json` — write what the caller asked for.
+   */
+  private async expandPowerShellRule(
+    toolName: ShellToolName,
+    command: string,
+  ): Promise<string[]> {
+    const parsed = await parsePowerShellCommand(command);
+    if (!parsed.valid) {
+      // Unreachable by construction: an unparsable command is asked about with
+      // `hidePersistentOption: true` (`permissions.ts`, reason "unparsable"),
+      // and the parse is memoized, so this second call sees the very verdict the
+      // gate saw. Persisting the whole text would write a rule that matches no
+      // leaf — the bug this expansion exists to fix — so write nothing.
+      this._logger?.debug(
+        "No PowerShell rule persisted for an unparsable command",
+        { command },
+      );
+      return [];
+    }
+
+    const leaves = collectCommands(parsed).filter(
+      (leaf) => leaf.elementType === "CommandAst",
+    );
+    return leaves.map((leaf) => `${toolName}(${leaf.text})`);
+  }
+
+  /**
    * Add a persistent permission rule
    * @param rule - The rule to add (e.g., "Bash(ls)")
    */
@@ -1931,15 +1972,18 @@ export class PermissionManager {
       throw new Error("Working directory not set in PermissionManager");
     }
 
-    // 1. Expand the rule if it names a shell tool (`Bash(cmd)`, `PowerShell(cmd)`)
+    // 1. Expand the rule if it names a shell tool (`Bash(cmd)`, `PowerShell(cmd)`).
+    //    Each shell expands by its own structure: bash textually, PowerShell once
+    //    per leaf (see `expandPowerShellRule`).
     let rulesToAdd = [rule];
     const shellRuleMatch = rule.match(/^([\w.:-]+)\((.*)\)$/);
     if (shellRuleMatch && isShellToolName(shellRuleMatch[1])) {
-      rulesToAdd = this.expandShellRule(
-        shellRuleMatch[1],
-        shellRuleMatch[2],
-        workdir,
-      );
+      const shellTool = shellRuleMatch[1];
+      const shellCommand = shellRuleMatch[2];
+      rulesToAdd =
+        shellKindOfTool(shellTool) === "bash"
+          ? this.expandBashShellRule(shellCommand, workdir)
+          : await this.expandPowerShellRule(shellTool, shellCommand);
     }
 
     const configurationService = this.container.get<ConfigurationService>(
