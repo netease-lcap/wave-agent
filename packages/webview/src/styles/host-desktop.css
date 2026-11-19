@@ -5553,9 +5553,12 @@
    原生 `<select>` 的弹层由系统/Chromium 绘制，位置与尺寸都无法由 CSS 控制，故桌面端
    换成自绘 listbox（插件端保留原生 select，见该组件的宿主分叉）。
 
-   几何三则由组件给（`position: fixed` + 触发器 rect 内联样式，卡片
-   `.settings-card{overflow:hidden}` 会裁掉 absolute 弹层）：
-   `top = 触发器下缘 + 2`、`right = 视口右 − 触发器右缘`、`width = 触发器宽`。
+   几何由 `utils/anchoredMenu.ts` 的 `useAnchoredMenuStyle` 算好、以内联样式落到这里
+   （`position: fixed` + 触发器 rect，卡片 `.settings-card{overflow:hidden}` 会裁掉
+   absolute 弹层）：横向右对齐并夹进视口（左右各留 8px）、`width = 触发器宽`；纵向
+   **下方放得下就贴下缘 +2px（`SELECT_MENU_ANCHOR_GAP`），放不下就整个翻到选择器
+   上方，上下都放不下才收 `maxHeight` 让列表内部滚动**——与侧栏会话菜单同一个摆放器，
+   只是缝隙按族取 2px（菜单族是 4px）。
 
    观感取本文件弹层家族同一组值（浅色 白面/#EBEEF5 边/r12/`0 0 12px 12%` 柔影、
    项 28px/r6/14px/400 + hover #EEF0F3、选中走 pressed #E7E9ED；深色
