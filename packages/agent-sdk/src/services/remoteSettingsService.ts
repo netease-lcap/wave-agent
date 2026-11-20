@@ -438,6 +438,13 @@ export function mergeRemoteSettings(
     };
   if (remote.enableArtifact !== undefined)
     result.enableArtifact = remote.enableArtifact;
+  // The REPL switches, both spellings: the managed layer is the authority here
+  // (spec core/repl-tool.md「启用开关与回退」场景 3), and it names whichever key
+  // its version knows — `execAvailability` applies the same per-layer precedence
+  // to the keys as they arrive.
+  if (remote.enableRepl !== undefined) result.enableRepl = remote.enableRepl;
+  if (remote.enableReplCoreTools !== undefined)
+    result.enableReplCoreTools = remote.enableReplCoreTools;
   if (remote.enableExec !== undefined) result.enableExec = remote.enableExec;
   if (remote.enableKnowledgeBase !== undefined)
     result.enableKnowledgeBase = remote.enableKnowledgeBase;

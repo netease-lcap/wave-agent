@@ -299,7 +299,7 @@ Hook 需要访问完整的对话历史以做出上下文感知的决策。Hook �
 
 作为 hook 作者，我希望 PreToolUse / PostToolUse 喂回模型的那两条文本与 Claude Code 逐字同形，以便我在 Claude Code 里写的 hook（及它自己的文档）搬到 wave 时行为一致，不需要重新推理一遍"这里会看到什么"。
 
-**为什么是这个优先级**：不是核心能力，但"同形"是可持续的前提——工具事件是 hooks 里唯一模型可见的输出，两端文案一旦漂移，按 Claude Code 文档写的预期就落空。它也决定了嵌套调用该喂什么文本（见 `exec-tool.md` 的嵌套 hook 故事），所以必须先钉死这一份模板。
+**为什么是这个优先级**：不是核心能力，但"同形"是可持续的前提——工具事件是 hooks 里唯一模型可见的输出，两端文案一旦漂移，按 Claude Code 文档写的预期就落空。它也决定了嵌套调用该喂什么文本（见 `repl-tool.md` 的嵌套 hook 故事），所以必须先钉死这一份模板。
 
 **独立测试**：让 PreToolUse / PostToolUse hook 分别以 exit 2 退出，断言模型侧文本逐字等于模板（含 `PreToolUse:<工具名>` / `PostToolUse:<工具名>` 前缀与命令原文）；再断言 exit ≠ 0、2 的 stderr 与 exit 0 的 stdout 都不进模型。
 
@@ -585,7 +585,7 @@ Hook 需要访问完整的对话历史以做出上下文感知的决策。Hook �
 - **Claude Code 的另外两个 hook 输出通道做不做？** 本次不做：`updatedToolOutput` / `updatedMCPToolOutput`（改写工具结果）、`PreToolUse` 的 `updatedInput`（改写入参）。它们要改写**既有事实**（已经发生的工具结果、模型已经发出的入参），不是新增一段文本，各自需要单独定安全语义，不裹进这次对齐。
 - **`asyncRewake` 的唤醒投给哪个会话？** 投给发起该 hook 的那个会话（按 sessionId 归属），不跨会话投递；该会话已关闭或已被销毁时丢弃并记日志，不新建会话。
 - **`asyncRewake` 唤醒会不会与用户正在进行的操作冲突？** 不会覆盖或抢占：会话空闲时它开启新回合，忙碌时它作为排队消息注入，与普通排队消息同序处理；它不改变用户的权限模式，也不跳过任何权限确认。
-- **Exec 沙箱内嵌套调用的 hook 归谁管？** 工具事件的 hook 语义只有这一份（本文件），"嵌套调用也要触发"是执行路径的事，写在 `docs/specs/core/exec-tool.md`；两处不得各自定义一套 hook 行为。
+- **Exec 沙箱内嵌套调用的 hook 归谁管？** 工具事件的 hook 语义只有这一份（本文件），"嵌套调用也要触发"是执行路径的事，写在 `docs/specs/core/repl-tool.md`；两处不得各自定义一套 hook 行为。
 
 ### 测试验证需求
 

@@ -1008,9 +1008,44 @@ export class MessageManager {
     }
   }
 
+  /**
+   * Whether an update would move an already-finished tool block backwards.
+   *
+   * A tool block's stage only ever moves forward (`start` → `streaming` →
+   * `running` → `end`), because a block id belongs to exactly one tool call. The
+   * one writer that cannot see that is `ToolContext.onShortResultUpdate`: it asks
+   * for `stage: "running"` unconditionally, and a background REPL script keeps
+   * calling it after the caller already holds the `(dispatched #N)` receipt and
+   * its block is closed. `updateToolBlockInMessage` merges field by field and so
+   * does every renderer behind `onToolBlockUpdated` (webview
+   * `chatReducer.ts` `UPDATE_TOOL_BLOCK`, CLI `applyToolBlockUpdate`), so one late
+   * update does not refresh the row — it re-opens a finished one and leaves it
+   * spinning in the transcript as well as on screen.
+   *
+   * `end` is therefore terminal: a later update that names another stage is
+   * dropped whole, since the fields it carries describe a moment the block has
+   * already moved past.
+   */
+  private reopensFinishedToolBlock(
+    params: AgentToolBlockUpdateParams,
+  ): boolean {
+    if (params.stage === undefined || params.stage === "end") return false;
+    for (let index = this.messages.length - 1; index >= 0; index -= 1) {
+      const blocks = this.messages[index].blocks;
+      for (let at = blocks.length - 1; at >= 0; at -= 1) {
+        const block = blocks[at];
+        if (block.type === "tool" && block.id === params.id) {
+          return block.stage === "end";
+        }
+      }
+    }
+    return false;
+  }
+
   public updateToolBlock(params: AgentToolBlockUpdateParams): void {
     // Finalize any streaming text/reasoning blocks before adding/updating a tool block
     this.finalizeStreamingBlocks();
+    if (this.reopensFinishedToolBlock(params)) return;
     const { messages: newMessages, messageId: resolvedMessageId } =
       updateToolBlockInMessage({
         messages: this.messages,

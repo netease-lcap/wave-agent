@@ -1,11 +1,12 @@
 import { describe, it, expect } from "vitest";
 import {
   buildExecPool,
+  describeTool,
+  listToolNames,
   renderSearchCallForm,
   renderSearchSignature,
   renderToolSignature,
-  resolveSearchArgs,
-  searchPool,
+  searchTools,
 } from "../../src/exec/catalog.js";
 import type { ExecPoolEntry } from "../../src/exec/catalog.js";
 import {
@@ -34,11 +35,10 @@ function nestedSchema(levels: number): Record<string, unknown> {
 /** The names of a search's hits, in the order it returned them. */
 function hitNames(
   pool: readonly ExecPoolEntry[],
-  args: Record<string, unknown>,
+  query: string,
+  max?: number,
 ): string[] {
-  return searchPool(pool, resolveSearchArgs(args)).matches.map(
-    (hit) => hit.name,
-  );
+  return searchTools(pool, query, max).map((hit) => hit.name);
 }
 
 describe("buildExecPool", () => {
@@ -117,6 +117,19 @@ describe("buildExecPool", () => {
     expect(pooled).toEqual({ name: "WebFetch" });
   });
 
+  it("copies the announcement tier the deferral judgment assigned", () => {
+    // The announcement splits on `tier`; re-deriving it there is how the two would
+    // eventually disagree about which tools get an inline signature.
+    const pool = buildExecPool(
+      [
+        { name: "Read", defer: true, tier: "core" },
+        { name: "WebFetch", defer: true },
+      ],
+      none,
+    );
+    expect(pool.map((each) => each.tier)).toEqual(["core", undefined]);
+  });
+
   it("carries each tool's declared output schema for the signature", () => {
     const outputSchema = {
       type: "object",
@@ -154,6 +167,51 @@ describe("buildExecPool", () => {
         new Set([EXEC_SEARCH_NAME]),
       ),
     ).toEqual([]);
+  });
+
+  it("takes the background lane away from a shell tool it pools", () => {
+    // The pool is the sync lane by construction — every call in it answers inside
+    // the fixed wait window, and the async lane is `Poll`'s. Leaving
+    // `run_in_background` declared would describe a parameter the pooled lane
+    // cannot honour, so the pooled schema loses it (Claude Code does the same).
+    const shellSchema = () => ({
+      type: "object",
+      properties: {
+        command: { type: "string" },
+        run_in_background: { type: "boolean" },
+      },
+      required: ["command", "run_in_background"],
+    });
+
+    for (const name of ["Bash", "PowerShell"]) {
+      const [pooled] = buildExecPool(
+        [{ name, inputSchema: shellSchema() }],
+        none,
+        true,
+      );
+      expect(pooled.inputSchema).toEqual({
+        type: "object",
+        properties: { command: { type: "string" } },
+        required: ["command"],
+      });
+    }
+
+    // Pooled only because it claimed defer, with the core switch off: `Bash` is
+    // still reachable flat as well, so its declaration keeps the parameter.
+    const [byClaim] = buildExecPool(
+      [{ name: "Bash", inputSchema: shellSchema(), defer: true }],
+      none,
+    );
+    expect(byClaim.inputSchema).toHaveProperty("properties.run_in_background");
+
+    // A core tool that is not a shell is copied as declared.
+    const readSchema = { type: "object", properties: { path: {} } };
+    const [read] = buildExecPool(
+      [{ name: "Read", inputSchema: readSchema }],
+      none,
+      true,
+    );
+    expect(read.inputSchema).toEqual(readSchema);
   });
 });
 
@@ -454,142 +512,136 @@ describe("renderToolSignature", () => {
     expect(line).not.toContain("Ends */");
   });
 });
-
 describe("search entry", () => {
-  it("renders its signature and its one-line call form from the same schema", () => {
-    // The sandbox entry point is documented in two places with different room: the
-    // multi-line signature in the Exec description and the one-line form in error
-    // messages. Both come from one schema, so they cannot disagree.
+  it("renders the positional signature the sandbox entry point takes", () => {
+    // One form for the prose, the error text and the host: the bare global, a
+    // positional query with an optional cap, returning the hits themselves.
     const signature = renderSearchSignature();
-    expect(signature.split("\n")[0]).toBe(`tools.${EXEC_SEARCH_NAME}({`);
-    expect(signature).toContain("  query?: string,");
-    // JSON Schema's `integer` renders as `number`: TypeScript has no such type, and
-    // a signature must be copyable as written.
-    expect(signature).toContain("  max_results?: number,");
-    // The return type is the object a hit comes back in, not an array of hits:
-    // `total` is what tells a capped result from a small pool.
-    expect(signature).toContain("  matches: Array<{");
-    expect(signature).toContain("  total: number,");
-    expect(renderSearchCallForm()).toBe(
-      `tools.${EXEC_SEARCH_NAME}({ query: "...", max_results: 0 })`,
+    expect(signature.split("\n")[0]).toBe(
+      "searchTools(query: string, max?: number): Promise<Array<{",
     );
+    expect(signature).toContain("name: string,");
+    expect(signature).toContain("about: string,");
+    expect(signature).toContain("input: string,");
+    // Three fields, nothing else: no return type (that is `describeTool`'s job) and
+    // no `total` (that is the separate `ToolSearch` tool's result shape).
+    expect(signature).not.toContain("total");
+    expect(signature).not.toContain("Promise<Promise");
+    expect(renderSearchCallForm()).toBe(`searchTools("...")`);
   });
 
-  it("advertises exactly the arguments the validator accepts", () => {
-    // Only the parameter block: the return type's fields are addresses into a
-    // result, not arguments, and reading them as arguments would make this test
-    // assert its own drift rather than catch it.
-    const signature = renderSearchSignature();
-    const block = signature.slice(0, signature.indexOf("}): ") + 1);
-    const advertised = block
-      .split("\n")
-      .map((line) => /^\s*([A-Za-z_$][\w$]*)\??:/.exec(line)?.[1])
-      .filter((key): key is string => key !== undefined);
-
-    expect(advertised).toEqual(["query", "max_results"]);
-    // The form taught to the model, fed straight back in: drift between the prose
-    // and the host is what this catches.
-    expect(() =>
-      resolveSearchArgs({ query: "...", max_results: 0 }),
-    ).not.toThrow();
-  });
-
-  it("rejects an argument the schema does not declare instead of searching", () => {
-    // `{ q: "..." }` used to read as "no query" and answer with the whole pool,
-    // dressing a typo up as a successful search.
-    expect(() => resolveSearchArgs({ q: "sum" })).toThrow(
-      `${EXEC_SEARCH_NAME}() does not take "q". Expected ${renderSearchCallForm()}`,
-    );
-  });
-
-  it("rejects a non-string query", () => {
-    expect(() => resolveSearchArgs({ query: 42 })).toThrow(
-      `${EXEC_SEARCH_NAME}() expects "query" to be a string, got number. Expected ${renderSearchCallForm()}`,
-    );
-  });
-
-  it("rejects a non-numeric max_results", () => {
-    expect(() => resolveSearchArgs({ query: "a", max_results: "3" })).toThrow(
-      `${EXEC_SEARCH_NAME}() expects "max_results" to be a number, got string.`,
-    );
-  });
-
-  it("trims and lower-cases the query, and treats an omission as empty", () => {
-    expect(resolveSearchArgs({ query: "  Sum  " }).query).toBe("sum");
-    expect(resolveSearchArgs({ query: "" }).query).toBe("");
-    expect(resolveSearchArgs({}).query).toBe("");
-  });
-
-  it("defaults the result cap and clamps what the caller asks for", () => {
-    expect(resolveSearchArgs({}).maxResults).toBe(
-      EXEC_SEARCH_DEFAULT_MAX_RESULTS,
-    );
-    // The limit is the model's to set, so without a ceiling one call could dump the
-    // whole pool into the context.
-    expect(resolveSearchArgs({ max_results: 1000 }).maxResults).toBe(
-      EXEC_SEARCH_MAX_RESULTS_LIMIT,
-    );
-    expect(resolveSearchArgs({ max_results: 0 }).maxResults).toBe(1);
-    expect(resolveSearchArgs({ max_results: -5 }).maxResults).toBe(1);
-    expect(resolveSearchArgs({ max_results: 2.7 }).maxResults).toBe(2);
-  });
-
-  it("reads `select:` as a list of exact names, not as a keyword", () => {
-    expect(resolveSearchArgs({ query: "select: Read, Write" })).toEqual({
-      query: "",
-      select: ["Read", "Write"],
-      maxResults: EXEC_SEARCH_DEFAULT_MAX_RESULTS,
-    });
-    // An empty entry is dropped rather than turned into a name.
-    expect(resolveSearchArgs({ query: "select:,Read," }).select).toEqual([
-      "Read",
-    ]);
+  it("fits model-visible text: no three-digit numbers sneak in", () => {
+    // The description the signature is pasted into must stay free of budgets.
+    expect(renderSearchSignature()).not.toMatch(/\b\d{3,}\b/);
   });
 });
 
-describe("searchPool", () => {
-  const pool = [
-    entry("mcp__srv__read_file", { isMcp: true, description: "Read a file" }),
-    entry("mcp__srv__write_file", { isMcp: true, description: "Write a file" }),
-    entry("WebFetch", {
-      description: "Fetch a URL",
-      searchHint: "fetch a url",
-    }),
-  ];
+describe("searchTools", () => {
+  /** `count` tools sharing one name segment, so a query can match all of them. */
+  function manyNames(count: number): ExecPoolEntry[] {
+    return Array.from({ length: count }, (_, index) =>
+      entry(`alpha_${String(index).padStart(2, "0")}`, {
+        description: "a tool",
+      }),
+    );
+  }
 
-  it("returns every match for an empty query, capped", () => {
-    const result = searchPool(pool, resolveSearchArgs({}));
-    expect(result.matches).toHaveLength(3);
-    expect(result.total).toBe(3);
+  it("defaults to 8 hits", () => {
+    expect(hitNames(manyNames(40), "alpha")).toHaveLength(8);
+    expect(EXEC_SEARCH_DEFAULT_MAX_RESULTS).toBe(8);
   });
 
-  it("matches name, hint and description case-insensitively", () => {
-    expect(hitNames(pool, { query: "WRITE" })).toEqual([
-      "mcp__srv__write_file",
+  it("takes a positive integer cap and honours it", () => {
+    expect(hitNames(manyNames(40), "alpha", 3)).toHaveLength(3);
+  });
+
+  it("never returns more than 25, whatever the caller asks for", () => {
+    // The limit is the model's to set, so without a ceiling one call could dump the
+    // whole pool into the context.
+    expect(hitNames(manyNames(40), "alpha", 26)).toHaveLength(25);
+    expect(hitNames(manyNames(40), "alpha", 1_000)).toHaveLength(25);
+    expect(EXEC_SEARCH_MAX_RESULTS_LIMIT).toBe(25);
+  });
+
+  it("treats a cap that is not a positive integer as absent", () => {
+    expect(hitNames(manyNames(20), "alpha", 0)).toHaveLength(8);
+    expect(hitNames(manyNames(20), "alpha", -3)).toHaveLength(8);
+    expect(hitNames(manyNames(20), "alpha", 2.7)).toHaveLength(8);
+  });
+
+  it("refuses an empty or non-string query instead of dumping the pool", () => {
+    // "Here is everything" dresses a typo up as a successful search, and the model
+    // has no way to tell the two apart.
+    const usage =
+      "searchTools: pass the words to look for, e.g. searchTools('slack message')";
+    expect(() => searchTools(manyNames(3), "")).toThrow(usage);
+    expect(() => searchTools(manyNames(3), "   ")).toThrow(usage);
+    expect(() => searchTools(manyNames(3), 42 as unknown as string)).toThrow(
+      usage,
+    );
+  });
+
+  it("short-circuits an exact name: that one tool, first and only", () => {
+    // The model read the name in the announcement; fuzzy neighbours would only
+    // dilute the answer it asked for.
+    const pool = [
+      entry("slack", { description: "Send a Slack message" }),
+      entry("slack_post_message", { description: "Post to a Slack channel" }),
+      entry("mcp__slack__list", { isMcp: true }),
+    ];
+    expect(hitNames(pool, "SLACK")).toEqual(["slack"]);
+    expect(hitNames(pool, " slack ")).toEqual(["slack"]);
+  });
+
+  it("matches an `mcp__` query as a name prefix", () => {
+    const pool = [
+      entry("mcp__slack__post_message", { isMcp: true }),
+      entry("mcp__slack__list_channels", { isMcp: true }),
+      entry("mcp__github__create_issue", { isMcp: true }),
+      entry("SlackPost", { description: "not an mcp tool" }),
+    ];
+    expect(hitNames(pool, "mcp__slack__")).toEqual([
+      "mcp__slack__list_channels",
+      "mcp__slack__post_message",
     ]);
-    expect(hitNames(pool, { query: "fetch" })).toEqual(["WebFetch"]);
-    expect(hitNames(pool, { query: "a file" })).toEqual([
-      "mcp__srv__read_file",
-      "mcp__srv__write_file",
+    expect(hitNames(pool, "MCP__GITHUB__")).toEqual([
+      "mcp__github__create_issue",
     ]);
   });
 
-  it("requires every keyword to match somewhere", () => {
-    // Otherwise "write file" would return everything that mentions either word, and
-    // the model would have to read the hits to find out which one it asked for.
-    expect(hitNames(pool, { query: "write nonexistent" })).toEqual([]);
+  it("requires every `+term` to match, and only scores the rest", () => {
+    const pool = [
+      entry("mcp__slack__post_message", {
+        isMcp: true,
+        description: "Send a message to a channel",
+      }),
+      entry("slack_upload", { description: "Upload a file to Slack" }),
+      entry("message_search", { description: "Search messages" }),
+    ];
+    // `+slack +message`: both words have to land somewhere in the same tool.
+    expect(hitNames(pool, "+slack +message")).toEqual([
+      "mcp__slack__post_message",
+    ]);
+    // The unprefixed query is a ranking rather than a filter: both name-word matches
+    // survive, and the MCP entry wins the same-tier tie-break.
+    expect(hitNames(pool, "message")).toEqual([
+      "mcp__slack__post_message",
+      "message_search",
+    ]);
   });
 
-  it("ranks an exact name above a name word, a substring, a hint and a description", () => {
-    const ranked = [
-      entry("git", { description: "nothing here" }),
+  it("ranks a name word above a substring, a hint and a description", () => {
+    // No entry is named exactly `git`, so this is the ranking and not the
+    // exact-name short-circuit: one whole name word, then a substring of a name,
+    // then the curated hint, then prose.
+    const pool = [
       entry("git_status", {}),
       entry("digit", {}),
       entry("hinted", { searchHint: "inspect git state" }),
       entry("described", { description: "runs git commands" }),
+      entry("irrelevant", { description: "unrelated" }),
     ];
-    expect(hitNames(ranked, { query: "git" })).toEqual([
-      "git",
+    expect(hitNames(pool, "git")).toEqual([
       "git_status",
       "digit",
       "hinted",
@@ -597,70 +649,261 @@ describe("searchPool", () => {
     ]);
   });
 
+  it("lets a multi-word query reach prose that separates the words", () => {
+    // The description is matched as a pattern, so "read file" finds a tool whose
+    // description says "Reads a file from disk" — the words are not adjacent there.
+    const pool = [
+      entry("Read", { description: "Reads a file from disk" }),
+      entry("Write", { description: "Writes a file to disk" }),
+    ];
+    expect(hitNames(pool, "read file")).toEqual(["Read"]);
+  });
+
+  it("weights an MCP tool above a built-in at the same tier", () => {
+    const pool = [
+      entry("post_message", {}),
+      entry("mcp__srv__post_message", { isMcp: true }),
+    ];
+    // The same two name words for both, so the MCP bonus decides the tie.
+    expect(hitNames(pool, "post message")).toEqual([
+      "mcp__srv__post_message",
+      "post_message",
+    ]);
+  });
+
   it("breaks a score tie by name, so the order never depends on the pool", () => {
     const tied = [entry("mcp__b__x"), entry("mcp__a__x")];
-    expect(hitNames(tied, { query: "x" })).toEqual(["mcp__a__x", "mcp__b__x"]);
-  });
-
-  it("reports the total before the cap, so a capped query does not look small", () => {
-    const many = Array.from({ length: 8 }, (_, i) => entry(`tool_${i}`));
-    const result = searchPool(many, resolveSearchArgs({ query: "tool" }));
-    expect(result.matches).toHaveLength(EXEC_SEARCH_DEFAULT_MAX_RESULTS);
-    expect(result.total).toBe(8);
-  });
-
-  it("honours max_results", () => {
-    const many = Array.from({ length: 8 }, (_, i) => entry(`tool_${i}`));
-    expect(
-      searchPool(many, resolveSearchArgs({ query: "tool", max_results: 3 }))
-        .matches,
-    ).toHaveLength(3);
+    expect(hitNames(tied, "x")).toEqual(["mcp__a__x", "mcp__b__x"]);
+    expect(hitNames([...tied].reverse(), "x")).toEqual([
+      "mcp__a__x",
+      "mcp__b__x",
+    ]);
   });
 
   it("returns nothing for a query that matches nothing, without throwing", () => {
-    const result = searchPool(pool, resolveSearchArgs({ query: "zzz" }));
-    expect(result.matches).toEqual([]);
-    expect(result.total).toBe(0);
+    expect(searchTools(manyNames(3), "zzz")).toEqual([]);
   });
 
-  it("answers select: with exactly the names named, in the order named", () => {
-    // Naming tools is not fuzzy matching: the order is the caller's, the cap does
-    // not apply, and nothing else comes along.
-    const result = searchPool(
-      pool,
-      resolveSearchArgs({ query: "select:WebFetch,mcp__srv__read_file" }),
+  it("returns hits with exactly three fields and no total", () => {
+    // `total` belongs to the separate `ToolSearch` tool's result shape, not to the
+    // sandbox global: a capped list is not a count of matches.
+    const [hit] = searchTools(manyNames(3), "alpha");
+    expect(Object.keys(hit).sort()).toEqual(["about", "input", "name"]);
+    expect(searchTools(manyNames(3), "alpha")).not.toHaveProperty("total");
+  });
+
+  it("returns the argument type as `input`, and no return type", () => {
+    const [hit] = searchTools(
+      [
+        entry("reader", {
+          inputSchema: {
+            type: "object",
+            properties: { path: { type: "string" } },
+            required: ["path"],
+          },
+          outputSchema: {
+            type: "object",
+            properties: { content: { type: "string" } },
+          },
+        }),
+      ],
+      "reader",
     );
-    expect(result.matches.map((hit) => hit.name)).toEqual([
-      "WebFetch",
-      "mcp__srv__read_file",
-    ]);
-    expect(result.total).toBe(2);
+
+    expect(hit.input).toBe(["{", "  path: string,", "}"].join("\n"));
+    // The return type is reachable through `describeTool`; a hit is not a schema dump.
+    expect(hit.input).not.toContain("Promise");
+    expect(hit.input).not.toContain("content");
   });
 
-  it("matches select: names case-insensitively and drops the ones that do not exist", () => {
-    expect(hitNames(pool, { query: "select:webfetch,Nope" })).toEqual([
-      "WebFetch",
-    ]);
+  it("cuts `about` to 160 characters and keeps the tool's own words", () => {
+    const [hit] = searchTools(
+      [entry("verbose", { description: `${"word ".repeat(100)}tail` })],
+      "verbose",
+    );
+    expect(hit.about.length).toBe(160);
+    expect(hit.about.startsWith("word word")).toBe(true);
+    expect(hit.about.endsWith("…")).toBe(true);
   });
 
-  it("returns a selected name once even when it is named twice", () => {
-    expect(hitNames(pool, { query: "select:WebFetch,webfetch" })).toEqual([
-      "WebFetch",
-    ]);
-  });
-
-  it("hands back the same signature renderToolSignature produces", () => {
-    const [hit] = searchPool(
-      pool,
-      resolveSearchArgs({ query: "webfetch" }),
-    ).matches;
-    expect(hit.signature).toBe(renderToolSignature(pool[2]));
-    expect(hit.description).toBe("Fetch a URL");
+  it("does not leak the curated searchHint into its answer", () => {
+    // The hint is for matching only: it never appears in the announcement, and a hit
+    // is the tool's own description.
+    const [hit] = searchTools(
+      [
+        entry("hidden", {
+          searchHint: "private phrase",
+          description: "public",
+        }),
+      ],
+      "private",
+    );
+    expect(hit?.name).toBe("hidden");
+    expect(hit.about).toBe("public");
+    expect(JSON.stringify(hit)).not.toContain("private phrase");
   });
 
   it("is a pure function of the pool and the query", () => {
-    const once = searchPool(pool, resolveSearchArgs({ query: "file" }));
-    const twice = searchPool(pool, resolveSearchArgs({ query: "file" }));
-    expect(once).toEqual(twice);
+    const pool = manyNames(5);
+    expect(searchTools(pool, "alpha")).toEqual(searchTools(pool, "alpha"));
+    expect(searchTools(pool, "alpha")).toEqual(
+      searchTools([...pool].reverse(), "alpha"),
+    );
+  });
+});
+
+describe("describeTool", () => {
+  /** `describeTool`, narrowed to the answer a pooled name gets. */
+  function descriptionOf(
+    pool: readonly ExecPoolEntry[],
+    name: string,
+  ): {
+    name: string;
+    description: string;
+    inputSchema: Record<string, unknown>;
+  } {
+    const answer = describeTool(pool, name);
+    if ("error" in answer) throw new Error(answer.error);
+    return answer;
+  }
+
+  it("returns the name, the description and the argument schema", () => {
+    const schema = {
+      type: "object",
+      properties: { path: { type: "string", description: "the file" } },
+      required: ["path"],
+    };
+    expect(
+      descriptionOf(
+        [entry("Read", { description: "Read a file", inputSchema: schema })],
+        "Read",
+      ),
+    ).toEqual({
+      name: "Read",
+      description: "Read a file",
+      // The tool's own JSON Schema, not a rendering of it: a caller can walk an
+      // object, and a string would be an answer it can only read.
+      inputSchema: schema,
+    });
+  });
+
+  it("answers an empty object for a tool that declares no schema", () => {
+    // One shape for `inputSchema` in every case: mixed object/string would force
+    // every caller to branch before it can read anything.
+    expect(descriptionOf([entry("bare")], "bare").inputSchema).toEqual({});
+  });
+
+  it("finds a name whatever its case, because search matching is case-insensitive", () => {
+    expect(describeTool([entry("WebFetch")], "webfetch")).toMatchObject({
+      name: "WebFetch",
+    });
+  });
+
+  it("reports a name outside the pool instead of throwing", () => {
+    const missing = describeTool([entry("Read")], "Nope");
+    expect(missing).toEqual({ error: expect.stringContaining('"Nope"') });
+  });
+
+  it("cuts the description at 4000 characters", () => {
+    const { description } = descriptionOf(
+      [entry("chatty", { description: "d".repeat(9_000) })],
+      "chatty",
+    );
+    expect(description.length).toBe(4_000);
+    expect(description.endsWith("…")).toBe(true);
+  });
+
+  /** `count` arguments, each with a description long enough to spend the budget. */
+  function describedSchema(count: number): Record<string, unknown> {
+    return {
+      type: "object",
+      properties: Object.fromEntries(
+        Array.from({ length: count }, (_, index) => [
+          `property_${index}`,
+          {
+            type: "string",
+            description: "a long enough field description to spend the budget",
+          },
+        ]),
+      ),
+    };
+  }
+
+  /** A schema with more arguments than any budget can carry in full. */
+  function hugeSchema(): Record<string, unknown> {
+    return {
+      type: "object",
+      properties: Object.fromEntries(
+        Array.from({ length: 400 }, (_, index) => [
+          `property_${index}`,
+          { type: "string", description: "a long enough field description" },
+        ]),
+      ),
+    };
+  }
+
+  it("spends the budget on prose first, and stays an object", () => {
+    const { inputSchema } = descriptionOf(
+      [entry("wide", { inputSchema: describedSchema(100) })],
+      "wide",
+    );
+    expect(JSON.stringify(inputSchema).length).toBeLessThanOrEqual(6_000);
+    const properties = inputSchema.properties as Record<
+      string,
+      Record<string, unknown>
+    >;
+    // Every argument survived, with its type; only its prose was dropped — the
+    // names and types are what the model cannot guess.
+    expect(Object.keys(properties)).toHaveLength(100);
+    expect(properties.property_0).toEqual({ type: "string" });
+    expect(inputSchema.$comment).toBeTypeOf("string");
+  });
+
+  it("keeps the argument names when even that does not fit", () => {
+    const { inputSchema } = descriptionOf(
+      [entry("huge", { inputSchema: hugeSchema() })],
+      "huge",
+    );
+    expect(typeof inputSchema).toBe("object");
+    const properties = inputSchema.properties as Record<string, unknown>;
+    expect(Object.keys(properties)).toHaveLength(400);
+    expect(inputSchema.type).toBe("object");
+    expect(inputSchema.$comment).toBeTypeOf("string");
+  });
+
+  it("never spends more than 15000 characters on inputs in one search", () => {
+    // Five oversized schemas, eight-hit budget: the per-hit cap alone would let a
+    // single search answer with 48000 characters.
+    const pool = Array.from({ length: 5 }, (_, index) =>
+      entry(`huge_${index}`, { inputSchema: hugeSchema() }),
+    );
+    const hits = searchTools(pool, "huge");
+
+    let remaining = 15_000;
+    for (const hit of hits) {
+      const noteOnly = hit.input.startsWith("\n// 这部分被省略了");
+      if (noteOnly) continue;
+      expect(hit.input.length).toBeLessThanOrEqual(Math.min(6_000, remaining));
+      remaining -= hit.input.length;
+    }
+    // Spending is complete, modulo the line-boundary cut: the last hits have no
+    // room left and say only where the full schema is.
+    expect(remaining).toBeLessThan(200);
+    expect(hits[hits.length - 1].input).toContain("这部分被省略了");
+  });
+});
+
+describe("listToolNames", () => {
+  it("returns every name in the pool, sorted", () => {
+    expect(
+      listToolNames([entry("WebFetch"), entry("Bash"), entry("mcp__a__b")]),
+    ).toEqual(["Bash", "WebFetch", "mcp__a__b"]);
+  });
+
+  it("is a function of the set, not of the order it arrived in", () => {
+    const names = ["Read", "Glob", "Grep"];
+    expect(listToolNames(names.map((name) => entry(name)))).toEqual(
+      [...names].sort(),
+    );
   });
 });

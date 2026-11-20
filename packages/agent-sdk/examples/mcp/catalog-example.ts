@@ -6,10 +6,10 @@ import { buildExecCatalogAnnouncement } from "../../src/exec/catalogAnnouncement
 import {
   renderSearchCallForm,
   renderSearchSignature,
-  resolveSearchArgs,
-  searchPool,
+  renderToolSignature,
+  searchTools,
 } from "../../src/exec/catalog.js";
-import type { ExecPoolEntry, ExecSearchHit } from "../../src/exec/catalog.js";
+import type { ExecPoolEntry } from "../../src/exec/catalog.js";
 import { execTool } from "../../src/tools/execTool.js";
 import {
   catalogAnnouncements,
@@ -21,15 +21,16 @@ import {
 
 /**
  * What the model actually reads about its on-demand tools, from a real connection:
- * the tail announcement `Exec` appends for that pool (names only), then the
- * signatures it pulls out of `search` when it is ready to call one.
+ * the tail announcement `REPL` appends for that pool (server names for the MCP half,
+ * names for the deferred built-ins), then the shapes it pulls out of `searchTools`
+ * when it is ready to call one.
  *
  * The announcement is built here the way the agent builds it each turn
  * (`buildExecCatalogAnnouncement` with no prior history) so its shape can be
  * asserted without spending a turn; the last section then reads the announcement a
  * real turn actually appended, which is also where the built-in half of the list
  * shows up (they are in the same set — this demo's MCP tools are just the readable
- * half of it). `Exec`'s own description is printed to show it stays pool-independent.
+ * half of it). `REPL`'s own description is printed to show it stays pool-independent.
  *
  * Run from `packages/agent-sdk`:
  *
@@ -82,15 +83,18 @@ function announcementFor(pool: ExecPoolEntry[]): string {
   );
 }
 
-/** One hit, fetched by exact name — the `select:` form, not a keyword guess. */
-function find(pool: ExecPoolEntry[], name: string): ExecSearchHit {
-  const { matches } = searchPool(
-    pool,
-    resolveSearchArgs({ query: `select:${name}` }),
-  );
-  const hit = matches.find((candidate) => candidate.name === name);
-  if (!hit) throw new Error(`search did not return "${name}"`);
-  return hit;
+/**
+ * One pooled entry, reached the way a script reaches it: an exact name handed to the
+ * search entry point. The hit is the confirmation; the entry is what carries the
+ * schema, so the signature below is rendered from the pool rather than from the
+ * bounded text the hit carries.
+ */
+function find(pool: ExecPoolEntry[], name: string): ExecPoolEntry {
+  const hit = searchTools(pool, name)[0];
+  if (hit?.name !== name) throw new Error(`search did not return "${name}"`);
+  const entry = pool.find((candidate) => candidate.name === name);
+  if (!entry) throw new Error(`the pool has no "${name}"`);
+  return entry;
 }
 
 /**
@@ -160,36 +164,29 @@ async function main(): Promise<void> {
     section(`the pool — ${pool.length} tools over 2 servers`);
     for (const entry of pool) console.log(`  ${entry.name}`);
 
-    // The deployed text: what the model is handed for this exact pool.
+    // The deployed text: what the model is handed for this exact pool. This
+    // reconstruction is MCP-only (see `flatten`), so the whole of it lands in tier 3.
     const note = announcementFor(pool);
-    const listed = note
-      .split("\n")
-      .filter((line) => line.startsWith("- `"))
-      .map((line) => line.slice(3, -1));
     check(note !== "", "no announcement was rendered for a non-empty pool");
     check(
       !(execTool.config.function.description ?? "").includes("mcp__"),
-      "the Exec description names a tool: it must stay independent of the pool",
+      "the REPL description names a tool: it must stay independent of the pool",
     );
 
-    section("the Exec description teaches the entry point its own shape");
-    // Every pool tool's shape is reachable *through* `ToolSearch`, which is why the
-    // announcement is a list of names and nothing more. `ToolSearch` is not in the
-    // pool, so its own shape has no other channel: left out of the description, the
-    // model can only guess a parameter name and wait for the error to correct it.
+    section("the REPL description teaches the entry point its own shape");
+    // Every pool tool's shape is reachable *through* `searchTools`, which is why the
+    // announcement never carries one. `searchTools` is not in the pool, so its own
+    // shape has no other channel: left out of the description, the model can only
+    // guess a parameter name and wait for the error to correct it.
     const description = execTool.config.function.description ?? "";
-    console.log(
-      description
-        .slice(
-          description.indexOf("- `tools."),
-          description.indexOf("- `console.log"),
-        )
-        .trimEnd(),
-    );
+    const from = description.indexOf("- `await tools.");
+    const to = description.indexOf("- `self.log(");
+    if (from >= 0 && to > from)
+      console.log(description.slice(from, to).trimEnd());
     // Indented under its bullet, so this is the signature's own bytes plus two spaces.
     check(
       description.replace(/^ {2}/gm, "").includes(renderSearchSignature()),
-      "the Exec description does not carry ToolSearch's own signature",
+      "the REPL description does not carry searchTools' own signature",
     );
     const lean =
       typeof execTool.leanPrompt === "string" ? execTool.leanPrompt : "";
@@ -199,26 +196,42 @@ async function main(): Promise<void> {
     );
     check(!/^- - /m.test(lean), "the lean prompt doubles its bullet marker");
 
-    section("the announcement — names, sorted, nothing else");
+    section("the announcement — servers, not their tools");
     console.log(note);
+    const serversInNote = [
+      ...new Set(pool.map((entry) => entry.name.split("__")[1])),
+    ];
     check(
-      listed.length === pool.length,
-      `listed ${listed.length} names for a pool of ${pool.length}`,
+      serversInNote.every((server) => note.includes(`\`${server}\``)),
+      "a connected server is missing from the announcement",
+    );
+    // A server can bring dozens of tools, so listing them would make the body grow
+    // with every connection made. The server name is the whole of what tier 3 owes.
+    check(
+      serversInNote.every((server) => !note.includes(`mcp__${server}__`)),
+      "the announcement lists MCP tools instead of their server",
+    );
+    check(
+      !note.includes("Also callable as"),
+      "an MCP-only pool produced a tier-2 line",
     );
     // Sorted, so the body — and the hash that decides whether to announce at all —
-    // is a function of the set of names rather than of connection order.
-    check(
-      listed.join("\n") === [...listed].sort().join("\n"),
-      "the names are not sorted, so connection order leaks into the body",
+    // is a function of the set of servers rather than of connection order.
+    const orderedServers = [...serversInNote].sort();
+    const positions = orderedServers.map((server) =>
+      note.indexOf(`\`${server}\``),
     );
     check(
-      listed.includes(`mcp__${BULK_SERVER}__bulk_step_23`),
-      "a tool of the second server is missing from the list",
+      positions.every(
+        (at, index) => at >= 0 && (index === 0 || at > positions[index - 1]),
+      ),
+      "the server names are not sorted, so connection order leaks into the body",
     );
 
     section("the announcement — no signature, no prose, no budget");
-    // The list is a set of names. Everything the model needs to *call* one lives in
-    // `search`, so a schema can appear in exactly one place.
+    // The body is a map of what is reachable. Everything the model needs to *call*
+    // one lives in search, `describeTool` and the signatures of tier 1, so a schema
+    // can appear in exactly one place.
     check(!note.includes("Promise<"), "the announcement carries a return type");
     check(!note.includes("inputSchema"), "the announcement carries a schema");
     check(
@@ -230,56 +243,58 @@ async function main(): Promise<void> {
       "the announcement carries a truncation notice or a budget number",
     );
     check(
-      note.includes("tools.ToolSearch"),
+      note.includes("searchTools"),
       "the announcement does not point at the search entry",
     );
 
     section("the signature channel — a non-identifier name, in bracket form");
     const deep = find(pool, `mcp__${CATALOG_SERVER}__deep_lookup`);
-    console.log(deep.signature);
+    const deepSignature = renderToolSignature(deep);
+    console.log(deepSignature);
     check(
-      deep.signature.startsWith('tools["mcp__catalog-demo__deep_lookup"]('),
+      deepSignature.startsWith('tools["mcp__catalog-demo__deep_lookup"]('),
       "the non-identifier name is not rendered in bracket form",
     );
     check(
-      deep.signature.includes("unknown"),
+      deepSignature.includes("unknown"),
       "the depth guard did not render `unknown`",
     );
     check(
-      !deep.signature.includes("innermost value"),
+      !deepSignature.includes("innermost value"),
       "the renderer descended past the depth guard",
     );
 
     section("wide enum — every variant rendered");
     const channel = find(pool, `mcp__${CATALOG_SERVER}__set_channel`);
-    const variants = (channel.signature.match(/"[a-z]+"/g) ?? []).length;
-    console.log(channel.signature);
+    const channelSignature = renderToolSignature(channel);
+    const variants = (channelSignature.match(/"[a-z]+"/g) ?? []).length;
+    console.log(channelSignature);
     console.log(`${variants} variants rendered`);
     check(
       variants === 12,
       `expected all 12 enum variants, rendered ${variants}`,
     );
     check(
-      channel.signature.includes('"sunset"'),
+      channelSignature.includes('"sunset"'),
       "the last enum variant was dropped",
     );
 
     section("field docs — verbatim, multi-line, uncapped");
     console.log(
-      channel.signature
+      channelSignature
         .split("\n")
         .filter((line) => line.includes("*"))
         .join("\n"),
     );
     check(
-      channel.signature.includes("for a pre-release build."),
+      channelSignature.includes("for a pre-release build."),
       "a multi-line field description was cut off",
     );
 
     section("tool description — beside the signature, whole");
-    // A hit carries the description as its own field rather than splicing a clamped
-    // first line into the signature: the model asked for this tool, so nothing about
-    // it is hidden, and the call it copies out stays parseable.
+    // The description is its own field rather than a clamped first line spliced into
+    // the signature: the model asked for this tool, so nothing about it is hidden,
+    // and the call it copies out stays parseable.
     const registry = find(pool, `mcp__${CATALOG_SERVER}__describe_registry`);
     console.log(registry.description ?? "(no description)");
     check(
@@ -289,84 +304,93 @@ async function main(): Promise<void> {
       "the second description line was dropped",
     );
     check(
-      !registry.signature.includes("Registers a component"),
+      !renderToolSignature(registry).includes("Registers a component"),
       "a description was spliced into the signature",
     );
 
     section("return type — from the server's own output schema");
     const reverse = find(pool, `mcp__${CATALOG_SERVER}__reverse_text`);
-    console.log(reverse.signature);
+    const reverseSignature = renderToolSignature(reverse);
+    console.log(reverseSignature);
     check(
-      reverse.signature.includes("Promise<{"),
+      reverseSignature.includes("Promise<{"),
       "a declared output schema did not reach the signature",
     );
     check(
-      reverse.signature.includes("reversed: string,"),
+      reverseSignature.includes("reversed: string,"),
       "the declared output schema was not rendered field by field",
     );
     // The tools that declare nothing still get a return type: leaving it out
     // would read as "this call returns nothing".
     check(
-      find(pool, `mcp__${CATALOG_SERVER}__word_count`).signature.includes(
-        "): Promise<unknown>",
-      ),
+      renderToolSignature(
+        find(pool, `mcp__${CATALOG_SERVER}__word_count`),
+      ).includes("): Promise<unknown>"),
       "an undeclared output schema did not fall back to `unknown`",
     );
 
     section("union — how many anyOf variants survive?");
     const engine = find(pool, `mcp__${CATALOG_SERVER}__pick_engine`);
-    const rendered = (engine.signature.match(/kind/g) ?? []).length;
-    console.log(engine.signature);
+    const engineSignature = renderToolSignature(engine);
+    const rendered = (engineSignature.match(/kind/g) ?? []).length;
+    console.log(engineSignature);
     console.log(`rendered ${rendered} of the 6 declared variants`);
     if (rendered !== 6) {
       findings.push(
-        `anyOf is sliced to ${rendered} variants with no marker, while the spec says the depth guard is the only silent reduction (docs/specs/core/exec-tool.md, scenario 2)`,
+        `anyOf is sliced to ${rendered} variants with no marker, while the spec says the depth guard is the only silent reduction (docs/specs/core/repl-tool.md, scenario 2)`,
       );
     }
 
     section("ranking — name matches before descriptions");
-    const ranked = searchPool(pool, resolveSearchArgs({ query: "channel" }));
-    console.log(
-      ranked.matches.map((hit) => hit.name).join("\n") || "(no match)",
-    );
+    const ranked = searchTools(pool, "channel");
+    console.log(ranked.map((hit) => hit.name).join("\n") || "(no match)");
     check(
-      ranked.matches[0]?.name === `mcp__${CATALOG_SERVER}__set_channel`,
+      ranked[0]?.name === `mcp__${CATALOG_SERVER}__set_channel`,
       "a name match did not outrank a description match",
     );
 
-    section("the cap is visible — `total` counts what it hid");
-    const capped = searchPool(
-      pool,
-      resolveSearchArgs({ query: "text", max_results: 2 }),
-    );
+    section("the cap — a hit list, not a count of what it hid");
+    const capped = searchTools(pool, "text", 2);
     console.log(
-      `shown ${capped.matches.length} of ${capped.total}: ` +
-        capped.matches.map((hit) => hit.name).join(", "),
+      `shown ${capped.length}: ${capped.map((hit) => hit.name).join(", ")}`,
+    );
+    check(capped.length === 2, "a positive `max` did not cap the hit list");
+    check(
+      searchTools(pool, "text").length > 2,
+      "the cap did not actually narrow anything",
     );
     check(
-      capped.matches.length === 2 && capped.total > 2,
-      "the cap did not report the hits it hid",
+      searchTools(pool, "text", 999).length <= 25,
+      "a `max` above the ceiling was not clamped",
     );
 
-    section("`select:` names tools exactly, and passes the cap");
-    const chosen = searchPool(
-      pool,
-      resolveSearchArgs({
-        query: `select:mcp__${BULK_SERVER}__bulk_step_7,mcp__${CATALOG_SERVER}__shout`,
-        max_results: 1,
-      }),
-    );
-    console.log(chosen.matches.map((hit) => hit.name).join("\n"));
+    section("a hit carries its own shape — name, about, input");
+    const shape = ranked[0];
     check(
-      chosen.matches.map((hit) => hit.name).join(",") ===
-        `mcp__${BULK_SERVER}__bulk_step_7,mcp__${CATALOG_SERVER}__shout`,
-      "`select:` did not return exactly the names given, in order",
+      shape !== undefined &&
+        Object.keys(shape).sort().join(",") === "about,input,name",
+      "a hit is not exactly { name, about, input }",
+    );
+    // The input type only: a return type here would invite the model to read a hit
+    // as a substitute for `describeTool`.
+    check(
+      !(capped[0]?.input ?? "").includes("Promise<"),
+      "a hit's `input` carries a return type",
+    );
+
+    section("an `mcp__` query is a server prefix, not keywords");
+    const bulk = searchTools(pool, `mcp__${BULK_SERVER}__`);
+    console.log(`${bulk.length} tools on \`${BULK_SERVER}\``);
+    check(
+      bulk.length > 0 &&
+        bulk.every((hit) => hit.name.startsWith(`mcp__${BULK_SERVER}__`)),
+      "a server-prefix query reached tools on other servers",
     );
 
     section("search validation");
     let shapeError = "";
     try {
-      resolveSearchArgs({ q: "text" });
+      searchTools(pool, "");
     } catch (error) {
       shapeError = String(error);
     }
@@ -420,7 +444,8 @@ async function main(): Promise<void> {
     // instead — a guessed parameter name, then the error that names the right one.
     const searches = agent.messages.flatMap((message) =>
       message.blocks.flatMap((block) =>
-        block.type === "tool" && (block.parameters ?? "").includes("ToolSearch")
+        block.type === "tool" &&
+        (block.parameters ?? "").includes("searchTools")
           ? [block.parameters ?? ""]
           : [],
       ),
@@ -449,14 +474,14 @@ async function main(): Promise<void> {
       console.log(searches[searches.length - 1]);
     }
     console.log(
-      `ToolSearch calls: ${searches.length}; tool results scanned: ${toolResults}; ` +
+      `searchTools calls: ${searches.length}; tool results scanned: ${toolResults}; ` +
         `shape errors: ${corrected}`,
     );
     // A soft signal on purpose: one sample of one model. Zero reads as "the call was
     // built without guessing"; it only means anything because something was scanned.
     if (searches.length > 0 && toolResults > 0 && corrected > 0) {
       findings.push(
-        `${corrected} ToolSearch shape error(s) — a parameter name was guessed, which the signature in the description exists to prevent`,
+        `${corrected} searchTools shape error(s) — a parameter name was guessed, which the signature in the description exists to prevent`,
       );
     }
   } catch (error) {

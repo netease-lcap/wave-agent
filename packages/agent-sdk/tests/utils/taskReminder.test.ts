@@ -11,6 +11,7 @@ import type {
   ToolBlock,
 } from "../../src/types/messaging.js";
 import type { Task } from "../../src/types/tasks.js";
+import { EXEC_TOOL_NAME } from "../../src/constants/tools.js";
 
 function makeAssistantMessage(
   opts: { blocks?: MessageBlock[]; isMeta?: boolean } = {},
@@ -43,13 +44,13 @@ function makeToolBlock(name: string): ToolBlock {
 }
 
 /**
- * A deferred task tool leaves no block of its own — its name rides on the `Exec`
+ * A deferred task tool leaves no block of its own — its name rides on the `REPL`
  * block that carried it (`ToolBlock.nestedToolCalls`).
  */
-function makeExecBlock(nestedToolCalls: string[]): ToolBlock {
+function makeReplBlock(nestedToolCalls: string[]): ToolBlock {
   return {
     type: "tool",
-    name: "Exec",
+    name: EXEC_TOOL_NAME,
     stage: "end",
     success: true,
     nestedToolCalls,
@@ -93,14 +94,14 @@ describe("getTaskReminderTurnCounts", () => {
     expect(result.turnsSinceLastTaskManagement).toBe(15);
   });
 
-  it("treats a task tool called inside Exec as a task-management write", () => {
+  it("treats a task tool called inside the REPL as a task-management write", () => {
     // A deferred task tool is absent from `tools[]`, so its call shows up as a
-    // name on the Exec block instead of a block of its own. Reading only the
+    // name on the REPL block instead of a block of its own. Reading only the
     // block name would keep counting right after an update.
     const messages: Message[] = [
       makeAssistantMessage(),
       makeAssistantMessage(),
-      makeAssistantMessage({ blocks: [makeExecBlock(["TaskUpdate"])] }),
+      makeAssistantMessage({ blocks: [makeReplBlock(["TaskUpdate"])] }),
     ];
 
     expect(
@@ -108,11 +109,11 @@ describe("getTaskReminderTurnCounts", () => {
     ).toBe(0);
   });
 
-  it("still ignores read-only task tools called inside Exec", () => {
+  it("still ignores read-only task tools called inside the REPL", () => {
     const messages: Message[] = [
       makeAssistantMessage(),
       makeAssistantMessage({
-        blocks: [makeExecBlock(["TaskList", "TaskGet"])],
+        blocks: [makeReplBlock(["TaskList", "TaskGet"])],
       }),
     ];
 

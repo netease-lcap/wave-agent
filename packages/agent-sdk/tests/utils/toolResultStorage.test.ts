@@ -36,6 +36,7 @@ import {
   persistToolResult,
   generatePreview,
   buildPersistedOutputMessage,
+  parsePersistedOutput,
   processToolResult,
 } from "../../src/utils/toolResultStorage.js";
 import {
@@ -107,6 +108,59 @@ describe("toolResultStorage", () => {
       expect(result).toContain(
         `first ${PREVIEW_SIZE_BYTES.toLocaleString()} characters`,
       );
+    });
+  });
+
+  describe("parsePersistedOutput", () => {
+    it("reads back what the wrapper carries", () => {
+      const filePath = path.join("/tmp", "wave-tool-results", "bash_1.txt");
+      const wrapper = buildPersistedOutputMessage(
+        150_000,
+        filePath,
+        "preview text",
+      );
+
+      expect(parsePersistedOutput(wrapper)).toEqual({
+        totalChars: 150_000,
+        filePath,
+        preview: "preview text",
+      });
+    });
+
+    it("does not depend on the locale's digit grouping", () => {
+      // A non-breaking-space separator is what several locales produce; the count
+      // is read by its digits, not by assuming commas.
+      const wrapper =
+        "<persisted-output>\n" +
+        "Output too large (150\u00a0000 characters). Full output saved to: /p/x.txt\n" +
+        "Preview (first 2,048 characters):\n" +
+        "body\n" +
+        "</persisted-output>";
+
+      expect(parsePersistedOutput(wrapper)?.totalChars).toBe(150_000);
+    });
+
+    it("keeps a multi-line preview intact", () => {
+      const wrapper = buildPersistedOutputMessage(
+        40_000,
+        "/p/x.txt",
+        "line one\nline two\n...",
+      );
+
+      expect(parsePersistedOutput(wrapper)?.preview).toBe(
+        "line one\nline two\n...",
+      );
+    });
+
+    it("returns undefined for content that was never wrapped", () => {
+      for (const content of [
+        "",
+        "plain output",
+        "<persisted-output>\nnot the format\n</persisted-output>",
+        "<persisted-output>\nOutput too large (1 characters). Full output saved to: /p/x.txt",
+      ]) {
+        expect(parsePersistedOutput(content)).toBeUndefined();
+      }
     });
   });
 

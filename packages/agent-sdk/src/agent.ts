@@ -1907,6 +1907,10 @@ export class Agent {
     // 侧聊段的冻结前缀指向的是这场对话：对话被清空，段也就作废了（在途的那一轮
     // 一并中止）。
     this.aiManager.releaseAllBtwSegments();
+    // The REPL context belongs to this conversation: clearing it means the variables,
+    // the timers and any background script go with it. Released *before* the session
+    // id is replaced, because that id is the key the context is filed under.
+    this.aiManager.releaseReplContext();
 
     // Capture old session info before clearing
     const oldSessionId = this.messageManager.getSessionId();
@@ -2129,6 +2133,12 @@ export class Agent {
     // dispatched fire-and-forget and outlive the agent. Never reset: destroy()
     // is terminal, no dispatch should ever start afterwards.
     this.isDestroyed = true;
+
+    // The agent's REPL context dies with it: its variables, its timers and any
+    // script still running in the background. This is also the path a subagent's
+    // context takes, which is what the "a subagent gets its own context, released
+    // when it ends" rule rests on.
+    this.aiManager.releaseReplContext();
 
     // Log session_end event and flush telemetry. Only a flush: the providers are
     // process-scoped, and tearing them down here would silence the other agents

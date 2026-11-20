@@ -488,7 +488,7 @@ Claude Code 把**每个** settings hook 事件都镜像成 `classic.<Event>`，�
 
 - **`tool.describe`**：落点是 `ToolManager` 组装工具 schema 的位置（`config.function.description = tool.prompt(args)` 那一处）。**每个工具每场会话问一次**，返回 `{ description, isDeferred?, breakPromptCache? }`：描述与放置都在**组装这次请求之前** `await` 拿定（插件给的值当次请求就生效，与 `command.describe` 同一条时机），问过的这一份随后锁进会话、之后每次请求都用它；只有 `breakPromptCache: true` 才让存的那份失效、下次组装重问（另一种等效写法是之后调一次 `$.ui.invalidate("tool.describe")`：返回值那次已经赶不上了，事后通知宿主作废就是这个入口）。锁住是硬要求：工具 schema 每轮都要发给模型，重问一次就重写一次缓存前缀，插件的时间戳/计数器会把前缀打断（CC 的 `breakPromptCache` 就是为这个加的）。
 
-  `isDeferred` 翻转的是**延迟判定表对这一个工具的结论**（平铺还是进 `Exec` 池，见 `docs/specs/core/exec-tool.md`）：`true` 进池、`false` 回平铺。引擎先按判定表算出默认走向，插件给的值是最终值——连 `alwaysLoad` 与非延迟名单也能翻，与 CC 同一条（唯一翻不动的是结构豁免：`Exec` 自己永远不进池）。**没有池的时候**（`enableExec: false`，或这台宿主没有 Exec）`isDeferred: true` 无处可去，保持平铺并记一条 warn，不得凭空把工具下架。池内工具同样会被问一次：它们的描述不进 `tools[]`（本来就不进），只参与搜索打分与放置。
+  `isDeferred` 翻转的是**延迟判定表对这一个工具的结论**（平铺还是进 `REPL` 池，见 `docs/specs/core/repl-tool.md`）：`true` 进池、`false` 回平铺。引擎先按判定表算出默认走向，插件给的值是最终值——连 `alwaysLoad` 与非延迟名单也能翻，与 CC 同一条（唯一翻不动的是结构豁免：`REPL` 自己永远不进池）。**没有池的时候**（`enableRepl: false`，或这台宿主没有 REPL）`isDeferred: true` 无处可去，保持平铺并记一条 warn，不得凭空把工具下架。池内工具同样会被问一次：它们的描述不进 `tools[]`（本来就不进），只参与搜索打分与放置。
 
 - **`skill.prompt`**：技能正文被展开时问一次，返回 `{ text }` 换掉正文。`e` 给 `{ skill, text, source?, path? }`；`source` 取 `builtin` / `plugin` / `project` / `user`，`path` 是技能文件（没有文件的内置技能不给）。
 - **`command.describe`**：命令列表每次要画时每个命令问一次，**`await` 完再画**（与 CC 同一条：插件给的描述当次就生效，不是下一次）。返回 `{ description, argumentHint, isHidden }`，三个字段都可选、只覆盖给了的。`isHidden` 只影响列表里显不显示，不影响能不能执行。
@@ -732,7 +732,7 @@ on("tool.call", { tool: "mcp__myplugin__lookup_ticket" }, async ($, e) => {
 - **名字带前缀**：`mcp__<plugin>__<name>`，`<plugin>` 是插件目录名归一后的 `[a-z0-9_-]+`。这个前缀不是装饰：`isRestrictedTool()` 按它把工具归进受限工具，于是 mod 带来的工具与 MCP 工具走同一条审批路（用户看得见、能拒）。不写前缀就得给「第三方工具」单开一条权限分支，那是把同一个判断做两次。
 - **执行走 `tool.call`**：规格里没有 handler，模型调它时引擎派 `tool.call`，matcher 写全名、返回 `{ result }`（任意 JSON，序列化后作为工具结果文本交给模型）或 `{ deny }`。为此 `tool.call` 的返回值从「只认 `{ deny }`」扩成 `{ deny } | { result }`，链也从「只观察」变成能答结果的链：`next(e)` 解析到下游已经形成的答案，外层返回自己的那份才算数。不注册 `tool.call` 的工具被调用时按 `{ result: null }` 答，并在插件日志里说明没人接。
 - **5 秒预算照旧（每次派发一份，见「限额」）**：执行体是 mod 的代码，受「限额」那一节的全部约束；要跑长活就 `$.process` / `$.http`（它们有自己的超时与暂停规则）。
-- **默认延迟**：mod 注册的工具与 MCP 工具走同一条规则——**无条件进 `Exec` 池**，模型从公告里看到名字、用 `tools.ToolSearch` 取签名后调用。要让它平铺就 `isDeferred: false`（与 `alwaysLoad` 同义）。这一位与 CC 的 `$.tool.register({ isDeferred })` 是同一个字段、同一个默认值（CC 把它翻成 MCP 的 `_meta: {"anthropic/alwaysLoad": true}`）；`Exec` 未启用时它无处可去，照常扁平声明（见 `docs/specs/core/exec-tool.md`）。
+- **默认延迟**：mod 注册的工具与 MCP 工具走同一条规则——**无条件进 `Exec` 池**，模型从公告里看到名字、用 `tools.ToolSearch` 取签名后调用。要让它平铺就 `isDeferred: false`（与 `alwaysLoad` 同义）。这一位与 CC 的 `$.tool.register({ isDeferred })` 是同一个字段、同一个默认值（CC 把它翻成 MCP 的 `_meta: {"anthropic/alwaysLoad": true}`）；`Exec` 未启用时它无处可去，照常扁平声明（见 `docs/specs/core/repl-tool.md`）。
 - **时机**：`tool.register` 事件每个 mod 一次，在第一次请求之前；在 `session.start` 里直接调也一样 —— 只要赶在第一次请求之前。放置按注册时这一位定下来，之后不再询问；要改只能在 `tool.describe` 里翻转（见「给工具、技能、命令写描述」）。
 - **限额**：一个 mod 最多 16 个工具（`MOD_LIMITS.modToolsPerMod`）；`description` ≤ 2000 字符、`inputSchema` 序列化后 ≤ 16 KB，超了当场报错并把实际数字写进错误里；重名（别的插件、内置工具、MCP 工具）注册即失败。
 - **卸载**：插件重载、`session.end` 时注销；注销之后模型不再看到它，同一轮里已经跑起来的调用不打断。
@@ -1665,7 +1665,7 @@ Claude Code 的 `$` 有 23 个命名空间，我们覆盖 16 个（`ui` / `sessi
 4. **假设** mod 注册 `prompt.context` 并返回 `{ blocks: [{ name: "lcm", text: "本仓库只用 pnpm" }] }`，**当**这条会话的第一条消息发出，**则**该块出现在上下文里；**当**用户在同一会话里继续追问，**则**不再重复注入（一条会话一次）；`next(e)` 交下去的同样是 `{ blocks }`（不是裸数组）。
 5. **假设** mod 在 `prompt.attachment` 里按 `e.type === "memory"` 返回 `{ text: null }`，**当** AGENTS.md 注定入时，**则**那条提醒不出现、其余提醒不受影响；`e.type` 换成我们没发的值时不匹配（不会误伤）。
 6. **假设** mod 注册 `tool.describe` 并给 `Bash` 返回新的 `description`，**当**这次请求组装，**则**模型看到的就是新描述（同一次请求，不是下一次）；**当**同一轮里连调三次工具，**则**描述只问过一次、三次请求里一致。
-7. **假设** mod 对某个平铺工具返回 `{ isDeferred: true }`，**当**这次请求组装完，**则**该工具不再平铺、进 `Exec` 池，公告里出现它的名字；**假设**它对一个 MCP 工具返回 `{ isDeferred: false }`，**则**该工具回到平铺声明、从公告里消失；**假设**它对 `Exec` 自己返回 `true`、或在 `enableExec: false` 的会话里返回 `true`，**则**这一项被忽略并记一条 warn（不能把唯一的通道或全部能力下架）。
+7. **假设** mod 对某个平铺工具返回 `{ isDeferred: true }`，**当**这次请求组装完，**则**该工具不再平铺、进 `REPL` 池，公告里出现它的名字；**假设**它对一个 MCP 工具返回 `{ isDeferred: false }`，**则**该工具回到平铺声明、从公告里消失；**假设**它对 `REPL` 自己返回 `true`、或在 `enableRepl: false` 的会话里返回 `true`，**则**这一项被忽略并记一条 warn（不能把唯一的通道或全部能力下架）。
 8. **假设** mod 注册 `command.describe` 给某个命令返回 `{ isHidden: true }`，**当**命令列表画出，**则**该命令不显示；**当**用户直接敲那个命令，**则**它照常执行（隐藏只影响列表）。
 9. **假设** mod 注册 `skill.prompt` 给一个技能返回 `{ text }`，**当**用户用 `/名字` 调用它，**则**模型收到的技能正文是改写后的。
 10. **假设** mod 用 `{ name: "memory" }` 作 matcher 注册 `prompt.section`，**当**发出去的段表里有 `memory` 段（其余段名不同），**则**只有那一段进 handler；`next(e)` 解析到的是 `{ text }`（不是裸字符串），写 `const s = await next(e); return { text: s.text + "…" }` 能拿到原文（lossless-claude 就是这个写法）。

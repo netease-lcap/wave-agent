@@ -1,0 +1,698 @@
+import { afterEach, describe, expect, it } from "vitest";
+import {
+  acquireReplSandbox,
+  releaseReplSandbox,
+  setReplStepBudget,
+  type ReplRunOptions,
+  type ReplSandbox,
+  type ReplSandboxHost,
+} from "../../src/exec/replSandbox.js";
+
+interface FakeHostState {
+  toolCalls: Array<{ name: string; args: unknown }>;
+  shellCommands: string[];
+  /** The `timeout` each command carried, in ms (`undefined` when it brought none). */
+  shellTimeouts: Array<number | undefined>;
+  ring: string[];
+  dropped: number;
+  searchCalls: Array<{ query: unknown; max: unknown }>;
+  selfLogs: unknown[][];
+}
+
+interface FakeHostOptions {
+  tools?: string[];
+  toolResult?: unknown;
+  behavior?: (name: string, args: unknown) => unknown;
+  shell?: (command: string) => unknown;
+  ringCap?: number;
+}
+
+type FakeHost = ReplSandboxHost & { state: FakeHostState };
+
+/** A host with just enough behaviour to observe the sandbox from the outside. */
+function makeHost(options: FakeHostOptions = {}): FakeHost {
+  const state: FakeHostState = {
+    toolCalls: [],
+    shellCommands: [],
+    shellTimeouts: [],
+    ring: [],
+    dropped: 0,
+    searchCalls: [],
+    selfLogs: [],
+  };
+  const ringCap = options.ringCap ?? 3;
+  return {
+    state,
+    async callTool(name, args) {
+      state.toolCalls.push({ name, args });
+      if (options.behavior) return options.behavior(name, args);
+      return options.toolResult ?? { ok: name };
+    },
+    async searchTools(query, max) {
+      state.searchCalls.push({ query, max });
+      return [
+        { name: "Read", about: "read a file", input: "{ file_path: string }" },
+      ];
+    },
+    async describeTool(name) {
+      return { name, description: "a tool", input: "{}" };
+    },
+    listToolNames: () => options.tools ?? [],
+    async runShell(command, shellOptions) {
+      state.shellCommands.push(command);
+      state.shellTimeouts.push(
+        (shellOptions as { timeout?: number } | undefined)?.timeout,
+      );
+      return options.shell
+        ? options.shell(command)
+        : { stdout: "hi\n", stderr: "", exitCode: 0 };
+    },
+    selfLog(values) {
+      // The sandbox owns `outcome.logs`; this hook is the live-streaming one.
+      state.selfLogs.push(values);
+    },
+    consoleWrite(level, values) {
+      state.ring.push(`${level}: ${values.join(" ")}`);
+      while (state.ring.length > ringCap) {
+        state.ring.shift();
+        state.dropped += 1;
+      }
+    },
+    consoleTail: (n) => state.ring.slice(-n).join("\n"),
+    consoleBuffer: () => state.ring.join("\n"),
+    consoleDropped: () => state.dropped,
+    running: () => [
+      { id: 1, snippet: "poll()", state: "running", settled: false },
+    ],
+    stepError: () => new Error("REPL script stopped: step budget exhausted"),
+  };
+}
+
+const keys: string[] = [];
+let counter = 0;
+
+function open(host: ReplSandboxHost = makeHost()): ReplSandbox {
+  counter += 1;
+  const key = `repl-test-${counter}`;
+  keys.push(key);
+  return acquireReplSandbox(key, host);
+}
+
+function opts(
+  toolNames: readonly string[] = [],
+  timeoutMs = 2_000,
+): ReplRunOptions {
+  return { toolNames, timeoutMs };
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+afterEach(() => {
+  while (keys.length > 0) {
+    const key = keys.pop() as string;
+    releaseReplSandbox(key);
+  }
+  setReplStepBudget(0);
+});
+
+describe("repl sandbox: long-lived context", () => {
+  it("keeps variables and functions across runs", async () => {
+    const sandbox = open();
+    const first = await sandbox.run(
+      "const n = 41; function bump(x) { return x + 1 }",
+      opts(),
+    );
+    expect(first.ok).toBe(true);
+
+    const second = await sandbox.run("return bump(n)", opts());
+    expect(second).toMatchObject({ ok: true, value: "42" });
+  });
+
+  it("keeps declarations written by a run that threw", async () => {
+    const sandbox = open();
+    const thrown = await sandbox.run(
+      'const kept = "yes"; throw new Error("boom")',
+      opts(),
+    );
+    expect(thrown.ok).toBe(false);
+    expect(thrown.error).toContain("boom");
+
+    const after = await sandbox.run("return kept", opts());
+    expect(after.value).toBe("yes");
+  });
+
+  it("reuses the context through acquire/release and drops it on release", async () => {
+    counter += 1;
+    const key = `repl-shared-${counter}`;
+    const host = makeHost();
+    const a = acquireReplSandbox(key, host);
+    await a.run("const shared = 7", opts());
+
+    const b = acquireReplSandbox(key, host);
+    expect((await b.run("return shared", opts())).value).toBe("7");
+
+    releaseReplSandbox(key);
+    keys.push(key);
+    const c = acquireReplSandbox(key, host);
+    expect((await c.run("return typeof shared", opts())).value).toBe(
+      "undefined",
+    );
+  });
+
+  it("clears timers when the script that created them ends", async () => {
+    const sandbox = open();
+    const first = await sandbox.run(
+      [
+        "globalThis.fired = 0;",
+        "setTimeout(() => { globalThis.fired = 1 }, 5);",
+        "setInterval(() => { globalThis.fired = 2 }, 5);",
+      ].join("\n"),
+      opts(),
+    );
+    expect(first.ok).toBe(true);
+
+    await sleep(40);
+    const after = await sandbox.run("return String(globalThis.fired)", opts());
+    expect(after.value).toBe("0");
+  });
+});
+
+describe("repl sandbox: values", () => {
+  it("returns the last expression, an explicit return, and nothing when there is none", async () => {
+    const sandbox = open();
+    expect((await sandbox.run("1 + 1", opts())).value).toBe("2");
+    expect((await sandbox.run("return 42", opts())).value).toBe("42");
+    expect((await sandbox.run("const only = 1", opts())).value).toBeUndefined();
+    expect((await sandbox.run('return "done"', opts())).value).toBe("done");
+  });
+
+  it("hands the script null-prototype copies with function fields dropped", async () => {
+    const host = makeHost({
+      toolResult: { a: 1, fn: () => 1, nested: { b: 2 } },
+    });
+    const sandbox = open(host);
+    const result = await sandbox.run(
+      [
+        "const r = await Some({});",
+        "return [",
+        "  Object.getPrototypeOf(r) === null,",
+        "  r.fn === undefined,",
+        "  r.constructor === undefined,",
+        "  Object.getPrototypeOf(r.nested) === null,",
+        "  r.a,",
+        "  r.nested.b,",
+        '].join("|");',
+      ].join("\n"),
+      opts(["Some"]),
+    );
+    expect(result.value).toBe("true|true|true|true|1|2");
+  });
+
+  it("keeps the host copy isolated from script mutations", async () => {
+    const shared = { a: 1, nested: { b: 2 } };
+    const host = makeHost({ toolResult: shared });
+    const sandbox = open(host);
+    const result = await sandbox.run(
+      "const r = await Some({}); r.nested.b = 99; return r.nested.b",
+      opts(["Some"]),
+    );
+    expect(result.value).toBe("99");
+    expect(shared.nested.b).toBe(2);
+  });
+
+  it("truncates arrays past 4096 entries and reports truncatedFrom", async () => {
+    const sandbox = open();
+    const outbound = await sandbox.run(
+      "return Array.from({ length: 5000 }, (_, i) => i)",
+      opts(),
+    );
+    const parsed = JSON.parse(outbound.value as string) as {
+      items: number[];
+      truncatedFrom: number;
+    };
+    expect(parsed.items).toHaveLength(4096);
+    expect(parsed.items[0]).toBe(0);
+    expect(parsed.truncatedFrom).toBe(5000);
+
+    const host = makeHost({ toolResult: { big: new Array(5000).fill(1) } });
+    const inboundSandbox = open(host);
+    const inbound = await inboundSandbox.run(
+      "const r = await Big({}); return r.big.items.length + ':' + r.big.truncatedFrom",
+      opts(["Big"]),
+    );
+    expect(inbound.value).toBe("4096:5000");
+  });
+
+  it("reports a clear error for a circular return value", async () => {
+    const sandbox = open();
+    const result = await sandbox.run(
+      "const a = {}; a.self = a; return a",
+      opts(),
+    );
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain("circular reference");
+  });
+});
+
+describe("repl sandbox: sealed context", () => {
+  it("leaves host globals undefined", async () => {
+    const sandbox = open();
+    const result = await sandbox.run(
+      "return [typeof require, typeof process, typeof Buffer, typeof module, typeof fetch, typeof XMLHttpRequest].join(',')",
+      opts(),
+    );
+    expect(result.value).toBe(
+      "undefined,undefined,undefined,undefined,undefined,undefined",
+    );
+  });
+
+  it("refuses eval and new Function", async () => {
+    const sandbox = open();
+    const viaEval = await sandbox.run("return eval('1 + 1')", opts());
+    expect(viaEval.ok).toBe(false);
+    expect(viaEval.error).toContain("EvalError");
+
+    const viaFunction = await sandbox.run(
+      'return new Function("return 1")()',
+      opts(),
+    );
+    expect(viaFunction.ok).toBe(false);
+    expect(viaFunction.error).toContain("EvalError");
+  });
+
+  it("hands out only realm callables, so .constructor cannot re-enter the host", async () => {
+    const sandbox = open(makeHost({ tools: ["Read"] }));
+    const escape = await sandbox.run(
+      'return Read.constructor("return process")()',
+      opts(["Read"]),
+    );
+    expect(escape.ok).toBe(false);
+    expect(escape.error).toContain("EvalError");
+
+    const realm = await sandbox.run(
+      [
+        "return [",
+        "Read.constructor === Function,",
+        "preview.constructor === Function,",
+        "$.constructor === Function,",
+        "console.log.constructor === Function,",
+        "setTimeout.constructor === Function,",
+        "Object.isFrozen(Function),",
+        "Object.isFrozen(Object)",
+        '].join("|")',
+      ].join("\n"),
+      opts(["Read"]),
+    );
+    expect(realm.value).toBe("true|true|true|true|true|true|true");
+  });
+
+  it("rejects all three module forms before the script runs", async () => {
+    const sandbox = open();
+    const scripts = [
+      'import fs from "node:fs";',
+      'await import("node:fs");',
+      'require("node:fs");',
+    ];
+    for (const script of scripts) {
+      const result = await sandbox.run(script, opts());
+      expect(result.ok).toBe(false);
+      expect(result.rejected).toBeUndefined();
+      expect(result.error).toContain("sealed");
+      expect(result.error).toContain("Read({ file_path");
+      expect(result.error).toContain("Glob({ pattern");
+    }
+  });
+
+  it("rejects a top-level declaration that would overwrite a global", async () => {
+    const host = makeHost({ tools: ["Read"] });
+    const sandbox = open(host);
+
+    const builtin = await sandbox.run(
+      "const Read = 1; return 2",
+      opts(["Read"]),
+    );
+    expect(builtin).toMatchObject({ ok: false, rejected: true });
+    expect(builtin.error).toContain("ReplGlobalOverwrite");
+    expect(builtin.error).toContain("declare it inside a function");
+    expect(host.state.toolCalls).toHaveLength(0);
+
+    const jsBuiltin = await sandbox.run("function Object() {}", opts());
+    expect(jsBuiltin.rejected).toBe(true);
+    expect(jsBuiltin.error).toContain("Object");
+
+    const helper = await sandbox.run("const preview = 1", opts());
+    expect(helper.rejected).toBe(true);
+
+    // A name an earlier script defined is a global too.
+    await sandbox.run("const kept = 1", opts());
+    const redeclared = await sandbox.run("const kept = 2", opts());
+    expect(redeclared.rejected).toBe(true);
+    expect(redeclared.error).toContain("kept");
+
+    // …and the rejected runs never executed, so nothing was overwritten.
+    const still = await sandbox.run("return kept", opts());
+    expect(still.value).toBe("1");
+  });
+
+  it("resets the context when a managed global becomes non-configurable", async () => {
+    const sandbox = open();
+    await sandbox.run("const kept = 7", opts());
+
+    const poison = await sandbox.run(
+      'Object.defineProperty(globalThis, "console", { value: 1, configurable: false }); return "poisoned"',
+      opts(),
+    );
+    expect(poison.value).toBe("poisoned");
+
+    const next = await sandbox.run("return typeof kept", opts());
+    expect(next.ok).toBe(false);
+    expect(next.error).toContain("REPL context was reset");
+    expect(next.error).toContain("Re-run the script");
+
+    const after = await sandbox.run("return 1 + 1", opts());
+    expect(after.value).toBe("2");
+  });
+
+  it("resets the context when globalThis itself is broken", async () => {
+    const sandbox = open();
+    const poison = await sandbox.run(
+      'Object.defineProperty(globalThis, "globalThis", { value: 5 }); return "poisoned"',
+      opts(),
+    );
+    expect(poison.value).toBe("poisoned");
+
+    const next = await sandbox.run("return 1", opts());
+    expect(next.ok).toBe(false);
+    expect(next.error).toContain("REPL context was reset");
+  });
+});
+
+describe("repl sandbox: globals", () => {
+  it("installs bare tool globals, tools members and tools.list()", async () => {
+    const host = makeHost({ tools: ["Read", "weird-name"] });
+    const sandbox = open(host);
+    const result = await sandbox.run(
+      [
+        'return [typeof Read, typeof tools.Read, typeof tools["weird-name"],',
+        '  tools.list().join(","), typeof sharedMissing].join("|");',
+      ].join("\n"),
+      opts(["Read", "weird-name"]),
+    );
+    expect(result.value).toBe(
+      "function|function|function|Read,weird-name|undefined",
+    );
+  });
+
+  it("adds and removes tool members when the pool changes", async () => {
+    const host = makeHost({ tools: ["Read", "Write"] });
+    const sandbox = open(host);
+
+    const withWrite = await sandbox.run(
+      "return typeof Write",
+      opts(["Read", "Write"]),
+    );
+    expect(withWrite.value).toBe("function");
+
+    const withoutWrite = await sandbox.run(
+      'return [typeof Write, typeof tools.Write].join("|")',
+      opts(["Read"]),
+    );
+    expect(withoutWrite.value).toBe("undefined|undefined");
+  });
+
+  it("passes tool arguments through unchanged, and rejects non-plain data", async () => {
+    const host = makeHost();
+    const sandbox = open(host);
+
+    const ok = await sandbox.run(
+      'await Read({ file_path: "a b", nested: { x: 1 }, when: undefined })',
+      opts(["Read"]),
+    );
+    expect(ok.ok).toBe(true);
+    expect(host.state.toolCalls[0]).toEqual({
+      name: "Read",
+      args: { file_path: "a b", nested: { x: 1 } },
+    });
+
+    const classInstance = await sandbox.run(
+      "await Read({ when: new Date() })",
+      opts(["Read"]),
+    );
+    expect(classInstance.ok).toBe(false);
+    expect(classInstance.error).toContain("plain data");
+
+    const fnField = await sandbox.run(
+      "await Read({ cb: () => 1 })",
+      opts(["Read"]),
+    );
+    expect(fnField.ok).toBe(false);
+    expect(fnField.error).toContain("is a function");
+  });
+
+  it("raises a ReferenceError for a name that is not reachable", async () => {
+    const sandbox = open();
+    const result = await sandbox.run("await Nope({})", opts());
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain("Nope is not defined");
+  });
+
+  it("exposes searchTools, describeTool, running and self", async () => {
+    const host = makeHost();
+    const sandbox = open(host);
+    const result = await sandbox.run(
+      [
+        'const found = await searchTools("read", 3);',
+        "const described = await describeTool(found[0].name);",
+        "const list = running();",
+        'return [found.length, described.name, list[0].id, self === globalThis].join("|");',
+      ].join("\n"),
+      opts(),
+    );
+    expect(result.value).toBe("1|Read|1|true");
+    expect(host.state.searchCalls[0]).toEqual({ query: "read", max: 3 });
+  });
+
+  it("keeps self.log out of the console ring, and vice versa", async () => {
+    const host = makeHost();
+    const sandbox = open(host);
+    const result = await sandbox.run(
+      [
+        'self.log("hello", { a: 1 });',
+        'console.log("noise-one");',
+        'console.log("noise-two");',
+        'console.log("noise-three");',
+        'console.log("noise-four");',
+        'return console.tail(2) + "|" + console.dropped();',
+      ].join("\n"),
+      opts(),
+    );
+    expect(result.logs).toEqual(['hello {"a":1}']);
+    expect(host.state.selfLogs).toEqual([["hello", '{"a":1}']]);
+    expect(result.value).toBe("log: noise-three\nlog: noise-four|1");
+  });
+});
+
+describe("repl sandbox: $ and preview", () => {
+  it("quotes interpolations one word each, honours raw, and exposes text()", async () => {
+    const host = makeHost({
+      shell: () => ({ stdout: "out\n", stderr: "", exitCode: 0 }),
+    });
+    const sandbox = open(host);
+    const result = await sandbox.run(
+      [
+        'const who = "a b";',
+        'const file = "it\'s.txt";',
+        "const many = ['x y', 'z'];",
+        "await $`grep ${who} ${file}`;",
+        "await $`echo ${{ raw: '--flag=a b' }}`;",
+        "await $`echo ${many}`;",
+        "return (await $`echo hi`).text();",
+      ].join("\n"),
+      opts(),
+    );
+    expect(result.ok).toBe(true);
+    expect(host.state.shellCommands).toEqual([
+      "grep 'a b' 'it'\\''s.txt'",
+      "echo --flag=a b",
+      "echo 'x y' 'z'",
+      "echo hi",
+    ]);
+    expect(result.value).toBe("out\n");
+  });
+
+  it("throws ShellError on a non-zero exit and resolves with nothrow()", async () => {
+    const host = makeHost({
+      shell: () => ({ stdout: "partial", stderr: "boom", exitCode: 2 }),
+    });
+    const sandbox = open(host);
+
+    const thrown = await sandbox.run("await $`false`", opts());
+    expect(thrown.ok).toBe(false);
+    expect(thrown.error).toContain("ShellError");
+    expect(thrown.error).toContain("boom");
+
+    const handled = await sandbox.run(
+      "const r = await $`false`.nothrow(); return r.exitCode + ':' + r.stderr + ':' + r.text()",
+      opts(),
+    );
+    expect(handled.value).toBe("2:boom:partial");
+  });
+
+  it("carries an explicit timeout and exposes the background task", async () => {
+    const host = makeHost({
+      shell: () => ({
+        stdout: "",
+        stderr: "moved to the background",
+        exitCode: null,
+        running: { taskId: "bg-7", outputPath: "/tmp/bg-7.log" },
+      }),
+    });
+    const sandbox = open(host);
+    const result = await sandbox.run(
+      [
+        "const out = await $`bun build`.timeout(900000);",
+        "return [String(out.exitCode), out.running.taskId, out.running.outputPath, out.stderr].join('|');",
+      ].join("\n"),
+      opts(),
+    );
+    expect(result.ok).toBe(true);
+    expect(host.state.shellTimeouts).toEqual([900000]);
+    expect(result.value).toBe(
+      "null|bg-7|/tmp/bg-7.log|moved to the background",
+    );
+  });
+
+  it("runs a command given as a plain string with its own timeout", async () => {
+    const host = makeHost({});
+    const sandbox = open(host);
+    const result = await sandbox.run(
+      "return (await $('echo hi', 5000)).text();",
+      opts(),
+    );
+    expect(result.ok).toBe(true);
+    expect(host.state.shellCommands).toEqual(["echo hi"]);
+    expect(host.state.shellTimeouts).toEqual([5000]);
+  });
+
+  it("previews the first 200 characters by default and marks the truncation", async () => {
+    const sandbox = open();
+    const result = await sandbox.run('return preview("x".repeat(300))', opts());
+    expect(result.value).toBe(`${"x".repeat(200)}…[+100 chars]`);
+
+    const custom = await sandbox.run(
+      'return preview("y".repeat(50), 10)',
+      opts(),
+    );
+    expect(custom.value).toBe(`${"y".repeat(10)}…[+40 chars]`);
+  });
+});
+
+describe("repl sandbox: termination", () => {
+  it("stops a synchronous spin at the sync wall clock and keeps the context", async () => {
+    const sandbox = open();
+    await sandbox.run("const before = 1", opts());
+
+    const spun = await sandbox.run("while (true) {}", {
+      toolNames: [],
+      timeoutMs: 100,
+    });
+    expect(spun.ok).toBe(false);
+    expect(spun.error).toContain("wall clock 100 ms");
+
+    const after = await sandbox.run("return before", opts());
+    expect(after.value).toBe("1");
+  });
+
+  it("stops a spinning loop at the step budget", async () => {
+    setReplStepBudget(2_000);
+    const sandbox = open();
+    const result = await sandbox.run("let i = 0; while (true) { i++ }", {
+      toolNames: [],
+      timeoutMs: 5_000,
+    });
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain("step budget");
+  });
+
+  it("stops a spin that starts after an await, where vm's timeout no longer applies", async () => {
+    const sandbox = open();
+    const result = await sandbox.run("await 0;\nwhile (true) {}", {
+      toolNames: [],
+      timeoutMs: 100,
+    });
+    expect(result.ok).toBe(false);
+    // The message is the host's step error, not vm's ERR_SCRIPT_EXECUTION_TIMEOUT:
+    // proof that the injected counter stopped it.
+    expect(result.error).toContain("step budget");
+    expect(result.error).not.toContain("wall clock");
+  });
+
+  it("counts only the synchronous segments against the timeout", async () => {
+    const host = makeHost({
+      behavior: async () => {
+        await sleep(120);
+        return { ok: true };
+      },
+    });
+    const sandbox = open(host);
+    // The call takes longer than `timeoutMs`, and the work after it would trip a
+    // deadline that had not been refreshed when the host handed control back.
+    const result = await sandbox.run(
+      [
+        "const out = await Slow({});",
+        "let total = 0;",
+        "for (let k = 0; k < 20000; k++) { total += k }",
+        "return out.ok + ':' + total",
+      ].join("\n"),
+      { toolNames: ["Slow"], timeoutMs: 50 },
+    );
+    expect(result.ok).toBe(true);
+    expect(result.value).toBe("true:199990000");
+  });
+
+  it("returns as soon as the run is aborted, without disposing the context", async () => {
+    const host = makeHost({ behavior: () => new Promise(() => {}) });
+    const sandbox = open(host);
+    await sandbox.run("const kept = 5", opts());
+
+    const controller = new AbortController();
+    const pendingRun = sandbox.run("await Slow({})", {
+      toolNames: ["Slow"],
+      timeoutMs: 5_000,
+      abortSignal: controller.signal,
+    });
+    setTimeout(() => controller.abort(), 10);
+    const aborted = await pendingRun;
+    expect(aborted.ok).toBe(false);
+    expect(aborted.error).toBe("REPL script was aborted.");
+
+    const after = await sandbox.run("return kept", opts());
+    expect(after.value).toBe("5");
+  });
+
+  it("reports a syntax error and keeps the context", async () => {
+    const sandbox = open();
+    const broken = await sandbox.run("const = 1", opts());
+    expect(broken.ok).toBe(false);
+    expect((broken.error ?? "").toLowerCase()).toContain("syntax error");
+    expect((await sandbox.run("return 3", opts())).value).toBe("3");
+  });
+
+  it("maps an error inside a loop back to the line the script wrote", async () => {
+    const sandbox = open();
+    const result = await sandbox.run(
+      [
+        "const rows = [1, 2, 3];",
+        "for (const row of rows) {",
+        '  if (row === 2) throw new Error("row two");',
+        "}",
+      ].join("\n"),
+      opts(),
+    );
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain("row two");
+    expect(result.error).toContain("repl-script.js:3:");
+  });
+});
