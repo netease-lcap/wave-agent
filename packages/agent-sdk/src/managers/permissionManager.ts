@@ -1427,9 +1427,11 @@ export class PermissionManager {
   }
 
   /**
-   * The built-in refusal to remove the session's own working directory. Bash
-   * only: PowerShell's channel answers the same question in its own hard-deny
-   * band (`evaluatePowerShellCommand`), where rules already do not reach.
+   * The built-in refusal to remove the session's own working directory, and the
+   * three shapes where this check cannot tell what a deletion would do
+   * (`unparsable`, `unplaceable`, `unverifiable`). Bash only: PowerShell's
+   * channel answers the same question in its own hard-deny band
+   * (`evaluatePowerShellCommand`), where rules already do not reach.
    *
    * `dontAsk` denies instead of asking — a mode whose whole promise is "do not
    * ask me" cannot answer a card, and Claude Code draws the same line. Every
@@ -1437,6 +1439,16 @@ export class PermissionManager {
    * waivable by bypass either, and Wave's "no callback configured" path already
    * turns that `ask` into a deny for headless callers (`wave -p`, SDK hosts
    * without `canUseTool`).
+   *
+   * That non-waivability is the local form of Claude Code's
+   * `classifierApprovable: false` (see `docs/specs/core/tool-permission-system.md`
+   * 「删除自身工作目录的内建硬闸」, scenario 10): this verdict is decided **above**
+   * the mode branches, so `acceptEdits`, the sandbox shortcut, an `allow` rule
+   * and `bypassPermissions` all fail to approve it, and
+   * {@link ToolPermissionContext.hidePersistentOption} withdraws the one option
+   * that would turn a single approval into a standing one. There is no
+   * classifier in Wave that could approve a call, so those two properties are
+   * the whole of the semantics.
    */
   private dangerousRemovalVerdict(
     context: ToolPermissionContext,
@@ -1460,11 +1472,12 @@ export class PermissionManager {
     if (!hit) return null;
 
     const message = describeDangerousRemoval(hit);
-    logger?.warn("Refusing to remove the session's working directory", {
+    logger?.warn("Blocked a deletion the session must not make on its own", {
       toolName: context.toolName,
       rule: hit.rule,
       target: hit.target,
       resolved: hit.resolved,
+      detail: hit.detail,
     });
 
     if (context.permissionMode === "dontAsk") {
