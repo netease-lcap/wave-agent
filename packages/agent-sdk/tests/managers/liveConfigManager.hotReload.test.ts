@@ -58,6 +58,7 @@ describe("LiveConfigManager 热重载边界", () => {
       updateConfiguredPermissionMode: vi.fn(),
       updateAllowedRules: vi.fn(),
       updateDeniedRules: vi.fn(),
+      updateAskRules: vi.fn(),
       updateAdditionalDirectories: vi.fn(),
       addSystemAdditionalDirectory: vi.fn(),
       removeSystemAdditionalDirectory: vi.fn(),

@@ -759,6 +759,7 @@ function makePermissionManager(behavior: "allow" | "deny" = "allow") {
     permissionContext,
     manager: {
       createContext: vi.fn().mockReturnValue(permissionContext),
+      checkRuleBasedPermissions: vi.fn().mockReturnValue(null),
       checkPermission: vi
         .fn()
         .mockResolvedValue(

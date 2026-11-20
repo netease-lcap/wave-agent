@@ -850,7 +850,7 @@ The \`defaultMode\` setting (under \`permissions\`, aligning with Claude Code's 
 | \`acceptEdits\` | Automatically allows \`Edit\` and \`Write\` inside the Safe Zone, and a plain \`mkdir\` whose paths are all inside it. Anything outside the Safe Zone, and every other restricted tool, still asks. |
 | \`plan\` | Exploration only: the agent may write nothing except the plan file. |
 | \`dontAsk\` | Restricted tools are denied outright instead of prompting, unless an allow rule already covers the call — the most restrictive mode. |
-| \`bypassPermissions\` | **Use with caution.** Restricted tools run without asking. Two gates survive: \`AskUserQuestion\` and \`ExitPlanMode\` still reach you (the tool *is* the decision), and in a worktree session \`Write\`/\`Edit\` still cannot touch the main repository. |
+| \`bypassPermissions\` | **Use with caution.** Restricted tools run without asking. Three gates survive: \`AskUserQuestion\` and \`ExitPlanMode\` still reach you (the tool *is* the decision), a \`permissions.ask\` rule still asks, and in a worktree session \`Write\`/\`Edit\` still cannot touch the main repository. |
 
 ### Example Configuration
 
@@ -860,22 +860,25 @@ The \`defaultMode\` setting (under \`permissions\`, aligning with Claude Code's 
     "defaultMode": "default",
     "additionalDirectories": ["~/my-exports"],
     "allow": ["Bash(ls -R)", "Bash(git status*)"],
+    "ask": ["Artifact"],
     "deny": ["Bash(rm -rf*)"]
   }
 }
 \`\`\`
 
-## Allow and Deny Rules
+## Allow, Ask and Deny Rules
 
-You can pre-approve or explicitly forbid specific operations using \`allow\` and \`deny\` rules.
+You can pre-approve, force confirmation on, or explicitly forbid specific operations using \`allow\`, \`ask\` and \`deny\` rules.
 
 - **\`allow\`**: An array of string patterns (e.g., bash commands or file paths) that are always permitted.
+- **\`ask\`**: An array of string patterns that always reach you for confirmation — even when a mode (\`bypassPermissions\`, \`acceptEdits\`) or an \`allow\` rule would have permitted the call. Use it for "this one always asks": \`["Artifact"]\` asks on every artifact publish.
 - **\`deny\`**: An array of string patterns that are always forbidden.
 
 When a tool is called, Wave checks:
 1. If the operation matches a \`deny\` rule, it is rejected.
-2. If the operation matches an \`allow\` rule, it is permitted.
-3. If no rules match, the behavior depends on the \`defaultMode\`.
+2. If the operation matches an \`ask\` rule, you are asked — the card offers no "don't ask again".
+3. If the operation matches an \`allow\` rule, it is permitted.
+4. If no rules match, the behavior depends on the \`defaultMode\`.
 
 ### Rule Syntax
 
@@ -968,7 +971,7 @@ The top-level \`sandbox\` key in \`settings.json\`:
 
 - \`enabled\` (default \`false\`): master switch.
 - \`failIfUnavailable\` (default \`false\`): fail the command when the sandbox cannot start (unsupported platform, missing dependency). The default degrades to an unsandboxed run with a warning.
-- \`autoAllowBashIfSandboxed\` (default \`false\`): skip the Bash permission prompt when the command runs sandboxed. Explicit \`deny\` rules still apply.
+- \`autoAllowBashIfSandboxed\` (default \`false\`): skip the Bash permission prompt when the command runs sandboxed. Explicit \`deny\` rules still apply, and so does a \`permissions.ask\` rule that names one kind of command (\`Bash(git push*)\`); a rule naming the whole tool (\`Bash\`) gives way here, because the sandbox covers every one of its calls.
 - \`allowUnsandboxedCommands\` (default \`true\`): whether the model may request \`dangerouslyDisableSandbox\` per call. Set \`false\` to force every command into the sandbox.
 - \`excludedCommands\`: command patterns that always run unsandboxed (e.g. \`npm run test:*\`). Each sub-command of a \`&&\` chain is matched separately.
 - \`ignoreViolations\`: command pattern → violations to ignore, so they are not reported in the tool result.
@@ -1298,6 +1301,7 @@ For detailed permission configuration and available permission modes, see [PERMI
 {
   "permissions": {
     "allow": ["Bash", "Read"],
+    "ask": ["Artifact"],
     "deny": ["Write"],
     "defaultMode": "default",
     "additionalDirectories": ["/tmp/wave-exports"]

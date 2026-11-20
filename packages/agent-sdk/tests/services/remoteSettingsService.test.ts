@@ -1012,6 +1012,13 @@ describe("remoteSettingsService", () => {
       expect(result.permissions!.deny).toEqual(["x", "y"]);
     });
 
+    it("merges permissions.ask: concatenate + dedupe", () => {
+      const local = { permissions: { ask: ["Artifact"] } };
+      const remote = { permissions: { ask: ["Artifact", "Bash(git push*)"] } };
+      const result = mergeRemoteSettings(local, remote);
+      expect(result.permissions!.ask).toEqual(["Artifact", "Bash(git push*)"]);
+    });
+
     it("merges permissions.defaultMode: remote wins", () => {
       const local = { permissions: { defaultMode: "default" as const } };
       const remote = { permissions: { defaultMode: "plan" as const } };
@@ -1056,6 +1063,7 @@ describe("remoteSettingsService", () => {
       const remote = { permissions: { allow: ["b"] } };
       const result = mergeRemoteSettings(local, remote);
       expect(result.permissions).not.toHaveProperty("deny");
+      expect(result.permissions).not.toHaveProperty("ask");
       expect(result.permissions).not.toHaveProperty("defaultMode");
       expect(result.permissions).not.toHaveProperty("additionalDirectories");
     });
