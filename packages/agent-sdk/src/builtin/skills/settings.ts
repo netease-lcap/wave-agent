@@ -1027,8 +1027,15 @@ Place resources in standard directories within the plugin:
 | \`hooks/hooks.json\` | Hook configuration |
 | \`.lsp.json\` | LSP server configuration |
 | \`.mcp.json\` | MCP server configuration |
+| \`mods/\` | Mod modules (\`*.tsx\` / \`.ts\`) that draw UI and answer session events — see "Writing a Mod" below |
 
 Only \`plugin.json\` should exist in \`.wave-plugin/\` — any other files there will cause a validation error. \`name\` and \`description\` are required; \`version\` is optional (a missing one is read as \`1.0.0\`), and \`mcpServers\` may be declared inline as an object instead of a sibling \`.mcp.json\`. A plugin laid out the Claude Code way (\`.claude-plugin/plugin.json\`) is loaded as a fallback when \`.wave-plugin/\` does not exist.
+
+### Writing a Mod
+
+A plugin can also carry \`mods/\` — TypeScript modules that run inside the agent
+process, register slash commands and tools, and draw their own UI. The API is
+large enough to have its own page: see [MODS.md](\${WAVE_SKILL_DIR}/MODS.md).
 
 ### Installing a Local Plugin
 
@@ -1202,6 +1209,205 @@ Later scopes override earlier ones (local > project > user).
 
 On first use Wave seeds \`wave-plugins-official\` (the official catalog, a GitHub source) into user-scope settings and marks it \`isBuiltin\` in the registry, so the official catalog is available without registering anything yourself.
 `,
+  "skills/settings/MODS.md": `# Writing a Mod
+
+A mod is a small program that ships inside a plugin directory and runs within the agent process: it answers session events, registers slash commands and tools, and — on a surface that can draw — renders its own UI out of a fixed element set. It is not a shell hook and not an MCP server. Hooks spawn a process and exchange JSON; MCP servers speak a protocol; a mod is code inside the session, holding \`$\`.
+
+This is the operating manual: the smallest working mod, what the 18 namespaces of \`$\` are for, how events and their filters really behave, which elements exist, the limits you will hit while writing, and the traps that fail without saying why.
+
+## 1. The smallest working mod
+
+\`\`\`
+my-plugin/
+  .wave-plugin/plugin.json
+  mods/hello.tsx
+\`\`\`
+
+Nothing about mods is declared in \`plugin.json\`. Every file directly under \`mods/\` is compiled and loaded, sorted by filename, and that order is the load order. Accepted extensions are \`.tsx\` \`.ts\` \`.jsx\` \`.js\` \`.mjs\` \`.cjs\` — the extension does not change how it loads. Every file that exports \`register\` becomes a mod; a file without one is a shared module (siblings reached by relative imports are compiled along and stay non-mods). One plugin may carry several mods.
+
+Compilation is esbuild \`transform\` per file, no bundling, output CJS. JSX uses the classic pragma \`__wave.h\` / \`__wave.Fragment\`, which means a JSX tag is an ordinary identifier in your scope: import it from \`wave-agent-sdk/mods\`, or destructure it from the table \`$.ui.resolve(e)\` gives you. There is no build step and no tsconfig.
+
+The result runs in a \`node:vm\` context, one per mod: no \`process\`, no \`Buffer\`, no \`node:*\`, no \`setTimeout\`, no \`fetch\`. \`eval\` and \`new Function\` are disabled. Imports may only be relative paths or \`wave-agent-sdk/mods\` (\`"claude-code"\` is accepted as an alias of it); any other bare specifier throws when the module is required. This is process-level isolation, not a security boundary — it exists so a stray \`process.exit()\` or \`while (true) {}\` cannot take the session down, and nothing more.
+
+\`\`\`tsx
+import { Box, Text, Button } from "wave-agent-sdk/mods";
+
+export function register($, on) {
+  on("session.start", async () => {
+    $.command.register({ name: "hello", description: "Open the hello panel" });
+  });
+
+  on("command.run", { command: "hello" }, async () => {
+    // rows = how many lines the panel needs; focus asks the surface to put the
+    // keyboard in it (the terminal honors it); isPlaced = false means nothing
+    // on this session can draw a panel.
+    const { isPlaced } = await $.ui.open({ id: "hello", title: "Hello", focus: true, rows: 8 });
+    if (!isPlaced) $.ui.status("nothing on this session can draw a panel");
+    return {}; // command.run returns the prompt to send — {} sends nothing
+  });
+
+  on("ui.render", { component: "Pane", requestId: "hello" }, (e) => {
+    const { Box, Text, Button } = $.ui.resolve(e); // the element table of e.surface
+    return (
+      <Box flexDirection="column" gap={1}>
+        <Text>Hello from a mod</Text>
+        <Button key="ping" label="Ping" onPress={() => $.ui.status("pong")} />
+      </Box>
+    );
+  });
+}
+\`\`\`
+
+\`register\` may be async — the loader awaits it. A compile or load failure disables that one mod only and takes an \`error\` panel; the session, the other mods, and every other capability of the plugin keep working.
+
+## 2. \`$\` in one screen
+
+\`$\` is an object of namespaces. (Literally it is a function with those properties attached, so that both \`register($, on)\` and the community \`register(on, options)\` shape can hand out the same two registrar arguments — use it as an object.) Everything the sandbox would otherwise take from Node lives here.
+
+| Namespace | What it is for | Most-used call |
+| --- | --- | --- |
+| \`plugin\` | Identity and your own directory | \`$.plugin.root\` (plugin dir, not the session cwd) |
+| \`ui\` | Panels, band, status line, toasts, questions, clipboard | \`$.ui.open({ id, title?, focus?: true, rows? })\` |
+| \`state\` | In-memory KV that lives as long as the session | \`$.state.get(k)\` / \`$.state.set(k, v)\` (sync) |
+| \`store\` | Your plugin's own persisted KV, every value JSON | \`await $.store.set(k, v)\` |
+| \`clock\` | Timer and waiting (there is no \`setTimeout\` in here) | \`$.clock.after(ms, fn)\` → \`{ cancel() }\` |
+| \`process\` | External programs, owned by the host and reaped with the session | \`await $.process.run(argv, { cwd, env, stdin, timeoutMs })\` |
+| \`fs\` | Read/write files, relative paths resolve against the session cwd | \`await $.fs.read(p)\` / \`$.fs.ancestors({ names })\` |
+| \`http\` | One-shot requests; \`https:\` and loopback \`http:\` only | \`await $.http.fetch(url, { method, headers, body, timeoutMs })\` |
+| \`prompt\` | Talk to the input box: send, fill, read, suggest | \`await $.prompt.submit({ text, asUser: true })\` |
+| \`session\` | Read-only facts about this session | \`await $.session.id()\` / \`$.session.cwd()\` / \`$.session.usage()\` |
+| \`turn\` | Interrupt a running turn — deliberately outside the read-only \`session\` | \`await $.turn.abort({ turnId })\` |
+| \`env\` | Session env snapshot merged over the OS env | \`await $.env.get(name)\` |
+| \`settings\` | Effective settings, read-only by design (no \`set\`) | \`await $.settings.read({ source, key })\` |
+| \`command\` | Slash commands: menu metadata, listing, running | \`$.command.register({ name, description })\` |
+| \`tool\` | Tools the model can call, and the mod tool channel | \`await $.tool.register({ name, description, inputSchema })\` |
+| \`config\` | Effective scalar config rows, as \`/config\` would draw them | \`$.config.list()\` |
+| \`agent\` | Subagents of this session, and spawning your own | \`await $.agent.spawn({ prompt, description })\` |
+| \`model\` | Ask a model one question (the only call exempt from the 5 s hook budget) | \`await $.model.complete({ model, prompt, maxTokens })\` |
+
+Two rules cut across all of them. Paths: \`$.fs\` and \`$.process\` default to the session's **current** working directory, which drifts whenever the model runs \`cd\` — pin your own files on \`$.plugin.root\` instead. Silence: calls that need a surface (\`fill\`, \`read\`, \`suggest\`, \`copy\`, \`open\`) answer with a result object (\`{ isFilled: false }\`, \`{ text: "", cursor: 0 }\`, \`{ isCopied: false, reason }\`, \`{ isPlaced: false, reason }\`) rather than throwing, so a mod written for the desktop still runs in a terminal.
+
+\`\`\`tsx
+let beats = 0; // module scope outlives every re-render
+
+on("session.start", async () => {
+  beats = (await $.store.get("beats")) ?? 0; // persisted per plugin, across sessions
+  $.clock.every(30_000, async () => { // a 200 ms floor applies to the interval
+    beats += 1;
+    await $.store.set("beats", beats);
+    $.ui.status(\`beat \${beats}\`); // one line under the input box
+  });
+});
+\`\`\`
+
+## 3. Events
+
+\`on(name, handler)\` and \`on(name, matcher, handler)\`. The set is closed: 51 names are accepted, made of 31 of our own plus 20 \`classic.*\` mirrors of Claude Code's settings-hook events. A name outside that set does not throw — the registration quietly becomes a no-op and one warning goes to the log, so a typo looks exactly like "my handler never fires".
+
+\`\`\`text
+// ours (31)
+session.start  session.measure  session.compact  session.end  session.append
+prompt.submit  prompt.compose  prompt.section  prompt.context  prompt.attachment
+prompt.edit  prompt.suggest
+turn.start  turn.step  turn.complete
+tool.call  tool.check  tool.describe  tool.register
+command.run  command.describe  skill.prompt
+agent.offer  agent.spawn
+ui.render  ui.close  ui.press  ui.input  ui.select  ui.focus  ui.scroll
+// classic mirrors (20): PermissionRequest SessionStart SessionEnd Stop StopFailure
+// UserPromptSubmit Notification InstructionsLoaded PostModelSwitch SubagentStart SubagentStop
+// PreToolUse PostToolUse PostToolUseFailure PostToolBatch PermissionDenied CwdChanged
+// PreCompact PostCompact MessageDisplay
+\`\`\`
+
+\`on("classic.*", handler)\` is the only glob — it expands to all 20 mirrors, and \`next.is("classic.*", e)\` accepts the same pattern. Anything else (\`"*"\`, \`"tool.*"\`) throws rather than answering false.
+
+Return values divide the events into three kinds. Most are observation: the return value is discarded. A second group rewrites something the host computed (\`tool.check\`, \`tool.describe\`, \`prompt.*\`, \`session.append\`, \`skill.prompt\`, \`command.describe\`, and the \`ui.*\` interaction events). A third blocks or redirects a flow: \`tool.call\` answers \`{ deny }\` or \`{ result }\`, \`command.run\` answers \`{ text }\`, \`prompt.submit\` answers \`{ context }\`, \`classic.Stop\` answers \`{ additionalContext }\`. \`next(e)\` hands the event to the next mod and finally to the engine frame; call it at most once per handler (a second call throws), and pass a modified event to it when you want the change to reach the engine.
+
+The optional middle argument is a filter over **the event's own fields**: the object must be a subset of the event, and every key you write has to match. Values compare with \`===\`; an array means "any of these"; a \`RegExp\` is tested against the event value as a string; a nested object is matched partially. \`command\` is normalized on both sides, so \`{ command: "diff" }\` and \`{ command: "/diff" }\` are the same filter. Filters are only legal on 19 events — \`ui.render\` (\`component\` / \`requestId\`), \`tool.call\` and the \`classic.PreToolUse\` family (\`tool\` / \`tool_name\`), \`tool.check\` and \`tool.describe\` (\`tool\`), \`command.run\` (\`command\`), \`prompt.section\` (\`name\`), \`prompt.attachment\` (\`type\`), \`skill.prompt\` (\`skill\`), \`agent.offer\` / \`agent.spawn\` (\`agent\` / \`subagentType\`), \`ui.press\` / \`ui.input\` / \`ui.select\` (\`plugin\`), \`ui.focus\`, \`ui.scroll\` (\`requestId\`). Passing a filter to anything else — \`ui.close\` and \`session.start\` are the ones people try — drops the whole registration with a warning, so filter inside the handler there.
+
+\`ui.render\` is pulled, not pushed. \`$.ui.invalidate("ui.render")\` only marks your trees stale; the surface then asks, and \`ui.render\` runs once per request with \`{ surface, component, requestId, plugin, props, viewport }\`. Keep it cheap and free of side effects, read \`e.props.scroll.bodyRows\` when you need to know how many lines fit, and keep anything that must survive a re-render in module scope, \`$.state\` or \`$.store\`. There are three render sites in the code — \`Pane\`, \`AbovePrompt\`, \`AbovePromptList\` — and \`$.ui.resolve\` rejects a component it does not know.
+
+\`\`\`tsx
+// deny before running; otherwise hand the event down and let the engine run it
+on("tool.call", { tool: "Bash" }, async (e, next) => {
+  if (typeof e.command === "string" && e.command.startsWith("rm -rf")) {
+    return { deny: "refusing a destructive command" }; // reaches the model as the tool error
+  }
+  return await next(e); // under tool.call, next(e) IS the execution
+});
+\`\`\`
+
+## 4. Elements
+
+\`MOD_ELEMENT_TYPES\` has exactly ten names: \`Box\` \`Text\` \`Button\` \`Input\` \`Select\` \`Svg\` \`Link\` \`Code\` \`Markdown\` \`Progress\`. Desktop and IDE surfaces get all ten; the terminal gets nine, without \`Svg\` (no vector canvas) — \`$.ui.resolve(e)\` returns a table cropped to \`e.surface\`, so destructuring \`Svg\` there gives \`undefined\` rather than an error about elements.
+
+The tree is pure data and must survive JSON: props are string / number / boolean / null, with exactly two exceptions (\`Select.options\` and the separate \`hover\` field). Unknown props are not ignored — the whitelist is per element, and one bad name or one function prop rejects the entire tree, so the panel keeps its previous frame and shows the reason instead of going blank. \`Button\` and \`Input\` must carry a string \`key\` (that is how the click gets back to you, together with \`onPress\` / \`onSubmit\`); \`Button.hotkey\` is a single lowercase letter or digit.
+
+Fragments are not available. The pragma compiles \`<>…</>\` to \`__wave.h(__wave.Fragment, …)\` where \`__wave.Fragment\` is the literal string \`"Fragment"\`, and \`"Fragment"\` is not an element type — you get \`未知元素类型：Fragment\` and the tree is dropped. Wrap siblings in a \`<Box>\`; it is the layout primitive anyway.
+
+\`\`\`tsx
+on("ui.render", { component: "AbovePrompt" }, (e) => {
+  const { Box, Text, Progress } = $.ui.resolve(e);
+  const { percent } = $.session.usage().context; // snapshot, recomputed per pull
+  return (
+    <Box flexDirection="row" gap={1}>
+      <Text dimColor>context</Text>
+      <Progress label="context" value={percent} max={100} />
+    </Box>
+  );
+});
+\`\`\`
+
+Interaction comes back as events, never as inline handlers reaching the host: \`onPress\` runs inside your sandbox and is stored under \`<type>:<key>\`, while the generic channel is \`ui.press\` / \`ui.input\` / \`ui.select\` (filtered by \`plugin\`, before the element's own callback) plus \`ui.focus\` and \`ui.scroll\` for keyboard landings and self-managed scrolling. Both work — pick one per element and stay consistent.
+
+## 5. Limits you will actually hit
+
+| Limit | Value | What hitting it looks like |
+| --- | --- | --- |
+| Element tree | 2000 nodes, depth 24, 100,000 text chars | Whole tree rejected, previous frame stays, error shown |
+| One hook dispatch | 5000 ms | That mod's handler fails for this dispatch (no mod = no opinion); \`$.model.complete\` is the one exempt call |
+| Timers | 200 ms floor, 16 live per mod | Sub-200 ms intervals are clamped, not rejected; the 17th \`after\`/\`every\` throws |
+| External processes | 4 live per mod, 4 MiB total output | 5th \`spawn\`/\`run\` throws; output past 4 MiB stops reading and kills the process |
+| \`$.fs\` / \`$.http\` payloads | 4 MiB per file / body, 30 s per fetch | \`$.fs\` over 4 MiB throws; a response whose declared length exceeds the cap throws, one that grows past it is cut and flagged \`isTruncated\` |
+| \`$.store\` value | 4,194,304 chars of \`JSON.stringify\` | Throws — a truncated value is a wrong value |
+| Registered things | 32 commands, 16 tools, 4 subagents, 50 \`model.complete\` calls per session | The next call throws |
+| Mod files | 1 MiB each, 4 MiB total, 64 files | Extra files are skipped with a warning |
+
+\`\`\`tsx
+// clamp your own payload before the host has to reject it: one oversized node
+// costs the whole frame, and the panel silently keeps the previous one
+const MAX_LINES = 200;
+let cache = { text: "" }; // filled elsewhere
+on("ui.render", { component: "Pane", requestId: "log" }, (e) => {
+  const { Box, Code } = $.ui.resolve(e);
+  const lines = (cache.text ?? "").split("\\n").slice(-MAX_LINES);
+  return <Box flexDirection="column"><Code key="log" source={lines.join("\\n")} /></Box>;
+});
+\`\`\`
+
+## 6. Traps that fail quietly or misleadingly
+
+- **\`$.command.run\` inside a \`command.run\` handler throws.** The hook already owns the turn the command would be waiting on. Return \`{ text }\` from the handler, or move the call to \`turn.complete\`.
+- **\`$.prompt.submit\` demands \`asUser: true\` explicitly.** \`{ text }\` alone, or \`asUser: false\`, throws: only the user-identity form exists in this version.
+- **\`$.prompt.fill\` / \`read\` / \`suggest\` do nothing on the terminal** (no prompt channel is wired there): you get \`{ isFilled: false }\`, \`{ text: "", cursor: 0 }\`, \`{ isShown: false }\`. Write a \`submit\` fallback.
+- **\`ui.close\` returning \`{ deny }\` only works on the terminal.** It is honored when the user presses Esc in a panel; on desktop and IDE the tab close is optimistic, so a deny cannot hold it — your mod just gets the notification afterwards. Host-initiated closes (\`$.ui.close\`, reload, session end) never ask.
+- **\`$.ui.invalidate\` takes a producer name, not a pane id.** Only \`"ui.render"\` and \`"tool.describe"\` are accepted; anything else throws.
+- **\`$.ui.open\` accepts \`focus: true\` only.** \`focus: false\` throws — omit the field instead.
+- **\`$.ui.ask\` resolves to a label or to free text** the user typed in "other", so compare exactly against what you offered, and expect a rejection when nobody can answer.
+- **\`Button\`/\`Input\` without a string \`key\` fails validation**, and the panel loses its only route back to your handler.
+- **Do not hold session state in a value you recompute on render.** \`ui.render\` runs on every pull; state lives in module scope, \`$.state\` (per session) or \`$.store\` (persisted).
+- **A file under \`mods/\` with no \`register\` export is not an error** — it is silently a non-mod. Forget the export and your panel simply never appears.
+
+\`\`\`tsx
+on("ui.close", (e) => (e?.id === "hello" ? { deny: "back to the list" } : undefined));
+on("command.run", { command: "review" }, async () => {
+  const { isFilled } = await $.prompt.fill({ text: "review this diff" });
+  if (!isFilled) await $.prompt.submit({ text: "review this diff", asUser: true });
+  return {};
+});
+\`\`\``,
+
   "skills/settings/COMMANDS.md": `# Custom Slash Commands
 
 A custom command is a single Markdown file: its body is the prompt Wave sends when the command runs, and its frontmatter tunes that run. It is the lightweight sibling of a skill — no separate context and no tool of its own, just text (plus the arguments typed after the command) added to the conversation.
@@ -1350,8 +1556,9 @@ For detailed guidance on creating subagents, see [SUBAGENTS.md](\${WAVE_SKILL_DI
 
 ### 10. Plugins
 
-Plugins bundle skills, hooks, MCP servers, LSP servers, commands, subagents and workflows into a reusable package. You can install plugins locally or from a marketplace.
+Plugins bundle skills, hooks, MCP servers, LSP servers, commands, subagents and workflows into a reusable package. You can install plugins locally or from a marketplace. A plugin can also carry \`mods/\` — TypeScript modules that draw their own UI and answer session events.
 For detailed guidance on creating plugins and marketplaces, see [PLUGINS.md](\${WAVE_SKILL_DIR}/PLUGINS.md).
+To write a mod — the \`$\` surface, the event set, element types and limits — see [MODS.md](\${WAVE_SKILL_DIR}/MODS.md).
 
 ### 11. Feature Toggles
 - \`enableArtifact\`: Enable the Artifact tool, which publishes local \`.html\`/\`.md\` files as shareable (default-private) web pages, and makes WebFetch read artifact URLs through its own channel. Defaults to \`true\` for a signed-in account and \`false\` when nobody is signed in (every Artifact request carries the SSO token); set \`true\` to register the tool even without an account, or \`false\` to turn it off. Toggling it hot-reloads the tool registry, and signing in/out re-evaluates it too.
@@ -1406,6 +1613,7 @@ You can ask me to:
 - "How do I set the context window (or max input tokens)?"
 - "How do I change the model?"
 - "How do I create a Wave plugin?"
+- "How do I make a plugin draw its own panel?"
 - "How do I set up a plugin marketplace?"
 - "How do I install a plugin from a marketplace?"
 - "How do I sandbox Bash commands?"
