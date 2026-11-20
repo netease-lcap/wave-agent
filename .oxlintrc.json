@@ -20,6 +20,14 @@
       }
     ],
     "typescript/ban-ts-comment": "error",
+    "typescript/no-floating-promises": "error",
+    "typescript/unbound-method": "off",
+    "typescript/restrict-template-expressions": "off",
+    "typescript/no-base-to-string": "off",
+    "typescript/no-misused-spread": "off",
+    "typescript/await-thenable": "off",
+    "typescript/no-redundant-type-constituents": "off",
+    "typescript/require-array-sort-compare": "off",
     "no-restricted-imports": [
       "error",
       {
@@ -101,6 +109,23 @@
       ],
       "rules": {
         "no-console": "error"
+      }
+    },
+    {
+      "files": [
+        "**/tests/**/*.ts",
+        "**/tests/**/*.tsx",
+        "**/*.test.ts",
+        "**/*.test.tsx",
+        "**/examples/**/*",
+        "**/fixtures/**/*",
+        "**/e2e/**/*",
+        "**/demo/**/*",
+        "**/scripts/**/*"
+      ],
+      "rules": {
+        "typescript/no-floating-promises": "off",
+        "typescript/no-implied-eval": "off"
       }
     },
     {

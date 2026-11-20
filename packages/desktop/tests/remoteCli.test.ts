@@ -124,7 +124,10 @@ function stubMirror(
           statusText: "Not Found",
         });
       }
-      return new Response(body);
+      // 归档字节是 Buffer（= Uint8Array 的视图），`BodyInit` 只认后者。
+      return new Response(
+        typeof body === "string" ? body : new Uint8Array(body),
+      );
     }),
   );
 }

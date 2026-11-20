@@ -56,6 +56,7 @@ describe("LiveConfigManager - Configuration Management", () => {
       updateConfiguredPermissionMode: vi.fn(),
       updateAllowedRules: vi.fn(),
       updateDeniedRules: vi.fn(),
+      updateAskRules: vi.fn(),
       updateAdditionalDirectories: vi.fn(),
     } as Partial<PermissionManager> as PermissionManager;
 
@@ -373,6 +374,7 @@ describe("LiveConfigManager - Configuration Management", () => {
         permissions: {
           allow: ["Bash(ls)"],
           deny: ["Bash(rm *)"],
+          ask: ["Artifact"],
           additionalDirectories: ["/tmp"],
           defaultMode: "default",
         },
@@ -409,6 +411,9 @@ describe("LiveConfigManager - Configuration Management", () => {
       expect(mockPermissionManager.updateDeniedRules).toHaveBeenCalledWith([
         "Bash(rm *)",
       ]);
+      expect(mockPermissionManager.updateAskRules).toHaveBeenCalledWith([
+        "Artifact",
+      ]);
       expect(
         mockPermissionManager.updateAdditionalDirectories,
       ).toHaveBeenCalledWith(["/tmp"]);
@@ -422,6 +427,7 @@ describe("LiveConfigManager - Configuration Management", () => {
       // These should be called with empty arrays/undefined if they are missing in the new config
       expect(mockPermissionManager.updateAllowedRules).toHaveBeenCalledWith([]);
       expect(mockPermissionManager.updateDeniedRules).toHaveBeenCalledWith([]);
+      expect(mockPermissionManager.updateAskRules).toHaveBeenCalledWith([]);
       expect(
         mockPermissionManager.updateAdditionalDirectories,
       ).toHaveBeenCalledWith([]);

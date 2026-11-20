@@ -21,6 +21,7 @@ import { cronListTool } from "../tools/cronListTool.js";
 import { webFetchTool } from "../tools/webFetchTool.js";
 import { artifactTool } from "../tools/artifactTool.js";
 import { execTool } from "../tools/execTool.js";
+import { pollTool } from "../tools/pollTool.js";
 import { isArtifactEnabled } from "../services/artifactAvailability.js";
 import { isKnowledgeBaseEnabled } from "../services/knowledgeBaseAvailability.js";
 import { isTaskToolsEnabled } from "../services/taskToolsAvailability.js";
@@ -32,12 +33,17 @@ import { knowledgeBaseTools } from "../tools/knowledgeBase/index.js";
 import {
   getNonDeferrableBuiltins,
   isExecEnabled,
+  isReplCoreToolsEnabled,
 } from "../services/execAvailability.js";
 import { isLeanPromptEnabled } from "../services/leanPrompt.js";
 import { buildExecPool } from "../exec/catalog.js";
 import type { ExecPoolCandidate, ExecPoolEntry } from "../exec/catalog.js";
 import { STRUCTURAL_NON_DEFERRABLE } from "../exec/deferral.js";
-import { EXEC_TOOL_NAME, isShellToolName } from "../constants/tools.js";
+import {
+  EXEC_TOOL_NAME,
+  REPL_TOOL_ALIASES,
+  isShellToolName,
+} from "../constants/tools.js";
 // New tools
 import { globTool } from "../tools/globTool.js";
 import { grepTool } from "../tools/grepTool.js";
@@ -96,6 +102,21 @@ interface DescribedTool {
    */
   isDeferred?: boolean;
 }
+
+/**
+ * Every spelling of the REPL — the pool's carrier.
+ *
+ * The tool is registered under `EXEC_TOOL_NAME`, but `REPL_TOOL_ALIASES` are
+ * names a settings file or a permission rule may still hold from before the
+ * rename, so "is this the carrier" has to be asked of the whole set: a `--tools
+ * Eval` or a deny rule naming `Eval` means this tool, and treating it as an
+ * unknown name would either register nothing or leave the sandbox carrier
+ * callable while its rule said otherwise.
+ */
+const CARRIER_TOOL_NAMES: readonly string[] = [
+  EXEC_TOOL_NAME,
+  ...REPL_TOOL_ALIASES,
+];
 
 export interface ToolManagerOptions {
   container: Container;
@@ -415,11 +436,15 @@ class ToolManager {
       builtInTools.push(artifactTool);
     }
 
-    // Exec is on by default; enableExec: false turns it off. Registration is
-    // decoupled from declaration: getToolsConfig() declares it only while the
-    // deferral table yields a non-empty pool, which depends on the runtime tool set.
+    // The REPL is on by default; `enableRepl: false` turns it off (the retired
+    // `enableExec` spelling is accepted too). Registration is decoupled from
+    // declaration: getToolsConfig() declares it only while the deferral table
+    // yields a non-empty pool, which depends on the runtime tool set.
+    //
+    // `Poll` is registered with it and gated by the same switch: it exists to read
+    // the async lane's queue, so without a REPL there is nothing for it to read.
     if (isExecEnabled(this.container.get<string>("CurrentWorkdir"))) {
-      builtInTools.push(execTool);
+      builtInTools.push(execTool, pollTool);
     }
 
     // Task-list tools: off by default, opted in with WAVE_ENABLE_TASK_TOOLS=1
@@ -462,7 +487,8 @@ class ToolManager {
   /**
    * Re-evaluate feature-gated built-in tools after a live configuration
    * reload. Currently gates the Artifact tool on settings.json
-   * `enableArtifact`, the Exec tool on `enableExec`, the three knowledge-base
+   * `enableArtifact`, the REPL tool on `enableRepl` (and, through the deferral
+   * judgment, on `enableReplCoreTools`), the three knowledge-base
    * tools on `enableKnowledgeBase`, the four task-list tools on
    * `env.WAVE_ENABLE_TASK_TOOLS`, and the two shell tools on the shell gate
    * (`env.WAVE_USE_POWERSHELL_TOOL` / whether Git Bash exists). Safe to call
@@ -473,6 +499,7 @@ class ToolManager {
   public reloadFeatureGatedTools(): void {
     this.toolsRegistry.delete(artifactTool.name);
     this.toolsRegistry.delete(execTool.name);
+    this.toolsRegistry.delete(pollTool.name);
     // Both shell tools are gate-dependent: enabling PowerShell on a machine
     // without Git Bash, or disabling it on one with Git Bash, changes which of
     // the two is listed — and "neither" is a legal outcome.
@@ -494,18 +521,29 @@ class ToolManager {
 
   /**
    * Check if a tool should be enabled based on tools configuration and permission rules
+   *
+   * The REPL answers to several spellings, so it is matched as the set rather than
+   * by its registered name: `--tools Eval` or a `disallowedTools` entry naming an
+   * alias is a statement about this tool.
    */
   private shouldEnableTool(name: string): boolean {
     const permissionManager =
       this.container.get<PermissionManager>("PermissionManager");
+    const spellings = CARRIER_TOOL_NAMES.includes(name)
+      ? CARRIER_TOOL_NAMES
+      : [name];
 
     // If tool is explicitly denied by name in permission rules, filter it out
-    if (permissionManager?.isToolDenied(name)) {
+    if (
+      spellings.some((spelling) => permissionManager?.isToolDenied(spelling))
+    ) {
       return false;
     }
 
     const matches = (toolName: string) =>
-      toolName.toLowerCase() === name.toLowerCase();
+      spellings.some(
+        (spelling) => toolName.toLowerCase() === spelling.toLowerCase(),
+      );
 
     // A definition-level blacklist wins over the whitelist (both lists naming
     // the same tool means "unavailable").
@@ -1084,15 +1122,20 @@ class ToolManager {
   }
 
   /**
-   * Whether `Exec` exists for this session: registered and not denied by a
-   * permission rule. Exactly when the sandbox channel does — an undeclared `Exec`
+   * Whether the REPL exists for this session: registered and not denied by a
+   * permission rule. Exactly when the sandbox channel does — an undeclared REPL
    * cannot be called, so declaring the deferred tools only inside it would hide
    * them for good.
+   *
+   * A rule naming any of the carrier's spellings (`Eval`) is a rule about this
+   * tool: the aliases are the same tool, and honouring only the canonical name
+   * would leave the sandbox callable while the rule said it was denied.
    */
   private isExecDeclared(): boolean {
-    return (
-      this.toolsRegistry.has(EXEC_TOOL_NAME) &&
-      !this.getPermissionManager()?.isToolDenied(EXEC_TOOL_NAME)
+    if (!this.toolsRegistry.has(EXEC_TOOL_NAME)) return false;
+    const permissionManager = this.getPermissionManager();
+    return !CARRIER_TOOL_NAMES.some((name) =>
+      permissionManager?.isToolDenied(name),
     );
   }
 
@@ -1155,24 +1198,44 @@ class ToolManager {
    * Computed per call, never cached. The pool is a function of the registry, the MCP
    * connections and the settings, all of which move at runtime, and a cached copy
    * would be a second source of truth for what the sandbox can reach.
+   *
+   * `enableReplCoreTools` is read here, at the one call that builds the pool, so
+   * the flat declarations, the announcement and the sandbox all get the same
+   * answer for "is `Read` pooled" (spec core/repl-tool.md「开关把核心文件与 shell
+   * 工具也收进 REPL」).
    */
   public getExecPool(): ExecPoolEntry[] {
+    const workdir = this.container.get<string>("CurrentWorkdir");
     return buildExecPool(
       this.deferralCandidates(),
-      getNonDeferrableBuiltins(this.container.get<string>("CurrentWorkdir")),
+      getNonDeferrableBuiltins(workdir),
+      isReplCoreToolsEnabled(workdir),
       // 插件在 `tool.describe` 里给过裁决就用它（spec「给工具、技能、命令写描述」）。
       (name) => this.placementOverride(name),
     );
   }
 
   /**
+   * The pool the announcement renders, or `undefined` when the channel is closed.
+   *
+   * Entries rather than names: the announcement's first tier is a signature block,
+   * and a tier is only reachable through the entry (`tier === "core"`, copied from
+   * the deferral judgment by `buildExecPool`). Handing it names would silently
+   * demote every core tool to the name-only tier.
+   */
+  public getOnDemandPool(): ExecPoolEntry[] | undefined {
+    if (!this.isExecDeclared()) return undefined;
+    return this.getExecPool();
+  }
+
+  /**
    * The deferred tool names, or `undefined` when the channel is closed — the input
-   * the announcement is diffed against the conversation history. Names only, because
-   * names are all the announcement carries; see `exec/catalogAnnouncement.ts`.
+   * callers that only need reachability read (`aiManager`'s task reminder and the
+   * system prompt's tool gating). The announcement uses `getOnDemandPool` instead,
+   * because a name cannot carry a signature.
    */
   public getOnDemandToolNames(): string[] | undefined {
-    if (!this.isExecDeclared()) return undefined;
-    return this.getExecPool().map((entry) => entry.name);
+    return this.getOnDemandPool()?.map((entry) => entry.name);
   }
 
   getToolsConfig(options?: {
@@ -1190,10 +1253,12 @@ class ToolManager {
     // the two must not coexist, or the model would see the same tool twice while
     // the announcement claimed to be the only way in. Both halves are derived from
     // this one pool, and the pool is exactly what the agent could already call
-    // directly, so deferring it cannot widen access.
+    // directly, so deferring it cannot widen access. That includes the seven core
+    // tools while `enableReplCoreTools` is on: they are in the pool, so they leave
+    // `tools[]` by this same rule rather than by a second list.
     //
-    // The pool is non-empty whenever `Exec` exists (the deferred built-ins are
-    // always there), so `Exec` is declared for as long as the feature is on. That
+    // The pool is non-empty whenever the REPL exists (the deferred built-ins are
+    // always there), so the REPL is declared for as long as the feature is on. That
     // is the point: `tools[]` no longer moves when an MCP server comes or goes,
     // which is what keeps the cached prefix stable.
     const pool = this.isExecDeclared() ? this.getExecPool() : [];
@@ -1202,7 +1267,7 @@ class ToolManager {
 
     const builtInToolsConfig = Array.from(this.toolsRegistry.values())
       .filter((tool) => {
-        if (tool.name === EXEC_TOOL_NAME) return execDeclared;
+        if (CARRIER_TOOL_NAMES.includes(tool.name)) return execDeclared;
         if (pooled.has(tool.name)) return false;
         // If tool is explicitly denied by name in permission rules, filter it out
         if (permissionManager?.isToolDenied(tool.name)) {
@@ -1387,8 +1452,8 @@ class ToolManager {
   /**
    * 插件对放置的裁决；没意见就给 `undefined`（判定表说了算）。
    *
-   * 两条护栏：结构豁免（`Exec` 是池的载体，进池等于脚本调脚本）翻不动；没有
-   * 池（`enableExec: false`、或 Exec 被权限禁掉）时 `true` 无处可去，只能保持
+   * 两条护栏：结构豁免（`REPL` 是池的载体，进池等于脚本调脚本）翻不动；没有
+   * 池（`enableRepl: false`、或 REPL 被权限禁掉）时 `true` 无处可去，只能保持
    * 平铺 —— 不能因为一句「藏起来」就把工具下架。
    */
   private placementOverride(name: string): boolean | undefined {
@@ -1409,7 +1474,7 @@ class ToolManager {
       if (STRUCTURAL_NON_DEFERRABLE.includes(name)) continue;
       this.deferredWarned.add(name);
       logger?.warn(
-        `[Wave] tool.describe 要求把 ${name} 设为延迟，但这个会话没有 Exec 池，保持平铺`,
+        `[Wave] tool.describe 要求把 ${name} 设为延迟，但这个会话没有 REPL 池，保持平铺`,
       );
     }
   }

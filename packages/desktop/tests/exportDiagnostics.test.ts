@@ -35,6 +35,21 @@ const dirent = (name: string, isFile = true) => ({
   isFile: () => isFile,
 });
 
+/**
+ * 第 `index` 次 `tar.c` 的实参。
+ *
+ * 产品是 `c(options, entries)` 两个实参，但 `tar` 的类型只把后一个重载
+ * （`c(options)`）留给 `mock.calls`，所以要按真实调用形状重新描述一次元组。
+ */
+function tarCall(
+  index: number,
+): [{ gzip?: boolean; file?: string; cwd?: string }, string[]] {
+  return vi.mocked(createTarArchive).mock.calls[index] as unknown as [
+    { gzip?: boolean; file?: string; cwd?: string },
+    string[],
+  ];
+}
+
 describe("exportDiagnostics", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -106,10 +121,7 @@ describe("exportDiagnostics", () => {
       { recursive: true },
     );
 
-    const [tarOptions, entries] = vi.mocked(createTarArchive).mock.calls[0] as [
-      { gzip?: boolean; file?: string; cwd?: string },
-      string[],
-    ];
+    const [tarOptions, entries] = tarCall(0);
     expect(tarOptions).toMatchObject({
       gzip: true,
       file: TARGET,
@@ -154,10 +166,7 @@ describe("exportDiagnostics", () => {
     await exportDiagnostics();
 
     expect(fs.cpSync).not.toHaveBeenCalled();
-    const [, entries] = vi.mocked(createTarArchive).mock.calls[0] as [
-      unknown,
-      string[],
-    ];
+    const [, entries] = tarCall(0);
     expect(entries).toEqual(["logs", "manifest.txt"]);
   });
 

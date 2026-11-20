@@ -54,6 +54,10 @@ import {
 } from "../utils/bashParser.js";
 import type { BashLeaf } from "../utils/bashStructure/index.js";
 import { analyzeShellCommand } from "../utils/shell/shellCommandAnalysis.js";
+import {
+  describeDangerousRemoval,
+  findDangerousRemoval,
+} from "../utils/shell/dangerousRemoval.js";
 import { evaluatePowerShellCommand } from "../tools/powershellTool/permissions.js";
 import {
   collectCommands,
@@ -263,6 +267,13 @@ export interface PermissionManagerOptions {
   allowedRules?: string[];
   /** Denied rules from settings */
   deniedRules?: string[];
+  /**
+   * Rules that must reach the user even when something else would auto-allow
+   * the call. Judge after the deny rules and before every automatic allow
+   * (`allow` rules, `bypassPermissions`, `acceptEdits`, and a tool's own
+   * session-scoped shortcut).
+   */
+  askRules?: string[];
   /** Instance-specific allowed rules (from AgentOptions) */
   instanceAllowedRules?: string[];
   /** Instance-specific denied rules (from AgentOptions) */
@@ -299,6 +310,7 @@ export class PermissionManager {
   private bypassAuthorization?: boolean;
   private allowedRules: string[] = [];
   private deniedRules: string[] = [];
+  private askRules: string[] = [];
   private instanceAllowedRules: string[] = [];
   private instanceDeniedRules: string[] = [];
   private temporaryRules: string[] = [];
@@ -323,6 +335,7 @@ export class PermissionManager {
     this.bypassAuthorization = options.bypassAuthorization;
     this.allowedRules = options.allowedRules || [];
     this.deniedRules = options.deniedRules || [];
+    this.askRules = options.askRules || [];
     this.instanceAllowedRules = options.instanceAllowedRules || [];
     this.instanceDeniedRules = options.instanceDeniedRules || [];
     this.planFilePath = options.planFilePath;
@@ -439,6 +452,13 @@ export class PermissionManager {
   }
 
   /**
+   * Get all currently ask rules (they force a confirmation the user must see)
+   */
+  public getAskRules(): string[] {
+    return [...this.askRules];
+  }
+
+  /**
    * Get all instance-specific allowed rules
    */
   public getInstanceAllowedRules(): string[] {
@@ -536,6 +556,13 @@ export class PermissionManager {
    */
   updateDeniedRules(rules: string[]): void {
     this.deniedRules = rules;
+  }
+
+  /**
+   * Update the ask rules (e.g., when configuration reloads)
+   */
+  updateAskRules(rules: string[]): void {
+    this.askRules = rules;
   }
 
   /**
@@ -653,6 +680,25 @@ export class PermissionManager {
     return this.isInsideSafeZone(targetPath, undefined, {
       includeSystemDirectories: false,
     }).isInside;
+  }
+
+  /**
+   * The directories that make up the Safe Zone, as paths rather than as a
+   * predicate. Needed by the removal guard, which asks the reverse question —
+   * "does this target *contain* one of them" — and cannot invert
+   * {@link isInsideSafeZone} to get it.
+   *
+   * Same effective workdir rule as `isInsideSafeZone`: the session's current
+   * workdir wins over the one the tool call carries.
+   */
+  public getSafeZoneRoots(workdir?: string): string[] {
+    const roots = [
+      this.workdir || workdir,
+      ...this.additionalDirectories,
+      ...this.instanceAdditionalDirectories,
+      ...this.systemAdditionalDirectories,
+    ].filter((root): root is string => typeof root === "string" && !!root);
+    return [...new Set(roots.map((root) => path.resolve(toWindowsPath(root))))];
   }
 
   /**
@@ -941,7 +987,16 @@ export class PermissionManager {
       return {
         decision: {
           behavior: "deny",
-          message: `Tool '${context.toolName}' requires permission approval. No permission callback configured.`,
+          message: [
+            `Tool '${context.toolName}' requires permission approval. No permission callback configured.`,
+            // The card's warning is the only explanation the model would have
+            // seen; keep it when the answer has to be no, otherwise "denied"
+            // with no reason reads as a transient glitch and invites another
+            // attempt through a different tool.
+            context.warning,
+          ]
+            .filter(Boolean)
+            .join(" "),
         },
         source: "unknown",
         denyReason: "no_permission_prompt",
@@ -1004,36 +1059,10 @@ export class PermissionManager {
   private async resolvePermission(
     context: ToolPermissionContext,
   ): Promise<HostVerdict> {
-    // 0. Check instance-specific denied rules first - Deny always takes precedence
-    for (const rule of this.instanceDeniedRules) {
-      if (this.matchesRule(context, rule)) {
-        logger?.warn("Permission denied by instance rule", {
-          toolName: context.toolName,
-          rule,
-        });
-        return {
-          decision: "deny",
-          message: `Access to tool '${context.toolName}' is explicitly denied by instance rule: ${rule}`,
-          reason: rule,
-          source: "config",
-        };
-      }
-    }
-
-    // 0. Check denied rules first - Deny always takes precedence
-    for (const rule of this.deniedRules) {
-      if (this.matchesRule(context, rule)) {
-        logger?.warn("Permission denied by rule", {
-          toolName: context.toolName,
-          rule,
-        });
-        return {
-          decision: "deny",
-          message: `Access to tool '${context.toolName}' is explicitly denied by rule: ${rule}`,
-          reason: rule,
-          source: "config",
-        };
-      }
+    // 0. Deny rules first - Deny always takes precedence
+    const denied = this.denyVerdict(context);
+    if (denied) {
+      return denied;
     }
 
     // 1. Tools whose whole point is the user's answer go straight to the person.
@@ -1130,18 +1159,48 @@ export class PermissionManager {
       }
     }
 
+    const sandboxAutoAllows =
+      this.isBashShellContext(context) &&
+      context.permissionMode !== "plan" &&
+      context.toolInput?.sandboxed === true &&
+      this.isSandboxAutoAllowEnabled();
+
+    // 1.4 Built-in hard stop on deleting the directory the session works in.
+    // Same band as `permissions.ask` and for the same reason: it sits after the
+    // deny tiers and before every automatic allow, so an allow rule, the sandbox
+    // shortcut, `acceptEdits` and `bypassPermissions` cannot approve it — which
+    // is exactly the property Claude Code gives its dangerous-removal check
+    // (`classifierApprovable: false`; see `docs/specs/core/tool-permission-system.md`
+    // 「删除自身工作目录的内建硬闸」). The judgment itself is
+    // {@link findDangerousRemoval}: pure path arithmetic, no notion of a repo.
+    const dangerousRemoval = this.dangerousRemovalVerdict(context);
+    if (dangerousRemoval) return dangerousRemoval;
+
+    // 1.5 `permissions.ask`: the user asked to be the one deciding this call, so
+    // it runs after the deny tiers and before every automatic allow — `allow`
+    // rules, the sandbox shortcut below, `bypassPermissions`, `acceptEdits`, and
+    // a tool's own session-scoped shortcut (which a tool consults through
+    // {@link checkRuleBasedPermissions}). One exception, aligned with Claude
+    // Code: a rule naming the whole tool gives way to the sandbox shortcut,
+    // because the OS boundary already covers every call of it; a rule naming one
+    // shape of call (`Bash(git push*)`) keeps asking. The card never offers to
+    // persist the call — the person asked to be asked.
+    const askedByRule = this.askVerdict(context);
+    if (askedByRule && !(askedByRule.toolLevel && sandboxAutoAllows)) {
+      logger?.info("Permission must be confirmed by rule", {
+        toolName: context.toolName,
+        rule: askedByRule.verdict.reason,
+      });
+      context.hidePersistentOption = true;
+      return askedByRule.verdict;
+    }
     // Sandboxed Bash skips the prompt: the OS boundary is the control, so the
     // person no longer has to be the control. Two conditions keep this honest —
     // the Bash tool reports `sandboxed: true` only after the runtime actually
     // came up for *this* command (not merely "sandbox.enabled is set"), and the
     // deny rules at step 0 have already won. Plan mode keeps asking: a sandboxed
     // command can still write inside the worktree, which plan mode forbids.
-    if (
-      this.isBashShellContext(context) &&
-      context.permissionMode !== "plan" &&
-      context.toolInput?.sandboxed === true &&
-      this.isSandboxAutoAllowEnabled()
-    ) {
+    if (sandboxAutoAllows) {
       return { decision: "allow", source: "config" };
     }
 
@@ -1232,6 +1291,9 @@ export class PermissionManager {
       const verdict = await evaluatePowerShellCommand({
         command: String(context.toolInput.command),
         workdir: context.toolInput?.workdir as string | undefined,
+        safeZoneRoots: this.getSafeZoneRoots(
+          context.toolInput?.workdir as string | undefined,
+        ),
         allowedRules: [
           ...this.instanceAllowedRules,
           ...this.temporaryRules,
@@ -1346,6 +1408,199 @@ export class PermissionManager {
       reason: context.permissionMode,
       source: "config",
     };
+  }
+
+  /**
+   * The two rule tiers that settle a call on the spot: `deny` wins over
+   * everything, `ask` forces a confirmation the person must see. Answers only —
+   * no logging, no telemetry, no decision recording — so a tool that
+   * short-circuits `checkPermission` can still learn whether a rule objects.
+   */
+  public checkRuleBasedPermissions(
+    context: ToolPermissionContext,
+  ): HostVerdict | null {
+    const denied = this.denyVerdict(context);
+    if (denied) {
+      return denied;
+    }
+    return this.askVerdict(context)?.verdict ?? null;
+  }
+
+  /**
+   * The built-in refusal to remove the session's own working directory, and the
+   * three shapes where this check cannot tell what a deletion would do
+   * (`unparsable`, `unplaceable`, `unverifiable`). Bash only: PowerShell's
+   * channel answers the same question in its own hard-deny band
+   * (`evaluatePowerShellCommand`), where rules already do not reach.
+   *
+   * `dontAsk` denies instead of asking — a mode whose whole promise is "do not
+   * ask me" cannot answer a card, and Claude Code draws the same line. Every
+   * other mode asks, including `bypassPermissions`: Claude Code's check is not
+   * waivable by bypass either, and Wave's "no callback configured" path already
+   * turns that `ask` into a deny for headless callers (`wave -p`, SDK hosts
+   * without `canUseTool`).
+   *
+   * That non-waivability is the local form of Claude Code's
+   * `classifierApprovable: false` (see `docs/specs/core/tool-permission-system.md`
+   * 「删除自身工作目录的内建硬闸」, scenario 10): this verdict is decided **above**
+   * the mode branches, so `acceptEdits`, the sandbox shortcut, an `allow` rule
+   * and `bypassPermissions` all fail to approve it, and
+   * {@link ToolPermissionContext.hidePersistentOption} withdraws the one option
+   * that would turn a single approval into a standing one. There is no
+   * classifier in Wave that could approve a call, so those two properties are
+   * the whole of the semantics.
+   */
+  private dangerousRemovalVerdict(
+    context: ToolPermissionContext,
+  ): HostVerdict | null {
+    if (!this.isBashShellContext(context)) return null;
+    const command = context.toolInput?.command;
+    if (typeof command !== "string" || !command.trim()) return null;
+
+    const workdir = this.getSafeZoneRoots(
+      context.toolInput?.workdir as string | undefined,
+    )[0];
+    if (!workdir) return null;
+
+    const hit = findDangerousRemoval({
+      command,
+      workdir,
+      protectedRoots: this.getSafeZoneRoots(
+        context.toolInput?.workdir as string | undefined,
+      ),
+    });
+    if (!hit) return null;
+
+    const message = describeDangerousRemoval(hit);
+    logger?.warn("Blocked a deletion the session must not make on its own", {
+      toolName: context.toolName,
+      rule: hit.rule,
+      target: hit.target,
+      resolved: hit.resolved,
+      detail: hit.detail,
+    });
+
+    if (context.permissionMode === "dontAsk") {
+      return {
+        decision: "deny",
+        message,
+        reason: "dangerous-removal",
+        source: "config",
+        denyReason: "denied_by_mode",
+      };
+    }
+
+    // The card cannot offer "don't ask again": the person is answering for this
+    // one command, not for a rule that would approve the next one too.
+    context.hidePersistentOption = true;
+    context.warning = message;
+    return { decision: "ask", reason: "dangerous-removal", source: "config" };
+  }
+
+  /**
+   * Instance deny rules first, then the configured ones — deny always takes
+   * precedence, whichever source wrote it.
+   */
+  private denyVerdict(context: ToolPermissionContext): HostVerdict | null {
+    const instanceRule = this.instanceDeniedRules.find((rule) =>
+      this.matchesRule(context, rule),
+    );
+    if (instanceRule) {
+      logger?.warn("Permission denied by instance rule", {
+        toolName: context.toolName,
+        rule: instanceRule,
+      });
+      return {
+        decision: "deny",
+        message: `Access to tool '${context.toolName}' is explicitly denied by instance rule: ${instanceRule}`,
+        reason: instanceRule,
+        source: "config",
+      };
+    }
+
+    const rule = this.deniedRules.find((candidate) =>
+      this.matchesRule(context, candidate),
+    );
+    if (rule) {
+      logger?.warn("Permission denied by rule", {
+        toolName: context.toolName,
+        rule,
+      });
+      return {
+        decision: "deny",
+        message: `Access to tool '${context.toolName}' is explicitly denied by rule: ${rule}`,
+        reason: rule,
+        source: "config",
+      };
+    }
+
+    return null;
+  }
+
+  /**
+   * The first `permissions.ask` rule the call matches, if any.
+   *
+   * `toolLevel` says which shape matched: a bare tool name (`Bash`,
+   * `Artifact`) covers every call of the tool, so it is the one shape the
+   * sandbox shortcut may stand in for; a rule carrying a pattern
+   * (`Bash(git push*)`) names one kind of call and always asks.
+   *
+   * Shell commands are matched per leaf as well as whole, so `cd repo && git
+   * push` still hits `Bash(git push*)`.
+   */
+  private askVerdict(
+    context: ToolPermissionContext,
+  ): { verdict: HostVerdict; toolLevel: boolean } | null {
+    if (this.askRules.length === 0) {
+      return null;
+    }
+
+    const verdictFor = (rule: string): HostVerdict => ({
+      decision: "ask",
+      reason: rule,
+      source: "config",
+    });
+
+    const toolLevelRule = this.askRules.find(
+      (rule) => rule === context.toolName,
+    );
+    if (toolLevelRule !== undefined) {
+      return { verdict: verdictFor(toolLevelRule), toolLevel: true };
+    }
+
+    const leafContexts = this.shellLeafContexts(context);
+    for (const rule of this.askRules) {
+      if (
+        this.matchesRule(context, rule) ||
+        leafContexts.some((leafContext) => this.matchesRule(leafContext, rule))
+      ) {
+        return { verdict: verdictFor(rule), toolLevel: false };
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * One context per leaf of a shell command, for rules that name a single
+   * command inside a chain. Empty when the command cannot be reduced to leaves
+   * (fail-closed constructs): those only match whole-command rules.
+   */
+  private shellLeafContexts(
+    context: ToolPermissionContext,
+  ): ToolPermissionContext[] {
+    if (!isShellToolName(context.toolName)) {
+      return [];
+    }
+    const command = context.toolInput?.command;
+    if (typeof command !== "string" || command.length === 0) {
+      return [];
+    }
+    const analysis = analyzeShellCommand(this.shellKindOf(context), command);
+    if (analysis.status !== "ok") {
+      return [];
+    }
+    return analysis.leaves.map((leaf) => this.ruleContext(context, leaf.text));
   }
 
   /**

@@ -192,6 +192,11 @@ export class InitializationService {
               configResult.configuration.permissions.deny,
             );
           }
+          if (configResult.configuration.permissions.ask) {
+            permissionManager.updateAskRules(
+              configResult.configuration.permissions.ask,
+            );
+          }
           if (configResult.configuration.permissions.defaultMode) {
             permissionManager.updateConfiguredPermissionMode(
               configResult.configuration.permissions.defaultMode,

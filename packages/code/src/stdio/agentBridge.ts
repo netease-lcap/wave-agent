@@ -1101,7 +1101,7 @@ export class AgentBridge {
         ) {
           const session = this.sessions.get(entry.sessionId);
           if (session && !session.transitioning) {
-            void session.agent.abortMessage();
+            session.agent.abortMessage();
           }
         }
       }
@@ -2512,7 +2512,9 @@ export class AgentBridge {
 
   private async clearMessages(sessionId?: string): Promise<null> {
     const entry = this.requireSession(sessionId);
-    entry.agent.clearMessages();
+    // `Agent.clearMessages` 会跑 SessionEnd hooks 并重开会话：等它落地再回执，
+    // 否则宿主拿到 ok 之后立刻读到的还是旧会话。
+    await entry.agent.clearMessages();
     return null;
   }
 

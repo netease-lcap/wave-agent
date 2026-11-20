@@ -29,9 +29,15 @@ export const RewindCommand: React.FC<RewindCommandProps> = ({
 
   useEffect(() => {
     let cancelled = false;
-    getCheckpoints().then((loaded) => {
-      if (!cancelled) setCheckpoints(loaded);
-    });
+    getCheckpoints()
+      .then((loaded) => {
+        if (!cancelled) setCheckpoints(loaded);
+      })
+      .catch((error) => {
+        // 读失败不编造「无检查点」：一行可见的失败原因，界面停在加载态由用户
+        // 自己按 Esc 退出（改前这里是未处理的 rejection，直接崩进程）。
+        console.error("Failed to load rewind checkpoints:", error);
+      });
     return () => {
       cancelled = true;
     };

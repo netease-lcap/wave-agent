@@ -88,7 +88,7 @@ export class MarketplaceService {
     this.gitService = new GitService();
 
     this.ensureDirectoryStructure();
-    this.runMigration();
+    void this.runMigration();
     // Stored dynamically to avoid widening keyof MarketplaceService
     (this as Record<string, unknown>)._seedComplete =
       this.seedBuiltinMarketplace();

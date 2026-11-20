@@ -284,10 +284,13 @@ describe("real host · plugin mods", () => {
     });
 
     // 交互只让这一帧过期（100ms 合并后一条 stale），内容得再拉一次。
-    await ctx.waitFor("desktopModPanelUpdate", {
-      timeout: 30_000,
-      predicate: (m) => m.payload.stale === true,
-    });
+    await ctx.waitFor<{ payload: { stale?: boolean } }>(
+      "desktopModPanelUpdate",
+      {
+        timeout: 30_000,
+        predicate: (m) => m.payload.stale === true,
+      },
+    );
     const second = await renderPanel(first.paneId, first.payload);
     expect(second.revision).toBe(2);
     expect(textOf(second.tree)).toContain("点击 1 次");

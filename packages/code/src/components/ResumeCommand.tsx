@@ -44,9 +44,15 @@ export const ResumeCommand: React.FC<ResumeCommandProps> = ({
   useEffect(() => {
     if (isBusy) return;
     let cancelled = false;
-    listWorktrees(workdir).then((paths) => {
-      if (!cancelled) setWorktreePaths(paths);
-    });
+    listWorktrees(workdir)
+      .then((paths) => {
+        if (!cancelled) setWorktreePaths(paths);
+      })
+      .catch((error) => {
+        // `listWorktrees` 自己吞掉 git 失败并回空表，走到这里的是渲染期的真错
+        // （`setWorktreePaths` 抛出）；记一行，别让它变成未处理的 rejection。
+        console.error("Failed to list worktrees:", error);
+      });
     return () => {
       cancelled = true;
     };

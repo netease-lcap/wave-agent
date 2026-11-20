@@ -389,6 +389,11 @@ export function mergeRemoteSettings(
         lp.deny || rp.deny
           ? dedupe([...(lp.deny ?? []), ...(rp.deny ?? [])])
           : undefined,
+      // ask: concatenate + dedupe
+      ask:
+        lp.ask || rp.ask
+          ? dedupe([...(lp.ask ?? []), ...(rp.ask ?? [])])
+          : undefined,
       // defaultMode: remote wins (scalar)
       defaultMode: rp.defaultMode ?? lp.defaultMode,
       // additionalDirectories: concatenate + dedupe
@@ -403,6 +408,7 @@ export function mergeRemoteSettings(
     // Clean up undefined keys
     if (!result.permissions.allow) delete result.permissions.allow;
     if (!result.permissions.deny) delete result.permissions.deny;
+    if (!result.permissions.ask) delete result.permissions.ask;
     if (!result.permissions.defaultMode) delete result.permissions.defaultMode;
     if (!result.permissions.additionalDirectories)
       delete result.permissions.additionalDirectories;
@@ -438,6 +444,13 @@ export function mergeRemoteSettings(
     };
   if (remote.enableArtifact !== undefined)
     result.enableArtifact = remote.enableArtifact;
+  // The REPL switches, both spellings: the managed layer is the authority here
+  // (spec core/repl-tool.md「启用开关与回退」场景 3), and it names whichever key
+  // its version knows — `execAvailability` applies the same per-layer precedence
+  // to the keys as they arrive.
+  if (remote.enableRepl !== undefined) result.enableRepl = remote.enableRepl;
+  if (remote.enableReplCoreTools !== undefined)
+    result.enableReplCoreTools = remote.enableReplCoreTools;
   if (remote.enableExec !== undefined) result.enableExec = remote.enableExec;
   if (remote.enableKnowledgeBase !== undefined)
     result.enableKnowledgeBase = remote.enableKnowledgeBase;

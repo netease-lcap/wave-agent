@@ -187,6 +187,15 @@ export interface ToolContext {
   messageManager?: import("../managers/messageManager.js").MessageManager;
   /** Current session ID */
   sessionId?: string;
+  /**
+   * The REPL context this call belongs to: one `(session, agent)` pair.
+   *
+   * Absent means "derive it from `sessionId`", which is right for a caller that is
+   * not an agent loop. An agent is one context even across many turns, and a
+   * subagent is a different one from its parent — which is why the key is not just
+   * the session (see `exec/sessionKey.ts`).
+   */
+  replSessionKey?: string;
   /** The ID of the current tool call */
   toolCallId?: string;
   /** Callback to update the short result of the current tool block */

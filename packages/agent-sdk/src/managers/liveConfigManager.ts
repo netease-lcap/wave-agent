@@ -357,6 +357,9 @@ export class LiveConfigManager {
         this.permissionManager.updateDeniedRules(
           this.currentConfiguration.permissions?.deny || [],
         );
+        this.permissionManager.updateAskRules(
+          this.currentConfiguration.permissions?.ask || [],
+        );
         this.permissionManager.updateAdditionalDirectories(
           this.currentConfiguration.permissions?.additionalDirectories || [],
         );

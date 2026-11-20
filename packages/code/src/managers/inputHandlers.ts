@@ -100,7 +100,7 @@ export const handleSubmit = async (
       callbacks.logger?.error("Failed to save prompt history", err);
     });
 
-    callbacks.onSendMessage?.(
+    void callbacks.onSendMessage?.(
       contentWithPlaceholders,
       referencedImages.length > 0 ? referencedImages : undefined,
       state.longTextMap,
@@ -344,7 +344,7 @@ export const handleCommandSelect = (
     dispatch({ type: "SET_CURSOR_POSITION", payload: newCursorPosition });
 
     // Execute command asynchronously
-    (async () => {
+    void (async () => {
       let commandExecuted = false;
       if (callbacks.onSendMessage && callbacks.onHasSlashCommand?.(command)) {
         const fullCommand = `/${command}`;

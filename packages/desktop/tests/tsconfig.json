@@ -3,7 +3,13 @@
   "compilerOptions": {
     "rootDir": "..",
     "tsBuildInfoFile": "./tsconfig.tests.tsbuildinfo",
+    // 父配置是 ES2022 lib；测试里用了 `findLastIndex`（Node 22 运行时支持），
+    // 沿用 ES2022 会报 TS2550。只放宽测试一侧，src 仍受根配置 ES2022 约束。
+    "lib": ["ES2023", "DOM"],
     "types": ["node", "vitest/globals"]
   },
-  "include": ["../src/**/*", "./**/*"]
+  "include": ["../src/**/*", "./**/*"],
+  // 父配置的 `exclude` 里带 "tests"，继承下来会把整个 tests 目录排掉（那份
+  // exclude 相对父配置目录解析），这里必须显式清空，否则本配置一个文件都编不到。
+  "exclude": []
 }

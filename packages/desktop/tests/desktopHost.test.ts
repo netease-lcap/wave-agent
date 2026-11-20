@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import type { BrowserWindow } from "electron";
+import type { BrowserWindow, MessageBoxOptions } from "electron";
 import * as os from "os";
 import * as path from "path";
 import { createHash } from "crypto";
@@ -262,7 +262,8 @@ const h = vi.hoisted(() => ({
   agentCounter: 0,
   // onClosed handlers registered by ensureRemoteHostClient on each
   // connectRemoteDaemon client — tests fire them to simulate a disconnect.
-  closedHandlers: [] as Array<(reason: string) => void>,
+  // `onClosed` 的回调本身不带参数（jsonRpcClient.ts），用例也只按「断了」来触发。
+  closedHandlers: [] as Array<() => void>,
   // onClosed handlers registered on the local / WSL `wave --stdio` child — the
   // local one is fired to simulate a CLI crash.
   stdioClosedHandlers: [] as Array<(reason: string) => void>,
@@ -835,6 +836,15 @@ import {
 
 const STORE_PATH = "/mock-userData/wave-desktop.json";
 
+/**
+ * `vi.mock("electron")` 把这两个换成 `tests/__mocks__/electron.ts` 里的替身，它们
+ * 比 electron 的真类型多几个用例用的开关（`__setSystemDark` / `__setIdleState` /
+ * `__reset`）。这里按替身自己的形状取一次类型，而不是每个调用点各写一遍。
+ */
+type ElectronMock = typeof import("./__mocks__/electron");
+const themeMock = nativeTheme as unknown as ElectronMock["nativeTheme"];
+const powerMock = powerMonitor as unknown as ElectronMock["powerMonitor"];
+
 /** The send mock of the most recently created host (shownToasts reads it). */
 let lastSend: ReturnType<typeof vi.fn> | undefined;
 
@@ -923,26 +933,111 @@ function createHost(winWidth = 1280, winHeight = 800) {
           (msg as { command?: string }).command === command,
       )
       .map(([, msg]) => msg as Extract<HostToWebviewMessage, { command: C }>);
+  /**
+   * 按命令名取消息，**不**经过共享契约的类型约束。
+   *
+   * 有几个命令还没进 `HostToWebviewMessage` 联合（宿主和 webview 两侧都在用，
+   * 属契约缺口，见本轮报告）：`listPluginsResponse` / `listMarketplacesResponse` /
+   * `compactionContentUpdate`；`desktopRebuildPrompt` 则是随「重建确认框已废止」
+   * 从产品侧整体消失，这两处断言是「别再出现」的护栏。
+   */
+  const rawSent = (command: string) =>
+    send.mock.calls
+      .filter(
+        ([channel, msg]) =>
+          channel === HOST_CHANNEL &&
+          (msg as { command?: string }).command === command,
+      )
+      .map(([, msg]) => msg as Record<string, unknown>);
   return {
     host,
     store,
     send,
     sent,
+    rawSent,
     setFocused: (value: boolean) => {
       focused = value;
     },
   };
 }
 
-function lastAgent() {
+/**
+ * 本文件 `vi.mock` 工厂里那个 `StdioAgent` 的实例形状。
+ *
+ * 真 `StdioAgent` 上没有这些字段 —— `daemonMessages` / `threadSummary` /
+ * `isStreaming` 等都是「CLI 侧状态」的测试替身，工厂类负责提供。`vi.mock` 只
+ * 把模块换成真类型，拿不到工厂类的 `this`，所以在 `lastAgent()` 里一次性断言
+ * 成这个形状，而不是让每个用例各自 `as` 一遍。
+ */
+type MockAgent = {
+  sessionId: string | undefined;
+  currentWorkdir: string | undefined;
+  sessionCwd: string | undefined;
+  workspaceRoot: string | undefined;
+  sessionRepoRoot: string | undefined;
+  sessionWorktree:
+    | { path: string; branch?: string; repoRoot: string; hookBased?: boolean }
+    | undefined;
+  latestTotalTokens: number;
+  daemonMessages: unknown[] | undefined;
+  threadSummary: { messageCount: number; firstUserText?: string } | undefined;
+  tasks: unknown[];
+  backgroundTasks: unknown[];
+  queuedMessages: unknown[];
+  isStreaming: boolean;
+  isCommandRunning: boolean;
+  isCompacting: boolean;
+  permissionMode: "default" | "plan" | undefined;
+  callbacks: Record<string, (...args: unknown[]) => void>;
+  initialize: ReturnType<typeof vi.fn>;
+  destroy: ReturnType<typeof vi.fn>;
+  restoreSession: ReturnType<typeof vi.fn>;
+  updateConfig: ReturnType<typeof vi.fn>;
+  sendMessage: ReturnType<typeof vi.fn>;
+  bang: ReturnType<typeof vi.fn>;
+  abortMessage: ReturnType<typeof vi.fn>;
+  clearMessages: ReturnType<typeof vi.fn>;
+  compact: ReturnType<typeof vi.fn>;
+  rewindToMessage: ReturnType<typeof vi.fn>;
+  askBtw: ReturnType<typeof vi.fn>;
+  closeBtw: ReturnType<typeof vi.fn>;
+  // 用例会直接 await 它（其余方法只查调用记录）：`vi.fn()` 的返回类型带着
+  // `Constructable`，不带签名的 Mock 调不动，所以这里写明形状。
+  getMessages: ReturnType<typeof vi.fn<() => Promise<unknown[]>>>;
+  listRewindCheckpoints: ReturnType<typeof vi.fn>;
+  getModPanels: ReturnType<typeof vi.fn>;
+  getConfiguredModels: ReturnType<typeof vi.fn>;
+  setModel: ReturnType<typeof vi.fn>;
+  removeQueuedMessage: ReturnType<typeof vi.fn>;
+  updateQueuedMessageById: ReturnType<typeof vi.fn>;
+  removeQueuedMessageById: ReturnType<typeof vi.fn>;
+  setPermissionMode: ReturnType<typeof vi.fn>;
+  getPermissionMode: ReturnType<typeof vi.fn>;
+  getPlanFile: ReturnType<typeof vi.fn>;
+  sendPermissionResponse: ReturnType<typeof vi.fn>;
+  getBackgroundTaskOutput: ReturnType<typeof vi.fn>;
+  stopBackgroundTask: ReturnType<typeof vi.fn>;
+  getWorkflowRuns: ReturnType<typeof vi.fn>;
+  getMcpServers: ReturnType<typeof vi.fn>;
+  connectMcpServer: ReturnType<typeof vi.fn>;
+  disconnectMcpServer: ReturnType<typeof vi.fn>;
+  removeMcpServer: ReturnType<typeof vi.fn>;
+  getSlashCommands: ReturnType<typeof vi.fn>;
+  getSkillMetadata: ReturnType<typeof vi.fn>;
+  deleteSkill: ReturnType<typeof vi.fn>;
+  getSubagentConfigurations: ReturnType<typeof vi.fn>;
+  deleteSubagent: ReturnType<typeof vi.fn>;
+  getHooksByScope: ReturnType<typeof vi.fn>;
+  deleteHook: ReturnType<typeof vi.fn>;
+  remoteControlStatus: ReturnType<typeof vi.fn>;
+  remoteControlConnect: ReturnType<typeof vi.fn>;
+  remoteControlDisconnect: ReturnType<typeof vi.fn>;
+};
+
+function lastAgent(): MockAgent {
   const agent = h.agentInstances[h.agentInstances.length - 1];
   expect(agent).toBeDefined();
-  return agent as Record<
-    string,
-    ReturnType<typeof vi.fn> & Record<string, unknown>
-  > & {
-    callbacks: Record<string, (...args: unknown[]) => void>;
-  };
+  return agent as unknown as MockAgent;
 }
 
 /** 每次 spawn 时 `initialize` 拿到的 workdir（跨所有 mock agent，按时间序）。 */
@@ -1072,8 +1167,8 @@ beforeEach(() => {
   setSshConnections([]);
   vi.clearAllMocks();
   for (const key of Object.keys(auListeners)) delete auListeners[key];
-  nativeTheme.__reset();
-  powerMonitor.__reset();
+  themeMock.__reset();
+  powerMock.__reset();
   // Silence error logs from intentionally-triggered failure paths (restore
   // session tunnel down, SSO callback forward failure, update check failure…).
   consoleSpies = [vi.spyOn(console, "error"), vi.spyOn(console, "warn")].map(
@@ -1532,9 +1627,13 @@ describe("uploadFilesToArtifacts", () => {
       files: [{ name: "note.txt", data }],
     });
 
-    const err = sent("uploadError").at(-1) as { errors: string[] };
-    expect(err.errors).toHaveLength(1);
-    expect(err.errors[0]).toContain("note.txt");
+    const err = lastMessage(sent("uploadError"));
+    // 契约里 `UploadErrorMessage` 只声明了「整段抛错」那一形状（`error`）；
+    // 部分文件失败走的是 `errors: string[]`（desktopHost.ts 的两条发送点），
+    // 共享类型还没覆盖到这个形状。见本轮报告里的契约缺口。
+    expect(err).toMatchObject({
+      errors: [expect.stringContaining("note.txt")],
+    });
 
     const toast = sent("showToast").at(-1);
     expect(toast?.toast.type).toBe("error");
@@ -1799,6 +1898,7 @@ describe("fresh launch auto new-session", () => {
       title: "old",
       workdir: "/work/a",
       cwd: "/work/a",
+      host: "local",
       createdAt: 1000,
       lastActiveAt: 1000,
     });
@@ -2275,6 +2375,7 @@ describe("agent notifications", () => {
       title: "",
       workdir: "/work/a",
       cwd: "/work/a",
+      host: "local",
       createdAt: 1,
       lastActiveAt: 1,
     });
@@ -2456,7 +2557,7 @@ describe("permission confirmations", () => {
       sessionId: "sess-1",
     });
 
-    const last = sent("setInitialState").at(-1);
+    const last = lastMessage(sent("setInitialState"));
     expect(last.paneId).toBe("pane-2");
     expect(last.pendingConfirmations).toContainEqual(
       expect.objectContaining({
@@ -3246,7 +3347,7 @@ describe("user preference save path and rebuild timing", () => {
   });
 
   it("plugin change never rebuilds: busy sessions keep running, one pending toast (no prompt)", async () => {
-    const { host, sent } = await readyHost();
+    const { host, rawSent } = await readyHost();
     const pane1 = agentAt(0);
     pane1.isStreaming = true;
     const pane2 = await openSecondPane(host);
@@ -3266,7 +3367,7 @@ describe("user preference save path and rebuild timing", () => {
     expect(pane2.updateConfig).not.toHaveBeenCalled();
     expect(pane1.isStreaming).toBe(true);
     // 重建确认框已整体废弃（spec「重建确认框已废止」）。
-    expect(sent("desktopRebuildPrompt")).toHaveLength(0);
+    expect(rawSent("desktopRebuildPrompt")).toHaveLength(0);
   });
 });
 
@@ -4636,6 +4737,23 @@ describe("misc commands", () => {
     expect(lastAgent().sendMessage).not.toHaveBeenCalled();
   });
 
+  it("newSession skips a recent workdir that no longer exists", async () => {
+    // 「文件夹被删后，点击新建会有问题」的另一半：新对话的目录取自最近目录，而
+    // recents 里那份可能已经被删掉了。CLI 不校验 workdir，照旧 spawn 会把分屏变
+    // 成「空白会话 + 目录缺失」，输入框被恢复提示顶掉。
+    const { host, store } = await readyHost();
+    fireUserMessage(lastAgent()); // 当前会话有内容，新对话才会真的 spawn
+    store.addRecentWorkdir({ host: "local", path: "/gone" }); // 最新的那份已不存在
+
+    await host.handleWebviewMessage({ command: "newSession" });
+
+    // 跳过不存在的那份，落在下一个可用的最近目录（/work/a）上。
+    expect(initializedWorkdirs().at(-1)).toBe("/work/a");
+    expect(initializedWorkdirs()).not.toContain("/gone");
+    // 最近目录记录本身不动：目录可能只是暂时不可见（外接盘拔掉）。
+    expect(store.getRecentWorkdirsForHost("local")).toContain("/gone");
+  });
+
   it("clearChat is a no-op after desktop /clear removal (2026-09-05)", async () => {
     const { host, send } = await readyHost();
     const agent = lastAgent();
@@ -4662,6 +4780,7 @@ describe("misc commands", () => {
       title: "x",
       workdir: "/work/a",
       cwd: "/work/a",
+      host: "local",
       createdAt: 1000,
       lastActiveAt: 1000,
     });
@@ -5775,7 +5894,7 @@ describe("misc commands", () => {
   it("refreshMarketplaces pulls the checkouts, then re-pushes both lists with the refreshed flag", async () => {
     // spec 插件市场场景 5/2：打开插件市场视图 → 后台只刷各市场检出（不升级插件），
     // 完成后把两份最新列表推给已打开的视图（带 refreshed 标记收起「检查更新中…」）。
-    const { host, sent } = await readyHost();
+    const { host, rawSent } = await readyHost();
     const orig = h.handleClientRequest;
     const seen: Array<{ method: string; params: unknown }> = [];
     h.handleClientRequest = (method, params) => {
@@ -5794,10 +5913,12 @@ describe("misc commands", () => {
     expect(seen).toEqual([
       { method: "refreshMarketplaces", params: { workdir: "/work/a" } },
     ]);
-    expect(sent("listMarketplacesResponse")[0]).toMatchObject({
+    expect(rawSent("listMarketplacesResponse")[0]).toMatchObject({
       refreshed: true,
     });
-    expect(sent("listPluginsResponse")[0]).toMatchObject({ refreshed: true });
+    expect(rawSent("listPluginsResponse")[0]).toMatchObject({
+      refreshed: true,
+    });
     // 刷新不升级插件：不出现任何市场更新调用
     expect(
       h.clientRequests.filter((r) => r.method === "updateMarketplace"),
@@ -5806,7 +5927,7 @@ describe("misc commands", () => {
 
   it("refreshMarketplaces failure stays silent but still re-pushes the current lists", async () => {
     // spec 插件市场场景 9：刷新失败静默记日志（不弹 toast），列表仍按刷新前的清单呈现。
-    const { host, sent } = await readyHost();
+    const { host, rawSent } = await readyHost();
     const restore = failRpc("refreshMarketplaces", "network down");
     try {
       await host.handleWebviewMessage({ command: "refreshMarketplaces" });
@@ -5815,10 +5936,12 @@ describe("misc commands", () => {
     }
 
     expect(shownToasts()).toHaveLength(0);
-    expect(sent("listMarketplacesResponse")[0]).toMatchObject({
+    expect(rawSent("listMarketplacesResponse")[0]).toMatchObject({
       refreshed: true,
     });
-    expect(sent("listPluginsResponse")[0]).toMatchObject({ refreshed: true });
+    expect(rawSent("listPluginsResponse")[0]).toMatchObject({
+      refreshed: true,
+    });
   });
 
   it("getProjectSettings failure surfaces as a toast, not a chat message", async () => {
@@ -5855,7 +5978,7 @@ describe("misc commands", () => {
   });
 
   it("setBuiltinPluginEnabled only notifies — it never rebuilds a session inline", async () => {
-    const { host, sent } = await readyHost();
+    const { host, sent, rawSent } = await readyHost();
     const agent = lastAgent();
     const orig = h.handleClientRequest;
     h.handleClientRequest = (m: string, params?: unknown) =>
@@ -5874,7 +5997,7 @@ describe("misc commands", () => {
       expect(sent("projectSettings")).toHaveLength(1);
       expect(pendingPluginPrompts()).toBe(1);
       expect(agent.updateConfig).not.toHaveBeenCalled();
-      expect(sent("desktopRebuildPrompt")).toHaveLength(0);
+      expect(rawSent("desktopRebuildPrompt")).toHaveLength(0);
     } finally {
       h.handleClientRequest = orig;
     }
@@ -6249,6 +6372,7 @@ describe("session tree", () => {
   ) => ({
     sessionId,
     title: `Session ${sessionId}`,
+    host: "local",
     workdir,
     cwd: workdir,
     createdAt: Date.now(),
@@ -6260,7 +6384,10 @@ describe("session tree", () => {
     const { host, store, sent } = createHost();
     // /work/only-recent is in recents but has no sessions -> must NOT appear as a group.
     // /work/only-index has sessions but is not in recents -> still a group.
+    // 新对话只落在还存在的最近目录上（见 firstExistingRecentWorkdir），这里要的是
+    // 「按最近目录起了唯一一个空会话」，所以那份目录得在磁盘上。
     store.addRecentWorkdir({ host: "local", path: "/work/only-recent" });
+    h.existingPaths.add("/work/only-recent");
     store.upsertSession(makeIndexEntry("s1", "/work/a", { createdAt: 1000 }));
     store.upsertSession(makeIndexEntry("s2", "/work/a", { createdAt: 2000 }));
     store.upsertSession(
@@ -7008,9 +7135,10 @@ describe("startup progress line", () => {
     title: `Session ${sessionId}`,
     workdir,
     cwd: workdir,
+    // 本地会话的 host 就是 "local"（与产品侧 upsertSession 的兜底一致）。
+    host: host ?? "local",
     createdAt: Date.now(),
     lastActiveAt: Date.now(),
-    ...(host ? { host } : {}),
   });
 
   it("pushes remote startup stages to the pane waiting for that host, then clears", async () => {
@@ -7651,6 +7779,7 @@ describe("session switch shortcut (FR-038)", () => {
   const entry = (sessionId: string, workdir: string, createdAt: number) => ({
     sessionId,
     title: `Session ${sessionId}`,
+    host: "local",
     workdir,
     cwd: workdir,
     createdAt,
@@ -8286,6 +8415,7 @@ describe("worktree flow", () => {
       title: "wt",
       workdir: worktree.repoRoot,
       cwd: worktree.path,
+      host: "local",
       createdAt: Date.now(),
       lastActiveAt: Date.now(),
       worktree: {
@@ -8320,6 +8450,7 @@ describe("worktree flow", () => {
       title: "wt",
       workdir: worktree.repoRoot,
       cwd: worktree.path,
+      host: "local",
       createdAt: Date.now(),
       lastActiveAt: Date.now(),
       worktree: {
@@ -8360,6 +8491,7 @@ describe("worktree flow", () => {
       title: "wt",
       workdir: worktree.repoRoot,
       cwd: worktree.path,
+      host: "local",
       createdAt: Date.now(),
       lastActiveAt: Date.now(),
       worktree: {
@@ -8406,6 +8538,7 @@ describe("worktree flow", () => {
       title: "wt",
       workdir: worktree.repoRoot,
       cwd: worktree.path,
+      host: "local",
       createdAt: Date.now(),
       lastActiveAt: Date.now(),
       worktree: {
@@ -8443,6 +8576,7 @@ describe("worktree flow", () => {
       title: "wt",
       workdir: worktree.repoRoot,
       cwd: worktree.path,
+      host: "local",
       createdAt: Date.now(),
       lastActiveAt: Date.now(),
       worktree: {
@@ -8473,6 +8607,7 @@ describe("worktree flow", () => {
       title: "plain",
       workdir: "/work/a",
       cwd: "/work/a",
+      host: "local",
       createdAt: Date.now(),
       lastActiveAt: Date.now(),
     });
@@ -8501,6 +8636,7 @@ describe("worktree flow", () => {
       title: "wt",
       workdir: worktree.repoRoot,
       cwd: worktree.path,
+      host: "local",
       createdAt: Date.now(),
       lastActiveAt: Date.now(),
       worktree: {
@@ -8536,6 +8672,7 @@ describe("worktree flow", () => {
       title: "wt",
       workdir: worktree.repoRoot,
       cwd: worktree.path,
+      host: "local",
       createdAt: Date.now(),
       lastActiveAt: Date.now(),
       worktree: {
@@ -8576,6 +8713,7 @@ describe("worktree flow", () => {
       title: "wt",
       workdir: worktree.repoRoot,
       cwd: worktree.path,
+      host: "local",
       createdAt: Date.now(),
       lastActiveAt: Date.now(),
       worktree: {
@@ -8596,7 +8734,7 @@ describe("worktree flow", () => {
     // of why a worktree directory survived the session delete.
     await vi.waitFor(() => expect(consoleSpies[1]).toHaveBeenCalled());
     const logged = consoleSpies[1].mock.calls
-      .map((c) => c.join(" "))
+      .map((c: unknown[]) => c.map(String).join(" "))
       .join("\n");
     expect(logged).toContain(worktree.path);
     expect(logged).toContain("Host unreachable");
@@ -8610,6 +8748,7 @@ describe("worktree flow", () => {
       title: "wt",
       workdir: worktree.repoRoot,
       cwd: worktree.path,
+      host: "local",
       createdAt: Date.now(),
       lastActiveAt: Date.now(),
       worktree: {
@@ -8626,6 +8765,7 @@ describe("worktree flow", () => {
       title: "keep",
       workdir: worktree.repoRoot,
       cwd: worktree.repoRoot,
+      host: "local",
       createdAt: Date.now(),
       lastActiveAt: Date.now(),
     });
@@ -8763,6 +8903,7 @@ describe("relocate session (换文件夹继续)", () => {
     title: `Session ${sessionId}`,
     workdir,
     cwd: workdir,
+    host: "local",
     createdAt: 1,
     lastActiveAt: 2,
     ...overrides,
@@ -9145,6 +9286,95 @@ describe("relocate session (换文件夹继续)", () => {
       expect.objectContaining({ message: "找不到该会话", type: "error" }),
     );
   });
+
+  it("relocates a blank new session that is not in the index yet (no transcript to move)", async () => {
+    // 用户上报的现场：文件夹被删之后，分屏里还停着一场**空白的新对话**（它的目录
+    // 取自最近目录），恢复提示的「选择文件夹」按 sessionId 查索引必然查不到——这条
+    // 会话还没产生任何消息，首条消息才登记——以前就报「找不到该会话」，而输入框已经
+    // 被提示顶掉，分屏成了死路。
+    const { host, store, sent } = createHost();
+    store.addRecentWorkdir({ host: "local", path: "/gone" });
+    h.existingPaths.add("/gone");
+    await host.handleWebviewMessage({ command: "desktopReady" });
+    await host.handleWebviewMessage({ command: "webviewReady" });
+    const blank = lastAgent();
+    expect(blank.initialize).toHaveBeenCalledWith(
+      expect.objectContaining({ workdir: "/gone" }),
+    );
+    const sessionId = blank.sessionId as string;
+    expect(store.getSessionIndex().some((e) => e.sessionId === sessionId)).toBe(
+      false,
+    );
+    // 用户在 Finder 里把目录删掉，下一次推送（这里是 webview 重载）就带上
+    // 「目录缺失」——渲染端因此挂恢复提示，与截图的前置状态一致。
+    h.existingPaths.delete("/gone");
+    await host.handleWebviewMessage({ command: "webviewReady" });
+    expect(sent("setInitialState").at(-1)?.session).toMatchObject({
+      id: sessionId,
+      folderMissing: true,
+    });
+    h.existingPaths.add("/work/new");
+    h.dirPaths.add("/work/new");
+
+    await host.handleWebviewMessage({
+      command: "desktopRelocateSession",
+      sessionId,
+      workdir: "/work/new",
+    });
+
+    // 没有转录要搬：一次搬迁 RPC 都不发，也不报「找不到该会话」。
+    expect(relocateRequests()).toEqual([]);
+    expect(shownToasts().some((t) => t.message === "找不到该会话")).toBe(false);
+    // 空会话直接在新目录里重开一个，分屏回到可用状态（恢复提示随 folderMissing 消失）。
+    await vi.waitFor(() => {
+      expect(lastAgent().initialize).toHaveBeenCalledWith(
+        expect.objectContaining({ workdir: "/work/new" }),
+      );
+    });
+    expect(blank.destroy).toHaveBeenCalled();
+    await vi.waitFor(() => {
+      expect(sent("setInitialState").at(-1)?.session).toMatchObject({
+        workdir: "/work/new",
+      });
+    });
+    expect(sent("setInitialState").at(-1)?.session).not.toHaveProperty(
+      "folderMissing",
+    );
+    // 用户刚为这场会话挑了这个目录：它成了最新的「最近目录」，下一次「新对话」落在这儿。
+    expect(store.getRecentWorkdirsForHost("local")[0]).toBe("/work/new");
+  });
+
+  it("refuses to relocate a blank session while it is still generating", async () => {
+    const { host, store, sent } = createHost();
+    store.addRecentWorkdir({ host: "local", path: "/gone" });
+    h.existingPaths.add("/gone");
+    await host.handleWebviewMessage({ command: "desktopReady" });
+    await host.handleWebviewMessage({ command: "webviewReady" });
+    const blank = lastAgent();
+    blank.isStreaming = true;
+    const before = h.agentInstances.length;
+    h.existingPaths.add("/work/new");
+    h.dirPaths.add("/work/new");
+
+    await host.handleWebviewMessage({
+      command: "desktopRelocateSession",
+      sessionId: blank.sessionId as string,
+      workdir: "/work/new",
+    });
+
+    // 搬迁要先丢掉这个 agent —— 正在生成的那一轮会被静默扔掉，所以先拒绝。
+    expect(blank.destroy).not.toHaveBeenCalled();
+    expect(h.agentInstances).toHaveLength(before);
+    expect(shownToasts()).toContainEqual(
+      expect.objectContaining({
+        message: "该会话仍在运行中，请等这一轮结束后再换目录",
+        type: "error",
+      }),
+    );
+    expect(sent("setInitialState").at(-1)?.session).toMatchObject({
+      id: blank.sessionId,
+    });
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -9169,7 +9399,7 @@ describe("theme", () => {
     // Light OS → light.
     expect(host.getInitialEffectiveTheme()).toBe("light");
 
-    nativeTheme.__setSystemDark(true);
+    themeMock.__setSystemDark(true);
     expect(host.getInitialEffectiveTheme()).toBe("dark");
   });
 
@@ -9177,7 +9407,7 @@ describe("theme", () => {
     const { host, sent } = createHost();
     await host.handleWebviewMessage({ command: "desktopReady" });
 
-    nativeTheme.__setSystemDark(true);
+    themeMock.__setSystemDark(true);
     const changes = sent("desktopThemeChange");
     expect(changes[changes.length - 1]).toMatchObject({ effective: "dark" });
   });
@@ -9188,7 +9418,7 @@ describe("theme", () => {
     await host.dispose();
 
     const before = sent("desktopThemeChange").length;
-    nativeTheme.__setSystemDark(true);
+    themeMock.__setSystemDark(true);
     expect(sent("desktopThemeChange").length).toBe(before);
   });
 
@@ -9223,7 +9453,7 @@ describe("theme", () => {
     expect(changes[changes.length - 1]).toMatchObject({ effective: "light" });
 
     // 固定浅色时不跟随系统外观（spec 场景 4）
-    nativeTheme.__setSystemDark(true);
+    themeMock.__setSystemDark(true);
     expect(host.getInitialEffectiveTheme()).toBe("light");
 
     // 切回「跟随系统」→ 恢复 OS 外观驱动（此时系统为暗色）
@@ -9356,18 +9586,6 @@ describe("multi-session parallel (FR-031)", () => {
   /** Give the active agent content + register its session in the index. */
   const seedActiveSession = (sessionId: string) =>
     seedConversation(lastAgent(), sessionId);
-
-  const treeSessions = (tree: Record<string, unknown> | undefined) =>
-    (
-      (tree?.groups as Array<{
-        sessions: Array<{
-          sessionId: string;
-          running: boolean;
-          waitingConfirmation?: boolean;
-          newCompleted?: boolean;
-        }>;
-      }>) ?? []
-    ).flatMap((g) => g.sessions);
 
   it("desktopSelectSession on a live agent activates it without spawning or restoring", async () => {
     const { host, sent } = await readyHost();
@@ -9755,11 +9973,11 @@ describe("multi-session parallel (FR-031)", () => {
   });
 
   it("forwards compactionContentUpdate so the webview can render the streaming tail", async () => {
-    const { sent } = await readyHost();
+    const { rawSent } = await readyHost();
     const agent1 = seedActiveSession("sess-1");
 
     agent1.callbacks.onCompactionContentUpdate("streaming summary");
-    expect(sent("compactionContentUpdate").at(-1)).toMatchObject({
+    expect(lastMessage(rawSent("compactionContentUpdate"))).toMatchObject({
       content: "streaming summary",
     });
   });
@@ -9873,6 +10091,7 @@ describe("split-view panes (FR-032~036)", () => {
       title: "wt",
       workdir: worktree.repoRoot,
       cwd: worktree.path,
+      host: "local",
       createdAt: Date.now(),
       lastActiveAt: Date.now(),
       worktree: {
@@ -11166,6 +11385,7 @@ describe("input focus on conversation switch", () => {
       title: "Session s1",
       workdir: "/work/a",
       cwd: "/work/a",
+      host: "local",
       createdAt: 1000,
       lastActiveAt: 1000,
     });
@@ -11174,6 +11394,7 @@ describe("input focus on conversation switch", () => {
       title: "Session s2",
       workdir: "/work/a",
       cwd: "/work/a",
+      host: "local",
       createdAt: 2000,
       lastActiveAt: 2000,
     });
@@ -11309,6 +11530,7 @@ describe("input drafts per session (desktop-sessions.md scenario 11/12)", () => 
     title: `Session ${sessionId}`,
     workdir,
     cwd: workdir,
+    host: "local",
     createdAt: Date.now(),
     lastActiveAt: Date.now(),
     ...overrides,
@@ -11495,13 +11717,14 @@ describe("input drafts per session (desktop-sessions.md scenario 11/12)", () => 
     });
 
     // The reply carries the attribution key and the outcome — never a list.
-    const reply = sent("rewindResult").at(-1) as Record<string, unknown>;
+    const reply = lastMessage(sent("rewindResult"));
     expect(reply).toMatchObject({
       requestId: "rewind-1",
       messageId: "u2",
       ok: true,
     });
-    expect(reply.messages).toBeUndefined();
+    // 别只看类型里没这个字段 —— 直接查实际报文里有没有这个键。
+    expect(reply).not.toHaveProperty("messages");
     // The snapshot that follows carries the post-rewind list, pulled fresh from
     // the CLI (spec 场景 5: 宿主不自己截, 交给回执 + 重拉).
     await vi.waitFor(() => {
@@ -11526,7 +11749,7 @@ describe("input drafts per session (desktop-sessions.md scenario 11/12)", () => 
     });
 
     await vi.waitFor(() => {
-      const reply = sent("rewindResult").at(-1) as Record<string, unknown>;
+      const reply = lastMessage(sent("rewindResult"));
       expect(reply).toMatchObject({
         requestId: "rewind-2",
         messageId: "u1",
@@ -11760,12 +11983,31 @@ function registerAgentInIndex(agent: ReturnType<typeof lastAgent>) {
 }
 
 /** Flatten the sidebar session tree into a sessionId → running-marker lookup. */
-function treeSessions(tree: Record<string, unknown> | undefined) {
-  return (
-    (tree?.groups as Array<{
-      sessions: Array<{ sessionId: string; running: boolean }>;
-    }>) ?? []
-  ).flatMap((g) => g.sessions);
+/**
+ * 最后一条消息。`sent()` 返回数组，`.at(-1)` 恒带 `| undefined`；而这里每处断言
+ * 的前提就是「宿主确实发过这条消息」——先显式要求非空，缺了它属于被测行为没发生，
+ * 不该让后面的字段断言在 undefined 上静默通过。
+ */
+function lastMessage<M>(messages: M[]): M {
+  expect(messages.length).toBeGreaterThan(0);
+  return messages[messages.length - 1];
+}
+
+/** `openFile` 最后推的那份文件视图（字段按共享契约，不再逐处手写形状）。 */
+function lastFileView(
+  messages: Array<
+    Extract<HostToWebviewMessage, { command: "desktopFileContent" }>
+  >,
+) {
+  return lastMessage(messages).fileView;
+}
+
+function treeSessions(
+  tree:
+    | Extract<HostToWebviewMessage, { command: "desktopSessionTree" }>
+    | undefined,
+) {
+  return (tree?.groups ?? []).flatMap((g) => g.sessions);
 }
 
 describe("SSH remote hosts", () => {
@@ -12653,6 +12895,7 @@ describe("SSH remote hosts", () => {
       title: "Local history",
       workdir: "/work/a",
       cwd: "/work/a",
+      host: "local",
       createdAt: Date.now(),
       lastActiveAt: Date.now(),
     });
@@ -12896,7 +13139,7 @@ describe("SSH remote hosts", () => {
 
     // Locked screen, app in the background (spec 场景 9).
     setFocused(false);
-    powerMonitor.__setIdleState("locked");
+    powerMock.__setIdleState("locked");
     h.closedHandlers[0]();
 
     // One full presence poll: if the park were broken, the dial happens
@@ -12906,7 +13149,7 @@ describe("SSH remote hosts", () => {
 
     // Somebody is back — the sequence dials on its own.
     setFocused(true);
-    powerMonitor.__setIdleState("active");
+    powerMock.__setIdleState("active");
     await vi.waitFor(
       () => expect(vi.mocked(connectRemoteDaemon)).toHaveBeenCalledTimes(2),
       { timeout: 3000 },
@@ -13081,7 +13324,9 @@ describe("WSL 发行版主机（desktop-wsl.md）", () => {
 });
 
 describe("remote preview port forwarding", () => {
-  type HostWithFwd = DesktopHost & {
+  // `portForwardManager` 在 DesktopHost 上是私有的 —— 直接与它求交会把属性类型
+  // 塌成 `never`，先 Omit 掉再声明成 mock 形状（实例本身仍按 `as unknown as` 取）。
+  type HostWithFwd = Omit<DesktopHost, "portForwardManager"> & {
     portForwardManager: {
       acquire: ReturnType<typeof vi.fn>;
       releaseSession: ReturnType<typeof vi.fn>;
@@ -13448,9 +13693,7 @@ describe("file panel", () => {
       path: "/work/a/big.log",
     });
 
-    const fv = (
-      sent("desktopFileContent").at(-1) as { fileView: Record<string, unknown> }
-    ).fileView;
+    const fv = lastFileView(sent("desktopFileContent"));
     expect(fv).toMatchObject({
       truncated: true,
       totalLines: REMOTE_FILE_MAX_LINES + 1,
@@ -13467,9 +13710,7 @@ describe("file panel", () => {
       path: "/work/a/huge.txt",
     });
 
-    const fv = (
-      sent("desktopFileContent").at(-1) as { fileView: Record<string, unknown> }
-    ).fileView;
+    const fv = lastFileView(sent("desktopFileContent"));
     expect(fv).toMatchObject({ truncated: true });
     expect(fv.totalLines).toBeUndefined();
     expect((fv.content as string).length).toBe(REMOTE_FILE_MAX_BYTES);
@@ -13485,9 +13726,7 @@ describe("file panel", () => {
       path: "/work/a/icon.png",
     });
 
-    const fv = (
-      sent("desktopFileContent").at(-1) as { fileView: Record<string, unknown> }
-    ).fileView;
+    const fv = lastFileView(sent("desktopFileContent"));
     expect(fv).toMatchObject({
       path: "/work/a/icon.png",
       host: "local",
@@ -13505,9 +13744,7 @@ describe("file panel", () => {
       path: "/work/a/font.bin",
     });
 
-    const fv = (
-      sent("desktopFileContent").at(-1) as { fileView: Record<string, unknown> }
-    ).fileView;
+    const fv = lastFileView(sent("desktopFileContent"));
     expect(fv).toMatchObject({
       path: "/work/a/font.bin",
       host: "local",
@@ -13525,9 +13762,7 @@ describe("file panel", () => {
       path: "/work/a/nope.ts",
     });
 
-    const fv = (
-      sent("desktopFileContent").at(-1) as { fileView: Record<string, unknown> }
-    ).fileView;
+    const fv = lastFileView(sent("desktopFileContent"));
     expect(fv).toMatchObject({
       path: "/work/a/nope.ts",
       host: "local",
@@ -13549,9 +13784,7 @@ describe("file panel", () => {
       path: "/work/a/subdir",
     });
 
-    const fv = (
-      sent("desktopFileContent").at(-1) as { fileView: Record<string, unknown> }
-    ).fileView;
+    const fv = lastFileView(sent("desktopFileContent"));
     expect(fv).toMatchObject({ error: "无法在面板中显示目录" });
   });
 
@@ -13565,9 +13798,7 @@ describe("file panel", () => {
       path: "/work/a/logo.png",
     });
 
-    const fv = (
-      sent("desktopFileContent").at(-1) as { fileView: Record<string, unknown> }
-    ).fileView;
+    const fv = lastFileView(sent("desktopFileContent"));
     expect(fv).toMatchObject({
       path: "/work/a/logo.png",
       imageBase64: `data:image/png;base64,${png.toString("base64")}`,
@@ -13593,9 +13824,7 @@ describe("file panel", () => {
       "prod",
       "/remote/src.ts",
     );
-    const fv = (
-      sent("desktopFileContent").at(-1) as { fileView: Record<string, unknown> }
-    ).fileView;
+    const fv = lastFileView(sent("desktopFileContent"));
     expect(fv).toMatchObject({
       path: "/remote/src.ts",
       host: "prod",
@@ -13623,9 +13852,7 @@ describe("file panel", () => {
       path: "/remote/pic.png",
     });
 
-    const fv = (
-      sent("desktopFileContent").at(-1) as { fileView: Record<string, unknown> }
-    ).fileView;
+    const fv = lastFileView(sent("desktopFileContent"));
     expect(fv).toMatchObject({
       path: "/remote/pic.png",
       host: "prod",
@@ -13649,9 +13876,7 @@ describe("file panel", () => {
       path: "/remote/nope.ts",
     });
 
-    const fv = (
-      sent("desktopFileContent").at(-1) as { fileView: Record<string, unknown> }
-    ).fileView;
+    const fv = lastFileView(sent("desktopFileContent"));
     expect(fv).toMatchObject({
       path: "/remote/nope.ts",
       host: "prod",
@@ -13812,13 +14037,9 @@ describe("file panel", () => {
       path: "/work/a/link.ts",
     });
 
-    expect(
-      (
-        sent("desktopFileContent").at(-1) as {
-          fileView: Record<string, unknown>;
-        }
-      ).fileView,
-    ).toMatchObject({ editable: false });
+    expect(lastFileView(sent("desktopFileContent"))).toMatchObject({
+      editable: false,
+    });
 
     await saveFile(host, {
       path: "/work/a/link.ts",
@@ -13915,13 +14136,9 @@ describe("file panel", () => {
       path: "/tmp/notes.txt",
     });
 
-    expect(
-      (
-        sent("desktopFileContent").at(-1) as {
-          fileView: Record<string, unknown>;
-        }
-      ).fileView,
-    ).toMatchObject({ editable: false });
+    expect(lastFileView(sent("desktopFileContent"))).toMatchObject({
+      editable: false,
+    });
   });
 
   it("openFile marks a truncated file as read-only (no write-back of a partial read)", async () => {
@@ -13933,9 +14150,7 @@ describe("file panel", () => {
       path: "/work/a/huge.txt",
     });
 
-    const fv = (
-      sent("desktopFileContent").at(-1) as { fileView: Record<string, unknown> }
-    ).fileView;
+    const fv = lastFileView(sent("desktopFileContent"));
     expect(fv).toMatchObject({ truncated: true, editable: false });
     expect(fv.contentHash).toBeUndefined();
   });
@@ -14319,6 +14534,7 @@ describe("renameSession", () => {
   ) => ({
     sessionId,
     title: "旧标题",
+    host: "local",
     workdir,
     cwd: workdir,
     createdAt: Date.now(),
@@ -14747,6 +14963,20 @@ describe("deep link clone", () => {
     return h.clientRequests.filter((request) => request.method === method);
   }
 
+  /**
+   * 第 `index` 次 `showMessageBox` 的文案。
+   *
+   * 宿主一律 `showMessageBox(win, options)`（两个实参），但 electron 的类型只把
+   * 后一个重载（单参数的 `showMessageBox(options)`）留给 `mock.calls`，所以
+   * `calls[i][1]` 在类型上不存在 —— 这里按「第二个实参就是 options」取。
+   */
+  function messageBoxMessage(index: number): string {
+    const call = vi.mocked(dialog.showMessageBox).mock.calls[
+      index
+    ] as unknown as [unknown, MessageBoxOptions];
+    return call[1].message;
+  }
+
   // Restore the electron mock's defaults so no later suite inherits a script.
   afterEach(() => {
     type MessageResult = Awaited<ReturnType<typeof dialog.showMessageBox>>;
@@ -14787,9 +15017,7 @@ describe("deep link clone", () => {
     // 本机没登录时唯一的出路仍是登录引导；`saveAuthToken` 这个 RPC 也随之
     // 从协议里删掉了，这条断言是防止它被重新接回来的回归闸。
     expect(deepLinkRequests("saveAuthToken")).toHaveLength(0);
-    expect(vi.mocked(dialog.showMessageBox).mock.calls[0][1].message).toContain(
-      "需要先登录",
-    );
+    expect(messageBoxMessage(0)).toContain("需要先登录");
     expect(h.agentInstances).toHaveLength(1);
   });
 
@@ -14802,9 +15030,7 @@ describe("deep link clone", () => {
 
     // 链接不携带凭据 ⇒ 没有第二条认证路径，登录被拒就不该再问「要不要 clone」。
     expect(dialog.showMessageBox).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(dialog.showMessageBox).mock.calls[0][1].message).toContain(
-      "需要先登录",
-    );
+    expect(messageBoxMessage(0)).toContain("需要先登录");
     expect(dialog.showOpenDialog).not.toHaveBeenCalled();
     expect(deepLinkRequests("installGitCredentialHelper")).toHaveLength(0);
     expect(h.agentInstances).toHaveLength(1);
@@ -14820,9 +15046,7 @@ describe("deep link clone", () => {
 
     expect(deepLinkRequests("login")).toHaveLength(1);
     // 第二个对话框是 clone 确认框（不是又一次登录引导）。
-    expect(vi.mocked(dialog.showMessageBox).mock.calls[1][1].message).toContain(
-      "是否克隆以下仓库",
-    );
+    expect(messageBoxMessage(1)).toContain("是否克隆以下仓库");
     expect(dialog.showOpenDialog).not.toHaveBeenCalled();
   });
 

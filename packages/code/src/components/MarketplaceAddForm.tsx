@@ -22,7 +22,7 @@ export const MarketplaceAddForm: React.FC = () => {
     if (!state.pendingAction) return;
 
     if (state.pendingAction.type === "submit") {
-      actions.addMarketplace(
+      void actions.addMarketplace(
         state.pendingAction.source,
         state.pendingAction.scope,
       );

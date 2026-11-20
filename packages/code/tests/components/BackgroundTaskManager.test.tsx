@@ -403,26 +403,33 @@ describe("BackgroundTaskManager", () => {
   });
 
   it("should format duration correctly", async () => {
+    // 只有选中行显示 Runtime，所以「哪一行排在第一位」决定这条用例能否看到
+    // 「500ms」；而列表顺序来自 `sortBackgroundTasks` 的 `startTime` 倒序。
+    // 曾写成三次 `Date.now()`：它们在一次紧凑的数组字面量里通常落在同一毫秒
+    // （于是稳定排序保住夹具顺序），但 CI 上被抢占跨过毫秒边界时顺序翻转，
+    // 「500ms」永不出现在任何一帧里，断言只能等满 `vi.waitFor` 的 1s 窗口后超时
+    // （PR #3025 的 flake，1028ms）。这里显式给出递减的启动时间。
+    const startedAt = Date.now();
     const tasksWithDifferentDurations: Partial<BackgroundTask>[] = [
       {
         id: "task-ms",
         type: "shell" as const,
         status: "completed" as const,
-        startTime: Date.now(),
+        startTime: startedAt,
         runtime: 500,
       },
       {
         id: "task-s",
         type: "shell" as const,
         status: "completed" as const,
-        startTime: Date.now(),
+        startTime: startedAt - 1000,
         runtime: 5000,
       },
       {
         id: "task-m",
         type: "shell" as const,
         status: "completed" as const,
-        startTime: Date.now(),
+        startTime: startedAt - 2000,
         runtime: 65000,
       },
     ];
@@ -445,16 +452,18 @@ describe("BackgroundTaskManager", () => {
       tasksWithDifferentDurations as unknown as BackgroundTask[],
     );
 
+    // 断言带上 `Runtime: ` 前缀：光看 `5s` 会被 `1m 5s` 命中（另一个任务的时长），
+    // 选中行一变就会空过。
     await vi.waitFor(() => {
-      expect(lastFrame()).toContain("500ms");
+      expect(lastFrame()).toContain("Runtime: 500ms");
     });
 
     stdin.write("\u001B[B"); // task-s
-    await vi.waitFor(() => expect(lastFrame()).toContain("5s"));
+    await vi.waitFor(() => expect(lastFrame()).toContain("Runtime: 5s"));
 
     stdin.write("\u001B[B"); // task-m
     await vi.waitFor(() => {
-      expect(lastFrame()).toContain("1m 5s");
+      expect(lastFrame()).toContain("Runtime: 1m 5s");
     });
   });
 
