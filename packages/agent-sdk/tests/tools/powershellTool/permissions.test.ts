@@ -1,3 +1,4 @@
+import path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   ParsedCommandElement,
@@ -11,7 +12,15 @@ vi.mock("../../../src/utils/powershellStructure/psParser.js", () => ({
   parsePowerShellCommand: vi.fn(),
 }));
 
-const WORKDIR = "/work/project";
+/**
+ * The session's directory, built the way the decision builds it — `/work/project`
+ * off Windows, `D:\work\project` on it. `path.resolve` rather than a literal,
+ * because the deny message quotes the *resolved* path and a `/`-written fixture
+ * would only compare equal on the platform it was written for.
+ */
+const WORKDIR = path.resolve(path.sep, "work", "project");
+/** An additional directory the session works in, spelled the same way. */
+const SHARED = path.resolve(path.sep, "shared");
 
 function leaf(
   name: string,
@@ -296,7 +305,7 @@ describe("evaluatePowerShellCommand", () => {
       hidePersistentOption: true,
     });
     // The message names what was resolved, not the model's spelling.
-    expect(result.message).toContain(WORKDIR);
+    expect(result.message).toContain(`Refusing to Remove-Item ${WORKDIR}:`);
     expect(result.message).toContain("working directory");
   });
 
@@ -310,14 +319,18 @@ describe("evaluatePowerShellCommand", () => {
       decision: "deny",
       reason: "dangerous-path",
     });
-    expect(result.message).toContain("/work");
+    // The resolved parent, not the model's `..` — and the canonical cmdlet name
+    // rather than the `rm` alias the command was written with.
+    expect(result.message).toContain(
+      `Refusing to Remove-Item ${path.resolve(WORKDIR, "..")}:`,
+    );
   });
 
   it("should deny a recursive delete of an additional directory", async () => {
-    mockParse(parseOk(statement(leaf("Remove-Item", ["/shared", "-Recurse"]))));
+    mockParse(parseOk(statement(leaf("Remove-Item", [SHARED, "-Recurse"]))));
     const result = await evaluatePowerShellCommand(
-      request("Remove-Item /shared -Recurse", {
-        safeZoneRoots: [WORKDIR, "/shared"],
+      request(`Remove-Item ${SHARED} -Recurse`, {
+        safeZoneRoots: [WORKDIR, SHARED],
       }),
     );
 
