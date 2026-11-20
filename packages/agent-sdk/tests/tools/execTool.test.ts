@@ -12,10 +12,12 @@ import type { ExecPoolEntry } from "../../src/exec/catalog.js";
 import {
   EXEC_ASK_MODE_TOTAL_MS,
   EXEC_BACKGROUND_MAX_MS,
+  EXEC_DEFAULT_MAX_RESULT_CHARS,
   EXEC_DEFAULT_TIMEOUT_MS,
   EXEC_MAX_TIMEOUT_MS,
   EXEC_PART_CHAR_LIMIT,
   EXEC_SHELL_DEFAULT_WAIT_MS,
+  EXEC_SYNC_WAIT_MS,
 } from "../../src/exec/constants.js";
 import type {
   RunReplOptions,
@@ -107,6 +109,10 @@ describe("execTool declaration", () => {
     expect(description).toMatch(/synchronous/i);
     expect(description).toMatch(/nested tool call/i);
     expect(description).toMatch(/does not count/i);
+    // And it is not the wait window: a reader that assumed one number for both
+    // would be wrong about when a receipt comes back.
+    expect(description).toContain(String(EXEC_SYNC_WAIT_MS));
+    expect(description).toContain("does not set the wait window");
   });
 
   it("answers to the older spelling of its name", () => {
@@ -189,8 +195,9 @@ describe("execTool description", () => {
     expect(description()).toContain("first 200 characters by default");
   });
 
-  it("states the per-part cap and the escaping", () => {
+  it("states the per-part cap, the total cap and the escaping", () => {
     expect(description()).toContain(String(EXEC_PART_CHAR_LIMIT));
+    expect(description()).toContain(String(EXEC_DEFAULT_MAX_RESULT_CHARS));
     expect(description()).toContain("chars elided");
     expect(description()).toContain("head and the tail");
     expect(description()).toContain("&amp;");
@@ -214,6 +221,17 @@ describe("execTool description", () => {
     );
   });
 
+  it("gives the wait window as the fixed number it is", () => {
+    // The window is not `timeout`: the description has to say both numbers, and
+    // say that raising one does not move the other, or the model learns a bound
+    // the runtime does not hold.
+    expect(description()).toContain(
+      `inside the ${EXEC_SYNC_WAIT_MS / 1000}-second wait window`,
+    );
+    expect(description()).toContain("The window is fixed");
+    expect(description()).toContain("does not extend it");
+  });
+
   it("bounds the persistent context", () => {
     for (const boundary of ["restart", "resume", "fork", "wake"]) {
       expect(description()).toContain(boundary);
@@ -227,6 +245,26 @@ describe("execTool description", () => {
     expect(description()).toMatch(/single quote/);
     // `$` and Bash are the two doors to a command; the sandbox has no child_process.
     expect(description()).toContain("child_process");
+  });
+
+  it("teaches the `$` result shape and its exit-1 exemption", () => {
+    // The exemption is the one the model most needs told: a `grep` with no match
+    // must not read as a script error, or it wraps every search in try/catch.
+    expect(description()).toContain("does not throw");
+    expect(description()).toContain("no match");
+    expect(description()).toContain("git grep");
+    // The readers and the fields that carry a truncated result.
+    for (const field of [
+      "lines()",
+      "json()",
+      "truncated",
+      "file",
+      "output",
+      "cwd(dir)",
+      "env({ NAME: value })",
+    ]) {
+      expect(description()).toContain(field);
+    }
   });
 
   it("states the ask-mode ceiling and what it counts", () => {
@@ -496,9 +534,34 @@ describe("execTool execution", () => {
     expect(result.content.length).toBeLessThan(EXEC_PART_CHAR_LIMIT + 1_000);
   });
 
-  it("caps each log entry on its own", async () => {
+  it("keeps one block per stream, not one per line", async () => {
+    // A stream is the unit the model reasons about; the element boundary carried
+    // nothing beyond the newline that is already inside the text.
+    runReplScript.mockResolvedValue(
+      runResult({
+        toolsUsed: ["Read"],
+        logs: ["first line", "second line"],
+        stderr: ["warn: a", "warn: b"],
+      }),
+    );
+
+    const result = await execTool.execute({ code: "return 1;" }, contextWith());
+
+    expect(withoutMs(result.content)).toBe(
+      [
+        '<repl-output ms="0">',
+        "<tools>Read</tools>",
+        "<log>first line\nsecond line</log>",
+        "<log>[stderr] warn: a\n[stderr] warn: b</log>",
+        `<result>${NO_OUTPUT_TEXT}</result>`,
+        "</repl-output>",
+      ].join("\n"),
+    );
+  });
+
+  it("caps the block of a stream, not each entry in it", async () => {
     // A wall of log output must not eat the budget of the value the model asked
-    // for: the cap is per part, not per result.
+    // for, so the cap stays: it just applies to the merged block.
     runReplScript.mockResolvedValue(
       runResult({
         toolsUsed: ["Read"],
@@ -509,9 +572,40 @@ describe("execTool execution", () => {
 
     const result = await execTool.execute({ code: "return 1;" }, contextWith());
 
-    expect(result.content).toContain("... [10000 chars elided] ...");
-    expect(result.content).toContain("<log>short</log>");
+    expect(result.content.match(/<log>/g)).toHaveLength(1);
+    expect(result.content).toContain("... [10006 chars elided] ...");
+    // The tail of the block survives, which is where the last entry sits.
+    expect(result.content).toContain("short</log>");
     expect(result.content).toContain("<result>ok</result>");
+  });
+
+  it("cuts the whole answer at the total gate, not only each part", async () => {
+    // Each part is bounded on its own; the answer as a whole is not, so an answer
+    // assembled from many of them still needs a ceiling (Claude Code's 100000).
+    // The tool list is the one section rendered without a per-part cut, which is
+    // what makes it the widest an answer can get.
+    const wide = Array.from(
+      { length: 400 },
+      (_, index) => `tool_${index}_${"x".repeat(300)}`,
+    );
+    runReplScript.mockResolvedValue(
+      runResult({ toolsUsed: wide, logs: ["hello"], value: "ok" }),
+    );
+
+    const result = await execTool.execute({ code: "return 1;" }, contextWith());
+
+    expect(result.content.length).toBeGreaterThan(
+      EXEC_DEFAULT_MAX_RESULT_CHARS,
+    );
+    expect(result.content).not.toContain("</repl-output>");
+    expect(
+      result.content.startsWith('<repl-output ms="0">\n<tools>tool_0_'),
+    ).toBe(true);
+    // The note is the last thing in the answer, so the cut cannot be mistaken for
+    // the end of the output.
+    expect(result.content.split("\n").at(-1)).toMatch(
+      /^\[\.\.\. \d+ more chars truncated — a REPL result carries at most 100000 characters of text\]$/,
+    );
   });
 
   it("tells the model the whole value is still in the REPL", async () => {
@@ -577,7 +671,7 @@ describe("execTool execution", () => {
   it("lists the count, then the last two calls, marking the cut", async () => {
     runReplScript.mockImplementation(async (options) => {
       const names = ["mcp__srv__a", "mcp__srv__b", "mcp__srv__c"];
-      for (const name of names) options.onToolCall?.(name, {});
+      for (const name of names) options.onToolCall?.(name, {}, "call");
       return runResult({ toolsUsed: names });
     });
 
@@ -592,8 +686,8 @@ describe("execTool execution", () => {
     // The row has to say what the script is doing, not only which tools it
     // touched: same rule as the Agent tool's short result (`Read src/app.ts`).
     runReplScript.mockImplementation(async (options) => {
-      options.onToolCall?.("Read", { file_path: "src/app.ts" });
-      options.onToolCall?.("Bash", { command: "wc -l README.md" });
+      options.onToolCall?.("Read", { file_path: "src/app.ts" }, "call");
+      options.onToolCall?.("Bash", { command: "wc -l README.md" }, "call");
       return runResult({ toolsUsed: ["Read", "Bash"] });
     });
 
@@ -612,12 +706,67 @@ describe("execTool execution", () => {
     );
   });
 
+  it("shows a helper lookup on the row without counting it as a call", async () => {
+    // Spec「在沙箱内搜索工具形状」场景 13: `searchTools` / `describeTool` are not
+    // tool calls, so they must not move `N tool calls` — but the row is the only
+    // place a person sees the script looking something up, so the line is there,
+    // in its own `name: question` form rather than the `Tool param` one.
+    runReplScript.mockImplementation(async (options) => {
+      options.onToolCall?.("searchTools", { query: "slack message" }, "helper");
+      options.onToolCall?.("Read", { file_path: "src/app.ts" }, "call");
+      return runResult({ toolsUsed: ["Read"] });
+    });
+
+    const result = await execTool.execute(
+      { code: "return 1;" },
+      contextWith({
+        tools: [{ name: "Read", formatCompactParams: () => "src/app.ts" }],
+      }),
+    );
+
+    expect(result.shortResult).toBe(
+      "1 tool call\nsearchTools: slack message\nRead src/app.ts",
+    );
+    // Nothing a host reads as "these tools ran" sees a helper.
+    expect(result.nestedToolCalls).toEqual(["Read"]);
+  });
+
+  it("keeps a helper's line when the lookup failed", async () => {
+    // A search that threw its usage error and a `describeTool` that answered
+    // `{ error }` both happened; a row that skipped them would be exactly the
+    // "script is silent" display the line exists to prevent.
+    runReplScript.mockImplementation(async (options) => {
+      options.onToolCall?.("searchTools", { query: "" }, "helper");
+      options.onToolCall?.("describeTool", { name: "Nope" }, "helper");
+      return runResult({ logs: ["caught"] });
+    });
+
+    const result = await execTool.execute({ code: "return 1;" }, contextWith());
+
+    expect(result.shortResult).toBe(
+      "0 tool calls\nsearchTools\ndescribeTool: Nope",
+    );
+  });
+
+  it("cuts a helper's question at the same 200 characters the row can carry", async () => {
+    const query = "q".repeat(300);
+    runReplScript.mockImplementation(async (options) => {
+      options.onToolCall?.("searchTools", { query }, "helper");
+      return runResult({ toolsUsed: [] });
+    });
+
+    const result = await execTool.execute({ code: "return 1;" }, contextWith());
+
+    const line = result.shortResult?.split("\n")[1] ?? "";
+    expect(line).toBe(`searchTools: ${"q".repeat(200)}…`);
+  });
+
   it("falls back to the argument tail when a tool has no compact summary", async () => {
     // MCP tools have no `formatCompactParams` of their own; a bare name would
     // leave the user unable to tell two calls to the same server apart.
     const query = "a".repeat(40);
     runReplScript.mockImplementation(async (options) => {
-      options.onToolCall?.("mcp__srv__search", { query });
+      options.onToolCall?.("mcp__srv__search", { query }, "call");
       return runResult({ toolsUsed: ["mcp__srv__search"] });
     });
 
@@ -632,7 +781,7 @@ describe("execTool execution", () => {
     // `{}` is not something to show: the same call with no arguments would have
     // read `mcp__srv__ping {}` on every row.
     runReplScript.mockImplementation(async (options) => {
-      options.onToolCall?.("mcp__srv__ping", {});
+      options.onToolCall?.("mcp__srv__ping", {}, "call");
       return runResult({ toolsUsed: ["mcp__srv__ping"] });
     });
 
@@ -646,7 +795,7 @@ describe("execTool execution", () => {
     // trace a host-side judgment can read.
     runReplScript.mockImplementation(async (options) => {
       const names = ["mcp__srv__a", "mcp__srv__b", "mcp__srv__a"];
-      for (const name of names) options.onToolCall?.(name, {});
+      for (const name of names) options.onToolCall?.(name, {}, "call");
       return runResult({ toolsUsed: ["mcp__srv__a", "mcp__srv__b"] });
     });
 
@@ -668,9 +817,9 @@ describe("execTool execution", () => {
     });
     const updates: string[] = [];
     runReplScript.mockImplementation(async (options) => {
-      options.onToolCall?.("mcp__srv__a", {});
+      options.onToolCall?.("mcp__srv__a", {}, "call");
       await pending;
-      options.onToolCall?.("mcp__srv__b", {});
+      options.onToolCall?.("mcp__srv__b", {}, "call");
       return runResult({ toolsUsed: ["mcp__srv__a", "mcp__srv__b"] });
     });
 

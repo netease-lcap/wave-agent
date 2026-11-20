@@ -938,11 +938,7 @@ class ReplSandboxImpl implements ReplSandbox {
       describeTool: (nameText) =>
         this.host.describeTool(decodeEnvelope(nameText)),
       listToolNames: () => this.host.listToolNames(),
-      runShell: (command, timeoutMs) =>
-        this.host.runShell(
-          command,
-          typeof timeoutMs === "number" ? { timeout: timeoutMs } : {},
-        ),
+      runShell: (command, options) => this.host.runShell(command, options),
       selfLog: (values) => {
         state.logs.push(values.join(" "));
         try {

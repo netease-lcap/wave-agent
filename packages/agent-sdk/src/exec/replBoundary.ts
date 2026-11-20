@@ -61,7 +61,12 @@ export interface ReplBoundaryBridge {
   searchTools(queryText: string, maxText: string): Promise<unknown>;
   describeTool(nameText: string): Promise<unknown>;
   listToolNames(): string[];
-  runShell(command: string, timeoutMs?: number): Promise<unknown>;
+  /**
+   * Run one `` $`cmd` ``. `options` is whatever the chain declared
+   * (`{ timeout?, cwd?, env? }`), validated on the host side; the return value is
+   * the plain record `shellOutput` turns into the object the script sees.
+   */
+  runShell(command: string, options?: unknown): Promise<unknown>;
   /** Already-formatted display strings, one per argument the script passed. */
   selfLog(values: string[]): void;
   consoleWrite(level: string, values: string[]): void;
@@ -470,12 +475,65 @@ export const REPL_BOUNDARY_SOURCE = `(() => {
     };
 
     // ---- \`$\` -------------------------------------------------------------
+    const LF = StringCtor.fromCharCode(10);
+    const CR = StringCtor.fromCharCode(13);
+
+    // Split on newlines, the way a script would: no trailing empty line, and CRLF
+    // input (a Windows shell) does not leave a CR at the end of every entry.
+    const splitLines = (text) => {
+      if (!text) return [];
+      const normalized = text.indexOf(CR) === -1 ? text : text.split(CR + LF).join(LF);
+      const lines = normalized.split(LF);
+      while (lines.length > 0 && lines[lines.length - 1] === "") lines.pop();
+      return lines;
+    };
+
+    // \`json()\` reports why the text is not JSON, and keeps the text itself out of
+    // the message: the script already has it, and a 30 KB blob in an error string
+    // is not something the model can act on.
+    const parseJsonOutput = (text) => {
+      try {
+        return jsonParse(text);
+      } catch (error) {
+        const detail = error && error.message ? error.message : "invalid JSON";
+        throw makeError("SyntaxError", "The command output is not JSON: " + detail);
+      }
+    };
+
+    const decorateShellOutput = (out) => {
+      out.text = () => out.stdout;
+      out.lines = () => splitLines(out.stdout);
+      out.json = () => parseJsonOutput(out.stdout);
+      out.toString = () => out.output;
+      return out;
+    };
+
+    const blankShellOutput = (message) => {
+      const out = objectCreate(null);
+      out.stdout = "";
+      out.stderr = message;
+      out.exitCode = null;
+      out.output = message;
+      out.truncated = false;
+      return decorateShellOutput(out);
+    };
+
     const shellOutput = (value) => {
       const data = value !== null && typeof value === "object" ? clone(value) : objectCreate(null);
       const out = objectCreate(null);
       out.stdout = typeof data.stdout === "string" ? data.stdout : "";
       out.stderr = typeof data.stderr === "string" ? data.stderr : "";
       out.exitCode = typeof data.exitCode === "number" ? data.exitCode : null;
+      // The text the result shows: stdout, then the tool's own reading of it.
+      out.output = typeof data.output === "string" ? data.output : out.stdout;
+      // \`truncated\` says stdout holds only the start of the output; \`file\` names
+      // the spill file that has the rest, so a script can read it instead of
+      // re-running a command that already printed everything.
+      out.truncated = data.truncated === true;
+      if (typeof data.file === "string" && data.file !== "") out.file = data.file;
+      // The host's reading of a non-zero exit that is not a failure (grep with no
+      // match). Its presence is what keeps \`$\` from throwing below.
+      if (typeof data.note === "string" && data.note !== "") out.note = data.note;
       if (typeof data.command === "string") out.command = data.command;
       // Present only when the command outlived its timeout: it is still running,
       // so \`exitCode\` is null and the output streams to \`outputPath\` instead.
@@ -485,8 +543,7 @@ export const REPL_BOUNDARY_SOURCE = `(() => {
         background.outputPath = StringCtor(data.running.outputPath);
         out.running = background;
       }
-      out.text = () => out.stdout;
-      return out;
+      return decorateShellOutput(out);
     };
 
     const shellFailure = (out) => {
@@ -498,21 +555,28 @@ export const REPL_BOUNDARY_SOURCE = `(() => {
       return error;
     };
 
-    const makeShell = (command, nothrow, timeoutMs) => {
+    // \`options\` carries what the chain methods declared: nothrow, timeout, cwd, env.
+    // Its values go to the host as written — validating them there keeps one
+    // reading of "is this a usable directory / variable name" instead of two.
+    const makeShell = (command, options) => {
+      const nothrow = options.nothrow === true;
       let started = null;
       const run = () => {
         if (started === null) {
-          started = callHost(() => bridge.runShell(command, timeoutMs), shellOutput).then((out) => {
-            if (!nothrow && out.exitCode !== null && out.exitCode !== 0) throw shellFailure(out);
+          const call = objectCreate(null);
+          if (options.timeout !== undefined) call.timeout = options.timeout;
+          if (options.cwd !== undefined) call.cwd = options.cwd;
+          if (options.env !== undefined) call.env = options.env;
+          started = callHost(() => bridge.runShell(command, call), shellOutput).then((out) => {
+            // Three ways a non-zero exit is not a failure: the script asked for it
+            // (\`.nothrow()\`), the host read it as the command's own answer (\`note\`,
+            // e.g. grep finding nothing), or it never finished (still running).
+            if (nothrow || out.note !== undefined) return out;
+            if (out.exitCode !== null && out.exitCode !== 0) throw shellFailure(out);
             return out;
           }, (error) => {
             if (nothrow) {
-              const out = objectCreate(null);
-              out.stdout = "";
-              out.stderr = error && error.message ? error.message : "";
-              out.exitCode = null;
-              out.text = () => out.stdout;
-              return out;
+              return blankShellOutput(error && error.message ? error.message : "");
             }
             throw error;
           });
@@ -525,12 +589,38 @@ export const REPL_BOUNDARY_SOURCE = `(() => {
       shell.then = (ok, bad) => run().then(ok, bad);
       shell.catch = (bad) => run().catch(bad);
       shell.finally = (fn) => run().finally(fn);
-      shell.text = () => run().then((out) => out.stdout);
-      shell.nothrow = () => makeShell(command, true, timeoutMs);
+      shell.text = () => run().then((out) => out.text());
+      // The same readers, before the await: \`await $\`cmd\`.lines()\`.
+      shell.lines = () => run().then((out) => out.lines());
+      shell.json = () => run().then((out) => out.json());
+      shell.nothrow = () => makeShell(command, {
+        nothrow: true,
+        timeout: options.timeout,
+        cwd: options.cwd,
+        env: options.env,
+      });
       // A longer wait than the default, in ms; past it the command moves to the
       // background instead of failing, so a long build does not block the script.
-      shell.timeout = (ms) =>
-        makeShell(command, nothrow, typeof ms === "number" && ms > 0 ? ms : timeoutMs);
+      shell.timeout = (ms) => makeShell(command, {
+        nothrow,
+        timeout: typeof ms === "number" && ms > 0 ? ms : options.timeout,
+        cwd: options.cwd,
+        env: options.env,
+      });
+      // This command only: neither moves the session, and both are scoped by the
+      // host to the one call (see the Bash funnel's derived context).
+      shell.cwd = (dir) => makeShell(command, {
+        nothrow,
+        timeout: options.timeout,
+        cwd: dir,
+        env: options.env,
+      });
+      shell.env = (vars) => makeShell(command, {
+        nothrow,
+        timeout: options.timeout,
+        cwd: options.cwd,
+        env: vars,
+      });
       shell.toString = () => command;
       shell.command = command;
       return shell;
@@ -540,7 +630,10 @@ export const REPL_BOUNDARY_SOURCE = `(() => {
       // \`$(cmd, ms)\`: a command given as a plain string rather than a template.
       if (typeof strings === "string") {
         const ms = arguments[1];
-        return makeShell(StringCtor(strings), false, typeof ms === "number" && ms > 0 ? ms : undefined);
+        return makeShell(StringCtor(strings), {
+          nothrow: false,
+          timeout: typeof ms === "number" && ms > 0 ? ms : undefined,
+        });
       }
       const values = slice.call(arguments, 1);
       const head = strings && strings.length > 0 ? StringCtor(strings[0]) : "";
@@ -561,7 +654,7 @@ export const REPL_BOUNDARY_SOURCE = `(() => {
         const next = strings && strings[i + 1] !== undefined ? StringCtor(strings[i + 1]) : "";
         parts.push(next);
       }
-      return makeShell(parts.join(""), false);
+      return makeShell(parts.join(""), { nothrow: false });
     };
 
     // ---- preview ---------------------------------------------------------

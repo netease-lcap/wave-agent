@@ -168,6 +168,51 @@ describe("buildExecPool", () => {
       ),
     ).toEqual([]);
   });
+
+  it("takes the background lane away from a shell tool it pools", () => {
+    // The pool is the sync lane by construction — every call in it answers inside
+    // the fixed wait window, and the async lane is `Poll`'s. Leaving
+    // `run_in_background` declared would describe a parameter the pooled lane
+    // cannot honour, so the pooled schema loses it (Claude Code does the same).
+    const shellSchema = () => ({
+      type: "object",
+      properties: {
+        command: { type: "string" },
+        run_in_background: { type: "boolean" },
+      },
+      required: ["command", "run_in_background"],
+    });
+
+    for (const name of ["Bash", "PowerShell"]) {
+      const [pooled] = buildExecPool(
+        [{ name, inputSchema: shellSchema() }],
+        none,
+        true,
+      );
+      expect(pooled.inputSchema).toEqual({
+        type: "object",
+        properties: { command: { type: "string" } },
+        required: ["command"],
+      });
+    }
+
+    // Pooled only because it claimed defer, with the core switch off: `Bash` is
+    // still reachable flat as well, so its declaration keeps the parameter.
+    const [byClaim] = buildExecPool(
+      [{ name: "Bash", inputSchema: shellSchema(), defer: true }],
+      none,
+    );
+    expect(byClaim.inputSchema).toHaveProperty("properties.run_in_background");
+
+    // A core tool that is not a shell is copied as declared.
+    const readSchema = { type: "object", properties: { path: {} } };
+    const [read] = buildExecPool(
+      [{ name: "Read", inputSchema: readSchema }],
+      none,
+      true,
+    );
+    expect(read.inputSchema).toEqual(readSchema);
+  });
 });
 
 describe("renderToolSignature", () => {
@@ -712,13 +757,17 @@ describe("describeTool", () => {
   function descriptionOf(
     pool: readonly ExecPoolEntry[],
     name: string,
-  ): { name: string; description: string; inputSchema: string } {
+  ): {
+    name: string;
+    description: string;
+    inputSchema: Record<string, unknown>;
+  } {
     const answer = describeTool(pool, name);
     if ("error" in answer) throw new Error(answer.error);
     return answer;
   }
 
-  it("returns the name, the description and the argument type", () => {
+  it("returns the name, the description and the argument schema", () => {
     const schema = {
       type: "object",
       properties: { path: { type: "string", description: "the file" } },
@@ -732,10 +781,16 @@ describe("describeTool", () => {
     ).toEqual({
       name: "Read",
       description: "Read a file",
-      inputSchema: ["{", "  /** the file */", "  path: string,", "}"].join(
-        "\n",
-      ),
+      // The tool's own JSON Schema, not a rendering of it: a caller can walk an
+      // object, and a string would be an answer it can only read.
+      inputSchema: schema,
     });
+  });
+
+  it("answers an empty object for a tool that declares no schema", () => {
+    // One shape for `inputSchema` in every case: mixed object/string would force
+    // every caller to branch before it can read anything.
+    expect(descriptionOf([entry("bare")], "bare").inputSchema).toEqual({});
   });
 
   it("finds a name whatever its case, because search matching is case-insensitive", () => {
@@ -758,7 +813,23 @@ describe("describeTool", () => {
     expect(description.endsWith("…")).toBe(true);
   });
 
-  /** A schema whose rendered type text is far longer than any budget. */
+  /** `count` arguments, each with a description long enough to spend the budget. */
+  function describedSchema(count: number): Record<string, unknown> {
+    return {
+      type: "object",
+      properties: Object.fromEntries(
+        Array.from({ length: count }, (_, index) => [
+          `property_${index}`,
+          {
+            type: "string",
+            description: "a long enough field description to spend the budget",
+          },
+        ]),
+      ),
+    };
+  }
+
+  /** A schema with more arguments than any budget can carry in full. */
   function hugeSchema(): Record<string, unknown> {
     return {
       type: "object",
@@ -771,18 +842,33 @@ describe("describeTool", () => {
     };
   }
 
-  it("cuts a single input at 6000 characters and says where the whole of it is", () => {
+  it("spends the budget on prose first, and stays an object", () => {
+    const { inputSchema } = descriptionOf(
+      [entry("wide", { inputSchema: describedSchema(100) })],
+      "wide",
+    );
+    expect(JSON.stringify(inputSchema).length).toBeLessThanOrEqual(6_000);
+    const properties = inputSchema.properties as Record<
+      string,
+      Record<string, unknown>
+    >;
+    // Every argument survived, with its type; only its prose was dropped — the
+    // names and types are what the model cannot guess.
+    expect(Object.keys(properties)).toHaveLength(100);
+    expect(properties.property_0).toEqual({ type: "string" });
+    expect(inputSchema.$comment).toBeTypeOf("string");
+  });
+
+  it("keeps the argument names when even that does not fit", () => {
     const { inputSchema } = descriptionOf(
       [entry("huge", { inputSchema: hugeSchema() })],
       "huge",
     );
-    // The cut lands on a line boundary, so a few characters of the budget go
-    // unused; what matters is that the cap holds and the note is there.
-    expect(inputSchema.length).toBeLessThanOrEqual(6_000);
-    expect(inputSchema.length).toBeGreaterThan(5_900);
-    expect(inputSchema).toContain(
-      "这部分被省略了，`describeTool` 返回的是完整 schema",
-    );
+    expect(typeof inputSchema).toBe("object");
+    const properties = inputSchema.properties as Record<string, unknown>;
+    expect(Object.keys(properties)).toHaveLength(400);
+    expect(inputSchema.type).toBe("object");
+    expect(inputSchema.$comment).toBeTypeOf("string");
   });
 
   it("never spends more than 15000 characters on inputs in one search", () => {

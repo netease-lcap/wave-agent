@@ -1,4 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 import type { ExecPoolEntry } from "../../src/exec/catalog.js";
 import {
   EXEC_ASYNC_CONCURRENCY_LIMIT,
@@ -6,7 +8,9 @@ import {
   EXEC_BACKGROUND_MAX_MS,
   EXEC_MAX_IMAGES,
   EXEC_MAX_PDFS,
+  EXEC_MAX_TIMEOUT_MS,
   EXEC_SHELL_DEFAULT_WAIT_MS,
+  EXEC_SYNC_WAIT_MS,
 } from "../../src/exec/constants.js";
 import {
   drainReplEvents,
@@ -20,6 +24,15 @@ import {
 } from "../../src/exec/execRuntime.js";
 import { setReplStepBudget } from "../../src/exec/replSandbox.js";
 import type { ToolContext, ToolResult } from "../../src/tools/types.js";
+import { buildPersistedOutputMessage } from "../../src/utils/toolResultStorage.js";
+
+/**
+ * Directories that really exist, for `.cwd()`: the directory of this file and the
+ * package root above it. Resolved from the module URL rather than the process
+ * cwd, so the test does not depend on where vitest was started.
+ */
+const EXEC_TESTS_DIR = path.dirname(fileURLToPath(import.meta.url));
+const AGENT_SDK_ROOT = path.resolve(EXEC_TESTS_DIR, "..", "..");
 
 /**
  * The host side of the REPL, exercised through the real sandbox.
@@ -59,6 +72,8 @@ interface Harness {
   context: ToolContext;
   /** Every built-in call the runtime actually dispatched, in order. */
   dispatched: Array<{ name: string; args: Record<string, unknown> }>;
+  /** The context each built-in call ran under, in order (`$` derives one). */
+  contexts: ToolContext[];
   /** Every MCP call, in order. */
   mcpCalls: Array<{ name: string; args: Record<string, unknown> }>;
 }
@@ -74,12 +89,18 @@ function harness(
   mcpBehavior: McpBehavior = () => ok("mcp"),
 ): Harness {
   const dispatched: Harness["dispatched"] = [];
+  const contexts: Harness["contexts"] = [];
   const mcpCalls: Harness["mcpCalls"] = [];
   const context = {
     workdir: "/tmp",
     toolManager: {
-      execute: (name: string, args: Record<string, unknown>) => {
+      execute: (
+        name: string,
+        args: Record<string, unknown>,
+        toolContext: ToolContext,
+      ) => {
         dispatched.push({ name, args });
+        contexts.push(toolContext);
         return Promise.resolve().then(() => behavior(name, args));
       },
       getExecPool: () => POOL,
@@ -91,7 +112,7 @@ function harness(
       },
     },
   } as unknown as ToolContext;
-  return { context, dispatched, mcpCalls };
+  return { context, dispatched, contexts, mcpCalls };
 }
 
 /** Context keys this file created, released after each case. */
@@ -241,6 +262,21 @@ describe("the two dispatch funnels", () => {
 
     expect(result.ok).toBe(false);
     expect(result.error).toContain("Nope is not defined");
+    // The engine's own error, and nothing more: a host-side "search for it" hint
+    // would invite the model to look for a tool it was never granted.
+    expect(result.error).toContain("ReferenceError");
+    expect(result.error).not.toContain("searchTools");
+    expect(h.dispatched).toEqual([]);
+  });
+
+  it("leaves the same name undefined on `tools`, as a TypeError", async () => {
+    const h = harness();
+
+    const result = await runRepl(h, `return await tools.Nope({});`);
+
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain("tools.Nope is not a function");
+    expect(result.error).not.toContain("searchTools");
     expect(h.dispatched).toEqual([]);
   });
 });
@@ -276,6 +312,7 @@ describe("the catalog, reached from the script", () => {
       `
       const one = await describeTool("Echo");
       self.log(JSON.stringify(Object.keys(one).sort()));
+      self.log(typeof one.inputSchema);
       const miss = await describeTool("Nope");
       self.log(JSON.stringify(Object.keys(miss)));
       return typeof miss.error;
@@ -288,7 +325,9 @@ describe("the catalog, reached from the script", () => {
       "inputSchema",
       "name",
     ]);
-    expect(JSON.parse(result.logs[1])).toEqual(["error"]);
+    // A JSON Schema object the script can walk, not a rendering of one.
+    expect(result.logs[1]).toBe("object");
+    expect(JSON.parse(result.logs[2])).toEqual(["error"]);
   });
 
   it("hands searchTools' usage error to the script instead of swallowing it", async () => {
@@ -318,6 +357,63 @@ describe("the catalog, reached from the script", () => {
 
     expect(result.ok).toBe(true);
     expect(result.value).toBe("Echo,Fail,Pic,Slow,mcp__srv__boom");
+  });
+
+  it("reports a helper lookup to the row without counting it as a call", async () => {
+    // Spec「在沙箱内搜索工具形状」场景 13: the helpers are not tool calls — no
+    // permission decision, no hook, no budget — but the row still has to show them
+    // instead of staying silent, which is why they reach `onToolCall` at all. The
+    // kind is what lets the caller print the line without inflating the count.
+    const h = harness();
+    const seen: Array<{
+      name: string;
+      args: Record<string, unknown>;
+      kind: string;
+    }> = [];
+
+    const result = await runRepl(
+      h,
+      `
+      await searchTools("echo");
+      await Echo({ ping: true });
+      await describeTool("Nope");
+      return "after";
+      `,
+      {
+        onToolCall: (name, args, kind) => seen.push({ name, args, kind }),
+      },
+    );
+
+    expect(result.ok).toBe(true);
+    expect(seen).toEqual([
+      { name: "searchTools", args: { query: "echo" }, kind: "helper" },
+      { name: "Echo", args: { ping: true }, kind: "call" },
+      { name: "describeTool", args: { name: "Nope" }, kind: "helper" },
+    ]);
+    // One real call: the helpers spent no budget and reached no tool.
+    expect(result.toolCalls).toBe(1);
+    expect(result.toolsUsed).toEqual(["Echo"]);
+    expect(h.dispatched).toEqual([{ name: "Echo", args: { ping: true } }]);
+  });
+
+  it("reports a failed lookup as well, instead of going quiet", async () => {
+    // `searchTools("")` throws its usage error into the script. The lookup still
+    // happened, so the row is told about it before the throw.
+    const h = harness();
+    const seen: string[] = [];
+
+    const result = await runRepl(
+      h,
+      `
+      try { await searchTools(""); } catch (error) { self.log(error.message); }
+      return "after";
+      `,
+      { onToolCall: (name) => seen.push(name) },
+    );
+
+    expect(result.ok).toBe(true);
+    expect(seen).toEqual(["searchTools"]);
+    expect(result.logs[0]).toContain("searchTools: pass the words to look for");
   });
 });
 
@@ -411,6 +507,373 @@ describe("$ — the shell template", () => {
     expect(result.ok).toBe(false);
     expect(result.error).toContain("cannot run a command here");
   });
+
+  it("reads the output as lines, and as parsed JSON", async () => {
+    const h = harness(() => ({
+      success: true,
+      content: '{"a":1}',
+      metadata: { exitCode: 0 },
+    }));
+
+    const result = await runRepl(
+      h,
+      `
+      const out = await $\`cat x.json\`;
+      self.log(out.lines().join("|"), String(out.json().a));
+      const parsed = await $\`cat x.json\`.json();
+      return String(parsed.a);
+    `,
+    );
+
+    expect(result.ok).toBe(true);
+    // No trailing empty entry, and the reader works before and after the await.
+    expect(result.logs).toEqual(['{"a":1} 1']);
+    expect(result.value).toBe("1");
+  });
+
+  it("rejects .json() with a SyntaxError that names the parse failure", async () => {
+    const h = harness(() => ({
+      success: true,
+      content: "not json, a log line",
+      metadata: { exitCode: 0 },
+    }));
+
+    const result = await runRepl(
+      h,
+      `
+      try {
+        await $\`cat x\`.json();
+        self.log("did not throw");
+      } catch (e) {
+        self.log(e.name, e.message.indexOf("not JSON") === -1 ? e.message : "named");
+      }
+      return "after";
+    `,
+    );
+
+    expect(result.ok).toBe(true);
+    expect(result.logs).toEqual(["SyntaxError named"]);
+  });
+
+  it("shows stdout, the tool's reading and the exit code in output", async () => {
+    const h = harness(() => ({
+      success: false,
+      content: "boom",
+      error: "Command failed with exit code: 2",
+      metadata: { exitCode: 2 },
+    }));
+
+    const result = await runRepl(
+      h,
+      `const out = await $\`false\`.nothrow(); return out.output;`,
+    );
+
+    expect(result.value).toBe(
+      "boom\n[stderr] Command failed with exit code: 2\n[exit 2]",
+    );
+  });
+
+  it("hands a persisted output back as a preview plus the spill file", async () => {
+    const filePath = path.resolve("wave-tool-results", "bash_1.txt");
+    const wrapper = buildPersistedOutputMessage(
+      42_000,
+      filePath,
+      "first line\nsecond line\n...",
+    );
+    const h = harness(() => ({
+      success: true,
+      content: wrapper,
+      metadata: { exitCode: 0 },
+    }));
+
+    const result = await runRepl(
+      h,
+      `
+      const out = await $\`cat big.log\`;
+      self.log(String(out.truncated), out.file, "file" in out);
+      self.log(out.stdout);
+      return out.output === out.stdout ? "same" : "differs";
+    `,
+    );
+
+    expect(result.ok).toBe(true);
+    // The wrapper is Bash's own message; the script gets its two facts as fields.
+    expect(result.logs[0]).toBe(`true ${filePath} true`);
+    expect(result.logs[1]).toBe("first line\nsecond line\n...");
+    expect(result.value).toBe("same");
+  });
+
+  it("leaves file off when nothing had to be persisted", async () => {
+    const h = harness(() => ({
+      success: true,
+      content: "small",
+      metadata: { exitCode: 0 },
+    }));
+
+    const result = await runRepl(
+      h,
+      `const out = await $\`echo\`; return String(out.truncated) + " " + ("file" in out);`,
+    );
+
+    expect(result.value).toBe("false false");
+  });
+
+  it("does not throw when a search command exits 1, and says why in note", async () => {
+    const h = harness(() => ({
+      success: false,
+      content: "",
+      error: "Command failed with exit code: 1",
+      metadata: { exitCode: 1 },
+    }));
+
+    const result = await runRepl(
+      h,
+      `
+      const miss = await $\`grep -n needle src\`;
+      self.log(String(miss.exitCode), miss.note.indexOf("grep exits 1") === -1 ? miss.note : "note");
+      const diff = await $\`git diff --stat\`;
+      self.log(diff.note.indexOf("git diff") === -1 ? diff.note : "git");
+      return "carried on";
+    `,
+    );
+
+    expect(result.ok).toBe(true);
+    expect(result.value).toBe("carried on");
+    expect(result.logs).toEqual(["1 note", "git"]);
+  });
+
+  it("still throws for exit 1 outside that family, and for other codes inside it", async () => {
+    const outside = harness(() => ({
+      success: false,
+      content: "",
+      error: "Command failed with exit code: 1",
+      metadata: { exitCode: 1 },
+    }));
+
+    const one = await runRepl(
+      outside,
+      `
+      for (const run of [$\`exit 1\`, $\`rg x f | head\`]) {
+        try { await run; self.log("no throw"); } catch (e) { self.log(e.name + ":" + e.exitCode); }
+      }
+      return "after";
+    `,
+    );
+
+    expect(one.logs).toEqual(["ShellError:1", "ShellError:1"]);
+
+    const inside = harness(() => ({
+      success: false,
+      content: "",
+      error: "Command failed with exit code: 2",
+      metadata: { exitCode: 2 },
+    }));
+
+    const two = await runRepl(
+      inside,
+      `
+      try { await $\`grep x f\`; self.log("no throw"); } catch (e) { self.log(e.name + ":" + e.exitCode); }
+      return "after";
+    `,
+    );
+
+    expect(two.logs).toEqual(["ShellError:2"]);
+  });
+
+  it("reads the command name through quotes and assignments", async () => {
+    // `rg "a|b"` is one command: the `|` is data, not a pipe. And a leading
+    // `NAME=value` is not the command either.
+    const h = harness(() => ({
+      success: false,
+      content: "",
+      error: "Command failed with exit code: 1",
+      metadata: { exitCode: 1 },
+    }));
+
+    const result = await runRepl(
+      h,
+      `
+      const quoted = await $\`rg "a|b" src\`;
+      const assigned = await $\`FOO=1 rg -n a src\`;
+      self.log(String(quoted.exitCode), assigned.note.indexOf("rg exits 1") === -1 ? assigned.note : "rg");
+      return "after";
+    `,
+    );
+
+    expect(result.ok).toBe(true);
+    expect(result.logs).toEqual(["1 rg"]);
+  });
+
+  it("still throws when the call never reached the shell", async () => {
+    // A denial has no exit code of its own; the fallback must not read as the
+    // exit 1 of a search that found nothing.
+    const h = harness(() => ({
+      success: false,
+      content: "",
+      error: "Bash operation denied by user",
+    }));
+
+    const result = await runRepl(
+      h,
+      `
+      try { await $\`grep x f\`; self.log("no throw"); } catch (e) { self.log(e.name); }
+      return "after";
+    `,
+    );
+
+    expect(result.logs).toEqual(["ShellError"]);
+  });
+
+  it("does not mutate a shell when a chain method is called on it", async () => {
+    const h = harness(() => ({
+      success: false,
+      content: "",
+      error: "Command failed with exit code: 1",
+      metadata: { exitCode: 1 },
+    }));
+
+    const result = await runRepl(
+      h,
+      `
+      const plain = $\`exit 1\`;
+      plain.nothrow();
+      try { await plain; self.log("no throw"); } catch (e) { self.log(e.name); }
+      return "after";
+    `,
+    );
+
+    expect(result.logs).toEqual(["ShellError"]);
+  });
+
+  it("runs .cwd() in that directory without moving the session", async () => {
+    const h = harness(() => ok("hi"));
+    h.context.workdir = AGENT_SDK_ROOT;
+
+    const result = await runRepl(
+      h,
+      `const out = await $\`pwd\`.cwd("tests/exec"); return out.stdout;`,
+    );
+
+    expect(result.ok).toBe(true);
+    // The command is what the model wrote: no `cd … &&` in front of it.
+    expect(h.dispatched[0].args.command).toBe("pwd");
+    expect(h.contexts[0].workdir).toBe(EXEC_TESTS_DIR);
+    // The session keeps its own directory, and nothing may move it from here.
+    expect(h.context.workdir).toBe(AGENT_SDK_ROOT);
+    expect(h.contexts[0].onCwdChange).toBeUndefined();
+  });
+
+  it("refuses a .cwd() that is not a directory, and runs nothing", async () => {
+    const h = harness(() => ok("hi"));
+    h.context.workdir = AGENT_SDK_ROOT;
+
+    const result = await runRepl(
+      h,
+      `
+      try {
+        await $\`ls\`.cwd("no-such-dir-here");
+        self.log("ran");
+      } catch (e) {
+        self.log(e.message.indexOf("not a directory") === -1 ? e.message : "refused");
+      }
+      return "after";
+    `,
+    );
+
+    expect(result.logs).toEqual(["refused"]);
+    expect(h.dispatched).toEqual([]);
+  });
+
+  it("scopes .env() to the call and leaves the command text alone", async () => {
+    const h = harness(() => ok("bar"));
+
+    const result = await runRepl(
+      h,
+      `const out = await $\`printenv FOO\`.env({ FOO: "bar", N: 1, ON: true }); return out.stdout;`,
+    );
+
+    expect(result.ok).toBe(true);
+    expect(h.dispatched[0].args.command).toBe("printenv FOO");
+    expect(h.contexts[0].sessionEnv).toEqual({
+      FOO: "bar",
+      N: "1",
+      ON: "true",
+    });
+    // Only this call: the session's own context is untouched.
+    expect(h.context.sessionEnv).toBeUndefined();
+  });
+
+  it("refuses an .env() key that is not a variable name", async () => {
+    const h = harness(() => ok("x"));
+
+    const result = await runRepl(
+      h,
+      `
+      try {
+        await $\`echo hi\`.env({ "FOO BAR": "1" });
+        self.log("ran");
+      } catch (e) {
+        self.log(
+          e.message.indexOf("not an environment variable name") === -1 ? e.message : "refused",
+        );
+      }
+      return "after";
+    `,
+    );
+
+    expect(result.logs).toEqual(["refused"]);
+    expect(h.dispatched).toEqual([]);
+  });
+
+  it("carries every chained option onto the one call", async () => {
+    const h = harness(() => ok("hi"));
+    h.context.workdir = AGENT_SDK_ROOT;
+
+    const result = await runRepl(
+      h,
+      `
+      const out = await $\`ls\`.env({ A: "1" }).timeout(1234).cwd("tests/exec").nothrow();
+      return String(out.exitCode);
+    `,
+    );
+
+    expect(result.ok).toBe(true);
+    expect(h.dispatched[0].args).toEqual({ command: "ls", timeout: 1234 });
+    expect(h.contexts[0].workdir).toBe(EXEC_TESTS_DIR);
+    expect(h.contexts[0].sessionEnv).toEqual({ A: "1" });
+  });
+
+  it("leaves a sleep command verbatim so Bash stops it instead of backgrounding it", async () => {
+    // `Bash` refuses to auto-background a command whose first word is `sleep`
+    // (DISALLOWED_AUTO_BACKGROUND_COMMANDS) and kills it instead. An `.env()`
+    // prefix would hide that word and turn the wait into a background task the
+    // script never hears from again, so the command has to arrive unchanged —
+    // and the terminated command is a failure, not a `running` result.
+    const h = harness(() => ({
+      success: false,
+      content: "partial\n\nCommand timed out",
+      error: "Command timed out",
+      metadata: { exitCode: 130 },
+    }));
+
+    const result = await runRepl(
+      h,
+      `
+      try {
+        await $\`sleep 30\`.env({ FOO: "1" }).timeout(50);
+        self.log("no throw");
+      } catch (e) {
+        self.log(e.name + ":" + e.exitCode);
+      }
+      return "after";
+    `,
+    );
+
+    expect(result.ok).toBe(true);
+    expect(result.logs).toEqual(["ShellError:130"]);
+    expect(h.dispatched[0].args.command).toBe("sleep 30");
+    expect(h.dispatched[0].args.timeout).toBe(50);
+  });
 });
 
 describe("the call limit", () => {
@@ -430,8 +893,10 @@ describe("the call limit", () => {
     );
 
     // The window closes while the script hangs on the third call: a receipt, not a
-    // result — and the third call was never handed to the tool.
-    await vi.advanceTimersByTimeAsync(1000);
+    // result — and the third call was never handed to the tool. The window is the
+    // fixed one, not the millisecond `timeout` above: that number bounds only the
+    // script's own synchronous running, which is why it cannot cut this short.
+    await vi.advanceTimersByTimeAsync(EXEC_SYNC_WAIT_MS);
     const result = await run;
 
     expect(result.ok).toBe(true);
@@ -664,8 +1129,8 @@ describe("the async lane", () => {
       { timeout: 1000, permissionMode: "bypassPermissions" },
     );
 
-    // The wait window is the model's own `timeout`, counted on the wall clock.
-    await vi.advanceTimersByTimeAsync(1000);
+    // The wait window is the fixed `EXEC_SYNC_WAIT_MS`, counted on the wall clock.
+    await vi.advanceTimersByTimeAsync(EXEC_SYNC_WAIT_MS);
     const result = await run;
 
     expect(result.ok).toBe(true);
@@ -698,6 +1163,58 @@ describe("the async lane", () => {
     expect(listRunningReplScripts()).toEqual([]);
   });
 
+  it("keeps the window fixed whatever `timeout` says", async () => {
+    vi.useFakeTimers();
+    const h = harness(() => blocked());
+
+    // `timeout` at its ceiling: the call still comes back as soon as the window
+    // closes, because a larger `timeout` cannot buy a longer hold on the turn.
+    const run = runRepl(
+      h,
+      `return "value:" + (await Slow({ timeout: 600000 }));`,
+      { timeout: EXEC_MAX_TIMEOUT_MS, permissionMode: "bypassPermissions" },
+    );
+    let settled = false;
+    void run.then(() => {
+      settled = true;
+    });
+
+    await vi.advanceTimersByTimeAsync(EXEC_SYNC_WAIT_MS - 1);
+    await settleFake();
+    expect(settled).toBe(false);
+
+    await vi.advanceTimersByTimeAsync(1);
+    expect((await run).dispatched).toBeTypeOf("number");
+  });
+
+  it("does not let a small `timeout` cut the window short", async () => {
+    vi.useFakeTimers();
+    const h = harness(() => blocked());
+
+    // `timeout` bounds the synchronous segment, which is not running while the
+    // script waits on the host: it cannot fail a waiting script, and it cannot
+    // hand the turn back either.
+    const run = runRepl(
+      h,
+      `return "value:" + (await Slow({ timeout: 30000 }));`,
+      {
+        timeout: 1000,
+        permissionMode: "bypassPermissions",
+      },
+    );
+    let settled = false;
+    void run.then(() => {
+      settled = true;
+    });
+
+    await vi.advanceTimersByTimeAsync(1000);
+    await settleFake();
+    expect(settled).toBe(false);
+
+    await vi.advanceTimersByTimeAsync(EXEC_SYNC_WAIT_MS - 1000);
+    expect((await run).dispatched).toBeTypeOf("number");
+  });
+
   it("wakes a waiting poll as soon as a script settles", async () => {
     vi.useFakeTimers();
     let release: ((result: ToolResult) => void) | undefined;
@@ -708,11 +1225,18 @@ describe("the async lane", () => {
         }),
     );
 
-    const run = runRepl(h, `return "value:" + (await Slow({}));`, {
-      timeout: 1000,
-      permissionMode: "bypassPermissions",
-    });
-    await vi.advanceTimersByTimeAsync(1000);
+    // The nested call declares its own timeout so its watchdog (50 s) cannot be
+    // what ends this: the window is.
+    const run = runRepl(
+      h,
+      `return "value:" + (await Slow({ timeout: 30000 }));`,
+      {
+        timeout: 1000,
+        permissionMode: "bypassPermissions",
+      },
+    );
+    // `timeout: 1000` does not shorten the window: only the fixed one dispatches.
+    await vi.advanceTimersByTimeAsync(EXEC_SYNC_WAIT_MS);
     const receipt = await run;
     expect(receipt.dispatched).toBeTypeOf("number");
 
@@ -738,11 +1262,15 @@ describe("the async lane", () => {
         }),
     );
 
-    const run = runRepl(h, `return "value:" + (await Slow({}));`, {
-      timeout: 1000,
-      permissionMode: "bypassPermissions",
-    });
-    await vi.advanceTimersByTimeAsync(1000);
+    const run = runRepl(
+      h,
+      `return "value:" + (await Slow({ timeout: 30000 }));`,
+      {
+        timeout: 1000,
+        permissionMode: "bypassPermissions",
+      },
+    );
+    await vi.advanceTimersByTimeAsync(EXEC_SYNC_WAIT_MS);
     await run;
 
     const waiting = waitForReplEvents(5_000);
@@ -943,6 +1471,48 @@ describe("the async lane", () => {
     expect(events[0].result.ok).toBe(false);
     expect(events[0].result.error).toContain("aborted");
   });
+
+  it("stops reporting to the caller's row once the receipt is sent", async () => {
+    // The row the collapsed tool block renders belongs to the caller that got the
+    // receipt, and that block is already `stage: "end"`. A background script that
+    // keeps issuing calls must not keep rewriting it: `updateToolBlock` (and every
+    // UI reducer behind it) merges field by field, so one more update carrying
+    // `stage: "running"` is not a refresh — it resurrects a finished block.
+    vi.useFakeTimers();
+    const h = harness();
+    const reported: string[] = [];
+
+    const run = runRepl(
+      h,
+      `
+      await Echo({ step: "one" });
+      await new Promise((resolve) => setTimeout(resolve, 60000));
+      await Echo({ step: "two" });
+      return "done";
+      `,
+      { onToolCall: (name) => reported.push(name) },
+    );
+
+    await vi.advanceTimersByTimeAsync(EXEC_SYNC_WAIT_MS);
+    const receipt = await run;
+    expect(receipt.dispatched).toBeTypeOf("number");
+    expect(reported).toEqual(["Echo"]);
+
+    // The script carries on past the window. Its later calls still reach the
+    // model's channel, but nothing more goes to the row of a settled block.
+    await vi.advanceTimersByTimeAsync(60000);
+    await settleFake();
+    expect(reported).toEqual(["Echo"]);
+
+    const events = drainReplEvents();
+    expect(events).toHaveLength(1);
+    expect(events[0].evalId).toBe(receipt.dispatched);
+    expect(events[0].result.ok).toBe(true);
+    expect(events[0].result.value).toBe("done");
+    // The model-facing record kept counting calls made after the receipt.
+    expect(events[0].result.toolsUsed).toEqual(["Echo", "Echo"]);
+    expect(events[0].result.toolCalls).toBe(2);
+  });
 });
 
 describe("attachments", () => {
@@ -1024,6 +1594,37 @@ describe("the console ring is not the result", () => {
 
     expect(result.logs).toEqual(["kept", "[warn] careful"]);
     expect(result.value).toBe("0");
+  });
+
+  it("says in the result that the ring was used", async () => {
+    // The trap this note closes: a script that "logged" to the console hands back a
+    // result with none of it, and nothing else in the answer says why.
+    const h = harness();
+
+    const result = await runRepl(
+      h,
+      `
+      console.log("noise", 1);
+      console.error("more noise");
+      return "done";
+    `,
+    );
+
+    expect(result.stderr).toHaveLength(1);
+    expect(result.stderr?.[0]).toContain(
+      "[console.log wrote 2 lines to the console ring, not to this output",
+    );
+    expect(result.stderr?.[0]).toContain("console.tail()");
+  });
+
+  it("counts in the singular, and stays out of a run that never used the ring", async () => {
+    const h = harness();
+
+    const one = await runRepl(h, `console.log("noise"); return "done";`);
+    expect(one.stderr?.[0]).toContain("wrote 1 line to the console ring");
+
+    const clean = await runRepl(h, `return "done";`);
+    expect(clean.stderr).toBeUndefined();
   });
 });
 

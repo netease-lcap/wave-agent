@@ -34,7 +34,12 @@ import {
   EXEC_SEARCH_MAX_RESULTS_LIMIT,
   EXEC_SEARCH_NAME,
 } from "./constants.js";
-import { isDeferredTool, toolTier } from "./deferral.js";
+import {
+  isCorePoolTool,
+  isDeferredTool,
+  toolTier,
+  withoutBackgroundParam,
+} from "./deferral.js";
 import type { DeferralSubject, ToolTier } from "./deferral.js";
 
 /**
@@ -134,12 +139,19 @@ export function buildExecPool(
     // tier hangs on, and both sides get it from `toolTier`. `"named"` is what an
     // absent `tier` already means, so it is left out rather than written down.
     const tier = candidate.tier ?? toolTier(candidate.name, coreToolsEnabled);
+    // A pooled shell tool loses `run_in_background`: inside a script the async
+    // lane is what backgrounds work, so the parameter would be an argument the
+    // runtime ignores. Applied here, on the entry, so the announcement's inline
+    // signature and `describeTool` cannot show the parameter the sandbox drops.
+    const inputSchema = isCorePoolTool(candidate.name, coreToolsEnabled)
+      ? withoutBackgroundParam(candidate.name, candidate.inputSchema)
+      : candidate.inputSchema;
     pool.push({
       name: candidate.name,
       description: candidate.description,
       searchHint: candidate.searchHint,
       isMcp: candidate.isMcp,
-      inputSchema: candidate.inputSchema,
+      inputSchema,
       outputSchema: candidate.outputSchema,
       tier: tier === "core" ? "core" : undefined,
     });
@@ -373,6 +385,84 @@ const DESCRIBE_INPUT_TOTAL_CHARS = 15_000;
 const DESCRIBE_TRUNCATION_NOTE =
   "\n// 这部分被省略了，`describeTool` 返回的是完整 schema";
 
+/** Says a schema answered without its prose, and that the structure is intact. */
+const SCHEMA_ANNOTATIONS_DROPPED =
+  "对外的 description / examples / default 已被省略以适配字符预算；参数名、类型与 required 完整。";
+
+/** Says a schema was too large even without its prose, so only arguments remain. */
+const SCHEMA_ARGUMENTS_ONLY =
+  "这个 schema 太大，只保留了参数名与 required；类型与嵌套结构请看工具文档。";
+
+/**
+ * Keywords whose values are prose rather than structure.
+ *
+ * A long schema is long because of its descriptions — a thirty-argument tool is
+ * mostly one paragraph per argument — so these are what a character budget can
+ * drop without making the shape unusable.
+ */
+const SCHEMA_ANNOTATION_KEYS: readonly string[] = [
+  "description",
+  "examples",
+  "default",
+  "title",
+];
+
+/** A JSON object, as opposed to an array, `null` or a primitive. */
+function isSchemaObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** Characters a value costs once serialized; `undefined` costs nothing. */
+function serializedChars(value: unknown): number {
+  return JSON.stringify(value)?.length ?? 0;
+}
+
+/** Copy a schema without its annotation keywords, at every depth. */
+function withoutAnnotations(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(withoutAnnotations);
+  if (!isSchemaObject(value)) return value;
+  const copy: Record<string, unknown> = {};
+  for (const [key, nested] of Object.entries(value)) {
+    if (SCHEMA_ANNOTATION_KEYS.includes(key)) continue;
+    copy[key] = withoutAnnotations(nested);
+  }
+  return copy;
+}
+
+/**
+ * The argument schema `describeTool` answers with: an object, in every case.
+ *
+ * The budget is unchanged in size, not in kind: it is paid out of the annotations
+ * first (that is where a schema's length lives), then out of the per-argument
+ * structure, and it never turns the value into a string — a string schema is the
+ * one answer the caller cannot use, which is why the fallback is a smaller object
+ * rather than a prettier string.
+ */
+function clampSchema(schema: unknown, budget: number): Record<string, unknown> {
+  const full = isSchemaObject(schema) ? schema : {};
+  if (serializedChars(full) <= budget) return full;
+
+  const structural = withoutAnnotations(full) as Record<string, unknown>;
+  if (serializedChars(structural) <= budget) {
+    return { ...structural, $comment: SCHEMA_ANNOTATIONS_DROPPED };
+  }
+
+  // Still over budget without a word of prose: keep what nothing else can supply —
+  // which arguments exist and which of them are required.
+  const properties = isSchemaObject(structural.properties)
+    ? Object.keys(structural.properties)
+    : [];
+  const required = Array.isArray(structural.required)
+    ? structural.required
+    : [];
+  return {
+    type: "object",
+    ...(required.length > 0 ? { required } : {}),
+    properties: Object.fromEntries(properties.map((name) => [name, {}])),
+    $comment: SCHEMA_ARGUMENTS_ONLY,
+  };
+}
+
 /**
  * What a caller gets for a query that is not a string of words. An empty query is
  * refused rather than answered with the pool: "here is everything" dresses a typo
@@ -400,8 +490,16 @@ export interface ExecToolDescription {
   name: string;
   /** The tool's own description, cut to `DESCRIBE_DESCRIPTION_MAX_CHARS`. */
   description: string;
-  /** TypeScript type of the argument object, cut to the input budget. */
-  inputSchema: string;
+  /**
+   * The tool's own argument schema, kept an *object*.
+   *
+   * Claude Code answers with the raw schema (`inputSchema: EIo(...)`); a rendered
+   * TypeScript string was our previous shape, and a string is something the model
+   * can only read — a script cannot walk it, and a host cannot validate against
+   * it. The character budget still applies (see `clampSchema`), but it is spent on
+   * annotations first so the answer never degrades into a string.
+   */
+  inputSchema: Record<string, unknown>;
 }
 
 /** What `describeTool` answers for a name that is not. */
@@ -535,10 +633,7 @@ export function describeTool(
       entry.description ?? "",
       DESCRIBE_DESCRIPTION_MAX_CHARS,
     ),
-    inputSchema: clampTypeText(
-      renderType(entry.inputSchema, 0),
-      DESCRIBE_INPUT_MAX_CHARS,
-    ),
+    inputSchema: clampSchema(entry.inputSchema, DESCRIBE_INPUT_MAX_CHARS),
   };
 }
 

@@ -491,4 +491,92 @@ describe("MessageManager - Streaming Functionality", () => {
       expect(mockToolBlockUpdated).not.toHaveBeenCalled();
     });
   });
+  describe("a finished tool block stays finished", () => {
+    it("drops an update that asks a closed block to run again", () => {
+      // The producer is `ToolContext.onShortResultUpdate`, which always asks for
+      // `stage: "running"`: a background REPL script keeps reporting its nested
+      // calls after the caller got the `(dispatched #N)` receipt and the block was
+      // closed. Merging that field-for-field is what re-opened a finished row.
+      const mockToolBlockUpdated = vi.fn();
+      const messageManager = new MessageManager(container, {
+        callbacks: { onToolBlockUpdated: mockToolBlockUpdated },
+        workdir: "/test",
+      });
+
+      messageManager.addAssistantMessage();
+      messageManager.updateToolBlock({
+        id: "tool-1",
+        name: "REPL",
+        stage: "running",
+        parameters: "{}",
+      });
+      messageManager.updateToolBlock({
+        id: "tool-1",
+        name: "REPL",
+        stage: "end",
+        result: "(dispatched #1)",
+        shortResult: "1 tool call\nRead src/app.ts",
+      });
+      mockToolBlockUpdated.mockClear();
+
+      messageManager.updateToolBlock({
+        id: "tool-1",
+        name: "REPL",
+        stage: "running",
+        shortResult: "2 tool calls\nRead README.md",
+      });
+
+      const block = messageManager
+        .getMessages()
+        .slice(-1)[0]
+        .blocks.find((candidate) => candidate.type === "tool") as {
+        stage?: string;
+        shortResult?: string;
+      };
+      expect(block.stage).toBe("end");
+      // The fields the late update carried describe a moment already past.
+      expect(block.shortResult).toBe("1 tool call\nRead src/app.ts");
+      // And no consumer is told about a stage the block can never reach.
+      expect(mockToolBlockUpdated).not.toHaveBeenCalled();
+    });
+
+    it("still applies an update that keeps the block finished", () => {
+      const messageManager = new MessageManager(container, {
+        callbacks: {},
+        workdir: "/test",
+      });
+
+      messageManager.addAssistantMessage();
+      messageManager.updateToolBlock({
+        id: "tool-2",
+        name: "REPL",
+        stage: "running",
+      });
+      messageManager.updateToolBlock({
+        id: "tool-2",
+        name: "REPL",
+        stage: "end",
+        shortResult: "1 tool call",
+      });
+      messageManager.updateToolBlock({
+        id: "tool-2",
+        name: "REPL",
+        stage: "end",
+        success: true,
+        result: "final",
+      });
+
+      const block = messageManager
+        .getMessages()
+        .slice(-1)[0]
+        .blocks.find((candidate) => candidate.type === "tool") as {
+        stage?: string;
+        result?: string;
+        success?: boolean;
+      };
+      expect(block.stage).toBe("end");
+      expect(block.result).toBe("final");
+      expect(block.success).toBe(true);
+    });
+  });
 });

@@ -28,12 +28,14 @@
  *    context — the context outlives aborts, budgets and compaction.
  */
 import { AsyncLocalStorage } from "node:async_hooks";
+import * as fs from "node:fs";
+import * as path from "node:path";
 import type { ToolContext, ToolResult } from "../tools/types.js";
 import { logger } from "../utils/globalLogger.js";
+import { parsePersistedOutput } from "../utils/toolResultStorage.js";
 import {
   describeTool as describePoolEntry,
   listToolNames as listPoolToolNames,
-  renderSearchCallForm,
   searchTools as searchPool,
   type ExecPoolEntry,
 } from "./catalog.js";
@@ -50,6 +52,7 @@ import {
   EXEC_MAX_PDFS,
   EXEC_MAX_TIMEOUT_MS,
   EXEC_SHELL_DEFAULT_WAIT_MS,
+  EXEC_SYNC_WAIT_MS,
   EXEC_WATCHDOG_BASE_MS,
   EXEC_WATCHDOG_FACTOR,
 } from "./constants.js";
@@ -74,8 +77,22 @@ export interface RunReplOptions {
    * The arguments come along because the collapsed row shows what each call is
    * operating on (`Read src/app.ts`), the way the `Agent` tool's short result
    * does; only the caller knows how to render them.
+   *
+   * The third argument says whether this occurrence is a tool call at all. It
+   * exists because `searchTools` / `describeTool` reach this same callback — the
+   * row has to show that the script is looking a tool up instead of sitting
+   * silent — while they are *not* tool calls: nothing is dispatched, no
+   * permission decision is taken, no budget is spent, and the spec says they do
+   * not count toward `N tool calls`. The count is rendered by the caller from the
+   * lines it collected, so the caller has to be told the difference; reading it
+   * off the name would duplicate the runtime's own list of helpers in the tool
+   * layer and let the two drift.
    */
-  onToolCall?: (name: string, args: Record<string, unknown>) => void;
+  onToolCall?: (
+    name: string,
+    args: Record<string, unknown>,
+    kind: "call" | "helper",
+  ) => void;
   /** Permission mode: 'default' | 'acceptEdits' | 'plan' | 'dontAsk' | 'bypassPermissions' */
   permissionMode?: string;
   /** Fully-dispatched shape: hand back a receipt at once and never wait. */
@@ -153,7 +170,11 @@ interface ReplFrame {
   timeoutMs: number;
   pool: readonly ExecPoolEntry[];
   context: ToolContext;
-  onToolCall?: (name: string, args: Record<string, unknown>) => void;
+  onToolCall?: (
+    name: string,
+    args: Record<string, unknown>,
+    kind: "call" | "helper",
+  ) => void;
   maxToolCalls: number;
   toolCalls: number;
   toolsUsed: string[];
@@ -519,6 +540,36 @@ function tailConsole(frame: ReplFrame, count: number): string {
   return lines.slice(-limit).join("\n");
 }
 
+/** The opening of the ring note, which is also how a repeat is recognised. */
+const CONSOLE_RING_NOTE_PREFIX = "[console.log wrote ";
+
+/**
+ * Say where `console.*` output went, once the result is being assembled.
+ *
+ * The ring is invisible to the model by design, so a script that debugged with
+ * `console.log` reads its own result as "the script produced nothing" and starts
+ * rewriting a script that worked. The wording is Claude Code's, because that is
+ * the sentence the model has been shown; the count is the ring's line count.
+ *
+ * Deliberately wider than Claude Code, which appends it only when the script
+ * produced no stdout at all: "a little output plus a ring full of lines" is the
+ * combination that reads wrong, so *any* ring content triggers it. Guarding on the
+ * note already being present is what keeps the push idempotent without adding a
+ * flag to the frame.
+ */
+function noteConsoleRing(frame: ReplFrame): void {
+  const lines = frame.consoleText
+    .split("\n")
+    .filter((line) => line.length > 0).length;
+  if (lines === 0) return;
+  if (frame.notes.some((note) => note.startsWith(CONSOLE_RING_NOTE_PREFIX)))
+    return;
+  frame.notes.push(
+    `${CONSOLE_RING_NOTE_PREFIX}${lines} line${lines === 1 ? "" : "s"} to the console ring, ` +
+      "not to this output — use self.log(...) for output you want to see, or read the ring with console.tail()]",
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Dispatch: one funnel per tool kind
 // ---------------------------------------------------------------------------
@@ -648,7 +699,7 @@ async function answerToolCall(
 ): Promise<unknown> {
   const attempt = frame.toolCalls + 1;
   frame.toolCalls = attempt;
-  frame.onToolCall?.(name, displayArgs(rawArgs));
+  frame.onToolCall?.(name, displayArgs(rawArgs), "call");
 
   if (frame.closed || frame.limitReached) return NEVER;
   if (attempt > frame.maxToolCalls) {
@@ -665,13 +716,14 @@ async function answerToolCall(
     }
   }
 
+  // No "unknown tool" answer here, and deliberately so: the sandbox installs a
+  // global (and a `tools.<name>`) only for the names in `frame.pool`, so a name
+  // outside it never reaches this function — the engine throws its own
+  // `ReferenceError` / `TypeError`, which is the failure the model can act on. A
+  // host-side branch would have to invent wording for "this tool is not reachable
+  // from this script", and every wording of it invites the model to go searching
+  // for a tool it was never meant to have (Claude Code has no such branch either).
   const entry = frame.pool.find((candidate) => candidate.name === name);
-  if (!entry) {
-    throw new Error(
-      `Unknown tool "${name}". Only the tools reachable from this REPL script can be called this way. ` +
-        `Use ${renderSearchCallForm()} to find one.`,
-    );
-  }
 
   const args = plainArgs(rawArgs);
   // The call happened, whatever its outcome: the summary lists it, and a denial
@@ -682,7 +734,7 @@ async function answerToolCall(
   const outcome = await withWatchdog(
     frame,
     () =>
-      entry.isMcp === true
+      entry?.isMcp === true
         ? callMcpTool(frame, name, args)
         : callBuiltInTool(frame, name, args),
     nativeTimeoutMs,
@@ -700,17 +752,282 @@ function exitCodeOf(result: ToolResult): number {
 }
 
 /**
+ * The exit code the shell itself reported, or `undefined` when it never ran.
+ *
+ * The difference matters for the exit-1 exemption below: a denied, refused or
+ * blocked call also reads as "failed", and the fallback in `exitCodeOf` would
+ * turn that into a 1 that looks like `grep` finding nothing.
+ */
+function shellExitCodeOf(result: ToolResult): number | undefined {
+  const metadata = result.metadata as { exitCode?: unknown } | undefined;
+  return metadata && typeof metadata.exitCode === "number"
+    ? metadata.exitCode
+    : undefined;
+}
+
+/** Commands whose exit 1 is an answer ("nothing to report"), not a failure. */
+const EXIT_ONE_IS_AN_ANSWER = new Set([
+  "grep",
+  "egrep",
+  "fgrep",
+  "rg",
+  "find",
+  "diff",
+  "test",
+  "[",
+]);
+
+/** `git <sub>` for the two subcommands that answer with exit 1 the same way. */
+const EXIT_ONE_IS_AN_ANSWER_SUBCOMMANDS = new Set(["diff", "grep"]);
+
+/**
+ * The words of each command segment, split on the shell's own operators.
+ *
+ * Quotes are honoured, because a `|` inside them is data: `rg "a|b" src` is one
+ * command, and reading it as two would put `b"` where the command name belongs
+ * and lose the exemption for a search that simply found nothing.
+ */
+function commandSegments(command: string): string[][] {
+  const segments: string[][] = [];
+  let words: string[] = [];
+  let word = "";
+  let quote: '"' | "'" | undefined;
+  const endWord = () => {
+    if (word !== "") {
+      words.push(word);
+      word = "";
+    }
+  };
+  const endSegment = () => {
+    endWord();
+    if (words.length > 0) segments.push(words);
+    words = [];
+  };
+  for (let index = 0; index < command.length; index++) {
+    const char = command[index];
+    if (quote !== undefined) {
+      if (char === quote) quote = undefined;
+      else word += char;
+      continue;
+    }
+    if (char === '"' || char === "'") {
+      quote = char;
+      continue;
+    }
+    if (char === "\\" && index + 1 < command.length) {
+      index += 1;
+      word += command[index];
+      continue;
+    }
+    if (char === " " || char === "\t") {
+      endWord();
+      continue;
+    }
+    if (char === "\n" || char === ";" || char === "&" || char === "|") {
+      endSegment();
+      // `&&` and `||` are one operator; skipping the second char keeps it simple.
+      if (index + 1 < command.length && command[index + 1] === char) index += 1;
+      continue;
+    }
+    word += char;
+  }
+  endSegment();
+  return segments;
+}
+
+/**
+ * The last command word of a command line, plus the word after it.
+ *
+ * "Last" is what the exemption is about: `rg foo` answers 1 when nothing
+ * matched, but `rg foo | head` answers with `head`'s status. Leading `NAME=value`
+ * assignments are skipped, and a path (`/usr/bin/grep`) is read by its basename.
+ */
+function lastCommandWord(
+  command: string,
+): { word: string; next?: string } | undefined {
+  const segments = commandSegments(command);
+  for (let index = segments.length - 1; index >= 0; index--) {
+    const words = segments[index].slice();
+    while (words.length > 0 && /^[A-Za-z_][A-Za-z0-9_]*=/.test(words[0])) {
+      words.shift();
+    }
+    if (words.length === 0) continue;
+    const word = words[0].split("/").pop() ?? words[0];
+    return words.length > 1 ? { word, next: words[1] } : { word };
+  }
+  return undefined;
+}
+
+/**
+ * What to put in `note` when this command's exit 1 is its answer.
+ *
+ * Returns `undefined` for every other command: the exemption is deliberately one
+ * cell wide (this family, this exit code), because widening it would turn real
+ * failures into silent empty output.
+ */
+function exitOneNote(command: string): string | undefined {
+  const found = lastCommandWord(command);
+  if (!found) return undefined;
+  const isGitSubcommand =
+    found.word === "git" &&
+    found.next !== undefined &&
+    EXIT_ONE_IS_AN_ANSWER_SUBCOMMANDS.has(found.next);
+  if (!isGitSubcommand && !EXIT_ONE_IS_AN_ANSWER.has(found.word)) {
+    return undefined;
+  }
+  const name = isGitSubcommand ? `git ${found.next}` : found.word;
+  return `${name} exits 1 when there is nothing to report (no match, an unreadable directory, files differ, a false test) — that is the command's answer, not a failure`;
+}
+
+/** The text a `$` result shows: stdout, then the tool's own reading of it. */
+function shellDisplayText(
+  stdout: string,
+  stderr: string,
+  note: string | undefined,
+  exitCode: number,
+): string {
+  const lines = [stdout];
+  if (stderr) lines.push(`[stderr] ${stderr}`);
+  if (note) lines.push(`[note] ${note}`);
+  if (exitCode !== 0) lines.push(`[exit ${exitCode}]`);
+  return lines.filter((line) => line !== "").join("\n");
+}
+
+/** Environment variable names a script may set through `.env()`. */
+const SHELL_ENV_KEY = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+/** What the chain methods declared for one `$` call. */
+interface ShellCallOptions {
+  /** How long the call waits, in ms. */
+  waitMs: number;
+  /** Ran the command here instead of in the session's directory. */
+  cwd?: string;
+  /** Added to this command's environment (on top of the session's). */
+  env?: Record<string, string>;
+}
+
+/**
+ * Read and validate the options the sandbox sent along with a `$` call.
+ *
+ * The sandbox forwards them as written (its own chain methods do no checking),
+ * so this is the one place that decides what a usable directory or variable name
+ * is — and the one place whose wording the script sees when it got it wrong.
+ */
+function readShellCallOptions(options: unknown): ShellCallOptions {
+  const record =
+    options !== null && typeof options === "object"
+      ? (options as { timeout?: unknown; cwd?: unknown; env?: unknown })
+      : {};
+
+  const declared = record.timeout;
+  const waitMs =
+    typeof declared === "number" && Number.isFinite(declared) && declared > 0
+      ? Math.min(Math.floor(declared), EXEC_BACKGROUND_MAX_MS)
+      : EXEC_SHELL_DEFAULT_WAIT_MS;
+
+  let cwd: string | undefined;
+  if (record.cwd !== undefined) {
+    if (typeof record.cwd !== "string" || record.cwd === "") {
+      throw new Error(
+        "$ did not run this command: .cwd(path) needs the path to a directory",
+      );
+    }
+    cwd = record.cwd;
+  }
+
+  let env: Record<string, string> | undefined;
+  if (record.env !== undefined) {
+    const vars = record.env;
+    if (vars === null || typeof vars !== "object" || Array.isArray(vars)) {
+      throw new Error(
+        "$ did not run this command: .env({...}) needs an object of NAME: value pairs",
+      );
+    }
+    env = {};
+    for (const [key, value] of Object.entries(vars)) {
+      if (!SHELL_ENV_KEY.test(key)) {
+        throw new Error(
+          `$ did not run this command: .env() key ${JSON.stringify(key)} is not an environment variable name`,
+        );
+      }
+      if (
+        typeof value !== "string" &&
+        typeof value !== "number" &&
+        typeof value !== "boolean"
+      ) {
+        throw new Error(
+          `$ did not run this command: .env() value for ${key} must be a string, a number or a boolean`,
+        );
+      }
+      env[key] = String(value);
+    }
+  }
+
+  const callOptions: ShellCallOptions = { waitMs };
+  if (cwd !== undefined) callOptions.cwd = cwd;
+  if (env !== undefined) callOptions.env = env;
+  return callOptions;
+}
+
+function isDirectory(target: string): boolean {
+  try {
+    return fs.statSync(target).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The tool context one `$` call runs under.
+ *
+ * `.cwd()` and `.env()` are scoped to the single call by deriving a context
+ * rather than by rewriting the command into `cd … && …` / `export …; …` the way
+ * Claude Code's prelude does. A rewritten command would (a) hide a leading
+ * `sleep` from `Bash`'s "do not background this" check, (b) be the text a
+ * permission rule matches against instead of what the model wrote, and (c) let a
+ * `cd` inside the command move the *session's* working directory through
+ * `onCwdChange`. Two fields, one call, no text surgery.
+ */
+function shellToolContext(
+  context: ToolContext,
+  cwd: string | undefined,
+  env: Record<string, string> | undefined,
+): ToolContext {
+  if (cwd === undefined && env === undefined) return context;
+  const scoped: ToolContext = { ...context };
+  if (cwd !== undefined) {
+    // Relative to the session's current directory: that is where the shell lives.
+    const target = path.resolve(context.workdir, cwd);
+    if (!isDirectory(target)) {
+      throw new Error(
+        `$ did not run this command: .cwd() got ${target}, which is not a directory`,
+      );
+    }
+    scoped.workdir = target;
+    // A directory scoped to one call must not become the session's: dropping the
+    // callback is what keeps `cd` inside this command from moving every later
+    // tool call (and the `cd` note `Bash` would add to the output).
+    scoped.onCwdChange = undefined;
+  }
+  if (env !== undefined) {
+    scoped.sessionEnv = { ...context.sessionEnv, ...env };
+  }
+  return scoped;
+}
+
+/**
  * Answer one `` $`cmd` `` call.
  *
  * It is the Bash tool's own funnel — same permission check, same hooks, same
  * sandbox — and only the shape differs: the script gets `{ stdout, stderr,
  * exitCode }` as data, and a non-zero exit is turned into a `ShellError` by the
- * sandbox. `Bash` merges both streams into `content`, so the text lands in
- * `stdout` and `stderr` carries only the tool's own failure reason.
+ * sandbox unless the result carries a `note` (an exit 1 from `grep` and friends
+ * is the command's answer, not a failure).
  *
  * A command that outlives its wait is not a failure: `Bash` moves it to the
  * background, and the script is answered with `exitCode: null` plus `running`
- * naming the task and the file its output streams to.
+ * naming the task and the file its output streams to. `sleep` never gets there —
+ * `Bash` refuses to background it and kills it instead.
  */
 async function answerShellCall(
   frame: ReplFrame,
@@ -722,7 +1039,7 @@ async function answerShellCall(
   const commandText = typeof command === "string" ? command : String(command);
   // The command is the only thing worth showing here; `timeout` is this tool's
   // own bookkeeping and `Bash`'s summary line drops it for the same reason.
-  frame.onToolCall?.("Bash", { command: commandText });
+  frame.onToolCall?.("Bash", { command: commandText }, "call");
 
   if (frame.closed || frame.limitReached) return NEVER;
   if (attempt > frame.maxToolCalls) {
@@ -746,11 +1063,8 @@ async function answerShellCall(
     );
   }
 
-  const declared = (options as { timeout?: unknown } | null)?.timeout;
-  const waitMs =
-    typeof declared === "number" && Number.isFinite(declared) && declared > 0
-      ? Math.min(Math.floor(declared), EXEC_BACKGROUND_MAX_MS)
-      : EXEC_SHELL_DEFAULT_WAIT_MS;
+  const { waitMs, cwd, env } = readShellCallOptions(options);
+  const context = shellToolContext(frame.context, cwd, env);
   const args: Record<string, unknown> = {
     command: commandText,
     // Always explicit: `Bash`'s own default is two minutes, and a script's shell
@@ -761,7 +1075,7 @@ async function answerShellCall(
   frame.toolsUsed.push("Bash");
   const result = await withWatchdog(
     frame,
-    () => toolManager.execute("Bash", args, frame.context),
+    () => toolManager.execute("Bash", args, context),
     waitMs,
     "Bash",
   );
@@ -778,16 +1092,39 @@ async function answerShellCall(
       stdout: "",
       stderr: result.content ?? "",
       exitCode: null,
-      command: args.command,
+      output: result.content ?? "",
+      truncated: false,
+      command: commandText,
       running: { taskId, outputPath: task?.outputPath ?? "" },
     };
   }
-  return {
-    stdout: result.content ?? "",
-    stderr: result.success ? "" : (result.error ?? ""),
-    exitCode: exitCodeOf(result),
-    command: args.command,
+
+  // Past 30000 characters `Bash` persists the whole output and hands the model a
+  // `<persisted-output>` wrapper with a 2048-character preview. The script gets
+  // the same information as fields instead of as a wrapper to parse: the preview
+  // in `stdout`, and the spill file in `file` — that file is what `Read` or a
+  // second `$` can open to get the part that did not fit.
+  const persisted = parsePersistedOutput(result.content ?? "");
+  const stdout = persisted ? persisted.preview : (result.content ?? "");
+  const stderr = result.success ? "" : (result.error ?? "");
+  const exitCode = exitCodeOf(result);
+  // Exit 1 is the answer of a whole family of commands; anything else is a
+  // failure the script has to see. A call that never ran (denied, refused) has no
+  // shell exit code at all, and `shellExitCodeOf` keeps it out of this branch.
+  const note =
+    shellExitCodeOf(result) === 1 ? exitOneNote(commandText) : undefined;
+
+  const answer: Record<string, unknown> = {
+    stdout,
+    stderr,
+    exitCode,
+    output: shellDisplayText(stdout, stderr, note, exitCode),
+    truncated: persisted !== undefined,
+    command: commandText,
   };
+  if (persisted) answer.file = persisted.filePath;
+  if (note !== undefined) answer.note = note;
+  return answer;
 }
 
 // ---------------------------------------------------------------------------
@@ -814,16 +1151,27 @@ function currentFrame(): ReplFrame {
  */
 const REPL_HOST: ReplSandboxHost = {
   callTool: (name, args) => answerToolCall(currentFrame(), name, args),
-  searchTools: (query, max) =>
-    Promise.resolve(
+  searchTools: (query, max) => {
+    const frame = currentFrame();
+    // Reported before the lookup, so a search that fails (`searchTools("")` throws
+    // its usage error) still shows up: the row is about what the script is doing,
+    // and "it was searching and got nowhere" is exactly what a silent row hides.
+    frame.onToolCall?.("searchTools", { query }, "helper");
+    return Promise.resolve(
       searchPool(
-        currentFrame().pool,
+        frame.pool,
         query as string,
         typeof max === "number" ? max : undefined,
       ),
-    ),
-  describeTool: (name) =>
-    Promise.resolve(describePoolEntry(currentFrame().pool, name as string)),
+    );
+  },
+  describeTool: (name) => {
+    const frame = currentFrame();
+    // Same as `searchTools`: a miss answers `{ error }` and the row still says
+    // which tool was being looked up.
+    frame.onToolCall?.("describeTool", { name }, "helper");
+    return Promise.resolve(describePoolEntry(frame.pool, name as string));
+  },
   listToolNames: () => listPoolToolNames(currentFrame().pool),
   runShell: (command, options) =>
     answerShellCall(currentFrame(), command, options),
@@ -896,6 +1244,10 @@ function buildResult(
     fields.logs !== undefined && fields.logs.length > 0
       ? fields.logs
       : frame.logs;
+  // Every finishing path builds its result here, so this is the one place the
+  // ring's whereabouts have to be said — on a throw, a budget stop and a normal
+  // end alike.
+  noteConsoleRing(frame);
   const result: ReplRunResult = {
     ok: fields.ok,
     evalId: frame.id,
@@ -913,6 +1265,28 @@ function buildResult(
 }
 
 /**
+ * Cut the live row off from whatever the script does next.
+ *
+ * `onToolCall` belongs to the caller of `runReplScript`, and that caller is gone
+ * the moment it holds a receipt — or, for a script that stayed inside the wait
+ * window, its final result: the tool block it was writing into is already
+ * `stage: "end"`, and both `messageOperations.updateToolBlock` and the webview's
+ * reducer merge field by field. So one more `onShortResultUpdate` after that
+ * point does not "refresh" the row, it rewrites `stage` back to `running` and
+ * leaves a finished script spinning for the rest of the session.
+ *
+ * The model's side is deliberately untouched: `pendingEvents` carries the
+ * outcome, and `toolsUsed` is collected on the frame by `answerToolCall`, not
+ * through this callback — so a backgrounded script keeps reporting to `Poll`
+ * while its row stays settled. Cutting here (the receipt, and the end of the
+ * script) is the only pair of points where "the caller stopped listening" and
+ * "the script may still run" become true.
+ */
+function detachToolRow(frame: ReplFrame): void {
+  frame.onToolCall = undefined;
+}
+
+/**
  * Deliver one script's outcome — exactly once, to exactly one place.
  *
  * A receipt already handed out means the model is waiting for an event, not for
@@ -923,6 +1297,7 @@ function finishScript(frame: ReplFrame, result: ReplRunResult): void {
   if (frame.outcomeSent) return;
   frame.outcomeSent = true;
   frame.scriptSettled = true;
+  detachToolRow(frame);
   frames.delete(frame);
   clearFrameTimers(frame);
   if (frame.receiptSent) {
@@ -984,6 +1359,7 @@ function armBackgroundCeiling(frame: ReplFrame): void {
 function sendDispatchReceipt(frame: ReplFrame): void {
   if (frame.receiptSent || frame.outcomeSent) return;
   frame.receiptSent = true;
+  detachToolRow(frame);
   background.set(frame.id, frame);
   armBackgroundCeiling(frame);
   frame.resolve?.({
@@ -1145,13 +1521,14 @@ export function runReplScript(options: RunReplOptions): Promise<ReplRunResult> {
     options.permissionMode ?? options.context.permissionMode;
   const askMode = isAskMode(permissionMode);
 
-  // The wait window is wall clock from the start of the call — the same number
-  // as the model's `timeout`, which is what makes "the script did not finish
-  // inside `timeout`" the condition a receipt is sent on. Ask mode is the
-  // deliberate exception: the script is kept at most the ask-mode total *and*
-  // that total counts the time spent on approval prompts, so the window is not
-  // the model's timeout but that ceiling, and it terminates instead of
-  // dispatching.
+  // The wait window is a fixed `EXEC_SYNC_WAIT_MS`, not the model's `timeout`.
+  // They answer different questions — "how long may the synchronous segment run"
+  // versus "how long does this call hold the turn" — and using one number for both
+  // let `timeout: 600000` occupy a whole turn for ten minutes. Past the window the
+  // script keeps running and its result arrives as an event. Ask mode is the
+  // deliberate exception: the script is kept at most the ask-mode total *and* that
+  // total counts the time spent on approval prompts, so the window is that ceiling
+  // and it terminates instead of dispatching.
   if (!options.detach) {
     frame.timers.window = unrefTimer(
       setTimeout(
@@ -1166,7 +1543,7 @@ export function runReplScript(options: RunReplOptions): Promise<ReplRunResult> {
           }
           sendDispatchReceipt(frame);
         },
-        askMode ? EXEC_ASK_MODE_TOTAL_MS : frame.timeoutMs,
+        askMode ? EXEC_ASK_MODE_TOTAL_MS : EXEC_SYNC_WAIT_MS,
       ),
     );
   }

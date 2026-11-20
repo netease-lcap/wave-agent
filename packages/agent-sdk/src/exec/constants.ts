@@ -49,10 +49,13 @@ export const EXEC_DEFAULT_MAX_TOOL_CALLS = 50_000;
 export const EXEC_DEFAULT_MAX_LOG_CHARS = 8_000;
 
 /**
- * Maximum number of characters of the *script return value* handed back to the
- * model. Mirrors the `DEFAULT_MAX_RESULT_SIZE_CHARS` bound that the flat MCP and
- * Bash paths apply to their own results: without it a script could return a
- * payload far larger than the call it replaced would have produced.
+ * Total number of characters of *result text* handed back to the model, on top of
+ * the per-part cap. Mirrors the `DEFAULT_MAX_RESULT_SIZE_CHARS` bound that the flat
+ * MCP and Bash paths apply to their own results: a per-part cap bounds each part
+ * but not how many parts there are, so a script that logs a hundred values would
+ * otherwise still out-pay the call it replaced.
+ *
+ * Provenance: Claude Code's `Do = 1e5`, applied to a rendered REPL result.
  */
 export const EXEC_DEFAULT_MAX_RESULT_CHARS = 100_000;
 
@@ -118,6 +121,21 @@ export const EXEC_SEARCH_MAX_RESULTS_LIMIT = 25;
  * Provenance: Claude Code's 600000 ms ask-mode total.
  */
 export const EXEC_ASK_MODE_TOTAL_MS = 600_000;
+
+/**
+ * How long one `REPL` call waits for its script before answering with a dispatch
+ * receipt, in milliseconds. Fixed, and deliberately *not* the model's `timeout`:
+ * the two answer different questions, and folding them together is how a
+ * `timeout: 600000` used to hold a whole turn for ten minutes. Past this window
+ * the script keeps running on the async lane and its result arrives as an event —
+ * the lane that exists for long work — while `timeout` only bounds the
+ * synchronous segment of the script itself.
+ *
+ * Provenance: Claude Code's wait window is the constant 30000 (its `P6t()`
+ * returns 30000 and the window is computed from that, never from the `timeout`
+ * input).
+ */
+export const EXEC_SYNC_WAIT_MS = 30_000;
 
 /**
  * Scripts allowed to be in flight on one context. Beyond this a dispatch is
