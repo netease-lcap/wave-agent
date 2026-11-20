@@ -92,6 +92,8 @@ describe("Agent Tool Background Execution", () => {
     expect(result.content).toContain("Agent started in background");
     expect(result.content).toContain("task_12345");
     expect(result.shortResult).toBe("Agent started in background: task_12345");
+    // 工具行尾的「查看实时输出」入口靠这颗 id 显隐（与后台 shell / Workflow 同形）。
+    expect(result.backgroundTaskId).toBe("task_12345");
   });
 
   it("should add '...' to shortResult when toolCount > 2", async () => {
