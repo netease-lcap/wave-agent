@@ -510,13 +510,15 @@ jobs:
       # development mode (unminified, development React — ~11 MB), while every
       # release pipeline ships `compile --production` (~4.6 MB, minified,
       # production React). e2e has therefore been exercising an artifact no user
-      # ever gets. Keep the workspace-wide build (the desktop harness needs the
-      # other packages' dist), then recompile webview in production mode.
+      # ever gets. Order matters: `wave-desktop`'s build runs `sync:webview`,
+      # which copies webview's `chat.js` into the desktop bundle — so compiling
+      # webview first means it is built exactly once AND the desktop bundle
+      # embeds the production copy (it used to embed the development one).
       - name: Build
         if: steps.filter.outputs.code == 'true'
         run: |
-          pnpm build
           pnpm -F wave-webview run compile -- --production
+          pnpm -r --filter '!wave-webview' --workspace-concurrency=1 build
 
       # Same browser cache as the PR-tier `check` job (identical key, so the two
       # share entries): the e2e run downloads it once and reuses it until
