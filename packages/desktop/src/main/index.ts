@@ -433,10 +433,10 @@ function createWindow(): void {
   win.on("close", (event) => trayController.handleClose(event, win));
 
   // Crash/freeze forensics (spec「桌面端渲染进程崩溃与卡死恢复」). Two evidence
-  // streams that only make sense together: a memory reading every minute (silent
-  // — it surfaces only in the crash log's `lastMemory=`), and JS stack samples
-  // during a freeze. Neither reloads anything — recovery is the user's choice in
-  // the dialog (see crashRecovery.ts).
+  // streams that only make sense together: `[process-memory]` snapshots (silent
+  // unless our own tree crosses a share-of-RAM bucket — they surface in the crash
+  // log's `lastMemory=`), and JS stack samples during a freeze. Neither reloads
+  // anything — recovery is the user's choice in the dialog (see crashRecovery.ts).
   const memorySampler = createMemorySampler({
     // Message volume rides along so the curve can answer "is the heap driven by
     // conversation length?" (6-week sessions keep the UI display stream, and
@@ -449,7 +449,12 @@ function createWindow(): void {
   // The recovery dialog is modal on this window: a window hidden to the tray
   // would swallow it (the user sees "nothing happened"), so surface the window
   // before crash recovery gets to ask anything.
-  win.on("unresponsive", showMainWindow);
+  win.on("unresponsive", () => {
+    showMainWindow();
+    // Freeze = the most valuable moment to have a reading next to the JS stack
+    // samples; the sampler throttles these itself (one per 10s).
+    memorySampler.snapshotOnStall();
+  });
   win.webContents.on("render-process-gone", showMainWindow);
 
   attachDesktopShortcutKeys(mainWindow.webContents, menuActions);
