@@ -4636,6 +4636,23 @@ describe("misc commands", () => {
     expect(lastAgent().sendMessage).not.toHaveBeenCalled();
   });
 
+  it("newSession skips a recent workdir that no longer exists", async () => {
+    // 「文件夹被删后，点击新建会有问题」的另一半：新对话的目录取自最近目录，而
+    // recents 里那份可能已经被删掉了。CLI 不校验 workdir，照旧 spawn 会把分屏变
+    // 成「空白会话 + 目录缺失」，输入框被恢复提示顶掉。
+    const { host, store } = await readyHost();
+    fireUserMessage(lastAgent()); // 当前会话有内容，新对话才会真的 spawn
+    store.addRecentWorkdir({ host: "local", path: "/gone" }); // 最新的那份已不存在
+
+    await host.handleWebviewMessage({ command: "newSession" });
+
+    // 跳过不存在的那份，落在下一个可用的最近目录（/work/a）上。
+    expect(initializedWorkdirs().at(-1)).toBe("/work/a");
+    expect(initializedWorkdirs()).not.toContain("/gone");
+    // 最近目录记录本身不动：目录可能只是暂时不可见（外接盘拔掉）。
+    expect(store.getRecentWorkdirsForHost("local")).toContain("/gone");
+  });
+
   it("clearChat is a no-op after desktop /clear removal (2026-09-05)", async () => {
     const { host, send } = await readyHost();
     const agent = lastAgent();
@@ -6260,7 +6277,10 @@ describe("session tree", () => {
     const { host, store, sent } = createHost();
     // /work/only-recent is in recents but has no sessions -> must NOT appear as a group.
     // /work/only-index has sessions but is not in recents -> still a group.
+    // 新对话只落在还存在的最近目录上（见 firstExistingRecentWorkdir），这里要的是
+    // 「按最近目录起了唯一一个空会话」，所以那份目录得在磁盘上。
     store.addRecentWorkdir({ host: "local", path: "/work/only-recent" });
+    h.existingPaths.add("/work/only-recent");
     store.upsertSession(makeIndexEntry("s1", "/work/a", { createdAt: 1000 }));
     store.upsertSession(makeIndexEntry("s2", "/work/a", { createdAt: 2000 }));
     store.upsertSession(
@@ -9144,6 +9164,95 @@ describe("relocate session (换文件夹继续)", () => {
     expect(shownToasts()).toContainEqual(
       expect.objectContaining({ message: "找不到该会话", type: "error" }),
     );
+  });
+
+  it("relocates a blank new session that is not in the index yet (no transcript to move)", async () => {
+    // 用户上报的现场：文件夹被删之后，分屏里还停着一场**空白的新对话**（它的目录
+    // 取自最近目录），恢复提示的「选择文件夹」按 sessionId 查索引必然查不到——这条
+    // 会话还没产生任何消息，首条消息才登记——以前就报「找不到该会话」，而输入框已经
+    // 被提示顶掉，分屏成了死路。
+    const { host, store, sent } = createHost();
+    store.addRecentWorkdir({ host: "local", path: "/gone" });
+    h.existingPaths.add("/gone");
+    await host.handleWebviewMessage({ command: "desktopReady" });
+    await host.handleWebviewMessage({ command: "webviewReady" });
+    const blank = lastAgent();
+    expect(blank.initialize).toHaveBeenCalledWith(
+      expect.objectContaining({ workdir: "/gone" }),
+    );
+    const sessionId = blank.sessionId as string;
+    expect(store.getSessionIndex().some((e) => e.sessionId === sessionId)).toBe(
+      false,
+    );
+    // 用户在 Finder 里把目录删掉，下一次推送（这里是 webview 重载）就带上
+    // 「目录缺失」——渲染端因此挂恢复提示，与截图的前置状态一致。
+    h.existingPaths.delete("/gone");
+    await host.handleWebviewMessage({ command: "webviewReady" });
+    expect(sent("setInitialState").at(-1)?.session).toMatchObject({
+      id: sessionId,
+      folderMissing: true,
+    });
+    h.existingPaths.add("/work/new");
+    h.dirPaths.add("/work/new");
+
+    await host.handleWebviewMessage({
+      command: "desktopRelocateSession",
+      sessionId,
+      workdir: "/work/new",
+    });
+
+    // 没有转录要搬：一次搬迁 RPC 都不发，也不报「找不到该会话」。
+    expect(relocateRequests()).toEqual([]);
+    expect(shownToasts().some((t) => t.message === "找不到该会话")).toBe(false);
+    // 空会话直接在新目录里重开一个，分屏回到可用状态（恢复提示随 folderMissing 消失）。
+    await vi.waitFor(() => {
+      expect(lastAgent().initialize).toHaveBeenCalledWith(
+        expect.objectContaining({ workdir: "/work/new" }),
+      );
+    });
+    expect(blank.destroy).toHaveBeenCalled();
+    await vi.waitFor(() => {
+      expect(sent("setInitialState").at(-1)?.session).toMatchObject({
+        workdir: "/work/new",
+      });
+    });
+    expect(sent("setInitialState").at(-1)?.session).not.toHaveProperty(
+      "folderMissing",
+    );
+    // 用户刚为这场会话挑了这个目录：它成了最新的「最近目录」，下一次「新对话」落在这儿。
+    expect(store.getRecentWorkdirsForHost("local")[0]).toBe("/work/new");
+  });
+
+  it("refuses to relocate a blank session while it is still generating", async () => {
+    const { host, store, sent } = createHost();
+    store.addRecentWorkdir({ host: "local", path: "/gone" });
+    h.existingPaths.add("/gone");
+    await host.handleWebviewMessage({ command: "desktopReady" });
+    await host.handleWebviewMessage({ command: "webviewReady" });
+    const blank = lastAgent();
+    blank.isStreaming = true;
+    const before = h.agentInstances.length;
+    h.existingPaths.add("/work/new");
+    h.dirPaths.add("/work/new");
+
+    await host.handleWebviewMessage({
+      command: "desktopRelocateSession",
+      sessionId: blank.sessionId as string,
+      workdir: "/work/new",
+    });
+
+    // 搬迁要先丢掉这个 agent —— 正在生成的那一轮会被静默扔掉，所以先拒绝。
+    expect(blank.destroy).not.toHaveBeenCalled();
+    expect(h.agentInstances).toHaveLength(before);
+    expect(shownToasts()).toContainEqual(
+      expect.objectContaining({
+        message: "该会话仍在运行中，请等这一轮结束后再换目录",
+        type: "error",
+      }),
+    );
+    expect(sent("setInitialState").at(-1)?.session).toMatchObject({
+      id: blank.sessionId,
+    });
   });
 });
 
