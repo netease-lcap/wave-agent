@@ -84,6 +84,36 @@ order: 130
 6. **假设** `permissions.ask` 命中了某次调用，**当** 确认卡片弹出时，**则** 卡片不提供「总是允许 / 不再询问」这一档（对齐 Claude Code 的 `suppressAlwaysAllowRule`）：ask 规则的含义就是每次都要问，不能被一次点击变成常驻放行。
 7. **假设** `permissions.ask` 里的规则拼错或工具名不存在，**当** 加载配置时，**则** 与 `allow`/`deny` 同口径处理——不报错、不因无法匹配而拦截。
 
+### 用户故事：删除自身工作目录的内建硬闸（优先级：P1）
+
+作为用户，我希望 agent 无论如何都删不掉「这个会话正在工作的那些目录」——它们本身，以及它们的任何祖先——即使我开着绕过模式、即使 `permissions.allow` 里已经写了 `Bash(rm:*)`。一次 `rm -rf ../..` 就能把整个仓库（含 `.git` 与未提交的改动）就地抹掉，没有回收站，也没有第二次机会。
+
+**为什么是这个优先级**：这是少数「一次误判即不可恢复」的操作，代价与普通越界写不同量级。它又必须落在规则与模式之外：`bypassPermissions` 的设计前提是「我信任这个 agent」，而「把 agent 赖以工作的目录删掉」不是信任问题，是把工作本身毁掉；`allow` 规则写 `Bash(rm:*)` 的本意是「别为清构建产物打扰我」，不是「批准删我的仓库」。
+
+**判定语义**（只做路径算术，不识别「仓库」）：
+
+- **保护根** = 会话工作目录 ∪ 附加目录（会话、实例、系统三档来源，去重后取绝对路径）。
+- **危险** = 某次删除的目标**等于**其中一个保护根，或**包含**其中一个保护根（即该目标是某个保护根的祖先）。
+- 用 realpath 解析后比较，不读 `.git`、不判断「是不是仓库」：没有 `.git` 的项目目录、`.wave/worktrees/` 下的工作树、`/tmp` 里的临时工作区一视同仁。
+
+**验收场景**：
+
+1. **假设** 会话工作目录是 `/p/repo/sub`，**当** agent 执行 `rm -rf .`、`rm -rf /p/repo/sub` 或带引号的等价写法，**则** 命中「工作目录」这条，必须由用户明确批准（`packages/agent-sdk/src/utils/shell/dangerousRemoval.ts:423`）。
+2. **假设** 同一工作目录，**当** 目标换成任意祖先（`..`、`../..`、`./build/../..`、绝对路径、`rmdir -p a/b` 沿途的每一级），**则** 同样命中——判据是「包含工作目录」，不是「等于」（`packages/agent-sdk/src/utils/shell/dangerousRemoval.ts:314`）。
+3. **假设** 目标等于某个附加目录或它的祖先，**当** 判定时，**则** 按同一规则处理；附加目录**之下**的子目录不命中（`packages/agent-sdk/src/managers/permissionManager.ts:694`）。
+4. **假设** 目标是文件系统根、用户主目录、或一级系统目录本身，**当** 判定时，**则** 同样命中；这三类名单与 PowerShell 通道共用同一份实现（`packages/agent-sdk/src/utils/pathSafety.ts:112-139`）。
+5. **假设** 目标经 realpath 后指向上述任一保护根（符号链接指向工作目录、macOS `/tmp` → `/private/tmp`），**当** 判定时，**则** 按解析后的路径判定，不按字面判定（`packages/agent-sdk/src/utils/pathSafety.ts:52`）。
+6. **假设** 一次调用带多个目标（`rm -rf a b ..`），**当** 其中任一目标命中，**则** 整体按命中处理；`--` 之后的操作数按目标算，`--help`/`--version` 不算目标。
+7. **假设** 命令是复合形态（`a && rm -rf ..`、`cd /x && rm -rf /x`、管道、`sudo`/`env`/`nice` 等包装、`bash -c '…'` 内联、后台 `&`），**当** 判定时，**则** 必须逐个叶子命令、按当时的 `cd` 状态判定——对整串文本跑正则不算数（`packages/agent-sdk/src/utils/shell/dangerousRemoval.ts:147`）。
+8. **假设** 目标无法静态确定（`$UNKNOWN`、`$(pwd)`、反引号、glob 前缀里带变量），**当** 判定时，**则** 按危险处理：跳过它等于给出一条明文的绕过方式（`rm -rf "$PWD"`），代价只是变量命名的目标多一次确认。
+9. **假设** 目标是 glob，**当** 判定时，**则** 按其静态前缀判定——`rm -rf *`、`rm -rf build/*` 是普通删除，`rm -rf /*`、`rm -rf ../*` 命中根/祖先。
+10. **假设** 命中之后进入决策，**当** 权限模式为 `default` / `acceptEdits` / `plan` / `bypassPermissions`，**则** 必须弹确认，且卡片不提供「总是允许 / 不再询问」；`allow` 规则、沙箱自动放行、`acceptEdits`、`bypassPermissions` 都不得批准它（`packages/agent-sdk/src/managers/permissionManager.ts:1171-1177`、`:1441-1485`）。
+11. **假设** 权限模式为 `dontAsk`，**当** 命中时，**则** 直接拒绝并给出原因；**假设** 没有任何审批通道（`-p`、未提供 `canUseTool` 的宿主），**当** 命中时，**则** 同样拒绝，且拒绝消息里带上这条原因，而不是一句泛泛的「需要审批」（`packages/agent-sdk/src/managers/permissionManager.ts:987-1003`）。
+12. **假设** 换成 PowerShell 通道（`Remove-Item -Recurse -Force <目标>`），**当** 目标等于/包含工作目录或附加目录，**则** 落在**硬拒绝**档（不询问、规则不可覆盖），与根/主目录/系统目录同档（`packages/agent-sdk/src/tools/powershellTool/pathValidation.ts:78`、`packages/agent-sdk/src/tools/powershellTool/permissions.ts:253-268`）。
+13. **假设** 删除形态不在判据内（`find -delete`、`mv`、`xargs rm`、脚本内的 `shutil.rmtree`），**当** 判定时，**则** 本条不命中，仍按既有规则处理；解析不了的整体（`eval`、heredoc 等）继续按 fail-closed 回落确认。
+
+**为什么是「询问」而不是「拒绝」**（Bash 侧）：主人应该保有这个权力——「删掉我克隆的这个目录」是合法意图，只是不能由 agent 自己拍。CC 在同一处也是问。PowerShell 侧的这类目标本来就在硬拒绝档，本次只是把「工作目录及其祖先」补进那一档，与既有语义保持一致。CC 只覆盖 `rm`/`rmdir`，本实现同样只覆盖这两个命令；`find -delete`、`mv`、脚本内删除等形态明确不覆盖。
+
 ### 用户故事：基于路径的权限（优先级：P1）
 
 作为用户，我希望通过为操作文件路径的工具定义拒绝规则来防止 agent 访问特定文件（如 `.env` 文件）。
@@ -309,6 +339,7 @@ _已移除。基于 Heredoc 的 bash 命令不再被自动拒绝。用户应依�
 - **PermissionDecision**：权限检查的结果，扩展为包含可选的 `newPermissionMode`、`newPermissionRule` 与 `newAdditionalDirectory`（会话级地把指定目录加入安全区域）以通知系统更新其状态。`newAdditionalDirectory` 同时登记该目录下 `Edit`/`Write` 的会话级允许规则，使"允许本会话编辑"的承诺对后续编辑同样成立（`default` 模式本就对每次 `Edit`/`Write` 要求确认，仅加入安全区域不足以免除后续确认）。
 - **安全区域**：允许 agent 执行文件操作而无需每次操作都经用户明确确认的文件系统路径集合。
 - **附加目录**：用户可配置的路径列表，将安全区域扩展到默认工作目录之外。可通过 `settings.json` 的 `permissions.additionalDirectories`、CLI 的 `--add-dir` 启动选项、`/add-dir` 斜杠命令（会话级）或越界确认弹窗的"允许本会话编辑 `<目录名>/`"选项（会话级）加入；其中 `--add-dir` 与 `/add-dir` 为 CLI 专属入口，弹窗选项为三端 GUI 与交互式 CLI 共有（两者都不写配置文件）。路径支持相对路径（相对工作目录解析）与 `~`/`~/` 前缀（按用户主目录展开）。
+- **删除自身工作区域的硬闸**：作用于 shell 工具（Bash 的 `rm`/`rmdir`、PowerShell 的破坏性 cmdlet）。保护根 = 会话工作目录 ∪ 附加目录；目标是保护根本身或它的祖先即命中。判据是纯路径算术 + realpath，不识别「仓库」；变量/命令替换等无法静态确定的目标按命中处理。Bash 侧落在 `permissions.ask` 同一档（`packages/agent-sdk/src/managers/permissionManager.ts:1171-1177`），PowerShell 侧落在硬拒绝档。
 - **绕过授权（会话级）**：会话创建时的有效权限模式为 `bypassPermissions` 时获得，用于在 `plan` 模式下替代绕过判定（见 `plan-mode.md`「计划模式继承会话的绕过授权」）。会话中途切换到 `bypassPermissions` 不会获得该授权；仅按用户配置自动放行的场景不受影响，常驻的 `default`/`acceptEdits`/`dontAsk` 会话行为不变。
 
 ## 边界情况
@@ -317,7 +348,7 @@ _已移除。基于 Heredoc 的 bash 命令不再被自动拒绝。用户应依�
 - **结构感知解析失败**：shell 控制结构或命令替换无法被结构感知解析（语法不支持、解析超时、变量值无法静态确定等）时不得自动放行，一律回落至确认（fail-closed），防止以复杂语法绕过只读判定。
 - **优先级**：拒绝规则 > 询问规则 > 允许规则；询问规则命中时，绕过模式与允许规则都不豁免它（唯一例外是整工具级 `ask` 与 `sandbox.autoAllowBashIfSandboxed` 同时成立时会被沙箱执行的命令）。
 - **ask 规则先于工具内建的自动放宽**：工具自己的「这个会话已经确认过，不再问」这类放宽（如 Artifact 的同会话重复发布）排在规则判定之后——deny / ask 命中时按规则走，且 `ask` 命中时确认卡片不提供「不再询问」（对齐 Claude Code 的 `suppressAlwaysAllowRule`）。
-- **绕过授权不豁免的检查**：穿透权限检查的判定（`bypassPermissions` 模式，或 `plan` 模式下持有绕过授权的会话）不豁免四类拦截：实例与配置的 deny 规则、`permissions.ask` 命中的工具、worktree 内对主仓库的越界写保护、以及需要用户交互的工具（`AskUserQuestion`、`ExitPlanMode`——后者即计划批准，离开计划模式始终是用户决定）。
+- **绕过授权不豁免的检查**：穿透权限检查的判定（`bypassPermissions` 模式，或 `plan` 模式下持有绕过授权的会话）不豁免五类拦截：实例与配置的 deny 规则、`permissions.ask` 命中的工具、删除自身工作目录及其祖先（见「删除自身工作目录的内建硬闸」）、worktree 内对主仓库的越界写保护、以及需要用户交互的工具（`AskUserQuestion`、`ExitPlanMode`——后者即计划批准，离开计划模式始终是用户决定）。
 - **敏感命令**：如 `rm` 等命令被列入智能通配符建议的黑名单，以防止意外的广泛权限。
 - **PowerShell 的「解析失败」不是放行**：bash 用结构感知解析器，PowerShell 用自己的 AST 解析器（需 spawn 一次 `pwsh`/`powershell`，超时 5 秒、超时重试一次、结果进 256 项 LRU）；解析失败或没有 PowerShell 可用时一律回落到询问并隐藏「不再询问」，绝不自动放行（`packages/agent-sdk/src/tools/powershellTool/permissions.ts:205-224`、`packages/agent-sdk/src/utils/powershellStructure/psParser.ts:35-50`）。
 - **规则命名空间互不可见**：`Bash(...)` 与 `PowerShell(...)` 各自只被同名工具的判定读取，一次「不再询问」不会跨执行器生效（见 [powershell-tool.md](powershell-tool.md)「持久化规则按叶子拆分」）。

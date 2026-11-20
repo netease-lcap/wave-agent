@@ -35,10 +35,7 @@ import {
 } from "../../utils/powershellStructure/staticPrefix.js";
 import { BLOCK_PERSIST } from "../../utils/powershellStructure/dangerousCmdlets.js";
 import type { ParsedCommandElement } from "../../utils/powershellStructure/types.js";
-import {
-  describeDangerousTarget,
-  isDangerousTargetPath,
-} from "./pathValidation.js";
+import { findDangerousTarget, type DangerousTarget } from "./pathValidation.js";
 import { extractPathArguments, isReadOnlyCmdlet } from "./readOnly.js";
 import { inspectPowerShellCommand } from "./security.js";
 
@@ -47,6 +44,12 @@ export interface PowerShellPermissionRequest {
   command: string;
   /** Used to resolve relative paths for the Safe Zone and the danger checks. */
   workdir?: string;
+  /**
+   * The directories this session works in (working directory + additional
+   * directories). A destructive target that is one of them, or contains one, is
+   * refused — rules do not reach that decision.
+   */
+  safeZoneRoots: string[];
   /** Allow rules naming this tool, verbatim from the rule sources. */
   allowedRules: string[];
   /** Deny rules naming this tool. */
@@ -251,11 +254,16 @@ export async function evaluatePowerShellCommand(
 
   for (const leaf of leaves) {
     for (const target of destructiveTargets(leaf)) {
-      if (!isDangerousTargetPath(target, request.workdir)) continue;
+      const hit = findDangerousTarget(
+        target,
+        request.workdir,
+        request.safeZoneRoots,
+      );
+      if (!hit) continue;
       return {
         decision: "deny",
         reason: "dangerous-path",
-        message: `Refusing to ${resolveToCanonical(leaf.name)} ${describeDangerousTarget(target, request.workdir)}: this path holds the system or the user's home directory.`,
+        message: `Refusing to ${resolveToCanonical(leaf.name)} ${hit.resolved}: ${dangerousTargetReason(hit)}.`,
         hidePersistentOption: true,
       };
     }
@@ -338,16 +346,34 @@ function isPersistableAsRule(
   );
 }
 
-/** Cmdlets whose path arguments a destructive command acts on. */
-const WRITE_TARGET_CMDLETS: ReadonlySet<string> = new Set([
-  "remove-item",
-  "clear-content",
-  "set-content",
-  "add-content",
-  "out-file",
-  "move-item",
-  "rename-item",
-]);
+/**
+ * Why the path is refused, in the user's words. The working-directory case is
+ * the one worth spelling out: the path is not special in itself, it is special
+ * because the session lives in it (or in something below it).
+ */
+function dangerousTargetReason(hit: DangerousTarget): string {
+  switch (hit.reason) {
+    case "root":
+      return "this is a filesystem root";
+    case "home":
+      return "this is the user's home directory";
+    case "system":
+      return "this is a system directory";
+    case "working_directory":
+      return "this is (or contains) the session's working directory, and cannot be auto-allowed by permission rules";
+  }
+}
+
+/** Cmdlets whose path arguments a destructive command acts on. */ const WRITE_TARGET_CMDLETS: ReadonlySet<string> =
+  new Set([
+    "remove-item",
+    "clear-content",
+    "set-content",
+    "add-content",
+    "out-file",
+    "move-item",
+    "rename-item",
+  ]);
 
 /** Absolute-looking path arguments of a destructive command. */
 function destructiveTargets(leaf: ParsedCommandElement): string[] {

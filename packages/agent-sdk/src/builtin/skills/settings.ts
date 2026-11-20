@@ -850,7 +850,7 @@ The \`defaultMode\` setting (under \`permissions\`, aligning with Claude Code's 
 | \`acceptEdits\` | Automatically allows \`Edit\` and \`Write\` inside the Safe Zone, and a plain \`mkdir\` whose paths are all inside it. Anything outside the Safe Zone, and every other restricted tool, still asks. |
 | \`plan\` | Exploration only: the agent may write nothing except the plan file. |
 | \`dontAsk\` | Restricted tools are denied outright instead of prompting, unless an allow rule already covers the call — the most restrictive mode. |
-| \`bypassPermissions\` | **Use with caution.** Restricted tools run without asking. Three gates survive: \`AskUserQuestion\` and \`ExitPlanMode\` still reach you (the tool *is* the decision), a \`permissions.ask\` rule still asks, and in a worktree session \`Write\`/\`Edit\` still cannot touch the main repository. |
+| \`bypassPermissions\` | **Use with caution.** Restricted tools run without asking. Four gates survive: \`AskUserQuestion\` and \`ExitPlanMode\` still reach you (the tool *is* the decision), a \`permissions.ask\` rule still asks, a shell command that would delete a directory the session works in (or any of its parents) still asks, and in a worktree session \`Write\`/\`Edit\` still cannot touch the main repository. |
 
 ### Example Configuration
 
