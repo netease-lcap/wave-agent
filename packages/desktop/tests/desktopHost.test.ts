@@ -572,6 +572,19 @@ vi.mock("wave-agent-sdk/host", async (importOriginal) => ({
       checkpoints: [{ id: "u1", content: "hello" }],
     }));
     /**
+     * `/export` 的归档回包：三样东西**由 CLI 进程算好**（转录在它那台机器上），
+     * 宿主只负责落盘打包。默认给一份最小的可读版 + 清单 + 原始字节。
+     */
+    exportTranscriptArchive = vi.fn(async () => ({
+      markdown: "# 会话记录\n\n## 用户\n\n你好\n",
+      manifestJson: '{ "messages": 1 }\n',
+      jsonlBase64: Buffer.from('{"id":"m1","role":"user"}\n').toString(
+        "base64",
+      ),
+      jsonlBytes: 27,
+      jsonlTooLarge: false,
+    }));
+    /**
      * 插件 mod 面板的元信息旁路（spec ecosystem/plugin-mods.md）：宿主不缓存树，
      * 切会话 / webview 重建时靠这份元信息恢复 mod tab。默认空 —— 只有专门测
      * mod 恢复的用例才给它塞帧。
@@ -697,6 +710,26 @@ vi.mock("electron-updater", () => ({
     }),
   },
 }));
+
+// `/export` 的落盘一半：真实实现在暂存目录里写文件再 `tar`，本套用例只验宿主
+// 的接线（对话框 → RPC → 打包 → 提示），所以打包器换成可断言的桩；文件名那段
+// 逻辑有自己的用例（tests/exportSessionArchive.test.ts）。
+const sessionArchiveMock = vi.hoisted(() => ({
+  writeSessionArchive: vi.fn(
+    async (
+      target: string,
+      _contents: {
+        jsonl: Buffer | null;
+        markdown: string;
+        manifestJson: string;
+      },
+    ) => target,
+  ),
+  defaultSessionArchivePath: vi.fn(
+    () => "/mock/home/Desktop/wave-session-20261120-120000-1a2b3c4d.tar.gz",
+  ),
+}));
+vi.mock("../src/main/exportSessionArchive", () => sessionArchiveMock);
 
 // PortForwardManager spawns real `ssh -N -L` processes — stub it entirely and
 // assert the wiring (messages in, forwarded results out, session-scoped teardown).
@@ -1032,6 +1065,7 @@ type MockAgent = {
   remoteControlStatus: ReturnType<typeof vi.fn>;
   remoteControlConnect: ReturnType<typeof vi.fn>;
   remoteControlDisconnect: ReturnType<typeof vi.fn>;
+  exportTranscriptArchive: ReturnType<typeof vi.fn>;
 };
 
 function lastAgent(): MockAgent {
@@ -15677,5 +15711,193 @@ describe("宿主不保留消息内容，用的时候现取", () => {
     // 这条会话不在任何 pane 里 —— 没有 appendMessage 可推（推了也没有接收者，
     // 而且宿主手里没有列表可以拿它续写）。
     expect(sent("appendMessage")).toHaveLength(appendsBefore);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// /export — 会话转录归档（spec commands/export-command.md「桌面端」）
+// ---------------------------------------------------------------------------
+
+describe("desktopExportSessionTranscript", () => {
+  const DESKTOP_DIR = path.resolve("/mock/home/Desktop");
+  const TARGET = path.join(DESKTOP_DIR, "chosen.tar.gz");
+
+  async function exportReadyHost(title = "排查导出") {
+    const ctx = await readyHost();
+    ctx.store.upsertSession({
+      sessionId: "sess-1",
+      title,
+      host: "local",
+      workdir: "/work/a",
+      cwd: "/work/a",
+      createdAt: 1,
+      lastActiveAt: 1,
+    });
+    const agent = seedConversation(lastAgent(), "sess-1");
+    vi.mocked(dialog.showSaveDialog).mockResolvedValue({
+      canceled: false,
+      filePath: TARGET,
+    } as unknown as Awaited<ReturnType<typeof dialog.showSaveDialog>>);
+    return { ...ctx, agent };
+  }
+
+  it("对话框 → RPC 取回内容 → 打包 → 在文件夹里显示 → 成功提示", async () => {
+    const { host, sent, agent } = await exportReadyHost();
+
+    await host.handleWebviewMessage({
+      command: "desktopExportSessionTranscript",
+    });
+
+    const dialogCall = vi.mocked(dialog.showSaveDialog).mock.calls[0]?.[0];
+    expect(dialogCall?.title).toBe("导出会话「排查导出」");
+    // 文件名规则归 exportSessionArchive，宿主只负责把它交给对话框。
+    expect(dialogCall?.defaultPath).toBe(
+      sessionArchiveMock.defaultSessionArchivePath(),
+    );
+    expect(dialogCall?.filters).toEqual([
+      { name: "会话归档", extensions: ["tar.gz"] },
+    ]);
+
+    // 内容一律经 RPC 从**拥有转录的那台机器**取：远端会话的转录主进程根本
+    // 打不开，所以这里连本地路径都没得读。
+    expect(agent.exportTranscriptArchive).toHaveBeenCalledWith({
+      appVersion: "0.19.7",
+      platform: process.platform,
+    });
+    const contents = sessionArchiveMock.writeSessionArchive.mock.calls[0]?.[1];
+    expect(sessionArchiveMock.writeSessionArchive).toHaveBeenCalledWith(
+      TARGET,
+      expect.anything(),
+    );
+    // base64 解回去就是 CLI 侧那份原始字节，一个字节都没动。
+    expect(contents?.jsonl).toEqual(Buffer.from('{"id":"m1","role":"user"}\n'));
+    expect(contents?.markdown).toContain("## 用户");
+    expect(shell.showItemInFolder).toHaveBeenCalledWith(TARGET);
+
+    const toasts = sent("showToast").map((m) => m.toast);
+    // 两个提示是**同一条**：先挂 spinner 的中间态，再用同一个 id 换成结果
+    // （webview 按 id 原地覆盖，不叠两条）。
+    expect(toasts).toHaveLength(2);
+    expect(toasts[0].id).toBe(toasts[1].id);
+    expect(toasts[0].loading).toBe(true);
+    expect(toasts[1].loading).toBeUndefined();
+    expect(toasts[1].type).toBe("success");
+    expect(toasts[1].message).toBe(`会话已导出：${TARGET}`);
+  });
+
+  it("转录已被清理：原样展示带 cleanupPeriodDays 的那句话，不自己拼「导出失败」", async () => {
+    const { host, sent, agent } = await exportReadyHost();
+    const message =
+      "Session transcript not found: /mock/a/s1.jsonl. It may have been removed by cleanupPeriodDays (default 30 days).";
+    agent.exportTranscriptArchive.mockRejectedValueOnce(new Error(message));
+
+    await host.handleWebviewMessage({
+      command: "desktopExportSessionTranscript",
+    });
+
+    const toast = sent("showToast").at(-1)?.toast;
+    expect(toast?.type).toBe("error");
+    expect(toast?.message).toContain("cleanupPeriodDays");
+    expect(toast?.message).toContain("default 30 days");
+    expect(shell.showItemInFolder).not.toHaveBeenCalled();
+    expect(sessionArchiveMock.writeSessionArchive).not.toHaveBeenCalled();
+  });
+
+  it("同一个会话连点两次：第二次直接拒掉，不再开一次对话框也不并发写同一个文件", async () => {
+    const { host, sent, agent } = await exportReadyHost();
+    const payload = {
+      markdown: "# 会话记录\n",
+      manifestJson: '{ "messages": 1 }\n',
+      jsonlBase64: Buffer.from('{"id":"m1","role":"user"}\n').toString(
+        "base64",
+      ),
+      jsonlBytes: 27,
+      jsonlTooLarge: false,
+    };
+    let release!: () => void;
+    agent.exportTranscriptArchive.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = () => resolve(payload);
+        }),
+    );
+
+    const first = host.handleWebviewMessage({
+      command: "desktopExportSessionTranscript",
+    });
+    await vi.waitFor(() => {
+      expect(agent.exportTranscriptArchive).toHaveBeenCalledTimes(1);
+    });
+
+    await host.handleWebviewMessage({
+      command: "desktopExportSessionTranscript",
+    });
+
+    expect(dialog.showSaveDialog).toHaveBeenCalledTimes(1);
+    expect(sent("showToast").at(-1)?.toast.message).toBe(
+      "这个会话正在导出，请稍候",
+    );
+    expect(sessionArchiveMock.writeSessionArchive).not.toHaveBeenCalled();
+
+    release();
+    await first;
+
+    // 导出结束后闸门放开：同一会话可以再导一次。
+    expect(sent("showToast").at(-1)?.toast.type).toBe("success");
+  });
+
+  it("原始转录超过上限：只打包可读版，并在提示里说明少了什么", async () => {
+    const { host, sent, agent } = await exportReadyHost();
+    const bytes = 60 * 1024 * 1024;
+    agent.exportTranscriptArchive.mockResolvedValueOnce({
+      markdown: "# 会话记录\n",
+      manifestJson: '{ "messages": 1 }\n',
+      jsonlBytes: bytes,
+      jsonlTooLarge: true,
+    });
+
+    await host.handleWebviewMessage({
+      command: "desktopExportSessionTranscript",
+    });
+
+    // 归档里没有 transcript.jsonl —— 传 null 而不是截断的半份。
+    expect(sessionArchiveMock.writeSessionArchive).toHaveBeenCalledWith(
+      TARGET,
+      {
+        jsonl: null,
+        markdown: "# 会话记录\n",
+        manifestJson: '{ "messages": 1 }\n',
+      },
+    );
+    expect(sent("showToast").at(-1)?.toast.message).toBe(
+      `已只导出可读版（原始转录 60.0 MB，超过导出上限，归档里没有 transcript.jsonl）：${TARGET}`,
+    );
+  });
+
+  it("用户取消对话框：不取内容、不打包、也不弹提示", async () => {
+    const { host, sent, agent } = await exportReadyHost();
+    vi.mocked(dialog.showSaveDialog).mockResolvedValue({
+      canceled: true,
+      filePath: undefined,
+    } as unknown as Awaited<ReturnType<typeof dialog.showSaveDialog>>);
+
+    await host.handleWebviewMessage({
+      command: "desktopExportSessionTranscript",
+    });
+
+    expect(agent.exportTranscriptArchive).not.toHaveBeenCalled();
+    expect(sessionArchiveMock.writeSessionArchive).not.toHaveBeenCalled();
+    expect(sent("showToast")).toHaveLength(0);
+  });
+
+  it("还没有会话时说「没有可导出的会话」，不弹空的保存框", async () => {
+    const { host, sent } = createHost();
+
+    await host.handleWebviewMessage({
+      command: "desktopExportSessionTranscript",
+    });
+
+    expect(dialog.showSaveDialog).not.toHaveBeenCalled();
+    expect(sent("showToast").at(-1)?.toast.message).toBe("没有可导出的会话");
   });
 });

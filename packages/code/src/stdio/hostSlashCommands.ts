@@ -131,6 +131,15 @@ export const HOST_SLASH_COMMANDS: readonly HostSlashCommandSpec[] = [
     surfaces: ["desktop"],
   },
   {
+    id: "export",
+    description: "导出当前会话的转录",
+    runOnSelect: true,
+    // 只有桌面端：它落的是一个 `tar.gz` 归档，要靠主进程的原生「保存」对话框与
+    // `shell.showItemInFolder`（spec commands/export-command.md）。插件端与远控页
+    // 没有这两样东西；CLI 有自己的 `/export`（纯文本 + 剪贴板），不走这张表。
+    surfaces: ["desktop"],
+  },
+  {
     id: "workflows",
     // 与 `/tasks` 都落到后台任务面（spec multi-agent/workflow.md「工作流管理入口」）。
     description: "在后台任务里查看工作流运行",

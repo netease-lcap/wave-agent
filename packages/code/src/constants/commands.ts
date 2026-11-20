@@ -134,6 +134,15 @@ export const AVAILABLE_COMMANDS: SlashCommand[] = [
     handler: () => {}, // Handler here won't be used, actual processing is in the hook
   },
   {
+    id: "export",
+    name: "export",
+    // 与 Claude Code 逐字一致。
+    description: "Export the current conversation to a file or clipboard",
+    // 带文件名时直接落盘、跳过多选浮层；不带时弹浮层（CC 的同一个命令）。
+    argumentHint: "[filename]",
+    handler: () => {}, // Handler here won't be used, actual processing is in the hook
+  },
+  {
     id: "clear",
     name: "clear",
     description: "Clear conversation history and reset session",

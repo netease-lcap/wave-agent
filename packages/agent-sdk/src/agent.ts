@@ -67,6 +67,7 @@ import type {
   MessageWindowResult,
 } from "./types/messageWindow.js";
 import type { TranscriptOutlineEntry } from "./types/transcriptOutline.js";
+import type { TranscriptExport } from "./services/transcriptExport.js";
 import type { Task } from "./types/tasks.js";
 import type { BackgroundTask } from "./types/processes.js";
 import { MemoryRuleManager } from "./managers/MemoryRuleManager.js";
@@ -2565,6 +2566,21 @@ export class Agent {
     sessionIds: string[];
   }> {
     return this.messageManager.getFullMessageThread();
+  }
+
+  /**
+   * 导出当前会话的完整转录（`/export` 的 SDK 半边，spec
+   * commands/export-command.md）：整条线程 + 供命令反馈用的统计。
+   *
+   * 与 `getFullMessageThread()` 的差别是读不到时的态度——那个把「文件没了」
+   * 返回成空数组，导出要能对用户说清是「转录已被清理」还是「读失败」。
+   * 渲染成文字由宿主做（CLI 用 Ink 组件渲染再剥 ANSI，与 Claude Code 同路）。
+   */
+  public async exportTranscript(): Promise<TranscriptExport> {
+    const { loadTranscriptForExport } = await import(
+      "./services/transcriptExport.js"
+    );
+    return loadTranscriptForExport(this.sessionFilePath);
   }
 
   /**

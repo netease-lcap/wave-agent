@@ -58,6 +58,10 @@ import {
   loadUserConfigEnv,
   onHostNotice,
   loadWaveConfigFromFile,
+  exportTranscriptArchive,
+  describeTranscriptUnavailable,
+  TranscriptUnavailableError,
+  type TranscriptExportArchive,
   getUserConfigPaths,
   getProjectConfigPaths,
   readUserPreferenceView,
@@ -745,6 +749,20 @@ export class AgentBridge {
         return this.getSkillMetadata(sessionId);
       case "getContextBreakdown":
         return this.getContextBreakdown(sessionId);
+      case "exportTranscript":
+        // `/export` 的归档形态（spec commands/export-command.md）。读的是**本进程
+        // 所在机器**上的转录：远端会话的转录在远端盘上，主进程根本打不开它。
+        return this.handleExportTranscript(
+          {
+            ...(typeof p.appVersion === "string" && p.appVersion
+              ? { appVersion: p.appVersion }
+              : {}),
+            ...(typeof p.platform === "string" && p.platform
+              ? { platform: p.platform }
+              : {}),
+          },
+          sessionId,
+        );
       case "deleteSkill":
         return this.deleteSkill(p.name as string, sessionId);
       case "deleteSubagent":
@@ -2900,6 +2918,45 @@ export class AgentBridge {
   ): Promise<ContextBreakdown> {
     const entry = this.requireSessionForRead(sessionId);
     return await entry.agent.getContextBreakdown();
+  }
+
+  /**
+   * `/export` 的归档形态：可读版 + 清单 + 原始字节，全部在**本进程所在机器**上算。
+   *
+   * 为什么在这里而不是让桌面主进程自己读文件：远端（ssh / WSL）会话的转录在
+   * 那台机器的 `~/.wave/projects/…` 里，主进程连路径都拼不出来。所以「读转录」
+   * 这一步必须发生在拥有它的 `wave --stdio` 子进程里，主进程只负责落盘打包。
+   *
+   * 读失败（含被 `cleanupPeriodDays` 清理）由 SDK 抛
+   * `TranscriptUnavailableError`。RPC 只把 `message` 送过线（`code` 里没有第三
+   * 个字段），所以在这里就把「没了」与「读不了」换成两句不同的话，宿主原样展示。
+   */
+  private async handleExportTranscript(
+    params: { appVersion?: string; platform?: string },
+    sessionId?: string,
+  ): Promise<TranscriptExportArchive> {
+    const entry = this.requireSessionForRead(sessionId);
+    const agent = entry.agent;
+    const model = agent.getModelConfig().model;
+    try {
+      return await exportTranscriptArchive({
+        transcriptPath: agent.sessionFilePath,
+        // 转录头没写工作目录时的兜底用**会话起点**：`currentWorkdir` 会被会话里的
+        // `cd` 带跑偏，而导出的清单要回答「这个会话是在哪儿开的」。
+        workdir: agent.sessionWorkdir,
+        ...(model ? { model } : {}),
+        ...(params.appVersion ? { appVersion: params.appVersion } : {}),
+        ...(params.platform ? { platform: params.platform } : {}),
+      });
+    } catch (error) {
+      if (error instanceof TranscriptUnavailableError) {
+        throw new RpcError(
+          PROTOCOL_INTERNAL_ERROR,
+          describeTranscriptUnavailable(error),
+        );
+      }
+      throw error;
+    }
   }
 
   private async deleteSkill(

@@ -25,10 +25,10 @@ function idsForAllSurfaces(): string[] {
   return HOST_SLASH_COMMANDS.map((command) => command.id);
 }
 
-test("每个入口拿到的正是它那份表：桌面 18 / VS Code 18 / JB 17 / 远控页 9", () => {
+test("每个入口拿到的正是它那份表：桌面 19 / VS Code 18 / JB 17 / 远控页 9", () => {
   // 数字是**能力盘点**，不是排版偏好：改动这张表就要连带确认对应入口真的能执行
   // 新加的那条（见下面的对齐用例），否则就是把一条点了没反应的行塞给用户。
-  expect(idsFor("desktop")).toHaveLength(18);
+  expect(idsFor("desktop")).toHaveLength(19);
   expect(idsFor("vscode")).toHaveLength(18);
   expect(idsFor("jetbrains")).toHaveLength(17);
   // 9 条，但**前台 CLI 承接时会少一条**（`/resume`，宿主在回包前自己删）：
@@ -36,7 +36,7 @@ test("每个入口拿到的正是它那份表：桌面 18 / VS Code 18 / JB 17 /
   expect(idsFor("remote-page")).toHaveLength(9);
 });
 
-test("各入口的差异只有既有拍板的四条", () => {
+test("各 GUI 入口的差异只有拍板的这四条", () => {
   const desktop = idsFor("desktop");
   const vscode = idsFor("vscode");
   const jetbrains = idsFor("jetbrains");
@@ -58,9 +58,16 @@ test("各入口的差异只有既有拍板的四条", () => {
   expect(vscode).not.toContain("diff");
   expect(jetbrains).not.toContain("diff");
 
-  // 其余完全一致 —— 三个 GUI 入口之间不再有第五种差异：桌面端 = VS Code 去掉
-  // `/clear`、加上 `/diff`，JB = VS Code 去掉 `/config`。
-  expect(desktop.filter((id) => id !== "diff")).toEqual(
+  // `/export` 同理只给桌面端：它落的是一个 `tar.gz` 归档，要靠主进程的原生
+  // 「保存」对话框和 `shell.showItemInFolder`（commands/export-command.md）。
+  // 插件端能落盘的地方是编辑器工作区，远控页根本没有磁盘写入权限。
+  expect(desktop).toContain("export");
+  expect(vscode).not.toContain("export");
+  expect(jetbrains).not.toContain("export");
+
+  // 其余完全一致 —— 三个 GUI 入口之间不再有第六种差异：桌面端 = VS Code 去掉
+  // `/clear`、加上 `/diff` 与 `/export`，JB = VS Code 去掉 `/config`。
+  expect(desktop.filter((id) => id !== "diff" && id !== "export")).toEqual(
     vscode.filter((id) => id !== "clear"),
   );
   expect(jetbrains).toEqual(vscode.filter((id) => id !== "config"));

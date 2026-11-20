@@ -70,6 +70,10 @@ import {
   type ModToastPayload,
 } from "wave-agent-sdk/host";
 import { StdioClient } from "./stdio/stdioClient";
+import {
+  defaultSessionArchivePath,
+  writeSessionArchive,
+} from "./exportSessionArchive";
 import { primeLoginShellEnv } from "./loginShellEnv";
 import type { JsonRpcClient } from "./stdio/jsonRpcClient";
 import {
@@ -288,6 +292,11 @@ function formatGitError(error: unknown): string {
 export function isPathInside(child: string, parent: string): boolean {
   const rel = path.relative(parent, child);
   return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
+}
+
+/** 字节数换成 MB（一位小数）——只用于「原始转录 62.3 MB」这类提示文案。 */
+function megabytes(bytes: number): string {
+  return (bytes / (1024 * 1024)).toFixed(1);
 }
 
 /** Node fs errors read as "EACCES: permission denied, open '…'" — keep the
@@ -603,6 +612,8 @@ export class DesktopHost {
    * 扫描过程中一旦发现自己的 id 已不是最新的就直接放弃，别再读完整库。
    */
   private latestContentSearchId = "";
+  /** 正在导出的会话 id（`/export`）：同一会话再点一次直接拒，避免两个 `tar` 并发写同一个路径。 */
+  private exportingSessionIds = new Set<string>();
   private pendingConfirmations = new Map<string, PendingConfirmation>();
   /** Agents whose waiting-for-confirmation toast has been shown this wait cycle
    *  (spec「后台会话确认提醒」scenario 4): cleared once the agent has no pending
@@ -1168,13 +1179,19 @@ export class DesktopHost {
    * Window-global: the webview shows it on the root instance only, so it never
    * becomes a chat message and never flips the pane out of the new-session
    * picker state.
+   *
+   * A caller that keeps a toast **up to date** passes a stable `id`: the webview
+   * replaces a toast with the same id in place, which is how a long operation
+   * ("正在导出…") turns into its result without stacking two rows.
    */
-  private showToast(toast: Omit<UpdateToast, "id">): void {
+  private showToast(toast: Omit<UpdateToast, "id"> & { id?: string }): void {
     this.postMessage({
       command: "showToast",
       toast: {
-        id: `toast-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         ...toast,
+        id:
+          toast.id ??
+          `toast-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       },
     });
   }
@@ -5376,6 +5393,97 @@ export class DesktopHost {
   }
 
   /**
+   * `/export` 的桌面端实现（spec commands/export-command.md「桌面端」）。
+   *
+   * 五步：取会话 → 原生保存对话框 → 让拥有转录的子进程读并渲染 → 主进程暂存打包
+   * → 在文件管理器里揭示 + toast。第三步是这套方案的关键结构约束：远端 / WSL
+   * 会话的转录在那台机器的 `~/.wave/projects/…` 里，主进程**读不到**，所以内容
+   * 一律经 RPC 取回，主进程只落盘。
+   *
+   * 同一会话连点两次直接拒：第二次会拿到同一个按钮、同一个默认路径，真跑起来就是
+   * 两个 `tar` 并发写同一个文件。
+   */
+  private async handleExportSessionTranscript(paneId?: string): Promise<void> {
+    const pid = paneId ?? this.focusedPaneId;
+    const agent = this.agentForPane(pid);
+    const sessionId = agent?.sessionId;
+    if (!agent || !sessionId) {
+      this.showToast({ message: "没有可导出的会话", type: "error" });
+      return;
+    }
+    if (this.exportingSessionIds.has(sessionId)) {
+      this.showToast({ message: "这个会话正在导出，请稍候", type: "info" });
+      return;
+    }
+
+    const now = new Date();
+    const title = this.sessionTitleOf(sessionId) ?? "会话";
+    const picked = await dialog.showSaveDialog({
+      title: `导出会话「${title}」`,
+      defaultPath: defaultSessionArchivePath(now, sessionId),
+      filters: [{ name: "会话归档", extensions: ["tar.gz"] }],
+      properties: ["createDirectory", "showOverwriteConfirmation"],
+    });
+    // 用户取消：什么都不留（不弹 toast —— 他自己摁的取消）。
+    if (picked.canceled || !picked.filePath) return;
+    const target = picked.filePath;
+
+    this.exportingSessionIds.add(sessionId);
+    // 对话框之后还有「取回 + 打包」两段等待，大会话要好几秒。先挂一个带 spinner
+    // 的中间态，再用**同一个 id** 把它换成结果（webview 按 id 原地覆盖）。
+    const toastId = `session-export-${sessionId}`;
+    this.showToast({
+      id: toastId,
+      message: "正在导出会话…",
+      type: "info",
+      loading: true,
+    });
+    try {
+      const payload = await agent.exportTranscriptArchive({
+        appVersion: app.getVersion(),
+        platform: process.platform,
+      });
+      await writeSessionArchive(target, {
+        jsonl:
+          payload.jsonlBase64 === undefined
+            ? null
+            : Buffer.from(payload.jsonlBase64, "base64"),
+        markdown: payload.markdown,
+        manifestJson: payload.manifestJson,
+      });
+      shell.showItemInFolder(target);
+      this.showToast({
+        id: toastId,
+        type: "success",
+        message: payload.jsonlTooLarge
+          ? `已只导出可读版（原始转录 ${megabytes(payload.jsonlBytes)} MB，超过导出上限，归档里没有 transcript.jsonl）：${target}`
+          : `会话已导出：${target}`,
+      });
+    } catch (error) {
+      // 「转录已被清理」与「读不了」是两句不同的话，由 CLI 侧按 reason 换好
+      // （`missing` 那句会点名 `cleanupPeriodDays`）。这里原样展示，不自己拼一句
+      // 笼统的「导出失败」把它盖掉。
+      this.showToast({
+        id: toastId,
+        type: "error",
+        message: this.errorSummary(
+          error instanceof Error ? error.message : String(error),
+        ),
+      });
+    } finally {
+      this.exportingSessionIds.delete(sessionId);
+    }
+  }
+
+  /** 会话标题（侧栏的那一份）；没有就 undefined，调用方自己兜底。 */
+  private sessionTitleOf(sessionId: string): string | undefined {
+    const title = this.configStore
+      ?.getSessionIndex()
+      .find((entry) => entry.sessionId === sessionId)
+      ?.title?.trim();
+    return title || undefined;
+  }
+  /**
    * What deleting this session's worktree would destroy — the counts shown in
    * the sidebar's delete confirmation. Inspected on the entry's own host: a
    * remote worktree must be counted remotely (spec 「删除 worktree 会话前提示
@@ -5771,6 +5879,13 @@ export class DesktopHost {
             ? (msg.sessionIds as string[])
             : undefined,
         );
+        break;
+
+      // 导出会话转录（spec commands/export-command.md「桌面端」）：保存对话框 +
+      // 归档都在这里做，正文与原始字节由拥有转录的那个 `wave --stdio` 子进程
+      // 经 RPC 回给主进程 —— 远端会话的转录在远端盘上，主进程读不到。
+      case "desktopExportSessionTranscript":
+        await this.handleExportSessionTranscript(pid);
         break;
 
       case "desktopCreateWorktree":

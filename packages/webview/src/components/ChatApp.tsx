@@ -4035,6 +4035,17 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         tryOpenPanelRef.current("diff");
         return;
       }
+      // `/export` 只列给桌面端（见 `hostSlashCommands.ts`）：导出的是 `tar.gz`
+      // 归档，需要主进程的原生「保存」对话框和 `shell.showItemInFolder`
+      // （spec commands/export-command.md「桌面端」）。插件端与远控页手打不拦
+      // —— 按普通消息处理，与桌面端 `/clear` 同口径。
+      //
+      // 页面这边不发任何状态：读转录、渲染、打包、提示全在主进程，回包走
+      // `showToast`（窗口级，不需要 pane 归属）。
+      if (isDesktop && trimmedText === "/export") {
+        postToHost({ command: "desktopExportSessionTranscript" });
+        return;
+      }
       if (interceptHostLocalCommand && trimmedText === "/remote-control") {
         // 手机接管本机会话（远端控制面）：不再弹窗，而是唤起设置页并选中
         // 「远程控制」选项卡（2026-10-17 用户拍板，与 /agents → subagents、

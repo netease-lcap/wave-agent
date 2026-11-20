@@ -48,6 +48,12 @@ export type RequestMethod =
   // 会话消息大纲的索引：整份转录里每条带文本用户消息的 id 与文本首段（spec
   // ui/transcript-outline.md 场景 16）。只读快照，不触发模型请求、不动上下文。
   | "getTranscriptOutline"
+  // `/export` on the desktop: read this session's transcript **on the machine
+  // that owns it** (a remote/ssh/ WSL session's transcript is not on the
+  // desktop's disk) and answer with the readable version + manifest + the raw
+  // bytes. Session-scoped: the reply is built from the live agent's own
+  // transcript path.
+  | "exportTranscript"
   | "setPermissionMode"
   | "getPermissionMode"
   | "getPlanFile"

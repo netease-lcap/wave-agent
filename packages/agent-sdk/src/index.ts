@@ -2,6 +2,36 @@
 export * from "./core/session.js";
 export * from "./services/authService.js";
 export * from "./services/worktreeHooks.js";
+// `/export`：读整份转录 + 导出用的派生量（统计、默认文件名）。渲染成文字归
+// 宿主（CLI 用 Ink 组件渲染再剥 ANSI，与 Claude Code 同一条路）。
+export {
+  buildExportFilename,
+  countTranscriptStats,
+  describeTranscriptUnavailable,
+  ensureTxtExtension,
+  extractFirstPrompt,
+  formatExportTimestamp,
+  loadTranscriptForExport,
+  sanitizeFilename,
+  TranscriptUnavailableError,
+} from "./services/transcriptExport.js";
+export type {
+  TranscriptExport,
+  TranscriptExportStats,
+  TranscriptUnavailableReason,
+} from "./services/transcriptExport.js";
+export {
+  buildTranscriptManifest,
+  exportTranscriptArchive,
+  renderTranscriptMarkdown,
+  TRANSCRIPT_EXPORT_MAX_JSONL_BYTES,
+} from "./services/transcriptArchive.js";
+export type {
+  TranscriptArchiveOptions,
+  TranscriptManifest,
+  TranscriptManifestInput,
+  TranscriptMarkdownMeta,
+} from "./services/transcriptArchive.js";
 
 // Export constants
 export * from "./constants/telemetry.js";
