@@ -112,6 +112,10 @@ test.describe("Desktop background tasks pane geometry", () => {
     });
 
     const output = webviewPage.getByTestId("tasks-pane-output");
+    // 输出从宿主消息进来，落进 DOM 要等 React 下一次提交：先等尾部那一行真的
+    // 画出来再量，否则量到的是还没填内容的空盒子（36px 高、`scrollHeight` 与
+    // `clientHeight` 相等 ⇒「限高后能滚」这条断言假红）。
+    await expect(output).toContainText("first line 119");
     const outputBox = await output.evaluate((el) => {
       const style = getComputedStyle(el);
       return {
@@ -154,6 +158,15 @@ test.describe("Desktop background tasks pane geometry", () => {
       output.evaluate(
         (el) => el.scrollHeight - el.scrollTop - el.clientHeight < 2,
       );
+    // 先等尾部真的画出来再量。空盒子（或「加载中…」）不可滚动时「贴底」恒真、
+    // `scrollTop` 恒 0：断言会在换版之前就变绿，接着「上滚」那一下打在没内容的
+    // 盒子上就是空转 —— 自动跟随的标志位不会被翻成「不跟」，下一次输出又把
+    // 视口拽回底部（`Expected: 0 / Received: 216` 就是这么来的）。只渲染末尾
+    // `OUTPUT_TAIL_LINES` 行，所以锚最后一个 marker。
+    await expect(output).toContainText("first line 119");
+    await expect
+      .poll(() => output.evaluate((el) => el.scrollHeight > el.clientHeight))
+      .toBe(true);
     await expect.poll(atBottom).toBe(true);
 
     // 用户上滚阅读历史：刷新不能把阅读位置抢走。
@@ -171,6 +184,7 @@ test.describe("Desktop background tasks pane geometry", () => {
         type: "shell",
       },
     });
+    await expect(output).toContainText("second tail");
     await expect.poll(() => output.evaluate((el) => el.scrollTop)).toBe(0);
 
     // 回到底部后恢复自动跟随。
@@ -188,6 +202,7 @@ test.describe("Desktop background tasks pane geometry", () => {
         type: "shell",
       },
     });
+    await expect(output).toContainText("third tail line");
     await expect.poll(atBottom).toBe(true);
   });
 });

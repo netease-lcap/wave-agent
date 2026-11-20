@@ -15,6 +15,9 @@ export default defineConfig({
   workers: process.env.CI ? 1 : undefined,
   /* Reporter to use. See https://playwright.dev/docs/test-reporters */
   reporter: process.env.CI ? [["list"], ["html", { open: "never" }]] : "list",
+  /* 远控页产物（`remote/dist`）全局只建一次：两个远控页用例原先各自在
+     `beforeAll` 里现建，`workers > 1` 时会并发删/写同一份输出目录。 */
+  globalSetup: "./e2e/globalSetup.ts",
   /* Global test timeout - reduce from default 30s to 10s */
   timeout: 10 * 1000,
   /* Expect timeout - reduce from default 5s to 3s */
