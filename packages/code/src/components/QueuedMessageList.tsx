@@ -3,7 +3,7 @@ import { useChat } from "../contexts/useChat.js";
 import { Box, Text } from "ink";
 
 export const QueuedMessageList: React.FC = () => {
-  const { queuedMessages = [] } = useChat();
+  const { queuedMessages } = useChat();
 
   if (queuedMessages.length === 0) {
     return null;

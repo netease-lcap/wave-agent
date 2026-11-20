@@ -124,8 +124,14 @@ function writeUserSkill(name: string, root = ".wave"): string {
   return dir;
 }
 
-/** Skill names of one discovery type from a `skillMetadataResponse`. */
-function skillNames(message: { skills?: unknown }, type?: string): string[] {
+/**
+ * Skill names of one discovery type from a `skillMetadataResponse`.
+ *
+ * 入参按报文的通用形状（`HostMessage` = `Record<string, unknown>`）取，`skills`
+ * 仍是 `unknown` 再收窄 —— 只声明 `{ skills?: unknown }` 会让 `HostMessage`
+ * 因「没有共同属性」而传不进来。
+ */
+function skillNames(message: Record<string, unknown>, type?: string): string[] {
   return ((message.skills ?? []) as Array<{ name: string; type?: string }>)
     .filter((s) => type === undefined || s.type === type)
     .map((s) => s.name);

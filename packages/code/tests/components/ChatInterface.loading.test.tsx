@@ -27,6 +27,7 @@ describe("ChatInterface Loading State", () => {
   const mockChatContext = {
     sessionId: "test-session",
     messages: [],
+    queuedMessages: [],
     isLoading: false,
     isCommandRunning: false,
     userInputHistory: [],

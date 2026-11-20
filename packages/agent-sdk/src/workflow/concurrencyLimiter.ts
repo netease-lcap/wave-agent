@@ -29,7 +29,13 @@ export class ConcurrencyLimiter {
 
   track<T>(promise: Promise<T>): Promise<T> {
     this.activeSet.add(promise);
-    promise.finally(() => this.activeSet.delete(promise));
+    // Cleanup has to hang off a promise whose rejection is handled: `finally()`
+    // creates a derived promise that nobody would consume, so a rejecting
+    // tracked promise turned into an unhandled rejection.
+    promise.then(
+      () => this.activeSet.delete(promise),
+      () => this.activeSet.delete(promise),
+    );
     return promise;
   }
 

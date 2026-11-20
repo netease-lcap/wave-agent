@@ -53,9 +53,9 @@ export const MarketplaceDetail: React.FC = () => {
     if (pendingDecision === "select" && marketplace && !state.isLoading) {
       const action = actionsList[selectedActionIndex]?.id;
       if (action === "update") {
-        actions.updateMarketplace(marketplace.name);
+        void actions.updateMarketplace(marketplace.name);
       } else if (action === "remove") {
-        actions.removeMarketplace(marketplace.name);
+        void actions.removeMarketplace(marketplace.name);
       }
     } else if (pendingDecision === "cancel") {
       actions.setView("MARKETPLACES");

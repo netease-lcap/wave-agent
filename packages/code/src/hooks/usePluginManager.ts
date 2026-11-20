@@ -167,6 +167,11 @@ export function usePluginManager(options?: {
         if (cancelled) return;
         setCheckingForUpdates(false);
         await loadLists().catch(() => {});
+      })
+      .catch((error) => {
+        // 刷新失败按上面的约定静默，但这条链尾的失败（重读列表抛错）不能变成
+        // 未处理的 rejection。
+        console.error("Failed to reload plugin lists:", error);
       });
     return () => {
       cancelled = true;

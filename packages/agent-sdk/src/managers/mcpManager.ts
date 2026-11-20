@@ -727,7 +727,7 @@ export class McpManager {
   removeServer(name: string): boolean {
     // Disconnect if connected
     if (this.connections.has(name)) {
-      this.disconnectServer(name);
+      void this.disconnectServer(name);
     }
 
     const removed = this.servers.delete(name);
@@ -1049,7 +1049,7 @@ export class McpManager {
             error: error.message,
           });
           // Poll to detect when the SDK's auto-reconnect succeeds
-          this.pollReconnectRecovery(name, connectedClient);
+          void this.pollReconnectRecovery(name, connectedClient);
         } else {
           logger?.error(`MCP Server ${name} transport error:`, error);
           this.updateServerStatus(name, {

@@ -39,10 +39,10 @@ export const McpManager: React.FC<McpManagerProps> = ({
         onCancel();
         break;
       case "CONNECT_SERVER":
-        onConnectServer(effect.serverName);
+        void onConnectServer(effect.serverName);
         break;
       case "DISCONNECT_SERVER":
-        onDisconnectServer(effect.serverName);
+        void onDisconnectServer(effect.serverName);
         break;
     }
   }, [state.pendingEffect, onCancel, onConnectServer, onDisconnectServer]);

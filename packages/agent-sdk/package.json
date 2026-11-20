@@ -55,7 +55,7 @@
     "test:unit": "vitest run --exclude 'tests/integration/**' --exclude '**/*.integration.test.ts'",
     "test:unit:coverage": "vitest run --coverage --exclude 'tests/integration/**' --exclude '**/*.integration.test.ts'",
     "test:integration": "vitest run tests/integration .integration.test",
-    "lint": "oxlint",
+    "lint": "oxlint --type-aware",
     "format": "prettier --write .",
     "prepublishOnly": "pnpm run build"
   },

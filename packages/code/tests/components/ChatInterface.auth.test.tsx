@@ -60,6 +60,7 @@ describe("ChatInterface login hint", () => {
     reportModPaneView: vi.fn(),
     sessionId: "test-session",
     messages: [],
+    queuedMessages: [],
     isLoading: false,
     isCommandRunning: false,
     userInputHistory: [],

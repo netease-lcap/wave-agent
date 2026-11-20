@@ -1150,7 +1150,7 @@ export class SubagentManager {
             this.releaseInstance(instance.subagentId);
           }
         })();
-        this.asyncWorkRegistry?.track(backgroundPromise);
+        void this.asyncWorkRegistry?.track(backgroundPromise);
 
         return taskId;
       }
