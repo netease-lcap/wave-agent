@@ -1,5 +1,6 @@
 import "@testing-library/jest-dom/vitest";
-import { beforeEach, vi } from "vitest";
+import { userEvent } from "vitest/browser";
+import { beforeAll, beforeEach, vi } from "vitest";
 import { createCodeEditor } from "../src/components/fileEditor/createCodeEditor";
 import { createReadOnlyCodeView } from "../src/components/fileEditor/createReadOnlyCodeView";
 
@@ -50,6 +51,20 @@ beforeEach(() => {
   } catch {
     // 沙箱 iframe（opaque origin）里 storage 一读就抛，那里本来也没有状态要清。
   }
+});
+
+// 真指针位置同样是**跨文件保留**的全局状态：provider 的 mouse 跟着 page 走，
+// 而 page 在 worker 槽位里复用（`userEvent.pointer` 文档原话：target 与 coords
+// 都不给时「uses the last known pointer position」）。上一个文件把指针停在消息
+// 或按钮上，本文件开头第一条断言里的 `:hover` 就是命中的 —— CI 上
+// `messageActionGeometry.test.tsx:111` 的「未悬停时按钮不可见」就这么红过
+// （expected actionsDisplay none / visible false，received flex / true）。
+//
+// 移到视口左上角：那里没有可 hover 的元素。放 `beforeAll`（每文件一次）而不是
+// `beforeEach`：每个用例一次 CDP 往返，2731 个用例要白吃十几秒，而残留只发生在
+// 文件边界 —— 文件内部的悬停由用例自己负责复位。
+beforeAll(async () => {
+  await userEvent.pointer({ coords: { x: 0, y: 0 } });
 });
 
 // A few specs still write `globalThis.global` (node spelling). There is no
