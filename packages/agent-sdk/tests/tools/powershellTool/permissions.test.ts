@@ -68,9 +68,12 @@ function request(
   command: string,
   overrides: Partial<Parameters<typeof evaluatePowerShellCommand>[0]> = {},
 ) {
+  const workdir = overrides.workdir ?? WORKDIR;
   return {
     command,
-    workdir: WORKDIR,
+    workdir,
+    // The session works in its workdir, so its removal guard protects it.
+    safeZoneRoots: [workdir],
     allowedRules: [],
     deniedRules: [],
     isInsideSafeZone: insideSafeZone,
@@ -99,9 +102,11 @@ describe("evaluatePowerShellCommand", () => {
   });
 
   it("should deny by rule against the canonical name", async () => {
-    mockParse(parseOk(statement(leaf("rm", ["-Recurse", "."]))));
+    mockParse(parseOk(statement(leaf("rm", ["-Recurse", "temp/out"]))));
     const result = await evaluatePowerShellCommand(
-      request("rm -Recurse .", { deniedRules: ["PowerShell(Remove-Item*)"] }),
+      request("rm -Recurse temp/out", {
+        deniedRules: ["PowerShell(Remove-Item*)"],
+      }),
     );
 
     expect(result.decision).toBe("deny");
@@ -276,6 +281,49 @@ describe("evaluatePowerShellCommand", () => {
       decision: "deny",
       reason: "dangerous-path",
       hidePersistentOption: true,
+    });
+  });
+
+  it("should deny a recursive delete of the directory the session works in", async () => {
+    mockParse(parseOk(statement(leaf("Remove-Item", [".", "-Recurse"]))));
+    const result = await evaluatePowerShellCommand(
+      request("Remove-Item . -Recurse"),
+    );
+
+    expect(result).toMatchObject({
+      decision: "deny",
+      reason: "dangerous-path",
+      hidePersistentOption: true,
+    });
+    // The message names what was resolved, not the model's spelling.
+    expect(result.message).toContain(WORKDIR);
+    expect(result.message).toContain("working directory");
+  });
+
+  it("should deny a recursive delete of an ancestor of the working directory", async () => {
+    mockParse(parseOk(statement(leaf("rm", ["-Recurse", "-Force", ".."]))));
+    const result = await evaluatePowerShellCommand(
+      request("rm -Recurse -Force .."),
+    );
+
+    expect(result).toMatchObject({
+      decision: "deny",
+      reason: "dangerous-path",
+    });
+    expect(result.message).toContain("/work");
+  });
+
+  it("should deny a recursive delete of an additional directory", async () => {
+    mockParse(parseOk(statement(leaf("Remove-Item", ["/shared", "-Recurse"]))));
+    const result = await evaluatePowerShellCommand(
+      request("Remove-Item /shared -Recurse", {
+        safeZoneRoots: [WORKDIR, "/shared"],
+      }),
+    );
+
+    expect(result).toMatchObject({
+      decision: "deny",
+      reason: "dangerous-path",
     });
   });
 

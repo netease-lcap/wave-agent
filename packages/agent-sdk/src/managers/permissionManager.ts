@@ -54,6 +54,10 @@ import {
 } from "../utils/bashParser.js";
 import type { BashLeaf } from "../utils/bashStructure/index.js";
 import { analyzeShellCommand } from "../utils/shell/shellCommandAnalysis.js";
+import {
+  describeDangerousRemoval,
+  findDangerousRemoval,
+} from "../utils/shell/dangerousRemoval.js";
 import { evaluatePowerShellCommand } from "../tools/powershellTool/permissions.js";
 import {
   collectCommands,
@@ -679,6 +683,25 @@ export class PermissionManager {
   }
 
   /**
+   * The directories that make up the Safe Zone, as paths rather than as a
+   * predicate. Needed by the removal guard, which asks the reverse question —
+   * "does this target *contain* one of them" — and cannot invert
+   * {@link isInsideSafeZone} to get it.
+   *
+   * Same effective workdir rule as `isInsideSafeZone`: the session's current
+   * workdir wins over the one the tool call carries.
+   */
+  public getSafeZoneRoots(workdir?: string): string[] {
+    const roots = [
+      this.workdir || workdir,
+      ...this.additionalDirectories,
+      ...this.instanceAdditionalDirectories,
+      ...this.systemAdditionalDirectories,
+    ].filter((root): root is string => typeof root === "string" && !!root);
+    return [...new Set(roots.map((root) => path.resolve(toWindowsPath(root))))];
+  }
+
+  /**
    * Check if a path is inside the Safe Zone (workdir + additionalDirectories)
    */
   private isInsideSafeZone(
@@ -964,7 +987,16 @@ export class PermissionManager {
       return {
         decision: {
           behavior: "deny",
-          message: `Tool '${context.toolName}' requires permission approval. No permission callback configured.`,
+          message: [
+            `Tool '${context.toolName}' requires permission approval. No permission callback configured.`,
+            // The card's warning is the only explanation the model would have
+            // seen; keep it when the answer has to be no, otherwise "denied"
+            // with no reason reads as a transient glitch and invites another
+            // attempt through a different tool.
+            context.warning,
+          ]
+            .filter(Boolean)
+            .join(" "),
         },
         source: "unknown",
         denyReason: "no_permission_prompt",
@@ -1133,6 +1165,17 @@ export class PermissionManager {
       context.toolInput?.sandboxed === true &&
       this.isSandboxAutoAllowEnabled();
 
+    // 1.4 Built-in hard stop on deleting the directory the session works in.
+    // Same band as `permissions.ask` and for the same reason: it sits after the
+    // deny tiers and before every automatic allow, so an allow rule, the sandbox
+    // shortcut, `acceptEdits` and `bypassPermissions` cannot approve it — which
+    // is exactly the property Claude Code gives its dangerous-removal check
+    // (`classifierApprovable: false`; see `docs/specs/core/tool-permission-system.md`
+    // 「删除自身工作目录的内建硬闸」). The judgment itself is
+    // {@link findDangerousRemoval}: pure path arithmetic, no notion of a repo.
+    const dangerousRemoval = this.dangerousRemovalVerdict(context);
+    if (dangerousRemoval) return dangerousRemoval;
+
     // 1.5 `permissions.ask`: the user asked to be the one deciding this call, so
     // it runs after the deny tiers and before every automatic allow — `allow`
     // rules, the sandbox shortcut below, `bypassPermissions`, `acceptEdits`, and
@@ -1151,7 +1194,6 @@ export class PermissionManager {
       context.hidePersistentOption = true;
       return askedByRule.verdict;
     }
-
     // Sandboxed Bash skips the prompt: the OS boundary is the control, so the
     // person no longer has to be the control. Two conditions keep this honest —
     // the Bash tool reports `sandboxed: true` only after the runtime actually
@@ -1249,6 +1291,9 @@ export class PermissionManager {
       const verdict = await evaluatePowerShellCommand({
         command: String(context.toolInput.command),
         workdir: context.toolInput?.workdir as string | undefined,
+        safeZoneRoots: this.getSafeZoneRoots(
+          context.toolInput?.workdir as string | undefined,
+        ),
         allowedRules: [
           ...this.instanceAllowedRules,
           ...this.temporaryRules,
@@ -1379,6 +1424,64 @@ export class PermissionManager {
       return denied;
     }
     return this.askVerdict(context)?.verdict ?? null;
+  }
+
+  /**
+   * The built-in refusal to remove the session's own working directory. Bash
+   * only: PowerShell's channel answers the same question in its own hard-deny
+   * band (`evaluatePowerShellCommand`), where rules already do not reach.
+   *
+   * `dontAsk` denies instead of asking — a mode whose whole promise is "do not
+   * ask me" cannot answer a card, and Claude Code draws the same line. Every
+   * other mode asks, including `bypassPermissions`: Claude Code's check is not
+   * waivable by bypass either, and Wave's "no callback configured" path already
+   * turns that `ask` into a deny for headless callers (`wave -p`, SDK hosts
+   * without `canUseTool`).
+   */
+  private dangerousRemovalVerdict(
+    context: ToolPermissionContext,
+  ): HostVerdict | null {
+    if (!this.isBashShellContext(context)) return null;
+    const command = context.toolInput?.command;
+    if (typeof command !== "string" || !command.trim()) return null;
+
+    const workdir = this.getSafeZoneRoots(
+      context.toolInput?.workdir as string | undefined,
+    )[0];
+    if (!workdir) return null;
+
+    const hit = findDangerousRemoval({
+      command,
+      workdir,
+      protectedRoots: this.getSafeZoneRoots(
+        context.toolInput?.workdir as string | undefined,
+      ),
+    });
+    if (!hit) return null;
+
+    const message = describeDangerousRemoval(hit);
+    logger?.warn("Refusing to remove the session's working directory", {
+      toolName: context.toolName,
+      rule: hit.rule,
+      target: hit.target,
+      resolved: hit.resolved,
+    });
+
+    if (context.permissionMode === "dontAsk") {
+      return {
+        decision: "deny",
+        message,
+        reason: "dangerous-removal",
+        source: "config",
+        denyReason: "denied_by_mode",
+      };
+    }
+
+    // The card cannot offer "don't ask again": the person is answering for this
+    // one command, not for a rule that would approve the next one too.
+    context.hidePersistentOption = true;
+    context.warning = message;
+    return { decision: "ask", reason: "dangerous-removal", source: "config" };
   }
 
   /**
