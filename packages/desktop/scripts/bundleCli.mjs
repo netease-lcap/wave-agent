@@ -2,9 +2,9 @@
 /**
  * bundleCli — copy the wave CLI into resources/wave-cli/ so the desktop app
  * can run local sessions with its bundled Node runtime — no system Node.js/npm
- * required. Ships the version-probe shim (bin/wave-code.js), the self-
- * contained CLI bundle (dist/bundle/wave.mjs) and the package.json the shim
- * reads for `wave -v`. The grep tool's rg binary is NOT bundled — the CLI
+ * required. Ships the version-probe shim (bin/wave-code.js), the CLI's whole
+ * dist/ (the self-contained bundle) and the package.json the shim reads for
+ * `wave -v`. The grep tool's rg binary is NOT bundled — the CLI
  * installs it itself on startup into the shared ~/.wave/cli/node_modules
  * (no npm needed). electron-builder ships the directory as an extraResource
  * (package.json build.extraResources).
@@ -31,10 +31,14 @@ for (const f of [sourceBundle, sourceShim, sourcePackageJson]) {
 }
 
 fs.rmSync(outDir, { recursive: true, force: true });
-fs.mkdirSync(path.join(outDir, "dist", "bundle"), { recursive: true });
 fs.mkdirSync(path.join(outDir, "bin"), { recursive: true });
 
 fs.copyFileSync(sourceShim, path.join(outDir, "bin", "wave-code.js"));
 fs.copyFileSync(sourcePackageJson, path.join(outDir, "package.json"));
-fs.copyFileSync(sourceBundle, path.join(outDir, "dist", "bundle", "wave.mjs"));
+// Take the whole `dist/` rather than listing files: anything the CLI build
+// emits belongs to the host, and a file-by-file list silently misses whatever a
+// later build adds.
+fs.cpSync(path.join(codeRoot, "dist"), path.join(outDir, "dist"), {
+  recursive: true,
+});
 console.log(`[bundleCli] wave CLI bundled → ${outDir}`);
