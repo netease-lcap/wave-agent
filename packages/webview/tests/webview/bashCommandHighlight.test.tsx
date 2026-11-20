@@ -1,10 +1,13 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, afterEach } from "vitest";
 import { render } from "@testing-library/react";
 import React from "react";
 import { Message } from "../../src/components/Message";
 import { createMockVscode } from "./test-utils";
 import { BASH_TOOL_NAME, POWERSHELL_TOOL_NAME } from "wave-agent-sdk/constants";
 import type { Message as MessageType } from "../../src/types";
+// 桌面层那条断言的意义就在「host-desktop.css 的覆写没有把调色板改掉」，
+// 所以这份样式必须真的进来（它所有选择器都带 `[data-host="desktop"]`）。
+import "../../src/styles/host-desktop.css";
 
 // Bash 工具命令行的语法高亮（specs/ui/message-rendering-system.md「Bash 工具
 // 命令行的语法高亮」）：AI 调用的 Bash 工具与 bash 模式共用 `renderBashIO`，
@@ -146,5 +149,69 @@ describe("PowerShell tool blocks render as shell blocks", () => {
 
     expect(input?.querySelector("img")).toBeNull();
     expect(input?.textContent).toBe(command);
+  });
+});
+
+/**
+ * 调色板真的落到屏幕上了（原 `e2e/bash-command-highlight.e2e.ts`）。
+ *
+ * 上面那些用例只证明「DOM 里生成了 token 元素」——token 有了但调色板没加载、
+ * 或被 `.bash-command` 的基色压过，屏幕上仍是单色命令，它们一路绿。这里量的是
+ * 浏览器算出来的颜色（本套件就跑在真 Chromium 里）。
+ */
+const BUILT_IN_RGB = "rgb(78, 201, 176)"; // #4ec9b0
+const VARIABLE_RGB = "rgb(156, 220, 254)"; // #9cdcfe
+const PROBE_COMMAND = "cd /tmp && echo $HOME";
+
+function renderCommandColors() {
+  const { container } = renderBashCommand(PROBE_COMMAND, { result: "done\n" });
+  const colorOf = (selector: string) => {
+    const el = container.querySelector(selector) as HTMLElement | null;
+    return el ? getComputedStyle(el).color : null;
+  };
+  const command = container.querySelector(".bash-command") as HTMLElement;
+  return {
+    commandText: command?.textContent ?? null,
+    commandBase: colorOf(".bash-command"),
+    builtIn: colorOf(".bash-command .hljs-built_in"),
+    variable: colorOf(".bash-command .hljs-variable"),
+    anchors: command?.querySelectorAll("a").length ?? 0,
+  };
+}
+
+describe("bash command highlight — computed colors", () => {
+  afterEach(() => {
+    delete document.documentElement.dataset.host;
+    document.documentElement.removeAttribute("data-theme");
+  });
+
+  it("插件端：命令行按 shell 语法着色，且不链接化", () => {
+    // 没有宿主标记就是插件端（editor 档）；桌面档的覆盖由下一条钉住
+    expect(document.documentElement.dataset.host).toBeUndefined();
+
+    const colors = renderCommandColors();
+
+    // 命令原文逐字节不变
+    expect(colors.commandText).toBe(PROBE_COMMAND);
+    expect(colors.builtIn, "built_in 没有着色（调色板没加载？）").toBe(
+      BUILT_IN_RGB,
+    );
+    expect(colors.variable, "变量没有着色").toBe(VARIABLE_RGB);
+    // 反面证据：token 的颜色必须与命令基色不同，否则「有 span 但看着仍是单色」
+    expect(colors.builtIn).not.toBe(colors.commandBase);
+    // 命令行刻意不链接化（spec 场景 5）
+    expect(colors.anchors).toBe(0);
+  });
+
+  it("桌面端：同一份调色板照常生效", () => {
+    document.documentElement.dataset.host = "desktop";
+    document.documentElement.setAttribute("data-theme", "dark");
+
+    const colors = renderCommandColors();
+
+    // 配色不按宿主分叉，这里只钉住「桌面层没有把它覆盖掉」。
+    expect(document.documentElement.dataset.host).toBe("desktop");
+    expect(colors.builtIn).toBe(BUILT_IN_RGB);
+    expect(colors.variable).toBe(VARIABLE_RGB);
   });
 });

@@ -9,6 +9,7 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
+import { page } from "vitest/browser";
 import {
   renderChatApp,
   screen,
@@ -260,5 +261,51 @@ describe("transcript find", () => {
 
     expect(screen.queryByTestId("transcript-find")).not.toBeInTheDocument();
     pane.remove();
+  });
+
+  /**
+   * 浮层的**盒模型**（spec ui/transcript-find.md 场景 1：浮层贴在内容区右上角、
+   * 不挤压消息列表）。迁移自 `e2e/transcript-find.e2e.ts`。
+   *
+   * 浮层住处是一个 `height: 0` 的 sticky 槽位（零占位），浮层本体是它的 flex
+   * 子项——交叉轴上只要退回默认的 `stretch`，本体就被压成 0 高、只剩 padding 与
+   * 描边，输入框和按钮从胶囊上下沿溢出来（2026-11-09 设计师反馈的那一版）。
+   */
+  it("浮层本体包住输入框与按钮，槽位仍然零占位", async () => {
+    await page.viewport(1200, 780);
+    await renderWith([
+      userMsg("连接池老是耗尽，帮我看看", "m1"),
+      assistantMsg("检查发现连接池耗尽，另有一处连接池上限设得太小。", "m2"),
+    ]);
+
+    await openFind();
+    typeQuery("连接池");
+    await waitFor(() =>
+      expect(screen.getByTestId("transcript-find-count")).toHaveTextContent(
+        "1/3",
+      ),
+    );
+
+    const rect = (selector: string) => {
+      const el = document.querySelector(selector) as HTMLElement | null;
+      if (!el) return null;
+      const box = el.getBoundingClientRect();
+      return { top: box.top, bottom: box.bottom, height: box.height };
+    };
+    const geo = {
+      slot: rect(".transcript-find-slot"),
+      bar: rect(".transcript-find"),
+      input: rect(".transcript-find-input"),
+      close: rect('[data-testid="transcript-find-close"]'),
+    };
+
+    expect(geo.slot?.height).toBe(0);
+    // 胶囊把两个最高的子项（输入框、关闭按钮）完整包住。
+    for (const child of [geo.input, geo.close]) {
+      expect(child).not.toBeNull();
+      expect(geo.bar!.top).toBeLessThanOrEqual(child!.top);
+      expect(geo.bar!.bottom).toBeGreaterThanOrEqual(child!.bottom);
+    }
+    expect(geo.bar!.height).toBeGreaterThan(geo.input!.height);
   });
 });

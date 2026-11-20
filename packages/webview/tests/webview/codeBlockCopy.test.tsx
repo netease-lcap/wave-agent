@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import { render, fireEvent, waitFor } from "@testing-library/react";
+import { userEvent } from "vitest/browser";
 import React from "react";
 import { Message, CODE_COPY_FEEDBACK_MS } from "../../src/components/Message";
 import { createMockVscode } from "./test-utils";
@@ -10,6 +11,10 @@ import { MockDataGenerator } from "../fixtures/mockData";
 // 成功给对勾反馈、失败不给、空块不给入口。
 // DOMPurify 必须是真的：白名单没放行 <button> 时按钮会被静默剥掉，只有真净化
 // 能测出这件事。
+//
+// 最后那个 describe 是排版层的三条（平时看不见、悬停淡入、浮在右上角且不压住
+// 首行、横向滚动时不跟着走）——它们要真实排版与真实 :hover，`userEvent` 走 CDP
+// 真鼠标事件，`:hover` 与 `opacity` 的过渡就是浏览器自己算的。
 
 vi.mock("mermaid", () => ({
   default: {
@@ -148,5 +153,93 @@ describe("fenced code block copy button", () => {
     const { container } = render(<Message message={message} vscode={vscode} />);
     expect(container.querySelector(".md-code-block")).toBeNull();
     expect(copyButton(container)).toBeNull();
+  });
+});
+
+/**
+ * 排版层那三条（原 `e2e/code-block-copy.e2e.ts`）。
+ *
+ * 「按钮平时看不见、悬停才淡入」「浮在右上角且不压住首行」「横向滚动时不跟着走」
+ * 都要真实排版与真实 `:hover` —— 而本套件跑在真 Chromium 里，`userEvent` 走 CDP
+ * 发真鼠标事件，所以不需要单独的 Playwright 工程。
+ */
+
+/** 带一条 160 字符长行的代码：横向滚动那条靠它把 `pre` 撑出滚动条。 */
+const LONG_CODE = [
+  'const answer: string = "你好";',
+  `const veryLongLine = "${"x".repeat(160)}";`,
+  "console.log(answer);",
+].join("\n");
+
+function renderLongCode() {
+  const container = renderAssistant(
+    `看这段：\n\n\`\`\`ts\n${LONG_CODE}\n\`\`\``,
+  );
+  return {
+    block: container.querySelector(".md-code-block") as HTMLElement,
+    pre: container.querySelector(".markdown-content pre") as HTMLElement,
+    button: copyButton(container)!,
+  };
+}
+
+describe("fenced code block copy button — layout", () => {
+  it("stays hidden until the block is hovered", async () => {
+    const { block, button } = renderLongCode();
+
+    // 场景 3：鼠标不在代码块上时看不见（不占位：绝对定位，不影响代码块几何）
+    expect(getComputedStyle(button).opacity).toBe("0");
+
+    await userEvent.hover(block);
+    await vi.waitFor(() => expect(getComputedStyle(button).opacity).toBe("1"));
+  });
+
+  it("floats in the top-right corner without covering the first line", async () => {
+    const { block, pre, button } = renderLongCode();
+    await userEvent.hover(block);
+
+    const preBox = pre.getBoundingClientRect();
+    const buttonBox = button.getBoundingClientRect();
+    const gapTop = buttonBox.top - preBox.top;
+    const gapRight = preBox.right - buttonBox.right;
+    const paddingRight = Number.parseFloat(getComputedStyle(pre).paddingRight);
+
+    // 场景 1：贴在代码块右上角（几像素的内缩），在 pre 的盒子之内
+    expect(gapTop).toBeGreaterThanOrEqual(0);
+    expect(gapTop).toBeLessThan(12);
+    expect(gapRight).toBeGreaterThanOrEqual(0);
+    expect(gapRight).toBeLessThan(12);
+    // 场景 2：首行为按钮让出了内边距，宽代码不会跑到按钮底下
+    expect(paddingRight).toBeGreaterThanOrEqual(buttonBox.width + 8);
+  });
+
+  it("does not move when the code scrolls horizontally", async () => {
+    const { block, pre, button } = renderLongCode();
+    await userEvent.hover(block);
+    const before = button.getBoundingClientRect();
+
+    pre.scrollLeft = pre.scrollWidth;
+
+    // 先证明真的滚了：否则下面两条断言在任何实现下都成立。
+    expect(pre.scrollLeft).toBeGreaterThan(0);
+    const after = button.getBoundingClientRect();
+    expect(after.x).toBeCloseTo(before.x, 0);
+    expect(after.y).toBeCloseTo(before.y, 0);
+  });
+
+  it("copies this block's source and shows a check", async () => {
+    const { block, button } = renderLongCode();
+    await userEvent.hover(block);
+    await userEvent.click(button);
+
+    // 场景 4：代码原文（去掉围栏与末尾换行），缩进/长行原样保留
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(LONG_CODE));
+
+    // 场景 5：图标转对勾、可访问名换成「已复制」
+    await vi.waitFor(() =>
+      expect(button.getAttribute("aria-label")).toBe("已复制"),
+    );
+    expect(button.querySelector(".codicon")?.classList).toContain(
+      "codicon-check",
+    );
   });
 });
