@@ -4932,7 +4932,11 @@ export class DesktopHost {
       .getSessionIndex()
       .find((e) => e.sessionId === sessionId);
     if (!entry) {
-      this.showToast({ message: "找不到该会话", type: "error" });
+      // 不在索引里 = 还没产生过任何消息的「新对话」（首条消息到达时才登记，见
+      // ensureSessionRegistered）。这种会话没有转录要搬，但它是分屏里真实存在
+      // 的一场会话：最近目录被删掉之后新开的那一场就长这样，恢复提示的「选择
+      // 文件夹」必须能把它救出来，而不是报「找不到该会话」（用户上报的现象）。
+      await this.relocateBlankSession(sessionId, workdir);
       return;
     }
     const host = entry.host;
@@ -5088,6 +5092,104 @@ export class DesktopHost {
       message: `会话已移到 ${newDir}，已复制 ${result.copiedFiles} 个文件`,
       type: "success",
     });
+  }
+
+  /**
+   * 空白「新对话」的换目录（`handleRelocateSession` 开头那条分支）：它不在会话
+   * 索引里（首条消息才登记）、磁盘上也没有转录，所以没有东西要搬——要做的只是把
+   * 分屏里这场空会话按新目录重新开一个。
+   *
+   * 为什么会走到这儿：新对话的目录取自最近目录（这一侧不探测存在性，CLI 也不校验
+   * workdir），目录被删掉之后分屏就成了「空白会话 + 目录缺失」，输入框被恢复提示
+   * 顶掉。这条分支就是那个提示里「选择文件夹」的落点（spec desktop-sessions.md
+   * 「会话目录缺失后的恢复（换文件夹继续）」场景 3/4 对空白会话的等价物）。
+   *
+   * 判据是分屏里挂着的那个 agent，不是索引：空白会话只以这个形态存在。查不到它、
+   * 或者它其实已经有内容（正常流程不会出现：首条消息到达时就登记了）就保持原来那句
+   * 错误提示，不去猜。
+   */
+  private async relocateBlankSession(
+    sessionId: string,
+    workdir?: string,
+  ): Promise<void> {
+    const live = this.panes.find(
+      (p) => p.agent?.sessionId === sessionId,
+    )?.agent;
+    if (!live) {
+      this.showToast({ message: "找不到该会话", type: "error" });
+      return;
+    }
+    // 搬迁要拆掉这个 agent，正在生成的那一轮会被静默扔掉 —— 与索引那条路同一口径。
+    if (live.isStreaming) {
+      this.showToast({
+        message: "该会话仍在运行中，请等这一轮结束后再换目录",
+        type: "error",
+      });
+      return;
+    }
+    // 有内容却没登记的会话正常流程不会出现（首条消息到达时就登记了）——不猜。
+    if (this.hasMessageContent(live)) {
+      this.showToast({ message: "找不到该会话", type: "error" });
+      return;
+    }
+    const host = this.hostForAgent(live);
+    if (host !== LOCAL_HOST) {
+      this.showToast({ message: "远端会话暂不支持更换目录", type: "error" });
+      return;
+    }
+    const fromDir = this.sessionRootOf(live);
+    // 下面这段与 handleRelocateSession 里取目标目录那几步一致（宿主自己弹对话框、
+    // 校验目录、同目录当作无事发生）；空白会话没有转录要搬，所以只走到这里。
+    let newDir = workdir;
+    if (!newDir) {
+      if (!this.mainWindow) return;
+      const picked = await dialog.showOpenDialog(this.mainWindow, {
+        title: "选择新的工作目录",
+        properties: ["openDirectory", "createDirectory"],
+      });
+      if (picked.canceled || !picked.filePaths[0]) return;
+      newDir = picked.filePaths[0];
+    }
+    let isDirectory = false;
+    try {
+      isDirectory = (await fs.promises.stat(newDir)).isDirectory();
+    } catch {
+      isDirectory = false;
+    }
+    if (!isDirectory) {
+      this.showToast({
+        message: `目标文件夹不存在：${newDir}`,
+        type: "error",
+      });
+      return;
+    }
+    if (fromDir && path.resolve(newDir) === path.resolve(fromDir)) return;
+    const paneId = this.panes.find((p) => p.agent === live)?.paneId;
+    if (!paneId) return;
+
+    let agent: StdioAgent;
+    try {
+      agent = await this.spawnAgent({ host, workdir: newDir });
+    } catch (error) {
+      // 旧 agent 没动过：会话仍是那条可进入的缺目录会话（恢复提示还在，可重试）。
+      this.showToast({
+        message: `更换目录失败：${error instanceof Error ? error.message : String(error)}`,
+        type: "error",
+      });
+      return;
+    }
+    // spawn 期间用户可能切走 / 分屏被关：丢掉刚拉起的 agent，别抢别人的分屏
+    // （与 handleNewSession 同一条收尾）。旧 agent 由 bindAgentToPane 按「空白
+    // agent」规则丢弃。
+    if (this.panes.find((p) => p.paneId === paneId)?.agent !== live) {
+      await this.discardAgent(agent);
+      return;
+    }
+    // 用户为这场会话刚挑了这个目录：记进「最近目录」，下一次点「新对话」就落在这儿
+    // （与 activateWorkdir 同口径；上面的失败路径一律不写）。
+    this.configStore.addRecentWorkdir({ host, path: newDir });
+    void this.rememberWorkdirOnHost(host, newDir);
+    await this.activateAgentInPane(paneId, agent);
   }
 
   /**
@@ -8072,6 +8174,24 @@ export class DesktopHost {
   }
 
   /**
+   * 新对话要落在的目录：最近目录里**第一个还在的**那一份。
+   *
+   * 目录被删掉（或外接盘拔掉）之后 `recents[0]` 仍留在列表里，而 CLI 不校验
+   * workdir —— 照旧 spawn 会把分屏变成「空白会话 + 目录缺失」，输入框被恢复提示
+   * 顶掉（用户上报的「文件夹被删后，点击新建会有问题」）。这里跳过不存在的那些，
+   * 让新对话落在下一个可用的最近目录上；一个都不在就退到「请选择工作目录」的空白
+   * 态（spec 场景 10），那份记录也不删 —— 目录可能只是暂时不可见。
+   *
+   * 远端主机不探测：列表是缓存，探一次要过隧道，而远端的空白会话不会挂恢复提示
+   * （`folderMissingFor` 只判本地），落在那儿没有死路。
+   */
+  private firstExistingRecentWorkdir(host: string): string | undefined {
+    const recents = this.configStore?.getRecentWorkdirsForHost(host) ?? [];
+    if (host !== LOCAL_HOST) return recents[0];
+    return recents.find((dir) => fs.existsSync(dir));
+  }
+
+  /**
    * New session in a pane (FR-031/032): spawn a fresh agent and bind it to the
    * pane WITHOUT aborting, clearing or destroying the previous one — background
    * sessions keep generating. No-op when the pane's session is already empty.
@@ -8092,7 +8212,7 @@ export class DesktopHost {
     // this.workdir — it follows the focused pane and could be a worktree path.
     // The host is the pane's pending picker host (spec scenario 1/9).
     const host = this.hostState.get(pid) ?? LOCAL_HOST;
-    const dir = this.configStore.getRecentWorkdirsForHost(host)[0];
+    const dir = this.firstExistingRecentWorkdir(host);
     if (!dir) {
       // No recents — the user never picked a directory (scenario 10). The 新对话
       // entry must still work: release the pane to the blank new-session state
@@ -8152,7 +8272,7 @@ export class DesktopHost {
    */
   private async handleNewSessionInNewPane(): Promise<void> {
     const host = this.hostState.get(this.focusedPaneId) ?? LOCAL_HOST;
-    const dir = this.configStore.getRecentWorkdirsForHost(host)[0];
+    const dir = this.firstExistingRecentWorkdir(host);
     // An already-empty new-session pane is focused instead of duplicated —
     // checked before the dir lookup so an empty recents list can't dead-end
     // the entry (scenario 10): the new pane is still created, just without a
