@@ -764,22 +764,28 @@ describe("attachContextMenu", () => {
     }) as unknown as WebContents;
 
   const fire = (contents: WebContents, params: ContextMenuParams) => {
-    const handler = vi
-      .mocked(contents.on)
-      .mock.calls.find(([event]) => event === "context-menu")![1];
-    handler({} as never, params);
+    // `contents.on` 是重载方法，`mock.calls` 只按最后一个重载打类型
+    // （`zoom-changed`），所以按真实注册形状（事件名 + 处理器）重新描述实参，
+    // 才能找到 `context-menu` 那一条。
+    const registrations = vi.mocked(contents.on).mock.calls as unknown as Array<
+      [string, (event: unknown, params: ContextMenuParams) => void]
+    >;
+    const [, handler] = registrations.find(
+      ([event]) => event === "context-menu",
+    )!;
+    handler({}, params);
   };
 
   const popupOfLastMenu = () =>
     (
-      Menu.buildFromTemplate.mock.results.at(-1)!.value as {
+      vi.mocked(Menu.buildFromTemplate).mock.results.at(-1)!.value as {
         popup: ReturnType<typeof vi.fn>;
       }
     ).popup;
   const templateOfLastMenu = () =>
-    Menu.buildFromTemplate.mock.calls.at(
-      -1,
-    )![0] as MenuItemConstructorOptions[];
+    vi
+      .mocked(Menu.buildFromTemplate)
+      .mock.calls.at(-1)![0] as MenuItemConstructorOptions[];
 
   it("pops a 复制图片 menu on an image right-click and copies the image at that position", () => {
     const contents = contentsMock();

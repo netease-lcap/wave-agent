@@ -7,6 +7,7 @@ import {
   type Socket,
 } from "net";
 import { createInterface } from "readline";
+import type { RequestMethod } from "wave-agent-sdk/host";
 import { SocketClient } from "../src/main/stdio/socketClient";
 
 // Mock process.stderr.write to suppress noise
@@ -23,7 +24,7 @@ const stderrWriteSpy = vi
  */
 function startServer(
   onMessage?: (msg: { id?: number; params?: unknown }) => void,
-  reply?: (msg: { id: number; params?: unknown }) => unknown,
+  reply?: (msg: { id: number; params?: unknown }) => Record<string, unknown>,
 ) {
   const sockets: Socket[] = [];
   // Client 'connect' can fire before the server's 'connection' callback on
@@ -80,6 +81,13 @@ function startServer(
   });
 }
 
+/**
+ * 本文件测的是传输层：方法名只是线上透传的字符串，不参与任何路由，所以这里
+ * 允许任意方法名（宽于 `RequestMethod` 联合），仍然按同一个 `request` 走。
+ */
+const request = (client: SocketClient, method: string, params?: unknown) =>
+  client.request(method as RequestMethod, params);
+
 async function connectClient(port: number): Promise<SocketClient> {
   const socket = await new Promise<Socket>((resolve, reject) => {
     const sock = connect(port, "127.0.0.1");
@@ -99,7 +107,7 @@ afterEach(() => {
 test("request resolves with the server result (round-trip)", async () => {
   server = await startServer();
   const client = await connectClient(server.port);
-  const result = await client.request("echo", { hello: "world" });
+  const result = await request(client, "echo", { hello: "world" });
   expect(result).toEqual({ hello: "world" });
   client.dispose();
 });
@@ -109,7 +117,7 @@ test("request rejects when the server responds with an error", async () => {
     error: { code: -32601, message: "method not found" },
   }));
   const client = await connectClient(server.port);
-  await expect(client.request("nope")).rejects.toThrow("method not found");
+  await expect(request(client, "nope")).rejects.toThrow("method not found");
   client.dispose();
 });
 
@@ -145,7 +153,7 @@ test("notify writes a notification to the server", async () => {
 test("pending request rejects when the server closes the connection", async () => {
   server = await startServer();
   const client = await connectClient(server.port);
-  const pending = client.request("echo", { x: 1 });
+  const pending = request(client, "echo", { x: 1 });
   server.close(); // destroys server-side sockets → client 'close' fires
   await expect(pending).rejects.toThrow("远端连接已断开");
   client.dispose();
@@ -154,7 +162,7 @@ test("pending request rejects when the server closes the connection", async () =
 test("dispose rejects pending requests and destroys the socket", async () => {
   server = await startServer();
   const client = await connectClient(server.port);
-  const pending = client.request("echo", { x: 1 });
+  const pending = request(client, "echo", { x: 1 });
   client.dispose();
   await expect(pending).rejects.toThrow("远端连接已断开");
   // A second dispose is a no-op (handleClosed idempotent).

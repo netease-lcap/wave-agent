@@ -94,9 +94,12 @@ describe("startLocalCrashReporter", () => {
     const info = vi.spyOn(hostLog, "info").mockImplementation(() => {});
     const warn = vi.spyOn(hostLog, "warn").mockImplementation(() => {});
     // What Crashpad left behind on 2026-10-30 (13 startups): id empty, date 0.
+    // Crashpad 在真机上留下的 stub 是 `date: 0`（数字，不是 Date）—— electron 的
+    // `CrashReport.date: Date` 不承认这个形状，被测代码的真假值判断就是为它写的，
+    // 改成 `new Date(0)`（真值对象）会走另一条分支。
     vi.mocked(crashReporter.getLastCrashReport).mockReturnValue({
       id: "",
-      date: 0,
+      date: 0 as unknown as Date,
     });
 
     startLocalCrashReporter();
@@ -112,9 +115,12 @@ describe("startLocalCrashReporter", () => {
   it("names the dump files when the report metadata cannot be read", () => {
     const warn = vi.spyOn(hostLog, "warn").mockImplementation(() => {});
     const info = vi.spyOn(hostLog, "info").mockImplementation(() => {});
+    // Crashpad 在真机上留下的 stub 是 `date: 0`（数字，不是 Date）—— electron 的
+    // `CrashReport.date: Date` 不承认这个形状，被测代码的真假值判断就是为它写的，
+    // 改成 `new Date(0)`（真值对象）会走另一条分支。
     vi.mocked(crashReporter.getLastCrashReport).mockReturnValue({
       id: "",
-      date: 0,
+      date: 0 as unknown as Date,
     });
     mockFs.readdirSync.mockReturnValue([
       dirent("old.dmp"),

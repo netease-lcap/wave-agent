@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { Menu } from "electron";
+import { Menu, type Tray } from "electron";
 import {
   buildTrayMenuTemplate,
   createTrayController,
@@ -20,7 +20,7 @@ const createWindow = (overrides: Partial<TrayWindow> = {}): TrayWindow => ({
 });
 
 type FakeTray = TrayLike & {
-  destroy: ReturnType<typeof vi.fn>;
+  destroy: ReturnType<typeof vi.fn<() => void>>;
   emit: (event: string) => void;
 };
 
@@ -29,10 +29,12 @@ const createFakeTray = (): FakeTray => {
   return {
     setToolTip: vi.fn(),
     setContextMenu: vi.fn(),
+    // Electron 的 `Tray.on` 是「一个事件名一个重载、返回 Tray」的形状；替身只
+    // 登记监听器（返回值没人用），所以按替身自己的形状写，再交给 `TrayLike`。
     on: vi.fn((event: string, listener: () => void) => {
       listeners.set(event, listener);
-    }),
-    destroy: vi.fn(),
+    }) as unknown as Tray["on"],
+    destroy: vi.fn<() => void>(),
     emit: (event: string) => listeners.get(event)?.(),
   };
 };

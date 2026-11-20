@@ -43,7 +43,7 @@ describe("hostLog", () => {
       "Total Samples: 2",
     ]);
 
-    const text = fs.appendFileSync.mock.calls[0][1] as string;
+    const text = writtenLine();
 
     // Header is timestamped/leveled; the payload keeps its own line breaks so a
     // stack block stays readable (unlike the single-line helpers, which flatten).
@@ -57,7 +57,7 @@ describe("hostLog", () => {
     // stray trailing newline that puts an empty line after every entry.
     hostLog.block("INFO", ["renderer memory pid=1 workingSet=1MB peak=2MB"]);
 
-    const text = fs.appendFileSync.mock.calls[0][1] as string;
+    const text = writtenLine();
 
     expect(text).toMatch(
       /^\[.*\] \[INFO\] renderer memory pid=1 workingSet=1MB peak=2MB\n$/,

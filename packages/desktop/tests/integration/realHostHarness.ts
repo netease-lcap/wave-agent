@@ -325,7 +325,9 @@ export function createRealHost(): RealHost {
     store,
     messages,
     of,
-    last: (command: string) => of(command).at(-1),
+    // 泛型要跟着 `RealHost.last` 一起声明：写成非泛型箭头就没法按命令推出消息类型。
+    last: <M extends HostMessage = HostMessage>(command: string) =>
+      of<M>(command).at(-1),
     waitFor,
     clear,
     paneSessionId,

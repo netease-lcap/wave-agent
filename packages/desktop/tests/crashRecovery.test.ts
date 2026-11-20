@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import type { BrowserWindow } from "electron";
+import type { BrowserWindow, MessageBoxReturnValue } from "electron";
 import { app, dialog, shell } from "electron";
 import { LOG_DIR } from "../src/main/hostLog.js";
 import {
@@ -143,7 +143,10 @@ describe("crashRecovery — pure decisions", () => {
 describe("attachCrashRecovery", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(dialog.showMessageBox).mockResolvedValue({ response: 0 });
+    vi.mocked(dialog.showMessageBox).mockResolvedValue({
+      response: 0,
+      checkboxChecked: false,
+    });
   });
 
   it("records a crash with reason, exit code and memory, then relaunches on request", async () => {
@@ -193,7 +196,7 @@ describe("attachCrashRecovery", () => {
   it("keeps a single dialog for the cascade of events one crash emits", async () => {
     const { win, emitWebContents } = createFakeWindow();
     const log = createLog();
-    let resolveDialog: (value: { response: number }) => void = () => {};
+    let resolveDialog: (value: MessageBoxReturnValue) => void = () => {};
     vi.mocked(dialog.showMessageBox).mockImplementationOnce(
       () => new Promise((resolve) => (resolveDialog = resolve)),
     );
@@ -223,7 +226,7 @@ describe("attachCrashRecovery", () => {
 
     expect(dialog.showMessageBox).toHaveBeenCalledTimes(1);
 
-    resolveDialog({ response: 2 }); // 退出
+    resolveDialog({ response: 2, checkboxChecked: false }); // 退出
     await flush();
     expect(app.exit).toHaveBeenCalledWith(0);
   });
@@ -291,7 +294,10 @@ describe("attachCrashRecovery", () => {
     const { win, emitWindow } = createFakeWindow();
     const log = createLog();
     const sampler = createSampler();
-    vi.mocked(dialog.showMessageBox).mockResolvedValue({ response: 2 }); // 继续等待
+    vi.mocked(dialog.showMessageBox).mockResolvedValue({
+      response: 2,
+      checkboxChecked: false,
+    }); // 继续等待
 
     attachCrashRecovery(win, { log, sampler });
 
@@ -330,9 +336,9 @@ describe("attachCrashRecovery", () => {
       async () => "/Users/someone/Desktop/codewave-diagnostics-X.tar.gz",
     );
     vi.mocked(dialog.showMessageBox)
-      .mockResolvedValueOnce({ response: 1 }) // 导出日志
-      .mockResolvedValueOnce({ response: 0 }) // 成功提示「好」
-      .mockResolvedValueOnce({ response: 2 }); // 退出
+      .mockResolvedValueOnce({ response: 1, checkboxChecked: false }) // 导出日志
+      .mockResolvedValueOnce({ response: 0, checkboxChecked: false }) // 成功提示「好」
+      .mockResolvedValueOnce({ response: 2, checkboxChecked: false }); // 退出
 
     attachCrashRecovery(win, { log, exportLogs, sampler: createSampler() });
 
@@ -364,9 +370,9 @@ describe("attachCrashRecovery", () => {
       throw new Error("EACCES: permission denied");
     });
     vi.mocked(dialog.showMessageBox)
-      .mockResolvedValueOnce({ response: 1 })
-      .mockResolvedValueOnce({ response: 0 })
-      .mockResolvedValueOnce({ response: 2 });
+      .mockResolvedValueOnce({ response: 1, checkboxChecked: false })
+      .mockResolvedValueOnce({ response: 0, checkboxChecked: false })
+      .mockResolvedValueOnce({ response: 2, checkboxChecked: false });
 
     attachCrashRecovery(win, { log, exportLogs, sampler: createSampler() });
 
