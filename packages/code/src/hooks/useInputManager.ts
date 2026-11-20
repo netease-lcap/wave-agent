@@ -61,6 +61,7 @@ export const useInputManager = (
     onRenameSession,
     onPlanCommand,
     onContextCommand,
+    onExportTranscript,
     isIdle: isIdleProp,
   } = callbacks;
 
@@ -304,6 +305,8 @@ export const useInputManager = (
                 await onPlanCommand?.(effect.args);
               } else if (command === "context") {
                 await onContextCommand?.();
+              } else if (command === "export") {
+                await onExportTranscript?.(effect.args);
               }
             }
             break;
@@ -336,6 +339,7 @@ export const useInputManager = (
     onRenameSession,
     onPlanCommand,
     onContextCommand,
+    onExportTranscript,
   ]);
 
   useEffect(() => {

@@ -25,6 +25,9 @@ import {
   rememberRecentWorkdir,
   forgetRecentWorkdir,
   onHostNotice,
+  exportTranscriptArchive,
+  describeTranscriptUnavailable,
+  TranscriptUnavailableError,
   type ClientNotificationMethod,
   type RequestMethod,
 } from "wave-agent-sdk";
@@ -1638,6 +1641,102 @@ test("listRewindCheckpoints returns empty list when no user messages", async () 
   const r = await bridge.handleRequest("listRewindCheckpoints", {}, sessionId);
 
   expect(r).toEqual({ checkpoints: [] });
+});
+
+test("exportTranscript 在**会话所在的机器**上读转录，回包原样过线", async () => {
+  const { bridge } = createBridge();
+  // 远端会话的转录在远端磁盘上：路径必须取自这个 agent 自己，宿主（桌面主进程）
+  // 连拼都拼不出来。渲染与清单组装都在 SDK 里（tests/services/transcriptArchive），
+  // 这一层只被要求「把会话事实交下去、把三样东西递回来」。
+  const archive = {
+    markdown: "# 会话记录\n",
+    manifestJson: '{ "messages": 1 }\n',
+    jsonlBase64: "eyJpZCI6Im0xIn0K",
+    jsonlBytes: 13,
+    jsonlTooLarge: false,
+  };
+  vi.mocked(exportTranscriptArchive).mockResolvedValue(archive);
+  vi.mocked(Agent.create).mockResolvedValue(
+    createMockAgent({
+      sessionFilePath: path.join("/fake/sessions", "s1.jsonl"),
+      getModelConfig: vi.fn().mockReturnValue({ model: "gpt-4" }),
+    }),
+  );
+
+  const result = await bridge.handleRequest("initialize", {});
+  const sessionId = (result as { sessionId: string }).sessionId;
+  const r = await bridge.handleRequest(
+    "exportTranscript",
+    { appVersion: "1.2.3", platform: "win32" },
+    sessionId,
+  );
+
+  expect(r).toEqual(archive);
+  expect(exportTranscriptArchive).toHaveBeenCalledWith({
+    transcriptPath: path.join("/fake/sessions", "s1.jsonl"),
+    // 会话起点，不是 `currentWorkdir`：清单要回答「这个会话是在哪儿开的」。
+    workdir: "/test/workdir",
+    model: "gpt-4",
+    appVersion: "1.2.3",
+    platform: "win32",
+  });
+});
+
+test("exportTranscript 只带字符串形态的宿主事实，缺了就不带这个键", async () => {
+  const { bridge } = createBridge();
+  vi.mocked(exportTranscriptArchive).mockResolvedValue({
+    markdown: "",
+    manifestJson: "{}",
+    jsonlBytes: 0,
+    jsonlTooLarge: false,
+  });
+  vi.mocked(Agent.create).mockResolvedValue(
+    createMockAgent({
+      sessionFilePath: path.join("/fake/sessions", "s1.jsonl"),
+      getModelConfig: vi.fn().mockReturnValue({ model: "" }),
+    }),
+  );
+
+  const result = await bridge.handleRequest("initialize", {});
+  const sessionId = (result as { sessionId: string }).sessionId;
+  await bridge.handleRequest(
+    "exportTranscript",
+    // 老宿主 / 手写请求可能塞进来非字符串，不能当成事实写进清单。
+    { appVersion: 42, platform: "" },
+    sessionId,
+  );
+
+  expect(exportTranscriptArchive).toHaveBeenCalledWith({
+    transcriptPath: path.join("/fake/sessions", "s1.jsonl"),
+    workdir: "/test/workdir",
+  });
+});
+
+test("转录读不到时把 SDK 那句原话过线：RPC 只带 message，「没了」与「读不了」不能混", async () => {
+  const { bridge } = createBridge();
+  const error = new TranscriptUnavailableError(
+    "missing",
+    "Session transcript not found: /fake/sessions/s1.jsonl",
+  );
+  const wording =
+    "Session transcript not found: /fake/sessions/s1.jsonl. It may have been removed by cleanupPeriodDays (default 30 days).";
+  vi.mocked(describeTranscriptUnavailable).mockReturnValue(wording);
+  vi.mocked(exportTranscriptArchive).mockRejectedValue(error);
+  vi.mocked(Agent.create).mockResolvedValue(
+    createMockAgent({
+      sessionFilePath: path.join("/fake/sessions", "s1.jsonl"),
+      getModelConfig: vi.fn().mockReturnValue({ model: "gpt-4" }),
+    }),
+  );
+
+  const result = await bridge.handleRequest("initialize", {});
+  const sessionId = (result as { sessionId: string }).sessionId;
+
+  await expect(
+    bridge.handleRequest("exportTranscript", {}, sessionId),
+  ).rejects.toThrow(wording);
+  // 文案在 SDK 里定死一次，桌面端与 CLI 说的才是同一句话。
+  expect(describeTranscriptUnavailable).toHaveBeenCalledWith(error);
 });
 
 test("getSessionInfo returns session info", async () => {

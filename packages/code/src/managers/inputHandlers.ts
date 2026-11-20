@@ -411,6 +411,10 @@ export const handleCommandSelect = (
           dispatch({ type: "SET_SHOW_REMOTE_CONTROL", payload: true });
         } else if (command === "context") {
           await callbacks.onContextCommand?.();
+        } else if (command === "export") {
+          // 选中即执行：这条链只有命令名，没有参数，所以永远是「弹选择浮层」
+          // 的形态（`/export <filename>` 走 useInputManager 那条带 args 的链）。
+          await callbacks.onExportTranscript?.();
         }
       }
     })();

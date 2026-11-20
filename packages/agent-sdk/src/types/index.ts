@@ -18,6 +18,7 @@ export * from "./core.js";
 export * from "./messaging.js";
 export * from "./messageWindow.js";
 export * from "./transcriptOutline.js";
+export * from "./transcriptExport.js";
 export * from "./mcp.js";
 export * from "./processes.js";
 export * from "./commands.js";

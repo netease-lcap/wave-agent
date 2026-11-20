@@ -22,6 +22,7 @@ import { StatusLine } from "./StatusLine.js";
 import { Notifications } from "./Notifications.js";
 import { BtwDisplay } from "./BtwDisplay.js";
 import { PlanView } from "./PlanView.js";
+import { ExportCommand } from "./ExportCommand.js";
 import { useInputManager } from "../hooks/useInputManager.js";
 import { useChat } from "../contexts/useChat.js";
 
@@ -115,6 +116,11 @@ export const InputBox: React.FC<InputBoxProps> = ({
     planView,
     setPlanView,
     handlePlanCommand,
+    exportDialog,
+    exportTranscript,
+    copyExportToClipboard,
+    saveExportToFile,
+    closeExportDialog,
     modFocusPaneId,
     modStatuses,
     modToasts,
@@ -214,6 +220,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
     onBackgroundCurrentTask: backgroundCurrentTask,
     onPermissionModeChange: setChatPermissionMode,
     onPlanCommand: handlePlanCommand,
+    onExportTranscript: exportTranscript,
     sessionId,
     workdir: workingDirectory,
     hasQueuedMessages,
@@ -246,6 +253,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
   const overlayOwnsKeyboard = Boolean(
     modFocusPaneId ||
       planView ||
+      exportDialog ||
       showRewindManager ||
       showResumeSelector ||
       showHelp ||
@@ -503,66 +511,78 @@ export const InputBox: React.FC<InputBoxProps> = ({
         />
       )}
 
+      {exportDialog && (
+        <ExportCommand
+          defaultFilename={exportDialog.defaultFilename}
+          stats={exportDialog.stats}
+          onCopy={copyExportToClipboard}
+          onSave={saveExportToFile}
+          onCancel={closeExportDialog}
+        />
+      )}
+
       {btwState.question || btwState.answer
         ? null
         : planView
           ? null
-          : showBackgroundTaskManager ||
-            showMcpManager ||
-            showAgentsManager ||
-            showSkillsManager ||
-            showHooksManager ||
-            showRewindManager ||
-            showResumeSelector ||
-            showHelp ||
-            showStatusCommand ||
-            showLoginCommand ||
-            showPluginManager ||
-            showModelSelector ||
-            showRemoteControl || (
-              <Box flexDirection="column">
-                {escClearPending && (
-                  <Text color="gray">Press Esc again to clear input</Text>
-                )}
-                <Box
-                  borderStyle="single"
-                  borderColor="gray"
-                  borderLeft={false}
-                  borderRight={false}
-                >
-                  <Text color={isPlaceholder ? "gray" : "white"}>
-                    {shouldShowCursor ? (
-                      <>
-                        {beforeCursor}
-                        <Text backgroundColor="white" color="black">
-                          {atCursor}
-                        </Text>
-                        {afterCursor}
-                        {argumentHint && <Text dimColor>{argumentHint}</Text>}
-                      </>
-                    ) : (
-                      displayText
-                    )}
-                  </Text>
+          : exportDialog
+            ? null
+            : showBackgroundTaskManager ||
+              showMcpManager ||
+              showAgentsManager ||
+              showSkillsManager ||
+              showHooksManager ||
+              showRewindManager ||
+              showResumeSelector ||
+              showHelp ||
+              showStatusCommand ||
+              showLoginCommand ||
+              showPluginManager ||
+              showModelSelector ||
+              showRemoteControl || (
+                <Box flexDirection="column">
+                  {escClearPending && (
+                    <Text color="gray">Press Esc again to clear input</Text>
+                  )}
+                  <Box
+                    borderStyle="single"
+                    borderColor="gray"
+                    borderLeft={false}
+                    borderRight={false}
+                  >
+                    <Text color={isPlaceholder ? "gray" : "white"}>
+                      {shouldShowCursor ? (
+                        <>
+                          {beforeCursor}
+                          <Text backgroundColor="white" color="black">
+                            {atCursor}
+                          </Text>
+                          {afterCursor}
+                          {argumentHint && <Text dimColor>{argumentHint}</Text>}
+                        </>
+                      ) : (
+                        displayText
+                      )}
+                    </Text>
+                  </Box>
+                  <Box justifyContent="space-between">
+                    <StatusLine
+                      permissionMode={permissionMode}
+                      isShellCommand={isShellCommand}
+                    />
+                    <Notifications
+                      latestTotalTokens={latestTotalTokens}
+                      contextWindow={contextWindow}
+                      maxOutputTokens={maxOutputTokens}
+                      showLoginHint={showLoginHint}
+                      hint={
+                        modToast ? `${modToast.plugin}: ${modToast.text}` : hint
+                      }
+                      modStatus={modStatusLine}
+                    />
+                  </Box>
                 </Box>
-                <Box justifyContent="space-between">
-                  <StatusLine
-                    permissionMode={permissionMode}
-                    isShellCommand={isShellCommand}
-                  />
-                  <Notifications
-                    latestTotalTokens={latestTotalTokens}
-                    contextWindow={contextWindow}
-                    maxOutputTokens={maxOutputTokens}
-                    showLoginHint={showLoginHint}
-                    hint={
-                      modToast ? `${modToast.plugin}: ${modToast.text}` : hint
-                    }
-                    modStatus={modStatusLine}
-                  />
-                </Box>
-              </Box>
-            )}
+              )}
     </Box>
   );
 };

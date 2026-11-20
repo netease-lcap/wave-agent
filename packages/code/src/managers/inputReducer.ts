@@ -140,6 +140,11 @@ export interface InputManagerCallbacks {
   onRenameSession?: (args?: string) => Promise<void>;
   onPlanCommand?: (args?: string) => Promise<void> | void;
   /**
+   * `/export`：把会话转录渲染成纯文本，交剪贴板或写成 `.txt`（带 `args` 时直接
+   * 落盘、跳过选择浮层）。spec `commands/export-command.md`。
+   */
+  onExportTranscript?: (args?: string) => Promise<void>;
+  /**
    * `/context`：把上下文构成报告追加成一条只能看、不进上下文的助手消息。
    */
   onContextCommand?: () => Promise<void>;

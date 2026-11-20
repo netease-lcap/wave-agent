@@ -49,6 +49,7 @@ import type {
   MessageWindowResult,
   MessageThreadSummary,
   TranscriptOutlineEntry,
+  TranscriptExportArchive,
   UserImage,
   ModBandRenderResult,
   ModPanelEventPayload,
@@ -640,6 +641,27 @@ export class StdioAgent {
       undefined,
       this.sessionId,
     )) as TranscriptOutlineEntry[];
+  }
+
+  /**
+   * `/export` for a host that writes an archive: the CLI child reads **its own**
+   * session transcript (a remote session's lives on the remote disk, which the
+   * desktop main process cannot open) and answers with the readable version,
+   * the manifest and the raw transcript bytes.
+   *
+   * Unlike `Agent.exportTranscript()` (which returns the parsed thread for the
+   * CLI's own text renderer), this crosses the wire — hence `Archive` in the
+   * name: the caller gets the packed pieces, not the message list.
+   */
+  async exportTranscriptArchive(params: {
+    appVersion?: string;
+    platform?: string;
+  }): Promise<TranscriptExportArchive> {
+    return (await this.client.request(
+      "exportTranscript",
+      params,
+      this.sessionId,
+    )) as TranscriptExportArchive;
   }
 
   async listRewindCheckpoints(): Promise<{

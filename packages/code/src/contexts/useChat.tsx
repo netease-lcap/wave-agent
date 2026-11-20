@@ -35,6 +35,7 @@ import type {
   ModBandRenderResult,
   ModPaneLayout,
   ModPanelScrollRequest,
+  TranscriptExportStats,
 } from "wave-agent-sdk";
 import {
   Agent,
@@ -46,14 +47,21 @@ import {
   PLUGIN_CHANGE_PENDING_MESSAGE,
   PLUGIN_RELOADED_MESSAGE,
   onHostNotice,
+  buildExportFilename,
+  describeTranscriptUnavailable,
+  ensureTxtExtension,
+  TranscriptUnavailableError,
 } from "wave-agent-sdk";
 import { logger } from "../utils/logger.js";
 import { displayUsageSummary } from "../utils/usageSummary.js";
 import { formatContextBreakdown } from "../utils/formatContextBreakdown.js";
+import { renderTranscriptPlainText } from "../utils/exportRenderer.js";
+import { setClipboardText } from "../utils/clipboard.js";
 import { expandLongTextPlaceholders } from "../managers/inputHandlers.js";
 import { remoteNotifications } from "../remote/remoteNotifications.js";
 import type { RemoteNotify } from "../remote/remoteNotifications.js";
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 
 import { BaseAppProps } from "../types.js";
 
@@ -62,6 +70,12 @@ export interface PlanViewData {
   path?: string;
   content?: string;
   message?: string;
+}
+
+/** `/export` 浮层要显示的东西（正文不在里面：它渲染一次后放在 ref 里复用）。 */
+export interface ExportDialogData {
+  defaultFilename: string;
+  stats: TranscriptExportStats;
 }
 
 export interface ChatContextType {
@@ -168,6 +182,17 @@ export interface ChatContextType {
   planView: PlanViewData | null;
   setPlanView: (view: PlanViewData | null) => void;
   handlePlanCommand: (args?: string) => Promise<void>;
+  /**
+   * `/export`（spec commands/export-command.md）：把当前会话的转录渲染成纯文本。
+   * 带 `args` 时直接写文件、跳过选择浮层（对齐 Claude Code 的 `/export <filename>`）。
+   * 转录读不到时只在会话里追一条消息，不打开浮层。
+   */
+  exportTranscript: (args?: string) => Promise<void>;
+  /** 浮层数据：正文已经在 `exportTranscript` 里渲染好，这里只带默认名与统计。 */
+  exportDialog: ExportDialogData | null;
+  copyExportToClipboard: () => Promise<void>;
+  saveExportToFile: (filename: string) => Promise<void>;
+  closeExportDialog: () => void;
   // Permission confirmation state
   isConfirmationVisible: boolean;
   hasPendingConfirmations: boolean;
@@ -551,6 +576,14 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
 
   // Plan view state for the /plan command overlay
   const [planView, setPlanView] = useState<PlanViewData | null>(null);
+
+  // /export: the rendered plain text stays in a ref — the dialog only needs the
+  // stats and the default filename, and re-rendering the whole transcript on
+  // every keystroke of the filename input would be pointless.
+  const [exportDialog, setExportDialog] = useState<ExportDialogData | null>(
+    null,
+  );
+  const exportContentRef = useRef("");
 
   // Confirmation state with queue-based architecture
   const [isConfirmationVisible, setIsConfirmationVisible] = useState(false);
@@ -1455,6 +1488,122 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     }
   }, []);
 
+  // /export: render the conversation's transcript to plain text and hand it to
+  // the clipboard or a `.txt` file (spec: commands/export-command.md; the shape
+  // mirrors Claude Code's `/export`). The text is read from the session's own
+  // transcript, not from `agent.messages` — the latter starts after the last
+  // compaction (`refreshMessages`), and an export that silently drops everything
+  // before the compression point would be a lie. Every outcome lands in the
+  // conversation as a UI-only message, same display path as /rename.
+  const showExportResult = useCallback((content: string) => {
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`,
+        role: "assistant",
+        timestamp: new Date().toISOString(),
+        blocks: [{ type: "text", content, stage: "end" }],
+      },
+    ]);
+  }, []);
+
+  const saveExportToFile = useCallback(
+    async (filename: string) => {
+      setExportDialog(null);
+      // "The current directory" is the session's live workdir (the one Bash
+      // spawns in), not `process.cwd()` — after a `cd` they differ.
+      const target = join(
+        agentRef.current?.currentWorkdir ?? process.cwd(),
+        ensureTxtExtension(filename),
+      );
+      try {
+        await writeFile(target, exportContentRef.current, "utf8");
+        showExportResult(`Conversation exported to: ${target}`);
+      } catch (error) {
+        showExportResult(
+          `Failed to export conversation: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
+    },
+    [showExportResult],
+  );
+
+  const copyExportToClipboard = useCallback(async () => {
+    setExportDialog(null);
+    const copied = await setClipboardText(exportContentRef.current);
+    if (copied) {
+      showExportResult("Conversation copied to clipboard");
+      return;
+    }
+    // `setClipboardText` writes an OSC 52 sequence and reports whether it could
+    // write at all; it cannot know whether the terminal honoured it. Its
+    // contract (utils/clipboard.ts) is that a caller with another place to put
+    // the text points there instead of failing silently.
+    showExportResult(
+      "Failed to copy conversation to clipboard: this terminal did not accept the clipboard sequence. Use /export <filename> to save it to a file instead.",
+    );
+  }, [showExportResult]);
+
+  // Esc on the option list cancels the export and says so, like Claude Code.
+  const closeExportDialog = useCallback(() => {
+    setExportDialog(null);
+    showExportResult("Export cancelled");
+  }, [showExportResult]);
+
+  const exportTranscript = useCallback(
+    async (args?: string) => {
+      const agent = agentRef.current;
+      if (!agent) return;
+
+      let exported;
+      try {
+        exported = await agent.exportTranscript();
+      } catch (error) {
+        if (error instanceof TranscriptUnavailableError) {
+          // Two reasons, two different answers: a cleaned-up transcript is a
+          // normal end state (`cleanupPeriodDays`, default 30 days), a read
+          // failure is a bug the user cannot fix by waiting. The wording lives
+          // in the SDK because the desktop's `/export` says the same thing.
+          showExportResult(describeTranscriptUnavailable(error));
+          return;
+        }
+        showExportResult(
+          `Failed to export conversation: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+        return;
+      }
+
+      if (exported.messages.length === 0) {
+        showExportResult(
+          "Nothing to export yet: this conversation has no messages.",
+        );
+        return;
+      }
+
+      exportContentRef.current = await renderTranscriptPlainText(
+        exported.messages,
+      );
+
+      // `/export <filename>` writes straight to that file, skipping the picker
+      // (Claude Code's `/export <filename>` branch).
+      const filename = (args ?? "").trim();
+      if (filename) {
+        await saveExportToFile(filename);
+        return;
+      }
+
+      setExportDialog({
+        defaultFilename: buildExportFilename(exported.messages, new Date()),
+        stats: exported.stats,
+      });
+    },
+    [showExportResult, saveExportToFile],
+  );
+
   // /resume: switch to another conversation without leaving the process. The
   // session id and its on-disk project directory move together, so the next
   // message is appended to the target's own transcript. A failed restore leaves
@@ -1898,6 +2047,11 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     planView,
     setPlanView,
     handlePlanCommand,
+    exportTranscript,
+    exportDialog,
+    copyExportToClipboard,
+    saveExportToFile,
+    closeExportDialog,
     isConfirmationVisible,
     hasPendingConfirmations: confirmationQueue.length > 0,
     confirmingTool,
