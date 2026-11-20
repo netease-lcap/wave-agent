@@ -132,6 +132,40 @@ jobs:
             pnpm -F wave-webview exec playwright install --with-deps chromium
           fi
 
+      # 中文字体。runner 镜像默认不带 CJK，页面里的中文按 DejaVu 回退渲染 ——
+      # 折行与行高和 `estimateRowHeight` 的估算差出一大截（实测 85px），虚拟滚动的
+      # 几何断言因此在「无字体」环境下稳定红，而有字体时全绿。真机（Windows /
+      # macOS 桌面、手机浏览器）都带中文字体，所以在无字体镜像上量到的不是用户会
+      # 看到的东西。字体文件走 actions/cache：命中时拷进 ~/.local/share/fonts +
+      # `fc-cache`（秒级），未命中才 apt（约 15s）。
+      - name: Cache CJK fonts
+        id: cjk-cache
+        if: steps.filter.outputs.code == 'true' && matrix.pkg == 'webview'
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/noto-cjk
+          key: fonts-noto-cjk-v1
+
+      - name: Install CJK fonts
+        if: steps.filter.outputs.code == 'true' && matrix.pkg == 'webview'
+        run: |
+          mkdir -p ~/.local/share/fonts
+          if ls ~/.cache/noto-cjk/* >/dev/null 2>&1; then
+            cp ~/.cache/noto-cjk/* ~/.local/share/fonts/
+          else
+            sudo apt-get update -qq
+            sudo apt-get install -y --no-install-recommends fonts-noto-cjk
+            mkdir -p ~/.cache/noto-cjk
+            # 只留常规两个字重：全套 ttc 有 298MB，缓存得不偿失。
+            for f in NotoSansCJK-Regular.ttc NotoSansCJK-Bold.ttc NotoSansCJK-VF.otf.ttc; do
+              cp "/usr/share/fonts/opentype/noto/$f" ~/.cache/noto-cjk/ 2>/dev/null || true
+            done
+          fi
+          fc-cache -f >/dev/null
+          # 装不上就当场失败：否则几何断言会在一个不代表真机的字体环境下静默变绿
+          # 或变红，排查成本远高于这一行。
+          test "$(fc-list :lang=zh | wc -l)" -gt 0
+
       - name: Unit tests (shard ${{ matrix.shard }}/2)
         if: steps.filter.outputs.code == 'true'
         run: pnpm -F wave-${{ matrix.pkg }} test:unit --shard=${{ matrix.shard }}/2
@@ -559,6 +593,36 @@ jobs:
           else
             pnpm -F wave-webview exec playwright install --with-deps chromium
           fi
+
+      # Same CJK font install as the `check` job (shared cache key). Without it the
+      # runner falls back to DejaVu for Chinese text, line boxes come out ~85px off
+      # the estimator, and the virtual-scroll geometry assertions go red for a
+      # reason no real user ever hits.
+      - name: Cache CJK fonts
+        id: cjk-cache
+        if: steps.filter.outputs.code == 'true'
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/noto-cjk
+          key: fonts-noto-cjk-v1
+
+      - name: Install CJK fonts
+        if: steps.filter.outputs.code == 'true'
+        run: |
+          mkdir -p ~/.local/share/fonts
+          if ls ~/.cache/noto-cjk/* >/dev/null 2>&1; then
+            cp ~/.cache/noto-cjk/* ~/.local/share/fonts/
+          else
+            sudo apt-get update -qq
+            sudo apt-get install -y --no-install-recommends fonts-noto-cjk
+            mkdir -p ~/.cache/noto-cjk
+            # 只留常规两个字重：全套 ttc 有 298MB，缓存得不偿失。
+            for f in NotoSansCJK-Regular.ttc NotoSansCJK-Bold.ttc NotoSansCJK-VF.otf.ttc; do
+              cp "/usr/share/fonts/opentype/noto/$f" ~/.cache/noto-cjk/ 2>/dev/null || true
+            done
+          fi
+          fc-cache -f >/dev/null
+          test "$(fc-list :lang=zh | wc -l)" -gt 0
 
       - name: Real-browser e2e tests
         if: steps.filter.outputs.code == 'true'
