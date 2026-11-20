@@ -8184,3 +8184,98 @@
 [data-host="desktop"] .btw-panel-answer:not(.btw-panel-answer--failed) {
   color: var(--vscode-editor-foreground);
 }
+
+/* ═══ 1120 评论：两处「取消 / 确认」键对收口到同一档（桌面端）═══════════════
+   设计师两条预览评论：
+     · `button.file-pane-edit-action`「取消」→「取消和保存按钮参考」
+     · `div.line-comment-box-footer`「README.md取消添加」→「这里的按钮，尺寸和规范」
+   两处问的其实是同一件事：同一份契约（codechat-desktop-skill
+   `references/common-components.md`「Buttons」）下，一对「取消 + 确认」该长什么样。
+   行评论框那对在 1029 第十七轮已经按契约落过值（28 / 0·12 / r8 / 14·22·500 /
+   取消=描边次级、确认=主按钮），文件面板编辑条那对还停在 VS Code 小键（22 / 0·8 /
+   r4 / 12·400、主按钮走 `--vscode-button-*` 桥接色）。⇒ 以行评论框那对为准，
+   把编辑条那对收过来，然后两对一起补上唯一还缺的一环：2px 焦点环。
+   实测（暗色 / 1440×900，改前）：
+     · 编辑条 取消 40×22 r4 pad 0·8 12px/400，保存 40×22 同档、底
+       `rgb(240,242,243)`（桥接翻转的浅底）；同排兄弟是 24 高的图标键与 22 高的路径。
+     · 行评论 footer 取消 54×28 r8 pad 0·12 14/22 500 透明+1px `rgb(52,57,60)`、
+       添加 54×28 禁用态 8% 白底 + 45% 白字；盒子 454×98。
+     · 两对的 `:focus-visible` 都只有 UA 默认 `auto 1px rgb(0,95,204)`，
+       不是契约的「2px `border-focus`、offset 0」。
+   工具条本身是固定 44 高（DesktopApp.css `.preview-pane-toolbar`，flex 0 0 44px），
+   22 → 28 不会把它撑高；横向两颗各 +14、再去掉 base 的 `margin-left:4px`
+   （间距交给工具条自己的 `gap:8px`，与「文件/本地」标签那轮的同一套做法），
+   净增 20px 由可截断的 `.file-pane-path` 吸收。
+   只作用桌面宿主：`FilePane.css` / `LineCommentBox.css`（插件端共用）一行未改。 */
+
+/* ── ① 文件面板编辑条：取消 = 描边次级，保存 = 主按钮，与行评论框 footer 同档 ──
+   base 的 22 高、r4、12px、`margin-left:4px` 全部让位；`box-sizing` 显式声明，
+   免得 future 的 reset 变化让 1px 描边撑出 30 高。 */
+[data-host="desktop"] .file-pane-edit-action {
+  flex-shrink: 0;
+  box-sizing: border-box;
+  height: 28px;
+  padding: 0 12px;
+  margin-left: 0;
+  border: 1px solid var(--cc-border-light);
+  border-radius: var(--cc-radius-md, 8px);
+  background: transparent;
+  color: var(--cc-text-primary);
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: var(--cc-font-weight-medium, 500);
+}
+[data-host="desktop"] .file-pane-edit-action:hover:not(:disabled) {
+  background: var(--cc-fill-hover);
+}
+[data-host="desktop"] .file-pane-edit-action:active:not(:disabled) {
+  background: var(--cc-fill-pressed);
+}
+/* 禁用：换 token 而不是整颗 opacity（base 的 .6 会把字色一起糊掉），
+   hover 与静止逐值相同（契约「禁用态 rest 与 hover 必须一致」）。 */
+[data-host="desktop"] .file-pane-edit-action:disabled,
+[data-host="desktop"] .file-pane-edit-action:disabled:hover {
+  background: transparent;
+  color: var(--cc-text-disabled);
+  border-color: var(--cc-border-lighter);
+  opacity: 1;
+  cursor: default;
+}
+[data-host="desktop"] .file-pane-edit-action--primary {
+  background: var(--cc-action-primary);
+  color: var(--cc-action-primary-text);
+  border-color: transparent;
+}
+[data-host="desktop"] .file-pane-edit-action--primary:hover:not(:disabled) {
+  background: var(--cc-action-primary-hover);
+}
+[data-host="desktop"] .file-pane-edit-action--primary:active:not(:disabled) {
+  background: var(--cc-action-primary-active, #111318);
+}
+/* 保存中（`disabled`）＝ 与行评论框「添加」键同一套禁用底：
+   浅 --cc-fill + 禁用字色；深 8% 白 + 45% 白。 */
+[data-host="desktop"] .file-pane-edit-action--primary:disabled,
+[data-host="desktop"] .file-pane-edit-action--primary:disabled:hover {
+  background: var(--cc-fill, #f0f2f5);
+  color: var(--cc-text-disabled, #bec1c6);
+  border-color: transparent;
+  opacity: 1;
+}
+[data-host="desktop"][data-theme="dark"] .file-pane-edit-action--primary:disabled,
+[data-host="desktop"][data-theme="dark"] .file-pane-edit-action--primary:disabled:hover {
+  background: rgb(255 255 255 / 8%);
+  color: rgb(255 255 255 / 45%);
+}
+
+/* ── ② 两对键共用的一条：键盘焦点环 ──
+   契约「2px `border-focus`、offset 0，不叠第二层阴影」。改前两对都只有 UA 的
+   `auto 1px`；仓库先例是创作集页的三颗动作键（ArtifactsPage.css:1053
+   `.artifacts-primary-btn / -secondary-btn / -danger-btn`，1119 已验收），同一条值。 */
+[data-host="desktop"] .file-pane-edit-action:focus-visible,
+[data-host="desktop"] .line-comment-box-cancel:focus-visible,
+[data-host="desktop"] .line-comment-box-send:focus-visible {
+  outline: 2px solid var(--cc-border-focus, #2f5edb);
+  outline-offset: 0;
+  box-shadow: none;
+}

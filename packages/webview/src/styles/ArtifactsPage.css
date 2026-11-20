@@ -1066,20 +1066,40 @@ html[data-host="desktop"][data-theme="dark"] .artifacts-file-icon {
 }
 
 /* 1030 评论（`div.artifacts-header-left`「新建分类 / 刷新」）：「新建分类和刷新
-   改成图标的形式，hover 显示 tooltip 提示」。
-   几何照同页 `[data-host="desktop"] .artifacts-nav-more`（分类行的「⋯」）：
-   24×24 / 内衬 0 / r6 / 图标 16 居中；静止取 2 级字色、hover 换
-   `--cc-fill-hover` 底并把图标提到 1 级 —— 与侧栏会话行、面板工具条同一套
-   图标键配方。原来两颗是 12px 文字键（新建分类还是蓝色链接），现在都不用了。 */
+   改成图标的形式，hover 显示 tooltip 提示」—— 当时照同页
+   `[data-host="desktop"] .artifacts-nav-more` 的透明图标键配方：24×24 / r6 / 图标 16。
+
+   1119 评论（点 `button.artifacts-header-icon-btn`「刷新」）：「这个按钮宽高尺寸参考
+   前面的搜索表单，加一个边框线，交互样式参考线形按钮」—— 由「透明无边的 24 方键」
+   改成「与左侧 `.artifacts-search` 同高的描边键」：
+     · 盒 24×24 → 32×32：高取搜索表单那档 32，宽同高成方（搜索表单宽 242 显然
+       不是「宽」的意图）；`box-sizing` 转 border-box，让 1px 描边落在 32 之内 ——
+       外边沿仍是 32，tabs 行高本来就由 32 的搜索框定，行不会长高；
+     · 圆角 6 → 8：契约 `common-components.md:27`「Desktop icon-only and toolbar
+       action buttons use 8px radius」，且与紧邻的 r8 搜索框成对；
+     · 描边 1px `--cc-field-border` —— 与左侧搜索表单**同一枚 token**（浅 #C5C9CE /
+       深 #414649）：她说「宽高尺寸参考前面的搜索表单」，两框同排同高，描边若走
+       线形按钮那枚 `--cc-border-light`（浅 #E4E7ED / 1.24:1）会比邻框的 1.66:1
+       明显淡一档，看上去像「没画完的框」。这处偏离 §:19 线形按钮的 border-light
+       是刻意的族内例外，改回只需把这一行换成 `--cc-border-light`；
+     · 状态照线形按钮：hover `--cc-fill-hover`（字形提 1 级）、按下
+       `--cc-fill-pressed`（改前没有 pressed 档，按下与 hover 同值）、焦点环
+       2px `--cc-border-focus` + offset 0（:23；改前是 offset -2 的内收环）；
+     · 禁用照 `dark-theme.md:56` 的配方换三枚 token（fill-light 底 / text-disabled
+       字 / border-lighter 边）并把 opacity 归 1 —— 改前是整颗 0.4，契约 :185 明禁
+       整容器透明度；1030 那句「功能禁用鼠标要显示成禁用」的意图保留（指针
+       not-allowed、不出 hover 面）。
+   字形尺寸不动（16px）：契约 :27「Keep glyph size separate from the hit target」。 */
 .artifacts-header-icon-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
+  box-sizing: border-box;
+  width: 32px;
+  height: 32px;
   padding: 0;
-  border: none;
-  border-radius: 6px;
+  border: 1px solid var(--cc-field-border, #c5c9ce);
+  border-radius: 8px;
   background: transparent;
   color: var(--cc-text-secondary, #6c7076);
   cursor: pointer;
@@ -1096,17 +1116,32 @@ html[data-host="desktop"][data-theme="dark"] .artifacts-file-icon {
   color: var(--cc-text-primary, #1f2329);
 }
 
-/* 键盘焦点：2px 内收环，与设置页 listbox 选项 / 文件标签菜单同一配方。 */
+/* 按下（线形按钮 pressed 档，1119 评论「交互样式参考线形按钮」）：改前没有这一档，
+   按下与 hover 同值（`--cc-fill-hover`），按下去没有任何回应。 */
+.artifacts-header-icon-btn:active:not(:disabled) {
+  background: var(--cc-fill-pressed, #e7e9ed);
+  color: var(--cc-text-primary, #1f2329);
+}
+
+/* 键盘焦点：契约 common-components.md:23「2px border-focus 环、0 offset，环贴住
+   按钮边缘」。改前是与设置页 listbox / 文件标签菜单同配方的 offset -2 内收环；
+   1119 评论「交互样式参考线形按钮」后与同页三颗动作键统一成 offset 0。 */
 .artifacts-header-icon-btn:focus-visible {
   outline: 2px solid var(--cc-border-focus, #a0a5a8);
-  outline-offset: -2px;
+  outline-offset: 0;
 }
 
 /* 刷新中 / 列表加载中：键不可点，也不出 hover 面（否则像还活着）。
-   1030 评论（「功能禁用鼠标要显示成禁用」）：指针从 `default` 改成 `not-allowed`，
-   与 :disabled 的语义一致（0.4 透明 + 不响应 hover + 指针带禁止圈）。 */
+   1030 评论（「功能禁用鼠标要显示成禁用」）当时落的是整颗 `opacity: .4`；
+   1119 加了描边后按 `dark-theme.md:56` 的禁用配方换成三枚 token
+   （fill-light 底 / text-disabled 字 / border-lighter 边）+ opacity 归 1 ——
+   契约 `common-components.md:185` 明禁「text-disabled + 整容器透明度」。
+   指针仍 not-allowed、仍不响应 hover 与点击，1030 的意图保留。 */
 .artifacts-header-icon-btn:disabled {
-  opacity: 0.4;
+  background: var(--cc-fill-light, #f5f7fa);
+  border-color: var(--cc-border-lighter, #ebeef5);
+  color: var(--cc-text-disabled, #bec1c6);
+  opacity: 1;
   cursor: not-allowed;
 }
 
