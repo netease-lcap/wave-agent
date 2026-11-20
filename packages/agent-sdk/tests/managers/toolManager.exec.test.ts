@@ -3,17 +3,21 @@ import type { ChatCompletionFunctionTool } from "openai/resources.js";
 import { ToolManager } from "../../src/managers/toolManager.js";
 import { McpManager } from "../../src/managers/mcpManager.js";
 import { EXEC_TOOL_NAME } from "../../src/constants/tools.js";
+import { CORE_POOL_TOOLS } from "../../src/exec/deferral.js";
 import { Container } from "../../src/utils/container.js";
 import type { ToolPlugin } from "../../src/tools/types.js";
 
 const gate = vi.hoisted(() => ({
   execEnabled: true,
+  coreToolsEnabled: false,
   nonDeferrable: new Set<string>(),
 }));
 
 vi.mock("../../src/services/execAvailability.js", () => ({
   EXEC_DEFAULT_ENABLED: true,
+  REPL_CORE_TOOLS_DEFAULT_ENABLED: false,
   isExecEnabled: () => gate.execEnabled,
+  isReplCoreToolsEnabled: () => gate.execEnabled && gate.coreToolsEnabled,
   getNonDeferrableBuiltins: () => gate.nonDeferrable,
 }));
 
@@ -54,9 +58,12 @@ const DEFERRED_BUILTINS = [
 ];
 
 /**
- * Declared flat whatever the pool does: the core loop the model runs on, and the
- * two entry points that must never be reachable only from inside something else
- * (`Exec` itself, and `AskUserQuestion`, whose whole job is to reach the user).
+ * Declared flat whatever the pool does: the two entry points that must never be
+ * reachable only from inside something else (`REPL` itself, and `AskUserQuestion`,
+ * whose whole job is to reach the user), plus the tools `enableReplCoreTools`
+ * leaves alone while it is off (its default). The core tools listed here are the
+ * cross-platform ones; `Glob` / `Grep` are opt-in and `PowerShell` is gated on the
+ * session's shell.
  */
 const NATIVE_BUILTINS = [
   "AskUserQuestion",
@@ -97,6 +104,8 @@ interface HarnessOptions {
   plugins?: ToolPlugin[];
   denied?: string[];
   outputSchemas?: Map<string, Record<string, unknown>>;
+  /** `--tools` / `AgentOptions.tools`: the definition-level allow-list. */
+  tools?: string[];
 }
 
 function build(options: HarnessOptions = {}) {
@@ -117,7 +126,7 @@ function build(options: HarnessOptions = {}) {
     getCurrentEffectiveMode: (mode: string | undefined) => mode || "default",
   } as unknown as Record<string, unknown>);
 
-  const toolManager = new ToolManager({ container });
+  const toolManager = new ToolManager({ container, tools: options.tools });
   toolManager.initializeBuiltInTools();
   return { toolManager };
 }
@@ -135,6 +144,7 @@ function descriptionOf(toolManager: ToolManager, name: string): string {
 
 beforeEach(() => {
   gate.execEnabled = true;
+  gate.coreToolsEnabled = false;
   gate.nonDeferrable = new Set<string>();
 });
 
@@ -213,6 +223,28 @@ describe("which tools are declared flat", () => {
     // funnels, which is what makes an in-sandbox call equivalent to a direct one.
     const { toolManager } = build({ plugins: mcpPlugins(5) });
     expect(toolManager.isConcurrencySafe("mcp__srv__tool0")).toBe(false);
+  });
+});
+
+describe("Poll", () => {
+  it("is registered and declared while the REPL is on", () => {
+    const { toolManager } = build({ plugins: [] });
+    expect(names(toolManager)).toContain("Poll");
+  });
+
+  it("is not registered when the REPL is switched off", () => {
+    gate.execEnabled = false;
+    const { toolManager } = build({ plugins: [] });
+    expect(names(toolManager)).not.toContain("Poll");
+  });
+
+  it("is never in the pool, even while the pool is non-empty", () => {
+    // A pooled tool is reachable only from inside a script, and this is the tool a
+    // model calls from outside one to read what those scripts left behind.
+    const { toolManager } = build({ plugins: mcpPlugins(3) });
+    expect(toolManager.getExecPool().map((entry) => entry.name)).not.toContain(
+      "Poll",
+    );
   });
 });
 
@@ -323,5 +355,119 @@ describe("getExecPool", () => {
   it("answers the same thing twice for an unchanged session", () => {
     const { toolManager } = build({ plugins: mcpPlugins(4) });
     expect(toolManager.getExecPool()).toEqual(toolManager.getExecPool());
+  });
+});
+
+/**
+ * `enableReplCoreTools` (spec core/repl-tool.md「开关把核心文件与 shell 工具也收进
+ * REPL」): the seven hot tools join the pool and leave `tools[]`. Both halves come
+ * from the one call that builds the pool, so the declarations, the announcement and
+ * the sandbox cannot disagree about whether `Read` is in there.
+ */
+describe("core tools pooled by enableReplCoreTools", () => {
+  /**
+   * The core tools this session actually registered: `Glob` / `Grep` are opt-in and
+   * `PowerShell` only exists on a session whose shell it is, so the fixed seven are
+   * not the set any single machine holds.
+   */
+  function registeredCoreTools(toolManager: ToolManager): string[] {
+    const registered = toolManager.getTools().map((tool) => tool.name);
+    return CORE_POOL_TOOLS.filter((name) => registered.includes(name)).sort();
+  }
+
+  it("pools the core tools and takes them out of the flat declarations", () => {
+    gate.coreToolsEnabled = true;
+    const { toolManager } = build();
+    const core = registeredCoreTools(toolManager);
+
+    // The cross-platform half of the seven is enough to prove the switch bites.
+    expect(core).toEqual(
+      expect.arrayContaining(["Bash", "Edit", "Read", "Write"]),
+    );
+
+    const pooled = toolManager.getExecPool();
+    expect(
+      pooled
+        .filter((entry) => entry.tier === "core")
+        .map((entry) => entry.name)
+        .sort(),
+    ).toEqual(core);
+
+    const declared = names(toolManager);
+    for (const name of core) expect(declared).not.toContain(name);
+    // The carrier stays declared: it is now the only way to those seven.
+    expect(declared).toContain(EXEC_TOOL_NAME);
+    // And they are reachable from the sandbox rather than merely hidden.
+    expect(toolManager.getOnDemandToolNames()).toEqual(
+      expect.arrayContaining(core),
+    );
+  });
+
+  it("declares them flat and keeps them out of the pool while the switch is off", () => {
+    const { toolManager } = build();
+    const core = registeredCoreTools(toolManager);
+    const declared = names(toolManager);
+    const pooled = toolManager.getExecPool();
+
+    for (const name of core) {
+      expect(declared).toContain(name);
+      expect(pooled.map((entry) => entry.name)).not.toContain(name);
+    }
+    // No entry claims the signature tier, so the announcement cannot grow a core
+    // block for tools it is already declaring in full.
+    expect(pooled.some((entry) => entry.tier === "core")).toBe(false);
+  });
+
+  it("puts a core tool back flat when the non-deferrable list names it", () => {
+    // The escape hatch has to work inside the switch too: one hot tool can be
+    // promoted back without turning the whole feature off.
+    gate.coreToolsEnabled = true;
+    gate.nonDeferrable = new Set(["Read"]);
+    const { toolManager } = build();
+
+    expect(names(toolManager)).toContain("Read");
+    expect(toolManager.getOnDemandToolNames()).not.toContain("Read");
+    expect(toolManager.getOnDemandToolNames()).toContain("Write");
+  });
+
+  it("does nothing while the master switch is off", () => {
+    // No sandbox, no pool to put them in: the second switch must not leave a tool
+    // declared in neither place.
+    gate.execEnabled = false;
+    gate.coreToolsEnabled = true;
+    const { toolManager } = build();
+
+    expect(toolManager.getOnDemandToolNames()).toBeUndefined();
+    expect(names(toolManager)).toContain("Read");
+  });
+});
+
+/**
+ * The carrier answers to `REPL` and to its aliases (`Eval`), and every place that
+ * asks "is this the REPL" asks the whole set — a rule or a `--tools` entry naming
+ * the old spelling is a statement about this tool.
+ */
+describe("REPL aliases", () => {
+  it("treats a deny rule naming `Eval` as a rule about the carrier", () => {
+    const { toolManager } = build({ denied: ["Eval"] });
+
+    expect(names(toolManager)).not.toContain(EXEC_TOOL_NAME);
+    expect(toolManager.getOnDemandToolNames()).toBeUndefined();
+  });
+
+  it("registers the carrier when `--tools` names it by an alias", () => {
+    const { toolManager } = build({ tools: ["Eval", "Read"] });
+
+    expect(toolManager.getTools().map((tool) => tool.name)).toContain(
+      EXEC_TOOL_NAME,
+    );
+  });
+
+  it("leaves the carrier out when `--tools` names neither spelling", () => {
+    const { toolManager } = build({ tools: ["Read"] });
+
+    expect(toolManager.getTools().map((tool) => tool.name)).not.toContain(
+      EXEC_TOOL_NAME,
+    );
   });
 });

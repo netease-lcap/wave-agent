@@ -4,11 +4,11 @@
  * `EnterPlanMode` and `ExitPlanMode` carry `shouldDefer: true` in Claude Code, so
  * wave matches them: neither is declared in `tools[]`, and neither can be called
  * directly. The model has to find the name in the announcement and call it from
- * inside an `Exec` script.
+ * inside a `REPL` script.
  *
  * That is the one flow where deferral could plausibly hurt, because the call *is*
  * an approval request. This example is the proof it does not: the approval fires
- * under the tool's own leaf name (`ExitPlanMode`, not `Exec`), the plan content
+ * under the tool's own leaf name (`ExitPlanMode`, not `REPL`), the plan content
  * reaches it, and the permission mode really flips back to `default`.
  *
  * Run from `packages/agent-sdk`:
@@ -17,6 +17,7 @@
  */
 
 import { Agent, type PermissionDecision } from "../../src/index.js";
+import { EXEC_TOOL_NAME } from "../../src/constants/tools.js";
 
 interface Ask {
   toolName: string;
@@ -96,7 +97,7 @@ async function main(): Promise<void> {
       !declared.includes("ExitPlanMode") && !declared.includes("EnterPlanMode"),
       "neither plan-mode tool is declared flat (deferred)",
     );
-    check(declared.includes("Exec"), "Exec is declared");
+    check(declared.includes(EXEC_TOOL_NAME), "the REPL is declared");
 
     section("the model presents the plan through the sandbox");
     // Deliberately a plan with nothing to implement: the point of this example is the
@@ -136,20 +137,20 @@ async function main(): Promise<void> {
       "the plan content crossed the sandbox boundary into the approval",
     );
     check(modeNow !== "plan", "the approved plan left plan mode");
-    // Nested calls surface as their own name inside Exec's summary, so this is the
+    // Nested calls surface as their own name inside the REPL summary, so this is the
     // measurable difference between "reached it directly" and "reached it as designed".
     const reachedInsideExec = agent.messages.some((message) =>
       message.blocks.some(
         (block) =>
           block.type === "tool" &&
-          block.name === "Exec" &&
+          block.name === EXEC_TOOL_NAME &&
           `${block.result ?? ""}${block.shortResult ?? ""}`.includes(
             "ExitPlanMode",
           ),
       ),
     );
     console.log(
-      `ExitPlanMode reached from inside Exec: ${reachedInsideExec ? "yes" : "no"}`,
+      `ExitPlanMode reached from inside the REPL: ${reachedInsideExec ? "yes" : "no"}`,
     );
     if (!reachedInsideExec) {
       console.log(

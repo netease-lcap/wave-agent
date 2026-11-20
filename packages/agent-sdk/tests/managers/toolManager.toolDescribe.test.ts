@@ -6,10 +6,11 @@ import type { McpManager } from "../../src/managers/mcpManager.js";
 import type { MessageManager } from "../../src/managers/messageManager.js";
 import type { ModManager } from "../../src/managers/modManager.js";
 import type { ToolPlugin } from "../../src/tools/types.js";
+import { EXEC_TOOL_NAME } from "../../src/constants/tools.js";
 
 /**
  * `tool.describe`（spec ecosystem/plugin-mods.md「给工具、技能、命令写描述」）：
- * 插件换掉模型读到的工具说明文字，也可以裁决这个工具平铺还是藏进 `Exec` 池。
+ * 插件换掉模型读到的工具说明文字，也可以裁决这个工具平铺还是藏进 `REPL` 池。
  *
  * 纪律在这里钉住：
  *  - 组装请求**之前** `await prepareToolDescriptions()`，答案同一次请求就生效；
@@ -55,7 +56,7 @@ function build(
     }) => DescribeAnswer | undefined;
     /** 不接 ModManager（独立使用 ToolManager 的调用方）。 */
     withoutModManager?: boolean;
-    /** 注册一个 `Exec` 工具（池的载体）。 */
+    /** 注册 `REPL`（池的载体）。 */
     withExec?: boolean;
     /** 注册哪些工具，缺省是 `FakeTool` + `OtherTool`。 */
     tools?: ToolSpec[];
@@ -123,7 +124,7 @@ function build(
     register(spec);
   }
   if (options.withExec) {
-    register({ name: "Exec", description: "沙箱" });
+    register({ name: EXEC_TOOL_NAME, description: "沙箱" });
   }
 
   return { toolManager, collectToolDescription, turns };
@@ -217,8 +218,8 @@ describe("tool.describe", () => {
   });
 });
 
-describe("tool.describe 的 isDeferred（平铺 / 进 Exec 池）", () => {
-  it("true 把一个平铺的内置工具翻进池：tools[] 只剩 Exec，池里有它", async () => {
+describe("tool.describe 的 isDeferred（平铺 / 进 REPL 池）", () => {
+  it("true 把一个平铺的内置工具翻进池：tools[] 只剩 REPL，池里有它", async () => {
     const { toolManager } = build({
       withExec: true,
       tools: [{ name: "FlatTool", description: "本来是平铺的" }],
@@ -228,7 +229,7 @@ describe("tool.describe 的 isDeferred（平铺 / 进 Exec 池）", () => {
 
     await toolManager.prepareToolDescriptions();
 
-    expect(descriptions(toolManager)).toEqual({ Exec: "沙箱" });
+    expect(descriptions(toolManager)).toEqual({ [EXEC_TOOL_NAME]: "沙箱" });
     expect(toolManager.getExecPool().map((entry) => entry.name)).toContain(
       "FlatTool",
     );
@@ -249,7 +250,7 @@ describe("tool.describe 的 isDeferred（平铺 / 进 Exec 池）", () => {
 
     // `PooledTool` 回到 `tools[]`，`KeepPooled` 仍在池里、不在声明里。
     expect(descriptions(toolManager)).toEqual({
-      Exec: "沙箱",
+      [EXEC_TOOL_NAME]: "沙箱",
       PooledTool: "本来进池的",
     });
     const pool = toolManager.getExecPool().map((entry) => entry.name);
@@ -257,23 +258,23 @@ describe("tool.describe 的 isDeferred（平铺 / 进 Exec 池）", () => {
     expect(pool).not.toContain("PooledTool");
   });
 
-  it("Exec 是结构豁免：插件说藏起来也翻不动", async () => {
+  it("REPL 是结构豁免：插件说藏起来也翻不动", async () => {
     const { toolManager } = build({
       withExec: true,
       tools: [{ name: "KeepPooled", description: "撑起池的", defer: true }],
       describe: (request) =>
-        request.name === "Exec" ? { isDeferred: true } : undefined,
+        request.name === EXEC_TOOL_NAME ? { isDeferred: true } : undefined,
     });
 
     await toolManager.prepareToolDescriptions();
 
-    expect(descriptions(toolManager)).toEqual({ Exec: "沙箱" });
+    expect(descriptions(toolManager)).toEqual({ [EXEC_TOOL_NAME]: "沙箱" });
     expect(toolManager.getExecPool().map((entry) => entry.name)).not.toContain(
-      "Exec",
+      EXEC_TOOL_NAME,
     );
   });
 
-  it("没有池（enableExec: false）时保持平铺，且只告诫一次", async () => {
+  it("没有池（enableRepl: false）时保持平铺，且只告诫一次", async () => {
     const { toolManager } = build({
       tools: [{ name: "FlatTool", description: "本来是平铺的" }],
       describe: (request) =>

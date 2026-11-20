@@ -123,7 +123,7 @@ export interface ToolBlock {
    * A deferred tool is callable from the sandbox but absent from `tools[]`, so its
    * calls leave no `tool` block of their own — the names ride on the `Exec` block
    * that carried them. A host-side judgment asking "has the agent called X" must
-   * read this rather than the block name (see `docs/specs/core/exec-tool.md`).
+   * read this rather than the block name (see `docs/specs/core/repl-tool.md`).
    * Never sent to the model: `convertMessagesForAPI` takes only `id`/`result`/
    * `images` off a tool block.
    */

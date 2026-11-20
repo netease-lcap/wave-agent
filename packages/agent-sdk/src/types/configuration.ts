@@ -164,7 +164,25 @@ export interface WaveConfiguration {
   };
   /** Whether the Artifact tool is enabled. Unset follows the code default constant (ARTIFACT_DEFAULT_ENABLED). */
   enableArtifact?: boolean;
-  /** Whether the Exec tool is enabled. Unset follows the code default constant (EXEC_DEFAULT_ENABLED). */
+  /**
+   * Whether the REPL tool is enabled — the carrier of the on-demand tool pool.
+   * Unset follows the code default constant (EXEC_DEFAULT_ENABLED). `false`
+   * declares every pooled tool flat again, so turning it off loses no capability.
+   */
+  enableRepl?: boolean;
+  /**
+   * Whether the seven core tools (`Read` / `Glob` / `Grep` / `Bash` /
+   * `PowerShell` / `Write` / `Edit`) are pooled into the REPL as well, instead of
+   * being declared directly. Unset follows the code default constant
+   * (REPL_CORE_TOOLS_DEFAULT_ENABLED = off), and it has no effect while
+   * `enableRepl` is off — the master switch decides whether a pool exists at all.
+   */
+  enableReplCoreTools?: boolean;
+  /**
+   * Retired spelling of `enableRepl`, still accepted on both the local and the
+   * remote layer so a settings file or an admin push written before the rename
+   * keeps working. A layer's `enableRepl` wins over its own `enableExec`.
+   */
   enableExec?: boolean;
   /**
    * Whether the three enterprise knowledge-base tools (`kb_search` /

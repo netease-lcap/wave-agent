@@ -2,10 +2,11 @@
 
 import { fileURLToPath } from "url";
 import { Agent } from "../../src/agent.js";
+import { EXEC_TOOL_NAME } from "../../src/constants/tools.js";
 import { section, startDemo, stopDemo, waitForServer } from "./harness.js";
 
 /**
- * What an `Exec` row says it did: the count of nested MCP calls on the first line,
+ * What a `REPL` row says it did: the count of nested MCP calls on the first line,
  * then the last two calls by name. The row is the only thing a reader sees once
  * the script is collapsed, so the check is that its text is derived from the calls
  * the sandbox actually issued — including while the script is still running.
@@ -66,7 +67,7 @@ async function main(): Promise<void> {
 
     section("turn 1 — one script, three nested calls");
     await agent.sendMessage(
-      "Call the Exec tool exactly once. The script must await these three calls " +
+      "Call the REPL tool exactly once. The script must await these three calls " +
         "in this order, each with a literal argument and no loops, and must not " +
         'search the pool: tools["mcp__catalog-demo__reverse_text"]({ text: "abc" }), ' +
         'then tools["mcp__catalog-demo__word_count"]({ text: "a b c" }), then ' +
@@ -76,7 +77,7 @@ async function main(): Promise<void> {
 
     section("turn 2 — one script, one nested call");
     await agent.sendMessage(
-      "Call the Exec tool exactly once more. The script must await exactly one " +
+      "Call the REPL tool exactly once more. The script must await exactly one " +
         'MCP call, and no others: tools["mcp__catalog-demo__shout"]({ text: "x" }). ' +
         "Return the result.",
     );
@@ -84,7 +85,7 @@ async function main(): Promise<void> {
     const blocks = agent.messages.flatMap((message) =>
       message.blocks.filter((block) => block.type === "tool"),
     );
-    section(`the ${blocks.length} Exec rows`);
+    section(`the ${blocks.length} REPL rows`);
     for (const block of blocks) {
       const script = block.parameters ?? "";
       const calls = callsIn(script);
@@ -95,8 +96,10 @@ async function main(): Promise<void> {
           `shortResult ${JSON.stringify(block.shortResult)}\n` +
           `expected    ${JSON.stringify(expected)}`,
       );
-      if (block.name !== "Exec") {
-        failures.push(`a row is named "${block.name}" instead of "Exec"`);
+      if (block.name !== EXEC_TOOL_NAME) {
+        failures.push(
+          `a row is named "${block.name}" instead of "${EXEC_TOOL_NAME}"`,
+        );
       }
       if (block.shortResult !== expected) {
         failures.push(
@@ -128,8 +131,10 @@ async function main(): Promise<void> {
     if (!firstLines.includes("1 tool call")) {
       failures.push("no row showed the singular `1 tool call`");
     }
-    if (blocks.some((block) => (block.shortResult ?? "").includes("Exec"))) {
-      failures.push("a summary repeats the `Exec` prefix");
+    if (
+      blocks.some((block) => (block.shortResult ?? "").includes(EXEC_TOOL_NAME))
+    ) {
+      failures.push("a summary repeats the `REPL` prefix");
     }
   } catch (error) {
     console.error("\n❌ Error:", error);

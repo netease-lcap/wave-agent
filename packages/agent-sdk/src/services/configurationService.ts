@@ -1888,6 +1888,12 @@ export function loadWaveConfigFromFile(
       worktree: config.worktree || undefined,
       enableArtifact:
         config.enableArtifact !== undefined ? config.enableArtifact : undefined,
+      enableRepl:
+        config.enableRepl !== undefined ? config.enableRepl : undefined,
+      enableReplCoreTools:
+        config.enableReplCoreTools !== undefined
+          ? config.enableReplCoreTools
+          : undefined,
       enableExec:
         config.enableExec !== undefined ? config.enableExec : undefined,
       enableKnowledgeBase:
@@ -2135,6 +2141,17 @@ export function loadMergedWaveConfig(
       mergedConfig.enableArtifact = config.enableArtifact;
     }
 
+    // Merge the REPL switches (last one wins). The retired `enableExec` spelling
+    // travels alongside them: `execAvailability` reads both off the merged result
+    // and prefers `enableRepl` within a layer.
+    if (config.enableRepl !== undefined) {
+      mergedConfig.enableRepl = config.enableRepl;
+    }
+
+    if (config.enableReplCoreTools !== undefined) {
+      mergedConfig.enableReplCoreTools = config.enableReplCoreTools;
+    }
+
     // Merge enableExec (last one wins)
     if (config.enableExec !== undefined) {
       mergedConfig.enableExec = config.enableExec;
@@ -2260,6 +2277,8 @@ export function loadMergedWaveConfig(
     otelHeadersHelper: mergedConfig.otelHeadersHelper,
     worktree: mergedConfig.worktree,
     enableArtifact: mergedConfig.enableArtifact,
+    enableRepl: mergedConfig.enableRepl,
+    enableReplCoreTools: mergedConfig.enableReplCoreTools,
     enableExec: mergedConfig.enableExec,
     enableKnowledgeBase: mergedConfig.enableKnowledgeBase,
     enableRemoteControl: mergedConfig.enableRemoteControl,
