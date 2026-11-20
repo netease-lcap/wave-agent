@@ -98,21 +98,25 @@ order: 130
 
 **验收场景**：
 
-1. **假设** 会话工作目录是 `/p/repo/sub`，**当** agent 执行 `rm -rf .`、`rm -rf /p/repo/sub` 或带引号的等价写法，**则** 命中「工作目录」这条，必须由用户明确批准（`packages/agent-sdk/src/utils/shell/dangerousRemoval.ts:423`）。
-2. **假设** 同一工作目录，**当** 目标换成任意祖先（`..`、`../..`、`./build/../..`、绝对路径、`rmdir -p a/b` 沿途的每一级），**则** 同样命中——判据是「包含工作目录」，不是「等于」（`packages/agent-sdk/src/utils/shell/dangerousRemoval.ts:314`）。
+1. **假设** 会话工作目录是 `/p/repo/sub`，**当** agent 执行 `rm -rf .`、`rm -rf /p/repo/sub` 或带引号的等价写法，**则** 命中「工作目录」这条，必须由用户明确批准（`packages/agent-sdk/src/utils/shell/dangerousRemoval.ts:812`）。
+2. **假设** 同一工作目录，**当** 目标换成任意祖先（`..`、`../..`、`./build/../..`、绝对路径、`rmdir -p a/b` 沿途的每一级），**则** 同样命中——判据是「包含工作目录」，不是「等于」（`packages/agent-sdk/src/utils/shell/dangerousRemoval.ts:347`）。
 3. **假设** 目标等于某个附加目录或它的祖先，**当** 判定时，**则** 按同一规则处理；附加目录**之下**的子目录不命中（`packages/agent-sdk/src/managers/permissionManager.ts:694`）。
-4. **假设** 目标是文件系统根、用户主目录、或一级系统目录本身，**当** 判定时，**则** 同样命中；这三类名单与 PowerShell 通道共用同一份实现（`packages/agent-sdk/src/utils/pathSafety.ts:112-139`）。
-5. **假设** 目标经 realpath 后指向上述任一保护根（符号链接指向工作目录、macOS `/tmp` → `/private/tmp`），**当** 判定时，**则** 按解析后的路径判定，不按字面判定（`packages/agent-sdk/src/utils/pathSafety.ts:52`）。
+4. **假设** 目标是文件系统根、用户主目录、一级系统目录本身，**当** 判定时，**则** 同样命中；Windows 上「任何盘符的一级目录」（`D:\media`、`E:\tmp`）也按一级目录处理，`\\.\`/`\\?\` 这类设备与命名空间路径、以及不是本机的整盘共享（`\\host\admin$`、`\\host\d$`）不解析、直接命中——它们在盘上没有可比对的位置；这几类名单与 PowerShell 通道共用同一份实现（`packages/agent-sdk/src/utils/pathSafety.ts:253`）。
+5. **假设** 目标经 realpath 后指向上述任一保护根（符号链接指向工作目录、macOS `/tmp` → `/private/tmp`、Windows 下 `C:\Users\LIUYIQ~1` 这类 8.3 短名），**当** 判定时，**则** 按解析后的路径判定，不按字面判定。解析必须走 `realpathSync.native`：JS 版不展开 8.3 短名，`C:\Users\LIUYIQ~1` 与 `C:\Users\liuyiqi02` 就永远比不相等，「删用户的 profile」尤其容易这么写（`packages/agent-sdk/src/utils/pathSafety.ts:57`）。
 6. **假设** 一次调用带多个目标（`rm -rf a b ..`），**当** 其中任一目标命中，**则** 整体按命中处理；`--` 之后的操作数按目标算，`--help`/`--version` 不算目标。
-7. **假设** 命令是复合形态（`a && rm -rf ..`、`cd /x && rm -rf /x`、管道、`sudo`/`env`/`nice` 等包装、`bash -c '…'` 内联、后台 `&`），**当** 判定时，**则** 必须逐个叶子命令、按当时的 `cd` 状态判定——对整串文本跑正则不算数（`packages/agent-sdk/src/utils/shell/dangerousRemoval.ts:147`）。
+7. **假设** 命令是复合形态（`a && rm -rf ..`、`cd /x && rm -rf /x`、管道、`sudo`/`env`/`nice` 等包装、`bash -c '…'` 内联、后台 `&`），**当** 判定时，**则** 必须逐个叶子命令、按当时的 `cd` 状态判定——对整串文本跑正则不算数（`packages/agent-sdk/src/utils/shell/dangerousRemoval.ts:313`）。
 8. **假设** 目标无法静态确定（`$UNKNOWN`、`$(pwd)`、反引号、glob 前缀里带变量），**当** 判定时，**则** 按危险处理：跳过它等于给出一条明文的绕过方式（`rm -rf "$PWD"`），代价只是变量命名的目标多一次确认。
 9. **假设** 目标是 glob，**当** 判定时，**则** 按其静态前缀判定——`rm -rf *`、`rm -rf build/*` 是普通删除，`rm -rf /*`、`rm -rf ../*` 命中根/祖先。
-10. **假设** 命中之后进入决策，**当** 权限模式为 `default` / `acceptEdits` / `plan` / `bypassPermissions`，**则** 必须弹确认，且卡片不提供「总是允许 / 不再询问」；`allow` 规则、沙箱自动放行、`acceptEdits`、`bypassPermissions` 都不得批准它（`packages/agent-sdk/src/managers/permissionManager.ts:1171-1177`、`:1441-1485`）。
+10. **假设** 命中之后进入决策，**当** 权限模式为 `default` / `acceptEdits` / `plan` / `bypassPermissions`，**则** 必须弹确认，且卡片不提供「总是允许 / 不再询问」；`allow` 规则、沙箱自动放行、`acceptEdits`、`bypassPermissions` 都不得批准它（`packages/agent-sdk/src/managers/permissionManager.ts:1176`、`:1453-1500`）。
 11. **假设** 权限模式为 `dontAsk`，**当** 命中时，**则** 直接拒绝并给出原因；**假设** 没有任何审批通道（`-p`、未提供 `canUseTool` 的宿主），**当** 命中时，**则** 同样拒绝，且拒绝消息里带上这条原因，而不是一句泛泛的「需要审批」（`packages/agent-sdk/src/managers/permissionManager.ts:987-1003`）。
-12. **假设** 换成 PowerShell 通道（`Remove-Item -Recurse -Force <目标>`），**当** 目标等于/包含工作目录或附加目录，**则** 落在**硬拒绝**档（不询问、规则不可覆盖），与根/主目录/系统目录同档（`packages/agent-sdk/src/tools/powershellTool/pathValidation.ts:78`、`packages/agent-sdk/src/tools/powershellTool/permissions.ts:253-268`）。
-13. **假设** 删除形态不在判据内（`find -delete`、`mv`、`xargs rm`、脚本内的 `shutil.rmtree`），**当** 判定时，**则** 本条不命中，仍按既有规则处理；解析不了的整体（`eval`、heredoc 等）继续按 fail-closed 回落确认。
+12. **假设** 换成 PowerShell 通道（`Remove-Item -Recurse -Force <目标>`），**当** 目标等于/包含工作目录或附加目录，**则** 落在**硬拒绝**档（不询问、规则不可覆盖），与根/主目录/系统目录同档（`packages/agent-sdk/src/tools/powershellTool/pathValidation.ts:78`、`packages/agent-sdk/src/tools/powershellTool/permissions.ts:255-268`）。
+13. **假设** 判据读不懂这次删除，**当** 判定时，**则** 一律确认，绝不静默放行：另一家的命令行（`powershell`/`pwsh`/`cmd`/`wsl`/`su`…）、脚本在文件里（`bash deploy.sh`）、目标从 stdin 来（`xargs rm`、`parallel`）、镜像/移动式复制（`robocopy /MIR`、`/PURGE`、`/MOV`）、以及整行解析不了但行内出现删除词（`eval`、heredoc、算术展开、`$(…)`）。「让命令读不懂」因此不再是绕过这条路（`packages/agent-sdk/src/utils/shell/dangerousRemoval.ts:265`）。
+14. **假设** 删除形态确实不在判据里（`find -delete`、`mv`、脚本内的 `shutil.rmtree`），**当** 判定时，**则** 本条不命中，仍按既有规则处理。
+15. **假设** Windows 上目标是纯反斜杠（`rm -rf \`），**当** 判定时，**则** 命中：Git Bash 把它读成当前盘符的根，这是拼写与后果差得最远的一种目标（`packages/agent-sdk/src/utils/shell/dangerousRemoval.ts:738`）。
+16. **假设** Windows 上目标的写法让 Git Bash 读成别处——裸反斜杠被吃掉（`rm -rf E:\code\myrepo` 到 `rm` 手里是 `E:codemyrepo`，盘符相对路径），或行尾那个反斜杠让整行解析失败（`rm -rf D:\`、`rm -rf D:/proj/x-tb\`）——**当** 判定时，**则** 一律命中并要求显式批准，卡片说明「这条落点未知」。
+17. **假设** 目标用了 MSYS 或共享拼法（`/d/x`、`/cygdrive/d/x`、`//localhost/D$/x`、`\\?\D:\x`），**当** 判定时，**则** 先还原成 `D:\x` 再比较（`packages/agent-sdk/src/utils/path.ts:133`）。用正向映射（`toWindowsPath`）比较等于「判的路径不是删的路径」：它把 `/usr` 判成本盘的 `\usr`，把 `D:/x` 判成盘符问句认不出的形态。
 
-**为什么是「询问」而不是「拒绝」**（Bash 侧）：主人应该保有这个权力——「删掉我克隆的这个目录」是合法意图，只是不能由 agent 自己拍。CC 在同一处也是问。PowerShell 侧的这类目标本来就在硬拒绝档，本次只是把「工作目录及其祖先」补进那一档，与既有语义保持一致。CC 只覆盖 `rm`/`rmdir`，本实现同样只覆盖这两个命令；`find -delete`、`mv`、脚本内删除等形态明确不覆盖。
+**为什么是「询问」而不是「拒绝」**（Bash 侧）：主人应该保有这个权力——「删掉我克隆的这个目录」是合法意图，只是不能由 agent 自己拍。CC 在同一处也是问，并且标了 `classifierApprovable: false`，即「任何分类器都不得替人批准它」；我们这边的对应物是「判定落在所有放行分支之上」+ 卡片不提供「不再询问」。CC 的 `--dangerously-skip-permissions` 也不跳过这一问。PowerShell 侧的这类目标本来就在硬拒绝档，与既有语义保持一致。**删除命令以 `rm`/`rmdir` 为准**（与 CC 相同，`.exe`/`.bat`/`.cmd`/`.com` 后缀先剥掉），读不懂的通道按场景 13 确认；`find -delete`、`mv`、脚本内删除等形态明确不覆盖。`robocopy /MIR` 不在 CC 的判据里，是按同一族补的。
 
 ### 用户故事：基于路径的权限（优先级：P1）
 
