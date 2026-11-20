@@ -93,9 +93,17 @@ export class ChatProvider implements vscode.WebviewViewProvider {
         );
         const session = this.tabSessions.get(tabId);
         if (session) {
-          session.destroy().then(() => {
-            this.tabSessions.delete(tabId);
-          });
+          // 销毁失败也要把登记项摘掉（否则同 Tab 再打开会拿到一个已死的会话），
+          // 失败记日志，别让它变成未处理的 rejection。
+          session.destroy().then(
+            () => {
+              this.tabSessions.delete(tabId);
+            },
+            (err) => {
+              console.error("销毁会话失败:", err);
+              this.tabSessions.delete(tabId);
+            },
+          );
         }
       },
       onWindowDispose: (windowId) => {
@@ -104,9 +112,15 @@ export class ChatProvider implements vscode.WebviewViewProvider {
         );
         const session = this.windowSessions.get(windowId);
         if (session) {
-          session.destroy().then(() => {
-            this.windowSessions.delete(windowId);
-          });
+          session.destroy().then(
+            () => {
+              this.windowSessions.delete(windowId);
+            },
+            (err) => {
+              console.error("销毁会话失败:", err);
+              this.windowSessions.delete(windowId);
+            },
+          );
         }
       },
       onSettingsMessage: async (message) => {

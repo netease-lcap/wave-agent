@@ -356,7 +356,11 @@ export const MermaidRenderer: React.FC<MermaidRendererProps> = ({
       if (contentChanged || !svgContent) {
         // Content changed or no SVG - need full re-render
         renderTimeoutRef.current = setTimeout(() => {
-          renderMermaid();
+          // `renderMermaid` 只有 try/finally、没有 catch：逃出来的都是真错误
+          // （初始化 mermaid、取 DOM 失败），落到这里必须有人接住。
+          renderMermaid().catch((err) =>
+            console.error("Mermaid render failed:", err),
+          );
         }, 100);
       } else if (svgContent && domIsEmpty && mermaidRef.current) {
         // Have SVG but DOM is empty - just re-insert
@@ -366,7 +370,9 @@ export const MermaidRenderer: React.FC<MermaidRendererProps> = ({
           console.error("Error re-inserting SVG:", err);
           // If re-insertion fails, do a full re-render
           renderTimeoutRef.current = setTimeout(() => {
-            renderMermaid();
+            renderMermaid().catch((err) =>
+              console.error("Mermaid render failed:", err),
+            );
           }, 100);
         }
       }

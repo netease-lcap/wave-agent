@@ -62,12 +62,12 @@ export const PluginDetail: React.FC = () => {
       if (isInstalledAndEnabled) {
         const action = INSTALLED_ACTIONS[selectedActionIndex].id;
         if (action === "uninstall") {
-          actions.uninstallPlugin(plugin.name, plugin.marketplace);
+          void actions.uninstallPlugin(plugin.name, plugin.marketplace);
         } else {
-          actions.updatePlugin(plugin.name, plugin.marketplace);
+          void actions.updatePlugin(plugin.name, plugin.marketplace);
         }
       } else {
-        actions.installPlugin(
+        void actions.installPlugin(
           plugin.name,
           plugin.marketplace,
           SCOPES[selectedScopeIndex].id,

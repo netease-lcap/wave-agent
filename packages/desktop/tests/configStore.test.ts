@@ -316,6 +316,7 @@ describe("ConfigStore", () => {
       cwd: "/repo",
       createdAt: 1000,
       lastActiveAt: 1000,
+      host: "local",
     };
     store.upsertSession(entry);
 
@@ -351,6 +352,7 @@ describe("ConfigStore", () => {
       cwd: "C:/Users/foo/repo/.wave/worktrees/x",
       createdAt: 1,
       lastActiveAt: 1,
+      host: "local",
       worktree: {
         path: "C:/Users/foo/repo/.wave/worktrees/x",
         branch: "main",
@@ -440,6 +442,7 @@ describe("ConfigStore", () => {
       cwd: "/repo",
       createdAt: 1000,
       lastActiveAt: 1000,
+      host: "local",
     });
     store.upsertSession({
       sessionId: "s1",
@@ -448,6 +451,7 @@ describe("ConfigStore", () => {
       cwd: "/repo",
       createdAt: 1000,
       lastActiveAt: 2000,
+      host: "local",
     });
 
     expect(store.getSessionIndex()).toHaveLength(1);
@@ -464,6 +468,7 @@ describe("ConfigStore", () => {
       cwd: "/repo/.wave/worktrees/feat",
       createdAt: 1000,
       lastActiveAt: 1000,
+      host: "local",
       worktree: {
         path: "/repo/.wave/worktrees/feat",
         branch: "worktree-feat",
@@ -484,6 +489,7 @@ describe("ConfigStore", () => {
       cwd: "/a",
       createdAt: 100,
       lastActiveAt: 100,
+      host: "local",
     });
     store.touchSession("s1", 999);
     expect(store.getSessionIndex()[0].lastActiveAt).toBe(999);
@@ -504,6 +510,7 @@ describe("ConfigStore", () => {
       cwd: "/a",
       createdAt: 100,
       lastActiveAt: 100,
+      host: "local",
     };
     store.upsertSession(entry);
     const removed = store.removeSession("s1");
@@ -526,6 +533,7 @@ describe("ConfigStore", () => {
       cwd: "/a",
       createdAt: 100,
       lastActiveAt: 100,
+      host: "local",
     });
     store.removeSession("s1");
     expect(new ConfigStore(STORE_PATH).getSessionIndex()).toEqual([]);
@@ -540,6 +548,7 @@ describe("ConfigStore", () => {
       cwd: "/a",
       createdAt: 100,
       lastActiveAt: 100,
+      host: "local",
     });
     store.getSessionIndex()[0].title = "tampered";
     expect(store.getSessionIndex()[0].title).toBe("Original");

@@ -1,5 +1,35 @@
 import { describe, it, expect } from "vitest";
-import { usageFromQuotaHeaders } from "../src/main/accountUsage";
+import type { AccountBillingInfo } from "wave-webview-fixtures";
+import {
+  usageFromQuotaHeaders,
+  type AccountUsageSnapshot,
+} from "../src/main/accountUsage";
+
+/**
+ * 这次响应必须带新读数 / 必须带 billing。
+ *
+ * 两层可选（整体 `null`、`billing` 缺省）都是「没有新信息，调用方保留旧值」的
+ * 信号；下面这些用例断言的恰恰是「这次给了」，缺了就是被测行为没发生 —— 直接
+ * 让用例失败，而不是让字段断言在 null 上静默跳过。
+ */
+function requireSnapshot(
+  headers: Record<string, string>,
+  prev: AccountUsageSnapshot = {},
+): AccountUsageSnapshot {
+  const snapshot = usageFromQuotaHeaders(headers, prev);
+  if (snapshot === null)
+    throw new Error("期望这次响应带用量读数，实际没有新信息");
+  return snapshot;
+}
+
+function requireBilling(
+  headers: Record<string, string>,
+  prev: AccountUsageSnapshot = {},
+): AccountBillingInfo {
+  const billing = requireSnapshot(headers, prev).billing;
+  if (!billing) throw new Error("期望这次响应带 billing，实际缺省");
+  return billing;
+}
 
 /**
  * 额度响应头 → 账户卡片读数（spec: docs/specs/desktop/desktop-account.md
@@ -92,25 +122,21 @@ describe("usageFromQuotaHeaders", () => {
   });
 
   it("status=rejected 而没有 code：仍然算 blocked（兜底文案由 webview 出）", () => {
-    expect(
-      usageFromQuotaHeaders({ "x-codechat-quota-status": "rejected" }, {})
-        .billing,
-    ).toEqual({ mode: "blocked", code: "" });
+    expect(requireBilling({ "x-codechat-quota-status": "rejected" })).toEqual({
+      mode: "blocked",
+      code: "",
+    });
   });
 
   it("规格外的 reason / code 原样透传（不因「不认识」丢掉阻断事实）", () => {
     expect(
-      usageFromQuotaHeaders(
-        {
-          "x-codechat-quota-status": "rejected",
-          "x-codechat-quota-code": "NEW_CODE",
-        },
-        {},
-      ).billing,
+      requireBilling({
+        "x-codechat-quota-status": "rejected",
+        "x-codechat-quota-code": "NEW_CODE",
+      }),
     ).toEqual({ mode: "blocked", code: "NEW_CODE" });
     expect(
-      usageFromQuotaHeaders({ "x-codechat-quota-reason": "future_reason" }, {})
-        .billing,
+      requireBilling({ "x-codechat-quota-reason": "future_reason" }),
     ).toEqual({ mode: "api", reason: "future_reason", plan: null });
   });
 
@@ -141,7 +167,7 @@ describe("usageFromQuotaHeaders", () => {
         "x-codechat-quota-monthly-limit": "unlimited",
         "x-codechat-quota-weekly-limit": "unlimited",
       };
-      expect(usageFromQuotaHeaders(headers, {}).billing).toEqual({
+      expect(requireBilling(headers)).toEqual({
         mode: "plan",
         plan: {
           monthUsed: 120,
@@ -158,33 +184,31 @@ describe("usageFromQuotaHeaders", () => {
         ...H.plan,
         "x-codechat-quota-monthly-limit": "unavailable",
       };
-      expect(
-        (
-          usageFromQuotaHeaders(headers, {}).billing.plan as {
-            monthLimit: unknown;
-          }
-        ).monthLimit,
-      ).toBe(0);
+      // unavailable 只影响该维度的上限（不清掉其它三项）。
+      expect(requireBilling(headers)).toEqual({
+        mode: "plan",
+        plan: {
+          monthUsed: 120,
+          monthLimit: 0,
+          weekUsed: 12,
+          weekLimit: 100,
+          expireDate: "2027-03-01",
+        },
+      });
     });
 
     it("api-limit 只有两态：unlimited → null、0 → 已用完（充值制）", () => {
       expect(
-        usageFromQuotaHeaders(
-          {
-            "x-codechat-quota-api-limit": "unlimited",
-            "x-codechat-quota-api-used": "2",
-          },
-          {},
-        ).apiQuota,
+        requireSnapshot({
+          "x-codechat-quota-api-limit": "unlimited",
+          "x-codechat-quota-api-used": "2",
+        }).apiQuota,
       ).toEqual({ limit: null, used: 2 });
       expect(
-        usageFromQuotaHeaders(
-          {
-            "x-codechat-quota-api-limit": "0",
-            "x-codechat-quota-api-used": "0",
-          },
-          {},
-        ).apiQuota,
+        requireSnapshot({
+          "x-codechat-quota-api-limit": "0",
+          "x-codechat-quota-api-used": "0",
+        }).apiQuota,
       ).toEqual({ limit: 0, used: 0 });
     });
   });
@@ -193,28 +217,24 @@ describe("usageFromQuotaHeaders", () => {
     // 周用量被污染 ⇒ 四个数不齐 ⇒ 这条读数整体不可画；没有 reason / code 时
     // 连 billing 都不下发（调用方保留旧值），绝不把健康账号渲染成「已用尽」。
     expect(
-      usageFromQuotaHeaders(
-        { ...H.plan, "x-codechat-quota-weekly-used": "abc" },
-        {},
-      ).billing,
+      requireSnapshot({ ...H.plan, "x-codechat-quota-weekly-used": "abc" })
+        .billing,
     ).toBeUndefined();
     expect(
-      usageFromQuotaHeaders({ "x-codechat-quota-api-limit": "-1" }, {})
-        .apiQuota,
+      requireSnapshot({ "x-codechat-quota-api-limit": "-1" }).apiQuota,
     ).toBeUndefined();
     expect(
-      usageFromQuotaHeaders({ "x-codechat-quota-api-limit": "" }, {}).apiQuota,
+      requireSnapshot({ "x-codechat-quota-api-limit": "" }).apiQuota,
     ).toBeUndefined();
   });
 
   it("api-* 缺省时保留上次余额（别把正看余额维度的用户挤掉，spec 场景 8）", () => {
     const prev = { apiQuota: { limit: 20, used: 5 } };
-    expect(usageFromQuotaHeaders({ ...H.plan }, prev).apiQuota).toBeUndefined();
+    expect(requireSnapshot({ ...H.plan }, prev).apiQuota).toBeUndefined();
     // 「保留」由调用方做（`{ ...prev, ...patch }`），这里只保证不下发清空值；
     // 但 api-limit 给了而 api-used 缺时，用上次的 used 补上。
     expect(
-      usageFromQuotaHeaders({ "x-codechat-quota-api-limit": "20" }, prev)
-        .apiQuota,
+      requireSnapshot({ "x-codechat-quota-api-limit": "20" }, prev).apiQuota,
     ).toEqual({ limit: 20, used: 5 });
   });
 });

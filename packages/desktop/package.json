@@ -25,7 +25,7 @@
     "test:realhost": "vitest run --config vitest.integration.config.ts",
     "smoke:crash": "electron --no-sandbox scripts/crashSmoke.cjs",
     "smoke:crash:headless": "xvfb-run -a electron --no-sandbox scripts/crashSmoke.cjs",
-    "lint": "oxlint",
+    "lint": "oxlint --type-aware",
     "format": "prettier --write ."
   },
   "devDependencies": {

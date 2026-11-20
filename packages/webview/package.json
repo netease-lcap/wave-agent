@@ -20,7 +20,7 @@
     "build:remote": "node remote/build.mjs",
     "pack:remote": "node remote/build.mjs --zip",
     "type-check": "tsrs --noEmit && tsrs -p tests --noEmit && tsrs -p e2e --noEmit && tsrs -p demo --noEmit",
-    "lint": "oxlint",
+    "lint": "oxlint --type-aware",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:unit": "vitest run",

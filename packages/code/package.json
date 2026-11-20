@@ -35,7 +35,7 @@
     "test:coverage": "vitest run --coverage",
     "test:unit": "vitest run",
     "test:unit:coverage": "vitest run --coverage",
-    "lint": "oxlint",
+    "lint": "oxlint --type-aware",
     "format": "prettier --write .",
     "prepublishOnly": "pnpm run build"
   },

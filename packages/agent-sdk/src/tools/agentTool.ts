@@ -246,7 +246,7 @@ When using the Agent tool, you must specify a subagent_type parameter to select 
       }
 
       return new Promise<ToolResult>((resolve) => {
-        (async () => {
+        void (async () => {
           /** Whether the chain's tail ran: a hook answering without `next` started none. */
           let dispatched = false;
 
