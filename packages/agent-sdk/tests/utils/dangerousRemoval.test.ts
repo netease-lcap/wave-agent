@@ -16,6 +16,43 @@ const PROTECTED = [WORKDIR];
 const WINDOWS = process.platform === "win32";
 
 /**
+ * The drive the fixture sits on, upper case: `path.resolve(path.sep, …)` lands on
+ * whichever drive the test runs *from* — `C:` in one checkout, `D:` in another —
+ * so a Windows spelling built from a literal letter names a directory the fixture
+ * has nothing to do with, and the case only means something on the machine it was
+ * written on. Everything below is built from this letter instead.
+ *
+ * Off Windows there is no drive to name; `C` is only there to keep the commands
+ * readable, since none of those spellings is read as a drive there.
+ */
+const DRIVE_ROOT = path.parse(WORKDIR).root;
+const DRIVE = /^[A-Za-z]:\\?$/.test(DRIVE_ROOT)
+  ? DRIVE_ROOT[0]!.toUpperCase()
+  : "C";
+
+/**
+ * A drive the fixture is *not* on: `D:\x` is an ancestor of the working directory
+ * whenever the fixture itself is on `D:`, and "every drive's first-level directory
+ * is critical" can only be seen on a drive that is not.
+ */
+const OTHER_DRIVE = DRIVE === "Z" ? "Y" : "Z";
+
+/** `/d/fake/x` — a path as Git Bash spells a drive. */
+function msysPath(...segments: string[]): string {
+  return ["", DRIVE.toLowerCase(), ...segments].join("/");
+}
+
+/** `/cygdrive/d/fake/x` — the same path in Git Bash's other spelling. */
+function cygdrivePath(...segments: string[]): string {
+  return ["", "cygdrive", DRIVE.toLowerCase(), ...segments].join("/");
+}
+
+/** `//localhost/D$/fake/x` — the same path through the drive's admin share. */
+function adminSharePath(...segments: string[]): string {
+  return `//localhost/${[`${DRIVE}$`, ...segments].join("/")}`;
+}
+
+/**
  * A path as it can appear in a command line.
  *
  * A bare word only survives the shell with forward slashes: `rm -rf C:\a\b`
@@ -293,25 +330,39 @@ describe("findDangerousRemoval — Windows spellings", () => {
     }
   });
 
-  // The restore direction is host-bound (`restoreWindowsPath` returns the path
-  // untouched off Windows), so these two only mean something on Windows.
-  it.runIf(WINDOWS)(
-    "reads the MSYS spellings as the drive path they name",
-    () => {
-      expect(ruleOf("rm -rf /c/fake/worktree/repo", "win32")).toBe(
-        "working_directory",
+  // The restore direction is host-bound: `restoreWindowsPath` answers for the
+  // machine running the test, not for the `platform` argument, and off Windows
+  // none of these spellings names a drive (`/d/x` is an ordinary name under `/`).
+  // So each case states what it means on the host it runs on, instead of being
+  // skipped on the hosts that cannot have drives.
+  it("reads the MSYS spellings as the drive path they name", () => {
+    // Three spellings of the repository above `sub` — `/d/…`, `/cygdrive/d/…` and
+    // its `D$` share — all of them on the fixture's own drive, so all of them
+    // name the directory the command would really delete.
+    const spellings = [
+      msysPath("fake", "worktree", "repo"),
+      cygdrivePath("fake", "worktree", "repo"),
+      `'${adminSharePath("fake", "worktree", "repo")}'`,
+    ];
+    for (const spelling of spellings) {
+      expect(ruleOf(`rm -rf ${spelling}`, "win32")).toBe(
+        WINDOWS ? "working_directory" : null,
       );
-      expect(ruleOf("rm -rf /cygdrive/d/fake", "win32")).toBe("system");
-      expect(
-        ruleOf("rm -rf '//localhost/C$/fake/worktree/repo'", "win32"),
-      ).toBe("working_directory");
-    },
-  );
+    }
+  });
 
-  it.runIf(WINDOWS)("reads \\\\?\\D:\\x as D:\\x", () => {
-    const hit = judge('rm -rf "\\\\?\\D:\\fake"', "win32");
-    expect(hit?.rule).toBe("system");
-    expect(hit?.resolved).toBe("D:\\fake");
+  it("reads a \\\\?\\ drive path as the drive path it names", () => {
+    // On a drive the session does not work on: on the fixture's own drive the
+    // path behind the prefix is an ancestor of the working directory, and the two
+    // rules would not be told apart.
+    const spelling = `\\\\?\\${OTHER_DRIVE}:\\fake`;
+    const hit = judge(`rm -rf "${spelling}"`, "win32");
+    // Off Windows the prefix names no drive: `\\?\Z:\fake` is an ordinary name,
+    // backslashes and all, which lands *inside* the working directory — a removal
+    // below the session, and exactly what this check lets through.
+    expect(hit ? { rule: hit.rule, resolved: hit.resolved } : null).toEqual(
+      WINDOWS ? { rule: "system", resolved: `${OTHER_DRIVE}:\\fake` } : null,
+    );
   });
 
   it("asks about robocopy when it mirrors or moves", () => {
