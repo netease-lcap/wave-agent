@@ -1,5 +1,4 @@
 import { expect, test } from "@playwright/test";
-import { execFileSync } from "node:child_process";
 import { createReadStream, existsSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -90,13 +89,8 @@ let server: Server;
 let base = "";
 
 test.beforeAll(async () => {
-  // 远控页这一份产物不在普通 build 里（`remote/dist/` 是 gitignored 的），
-  // 每次现建，免得测到上一轮的 chat.js + 旧 shim。
-  execFileSync("node", ["remote/build.mjs"], {
-    cwd: WEBVIEW_ROOT,
-    stdio: "ignore",
-  });
-
+  // `remote/dist` 由全局准备（`playwright.config.ts` 的 globalSetup）建好
+  // 一次；这里只负责把它按真实 origin 提供出去。
   server = createServer((req, res) => {
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
     const rel = url.pathname === "/" ? "/index.html" : url.pathname;

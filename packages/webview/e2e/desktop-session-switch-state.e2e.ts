@@ -134,6 +134,32 @@ async function slotWidth(webviewPage: Page): Promise<number> {
   return Math.round(box.width);
 }
 
+/**
+ * 槽位宽度**稳定之后**再返回。
+ *
+ * 面板宽度不是一次渲染就位：容器一量到宽度，`autoPanelWidth` 的自动分宽、
+ * 切会话时从 `SessionUiStore` 恢复的 per-session 宽度，都是 effect 在**下一次
+ * 提交**里才落到布局上的。单发一次 `boundingBox()` 会赶在换版之前，量到上一版
+ * （切回会话 A 时先按 B 的 611 画一帧、下一帧才改回 451；2026-11 这条 flake
+ * 的 `Expected 451 / Received 611` 就是量到了那一帧）。连续三帧读数一致，
+ * 说明这一版已经落地。
+ */
+async function settledSlotWidth(webviewPage: Page): Promise<number> {
+  let last = Number.NaN;
+  let same = 0;
+  for (let i = 0; i < 120 && same < 3; i++) {
+    const w = await slotWidth(webviewPage);
+    same = w === last ? same + 1 : 0;
+    last = w;
+    if (same < 3) {
+      await webviewPage.evaluate(
+        () => new Promise((r) => requestAnimationFrame(() => r(null))),
+      );
+    }
+  }
+  return last;
+}
+
 test.describe("桌面会话切换状态收敛", () => {
   test("上下文用量：切会话先清空再接新会话 replay，同会话重推保持不变", async ({
     webviewPage,
@@ -252,22 +278,22 @@ test.describe("桌面会话切换状态收敛", () => {
     await pane.getByTestId("panel-empty-item-diff").click();
     await expect(pane.locator(".desktop-panel-tab")).toHaveCount(1);
 
-    const initialWidth = await slotWidth(webviewPage);
+    const initialWidth = await settledSlotWidth(webviewPage);
     // 向右拖 = 变窄（宽度上限受「对话列不小于 360」钳制，变窄方向空间更大）
     await dragHandle(webviewPage, 160);
-    const narrowed = await slotWidth(webviewPage);
+    const narrowed = await settledSlotWidth(webviewPage);
     expect(narrowed).toBeLessThan(initialWidth - 100);
 
     // 切到会话 B → 该会话用自己的默认宽度，不继承 A 的手动宽度
     await switchPaneSession(injector, "pane-1", "sess-b1");
     await pane.getByTestId("panel-toggle-btn").click();
     await pane.getByTestId("panel-empty-item-preview").click();
-    const sessionBWidth = await slotWidth(webviewPage);
+    const sessionBWidth = await settledSlotWidth(webviewPage);
     expect(Math.abs(sessionBWidth - narrowed)).toBeGreaterThan(50);
 
-    // 切回会话 A → 恢复手动宽度
+    // 切回会话 A → 恢复手动宽度（同样等它落版）
     await switchPaneSession(injector, "pane-1", "sess-a1");
-    expect(await slotWidth(webviewPage)).toBe(narrowed);
+    await expect.poll(() => slotWidth(webviewPage)).toBe(narrowed);
   });
 
   test("长对话切换：短→长→短 每次切换都落在底部", async ({ webviewPage }) => {

@@ -61,6 +61,19 @@ async function openBrowser(page: Page) {
   await expect(
     page.locator('[data-testid="desktop-remote-browser"]'),
   ).toBeVisible();
+  // 回执是宿主→页面的消息，落进布局要等 React 下一次提交；而这块面板
+  // **在加载态也“可见”**（`加载中…` 就是它的一个子节点），所以只等可见不够。
+  // 加载态比列表态矮 132px、居中之后每行上移 66px —— 两次 `boundingBox()`
+  // 若一前一后跨过这次换版，同一行上的两个按钮就会量出 471 / 537 两个 y
+  // （2026-11 的既有 flake 就是这个）。等到列表真的渲染出来再交回控制权：
+  // `.desktop-remote-browser-item` 只在列表态存在，「选择此目录」在加载态是
+  // disabled（`selectCurrent` 的守卫），两处一起钉住「已经换版」。
+  await expect(
+    page.locator('[data-testid="desktop-remote-browser-item"]').first(),
+  ).toBeVisible();
+  await expect(
+    page.locator('[data-testid="desktop-remote-browser-select"]'),
+  ).toBeEnabled();
 }
 
 test("目录面板落在新建对话弹窗里，不悬在弹窗外面", async ({ webviewPage }) => {
