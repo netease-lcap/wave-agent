@@ -187,6 +187,19 @@ export function validateConfigurationObject(
         }
       }
 
+      // Validate ask if present
+      if (config.permissions.ask !== undefined) {
+        if (!Array.isArray(config.permissions.ask)) {
+          result.isValid = false;
+          result.errors.push("Permissions ask must be an array of strings");
+        } else if (
+          !config.permissions.ask.every((rule) => typeof rule === "string")
+        ) {
+          result.isValid = false;
+          result.errors.push("All permission ask rules must be strings");
+        }
+      }
+
       // Validate defaultMode if present
       if (config.permissions.defaultMode !== undefined) {
         const validModes: PermissionMode[] = [
@@ -2036,6 +2049,17 @@ export function loadMergedWaveConfig(
           ...new Set([
             ...mergedConfig.permissions.deny,
             ...config.permissions.deny,
+          ]),
+        ];
+      }
+
+      // Merge ask rules
+      if (config.permissions.ask) {
+        if (!mergedConfig.permissions.ask) mergedConfig.permissions.ask = [];
+        mergedConfig.permissions.ask = [
+          ...new Set([
+            ...mergedConfig.permissions.ask,
+            ...config.permissions.ask,
           ]),
         ];
       }

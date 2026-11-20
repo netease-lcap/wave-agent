@@ -99,6 +99,13 @@ export interface WaveConfiguration {
     allow?: string[];
     deny?: string[];
     /**
+     * Rules that must reach the user even when something else would auto-allow
+     * the call (an `allow` rule, the permission mode, or a tool's own
+     * session-scoped shortcut). Evaluated after `deny` and before `allow`,
+     * aligned with Claude Code's settings schema.
+     */
+    ask?: string[];
+    /**
      * Default permission mode for restricted tools. Settings key aligns with
      * Claude Code's `permissions.defaultMode`; the runtime permission context
      * and CLI `--permission-mode` keep the "permission mode" naming.

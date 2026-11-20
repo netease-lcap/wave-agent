@@ -389,6 +389,11 @@ export function mergeRemoteSettings(
         lp.deny || rp.deny
           ? dedupe([...(lp.deny ?? []), ...(rp.deny ?? [])])
           : undefined,
+      // ask: concatenate + dedupe
+      ask:
+        lp.ask || rp.ask
+          ? dedupe([...(lp.ask ?? []), ...(rp.ask ?? [])])
+          : undefined,
       // defaultMode: remote wins (scalar)
       defaultMode: rp.defaultMode ?? lp.defaultMode,
       // additionalDirectories: concatenate + dedupe
@@ -403,6 +408,7 @@ export function mergeRemoteSettings(
     // Clean up undefined keys
     if (!result.permissions.allow) delete result.permissions.allow;
     if (!result.permissions.deny) delete result.permissions.deny;
+    if (!result.permissions.ask) delete result.permissions.ask;
     if (!result.permissions.defaultMode) delete result.permissions.defaultMode;
     if (!result.permissions.additionalDirectories)
       delete result.permissions.additionalDirectories;
