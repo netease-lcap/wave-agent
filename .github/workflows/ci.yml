@@ -104,7 +104,6 @@ jobs:
       # changes the key. A stale cache is harmless: playwright installs into a
       # version-named subdirectory of this folder, so it just downloads anew.
       - name: Cache Playwright browsers
-        id: pw-cache
         if: steps.filter.outputs.code == 'true' && matrix.pkg == 'webview'
         uses: actions/cache@v6
         with:
@@ -115,56 +114,18 @@ jobs:
       # mode): jsdom does no layout, and the components under test measure
       # their own geometry. Only that matrix leg needs the browser.
       #
-      # `--with-deps` only on a cache miss. On a hit the binary is already in
-      # ~/.cache/ms-playwright, so all it still does is `apt-get update` plus a
-      # reinstall of libraries the runner image ships anyway — 19 of the step's
-      # 20 measured seconds. A miss (fresh runner, new Playwright version) still
-      # gets the full install: that is what makes the browser runnable at all.
-      # If an image upgrade ever drops a shared library, Chromium fails to start
-      # loudly here rather than silently inside a test, so the fast path is safe
-      # to take.
+      # `--with-deps` runs every time, on a cache hit too — and not because the
+      # runner might be missing a shared library. It installs Chromium's apt
+      # dependency list, which includes `fonts-wqy-zenhei`, `fonts-unifont` and
+      # `fonts-ipafont-gothic`: **the only CJK fonts this environment ever has**.
+      # Skipping it on a hit (tried, to save 19s) leaves Chinese text with no
+      # fallback, so line boxes come out ~85px off `estimateRowHeight` and the
+      # virtual-scroll geometry assertions in `e2e/virtual-scroll-drift` fail
+      # deterministically — a fake red that no real user can hit. The 19s is the
+      # price of the environment, not waste.
       - name: Install Playwright Chromium (webview unit tests)
         if: steps.filter.outputs.code == 'true' && matrix.pkg == 'webview'
-        run: |
-          if [ "${{ steps.pw-cache.outputs.cache-hit }}" = "true" ]; then
-            pnpm -F wave-webview exec playwright install chromium
-          else
-            pnpm -F wave-webview exec playwright install --with-deps chromium
-          fi
-
-      # 中文字体。runner 镜像默认不带 CJK，页面里的中文按 DejaVu 回退渲染 ——
-      # 折行与行高和 `estimateRowHeight` 的估算差出一大截（实测 85px），虚拟滚动的
-      # 几何断言因此在「无字体」环境下稳定红，而有字体时全绿。真机（Windows /
-      # macOS 桌面、手机浏览器）都带中文字体，所以在无字体镜像上量到的不是用户会
-      # 看到的东西。字体文件走 actions/cache：命中时拷进 ~/.local/share/fonts +
-      # `fc-cache`（秒级），未命中才 apt（约 15s）。
-      - name: Cache CJK fonts
-        id: cjk-cache
-        if: steps.filter.outputs.code == 'true' && matrix.pkg == 'webview'
-        uses: actions/cache@v6
-        with:
-          path: ~/.cache/noto-cjk
-          key: fonts-noto-cjk-v1
-
-      - name: Install CJK fonts
-        if: steps.filter.outputs.code == 'true' && matrix.pkg == 'webview'
-        run: |
-          mkdir -p ~/.local/share/fonts
-          if ls ~/.cache/noto-cjk/* >/dev/null 2>&1; then
-            cp ~/.cache/noto-cjk/* ~/.local/share/fonts/
-          else
-            sudo apt-get update -qq
-            sudo apt-get install -y --no-install-recommends fonts-noto-cjk
-            mkdir -p ~/.cache/noto-cjk
-            # 只留常规两个字重：全套 ttc 有 298MB，缓存得不偿失。
-            for f in NotoSansCJK-Regular.ttc NotoSansCJK-Bold.ttc NotoSansCJK-VF.otf.ttc; do
-              cp "/usr/share/fonts/opentype/noto/$f" ~/.cache/noto-cjk/ 2>/dev/null || true
-            done
-          fi
-          fc-cache -f >/dev/null
-          # 装不上就当场失败：否则几何断言会在一个不代表真机的字体环境下静默变绿
-          # 或变红，排查成本远高于这一行。
-          test "$(fc-list :lang=zh | wc -l)" -gt 0
+        run: pnpm -F wave-webview exec playwright install --with-deps chromium
 
       - name: Unit tests (shard ${{ matrix.shard }}/2)
         if: steps.filter.outputs.code == 'true'
@@ -575,54 +536,19 @@ jobs:
       # share entries): the e2e run downloads it once and reuses it until
       # @playwright/test is bumped.
       - name: Cache Playwright browsers
-        id: pw-cache
         if: steps.filter.outputs.code == 'true'
         uses: actions/cache@v6
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('packages/webview/package.json') }}
 
-      # Same split as the `check` job: `--with-deps` only when the cache missed
-      # (it then has to download the browser AND make it runnable). On a hit the
-      # apt step is dead weight — 19 of this step's 20 measured seconds.
+      # `--with-deps` on every run, cache hit included — see the long note in the
+      # `check` job: this is what puts Chinese fonts on the runner, and without
+      # them the virtual-scroll geometry assertions go red for a reason no real
+      # user ever hits. The 19s it costs is the price of the environment.
       - name: Install Playwright Chromium
         if: steps.filter.outputs.code == 'true'
-        run: |
-          if [ "${{ steps.pw-cache.outputs.cache-hit }}" = "true" ]; then
-            pnpm -F wave-webview exec playwright install chromium
-          else
-            pnpm -F wave-webview exec playwright install --with-deps chromium
-          fi
-
-      # Same CJK font install as the `check` job (shared cache key). Without it the
-      # runner falls back to DejaVu for Chinese text, line boxes come out ~85px off
-      # the estimator, and the virtual-scroll geometry assertions go red for a
-      # reason no real user ever hits.
-      - name: Cache CJK fonts
-        id: cjk-cache
-        if: steps.filter.outputs.code == 'true'
-        uses: actions/cache@v6
-        with:
-          path: ~/.cache/noto-cjk
-          key: fonts-noto-cjk-v1
-
-      - name: Install CJK fonts
-        if: steps.filter.outputs.code == 'true'
-        run: |
-          mkdir -p ~/.local/share/fonts
-          if ls ~/.cache/noto-cjk/* >/dev/null 2>&1; then
-            cp ~/.cache/noto-cjk/* ~/.local/share/fonts/
-          else
-            sudo apt-get update -qq
-            sudo apt-get install -y --no-install-recommends fonts-noto-cjk
-            mkdir -p ~/.cache/noto-cjk
-            # 只留常规两个字重：全套 ttc 有 298MB，缓存得不偿失。
-            for f in NotoSansCJK-Regular.ttc NotoSansCJK-Bold.ttc NotoSansCJK-VF.otf.ttc; do
-              cp "/usr/share/fonts/opentype/noto/$f" ~/.cache/noto-cjk/ 2>/dev/null || true
-            done
-          fi
-          fc-cache -f >/dev/null
-          test "$(fc-list :lang=zh | wc -l)" -gt 0
+        run: pnpm -F wave-webview exec playwright install --with-deps chromium
 
       - name: Real-browser e2e tests
         if: steps.filter.outputs.code == 'true'
