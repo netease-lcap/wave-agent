@@ -33,6 +33,8 @@ import type {
   ModToastPayload,
   ModPanelRenderResult,
   ModBandRenderResult,
+  ModPaneLayout,
+  ModPanelScrollRequest,
 } from "wave-agent-sdk";
 import {
   Agent,
@@ -230,15 +232,22 @@ export interface ChatContextType {
   renderModPanel: (
     modId: string,
     paneId: string,
+    layout?: import("wave-agent-sdk").ModPaneLayout,
   ) => Promise<import("wave-agent-sdk").ModPanelRenderResult>;
   renderModBand: () => Promise<import("wave-agent-sdk").ModBandRenderResult[]>;
+  /**
+   * 把面板里的一次交互交回给 mod。返回值只有 `focus` 与 `close` 用得上：插件接
+   * 没接这一下方向键、接到哪个控件（spec「`ui.focus`：方向键先问 mod」），以及
+   * 它拦不拦这次关闭（spec「`ui.close`：mod 能拦下关闭」）。
+   */
   sendModPanelEvent: (
     modId: string,
     paneId: string,
-    kind: "press" | "input" | "select" | "close",
+    kind: "press" | "input" | "select" | "focus" | "close" | "scroll",
     key: string,
     value?: string,
-  ) => Promise<void>;
+    scroll?: import("wave-agent-sdk").ModPanelScrollRequest,
+  ) => Promise<Partial<import("wave-agent-sdk").ModPanelEventResult>>;
 }
 
 const ChatContext = createContext<ChatContextType | null>(null);
@@ -1113,7 +1122,11 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   // ── 插件 MODS 的 surface 接口（spec「终端形态」）──
   // 三个都直接打在 agent 实例上：终端是**进程内** surface，没有 stdio 那一层。
   const renderModPanel = useCallback(
-    async (modId: string, paneId: string): Promise<ModPanelRenderResult> => {
+    async (
+      modId: string,
+      paneId: string,
+      layout?: ModPaneLayout,
+    ): Promise<ModPanelRenderResult> => {
       const agent = agentRef.current;
       if (!agent) {
         return {
@@ -1124,9 +1137,10 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
           error: "会话还没就绪",
         };
       }
-      // 摆法与量到的版面事实都走缺省：终端自己按字符格排版，不上报
-      // `bodyColumns` / `rows`（spec「`ui.render` 的 `e.props`」允许空着）。
-      return agent.renderModPanel(modId, paneId);
+      // 摆法与版面事实由 `ModPane` 报上来（spec「`ui.render` 的 `e.props`」）：
+      // 终端永远落在输入框上方（`placement: "inline"`），行数是这一帧面板正文
+      // 真能用的行数 —— 自己分页的 mod 靠它决定窗口大小，缺省值会让它剪错。
+      return agent.renderModPanel(modId, paneId, layout ?? {});
     },
     [],
   );
@@ -1143,20 +1157,22 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     async (
       modId: string,
       paneId: string,
-      kind: "press" | "input" | "select" | "close",
+      kind: "press" | "input" | "select" | "focus" | "close" | "scroll",
       key: string,
       value?: string,
-    ) => {
+      scroll?: ModPanelScrollRequest,
+    ): Promise<Partial<import("wave-agent-sdk").ModPanelEventResult>> => {
       const agent = agentRef.current;
       const sessionId = agent?.sessionId;
-      if (!agent || !sessionId) return;
-      await agent.handleModPanelEvent({
+      if (!agent || !sessionId) return {};
+      return agent.handleModPanelEvent({
         sessionId,
         modId,
         paneId,
         key,
         kind,
         ...(value === undefined ? {} : { value }),
+        ...(scroll === undefined ? {} : { scroll }),
         ...(kind === "close" ? { origin: "person" as const } : {}),
       });
     },

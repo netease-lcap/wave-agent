@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import * as path from "path";
 
 /**
  * TerminalManager unit tests — node-pty is mocked (the real native module is
@@ -18,6 +19,9 @@ const h = vi.hoisted(() => ({
   procs: [] as MockProc[],
   spawn: vi.fn(),
   spawnError: null as Error | null,
+  // Hoisted so the mock survives the per-test `vi.resetModules()`: a factory
+  // creating a fresh vi.fn each time would be unreachable from the tests.
+  existsSync: vi.fn((_file: string) => true),
 }));
 
 vi.mock("node-pty", () => ({
@@ -25,7 +29,7 @@ vi.mock("node-pty", () => ({
 }));
 
 vi.mock("fs", () => ({
-  existsSync: vi.fn(() => true),
+  existsSync: h.existsSync,
 }));
 
 function makeProc() {
@@ -67,6 +71,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   h.procs = [];
   h.spawnError = null;
+  h.existsSync.mockImplementation(() => true);
   h.spawn.mockImplementation(() => {
     if (h.spawnError) throw h.spawnError;
     return makeProc();
@@ -103,7 +108,7 @@ describe("TerminalManager", () => {
     const { manager } = await freshManager();
     await manager.create("term-1", "/remote/proj", 100, 30, "pane-1", "myhost");
     expect(h.spawn).toHaveBeenCalledWith(
-      "ssh",
+      process.platform === "win32" ? expect.stringMatching(/ssh\.exe$/) : "ssh",
       [
         "-t",
         "-o",
@@ -139,12 +144,79 @@ describe("TerminalManager", () => {
       "myhost",
     );
     expect(h.spawn).toHaveBeenCalledWith(
-      "ssh",
+      process.platform === "win32" ? expect.stringMatching(/ssh\.exe$/) : "ssh",
       expect.arrayContaining([
         "cd '/remote/it'\\''s dir' && exec \"${SHELL:-/bin/bash}\" -l",
       ]),
       expect.anything(),
     );
+  });
+
+  /**
+   * node-pty resolves a relative filename on Windows by appending it to every
+   * `Path` entry *without* PATHEXT (node-pty 1.2 `path_util::get_shell_path`),
+   * so a bare `ssh` matches nothing and the panel dies with
+   * `File not found: ` before ssh is even started. These cases pin Windows
+   * instead of letting a Linux CI run pass them as POSIX `ssh`.
+   */
+  describe("ssh executable on Windows", () => {
+    const realPlatform = process.platform;
+    const realPathVar = process.env.Path;
+    const realSystemRoot = process.env.SystemRoot;
+
+    function pinWindows(pathVar: string, systemRoot = "C:\\Windows"): void {
+      Object.defineProperty(process, "platform", {
+        value: "win32",
+        configurable: true,
+      });
+      process.env.Path = pathVar;
+      process.env.SystemRoot = systemRoot;
+    }
+
+    afterEach(() => {
+      Object.defineProperty(process, "platform", {
+        value: realPlatform,
+        configurable: true,
+      });
+      if (realPathVar === undefined) delete process.env.Path;
+      else process.env.Path = realPathVar;
+      if (realSystemRoot === undefined) delete process.env.SystemRoot;
+      else process.env.SystemRoot = realSystemRoot;
+    });
+
+    async function sshSpawnFile(): Promise<string> {
+      const { manager } = await freshManager();
+      await manager.create(
+        "term-1",
+        "/remote/proj",
+        80,
+        24,
+        "pane-1",
+        "myhost",
+      );
+      return h.spawn.mock.calls[0][0] as string;
+    }
+
+    it("uses the ssh.exe found on Path, the one the user's own terminal runs", async () => {
+      const fromPath = path.win32.join("C:\\Program Files\\OpenSSH", "ssh.exe");
+      pinWindows(["C:\\tools", "C:\\Program Files\\OpenSSH"].join(";"));
+      h.existsSync.mockImplementation((file) => file === fromPath);
+
+      expect(await sshSpawnFile()).toBe(fromPath);
+    });
+
+    it("falls back to the ssh.exe Windows ships when Path has none", async () => {
+      const shipped = path.win32.join(
+        "C:\\Windows",
+        "System32",
+        "OpenSSH",
+        "ssh.exe",
+      );
+      pinWindows("C:\\tools");
+      h.existsSync.mockImplementation((file) => file === shipped);
+
+      expect(await sshSpawnFile()).toBe(shipped);
+    });
   });
 
   it("relays pty data and exit events through the callbacks", async () => {

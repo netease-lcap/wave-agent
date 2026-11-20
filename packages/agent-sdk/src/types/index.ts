@@ -17,6 +17,7 @@ export * from "./core.js";
 // Domain-specific types
 export * from "./messaging.js";
 export * from "./messageWindow.js";
+export * from "./transcriptOutline.js";
 export * from "./mcp.js";
 export * from "./processes.js";
 export * from "./commands.js";

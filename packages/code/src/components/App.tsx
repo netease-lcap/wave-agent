@@ -3,6 +3,7 @@ import { useInput } from "ink";
 import { ChatInterface } from "./ChatInterface.js";
 import { ChatProvider } from "../contexts/useChat.js";
 import { AppProvider } from "../contexts/useAppConfig.js";
+import { TerminalSizeProvider } from "../contexts/useTerminalSize.js";
 import { WorktreeExitPrompt } from "./WorktreeExitPrompt.js";
 import { useExitSignals } from "../hooks/useExitSignals.js";
 import {
@@ -181,27 +182,29 @@ export const App: React.FC<AppProps> = ({
   onExit,
 }) => {
   return (
-    <AppProvider
-      restoreSessionId={restoreSessionId}
-      continueLastSession={continueLastSession}
-    >
-      <AppWithProviders
-        bypassPermissions={bypassPermissions}
-        permissionMode={permissionMode}
-        pluginDirs={pluginDirs}
-        additionalDirectories={additionalDirectories}
-        tools={tools}
-        allowedTools={allowedTools}
-        disallowedTools={disallowedTools}
-        worktreeSession={worktreeSession}
-        workdir={workdir}
-        originalCwd={originalCwd}
-        version={version}
-        model={model}
-        mcpServers={mcpServers}
-        onClearOutput={onClearOutput}
-        onExit={onExit}
-      />
-    </AppProvider>
+    <TerminalSizeProvider>
+      <AppProvider
+        restoreSessionId={restoreSessionId}
+        continueLastSession={continueLastSession}
+      >
+        <AppWithProviders
+          bypassPermissions={bypassPermissions}
+          permissionMode={permissionMode}
+          pluginDirs={pluginDirs}
+          additionalDirectories={additionalDirectories}
+          tools={tools}
+          allowedTools={allowedTools}
+          disallowedTools={disallowedTools}
+          worktreeSession={worktreeSession}
+          workdir={workdir}
+          originalCwd={originalCwd}
+          version={version}
+          model={model}
+          mcpServers={mcpServers}
+          onClearOutput={onClearOutput}
+          onExit={onExit}
+        />
+      </AppProvider>
+    </TerminalSizeProvider>
   );
 };

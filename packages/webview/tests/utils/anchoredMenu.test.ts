@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   MENU_ANCHOR_GAP,
   MENU_VIEWPORT_MARGIN,
+  SELECT_MENU_ANCHOR_GAP,
   placeAnchoredMenu,
 } from "../../src/utils/anchoredMenu";
 
@@ -87,6 +88,34 @@ describe("placeAnchoredMenu", () => {
     );
     expect(placement.top).toBe(anchor.bottom + MENU_ANCHOR_GAP);
     expect(placement.maxHeight).toBeUndefined();
+  });
+
+  // 下拉选择器族（设置页 SettingsSelect / 会话看板项目筛选）用 2px 缝隙，
+  // 与菜单族的 4px 不同；其余摆放规则（下 → 翻上 → 夹取）完全共用。
+  it("缝隙可由调用方按族传入：选择器族向下贴 +2、翻上贴 −2", () => {
+    const gap = SELECT_MENU_ANCHOR_GAP;
+    expect(gap).toBe(2);
+
+    expect(
+      placeAnchoredMenu(anchorAt(300), MENU, VIEWPORT, "right", gap).top,
+    ).toBe(anchorAt(300).bottom + gap);
+
+    const low = anchorAt(710);
+    const flipped = placeAnchoredMenu(low, MENU, VIEWPORT, "right", gap);
+    expect(flipped.top).toBe(low.top - gap - MENU.height);
+    expect(flipped.maxHeight).toBeUndefined();
+
+    // 夹取分支的可用高度也要按传入的缝隙算
+    const cramped = placeAnchoredMenu(
+      anchorAt(20, 30),
+      { ...MENU, height: VIEWPORT.height },
+      VIEWPORT,
+      "right",
+      gap,
+    );
+    expect(cramped.maxHeight).toBe(
+      VIEWPORT.height - anchorAt(20, 30).bottom - gap - MENU_VIEWPORT_MARGIN,
+    );
   });
 
   it("水平方向默认右对齐锚点，并夹在视口留白内", () => {

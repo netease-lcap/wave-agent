@@ -81,6 +81,7 @@ import type {
   ConfigurationData,
   DesktopPanelKind,
   FileViewState,
+  Message,
   OpenFileTab,
   PanelTab,
   PrefillDraftRequest,
@@ -105,6 +106,7 @@ import type {
   ModNoticePayload,
   ModStatusPayload,
   ModToastPayload,
+  TranscriptOutlineEntry,
 } from "wave-agent-sdk/types";
 // 限额表与 agent 侧同一份（toast 排队上限），别在 webview 里另抄一个数字；
 // 带的站点标识 `MOD_BAND_INSTANCE_ID` 同理，是它自己的固定值（`above-prompt`
@@ -175,6 +177,40 @@ export const PANEL_LABELS: Record<DesktopPanelKind, string> = {
 // 上翻时锚点在转录里失效了（rewind / 截断）之后，换下一个已加载 id 重试的次数上限。
 // 三次足够跳过「被裁掉的那几条」，又不至于把一次坏锚点变成一个请求风暴。
 const EARLIER_ANCHOR_RETRY_LIMIT = 3;
+
+/**
+ * 回滚回填时要交给输入框的那几张图（spec `commands/rewind-command.md` 场景 10）。
+ *
+ * 草稿字符串里只有 `[imageN]` 这个位置标记，字节留在**被回滚那条消息**的图片
+ * 块里；`[imageN]` 的 N 按图片块顺序对位（与 `parseMentions` 的序号口径一致）。
+ * 三类取不到字节的情况一律给 `null`（= 维持老行为，`[imageN]` 按文本留下）：
+ * 图片块里是文件路径（前台 CLI 粘贴的图）、远控页回放的字节已被清空、锚点不在
+ * 已加载的这一页里。
+ */
+function rewindDraftFor(
+  messages: Message[],
+  anchorId: string,
+): { content: string; images: ReadonlyArray<string | undefined> } | null {
+  // 与截断同一个定位口径（同一条消息可能因压缩出现多次，取最后一条）。
+  const index = messages.map((m) => m.id).lastIndexOf(anchorId);
+  const anchor = index === -1 ? undefined : messages[index];
+  if (!anchor) return null;
+  // 正文取第一段文本块，与宿主存的草稿（SDK 的 `getMessageContent`）逐字一致。
+  const textBlock = anchor.blocks.find((block) => block.type === "text");
+  const content = textBlock && "content" in textBlock ? textBlock.content : "";
+  if (!content.includes("[image")) return null;
+
+  const imageUrls: string[] = [];
+  for (const block of anchor.blocks) {
+    if (block.type === "image" && "imageUrls" in block) {
+      imageUrls.push(...(block.imageUrls ?? []));
+    }
+  }
+  const images = imageUrls.map((url) =>
+    url.startsWith("data:") ? url : undefined,
+  );
+  return images.some((url) => url !== undefined) ? { content, images } : null;
+}
 
 /** 右侧面板（含空态）的最小宽度：拖拽下限、自动分栏下限、开面板空间守卫共用。
     设计师 2026-10-30 评论 `div.desktop-panel-empty`「这页的最小宽度可以再窄一些，
@@ -556,6 +592,13 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   const [pluginChangePending, setPluginChangePending] = useState(false);
   // /rewind popup: checkpoint list requested from the host on open.
   const [rewindPopupOpen, setRewindPopupOpen] = useState(false);
+  // 回滚回填要用的那几张图的字节（spec commands/rewind-command.md 场景 10）：
+  // 草稿字符串里只有 `[imageN]`，字节取自被回滚那条消息的图片块，只在输入框
+  // 填的草稿与它逐字相同时用上；换会话即作废。
+  const [rewindDraft, setRewindDraft] = useState<{
+    content: string;
+    images: ReadonlyArray<string | undefined>;
+  } | null>(null);
   const [rewindCheckpoints, setRewindCheckpoints] = useState<
     RewindCheckpoint[]
   >([]);
@@ -1229,7 +1272,60 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   // （spec desktop-preview.md 场景 9）。生成与斜杠命令都算——用户从浮动框发出的
   // 两者都必须看得见「已经发出去了」。
   const turnRunning = state.isStreaming || state.isCommandRunning;
-  const chatContainerRef = useRef<HTMLDivElement>(null);
+  const chatContainerRef = useRef<HTMLDivElement | null>(null);
+  /**
+   * 行宽（`.chat-container` = 对话列 + 面板槽），用来按 spec
+   * desktop-right-panel.md 场景 4 派生面板**有效宽度**。派生只作用在渲染期，绝不
+   * 写回 `sessionUi`：窗口缩小得到的临时压缩，窗口放大后要回到用户设定的宽度。
+   *
+   * 采集对齐 Claude 桌面端（ResizeObserver + `window.resize` 双通道）：只听
+   * window resize 会漏掉「分屏拖分隔条」「折叠面板」这类不改窗口却改行宽的路径。
+   */
+  const [chatRowWidth, setChatRowWidth] = useState<number | null>(null);
+  const rowResizeObserverRef = useRef<ResizeObserver | null>(null);
+  const rowResizeCleanupRef = useRef<(() => void) | null>(null);
+  // 回调 ref：元素挂上/摘下时同步建立与拆除监听（组件在多处 return 分支里渲染，
+  // effect 依赖数组追不上这些分支切换）。
+  const attachChatContainer = useCallback((el: HTMLDivElement | null) => {
+    chatContainerRef.current = el;
+    rowResizeObserverRef.current?.disconnect();
+    rowResizeObserverRef.current = null;
+    rowResizeCleanupRef.current?.();
+    rowResizeCleanupRef.current = null;
+    if (!el) return;
+    const report = (): void => {
+      const width = Math.round(el.getBoundingClientRect().width);
+      // 只在整数像素变化时 setState：拖分隔条时宽度每帧都在变，亚像素抖动会让
+      // 整个 ChatApp 无条件重渲染。
+      setChatRowWidth((prev) => (prev === width ? prev : width));
+    };
+    report();
+    if (typeof ResizeObserver !== "undefined") {
+      const observer = new ResizeObserver(report);
+      observer.observe(el);
+      rowResizeObserverRef.current = observer;
+    }
+    window.addEventListener("resize", report);
+    rowResizeCleanupRef.current = () =>
+      window.removeEventListener("resize", report);
+  }, []);
+  /**
+   * 面板有效宽度 = `clamp(记忆宽度, PANEL_MIN_WIDTH, 行宽 − CHAT_MAIN_MIN_WIDTH)`
+   * （spec desktop-right-panel.md 场景 4）。行宽还没量到（首帧 / 非桌面端）时退回
+   * 记忆宽度。三个宽度出口 —— 槽位 inline `width`、面板 body 的 `common.width`、
+   * 活动 preview guest 的 `width` —— 必须同源：否则被裁切时 guest 仍按记忆宽度
+   * 排版，页面内容与可见区域错位。
+   */
+  const effectivePanelWidth =
+    chatRowWidth === null
+      ? panelWidth
+      : Math.max(
+          PANEL_MIN_WIDTH,
+          Math.min(
+            panelWidth,
+            Math.max(PANEL_MIN_WIDTH, chatRowWidth - CHAT_MAIN_MIN_WIDTH),
+          ),
+        );
   // The shared panel slot; its left-edge drag handle (rendered once on the slot,
   // see .panel-slot-drag-handle) anchors on this element's fixed right edge.
   const panelSlotRef = useRef<HTMLDivElement>(null);
@@ -1301,6 +1397,8 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   const messageListRef = useRef<{
     scrollToBottom: (behavior?: ScrollBehavior) => void;
     pinToBottom: (behavior?: ScrollBehavior) => void;
+    /** 取回一页之后落位（大纲点到还没加载的刻度，spec 场景 17）。 */
+    jumpToMessage: (id: string) => void;
   }>(null);
   const stateRef = useRef(state);
   // 「最近目录」那条请求的 requestId：回执只认最后一次问出去的那条。远控页每开
@@ -1324,6 +1422,12 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   useEffect(() => {
     stateRef.current = state;
   }, [state]);
+
+  // 回滚回填的图片字节只服务于那一份草稿（它不会进宿主草稿）：换会话就当它没
+  // 发生过，别让上一会话的图片留在内存里等一次文本巧合。
+  useEffect(() => {
+    setRewindDraft(null);
+  }, [state.currentSession?.id]);
 
   // 建议的前提是「一轮没在跑、草稿是空的」：开跑或换会话之后它就不成立了，
   // 留着会让用户按 Tab 把上一轮的建议填进新一轮的输入框。
@@ -1651,6 +1755,119 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     );
   };
 
+  // 滚动条大纲的两个数据面（spec ui/transcript-outline.md「刻度覆盖整条会话」）：
+  // 刻度本身的索引来自宿主的一次转录查询；点在**还没加载进窗口**的刻度上时，再按
+  // 「以它为起点的一页」取那一页、整表替换窗口后落位。两者都只带 requestId 归属，
+  // 晚到的回包（已经点了下一条 / 换了会话）直接丢弃。
+  const [outlineEntries, setOutlineEntries] = useState<
+    TranscriptOutlineEntry[]
+  >([]);
+  // 窗口停在历史里（这一页之后还有内容）：底部入口改成「回到最新一页」（场景 18）。
+  const [hasLater, setHasLater] = useState(false);
+  // 正在为哪条刻度取页（刻度上的进行中指示），以及取页失败时的提示（场景 17）。
+  const [pendingJumpId, setPendingJumpId] = useState<string | undefined>(
+    undefined,
+  );
+  const [failedJumpId, setFailedJumpId] = useState<string | undefined>(
+    undefined,
+  );
+  const outlineRequestRef = useRef<string | undefined>(undefined);
+  const outlineSeqRef = useRef(0);
+  const pageRequestRef = useRef<string | undefined>(undefined);
+  const pageSeqRef = useRef(0);
+  const pageAnchorAttemptsRef = useRef(0);
+  // 这一次取页是为了什么：「跳到这一条」还是「回到最新一页」。回包落库之后由下面
+  // 那个 effect 兑现——落位要读刚提交的新窗口，不能在 dispatch 同一个事件里做。
+  const pageIntentRef = useRef<
+    { kind: "jump"; id: string } | { kind: "latest" } | undefined
+  >(undefined);
+  const pageLandedRef = useRef(false);
+  const failedJumpTimerRef = useRef<number | undefined>(undefined);
+
+  const sendTranscriptOutline = () => {
+    const requestId = `outline-${++outlineSeqRef.current}`;
+    outlineRequestRef.current = requestId;
+    const pid = paneIdRef.current;
+    const payload = { command: "getTranscriptOutline", requestId };
+    vscode.postMessage(
+      pid === undefined ? payload : { ...payload, paneId: pid },
+    );
+  };
+
+  /**
+   * 取一页：带 `from` = 以这条刻度为起点（含它）的一页；不带 = 尾页（「回到最新
+   * 一页」，场景 18）。页大小由宿主按自己的上限给，页面不传。
+   */
+  const sendMessagePage = (from?: string) => {
+    const requestId = `page-${++pageSeqRef.current}`;
+    pageRequestRef.current = requestId;
+    pageIntentRef.current = from
+      ? { kind: "jump", id: from }
+      : { kind: "latest" };
+    setPendingJumpId(from);
+    setFailedJumpId(undefined);
+    if (failedJumpTimerRef.current !== undefined) {
+      window.clearTimeout(failedJumpTimerRef.current);
+      failedJumpTimerRef.current = undefined;
+    }
+    const pid = paneIdRef.current;
+    const payload = {
+      command: "loadMessagePage",
+      ...(from === undefined ? {} : { from }),
+      requestId,
+    };
+    vscode.postMessage(
+      pid === undefined ? payload : { ...payload, paneId: pid },
+    );
+  };
+
+  /**
+   * 锚点丢了（那条消息已经被 rewind / clear 删掉）：换成索引里**下一条仍然存在**
+   * 的刻度重试，最多三次；仍失败就停在原地、保留当前窗口，并给一次失败提示 ——
+   * 不清空列表，也不假装「这条会话到这里就结束了」（场景 17）。
+   */
+  const retryPageAnchor = (lost: string | undefined) => {
+    const attempt = pageAnchorAttemptsRef.current + 1;
+    pageAnchorAttemptsRef.current = attempt;
+    const at = outlineEntries.findIndex((entry) => entry.id === lost);
+    const next =
+      at >= 0 && at + 1 < outlineEntries.length
+        ? outlineEntries[at + 1].id
+        : undefined;
+    if (next && attempt <= EARLIER_ANCHOR_RETRY_LIMIT) {
+      sendMessagePage(next);
+      return;
+    }
+    pageIntentRef.current = undefined;
+    setPendingJumpId(undefined);
+    setFailedJumpId(lost);
+    if (failedJumpTimerRef.current !== undefined) {
+      window.clearTimeout(failedJumpTimerRef.current);
+    }
+    failedJumpTimerRef.current = window.setTimeout(() => {
+      failedJumpTimerRef.current = undefined;
+      setFailedJumpId(undefined);
+    }, 4000);
+  };
+
+  // 取回的一页提交之后兑现意图：跳到那一条（落位 + 钉住高亮）或回到最新（钉底）。
+  // 挂在 `state.messages` 上而不是 dispatch 之后直接调——jumpToMessage 要读到刚
+  // 替换进来的窗口，否则它找的还是旧列表。
+  useEffect(() => {
+    if (!pageLandedRef.current) return;
+    pageLandedRef.current = false;
+    const intent = pageIntentRef.current;
+    pageIntentRef.current = undefined;
+    setPendingJumpId(undefined);
+    pageAnchorAttemptsRef.current = 0;
+    if (intent?.kind === "jump") {
+      messageListRef.current?.jumpToMessage?.(intent.id);
+    } else if (intent?.kind === "latest") {
+      // 尾页到手之后才敢钉底：历史窗口里的「底」不是会话的底（场景 18）。
+      messageListRef.current?.pinToBottom?.("auto");
+    }
+  }, [state.messages]);
+
   // 「对话框占着键」：输入框还挂着（只是被盖住 / `display: none`），此刻既填不进
   // 草稿、也摆不上建议。`$.prompt.fill` 与 `prompt.suggest` 两处共用同一份判据，
   // 免得两条通道对「界面现在能不能接」给出不同答案。
@@ -1685,6 +1902,34 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         setHasEarlier(message.hasEarlier === true);
         setIsLoadingEarlier(false);
         earlierAnchorAttemptsRef.current = 0;
+        // 换会话 / 回滚 / 清理之后窗口就是整份会话，不再是历史里的那一页。
+        setHasLater(false);
+        // 刻度按新会话重建：先丢掉上一份索引（否则新会话会短暂挂着旧刻度，
+        // 违场景 12），再要一份新的——取不到就按已加载的消息画（场景 20）。
+        setOutlineEntries([]);
+        sendTranscriptOutline();
+        break;
+      case "transcriptOutline":
+        if (!forThisPane(message)) break;
+        // 晚到的索引（已经换了会话、或又发了一次）丢弃。
+        if (message.requestId !== outlineRequestRef.current) break;
+        setOutlineEntries(message.items);
+        break;
+      case "messagePage":
+        if (!forThisPane(message)) break;
+        if (message.requestId !== pageRequestRef.current) break;
+        if (message.anchorLost) {
+          // 那条消息已经被 rewind / clear 删掉：换下一条仍在的刻度重试，别把
+          // 「锚点没了」当成「到顶了」（场景 17）。
+          retryPageAnchor(message.from);
+          break;
+        }
+        // 整表替换：这一页就是全窗口（不是插在前面），「还有没有更早」按回包里
+        // 那份走 —— 跳转成功后的窗口以跳转为准（场景 17 / 边界情况）。
+        dispatch({ type: "SET_MESSAGES", payload: message.messages });
+        setHasEarlier(message.hasMore === true);
+        setHasLater(message.hasLater === true);
+        pageLandedRef.current = true;
         break;
       case "earlierMessages":
         if (!forThisPane(message)) break;
@@ -2415,6 +2660,9 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         // the list is cut locally rather than re-sent (rewind carries no
         // payload). A failure leaves the list exactly as it was.
         if (message.ok === true) {
+          // 回填正文里的 `[imageN]` 要靠被回滚那条消息的图片块（字节不在草稿
+          // 字符串里）：截断之前按锚点 id 取出来交给输入框，宿主与协议都不变。
+          setRewindDraft(rewindDraftFor(messagesRef.current, anchor));
           dispatch({
             type: "TRUNCATE_MESSAGES",
             payload: { messageId: anchor },
@@ -2689,6 +2937,11 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         setHasEarlier(message.hasEarlier === true);
         setIsLoadingEarlier(false);
         earlierAnchorAttemptsRef.current = 0;
+        // 快照就是「这一页的历史窗口」：首屏（或换会话）都从最新一页开始，
+        // 刻度也按这条会话重新要一份（spec ui/transcript-outline.md 场景 12）。
+        setHasLater(false);
+        setOutlineEntries([]);
+        sendTranscriptOutline();
         dispatch({
           type: "SET_INITIAL_STATE",
           payload: {
@@ -5548,7 +5801,12 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     let clamped = Math.max(width, PANEL_MIN_WIDTH);
     const containerW = chatContainerRef.current?.getBoundingClientRect().width;
     if (containerW) {
-      clamped = Math.min(clamped, containerW - CHAT_MAIN_MIN_WIDTH);
+      // 行宽装不下两列下限时上界就是下限本身（`max` 兜住负值），窗口缩小后拖拽
+      // 不会把记忆宽度写成「行宽 − 360」这种会卡住面板的负空间值。
+      clamped = Math.min(
+        clamped,
+        Math.max(PANEL_MIN_WIDTH, containerW - CHAT_MAIN_MIN_WIDTH),
+      );
     }
     setPanelWidth(clamped);
   }, []);
@@ -5566,8 +5824,12 @@ export const ChatApp: React.FC<ChatAppProps> = ({
       // inline background is needed here.
       document.body.classList.add("is-panel-resizing");
       const rect = panelSlotRef.current?.getBoundingClientRect();
+      // 行宽装不下两列下限时槽位右缘被行级裁切到可视区外，`rect.right` 就不再
+      // 是用户看到的右缘 —— 取两者的较小值，拖拽才和可见边界一致。
+      const containerRect = chatContainerRef.current?.getBoundingClientRect();
+      const right = Math.min(rect?.right ?? 0, containerRect?.right ?? 0);
       const onMove = (ev: MouseEvent) => {
-        handlePanelWidthChange((rect?.right ?? 0) - ev.clientX);
+        handlePanelWidthChange(right - ev.clientX);
       };
       const onUp = () => {
         document.body.classList.remove("is-panel-resizing");
@@ -5738,7 +6000,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     const { id, kind } = tab;
     const isActive = activeTabId === id;
     const common = {
-      width: panelWidth,
+      width: effectivePanelWidth,
     };
 
     if (kind === "preview") {
@@ -6026,7 +6288,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
       if (tab.kind !== "preview") continue;
       push(stateGuestGroup, tab, {
         parked: !panelExpanded || activeTabId !== tab.id,
-        width: panelWidth,
+        width: effectivePanelWidth,
         originalUrl: currentForward?.originalUrl,
         onRetry: currentForward ? handleRemotePreviewRetry : undefined,
         live: true,
@@ -6279,6 +6541,15 @@ export const ChatApp: React.FC<ChatAppProps> = ({
           hasEarlier={hasEarlier}
           isLoadingEarlier={isLoadingEarlier}
           onLoadEarlier={sendLoadEarlier}
+          // 大纲的刻度覆盖整条会话（spec ui/transcript-outline.md 场景 9）：索引
+          // 来自宿主，点还没加载的刻度时先取那一页，回来再落位（场景 17）。
+          outlineEntries={outlineEntries}
+          pendingJumpId={pendingJumpId}
+          failedJumpId={failedJumpId}
+          onJumpToMessage={sendMessagePage}
+          // 窗口停在历史里时底部入口变成「回到最新一页」（场景 18）。
+          hasLater={hasLater}
+          onReturnToLatest={() => sendMessagePage()}
           workdir={state.workdir}
           onOpenPreview={openPreviewHandler}
           onOpenFile={handleOpenFile}
@@ -6381,6 +6652,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
                   vscode={vscode}
                   selection={state.selection}
                   inputContent={state.inputContent}
+                  rewindDraft={rewindDraft}
                   sessionId={state.currentSession?.id}
                   permissionMode={state.permissionMode}
                   models={configuredModels}
@@ -6855,7 +7127,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
           : ""
       }${dragActive ? " drag-active" : ""}`}
       data-testid="chat-container"
-      ref={isDesktop ? chatContainerRef : undefined}
+      ref={isDesktop ? attachChatContainer : undefined}
       onDragEnter={isDesktop ? handleDragEnter : undefined}
       onDragOver={isDesktop ? handleDragOver : undefined}
       onDragLeave={isDesktop ? handleDragLeave : undefined}
@@ -7041,7 +7313,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
               className="desktop-panel-slot"
               data-testid="desktop-panel-slot"
               style={{
-                width: panelWidth,
+                width: effectivePanelWidth,
                 // Collapsed: keep the slot mounted (display:none) so preview
                 // guests / terminal PTYs survive; the next expand restores it
                 // instantly with tabs, active tab and width intact. When there

@@ -4,6 +4,7 @@ import path from "path";
 import { marked } from "marked";
 import { ARTIFACT_TOOL_NAME } from "../constants/tools.js";
 import type { ToolPlugin, ToolResult, ToolContext } from "./types.js";
+import type { ToolPermissionContext } from "../types/permissions.js";
 import { authService, createAuthAwareFetch } from "../services/authService.js";
 import { logger } from "../utils/globalLogger.js";
 import { persistToolResultBuffer } from "../utils/toolResultStorage.js";
@@ -251,6 +252,43 @@ function isInsideReadableZone(
 }
 
 /**
+ * The permission context for one Artifact call, plus whether a `deny` / `ask`
+ * rule objects to it.
+ *
+ * Every confirmation below is scoped to the session — one artifact read or
+ * write confirmed once is reused. That reuse is exactly the "automatic allow" a
+ * rule has to outrank: a `permissions.ask` entry naming the tool is the user
+ * saying they want every call to reach them. Same order as Claude Code, where
+ * the artifacts tool's session shortcut sits after its rule check. One context
+ * serves both questions, so the caller pays for it once.
+ */
+function ruleCheck(
+  context: ToolContext,
+  params: Record<string, unknown>,
+): {
+  manager: ToolContext["permissionManager"];
+  permissionContext: ToolPermissionContext | undefined;
+  objects: boolean;
+} {
+  const manager = context.permissionManager;
+  if (!manager) {
+    return { manager, permissionContext: undefined, objects: false };
+  }
+  const permissionContext = manager.createContext(
+    ARTIFACT_TOOL_NAME,
+    context.permissionMode || "default",
+    context.canUseToolCallback,
+    params,
+    context.toolCallId,
+  );
+  return {
+    manager,
+    permissionContext,
+    objects: manager.checkRuleBasedPermissions(permissionContext) !== null,
+  };
+}
+
+/**
  * Confirm a write against one artifact, once per artifact per session.
  *
  * The standing rule is hidden: a persistent rule would silently authorise
@@ -270,20 +308,15 @@ async function confirmScopedWrite(
   slug: string,
 ): Promise<ToolResult | null> {
   const sessionId = context.sessionId || "";
-  if (!context.permissionManager) return null;
-  if (sessionId && approval.isApproved(sessionId, slug)) return null;
+  const { manager, permissionContext, objects } = ruleCheck(context, params);
+  if (!manager || !permissionContext) return null;
+  if (sessionId && approval.isApproved(sessionId, slug) && !objects) {
+    return null;
+  }
 
-  const permissionContext = context.permissionManager.createContext(
-    ARTIFACT_TOOL_NAME,
-    context.permissionMode || "default",
-    context.canUseToolCallback,
-    params,
-    context.toolCallId,
-  );
   permissionContext.warning = warning;
   permissionContext.hidePersistentOption = true;
-  const permissionResult =
-    await context.permissionManager.checkPermission(permissionContext);
+  const permissionResult = await manager.checkPermission(permissionContext);
   if (permissionResult.behavior === "deny") {
     return denyResult(permissionResult);
   }
@@ -489,25 +522,26 @@ async function readArtifact(
   if (artifact.ownership === "reader") {
     // Someone else's page: the content is third-party, so ask once per session
     // before it reaches the model, and never hand back the full text.
-    if (context.permissionManager && !isArtifactReadApproved(sessionId, slug)) {
-      const permissionContext = context.permissionManager.createContext(
-        ARTIFACT_TOOL_NAME,
-        context.permissionMode || "default",
-        context.canUseToolCallback,
-        {
-          action: READ_ACTION,
-          url: pageUrl,
-          ...(prompt ? { prompt } : {}),
-        },
-        context.toolCallId,
-      );
+    const readParams = {
+      action: READ_ACTION,
+      url: pageUrl,
+      ...(prompt ? { prompt } : {}),
+    };
+    const { manager, permissionContext, objects } = ruleCheck(
+      context,
+      readParams,
+    );
+    if (
+      manager &&
+      permissionContext &&
+      (!isArtifactReadApproved(sessionId, slug) || objects)
+    ) {
       permissionContext.warning =
         "读取他人分享的 artifact：其内容将以摘要形式进入对话上下文。";
       // Session-scoped approval: a standing rule would silently allow any
       // other page later.
       permissionContext.hidePersistentOption = true;
-      const permissionResult =
-        await context.permissionManager.checkPermission(permissionContext);
+      const permissionResult = await manager.checkPermission(permissionContext);
       if (permissionResult.behavior === "deny") {
         return denyResult(permissionResult);
       }
@@ -683,33 +717,31 @@ async function publishArtifact(
 
   // Permission check: first publish and shared-live redeploys require
   // confirmation; republishing a file/artifact this session already
-  // confirmed once auto-allows (matching Claude Code's behavior).
+  // confirmed once auto-allows (matching Claude Code's behavior). That
+  // auto-allow only stands while no rule objects — see {@link ruleObjects}.
+  const publishParams = {
+    file_path: filePath,
+    ...(favicon !== DEFAULT_FAVICON ? { favicon } : {}),
+    ...(label !== undefined ? { label } : {}),
+    ...(url !== undefined ? { url } : {}),
+    ...(force ? { force: true } : {}),
+  };
   const publishedThisSession =
     !!getArtifactByFilePath(sessionId, filePath) ||
     (slug ? getRecordedVersion(sessionId, slug) !== undefined : false);
-  const needsConfirm = !publishedThisSession || sharedLive;
+  const { manager, permissionContext, objects } = ruleCheck(
+    context,
+    publishParams,
+  );
+  const needsConfirm = !publishedThisSession || sharedLive || objects;
 
-  if (context.permissionManager && needsConfirm) {
-    const permissionContext = context.permissionManager.createContext(
-      ARTIFACT_TOOL_NAME,
-      context.permissionMode || "default",
-      context.canUseToolCallback,
-      {
-        file_path: filePath,
-        ...(favicon !== DEFAULT_FAVICON ? { favicon } : {}),
-        ...(label !== undefined ? { label } : {}),
-        ...(url !== undefined ? { url } : {}),
-        ...(force ? { force: true } : {}),
-      },
-      context.toolCallId,
-    );
+  if (manager && permissionContext && needsConfirm) {
     if (sharedLive) {
       permissionContext.warning =
         "此 artifact 处于 shared-live 状态（共享且实时更新），重新部署后所有访问者都会立即看到新内容。";
       permissionContext.hidePersistentOption = true;
     }
-    const permissionResult =
-      await context.permissionManager.checkPermission(permissionContext);
+    const permissionResult = await manager.checkPermission(permissionContext);
     if (permissionResult.behavior === "deny") {
       return denyResult(permissionResult);
     }
@@ -1109,23 +1141,24 @@ async function readAssetAction(
 
   // Someone else's asset is third-party content: confirm once per artifact
   // before it reaches the conversation, exactly as the `read` action does.
+  const readAssetParams = {
+    action: READ_ASSET_ACTION,
+    url: args.url,
+    asset_id: assetId,
+  };
+  const readAssetCheck =
+    ownership === "reader" ? ruleCheck(context, readAssetParams) : undefined;
   if (
-    ownership === "reader" &&
-    context.permissionManager &&
-    !isArtifactReadApproved(sessionId, slug)
+    readAssetCheck?.manager &&
+    readAssetCheck.permissionContext &&
+    (!isArtifactReadApproved(sessionId, slug) || readAssetCheck.objects)
   ) {
-    const permissionContext = context.permissionManager.createContext(
-      ARTIFACT_TOOL_NAME,
-      context.permissionMode || "default",
-      context.canUseToolCallback,
-      { action: READ_ASSET_ACTION, url: args.url, asset_id: assetId },
-      context.toolCallId,
-    );
+    const permissionContext = readAssetCheck.permissionContext;
     permissionContext.warning =
       "读取他人分享 artifact 的资源：其内容将进入对话上下文。";
     permissionContext.hidePersistentOption = true;
     const permissionResult =
-      await context.permissionManager.checkPermission(permissionContext);
+      await readAssetCheck.manager.checkPermission(permissionContext);
     if (permissionResult.behavior === "deny")
       return denyResult(permissionResult);
     if (sessionId) markArtifactReadApproved(sessionId, slug);

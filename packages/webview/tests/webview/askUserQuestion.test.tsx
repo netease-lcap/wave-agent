@@ -1,5 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { renderChatApp, waitFor, act, sendCommand } from "./test-utils";
+import {
+  renderChatApp,
+  waitFor,
+  act,
+  sendCommand,
+  fireEvent,
+} from "./test-utils";
 import { ASK_USER_QUESTION_TOOL_NAME } from "wave-agent-sdk/constants";
 import type { Message } from "wave-agent-sdk";
 
@@ -171,5 +177,170 @@ describe("AskUserQuestion Newline Support", () => {
       "Old answer",
     );
     expect(document.querySelector(".ask-user-result-notes")).toBeNull();
+  });
+});
+
+// 「备注可单独成答」与「未答不阻塞提交」（ask-user-tool.md「选项预览与备注」
+// 场景 9 / 10 +「多问题循环轮播」场景 7 / 8 / 10）：预览题里备注非空即算答过，
+// 主按钮恒可点、只用「还有 N 题未答」提示未答数，未答且无备注的题在提交载荷里
+// 整条省略（不是空串）。
+describe("AskUserQuestion notes-only answer and partial submit", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  const showAskUser = (questions: unknown[]) => {
+    act(() => {
+      sendCommand("showConfirmation", {
+        confirmationId: "ask-user-notes",
+        toolName: ASK_USER_QUESTION_TOOL_NAME,
+        confirmationType: "需要确认",
+        toolInput: { questions },
+      });
+    });
+  };
+
+  const waitForDialog = () =>
+    waitFor(() => {
+      expect(
+        document.querySelector(".confirmation-dialog"),
+      ).toBeInTheDocument();
+    });
+
+  const submitButton = () =>
+    document.querySelector<HTMLButtonElement>(".confirmation-btn-apply")!;
+
+  const submit = () => {
+    const apply = submitButton();
+    expect(apply).not.toBeDisabled();
+    act(() => {
+      fireEvent.click(apply);
+    });
+  };
+
+  const sentPayload = (vscode: ReturnType<typeof renderChatApp>["vscode"]) => {
+    const response = vscode.postMessage.mock.calls
+      .map((c) => c[0])
+      .find((m) => m.command === "confirmationResponse");
+    expect(response).toBeDefined();
+    return JSON.parse(response.decision.message) as {
+      answers: Record<string, string | string[]>;
+      annotations?: Record<string, { preview?: string; notes?: string }>;
+    };
+  };
+
+  it("counts a preview note as the answer when no option is selected", async () => {
+    const { vscode } = renderChatApp();
+    showAskUser([
+      {
+        question: "选哪个版式？",
+        options: [
+          { label: "方案 A", preview: "### 方案 A" },
+          { label: "方案 B", preview: "### 方案 B" },
+        ],
+      },
+    ]);
+    await waitForDialog();
+
+    act(() => {
+      fireEvent.change(document.querySelector(".option-notes textarea")!, {
+        target: { value: "两个都行，先按 A 做" },
+      });
+    });
+
+    // 只写备注也算答过：不显示未答数，主按钮可点。
+    expect(
+      document.querySelector("[data-testid='question-navigation-hint']"),
+    ).toBeNull();
+    submit();
+
+    const payload = sentPayload(vscode);
+    expect(payload.answers["选哪个版式？"]).toBe("(notes only)");
+    expect(payload.annotations?.["选哪个版式？"]).toEqual({
+      notes: "两个都行，先按 A 做",
+    });
+  });
+
+  it("submits with unanswered questions and says how many are left", async () => {
+    const { vscode } = renderChatApp();
+    showAskUser([
+      { question: "选哪个版式？", options: [{ label: "方案 A" }] },
+      { question: "选哪个范围？", options: [{ label: "大" }, { label: "小" }] },
+    ]);
+    await waitForDialog();
+
+    act(() => {
+      fireEvent.click(
+        document.querySelector(
+          '.option-item[data-option-index="0"] input[type="radio"]',
+        )!,
+      );
+    });
+
+    expect(
+      document.querySelector("[data-testid='question-navigation-hint']"),
+    ).toHaveTextContent("还有 1 题未答");
+    submit();
+
+    const payload = sentPayload(vscode);
+    expect(payload.answers["选哪个版式？"]).toBe("方案 A");
+    // 未答的题整条省略 —— 既不是空串，也没有 `__other__` 这类占位。
+    expect("选哪个范围？" in payload.answers).toBe(false);
+  });
+
+  it("hides the hint once every question is answered", async () => {
+    renderChatApp();
+    showAskUser([
+      { question: "第一题", options: [{ label: "A" }] },
+      { question: "第二题", options: [{ label: "B" }] },
+    ]);
+    await waitForDialog();
+
+    act(() => {
+      fireEvent.click(
+        document.querySelector(
+          '.option-item[data-option-index="0"] input[type="radio"]',
+        )!,
+      );
+    });
+    expect(
+      document.querySelector("[data-testid='question-navigation-hint']"),
+    ).toHaveTextContent("还有 1 题未答");
+
+    act(() => {
+      fireEvent.click(document.querySelector('[aria-label="下一个"]')!);
+    });
+    act(() => {
+      fireEvent.click(
+        document.querySelector(
+          '.option-item[data-option-index="0"] input[type="radio"]',
+        )!,
+      );
+    });
+
+    await waitFor(() => {
+      expect(
+        document.querySelector("[data-testid='question-navigation-hint']"),
+      ).toBeNull();
+    });
+  });
+
+  it("omits a question whose Other was selected but left empty", async () => {
+    const { vscode } = renderChatApp();
+    showAskUser([
+      { question: "选哪个范围？", options: [{ label: "大" }, { label: "小" }] },
+    ]);
+    await waitForDialog();
+
+    act(() => {
+      fireEvent.click(
+        document.querySelector('.other-option input[type="radio"]')!,
+      );
+    });
+    submit();
+
+    const payload = sentPayload(vscode);
+    expect(payload.answers).toEqual({});
+    expect("选哪个范围？" in payload.answers).toBe(false);
   });
 });

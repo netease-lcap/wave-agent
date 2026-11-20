@@ -17,3 +17,12 @@ export const MESSAGE_PAGE_SIZE = 200;
  * 或将来新增的调用点）把整份历史一次拉进回包。
  */
 export const MESSAGE_PAGE_SIZE_MAX = 1000;
+
+/**
+ * 大纲索引里每条问句的文本上限（spec ui/transcript-outline.md 场景 16）。
+ *
+ * 与 webview 的 `OUTLINE_QUESTION_LIMIT` 同值：索引决定「最多带过去多少」，页面
+ * 决定「预览卡最多展示多少」。两边不同值只会在悬停时露半句话——所以页面那边
+ * 直接引用这个常量，不另写一份数字。
+ */
+export const OUTLINE_TEXT_LIMIT = 400;

@@ -238,6 +238,13 @@
     // 手机页上敲第一个字就发。落到 `default:` 就是每敲一下在屏幕顶上弹一条
     // 「还没有接通」——用户读起来像页面坏了（#2950 B1）。
     modPromptEdit: "Web 端不跑插件 mod（一期只做桌面端）",
+    // 会话大纲的两条数据面（spec ui/transcript-outline.md 场景 20）：远控页的机器
+    // 侧白名单没放行这两个方法，页面按 spec 明确允许「拿不到索引就只画已加载的
+    // 那一页」降级。静默丢弃即可——索引请求每次开页面都会发一次，落到 `default:`
+    // 就是每开一次会话在屏幕顶上弹一句「还没有接通」。
+    getTranscriptOutline:
+      "Web 端不查整条会话的消息索引（大纲只覆盖已加载的一页）",
+    loadMessagePage: "Web 端不跳转到未加载的历史（大纲点击只作用于当前一页）",
   };
   /**
    * "The channel would carry this method, but **this host** has not implemented

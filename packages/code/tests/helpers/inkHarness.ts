@@ -2,6 +2,11 @@ import { EventEmitter } from "node:events";
 import type React from "react";
 import { render as inkRender, type Instance } from "ink";
 
+export interface WindowSize {
+  columns?: number;
+  rows?: number;
+}
+
 /**
  * In-repo replacement for `ink-testing-library@4` (last published 2024-05-22,
  * no maintainer response to the open `waitFor`/`renderHook` request).
@@ -21,7 +26,7 @@ import { render as inkRender, type Instance } from "ink";
  *    socket — those still land later, so keep `vi.waitFor` for them.
  */
 class FakeStdout extends EventEmitter {
-  readonly columns = 100;
+  readonly columns: number;
   // `rows` has to be declared too, even though almost nothing reads it: ink's
   // `getWindowSize()` trusts the stream only when *both* dimensions are
   // present, and otherwise resolves the real terminal through the
@@ -37,8 +42,15 @@ class FakeStdout extends EventEmitter {
   // spawn slower. 24 is the value the fallback used to produce, so no test's
   // layout changes; it also stops the size from depending on whoever runs the
   // suite (a real terminal answers with *its* height).
-  readonly rows = 24;
+  readonly rows: number;
   frames: string[] = [];
+
+  constructor(size: WindowSize = {}) {
+    super();
+    this.columns = size.columns ?? 100;
+    this.rows = size.rows ?? 24;
+  }
+
   private lastWritten?: string;
 
   write = (data: unknown, callback?: () => void) => {
@@ -89,9 +101,9 @@ class FakeStdin extends EventEmitter {
 
 const instances: Instance[] = [];
 
-export const render = (tree: React.ReactElement) => {
-  const stdout = new FakeStdout();
-  const stderr = new FakeStderr();
+export const render = (tree: React.ReactElement, size: WindowSize = {}) => {
+  const stdout = new FakeStdout(size);
+  const stderr = new FakeStderr(size);
   const stdin = new FakeStdin();
   const instance = inkRender(tree, {
     stdout: stdout as unknown as NodeJS.WriteStream,

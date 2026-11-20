@@ -2,9 +2,17 @@ import React, { useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { DesktopSessionGroup, DesktopSessionEntry } from "../types";
 import { isDesktopHost } from "../utils/platform";
 import { useRovingMenu } from "../utils/useRovingMenu";
+import {
+  SELECT_MENU_ANCHOR_GAP,
+  useAnchoredMenuStyle,
+  useAnchorRect,
+} from "../utils/anchoredMenu";
 import { SidebarExpandIcon } from "./HeaderIcons";
 import { Tooltip } from "./Tooltip";
 import "../styles/SessionBoard.css";
+
+/** 菜单关闭时的占位锚点：定位 hook 必须无条件调用。 */
+const EMPTY_ANCHOR_RECT = { top: 0, bottom: 0, left: 0, right: 0 };
 
 export interface SessionBoardProps {
   /** 会话树分组（desktopSessionTree 的 groups），按 (host, workdir) 分组 */
@@ -168,11 +176,7 @@ export const SessionBoard: React.FC<SessionBoardProps> = ({
   );
   const filterWrapRef = useRef<HTMLDivElement>(null);
   const filterTriggerRef = useRef<HTMLButtonElement>(null);
-  const [filterMenuAnchor, setFilterMenuAnchor] = useState<{
-    top: number;
-    right: number;
-    width: number;
-  } | null>(null);
+  const filterMenuRef = useRef<HTMLDivElement>(null);
   const selectedFilterIndex = filterMenuOptions.findIndex(
     (option) => option.value === selectedWorkdir,
   );
@@ -192,32 +196,26 @@ export const SessionBoard: React.FC<SessionBoardProps> = ({
         setSelectedWorkdir(next.value);
     },
   });
-  // 弹层定位：fixed + 触发器 rect（看板内容区可滚动 → 跟随重算，避免弹层与触发器脱开）
-  useLayoutEffect(() => {
-    if (!filterMenuOpen) {
-      setFilterMenuAnchor(null);
-      return;
-    }
-    const place = () => {
-      // 锚点取**可见控件盒**（`.session-board-filter` 160×32）：透明触发器是
-      // `inset: 0` 的按钮，位于 1px 描边内缘（实测量到 158×30），拿它当锚点会让
-      // 弹层比选择器窄 2px、也不在其正下方。
-      const rect = filterWrapRef.current?.getBoundingClientRect();
-      if (!rect) return;
-      setFilterMenuAnchor({
-        top: rect.bottom + 2,
-        right: window.innerWidth - rect.right,
-        width: rect.width,
-      });
-    };
-    place();
-    window.addEventListener("scroll", place, true);
-    window.addEventListener("resize", place);
-    return () => {
-      window.removeEventListener("scroll", place, true);
-      window.removeEventListener("resize", place);
-    };
-  }, [filterMenuOpen]);
+  // 弹层定位：fixed + 触发器 rect，锚点由 `useAnchorRect` 在打开期间持续跟踪
+  // （看板内容区可滚动 → 跟随重算，避免弹层与触发器脱开）。
+  //
+  // 锚点取**可见控件盒**（`.session-board-filter` 160×32）：透明触发器是
+  // `inset: 0` 的按钮，位于 1px 描边内缘（实测量到 158×30），拿它当锚点会让
+  // 弹层比选择器窄 2px、也不在其正下方。
+  //
+  // 纵向摆放交给 `useAnchoredMenuStyle`（与设置页下拉、侧栏会话菜单同一套）：
+  // 下方放得下就贴下缘 +2px（`SELECT_MENU_ANCHOR_GAP`）；下方放不下、上方放得下
+  // 就整个翻到上方；上下都放不下才收高度 + 内部滚动。原来这里写死「始终向下」，
+  // 窗口一矮末项会被视口切掉。
+  const filterMenuRect = useAnchorRect(filterWrapRef, filterMenuOpen);
+
+  const filterMenuStyle = useAnchoredMenuStyle(
+    filterMenuRef,
+    filterMenuRect ?? EMPTY_ANCHOR_RECT,
+    filterMenuRect ? filterMenuRect.right - filterMenuRect.left : 0,
+    "right",
+    SELECT_MENU_ANCHOR_GAP,
+  );
 
   return (
     <div className="session-board" data-testid="session-board">
@@ -334,17 +332,14 @@ export const SessionBoard: React.FC<SessionBoardProps> = ({
                 ))}
               </select>
             )}
-            {filterMenuOpen && filterMenuAnchor && (
+            {filterMenuOpen && filterMenuRect && (
               <div
                 className="session-board-filter-menu"
                 role="listbox"
                 aria-label="筛选项目"
                 data-testid="session-board-filter-menu"
-                style={{
-                  top: filterMenuAnchor.top,
-                  right: filterMenuAnchor.right,
-                  width: filterMenuAnchor.width,
-                }}
+                ref={filterMenuRef}
+                style={filterMenuStyle}
               >
                 {filterMenuOptions.map((option, index) => (
                   <div

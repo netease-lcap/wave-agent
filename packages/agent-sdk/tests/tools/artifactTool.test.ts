@@ -109,12 +109,21 @@ function makeContext(overrides: Partial<ToolContext> = {}): ToolContext {
   } as ToolContext;
 }
 
-function makePermissionManager(behavior: "allow" | "deny" = "allow") {
+/**
+ * `ruleVerdict` is what `checkRuleBasedPermissions` reports: `null` = no
+ * `deny`/`ask` rule objects, so a call this session already confirmed
+ * auto-allows.
+ */
+function makePermissionManager(
+  behavior: "allow" | "deny" = "allow",
+  ruleVerdict: { decision: "deny" | "ask"; reason: string } | null = null,
+) {
   const permissionContext: Record<string, unknown> = {};
   return {
     permissionContext,
     manager: {
       createContext: vi.fn().mockReturnValue(permissionContext),
+      checkRuleBasedPermissions: vi.fn().mockReturnValue(ruleVerdict),
       checkPermission: vi
         .fn()
         .mockResolvedValue(
@@ -636,9 +645,70 @@ describe("artifactTool", () => {
       );
 
       expect(result.success).toBe(true);
-      expect(manager.createContext).not.toHaveBeenCalled();
+      expect(manager.createContext).toHaveBeenCalled();
       expect(manager.checkPermission).not.toHaveBeenCalled();
       expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("should still ask when an ask rule names the tool, even for a repeat publish", async () => {
+      (readFileSync as Mock).mockReturnValue(MD_CONTENT);
+      recordArtifact(SESSION_ID, "doc.md", {
+        url: "https://server.test/code/artifact/abc",
+        slug: "abc",
+        version: "v1",
+      });
+      const { manager } = makePermissionManager("allow", {
+        decision: "ask",
+        reason: ARTIFACT_TOOL_NAME,
+      });
+      stubFetchRoutes([
+        {
+          match: (url) => url.endsWith("/api/frame/deploy/direct"),
+          respond: () =>
+            jsonResponse(201, {
+              url: "https://server.test/code/artifact/abc",
+              slug: "abc",
+              version: "v2",
+            }),
+        },
+      ]);
+
+      const result = await artifactTool.execute(
+        { file_path: "doc.md" },
+        makeContext({
+          permissionManager:
+            manager as unknown as ToolContext["permissionManager"],
+        }),
+      );
+
+      expect(result.success).toBe(true);
+      expect(manager.checkRuleBasedPermissions).toHaveBeenCalled();
+      expect(manager.checkPermission).toHaveBeenCalledTimes(1);
+    });
+
+    it("should let a deny rule reject a repeat publish", async () => {
+      (readFileSync as Mock).mockReturnValue(MD_CONTENT);
+      recordArtifact(SESSION_ID, "doc.md", {
+        url: "https://server.test/code/artifact/abc",
+        slug: "abc",
+        version: "v1",
+      });
+      const { manager } = makePermissionManager("deny", {
+        decision: "deny",
+        reason: ARTIFACT_TOOL_NAME,
+      });
+
+      const result = await artifactTool.execute(
+        { file_path: "doc.md" },
+        makeContext({
+          permissionManager:
+            manager as unknown as ToolContext["permissionManager"],
+        }),
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("operation denied by user");
+      expect(manager.checkPermission).toHaveBeenCalledTimes(1);
     });
 
     it("should surface 409 conflicts with the live version and record it", async () => {
@@ -1242,8 +1312,41 @@ describe("artifactTool", () => {
         context,
       );
 
-      expect(manager.createContext).toHaveBeenCalledTimes(1);
+      // One context per call: it is built to ask whether a `deny` / `ask` rule
+      // objects, and only the first call has to actually prompt.
+      expect(manager.createContext).toHaveBeenCalledTimes(2);
       expect(manager.checkPermission).toHaveBeenCalledTimes(1);
+    });
+
+    it("should re-confirm a shared artifact when an ask rule names the tool", async () => {
+      stubArtifactRead(
+        {
+          slug: "abc",
+          version: "v4",
+          perm: { mode: "users" },
+          contentUrl: CONTENT_URL,
+        },
+        "<html><body><p>Shared</p></body></html>",
+      );
+      const { manager } = makePermissionManager("allow", {
+        decision: "ask",
+        reason: ARTIFACT_TOOL_NAME,
+      });
+      const context = makeAiContext({
+        permissionManager:
+          manager as unknown as ToolContext["permissionManager"],
+      });
+
+      await artifactTool.execute(
+        { action: "read", url: ARTIFACT_URL },
+        context,
+      );
+      await artifactTool.execute(
+        { action: "read", url: ARTIFACT_URL },
+        context,
+      );
+
+      expect(manager.checkPermission).toHaveBeenCalledTimes(2);
     });
 
     it("should report a denied read confirmation", async () => {

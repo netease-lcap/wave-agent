@@ -7,6 +7,7 @@ import { getShellProvider } from "../../../src/utils/shell/resolveProvider.js";
 import { terminateChildProcessTree } from "../../../src/utils/terminateProcessTree.js";
 import type { ShellProvider } from "../../../src/utils/shell/shellProvider.js";
 import type { ToolContext } from "../../../src/tools/types.js";
+import type { ForegroundTask } from "../../../src/types/processes.js";
 import { spawn } from "child_process";
 import { createMockTaskManager } from "../../helpers/mockFactories.js";
 
@@ -530,6 +531,82 @@ describe("powershellTool", () => {
       expect(result.success).toBe(false);
       expect(result.error).toContain("Command timed out");
     });
+    it("moves a timed-out command to the background when it is allowed to", async () => {
+      vi.useFakeTimers();
+      const child = spawnChild();
+      const adoptProcess = vi.fn(() => "task_auto_1");
+      const foregroundTaskManager = {
+        registerForegroundTask: vi.fn(),
+        unregisterForegroundTask: vi.fn(),
+      };
+
+      const promise = powershellTool.execute(
+        { command: "Get-ChildItem -Recurse", timeout: 5000 },
+        context({
+          foregroundTaskManager:
+            foregroundTaskManager as unknown as ToolContext["foregroundTaskManager"],
+          backgroundTaskManager: {
+            adoptProcess,
+            getTask: vi.fn(() => ({
+              outputPath: "C:\\temp\\wave-task-auto.log",
+            })),
+          } as unknown as ToolContext["backgroundTaskManager"],
+        }),
+      );
+
+      await vi.advanceTimersByTimeAsync(5000);
+      const result = await promise;
+
+      // Kept running, not killed — and reported as a success, because the work
+      // is still going (same contract as the Bash tool).
+      expect(terminateChildProcessTree).not.toHaveBeenCalled();
+      expect(adoptProcess).toHaveBeenCalledWith(
+        child,
+        "Get-ChildItem -Recurse",
+        "",
+        "",
+      );
+      expect(result.success).toBe(true);
+      expect(result.assistantAutoBackgrounded).toBe(true);
+      expect(result.backgroundTaskId).toBe("task_auto_1");
+      expect(result.content).toBe(
+        "Command exceeded the timeout (5s) and was moved to the background with ID: task_auto_1. It is still running — you will be notified when it completes. Output is being written to: C:\\temp\\wave-task-auto.log",
+      );
+      // The foreground registration is released: the task manager now owns it.
+      expect(
+        foregroundTaskManager.unregisterForegroundTask,
+      ).toHaveBeenCalledTimes(1);
+
+      // The adopted process exits later; its exit must not replace the receipt.
+      child.finish(0);
+    });
+
+    it.each(["Start-Sleep -Seconds 10", "sleep 10"])(
+      "still kills %s on timeout — it is the wait idiom, not background work",
+      async (command) => {
+        vi.useFakeTimers();
+        const child = spawnChild();
+        const adoptProcess = vi.fn();
+
+        const promise = powershellTool.execute(
+          { command, timeout: 1000 },
+          context({
+            backgroundTaskManager: {
+              adoptProcess,
+              getTask: vi.fn(),
+            } as unknown as ToolContext["backgroundTaskManager"],
+          }),
+        );
+
+        await vi.advanceTimersByTimeAsync(1000);
+        const result = await promise;
+
+        expect(adoptProcess).not.toHaveBeenCalled();
+        expect(terminateChildProcessTree).toHaveBeenCalledWith(child);
+        expect(result.success).toBe(false);
+        expect(result.metadata).toEqual({ exitCode: 130 });
+      },
+    );
   });
 
   it("folds long output into a three-line short result", async () => {
@@ -638,6 +715,82 @@ describe("powershellTool", () => {
       );
       expect(result.success).toBe(false);
       expect(result.error).toBe("Background task manager not available");
+    });
+  });
+
+  describe("manual backgrounding (Ctrl-B)", () => {
+    function foregroundManager() {
+      const tasks: ForegroundTask[] = [];
+      return {
+        tasks,
+        registerForegroundTask: vi.fn((task: ForegroundTask) => {
+          tasks.push(task);
+        }),
+        unregisterForegroundTask: vi.fn(),
+      };
+    }
+
+    function withForeground(
+      manager: ReturnType<typeof foregroundManager>,
+      adoptProcess = vi.fn(() => "task_9_9"),
+    ) {
+      return context({
+        foregroundTaskManager:
+          manager as unknown as ToolContext["foregroundTaskManager"],
+        backgroundTaskManager: {
+          adoptProcess,
+          getTask: vi.fn(() => ({ outputPath: "C:\\temp\\wave-task-9.log" })),
+        } as unknown as ToolContext["backgroundTaskManager"],
+      });
+    }
+
+    it("registers a foreground command so the user can move it to the background", async () => {
+      const child = spawnChild();
+      const fg = foregroundManager();
+      const adoptProcess = vi.fn(() => "task_9_9");
+
+      const pending = powershellTool.execute(
+        { command: "Start-Sleep -Seconds 60" },
+        withForeground(fg, adoptProcess),
+      );
+
+      expect(fg.registerForegroundTask).toHaveBeenCalledTimes(1);
+      await fg.tasks[0]!.backgroundHandler();
+
+      const result = await pending;
+      expect(result.success).toBe(true);
+      expect(result.backgroundedByUser).toBe(true);
+      expect(result.backgroundTaskId).toBe("task_9_9");
+      // Same receipt text the Bash tool returns, so the model reads one contract
+      // regardless of which shell ran the command.
+      expect(result.content).toBe(
+        "Command was manually backgrounded by user with ID: task_9_9. Output is being written to: C:\\temp\\wave-task-9.log",
+      );
+      expect(adoptProcess).toHaveBeenCalledWith(
+        child,
+        "Start-Sleep -Seconds 60",
+        "",
+        "",
+      );
+
+      // The adopted process exits later; the tool must not resolve a second
+      // time (that would replace the background receipt with an exit result).
+      child.finish(0);
+      expect(fg.unregisterForegroundTask).toHaveBeenCalled();
+    });
+
+    it("unregisters once the foreground command finishes", async () => {
+      const child = spawnChild();
+      const fg = foregroundManager();
+
+      const pending = powershellTool.execute(
+        { command: "Get-ChildItem" },
+        withForeground(fg),
+      );
+      child.finish(0);
+      await pending;
+
+      expect(fg.unregisterForegroundTask).toHaveBeenCalledTimes(1);
     });
   });
 

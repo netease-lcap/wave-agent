@@ -61,6 +61,7 @@ import type {
   ModStatusPayload,
   ModToastPayload,
   ContextBreakdown,
+  TranscriptOutlineEntry,
 } from "wave-agent-sdk/types";
 
 export type {
@@ -386,6 +387,49 @@ export interface EarlierMessagesMessage extends HostToWebviewMessageBase {
   /**
    * 锚点已经不在转录里（rewind / clear / 换会话）：页面换一个更早的已加载 id
    * 重试，**不要**当成「到底」——判错这段历史就再也翻不出来。
+   */
+  anchorLost?: boolean;
+}
+
+/**
+ * 会话消息大纲的索引（回复 `getTranscriptOutline`，spec ui/transcript-outline.md
+ * 场景 16）：整份转录里每条带文本用户消息的 `id` 与文本首段。
+ *
+ * 它是「哪几轮可以跳」的唯一来源——页面据此画刻度，**不**要求这些消息的正文
+ * 已经加载（首屏只有最近一页，索引覆盖整条会话）。
+ */
+export interface TranscriptOutlineMessage extends HostToWebviewMessageBase {
+  command: "transcriptOutline";
+  /** 归属键：每次问索引发一笔（打开会话、补页后、rewind 后），晚到的旧索引即弃。 */
+  requestId: string;
+  items: TranscriptOutlineEntry[];
+}
+
+/**
+ * 大纲点了一条**还没加载**的刻度（回复 `loadMessagePage`，spec 场景 17）。
+ *
+ * 到达后页面**整表替换**当前消息窗口再落位——这是与 `earlierMessages`（往前
+ * prepend）最本质的区别：跳转换的是整个窗口，不是往上面接一页。
+ */
+export interface MessagePageMessage extends HostToWebviewMessageBase {
+  command: "messagePage";
+  requestId: string;
+  /**
+   * 起点锚点（含），原样带回：页面据此确认这是它要的那一次跳转。**缺席** = 这一次
+   * 要的是尾页（「回到最新一页」，场景 18），不是从某条刻度往后取。
+   */
+  from?: string;
+  messages: Message[];
+  /** 这一页之前还有更早的消息（窗口内继续上翻用）。 */
+  hasMore: boolean;
+  /**
+   * 这一页之后还有更新的消息：为真说明窗口停在历史里，底部入口要按「回到最新
+   * 一页」处理（场景 18），不能当成「已经在最新位置」。
+   */
+  hasLater: boolean;
+  /**
+   * 锚点已经不在转录里（被 rewind / clear 删掉）：页面换下一条仍存在的刻度重试，
+   * **不要**当成「这条会话到底了」，也不许静默清空列表（场景 17）。
    */
   anchorLost?: boolean;
 }
@@ -1946,6 +1990,8 @@ export interface HistoryErrorMessage extends HostToWebviewMessageBase {
 export type HostToWebviewMessage =
   | UpdateMessagesMessage
   | EarlierMessagesMessage
+  | TranscriptOutlineMessage
+  | MessagePageMessage
   | UpdateTasksMessage
   | UpdateSessionStatusMessage
   | UpdatePushStateMessage
@@ -2165,6 +2211,12 @@ type ReplyAttribution = {
   // 「重连补差 / 整表替换」共用同一份列表，晚到的旧页必须按 requestId 丢弃
   // （否则会把上一页 prepend 到已经翻走的位置上）。
   earlierMessages: "requestId";
+  // 大纲索引：打开会话、补页后、rewind 后各问一次，晚到的旧索引必须按 requestId
+  // 丢弃（否则刚 rewind 掉的问句会借着上一份索引回到刻度里）。
+  transcriptOutline: "requestId";
+  // 大纲跳转取页：连点几个刻度会有多笔在途，且它要与上翻取页互不覆盖——晚到的
+  // 旧页必须按 requestId 丢弃（否则「点了 A 停在 B」）。
+  messagePage: "requestId";
   // 侧栏内容搜索：输入每变一次发一笔查询，晚到的旧结果必须按 requestId 丢弃，
   // 否则会把上一轮的命中列表贴在新关键词下面。
   desktopSessionContentMatches: "requestId";
@@ -2239,6 +2291,8 @@ export const replyAttributionLocked = {
   imagePreviewResponse: true,
   workflowAgentActivity: true,
   earlierMessages: true,
+  transcriptOutline: true,
+  messagePage: true,
   desktopSessionContentMatches: true,
   desktopModPanelRender: true,
   modPromptEditResult: true,

@@ -524,6 +524,95 @@ describe("BackgroundTaskManager", () => {
     });
   });
 
+  it("shows a shell task's command when it carries no description", async () => {
+    // Shell tasks fill `command`, not `description` (the SDK reserves the latter
+    // for subagents), and the row used to render `description` alone — so a
+    // foreground command moved to the background showed no command line at all.
+    const tasks: Partial<BackgroundTask>[] = [
+      {
+        // `task-log` is the id this file's `getBackgroundTaskOutput` answers for,
+        // so the detail view gets an output object instead of null.
+        id: "task-log",
+        type: "shell" as const,
+        // A PowerShell command: the same `shell` type, the same field.
+        command: "Start-Sleep -Seconds 60",
+        status: "running" as const,
+        startTime: Date.now(),
+        stdout: "",
+        stderr: "",
+      },
+    ];
+
+    const { lastFrame, stdin } = render(
+      <AppProvider>
+        <ChatProvider>
+          <BackgroundTaskManager onCancel={vi.fn()} />
+        </ChatProvider>
+      </AppProvider>,
+    );
+
+    await vi.waitFor(() => {
+      expect(Agent.create).toHaveBeenCalled();
+    });
+
+    const callbacks = vi.mocked(Agent.create).mock.calls[0][0].callbacks!;
+    callbacks.onBackgroundTasksChange!(tasks as unknown as BackgroundTask[]);
+
+    await vi.waitFor(() => {
+      expect(lastFrame()).toContain(
+        "[task-log] shell: $ Start-Sleep -Seconds 60",
+      );
+    });
+
+    stdin.write("\r"); // Enter → detail
+
+    await vi.waitFor(() => {
+      expect(lastFrame()).toContain("Background Task Details: task-log");
+      expect(lastFrame()).toContain("Command: $ Start-Sleep -Seconds 60");
+    });
+  });
+
+  it("keeps a long or multi-line command on one folded row", async () => {
+    const tasks: Partial<BackgroundTask>[] = [
+      {
+        id: "task-long",
+        type: "shell" as const,
+        command: `pwsh -Command "Get-ChildItem -Recurse |\n  Select-Object Name, Length"`,
+        status: "running" as const,
+        startTime: Date.now(),
+        stdout: "",
+        stderr: "",
+      },
+    ];
+
+    const { lastFrame } = render(
+      <AppProvider>
+        <ChatProvider>
+          <BackgroundTaskManager onCancel={vi.fn()} />
+        </ChatProvider>
+      </AppProvider>,
+    );
+
+    await vi.waitFor(() => {
+      expect(Agent.create).toHaveBeenCalled();
+    });
+
+    const callbacks = vi.mocked(Agent.create).mock.calls[0][0].callbacks!;
+    callbacks.onBackgroundTasksChange!(tasks as unknown as BackgroundTask[]);
+
+    await vi.waitFor(() => expect(lastFrame()).toContain("[task-long]"));
+
+    const row = lastFrame()!
+      .split("\n")
+      .find((line) => line.includes("[task-long]"));
+    expect(row).toBeDefined();
+    // Folded to one line and cut at the row budget, rather than wrapped: the
+    // newline becomes a space, and everything past the budget is gone.
+    expect(row).toContain("…");
+    expect(row).toContain("| Select-Object");
+    expect(row).not.toContain("Length");
+  });
+
   it("should stop task from detail mode", async () => {
     const { lastFrame, stdin } = render(
       <AppProvider>

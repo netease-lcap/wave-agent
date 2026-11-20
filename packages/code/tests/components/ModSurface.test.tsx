@@ -64,6 +64,8 @@ describe("ModSurface（终端的插件渲染区）", () => {
     chat.renderModBand.mockImplementation(
       async (): Promise<ModBandRenderResult[]> => [],
     );
+    // 一次交互的回执：默认「mod 不接」——按 Esc 时就该真收起来。
+    chat.sendModPanelEvent.mockImplementation(async () => ({}));
   });
 
   it("只有一个面板时不画切换行，正文按面板拉树", async () => {
@@ -73,7 +75,15 @@ describe("ModSurface（终端的插件渲染区）", () => {
       expect(lastFrame()).toContain("main 的正文");
     });
     expect(lastFrame()).not.toContain("1: 待办");
-    expect(chat.renderModPanel).toHaveBeenCalledWith("todo:index", "main");
+    // 拉树时顺带报版面事实：`bodyRows` 是面板正文这一帧真能用的行数（量不到就
+    // 由引擎给缺省值），`columns` / `rows` 是整块画布。
+    expect(chat.renderModPanel).toHaveBeenCalledWith("todo:index", "main", {
+      placement: "inline",
+      columns: 100,
+      rows: 24,
+      bodyRows: 8,
+      bodyColumns: 98,
+    });
   });
 
   it("多个面板时顶部一行可切换（数字键 + tab）", async () => {
@@ -100,7 +110,7 @@ describe("ModSurface（终端的插件渲染区）", () => {
     expect(chat.setModFocusPaneId).toHaveBeenCalledWith("check");
   });
 
-  it("Esc 收起这块面板，且不再向它推事件", async () => {
+  it("Esc 先问 mod（ui.close），mod 不拦才收起这块面板", async () => {
     chat.modPanes = [pane("main", "待办")];
     chat.modFocusPaneId = "main";
     const { lastFrame, stdin } = render(<ModSurface part="pane" />);
@@ -112,9 +122,18 @@ describe("ModSurface（终端的插件渲染区）", () => {
     await vi.waitFor(() => {
       expect(chat.setModFocusPaneId).toHaveBeenCalledWith(null);
     });
-    expect(lastFrame()).not.toContain("main 的正文");
-    // 收起是「这一端不画」，不是 `ui.close`：mod 自己决定要不要真关。
-    expect(chat.sendModPanelEvent).not.toHaveBeenCalled();
+    // 回执是一趟异步（mod 那边先跑 ui.close），收起会晚一帧。
+    await vi.waitFor(() => {
+      expect(lastFrame()).not.toContain("main 的正文");
+    });
+    expect(chat.sendModPanelEvent).toHaveBeenCalledWith(
+      "todo:index",
+      "main",
+      "close",
+      "",
+      undefined,
+      undefined,
+    );
   });
 
   it("带用 MOD_BAND_INSTANCE_ID 的推送，面板区不认它、空树不占位置", async () => {

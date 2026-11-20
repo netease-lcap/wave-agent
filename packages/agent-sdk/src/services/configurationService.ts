@@ -187,6 +187,19 @@ export function validateConfigurationObject(
         }
       }
 
+      // Validate ask if present
+      if (config.permissions.ask !== undefined) {
+        if (!Array.isArray(config.permissions.ask)) {
+          result.isValid = false;
+          result.errors.push("Permissions ask must be an array of strings");
+        } else if (
+          !config.permissions.ask.every((rule) => typeof rule === "string")
+        ) {
+          result.isValid = false;
+          result.errors.push("All permission ask rules must be strings");
+        }
+      }
+
       // Validate defaultMode if present
       if (config.permissions.defaultMode !== undefined) {
         const validModes: PermissionMode[] = [
@@ -1888,6 +1901,12 @@ export function loadWaveConfigFromFile(
       worktree: config.worktree || undefined,
       enableArtifact:
         config.enableArtifact !== undefined ? config.enableArtifact : undefined,
+      enableRepl:
+        config.enableRepl !== undefined ? config.enableRepl : undefined,
+      enableReplCoreTools:
+        config.enableReplCoreTools !== undefined
+          ? config.enableReplCoreTools
+          : undefined,
       enableExec:
         config.enableExec !== undefined ? config.enableExec : undefined,
       enableKnowledgeBase:
@@ -2034,6 +2053,17 @@ export function loadMergedWaveConfig(
         ];
       }
 
+      // Merge ask rules
+      if (config.permissions.ask) {
+        if (!mergedConfig.permissions.ask) mergedConfig.permissions.ask = [];
+        mergedConfig.permissions.ask = [
+          ...new Set([
+            ...mergedConfig.permissions.ask,
+            ...config.permissions.ask,
+          ]),
+        ];
+      }
+
       // Merge defaultMode (last one wins)
       if (config.permissions.defaultMode !== undefined) {
         mergedConfig.permissions.defaultMode = config.permissions.defaultMode;
@@ -2133,6 +2163,17 @@ export function loadMergedWaveConfig(
     // Merge enableArtifact (last one wins)
     if (config.enableArtifact !== undefined) {
       mergedConfig.enableArtifact = config.enableArtifact;
+    }
+
+    // Merge the REPL switches (last one wins). The retired `enableExec` spelling
+    // travels alongside them: `execAvailability` reads both off the merged result
+    // and prefers `enableRepl` within a layer.
+    if (config.enableRepl !== undefined) {
+      mergedConfig.enableRepl = config.enableRepl;
+    }
+
+    if (config.enableReplCoreTools !== undefined) {
+      mergedConfig.enableReplCoreTools = config.enableReplCoreTools;
     }
 
     // Merge enableExec (last one wins)
@@ -2260,6 +2301,8 @@ export function loadMergedWaveConfig(
     otelHeadersHelper: mergedConfig.otelHeadersHelper,
     worktree: mergedConfig.worktree,
     enableArtifact: mergedConfig.enableArtifact,
+    enableRepl: mergedConfig.enableRepl,
+    enableReplCoreTools: mergedConfig.enableReplCoreTools,
     enableExec: mergedConfig.enableExec,
     enableKnowledgeBase: mergedConfig.enableKnowledgeBase,
     enableRemoteControl: mergedConfig.enableRemoteControl,

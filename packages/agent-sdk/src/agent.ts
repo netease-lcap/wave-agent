@@ -17,6 +17,7 @@ import { wrapInSystemReminder } from "./prompts/planModeReminders.js";
 import type {
   ModBandRenderResult,
   ModPanelEventPayload,
+  ModPanelEventResult,
   ModPromptEditEvent,
   ModPromptOrigin,
   ModPromptSuggestEvent,
@@ -65,6 +66,7 @@ import type {
   MessageWindow,
   MessageWindowResult,
 } from "./types/messageWindow.js";
+import type { TranscriptOutlineEntry } from "./types/transcriptOutline.js";
 import type { Task } from "./types/tasks.js";
 import type { BackgroundTask } from "./types/processes.js";
 import { MemoryRuleManager } from "./managers/MemoryRuleManager.js";
@@ -316,11 +318,14 @@ export class Agent {
    *
    * Public because the stdio bridge is a different layer: it receives the
    * `modPanelEvent` RPC and hands the payload straight here.
+   *
+   * 返回值只有 `ui.focus` 用得上：插件接没接这一下方向键、接到哪个控件
+   * （spec「方向键先问 mod」）。
    */
   public async handleModPanelEvent(
     payload: ModPanelEventPayload,
-  ): Promise<void> {
-    await this.modManager.handlePanelEvent(payload);
+  ): Promise<Partial<ModPanelEventResult>> {
+    return this.modManager.handlePanelEvent(payload);
   }
 
   /** Panel snapshots for panels opened before the host attached (resync). */
@@ -1091,6 +1096,15 @@ export class Agent {
 
   public get sessionFilePath(): string {
     return this.messageManager.getTranscriptPath();
+  }
+
+  /**
+   * 会话消息大纲的索引（spec ui/transcript-outline.md 场景 16）：整份转录里每条
+   * 带文本用户消息的 id 与文本首段。只读快照——不触发模型请求、不动上下文，页面
+   * 拿它画左边缘那列刻度、点击时再用 `from` 取那一页。
+   */
+  public getTranscriptOutline(): Promise<TranscriptOutlineEntry[]> {
+    return this.messageManager.getTranscriptOutline();
   }
 
   public get latestTotalTokens(): number {
@@ -1893,6 +1907,10 @@ export class Agent {
     // 侧聊段的冻结前缀指向的是这场对话：对话被清空，段也就作废了（在途的那一轮
     // 一并中止）。
     this.aiManager.releaseAllBtwSegments();
+    // The REPL context belongs to this conversation: clearing it means the variables,
+    // the timers and any background script go with it. Released *before* the session
+    // id is replaced, because that id is the key the context is filed under.
+    this.aiManager.releaseReplContext();
 
     // Capture old session info before clearing
     const oldSessionId = this.messageManager.getSessionId();
@@ -2115,6 +2133,12 @@ export class Agent {
     // dispatched fire-and-forget and outlive the agent. Never reset: destroy()
     // is terminal, no dispatch should ever start afterwards.
     this.isDestroyed = true;
+
+    // The agent's REPL context dies with it: its variables, its timers and any
+    // script still running in the background. This is also the path a subagent's
+    // context takes, which is what the "a subagent gets its own context, released
+    // when it ends" rule rests on.
+    this.aiManager.releaseReplContext();
 
     // Log session_end event and flush telemetry. Only a flush: the providers are
     // process-scoped, and tearing them down here would silence the other agents

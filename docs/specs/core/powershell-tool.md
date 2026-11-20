@@ -47,8 +47,8 @@ order: 22
 3. **假设** 两个条件都不成立（Windows、无 Git Bash、env=0），**当** 注册内置工具时，**则** 两个 shell 工具都不得注册（`packages/agent-sdk/src/managers/toolManager.ts:383-384`、`:401-402`），且提示词的 `Shell:` 行必须说明本会话没有可用的 shell（`packages/agent-sdk/src/prompts/index.ts:446-448`）。
 4. **假设** 会话没有可用的 bash，**当** 注册内置工具时，**则** `Grep` 与 `Glob` 必须自动注册（`packages/agent-sdk/src/utils/searchToolsRegistration.ts:31-35`、`packages/agent-sdk/src/managers/toolManager.ts:393-394`）——判据只问「有没有可用 bash」，与 PowerShell 门控无关，因此 PowerShell 会话通常拿到这两个工具。
 5. **假设** 用户用 `--tools` 点名了某个工具，**当** 计算注册集合时，**则** 点名不得绕过门控——`--tools` 只影响 `Grep` / `Glob` 这类默认摘除的工具，不影响 shell 工具的可注册性（`packages/agent-sdk/src/managers/toolManager.ts:386-392`）。
-6. **假设** 门控为启用 PowerShell 但盘上找不到 `pwsh` / `powershell`，**当** 模型调用 `PowerShell` 时，**则** 工具仍须已注册，并在执行时返回可读错误 `PowerShell not found. Install PowerShell 7 (pwsh) or enable Windows PowerShell, then retry.`（`packages/agent-sdk/src/tools/powershellTool/powershellTool.ts:137-145`）。
-7. **假设** 查看 `PowerShell` 工具的定义，**当** 读工具名与并发声明时，**则** 名称必须是 `PowerShell`，且必须声明为非并发安全（`packages/agent-sdk/src/tools/powershellTool/powershellTool.ts:74-76`；常量见 `packages/agent-sdk/src/constants/tools.ts:5`）。
+6. **假设** 门控为启用 PowerShell 但盘上找不到 `pwsh` / `powershell`，**当** 模型调用 `PowerShell` 时，**则** 工具仍须已注册，并在执行时返回可读错误 `PowerShell not found. Install PowerShell 7 (pwsh) or enable Windows PowerShell, then retry.`（`packages/agent-sdk/src/tools/powershellTool/powershellTool.ts:156-164`）。
+7. **假设** 查看 `PowerShell` 工具的定义，**当** 读工具名与并发声明时，**则** 名称必须是 `PowerShell`，且必须声明为非并发安全（`packages/agent-sdk/src/tools/powershellTool/powershellTool.ts:93-95`；常量见 `packages/agent-sdk/src/constants/tools.ts:5`）。
 
 ---
 
@@ -63,17 +63,20 @@ order: 22
 **验收场景**：
 
 1. **假设** 模型给出一条命令，**当** 工具构造实际执行的命令行时，**则** 必须在命令后追加退出码探针 `$_ec = if ($null -ne $LASTEXITCODE) { $LASTEXITCODE } elseif ($?) { 0 } else { 1 }`，最后以 `exit $_ec` 结束（`packages/agent-sdk/src/utils/shell/powershellProvider.ts:84-95`）。
-2. **假设** 命令有输出，**当** 工具返回时，**则** 必须同时返回 stdout 与 stderr 的合并文本、`metadata.exitCode`，并以 `exitCode === 0` 决定 `success`（`packages/agent-sdk/src/tools/powershellTool/powershellTool.ts:333-345`、`:398-410`）。
-3. **假设** 退出码非 0，**当** 工具返回时，**则** 必须带上 `Command failed with exit code: <n>` 作为错误文本，且 `success` 为 false（`packages/agent-sdk/src/tools/powershellTool/powershellTool.ts:405-408`）。
-4. **假设** 命令完全没有任何输出，**当** 工具返回时，**则** 结果正文必须退化为 `Command executed with exit code: <n>`，不得返回空正文（`packages/agent-sdk/src/tools/powershellTool/powershellTool.ts:385-390`）。
+2. **假设** 命令有输出，**当** 工具返回时，**则** 必须同时返回 stdout 与 stderr 的合并文本、`metadata.exitCode`，并以 `exitCode === 0` 决定 `success`（`packages/agent-sdk/src/tools/powershellTool/powershellTool.ts:445-457`、`:510-522`）。
+3. **假设** 退出码非 0，**当** 工具返回时，**则** 必须带上 `Command failed with exit code: <n>` 作为错误文本，且 `success` 为 false（`packages/agent-sdk/src/tools/powershellTool/powershellTool.ts:517-520`）。
+4. **假设** 命令完全没有任何输出，**当** 工具返回时，**则** 结果正文必须退化为 `Command executed with exit code: <n>`，不得返回空正文（`packages/agent-sdk/src/tools/powershellTool/powershellTool.ts:497-502`）。
 5. **假设** 模型用 `-ErrorAction SilentlyContinue` 吞掉错误输出，**当** 该 cmdlet 失败时，**则** 工具仍必须报退出码 1——错误**输出**被抑制不等于失败被忽略；提示词必须明确告知「要让失败真正无害，须 `-ErrorAction Stop` 并用 `catch { $null }` 吞掉」，且 `catch` 块不得为空（`packages/agent-sdk/src/tools/powershellTool/prompt.ts:166`）。**（无单测覆盖：这条语义只由提示词承载，靠真机验证）**
-6. **假设** 调用方没有给 `timeout`，**当** 前台执行时，**则** 必须使用默认 120000ms（`packages/agent-sdk/src/tools/powershellTool/powershellTool.ts:118-124`；常量见 `prompt.ts:67`）。
-7. **假设** `timeout` 为非数字或负数，**当** 工具校验入参时，**则** 必须返回 `Timeout must be a non-negative number of milliseconds` 并且不 spawn（`packages/agent-sdk/src/tools/powershellTool/powershellTool.ts:147-155`）。
-8. **假设** `timeout` 大于 600000，**当** 执行时，**则** 必须按给定值执行，不得被拒绝或截断——上限（600000ms）只写在工具说明与参数描述里，运行时不做上限校验（`packages/agent-sdk/src/tools/powershellTool/powershellTool.ts:147-149`、`packages/agent-sdk/src/tools/powershellTool/prompt.ts:186`）。
-9. **假设** 命令超时或被调用方中止，**当** 工具收尾时，**则** 必须终止整棵进程树、返回 `metadata.exitCode: 130`，超时情形还要带上 `Command timed out after Ns. …`（`packages/agent-sdk/src/tools/powershellTool/powershellTool.ts:295-313`、`:325-331`）。
-10. **假设** 子进程根本起不来，**当** 工具返回时，**则** 必须返回 `Failed to execute command: <原因>` 而不是抛出（`packages/agent-sdk/src/tools/powershellTool/powershellTool.ts:263-266`、`:449-460`）。
-11. **假设** 执行一条命令，**当** 构造 spawn 调用时，**则** argv 必须是 `-NoProfile -NonInteractive -NoLogo -Command <命令串>`，并以 `shell: false`、`windowsHide: true`、`stdio: ["ignore","pipe","pipe"]` 启动（`packages/agent-sdk/src/utils/shell/powershellProvider.ts:21-26`、`:131-134`；`packages/agent-sdk/src/tools/powershellTool/powershellTool.ts:242-252`）。
-12. **假设** 会话设置了 `settings.json` 的 `env`，**当** 前台命令启动时，**则** 子进程环境必须是进程环境叠加会话环境快照（`packages/agent-sdk/src/tools/powershellTool/powershellTool.ts:251`；快照来源 `packages/agent-sdk/src/managers/toolManager.ts:761-767`）。
+6. **假设** 调用方没有给 `timeout`，**当** 前台执行时，**则** 必须使用默认 120000ms（`packages/agent-sdk/src/tools/powershellTool/powershellTool.ts:137-143`；常量见 `prompt.ts:67`）。
+7. **假设** `timeout` 为非数字或负数，**当** 工具校验入参时，**则** 必须返回 `Timeout must be a non-negative number of milliseconds` 并且不 spawn（`packages/agent-sdk/src/tools/powershellTool/powershellTool.ts:166-174`）。
+8. **假设** `timeout` 大于 600000，**当** 执行时，**则** 必须按给定值执行，不得被拒绝或截断——上限（600000ms）只写在工具说明与参数描述里，运行时不做上限校验（`packages/agent-sdk/src/tools/powershellTool/powershellTool.ts:166-168`、`packages/agent-sdk/src/tools/powershellTool/prompt.ts:186`）。
+9. **假设** 命令超时、会话提供了后台任务管理器、且命令还有活干，**当** 到达 `timeout` 时，**则** 必须**不杀**进程：把它交给 `adoptProcess` 转成后台任务，返回 `success: true`、`assistantAutoBackgrounded: true` 与 `backgroundTaskId`，正文为 `Command exceeded the timeout (Ns) and was moved to the background with ID: <id>. It is still running — you will be notified when it completes.`（有输出路径时追加 `Output is being written to: <path>`）——与 Bash 工具的超时转后台同一契约（`packages/agent-sdk/src/tools/powershellTool/powershellTool.ts:403-439`；是否允许的判据 `:261-265`）。
+10. **假设** 命令的首个词是 `Start-Sleep` / `sleep`（含别名，先归一化再比较），或会话没有后台任务管理器，**当** 超时时，**则** 不得自动转后台，必须终止整棵进程树、返回 `metadata.exitCode: 130`，并带上 `Command timed out after Ns. Consider breaking the command into smaller steps or increasing the timeout.`（`packages/agent-sdk/src/tools/powershellTool/powershellTool.ts:36-43`、`:441-444`、`:323-341`）。
+11. **假设** 调用方中止了这次执行，**当** 工具收尾时，**则** 必须终止整棵进程树并返回 `metadata.exitCode: 130`——中止是用户的「停下」，不受自动转后台影响（`packages/agent-sdk/src/tools/powershellTool/powershellTool.ts:393-401`、`:323-341`）。
+12. **假设** 子进程根本起不来，**当** 工具返回时，**则** 必须返回 `Failed to execute command: <原因>` 而不是抛出（`packages/agent-sdk/src/tools/powershellTool/powershellTool.ts:288-291`、`:571-586`）。
+13. **假设** 执行一条命令，**当** 构造 spawn 调用时，**则** argv 必须是 `-NoProfile -NonInteractive -NoLogo -Command <命令串>`，并以 `shell: false`、`windowsHide: true`、`stdio: ["ignore","pipe","pipe"]` 启动（`packages/agent-sdk/src/utils/shell/powershellProvider.ts:21-26`、`:131-134`；`packages/agent-sdk/src/tools/powershellTool/powershellTool.ts:267-277`）。
+14. **假设** 会话设置了 `settings.json` 的 `env`，**当** 前台命令启动时，**则** 子进程环境必须是进程环境叠加会话环境快照（`packages/agent-sdk/src/tools/powershellTool/powershellTool.ts:276`；快照来源 `packages/agent-sdk/src/managers/toolManager.ts:761-767`）。
+15. **假设** 会话提供了 `foregroundTaskManager`，**当** 前台执行期间用户按 Ctrl-B（或点 GUI 宿主在运行中工具块上的后台按钮，两者都落到 `backgroundCurrentTask`），**则** 必须把子进程交给 `backgroundTaskManager.adoptProcess`，返回 `success: true`、`backgroundedByUser: true` 与后台任务 ID，正文为 `Command was manually backgrounded by user with ID: <id>.`（有输出路径时追加 `Output is being written to: <path>`）；没有注册这一步时该快捷键在 PowerShell 会话里是静默空操作（`packages/agent-sdk/src/tools/powershellTool/powershellTool.ts:343-391`；契约见 [task-background-execution.md](../multi-agent/task-background-execution.md)）。
 
 ---
 
@@ -88,13 +91,13 @@ order: 22
 **验收场景**：
 
 1. **假设** 缓冲区可用，**当** 构造命令串时，**则** 必须在退出码探针之后追加 `(Get-Location).Path | Out-File -FilePath '<临时文件>' -Encoding utf8 -NoNewline`（`packages/agent-sdk/src/utils/shell/powershellProvider.ts:84-95`、`:122-129`）。
-2. **假设** 命令结束时读到了新的 cwd 且它与本次执行目录不同，**当** 工具返回时，**则** 结果首行必须是 `Shell working directory changed to <dir>`，并回调 `onCwdChange`（`packages/agent-sdk/src/tools/powershellTool/powershellTool.ts:369-383`）。
-3. **假设** 新的 cwd 落在会话工作目录与用户显式加入的附加目录之外——**包括自动记忆目录这类只免权限提示、不构成「可停留目录」的内部目录**，**当** 工具返回时，**则** 必须复位回会话原工作目录，并在结果首行回告 `Shell cwd was reset to <dir>`（`packages/agent-sdk/src/tools/powershellTool/powershellTool.ts:373-382`；「可停留目录」的判定排除系统附加目录，见 `packages/agent-sdk/src/managers/permissionManager.ts:652-657`）。
-4. **假设** cwd 探测失败（临时目录不可写），**当** 执行命令时，**则** 必须照常执行命令、只是不做 cwd 追踪（`packages/agent-sdk/src/tools/powershellTool/powershellTool.ts:232-239`）。
-5. **假设** cwd 文件里的路径在读取时已不存在，**当** 收尾时，**则** 必须静默忽略这次追踪结果，不得报错也不得改动当前工作目录（`packages/agent-sdk/src/tools/powershellTool/powershellTool.ts:42-46`）。
-6. **假设** 读取 cwd 文件，**当** 解析内容时，**则** 必须先按 UTF-8 读取并剥掉 BOM——Windows PowerShell 5.1 的 `Out-File -Encoding utf8` 会写 BOM，PowerShell 7 不写（`packages/agent-sdk/src/tools/powershellTool/powershellTool.ts:36-40`；写入侧理由见 `packages/agent-sdk/src/utils/shell/powershellProvider.ts:80-82`）。
+2. **假设** 命令结束时读到了新的 cwd 且它与本次执行目录不同，**当** 工具返回时，**则** 结果首行必须是 `Shell working directory changed to <dir>`，并回调 `onCwdChange`（`packages/agent-sdk/src/tools/powershellTool/powershellTool.ts:481-495`）。
+3. **假设** 新的 cwd 落在会话工作目录与用户显式加入的附加目录之外——**包括自动记忆目录这类只免权限提示、不构成「可停留目录」的内部目录**，**当** 工具返回时，**则** 必须复位回会话原工作目录，并在结果首行回告 `Shell cwd was reset to <dir>`（`packages/agent-sdk/src/tools/powershellTool/powershellTool.ts:485-494`；「可停留目录」的判定排除系统附加目录，见 `packages/agent-sdk/src/managers/permissionManager.ts:652-657`）。
+4. **假设** cwd 探测失败（临时目录不可写），**当** 执行命令时，**则** 必须照常执行命令、只是不做 cwd 追踪（`packages/agent-sdk/src/tools/powershellTool/powershellTool.ts:251-258`）。
+5. **假设** cwd 文件里的路径在读取时已不存在，**当** 收尾时，**则** 必须静默忽略这次追踪结果，不得报错也不得改动当前工作目录（`packages/agent-sdk/src/tools/powershellTool/powershellTool.ts:61-65`）。
+6. **假设** 读取 cwd 文件，**当** 解析内容时，**则** 必须先按 UTF-8 读取并剥掉 BOM——Windows PowerShell 5.1 的 `Out-File -Encoding utf8` 会写 BOM，PowerShell 7 不写（`packages/agent-sdk/src/tools/powershellTool/powershellTool.ts:55-59`；写入侧理由见 `packages/agent-sdk/src/utils/shell/powershellProvider.ts:80-82`）。
 7. **假设** 命令以非零退出结束，**当** 追踪 cwd 时，**则** 仍必须回写 cwd——cwd 探测排在退出码探针之后、`exit` 之前，失败的命令也会更新目录；这是有意与 Claude Code 对齐的行为（`packages/agent-sdk/src/utils/shell/powershellProvider.ts:86-95`）。**（无单测覆盖）**
-8. **假设** 命令以 `run_in_background` 启动，**当** 构造命令串时，**则** 不得追加退出码探针与 cwd 追踪（`packages/agent-sdk/src/tools/powershellTool/powershellTool.ts:195-198`、`:206`）。
+8. **假设** 命令以 `run_in_background` 启动，**当** 构造命令串时，**则** 不得追加退出码探针与 cwd 追踪（`packages/agent-sdk/src/tools/powershellTool/powershellTool.ts:214-217`、`:225`）。
 
 ---
 
@@ -108,14 +111,14 @@ order: 22
 
 **验收场景**：
 
-1. **假设** `run_in_background` 为 true，**当** 工具返回时，**则** 必须立即返回后台任务 ID 与输出路径，正文为 `Command running in background with ID: <id>. Output is being written to: <path>`（无输出路径时改为提示用 `Read` 按 task_id 读取），结果里带 `backgroundTaskId`（`packages/agent-sdk/src/tools/powershellTool/powershellTool.ts:215-225`）。
-2. **假设** `run_in_background` 为 true，**当** 启动任务时，**则** 不得施加默认超时——只有调用方显式给出 `timeout` 才会计时（`packages/agent-sdk/src/tools/powershellTool/powershellTool.ts:118-124`；计时逻辑 `packages/agent-sdk/src/managers/backgroundTaskManager.ts:231-242`）。
+1. **假设** `run_in_background` 为 true，**当** 工具返回时，**则** 必须立即返回后台任务 ID 与输出路径，正文为 `Command running in background with ID: <id>. Output is being written to: <path>`（无输出路径时改为提示用 `Read` 按 task_id 读取），结果里带 `backgroundTaskId`（`packages/agent-sdk/src/tools/powershellTool/powershellTool.ts:234-244`）。
+2. **假设** `run_in_background` 为 true，**当** 启动任务时，**则** 不得施加默认超时——只有调用方显式给出 `timeout` 才会计时（`packages/agent-sdk/src/tools/powershellTool/powershellTool.ts:137-143`；计时逻辑 `packages/agent-sdk/src/managers/backgroundTaskManager.ts:231-242`）。
 3. **假设** 后台任务启动，**当** 落日志时，**则** 日志文件必须是 `<临时目录>/wave-task-<id>.log`（`packages/agent-sdk/src/managers/backgroundTaskManager.ts:203-211`）。
-4. **假设** 通过 PowerShell 工具启动后台任务，**当** 调 `BackgroundTaskManager` 时，**则** 必须传 `shell: { file, args, detached: false }` 这一显式启动描述，而不是让 manager 用自己的默认 shell（`packages/agent-sdk/src/tools/powershellTool/powershellTool.ts:199-214`；`packages/agent-sdk/src/managers/backgroundTaskManager.ts:143-160`）。
-5. **假设** PowerShell 后台任务的 `detached`，**当** 选定取值时，**则** 必须是 `false`——实测 `detached: true` 的 Windows PowerShell 5.1 子进程完全不执行命令（退出码 0、无输出、无副作用），因为它没有控制台而 5.1 的 `-Command` 随即什么都不做；保持 attached 后 `windowsHide` 才生效（`packages/agent-sdk/src/tools/powershellTool/powershellTool.ts:207-214`；bash 分支仍是 `detached: true`，见 `packages/agent-sdk/src/managers/backgroundTaskManager.ts:180-189`）。
+4. **假设** 通过 PowerShell 工具启动后台任务，**当** 调 `BackgroundTaskManager` 时，**则** 必须传 `shell: { file, args, detached: false }` 这一显式启动描述，而不是让 manager 用自己的默认 shell（`packages/agent-sdk/src/tools/powershellTool/powershellTool.ts:218-233`；`packages/agent-sdk/src/managers/backgroundTaskManager.ts:143-160`）。
+5. **假设** PowerShell 后台任务的 `detached`，**当** 选定取值时，**则** 必须是 `false`——实测 `detached: true` 的 Windows PowerShell 5.1 子进程完全不执行命令（退出码 0、无输出、无副作用），因为它没有控制台而 5.1 的 `-Command` 随即什么都不做；保持 attached 后 `windowsHide` 才生效（`packages/agent-sdk/src/tools/powershellTool/powershellTool.ts:226-233`；bash 分支仍是 `detached: true`，见 `packages/agent-sdk/src/managers/backgroundTaskManager.ts:180-189`）。
 6. **假设** 停止后台任务，**当** 执行终止时，**则** 必须终止整棵进程树（Windows 走 `taskkill /PID <pid> /T /F`），与前台中止共用同一实现（`packages/agent-sdk/src/managers/backgroundTaskManager.ts:577-618`、`packages/agent-sdk/src/utils/killProcessTree.ts:106`）。
 7. **假设** 后台任务的输出里有中文，**当** 读日志时，**则** 必须走与前台相同的解码器（UTF-8 严格解码失败即判 GBK），不得把 5.1 的 GBK 输出当 UTF-8 落到日志里（`packages/agent-sdk/src/managers/backgroundTaskManager.ts:246-256`、`:281-298`）。
-8. **假设** 运行环境里没有可用的后台任务管理器，**当** 请求后台执行时，**则** 必须返回 `Background task manager not available`（`packages/agent-sdk/src/tools/powershellTool/powershellTool.ts:189-192`）。
+8. **假设** 运行环境里没有可用的后台任务管理器，**当** 请求后台执行时，**则** 必须返回 `Background task manager not available`（`packages/agent-sdk/src/tools/powershellTool/powershellTool.ts:208-211`）。
 
 ---
 
@@ -129,8 +132,8 @@ order: 22
 
 **验收场景**：
 
-1. **假设** 运行在 Windows，**当** 工具接收子进程输出时，**则** 必须使用「先严格 UTF-8 解码、失败则整条流改判 GBK」的流式解码器，而不是固定 UTF-8 或固定 GBK（`packages/agent-sdk/src/tools/powershellTool/powershellTool.ts:276-282`；实现 `packages/agent-sdk/src/utils/encoding.ts:1-20`、`:62`、`:73-88`）。
-2. **假设** 命令自身改了输出编码，**当** 解码时，**则** 工具不做「预先设定代码页」的动作——没有 `chcp`、也不设置 `[Console]::OutputEncoding`，解码是对已收到的字节做的判定（`packages/agent-sdk/src/utils/encoding.ts:5-7`、`packages/agent-sdk/src/tools/powershellTool/powershellTool.ts:276-277`）。
+1. **假设** 运行在 Windows，**当** 工具接收子进程输出时，**则** 必须使用「先严格 UTF-8 解码、失败则整条流改判 GBK」的流式解码器，而不是固定 UTF-8 或固定 GBK（`packages/agent-sdk/src/tools/powershellTool/powershellTool.ts:302-308`；实现 `packages/agent-sdk/src/utils/encoding.ts:1-20`、`:62`、`:73-88`）。
+2. **假设** 命令自身改了输出编码，**当** 解码时，**则** 工具不做「预先设定代码页」的动作——没有 `chcp`、也不设置 `[Console]::OutputEncoding`，解码是对已收到的字节做的判定（`packages/agent-sdk/src/utils/encoding.ts:5-7`、`packages/agent-sdk/src/tools/powershellTool/powershellTool.ts:302-303`）。
 3. **假设** 模型要让另一个工具读取自己写出的文件，**当** 提示词给出编码规则时，**则** 必须点明 `Out-File` / `Set-Content` 在 5.1 默认写 UTF-16 LE 带 BOM、要求 `-Encoding utf8`；未知 edition 时按 5.1 的保守规则给出同一句（`packages/agent-sdk/src/tools/powershellTool/prompt.ts:88`、`:91-93`）。
 4. **假设** 模型用重定向运算符（`>` / `>>`）写文件，**当** 落盘时，**则** 编码由 PowerShell 自身决定（5.1 的 `>` 与 `Out-File` 同源，写 UTF-16 LE 带 BOM；7 写 UTF-8 无 BOM）——工具不拦截、不改写重定向的目标编码，提示词也没有单独就 `>` 给出规则，唯一的防线是模型按上一条显式指定 `-Encoding`。**（无单测覆盖：属 PowerShell 自身语义，工具侧不存在对应代码路径）**
 5. **假设** 命令输出了 ANSI 颜色转义序列，**当** 结果落到模型与 UI 时，**则** 序列必须原样保留（与 Bash 工具同一口径），不在收流处剥离（`packages/agent-sdk/src/managers/backgroundTaskManager.ts:251-252`）。
@@ -154,7 +157,7 @@ order: 22
 5. **假设** 命令没有任何可判定的叶子（例如只有 `using module` / `#Requires`），**当** 判定时，**则** 必须以 `hidePersistentOption: true` 询问（`packages/agent-sdk/src/tools/powershellTool/permissions.ts:230-239`）。
 6. **假设** 命令命中硬拒规则（`-EncodedCommand`/`-enc` 等隐藏参数、同一条语句里「下载并执行」），**当** 判定时，**则** 必须直接 deny 且不给「不再询问」选项（`packages/agent-sdk/src/tools/powershellTool/security.ts:114-162`、`packages/agent-sdk/src/tools/powershellTool/permissions.ts:242-250`）。
 7. **假设** 命令命中「脚本块 / 动态执行」（`Invoke-Expression`、`Invoke-Command`、`Start-Job`、`Register-*Event`、`New-Object -ComObject` 等），**当** 判定时，**则** 必须询问，且**保留**「不再询问」——落盘的是这条精确命令，而不是通配前缀（`packages/agent-sdk/src/tools/powershellTool/security.ts:164-203`、`packages/agent-sdk/src/tools/powershellTool/permissions.ts:299-308`）。
-8. **假设** 破坏性 cmdlet（`Remove-Item`、`Set-Content`、`Out-File`、`Move-Item` 等）的目标是文件系统根、用户主目录（含 `~`、`$HOME`、`%USERPROFILE%` 等等价写法）、或 `Windows`/`System32`/`Program Files` 这类系统目录本身，**当** 判定时，**则** 必须直接 deny；系统目录**之下**的普通路径不在此列（`packages/agent-sdk/src/tools/powershellTool/pathValidation.ts:27-61`、`:92-120`、`packages/agent-sdk/src/tools/powershellTool/permissions.ts:252-262`）。
+8. **假设** 破坏性 cmdlet（`Remove-Item`、`Set-Content`、`Out-File`、`Move-Item` 等）的目标是文件系统根、用户主目录（含 `~`、`$HOME`、`%USERPROFILE%` 等等价写法）、`Windows`/`System32`/`Program Files` 这类系统目录本身，或**会话工作目录与附加目录本身及其祖先**，**当** 判定时，**则** 必须直接 deny；系统目录与工作目录**之下**的普通路径不在此列（`packages/agent-sdk/src/tools/powershellTool/pathValidation.ts:78`、`packages/agent-sdk/src/tools/powershellTool/permissions.ts:253-268`）。
 9. **假设** 存在 allow 规则，**当** 命中时，**则** 必须要求**每个**叶子都被规则覆盖才对整条命令放行——一条规则不能带走复合命令里的第二条命令（`packages/agent-sdk/src/tools/powershellTool/permissions.ts:268-283`）。
 10. **假设** 所有叶子都是只读 cmdlet，**当** 判定时，**则** 自动放行的条件必须是：叶子名在只读白名单内、参数里没有脚本块/子表达式、抽出的每个路径都在安全区域内、且命令没有任何文件重定向（`2>&1` 不算写）（`packages/agent-sdk/src/tools/powershellTool/permissions.ts:157-173`、`:287-294`；白名单 `packages/agent-sdk/src/tools/powershellTool/readOnly.ts:31-79`）。
 11. **假设** 进入询问，**当** 给出建议前缀时，**则** 只有命令只含一个叶子时才给 `suggestedPrefix`，多叶子一律不给（`packages/agent-sdk/src/tools/powershellTool/permissions.ts:299-304`）。
@@ -239,7 +242,7 @@ order: 22
 5. **假设** 渲染 PowerShell 工具提示词，**当** 给出 bash 惯用法对照时，**则** 必须覆盖 `head`/`tail`、`which`、`touch`、`wc -l`、`mkdir -p`、`rm -rf`、`ln -s`、`chmod`/`chown`、`2>/dev/null`、`VAR=x cmd` 与 bash 控制流（`test [ -f ]`、`for x in *`、反引号替换），且这些条目在提示词里各只出现一次（`packages/agent-sdk/src/tools/powershellTool/prompt.ts:153-164`）。
 6. **假设** 渲染 PowerShell 工具提示词，**当** 给出退出码规则时，**则** 必须说明 `-ErrorAction SilentlyContinue` 不改变退出码、以及 `try { … -ErrorAction Stop } catch { $null }` 才是「让失败无害」的写法（`packages/agent-sdk/src/tools/powershellTool/prompt.ts:166`）。
 7. **假设** 渲染 PowerShell 工具提示词，**当** 给出禁用清单时，**则** 必须点名 `-NonInteractive` 下会挂死的交互命令（`Read-Host`、`Get-Credential`、`Out-GridView`、`$Host.UI.PromptForChoice`、`pause`）与交互式 git 命令（`packages/agent-sdk/src/tools/powershellTool/prompt.ts:168-171`）。
-8. **假设** 查看 PowerShell 工具是否提供精简提示词，**当** 检查工具定义时，**则** 必须没有 `leanPrompt`——与 Claude Code 一致（它同样没有），不得为了对齐 Bash 而补一个（`packages/agent-sdk/src/tools/powershellTool/powershellTool.ts:107-109`、`packages/agent-sdk/src/tools/powershellTool/prompt.ts:42-49`）。
+8. **假设** 查看 PowerShell 工具是否提供精简提示词，**当** 检查工具定义时，**则** 必须没有 `leanPrompt`——与 Claude Code 一致（它同样没有），不得为了对齐 Bash 而补一个（`packages/agent-sdk/src/tools/powershellTool/powershellTool.ts:126-128`、`packages/agent-sdk/src/tools/powershellTool/prompt.ts:42-49`）。
 9. **假设** 会话没有 `Grep` / `Glob`，**当** 渲染工具提示词时，**则** 搜索指引必须指向本 shell 可用的命令（`Get-ChildItem -Recurse` / `Select-String`），而不是 bash 的 `grep` / `find`（`packages/agent-sdk/src/tools/powershellTool/prompt.ts:96-127`）。
 
 ---
@@ -270,8 +273,8 @@ order: 22
 - **一次性切换提示**：本实现**没有**任何「本会话改用 PowerShell 执行」的一次性提示（既没有 CC 的 `no_bash_shell` 文案，也没有工具结果头部的一次性 `Note:`）。模型获知执行器的渠道只有两处：系统提示词的 `Shell:` 行（`packages/agent-sdk/src/prompts/index.ts:443-470`）与 PowerShell 工具自己的提示词/错误文本。bash 工具在无 shell 时的报错也只讲 Git Bash，不提 PowerShell 开关（`packages/agent-sdk/src/tools/bashTool.ts:275-278`）。
 - **Git Bash 缺席不再降级到 cmd.exe**：hook、技能/命令注入、`otelHeadersHelper` 三条路径都已删除 cmd.exe 兜底，没有 shell 时一律抛错（`packages/agent-sdk/src/services/hook.ts:220-237`、`packages/agent-sdk/src/utils/markdownParser.ts:294-310`、`packages/agent-sdk/src/telemetry/headersHelper.ts:119-144`）。
 - **每次命令一个新进程**：`cd`（= `Set-Location`）、`$env:` 赋值、函数与 alias 都不跨调用保留；当前目录由 cwd 追踪单独维持（见「工作目录追踪」）。
-- **cwd 追踪是尽力而为**：临时目录不可写、cwd 文件读不到、路径已不存在，都不影响命令结果的成败（`packages/agent-sdk/src/tools/powershellTool/powershellTool.ts:42-46`、`:232-239`）。
-- **后台 PowerShell 与 detached**：`detached: false` 是实测结论而非风格选择；它换来的是 `windowsHide` 生效、命令真的会执行（`packages/agent-sdk/src/tools/powershellTool/powershellTool.ts:207-214`）。`BackgroundTaskManager` 里描述「两处 spawn 都用 `detached: true`」的注释已与 PowerShell 分支不一致（`packages/agent-sdk/src/managers/backgroundTaskManager.ts:66-70`）。
+- **cwd 追踪是尽力而为**：临时目录不可写、cwd 文件读不到、路径已不存在，都不影响命令结果的成败（`packages/agent-sdk/src/tools/powershellTool/powershellTool.ts:61-65`、`:251-258`）。
+- **后台 PowerShell 与 detached**：`detached: false` 是实测结论而非风格选择；它换来的是 `windowsHide` 生效、命令真的会执行（`packages/agent-sdk/src/tools/powershellTool/powershellTool.ts:226-233`）。`BackgroundTaskManager` 里描述「两处 spawn 都用 `detached: true`」的注释已与 PowerShell 分支不一致（`packages/agent-sdk/src/managers/backgroundTaskManager.ts:66-70`）。
 - **解析器在权限路径上**：每次权限判定都要 spawn 一次 PowerShell 解析命令（超时 5 秒、超时重试一次），结果进 256 项 LRU 缓存；传输类失败（spawn 失败/超时/空输出/非 JSON）会把该条目逐出缓存，语法错误则保留（`packages/agent-sdk/src/utils/powershellStructure/psParser.ts:35-50`、`:63-69`、`:180-196`、`:251-279`）。
 - **`settings.json` 的 `env` 并非所有子进程都拿到**：前台命令、后台任务、`!` 模式、hook 都带会话环境快照；技能注入命令（`packages/agent-sdk/src/utils/markdownParser.ts:313-323`）与 `otelHeadersHelper`（`packages/agent-sdk/src/telemetry/instrumentation.ts:247` 不传 env）不带。
 - **hook 与技能注入在 PowerShell 下的不对称**：hook 做 POSIX 路径转换并且追加退出码包装；技能/命令注入**既不做路径转换、也不追加包装**，因为技能命令的执行结果直接作为正文返回，不承载 hook 的 `exit 2` 协议（`packages/agent-sdk/src/utils/markdownParser.ts:305-311`）。

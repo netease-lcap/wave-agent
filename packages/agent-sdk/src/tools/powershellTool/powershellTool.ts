@@ -10,6 +10,7 @@ import { processToolResult } from "../../utils/toolResultStorage.js";
 import { probeTempDir, resolveTempDir } from "../../utils/tempDir.js";
 import { BASH_MAX_OUTPUT_CHARS } from "../../constants/toolLimits.js";
 import { POWERSHELL_TOOL_NAME, READ_TOOL_NAME } from "../../constants/tools.js";
+import { resolveToCanonical } from "../../utils/powershellStructure/canonical.js";
 import {
   POWERSHELL_DEFAULT_TIMEOUT_MS,
   POWERSHELL_MAX_TIMEOUT_MS,
@@ -23,6 +24,24 @@ import type { ToolPlugin, ToolResult, ToolContext } from "../types.js";
 // (`Start-Process` with a redirected stream, a detached `cmd /c`) would delay
 // 'end' indefinitely.
 const STREAM_FLUSH_TIMEOUT_MS = 100;
+
+/**
+ * Commands that must never be auto-backgrounded when they hit the timeout.
+ * They are the "wait a moment" idiom: handing the model a task ID instead of
+ * the answer it asked for is worse than failing. Same rule the Bash tool
+ * applies to `sleep`, spelled for PowerShell — `sleep` is the built-in alias of
+ * `Start-Sleep`, so both forms are listed (aliases are folded by
+ * `resolveToCanonical`, which is the same table the permission path uses).
+ */
+const DISALLOWED_AUTO_BACKGROUND_COMMANDS = ["start-sleep", "sleep"];
+
+function isAutobackgroundingAllowed(command: string): boolean {
+  const firstWord = command.trim().split(/\s+/)[0];
+  if (!firstWord) return true;
+  return !DISALLOWED_AUTO_BACKGROUND_COMMANDS.includes(
+    resolveToCanonical(firstWord).toLowerCase(),
+  );
+}
 
 /**
  * Read the CWD the shell wrote, then delete the file.
@@ -239,6 +258,12 @@ export const powershellTool: ToolPlugin = {
     const wrappedCommand = exec.commandString;
     const tempCwdFile = exec.cwdFilePath;
 
+    // A command that outlives its timeout is moved to the background rather
+    // than killed when it still has work to do — the same rule the Bash tool
+    // applies, with the same exceptions (`Start-Sleep` / `sleep`).
+    const shouldAutoBackground =
+      !!context.backgroundTaskManager && isAutobackgroundingAllowed(command);
+
     return new Promise<ToolResult>((resolve) => {
       const spawnOptions: SpawnOptions = {
         // fd0 is never a live pipe: nothing writes to the command's stdin, and
@@ -272,6 +297,7 @@ export const powershellTool: ToolPlugin = {
       let outputBuffer = "";
       let errorBuffer = "";
       let isAborted = false;
+      let isBackgrounded = false;
       let timeoutHandle: NodeJS.Timeout | undefined;
       let finished = false;
 
@@ -314,6 +340,56 @@ export const powershellTool: ToolPlugin = {
         });
       };
 
+      // A foreground command can be moved to the background by the user — CLI's
+      // Ctrl-B, or the background button the GUI hosts put on the running tool
+      // block; both land on `backgroundCurrentTask`. Without a registration here
+      // that call walks an empty list and silently does nothing, which is why the
+      // shortcut looked dead in PowerShell sessions (Bash registers the same way
+      // in `bashTool.ts`).
+      const foregroundTaskId = `powershell_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
+      if (context.foregroundTaskManager && command) {
+        context.foregroundTaskManager.registerForegroundTask({
+          id: foregroundTaskId,
+          backgroundHandler: async () => {
+            isBackgrounded = true;
+            if (timeoutHandle) {
+              clearTimeout(timeoutHandle);
+            }
+
+            const backgroundTaskManager = context.backgroundTaskManager;
+            if (!backgroundTaskManager) {
+              // Same wording as the Bash tool. `finished` is still false here,
+              // so `handleAbort` really resolves the promise instead of
+              // returning on its guard.
+              handleAbort(
+                "Failed to background: Background task manager not available",
+              );
+              return;
+            }
+
+            // The child keeps running; only its owner changes. `adoptProcess`
+            // decodes and logs the rest of the output, so this call resolves
+            // with the receipt text the model sees for the Bash tool too.
+            finished = true;
+            const taskId = backgroundTaskManager.adoptProcess(
+              child,
+              command,
+              outputBuffer,
+              errorBuffer,
+            );
+            const task = backgroundTaskManager.getTask(taskId);
+            const outputPath = task?.outputPath;
+            resolve({
+              success: true,
+              content: `Command was manually backgrounded by user with ID: ${taskId}.${outputPath ? ` Output is being written to: ${outputPath}` : ""}`,
+              shortResult: `Process ${taskId} backgrounded`,
+              backgroundedByUser: true,
+              backgroundTaskId: taskId,
+            });
+          },
+        });
+      }
+
       if (context.abortSignal) {
         if (context.abortSignal.aborted) {
           handleAbort();
@@ -326,6 +402,42 @@ export const powershellTool: ToolPlugin = {
 
       if (timeout && timeout > 0) {
         timeoutHandle = setTimeout(() => {
+          if (isAborted || isBackgrounded || finished) return;
+
+          if (shouldAutoBackground) {
+            // The command is still working, it just outlived the budget: keep it
+            // running and hand the model the same receipt the Bash tool returns.
+            isBackgrounded = true;
+            finished = true;
+            if (timeoutHandle) clearTimeout(timeoutHandle);
+            if (context.foregroundTaskManager) {
+              context.foregroundTaskManager.unregisterForegroundTask(
+                foregroundTaskId,
+              );
+            }
+
+            const backgroundTaskManager = context.backgroundTaskManager!;
+            const taskId = backgroundTaskManager.adoptProcess(
+              child,
+              command,
+              outputBuffer,
+              errorBuffer,
+            );
+            const task = backgroundTaskManager.getTask(taskId);
+            const outputPath = task?.outputPath;
+            logger.info(
+              `[PowerShell] Command timed out after ${timeout}ms, auto-backgrounded as ${taskId}`,
+            );
+            resolve({
+              success: true,
+              content: `Command exceeded the timeout (${timeout / 1000}s) and was moved to the background with ID: ${taskId}. It is still running — you will be notified when it completes.${outputPath ? ` Output is being written to: ${outputPath}` : ""}`,
+              shortResult: `Process ${taskId} auto-backgrounded`,
+              assistantAutoBackgrounded: true,
+              backgroundTaskId: taskId,
+            });
+            return;
+          }
+
           handleAbort(
             `Command timed out after ${Math.round(timeout / 1000)}s. Consider breaking the command into smaller steps or increasing the timeout.`,
           );
@@ -413,7 +525,15 @@ export const powershellTool: ToolPlugin = {
       };
 
       child.on("exit", (code) => {
-        if (isAborted) return;
+        if (context.foregroundTaskManager) {
+          context.foregroundTaskManager.unregisterForegroundTask(
+            foregroundTaskId,
+          );
+        }
+
+        // A backgrounded (or aborted) command already resolved its promise, and
+        // its output now belongs to the background task's log.
+        if (isAborted || isBackgrounded) return;
 
         const pendingStreams = [child.stdout, child.stderr].filter(
           (stream): stream is Readable =>
@@ -449,6 +569,11 @@ export const powershellTool: ToolPlugin = {
       });
 
       child.on("error", (error) => {
+        if (context.foregroundTaskManager) {
+          context.foregroundTaskManager.unregisterForegroundTask(
+            foregroundTaskId,
+          );
+        }
         if (finished || isAborted) return;
         finished = true;
         if (timeoutHandle) clearTimeout(timeoutHandle);

@@ -2249,13 +2249,20 @@ body.is-panel-resizing webview {
   display: flex;
   flex: 1;
   min-height: 0;
+  /* 行宽装不下「对话列 360 + 面板 202」时，两列各守下限、由这里裁掉面板右侧溢出
+     部分（spec desktop-right-panel.md 场景 4）。裁切而非继续压缩：对话列完整可读，
+     面板左缘的拖拽抓手始终落在可视区内。 */
+  overflow: hidden;
 }
 
 .desktop-chat-main {
   display: flex;
   flex-direction: column;
   flex: 1;
-  min-width: 0;
+  /* 360px 硬下界（与 ChatApp.tsx 的 CHAT_MAIN_MIN_WIDTH 同值，改一处必须改另一处）。
+     原来是 min-width:0 —— 窗口缩小时每一像素都从对话列扣，最终压成「一个字一行」。
+     窗口缩小的压力只能落在面板一侧（spec desktop-right-panel.md 场景 4）。 */
+  min-width: 360px;
   height: 100%;
 }
 
@@ -2344,6 +2351,8 @@ body.is-panel-resizing webview {
   transform: translateX(-50%);
   width: 420px;
   max-width: calc(100% - 48px);
+  /* 浮动卡按内容收窄，不受对话列 360px 硬下界约束（窄窗时 max-width 更小）。 */
+  min-width: 0;
   height: auto;
   /* 基础样式给的是 flex:1 / height:100%（对话列铺满），浮动盒要按内容收高。 */
   flex: none;
@@ -2464,6 +2473,10 @@ body.is-panel-resizing webview {
   flex: 0 0 auto;
   min-height: 0;
   height: 100%;
+  /* 宽度由 ChatApp 的派生值（clamp(记忆宽度, 202, 行宽 − 360)）给，但内容不得反向
+     把槽位撑宽：极窄行宽下槽位被行级裁切，自身也不许溢出给自己。 */
+  min-width: 0;
+  overflow: hidden;
 }
 
 /* Shared empty/placeholder body for panel stubs. */

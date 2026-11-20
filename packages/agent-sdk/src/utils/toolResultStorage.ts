@@ -108,6 +108,68 @@ export function buildPersistedOutputMessage(
 }
 
 /**
+ * The parts of a `<persisted-output>` wrapper, read back.
+ *
+ * `processToolResult` is the only producer of that wrapper, so the reader lives
+ * next to it: a caller that wants to hand on *where* the rest of the output went
+ * (the REPL's `` $`cmd` `` does, as `file` / `truncated`) must not re-derive the
+ * format by string surgery of its own.
+ */
+export interface PersistedToolOutput {
+  /** Characters in the output the wrapper stands in for. */
+  totalChars: number;
+  /** The file holding all of it. */
+  filePath: string;
+  /** The preview the wrapper carries. */
+  preview: string;
+}
+
+const PERSISTED_HEAD = "<persisted-output>";
+const PERSISTED_TAIL = "</persisted-output>";
+
+/**
+ * Read back what `processToolResult` wrapped, or `undefined` when the content is
+ * not a wrapper (i.e. the output fitted and nothing was persisted).
+ */
+export function parsePersistedOutput(
+  content: string,
+): PersistedToolOutput | undefined {
+  if (
+    !content.startsWith(PERSISTED_HEAD) ||
+    !content.endsWith(PERSISTED_TAIL)
+  ) {
+    return undefined;
+  }
+  const body = content.slice(PERSISTED_HEAD.length + 1, -PERSISTED_TAIL.length);
+  const headEnd = body.indexOf("\n");
+  if (headEnd === -1) return undefined;
+  const head = body.slice(0, headEnd);
+  // The wrapper runs through `toLocaleString()`, so the digit grouping is
+  // whatever the host locale uses (`,` here, but not everywhere): keep the
+  // digits and drop the separators rather than assume a locale.
+  const headMatch =
+    /^Output too large \((.+?) characters\)\. Full output saved to: (.+)$/.exec(
+      head,
+    );
+  if (!headMatch) return undefined;
+  const totalChars = Number(headMatch[1].replace(/\D/g, ""));
+  if (!Number.isFinite(totalChars)) return undefined;
+  const rest = body.slice(headEnd + 1);
+  const previewLineEnd = rest.indexOf("\n");
+  if (previewLineEnd === -1) return undefined;
+  // The wrapper is a `join("\n")`, so one newline before the closing tag belongs
+  // to the wrapper, not to the preview it carries.
+  const previewText = rest.slice(previewLineEnd + 1);
+  return {
+    totalChars,
+    filePath: headMatch[2],
+    preview: previewText.endsWith("\n")
+      ? previewText.slice(0, -1)
+      : previewText,
+  };
+}
+
+/**
  * Process tool result: if content exceeds maxChars, persist to file and return
  * truncated content with <persisted-output> wrapper. Otherwise return unchanged.
  *

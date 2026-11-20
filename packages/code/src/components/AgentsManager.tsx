@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useReducer } from "react";
-import { Box, Text, useInput, useWindowSize } from "ink";
+import { Box, Text, useInput } from "ink";
+import { useTerminalSize } from "../contexts/useTerminalSize.js";
 import type { SubagentConfiguration } from "wave-agent-sdk";
 import { Markdown } from "./Markdown.js";
 import {
@@ -47,7 +48,7 @@ export const AgentsManager: React.FC<AgentsManagerProps> = ({
   agentDefinitions,
 }) => {
   const [state, dispatch] = useReducer(agentsManagerReducer, initialState);
-  const { rows } = useWindowSize();
+  const { rows } = useTerminalSize();
 
   // Handle pending effects
   useEffect(() => {

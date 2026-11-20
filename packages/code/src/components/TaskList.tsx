@@ -1,6 +1,7 @@
 import React from "react";
 import { useChat } from "../contexts/useChat.js";
-import { Box, Text, useWindowSize } from "ink";
+import { Box, Text } from "ink";
+import { useTerminalSize } from "../contexts/useTerminalSize.js";
 import { useTasks } from "../hooks/useTasks.js";
 import type { Task, TaskStatus } from "wave-agent-sdk";
 
@@ -92,7 +93,7 @@ function getDisplayLimit(rows: number | undefined): number {
 export const TaskList: React.FC = () => {
   const tasks = useTasks();
   const { isTaskListVisible, isBtwActive } = useChat();
-  const { rows } = useWindowSize();
+  const { rows } = useTerminalSize();
 
   const completionTimestampsRef = React.useRef<Map<string, number>>(new Map());
   const previousCompletedIdsRef = React.useRef<Set<string> | null>(null);

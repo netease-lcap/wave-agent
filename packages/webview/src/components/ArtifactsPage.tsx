@@ -11,7 +11,6 @@ import {
   ArtifactsIcon,
   FileCodeIcon,
   MoreIcon,
-  PencilIcon,
   PlusIcon,
   QueueEditIcon,
   QueueTrashIcon,
@@ -19,6 +18,7 @@ import {
   SearchIcon,
   SidebarExpandIcon,
 } from "./HeaderIcons";
+import { SettingsSelect } from "./SettingsSelect";
 import { Tooltip } from "./Tooltip";
 import { ToastGlyph } from "./ToastStack";
 import { useHostMessage } from "../utils/useHostMessage";
@@ -352,8 +352,22 @@ interface CategoryDialogState {
  * 页头右上角「视图」开关的图标（设计师 2026-11-06：两个视图不能共用同一颗
  * 图标 —— 长得一样就只是装饰，看不出切了哪一档）。两档各给一颗轮廓完全不同
  * 的图标，切换时跟着变，下拉里也一项一颗：
- * - 默认视图：表格（外框 + 表头分隔线 + 行）；
+ * - 默认视图：表格（外框 + 表头分隔线 + 表头下的列分隔线）；
  * - 自定义视图：宫格（2×2 方块），与表格的「横线」轮廓区分开。
+ *
+ * 2026-11-19 预览评论（`svg.artifacts-view-icon`）「按照现在已有的图标和规范重新
+ * 绘制这两个图标，注意圆角、表意、线的粗细」——三件事各改一处：
+ *   ① 线宽 1.2 → **1.4**：同页/同应用的自绘图标集（`HeaderIcons.tsx`、
+ *      `FilePaneToolbarIcons.tsx`）一律 1.4 + 圆头圆角，这两颗是当年按 1.2 单独画的，
+ *      并排时明显更淡一档。
+ *   ② 圆角 1 → 外框 **2.2** / 宫格 **1.6**：原值在 16 格里几乎是直角，与全应用
+ *      「盒 = r8 / 16px 图标 → r2 档」的观感对不上。
+ *   ③ 表意：表格补上**列分隔线**（原来只有两条行线，读起来像「列表/窗口」而不是
+ *      「表格」）；宫格四格原来是 4.8×4.6 + 缝 1.2 —— 缝扣掉 1.2 的描边后墨迹
+ *      之间只剩 0px，1× 下四格糊成一块，改 4.6 + 缝 2.4（墨迹净距 1.0）。
+ * 坐标也顺手对齐到半像素（`.5`）：1.4 的描边落在整数坐标上会摊成两条各 70% 的
+ * 灰边，落在半像素上才是「一条实线 + 两侧 0.2 的淡边」，四边粗细才一致。
+ * 外框 11×11（2.5 起）与宫格 11.6×11.6（2.2 起）的墨迹只差 0.6，视觉等大。
  */
 const DefaultViewIcon: React.FC<{ className?: string }> = ({ className }) => (
   <svg
@@ -364,16 +378,17 @@ const DefaultViewIcon: React.FC<{ className?: string }> = ({ className }) => (
     fill="none"
     aria-hidden="true"
   >
-    <rect
-      x="2"
-      y="2.5"
-      width="12"
-      height="11"
-      rx="1"
+    <g
       stroke="currentColor"
-      strokeWidth="1.2"
-    />
-    <path d="M2 6.3h12M2 9.9h12" stroke="currentColor" strokeWidth="1.2" />
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      {/* 表格：外框 + 表头分隔线 + 表头下方的列分隔线（左列 = 作品名，宽一档） */}
+      <rect x="2.5" y="2.5" width="11" height="11" rx="2.2" />
+      <path d="M2.5 6.5H13.5" />
+      <path d="M8.5 6.5V13.5" />
+    </g>
   </svg>
 );
 
@@ -386,42 +401,18 @@ const CustomViewIcon: React.FC<{ className?: string }> = ({ className }) => (
     fill="none"
     aria-hidden="true"
   >
-    <rect
-      x="2.6"
-      y="2.6"
-      width="4.8"
-      height="4.6"
-      rx="1"
+    <g
       stroke="currentColor"
-      strokeWidth="1.2"
-    />
-    <rect
-      x="8.6"
-      y="2.6"
-      width="4.8"
-      height="4.6"
-      rx="1"
-      stroke="currentColor"
-      strokeWidth="1.2"
-    />
-    <rect
-      x="2.6"
-      y="9"
-      width="4.8"
-      height="4.6"
-      rx="1"
-      stroke="currentColor"
-      strokeWidth="1.2"
-    />
-    <rect
-      x="8.6"
-      y="9"
-      width="4.8"
-      height="4.6"
-      rx="1"
-      stroke="currentColor"
-      strokeWidth="1.2"
-    />
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      {/* 宫格：四格 4.6、缝 2.4（墨迹净距 1.0，1× 下不会糊成一块） */}
+      <rect x="2.2" y="2.2" width="4.6" height="4.6" rx="1.6" />
+      <rect x="9.2" y="2.2" width="4.6" height="4.6" rx="1.6" />
+      <rect x="2.2" y="9.2" width="4.6" height="4.6" rx="1.6" />
+      <rect x="9.2" y="9.2" width="4.6" height="4.6" rx="1.6" />
+    </g>
   </svg>
 );
 
@@ -2104,7 +2095,7 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({
                                   startRename(item.slug, item.title)
                                 }
                               >
-                                <PencilIcon className="artifacts-rename-icon" />
+                                <QueueEditIcon className="artifacts-rename-icon" />
                               </button>
                             )}
                           </div>
@@ -2608,22 +2599,6 @@ const ShareDialog: React.FC<ShareDialogProps> = ({
               className="artifacts-member-picker"
               data-testid="artifacts-member-picker"
             >
-              {selectedMembers.length > 0 && (
-                <div className="artifacts-selected-members">
-                  {selectedMembers.map((member) => (
-                    <span key={member.userId} className="artifacts-chip">
-                      {member.email}
-                      <button
-                        type="button"
-                        aria-label={`取消选择 ${member.email}`}
-                        onClick={() => toggleMember(member)}
-                      >
-                        ×
-                      </button>
-                    </span>
-                  ))}
-                </div>
-              )}
               <SearchField
                 value={memberQuery}
                 onChange={setMemberQuery}
@@ -2677,24 +2652,52 @@ const ShareDialog: React.FC<ShareDialogProps> = ({
                   )}
                 </ul>
               )}
+              {/* 设计师 2026-11-19 预览评论：已添加的成员放在搜索/候选**下方**，
+                  并由一个背景色块承载、内部滚动（版式与取值见 ArtifactsPage.css
+                  的 `.artifacts-selected-members` 注释）。 */}
+              {selectedMembers.length > 0 && (
+                <div className="artifacts-selected-members">
+                  {selectedMembers.map((member) => (
+                    <span key={member.userId} className="artifacts-chip">
+                      {member.email}
+                      <button
+                        type="button"
+                        aria-label={`取消选择 ${member.email}`}
+                        onClick={() => toggleMember(member)}
+                      >
+                        ×
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
-          <label className="artifacts-field">
+          {/* 设计师 2026-11-19 预览评论（点 `select`「最新版本v3 · 加入深色模式v2 ·
+              补充分享弹层v1」）：「这个选择器下拉列表的面板参考规范」。
+              原生 select 的弹层由 Chromium/系统绘制，位置/宽度/圆角/阴影/项高/hover
+              一律不受 CSS 控制 ⇒ 桌面端换成自绘 listbox（复用 `SettingsSelect`，弹层
+              皮肤与设置页、会话看板筛选同一条声明；组件内部已按宿主分叉，插件端仍是
+              原生 select）。触发器盒由 ArtifactsPage.css 里 `.artifacts-field
+              .settings-select-trigger` 接管，与改前逐值相同。包裹元素同时从 `<label>`
+              改成 `<div>`：内部不再是表单控件而是按钮，label 会让整行点击都触发按钮。 */}
+          <div className="artifacts-field">
             <span>查看者版本</span>
-            <select
+            <SettingsSelect
+              label="查看者版本"
               value={pinnedVersion}
-              onChange={(event) => setPinnedVersion(event.target.value)}
-              data-testid="artifacts-share-version"
-            >
-              <option value="">最新版本</option>
-              {versions.map((version) => (
-                <option key={version.version} value={String(version.version)}>
-                  {`v${version.version}${version.label ? ` · ${version.label}` : ""}`}
-                </option>
-              ))}
-            </select>
-          </label>
+              testId="artifacts-share-version"
+              onChange={setPinnedVersion}
+              options={[
+                { value: "", label: "最新版本" },
+                ...versions.map((version) => ({
+                  value: String(version.version),
+                  label: `v${version.version}${version.label ? ` · ${version.label}` : ""}`,
+                })),
+              ]}
+            />
+          </div>
 
           {saveError && <p className="artifacts-form-error">{saveError}</p>}
         </div>

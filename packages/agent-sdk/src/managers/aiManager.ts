@@ -53,6 +53,13 @@ import {
   buildExecCatalogAnnouncement,
   collectExecCatalogState,
 } from "../exec/catalogAnnouncement.js";
+import {
+  disposeReplRuntime,
+  drainReplEvents,
+  listRunningReplScripts,
+} from "../exec/execRuntime.js";
+import { renderReplEvent, renderReplStatus } from "../tools/pollTool.js";
+import { allocateAgentSlot, replSessionKey } from "../exec/sessionKey.js";
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import * as path from "node:path";
@@ -351,6 +358,14 @@ export interface AIManagerOptions {
 
 export class AIManager {
   public isLoading: boolean = false;
+  /**
+   * This manager's half of the REPL context key (see `exec/sessionKey.ts`).
+   *
+   * One agent = one long-lived JavaScript context; a subagent has its own manager
+   * and therefore its own slot, so the two cannot see each other's variables even
+   * though they share a session.
+   */
+  private readonly replAgentSlot = allocateAgentSlot();
   private turnGeneration = 0; // Guards against concurrent sendAIMessage turns
   private abortController: AbortController | null = null;
   onLoadingChange?: (loading: boolean) => void;
@@ -1040,7 +1055,7 @@ export class AIManager {
     // Guard: no task tools available. Reachability, not declaration — a deferred
     // tool is absent from `tools[]` yet callable from the sandbox, so reading the
     // declarations alone would silence the reminder for every pooled tool (see
-    // `docs/specs/core/exec-tool.md`). The channel is optional, same as the catalog
+    // `docs/specs/core/repl-tool.md`). The channel is optional, same as the catalog
     // announcement's guard: a host or test double without it means "no sandbox",
     // not "the pool is gone".
     const sandboxToolNames =
@@ -1644,21 +1659,26 @@ export class AIManager {
 
   /**
    * Announce the on-demand tool pool in the conversation, whenever it differs from
-   * the last announcement. Keeping it out of `Exec`'s description is what makes that
-   * declaration a constant: a server connecting would otherwise rewrite `tools[]`,
-   * which sits in the cached prefix (see `exec/catalogAnnouncement.ts`).
+   * the last announcement. Keeping it out of the REPL's description is what makes
+   * that declaration a constant: a server connecting would otherwise rewrite
+   * `tools[]`, which sits in the cached prefix (see `exec/catalogAnnouncement.ts`).
+   *
+   * The pool goes out as entries, not as names: the announcement's first tier is a
+   * signature block selected by `tier === "core"`, and a bare name cannot carry a
+   * schema. Names alone would demote the seven core tools to the name-only tier,
+   * i.e. every new session's first script would start with a search.
    */
   private maybeAnnounceExecCatalog(): void {
     const toolManager = this.toolManager;
     // Optional for the same reason as `maybeAnnounceMcpInstructions` above, and it
     // matters just as much here: reading an absent channel as "the pool is gone"
     // would tell the model to stop using every tool an earlier announcement named.
-    if (!toolManager || typeof toolManager.getOnDemandToolNames !== "function")
+    if (!toolManager || typeof toolManager.getOnDemandPool !== "function")
       return;
 
     const text = buildExecCatalogAnnouncement(
       collectExecCatalogState(this.messageManager.getMessages()),
-      toolManager.getOnDemandToolNames(),
+      toolManager.getOnDemandPool(),
     );
     if (!text) return;
 
@@ -1666,6 +1686,62 @@ export class AIManager {
       content: wrapInSystemReminder(text),
       isMeta: true,
     });
+  }
+
+  /**
+   * Deliver the outcomes of background REPL scripts, and say what is still running.
+   *
+   * A script that outlived its wait window answered `(dispatched #N)`, so its result
+   * has no reply to ride on: it waits in the runtime's queue until somebody reads it.
+   * Two readers exist and they share the queue, which is what keeps any outcome from
+   * arriving twice — `Poll` (the model asks) and this (the next turn arrives first).
+   *
+   * Both forms are meta messages at the tail, never in the system prompt: the queue
+   * changes every time a script settles, and the cached prefix is no place for a
+   * value that moves. The status line is a single self-closing element carrying the
+   * count — a model that sees `pending` knows a `Poll` has something to answer with.
+   */
+  private maybeAnnounceReplEvents(): void {
+    const settled = drainReplEvents();
+    for (const event of settled) {
+      this.messageManager.addUserMessage({
+        content: wrapInSystemReminder(renderReplEvent(event)),
+        isMeta: true,
+      });
+    }
+
+    if (listRunningReplScripts().length > 0) {
+      this.messageManager.addUserMessage({
+        content: wrapInSystemReminder(renderReplStatus()),
+        isMeta: true,
+      });
+    }
+  }
+
+  /**
+   * The key this agent's REPL context is filed under, as of right now.
+   *
+   * The session half is read fresh: `/clear` and session resume replace it, and a
+   * key computed once would then point at a context nobody owns.
+   */
+  public replContextKey(): string {
+    return replSessionKey(
+      this.messageManager.getSessionId() ?? "local",
+      this.replAgentSlot,
+    );
+  }
+
+  /**
+   * Release this agent's REPL context: its variables, its timers, and any script it
+   * left running in the background.
+   *
+   * Called when the conversation stops existing (`/clear`, a session switch) and
+   * when the agent itself goes away (`destroy`, which is also how a subagent's
+   * context is dropped). Never on compaction — that rewrites the history, not the
+   * runtime — and never on an abort, which is why a context survives an interrupt.
+   */
+  public releaseReplContext(): void {
+    disposeReplRuntime(this.replContextKey());
   }
 
   /**
@@ -1871,7 +1947,7 @@ export class AIManager {
    *   `# Using your tools` gates its entries on. Reachability, not declaration: a
    *   deferred tool is absent from `tools[]` yet callable from the sandbox, so
    *   gating that section on declarations alone silently drops its guidance line
-   *   (e.g. the TaskCreate entry; see `docs/specs/core/exec-tool.md`).
+   *   (e.g. the TaskCreate entry; see `docs/specs/core/repl-tool.md`).
    */
   private resolveFilteredTools() {
     const toolsConfig = this.getFilteredToolsConfig();
@@ -2948,6 +3024,7 @@ ${question}`;
           // the announcement is not the content that just got summarized away.
           this.maybeAnnounceMcpInstructions();
           this.maybeAnnounceExecCatalog();
+          this.maybeAnnounceReplEvents();
 
           // Track if assistant message has been created
           let assistantMessageCreated = false;
@@ -4218,6 +4295,7 @@ ${question}`;
         originalWorkdir: this.originalWorkdir,
         messageId: this.messageManager.getMessages().slice(-1)[0]?.id,
         sessionId: this.messageManager.getSessionId(),
+        replSessionKey: this.replContextKey(),
         toolCallId: toolId,
         taskManager: this.taskManager,
         readFileState: this.readFileState,

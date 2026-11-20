@@ -6,15 +6,29 @@ import {
   collectExecCatalogState,
   renderPoolNote,
 } from "../../src/exec/catalogAnnouncement.js";
+import { renderToolSignature } from "../../src/exec/catalog.js";
+import type { ExecPoolEntry } from "../../src/exec/catalog.js";
 import type { Message } from "../../src/types/messaging.js";
 
-/** A pool as the announcement sees it: names, and nothing else. */
-function poolOf(...names: string[]): string[] {
-  return names;
+/** A tier-1 entry: pooled, flagged core by the deferral judgment, with a schema. */
+function core(
+  name: string,
+  description: string,
+  schema?: Record<string, unknown>,
+): ExecPoolEntry {
+  return { name, tier: "core", description, inputSchema: schema };
+}
+
+/** A tier-2 entry: pooled, name only. */
+function named(name: string, description?: string): ExecPoolEntry {
+  return { name, description };
 }
 
 /** Two names from one server, the shape a real pool mostly has. */
-const ALPHA = poolOf("mcp__alpha__tool0", "mcp__alpha__tool1");
+const ALPHA: ExecPoolEntry[] = [
+  named("mcp__alpha__tool0"),
+  named("mcp__alpha__tool1"),
+];
 
 function meta(content: string, isMeta = true): Message {
   return {
@@ -40,45 +54,157 @@ function markerOf(text: string): Record<string, unknown> {
 }
 
 /** The announcement a session with no history receives for this pool. */
-function announce(pool: readonly string[] | undefined): string | null {
+function announce(pool: readonly ExecPoolEntry[] | undefined): string | null {
   return buildExecCatalogAnnouncement(null, pool);
 }
 
+/** The three-tier body for one mixed pool, spelled out. */
+const MIXED: ExecPoolEntry[] = [
+  core("Read", "Read a file from disk.", {
+    type: "object",
+    properties: { file_path: { type: "string" } },
+    required: ["file_path"],
+  }),
+  named("WebFetch", "Fetch a URL and extract its text as markdown."),
+  ...ALPHA,
+  named("mcp__beta__tool0"),
+];
+
 describe("renderPoolNote", () => {
-  it("lists every name, one per line, with no other content", () => {
-    const note = renderPoolNote(["mcp__alpha__tool0", "WebFetch"]);
-    expect(note).toBe(
+  it("renders the three tiers: signatures, names, server names", () => {
+    expect(renderPoolNote(MIXED)).toBe(
       [
         "Tools reachable inside a sandbox script as `tools.<name>` (no other tool name resolves):",
-        "- `WebFetch`",
-        "- `mcp__alpha__tool0`",
-        "Call `tools.ToolSearch(...)` for any of their parameters and return types.",
+        "```ts",
+        "// Read a file from disk.",
+        "tools.Read({",
+        "  file_path: string,",
+        "}): Promise<unknown>",
+        "```",
+        "Also callable as `tools.<name>(input)`; `describeTool(name)` returns the full shape: `WebFetch`.",
+        'MCP tools: connected servers are `alpha`, `beta`. Find one with `searchTools("...")` and call it with the shape it returns.',
       ].join("\n"),
     );
   });
 
-  it("renders no signature, no count and no budget", () => {
-    // A name is what the model needs to search for; a signature here would be a
-    // second spelling of what search returns, and a count is derivable. Two framing
-    // lines plus one per name is the whole body.
-    const note = renderPoolNote(ALPHA);
-    expect(note).not.toContain("Promise<");
-    expect(note).not.toContain("tools.mcp__");
-    expect(note.split("\n")).toHaveLength(ALPHA.length + 2);
+  it("renders tier 1 through the same renderer searchTools and describeTool use", () => {
+    const entry = core("Bash", "Run a shell command.", {
+      type: "object",
+      properties: { command: { type: "string" } },
+      required: ["command"],
+    });
+    const note = renderPoolNote([entry]);
+    // Copyable, and the one renderer: a hand-written signature would drift on the
+    // first schema change.
+    expect(note).toContain(renderToolSignature(entry));
   });
 
-  it("is a function of the name set, not of the order it arrived in", () => {
-    // Pool order is registry order then connection order, which a turn's hash must
-    // not depend on: two sessions with the same tools would otherwise disagree about
-    // whether anything changed.
-    expect(renderPoolNote(["b", "a"])).toBe(renderPoolNote(["a", "b"]));
+  it("cuts a tier-1 description to one line, preferring a sentence end", () => {
+    const sentence =
+      "First sentence that carries real information about what this tool does with the file it is given.";
+    const note = renderPoolNote([
+      core("Read", `${sentence} ${"x".repeat(400)}`),
+    ]);
+
+    expect(note).toContain(`// ${sentence}\n`);
+    expect(note).not.toContain("xxxx");
+  });
+
+  it("cuts a tier-1 description with no sentence end at a word, with an ellipsis", () => {
+    const note = renderPoolNote([core("Read", "y".repeat(400))]);
+    const comment = note.split("\n").find((line) => line.startsWith("// "))!;
+
+    expect(comment.endsWith("…")).toBe(true);
+    expect(comment.length).toBeLessThanOrEqual(123);
+  });
+
+  it("lists tier 2 by name only: no signature, no description, no headings", () => {
+    const note = renderPoolNote([
+      named("WebFetch", "Fetch a URL and extract its text as markdown."),
+      named("TaskCreate", "Create a task."),
+    ]);
+
+    expect(note).toContain("`WebFetch`");
+    expect(note).toContain("`TaskCreate`");
+    // A description here would be a second, drifting spelling of what search
+    // returns; the names are the whole of what tier 2 owes the model.
+    expect(note).not.toContain("Fetch a URL");
+    expect(note).not.toContain("Promise<");
+    expect(note).not.toContain("```");
+  });
+
+  it("never lists an MCP tool name — only its servers", () => {
+    const note = renderPoolNote(MIXED);
+
+    for (const tool of MIXED.filter((entry) =>
+      entry.name.startsWith("mcp__"),
+    )) {
+      expect(note).not.toContain(tool.name);
+    }
+    expect(note).not.toContain("mcp__");
+    expect(note).toContain("`alpha`");
+    expect(note).toContain("`beta`");
+  });
+
+  it("keeps the body the same length however many tools one server brings", () => {
+    // The reason tier 3 is servers and not tools: a server with thirty tools must
+    // not make the announcement thirty lines longer.
+    const few = ALPHA;
+    const many = Array.from({ length: 30 }, (_, index) =>
+      named(`mcp__alpha__tool${index}`),
+    );
+
+    expect(renderPoolNote(many)).toBe(renderPoolNote(few));
+  });
+
+  it("caps the server list at 40 and says how many it left out", () => {
+    const pool = Array.from({ length: 41 }, (_, index) =>
+      named(`mcp__srv${String(index).padStart(2, "0")}__tool`),
+    );
+    const note = renderPoolNote(pool);
+
+    expect(note).toContain("and 1 more");
+    // The omission marker is the one number this body may carry.
+    expect(note.split("\n").at(-1)).toMatch(/and 1 more/);
+    expect(note).not.toContain("srv40");
+    expect(note).toContain("srv39");
+  });
+
+  it("accepts bare names and puts them in tier 2", () => {
+    // The channel that diffs the pool is keyed by name; a name has no schema, so a
+    // signature cannot be rendered for it.
+    expect(renderPoolNote(["WebFetch"])).toBe(
+      [
+        "Tools reachable inside a sandbox script as `tools.<name>` (no other tool name resolves):",
+        "Also callable as `tools.<name>(input)`; `describeTool(name)` returns the full shape: `WebFetch`.",
+      ].join("\n"),
+    );
+  });
+
+  it("carries no count, budget, character length, timestamp or connection state", () => {
+    const note = renderPoolNote([
+      core("Read", "Read a file from disk."),
+      named("WebFetch"),
+      ...ALPHA,
+    ]);
+
+    // Every digit in this body would be a measurement the model could reason about
+    // instead of about the tools.
+    expect(note).not.toMatch(/\d/);
+    expect(note).not.toMatch(/budget|truncat|characters|limit/i);
+  });
+
+  it("is a function of the pool's names, not of the order they arrived in", () => {
+    const reversed = [...MIXED].reverse();
+    expect(renderPoolNote(reversed)).toBe(renderPoolNote(MIXED));
+    expect(renderPoolNote(MIXED)).toBe(renderPoolNote(MIXED));
   });
 });
 
 describe("collectExecCatalogState", () => {
   it("takes the last announcement in the history, not the first", () => {
     const first = announce(ALPHA)!;
-    const second = announce(poolOf("mcp__beta__tool0"))!;
+    const second = announce([named("mcp__beta__tool0")])!;
 
     const state = collectExecCatalogState([meta(first), meta(second)]);
 
@@ -129,12 +255,11 @@ describe("buildExecCatalogAnnouncement", () => {
 
     expect(markerOf(text)).toMatchObject({ k: "full" });
     expect(typeof markerOf(text).h).toBe("string");
-    expect(text).toContain("- `mcp__alpha__tool0`");
-    expect(text).toContain("- `mcp__alpha__tool1`");
+    expect(text).toContain("`alpha`");
   });
 
   it("stays silent for a closed channel it has never announced", () => {
-    // Most sessions have no `Exec` at all. A closing notice there would announce the
+    // Most sessions have no `REPL` at all. A closing notice there would announce the
     // disappearance of a channel the model never saw — and "nothing to read" is not
     // "observed absence".
     expect(announce(undefined)).toBeNull();
@@ -142,33 +267,41 @@ describe("buildExecCatalogAnnouncement", () => {
   });
 
   it("stays silent while the pool is unchanged", () => {
-    const first = announce(ALPHA)!;
+    const first = announce(MIXED)!;
     const state = collectExecCatalogState([meta(first)]);
 
-    expect(buildExecCatalogAnnouncement(state, ALPHA)).toBeNull();
-    // The same names in a different order are the same pool: the hash covers the
+    expect(buildExecCatalogAnnouncement(state, MIXED)).toBeNull();
+    // The same tools in a different order are the same pool: the hash covers the
     // sorted body, so nothing about arrival order can leak into it.
     expect(
-      buildExecCatalogAnnouncement(state, [...ALPHA].reverse()),
+      buildExecCatalogAnnouncement(state, [...MIXED].reverse()),
     ).toBeNull();
   });
 
-  it("re-announces in full when a tool appears or goes away", () => {
-    const first = announce(ALPHA)!;
+  it("re-announces in full when a tool, a tier or a server appears or goes away", () => {
+    const first = announce(MIXED)!;
     const state = collectExecCatalogState([meta(first)]);
 
-    const added = buildExecCatalogAnnouncement(
-      state,
-      poolOf(...ALPHA, "mcp__alpha__tool2"),
-    )!;
+    const added = buildExecCatalogAnnouncement(state, [
+      ...MIXED,
+      named("TaskCreate"),
+    ])!;
     expect(markerOf(added)).toMatchObject({ k: "full" });
-    expect(added).toContain("- `mcp__alpha__tool2`");
+    expect(added).toContain("`TaskCreate`");
 
-    // Removals are the case the model would otherwise keep acting on: a tool named
-    // by an earlier list must not survive anywhere.
-    const gone = buildExecCatalogAnnouncement(state, poolOf(ALPHA[0]))!;
-    expect(gone).toContain("- `mcp__alpha__tool0`");
-    expect(gone).not.toContain("tool1");
+    const gone = buildExecCatalogAnnouncement(state, [
+      core("Read", "Read a file from disk."),
+      ...ALPHA,
+    ])!;
+    expect(gone).not.toContain("WebFetch");
+
+    // A tool leaving the core tier re-renders as a name, and the body moves.
+    const demoted = buildExecCatalogAnnouncement(state, [
+      named("Read", "Read a file from disk."),
+      ...MIXED.slice(1),
+    ])!;
+    expect(demoted).not.toContain("tools.Read(");
+    expect(demoted).toContain("`Read`");
   });
 
   it("says the list no longer applies when the channel closes, once", () => {
@@ -192,7 +325,7 @@ describe("buildExecCatalogAnnouncement", () => {
   });
 
   it("treats an emptied pool as a closed channel", () => {
-    // An empty pool means no `Exec` declaration either, so the calling form is gone
+    // An empty pool means no `REPL` declaration either, so the calling form is gone
     // exactly as it is when the switch is flipped off.
     const first = announce(ALPHA)!;
     const state = collectExecCatalogState([meta(first)]);
@@ -217,7 +350,7 @@ describe("buildExecCatalogAnnouncement", () => {
     )!;
 
     expect(markerOf(text)).toMatchObject({ k: "full" });
-    expect(text).toContain("- `mcp__alpha__tool0`");
+    expect(text).toContain("`alpha`");
   });
 
   it("re-announces the full list once the history it was compared against is gone", () => {
@@ -228,11 +361,10 @@ describe("buildExecCatalogAnnouncement", () => {
     expect(collectExecCatalogState([meta(first)])).not.toBeNull();
     expect(collectExecCatalogState([meta("compacted away")])).toBeNull();
 
-    const text = announce(ALPHA)!;
-    expect(text).toContain("- `mcp__alpha__tool0`");
+    expect(announce(ALPHA)).toContain("`alpha`");
   });
 
   it("announces the same pool byte-for-byte, so a session can tell it did not move", () => {
-    expect(announce(ALPHA)).toBe(announce(ALPHA));
+    expect(announce(MIXED)).toBe(announce(MIXED));
   });
 });

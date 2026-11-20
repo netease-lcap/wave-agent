@@ -1,6 +1,7 @@
 import React, { useLayoutEffect, useRef } from "react";
 import os from "os";
-import { Box, Text, Static, useWindowSize } from "ink";
+import { Box, Text, Static } from "ink";
+import { useTerminalSize } from "../contexts/useTerminalSize.js";
 import type { Message, MessageBlock } from "wave-agent-sdk";
 import { MessageBlockItem } from "./MessageBlockItem.js";
 
@@ -26,7 +27,7 @@ export const MessageList = React.memo(
     // the node's height stays at the pre-resize measurement while children
     // re-layout at the wider width — leaving a block of blank rows between
     // the last message and the input box on session restore.
-    const { columns } = useWindowSize();
+    const { columns } = useTerminalSize();
 
     const welcomeMessage = (
       <Box flexDirection="column" paddingTop={1}>

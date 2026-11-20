@@ -3,6 +3,7 @@ import { Container } from "../../src/utils/container.js";
 import { AIManager } from "../../src/managers/aiManager.js";
 import type { MessageManager } from "../../src/managers/messageManager.js";
 import type { ToolManager } from "../../src/managers/toolManager.js";
+import type { ExecPoolEntry } from "../../src/exec/catalog.js";
 import type { GatewayConfig, ModelConfig } from "../../src/types/index.js";
 import type { Message } from "../../src/types/messaging.js";
 import * as aiService from "../../src/services/aiService.js";
@@ -101,8 +102,8 @@ function createHarness(
   };
   if (options.catalogChannel) {
     // Read once per turn: the test flips `poolChannelState.pool` between turns
-    // to model a server connecting, a tool being deferred, or Exec being switched off.
-    mockToolManager.getOnDemandToolNames = () => poolChannelState.pool;
+    // to model a server connecting, a tool being deferred, or REPL being switched off.
+    mockToolManager.getOnDemandPool = () => poolChannelState.pool;
   }
 
   container.register("ConfigurationService", {
@@ -162,14 +163,18 @@ function createHarness(
   return { aiManager, messages };
 }
 
-/** `undefined` here is the channel being closed (`Exec` not declared). */
-const poolChannelState: { pool: string[] | undefined } = {
+/** `undefined` here is the channel being closed (the REPL not declared). */
+const poolChannelState: { pool: ExecPoolEntry[] | undefined } = {
   pool: undefined,
 };
 
-/** The on-demand set as the manager reports it: names only, and only the deferred ones. */
-function poolOf(...names: string[]): string[] {
-  return names;
+/**
+ * The pool as the manager reports it: entries, because the announcement's first
+ * tier is selected by `tier` and rendered from the schema. A bare name is what
+ * tier 2 gets.
+ */
+function poolOf(...names: string[]): ExecPoolEntry[] {
+  return names.map((name) => ({ name }));
 }
 
 function callAgentReturningText() {
@@ -214,17 +219,19 @@ describe("AIManager on-demand tool announcement", () => {
 
     const [announcement] = announcements(messages);
     expect(announcement?.isMeta).toBe(true);
-    expect(textOf(announcement)).toContain("- `mcp__alpha__tool0`");
+    // MCP tools are announced by server, never by name.
+    expect(textOf(announcement)).toContain("connected servers are `alpha`");
+    expect(textOf(announcement)).not.toContain("mcp__alpha__tool0");
 
     // Same request: the snapshot is taken after the announcement is persisted.
     expect(JSON.stringify(lastCallOptions().messages)).toContain(
-      "mcp__alpha__tool0",
+      "connected servers are `alpha`",
     );
     // And the prompt itself never carries it: the pool is a function of the session,
     // and rewriting the prompt would drop the whole cached prefix
     // (docs/specs/core/prompt-cache-control.md 边界情况 9).
     expect(JSON.stringify(lastCallOptions().systemPrompt)).not.toContain(
-      "mcp__alpha__tool0",
+      "connected servers are",
     );
   });
 
@@ -251,7 +258,7 @@ describe("AIManager on-demand tool announcement", () => {
 
     const all = announcements(messages);
     expect(all).toHaveLength(2);
-    expect(textOf(all[1])).toContain("- `mcp__beta__tool0`");
+    expect(textOf(all[1])).toContain("`beta`");
     // Only ever appended: nothing already sent is rewritten, so nothing already
     // cached is invalidated.
     expect(
@@ -259,7 +266,7 @@ describe("AIManager on-demand tool announcement", () => {
     ).toEqual(before);
   });
 
-  it("lists names only, never a signature", async () => {
+  it("lists a built-in by name and an MCP server, never an MCP tool name", async () => {
     poolChannelState.pool = poolOf("mcp__alpha__tool0", "WebFetch");
     const { aiManager, messages } = createHarness();
 
@@ -268,15 +275,51 @@ describe("AIManager on-demand tool announcement", () => {
     const [announcement] = announcements(messages);
     const text = textOf(announcement);
     // The sandbox gets an entry called `tools.<name>`; the parameters and return type
-    // are reachable only through `search`, so the announcement must not carry them.
-    for (const name of ["mcp__alpha__tool0", "WebFetch"]) {
-      expect(text).toContain(`- \`${name}\``);
-    }
+    // are reachable only through the search entry, so the body must not carry them.
+    expect(text).toContain("`WebFetch`");
     expect(text).not.toContain("Promise<");
+    // And an MCP tool's name never appears — only the server it came from.
+    expect(text).not.toContain("mcp__alpha__tool0");
+    expect(text).toContain("`alpha`");
   });
 
-  it("stays silent when Exec was never declared, and says so only once it has been announced", async () => {
-    // `[]` is the channel reporting an empty pool, which in practice means `Exec` is
+  it("renders the core tier as signatures and leaves the other tiers alone", async () => {
+    // `enableReplCoreTools` pools the seven hot tools, and the announcement's whole
+    // reason for taking entries rather than names is this: only an entry carries the
+    // schema a signature is rendered from (`tier === "core"`).
+    poolChannelState.pool = [
+      {
+        name: "Read",
+        tier: "core",
+        description: "Reads a file from disk",
+        inputSchema: {
+          type: "object",
+          properties: { file_path: { type: "string" } },
+          required: ["file_path"],
+        },
+      },
+      { name: "WebFetch" },
+      { name: "mcp__alpha__tool0", isMcp: true },
+    ];
+    const { aiManager, messages } = createHarness();
+
+    await aiManager.sendAIMessage({ recursionDepth: 0 });
+
+    const text = textOf(announcements(messages)[0]);
+    // Tier 1: a line the model can copy verbatim.
+    expect(text).toContain("tools.Read({");
+    expect(text).toContain("  file_path: string,");
+    expect(text).toContain("}): Promise<");
+    // Tier 2 keeps its name-only form — no signature it never asked for.
+    expect(text).toContain("`WebFetch`");
+    expect(text).not.toContain("tools.WebFetch(");
+    // Tier 3 is still just the server.
+    expect(text).not.toContain("mcp__alpha__tool0");
+    expect(text).toContain("`alpha`");
+  });
+
+  it("stays silent when the REPL was never declared, and says so only once it has been announced", async () => {
+    // `[]` is the channel reporting an empty pool, which in practice means the REPL is
     // not declared at all — a session that never saw the capability must not pay for a
     // message about it.
     poolChannelState.pool = [];
@@ -354,7 +397,7 @@ describe("AIManager on-demand tool announcement", () => {
     // The marker cannot be mistaken for the current state, so the pool is announced.
     const meta = announcements(messages.filter((message) => message.isMeta));
     expect(meta).toHaveLength(1);
-    expect(textOf(meta[0])).toContain("- `mcp__alpha__tool0`");
+    expect(textOf(meta[0])).toContain("`alpha`");
   });
 
   it("tolerates a manager double without the announcement channel", async () => {

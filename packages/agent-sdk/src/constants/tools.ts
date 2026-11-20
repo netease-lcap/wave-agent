@@ -26,7 +26,34 @@ export const ENTER_WORKTREE_TOOL_NAME = "EnterWorktree";
 export const EXIT_WORKTREE_TOOL_NAME = "ExitWorktree";
 export const WORKFLOW_TOOL_NAME = "Workflow";
 export const ARTIFACT_TOOL_NAME = "Artifact";
-export const EXEC_TOOL_NAME = "Exec";
+
+/**
+ * Name of the REPL tool — the carrier of the on-demand tool pool.
+ *
+ * The constant *name* is historical baggage: the tool used to be `Exec`, and the
+ * sandbox now presents itself as a long-lived REPL (aligned with Claude Code).
+ * Renaming the export would touch dozens of imports and the `src/exec/` paths for
+ * no contract gain, so only the value moved. The old spelling is not registered
+ * any more; `REPL_TOOL_ALIASES` carries the names that still are.
+ */
+export const EXEC_TOOL_NAME = "REPL";
+
+/**
+ * Other names the same tool answers to. `Eval` is the spelling Claude Code
+ * accepted before `REPL`, so hosts register the tool under every name here and
+ * an older settings file or permission rule naming `Eval` still lands on it.
+ */
+export const REPL_TOOL_ALIASES = ["Eval"] as const;
+
+/**
+ * The explicit wait of the REPL's async lane.
+ *
+ * Not a pool member and not an alias: it reads the queue of results that a
+ * dispatched script left behind, which makes it the one tool a model calls from
+ * outside a script for a reason that only exists because the REPL does.
+ */
+export const POLL_TOOL_NAME = "Poll";
+
 export const KB_SEARCH_TOOL_NAME = "kb_search";
 export const KB_GET_DOC_TOOL_NAME = "kb_get_doc";
 export const KB_SUGGEST_TOOL_NAME = "kb_suggest";

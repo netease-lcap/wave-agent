@@ -30,6 +30,8 @@ import {
   type ModPromptEditEvent,
   type ModPromptSuggestEvent,
   type ModPanelEventPayload,
+  type ModPanelCloseResult,
+  type ModPanelScrollRequest,
   type ModPanelRenderResult,
   type ModPaneLayout,
   type ModPaneRef,
@@ -53,7 +55,9 @@ import {
   type ModToolCheckDecision,
   type ModToolCheckEvent,
   type ModUiControlEvent,
+  type ModUiScrollEvent,
   type ModUiPane,
+  type ModPanelEventResult,
   type ModSessionUsage,
   type ModSessionVersion,
   type ModSettingsSource,
@@ -434,7 +438,13 @@ type ModValueHookName =
   // 什么值」，插件可以换掉两者。
   | "ui.press"
   | "ui.input"
-  | "ui.select";
+  | "ui.select"
+  // 方向键的落点（spec「`ui.focus`：方向键先问 mod」）：链尾是「没人接」，
+  // 插件给出落点才算接住。
+  | "ui.focus"
+  // 正文的滚动（spec「`ui.scroll`：mod 自己滚」）：链尾是「没人接」，插件收下
+  // 就是「这一下归我自己滚」。
+  | "ui.scroll";
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -2725,7 +2735,7 @@ export class ModManager {
    * 这一项并 warn（回调仍拿用户原本给的值）。
    */
   private async dispatchUiInteraction(
-    payload: ModPanelEventPayload,
+    payload: ModPanelEventPayload & { kind: "press" | "input" | "select" },
     plugin: string,
   ): Promise<{ element: string; value?: string }> {
     const name =
@@ -2780,35 +2790,217 @@ export class ModManager {
     );
   }
 
-  /** webview 回传的交互。 */
-  async handlePanelEvent(payload: ModPanelEventPayload): Promise<void> {
-    if (this.disposed) return;
+  /**
+   * 派发 `ui.focus`：终端里 `↑`/`↓` 的落点先问一遍 mod（spec「`ui.focus`：
+   * 方向键先问 mod」）。
+   *
+   * 判据与 Claude Code 一致 —— **链上流的是事件本身**：
+   *
+   * - 谁都没接（链尾拿到的是原始事件）⇒ 返回 `undefined`，surface 滚正文；
+   * - `return next(e)` 原样往下交（事件还是那一个对象）⇒ 同上，也算「我不管」；
+   * - `return next({ ...e, element })` 或直接 `return { element }` ⇒ 接住，surface
+   *   把焦点放到那个控件上；
+   * - `return {}` ⇒ 接住但不动（原地停住，也不滚）。
+   */
+  private async dispatchUiFocus(
+    payload: ModPanelEventPayload,
+    plugin: string,
+  ): Promise<ModPanelEventResult | undefined> {
+    const base: ModUiControlEvent = {
+      plugin,
+      component:
+        payload.paneId === MOD_BAND_INSTANCE_ID ? "AbovePrompt" : "Pane",
+      requestId: payload.paneId,
+      surface: this.currentSurface(),
+      element: payload.key,
+    };
+    const read = (
+      raw: unknown,
+      modId?: string,
+    ): ModPanelEventResult | undefined => {
+      if (!isPlainRecord(raw)) return undefined;
+      const handled: ModPanelEventResult = { handled: true };
+      if (raw.element === undefined) return handled;
+      if (typeof raw.element !== "string" || raw.element === "") {
+        logger.warn(
+          `[Wave] ${modId ?? "mod"} 的 ui.focus 给了非字符串的 element，这一项被丢掉`,
+        );
+        return handled;
+      }
+      return { handled: true, element: raw.element };
+    };
+    return this.runValueHookChain<ModPanelEventResult | undefined>(
+      "ui.focus",
+      base,
+      // 链尾拿到原始那个事件对象 = 没有任何 mod 动过它。
+      (event) => (event === base ? undefined : read(event)),
+      (modId, value) => read(value, modId),
+    );
+  }
+
+  /**
+   * 派发 `ui.scroll`：用户按滚动键时先问一遍**画这块面板的 mod**要不要自己滚
+   * （spec「`ui.scroll`：mod 自己滚」）。
+   *
+   * 判据与 `ui.focus` 同一条链，只有「接没接」没有落点：
+   *
+   * - 谁都没接（链尾拿到的是原始事件）⇒ 返回 `false`，surface 按自己的滚动模型走；
+   * - `return next(e)` 原样交下去 ⇒ 同上，也算「我不管」；
+   * - 其余任何回执（`return {}` 也算）⇒ 这一下归 mod —— 此刻它一般已经把自己的
+   *   偏移算好、`$.ui.invalidate("ui.render")` 让这一端重拉一帧。
+   */
+  private async dispatchUiScroll(
+    request: ModPanelScrollRequest,
+    plugin: string,
+    paneId: string,
+  ): Promise<boolean> {
+    const base: ModUiScrollEvent = {
+      plugin,
+      component: "Pane",
+      requestId: paneId,
+      surface: this.currentSurface(),
+      // 只有人按键才会问到这条链：终端没有「界面自己滚」的驱动源。
+      origin: { kind: "person" },
+      ...request,
+    };
+    const read = (raw: unknown, modId?: string): boolean | undefined => {
+      if (isPlainRecord(raw) || raw === true) return true;
+      if (raw === undefined || raw === false || raw === null) return undefined;
+      logger.warn(
+        `[Wave] ${modId ?? "mod"} 的 ui.scroll 给了看不懂的回执（要 \`{}\`），按不接处理`,
+      );
+      return undefined;
+    };
+    const handled = await this.runValueHookChain<boolean | undefined>(
+      "ui.scroll",
+      base,
+      // 链尾拿到原始那个事件对象 = 没有任何 mod 动过它。
+      (event) => (event === base ? undefined : true),
+      (modId, value) => read(value, modId),
+    );
+    return handled === true;
+  }
+
+  /**
+   * `ui.close`：用户要收起面板时先问一遍**画它的那个 mod**能不能关
+   * （spec「`ui.close`：mod 能拦下关闭」）。
+   *
+   * 只在终端的交互关闭这条路上问：宿主自己关（`$.ui.close`、插件重载、会话
+   * 销毁）是命令而不是请求，`notifyPaneClosed` 那条 fire-and-forget 照旧；桌面端
+   * 与 IDE 端的 tab 关闭同样是乐观的，等不到回执。拦下就留着 —— mod 自己已经把
+   * 面板画回了上一级（差异面板详情里的 `Esc` 回列表就是这个用法）。
+   *
+   * 回执是 Claude Code 的 `{ deny }`：`deny` 给理由（字符串）或 `true`（不给
+   * 理由）就是拦下。别的形状按不拦处理并 warn —— 一个坏掉的 mod 不该把面板
+   * 永久钉在屏幕上。
+   */
+  private async dispatchUiClose(pane: PaneState): Promise<ModPanelCloseResult> {
+    const runtime = this.mods.get(pane.modId)?.runtime;
+    if (!runtime || this.disposed) return { denied: false };
+    const result = await runtime.callHook("ui.close", { id: pane.paneId });
+    if (!result.ok) {
+      logger.warn(`[Wave] ${pane.modId} 的 ui.close 失败：${result.error}`);
+      return { denied: false };
+    }
+    const raw = result.value;
+    if (!isPlainRecord(raw) || raw.deny === undefined || raw.deny === false) {
+      return { denied: false };
+    }
+    if (raw.deny === true) return { denied: true };
+    if (typeof raw.deny !== "string" || raw.deny === "") {
+      logger.warn(
+        `[Wave] ${pane.modId} 的 ui.close 给了非法的 deny（要字符串或 true），按不拦处理`,
+      );
+      return { denied: false };
+    }
+    return { denied: true, reason: raw.deny };
+  }
+
+  /** webview 回传的交互：`focus` / `close` 会带回「归不归 mod」，其余只表示「处理完了」。 */
+  async handlePanelEvent(
+    payload: ModPanelEventPayload,
+  ): Promise<Partial<ModPanelEventResult>> {
+    if (this.disposed) return {};
     const key = `${payload.modId}\u0000${payload.paneId}`;
     const loaded = this.mods.get(payload.modId);
     if (!loaded) {
       logger.warn(`[Wave] 收到未知 mod 的事件：${payload.modId}`);
-      return;
+      return {};
     }
     if (loaded.error || !loaded.runtime) {
       // 面板本来就显示着错误态，交互无处可去。
-      return;
+      return {};
     }
     if (payload.kind === "close") {
-      // 宿主丢掉 pane 快照，同时给打开它的 mod 一条 `ui.close`（spec「事件」：
-      // 告知，拦不下关闭）。
+      const pane = this.panes.get(key);
+      if (!pane) return {};
+      // 只有终端等得起回执：那边按 `Esc` 是「问一句」的形态。桌面端与 IDE 端的
+      // tab 关闭是乐观的（webview 先删 tab 再发这个事件），在这里拦下只会让下一次
+      // 推送把 tab 又画回来 —— 关掉照旧，`ui.close` 仍作为通知发给 mod。
+      if (this.currentSurface() === "terminal") {
+        const decision = await this.dispatchUiClose(pane);
+        if (decision.denied) {
+          logger.debug(
+            `[Wave] ${payload.modId} 拦下了 ${payload.paneId} 的关闭：${decision.reason ?? "未给理由"}`,
+          );
+          return { handled: true };
+        }
+        // 已经问过了，别再发第二条 `ui.close`。
+        this.closePane(payload.modId, payload.paneId, false);
+        return {};
+      }
       this.closePane(payload.modId, payload.paneId);
-      return;
+      return {};
     }
-    if (!payload.key) {
+    if (!payload.key && payload.kind !== "scroll") {
       logger.warn(`[Wave] ${payload.modId} 的 ${payload.kind} 事件缺少 key`);
-      return;
+      return {};
+    }
+    // 滚动（spec「`ui.scroll`：mod 自己滚」）：不问控件回调表，只把「接没接」
+    // 回给 surface —— 它据此决定自己滚还是让 mod 重画一帧。
+    if (payload.kind === "scroll") {
+      if (payload.scroll === undefined) {
+        logger.warn(`[Wave] ${payload.modId} 的 scroll 事件没带 scroll 实数`);
+        return {};
+      }
+      // 台账里没有这块面板 = 它已经关了，这一下没处可去（与 `close` 同一条纪律）。
+      if (!this.panes.has(key)) return {};
+      try {
+        const handed = await this.dispatchUiScroll(
+          payload.scroll,
+          loaded.plugin,
+          payload.paneId,
+        );
+        return handed ? { handled: true } : {};
+      } catch (error) {
+        const message = errorMessage(error);
+        logger.warn(`[Wave] ${payload.modId} 的 ui.scroll 失败：${message}`);
+        return {};
+      }
+    }
+    // `kind` 存一份：`focus` 那一支全部 return 之后，剩下的三种才收窄得住
+    // （`payload` 在 try 里被读过，TS 不会据它收窄）。
+    const kind = payload.kind;
+    if (kind === "focus") {
+      // 方向键的落点（spec「`ui.focus`：方向键先问 mod」）：不走控件的回调表，
+      // 只把插件接没接、接到哪儿回给 surface —— 它据此决定换焦点还是滚正文。
+      try {
+        return (await this.dispatchUiFocus(payload, loaded.plugin)) ?? {};
+      } catch (error) {
+        const message = errorMessage(error);
+        logger.warn(`[Wave] ${payload.modId} 的 ui.focus 失败：${message}`);
+        return {};
+      }
     }
     try {
       // 控件自己的回调之前先跑一遍同名钩子（spec「控件的交互事件」）：钩子能
       // 把这次交互改派给别的控件、换掉回调收到的值。
-      const target = await this.dispatchUiInteraction(payload, loaded.plugin);
+      const target = await this.dispatchUiInteraction(
+        { ...payload, kind },
+        loaded.plugin,
+      );
       const handled = await loaded.runtime.dispatch(
-        payload.kind,
+        kind,
         target.element,
         target.value,
       );
@@ -2825,6 +3017,7 @@ export class ModManager {
       const pane = this.panes.get(key);
       if (pane) this.publishUpdate(pane, { stale: true, error: message });
     }
+    return {};
   }
 
   /** 会话结束 / agent 销毁：关掉所有面板、撤销所有定时器与外部进程，进入终态。 */
@@ -3386,7 +3579,13 @@ export class ModManager {
     return true;
   }
 
-  private closePane(modId: string, paneId: string): void {
+  /**
+   * 关掉一块面板。
+   *
+   * `notifyMod` 为假时不再发 `ui.close`：交互关闭那条路已经先问过一遍
+   * （`dispatchUiClose`），同一次关闭只该让 mod 看见一条。
+   */
+  private closePane(modId: string, paneId: string, notifyMod = true): void {
     const key = paneKeyOf(modId, paneId);
     const pane = this.panes.get(key);
     if (!pane) return;
@@ -3396,7 +3595,7 @@ export class ModManager {
     // （随后由该端上报它实际显示的那一个，spec「面板的显示与焦点」）。
     if (this.shownPaneKey === key) this.shownPaneKey = null;
     if (this.focusedPaneKey === key) this.focusedPaneKey = null;
-    this.notifyPaneClosed(pane);
+    if (notifyMod) this.notifyPaneClosed(pane);
     this.publishUpdate(pane, { closed: true });
   }
 
@@ -3520,10 +3719,15 @@ export class ModManager {
       return this.renderFailed(pane, loaded.error ?? "mod 未加载");
     }
     // inline 时正文上限是 12 行（spec「在 IDE 插件里画」）：再高就把输入框挤出
-    // 视口。dock 按面板行数上限。
+    // 视口。dock 按面板行数上限。surface 报了实测的正文行数（终端知道自己的面板
+    // 正好多高）就用它 —— 自己分页的 mod 靠 `props.scroll.bodyRows` 决定窗口大小，
+    // 报缺省值会让它按 12 行剪、把面板剩下的那半截留白。
     const placement = layout.placement ?? "dock";
-    const rows =
-      placement === "inline" ? MOD_RENDER_INLINE_ROWS : MOD_RENDER_PANE_ROWS;
+    const rows = measured(layout.bodyRows)
+      ? layout.bodyRows
+      : placement === "inline"
+        ? MOD_RENDER_INLINE_ROWS
+        : MOD_RENDER_PANE_ROWS;
     const result = await loaded.runtime.callHook("ui.render", {
       // 信封的字段名与 CC 一字不差（它的 `ui.render` 参数就是
       // `{ surface, component, requestId, plugin, viewport, props }`）：`surface`

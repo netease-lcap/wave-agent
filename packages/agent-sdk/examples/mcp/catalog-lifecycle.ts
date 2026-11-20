@@ -3,6 +3,7 @@
 import { fileURLToPath } from "url";
 import { Agent } from "../../src/agent.js";
 import { execTool } from "../../src/tools/execTool.js";
+import { EXEC_TOOL_NAME } from "../../src/constants/tools.js";
 import {
   EXEC_CATALOG_MARKER_PREFIX,
   EXEC_CATALOG_MARKER_SUFFIX,
@@ -29,7 +30,7 @@ import {
  *
  * Every measured step reads the messages the agent actually appended. One section
  * exercises the closed-channel branch directly, because a real session reaches it
- * only when `Exec` itself is switched off; its input is the marker the previous
+ * only when the REPL itself is switched off; its input is the marker the previous
  * turn really wrote.
  *
  * The last step hands the model a list of names and watches it find the tool's
@@ -251,7 +252,7 @@ async function main(): Promise<void> {
       !declaration.includes("mcp__") &&
         !declaration.includes("PARTIAL") &&
         !declaration.includes("tools.mcp__"),
-      "the Exec declaration names the pool: connecting a server would rewrite tools[]",
+      "the REPL declaration names the pool: connecting a server would rewrite tools[]",
     );
 
     section("names instead of signatures — what the list costs, measured");
@@ -360,11 +361,11 @@ async function main(): Promise<void> {
     section(`the set cannot empty — ${SMALL_SERVER} goes away too`);
     await agent.disconnectMcpServer(SMALL_SERVER);
     await waitForPool(agent, 0);
-    // The motivating property: the pool is never empty, so `Exec` stays declared
+    // The motivating property: the pool is never empty, so the REPL stays declared
     // and `tools[]` stops churning whenever an MCP server connects or drops.
     check(
-      agent.getAvailableToolNames().includes("Exec"),
-      "Exec is no longer declared although the deferred built-ins remain",
+      agent.getAvailableToolNames().includes(EXEC_TOOL_NAME),
+      "the REPL is no longer declared although the deferred built-ins remain",
     );
     const [builtinsOnly] = await step(
       "turn 7 — no MCP server left, and the list is still there",
@@ -384,7 +385,7 @@ async function main(): Promise<void> {
     );
 
     section("the channel closing — the branch a real session rarely reaches");
-    // Only `Exec` being switched off (or denied, or excluded) closes the channel:
+    // Only the REPL being switched off (or denied, or excluded) closes the channel:
     // the pool itself cannot empty. The input here is the marker the last turn
     // really wrote, so this is the deployed decision function, not a mock.
     const lastMarker = markerOf(catalogAnnouncements(agent).at(-1) ?? "");

@@ -166,6 +166,14 @@ export interface ModSurfaceMetrics {
 export interface ModPaneLayout extends ModSurfaceMetrics {
   /** `dock`：摆在对话右侧；`inline`：摆在输入框上方。缺省 `dock`。 */
   placement?: "dock" | "inline";
+  /**
+   * 这块面板的正文一次能画多少行（`e.props.scroll.bodyRows`），surface 量到的。
+   *
+   * 与 {@link ModSurfaceMetrics.rows} 不是一个数：那个是**整块画布**的字符高，这个
+   * 只算面板正文（终端里已经扣掉边框、标题行、输入区）。自己分页的 mod 靠它决定
+   * 一屏放几行（spec「`ui.scroll`：mod 自己滚」）。
+   */
+  bodyRows?: number;
 }
 
 /**
@@ -241,17 +249,50 @@ export interface ModToastPayload {
   timeoutMs: number;
 }
 
+/**
+ * 终端里用户按了滚动键时带给 mod 的那几个数（spec「`ui.scroll`：mod 自己滚」）。
+ *
+ * 正负号约定与滚轮一致：正数向下、负数向上，单位是**正文行**。
+ */
+export interface ModPanelScrollRequest {
+  /**
+   * 请求的位移。
+   *
+   * `↑`/`↓` 是 ±1，`PageUp`/`PageDown` 是 ±(可见行数 - 1)，`Home`/`End` 给
+   * `Number.MAX_SAFE_INTEGER` 的两侧极值 —— 「要多少滚多少」，mod 按自己那份
+   * 内容的长度夹住即可（Claude Code 的插件也是这么认的）。
+   */
+  by: number;
+  /** surface 按**它自己**看到的内容算出来的目标偏移；自己分页的 mod 可以不认。 */
+  offset: number;
+  /** 这一帧正文实测有多少行（surface 量到的树高）。 */
+  contentRows: number;
+  /** 一次看得见多少行（surface 画的那个窗口）。 */
+  bodyRows: number;
+}
+
 /** webview → 宿主 → mod 的用户交互。 */
 export interface ModPanelEventPayload {
   sessionId: string;
   modId: string;
   paneId: string;
-  /** 触发交互的元素 `key`（`Button` / `Input` / `Select` 必填；`close` 时为空串）。 */
+  /**
+   * 触发交互的元素 `key`（`Button` / `Input` / `Select` / `focus` 的候选落点
+   * 必填；`close` 时为空串）。
+   */
   key: string;
-  /** `close` 是用户关掉了面板 tab（mod 的 `ui.close` 钩子据此收到通知）。 */
-  kind: "press" | "input" | "select" | "close";
+  /**
+   * `close` 是用户关掉了面板 tab（mod 的 `ui.close` 钩子据此收到通知）；
+   * `focus` 是「焦点在面板里、用户按了 `↑` / `↓`」，`key` 是 surface 算出来的
+   * **候选落点**（spec「`ui.focus`：方向键先问 mod」）；`scroll` 是「焦点在面板
+   * 里、用户按了滚动键」—— 它问的是「这几十行你自己滚吗」（spec「`ui.scroll`：
+   * mod 自己滚」），`key` 是空串、实数在 {@link ModPanelEventPayload.scroll} 上。
+   */
+  kind: "press" | "input" | "select" | "focus" | "close" | "scroll";
   /** `kind === "input"` 时是用户提交的字符串。 */
   value?: string;
+  /** `kind === "scroll"` 时是这一次要滚多少行。 */
+  scroll?: ModPanelScrollRequest;
   /** `kind === "close"` 时是谁关的（诊断用；mod 收不到关闭通知，见 spec「事件」）。 */
   origin?: "person" | "plugin" | "unload";
 }
@@ -287,16 +328,57 @@ export interface ModUiControlEvent {
 }
 
 /**
+ * `ui.scroll` 的载荷（spec「`ui.scroll`：mod 自己滚」）。
+ *
+ * 前四个字段与 `ui.focus` 同形（谁画的、画在哪个站点、哪一块、哪一端）；
+ * `origin` 说这一下是**人**按的还是界面自己滚的（Claude Code 同名字段，它的
+ * 插件先判 `origin.kind === "person"` 才肯接管）；剩下四个是这次滚动的实数，
+ * 与 {@link ModPanelScrollRequest} 逐项相同。
+ */
+export interface ModUiScrollEvent extends ModPanelScrollRequest {
+  /** 画这块面板的 mod 的注册名 —— matcher 钉的就是它。 */
+  plugin: string;
+  component: "Pane";
+  requestId: string;
+  surface: ModRenderSurface;
+  origin: { kind: "person" | "auto" };
+}
+
+/**
  * 三个控件事件的返回值：改写这次交互派给谁、带什么值（spec「控件的交互事
  * 件」）。
  *
  * 只对**这一次**生效，不落进元素树：下一帧画什么仍由 `ui.render` 决定。
- */
-export interface ModUiControlResult {
+ */ export interface ModUiControlResult {
   /** 换派给哪个控件；那个 pane 里没有对应回调时按「没人接」丢掉并记 debug。 */
   element?: string;
   /** 换控件回调收到的值；必须是字符串，否则这一项被丢掉并 warn。 */
   value?: string;
+}
+
+/**
+ * 面板交互的回执（spec「`ui.focus`：方向键先问 mod」「`ui.close`：mod 能拦下
+ * 关闭」），两种 `kind` 共用一条回程。
+ *
+ * `handled` 是「这一下归 mod 了」：`focus` 时是「方向键被接住、别再滚正文」，
+ * `close` 时是「这次关闭被拦下、面板留着」。没有 `handled` 说明谁都没接，
+ * surface 落回默认行为（滚正文 / 真关掉）。
+ */
+export interface ModPanelEventResult {
+  handled: boolean;
+  /** `focus` 的落点（`key`）；surface 认不出这个 key 时原地不动。 */
+  element?: string;
+}
+
+/**
+ * `ui.close` 的回执（spec「`ui.close`：mod 能拦下关闭」）。
+ *
+ * `denied` 是「mod 不让这一端关掉面板」——通常是它自己已经把面板画回了上一级
+ * （差异面板详情里的 `Esc` 回列表）。`reason` 只用来记日志，不画给用户。
+ */
+export interface ModPanelCloseResult {
+  denied: boolean;
+  reason?: string;
 }
 
 /**

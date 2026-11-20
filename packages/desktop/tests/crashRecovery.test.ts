@@ -115,13 +115,14 @@ describe("crashRecovery — pure decisions", () => {
       url: "file:///app/webview/index.html",
       reason: "crashed",
       exitCode: 133,
-      lastMemory: "renderer memory pid=1 workingSet=2048MB peak=4096MB",
+      lastMemory:
+        "[process-memory] trigger=interval tree_rss_sum=2048MB(electron-only) electron(1)=2048MB children=unavailable(not-enumerated) top=[Tab:1:2048MB] sys_free=8192MB/32768MB",
     });
 
     expect(message).toBe("界面已崩溃");
     expect(detail).toContain("原因：crashed");
     expect(detail).toContain("退出码：133");
-    expect(detail).toContain("workingSet=2048MB");
+    expect(detail).toContain("tree_rss_sum=2048MB");
     expect(detail).toContain("不会自动重载");
     expect(detail).toContain(`日志目录：${LOG_DIR}`);
   });
@@ -157,7 +158,8 @@ describe("attachCrashRecovery", () => {
     attachCrashRecovery(win, {
       log,
       sampler,
-      lastMemory: () => "renderer memory pid=42 workingSet=3000MB peak=3900MB",
+      lastMemory: () =>
+        "[process-memory] trigger=interval tree_rss_sum=3000MB(electron-only) electron(1)=3000MB children=unavailable(not-enumerated) top=[Tab:42:3000MB] sys_free=8192MB/32768MB",
     });
 
     emitWebContents(
@@ -170,7 +172,7 @@ describe("attachCrashRecovery", () => {
     expect(sampler.stopAndFlush).toHaveBeenCalled();
     expect(log.error).toHaveBeenCalledWith(
       expect.stringContaining(
-        "reason=crashed exitCode=133 url=file:///app/webview/index.html lastMemory=renderer memory pid=42 workingSet=3000MB peak=3900MB",
+        "reason=crashed exitCode=133 url=file:///app/webview/index.html lastMemory=[process-memory] trigger=interval tree_rss_sum=3000MB(electron-only) electron(1)=3000MB children=unavailable(not-enumerated) top=[Tab:42:3000MB] sys_free=8192MB/32768MB",
       ),
     );
     expect(dialog.showMessageBox).toHaveBeenCalledWith(

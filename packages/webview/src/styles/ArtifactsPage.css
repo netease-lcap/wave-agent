@@ -693,7 +693,8 @@ html[data-host="desktop"][data-theme="dark"] .artifacts-file-icon {
  * 两种形态共用 `.artifacts-file-cell`：
  *   ① 展示态 = 文件按钮 + 右侧铅笔（`item.rel === "mine"` 才有）；
  *   ② 编辑态 = 文件图标 + 输入框（+ 下方绝对定位的错误提示）。
- * 铅笔常占 18px 宽度、只切 opacity，所以行 hover 时文件名不会左右跳。
+ * 铅笔常占固定宽度（插件端 18px / 桌面端 24px，见 host-desktop.css 那一族）、只切
+ * opacity，所以行 hover 时文件名不会左右跳。
  * 服务端暂无改标题接口，这一段目前是交互原型（只改本页 state，刷新还原）。 */
 
 .artifacts-file-cell {
@@ -743,31 +744,80 @@ html[data-host="desktop"][data-theme="dark"] .artifacts-file-icon {
 }
 
 /* 输入框高度对齐原文件按钮（14px 字号一行 + 边框），换形态时行高不变。
-   项目没有全局 border-box，这里显式声明，height 才真的是 22px。 */
+   项目没有全局 border-box，这里显式声明，height 才真的是 22px。
+
+   1119 预览评论（锚点 `span.artifacts-file-name`）：「检查这里输入激活后的表单是否
+   符合表单样式规范并优化」⇒ 按 skill `common-components.md` §Input fields /
+   §Desktop form field colors and focus / §Field compound-state checks 收口：
+     · 底 / 边 / 字三件套改走 `--cc-field-*`，与同页 `.artifacts-search`、
+       `.artifacts-field` 的 input 用同一条 fallback 链。改前吃的是
+       `--vscode-focusBorder`（桌面端浅色档解析成 #1F2329 ≈ 1 级字色）⇒ 等于
+       「没聚焦也一直挂着一条近黑的深边」，和同页其它字段的默认边 #C5C9CE 不成一档；
+     · 圆角 4 → 8：文本字段共享的输入圆角（role contract，不随高度变）；
+     · 补 hover（只换描边、不换底）与 focus 两态；`:focus` 保持 1px 就地变色、
+       `outline: none`（无外扩环、无位移）；
+     · 高度仍 22：契约的 32px 是推荐值，这一格的高度由表格行高反推
+       （22 + 单元格 9×2 内衬 = 40 档），改成 32 会让编辑态整表跳 10px；
+     · 内衬仍 0 6px：契约未规定行内编辑框的横向内衬，改 8px 会把文字起点再推 2px、
+       与展示态文件名的起点拉开，属没人点名的位移。 */
 .artifacts-rename-input {
   flex: 1 1 auto;
   min-width: 0;
   box-sizing: border-box;
   height: 22px;
   padding: 0 6px;
-  border: 1px solid var(--vscode-focusBorder, #007fd4);
-  border-radius: 4px;
-  background: var(--vscode-input-background, #ffffff);
-  color: var(--vscode-input-foreground, #202020);
+  border: 1px solid var(--cc-field-border, rgba(127, 127, 127, 0.35));
+  border-radius: 8px;
+  background: var(--cc-field-bg, var(--vscode-input-background, #ffffff));
+  color: var(
+    --cc-field-text,
+    var(--vscode-input-foreground, var(--vscode-foreground, #202020))
+  );
   font: inherit;
   font-size: 14px;
   outline: none;
 }
 
-/* 校验失败时输入框同步变红，让「哪一格错了」在浮层之外也有落点。 */
-.artifacts-rename-input[aria-invalid="true"] {
-  border-color: #e5484d;
+/* hover 只换描边，不换底（契约 §Desktop form field colors and focus）。 */
+.artifacts-rename-input:hover:not(:focus) {
+  border-color: var(--cc-field-border-hover, var(--cc-field-border));
 }
 
-/* 保存中：输入框禁用（不再接受编辑、也不会发第二次），光标给「忙」而不是「禁止」。 */
+/* 聚焦（点开即 autoFocus）：仍是 1px 就地变色，不加外扩光环。 */
+.artifacts-rename-input:focus {
+  border-color: var(--cc-field-border-focus, var(--vscode-focusBorder));
+}
+
+/* 占位符只允许 `--cc-field-placeholder`，并显式 opacity 1（禁再叠一层浏览器压暗）。 */
+.artifacts-rename-input::placeholder {
+  color: var(--cc-field-placeholder, var(--vscode-input-placeholderForeground));
+  opacity: 1;
+}
+
+/* 校验失败时输入框同步变红，让「哪一格错了」在浮层之外也有落点。
+   危险红走 `--cc-color-danger`；`:hover` / `:focus` 两个组合必须显式列出，
+   否则会被上面 `:hover:not(:focus)`（0,3,0）盖掉（同页 `.artifacts-field`
+   的错误态注释记过同一个坑）。错误态在聚焦、hover 下都不清除。 */
+.artifacts-rename-input[aria-invalid="true"],
+.artifacts-rename-input[aria-invalid="true"]:hover,
+.artifacts-rename-input[aria-invalid="true"]:focus {
+  border-color: var(--cc-color-danger, var(--vscode-errorForeground, #d93025));
+}
+
+/* 保存中：输入框禁用（不再接受编辑、也不会发第二次）。
+   契约 §Desktop form field colors and focus：禁用态用专用的面 / 字 / 边三件套，
+   不得把整块字段一起调淡（改前是 `opacity: .7`，会把底色与文字一起压暗、
+   也与相邻行的同一颗控件不同档）。光标仍给「忙」而不是「禁止」—— 这里的禁用
+   语义是 busy（同时带 aria-busy），不是「这个字段永远不可用」。 */
 .artifacts-rename-input:disabled {
-  opacity: 0.7;
+  background: var(--cc-field-bg-disabled, var(--cc-field-bg));
+  color: var(--cc-field-text-disabled, var(--cc-field-text, #a8abb2));
+  border-color: var(--cc-field-border-disabled, var(--cc-field-border));
   cursor: progress;
+}
+
+.artifacts-rename-input:disabled:hover {
+  border-color: var(--cc-field-border-disabled, var(--cc-field-border));
 }
 
 /* 错误提示浮在输入框下方：表格行高保持稳态，提示出现/消失不让整表跳动。
@@ -791,7 +841,9 @@ html[data-host="desktop"][data-theme="dark"] .artifacts-file-icon {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
   color: #e5484d;
   font-size: 12px;
-  line-height: 16px;
+  /* 契约 §Field validation：行内校验文案 12/20（改前 12/16，比同页其它 12px
+     辅助文案紧一档、两行时字挤。浮层是 absolute，行高变了也不推表格行）。 */
+  line-height: 20px;
   white-space: nowrap;
 }
 
@@ -809,7 +861,9 @@ html[data-host="desktop"][data-theme="dark"] .artifacts-file-icon {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
   color: var(--vscode-descriptionForeground, #6c6e73);
   font-size: 12px;
-  line-height: 16px;
+  /* 契约 §Field validation：行内校验文案 12/20（改前 12/16，比同页其它 12px
+     辅助文案紧一档、两行时字挤。浮层是 absolute，行高变了也不推表格行）。 */
+  line-height: 20px;
   white-space: nowrap;
 }
 
@@ -973,9 +1027,35 @@ html[data-host="desktop"][data-theme="dark"] .artifacts-file-icon {
   background: var(--cc-fill-pressed, var(--cc-fill-hover));
 }
 
+/* 1119 评论（点 `button.artifacts-secondary-btn`「修改分类」）：「参考按钮规范，
+   检查按钮样式，特别是禁用态，并优化」。
+   改前是**整颗 `opacity: .6`**，把字色/描边一起混到页面上：实测浅色合成
+   #797B7F（4.25:1）、深色 #909293（5.98:1）—— 两端都不落在任何一档 token 上，
+   浅色比规范禁用档更淡、深色反而比可用态更亮，两主题观感不对等；而契约
+   common-components.md:185 明确「Never combine text-disabled with whole-container
+   opacity」。现在按 dark-theme.md:56 的禁用键配方落地：`fill-light` 底 +
+   `text-disabled` 字 + `border-lighter` 边，opacity 归 1。
+   静止与 hover 逐值相同（hover / pressed 面已被 `:not(:disabled)` 摘掉），
+   指针 not-allowed，不响应点击（原生 disabled）。
+   仓库内先例：host-desktop.css:3366 工作目录菜单禁用行同一修法。 */
 [data-host="desktop"] .artifacts-secondary-btn:disabled {
-  opacity: 0.6;
+  background: var(--cc-fill-light, #f5f7fa);
+  border-color: var(--cc-border-lighter, #ebeef5);
+  color: var(--cc-text-disabled, #bec1c6);
+  opacity: 1;
   cursor: not-allowed;
+}
+
+/* 键盘焦点：契约 common-components.md:23「2px border-focus 环、0 offset，环贴住
+   按钮边缘」。改前这三颗动作键都没有这条，落的是浏览器 UA 的 `1px auto` 蓝环
+   （#005FCC）—— 深色档压在同色系深底上几乎看不见，也与全仓焦点语言不一致
+   （本页图标键 / 设置页控件都走 `--cc-border-focus`）。弹窗页脚那档另有 2px 外扩
+   的既有规则（host-desktop.css:6671，1022 已验收），特异性更高，保持原样。 */
+[data-host="desktop"] .artifacts-primary-btn:focus-visible,
+[data-host="desktop"] .artifacts-secondary-btn:focus-visible,
+[data-host="desktop"] .artifacts-danger-btn:focus-visible {
+  outline: 2px solid var(--cc-border-focus, #2f5edb);
+  outline-offset: 0;
 }
 
 /* 危险键本轮的**只改盒**（同族行口径），颜色维持 #d93025 —— 危险红要不要统一到
@@ -986,20 +1066,40 @@ html[data-host="desktop"][data-theme="dark"] .artifacts-file-icon {
 }
 
 /* 1030 评论（`div.artifacts-header-left`「新建分类 / 刷新」）：「新建分类和刷新
-   改成图标的形式，hover 显示 tooltip 提示」。
-   几何照同页 `[data-host="desktop"] .artifacts-nav-more`（分类行的「⋯」）：
-   24×24 / 内衬 0 / r6 / 图标 16 居中；静止取 2 级字色、hover 换
-   `--cc-fill-hover` 底并把图标提到 1 级 —— 与侧栏会话行、面板工具条同一套
-   图标键配方。原来两颗是 12px 文字键（新建分类还是蓝色链接），现在都不用了。 */
+   改成图标的形式，hover 显示 tooltip 提示」—— 当时照同页
+   `[data-host="desktop"] .artifacts-nav-more` 的透明图标键配方：24×24 / r6 / 图标 16。
+
+   1119 评论（点 `button.artifacts-header-icon-btn`「刷新」）：「这个按钮宽高尺寸参考
+   前面的搜索表单，加一个边框线，交互样式参考线形按钮」—— 由「透明无边的 24 方键」
+   改成「与左侧 `.artifacts-search` 同高的描边键」：
+     · 盒 24×24 → 32×32：高取搜索表单那档 32，宽同高成方（搜索表单宽 242 显然
+       不是「宽」的意图）；`box-sizing` 转 border-box，让 1px 描边落在 32 之内 ——
+       外边沿仍是 32，tabs 行高本来就由 32 的搜索框定，行不会长高；
+     · 圆角 6 → 8：契约 `common-components.md:27`「Desktop icon-only and toolbar
+       action buttons use 8px radius」，且与紧邻的 r8 搜索框成对；
+     · 描边 1px `--cc-field-border` —— 与左侧搜索表单**同一枚 token**（浅 #C5C9CE /
+       深 #414649）：她说「宽高尺寸参考前面的搜索表单」，两框同排同高，描边若走
+       线形按钮那枚 `--cc-border-light`（浅 #E4E7ED / 1.24:1）会比邻框的 1.66:1
+       明显淡一档，看上去像「没画完的框」。这处偏离 §:19 线形按钮的 border-light
+       是刻意的族内例外，改回只需把这一行换成 `--cc-border-light`；
+     · 状态照线形按钮：hover `--cc-fill-hover`（字形提 1 级）、按下
+       `--cc-fill-pressed`（改前没有 pressed 档，按下与 hover 同值）、焦点环
+       2px `--cc-border-focus` + offset 0（:23；改前是 offset -2 的内收环）；
+     · 禁用照 `dark-theme.md:56` 的配方换三枚 token（fill-light 底 / text-disabled
+       字 / border-lighter 边）并把 opacity 归 1 —— 改前是整颗 0.4，契约 :185 明禁
+       整容器透明度；1030 那句「功能禁用鼠标要显示成禁用」的意图保留（指针
+       not-allowed、不出 hover 面）。
+   字形尺寸不动（16px）：契约 :27「Keep glyph size separate from the hit target」。 */
 .artifacts-header-icon-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
+  box-sizing: border-box;
+  width: 32px;
+  height: 32px;
   padding: 0;
-  border: none;
-  border-radius: 6px;
+  border: 1px solid var(--cc-field-border, #c5c9ce);
+  border-radius: 8px;
   background: transparent;
   color: var(--cc-text-secondary, #6c7076);
   cursor: pointer;
@@ -1016,17 +1116,32 @@ html[data-host="desktop"][data-theme="dark"] .artifacts-file-icon {
   color: var(--cc-text-primary, #1f2329);
 }
 
-/* 键盘焦点：2px 内收环，与设置页 listbox 选项 / 文件标签菜单同一配方。 */
+/* 按下（线形按钮 pressed 档，1119 评论「交互样式参考线形按钮」）：改前没有这一档，
+   按下与 hover 同值（`--cc-fill-hover`），按下去没有任何回应。 */
+.artifacts-header-icon-btn:active:not(:disabled) {
+  background: var(--cc-fill-pressed, #e7e9ed);
+  color: var(--cc-text-primary, #1f2329);
+}
+
+/* 键盘焦点：契约 common-components.md:23「2px border-focus 环、0 offset，环贴住
+   按钮边缘」。改前是与设置页 listbox / 文件标签菜单同配方的 offset -2 内收环；
+   1119 评论「交互样式参考线形按钮」后与同页三颗动作键统一成 offset 0。 */
 .artifacts-header-icon-btn:focus-visible {
   outline: 2px solid var(--cc-border-focus, #a0a5a8);
-  outline-offset: -2px;
+  outline-offset: 0;
 }
 
 /* 刷新中 / 列表加载中：键不可点，也不出 hover 面（否则像还活着）。
-   1030 评论（「功能禁用鼠标要显示成禁用」）：指针从 `default` 改成 `not-allowed`，
-   与 :disabled 的语义一致（0.4 透明 + 不响应 hover + 指针带禁止圈）。 */
+   1030 评论（「功能禁用鼠标要显示成禁用」）当时落的是整颗 `opacity: .4`；
+   1119 加了描边后按 `dark-theme.md:56` 的禁用配方换成三枚 token
+   （fill-light 底 / text-disabled 字 / border-lighter 边）+ opacity 归 1 ——
+   契约 `common-components.md:185` 明禁「text-disabled + 整容器透明度」。
+   指针仍 not-allowed、仍不响应 hover 与点击，1030 的意图保留。 */
 .artifacts-header-icon-btn:disabled {
-  opacity: 0.4;
+  background: var(--cc-fill-light, #f5f7fa);
+  border-color: var(--cc-border-lighter, #ebeef5);
+  color: var(--cc-text-disabled, #bec1c6);
+  opacity: 1;
   cursor: not-allowed;
 }
 
@@ -1323,6 +1438,44 @@ html[data-host="desktop"][data-theme="dark"] .artifacts-file-icon {
   position: relative;
 }
 
+/* 1119 评论（点 `select`「最新版本v3 · 加入深色模式v2 · 补充分享弹层v1」）：
+   「这个选择器下拉列表的面板参考规范」——原生 select 的弹层由 UA 绘制，位置/宽度/
+   圆角/阴影/项高/hover 一律不可控，桌面端因此换成 `SettingsSelect`（自绘 listbox，
+   弹层皮肤见 host-desktop.css 的 `.settings-select-menu` 一族：白面 + #EBEEF5 边 +
+   r12 + 12% 柔影，项 28/r6/14 + hover #EEF0F3 + 选中 fill-pressed token；深色走
+   `--cc-bg-overlay` + 12% 白边 + 40% 黑柔影）。插件端组件内部仍渲染原生 select。
+   下面这几条只负责**触发器**：把设置页那套控件盒（r6 + `--vscode-input-*`）换成
+   创作集字段的控件盒，与改前原生 select 逐值相同（510×32 / r8 / 1px / 14px /
+   `--cc-field-*`）；三角由组件自带的 `::after`（同一条官方矢量、右内缘 8px）接替上面
+   `.artifacts-field:has(> select)::after` 那条，位置与颜色同档。 */
+[data-host="desktop"] .artifacts-field .settings-select-field {
+  width: 100%;
+}
+
+[data-host="desktop"] .artifacts-field .settings-select-trigger {
+  height: 32px;
+  box-sizing: border-box;
+  padding: 4px 24px 4px 8px; /* 右 24 = 8 内衬 + 8 三角 + 8 间隔（与原生 select 同） */
+  border-radius: 8px;
+  border: 1px solid var(--cc-field-border, rgba(127, 127, 127, 0.35));
+  background: var(--cc-field-bg, var(--vscode-input-background, transparent));
+  color: var(
+    --cc-field-text,
+    var(--vscode-input-foreground, var(--vscode-foreground))
+  );
+  font-size: 14px;
+}
+
+[data-host="desktop"] .artifacts-field .settings-select-trigger:hover:not(:focus) {
+  border-color: var(--cc-field-border-hover, var(--cc-field-border));
+}
+
+/* 输入类控件的焦点语言（鼠标点也算）——与同字段的 input / select 同一条 fallback 链。 */
+[data-host="desktop"] .artifacts-field .settings-select-trigger:focus {
+  outline: none;
+  border-color: var(--cc-field-border-focus, var(--vscode-focusBorder));
+}
+
 [data-host="desktop"] .artifacts-field select {
   -webkit-appearance: none;
   appearance: none;
@@ -1512,18 +1665,45 @@ html[data-host="desktop"][data-theme="dark"] .artifacts-file-icon {
   width: 100%;
 }
 
+/* 已添加成员块（设计师 2026-11-19 预览评论，锚点 `div.artifacts-selected-members`
+   「已添加的成员在搜索成员的下方显示，新增一个背景色块来承载已添加的成员，且支持
+   内部滚动」）：
+   ① 位置：原来是搜索框上方的一行裸胶囊，挪到**候选列表下方**（候选列表紧贴搜索框，
+      新增成员不再把候选列表往下推）；markup 里已移。
+   ② 承载形式：设计师 2026-11-19「这里用分割线的形式，不要边框线我看看效果」⇒
+      去掉四边描边与圆角，改成**一条上分割线**（1px `--vscode-panel-border`）：
+      无底色（上一版叠的灰洗已撤）、无圆角、左右内衬归 0 —— 胶囊与上面的候选行、
+      搜索框左缘对齐，分割线横贯 picker 内容宽；竖向只留 `padding-top: 8`（+ picker
+      的 8 gap ⇒ 候选列表到胶囊共 17px，其中分割线居中）。要回退成色块：把
+      `border`/`border-radius`/`padding`/`background` 换回上一版即可（见 git 历史）。
+   ③ 内部滚动：封顶 4 行胶囊 = 4×28（胶囊实测高）+ 3×6（行距）+ 8（上内衬）+
+      1（分割线）= 139px（`box-sizing: border-box`，否则内衬与描边会撑出去）；
+      胶囊换行由 flex-wrap 负责（`align-content: flex-start` 让行贴顶，不随滚动轴拉伸）；
+      `overscroll-behavior: contain` 滚到底不漏给弹层。 */
 .artifacts-selected-members {
   display: flex;
   flex-wrap: wrap;
+  align-content: flex-start;
   gap: 6px;
+  padding: 8px 0 0;
+  border: none;
+  border-top: 1px solid var(--vscode-panel-border, rgba(127, 127, 127, 0.18));
+  border-radius: 0;
+  box-sizing: border-box;
+  max-height: 139px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
+/* 已添加成员胶囊。设计师 2026-11-19：「选项圆角和选择器保持一致」⇒ 原来 999px 全圆角，
+   改成与同屏选择器一档的 8px（成员选择器容器 8 / 搜索框 8 / 查看者版本下拉 8 / 刚加的
+   已添加块 8），同一屏只剩一种圆角。几何其余不动（高 28 / 内衬 3×8 / 12px 字）。 */
 .artifacts-chip {
   display: inline-flex;
   align-items: center;
   gap: 4px;
   padding: 3px 8px;
-  border-radius: 999px;
+  border-radius: var(--cc-radius-md, 8px);
   background: rgba(127, 127, 127, 0.18);
   font-size: 12px;
 }

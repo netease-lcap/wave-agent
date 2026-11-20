@@ -542,8 +542,13 @@ export class AgentBridge {
           // 同一份内存尾部，页面永远接不上更早的页（真机上表现为上翻到底反复
           // 要同一页、翻不动，压缩之前的历史一条都翻不出来）。
           before: p.before as string | undefined,
+          // 大纲点未加载刻度时的起点锚点（含）。同样必须原样转进去：漏掉它，
+          // SDK 会答一份尾页，页面「跳过去」实际落到了会话末尾。
+          from: p.from as string | undefined,
           limit: p.limit as number | undefined,
         });
+      case "getTranscriptOutline":
+        return this.requireSession(sessionId).agent.getTranscriptOutline();
 
       // ── Remote control (daemon-level) ──
       // The daemon owns the outbound relay socket; the bridge only routes.

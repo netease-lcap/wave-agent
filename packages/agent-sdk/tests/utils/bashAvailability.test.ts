@@ -1,6 +1,10 @@
 import { accessSync, constants } from "fs";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { isBashAvailable } from "../../src/utils/bashAvailability.js";
+import {
+  __resetBashAvailabilityCacheForTesting,
+  isBashAvailable,
+} from "../../src/utils/bashAvailability.js";
+import { collectShellToolGateInput } from "../../src/utils/shell/shellToolGate.js";
 import { resolveShellPath } from "../../src/utils/shellResolver.js";
 
 /**
@@ -18,9 +22,16 @@ vi.mock("fs", () => ({
   constants: { X_OK: 1 },
 }));
 
+// Only `loadMergedWaveConfig` is reached (for the `WAVE_USE_POWERSHELL_TOOL`
+// lookup); the rest of the settings stack is not this file's subject.
+vi.mock("../../src/services/configurationService.js", () => ({
+  loadMergedWaveConfig: vi.fn(() => null),
+}));
+
 describe("isBashAvailable", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    __resetBashAvailabilityCacheForTesting();
   });
 
   it("is false when resolution finds no shell", () => {
@@ -62,5 +73,46 @@ describe("isBashAvailable", () => {
     });
 
     expect(isBashAvailable()).toBe(false);
+  });
+
+  /**
+   * The answer is an environment fact (platform + OS env + what is installed),
+   * so it is probed once per process. Without the memo every *model request*
+   * re-probes, because the system prompt names the shell that runs the session
+   * — and on a machine whose Git lives outside `C:\Program Files\Git` that
+   * probe is a `where.exe` spawn (~170 ms, synchronous).
+   */
+  describe("probe memo", () => {
+    it("resolves the shell path once, however many times it is asked", () => {
+      vi.mocked(resolveShellPath).mockReturnValue("/path/bash");
+      vi.mocked(accessSync).mockReturnValue(undefined);
+
+      expect(isBashAvailable()).toBe(true);
+      expect(isBashAvailable()).toBe(true);
+
+      expect(resolveShellPath).toHaveBeenCalledTimes(1);
+    });
+
+    it("remembers a negative answer too", () => {
+      vi.mocked(resolveShellPath).mockReturnValue(undefined);
+
+      expect(isBashAvailable()).toBe(false);
+      vi.mocked(resolveShellPath).mockReturnValue("/path/bash");
+      expect(isBashAvailable()).toBe(false);
+
+      expect(resolveShellPath).toHaveBeenCalledTimes(1);
+    });
+
+    it("is shared by every workdir the shell gate is collected for", () => {
+      vi.mocked(resolveShellPath).mockReturnValue("/path/bash");
+      vi.mocked(accessSync).mockReturnValue(undefined);
+
+      collectShellToolGateInput("/tmp/a");
+      collectShellToolGateInput("/tmp/a");
+      collectShellToolGateInput("/tmp/b");
+
+      expect(resolveShellPath).toHaveBeenCalledTimes(1);
+      expect(collectShellToolGateInput("/tmp/c").hasGitBash).toBe(true);
+    });
   });
 });

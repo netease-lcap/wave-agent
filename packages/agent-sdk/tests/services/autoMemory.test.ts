@@ -78,6 +78,21 @@ describe("MemoryService Auto-Memory", () => {
         ),
       );
     });
+
+    it("resolves the git common dir once per workdir", () => {
+      vi.mocked(getGitCommonDir).mockReturnValue("/repo/root/.git");
+      vi.mocked(pathEncoder.encodeSync).mockReturnValue("repo-root-hash");
+
+      // Every system-prompt build, turn end and safe-zone check asks for this
+      // path; each miss is a `git rev-parse` subprocess.
+      memoryService.getAutoMemoryDirectory("/repo/root/worktree");
+      memoryService.getAutoMemoryDirectory("/repo/root/worktree");
+
+      expect(getGitCommonDir).toHaveBeenCalledTimes(1);
+      // A different workdir is a different repository — still resolved.
+      memoryService.getAutoMemoryDirectory("/other/project");
+      expect(getGitCommonDir).toHaveBeenCalledTimes(2);
+    });
   });
 
   describe("ensureAutoMemoryDirectory", () => {

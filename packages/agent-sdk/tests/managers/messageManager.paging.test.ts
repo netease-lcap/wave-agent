@@ -191,6 +191,43 @@ describe("MessageManager.getMessagePage", () => {
     // 内存到头了，转录也没有更早的：这是尽头。
     expect(page.hasMore).toBe(false);
   });
+
+  it("slices forward from a from-anchor while it is still resident", async () => {
+    // 大纲跳转（spec ui/transcript-outline.md 场景 17）：从锚点**往后**取一页，
+    // 锚点自己含在这一页里；页尾之后还有内容时要报 hasLater，页面据此知道窗口
+    // 停在了历史里，底部入口该换成「回到最新一页」。
+    const manager = createManager();
+    const all = add(manager, 6);
+
+    const page = await manager.getMessagePage({ from: all[1], limit: 3 });
+
+    expect(ids(page.messages)).toEqual(all.slice(1, 4));
+    expect(page.hasLater).toBe(true);
+    // 内存列表从最近一次压缩开始、上面还有转录历史：与上翻取页一样保守判「还有」。
+    expect(page.hasMore).toBe(true);
+  });
+
+  it("says there is nothing newer when the from-page reaches the end", async () => {
+    const manager = createManager();
+    const all = add(manager, 4);
+
+    const page = await manager.getMessagePage({ from: all[2], limit: 100 });
+
+    expect(ids(page.messages)).toEqual(all.slice(2));
+    expect(page.hasLater).toBe(false);
+  });
+
+  it("reads the transcript for a from-anchor above the resident window", async () => {
+    // 锚点已经落在压缩边界之前（内存里没有）：整页交给转录。这里没有转录文件，
+    // 所以回来的是空页——「锚点找不到」那一档（anchorLost）由 transcriptPage 的
+    // 用例覆盖，它只有文件在、锚点不在时才会出现。
+    const manager = createManager();
+    add(manager, 6);
+
+    await expect(
+      manager.getMessagePage({ from: "pre-compaction-id", limit: 20 }),
+    ).resolves.toEqual({ messages: [], hasMore: false });
+  });
 });
 
 describe("MessageManager list after compaction", () => {

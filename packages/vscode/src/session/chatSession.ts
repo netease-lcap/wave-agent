@@ -35,6 +35,7 @@ import {
   type MessageWindowResult,
   type StdioAgentCallbacks,
   type NotificationRouter,
+  type TranscriptOutlineEntry,
 } from "wave-agent-sdk/host";
 
 export interface ChatSessionCallbacks {
@@ -595,8 +596,41 @@ export class ChatSession {
     };
   }
 
+  /**
+   * 会话消息大纲的索引（spec ui/transcript-outline.md 场景 16）：整份转录里每条
+   * 带文本用户消息的 id 与文本首段。只读快照。
+   */
+  public async getTranscriptOutline(): Promise<TranscriptOutlineEntry[]> {
+    if (!this.agent) return [];
+    return this.agent.getTranscriptOutline();
+  }
+
+  /**
+   * 大纲点了一条还没加载的刻度（场景 17）：从锚点往后取一页，锚点含在这一页里。
+   * `hasLater` 随回包一起给——页面据此判断窗口是不是停在了历史里。
+   * 不带 `from` = 尾页（「回到最新一页」，场景 18）：页面主动要一次首屏那一页。
+   */
+  public async getMessagePageFrom(from?: string): Promise<{
+    messages: Message[];
+    hasMore: boolean;
+    hasLater: boolean;
+    anchorLost: boolean;
+  }> {
+    const page = (await this.getMessagePage({
+      ...(from === undefined ? {} : { from }),
+      limit: MESSAGE_PAGE_SIZE,
+    })) as MessageWindowResult | undefined;
+    return {
+      messages: page?.messages ?? [],
+      hasMore: page?.hasMore === true,
+      hasLater: page?.hasLater === true,
+      anchorLost: page?.anchorLost === true,
+    };
+  }
+
   private async getMessagePage(window: {
     before?: string;
+    from?: string;
     limit?: number;
   }): Promise<Message[] | MessageWindowResult> {
     if (!this.agent) return [];

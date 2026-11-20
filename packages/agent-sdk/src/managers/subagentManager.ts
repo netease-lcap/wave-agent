@@ -222,10 +222,12 @@ export class SubagentManager {
       parentPm &&
       typeof parentPm.updateAllowedRules === "function" &&
       typeof parentPm.updateDeniedRules === "function" &&
+      typeof parentPm.updateAskRules === "function" &&
       typeof parentPm.updateAdditionalDirectories === "function"
     ) {
       const origUpdateAllowed = parentPm.updateAllowedRules.bind(parentPm);
       const origUpdateDenied = parentPm.updateDeniedRules.bind(parentPm);
+      const origUpdateAsk = parentPm.updateAskRules.bind(parentPm);
       const origUpdateDirs =
         parentPm.updateAdditionalDirectories.bind(parentPm);
 
@@ -235,6 +237,10 @@ export class SubagentManager {
       };
       parentPm.updateDeniedRules = (rules: string[]) => {
         origUpdateDenied(rules);
+        this.syncPermissionRulesToSubagents();
+      };
+      parentPm.updateAskRules = (rules: string[]) => {
+        origUpdateAsk(rules);
         this.syncPermissionRulesToSubagents();
       };
       parentPm.updateAdditionalDirectories = (directories: string[]) => {
@@ -254,6 +260,7 @@ export class SubagentManager {
     for (const instance of this.instances.values()) {
       instance.permissionManager.updateAllowedRules(parentPm.getAllowedRules());
       instance.permissionManager.updateDeniedRules(parentPm.getDeniedRules());
+      instance.permissionManager.updateAskRules(parentPm.getAskRules());
       instance.permissionManager.updateAdditionalDirectories(
         parentPm.getAdditionalDirectories(),
       );
@@ -617,6 +624,7 @@ export class SubagentManager {
             parentPermissionManager?.getBypassAuthorization?.(),
           allowedRules: parentPermissionManager?.getAllowedRules(),
           deniedRules: parentPermissionManager?.getDeniedRules(),
+          askRules: parentPermissionManager?.getAskRules?.(),
           instanceAllowedRules:
             parentPermissionManager?.getInstanceAllowedRules?.(),
           instanceDeniedRules: [

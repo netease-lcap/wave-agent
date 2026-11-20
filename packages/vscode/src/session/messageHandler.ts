@@ -22,6 +22,7 @@ import type {
   BtwHistoryTurn,
   ModPanelEventPayload,
   ModPaneViewPayload,
+  TranscriptOutlineEntry,
 } from "wave-agent-sdk/host";
 import {
   PLUGIN_CHANGE_PENDING_MESSAGE,
@@ -337,6 +338,50 @@ export class MessageHandler {
             requestId,
             messages: page.messages,
             hasMore: page.hasMore,
+            ...(page.anchorLost ? { anchorLost: true } : {}),
+          },
+          viewType,
+          windowId,
+        );
+        break;
+      }
+
+      case "getTranscriptOutline": {
+        // 会话消息大纲的索引（spec ui/transcript-outline.md 场景 16）：整份转录
+        // 里每条带文本用户消息的 id 与文本首段。失败给空数组——页面会退回到
+        // 「只列已加载的消息」（场景 20），比让大纲整个消失好。
+        const requestId = msg.requestId as string;
+        let items: TranscriptOutlineEntry[] = [];
+        try {
+          items = await this.context
+            .getChatSession(viewType || "tab", windowId)
+            .getTranscriptOutline();
+        } catch (error) {
+          console.warn("[Wave] 取会话消息大纲失败:", error);
+        }
+        this.context.postMessage(
+          { command: "transcriptOutline", requestId, items },
+          viewType,
+          windowId,
+        );
+        break;
+      }
+      case "loadMessagePage": {
+        // 大纲点了一条还没加载的刻度（场景 17）：从锚点往后取一页，锚点含在内。
+        // 不带 `from` = 尾页（「回到最新一页」，场景 18）。
+        const from = msg.from as string | undefined;
+        const requestId = msg.requestId as string;
+        const page = await this.context
+          .getChatSession(viewType || "tab", windowId)
+          .getMessagePageFrom(from);
+        this.context.postMessage(
+          {
+            command: "messagePage",
+            requestId,
+            ...(from === undefined ? {} : { from }),
+            messages: page.messages,
+            hasMore: page.hasMore,
+            hasLater: page.hasLater,
             ...(page.anchorLost ? { anchorLost: true } : {}),
           },
           viewType,

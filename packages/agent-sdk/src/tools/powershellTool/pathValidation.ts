@@ -10,40 +10,24 @@
  *   be offered; it is a machine that stops booting. Rules do not reach it.
  *
  * The list is short on purpose. Naming every dangerous directory is a losing
- * game; the four families below cover the ones where a single mistyped command
- * is unrecoverable: filesystem roots, the user's own profile root, the Windows
- * installation, and the POSIX system directories for a PowerShell on Linux.
+ * game; the families below cover the ones where a single mistyped command is
+ * unrecoverable: filesystem roots, first-level system directories, the user's
+ * own profile root — and, like the bash channel, **the session's working
+ * directory and its ancestors**, which is how "delete the repository you are
+ * working in" is caught with no notion of what a repository is.
+ *
+ * The critical-path families themselves live in `utils/pathSafety.ts` so the
+ * bash channel judges the same paths by the same list.
  */
 
-import path from "path";
-import { homedir } from "os";
-
-/**
- * System directories, written relative to the root and `/`-separated so one
- * list serves both `C:\Windows\System32` and `/usr`. Only these exact
- * directories are refused — everything below them (`C:\Windows\Temp\x.txt`)
- * is an ordinary path and reaches the normal ask.
- */
-const DANGEROUS_ROOTS = new Set([
-  "windows",
-  "windows/system32",
-  "windows/syswow64",
-  "program files",
-  "program files (x86)",
-  "programdata",
-  "etc",
-  "usr",
-  "usr/bin",
-  "usr/sbin",
-  "bin",
-  "sbin",
-  "lib",
-  "lib64",
-  "boot",
-  "dev",
-  "proc",
-  "sys",
-]);
+import path from "node:path";
+import { homedir } from "node:os";
+import {
+  isCriticalSystemDirectory,
+  isFilesystemRoot,
+  isHomeDirectoryPath,
+  isPathAtOrAbove,
+} from "../../utils/pathSafety.js";
 
 /**
  * Environment-shaped home references. `$HOME` / `~` / `%USERPROFILE%` are all
@@ -69,54 +53,69 @@ function isHomeReference(target: string): boolean {
   return HOME_REFERENCES.has(trimmed);
 }
 
-/**
- * Is [resolved] somebody's home directory? Compared against the real answer,
- * not a pattern: `Remove-Item C:\Users\liuyiqi02 -Recurse` is the same command
- * as `Remove-Item $env:USERPROFILE -Recurse` written the long way.
- */
-function isHomeDirectory(resolved: string): boolean {
-  const homes = [process.env.USERPROFILE, process.env.HOME, homedir()];
-  return homes.some(
-    (home) => typeof home === "string" && path.resolve(home) === resolved,
-  );
+/** Why a target is refused — the deny message names it. */
+export type DangerousTargetReason =
+  | "root"
+  | "home"
+  | "system"
+  | "working_directory";
+
+export interface DangerousTarget {
+  reason: DangerousTargetReason;
+  /** Where the target really points, so the message can name it. */
+  resolved: string;
 }
 
 /**
- * true when [target] is a path that must never be the target of a destructive
- * command: a drive/filesystem root, the Windows or POSIX system directories, or
- * a home directory itself.
+ * Judge a destructive command's target.
  *
  * [workdir] resolves relative targets — `..\..` from `C:\a\b` is `C:\`, and that
- * has to count. A relative path that simply stays where it is (`.`) does not.
+ * has to count. [protectedRoots] are the directories the session works in (its
+ * working directory and every additional directory): a target that *contains*
+ * one of them is an ancestor of one, which is the shape that deletes the whole
+ * checkout instead of a folder inside it.
  */
-export function isDangerousTargetPath(
+export function findDangerousTarget(
   target: string,
   workdir?: string,
-): boolean {
+  protectedRoots: string[] = [],
+): DangerousTarget | null {
   const raw = target.trim();
-  if (!raw) return false;
-  if (isHomeReference(raw)) return true;
+  if (!raw) return null;
+  if (isHomeReference(raw)) return { reason: "home", resolved: homedir() };
 
   const resolved = path.resolve(workdir ?? process.cwd(), raw);
-  const parsed = path.parse(resolved);
+  const at = (reason: DangerousTargetReason): DangerousTarget => ({
+    reason,
+    resolved,
+  });
 
   // A filesystem root: `/`, `\`, `C:\`.
-  if (resolved === parsed.root) return true;
+  if (isFilesystemRoot(resolved)) return at("root");
 
   // A home directory itself.
-  if (isHomeDirectory(resolved)) return true;
+  if (isHomeDirectoryPath(resolved)) return at("home");
+
+  // The working directory itself, or an ancestor of it.
+  if (protectedRoots.some((root) => isPathAtOrAbove(resolved, root))) {
+    return at("working_directory");
+  }
 
   // A system directory: `C:\Windows`, `C:\Windows\System32`, `/etc`, `/usr/bin`.
   // Depth-insensitive by construction — the comparison is on the normalised
   // path below the root, not on the last segment.
-  const relative = resolved
-    .slice(parsed.root.length)
-    .replace(/[\\/]+$/, "")
-    .replace(/\\/g, "/")
-    .toLowerCase();
-  if (relative && DANGEROUS_ROOTS.has(relative)) return true;
+  if (isCriticalSystemDirectory(resolved)) return at("system");
 
-  return false;
+  return null;
+}
+
+/** true when [target] must never be the target of a destructive command. */
+export function isDangerousTargetPath(
+  target: string,
+  workdir?: string,
+  protectedRoots: string[] = [],
+): boolean {
+  return findDangerousTarget(target, workdir, protectedRoots) !== null;
 }
 
 /**
