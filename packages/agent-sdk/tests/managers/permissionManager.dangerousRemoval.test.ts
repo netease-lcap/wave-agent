@@ -166,3 +166,76 @@ describe("removing the session's own working directory", () => {
     expect(result.behavior).toBe("allow");
   });
 });
+
+describe("deletions the check cannot read", () => {
+  // The fail-closed half: a deletion this check cannot place is not "probably
+  // fine", it is "nobody has looked", and the answer to that is a person. That
+  // has to hold above every branch that could otherwise approve the call —
+  // allow rules, acceptEdits and bypassPermissions included.
+  const unreadable: Array<[string, string]> = [
+    ["a command line the parser rejects", "rm -rf ../.. <<EOF\nx\nEOF"],
+    ["a command line that is plain unbalanced", 'rm -rf ../.. "unclosed'],
+    ["another shell's own command line", "powershell -NoProfile -Command x"],
+    ["a script this check never opens", "bash deploy.sh"],
+    ["targets that arrive on stdin", "ls | xargs rm -rf"],
+    ["a command that only mirrors", "robocopy build ../.. /MIR"],
+  ];
+
+  it.each(unreadable)(
+    "asks about %s even with an allow rule and bypassPermissions",
+    async (_label, command) => {
+      const manager = createManager({ allowedRules: ["Bash(rm:*)"] });
+      const callback = allowOnce();
+
+      await check(manager, command, {
+        mode: "bypassPermissions",
+        callback: callback as unknown as PermissionCallback,
+      });
+
+      expect(callback).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it("says what could not be checked and that no rule covers it", async () => {
+    const manager = createManager({});
+    let shown: ToolPermissionContext | undefined;
+    const callback = vi.fn(async (context: ToolPermissionContext) => {
+      shown = context;
+      return { behavior: "allow" } as PermissionDecision;
+    });
+
+    await check(manager, "bash deploy.sh", { callback });
+
+    expect(shown?.hidePersistentOption).toBe(true);
+    expect(shown?.warning).toContain("cannot be checked");
+    expect(shown?.warning).toContain("cannot be covered");
+  });
+
+  it("denies in dontAsk mode instead of asking", async () => {
+    const manager = createManager({});
+    const callback = allowOnce();
+
+    const result = await check(manager, "ls | xargs rm -rf", {
+      mode: "dontAsk",
+      callback: callback as unknown as PermissionCallback,
+    });
+
+    expect(callback).not.toHaveBeenCalled();
+    expect(result.behavior).toBe("deny");
+  });
+
+  it.runIf(process.platform === "win32")(
+    "asks about a Windows path Git Bash may read differently",
+    async () => {
+      const manager = createManager({ allowedRules: ["Bash(rm:*)"] });
+      const callback = allowOnce();
+
+      await check(manager, "rm -rf E:\\code\\myrepo", {
+        mode: "bypassPermissions",
+        callback: callback as unknown as PermissionCallback,
+      });
+
+      expect(callback).toHaveBeenCalledTimes(1);
+    },
+  );
+});
