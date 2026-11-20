@@ -187,31 +187,8 @@ async function installGestureProbe(page: Page) {
     container.addEventListener("touchstart", () => {
       if (state.downWrite === null) state.downWrite = window.__writeSum ?? 0;
     });
-    // 临时遥测：画布偏移的时间序列（偏移一变小就记一条，带上当时的 scrollTop
-    // 与内容高度），用来定位「手势期偏移被收回」那一刻发生了什么。取证完删除。
-    const trail: Array<Record<string, number | string>> = [];
-    (window as unknown as Record<string, unknown>).__voff = trail;
-    let prevOffset = offset();
-    let prevScrollTop = container.scrollTop;
     const tick = () => {
-      const now = offset();
-      if (now !== prevOffset) {
-        const scrollTop = container.scrollTop;
-        if (now < prevOffset) {
-          trail.push({
-            offset: Math.round(now),
-            from: Math.round(prevOffset),
-            dScrollTop: Math.round(scrollTop - prevScrollTop),
-            scrollTop: Math.round(scrollTop),
-            scrollHeight: Math.round(container.scrollHeight),
-            clientHeight: Math.round(container.clientHeight),
-            touch: window.__gesture ? 1 : 0,
-          });
-        }
-        prevOffset = now;
-        prevScrollTop = scrollTop;
-      }
-      state.maxTransform = Math.max(state.maxTransform, now);
+      state.maxTransform = Math.max(state.maxTransform, offset());
       requestAnimationFrame(tick);
     };
     requestAnimationFrame(tick);
@@ -363,12 +340,6 @@ test.describe("virtual list scroll drift", () => {
     if (detail.length > 0) {
       console.log(`[gesture-detail] ${JSON.stringify(detail.slice(0, 8))}`);
     }
-    const voff = await webviewPage.evaluate(
-      () =>
-        (window as unknown as { __voff?: unknown[] }).__voff?.slice(0, 12) ??
-        [],
-    );
-    console.log(`[voff] ${JSON.stringify(voff)}`);
 
     // 手指按着期间一次 scrollTop 都没写——写它就会打断惯性、读回陈旧值，那就是
     // 真机上「滑着滑着定位突变」的成因。
