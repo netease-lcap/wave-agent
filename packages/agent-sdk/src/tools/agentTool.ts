@@ -395,6 +395,10 @@ When using the Agent tool, you must specify a subagent_type parameter to select 
                   success: true,
                   content: backgroundMsg,
                   shortResult: `Agent started in background: ${result}${outputPath ? ` → ${outputPath}` : ""}`,
+                  // 后台子 agent 与后台 shell / Workflow 一样，工具行要能把人接回
+                  // 任务面（spec task-background-execution.md「从工具行进入后台
+                  // 任务详情」）；漏了这颗 id，行尾就没有入口。
+                  backgroundTaskId: result,
                 });
                 return;
               }
