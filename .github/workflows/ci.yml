@@ -341,9 +341,10 @@ jobs:
 
   integration:
     runs-on: ubuntu-latest
-    # Post-merge integration tests (tests/integration/** + *.integration.test.ts).
-    # Not gating PRs; runs after merge to main or manually via workflow_dispatch.
-    if: github.event_name != 'pull_request'
+    # Integration tests (tests/integration/** + *.integration.test.ts). Used to
+    # be post-merge only; moved into the PR gate once the webview e2e suite was
+    # migrated to browser mode (which cut the shared build/test budget).
+    if: github.event_name != 'push'
 
     strategy:
       matrix:
@@ -427,11 +428,13 @@ jobs:
 
   webview-e2e:
     runs-on: ubuntu-latest
-    # Post-merge real-browser tests (packages/webview/e2e/*.e2e.ts). Same
-    # trigger timing as integration: not gating PRs; runs after merge to main
-    # or manually via workflow_dispatch. Unlike the other jobs, e2e test file
-    # changes must trigger this job, so webview/e2e is not excluded.
-    if: github.event_name != 'pull_request'
+    # Real-browser tests (packages/webview/e2e/*.e2e.ts) — what browser mode
+    # cannot cover: real CDP input, real reload, touch/device emulation. Used to
+    # be post-merge only; moved into the PR gate after the browser-mode
+    # migration cut the suite from 254 cases / 5 min to 155 / ~1.5 min.
+    # Unlike the other jobs, e2e test file changes must trigger this job, so
+    # webview/e2e is not excluded from the paths filter.
+    if: github.event_name != 'push'
 
     strategy:
       matrix:
@@ -503,9 +506,17 @@ jobs:
         if: steps.filter.outputs.code == 'true'
         run: pnpm install --frozen-lockfile
 
+      # Test the bundle users actually receive. `pnpm build` compiles webview in
+      # development mode (unminified, development React — ~11 MB), while every
+      # release pipeline ships `compile --production` (~4.6 MB, minified,
+      # production React). e2e has therefore been exercising an artifact no user
+      # ever gets. Keep the workspace-wide build (the desktop harness needs the
+      # other packages' dist), then recompile webview in production mode.
       - name: Build
         if: steps.filter.outputs.code == 'true'
-        run: pnpm build
+        run: |
+          pnpm build
+          pnpm -F wave-webview run compile -- --production
 
       # Same browser cache as the PR-tier `check` job (identical key, so the two
       # share entries): the e2e run downloads it once and reuses it until
@@ -527,14 +538,13 @@ jobs:
 
   real-host-e2e:
     runs-on: ubuntu-latest
-    # Post-merge real-host tests (packages/desktop/tests/integration/*.integration.test.ts):
+    # Real-host tests (packages/desktop/tests/integration/*.integration.test.ts):
     # the real DesktopHost driving a real `wave --stdio` child process, with a
-    # local OpenAI-compatible model server instead of a real LLM. NOT a PR gate —
-    # the same timing as `integration`/`webview-e2e`: it needs a full build and a
-    # few minutes of process spawning, so it runs after merge to main (or via
-    # workflow_dispatch) and only reports through the CI run/mail.
-    # No display needed: the Electron shell is stubbed, the CLI is plain Node.
-    if: github.event_name != 'pull_request'
+    # local OpenAI-compatible model server instead of a real LLM. Used to be
+    # post-merge only; moved into the PR gate together with `integration` and
+    # `webview-e2e`. No display needed: the Electron shell is stubbed, the CLI
+    # is plain Node.
+    if: github.event_name != 'push'
 
     strategy:
       matrix:
