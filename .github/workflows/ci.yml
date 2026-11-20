@@ -104,6 +104,7 @@ jobs:
       # changes the key. A stale cache is harmless: playwright installs into a
       # version-named subdirectory of this folder, so it just downloads anew.
       - name: Cache Playwright browsers
+        id: pw-cache
         if: steps.filter.outputs.code == 'true' && matrix.pkg == 'webview'
         uses: actions/cache@v6
         with:
@@ -113,12 +114,23 @@ jobs:
       # wave-webview's unit suite runs in a real Chromium (vitest browser
       # mode): jsdom does no layout, and the components under test measure
       # their own geometry. Only that matrix leg needs the browser.
-      # `--with-deps` stays on even on a cache hit: it only skips the browser
-      # download (already cached), while the apt step keeps the run honest if
-      # the runner image ever drops a shared library.
+      #
+      # `--with-deps` only on a cache miss. On a hit the binary is already in
+      # ~/.cache/ms-playwright, so all it still does is `apt-get update` plus a
+      # reinstall of libraries the runner image ships anyway — 19 of the step's
+      # 20 measured seconds. A miss (fresh runner, new Playwright version) still
+      # gets the full install: that is what makes the browser runnable at all.
+      # If an image upgrade ever drops a shared library, Chromium fails to start
+      # loudly here rather than silently inside a test, so the fast path is safe
+      # to take.
       - name: Install Playwright Chromium (webview unit tests)
         if: steps.filter.outputs.code == 'true' && matrix.pkg == 'webview'
-        run: pnpm -F wave-webview exec playwright install --with-deps chromium
+        run: |
+          if [ "${{ steps.pw-cache.outputs.cache-hit }}" = "true" ]; then
+            pnpm -F wave-webview exec playwright install chromium
+          else
+            pnpm -F wave-webview exec playwright install --with-deps chromium
+          fi
 
       - name: Unit tests (shard ${{ matrix.shard }}/2)
         if: steps.filter.outputs.code == 'true'
@@ -510,13 +522,18 @@ jobs:
       # development mode (unminified, development React — ~11 MB), while every
       # release pipeline ships `compile --production` (~4.6 MB, minified,
       # production React). e2e has therefore been exercising an artifact no user
-      # ever gets. Order matters: `wave-desktop`'s build runs `sync:webview`,
-      # which copies webview's `chat.js` into the desktop bundle — so compiling
-      # webview first means it is built exactly once AND the desktop bundle
-      # embeds the production copy (it used to embed the development one).
+      # ever gets. Order matters in two directions:
+      #  - webview depends on `wave-agent-sdk`'s build output (its bundle imports
+      #    `wave-agent-sdk/constants|types`, which resolve into the SDK's `dist`),
+      #    so the dependencies must be built before webview is compiled;
+      #  - `wave-desktop`'s build runs `sync:webview`, which copies webview's
+      #    `chat.js` into the desktop bundle — so compiling webview before the
+      #    rest means it is built exactly once AND the desktop bundle embeds the
+      #    production copy (it used to embed the development one).
       - name: Build
         if: steps.filter.outputs.code == 'true'
         run: |
+          pnpm --filter "wave-webview^..." build
           pnpm -F wave-webview run compile -- --production
           pnpm -r --filter '!wave-webview' --workspace-concurrency=1 build
 
@@ -524,15 +541,24 @@ jobs:
       # share entries): the e2e run downloads it once and reuses it until
       # @playwright/test is bumped.
       - name: Cache Playwright browsers
+        id: pw-cache
         if: steps.filter.outputs.code == 'true'
         uses: actions/cache@v6
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('packages/webview/package.json') }}
 
+      # Same split as the `check` job: `--with-deps` only when the cache missed
+      # (it then has to download the browser AND make it runnable). On a hit the
+      # apt step is dead weight — 19 of this step's 20 measured seconds.
       - name: Install Playwright Chromium
         if: steps.filter.outputs.code == 'true'
-        run: pnpm -F wave-webview exec playwright install --with-deps chromium
+        run: |
+          if [ "${{ steps.pw-cache.outputs.cache-hit }}" = "true" ]; then
+            pnpm -F wave-webview exec playwright install chromium
+          else
+            pnpm -F wave-webview exec playwright install --with-deps chromium
+          fi
 
       - name: Real-browser e2e tests
         if: steps.filter.outputs.code == 'true'
