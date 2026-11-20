@@ -157,10 +157,12 @@ describe("InputBox 参数提示", () => {
     const hinted = AVAILABLE_COMMANDS.filter(
       (command) => command.argumentHint,
     ).map((command) => command.name);
+    // `/export <filename>` 与 CC 一样直接落盘、跳过选择浮层，所以它有提示。
     expect(hinted.sort()).toEqual([
       "add-dir",
       "btw",
       "compact",
+      "export",
       "plan",
       "rename",
       "subtask",
