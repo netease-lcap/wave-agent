@@ -51,10 +51,6 @@
     "build": "rimraf dist && tsrs -p tsconfig.build.json",
     "type-check": "tsrs --noEmit",
     "test": "vitest run",
-    "test:coverage": "vitest run --coverage",
-    "test:unit": "vitest run --exclude 'tests/integration/**' --exclude '**/*.integration.test.ts'",
-    "test:unit:coverage": "vitest run --coverage --exclude 'tests/integration/**' --exclude '**/*.integration.test.ts'",
-    "test:integration": "vitest run tests/integration .integration.test",
     "lint": "oxlint --type-aware",
     "format": "prettier --write .",
     "prepublishOnly": "pnpm run build"
@@ -92,7 +88,6 @@
   "devDependencies": {
     "@types/semver": "^7.7.1",
     "@types/turndown": "^5.0.6",
-    "@vitest/coverage-v8": "catalog:",
     "rimraf": "^6.1.2",
     "vitest": "catalog:"
   },

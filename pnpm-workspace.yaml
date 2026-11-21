@@ -40,7 +40,6 @@ minimumReleaseAgeExclude:
 # 也优先落到 catalog 版本，避免新包又写一份独立范围把版本漂开。
 catalog:
   vitest: ^5.1.0
-  "@vitest/coverage-v8": ^5.1.0
   tsx: ^4.20.4
   # type-check 与 build 的执行者是 tsrs（TypeScript 的 Rust 移植），不是 tsc：
   # 7.0.2 的原生编译器在多线程模式下 program 的输入集合不确定，同一份代码连跑会

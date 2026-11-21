@@ -22,9 +22,5 @@ export default defineConfig({
         inline: ["wave-agent-sdk", "wave-webview-fixtures"],
       },
     },
-    coverage: {
-      provider: "v8",
-      include: ["src/**"],
-    },
   },
 });

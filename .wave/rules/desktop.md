@@ -10,4 +10,4 @@ paths:
 - **跑 dev**：`cd packages/desktop && pnpm run run`（编译后启 Electron，用独立 `wave-desktop-dev` userData，可与已安装版共存）。
 - **打包**：`pnpm run dist`（electron-builder → `release/`）。**别绕过 `scripts/afterPack.js`** —— 改 bundle 会破坏 ad-hoc 链接签名，不复签 LaunchServices 会静默拒绝启动。
 - **装进已安装应用**：`pnpm run desktop:install`（根目录跑；全量 `pnpm build` → `electron-builder --dir` → rsync 覆盖 `/Applications/CodeWave IDE.app/`，必须全量因为 `wave-code` 走 npm link）。**不要退出/杀/重启用户正在跑的 CodeWave IDE.app** —— macOS 上 rsync 覆盖运行中的 `.app` 是安全的，重启手工来。
-- **测试**：`pnpm -F wave-desktop test`；real-host 套件 `pnpm -F wave-desktop run test:realhost`（真 `DesktopHost` ↔ 真 `wave --stdio` 子进程）。
+- **测试**：`pnpm -F wave-desktop test`（一个命令跑两个 vitest project：mock 掉的单测层 + 真 host 层）。只要真 host 那 5 个文件：`pnpm -F wave-desktop run test:realhost`（真 `DesktopHost` ↔ 真 `wave --stdio` 子进程，需先 `pnpm build`）。

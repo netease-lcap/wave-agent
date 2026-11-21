@@ -15,7 +15,8 @@ WAVE_CLI_PATH=/path/to/repo/packages/code/bin/wave-code.js pnpm run run   # 用�
 
 ```sh
 pnpm build                                # 必须先全量构建：套件驱动 bin/wave-code.js → dist/bundle/wave.mjs
-pnpm -F wave-desktop run test:realhost    # 3 个文件，120s/hook，fileParallelism: false
+pnpm -F wave-desktop run test:realhost    # 5 个文件，120s/hook，fileParallelism: false
+pnpm -F wave-desktop test                 # 单测 + realhost 两层一起跑（vitest projects）
 ```
 
 harness（`packages/desktop/tests/integration/realHostHarness.ts`）替你把环境都做好了：每次用例前重建两个工作区、`HOME`/`USERPROFILE` 指向一次性目录、`WAVE_CLI_PATH` 指向工作区 CLI、`DISABLE_LOGGER_IO=true`，并起一个 **OpenAI 兼容的假 `/chat/completions` SSE server**，用 `WAVE_API_KEY` / `WAVE_BASE_URL` / `WAVE_MODEL` 把 CLI 指过去。

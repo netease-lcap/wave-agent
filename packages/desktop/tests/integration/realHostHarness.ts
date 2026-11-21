@@ -3,7 +3,7 @@
  *
  * Boots the *real* `DesktopHost` (real fs, real JSON-RPC, real `wave --stdio`
  * child process) and captures the host→webview message stream. Only the
- * Electron shell is stubbed — see the vitest integration config.
+ * Electron shell is stubbed — see the `realhost` project in vitest.config.ts.
  *
  * Also provides a throwaway local model server so a full turn
  * (sendMessage → CLI → model HTTP → streamed reply → webview message) can run
@@ -21,7 +21,8 @@ import { DesktopHost } from "../../src/main/desktopHost";
 import { LOCAL_HOST } from "../../src/main/sshHosts";
 
 /**
- * Scratch root shared with `vitest.integration.config.ts`. The config derives
+ * Scratch root shared with the `realhost` project in `vitest.config.ts`. The
+ * config derives
  * it from the long-form temp dir + the runner pid (so concurrent runs in
  * separate worktrees cannot wipe each other's HOME) and passes it down as
  * `WAVE_REALHOST_ROOT`; the worker's own pid differs, hence the env handoff.

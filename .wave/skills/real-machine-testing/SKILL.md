@@ -13,17 +13,17 @@ allowed-tools:
 
 ## 选层与路由
 
-| 要验的东西                               | 命令                                                | 真到什么程度                                                              | 前置                       | 细读                         |
-| ---------------------------------------- | --------------------------------------------------- | ------------------------------------------------------------------------- | -------------------------- | ---------------------------- |
-| 交互式 CLI / TUI / 权限弹窗 / skill 菜单 | 自起 tmux 会话（Windows 用 node-pty 起真 ConPTY）   | 真 TTY + 真模型                                                           | SDK 已 build               | `references/cli.md`          |
-| 非交互 CLI 一轮                          | `pnpm run wave -p "…"`                              | 真 CLI，无 TTY                                                            | —                          | `references/cli.md`          |
-| 宿主与 CLI 的协议链路                    | `pnpm run wave --stdio` / daemon 子命令             | 真 JSON-RPC                                                               | —                          | `references/cli.md`          |
-| SDK 自身逻辑（工具/hook/子代理/记忆）    | `cd packages/agent-sdk && pnpm exec tsx examples/…` | 真 SDK 源码 + 真模型（不读 dist）                                         | type-check 过              | `references/sdk.md`          |
-| 桌面端主进程 ↔ CLI（真会话/真落盘）     | `pnpm -F wave-desktop run test:realhost`            | 真 DesktopHost + 真 `wave --stdio`，Electron 外壳被 stub、模型走假 server | 先 `pnpm build`            | `references/desktop.md`      |
-| 桌面端 UI（Pane/设置/看板/预览）         | `pnpm -F wave-webview run test:e2e`                 | Playwright + 真 Chromium，宿主消息 mock                                   | webview 先 build           | `references/webview.md`      |
-| 远控 Web 页（手机档/PC 档）              | 同上，看 `e2e/remote-page-*.e2e.ts`                 | 真浏览器 + 视口/触控模拟                                                  | 同上                       | `references/webview.md`      |
-| VS Code 扩展（真编辑器）                 | `pnpm -F wave-vscode run test:e2e:completion`       | 真 VS Code + 真 CLI + 真模型                                              | 本机有 VS Code、有图形会话 | `references/plugin-hosts.md` |
-| JetBrains 插件（真 IDE）                 | `pnpm jb:test:ui`                                   | 真 IDE（Starter 下载）+ 真插件 + 真模型                                   | 有图形会话、模型配置       | `references/plugin-hosts.md` |
+| 要验的东西                               | 命令                                                    | 真到什么程度                                                              | 前置                       | 细读                         |
+| ---------------------------------------- | ------------------------------------------------------- | ------------------------------------------------------------------------- | -------------------------- | ---------------------------- |
+| 交互式 CLI / TUI / 权限弹窗 / skill 菜单 | 自起 tmux 会话（Windows 用 node-pty 起真 ConPTY）       | 真 TTY + 真模型                                                           | SDK 已 build               | `references/cli.md`          |
+| 非交互 CLI 一轮                          | `pnpm run wave -p "…"`                                  | 真 CLI，无 TTY                                                            | —                          | `references/cli.md`          |
+| 宿主与 CLI 的协议链路                    | `pnpm run wave --stdio` / daemon 子命令                 | 真 JSON-RPC                                                               | —                          | `references/cli.md`          |
+| SDK 自身逻辑（工具/hook/子代理/记忆）    | `cd packages/agent-sdk && pnpm exec tsx examples/…`     | 真 SDK 源码 + 真模型（不读 dist）                                         | type-check 过              | `references/sdk.md`          |
+| 桌面端主进程 ↔ CLI（真会话/真落盘）     | `pnpm -F wave-desktop run test:realhost`（`test` 也跑） | 真 DesktopHost + 真 `wave --stdio`，Electron 外壳被 stub、模型走假 server | 先 `pnpm build`            | `references/desktop.md`      |
+| 桌面端 UI（Pane/设置/看板/预览）         | `pnpm -F wave-webview run test:e2e`                     | Playwright + 真 Chromium，宿主消息 mock                                   | webview 先 build           | `references/webview.md`      |
+| 远控 Web 页（手机档/PC 档）              | 同上，看 `e2e/remote-page-*.e2e.ts`                     | 真浏览器 + 视口/触控模拟                                                  | 同上                       | `references/webview.md`      |
+| VS Code 扩展（真编辑器）                 | `pnpm -F wave-vscode run test:e2e:completion`           | 真 VS Code + 真 CLI + 真模型                                              | 本机有 VS Code、有图形会话 | `references/plugin-hosts.md` |
+| JetBrains 插件（真 IDE）                 | `pnpm jb:test:ui`                                       | 真 IDE（Starter 下载）+ 真插件 + 真模型                                   | 有图形会话、模型配置       | `references/plugin-hosts.md` |
 
 表里各层的「真模型」都指一个**真服务端**（测试环境 / 线上；登录态与 serverUrl 绑定，见 `references/environment.md`），只有 realhost 行是假模型 server。
 

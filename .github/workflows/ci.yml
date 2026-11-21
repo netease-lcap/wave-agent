@@ -14,9 +14,11 @@ concurrency:
 jobs:
   check:
     runs-on: ubuntu-latest
-    # PR gate: unit tests for the three heaviest packages (agent-sdk, code,
-    # webview), each sharded in two halves via vitest --shard and run on
-    # separate runners in parallel. Integration tests run post-merge (push main).
+    # PR gate: every test of the three heaviest packages (agent-sdk, code,
+    # webview) — one `test` per package, no unit/integration split — each
+    # sharded in two halves via vitest --shard and run on separate runners in
+    # parallel. agent-sdk's `test` includes `tests/integration/**` and its
+    # `*.integration.test.ts`, which used to be a separate `integration` job.
     if: github.event_name != 'push'
 
     strategy:
@@ -123,19 +125,27 @@ jobs:
       # virtual-scroll geometry assertions in `e2e/virtual-scroll-drift` fail
       # deterministically — a fake red that no real user can hit. The 19s is the
       # price of the environment, not waste.
-      - name: Install Playwright Chromium (webview unit tests)
+      - name: Install Playwright Chromium (webview tests)
         if: steps.filter.outputs.code == 'true' && matrix.pkg == 'webview'
         run: pnpm -F wave-webview exec playwright install --with-deps chromium
 
-      - name: Unit tests (shard ${{ matrix.shard }}/2)
+      - name: Tests (shard ${{ matrix.shard }}/2)
         if: steps.filter.outputs.code == 'true'
-        run: pnpm -F wave-${{ matrix.pkg }} test:unit --shard=${{ matrix.shard }}/2
+        run: pnpm -F wave-${{ matrix.pkg }} test --shard=${{ matrix.shard }}/2
 
   check-extras:
     runs-on: ubuntu-latest
     # PR gate, runs in parallel with check: type-check + lint (platform
     # agnostic, run once for all packages here) and the two small packages'
-    # unit tests, which are fast enough to stay unsharded.
+    # tests, which are fast enough to stay unsharded.
+    #
+    # `wave-desktop test` runs BOTH of its vitest projects: the mocked
+    # unit layer and the real-host layer (real DesktopHost driving a real
+    # `wave --stdio` child process, local model server instead of an LLM, no
+    # display — the Electron shell is stubbed). The real-host suite used to be
+    # its own `real-host-e2e` job; it moved here because both layers share the
+    # same `pnpm build` and the machine, so one job covers them without adding
+    # a runner to the critical path.
     if: github.event_name != 'push'
 
     steps:
@@ -210,7 +220,7 @@ jobs:
         if: steps.filter.outputs.code == 'true'
         run: pnpm build
 
-      - name: Type-check, lint, small package unit tests
+      - name: Type-check, lint, small package tests
         if: steps.filter.outputs.code == 'true'
         run: |
           # 必须串行：多个 tsrs 进程同时构建 program 时，模块解析会偶发漏掉包
@@ -218,7 +228,7 @@ jobs:
           # 这里不要再加 --parallel。
           pnpm run type-check
           pnpm -r --parallel lint
-          pnpm -F wave-desktop -F wave-vscode -F wave-webview-fixtures test:unit
+          pnpm -F wave-desktop -F wave-vscode -F wave-webview-fixtures test
 
   webview-command-audit:
     runs-on: ubuntu-latest
@@ -346,93 +356,6 @@ jobs:
         if: steps.filter.outputs.sdk == 'true'
         run: node scripts/check-sdk-surface.mjs
 
-  integration:
-    runs-on: ubuntu-latest
-    # Integration tests (tests/integration/** + *.integration.test.ts). Used to
-    # be post-merge only; moved into the PR gate once the webview e2e suite was
-    # migrated to browser mode (which cut the shared build/test budget).
-    if: github.event_name != 'push'
-
-    strategy:
-      matrix:
-        node-version: [22]
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v6
-
-      - name: Detect code changes
-        uses: dorny/paths-filter@v4
-        id: filter
-        with:
-          filters: |
-            code:
-              - '!**/*.md'
-              - '!**/*.txt'
-              - '!docs/**'
-              - '!scripts/**'
-              - '!packages/webview/e2e/**'
-              - '!packages/webview/demo/**'
-              - '!LICENSE'
-
-      # Cache pnpm/action-setup's install dir so concurrent jobs skip
-      # re-downloading the action tarball from codeload (429 rate limits,
-      # pnpm/action-setup#177). On hit we skip the action and prepend its bin
-      # dirs to PATH ourselves. The key pins the pnpm version — keep it in
-      # sync with the `version` input below (package.json "packageManager").
-      - name: Cache pnpm install
-        if: steps.filter.outputs.code == 'true'
-        id: pnpm-cache
-        uses: actions/cache@v6
-        with:
-          path: ~/.cache/setup-pnpm
-          key: pnpm-setup-v5-${{ runner.os }}-${{ runner.arch }}-12.18.0
-
-      - name: Add cached pnpm to PATH
-        if: steps.filter.outputs.code == 'true' && steps.pnpm-cache.outputs.cache-hit == 'true'
-        shell: bash
-        run: |
-          # Mirror pnpm/action-setup's env: node_modules/.bin/bin holds the
-          # self-updated target version (higher precedence), node_modules/.bin
-          # the bootstrap symlink. GITHUB_PATH is used verbatim, so write
-          # native Windows paths on Windows runners.
-          PNPM_HOME="${USERPROFILE:-$HOME}/.cache/setup-pnpm/node_modules/.bin"
-          PNPM_BIN="$PNPM_HOME/bin"
-          if [ "$RUNNER_OS" = "Windows" ]; then
-            PNPM_HOME="${PNPM_HOME//\//\\}"
-            PNPM_BIN="${PNPM_BIN//\//\\}"
-          fi
-          echo "$PNPM_HOME" >> "$GITHUB_PATH"
-          echo "$PNPM_BIN" >> "$GITHUB_PATH"
-          echo "PNPM_HOME=$PNPM_HOME" >> "$GITHUB_ENV"
-
-      - name: Setup pnpm (cache miss)
-        if: steps.filter.outputs.code == 'true' && steps.pnpm-cache.outputs.cache-hit != 'true'
-        uses: pnpm/action-setup@v5
-        with:
-          version: 12.18.0
-          dest: ~/.cache/setup-pnpm
-          run_install: false
-
-      - name: Setup Node.js
-        if: steps.filter.outputs.code == 'true'
-        uses: actions/setup-node@v6
-        with:
-          node-version: ${{ matrix.node-version }}
-          cache: "pnpm"
-
-      - name: Install dependencies
-        if: steps.filter.outputs.code == 'true'
-        run: pnpm install --frozen-lockfile
-
-      - name: Build
-        if: steps.filter.outputs.code == 'true'
-        run: pnpm build
-
-      - name: Integration tests
-        if: steps.filter.outputs.code == 'true'
-        run: pnpm run test:integration
-
   webview-e2e:
     runs-on: ubuntu-latest
     # Real-browser tests (packages/webview/e2e/*.e2e.ts) — what browser mode
@@ -553,93 +476,3 @@ jobs:
       - name: Real-browser e2e tests
         if: steps.filter.outputs.code == 'true'
         run: pnpm -F wave-webview run test:e2e
-
-  real-host-e2e:
-    runs-on: ubuntu-latest
-    # Real-host tests (packages/desktop/tests/integration/*.integration.test.ts):
-    # the real DesktopHost driving a real `wave --stdio` child process, with a
-    # local OpenAI-compatible model server instead of a real LLM. Used to be
-    # post-merge only; moved into the PR gate together with `integration` and
-    # `webview-e2e`. No display needed: the Electron shell is stubbed, the CLI
-    # is plain Node.
-    if: github.event_name != 'push'
-
-    strategy:
-      matrix:
-        node-version: [22]
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v6
-
-      - name: Detect code changes
-        uses: dorny/paths-filter@v4
-        id: filter
-        with:
-          filters: |
-            code:
-              - '!**/*.md'
-              - '!**/*.txt'
-              - '!docs/**'
-              - '!scripts/**'
-              - '!LICENSE'
-
-      # Cache pnpm/action-setup's install dir so concurrent jobs skip
-      # re-downloading the action tarball from codeload (429 rate limits,
-      # pnpm/action-setup#177). On hit we skip the action and prepend its bin
-      # dirs to PATH ourselves. The key pins the pnpm version — keep it in
-      # sync with the `version` input below (package.json "packageManager").
-      - name: Cache pnpm install
-        if: steps.filter.outputs.code == 'true'
-        id: pnpm-cache
-        uses: actions/cache@v6
-        with:
-          path: ~/.cache/setup-pnpm
-          key: pnpm-setup-v5-${{ runner.os }}-${{ runner.arch }}-12.18.0
-
-      - name: Add cached pnpm to PATH
-        if: steps.filter.outputs.code == 'true' && steps.pnpm-cache.outputs.cache-hit == 'true'
-        shell: bash
-        run: |
-          # Mirror pnpm/action-setup's env: node_modules/.bin/bin holds the
-          # self-updated target version (higher precedence), node_modules/.bin
-          # the bootstrap symlink. GITHUB_PATH is used verbatim, so write
-          # native Windows paths on Windows runners.
-          PNPM_HOME="${USERPROFILE:-$HOME}/.cache/setup-pnpm/node_modules/.bin"
-          PNPM_BIN="$PNPM_HOME/bin"
-          if [ "$RUNNER_OS" = "Windows" ]; then
-            PNPM_HOME="${PNPM_HOME//\//\\}"
-            PNPM_BIN="${PNPM_BIN//\//\\}"
-          fi
-          echo "$PNPM_HOME" >> "$GITHUB_PATH"
-          echo "$PNPM_BIN" >> "$GITHUB_PATH"
-          echo "PNPM_HOME=$PNPM_HOME" >> "$GITHUB_ENV"
-
-      - name: Setup pnpm (cache miss)
-        if: steps.filter.outputs.code == 'true' && steps.pnpm-cache.outputs.cache-hit != 'true'
-        uses: pnpm/action-setup@v5
-        with:
-          version: 12.18.0
-          dest: ~/.cache/setup-pnpm
-          run_install: false
-
-      - name: Setup Node.js
-        if: steps.filter.outputs.code == 'true'
-        uses: actions/setup-node@v6
-        with:
-          node-version: ${{ matrix.node-version }}
-          cache: "pnpm"
-
-      - name: Install dependencies
-        if: steps.filter.outputs.code == 'true'
-        run: pnpm install --frozen-lockfile
-
-      # The suite drives the workspace CLI (packages/code/bin/wave-code.js →
-      # dist/bundle/wave.mjs) and imports the built SDK, so a full build is required.
-      - name: Build
-        if: steps.filter.outputs.code == 'true'
-        run: pnpm build
-
-      - name: Real-host integration tests
-        if: steps.filter.outputs.code == 'true'
-        run: pnpm -F wave-desktop run test:realhost

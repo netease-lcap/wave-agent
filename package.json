@@ -13,10 +13,6 @@
     "build": "pnpm -r --workspace-concurrency=1 build",
     "type-check": "pnpm -r --workspace-concurrency=1 type-check",
     "test": "pnpm -r test",
-    "test:coverage": "pnpm -r test:coverage",
-    "test:unit": "pnpm -r test:unit",
-    "test:unit:coverage": "pnpm -r test:unit:coverage",
-    "test:integration": "pnpm -r --parallel test:integration",
     "lint": "pnpm -r lint",
     "format": "prettier --write .",
     "print-bin": "echo $(pwd)/packages/code/bin/wave-code.js",
@@ -46,7 +42,6 @@
   },
   "devDependencies": {
     "@types/node": "catalog:node22",
-    "@vitest/coverage-v8": "catalog:",
     "husky": "^9.1.7",
     "lint-staged": "^16.1.5",
     "medium-zoom": "^1.1.0",

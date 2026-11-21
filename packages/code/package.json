@@ -32,9 +32,6 @@
     "build": "rimraf dist && node scripts/bundle.mjs",
     "type-check": "tsrs --noEmit",
     "test": "vitest run",
-    "test:coverage": "vitest run --coverage",
-    "test:unit": "vitest run",
-    "test:unit:coverage": "vitest run --coverage",
     "lint": "oxlint --type-aware",
     "format": "prettier --write .",
     "prepublishOnly": "pnpm run build"
@@ -48,7 +45,6 @@
     "@types/react": "^19.3.0",
     "@types/semver": "^7.7.1",
     "@types/yargs": "^17.0.0",
-    "@vitest/coverage-v8": "catalog:",
     "chalk": "^5.6.2",
     "diff": "^8.0.2",
     "esbuild": "^0.28.1",
