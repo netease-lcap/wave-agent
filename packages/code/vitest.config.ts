@@ -9,12 +9,6 @@ export default defineConfig(() => {
       setupFiles: ["./tests/setup.ts"],
       include: ["tests/**/*.{test,spec}.{js,mjs,cjs,ts,mts,cts,jsx,tsx}"],
       exclude: ["node_modules", "dist"],
-      coverage: {
-        provider: "v8" as const,
-        reporter: ["text", "json", "html"],
-        include: ["src/**/*.{js,mjs,cjs,ts,mts,cts,jsx,tsx}"],
-        exclude: ["node_modules", "dist", "tests", "examples"],
-      },
       // Test environment variables: disable logger I/O operations by default to improve performance
       onConsoleLog(log: string, type: "stdout" | "stderr"): boolean | void {
         if (type === "stderr") {

@@ -6,7 +6,7 @@ paths:
 - `packages/*/tests` directories contain test files that are easy to mock, can run locally and on CI/CD
   - Testing framework is vitest
   - Run test use `cd packages/xxx && pnpm test test_file`
-  - Run only the files you touched; a package-wide `test:unit` or whole-repo run needs the user to ask for it
+  - Run only the files you touched; a package-wide `test` or whole-repo run needs the user to ask for it
   - Use HookTester to test hooks
   - Ink components render through the in-repo harness `packages/code/tests/helpers/inkHarness.ts` (`render` / `cleanup`, a drop-in for the retired `ink-testing-library`); after a key press, a `rerender` or a synchronous callback use `await settle()`, which flushes until the output stops changing — no polling and no `sleep`
   - Reserve `vi.waitFor` for changes an **async** source still owes you (a promise, a timer, a socket), not for frames. It polls every 50ms by default and that interval is hard-coded in vitest, so `packages/code` and `packages/desktop` wrap it to 5ms in their `tests/setup.ts` (~35% / ~52% faster suites, 2026-10-23). Don't lower it further: the remaining cost is `sleep()` and rendering, not polling
@@ -15,7 +15,7 @@ paths:
     - `vi.mocked(fs.stat).mockResolvedValue({ isFile: () => true } as unknown as Awaited<ReturnType<typeof fs.stat>>);`
   - When using `mockImplementation`, function arguments don't require explicit type annotations as TypeScript can infer them from context
   - MUST not write `mkdtemp` in test, use mocking instead
-  - A green suite must also be quiet: `pnpm -F <pkg> test:unit` output carries no `stderr | <test>` block, no `Warning:`, no `DeprecationWarning`, no `[Wave] …` log — they bury the next real failure
+  - A green suite must also be quiet: `pnpm -F <pkg> test` output carries no `stderr | <test>` block, no `Warning:`, no `DeprecationWarning`, no `[Wave] …` log — they bury the next real failure
     - Spy the stream the code reports to (`console.error`, `process.stdout.write`) and `mockRestore()` it; when the diagnostic is part of the contract, assert on it instead of only muting it
     - Fallback branches kick logging side effects (no image codec → `ensureRuntimeDeps()`, no ripgrep → install): `vi.mock` that module in the test walking the branch
     - Mocks return what the caller indexes: `mockReturnValue([])` for a fixed-length `string[]` path list feeds `undefined` to `fs.existsSync` (`DEP0187`)

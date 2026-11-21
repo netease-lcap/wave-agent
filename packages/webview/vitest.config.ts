@@ -72,11 +72,6 @@ const BROWSER_MAX_WORKERS = Math.min(
 export default defineConfig({
   test: {
     globals: true,
-    coverage: {
-      provider: "v8",
-      include: ["src/**"],
-      exclude: ["src/index.tsx", "src/**/*.css"],
-    },
     projects: [
       {
         test: {

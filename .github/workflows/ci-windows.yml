@@ -23,9 +23,9 @@ name: CI (Windows)
 # Paying one extra Windows run on a doc-only PR is much cheaper than a PR that is
 # stuck shut. (The `push` trigger keeps its filter; it gates nothing.)
 #
-# This is the only job that runs the desktop package on Windows: its unit suite
-# (Linux runs the same suite in `check-extras`) plus the real-host suite (Linux
-# runs that one in `real-host-e2e`). The real-host suite drives a real
+# This is the only job that runs the desktop package on Windows: its mocked
+# unit layer plus its real-host layer (Linux runs both in `check-extras`, via
+# `wave-desktop test`). The real-host layer drives a real
 # DesktopHost spawning a real `wave --stdio` child process — exactly the
 # spawning/fs/.cmd surface that differs on Windows, so the two platforms are
 # complementary rather than duplicates.
@@ -105,14 +105,11 @@ jobs:
       - name: Build
         run: pnpm build
 
-      # Run tests WITHOUT coverage, type-check, or lint on Windows.
-      # - Coverage: the v8 provider crashes silently on Windows (process exits
-      #   right after "Coverage enabled with v8" with no output); already
-      #   enforced by the blocking Linux CI.
-      # - Type-check & lint: platform-agnostic (identical result on Linux), and
-      #   already enforced by the blocking Linux CI. Skipping them here saves
-      #   ~40s of redundant work — the only purpose of this Windows workflow is
-      #   to verify the tests themselves pass cross-platform.
+      # Run tests WITHOUT type-check or lint on Windows.
+      # Type-check & lint are platform-agnostic (identical result on Linux) and
+      # already enforced by the blocking Linux CI. Skipping them here saves ~40s
+      # of redundant work — the only purpose of this Windows workflow is to
+      # verify the tests themselves pass cross-platform.
       #
       # Tests are invoked per-package via `pnpm --filter <pkg> exec vitest run`
       # rather than `pnpm -r test`, so the list below selects exactly the
@@ -133,18 +130,17 @@ jobs:
       # .cmd/.exe shims, which is exactly the surface that differs on Windows.
       # (check-extras runs this same suite on Linux; here it gets the Windows
       # half of the matrix.)
+      #
+      # `vitest run` in wave-desktop covers BOTH of its projects: the mocked
+      # unit layer and the real-host layer — real DesktopHost + real
+      # `wave --stdio` child process + a throwaway local model server (no LLM,
+      # no display: the Electron shell is stubbed by the suite). The real-host
+      # layer needs the full build above, since it drives the workspace CLI from
+      # packages/code/dist. It used to be a second step here; one invocation of
+      # `vitest run` replaces it without changing what runs.
       - name: Tests
         run: |
           pnpm --filter wave-agent-sdk exec vitest run &&
           pnpm --filter wave-code exec vitest run &&
           pnpm --filter wave-vscode exec vitest run &&
           pnpm --filter wave-desktop exec vitest run
-
-      # Real DesktopHost + real `wave --stdio` child process + a throwaway local
-      # model server (no LLM, no display: the Electron shell is stubbed by the
-      # suite). Needs the full build above, since the suite drives the workspace
-      # CLI from packages/code/dist. Linux runs the same suite in ci.yml
-      # (real-host-e2e) — the two are complementary, not duplicates: this job is
-      # where process spawning, path handling and fs semantics differ.
-      - name: Real-host integration tests
-        run: pnpm -F wave-desktop run test:realhost

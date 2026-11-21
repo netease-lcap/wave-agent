@@ -9,8 +9,7 @@
   "scripts": {
     "format": "prettier --write .",
     "type-check": "tsrs --noEmit",
-    "test": "vitest run",
-    "test:unit": "vitest run"
+    "test": "vitest run"
   },
   "devDependencies": {
     "vitest": "catalog:",

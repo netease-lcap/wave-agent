@@ -9,12 +9,6 @@ export default defineConfig(() => {
       environment: "node",
       include: ["tests/**/*.{test,spec}.{js,mjs,cjs,ts,mts,cts,jsx,tsx}"],
       exclude: ["node_modules", "dist"],
-      coverage: {
-        provider: "v8" as const,
-        reporter: ["text", "json", "html"],
-        include: ["src/**/*.{js,mjs,cjs,ts,mts,cts,jsx,tsx}"],
-        exclude: ["node_modules", "dist", "tests", "examples"],
-      },
       env: {
         WAVE_API_KEY: "test-token",
         WAVE_BASE_URL: "http://localhost:8080",

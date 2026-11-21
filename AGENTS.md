@@ -20,7 +20,7 @@ pnpm monorepo（Node >= 22，pnpm 12），做 AI 编码工具：
 
 依赖方向：`code` → `agent-sdk`；`vscode` → `agent-sdk` + `webview`；`jetbrains` / `desktop` 吃 webview 产物；`desktop` 另外 spawn `wave --stdio`（来自 `code`）。**改完 `agent-sdk` 或 `webview` 必须重建**（`pnpm -F wave-agent-sdk build` / `-F wave-webview build`）—— 依赖方读的是产物。
 
-工具链版本统一写在 `pnpm-workspace.yaml` 的 `catalog:`（vitest / @vitest/coverage-v8 / tsx / tsrs），各包只写 `"catalog:"`，别在单个 package.json 写死；`catalogMode: prefer` 会让 `pnpm add` 自动沿用 catalog 版本。`@types/node` 分 `catalog:node22`（根，对齐 `engines.node`）与 `catalog:node25`（desktop / vscode / webview，跟随各自运行时），合并会丢端侧新 API 类型。
+工具链版本统一写在 `pnpm-workspace.yaml` 的 `catalog:`（vitest / tsx / tsrs），各包只写 `"catalog:"`，别在单个 package.json 写死；`catalogMode: prefer` 会让 `pnpm add` 自动沿用 catalog 版本。`@types/node` 分 `catalog:node22`（根，对齐 `engines.node`）与 `catalog:node25`（desktop / vscode / webview，跟随各自运行时），合并会丢端侧新 API 类型。
 
 ## 🔧 Agent SDK Internals (`packages/agent-sdk`)
 
@@ -43,8 +43,8 @@ SDK 就是产品：CLI、VS Code、JetBrains、桌面端驱动同一个 `Agent`�
 
 - **构建 / 类型检查**：`pnpm build`（全量，串行）、`pnpm -F <pkg> build`、`pnpm run type-check`。
 - **本地跑 CLI**：`pnpm run wave`（tsx 直跑 `packages/code` 源码，不用构建；`LOG_LEVEL=DEBUG` 看调试日志）。
-- **测试**：`pnpm -F <pkg> test <path/to/test>` 跑单文件。**默认只跑改动相关的文件**；包级 `test:unit` 只用于横切改动（共享 helper/config/多文件）并说明理由，全仓跑要用户点名。`agent-sdk` 的 `pnpm test` 含 `tests/integration/` + `*.integration.test.ts`（真 git/spawn/hook/文件系统，无真 LLM，AI 路径 mock），要跳过用 `test:unit`。
-- **测试分层**（PR 门禁只跑 unit）：unit `*.test.ts(x)` → `test:unit`；integration `tests/integration/**`（`agent-sdk`）→ `pnpm run test:integration`；webview e2e `packages/webview/e2e/*.e2e.ts`（真 Chromium）→ `-F wave-webview run test:e2e`；real-host `packages/desktop/tests/integration/**` → `-F wave-desktop run test:realhost`；real-IDE `packages/vscode/tests-e2e/`、`packages/jetbrains/src/integrationTest/` → `test:e2e:completion` / `pnpm jb:test:ui`（真 IDE + 真模型，跑不起来先读 `.wave/skills/real-machine-testing`）。
+- **测试**：`pnpm -F <pkg> test <path/to/test>` 跑单文件。**默认只跑改动相关的文件**；包级 `test` 只用于横切改动（共享 helper/config/多文件）并说明理由，全仓跑要用户点名。一个包只有一个 `test`：`agent-sdk` 的它已含 `tests/integration/` + `*.integration.test.ts`（真 git/spawn/hook/文件系统，无真 LLM，AI 路径 mock），没有按层切的脚本。
+- **测试分层**（PR 门禁跑每包的 `test`）：`*.test.ts(x)` 与 `tests/integration/**`、`*.integration.test.ts` 同属 `test`，不再有 unit/integration 的脚本二分；webview e2e `packages/webview/e2e/*.e2e.ts`（真 Chromium）→ `-F wave-webview run test:e2e`；real-host `packages/desktop/tests/integration/**` → `-F wave-desktop run test:realhost`（已并入 `-F wave-desktop test` 的 `realhost` project，一个命令跑两层）；real-IDE `packages/vscode/tests-e2e/`、`packages/jetbrains/src/integrationTest/` → `test:e2e:completion` / `pnpm jb:test:ui`（真 IDE + 真模型，跑不起来先读 `.wave/skills/real-machine-testing`）。
 - **`packages/webview/demo/*.demo.ts` 不是测试**：它把 UI 摆到位截 docs 截图（`test:demo`），行为断言一律写进 `e2e`。CI 只在文档部署（`pages.yml`）里跑 demo，PR 不跑。
 - **单测绿只是"仓库内"绿**：`app.asar` 只带桌面端自己的生产依赖，其余必须已内联进 bundle，所以全绿也可能发出一个启动即死的宿主（1.2.5 就是这样）；打包产物目前没有断言，只靠 `check:sdk-surface` 的源码级检查兜底。
 - **Lint 是 oxlint**（仓库没有 eslint，`pnpm exec eslint` → `Command not found`）：`pnpm lint` / `pnpm -F <pkg> lint`；格式化 `pnpm exec prettier --write .`。pre-commit（`.husky/pre-commit`）：`pnpm run type-check` → lint-staged（staged 的 code/json/md 走 prettier）→ staged 含 `docs/` 时再跑 `scripts/check-docs-links.mjs` + `check-sidebar-anchors.mjs`。hook 由 `pnpm install`（`prepare` → husky）安装。

@@ -22,9 +22,6 @@
     "type-check": "tsrs --noEmit && tsrs -p tests --noEmit && tsrs -p e2e --noEmit && tsrs -p demo --noEmit",
     "lint": "oxlint --type-aware",
     "test": "vitest run",
-    "test:coverage": "vitest run --coverage",
-    "test:unit": "vitest run",
-    "test:unit:coverage": "vitest run --coverage",
     "pretest:demo": "pnpm run type-check && tsrs -p e2e --noEmit && tsrs -p demo --noEmit && pnpm run compile",
     "test:demo": "playwright test --project=demo",
     "test:e2e": "playwright test --project=e2e"
