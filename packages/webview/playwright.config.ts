@@ -9,12 +9,22 @@ export default defineConfig({
   fullyParallel: true,
   /* Fail the build on CI if you accidentally left test.only in the source code. */
   forbidOnly: !!process.env.CI,
-  /* Retry on CI only */
-  retries: process.env.CI ? 2 : 0,
-  /* Opt out of parallel tests on CI. */
-  workers: process.env.CI ? 1 : undefined,
+  /* Retry on CI only. 2 → 1: the flake set that motivated `2` is fixed at the
+   * source (session-switch panel width, follow-new-row while pinned, the
+   * `remote/build.mjs` output-dir race), and a second retry mostly hides fresh
+   * regressions behind a slower green. Revisit if a week shows real flakiness. */
+  retries: process.env.CI ? 1 : 0,
+  /* Parallel on CI. Was 1: each case used to boot the whole app and reload the
+   * dev bundle, so serializing was the only way to keep the run under the job
+   * timeout. With the browser-mode migration the remaining e2e set is small
+   * enough that 4 workers lands around 1.5 min; the shared-output races that
+   * made parallelism unsafe are fixed in `e2e/globalSetup.ts`. */
+  workers: process.env.CI ? 4 : undefined,
   /* Reporter to use. See https://playwright.dev/docs/test-reporters */
   reporter: process.env.CI ? [["list"], ["html", { open: "never" }]] : "list",
+  /* 远控页产物（`remote/dist`）全局只建一次：两个远控页用例原先各自在
+     `beforeAll` 里现建，`workers > 1` 时会并发删/写同一份输出目录。 */
+  globalSetup: "./e2e/globalSetup.ts",
   /* Global test timeout - reduce from default 30s to 10s */
   timeout: 10 * 1000,
   /* Expect timeout - reduce from default 5s to 3s */

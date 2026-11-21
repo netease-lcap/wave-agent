@@ -1,5 +1,4 @@
 import { expect, test } from "@playwright/test";
-import { execFileSync } from "node:child_process";
 import { createReadStream, existsSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -145,13 +144,9 @@ let server: Server;
 let base = "";
 
 test.beforeAll(async () => {
-  // 产物就是被测对象：一份陈旧的 `remote/dist` 会让用例对着上一版 shim 变绿。
-  // 构建幂等且快（webview 已 build 过时只剩重拷与算 hash），所以每次都现出。
-  execFileSync("node", ["remote/build.mjs"], {
-    cwd: WEBVIEW_ROOT,
-    stdio: "ignore",
-  });
-
+  // 产物就是被测对象：`remote/dist` 由全局准备（`playwright.config.ts` 的
+  // globalSetup）每次运行现建一次 —— 既不留陈旧产物，也不会与同目录另一个
+  // 远控页用例并发删/写同一份输出目录。
   server = createServer((req, res) => {
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
     const rel = url.pathname === "/" ? "/index.html" : url.pathname;

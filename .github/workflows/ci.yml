@@ -113,9 +113,16 @@ jobs:
       # wave-webview's unit suite runs in a real Chromium (vitest browser
       # mode): jsdom does no layout, and the components under test measure
       # their own geometry. Only that matrix leg needs the browser.
-      # `--with-deps` stays on even on a cache hit: it only skips the browser
-      # download (already cached), while the apt step keeps the run honest if
-      # the runner image ever drops a shared library.
+      #
+      # `--with-deps` runs every time, on a cache hit too — and not because the
+      # runner might be missing a shared library. It installs Chromium's apt
+      # dependency list, which includes `fonts-wqy-zenhei`, `fonts-unifont` and
+      # `fonts-ipafont-gothic`: **the only CJK fonts this environment ever has**.
+      # Skipping it on a hit (tried, to save 19s) leaves Chinese text with no
+      # fallback, so line boxes come out ~85px off `estimateRowHeight` and the
+      # virtual-scroll geometry assertions in `e2e/virtual-scroll-drift` fail
+      # deterministically — a fake red that no real user can hit. The 19s is the
+      # price of the environment, not waste.
       - name: Install Playwright Chromium (webview unit tests)
         if: steps.filter.outputs.code == 'true' && matrix.pkg == 'webview'
         run: pnpm -F wave-webview exec playwright install --with-deps chromium
@@ -341,9 +348,10 @@ jobs:
 
   integration:
     runs-on: ubuntu-latest
-    # Post-merge integration tests (tests/integration/** + *.integration.test.ts).
-    # Not gating PRs; runs after merge to main or manually via workflow_dispatch.
-    if: github.event_name != 'pull_request'
+    # Integration tests (tests/integration/** + *.integration.test.ts). Used to
+    # be post-merge only; moved into the PR gate once the webview e2e suite was
+    # migrated to browser mode (which cut the shared build/test budget).
+    if: github.event_name != 'push'
 
     strategy:
       matrix:
@@ -427,11 +435,13 @@ jobs:
 
   webview-e2e:
     runs-on: ubuntu-latest
-    # Post-merge real-browser tests (packages/webview/e2e/*.e2e.ts). Same
-    # trigger timing as integration: not gating PRs; runs after merge to main
-    # or manually via workflow_dispatch. Unlike the other jobs, e2e test file
-    # changes must trigger this job, so webview/e2e is not excluded.
-    if: github.event_name != 'pull_request'
+    # Real-browser tests (packages/webview/e2e/*.e2e.ts) — what browser mode
+    # cannot cover: real CDP input, real reload, touch/device emulation. Used to
+    # be post-merge only; moved into the PR gate after the browser-mode
+    # migration cut the suite from 254 cases / 5 min to 155 / ~1.5 min.
+    # Unlike the other jobs, e2e test file changes must trigger this job, so
+    # webview/e2e is not excluded from the paths filter.
+    if: github.event_name != 'push'
 
     strategy:
       matrix:
@@ -503,9 +513,24 @@ jobs:
         if: steps.filter.outputs.code == 'true'
         run: pnpm install --frozen-lockfile
 
+      # Test the bundle users actually receive. `pnpm build` compiles webview in
+      # development mode (unminified, development React — ~11 MB), while every
+      # release pipeline ships `compile --production` (~4.6 MB, minified,
+      # production React). e2e has therefore been exercising an artifact no user
+      # ever gets. Order matters in two directions:
+      #  - webview depends on `wave-agent-sdk`'s build output (its bundle imports
+      #    `wave-agent-sdk/constants|types`, which resolve into the SDK's `dist`),
+      #    so the dependencies must be built before webview is compiled;
+      #  - `wave-desktop`'s build runs `sync:webview`, which copies webview's
+      #    `chat.js` into the desktop bundle — so compiling webview before the
+      #    rest means it is built exactly once AND the desktop bundle embeds the
+      #    production copy (it used to embed the development one).
       - name: Build
         if: steps.filter.outputs.code == 'true'
-        run: pnpm build
+        run: |
+          pnpm --filter "wave-webview^..." build
+          pnpm -F wave-webview run compile -- --production
+          pnpm -r --filter '!wave-webview' --workspace-concurrency=1 build
 
       # Same browser cache as the PR-tier `check` job (identical key, so the two
       # share entries): the e2e run downloads it once and reuses it until
@@ -517,6 +542,10 @@ jobs:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('packages/webview/package.json') }}
 
+      # `--with-deps` on every run, cache hit included — see the long note in the
+      # `check` job: this is what puts Chinese fonts on the runner, and without
+      # them the virtual-scroll geometry assertions go red for a reason no real
+      # user ever hits. The 19s it costs is the price of the environment.
       - name: Install Playwright Chromium
         if: steps.filter.outputs.code == 'true'
         run: pnpm -F wave-webview exec playwright install --with-deps chromium
@@ -527,14 +556,13 @@ jobs:
 
   real-host-e2e:
     runs-on: ubuntu-latest
-    # Post-merge real-host tests (packages/desktop/tests/integration/*.integration.test.ts):
+    # Real-host tests (packages/desktop/tests/integration/*.integration.test.ts):
     # the real DesktopHost driving a real `wave --stdio` child process, with a
-    # local OpenAI-compatible model server instead of a real LLM. NOT a PR gate —
-    # the same timing as `integration`/`webview-e2e`: it needs a full build and a
-    # few minutes of process spawning, so it runs after merge to main (or via
-    # workflow_dispatch) and only reports through the CI run/mail.
-    # No display needed: the Electron shell is stubbed, the CLI is plain Node.
-    if: github.event_name != 'pull_request'
+    # local OpenAI-compatible model server instead of a real LLM. Used to be
+    # post-merge only; moved into the PR gate together with `integration` and
+    # `webview-e2e`. No display needed: the Electron shell is stubbed, the CLI
+    # is plain Node.
+    if: github.event_name != 'push'
 
     strategy:
       matrix:
