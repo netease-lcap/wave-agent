@@ -99,8 +99,15 @@ export interface ReplBoundaryGlobals {
 export interface ReplBoundary {
   /** The realm's own global object, captured before any script could replace it. */
   globalObject: Record<string, unknown>;
-  /** `name in globalThis`, evaluated in the realm; `true` (fail closed) if broken. */
-  hasGlobal(name: string): boolean;
+  /**
+   * Whether [name] was already the realm's own when the realm was made — a
+   * JavaScript built-in. Read off a frozen snapshot, not off the live global
+   * object, so a name an earlier script defined is *not* reported here: that is
+   * what lets a later script reuse it (Claude Code's `isGlobalName`, which only
+   * covers built-ins, helpers and tool names). `true` (fail closed) if the
+   * snapshot is somehow unreadable.
+   */
+  isBuiltinGlobal(name: string): boolean;
   createGlobals(
     bridge: ReplBoundaryBridge,
     config: ReplGlobalsConfig,
@@ -138,6 +145,12 @@ export const REPL_BOUNDARY_SOURCE = `(() => {
   const SQUOTE = StringCtor.fromCharCode(39);
   const BACKSLASH = StringCtor.fromCharCode(92);
   const realmGlobal = globalThis;
+
+  // What the realm's global object already owned before any helper, tool or
+  // script touched it: the JavaScript built-ins. Frozen here, once, because the
+  // collision check below is about *built-ins* — a name an earlier script put on
+  // the global object must stay reusable, so it must never enter this set.
+  const builtinNames = new Set(Object.getOwnPropertyNames(realmGlobal));
 
   const MAX_ITEMS = ${REPL_MAX_ARRAY_ITEMS};
   const MAX_DEPTH = ${REPL_MAX_VALUE_DEPTH};
@@ -338,9 +351,9 @@ export const REPL_BOUNDARY_SOURCE = `(() => {
     return SQUOTE + escaped + SQUOTE;
   };
 
-  const hasGlobal = (name) => {
+  const isBuiltinGlobal = (name) => {
     try {
-      return name in realmGlobal;
+      return builtinNames.has(name);
     } catch (ignored) {
       return true;
     }
@@ -721,7 +734,7 @@ export const REPL_BOUNDARY_SOURCE = `(() => {
 
   return objectFreeze({
     globalObject: realmGlobal,
-    hasGlobal: hasGlobal,
+    isBuiltinGlobal: isBuiltinGlobal,
     createGlobals: createGlobals,
     encodeResult: encodeResult,
     clone: clone,

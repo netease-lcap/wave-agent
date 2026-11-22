@@ -459,7 +459,7 @@ describe("execTool execution", () => {
       [
         '<repl-output ms="0">',
         "<log>hello</log>",
-        `<result>${NO_OUTPUT_TEXT}</result>`,
+        "<result/>",
         "</repl-output>",
       ].join("\n"),
     );
@@ -471,12 +471,9 @@ describe("execTool execution", () => {
     const result = await execTool.execute({ code: "return 1;" }, contextWith());
 
     expect(withoutMs(result.content)).toBe(
-      [
-        '<repl-output ms="0">',
-        "<log/>",
-        `<result>${NO_OUTPUT_TEXT}</result>`,
-        "</repl-output>",
-      ].join("\n"),
+      ['<repl-output ms="0">', "<log/>", "<result/>", "</repl-output>"].join(
+        "\n",
+      ),
     );
   });
 
@@ -512,6 +509,9 @@ describe("execTool execution", () => {
   });
 
   it("says so when a script neither returns nor logs", async () => {
+    // The one branch that keeps the sentence: the text form, which is only reached
+    // when there is no value, no log and no stderr — so it is never contradicted by
+    // a sibling section. Everything structured answers with `<result/>` instead.
     const result = await execTool.execute({ code: "return 1;" }, contextWith());
     expect(result.content).toBe(`result:\n${NO_OUTPUT_TEXT}`);
   });
@@ -553,7 +553,7 @@ describe("execTool execution", () => {
         "<tools>Read</tools>",
         "<log>first line\nsecond line</log>",
         "<log>[stderr] warn: a\n[stderr] warn: b</log>",
-        `<result>${NO_OUTPUT_TEXT}</result>`,
+        "<result/>",
         "</repl-output>",
       ].join("\n"),
     );

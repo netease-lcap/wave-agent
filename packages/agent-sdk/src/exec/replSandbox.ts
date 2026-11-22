@@ -101,9 +101,16 @@ const CONTEXT_RESET_MESSAGE =
   "so the variables and functions defined by earlier scripts are gone. Re-run the script instead of relying on them.";
 
 /**
- * Globals the sandbox installs itself. A top-level declaration of any of these
- * names is rejected before the script runs, exactly like a collision with a
- * name an earlier script defined.
+ * Globals the sandbox installs itself: the helpers. A top-level declaration of
+ * any of these names is rejected before the script runs — the declaration would
+ * write the global and so change what every later script sees.
+ *
+ * The refusal set has exactly three parts: these helpers, this call's tool names,
+ * and the realm's JavaScript built-ins (snapshotted once in `replBoundary.ts`).
+ * A name an *earlier script* defined is in none of them, so a later script may
+ * reuse it and the declaration simply overwrites it. That is Claude Code's
+ * `isGlobalName` set, and its refusal message names the same three parts:
+ * `a helper, a tool or a JavaScript built-in`.
  */
 const MANAGED_GLOBAL_NAMES = [
   "tools",
@@ -374,8 +381,10 @@ interface DeclarationScan {
  * declared inside it cannot be seen by the sibling `finally` block — the run
  * would "succeed" and persist nothing. `var` and (sloppy-mode) function
  * declarations are function-scoped, so the rewrite is: `const` / `let` become
- * `var`, and `class Foo` becomes `var Foo = class Foo`. Redeclaration, the one
- * property `const` was buying, is already refused statically before the run.
+ * `var`, and `class Foo` becomes `var Foo = class Foo`. Redeclaration is the one
+ * property `const` was buying, and it is no longer refused: reusing a name an
+ * earlier script defined overwrites it, exactly as in Claude Code. `var` is what
+ * makes that legal inside the wrapper.
  */
 function scanDeclarations(program: AstNode): DeclarationScan {
   const names: string[] = [];
@@ -630,8 +639,9 @@ function describeRunError(error: unknown, timeoutMs: number): string {
 
 function overwriteMessage(name: string): string {
   return (
-    `\`${name}\` is already a global in this REPL context (ReplGlobalOverwrite): a top-level declaration ` +
-    "would overwrite it for the next call. Rename it, or declare it inside a function, where it stays local."
+    `\`${name}\` is already a global here (ReplGlobalOverwrite): it names a helper, a tool or a ` +
+    "JavaScript built-in, and a top-level declaration would overwrite it for every later call. " +
+    "Rename it, or declare it inside a function, where it stays local."
   );
 }
 
@@ -729,13 +739,18 @@ class ReplSandboxImpl implements ReplSandbox {
       return this.resetContext();
     }
 
+    // Static refusal, before the script compiles: a top-level declaration of a
+    // helper, a tool name or a built-in would write the global every later script
+    // reads. A name an earlier script defined is not in this set on purpose —
+    // redeclaring it simply overwrites it, which is what Claude Code does
+    // (`za`'s `isGlobalName` filter in 2.1.326, before `compile()`).
     const toolNames = options.toolNames ?? [];
-    const takenByThisRun = new Set<string>([
+    const reservedNames = new Set<string>([
       ...MANAGED_GLOBAL_NAMES,
       ...toolNames,
     ]);
     for (const name of analysis.declarations) {
-      if (!takenByThisRun.has(name) && !boundary.hasGlobal(name)) continue;
+      if (!reservedNames.has(name) && !boundary.isBuiltinGlobal(name)) continue;
       return {
         ok: false,
         rejected: true,

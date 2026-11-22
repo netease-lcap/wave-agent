@@ -386,8 +386,7 @@ describe("AIManager on-demand tool announcement", () => {
       blocks: [
         {
           type: "text",
-          content:
-            'A marker looks like:\n\n<!-- exec-catalog {"k":"full","h":"deadbeefcafe"} -->',
+          content: 'A marker looks like:\n\n<!-- exec-catalog {"k":"full"} -->',
         },
       ],
     });
@@ -415,7 +414,7 @@ describe("AIManager on-demand tool announcement", () => {
         {
           type: "text",
           content:
-            '<!-- exec-catalog {"k":"full","h":"deadbeefcafe"} -->\n<system-reminder>\nTools reachable inside a sandbox script…\n</system-reminder>',
+            '<!-- exec-catalog {"k":"full"} -->\n<system-reminder>\nTools reachable inside a sandbox script…\n</system-reminder>',
         },
       ],
     });

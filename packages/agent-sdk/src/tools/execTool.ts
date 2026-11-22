@@ -115,7 +115,7 @@ Guidelines:
 - Every output part (each log block, the result value) is capped at about ${EXEC_PART_CHAR_LIMIT} characters, and the whole answer at ${EXEC_DEFAULT_MAX_RESULT_CHARS} characters: the head and the tail are kept and the middle becomes \`... [N chars elided] ...\`. \`&\`, \`<\` and \`>\` in output are escaped as \`&amp;\`, \`&lt;\` and \`&gt;\` — that is display only, nothing in a file or in a value changes.
 - Async: a script that finishes inside the ${EXEC_SYNC_WAIT_MS / 1000}-second wait window returns its result here. Past the window the call answers with a \`(dispatched #N)\` receipt instead, and the script keeps running in the background. The window is fixed — a larger \`timeout\` does not extend it, because \`timeout\` bounds only the script's own synchronous running. A receipt means the script is already running (or queued), so submitting the same script again runs it twice — wait for it with \`Poll\` instead. A shell command still running after ${SHELL_WAIT_MINUTES} minutes moves to the background too, and a background script is stopped after ${BACKGROUND_MAX_HOURS} hours.
 - Variables and functions declared at the top level persist across calls in this session, but not across a restart, a resume, a fork or a wake; the first result after one of those says the context is new.
-- Shells: there is no \`child_process\` and no \`import\` here; run commands with the \`$\` command template or with \`Bash\`. \`$\` throws on a non-zero exit outside the exit-1 family below — use \`.nothrow()\` and read \`exitCode\` — single-quotes each \`\${...}\` value as one argument (\`\${{ raw: value }}\` splices it raw), and takes \`.timeout(ms)\`; past that wait the command moves to the background instead of failing, and the await resolves with \`exitCode: null\` and \`running: { taskId, outputPath }\`, so check \`running\` before using the output and read that file rather than running the command again. Exit 1 from \`grep\` / \`rg\` / \`find\` / \`diff\` / \`test\` / \`[\` / \`git diff\` / \`git grep\` does not throw: \`exitCode\` is 1 and \`note\` says what it means (no match, files differ), so a search with no hits is not a script error. The result is \`{ stdout, stderr, exitCode, output, truncated, file?, note? }\` with \`.text()\` / \`.lines()\` / \`.json()\`; when the output was too large, \`truncated\` is true, \`stdout\` holds only its start and \`file\` is the path holding all of it — read that instead of running the command again. \`.cwd(dir)\` and \`.env({ NAME: value })\` apply to that one command only. Feed stdin with a heredoc. In PowerShell, write every single quote twice inside a single-quoted string, and use a here-string (\`@'...'@\`) for multi-line literals.
+- Shells: there is no \`child_process\` and no \`import\` here; run commands with the \`$\` command template or with \`Bash\`. \`$\` throws on a non-zero exit outside the exit-1 family below — use \`.nothrow()\` and read \`exitCode\` — single-quotes each \`\${...}\` value as one argument (\`\${{ raw: value }}\` splices it raw), so write \`\${x}\` bare: quote marks you add around it no longer protect the value, and shell syntax inside it runs. The template text reaches the shell as written, except that a backslash before a backtick, or before an interpolation opener, is dropped — so a literal one can go in as a \`\${...}\` value, and \`$(cmd, ms)\` runs a command given as a plain string with an optional timeout in ms. It takes \`.timeout(ms)\`; past that wait the command moves to the background instead of failing, and the await resolves with \`exitCode: null\` and \`running: { taskId, outputPath }\`, so check \`running\` before using the output and read that file rather than running the command again. Exit 1 from \`grep\` / \`rg\` / \`find\` / \`diff\` / \`test\` / \`[\` / \`git diff\` / \`git grep\` does not throw: \`exitCode\` is 1 and \`note\` says what it means (no match, files differ), so a search with no hits is not a script error. The result is \`{ stdout, stderr, exitCode, output, truncated, file?, note? }\` with \`.text()\` / \`.lines()\` / \`.json()\`; when the output was too large, \`truncated\` is true, \`stdout\` holds only its start and \`file\` is the path holding all of it — read that instead of running the command again. \`.cwd(dir)\` and \`.env({ NAME: value })\` apply to that one command only. Feed stdin with a heredoc. In PowerShell, write every single quote twice inside a single-quoted string, and use a here-string (\`@'...'@\`) for multi-line literals.
 - In ask permission mode the call waits for the script, and its ${EXEC_ASK_MODE_TOTAL_MS} ms ceiling counts from the start — including the time a person spends on an approval prompt.
 - Subagents: \`tools[]\` may list tools this agent was not granted. Check \`tools.list()\` before relying on one.
 
@@ -157,7 +157,15 @@ const FULL_VALUE_NOTE =
 const CONTEXT_RESET_NOTE =
   "This is a new REPL context: the variables, functions and timers of earlier scripts are gone.";
 
-/** What a script that returned nothing and logged nothing gets instead of an empty part. */
+/**
+ * The one line a *text* answer gets when the script produced nothing at all.
+ *
+ * The markup form needs no such line — it writes `<result/>`, which Claude Code
+ * renders too. A text answer has no element that can be empty, and an empty tool
+ * result is not an answer, so this branch keeps the sentence. It can only be
+ * reached with no value, no log, no stderr and no tool call, which is exactly
+ * when the sentence is true.
+ */
 const NO_OUTPUT_TEXT =
   "The script finished without a return value and without any self.log() output.";
 
@@ -439,10 +447,14 @@ function outcomePart(
     };
   }
   // `undefined` is what a script without a `return` serializes to, and it must
-  // read as "nothing came back" rather than as the string "undefined".
+  // read as "nothing came back" rather than as the string "undefined". An empty
+  // body is the whole answer: the markup form writes it as `<result/>`, which is
+  // exactly what Claude Code renders (`e.result === undefined → ""`). Saying "the
+  // script finished without a return value" here instead is what made a result
+  // contradict its own `<log>` / `<stderr>` siblings.
   const value = result.value ?? "";
   if (value.length === 0 || value === "undefined") {
-    return { tag: "result", body: NO_OUTPUT_TEXT };
+    return { tag: "result", body: "" };
   }
   const part = cutPart(value);
   if (part.elided > 0) notes.push(FULL_VALUE_NOTE);
@@ -495,7 +507,14 @@ function renderText(result: ReplRunResult, notes: string[]): string {
   const stderr = (result.stderr ?? []).join("\n");
   if (stderr.length > 0) sections.push(`stderr:\n${cutPart(stderr).text}`);
   const outcome = outcomePart(result, notes);
-  sections.push(`${outcome.tag}:\n${outcome.body}`);
+  // A section the script did not produce is left out — and an empty body is "did
+  // not produce". The markup form has an element to leave empty (`<result/>`);
+  // here the section simply does not appear, and the fallback below covers the
+  // case where that leaves nothing at all.
+  if (outcome.body.length > 0) {
+    sections.push(`${outcome.tag}:\n${outcome.body}`);
+  }
+  if (sections.length === 0) sections.push(`result:\n${NO_OUTPUT_TEXT}`);
   return sections.join("\n\n");
 }
 

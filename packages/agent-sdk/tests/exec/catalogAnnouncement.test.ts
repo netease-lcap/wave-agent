@@ -74,7 +74,7 @@ describe("renderPoolNote", () => {
   it("renders the three tiers: signatures, names, server names", () => {
     expect(renderPoolNote(MIXED)).toBe(
       [
-        "Tools reachable inside a sandbox script as `tools.<name>` (no other tool name resolves):",
+        "Tools reachable inside a sandbox script as `tools.<name>` (no other tool name resolves; a tool this session declares outside this list is called as a tool, not from inside a script):",
         "```ts",
         "// Read a file from disk.",
         "tools.Read({",
@@ -175,7 +175,7 @@ describe("renderPoolNote", () => {
     // signature cannot be rendered for it.
     expect(renderPoolNote(["WebFetch"])).toBe(
       [
-        "Tools reachable inside a sandbox script as `tools.<name>` (no other tool name resolves):",
+        "Tools reachable inside a sandbox script as `tools.<name>` (no other tool name resolves; a tool this session declares outside this list is called as a tool, not from inside a script):",
         "Also callable as `tools.<name>(input)`; `describeTool(name)` returns the full shape: `WebFetch`.",
       ].join("\n"),
     );
@@ -209,8 +209,17 @@ describe("collectExecCatalogState", () => {
     const state = collectExecCatalogState([meta(first), meta(second)]);
 
     expect(state?.kind).toBe("full");
-    expect(state?.hash).toBe(markerOf(second).h);
-    expect(markerOf(first).h).not.toBe(markerOf(second).h);
+    expect(state?.body).toBe(renderPoolNote([named("mcp__beta__tool0")]));
+  });
+
+  it("reads the body back through the wrapper the message actually carries", () => {
+    // The announcement rides in a `<system-reminder>`. If the wrapper leaked into
+    // the body, every turn would compare two different strings and re-announce.
+    const wrapped = `<system-reminder>\n${announce(ALPHA)!}\n</system-reminder>`;
+
+    const state = collectExecCatalogState([meta(wrapped)]);
+
+    expect(state?.body).toBe(renderPoolNote(ALPHA));
   });
 
   it("reports no announcement for a history that has none", () => {
@@ -238,7 +247,7 @@ describe("collectExecCatalogState", () => {
     ]);
 
     expect(state?.kind).toBe("full");
-    expect(state?.hash).toBe(markerOf(good).h);
+    expect(state?.body).toBe(renderPoolNote(ALPHA));
   });
 
   it("skips a marker from an older format, which is a full re-announcement once", () => {
@@ -254,7 +263,9 @@ describe("buildExecCatalogAnnouncement", () => {
     const text = announce(ALPHA)!;
 
     expect(markerOf(text)).toMatchObject({ k: "full" });
-    expect(typeof markerOf(text).h).toBe("string");
+    // Nothing but the kind rides in the marker: whatever it carried would be text
+    // the model reads on every turn.
+    expect(markerOf(text)).toEqual({ k: "full" });
     expect(text).toContain("`alpha`");
   });
 
@@ -271,8 +282,8 @@ describe("buildExecCatalogAnnouncement", () => {
     const state = collectExecCatalogState([meta(first)]);
 
     expect(buildExecCatalogAnnouncement(state, MIXED)).toBeNull();
-    // The same tools in a different order are the same pool: the hash covers the
-    // sorted body, so nothing about arrival order can leak into it.
+    // The same tools in a different order are the same pool: the comparison runs
+    // on the sorted body, so nothing about arrival order can leak into it.
     expect(
       buildExecCatalogAnnouncement(state, [...MIXED].reverse()),
     ).toBeNull();
@@ -310,8 +321,8 @@ describe("buildExecCatalogAnnouncement", () => {
 
     const removed = buildExecCatalogAnnouncement(state, undefined)!;
     expect(removed).toContain("no longer available");
-    // No hash: a closed channel has no list to compare, which is also why re-opening
-    // always re-announces in full.
+    // Only the kind: a closed channel has no list to compare, which is also why
+    // re-opening always re-announces in full.
     expect(markerOf(removed)).toEqual({ k: "removed" });
 
     // The history's last word is already "there is no channel": saying it again every
@@ -336,8 +347,8 @@ describe("buildExecCatalogAnnouncement", () => {
   });
 
   it("re-announces in full when the channel re-opens unchanged", () => {
-    // Not compared by hash: a closed channel has no list to hash, so going by content
-    // would leave the session mute forever after a switch off and back on.
+    // Not compared by body: a closed channel has no list to compare, so going by
+    // content would leave the session mute forever after a switch off and back on.
     const first = announce(ALPHA)!;
     const removed = buildExecCatalogAnnouncement(
       collectExecCatalogState([meta(first)]),
