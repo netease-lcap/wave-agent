@@ -599,7 +599,10 @@ async function callBuiltInTool(
       images: result.images,
     };
   }
-  return { output: result.content, images: result.images };
+  return {
+    output: stripEmptyShellSentence(result, exitCodeOf(result)),
+    images: result.images,
+  };
 }
 
 /** An MCP failure, carrying what the model needs to tell it from a script error. */
@@ -741,6 +744,36 @@ async function answerToolCall(
     name,
   );
   return withPlaceholders(outcome.output, hoistImages(frame, outcome.images));
+}
+
+/**
+ * The sentence `Bash` / `PowerShell` say when a command printed nothing.
+ *
+ * A model reading only the tool result needs to know a silent command ended
+ * (rather than that the tool broke), so the tool writes a sentence. A script does
+ * not: it gets `exitCode` as data, and a sentence posing as stdout is worse than
+ * nothing — a script reading `.stdout` would get prose.
+ *
+ * Two conditions, both needed, because the sentence is also something a command can
+ * print: it must be the *whole* of what came back, and the tool must say it printed
+ * nothing. `shortResult` is derived from the raw stdout/stderr, so it is absent
+ * exactly then — a real session showed why that guard matters: `echo 'Command
+ * executed with exit code: 0'` came back as `.stdout === ""` without it, because the
+ * command's entire output was indistinguishable from the tool's own filler.
+ *
+ * Left as is: the shape where an empty command also changed the working directory,
+ * whose `content` is the `cd` note followed by the sentence. Recognising that would
+ * mean re-deriving `Bash`'s own note strings here; the notes already read as display
+ * text in `output`, and `.stdout` carries them today either way.
+ */
+const EMPTY_SHELL_SENTENCE = /^Command executed with exit code: (\d+)$/;
+
+function stripEmptyShellSentence(result: ToolResult, exitCode: number): string {
+  const text = result.content ?? "";
+  if (result.shortResult) return text;
+  const match = EMPTY_SHELL_SENTENCE.exec(text.trim());
+  if (!match || Number(match[1]) !== exitCode) return text;
+  return "";
 }
 
 /** The exit code a Bash result carries, with a sane fallback for a missing one. */
@@ -890,7 +923,12 @@ function shellDisplayText(
   if (stderr) lines.push(`[stderr] ${stderr}`);
   if (note) lines.push(`[note] ${note}`);
   if (exitCode !== 0) lines.push(`[exit ${exitCode}]`);
-  return lines.filter((line) => line !== "").join("\n");
+  const text = lines.filter((line) => line !== "").join("\n");
+  // A command that said nothing has to stay tellable from one that never ran, so
+  // the all-empty case keeps a marker. Claude Code's shell result does exactly
+  // this: `[exit 0]` when stdout, stderr and the error are all empty, no exit line
+  // at all when there was output and the code is 0.
+  return text === "" ? `[exit ${exitCode}]` : text;
 }
 
 /** Environment variable names a script may set through `.env()`. */
@@ -1105,9 +1143,11 @@ async function answerShellCall(
   // in `stdout`, and the spill file in `file` — that file is what `Read` or a
   // second `$` can open to get the part that did not fit.
   const persisted = parsePersistedOutput(result.content ?? "");
-  const stdout = persisted ? persisted.preview : (result.content ?? "");
-  const stderr = result.success ? "" : (result.error ?? "");
   const exitCode = exitCodeOf(result);
+  const stdout = persisted
+    ? persisted.preview
+    : stripEmptyShellSentence(result, exitCode);
+  const stderr = result.success ? "" : (result.error ?? "");
   // Exit 1 is the answer of a whole family of commands; anything else is a
   // failure the script has to see. A call that never ran (denied, refused) has no
   // shell exit code at all, and `shellExitCodeOf` keeps it out of this branch.

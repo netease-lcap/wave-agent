@@ -52,10 +52,9 @@ const SMALL_SCRIPT = fileURLToPath(
   new URL("./oversized-server.mjs", import.meta.url),
 );
 
-/** The wire payload of a marker: `k` kind, `h` hash of the name list. */
+/** The wire payload of a marker: the kind, and nothing else. */
 interface MarkerPayload {
   k?: "full" | "removed";
-  h?: string;
 }
 
 const failures: string[] = [];
@@ -130,10 +129,9 @@ function markerOf(text: string): ExecCatalogMarker {
       line.length - EXEC_CATALOG_MARKER_SUFFIX.length,
     ),
   ) as MarkerPayload;
-  return {
-    kind: payload.k === "removed" ? "removed" : "full",
-    ...(payload.h !== undefined ? { hash: payload.h } : {}),
-  };
+  // The body is not carried here: the decision function compares the body out of
+  // the history, and every call in this example passes a closed channel.
+  return { kind: payload.k === "removed" ? "removed" : "full" };
 }
 
 /** The body under the marker, for display: long lists are clipped. */

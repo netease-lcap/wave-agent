@@ -325,7 +325,7 @@ describe("repl sandbox: sealed context", () => {
     }
   });
 
-  it("rejects a top-level declaration that would overwrite a global", async () => {
+  it("rejects a top-level declaration that would overwrite a helper, a tool or a built-in", async () => {
     const host = makeHost({ tools: ["Read"] });
     const sandbox = open(host);
 
@@ -344,16 +344,45 @@ describe("repl sandbox: sealed context", () => {
 
     const helper = await sandbox.run("const preview = 1", opts());
     expect(helper.rejected).toBe(true);
+  });
 
-    // A name an earlier script defined is a global too.
-    await sandbox.run("const kept = 1", opts());
+  it("lets a later script reuse a name an earlier script defined", async () => {
+    // The reservation set is built-ins, helpers and tool names — frozen when the
+    // context was made. An earlier script's own variable is not in it, so declaring
+    // the name again simply overwrites it, which is what Claude Code does (2.1.326
+    // `za` filters top-level declarations through `isGlobalName` only).
+    const sandbox = open();
+
+    const first = await sandbox.run("const kept = 1", opts());
+    expect(first.rejected).toBeUndefined();
+
     const redeclared = await sandbox.run("const kept = 2", opts());
-    expect(redeclared.rejected).toBe(true);
-    expect(redeclared.error).toContain("kept");
+    expect(redeclared.rejected).toBeUndefined();
+    expect(redeclared.ok).toBe(true);
 
-    // …and the rejected runs never executed, so nothing was overwritten.
-    const still = await sandbox.run("return kept", opts());
-    expect(still.value).toBe("1");
+    const read = await sandbox.run("return kept", opts());
+    expect(read.value).toBe("2");
+
+    // A function can be replaced the same way.
+    await sandbox.run("function twice(n) { return n * 2 }", opts());
+    const replaced = await sandbox.run(
+      "function twice(n) { return n * 3 } return twice(2)",
+      opts(),
+    );
+    expect(replaced.value).toBe("6");
+  });
+
+  it("still refuses a helper name after a script defined its own", async () => {
+    // Reusing a script's own name must not widen into reusing a helper's: the
+    // helpers are installed on the global object itself, and only the three
+    // reserved categories are refusable.
+    const host = makeHost({ tools: ["Read"] });
+    const sandbox = open(host);
+
+    await sandbox.run("const kept = 1", opts());
+    const helper = await sandbox.run("const log = 2", opts());
+    expect(helper.rejected).toBe(true);
+    expect(helper.error).toContain("log");
   });
 
   it("resets the context when a managed global becomes non-configurable", async () => {

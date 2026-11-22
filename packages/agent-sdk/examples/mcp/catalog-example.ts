@@ -215,8 +215,8 @@ async function main(): Promise<void> {
       !note.includes("Also callable as"),
       "an MCP-only pool produced a tier-2 line",
     );
-    // Sorted, so the body — and the hash that decides whether to announce at all —
-    // is a function of the set of servers rather than of connection order.
+    // Sorted, so the body — and the comparison that decides whether to announce
+    // at all — is a function of the set of servers rather than of connection order.
     const orderedServers = [...serversInNote].sort();
     const positions = orderedServers.map((server) =>
       note.indexOf(`\`${server}\``),

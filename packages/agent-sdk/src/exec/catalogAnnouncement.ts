@@ -28,22 +28,27 @@
  * Nothing else here is allowed to be a number — not a count, not a budget, not a
  * character length, not a connection state. Names (and the server-name overflow
  * marker) make the body a pure function of the pool, and a body that is a pure
- * function of the pool is what lets a turn compare its hash and stay silent.
+ * function of the pool is what lets a turn compare it and stay silent.
  *
  * State lives in the history, not in the process (same rule as
- * `utils/mcpInstructions.ts`): each announcement leads with a marker line carrying
- * the hash of the body. The marker is therefore an *interface* to the state, not a
+ * `utils/mcpInstructions.ts`): each announcement leads with a marker line saying
+ * which body it leads. The marker is therefore an *interface* to the state, not a
  * copy of it — "did the model read this exact list, and is that list still
- * current" is answerable with nothing remembered between turns. Two consequences,
- * both deliberate:
+ * current" is answerable with nothing remembered between turns.
+ *
+ * The comparison is the body itself, read straight back out of the history: the
+ * model already has those bytes, so nothing about them needs to be summarised —
+ * and anything the marker carried would be text the model reads every turn for no
+ * reason of its own. (Claude Code computes the same digest and keeps it out of the
+ * model's text entirely, in its prompt cache key; our replacement is the history
+ * it was written to.) Two consequences, both deliberate:
  *  - Once the marker is gone (compaction, rewind), the next turn announces the
  *    full body again. A duplicate is better than a loss.
- *  - The hash covers rendered text, so editing the renderer re-announces once for
- *    existing sessions. That is what buys the invariant "same hash ⇒ the same bytes
- *    the model read".
+ *  - The comparison covers rendered text, so editing the renderer re-announces once
+ *    for existing sessions. That is what buys the invariant "same body ⇒ the same
+ *    bytes the model read".
  */
 
-import { createHash } from "node:crypto";
 import type { Message } from "../types/messaging.js";
 import { renderSearchCallForm, renderToolSignature } from "./catalog.js";
 import type { ExecPoolEntry } from "./catalog.js";
@@ -56,19 +61,25 @@ export const EXEC_CATALOG_MARKER_SUFFIX = " -->";
 type ExecCatalogAnnouncementKind = "full" | "removed";
 
 /**
- * A marker's payload: what a later turn needs to *compare* against, never the
- * body itself. The body is the message the marker leads.
+ * A marker as the history carries it: which body it led, and that body.
+ *
+ * The body is not stored *in* the marker — it is the message the marker leads, and
+ * `collectExecCatalogState` reads it back from there. Nothing is summarised,
+ * because nothing summary-shaped can be compared for equality and no digest needs
+ * to be shown to the model.
  */
 export interface ExecCatalogMarker {
   kind: ExecCatalogAnnouncementKind;
-  /** Hash of the announcement body as of this announcement. */
-  hash?: string;
+  /** The body this announcement carried, read back out of the history. */
+  body?: string;
 }
 
-/** The wire shape. Short keys: the marker rides in every announcement. */
+/**
+ * The wire shape. The marker rides in every announcement, so it carries the kind
+ * and nothing else — `h` is what an older build wrote there and is ignored.
+ */
 interface MarkerPayload {
   k?: unknown;
-  h?: unknown;
 }
 
 /**
@@ -105,9 +116,16 @@ const ELLIPSIS = "…";
  * global rather than a member of that object, and tier 3's pointer names it, so the
  * header would otherwise leave the reader guessing whether the pointer is another
  * pool entry.
+ *
+ * The second clause answers the question the list itself raises. The sandbox
+ * installs a global for exactly the names below and for nothing else, so a tool
+ * this session declares outside the list is *not* reachable in a script — it is
+ * called as a tool. Without that clause "no other tool name resolves" reads as "no
+ * other tool exists", and a model that knows `Bash` from `tools[]` has no way to
+ * tell which of the two it is.
  */
 const POOL_HEADER =
-  "Tools reachable inside a sandbox script as `tools.<name>` (no other tool name resolves):";
+  "Tools reachable inside a sandbox script as `tools.<name>` (no other tool name resolves; a tool this session declares outside this list is called as a tool, not from inside a script):";
 
 /**
  * The whole of a search hit is what makes a deferred tool callable, so tier 3 has
@@ -287,16 +305,31 @@ export function renderPoolNote(pool: readonly ExecCatalogPoolMember[]): string {
   return lines.join("\n");
 }
 
-/** `h` in the marker payload. */
-function hashNote(note: string): string {
-  return createHash("sha256").update(note).digest("hex").slice(0, 12);
-}
-
-/** `{ k, h }` — the marker, as one line. */
+/** `{ k }` — the marker, as one line. */
 function renderMarker(marker: ExecCatalogMarker): string {
   const payload: MarkerPayload = { k: marker.kind };
-  if (marker.hash !== undefined) payload.h = marker.hash;
   return `${EXEC_CATALOG_MARKER_PREFIX}${JSON.stringify(payload)}${EXEC_CATALOG_MARKER_SUFFIX}`;
+}
+
+/** The tag an announcement is wrapped in before it reaches the history. */
+const SYSTEM_REMINDER_CLOSE = "</system-reminder>";
+
+/**
+ * The body under a marker line: everything after it, minus the wrapper that
+ * carried the whole message.
+ *
+ * The wrapper is dropped here rather than stored separately because the marker
+ * line has to stay the *first* line of what the model reads, and because the only
+ * thing being compared is the body the renderer produced.
+ */
+function bodyUnderMarker(lines: string[], markerIndex: number): string {
+  const body = lines.slice(markerIndex + 1);
+  while (body.length > 0) {
+    const last = body[body.length - 1].trim();
+    if (last !== "" && last !== SYSTEM_REMINDER_CLOSE) break;
+    body.pop();
+  }
+  return body.join("\n");
 }
 
 /**
@@ -321,9 +354,10 @@ export function collectExecCatalogState(
     for (const block of message.blocks) {
       if (block.type !== "text") continue;
       if (!block.content.includes(EXEC_CATALOG_MARKER_PREFIX)) continue;
-      for (const line of block.content.split("\n")) {
-        const marker = parseMarkerLine(line);
-        if (marker) return marker;
+      const lines = block.content.split("\n");
+      for (let line = 0; line < lines.length; line++) {
+        const marker = parseMarkerLine(lines[line]);
+        if (marker) return { ...marker, body: bodyUnderMarker(lines, line) };
       }
     }
   }
@@ -347,10 +381,7 @@ function parseMarkerLine(line: string): ExecCatalogMarker | null {
     const parsed = JSON.parse(payload) as MarkerPayload;
     const kind = parsed.k;
     if (kind !== "full" && kind !== "removed") return null;
-    return {
-      kind,
-      hash: typeof parsed.h === "string" ? parsed.h : undefined,
-    };
+    return { kind };
   } catch {
     // A marker we cannot read (hand-edited or truncated history) must not take the
     // turn down; the worst case is announcing the list once more.
@@ -368,7 +399,7 @@ function parseMarkerLine(line: string): ExecCatalogMarker | null {
  *  - the last word was the closing notice → the full body (the channel is not a
  *    list, so there is nothing to compare; going by content would leave a session
  *    mute forever after a switch was flipped off and back on);
- *  - the same hash → silence;
+ *  - the same body → silence;
  *  - anything else → the full body.
  *
  * There is no delta, and the reason is arithmetic rather than taste: the body *is*
@@ -394,10 +425,9 @@ export function buildExecCatalogAnnouncement(
   }
 
   const note = renderPoolNote(pool);
-  const hash = hashNote(note);
-  if (last !== null && last.kind === "full" && last.hash === hash) return null;
+  if (last !== null && last.kind === "full" && last.body === note) return null;
 
-  return envelope({ kind: "full", hash }, note);
+  return envelope({ kind: "full" }, note);
 }
 
 function envelope(marker: ExecCatalogMarker, body: string): string {

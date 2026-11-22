@@ -573,6 +573,68 @@ describe("$ — the shell template", () => {
     );
   });
 
+  it("gives a silent command empty stdout rather than the sentence the tool writes", async () => {
+    // `Bash` answers a command that printed nothing with a sentence, so a model
+    // reading only the tool result learns it ended. A script reads `stdout` as data,
+    // and prose there would be a lie about what the command printed.
+    const h = harness(() => ({
+      success: true,
+      content: "Command executed with exit code: 0",
+      metadata: { exitCode: 0 },
+    }));
+
+    const result = await runRepl(
+      h,
+      `
+      const viaDollar = await $\`true\`;
+      const viaTool = await Echo({});
+      return JSON.stringify([viaDollar.stdout, viaDollar.output, viaTool]);
+    `,
+    );
+
+    // Claude Code's shell result: nothing at all reads as `[exit 0]`, and no exit
+    // line appears when there was output.
+    expect(JSON.parse(result.value as string)).toEqual(["", "[exit 0]", ""]);
+  });
+
+  it("keeps the sentence when the command printed it", async () => {
+    const h = harness(() => ({
+      success: true,
+      content: "first line\nCommand executed with exit code: 0",
+      metadata: { exitCode: 0 },
+    }));
+
+    const result = await runRepl(
+      h,
+      `const out = await $\`true\`; return out.stdout;`,
+    );
+
+    expect(result.value).toBe("first line\nCommand executed with exit code: 0");
+  });
+
+  it("keeps it even as the whole output, because the tool says it printed", async () => {
+    // Found on a real machine: `echo 'Command executed with exit code: 0'` came
+    // back as an empty `stdout`, since the command's entire output looked exactly
+    // like `Bash`'s own filler. `shortResult` is derived from the raw streams, so
+    // it is present exactly when there was something to print.
+    const h = harness(() => ({
+      success: true,
+      content: "Command executed with exit code: 0",
+      shortResult: "Command executed with exit code: 0",
+      metadata: { exitCode: 0 },
+    }));
+
+    const result = await runRepl(
+      h,
+      `const out = await $\`true\`; return JSON.stringify([out.stdout, out.output]);`,
+    );
+
+    expect(JSON.parse(result.value as string)).toEqual([
+      "Command executed with exit code: 0",
+      "Command executed with exit code: 0",
+    ]);
+  });
+
   it("hands a persisted output back as a preview plus the spill file", async () => {
     const filePath = path.resolve("wave-tool-results", "bash_1.txt");
     const wrapper = buildPersistedOutputMessage(
