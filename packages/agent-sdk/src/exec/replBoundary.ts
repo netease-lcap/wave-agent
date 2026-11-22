@@ -547,6 +547,12 @@ export const REPL_BOUNDARY_SOURCE = `(() => {
       // The host's reading of a non-zero exit that is not a failure (grep with no
       // match). Its presence is what keeps \`$\` from throwing below.
       if (typeof data.note === "string" && data.note !== "") out.note = data.note;
+      // The shell's own \`cd\` note, split out of \`stdout\`: it says where the next
+      // command will run, which the command's own output cannot. Absent when the
+      // command left the shell where it was.
+      if (typeof data.cwdNote === "string" && data.cwdNote !== "") {
+        out.cwdNote = data.cwdNote;
+      }
       if (typeof data.command === "string") out.command = data.command;
       // Present only when the command outlived its timeout: it is still running,
       // so \`exitCode\` is null and the output streams to \`outputPath\` instead.

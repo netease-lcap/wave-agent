@@ -64,6 +64,7 @@ function ok(content: string): ToolResult {
 type Behavior = (
   name: string,
   args: Record<string, unknown>,
+  toolContext: ToolContext,
 ) => ToolResult | Promise<ToolResult>;
 
 type McpBehavior = (name: string, args: Record<string, unknown>) => unknown;
@@ -101,7 +102,7 @@ function harness(
       ) => {
         dispatched.push({ name, args });
         contexts.push(toolContext);
-        return Promise.resolve().then(() => behavior(name, args));
+        return Promise.resolve().then(() => behavior(name, args, toolContext));
       },
       getExecPool: () => POOL,
     },
@@ -633,6 +634,132 @@ describe("$ — the shell template", () => {
       "Command executed with exit code: 0",
       "Command executed with exit code: 0",
     ]);
+  });
+
+  it("takes the cd note off stdout and hands it back as cwdNote", async () => {
+    // A command that also `cd`s gets the tool's note in front of its result, so
+    // the text is no longer the tool's own sentence and the empty-output strip
+    // used to leave both in `stdout` (found on a real machine). The note is split
+    // out first, then the sentence is stripped as usual.
+    const target = path.resolve("/tmp", "wave-elsewhere");
+    const h = harness((_name, _args, ctx) => {
+      ctx.onCwdChange?.(target);
+      return {
+        success: true,
+        content:
+          `Shell working directory changed to ${target}\n` +
+          "Command executed with exit code: 0",
+        metadata: { exitCode: 0 },
+      };
+    });
+    h.context.onCwdChange = () => {};
+
+    const result = await runRepl(
+      h,
+      `
+      const out = await $\`cd elsewhere\`;
+      return JSON.stringify([out.stdout, out.output, out.cwdNote]);
+    `,
+    );
+
+    expect(JSON.parse(result.value as string)).toEqual([
+      "",
+      "[exit 0]",
+      `Shell working directory changed to ${target}`,
+    ]);
+  });
+
+  it("recognises the reset form of the note too", async () => {
+    const target = path.resolve("/tmp", "wave-original");
+    const h = harness((_name, _args, ctx) => {
+      ctx.onCwdChange?.(target);
+      return {
+        success: true,
+        content: `Shell cwd was reset to ${target}\nCommand executed with exit code: 0`,
+        metadata: { exitCode: 0 },
+      };
+    });
+    h.context.onCwdChange = () => {};
+
+    const result = await runRepl(
+      h,
+      `const out = await $\`cd outside\`; return JSON.stringify([out.stdout, out.cwdNote]);`,
+    );
+
+    expect(JSON.parse(result.value as string)).toEqual([
+      "",
+      `Shell cwd was reset to ${target}`,
+    ]);
+  });
+
+  it("keeps every byte of a real output while the shell also moved", async () => {
+    const target = path.resolve("/tmp", "wave-elsewhere");
+    const printed = "line one\n  line two\n";
+    const h = harness((_name, _args, ctx) => {
+      ctx.onCwdChange?.(target);
+      return {
+        success: true,
+        content: `Shell working directory changed to ${target}\n${printed}`,
+        shortResult: "line one\n  line two",
+        metadata: { exitCode: 0 },
+      };
+    });
+    h.context.onCwdChange = () => {};
+
+    const result = await runRepl(
+      h,
+      `const out = await $\`cd elsewhere; print\`; return JSON.stringify([out.stdout, out.output, out.cwdNote]);`,
+    );
+
+    expect(JSON.parse(result.value as string)).toEqual([
+      printed,
+      printed,
+      `Shell working directory changed to ${target}`,
+    ]);
+  });
+
+  it("keeps a note-looking first line when the shell never moved", async () => {
+    // The strip is keyed on the tool having called `onCwdChange`, not on the
+    // text: a command printing the exact sentence must not be cut.
+    const printed = `Shell cwd was reset to ${path.resolve("/tmp", "x")}\nreal output`;
+    const h = harness(() => ({
+      success: true,
+      content: printed,
+      shortResult: printed,
+      metadata: { exitCode: 0 },
+    }));
+
+    const result = await runRepl(
+      h,
+      `const out = await $\`print\`; return JSON.stringify([out.stdout, out.cwdNote]);`,
+    );
+
+    expect(JSON.parse(result.value as string)).toEqual([printed, null]);
+  });
+
+  it("leaves the note inside a tools.Bash answer, which has nowhere else to put it", async () => {
+    const target = path.resolve("/tmp", "wave-elsewhere");
+    const h = harness((_name, _args, ctx) => {
+      ctx.onCwdChange?.(target);
+      return {
+        success: true,
+        content: `Shell working directory changed to ${target}\nCommand executed with exit code: 0`,
+        metadata: { exitCode: 0 },
+      };
+    });
+    h.context.onCwdChange = () => {};
+
+    const result = await runRepl(
+      h,
+      `const out = await tools.Bash({ command: "cd elsewhere" }); return out;`,
+      {
+        pool: [...POOL, { name: "Bash", description: "Run a shell command" }],
+      },
+    );
+
+    expect(result.value).toBe(
+      `Shell working directory changed to ${target}\nCommand executed with exit code: 0`,
+    );
   });
 
   it("hands a persisted output back as a preview plus the spill file", async () => {

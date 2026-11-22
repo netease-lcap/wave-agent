@@ -600,7 +600,14 @@ async function callBuiltInTool(
     };
   }
   return {
-    output: stripEmptyShellSentence(result, exitCodeOf(result)),
+    // The shell's `cd` note stays in a `tools.Bash` answer: it is one string with
+    // nowhere else to put the news, and it is the same text the flat tool result
+    // shows. Only `$` splits it out into `cwdNote` (see `splitCwdNote`).
+    output: stripEmptyShellSentence(
+      result.content ?? "",
+      result.shortResult,
+      exitCodeOf(result),
+    ),
     images: result.images,
   };
 }
@@ -761,19 +768,61 @@ async function answerToolCall(
  * executed with exit code: 0'` came back as `.stdout === ""` without it, because the
  * command's entire output was indistinguishable from the tool's own filler.
  *
- * Left as is: the shape where an empty command also changed the working directory,
- * whose `content` is the `cd` note followed by the sentence. Recognising that would
- * mean re-deriving `Bash`'s own note strings here; the notes already read as display
- * text in `output`, and `.stdout` carries them today either way.
+ * `text` is what is left after `splitCwdNote` took the shell's `cd` note off the
+ * front: an empty command that also moved the shell is the note followed by this
+ * sentence, so the strip only sees it with that step done first.
  */
 const EMPTY_SHELL_SENTENCE = /^Command executed with exit code: (\d+)$/;
 
-function stripEmptyShellSentence(result: ToolResult, exitCode: number): string {
-  const text = result.content ?? "";
-  if (result.shortResult) return text;
+function stripEmptyShellSentence(
+  text: string,
+  shortResult: string | undefined,
+  exitCode: number,
+): string {
+  if (shortResult) return text;
   const match = EMPTY_SHELL_SENTENCE.exec(text.trim());
   if (!match || Number(match[1]) !== exitCode) return text;
   return "";
+}
+
+/**
+ * The `cd` note `Bash` / `PowerShell` write in front of a result when the command
+ * moved the shell out of the session's directory.
+ *
+ * Two exact forms, the ones the two tools generate: `Shell cwd was reset to …`
+ * (the target was outside the working directories, so the shell was put back) and
+ * `Shell working directory changed to …` (the move stands). The note is display
+ * text rather than command output, so `stdout` must not carry it — but it is news
+ * the script needs (its later relative paths now resolve elsewhere), so it comes
+ * back as `cwdNote` instead of being dropped. Claude Code splits it out the same
+ * way, into its own `cwdResetWarning` field.
+ */
+const SHELL_CWD_NOTE =
+  /^Shell (?:cwd was reset to|working directory changed to) .+$/;
+
+/**
+ * Take the `cd` note off the front of a shell result.
+ *
+ * `cwdChanged` is what this call observed through `onCwdChange`, so the strip is
+ * keyed on the tool *having moved the shell*, not on the text: a command that
+ * merely printed the same line (`echo 'Shell working directory changed to …'`)
+ * never matches, and a command that moved the shell *and* printed it keeps its own
+ * copy — only the first line goes. The note is only ever the first line; anything
+ * in front of it (a recovery or temp-dir notice) leaves the text alone, which
+ * degrades to the old shape rather than cutting into the middle of a result.
+ */
+function splitCwdNote(
+  content: string,
+  cwdChanged: boolean,
+): { text: string; cwdNote?: string } {
+  if (!cwdChanged) return { text: content };
+  const breakAt = content.indexOf("\n");
+  const firstLine = breakAt === -1 ? content : content.slice(0, breakAt);
+  if (!SHELL_CWD_NOTE.test(firstLine)) return { text: content };
+  return {
+    text: breakAt === -1 ? "" : content.slice(breakAt + 1),
+    cwdNote: firstLine,
+  };
 }
 
 /** The exit code a Bash result carries, with a sane fallback for a missing one. */
@@ -1103,6 +1152,25 @@ async function answerShellCall(
 
   const { waitMs, cwd, env } = readShellCallOptions(options);
   const context = shellToolContext(frame.context, cwd, env);
+  // `onCwdChange` is the write path for the session's *current* directory — the
+  // one a `cd` moves — and the shell tools call it exactly when they moved the
+  // shell (and then write their `cd` note). Watching it is what makes the note's
+  // strip a fact about this call rather than a guess from the result text.
+  //
+  // `.cwd()` drops the callback on purpose (`shellToolContext`), so a scoped call
+  // sees no note and cannot move the session — wrapping only when the context has
+  // one keeps that promise.
+  let cwdChanged = false;
+  const onCwdChange = context.onCwdChange;
+  const callContext: ToolContext = onCwdChange
+    ? {
+        ...context,
+        onCwdChange: (newCwd: string) => {
+          cwdChanged = true;
+          onCwdChange(newCwd);
+        },
+      }
+    : context;
   const args: Record<string, unknown> = {
     command: commandText,
     // Always explicit: `Bash`'s own default is two minutes, and a script's shell
@@ -1113,7 +1181,7 @@ async function answerShellCall(
   frame.toolsUsed.push("Bash");
   const result = await withWatchdog(
     frame,
-    () => toolManager.execute("Bash", args, context),
+    () => toolManager.execute("Bash", args, callContext),
     waitMs,
     "Bash",
   );
@@ -1142,11 +1210,16 @@ async function answerShellCall(
   // the same information as fields instead of as a wrapper to parse: the preview
   // in `stdout`, and the spill file in `file` — that file is what `Read` or a
   // second `$` can open to get the part that did not fit.
-  const persisted = parsePersistedOutput(result.content ?? "");
+  //
+  // The `cd` note comes off first, so a command that printed nothing keeps
+  // reading as nothing even when it also moved the shell: without this step the
+  // note made the text stop matching the tool's own sentence.
+  const { text, cwdNote } = splitCwdNote(result.content ?? "", cwdChanged);
+  const persisted = parsePersistedOutput(text);
   const exitCode = exitCodeOf(result);
   const stdout = persisted
     ? persisted.preview
-    : stripEmptyShellSentence(result, exitCode);
+    : stripEmptyShellSentence(text, result.shortResult, exitCode);
   const stderr = result.success ? "" : (result.error ?? "");
   // Exit 1 is the answer of a whole family of commands; anything else is a
   // failure the script has to see. A call that never ran (denied, refused) has no
@@ -1164,6 +1237,10 @@ async function answerShellCall(
   };
   if (persisted) answer.file = persisted.filePath;
   if (note !== undefined) answer.note = note;
+  // Not folded into `output`: the note is about where the *next* command will
+  // run, not about what this one printed, and an empty command that moved the
+  // shell has to keep reading as `[exit 0]`.
+  if (cwdNote !== undefined) answer.cwdNote = cwdNote;
   return answer;
 }
 
