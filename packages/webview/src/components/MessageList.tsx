@@ -20,7 +20,7 @@ import {
 import { EMPTY_TRANSCRIPT_FIND, TranscriptFindBar } from "./TranscriptFindBar";
 import type { TranscriptFindState } from "./TranscriptFindBar";
 import { streamingTail } from "../utils/streamingText";
-import { hasTimelineDot, rendersNothing } from "../utils/timelineBlocks";
+import { countTimelineBlocks, rendersNothing } from "../utils/timelineBlocks";
 import {
   buildFindRegex,
   clearFindMarks,
@@ -81,11 +81,12 @@ const stickyAnchorText = (message: MessageType) => {
     .trim();
 };
 
-// 时间线圆点按助手回合出：一条助手消息最多一个点（spec ui/message-rendering-system.md
-// 「时间线圆点按助手回合出现（行级）」）。这里据此数 run 里有几个点——只有一个点的
-// run 不画竖线。判据与 Message 打 `.timeline-message` 的那份同源（utils/timelineBlocks）。
+// Count the blocks in an assistant message that Message.tsx wraps in a `.timeline-row`
+// (i.e. that carry a timeline dot) so the group can decide whether it has a single
+// lone dot (no connecting line) or multiple dots (draw the line). The predicate lives
+// in utils/timelineBlocks — Message uses the same one to mark the first/last row.
 function timelineDotCount(message: MessageType): number {
-  return hasTimelineDot(message) ? 1 : 0;
+  return countTimelineBlocks(message.blocks ?? []);
 }
 
 export const MessageList = forwardRef<
@@ -545,9 +546,8 @@ export const MessageList = forwardRef<
   // Per-message timeline run data. A run is a maximal sequence of consecutive
   // assistant messages (the virtualized analogue of the old .assistant-group
   // wrapper). Multi-dot runs draw a continuous vertical line: the run's first
-  // message starts it at its dot, the last message ends it at its dot; a run
-  // whose messages carry at most one dot in total hides the line. paddingBottom
-  // is the row's bottom spacing:
+  // row starts it at its first dot, the last row ends it at its last dot;
+  // single-dot runs hide the line. paddingBottom is the row's bottom spacing:
   // 0 inside a multi-dot run so the line segments abut (flush), 14 after every
   // other row (the inter-message spacing, prototype .design-timeline gap).
   const timelineRuns = useMemo(() => {

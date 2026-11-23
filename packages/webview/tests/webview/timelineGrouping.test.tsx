@@ -87,16 +87,16 @@ describe("Timeline assistant runs", () => {
   });
 
   // 「把本轮转到后台」按钮只在这一轮还有可后台工具在跑时出现，挂在 `.message`
-  // 末尾，跑完就消失。行级化之后圆点与竖线挂在消息根节点上（一条助手消息 = 一个点），
-  // 末尾多出/少掉任何兄弟节点都顶不掉它——这里守住这一点：按钮在、按钮消失，圆点
-  // 都还落在同一个节点上，只是聚合状态从「进行中」变成「已完成」。
+  // 末尾——它一出现，最后一个 `.timeline-row` 就不再是 `:last-child`，收尾的
+  // `height: 21px` 规则会失效、整行画满竖线；工具跑完按钮消失，竖线又缩回去。
+  // 行上的首/末标记因此不能靠 CSS 的 `:first-child` / `:last-child`。
   function messageElement(id: string) {
     return getContainer().querySelector<HTMLElement>(
       `[data-message-id="${id}"]`,
     );
   }
 
-  it("末尾的动作按钮不影响消息的圆点与聚合状态", async () => {
+  it("marks the first/last dot row itself, unaffected by the trailing action button", async () => {
     renderChatApp();
 
     const running = MockDataGenerator.createAssistantMessageWithTool(
@@ -121,17 +121,13 @@ describe("Timeline assistant runs", () => {
     expect(actionButton).not.toBeNull();
     expect(message.lastElementChild).toBe(actionButton);
 
-    // 圆点挂在消息根节点：一个点、进行中；块行不再各带点色。
-    expect(message.classList.contains("timeline-message")).toBe(true);
-    expect(message.classList.contains("timeline-message--running")).toBe(true);
-    const runningColor = message.style.getPropertyValue("--dot-color");
     const rows = Array.from(message.querySelectorAll(".timeline-row"));
     expect(rows).toHaveLength(2);
-    for (const row of rows) {
-      expect((row as HTMLElement).hasAttribute("style")).toBe(false);
-    }
+    expect(rows[0].classList.contains("timeline-row--first")).toBe(true);
+    expect(rows[0].classList.contains("timeline-row--last")).toBe(false);
+    expect(rows[1].classList.contains("timeline-row--last")).toBe(true);
 
-    // 跑完：按钮消失，圆点仍在同一节点上，聚合状态转为已完成。
+    // 跑完：按钮消失，末尾标记必须还落同一行上。
     const done = MockDataGenerator.createAssistantMessageWithTool(
       "我来推送镜像并部署",
       "Bash",
@@ -152,25 +148,23 @@ describe("Timeline assistant runs", () => {
       ).toBeNull(),
     );
 
-    const doneMessage = messageElement("a1")!;
-    expect(doneMessage.classList.contains("timeline-message")).toBe(true);
-    expect(doneMessage.classList.contains("timeline-message--running")).toBe(
-      false,
+    const doneRows = Array.from(
+      messageElement("a1")!.querySelectorAll(".timeline-row"),
     );
-    expect(doneMessage.style.getPropertyValue("--dot-color")).not.toBe(
-      runningColor,
-    );
+    expect(doneRows[0].classList.contains("timeline-row--first")).toBe(true);
+    expect(doneRows[1].classList.contains("timeline-row--last")).toBe(true);
   });
+
   /**
    * 一条已经建出来、但还没有任何可渲染块的消息——流式刚开始那一刻的状态。
    *
    * codechat 网关上的 Claude 思考明文恒为空（只回 signature），流式期第一个
    * `thinking_delta` 是空串，SDK 于是在真内容到达前几百毫秒到几秒就先建出一条
    * `blocks: []` 的助手消息。这种消息若进渲染列表：时间线的收尾规则
-   * （`.timeline-run--end` × `.message.timeline-message`）落在它身上，而它没有
-   * 圆点（既无 `--dot-color` 也无 `::after`），前一条真实消息于是保持全高线段
-   * ——连线一路垂到列表底部；它自己还占着基础行高与 14px 消息间距。所以它在
-   * `visibleMessages` 里就被滤掉，连虚拟行都不该有。
+   * （`.timeline-run--end` × `.timeline-row--last`）落在它身上，而它内部没有
+   * `.timeline-row`，前一条真实消息的最后一行于是保持全高线段——连线一路垂到
+   * 列表底部；它自己还占着基础行高与 14px 消息间距。所以它在 `visibleMessages`
+   * 里就被滤掉，连虚拟行都不该有。
    */
   function blankAssistant(id: string): Message {
     return {
