@@ -670,6 +670,16 @@ describe("bashTool", () => {
       const params3 = { command: "echo hello", description: "say hello" };
       const result3 = bashTool.formatCompactParams?.(params3, context);
       expect(result3).toBe("say hello");
+
+      // The label is one line whatever the command is: the row that prints it
+      // (and the REPL summary line) starts a new line at every newline.
+      const params4 = { command: "set -e\necho one\n  echo two" };
+      const result4 = bashTool.formatCompactParams?.(params4, context);
+      expect(result4).toBe("set -e echo one echo two");
+
+      const params5 = { command: "echo hello", description: "say\nhello" };
+      const result5 = bashTool.formatCompactParams?.(params5, context);
+      expect(result5).toBe("say hello");
     });
 
     it("should auto-background on timeout for allowed commands", async () => {

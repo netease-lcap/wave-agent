@@ -77,6 +77,15 @@ function readTrackedCwd(cwdFilePath: string): string | undefined {
 }
 
 /**
+ * The compact label is one line, whatever the command looks like — a script
+ * block pasted into PowerShell would otherwise break the `● PowerShell <label>`
+ * row (and the REPL summary line) into several. Same collapse as `bashTool`.
+ */
+function oneLineLabel(text: string): string {
+  return text.replace(/\s+/g, " ").trim();
+}
+
+/**
  * The PowerShell tool: one command, one `powershell.exe -Command`, one result.
  *
  * Registration is gated (`utils/shell/shellToolGate.ts`): the tool only exists
@@ -591,6 +600,6 @@ export const powershellTool: ToolPlugin = {
     const description = params.description as string;
     const command = params.command as string;
 
-    return description || command;
+    return oneLineLabel(description || command || "");
   },
 };
