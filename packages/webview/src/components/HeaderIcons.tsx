@@ -870,9 +870,9 @@ export const QueueTrashIcon: React.FC<IconProps> = ({
 // 1123 评论「重新按规范绘制这个图标，现在圆角偏小」：改前是 lucide columns-2 原稿
 // （24 网格 / stroke 2 / rx2），和同一菜单里的「重命名」「删除会话」那两颗
 // （16 网格 / stroke 1.4）不是一套参数。这里改回 16 网格同参：stroke 1.4 / round
-// 端点 / 外框 2..14（12×12）/ 圆角 rx 2.5。渲染尺寸仍由
-// host-desktop.css 的 `.desktop-session-menu-item svg` 定成 15×15（三颗一致），
-// 落到 15px 上：外框 11.25px 不变、线宽 1.25→1.31px、圆角 1.25→2.34px。
+// 端点 / 外框 2..14（12×12）/ 圆角 rx 2.5。渲染尺寸由 host-desktop.css 的
+// `.desktop-session-menu-item svg` 定成 16×16（三颗一致，1123 由 15px 提到 16px），
+// 与网格 1:1 —— 外框 12px、线宽 1.4px、圆角 2.5px 都是设计值，不再打折。
 export const SplitIcon: React.FC<IconProps> = ({
   className = "header-icon",
 }) => (
