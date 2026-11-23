@@ -92,7 +92,7 @@ export interface ToolPlugin {
    * is used.
    *
    * This is only one input to the host-side deferral judgment — see
-   * `exec/deferral.ts`. `alwaysLoad` and the non-deferrable list both override
+   * `repl/deferral.ts`. `alwaysLoad` and the non-deferrable list both override
    * it, and an MCP tool never needs to set it (MCP is deferred unconditionally).
    */
   defer?: boolean;
@@ -135,7 +135,7 @@ export interface ToolResult {
   backgroundedByUser?: boolean;
   // True if the command was auto-backgrounded after exceeding the timeout
   assistantAutoBackgrounded?: boolean;
-  // Tool names reached inside a sandboxed call (Exec), in call order with repeats
+  // Tool names reached inside a sandboxed call (REPL), in call order with repeats
   // kept. Host-side only, and the only trace a deferred tool's call leaves — see
   // `ToolBlock.nestedToolCalls`.
   nestedToolCalls?: string[];
@@ -200,7 +200,7 @@ export interface ToolContext {
    * Absent means "derive it from `sessionId`", which is right for a caller that is
    * not an agent loop. An agent is one context even across many turns, and a
    * subagent is a different one from its parent — which is why the key is not just
-   * the session (see `exec/sessionKey.ts`).
+   * the session (see `repl/sessionKey.ts`).
    */
   replSessionKey?: string;
   /** The ID of the current tool call */

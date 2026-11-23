@@ -1,13 +1,13 @@
 import { describe, it, expect } from "vitest";
 import {
-  EXEC_CATALOG_MARKER_PREFIX,
-  EXEC_CATALOG_MARKER_SUFFIX,
-  buildExecCatalogAnnouncement,
-  collectExecCatalogState,
+  REPL_CATALOG_MARKER_PREFIX,
+  REPL_CATALOG_MARKER_SUFFIX,
+  buildReplCatalogAnnouncement,
+  collectReplCatalogState,
   renderPoolNote,
-} from "../../src/exec/catalogAnnouncement.js";
-import { renderToolSignature } from "../../src/exec/catalog.js";
-import type { ExecPoolEntry } from "../../src/exec/catalog.js";
+} from "../../src/repl/catalogAnnouncement.js";
+import { renderToolSignature } from "../../src/repl/catalog.js";
+import type { ReplPoolEntry } from "../../src/repl/catalog.js";
 import type { Message } from "../../src/types/messaging.js";
 
 /** A tier-1 entry: pooled, flagged core by the deferral judgment, with a schema. */
@@ -15,17 +15,17 @@ function core(
   name: string,
   description: string,
   schema?: Record<string, unknown>,
-): ExecPoolEntry {
+): ReplPoolEntry {
   return { name, tier: "core", description, inputSchema: schema };
 }
 
 /** A tier-2 entry: pooled, name only. */
-function named(name: string, description?: string): ExecPoolEntry {
+function named(name: string, description?: string): ReplPoolEntry {
   return { name, description };
 }
 
 /** Two names from one server, the shape a real pool mostly has. */
-const ALPHA: ExecPoolEntry[] = [
+const ALPHA: ReplPoolEntry[] = [
   named("mcp__alpha__tool0"),
   named("mcp__alpha__tool1"),
 ];
@@ -43,23 +43,23 @@ function meta(content: string, isMeta = true): Message {
 /** The marker payload of an announcement, as it rides in the message. */
 function markerOf(text: string): Record<string, unknown> {
   const line = text.split("\n")[0];
-  expect(line.startsWith(EXEC_CATALOG_MARKER_PREFIX)).toBe(true);
-  expect(line.endsWith(EXEC_CATALOG_MARKER_SUFFIX)).toBe(true);
+  expect(line.startsWith(REPL_CATALOG_MARKER_PREFIX)).toBe(true);
+  expect(line.endsWith(REPL_CATALOG_MARKER_SUFFIX)).toBe(true);
   return JSON.parse(
     line.slice(
-      EXEC_CATALOG_MARKER_PREFIX.length,
-      line.length - EXEC_CATALOG_MARKER_SUFFIX.length,
+      REPL_CATALOG_MARKER_PREFIX.length,
+      line.length - REPL_CATALOG_MARKER_SUFFIX.length,
     ),
   );
 }
 
 /** The announcement a session with no history receives for this pool. */
-function announce(pool: readonly ExecPoolEntry[] | undefined): string | null {
-  return buildExecCatalogAnnouncement(null, pool);
+function announce(pool: readonly ReplPoolEntry[] | undefined): string | null {
+  return buildReplCatalogAnnouncement(null, pool);
 }
 
 /** The three-tier body for one mixed pool, spelled out. */
-const MIXED: ExecPoolEntry[] = [
+const MIXED: ReplPoolEntry[] = [
   core("Read", "Read a file from disk.", {
     type: "object",
     properties: { file_path: { type: "string" } },
@@ -201,12 +201,12 @@ describe("renderPoolNote", () => {
   });
 });
 
-describe("collectExecCatalogState", () => {
+describe("collectReplCatalogState", () => {
   it("takes the last announcement in the history, not the first", () => {
     const first = announce(ALPHA)!;
     const second = announce([named("mcp__beta__tool0")])!;
 
-    const state = collectExecCatalogState([meta(first), meta(second)]);
+    const state = collectReplCatalogState([meta(first), meta(second)]);
 
     expect(state?.kind).toBe("full");
     expect(state?.body).toBe(renderPoolNote([named("mcp__beta__tool0")]));
@@ -217,32 +217,32 @@ describe("collectExecCatalogState", () => {
     // the body, every turn would compare two different strings and re-announce.
     const wrapped = `<system-reminder>\n${announce(ALPHA)!}\n</system-reminder>`;
 
-    const state = collectExecCatalogState([meta(wrapped)]);
+    const state = collectReplCatalogState([meta(wrapped)]);
 
     expect(state?.body).toBe(renderPoolNote(ALPHA));
   });
 
   it("reports no announcement for a history that has none", () => {
-    expect(collectExecCatalogState([])).toBeNull();
-    expect(collectExecCatalogState([meta("hello")])).toBeNull();
+    expect(collectReplCatalogState([])).toBeNull();
+    expect(collectReplCatalogState([meta("hello")])).toBeNull();
   });
 
   it("ignores a marker that is not in a meta message", () => {
     // A reply explaining the mechanism quotes a marker verbatim. Reading it as state
     // would invent an announcement, and the invented state misleads every later turn.
-    expect(collectExecCatalogState([meta(announce(ALPHA)!, false)])).toBeNull();
+    expect(collectReplCatalogState([meta(announce(ALPHA)!, false)])).toBeNull();
   });
 
   it("skips a marker it cannot parse without losing the last good one", () => {
     const good = announce(ALPHA)!;
 
-    const state = collectExecCatalogState([
+    const state = collectReplCatalogState([
       meta(good),
       meta(
-        `${EXEC_CATALOG_MARKER_PREFIX}{"k":"fu${EXEC_CATALOG_MARKER_SUFFIX}`,
+        `${REPL_CATALOG_MARKER_PREFIX}{"k":"fu${REPL_CATALOG_MARKER_SUFFIX}`,
       ),
       meta(
-        `${EXEC_CATALOG_MARKER_PREFIX}{"k":"sideways"}${EXEC_CATALOG_MARKER_SUFFIX}`,
+        `${REPL_CATALOG_MARKER_PREFIX}{"k":"sideways"}${REPL_CATALOG_MARKER_SUFFIX}`,
       ),
     ]);
 
@@ -253,12 +253,12 @@ describe("collectExecCatalogState", () => {
   it("skips a marker from an older format, which is a full re-announcement once", () => {
     // The delta kinds are gone; a history carrying one describes a pool this code
     // cannot reconstruct, and the worst case is announcing the list again.
-    const legacy = `${EXEC_CATALOG_MARKER_PREFIX}{"k":"delta","h":"abc","bh":"def"}${EXEC_CATALOG_MARKER_SUFFIX}`;
-    expect(collectExecCatalogState([meta(legacy)])).toBeNull();
+    const legacy = `${REPL_CATALOG_MARKER_PREFIX}{"k":"delta","h":"abc","bh":"def"}${REPL_CATALOG_MARKER_SUFFIX}`;
+    expect(collectReplCatalogState([meta(legacy)])).toBeNull();
   });
 });
 
-describe("buildExecCatalogAnnouncement", () => {
+describe("buildReplCatalogAnnouncement", () => {
   it("announces the pool for a session that has announced nothing", () => {
     const text = announce(ALPHA)!;
 
@@ -279,35 +279,35 @@ describe("buildExecCatalogAnnouncement", () => {
 
   it("stays silent while the pool is unchanged", () => {
     const first = announce(MIXED)!;
-    const state = collectExecCatalogState([meta(first)]);
+    const state = collectReplCatalogState([meta(first)]);
 
-    expect(buildExecCatalogAnnouncement(state, MIXED)).toBeNull();
+    expect(buildReplCatalogAnnouncement(state, MIXED)).toBeNull();
     // The same tools in a different order are the same pool: the comparison runs
     // on the sorted body, so nothing about arrival order can leak into it.
     expect(
-      buildExecCatalogAnnouncement(state, [...MIXED].reverse()),
+      buildReplCatalogAnnouncement(state, [...MIXED].reverse()),
     ).toBeNull();
   });
 
   it("re-announces in full when a tool, a tier or a server appears or goes away", () => {
     const first = announce(MIXED)!;
-    const state = collectExecCatalogState([meta(first)]);
+    const state = collectReplCatalogState([meta(first)]);
 
-    const added = buildExecCatalogAnnouncement(state, [
+    const added = buildReplCatalogAnnouncement(state, [
       ...MIXED,
       named("TaskCreate"),
     ])!;
     expect(markerOf(added)).toMatchObject({ k: "full" });
     expect(added).toContain("`TaskCreate`");
 
-    const gone = buildExecCatalogAnnouncement(state, [
+    const gone = buildReplCatalogAnnouncement(state, [
       core("Read", "Read a file from disk."),
       ...ALPHA,
     ])!;
     expect(gone).not.toContain("WebFetch");
 
     // A tool leaving the core tier re-renders as a name, and the body moves.
-    const demoted = buildExecCatalogAnnouncement(state, [
+    const demoted = buildReplCatalogAnnouncement(state, [
       named("Read", "Read a file from disk."),
       ...MIXED.slice(1),
     ])!;
@@ -317,9 +317,9 @@ describe("buildExecCatalogAnnouncement", () => {
 
   it("says the list no longer applies when the channel closes, once", () => {
     const first = announce(ALPHA)!;
-    const state = collectExecCatalogState([meta(first)]);
+    const state = collectReplCatalogState([meta(first)]);
 
-    const removed = buildExecCatalogAnnouncement(state, undefined)!;
+    const removed = buildReplCatalogAnnouncement(state, undefined)!;
     expect(removed).toContain("no longer available");
     // Only the kind: a closed channel has no list to compare, which is also why
     // re-opening always re-announces in full.
@@ -328,8 +328,8 @@ describe("buildExecCatalogAnnouncement", () => {
     // The history's last word is already "there is no channel": saying it again every
     // turn would be noise.
     expect(
-      buildExecCatalogAnnouncement(
-        collectExecCatalogState([meta(first), meta(removed)]),
+      buildReplCatalogAnnouncement(
+        collectReplCatalogState([meta(first), meta(removed)]),
         undefined,
       ),
     ).toBeNull();
@@ -339,9 +339,9 @@ describe("buildExecCatalogAnnouncement", () => {
     // An empty pool means no `REPL` declaration either, so the calling form is gone
     // exactly as it is when the switch is flipped off.
     const first = announce(ALPHA)!;
-    const state = collectExecCatalogState([meta(first)]);
+    const state = collectReplCatalogState([meta(first)]);
 
-    const removed = buildExecCatalogAnnouncement(state, [])!;
+    const removed = buildReplCatalogAnnouncement(state, [])!;
     expect(removed).toContain("no longer available");
     expect(markerOf(removed)).toEqual({ k: "removed" });
   });
@@ -350,13 +350,13 @@ describe("buildExecCatalogAnnouncement", () => {
     // Not compared by body: a closed channel has no list to compare, so going by
     // content would leave the session mute forever after a switch off and back on.
     const first = announce(ALPHA)!;
-    const removed = buildExecCatalogAnnouncement(
-      collectExecCatalogState([meta(first)]),
+    const removed = buildReplCatalogAnnouncement(
+      collectReplCatalogState([meta(first)]),
       undefined,
     )!;
 
-    const text = buildExecCatalogAnnouncement(
-      collectExecCatalogState([meta(first), meta(removed)]),
+    const text = buildReplCatalogAnnouncement(
+      collectReplCatalogState([meta(first), meta(removed)]),
       ALPHA,
     )!;
 
@@ -369,8 +369,8 @@ describe("buildExecCatalogAnnouncement", () => {
     // nothing left for the model to have read, so "unchanged" is not knowable — and a
     // duplicate is better than a loss.
     const first = announce(ALPHA)!;
-    expect(collectExecCatalogState([meta(first)])).not.toBeNull();
-    expect(collectExecCatalogState([meta("compacted away")])).toBeNull();
+    expect(collectReplCatalogState([meta(first)])).not.toBeNull();
+    expect(collectReplCatalogState([meta("compacted away")])).toBeNull();
 
     expect(announce(ALPHA)).toContain("`alpha`");
   });

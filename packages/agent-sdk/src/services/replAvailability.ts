@@ -15,10 +15,10 @@
  */
 import { loadMergedWaveConfig } from "./configurationService.js";
 import { getRemoteSettingsSync } from "./remoteSettingsService.js";
-import { STRUCTURAL_NON_DEFERRABLE } from "../exec/deferral.js";
+import { STRUCTURAL_NON_DEFERRABLE } from "../repl/deferral.js";
 
 /** Code default for REPL availability. */
-export const EXEC_DEFAULT_ENABLED = true;
+export const REPL_DEFAULT_ENABLED = true;
 
 /**
  * Code default for pooling the core tools. Off, because it turns every hot call
@@ -67,7 +67,7 @@ function readSetting(
  * remote layer always wins over the local one: an admin push is the authority,
  * and it names whichever spelling its version knows.
  */
-export function isExecEnabled(workdir?: string): boolean {
+export function isReplEnabled(workdir?: string): boolean {
   const remote = getRemoteSettingsSync();
   const remoteRepl = readSetting(remote, "enableRepl");
   if (remoteRepl !== undefined) {
@@ -88,7 +88,7 @@ export function isExecEnabled(workdir?: string): boolean {
       return localLegacy;
     }
   }
-  return EXEC_DEFAULT_ENABLED;
+  return REPL_DEFAULT_ENABLED;
 }
 
 /**
@@ -104,7 +104,7 @@ export function isExecEnabled(workdir?: string): boolean {
  * is a capability loss, not a configuration choice.
  */
 export function isReplCoreToolsEnabled(workdir?: string): boolean {
-  if (!isExecEnabled(workdir)) {
+  if (!isReplEnabled(workdir)) {
     return false;
   }
   const remoteCore = readSetting(

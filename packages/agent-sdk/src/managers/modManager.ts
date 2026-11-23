@@ -2261,7 +2261,7 @@ export class ModManager {
    * 每场会话问一次，答案由 `ToolManager` 存着；`breakPromptCache: true` 是插
    * 件声明「这份别存」，那一次请求之后就重新问。`$.ui.invalidate("tool.describe")`
    * 是同一条路的重问入口（见上）。答案里的 `isDeferred` 决定这个工具平铺还是
-   * 藏进 `Exec` 池（同轮生效，`Exec` 自身等结构豁免翻不动）。
+   * 藏进 `REPL` 池（同轮生效，`REPL` 自身等结构豁免翻不动）。
    */
   async collectToolDescription(
     tool: { name: string; description: string },
@@ -2290,8 +2290,8 @@ export class ModManager {
           typeof value.description === "string"
             ? value.description
             : fallback.description;
-        // 放置（平铺 / 进 Exec 池）由插件裁决，链上最后一环说话算数；没给就沿用
-        // 前面的答案。`ToolManager` 那边还要过一遍判定表，`Exec` 之类翻不动。
+        // 放置（平铺 / 进 REPL 池）由插件裁决，链上最后一环说话算数；没给就沿用
+        // 前面的答案。`ToolManager` 那边还要过一遍判定表，`REPL` 之类翻不动。
         const isDeferred =
           typeof value.isDeferred === "boolean"
             ? value.isDeferred

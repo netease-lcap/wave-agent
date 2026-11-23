@@ -14,7 +14,7 @@ const TASK_REMINDER_MARKER = "<!-- task-reminder -->";
  *
  * One question, two shapes. A flat `TaskUpdate` is a block of its own; a deferred
  * one is only reachable from the sandbox, so it leaves no block of its own and its
- * name rides on the `Exec` block that carried it (`ToolBlock.nestedToolCalls`, see
+ * name rides on the `REPL` block that carried it (`ToolBlock.nestedToolCalls`, see
  * `docs/specs/core/repl-tool.md`). Both must reset the counter — reading only the
  * block name would let the reminder nag an agent that just updated its task list,
  * and would make the count depend on how the tool happened to be declared.

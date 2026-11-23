@@ -11,7 +11,7 @@ import type {
   ToolBlock,
 } from "../../src/types/messaging.js";
 import type { Task } from "../../src/types/tasks.js";
-import { EXEC_TOOL_NAME } from "../../src/constants/tools.js";
+import { REPL_TOOL_NAME } from "../../src/constants/tools.js";
 
 function makeAssistantMessage(
   opts: { blocks?: MessageBlock[]; isMeta?: boolean } = {},
@@ -50,7 +50,7 @@ function makeToolBlock(name: string): ToolBlock {
 function makeReplBlock(nestedToolCalls: string[]): ToolBlock {
   return {
     type: "tool",
-    name: EXEC_TOOL_NAME,
+    name: REPL_TOOL_NAME,
     stage: "end",
     success: true,
     nestedToolCalls,

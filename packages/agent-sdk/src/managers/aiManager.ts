@@ -50,16 +50,16 @@ import {
   collectAnnouncedServers,
 } from "../utils/mcpInstructions.js";
 import {
-  buildExecCatalogAnnouncement,
-  collectExecCatalogState,
-} from "../exec/catalogAnnouncement.js";
+  buildReplCatalogAnnouncement,
+  collectReplCatalogState,
+} from "../repl/catalogAnnouncement.js";
 import {
   disposeReplRuntime,
   drainReplEvents,
   listRunningReplScripts,
-} from "../exec/execRuntime.js";
+} from "../repl/replRuntime.js";
 import { renderReplEvent, renderReplStatus } from "../tools/pollTool.js";
-import { allocateAgentSlot, replSessionKey } from "../exec/sessionKey.js";
+import { allocateAgentSlot, replSessionKey } from "../repl/sessionKey.js";
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import * as path from "node:path";
@@ -359,7 +359,7 @@ export interface AIManagerOptions {
 export class AIManager {
   public isLoading: boolean = false;
   /**
-   * This manager's half of the REPL context key (see `exec/sessionKey.ts`).
+   * This manager's half of the REPL context key (see `repl/sessionKey.ts`).
    *
    * One agent = one long-lived JavaScript context; a subagent has its own manager
    * and therefore its own slot, so the two cannot see each other's variables even
@@ -1661,14 +1661,14 @@ export class AIManager {
    * Announce the on-demand tool pool in the conversation, whenever it differs from
    * the last announcement. Keeping it out of the REPL's description is what makes
    * that declaration a constant: a server connecting would otherwise rewrite
-   * `tools[]`, which sits in the cached prefix (see `exec/catalogAnnouncement.ts`).
+   * `tools[]`, which sits in the cached prefix (see `repl/catalogAnnouncement.ts`).
    *
    * The pool goes out as entries, not as names: the announcement's first tier is a
    * signature block selected by `tier === "core"`, and a bare name cannot carry a
    * schema. Names alone would demote the seven core tools to the name-only tier,
    * i.e. every new session's first script would start with a search.
    */
-  private maybeAnnounceExecCatalog(): void {
+  private maybeAnnounceReplCatalog(): void {
     const toolManager = this.toolManager;
     // Optional for the same reason as `maybeAnnounceMcpInstructions` above, and it
     // matters just as much here: reading an absent channel as "the pool is gone"
@@ -1676,8 +1676,8 @@ export class AIManager {
     if (!toolManager || typeof toolManager.getOnDemandPool !== "function")
       return;
 
-    const text = buildExecCatalogAnnouncement(
-      collectExecCatalogState(this.messageManager.getMessages()),
+    const text = buildReplCatalogAnnouncement(
+      collectReplCatalogState(this.messageManager.getMessages()),
       toolManager.getOnDemandPool(),
     );
     if (!text) return;
@@ -3024,7 +3024,7 @@ ${question}`;
           // itself in the request that can already call it. After compaction, so
           // the announcement is not the content that just got summarized away.
           this.maybeAnnounceMcpInstructions();
-          this.maybeAnnounceExecCatalog();
+          this.maybeAnnounceReplCatalog();
           this.maybeAnnounceReplEvents();
 
           // Track if assistant message has been created

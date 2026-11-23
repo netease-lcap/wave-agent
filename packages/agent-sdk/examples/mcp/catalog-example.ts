@@ -2,15 +2,15 @@
 
 import { fileURLToPath } from "url";
 import { Agent } from "../../src/agent.js";
-import { buildExecCatalogAnnouncement } from "../../src/exec/catalogAnnouncement.js";
+import { buildReplCatalogAnnouncement } from "../../src/repl/catalogAnnouncement.js";
 import {
   renderSearchCallForm,
   renderSearchSignature,
   renderToolSignature,
   searchTools,
-} from "../../src/exec/catalog.js";
-import type { ExecPoolEntry } from "../../src/exec/catalog.js";
-import { execTool } from "../../src/tools/execTool.js";
+} from "../../src/repl/catalog.js";
+import type { ReplPoolEntry } from "../../src/repl/catalog.js";
+import { replTool } from "../../src/tools/replTool.js";
 import {
   catalogAnnouncements,
   section,
@@ -26,7 +26,7 @@ import {
  * when it is ready to call one.
  *
  * The announcement is built here the way the agent builds it each turn
- * (`buildExecCatalogAnnouncement` with no prior history) so its shape can be
+ * (`buildReplCatalogAnnouncement` with no prior history) so its shape can be
  * asserted without spending a turn; the last section then reads the announcement a
  * real turn actually appended, which is also where the built-in half of the list
  * shows up (they are in the same set — this demo's MCP tools are just the readable
@@ -60,8 +60,8 @@ function check(condition: boolean, message: string): void {
   if (!condition) failures.push(message);
 }
 
-/** The MCP half of the pool, flattened the way `buildExecPool` does. */
-function flatten(agent: Agent): ExecPoolEntry[] {
+/** The MCP half of the pool, flattened the way `buildReplPool` does. */
+function flatten(agent: Agent): ReplPoolEntry[] {
   return agent.getMcpServers().flatMap((server) =>
     (server.tools ?? []).map((tool) => ({
       name: `mcp__${server.name}__${tool.name}`,
@@ -74,9 +74,9 @@ function flatten(agent: Agent): ExecPoolEntry[] {
 }
 
 /** The announcement a session with no prior list receives for this pool. */
-function announcementFor(pool: ExecPoolEntry[]): string {
+function announcementFor(pool: ReplPoolEntry[]): string {
   return (
-    buildExecCatalogAnnouncement(
+    buildReplCatalogAnnouncement(
       null,
       pool.map((entry) => entry.name),
     ) ?? ""
@@ -89,7 +89,7 @@ function announcementFor(pool: ExecPoolEntry[]): string {
  * schema, so the signature below is rendered from the pool rather than from the
  * bounded text the hit carries.
  */
-function find(pool: ExecPoolEntry[], name: string): ExecPoolEntry {
+function find(pool: ReplPoolEntry[], name: string): ReplPoolEntry {
   const hit = searchTools(pool, name)[0];
   if (hit?.name !== name) throw new Error(`search did not return "${name}"`);
   const entry = pool.find((candidate) => candidate.name === name);
@@ -169,7 +169,7 @@ async function main(): Promise<void> {
     const note = announcementFor(pool);
     check(note !== "", "no announcement was rendered for a non-empty pool");
     check(
-      !(execTool.config.function.description ?? "").includes("mcp__"),
+      !(replTool.config.function.description ?? "").includes("mcp__"),
       "the REPL description names a tool: it must stay independent of the pool",
     );
 
@@ -178,7 +178,7 @@ async function main(): Promise<void> {
     // announcement never carries one. `searchTools` is not in the pool, so its own
     // shape has no other channel: left out of the description, the model can only
     // guess a parameter name and wait for the error to correct it.
-    const description = execTool.config.function.description ?? "";
+    const description = replTool.config.function.description ?? "";
     const from = description.indexOf("- `await tools.");
     const to = description.indexOf("- `self.log(");
     if (from >= 0 && to > from)
@@ -189,7 +189,7 @@ async function main(): Promise<void> {
       "the REPL description does not carry searchTools' own signature",
     );
     const lean =
-      typeof execTool.leanPrompt === "string" ? execTool.leanPrompt : "";
+      typeof replTool.leanPrompt === "string" ? replTool.leanPrompt : "";
     check(
       lean.includes(renderSearchCallForm()),
       "the lean prompt does not carry the one-line call form",

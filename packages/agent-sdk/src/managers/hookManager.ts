@@ -353,7 +353,7 @@ export class HookManager {
    * Run the PreToolUse hooks for one tool call and report whether it is blocked.
    *
    * Tool events live here rather than in the tool-call loop because a tool can be
-   * reached two ways — declared flat, or through the Exec sandbox's pool — and
+   * reached two ways — declared flat, or through the REPL sandbox's pool — and
    * both take the same execution funnel (`ToolManager.execute` for built-ins,
    * `McpManager.executeMcpTool` for MCP). Hanging the hooks on the funnels is
    * what makes a nested call auditable exactly like a flat one.
@@ -560,7 +560,7 @@ export class HookManager {
    *
    * Tool events (PreToolUse / PostToolUse) do not come through here: they have
    * their own executors on the execution funnels, because their feedback has to
-   * reach a nested call inside the Exec sandbox too.
+   * reach a nested call inside the REPL sandbox too.
    */
   processHookResults(
     event: HookEvent,

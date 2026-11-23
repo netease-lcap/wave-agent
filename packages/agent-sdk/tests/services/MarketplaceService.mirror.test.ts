@@ -437,7 +437,7 @@ describe("officialMarketplaceMirror (zip snapshot)", () => {
       const jsonStat = await fs.stat(
         path.join(installLocation, ".wave-plugin", "marketplace.json"),
       );
-      // Filesystem layer — POSIX-only. Exec bits are a POSIX file-system
+      // Filesystem layer — POSIX-only. REPL bits are a POSIX file-system
       // concept: NTFS has no mode bits, so `stat().mode & 0o111` is always 0
       // there and the chmod in officialMarketplaceMirror is a silent no-op.
       // Windows also does not need the restored bit, because hooks are never

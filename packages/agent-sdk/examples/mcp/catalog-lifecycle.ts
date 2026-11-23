@@ -2,16 +2,16 @@
 
 import { fileURLToPath } from "url";
 import { Agent } from "../../src/agent.js";
-import { execTool } from "../../src/tools/execTool.js";
-import { EXEC_TOOL_NAME } from "../../src/constants/tools.js";
+import { replTool } from "../../src/tools/replTool.js";
+import { REPL_TOOL_NAME } from "../../src/constants/tools.js";
 import {
-  EXEC_CATALOG_MARKER_PREFIX,
-  EXEC_CATALOG_MARKER_SUFFIX,
-  buildExecCatalogAnnouncement,
-} from "../../src/exec/catalogAnnouncement.js";
-import type { ExecCatalogMarker } from "../../src/exec/catalogAnnouncement.js";
-import { renderToolSignature } from "../../src/exec/catalog.js";
-import type { ExecPoolEntry } from "../../src/exec/catalog.js";
+  REPL_CATALOG_MARKER_PREFIX,
+  REPL_CATALOG_MARKER_SUFFIX,
+  buildReplCatalogAnnouncement,
+} from "../../src/repl/catalogAnnouncement.js";
+import type { ReplCatalogMarker } from "../../src/repl/catalogAnnouncement.js";
+import { renderToolSignature } from "../../src/repl/catalog.js";
+import type { ReplPoolEntry } from "../../src/repl/catalog.js";
 import {
   catalogAnnouncements,
   catalogMarkerOf,
@@ -64,7 +64,7 @@ function check(condition: boolean, message: string): void {
 }
 
 /** The MCP half of the pool, for measuring it against the announced name list. */
-function flatten(agent: Agent): ExecPoolEntry[] {
+function flatten(agent: Agent): ReplPoolEntry[] {
   return agent.getMcpServers().flatMap((server) =>
     (server.tools ?? []).map((tool) => ({
       name: `mcp__${server.name}__${tool.name}`,
@@ -121,12 +121,12 @@ async function settle(agent: Agent): Promise<void> {
 }
 
 /** The marker payload of one announcement, in the shape the decision function takes. */
-function markerOf(text: string): ExecCatalogMarker {
+function markerOf(text: string): ReplCatalogMarker {
   const line = catalogMarkerOf(text) ?? "";
   const payload = JSON.parse(
     line.slice(
-      EXEC_CATALOG_MARKER_PREFIX.length,
-      line.length - EXEC_CATALOG_MARKER_SUFFIX.length,
+      REPL_CATALOG_MARKER_PREFIX.length,
+      line.length - REPL_CATALOG_MARKER_SUFFIX.length,
     ),
   ) as MarkerPayload;
   // The body is not carried here: the decision function compares the body out of
@@ -243,7 +243,7 @@ async function main(): Promise<void> {
     }
 
     section("the declaration it is NOT in");
-    const declaration = execTool.config.function.description ?? "";
+    const declaration = replTool.config.function.description ?? "";
     console.log(`${declaration.split("\n")[0]} …`);
     console.log(`${declaration.length} chars, pool-independent`);
     check(
@@ -362,7 +362,7 @@ async function main(): Promise<void> {
     // The motivating property: the pool is never empty, so the REPL stays declared
     // and `tools[]` stops churning whenever an MCP server connects or drops.
     check(
-      agent.getAvailableToolNames().includes(EXEC_TOOL_NAME),
+      agent.getAvailableToolNames().includes(REPL_TOOL_NAME),
       "the REPL is no longer declared although the deferred built-ins remain",
     );
     const [builtinsOnly] = await step(
@@ -387,7 +387,7 @@ async function main(): Promise<void> {
     // the pool itself cannot empty. The input here is the marker the last turn
     // really wrote, so this is the deployed decision function, not a mock.
     const lastMarker = markerOf(catalogAnnouncements(agent).at(-1) ?? "");
-    const closed = buildExecCatalogAnnouncement(lastMarker, undefined) ?? "";
+    const closed = buildReplCatalogAnnouncement(lastMarker, undefined) ?? "";
     console.log(closed);
     check(
       markerOf(closed).kind === "removed",
@@ -398,11 +398,11 @@ async function main(): Promise<void> {
       "the closing notice does not say the list no longer applies",
     );
     check(
-      buildExecCatalogAnnouncement(markerOf(closed), undefined) === null,
+      buildReplCatalogAnnouncement(markerOf(closed), undefined) === null,
       "closing the channel twice announces twice",
     );
     check(
-      buildExecCatalogAnnouncement(markerOf(closed), []) === null,
+      buildReplCatalogAnnouncement(markerOf(closed), []) === null,
       "an empty pool is treated as something to announce",
     );
 

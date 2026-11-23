@@ -18,7 +18,7 @@ export interface McpServerConfig {
    *
    * Not the same thing as the tool-level `_meta["anthropic/alwaysLoad"]` below:
    * that one is a server asking for one of its *tools* to be declared flat
-   * instead of loaded on demand through the Exec pool — a question of how a tool
+   * instead of loaded on demand through the REPL pool — a question of how a tool
    * is announced, answered after the connection exists. This one is about
    * whether the connection exists by the time the turn starts.
    */

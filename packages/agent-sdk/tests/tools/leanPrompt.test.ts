@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { ToolManager } from "@/managers/toolManager.js";
 import { Container } from "@/utils/container.js";
 import { artifactTool } from "@/tools/artifactTool.js";
-import { execTool } from "@/tools/execTool.js";
+import { replTool } from "@/tools/replTool.js";
 import { SKILL_TOOL_NAME, POWERSHELL_TOOL_NAME } from "@/constants/tools.js";
 
 const { isLeanPromptEnabled } = vi.hoisted(() => ({
@@ -80,7 +80,7 @@ describe("lean prompt mode", () => {
     // Artifact's registration depends on the account (it defaults on only for a
     // logged-in user), so the sweep above may or may not have seen it.
     expect(artifactTool.leanPrompt).toBeDefined();
-    expect(execTool.leanPrompt).toBeDefined();
+    expect(replTool.leanPrompt).toBeDefined();
   });
 
   it("sends the lean description when the switch is on", () => {

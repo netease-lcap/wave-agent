@@ -359,7 +359,7 @@ describe("validateToolInput against the real built-in schemas", () => {
       import("../../src/tools/enterWorktreeTool.js"),
       import("../../src/tools/exitWorktreeTool.js"),
       import("../../src/tools/workflowTool.js"),
-      import("../../src/tools/execTool.js"),
+      import("../../src/tools/replTool.js"),
       import("../../src/tools/taskManagementTools.js"),
     ]);
 

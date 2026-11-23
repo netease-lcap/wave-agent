@@ -20,7 +20,7 @@
  * 2. **Waiting is not spending.** The sync budget (`timeout`) is enforced inside
  *    the sandbox, per synchronous segment, so an approval dialog costs nothing.
  *    The *ask* permission modes are the deliberate exception: there the script is
- *    kept alive at most `EXEC_ASK_MODE_TOTAL_MS` from start, counting the wait,
+ *    kept alive at most `REPL_ASK_MODE_TOTAL_MS` from start, counting the wait,
  *    because a prompt nobody answers would otherwise pin the context forever.
  * 3. **Never reject.** Every failure mode comes back as `{ ok: false, error }`:
  *    a script throw, a budget, an abort, a watchdog or a dispatch. A runaway
@@ -37,24 +37,24 @@ import {
   describeTool as describePoolEntry,
   listToolNames as listPoolToolNames,
   searchTools as searchPool,
-  type ExecPoolEntry,
+  type ReplPoolEntry,
 } from "./catalog.js";
 import {
-  EXEC_ABORT_GRACE_CALLS,
-  EXEC_ASK_MODE_TOTAL_MS,
-  EXEC_ASYNC_CONCURRENCY_LIMIT,
-  EXEC_BACKGROUND_MAX_MS,
-  EXEC_DEFAULT_MAX_LOG_CHARS,
-  EXEC_DEFAULT_MAX_TOOL_CALLS,
-  EXEC_DEFAULT_NATIVE_TIMEOUT_MS,
-  EXEC_DEFAULT_TIMEOUT_MS,
-  EXEC_MAX_IMAGES,
-  EXEC_MAX_PDFS,
-  EXEC_MAX_TIMEOUT_MS,
-  EXEC_SHELL_DEFAULT_WAIT_MS,
-  EXEC_SYNC_WAIT_MS,
-  EXEC_WATCHDOG_BASE_MS,
-  EXEC_WATCHDOG_FACTOR,
+  REPL_ABORT_GRACE_CALLS,
+  REPL_ASK_MODE_TOTAL_MS,
+  REPL_ASYNC_CONCURRENCY_LIMIT,
+  REPL_BACKGROUND_MAX_MS,
+  REPL_DEFAULT_MAX_LOG_CHARS,
+  REPL_DEFAULT_MAX_TOOL_CALLS,
+  REPL_DEFAULT_NATIVE_TIMEOUT_MS,
+  REPL_DEFAULT_TIMEOUT_MS,
+  REPL_MAX_IMAGES,
+  REPL_MAX_PDFS,
+  REPL_MAX_TIMEOUT_MS,
+  REPL_SHELL_DEFAULT_WAIT_MS,
+  REPL_SYNC_WAIT_MS,
+  REPL_WATCHDOG_BASE_MS,
+  REPL_WATCHDOG_FACTOR,
 } from "./constants.js";
 import {
   acquireReplSandbox,
@@ -69,7 +69,7 @@ export interface RunReplOptions {
   /** The model's `timeout`, in milliseconds. Default 30000, clamped to 600000. */
   timeout?: number;
   /** Every tool this script may call. The sandbox exposes these as globals. */
-  pool: ExecPoolEntry[];
+  pool: ReplPoolEntry[];
   context: ToolContext;
   /**
    * Called as each nested call is issued, before it is dispatched, in call order.
@@ -168,7 +168,7 @@ interface ReplFrame {
   startedAt: number;
   /** Sync-segment wall clock, for the error text and the sandbox. */
   timeoutMs: number;
-  pool: readonly ExecPoolEntry[];
+  pool: readonly ReplPoolEntry[];
   context: ToolContext;
   onToolCall?: (
     name: string,
@@ -324,8 +324,8 @@ function resolveTimeout(requested: number | undefined): number {
   const value =
     typeof requested === "number" && Number.isFinite(requested) && requested > 0
       ? Math.floor(requested)
-      : EXEC_DEFAULT_TIMEOUT_MS;
-  return Math.min(value, EXEC_MAX_TIMEOUT_MS);
+      : REPL_DEFAULT_TIMEOUT_MS;
+  return Math.min(value, REPL_MAX_TIMEOUT_MS);
 }
 
 /** Only these two modes stop for a human, and only they get the ask-mode ceiling. */
@@ -341,7 +341,7 @@ function isAskMode(mode: string | undefined): boolean {
  */
 function watchdogMsFor(nativeTimeoutMs: number): number {
   return Math.round(
-    nativeTimeoutMs * EXEC_WATCHDOG_FACTOR + EXEC_WATCHDOG_BASE_MS,
+    nativeTimeoutMs * REPL_WATCHDOG_FACTOR + REPL_WATCHDOG_BASE_MS,
   );
 }
 
@@ -352,7 +352,7 @@ function nativeTimeoutOf(args: Record<string, unknown>): number {
     Number.isFinite(declared) &&
     declared > 0
     ? Math.floor(declared)
-    : EXEC_DEFAULT_NATIVE_TIMEOUT_MS;
+    : REPL_DEFAULT_NATIVE_TIMEOUT_MS;
 }
 
 /** Bookkeeping timers must never be the reason a process stays alive. */
@@ -390,7 +390,7 @@ async function withWatchdog<T>(
           reject(
             new Error(
               `${label} did not return within ${limitMs} ms ` +
-                `(watchdog: ${nativeTimeoutMs} ms × ${EXEC_WATCHDOG_FACTOR} + ${EXEC_WATCHDOG_BASE_MS} ms). ` +
+                `(watchdog: ${nativeTimeoutMs} ms × ${REPL_WATCHDOG_FACTOR} + ${REPL_WATCHDOG_BASE_MS} ms). ` +
                 "That call was abandoned and the script continues; it may still be running host-side.",
             ),
           );
@@ -443,16 +443,16 @@ function hoistImages(
     if (data.length === 0) continue;
     const isPdf = image.mediaType === "application/pdf";
     if (isPdf) {
-      if (frame.pdfCount >= EXEC_MAX_PDFS) {
-        const note = `[PDF dropped: the REPL result keeps at most ${EXEC_MAX_PDFS} PDFs]`;
+      if (frame.pdfCount >= REPL_MAX_PDFS) {
+        const note = `[PDF dropped: the REPL result keeps at most ${REPL_MAX_PDFS} PDFs]`;
         frame.notes.push(note);
         notes.push(note);
         continue;
       }
       frame.pdfCount += 1;
     } else {
-      if (frame.imageCount >= EXEC_MAX_IMAGES) {
-        const note = `[image dropped: the REPL result keeps at most ${EXEC_MAX_IMAGES} images]`;
+      if (frame.imageCount >= REPL_MAX_IMAGES) {
+        const note = `[image dropped: the REPL result keeps at most ${REPL_MAX_IMAGES} images]`;
         frame.notes.push(note);
         notes.push(note);
         continue;
@@ -526,7 +526,7 @@ function writeConsole(
   const text = values.join(" ");
   const line = level === "log" ? text : `[${level}] ${text}`;
   frame.consoleText += `${line}\n`;
-  const overflow = frame.consoleText.length - EXEC_DEFAULT_MAX_LOG_CHARS;
+  const overflow = frame.consoleText.length - REPL_DEFAULT_MAX_LOG_CHARS;
   if (overflow > 0) {
     frame.consoleText = frame.consoleText.slice(overflow);
     frame.consoleDroppedChars += overflow;
@@ -720,7 +720,7 @@ async function answerToolCall(
   }
   if (frame.stopped) {
     frame.graceCalls += 1;
-    if (frame.graceCalls > EXEC_ABORT_GRACE_CALLS) {
+    if (frame.graceCalls > REPL_ABORT_GRACE_CALLS) {
       frame.closed = true;
       return NEVER;
     }
@@ -1009,8 +1009,8 @@ function readShellCallOptions(options: unknown): ShellCallOptions {
   const declared = record.timeout;
   const waitMs =
     typeof declared === "number" && Number.isFinite(declared) && declared > 0
-      ? Math.min(Math.floor(declared), EXEC_BACKGROUND_MAX_MS)
-      : EXEC_SHELL_DEFAULT_WAIT_MS;
+      ? Math.min(Math.floor(declared), REPL_BACKGROUND_MAX_MS)
+      : REPL_SHELL_DEFAULT_WAIT_MS;
 
   let cwd: string | undefined;
   if (record.cwd !== undefined) {
@@ -1137,7 +1137,7 @@ async function answerShellCall(
   }
   if (frame.stopped) {
     frame.graceCalls += 1;
-    if (frame.graceCalls > EXEC_ABORT_GRACE_CALLS) {
+    if (frame.graceCalls > REPL_ABORT_GRACE_CALLS) {
       frame.closed = true;
       return NEVER;
     }
@@ -1465,10 +1465,10 @@ function armBackgroundCeiling(frame: ReplFrame): void {
     setTimeout(() => {
       terminateFrame(
         frame,
-        `REPL script exceeded the background ceiling (${EXEC_BACKGROUND_MAX_MS} ms) and was terminated. ` +
+        `REPL script exceeded the background ceiling (${REPL_BACKGROUND_MAX_MS} ms) and was terminated. ` +
           "Tool calls that already completed still apply.",
       );
-    }, EXEC_BACKGROUND_MAX_MS),
+    }, REPL_BACKGROUND_MAX_MS),
   );
 }
 
@@ -1550,7 +1550,7 @@ function concurrencyRefusal(
     dispatched: evalId,
     error:
       `REPL concurrency limit reached: ${running} script(s) from this context are still in flight ` +
-      `(limit ${EXEC_ASYNC_CONCURRENCY_LIMIT}). 已达并发上限，先用 Poll 等它们 settle. ` +
+      `(limit ${REPL_ASYNC_CONCURRENCY_LIMIT}). 已达并发上限，先用 Poll 等它们 settle. ` +
       "This script was not started.",
     logs: [],
     toolCalls: 0,
@@ -1575,7 +1575,7 @@ export function runReplScript(options: RunReplOptions): Promise<ReplRunResult> {
   const key = resolveKey(options);
   const snippet = snippetOf(code);
   const live = activeCount(key);
-  if (live >= EXEC_ASYNC_CONCURRENCY_LIMIT) {
+  if (live >= REPL_ASYNC_CONCURRENCY_LIMIT) {
     // The refused call still consumes a number: the receipt the model reads and
     // the number a later script gets must never be the same one.
     const refusedId = nextEvalId;
@@ -1592,7 +1592,7 @@ export function runReplScript(options: RunReplOptions): Promise<ReplRunResult> {
     pool: options.pool ?? [],
     context: options.context,
     onToolCall: options.onToolCall,
-    maxToolCalls: options.maxToolCalls ?? EXEC_DEFAULT_MAX_TOOL_CALLS,
+    maxToolCalls: options.maxToolCalls ?? REPL_DEFAULT_MAX_TOOL_CALLS,
     toolCalls: 0,
     toolsUsed: [],
     refused: [],
@@ -1638,7 +1638,7 @@ export function runReplScript(options: RunReplOptions): Promise<ReplRunResult> {
     options.permissionMode ?? options.context.permissionMode;
   const askMode = isAskMode(permissionMode);
 
-  // The wait window is a fixed `EXEC_SYNC_WAIT_MS`, not the model's `timeout`.
+  // The wait window is a fixed `REPL_SYNC_WAIT_MS`, not the model's `timeout`.
   // They answer different questions — "how long may the synchronous segment run"
   // versus "how long does this call hold the turn" — and using one number for both
   // let `timeout: 600000` occupy a whole turn for ten minutes. Past the window the
@@ -1653,14 +1653,14 @@ export function runReplScript(options: RunReplOptions): Promise<ReplRunResult> {
           if (askMode) {
             stopScript(
               frame,
-              `REPL script stopped ${EXEC_ASK_MODE_TOTAL_MS} ms after it starts, counting the time spent waiting on permission prompts. ` +
+              `REPL script stopped ${REPL_ASK_MODE_TOTAL_MS} ms after it starts, counting the time spent waiting on permission prompts. ` +
                 "Tool calls that already completed still apply; variables and functions are kept.",
             );
             return;
           }
           sendDispatchReceipt(frame);
         },
-        askMode ? EXEC_ASK_MODE_TOTAL_MS : EXEC_SYNC_WAIT_MS,
+        askMode ? REPL_ASK_MODE_TOTAL_MS : REPL_SYNC_WAIT_MS,
       ),
     );
   }

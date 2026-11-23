@@ -58,7 +58,7 @@ export interface UpdateToolBlockParams {
   backgroundedByUser?: boolean;
   assistantAutoBackgrounded?: boolean;
   /**
-   * Tool names reached inside a sandboxed call (`Exec`), in call order with
+   * Tool names reached inside a sandboxed call (`REPL`), in call order with
    * repeats kept — the only trace a deferred tool's call leaves (see
    * `ToolBlock.nestedToolCalls`).
    */

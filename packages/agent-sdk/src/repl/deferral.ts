@@ -3,7 +3,7 @@
  *
  * One judgment, four consumers: the flat declarations give up exactly the tools
  * this returns (see `toolManager.getToolsConfig`), the pool is built from it
- * (see `catalog.buildExecPool`), the announcement lists its names (see
+ * (see `catalog.buildReplPool`), the announcement lists its names (see
  * `catalogAnnouncement`), and the sandbox's reachable set is that same pool.
  * Four separate judgments is how "the announcement lists a tool the declarations
  * did not give up" — a permission-escalation shape — becomes possible.
@@ -27,7 +27,7 @@
 import {
   BASH_TOOL_NAME,
   EDIT_TOOL_NAME,
-  EXEC_TOOL_NAME,
+  REPL_TOOL_NAME,
   GLOB_TOOL_NAME,
   GREP_TOOL_NAME,
   POWERSHELL_TOOL_NAME,
@@ -75,7 +75,7 @@ export interface DeferralSubject {
   alwaysLoad?: boolean;
   /**
    * The pool tier this candidate was assigned (`toolTier`). The judgment reads the
-   * name list instead — one source — and this field exists so `buildExecPool` can
+   * name list instead — one source — and this field exists so `buildReplPool` can
    * copy it onto the entry the announcement splits on.
    */
   tier?: ToolTier;
@@ -97,7 +97,7 @@ export interface DeferralSubject {
  * cannot call — a dead end, not a saving.
  */
 export const STRUCTURAL_NON_DEFERRABLE: readonly string[] = [
-  EXEC_TOOL_NAME,
+  REPL_TOOL_NAME,
   ...REPL_TOOL_ALIASES,
   POLL_TOOL_NAME,
 ];

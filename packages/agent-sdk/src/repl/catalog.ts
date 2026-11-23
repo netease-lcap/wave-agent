@@ -1,8 +1,8 @@
 /**
- * The Exec pool: which tools the sandbox may reach, how a tool's call shape is
+ * The REPL pool: which tools the sandbox may reach, how a tool's call shape is
  * rendered, and how the sandbox's `search` entry point answers.
  *
- * "The pool" is the set of tools loaded on demand — see `exec/deferral.ts` for
+ * "The pool" is the set of tools loaded on demand — see `repl/deferral.ts` for
  * the judgment that decides membership. Everything here is a pure function of the
  * candidates plus that judgment's inputs; no manager is involved, so the same
  * pool can be built for the declaration path, the announcement and the sandbox
@@ -10,9 +10,9 @@
  *
  * The hard constraint is that the pool must equal the tools the agent could
  * already call directly — if a tool were reachable from the sandbox but hidden
- * from the agent, Exec would be a permission-escalation channel. Candidates are
+ * from the agent, REPL would be a permission-escalation channel. Candidates are
  * therefore filtered by permission *before* they arrive here (see
- * `toolManager.getExecPool`), and nothing in this module may widen the set.
+ * `toolManager.getReplPool`), and nothing in this module may widen the set.
  *
  * Two things this module deliberately does not have: a size budget for the
  * announcement and a truncating renderer for its names. A silent cut would read as
@@ -30,9 +30,9 @@
  * separate `ToolSearch` tool rather than to a sandbox global.
  */
 import {
-  EXEC_SEARCH_DEFAULT_MAX_RESULTS,
-  EXEC_SEARCH_MAX_RESULTS_LIMIT,
-  EXEC_SEARCH_NAME,
+  REPL_SEARCH_DEFAULT_MAX_RESULTS,
+  REPL_SEARCH_MAX_RESULTS_LIMIT,
+  REPL_SEARCH_NAME,
 } from "./constants.js";
 import {
   isCorePoolTool,
@@ -48,7 +48,7 @@ import type { DeferralSubject, ToolTier } from "./deferral.js";
  * `inputSchema`/`outputSchema` are the raw JSON Schemas, used only to render a
  * callable signature — the sandbox never sees them.
  */
-export interface ExecPoolEntry {
+export interface ReplPoolEntry {
   /** Flattened `mcp__<server>__<tool>` name, or a built-in tool's name — the key on the sandbox `tools` object. */
   name: string;
   description?: string;
@@ -77,7 +77,7 @@ export interface ExecPoolEntry {
 }
 
 /** A pool candidate: the entry data plus the inputs the deferral judgment reads. */
-export interface ExecPoolCandidate extends DeferralSubject {
+export interface ReplPoolCandidate extends DeferralSubject {
   description?: string;
   searchHint?: string;
   inputSchema?: Record<string, unknown>;
@@ -114,13 +114,13 @@ export interface ExecPoolCandidate extends DeferralSubject {
  * judgment: a tool with that name that is declared flat is left alone, and one
  * that the non-deferrable list exempts is not a reason to fail a turn either.
  */
-export function buildExecPool(
-  candidates: readonly ExecPoolCandidate[],
+export function buildReplPool(
+  candidates: readonly ReplPoolCandidate[],
   nonDeferrable: ReadonlySet<string>,
   coreToolsEnabled = false,
   placement?: (name: string) => boolean | undefined,
-): ExecPoolEntry[] {
-  const pool: ExecPoolEntry[] = [];
+): ReplPoolEntry[] {
+  const pool: ReplPoolEntry[] = [];
   for (const candidate of candidates) {
     // A mod's `tool.describe` answer wins over the judgment table (spec
     // 「给工具、技能、命令写描述」); `undefined` means it had no opinion.
@@ -128,10 +128,10 @@ export function buildExecPool(
       placement?.(candidate.name) ??
       isDeferredTool(candidate, nonDeferrable, coreToolsEnabled);
     if (!deferred) continue;
-    if (candidate.name === EXEC_SEARCH_NAME) {
+    if (candidate.name === REPL_SEARCH_NAME) {
       throw new Error(
-        `Tool "${EXEC_SEARCH_NAME}" cannot be loaded on demand, because the sandbox exposes its own search entry under that name. ` +
-          `Rename the tool, or mark it \`alwaysLoad\` so it stays out of the Exec pool.`,
+        `Tool "${REPL_SEARCH_NAME}" cannot be loaded on demand, because the sandbox exposes its own search entry under that name. ` +
+          `Rename the tool, or mark it \`alwaysLoad\` so it stays out of the REPL pool.`,
       );
     }
     // The tier is the judgment's own answer for this name, not a second reading of
@@ -333,10 +333,10 @@ function renderType(schema: unknown, depth: number): string {
  * tool that declared nothing still gets `Promise<unknown>` rather than no return
  * type at all — its output is whatever `structuredContent` the server sent.
  */
-export function renderToolSignature(entry: ExecPoolEntry): string {
+export function renderToolSignature(entry: ReplPoolEntry): string {
   const output = entry.isMcp
     ? renderType(entry.outputSchema, 0)
-    : // A built-in's result is its `content` text (see `ExecPoolEntry.outputSchema`):
+    : // A built-in's result is its `content` text (see `ReplPoolEntry.outputSchema`):
       // a return type of `unknown` would invite the model to read fields off it.
       "string";
   return `${toolExpression(entry.name)}(${renderType(entry.inputSchema, 0)}): Promise<${output}>`;
@@ -351,7 +351,7 @@ export function renderToolSignature(entry: ExecPoolEntry): string {
  * text and the announcement's pointer use — is the bare global below, which is what
  * a script actually writes (对齐 Claude Code 的 `searchTools(query, max?)`).
  */
-export const EXEC_SEARCH_EXPRESSION = EXEC_SEARCH_NAME;
+export const REPL_SEARCH_EXPRESSION = REPL_SEARCH_NAME;
 
 /**
  * The search entry point as the sandbox global spells it: `searchTools(query, max?)`.
@@ -475,7 +475,7 @@ const SEARCH_USAGE =
   "searchTools: pass the words to look for, e.g. searchTools('slack message')";
 
 /** One search hit. Three fields, because each one earns its place in a decision. */
-export interface ExecSearchHit {
+export interface ReplSearchHit {
   /** The name `tools.<name>` takes. */
   name: string;
   /** The tool's own description, cut to `SEARCH_ABOUT_MAX_CHARS`. */
@@ -489,7 +489,7 @@ export interface ExecSearchHit {
 }
 
 /** What `describeTool` answers for a name that is in the pool. */
-export interface ExecToolDescription {
+export interface ReplToolDescription {
   name: string;
   /** The tool's own description, cut to `DESCRIBE_DESCRIPTION_MAX_CHARS`. */
   description: string;
@@ -506,7 +506,7 @@ export interface ExecToolDescription {
 }
 
 /** What `describeTool` answers for a name that is not. */
-export interface ExecToolNotFound {
+export interface ReplToolNotFound {
   error: string;
 }
 
@@ -566,9 +566,9 @@ export function renderSearchCallForm(): string {
  */
 function resolveSearchLimit(max?: number): number {
   if (typeof max !== "number" || !Number.isInteger(max) || max <= 0) {
-    return EXEC_SEARCH_DEFAULT_MAX_RESULTS;
+    return REPL_SEARCH_DEFAULT_MAX_RESULTS;
   }
-  return Math.min(max, EXEC_SEARCH_MAX_RESULTS_LIMIT);
+  return Math.min(max, REPL_SEARCH_MAX_RESULTS_LIMIT);
 }
 
 /** `text` cut to `limit` characters, ellipsis included, when it does not fit. */
@@ -603,7 +603,7 @@ function clampTypeText(text: string, budget: number): string {
  * order, so the answer is a function of the *set*: registry order and the order
  * servers happened to connect in are not things a script's behaviour may depend on.
  */
-export function listToolNames(pool: readonly ExecPoolEntry[]): string[] {
+export function listToolNames(pool: readonly ReplPoolEntry[]): string[] {
   return pool.map((entry) => entry.name).sort();
 }
 
@@ -618,9 +618,9 @@ export function listToolNames(pool: readonly ExecPoolEntry[]): string[] {
  * answer too (`{ error }`), not an exception: the model can act on it.
  */
 export function describeTool(
-  pool: readonly ExecPoolEntry[],
+  pool: readonly ReplPoolEntry[],
   name: string,
-): ExecToolDescription | ExecToolNotFound {
+): ReplToolDescription | ReplToolNotFound {
   const wanted = typeof name === "string" ? name.trim().toLowerCase() : "";
   const entry = pool.find(
     (candidate) => candidate.name.toLowerCase() === wanted,
@@ -679,7 +679,7 @@ interface SearchTerm {
  * somebody wrote for exactly this purpose. The description is scored separately, at
  * the bottom of the scale — see `scoreEntry`.
  */
-function scoreTerm(entry: ExecPoolEntry, term: string): number {
+function scoreTerm(entry: ReplPoolEntry, term: string): number {
   const name = entry.name.toLowerCase();
   if (name === term) return NAME_EXACT_SCORE;
   if (nameSegments(name).includes(term)) return NAME_WORD_SCORE;
@@ -720,7 +720,7 @@ function descriptionPattern(terms: readonly SearchTerm[]): RegExp | null {
  * above a tool actually named after the thing.
  */
 function scoreEntry(
-  entry: ExecPoolEntry,
+  entry: ReplPoolEntry,
   terms: readonly SearchTerm[],
   pattern: RegExp | null,
 ): number {
@@ -740,7 +740,7 @@ function scoreEntry(
 }
 
 /** Deterministic tie-break: the same query against the same pool always answers alike. */
-function compareNames(left: ExecPoolEntry, right: ExecPoolEntry): number {
+function compareNames(left: ReplPoolEntry, right: ReplPoolEntry): number {
   return left.name < right.name ? -1 : left.name > right.name ? 1 : 0;
 }
 
@@ -759,9 +759,9 @@ function compareNames(left: ExecPoolEntry, right: ExecPoolEntry): number {
  * name ascending. Nothing about connection state or arrival order leaks in.
  */
 function rankMatches(
-  pool: readonly ExecPoolEntry[],
+  pool: readonly ReplPoolEntry[],
   lowered: string,
-): ExecPoolEntry[] {
+): ReplPoolEntry[] {
   const exact = pool.find((entry) => entry.name.toLowerCase() === lowered);
   if (exact) return [exact];
 
@@ -804,10 +804,10 @@ function rankMatches(
  * a string first is a step a signature should not have to mention.
  */
 export function searchTools(
-  pool: readonly ExecPoolEntry[],
+  pool: readonly ReplPoolEntry[],
   query: string,
   max?: number,
-): ExecSearchHit[] {
+): ReplSearchHit[] {
   if (typeof query !== "string" || query.trim().length === 0) {
     throw new Error(SEARCH_USAGE);
   }

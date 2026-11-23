@@ -19,18 +19,18 @@
  */
 
 import {
-  EXEC_MAX_TIMEOUT_MS,
-  EXEC_POLL_DEFAULT_WAIT_MS,
-  EXEC_POLL_MAX_EVENTS,
-} from "../exec/constants.js";
+  REPL_MAX_TIMEOUT_MS,
+  REPL_POLL_DEFAULT_WAIT_MS,
+  REPL_POLL_MAX_EVENTS,
+} from "../repl/constants.js";
 import {
   listRunningReplScripts,
   replPendingEventCount,
   waitForReplEvents,
-} from "../exec/execRuntime.js";
-import type { ReplEvent } from "../exec/execRuntime.js";
+} from "../repl/replRuntime.js";
+import type { ReplEvent } from "../repl/replRuntime.js";
 import { POLL_TOOL_NAME } from "../constants/tools.js";
-import { formatReplRun } from "./execTool.js";
+import { formatReplRun } from "./replTool.js";
 import type { ToolPlugin, ToolResult } from "./types.js";
 
 export { POLL_TOOL_NAME };
@@ -85,7 +85,7 @@ export const pollTool: ToolPlugin = {
             type: "number",
             description:
               `How long to wait before answering with a status line instead, in milliseconds. ` +
-              `Default ${EXEC_POLL_DEFAULT_WAIT_MS}, capped at ${EXEC_MAX_TIMEOUT_MS}.`,
+              `Default ${REPL_POLL_DEFAULT_WAIT_MS}, capped at ${REPL_MAX_TIMEOUT_MS}.`,
           },
         },
       },
@@ -99,15 +99,15 @@ export const pollTool: ToolPlugin = {
     const requested =
       typeof args.timeoutMs === "number" && Number.isFinite(args.timeoutMs)
         ? args.timeoutMs
-        : EXEC_POLL_DEFAULT_WAIT_MS;
-    const waitMs = Math.min(Math.max(0, requested), EXEC_MAX_TIMEOUT_MS);
+        : REPL_POLL_DEFAULT_WAIT_MS;
+    const waitMs = Math.min(Math.max(0, requested), REPL_MAX_TIMEOUT_MS);
 
     // Nothing queued and nothing running: there is no event to wait for, and
     // parking here would spend the whole timeout to say "nothing happened".
     const settled = await (replPendingEventCount() === 0 &&
     listRunningReplScripts().length === 0
       ? Promise.resolve([])
-      : waitForReplEvents(waitMs, EXEC_POLL_MAX_EVENTS));
+      : waitForReplEvents(waitMs, REPL_POLL_MAX_EVENTS));
 
     if (settled.length === 0) {
       return {

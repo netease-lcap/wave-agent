@@ -6,7 +6,7 @@ import {
   type ReplRunOptions,
   type ReplSandbox,
   type ReplSandboxHost,
-} from "../../src/exec/replSandbox.js";
+} from "../../src/repl/replSandbox.js";
 
 interface FakeHostState {
   toolCalls: Array<{ name: string; args: unknown }>;

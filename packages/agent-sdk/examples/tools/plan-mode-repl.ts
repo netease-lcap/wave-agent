@@ -13,11 +13,11 @@
  *
  * Run from `packages/agent-sdk`:
  *
- *   npx tsx examples/tools/plan-mode-exec.ts
+ *   npx tsx examples/tools/plan-mode-repl.ts
  */
 
 import { Agent, type PermissionDecision } from "../../src/index.js";
-import { EXEC_TOOL_NAME } from "../../src/constants/tools.js";
+import { REPL_TOOL_NAME } from "../../src/constants/tools.js";
 
 interface Ask {
   toolName: string;
@@ -97,7 +97,7 @@ async function main(): Promise<void> {
       !declared.includes("ExitPlanMode") && !declared.includes("EnterPlanMode"),
       "neither plan-mode tool is declared flat (deferred)",
     );
-    check(declared.includes(EXEC_TOOL_NAME), "the REPL is declared");
+    check(declared.includes(REPL_TOOL_NAME), "the REPL is declared");
 
     section("the model presents the plan through the sandbox");
     // Deliberately a plan with nothing to implement: the point of this example is the
@@ -139,20 +139,20 @@ async function main(): Promise<void> {
     check(modeNow !== "plan", "the approved plan left plan mode");
     // Nested calls surface as their own name inside the REPL summary, so this is the
     // measurable difference between "reached it directly" and "reached it as designed".
-    const reachedInsideExec = agent.messages.some((message) =>
+    const reachedInsideRepl = agent.messages.some((message) =>
       message.blocks.some(
         (block) =>
           block.type === "tool" &&
-          block.name === EXEC_TOOL_NAME &&
+          block.name === REPL_TOOL_NAME &&
           `${block.result ?? ""}${block.shortResult ?? ""}`.includes(
             "ExitPlanMode",
           ),
       ),
     );
     console.log(
-      `ExitPlanMode reached from inside the REPL: ${reachedInsideExec ? "yes" : "no"}`,
+      `ExitPlanMode reached from inside the REPL: ${reachedInsideRepl ? "yes" : "no"}`,
     );
-    if (!reachedInsideExec) {
+    if (!reachedInsideRepl) {
       console.log(
         "   (the model may have searched and called in one script whose summary was " +
           "truncated — the mechanism is what was under test, not the model)",

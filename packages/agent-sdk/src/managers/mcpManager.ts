@@ -1559,7 +1559,7 @@ export class McpManager {
     // PreToolUse hooks run before the permission check, exactly as they do for
     // a built-in: a hook that refuses the call means the user is never asked.
     // This is the one funnel every MCP call goes through — flat as well as
-    // nested, from inside the Exec sandbox — so hooks cannot be skipped by
+    // nested, from inside the REPL sandbox — so hooks cannot be skipped by
     // reaching a tool through the pool.
     if (context?.hookManager) {
       const blocked = await context.hookManager.executePreToolUseHooks(
@@ -1623,7 +1623,7 @@ export class McpManager {
             );
             // A PR/MR created by an MCP tool scores here rather than in
             // `ToolManager`: this is the one funnel every MCP call goes through,
-            // so a nested call from inside the Exec sandbox counts too.
+            // so a nested call from inside the REPL sandbox counts too.
             recordToolActivity(detectMcpActivity(toolName), {
               sessionId: context?.sessionId,
               // The session's starting directory, not the shell-following one a
@@ -1797,7 +1797,7 @@ export class McpManager {
   }
 
   /**
-   * Declared output schema per flattened tool name, for the Exec catalog's return
+   * Declared output schema per flattened tool name, for the REPL catalog's return
    * types.
    *
    * A separate accessor because `getMcpToolsConfig()` cannot carry it: an OpenAI

@@ -1,20 +1,20 @@
-import { EXEC_TOOL_NAME, REPL_TOOL_ALIASES } from "../constants/tools.js";
+import { REPL_TOOL_NAME, REPL_TOOL_ALIASES } from "../constants/tools.js";
 import {
-  EXEC_SEARCH_EXPRESSION,
+  REPL_SEARCH_EXPRESSION,
   renderSearchCallForm,
   renderSearchSignature,
-} from "../exec/catalog.js";
+} from "../repl/catalog.js";
 import {
-  EXEC_ASK_MODE_TOTAL_MS,
-  EXEC_BACKGROUND_MAX_MS,
-  EXEC_DEFAULT_MAX_RESULT_CHARS,
-  EXEC_DEFAULT_TIMEOUT_MS,
-  EXEC_MAX_TIMEOUT_MS,
-  EXEC_PART_CHAR_LIMIT,
-  EXEC_SHELL_DEFAULT_WAIT_MS,
-  EXEC_SYNC_WAIT_MS,
-} from "../exec/constants.js";
-import { runReplScript, type ReplRunResult } from "../exec/execRuntime.js";
+  REPL_ASK_MODE_TOTAL_MS,
+  REPL_BACKGROUND_MAX_MS,
+  REPL_DEFAULT_MAX_RESULT_CHARS,
+  REPL_DEFAULT_TIMEOUT_MS,
+  REPL_MAX_TIMEOUT_MS,
+  REPL_PART_CHAR_LIMIT,
+  REPL_SHELL_DEFAULT_WAIT_MS,
+  REPL_SYNC_WAIT_MS,
+} from "../repl/constants.js";
+import { runReplScript, type ReplRunResult } from "../repl/replRuntime.js";
 import type { ToolContext, ToolPlugin, ToolResult } from "./types.js";
 
 /**
@@ -23,9 +23,9 @@ import type { ToolContext, ToolPlugin, ToolResult } from "./types.js";
  * Re-exported from `constants/tools.ts` so a host registering the tool under the
  * older spelling (`Eval`, which Claude Code accepted before `REPL`) has the same
  * source of truth as the deferral judgment, which already treats those names as
- * carriers of this tool (`exec/deferral.ts`).
+ * carriers of this tool (`repl/deferral.ts`).
  */
-export const execToolAliases: readonly string[] = REPL_TOOL_ALIASES;
+export const replToolAliases: readonly string[] = REPL_TOOL_ALIASES;
 
 /**
  * `preview()`'s default cut, in characters.
@@ -37,10 +37,10 @@ export const execToolAliases: readonly string[] = REPL_TOOL_ALIASES;
 const PREVIEW_DEFAULT_CHARS = 200;
 
 /** `$` command wait before the command moves to the background, in minutes. */
-const SHELL_WAIT_MINUTES = EXEC_SHELL_DEFAULT_WAIT_MS / 60_000;
+const SHELL_WAIT_MINUTES = REPL_SHELL_DEFAULT_WAIT_MS / 60_000;
 
 /** Wall-clock ceiling of one background script, in hours. */
-const BACKGROUND_MAX_HOURS = EXEC_BACKGROUND_MAX_MS / 3_600_000;
+const BACKGROUND_MAX_HOURS = REPL_BACKGROUND_MAX_MS / 3_600_000;
 
 /**
  * The `search` bullet of the sandbox API blurb. It names the entry point and its
@@ -54,9 +54,9 @@ const BACKGROUND_MAX_HOURS = EXEC_BACKGROUND_MAX_MS / 3_600_000;
  * `searchTools("...")`, exactly as the reference implementation teaches.
  */
 const SEARCH_ENTRY =
-  `- \`${EXEC_SEARCH_EXPRESSION}(query, max?)\` — ` +
+  `- \`${REPL_SEARCH_EXPRESSION}(query, max?)\` — ` +
   "find a tool's parameters when the pool only announced its name, so this is how a call is built. " +
-  `The same function is reachable as \`tools.${EXEC_SEARCH_EXPRESSION}(query, max?)\`.`;
+  `The same function is reachable as \`tools.${REPL_SEARCH_EXPRESSION}(query, max?)\`.`;
 
 /**
  * The bullet with the entry point's own signature indented under it.
@@ -93,7 +93,7 @@ const SEARCH_ENTRY_ONELINE = `${SEARCH_ENTRY} Call it as \`${renderSearchCallFor
  * for any tool pool. `tools[]` sits in the cached prefix, so a description that
  * mentioned the session's servers (or their tools) would rewrite that prefix every
  * time one connected or dropped. The pool is a tail announcement instead — see
- * `exec/catalogAnnouncement.ts`.
+ * `repl/catalogAnnouncement.ts`.
  *
  * The numbers it does carry are the contract the model has to reason *with*
  * (`timeout` bounds, per-part output cap, the shell's background window, the ask
@@ -106,17 +106,17 @@ const SEARCH_ENTRY_ONELINE = `${SEARCH_ENTRY} Call it as \`${renderSearchCallFor
  * truncation and escaping, the async lane, what does not survive a resume, the two
  * shell spellings, the ask-mode ceiling, and the subagent caveat.
  */
-const EXEC_DESCRIPTION = `Run JavaScript in a long-lived REPL where this session's on-demand tools are globals, so a whole sequence of calls is composed in a single turn instead of one model round-trip per call.
+const REPL_DESCRIPTION = `Run JavaScript in a long-lived REPL where this session's on-demand tools are globals, so a whole sequence of calls is composed in a single turn instead of one model round-trip per call.
 
 Guidelines:
 - Put every operation in ONE call. Each call to this tool is a full model round-trip, while round-trips between statements inside the script are essentially free — so reading five files, grepping two patterns and making one edit belongs in a single script rather than in five calls.
 - Output is the value of the last expression plus every line written with \`self.log(...)\`. A Promise inside the returned value is awaited for you; a Promise you use inline (\`const p = f(); use(p)\`) must be awaited yourself.
 - \`console.log(...)\` (any \`console.*\`) writes to an in-memory ring and does NOT reach the output — read it back with \`console.tail(n)\`, \`console.buffer()\` or \`console.dropped()\`. Only \`self.log(...)\` is returned. \`preview(value, n?)\` stringifies a value and keeps the first ${PREVIEW_DEFAULT_CHARS} characters by default, which is how to look at a long value without paying for all of it.
-- Every output part (each log block, the result value) is capped at about ${EXEC_PART_CHAR_LIMIT} characters, and the whole answer at ${EXEC_DEFAULT_MAX_RESULT_CHARS} characters: the head and the tail are kept and the middle becomes \`... [N chars elided] ...\`. \`&\`, \`<\` and \`>\` in output are escaped as \`&amp;\`, \`&lt;\` and \`&gt;\` — that is display only, nothing in a file or in a value changes.
-- Async: a script that finishes inside the ${EXEC_SYNC_WAIT_MS / 1000}-second wait window returns its result here. Past the window the call answers with a \`(dispatched #N)\` receipt instead, and the script keeps running in the background. The window is fixed — a larger \`timeout\` does not extend it, because \`timeout\` bounds only the script's own synchronous running. A receipt means the script is already running (or queued), so submitting the same script again runs it twice — wait for it with \`Poll\` instead. A shell command still running after ${SHELL_WAIT_MINUTES} minutes moves to the background too, and a background script is stopped after ${BACKGROUND_MAX_HOURS} hours.
+- Every output part (each log block, the result value) is capped at about ${REPL_PART_CHAR_LIMIT} characters, and the whole answer at ${REPL_DEFAULT_MAX_RESULT_CHARS} characters: the head and the tail are kept and the middle becomes \`... [N chars elided] ...\`. \`&\`, \`<\` and \`>\` in output are escaped as \`&amp;\`, \`&lt;\` and \`&gt;\` — that is display only, nothing in a file or in a value changes.
+- Async: a script that finishes inside the ${REPL_SYNC_WAIT_MS / 1000}-second wait window returns its result here. Past the window the call answers with a \`(dispatched #N)\` receipt instead, and the script keeps running in the background. The window is fixed — a larger \`timeout\` does not extend it, because \`timeout\` bounds only the script's own synchronous running. A receipt means the script is already running (or queued), so submitting the same script again runs it twice — wait for it with \`Poll\` instead. A shell command still running after ${SHELL_WAIT_MINUTES} minutes moves to the background too, and a background script is stopped after ${BACKGROUND_MAX_HOURS} hours.
 - Variables and functions declared at the top level persist across calls in this session, but not across a restart, a resume, a fork or a wake; the first result after one of those says the context is new.
 - Shells: there is no \`child_process\` and no \`import\` here; run commands with the \`$\` command template or with \`Bash\`. \`$\` throws on a non-zero exit outside the exit-1 family below — use \`.nothrow()\` and read \`exitCode\` — single-quotes each \`\${...}\` value as one argument (\`\${{ raw: value }}\` splices it raw), so write \`\${x}\` bare: quote marks you add around it no longer protect the value, and shell syntax inside it runs. The template text reaches the shell as written, except that a backslash before a backtick, or before an interpolation opener, is dropped — so a literal one can go in as a \`\${...}\` value, and \`$(cmd, ms)\` runs a command given as a plain string with an optional timeout in ms. It takes \`.timeout(ms)\`; past that wait the command moves to the background instead of failing, and the await resolves with \`exitCode: null\` and \`running: { taskId, outputPath }\`, so check \`running\` before using the output and read that file rather than running the command again. Exit 1 from \`grep\` / \`rg\` / \`find\` / \`diff\` / \`test\` / \`[\` / \`git diff\` / \`git grep\` does not throw: \`exitCode\` is 1 and \`note\` says what it means (no match, files differ), so a search with no hits is not a script error. The result is \`{ stdout, stderr, exitCode, output, truncated, file?, note?, cwdNote? }\` with \`.text()\` / \`.lines()\` / \`.json()\`; when the output was too large, \`truncated\` is true, \`stdout\` holds only its start and \`file\` is the path holding all of it — read that instead of running the command again. \`cwdNote\` is the shell's own line when the command moved the working directory; it is never part of \`stdout\`. \`.cwd(dir)\` and \`.env({ NAME: value })\` apply to that one command only. Feed stdin with a heredoc. In PowerShell, write every single quote twice inside a single-quoted string, and use a here-string (\`@'...'@\`) for multi-line literals.
-- In ask permission mode the call waits for the script, and its ${EXEC_ASK_MODE_TOTAL_MS} ms ceiling counts from the start — including the time a person spends on an approval prompt.
+- In ask permission mode the call waits for the script, and its ${REPL_ASK_MODE_TOTAL_MS} ms ceiling counts from the start — including the time a person spends on an approval prompt.
 - Subagents: \`tools[]\` may list tools this agent was not granted. Check \`tools.list()\` before relying on one.
 
 Sandbox API:
@@ -342,10 +342,10 @@ interface CutPart {
  * value the model actually asked for.
  */
 function cutPart(text: string): CutPart {
-  if (text.length <= EXEC_PART_CHAR_LIMIT) return { text, elided: 0 };
-  const headChars = Math.floor(EXEC_PART_CHAR_LIMIT * HEAD_SHARE);
-  const tailChars = EXEC_PART_CHAR_LIMIT - headChars;
-  const elided = text.length - EXEC_PART_CHAR_LIMIT;
+  if (text.length <= REPL_PART_CHAR_LIMIT) return { text, elided: 0 };
+  const headChars = Math.floor(REPL_PART_CHAR_LIMIT * HEAD_SHARE);
+  const tailChars = REPL_PART_CHAR_LIMIT - headChars;
+  const elided = text.length - REPL_PART_CHAR_LIMIT;
   return {
     text: `${text.slice(0, headChars)}\n... [${elided} chars elided] ...\n${text.slice(
       text.length - tailChars,
@@ -355,7 +355,7 @@ function cutPart(text: string): CutPart {
 }
 
 /**
- * Apply the total gate: the whole answer, cut to `EXEC_DEFAULT_MAX_RESULT_CHARS`.
+ * Apply the total gate: the whole answer, cut to `REPL_DEFAULT_MAX_RESULT_CHARS`.
  *
  * The per-part cap bounds each part but says nothing about how many parts there
  * are, so the one script that logs fifty values still pays fifty parts' worth of
@@ -364,11 +364,11 @@ function cutPart(text: string): CutPart {
  * that what it can see is all there was.
  */
 function cutTotal(content: string): string {
-  if (content.length <= EXEC_DEFAULT_MAX_RESULT_CHARS) return content;
-  const elided = content.length - EXEC_DEFAULT_MAX_RESULT_CHARS;
+  if (content.length <= REPL_DEFAULT_MAX_RESULT_CHARS) return content;
+  const elided = content.length - REPL_DEFAULT_MAX_RESULT_CHARS;
   return (
-    `${content.slice(0, EXEC_DEFAULT_MAX_RESULT_CHARS)}\n` +
-    `[... ${elided} more chars truncated — a REPL result carries at most ${EXEC_DEFAULT_MAX_RESULT_CHARS} characters of text]`
+    `${content.slice(0, REPL_DEFAULT_MAX_RESULT_CHARS)}\n` +
+    `[... ${elided} more chars truncated — a REPL result carries at most ${REPL_DEFAULT_MAX_RESULT_CHARS} characters of text]`
   );
 }
 
@@ -597,16 +597,16 @@ export function formatReplRun(
   };
 }
 
-export const execTool: ToolPlugin = {
-  name: EXEC_TOOL_NAME,
+export const replTool: ToolPlugin = {
+  name: REPL_TOOL_NAME,
   searchHint: "run code in a sandbox to search and call the on-demand tools",
   // Nested calls reach arbitrary MCP tools, which are conservatively non-safe.
   isConcurrencySafe: false,
   config: {
     type: "function",
     function: {
-      name: EXEC_TOOL_NAME,
-      description: EXEC_DESCRIPTION,
+      name: REPL_TOOL_NAME,
+      description: REPL_DESCRIPTION,
       parameters: {
         type: "object",
         properties: {
@@ -624,9 +624,9 @@ export const execTool: ToolPlugin = {
             type: "number",
             description:
               `Wall-clock ceiling for the synchronous part of the script, in milliseconds. ` +
-              `Default ${EXEC_DEFAULT_TIMEOUT_MS}, capped at ${EXEC_MAX_TIMEOUT_MS}. ` +
+              `Default ${REPL_DEFAULT_TIMEOUT_MS}, capped at ${REPL_MAX_TIMEOUT_MS}. ` +
               "Time spent waiting on a nested tool call does not count: the script is not running while it waits. " +
-              `It does not set the wait window (a fixed ${EXEC_SYNC_WAIT_MS} ms): a script still running then answers with a dispatch receipt.`,
+              `It does not set the wait window (a fixed ${REPL_SYNC_WAIT_MS} ms): a script still running then answers with a dispatch receipt.`,
           },
         },
         required: ["code"],
@@ -641,7 +641,7 @@ ${SEARCH_ENTRY_ONELINE}
 - \`self.log(...)\` — lines that go into the result; \`console.*\` goes to a ring instead (\`console.tail(n)\`), and \`return <value>\` hands a value back.
 - Put every operation in one script, and write a clear, concise description of what it does in 5-10 words.
 Long output is cut per part (head and tail kept). A script that outlives the wait window answers \`(dispatched #N)\`: it is already running, so wait with \`Poll\` rather than sending it again. Variables persist across calls, but not across a restart or resume. Every nested call still goes through the permission check, so it can be denied.`,
-  prompt: () => EXEC_DESCRIPTION,
+  prompt: () => REPL_DESCRIPTION,
 
   /**
    * The parameter slot of the collapsed row, shared by the TUI and the desktop
@@ -672,7 +672,7 @@ Long output is cut per part (head and tail kept). A script that outlives the wai
       return {
         success: false,
         content: "",
-        error: `${EXEC_TOOL_NAME}: missing required parameter "code"`,
+        error: `${REPL_TOOL_NAME}: missing required parameter "code"`,
       };
     }
 
@@ -681,15 +681,15 @@ Long output is cut per part (head and tail kept). A script that outlives the wai
       return {
         success: false,
         content: "",
-        error: `${EXEC_TOOL_NAME}: tool manager is not available in this session`,
+        error: `${REPL_TOOL_NAME}: tool manager is not available in this session`,
       };
     }
 
     // Recomputed here rather than reused from the declaration-time pool: a server
     // may have connected or dropped since. Declaring and running call the same
-    // `ToolManager.getExecPool`, so the sandbox can never reach a tool the agent
+    // `ToolManager.getReplPool`, so the sandbox can never reach a tool the agent
     // could not already call directly.
-    const pool = toolManager.getExecPool();
+    const pool = toolManager.getReplPool();
     // Names feed the result (markup and `nestedToolCalls`); the row carries the
     // compact parameter too, so it cannot be the same array.
     const calls: string[] = [];

@@ -16,12 +16,12 @@ import type { IForegroundTaskManager } from "@/types/processes.js";
 import type { ILspManager } from "@/types/index.js";
 
 // These tests are about the deferral shape (which tools stay flat, which ones
-// reach the sandbox), so they pin Exec on rather than depend on the code default.
-vi.mock("../../src/services/execAvailability.js", async (importOriginal) => ({
+// reach the sandbox), so they pin REPL on rather than depend on the code default.
+vi.mock("../../src/services/replAvailability.js", async (importOriginal) => ({
   ...(await importOriginal<
-    typeof import("../../src/services/execAvailability.js")
+    typeof import("../../src/services/replAvailability.js")
   >()),
-  isExecEnabled: () => true,
+  isReplEnabled: () => true,
 }));
 
 // Same reason: the four task-list tools are off by default now, and these tests
@@ -173,7 +173,7 @@ describe("ToolManager bypassPermissions mode", () => {
 
     const toolsConfig = toolManager.getToolsConfig();
     const names = toolsConfig.map((t) => t.function.name);
-    const pooled = toolManager.getExecPool().map((entry) => entry.name);
+    const pooled = toolManager.getReplPool().map((entry) => entry.name);
 
     // The pair is deferred, so it reaches this mode through the pool. What must not
     // depend on the permission mode is that it is reachable at all — the bug this
@@ -220,7 +220,7 @@ describe("ToolManager bypassPermissions mode", () => {
 
     const toolsConfig = toolManager.getToolsConfig();
     const names = toolsConfig.map((t) => t.function.name);
-    const pooled = toolManager.getExecPool().map((entry) => entry.name);
+    const pooled = toolManager.getReplPool().map((entry) => entry.name);
 
     // AskUserQuestion is the one tool whose whole job is reaching the user, so it is
     // never deferred; the plan-mode pair is, in every mode.
@@ -262,7 +262,7 @@ describe("ToolManager bypassPermissions mode", () => {
 
     const toolsConfig = toolManager.getToolsConfig();
     const names = toolsConfig.map((t) => t.function.name);
-    const pooled = toolManager.getExecPool().map((entry) => entry.name);
+    const pooled = toolManager.getReplPool().map((entry) => entry.name);
 
     expect(names).not.toContain("ExitPlanMode");
     expect(names).not.toContain("EnterPlanMode");

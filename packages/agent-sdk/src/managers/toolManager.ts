@@ -20,7 +20,7 @@ import { cronDeleteTool } from "../tools/cronDeleteTool.js";
 import { cronListTool } from "../tools/cronListTool.js";
 import { webFetchTool } from "../tools/webFetchTool.js";
 import { artifactTool } from "../tools/artifactTool.js";
-import { execTool } from "../tools/execTool.js";
+import { replTool } from "../tools/replTool.js";
 import { pollTool } from "../tools/pollTool.js";
 import { isArtifactEnabled } from "../services/artifactAvailability.js";
 import { isKnowledgeBaseEnabled } from "../services/knowledgeBaseAvailability.js";
@@ -32,15 +32,15 @@ import {
 import { knowledgeBaseTools } from "../tools/knowledgeBase/index.js";
 import {
   getNonDeferrableBuiltins,
-  isExecEnabled,
+  isReplEnabled,
   isReplCoreToolsEnabled,
-} from "../services/execAvailability.js";
+} from "../services/replAvailability.js";
 import { isLeanPromptEnabled } from "../services/leanPrompt.js";
-import { buildExecPool } from "../exec/catalog.js";
-import type { ExecPoolCandidate, ExecPoolEntry } from "../exec/catalog.js";
-import { STRUCTURAL_NON_DEFERRABLE } from "../exec/deferral.js";
+import { buildReplPool } from "../repl/catalog.js";
+import type { ReplPoolCandidate, ReplPoolEntry } from "../repl/catalog.js";
+import { STRUCTURAL_NON_DEFERRABLE } from "../repl/deferral.js";
 import {
-  EXEC_TOOL_NAME,
+  REPL_TOOL_NAME,
   REPL_TOOL_ALIASES,
   isShellToolName,
 } from "../constants/tools.js";
@@ -97,8 +97,8 @@ import { trackCliOperation } from "../telemetry/activity.js";
 interface DescribedTool {
   description: string;
   /**
-   * 插件对「平铺还是进 `Exec` 池」的最终裁决；没给就是没意见。它覆盖延迟判定
-   * 表的结论，唯一翻不动的是结构豁免（`Exec` 自己）。
+   * 插件对「平铺还是进 `REPL` 池」的最终裁决；没给就是没意见。它覆盖延迟判定
+   * 表的结论，唯一翻不动的是结构豁免（`REPL` 自己）。
    */
   isDeferred?: boolean;
 }
@@ -106,7 +106,7 @@ interface DescribedTool {
 /**
  * Every spelling of the REPL — the pool's carrier.
  *
- * The tool is registered under `EXEC_TOOL_NAME`, but `REPL_TOOL_ALIASES` are
+ * The tool is registered under `REPL_TOOL_NAME`, but `REPL_TOOL_ALIASES` are
  * names a settings file or a permission rule may still hold from before the
  * rename, so "is this the carrier" has to be asked of the whole set: a `--tools
  * Eval` or a deny rule naming `Eval` means this tool, and treating it as an
@@ -114,7 +114,7 @@ interface DescribedTool {
  * callable while its rule said otherwise.
  */
 const CARRIER_TOOL_NAMES: readonly string[] = [
-  EXEC_TOOL_NAME,
+  REPL_TOOL_NAME,
   ...REPL_TOOL_ALIASES,
 ];
 
@@ -135,7 +135,7 @@ export interface ToolManagerOptions {
 /**
  * The session a tool call belongs to, for the standard attributes of the
  * records it produces. The tool context is the one place every call passes
- * through, so both the flat and the nested (Exec sandbox) path have it; the
+ * through, so both the flat and the nested (REPL sandbox) path have it; the
  * entrypoint comes from the container instead — it is a property of the session,
  * not of the call, and the context is rebuilt per call.
  *
@@ -278,7 +278,7 @@ class ToolManager {
   /**
    * `tool.describe` 的快照（spec「给工具、技能、命令写描述」）。
    *
-   * 描述与放置（平铺 / 进 Exec 池）都靠这件事问定，而工具 schema 是同步拼的
+   * 描述与放置（平铺 / 进 REPL 池）都靠这件事问定，而工具 schema 是同步拼的
    * （`getToolsConfig` 被宿主的请求组装同步调用）：组装**之前** `await`
    * `prepareToolDescriptions()` 把答案问回来铺进两套表，本次请求就用新值 ——
    * `staged` 是「问到的答案」，`pinned` 是「这次发出去的那一份」，同轮生效。
@@ -443,8 +443,8 @@ class ToolManager {
     //
     // `Poll` is registered with it and gated by the same switch: it exists to read
     // the async lane's queue, so without a REPL there is nothing for it to read.
-    if (isExecEnabled(this.container.get<string>("CurrentWorkdir"))) {
-      builtInTools.push(execTool, pollTool);
+    if (isReplEnabled(this.container.get<string>("CurrentWorkdir"))) {
+      builtInTools.push(replTool, pollTool);
     }
 
     // Task-list tools: off by default, opted in with WAVE_ENABLE_TASK_TOOLS=1
@@ -498,7 +498,7 @@ class ToolManager {
    */
   public reloadFeatureGatedTools(): void {
     this.toolsRegistry.delete(artifactTool.name);
-    this.toolsRegistry.delete(execTool.name);
+    this.toolsRegistry.delete(replTool.name);
     this.toolsRegistry.delete(pollTool.name);
     // Both shell tools are gate-dependent: enabling PowerShell on a machine
     // without Git Bash, or disabling it on one with Git Bash, changes which of
@@ -671,7 +671,7 @@ class ToolManager {
   /**
    * Telemetry attribution for a failure in this tool call.
    * The session id comes from the call context, not the container: a nested
-   * agent or the Exec sandbox runs a tool under its own session, and the event
+   * agent or the REPL sandbox runs a tool under its own session, and the event
    * has to point at whichever session actually made the call.
    */
   private failureTelemetry(
@@ -899,7 +899,7 @@ class ToolManager {
 
     // Check built-in tools. PreToolUse / PostToolUse belong here rather than in
     // the tool-call loop: this is the one funnel built-ins are reached through,
-    // so a call made from inside the Exec sandbox runs the same hooks a flat
+    // so a call made from inside the REPL sandbox runs the same hooks a flat
     // call does.
     const plugin = this.toolsRegistry.get(name);
     if (plugin) {
@@ -1136,8 +1136,8 @@ class ToolManager {
    * tool: the aliases are the same tool, and honouring only the canonical name
    * would leave the sandbox callable while the rule said it was denied.
    */
-  private isExecDeclared(): boolean {
-    if (!this.toolsRegistry.has(EXEC_TOOL_NAME)) return false;
+  private isReplDeclared(): boolean {
+    if (!this.toolsRegistry.has(REPL_TOOL_NAME)) return false;
     const permissionManager = this.getPermissionManager();
     return !CARRIER_TOOL_NAMES.some((name) =>
       permissionManager?.isToolDenied(name),
@@ -1148,19 +1148,19 @@ class ToolManager {
    * Every tool a deferral decision has to be made about — built-ins and MCP alike,
    * in declaration order.
    *
-   * Permission filtering happens here rather than inside `buildExecPool`, because
+   * Permission filtering happens here rather than inside `buildReplPool`, because
    * "which tools may this session call" is a manager question, and the pool's hard
    * constraint is that it never exceeds that set: a tool reachable from the sandbox
-   * but hidden from the agent would make `Exec` a permission-escalation channel.
+   * but hidden from the agent would make `REPL` a permission-escalation channel.
    *
-   * `Exec` is a candidate like any other. The structural non-deferrable list keeps
+   * `REPL` is a candidate like any other. The structural non-deferrable list keeps
    * it out of the pool by name, so there is no special case here — and a tool that
    * is in the pool is never declared flat (see `getToolsConfig`), so the two places
    * agree by construction rather than by parallel bookkeeping.
    */
-  private deferralCandidates(): ExecPoolCandidate[] {
+  private deferralCandidates(): ReplPoolCandidate[] {
     const permissionManager = this.getPermissionManager();
-    const candidates: ExecPoolCandidate[] = [];
+    const candidates: ReplPoolCandidate[] = [];
 
     for (const tool of this.toolsRegistry.values()) {
       if (permissionManager?.isToolDenied(tool.name)) continue;
@@ -1209,9 +1209,9 @@ class ToolManager {
    * answer for "is `Read` pooled" (spec core/repl-tool.md「开关把核心文件与 shell
    * 工具也收进 REPL」).
    */
-  public getExecPool(): ExecPoolEntry[] {
+  public getReplPool(): ReplPoolEntry[] {
     const workdir = this.container.get<string>("CurrentWorkdir");
-    return buildExecPool(
+    return buildReplPool(
       this.deferralCandidates(),
       getNonDeferrableBuiltins(workdir),
       isReplCoreToolsEnabled(workdir),
@@ -1225,12 +1225,12 @@ class ToolManager {
    *
    * Entries rather than names: the announcement's first tier is a signature block,
    * and a tier is only reachable through the entry (`tier === "core"`, copied from
-   * the deferral judgment by `buildExecPool`). Handing it names would silently
+   * the deferral judgment by `buildReplPool`). Handing it names would silently
    * demote every core tool to the name-only tier.
    */
-  public getOnDemandPool(): ExecPoolEntry[] | undefined {
-    if (!this.isExecDeclared()) return undefined;
-    return this.getExecPool();
+  public getOnDemandPool(): ReplPoolEntry[] | undefined {
+    if (!this.isReplDeclared()) return undefined;
+    return this.getReplPool();
   }
 
   /**
@@ -1266,7 +1266,7 @@ class ToolManager {
     // always there), so the REPL is declared for as long as the feature is on. That
     // is the point: `tools[]` no longer moves when an MCP server comes or goes,
     // which is what keeps the cached prefix stable.
-    const pool = this.isExecDeclared() ? this.getExecPool() : [];
+    const pool = this.isReplDeclared() ? this.getReplPool() : [];
     const pooled = new Set(pool.map((entry) => entry.name));
     const execDeclared = pool.length > 0;
 
@@ -1313,8 +1313,8 @@ class ToolManager {
         );
         return config;
       });
-    // Every MCP tool is deferred, so this is empty while `Exec` exists; it is the
-    // only path that declares an MCP tool at all when `Exec` is off or denied.
+    // Every MCP tool is deferred, so this is empty while `REPL` exists; it is the
+    // only path that declares an MCP tool at all when `REPL` is off or denied.
     const mcpToolsConfig = this.mcpManager
       .getMcpToolsConfig()
       .filter((tool) => {
@@ -1465,13 +1465,13 @@ class ToolManager {
     if (STRUCTURAL_NON_DEFERRABLE.includes(name)) return undefined;
     const isDeferred = this.describePinned.get(name)?.isDeferred;
     if (isDeferred === undefined) return undefined;
-    if (isDeferred && !this.isExecDeclared()) return undefined;
+    if (isDeferred && !this.isReplDeclared()) return undefined;
     return isDeferred;
   }
 
   /** 插件想把工具藏起来、但这场会话没有池：保持平铺，每个工具只说一次。 */
   private warnPlacementWithoutPool(): void {
-    if (this.isExecDeclared()) return;
+    if (this.isReplDeclared()) return;
     for (const [name, described] of this.describePinned) {
       if (described.isDeferred !== true || this.deferredWarned.has(name)) {
         continue;

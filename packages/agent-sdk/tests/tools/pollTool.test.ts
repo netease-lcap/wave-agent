@@ -1,18 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  EXEC_MAX_TIMEOUT_MS,
-  EXEC_POLL_DEFAULT_WAIT_MS,
-  EXEC_POLL_MAX_EVENTS,
-} from "../../src/exec/constants.js";
-import type { ReplEvent } from "../../src/exec/execRuntime.js";
-import type { RunningReplScript } from "../../src/exec/execRuntime.js";
+  REPL_MAX_TIMEOUT_MS,
+  REPL_POLL_DEFAULT_WAIT_MS,
+  REPL_POLL_MAX_EVENTS,
+} from "../../src/repl/constants.js";
+import type { ReplEvent } from "../../src/repl/replRuntime.js";
+import type { RunningReplScript } from "../../src/repl/replRuntime.js";
 import type { ToolContext } from "../../src/tools/types.js";
 
 /**
  * `Poll` as the model meets it: the shell it renders, and what it decides to wait
  * for. The runtime is mocked because the thing under test is the *decision* — wait
  * or answer at once, how many events one answer carries, what a timeout reads like —
- * not the queue itself, which `execRuntime.test.ts` covers with real scripts.
+ * not the queue itself, which `replRuntime.test.ts` covers with real scripts.
  */
 const { waitForReplEvents, replPendingEventCount, listRunningReplScripts } =
   vi.hoisted(() => ({
@@ -21,17 +21,17 @@ const { waitForReplEvents, replPendingEventCount, listRunningReplScripts } =
     listRunningReplScripts: vi.fn(),
   }));
 
-vi.mock("../../src/exec/execRuntime.js", () => ({
+vi.mock("../../src/repl/replRuntime.js", () => ({
   waitForReplEvents,
   replPendingEventCount,
   listRunningReplScripts,
-  // `execTool` imports the runner at module scope; nothing here calls it.
+  // `replTool` imports the runner at module scope; nothing here calls it.
   runReplScript: vi.fn(),
 }));
 
 const { pollTool } = await import("../../src/tools/pollTool.js");
 const { STRUCTURAL_NON_DEFERRABLE } = await import(
-  "../../src/exec/deferral.js"
+  "../../src/repl/deferral.js"
 );
 
 const context = {} as unknown as ToolContext;
@@ -107,7 +107,7 @@ describe("Poll — when to wait", () => {
 
     const result = await pollTool.execute({ timeoutMs: 4_000 }, context);
 
-    expect(waitForReplEvents).toHaveBeenCalledWith(4_000, EXEC_POLL_MAX_EVENTS);
+    expect(waitForReplEvents).toHaveBeenCalledWith(4_000, REPL_POLL_MAX_EVENTS);
     expect(result.content).toContain('<event kind="repl-status" pending="1"/>');
     expect(result.content).toContain("#3 running 5000ms");
     expect(result.content).toContain("await sleep(60000)");
@@ -120,20 +120,20 @@ describe("Poll — when to wait", () => {
 
     await pollTool.execute({}, context);
     expect(waitForReplEvents).toHaveBeenLastCalledWith(
-      EXEC_POLL_DEFAULT_WAIT_MS,
-      EXEC_POLL_MAX_EVENTS,
+      REPL_POLL_DEFAULT_WAIT_MS,
+      REPL_POLL_MAX_EVENTS,
     );
 
     await pollTool.execute({ timeoutMs: 10_000_000 }, context);
     expect(waitForReplEvents).toHaveBeenLastCalledWith(
-      EXEC_MAX_TIMEOUT_MS,
-      EXEC_POLL_MAX_EVENTS,
+      REPL_MAX_TIMEOUT_MS,
+      REPL_POLL_MAX_EVENTS,
     );
 
     await pollTool.execute({ timeoutMs: "soon" }, context);
     expect(waitForReplEvents).toHaveBeenLastCalledWith(
-      EXEC_POLL_DEFAULT_WAIT_MS,
-      EXEC_POLL_MAX_EVENTS,
+      REPL_POLL_DEFAULT_WAIT_MS,
+      REPL_POLL_MAX_EVENTS,
     );
   });
 });
@@ -157,23 +157,23 @@ describe("Poll — what an answer carries", () => {
   it("caps one answer and says how many are still pending, oldest first", async () => {
     replPendingEventCount.mockReturnValueOnce(6).mockReturnValue(2);
     waitForReplEvents.mockResolvedValue(
-      Array.from({ length: EXEC_POLL_MAX_EVENTS }, (_, index) =>
+      Array.from({ length: REPL_POLL_MAX_EVENTS }, (_, index) =>
         event(index + 1),
       ),
     );
 
     const result = await pollTool.execute({ timeoutMs: 5_000 }, context);
 
-    expect(waitForReplEvents).toHaveBeenCalledWith(5_000, EXEC_POLL_MAX_EVENTS);
-    for (let id = 1; id <= EXEC_POLL_MAX_EVENTS; id++) {
+    expect(waitForReplEvents).toHaveBeenCalledWith(5_000, REPL_POLL_MAX_EVENTS);
+    for (let id = 1; id <= REPL_POLL_MAX_EVENTS; id++) {
       expect(result.content).toContain(`<event kind="repl-eval" eval="${id}">`);
     }
     // Never silently dropped: the model has to know a second poll has substance.
     expect(result.content).not.toContain(
-      `<event kind="repl-eval" eval="${EXEC_POLL_MAX_EVENTS + 1}">`,
+      `<event kind="repl-eval" eval="${REPL_POLL_MAX_EVENTS + 1}">`,
     );
     expect(result.content).toContain("(2 more settled");
-    expect(result.shortResult).toBe(`${EXEC_POLL_MAX_EVENTS} results`);
+    expect(result.shortResult).toBe(`${REPL_POLL_MAX_EVENTS} results`);
   });
 
   it("reports a failed background script as a failure, with the error kept", async () => {
