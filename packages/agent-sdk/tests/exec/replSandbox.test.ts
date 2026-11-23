@@ -188,7 +188,7 @@ describe("repl sandbox: values", () => {
     expect((await sandbox.run('return "done"', opts())).value).toBe("done");
   });
 
-  it("hands the script null-prototype copies with function fields dropped", async () => {
+  it("hands the script plain-realm copies with function fields dropped", async () => {
     const host = makeHost({
       toolResult: { a: 1, fn: () => 1, nested: { b: 2 } },
     });
@@ -197,17 +197,35 @@ describe("repl sandbox: values", () => {
       [
         "const r = await Some({});",
         "return [",
-        "  Object.getPrototypeOf(r) === null,",
+        "  Object.getPrototypeOf(r) === Object.prototype,",
         "  r.fn === undefined,",
-        "  r.constructor === undefined,",
-        "  Object.getPrototypeOf(r.nested) === null,",
+        "  typeof r.constructor === 'function',",
+        "  Object.getPrototypeOf(r.nested) === Object.prototype,",
         "  r.a,",
         "  r.nested.b,",
+        "  String(r),",
         '].join("|");',
       ].join("\n"),
       opts(["Some"]),
     );
-    expect(result.value).toBe("true|true|true|true|1|2");
+    expect(result.value).toBe("true|true|true|true|1|2|[object Object]");
+  });
+
+  it("leaves a tool failure stringifiable instead of throwing", async () => {
+    const host = makeHost({
+      toolResult: { error: "Command failed with exit code: 1" },
+    });
+    const sandbox = open(host);
+    const result = await sandbox.run(
+      [
+        "const r = await Some({});",
+        'return [typeof r, r.error, String(r), `${r}`].join("|");',
+      ].join("\n"),
+      opts(["Some"]),
+    );
+    expect(result.value).toBe(
+      "object|Command failed with exit code: 1|[object Object]|[object Object]",
+    );
   });
 
   it("keeps the host copy isolated from script mutations", async () => {

@@ -12,12 +12,14 @@
  *
  * Two directions, two rules:
  *
- * - **Host -> sandbox** (`clone`): deep copy into this realm. Objects get a
- *   `null` prototype and lose `constructor` / `prototype` / function fields, so
- *   nothing of the host's prototype chain comes along. Arrays longer than
- *   `MAX_ARRAY_ITEMS` carry only their first 4096 entries and are re-shaped as
- *   `{ items, truncatedFrom }` — an array cannot carry the marker through JSON,
- *   and this class of value has to look the same when it travels back out.
+ * - **Host -> sandbox** (`clone`): deep copy into this realm. Objects are built
+ *   as plain objects of this realm and lose `constructor` / `prototype` /
+ *   function fields, so nothing of the host's prototype chain comes along.
+ *   What they inherit is the sandbox's own `Object.prototype`. Arrays longer
+ *   than `MAX_ARRAY_ITEMS` carry only their first 4096 entries and are
+ *   re-shaped as `{ items, truncatedFrom }` — an array cannot carry the marker
+ *   through JSON, and this class of value has to look the same when it travels
+ *   back out.
  * - **Sandbox -> host** (`encodeResult` / `encodeArgs`): serialise to JSON text
  *   right here, in the realm, so the host never receives a sandbox object.
  *   `encodeResult` is lenient (functions, symbols and BigInts are dropped, since
@@ -196,12 +198,7 @@ export const REPL_BOUNDARY_SOURCE = `(() => {
     }
   };
 
-  const truncated = (items, from) => {
-    const record = objectCreate(null);
-    record.items = items;
-    record.truncatedFrom = from;
-    return record;
-  };
+  const truncated = (items, from) => ({ items, truncatedFrom: from });
 
   const indexOfRef = (stack, value) => {
     for (let i = 0; i < stack.length; i++) if (stack[i] === value) return i;
@@ -211,6 +208,11 @@ export const REPL_BOUNDARY_SOURCE = `(() => {
   // ---- host -> sandbox: deep copy into this realm -------------------------
   // Own properties only, \`__proto__\` skipped, function fields dropped, and no
   // prototype chain carried over: the script gets data, not host objects.
+  // Copies are plain objects of THIS realm, the way Claude Code builds them
+  // (obj: () => ({})): a null prototype bought nothing here and cost the script
+  // its diagnosis, because String(value) threw a TypeError on the { error } a
+  // failed tool call resolves to, so the tool's own error text never reached the
+  // model.
   const cloneValue = (value, depth, stack) => {
     const level = depth || 0;
     if (value === null) return null;
@@ -232,7 +234,7 @@ export const REPL_BOUNDARY_SOURCE = `(() => {
       for (let i = 0; i < count; i++) items.push(cloneValue(value[i], level + 1, stack));
       out = total > MAX_ITEMS ? truncated(items, total) : items;
     } else {
-      const copy = objectCreate(null);
+      const copy = {};
       let keys = [];
       try { keys = objectKeys(value); } catch (ignored) { keys = []; }
       for (let i = 0; i < keys.length; i++) {
