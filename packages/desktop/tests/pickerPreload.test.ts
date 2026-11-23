@@ -158,6 +158,54 @@ describe("pickerPreload", () => {
     expect(container.classList.contains("__wave-picker-highlight")).toBe(true);
   });
 
+  /**
+   * 描边层（2026-11-23）：改前画在目标元素自己的 `outline` 上，会跟元素一起参与
+   * 堆叠 ⇒ 被后绘制的兄弟 / 更高 z-index 的浮层 / overflow 祖先盖住或裁掉。
+   * 改后画在 `documentElement` 下的 `position: fixed; z-index: 2147483647` 层上。
+   */
+  const highlightBoxes = () => [
+    ...document.querySelectorAll<HTMLDivElement>(
+      ".__wave-picker-highlight-box",
+    ),
+  ];
+
+  it("draws the highlight on a top-layer fixed box instead of the element outline", () => {
+    const { button } = renderPage();
+    activate({ accentOutline: "#0e639c" });
+    mouseOver(button);
+
+    const boxes = highlightBoxes();
+    expect(boxes).toHaveLength(1);
+    const [box] = boxes;
+    expect(box.parentElement).toBe(document.documentElement);
+    expect(box.style.position).toBe("fixed");
+    expect(box.style.pointerEvents).toBe("none");
+    expect(box.style.zIndex).toBe("2147483646"); // 比评论卡片（…647）低 1
+    expect(box.style.boxShadow.startsWith("inset")).toBe(true);
+    // 元素自身不再挂 outline —— 那是「描边被别的元素遮挡」的根因。
+    expect(button.getAttribute("style") ?? "").not.toContain("outline");
+    // 类名还在，但它现在只承担 cursor: crosshair。
+    expect(button.classList.contains("__wave-picker-highlight")).toBe(true);
+  });
+
+  it("keeps one box per highlighted element and clears them on deactivate", () => {
+    const { button, container } = renderPage();
+    activate();
+    mouseOver(button);
+    expect(highlightBoxes()).toHaveLength(1);
+    // 同一元素重复 hover：幂等，不叠盒子。
+    mouseOver(button);
+    expect(highlightBoxes()).toHaveLength(1);
+    // hover 换到别的元素：旧的回收。
+    mouseOver(container);
+    expect(highlightBoxes()).toHaveLength(1);
+    // 选中 + hover 两个元素同时带描边（与原实现同一语义）。
+    press(button);
+    expect(highlightBoxes()).toHaveLength(2);
+    deactivate();
+    expect(highlightBoxes()).toHaveLength(0);
+  });
+
   it("press selects the element and shows the floating comment card", () => {
     const { button } = renderPage();
     activate();

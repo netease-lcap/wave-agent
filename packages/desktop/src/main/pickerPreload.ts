@@ -53,6 +53,14 @@ interface PickerMessage {
 }
 
 const HIGHLIGHT_CLASS = "__wave-picker-highlight";
+/** 高亮描边层（每个被高亮的元素一只，见 `mark`）。 */
+const HIGHLIGHT_BOX_CLASS = "__wave-picker-highlight-box";
+const HIGHLIGHT_WIDTH = 2;
+/**
+ * 描边层比评论卡片（2147483647）低 1：两者都必须是页面里的最顶层，但卡片要能
+ * 压在描边之上（窄元素时二者会重叠，描边穿过卡片就成了脏线）。
+ */
+const HIGHLIGHT_Z_INDEX = 2147483646;
 const CARD_WIDTH = 280;
 /** 卡片高度估算（决定放元素下方还是翻到上方）：r12 浮层 8 内衬 + 字段（1px 边 +
  *  8 内衬 + 44 输入区）+ 8 间距 + 28 操作行 + 1px 边 = 116（1029 表单规范那轮
@@ -67,6 +75,22 @@ let hovered: Element | null = null;
 let selected: Element | null = null;
 let cardHost: HTMLDivElement | null = null;
 let highlightSheet: CSSStyleSheet | null = null;
+/**
+ * 被高亮元素 → 它的描边层。
+ *
+ * 2026-11-23 修复（评论：`button.preview-pane-button`「hover 选择元素时蓝色描边
+ * 被别的元素遮挡」）：改前描边是**目标元素自己的 `outline`**（`outline-offset:
+ * -2px`）。outline 跟元素自身一起参与堆叠，于是凡是有后绘制的兄弟、`z-index`
+ * 更高的浮层、或 `overflow: hidden` 的祖先，都能盖住/裁掉那段描边——目标元素
+ * 越「深处」越容易被压住（典型：sticky 表头、卡片阴影层、绝对定位的角标）。
+ * 现在描边画在 `position: fixed; z-index: 2147483647` 的独立层上（与评论卡片同一
+ * 层级上限），只跟视口坐标走，**永远在页面最上层**；`pointer-events: none` 保证
+ * 它自己不会被命中（`elementFromPoint` 仍取到下面真正的元素）。
+ *
+ * 每个元素一只盒子（hover 一只、选中一只，与原「两个元素可同时带描边」等价）。
+ */
+const highlightBoxes = new Map<Element, HTMLDivElement>();
+let highlightRaf = 0;
 /** Where the current press started, while the pointer is down. */
 let pressOrigin: { x: number; y: number } | null = null;
 
@@ -114,8 +138,10 @@ function snippet(el: Element): string {
 function ensureHighlightSheet(): void {
   if (highlightSheet) return;
   highlightSheet = new CSSStyleSheet();
+  // 这个 sheet 现在只管光标：描边搬到 `highlightBoxes` 的 fixed 层上（见
+  // `mark`），否则会跟着目标元素一起被别的元素盖住。
   highlightSheet.replaceSync(
-    `.${HIGHLIGHT_CLASS} { outline: 2px solid ${palette.accentOutline ?? palette.accent ?? "#0e639c"} !important; outline-offset: -2px; cursor: crosshair !important; }`,
+    `.${HIGHLIGHT_CLASS} { cursor: crosshair !important; }`,
   );
   document.adoptedStyleSheets = [
     ...document.adoptedStyleSheets,
@@ -131,9 +157,78 @@ function removeHighlightSheet(): void {
   highlightSheet = null;
 }
 
+/** 描边色：与焦点态同一支蓝（宿主 accent 已中性化，故单独取 accentOutline）。 */
+function highlightColor(): string {
+  return palette.accentOutline ?? palette.accent ?? "#0e639c";
+}
+
+/** 把描边层挪到元素当前的视口位置。CSS px 直接写（不取整，免半像素抖动）。 */
+function paintHighlightBox(el: Element, box: HTMLDivElement): void {
+  const rect = el.getBoundingClientRect();
+  box.style.left = `${rect.left}px`;
+  box.style.top = `${rect.top}px`;
+  box.style.width = `${rect.width}px`;
+  box.style.height = `${rect.height}px`;
+  // 0×0（未挂载 / display:none 的祖先）时别画一个点。
+  box.style.display = rect.width > 0 && rect.height > 0 ? "block" : "none";
+}
+
+/** 每帧跟随：页面滚动、布局变化、元素自身动效都不会让描边脱位。 */
+function tickHighlights(): void {
+  highlightRaf = 0;
+  if (highlightBoxes.size === 0) return;
+  for (const [el, box] of highlightBoxes) paintHighlightBox(el, box);
+  highlightRaf = requestAnimationFrame(tickHighlights);
+}
+
+function startHighlightLoop(): void {
+  if (highlightRaf) return;
+  if (typeof requestAnimationFrame !== "function") return; // 同步环境（单测）已在 mark 里画过一次
+  highlightRaf = requestAnimationFrame(tickHighlights);
+}
+
+function stopHighlightLoop(): void {
+  if (!highlightRaf) return;
+  cancelAnimationFrame(highlightRaf);
+  highlightRaf = 0;
+}
+
+/** 给一个元素挂描边层（重复调用是幂等的）。 */
+function mark(el: Element): void {
+  el.classList.add(HIGHLIGHT_CLASS); // 只为 cursor: crosshair
+  let box = highlightBoxes.get(el);
+  if (!box) {
+    box = document.createElement("div");
+    box.className = HIGHLIGHT_BOX_CLASS;
+    // CSP 下 `<style>` 可能被禁，所以全走内联样式（与卡片同一套做法）；
+    // inset 阴影 = 改前 `outline-offset: -2px` 的内描边，视觉等价。
+    box.style.cssText = `position: fixed; z-index: ${HIGHLIGHT_Z_INDEX}; pointer-events: none; box-sizing: border-box; display: none; margin: 0; padding: 0; border: 0;`;
+    // 挂到 <html> 而不是 <body>：body 上有 transform/filter 时 fixed 会退化成
+    // 相对 body 定位（页面自己写的 transform 不该让描边漂走）。
+    document.documentElement.appendChild(box);
+    highlightBoxes.set(el, box);
+  }
+  box.style.boxShadow = `inset 0 0 0 ${HIGHLIGHT_WIDTH}px ${highlightColor()}`;
+  paintHighlightBox(el, box);
+  startHighlightLoop();
+}
+
+function unmark(el: Element): void {
+  el.classList.remove(HIGHLIGHT_CLASS);
+  const box = highlightBoxes.get(el);
+  if (box) {
+    box.remove();
+    highlightBoxes.delete(el);
+  }
+  if (highlightBoxes.size === 0) stopHighlightLoop();
+}
+
+function unmarkAll(): void {
+  for (const el of [...highlightBoxes.keys()]) unmark(el);
+}
+
 function clearHover(): void {
-  if (hovered && hovered !== selected)
-    hovered.classList.remove(HIGHLIGHT_CLASS);
+  if (hovered && hovered !== selected) unmark(hovered);
   hovered = null;
 }
 
@@ -144,7 +239,7 @@ function removeCard(): void {
 
 function deselect(): void {
   if (selected) {
-    selected.classList.remove(HIGHLIGHT_CLASS);
+    unmark(selected);
     selected = null;
   }
   removeCard();
@@ -358,7 +453,7 @@ function onMouseOver(e: MouseEvent): void {
   if (hovered === el) return;
   clearHover();
   hovered = el;
-  el.classList.add(HIGHLIGHT_CLASS);
+  mark(el);
 }
 
 function onPointerDown(e: MouseEvent): void {
@@ -394,7 +489,7 @@ function onPointerUp(e: MouseEvent): void {
     return;
   }
   selected = el;
-  el.classList.add(HIGHLIGHT_CLASS);
+  mark(el);
   showCard(el);
 }
 
@@ -441,6 +536,7 @@ function deactivate(): void {
   window.removeEventListener("resize", onScrollOrResize);
   clearHover();
   deselect();
+  unmarkAll();
   removeHighlightSheet();
 }
 
