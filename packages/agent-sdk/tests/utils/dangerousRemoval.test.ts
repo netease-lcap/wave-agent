@@ -265,6 +265,18 @@ describe("findDangerousRemoval — what it cannot read, it asks about", () => {
     expect(ruleOf("sh scripts/clean.sh -rf")).toBe("unverifiable");
   });
 
+  it("stays silent about a shell started with no script of its own", () => {
+    // The probe that opened a card in a bypass session: `command` is peeled as
+    // a wrapper, leaving a shell that runs no command line of its own.
+    expect(judge("command -v bash")).toBeNull();
+    expect(judge("command -V sh")).toBeNull();
+    expect(judge("bash")).toBeNull();
+    expect(judge("bash -l")).toBeNull();
+    expect(judge("bash --version")).toBeNull();
+    // `-o` takes its value from the next word, which is a setting, not a script.
+    expect(judge("sh -o pipefail")).toBeNull();
+  });
+
   it("asks when another shell owns the command line", () => {
     expect(ruleOf("cmd //c rd /s /q src")).toBe("unverifiable");
     expect(ruleOf("powershell -NoProfile -Command Remove-Item x")).toBe(
