@@ -1903,6 +1903,72 @@ describe("fresh launch auto new-session", () => {
     expect(sent("desktopPanes").at(-1)?.panes[0].sessionId).toBeUndefined();
   });
 
+  it("carries a mode chosen in the blank new-session pane into the session that follows", async () => {
+    // 用户上报：新对话（还没有会话）里把档位切成「跳过权限确认」，发第一条消息
+    // 仍然按「修改前询问」执行。`setPermissionMode` 只能打在活的 agent 上，没有
+    // agent 时以前是**静默丢弃**，会话按配置默认档建起来。
+    const { host, store, sent } = createHost();
+    await host.handleWebviewMessage({ command: "desktopReady" });
+    await host.handleWebviewMessage({ command: "webviewReady" });
+    expect(h.agentInstances).toHaveLength(0); // 空白新对话：没有会话
+
+    await host.handleWebviewMessage({
+      command: "setPermissionMode",
+      mode: "bypassPermissions",
+    });
+    // 输入框上的档位要立刻跟着变（没有 agent 也回一条），否则用户看不到自己点过
+    expect(sent("updatePermissionMode").at(-1)).toMatchObject({
+      mode: "bypassPermissions",
+    });
+
+    // 用户挑一个目录 → 真正的会话这时才建起来
+    store.addRecentWorkdir({ host: "local", path: "/work/c" });
+    h.existingPaths.add("/work/c");
+    await host.handleWebviewMessage({
+      command: "desktopSelectRecentWorkdir",
+      path: "/work/c",
+    });
+
+    expect(h.agentInstances).toHaveLength(1);
+    expect(lastAgent().setPermissionMode).toHaveBeenCalledWith(
+      "bypassPermissions",
+    );
+  });
+
+  it("does not override a restored session's mode with a blank-pane choice", async () => {
+    // 恢复出来的会话有自己的档位来源（CLI 选项 > 配置默认档），空白态里顺手选
+    // 的那一档不该盖掉它。
+    const { host, store } = await readyHost();
+    fireUserMessage(lastAgent());
+    store.upsertSession({
+      sessionId: "sess-old",
+      title: "old",
+      workdir: "/work/a",
+      cwd: "/work/a",
+      host: "local",
+      createdAt: 1000,
+      lastActiveAt: 1000,
+    });
+    // 只留一份会被删掉的最近目录 → 点「新对话」后分屏退回空白态（没有会话）
+    store.removeRecentWorkdir({ host: "local", path: "/work/a" });
+    await host.handleWebviewMessage({ command: "newSession" });
+    await host.handleWebviewMessage({
+      command: "setPermissionMode",
+      mode: "bypassPermissions",
+    });
+    const before = h.agentInstances.length;
+
+    // 用户在空白态里点了侧边栏的历史会话：恢复落地
+    await host.handleWebviewMessage({
+      command: "desktopSelectSession",
+      workdir: "/work/a",
+      sessionId: "sess-old",
+    });
+
+    expect(h.agentInstances).toHaveLength(before + 1);
+    expect(lastAgent().setPermissionMode).not.toHaveBeenCalled();
+  });
+
   it("fires once per launch: repeat desktopReady/webviewReady never spawn a second agent", async () => {
     const { host, store } = createHost();
     store.addRecentWorkdir({ host: "local", path: "/work/a" });

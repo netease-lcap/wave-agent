@@ -7,6 +7,7 @@ import {
   ChatContextType,
 } from "../../src/contexts/useChat.js";
 import { Agent, BackgroundShell, Message, Task } from "wave-agent-sdk";
+import type { PermissionMode } from "wave-agent-sdk";
 import { AppProvider } from "../../src/contexts/useAppConfig.js";
 import { useInput } from "ink";
 
@@ -153,6 +154,14 @@ describe("ChatProvider", () => {
     vi.useFakeTimers();
     vi.clearAllMocks();
     hostNotice.subscribers.length = 0;
+    // 权限档位是会被改的状态：`setPermissionMode` 之后 `getPermissionMode` 就该
+    // 读到新值（与真 agent 一致）。`clearAllMocks` 只清调用记录、不清实现，所以
+    // 每个用例都换一对新 mock，别把上一轮的状态带进来。
+    const permission = { mode: "default" };
+    mockAgent.getPermissionMode = vi.fn(() => permission.mode);
+    mockAgent.setPermissionMode = vi.fn(async (mode: PermissionMode) => {
+      permission.mode = mode;
+    });
     // Reset the shared mock agent's message list and session id — tests mutate
     // them (Object.assign, session switches) and the initial pull at mount
     // reads the current values.
@@ -694,6 +703,59 @@ describe("ChatProvider", () => {
     await vi.waitFor(() => {
       expect(lastValue?.isConfirmationVisible).toBe(false);
     });
+  });
+
+  it("carries a mode chosen before the session exists into the new agent", async () => {
+    let lastValue: ChatContextType | undefined;
+    // 建会话是异步的（配置 / 插件 / MCP 都在里面），这段窗口里输入框已经能用：
+    // 用户把档位切成「跳过权限确认」，然后发第一条消息。那一刻没有 agent 可写，
+    // 所以会话建好之后必须把这个选择补上去，否则新会话按配置默认档跑
+    // （用户上报的「新对话里切换没带过去」）。
+    let resolveCreate!: (agent: Agent) => void;
+    vi.mocked(Agent.create).mockImplementation(
+      () =>
+        new Promise<Agent>((resolve) => {
+          resolveCreate = resolve;
+        }),
+    );
+
+    renderWithProvider((val) => {
+      lastValue = val;
+    });
+    await vi.waitFor(() => {
+      expect(lastValue).toBeDefined();
+    });
+
+    lastValue?.setPermissionMode("bypassPermissions");
+    resolveCreate(mockAgent as unknown as Agent);
+
+    await vi.waitFor(() => {
+      expect(mockAgent.setPermissionMode).toHaveBeenCalledWith(
+        "bypassPermissions",
+      );
+    });
+    await vi.waitFor(() => {
+      expect(lastValue?.permissionMode).toBe("bypassPermissions");
+    });
+  });
+
+  it("leaves the mode unset when the user never picked one", async () => {
+    // 没手动选过 → 不写死 default，交给配置里的 `permissions.defaultMode`
+    // 决定（传 undefined 才是「没选过」的语义）。
+    let lastValue: ChatContextType | undefined;
+    renderWithProvider((val) => {
+      lastValue = val;
+    });
+
+    await vi.waitFor(() => {
+      expect(Agent.create).toHaveBeenCalled();
+    });
+    // 界面上仍然摆一个具体的档位（至少 default），只是不往会话里塞、也不去改它。
+    expect(lastValue?.permissionMode).toBe("default");
+    expect(
+      vi.mocked(Agent.create).mock.calls[0][0].permissionMode,
+    ).toBeUndefined();
+    expect(mockAgent.setPermissionMode).not.toHaveBeenCalled();
   });
 
   it("handles bypassPermissions prop", async () => {

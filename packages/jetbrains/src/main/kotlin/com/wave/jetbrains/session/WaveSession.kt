@@ -88,6 +88,15 @@ class WaveSession(
         private set
     @Volatile var permissionMode: String? = null
 
+    /**
+     * 会话还没建起来时用户选过的权限档位。
+     *
+     * `setPermissionMode` 只能打在活的会话上，会话没就绪时以前是**静默丢弃**：
+     * 新对话里先切「跳过权限确认」、再发第一条消息，会话却按配置默认档建起来
+     * （用户上报的现象）。这里记着，[initialize] 落地后补上。
+     */
+    @Volatile private var pendingPermissionMode: String? = null
+
     val pendingConfirmations = mutableMapOf<String, PendingConfirmation>()
     private val confirmationsMutex = Mutex()
 
@@ -115,6 +124,10 @@ class WaveSession(
     suspend fun initialize(restoreSessionId: String? = null): Boolean {
         if (isInitializing || agent != null) return agent != null
         isInitializing = true
+        // 「这条会话是恢复出来的」：恢复的档位来源是它自己的（CLI 选项 > 配置
+        // 默认档），会话就绪前选的那一档只补给**新**会话。下面「会话文件不见了」
+        // 的重试其实是新会话，所以清掉这个标记。
+        var restored = restoreSessionId != null
         return try {
             val backend = WaveBackendService.getInstance(project)
             // 首启进度文案（spec ui/stdio-transport.md「首次启动的进度文案」）：
@@ -142,6 +155,7 @@ class WaveSession(
                     LOG.warn("Session not found, retrying without restoreSessionId")
                     val retryParams = params.toMutableMap().apply { remove("restoreSessionId") }
                         .let { buildJsonObject { it.forEach { (k, v) -> put(k, v) } } }
+                    restored = false
                     a.initialize(retryParams)
                 } else throw e
             }
@@ -150,6 +164,15 @@ class WaveSession(
                 sessionId = a.sessionId
             }
             permissionMode = a.permissionMode
+            // 用户在会话就绪之前选过的档位补上（见 [pendingPermissionMode]）：
+            // 新会话否则会按配置默认档跑第一条消息。
+            pendingPermissionMode?.let { pending ->
+                pendingPermissionMode = null
+                if (!restored) {
+                    a.setPermissionMode(pending)
+                    permissionMode = pending
+                }
+            }
             true
         } catch (e: Exception) {
             LOG.error("Failed to initialize wave session", e)
@@ -160,8 +183,24 @@ class WaveSession(
         }
     }
 
-    // ── AgentCallbacks: route notifications → webview commands ────
+    /**
+     * 切换权限档位（webview 的输入框下方那个下拉）。
+     *
+     * 会话还没就绪（`initialize` 还在等 `wave --stdio` 起来，输入框早已能用）时
+     * 只能先记着：那条 RPC 没有 sessionId 可归属。会话落地后由 [initialize] 补上。
+     */
+    suspend fun setPermissionMode(mode: String) {
+        val a = agent
+        if (a == null || a.sessionId == null) {
+            pendingPermissionMode = mode
+            // 输入框上的档位立刻跟着变，别让用户看不到自己点过。
+            onPermissionModeChange(mode)
+            return
+        }
+        a.setPermissionMode(mode)
+    }
 
+    // ── AgentCallbacks: route notifications → webview commands ────
     override fun onCompactBlockAdded(content: String, message: JsonElement?) {
         val compactMessage = message
         // Older CLI without the field on the wire: fall back to the full pull.

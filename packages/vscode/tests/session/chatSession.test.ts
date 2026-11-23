@@ -151,6 +151,66 @@ describe("ChatSession · 配置不经 CLI 参数覆盖层下发", () => {
 });
 
 /**
+ * 用户上报：新对话里把权限档位切成「跳过权限确认」，发第一条消息仍然按「修改前
+ * 询问」执行。新对话的会话是异步建起来的（`initialize` 要等 `wave --stdio` 起来
+ * 和版本检查），这期间输入框已经能用 —— `setPermissionMode` 那时没有会话可写，
+ * 以前是**静默丢弃**，会话按配置默认档建起来。
+ */
+describe("ChatSession · 会话建起来之前选的权限档位", () => {
+  const sentMethods = (request: ReturnType<typeof fakeClient>["request"]) =>
+    request.mock.calls.map(([method]) => method);
+
+  it("新会话落地后补上用户先选的那一档", async () => {
+    const client = fakeClient();
+    const session = new ChatSession("sidebar", undefined, callbacks());
+
+    // 会话还没就绪：这时候只能记着，不能真发 RPC（没有 sessionId 可归属）。
+    await session.setPermissionMode("bypassPermissions");
+    expect(sentMethods(client.request)).not.toContain("setPermissionMode");
+
+    await session.initialize(
+      undefined,
+      client as unknown as StdioClient,
+      fakeRouter() as unknown as NotificationRouter,
+    );
+
+    expect(paramsFor(client.request, "setPermissionMode")).toEqual({
+      mode: "bypassPermissions",
+    });
+  });
+
+  it("会话就绪之后切换仍然立即下发", async () => {
+    const client = fakeClient();
+    const session = new ChatSession("sidebar", undefined, callbacks());
+    await session.initialize(
+      undefined,
+      client as unknown as StdioClient,
+      fakeRouter() as unknown as NotificationRouter,
+    );
+
+    await session.setPermissionMode("acceptEdits");
+
+    expect(paramsFor(client.request, "setPermissionMode")).toEqual({
+      mode: "acceptEdits",
+    });
+  });
+
+  it("恢复会话不覆盖它自己的档位", async () => {
+    const client = fakeClient();
+    const session = new ChatSession("sidebar", undefined, callbacks());
+    await session.setPermissionMode("bypassPermissions");
+
+    await session.initialize(
+      "sess-1",
+      client as unknown as StdioClient,
+      fakeRouter() as unknown as NotificationRouter,
+    );
+
+    expect(sentMethods(client.request)).not.toContain("setPermissionMode");
+  });
+});
+
+/**
  * 回归（压缩摘要块在 VS Code 插件上不显示）：压缩对 UI 显示流是纯追加 —— 旧的
  * 「压缩后只 getMessages」既不推给 webview 也不追加显示，摘要在下一次
  * webviewReady 之前一直缺失。现在压缩摘要块随 `compactBlockAdded` 携带完整

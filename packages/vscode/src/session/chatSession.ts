@@ -137,6 +137,14 @@ export class ChatSession {
   public isInitializing: boolean = false;
   public inputContent: string = "";
   public messageQueue: QueuedMessage[] = [];
+  /**
+   * 会话还没建起来时用户选过的权限档位。
+   *
+   * `setPermissionMode` 只能打在活的会话上，没有会话时以前是静默丢弃：新对话里
+   * 先切「跳过权限确认」、再发第一条消息，会话却按配置默认档建起来（用户上报的
+   * 现象）。这里记着，`initialize` 落地后补上。
+   */
+  private pendingPermissionMode: PermissionMode | undefined;
   public pendingConfirmations: Map<
     string,
     {
@@ -357,6 +365,11 @@ export class ChatSession {
         // 「设置实时重载」；覆盖层会永久遮蔽 settings.json 的实时值）。
       };
 
+      // 「这条会话是恢复出来的」：恢复的档位来源是它自己的（CLI 选项 > 配置
+      // 默认档），会话落地前选的那一档只补给**新**会话。下面「会话文件不见了」
+      // 的重试其实是新会话，所以清掉这个标记。
+      let restored = Boolean(restoreSessionId);
+
       try {
         await this.agent.initialize(initParams);
       } catch (createError) {
@@ -368,6 +381,7 @@ export class ChatSession {
           console.log(
             `${this.viewType} 会话文件不存在，以新会话模式重新初始化`,
           );
+          restored = false;
           await this.agent.initialize({
             ...initParams,
             restoreSessionId: undefined,
@@ -386,6 +400,17 @@ export class ChatSession {
       ) {
         this.sessionId = this.agent.sessionId;
         this.callbacks.onSessionIdChange(this.sessionId);
+      }
+
+      // 用户在会话落地之前选过的档位补上（见 pendingPermissionMode）：新会话
+      // 否则会按配置默认档跑第一条消息。恢复出来的会话有自己的档位来源，不吃
+      // 这份选择。
+      if (this.pendingPermissionMode) {
+        const mode = this.pendingPermissionMode;
+        this.pendingPermissionMode = undefined;
+        if (!restored && this.agent?.sessionId) {
+          await this.agent.setPermissionMode(mode);
+        }
       }
 
       console.log(`${this.viewType} 智能体初始化成功`);
@@ -757,9 +782,13 @@ export class ChatSession {
   }
 
   public async setPermissionMode(mode: PermissionMode) {
-    if (this.agent) {
-      await this.agent.setPermissionMode(mode);
+    // 会话还没就绪（`initialize` 还在等 `wave --stdio` 起来，输入框早已可用）：
+    // 先记着这次选择，等会话落地再补上，别静默丢掉。
+    if (!this.agent?.sessionId) {
+      this.pendingPermissionMode = mode;
+      return;
     }
+    await this.agent.setPermissionMode(mode);
   }
 
   /**
