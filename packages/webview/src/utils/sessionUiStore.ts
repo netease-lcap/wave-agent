@@ -4,7 +4,7 @@ import type { PanelTab } from "../types";
 export const PANEL_DEFAULT_WIDTH = 420;
 
 /** File panel's tree column: default and bounds (spec 场景 1: 可拖拽、记住). */
-export const FILE_TREE_DEFAULT_WIDTH = 200;
+export const FILE_TREE_DEFAULT_WIDTH = 240;
 export const FILE_TREE_MIN_WIDTH = 140;
 export const FILE_TREE_MAX_WIDTH = 420;
 
