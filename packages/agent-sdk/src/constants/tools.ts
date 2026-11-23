@@ -28,6 +28,14 @@ export const WORKFLOW_TOOL_NAME = "Workflow";
 export const ARTIFACT_TOOL_NAME = "Artifact";
 
 /**
+ * Delivers files the model just produced (reports, screenshots, build output)
+ * to the user. The tool result carries a clickable path per file; clicking
+ * reuses the existing text / image / OS-opener routes
+ * (spec `core/send-user-file-tool.md`).
+ */
+export const SEND_USER_FILE_TOOL_NAME = "SendUserFile";
+
+/**
  * Name of the REPL tool — the carrier of the on-demand tool pool.
  *
  * The tool used to be `Exec`; that spelling is not registered any more, and

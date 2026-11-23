@@ -29,6 +29,10 @@ import {
   type FilePathLinkMode,
 } from "../utils/filePathLinks";
 import { attachBrokenImageFallback } from "../utils/brokenImageFallback";
+import {
+  readDeliveredFiles,
+  type DeliveredFile,
+} from "../utils/deliveredFiles";
 import { highlightCode } from "../utils/highlight";
 import { copyTextToClipboard } from "../utils/clipboard";
 import { COPY_PATH_ICON_PATHS } from "./FilePaneToolbarIcons";
@@ -47,6 +51,7 @@ import {
   ARTIFACT_TOOL_NAME,
   ASK_USER_QUESTION_TOOL_NAME,
   EXIT_PLAN_MODE_TOOL_NAME,
+  SEND_USER_FILE_TOOL_NAME,
   isImageFileExtension,
   isShellToolName,
 } from "wave-agent-sdk/constants";
@@ -70,6 +75,7 @@ import { MessageActionButton } from "./MessageActionButton";
 import { JumpToBackgroundIcon, RewindIcon } from "./HeaderIcons";
 import { getStageColor, getToolStatusColor } from "../utils/statusColors";
 import { timelineBlockBounds } from "../utils/timelineBlocks";
+import { FileTypeIcon } from "./FileTypeIcon";
 import { isDesktopHost, isRemotePageHost } from "../utils/platform";
 import { requestImagePreview } from "../utils/imagePreviewRequest";
 import {
@@ -1387,6 +1393,46 @@ export const Message: React.FC<MessageProps> = React.memo(
       showRemoteFilePreview(toAbsoluteFilePath(path, workdir) ?? path);
     };
 
+    /**
+     * 交付路径（`SendUserFile` 结果）的点击分流，三档都与消息正文里的同名路径同源
+     * （spec core/send-user-file-tool.md「用户故事：点击…」）：
+     *
+     * - 文本：`openFile`（桌面端文件面板 / 插件端 `openFile` RPC）；
+     * - 图片：桌面端走面板内联图，插件端走 `previewImage`；
+     * - 其余：只有「文件就在这台机器上」时交给系统默认程序 —— `onOpenFileExternal`
+     *   由 ChatApp 按 host 类型下发（本机 / WSL 才有）；SSH 会话的文件在另一台
+     *   机器上，远控页更没有，两种情况都不给入口，免得点了落进空处；
+     * - 可执行：任何情况下都不发打开请求，点击只把原因摊开（宿主侧另有闸门）。
+     */
+    const deliveredFileClick = (
+      file: DeliveredFile,
+    ): (() => void) | undefined => {
+      if (!canOpenFile) {
+        // 远控页：没有编辑器也没有文件面板，只有按需读取（文本 / 图片）。
+        return file.kind === "other"
+          ? undefined
+          : () => showRemoteFilePreview(file.path);
+      }
+      if (file.kind === "other") {
+        if (props.onOpenFileExternal) {
+          return () => props.onOpenFileExternal?.(file.path);
+        }
+        // 桌面端 SSH 会话：系统 opener 打开的是本机路径，那上面没有这个文件。
+        if (isDesktopHost()) return undefined;
+        // 插件端：openFile 的降级链（showTextDocument → vscode.open）本来就叫
+        // VS Code 自己决定怎么开，远端扩展宿主同样成立。
+        return () => openFile(file.path);
+      }
+      if (file.kind === "image" && !isDesktopHost()) {
+        return () =>
+          props.vscode.postMessage({
+            command: "previewImage",
+            path: file.path,
+          });
+      }
+      return () => openFile(file.path);
+    };
+
     const getAttachedImages = () => {
       const images: Array<{ data: string; filename?: string }> = [];
       message.blocks?.forEach((block) => {
@@ -1779,6 +1825,67 @@ export const Message: React.FC<MessageProps> = React.memo(
               <div className="write-tool-stats">{toolBlock.shortResult}</div>
             )}
             {errorContent}
+          </div>
+        );
+      }
+
+      // SendUserFile：把交付的每个文件渲染成一张卡片（spec
+      // core/send-user-file-tool.md）。卡片本身就是点击目标，所以高度按手指给
+      // （远控页 44px），而不是一行 16px 文本；图标复用文件树那套（FileTypeIcon），
+      // 文字只留文件名，绝对路径在 tooltip 里 —— 桌面端 CC 的交付卡片同形态。
+      if (toolBlock.name === SEND_USER_FILE_TOOL_NAME) {
+        if (toolBlock.stage === "streaming") {
+          return toolHeader;
+        }
+        const delivered = readDeliveredFiles(toolBlock);
+        if (errorContent || delivered.files.length === 0) {
+          return (
+            <div key={index} className="tool-container">
+              {toolHeader}
+              {errorContent}
+            </div>
+          );
+        }
+        return (
+          <div key={index} className="tool-container">
+            {toolHeader}
+            <div className="delivered-files">
+              {delivered.caption && (
+                <div className="delivered-files-caption">
+                  {delivered.caption}
+                </div>
+              )}
+              {delivered.files.map((file) => {
+                const onClick = deliveredFileClick(file);
+                return (
+                  <div
+                    key={file.path}
+                    className={
+                      onClick
+                        ? "delivered-file"
+                        : "delivered-file delivered-file--plain"
+                    }
+                    title={file.path}
+                    role={onClick ? "button" : undefined}
+                    tabIndex={onClick ? 0 : undefined}
+                    onClick={onClick}
+                    onKeyDown={
+                      onClick
+                        ? (event) => {
+                            if (event.key === "Enter" || event.key === " ") {
+                              event.preventDefault();
+                              onClick();
+                            }
+                          }
+                        : undefined
+                    }
+                  >
+                    <FileTypeIcon fileName={file.name} size={16} />
+                    <span className="delivered-file-name">{file.name}</span>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         );
       }

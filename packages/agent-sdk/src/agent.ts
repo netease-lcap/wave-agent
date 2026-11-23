@@ -77,6 +77,11 @@ import { configValidator } from "./utils/configValidator.js";
 import { rateLimitWindowsFromQuotaHeaders } from "./utils/quotaHeaders.js";
 import { SkillManager } from "./managers/skillManager.js";
 import { TaskManager } from "./services/taskManager.js";
+import {
+  SessionConsumers,
+  isSessionConsumerKind,
+} from "./services/sessionConsumers.js";
+import type { SessionConsumerKind } from "./services/sessionConsumers.js";
 import type { WorktreeSession } from "./utils/worktreeSession.js";
 import type { RewindCheckpoint } from "./utils/rewindCheckpoints.js";
 import path from "node:path";
@@ -2544,6 +2549,33 @@ export class Agent {
    */
   public getAvailableToolNames(): string[] {
     return this.toolManager.getToolsConfig().map((t) => t.function.name);
+  }
+
+  /**
+   * 这一刻有谁在看这条会话（spec `core/session-consumers.md`）。
+   *
+   * 基础集在创建时由入口推导，附加集由持有 relay 的那一层上报；两者是并集。
+   */
+  public sessionConsumers(): readonly SessionConsumerKind[] {
+    return this.sessionConsumersState.current();
+  }
+
+  /**
+   * 覆盖"附加消费者"——运行期挂上来、也会走掉的那些（本期只有 `remote-page`）。
+   *
+   * 上报方报"这一刻谁挂在上面"，不报差分；没变化时不触发回调。
+   */
+  public setAttachedConsumers(kinds: readonly string[]): void {
+    const valid = kinds.filter(isSessionConsumerKind);
+    if (this.sessionConsumersState.setAttached(valid)) {
+      this.options.callbacks?.onSessionConsumersChange?.(
+        this.sessionConsumers(),
+      );
+    }
+  }
+
+  private get sessionConsumersState(): SessionConsumers {
+    return this.container.get<SessionConsumers>("SessionConsumers")!;
   }
 
   /**

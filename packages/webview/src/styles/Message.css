@@ -1470,3 +1470,74 @@ button.reasoning-header {
   border-color: var(--vscode-focusBorder);
   color: var(--vscode-textLink-foreground, #48a0c7);
 }
+
+/* SendUserFile 交付清单（spec core/send-user-file-tool.md）：一个文件一行可点
+   路径，视觉与工具块头里的路径（.write-tool-path）一致 —— 同一类东西不该长两种
+   样子。没有入口的那一档（非本机的「其它」类型）退成普通文字：no role, no tab
+   stop, no cursor，不留「看着能点却点不动」。 */
+.delivered-files {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.delivered-files-caption {
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground);
+  overflow-wrap: anywhere;
+}
+
+/* One card per delivered file. The card is the click target, so it carries the
+ * height a finger needs — 40px here, 44px on the remote page (phone) — instead
+ * of the 16px a bare text row gives. Icon comes from the file-tree set
+ * (`FileTypeIcon`); only the base name is drawn, the absolute path is in
+ * `title`.
+ *
+ * It needs a fill, not just a hairline border: against the chat background a
+ * 1px `--vscode-panel-border` reads as a row separator, i.e. as text with extra
+ * space rather than as something to press. */
+.delivered-file {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  min-height: 40px;
+  padding: 0 10px;
+  border: 1px solid var(--vscode-commandCenter-border, rgba(128, 128, 128, 0.4));
+  border-radius: 6px;
+  background: var(--vscode-textCodeBlock-background, rgba(128, 128, 128, 0.1));
+  cursor: pointer;
+}
+
+.delivered-file:hover {
+  border-color: var(--vscode-focusBorder, #4daafc);
+  background: var(--vscode-list-hoverBackground, rgba(128, 128, 128, 0.18));
+}
+
+[data-remote-page] .delivered-file {
+  min-height: 44px;
+}
+
+.delivered-file-name {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-family: Menlo, monospace;
+  font-size: 12px;
+  line-height: 16px;
+}
+
+/* Not clickable (e.g. a PDF on the remote page): say so on the card instead of
+ * looking pressable and doing nothing when tapped. */
+.delivered-file--plain {
+  border-style: dashed;
+  color: var(--vscode-descriptionForeground);
+  cursor: default;
+}
+
+.delivered-file--plain:hover {
+  border-color: var(--vscode-commandCenter-border, rgba(128, 128, 128, 0.4));
+  background: var(--vscode-textCodeBlock-background, rgba(128, 128, 128, 0.1));
+}

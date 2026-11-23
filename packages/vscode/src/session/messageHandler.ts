@@ -28,6 +28,7 @@ import {
   PLUGIN_CHANGE_PENDING_MESSAGE,
   PLUGIN_RELOADED_MESSAGE,
   describeUserPreferencePatch,
+  isBlockedExecutablePath,
 } from "wave-agent-sdk/host";
 import {
   clearStartupStageText,
@@ -2015,6 +2016,18 @@ export class MessageHandler {
     endLine?: number,
   ) {
     if (!filePath) return;
+
+    // Executables stop here: the `vscode.open` fallback below hands the file to
+    // the OS handler, which for an `.exe` / `.app` / `.msi` means running it.
+    // The message layer already refuses to route delivered executables here;
+    // this is the gate that holds when the request arrives anyway
+    // (spec core/send-user-file-tool.md 用户故事「可执行文件不让打开」).
+    if (isBlockedExecutablePath(filePath)) {
+      vscode.window.showWarningMessage(
+        "出于安全，不打开可执行文件: " + filePath,
+      );
+      return;
+    }
 
     const uri = vscode.Uri.file(filePath);
     try {

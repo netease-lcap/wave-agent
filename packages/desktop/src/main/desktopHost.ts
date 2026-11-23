@@ -52,6 +52,7 @@ import {
   ENTER_PLAN_MODE_TOOL_NAME,
   ASK_USER_QUESTION_TOOL_NAME,
   isShellToolName,
+  isBlockedExecutablePath,
   PLUGIN_RELOADED_MESSAGE,
   StdioAgent,
   NotificationRouter,
@@ -10072,6 +10073,15 @@ export class DesktopHost {
 
   private async handleOpenPath(filePath: string, host: string): Promise<void> {
     if (!filePath) return;
+    // Executables never reach the OS opener, whoever asks (spec
+    // core/send-user-file-tool.md 用户故事「可执行文件不让打开」). The message layer
+    // already refuses to route them here, but that entry point is a policy, not a
+    // gate — a delivered `.exe` must be unable to launch even if the request
+    // arrives anyway.
+    if (isBlockedExecutablePath(filePath)) {
+      this.pushSystemMessage(`出于安全，不打开可执行文件: ${filePath}`);
+      return;
+    }
     try {
       // A WSL session's path is POSIX and means nothing to a Windows API — the
       // distro filesystem is reachable through the `\\wsl.localhost\` share, so

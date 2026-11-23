@@ -425,6 +425,76 @@ describe("RemoteControlService", () => {
     expect(bridge.handleRequest).toHaveBeenCalledWith("listSessions", {}, "s1");
   });
 
+  it("should report a page that asked about a session as watching it", async () => {
+    // Spec core/session-consumers.md 故事 1: `SendUserFile` becomes declarable
+    // once a page is following the session, and an inbound frame naming it is
+    // the only evidence the relay ever gives us.
+    const bridge = createBridgeStub({ onPageAttached: vi.fn() });
+    await connect(bridge);
+
+    socket.deliver({
+      id: 7,
+      method: "listSessions",
+      params: {},
+      sessionId: "s1",
+    });
+    expect(bridge.onPageAttached).toHaveBeenCalledWith("s1");
+
+    // A frame that names no session is not evidence that anybody is watching
+    // one — the page's own session list is the usual culprit.
+    socket.deliver({ id: 8, method: "listDaemonSessions", params: {} });
+    expect(bridge.onPageAttached).toHaveBeenCalledTimes(1);
+  });
+
+  it("should count the page that created a session as watching it", async () => {
+    // `initialize` names no session because it has not made one yet: the page
+    // gets the id back in the reply, and it is following that session from
+    // birth (spec 故事 1 场景 4).
+    const bridge = createBridgeStub({
+      handleRequest: vi.fn(async () => ({ sessionId: "new-1" })),
+      onPageAttached: vi.fn(),
+    });
+    await connect(bridge);
+
+    socket.deliver({
+      id: 9,
+      method: "initialize",
+      params: { workdir: "/repo" },
+    });
+    await vi.waitFor(() => {
+      expect(bridge.onPageAttached).toHaveBeenCalledWith("new-1");
+    });
+  });
+
+  it("should drop every viewer when the link leaves online", async () => {
+    const bridge = createBridgeStub({
+      onPageAttached: vi.fn(),
+      onPageDetached: vi.fn(),
+    });
+    await connect(bridge);
+
+    // Getting online is not a detachment — the page announces itself with its
+    // own request (spec 故事 2 场景 2).
+    expect(bridge.onPageDetached).not.toHaveBeenCalled();
+
+    socket.onclose?.({ code: 1006 });
+    expect(bridge.onPageDetached).toHaveBeenCalledTimes(1);
+
+    // The retry itself is the same state, so it changes nothing; the page has
+    // to speak up after the link comes back.
+    vi.advanceTimersByTime(RELAY_RETRY_BASE_DELAY_MS);
+    socket.onclose?.({ code: 1006 });
+    expect(bridge.onPageDetached).toHaveBeenCalledTimes(1);
+  });
+
+  it("should report no viewers when the user turns remote control off", async () => {
+    const bridge = createBridgeStub({ onPageDetached: vi.fn() });
+    const service = await connect(bridge);
+
+    service.disconnect();
+    expect(bridge.onPageDetached).toHaveBeenCalledTimes(1);
+  });
+
   it("should refuse a method that is not on the allowlist, without touching the bridge", async () => {
     const bridge = createBridgeStub();
     await connect(bridge);

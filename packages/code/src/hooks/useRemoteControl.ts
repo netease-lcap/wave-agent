@@ -89,6 +89,11 @@ export interface UseRemoteControlOptions {
   abort: () => void;
   setPermissionMode: (mode: PermissionMode) => void;
   respondPermission: (requestId: string, decision: PermissionDecision) => void;
+  /**
+   * 远控页开始 / 停止跟随这条会话——`SendUserFile` 的可见性由它决定（spec
+   * `core/session-consumers.md`）。宿主只报事实，不判断该不该声明工具。
+   */
+  setPageAttached: (attached: boolean) => void;
   /** Rename the conversation (the title `wave -r` lists). */
   renameSession: (title: string) => void | Promise<void>;
   /** Compact the conversation; errors must propagate (the page shows them). */
@@ -351,6 +356,7 @@ function adapterOf(latest: {
     setPermissionMode: (mode) => latest.current.setPermissionMode(mode),
     respondPermission: (requestId, decision) =>
       latest.current.respondPermission(requestId, decision),
+    setPageAttached: (attached) => latest.current.setPageAttached(attached),
     renameSession: (title) => latest.current.renameSession(title),
     compact: (customInstructions) => latest.current.compact(customInstructions),
     slashCommands: () => latest.current.slashCommands(),

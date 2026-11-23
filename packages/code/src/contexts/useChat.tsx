@@ -1912,6 +1912,11 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     abort: () => agentRef.current?.abortMessage(),
     setPermissionMode,
     respondPermission,
+    // 远控页挂上来的事实只影响「本轮给模型声明哪些工具」（spec
+    // core/session-consumers.md），agent 自己把附加消费者与入口推导的基础集
+    // 合成，这里只转发。
+    setPageAttached: (attached) =>
+      agentRef.current?.setAttachedConsumers(attached ? ["remote-page"] : []),
     // 会话自身的维护动作（重命名 / 压缩 / 指令清单）：页面能直接用，且都由这一份
     // 会话状态来答，所以给的是「取当前值」的函数。重命名走 agent 而非 /rename 命令，
     // 是为了让失败以 RPC 错误回给页面（TUI 那条路径把错误渲染成一条消息）。

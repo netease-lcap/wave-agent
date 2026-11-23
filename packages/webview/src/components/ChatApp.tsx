@@ -5793,6 +5793,19 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     }
   }, [state.messages, isDesktop, handleFileAutoRefresh, handlePreviewHtmlFile]);
 
+  // 交付路径里「其它类型」那一档有没有入口：只有会话的文件真在这台机器上时才
+  // 交给系统默认程序（spec core/send-user-file-tool.md 用户故事「非本机会话不给
+  // 「其它」档点击」）。宿主把 host 的类型写进 hostOptions（local / wsl / ssh），
+  // webview 不靠 id 前缀猜 —— SSH 连接表在宿主手里。老宿主没有 hostOptions 时
+  // 只认本地这一档，其余（含 WSL）宁可不给入口。
+  const canOpenWithSystemApp = useMemo(() => {
+    if (!isDesktop) return false;
+    const option = host?.hostOptions?.find(
+      (entry) => entry.id === effectiveHost,
+    );
+    return option ? option.kind !== "ssh" : effectiveHost === "local";
+  }, [isDesktop, host?.hostOptions, effectiveHost]);
+
   // Local sessions only: leave the panel and open the file in the OS default
   // app (remote hosts have no local file — the button is hidden).
   const handleOpenFileExternal = useCallback(
@@ -6564,6 +6577,9 @@ export const ChatApp: React.FC<ChatAppProps> = ({
           workdir={state.workdir}
           onOpenPreview={openPreviewHandler}
           onOpenFile={handleOpenFile}
+          onOpenFileExternal={
+            canOpenWithSystemApp ? handleOpenFileExternal : undefined
+          }
           // 侧栏「内容命中」点进来：只有种子属于这个实例正在看的会话才交下去，
           // 否则会拿别人的关键词在本会话里搜一遍（宿主的种子是窗口级的）。
           initialFind={

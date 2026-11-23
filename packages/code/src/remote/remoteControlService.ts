@@ -324,6 +324,11 @@ export interface RemoteControlController {
  * derive for itself. Keeping the type this narrow is what lets the CLI serve the
  * session the user is sitting in front of, instead of only the sessions that
  * happen to live behind an RPC server.
+ *
+ * Two **optional** methods answer a different question — "is anybody watching
+ * this session besides the terminal?" (spec `core/session-consumers.md`). They
+ * are optional because a host that serves nothing to a page has no answer and
+ * must keep working unchanged.
  */
 export interface RemoteControlHost {
   handleRequest(
@@ -336,6 +341,21 @@ export interface RemoteControlHost {
     sessionId: string;
     status: "running" | "idle" | "requires_action";
   }>;
+  /**
+   * A page just asked something about this session, so it is following it from
+   * now on: a rendering surface the terminal is not (spec
+   * `core/session-consumers.md` 故事 1). Called on every inbound frame that
+   * names a session, so the implementation must be cheap and idempotent.
+   */
+  onPageAttached?(sessionId: string): void;
+  /**
+   * The link that carried the page is gone (`off` / dropping / failed), so no
+   * page can be following anything any more. Aligned with Claude Code: its
+   * `SendUserFile.isEnabled()` reads *bridge connection* state, not a roster of
+   * viewers — a page that silently closes its tab while the link stays up leaves
+   * nobody to tell us, and inventing a timeout would be a guess (spec 边界情况).
+   */
+  onPageDetached?(): void;
 }
 
 export interface RemoteControlServiceOptions {
@@ -638,6 +658,15 @@ export class RemoteControlService implements RemoteControlController {
   // ── Inbound: what the phone asks for ──────────────────────────
 
   private handleFrame(frame: RelayEnvelope): void {
+    // Before anything else: a business frame naming a session is proof that a
+    // page is watching that session, and that fact is what puts `SendUserFile`
+    // in the model's tool list (spec `core/session-consumers.md` 故事 1). This
+    // is the *only* place the relay can tell us — a subscriber joining sends no
+    // control frame of its own. Deliberately ahead of the white list: whether
+    // the method is one this host serves has nothing to do with whether the
+    // page is there.
+    if (frame.sessionId) this.bridge.onPageAttached?.(frame.sessionId);
+
     if (frame.id === undefined) {
       // Notification (no reply expected) — `permissionResponse` is the one the
       // protocol defines.
@@ -684,6 +713,20 @@ export class RemoteControlService implements RemoteControlController {
     void this.bridge
       .handleRequest(frame.method, requestParams, frame.sessionId)
       .then((result) => {
+        // `initialize` is the one request that names no session — it creates
+        // one. The page asked for it, so it is following the session from
+        // birth, and that has to be recorded here: without it a session
+        // created from the phone would look terminal-less *and* viewer-less
+        // until the page's next request, and the first turn would not be
+        // allowed to deliver files (spec `core/session-consumers.md` 故事 1
+        // 场景 4).
+        if (frame.method === "initialize") {
+          const created = (result as { sessionId?: unknown } | undefined)
+            ?.sessionId;
+          if (typeof created === "string") {
+            this.bridge.onPageAttached?.(created);
+          }
+        }
         this.sendResult(replyId, frame.method, result);
         this.scheduleStatus();
       })
@@ -861,7 +904,16 @@ export class RemoteControlService implements RemoteControlController {
   }
 
   private setStatus(status: RemoteControlStatus): void {
+    // Leaving `online` (a drop, a refusal, `off`) takes the page with it: no
+    // page can reach a session through a link that is not up, so the sessions
+    // stop counting it as a viewer until one asks again (spec
+    // `core/session-consumers.md` 故事 2). Re-entering `online` deliberately
+    // does nothing — the page has to speak up, which it does on its own
+    // reconnect (`getMessages` / `getSessionInfo` on its alignment paths).
+    const leftOnline =
+      this.status.state === "online" && status.state !== "online";
     this.status = status;
+    if (leftOnline) this.bridge.onPageDetached?.();
     this.options.onStatusChange?.(status);
   }
 }

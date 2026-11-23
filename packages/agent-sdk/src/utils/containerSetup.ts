@@ -25,6 +25,10 @@ import {
 } from "../managers/modManager.js";
 import { callAgent } from "../services/aiService.js";
 import { renderSurfacesOf } from "../mods/runtime.js";
+import {
+  SessionConsumers,
+  baseConsumersOf,
+} from "../services/sessionConsumers.js";
 import type {
   ModPermissionRequestEvent,
   ModRenderSurface,
@@ -204,6 +208,17 @@ export function setupAgentContainer(
   // Declared surfaces win over the entrypoint's default: `wave` and `wave -p`
   // share `entrypoint: "cli"` but only the interactive TUI draws mod trees.
   container.register("RenderSurfaces", options.renderSurfaces);
+  // 会话消费者（spec `core/session-consumers.md`）：基础集与上面的渲染面同源，
+  // 附加集由持有 relay 的那一层上报。工具声明、推送、面板都读这一份事实。
+  container.register(
+    "SessionConsumers",
+    new SessionConsumers(
+      baseConsumersOf(
+        container.get<HostEntrypoint | undefined>("Entrypoint"),
+        options.renderSurfaces,
+      ),
+    ),
+  );
 
   // Module-level listener teardowns collected during setup and returned to the
   // agent, which invokes them in destroy(). The remote-settings callback
