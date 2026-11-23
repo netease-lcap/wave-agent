@@ -19,11 +19,7 @@
   padding-top: 10px;
 }
 
-/* 时间线圆点挂在消息根节点上：一条助手消息 = 一个 API 回合 = 一个点
-   （spec ui/message-rendering-system.md「时间线圆点按助手回合出现（行级）」）。
-   块行 .timeline-row 只留内衬（左侧 12px 给圆点让位、顶部 10px 撑块间距），
-   不再各自出点。 */
-.message.timeline-message::before {
+.timeline-row::before {
   content: "";
   position: absolute;
   left: 0;
@@ -35,9 +31,9 @@
   z-index: 1;
 }
 
-/* Running/streaming messages get the prototype's breathing halo (status-pulse):
+/* Running/streaming rows get the prototype's breathing halo (status-pulse):
    a ring of the dot's color expands to 5px and fades out, 1.4s loop. */
-.message.timeline-message--running::before {
+.timeline-row--running::before {
   animation: status-pulse 1.4s ease-in-out infinite;
 }
 
