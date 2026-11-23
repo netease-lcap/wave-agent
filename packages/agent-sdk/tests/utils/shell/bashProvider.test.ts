@@ -4,10 +4,18 @@ import * as path from "path";
 import { createBashProvider } from "../../../src/utils/shell/bashProvider.js";
 import { getShellProvider } from "../../../src/utils/shell/resolveProvider.js";
 import { getPowerShellPath } from "../../../src/utils/shell/powershellDetection.js";
+import { getShellSnapshot } from "../../../src/utils/shell/shellSnapshot.js";
 import { buildSearchShellPrelude } from "../../../src/utils/searchShell.js";
 
 vi.mock("../../../src/utils/searchShell.js", () => ({
   buildSearchShellPrelude: vi.fn(),
+}));
+
+// Building a snapshot runs a real login shell, so the seam is mocked: by
+// default there is none, which is the "search shadows only" command string the
+// pre-snapshot tests were written against.
+vi.mock("../../../src/utils/shell/shellSnapshot.js", () => ({
+  getShellSnapshot: vi.fn(),
 }));
 
 // Discovery stats every `PATH` entry; the dispatch test asks only whether a
@@ -18,11 +26,13 @@ vi.mock("../../../src/utils/shell/powershellDetection.js", () => ({
 
 const SHELL = "/bin/bash";
 const TEMP_DIR = path.join(os.tmpdir(), "wave-bash-provider-test");
+const SNAPSHOT = "/tmp/snap.sh";
 
 describe("bashProvider", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(buildSearchShellPrelude).mockReturnValue(undefined);
+    vi.mocked(getShellSnapshot).mockResolvedValue(undefined);
   });
 
   it("declares itself as bash and keeps the resolved shell path", () => {
@@ -37,21 +47,56 @@ describe("bashProvider", () => {
   });
 
   describe("prepareCommand", () => {
-    it("passes the command through when the install has no search binaries", () => {
+    it("passes the command through when the shell has neither snapshot nor search binaries", async () => {
       const provider = createBashProvider(SHELL);
 
-      expect(provider.prepareCommand("echo hi")).toBe("echo hi");
+      await expect(provider.prepareCommand("echo hi")).resolves.toBe("echo hi");
     });
 
-    it("prepends the search prelude inside the command string", () => {
+    it("prepends the search prelude inside the command string", async () => {
       vi.mocked(buildSearchShellPrelude).mockReturnValue(
         "function grep { :; }",
       );
       const provider = createBashProvider(SHELL);
 
-      expect(provider.prepareCommand("echo hi")).toBe(
+      await expect(provider.prepareCommand("echo hi")).resolves.toBe(
         "function grep { :; }\necho hi",
       );
+    });
+
+    it("sources the session snapshot before the search shadows", async () => {
+      vi.mocked(getShellSnapshot).mockResolvedValue(SNAPSHOT);
+      vi.mocked(buildSearchShellPrelude).mockReturnValue(
+        "function grep { :; }",
+      );
+      const provider = createBashProvider(SHELL);
+
+      const prepared = await provider.prepareCommand("echo hi", {
+        tempDir: TEMP_DIR,
+      });
+
+      expect(prepared.split("\n")).toEqual([
+        `. '${SNAPSHOT}' 2>/dev/null || true`,
+        "function grep { :; }",
+        "echo hi",
+      ]);
+      // The sandbox's temp dir has to reach the snapshot build, or a command run
+      // inside the sandbox would source a file it cannot read.
+      expect(getShellSnapshot).toHaveBeenCalledWith(SHELL, TEMP_DIR);
+    });
+
+    it("drops the snapshot line when none could be built", async () => {
+      vi.mocked(buildSearchShellPrelude).mockReturnValue(
+        "function grep { :; }",
+      );
+      const provider = createBashProvider(SHELL);
+
+      const prepared = await provider.prepareCommand("echo hi", {
+        tempDir: TEMP_DIR,
+      });
+
+      expect(prepared).not.toContain("snap.sh");
+      expect(prepared).toBe("function grep { :; }\necho hi");
     });
   });
 

@@ -12,6 +12,11 @@ import path from "node:path";
 
 // Mock child_process
 vi.mock("child_process");
+// child_process is mocked here, so the session snapshot (which spawns a login
+// shell through it) could never resolve: stub it out as unavailable.
+vi.mock("../../src/utils/shell/shellSnapshot.js", () => ({
+  getShellSnapshot: vi.fn(async () => undefined),
+}));
 
 // Mock fs and os
 vi.mock("fs", async () => {
@@ -702,7 +707,7 @@ describe("bashTool", () => {
         context,
       );
 
-      vi.advanceTimersByTime(1001);
+      await vi.advanceTimersByTimeAsync(1001);
       const result = await promise;
 
       expect(result.success).toBe(true);
@@ -739,7 +744,7 @@ describe("bashTool", () => {
         context,
       );
 
-      vi.advanceTimersByTime(1001);
+      await vi.advanceTimersByTimeAsync(1001);
       const result = await promise;
 
       expect(result.success).toBe(false);
@@ -775,9 +780,9 @@ describe("bashTool", () => {
       );
 
       // Trigger the stdout callback
-      vi.advanceTimersByTime(50);
+      await vi.advanceTimersByTimeAsync(50);
 
-      vi.advanceTimersByTime(1001);
+      await vi.advanceTimersByTimeAsync(1001);
       const result = await promise;
 
       expect(result.success).toBe(true);
@@ -894,6 +899,15 @@ describe("bashTool", () => {
       };
 
       const executePromise = bashTool.execute({ command: "long" }, testContext);
+
+      // Preparing the command (session shell snapshot) is async, so the
+      // foreground task — and with it the background handler — only exists
+      // once that settles.
+      await vi.waitFor(() =>
+        expect(
+          mockForegroundTaskManager.registerForegroundTask,
+        ).toHaveBeenCalled(),
+      );
 
       // Trigger backgrounding
       await backgroundHandler!();
@@ -1470,6 +1484,9 @@ EOF
       const { controller, testContext } = abortedContext();
 
       const promise = bashTool.execute({ command: "sleep 10" }, testContext);
+      // Preparing the command (session shell snapshot) is async: an abort can
+      // only reach a child that already exists, so wait for the spawn.
+      await vi.waitFor(() => expect(mockSpawn).toHaveBeenCalled());
       controller.abort();
 
       // The escalation (SIGTERM → SIGKILL → shell-only fallback) belongs to

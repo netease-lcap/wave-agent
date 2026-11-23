@@ -12,6 +12,11 @@ import { longFormTempDir } from "../helpers/tempDir.js";
 
 // Mock child_process to prevent real command execution (e.g. npm install triggers network I/O)
 vi.mock("child_process");
+// child_process is mocked here, so the session snapshot (which spawns a login
+// shell through it) could never resolve: stub it out as unavailable.
+vi.mock("../../src/utils/shell/shellSnapshot.js", () => ({
+  getShellSnapshot: vi.fn(async () => undefined),
+}));
 import { spawn } from "child_process";
 const mockSpawn = vi.mocked(spawn);
 

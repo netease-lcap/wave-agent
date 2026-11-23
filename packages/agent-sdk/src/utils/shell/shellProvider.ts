@@ -21,6 +21,14 @@ export interface ShellExecOptions {
   cwdTracking: boolean;
 }
 
+export interface ShellPrepareOptions {
+  /**
+   * Directory for per-session scratch files — today the bash shell snapshot.
+   * Falls back to the SDK temp dir when absent.
+   */
+  tempDir?: string;
+}
+
 export interface ShellExecCommand {
   /** The exact string handed to spawn (prologue already included). */
   commandString: string;
@@ -39,11 +47,12 @@ export interface ShellProvider {
   /** true when the shell must run in its own process group. */
   detached: boolean;
   /**
-   * Shell-specific prologue that has to sit inside the command string (bash:
-   * the search shadows from `utils/searchShell.ts`, which must survive the
-   * sandbox wrapper's own `bash -c`).
+   * Shell-specific prologue plus the command, ready for the sandbox wrapper
+   * (bash: the session's shell snapshot and the search shadows from
+   * `utils/searchShell.ts`). Async because the snapshot may have to be built
+   * first.
    */
-  prepareCommand(command: string): string;
+  prepareCommand(command: string, opts?: ShellPrepareOptions): Promise<string>;
   /** Final command string for spawn, plus the CWD file it may write. */
   buildExecCommand(command: string, opts: ShellExecOptions): ShellExecCommand;
   /**

@@ -114,7 +114,7 @@ export function createPowerShellProvider(shellPath: string): ShellProvider {
     detached: false,
     // Nothing to prepend: the search shadows are bash functions, and there is
     // no PowerShell equivalent to install.
-    prepareCommand: (command) => command,
+    prepareCommand: async (command) => command,
     buildExecCommand(
       command: string,
       opts: ShellExecOptions,
