@@ -858,6 +858,18 @@ The working directory persists between commands, but shell state (environment va
           clearTimeout(timeoutHandle);
         }
 
+        // The shell exited on its own. Anything it backgrounded (`nohup npm run
+        // dev &`, `node server.js &`) is still in the shell's process group and
+        // has been reparented to init — record the group so the session can reap
+        // it when it is destroyed. Deliberately **no** signal here: a background
+        // service started from this tool is meant to outlive the call.
+        context.shellProcessReaper?.noteExitedShell({
+          pgid: child.pid,
+          detached: provider.detached,
+          originId: context.toolCallId ?? foregroundTaskId,
+          command,
+        });
+
         finalizeShellResult(code);
       });
 

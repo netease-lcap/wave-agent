@@ -9,6 +9,7 @@ import { BashModeManager } from "./managers/bashModeManager.js";
 import { CronManager } from "./managers/cronManager.js";
 import { PageWatchManager } from "./managers/pageWatchManager.js";
 import { BackgroundTaskManager } from "./managers/backgroundTaskManager.js";
+import { ShellProcessReaper } from "./managers/shellProcessReaper.js";
 import { MessageQueue, type QueuedMessage } from "./managers/messageQueue.js";
 import { SlashCommandManager } from "./managers/slashCommandManager.js";
 import { PluginManager } from "./managers/pluginManager.js";
@@ -154,6 +155,7 @@ export class Agent {
 
   private bashModeManager: BashModeManager | null = null;
   private backgroundTaskManager: BackgroundTaskManager;
+  private shellProcessReaper: ShellProcessReaper;
   private logger?: Logger; // Add optional logger property
   private toolManager: ToolManager; // Add tool registry instance
   private mcpManager: McpManager; // Add MCP manager instance
@@ -941,6 +943,7 @@ export class Agent {
     this.messageManager = this.container.get("MessageManager")!;
     this.taskManager = this.container.get("TaskManager")!;
     this.backgroundTaskManager = this.container.get("BackgroundTaskManager")!;
+    this.shellProcessReaper = this.container.get("ShellProcessReaper")!;
     this.mcpManager = this.container.get("McpManager")!;
     this.lspManager = this.container.get("LspManager")!;
     this.permissionManager = this.container.get("PermissionManager")!;
@@ -2227,6 +2230,12 @@ export class Agent {
     this.pageWatchManager.stop();
     // Cleanup background task manager
     this.backgroundTaskManager.cleanup();
+    // 会话销毁即回收：shell 退出时只入账、不动手（`nohup npm run dev &` 是正当
+    // 用法），真正终止发生在这里 —— SIGTERM 一组一组发，宽限期后补 SIGKILL，
+    // 见 spec core/bash-tools.md「shell 退出后留下的进程组」。
+    // 将来若要对某类命令「退出时即放手」（CC 的 `atExit: "leave"`），出口在这个
+    // 调用点：入账时带标记、这里跳过，而不是在 exit 钩子里分流。
+    this.shellProcessReaper.reap();
     // Cleanup MCP connections
     await this.mcpManager.cleanup();
     // Cleanup LSP connections
@@ -2270,6 +2279,10 @@ export class Agent {
     // the module-level callback arrays pin every created agent via the
     // per-agent closure contexts, even after the host drops its references.
     this.teardown();
+    // Drop the reaper too: it holds an entry in the module-level exit-sweep set,
+    // and a daemon must not accumulate one stranded ledger per session ever
+    // opened. Entries are already gone (reap() above), so this only unlinks.
+    this.shellProcessReaper.dispose();
     // Break the DI container's internal references (services/factories) so no
     // per-agent manager is retained through it after destroy.
     this.container.clear();
