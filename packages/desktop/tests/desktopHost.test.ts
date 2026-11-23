@@ -14013,6 +14013,25 @@ describe("file panel", () => {
     ).toBe(true);
   });
 
+  // spec core/send-user-file-tool.md 用户故事「可执行文件不让打开」：消息层不给
+  // 入口是一层，宿主这道闸门是另一层 —— 请求真到了这里也必须拒绝。
+  it("desktopOpenFileExternal refuses to launch an executable", async () => {
+    const { host, sent } = await readyHost();
+    vi.mocked(shell.openPath).mockClear();
+
+    await host.handleWebviewMessage({
+      command: "desktopOpenFileExternal",
+      path: "/work/a/setup.exe",
+    });
+
+    expect(shell.openPath).not.toHaveBeenCalled();
+    expect(
+      sent("appendMessage").some((m) =>
+        JSON.stringify(m).includes("出于安全，不打开可执行文件"),
+      ),
+    ).toBe(true);
+  });
+
   // ---- 面板内编辑与保存（spec desktop-file-panel.md「文件面板内编辑与保存」）----
   // 路径与相邻用例一样用原样字符串：mock 的 key 就是消息里的 path，宿主内部
   // 的 realpath / path.resolve 只用于两端比较，不参与 key 匹配。

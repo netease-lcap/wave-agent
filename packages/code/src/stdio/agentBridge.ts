@@ -3273,6 +3273,32 @@ export class AgentBridge {
     });
   }
 
+  // ── Who is watching (spec core/session-consumers.md) ─────────
+  /**
+   * A page asked something about this session, so it is following it: the agent
+   * was built for a terminal, but a page can draw what a terminal cannot, which
+   * is what makes `SendUserFile` declarable from the next turn on.
+   *
+   * Runs on **every** inbound relay frame, so it stays a field write: the set
+   * lives on the agent and `setAttachedConsumers` fires the change callback only
+   * when it actually moved. An unknown id is a page racing a session that has
+   * already been destroyed — nothing to record.
+   */
+  onPageAttached(sessionId: string): void {
+    this.sessions.get(sessionId)?.agent.setAttachedConsumers(["remote-page"]);
+  }
+
+  /**
+   * The link is gone, so no page can be following anything through it. All
+   * sessions, not one: the relay's frames carry no page identity, and the page
+   * re-announces itself with its first request after it reconnects.
+   */
+  onPageDetached(): void {
+    for (const entry of this.sessions.values()) {
+      entry.agent.setAttachedConsumers([]);
+    }
+  }
+
   // ── Auth (global) ────────────────────────────────────────────
   /**
    * 认证状态 + **凭据形态**（spec desktop-account.md「账户卡片 · 认证方式」）。

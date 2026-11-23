@@ -18,6 +18,7 @@ import type { SubagentManagerCallbacks } from "../managers/subagentManager.js";
 import type { PartialHookConfiguration } from "./configuration.js";
 import type { TelemetryConfig } from "./telemetry.js";
 import type { HostEntrypoint } from "../constants/telemetry.js";
+import type { SessionConsumerKind } from "../services/sessionConsumers.js";
 import type { ToolPlugin } from "../tools/types.js";
 
 /**
@@ -186,6 +187,13 @@ export interface AgentCallbacks
   onBackgroundTasksChange?: (tasks: BackgroundTask[]) => void;
   onTasksChange?: (tasks: import("./tasks.js").Task[]) => void;
   onPermissionModeChange?: (mode: PermissionMode) => void;
+  /**
+   * 会话消费者变了（spec `core/session-consumers.md`）：远控页挂上来或走掉。
+   * 基础集在创建时定下，不会经由这里通知。
+   */
+  onSessionConsumersChange?: (
+    consumers: readonly SessionConsumerKind[],
+  ) => void;
   onSubagentLatestTotalTokensChange?: (
     subagentId: string,
     tokens: number,

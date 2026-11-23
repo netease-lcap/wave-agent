@@ -19,6 +19,7 @@ import { cronCreateTool } from "../tools/cronCreateTool.js";
 import { cronDeleteTool } from "../tools/cronDeleteTool.js";
 import { cronListTool } from "../tools/cronListTool.js";
 import { webFetchTool } from "../tools/webFetchTool.js";
+import { sendUserFileTool } from "../tools/sendUserFileTool.js";
 import { artifactTool } from "../tools/artifactTool.js";
 import { replTool } from "../tools/replTool.js";
 import { pollTool } from "../tools/pollTool.js";
@@ -42,8 +43,10 @@ import { STRUCTURAL_NON_DEFERRABLE } from "../repl/deferral.js";
 import {
   REPL_TOOL_NAME,
   REPL_TOOL_ALIASES,
+  SEND_USER_FILE_TOOL_NAME,
   isShellToolName,
 } from "../constants/tools.js";
+import type { SessionConsumers } from "../services/sessionConsumers.js";
 // New tools
 import { globTool } from "../tools/globTool.js";
 import { grepTool } from "../tools/grepTool.js";
@@ -313,6 +316,15 @@ class ToolManager {
   }
 
   /**
+   * 会话消费者状态；没有这个 token 的容器（裸 ToolManager 的测试）不打这个闸。
+   */
+  private sessionConsumers(): SessionConsumers | undefined {
+    return this.container.has("SessionConsumers")
+      ? this.container.get<SessionConsumers>("SessionConsumers")
+      : undefined;
+  }
+
+  /**
    * Register a new tool
    *
    * `options.builtIn` marks a tool whose `config.function.parameters` is wave's
@@ -403,6 +415,7 @@ class ToolManager {
       cronDeleteTool,
       cronListTool,
       webFetchTool,
+      sendUserFileTool,
       enterWorktreeTool,
       exitWorktreeTool,
       workflowTool,
@@ -1276,6 +1289,16 @@ class ToolManager {
         if (pooled.has(tool.name)) return false;
         // If tool is explicitly denied by name in permission rules, filter it out
         if (permissionManager?.isToolDenied(tool.name)) {
+          return false;
+        }
+        // 交付文件只在"有人能把卡片渲染出来"时声明（spec
+        // `core/session-consumers.md`）：终端只能打字，`wave -p` 连界面都没有。
+        // 注册表里始终留着它——历史转录里的调用还要能重放，撤注册会让那些调用
+        // 变成 `Tool not found`。
+        if (
+          tool.name === SEND_USER_FILE_TOOL_NAME &&
+          !this.sessionConsumers()?.hasRenderable()
+        ) {
           return false;
         }
         return true;

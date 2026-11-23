@@ -68,6 +68,7 @@ const baseOptions: Omit<UseRemoteControlOptions, "messages"> = {
   abort: vi.fn(),
   setPermissionMode: vi.fn(),
   respondPermission: vi.fn(),
+  setPageAttached: vi.fn(),
   renameSession: vi.fn(),
   compact: vi.fn(),
   slashCommands: async () => [],

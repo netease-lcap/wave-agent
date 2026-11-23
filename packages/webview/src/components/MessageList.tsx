@@ -112,6 +112,7 @@ export const MessageList = forwardRef<
     workdir,
     onOpenPreview,
     onOpenFile,
+    onOpenFileExternal,
     hasEarlier,
     isLoadingEarlier,
     onLoadEarlier,
@@ -1291,6 +1292,7 @@ export const MessageList = forwardRef<
                     workdir={workdir}
                     onOpenPreview={onOpenPreview}
                     onOpenFile={onOpenFile}
+                    onOpenFileExternal={onOpenFileExternal}
                     modNotices={modNotices}
                   />
                 </div>

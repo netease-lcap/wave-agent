@@ -8,6 +8,11 @@ vi.mock("vscode", () => ({
   window: {
     showInformationMessage: vi.fn(),
     showErrorMessage: vi.fn(),
+    showWarningMessage: vi.fn(),
+    showTextDocument: vi.fn(),
+  },
+  workspace: {
+    openTextDocument: vi.fn(),
   },
   commands: {
     executeCommand: vi.fn(),
@@ -17,6 +22,7 @@ vi.mock("vscode", () => ({
   },
   Uri: {
     parse: vi.fn((value: string) => ({ toString: () => value })),
+    file: vi.fn((value: string) => ({ fsPath: value, toString: () => value })),
   },
 }));
 
@@ -3147,5 +3153,36 @@ describe("MessageHandler @ suggestions", () => {
     expect(consoleError).toHaveBeenCalledTimes(1);
     expect(String(consoleError.mock.calls[0][0])).toContain("子代理建议");
     consoleError.mockRestore();
+  });
+  // spec core/send-user-file-tool.md 用户故事「可执行文件不让打开」：消息层不给入口
+  // 是一层，这里打开链的闸门是另一层 —— `vscode.open` 会把 `.exe` 交给系统默认程序，
+  // 也就是「运行」。
+  test("openFile refuses to launch an executable", async () => {
+    const { handler } = createHandler({} as unknown as ChatSession);
+
+    await handler.handleMessage(
+      { command: "openFile", path: "/work/a/setup.exe" },
+      "tab",
+    );
+
+    expect(vscode.workspace.openTextDocument).not.toHaveBeenCalled();
+    expect(vscode.commands.executeCommand).not.toHaveBeenCalled();
+    expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(
+      expect.stringContaining("出于安全，不打开可执行文件"),
+    );
+  });
+
+  test("openFile still opens an ordinary file through the editor", async () => {
+    const { handler } = createHandler({} as unknown as ChatSession);
+    vi.mocked(vscode.workspace.openTextDocument).mockResolvedValue({} as never);
+    vi.mocked(vscode.window.showTextDocument).mockResolvedValue({} as never);
+
+    await handler.handleMessage(
+      { command: "openFile", path: "/work/a/report.pdf" },
+      "tab",
+    );
+
+    expect(vscode.workspace.openTextDocument).toHaveBeenCalled();
+    expect(vscode.window.showWarningMessage).not.toHaveBeenCalled();
   });
 });

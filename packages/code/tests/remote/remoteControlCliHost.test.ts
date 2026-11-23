@@ -63,6 +63,7 @@ function makeSession(
     abort: vi.fn(),
     setPermissionMode: vi.fn(),
     respondPermission: vi.fn(),
+    setPageAttached: vi.fn(),
     renameSession: vi.fn(),
     compact: vi.fn(),
     slashCommands: async () => [],
@@ -558,4 +559,18 @@ test("getSessionInfo answers the session-state family the page re-reads", async 
       permissionMode: "bypassPermissions",
     },
   );
+});
+
+test("a page following the foreground session is reported to it", () => {
+  // spec core/session-consumers.md：前台 CLI 的基础消费者是 `terminal`，页挂上来
+  // 才多出 `remote-page`。宿主只转发这个事实，声明哪些工具由 SDK 决定。
+  const setPageAttached = vi.fn();
+  const host = new RemoteControlCliHost(makeSession({ setPageAttached }));
+
+  host.onPageAttached?.();
+  expect(setPageAttached).toHaveBeenLastCalledWith(true);
+
+  host.onPageDetached?.();
+  expect(setPageAttached).toHaveBeenLastCalledWith(false);
+  expect(setPageAttached).toHaveBeenCalledTimes(2);
 });

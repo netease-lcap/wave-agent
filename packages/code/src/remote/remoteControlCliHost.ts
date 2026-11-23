@@ -108,6 +108,12 @@ export interface RemoteControlCliSession {
   setPermissionMode(mode: PermissionMode): void;
   /** Resolve a pending approval, whichever side asked for it. */
   respondPermission(requestId: string, decision: PermissionDecision): void;
+  /**
+   * 远控页开始 / 停止跟随这条会话。前台 CLI 的消费者基础集是 `terminal`，页
+   * 挂上来才多出 `remote-page`，`SendUserFile` 的可见性跟着它走（spec
+   * `core/session-consumers.md`）。没有页时没有任何人调这个。
+   */
+  setPageAttached(attached: boolean): void;
   /** Set this session's custom title (the value `wave -r` lists). */
   renameSession(title: string): void | Promise<void>;
   /** Compact this conversation, optionally with custom instructions. */
@@ -281,6 +287,19 @@ export class RemoteControlCliHost implements RemoteControlHost {
     const busy =
       this.session.isLoading() || this.session.hasRunningBackgroundWork();
     return [{ sessionId, status: busy ? "running" : "idle" }];
+  }
+
+  /**
+   * The page is following this session now. One session, so no id is needed —
+   * the service passes the one it saw, this host serves exactly one.
+   */
+  onPageAttached(): void {
+    this.session.setPageAttached(true);
+  }
+
+  /** The link is gone; the terminal is on its own again. */
+  onPageDetached(): void {
+    this.session.setPageAttached(false);
   }
 
   private async listSessions(): Promise<{ sessions: SessionMetadata[] }> {

@@ -6864,3 +6864,46 @@ test("the user tier is guarded by the same expectedHash check", async () => {
     await rm(home, { recursive: true, force: true });
   }
 });
+
+// ── 谁在看（spec core/session-consumers.md）───────────────────────
+
+test("a page that asked about a session becomes its viewer", async () => {
+  const { bridge } = createBridge();
+  const setAttachedConsumers = vi.fn();
+  vi.mocked(Agent.create).mockResolvedValue(
+    createMockAgent({ sessionId: "live-1", setAttachedConsumers }),
+  );
+  await bridge.handleRequest("initialize", { workdir: REPO_ROOT });
+
+  bridge.onPageAttached("live-1");
+  expect(setAttachedConsumers).toHaveBeenCalledWith(["remote-page"]);
+
+  // A page racing a session that has already been destroyed is nothing to
+  // record — and must not throw into the frame loop.
+  expect(() => bridge.onPageAttached("gone")).not.toThrow();
+});
+
+test("a lost link clears the viewer on every session", async () => {
+  const { bridge } = createBridge();
+  const first = vi.fn();
+  const second = vi.fn();
+  vi.mocked(Agent.create)
+    .mockResolvedValueOnce(
+      createMockAgent({ sessionId: "live-1", setAttachedConsumers: first }),
+    )
+    .mockResolvedValueOnce(
+      createMockAgent({ sessionId: "live-2", setAttachedConsumers: second }),
+    );
+  await bridge.handleRequest("initialize", { workdir: REPO_ROOT });
+  await bridge.handleRequest("initialize", {
+    workdir: REPO_ROOT,
+    restoreSessionId: "live-2",
+  });
+
+  bridge.onPageDetached();
+
+  // Both, because the relay's frames carry no page identity: with the link down
+  // no session can be watching through it any more.
+  expect(first).toHaveBeenCalledWith([]);
+  expect(second).toHaveBeenCalledWith([]);
+});

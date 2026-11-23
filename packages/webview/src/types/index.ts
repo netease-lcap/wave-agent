@@ -691,6 +691,10 @@ export interface MessageListProps {
   onOpenPreview?: (url: string) => void;
   /** Desktop host only: open a file in the file panel instead of the OS. */
   onOpenFile?: (path: string, startLine?: number, endLine?: number) => void;
+  /** Desktop host only, and only when the session's files live on this machine
+   * (`local` / WSL): hand a delivered path to the OS default application. See
+   * `MessageProps.onOpenFileExternal`. */
+  onOpenFileExternal?: (path: string) => void;
   /** 这一页之前还有更早的消息：滚到顶时自动要下一页（spec ui/message-rendering-system.md
    *  「首屏一页，上翻按需取更早」）。缺席 = 不提供上翻。 */
   hasEarlier?: boolean;
@@ -753,6 +757,16 @@ export interface MessageProps {
   onOpenPreview?: (url: string) => void;
   /** Desktop host only: open a file in the file panel instead of the OS. */
   onOpenFile?: (path: string, startLine?: number, endLine?: number) => void;
+  /**
+   * Desktop host only, and only when the session's files live on this machine
+   * (`local` / WSL): hand the path to the OS default application.
+   *
+   * Absent means "there is no local file to open here" — an SSH session or the
+   * remote-control page — so a delivered path that needs the OS opener gets no
+   * click affordance at all (spec core/send-user-file-tool.md 用户故事
+   * 「非本机会话不给「其它」档点击」).
+   */
+  onOpenFileExternal?: (path: string) => void;
   /** 工具块下面那一行（`$.ui.notice`），按 tool_use id 索引。 */
   modNotices?: Record<string, string>;
 }
