@@ -453,6 +453,51 @@ describe("pickerPreload", () => {
     expect(css).toContain("rgb(4, 5, 6)");
   });
 
+  /**
+   * 访客页只要在 html / body 上设了 `scrollbar-color`，这个**继承属性**就会穿过
+   * shadow 边界落到卡片的 textarea 上；Chromium 在它不为 `auto` 时改走标准滚动条
+   * 绘制路径，把上面那套 `::-webkit-scrollbar` 规则整段忽略（真 Chromium 实测：
+   * 被继承就退回平台默认 15px，写回 auto 才是这套规则的 8px）——即使用例上方
+   * 那些规则一字未动，用户看到的仍然是「带底、粗、方头」。所以修复必须是一条
+   * **作用于滚动元素自身**的 `scrollbar-color: auto` 声明。
+   *
+   * 断言不 `toContain` 碎片，而是把 sheet 拆成规则、取出「同时设了
+   * `scrollbar-color` 且选择器能匹配到卡片的 textarea 元素」的那一条，再断言它
+   * 里两个声明的值：把声明删掉、挪到不匹配 textarea 的选择器（如 `.field`）、
+   * 或只留在注释里，三种退化都会红。
+   */
+  it("pins the card textarea's scrollbar-color back to auto", () => {
+    const { button } = renderPage();
+    activate();
+    press(button);
+
+    const css = (
+      shadowRoot().adoptedStyleSheets[0] as unknown as { css: string }
+    ).css;
+    const textarea = shadowRoot().querySelector("textarea") as Element;
+
+    // 极简解析：去掉注释，按 `选择器 { 声明 }` 切成规则，声明再按 `;` 拆。
+    const rules = [
+      ...css.replace(/\/\*[\s\S]*?\*\//g, "").matchAll(/([^{}]+)\{([^{}]*)\}/g),
+    ].map(([, selector, body]) => ({
+      selector: selector.trim(),
+      decls: new Map(
+        body
+          .split(";")
+          .map((d) => d.trim().split(":"))
+          .filter((kv) => kv.length === 2)
+          .map(([k, v]) => [k.trim(), v.trim()] as const),
+      ),
+    }));
+    const scoped = rules.filter(
+      (r) => r.decls.has("scrollbar-color") && textarea.matches(r.selector),
+    );
+    expect(scoped).toHaveLength(1);
+    expect(scoped[0].decls.get("scrollbar-color")).toBe("auto");
+    // scrollbar-width 不继承、没被击穿，写上是把标准绘制路径那一侧也压住。
+    expect(scoped[0].decls.get("scrollbar-width")).toBe("auto");
+  });
+
   it("draws the resize grip itself, inverting it per theme", () => {
     const { button } = renderPage();
     activate({

@@ -355,15 +355,25 @@ function showCard(el: Element): void {
       background: transparent;
       color: ${palette.fieldText ?? palette.inputForeground ?? "#cccccc"};
       border: none; padding: 0; font: inherit; outline: none;
+      /* 压掉从访客页继承进来的 scrollbar-color：不写这两行，下面那套
+         ::-webkit-scrollbar 规则整段不生效（机制见下方滚动条注释）。 */
+      scrollbar-color: auto;
+      scrollbar-width: auto;
     }
     textarea::placeholder {
       color: ${palette.fieldPlaceholder ?? palette.foreground ?? "#a6a6a6"};
       opacity: 1;
     }
-    /* 多行输入框的滚动条：卡片在访客页的 shadow DOM 里，访客页自己的
-       ::-webkit-scrollbar 会把它染成「带底、10–16px、方头」。这里显式按 skill
-       的桌面口径重画 —— 8px lane、track 恒透明、thumb 8%/50% 两档（容器
-       hover 的 24% 不跟：卡片里的滚动条没有 JS 跟踪鼠标），外缘留 2px ⇒
+    /* 多行输入框的滚动条：卡片在访客页的 shadow DOM 里。样式隔离只挡「匹配」、
+       不挡「继承」：访客页的 ::-webkit-scrollbar 规则进不来，但 scrollbar-color
+       是继承属性，访客页在 html / body 上设过它（很多内部系统为统一主题这么干）
+       就会穿过影子边界落到这里的 textarea 上；而 Chromium 在 scrollbar-color
+       不是 auto 时改走标准滚动条绘制路径，把下面这套伪元素规则整段忽略 ⇒
+       「带底、10–16px、方头」的老症状原样回来（真 Chromium 实测：被继承就退回
+       平台默认 15px，写回 auto 才是这套规则的 8px）。所以上面 textarea 那条规则
+       里显式压了 scrollbar-color: auto。
+       这里按 skill 的桌面口径重画 —— 8px lane、track 恒透明、thumb 8%/50% 两档
+       （容器 hover 的 24% 不跟：卡片里的滚动条没有 JS 跟踪鼠标），外缘留 2px ⇒
        可见胶囊 6px，两端正半圆。
        逐边写全：base 的 border: 0 是为了压掉别处的 border 简写，再按方向
        只留外缘那 2px（竖直在右、水平在下）；带 2px 那侧的内圆要补回到
@@ -397,8 +407,10 @@ function showCard(el: Element): void {
     }
     /* 右下角的 resize 手柄（1123 评论「右下角也参考其他多行输入一起调整」，
        第二版按「深色要反白 / 不要左上角那圈边」调整）：
-       产品里其他多行输入由 UA 画成「15×15 块 + 左上 1px L 边 + 两条斜线」，
-       卡片在 shadow DOM 里拿到的却是另一套（无底、斜线深浅反相、只有 8×8）。
+       产品里其他多行输入画成「15×15 块 + 左上 1px L 边 + 两条斜线」，卡片
+       拿到的却是平台 UA 默认那一套（无底、斜线深浅反相、只有 8×8）——原因
+       还是样式隔离：访客页给 ::-webkit-resizer 写的规则进不来，这里落到的是
+       没有任何人定制过的 UA 默认绘制。
        所以清掉 UA 图元、自己画一只 15×15 的角标：块底跟字段底同色（浅色是白、
        深色是深），斜线浅色 #666 / 深色 #d9d9d9 —— 两个主题互相反白；不再画
        左上角那两条 L 边。pointer-events: none 让鼠标穿透到 UA 的拖拽热区，
