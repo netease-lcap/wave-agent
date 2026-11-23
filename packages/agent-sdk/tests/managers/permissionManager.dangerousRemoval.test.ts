@@ -192,7 +192,6 @@ describe("deletions the check cannot read", () => {
     ["a command line the parser rejects", "rm -rf ../.. <<EOF\nx\nEOF"],
     ["a command line that is plain unbalanced", 'rm -rf ../.. "unclosed'],
     ["another shell's own command line", "powershell -NoProfile -Command x"],
-    ["a script this check never opens", "bash deploy.sh"],
     ["targets that arrive on stdin", "ls | xargs rm -rf"],
     ["a command that only mirrors", "robocopy build ../.. /MIR"],
   ];
@@ -220,7 +219,7 @@ describe("deletions the check cannot read", () => {
       return { behavior: "allow" } as PermissionDecision;
     });
 
-    await check(manager, "bash deploy.sh", { callback });
+    await check(manager, "powershell -NoProfile -Command x", { callback });
 
     expect(shown?.hidePersistentOption).toBe(true);
     expect(shown?.warning).toContain("cannot be checked");

@@ -50,6 +50,10 @@ export interface BashLeaf {
   command: string;
   /** Reconstructed command text (words joined by single spaces). */
   text: string;
+  /** Id of the subshell this leaf runs in; absent for the top-level shell.
+   *  Two commands with different ids are never in the same execution.
+   *  See {@link BashAssignment.subshell}. */
+  subshell?: number;
   /** true when this leaf must never be auto-allowed for structural reasons
    *  (bare unknown variables, …); the permission layer must ask. */
   unsafe: boolean;
@@ -72,6 +76,106 @@ export interface BashStructureUnsupported {
 }
 
 export type BashStructureResult = BashStructureOk | BashStructureUnsupported;
+
+/**
+ * Longest command this parser reads (Claude Code's own limit, `parser.ts`).
+ * Past it the parse is *aborted* rather than failed: the length of a real
+ * command comes from its data (a long commit message), so treating it as
+ * unreadable would stop ordinary commands for no gain. See
+ * {@link BashStructureDetail.aborted}.
+ */
+export const MAX_COMMAND_LENGTH = 10_000;
+
+/**
+ * The same parse as {@link BashStructureResult}, keeping what the fail-closed
+ * projection throws away: which parts of the line were *data* (a heredoc body,
+ * a here-string, a comment) and which parts could not be read at all.
+ *
+ * `parseBashStructure` answers one question — "may this be auto-allowed?" — and
+ * has to ask about anything it cannot reduce. A caller asking a different
+ * question ("does this delete something it must not") needs the split: a
+ * heredoc body full of prose is data and must not make the command unreadable,
+ * while an unterminated quote must.
+ */
+export interface BashStructureDetail {
+  /** The command line with its data regions removed (see {@link dataRegions}). */
+  commandText: string;
+  /** Expanded executable commands, as in {@link BashStructureOk}. */
+  leaves: BashLeaf[];
+  /** Regions recognised as data and removed from the command stream. */
+  dataRegions: number;
+  /** How many of those were heredoc bodies or here-string words. */
+  heredocRegions: number;
+  /** Constructs the parse could not read as commands: syntax errors and
+   *  dynamic expansions (`eval`, `$((…))`, `{a,b}`, process substitution).
+   *  Empty when the whole command was reduced. */
+  errors: BashUnsupportedReason[];
+  /** A scale budget stopped the parse (length, nesting depth, depth budget). */
+  aborted: boolean;
+  /** Deepest command substitution nesting the parse descended into. */
+  maxNesting: number;
+  /** Every write to a shell variable the line performs, in program order. */
+  assignments: BashAssignment[];
+  /** Leaf ranges that run in a subshell (an opening paren to its closing one):
+   *  a 'cd' or an assignment inside one of them is gone once the subshell ends.
+   *  Sorted by 'start'; nested ranges appear nested in the list too. */
+  subshells: BashSubshellRange[];
+  /** Bodies of the heredocs established as data, in source order, delimiter
+   *  lines excluded. A body handed to a shell ('bash <<EOF') is that shell's
+   *  script; one handed to 'git commit -F -' is a commit message. */
+  heredocBodies: string[];
+}
+
+/** A leaf range running in a subshell. */
+export interface BashSubshellRange {
+  /** Index of the first leaf inside the subshell. */
+  start: number;
+  /** One past the last leaf inside it. */
+  end: number;
+}
+
+/**
+ * One write to a shell variable, as the walk met it.
+ *
+ * Exposed because "may this be auto-allowed?" never needs it, while "does this
+ * delete something it must not?" does: the target of `rm -rf "$D"` cannot be
+ * placed without knowing what this same line did to `D`. The parser answers
+ * only what it can answer exactly — the value is filled in solely when the
+ * right-hand side is spelled out literally and the write has already happened
+ * by the time the leaf runs.
+ */
+export interface BashAssignment {
+  /** Leaf index this write is visible at: a leaf at `i` sees writes whose
+   *  `visibleFrom` is `<= i`. Writes are visited in program order, and a write
+   *  that has not been reached yet cannot have affected an earlier command. */
+  visibleFrom: number;
+  /** The variable name as written (`D` in `D=..`). */
+  name: string;
+  /** The literal value, or `null` when the right-hand side is anything but
+   *  literal text (`$(…)`, backticks, `$OTHER`). */
+  value: string | null;
+  /** The right-hand side as written, for the confirmation card. */
+  rhs: string;
+  /** Set when the value does not come from an assignment on this line at all. */
+  source?: "read" | "for";
+  /** Id of the subshell the write happens in; absent for the top-level shell.
+   *  A subshell's writes are gone when it ends, so only commands in that same
+   *  subshell may read them: `(V=x); (rm -rf /$V)` has no `V` in its second
+   *  half, and reading the first one there would place a path the shell never
+   *  forms. */
+  subshell?: number;
+}
+
+/** Bookkeeping the parser and the semantic layer fill in while they walk. */
+export interface BashParseStats {
+  /** Deepest `$( )` / backtick expansion the walk descended into. */
+  maxNesting: number;
+  /** A scale budget stopped the walk. */
+  aborted: boolean;
+  /** Next id to hand a subshell; shared with the nested walks so ids stay
+   *  unique across the whole line. */
+  nextSubshellId?: number;
+}
 
 /** A simple command's words, already split out from the token stream. */
 export interface SimpleWord {
