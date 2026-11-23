@@ -868,14 +868,6 @@
   color: var(--cc-text-primary, #e5e7e8);
 }
 
-/* ── 消息流：时间线节点 6px → 8px（codechat design-node 8px）────────── */
-[data-host="desktop"] .timeline-row::before {
-  width: 8px;
-  height: 8px;
-  left: -1px;
-  top: 15px;
-}
-
 /* "+ 添加"菜单：对齐 codechat composer-add-menu —— 面板底白、border
    #EBEEF5、r12、popover 阴影、pad 8、item 28 高 14px/500（0908 第 4 轮：
    单行下拉菜单选项高度统一 28px，原 32） */
@@ -1069,15 +1061,16 @@
   background: rgba(255, 255, 255, 0.08);
 }
 
-/* 消息流时间线节点：Figma design-node 12px / #16A34A / 白描边（覆盖此前
-   codechat 推断的 8px 灰点）；行 padding-left 12px → 20px（节点 12 + gap 8）。
+/* 消息流时间线节点：Figma design-node 12px / #16A34A / 白描边；节点挂在
+   消息根节点上（一条助手消息一个点），块行 .timeline-row 的 padding-left
+   12px → 20px 负责给它让位（节点 12 + gap 8）。
    颜色跟随 --dot-color（工具运行蓝/流式橙/成功绿/失败红，F-08 起由
    statusColors.ts 注入 --cc-state-* 语义 token），无状态时回落
    --cc-state-succeeded（浅色档即 Figma 绿 #16A34A）。 */
 [data-host="desktop"] .timeline-row {
   padding-left: 20px;
 }
-[data-host="desktop"] .timeline-row::before {
+[data-host="desktop"] .message.timeline-message::before {
   width: 12px;
   height: 12px;
   left: 0;
@@ -1088,7 +1081,7 @@
 }
 /* 深色：2px 白描边在深色会话底上呈突兀白圈 → 同色描边，
    节点呈纯绿点（浅色白描边与白底融合保留） */
-[data-host="desktop"][data-theme="dark"] .timeline-row::before {
+[data-host="desktop"][data-theme="dark"] .message.timeline-message::before {
   border-color: var(--cc-bg-conversation, #111314);
 }
 
@@ -1228,31 +1221,33 @@
 /* 时间线竖线：节点已放大到 12px（中心 6px），竖线左缘 2.5px → 5.5px；
    起始/终止端对齐节点中心（top/bottom 18px → 21px）；颜色对齐 Figma
    浅灰连接线（base widget-border 50% 中灰偏深） */
-[data-host="desktop"] .messages-container--virtual .timeline-row::after {
+[data-host="desktop"]
+  .messages-container--virtual
+  .message.timeline-message::after {
   left: 5.5px;
 }
 [data-host="desktop"][data-theme="light"]
   .messages-container--virtual
-  .timeline-row::after {
+  .message.timeline-message::after {
   background: #e4e7ed;
   opacity: 1;
 }
 [data-host="desktop"][data-theme="dark"]
   .messages-container--virtual
-  .timeline-row::after {
+  .message.timeline-message::after {
   background: rgba(255, 255, 255, 0.14);
   opacity: 1;
 }
 [data-host="desktop"]
   .messages-container--virtual
   .timeline-run--start
-  .timeline-row--first::after {
+  .message.timeline-message::after {
   top: 21px;
 }
 [data-host="desktop"]
   .messages-container--virtual
   .timeline-run--end
-  .timeline-row--last::after {
+  .message.timeline-message::after {
   bottom: auto;
   height: 21px;
 }

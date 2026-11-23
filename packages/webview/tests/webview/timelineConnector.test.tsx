@@ -1,9 +1,12 @@
 /**
  * 时间线竖线的几何（设计稿：assistant 时间线竖线跨消息贯穿）。
  *
- * 每条消息渲染成一个虚拟行；连续的 assistant 消息构成一段 timeline run。这里量
- * `.timeline-run--start` 行与 `.timeline-run--end` 行的 `.timeline-row::after` 段
- * 是否能无缝相接成一根竖线，以及单点 run（`.timeline-run--single`）不画线。
+ * 每条消息渲染成一个虚拟行；连续的 assistant 消息构成一段 timeline run。圆点与
+ * 竖线段都挂在消息根节点上（一条助手消息 = 一个 API 回合 = 一个点，见 spec
+ * ui/message-rendering-system.md「时间线圆点按助手回合出现（行级）」）。这里量
+ * `.timeline-run--start` 与 `.timeline-run--end` 两条消息的
+ * `.message.timeline-message::after` 段是否能无缝相接成一根竖线，以及单点 run
+ * （`.timeline-run--single`）不画线。
  *
  * 迁移自 `e2e/timeline-connector.e2e.ts`：pseudo 元素的 `getComputedStyle` 与
  * `getBoundingClientRect` 在真 Chromium 里都是原生的，本套件就跑在真 Chromium 里。
@@ -31,6 +34,10 @@ const initialState = {
 /**
  * 一轮「文本 + 运行中的 Bash」的助手消息：工具未收尾时这条消息末尾会挂上
  * 「把本轮转到后台」按钮（`.message-actions`），它也是 `.message` 的子元素。
+ *
+ * 前面垫一条纯文本助手消息（a1），让 a2 成为**多点 run 的末条**——收尾规则
+ * （`--end` 那一段只画到圆点中心）就落在 a2 身上；单条消息自成一个单点 run，
+ * 根本不画线，量不到收尾段。
  */
 function injectRunningBashTurn() {
   renderChatApp();
@@ -45,6 +52,12 @@ function injectRunningBashTurn() {
       },
       {
         id: "a1",
+        role: "assistant",
+        timestamp: "2025-07-09T10:30:00.500Z",
+        blocks: [text("先看一眼当前分支。")],
+      },
+      {
+        id: "a2",
         role: "assistant",
         timestamp: "2025-07-09T10:30:01.000Z",
         blocks: [
@@ -111,7 +124,7 @@ describe("时间线竖线几何", () => {
       .poll(() => !!document.querySelector(".virtual-row.timeline-run--start"))
       .toBe(true);
 
-    // Geometry probe: read each run row's ::after segment in document
+    // Geometry probe: read each run message's ::after segment in document
     // coordinates; the run is flush (paddingBottom 0 inside the run), so the
     // segments must abut at the row boundary.
     const startRow = document.querySelector<HTMLElement>(
@@ -124,16 +137,20 @@ describe("时间线竖线几何", () => {
       ".virtual-row.timeline-run--single",
     )!;
 
-    const startMsgRow = startRow.querySelector<HTMLElement>(".timeline-row")!;
-    const endMsgRow = endRow.querySelector<HTMLElement>(".timeline-row")!;
-    const startRect = startMsgRow.getBoundingClientRect();
-    const endRect = endMsgRow.getBoundingClientRect();
+    const startMsg = startRow.querySelector<HTMLElement>(
+      ".message.timeline-message",
+    )!;
+    const endMsg = endRow.querySelector<HTMLElement>(
+      ".message.timeline-message",
+    )!;
+    const startRect = startMsg.getBoundingClientRect();
+    const endRect = endMsg.getBoundingClientRect();
 
-    const startAfter = getComputedStyle(startMsgRow, "::after");
-    const endAfter = getComputedStyle(endMsgRow, "::after");
+    const startAfter = getComputedStyle(startMsg, "::after");
+    const endAfter = getComputedStyle(endMsg, "::after");
 
-    // start row: line runs from the first dot center (18px) to the row
-    // bottom; end row: line runs from its top to the last dot center.
+    // start message: line runs from its dot center (18px) to the message
+    // bottom; end message: line runs from its top to its dot center.
     const seg1 = {
       start: startRect.top + px(startAfter.top),
       end: startRect.bottom,
@@ -149,7 +166,7 @@ describe("时间线竖线几何", () => {
     const lastDotCenter = endRect.top + 18;
 
     const singleAfter = getComputedStyle(
-      singleRow.querySelector(".timeline-row") as HTMLElement,
+      singleRow.querySelector(".message.timeline-message") as HTMLElement,
       "::after",
     );
 
@@ -194,10 +211,10 @@ describe("时间线竖线几何", () => {
    *
    * codechat 网关上的 Claude 思考明文恒为空（只回 signature），流式期第一个
    * `thinking_delta` 是空串，SDK 于是在真内容到达前几百毫秒到几秒就先建出这条
-   * 助手消息。它若渲染出空 `.message` 外壳：收尾规则（`.timeline-row--last`
-   * 那一段只画到圆点中心）落在它身上，而它内部没有 `.timeline-row`，前一条
-   * 真实消息的最后一行于是保持全高线段——用户看到一条线一直连到列表底部、
-   * 底部却没有块；那一行还占着行高与间距，底部凭空多出空白。
+   * 助手消息。它若渲染出空 `.message` 外壳：收尾规则（`--end` 那一段只画到圆点
+   * 中心）落在它身上，而它没有圆点（`::after` 根本不存在），前一条真实消息于是
+   * 保持全高线段——用户看到一条线一直连到列表底部、底部却没有块；那一行还占着
+   * 行高与间距，底部凭空多出空白。
    */
   it("没有任何块的消息不占行，也不留悬空连线", async () => {
     renderChatApp();
@@ -239,20 +256,19 @@ describe("时间线竖线几何", () => {
     const endRow = document.querySelector<HTMLElement>(
       ".virtual-row.timeline-run--end",
     )!;
-    const rows = Array.from(
-      endRow.querySelectorAll<HTMLElement>(".timeline-row"),
+    // 收尾类落在一个没有圆点的 `.message` 上时（本用例修的正是这个），这里读
+    // 不到消息节点——用 null 兜住，让下面第一条断言报出「收尾落在谁身上」，而
+    // 不是在探测里抛 TypeError。
+    const endMessage = endRow.querySelector<HTMLElement>(
+      ".message.timeline-message",
     );
-    // 收尾类落在一条内部没有 `.timeline-row` 的行上时（本用例修的正是这个），
-    // 这里读不到末行——用 null 兜住，让下面第一条断言报出「收尾落在谁身上」，
-    // 而不是在探测里抛 TypeError。
-    const lastRow = rows[rows.length - 1] ?? null;
-    const after = lastRow ? getComputedStyle(lastRow, "::after") : null;
+    const after = endMessage ? getComputedStyle(endMessage, "::after") : null;
     const geo = {
       rowIds: Array.from(
         document.querySelectorAll<HTMLElement>("[data-measured-message-id]"),
       ).map((row) => row.getAttribute("data-measured-message-id")),
       endId: endRow.getAttribute("data-measured-message-id"),
-      lastRowHeight: lastRow ? lastRow.getBoundingClientRect().height : 0,
+      messageHeight: endMessage ? endMessage.getBoundingClientRect().height : 0,
       lastSegmentHeight: after ? px(after.height) : NaN,
     };
 
@@ -260,9 +276,9 @@ describe("时间线竖线几何", () => {
     // `.message` 外壳。收尾落在最后一条真实消息上。
     expect(geo.rowIds).not.toContain("blank");
     expect(geo.endId).toBe("a2");
-    // 收尾段只到圆点中心（base 档 18px），不会垂到行底。
+    // 收尾段只到圆点中心（base 档 18px），不会垂到消息底。
     expect(geo.lastSegmentHeight).toBeCloseTo(18, 0);
-    expect(geo.lastSegmentHeight).toBeLessThan(geo.lastRowHeight);
+    expect(geo.lastSegmentHeight).toBeLessThan(geo.messageHeight);
   });
 
   /**
@@ -332,8 +348,12 @@ describe("时间线竖线几何", () => {
         ".virtual-row.timeline-run--start, .virtual-row.timeline-run--end",
       ),
     );
-    const first = rows[0].querySelector<HTMLElement>(".timeline-row")!;
-    const second = rows[1].querySelector<HTMLElement>(".timeline-row")!;
+    const first = rows[0].querySelector<HTMLElement>(
+      ".message.timeline-message",
+    )!;
+    const second = rows[1].querySelector<HTMLElement>(
+      ".message.timeline-message",
+    )!;
     const firstRect = first.getBoundingClientRect();
     const secondRect = second.getBoundingClientRect();
     const startAfter = getComputedStyle(first, "::after");
@@ -358,14 +378,14 @@ describe("时间线竖线几何", () => {
   });
 
   /**
-   * 「把本轮转到后台」按钮不能改变收尾行竖线的长度。
+   * 「把本轮转到后台」按钮不能改变收尾消息竖线的长度。
    *
    * 按钮（`.message-actions`）只在工具跑着时挂在 `.message` 末尾，跑完就消失。
-   * 竖线收尾规则早先用 `.timeline-row:last-child` 选中最后一行——按钮一出现，
-   * 最后一行就不再是 `:last-child`，规则失效、竖线画满整行；工具一结束按钮消失，
-   * 竖线又缩回 18px。同一条工具行因此在「运行中 / 已完成」两种状态下变脸。
+   * 竖线收尾规则早先用 `:last-child` 选中最后一行——按钮一出现，最后一行就不再
+   * 是 `:last-child`，规则失效、竖线画满整行；工具一结束按钮消失，竖线又缩回 18px。
+   * 行级化之后圆点与竖线挂在消息根节点上，末尾的兄弟节点再也顶不掉它。
    */
-  it("末尾的动作按钮不会把收尾行的连线拉长", async () => {
+  it("末尾的动作按钮不会把收尾消息的连线拉长", async () => {
     injectRunningBashTurn();
     // 按钮默认是 hover 才显形的（`.message:hover .message-actions`），这里只要它在
     // DOM 里 —— 撑坏选择器的是节点本身，不是可见性。
@@ -377,30 +397,31 @@ describe("时间线竖线几何", () => {
       .toBe(true);
 
     const message = document.querySelector<HTMLElement>(
-      '[data-message-id="a1"]',
+      '[data-message-id="a2"]',
     )!;
-    const rows = Array.from(
-      message.querySelectorAll<HTMLElement>(".timeline-row"),
-    );
-    const lastRow = rows[rows.length - 1];
-    const after = getComputedStyle(lastRow, "::after");
+    // 前置条件：末尾动作按钮确实是这条消息的最后一个子元素。
+    expect(
+      message.lastElementChild?.classList.contains("message-actions"),
+    ).toBe(true);
+
+    const after = getComputedStyle(message, "::after");
     const geo = {
       lineHeight: px(after.height),
-      rowHeight: lastRow.getBoundingClientRect().height,
-      // 末行标记落在最后一行上，而不是被末尾的按钮顶掉。
-      lastRowIsMarked: lastRow.classList.contains("timeline-row--last"),
+      messageHeight: message.getBoundingClientRect().height,
+      // 圆点/竖线挂在消息根节点上，而不是被末尾的按钮顶到别的行上。
+      isDotMessage: message.classList.contains("timeline-message"),
     };
 
-    expect(geo.lastRowIsMarked).toBe(true);
-    // 收尾段只到圆点中心（base 档 18px），不随行高拉伸。
+    expect(geo.isDotMessage).toBe(true);
+    // 收尾段只到圆点中心（base 档 18px），不随消息高度拉伸。
     expect(geo.lineHeight).toBeCloseTo(18, 0);
-    expect(geo.lineHeight).toBeLessThan(geo.rowHeight);
+    expect(geo.lineHeight).toBeLessThan(geo.messageHeight);
   });
 
   /**
-   * 桌面端的覆盖规则（host-desktop.css：圆点 12px，收尾段 21px）也必须绑在
-   * 末行标记上。这一档最容易漏改：只改 base 的选择器，桌面用户看到的还是
-   * 「工具跑着时整根线、跑完就缩没」。这里用 `data-host="desktop"` 复现桌面档
+   * 桌面端的覆盖规则（host-desktop.css：圆点 12px，收尾段 21px）也必须挂在消息
+   * 根节点上。这一档最容易漏改：只改 base 的选择器，桌面用户看到的还是「工具跑着
+   * 时整根线、跑完就缩没」。这里用 `data-host="desktop"` 复现桌面档
    * （host-desktop.css 已在本文件顶部导入，它所有选择器都带这个属性前缀）。
    */
   it("桌面档：动作按钮同样不拉长收尾段", async () => {
@@ -415,20 +436,16 @@ describe("时间线竖线几何", () => {
       .toBe(true);
 
     const message = document.querySelector<HTMLElement>(
-      '[data-message-id="a1"]',
+      '[data-message-id="a2"]',
     )!;
-    const rows = Array.from(
-      message.querySelectorAll<HTMLElement>(".timeline-row"),
-    );
-    const lastRow = rows[rows.length - 1];
     const geo = {
-      lineHeight: px(getComputedStyle(lastRow, "::after").height),
-      rowHeight: lastRow.getBoundingClientRect().height,
-      lastRowIsMarked: lastRow.classList.contains("timeline-row--last"),
+      lineHeight: px(getComputedStyle(message, "::after").height),
+      messageHeight: message.getBoundingClientRect().height,
+      isDotMessage: message.classList.contains("timeline-message"),
     };
 
-    expect(geo.lastRowIsMarked).toBe(true);
+    expect(geo.isDotMessage).toBe(true);
     expect(geo.lineHeight).toBeCloseTo(21, 0);
-    expect(geo.lineHeight).toBeLessThan(geo.rowHeight);
+    expect(geo.lineHeight).toBeLessThan(geo.messageHeight);
   });
 });

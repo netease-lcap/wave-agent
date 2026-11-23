@@ -68,8 +68,11 @@ import { ArtifactCard } from "./ArtifactCard";
 import { FileToolHeader } from "./FileToolHeader";
 import { MessageActionButton } from "./MessageActionButton";
 import { JumpToBackgroundIcon, RewindIcon } from "./HeaderIcons";
-import { getStageColor, getToolStatusColor } from "../utils/statusColors";
-import { timelineBlockBounds } from "../utils/timelineBlocks";
+import {
+  getMessageTimelineStatus,
+  getToolStatusColor,
+} from "../utils/statusColors";
+import { hasTimelineDot } from "../utils/timelineBlocks";
 import { isDesktopHost, isRemotePageHost } from "../utils/platform";
 import { requestImagePreview } from "../utils/imagePreviewRequest";
 import {
@@ -1232,6 +1235,13 @@ export const Message: React.FC<MessageProps> = React.memo(
       filePath?: string;
     } | null>(null);
 
+    // 一条助手消息 = 一个 API 回合 = 时间线上一个圆点（spec ui/message-rendering-system.md
+    // 「时间线圆点按助手回合出现（行级）」）：圆点与竖线挂在消息根节点上，块只贡献
+    // 聚合状态。渲染不出内容块的消息（只有 notice、或块全空）不出点，也不参与 run。
+    const timelineStatus = hasTimelineDot(message)
+      ? getMessageTimelineStatus(message.blocks ?? [])
+      : null;
+
     const getMessageClassName = () => {
       const classes = ["message"];
 
@@ -1242,6 +1252,10 @@ export const Message: React.FC<MessageProps> = React.memo(
         }
       } else if (message.role === "assistant") {
         classes.push("assistant");
+        if (timelineStatus) {
+          classes.push("timeline-message");
+          if (timelineStatus.running) classes.push("timeline-message--running");
+        }
       }
 
       return classes.join(" ");
@@ -2007,26 +2021,17 @@ export const Message: React.FC<MessageProps> = React.memo(
       !isQueued &&
       hasRunningBackgroundableTool(message);
 
-    // 带圆点的块里第一个 / 最后一个是哪个（见 utils/timelineBlocks）。行上据此
-    // 打 `timeline-row--first/--last`，替代样式里原先的 `:first-child` /
-    // `:last-child`：消息末尾的 `.message-actions` 动作组（回滚 / 转后台，
-    // 悬停时才有内容）也是 `.message` 的子元素，会顶掉 `:last-child`，让竖线丢掉
-    // 收尾规则、画满整行。
-    const timelineBounds = timelineBlockBounds(message.blocks ?? []);
-
     const renderBlock = (block: MessageBlock, index: number) => {
       let rendered: React.ReactNode = null;
+      // 块本身还要不要 `.timeline-row` 外壳：它现在只负责内衬（padding-left 留出
+      // 圆点的位置、padding-top 撑块间距），圆点已经上移到消息根节点了。
       let wrap = false;
-      let dotColor: string | undefined;
       let toolNotice: string | null = null;
 
       switch (block.type) {
         case "compact":
-          // Same color as .compact-dot so the timeline dot matches the in-block dot.
           rendered = renderCompactBlock(block, index);
           wrap = true;
-          dotColor =
-            "var(--vscode-textLink-foreground, var(--vscode-descriptionForeground))";
           break;
         case "text": {
           const content = block.content || "";
@@ -2118,7 +2123,6 @@ export const Message: React.FC<MessageProps> = React.memo(
 
           rendered = renderMarkdownContent(content, index);
           wrap = true;
-          dotColor = getStageColor(block.stage);
           break;
         }
         case "notice": {
@@ -2168,7 +2172,6 @@ export const Message: React.FC<MessageProps> = React.memo(
           const toolBlock = block as ToolBlock;
           rendered = renderToolBlock(toolBlock, index);
           wrap = true;
-          dotColor = getToolStatusColor(block as ToolBlock);
           // 插件在这个工具调用下面贴的一行（`$.ui.notice`，spec「工具行下面的
           // 一行」）：挂在时间线行内部、工具块之后，与工具块同生共死。
           toolNotice = toolBlock.id
@@ -2187,7 +2190,6 @@ export const Message: React.FC<MessageProps> = React.memo(
           if (!reasoningContent.trim()) return null;
           rendered = renderReasoningBlock(block, index);
           wrap = true;
-          dotColor = getStageColor(block.stage);
           break;
         }
         default:
@@ -2196,29 +2198,8 @@ export const Message: React.FC<MessageProps> = React.memo(
 
       if (!wrap || rendered === null) return rendered;
 
-      // The running pulse animation (prototype .design-activity.is-running)
-      // only applies while a block is actively streaming/running; outcome
-      // states keep the static dot.
-      const isRunning =
-        block.type === "tool"
-          ? block.stage === "running" || block.stage === "streaming"
-          : (block.type === "reasoning" || block.type === "text") &&
-            block.stage === "streaming";
-
       return (
-        <div
-          key={index}
-          className={`timeline-row${
-            isRunning ? " timeline-row--running" : ""
-          }${index === timelineBounds.first ? " timeline-row--first" : ""}${
-            index === timelineBounds.last ? " timeline-row--last" : ""
-          }`}
-          style={
-            dotColor
-              ? ({ ["--dot-color"]: dotColor } as React.CSSProperties)
-              : undefined
-          }
-        >
+        <div key={index} className="timeline-row">
           {rendered}
           {toolNotice && (
             <div className="tool-notice" data-testid="tool-notice">
@@ -2234,6 +2215,13 @@ export const Message: React.FC<MessageProps> = React.memo(
         className={getMessageClassName()}
         data-message-id={message.id}
         data-role={message.role}
+        style={
+          timelineStatus
+            ? ({
+                ["--dot-color"]: timelineStatus.color,
+              } as React.CSSProperties)
+            : undefined
+        }
       >
         {message.blocks?.map((block, index) => renderBlock(block, index))}
         {idePreview && (

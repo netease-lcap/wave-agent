@@ -131,7 +131,7 @@ export function estimateRowHeight(
         break;
       }
       case "reasoning": {
-        // 与 Message.renderBlock / isTimelineBlock 同口径：网关偶发下发一个
+        // 与 Message.renderBlock / blockRendersContent 同口径：网关偶发下发一个
         // 只含 "\n" 的 reasoning_content，这种块不渲染，估算高度也不该替它
         // 留空间（否则首屏会凭空多出一段空白，等挂载后再被实测收掉）。
         const reasoningContent = block.content || "";
