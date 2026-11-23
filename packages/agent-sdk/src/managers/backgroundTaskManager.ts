@@ -193,15 +193,19 @@ export class BackgroundTaskManager {
         ...options?.env,
       },
     };
+    // Whether this shell leads its own process group. Only then is its pid
+    // usable as a pgid — the PowerShell branch shares ours, and recording that
+    // id would make the reaper signal the host.
+    const detached = options?.shell ? options.shell.detached : true;
     const child = options?.shell
       ? spawnHidden(options.shell.file, options.shell.args, {
           ...spawnOptions,
-          detached: options.shell.detached,
+          detached,
         })
       : spawnHidden(command, {
           ...spawnOptions,
           shell: resolveShellPath() ?? true,
-          detached: true,
+          detached,
         });
 
     if (options?.onExit) {
@@ -291,6 +295,24 @@ export class BackgroundTaskManager {
     const onExit = (code: number | null) => {
       if (timeoutHandle) {
         clearTimeout(timeoutHandle);
+      }
+      // Whatever this background shell left behind (`nohup … &` inside the
+      // command, or simply exiting after starting something) is still in its
+      // process group. Record it so destroy() reaps it — `cleanup()` only walks
+      // tasks that are still `running`, so a shell landing on `completed` here
+      // would otherwise never be looked at again. No signal: staying alive is
+      // the point of a background command.
+      if (this.container.has("ShellProcessReaper")) {
+        this.container
+          .get<
+            import("./shellProcessReaper.js").ShellProcessReaper
+          >("ShellProcessReaper")
+          ?.noteExitedShell({
+            pgid: child.pid,
+            detached,
+            originId: id,
+            command,
+          });
       }
       // Decode any bytes still held at stream end (e.g. a trailing UTF-8
       // character split across the last chunk).

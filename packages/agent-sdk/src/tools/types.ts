@@ -165,6 +165,13 @@ export interface ToolContext {
   messageId?: string;
   /** Foreground task manager for backgrounding tasks */
   foregroundTaskManager?: import("../types/processes.js").IForegroundTaskManager;
+  /**
+   * Per-agent ledger of the process groups a shell left behind, so they can be
+   * reaped when the session is destroyed (spec core/bash-tools.md「shell 退出后
+   * 留下的进程组」). Absent for bare tool invocations with no agent container;
+   * Bash then simply does not record.
+   */
+  shellProcessReaper?: import("../managers/shellProcessReaper.js").ShellProcessReaper;
   /** Task manager instance for task management */
   taskManager: import("../services/taskManager.js").TaskManager;
   /** Subagent manager instance for agent delegation */

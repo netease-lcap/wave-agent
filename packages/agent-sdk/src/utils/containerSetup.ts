@@ -2,6 +2,7 @@ import { Container } from "./container.js";
 import { normalizeEntrypoint } from "../constants/telemetry.js";
 import type { HostEntrypoint } from "../constants/telemetry.js";
 import { ForegroundTaskManager } from "../managers/foregroundTaskManager.js";
+import { ShellProcessReaper } from "../managers/shellProcessReaper.js";
 import { BackgroundTaskManager } from "../managers/backgroundTaskManager.js";
 import { MessageQueue } from "../managers/messageQueue.js";
 import { TaskManager } from "../services/taskManager.js";
@@ -230,6 +231,14 @@ export function setupAgentContainer(
 
   const foregroundTaskManager = new ForegroundTaskManager(container);
   container.register("ForegroundTaskManager", foregroundTaskManager);
+
+  // Per-agent ledger of the process groups a shell left behind (`nohup … &`,
+  // `node server.js &`). Recorded when the shell exits, terminated in destroy()
+  // — see `managers/shellProcessReaper.ts` and spec core/bash-tools.md
+  //「shell 退出后留下的进程组」. Per agent, not process-wide: a daemon hosting
+  // several sessions must never reap another session's processes.
+  const shellProcessReaper = new ShellProcessReaper();
+  container.register("ShellProcessReaper", shellProcessReaper);
   container.register("ConfigurationService", configurationService);
 
   // OS-level sandbox for Bash. Reads the live merged configuration on every

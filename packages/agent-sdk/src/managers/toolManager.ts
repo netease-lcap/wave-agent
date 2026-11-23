@@ -758,6 +758,11 @@ class ToolManager {
       foregroundTaskManager: this.container.get<
         import("../types/processes.js").IForegroundTaskManager
       >("ForegroundTaskManager")!,
+      shellProcessReaper: this.container.has("ShellProcessReaper")
+        ? this.container.get<
+            import("./shellProcessReaper.js").ShellProcessReaper
+          >("ShellProcessReaper")
+        : undefined,
       mcpManager: this.mcpManager,
       lspManager: this.container.get<ILspManager>("LspManager")!,
       subagentManager: this.container.has("SubagentManager")
