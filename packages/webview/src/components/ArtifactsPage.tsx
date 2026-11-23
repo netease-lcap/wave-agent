@@ -468,9 +468,17 @@ const ViewMenu: React.FC<{
   useClickOutside({ refs: [menuRef], onClickOutside: onClose });
 
   const menuWidth = 148;
-  // 右对齐触发键 + 夹进视口；纵向「下 → 翻上 → 夹取并内部滚动」与会话行菜单
-  // 同一份实现（spec desktop-sessions.md「会话行菜单完整可见」场景 3）。
-  const menuStyle = useAnchoredMenuStyle(menuRef, anchorRect, menuWidth);
+  // 1123 评论「下拉列表和选择器左对齐」：横向由右对齐触发键改成**左对齐**触发键
+  // 左沿（anchorRect 就是页头那颗 `.artifacts-view-btn`），菜单从选择器处向右展开；
+  // 菜单 148 比按钮 110 宽，右侧会多出 38px，仍在页头留白内、不触视口夹取。
+  // 纵向「下 → 翻上 → 夹取并内部滚动」与会话行菜单同一份实现
+  // （spec desktop-sessions.md「会话行菜单完整可见」场景 3），未动。
+  const menuStyle = useAnchoredMenuStyle(
+    menuRef,
+    anchorRect,
+    menuWidth,
+    "left",
+  );
   return createPortal(
     <div
       ref={menuRef}

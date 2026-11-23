@@ -45,6 +45,17 @@ interface PickerPalette {
   actionText?: string;
   disabledBg?: string;
   disabledText?: string;
+  /* ── 卡片里多行输入框的滚动条（1123 评论「滚动条按照规范来，现在带有背景，
+     粗细也不对」）──
+     卡片活在**访客页**的 shadow DOM 里：访客页自己的 `::-webkit-scrollbar`
+     规则会作用进来（很多内部系统给 track 上了底、lane 给到 10–16px），卡片
+     不显式声明就只能跟着它走。这里按 skill 的桌面滚动条口径重画：8px lane、
+     透明 track、6px 可见胶囊（外缘留 2px）、三档填充；颜色仍由宿主取样。
+     旧宿主不发这两个键时回退浅色档（8% 黑 / 50% 黑）。 */
+  scrollbarThumb?: string;
+  scrollbarThumbHover?: string;
+  /* 右下角手柄那两条斜线的颜色：浅色 #666、深色 #d9d9d9（两主题反白）。 */
+  resizerInk?: string;
 }
 
 interface PickerMessage {
@@ -53,6 +64,14 @@ interface PickerMessage {
 }
 
 const HIGHLIGHT_CLASS = "__wave-picker-highlight";
+/** 高亮描边层（每个被高亮的元素一只，见 `mark`）。 */
+const HIGHLIGHT_BOX_CLASS = "__wave-picker-highlight-box";
+const HIGHLIGHT_WIDTH = 2;
+/**
+ * 描边层比评论卡片（2147483647）低 1：两者都必须是页面里的最顶层，但卡片要能
+ * 压在描边之上（窄元素时二者会重叠，描边穿过卡片就成了脏线）。
+ */
+const HIGHLIGHT_Z_INDEX = 2147483646;
 const CARD_WIDTH = 280;
 /** 卡片高度估算（决定放元素下方还是翻到上方）：r12 浮层 8 内衬 + 字段（1px 边 +
  *  8 内衬 + 44 输入区）+ 8 间距 + 28 操作行 + 1px 边 = 116（1029 表单规范那轮
@@ -67,6 +86,22 @@ let hovered: Element | null = null;
 let selected: Element | null = null;
 let cardHost: HTMLDivElement | null = null;
 let highlightSheet: CSSStyleSheet | null = null;
+/**
+ * 被高亮元素 → 它的描边层。
+ *
+ * 2026-11-23 修复（评论：`button.preview-pane-button`「hover 选择元素时蓝色描边
+ * 被别的元素遮挡」）：改前描边是**目标元素自己的 `outline`**（`outline-offset:
+ * -2px`）。outline 跟元素自身一起参与堆叠，于是凡是有后绘制的兄弟、`z-index`
+ * 更高的浮层、或 `overflow: hidden` 的祖先，都能盖住/裁掉那段描边——目标元素
+ * 越「深处」越容易被压住（典型：sticky 表头、卡片阴影层、绝对定位的角标）。
+ * 现在描边画在 `position: fixed; z-index: 2147483647` 的独立层上（与评论卡片同一
+ * 层级上限），只跟视口坐标走，**永远在页面最上层**；`pointer-events: none` 保证
+ * 它自己不会被命中（`elementFromPoint` 仍取到下面真正的元素）。
+ *
+ * 每个元素一只盒子（hover 一只、选中一只，与原「两个元素可同时带描边」等价）。
+ */
+const highlightBoxes = new Map<Element, HTMLDivElement>();
+let highlightRaf = 0;
 /** Where the current press started, while the pointer is down. */
 let pressOrigin: { x: number; y: number } | null = null;
 
@@ -114,8 +149,10 @@ function snippet(el: Element): string {
 function ensureHighlightSheet(): void {
   if (highlightSheet) return;
   highlightSheet = new CSSStyleSheet();
+  // 这个 sheet 现在只管光标：描边搬到 `highlightBoxes` 的 fixed 层上（见
+  // `mark`），否则会跟着目标元素一起被别的元素盖住。
   highlightSheet.replaceSync(
-    `.${HIGHLIGHT_CLASS} { outline: 2px solid ${palette.accentOutline ?? palette.accent ?? "#0e639c"} !important; outline-offset: -2px; cursor: crosshair !important; }`,
+    `.${HIGHLIGHT_CLASS} { cursor: crosshair !important; }`,
   );
   document.adoptedStyleSheets = [
     ...document.adoptedStyleSheets,
@@ -131,9 +168,78 @@ function removeHighlightSheet(): void {
   highlightSheet = null;
 }
 
+/** 描边色：与焦点态同一支蓝（宿主 accent 已中性化，故单独取 accentOutline）。 */
+function highlightColor(): string {
+  return palette.accentOutline ?? palette.accent ?? "#0e639c";
+}
+
+/** 把描边层挪到元素当前的视口位置。CSS px 直接写（不取整，免半像素抖动）。 */
+function paintHighlightBox(el: Element, box: HTMLDivElement): void {
+  const rect = el.getBoundingClientRect();
+  box.style.left = `${rect.left}px`;
+  box.style.top = `${rect.top}px`;
+  box.style.width = `${rect.width}px`;
+  box.style.height = `${rect.height}px`;
+  // 0×0（未挂载 / display:none 的祖先）时别画一个点。
+  box.style.display = rect.width > 0 && rect.height > 0 ? "block" : "none";
+}
+
+/** 每帧跟随：页面滚动、布局变化、元素自身动效都不会让描边脱位。 */
+function tickHighlights(): void {
+  highlightRaf = 0;
+  if (highlightBoxes.size === 0) return;
+  for (const [el, box] of highlightBoxes) paintHighlightBox(el, box);
+  highlightRaf = requestAnimationFrame(tickHighlights);
+}
+
+function startHighlightLoop(): void {
+  if (highlightRaf) return;
+  if (typeof requestAnimationFrame !== "function") return; // 同步环境（单测）已在 mark 里画过一次
+  highlightRaf = requestAnimationFrame(tickHighlights);
+}
+
+function stopHighlightLoop(): void {
+  if (!highlightRaf) return;
+  cancelAnimationFrame(highlightRaf);
+  highlightRaf = 0;
+}
+
+/** 给一个元素挂描边层（重复调用是幂等的）。 */
+function mark(el: Element): void {
+  el.classList.add(HIGHLIGHT_CLASS); // 只为 cursor: crosshair
+  let box = highlightBoxes.get(el);
+  if (!box) {
+    box = document.createElement("div");
+    box.className = HIGHLIGHT_BOX_CLASS;
+    // CSP 下 `<style>` 可能被禁，所以全走内联样式（与卡片同一套做法）；
+    // inset 阴影 = 改前 `outline-offset: -2px` 的内描边，视觉等价。
+    box.style.cssText = `position: fixed; z-index: ${HIGHLIGHT_Z_INDEX}; pointer-events: none; box-sizing: border-box; display: none; margin: 0; padding: 0; border: 0;`;
+    // 挂到 <html> 而不是 <body>：body 上有 transform/filter 时 fixed 会退化成
+    // 相对 body 定位（页面自己写的 transform 不该让描边漂走）。
+    document.documentElement.appendChild(box);
+    highlightBoxes.set(el, box);
+  }
+  box.style.boxShadow = `inset 0 0 0 ${HIGHLIGHT_WIDTH}px ${highlightColor()}`;
+  paintHighlightBox(el, box);
+  startHighlightLoop();
+}
+
+function unmark(el: Element): void {
+  el.classList.remove(HIGHLIGHT_CLASS);
+  const box = highlightBoxes.get(el);
+  if (box) {
+    box.remove();
+    highlightBoxes.delete(el);
+  }
+  if (highlightBoxes.size === 0) stopHighlightLoop();
+}
+
+function unmarkAll(): void {
+  for (const el of [...highlightBoxes.keys()]) unmark(el);
+}
+
 function clearHover(): void {
-  if (hovered && hovered !== selected)
-    hovered.classList.remove(HIGHLIGHT_CLASS);
+  if (hovered && hovered !== selected) unmark(hovered);
   hovered = null;
 }
 
@@ -144,7 +250,7 @@ function removeCard(): void {
 
 function deselect(): void {
   if (selected) {
-    selected.classList.remove(HIGHLIGHT_CLASS);
+    unmark(selected);
     selected = null;
   }
   removeCard();
@@ -230,6 +336,7 @@ function showCard(el: Element): void {
       box-shadow: ${palette.cardShadow ?? "0 4px 16px rgba(0,0,0,0.4)"};
     }
     .field {
+      position: relative;
       display: flex; flex-direction: column;
       background: ${palette.fieldBg ?? palette.inputBackground ?? "#3c3c3c"};
       border: 1px solid ${palette.fieldBorder ?? palette.border ?? "rgba(128,128,128,0.35)"};
@@ -248,10 +355,80 @@ function showCard(el: Element): void {
       background: transparent;
       color: ${palette.fieldText ?? palette.inputForeground ?? "#cccccc"};
       border: none; padding: 0; font: inherit; outline: none;
+      /* 压掉从访客页继承进来的 scrollbar-color：不写这两行，下面那套
+         ::-webkit-scrollbar 规则整段不生效（机制见下方滚动条注释）。 */
+      scrollbar-color: auto;
+      scrollbar-width: auto;
     }
     textarea::placeholder {
       color: ${palette.fieldPlaceholder ?? palette.foreground ?? "#a6a6a6"};
       opacity: 1;
+    }
+    /* 多行输入框的滚动条：卡片在访客页的 shadow DOM 里。样式隔离只挡「匹配」、
+       不挡「继承」：访客页的 ::-webkit-scrollbar 规则进不来，但 scrollbar-color
+       是继承属性，访客页在 html / body 上设过它（很多内部系统为统一主题这么干）
+       就会穿过影子边界落到这里的 textarea 上；而 Chromium 在 scrollbar-color
+       不是 auto 时改走标准滚动条绘制路径，把下面这套伪元素规则整段忽略 ⇒
+       「带底、10–16px、方头」的老症状原样回来（真 Chromium 实测：被继承就退回
+       平台默认 15px，写回 auto 才是这套规则的 8px）。所以上面 textarea 那条规则
+       里显式压了 scrollbar-color: auto。
+       这里按 skill 的桌面口径重画 —— 8px lane、track 恒透明、thumb 8%/50% 两档
+       （容器 hover 的 24% 不跟：卡片里的滚动条没有 JS 跟踪鼠标），外缘留 2px ⇒
+       可见胶囊 6px，两端正半圆。
+       逐边写全：base 的 border: 0 是为了压掉别处的 border 简写，再按方向
+       只留外缘那 2px（竖直在右、水平在下）；带 2px 那侧的内圆要补回到
+       3 + 2 = 5，否则会被均匀缩放成方头。 */
+    textarea::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+    textarea::-webkit-scrollbar-track,
+    textarea::-webkit-scrollbar-corner {
+      background: transparent;
+    }
+    textarea::-webkit-scrollbar-thumb {
+      background-color: ${palette.scrollbarThumb ?? "rgb(0 0 0 / 8%)"};
+      background-clip: padding-box;
+      border: 0 solid transparent;
+      border-radius: 3px;
+    }
+    textarea::-webkit-scrollbar-thumb:vertical {
+      border-right: 2px solid transparent;
+      border-radius: 3px 5px 5px 3px;
+    }
+    textarea::-webkit-scrollbar-thumb:horizontal {
+      border-bottom: 2px solid transparent;
+      border-radius: 3px 3px 5px 5px;
+    }
+    textarea::-webkit-scrollbar-thumb:hover,
+    textarea::-webkit-scrollbar-thumb:active {
+      background-color: ${palette.scrollbarThumbHover ?? "rgb(0 0 0 / 50%)"};
+      background-clip: padding-box;
+    }
+    /* 右下角的 resize 手柄（1123 评论「右下角也参考其他多行输入一起调整」，
+       第二版按「深色要反白 / 不要左上角那圈边」调整）：
+       产品里其他多行输入画成「15×15 块 + 左上 1px L 边 + 两条斜线」，卡片
+       拿到的却是平台 UA 默认那一套（无底、斜线深浅反相、只有 8×8）——原因
+       还是样式隔离：访客页给 ::-webkit-resizer 写的规则进不来，这里落到的是
+       没有任何人定制过的 UA 默认绘制。
+       所以清掉 UA 图元、自己画一只 15×15 的角标：块底跟字段底同色（浅色是白、
+       深色是深），斜线浅色 #666 / 深色 #d9d9d9 —— 两个主题互相反白；不再画
+       左上角那两条 L 边。pointer-events: none 让鼠标穿透到 UA 的拖拽热区，
+       resize: vertical 的拖动行为不变。 */
+    textarea::-webkit-resizer {
+      background: transparent;
+      border: 0;
+    }
+    .field::after {
+      content: ""; position: absolute; right: 7px; bottom: 7px;
+      width: 15px; height: 15px; pointer-events: none;
+      background-color: ${palette.fieldBg ?? palette.inputBackground ?? "#ffffff"};
+      background-image:
+        linear-gradient(135deg, transparent calc(50% - 0.5px), ${palette.resizerInk ?? "#666666"} calc(50% - 0.5px) calc(50% + 0.5px), transparent calc(50% + 0.5px)),
+        linear-gradient(135deg, transparent calc(50% - 0.5px), ${palette.resizerInk ?? "#666666"} calc(50% - 0.5px) calc(50% + 0.5px), transparent calc(50% + 0.5px));
+      background-size: 6px 6px, 3px 3px;
+      background-position: right 2px bottom 2px, right 2px bottom 2px;
+      background-repeat: no-repeat;
     }
     .footer { display: flex; align-items: center; gap: 8px; }
     .tag {
@@ -358,7 +535,7 @@ function onMouseOver(e: MouseEvent): void {
   if (hovered === el) return;
   clearHover();
   hovered = el;
-  el.classList.add(HIGHLIGHT_CLASS);
+  mark(el);
 }
 
 function onPointerDown(e: MouseEvent): void {
@@ -394,7 +571,7 @@ function onPointerUp(e: MouseEvent): void {
     return;
   }
   selected = el;
-  el.classList.add(HIGHLIGHT_CLASS);
+  mark(el);
   showCard(el);
 }
 
@@ -441,6 +618,7 @@ function deactivate(): void {
   window.removeEventListener("resize", onScrollOrResize);
   clearHover();
   deselect();
+  unmarkAll();
   removeHighlightSheet();
 }
 

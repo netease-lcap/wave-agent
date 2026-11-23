@@ -135,7 +135,7 @@
 }
 
 /* 指针在刻度列里（含两支箭头与上下相邻的空白）时浮现。用容器的 `:hover` 而不是
-   箭头自己的：20px 见方的两个小目标，指到才现的话很难撞上；整列 24px 宽的一条带
+   箭头自己的：20px 见方的两个小目标，指到才现的话很难撞上；整列 28px 宽的一条带
    都是「我要翻它」的意图区。 */
 .outline-ticks:hover .outline-scroll-btn,
 .outline-scroll-btn:focus-visible {
@@ -179,21 +179,24 @@
   border-radius: 2px;
 }
 
-/* 刻度按钮：命中盒 24 宽 × 8 高（盒高 = OUTLINE_TICK_BOX_PX）。可见的只是中间
+/* 刻度按钮：命中盒 28 宽 × 8 高（盒高 = OUTLINE_TICK_BOX_PX）。可见的只是中间
    那条 6×2 / 10×2 的短横（见 ::before）：常态走「一长一短」，hover 时宽度渐变到
-   24（设计师 1110 口径「hover 上去以后才有宽度梯度变化，最宽 24px」，对齐 Codex）；
-   命中盒按最宽状态留尺寸，hover 时盒子不变、只有短横在长，所以指针不会因为变宽
-   而抖出 hover。 */
+   28（设计师 1110 口径「hover 上去以后才有宽度梯度变化」，1123 追加「可以横向再
+   +4px」，24 → 28，对齐 Codex）；命中盒按最宽状态留尺寸，hover 时盒子不变、只有
+   短横在长，所以指针不会因为变宽而抖出 hover。
+   cursor：`pointer` → `default`（设计师 1123：「鼠标从小手改为箭头，更精准一些」）
+   —— 这一列是目录，不是一排链接，箭头更贴「点一下跳过去」的语义，也与它右侧正文
+   的指针形态一致；滚动箭头那两颗仍是 `pointer`（它们是按钮）。 */
 .outline-tick {
   position: relative;
   display: block;
-  width: 24px;
+  width: 28px;
   min-height: 8px;
   padding: 0;
   margin: 0;
   border: 0;
   background: none;
-  cursor: pointer;
+  cursor: default;
   appearance: none;
 }
 
@@ -204,7 +207,7 @@
   top: 50%;
   /* 常态 6×2（OUTLINE_TICK_LINE_W_PX / _H_PX）。宽度由组件按「距悬停几格」写进
      `--outline-tick-w`（hover 涟漪，见 outlineTickWidth）：指针落在刻度上时，
-     它自己 24、上下各 19 / 13、再远回一长一短的 10 / 6，靠下面的 transition
+     它自己 28、上下各 22 / 15、再远回一长一短的 10 / 6，靠下面的 transition
      连续流动。 */
   width: var(--outline-tick-w, 6px);
   height: 2px;
@@ -259,7 +262,7 @@
 
 /* 「当前这一轮」：**只靠颜色**区分，宽度也回到一长一短的节奏（设计师 1110：
    「选中的那条宽度也收回默认」）——于是整列的宽度只剩两种来源：节奏（10/6）与
-   悬停涟漪（24/19/13），选中不再占用第三种宽度。
+   悬停涟漪（28/22/15），选中不再占用第三种宽度。
    `:hover` 那一档必须一起写：`:hover::before` 的特异性比 `--active::before` 高，
    不并上来的话指针一压到这一条，它就会从前景色掉回次要档、比周围的提色刻度还浅。 */
 .outline-tick--active::before,
@@ -304,9 +307,10 @@
    几何不动的部分：left 30（贴最长那条短横右缘）、宽度按列宽夹取（TSX 内联 maxWidth）。 */
 .outline-card {
   position: absolute;
-  /* 24（命中盒宽）+ 6：卡片贴在「最长那条短横」的右缘外，不再按按钮宽度算——
-     卡片已经搬出刻度按钮（可滚区会裁掉伸出盒外的它），改由组件按条数算 top。 */
-  left: 30px;
+  /* 28（命中盒宽）+ 6：卡片贴在「最长那条短横」的右缘外，不再按按钮宽度算——
+     卡片已经搬出刻度按钮（可滚区会裁掉伸出盒外的它），改由组件按条数算 top。
+     1123 刻度最宽 24 → 28 后这里同步 30 → 34，卡片与短横之间的 6px 空隙不变。 */
+  left: 34px;
   transform: translateY(-50%);
   display: flex;
   flex-direction: column;

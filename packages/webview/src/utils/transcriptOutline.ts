@@ -47,6 +47,7 @@ export const OUTLINE_VERTICAL_RESERVE_PX = 160;
  * 「刻度间距改为 8px」——间距指两条短横之间的空白，节距随之 10px）。
  *
  *   常态短横 8×2 → hover 宽度渐变到 24（CSS transition，不是瞬间切换）
+ *   （1123 起最宽档为 28，见 OUTLINE_TICK_HOVER_W_PX 的注释）
  *   两条短横之间留 8px 空白 ⇒ **节距恒为 10px**，与视口高、条数都无关。
  *
  * 节距固定意味着条数一多就一定会超出刻度条的上限：列高 = 8 + 10(n−1)，上限
@@ -58,8 +59,10 @@ export const OUTLINE_VERTICAL_RESERVE_PX = 160;
  */
 export const OUTLINE_TICK_LINE_W_PX = 6;
 export const OUTLINE_TICK_LINE_H_PX = 2;
-/** hover 后的最大宽度（渐变结束值）。 */
-export const OUTLINE_TICK_HOVER_W_PX = 24;
+/** hover 后的最大宽度（渐变结束值）。
+ *  24 → 28（设计师 1123：「可以横向再+4px」）：最宽那条短横与命中盒同宽，
+ *  改宽后热区也跟着涨到 28（见 CSS `.outline-tick` 的 width）。 */
+export const OUTLINE_TICK_HOVER_W_PX = 28;
 /** 相邻两条短横之间的视觉空白。 */
 export const OUTLINE_TICK_AIR_PX = 8;
 /** 节距 = 短横 2 + 空白 8 = 10。 */
@@ -76,13 +79,15 @@ export const OUTLINE_TICK_GAP_PX = OUTLINE_TICK_PITCH_PX - OUTLINE_TICK_BOX_PX;
  * 变化」）：悬停时不止那一条变宽，上下相邻的几条按距离递减，形成一个围绕指针的
  * 渐变簇——指针在刻度间移动时每条只走一档，宽度 transition 于是连续流动。
  *
- * 取值 = 从最宽 24 到常态 6 的递减档：24 / 19 / 13，第 3 格起回到常态（6 或长档 10）。
+ * 取值 = 从最宽 28 到常态 6 的递减档：28 / 22 / 15，第 3 格起回到常态（6 或长档 10）。
+ * 最宽档随 1123「横向再 +4px」从 24 提到 28，二、三档同比拉开（相邻差 6 → 7），
+ * 整簇的梯度形状与改前一致，不会因为只抬首档而出现「断崖」。
  * 只变宽度、不动节距与左缘对齐，所以整列仍是「一竖列短线」，不是散点。
  */
 export const OUTLINE_TICK_RIPPLE_W_PX = [
   OUTLINE_TICK_HOVER_W_PX,
-  19,
-  13,
+  22,
+  15,
 ] as const;
 
 /**
@@ -101,7 +106,7 @@ export const OUTLINE_TICK_ALT_LONG_W_PX = 10;
  * 某个刻度该画多宽。
  *
  * `distance` 是与悬停刻度的格距（负 = 没有悬停）。优先吃涟漪（0/1/2 格 →
- * 24/19/13），再往外回到「一长一短」的节奏；悬停是瞬态，指针离开后整列回到节奏。
+ * 28/22/15），再往外回到「一长一短」的节奏；悬停是瞬态，指针离开后整列回到节奏。
  */
 export function outlineTickWidth(distance: number, index: number): number {
   if (distance >= 0) {

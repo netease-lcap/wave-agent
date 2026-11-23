@@ -145,8 +145,16 @@ const SessionItemMenu: React.FC<{
   });
 
   const menuWidth = 148;
-  // Right-aligned to the trigger and kept inside the viewport on both axes.
-  const menuStyle = useAnchoredMenuStyle(menuRef, anchorRect, menuWidth);
+  // 1123 评论「这个下拉列表和更多图标左对齐」：横向由右对齐触发按钮改成**左对齐**
+  // 触发按钮的左沿（`anchorRect` 就是那颗 24×24 的「⋯」按钮盒），菜单从按钮处向右
+  // 展开、允许越过侧栏右沿——这是她看图后点的档（候选 A2，左侧对齐按钮盒左沿）。
+  // 纵向仍是「下 → 翻上 → 夹取并内部滚动」，横向超出视口右沿时照旧夹回（viewport 兜底）。
+  const menuStyle = useAnchoredMenuStyle(
+    menuRef,
+    anchorRect,
+    menuWidth,
+    "left",
+  );
   return (
     <div
       ref={menuRef}

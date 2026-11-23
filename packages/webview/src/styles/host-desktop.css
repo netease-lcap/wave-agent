@@ -2813,9 +2813,13 @@
 [data-host="desktop"][data-theme="dark"] .desktop-session-more-btn:hover {
   background: rgba(255, 255, 255, 0.12);
 }
+/* 菜单项图标槽（1123「把菜单图标槽从 15px 提到规范默认的 16px」）：改前 15px 是
+   为了迁就当时那颗 24 网格的 lucide 原稿，三颗图标都被压在 15 上；原稿已按 16
+   网格重画（HeaderIcons.tsx 的 SplitIcon），槽位随之回到 skill 的 utility 默认
+   16px，与行上「⋯」按钮的 16px 图标（上一条规则）同档。 */
 [data-host="desktop"] .desktop-session-menu-item svg {
-  width: 15px;
-  height: 15px;
+  width: 16px;
+  height: 16px;
   flex-shrink: 0;
 }
 

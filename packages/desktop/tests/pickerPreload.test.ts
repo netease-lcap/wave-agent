@@ -158,6 +158,54 @@ describe("pickerPreload", () => {
     expect(container.classList.contains("__wave-picker-highlight")).toBe(true);
   });
 
+  /**
+   * 描边层（2026-11-23）：改前画在目标元素自己的 `outline` 上，会跟元素一起参与
+   * 堆叠 ⇒ 被后绘制的兄弟 / 更高 z-index 的浮层 / overflow 祖先盖住或裁掉。
+   * 改后画在 `documentElement` 下的 `position: fixed; z-index: 2147483647` 层上。
+   */
+  const highlightBoxes = () => [
+    ...document.querySelectorAll<HTMLDivElement>(
+      ".__wave-picker-highlight-box",
+    ),
+  ];
+
+  it("draws the highlight on a top-layer fixed box instead of the element outline", () => {
+    const { button } = renderPage();
+    activate({ accentOutline: "#0e639c" });
+    mouseOver(button);
+
+    const boxes = highlightBoxes();
+    expect(boxes).toHaveLength(1);
+    const [box] = boxes;
+    expect(box.parentElement).toBe(document.documentElement);
+    expect(box.style.position).toBe("fixed");
+    expect(box.style.pointerEvents).toBe("none");
+    expect(box.style.zIndex).toBe("2147483646"); // 比评论卡片（…647）低 1
+    expect(box.style.boxShadow.startsWith("inset")).toBe(true);
+    // 元素自身不再挂 outline —— 那是「描边被别的元素遮挡」的根因。
+    expect(button.getAttribute("style") ?? "").not.toContain("outline");
+    // 类名还在，但它现在只承担 cursor: crosshair。
+    expect(button.classList.contains("__wave-picker-highlight")).toBe(true);
+  });
+
+  it("keeps one box per highlighted element and clears them on deactivate", () => {
+    const { button, container } = renderPage();
+    activate();
+    mouseOver(button);
+    expect(highlightBoxes()).toHaveLength(1);
+    // 同一元素重复 hover：幂等，不叠盒子。
+    mouseOver(button);
+    expect(highlightBoxes()).toHaveLength(1);
+    // hover 换到别的元素：旧的回收。
+    mouseOver(container);
+    expect(highlightBoxes()).toHaveLength(1);
+    // 选中 + hover 两个元素同时带描边（与原实现同一语义）。
+    press(button);
+    expect(highlightBoxes()).toHaveLength(2);
+    deactivate();
+    expect(highlightBoxes()).toHaveLength(0);
+  });
+
   it("press selects the element and shows the floating comment card", () => {
     const { button } = renderPage();
     activate();
@@ -376,6 +424,105 @@ describe("pickerPreload", () => {
     press(textarea, { hit: document.body.lastElementChild });
     expect(button.classList.contains("__wave-picker-highlight")).toBe(true);
     expect(textarea.classList.contains("__wave-picker-highlight")).toBe(false);
+  });
+
+  it("styles the card textarea scrollbar to the desktop spec, not the page's", () => {
+    const { button } = renderPage();
+    activate({
+      scrollbarThumb: "rgb(1, 2, 3)",
+      scrollbarThumbHover: "rgb(4, 5, 6)",
+    });
+    press(button);
+
+    // The card lives in the guest page's shadow DOM, so the page's own
+    // ::-webkit-scrollbar rules would otherwise paint a backgrounded, thick
+    // track. The sheet must pin the design-layer geometry itself.
+    const sheet = shadowRoot().adoptedStyleSheets[0] as unknown as {
+      css: string;
+    };
+    const css = sheet.css;
+    expect(css).toMatch(/textarea::-webkit-scrollbar\s*\{[^}]*width: 8px/);
+    expect(css).toMatch(
+      /textarea::-webkit-scrollbar-track,[^}]*background: transparent/,
+    );
+    expect(css).toContain("border-right: 2px solid transparent");
+    expect(css).toContain("border-radius: 3px 5px 5px 3px");
+    expect(css).toContain("background-clip: padding-box");
+    // Colors come from the host palette (8% / 50% fills), never hard-coded.
+    expect(css).toContain("rgb(1, 2, 3)");
+    expect(css).toContain("rgb(4, 5, 6)");
+  });
+
+  /**
+   * 访客页只要在 html / body 上设了 `scrollbar-color`，这个**继承属性**就会穿过
+   * shadow 边界落到卡片的 textarea 上；Chromium 在它不为 `auto` 时改走标准滚动条
+   * 绘制路径，把上面那套 `::-webkit-scrollbar` 规则整段忽略（真 Chromium 实测：
+   * 被继承就退回平台默认 15px，写回 auto 才是这套规则的 8px）——即使用例上方
+   * 那些规则一字未动，用户看到的仍然是「带底、粗、方头」。所以修复必须是一条
+   * **作用于滚动元素自身**的 `scrollbar-color: auto` 声明。
+   *
+   * 断言不 `toContain` 碎片，而是把 sheet 拆成规则、取出「同时设了
+   * `scrollbar-color` 且选择器能匹配到卡片的 textarea 元素」的那一条，再断言它
+   * 里两个声明的值：把声明删掉、挪到不匹配 textarea 的选择器（如 `.field`）、
+   * 或只留在注释里，三种退化都会红。
+   */
+  it("pins the card textarea's scrollbar-color back to auto", () => {
+    const { button } = renderPage();
+    activate();
+    press(button);
+
+    const css = (
+      shadowRoot().adoptedStyleSheets[0] as unknown as { css: string }
+    ).css;
+    const textarea = shadowRoot().querySelector("textarea") as Element;
+
+    // 极简解析：去掉注释，按 `选择器 { 声明 }` 切成规则，声明再按 `;` 拆。
+    const rules = [
+      ...css.replace(/\/\*[\s\S]*?\*\//g, "").matchAll(/([^{}]+)\{([^{}]*)\}/g),
+    ].map(([, selector, body]) => ({
+      selector: selector.trim(),
+      decls: new Map(
+        body
+          .split(";")
+          .map((d) => d.trim().split(":"))
+          .filter((kv) => kv.length === 2)
+          .map(([k, v]) => [k.trim(), v.trim()] as const),
+      ),
+    }));
+    const scoped = rules.filter(
+      (r) => r.decls.has("scrollbar-color") && textarea.matches(r.selector),
+    );
+    expect(scoped).toHaveLength(1);
+    expect(scoped[0].decls.get("scrollbar-color")).toBe("auto");
+    // scrollbar-width 不继承、没被击穿，写上是把标准绘制路径那一侧也压住。
+    expect(scoped[0].decls.get("scrollbar-width")).toBe("auto");
+  });
+
+  it("draws the resize grip itself, inverting it per theme", () => {
+    const { button } = renderPage();
+    activate({
+      fieldBg: "rgb(9, 9, 9)",
+      resizerInk: "rgb(7, 8, 9)",
+    });
+    press(button);
+
+    // Inside a shadow root the engine paints a different grip than the one the
+    // rest of the app gets (no fill, inverted ink, only 8x8), so the sheet
+    // blanks the UA paint and draws a 15x15 grip: block filled with the field's
+    // own background, diagonals in the palette's ink.
+    const sheet = shadowRoot().adoptedStyleSheets[0] as unknown as {
+      css: string;
+    };
+    const css = sheet.css;
+    expect(css).toMatch(
+      /textarea::-webkit-resizer\s*\{[^}]*background: transparent/,
+    );
+    expect(css).toContain(".field::after");
+    expect(css).toContain("width: 15px; height: 15px; pointer-events: none");
+    // No L-shaped outline: the block is filled, not stroked.
+    expect(css).not.toContain("border-top-width");
+    expect(css).toContain("background-color: rgb(9, 9, 9)");
+    expect(css).toContain("rgb(7, 8, 9)");
   });
 
   it("deactivate removes all picker artifacts", () => {

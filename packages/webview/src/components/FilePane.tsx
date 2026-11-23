@@ -61,6 +61,7 @@ import {
   treeDeferredForSpace,
   treeFits,
 } from "../utils/fileTreeLayout";
+import { FILE_TREE_DEFAULT_WIDTH } from "../utils/sessionUiStore";
 import "../styles/FilePane.css";
 // 语法高亮调色板与对话流的代码块共用一份（块高亮本身在下方 renderCodeHighlight）。
 import "../styles/code-highlight.css";
@@ -506,7 +507,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
   treeRoot,
   treeVisible = true,
   onTreeVisibleChange,
-  treeWidth = 200,
+  treeWidth = FILE_TREE_DEFAULT_WIDTH,
   onTreeWidthChange,
   onStartEdit,
   onDraftChange,
