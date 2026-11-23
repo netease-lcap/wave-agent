@@ -45,6 +45,17 @@ interface PickerPalette {
   actionText?: string;
   disabledBg?: string;
   disabledText?: string;
+  /* ── 卡片里多行输入框的滚动条（1123 评论「滚动条按照规范来，现在带有背景，
+     粗细也不对」）──
+     卡片活在**访客页**的 shadow DOM 里：访客页自己的 `::-webkit-scrollbar`
+     规则会作用进来（很多内部系统给 track 上了底、lane 给到 10–16px），卡片
+     不显式声明就只能跟着它走。这里按 skill 的桌面滚动条口径重画：8px lane、
+     透明 track、6px 可见胶囊（外缘留 2px）、三档填充；颜色仍由宿主取样。
+     旧宿主不发这两个键时回退浅色档（8% 黑 / 50% 黑）。 */
+  scrollbarThumb?: string;
+  scrollbarThumbHover?: string;
+  /* 右下角手柄那两条斜线的颜色：浅色 #666、深色 #d9d9d9（两主题反白）。 */
+  resizerInk?: string;
 }
 
 interface PickerMessage {
@@ -325,6 +336,7 @@ function showCard(el: Element): void {
       box-shadow: ${palette.cardShadow ?? "0 4px 16px rgba(0,0,0,0.4)"};
     }
     .field {
+      position: relative;
       display: flex; flex-direction: column;
       background: ${palette.fieldBg ?? palette.inputBackground ?? "#3c3c3c"};
       border: 1px solid ${palette.fieldBorder ?? palette.border ?? "rgba(128,128,128,0.35)"};
@@ -347,6 +359,64 @@ function showCard(el: Element): void {
     textarea::placeholder {
       color: ${palette.fieldPlaceholder ?? palette.foreground ?? "#a6a6a6"};
       opacity: 1;
+    }
+    /* 多行输入框的滚动条：卡片在访客页的 shadow DOM 里，访客页自己的
+       ::-webkit-scrollbar 会把它染成「带底、10–16px、方头」。这里显式按 skill
+       的桌面口径重画 —— 8px lane、track 恒透明、thumb 8%/50% 两档（容器
+       hover 的 24% 不跟：卡片里的滚动条没有 JS 跟踪鼠标），外缘留 2px ⇒
+       可见胶囊 6px，两端正半圆。
+       逐边写全：base 的 border: 0 是为了压掉别处的 border 简写，再按方向
+       只留外缘那 2px（竖直在右、水平在下）；带 2px 那侧的内圆要补回到
+       3 + 2 = 5，否则会被均匀缩放成方头。 */
+    textarea::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+    textarea::-webkit-scrollbar-track,
+    textarea::-webkit-scrollbar-corner {
+      background: transparent;
+    }
+    textarea::-webkit-scrollbar-thumb {
+      background-color: ${palette.scrollbarThumb ?? "rgb(0 0 0 / 8%)"};
+      background-clip: padding-box;
+      border: 0 solid transparent;
+      border-radius: 3px;
+    }
+    textarea::-webkit-scrollbar-thumb:vertical {
+      border-right: 2px solid transparent;
+      border-radius: 3px 5px 5px 3px;
+    }
+    textarea::-webkit-scrollbar-thumb:horizontal {
+      border-bottom: 2px solid transparent;
+      border-radius: 3px 3px 5px 5px;
+    }
+    textarea::-webkit-scrollbar-thumb:hover,
+    textarea::-webkit-scrollbar-thumb:active {
+      background-color: ${palette.scrollbarThumbHover ?? "rgb(0 0 0 / 50%)"};
+      background-clip: padding-box;
+    }
+    /* 右下角的 resize 手柄（1123 评论「右下角也参考其他多行输入一起调整」，
+       第二版按「深色要反白 / 不要左上角那圈边」调整）：
+       产品里其他多行输入由 UA 画成「15×15 块 + 左上 1px L 边 + 两条斜线」，
+       卡片在 shadow DOM 里拿到的却是另一套（无底、斜线深浅反相、只有 8×8）。
+       所以清掉 UA 图元、自己画一只 15×15 的角标：块底跟字段底同色（浅色是白、
+       深色是深），斜线浅色 #666 / 深色 #d9d9d9 —— 两个主题互相反白；不再画
+       左上角那两条 L 边。pointer-events: none 让鼠标穿透到 UA 的拖拽热区，
+       resize: vertical 的拖动行为不变。 */
+    textarea::-webkit-resizer {
+      background: transparent;
+      border: 0;
+    }
+    .field::after {
+      content: ""; position: absolute; right: 7px; bottom: 7px;
+      width: 15px; height: 15px; pointer-events: none;
+      background-color: ${palette.fieldBg ?? palette.inputBackground ?? "#ffffff"};
+      background-image:
+        linear-gradient(135deg, transparent calc(50% - 0.5px), ${palette.resizerInk ?? "#666666"} calc(50% - 0.5px) calc(50% + 0.5px), transparent calc(50% + 0.5px)),
+        linear-gradient(135deg, transparent calc(50% - 0.5px), ${palette.resizerInk ?? "#666666"} calc(50% - 0.5px) calc(50% + 0.5px), transparent calc(50% + 0.5px));
+      background-size: 6px 6px, 3px 3px;
+      background-position: right 2px bottom 2px, right 2px bottom 2px;
+      background-repeat: no-repeat;
     }
     .footer { display: flex; align-items: center; gap: 8px; }
     .tag {

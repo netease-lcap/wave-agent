@@ -193,6 +193,20 @@ const readPalette = (): Record<string, string> => {
       ? "rgba(255, 255, 255, 0.45)"
       : readRootCssVar("--cc-text-disabled") ||
         readRootCssVar("--vscode-disabledForeground", "#8b8b8b"),
+    // ── 卡片里多行输入框的滚动条（1123）──
+    // 卡片在访客页的 shadow DOM 里，访客页自己的滚动条规则会渗进来（带底、
+    // 粗细不对）；宿主把设计层的两档填充值发过去，让卡片按 8px lane / 透明
+    // track / 6px 胶囊重画。深色回退白百分比，与 `--cc-fill-scrollbar` 同源。
+    scrollbarThumb: readRootCssVar(
+      "--cc-fill-scrollbar",
+      dark ? "rgba(255, 255, 255, 0.08)" : "rgba(0, 0, 0, 0.08)",
+    ),
+    scrollbarThumbHover: readRootCssVar(
+      "--cc-fill-scrollbar-hover",
+      dark ? "rgba(255, 255, 255, 0.5)" : "rgba(0, 0, 0, 0.5)",
+    ),
+    // 卡片右下角手柄的斜线（1123）：浅色深灰、深色浅灰，两主题反白。
+    resizerInk: dark ? "#d9d9d9" : "#666666",
   };
 };
 

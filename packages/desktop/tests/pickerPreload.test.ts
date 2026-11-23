@@ -426,6 +426,60 @@ describe("pickerPreload", () => {
     expect(textarea.classList.contains("__wave-picker-highlight")).toBe(false);
   });
 
+  it("styles the card textarea scrollbar to the desktop spec, not the page's", () => {
+    const { button } = renderPage();
+    activate({
+      scrollbarThumb: "rgb(1, 2, 3)",
+      scrollbarThumbHover: "rgb(4, 5, 6)",
+    });
+    press(button);
+
+    // The card lives in the guest page's shadow DOM, so the page's own
+    // ::-webkit-scrollbar rules would otherwise paint a backgrounded, thick
+    // track. The sheet must pin the design-layer geometry itself.
+    const sheet = shadowRoot().adoptedStyleSheets[0] as unknown as {
+      css: string;
+    };
+    const css = sheet.css;
+    expect(css).toMatch(/textarea::-webkit-scrollbar\s*\{[^}]*width: 8px/);
+    expect(css).toMatch(
+      /textarea::-webkit-scrollbar-track,[^}]*background: transparent/,
+    );
+    expect(css).toContain("border-right: 2px solid transparent");
+    expect(css).toContain("border-radius: 3px 5px 5px 3px");
+    expect(css).toContain("background-clip: padding-box");
+    // Colors come from the host palette (8% / 50% fills), never hard-coded.
+    expect(css).toContain("rgb(1, 2, 3)");
+    expect(css).toContain("rgb(4, 5, 6)");
+  });
+
+  it("draws the resize grip itself, inverting it per theme", () => {
+    const { button } = renderPage();
+    activate({
+      fieldBg: "rgb(9, 9, 9)",
+      resizerInk: "rgb(7, 8, 9)",
+    });
+    press(button);
+
+    // Inside a shadow root the engine paints a different grip than the one the
+    // rest of the app gets (no fill, inverted ink, only 8x8), so the sheet
+    // blanks the UA paint and draws a 15x15 grip: block filled with the field's
+    // own background, diagonals in the palette's ink.
+    const sheet = shadowRoot().adoptedStyleSheets[0] as unknown as {
+      css: string;
+    };
+    const css = sheet.css;
+    expect(css).toMatch(
+      /textarea::-webkit-resizer\s*\{[^}]*background: transparent/,
+    );
+    expect(css).toContain(".field::after");
+    expect(css).toContain("width: 15px; height: 15px; pointer-events: none");
+    // No L-shaped outline: the block is filled, not stroked.
+    expect(css).not.toContain("border-top-width");
+    expect(css).toContain("background-color: rgb(9, 9, 9)");
+    expect(css).toContain("rgb(7, 8, 9)");
+  });
+
   it("deactivate removes all picker artifacts", () => {
     const { button } = renderPage();
     activate();
