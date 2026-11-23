@@ -28,6 +28,10 @@
 import vm from "node:vm";
 import { parse } from "acorn";
 import {
+  describeSyntaxError,
+  runtimeErrorHint,
+} from "../utils/scriptErrorText.js";
+import {
   REPL_BOUNDARY_SOURCE,
   REPL_DEFAULT_STEP_BUDGET,
   REPL_SEALED_MESSAGE,
@@ -285,24 +289,9 @@ function parseProgram(code: string): ParsedProgram | ParseFailure {
         }) as unknown as AstNode,
       };
     } catch {
-      return { ok: false, error: formatSyntaxError(scriptError) };
+      return { ok: false, error: describeSyntaxError(scriptError, code) };
     }
   }
-}
-
-function formatSyntaxError(error: unknown): string {
-  const record = error as {
-    message?: unknown;
-    loc?: { line: number; column: number } | null;
-  } | null;
-  const raw =
-    record && typeof record.message === "string"
-      ? record.message
-      : String(error);
-  const cleaned = raw.replace(/\s*\(\d+:\d+\)$/, "");
-  const loc = record?.loc;
-  if (!loc) return `Script syntax error: ${cleaned}`;
-  return `Script syntax error: ${cleaned} at line ${loc.line}, column ${loc.column + 1}`;
 }
 
 /** All three module forms: static import/export, dynamic `import()`, `require(...)`. */
@@ -630,11 +619,16 @@ function wallClockMessage(timeoutMs: number): string {
   );
 }
 
-function describeRunError(error: unknown, timeoutMs: number): string {
-  const code = (error as { code?: unknown } | null)?.code;
-  if (code === "ERR_SCRIPT_EXECUTION_TIMEOUT")
+function describeRunError(
+  error: unknown,
+  timeoutMs: number,
+  script: string,
+): string {
+  const errno = (error as { code?: unknown } | null)?.code;
+  if (errno === "ERR_SCRIPT_EXECUTION_TIMEOUT")
     return wallClockMessage(timeoutMs);
-  return formatError(error);
+  const text = formatError(error);
+  return text + runtimeErrorHint(text, script);
 }
 
 function overwriteMessage(name: string): string {
@@ -802,7 +796,7 @@ class ReplSandboxImpl implements ReplSandbox {
       this.clearTimers(state);
       return {
         ok: false,
-        error: describeRunError(error, timeoutMs),
+        error: describeRunError(error, timeoutMs, code),
         logs: state.logs,
       };
     }
@@ -817,7 +811,7 @@ class ReplSandboxImpl implements ReplSandbox {
         this.finishRun(state);
         return {
           kind: "failed",
-          error: describeRunError(error, timeoutMs),
+          error: describeRunError(error, timeoutMs, code),
         } as Settled;
       },
     );

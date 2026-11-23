@@ -186,6 +186,21 @@ describe("validateScript", () => {
       expect(result.errors[0]).toContain("Script syntax error:");
       expect(result.errors[0]).toMatch(/line \d+, column \d+/);
     });
+
+    it("names the failing line and warns about an outer template literal", () => {
+      const result = validateScript(
+        scriptOf(
+          [
+            "const w = `const cases = [",
+            '  "DIR=/tmp/wave-${V:-x}; rm -rf $DIR",',
+            "];`;",
+          ].join("\n"),
+        ),
+      );
+      expect(result.valid).toBe(false);
+      expect(result.errors[0]).toContain("template literal");
+      expect(result.errors[0]).toContain("DIR=/tmp/wave-");
+    });
   });
 
   describe("scenario 5: meta must be a plain literal", () => {
