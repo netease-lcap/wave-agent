@@ -122,7 +122,7 @@ describe("buildTool", () => {
 
   it("should execute the tool and return result", async () => {
     const def: ToolDef = {
-      name: "ExecTool",
+      name: "ReplTool",
       description: "An executable tool",
       parameters: {
         input: { type: "string" },

@@ -17,14 +17,14 @@ import {
  * already use it, and one of its tools actually runs.
  *
  * MCP tools are not declared one by one in the tool list — they are reached from
- * inside the `Exec` sandbox as `tools["mcp__<server>__<tool>"]`, which is why the
- * tool call below shows up as `Exec`.
+ * inside the `REPL` sandbox as `tools["mcp__<server>__<tool>"]`, which is why the
+ * tool call below shows up as `REPL`.
  *
  * Nothing here needs an API key or the network except the model call itself —
  * the server is the sibling `instructions-server.mjs`. See the other examples in
  * this directory for the parts this one leaves out: the 2048-character cap and the
  * departure notice (`instructions-lifecycle.ts`), the catalog the model reads
- * (`catalog-example.ts`), and the result row (`exec-result-row.ts`).
+ * (`catalog-example.ts`), and the result row (`repl-result-row.ts`).
  *
  * Run from `packages/agent-sdk`:
  *

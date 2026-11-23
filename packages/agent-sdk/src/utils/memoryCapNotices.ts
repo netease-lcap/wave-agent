@@ -187,7 +187,7 @@ function readDescription(raw: string): string | null {
  *
  * Hung off the one funnel every built-in call passes through
  * (`ToolManager.executeTool`), so a write made from the main agent, from the
- * extraction fork, and from inside the Exec sandbox all get the same treatment.
+ * extraction fork, and from inside the REPL sandbox all get the same treatment.
  * The path check runs first and the file is only read once the target is known
  * to be inside the memory directory, so writes elsewhere cost nothing.
  *

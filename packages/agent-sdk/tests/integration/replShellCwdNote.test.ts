@@ -18,11 +18,11 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import type { ExecPoolEntry } from "../../src/exec/catalog.js";
+import type { ReplPoolEntry } from "../../src/repl/catalog.js";
 import {
   disposeReplRuntime,
   runReplScript,
-} from "../../src/exec/execRuntime.js";
+} from "../../src/repl/replRuntime.js";
 import { bashTool } from "../../src/tools/bashTool.js";
 import type { ToolContext, ToolResult } from "../../src/tools/types.js";
 import { createMockTaskManager } from "../helpers/mockFactories.js";
@@ -41,7 +41,7 @@ const OTHER_DIR = fs.realpathSync(path.join(SDK_ROOT, "src"));
 /** Git Bash reports MSYS-style paths, so the note's spelling is POSIX-only. */
 const isWindows = process.platform === "win32";
 
-const POOL: ExecPoolEntry[] = [
+const POOL: ReplPoolEntry[] = [
   { name: "Bash", description: "Run a shell command" },
 ];
 
@@ -64,7 +64,7 @@ async function runShell(
         args: Record<string, unknown>,
         toolContext: ToolContext,
       ): Promise<ToolResult> => bashTool.execute(args, toolContext),
-      getExecPool: () => POOL,
+      getReplPool: () => POOL,
     },
   } as unknown as ToolContext;
 

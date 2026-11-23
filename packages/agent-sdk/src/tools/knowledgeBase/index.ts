@@ -14,7 +14,7 @@
  * it cannot run.
  *
  * The gate is evaluated by `ToolManager.initializeBuiltInTools()` (alongside
- * Artifact and Exec), not here: that is what makes the settings-page switch
+ * Artifact and REPL), not here: that is what makes the settings-page switch
  * apply on the next turn instead of only to a new session.
  */
 import type { ToolPlugin } from "../types.js";

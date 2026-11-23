@@ -51,25 +51,25 @@
 
 import type { Message } from "../types/messaging.js";
 import { renderSearchCallForm, renderToolSignature } from "./catalog.js";
-import type { ExecPoolEntry } from "./catalog.js";
+import type { ReplPoolEntry } from "./catalog.js";
 
 /** Marks an announcement so the history scan can find it. */
-export const EXEC_CATALOG_MARKER_PREFIX = "<!-- exec-catalog ";
-export const EXEC_CATALOG_MARKER_SUFFIX = " -->";
+export const REPL_CATALOG_MARKER_PREFIX = "<!-- exec-catalog ";
+export const REPL_CATALOG_MARKER_SUFFIX = " -->";
 
 /** Which body a marker leads. */
-type ExecCatalogAnnouncementKind = "full" | "removed";
+type ReplCatalogAnnouncementKind = "full" | "removed";
 
 /**
  * A marker as the history carries it: which body it led, and that body.
  *
  * The body is not stored *in* the marker — it is the message the marker leads, and
- * `collectExecCatalogState` reads it back from there. Nothing is summarised,
+ * `collectReplCatalogState` reads it back from there. Nothing is summarised,
  * because nothing summary-shaped can be compared for equality and no digest needs
  * to be shown to the model.
  */
-export interface ExecCatalogMarker {
-  kind: ExecCatalogAnnouncementKind;
+export interface ReplCatalogMarker {
+  kind: ReplCatalogAnnouncementKind;
   /** The body this announcement carried, read back out of the history. */
   body?: string;
 }
@@ -85,17 +85,17 @@ interface MarkerPayload {
 /**
  * What the announcement can be handed.
  *
- * `ExecPoolEntry` is the whole answer — it carries the tier the deferral judgment
+ * `ReplPoolEntry` is the whole answer — it carries the tier the deferral judgment
  * assigned and the schema tier 1 renders. A bare name is accepted for callers that
  * only have names (the channel that diffs the pool is keyed by name), and it lands
  * in tier 2: a signature needs a schema, and a name does not have one.
  *
  * Contract with the deferral judgment: tier membership is *read off `tier`*, never
  * re-derived here. `"core"` is `deferral.toolTier(name, coreToolsEnabled)`, copied
- * onto the entry by `buildExecPool`; anything else is `"named"`. Deriving it a
+ * onto the entry by `buildReplPool`; anything else is `"named"`. Deriving it a
  * second time is how the two would eventually disagree.
  */
-export type ExecCatalogPoolMember = string | ExecPoolEntry;
+export type ReplCatalogPoolMember = string | ReplPoolEntry;
 
 /** How many server names tier 3 may list before it says `and N more`. */
 export const MCP_SERVER_LIST_MAX = 40;
@@ -148,7 +148,7 @@ const REMOVED_NOTE =
 /** The body, as the tiers it was built from. */
 interface PoolTiers {
   /** Tier 1: pooled, `tier === "core"`, not MCP. */
-  core: ExecPoolEntry[];
+  core: ReplPoolEntry[];
   /** Tier 2: every other pooled built-in. */
   named: string[];
   /** Tier 3: the servers MCP tools came from, de-duplicated. */
@@ -163,7 +163,7 @@ interface PoolTiers {
  * judgment's own word while the prefix is a rendering convention — a name that has
  * one but not the other still has to land in the right tier.
  */
-function serverOf(entry: ExecPoolEntry): string | undefined {
+function serverOf(entry: ReplPoolEntry): string | undefined {
   const isMcp = entry.isMcp === true || entry.name.startsWith(MCP_NAME_PREFIX);
   if (!isMcp) return undefined;
   const rest = entry.name.startsWith(MCP_NAME_PREFIX)
@@ -220,7 +220,7 @@ function clampDescription(text: string, limit: number): string {
  * same schema renderer underneath, so a copied line cannot name a parameter the
  * host does not take.
  */
-function renderCoreTier(core: readonly ExecPoolEntry[]): string[] {
+function renderCoreTier(core: readonly ReplPoolEntry[]): string[] {
   const lines = ["```ts"];
   for (const entry of core) {
     const description = clampDescription(
@@ -262,13 +262,13 @@ function renderServerTier(servers: readonly string[]): string {
 }
 
 /** Split the pool into the three tiers, each in a deterministic order. */
-function splitTiers(pool: readonly ExecCatalogPoolMember[]): PoolTiers {
-  const core: ExecPoolEntry[] = [];
+function splitTiers(pool: readonly ReplCatalogPoolMember[]): PoolTiers {
+  const core: ReplPoolEntry[] = [];
   const named: string[] = [];
   const servers = new Set<string>();
 
   for (const member of pool) {
-    const entry: ExecPoolEntry =
+    const entry: ReplPoolEntry =
       typeof member === "string" ? { name: member } : member;
     const server = serverOf(entry);
     if (server !== undefined) {
@@ -296,7 +296,7 @@ function splitTiers(pool: readonly ExecCatalogPoolMember[]): PoolTiers {
  * Everything in it is a function of the pool alone, so two renders of the same pool
  * are byte-identical. That is the property the turn-level hash is built on.
  */
-export function renderPoolNote(pool: readonly ExecCatalogPoolMember[]): string {
+export function renderPoolNote(pool: readonly ReplCatalogPoolMember[]): string {
   const tiers = splitTiers(pool);
   const lines = [POOL_HEADER];
   if (tiers.core.length > 0) lines.push(...renderCoreTier(tiers.core));
@@ -306,9 +306,9 @@ export function renderPoolNote(pool: readonly ExecCatalogPoolMember[]): string {
 }
 
 /** `{ k }` — the marker, as one line. */
-function renderMarker(marker: ExecCatalogMarker): string {
+function renderMarker(marker: ReplCatalogMarker): string {
   const payload: MarkerPayload = { k: marker.kind };
-  return `${EXEC_CATALOG_MARKER_PREFIX}${JSON.stringify(payload)}${EXEC_CATALOG_MARKER_SUFFIX}`;
+  return `${REPL_CATALOG_MARKER_PREFIX}${JSON.stringify(payload)}${REPL_CATALOG_MARKER_SUFFIX}`;
 }
 
 /** The tag an announcement is wrapped in before it reaches the history. */
@@ -345,15 +345,15 @@ function bodyUnderMarker(lines: string[], markerIndex: number): string {
  * parsed is skipped for the same reason (worst case: one duplicate
  * announcement).
  */
-export function collectExecCatalogState(
+export function collectReplCatalogState(
   messages: Message[],
-): ExecCatalogMarker | null {
+): ReplCatalogMarker | null {
   for (let index = messages.length - 1; index >= 0; index--) {
     const message = messages[index];
     if (message.isMeta !== true) continue;
     for (const block of message.blocks) {
       if (block.type !== "text") continue;
-      if (!block.content.includes(EXEC_CATALOG_MARKER_PREFIX)) continue;
+      if (!block.content.includes(REPL_CATALOG_MARKER_PREFIX)) continue;
       const lines = block.content.split("\n");
       for (let line = 0; line < lines.length; line++) {
         const marker = parseMarkerLine(lines[line]);
@@ -365,17 +365,17 @@ export function collectExecCatalogState(
   return null;
 }
 
-function parseMarkerLine(line: string): ExecCatalogMarker | null {
+function parseMarkerLine(line: string): ReplCatalogMarker | null {
   const trimmed = line.trim();
   if (
-    !trimmed.startsWith(EXEC_CATALOG_MARKER_PREFIX) ||
-    !trimmed.endsWith(EXEC_CATALOG_MARKER_SUFFIX)
+    !trimmed.startsWith(REPL_CATALOG_MARKER_PREFIX) ||
+    !trimmed.endsWith(REPL_CATALOG_MARKER_SUFFIX)
   ) {
     return null;
   }
   const payload = trimmed.slice(
-    EXEC_CATALOG_MARKER_PREFIX.length,
-    trimmed.length - EXEC_CATALOG_MARKER_SUFFIX.length,
+    REPL_CATALOG_MARKER_PREFIX.length,
+    trimmed.length - REPL_CATALOG_MARKER_SUFFIX.length,
   );
   try {
     const parsed = JSON.parse(payload) as MarkerPayload;
@@ -412,9 +412,9 @@ function parseMarkerLine(line: string): ExecCatalogMarker | null {
  * includes "the pool rendered empty", because an empty pool means no `REPL`
  * declaration either.
  */
-export function buildExecCatalogAnnouncement(
-  last: ExecCatalogMarker | null,
-  pool: readonly ExecCatalogPoolMember[] | undefined,
+export function buildReplCatalogAnnouncement(
+  last: ReplCatalogMarker | null,
+  pool: readonly ReplCatalogPoolMember[] | undefined,
 ): string | null {
   if (pool === undefined || pool.length === 0) {
     // Nothing was ever announced, so there is nothing to retract: most sessions
@@ -430,6 +430,6 @@ export function buildExecCatalogAnnouncement(
   return envelope({ kind: "full" }, note);
 }
 
-function envelope(marker: ExecCatalogMarker, body: string): string {
+function envelope(marker: ReplCatalogMarker, body: string): string {
   return `${renderMarker(marker)}\n${body}`;
 }

@@ -1,17 +1,17 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
-import type { ExecPoolEntry } from "../../src/exec/catalog.js";
+import type { ReplPoolEntry } from "../../src/repl/catalog.js";
 import {
-  EXEC_ASYNC_CONCURRENCY_LIMIT,
-  EXEC_ASK_MODE_TOTAL_MS,
-  EXEC_BACKGROUND_MAX_MS,
-  EXEC_MAX_IMAGES,
-  EXEC_MAX_PDFS,
-  EXEC_MAX_TIMEOUT_MS,
-  EXEC_SHELL_DEFAULT_WAIT_MS,
-  EXEC_SYNC_WAIT_MS,
-} from "../../src/exec/constants.js";
+  REPL_ASYNC_CONCURRENCY_LIMIT,
+  REPL_ASK_MODE_TOTAL_MS,
+  REPL_BACKGROUND_MAX_MS,
+  REPL_MAX_IMAGES,
+  REPL_MAX_PDFS,
+  REPL_MAX_TIMEOUT_MS,
+  REPL_SHELL_DEFAULT_WAIT_MS,
+  REPL_SYNC_WAIT_MS,
+} from "../../src/repl/constants.js";
 import {
   drainReplEvents,
   disposeReplRuntime,
@@ -21,8 +21,8 @@ import {
   waitForReplEvents,
   type RunReplOptions,
   type ReplRunResult,
-} from "../../src/exec/execRuntime.js";
-import { setReplStepBudget } from "../../src/exec/replSandbox.js";
+} from "../../src/repl/replRuntime.js";
+import { setReplStepBudget } from "../../src/repl/replSandbox.js";
 import type { ToolContext, ToolResult } from "../../src/tools/types.js";
 import { buildPersistedOutputMessage } from "../../src/utils/toolResultStorage.js";
 
@@ -31,8 +31,8 @@ import { buildPersistedOutputMessage } from "../../src/utils/toolResultStorage.j
  * package root above it. Resolved from the module URL rather than the process
  * cwd, so the test does not depend on where vitest was started.
  */
-const EXEC_TESTS_DIR = path.dirname(fileURLToPath(import.meta.url));
-const AGENT_SDK_ROOT = path.resolve(EXEC_TESTS_DIR, "..", "..");
+const REPL_TESTS_DIR = path.dirname(fileURLToPath(import.meta.url));
+const AGENT_SDK_ROOT = path.resolve(REPL_TESTS_DIR, "..", "..");
 
 /**
  * The host side of the REPL, exercised through the real sandbox.
@@ -45,7 +45,7 @@ const AGENT_SDK_ROOT = path.resolve(EXEC_TESTS_DIR, "..", "..");
  * supposed to go through.
  */
 
-const POOL: ExecPoolEntry[] = [
+const POOL: ReplPoolEntry[] = [
   { name: "Echo", description: "Echo back the arguments it was given" },
   { name: "Fail", description: "Answer with a failure result" },
   { name: "Slow", description: "Wait for the host to answer" },
@@ -104,7 +104,7 @@ function harness(
         contexts.push(toolContext);
         return Promise.resolve().then(() => behavior(name, args, toolContext));
       },
-      getExecPool: () => POOL,
+      getReplPool: () => POOL,
     },
     mcpManager: {
       executeMcpTool: (name: string, args: Record<string, unknown>) => {
@@ -443,7 +443,7 @@ describe("$ — the shell template", () => {
     expect(h.dispatched).toEqual([
       {
         name: "Bash",
-        args: { command: "echo hi", timeout: EXEC_SHELL_DEFAULT_WAIT_MS },
+        args: { command: "echo hi", timeout: REPL_SHELL_DEFAULT_WAIT_MS },
       },
     ]);
     expect(result.logs).toEqual(["hi 0 echo hi"]);
@@ -944,13 +944,13 @@ describe("$ — the shell template", () => {
 
     const result = await runRepl(
       h,
-      `const out = await $\`pwd\`.cwd("tests/exec"); return out.stdout;`,
+      `const out = await $\`pwd\`.cwd("tests/repl"); return out.stdout;`,
     );
 
     expect(result.ok).toBe(true);
     // The command is what the model wrote: no `cd … &&` in front of it.
     expect(h.dispatched[0].args.command).toBe("pwd");
-    expect(h.contexts[0].workdir).toBe(EXEC_TESTS_DIR);
+    expect(h.contexts[0].workdir).toBe(REPL_TESTS_DIR);
     // The session keeps its own directory, and nothing may move it from here.
     expect(h.context.workdir).toBe(AGENT_SDK_ROOT);
     expect(h.contexts[0].onCwdChange).toBeUndefined();
@@ -1025,14 +1025,14 @@ describe("$ — the shell template", () => {
     const result = await runRepl(
       h,
       `
-      const out = await $\`ls\`.env({ A: "1" }).timeout(1234).cwd("tests/exec").nothrow();
+      const out = await $\`ls\`.env({ A: "1" }).timeout(1234).cwd("tests/repl").nothrow();
       return String(out.exitCode);
     `,
     );
 
     expect(result.ok).toBe(true);
     expect(h.dispatched[0].args).toEqual({ command: "ls", timeout: 1234 });
-    expect(h.contexts[0].workdir).toBe(EXEC_TESTS_DIR);
+    expect(h.contexts[0].workdir).toBe(REPL_TESTS_DIR);
     expect(h.contexts[0].sessionEnv).toEqual({ A: "1" });
   });
 
@@ -1089,7 +1089,7 @@ describe("the call limit", () => {
     // result — and the third call was never handed to the tool. The window is the
     // fixed one, not the millisecond `timeout` above: that number bounds only the
     // script's own synchronous running, which is why it cannot cut this short.
-    await vi.advanceTimersByTimeAsync(EXEC_SYNC_WAIT_MS);
+    await vi.advanceTimersByTimeAsync(REPL_SYNC_WAIT_MS);
     const result = await run;
 
     expect(result.ok).toBe(true);
@@ -1291,7 +1291,7 @@ describe("termination reasons are distinguishable", () => {
 
     // One millisecond short of the ceiling the script is still being waited on —
     // the time spent on the approval prompt is part of the budget, not free.
-    await vi.advanceTimersByTimeAsync(EXEC_ASK_MODE_TOTAL_MS - 1);
+    await vi.advanceTimersByTimeAsync(REPL_ASK_MODE_TOTAL_MS - 1);
     await settleFake();
     expect(settled).toBe(false);
 
@@ -1322,8 +1322,8 @@ describe("the async lane", () => {
       { timeout: 1000, permissionMode: "bypassPermissions" },
     );
 
-    // The wait window is the fixed `EXEC_SYNC_WAIT_MS`, counted on the wall clock.
-    await vi.advanceTimersByTimeAsync(EXEC_SYNC_WAIT_MS);
+    // The wait window is the fixed `REPL_SYNC_WAIT_MS`, counted on the wall clock.
+    await vi.advanceTimersByTimeAsync(REPL_SYNC_WAIT_MS);
     const result = await run;
 
     expect(result.ok).toBe(true);
@@ -1365,14 +1365,14 @@ describe("the async lane", () => {
     const run = runRepl(
       h,
       `return "value:" + (await Slow({ timeout: 600000 }));`,
-      { timeout: EXEC_MAX_TIMEOUT_MS, permissionMode: "bypassPermissions" },
+      { timeout: REPL_MAX_TIMEOUT_MS, permissionMode: "bypassPermissions" },
     );
     let settled = false;
     void run.then(() => {
       settled = true;
     });
 
-    await vi.advanceTimersByTimeAsync(EXEC_SYNC_WAIT_MS - 1);
+    await vi.advanceTimersByTimeAsync(REPL_SYNC_WAIT_MS - 1);
     await settleFake();
     expect(settled).toBe(false);
 
@@ -1404,7 +1404,7 @@ describe("the async lane", () => {
     await settleFake();
     expect(settled).toBe(false);
 
-    await vi.advanceTimersByTimeAsync(EXEC_SYNC_WAIT_MS - 1000);
+    await vi.advanceTimersByTimeAsync(REPL_SYNC_WAIT_MS - 1000);
     expect((await run).dispatched).toBeTypeOf("number");
   });
 
@@ -1429,7 +1429,7 @@ describe("the async lane", () => {
       },
     );
     // `timeout: 1000` does not shorten the window: only the fixed one dispatches.
-    await vi.advanceTimersByTimeAsync(EXEC_SYNC_WAIT_MS);
+    await vi.advanceTimersByTimeAsync(REPL_SYNC_WAIT_MS);
     const receipt = await run;
     expect(receipt.dispatched).toBeTypeOf("number");
 
@@ -1463,7 +1463,7 @@ describe("the async lane", () => {
         permissionMode: "bypassPermissions",
       },
     );
-    await vi.advanceTimersByTimeAsync(EXEC_SYNC_WAIT_MS);
+    await vi.advanceTimersByTimeAsync(REPL_SYNC_WAIT_MS);
     await run;
 
     const waiting = waitForReplEvents(5_000);
@@ -1577,7 +1577,7 @@ describe("the async lane", () => {
       { detach: true, permissionMode: "bypassPermissions" },
     );
 
-    await vi.advanceTimersByTimeAsync(EXEC_BACKGROUND_MAX_MS);
+    await vi.advanceTimersByTimeAsync(REPL_BACKGROUND_MAX_MS);
     const events = drainReplEvents();
 
     expect(events).toHaveLength(1);
@@ -1593,7 +1593,7 @@ describe("the async lane", () => {
     const key = newKey();
 
     const receipts: ReplRunResult[] = [];
-    for (let index = 0; index < EXEC_ASYNC_CONCURRENCY_LIMIT; index += 1) {
+    for (let index = 0; index < REPL_ASYNC_CONCURRENCY_LIMIT; index += 1) {
       receipts.push(
         await runRepl(h, `await Slow({}); return "never";`, {
           sessionKey: key,
@@ -1603,7 +1603,7 @@ describe("the async lane", () => {
       );
     }
     expect(receipts.every((receipt) => receipt.ok)).toBe(true);
-    expect(listRunningReplScripts()).toHaveLength(EXEC_ASYNC_CONCURRENCY_LIMIT);
+    expect(listRunningReplScripts()).toHaveLength(REPL_ASYNC_CONCURRENCY_LIMIT);
 
     const refused = await runRepl(h, `return "never started";`, {
       sessionKey: key,
@@ -1621,7 +1621,7 @@ describe("the async lane", () => {
     const usedIds = receipts.map((receipt) => receipt.dispatched);
     expect(usedIds).not.toContain(refused.dispatched);
     // Nothing was started: the pool never saw a call for it.
-    expect(listRunningReplScripts()).toHaveLength(EXEC_ASYNC_CONCURRENCY_LIMIT);
+    expect(listRunningReplScripts()).toHaveLength(REPL_ASYNC_CONCURRENCY_LIMIT);
   });
 
   it("does not dedupe: the same script twice dispatches twice", async () => {
@@ -1686,7 +1686,7 @@ describe("the async lane", () => {
       { onToolCall: (name) => reported.push(name) },
     );
 
-    await vi.advanceTimersByTimeAsync(EXEC_SYNC_WAIT_MS);
+    await vi.advanceTimersByTimeAsync(REPL_SYNC_WAIT_MS);
     const receipt = await run;
     expect(receipt.dispatched).toBeTypeOf("number");
     expect(reported).toEqual(["Echo"]);
@@ -1747,10 +1747,10 @@ describe("attachments", () => {
 
     const result = await runRepl(h, `return await Pic({});`);
 
-    expect(result.images).toHaveLength(EXEC_MAX_IMAGES);
+    expect(result.images).toHaveLength(REPL_MAX_IMAGES);
     expect(result.images[0]).toEqual({ data: "img0", mediaType: "image/png" });
     expect(result.stderr).toHaveLength(4);
-    expect(result.stderr?.[0]).toContain(`at most ${EXEC_MAX_IMAGES} images`);
+    expect(result.stderr?.[0]).toContain(`at most ${REPL_MAX_IMAGES} images`);
   });
 
   it("caps PDFs at 4, counted apart from images", async () => {
@@ -1764,9 +1764,9 @@ describe("attachments", () => {
 
     const result = await runRepl(h, `return await Pic({});`);
 
-    expect(result.images).toHaveLength(EXEC_MAX_PDFS);
+    expect(result.images).toHaveLength(REPL_MAX_PDFS);
     expect(result.images[0].mediaType).toBe("application/pdf");
-    expect(result.stderr?.[0]).toContain(`at most ${EXEC_MAX_PDFS} PDFs`);
+    expect(result.stderr?.[0]).toContain(`at most ${REPL_MAX_PDFS} PDFs`);
   });
 });
 

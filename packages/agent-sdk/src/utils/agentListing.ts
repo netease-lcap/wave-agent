@@ -9,7 +9,7 @@
  * list lived in the description, every one of those rewrote `tools[]` and
  * re-billed the whole tool-schema prefix. Claude Code measures that cost at
  * ~10.2% of fleet cache_creation tokens and moved the list into an attachment
- * behind `tengu_agent_list_attach`; the `Exec` catalog and the skill listing
+ * behind `tengu_agent_list_attach`; the `REPL` catalog and the skill listing
  * already work this way here.
  *
  * State lives in the history, not in the process: each announcement leads with

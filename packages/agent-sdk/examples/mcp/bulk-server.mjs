@@ -1,5 +1,5 @@
 /**
- * An MCP server with enough documented tools to make the `Exec` pool large.
+ * An MCP server with enough documented tools to make the `REPL` pool large.
  *
  * Every tool carries three documented fields, so one `search` hit is a long
  * signature block — the reason the announcement lists names only and leaves the

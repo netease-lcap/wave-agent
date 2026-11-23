@@ -5,7 +5,7 @@ import {
   isCorePoolTool,
   isDeferredTool,
   toolTier,
-} from "../../src/exec/deferral.js";
+} from "../../src/repl/deferral.js";
 
 const none = new Set<string>();
 

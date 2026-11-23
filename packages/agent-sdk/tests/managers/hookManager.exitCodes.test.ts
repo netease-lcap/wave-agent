@@ -115,7 +115,7 @@ describe("HookManager exit-code semantics", () => {
       ];
       // Tool events have their own executors (executePreToolUseHooks /
       // executePostToolUseHooks) because their feedback has to reach nested
-      // calls inside the Exec sandbox; here it is only asserted that the
+      // calls inside the REPL sandbox; here it is only asserted that the
       // generic path no longer claims them.
       expect(
         manager.processHookResults(

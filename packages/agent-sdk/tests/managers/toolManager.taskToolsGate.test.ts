@@ -43,7 +43,7 @@ describe("task-list tools are gated behind WAVE_ENABLE_TASK_TOOLS", () => {
   it("should not register them for the sandbox pool either", () => {
     const toolManager = build();
     toolManager.initializeBuiltInTools();
-    const pool = toolManager.getExecPool().map((entry) => entry.name);
+    const pool = toolManager.getReplPool().map((entry) => entry.name);
     for (const name of TASK_TOOLS) expect(pool).not.toContain(name);
   });
 

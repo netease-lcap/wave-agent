@@ -244,7 +244,7 @@ describe("Plan Mode Integration", () => {
     // Both plan mode tools stay reachable in every permission mode; the
     // runtime guard, not the tool list, validates the mode. They are deferred
     // (Claude Code's `shouldDefer: true` pair), so they live in exactly one
-    // place: inside the Exec sandbox when that channel is open, and flat in
+    // place: inside the REPL sandbox when that channel is open, and flat in
     // `tools[]` when it is closed.
     const toolManager = (agent as unknown as { toolManager: ToolManager })
       .toolManager;

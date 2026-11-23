@@ -2166,7 +2166,7 @@ export function loadMergedWaveConfig(
     }
 
     // Merge the REPL switches (last one wins). The retired `enableExec` spelling
-    // travels alongside them: `execAvailability` reads both off the merged result
+    // travels alongside them: `replAvailability` reads both off the merged result
     // and prefers `enableRepl` within a layer.
     if (config.enableRepl !== undefined) {
       mergedConfig.enableRepl = config.enableRepl;

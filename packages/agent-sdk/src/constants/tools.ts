@@ -30,13 +30,10 @@ export const ARTIFACT_TOOL_NAME = "Artifact";
 /**
  * Name of the REPL tool — the carrier of the on-demand tool pool.
  *
- * The constant *name* is historical baggage: the tool used to be `Exec`, and the
- * sandbox now presents itself as a long-lived REPL (aligned with Claude Code).
- * Renaming the export would touch dozens of imports and the `src/exec/` paths for
- * no contract gain, so only the value moved. The old spelling is not registered
- * any more; `REPL_TOOL_ALIASES` carries the names that still are.
+ * The tool used to be `Exec`; that spelling is not registered any more, and
+ * `REPL_TOOL_ALIASES` carries the names that still are.
  */
-export const EXEC_TOOL_NAME = "REPL";
+export const REPL_TOOL_NAME = "REPL";
 
 /**
  * Other names the same tool answers to. `Eval` is the spelling Claude Code

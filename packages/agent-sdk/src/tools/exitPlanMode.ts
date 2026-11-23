@@ -16,7 +16,7 @@ const REJECT_MESSAGE_WITH_REASON_PREFIX =
  * Exit Plan Mode Tool Plugin
  *
  * Deferred, matching Claude Code (`shouldDefer: true` on the same tool). The
- * deferral costs no approvals: `Exec` is not in `RESTRICTED_TOOLS`, so the sandbox
+ * deferral costs no approvals: `REPL` is not in `RESTRICTED_TOOLS`, so the sandbox
  * itself never prompts, and the nested call still reaches the plan-approval prompt
  * once, under this tool's own name — which is what every plan UI keys on.
  */

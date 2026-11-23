@@ -144,7 +144,7 @@ export function toolBlocks(agent: Agent, name: string) {
 }
 
 /**
- * The `Exec` catalog channel's marker line — a different channel from the usage
+ * The `REPL` catalog channel's marker line — a different channel from the usage
  * notes above, with its own marker prefix and its own readers.
  */
 export function catalogMarkerOf(text: string): string | undefined {

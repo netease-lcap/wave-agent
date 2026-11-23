@@ -12,7 +12,8 @@ order: 36
 
 > **设计取舍（本轮修订定案）**
 >
-> - **工具名 = `REPL`，别名 `Eval`**。用户可见的界面名是「Code Mode」。规格文件已随工具名改为 `docs/specs/core/repl-tool.md`；**源码目录 `src/exec/` 保留**是历史包袱（改名会牵动大量 import 与产物路径），不影响对外契约。
+> - **工具名 = `REPL`，别名 `Eval`**。用户可见的界面名是「Code Mode」。规格文件已随工具名改为 `docs/specs/core/repl-tool.md`；源码目录 `src/repl/` 与常量名已随之改齐。
+
 > - **默认开启**。这一点**不**对齐 Claude Code（它是 `CLAUDE_CODE_EXPERIMENTAL_CODE_MODE` opt-in）：我们的 MCP 与延迟工具只有这一条到达路径，默认关闭等于默认砍掉它们。回退开关 `enableRepl: false` 保留（旧键 `enableExec` 继续接受），服务端可下发。
 > - **上下文长驻**。一个 `(会话, agent)` 一个 JavaScript 上下文，跨脚本、跨轮次复用；脚本里定义的变量与函数在下一次调用里仍然存在。**定时器不跨脚本**——它随设立它的脚本结束而被清除（对齐 Claude Code 的 `the timer is cleared when that script ends`），否则一个 60 秒的 `setTimeout` 会在三轮之后突然触发。这与 Claude Code 一致，也是本形态相对旧 `Exec`（一次一建、跑完销毁）的主要收益。
 > - **中断只 abort，不重置上下文**。用户按 Esc 中断一次运行，只终止这次运行，变量全部保留。对齐 Claude Code：中断后该脚本**仍能再发起最多 20 次**嵌套调用（照常执行、照常返回），**第 21 次起**宿主不再回答（返回一个永不 settle 的 Promise），已经在飞的调用照常收尾——这个宽限是为了让脚本的 `finally` / 收尾逻辑还能跑完。上下文被重置只有一种情形——脚本把受管全局改成了不可配置，或把 `globalThis` 改坏到再也无法启动新调用（见「执行预算与终止」），且重置必须显式告知模型。
@@ -31,7 +32,7 @@ order: 36
 > - **沙箱 globals 这版做五个**：``$`cmd` `` 命令模板、`preview(out)` 结果预览、`self.log(...)` 自述日志、`running()` 后台脚本自省、`tools.list()` 可达工具名。**不做**的有：`write()`/`edit()`/`file()`（与现有 `Write`/`Edit`/`Read`的参数名不一致，且 Claude Code 的 helper 返`{ok}`/`{error}`，等于再教一套失败语义）、`sleep()`（与异步车道抢语义）、`atob()`/`btoa()`（密封里没有正当用途）、`team` 多代理（我们的子代理模型不同，由独立上下文覆盖）。
 > - **``$`cmd` `` 这一版补齐 Claude Code 的链式面**：新增 `.cwd(dir)` / `.env({...})` / `.lines()` / `.json()`（`.nothrow()` / `.timeout(ms)` 原本就有），结果对象新增 `output` / `file` / `truncated` / `note`。两处**刻意不照抄**：①`.cwd()` / `.env()` **不**做成 `cd '<dir>' && ` / `export K='v'; ` 的命令前缀，而是在宿主侧派生一份只作用于**本次调用**的工具上下文（换 cwd、按层叠加会话 env）——前缀会把模型写的命令改掉，从而绕过 Bash 自己的「`sleep` 开头不转后台」判断、改写权限规则匹配到的那段命令文本，还会让命令里的 `cd` 经 `onCwdChange` 把整个会话的工作目录带跑；②**退出码 1 的豁免按命令家族给**（家族内 1 = 无匹配/有差异，是正常结果），家族外的 1 与家族内的其它非零码照旧 throw。Claude Code 用的是同一个机制（结果带 `note` 时不 throw），我们只把 `note` 用在这一格，边界比它窄。
 > - **`$` 没做的字段**：`bytes`（我们的落盘记录是**字符数**不是字节数，报一个假的字节数不如不报）、`whole` / `withheld` / `unsandboxedRetry` / `preview()` 这组（对应 Claude Code 的「读全部 vs 只读一屏」与沙箱重试形态，我们这一版没有那条通道）。缺字段的判据是「模型拿它没法行动」，不是「Claude Code 有我们就得有」。
-> - **工具调用次数上限对齐 Claude Code 的 50,000**。旧值 `EXEC_DEFAULT_MAX_TOOL_CALLS = 50` 太紧（一个正常编排脚本就能撞上）。语义照抄：越界的那一次不执行，且**本脚本之后的所有调用都不再被回答**（不是拒绝一次然后继续）——这样才能保证一个 runaway 脚本在下一次工具往返时就停下，而不是靠步数慢慢磨。
+> - **工具调用次数上限对齐 Claude Code 的 50,000**。旧值 `REPL_DEFAULT_MAX_TOOL_CALLS = 50` 太紧（一个正常编排脚本就能撞上）。语义照抄：越界的那一次不执行，且**本脚本之后的所有调用都不再被回答**（不是拒绝一次然后继续）——这样才能保证一个 runaway 脚本在下一次工具往返时就停下，而不是靠步数慢慢磨。
 > - **异步车道这版做，两种形态都做**。①脚本超出**固定的同步等待窗口 30000 ms**（不读模型给的 `timeout`，对齐 Claude Code 的 `30000`）仍在跑 → 回 `(dispatched #N)` 并继续在后台跑；②**全 dispatch 形态**——一次调用只派发、立刻回 `(dispatched #N)`，从不等。并发超出上限（对齐值 8）时**拒绝**而不是排队（排队会让模型以为已经派发），结果作为事件稍后送达，`Poll` 用于显式等待。
 > - **结果文本还对齐 2.1.326 的三处细节**：①`<log>` 的粒度是**流**不是行——脚本的全部 stdout 进一个 `<log>`、全部 stderr 进一个 `<log>`（条目之间换行，每条以 `[stderr] ` 开头），逐行拆分会让一段 200 行的构建输出变成 200 个元素；②每部分 30000 字符之外，**整个结果的文本还有 100000 字符**的总上限（对齐 Claude Code 的 `Do=1e5`），越界处截断并写明被砍掉多少字符；③脚本用了 `console.*` 且 ring 里有内容时，结果里必须带一句说明（`[console.log wrote N lines to the console ring, not to this output — use self.log(...) for output you want to see, or read the ring with console.tail()]`）——这是模型最容易踩的一脚。
 > - **不自造 `scriptHelper` 标记**：Claude Code 的 `scriptHelper: true` 是它 host 边界上的内部字段，而且它在那一层**主动丢弃**带这个标记的事件（二进制 offset `344367583`：`if(e.scriptHelper===!0)return;`，命中的工具名是 `searchTools` / `describeTool` / `ask` / `haiku` / `opus` / `sonnet` / `fable`）。我们的可见通道是 `ToolBlock.shortResult`，没有那条管道，因此**刻意不对齐「丢弃」**：同一信息落到摘要行上（`searchTools: <query>` / `describeTool: <name>`，不计入 `N tool calls`，失败也出现），也**没有引入** `scriptHelper` 这个标识符——照抄一个我们并不拥有的内部字段名，只会让后来的人以为那条管道存在。

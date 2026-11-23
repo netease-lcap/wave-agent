@@ -12,11 +12,11 @@ vi.mock("../../src/services/remoteSettingsService.js", () => ({
 import { loadMergedWaveConfig } from "../../src/services/configurationService.js";
 import { getRemoteSettingsSync } from "../../src/services/remoteSettingsService.js";
 import {
-  isExecEnabled,
+  isReplEnabled,
   isReplCoreToolsEnabled,
-  EXEC_DEFAULT_ENABLED,
+  REPL_DEFAULT_ENABLED,
   REPL_CORE_TOOLS_DEFAULT_ENABLED,
-} from "../../src/services/execAvailability.js";
+} from "../../src/services/replAvailability.js";
 
 const WORKDIR = "/test/workdir";
 
@@ -28,13 +28,13 @@ function local(settings: unknown): void {
   (loadMergedWaveConfig as Mock).mockReturnValue(settings);
 }
 
-describe("execAvailability", () => {
+describe("replAvailability", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
   it("should default to enabled", () => {
-    expect(EXEC_DEFAULT_ENABLED).toBe(true);
+    expect(REPL_DEFAULT_ENABLED).toBe(true);
   });
 
   it("should default the core-tool switch to off", () => {
@@ -42,52 +42,52 @@ describe("execAvailability", () => {
   });
 
   it("should follow the code default when no workdir is given", () => {
-    expect(isExecEnabled(undefined)).toBe(EXEC_DEFAULT_ENABLED);
+    expect(isReplEnabled(undefined)).toBe(REPL_DEFAULT_ENABLED);
     expect(loadMergedWaveConfig).not.toHaveBeenCalled();
   });
 
   it("should follow the code default when no config exists for the workdir", () => {
     local(null);
-    expect(isExecEnabled(WORKDIR)).toBe(EXEC_DEFAULT_ENABLED);
+    expect(isReplEnabled(WORKDIR)).toBe(REPL_DEFAULT_ENABLED);
     expect(loadMergedWaveConfig).toHaveBeenCalledWith(WORKDIR);
   });
 
   it("should enable when settings.json sets enableRepl: true", () => {
     local({ enableRepl: true });
-    expect(isExecEnabled(WORKDIR)).toBe(true);
+    expect(isReplEnabled(WORKDIR)).toBe(true);
   });
 
   it("should disable when settings.json sets enableRepl: false", () => {
     local({ enableRepl: false });
-    expect(isExecEnabled(WORKDIR)).toBe(false);
+    expect(isReplEnabled(WORKDIR)).toBe(false);
   });
 
   it("should still accept the retired enableExec key", () => {
     // A settings file written before the rename has to keep working, both ways.
     local({ enableExec: true });
-    expect(isExecEnabled(WORKDIR)).toBe(true);
+    expect(isReplEnabled(WORKDIR)).toBe(true);
     local({ enableExec: false });
-    expect(isExecEnabled(WORKDIR)).toBe(false);
+    expect(isReplEnabled(WORKDIR)).toBe(false);
   });
 
   it("should prefer enableRepl over enableExec within the local layer", () => {
     local({ enableRepl: true, enableExec: false });
-    expect(isExecEnabled(WORKDIR)).toBe(true);
+    expect(isReplEnabled(WORKDIR)).toBe(true);
     local({ enableRepl: false, enableExec: true });
-    expect(isExecEnabled(WORKDIR)).toBe(false);
+    expect(isReplEnabled(WORKDIR)).toBe(false);
   });
 
   it("should prefer remote managed settings over local settings", () => {
     remote({ enableRepl: false });
     local({ enableRepl: true });
-    expect(isExecEnabled(WORKDIR)).toBe(false);
+    expect(isReplEnabled(WORKDIR)).toBe(false);
   });
 
   it("should prefer the remote current key over the remote retired key", () => {
     remote({ enableRepl: true, enableExec: false });
-    expect(isExecEnabled(WORKDIR)).toBe(true);
+    expect(isReplEnabled(WORKDIR)).toBe(true);
     remote({ enableRepl: false, enableExec: true });
-    expect(isExecEnabled(WORKDIR)).toBe(false);
+    expect(isReplEnabled(WORKDIR)).toBe(false);
   });
 
   it("should let a remote retired key beat a local current key", () => {
@@ -95,19 +95,19 @@ describe("execAvailability", () => {
     // names whichever key its version knows.
     remote({ enableExec: false });
     local({ enableRepl: true });
-    expect(isExecEnabled(WORKDIR)).toBe(false);
+    expect(isReplEnabled(WORKDIR)).toBe(false);
   });
 
   it("should follow remote managed settings even when no workdir is given", () => {
     remote({ enableRepl: true });
-    expect(isExecEnabled(undefined)).toBe(true);
+    expect(isReplEnabled(undefined)).toBe(true);
     expect(loadMergedWaveConfig).not.toHaveBeenCalled();
   });
 
   it("should fall back to local settings when remote defines neither key", () => {
     remote({ language: "en" });
     local({ enableRepl: true });
-    expect(isExecEnabled(WORKDIR)).toBe(true);
+    expect(isReplEnabled(WORKDIR)).toBe(true);
   });
 
   it("should treat a non-boolean as unset rather than coercing it", () => {
@@ -115,7 +115,7 @@ describe("execAvailability", () => {
     // still decides.
     remote({ enableRepl: "false" });
     local({ enableRepl: true });
-    expect(isExecEnabled(WORKDIR)).toBe(true);
+    expect(isReplEnabled(WORKDIR)).toBe(true);
   });
 
   describe("isReplCoreToolsEnabled", () => {

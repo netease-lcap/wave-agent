@@ -782,7 +782,7 @@ export function setupAgentContainer(
             parameters: spec.inputSchema,
           },
         },
-        // 第三方工具与 MCP 同一条默认：进 `Exec` 池、模型按需取签名。要平铺就
+        // 第三方工具与 MCP 同一条默认：进 `REPL` 池、模型按需取签名。要平铺就
         // 在 `$.tool.register` 里给 `isDeferred: false`（spec「把我们自己的工具
         // 交给模型」）。
         defer: spec.isDeferred !== false,

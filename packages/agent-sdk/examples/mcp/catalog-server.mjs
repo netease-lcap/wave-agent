@@ -1,5 +1,5 @@
 /**
- * An MCP server whose tools exercise every branch of the `Exec` signature renderer:
+ * An MCP server whose tools exercise every branch of the `REPL` signature renderer:
  * a deeply nested schema (depth guard), a wide enum, a long multi-line tool
  * description (kept whole), a multi-line field description (kept verbatim), and a
  * wide `anyOf` union.

@@ -185,7 +185,7 @@ export async function convertMessagesForAPI(
                     ? image.data
                     : `data:${image.mediaType || "image/png"};base64,${image.data}`;
 
-                  // Tool-produced images (Read screenshots, MCP results, Exec
+                  // Tool-produced images (Read screenshots, MCP results, REPL
                   // output) go through the same outbound budget as attachments:
                   // an image the gateway would reject is shrunk, or omitted with
                   // an actionable note, instead of failing the whole request.

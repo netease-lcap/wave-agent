@@ -8,7 +8,7 @@
  * mid-conversation (`utils/nestedSkills.ts`) would rewrite the declaration and
  * take the cached prefix with it. The description is a pool-independent
  * constant now; the list is appended at the tail, where an addition invalidates
- * nothing that already went out. Same shape as `exec/catalogAnnouncement.ts`,
+ * nothing that already went out. Same shape as `repl/catalogAnnouncement.ts`,
  * and for the same reasons — see that file for the longer argument.
  *
  * State lives in the history, not in the process: each announcement leads with

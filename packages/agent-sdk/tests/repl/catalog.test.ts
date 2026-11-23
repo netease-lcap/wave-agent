@@ -1,25 +1,25 @@
 import { describe, it, expect } from "vitest";
 import {
-  buildExecPool,
+  buildReplPool,
   describeTool,
   listToolNames,
   renderSearchCallForm,
   renderSearchSignature,
   renderToolSignature,
   searchTools,
-} from "../../src/exec/catalog.js";
-import type { ExecPoolEntry } from "../../src/exec/catalog.js";
+} from "../../src/repl/catalog.js";
+import type { ReplPoolEntry } from "../../src/repl/catalog.js";
 import {
-  EXEC_SEARCH_NAME,
-  EXEC_SEARCH_DEFAULT_MAX_RESULTS,
-  EXEC_SEARCH_MAX_RESULTS_LIMIT,
-} from "../../src/exec/constants.js";
+  REPL_SEARCH_NAME,
+  REPL_SEARCH_DEFAULT_MAX_RESULTS,
+  REPL_SEARCH_MAX_RESULTS_LIMIT,
+} from "../../src/repl/constants.js";
 
 /** A pool entry, with the fields a test cares about set. */
 function entry(
   name: string,
-  fields: Partial<Omit<ExecPoolEntry, "name">> = {},
-): ExecPoolEntry {
+  fields: Partial<Omit<ReplPoolEntry, "name">> = {},
+): ReplPoolEntry {
   return { name, ...fields };
 }
 
@@ -34,26 +34,26 @@ function nestedSchema(levels: number): Record<string, unknown> {
 
 /** The names of a search's hits, in the order it returned them. */
 function hitNames(
-  pool: readonly ExecPoolEntry[],
+  pool: readonly ReplPoolEntry[],
   query: string,
   max?: number,
 ): string[] {
   return searchTools(pool, query, max).map((hit) => hit.name);
 }
 
-describe("buildExecPool", () => {
+describe("buildReplPool", () => {
   const none = new Set<string>();
 
   it("deferring nothing yields an empty pool", () => {
     // The default for a candidate is "declared flat", so a pool only exists where
     // something said otherwise — which is what keeps this from widening access.
-    expect(buildExecPool([{ name: "Read" }, { name: "Write" }], none)).toEqual(
+    expect(buildReplPool([{ name: "Read" }, { name: "Write" }], none)).toEqual(
       [],
     );
   });
 
   it("keeps a tool that claimed defer, in declaration order", () => {
-    const pool = buildExecPool(
+    const pool = buildReplPool(
       [
         { name: "Bash" },
         { name: "WebFetch", defer: true, description: "Fetch a URL" },
@@ -67,7 +67,7 @@ describe("buildExecPool", () => {
   });
 
   it("defers every MCP tool, whether or not it claimed defer", () => {
-    const pool = buildExecPool(
+    const pool = buildReplPool(
       [{ name: "mcp__srv__run", isMcp: true }, { name: "Glob" }],
       none,
     );
@@ -77,7 +77,7 @@ describe("buildExecPool", () => {
   it("lets alwaysLoad override even the unconditional MCP rule", () => {
     // The escape hatch is the first condition of the judgment precisely so a server
     // can keep a tool it is called for every turn out of the pool.
-    const pool = buildExecPool(
+    const pool = buildReplPool(
       [
         { name: "mcp__srv__ping", isMcp: true, alwaysLoad: true },
         { name: "WebFetch", defer: true, alwaysLoad: true },
@@ -89,7 +89,7 @@ describe("buildExecPool", () => {
   });
 
   it("cancels a defer claim with the non-deferrable list", () => {
-    const pool = buildExecPool(
+    const pool = buildReplPool(
       [
         { name: "WebFetch", defer: true },
         { name: "LSP", defer: true },
@@ -100,7 +100,7 @@ describe("buildExecPool", () => {
   });
 
   it("cancels a defer claim with the non-deferrable list even for MCP", () => {
-    const pool = buildExecPool(
+    const pool = buildReplPool(
       [{ name: "mcp__srv__run", isMcp: true }],
       new Set(["mcp__srv__run"]),
     );
@@ -110,7 +110,7 @@ describe("buildExecPool", () => {
   it("drops the deferral-only fields from the entries it produces", () => {
     // The pool is what the sandbox may call, not a record of the decision: carrying
     // `defer`/`alwaysLoad` through would invite a later reader to re-decide.
-    const [pooled] = buildExecPool(
+    const [pooled] = buildReplPool(
       [{ name: "WebFetch", defer: true, alwaysLoad: false }],
       none,
     );
@@ -120,7 +120,7 @@ describe("buildExecPool", () => {
   it("copies the announcement tier the deferral judgment assigned", () => {
     // The announcement splits on `tier`; re-deriving it there is how the two would
     // eventually disagree about which tools get an inline signature.
-    const pool = buildExecPool(
+    const pool = buildReplPool(
       [
         { name: "Read", defer: true, tier: "core" },
         { name: "WebFetch", defer: true },
@@ -135,7 +135,7 @@ describe("buildExecPool", () => {
       type: "object",
       properties: { id: { type: "string" } },
     };
-    const pool = buildExecPool(
+    const pool = buildReplPool(
       [
         { name: "mcp__srv__run", isMcp: true, outputSchema },
         { name: "mcp__srv__quiet", isMcp: true },
@@ -154,17 +154,17 @@ describe("buildExecPool", () => {
     // could not collide because of its `$`; this name can, and refusing to build the
     // pool is what replaces that prefix.
     expect(() =>
-      buildExecPool([{ name: EXEC_SEARCH_NAME, defer: true }], none),
-    ).toThrow(`Tool "${EXEC_SEARCH_NAME}" cannot be loaded on demand`);
+      buildReplPool([{ name: REPL_SEARCH_NAME, defer: true }], none),
+    ).toThrow(`Tool "${REPL_SEARCH_NAME}" cannot be loaded on demand`);
   });
 
   it("leaves a tool with that name alone while it stays out of the pool", () => {
     // Only a pooled member can shadow anything: declared flat, the name is the
     // model's own call and the sandbox never sees it.
     expect(
-      buildExecPool(
-        [{ name: EXEC_SEARCH_NAME }, { name: EXEC_SEARCH_NAME, defer: true }],
-        new Set([EXEC_SEARCH_NAME]),
+      buildReplPool(
+        [{ name: REPL_SEARCH_NAME }, { name: REPL_SEARCH_NAME, defer: true }],
+        new Set([REPL_SEARCH_NAME]),
       ),
     ).toEqual([]);
   });
@@ -184,7 +184,7 @@ describe("buildExecPool", () => {
     });
 
     for (const name of ["Bash", "PowerShell"]) {
-      const [pooled] = buildExecPool(
+      const [pooled] = buildReplPool(
         [{ name, inputSchema: shellSchema() }],
         none,
         true,
@@ -198,7 +198,7 @@ describe("buildExecPool", () => {
 
     // Pooled only because it claimed defer, with the core switch off: `Bash` is
     // still reachable flat as well, so its declaration keeps the parameter.
-    const [byClaim] = buildExecPool(
+    const [byClaim] = buildReplPool(
       [{ name: "Bash", inputSchema: shellSchema(), defer: true }],
       none,
     );
@@ -206,7 +206,7 @@ describe("buildExecPool", () => {
 
     // A core tool that is not a shell is copied as declared.
     const readSchema = { type: "object", properties: { path: {} } };
-    const [read] = buildExecPool(
+    const [read] = buildReplPool(
       [{ name: "Read", inputSchema: readSchema }],
       none,
       true,
@@ -545,7 +545,7 @@ describe("search entry", () => {
 
 describe("searchTools", () => {
   /** `count` tools sharing one name segment, so a query can match all of them. */
-  function manyNames(count: number): ExecPoolEntry[] {
+  function manyNames(count: number): ReplPoolEntry[] {
     return Array.from({ length: count }, (_, index) =>
       entry(`alpha_${String(index).padStart(2, "0")}`, {
         description: "a tool",
@@ -555,7 +555,7 @@ describe("searchTools", () => {
 
   it("defaults to 8 hits", () => {
     expect(hitNames(manyNames(40), "alpha")).toHaveLength(8);
-    expect(EXEC_SEARCH_DEFAULT_MAX_RESULTS).toBe(8);
+    expect(REPL_SEARCH_DEFAULT_MAX_RESULTS).toBe(8);
   });
 
   it("takes a positive integer cap and honours it", () => {
@@ -567,7 +567,7 @@ describe("searchTools", () => {
     // whole pool into the context.
     expect(hitNames(manyNames(40), "alpha", 26)).toHaveLength(25);
     expect(hitNames(manyNames(40), "alpha", 1_000)).toHaveLength(25);
-    expect(EXEC_SEARCH_MAX_RESULTS_LIMIT).toBe(25);
+    expect(REPL_SEARCH_MAX_RESULTS_LIMIT).toBe(25);
   });
 
   it("treats a cap that is not a positive integer as absent", () => {
@@ -762,7 +762,7 @@ describe("searchTools", () => {
 describe("describeTool", () => {
   /** `describeTool`, narrowed to the answer a pooled name gets. */
   function descriptionOf(
-    pool: readonly ExecPoolEntry[],
+    pool: readonly ReplPoolEntry[],
     name: string,
   ): {
     name: string;

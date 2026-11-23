@@ -2,8 +2,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { ChatCompletionFunctionTool } from "openai/resources.js";
 import { ToolManager } from "../../src/managers/toolManager.js";
 import { McpManager } from "../../src/managers/mcpManager.js";
-import { EXEC_TOOL_NAME } from "../../src/constants/tools.js";
-import { CORE_POOL_TOOLS } from "../../src/exec/deferral.js";
+import { REPL_TOOL_NAME } from "../../src/constants/tools.js";
+import { CORE_POOL_TOOLS } from "../../src/repl/deferral.js";
 import { Container } from "../../src/utils/container.js";
 import type { ToolPlugin } from "../../src/tools/types.js";
 
@@ -13,10 +13,10 @@ const gate = vi.hoisted(() => ({
   nonDeferrable: new Set<string>(),
 }));
 
-vi.mock("../../src/services/execAvailability.js", () => ({
-  EXEC_DEFAULT_ENABLED: true,
+vi.mock("../../src/services/replAvailability.js", () => ({
+  REPL_DEFAULT_ENABLED: true,
   REPL_CORE_TOOLS_DEFAULT_ENABLED: false,
-  isExecEnabled: () => gate.execEnabled,
+  isReplEnabled: () => gate.execEnabled,
   isReplCoreToolsEnabled: () => gate.execEnabled && gate.coreToolsEnabled,
   getNonDeferrableBuiltins: () => gate.nonDeferrable,
 }));
@@ -149,12 +149,12 @@ beforeEach(() => {
 });
 
 describe("which tools are declared flat", () => {
-  it("declares Exec even with no MCP server connected", () => {
-    // The pool is never empty — the deferred built-ins are always in it — so `Exec`
+  it("declares REPL even with no MCP server connected", () => {
+    // The pool is never empty — the deferred built-ins are always in it — so `REPL`
     // is declared for as long as the feature is on. That is what finally makes
     // `tools[]` independent of the pool: a server connecting no longer moves it.
     const { toolManager } = build();
-    expect(names(toolManager)).toContain(EXEC_TOOL_NAME);
+    expect(names(toolManager)).toContain(REPL_TOOL_NAME);
   });
 
   it("drops the deferred built-ins from the declarations and keeps the rest", () => {
@@ -177,20 +177,20 @@ describe("which tools are declared flat", () => {
     const { toolManager } = build({ plugins: mcpPlugins(5) });
     const declared = names(toolManager);
 
-    expect(declared).toContain(EXEC_TOOL_NAME);
+    expect(declared).toContain(REPL_TOOL_NAME);
     expect(declared.filter((name) => name.startsWith("mcp__"))).toEqual([]);
     expect(toolManager.getOnDemandToolNames()).toContain("mcp__srv__tool0");
   });
 
-  it("declares everything flat when Exec itself is denied", () => {
-    // Denying Exec must not silently drop the tools it was standing in for.
+  it("declares everything flat when REPL itself is denied", () => {
+    // Denying REPL must not silently drop the tools it was standing in for.
     const { toolManager } = build({
       plugins: mcpPlugins(5),
-      denied: [EXEC_TOOL_NAME],
+      denied: [REPL_TOOL_NAME],
     });
     const declared = names(toolManager);
 
-    expect(declared).not.toContain(EXEC_TOOL_NAME);
+    expect(declared).not.toContain(REPL_TOOL_NAME);
     expect(declared.filter((name) => name.startsWith("mcp__"))).toHaveLength(5);
     for (const name of DEFERRED_BUILTINS) expect(declared).toContain(name);
   });
@@ -200,7 +200,7 @@ describe("which tools are declared flat", () => {
     const { toolManager } = build({ plugins: mcpPlugins(20) });
     const declared = names(toolManager);
 
-    expect(declared).not.toContain(EXEC_TOOL_NAME);
+    expect(declared).not.toContain(REPL_TOOL_NAME);
     expect(declared.filter((name) => name.startsWith("mcp__"))).toHaveLength(
       20,
     );
@@ -210,11 +210,11 @@ describe("which tools are declared flat", () => {
   it("re-evaluates in both directions without rebuilding the manager", () => {
     const plugins = mcpPlugins(2);
     const { toolManager } = build({ plugins });
-    expect(names(toolManager)).toContain(EXEC_TOOL_NAME);
+    expect(names(toolManager)).toContain(REPL_TOOL_NAME);
     expect(toolManager.getOnDemandToolNames()).toContain("mcp__srv__tool0");
 
     plugins.length = 0; // the last MCP server disconnected
-    expect(names(toolManager)).toContain(EXEC_TOOL_NAME);
+    expect(names(toolManager)).toContain(REPL_TOOL_NAME);
     expect(toolManager.getOnDemandToolNames()).not.toContain("mcp__srv__tool0");
   });
 
@@ -242,16 +242,16 @@ describe("Poll", () => {
     // A pooled tool is reachable only from inside a script, and this is the tool a
     // model calls from outside one to read what those scripts left behind.
     const { toolManager } = build({ plugins: mcpPlugins(3) });
-    expect(toolManager.getExecPool().map((entry) => entry.name)).not.toContain(
+    expect(toolManager.getReplPool().map((entry) => entry.name)).not.toContain(
       "Poll",
     );
   });
 });
 
-describe("getExecPool", () => {
+describe("getReplPool", () => {
   it("holds the deferred built-ins and every MCP tool", () => {
     const { toolManager } = build({ plugins: mcpPlugins(2) });
-    const pool = toolManager.getExecPool();
+    const pool = toolManager.getReplPool();
 
     expect(pool.map((entry) => entry.name)).toEqual(
       expect.arrayContaining([...DEFERRED_BUILTINS, "mcp__srv__tool0"]),
@@ -269,7 +269,7 @@ describe("getExecPool", () => {
       outputSchemas: new Map([["mcp__srv__lookup", outputSchema]]),
     });
     const entry = toolManager
-      .getExecPool()
+      .getReplPool()
       .find((each) => each.name === "mcp__srv__lookup");
 
     // `isMcp` is what picks the dispatch funnel at call time, and the output schema
@@ -278,13 +278,13 @@ describe("getExecPool", () => {
     expect(entry?.outputSchema).toBe(outputSchema);
   });
 
-  it("never holds Exec, which is the pool's own carrier", () => {
-    // Otherwise the sandbox could call Exec, i.e. run a script that runs a script.
+  it("never holds REPL, which is the pool's own carrier", () => {
+    // Otherwise the sandbox could call REPL, i.e. run a script that runs a script.
     expect(
       build({ plugins: mcpPlugins(3) })
-        .toolManager.getExecPool()
+        .toolManager.getReplPool()
         .map((entry) => entry.name),
-    ).not.toContain(EXEC_TOOL_NAME);
+    ).not.toContain(REPL_TOOL_NAME);
   });
 
   it("keeps denied tools out of the pool", () => {
@@ -292,7 +292,7 @@ describe("getExecPool", () => {
       plugins: [...mcpPlugins(6), mcpPlugin("mcp__srv__secret")],
       denied: ["mcp__srv__secret", "WebFetch"],
     });
-    const pooled = toolManager.getExecPool().map((entry) => entry.name);
+    const pooled = toolManager.getReplPool().map((entry) => entry.name);
 
     expect(pooled).not.toContain("mcp__srv__secret");
     expect(pooled).not.toContain("WebFetch");
@@ -328,10 +328,10 @@ describe("getExecPool", () => {
     expect(declared).not.toContain("mcp__srv__cold");
   });
 
-  it("reports no on-demand names while Exec is not declared", () => {
+  it("reports no on-demand names while REPL is not declared", () => {
     // `undefined` is what tells the announcement the channel is closed, and a list
     // for an undeclared tool would advertise a way in that does not exist.
-    const denied = build({ plugins: mcpPlugins(3), denied: [EXEC_TOOL_NAME] });
+    const denied = build({ plugins: mcpPlugins(3), denied: [REPL_TOOL_NAME] });
     expect(denied.toolManager.getOnDemandToolNames()).toBeUndefined();
 
     gate.execEnabled = false;
@@ -340,21 +340,21 @@ describe("getExecPool", () => {
     ).toBeUndefined();
   });
 
-  it("keeps the Exec declaration independent of the pool", () => {
+  it("keeps the REPL declaration independent of the pool", () => {
     // The list used to be rendered into this description, which meant every server
     // that connected rewrote `tools[]` and dropped the cached prefix. It is a tail
     // announcement now, so the declaration must not mention a single tool.
     const first = build({ plugins: mcpPlugins(3) });
     const second = build({ plugins: mcpPlugins(9) });
 
-    const description = descriptionOf(first.toolManager, EXEC_TOOL_NAME);
+    const description = descriptionOf(first.toolManager, REPL_TOOL_NAME);
     expect(description).not.toContain("mcp__");
-    expect(description).toBe(descriptionOf(second.toolManager, EXEC_TOOL_NAME));
+    expect(description).toBe(descriptionOf(second.toolManager, REPL_TOOL_NAME));
   });
 
   it("answers the same thing twice for an unchanged session", () => {
     const { toolManager } = build({ plugins: mcpPlugins(4) });
-    expect(toolManager.getExecPool()).toEqual(toolManager.getExecPool());
+    expect(toolManager.getReplPool()).toEqual(toolManager.getReplPool());
   });
 });
 
@@ -385,7 +385,7 @@ describe("core tools pooled by enableReplCoreTools", () => {
       expect.arrayContaining(["Bash", "Edit", "Read", "Write"]),
     );
 
-    const pooled = toolManager.getExecPool();
+    const pooled = toolManager.getReplPool();
     expect(
       pooled
         .filter((entry) => entry.tier === "core")
@@ -396,7 +396,7 @@ describe("core tools pooled by enableReplCoreTools", () => {
     const declared = names(toolManager);
     for (const name of core) expect(declared).not.toContain(name);
     // The carrier stays declared: it is now the only way to those seven.
-    expect(declared).toContain(EXEC_TOOL_NAME);
+    expect(declared).toContain(REPL_TOOL_NAME);
     // And they are reachable from the sandbox rather than merely hidden.
     expect(toolManager.getOnDemandToolNames()).toEqual(
       expect.arrayContaining(core),
@@ -407,7 +407,7 @@ describe("core tools pooled by enableReplCoreTools", () => {
     const { toolManager } = build();
     const core = registeredCoreTools(toolManager);
     const declared = names(toolManager);
-    const pooled = toolManager.getExecPool();
+    const pooled = toolManager.getReplPool();
 
     for (const name of core) {
       expect(declared).toContain(name);
@@ -451,7 +451,7 @@ describe("REPL aliases", () => {
   it("treats a deny rule naming `Eval` as a rule about the carrier", () => {
     const { toolManager } = build({ denied: ["Eval"] });
 
-    expect(names(toolManager)).not.toContain(EXEC_TOOL_NAME);
+    expect(names(toolManager)).not.toContain(REPL_TOOL_NAME);
     expect(toolManager.getOnDemandToolNames()).toBeUndefined();
   });
 
@@ -459,7 +459,7 @@ describe("REPL aliases", () => {
     const { toolManager } = build({ tools: ["Eval", "Read"] });
 
     expect(toolManager.getTools().map((tool) => tool.name)).toContain(
-      EXEC_TOOL_NAME,
+      REPL_TOOL_NAME,
     );
   });
 
@@ -467,7 +467,7 @@ describe("REPL aliases", () => {
     const { toolManager } = build({ tools: ["Read"] });
 
     expect(toolManager.getTools().map((tool) => tool.name)).not.toContain(
-      EXEC_TOOL_NAME,
+      REPL_TOOL_NAME,
     );
   });
 });

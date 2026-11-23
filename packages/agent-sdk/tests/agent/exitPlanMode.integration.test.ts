@@ -59,7 +59,7 @@ describe("ExitPlanMode Integration", () => {
     // Both tools stay declared whatever the permission mode — the runtime guard,
     // not the tool list, validates the mode. They are deferred (Claude Code's
     // `shouldDefer: true` pair), so they are declared exactly once: inside the
-    // Exec sandbox when that channel is open, flat in `tools[]` when it is
+    // REPL sandbox when that channel is open, flat in `tools[]` when it is
     // closed. The model must never see the same tool twice.
     const expectDeclaredOnce = () => {
       const flat = toolManager

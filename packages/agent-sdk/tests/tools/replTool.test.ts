@@ -1,28 +1,28 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { execTool, execToolAliases } from "../../src/tools/execTool.js";
+import { replTool, replToolAliases } from "../../src/tools/replTool.js";
 import {
-  EXEC_TOOL_NAME,
+  REPL_TOOL_NAME,
   REPL_TOOL_ALIASES,
 } from "../../src/constants/tools.js";
 import {
   renderSearchCallForm,
   renderSearchSignature,
-} from "../../src/exec/catalog.js";
-import type { ExecPoolEntry } from "../../src/exec/catalog.js";
+} from "../../src/repl/catalog.js";
+import type { ReplPoolEntry } from "../../src/repl/catalog.js";
 import {
-  EXEC_ASK_MODE_TOTAL_MS,
-  EXEC_BACKGROUND_MAX_MS,
-  EXEC_DEFAULT_MAX_RESULT_CHARS,
-  EXEC_DEFAULT_TIMEOUT_MS,
-  EXEC_MAX_TIMEOUT_MS,
-  EXEC_PART_CHAR_LIMIT,
-  EXEC_SHELL_DEFAULT_WAIT_MS,
-  EXEC_SYNC_WAIT_MS,
-} from "../../src/exec/constants.js";
+  REPL_ASK_MODE_TOTAL_MS,
+  REPL_BACKGROUND_MAX_MS,
+  REPL_DEFAULT_MAX_RESULT_CHARS,
+  REPL_DEFAULT_TIMEOUT_MS,
+  REPL_MAX_TIMEOUT_MS,
+  REPL_PART_CHAR_LIMIT,
+  REPL_SHELL_DEFAULT_WAIT_MS,
+  REPL_SYNC_WAIT_MS,
+} from "../../src/repl/constants.js";
 import type {
   RunReplOptions,
   ReplRunResult,
-} from "../../src/exec/execRuntime.js";
+} from "../../src/repl/replRuntime.js";
 import type { ToolContext } from "../../src/tools/types.js";
 
 /**
@@ -36,7 +36,7 @@ const { runReplScript } = vi.hoisted(() => ({
   runReplScript: vi.fn<(options: RunReplOptions) => Promise<ReplRunResult>>(),
 }));
 
-vi.mock("../../src/exec/execRuntime.js", () => ({ runReplScript }));
+vi.mock("../../src/repl/replRuntime.js", () => ({ runReplScript }));
 
 /** A successful run with nothing in it, used as the base of every case. */
 function runResult(overrides: Partial<ReplRunResult> = {}): ReplRunResult {
@@ -45,7 +45,7 @@ function runResult(overrides: Partial<ReplRunResult> = {}): ReplRunResult {
 
 function contextWith(
   options: {
-    pool?: ExecPoolEntry[];
+    pool?: ReplPoolEntry[];
     onShortResultUpdate?: (shortResult: string) => void;
     /** The registered tools a summary line may ask for a compact parameter. */
     tools?: Array<{
@@ -57,7 +57,7 @@ function contextWith(
   return {
     workdir: "/tmp",
     toolManager: {
-      getExecPool: () => options.pool ?? [],
+      getReplPool: () => options.pool ?? [],
       list: () => options.tools ?? [],
     },
     ...(options.onShortResultUpdate
@@ -82,13 +82,13 @@ beforeEach(() => {
   runReplScript.mockResolvedValue(runResult());
 });
 
-describe("execTool declaration", () => {
+describe("replTool declaration", () => {
   it("is named REPL and takes code plus an optional timeout", () => {
-    expect(EXEC_TOOL_NAME).toBe("REPL");
-    expect(execTool.name).toBe(EXEC_TOOL_NAME);
-    expect(execTool.config.function.name).toBe(EXEC_TOOL_NAME);
+    expect(REPL_TOOL_NAME).toBe("REPL");
+    expect(replTool.name).toBe(REPL_TOOL_NAME);
+    expect(replTool.config.function.name).toBe(REPL_TOOL_NAME);
 
-    const parameters = execTool.config.function.parameters as {
+    const parameters = replTool.config.function.parameters as {
       properties: Record<string, { type: string; description?: string }>;
       required: string[];
     };
@@ -99,19 +99,19 @@ describe("execTool declaration", () => {
   });
 
   it("documents the timeout as a synchronous wall clock, not a total", () => {
-    const parameters = execTool.config.function.parameters as {
+    const parameters = replTool.config.function.parameters as {
       properties: Record<string, { description?: string }>;
     };
     const description = parameters.properties.timeout.description ?? "";
-    expect(description).toContain(String(EXEC_DEFAULT_TIMEOUT_MS));
-    expect(description).toContain(String(EXEC_MAX_TIMEOUT_MS));
+    expect(description).toContain(String(REPL_DEFAULT_TIMEOUT_MS));
+    expect(description).toContain(String(REPL_MAX_TIMEOUT_MS));
     // The whole point of the budget: waiting on a nested call is free.
     expect(description).toMatch(/synchronous/i);
     expect(description).toMatch(/nested tool call/i);
     expect(description).toMatch(/does not count/i);
     // And it is not the wait window: a reader that assumed one number for both
     // would be wrong about when a receipt comes back.
-    expect(description).toContain(String(EXEC_SYNC_WAIT_MS));
+    expect(description).toContain(String(REPL_SYNC_WAIT_MS));
     expect(description).toContain("does not set the wait window");
   });
 
@@ -119,26 +119,26 @@ describe("execTool declaration", () => {
     // Claude Code accepted `Eval` before `REPL`; a settings file or permission
     // rule naming the old spelling has to land on this tool. Re-exported from the
     // constants so registration and the deferral judgment cannot disagree.
-    expect(execToolAliases).toEqual([...REPL_TOOL_ALIASES]);
-    expect(execToolAliases).toContain("Eval");
+    expect(replToolAliases).toEqual([...REPL_TOOL_ALIASES]);
+    expect(replToolAliases).toContain("Eval");
   });
 
   it("is not concurrency-safe — it reaches arbitrary MCP tools", () => {
-    expect(execTool.isConcurrencySafe).toBe(false);
+    expect(replTool.isConcurrencySafe).toBe(false);
   });
 
   it("is the same text the tool manager declares", () => {
-    expect(execTool.prompt!()).toBe(execTool.config.function.description);
+    expect(replTool.prompt!()).toBe(replTool.config.function.description);
   });
 
   it("renders the same bytes for any pool", () => {
     // `tools[]` sits inside the cached prefix: a description that mentioned the
     // session's tools would rewrite that prefix whenever a server connected. The
-    // pool is a tail announcement instead (`exec/catalogAnnouncement.ts`).
-    const withPool = execTool.prompt!({
+    // pool is a tail announcement instead (`repl/catalogAnnouncement.ts`).
+    const withPool = replTool.prompt!({
       availableTools: ["Read", "mcp__srv__a", "mcp__srv__b"],
     });
-    const withoutPool = execTool.prompt!({ availableTools: [] });
+    const withoutPool = replTool.prompt!({ availableTools: [] });
     expect(withPool).toBe(withoutPool);
     expect(withPool).not.toContain("mcp__");
     expect(withPool).not.toContain("srv");
@@ -153,23 +153,23 @@ describe("execTool declaration", () => {
       .split("\n")
       .map((line) => `  ${line}`)
       .join("\n");
-    expect(execTool.prompt!()!).toContain(indented);
+    expect(replTool.prompt!()!).toContain(indented);
     // Search results carry no return type any more; `describeTool` is the channel.
-    expect(execTool.prompt!()!).not.toContain("gives each tool's return type");
-    expect(execTool.prompt!()!).toContain("describeTool(name)");
+    expect(replTool.prompt!()!).not.toContain("gives each tool's return type");
+    expect(replTool.prompt!()!).toContain("describeTool(name)");
   });
 
   it("keeps the lean prompt to the one-line call form", () => {
-    const lean = execTool.leanPrompt;
+    const lean = replTool.leanPrompt;
     expect(typeof lean).toBe("string");
     expect(String(lean)).toContain(renderSearchCallForm());
     expect(String(lean)).not.toMatch(/^- - /m);
   });
 });
 
-describe("execTool description", () => {
+describe("replTool description", () => {
   function description(): string {
-    return execTool.prompt!()!;
+    return replTool.prompt!()!;
   }
 
   it("asks for one call, and says why", () => {
@@ -196,8 +196,8 @@ describe("execTool description", () => {
   });
 
   it("states the per-part cap, the total cap and the escaping", () => {
-    expect(description()).toContain(String(EXEC_PART_CHAR_LIMIT));
-    expect(description()).toContain(String(EXEC_DEFAULT_MAX_RESULT_CHARS));
+    expect(description()).toContain(String(REPL_PART_CHAR_LIMIT));
+    expect(description()).toContain(String(REPL_DEFAULT_MAX_RESULT_CHARS));
     expect(description()).toContain("chars elided");
     expect(description()).toContain("head and the tail");
     expect(description()).toContain("&amp;");
@@ -214,10 +214,10 @@ describe("execTool description", () => {
     expect(description()).toContain("runs it twice");
     expect(description()).toContain("`Poll`");
     expect(description()).toContain(
-      `after ${EXEC_SHELL_DEFAULT_WAIT_MS / 60_000} minutes`,
+      `after ${REPL_SHELL_DEFAULT_WAIT_MS / 60_000} minutes`,
     );
     expect(description()).toContain(
-      `after ${EXEC_BACKGROUND_MAX_MS / 3_600_000} hours`,
+      `after ${REPL_BACKGROUND_MAX_MS / 3_600_000} hours`,
     );
   });
 
@@ -226,7 +226,7 @@ describe("execTool description", () => {
     // say that raising one does not move the other, or the model learns a bound
     // the runtime does not hold.
     expect(description()).toContain(
-      `inside the ${EXEC_SYNC_WAIT_MS / 1000}-second wait window`,
+      `inside the ${REPL_SYNC_WAIT_MS / 1000}-second wait window`,
     );
     expect(description()).toContain("The window is fixed");
     expect(description()).toContain("does not extend it");
@@ -268,7 +268,7 @@ describe("execTool description", () => {
   });
 
   it("states the ask-mode ceiling and what it counts", () => {
-    expect(description()).toContain(`${EXEC_ASK_MODE_TOTAL_MS} ms`);
+    expect(description()).toContain(`${REPL_ASK_MODE_TOTAL_MS} ms`);
     expect(description()).toContain("approval prompt");
     expect(description()).toMatch(/counts from the start/);
   });
@@ -297,10 +297,10 @@ describe("execTool description", () => {
   });
 });
 
-describe("execTool compact params", () => {
+describe("replTool compact params", () => {
   /** The hook takes a context; the description must not be read from it. */
   function preview(params: Record<string, unknown>): string {
-    return execTool.formatCompactParams!(params, {} as unknown as ToolContext);
+    return replTool.formatCompactParams!(params, {} as unknown as ToolContext);
   }
 
   it("returns the model's description verbatim", () => {
@@ -326,9 +326,9 @@ describe("execTool compact params", () => {
   });
 });
 
-describe("execTool execution", () => {
+describe("replTool execution", () => {
   it("requires code and never starts a script without it", async () => {
-    const result = await execTool.execute({}, contextWith());
+    const result = await replTool.execute({}, contextWith());
     expect(result.success).toBe(false);
     expect(result.error).toContain(`missing required parameter "code"`);
     // A parameter error must not cost a context start or a resume.
@@ -336,14 +336,14 @@ describe("execTool execution", () => {
   });
 
   it("rejects blank code", async () => {
-    const result = await execTool.execute({ code: "   \n " }, contextWith());
+    const result = await replTool.execute({ code: "   \n " }, contextWith());
     expect(result.success).toBe(false);
     expect(result.error).toContain("missing required parameter");
     expect(runReplScript).not.toHaveBeenCalled();
   });
 
   it("reports a missing tool manager instead of throwing", async () => {
-    const result = await execTool.execute({ code: "return 1;" }, {
+    const result = await replTool.execute({ code: "return 1;" }, {
       workdir: "/tmp",
     } as unknown as ToolContext);
     expect(result.success).toBe(false);
@@ -352,7 +352,7 @@ describe("execTool execution", () => {
   });
 
   it("passes the model's timeout through to the runtime", async () => {
-    await execTool.execute(
+    await replTool.execute(
       { code: "return 1;", timeout: 45_000 },
       contextWith(),
     );
@@ -364,10 +364,10 @@ describe("execTool execution", () => {
   it("leaves the default and the clamp to the runtime", async () => {
     // One place decides what a missing or oversized timeout means; the tool only
     // forwards what the model wrote.
-    await execTool.execute({ code: "return 1;" }, contextWith());
+    await replTool.execute({ code: "return 1;" }, contextWith());
     expect(runReplScript.mock.calls[0][0].timeout).toBeUndefined();
 
-    await execTool.execute(
+    await replTool.execute(
       { code: "return 1;", timeout: 9_000_000 },
       contextWith(),
     );
@@ -375,8 +375,8 @@ describe("execTool execution", () => {
   });
 
   it("runs against the pool the manager offers", async () => {
-    const pool: ExecPoolEntry[] = [{ name: "Read", isMcp: false }];
-    await execTool.execute({ code: "return 1;" }, contextWith({ pool }));
+    const pool: ReplPoolEntry[] = [{ name: "Read", isMcp: false }];
+    await replTool.execute({ code: "return 1;" }, contextWith({ pool }));
     expect(runReplScript).toHaveBeenCalledWith(
       expect.objectContaining({ pool }),
     );
@@ -385,7 +385,7 @@ describe("execTool execution", () => {
   it("forwards the session's permission mode", async () => {
     // The runtime derives the ask-mode ceiling from it; the tool only relays what
     // the session already decided.
-    await execTool.execute({ code: "return 1;" }, {
+    await replTool.execute({ code: "return 1;" }, {
       ...contextWith(),
       permissionMode: "plan",
     } as ToolContext);
@@ -397,7 +397,7 @@ describe("execTool execution", () => {
   it("files the run under the agent's own REPL context key", async () => {
     // One context per `(session, agent)`: a subagent shares the session but not the
     // variables, and this key is also what the agent releases on the way out.
-    await execTool.execute({ code: "return 1;" }, {
+    await replTool.execute({ code: "return 1;" }, {
       ...contextWith(),
       replSessionKey: "session-1::7",
     } as ToolContext);
@@ -417,7 +417,7 @@ describe("execTool execution", () => {
       }),
     );
 
-    const result = await execTool.execute({ code: "return 1;" }, contextWith());
+    const result = await replTool.execute({ code: "return 1;" }, contextWith());
 
     expect(result.success).toBe(true);
     expect(withoutMs(result.content)).toBe(
@@ -442,7 +442,7 @@ describe("execTool execution", () => {
       }),
     );
 
-    const result = await execTool.execute({ code: "return 1;" }, contextWith());
+    const result = await replTool.execute({ code: "return 1;" }, contextWith());
 
     expect(result.content.startsWith('<repl-output eval="7" ms="')).toBe(true);
   });
@@ -453,7 +453,7 @@ describe("execTool execution", () => {
     // guess `<refused/>` meant "the host refused a decorative step".
     runReplScript.mockResolvedValue(runResult({ logs: ["hello"] }));
 
-    const result = await execTool.execute({ code: "return 1;" }, contextWith());
+    const result = await replTool.execute({ code: "return 1;" }, contextWith());
 
     expect(withoutMs(result.content)).toBe(
       [
@@ -468,7 +468,7 @@ describe("execTool execution", () => {
   it("writes an empty child element as a self-closing tag", async () => {
     runReplScript.mockResolvedValue(runResult({ logs: [""] }));
 
-    const result = await execTool.execute({ code: "return 1;" }, contextWith());
+    const result = await replTool.execute({ code: "return 1;" }, contextWith());
 
     expect(withoutMs(result.content)).toBe(
       ['<repl-output ms="0">', "<log/>", "<result/>", "</repl-output>"].join(
@@ -486,7 +486,7 @@ describe("execTool execution", () => {
       }),
     );
 
-    const result = await execTool.execute({ code: "return 1;" }, contextWith());
+    const result = await replTool.execute({ code: "return 1;" }, contextWith());
 
     expect(result.content).toContain(
       "<log>if (a &lt; b &amp;&amp; c &gt; d)</log>",
@@ -496,13 +496,13 @@ describe("execTool execution", () => {
 
   it("falls back to the text form when there is nothing structured", async () => {
     runReplScript.mockResolvedValue(runResult({ value: "hello" }));
-    const result = await execTool.execute({ code: "return 1;" }, contextWith());
+    const result = await replTool.execute({ code: "return 1;" }, contextWith());
     expect(result.content).toBe("result:\nhello");
   });
 
   it("falls back to the text form for a bare failure", async () => {
     runReplScript.mockResolvedValue(runResult({ ok: false, error: "boom" }));
-    const result = await execTool.execute({ code: "return 1;" }, contextWith());
+    const result = await replTool.execute({ code: "return 1;" }, contextWith());
     expect(result.success).toBe(false);
     expect(result.content).toBe("error:\nboom");
     expect(result.error).toBe("boom");
@@ -512,7 +512,7 @@ describe("execTool execution", () => {
     // The one branch that keeps the sentence: the text form, which is only reached
     // when there is no value, no log and no stderr — so it is never contradicted by
     // a sibling section. Everything structured answers with `<result/>` instead.
-    const result = await execTool.execute({ code: "return 1;" }, contextWith());
+    const result = await replTool.execute({ code: "return 1;" }, contextWith());
     expect(result.content).toBe(`result:\n${NO_OUTPUT_TEXT}`);
   });
 
@@ -522,16 +522,16 @@ describe("execTool execution", () => {
     const tail = "Z".repeat(12_000);
     runReplScript.mockResolvedValue(runResult({ value: head + middle + tail }));
 
-    const result = await execTool.execute({ code: "return 1;" }, contextWith());
+    const result = await replTool.execute({ code: "return 1;" }, contextWith());
 
     expect(result.content).toContain(
-      `... [${head.length + middle.length + tail.length - EXEC_PART_CHAR_LIMIT} chars elided] ...`,
+      `... [${head.length + middle.length + tail.length - REPL_PART_CHAR_LIMIT} chars elided] ...`,
     );
     // 60% of the cap from the head, the rest from the tail, nothing from between.
     expect(result.content).toContain(head);
     expect(result.content).toContain(tail);
     expect(result.content).not.toContain("M");
-    expect(result.content.length).toBeLessThan(EXEC_PART_CHAR_LIMIT + 1_000);
+    expect(result.content.length).toBeLessThan(REPL_PART_CHAR_LIMIT + 1_000);
   });
 
   it("keeps one block per stream, not one per line", async () => {
@@ -545,7 +545,7 @@ describe("execTool execution", () => {
       }),
     );
 
-    const result = await execTool.execute({ code: "return 1;" }, contextWith());
+    const result = await replTool.execute({ code: "return 1;" }, contextWith());
 
     expect(withoutMs(result.content)).toBe(
       [
@@ -570,7 +570,7 @@ describe("execTool execution", () => {
       }),
     );
 
-    const result = await execTool.execute({ code: "return 1;" }, contextWith());
+    const result = await replTool.execute({ code: "return 1;" }, contextWith());
 
     expect(result.content.match(/<log>/g)).toHaveLength(1);
     expect(result.content).toContain("... [10006 chars elided] ...");
@@ -592,10 +592,10 @@ describe("execTool execution", () => {
       runResult({ toolsUsed: wide, logs: ["hello"], value: "ok" }),
     );
 
-    const result = await execTool.execute({ code: "return 1;" }, contextWith());
+    const result = await replTool.execute({ code: "return 1;" }, contextWith());
 
     expect(result.content.length).toBeGreaterThan(
-      EXEC_DEFAULT_MAX_RESULT_CHARS,
+      REPL_DEFAULT_MAX_RESULT_CHARS,
     );
     expect(result.content).not.toContain("</repl-output>");
     expect(
@@ -613,7 +613,7 @@ describe("execTool execution", () => {
       runResult({ value: "A".repeat(40_000), toolsUsed: ["Read"] }),
     );
 
-    const result = await execTool.execute({ code: "return 1;" }, contextWith());
+    const result = await replTool.execute({ code: "return 1;" }, contextWith());
 
     expect(result.content).toContain("still under its key in the REPL context");
     expect(result.content).toContain(
@@ -624,7 +624,7 @@ describe("execTool execution", () => {
   it("answers a dispatched script with a receipt instead of a result", async () => {
     runReplScript.mockResolvedValue(runResult({ dispatched: 4 }));
 
-    const result = await execTool.execute({ code: "return 1;" }, contextWith());
+    const result = await replTool.execute({ code: "return 1;" }, contextWith());
 
     expect(result.success).toBe(true);
     expect(result.content.split("\n")[0]).toBe("(dispatched #4)");
@@ -643,7 +643,7 @@ describe("execTool execution", () => {
       }),
     );
 
-    const result = await execTool.execute({ code: "return 1;" }, contextWith());
+    const result = await replTool.execute({ code: "return 1;" }, contextWith());
 
     expect(result.success).toBe(false);
     expect(result.content.split("\n")[0]).toBe("(dispatched #9)");
@@ -656,14 +656,14 @@ describe("execTool execution", () => {
       runResult({ contextReset: true, value: "1" }),
     );
 
-    const result = await execTool.execute({ code: "return 1;" }, contextWith());
+    const result = await replTool.execute({ code: "return 1;" }, contextWith());
 
     expect(result.content.startsWith("result:\n1")).toBe(true);
     expect(result.content).toContain("This is a new REPL context");
   });
 
   it("reports 0 tool calls when nothing was reached", async () => {
-    const result = await execTool.execute({ code: "return 1;" }, contextWith());
+    const result = await replTool.execute({ code: "return 1;" }, contextWith());
     expect(result.shortResult).toBe("0 tool calls");
     expect(result.nestedToolCalls).toBeUndefined();
   });
@@ -675,7 +675,7 @@ describe("execTool execution", () => {
       return runResult({ toolsUsed: names });
     });
 
-    const result = await execTool.execute({ code: "return 1;" }, contextWith());
+    const result = await replTool.execute({ code: "return 1;" }, contextWith());
 
     expect(result.shortResult).toBe(
       "... 3 tool calls\nmcp__srv__b\nmcp__srv__c",
@@ -691,7 +691,7 @@ describe("execTool execution", () => {
       return runResult({ toolsUsed: ["Read", "Bash"] });
     });
 
-    const result = await execTool.execute(
+    const result = await replTool.execute(
       { code: "return 1;" },
       contextWith({
         tools: [
@@ -717,7 +717,7 @@ describe("execTool execution", () => {
       return runResult({ toolsUsed: ["Read"] });
     });
 
-    const result = await execTool.execute(
+    const result = await replTool.execute(
       { code: "return 1;" },
       contextWith({
         tools: [{ name: "Read", formatCompactParams: () => "src/app.ts" }],
@@ -741,7 +741,7 @@ describe("execTool execution", () => {
       return runResult({ logs: ["caught"] });
     });
 
-    const result = await execTool.execute({ code: "return 1;" }, contextWith());
+    const result = await replTool.execute({ code: "return 1;" }, contextWith());
 
     expect(result.shortResult).toBe(
       "0 tool calls\nsearchTools\ndescribeTool: Nope",
@@ -755,7 +755,7 @@ describe("execTool execution", () => {
       return runResult({ toolsUsed: [] });
     });
 
-    const result = await execTool.execute({ code: "return 1;" }, contextWith());
+    const result = await replTool.execute({ code: "return 1;" }, contextWith());
 
     const line = result.shortResult?.split("\n")[1] ?? "";
     expect(line).toBe(`searchTools: ${"q".repeat(200)}…`);
@@ -770,7 +770,7 @@ describe("execTool execution", () => {
       return runResult({ toolsUsed: ["mcp__srv__search"] });
     });
 
-    const result = await execTool.execute({ code: "return 1;" }, contextWith());
+    const result = await replTool.execute({ code: "return 1;" }, contextWith());
 
     expect(result.shortResult).toBe(
       `1 tool call\nmcp__srv__search …${`{"query":"${query}"}`.slice(-30)}`,
@@ -785,7 +785,7 @@ describe("execTool execution", () => {
       return runResult({ toolsUsed: ["mcp__srv__ping"] });
     });
 
-    const result = await execTool.execute({ code: "return 1;" }, contextWith());
+    const result = await replTool.execute({ code: "return 1;" }, contextWith());
 
     expect(result.shortResult).toBe("1 tool call\nmcp__srv__ping");
   });
@@ -799,7 +799,7 @@ describe("execTool execution", () => {
       return runResult({ toolsUsed: ["mcp__srv__a", "mcp__srv__b"] });
     });
 
-    const result = await execTool.execute({ code: "return 1;" }, contextWith());
+    const result = await replTool.execute({ code: "return 1;" }, contextWith());
 
     expect(result.nestedToolCalls).toEqual([
       "mcp__srv__a",
@@ -823,7 +823,7 @@ describe("execTool execution", () => {
       return runResult({ toolsUsed: ["mcp__srv__a", "mcp__srv__b"] });
     });
 
-    const running = execTool.execute(
+    const running = replTool.execute(
       { code: "return 1;" },
       contextWith({ onShortResultUpdate: (summary) => updates.push(summary) }),
     );
@@ -850,7 +850,7 @@ describe("execTool execution", () => {
       }),
     );
 
-    const result = await execTool.execute({ code: "return 1;" }, contextWith());
+    const result = await replTool.execute({ code: "return 1;" }, contextWith());
 
     expect(result.success).toBe(false);
     expect(result.content).toContain("<log>before</log>");
@@ -867,7 +867,7 @@ describe("execTool execution", () => {
       }),
     );
 
-    const result = await execTool.execute({ code: "return 1;" }, contextWith());
+    const result = await replTool.execute({ code: "return 1;" }, contextWith());
 
     expect(result.success).toBe(true);
     expect(result.images).toEqual([{ data: "AAAA", mediaType: "image/png" }]);

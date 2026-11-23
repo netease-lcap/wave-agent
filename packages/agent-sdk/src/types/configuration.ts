@@ -173,7 +173,7 @@ export interface WaveConfiguration {
   enableArtifact?: boolean;
   /**
    * Whether the REPL tool is enabled — the carrier of the on-demand tool pool.
-   * Unset follows the code default constant (EXEC_DEFAULT_ENABLED). `false`
+   * Unset follows the code default constant (REPL_DEFAULT_ENABLED). `false`
    * declares every pooled tool flat again, so turning it off loses no capability.
    */
   enableRepl?: boolean;

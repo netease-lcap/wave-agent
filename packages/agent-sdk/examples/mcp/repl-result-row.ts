@@ -2,7 +2,7 @@
 
 import { fileURLToPath } from "url";
 import { Agent } from "../../src/agent.js";
-import { EXEC_TOOL_NAME } from "../../src/constants/tools.js";
+import { REPL_TOOL_NAME } from "../../src/constants/tools.js";
 import { section, startDemo, stopDemo, waitForServer } from "./harness.js";
 
 /**
@@ -13,7 +13,7 @@ import { section, startDemo, stopDemo, waitForServer } from "./harness.js";
  *
  * Run from `packages/agent-sdk`:
  *
- *   npx tsx examples/mcp/exec-result-row.ts
+ *   npx tsx examples/mcp/repl-result-row.ts
  */
 
 const SERVER_NAME = "catalog-demo";
@@ -96,9 +96,9 @@ async function main(): Promise<void> {
           `shortResult ${JSON.stringify(block.shortResult)}\n` +
           `expected    ${JSON.stringify(expected)}`,
       );
-      if (block.name !== EXEC_TOOL_NAME) {
+      if (block.name !== REPL_TOOL_NAME) {
         failures.push(
-          `a row is named "${block.name}" instead of "${EXEC_TOOL_NAME}"`,
+          `a row is named "${block.name}" instead of "${REPL_TOOL_NAME}"`,
         );
       }
       if (block.shortResult !== expected) {
@@ -132,7 +132,7 @@ async function main(): Promise<void> {
       failures.push("no row showed the singular `1 tool call`");
     }
     if (
-      blocks.some((block) => (block.shortResult ?? "").includes(EXEC_TOOL_NAME))
+      blocks.some((block) => (block.shortResult ?? "").includes(REPL_TOOL_NAME))
     ) {
       failures.push("a summary repeats the `REPL` prefix");
     }

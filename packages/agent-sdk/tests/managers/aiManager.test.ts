@@ -2279,7 +2279,7 @@ describe("AIManager", () => {
     }
 
     it("fires when TaskUpdate is reachable only from the sandbox", async () => {
-      // Deferred: absent from `tools[]`, callable from `Exec`. Reading the
+      // Deferred: absent from `tools[]`, callable from `REPL`. Reading the
       // declarations as "unavailable" is what silenced this reminder.
       vi.mocked(mockMessageManager.getMessages).mockReturnValue(idleTurns(12));
       vi.mocked(mockToolManager.getOnDemandToolNames).mockReturnValue([
@@ -2323,7 +2323,7 @@ describe("AIManager", () => {
     }
 
     it("keeps the TaskCreate guidance line when the tool is reachable only from the sandbox", async () => {
-      // Deferred: absent from `tools[]`, callable from `Exec`. Reading the
+      // Deferred: absent from `tools[]`, callable from `REPL`. Reading the
       // declarations as "unavailable" is what silenced this line too.
       vi.mocked(mockToolManager.getToolsConfig).mockReturnValue([
         declaredTool("Bash"),

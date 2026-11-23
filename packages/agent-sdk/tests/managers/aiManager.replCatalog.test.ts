@@ -3,7 +3,7 @@ import { Container } from "../../src/utils/container.js";
 import { AIManager } from "../../src/managers/aiManager.js";
 import type { MessageManager } from "../../src/managers/messageManager.js";
 import type { ToolManager } from "../../src/managers/toolManager.js";
-import type { ExecPoolEntry } from "../../src/exec/catalog.js";
+import type { ReplPoolEntry } from "../../src/repl/catalog.js";
 import type { GatewayConfig, ModelConfig } from "../../src/types/index.js";
 import type { Message } from "../../src/types/messaging.js";
 import * as aiService from "../../src/services/aiService.js";
@@ -164,7 +164,7 @@ function createHarness(
 }
 
 /** `undefined` here is the channel being closed (the REPL not declared). */
-const poolChannelState: { pool: ExecPoolEntry[] | undefined } = {
+const poolChannelState: { pool: ReplPoolEntry[] | undefined } = {
   pool: undefined,
 };
 
@@ -173,7 +173,7 @@ const poolChannelState: { pool: ExecPoolEntry[] | undefined } = {
  * tier is selected by `tier` and rendered from the schema. A bare name is what
  * tier 2 gets.
  */
-function poolOf(...names: string[]): ExecPoolEntry[] {
+function poolOf(...names: string[]): ReplPoolEntry[] {
   return names.map((name) => ({ name }));
 }
 
