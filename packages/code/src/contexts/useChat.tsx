@@ -586,7 +586,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
    * 当覆盖值会把「用户没选过 → 跟随 `permissions.defaultMode`」变成「写死
    * default」。这里 `null` 才表示「没选过」。
    */
-  const chosenPermissionModeRef = useRef<PermissionMode | null>(null);
+  const pendingPermissionModeRef = useRef<PermissionMode | null>(null);
 
   // Plan view state for the /plan command overlay
   const [planView, setPlanView] = useState<PlanViewData | null>(null);
@@ -1057,11 +1057,11 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
 
         // `Agent.create` 是异步的（配置 / 插件 / MCP 都在里面），这期间输入框已经
         // 能用：此刻选的档位在 `setPermissionMode` 时没有 agent 可写，只能记在
-        // `chosenPermissionModeRef` 里（见那里的注释）。会话刚建好，在这里补上，
+        // `pendingPermissionModeRef` 里（见那里的注释）。会话刚建好，在这里补上，
         // 否则新会话的第一条消息仍按配置默认档执行。
-        const chosenMode = chosenPermissionModeRef.current;
-        if (chosenMode) {
-          await agent.setPermissionMode(chosenMode);
+        const pendingMode = pendingPermissionModeRef.current;
+        if (pendingMode) {
+          await agent.setPermissionMode(pendingMode);
         }
 
         // Inject worktree session into this agent's own DI container so system
@@ -1689,8 +1689,8 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   // Permission management methods
   const setPermissionMode = useCallback((mode: PermissionMode) => {
     // 记下来：会话还没建起来时（新对话的 agent 还在异步初始化），这次选择只能
-    // 交给 `initializeAgent` 在建会话时带上（见 `chosenPermissionModeRef`）。
-    chosenPermissionModeRef.current = mode;
+    // 交给 `initializeAgent` 在建会话时带上（见 `pendingPermissionModeRef`）。
+    pendingPermissionModeRef.current = mode;
     setPermissionModeState((prev) => {
       if (prev === mode) return prev;
       if (agentRef.current && agentRef.current.getPermissionMode() !== mode) {

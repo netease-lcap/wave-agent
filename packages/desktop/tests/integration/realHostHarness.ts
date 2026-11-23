@@ -352,6 +352,12 @@ export interface FakeModelServer {
   requests: Array<Record<string, unknown>>;
   /** Queue the text the model streams back; the last reply repeats. */
   reply(...texts: string[]): void;
+  /**
+   * 让**下一次**请求的回复变成一个工具调用（流式 `tool_calls` 增量）——
+   * 档位相关的行为差异只有走到工具上才看得见：`bypassPermissions` 直接执行，
+   * `default` 先弹确认卡。
+   */
+  toolCall(name: string, input: Record<string, unknown>): void;
   /** Requests received so far that carried this substring in the payload. */
   sawRequest(match: string): boolean;
   close(): Promise<void>;
@@ -360,6 +366,8 @@ export interface FakeModelServer {
 export async function startFakeModelServer(): Promise<FakeModelServer> {
   const requests: Array<Record<string, unknown>> = [];
   let replies: string[] = ["OK"];
+  /** 只对紧接着的那一次请求生效：工具结果回来后要落回文本回复，否则一轮跑不完。 */
+  let nextTool: { name: string; input: Record<string, unknown> } | undefined;
 
   const server = http.createServer((req, res) => {
     let body = "";
@@ -387,8 +395,47 @@ export async function startFakeModelServer(): Promise<FakeModelServer> {
             ...extra,
           })}\n\n`,
         );
+      const tool = nextTool;
+      nextTool = undefined;
       chunk({ role: "assistant", content: text });
-      chunk({}, { choices: [{ index: 0, delta: {}, finish_reason: "stop" }] });
+      if (tool) {
+        res.write(
+          `data: ${JSON.stringify({
+            id: "chatcmpl-realhost",
+            object: "chat.completion.chunk",
+            created: 1_700_000_000,
+            model: "test-model",
+            choices: [
+              {
+                index: 0,
+                delta: {
+                  tool_calls: [
+                    {
+                      index: 0,
+                      id: "call_realhost_0",
+                      type: "function",
+                      function: {
+                        name: tool.name,
+                        arguments: JSON.stringify(tool.input),
+                      },
+                    },
+                  ],
+                },
+                finish_reason: null,
+              },
+            ],
+          })}\n\n`,
+        );
+        chunk(
+          {},
+          { choices: [{ index: 0, delta: {}, finish_reason: "tool_calls" }] },
+        );
+      } else {
+        chunk(
+          {},
+          { choices: [{ index: 0, delta: {}, finish_reason: "stop" }] },
+        );
+      }
       res.write("data: [DONE]\n\n");
       res.end();
     });
@@ -401,6 +448,9 @@ export async function startFakeModelServer(): Promise<FakeModelServer> {
     requests,
     reply: (...texts: string[]) => {
       replies = texts;
+    },
+    toolCall: (name: string, input: Record<string, unknown>) => {
+      nextTool = { name, input };
     },
     sawRequest: (match: string) =>
       requests.some((r) => JSON.stringify(r).includes(match)),
