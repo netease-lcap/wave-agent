@@ -441,12 +441,12 @@ describe("findDangerousRemoval — variables the command sets", () => {
     // `/$D` empties to the root itself, so it is reported as that rather than
     // as "a variable under a prefix" — see the next test.
     expect(ruleOf('rm -rf "/$D"')).toBe("emptyVariable");
-    // Windows reads `//sub` as a path on a share, so the same target comes back
-    // as "a variable whose empty expansion reaches the root". Both are hits.
-    expect(ruleOf('rm -rf "/${D}/sub"')).toBe(
+    expect(ruleOf('rm -rf "/${D}/sub"')).toBe("var_root_child");
+    // Same hit, two names: Windows reports the empty expansion as reaching the
+    // root here, Linux reports "a variable under a prefix".
+    expect(ruleOf('rm -rf "~/$D"')).toBe(
       WINDOWS ? "emptyVariable" : "var_root_child",
     );
-    expect(ruleOf('rm -rf "~/$D"')).toBe("var_root_child");
     expect(ruleOf('rm -rf "C:/$D"')).toBe("var_root_child");
     // Whatever `D` holds, the target cannot come back inside the working
     // directory: the prefix already left it.
