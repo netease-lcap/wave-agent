@@ -440,7 +440,9 @@ describe("findDangerousRemoval — variables the command sets", () => {
   it("reports a variable pinned under a fixed root prefix", () => {
     // `/$D` empties to the root itself, so it is reported as that rather than
     // as "a variable under a prefix" — see the next test.
-    expect(ruleOf('rm -rf "/$D"')).toBe("emptyVariable");
+    expect(ruleOf('rm -rf "/$D"')).toBe(
+      WINDOWS ? "var_root_child" : "emptyVariable",
+    );
     expect(ruleOf('rm -rf "/${D}/sub"')).toBe("var_root_child");
     // Same hit, two names: Windows reports the empty expansion as reaching the
     // root here, Linux reports "a variable under a prefix".
