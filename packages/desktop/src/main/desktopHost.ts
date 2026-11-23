@@ -657,6 +657,15 @@ export class DesktopHost {
     string,
     { sessionId: string; workdir: string; token: number }
   >();
+  /**
+   * 用户在**还没有会话**的分屏里选过的权限档位（paneId → mode）。
+   *
+   * `setPermissionMode` 那条命令只能打在活的 agent 上，没有 agent 时以前是静默
+   * 丢弃：新对话里先切「跳过权限确认」、再发第一条消息，会话却是按配置默认档建
+   * 起来的（用户上报的现象）。这里按分屏记着，会话绑上来时补上
+   * （`applyPendingPermissionMode`）。
+   */
+  private pendingPermissionModes = new Map<string, PermissionMode>();
   private restoreToken = 0;
   /**
    * 每个分屏那一行进度文案（spec ui/stdio-transport.md「首次启动的进度文案」）。
@@ -2680,6 +2689,29 @@ export class DesktopHost {
     }
   }
 
+  /**
+   * 把「会话建起来之前选过的档位」落到刚绑上来的会话上，并清掉这份记账。
+   *
+   * 只给**新会话**用：恢复出来的会话的档位来源是它自己的（CLI 选项 > 配置默认
+   * 档），不该被空白态里的选择覆盖，所以有内容的会话直接放弃这次补写。
+   */
+  private async applyPendingPermissionMode(
+    paneId: string,
+    agent: StdioAgent,
+  ): Promise<void> {
+    const mode = this.pendingPermissionModes.get(paneId);
+    if (!mode) return;
+    this.pendingPermissionModes.delete(paneId);
+    if (this.hasMessageContent(agent)) return;
+    try {
+      await agent.setPermissionMode(mode);
+    } catch (error) {
+      // 会话已经能用，只是档位没设上：如实提示，别把绑定一起搞失败
+      // （agent 自己的 `permissionModeChange` 会让界面回到真实档位）。
+      this.pushSystemMessage(`设置权限模式失败: ${error}`, paneId);
+    }
+  }
+
   /** Point a pane at an agent: sync workdir context, refresh sidebar, push its state. */
   private async activateAgentInPane(
     paneId: string,
@@ -2689,6 +2721,9 @@ export class DesktopHost {
     // restore's token check later discards its half-spawned agent.
     this.pendingRestores.delete(paneId);
     this.bindAgentToPane(paneId, agent);
+    // 用户在会话建起来之前选过的档位在这里补上（见 pendingPermissionModes）：
+    // 那条 `setPermissionMode` 当时没有 agent 可写，只剩这份记账。
+    await this.applyPendingPermissionMode(paneId, agent);
     this.hostState.set(paneId, this.hostForAgent(agent));
     const dir = agent.currentWorkdir;
     if (dir && dir !== this.workdir) {
@@ -5786,15 +5821,28 @@ export class DesktopHost {
         );
         break;
 
-      case "setPermissionMode":
+      case "setPermissionMode": {
+        const mode = msg.mode as PermissionMode;
+        const paneAgent = this.agentForPane(pid);
+        if (!paneAgent) {
+          // 这个分屏还没有会话（新对话的空白态 / 会话还在 spawn）：记住这次选择，
+          // 会话绑上来时补上；同时回一条，输入框上的档位立刻跟着变 —— 否则用户
+          // 看不到自己点过，而这正是本次上报里「切换没带过去」的那一半。
+          this.pendingPermissionModes.set(pid, mode);
+          this.postMessage({
+            command: "updatePermissionMode",
+            paneId: pid,
+            mode,
+          });
+          break;
+        }
         try {
-          await this.agentForPane(pid)?.setPermissionMode(
-            msg.mode as PermissionMode,
-          );
+          await paneAgent.setPermissionMode(mode);
         } catch (error) {
           this.pushSystemMessage(`设置权限模式失败: ${error}`, pid);
         }
         break;
+      }
 
       // -- message queue -------------------------------------------------
       case "deleteQueuedMessage":

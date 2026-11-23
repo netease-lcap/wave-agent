@@ -574,6 +574,20 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
       (bypassPermissions ? "bypassPermissions" : "default"),
   );
 
+  /**
+   * 用户手动选过的权限档位 —— **只**给建会话的人读。
+   *
+   * 新对话的 agent 是异步建起来的（插件 / MCP / 配置都在里面），建好之前
+   * `setPermissionMode` 没有 agent 可写，选择只落在上面的 state 里。以前建会话
+   * 时不读它，会话就按启动 props 建起来，掉回配置里的 `permissions.defaultMode`
+   * ——用户报到的是「新对话里切成跳过权限确认，第一条消息仍然按修改前询问」。
+   *
+   * 用独立标记而不是 state 的值：state 的初值永远非空（至少 `"default"`），拿它
+   * 当覆盖值会把「用户没选过 → 跟随 `permissions.defaultMode`」变成「写死
+   * default」。这里 `null` 才表示「没选过」。
+   */
+  const pendingPermissionModeRef = useRef<PermissionMode | null>(null);
+
   // Plan view state for the /plan command overlay
   const [planView, setPlanView] = useState<PlanViewData | null>(null);
 
@@ -1040,6 +1054,15 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         });
 
         agentRef.current = agent;
+
+        // `Agent.create` 是异步的（配置 / 插件 / MCP 都在里面），这期间输入框已经
+        // 能用：此刻选的档位在 `setPermissionMode` 时没有 agent 可写，只能记在
+        // `pendingPermissionModeRef` 里（见那里的注释）。会话刚建好，在这里补上，
+        // 否则新会话的第一条消息仍按配置默认档执行。
+        const pendingMode = pendingPermissionModeRef.current;
+        if (pendingMode) {
+          await agent.setPermissionMode(pendingMode);
+        }
 
         // Inject worktree session into this agent's own DI container so system
         // prompts and permission checks reflect the CLI -w worktree. This state is
@@ -1665,6 +1688,9 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
 
   // Permission management methods
   const setPermissionMode = useCallback((mode: PermissionMode) => {
+    // 记下来：会话还没建起来时（新对话的 agent 还在异步初始化），这次选择只能
+    // 交给 `initializeAgent` 在建会话时带上（见 `pendingPermissionModeRef`）。
+    pendingPermissionModeRef.current = mode;
     setPermissionModeState((prev) => {
       if (prev === mode) return prev;
       if (agentRef.current && agentRef.current.getPermissionMode() !== mode) {

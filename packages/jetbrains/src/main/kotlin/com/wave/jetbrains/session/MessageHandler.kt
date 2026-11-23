@@ -192,7 +192,9 @@ class MessageHandler(
             }
             "setPermissionMode" -> {
                 val mode = msg["mode"]?.jsonPrimitive?.content ?: "default"
-                session.agent?.setPermissionMode(mode)
+                // 会话还没就绪时这次选择要先记着（见 WaveSession.setPermissionMode），
+                // 别静默丢掉。
+                session.setPermissionMode(mode)
             }
             "deleteQueuedMessage" -> {
                 val index = msg["index"]?.jsonPrimitive?.content?.toIntOrNull() ?: 0
