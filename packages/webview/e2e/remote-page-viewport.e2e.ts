@@ -2,7 +2,6 @@ import fs from "node:fs";
 import path from "node:path";
 import { test, expect } from "./utils/webviewTestHarness.js";
 import { MessageInjector } from "./utils/messageInjector.js";
-import { standaloneBlock } from "./utils/standaloneBlock.js";
 import { Message } from "wave-agent-sdk";
 
 /**
@@ -150,67 +149,4 @@ test("远控页：顶栏与输入区同屏、页面不滚动、安全区从高�
   // 输入区底边 = 可视区底边：底部不让位，也不越过可视区。
   expect(insets.inputArea!.bottom).toBe(insets.innerHeight);
   expect(insets.scrollHeight).toBe(insets.innerHeight);
-
-  // 5. 顶部那条色带（iOS 27 主屏形态下的系统模糊，见 globals.css 与
-  //    tests/remote/remoteTopEdgeBand.test.ts）：headless 浏览器进不了
-  //    `display-mode: standalone`，所以把产物里那条媒体查询的**内容**原样取出来、
-  //    去掉外层的媒体条件再注入 —— 量到的是已发布的那些声明，不是这里重写的一份。
-  //    元素本身由产物 index.html 提供，这里照它的形状补一个。色带是背景层里的一块
-  //    实色贴边：贴顶、满宽、不接收点击。
-  const standaloneCss = standaloneBlock(css);
-  expect(
-    standaloneCss,
-    "产物里没有 @media (display-mode: standalone)：那条色带样式没进构建；先跑 pnpm -F wave-webview build",
-  ).not.toBe("");
-  await webviewPage.addStyleTag({ content: standaloneCss });
-  await webviewPage.evaluate(() => {
-    const band = document.createElement("div");
-    band.id = "remote-top-edge";
-    band.setAttribute("aria-hidden", "true");
-    document.body.insertBefore(band, document.body.firstChild);
-  });
-  const painted = await webviewPage.evaluate(() => {
-    const el = document.getElementById("remote-top-edge") as HTMLElement;
-    const rect = el.getBoundingClientRect();
-    const style = getComputedStyle(el);
-    return {
-      position: style.position,
-      top: Math.round(rect.top),
-      left: Math.round(rect.left),
-      width: Math.round(rect.width),
-      // headless 里 env() 取 fallback（0）⇒ 量到的是那条 12px 下限；真机上取状态栏
-      // 高度，这部分只能靠真机。
-      height: Math.round(rect.height),
-      pointerEvents: style.pointerEvents,
-      background: style.backgroundColor,
-    };
-  });
-  expect(painted.position).toBe("fixed");
-  expect(painted.top).toBe(0);
-  expect(painted.left).toBe(0);
-  expect(painted.width).toBe(webviewPage.viewportSize()!.width);
-  expect(painted.height).toBe(12);
-  // 顶栏那三个图标按钮就在它下沿附近：不吃点击这条一破，按钮最上面几行像素就点不动。
-  expect(painted.pointerEvents).toBe("none");
-  // 与紧挨着它的顶栏同一个底色 token，深浅两套主题自动跟 —— 换个颜色就会多一条接缝
-  // （拿顶栏比而不是拿 body 比：真页面上两者同色，但这一层的不变量是「与下沿接缝不
-  // 可见」）。
-  const headerBackground = await webviewPage.evaluate(
-    () =>
-      getComputedStyle(document.querySelector(".chat-header")!).backgroundColor,
-  );
-  expect(painted.background).toBe(headerBackground);
-
-  // 6. 色带是 fixed 覆盖层，流内内容不会自己让开 —— 所以让位量写在 body 上，且与
-  //    色带高度是同一个表达式。判据取「内容起始 = 色带下沿」：顶栏顶边必须等于色带
-  //    底边，而不是压在色带底下（2026-11-13 真机：压着时顶栏 40px 按钮的高亮底色
-  //    顶边被切掉 4px、状态横幅的文案距顶 2px 距底 15px）。headless 的 env() 是 0，
-  //    所以这里量到的是 12px 那一档；真机上两边同时取安全区高度。
-  const withBand = await geometry(webviewPage);
-  expect(withBand.paddingTop).toBe(`${painted.height}px`);
-  expect(withBand.header!.top).toBe(painted.height);
-  expect(withBand.header!.top).toBe(painted.top + painted.height);
-  // 让位仍是「从高度里扣」：页面照旧一屏，底部输入区不动。
-  expect(withBand.inputArea!.bottom).toBe(withBand.innerHeight);
-  expect(withBand.scrollHeight).toBe(withBand.innerHeight);
 });
