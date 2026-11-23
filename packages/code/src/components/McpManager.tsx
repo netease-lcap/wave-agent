@@ -157,8 +157,9 @@ export const McpManager: React.FC<McpManagerProps> = ({
               </Text>
             </Box>
           )}
-          {/* Not dialed yet (lazy dial): the tool list comes from the local
-              snapshot of the last successful connection, and says so. */}
+          {/* Not connected yet (the automatic dial may still be running): the
+              tool list comes from the local snapshot of the last successful
+              connection, and says so. */}
           {selectedServer.status !== "connected" &&
             selectedServer.toolsFromCache && (
               <Box>

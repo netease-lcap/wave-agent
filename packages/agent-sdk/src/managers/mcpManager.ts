@@ -45,6 +45,36 @@ interface McpConnection {
 }
 
 /**
+ * How long a turn may wait for MCP dials before it builds its tool config
+ * without them (spec ecosystem/mcp.md「连接 MCP 服务器的时机与超时」场景 3).
+ *
+ * The deadline is a *waiting* budget, not a connection timeout: the dial keeps
+ * running in the background and simply is not waited for any more. Aligned with
+ * Claude Code 2.1.329's `MCP_CONNECT_TIMEOUT_MS` default.
+ */
+export const MCP_CONNECT_DEADLINE_MS = 5000;
+
+/**
+ * How many stdio servers may be dialing at once (spec ecosystem/mcp.md 场景 5):
+ * spawning a whole config at once starts one `uvx`/`npx` tree each, which is
+ * what a batch size keeps from happening. Aligned with Claude Code 2.1.329's
+ * `MCP_SERVER_CONNECTION_BATCH_SIZE` default.
+ */
+export const MCP_CONNECT_BATCH_SIZE = 3;
+
+/** Which path started the automatic dials, for failure telemetry. */
+type DialPhase = "initialize" | "lazy";
+
+/**
+ * One dial that has already been *promised* to the session: `run` does the
+ * work, `done` settles when it is over however it ended.
+ */
+interface ScheduledDial {
+  done: Promise<void>;
+  run: () => Promise<void>;
+}
+
+/**
  * pid of the process a transport spawned, for stdio transports only (http/sse
  * have none). Read *before* closing: once the direct child (`uvx`) is gone its
  * children are re-parented and can no longer be reached from this pid.
@@ -167,15 +197,30 @@ export class McpManager {
   /** Explicit disconnectServer teardowns currently in flight */
   private disconnecting: Set<string> = new Set();
   /**
-   * Servers the *user* disconnected. Lazy dial must not undo that decision
-   * (spec ecosystem/mcp.md「手动断开不得被自动重连撤销」); only an explicit
-   * `connectMcpServer()` clears it.
+   * Servers the *user* disconnected. The automatic dial must not undo that
+   * decision (spec ecosystem/mcp.md「手动断开不得被自动重连撤销」); only an
+   * explicit `connectMcpServer()` clears it.
    */
   private userDisconnected: Set<string> = new Set();
-  /** Servers lazy dial already attempted, so a failure isn't retried every turn. */
+  /**
+   * Servers this session already promised a first dial to, so a failure is not
+   * retried on every turn (spec ecosystem/mcp.md 场景 7).
+   */
   private autoDialAttempted: Set<string> = new Set();
-  /** Lazy dials currently in flight (one per server, so turns don't double-dial). */
+  /**
+   * Automatic dials promised but not yet settled — queued behind the batch gate
+   * as well as in flight. Being promised (not started) is what keeps two paths
+   * from dialing the same server twice.
+   */
   private pendingDials: Set<string> = new Set();
+  /** Settles when that server's promised dial is over, however it ended. */
+  private dialCompletions: Map<string, Promise<void>> = new Map();
+  /**
+   * The startup pass is still running — it may hold the config read and it may
+   * not have promised its dials yet, so a turn must not read "nothing pending"
+   * off the two sets below while it is true.
+   */
+  private autoDialPassActive: boolean = false;
   /** Set by `cleanup()`: a destroyed manager never spawns another process. */
   private destroyed: boolean = false;
 
@@ -201,15 +246,17 @@ export class McpManager {
   }
 
   /**
-   * Initialize MCP manager with working directory and optionally auto-connect
+   * Initialize MCP manager with working directory and optionally start the
+   * session's automatic dial.
    *
-   * `autoConnect` (eager connect at create time) is legacy: it spawns one server
-   * process tree per Agent, which a host that pools Agents per session (desktop,
-   * daemon, IM bridge) pays for every conversation it ever opens. Agents are
-   * initialized with `false` and dial on the first turn
-   * (`connectPendingServers()`) instead — see spec ecosystem/mcp.md「按需连接 MCP
-   * 服务器」. Config reading is separate (`loadConfig()`), so the caller can make
-   * the server list visible without spawning anything.
+   * `autoConnect` starts the dial at creation time and returns without waiting
+   * for any server to come up (`startAutoDials()`): the server list has to be
+   * complete right after `Agent.create()` — the `/mcp` panel and the settings
+   * page read it — while the processes are still starting. What a turn waits
+   * for, and for how long, is `waitForTurnDials()`'s decision (5 s deadline,
+   * `alwaysLoad: true` exempt), not this one's. See spec ecosystem/mcp.md
+   * 「连接 MCP 服务器的时机与超时」. Config reading is separate (`loadConfig()`),
+   * so the caller can make the server list visible without spawning anything.
    */
   async initialize(
     workdir: string,
@@ -232,36 +279,120 @@ export class McpManager {
       // Load workspace MCP configuration (always read, merge with any plugin servers already added)
       await this.loadConfig();
 
-      const config = this.config;
-
-      if (config && config.mcpServers) {
-        // Connect to all configured servers in background to avoid blocking agent initialization
-        Object.keys(config.mcpServers).forEach((serverName) => {
-          logger?.debug(`Connecting to MCP server: ${serverName}`);
-          this.connectServer(serverName)
-            .then((success) => {
-              if (success) {
-                logger?.debug(
-                  `Successfully connected to MCP server: ${serverName}`,
-                );
-              } else {
-                logger?.warn(`Failed to connect to MCP server: ${serverName}`);
-                this.reportConnectionFailure(serverName, "initialize");
-              }
-            })
-            .catch((error) => {
-              logger?.error(
-                `Background connection to MCP server ${serverName} failed:`,
-                error,
-              );
-              this.reportConnectionFailure(serverName, "initialize", error);
-            });
-        });
-      }
+      // Fire-and-forget: starts one dial per configured server, waits for none.
+      this.startAutoDials();
 
       logger?.debug("MCP servers initialization started in background");
       // Trigger state change callback after starting initialization
       this.callbacks.onMcpServersChange?.(this.getAllServers());
+    }
+  }
+
+  /**
+   * Start the session's automatic dial and return immediately
+   * (spec ecosystem/mcp.md「连接 MCP 服务器的时机与超时」场景 1).
+   *
+   * One pass per session and one dial per server: servers were registered at
+   * `Agent.create()`, and this spawns each of them at most once — a failure
+   * stays failed until the user asks for an explicit connect (场景 7), a server
+   * the user disconnected stays down (场景 9). Nothing is awaited: the turn path
+   * (`waitForTurnDials()`) owns the question of how long to wait.
+   *
+   * Never throws — a config read or a dial failure is a status, not a startup
+   * failure.
+   */
+  startAutoDials(): void {
+    if (this.destroyed) return;
+    void this.autoDialPass();
+  }
+
+  private async autoDialPass(): Promise<void> {
+    this.autoDialPassActive = true;
+    try {
+      // A host path that skipped `loadConfig()` still gets its servers dialed.
+      await this.ensureConfigLoaded();
+      if (this.destroyed) return;
+      await this.dialPendingTargets("initialize");
+    } catch (error) {
+      logger?.warn("MCP startup dial failed:", error);
+    } finally {
+      this.autoDialPassActive = false;
+    }
+  }
+
+  /**
+   * Wait for this session's MCP dials, for at most `deadlineMs`
+   * (spec ecosystem/mcp.md「连接 MCP 服务器的时机与超时」场景 2-4).
+   *
+   * Returns `undefined` — synchronously, adding no yield point — when there is
+   * nothing to wait for (nothing configured, everything connected, already
+   * attempted or disconnected by the user): a session that does not use MCP
+   * must be indistinguishable from one built before this mechanism existed.
+   * "Nothing configured" covers the null-config case too: servers only ever
+   * enter `this.servers` through a config read, so no config means no dial.
+   *
+   * Otherwise the promise resolves when the promised dials settle or when the
+   * deadline arrives, whichever comes first. A dial still running at the
+   * deadline keeps running in the background — it is neither cancelled nor
+   * re-dialed — and its server simply is not part of this turn's tools. Servers
+   * configured with `alwaysLoad: true` are the one exception: the turn waits
+   * for them to connect or fail, deadline or not.
+   *
+   * Never throws.
+   */
+  waitForTurnDials(
+    deadlineMs: number = MCP_CONNECT_DEADLINE_MS,
+  ): Promise<void> | undefined {
+    if (this.destroyed) return undefined;
+    if (
+      !this.autoDialPassActive &&
+      this.pendingDials.size === 0 &&
+      this.pendingDialTargets().length === 0
+    ) {
+      return undefined;
+    }
+    return this.waitForDials(deadlineMs);
+  }
+
+  private async waitForDials(deadlineMs: number): Promise<void> {
+    try {
+      // The startup pass may not have promised its dials yet (it holds the
+      // config read): pick up whatever it has not reached, so this turn waits
+      // for the same set the session as a whole is dialing.
+      await this.ensureConfigLoaded();
+      if (this.destroyed) return;
+      void this.dialPendingTargets("lazy");
+
+      const claimed: Promise<void>[] = [];
+      const alwaysLoad: Promise<void>[] = [];
+      for (const name of this.pendingDials) {
+        const done = this.dialCompletions.get(name);
+        if (!done) continue;
+        if (this.servers.get(name)?.config.alwaysLoad === true) {
+          alwaysLoad.push(done);
+        } else {
+          claimed.push(done);
+        }
+      }
+      if (claimed.length === 0 && alwaysLoad.length === 0) return;
+
+      let timer: NodeJS.Timeout | undefined;
+      const deadline = new Promise<void>((resolve) => {
+        timer = setTimeout(resolve, Math.max(0, deadlineMs));
+        // Waiting for a server must not be a reason for the process to stay up.
+        timer.unref?.();
+      });
+      try {
+        await Promise.all([
+          // Uncapped: `alwaysLoad` is the explicit "wait for this one" ask.
+          Promise.all(alwaysLoad),
+          Promise.race([Promise.all(claimed), deadline]),
+        ]);
+      } finally {
+        if (timer) clearTimeout(timer);
+      }
+    } catch (error) {
+      logger?.warn("MCP dial wait failed:", error);
     }
   }
 
@@ -282,15 +413,13 @@ export class McpManager {
   }
 
   /**
-   * Start a lazy dial for the turn, or do nothing at all.
+   * Start the automatic dials and hand back a promise for all of them, or do
+   * nothing at all.
    *
-   * The turn path calls this instead of `connectPendingServers()` directly: when
-   * no server needs dialing (nothing configured, everything already connected or
-   * already attempted) it returns `undefined` and the turn proceeds without the
-   * extra `await` — a turn that does not use MCP must be indistinguishable from
-   * one built before lazy dial existed. The decision is synchronous on purpose;
-   * the config is read at `Agent.create()` (`loadConfig()`), and a manager that
-   * somehow never loaded it still falls through to the async path below.
+   * Returns `undefined` when no server needs dialing (nothing configured,
+   * everything connected or already attempted) so a caller that cannot use a
+   * deadline path gains no extra `await`. `waitForTurnDials()` is the turn's
+   * entry point; this one awaits every dial, without a budget.
    */
   beginPendingDials(): Promise<void> | undefined {
     if (this.destroyed) return undefined;
@@ -299,13 +428,14 @@ export class McpManager {
   }
 
   /**
-   * Dial every server that still needs it, before the turn builds its tool
-   * config (spec ecosystem/mcp.md「按需连接 MCP 服务器」场景 1-4).
+   * Dial every server that still needs it and await all of them
+   * (spec ecosystem/mcp.md「连接 MCP 服务器的时机与超时」场景 6-9).
    *
    * Only servers that were never dialed in this session are picked up: a
    * server that already failed is left in `error` rather than costing every
    * later turn another dial timeout and another spawned tree, and a server the
-   * user disconnected stays down. Already-connected servers are untouched.
+   * user disconnected stays down. Already-connected servers are untouched, and
+   * a dial already promised by the startup pass is joined instead of repeated.
    *
    * Never throws: a failure is a server status, not a turn failure.
    */
@@ -317,36 +447,79 @@ export class McpManager {
     try {
       await this.ensureConfigLoaded();
     } catch (error) {
-      logger?.warn("MCP config load failed before lazy dial:", error);
+      logger?.warn("MCP config load failed before dial:", error);
       return;
     }
     if (this.destroyed) return;
 
-    const targets = this.pendingDialTargets();
-    if (targets.length === 0) return;
+    await this.dialPendingTargets("lazy");
+  }
 
-    await Promise.all(
-      targets.map(async (name) => {
-        this.autoDialAttempted.add(name);
-        this.pendingDials.add(name);
+  /**
+   * Promise a dial for every server that still needs one and run them, at most
+   * `MCP_CONNECT_BATCH_SIZE` at a time.
+   */
+  private dialPendingTargets(phase: DialPhase): Promise<void> {
+    if (this.destroyed) return Promise.resolve();
+    const targets = this.pendingDialTargets();
+    if (targets.length === 0) return Promise.resolve();
+    return this.runDialBatch(
+      targets.map((name) => this.scheduleDial(name, phase)),
+    );
+  }
+
+  /**
+   * Promise one server's dial: mark it before the batch gate admits it, so a
+   * queued server already counts as "being dialed" — two paths can never dial
+   * the same server twice, and a turn waiting for an `alwaysLoad` server waits
+   * for its place in the queue too.
+   */
+  private scheduleDial(name: string, phase: DialPhase): ScheduledDial {
+    this.autoDialAttempted.add(name);
+    this.pendingDials.add(name);
+    let settle!: () => void;
+    const done = new Promise<void>((resolve) => {
+      settle = resolve;
+    });
+    this.dialCompletions.set(name, done);
+
+    return {
+      done,
+      run: async () => {
         try {
           const connected = await this.connectServer(name);
           if (connected) {
-            logger?.debug(`MCP server ${name} connected on first use`);
+            logger?.debug(`Connected to MCP server ${name}`);
           } else {
             logger?.warn(
-              `MCP server ${name} failed to connect on first use; it stays disconnected until an explicit connect`,
+              `MCP server ${name} failed to connect automatically; it stays disconnected until an explicit connect`,
             );
-            this.reportConnectionFailure(name, "lazy");
+            this.reportConnectionFailure(name, phase);
           }
         } catch (error) {
-          logger?.warn(`MCP lazy dial failed for ${name}:`, error);
-          this.reportConnectionFailure(name, "lazy", error);
+          logger?.warn(`MCP dial failed for ${name}:`, error);
+          this.reportConnectionFailure(name, phase, error);
         } finally {
           this.pendingDials.delete(name);
+          this.dialCompletions.delete(name);
+          settle();
         }
-      }),
+      },
+    };
+  }
+
+  /** Run promised dials with a bounded number in flight at once. */
+  private async runDialBatch(dials: ScheduledDial[]): Promise<void> {
+    const queue = [...dials];
+    const workers = Array.from(
+      { length: Math.min(MCP_CONNECT_BATCH_SIZE, queue.length) },
+      async () => {
+        for (let dial = queue.shift(); dial; dial = queue.shift()) {
+          await dial.run();
+        }
+      },
     );
+    await Promise.all(workers);
   }
 
   /**
@@ -539,7 +712,7 @@ export class McpManager {
 
   /**
    * Persist a server's tool snapshot after a successful connection
-   * (scenario 13: an empty list *overwrites* — a server that now exposes no
+   * (scenario 16: an empty list *overwrites* — a server that now exposes no
    * tools must not keep advertising the old ones).
    */
   private async rememberTools(name: string, tools: McpTool[]): Promise<void> {
@@ -803,7 +976,7 @@ export class McpManager {
   //
   // `manual` marks a user-initiated connect (settings page / `/mcp` / CLI), the
   // only way to override a previous explicit disconnect. Everything else —
-  // lazy dial, auto-reconnect — must respect that decision.
+  // automatic dial, auto-reconnect — must respect that decision.
   async connectServer(name: string, manual = false): Promise<boolean> {
     const server = this.servers.get(name);
     if (!server) return false;
@@ -1117,7 +1290,7 @@ export class McpManager {
         error: undefined,
       });
       // Refresh the display snapshot the panel falls back to while this server
-      // is not dialed (spec ecosystem/mcp.md 场景 13).
+      // is not connected (spec ecosystem/mcp.md 场景 16).
       await this.rememberTools(name, tools);
 
       return true;
@@ -1311,7 +1484,7 @@ export class McpManager {
     // Mark before closing so transport.onclose knows this is an expected,
     // user-initiated teardown and must not schedule an auto-reconnect.
     this.disconnecting.add(name);
-    // Remember the decision: a later turn's lazy dial must not resurrect it.
+    // Remember the decision: a later turn's automatic dial must not resurrect it.
     this.userDisconnected.add(name);
     try {
       // Close the client/transport *and* the whole process tree it spawned.

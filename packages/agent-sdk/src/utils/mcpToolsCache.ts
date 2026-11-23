@@ -2,13 +2,14 @@
  * Machine-local tool-snapshot cache for MCP servers
  * (`~/.wave/mcp-tools-cache.json`).
  *
- * Why it exists: servers are dialed lazily (spec ecosystem/mcp.md「按需连接 MCP
- * 服务器」), so a conversation that never used MCP has no process and no tool
- * list to show. "Nothing is running" must not turn into "nothing is
- * configured", so the last successful connection leaves a snapshot behind and
+ * Why it exists: servers are dialed automatically but without blocking the
+ * session (spec ecosystem/mcp.md「连接 MCP 服务器的时机与超时」), so a
+ * conversation can be open — and a turn can already be running — while a
+ * server is still connecting. "Not connected yet" must not turn into "nothing
+ * is configured", so the last successful connection leaves a snapshot behind and
  * `/mcp` / the settings page can still say what a server brings.
  *
- * Boundaries (spec scenarios 9-15):
+ * Boundaries (spec scenarios 12-18):
  * - Display only. `McpManager` never reads tools back out of here for the
  *   model — a tool declared (or callable) from a stale snapshot would be a tool
  *   the server no longer exposes. Only name/description are stored, so even an
@@ -124,7 +125,7 @@ function isEntry(value: unknown): value is McpToolsCacheEntry {
 
 /**
  * Read the whole cache. Never throws: a missing/unreadable/corrupt file is
- * indistinguishable from "never cached anything" (scenario 14).
+ * indistinguishable from "never cached anything" (scenario 17).
  */
 export async function readMcpToolsCache(): Promise<McpToolsCacheFile> {
   let raw: string;
@@ -150,9 +151,9 @@ export async function readMcpToolsCache(): Promise<McpToolsCacheFile> {
 }
 
 /**
- * Record (or overwrite — an empty list clears it, scenario 13) one server's
+ * Record (or overwrite — an empty list clears it, scenario 16) one server's
  * snapshot, dropping entries for servers that are no longer configured in *this*
- * project (scenario 12).
+ * project (scenario 15).
  *
  * `configuredNames` is the caller's current server list and `workdir` its
  * project: only entries from the same project are judged against it, because one
@@ -161,8 +162,9 @@ export async function readMcpToolsCache(): Promise<McpToolsCacheFile> {
  * panel some information, so it never propagates — the returned entry still
  * describes what this session should show.
  *
- * Writes are serialized in-process (a lazy dial connects several servers at
- * once, and a read-modify-write of the same file would otherwise drop one).
+ * Writes are serialized in-process (one automatic dial connects up to
+ * `MCP_CONNECT_BATCH_SIZE` servers at once, and a read-modify-write of the same
+ * file would otherwise drop one).
  * Two *processes* writing at the same moment can still lose an entry; the
  * snapshot comes back on that server's next connect, which is the price of a
  * display-only cache that must never block a connection.
