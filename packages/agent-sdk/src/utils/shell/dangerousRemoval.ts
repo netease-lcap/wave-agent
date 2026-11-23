@@ -327,6 +327,15 @@ function scanCommand(
       continue;
     }
 
+    // An inline shell invoked with no script of its own — `bash`, `bash -l`,
+    // `command -v bash` — has no command line to delete with, so there is
+    // nothing here to read. Claude Code stops in the same place: its script
+    // reader returns nothing unless it finds `-c <script>`, and the removal
+    // scan then stays silent. Without this, a probe as harmless as `command -v
+    // bash` opened the card by itself — the wrapper is peeled, the shell is
+    // left bare, and it fell through to the unreadable branch below.
+    if (INLINE_SHELLS.has(name) && !namesAScript(args)) continue;
+
     // A leaf whose script is a file, or whose command line belongs to another
     // shell, or that feeds its targets in on stdin: the deletion — if there is
     // one — is real and this check cannot see it. Reported rather than skipped,
@@ -489,6 +498,25 @@ function inlineShellScript(name: string, args: string[]): string | undefined {
     return script === undefined ? undefined : scanWord(script).text;
   }
   return undefined;
+}
+
+/**
+ * Does an inline shell leaf name a script of its own — a file (`bash deploy.sh`),
+ * as opposed to nothing but its own flags (`bash -l`, `bash --version`)?
+ *
+ * Only the file shape can hide a deletion, and only a script is worth opening
+ * the question for; a shell started with nothing but flags runs no command line
+ * of its own. `-o pipefail` / `+o pipefail` take their value from the next word,
+ * so that word is a setting, not a script.
+ */
+function namesAScript(args: string[]): boolean {
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i]!;
+    if (arg === "--") return i + 1 < args.length;
+    if (!arg.startsWith("-") && !arg.startsWith("+")) return true;
+    if (/^[-+]o$/.test(arg)) i++;
+  }
+  return false;
 }
 
 /**

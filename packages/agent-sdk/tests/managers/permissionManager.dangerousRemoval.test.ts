@@ -165,6 +165,22 @@ describe("removing the session's own working directory", () => {
     expect(callback).not.toHaveBeenCalled();
     expect(result.behavior).toBe("allow");
   });
+
+  it("leaves a bare shell probe alone under bypassPermissions", async () => {
+    // A subagent in a bypass session ran `command -v bash` and got a card:
+    // `command` is peeled as a wrapper, and the shell left behind has no script
+    // of its own, so there is no deletion here to ask about.
+    const manager = createManager({});
+    const callback = allowOnce();
+
+    const result = await check(manager, "command -v bash", {
+      mode: "bypassPermissions",
+      callback: callback as unknown as PermissionCallback,
+    });
+
+    expect(callback).not.toHaveBeenCalled();
+    expect(result.behavior).toBe("allow");
+  });
 });
 
 describe("deletions the check cannot read", () => {
