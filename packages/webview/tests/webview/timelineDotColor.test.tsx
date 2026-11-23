@@ -29,6 +29,15 @@ function getLastMessage(): HTMLElement {
   return msgs[msgs.length - 1] as HTMLElement;
 }
 
+function dotColorOf(el: HTMLElement): string {
+  return el.style.getPropertyValue("--dot-color");
+}
+
+/**
+ * 时间线圆点按助手回合出（spec ui/message-rendering-system.md「时间线圆点按助手
+ * 回合出现（行级）」）：`--dot-color` 与 `.timeline-message` 挂在消息根节点上，
+ * 块行 `.timeline-row` 不再各自带点、也不带色。
+ */
 describe("timeline dot color by stage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -48,10 +57,9 @@ describe("timeline dot color by stage", () => {
         },
       ],
     });
-    const streamingRow = getLastMessage().querySelector(
-      ".timeline-row",
-    ) as HTMLElement;
-    expect(streamingRow.style.getPropertyValue("--dot-color")).toBe(STREAMING);
+    const streamingRow = getLastMessage();
+    expect(streamingRow.classList.contains("timeline-message")).toBe(true);
+    expect(dotColorOf(streamingRow)).toBe(STREAMING);
 
     // finished text → green (成功 --cc-state-succeeded)
     sendCommand("updateMessages", {
@@ -64,10 +72,8 @@ describe("timeline dot color by stage", () => {
         },
       ],
     });
-    const doneRow = getLastMessage().querySelector(
-      ".timeline-row",
-    ) as HTMLElement;
-    expect(doneRow.style.getPropertyValue("--dot-color")).toBe(SUCCEEDED);
+    const doneRow = getLastMessage();
+    expect(dotColorOf(doneRow)).toBe(SUCCEEDED);
   });
 
   it("reasoning block dot is orange while streaming and green when done", () => {
@@ -85,10 +91,7 @@ describe("timeline dot color by stage", () => {
         },
       ],
     });
-    const streamingRow = getLastMessage().querySelector(
-      ".timeline-row",
-    ) as HTMLElement;
-    expect(streamingRow.style.getPropertyValue("--dot-color")).toBe(STREAMING);
+    expect(dotColorOf(getLastMessage())).toBe(STREAMING);
 
     sendCommand("updateMessages", {
       messages: [
@@ -100,10 +103,7 @@ describe("timeline dot color by stage", () => {
         },
       ],
     });
-    const doneRow = getLastMessage().querySelector(
-      ".timeline-row",
-    ) as HTMLElement;
-    expect(doneRow.style.getPropertyValue("--dot-color")).toBe(SUCCEEDED);
+    expect(dotColorOf(getLastMessage())).toBe(SUCCEEDED);
   });
 
   // 网关偶发只给一个 "\n" 作为 reasoning_content（模型报了 reasoning_tokens
@@ -147,10 +147,7 @@ describe("timeline dot color by stage", () => {
         ],
       });
     };
-    const dotColor = () =>
-      (
-        getLastMessage().querySelector(".timeline-row") as HTMLElement
-      ).style.getPropertyValue("--dot-color");
+    const dotColor = () => dotColorOf(getLastMessage());
 
     sendBlock({ type: "tool", name: "bash", stage: "streaming" });
     expect(dotColor()).toBe(STREAMING);
@@ -184,11 +181,10 @@ describe("timeline dot color by stage", () => {
         },
       ],
     });
-    const row = getLastMessage().querySelector(".timeline-row") as HTMLElement;
-    expect(row.style.getPropertyValue("--dot-color")).toBe(SUCCEEDED);
+    expect(dotColorOf(getLastMessage())).toBe(SUCCEEDED);
   });
 
-  it("compact block is wrapped in a timeline row with the link-accent dot", () => {
+  it("compact block gives the message the link-accent dot", () => {
     renderChatApp();
 
     sendCommand("updateMessages", {
@@ -201,12 +197,162 @@ describe("timeline dot color by stage", () => {
         },
       ],
     });
-    const row = getLastMessage().querySelector(".timeline-row") as HTMLElement;
-    // The compact block renders inside a .timeline-row so it gets the dot and
-    // the 10px top spacing like text/tool/reasoning blocks.
-    expect(row).not.toBeNull();
-    expect(row.querySelector(".compact-block")).not.toBeNull();
-    expect(row.style.getPropertyValue("--dot-color")).toContain("textLink");
+    const message = getLastMessage();
+    expect(message.classList.contains("timeline-message")).toBe(true);
+    expect(message.querySelector(".compact-block")).not.toBeNull();
+    expect(dotColorOf(message)).toContain("textLink");
+  });
+
+  // 场景 1：一条消息里有多个块（思考 + 正文 + 两个工具调用）时只有一个圆点，
+  // 块行不再各带一个点、也不再各带一份状态色。
+  it("一条消息里的多个块只出一个圆点，块行不带点色", () => {
+    renderChatApp();
+
+    sendCommand("updateMessages", {
+      messages: [
+        {
+          id: "m6",
+          role: "assistant",
+          timestamp: "2024-01-01T00:00:00.000Z",
+          blocks: [
+            { type: "reasoning", content: "先看看", stage: "end" },
+            { type: "text", content: "我来跑两个命令", stage: "end" },
+            { type: "tool", name: "bash", stage: "end", success: true },
+            { type: "tool", name: "bash", stage: "end", success: true },
+          ],
+        },
+      ],
+    });
+
+    const container = document.querySelector(
+      '[data-testid="messages-container"]',
+    )!;
+    expect(container.querySelectorAll(".timeline-message")).toHaveLength(1);
+    const rows = Array.from(container.querySelectorAll(".timeline-row"));
+    expect(rows).toHaveLength(4);
+    for (const row of rows) {
+      expect((row as HTMLElement).hasAttribute("style")).toBe(false);
+    }
+    expect(
+      dotColorOf(container.querySelector(".timeline-message") as HTMLElement),
+    ).toBe(SUCCEEDED);
+  });
+
+  // 场景 2：整行共用一个聚合状态，同一行不会出现两个点各自变色。
+  // 优先级「进行中 > 失败 > 已完成」对齐 CC 扩展 2.1.330 的 `MPn`（先判本回合是否
+  // 仍在跑，落定后才看有没有失败）——差别只在瞬时窗口。
+  it("块状态不一致时按「进行中 > 失败 > 已完成」聚合", () => {
+    renderChatApp();
+
+    const send = (blocks: Record<string, unknown>[]) =>
+      sendCommand("updateMessages", {
+        messages: [
+          {
+            id: "m7",
+            role: "assistant",
+            timestamp: "2024-01-01T00:00:00.000Z",
+            blocks,
+          },
+        ],
+      });
+    const dotColor = () => dotColorOf(getLastMessage());
+
+    // 一个成功、一个失败，且回合已落定 → 失败（顺序无关）。
+    send([
+      { type: "tool", name: "bash", stage: "end", success: true },
+      { type: "tool", name: "bash", stage: "end", error: "boom" },
+    ]);
+    expect(dotColor()).toBe(FAILED);
+    send([
+      { type: "tool", name: "bash", stage: "end", error: "boom" },
+      { type: "tool", name: "bash", stage: "end", success: true },
+    ]);
+    expect(dotColor()).toBe(FAILED);
+
+    // 已有块失败、但回合还在跑 → 进行中压过失败（CC 口径）：一个仍在续跑的回合
+    // 不能被显示成「已结束且失败」。
+    send([
+      { type: "tool", name: "bash", stage: "end", error: "boom" },
+      { type: "tool", name: "bash", stage: "running" },
+    ]);
+    expect(dotColor()).toBe(RUNNING);
+    send([
+      { type: "tool", name: "bash", stage: "end", error: "boom" },
+      { type: "tool", name: "bash", stage: "streaming" },
+    ]);
+    expect(dotColor()).toBe(STREAMING);
+    send([
+      { type: "text", content: "还在写", stage: "streaming" },
+      { type: "tool", name: "bash", stage: "end", error: "boom" },
+    ]);
+    expect(dotColor()).toBe(STREAMING);
+
+    // 已完成 + 还在流式 → 进行中（流式档）。
+    send([
+      { type: "tool", name: "bash", stage: "end", success: true },
+      { type: "tool", name: "bash", stage: "streaming" },
+    ]);
+    expect(dotColor()).toBe(STREAMING);
+
+    // 已完成 + 正在执行 → 进行中（运行档）。
+    send([
+      { type: "text", content: "done", stage: "end" },
+      { type: "tool", name: "bash", stage: "running" },
+    ]);
+    expect(dotColor()).toBe(RUNNING);
+  });
+
+  // 场景 5：只有 notice 通知行的消息照常渲染那一行，但不出圆点。
+  it("只有 notice 的消息渲染通知行，但不带时间线圆点", () => {
+    renderChatApp();
+
+    sendCommand("updateMessages", {
+      messages: [
+        {
+          id: "m8",
+          role: "assistant",
+          timestamp: "2024-01-01T00:00:00.000Z",
+          blocks: [{ type: "notice", level: "info", content: "🔄 第 3 轮" }],
+        },
+      ],
+    });
+
+    const message = getLastMessage();
+    expect(message).not.toBeNull();
+    expect(message.classList.contains("timeline-message")).toBe(false);
+    expect(dotColorOf(message)).toBe("");
+  });
+
+  // 进行中的消息多带一个 --running 类（原型 .design-activity.is-running 的呼吸光
+  // 晕）；收尾后回到静态点。光晕本体是 Message.css 的 `@keyframes status-pulse`
+  // （box-shadow 环从 0 扩到 5px 再淡出，颜色取 --dot-color），设计师定稿的效果，
+  // 断言到 computed animation-name 上，免得改选择器时把它悄悄带掉。
+  it("进行中的消息带 --running 与呼吸光晕，结束后收回", () => {
+    renderChatApp();
+
+    const send = (stage: string) =>
+      sendCommand("updateMessages", {
+        messages: [
+          {
+            id: "m9",
+            role: "assistant",
+            timestamp: "2024-01-01T00:00:00.000Z",
+            blocks: [{ type: "tool", name: "bash", stage }],
+          },
+        ],
+      });
+
+    send("running");
+    const running = getLastMessage();
+    expect(running.classList.contains("timeline-message--running")).toBe(true);
+    const halo = getComputedStyle(running, "::before");
+    expect(halo.animationName).toBe("status-pulse");
+    expect(halo.animationIterationCount).toBe("infinite");
+
+    send("end");
+    const done = getLastMessage();
+    expect(done.classList.contains("timeline-message--running")).toBe(false);
+    expect(getComputedStyle(done, "::before").animationName).toBe("none");
   });
 });
 
