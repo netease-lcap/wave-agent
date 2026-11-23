@@ -60,7 +60,7 @@ export interface ExecPoolEntry {
   /**
    * The schema the server declared for this tool's output, rendered as the
    * signature's return type. Absent for most servers today, and never present for
-   * a built-in (its result is a string); a tool without one still gets a return
+   * a built-in (its result is a string); an MCP tool still gets a return
    * type (`Promise<unknown>`), because leaving it out would read as "this call
    * returns nothing".
    */
@@ -327,16 +327,19 @@ function renderType(schema: unknown, depth: number): string {
  * a line of it verbatim into a call — and so it cannot drift from the shape
  * `describeTool` returns.
  *
- * The return type comes from the schema the server declared for its output, and a
- * tool that declared none still gets `Promise<unknown>` rather than no return type
- * at all: the sandbox resolves every call to the tool's output (its structured
- * content, else its text, else `null`), and a signature ending at the parameters
- * would read as "calls this, get nothing". Rendering it from the same rule the
- * runtime applies is what keeps a search hit from teaching a shape the host will
- * not deliver.
+ * The return type is the schema an MCP server declared for its output, and
+ * `string` for a built-in: a built-in resolves to its `content` text, so spelling
+ * that `unknown` tells the model to guess fields the result does not have. An MCP
+ * tool that declared nothing still gets `Promise<unknown>` rather than no return
+ * type at all — its output is whatever `structuredContent` the server sent.
  */
 export function renderToolSignature(entry: ExecPoolEntry): string {
-  return `${toolExpression(entry.name)}(${renderType(entry.inputSchema, 0)}): Promise<${renderType(entry.outputSchema, 0)}>`;
+  const output = entry.isMcp
+    ? renderType(entry.outputSchema, 0)
+    : // A built-in's result is its `content` text (see `ExecPoolEntry.outputSchema`):
+      // a return type of `unknown` would invite the model to read fields off it.
+      "string";
+  return `${toolExpression(entry.name)}(${renderType(entry.inputSchema, 0)}): Promise<${output}>`;
 }
 
 /**

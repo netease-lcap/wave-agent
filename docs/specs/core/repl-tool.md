@@ -21,7 +21,7 @@ order: 36
 > - **调用形态 = 裸全局函数**。脚本里写 `await Read({...})`，不再写 `tools.Read({...})`；`tools.<name>()` 作为兼容入口同时保留（Claude Code 两套都提供）。非标识符名（含 `-`、`.`）仍走 `tools["<name>"]()`。
 > - **两个开关，键名与解析链一致**：`enableRepl`（总开关，默认开；旧键 `enableExec` 继续接受）与 **`enableReplCoreTools`**（核心工具收进 REPL，默认关）。两者都是布尔、都按「远端 managed settings → 本地合并 settings.json → 代码默认值」解析，都能单独下发灰度，且后者是前者的一条输入——`enableRepl: false` 时它无意义。
 > - **声明分三档，与 Claude Code 同构**。Claude Code 的呈现是三层，不是两层：
->   1. **带签名内联**——code-mode-only 的核心工具（Read/Glob/Grep/Bash/PowerShell/NotebookEdit）写进 `interface Tools`，每个带 `(input: {...}): Promise<unknown>`，工具级描述截到 120 字符、超长优先断在句末；**我们没有 NotebookEdit，且把 CC 留在 `tools[]` 的 Write/Edit 也一并收进开关**，所以我们的第 1 档是 Read/Glob/Grep/Bash/PowerShell/Write/Edit 七个；
+>   1. **带签名内联**——code-mode-only 的核心工具（Read/Glob/Grep/Bash/PowerShell/NotebookEdit）写进 `interface Tools`，每个带 `(input: {...}): Promise<unknown>`，工具级描述截到 120 字符、超长优先断在句末；**我们没有 NotebookEdit，且把 CC 留在 `tools[]` 的 Write/Edit 也一并收进开关**，所以我们的第 1 档是 Read/Glob/Grep/Bash/PowerShell/Write/Edit 七个；**唯一的偏离是返回类型**：内置工具渲染成 `Promise<string>`（它 resolve 的就是 `content` 文本），MCP 工具按服务端声明的 outputSchema 渲染、未声明才是 `Promise<unknown>`——CC 那档一律写 `unknown`，模型据此猜出字符串上并不存在的字段；
 >   2. **只列名字**——其余内置在被从 `tools[]` 撤下的情况下拿到 `schema: undefined`，全部塞进一行 `// Also callable as tools.<name>(input); describeTool(name) returns …` 注释；
 >   3. **只列服务器名**——MCP 工具**一个名字都不进**声明（`Ir()` 里 `h.isMcp !== !0` 硬过滤），提示词里只有一句 `MCP tools: connected servers are A, B and 3 more. Find a tool with searchTools…`，服务器名去重后最多列 40 个。
 >

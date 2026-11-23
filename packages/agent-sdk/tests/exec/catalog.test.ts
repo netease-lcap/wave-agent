@@ -219,6 +219,7 @@ describe("renderToolSignature", () => {
   it("renders identifier-safe names as property access", () => {
     const line = renderToolSignature(
       entry("mcp__srv__run", {
+        isMcp: true,
         inputSchema: {
           type: "object",
           properties: { cmd: { type: "string" }, cwd: { type: "string" } },
@@ -238,7 +239,7 @@ describe("renderToolSignature", () => {
   });
 
   it("falls back to bracket access when the name is not a valid identifier", () => {
-    expect(renderToolSignature({ name: "mcp__my-srv__x" })).toBe(
+    expect(renderToolSignature({ name: "mcp__my-srv__x", isMcp: true })).toBe(
       'tools["mcp__my-srv__x"](unknown): Promise<unknown>',
     );
   });
@@ -246,6 +247,7 @@ describe("renderToolSignature", () => {
   it("renders a declared output schema as the return type", () => {
     const line = renderToolSignature(
       entry("mcp__srv__a", {
+        isMcp: true,
         outputSchema: {
           type: "object",
           properties: {
@@ -274,7 +276,10 @@ describe("renderToolSignature", () => {
     // inventing a narrower shape would be a lie the model could act on.
     expect(
       renderToolSignature(
-        entry("mcp__srv__a", { outputSchema: { type: "object" } }),
+        entry("mcp__srv__a", {
+          isMcp: true,
+          outputSchema: { type: "object" },
+        }),
       ),
     ).toBe("tools.mcp__srv__a(unknown): Promise<{}>");
   });
@@ -290,7 +295,7 @@ describe("renderToolSignature", () => {
         }),
       ),
     ).toBe(
-      ["tools.a({", '  mode?: "fast" | "slow",', "}): Promise<unknown>"].join(
+      ["tools.a({", '  mode?: "fast" | "slow",', "}): Promise<string>"].join(
         "\n",
       ),
     );
@@ -305,7 +310,7 @@ describe("renderToolSignature", () => {
         }),
       ),
     ).toBe(
-      ["tools.b({", "  items?: Array<string>,", "}): Promise<unknown>"].join(
+      ["tools.b({", "  items?: Array<string>,", "}): Promise<string>"].join(
         "\n",
       ),
     );
@@ -316,7 +321,7 @@ describe("renderToolSignature", () => {
           inputSchema: { anyOf: [{ type: "string" }, { type: "number" }] },
         }),
       ),
-    ).toBe("tools.c(string | number): Promise<unknown>");
+    ).toBe("tools.c(string | number): Promise<string>");
   });
 
   it("renders every property of a wide schema", () => {
@@ -389,7 +394,9 @@ describe("renderToolSignature", () => {
       entry("d", { inputSchema: nestedSchema(9) }),
     );
     expect(past).toContain("p0?: unknown,");
-    expect(past).not.toContain("string");
+    // Only the argument type is under test here; the return type is `string`
+    // for every built-in, so it must not count as a failure to degrade.
+    expect(past.split("): Promise<")[0]).not.toContain("string");
   });
 
   it("renders per-field JSDoc for descriptions, defaults and constraints", () => {
@@ -441,7 +448,7 @@ describe("renderToolSignature", () => {
         "  legacy?: string,",
         // No description and no tag -> no comment line at all.
         "  plain?: boolean,",
-        "}): Promise<unknown>",
+        "}): Promise<string>",
       ].join("\n"),
     );
   });
@@ -471,7 +478,7 @@ describe("renderToolSignature", () => {
       "   * second line",
       "   */",
       "  p?: string,",
-      "}): Promise<unknown>",
+      "}): Promise<string>",
     ]);
   });
 
@@ -482,7 +489,7 @@ describe("renderToolSignature", () => {
     const line = renderToolSignature(
       entry("gd", { description: "Fetch a URL and extract its text" }),
     );
-    expect(line).toBe("tools.gd(unknown): Promise<unknown>");
+    expect(line).toBe("tools.gd(unknown): Promise<string>");
   });
 
   it("emits a tag even when the field has no description", () => {
