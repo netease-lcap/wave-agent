@@ -79,7 +79,7 @@ describe("renderPoolNote", () => {
         "// Read a file from disk.",
         "tools.Read({",
         "  file_path: string,",
-        "}): Promise<unknown>",
+        "}): Promise<string>",
         "```",
         "Also callable as `tools.<name>(input)`; `describeTool(name)` returns the full shape: `WebFetch`.",
         'MCP tools: connected servers are `alpha`, `beta`. Find one with `searchTools("...")` and call it with the shape it returns.',
