@@ -133,17 +133,25 @@ export class InitializationService {
       // Don't throw error to prevent app startup failure
     }
 
-    // Register — but do not dial — the MCP servers. The server list has to be
-    // complete right after create (the `/mcp` panel and the settings page read
-    // it), while the process spawn waits for the first turn that needs it:
-    // `AIManager.sendAIMessage` → `connectPendingServers()`. A host that pools
-    // Agents per session (desktop, daemon, IM bridge) would otherwise pay one
-    // ~130 MB process tree per conversation it ever opens (spec
-    // ecosystem/mcp.md「按需连接 MCP 服务器」, issue #2758).
+    // Register the MCP servers and start dialing them here — but do not wait for
+    // any of them to come up. The server list has to be complete right after
+    // create (the `/mcp` panel and the settings page read it), and a first
+    // message must not be spent waiting on a server's bootstrap: 2026-11-23
+    // measured 12.75 s from Enter to request, all of it `uvx` starting one
+    // server, while the second turn of the same session took 12 ms. Where the
+    // waiting does live — a 5 s deadline on the turn path, connection continuing
+    // in the background past it, `alwaysLoad: true` as the only server that is
+    // actually waited for — is `AIManager.sendAIMessage` → `waitForTurnDials`
+    // (spec ecosystem/mcp.md「连接 MCP 服务器的时机与超时」). This trades part
+    // of #2758's memory saving (one live tree per active Agent, instead of none
+    // until first use) for that first-turn latency; the destruction-path fixes
+    // from that issue stay.
     try {
       const phaseStart = performance.now();
-      await mcpManager.initialize(workdir, false);
-      await mcpManager.loadConfig();
+      await mcpManager.initialize(workdir, true);
+      // No second `loadConfig()` here: `initialize(workdir, true)` awaits it
+      // before it starts dialing, so the list above is already complete. A
+      // second read would just repeat the same disk work on every create.
       if (lspManager instanceof LspManager) {
         await lspManager.initialize(workdir);
       }

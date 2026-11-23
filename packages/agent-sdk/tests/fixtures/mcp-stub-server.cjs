@@ -10,7 +10,19 @@
 //                 direct child leaves the real server running
 //   NO_TOOLS=1    `tools/list` returns an empty list (a server whose tool set
 //                 shrank to nothing must overwrite, not keep, its cached list)
+//   INIT_DELAY_MS=<ms>  wait that long before answering `initialize` — a server
+//                 that is slow to boot: the process exists, the handshake has
+//                 not completed yet (startup dial tests need both facts apart)
+//   PID_FILE=<path>  write this process's own pid there at startup, so a test
+//                 can observe the spawned process before it is connected
 const readline = require("readline");
+
+const pidFile = process.env.PID_FILE;
+if (pidFile) {
+  require("fs").writeFileSync(pidFile, String(process.pid));
+}
+
+const initDelayMs = Number(process.env.INIT_DELAY_MS || 0);
 
 const grandchildPidFile = process.env.GRANDCHILD_PID_FILE;
 if (grandchildPidFile) {
@@ -44,15 +56,21 @@ rl.on("line", (line) => {
   if (msg.method && msg.id !== undefined) {
     // Request
     if (msg.method === "initialize") {
-      send({
-        jsonrpc: "2.0",
-        id: msg.id,
-        result: {
-          protocolVersion: "2024-11-05",
-          capabilities: { tools: {} },
-          serverInfo: { name: "mcp-stub-server", version: "1.0.0" },
-        },
-      });
+      const reply = () =>
+        send({
+          jsonrpc: "2.0",
+          id: msg.id,
+          result: {
+            protocolVersion: "2024-11-05",
+            capabilities: { tools: {} },
+            serverInfo: { name: "mcp-stub-server", version: "1.0.0" },
+          },
+        });
+      if (initDelayMs > 0) {
+        setTimeout(reply, initDelayMs);
+      } else {
+        reply();
+      }
     } else if (msg.method === "tools/list") {
       const tools =
         process.env.NO_TOOLS === "1"

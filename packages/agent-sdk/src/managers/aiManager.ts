@@ -2810,19 +2810,20 @@ ${question}`;
     // `classic.Stop` 还是 `classic.StopFailure`（spec「影子事件」）。
     let turnError: { kind: ErrorCategory; message: string } | undefined;
 
-    // Lazy MCP dial (spec ecosystem/mcp.md「按需连接 MCP 服务器」场景 2): the
-    // servers were registered at `Agent.create()` but not spawned, because a
-    // pooled Agent per session would otherwise cost one ~130 MB process tree per
-    // conversation the host ever opens (issue #2758). Start the dial alongside
-    // the rest of the turn's preparation and join it before the tool config is
-    // built, so a turn that ends up calling MCP tools can already see them.
-    // `undefined` when there is nothing to dial: such a turn must not gain an
-    // extra yield point over one built before lazy dial existed.
+    // The MCP servers were registered and their dials already started at
+    // `Agent.create()`; all a turn does here is wait for them, for at most 5 s
+    // (spec ecosystem/mcp.md「连接 MCP 服务器的时机与超时」场景 1-5). When the
+    // deadline is reached this turn goes out with whatever happened to be
+    // connected — the connection keeps running in the background and the next
+    // turn's tool config picks it up. A server configured with `alwaysLoad: true`
+    // is the one exception: the user asked to start with it, so it is not bounded
+    // by that deadline. `undefined` when nothing is in flight: such a turn must
+    // not gain an extra yield point over one built before auto-dialing existed.
     const mcp = this.mcpManager;
     const mcpDial =
-      mcp && typeof mcp.beginPendingDials === "function"
-        ? mcp.beginPendingDials()?.catch((error: unknown) => {
-            logger?.warn("MCP lazy dial failed:", error);
+      mcp && typeof mcp.waitForTurnDials === "function"
+        ? mcp.waitForTurnDials()?.catch((error: unknown) => {
+            logger?.warn("MCP turn dial wait failed:", error);
           })
         : undefined;
 
@@ -3044,10 +3045,11 @@ ${question}`;
 
           logger?.debug("modelConfig in sendAIMessage", this.getModelConfig());
 
-          // Join the lazy MCP dial before the tool config is derived, so this
-          // turn's request carries the MCP tools the dial just brought up.
-          // `mcpDial` is undefined when nothing needed dialing — then this is a
-          // no-op, not an extra yield point.
+          // Settle the auto-dial wait before the tool config is derived, so this
+          // turn's request carries whatever came up within the deadline (or
+          // everything, for `alwaysLoad` servers). `mcpDial` is undefined when
+          // nothing was in flight — then this is a no-op, not an extra yield
+          // point.
           if (mcpDial) await mcpDial;
 
           await this.prepareToolDescriptions();

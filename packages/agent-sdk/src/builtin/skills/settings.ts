@@ -490,6 +490,7 @@ The \`.mcp.json\` file contains a list of MCP server configurations.
 - \`env\`: (Optional) A record of environment variables for the server process.
 - \`url\`: (For \`sse\`/\`http\`) The endpoint URL of a remote MCP server.
 - \`headers\`: (For \`sse\`/\`http\`) A record of HTTP headers to send with requests (e.g., \`{"Authorization": "Bearer token"}\`).
+- \`alwaysLoad\`: (Optional, default \`false\`) Wait for this server to finish connecting before the first message goes out. Without it a slow-starting server never delays a turn — see "Using MCP Tools" below.
 
 ## Transport Types
 
@@ -550,7 +551,7 @@ Legacy transport for remote servers that only support SSE. Use \`"http"\` for ne
 
 ## Using MCP Tools
 
-Once configured, Wave will automatically connect to the MCP servers when it starts. Tools provided by these servers will be available to the agent with a prefix:
+Once configured, Wave starts dialing the MCP servers as soon as a session is created, without blocking it. A message waits for them for at most 5 seconds: whatever connected by then is available in that turn, and the rest keeps connecting in the background and shows up from the next turn. Set \`alwaysLoad: true\` on a server that has to be ready for the very first message (e.g. one holding shared state) — that server is waited for with no time limit. Tools provided by these servers will be available to the agent with a prefix:
 
 \`mcp__[serverName]__[toolName]\`
 

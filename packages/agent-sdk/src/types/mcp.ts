@@ -10,6 +10,19 @@ export interface McpServerConfig {
   env?: Record<string, string>;
   url?: string;
   headers?: Record<string, string>;
+  /**
+   * Server-level opt-out from the turn's 5 s connection deadline
+   * (spec ecosystem/mcp.md「连接 MCP 服务器的时机与超时」场景 4): the dial starts at
+   * creation like every other server's, but a turn waits for *this* server to
+   * connect or fail before it builds its tools, however long that takes.
+   *
+   * Not the same thing as the tool-level `_meta["anthropic/alwaysLoad"]` below:
+   * that one is a server asking for one of its *tools* to be declared flat
+   * instead of loaded on demand through the Exec pool — a question of how a tool
+   * is announced, answered after the connection exists. This one is about
+   * whether the connection exists by the time the turn starts.
+   */
+  alwaysLoad?: boolean;
   /** Internal: plugin directory path when the server is registered by a plugin */
   pluginRoot?: string;
 }
@@ -90,12 +103,12 @@ export interface McpServerStatus {
   lastConnected?: number;
   /**
    * Tool snapshot from this server's last successful connection, read from the
-   * machine-local display cache (`~/.wave/mcp-tools-cache.json`). Lazy dial
-   * means a fresh conversation has no process and no tool list; the panel still
-   * has to say what the server brings.
+   * machine-local display cache (`~/.wave/mcp-tools-cache.json`). A conversation
+   * that has not finished connecting (or whose dial the turn did not wait for)
+   * has no tool list yet, but the panel still has to say what the server brings.
    *
    * Display only — never a source of tool declarations or calls (spec
-   * ecosystem/mcp.md 场景 15), which is why only name/description are carried.
+   * ecosystem/mcp.md 场景 18), which is why only name/description are carried.
    * Absent when the config changed since the snapshot (the old tools are no
    * longer trustworthy) or when the server never connected on this machine.
    */
