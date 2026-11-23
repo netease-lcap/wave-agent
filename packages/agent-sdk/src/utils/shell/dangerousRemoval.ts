@@ -756,7 +756,6 @@ function inlineScript(name: string, args: string[]): InlineScript | null {
   return scriptFile ? { kind: "file" } : { kind: "missing" };
 }
 
-
 /**
  * The targets of an `rm` / `rmdir` call: everything that is not a flag.
  *
@@ -1210,15 +1209,33 @@ const VERBATIM_DRIVE = /^[\\/]{2}\?\\[A-Za-z]:/;
  *
  * Where it lands is therefore unknown, and "unknown" is not "allow".
  */
-function isWindowsUnplaceablePath(target: string, platform: NodeJS.Platform) {
+/** `D:x` — a drive-*relative* path: `[cwd]` on another drive, never this one. */
+function isDriveRelativePath(
+  target: string,
+  platform: NodeJS.Platform,
+): boolean {
+  if (platform !== "win32") return false;
+  return /^[A-Za-z]:[^/]/.test(target.replace(/\\/g, "/"));
+}
+
+/**
+ * A spelling whose remainder is not already normalised: a trailing separator or
+ * a `.`/`..` segment, which Windows may read as the directory or as one level of
+ * surprise. Judged on the text the command was written with — once an expansion
+ * has been filled in, the segments are this check's own arithmetic and it can
+ * place the result.
+ */
+function isUnnormalisedPath(
+  target: string,
+  platform: NodeJS.Platform,
+): boolean {
   if (platform !== "win32") return false;
   const slashed = target.replace(/\\/g, "/");
   const withoutDrive = slashed.replace(/^[A-Za-z]:(?=\/)/, "");
   return (
-    /^[A-Za-z]:[^/]/.test(slashed) ||
-    (withoutDrive.startsWith("/") &&
-      !/^\/\/[^/]/.test(withoutDrive) &&
-      path.posix.normalize(withoutDrive) !== withoutDrive)
+    withoutDrive.startsWith("/") &&
+    !/^\/\/[^/]/.test(withoutDrive) &&
+    path.posix.normalize(withoutDrive) !== withoutDrive
   );
 }
 
@@ -1477,10 +1494,20 @@ function judgeStaticTarget(
     expanded,
   ].filter((spelling) => spelling.length > 0);
 
+  // A target Git Bash reads differently from this check is a problem of how it
+  // was *written*, not of where it ends up. `E:\code\myrepo` loses its
+  // backslashes on the way to `rm`, which is a property of the shell's reading
+  // and shows in every spelling; a trailing separator or a `.`/`..` segment is
+  // only surprising when it is in the text the command was spelled with —
+  // `"$PWD/.."` names the parent directory, and that is a path this check can
+  // place.
   for (const spelling of spellings) {
-    if (isWindowsUnplaceablePath(spelling, judgement.platform)) {
+    if (isDriveRelativePath(spelling, judgement.platform)) {
       return { rule: "unplaceable", target: rawTarget, resolved: "" };
     }
+  }
+  if (isUnnormalisedPath(writtenWord(rawTarget), judgement.platform)) {
+    return { rule: "unplaceable", target: rawTarget, resolved: "" };
   }
 
   const protectedRoots = [cwd, ...judgement.roots];
