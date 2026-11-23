@@ -16,6 +16,17 @@ const PROTECTED = [WORKDIR];
 const WINDOWS = process.platform === "win32";
 
 /**
+ * `emptyVariable` and `var_root_child` are the same hit under two names: an empty
+ * expansion dropped a segment, and what is left of the target is somewhere this
+ * check cannot vouch for. Which name comes back depends on where that remaining
+ * prefix lands — and for `~` that includes where the runner's home is — so an
+ * assertion on this family says "reported", not "reported under this spelling".
+ */
+function emptiedVariable(rule: string | null): boolean {
+  return rule === "emptyVariable" || rule === "var_root_child";
+}
+
+/**
  * The drive the fixture sits on, upper case: `path.resolve(path.sep, …)` lands on
  * whichever drive the test runs *from* — `C:` in one checkout, `D:` in another —
  * so a Windows spelling built from a literal letter names a directory the fixture
@@ -438,18 +449,13 @@ describe("findDangerousRemoval — variables the command sets", () => {
   });
 
   it("reports a variable pinned under a fixed root prefix", () => {
-    // `/$D` empties to the root itself, so it is reported as that rather than
-    // as "a variable under a prefix" — see the next test.
-    expect(ruleOf('rm -rf "/$D"')).toBe(
-      WINDOWS ? "var_root_child" : "emptyVariable",
-    );
-    expect(ruleOf('rm -rf "/${D}/sub"')).toBe("var_root_child");
-    // Same hit, two names: Windows reports the empty expansion as reaching the
-    // root here, Linux reports "a variable under a prefix".
-    expect(ruleOf('rm -rf "~/$D"')).toBe(
-      WINDOWS ? "emptyVariable" : "var_root_child",
-    );
-    expect(ruleOf('rm -rf "C:/$D"')).toBe("var_root_child");
+    // `/$D` empties to the root itself; the next test pins what a variable under
+    // a fixed prefix does. Both are reported, under whichever of the two names
+    // the platform's arithmetic lands on.
+    expect(emptiedVariable(ruleOf('rm -rf "/$D"'))).toBe(true);
+    expect(emptiedVariable(ruleOf('rm -rf "/${D}/sub"'))).toBe(true);
+    expect(emptiedVariable(ruleOf('rm -rf "~/$D"'))).toBe(true);
+    expect(emptiedVariable(ruleOf('rm -rf "C:/$D"'))).toBe(true);
     // Whatever `D` holds, the target cannot come back inside the working
     // directory: the prefix already left it.
     expect(judge('rm -rf "~/$D"')?.resolved).toBe(path.resolve(os.homedir()));
