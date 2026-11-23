@@ -119,7 +119,14 @@ function snapshotScript(
       ? `setopt | sed 's/^/setopt /' | head -n 1000 >> "$SNAPSHOT_FILE"`
       : [
           `shopt -p | head -n 1000 >> "$SNAPSHOT_FILE"`,
-          `set -o | grep 'on' | awk '{print "set -o " $1}' | head -n 1000 >> "$SNAPSHOT_FILE"`,
+          // `set +o` prints every option in a form the shell reads back as-is
+          // (`set -o xxx` when on, `set +o xxx` when off). Grepping `set -o`'s
+          // human table for "on" looked simpler and was wrong: `monitor off`
+          // matches it ("m-on-itor"), so sourcing the snapshot turned job
+          // control *on* and every backgrounded command got its own process
+          // group — the shell's leftovers then no longer sat in the group the
+          // session reaper tracks.
+          `set +o | head -n 1000 >> "$SNAPSHOT_FILE"`,
           `echo 'shopt -s expand_aliases' >> "$SNAPSHOT_FILE"`,
         ].join("\n"),
   );

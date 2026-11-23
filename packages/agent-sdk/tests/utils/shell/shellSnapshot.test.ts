@@ -139,6 +139,13 @@ describe("getShellSnapshot", () => {
       expect(contents).toContain("# Aliases");
       expect(contents).toContain("wavealias");
       expect(contents).toContain("shopt -s expand_aliases");
+      // Regression: filtering set -o for "on" also matched "monitor off"
+      // ("m-on-itor") and re-enabled job control, which pushed every
+      // backgrounded command into its own process group. Off options must
+      // come back as "set +o", so a plain foreground command keeps its
+      // leftovers in the shell own group.
+      expect(contents).toContain("set +o monitor");
+      expect(contents).not.toContain("set -o monitor");
       // The rc's own output belongs to the login shell, never to the snapshot.
       expect(contents).not.toContain("RC_NOISE_STDOUT");
       expect(contents).not.toContain("RC_NOISE_STDERR");
