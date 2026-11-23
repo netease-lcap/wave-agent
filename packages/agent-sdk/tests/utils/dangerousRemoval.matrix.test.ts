@@ -373,7 +373,9 @@ const BASIC: Row[] = [
   },
   {
     command: "rm -rf /*",
-    expected: "root",
+    // `\` — the drive root on Windows — is the "every first-level directory is
+    // critical" shape there, which is the same hit under another name.
+    expected: process.platform === "win32" ? "system" : "root",
     spec: "9",
     note: "a glob whose static prefix is the root",
   },
