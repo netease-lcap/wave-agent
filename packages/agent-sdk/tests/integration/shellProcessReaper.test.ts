@@ -194,6 +194,13 @@ describe("ShellProcessReaper with real shells", () => {
 
   // Accepted boundary: `setsid` moves the process out of the shell's group on
   // purpose, so no group-based ledger can see it (stated in the spec).
+  //
+  // The trailing wait loop is load-bearing, not decoration. `setsid … &` only
+  // *queues* the escape: if the shell exits before the child runs `setsid()`,
+  // the probe legitimately sees it still sitting in the shell's group and
+  // records it (CI hit exactly that window once). Waiting for the pid file
+  // proves the new session exists before the shell is allowed to exit, which
+  // turns "nothing in the group" from a matter of scheduling into a fact.
   it.skipIf(!isLinux)(
     "does not record a process that escaped via setsid",
     async () => {
@@ -202,7 +209,9 @@ describe("ShellProcessReaper with real shells", () => {
       const pidFile = path.join(dir, "setsid.pid");
       await bashTool.execute(
         {
-          command: `setsid bash -c 'echo $$ > "${pidFile}"; exec sleep 66' >/dev/null 2>&1 & echo started`,
+          command:
+            `setsid bash -c 'echo $$ > "${pidFile}"; exec sleep 66' >/dev/null 2>&1 & ` +
+            `while [ ! -s "${pidFile}" ]; do sleep 0.02; done; echo started`,
         },
         makeContext(dir, instance),
       );
