@@ -727,6 +727,53 @@ describe("repl sandbox: termination", () => {
     expect((await sandbox.run("return 3", opts())).value).toBe("3");
   });
 
+  it("points at the failing line and warns about the outer template literal", async () => {
+    const sandbox = open();
+    // A shell default-value expansion inside an outer template literal: the
+    // shape that made a real probe script fail to parse. `${V:-x}` is read as
+    // an interpolation and `V:` is where acorn stops.
+    const result = await sandbox.run(
+      [
+        "const w = `const cases = [",
+        '  "DIR=/tmp/wave-${V:-x}; rm -rf $DIR",',
+        "];`;",
+      ].join("\n"),
+      opts(),
+    );
+    expect(result.ok).toBe(false);
+    const text = result.error ?? "";
+    expect(text).toContain("at line 2, column 21");
+    expect(text).toContain('"DIR=/tmp/wave-${V:-x}; rm -rf $DIR",');
+    expect(text).toContain("template literal");
+  });
+
+  it("adds no hint when the source holds no backtick", async () => {
+    const sandbox = open();
+    const result = await sandbox.run("const = 1", opts());
+    const text = result.error ?? "";
+    expect(text).toContain("Script syntax error:");
+    expect(text).not.toContain("Hint:");
+  });
+
+  it("warns when an empty template literal called the next one as a tag", async () => {
+    const sandbox = open();
+    // `` `a``b` `` parses: the empty-ish first literal ends at its backtick, so the
+    // next literal tags it and a string is called.
+    const result = await sandbox.run("const s = `a``b`;", opts());
+    expect(result.ok).toBe(false);
+    const text = result.error ?? "";
+    expect(text).toContain("is not a function");
+    expect(text).toContain("two backticks in a row");
+  });
+
+  it("adds no runtime hint when the source holds no doubled backtick", async () => {
+    const sandbox = open();
+    const result = await sandbox.run("throw new TypeError('boom')", opts());
+    const text = result.error ?? "";
+    expect(text).toContain("boom");
+    expect(text).not.toContain("Hint:");
+  });
+
   it("maps an error inside a loop back to the line the script wrote", async () => {
     const sandbox = open();
     const result = await sandbox.run(

@@ -11,6 +11,7 @@ import type { BudgetInfo, WorkflowMeta, WorkflowMetaPhase } from "./types.js";
 import type { WorkflowApiStats } from "./workflowApis.js";
 import { describeFailure, evaluateMetaLiteral } from "./metaLiteral.js";
 import { logger } from "../utils/globalLogger.js";
+import { describeSyntaxError } from "../utils/scriptErrorText.js";
 
 /**
  * Workflow script runtime: validation, meta extraction and sandboxed execution.
@@ -352,18 +353,8 @@ function parseProgram(script: string): ParseOutcome {
       }),
     };
   } catch (error) {
-    return { syntaxError: formatSyntaxError(error) };
+    return { syntaxError: describeSyntaxError(error, script) };
   }
-}
-
-function formatSyntaxError(error: unknown): string {
-  const message = error instanceof Error ? error.message : String(error);
-  const loc = (error as { loc?: { line: number; column: number } | null }).loc;
-  const cleaned = message.replace(/\s*\(\d+:\d+\)$/, "");
-  if (!loc) {
-    return `Script syntax error: ${cleaned}`;
-  }
-  return `Script syntax error: ${cleaned} at line ${loc.line}, column ${loc.column + 1}`;
 }
 
 function findMetaDeclaration(program: Program): MetaDeclaration | null {
