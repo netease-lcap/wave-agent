@@ -49,13 +49,30 @@ import {
   type CaseNode,
   type Program,
 } from "./bashParser.js";
+import { extractDataRegions } from "./dataRegions.js";
 import {
+  MAX_COMMAND_LENGTH,
   SAFE_ENV_VARS,
+  type BashAssignment,
   type BashLeaf,
   type BashLeafReason,
+  type BashParseStats,
+  type BashStructureDetail,
   type BashStructureResult,
+  type BashSubshellRange,
   type BashUnsupportedReason,
 } from "./types.js";
+
+/**
+ * Backstop on substitution nesting, so the walk cannot recurse without bound on
+ * a line like `$( $( $( … ) ) )`. Callers that judge nesting compare against
+ * their own (smaller) limit via {@link BashStructureDetail.maxNesting}; this one
+ * only exists to keep the recursion finite.
+ */
+const MAX_SUBSTITUTION_DEPTH = 16;
+
+/** Backstop on leaf count; the length limit is what actually binds today. */
+const MAX_LEAVES = 2000;
 
 /** Sentinel: variable value cannot be statically known. */
 const UNKNOWN = "\u0000unknown";
@@ -83,10 +100,109 @@ const BARE_UNSAFE_RE = /[ \t\n*?[]/;
 export class BashSemantics {
   private leaves: BashLeaf[] = [];
 
+  /** Leaf ranges running in a subshell, filled as the walk meets them. */
+  readonly subshells: BashSubshellRange[] = [];
+
+  /** Non-zero while walking a function body: a definition runs nothing, so the
+   *  writes inside it must not look like writes this line has already made. */
+  private suppressed = 0;
+
+  /** Ids of the subshells this walk is inside, innermost last. */
+  private readonly subshellStack: number[] = [];
+
+  /**
+   * Variable writes met so far, in program order. Kept for callers that have to
+   * place a variable target before the line runs (`rm -rf "$D"`): they need to
+   * know which value `D` held at that point, which the fail-closed parse never
+   * has to answer.
+   */
+  private readonly assignments: BashAssignment[] = [];
+
+  /**
+   * Constructs the *detailed* walk keeps walking past, because it can still say
+   * something useful about them: `eval` keeps its command words so the caller
+   * can read its literal argument as a command line a second time, and a process
+   * substitution keeps the leaves of its body. `null` in the fail-closed walk,
+   * where both abort the parse — `parseBashStructure` then answers
+   * `unsupported` exactly as before.
+   */
+  private readonly softErrors: BashUnsupportedReason[] | null;
+
+  /**
+   * @param stats filled in as the walk goes (nesting depth, budget aborts).
+   *   Shared with the nested walks a command substitution spawns, so depth is
+   *   measured against the whole line rather than per level.
+   * @param depth substitution nesting this walk runs at.
+   * @param softErrors where to record a construct this walk chose to keep
+   *   walking past; `null` (the fail-closed walk) aborts on them instead.
+   */
+  constructor(
+    private readonly stats: BashParseStats = { maxNesting: 0, aborted: false },
+    private readonly depth = 0,
+    softErrors: BashUnsupportedReason[] | null = null,
+  ) {
+    this.softErrors = softErrors;
+  }
+
   /** Parse and expand a full command string. */
   static analyze(command: string): BashStructureResult {
     const s = new BashSemantics();
     return s.run(command);
+  }
+
+  /**
+   * The same walk, keeping the split the fail-closed projection collapses:
+   * which regions were data, and which input could not be read as commands.
+   *
+   * Heredoc bodies, here-strings and comments are removed before the command
+   * stream is parsed (see `dataRegions.ts`), so prose in a commit message is
+   * never mistaken for a command. Everything that is *not* data is reported in
+   * `errors` instead of silently ending the walk.
+   */
+  static analyzeDetailed(command: string): BashStructureDetail {
+    if (command.length > MAX_COMMAND_LENGTH) {
+      return {
+        commandText: command,
+        leaves: [],
+        dataRegions: 0,
+        heredocRegions: 0,
+        errors: [],
+        aborted: true,
+        maxNesting: 0,
+        assignments: [],
+        subshells: [],
+        heredocBodies: [],
+      };
+    }
+    const data = extractDataRegions(command);
+    const stats: BashParseStats = { maxNesting: 0, aborted: false };
+    const softErrors: BashUnsupportedReason[] = [];
+    const semantics = new BashSemantics(stats, 0, softErrors);
+    const result = semantics.run(data.text);
+    const errors: BashUnsupportedReason[] = [...softErrors];
+    // A heredoc that could not be established as data is unreadable input, not
+    // data: the text is still in `commandText` and the caller must judge (or
+    // ask about) it.
+    if (data.errors.length > 0) errors.push("heredoc");
+    if (result.status === "unsupported" && !errors.includes(result.reason)) {
+      errors.push(result.reason);
+    }
+    const leaves = result.status === "ok" ? result.leaves : [];
+    if (leaves.length > MAX_LEAVES) stats.aborted = true;
+    return {
+      commandText: data.text,
+      leaves: stats.aborted ? [] : leaves,
+      dataRegions: data.regions,
+      heredocRegions: data.heredocs,
+      errors,
+      aborted: stats.aborted,
+      maxNesting: stats.maxNesting,
+      assignments: semantics.assignments,
+      subshells: [...semantics.subshells].sort(
+        (a, b) => a.start - b.start || b.end - a.end,
+      ),
+      heredocBodies: data.bodies,
+    };
   }
 
   private run(command: string): BashStructureResult {
@@ -150,14 +266,30 @@ export class BashSemantics {
         return this.walkIf(stmt, scope);
       case "case":
         return this.walkCase(stmt, scope);
-      case "function":
-        throw new Unsupported(
-          "unknown-command",
-          "function definitions cannot be statically expanded",
-        );
+      case "function": {
+        // Defining a function runs nothing, but a later call runs its body, and
+        // statically that call is as likely as any branch of an `if` — so the
+        // body is judged by the rules its commands would get in full. Two
+        // things are cut: the call site's variables are unknowable here, and a
+        // write inside the body does not happen until it is called, so it must
+        // not read as a write this line has already made.
+        this.walkFunctionBody(stmt.body);
+        return scope;
+      }
       case "subshell": {
-        // `( a; b )` — runs in a subshell; assignments never escape.
-        this.walkProgram(stmt.body, new Map());
+        // `( a; b )` — runs in a subshell; assignments never escape. The leaf
+        // range is kept so a caller tracking the shell's directory knows the
+        // `cd` in here is undone when the subshell ends, and the leaves and
+        // writes carry its id so a caller tracking variable values keeps them
+        // apart from the shell around them.
+        const start = this.leaves.length;
+        this.subshellStack.push(this.nextSubshellId());
+        try {
+          this.walkProgram(stmt.body, new Map());
+        } finally {
+          this.subshellStack.pop();
+        }
+        this.subshells.push({ start, end: this.leaves.length });
         return scope;
       }
       case "group": {
@@ -224,7 +356,19 @@ export class BashSemantics {
       // the value (unknown) propagates to the sequential scope.
       for (const w of assignments) {
         const a = parseAssignment(w);
-        if (a) this.applyAssignment(a, scope);
+        if (!a) continue;
+        // The value is read with the scope as it was *before* this write, so
+        // `V=$W` never sees its own result; the write itself is recorded after
+        // `applyAssignment` so a command substitution on the right-hand side
+        // counts as a command this line runs before the next one.
+        const value = knownValue(a.valueParts, scope);
+        this.applyAssignment(a, scope);
+        this.recordAssignment(
+          a,
+          w.raw.slice(a.name.length + 1),
+          undefined,
+          value,
+        );
       }
       return scope;
     }
@@ -234,7 +378,11 @@ export class BashSemantics {
     // incoming scope. They do NOT leak to the sequential scope (`FOO=x echo hi`
     // leaves FOO unset afterwards).
     const leaf = this.buildLeaf(commandWords, scope);
-    if (leaf) this.leaves.push(leaf);
+    if (leaf) {
+      const subshell = this.subshellId();
+      if (subshell !== 0) leaf.subshell = subshell;
+      this.leaves.push(leaf);
+    }
     return scope;
   }
 
@@ -245,6 +393,11 @@ export class BashSemantics {
     for (const w of node.iter) this.collectWordCmdSubs(w);
     const bodyScope = copyScope(scope);
     bodyScope.set(node.varName, UNKNOWN);
+    this.recordAssignment(
+      { name: node.varName, valueParts: [] },
+      node.iter.map((w) => w.raw).join(" "),
+      "for",
+    );
     this.walkProgram(node.body, bodyScope);
     // Assignments inside the body may not run (zero iterations): don't leak.
     return scope;
@@ -325,7 +478,15 @@ export class BashSemantics {
 
     const command = commandNameOf(argv[0]);
     if (command === "eval" || command === "trap") {
-      throw new Unsupported("eval", `\`${command}\` is dynamic execution`);
+      // `eval` keeps its command words in the detailed walk: its argument is a
+      // command line the caller can read a second time, and without the leaf
+      // "this line is unreadable" would be the only verdict available. `trap`
+      // has no such caller, and the fail-closed walk aborts on both.
+      if (command === "eval" && this.softErrors !== null) {
+        this.softErrors.push("eval");
+      } else {
+        throw new Unsupported("eval", `\`${command}\` is dynamic execution`);
+      }
     }
     const text = redirects.length
       ? `${argv.join(" ")} ${redirects.join(" ")}`
@@ -396,6 +557,19 @@ export class BashSemantics {
             `parameter/brace expansion in \`${w.raw}\``,
           );
         case "process":
+          // `<(…)` / `>(…)` runs a full command list before the leaf does. The
+          // detailed walk collects the leaves of that body so the caller can
+          // judge a deletion inside it by the same rules, and records the
+          // construct itself: process substitution is still never reducible to
+          // a plain command, so the fail-closed walk keeps aborting on it.
+          if (this.softErrors !== null) {
+            this.softErrors.push("process-substitution");
+            this.emitSubstitutionLeaves(
+              part.text.slice(2, part.text.endsWith(")") ? -1 : undefined),
+            );
+            reasons.push("command-substitution");
+            break;
+          }
           throw new Unsupported(
             "process-substitution",
             `process substitution in \`${w.raw}\``,
@@ -405,6 +579,55 @@ export class BashSemantics {
   }
 
   // ── Assignments / scope ───────────────────────────────────────────────────
+
+  /** Note a write to a shell variable for the callers that place its value. */
+  private recordAssignment(
+    a: { name: string; valueParts: WordPart[] },
+    rhs: string,
+    source?: "read" | "for",
+    value: string | null = null,
+  ): void {
+    // A write inside a function body has not happened yet: recording it would
+    // let a later command on the same line read a value the shell does not set
+    // until the function is called.
+    if (this.suppressed > 0) return;
+    this.assignments.push({
+      visibleFrom: this.leaves.length,
+      name: a.name,
+      value: source === undefined ? value : null,
+      rhs,
+      ...(source === undefined ? {} : { source }),
+      ...(this.subshellId() === 0 ? {} : { subshell: this.subshellId() }),
+    });
+  }
+
+  /** Id of the innermost subshell this walk is inside, or 0 at top level. */
+  private subshellId(): number {
+    return this.subshellStack[this.subshellStack.length - 1] ?? 0;
+  }
+
+  /** Hand out the next subshell id, shared across nested walks. */
+  private nextSubshellId(): number {
+    const id = this.stats.nextSubshellId ?? 1;
+    this.stats.nextSubshellId = id + 1;
+    return id;
+  }
+
+  /**
+   * Walk a function body: its commands are judged like any others, its writes
+   * are not. `f(){ rm -rf ../..; }` deletes exactly what `rm -rf ../..` deletes,
+   * but `f(){ D=/tmp; }; rm -rf $D` deletes whatever `$D` was before the call.
+   */
+  private walkFunctionBody(body: StmtNode[]): void {
+    this.suppressed++;
+    try {
+      // Fresh scope: which variables the call site holds is not knowable from
+      // a definition, so everything the body reads stays unknown.
+      this.walkProgram(body, new Map());
+    } finally {
+      this.suppressed--;
+    }
+  }
 
   private applyAssignment(
     a: { name: string; valueParts: WordPart[] },
@@ -465,7 +688,16 @@ export class BashSemantics {
 
   /** Recursively parse a $() body and append its leaves. */
   private emitSubstitutionLeaves(text: string): void {
-    const sub = new BashSemantics();
+    const depth = this.depth + 1;
+    this.stats.maxNesting = Math.max(this.stats.maxNesting, depth);
+    if (depth > MAX_SUBSTITUTION_DEPTH) {
+      this.stats.aborted = true;
+      throw new Unsupported(
+        "too-complex",
+        `command substitution nests deeper than ${MAX_SUBSTITUTION_DEPTH}`,
+      );
+    }
+    const sub = new BashSemantics(this.stats, depth, this.softErrors);
     const result = sub.run(text);
     if (result.status !== "ok") {
       throw new Unsupported(
@@ -473,7 +705,21 @@ export class BashSemantics {
         `command substitution body \`${text}\``,
       );
     }
+    const base = this.leaves.length;
+    // A substitution inside a subshell runs there too: its leaves inherit the
+    // id, or a caller tracking values would let them read the outer shell.
+    const subshell = this.subshellId();
+    if (subshell !== 0) {
+      for (const leaf of result.leaves) {
+        if (leaf.subshell === undefined) leaf.subshell = subshell;
+      }
+    }
     this.leaves.push(...result.leaves);
+    // Subshell ranges inside the substitution are leaf indices of its own walk:
+    // shift them by where its leaves landed here.
+    for (const range of sub.subshells) {
+      this.subshells.push({ start: range.start + base, end: range.end + base });
+    }
   }
 
   /** Mark variables captured by `read` in a condition list as unknown. */
@@ -486,7 +732,9 @@ export class BashSemantics {
           const raw = words[i]?.raw ?? "";
           if (raw.startsWith("-")) continue;
           const name = raw.replace(/^["']|["']$/g, "");
-          if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) scope.set(name, UNKNOWN);
+          if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) continue;
+          scope.set(name, UNKNOWN);
+          this.recordAssignment({ name, valueParts: [] }, "", "read");
         }
         return;
       }
@@ -505,6 +753,34 @@ export class BashSemantics {
 }
 
 // ── Free helpers ────────────────────────────────────────────────────────────
+
+/**
+ * The value of an assignment right-hand side when it can be known statically:
+ * literal text, and references to variables that already hold one. `null` when
+ * anything in it still has to be expanded first (`$(…)`, a backtick, a
+ * variable whose value is not known). Quotes are literal text, so `D='..'`
+ * has the value `..`.
+ *
+ * Taking references into account is what makes `V=abc; D=/tmp/$V` place `D`:
+ * the shell sets it to `/tmp/abc` before the next command runs, so a check
+ * that stopped at `$V` would be claiming not to know a path it does know.
+ */
+function knownValue(parts: WordPart[], scope: Scope): string | null {
+  let out = "";
+  for (const part of parts) {
+    if (part.t === "lit") {
+      out += part.v;
+      continue;
+    }
+    if (part.t !== "var") return null;
+    const value = resolveVar(part.name, scope);
+    if (value === UNKNOWN || value === MULTIWORD || value === SPECIAL_SINGLE) {
+      return null;
+    }
+    out += value;
+  }
+  return out;
+}
 
 function resolveVar(name: string, scope: Scope): VarValue {
   return scope.get(name) ?? UNKNOWN;

@@ -1428,9 +1428,9 @@ export class PermissionManager {
 
   /**
    * The built-in refusal to remove the session's own working directory, and the
-   * three shapes where this check cannot tell what a deletion would do
-   * (`unparsable`, `unplaceable`, `unverifiable`). Bash only: PowerShell's
-   * channel answers the same question in its own hard-deny band
+   * shapes where this check cannot tell what a deletion would do
+   * (`unparsable`, `unplaceable`, `unverifiable`, `nestedSpansOverrun`). Bash only:
+   * PowerShell's channel answers the same question in its own hard-deny band
    * (`evaluatePowerShellCommand`), where rules already do not reach.
    *
    * `dontAsk` denies instead of asking — a mode whose whole promise is "do not

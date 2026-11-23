@@ -170,11 +170,15 @@ describe("findDangerousRemoval — targets that end the session", () => {
 
   it("refuses a target that cannot be resolved before it runs", () => {
     expect(ruleOf("rm -rf $UNKNOWN")).toBe("unresolvable");
-    expect(ruleOf("rm -rf $PWD")).toBe("unresolvable");
-    expect(ruleOf('rm -rf "$PWD"')).toBe("unresolvable");
     expect(ruleOf("rm -rf $(pwd)")).toBe("unresolvable");
     expect(ruleOf("rm -rf `pwd`")).toBe("unresolvable");
-    expect(ruleOf('rm -rf "$DIR"/*')).toBe("unresolvable");
+    // `$PWD` and `$HOME` are not unknown: a shell always has both, so the
+    // verdict is the directory itself rather than "cannot be checked".
+    expect(ruleOf("rm -rf $PWD")).toBe("working_directory");
+    expect(ruleOf('rm -rf "$PWD"')).toBe("working_directory");
+    expect(ruleOf('rm -rf "$HOME"')).toBe("home");
+    // Emptying an unknown variable leaves `/*`, which is the root's contents.
+    expect(ruleOf('rm -rf "$DIR"/*')).toBe("emptyVariable");
   });
 
   it("refuses a glob whose static prefix is the root or a parent", () => {
@@ -245,24 +249,25 @@ describe("findDangerousRemoval — shapes that hide the command", () => {
 
 describe("findDangerousRemoval — what it cannot read, it asks about", () => {
   it("asks when the command line cannot be parsed and names a removal", () => {
-    expect(ruleOf("eval 'rm -rf ../..'")).toBe("unparsable");
+    expect(ruleOf("trap 'rm -rf ../..' EXIT")).toBe("unparsable");
     expect(ruleOf("rm -rf $((1+2))")).toBe("unparsable");
     expect(ruleOf("rm -rf ../.. && echo $((1+2))")).toBe("unparsable");
-    expect(ruleOf("rm -rf ../.. <<EOF\nx\nEOF")).toBe("unparsable");
-    expect(ruleOf("rm -rf ../.. ; cat <(echo x)")).toBe("unparsable");
+    // An *unclosed* heredoc is the readable counterpart of the case below:
+    // nothing after it can be placed, so the line is reported. A closed one is
+    // judged by the command it belongs to.
+    expect(ruleOf("rm -rf ../.. <<EOF\nx")).toBe("unparsable");
+    // A process substitution is read for the commands inside it, but the
+    // construct itself is still not one this check reads to the end: an
+    // ordinary removal next to one keeps its card.
+    expect(ruleOf("rm -rf build ; cat <(sort x)")).toBe("unparsable");
     expect(ruleOf("rm -rf ../.. {a,b}")).toBe("unparsable");
   });
 
   it("says why it could not read the line", () => {
-    const hit = judge("rm -rf ../.. <<EOF\nx\nEOF")!;
+    const hit = judge("rm -rf ../.. <<EOF\nx")!;
     expect(hit.detail).toContain("heredoc");
     expect(describeDangerousRemoval(hit)).toContain("cannot be checked before");
     expect(describeDangerousRemoval(hit)).toContain("cannot be covered");
-  });
-
-  it("asks when a shell's script is a file this check never opens", () => {
-    expect(ruleOf("bash deploy.sh")).toBe("unverifiable");
-    expect(ruleOf("sh scripts/clean.sh -rf")).toBe("unverifiable");
   });
 
   it("stays silent about a shell started with no script of its own", () => {
@@ -303,9 +308,257 @@ describe("findDangerousRemoval — what it cannot read, it asks about", () => {
   });
 
   it("names the command that hides the deletion", () => {
-    const hit = judge("bash deploy.sh")!;
-    expect(hit.detail).toBe("bash");
-    expect(describeDangerousRemoval(hit)).toContain('"bash"');
+    const hit = judge("powershell -Command Remove-Item x")!;
+    expect(hit.detail).toBe("powershell");
+    expect(describeDangerousRemoval(hit)).toContain('"powershell"');
+  });
+});
+
+describe("findDangerousRemoval — channels that carry a command line", () => {
+  it("re-reads the script an inline shell carries", () => {
+    expect(ruleOf("bash -c 'rm -rf ../..'")).toBe("working_directory");
+    expect(ruleOf("zsh -c 'rm -rf ../..'")).toBe("working_directory");
+    // The second reading uses the same rules: a read comes back cleared, not
+    // as a wrapper this check refuses to follow.
+    expect(judge("sh -c 'ls -la'")).toBeNull();
+    // `--` ends the shell's own flags: what follows is a script file.
+    expect(judge("bash -- deploy.sh")).toBeNull();
+  });
+
+  it("leaves a script file to the ordinary rules", () => {
+    // Spec scenario 14: the judgment is about the text this call carries, and
+    // a script that lives in a file never enters it.
+    for (const command of [
+      "bash deploy.sh",
+      "sh scripts/clean.sh",
+      "sh scripts/clean.sh -rf /",
+      "zsh x.sh",
+      "bash -x scripts/clean.sh",
+      "python deploy.py",
+    ]) {
+      expect(judge(command), command).toBeNull();
+    }
+  });
+
+  it("reads the command line eval is given", () => {
+    expect(ruleOf("eval 'rm -rf ../..'")).toBe("working_directory");
+    expect(ruleOf('eval "rm -rf ../.."')).toBe("working_directory");
+    // `eval` joins its words and parses the result: the same command.
+    expect(ruleOf("eval rm -rf ../..")).toBe("working_directory");
+    // A read comes back cleared, not reported as an unreadable line.
+    expect(judge("eval 'ls -la'")).toBeNull();
+    expect(judge("eval")).toBeNull();
+    // An argument that is not text yet is still reported, and so is a target
+    // the second reading cannot place.
+    expect(ruleOf('eval "rm -rf $CMD"')).toBe("unparsable");
+    expect(ruleOf("eval 'rm -rf $DIR'")).toBe("unresolvable");
+  });
+
+  it("reads the command inside a process substitution", () => {
+    // Spec scenario 20: `<( … )` carries a command line, so a deletion in it
+    // is judged by the same rules instead of the line being unreadable.
+    expect(ruleOf("diff <(rm -rf ../..) <(sort b)")).toBe("working_directory");
+    expect(ruleOf("rm -rf ../.. ; cat <(echo x)")).toBe("working_directory");
+    // Nothing to delete on either side: an ordinary read.
+    expect(judge("cat <(echo hi)")).toBeNull();
+  });
+
+  it("judges what xargs runs by its fixed arguments", () => {
+    // The fixed arguments are on this line, so the hit names them exactly.
+    expect(judge("xargs rm -rf ..")?.rule).toBe("working_directory");
+    expect(judge("xargs rm -rf ..")?.resolved).toBe(path.dirname(WORKDIR));
+    expect(ruleOf("xargs -n 2 rm -rf ../..")).toBe("working_directory");
+    expect(ruleOf("xargs sudo rm -rf ../..")).toBe("working_directory");
+    expect(ruleOf("xargs sh -c 'rm -rf ..'")).toBe("working_directory");
+
+    // The words on stdin are not in this line, and every one of them becomes
+    // another target: a deletion whose fixed arguments place nothing dangerous,
+    // or name a wildcard or a variable, is reported rather than cleared.
+    for (const command of [
+      "ls | xargs rm -rf",
+      "find . -name x | xargs rm",
+      "echo build | xargs rm -rf build",
+      "find . | parallel rm -rf {}",
+    ]) {
+      expect(ruleOf(command), command).toBe("unverifiable");
+    }
+
+    // What it runs is not a deletion: reading a target list off a pipe is
+    // exactly what these commands are for.
+    expect(judge("find . -name x | xargs grep TODO")).toBeNull();
+    expect(judge("cat files | parallel wc -l")).toBeNull();
+  });
+
+  it("still reports a wrapper it cannot read inside xargs", () => {
+    expect(ruleOf("cat list | parallel pwsh")).toBe("unverifiable");
+    expect(judge("cat list | parallel pwsh")?.detail).toBe("parallel pwsh");
+  });
+});
+
+describe("findDangerousRemoval — variables the command sets", () => {
+  it("judges a variable this line assigns once, from a literal", () => {
+    // Spec scenario 21: a statically known value is judged as that value.
+    expect(judge('D=..; rm -rf "$D"')?.rule).toBe("working_directory");
+    expect(judge('D=..; rm -rf "$D"')?.target).toBe('"$D"');
+    expect(judge('D=".."; rm -rf "$D"')?.resolved).toBe(path.dirname(WORKDIR));
+    expect(ruleOf('D=/etc; rm -rf "$D"')).toBe("system");
+    expect(ruleOf('D=/elsewhere; cd /elsewhere && rm -rf "$D"')).toBe(
+      "working_directory",
+    );
+    // The value is ordinary, so the removal is ordinary — the same answer the
+    // literal path gets.
+    expect(judge('D=build; rm -rf "$D"')).toBeNull();
+    expect(judge('D=node_modules; rm -rf "$D"/cache')).toBeNull();
+  });
+
+  it("does not use a value the line has not assigned yet", () => {
+    // The shell expands `"$D"` before it performs the removal, so an
+    // assignment further down the line says nothing about this target.
+    expect(ruleOf('rm -rf "/${D}/sub"; D=build')).toBe("var_root_child");
+    expect(ruleOf('rm -rf "/${D}/sub"; D=build; D=..')).toBe("var_root_child");
+    // A prefix assignment belongs to that command only: `"$D"` is expanded by
+    // the *current* shell, where `D` is still unset.
+    expect(ruleOf('D=.. rm -rf "$D"')).toBe("unresolvable");
+  });
+
+  it("reports a variable the line derives instead of spelling out", () => {
+    // Spec scenarios 8 and 21: what cannot be placed is still reported.
+    expect(ruleOf('D=$(pwd); rm -rf "$D"')).toBe("derived_var");
+    expect(ruleOf('D=`pwd`; rm -rf "$D"')).toBe("derived_var");
+    expect(ruleOf('D="$OTHER"; rm -rf "$D"')).toBe("derived_var");
+    expect(ruleOf('D=..; D=build; rm -rf "$D"')).toBe("derived_var");
+    expect(ruleOf('for d in ..; do rm -rf "$d"; done')).toBe("derived_var");
+    expect(ruleOf('while read d; do rm -rf "$d"; done < list')).toBe(
+      "derived_var",
+    );
+
+    const hit = judge('D=$(pwd); rm -rf "$D"')!;
+    expect(hit.detail).toContain("$(pwd)");
+    expect(describeDangerousRemoval(hit)).toContain("cannot be covered");
+  });
+
+  it("reports a variable pinned under a fixed root prefix", () => {
+    // `/$D` empties to the root itself, so it is reported as that rather than
+    // as "a variable under a prefix" — see the next test.
+    expect(ruleOf('rm -rf "/$D"')).toBe("emptyVariable");
+    expect(ruleOf('rm -rf "/${D}/sub"')).toBe("var_root_child");
+    expect(ruleOf('rm -rf "~/$D"')).toBe("var_root_child");
+    expect(ruleOf('rm -rf "C:/$D"')).toBe("var_root_child");
+    // Whatever `D` holds, the target cannot come back inside the working
+    // directory: the prefix already left it.
+    expect(judge('rm -rf "~/$D"')?.resolved).toBe(path.resolve(os.homedir()));
+
+    const hit = judge('rm -rf "/${D}/sub"')!;
+    expect(hit.target).toBe('"/${D}/sub"');
+    expect(describeDangerousRemoval(hit)).toContain(hit.resolved);
+    expect(describeDangerousRemoval(hit)).toContain("cannot be covered");
+  });
+
+  it("reports a variable whose empty expansion reaches the root", () => {
+    expect(judge("rm -rf /$D")?.rule).toBe("emptyVariable");
+    expect(judge("rm -rf /$D")?.resolved).toBe(path.parse(WORKDIR).root);
+    expect(ruleOf("rm -rf $D/*")).toBe("emptyVariable");
+    expect(ruleOf('rm -rf "$D"/*')).toBe("emptyVariable");
+    expect(ruleOf("rm -rf $D/")).toBe("emptyVariable");
+    // One level down is still not "inside the project": `$D/sub` with nothing
+    // in `D` is `/sub`.
+    expect(judge('rm -rf "$D/sub"')?.resolved).toBe(
+      path.join(path.parse(WORKDIR).root, "sub"),
+    );
+    expect(ruleOf('rm -rf "$D/sub"')).toBe("emptyVariable");
+    // Empty with nothing left is no target at all: `rm` refuses to run.
+    expect(ruleOf('rm -rf "$D"')).toBe("unresolvable");
+  });
+
+  it("places $PWD and $HOME as the directories they are", () => {
+    expect(ruleOf('rm -rf "$PWD/.."')).toBe("working_directory");
+    expect(ruleOf('rm -rf "$PWD/build"')).toBeNull();
+    expect(ruleOf('rm -rf "$HOME/.cache"')).toBeNull();
+    // A `cd` this check cannot follow makes `$PWD` unplaceable again.
+    expect(ruleOf('cd "$WHERE"; rm -rf "$PWD"')).toBe("unresolvable");
+  });
+});
+
+describe("findDangerousRemoval — text that is data is not a command", () => {
+  it("does not read a heredoc body as commands", () => {
+    // The shape this rule exists for: the message is data, so however many
+    // deletions it mentions, the command is a commit.
+    const commit = [
+      "git add -A && git commit -F - <<'MSG'",
+      "",
+      "fix PowerShell quoting in the remove-item path",
+      "rm -rf the old build directory",
+      "",
+      "MSG",
+    ].join("\n");
+    expect(judge(commit)).toBeNull();
+    expect(judge("git commit -F - <<'MSG'\nrm -rf ../..\nMSG")).toBeNull();
+    expect(
+      judge('git commit -F - <<"MSG"\nPowerShell: rm -rf ../..\nMSG'),
+    ).toBeNull();
+    // `<<-` strips leading tabs from the body and from the closing delimiter.
+    expect(judge("cat <<-EOF > notes.txt\n\trm -rf ../..\n\tEOF")).toBeNull();
+  });
+
+  it("does not read a here-string or a comment as commands", () => {
+    expect(judge("grep pattern <<< 'rm -rf ../..'")).toBeNull();
+    expect(judge("ls -la   # PowerShell note: rm -rf ../..")).toBeNull();
+  });
+
+  it("judges the command a heredoc belongs to", () => {
+    expect(ruleOf("rm -rf ../.. <<EOF\nx\nEOF")).toBe("working_directory");
+    expect(ruleOf("rm -rf ../.. <<'EOF'\nx\nEOF")).toBe("working_directory");
+    expect(ruleOf("cat <<EOF > notes.txt\n## notes\nEOF\nrm -rf ../..")).toBe(
+      "working_directory",
+    );
+  });
+
+  it("reports a heredoc it cannot establish as data", () => {
+    // Unclosed: every later line could be the delimiter, so nothing after the
+    // body can be placed.
+    expect(ruleOf("rm -rf ../.. <<EOF\nx")).toBe("unparsable");
+    // An unquoted body is expanded, and `$(…)` in it really does run.
+    expect(ruleOf("cat <<EOF\n$(rm -rf ../..)\nEOF")).toBe("unparsable");
+    expect(ruleOf("grep x <<< $(rm -rf ../..)")).toBe("unparsable");
+  });
+});
+
+describe("findDangerousRemoval — scale limits", () => {
+  const nest = (levels: number, inner: string) =>
+    `echo ${"$(echo ".repeat(levels)}${inner}${")".repeat(levels)}`;
+
+  /** `bash -c` wrapped around `bash -c` … around a removal. */
+  const shells = (levels: number) => {
+    let command = "rm -rf ../..";
+    for (let i = 0; i < levels; i++) {
+      command = `bash -c ${JSON.stringify(command)}`;
+    }
+    return command;
+  };
+
+  it("does not judge a line past the length limit", () => {
+    // A line is usually long because of its data (a commit message, a heredoc).
+    // The cost is the one the spec states: a deletion hidden in an over-long line
+    // loses this extra layer, not the confirmation `rm` gets from the ordinary
+    // rules in every mode.
+    const filler = "x".repeat(12_000);
+    expect(judge(`echo ${filler}`)).toBeNull();
+    expect(judge(`echo ${filler} && rm -rf ../..`)).toBeNull();
+  });
+
+  it("reports nesting deeper than it follows", () => {
+    // Four levels are still read, and the `rm` inside them is judged.
+    expect(ruleOf(nest(3, "$(rm -rf ../..)"))).toBe("working_directory");
+    expect(ruleOf(nest(4, "$(rm -rf ../..)"))).toBe("nestedSpansOverrun");
+    expect(ruleOf(shells(4))).toBe("working_directory");
+    expect(ruleOf(shells(5))).toBe("nestedSpansOverrun");
+  });
+
+  it("says why it did not follow the nesting", () => {
+    const hit = judge(nest(4, "$(rm -rf ../..)"))!;
+    expect(hit.detail).toContain("command substitutions");
+    expect(describeDangerousRemoval(hit)).toContain("cannot be checked before");
+    expect(describeDangerousRemoval(hit)).toContain("cannot be covered");
   });
 });
 
