@@ -117,6 +117,18 @@ function isAutobackgroundingAllowed(command: string): boolean {
 }
 
 /**
+ * The compact label is one line, whatever the command looks like.
+ *
+ * The row that carries it (`● Bash <label>`, and the REPL result summary's
+ * `Bash <label>` line) prints newlines as new row lines, so a heredoc or an
+ * `&&` chain would break the row into several. Collapse the whitespace runs
+ * instead — same rule the REPL row already applies to a helper's question.
+ */
+function oneLineLabel(text: string): string {
+  return text.replace(/\s+/g, " ").trim();
+}
+
+/**
  * Bash command execution tool - supports both foreground and background execution
  */
 export const bashTool: ToolPlugin = {
@@ -902,9 +914,9 @@ The working directory persists between commands, but shell state (environment va
     const runInBackground = params.run_in_background as boolean;
 
     if (description) {
-      return description;
+      return oneLineLabel(description);
     }
 
-    return `${command}${runInBackground ? " (background)" : ""}`;
+    return oneLineLabel(`${command}${runInBackground ? " (background)" : ""}`);
   },
 };

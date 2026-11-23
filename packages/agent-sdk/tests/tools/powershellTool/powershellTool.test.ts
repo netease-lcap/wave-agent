@@ -807,5 +807,13 @@ describe("powershellTool", () => {
         context(),
       ),
     ).toBe("Get-ChildItem");
+    // One line whatever the script is: the row that prints the label starts a
+    // new line at every newline.
+    expect(
+      powershellTool.formatCompactParams!(
+        { command: "Get-ChildItem\n | Where-Object { $_.Length -gt 0 }" },
+        context(),
+      ),
+    ).toBe("Get-ChildItem | Where-Object { $_.Length -gt 0 }");
   });
 });
