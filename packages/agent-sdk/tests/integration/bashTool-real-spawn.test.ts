@@ -7,13 +7,20 @@
  * On Windows the shell is Git Bash (via resolveShellPath), on POSIX bash/zsh.
  */
 
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 
 import { bashTool } from "../../src/tools/bashTool.js";
 import type { ToolContext } from "../../src/tools/types.js";
+import { createBashProvider } from "../../src/utils/shell/bashProvider.js";
+import { getShellSnapshot } from "../../src/utils/shell/shellSnapshot.js";
+import { WINDOWS_GIT_BASH_PATHS } from "../../src/utils/shellResolver.js";
+import { resolveTempDir } from "../../src/utils/tempDir.js";
+// The wrapper, not `node:child_process`: lint bans the raw family everywhere
+// (windowsHide), and a probe has no reason to be the exception.
+import { execFileSyncHidden } from "../../src/utils/execFileHidden.js";
 import { createMockTaskManager } from "../helpers/mockFactories.js";
 
 const isWindows = process.platform === "win32";
@@ -115,3 +122,300 @@ describe("bashTool with real shell spawn", () => {
     expect(changedTo).toBe(fs.realpathSync("/tmp"));
   });
 });
+
+/** The very first command in this suite pays for one real login shell. */
+const SNAPSHOT_TEST_TIMEOUT_MS = 60_000;
+const SNAPSHOT_DIR_NAME = "wave-shell-snapshots";
+const BASH_PROBE_TIMEOUT_MS = 20_000;
+
+// What the fake rc defines and, just as importantly, prints: an rc whose
+// output leaked into a command result would otherwise still look green.
+const RC_ALIAS = "wave_from_rc";
+const RC_ALIAS_OUTPUT = "alias-ok";
+const RC_FUNCTION = "wave_rc_function";
+const RC_NOISE_STDOUT = "RC_NOISE_STDOUT";
+const RC_NOISE_STDERR = "RC_NOISE_STDERR";
+
+function shellAnswers(shellPath: string): boolean {
+  try {
+    execFileSyncHidden(shellPath, ["-c", "echo ok"], {
+      stdio: "ignore",
+      timeout: BASH_PROBE_TIMEOUT_MS,
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Absolute path of a PATH-resolved `bash`, or undefined. */
+function absoluteSelfPath(): string | undefined {
+  try {
+    const raw = execFileSyncHidden("bash", ["-c", "command -v bash"], {
+      encoding: "utf8",
+      timeout: BASH_PROBE_TIMEOUT_MS,
+    });
+    const resolved = String(raw).trim();
+    return path.isAbsolute(resolved) && fs.existsSync(resolved)
+      ? resolved
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Absolute path of a real `bash`, or undefined when this machine has none (the
+ * suite is skipped then).
+ *
+ * `WAVE_SHELL` is deliberately not consulted: on a developer machine it often
+ * points at zsh, and these cases need the shell that reads `.bashrc`. Git Bash
+ * is probed where `resolveShellPath` looks for it, so the Windows runner is
+ * covered by the same list.
+ */
+function findRealBash(): string | undefined {
+  const candidates: Array<string | undefined> = [
+    process.env.WAVE_GIT_BASH_PATH,
+    ...WINDOWS_GIT_BASH_PATHS,
+    "/bin/bash",
+    "/usr/bin/bash",
+    "/usr/local/bin/bash",
+    "/opt/homebrew/bin/bash",
+    "bash",
+  ];
+  for (const candidate of candidates) {
+    if (!candidate || !shellAnswers(candidate)) continue;
+    // A bare `bash` from $PATH is resolved first: the snapshot cache keys on
+    // the exact shell string and `resolveShellPath` wants a real executable
+    // path (`accessSync` on a bare name looks in the process cwd).
+    if (path.isAbsolute(candidate)) return candidate;
+    const resolved = absoluteSelfPath();
+    if (resolved) return resolved;
+  }
+  return undefined;
+}
+
+const realBash = findRealBash();
+// `describe.skipIf` keeps the body from running; the empty stand-in is there
+// only so the cases type-check without a non-null assertion.
+const bashPath = realBash ?? "";
+
+/**
+ * The session's shell snapshot seen through the Bash tool: a fake HOME with a
+ * real `.bashrc`, a real login shell, and the command string the tool hands to
+ * `spawn`.
+ *
+ * A real spawn (and therefore `mkdtemp`) is mandatory here, unlike in the
+ * mockable unit tests: the mechanism *is* "a login shell writes a file, later
+ * commands source it". Whether the rc was really read, whether its output
+ * really stayed out of the result, and whether the snapshot really exists on
+ * disk are properties of that spawn — a mocked `child_process` would only
+ * replay the test's own idea of the generated script.
+ */
+describe.skipIf(realBash === undefined)(
+  "bashTool session shell snapshot (real login shell)",
+  () => {
+    let workdir: string;
+    let fakeHome: string;
+    let snapshotTempDir: string;
+    let fallbackTempDir: string;
+    let homedirBeforeStub: string;
+
+    beforeAll(() => {
+      workdir = fs.mkdtempSync(path.join(os.tmpdir(), "wave-snap-work-"));
+      fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), "wave-snap-home-"));
+      snapshotTempDir = fs.mkdtempSync(
+        path.join(os.tmpdir(), "wave-snap-tmp-"),
+      );
+      fallbackTempDir = fs.mkdtempSync(
+        path.join(os.tmpdir(), "wave-snap-fallback-"),
+      );
+
+      fs.writeFileSync(
+        path.join(fakeHome, ".bashrc"),
+        [
+          `alias ${RC_ALIAS}='echo ${RC_ALIAS_OUTPUT}'`,
+          `${RC_FUNCTION}() { echo function-ok; }`,
+          `echo ${RC_NOISE_STDOUT}`,
+          `echo ${RC_NOISE_STDERR} >&2`,
+          "",
+        ].join("\n"),
+      );
+
+      // A temp dir whose snapshot directory cannot be created (a file holds
+      // the name): `getShellSnapshot` answers undefined and the command runs
+      // in the plain `-c` shape it had before the mechanism. This is the only
+      // way to reach that branch through the tool — `resolveShellPath` accepts
+      // a `WAVE_SHELL` only when it names bash/zsh, so a `/bin/sh` override
+      // never reaches the provider at all.
+      fs.writeFileSync(
+        path.join(fallbackTempDir, SNAPSHOT_DIR_NAME),
+        "not a directory\n",
+      );
+
+      // `tests/setup.ts` pins `os.homedir()` for every file, so the rc file
+      // has to be re-pointed at a directory this suite owns...
+      homedirBeforeStub = os.homedir();
+      vi.mocked(os.homedir).mockReturnValue(fakeHome);
+      // ...and so does the login shell's own `~`, which reads `$HOME`.
+      vi.stubEnv("HOME", fakeHome);
+      // Pin the shell itself: `resolveShellPath` prefers `WAVE_SHELL` over
+      // `$SHELL`, which is zsh on many machines — the snapshot would then
+      // read `.zshrc` and see none of the rc above.
+      vi.stubEnv("WAVE_SHELL", bashPath);
+      // Snapshots land in a directory this suite owns, so the assertions can
+      // point at them and nothing is left behind in the real temp dir.
+      vi.stubEnv("WAVE_TMPDIR", snapshotTempDir);
+    });
+
+    afterAll(() => {
+      vi.mocked(os.homedir).mockReturnValue(homedirBeforeStub);
+      vi.unstubAllEnvs();
+      for (const dir of [workdir, fakeHome, snapshotTempDir, fallbackTempDir]) {
+        fs.rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
+    it(
+      "makes an alias from the rc available to a command",
+      { timeout: SNAPSHOT_TEST_TIMEOUT_MS },
+      async () => {
+        const result = await bashTool.execute(
+          { command: RC_ALIAS },
+          makeContext(workdir),
+        );
+
+        expect(result.success).toBe(true);
+        // An alias is expanded while a line is parsed, so it needs the
+        // snapshot's `expand_aliases`; `eval` (which the cwd wrapper uses)
+        // re-parses the model's line after the snapshot has been sourced.
+        expect(result.content).toContain(RC_ALIAS_OUTPUT);
+      },
+    );
+
+    it(
+      "keeps the rc's stdout and stderr out of the command result",
+      { timeout: SNAPSHOT_TEST_TIMEOUT_MS },
+      async () => {
+        const result = await bashTool.execute(
+          { command: "echo plain-ok" },
+          makeContext(workdir),
+        );
+
+        expect(result.success).toBe(true);
+        expect(result.content).toContain("plain-ok");
+        // The rc is read by the snapshotting login shell, never by the command
+        // shell, so neither of its echo lines may reach the model.
+        expect(result.content).not.toContain(RC_NOISE_STDOUT);
+        expect(result.content).not.toContain(RC_NOISE_STDERR);
+      },
+    );
+
+    it(
+      "writes the snapshot under the temp dir with the rc's alias in it",
+      { timeout: SNAPSHOT_TEST_TIMEOUT_MS },
+      async () => {
+        // Build it here rather than relying on an earlier case having run.
+        const result = await bashTool.execute(
+          { command: "echo snapshot-probe" },
+          makeContext(workdir),
+        );
+        expect(result.success).toBe(true);
+
+        const snapshotDir = path.join(resolveTempDir(), SNAPSHOT_DIR_NAME);
+        expect(fs.existsSync(snapshotDir)).toBe(true);
+        const snapshots = fs
+          .readdirSync(snapshotDir)
+          .filter(
+            (name) => name.startsWith("snapshot-") && name.endsWith(".sh"),
+          )
+          .map((name) => ({
+            name,
+            body: fs.readFileSync(path.join(snapshotDir, name), "utf8"),
+          }));
+        expect(snapshots.length).toBeGreaterThan(0);
+
+        const carryingAlias = snapshots.filter((snapshot) =>
+          snapshot.body.includes(RC_ALIAS),
+        );
+        expect(carryingAlias).toHaveLength(1);
+        const snapshot = carryingAlias[0];
+        if (!snapshot) throw new Error("expected a snapshot holding the alias");
+        expect(snapshot.body).toContain(RC_ALIAS_OUTPUT);
+        // The rc's noise was redirected away while it was read, so it is not
+        // captured into the file either.
+        expect(snapshot.body).not.toContain(RC_NOISE_STDOUT);
+        expect(snapshot.body).not.toContain(RC_NOISE_STDERR);
+      },
+    );
+
+    it(
+      "runs the command in the plain -c shape when no snapshot can be built",
+      { timeout: SNAPSHOT_TEST_TIMEOUT_MS },
+      async () => {
+        // A different temp dir is a different cache key, so this really tries
+        // (and fails) to build a snapshot instead of reusing a good one.
+        vi.stubEnv("WAVE_TMPDIR", fallbackTempDir);
+        try {
+          const result = await bashTool.execute(
+            { command: "echo fallback-ok" },
+            makeContext(workdir),
+          );
+
+          expect(result.success).toBe(true);
+          expect(result.content).toContain("fallback-ok");
+          expect(result.content).not.toContain(RC_NOISE_STDOUT);
+          expect(result.content).not.toContain(RC_NOISE_STDERR);
+
+          // No snapshot means no `. '<file>'` prelude line: the command keeps
+          // the `-c` shape it had before the mechanism existed.
+          const command = await createBashProvider(bashPath).prepareCommand(
+            "echo x",
+            { tempDir: fallbackTempDir },
+          );
+          expect(command).not.toContain(SNAPSHOT_DIR_NAME);
+          expect(command).not.toMatch(/^\. '/m);
+
+          // And the decoy really is the reason: the module itself answers
+          // "no snapshot" for this pair (cached, so it is the very same
+          // attempt the command above made).
+          await expect(
+            getShellSnapshot(bashPath, fallbackTempDir),
+          ).resolves.toBeUndefined();
+        } finally {
+          vi.stubEnv("WAVE_TMPDIR", snapshotTempDir);
+        }
+      },
+    );
+
+    it(
+      "puts the snapshot before the search shadows in the command string",
+      { timeout: SNAPSHOT_TEST_TIMEOUT_MS },
+      async () => {
+        const command = await createBashProvider(bashPath).prepareCommand(
+          "echo x",
+          { tempDir: resolveTempDir() },
+        );
+        const lines = command.split("\n");
+
+        // Line 1 sources the snapshot, so the user's functions and aliases
+        // already exist when wave's shadows go on top of them — which is also
+        // why the grep shadow starts with `unalias grep`.
+        const snapshotLine = lines[0];
+        if (snapshotLine === undefined) throw new Error("expected a command");
+        expect(snapshotLine.startsWith(". '")).toBe(true);
+        expect(snapshotLine).toContain(SNAPSHOT_DIR_NAME);
+        expect(snapshotLine).toContain("snapshot-");
+        expect(lines[lines.length - 1]).toBe("echo x");
+
+        // The grep shadow only exists where `wave-search-tools` is installed;
+        // wherever it does, it must come after the snapshot line.
+        const grepShadow = lines.indexOf("function grep {");
+        if (grepShadow !== -1) expect(grepShadow).toBeGreaterThan(0);
+        // Whatever the prelude holds, it sits between the two ends asserted
+        // above — it may also be empty on an install with no search binary.
+        expect(lines.length).toBeGreaterThanOrEqual(2);
+      },
+    );
+  },
+);

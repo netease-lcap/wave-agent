@@ -1,24 +1,51 @@
 import * as path from "path";
 import { toPosixPath } from "../path.js";
 import { buildSearchShellPrelude } from "../searchShell.js";
+import { resolveTempDir } from "../tempDir.js";
+import { getShellSnapshot } from "./shellSnapshot.js";
 import type {
   ShellExecCommand,
   ShellExecOptions,
+  ShellPrepareOptions,
   ShellProvider,
 } from "./shellProvider.js";
 
+/** A path as exactly one shell word. */
+function quoteShellWord(value: string): string {
+  return `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
 /**
- * Prepend wave's search shadows to [command] (`utils/searchShell.ts`).
+ * The prologue every command gets: the session's shell snapshot first (so the
+ * user's functions, options and aliases exist), then wave's search shadows on
+ * top — a user `alias grep=…` must not win over the shadow's `.gitignore`
+ * semantics (see `docs/specs/core/bash-tools.md`「登录 shell 环境注入」场景 12).
  *
- * Every Bash call is a fresh shell, so — unlike Claude Code, which writes one
- * shell snapshot per session — the prelude goes in per spawn. It sits inside the
- * command string rather than in front of the spawn so that it also survives the
- * sandbox wrapper, which runs the command under its own `bash -c`.
+ * Both sit inside the command string rather than in front of the spawn so that
+ * they also survive the sandbox wrapper, which runs the command under its own
+ * `bash -c`.
+ *
+ * The snapshot is why this is async: one login shell builds it on first use,
+ * and a session must not pay that per command.
  */
-function withSearchShadows(command: string): string {
+async function withSessionPrelude(
+  shellPath: string,
+  command: string,
+  opts: ShellPrepareOptions | undefined,
+): Promise<string> {
+  const head: string[] = [];
+  const snapshot = await getShellSnapshot(
+    shellPath,
+    opts?.tempDir ?? resolveTempDir(),
+  );
+  if (snapshot) {
+    // `|| true`: the snapshot is an optimization. A file that vanished (temp
+    // dir cleaned mid-session) leaves the command running without it.
+    head.push(`. ${quoteShellWord(snapshot)} 2>/dev/null || true`);
+  }
   const prelude = buildSearchShellPrelude();
-  if (!prelude) return command;
-  return `${prelude}\n${command}`;
+  if (prelude) head.push(prelude);
+  return head.length > 0 ? `${head.join("\n")}\n${command}` : command;
 }
 
 /**
@@ -48,7 +75,8 @@ export function createBashProvider(shellPath: string): ShellProvider {
     // Git Bash and POSIX shells both get their own process group so
     // killProcessTree can take the whole tree down (issue #2742).
     detached: true,
-    prepareCommand: withSearchShadows,
+    prepareCommand: (command, opts) =>
+      withSessionPrelude(shellPath, command, opts),
     buildExecCommand(
       command: string,
       opts: ShellExecOptions,

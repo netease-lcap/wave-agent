@@ -364,9 +364,14 @@ The working directory persists between commands, but shell state (environment va
       }
     }
 
-    // Search shadows are added only now: the permission gate above matches the
-    // command the model wrote, not the prelude wave wraps around it.
-    const shadowed = provider.prepareCommand(command);
+    // Search shadows and the session's shell snapshot are added only now: the
+    // permission gate above matches the command the model wrote, not the
+    // prelude wave wraps around it. The snapshot is why this awaits: one login
+    // shell builds it, then every command only sources it.
+    if (sandboxed && sandbox) sandbox.prepareTempDir();
+    const tempDir =
+      sandboxed && sandbox ? sandbox.getTempDir() : resolveTempDir();
+    const shadowed = await provider.prepareCommand(command, { tempDir });
 
     /**
      * Wrap a command for the sandbox when the decision said so.
@@ -459,7 +464,7 @@ The working directory persists between commands, but shell state (environment va
     // `pwd: write error` line. Probe it first, run the command untracked when
     // it is unusable, and say why (see utils/tempDir.ts). The sandbox has its
     // own temp dir, prepared by the wrapper, so it is probed there.
-    const tempDirProbe = sandboxed ? undefined : probeTempDir(resolveTempDir());
+    const tempDirProbe = sandboxed ? undefined : probeTempDir(tempDir);
     const tempDirNotice =
       tempDirProbe && !tempDirProbe.writable
         ? describeTempDirFailure(resolveTempDir(), tempDirProbe.code) + "\n"
@@ -468,8 +473,7 @@ The working directory persists between commands, but shell state (environment va
 
     // The sandbox has its own temp dir; inside it the CWD file must live there,
     // otherwise the wrapper cannot write it and `cd` would stop being tracked.
-    const tempDir =
-      sandboxed && sandbox ? sandbox.getTempDir() : resolveTempDir();
+    // (`tempDir` itself is resolved above, before the shell snapshot is built.)
     const exec = provider.buildExecCommand(foregroundCommand, {
       tempDir: () => tempDir,
       cwdTracking: cwdTrackingEnabled,

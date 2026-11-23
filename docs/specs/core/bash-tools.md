@@ -1,6 +1,6 @@
 ---
 name: "Bash 工具"
-description: "`Bash` 前台/后台命令执行：超时上限与自动转后台、输出在结束时一次性下发、跨平台 bash/zsh 与 Git Bash 解析、登录 shell 环境注入、终止时清理整棵进程树、shell 退出后残留进程组的入账与会话销毁时回收"
+description: "`Bash` 前台/后台命令执行：超时上限与自动转后台、输出在结束时一次性下发、跨平台 bash/zsh 与 Git Bash 解析、登录 shell 环境注入与会话级 shell 快照、终止时清理整棵进程树、shell 退出后残留进程组的入账与会话销毁时回收"
 order: 20
 ---
 
@@ -181,11 +181,11 @@ order: 20
 
 ### 用户故事：登录 shell 环境注入（优先级：P1）
 
-作为 AI 代理，我希望 Bash 工具、后台任务、bash 模式命令（`!`）、MCP server、hooks、LSP server 与 git 调用都能拿到用户登录 shell 的环境——PATH 以及 shell 配置里 export 的变量（API key、企业代理、自签证书、`SSH_AUTH_SOCK`）——且任何一条命令都不加载用户 profile。
+作为 AI 代理，我希望 Bash 工具、后台任务、bash 模式命令（`!`）、MCP server、hooks、LSP server 与 git 调用都能拿到用户登录 shell 的环境——PATH 以及 shell 配置里 export 的变量（API key、企业代理、自签证书、`SSH_AUTH_SOCK`）——同时让 shell 命令用到用户配置里的 alias、函数与选项，且不逐条重跑 profile。
 
-**优先级原因**：GUI 启动的宿主（Finder/Dock 启动的桌面端、VS Code 扩展与 JetBrains 插件）进程环境不完整：PATH 缺 nvm/Homebrew，shell 配置里除 PATH 之外的 export 全部丢失——表现为 MCP server 找不到 `npx`/`uvx`、`git push` 因缺 `SSH_AUTH_SOCK` 失败、企业代理与自签证书不生效。若在 SDK 层每条命令都用 `-c -l` 加载 profile，则每条命令都付一次 shell 启动与配置执行代价，还会把用户 rc 的输出混进命令结果。因此改为「宿主启动时一次性探测、写入进程环境、所有子进程继承」，SDK 执行器保持纯 `-c`。
+**优先级原因**：GUI 启动的宿主（Finder/Dock 启动的桌面端、VS Code 扩展与 JetBrains 插件）进程环境不完整：PATH 缺 nvm/Homebrew，shell 配置里除 PATH 之外的 export 全部丢失——表现为 MCP server 找不到 `npx`/`uvx`、`git push` 因缺 `SSH_AUTH_SOCK` 失败、企业代理与自签证书不生效。若在 SDK 层每条命令都用 `-c -l` 加载 profile，则每条命令都付一次 shell 启动与配置执行代价，还会把用户 rc 的输出混进命令结果。因此分两处收：宿主启动时一次性探测、把白名单变量写入进程环境，不经 shell 的子进程（MCP server、hooks、LSP、git）都靠它；shell 命令侧改用**会话级快照**——每个 shell provider 首次执行前用登录 shell 跑一次，把 alias、函数与选项落成一个文件，之后每条命令只 `source` 该文件，不再逐条 `-c -l`（对齐 Claude Code 的 shell snapshot）。
 
-**独立测试**：用假 HOME 造 `~/.bashrc`（guard 前 export 一个 marker 变量与一个 PATH 目录），断言宿主探测后：(a) marker 在白名单里且被写入进程环境，(b) 不在白名单里的变量不被采纳，(c) 已由宿主显式设置的键不被覆盖、而 `PATH` 按「探测值在前 + 继承值在后 + 去重」合并，(d) 子进程执行 `echo $PATH` 时无 `-l`、不 source profile。
+**独立测试**：用假 HOME 造 `~/.bashrc`（export 一个 marker 变量与一个 PATH 目录、定义一个 alias 与一个函数），断言：(a) 宿主探测后 marker 按白名单写入进程环境，(b) 不在白名单里的变量不被采纳，(c) `PATH` 按「探测值在前 + 继承值在后 + 去重」合并，(d) 会话内首条命令用 `<shell> -l -c` 生成快照、后续命令只 `source` 快照且不带 `-l`，(e) 命令能调用 rc 里的 alias 与函数，(f) rc 抛错或生成超时时命令仍正常执行、结果里不出现 rc 的输出。
 
 **验收场景**：
 
@@ -197,8 +197,11 @@ order: 20
 6. **假设** 解析探测输出，**当** 生成最终变量集合时，**则** 必须丢弃 `PWD`、`OLDPWD`、`SHLVL`、`_` 与本故事场景 5 的防噪变量；退化为按行解析时还必须丢弃值可能含换行的键，避免跨行污染。
 7. **假设** 探测失败（超时、shell 缺失、输出不可解析、Git Bash 未安装等），**当** 继续运行宿主时，**则** 必须先按上限重试（带指数退避），仍失败则降级为「只采纳 PATH」或维持继承环境，并记录一次诊断日志；任何失败都不得阻塞宿主启动、不得弹错误、不得让会话不可用。预算口径三个宿主统一：单次探测超时 4 秒、最多 2 次尝试、退避 200ms 起（最坏约 8.4 秒），宿主等待探测落地的上界与之一致——再紧会把慢配置（冷网络挂载上的 nvm）误杀，再松会让挂住的 profile 明显拖慢首个会话。
 8. **假设** 环境已注入，**当** Bash 工具、后台任务、`!` 命令、MCP server、hooks、LSP server 或 git 调用启动子进程时，**则** 它们都必须能解析到登录 shell 里的工具与变量——这些路径只继承进程环境（不经 shell），因此注入必须发生在宿主进程层，而不是某一条工具执行路径里。
-9. **假设** 任意一条 shell 命令执行，**当** 该命令启动时，**则** 都必须以纯 `-c` 执行：不得为单条命令 spawn 登录 shell（`-c -l`）、不得 source 用户 profile；因此用户 shell 里的 alias、函数与 `shopt` 选项对命令不生效（这是有意的取舍，换来每条命令零额外启动开销、结果不被 rc 输出污染）。
+9. **假设** 任一 shell provider 在会话内首次执行命令，**当** 执行前，**则** 必须生成一次 shell 快照：定位用户 rc（zsh `~/.zshrc`、bash `~/.bashrc`），用 `<shell> -l -c <生成脚本>` 显式 source 它并 dump `alias`、函数与 shell 选项（zsh `setopt`、bash `shopt`），写入临时目录下的单文件；生成阶段的输出（rc 的 echo、警告）必须全部丢弃，不得出现在任何命令结果里；生成有超时上限，超时按失败处理。
 10. **假设** 运行在 Windows 上，**当** 探测环境时，**则** 沿用 Git Bash `-lic 'cygpath -pw "$PATH"'` 只采纳 PATH 并转回 Windows 原生形式；本期不要求 Windows 全量采纳环境变量（Git Bash 的变量语义与 Windows 原生进程不一致）。
+11. **假设** 快照可用，**当** 执行任意命令时，**则** 命令串必须是「`source <快照> 2>/dev/null || true` → 搜索影子注入 → `eval '<命令>'` → 写回 CWD」，spawn 参数里**不带 `-l`**；快照不可用（生成失败、超时、文件已被删除）时回落为纯 `-c` 的现状行为，命令照常执行、不报错、不重试。
+12. **假设** 用户 rc 里定义了与搜索影子同名的 alias（如 `alias grep=...`），**当** 执行搜索命令时，**则** 快照的 source 必须在影子注入之前，工具自带的 `grep`/`find`/`rg` 影子优先——`.gitignore` 口径与退出码不受用户 alias 影响。
+13. **假设** 用户在 zsh 下使用未加引号的通配符参数（如 `grep -r x . --include=*.ts`），**当** 快照生效时，**则** glob 语义必须仍由用户 shell 决定：zsh 的 `NOMATCH` 依旧生效（该命令报 `no matches found`），工具不得为它改写选项或吞掉错误——这与 Claude Code 一致，属用户 shell 行为，不是快照要修的缺陷。
 
 ---
 
@@ -253,5 +256,6 @@ order: 20
 - 在 Windows 上，用户已安装 Git for Windows（提供 Git Bash）时 `Bash` 是默认执行器；未安装时由 `PowerShell` 工具接管（见 [powershell-tool.md](./powershell-tool.md)）。
 - 「命令环境」与「CLI 运行时解析」是两件事：宿主采纳登录 shell 环境只影响子进程的可执行文件与变量解析，不改变内置/托管 Node 运行时的选取——后者不读登录 shell（见 [stdio-transport.md](../ui/stdio-transport.md) 场景 10），两者不冲突。
 - 登录 shell 环境的探测每个宿主进程只做一次（失败按上限重试），不随会话、不随命令重复。
+- shell 快照每个会话、每个 shell provider 生成一次（失败只回落，不随命令重试），每个临时目录各一份文件（沙箱有自己的临时目录），宿主进程退出时删除；它与「宿主一次性探测」是两条独立的路：前者给 shell 命令（alias、函数、选项），后者给不经 shell 的子进程（进程环境）。
 - `PermissionManager` 将在任何命令实际执行之前处理安全检查。
 - 代理被指示在适当时优先使用专用工具（Read、Write 等）而非通用 bash 命令；内容搜索与文件名匹配在默认工具集下没有专用工具（前提是有可用的 bash，否则 `Grep` / `Glob` 会自动回到工具表），直接使用 Bash 里的 `grep` / `find`。

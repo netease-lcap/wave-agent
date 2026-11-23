@@ -37,10 +37,10 @@ describe("powershellProvider", () => {
     expect(args.slice(0, -1)).toEqual([...POWERSHELL_SPAWN_FLAGS]);
   });
 
-  it("passes the command through untouched — no shadows to install", () => {
+  it("passes the command through untouched — no shadows to install", async () => {
     const provider = createPowerShellProvider(SHELL);
 
-    expect(provider.prepareCommand("Get-Content .\\a.txt")).toBe(
+    await expect(provider.prepareCommand("Get-Content .\\a.txt")).resolves.toBe(
       "Get-Content .\\a.txt",
     );
   });

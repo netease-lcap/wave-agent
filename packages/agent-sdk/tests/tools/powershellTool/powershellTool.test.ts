@@ -58,7 +58,7 @@ const provider: ShellProvider = {
   type: "powershell",
   shellPath: PS_PATH,
   detached: false,
-  prepareCommand: (command: string) => command,
+  prepareCommand: async (command: string) => command,
   buildExecCommand: (command: string) => ({
     commandString: command,
     cwdFilePath: CWD_FILE,

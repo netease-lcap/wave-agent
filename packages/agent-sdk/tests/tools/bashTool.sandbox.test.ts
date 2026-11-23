@@ -8,6 +8,11 @@ import type { ChildProcess } from "child_process";
 import { createMockTaskManager } from "../helpers/mockFactories.js";
 
 vi.mock("child_process");
+// child_process is mocked here, so the session snapshot (which spawns a login
+// shell through it) could never resolve: stub it out as unavailable.
+vi.mock("../../src/utils/shell/shellSnapshot.js", () => ({
+  getShellSnapshot: vi.fn(async () => undefined),
+}));
 vi.mock("../../src/utils/globalLogger.js", () => ({
   logger: {
     debug: vi.fn(),
