@@ -180,6 +180,7 @@ describe("the two dispatch funnels", () => {
       `
       const r = await tools.Fail({});
       self.log(JSON.stringify(r));
+      self.log(String(r));
       return typeof r.error;
     `,
     );
@@ -192,6 +193,9 @@ describe("the two dispatch funnels", () => {
       JSON.stringify({
         error: "permission denied\nBash(rm -rf /) is not allowed",
       }),
+      // Plain-realm copies (as in Claude Code): stringifying one is not a throw,
+      // so a script can concatenate a failed call's value and keep going.
+      "[object Object]",
     ]);
     expect(result.toolsUsed).toEqual(["Fail"]);
   });
