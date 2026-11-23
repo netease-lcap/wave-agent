@@ -866,24 +866,29 @@ export const QueueTrashIcon: React.FC<IconProps> = ({
     </svg>
   );
 
-// 会话行更多菜单「并排打开」— codechat TaskSidebar 同款 lucide columns-2
-// （18×18 rx2 外框 + 中竖线，stroke 2 / currentColor）。
+// 会话行更多菜单「并排打开」— 外框 + 中竖线。
+// 1123 评论「重新按规范绘制这个图标，现在圆角偏小」：改前是 lucide columns-2 原稿
+// （24 网格 / stroke 2 / rx2），和同一菜单里的「重命名」「删除会话」那两颗
+// （16 网格 / stroke 1.4）不是一套参数。这里改回 16 网格同参：stroke 1.4 / round
+// 端点 / 外框 2..14（12×12）/ 圆角 rx 2.5。渲染尺寸仍由
+// host-desktop.css 的 `.desktop-session-menu-item svg` 定成 15×15（三颗一致），
+// 落到 15px 上：外框 11.25px 不变、线宽 1.25→1.31px、圆角 1.25→2.34px。
 export const SplitIcon: React.FC<IconProps> = ({
   className = "header-icon",
 }) => (
   <svg
-    width={15}
-    height={15}
-    viewBox="0 0 24 24"
+    width={16}
+    height={16}
+    viewBox="0 0 16 16"
     fill="none"
     stroke="currentColor"
-    strokeWidth={2}
+    strokeWidth={1.4}
     strokeLinecap="round"
     strokeLinejoin="round"
     className={className}
   >
-    <rect width="18" height="18" x="3" y="3" rx="2" />
-    <path d="M12 3v18" />
+    <rect x="2" y="2" width="12" height="12" rx="2.5" />
+    <path d="M8 2.8v10.4" />
   </svg>
 );
 
