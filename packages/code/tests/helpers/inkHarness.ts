@@ -23,7 +23,10 @@ export interface WindowSize {
  *    `rerender()` or a synchronous mock callback schedules work that
  *    `waitUntilRenderFlush()` completes in one or two passes, with no polling
  *    interval and no `sleep`. It cannot wait for a timer, a promise or a
- *    socket — those still land later, so keep `vi.waitFor` for them.
+ *    socket — those still land later, so keep `vi.waitFor` for them. `settle()`
+ *    reports "no new frame since the last flush", which is not the same as
+ *    "nothing is pending": `settleUntil(predicate)` waits for the state a
+ *    pending commit would produce instead (see its own note).
  */
 class FakeStdout extends EventEmitter {
   readonly columns: number;
@@ -144,6 +147,48 @@ export const render = (tree: React.ReactElement, size: WindowSize = {}) => {
         previous = current;
       }
       throw new Error("output never settled after 10 flushes");
+    },
+    /**
+     * Flush until the frame satisfies `ready`, then return.
+     *
+     * `settle()` stops on the first pair of identical frames, which proves "the
+     * last flush produced no new frame" — *not* "nothing is pending". A
+     * component that measures itself emits a frame byte-identical to the
+     * previous one before the commit that uses the measurement (the measured
+     * height changes state that does not change the output), so a `settle()`
+     * that lands on that pair returns one commit early. That is invisible to an
+     * assertion about the frame itself, but not to a key press: input delivered
+     * one commit early hits the pre-measurement state (the /btw pager refuses
+     * arrow keys until it knows the content overflows, `useLineScroll`'s
+     * `if (!canScroll) return`), the key is dropped, and the case fails on a
+     * frame that is one commit stale — rare, and only on a machine slow enough
+     * for the scheduler to need an extra turn (Windows CI).
+     *
+     * So callers that are about to feed input into a component whose readiness
+     * is visible in the frame wait for that state instead of for "no new
+     * frame". `what` names the state in the failure: a frame that never shows
+     * up is a failure that says which one, not a hang. `timeoutMs` only bounds
+     * that failure — it is not a settle budget, so keep it far above what a
+     * frame costs (a full frame is ~120ms on the Windows runner).
+     */
+    settleUntil: async (
+      ready: (frame: string) => boolean,
+      what: string,
+      timeoutMs = 2000,
+    ) => {
+      const deadline = Date.now() + timeoutMs;
+      for (;;) {
+        await flush();
+        const current = stdout.lastFrame() ?? "";
+        if (ready(current)) {
+          return;
+        }
+        if (Date.now() >= deadline) {
+          throw new Error(
+            `frame never ${what} within ${timeoutMs}ms; last frame:\n${current}`,
+          );
+        }
+      }
     },
   };
 };

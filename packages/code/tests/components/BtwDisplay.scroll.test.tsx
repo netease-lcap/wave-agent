@@ -4,6 +4,7 @@ import { afterEach, describe, it, expect, vi } from "vitest";
 import {
   BtwDisplay,
   BTW_CHROME_ROWS,
+  BTW_SCROLL_HINT,
   BTW_SCROLL_LINES,
 } from "../../src/components/BtwDisplay.js";
 import { stripAnsiColors } from "wave-agent-sdk";
@@ -71,6 +72,34 @@ const pressRepeatedly = (
   }
 };
 
+/**
+ * Renders the overlay and waits until its pager is armed — the frame that shows
+ * the scroll hint, i.e. the render whose `useLineScroll` already knows the
+ * answer overflows.
+ *
+ * `settle()` alone is not enough before pressing a key: it reports "no new
+ * frame since the last flush", and the mount emits a frame byte-identical to
+ * its predecessor on the way to the armed one (the measured height lands in
+ * state without changing the output). Landing on that pair, `settle()` returns
+ * one commit early, and a ↓ written then is refused by `useLineScroll` — the
+ * viewport stays at the top and the case fails on the step size for a reason
+ * that has nothing to do with it. That is what made this file flake on the
+ * Windows runner, where the extra scheduler turn is reachable at all.
+ *
+ * Cases that only read the frame keep using `settle()`; this wait exists for
+ * the ones that feed input into the overlay.
+ */
+const renderArmed = async (answer: string) => {
+  const harness = render(
+    <BtwDisplay btwState={answered(answer)} rows={ROWS} />,
+  );
+  await harness.settleUntil(
+    (raw) => stripAnsiColors(raw).includes(BTW_SCROLL_HINT),
+    "armed the pager (showed the scroll hint)",
+  );
+  return harness;
+};
+
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
@@ -95,10 +124,7 @@ describe("BtwDisplay viewport", () => {
   });
 
   it("scrolls three rows per ↓ and stops at the last line", async () => {
-    const { stdin, lastFrame, settle } = render(
-      <BtwDisplay btwState={answered(longAnswer)} rows={ROWS} />,
-    );
-    await settle();
+    const { stdin, lastFrame, settle } = await renderArmed(longAnswer);
 
     stdin.write(DOWN);
     await settle();
@@ -127,10 +153,7 @@ describe("BtwDisplay viewport", () => {
   });
 
   it("scrolls back up with ↑ and stops at the first line", async () => {
-    const { stdin, lastFrame, settle } = render(
-      <BtwDisplay btwState={answered(longAnswer)} rows={ROWS} />,
-    );
-    await settle();
+    const { stdin, lastFrame, settle } = await renderArmed(longAnswer);
 
     // Leave the top behind first, so a single ↑ cannot restore line 0 by
     // accident.
@@ -151,10 +174,7 @@ describe("BtwDisplay viewport", () => {
   });
 
   it("scrolls with Ctrl+N / Ctrl+P like ↓ / ↑", async () => {
-    const { stdin, lastFrame, settle } = render(
-      <BtwDisplay btwState={answered(longAnswer)} rows={ROWS} />,
-    );
-    await settle();
+    const { stdin, lastFrame, settle } = await renderArmed(longAnswer);
 
     stdin.write(CTRL_N);
     await settle();
@@ -168,13 +188,10 @@ describe("BtwDisplay viewport", () => {
   });
 
   it("counts wrapped rows when deciding whether the answer overflows", async () => {
-    const { stdin, lastFrame, settle } = render(
-      <BtwDisplay btwState={answered(wrappedAnswer)} rows={ROWS} />,
-    );
+    const { stdin, lastFrame, settle } = await renderArmed(wrappedAnswer);
 
     // 5 logical lines, but ~4 terminal rows each: overflow only shows up if the
     // measured height includes the wrapped rows.
-    await settle();
     expect(frame(lastFrame)).toContain("↑/↓ to scroll");
     expect(frame(lastFrame)).not.toContain("4-");
 
