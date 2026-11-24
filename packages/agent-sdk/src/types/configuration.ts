@@ -202,6 +202,23 @@ export interface WaveConfiguration {
    */
   enableKnowledgeBase?: boolean;
   /**
+   * Whether the `WebSearch` tool is registered. Unset follows the code default
+   * constant (WEB_SEARCH_DEFAULT_ENABLED = on).
+   *
+   * On by default for two reasons: Claude Code ships its `WebSearch` unless the
+   * provider cannot serve it, and this tool already shipped as "registered, then
+   * removed by the first 404" — starting default-off would quietly withdraw a
+   * capability. A deployment that wants it closed pushes `false` through the
+   * managed layer (`GET /api/wave/settings`), which is the only channel an
+   * operator can reach every machine with.
+   *
+   * Separate from the server's own 404: that one says "this deployment has no
+   * such capability", this one says "configuration says no". Both keep the tool
+   * out of the declaration; only this one avoids the round trip. A non-boolean
+   * value reads as "unset" (see webSearchAvailability.ts).
+   */
+  enableWebSearch?: boolean;
+  /**
    * Whether this machine may serve its sessions to a paired phone over the
    * remote-control relay. Unset follows the code default constant
    * (REMOTE_CONTROL_DEFAULT_ENABLED).

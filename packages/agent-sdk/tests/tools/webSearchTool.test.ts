@@ -9,6 +9,27 @@ vi.mock("../../src/services/authService.js", () => ({
   createAuthAwareFetch: vi.fn((innerFetch: typeof fetch) => innerFetch),
 }));
 
+/**
+ * The explicit switch. Pinned here (and only here) so every case below still
+ * exercises the real 404 memo and the real request path; `settingsSwitch.enabled
+ * = false` is how the disabled case reaches `execute`.
+ */
+const settingsSwitch = vi.hoisted(() => ({ enabled: true }));
+
+vi.mock(
+  "../../src/services/webSearchAvailability.js",
+  async (importOriginal) => {
+    const actual =
+      await importOriginal<
+        typeof import("../../src/services/webSearchAvailability.js")
+      >();
+    return {
+      ...actual,
+      isWebSearchEnabledBySettings: () => settingsSwitch.enabled,
+    };
+  },
+);
+
 vi.mock("../../src/utils/globalLogger.js", () => ({
   logger: {
     debug: vi.fn(),
@@ -97,6 +118,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   vi.unstubAllGlobals();
   __resetWebSearchAvailabilityForTesting();
+  settingsSwitch.enabled = true;
   (authService.getServerUrl as Mock).mockReturnValue(SERVER_URL);
   (authService.getSSOToken as Mock).mockReturnValue("token123");
 });
@@ -159,6 +181,23 @@ describe("WebSearch 的声明", () => {
 });
 
 describe("WebSearch 的请求", () => {
+  it("配置关掉时直接说「已关闭」，一个请求都不发", async () => {
+    settingsSwitch.enabled = false;
+    const fetchMock = stubFetch(jsonResponse(200, searchBody()));
+
+    const result = await webSearchTool.execute(
+      { query: "typescript 5.4 release" },
+      makeContext(),
+    );
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(result.success).toBe(false);
+    expect(result.data).toEqual({ status: "disabled" });
+    expect(result.content).toContain("turned off in settings");
+    // 与 404 那句分开：把人支去查服务端的 WEB_SEARCH_ENABLED 是另一个方向。
+    expect(result.content).not.toContain("not available on this server");
+  });
+
   it("POST 到 {serverUrl}/api/v1/web-search，请求体只有 query", async () => {
     const fetchMock = stubFetch(jsonResponse(200, searchBody()));
     const context = makeContext();

@@ -8,10 +8,11 @@ import { Container } from "@/utils/container.js";
  * off. Registration reads it (`services/webSearchAvailability.ts`), so the gate is
  * mocked here and the real memo is exercised in its own test.
  */
-const gate = { available: true };
+const gate = { available: true, enabledBySettings: true };
 
 vi.mock("@/services/webSearchAvailability.js", () => ({
   isWebSearchAvailable: () => gate.available,
+  isWebSearchEnabledBySettings: () => gate.enabledBySettings,
   markWebSearchUnsupported: () => {
     gate.available = false;
   },
@@ -70,6 +71,7 @@ describe("WebSearch gating", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     gate.available = true;
+    gate.enabledBySettings = true;
   });
 
   it("registers WebSearch while the server has not said 404", () => {
@@ -93,6 +95,39 @@ describe("WebSearch gating", () => {
     // The tool itself records the verdict when it meets the 404, which also
     // unregisters it; a settings reload must not resurrect it.
     gate.available = false;
+    toolManager.reloadFeatureGatedTools();
+    expect(reachableNames(toolManager)).not.toContain("WebSearch");
+  });
+
+  it("does not register it while the enableWebSearch switch is off", () => {
+    // A configured `false` hides the tool without probing the server at all.
+    gate.enabledBySettings = false;
+    const toolManager = toolManagerFor("/test/workdir");
+    expect(reachableNames(toolManager)).not.toContain("WebSearch");
+    expect(toolManager.hasTool("WebSearch")).toBe(false);
+  });
+
+  it("follows the switch across a live-config reload, both ways", () => {
+    const toolManager = toolManagerFor("/test/workdir");
+    expect(reachableNames(toolManager)).toContain("WebSearch");
+
+    gate.enabledBySettings = false;
+    toolManager.reloadFeatureGatedTools();
+    expect(reachableNames(toolManager)).not.toContain("WebSearch");
+
+    gate.enabledBySettings = true;
+    toolManager.reloadFeatureGatedTools();
+    expect(reachableNames(toolManager)).toContain("WebSearch");
+  });
+
+  it("stays gone while either gate is closed (the two stack)", () => {
+    gate.enabledBySettings = true;
+    gate.available = false;
+    const toolManager = toolManagerFor("/test/workdir");
+    expect(reachableNames(toolManager)).not.toContain("WebSearch");
+
+    gate.enabledBySettings = false;
+    gate.available = true;
     toolManager.reloadFeatureGatedTools();
     expect(reachableNames(toolManager)).not.toContain("WebSearch");
   });

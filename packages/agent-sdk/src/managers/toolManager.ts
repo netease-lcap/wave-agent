@@ -27,7 +27,10 @@ import { artifactCommentsTool } from "../tools/artifactCommentsTool.js";
 import { pollTool } from "../tools/pollTool.js";
 import { isArtifactEnabled } from "../services/artifactAvailability.js";
 import { isKnowledgeBaseEnabled } from "../services/knowledgeBaseAvailability.js";
-import { isWebSearchAvailable } from "../services/webSearchAvailability.js";
+import {
+  isWebSearchAvailable,
+  isWebSearchEnabledBySettings,
+} from "../services/webSearchAvailability.js";
 import { isTaskToolsEnabled } from "../services/taskToolsAvailability.js";
 import {
   collectShellToolGateInput,
@@ -483,12 +486,23 @@ class ToolManager {
       );
     }
 
-    // Web search is a *server* capability, not a local one: the endpoint answers
-    // 404 when the deployment has it switched off, and that first answer is
-    // remembered for this process (see `services/webSearchAvailability.ts`).
-    // Once the verdict is in, the tool is not registered at all — no declaration,
-    // no prompt paragraph, and no further round trips to prove it again.
-    if (isWebSearchAvailable()) {
+    // Web search has two independent reasons to be absent, and both are read
+    // here so a closed one never reaches the model's declaration:
+    //
+    //  - `enableWebSearch` (configuration — remote managed push → local settings
+    //    → default on), read from `SessionWorkdir` like the knowledge-base switch:
+    //    which settings file decides must not move because the agent ran a `cd`.
+    //  - the server's own 404, remembered for this process
+    //    (`services/webSearchAvailability.ts`).
+    //
+    // They stack: switch on + 404 still hides the tool, and a closed switch costs
+    // zero round trips instead of one.
+    if (
+      isWebSearchEnabledBySettings(
+        this.container.get<string>("SessionWorkdir"),
+      ) &&
+      isWebSearchAvailable()
+    ) {
       builtInTools.push(webSearchTool);
     }
 
@@ -521,14 +535,29 @@ class ToolManager {
    * reload. Currently gates the Artifact tools (`Artifact` plus its
    * `ArtifactComments` sibling) on settings.json `enableArtifact`, the REPL tool on `enableRepl` (and, through the deferral
    * judgment, on `enableReplCoreTools`), the three knowledge-base
-   * tools on `enableKnowledgeBase`, `WebSearch` on the server's own 404 verdict
-   * (`services/webSearchAvailability.ts`), the four task-list tools on
+   * tools on `enableKnowledgeBase`, `WebSearch` on `enableWebSearch` plus the
+   * server's own 404 verdict (`services/webSearchAvailability.ts`), the four
+   * task-list tools on
    * `env.WAVE_ENABLE_TASK_TOOLS`, and the two shell tools on the shell gate
    * (`env.WAVE_USE_POWERSHELL_TOOL` / whether Git Bash exists). Safe to call
    * multiple times: gated tools are removed from the registry first, then
    * initializeBuiltInTools() re-registers them only if still enabled (so
    * toggling a flag off actually unregisters).
    */
+  /**
+   * The session's opening directory (`SessionWorkdir`) — the "does not move"
+   * one, so a `cd` inside the session never changes which settings file a
+   * project-level read is anchored to.
+   *
+   * Exposed for a gated tool's `execute`: registration already judged this
+   * directory, and a call through a stale plugin reference (a REPL script holding
+   * it from before the unregister) must make the *same* judgment rather than fall
+   * back to `context.workdir`, which is the directory the tools run in.
+   */
+  public getSessionWorkdir(): string | undefined {
+    return this.container.get<string>("SessionWorkdir");
+  }
+
   public reloadFeatureGatedTools(): void {
     this.toolsRegistry.delete(artifactTool.name);
     this.toolsRegistry.delete(replTool.name);

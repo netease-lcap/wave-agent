@@ -5,16 +5,39 @@ vi.mock("../../src/services/authService.js", () => ({
   authService: { getServerUrl: vi.fn() },
 }));
 
+/** The two settings layers the switch resolves through, plus a way to make the read fail. */
+const layers = vi.hoisted(() => ({
+  remote: null as Record<string, unknown> | null,
+  local: null as Record<string, unknown> | null,
+  localThrows: false,
+}));
+
+vi.mock("../../src/services/remoteSettingsService.js", () => ({
+  getRemoteSettingsSync: () => layers.remote,
+}));
+
+vi.mock("../../src/services/configurationService.js", () => ({
+  loadMergedWaveConfig: () => {
+    if (layers.localThrows) throw new Error("settings.json is unreadable");
+    return layers.local;
+  },
+}));
+
 import { authService } from "../../src/services/authService.js";
 import {
+  WEB_SEARCH_DEFAULT_ENABLED,
   __resetWebSearchAvailabilityForTesting,
   isWebSearchAvailable,
+  isWebSearchEnabledBySettings,
   markWebSearchUnsupported,
 } from "../../src/services/webSearchAvailability.js";
 
 beforeEach(() => {
   vi.clearAllMocks();
   __resetWebSearchAvailabilityForTesting();
+  layers.remote = null;
+  layers.local = null;
+  layers.localThrows = false;
 });
 
 describe("web search availability", () => {
@@ -48,5 +71,52 @@ describe("web search availability", () => {
     markWebSearchUnsupported();
     expect(() => markWebSearchUnsupported()).not.toThrow();
     expect(isWebSearchAvailable()).toBe(false);
+  });
+});
+
+describe("the enableWebSearch switch", () => {
+  it("defaults to on — a missing key must not withdraw a shipped capability", () => {
+    expect(WEB_SEARCH_DEFAULT_ENABLED).toBe(true);
+    expect(isWebSearchEnabledBySettings("/test/workdir")).toBe(true);
+  });
+
+  it("takes a managed false from the server", () => {
+    layers.remote = { enableWebSearch: false };
+    expect(isWebSearchEnabledBySettings("/test/workdir")).toBe(false);
+  });
+
+  it("lets the managed layer win over local files in both directions", () => {
+    layers.remote = { enableWebSearch: true };
+    layers.local = { enableWebSearch: false };
+    expect(isWebSearchEnabledBySettings("/test/workdir")).toBe(true);
+
+    layers.remote = { enableWebSearch: false };
+    layers.local = { enableWebSearch: true };
+    expect(isWebSearchEnabledBySettings("/test/workdir")).toBe(false);
+  });
+
+  it("falls through to the local layer when the managed one says nothing", () => {
+    layers.local = { enableWebSearch: false };
+    expect(isWebSearchEnabledBySettings("/test/workdir")).toBe(false);
+  });
+
+  it("reads a non-boolean as 'this layer says nothing' instead of coercing", () => {
+    // A hand-edited or older/newer payload must not be able to flip the switch.
+    layers.remote = { enableWebSearch: "true" };
+    layers.local = { enableWebSearch: 1 };
+    expect(isWebSearchEnabledBySettings("/test/workdir")).toBe(true);
+  });
+
+  it("keeps the default when the settings file cannot be read", () => {
+    layers.localThrows = true;
+    expect(() => isWebSearchEnabledBySettings("/test/workdir")).not.toThrow();
+    expect(isWebSearchEnabledBySettings("/test/workdir")).toBe(true);
+  });
+
+  it("still honours the managed layer when no workdir was handed in", () => {
+    layers.remote = { enableWebSearch: false };
+    expect(isWebSearchEnabledBySettings()).toBe(false);
+    layers.remote = null;
+    expect(isWebSearchEnabledBySettings()).toBe(true);
   });
 });
