@@ -46,6 +46,11 @@ export type WebSearchResultData =
     }
   /** 404：本部署没有这个能力（服务端开关没开）。 */
   | { status: "unsupported" }
+  /**
+   * `enableWebSearch: false`：配置说不要。与 `unsupported` 分开，是因为把人
+   * 支去查服务端的 `WEB_SEARCH_ENABLED` 与「设置里关了」是两个方向。
+   */
+  | { status: "disabled" }
   /** 401 / 403：账号这一侧不行（未登录、非企业成员、license 闸门）。 */
   | { status: "unauthorized"; reason: string }
   | { status: "error"; reason: string; errorCode?: string };
@@ -60,6 +65,14 @@ const SOURCES_REMINDER =
  */
 const UNSUPPORTED_SENTENCE =
   "Web search is not available on this server (the deployment has the capability switched off). Do not call WebSearch again in this session — answer without it, or ask the user to open the page themselves.";
+
+/**
+ * 配置关闭那句。与 404 那句的区别：那边说「这台服务端没有」，这边说「设置里关
+ * 了」，所以它不提服务端，而是指向配置本身——模型据此别再试，也别让用户去翻
+ * 服务端日志。
+ */
+const DISABLED_SENTENCE =
+  "Web search is turned off in settings (enableWebSearch). Do not call WebSearch again — answer from what you know, or ask the user to turn it on for this workspace.";
 
 /**
  * CC 的拼接顺序，逐段对应 `:2791-2813`。
@@ -89,6 +102,8 @@ export function renderWebSearchResultData(data: WebSearchResultData): string {
     }
     case "unsupported":
       return UNSUPPORTED_SENTENCE;
+    case "disabled":
+      return DISABLED_SENTENCE;
     case "unauthorized":
       return `Web search needs a signed-in enterprise account: ${data.reason}`;
     case "error":
@@ -109,9 +124,9 @@ export const webSearchOutputSchema: Record<string, unknown> = {
   properties: {
     status: {
       type: "string",
-      enum: ["ok", "unsupported", "unauthorized", "error"],
+      enum: ["ok", "unsupported", "disabled", "unauthorized", "error"],
       description:
-        'Outcome kind. "ok" also covers "searched but nothing matched" (results is then empty).',
+        'Outcome kind. "ok" also covers "searched but nothing matched" (results is then empty); "disabled" means settings turned the tool off, "unsupported" means the server has no such capability.',
     },
     query: {
       type: "string",

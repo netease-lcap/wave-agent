@@ -1587,6 +1587,7 @@ To write a mod â€” the \`$\` surface, the event set, element types and limits â€
 \`\`\`json
 {
   "enableArtifact": true,
+  "enableWebSearch": true,
   "enableKnowledgeBase": false,
   "completionEnabled": true,
   "leanPrompt": true

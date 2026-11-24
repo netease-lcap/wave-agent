@@ -3,6 +3,7 @@ import type { ToolContext, ToolPlugin, ToolResult } from "./types.js";
 import { searchWeb, type WebSearchHit } from "../services/webSearchApi.js";
 import {
   isWebSearchAvailable,
+  isWebSearchEnabledBySettings,
   markWebSearchUnsupported,
 } from "../services/webSearchAvailability.js";
 import {
@@ -117,6 +118,18 @@ export const webSearchTool: ToolPlugin = {
       };
       return { success: false, data, content: renderWebSearchResultData(data) };
     };
+
+    // 配置说关（`enableWebSearch: false`）：不注册时模型根本看不到它，走到这里
+    // 只有一种可能——脚本捏着 unregister 之前的插件引用直接调。一个请求都不发。
+    //
+    // 目录用 `SessionWorkdir`（经 `getSessionWorkdir`），与注册门同一个源：`cd` 过
+    // 一次不该让这里读另一个 settings 文件。拿不到（裸调用、无容器）时按「该层没
+    // 表态」处理，判定自己会落到远端托管层与代码默认。
+    const settingsWorkdir = context.toolManager?.getSessionWorkdir?.();
+    if (!isWebSearchEnabledBySettings(settingsWorkdir)) {
+      const data: WebSearchResultData = { status: "disabled" };
+      return { success: false, data, content: renderWebSearchResultData(data) };
+    }
 
     // 之前已经撞过 404：这个部署没有搜索能力，一个请求都不再发（脚本可能捏着
     // unregister 之前的插件引用，所以入口这里也要拦）。
