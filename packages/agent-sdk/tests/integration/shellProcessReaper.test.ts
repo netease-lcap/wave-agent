@@ -49,6 +49,29 @@ function makeWorkdir(): string {
   return dir;
 }
 
+/**
+ * Delete a workdir that a real shell just used as its cwd.
+ *
+ * On Windows the directory keeps a handle open for a moment after the process
+ * that lived in it goes away, and `rmdir` answers `EBUSY` while it lasts — the
+ * `check-windows` job failed on exactly that, intermittently (4 of 6 runs since
+ * #3036), which is what makes it a *short* window rather than a live process
+ * holding the directory: a leftover `sleep 60` whose cwd is the workdir does
+ * not block the delete (verified on Windows here, and by the runs that passed).
+ *
+ * `maxRetries` / `retryDelay` are Node's own answer to `EBUSY` (it retries the
+ * recursive delete with a linear backoff): ~1.5 s worst case, well inside the
+ * hook timeout. Not a sleep masking the error — a clean run never waits at all.
+ */
+function removeWorkdir(dir: string): void {
+  fs.rmSync(dir, {
+    recursive: true,
+    force: true,
+    maxRetries: 5,
+    retryDelay: 100,
+  });
+}
+
 function makeContext(
   workdir: string,
   reaper?: ShellProcessReaper,
@@ -106,9 +129,7 @@ describe("ShellProcessReaper with real shells", () => {
       instance.dispose();
     }
     recorded.length = 0;
-    for (const dir of workdirs) {
-      fs.rmSync(dir, { recursive: true, force: true });
-    }
+    for (const dir of workdirs) removeWorkdir(dir);
     workdirs.length = 0;
   });
 
@@ -263,7 +284,7 @@ describe("Agent.destroy() reaping a real session", () => {
       }
     }
     agents.length = 0;
-    for (const dir of dirs) fs.rmSync(dir, { recursive: true, force: true });
+    for (const dir of dirs) removeWorkdir(dir);
     dirs.length = 0;
   });
 

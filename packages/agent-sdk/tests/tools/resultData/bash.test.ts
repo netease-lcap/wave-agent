@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import * as fs from "fs";
 import * as os from "node:os";
+import * as path from "node:path";
 import { spawn } from "child_process";
 import type { ChildProcess } from "child_process";
 import { bashTool } from "../../../src/tools/bashTool.js";
@@ -251,9 +252,12 @@ describe("Bash 的 data → 文本 golden", () => {
   });
 
   it("cd note 进 stderr，正文里排在命令输出前面", async () => {
-    mockSpawn.mockReturnValue(
-      fakeChild({ exitCode: 0, cwd: "/test/workdir/subdir" }),
-    );
+    // `pwd -P` 交回来的是 shell 的**原生**路径，`cd` note 直接插值它，不归一成
+    // 正斜杠（与 CC 一致，见 src/tools/bashTool.ts 的 `Shell working directory
+    // changed to ${newCwd}`）。所以落点要在本平台是合法绝对路径：写死
+    // `/test/workdir/subdir` 在 Windows 上没有盘符，会被规范化成 `\test\…`。
+    const subdir = path.resolve(WORKDIR, "subdir");
+    mockSpawn.mockReturnValue(fakeChild({ exitCode: 0, cwd: subdir }));
 
     const result = await bashTool.execute(
       { command: "cd subdir" },
@@ -266,11 +270,11 @@ describe("Bash 的 data → 文本 golden", () => {
     );
 
     expect(result.content).toBe(
-      "Shell working directory changed to /test/workdir/subdir\nCommand executed with exit code: 0",
+      `Shell working directory changed to ${subdir}\nCommand executed with exit code: 0`,
     );
     expect(result.data).toEqual({
       stdout: "Command executed with exit code: 0",
-      stderr: "Shell working directory changed to /test/workdir/subdir",
+      stderr: `Shell working directory changed to ${subdir}`,
       interrupted: false,
       exitCode: 0,
     });
