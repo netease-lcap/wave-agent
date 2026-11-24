@@ -762,6 +762,12 @@ button.reasoning-header {
   border-bottom: 1px solid var(--vscode-panel-border);
 }
 
+/* 输出还没到（脚本/命令刚跑起来）：卡片只有上半截，那条 bottom 本是两段之间的
+   分隔线，贴着容器底边会读成双层边框。 */
+.bash-command-unified .bash-command-input:last-child {
+  border-bottom: none;
+}
+
 .bash-command-unified .bash-command-output {
   margin-top: 0;
   border: none;

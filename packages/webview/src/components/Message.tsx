@@ -1620,13 +1620,17 @@ export const Message: React.FC<MessageProps> = React.memo(
             </div>
           );
         } else {
-          // Show only input if no result yet
+          // 输出还没到：同一张卡片，只是缺下半截。外壳必须留着——桌面端的卡片
+          // 配色（气泡面 / 内边距 / 12px 圆角）挂在 `.bash-command-unified` 上，
+          // 裸输入行会落回代码面，于是同一张卡在输出到达那一刻换一次底色。
           return (
-            <div className="bash-command-input">
-              <span
-                className="bash-command"
-                dangerouslySetInnerHTML={{ __html: commandHtml }}
-              />
+            <div className="bash-command-unified">
+              <div className="bash-command-input">
+                <span
+                  className="bash-command"
+                  dangerouslySetInnerHTML={{ __html: commandHtml }}
+                />
+              </div>
             </div>
           );
         }
@@ -1700,8 +1704,10 @@ export const Message: React.FC<MessageProps> = React.memo(
         </div>
       );
 
-      // 还没有输出时只画脚本（场景 10）。
-      if (!logText && !resultText && !notice) return input;
+      // 还没有输出时只画脚本（场景 10）：外壳照留，理由与 Bash 那份相同。
+      if (!logText && !resultText && !notice) {
+        return <div className="bash-command-unified repl-block">{input}</div>;
+      }
 
       return (
         <div

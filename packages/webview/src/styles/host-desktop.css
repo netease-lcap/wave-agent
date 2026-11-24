@@ -4962,13 +4962,11 @@
    第 34/35 轮已把 write-preview-box、markdown pre、diff-viewer-container、
    bash-command-unified 统一为 12px（base 均为 6px/4px），此处补齐遗漏面：
    - .ask-user-result-a（答案框，base 6px）
-   - 运行中/无输出时的独立 .bash-command-input（base 6px；已完成态走
-     .bash-command-unified 12px 外框，故用子选择器只命中独立输入行）
-   - .lsp-output（legacy LSP 输出框，base 4px） */
+   - .lsp-output（legacy LSP 输出框，base 4px）
+   原第三项「运行中/无输出时的独立 .bash-command-input」已删：自 2026-11-26 起
+   无输出态也套 .bash-command-unified 外壳（配色与内边距要挂在同一层，否则输出
+   到达时换一次底色），独立输入行不再存在，那条子选择器已无作用点。 */
 [data-host="desktop"] .ask-user-result-a {
-  border-radius: 12px;
-}
-[data-host="desktop"] .tool-container > .bash-command-input {
   border-radius: 12px;
 }
 [data-host="desktop"] .lsp-output {
