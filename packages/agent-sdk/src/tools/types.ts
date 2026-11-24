@@ -219,6 +219,19 @@ export interface ToolContext {
   replSessionKey?: string;
   /** The ID of the current tool call */
   toolCallId?: string;
+  /**
+   * The tool names this request actually declared to the model (`tools[]`), for
+   * the one check that has to happen before a call runs: a `tool_use` naming
+   * something not in here is turned away instead of executed
+   * (`ToolManager.undeclaredToolResult`, spec `core/repl-tool.md`「开关把核心文件
+   * 与 shell 工具也收进 REPL」场景 5).
+   *
+   * Absent means "this call did not come from a model's `tool_use`" — a host
+   * invocation, or a REPL script's second hop (`replRuntime` drops the set when it
+   * builds a script's context, because what a script reaches is the pool, not
+   * `tools[]`). Absent is therefore "no check", never "nothing declared".
+   */
+  declaredToolNames?: ReadonlySet<string>;
   /** Callback to update the short result of the current tool block */
   onShortResultUpdate?: (shortResult: string) => void;
   /** Limits for file reading operations */

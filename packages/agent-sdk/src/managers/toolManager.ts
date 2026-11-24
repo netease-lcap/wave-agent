@@ -43,12 +43,11 @@ import {
   isReplCoreToolsEnabled,
 } from "../services/replAvailability.js";
 import { isLeanPromptEnabled } from "../services/leanPrompt.js";
-import { buildReplPool } from "../repl/catalog.js";
+import { buildReplPool, toolExpression } from "../repl/catalog.js";
 import type { ReplPoolCandidate, ReplPoolEntry } from "../repl/catalog.js";
 import { STRUCTURAL_NON_DEFERRABLE } from "../repl/deferral.js";
 import {
   REPL_TOOL_NAME,
-  REPL_TOOL_ALIASES,
   SEND_USER_FILE_TOOL_NAME,
   isShellToolName,
 } from "../constants/tools.js";
@@ -111,21 +110,6 @@ interface DescribedTool {
    */
   isDeferred?: boolean;
 }
-
-/**
- * Every spelling of the REPL — the pool's carrier.
- *
- * The tool is registered under `REPL_TOOL_NAME`, but `REPL_TOOL_ALIASES` are
- * names a settings file or a permission rule may still hold from before the
- * rename, so "is this the carrier" has to be asked of the whole set: a `--tools
- * Eval` or a deny rule naming `Eval` means this tool, and treating it as an
- * unknown name would either register nothing or leave the sandbox carrier
- * callable while its rule said otherwise.
- */
-const CARRIER_TOOL_NAMES: readonly string[] = [
-  REPL_TOOL_NAME,
-  ...REPL_TOOL_ALIASES,
-];
 
 export interface ToolManagerOptions {
   container: Container;
@@ -597,29 +581,20 @@ class ToolManager {
 
   /**
    * Check if a tool should be enabled based on tools configuration and permission rules
-   *
-   * The REPL answers to several spellings, so it is matched as the set rather than
-   * by its registered name: `--tools Eval` or a `disallowedTools` entry naming an
-   * alias is a statement about this tool.
    */
   private shouldEnableTool(name: string): boolean {
     const permissionManager =
       this.container.get<PermissionManager>("PermissionManager");
-    const spellings = CARRIER_TOOL_NAMES.includes(name)
-      ? CARRIER_TOOL_NAMES
-      : [name];
 
     // If tool is explicitly denied by name in permission rules, filter it out
-    if (
-      spellings.some((spelling) => permissionManager?.isToolDenied(spelling))
-    ) {
+    if (permissionManager?.isToolDenied(name)) {
       return false;
     }
 
+    // Case-insensitive, and only about this one name: the REPL is `REPL` and
+    // nothing else, so a `--tools Eval` names no tool at all rather than it.
     const matches = (toolName: string) =>
-      spellings.some(
-        (spelling) => toolName.toLowerCase() === spelling.toLowerCase(),
-      );
+      toolName.toLowerCase() === name.toLowerCase();
 
     // A definition-level blacklist wins over the whitelist (both lists naming
     // the same tool means "unavailable").
@@ -795,6 +770,54 @@ class ToolManager {
   }
 
   /**
+   * The result a call gets when it names a tool this request never declared, or
+   * `undefined` when the call is fine (including "not a model call at all").
+   *
+   * Why this exists: `tools[]` is not the registry. A pooled tool leaves the flat
+   * declaration and stays callable from the sandbox, and a model that calls it flat
+   * would otherwise really run it — the announcement says "inside the REPL" and the
+   * call quietly succeeds, which is the difference between a suggestion and a rule
+   * (spec `core/repl-tool.md`「开关把核心文件与 shell 工具也收进 REPL」场景 5).
+   *
+   * The registry is consulted for the wording only. A name that is not declared
+   * cannot run whether or not it is registered, so "is this a real tool" decides
+   * between "it is in the pool, call it from a script" and "there is no such tool
+   * here" — and nowhere between "reject" and "allow".
+   *
+   * `context.declaredToolNames === undefined` means the call did not come from a
+   * model's `tool_use` (see `ToolContext`): no set, no check. That is what keeps a
+   * REPL script's `tools.Bash(...)` working — `replRuntime` drops the set when it
+   * builds a script's context, since a script reaches the pool rather than
+   * `tools[]`.
+   */
+  private undeclaredToolResult(
+    name: string,
+    context: ToolContext,
+  ): ToolResult | undefined {
+    const declared = context.declaredToolNames;
+    if (!declared || declared.has(name)) return undefined;
+
+    const pooled =
+      this.isReplDeclared() &&
+      this.getReplPool().some((entry) => entry.name === name);
+    // Both sentences are the model's next move rather than a diagnosis of ours:
+    // the pooled one is a call it can copy verbatim (`toolExpression` is the same
+    // renderer the announcement uses), the other is Claude Code's own
+    // "continue with the tools you have".
+    const message = pooled
+      ? `No such tool available: ${name}. It is not declared as a flat tool — it lives in the ` +
+        `${REPL_TOOL_NAME} pool, so call it from a script instead: await ${toolExpression(name)}({...}) ` +
+        `(describeTool("${name}") returns its input schema).`
+      : `No such tool available: ${name}. It is not among the tools available in this request — ` +
+        `continue with the tools you have.`;
+    logger?.debug("Tool call rejected: name not declared in this request", {
+      toolName: name,
+      pooled,
+    });
+    return { success: false, content: message, error: message };
+  }
+
+  /**
    * The body of {@link execute}: resolve the effective permission mode and the
    * per-session wiring, then run the tool.
    */
@@ -804,6 +827,13 @@ class ToolManager {
     context: ToolContext,
     startedAt: number,
   ): Promise<ToolResult> {
+    // First gate, ahead of permission and of the hooks: the name has to be one
+    // this request declared. Claude Code makes the same judgment on every
+    // `tool_use` (spec `core/repl-tool.md`「开关把核心文件与 shell 工具也收进 REPL」
+    // 场景 5).
+    const undeclared = this.undeclaredToolResult(name, context);
+    if (undeclared) return undeclared;
+
     const permissionManager =
       this.container.get<PermissionManager>("PermissionManager");
     const permissionMode = this.container.has("PermissionMode")
@@ -1219,16 +1249,13 @@ class ToolManager {
    * cannot be called, so declaring the deferred tools only inside it would hide
    * them for good.
    *
-   * A rule naming any of the carrier's spellings (`Eval`) is a rule about this
-   * tool: the aliases are the same tool, and honouring only the canonical name
-   * would leave the sandbox callable while the rule said it was denied.
+   * Denial is asked by the one name the tool has (`REPL`): it has no alias, so
+   * there is no second spelling a rule could use to deny the sandbox carrier.
    */
   private isReplDeclared(): boolean {
     if (!this.toolsRegistry.has(REPL_TOOL_NAME)) return false;
     const permissionManager = this.getPermissionManager();
-    return !CARRIER_TOOL_NAMES.some((name) =>
-      permissionManager?.isToolDenied(name),
-    );
+    return !permissionManager?.isToolDenied(REPL_TOOL_NAME);
   }
 
   /**
@@ -1362,7 +1389,7 @@ class ToolManager {
 
     const builtInToolsConfig = Array.from(this.toolsRegistry.values())
       .filter((tool) => {
-        if (CARRIER_TOOL_NAMES.includes(tool.name)) return execDeclared;
+        if (tool.name === REPL_TOOL_NAME) return execDeclared;
         if (pooled.has(tool.name)) return false;
         // If tool is explicitly denied by name in permission rules, filter it out
         if (permissionManager?.isToolDenied(tool.name)) {

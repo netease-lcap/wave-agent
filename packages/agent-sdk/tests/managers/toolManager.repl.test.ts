@@ -454,30 +454,35 @@ describe("core tools pooled by enableReplCoreTools", () => {
 });
 
 /**
- * The carrier answers to `REPL` and to its aliases (`Eval`), and every place that
- * asks "is this the REPL" asks the whole set — a rule or a `--tools` entry naming
- * the old spelling is a statement about this tool.
+ * The carrier answers to `REPL` and to nothing else. `Eval` is Claude Code's
+ * spelling of its own EvalTool, not a name we ever registered (ours went `Exec` →
+ * `REPL`), so an `Eval` entry names no tool: it neither reaches the carrier nor
+ * denies it.
  */
-describe("REPL aliases", () => {
-  it("treats a deny rule naming `Eval` as a rule about the carrier", () => {
+describe("REPL is the only spelling of the carrier", () => {
+  it("does not read a rule naming `Eval` as a rule about the carrier", () => {
+    // A rule about a name we never had must not take the sandbox down with it.
     const { toolManager } = build({ denied: ["Eval"] });
 
-    expect(names(toolManager)).not.toContain(REPL_TOOL_NAME);
-    expect(toolManager.getOnDemandToolNames()).toBeUndefined();
+    expect(names(toolManager)).toContain(REPL_TOOL_NAME);
+    expect(toolManager.getOnDemandToolNames()).toBeDefined();
   });
 
-  it("registers the carrier when `--tools` names it by an alias", () => {
+  it("does not register the carrier when `--tools` names `Eval`", () => {
+    // `--tools` is a definition-level allow-list over registered names: an unknown
+    // name enables nothing, so the carrier stays unregistered.
     const { toolManager } = build({ tools: ["Eval", "Read"] });
 
-    expect(toolManager.getTools().map((tool) => tool.name)).toContain(
+    expect(toolManager.getTools().map((tool) => tool.name)).not.toContain(
       REPL_TOOL_NAME,
     );
+    expect(names(toolManager)).toContain("Read");
   });
 
-  it("leaves the carrier out when `--tools` names neither spelling", () => {
-    const { toolManager } = build({ tools: ["Read"] });
+  it("registers the carrier when `--tools` names it by its own name", () => {
+    const { toolManager } = build({ tools: [REPL_TOOL_NAME, "Read"] });
 
-    expect(toolManager.getTools().map((tool) => tool.name)).not.toContain(
+    expect(toolManager.getTools().map((tool) => tool.name)).toContain(
       REPL_TOOL_NAME,
     );
   });

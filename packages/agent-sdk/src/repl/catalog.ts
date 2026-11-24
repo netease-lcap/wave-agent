@@ -185,8 +185,13 @@ function renderKey(name: string): string {
 /**
  * The property path the sandbox exposes a tool under. Non-identifier names use
  * bracket form because `tools.mcp__my-srv__x` would parse as a subtraction.
+ *
+ * Exported because the one place outside the catalog that writes this form is the
+ * rejection hint for a flat call of a pooled tool (`ToolManager`), and a hint has
+ * to be copyable — a second copy of the identifier rule would eventually render a
+ * call that cannot parse.
  */
-function toolExpression(name: string): string {
+export function toolExpression(name: string): string {
   return IDENTIFIER_SEGMENT.test(name)
     ? `tools.${name}`
     : `tools[${JSON.stringify(name)}]`;

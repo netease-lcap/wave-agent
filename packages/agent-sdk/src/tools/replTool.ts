@@ -1,4 +1,4 @@
-import { REPL_TOOL_NAME, REPL_TOOL_ALIASES } from "../constants/tools.js";
+import { REPL_TOOL_NAME } from "../constants/tools.js";
 import {
   REPL_SEARCH_EXPRESSION,
   renderSearchCallForm,
@@ -21,16 +21,6 @@ import {
   REPL_FAILURE_TEXT,
 } from "./resultData/repl.js";
 import type { ToolContext, ToolPlugin, ToolResult } from "./types.js";
-
-/**
- * Other names this tool answers to besides the one it declares.
- *
- * Re-exported from `constants/tools.ts` so a host registering the tool under the
- * older spelling (`Eval`, which Claude Code accepted before `REPL`) has the same
- * source of truth as the deferral judgment, which already treats those names as
- * carriers of this tool (`repl/deferral.ts`).
- */
-export const replToolAliases: readonly string[] = REPL_TOOL_ALIASES;
 
 /**
  * `preview()`'s default cut, in characters.

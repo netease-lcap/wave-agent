@@ -1560,7 +1560,7 @@ export function runReplScript(options: RunReplOptions): Promise<ReplRunResult> {
     startedAt: Date.now(),
     timeoutMs: resolveTimeout(options.timeout),
     pool: options.pool ?? [],
-    context: options.context,
+    context: scriptToolContext(options.context),
     onToolCall: options.onToolCall,
     maxToolCalls: options.maxToolCalls ?? REPL_DEFAULT_MAX_TOOL_CALLS,
     toolCalls: 0,
@@ -1753,6 +1753,24 @@ export function listRunningReplScripts(selfId?: number): RunningReplScript[] {
   }
   scripts.sort((left, right) => left.id - right.id);
   return scripts;
+}
+
+/**
+ * The context a script's own calls run under: the pool, not this request's
+ * `tools[]`.
+ *
+ * A script call is second-hop — the model declared `REPL`, and what the script
+ * reaches is the pool — so the flat declaration set must not follow it in. It is
+ * what `ToolManager` rejects an undeclared *model* call by, and a pooled tool is
+ * precisely one that is missing from it: keeping the set here would fail every
+ * `tools.Bash(...)` and every `$` (spec `core/repl-tool.md`「开关把核心文件与
+ * shell 工具也收进 REPL」场景 5).
+ */
+function scriptToolContext(context: ToolContext): ToolContext {
+  if (context.declaredToolNames === undefined) return context;
+  const scriptContext: ToolContext = { ...context };
+  delete scriptContext.declaredToolNames;
+  return scriptContext;
 }
 
 /**

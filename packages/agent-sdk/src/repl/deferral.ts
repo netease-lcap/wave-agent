@@ -33,7 +33,6 @@ import {
   POWERSHELL_TOOL_NAME,
   POLL_TOOL_NAME,
   READ_TOOL_NAME,
-  REPL_TOOL_ALIASES,
   WRITE_TOOL_NAME,
 } from "../constants/tools.js";
 
@@ -85,11 +84,10 @@ export interface DeferralSubject {
  * Names that must never enter the pool, whatever the configuration says.
  *
  * The REPL tool is the pool's own carrier: a pool containing its carrier would
- * have the sandbox able to call the REPL, i.e. a script that spawns a script. The
- * alias is a carrier too — it is the same tool under another name, so exempting
- * only the canonical spelling would leave the hole open. This is a floor under
- * the configurable list, not a replacement for it: an operator cannot accidentally
- * pool the REPL by editing a list (see `isDeferredTool`).
+ * have the sandbox able to call the REPL, i.e. a script that spawns a script.
+ * This is a floor under the configurable list, not a replacement for it: an
+ * operator cannot accidentally pool the REPL by editing a list (see
+ * `isDeferredTool`).
  *
  * `Poll` is here for a different reason: it is how a model reads the async lane's
  * queue from outside a script, and a pool tool is only reachable from *inside* one.
@@ -98,7 +96,6 @@ export interface DeferralSubject {
  */
 export const STRUCTURAL_NON_DEFERRABLE: readonly string[] = [
   REPL_TOOL_NAME,
-  ...REPL_TOOL_ALIASES,
   POLL_TOOL_NAME,
 ];
 

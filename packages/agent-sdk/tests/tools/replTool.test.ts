@@ -1,9 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { replTool, replToolAliases } from "../../src/tools/replTool.js";
-import {
-  REPL_TOOL_NAME,
-  REPL_TOOL_ALIASES,
-} from "../../src/constants/tools.js";
+import { replTool } from "../../src/tools/replTool.js";
+import { REPL_TOOL_NAME } from "../../src/constants/tools.js";
 import {
   renderSearchCallForm,
   renderSearchSignature,
@@ -113,14 +110,6 @@ describe("replTool declaration", () => {
     // would be wrong about when a receipt comes back.
     expect(description).toContain(String(REPL_SYNC_WAIT_MS));
     expect(description).toContain("does not set the wait window");
-  });
-
-  it("answers to the older spelling of its name", () => {
-    // Claude Code accepted `Eval` before `REPL`; a settings file or permission
-    // rule naming the old spelling has to land on this tool. Re-exported from the
-    // constants so registration and the deferral judgment cannot disagree.
-    expect(replToolAliases).toEqual([...REPL_TOOL_ALIASES]);
-    expect(replToolAliases).toContain("Eval");
   });
 
   it("is not concurrency-safe — it reaches arbitrary MCP tools", () => {

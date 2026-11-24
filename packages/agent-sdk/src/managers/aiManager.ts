@@ -3473,6 +3473,11 @@ ${question}`;
                   call,
                   abortController,
                   toolAbortController,
+                  // The names this very request declared: the same set `tools` above
+                  // was built from, handed down the call stack of this one `callAgent`
+                  // rather than parked on a member (a subagent or a second turn would
+                  // find the wrong one there).
+                  toolNames,
                   result.finish_reason,
                 );
                 batchOutcomes.push({
@@ -4203,6 +4208,12 @@ ${question}`;
     functionToolCall: ChatCompletionMessageFunctionToolCall,
     abortController: AbortController,
     toolAbortController: AbortController,
+    /**
+     * The tool names this request declared (`tools[]`). A `tool_use` outside it is
+     * answered with an error instead of being executed — see
+     * `ToolManager.undeclaredToolResult`.
+     */
+    declaredToolNames: ReadonlySet<string>,
     finishReason?: string | null,
   ): Promise<{
     ok: boolean;
@@ -4292,6 +4303,10 @@ ${question}`;
         sessionId: this.messageManager.getSessionId(),
         replSessionKey: this.replContextKey(),
         toolCallId: toolId,
+        // What the model was allowed to name, carried by the call itself: the
+        // rejection happens in the tool funnel, where every model call lands, and
+        // nowhere else (a REPL script's second hop drops this — see `ToolContext`).
+        declaredToolNames,
         taskManager: this.taskManager,
         readFileState: this.readFileState,
         onShortResultUpdate: (shortResult: string) => {
