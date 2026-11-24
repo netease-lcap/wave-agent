@@ -58,7 +58,10 @@ const POOL: ReplPoolEntry[] = [
 ];
 
 function ok(content: string): ToolResult {
-  return { success: true, content };
+  // A built-in hands the script its `data`, not the text the model reads (spec
+  // core/repl-tool.md「在 REPL 里编排一轮内的多步调用」场景 2). This fixture is a
+  // tool whose structured result happens to be that same string.
+  return { success: true, content, data: content };
 }
 
 type Behavior = (
@@ -260,6 +263,64 @@ describe("the two dispatch funnels", () => {
     expect(result.error).not.toContain("not a script error");
   });
 
+  it("parses an MCP answer that is JSON text into the value the script reads", async () => {
+    const h = harness(undefined, () => ({
+      output: '{"items":[{"id":1},{"id":2}],"total":2}',
+      images: [],
+    }));
+
+    const result = await runRepl(
+      h,
+      `
+      const r = await tools["mcp__srv__boom"]({});
+      return [typeof r, r.items.length, r.total];
+    `,
+    );
+
+    // A server that answers in JSON text hands the script the parsed value: the
+    // caller reads a field instead of `JSON.parse`-ing every answer (spec
+    // core/repl-tool.md「在 REPL 里编排一轮内的多步调用」场景 2).
+    expect(result.ok).toBe(true);
+    expect(JSON.parse(result.value as string)).toEqual(["object", 2, 2]);
+  });
+
+  it("keeps an MCP answer that is not JSON as the text it was", async () => {
+    const h = harness(undefined, () => ({
+      output: "nothing to report",
+      images: [],
+    }));
+
+    const result = await runRepl(
+      h,
+      `
+      const r = await tools["mcp__srv__boom"]({});
+      return [typeof r, r];
+    `,
+    );
+
+    expect(JSON.parse(result.value as string)).toEqual([
+      "string",
+      "nothing to report",
+    ]);
+  });
+
+  it("hands structured content through without a text pass", async () => {
+    const h = harness(undefined, () => ({
+      output: { items: [1] },
+      images: [],
+    }));
+
+    const result = await runRepl(
+      h,
+      `
+      const r = await tools["mcp__srv__boom"]({});
+      return [typeof r, r.items[0]];
+    `,
+    );
+
+    expect(JSON.parse(result.value as string)).toEqual(["object", 1]);
+  });
+
   it("leaves a name outside the pool undefined", async () => {
     const h = harness();
 
@@ -305,8 +366,15 @@ describe("the catalog, reached from the script", () => {
     expect(hits[0].name).toBe("Echo");
     expect(hits[0].about).toContain("Echo back");
     expect(typeof hits[0].input).toBe("string");
-    // A capped hit list is not a count of matches: there is no `total`.
-    expect(Object.keys(hits[0]).sort()).toEqual(["about", "input", "name"]);
+    // A capped hit list is not a count of matches: there is no `total`. The fourth
+    // field is the return type, which is what lets the script go straight on to
+    // reading `r.<field>` instead of probing the shape first.
+    expect(Object.keys(hits[0]).sort()).toEqual([
+      "about",
+      "input",
+      "name",
+      "output",
+    ]);
   });
 
   it("answers describeTool with the schema, and with { error } for a miss", async () => {
@@ -329,6 +397,7 @@ describe("the catalog, reached from the script", () => {
       "description",
       "inputSchema",
       "name",
+      "output",
     ]);
     // A JSON Schema object the script can walk, not a rendering of one.
     expect(result.logs[1]).toBe("object");
@@ -598,8 +667,13 @@ describe("$ — the shell template", () => {
     );
 
     // Claude Code's shell result: nothing at all reads as `[exit 0]`, and no exit
-    // line appears when there was output.
-    expect(JSON.parse(result.value as string)).toEqual(["", "[exit 0]", ""]);
+    // line appears when there was output. The built-in hands the script its `data`,
+    // so the sentence the tool writes for a model never reaches `stdout` at all.
+    expect(JSON.parse(result.value as string)).toEqual([
+      "",
+      "[exit 0]",
+      { exitCode: 0 },
+    ]);
   });
 
   it("keeps the sentence when the command printed it", async () => {
@@ -741,29 +815,34 @@ describe("$ — the shell template", () => {
     expect(JSON.parse(result.value as string)).toEqual([printed, null]);
   });
 
-  it("leaves the note inside a tools.Bash answer, which has nowhere else to put it", async () => {
+  it("hands the whole shell data object back, `cd` note included", async () => {
     const target = path.resolve("/tmp", "wave-elsewhere");
     const h = harness((_name, _args, ctx) => {
       ctx.onCwdChange?.(target);
       return {
         success: true,
         content: `Shell working directory changed to ${target}\nCommand executed with exit code: 0`,
-        data: { exitCode: 0 },
+        // The `cd` note has a field of its own in the tool data, which is what the
+        // script receives; the text is the model-facing rendering of the same fact.
+        data: {
+          stdout: "",
+          stderr: `Shell working directory changed to ${target}`,
+          interrupted: false,
+          exitCode: 0,
+        },
       };
     });
     h.context.onCwdChange = () => {};
 
     const result = await runRepl(
       h,
-      `const out = await tools.Bash({ command: "cd elsewhere" }); return out;`,
+      `const out = await tools.Bash({ command: "cd elsewhere" }); return out.stderr;`,
       {
         pool: [...POOL, { name: "Bash", description: "Run a shell command" }],
       },
     );
 
-    expect(result.value).toBe(
-      `Shell working directory changed to ${target}\nCommand executed with exit code: 0`,
-    );
+    expect(result.value).toBe(`Shell working directory changed to ${target}`);
   });
 
   it("hands a persisted output back as a preview plus the spill file", async () => {
@@ -1734,9 +1813,44 @@ describe("attachments", () => {
     );
 
     // 4000 base64 characters are 3000 bytes: 3 of every 4 characters carry 2 bytes.
+    // The fixture declares no `data`, so the note is all the script gets: the text
+    // ("screenshot") is what the model reads, and it stays host-side.
     expect(result.logs[0]).toBe(
-      "screenshot\n[4000 base64 chars — 3000 bytes moved to the REPL result, subject to its per-result cap]",
+      "[4000 base64 chars — 3000 bytes moved to the REPL result, subject to its per-result cap]",
     );
+    expect(result.images).toEqual([{ data, mediaType: "image/png" }]);
+  });
+
+  it("swaps a base64 field inside the tool data for the same placeholder", async () => {
+    // `Read` reports an image as `data.file.base64`; the bytes travel as an
+    // attachment, so what crosses into the sandbox is the placeholder.
+    const data = "B".repeat(4000);
+    const h = harness(() => ({
+      success: true,
+      content: "",
+      data: {
+        type: "image",
+        file: { base64: data, type: "image/png", originalSize: 3000 },
+      },
+      images: [image(data)],
+    }));
+
+    const result = await runRepl(
+      h,
+      `
+      const out = await Pic({});
+      self.log(out.file.base64);
+      self.log(out.file.type);
+      return out.type;
+    `,
+    );
+
+    expect(result.logs[0]).toBe(
+      "[4000 base64 chars — 3000 bytes moved to the REPL result, subject to its per-result cap]",
+    );
+    // Everything beside the bytes is untouched.
+    expect(result.logs[1]).toBe("image/png");
+    expect(result.value).toBe("image");
     expect(result.images).toEqual([{ data, mediaType: "image/png" }]);
   });
 

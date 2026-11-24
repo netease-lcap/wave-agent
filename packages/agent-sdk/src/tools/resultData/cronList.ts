@@ -81,3 +81,57 @@ export function renderCronListResultData(data: CronListResultData): string {
     })
     .join("\n");
 }
+
+/**
+ * `CronList` 的 `data` 形状（JSON Schema），供 REPL 把签名渲染成真实返回类型
+ * （spec core/repl-tool.md「公告分档呈现」）。与 {@link CronListResultData} /
+ * {@link CronListJobData} 逐字段对应，改一处必须改另一处（口径见本文件头）。
+ *
+ * `jobs` 恒在；`recurring` / `durable` 是条件字段（execute 里按真值展开），不进
+ * `required`。
+ */
+export const cronListOutputSchema: Record<string, unknown> = {
+  type: "object",
+  properties: {
+    jobs: {
+      type: "array",
+      description:
+        "One entry per scheduled job; empty when nothing is scheduled.",
+      items: {
+        type: "object",
+        properties: {
+          id: {
+            type: "string",
+            description: "Job id; pass it to CronDelete to cancel the job.",
+          },
+          cron: {
+            type: "string",
+            description: "The raw 5-field cron expression.",
+          },
+          humanSchedule: {
+            type: "string",
+            description: "The cron expression in plain words.",
+          },
+          promptPreview: {
+            type: "string",
+            description:
+              "First line of the prompt, truncated to one display line.",
+          },
+          recurring: {
+            type: "boolean",
+            description:
+              "Written as true for recurring jobs; absent = one-shot.",
+          },
+          durable: {
+            type: "boolean",
+            description:
+              "Written as false for session-only jobs; absent = durable.",
+          },
+        },
+        required: ["id", "cron", "humanSchedule", "promptPreview"],
+      },
+    },
+  },
+  required: ["jobs"],
+  additionalProperties: false,
+};

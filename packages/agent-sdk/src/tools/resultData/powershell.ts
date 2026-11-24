@@ -154,3 +154,47 @@ export function renderPowerShellResultData(data: PowerShellResultData): string {
   const reason = data.interruptedReason ?? "";
   return persisted ? `${persisted}\n\n${reason}` : reason;
 }
+
+/**
+ * `PowerShell` 的 `data` 形状（JSON Schema），供 REPL 把签名渲染成真实返回类型
+ * （spec core/repl-tool.md「公告分档呈现」）。与 {@link PowerShellResultData} 逐字段
+ * 对应，改一处必须改另一处。
+ *
+ * 比 `Bash` 少三个字段：我们的 PowerShell 没有 `cd` 恢复、临时目录与临时卷这三条
+ * 提示通道（它们只存在于 bash 侧），所以不在这里声明不存在的字段。
+ */
+export const powershellOutputSchema: Record<string, unknown> = {
+  type: "object",
+  properties: {
+    stdout: {
+      type: "string",
+      description:
+        "Merged output (stdout then stderr); a placeholder sentence when nothing was printed.",
+    },
+    stderr: {
+      type: "string",
+      description:
+        "The tool's own `cd` note only — the command's stderr is inside `stdout`.",
+    },
+    interrupted: { type: "boolean" },
+    interruptedReason: { type: "string" },
+    persistedOutputPath: {
+      type: "string",
+      description:
+        "Full output on disk when too large; read it back with Read.",
+    },
+    persistedOutputSize: { type: "number" },
+    backgroundTaskId: { type: "string" },
+    backgroundedByUser: { type: "boolean" },
+    assistantAutoBackgrounded: { type: "boolean" },
+    backgroundOutputPath: { type: "string" },
+    timeoutMs: { type: "number" },
+    exitCode: {
+      type: "number",
+      description:
+        "Process exit code; absent when it was killed before exiting.",
+    },
+  },
+  required: ["stdout", "interrupted"],
+  additionalProperties: false,
+};

@@ -2,6 +2,7 @@ import { ToolPlugin, ToolResult, ToolContext } from "./types.js";
 import { CRON_LIST_TOOL_NAME } from "../constants/tools.js";
 import { cronToHuman } from "../utils/cronToHuman.js";
 import {
+  cronListOutputSchema,
   previewPrompt,
   renderCronListResultData,
   type CronListResultData,
@@ -15,6 +16,7 @@ export const cronListTool: ToolPlugin = {
   name: CRON_LIST_TOOL_NAME,
   defer: true,
   searchHint: "list the scheduled cron jobs and when they next run",
+  outputSchema: cronListOutputSchema,
   config: {
     type: "function",
     function: {

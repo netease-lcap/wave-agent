@@ -141,3 +141,51 @@ export function renderGrepResultData(data: GrepResultData): string {
 
   return cwdRecoveryNote(data.cwdRecovery) + body;
 }
+
+/**
+ * `Grep` 的 `data` 形状（JSON Schema），供 REPL 把签名渲染成真实返回类型
+ * （spec core/repl-tool.md「公告分档呈现」）。与 {@link GrepResultData} 逐字段对应，
+ * 改一处必须改另一处；只有 `numFiles` 与 `filenames` 是无条件字段，其余按模式与
+ * 截断情况出现。
+ */
+export const grepOutputSchema: Record<string, unknown> = {
+  type: "object",
+  properties: {
+    mode: {
+      type: "string",
+      enum: ["files_with_matches", "content", "count"],
+      description: "Absent means `files_with_matches`.",
+    },
+    numFiles: {
+      type: "number",
+      description: "Files in this page; in `count` mode, counted lines.",
+    },
+    filenames: {
+      type: "array",
+      items: { type: "string" },
+      description: "`files_with_matches` only; empty in the other two modes.",
+    },
+    content: {
+      type: "string",
+      description: "Match lines (`content`) or `path:count` lines (`count`).",
+    },
+    numLines: { type: "number" },
+    numMatches: {
+      type: "number",
+      description: "Occurrences (`count`) or total before paging.",
+    },
+    truncated: {
+      type: "boolean",
+      description: "True when `head_limit` cut this page.",
+    },
+    appliedLimit: { type: "number" },
+    appliedOffset: { type: "number" },
+    cwdRecovery: {
+      type: "object",
+      properties: { from: { type: "string" }, to: { type: "string" } },
+      required: ["from", "to"],
+    },
+  },
+  required: ["numFiles", "filenames"],
+  additionalProperties: false,
+};

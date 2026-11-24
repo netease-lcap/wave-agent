@@ -8,6 +8,7 @@ import { resolvePath, getDisplayPath } from "../utils/path.js";
 import { READ_TOOL_NAME } from "../constants/tools.js";
 import {
   renderWriteResultData,
+  writeOutputSchema,
   type WriteResultData,
 } from "./resultData/write.js";
 
@@ -17,6 +18,7 @@ import {
 export const writeTool: ToolPlugin = {
   name: "Write",
   searchHint: "create or overwrite files",
+  outputSchema: writeOutputSchema,
   isConcurrencySafe: false,
   config: {
     type: "function",

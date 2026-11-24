@@ -38,3 +38,36 @@ export function renderGlobResultData(data: GlobResultData): string {
     ? `${data.filenames.join("\n")}\n${TRUNCATED_NOTICE}`
     : data.filenames.join("\n");
 }
+
+/**
+ * `Glob` 的 `data` 形状（JSON Schema）。
+ *
+ * 用途只有一个：REPL 把工具签名渲染成真实返回类型（spec core/repl-tool.md「公告
+ * 分档呈现」），模型据此直接写 `const r = await Glob(...); r.filenames`，不用先
+ * 探一次。与 {@link GlobResultData} 逐字段对应，改一处必须改另一处。
+ */
+export const globOutputSchema: Record<string, unknown> = {
+  type: "object",
+  properties: {
+    durationMs: {
+      type: "number",
+      description: "Search duration in milliseconds.",
+    },
+    numFiles: {
+      type: "number",
+      description: "Number of files in `filenames` (after truncation).",
+    },
+    filenames: {
+      type: "array",
+      items: { type: "string" },
+      description:
+        "Relative to the workdir; a script needing absolute paths joins them itself.",
+    },
+    truncated: {
+      type: "boolean",
+      description: "True when more files matched than `filenames` holds.",
+    },
+  },
+  required: ["durationMs", "numFiles", "filenames", "truncated"],
+  additionalProperties: false,
+};

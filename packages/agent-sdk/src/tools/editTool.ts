@@ -7,6 +7,7 @@ import { resolvePath, getDisplayPath } from "../utils/path.js";
 import { escapeRegExp, analyzeEditMismatch } from "../utils/editUtils.js";
 import { EDIT_TOOL_NAME, READ_TOOL_NAME } from "../constants/tools.js";
 import {
+  editOutputSchema,
   renderEditResultData,
   type EditResultData,
 } from "./resultData/edit.js";
@@ -28,6 +29,7 @@ function formatCompactParams(
 export const editTool: ToolPlugin = {
   name: EDIT_TOOL_NAME,
   searchHint: "replace exact strings in an existing file",
+  outputSchema: editOutputSchema,
   isConcurrencySafe: false,
   formatCompactParams,
   prompt: () =>

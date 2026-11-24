@@ -58,11 +58,12 @@ export interface ReplPoolEntry {
   isMcp?: boolean;
   inputSchema?: Record<string, unknown>;
   /**
-   * The schema the server declared for this tool's output, rendered as the
-   * signature's return type. Absent for most servers today, and never present for
-   * a built-in (its result is a string); an MCP tool still gets a return
-   * type (`Promise<unknown>`), because leaving it out would read as "this call
-   * returns nothing".
+   * The schema for this tool's `ToolResult.data`, rendered as the signature's
+   * return type: a built-in declares it on `ToolPlugin.outputSchema`, an MCP tool
+   * gets the server's `outputJSONSchema`. Absent means `unknown`, which is what
+   * most MCP servers get (issue #108630: 95%+ declare no output schema) — but a
+   * built-in we ship always declares one, and no entry ever gets `string`
+   * (spec `core/repl-tool.md`「公告分档呈现」).
    */
   outputSchema?: Record<string, unknown>;
   /**
@@ -327,18 +328,21 @@ function renderType(schema: unknown, depth: number): string {
  * a line of it verbatim into a call — and so it cannot drift from the shape
  * `describeTool` returns.
  *
- * The return type is the schema an MCP server declared for its output, and
- * `string` for a built-in: a built-in resolves to its `content` text, so spelling
- * that `unknown` tells the model to guess fields the result does not have. An MCP
- * tool that declared nothing still gets `Promise<unknown>` rather than no return
- * type at all — its output is whatever `structuredContent` the server sent.
+ * The return type is the tool's declared output schema, rendered by the same
+ * `renderType` as the arguments — a built-in's `ToolPlugin.outputSchema` or an MCP
+ * server's `outputJSONSchema`. A tool that declared nothing gets
+ * `Promise<unknown>` rather than no return type at all, because leaving it out
+ * reads as "this call returns nothing".
+ *
+ * This is a deliberate departure from Claude Code, which spells every built-in
+ * `Promise<unknown>` (2.1.325: everything; 2.1.331: built-ins only — MCP gained real
+ * types). `unknown` is a guess with a search round-trip attached: the model writes
+ * `r.filenames` blind, and a wrong field costs the whole script (issue #108630 is
+ * that complaint, filed by users of the other side). We control the `data` we emit,
+ * so we can say what it is.
  */
 export function renderToolSignature(entry: ReplPoolEntry): string {
-  const output = entry.isMcp
-    ? renderType(entry.outputSchema, 0)
-    : // A built-in's result is its `content` text (see `ReplPoolEntry.outputSchema`):
-      // a return type of `unknown` would invite the model to read fields off it.
-      "string";
+  const output = renderType(entry.outputSchema, 0);
   return `${toolExpression(entry.name)}(${renderType(entry.inputSchema, 0)}): Promise<${output}>`;
 }
 
@@ -474,18 +478,25 @@ function clampSchema(schema: unknown, budget: number): Record<string, unknown> {
 const SEARCH_USAGE =
   "searchTools: pass the words to look for, e.g. searchTools('slack message')";
 
-/** One search hit. Three fields, because each one earns its place in a decision. */
+/** One search hit. Four fields, because each one earns its place in a decision. */
 export interface ReplSearchHit {
   /** The name `tools.<name>` takes. */
   name: string;
   /** The tool's own description, cut to `SEARCH_ABOUT_MAX_CHARS`. */
   about: string;
-  /**
-   * TypeScript type of the argument object. Deliberately the *input* only: the
-   * return type is `describeTool`'s job, and a hit is what the model got in
-   * exchange for one call, not a replacement for reading the schema.
-   */
+  /** TypeScript type of the argument object. */
   input: string;
+  /**
+   * TypeScript type of the resolved value, from the tool's output schema — the
+   * same source as the announcement's signature and `describeTool().output`.
+   *
+   * In the hit rather than left to `describeTool`: the return shape is what
+   * decides whether the model can go straight on to `const r = await Glob(...)`
+   * and read `r.filenames`, and a second round-trip per candidate is exactly the
+   * cost the deferred pool exists to avoid. `unknown` when the tool declared no
+   * schema.
+   */
+  output: string;
 }
 
 /** What `describeTool` answers for a name that is in the pool. */
@@ -503,6 +514,15 @@ export interface ReplToolDescription {
    * annotations first so the answer never degrades into a string.
    */
   inputSchema: Record<string, unknown>;
+  /**
+   * TypeScript type of the resolved value, from the tool's output schema.
+   *
+   * A string rather than a schema object, unlike `inputSchema`: nothing validates
+   * or walks the output (the sandbox hands the script `data` as it came), so the
+   * only thing a caller can do with it is read it — which is exactly what the
+   * rendered form is for. `unknown` when the tool declared no schema.
+   */
+  output: string;
 }
 
 /** What `describeTool` answers for a name that is not. */
@@ -637,6 +657,10 @@ export function describeTool(
       DESCRIBE_DESCRIPTION_MAX_CHARS,
     ),
     inputSchema: clampSchema(entry.inputSchema, DESCRIBE_INPUT_MAX_CHARS),
+    output: clampTypeText(
+      renderType(entry.outputSchema, 0),
+      DESCRIBE_INPUT_MAX_CHARS,
+    ),
   };
 }
 
@@ -823,10 +847,16 @@ export function searchTools(
         Math.min(DESCRIBE_INPUT_MAX_CHARS, remaining),
       );
       remaining = Math.max(0, remaining - input.length);
+      const output = clampTypeText(
+        renderType(entry.outputSchema, 0),
+        Math.min(DESCRIBE_INPUT_MAX_CHARS, remaining),
+      );
+      remaining = Math.max(0, remaining - output.length);
       return {
         name: entry.name,
         about: clampText(entry.description ?? "", SEARCH_ABOUT_MAX_CHARS),
         input,
+        output,
       };
     });
 }

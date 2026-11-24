@@ -28,3 +28,38 @@ export function renderWriteResultData(data: WriteResultData): string {
     ? `File created successfully at: ${data.filePath}`
     : `The file ${data.filePath} has been updated successfully.`;
 }
+
+/**
+ * `Write` 的 `data` 形状（JSON Schema）。
+ *
+ * 用途只有一个：REPL 把工具签名渲染成真实返回类型（spec core/repl-tool.md「公告
+ * 分档呈现」），模型据此直接写 `const r = await Write(...); r.filePath`，不用先
+ * 探一次。与 {@link WriteResultData} 逐字段对应，改一处必须改另一处。
+ */
+export const writeOutputSchema: Record<string, unknown> = {
+  type: "object",
+  properties: {
+    type: {
+      type: "string",
+      enum: ["create", "update"],
+      description:
+        '"create" for a new file, "update" when an existing one was overwritten.',
+    },
+    filePath: {
+      type: "string",
+      description: "Resolved absolute path; usable as-is from a script.",
+    },
+    linesAdded: {
+      type: "number",
+      description:
+        "Line count of what was written, so 0 for a no-op rewrite of identical content.",
+    },
+    linesRemoved: {
+      type: "number",
+      description:
+        "Line count of the content this write replaced; 0 when the file did not exist.",
+    },
+  },
+  required: ["type", "filePath", "linesAdded", "linesRemoved"],
+  additionalProperties: false,
+};

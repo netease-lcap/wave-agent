@@ -11,6 +11,7 @@ import {
 } from "../utils/globSearch.js";
 import { logger } from "../utils/globalLogger.js";
 import {
+  globOutputSchema,
   renderGlobResultData,
   type GlobResultData,
 } from "./resultData/glob.js";
@@ -26,6 +27,7 @@ const MAX_GLOB_RESULTS = 100;
 export const globTool: ToolPlugin = {
   name: GLOB_TOOL_NAME,
   searchHint: "find files by name pattern",
+  outputSchema: globOutputSchema,
   config: {
     type: "function",
     function: {

@@ -18,6 +18,7 @@ import { persistToolResultBuffer } from "../utils/toolResultStorage.js";
 import {
   renderWebFetchResultData,
   type WebFetchResultData,
+  webFetchOutputSchema,
 } from "./resultData/webFetch.js";
 
 // --- Security Limits ---
@@ -430,6 +431,7 @@ export const webFetchTool: ToolPlugin = {
   name: WEB_FETCH_TOOL_NAME,
   defer: true,
   searchHint: "fetch a URL and extract its readable text to read or summarize",
+  outputSchema: webFetchOutputSchema,
   leanPrompt: `Fetches a URL, converts HTML to markdown, and answers \`prompt\` about it with a small, fast model. Read-only; no files are modified.
 
 - The URL must be fully formed; HTTP is upgraded to HTTPS.

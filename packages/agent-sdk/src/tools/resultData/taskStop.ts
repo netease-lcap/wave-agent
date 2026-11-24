@@ -35,3 +35,42 @@ export interface TaskStopResultData {
 export function renderTaskStopResultData(data: TaskStopResultData): string {
   return JSON.stringify(data);
 }
+
+/**
+ * `TaskStop` 的 `data` 形状（JSON Schema）。
+ *
+ * 用途只有一个：REPL 把工具签名渲染成真实返回类型（spec core/repl-tool.md「公告
+ * 分档呈现」），模型据此直接读 `r.task_id` / `r.task_type`。与
+ * {@link TaskStopResultData} 逐字段对应，改一处必须改另一处。
+ *
+ * 字段名照抄 CC 的 snake_case。`command` 不写进 `required`：`BackgroundTask` 的
+ * `command` / `description` 本身都可选（`types/processes.ts:21-22`），老会话重放
+ * 时这个键可能整个不出现。`task_type` 的取值是 `BackgroundTaskType` 那个三值联合，
+ * 比 interface 上写的 `string` 更窄——以运行时代码实际写入的为准。
+ */
+export const taskStopOutputSchema: Record<string, unknown> = {
+  type: "object",
+  properties: {
+    message: {
+      type: "string",
+      description:
+        "Sentence reading `Successfully stopped task: <id> (<command>)`.",
+    },
+    task_id: {
+      type: "string",
+      description: "Id of the task that was stopped.",
+    },
+    task_type: {
+      type: "string",
+      enum: ["shell", "subagent", "workflow"],
+      description: "Kind of background task that was stopped.",
+    },
+    command: {
+      type: "string",
+      description:
+        "Command line for a shell task, description for any other kind; may be absent.",
+    },
+  },
+  required: ["message", "task_id", "task_type"],
+  additionalProperties: false,
+};

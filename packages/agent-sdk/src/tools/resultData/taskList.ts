@@ -40,3 +40,47 @@ export function renderTaskListResultData(data: TaskListResultData): string {
     })
     .join("\n");
 }
+
+/**
+ * `TaskList` 的 `data` 形状（JSON Schema）。
+ *
+ * 用途只有一个：REPL 把工具签名渲染成真实返回类型（spec core/repl-tool.md「公告
+ * 分档呈现」），模型据此直接写 `r.tasks.map((t) => t.id)`。与
+ * {@link TaskListResultData} 逐字段对应，改一处必须改另一处。
+ *
+ * `owner` 不写进 `required`：没认领的任务 `t.owner` 是 `undefined`。`blockedBy`
+ * 里已经是「还卡着它的」那几个 id（工具侧剔掉了已完成的），schema 只是照抄。
+ */
+export const taskListOutputSchema: Record<string, unknown> = {
+  type: "object",
+  properties: {
+    tasks: {
+      type: "array",
+      description: "Every non-internal task, lowest id first.",
+      items: {
+        type: "object",
+        properties: {
+          id: { type: "string", description: "Task id." },
+          subject: { type: "string", description: "Task title." },
+          status: {
+            type: "string",
+            enum: ["pending", "in_progress", "completed", "deleted"],
+            description: "Current task status.",
+          },
+          owner: {
+            type: "string",
+            description: "Present only when the task has an owner.",
+          },
+          blockedBy: {
+            type: "array",
+            items: { type: "string" },
+            description: "Still-open blockers only; completed ones are pruned.",
+          },
+        },
+        required: ["id", "subject", "status", "blockedBy"],
+      },
+    },
+  },
+  required: ["tasks"],
+  additionalProperties: false,
+};

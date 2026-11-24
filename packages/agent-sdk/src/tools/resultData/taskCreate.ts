@@ -20,3 +20,32 @@ export interface TaskCreateResultData {
 export function renderTaskCreateResultData(data: TaskCreateResultData): string {
   return `Task #${data.task.id} created successfully: ${data.task.subject}`;
 }
+
+/**
+ * `TaskCreate` 的 `data` 形状（JSON Schema）。
+ *
+ * 用途只有一个：REPL 把工具签名渲染成真实返回类型（spec core/repl-tool.md「公告
+ * 分档呈现」），模型据此直接写 `const r = await TaskCreate(...); r.task.id`。与
+ * {@link TaskCreateResultData} 逐字段对应，改一处必须改另一处。
+ */
+export const taskCreateOutputSchema: Record<string, unknown> = {
+  type: "object",
+  properties: {
+    task: {
+      type: "object",
+      properties: {
+        id: {
+          type: "string",
+          description: "Task id assigned by the task manager.",
+        },
+        subject: {
+          type: "string",
+          description: "Title as passed in by the caller.",
+        },
+      },
+      required: ["id", "subject"],
+    },
+  },
+  required: ["task"],
+  additionalProperties: false,
+};

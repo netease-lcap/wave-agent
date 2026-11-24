@@ -8,18 +8,22 @@ import {
 } from "../constants/tools.js";
 import {
   renderTaskCreateResultData,
+  taskCreateOutputSchema,
   type TaskCreateResultData,
 } from "./resultData/taskCreate.js";
 import {
   renderTaskGetResultData,
+  taskGetOutputSchema,
   type TaskGetResultData,
 } from "./resultData/taskGet.js";
 import {
   renderTaskUpdateResultData,
+  taskUpdateOutputSchema,
   type TaskUpdateResultData,
 } from "./resultData/taskUpdate.js";
 import {
   renderTaskListResultData,
+  taskListOutputSchema,
   type TaskListResultData,
 } from "./resultData/taskList.js";
 
@@ -70,6 +74,7 @@ export const taskCreateTool: ToolPlugin = {
   name: TASK_CREATE_TOOL_NAME,
   defer: true,
   searchHint: "create a task in the task list",
+  outputSchema: taskCreateOutputSchema,
   config: {
     type: "function",
     function: {
@@ -181,6 +186,7 @@ export const taskGetTool: ToolPlugin = {
   name: TASK_GET_TOOL_NAME,
   defer: true,
   searchHint: "retrieve a task by ID",
+  outputSchema: taskGetOutputSchema,
   config: {
     type: "function",
     function: {
@@ -257,6 +263,7 @@ export const taskUpdateTool: ToolPlugin = {
   name: TASK_UPDATE_TOOL_NAME,
   defer: true,
   searchHint: "update a task",
+  outputSchema: taskUpdateOutputSchema,
   config: {
     type: "function",
     function: {
@@ -570,6 +577,7 @@ export const taskListTool: ToolPlugin = {
   name: TASK_LIST_TOOL_NAME,
   defer: true,
   searchHint: "list all tasks",
+  outputSchema: taskListOutputSchema,
   config: {
     type: "function",
     function: {

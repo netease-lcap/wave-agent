@@ -1,6 +1,7 @@
 import { ToolPlugin, ToolResult, ToolContext } from "./types.js";
 import { CRON_DELETE_TOOL_NAME } from "../constants/tools.js";
 import {
+  cronDeleteOutputSchema,
   renderCronDeleteResultData,
   type CronDeleteResultData,
 } from "./resultData/cronDelete.js";
@@ -13,6 +14,7 @@ export const cronDeleteTool: ToolPlugin = {
   name: CRON_DELETE_TOOL_NAME,
   defer: true,
   searchHint: "cancel a scheduled cron job by its id",
+  outputSchema: cronDeleteOutputSchema,
   config: {
     type: "function",
     function: {

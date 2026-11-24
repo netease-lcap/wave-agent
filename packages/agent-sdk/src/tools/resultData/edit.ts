@@ -49,3 +49,53 @@ export function renderEditResultData(data: EditResultData): string {
 
   return data.staleRecovered ? `${STALE_RECOVERED_NOTE}\n\n${body}` : body;
 }
+
+/**
+ * `Edit` 的 `data` 形状（JSON Schema）。
+ *
+ * 用途只有一个：REPL 把工具签名渲染成真实返回类型（spec core/repl-tool.md「公告
+ * 分档呈现」），模型据此直接写 `const r = await Edit(...); r.linesAdded`，不用先
+ * 探一次。与 {@link EditResultData} 逐字段对应，改一处必须改另一处。
+ */
+export const editOutputSchema: Record<string, unknown> = {
+  type: "object",
+  properties: {
+    filePath: {
+      type: "string",
+      description: "Resolved absolute path; usable as-is from a script.",
+    },
+    userModified: {
+      type: "boolean",
+      description:
+        "True when the user rewrote the proposal before accepting it; always false today.",
+    },
+    replaceAll: {
+      type: "boolean",
+      description: "True when every occurrence of `old_string` was replaced.",
+    },
+    staleRecovered: {
+      type: "boolean",
+      description:
+        "True when the file changed on disk since this session read it but the edit still applied cleanly.",
+    },
+    linesAdded: {
+      type: "number",
+      description:
+        "Line count of `new_string` times the number of replacements made.",
+    },
+    linesRemoved: {
+      type: "number",
+      description:
+        "Line count of `old_string` times the number of replacements made.",
+    },
+  },
+  required: [
+    "filePath",
+    "userModified",
+    "replaceAll",
+    "staleRecovered",
+    "linesAdded",
+    "linesRemoved",
+  ],
+  additionalProperties: false,
+};
