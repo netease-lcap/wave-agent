@@ -1,4 +1,12 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import {
+  describe,
+  it,
+  expect,
+  vi,
+  beforeEach,
+  afterEach,
+  type MockInstance,
+} from "vitest";
 
 import { MarketplaceService } from "../../src/services/MarketplaceService.js";
 import * as fsModule from "fs";
@@ -8,6 +16,7 @@ import * as path from "path";
 import { getPluginsDir } from "../../src/utils/configPaths.js";
 import type { ConfigurationService } from "../../src/services/configurationService.js";
 import type { MarketplaceConfig } from "../../src/types/configuration.js";
+import type { MarketplaceManifest } from "../../src/types/marketplace.js";
 
 vi.mock("fs", async (importOriginal) => {
   const actual = (await importOriginal()) as Record<string, unknown>;
@@ -855,9 +864,44 @@ describe("MarketplaceService - Scoped Marketplace", () => {
   });
 });
 
-describe("MarketplaceService - Coverage Targets", () => {
+describe("MarketplaceService - 边界与错误路径", () => {
   let service: MarketplaceService;
   const mockPluginsDir = path.join(process.cwd(), "tmp-test-plugins-coverage");
+
+  // git / 配置 / 迁移都在 service 的私有面上，借出来当探针。
+  let gitSpies: Record<"isGitAvailable" | "clone" | "pull", MockInstance>;
+  const git = () => gitSpies;
+  const config = () => service["configurationService"];
+
+  const settings = (entries: Record<string, MarketplaceConfig>) =>
+    vi.spyOn(config(), "getMergedMarketplaces").mockReturnValue(entries);
+
+  const manifest = (entry: Partial<MarketplaceManifest> = {}) =>
+    vi.spyOn(service, "loadMarketplaceManifest").mockResolvedValue({
+      name: "test-mkt",
+      owner: { name: "test" },
+      plugins: [],
+      ...entry,
+    });
+
+  const installed = (name: string, marketplace: string, version = "1.0.0") => ({
+    name,
+    marketplace,
+    version,
+    cachePath: "/cache/" + name,
+    projectPath: "/project",
+  });
+
+  // installPlugin 把插件从市场目录拷进缓存并落 installed_plugins.json；
+  // 这些用例只钉「拷贝前后的判断」，拷贝本身用桩顶掉。
+  const stubCopyIntoCache = () => {
+    vi.mocked(fs.cp).mockResolvedValue(
+      undefined as unknown as Awaited<ReturnType<typeof fs.cp>>,
+    );
+    vi.mocked(fs.rename).mockResolvedValue(
+      undefined as unknown as Awaited<ReturnType<typeof fs.rename>>,
+    );
+  };
 
   beforeEach(async () => {
     vi.spyOn(console, "warn").mockImplementation(() => {});
@@ -875,20 +919,18 @@ describe("MarketplaceService - Coverage Targets", () => {
     service = new MarketplaceService();
     await (service as unknown as { _seedComplete: Promise<void> })
       ._seedComplete;
-    vi.spyOn(
-      service["gitService"] as unknown as {
-        isGitAvailable: () => Promise<boolean>;
-      },
-      "isGitAvailable",
-    ).mockResolvedValue(true);
-    vi.spyOn(
-      service["gitService"] as unknown as { clone: () => Promise<void> },
-      "clone",
-    ).mockResolvedValue();
-    vi.spyOn(
-      service["gitService"] as unknown as { pull: () => Promise<void> },
-      "pull",
-    ).mockResolvedValue();
+    const gitService = service["gitService"] as unknown as {
+      isGitAvailable: () => Promise<boolean>;
+      clone: (...args: unknown[]) => Promise<void>;
+      pull: (...args: unknown[]) => Promise<void>;
+    };
+    gitSpies = {
+      isGitAvailable: vi
+        .spyOn(gitService, "isGitAvailable")
+        .mockResolvedValue(true),
+      clone: vi.spyOn(gitService, "clone").mockResolvedValue(undefined),
+      pull: vi.spyOn(gitService, "pull").mockResolvedValue(undefined),
+    };
 
     vi.mocked(fs.open).mockResolvedValue({
       close: vi.fn(),
@@ -907,808 +949,477 @@ describe("MarketplaceService - Coverage Targets", () => {
     vi.restoreAllMocks();
   });
 
-  // Line 105: migration skip for builtin marketplace
-  it("should skip builtin marketplace during migration", async () => {
-    // Mock fs.readFile for known_marketplaces
-    vi.spyOn(service, "getCacheRegistry").mockResolvedValue({
-      marketplaces: [
-        {
-          name: "wave-plugins-official",
-          source: {
-            source: "github",
-            repo: "netease-lcap/wave-plugins-official",
-          },
-        },
-        { name: "old-mkt", source: { source: "directory", path: "/old" } },
-      ],
-    });
-
-    // Mock scoped settings as empty so migration triggers
-    const addScopeMock = vi
-      .spyOn(service["configurationService"], "addMarketplaceToScope")
-      .mockClear();
-    vi.spyOn(
-      service["configurationService"],
-      "getMergedMarketplaces",
-    ).mockReturnValue({});
-    vi.spyOn(
-      service["configurationService"],
-      "getScopedMarketplaces",
-    ).mockReturnValue({});
-
-    // Call runMigration manually to test the branch
-    await (
-      service as unknown as { runMigration: () => Promise<void> }
-    ).runMigration();
-
-    // Migration should have called addMarketplaceToScope for old-mkt but NOT builtin
-    const addCalls = addScopeMock.mock.calls;
-    const oldMktCalls = addCalls.filter((c) => c[2] === "old-mkt");
-    const builtinCalls = addCalls.filter(
-      (c) => c[2] === "wave-plugins-official",
-    );
-    expect(oldMktCalls).toHaveLength(1);
-    expect(builtinCalls).toHaveLength(0);
-  });
-
-  // Line 268: updateCacheMarketplace default source fallback
-  // This is triggered when updateCacheMarketplace adds a new entry without a source
-  // e.g., updateMarketplace calling updateCacheMarketplace with only lastUpdated
-  // for a marketplace not yet in the cache
-  it("should use default source fallback when updating cache for unknown marketplace", async () => {
-    // Mock getCacheRegistry to return null (no cache)
-    vi.spyOn(service, "getCacheRegistry").mockResolvedValue(null);
-
-    vi.spyOn(
-      service["configurationService"],
-      "getMergedMarketplaces",
-    ).mockReturnValue({
-      "unknown-cache-mkt": {
-        source: { source: "directory", path: "/unknown" },
-      },
-    });
-    vi.spyOn(
-      service["configurationService"],
-      "getScopedMarketplaces",
-    ).mockReturnValue({});
-
-    vi.spyOn(service, "loadMarketplaceManifest").mockResolvedValue({
-      name: "unknown-cache-mkt",
-      owner: { name: "test" },
-      plugins: [],
-    });
-
-    // Clear any previous writeFile mock calls
-    vi.mocked(fs.writeFile).mockClear();
-
-    // Marketplace is not in the cache (no known_marketplaces.json)
-    await service.updateMarketplace("unknown-cache-mkt");
-
-    // Verify writeFile was called for cache update
-    const writeCalls = vi.mocked(fs.writeFile).mock.calls;
-    const cacheWriteCall = writeCalls.find((c) =>
-      String(c[0]).includes("known_marketplaces.json.tmp"),
-    );
-    expect(cacheWriteCall).toBeDefined();
-    const cached = JSON.parse(String(cacheWriteCall![1]));
-    // Since updateCacheMarketplace was called with only { lastUpdated },
-    // it should use the default source fallback
-    expect(cached.marketplaces[0].source).toEqual({
-      source: "directory",
-      path: "",
-    });
-  });
-
-  // Line 301: getInstalledPlugins empty content handling
-  it("should return empty plugins when file has only whitespace", async () => {
-    const installedPath = path.join(mockPluginsDir, "installed_plugins.json");
-    await fs.writeFile(installedPath, "   \n\t  ");
-
-    const registry = await service.getInstalledPlugins();
-    expect(registry.plugins).toHaveLength(0);
-  });
-
-  // Line 333: loadMarketplaceManifest not found
-  it("should throw when manifest file does not exist", async () => {
-    await expect(
-      service.loadMarketplaceManifest("/nonexistent/path"),
-    ).rejects.toThrow("Marketplace manifest not found");
-  });
-
-  // Line 339: loadMarketplaceManifest invalid manifest
-  it("should throw when manifest is missing required fields", async () => {
-    const tempDir = path.join(mockPluginsDir, "bad-manifest");
-    const manifestDir = path.join(tempDir, ".wave-plugin");
-    await fs.mkdir(manifestDir, { recursive: true });
-    await fs.writeFile(
-      path.join(manifestDir, "marketplace.json"),
-      JSON.stringify({ bad: "manifest" }),
-    );
-
-    await expect(service.loadMarketplaceManifest(tempDir)).rejects.toThrow(
-      "Invalid marketplace manifest",
-    );
-  });
-
-  // Line 435: addMarketplace existsSync check for target path (exists already)
-  it("should skip clone when target path already exists", async () => {
-    vi.spyOn(service, "loadMarketplaceManifest").mockResolvedValue({
-      name: "existing-mkt",
-      owner: { name: "test" },
-      plugins: [],
-    });
-
-    // Create the target directory so existsSync returns true
-    const targetPath = path.join(
-      mockPluginsDir,
-      "marketplaces",
-      "user",
-      "repo",
-    );
-    await fs.mkdir(targetPath, { recursive: true });
-
-    await service.addMarketplace("user/repo");
-
-    // Clone should not be called since path exists
-    expect(
-      vi.mocked(
-        service["gitService"] as unknown as { clone: () => Promise<void> },
-      ).clone,
-    ).not.toHaveBeenCalled();
-  });
-
-  // Line 440, 450, 469: error message cond-expr (non-Error thrown)
-  it("should handle non-Error thrown during git clone in addMarketplace", async () => {
-    vi.spyOn(
-      service["gitService"] as unknown as { clone: () => Promise<void> },
-      "clone",
-    ).mockRejectedValue("string error");
-
-    await expect(
-      service.addMarketplace("https://github.com/user/repo"),
-    ).rejects.toThrow("Failed to add marketplace from Git: string error");
-  });
-
-  it("should handle non-Error thrown during manifest load in addMarketplace (git)", async () => {
-    vi.spyOn(
-      service["gitService"] as unknown as { clone: () => Promise<void> },
-      "clone",
-    ).mockResolvedValue();
-    vi.spyOn(
-      service,
-      "loadMarketplaceManifest" as keyof MarketplaceService,
-    ).mockRejectedValue("manifest error");
-
-    await expect(
-      service.addMarketplace("https://github.com/user/repo"),
-    ).rejects.toThrow(
-      "Failed to load manifest from cloned repository: manifest error",
-    );
-  });
-
-  it("should handle non-Error thrown during manifest load in addMarketplace (directory)", async () => {
-    vi.spyOn(
-      service,
-      "loadMarketplaceManifest" as keyof MarketplaceService,
-    ).mockRejectedValue("dir manifest error");
-
-    await expect(service.addMarketplace("/some/directory")).rejects.toThrow(
-      "Failed to load manifest from directory: dir manifest error",
-    );
-  });
-
-  // listMarketplaces cache fallback: builtin gets isBuiltin and declaredScope from cache
-  it("should handle builtin marketplace in cache fallback iteration", async () => {
-    vi.spyOn(
-      service["configurationService"],
-      "getMergedMarketplaces",
-    ).mockReturnValue({});
-
-    vi.spyOn(service, "getCacheRegistry").mockResolvedValue({
-      marketplaces: [
-        {
-          name: "wave-plugins-official",
-          source: {
-            source: "github",
-            repo: "netease-lcap/wave-plugins-official",
-          },
-        },
-        {
-          name: "cached-only",
-          source: { source: "directory", path: "/cached" },
-        },
-      ],
-    });
-
-    const marketplaces = await service.listMarketplaces();
-    const builtinEntries = marketplaces.filter(
-      (m) => m.name === "wave-plugins-official",
-    );
-    expect(builtinEntries).toHaveLength(1);
-    expect(builtinEntries[0].declaredScope).toBe("builtin");
-    expect(marketplaces.some((m) => m.name === "cached-only")).toBe(true);
-  });
-
-  it("should skip cache entries that are already in scoped settings", async () => {
-    vi.spyOn(
-      service["configurationService"],
-      "getMergedMarketplaces",
-    ).mockReturnValue({
-      "already-scoped": {
-        source: { source: "directory", path: "/scoped" },
-      },
-    });
-
-    const knownPath = path.join(mockPluginsDir, "known_marketplaces.json");
-    await fs.writeFile(
-      knownPath,
-      JSON.stringify({
+  describe("缓存与迁移", () => {
+    it("迁移时跳过内置市场，其余迁进 user 设置", async () => {
+      vi.spyOn(service, "getCacheRegistry").mockResolvedValue({
         marketplaces: [
           {
-            name: "already-scoped",
-            source: { source: "directory", path: "/old-path" },
+            name: "wave-plugins-official",
+            source: {
+              source: "github",
+              repo: "netease-lcap/wave-plugins-official",
+            },
+          },
+          { name: "old-mkt", source: { source: "directory", path: "/old" } },
+        ],
+      });
+      settings({});
+      vi.spyOn(config(), "getScopedMarketplaces").mockReturnValue({});
+
+      await (
+        service as unknown as { runMigration: () => Promise<void> }
+      ).runMigration();
+
+      const migrated = vi
+        .mocked(config().addMarketplaceToScope)
+        .mock.calls.map((call) => call[2]);
+      expect(migrated).toEqual(["old-mkt"]);
+    });
+
+    it("缓存里没有这个市场时，按空目录来源补一条", async () => {
+      vi.spyOn(service, "getCacheRegistry").mockResolvedValue(null);
+      settings({
+        "unknown-cache-mkt": {
+          source: { source: "directory", path: "/unknown" },
+        },
+      });
+      vi.spyOn(config(), "getScopedMarketplaces").mockReturnValue({});
+      manifest({ name: "unknown-cache-mkt" });
+      vi.mocked(fs.writeFile).mockClear();
+
+      await service.updateMarketplace("unknown-cache-mkt");
+
+      const cacheWrite = vi
+        .mocked(fs.writeFile)
+        .mock.calls.find((call) =>
+          String(call[0]).includes("known_marketplaces.json.tmp"),
+        );
+      expect(cacheWrite).toBeDefined();
+      expect(JSON.parse(String(cacheWrite![1])).marketplaces[0].source).toEqual(
+        { source: "directory", path: "" },
+      );
+    });
+
+    it("缓存兜底：内置市场标 builtin，只剩在缓存里的市场也列出来", async () => {
+      settings({});
+      vi.spyOn(service, "getCacheRegistry").mockResolvedValue({
+        marketplaces: [
+          {
+            name: "wave-plugins-official",
+            source: {
+              source: "github",
+              repo: "netease-lcap/wave-plugins-official",
+            },
+          },
+          {
+            name: "cached-only",
+            source: { source: "directory", path: "/cached" },
           },
         ],
-      }),
-    );
+      });
 
-    const marketplaces = await service.listMarketplaces();
-    const scopedEntries = marketplaces.filter(
-      (m) => m.name === "already-scoped",
-    );
-    expect(scopedEntries).toHaveLength(1);
-    expect(scopedEntries[0].source).toEqual({
-      source: "directory",
-      path: "/scoped", // from settings, not cache
+      const marketplaces = await service.listMarketplaces();
+
+      const builtin = marketplaces.filter(
+        (marketplace) => marketplace.name === "wave-plugins-official",
+      );
+      expect(builtin).toHaveLength(1);
+      expect(builtin[0].declaredScope).toBe("builtin");
+      expect(
+        marketplaces.some((marketplace) => marketplace.name === "cached-only"),
+      ).toBe(true);
+    });
+
+    it("设置里的来源优先于缓存", async () => {
+      settings({
+        "already-scoped": {
+          source: { source: "directory", path: "/scoped" },
+        },
+      });
+      await fs.writeFile(
+        path.join(mockPluginsDir, "known_marketplaces.json"),
+        JSON.stringify({
+          marketplaces: [
+            {
+              name: "already-scoped",
+              source: { source: "directory", path: "/old-path" },
+            },
+          ],
+        }),
+      );
+
+      const marketplaces = await service.listMarketplaces();
+
+      const scopedEntry = marketplaces.find(
+        (marketplace) => marketplace.name === "already-scoped",
+      );
+      expect(scopedEntry?.source).toEqual({
+        source: "directory",
+        path: "/scoped",
+      });
     });
   });
 
-  // Line 558: removeMarketplace scope inference fallback
-  it("should fallback to user scope when marketplace not found in any scope", async () => {
-    vi.spyOn(
-      service["configurationService"],
-      "getScopedMarketplaces",
-    ).mockReturnValue({});
+  describe("已装插件与市场清单", () => {
+    it("已装插件文件只有空白时按空列表处理", async () => {
+      await fs.writeFile(
+        path.join(mockPluginsDir, "installed_plugins.json"),
+        "   \n\t  ",
+      );
+
+      const registry = await service.getInstalledPlugins();
+
+      expect(registry.plugins).toHaveLength(0);
+    });
+
+    it("清单缺失或缺字段时都拒绝", async () => {
+      await expect(
+        service.loadMarketplaceManifest("/nonexistent/path"),
+      ).rejects.toThrow("Marketplace manifest not found");
+
+      const manifestDir = path.join(mockPluginsDir, "bad-manifest");
+      await fs.mkdir(path.join(manifestDir, ".wave-plugin"), {
+        recursive: true,
+      });
+      await fs.writeFile(
+        path.join(manifestDir, ".wave-plugin", "marketplace.json"),
+        JSON.stringify({ bad: "manifest" }),
+      );
+
+      await expect(
+        service.loadMarketplaceManifest(manifestDir),
+      ).rejects.toThrow("Invalid marketplace manifest");
+    });
+  });
+
+  describe("addMarketplace", () => {
+    it("目标目录已存在时不再 clone", async () => {
+      manifest({ name: "existing-mkt" });
+      await fs.mkdir(
+        path.join(mockPluginsDir, "marketplaces", "user", "repo"),
+        { recursive: true },
+      );
+
+      await service.addMarketplace("user/repo");
+
+      expect(git().clone).not.toHaveBeenCalled();
+    });
+
+    // 三处 catch 都是「Error 取 message，其余 String()」，各钉一条实际消息。
+    it.each([
+      {
+        name: "clone 失败",
+        input: "https://github.com/user/repo",
+        prepare: () => git().clone.mockRejectedValue("string error"),
+        message: "Failed to add marketplace from Git: string error",
+      },
+      {
+        name: "克隆后读清单失败",
+        input: "https://github.com/user/repo",
+        prepare: () => manifest().mockRejectedValue("manifest error"),
+        message:
+          "Failed to load manifest from cloned repository: manifest error",
+      },
+      {
+        name: "本地目录读清单失败",
+        input: "/some/directory",
+        prepare: () => manifest().mockRejectedValue("dir manifest error"),
+        message: "Failed to load manifest from directory: dir manifest error",
+      },
+    ])(
+      "非 Error 抛出也带上原因（$name）",
+      async ({ input, prepare, message }) => {
+        prepare();
+        await expect(service.addMarketplace(input)).rejects.toThrow(message);
+      },
+    );
+  });
+
+  it("removeMarketplace 找不到归属作用域时按 user 移除", async () => {
+    vi.spyOn(config(), "getScopedMarketplaces").mockReturnValue({});
 
     await service.removeMarketplace("unknown-mkt");
+
     expect(
-      vi.mocked(
-        (service["configurationService"] as ConfigurationService)
-          .removeMarketplaceFromScope,
-      ).mock.calls[0][1],
+      vi.mocked(config().removeMarketplaceFromScope).mock.calls[0][1],
     ).toBe("user");
   });
 
-  // Line 584: updateMarketplace filtering by name
-  it("should update only the specified marketplace by name", async () => {
-    vi.spyOn(
-      service["configurationService"],
-      "getMergedMarketplaces",
-    ).mockReturnValue({
-      "mkt-one": {
-        source: { source: "directory", path: "/one" },
-      },
-      "mkt-two": {
-        source: { source: "directory", path: "/two" },
-      },
+  describe("updateMarketplace", () => {
+    it("只更新指定的那个市场", async () => {
+      settings({
+        "mkt-one": { source: { source: "directory", path: "/one" } },
+        "mkt-two": { source: { source: "directory", path: "/two" } },
+      });
+      const loadManifest = manifest({ name: "mkt-one" });
+
+      await service.updateMarketplace("mkt-one");
+
+      expect(loadManifest).toHaveBeenCalledTimes(1);
     });
 
-    vi.spyOn(service, "loadMarketplaceManifest").mockResolvedValue({
-      name: "mkt-one",
-      owner: { name: "test" },
-      plugins: [],
+    it("市场不存在时抛错", async () => {
+      settings({});
+
+      await expect(service.updateMarketplace("nonexistent")).rejects.toThrow(
+        "Marketplace nonexistent not found",
+      );
     });
 
-    await service.updateMarketplace("mkt-one");
+    it("git 不可用时既不拉取也不克隆", async () => {
+      settings({
+        "git-mkt": { source: { source: "github", repo: "user/repo" } },
+      });
+      manifest({ name: "git-mkt" });
+      git().isGitAvailable.mockResolvedValue(false);
 
-    // Only mkt-one should have been loaded
-    expect(
-      vi.mocked(
-        service["loadMarketplaceManifest"] as unknown as ReturnType<
-          typeof vi.fn
-        >,
-      ).mock.calls.length,
-    ).toBe(1);
-  });
+      await service.updateMarketplace("git-mkt");
 
-  // Line 588: updateMarketplace not found
-  it("should throw when named marketplace is not found", async () => {
-    vi.spyOn(
-      service["configurationService"],
-      "getMergedMarketplaces",
-    ).mockReturnValue({});
-
-    await expect(service.updateMarketplace("nonexistent")).rejects.toThrow(
-      "Marketplace nonexistent not found",
-    );
-  });
-
-  // Line 600: skip update when git not available
-  it("should skip git marketplace update when git is not available", async () => {
-    vi.spyOn(
-      service["configurationService"],
-      "getMergedMarketplaces",
-    ).mockReturnValue({
-      "git-mkt": {
-        source: { source: "github", repo: "user/repo" },
-      },
+      expect(git().pull).not.toHaveBeenCalled();
+      expect(git().clone).not.toHaveBeenCalled();
     });
 
-    vi.spyOn(
-      service["gitService"] as unknown as {
-        isGitAvailable: () => Promise<boolean>;
-      },
-      "isGitAvailable",
-    ).mockResolvedValue(false);
+    it("本地没有检出时先 clone", async () => {
+      settings({
+        "git-mkt": { source: { source: "github", repo: "user/repo" } },
+      });
+      manifest({ name: "git-mkt" });
 
-    vi.spyOn(service, "loadMarketplaceManifest").mockResolvedValue({
-      name: "git-mkt",
-      owner: { name: "test" },
-      plugins: [],
+      await service.updateMarketplace("git-mkt");
+
+      expect(git().clone).toHaveBeenCalled();
     });
 
-    await service.updateMarketplace("git-mkt");
+    it("updatePlugins 时重装清单里的已装插件", async () => {
+      settings({
+        "plugin-mkt": { source: { source: "directory", path: "/pmkt" } },
+      });
+      manifest({
+        name: "plugin-mkt",
+        plugins: [
+          { name: "my-plugin", source: "./plugins/my-plugin", description: "" },
+        ],
+      });
+      vi.spyOn(service, "getInstalledPlugins").mockResolvedValue({
+        plugins: [installed("my-plugin", "plugin-mkt")],
+      });
+      vi.spyOn(service, "installPlugin").mockResolvedValue(
+        installed("my-plugin", "plugin-mkt"),
+      );
 
-    // pull and clone should not be called
-    expect(
-      vi.mocked(
-        service["gitService"] as unknown as { pull: () => Promise<void> },
-      ).pull,
-    ).not.toHaveBeenCalled();
-    expect(
-      vi.mocked(
-        service["gitService"] as unknown as { clone: () => Promise<void> },
-      ).clone,
-    ).not.toHaveBeenCalled();
-  });
+      await service.updateMarketplace("plugin-mkt", { updatePlugins: true });
 
-  // Line 607-621: clone if target doesn't exist
-  it("should clone marketplace if target path does not exist during update", async () => {
-    vi.spyOn(
-      service["configurationService"],
-      "getMergedMarketplaces",
-    ).mockReturnValue({
-      "git-mkt": {
-        source: { source: "github", repo: "user/repo" },
-      },
+      expect(vi.mocked(service.installPlugin)).toHaveBeenCalled();
     });
 
-    vi.spyOn(service, "loadMarketplaceManifest").mockResolvedValue({
-      name: "git-mkt",
-      owner: { name: "test" },
-      plugins: [],
-    });
+    // 交互界面的「批量更新插件」：只按当前清单升级，不拉检出（spec plugin A-013）
+    it("批量更新插件时不刷检出", async () => {
+      settings({
+        "plugin-mkt": { source: { source: "github", repo: "user/repo" } },
+      });
+      manifest({
+        name: "plugin-mkt",
+        plugins: [
+          { name: "my-plugin", source: "./plugins/my-plugin", description: "" },
+        ],
+      });
 
-    // Ensure the marketplace path does NOT exist
-    const targetPath = path.join(
-      mockPluginsDir,
-      "marketplaces",
-      "user",
-      "repo",
-    );
-    // Make sure it doesn't exist (clean up if needed)
-    if (fsModule.existsSync(targetPath)) {
-      await fs.rm(targetPath, { recursive: true, force: true });
-    }
-
-    await service.updateMarketplace("git-mkt");
-
-    expect(
-      vi.mocked(
-        service["gitService"] as unknown as { clone: () => Promise<void> },
-      ).clone,
-    ).toHaveBeenCalled();
-  });
-
-  // Line 634: updatePlugins option branch
-  it("should update plugins when updatePlugins option is true", async () => {
-    vi.spyOn(
-      service["configurationService"],
-      "getMergedMarketplaces",
-    ).mockReturnValue({
-      "plugin-mkt": {
-        source: { source: "directory", path: "/pmkt" },
-      },
-    });
-
-    vi.spyOn(service, "loadMarketplaceManifest").mockResolvedValue({
-      name: "plugin-mkt",
-      owner: { name: "test" },
-      plugins: [
-        { name: "my-plugin", source: "./plugins/my-plugin", description: "" },
-      ],
-    });
-
-    // Mock getInstalledPlugins to return an installed plugin
-    vi.spyOn(service, "getInstalledPlugins").mockResolvedValue({
-      plugins: [
-        {
-          name: "my-plugin",
-          marketplace: "plugin-mkt",
-          version: "1.0.0",
-          cachePath: "/cache/my-plugin",
-          projectPath: "/project",
+      const upgraded = installed("my-plugin", "plugin-mkt", "2.0.0");
+      vi.spyOn(service, "getInstalledPlugins")
+        .mockResolvedValueOnce({
+          plugins: [installed("my-plugin", "plugin-mkt")],
+        })
+        .mockResolvedValue({ plugins: [upgraded] });
+      vi.spyOn(service, "installPlugin").mockResolvedValue(upgraded);
+      const cacheSpy = vi.spyOn(
+        service as unknown as {
+          updateCacheMarketplace: () => Promise<void>;
         },
-      ],
+        "updateCacheMarketplace",
+      );
+
+      const updated = await service.updateMarketplacePlugins("plugin-mkt");
+
+      expect(updated).toBe(1);
+      expect(vi.mocked(service.installPlugin)).toHaveBeenCalled();
+      expect(git().pull).not.toHaveBeenCalled();
+      expect(git().clone).not.toHaveBeenCalled();
+      // 没刷检出就不该把 lastUpdated 顶到当前时间（CLI 市场列表会显示它）
+      expect(cacheSpy).not.toHaveBeenCalled();
     });
 
-    // Mock installPlugin
-    vi.spyOn(service, "installPlugin").mockResolvedValue({
-      name: "my-plugin",
-      marketplace: "plugin-mkt",
-      version: "1.0.0",
-      cachePath: "/cache/my-plugin",
-      projectPath: "/project",
+    it("清单里消失的插件会被卸载", async () => {
+      settings({
+        "orphan-mkt": { source: { source: "directory", path: "/orphan" } },
+      });
+      manifest({ name: "orphan-mkt" });
+      vi.spyOn(service, "getInstalledPlugins").mockResolvedValue({
+        plugins: [installed("orphaned-plugin", "orphan-mkt")],
+      });
+      vi.spyOn(service, "uninstallPlugin").mockResolvedValue(undefined);
+
+      await service.updateMarketplace("orphan-mkt", { updatePlugins: true });
+
+      expect(vi.mocked(service.uninstallPlugin)).toHaveBeenCalled();
     });
 
-    await service.updateMarketplace("plugin-mkt", { updatePlugins: true });
+    it("非 Error 的失败也报出来", async () => {
+      settings({
+        "error-mkt": { source: { source: "directory", path: "/error" } },
+      });
+      manifest().mockRejectedValue("load error");
 
-    expect(vi.mocked(service.installPlugin)).toHaveBeenCalled();
+      await expect(service.updateMarketplace("error-mkt")).rejects.toThrow(
+        'Some marketplaces failed to update:\nFailed to update marketplace "error-mkt": load error',
+      );
+    });
+
+    it("多个市场失败时汇总成一条错误", async () => {
+      settings({
+        "fail-one": { source: { source: "directory", path: "/fail1" } },
+        "fail-two": { source: { source: "directory", path: "/fail2" } },
+      });
+      manifest().mockRejectedValue(new Error("boom"));
+
+      await expect(service.updateMarketplace()).rejects.toThrow(
+        "Some marketplaces failed to update",
+      );
+    });
   });
 
-  // 交互界面的「批量更新插件」：只按当前清单升级，不拉检出（spec plugin A-013）
-  it("should upgrade plugins without refreshing the checkout", async () => {
-    vi.spyOn(
-      service["configurationService"],
-      "getMergedMarketplaces",
-    ).mockReturnValue({
-      "plugin-mkt": {
-        source: { source: "github", repo: "user/repo" },
-      },
+  describe("installPlugin", () => {
+    it.each([
+      { input: "plugin-only", case: "没有市场名" },
+      { input: "@marketplace", case: "没有插件名" },
+    ])("插件标识 $case 时抛错", async ({ input }) => {
+      await expect(service.installPlugin(input)).rejects.toThrow(
+        "Invalid plugin format",
+      );
     });
 
-    vi.spyOn(service, "loadMarketplaceManifest").mockResolvedValue({
-      name: "plugin-mkt",
-      owner: { name: "test" },
-      plugins: [
-        { name: "my-plugin", source: "./plugins/my-plugin", description: "" },
-      ],
+    it("市场不存在时抛错", async () => {
+      settings({});
+
+      await expect(
+        service.installPlugin("some-plugin@nonexistent-market"),
+      ).rejects.toThrow("Marketplace nonexistent-market not found");
     });
 
-    const installed = {
-      name: "my-plugin",
-      marketplace: "plugin-mkt",
-      version: "1.0.0",
-      cachePath: "/cache/my-plugin",
-      projectPath: "/project",
-    };
-    vi.spyOn(service, "getInstalledPlugins")
-      .mockResolvedValueOnce({ plugins: [installed] })
-      .mockResolvedValue({ plugins: [{ ...installed, version: "2.0.0" }] });
-    vi.spyOn(service, "installPlugin").mockResolvedValue({
-      ...installed,
-      version: "2.0.0",
+    it("清单里没有这个插件时抛错", async () => {
+      settings({
+        "test-mkt": { source: { source: "directory", path: "/test" } },
+      });
+      manifest({ name: "test-mkt" });
+
+      await expect(
+        service.installPlugin("nonexistent-plugin@test-mkt"),
+      ).rejects.toThrow(
+        "Plugin nonexistent-plugin not found in marketplace test-mkt",
+      );
     });
-    const cacheSpy = vi.spyOn(
-      service as unknown as {
-        updateCacheMarketplace: () => Promise<void>;
-      },
-      "updateCacheMarketplace",
-    );
 
-    const updated = await service.updateMarketplacePlugins("plugin-mkt");
+    it("插件清单回退到 .claude-plugin/plugin.json（CC 生态兼容）", async () => {
+      settings({
+        "compat-mkt": { source: { source: "directory", path: mockPluginsDir } },
+      });
+      await fs.mkdir(path.join(mockPluginsDir, ".claude-plugin"), {
+        recursive: true,
+      });
+      await fs.writeFile(
+        path.join(mockPluginsDir, ".claude-plugin", "plugin.json"),
+        JSON.stringify({ name: "compat-plugin", version: "3.0.0" }),
+      );
+      manifest({
+        name: "compat-mkt",
+        plugins: [{ name: "compat-plugin", source: ".", description: "" }],
+      });
+      await fs.writeFile(
+        path.join(mockPluginsDir, "installed_plugins.json"),
+        JSON.stringify({ plugins: [] }),
+      );
+      stubCopyIntoCache();
 
-    expect(updated).toBe(1);
-    expect(vi.mocked(service.installPlugin)).toHaveBeenCalled();
-    expect(
-      vi.mocked(
-        service["gitService"] as unknown as {
-          pull: () => Promise<void>;
-          clone: () => Promise<void>;
+      const result = await service.installPlugin("compat-plugin@compat-mkt");
+
+      expect(result.version).toBe("3.0.0");
+    });
+
+    it("同版本重装时先清掉旧缓存", async () => {
+      settings({
+        "cache-mkt": { source: { source: "directory", path: mockPluginsDir } },
+      });
+      await fs.mkdir(path.join(mockPluginsDir, ".wave-plugin"), {
+        recursive: true,
+      });
+      await fs.writeFile(
+        path.join(mockPluginsDir, ".wave-plugin", "plugin.json"),
+        JSON.stringify({ name: "cache-plugin", version: "1.0.0" }),
+      );
+      manifest({
+        name: "cache-mkt",
+        plugins: [{ name: "cache-plugin", source: ".", description: "" }],
+      });
+      const existingCache = path.join(
+        mockPluginsDir,
+        "cache",
+        "cache-mkt",
+        "cache-plugin",
+        "1.0.0",
+      );
+      await fs.mkdir(existingCache, { recursive: true });
+      await fs.writeFile(path.join(existingCache, "dummy.txt"), "old content");
+      await fs.writeFile(
+        path.join(mockPluginsDir, "installed_plugins.json"),
+        JSON.stringify({ plugins: [] }),
+      );
+      stubCopyIntoCache();
+
+      await service.installPlugin("cache-plugin@cache-mkt");
+
+      const removed = vi
+        .mocked(fs.rm)
+        .mock.calls.some((call) => String(call[0]).includes("1.0.0"));
+      expect(removed).toBe(true);
+    });
+
+    it("重装时更新已装条目而不是追加", async () => {
+      settings({
+        "update-mkt": {
+          source: { source: "directory", path: mockPluginsDir },
         },
-      ).pull,
-    ).not.toHaveBeenCalled();
-    expect(
-      vi.mocked(
-        service["gitService"] as unknown as {
-          clone: () => Promise<void>;
-        },
-      ).clone,
-    ).not.toHaveBeenCalled();
-    // 没刷检出就不该把 lastUpdated 顶到当前时间（CLI 市场列表会显示它）
-    expect(cacheSpy).not.toHaveBeenCalled();
-  });
+      });
+      await fs.mkdir(path.join(mockPluginsDir, ".wave-plugin"), {
+        recursive: true,
+      });
+      await fs.writeFile(
+        path.join(mockPluginsDir, ".wave-plugin", "plugin.json"),
+        JSON.stringify({ name: "update-plugin", version: "2.0.0" }),
+      );
+      manifest({
+        name: "update-mkt",
+        plugins: [{ name: "update-plugin", source: ".", description: "" }],
+      });
+      vi.spyOn(service, "getInstalledPlugins").mockResolvedValue({
+        plugins: [installed("update-plugin", "update-mkt")],
+      });
+      stubCopyIntoCache();
 
-  // Line 643: plugin no longer found in marketplace
-  it("should uninstall orphaned plugin when no longer in marketplace", async () => {
-    vi.spyOn(
-      service["configurationService"],
-      "getMergedMarketplaces",
-    ).mockReturnValue({
-      "orphan-mkt": {
-        source: { source: "directory", path: "/orphan" },
-      },
+      const result = await service.installPlugin("update-plugin@update-mkt", {
+        scope: "project",
+        projectPath: "/project",
+      });
+
+      const installedSaves = vi
+        .mocked(fs.writeFile)
+        .mock.calls.filter((call) =>
+          String(call[0]).includes("installed_plugins.json"),
+        );
+      const saved = JSON.parse(String(installedSaves.at(-1)![1]));
+      // 已被 1.0.0 占着的那条要被改写，而不是多出一条
+      expect(saved.plugins).toHaveLength(1);
+      expect(saved.plugins[0].version).toBe("2.0.0");
+      expect(result.version).toBe("2.0.0");
     });
-
-    // Manifest has no plugins
-    vi.spyOn(service, "loadMarketplaceManifest").mockResolvedValue({
-      name: "orphan-mkt",
-      owner: { name: "test" },
-      plugins: [],
-    });
-
-    // Mock getInstalledPlugins to return an orphaned plugin
-    vi.spyOn(service, "getInstalledPlugins").mockResolvedValue({
-      plugins: [
-        {
-          name: "orphaned-plugin",
-          marketplace: "orphan-mkt",
-          version: "1.0.0",
-          cachePath: "/cache/orphaned-plugin",
-          projectPath: "/project",
-        },
-      ],
-    });
-
-    vi.spyOn(service, "uninstallPlugin").mockResolvedValue(undefined);
-
-    await service.updateMarketplace("orphan-mkt", { updatePlugins: true });
-
-    expect(vi.mocked(service.uninstallPlugin)).toHaveBeenCalled();
-  });
-
-  // Line 674: error message cond-expr in updateMarketplace
-  it("should handle non-Error during updateMarketplace", async () => {
-    vi.spyOn(
-      service["configurationService"],
-      "getMergedMarketplaces",
-    ).mockReturnValue({
-      "error-mkt": {
-        source: { source: "directory", path: "/error" },
-      },
-    });
-
-    vi.spyOn(service, "loadMarketplaceManifest").mockRejectedValue(
-      "load error",
-    );
-
-    await expect(service.updateMarketplace("error-mkt")).rejects.toThrow(
-      'Some marketplaces failed to update:\nFailed to update marketplace "error-mkt": load error',
-    );
-  });
-
-  // Line 680: errors array throw
-  it("should throw when multiple marketplaces fail to update", async () => {
-    vi.spyOn(
-      service["configurationService"],
-      "getMergedMarketplaces",
-    ).mockReturnValue({
-      "fail-one": {
-        source: { source: "directory", path: "/fail1" },
-      },
-      "fail-two": {
-        source: { source: "directory", path: "/fail2" },
-      },
-    });
-
-    vi.spyOn(service, "loadMarketplaceManifest").mockRejectedValue(
-      new Error("boom"),
-    );
-
-    await expect(service.updateMarketplace()).rejects.toThrow(
-      "Some marketplaces failed to update",
-    );
-  });
-
-  // Line 755: installPlugin invalid format (no marketplace)
-  it("should throw when installPlugin has no marketplace", async () => {
-    await expect(service.installPlugin("plugin-only")).rejects.toThrow(
-      "Invalid plugin format",
-    );
-  });
-
-  it("should throw when installPlugin has no plugin name", async () => {
-    await expect(service.installPlugin("@marketplace")).rejects.toThrow(
-      "Invalid plugin format",
-    );
-  });
-
-  // Line 761: installPlugin marketplace not found
-  it("should throw when marketplace is not found for installPlugin", async () => {
-    vi.spyOn(
-      service["configurationService"],
-      "getMergedMarketplaces",
-    ).mockReturnValue({});
-
-    await expect(
-      service.installPlugin("some-plugin@nonexistent-market"),
-    ).rejects.toThrow("Marketplace nonexistent-market not found");
-  });
-
-  // Line 768: installPlugin plugin not found in manifest
-  it("should throw when plugin is not found in marketplace manifest", async () => {
-    vi.spyOn(
-      service["configurationService"],
-      "getMergedMarketplaces",
-    ).mockReturnValue({
-      "test-mkt": {
-        source: { source: "directory", path: "/test" },
-      },
-    });
-
-    vi.spyOn(service, "loadMarketplaceManifest").mockResolvedValue({
-      name: "test-mkt",
-      owner: { name: "test" },
-      plugins: [], // no plugins
-    });
-
-    await expect(
-      service.installPlugin("nonexistent-plugin@test-mkt"),
-    ).rejects.toThrow(
-      "Plugin nonexistent-plugin not found in marketplace test-mkt",
-    );
-  });
-
-  // Claude Code ecosystem compatibility: .claude-plugin fallback for plugin.json
-  it("should fallback to .claude-plugin/plugin.json when .wave-plugin/plugin.json does not exist", async () => {
-    vi.spyOn(
-      service["configurationService"],
-      "getMergedMarketplaces",
-    ).mockReturnValue({
-      "compat-mkt": {
-        source: { source: "directory", path: mockPluginsDir },
-      },
-    });
-
-    // Create plugin manifest ONLY in .claude-plugin (not .wave-plugin)
-    const claudePluginDir = path.join(mockPluginsDir, ".claude-plugin");
-    await fs.mkdir(claudePluginDir, { recursive: true });
-    await fs.writeFile(
-      path.join(claudePluginDir, "plugin.json"),
-      JSON.stringify({ name: "compat-plugin", version: "3.0.0" }),
-    );
-
-    vi.spyOn(service, "loadMarketplaceManifest").mockResolvedValue({
-      name: "compat-mkt",
-      owner: { name: "test" },
-      plugins: [{ name: "compat-plugin", source: ".", description: "" }],
-    });
-
-    // Mock installed plugins file
-    const installedPath = path.join(mockPluginsDir, "installed_plugins.json");
-    await fs.writeFile(installedPath, JSON.stringify({ plugins: [] }));
-
-    // Mock fs.cp and fs.rename
-    vi.mocked(fs.cp).mockResolvedValue(
-      undefined as unknown as Awaited<ReturnType<typeof fs.cp>>,
-    );
-    vi.mocked(fs.rename).mockResolvedValue(
-      undefined as unknown as Awaited<ReturnType<typeof fs.rename>>,
-    );
-
-    const result = await service.installPlugin("compat-plugin@compat-mkt");
-    expect(result.version).toBe("3.0.0");
-  });
-
-  // Line 831: installPlugin cache exists and rm
-  it("should remove existing cache when installing same version again", async () => {
-    vi.spyOn(
-      service["configurationService"],
-      "getMergedMarketplaces",
-    ).mockReturnValue({
-      "cache-mkt": {
-        source: { source: "directory", path: mockPluginsDir },
-      },
-    });
-
-    // Plugin manifest in the mock plugins dir
-    const pluginDir = path.join(mockPluginsDir, ".wave-plugin");
-    await fs.mkdir(pluginDir, { recursive: true });
-    await fs.writeFile(
-      path.join(pluginDir, "plugin.json"),
-      JSON.stringify({ name: "cache-plugin", version: "1.0.0" }),
-    );
-
-    vi.spyOn(service, "loadMarketplaceManifest").mockResolvedValue({
-      name: "cache-mkt",
-      owner: { name: "test" },
-      plugins: [{ name: "cache-plugin", source: ".", description: "" }],
-    });
-
-    // Pre-existing cache
-    const existingCache = path.join(
-      mockPluginsDir,
-      "cache",
-      "cache-mkt",
-      "cache-plugin",
-      "1.0.0",
-    );
-    await fs.mkdir(existingCache, { recursive: true });
-    await fs.writeFile(path.join(existingCache, "dummy.txt"), "old content");
-
-    // Mock installed plugins file
-    const installedPath = path.join(mockPluginsDir, "installed_plugins.json");
-    await fs.writeFile(installedPath, JSON.stringify({ plugins: [] }));
-
-    // Mock fs.cp and fs.rename
-    vi.mocked(fs.cp).mockResolvedValue(
-      undefined as unknown as Awaited<ReturnType<typeof fs.cp>>,
-    );
-    vi.mocked(fs.rename).mockResolvedValue(
-      undefined as unknown as Awaited<ReturnType<typeof fs.rename>>,
-    );
-
-    await service.installPlugin("cache-plugin@cache-mkt");
-
-    // rm should have been called to remove the old cache
-    const rmCalls = vi.mocked(fs.rm).mock.calls;
-    const cacheRmCall = rmCalls.find(
-      (c) => typeof c[0] === "string" && c[0].includes("1.0.0"),
-    );
-    expect(cacheRmCall).toBeDefined();
-  });
-
-  // Line 853: installPlugin existing plugin update vs new push
-  it("should update existing plugin entry when reinstalling", async () => {
-    vi.spyOn(
-      service["configurationService"],
-      "getMergedMarketplaces",
-    ).mockReturnValue({
-      "update-mkt": {
-        source: { source: "directory", path: mockPluginsDir },
-      },
-    });
-
-    // Plugin manifest in the mock plugins dir
-    const pluginDir = path.join(mockPluginsDir, ".wave-plugin");
-    await fs.mkdir(pluginDir, { recursive: true });
-    await fs.writeFile(
-      path.join(pluginDir, "plugin.json"),
-      JSON.stringify({ name: "update-plugin", version: "2.0.0" }),
-    );
-
-    vi.spyOn(service, "loadMarketplaceManifest").mockResolvedValue({
-      name: "update-mkt",
-      owner: { name: "test" },
-      plugins: [{ name: "update-plugin", source: ".", description: "" }],
-    });
-
-    // Mock getInstalledPlugins to return existing entry
-    vi.spyOn(service, "getInstalledPlugins").mockResolvedValue({
-      plugins: [
-        {
-          name: "update-plugin",
-          marketplace: "update-mkt",
-          version: "1.0.0",
-          cachePath: "/old/cache/path",
-          projectPath: "/project",
-        },
-      ],
-    });
-
-    // Mock existsSync to return true for the plugin manifest
-    vi.mocked(existsSync).mockImplementation((p: import("fs").PathLike) => {
-      const str = String(p);
-      if (str.includes(".wave-plugin/plugin.json")) return true;
-      if (str.startsWith(mockPluginsDir)) return true;
-      return false;
-    });
-
-    // Mock fs.cp and fs.rename
-    vi.mocked(fs.cp).mockResolvedValue(
-      undefined as unknown as Awaited<ReturnType<typeof fs.cp>>,
-    );
-    vi.mocked(fs.rename).mockResolvedValue(
-      undefined as unknown as Awaited<ReturnType<typeof fs.rename>>,
-    );
-
-    const result = await service.installPlugin("update-plugin@update-mkt", {
-      scope: "project",
-      projectPath: "/project",
-    });
-
-    // Should have saved installed plugins - the entry should be updated not pushed
-    const saveCalls = vi.mocked(fs.writeFile).mock.calls;
-    const installedSaveCalls = saveCalls.filter((c) =>
-      String(c[0]).includes("installed_plugins.json"),
-    );
-    const installedSaveCall = installedSaveCalls[installedSaveCalls.length - 1];
-    expect(installedSaveCall).toBeDefined();
-    const saved = JSON.parse(String(installedSaveCall[1]));
-    // Should still be 1 entry (updated), not 2 (pushed)
-    expect(saved.plugins).toHaveLength(1);
-    expect(saved.plugins[0].version).toBe("2.0.0");
-    expect(result.version).toBe("2.0.0");
   });
 });
 

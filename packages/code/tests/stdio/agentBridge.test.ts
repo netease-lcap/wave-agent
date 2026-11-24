@@ -4560,26 +4560,21 @@ test("updatePlugin delegates to PluginCore", async () => {
   expect(updatePlugin).toHaveBeenCalledWith("test@official");
 });
 
-// ── Branch coverage: handleNotification ──────────────────────────
+// ── 未登记的输入：静默丢弃，不抛错也不对外发事件 ─────────────────
 
-test("handleNotification ignores unknown methods", () => {
-  const { bridge } = createBridge();
-  // Same untrusted-input path as above: an unknown notification is dropped, not
-  // an error.
-  // Should not throw
+test("handleNotification drops an unknown method and an unknown requestId", () => {
+  const { bridge, notifications } = createBridge();
+
   bridge.handleNotification(
     "unknownMethod" as unknown as ClientNotificationMethod,
     {},
   );
-});
-
-test("handleNotification with unknown requestId does nothing", () => {
-  const { bridge } = createBridge();
   bridge.handleNotification("permissionResponse", {
     requestId: "unknown-id",
     decision: { behavior: "allow" },
   });
-  // No error, no crash
+
+  expect(notifications).toEqual([]);
 });
 
 // ── Branch coverage: sendMessage force ───────────────────────────

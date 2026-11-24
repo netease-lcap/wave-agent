@@ -103,31 +103,4 @@ describe("Agent - Task List ID Resolution", () => {
 
     await agent.destroy();
   });
-
-  it("should maintain stable taskListId even if sessionId changes", async () => {
-    delete process.env.WAVE_TASK_LIST_ID;
-
-    const agent = await Agent.create({
-      apiKey: "test-key",
-      workdir: "/mock",
-    });
-
-    const initialTaskListId = agent.taskListId;
-    expect(initialTaskListId).toBe("mock-session-id");
-
-    // Simulate sessionId change (e.g. via messageManager internal state change)
-    // Since we can't easily trigger compaction in a unit test, we verify that
-    // TaskManager was only initialized once and agent.taskListId returns the stable value.
-
-    // We check that TaskManager was called with the initial ID
-    expect(TaskManager).toHaveBeenCalledWith(
-      expect.anything(),
-      "mock-session-id",
-    );
-
-    // Even if we were to mock messageManager.getSessionId to return something else now,
-    // the agent's taskListId logic in constructor has already run.
-
-    await agent.destroy();
-  });
 });

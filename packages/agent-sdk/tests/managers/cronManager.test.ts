@@ -221,17 +221,26 @@ describe("CronManager", () => {
   });
 
   describe("start/stop", () => {
-    it("starts the interval", () => {
-      cronManager = new CronManager(container);
-      cronManager.start();
-      cronManager.start();
-    });
+    it("启动是幂等的：重复 start 只装一个定时器，stop 也可重复调用", () => {
+      const timer = { unref: () => {} } as unknown as NodeJS.Timeout;
+      const setIntervalSpy = vi
+        .spyOn(globalThis, "setInterval")
+        .mockReturnValue(timer);
+      const clearIntervalSpy = vi
+        .spyOn(globalThis, "clearInterval")
+        .mockImplementation(() => {});
 
-    it("stops the interval", () => {
       cronManager = new CronManager(container);
       cronManager.start();
+      cronManager.start();
+      expect(setIntervalSpy).toHaveBeenCalledTimes(1);
+
       cronManager.stop();
       cronManager.stop();
+      expect(clearIntervalSpy).toHaveBeenCalledTimes(1);
+
+      setIntervalSpy.mockRestore();
+      clearIntervalSpy.mockRestore();
     });
 
     it("loads durable tasks from disk on start", () => {

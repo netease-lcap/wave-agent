@@ -4,21 +4,6 @@ import { ForegroundTask } from "../../src/types/processes.js";
 import { Container } from "../../src/utils/container.js";
 
 describe("ForegroundTaskManager", () => {
-  it("should register and unregister foreground tasks", () => {
-    const container = new Container();
-    const manager = new ForegroundTaskManager(container);
-    const task: ForegroundTask = {
-      id: "test-task",
-      backgroundHandler: vi.fn().mockResolvedValue(undefined),
-    };
-
-    manager.registerForegroundTask(task);
-    // Internal state is private, but we can test behavior via backgroundCurrentTask
-
-    manager.unregisterForegroundTask("test-task");
-    // After unregistering, backgrounding should do nothing
-  });
-
   it("should background the current task and remove it from the stack", async () => {
     const container = new Container();
     const manager = new ForegroundTaskManager(container);

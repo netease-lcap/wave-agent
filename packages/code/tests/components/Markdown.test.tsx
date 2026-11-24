@@ -360,12 +360,6 @@ describe("Markdown Component - Additional Branch Coverage", () => {
     expect(output).toContain("bold del");
   });
 
-  it("should render unknown token types using raw content", () => {
-    // We can't easily trigger default case with marked.lexer unless we mock it
-    // but we can try to pass a custom token to BlockRenderer if we could access it.
-    // Since we can't easily, we'll focus on other branches.
-  });
-
   it("should handle table with many columns and scaling", () => {
     const header =
       "| " + Array.from({ length: 10 }, (_, i) => `Col${i}`).join(" | ") + " |";
