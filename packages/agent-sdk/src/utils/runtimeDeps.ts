@@ -553,7 +553,19 @@ async function installDependency(
     }
     return platformKey;
   } finally {
-    fs.rmSync(tempDir, { recursive: true, force: true });
+    // Best-effort: a `finally` runs while the try block's error is in flight, so
+    // anything thrown here replaces it. On Windows a recursive rmdir of a
+    // directory another process still holds open (an antivirus scan, a process
+    // killed a moment ago) fails with EBUSY/EPERM — and the caller would then be
+    // told "the temp dir is busy" while the download/extract/verify failure it
+    // has to act on is lost. The directory is named per pid + random, and the
+    // marker file — not this cleanup — is what decides whether the batch
+    // re-runs, so leaving one behind is harmless.
+    try {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    } catch (error) {
+      logger.debug(`[Wave] 临时目录残留在 ${tempDir}，本次启动忽略：`, error);
+    }
   }
 }
 
