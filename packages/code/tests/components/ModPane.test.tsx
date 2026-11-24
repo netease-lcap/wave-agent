@@ -221,19 +221,62 @@ describe("ModPane（终端里的插件面板）", () => {
         tree: withAuto,
       }),
     );
-    const { stdin, lastFrame, onEvent, settle } = mount({
+    const { stdin, lastFrame, onEvent, settle, frames } = mount({
       renderTree: autoRender,
     });
     await vi.waitFor(() => expect(lastFrame()).toContain("第二个"));
+    await settle();
     // 焦点环在 `second` 上：它前面那个按钮没写 `autoFocus`。
     expect(lastFrame()).toContain("▸ 第二个");
     expect(lastFrame()).not.toContain("▸ 第一个");
+    // 而且**一帧都不许闪过**：`autoFocus` 与树是同一次提交，所以帧序列里不该
+    // 出现「树已经画出来、焦点还在第一个」的中间帧。曾经它是在 `useEffect` 里
+    // 播种的，那一帧必然先提交；终端上是一闪，慢机器上则让上面两条断言随机变红
+    // （`waitFor` 只看内容，会在那一帧就放行）。
+    expect(frames.filter((frame) => frame.includes("▸ 第一个"))).toEqual([]);
 
     stdin.write("\r");
     await settle();
     expect(onEvent).toHaveBeenCalledWith("press", "second");
   });
 
+  it("autoFocus 只播种一次：用户换过焦点后，mod 重画一帧不把焦点拽回去", async () => {
+    const withAuto = node("Box", { flexDirection: "column" }, [
+      node("Button", { key: "first", label: "第一个" }),
+      node("Button", { key: "second", label: "第二个", autoFocus: true }),
+    ]);
+    const autoRender = vi.fn(
+      async (modId: string, paneId: string): Promise<ModPanelRenderResult> => ({
+        modId,
+        paneId,
+        revision: 1,
+        tree: withAuto,
+      }),
+    );
+    const mounted = mount({ renderTree: autoRender });
+    await vi.waitFor(() => expect(mounted.lastFrame()).toContain("▸ 第二个"));
+    const { stdin, lastFrame, rerender, settle, onEvent, onDismiss } = mounted;
+
+    stdin.write("\t"); // 两个可聚焦节点：Tab 从 second 绕回 first
+    await settle();
+    expect(lastFrame()).toContain("▸ 第一个");
+
+    rerender(
+      <ModPane
+        panel={{ ...panel, revision: 2 }}
+        focused
+        maxRows={12}
+        renderTree={autoRender}
+        onEvent={onEvent}
+        onDismiss={onDismiss}
+      />,
+    );
+    await vi.waitFor(() => expect(autoRender).toHaveBeenCalledTimes(2));
+    await settle();
+    // 新的一帧到了，焦点还在用户放的地方。
+    expect(lastFrame()).toContain("▸ 第一个");
+    expect(lastFrame()).not.toContain("▸ 第二个");
+  });
   it("滚动先问 mod（ui.scroll）：它收下就由它自己滚，正文不动", async () => {
     // 20 行内容、视口 5 行：只要这一端真滚了，顶部那行就会消失。
     const lines = Array.from({ length: 20 }, (_, index) =>

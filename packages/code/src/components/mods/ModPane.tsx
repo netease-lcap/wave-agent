@@ -97,6 +97,8 @@ export const ModPane: React.FC<ModPaneProps> = ({
   // 每次拉树带一个序号：慢的回复不能盖掉新的那一帧（`revision` 单调，但两个
   // 请求可能乱序回来）。
   const pullSeq = useRef(0);
+  // `autoFocus` 只播种一次：第一棵带可聚焦节点的树到货时（见拉树那个 effect）。
+  const seeded = useRef(false);
   // mod 把焦点指到一个这一帧还没有的节点（它顺手让窗口挪了一格，落点是刚进来的
   // 那一行）：等下一帧的树到了再落，别把这次方向键丢掉。
   const pendingFocusKey = useRef<string | undefined>(undefined);
@@ -124,6 +126,22 @@ export const ModPane: React.FC<ModPaneProps> = ({
       if (cancelled || seq !== pullSeq.current) return;
       setTree(result.tree);
       setError(result.error);
+      // 面板长出来的第一棵树：焦点落到标了 `autoFocus` 的那个控件上（spec
+      // 「元素表」：一个站点里多个只认第一个）。只播种一次 —— 之后换焦点归用户，
+      // mod 重画一帧不该把焦点拽回去。桌面端同一语义（Node 的 `autoFocus`）。
+      //
+      // 必须和 `setTree` 在同一批里：放进 `useEffect` 会先提交一帧「树已经画出来、
+      // 焦点还在第一个」，下一帧才跳过去 —— 终端上是一闪，测试里是一帧内容对、
+      // 焦点错的中间态（`waitFor` 只看内容，会在那一帧就放行）。
+      if (!seeded.current && result.tree !== null) {
+        const keys = collectFocusKeys(result.tree);
+        if (keys.length > 0) {
+          seeded.current = true;
+          const target = findAutoFocus(result.tree);
+          const at = target === undefined ? -1 : keys.indexOf(target);
+          if (at >= 0) setFocusIndex(at);
+        }
+      }
     })();
     return () => {
       cancelled = true;
@@ -162,19 +180,6 @@ export const ModPane: React.FC<ModPaneProps> = ({
     pendingFocusKey.current = undefined;
     setFocusIndex(at);
   }, [focusKeys]);
-
-  // 面板长出来的第一帧：焦点落到标了 `autoFocus` 的那个控件上（spec「元素表」：
-  // 一个站点里多个只认第一个）。只播种一次 —— 之后换焦点归用户，mod 重画一帧
-  // 不该把焦点拽回去。桌面端同一语义（Node 的 `autoFocus`）。
-  const seeded = useRef(false);
-  useEffect(() => {
-    if (seeded.current || tree === null || focusKeys.length === 0) return;
-    seeded.current = true;
-    const target = findAutoFocus(tree);
-    if (target === undefined) return;
-    const at = focusKeys.indexOf(target);
-    if (at >= 0) setFocusIndex(at);
-  }, [tree, focusKeys]);
 
   // 焦点换到一个 `Input` 时把草稿初始化成它的 `value`：终端没有 `onChange`，
   // 用户打的字先进本地缓冲，回车才提交给 mod。
