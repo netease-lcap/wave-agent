@@ -2041,6 +2041,56 @@
   max-width: 768px;
 }
 
+/* ═══ 1124 评论：对话流与 AI 输入卡同宽同位 ═══
+   评论（锚点 `div.virtual-row`）：「对话流的宽度和 AI 输入框保持一致，现在整体
+   左侧超出了一些，右侧是正好的」。
+   改前实测（1440 视口、1× DPR）：消息行 `.virtual-row` [455.5, 1235.5] 宽 780，
+   输入卡 `.input-wrapper` [465.5, 1233.5] 宽 768 ⇒ 左超 10、右超 2。
+   两个来源：① 宽度 —— 列上限 800 含左右各 10 内衬 ⇒ 行 780，比输入卡宽 12；
+   ② 偏移 —— 滚动面右侧有一条 8px 的 classic 滚动条轨道（占内容盒），列
+   `margin: 0 auto` 于是在扣掉轨道的盒里居中，中心比输入卡偏左 4px，本来对称的
+   6/6 就变成 10/2 —— 这正是她看到的「左超出、右正好」。
+   改法：上限 792（= 输入卡 768 + 左内衬 16 + 右内衬 8），左右内衬由 10/10 改成
+   16/8 —— 左边与输入区那 16 同值，右边少掉的 8 正好让给滚动条轨道。这样两侧
+   恒等式成立，**宽窄两档一套值、不需要按档分叉**（设 pane 宽 P、列可用宽
+   P−8、输入卡宽 min(768, P−32)）：
+     行宽 = min(792, P−8) − 24 = min(768, P−32) = 输入卡宽  ← 恒等
+     宽档：列 792 居中、行中心 = 列中心 + 4 = 输入卡中心（16/8 的不对称正好
+     抵掉轨道造成的 4px 偏左）；窄档：列贴容器左沿，行左 = 列左 + 16 = 输入卡左。
+   实测（宽档 1600 / 1440 / 1280 / 1100，窄档 1000 / 960 / 900 / 860 / 800）：
+   行与输入卡左右沿逐值相等，差 0 / 0。 */
+[data-host="desktop"] .messages-column {
+  max-width: 792px;
+  padding-left: 16px;
+  padding-right: 8px;
+}
+
+/* 滚动条轨道恒预留（她的追加：「右侧能不能给滚动条预留好位置？是不是就始终一致
+   了」—— 是）。上面的恒等式假设容器内容盒 = pane − 8，也就是「有滚动条」那一态；
+   `scrollbar-gutter: auto` 时消息不满一屏（没有滚动条）内容盒会宽回 8px，列跟着
+   右移 4px，一旦长到出现滚动条又跳回来 —— 改前实测（1440 视口）：有滚动条
+   行/卡 −10 / +2，无滚动条 −6 / +6，两态自身就差 4。
+   加 `stable` 后两态 clientWidth 恒为 pane − 8、行/卡恒 0 / 0（1440 / 1000 / 800
+   三档各取「无滚动条」态验过）。轨道本身透明，视觉上只是「右侧一直留着 8px 的
+   空位」，看不到任何条。与侧栏同一手法（DesktopApp.css 的 `.desktop-session-tree`
+   也用 stable 来消「有/无滚动条」的内容盒跳动）。只桌面端。 */
+[data-host="desktop"] .messages-container {
+  scrollbar-gutter: stable;
+}
+
+/* 虚拟行与吸顶条按 canvas / 列内衬重新对齐（base 写死 10px，见 MessageList.css
+   的 `.virtual-row { left: 10px; right: 10px }` 与 `.sticky-user-wrapper` 的
+   -10px 负外边距）：行的左右内衬必须跟着列的 16 / 8 走，否则绝对定位的行一越过
+   列的 padding 就贴到列边、把刚对齐的左右沿又推回去。 */
+[data-host="desktop"] .virtual-row {
+  left: 16px;
+  right: 8px;
+}
+[data-host="desktop"] .sticky-user-wrapper {
+  margin-left: -16px;
+  margin-right: -8px;
+}
+
 /* ═══ 第十八轮：预览面板工具栏（对齐原型 InspectorPanel.vue）═══════
    参考 codechat-ui InspectorPanel.vue + global.css：地址栏 44px 高 / 白底
    #FFF（--cc-bg-panel）/ 底分隔线 #EBEEF5（--cc-border-lighter）；地址输入框

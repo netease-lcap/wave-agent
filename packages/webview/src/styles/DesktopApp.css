@@ -853,11 +853,16 @@ html[data-theme="dark"] .desktop-session-status-slot {
 }
 
 .desktop-session-empty {
-  /* 1029 第十六轮：设计师评论「这个空台居中显示」——原来靠左、左距 16 是与行标题
-     左缘对齐，现在改成在分组区域内水平居中。左右 padding 必须对称，否则居中会整体
-     偏一边（原来左侧 16 / 右侧 8，直接加 text-align 会右偏 4px）。垂直 4px 不动。 */
-  padding: 4px 8px;
-  text-align: center;
+  /* 1124 评论（锚点 `div.desktop-session-empty`「无会话」）：「无会话这个空态提示和
+     CC02 左对齐」—— 这条推翻 1029 第十六轮的「这个空台居中显示」，改回靠左，但这次
+     对齐的参照物是**分组名**的墨迹，不是分组盒边。
+     对齐依据（分组头 `padding: 0 8px` + 文件夹图标盒 16 + `gap: 8`）：名字墨迹比分组
+     盒左沿右 32。空态 div 与分组头同左沿，所以左内衬给 32、文字靠左即可落到同一条竖线
+     上；右内衬保持 8（不再居中后不需要左右对称）。垂直 4px 不动。
+     实测（1440 视口、tmp-tree-gap-1029，Range 取文字墨迹盒）：改前分组名墨迹左 44 /
+     无会话墨迹 110–149（居中），改后 44 / 44。 */
+  padding: 4px 8px 4px 32px;
+  text-align: left;
   font-size: 13px;
   opacity: 0.6;
 }
