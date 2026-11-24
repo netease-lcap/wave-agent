@@ -10,15 +10,18 @@ import type { ToolContext, ToolResult } from "@/tools/types.js";
  * Golden 断言（issue #3055 阶段 1）：`AskUserQuestion` 的 `data` 经它自己的渲染器
  * 还原出来的文本，必须与工具当场产出的 `content` 逐字相等。
  *
- * 期望值是手写的字面量（CC `AskUserQuestionTool.tsx:224-244` 的原话），不是从
- * `content` 抄来的：抄一遍只能证明两边用了同一个渲染器，证明不了措辞没漂。
+ * 期望值是手写的字面量（CC 2.1.331 `1005-20922B-mDn.js:671` 的
+ * `mapToolResultToToolResultBlockParam`），不是从 `content` 抄来的：抄一遍只能
+ * 证明两边用了同一个渲染器，证明不了措辞没漂。
  */
+
+const PREVIEW = "```\n+-----+\n| A   |\n+-----+\n```";
 
 const QUESTIONS = [
   {
     question: "Which layout?",
     header: "Layout",
-    options: [{ label: "A" }, { label: "B" }],
+    options: [{ label: "A", preview: PREVIEW }, { label: "B" }],
   },
 ];
 
@@ -56,7 +59,7 @@ describe("AskUserQuestion data → 文本渲染器 golden", () => {
     const result = await answerWith({ answers: { "Which layout?": "A" } });
 
     expect(result.content).toBe(
-      'User has answered your questions: "Which layout?"="A". You can now continue with the user\'s answers in mind.',
+      'Your questions have been answered: "Which layout?"="A". You can now continue with these answers in mind.',
     );
     expect(result.data).toEqual({ answers: { "Which layout?": "A" } });
     expectRendersBack(result);
@@ -82,7 +85,7 @@ describe("AskUserQuestion data → 文本渲染器 golden", () => {
     );
 
     expect(result.content).toBe(
-      'User has answered your questions: "Which layout?"="A", "Which features?"="Search, Fetch". You can now continue with the user\'s answers in mind.',
+      'Your questions have been answered: "Which layout?"="A", "Which features?"="Search, Fetch". You can now continue with these answers in mind.',
     );
     expect(result.data).toEqual({
       answers: { "Which layout?": "A", "Which features?": "Search, Fetch" },
@@ -90,58 +93,100 @@ describe("AskUserQuestion data → 文本渲染器 golden", () => {
     expectRendersBack(result);
   });
 
-  it("预览题：选中项的预览与备注跟着答案一起给模型", async () => {
+  it("预览题：备注把外层句子切到「读仔细」档，预览与备注跟着答案走", async () => {
     const result = await answerWith({
       answers: { "Which layout?": "A" },
       annotations: {
-        "Which layout?": {
-          preview: "```\n+-----+\n| A   |\n+-----+\n```",
-          notes: "wider columns please",
-        },
+        "Which layout?": { preview: PREVIEW, notes: "wider columns please" },
       },
     });
 
     expect(result.content).toBe(
-      'User has answered your questions: "Which layout?"="A" selected preview:\n```\n+-----+\n| A   |\n+-----+\n``` user notes: wider columns please. You can now continue with the user\'s answers in mind.',
+      'The user answered: "Which layout?"="A" selected preview:\n' +
+        PREVIEW +
+        " notes: wider columns please. Read the answers carefully — they may request clarification, changes, or that you not proceed — and follow what they actually say.",
     );
     expect(result.data).toEqual({
       answers: { "Which layout?": "A" },
       annotations: {
-        "Which layout?": {
-          preview: "```\n+-----+\n| A   |\n+-----+\n```",
-          notes: "wider columns please",
-        },
+        "Which layout?": { preview: PREVIEW, notes: "wider columns please" },
       },
     });
     expectRendersBack(result);
   });
 
-  it("只写了备注没选选项：(notes only) 是答案原文，不是没答", async () => {
+  it("预览但没备注：外层句子仍是「可以继续」档", async () => {
+    const result = await answerWith({
+      answers: { "Which layout?": "A" },
+      annotations: { "Which layout?": { preview: PREVIEW } },
+    });
+
+    expect(result.content).toBe(
+      'Your questions have been answered: "Which layout?"="A" selected preview:\n' +
+        PREVIEW +
+        ". You can now continue with these answers in mind.",
+    );
+    expectRendersBack(result);
+  });
+
+  it("只写了备注没选选项：哨兵渲染成 (no option selected)，(notes only) 不进文本", async () => {
     const result = await answerWith({
       answers: { "Which layout?": "(notes only)" },
       annotations: { "Which layout?": { notes: "both look wrong" } },
     });
 
     expect(result.content).toBe(
-      'User has answered your questions: "Which layout?"="(notes only)" user notes: both look wrong. You can now continue with the user\'s answers in mind.',
+      'The user answered: "Which layout?"=(no option selected) notes: both look wrong. Read the answers carefully — they may request clarification, changes, or that you not proceed — and follow what they actually say.',
+    );
+    expect(result.content).not.toContain("(notes only)");
+    expect(result.data).toEqual({
+      answers: { "Which layout?": "(notes only)" },
+      annotations: { "Which layout?": { notes: "both look wrong" } },
+    });
+    expectRendersBack(result);
+  });
+
+  it("answers 里连 key 都没有、只有备注：那一题照样出现", async () => {
+    const result = await answerWith({
+      answers: {},
+      annotations: { "Which layout?": { notes: "nothing fits" } },
+    });
+
+    expect(result.content).toBe(
+      'The user answered: "Which layout?"=(no option selected) notes: nothing fits. Read the answers carefully — they may request clarification, changes, or that you not proceed — and follow what they actually say.',
     );
     expectRendersBack(result);
   });
 
-  it("「其他」里填的字原样是答案", async () => {
+  it("「其他」里填的自定义答案：原样是答案，且换到「读仔细」档", async () => {
     const result = await answerWith({ answers: { "Which layout?": "C" } });
 
     expect(result.content).toBe(
-      'User has answered your questions: "Which layout?"="C". You can now continue with the user\'s answers in mind.',
+      'The user answered: "Which layout?"="C". Read the answers carefully — they may request clarification, changes, or that you not proceed — and follow what they actually say.',
     );
+    expect(result.data).toEqual({
+      answers: { "Which layout?": "C" },
+      readCarefully: true,
+    });
     expectRendersBack(result);
+  });
+
+  it("renderer 只认 data：手写 readCarefully 一样进「读仔细」档", () => {
+    expect(
+      renderAskUserQuestionResultData({
+        answers: { "Which layout?": "A" },
+        readCarefully: true,
+      }),
+    ).toBe(
+      'The user answered: "Which layout?"="A". Read the answers carefully — they may request clarification, changes, or that you not proceed — and follow what they actually say.',
+    );
   });
 
   it("老宿主只发答案表（没有 answers 包一层）也照样渲染", async () => {
     const result = await answerWith({ "Which layout?": "B" });
 
     expect(result.content).toBe(
-      'User has answered your questions: "Which layout?"="B". You can now continue with the user\'s answers in mind.',
+      'Your questions have been answered: "Which layout?"="B". You can now continue with these answers in mind.',
     );
     expect(result.data).toEqual({ answers: { "Which layout?": "B" } });
     expectRendersBack(result);
@@ -157,13 +202,19 @@ describe("AskUserQuestion data → 文本渲染器 golden", () => {
     expectRendersBack(result);
   });
 
-  it("一个答案都没有时也是同一句话（CC 的 call 把 answers 当空表，不特判）", async () => {
+  it("一个答案都没有：直说用户没回答（CC 2.1.331 的最后一档）", async () => {
     const result = await answerWith({});
 
-    expect(result.content).toBe(
-      "User has answered your questions: . You can now continue with the user's answers in mind.",
-    );
+    expect(result.content).toBe("The user did not answer the questions.");
     expect(result.data).toEqual({ answers: {} });
+    expectRendersBack(result);
+  });
+
+  it("空串答案按没答处理：整条不出现", async () => {
+    const result = await answerWith({ answers: { "Which layout?": "" } });
+
+    expect(result.content).toBe("The user did not answer the questions.");
+    expect(result.data).toEqual({ answers: { "Which layout?": "" } });
     expectRendersBack(result);
   });
 
