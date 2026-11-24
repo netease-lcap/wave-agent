@@ -1,5 +1,5 @@
 /**
- * Artifact page comments (`Artifact` tool's `comments` / `reply` / `resolve`).
+ * Artifact page comments (`ArtifactComments` tool's `read` / `reply` / `resolve`).
  *
  * Server contract (codechat 第二期, live): the thread list is a single flat
  * page of rows — thread roots and their replies together, one level deep — and
@@ -16,7 +16,7 @@
  *   regardless of how incremental the read was.
  *
  * Rendering lives here rather than in the tool so the wake path (which only
- * counts) and the `comments` action (which prints) read the same parsed rows.
+ * counts) and the `read` action (which prints) read the same parsed rows.
  */
 
 import { authService, createAuthAwareFetch } from "./authService.js";
@@ -285,8 +285,7 @@ export async function fetchComments(
   // `nextCursor` to an incremental caller would silently skip rows, so the
   // tail is the incremental cursor and nothing else. An older server sent
   // neither consistently; the caller then falls back to the head it saw before
-  // the read (see PageWatchManager — at worst it re-reads a row, never loses
-  // one).
+  // the read (at worst it re-reads a row, never loses one).
   const tailCursor = str(data.cursor).trim() || undefined;
 
   return {

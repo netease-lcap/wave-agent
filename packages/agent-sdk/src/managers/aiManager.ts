@@ -8,7 +8,6 @@ import { persistToolImages } from "../utils/toolImagePersistence.js";
 import { applyToolImageBudget } from "../utils/toolImageIngest.js";
 import type { ToolImage } from "../utils/toolImageIngest.js";
 import { parseTaskNotificationXml } from "../utils/notificationXml.js";
-import { parsePageCommentEventXml } from "../utils/pageCommentEventXml.js";
 import {
   estimateContextTokens,
   getAutoCompactThreshold,
@@ -4021,8 +4020,8 @@ ${question}`;
    * the same notification can never be injected twice.
    *
    * 这是 `prompt.attachment` 的 `background-task` 档（spec「系统提示词与附
-   * 件」）：插件拿到的是那条通知的原文（XML 或 page-comment 事件），可以改也
-   * 可以用 `{ text: null }` 压掉 —— 压掉即当它没来过，不会重投。
+   * 件」）：插件拿到的是那条通知的原文（XML），可以改也可以
+   * 用 `{ text: null }` 压掉 —— 压掉即当它没来过，不会重投。
    */
   public async injectTaskNotifications(
     xmls: readonly string[],
@@ -4032,30 +4031,17 @@ ${question}`;
       const attachment = await this.rewriteAttachment("background-task", xml);
       if (attachment === null) continue;
       const block = parseTaskNotificationXml(attachment);
-      if (block) {
-        this.messageManager.addNotificationMessage({
-          taskId: block.taskId,
-          taskType: block.taskType,
-          status: block.status,
-          summary: block.summary,
-          outputFile: block.outputFile,
-          result: block.result,
-          usage: block.usage,
-        });
-        injected++;
-        continue;
-      }
-      // Page-comment wake-ups ride the same queue but are not tasks (no
-      // taskId, no terminal state): they land as hidden user text so the model
-      // reads the threads itself. Same handling as the idle path in
-      // Agent.processQueuedMessage.
-      if (parsePageCommentEventXml(attachment)) {
-        this.messageManager.addUserMessage({
-          content: attachment,
-          isMeta: true,
-        });
-        injected++;
-      }
+      if (!block) continue;
+      this.messageManager.addNotificationMessage({
+        taskId: block.taskId,
+        taskType: block.taskType,
+        status: block.status,
+        summary: block.summary,
+        outputFile: block.outputFile,
+        result: block.result,
+        usage: block.usage,
+      });
+      injected++;
     }
     return injected;
   }

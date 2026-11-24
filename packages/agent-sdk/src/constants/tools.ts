@@ -26,6 +26,7 @@ export const ENTER_WORKTREE_TOOL_NAME = "EnterWorktree";
 export const EXIT_WORKTREE_TOOL_NAME = "ExitWorktree";
 export const WORKFLOW_TOOL_NAME = "Workflow";
 export const ARTIFACT_TOOL_NAME = "Artifact";
+export const ARTIFACT_COMMENTS_TOOL_NAME = "ArtifactComments";
 
 /**
  * Delivers files the model just produced (reports, screenshots, build output)

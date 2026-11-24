@@ -1,3 +1,4 @@
+import path from "node:path";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 vi.mock("../../src/services/authService.js", () => ({
@@ -25,19 +26,24 @@ vi.mock("../../src/utils/toolResultStorage.js", () => ({
 }));
 
 import { authService } from "../../src/services/authService.js";
+import { artifactCommentsTool } from "../../src/tools/artifactCommentsTool.js";
 import { artifactTool } from "../../src/tools/artifactTool.js";
 import type { ToolContext } from "../../src/tools/types.js";
 import {
   clearArtifactSession,
   recordVersion,
 } from "../../src/services/artifactSession.js";
-import type { PageWatchManager } from "../../src/managers/pageWatchManager.js";
+import { PermissionManager } from "../../src/managers/permissionManager.js";
+import { Container } from "../../src/utils/container.js";
+import type { ConfigurationService } from "../../src/services/configurationService.js";
+import type { PermissionDecision } from "../../src/types/permissions.js";
+import { ARTIFACT_COMMENTS_TOOL_NAME } from "../../src/constants/tools.js";
 
 const SERVER_URL = "https://server.test";
 const SLUG = "abc";
 const ARTIFACT_URL = `${SERVER_URL}/code/artifact/${SLUG}`;
 const SESSION_ID = "comment-session";
-const TOOL = artifactTool;
+const TOOL = artifactCommentsTool;
 
 function jsonResponse(status: number, body: unknown): Response {
   return {
@@ -91,20 +97,6 @@ function makeContext(overrides: Partial<ToolContext> = {}): ToolContext {
   } as ToolContext;
 }
 
-function fakeManager(
-  overrides: Partial<PageWatchManager> = {},
-): PageWatchManager {
-  return {
-    watch: vi.fn(async (slug: string) => ({
-      kind: "watching",
-      slug,
-      already: false,
-    })),
-    unwatch: vi.fn(() => true),
-    ...overrides,
-  } as unknown as PageWatchManager;
-}
-
 beforeEach(() => {
   vi.mocked(authService.getServerUrl).mockReturnValue(SERVER_URL);
   vi.mocked(authService.getSSOToken).mockReturnValue("token");
@@ -114,6 +106,100 @@ afterEach(() => {
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
   clearArtifactSession(SESSION_ID);
+});
+
+describe("ArtifactComments tool shape", () => {
+  const params = () =>
+    artifactCommentsTool.config.function.parameters as {
+      properties: Record<string, { enum?: string[] }>;
+    };
+
+  it("is a deferred tool of its own", () => {
+    expect(artifactCommentsTool.name).toBe(ARTIFACT_COMMENTS_TOOL_NAME);
+    expect(artifactCommentsTool.config.function.name).toBe(
+      ARTIFACT_COMMENTS_TOOL_NAME,
+    );
+    expect(artifactCommentsTool.defer).toBe(true);
+    // The publish entry point must never leave the flat declarations.
+    expect(artifactTool.defer).not.toBe(true);
+  });
+
+  it("declares the three comment actions, and only those", () => {
+    expect(params().properties.action.enum).toEqual([
+      "read",
+      "reply",
+      "resolve",
+    ]);
+    expect(Object.keys(params().properties).sort()).toEqual([
+      "acknowledge_duplicate",
+      "action",
+      "after_version",
+      "continues_reply_id",
+      "cursor",
+      "resolved",
+      "text",
+      "thread_id",
+      "url",
+    ]);
+  });
+
+  it("no longer accepts the comment actions on the publish tool", () => {
+    const main = artifactTool.config.function.parameters?.properties as Record<
+      string,
+      { enum?: string[] }
+    >;
+    expect(main.action.enum).not.toContain("reply");
+    expect(main.action.enum).not.toContain("reply");
+    expect(main.action.enum).not.toContain("resolve");
+    // Parameters only the comment actions used are gone with them.
+    for (const gone of [
+      "cursor",
+      "thread_id",
+      "text",
+      "continues_reply_id",
+      "acknowledge_duplicate",
+      "resolved",
+      "after_version",
+    ]) {
+      expect(main[gone]).toBeUndefined();
+    }
+  });
+
+  it("formats a compact row for every action", () => {
+    const url = "https://server.test/code/artifact/abc";
+    const compact = (params: Record<string, unknown>) =>
+      artifactCommentsTool.formatCompactParams!(params, makeContext());
+
+    expect(compact({ action: "read", url })).toBe(`read ${url}`);
+    expect(compact({ action: "reply", url, thread_id: "t1" })).toBe(
+      `reply t1 on ${url}`,
+    );
+    expect(
+      compact({ action: "resolve", url, thread_id: "t1", resolved: true }),
+    ).toBe(`resolve t1 on ${url}`);
+    expect(
+      compact({ action: "resolve", url, thread_id: "t1", resolved: false }),
+    ).toBe(`reopen t1 on ${url}`);
+  });
+
+  it("keeps each description to its own half of the surface", () => {
+    const main = artifactTool.config.function.description!;
+    const comments = artifactCommentsTool.config.function.description!;
+    // `publish` / `list` / `read` / the asset verbs stay on the main tool.
+    expect(comments).toContain('`action: "read"`');
+    expect(main).not.toContain('`action: "reply"`');
+    expect(main).not.toContain("AWAITING YOUR REPLY");
+    // …and the comment tool does not advertise them.
+    expect(comments).not.toContain('`action: "publish"`');
+    expect(comments).not.toContain('`action: "list"`');
+    expect(comments).not.toContain('`action: "upload_asset"`');
+    // No watch/channel exists: new comments reach the session only on a read.
+    expect(comments).toContain("none reach it on their own");
+    // The resolve governance rules live with the tool that can resolve.
+    expect(comments).toContain("never to tidy away feedback");
+    expect(comments).toContain("never by re-resolving");
+    expect(main).not.toContain("never to tidy away feedback");
+  });
 });
 
 describe("Artifact comments action", () => {
@@ -127,7 +213,7 @@ describe("Artifact comments action", () => {
     ]);
 
     const result = await TOOL.execute(
-      { action: "comments", url: ARTIFACT_URL },
+      { action: "read", url: ARTIFACT_URL },
       makeContext(),
     );
 
@@ -153,7 +239,7 @@ describe("Artifact comments action", () => {
     ]);
 
     await TOOL.execute(
-      { action: "comments", url: ARTIFACT_URL, cursor: "cur-1" },
+      { action: "read", url: ARTIFACT_URL, cursor: "cur-1" },
       makeContext(),
     );
 
@@ -161,7 +247,7 @@ describe("Artifact comments action", () => {
   });
 
   it("requires url", async () => {
-    const result = await TOOL.execute({ action: "comments" }, makeContext());
+    const result = await TOOL.execute({ action: "read" }, makeContext());
     expect(result.success).toBe(false);
     expect(result.error).toContain('"url"');
   });
@@ -169,7 +255,7 @@ describe("Artifact comments action", () => {
   it("asks the model to log in when there is no token", async () => {
     vi.mocked(authService.getSSOToken).mockReturnValue(undefined);
     const result = await TOOL.execute(
-      { action: "comments", url: ARTIFACT_URL },
+      { action: "read", url: ARTIFACT_URL },
       makeContext(),
     );
     expect(result.success).toBe(false);
@@ -184,7 +270,7 @@ describe("Artifact comments action", () => {
       },
     ]);
     const result = await TOOL.execute(
-      { action: "comments", url: ARTIFACT_URL },
+      { action: "read", url: ARTIFACT_URL },
       makeContext(),
     );
     expect(result.success).toBe(false);
@@ -573,186 +659,6 @@ describe("Artifact resolve action", () => {
   });
 });
 
-describe("Artifact watch / unwatch actions", () => {
-  it("starts watching through the per-agent manager", async () => {
-    const fetchMock = stubFetch([
-      { match: () => true, respond: () => jsonResponse(200, {}) },
-    ]);
-    const manager = fakeManager();
-    const result = await TOOL.execute(
-      { action: "watch", url: ARTIFACT_URL },
-      makeContext({ pageWatchManager: manager }),
-    );
-
-    expect(result.success).toBe(true);
-    expect(result.content).toContain(`Watching comments on ${ARTIFACT_URL}`);
-    expect(manager.watch).toHaveBeenCalledWith(SLUG, ARTIFACT_URL);
-    // The tool itself is a local action: the manager owns the connection.
-    expect(fetchMock).not.toHaveBeenCalled();
-  });
-
-  it("says nothing changed when the page is already watched", async () => {
-    const manager = fakeManager({
-      watch: vi.fn(async (slug: string) => ({
-        kind: "watching",
-        slug,
-        already: true,
-      })),
-    } as unknown as Partial<PageWatchManager>);
-    const result = await TOOL.execute(
-      { action: "watch", url: ARTIFACT_URL },
-      makeContext({ pageWatchManager: manager }),
-    );
-    expect(result.success).toBe(true);
-    expect(result.content).toContain("Already watching");
-  });
-
-  it("passes the manager's refusal (e.g. the 8-stream limit) on as an error", async () => {
-    const manager = fakeManager({
-      watch: vi.fn(async () => ({
-        kind: "error",
-        error: "already watching 8 pages (the server's limit)",
-      })),
-    } as unknown as Partial<PageWatchManager>);
-    const result = await TOOL.execute(
-      { action: "watch", url: ARTIFACT_URL },
-      makeContext({ pageWatchManager: manager }),
-    );
-    expect(result.success).toBe(false);
-    expect(result.error).toContain("8 pages");
-  });
-
-  it("stops watching and explains when nothing was being watched", async () => {
-    const manager = fakeManager();
-    const stopped = await TOOL.execute(
-      { action: "unwatch", url: ARTIFACT_URL },
-      makeContext({ pageWatchManager: manager }),
-    );
-    expect(stopped.success).toBe(true);
-    expect(stopped.content).toContain("Stopped watching");
-    expect(manager.unwatch).toHaveBeenCalledWith(SLUG);
-
-    const manager2 = fakeManager({
-      unwatch: vi.fn(() => false),
-    } as unknown as Partial<PageWatchManager>);
-    const nothing = await TOOL.execute(
-      { action: "unwatch", url: ARTIFACT_URL },
-      makeContext({ pageWatchManager: manager2 }),
-    );
-    expect(nothing.success).toBe(true);
-    expect(nothing.content).toContain("not watching");
-  });
-
-  it("explains when the session has no watch manager", async () => {
-    const result = await TOOL.execute(
-      { action: "watch", url: ARTIFACT_URL },
-      makeContext(),
-    );
-    expect(result.success).toBe(false);
-    expect(result.error).toContain("not available in this session");
-  });
-});
-
-describe("Artifact status action", () => {
-  function managerWatching(
-    entries: Array<{
-      slug: string;
-      url?: string;
-      status: "connecting" | "watching" | "backoff" | "stopped";
-      error?: string;
-    }>,
-  ): PageWatchManager {
-    return fakeManager({
-      listWatched: vi.fn(() =>
-        entries.map((entry) => ({ cursor: "cur-internal-1", ...entry })),
-      ),
-    } as unknown as Partial<PageWatchManager>);
-  }
-
-  it("reports what this session is watching, without any request", async () => {
-    const fetchMock = stubFetch([
-      { match: () => true, respond: () => jsonResponse(200, {}) },
-    ]);
-    const manager = managerWatching([
-      { slug: SLUG, url: ARTIFACT_URL, status: "watching" },
-    ]);
-
-    const result = await TOOL.execute(
-      { action: "status" },
-      makeContext({ pageWatchManager: manager }),
-    );
-
-    expect(result.success).toBe(true);
-    expect(result.content).toContain(ARTIFACT_URL);
-    expect(result.content).toContain("watching");
-    // Local state only: no request, and the internal cursor never leaks out.
-    expect(fetchMock).not.toHaveBeenCalled();
-    expect(result.content).not.toContain("cur-internal-1");
-  });
-
-  it("says plainly when nothing is being watched", async () => {
-    const result = await TOOL.execute(
-      { action: "status" },
-      makeContext({ pageWatchManager: managerWatching([]) }),
-    );
-
-    expect(result.success).toBe(true);
-    expect(result.content).toContain("Not watching any pages");
-    expect(result.content).toContain('action "watch"');
-  });
-
-  it("keeps the four stream states apart", async () => {
-    const manager = managerWatching([
-      { slug: "a1", status: "connecting" },
-      { slug: "b2", status: "watching" },
-      { slug: "c3", status: "backoff" },
-      {
-        slug: "d4",
-        status: "stopped",
-        error: "the artifact was not found (HTTP 404)",
-      },
-    ]);
-
-    const result = await TOOL.execute(
-      { action: "status" },
-      makeContext({ pageWatchManager: manager }),
-    );
-
-    expect(result.success).toBe(true);
-    // A page with no URL falls back to its canonical page address.
-    expect(result.content).toContain(`${SERVER_URL}/code/artifact/a1`);
-    expect(result.content).toContain("connecting");
-    expect(result.content).toContain("reconnecting");
-    // A stopped stream must not read as "not watching" or as healthy — it says
-    // why it stopped and how to restart it.
-    expect(result.content).toContain("the artifact was not found (HTTP 404)");
-    expect(result.content).toContain("will not wake you");
-    // The stream cap comes from the manager's own constant.
-    expect(result.content).toContain("4 of 8");
-  });
-
-  it("reads local state even when the account is not logged in", async () => {
-    vi.mocked(authService.getSSOToken).mockReturnValue(undefined);
-    const result = await TOOL.execute(
-      { action: "status" },
-      makeContext({
-        pageWatchManager: managerWatching([
-          { slug: SLUG, url: ARTIFACT_URL, status: "watching" },
-        ]),
-      }),
-    );
-
-    expect(result.success).toBe(true);
-    expect(result.content).toContain(ARTIFACT_URL);
-  });
-
-  it("uses the same unavailable error as watch / unwatch", async () => {
-    const result = await TOOL.execute({ action: "status" }, makeContext());
-    expect(result.success).toBe(false);
-    expect(result.error).toContain("not available in this session");
-  });
-});
-
 function makePermissionManager(behavior: "allow" | "deny" = "allow") {
   const permissionContext: Record<string, unknown> = {};
   return {
@@ -873,10 +779,99 @@ describe("Artifact comment writes ask the user once per page", () => {
     const { manager } = makePermissionManager();
 
     const result = await TOOL.execute(
-      { action: "comments", url: ARTIFACT_URL },
+      { action: "read", url: ARTIFACT_URL },
       makeContext({ permissionManager: manager as never }),
     );
     expect(result.success).toBe(true);
     expect(manager.checkPermission).not.toHaveBeenCalled();
+  });
+});
+
+// The mocks above prove the tool *calls* the gate. This block proves the gate
+// still asks for a tool whose name is not in `RESTRICTED_TOOLS`: the comment
+// actions ride the permission context the `Artifact` entry point builds, so a
+// non-restricted name must not turn the confirmation into a silent allow.
+describe("ArtifactComments against the real permission manager", () => {
+  function createRealManager() {
+    const container = new Container();
+    container.register("CurrentWorkdir", path.resolve("/fake/project"));
+    const configurationService = {
+      getCurrentConfiguration: () => ({
+        sandbox: { autoAllowBashIfSandboxed: false },
+      }),
+    } as unknown as ConfigurationService;
+    container.register("ConfigurationService", configurationService);
+    return new PermissionManager(container, {});
+  }
+
+  it("asks once before a reply and never for a read", async () => {
+    stubFetch([
+      {
+        match: (url, init) =>
+          init?.method === "POST"
+            ? url.includes(`/comments/${SLUG}/`)
+            : url.includes("/api/frame/comments/"),
+        respond: (() => {
+          let posted = false;
+          return () =>
+            posted
+              ? jsonResponse(201, { replied: true, threadId: "c1" })
+              : ((posted = true),
+                jsonResponse(200, {
+                  comments: [commentRow()],
+                  unresolvedCount: 0,
+                }));
+        })(),
+      },
+    ]);
+    const canUseTool = vi
+      .fn()
+      .mockResolvedValue({ behavior: "allow" } as PermissionDecision);
+    const context = makeContext({
+      permissionManager: createRealManager() as never,
+      canUseToolCallback: canUseTool,
+    });
+
+    const read = await TOOL.execute(
+      { action: "read", url: ARTIFACT_URL },
+      context,
+    );
+    expect(read.success).toBe(true);
+    expect(canUseTool).not.toHaveBeenCalled();
+
+    const reply = await TOOL.execute(
+      { action: "reply", url: ARTIFACT_URL, thread_id: "c1", text: "已修复" },
+      context,
+    );
+    expect(reply.success).toBe(true);
+    expect(canUseTool).toHaveBeenCalledTimes(1);
+    expect(canUseTool.mock.calls[0][0]).toMatchObject({
+      hidePersistentOption: true,
+    });
+    expect(String(canUseTool.mock.calls[0][0].warning)).toContain("公开回帖");
+  });
+
+  it("stops a reply the user declined", async () => {
+    const fetchMock = stubFetch([
+      {
+        match: () => true,
+        respond: () => jsonResponse(201, { replied: true }),
+      },
+    ]);
+    const canUseTool = vi
+      .fn()
+      .mockResolvedValue({ behavior: "deny", message: "no" });
+    const context = makeContext({
+      permissionManager: createRealManager() as never,
+      canUseToolCallback: canUseTool,
+    });
+
+    const reply = await TOOL.execute(
+      { action: "reply", url: ARTIFACT_URL, thread_id: "c1", text: "已修复" },
+      context,
+    );
+    expect(reply.success).toBe(false);
+    expect(reply.error).toContain("denied by user");
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
