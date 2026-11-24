@@ -85,10 +85,14 @@ describe("globTool", () => {
     expect(result.success).toBe(true);
     expect(result.content).toBe("src/index.ts\nsrc/utils.ts");
     expect(result.shortResult).toBe("Found 2 files");
+    // `data.filenames` 与 `content` 同源（都来自 `getDisplayPath()`，见
+    // src/utils/path.ts），它会把手上的相对路径统一翻成正斜杠 —— 与这一行上面
+    // 的 `content` 断言同一口径。用 `path.join` 造期望值在 Windows 上拿到的是
+    // `src\index.ts`，和实现不一致的是这条断言，不是实现。
     expect(result.data).toEqual({
       durationMs: expect.any(Number),
       numFiles: 2,
-      filenames: [path.join("src", "index.ts"), path.join("src", "utils.ts")],
+      filenames: ["src/index.ts", "src/utils.ts"],
       truncated: false,
     });
   });

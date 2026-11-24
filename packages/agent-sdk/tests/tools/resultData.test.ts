@@ -98,14 +98,16 @@ describe("data → 文本渲染器 golden", () => {
         testContext,
       );
 
-      expect(result.content).toBe(
-        `${path.join("src", "a.ts")}\n${path.join("src", "b.ts")}`,
-      );
+      // `filenames` 过的是 `getDisplayPath()`，它**故意**把相对路径翻成正斜杠
+      // （Windows 的反斜杠插进 shell 字符串会当转义符，见 src/utils/path.ts）。
+      // 契约本身就是 POSIX 拼写，所以期望值写死正斜杠：拿 `path.join` 造出来的
+      // 反斜杠在 Windows 上必然对不上。
+      expect(result.content).toBe("src/a.ts\nsrc/b.ts");
       expectRendersBack("Glob", result);
       expect(result.data).toEqual({
         durationMs: expect.any(Number),
         numFiles: 2,
-        filenames: [path.join("src", "a.ts"), path.join("src", "b.ts")],
+        filenames: ["src/a.ts", "src/b.ts"],
         truncated: false,
       });
     });
