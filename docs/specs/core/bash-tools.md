@@ -29,21 +29,23 @@ order: 20
 
 ---
 
-### 用户故事：非零退出的家族判定（优先级：P1）
+### 用户故事：退出码不是工具成败（优先级：P1）
 
-作为读工具结果的模型，我希望「`grep` 没找到」这类非零退出不要被报成一次失败的执行，而是一次带解释的答案，以便不必为了区分两者反复回读输出文本。
+作为读工具结果的模型，我希望命令一旦跑起来，不论退出码是几都拿到完整结果（输出 + 退出码），以便「`grep` 没匹配」「构建失败」这类正常会发生的答案不会被换成一句「命令失败」、把整份输出丢掉。
 
-**优先级原因**：`success` 是回合循环里唯一的机器可读成败信号，而搜索/比较类命令用退出码 1 报「无匹配 / 有差异」是它们的正常作答。对齐 Claude Code：它在工具层把家族内 exit 1 读成 `isError: false` + `returnCodeInterpretation`，家族外的非零照常失败（`packages/agent-sdk/src/tools/shellExitCode.ts`）。
+**优先级原因**：`success` 只回答「这次调用执行成了吗」，不回答「命令的答案是失败吗」。对齐 Claude Code 2.1.331：非零退出不产生 `is_error`——要标注时工具把 `Exit code <n>` 补进 `data.stdout`、读法进 `data.returnCodeInterpretation`，`is_error` 只由「命令根本没跑起来」与「命令被中断」产生。这同时修掉一处跨层不一致：REPL 里 `tools.Bash` 交的是工具的 `data`，一旦非零退出被判成失败，脚本拿到的就只有 `{ error }`、`r.stdout` 变成 `undefined`（spec core/repl-tool.md「工具调用的值」）。
 
-**独立测试**：`tests/tools/shellExitCode.test.ts` 覆盖家族表、`git` 子命令、`&&` 链、管道与引号；`tests/tools/bashTool.test.ts` 有一条端到端用例（`grep` 退 1 → `success: true` + `data.returnCodeInterpretation`）。
+**独立测试**：`tests/tools/shellExitCode.test.ts` 覆盖家族表、`git` 子命令、家族内 2 起（无解释句）、`&&` 链、管道与引号；`tests/tools/bashTool.test.ts` 覆盖四条端到端用例——`grep` 退 1（`success: true` + `data.returnCodeInterpretation`、正文不含 `Exit code`）、非家族命令退 1（`success: true` + `data.stdout` 末尾 `Exit code 1` + 兜底解释）、命令没跑起来（`success: false` + `error`）、被中断（`success: false` + 原因）。
 
 **验收场景**：
 
-1. **假设** 命令是 `grep` / `egrep` / `fgrep` / `rg` / `find` / `diff` / `test` / `[` 之一（取命令行里**最后一个命令词**，路径按 basename 读），或是 `git diff` / `git grep`，**当** 它以 **1** 退出时，**则** `success` 必须为 `true`、`error` 为空，`data.exitCode` 仍为 1，`data.returnCodeInterpretation` 给出那句解释（`No matches found` / `Some directories were inaccessible` / `Files differ` / `Condition is false`）。
-2. **假设** 同一家族的命令以**其它**非零码退出（2、130…），**当** 工具返回时，**则** 照旧算失败（`success: false` + `Command failed with exit code: <n>`）——家族只覆盖「退出码恰为 1」这一格。
-3. **假设** 命令不在家族里且以 1 退出，**当** 工具返回时，**则** 照旧算失败。
-4. **假设** 命令是 `&&` 链，**当** 它以 1 退出时，**则** 不得套用家族豁免——链上最后一环才是退出码的主人，它的名字不能当答案。
-5. **假设** 命令是管道，**当** 判定家族时，**则** 只看最后一个命令词（`rg x f | head` 退的是 `head` 的状态）；引号里的 `|` / `&&` 与前置的 `NAME=value` 都算数据。
+1. **假设** 命令是 `grep` / `egrep` / `fgrep` / `rg` / `find` / `diff` / `test` / `[` 之一（取命令行里**最后一个命令词**，路径按 basename 读），或是 `git diff` / `git grep`，**当** 它以 **1** 退出时，**则** `success` 必须为 `true`、`error` 为空、`data.exitCode` 为 1、`data.returnCodeInterpretation` 给出那句解释（`No matches found` / `Some directories were inaccessible` / `Files differ` / `Condition is false`），正文**不**追加 `Exit code`——家族内 1 是正常作答，解释已在 `data` 里。
+2. **假设** 命令以非零码退出但不在「家族内 1」这一格，**当** 工具返回时，**则** `success` 必须为 `true`，`data.exitCode` 是真实退出码，`data.stdout` **末尾**（先去掉尾部空白，照 Claude Code 的 `(stdout || "").trimEnd()`）多一行 `Exit code <n>`；`data.returnCodeInterpretation` 分两档——非家族的任何非零码是兜底句 `Command failed with exit code: <n>`，**家族内 2 及以上没有解释句**（照 Claude Code 的 `fU`：`message` 只在 `n === 1` 时给）。
+3. **假设** 命令是 `&&` 链，**当** 判定家族时，**则** **不**豁免——家族只看最后一个命令词（`grep x f && echo ok` 退 1 时链尾是 `echo`，按场景 2 处理；`echo ok && grep x f` 退 1 时链尾是 `grep`，按场景 1 处理）。
+4. **假设** 命令是管道，**当** 判定家族时，**则** 只看最后一个命令词（`rg x f | head` 退的是 `head` 的状态）；引号里的 `|` / `&&` 与前置的 `NAME=value` 都算数据。
+5. **假设** 命令**根本没跑起来**（`command` 缺失或非字符串、找不到可用 shell、`timeout` 非法、沙箱起不来、后台任务管理器缺失、spawn 报错、权限被拒），**当** 工具返回时，**则** `success` 必须为 `false` 并带 `error`——这是 `success` 为 false 的唯一一类。
+6. **假设** 命令被超时终止、或调用方中止了这次执行，**当** 工具收尾时，**则** `success` 必须为 `false` 且 `error` 是那句原因——中断**是**失败（对齐 Claude Code 2.1.331：`mapToolResultToToolResultBlockParam` 的 `is_error` 取自 `interrupted`，正文另追加 `<error>Command was aborted before completion</error>`）；`data` 仍完整交回（`data.interrupted: true` + `data.interruptedReason` + `data.exitCode: 130`），已产出的输出留在正文里。
+7. **假设** 一条 shell 调用以非零退出结束，**当** 统计 `wave.commits` / PR-MR 计数时，**则** 不得计入——判据必须是 `data.exitCode === 0`（或没有 `exitCode` 字段），不得读 `success`。
 
 ---
 

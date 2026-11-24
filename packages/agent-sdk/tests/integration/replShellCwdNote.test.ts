@@ -105,12 +105,14 @@ describe("the shell's cd note, from a real shell", () => {
   );
 
   it.skipIf(isWindows)(
-    "keeps every byte of the command's output while the shell also moved",
+    "keeps the command's output while the shell also moved",
     async () => {
       const out = await runShell(`cd ${OTHER_DIR} && echo marker`, () => {});
 
-      expect(out.stdout).toBe("marker\n");
-      expect(out.output).toBe("marker\n");
+      // 尾部空白由工具照 CC 去掉（`(st.stdout || "").trimEnd()`），所以 `$` 拿到的
+      // 是不带尾换行的那份。
+      expect(out.stdout).toBe("marker");
+      expect(out.output).toBe("marker");
       expect(out.cwdNote).toBe(
         `Shell working directory changed to ${OTHER_DIR}`,
       );
@@ -123,7 +125,7 @@ describe("the shell's cd note, from a real shell", () => {
       const echoed = `Shell working directory changed to ${OTHER_DIR}`;
       const out = await runShell(`cd ${OTHER_DIR} && echo ${echoed}`, () => {});
 
-      expect(out.stdout).toBe(echoed + "\n");
+      expect(out.stdout).toBe(echoed);
       expect(out.cwdNote).toBe(echoed);
     },
   );
@@ -133,7 +135,7 @@ describe("the shell's cd note, from a real shell", () => {
     // sentence came back as an empty `stdout`.
     const out = await runShell("echo Command executed with exit code: 0");
 
-    expect(out.stdout).toBe("Command executed with exit code: 0\n");
+    expect(out.stdout).toBe("Command executed with exit code: 0");
     expect(out.cwdNote).toBeUndefined();
   });
 });

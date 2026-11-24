@@ -199,9 +199,10 @@ describe("PowerShell 的 data → 文本 golden", () => {
 
     const result = await promise;
 
-    expect(result.content).toBe("line one\n");
+    // 尾部空白照 CC 的 `te = (D.stdout || "").trimEnd()` 去掉。
+    expect(result.content).toBe("line one");
     expect(result.data).toEqual({
-      stdout: "line one\n",
+      stdout: "line one",
       interrupted: false,
       exitCode: 0,
     });
@@ -221,9 +222,9 @@ describe("PowerShell 的 data → 文本 golden", () => {
 
     const result = await promise;
 
-    expect(result.content).toBe("line one\n\na warning\n");
+    expect(result.content).toBe("line one\n\na warning");
     expect(result.data).toEqual({
-      stdout: "line one\n\na warning\n",
+      stdout: "line one\n\na warning",
       interrupted: false,
       exitCode: 0,
     });
@@ -242,13 +243,16 @@ describe("PowerShell 的 data → 文本 golden", () => {
 
     const result = await promise;
 
-    expect(result.success).toBe(false);
-    expect(result.error).toBe("Command failed with exit code: 1");
-    expect(result.content).toBe("\nCannot find path\n");
+    // 非零退出是命令的答案，不是这次调用失败；但 CC 的 PowerShell 工具**不补**
+    // `Exit code N`（只有 Bash 补），所以正文就是命令自己的输出
+    // （spec core/powershell-tool.md「退出码不是工具成败」）。
+    expect(result.success).toBe(true);
+    expect(result.content).toBe("\nCannot find path");
     expect(result.data).toEqual({
-      stdout: "\nCannot find path\n",
+      stdout: "\nCannot find path",
       interrupted: false,
       exitCode: 1,
+      returnCodeInterpretation: "Command failed with exit code: 1",
     });
     expectRendersBack(result);
   });
@@ -488,6 +492,8 @@ describe("PowerShell 的 data → 文本 golden", () => {
 
     const reason =
       "Command timed out after 1s. Consider breaking the command into smaller steps or increasing the timeout.";
+    // 中断是失败（CC 的 mapper 用 `is_error: interrupted`）：原因句既在正文里，也在
+    // `error` 里给宿主与 `$`。
     expect(result.success).toBe(false);
     expect(result.error).toBe(reason);
     expect(result.content).toBe(reason);
@@ -514,6 +520,7 @@ describe("PowerShell 的 data → 文本 golden", () => {
     const result = await promise;
 
     expect(result.success).toBe(false);
+    expect(result.error).toBe("Command execution was aborted");
     expect(result.content).toBe("partial\n\nCommand execution was aborted");
     expect(result.data).toEqual({
       stdout: "partial",
@@ -544,6 +551,9 @@ describe("PowerShell 的 data → 文本 golden", () => {
     const result = await pending;
 
     expect(result.success).toBe(false);
+    expect(result.error).toBe(
+      "Failed to background: Background task manager not available",
+    );
     expect(result.content).toBe(
       "Failed to background: Background task manager not available",
     );

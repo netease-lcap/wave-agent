@@ -181,6 +181,20 @@ describe("ToolManager creation counters", () => {
     expect(recordToolActivity).not.toHaveBeenCalled();
   });
 
+  it("stays silent when the command exited non-zero", async () => {
+    // 非零退出现在是 `success: true`（spec core/bash-tools.md「退出码不是工具成
+    // 败」）：闸门要看 `data.exitCode`，否则每次失败的 `git commit` 都算进一个提交。
+    const manager = buildManager("Bash", {
+      success: true,
+      content: "nothing to commit\nExit code 1",
+      data: { stdout: "nothing to commit", interrupted: false, exitCode: 1 },
+    });
+
+    await manager.execute("Bash", { command: "git commit -m x" }, baseContext);
+
+    expect(recordToolActivity).not.toHaveBeenCalled();
+  });
+
   it("stays silent when the commit command failed", async () => {
     const manager = buildManager("Bash", {
       success: false,

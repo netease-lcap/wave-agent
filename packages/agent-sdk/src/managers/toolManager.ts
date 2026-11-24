@@ -236,8 +236,11 @@ function numberOrUndefined(value: unknown): number | undefined {
 
 /**
  * Count the commit / PR-MR a shell call created (see `detectShellActivity`).
- * Recognition is of the command the tool was asked to run, so a failed call
- * created nothing and records nothing — the same gate as the line delta above.
+ * Recognition is of the command the tool was asked to run, so a call that exited
+ * non-zero created nothing and records nothing. The gate reads `data.exitCode`,
+ * not `success`: since a non-zero exit stopped making the call a failure (spec
+ * `core/bash-tools.md`「退出码不是工具成败」), `success` no longer tells created
+ * from not-created.
  *
  * "A shell call", not "a Bash call": `git commit` typed into a PowerShell
  * session creates the same commit, and the command line reads the same to
@@ -253,7 +256,16 @@ function recordShellActivity(
   context: { sessionId?: string; workdir?: string },
   container: Container,
 ): void {
-  if (!isShellToolName(name) || !result.success) return;
+  if (!isShellToolName(name)) return;
+  // 两道闸门缺一不可：命令没跑起来（找不到 shell、spawn 失败、被权限拒）只有
+  // `success: false` 与 `error`、没有 `data`；而命令跑起来了但退出码非零，是
+  // `success: true` 加 `data.exitCode`（spec `core/bash-tools.md`「退出码不是工具成
+  // 败」）——它同样什么都没创建。没有 `exitCode` 的档（后台化、被停下前就返回）
+  // 照旧计入。
+  if (!result.success) return;
+  const exitCode = (result.data as { exitCode?: unknown } | undefined)
+    ?.exitCode;
+  if (typeof exitCode === "number" && exitCode !== 0) return;
   const command = typeof args.command === "string" ? args.command : "";
   if (!command) return;
   recordToolActivity(
@@ -676,10 +688,13 @@ class ToolManager {
       durationMs: Date.now() - startedAt,
     });
     // A failure the tool *reported* (`success: false`) is ordinary operation:
-    // wrong arguments, a rejected permission, a command that exited non-zero.
-    // It goes out as WARN `tool_error`, never as `error` (spec:
+    // wrong arguments, a rejected permission, a command that never started. It
+    // goes out as WARN `tool_error`, never as `error` (spec:
     // `enterprise/opentelemetry.md`「可感知失败的覆盖」). Results already filed
-    // as a crash are skipped — same failure, one record.
+    // as a crash are skipped — same failure, one record. A shell command that
+    // exited non-zero is not one of these: since spec `core/bash-tools.md`
+    // 「退出码不是工具成败」 it reports `success: true`, so it is not a
+    // `tool_error` either — the code is in `data.exitCode`.
     if (!result.success && !crashReported.has(result)) {
       const telemetry = this.failureTelemetry(context);
       if (telemetry) {

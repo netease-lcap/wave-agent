@@ -630,9 +630,12 @@ describe("$ — the shell template", () => {
   });
 
   it("shows stdout, the tool's reading and the exit code in output", async () => {
+    // The tool appends `Exit code 2` to stdout (CC does the same in its Bash tool);
+    // `$` renders `[exit 2]` itself, so it strips the tool's line first — otherwise
+    // the same fact shows up twice.
     const h = harness(() => ({
       success: false,
-      content: "boom",
+      content: "boom\nExit code 2",
       error: "Command failed with exit code: 2",
       data: { exitCode: 2 },
     }));
@@ -843,6 +846,35 @@ describe("$ — the shell template", () => {
     );
 
     expect(result.value).toBe(`Shell working directory changed to ${target}`);
+  });
+
+  it("hands a non-zero exit's stdout back instead of an error", async () => {
+    // 报告过的现象：`tools.Bash` 只交回 `{ error }` 时，脚本里的 `r.stdout.trim()`
+    // 炸成 `Cannot read properties of undefined (reading 'trim')`。退出码非零现在只是
+    // 命令的答案（spec core/bash-tools.md「退出码不是工具成败」），整个 `data` 照旧交
+    // 回去，读法在 `returnCodeInterpretation` 里。
+    // `Exit code N` 照 CC 由工具写进 `stdout`，脚本直接读工具的 `data` 就原样看到它
+    // （`$` 那条路才剥：它自己渲染 `[exit N]`，见「shows stdout, the tool's reading…」）。
+    const h = harness(() => ({
+      success: true,
+      content: "no matches\nExit code 1",
+      data: {
+        stdout: "no matches\nExit code 1",
+        interrupted: false,
+        exitCode: 1,
+        returnCodeInterpretation: "Command failed with exit code: 1",
+      },
+    }));
+
+    const result = await runRepl(
+      h,
+      `const out = await tools.Bash({ command: "grep nope f" }); return out.stdout.trim() + "|" + String(out.exitCode);`,
+      {
+        pool: [...POOL, { name: "Bash", description: "Run a shell command" }],
+      },
+    );
+
+    expect(result.value).toBe("no matches\nExit code 1|1");
   });
 
   it("hands a persisted output back as a preview plus the spill file", async () => {

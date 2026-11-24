@@ -249,7 +249,7 @@ describe("powershellTool", () => {
     expect(result.data).toEqual(expect.objectContaining({ exitCode: 0 }));
   });
 
-  it("reports a non-zero exit code with the failure text", async () => {
+  it("treats a non-zero exit as the command's answer and notes the code", async () => {
     const child = spawnChild();
 
     const promise = powershellTool.execute(
@@ -261,10 +261,19 @@ describe("powershellTool", () => {
 
     const result = await promise;
 
-    expect(result.success).toBe(false);
-    expect(result.error).toBe("Command failed with exit code: 1");
-    expect(result.data).toEqual(expect.objectContaining({ exitCode: 1 }));
+    // 非零退出不是这次调用失败（spec core/powershell-tool.md「退出码不是工具成败」）：
+    // 解释进 `data.returnCodeInterpretation`；CC 的 PowerShell 工具不往正文补
+    // `Exit code N`（只有 Bash 补）。
+    expect(result.success).toBe(true);
+    expect(result.error).toBeUndefined();
+    expect(result.data).toEqual(
+      expect.objectContaining({
+        exitCode: 1,
+        returnCodeInterpretation: "Command failed with exit code: 1",
+      }),
+    );
     expect(result.content).toContain("Cannot find path");
+    expect(result.content).not.toContain("Exit code");
   });
 
   it("says so when the command printed nothing at all", async () => {
@@ -479,9 +488,13 @@ describe("powershellTool", () => {
       const result = await promise;
 
       expect(terminateChildProcessTree).toHaveBeenCalledWith(child);
+      // 中断是失败（CC 的 `is_error: interrupted`）：原因句既在正文里，也在 `error` 里。
       expect(result.success).toBe(false);
       expect(result.error).toContain("Command timed out after 5s");
-      expect(result.data).toEqual(expect.objectContaining({ exitCode: 130 }));
+      expect(result.content).toContain("Command timed out after 5s");
+      expect(result.data).toEqual(
+        expect.objectContaining({ exitCode: 130, interrupted: true }),
+      );
     });
 
     it("terminates the process tree when the caller aborts", async () => {
@@ -499,7 +512,10 @@ describe("powershellTool", () => {
       expect(terminateChildProcessTree).toHaveBeenCalledWith(child);
       expect(result.success).toBe(false);
       expect(result.error).toBe("Command execution was aborted");
-      expect(result.data).toEqual(expect.objectContaining({ exitCode: 130 }));
+      expect(result.content).toBe("Command execution was aborted");
+      expect(result.data).toEqual(
+        expect.objectContaining({ exitCode: 130, interrupted: true }),
+      );
     });
 
     it("aborts immediately when the signal is already aborted", async () => {
@@ -513,7 +529,15 @@ describe("powershellTool", () => {
       );
 
       expect(terminateChildProcessTree).toHaveBeenCalledWith(child);
+      expect(result.success).toBe(false);
       expect(result.error).toBe("Command execution was aborted");
+      expect(result.data).toEqual(
+        expect.objectContaining({
+          exitCode: 130,
+          interrupted: true,
+          interruptedReason: "Command execution was aborted",
+        }),
+      );
     });
 
     it("ignores the exit that follows a timeout", async () => {
@@ -531,6 +555,7 @@ describe("powershellTool", () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toContain("Command timed out");
+      expect(result.content).toContain("Command timed out");
     });
     it("moves a timed-out command to the background when it is allowed to", async () => {
       vi.useFakeTimers();

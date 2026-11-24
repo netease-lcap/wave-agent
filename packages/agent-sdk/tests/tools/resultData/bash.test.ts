@@ -224,13 +224,15 @@ describe("Bash 的 data → 文本 golden", () => {
 
     const result = await bashTool.execute({ command: "false" }, context);
 
-    expect(result.success).toBe(false);
-    expect(result.content).toBe("line 1\nline 2");
-    expect(result.error).toBe("Command failed with exit code: 1");
+    // 非零退出是命令自己的答案，不是这次调用失败；`Exit code N` 那一行照 CC 由工具
+    // 写进 `stdout`（spec core/bash-tools.md「退出码不是工具成败」）。
+    expect(result.success).toBe(true);
+    expect(result.content).toBe("line 1\nline 2\nExit code 1");
     expect(result.data).toEqual({
-      stdout: "line 1\nline 2",
+      stdout: "line 1\nline 2\nExit code 1",
       interrupted: false,
       exitCode: 1,
+      returnCodeInterpretation: "Command failed with exit code: 1",
     });
     expectRendersBack(result);
   });
@@ -242,11 +244,12 @@ describe("Bash 的 data → 文本 golden", () => {
 
     const result = await bashTool.execute({ command: "false" }, context);
 
-    expect(result.content).toBe("\nerror message");
+    expect(result.content).toBe("\nerror message\nExit code 1");
     expect(result.data).toEqual({
-      stdout: "\nerror message",
+      stdout: "\nerror message\nExit code 1",
       interrupted: false,
       exitCode: 1,
+      returnCodeInterpretation: "Command failed with exit code: 1",
     });
     expectRendersBack(result);
   });
@@ -370,13 +373,15 @@ describe("Bash 的 data → 文本 golden", () => {
     const result = await bashTool.execute({ command: "cp a b" }, context);
 
     const dir = os.tmpdir();
+    // `Exit code N` 在 `stdout` 里（工具写的），诊断段接在正文最后。
     expect(result.content).toBe(
-      `\nwrite error\n\nDisk nearly full: ${dir} (the agent's temporary directory) has 1 MB free, so this command — or another process on the same volume — may have failed for that reason.`,
+      `\nwrite error\nExit code 1\n\nDisk nearly full: ${dir} (the agent's temporary directory) has 1 MB free, so this command — or another process on the same volume — may have failed for that reason.`,
     );
     expect(result.data).toEqual({
-      stdout: "\nwrite error",
+      stdout: "\nwrite error\nExit code 1",
       interrupted: false,
       exitCode: 1,
+      returnCodeInterpretation: "Command failed with exit code: 1",
       diskPressure: { path: dir, freeBytes: 1024 * 1024 },
     });
     expectRendersBack(result);
@@ -397,6 +402,8 @@ describe("Bash 的 data → 文本 golden", () => {
       stdout: "Command executed with exit code: 1",
       interrupted: false,
       exitCode: 1,
+      // 空输出那句已经报了退出码，所以正文不再补 `Exit code 1`（下面断言的就是它）。
+      returnCodeInterpretation: "Command failed with exit code: 1",
       diskPressure: {
         path: os.tmpdir(),
         freeBytes: 100 * 1024 * 1024 * 1024,
@@ -548,6 +555,8 @@ describe("Bash 的 data → 文本 golden", () => {
     await vi.advanceTimersByTimeAsync(1001);
     const result = await promise;
 
+    // 中断是失败（CC 的 mapper 用 `is_error: interrupted`）：原因句既在正文里，也在
+    // `error` 里给宿主与 `$`。
     expect(result.success).toBe(false);
     expect(result.error).toBe("Command timed out");
     expect(result.content).toBe("Command timed out");
@@ -575,6 +584,7 @@ describe("Bash 的 data → 文本 golden", () => {
     const result = await promise;
 
     expect(result.success).toBe(false);
+    expect(result.error).toBe("Command execution was aborted");
     expect(result.content).toBe("partial\n\nCommand execution was aborted");
     expect(result.data).toEqual({
       stdout: "partial",
