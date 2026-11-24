@@ -99,18 +99,22 @@ jobs:
         if: steps.filter.outputs.code == 'true'
         run: pnpm build
 
-      # Downloading Chromium is the biggest source of variance in this job:
-      # 15-25s when the CDN is fast, 80-270s when it is not (observed across
-      # 10 PR runs), and each of the two shards pays it. Keyed on the webview
-      # package.json, which is what pins @playwright/test — a version bump
-      # changes the key. A stale cache is harmless: playwright installs into a
-      # version-named subdirectory of this folder, so it just downloads anew.
+      # Downloading Chromium is the biggest source of variance in this job, and
+      # each of the two shards pays it. Restoring only works if this key matches
+      # one a **default-branch** job saved: GitHub scopes a cache created by a
+      # PR run to that PR's merge ref, readable only by its own re-runs (never
+      # by the base branch or a sibling PR). So the key mirrors `pages.yml` —
+      # the only job that runs on `main` — and `restore-keys` absorbs lock-file
+      # churn, since `playwright install` repairs a prefix match (browsers live
+      # in version-named subdirectories).
       - name: Cache Playwright browsers
         if: steps.filter.outputs.code == 'true' && matrix.pkg == 'webview'
         uses: actions/cache@v6
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('packages/webview/package.json') }}
+          key: playwright-chromium-${{ runner.os }}-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            playwright-chromium-${{ runner.os }}-
 
       # wave-webview's unit suite runs in a real Chromium (vitest browser
       # mode): jsdom does no layout, and the components under test measure
@@ -455,15 +459,17 @@ jobs:
           pnpm -F wave-webview run compile -- --production
           pnpm -r --filter '!wave-webview' --workspace-concurrency=1 build
 
-      # Same browser cache as the PR-tier `check` job (identical key, so the two
-      # share entries): the e2e run downloads it once and reuses it until
-      # @playwright/test is bumped.
+      # Same key as the PR-tier `check` job, and therefore as `pages.yml` on
+      # `main`, which is the only side that can hand out a restore — see the
+      # note there for why the scope forces this.
       - name: Cache Playwright browsers
         if: steps.filter.outputs.code == 'true'
         uses: actions/cache@v6
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('packages/webview/package.json') }}
+          key: playwright-chromium-${{ runner.os }}-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            playwright-chromium-${{ runner.os }}-
 
       # `--with-deps` on every run, cache hit included — see the long note in the
       # `check` job: this is what puts Chinese fonts on the runner, and without
