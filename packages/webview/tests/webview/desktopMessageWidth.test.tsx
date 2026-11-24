@@ -1,20 +1,22 @@
 /**
- * 桌面端消息列与输入卡的宽度关系（第 24 轮后以设计师 Figma 规范为准）。
+ * 桌面端消息行与输入卡的宽度关系（1124 走查后的规范）。
  *
- * 迁移自 `e2e/desktop-message-width.e2e.ts`：
- *   - 对话列 `.messages-column` 保持既有 cap 800px 居中（设计师走查结论：虚拟列表
- *     行 inset 联动，列宽不单独改）；
- *   - 输入卡 `.input-wrapper` cap 768px 居中（Figma「Form - 发送消息」768 =
- *     Container 800 − pad 16×2，`host-desktop.css` 的 `[data-host=desktop]` 覆盖）；
- *   - 两列各自居中 → 水平中心对齐，对话列每侧比输入卡宽 16px。
+ * 读这条测试前先读这段演化，否则会以为「列盒居中」是漏测：
+ *   - 第 24 轮：对话列 `.messages-column` cap 800 居中、输入卡 `.input-wrapper`
+ *     cap 768 居中（Figma「Form - 发送消息」768），两盒各自对称 → 断言是
+ *     「列居中 + 列比输入卡宽 32」。
+ *   - 2026-09-23：cap 从滚动容器 `.messages-container` 下移到内层 `.messages-column`，
+ *     外层滚动容器铺满整个 pane（滚轮/触控板在 gutter 上也能滚）。
+ *   - 1124（现在的口径）：「对话流的宽度和 AI 输入框保持一致，现在整体左侧超出了
+ *     一些，右侧是正好的」。列盒**刻意不再左右对称**——右侧恒留一条 8px 滚动条轨道
+ *     （`scrollbar-gutter: stable`），列上限改成 792 = 输入卡 768 + 左内衬 16 + 右内衬 8，
+ *     16/8 的不对称正好抵掉轨道造成的 4px 偏左。
+ *     所以「列盒居中」（恒差 8）与「列比输入卡宽 32」（实为 24）在新规范下**必然
+ *     不成立**，那两条断言是口径作废、已删除，不是漏测。
+ *     用户可见的对齐单位是消息行 `.virtual-row` 与输入卡 `.input-wrapper`，几何断言
+ *     逐值比较这两者。
  *
- * 2026-09-23 结构变更（滚动交互面扩展到整个面板）：cap 从滚动容器
- * `.messages-container` **下移**到内层包裹层 `.messages-column` —— 外层滚动容器铺满
- * 整个 pane（滚轮/触控板在 gutter 上也能滚），内层仍是 800px 居中。所以几何断言是
- * 「滚动容器宽 == pane 宽、内容列仍 800（桌面输入卡仍 768）、两列中心仍对齐」，外加
- * 「gutter 上的滚轮能滚动」。
- *
- * 两条都只能在这里测：jsdom 没有布局。宿主档由 `desktopHarness` 打开
+ * 只能在这里测：jsdom 没有布局。宿主档由 `desktopHarness` 打开
  * （`data-host="desktop"` + host-desktop.css），viewport 用真机 e2e 的原尺寸。
  */
 
@@ -57,6 +59,40 @@ const q = (selector: string) => {
   return node;
 };
 
+/** 视口坐标下的外框（`getBoundingClientRect`，与 Playwright 的 `boundingBox()` 同系）。 */
+const box = (selector: string) => q(selector).getBoundingClientRect();
+
+/** 亚像素级容差：居中可能落在半个像素上。 */
+const TOLERANCE = 1;
+
+/**
+ * 桌面端 `::-webkit-scrollbar { width: 8px }`（host-desktop.css）—— 列宽那套
+ * 16 / 8 / 792 的数字就是按这一条轨道推出来的，两者是同一个等式，所以这里把它钉住。
+ */
+const SCROLLBAR_TRACK = 8;
+
+/**
+ * 本次改动的全部意义：消息行与输入卡的**左右沿逐值相等**。四条边相等 ⇒ 中心也
+ * 相等，但中心单独留一条，失败时才分得清是「整体偏移」还是「宽度差一截」。
+ */
+function expectEdgesAlign(state: string) {
+  const row = box(".virtual-row");
+  const input = box(".input-wrapper");
+  const center = (b: DOMRect) => b.left + b.width / 2;
+  expect(
+    Math.abs(row.left - input.left),
+    `${state}：行左沿 ${row.left} vs 输入卡左沿 ${input.left}`,
+  ).toBeLessThanOrEqual(TOLERANCE);
+  expect(
+    Math.abs(row.right - input.right),
+    `${state}：行右沿 ${row.right} vs 输入卡右沿 ${input.right}`,
+  ).toBeLessThanOrEqual(TOLERANCE);
+  expect(
+    Math.abs(center(row) - center(input)),
+    `${state}：行中心 ${center(row)} vs 输入卡中心 ${center(input)}`,
+  ).toBeLessThanOrEqual(TOLERANCE);
+}
+
 /**
  * 在视口坐标上派发一次**真滚轮**。`userEvent.wheel` 会先把指针挪到目标元素中心
  * （这里正好要看的是 gutter —— 元素中心不在 gutter 上），所以直接走 provider 的
@@ -78,8 +114,8 @@ async function wheelAt(x: number, y: number, deltaY: number): Promise<void> {
 }
 
 describe("Desktop message column width", () => {
-  it("对话列与输入卡都限宽居中（输入卡 768 规范）", async () => {
-    // 宽窗口，800px 的 cap 才能在两侧留下看得见的 gutter。
+  it("消息行与输入卡左右沿逐值相等（输入卡 768 规范）", async () => {
+    // 宽窗口，限宽才量得出来（两侧都留下看得见的 gutter）。
     await page.viewport(1280, 800);
     boot();
 
@@ -96,7 +132,7 @@ describe("Desktop message column width", () => {
           "msg-u1",
         ),
         MockDataGenerator.createAssistantMessage(
-          "好的，我给对话列加了 max-width: 800px 和 margin: 0 auto，与 .input-wrapper 的约束方式一致。这样消息内容会居中显示在 800px 的列里，两侧留出与输入框对齐的留白，窗口越宽效果越明显。",
+          "好的，对话流与输入卡现在左右沿逐值对齐：列上限 792，左内衬 16、右内衬 8，右边那 8px 让给恒预留的滚动条轨道。",
           "msg-a1",
         ),
       ],
@@ -105,48 +141,91 @@ describe("Desktop message column width", () => {
     await expect.poll(() => isVisible(".message.user")).toBe(true);
     await expect.poll(() => isVisible(".message.assistant")).toBe(true);
 
-    // `.messages-column` 是 border-box：它的 10px 消息 padding 在 800px 列内
-    // （content 780）。输入卡 768px cap 是 `[data-host=desktop]` 覆盖，welcome 态
-    // 输入卡限宽同 768（host-desktop.css），两态一致。
-    const geom = (() => {
-      const r = (sel: string) => q(sel).getBoundingClientRect();
-      const cs = (sel: string) => getComputedStyle(q(sel)).backgroundColor;
-      const container = r(".messages-container");
-      const col = r(".messages-column");
-      const input = r(".input-wrapper");
-      const main = r(".desktop-chat-main");
-      const center = (b: DOMRect) => b.left + b.width / 2;
-      return {
-        // 滚动容器铺满整个 pane（滚轮/触控板的作用面 = 整个面板）
-        containerSpansPane: Math.abs(container.width - main.width) < 1,
-        // 限宽下移到内层包裹层：内容列仍是 800px 居中
-        colCapped: col.width < main.width,
-        colCentered:
-          Math.abs(col.left - main.left - (main.right - col.right)) < 1,
-        inputCapped: input.width < main.width,
-        inputCentered:
-          Math.abs(input.left - main.left - (main.right - input.right)) < 1,
-        // 两列独立居中 → 中心对齐；对话列 800 比输入卡 768 每侧宽 16px
-        // （800−768=32，±2 容差）。
-        centersAlign: Math.abs(center(col) - center(input)) < 1,
-        colWiderBy32: Math.abs(col.width - input.width - 32) < 2,
-        // gutter（消息列外层透明包裹层透出的 chat-area 底色）必须与消息列表自己
-        // 的底色一致，而不是宿主编辑器的 body 底色。
-        gutterBg: cs(".chat-container"),
-        containerBg: cs(".messages-container"),
-        // 内层列自己不画底色 —— 必须透明，两边的 gutter 才连成一片。
-        colBg: cs(".messages-column"),
-      };
-    })();
-    expect(geom.containerSpansPane).toBeTruthy();
-    expect(geom.colCapped).toBeTruthy();
-    expect(geom.colCentered).toBeTruthy();
-    expect(geom.inputCapped).toBeTruthy();
-    expect(geom.inputCentered).toBeTruthy();
-    expect(geom.centersAlign).toBeTruthy();
-    expect(geom.colWiderBy32).toBeTruthy();
-    expect(geom.gutterBg).toBe(geom.containerBg);
-    expect(geom.colBg).toBe("rgba(0, 0, 0, 0)");
+    const container = box(".messages-container");
+    const main = box(".desktop-chat-main");
+    const row = box(".virtual-row");
+    const input = box(".input-wrapper");
+
+    // 滚动容器铺满整个 pane（滚轮/触控板的作用面 = 整个面板；gutter 上的滚轮由
+    // 下面那个用例专门守）。
+    expect(
+      Math.abs(container.width - main.width),
+      `滚动容器 ${container.width} vs pane ${main.width}`,
+    ).toBeLessThanOrEqual(TOLERANCE);
+
+    // 两处都限宽（1280 的 pane 比 792 / 768 宽，所以两侧都有 gutter）。
+    expect(row.width, `行宽 ${row.width}`).toBeLessThan(main.width);
+    expect(input.width, `输入卡宽 ${input.width}`).toBeLessThan(main.width);
+
+    // 输入卡仍是 Figma 的 768 档 —— 行对齐的就是它，这条是整套几何的基准；
+    // 输入卡自身也仍在 pane 内居中（列的内衬不对称是围着它设计的）。
+    expect(
+      Math.abs(input.width - 768),
+      `输入卡宽 ${input.width} vs 规范 768`,
+    ).toBeLessThanOrEqual(TOLERANCE);
+    expect(
+      Math.abs(input.left - main.left - (main.right - input.right)),
+      `输入卡左距 ${input.left - main.left} vs 右距 ${main.right - input.right}`,
+    ).toBeLessThanOrEqual(TOLERANCE);
+
+    expectEdgesAlign("1280 视口");
+
+    // gutter（消息列外层透明包裹层透出的 chat-area 底色）必须与消息列表自己
+    // 的底色一致，而不是宿主编辑器的 body 底色。
+    const bg = (selector: string) =>
+      getComputedStyle(q(selector)).backgroundColor;
+    expect(bg(".chat-container")).toBe(bg(".messages-container"));
+    // 内层列自己不画底色 —— 必须透明，两边的 gutter 才连成一片。
+    expect(bg(".messages-column")).toBe("rgba(0, 0, 0, 0)");
+  });
+
+  // `scrollbar-gutter: stable` 的作用面：没有滚动条时也留着那条轨道。去掉它，
+  // 「消息不满一屏」态的内容盒会宽回一整条轨道，列跟着右移半条（4px），一行行
+  // 往右错开、长到出现滚动条又跳回来 —— 两态各量一次才守得住。
+  it("有滚动条与无滚动条两态下，行与输入卡都对齐且轨道恒预留", async () => {
+    await page.viewport(1280, 800);
+    boot();
+    await expect
+      .poll(() => isVisible('[data-testid="desktop-workdir"]'))
+      .toBe(true);
+
+    const scroller = () => q(".messages-container");
+    const track = () => scroller().offsetWidth - scroller().clientWidth;
+    const scrollable = () => scroller().scrollHeight > scroller().clientHeight;
+
+    // 态一：两条短消息，不满一屏（没有滚动条）。
+    sendCommand("updateMessages", {
+      messages: [
+        MockDataGenerator.createUserMessage("短问题一问。", "msg-s1"),
+        MockDataGenerator.createAssistantMessage("短回答一句。", "msg-s2"),
+      ],
+    });
+    await expect.poll(() => isVisible(".virtual-row")).toBe(true);
+    expect(scrollable(), "态一应当不满一屏").toBe(false);
+    expectEdgesAlign("无滚动条");
+    const idleClientWidth = scroller().clientWidth;
+    expect(track(), "无滚动条时轨道也要预留").toBe(SCROLLBAR_TRACK);
+
+    // 态二：内容撑满（真机那份注释写的是 614px 高的可视区）。
+    const messages = [];
+    for (let i = 0; i < 8; i++) {
+      messages.push(
+        MockDataGenerator.createUserMessage(`第 ${i} 轮问题`, `msg-u${i}`),
+        MockDataGenerator.createAssistantMessage(
+          `第 ${i} 轮回答：` + "内容".repeat(200),
+          `msg-a${i}`,
+        ),
+      );
+    }
+    sendCommand("updateMessages", { messages });
+    await expect.poll(scrollable).toBe(true);
+    expectEdgesAlign("有滚动条");
+    expect(track(), "有滚动条时轨道宽度不变").toBe(SCROLLBAR_TRACK);
+
+    // 两态内容盒一样宽 —— 就是 `stable` 那一行在保证的事。
+    expect(scroller().clientWidth, "有/无滚动条两态的内容盒必须同宽").toBe(
+      idleClientWidth,
+    );
   });
 
   // 回归守卫：滚轮/触控板的作用面覆盖整个面板。改动前滚动容器就是那条被限宽居中
