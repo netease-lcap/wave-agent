@@ -126,7 +126,7 @@ describe("ArtifactComments tool shape", () => {
 
   it("declares the three comment actions, and only those", () => {
     expect(params().properties.action.enum).toEqual([
-      "comments",
+      "read",
       "reply",
       "resolve",
     ]);
@@ -148,7 +148,7 @@ describe("ArtifactComments tool shape", () => {
       string,
       { enum?: string[] }
     >;
-    expect(main.action.enum).not.toContain("comments");
+    expect(main.action.enum).not.toContain("reply");
     expect(main.action.enum).not.toContain("reply");
     expect(main.action.enum).not.toContain("resolve");
     // Parameters only the comment actions used are gone with them.
@@ -170,7 +170,7 @@ describe("ArtifactComments tool shape", () => {
     const compact = (params: Record<string, unknown>) =>
       artifactCommentsTool.formatCompactParams!(params, makeContext());
 
-    expect(compact({ action: "comments", url })).toBe(`comments ${url}`);
+    expect(compact({ action: "read", url })).toBe(`read ${url}`);
     expect(compact({ action: "reply", url, thread_id: "t1" })).toBe(
       `reply t1 on ${url}`,
     );
@@ -186,13 +186,12 @@ describe("ArtifactComments tool shape", () => {
     const main = artifactTool.config.function.description!;
     const comments = artifactCommentsTool.config.function.description!;
     // `publish` / `list` / `read` / the asset verbs stay on the main tool.
-    expect(main).not.toContain('`action: "comments"`');
+    expect(comments).toContain('`action: "read"`');
     expect(main).not.toContain('`action: "reply"`');
     expect(main).not.toContain("AWAITING YOUR REPLY");
     // …and the comment tool does not advertise them.
     expect(comments).not.toContain('`action: "publish"`');
     expect(comments).not.toContain('`action: "list"`');
-    expect(comments).not.toContain('`action: "read"`');
     expect(comments).not.toContain('`action: "upload_asset"`');
     // No watch/channel exists: new comments reach the session only on a read.
     expect(comments).toContain("none reach it on their own");
@@ -214,7 +213,7 @@ describe("Artifact comments action", () => {
     ]);
 
     const result = await TOOL.execute(
-      { action: "comments", url: ARTIFACT_URL },
+      { action: "read", url: ARTIFACT_URL },
       makeContext(),
     );
 
@@ -240,7 +239,7 @@ describe("Artifact comments action", () => {
     ]);
 
     await TOOL.execute(
-      { action: "comments", url: ARTIFACT_URL, cursor: "cur-1" },
+      { action: "read", url: ARTIFACT_URL, cursor: "cur-1" },
       makeContext(),
     );
 
@@ -248,7 +247,7 @@ describe("Artifact comments action", () => {
   });
 
   it("requires url", async () => {
-    const result = await TOOL.execute({ action: "comments" }, makeContext());
+    const result = await TOOL.execute({ action: "read" }, makeContext());
     expect(result.success).toBe(false);
     expect(result.error).toContain('"url"');
   });
@@ -256,7 +255,7 @@ describe("Artifact comments action", () => {
   it("asks the model to log in when there is no token", async () => {
     vi.mocked(authService.getSSOToken).mockReturnValue(undefined);
     const result = await TOOL.execute(
-      { action: "comments", url: ARTIFACT_URL },
+      { action: "read", url: ARTIFACT_URL },
       makeContext(),
     );
     expect(result.success).toBe(false);
@@ -271,7 +270,7 @@ describe("Artifact comments action", () => {
       },
     ]);
     const result = await TOOL.execute(
-      { action: "comments", url: ARTIFACT_URL },
+      { action: "read", url: ARTIFACT_URL },
       makeContext(),
     );
     expect(result.success).toBe(false);
@@ -780,7 +779,7 @@ describe("Artifact comment writes ask the user once per page", () => {
     const { manager } = makePermissionManager();
 
     const result = await TOOL.execute(
-      { action: "comments", url: ARTIFACT_URL },
+      { action: "read", url: ARTIFACT_URL },
       makeContext({ permissionManager: manager as never }),
     );
     expect(result.success).toBe(true);
@@ -834,7 +833,7 @@ describe("ArtifactComments against the real permission manager", () => {
     });
 
     const read = await TOOL.execute(
-      { action: "comments", url: ARTIFACT_URL },
+      { action: "read", url: ARTIFACT_URL },
       context,
     );
     expect(read.success).toBe(true);

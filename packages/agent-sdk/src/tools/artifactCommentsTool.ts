@@ -21,13 +21,13 @@ import {
   requireSlug,
 } from "./artifactTool.js";
 
-const COMMENTS_ACTION = "comments";
+const READ_ACTION = "read";
 const REPLY_ACTION = "reply";
 const RESOLVE_ACTION = "resolve";
 
 /** The comment actions — read a page's threads and answer them. */
 const COMMENT_ACTIONS: readonly string[] = [
-  COMMENTS_ACTION,
+  READ_ACTION,
   REPLY_ACTION,
   RESOLVE_ACTION,
 ];
@@ -135,7 +135,7 @@ async function replyAction(
     typeof args.thread_id === "string" ? args.thread_id.trim() : "";
   if (!threadId) {
     return commentError(
-      `missing required parameter "thread_id" for a reply (the thread root id, as listed by action "comments")`,
+      `missing required parameter "thread_id" for a reply (the thread root id, as listed by action "read")`,
     );
   }
   const text = typeof args.text === "string" ? args.text : "";
@@ -197,7 +197,7 @@ async function replyAction(
     const fix = continuesReplyId
       ? ""
       : ` The duplicate check is per comment, so this only blocks answering the root itself — ` +
-        `if you meant to answer a comment flagged AWAITING YOUR REPLY, re-read action "comments" ` +
+        `if you meant to answer a comment flagged AWAITING YOUR REPLY, re-read action "read" ` +
         `and re-send with "continues_reply_id" set to that comment's id.`;
     return {
       success: true,
@@ -226,7 +226,7 @@ async function resolveAction(
     typeof args.thread_id === "string" ? args.thread_id.trim() : "";
   if (!threadId) {
     return commentError(
-      `missing required parameter "thread_id" for resolve (the thread root id, as listed by action "comments")`,
+      `missing required parameter "thread_id" for resolve (the thread root id, as listed by action "read")`,
     );
   }
   if (typeof args.resolved !== "boolean") {
@@ -285,7 +285,7 @@ async function resolveAction(
   );
   if (outcome.kind === "conflict") {
     return commentError(
-      `the page has been published as a newer version${outcome.live ? ` (live v${outcome.live})` : ""} since you last saw it — re-read it (\`${ARTIFACT_TOOL_NAME}\` tool, action "read") and the thread (action "comments" here), then retry with the current "after_version"`,
+      `the page has been published as a newer version${outcome.live ? ` (live v${outcome.live})` : ""} since you last saw it — re-read it (\`${ARTIFACT_TOOL_NAME}\` tool, action "read") and the thread (action "read" here), then retry with the current "after_version"`,
     );
   }
   if (outcome.kind === "error") return commentError(outcome.error);
@@ -302,8 +302,8 @@ async function resolveAction(
 export const artifactCommentsTool: ToolPlugin = {
   name: ARTIFACT_COMMENTS_TOOL_NAME,
   searchHint: "read and reply to comment threads on a published artifact",
-  leanPrompt: `Read and answer the review comments on a published artifact page. Every action takes the artifact as \`url\`; \`comments\` (+ \`cursor\`) lists the threads and flags the ones \`AWAITING YOUR REPLY\`, \`reply\` (+ \`thread_id\` + \`text\`, and \`continues_reply_id\` naming the flagged comment) answers one, \`resolve\` (+ \`thread_id\` + \`resolved\`) closes or reopens one.
-Watching for new comments isn't available in this session, so none reach it on their own — call \`comments\` to read them when the user asks. Replying and resolving ask the user to approve once per page in a session; if declined, do not retry.`,
+  leanPrompt: `Read and answer the review comments on a published artifact page. Every action takes the artifact as \`url\`; \`read\` (+ \`cursor\`) lists the threads and flags the ones \`AWAITING YOUR REPLY\`, \`reply\` (+ \`thread_id\` + \`text\`, and \`continues_reply_id\` naming the flagged comment) answers one, \`resolve\` (+ \`thread_id\` + \`resolved\`) closes or reopens one.
+Watching for new comments isn't available in this session, so none reach it on their own — call \`read\` to read them when the user asks. Replying and resolving ask the user to approve once per page in a session; if declined, do not retry.`,
   defer: true,
   isConcurrencySafe: false,
   config: {
@@ -315,8 +315,8 @@ Watching for new comments isn't available in this session, so none reach it on t
         `Publishing and reading the artifact itself is the \`${ARTIFACT_TOOL_NAME}\` tool's job; every call here names the ` +
         "artifact by its `url` (the page URL, or its slug). " +
         "Watching for new comments isn't available in this session, so none reach it on their own: read them with " +
-        '`action: "comments"` when the user asks, and if the user expects you to notice comments as they arrive, say so plainly. ' +
-        `**Comments**: Pass \`action: "comments"\` (+ optional \`cursor\`) to read the threads — the comment a person is ` +
+        '`action: "read"` when the user asks, and if the user expects you to notice comments as they arrive, say so plainly. ' +
+        `**Comments**: Pass \`action: "read"\` (+ optional \`cursor\`) to read the threads — the comment a person is ` +
         "waiting on is flagged `AWAITING YOUR REPLY`. To reply into one thread, pass " +
         `\`action: "reply"\` with \`thread_id\` and \`text\` (plain text, at most ${COMMENT_TEXT_MAX_BYTES} bytes of UTF-8), ` +
         "plus `continues_reply_id` naming the comment you are actually answering — the server's duplicate check is per " +
@@ -336,9 +336,9 @@ Watching for new comments isn't available in this session, so none reach it on t
         properties: {
           action: {
             type: "string",
-            enum: [COMMENTS_ACTION, REPLY_ACTION, RESOLVE_ACTION],
+            enum: [READ_ACTION, REPLY_ACTION, RESOLVE_ACTION],
             description:
-              'The action to perform: "comments" reads the page\'s review comment threads, "reply" answers one of them, "resolve" closes or reopens one.',
+              'The action to perform: "read" reads the page\'s review comment threads, "reply" answers one of them, "resolve" closes or reopens one.',
           },
           url: {
             type: "string",
@@ -348,12 +348,12 @@ Watching for new comments isn't available in this session, so none reach it on t
           cursor: {
             type: "string",
             description:
-              'For "comments": the cursor from a previous read\'s "More threads not listed" line, to fetch only what changed since. Omit for the full thread list. Pass it back verbatim — never build one yourself.',
+              'For "read": the cursor from a previous read\'s "More threads not listed" line, to fetch only what changed since. Omit for the full thread list. Pass it back verbatim — never build one yourself.',
           },
           thread_id: {
             type: "string",
             description:
-              'For "reply" / "resolve": the thread to act on — the `[thread_id]` shown by action "comments". Any comment id in the thread is also accepted (the server maps it to the thread root); you cannot start a new thread.',
+              'For "reply" / "resolve": the thread to act on — the `[thread_id]` shown by action "read". Any comment id in the thread is also accepted (the server maps it to the thread root); you cannot start a new thread.',
           },
           text: {
             type: "string",
@@ -362,7 +362,7 @@ Watching for new comments isn't available in this session, so none reach it on t
           continues_reply_id: {
             type: "string",
             description:
-              'For "reply": the id of the comment you are actually answering — a `↳ [id]` entry from action "comments", or the thread id when the root comment itself is the one awaiting. The server\'s duplicate check is PER COMMENT: a reply is refused only when that same comment already has an agent reply. So when you are answering comment X (the one flagged AWAITING YOUR REPLY), pass X\'s id. Omitting it targets the thread ROOT — correct only when the root itself is what you are answering.',
+              'For "reply": the id of the comment you are actually answering — a `↳ [id]` entry from action "read", or the thread id when the root comment itself is the one awaiting. The server\'s duplicate check is PER COMMENT: a reply is refused only when that same comment already has an agent reply. So when you are answering comment X (the one flagged AWAITING YOUR REPLY), pass X\'s id. Omitting it targets the thread ROOT — correct only when the root itself is what you are answering.',
           },
           acknowledge_duplicate: {
             type: "boolean",
@@ -390,8 +390,8 @@ Watching for new comments isn't available in this session, so none reach it on t
   formatCompactParams: (params: Record<string, unknown>) => {
     const url = typeof params.url === "string" ? params.url : "";
     switch (params.action) {
-      case COMMENTS_ACTION:
-        return `comments ${url}`;
+      case READ_ACTION:
+        return `read ${url}`;
       case REPLY_ACTION: {
         const threadId =
           typeof params.thread_id === "string" ? params.thread_id : "";
@@ -421,7 +421,7 @@ Watching for new comments isn't available in this session, so none reach it on t
     }
 
     switch (actionRaw) {
-      case COMMENTS_ACTION:
+      case READ_ACTION:
         return commentsAction(args, context);
       case REPLY_ACTION:
         return replyAction(args, context);
