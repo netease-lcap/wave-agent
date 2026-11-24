@@ -233,7 +233,14 @@ export function renderToolResultData(
   return render ? render(data) : undefined;
 }
 
-/** 这个工具是否已经交出渲染器。 */
+/**
+ * 这个工具是否已经交出渲染器。
+ *
+ * 只服务一条门禁：`tests/tools/resultData.test.ts` 的「内置工具整表都在」——
+ * 新增内置工具时忘了写渲染器不会崩（`aiManager` 会退回工具的 `content`），但文本
+ * 会悄悄脱离渲染器口径，那正是阶段 1 要消灭的漂移。`RENDERERS` 表本身不导出，
+ * 所以这是唯一判据，别当死代码删掉。
+ */
 export function hasToolResultRenderer(toolName: string): boolean {
   return toolName in RENDERERS;
 }
