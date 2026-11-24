@@ -353,6 +353,24 @@
    *  overtook can be recognized and dropped instead of landing in the new view. */
   var pullToken = 0;
   /**
+   * 切会话时挂上的加载态：`restoreSession` 先上一帧占位、再拉数据，成功与
+   * 失败两条路都必须把它收口，否则页面会停在占位上（spec `remote/remote-web.md`
+   * 场景 10「切换的那一瞬」）。
+   */
+  var switching = false;
+  /** 记住几条会话：手机上「在最近几条之间来回切」是主场景，8 条够用且丢弃可预期。 */
+  var REMEMBERED_SESSIONS = 8;
+  /**
+   * 这次打开期间记住的会话尾页（**只在内存里**，不落盘）：切走时收起来，切回来
+   * 先把它画出来、同一拍照旧整表对齐一次。
+   *
+   * 正文的权威永远是电脑侧的进程，这一页不该持有副本——所以刷新、关标签、换机器、
+   * 断连即失，断连后也不拿它假装内容还在（spec `remote/remote-channel.md`
+   * 「服务端不落内容，断连不展示历史」）。它换来的只是「切回刚看过的那条不必先
+   * 空着等两个往返」（`remote-web.md` 场景 10）。
+   */
+  var remembered = new Map();
+  /**
    * Whether the session on screen is generating, as the page last learned it.
    *
    * One variable rather than a value read off each push, because this state has
@@ -1405,6 +1423,8 @@
     connectedOnce = false;
     streaming = false;
     resetMessages();
+    // 记忆只在这台机器、这次打开期间成立：换机器先把整份清掉。
+    remembered.clear();
     sessions = [];
     shownApprovals = {};
     pending = {};
@@ -2121,8 +2141,41 @@
    * 除了换机器那一次，调用点后面都紧跟 `pullSnapshot()`，它会把两个值一起重读。
    */
   function resetMessages() {
+    // 丢掉之前先收进记忆：切回这条时就有内容可以先画（见 `remembered`）。
+    rememberCurrentSession();
     messages = [];
     hasEarlier = false;
+  }
+
+  /**
+   * 把这一页现在看着的尾页收进记忆。上翻出来的更早内容不记：回看深度不跨会话
+   * 累积（`remote-web.md` 场景 9），对齐回来的尾页才是新的起点。
+   */
+  function rememberCurrentSession() {
+    if (!sessionId) return;
+    if (!messages.length) {
+      remembered.delete(sessionId);
+      return;
+    }
+    var limit = CONFIG.firstPageLimit;
+    var trimmed = messages.length > limit;
+    remembered.delete(sessionId);
+    remembered.set(sessionId, {
+      // 只切数组、不深拷贝：消息对象与影子列表共享。
+      messages: (trimmed ? messages.slice(-limit) : messages).slice(),
+      // 裁掉前面的内容之后，「还有更早」当然为真——上翻开关不能因记忆而变灰。
+      hasEarlier: trimmed ? true : hasEarlier,
+    });
+    while (remembered.size > REMEMBERED_SESSIONS)
+      remembered.delete(remembered.keys().next().value);
+  }
+
+  /** 取出并移除：记忆只交代一次首屏，之后由对齐的回包接管。 */
+  function recallSession(id) {
+    var hit = remembered.get(id);
+    if (hit === undefined) return null;
+    remembered.delete(id);
+    return hit;
   }
 
   /** 首屏：一条会话的尾段（最近 `firstPageLimit` 条），加上此刻等着审批的卡。 */
@@ -2143,10 +2196,24 @@
     return pickSession()
       .then(function (ok) {
         listOk = ok;
-        if (token !== pullToken || !sessionId) return null;
-        return request("getSessionInfo", {});
+        if (token !== pullToken) return null;
+        // 待确认的授权是进程级读，与会话无关：会话列表没读到（刚删掉最后一条）时也
+        // 照样要读，否则页面上剩下的提示卡会被一起擦掉。
+        if (!sessionId)
+          return request("listPendingPermissions", {}).then(function (pending) {
+            return [null, null, pending];
+          });
+        // 三个读互不依赖（`sessionId` 已定就够并行）：串行会让一次切换变成三个
+        // 往返，手机上就是几百毫秒到几秒的空等（`remote-web.md` 场景 10「切换
+        // 的那一瞬」）。首拍（列表）必须在前——它既决定看哪条会话，也带来忙闲；
+        // 这三个按原来的顺序发出，只是不再等前一个回包。
+        return Promise.all([
+          request("getSessionInfo", {}),
+          request("getMessages", { limit: CONFIG.firstPageLimit }),
+          request("listPendingPermissions", {}),
+        ]);
       })
-      .then(function (info) {
+      .then(function (replies) {
         // `pickSession` leaves `sessionId` empty when the machine holds no
         // conversation at all — the state right after the last one is deleted.
         // Both session reads are skipped then: the machine answers a session-less
@@ -2154,29 +2221,26 @@
         // banner on top of the honest 「电脑侧还没有正在跑的会话。」. Everything
         // below this point is process-wide (the pending approvals, the workflow
         // runs), so the empty snapshot still paints.
-        if (token !== pullToken || !sessionId) return null;
-        state = info;
-        return request("getMessages", { limit: CONFIG.firstPageLimit });
-      })
-      .then(function (result) {
+        //
+        // `replies` 为 null 就是上面那一支提前返回：进程级事实照样要画。
         if (token !== pullToken) return null;
-        if (result) {
-          messages = result.messages || [];
+        var info = replies ? replies[0] : null;
+        var tail = replies ? replies[1] : null;
+        var pending = replies ? replies[2] : null;
+        if (info) state = info;
+        if (tail) {
+          messages = tail.messages || [];
           // 首屏那一页也带「还有更早」，与其余三端同一条判据。缺省（老机器、或一条
           // 一页都装不下的极端回包）就是「翻不动」——降级方向绝不出现空白页
           // （`remote-web.md` 场景 10）。
-          hasEarlier = result.hasMore === true;
+          hasEarlier = tail.hasMore === true;
+          // The context ring lives outside the reducer (the webview keeps it in
+          // its own state), so it is posted rather than folded into the snapshot;
+          // every `getMessages` reply carries the percent, which is why no extra
+          // read is needed — each (re)pull realigns it for free.
+          usage = tail.contextUsagePercent;
         }
-        // The context ring lives outside the reducer (the webview keeps it in
-        // its own state), so it is posted rather than folded into the snapshot;
-        // every `getMessages` reply carries the percent, which is why no extra
-        // read is needed — each (re)pull realigns it for free.
-        usage = result && result.contextUsagePercent;
-        return request("listPendingPermissions", {});
-      })
-      .then(function (result) {
-        if (token !== pullToken) return null;
-        var requests = (result && result.requests) || [];
+        var requests = (pending && pending.requests) || [];
         if (!sessionId && requests.length)
           sessionId = requests[0].sessionId || "";
         // The read is process-wide, the cards are not: this is where 「读是进程级的、
@@ -2259,6 +2323,8 @@
           // credential; there is no separate phone login to satisfy.
           isAuthenticated: true,
         });
+        // 快照落地：切会话那层占位到此收口（这一帧的 `isRestoring` 已缺省为假）。
+        switching = false;
         if (typeof usage === "number")
           post({ command: "contextUsage", percent: usage });
         // After the snapshot, so `updateWorkflowRuns` can never land first.
@@ -2279,6 +2345,20 @@
       })
       .catch(function (err) {
         if (blocked || token !== pullToken) return;
+        // 切会话挂上的那层占位还在：读失败也必须收口，否则页面永远停在占位上
+        // （状态条挂在顶栏、看得见原因，但正文得先能出来）。
+        if (switching) {
+          switching = false;
+          post({
+            command: "setInitialState",
+            messages: messages,
+            hasEarlier: hasEarlier,
+            sessions: sessions,
+            session: currentSession(sessions, sessionId),
+            currentSession: currentSession(sessions, sessionId),
+            isAuthenticated: true,
+          });
+        }
         showStatus("拉取会话失败：" + err.message);
       });
   }
@@ -3124,10 +3204,59 @@
           showStatus("这条会话已经不在电脑侧的运行中了。");
           return;
         }
+        // 这次打开期间看过的那条：手里还留着它的尾页，就先画它再对齐
+        // （`remote-web.md` 场景 10「切回看过的那条」）。只在线时用——断连时页面
+        // 本来就该停下，不拿记忆假装内容还在（`remote-channel.md`）。
+        var kept =
+          authed && socket && socket.readyState === 1
+            ? recallSession(target.id)
+            : null;
+        // 回看深度不跨会话累积（`remote-web.md` 场景 9）：换会话就从首屏一页重来。
+        // 先 reset 再换 id：记忆的 key 是**要离开**的这条（`resetMessages` 自己收）。
+        resetMessages();
         sessionId = target.id;
         picked = true;
-        // 回看深度不跨会话累积（`remote-web.md` 场景 9）：换会话就从首屏一页重来。
-        resetMessages();
+        if (kept) {
+          messages = kept.messages;
+          hasEarlier = kept.hasEarlier;
+          post({
+            command: "setInitialState",
+            messages: messages,
+            hasEarlier: hasEarlier,
+            sessions: sessions,
+            session: target,
+            currentSession: target,
+            isStreaming: isBusy(target),
+            workdir: workdirOf(target.id) || undefined,
+            isAuthenticated: true,
+          });
+          // 对齐仍然整表重取：记忆只负责「先有内容」，权威尾页以这一拍为准。
+          void pullSnapshot();
+          return;
+        }
+        // 先把视图切过去，再拉数据（`remote-web.md` 场景 10「切换的那一瞬」）：
+        // 拉齐要几个往返，而这几百毫秒里若照旧渲染上一条会话的消息，用户看到的是
+        // 「点了没反应」——更糟的是，他此刻输入的内容已经属于目标会话。所以标题与
+        // 列表选中态当场换掉、消息清空，并挂上桌面端恢复会话那一层占位
+        // （`isRestoring` → webview 的 `chat-restoring-overlay`），与四端同一种
+        // 呈现。只在**没有可显示内容**时才用占位：切会话必走网络，而这一页手里没
+        // 有这条会话的内容（看过的那条已经在上面 `kept` 那一支接走了）；下一帧
+        // 整份快照会把它揭开。
+        switching = true;
+        post({
+          command: "setInitialState",
+          messages: [],
+          hasEarlier: false,
+          isRestoring: true,
+          sessions: sessions,
+          session: target,
+          currentSession: target,
+          // 忙闲取自注册表（`listDaemonSessions` 的 isLoading），不假设空闲：切到
+          // 一条正在生成的会话时，停止入口必须当场在位（场景 14）。
+          isStreaming: isBusy(target),
+          workdir: workdirOf(target.id) || undefined,
+          isAuthenticated: true,
+        });
         // Re-pull instead of asking the machine to switch: the target is already
         // live, so its tail and its pending approvals come through the same
         // `getMessages` + `listPendingPermissions` path a cold start uses.
@@ -3178,6 +3307,8 @@
               // The conversation is about to stop existing: drop the window now so
               // a re-pull cannot show the tail of a session that is already gone.
               resetMessages();
+              // 刚删掉的这条不必记住：`resetMessages` 刚把它的内容收进了记忆。
+              remembered.delete(deletingId);
             }
             return loadSessions().then(function () {
               post({ command: "updateSessions", sessions: sessions });

@@ -947,11 +947,18 @@ async function openPage(): Promise<Harness> {
   // The snapshot path's own session-state read (`getSessionInfo`, scenario 26):
   // the page asks before it pulls messages, and the machine answers for the
   // session in the envelope.
-  page.reply({ sessionId: "s1", permissionMode: "default" });
+  //
+  // The three reads that follow the registry go out together (a switch must cost
+  // two round trips, not four), so the newest frame on the wire is not the one
+  // being answered here: reply by method.
+  page.replyTo("getSessionInfo", {
+    sessionId: "s1",
+    permissionMode: "default",
+  });
   await flush();
-  page.reply({ messages: [{ id: "m10" }, { id: "m11" }] });
+  page.replyTo("getMessages", { messages: [{ id: "m10" }, { id: "m11" }] });
   await flush();
-  page.reply({ requests: [] });
+  page.replyTo("listPendingPermissions", { requests: [] });
   await flush();
   return page;
 }
