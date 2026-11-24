@@ -166,6 +166,9 @@ describe("validateScript", () => {
       expect(result.valid).toBe(false);
       expect(result.errors[0]).toMatch(/^Script syntax error: /);
       expect(result.errors[0]).toContain("line 2, column 8");
+      expect(result.errors[0]).toContain(
+        "The script did not run: it failed to parse, so nothing in it was executed.",
+      );
 
       await expect(executeScript(script, mockApis)).rejects.toThrow(
         "Script syntax error",
