@@ -14,17 +14,19 @@ concurrency:
 jobs:
   check:
     runs-on: ubuntu-latest
-    # PR gate: every test of the three heaviest packages (agent-sdk, code,
-    # webview) — one `test` per package, no unit/integration split — each
-    # sharded in two halves via vitest --shard and run on separate runners in
-    # parallel. agent-sdk's `test` includes `tests/integration/**` and its
+    # PR gate: every test of the two heaviest packages that need no browser
+    # (agent-sdk, code) — one `test` per package, no unit/integration split —
+    # each sharded in two halves via vitest --shard and run on separate runners
+    # in parallel. agent-sdk's `test` includes `tests/integration/**` and its
     # `*.integration.test.ts`, which used to be a separate `integration` job.
+    # wave-webview's leg is `check-webview`: it runs in a real Chromium, so it
+    # needs the Playwright image rather than this bare runner.
     if: github.event_name != 'push'
 
     strategy:
       fail-fast: false
       matrix:
-        pkg: [agent-sdk, code, webview]
+        pkg: [agent-sdk, code]
         shard: [1, 2]
 
     steps:
@@ -99,43 +101,130 @@ jobs:
         if: steps.filter.outputs.code == 'true'
         run: pnpm build
 
-      # Downloading Chromium is the biggest source of variance in this job, and
-      # each of the two shards pays it. Restoring only works if this key matches
-      # one a **default-branch** job saved: GitHub scopes a cache created by a
-      # PR run to that PR's merge ref, readable only by its own re-runs (never
-      # by the base branch or a sibling PR). So the key mirrors `pages.yml` —
-      # the only job that runs on `main` — and `restore-keys` absorbs lock-file
-      # churn, since `playwright install` repairs a prefix match (browsers live
-      # in version-named subdirectories).
-      - name: Cache Playwright browsers
-        if: steps.filter.outputs.code == 'true' && matrix.pkg == 'webview'
-        uses: actions/cache@v6
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-chromium-${{ runner.os }}-${{ hashFiles('**/pnpm-lock.yaml') }}
-          restore-keys: |
-            playwright-chromium-${{ runner.os }}-
-
-      # wave-webview's unit suite runs in a real Chromium (vitest browser
-      # mode): jsdom does no layout, and the components under test measure
-      # their own geometry. Only that matrix leg needs the browser.
-      #
-      # `--with-deps` runs every time, on a cache hit too — and not because the
-      # runner might be missing a shared library. It installs Chromium's apt
-      # dependency list, which includes `fonts-wqy-zenhei`, `fonts-unifont` and
-      # `fonts-ipafont-gothic`: **the only CJK fonts this environment ever has**.
-      # Skipping it on a hit (tried, to save 19s) leaves Chinese text with no
-      # fallback, so line boxes come out ~85px off `estimateRowHeight` and the
-      # virtual-scroll geometry assertions in `e2e/virtual-scroll-drift` fail
-      # deterministically — a fake red that no real user can hit. The 19s is the
-      # price of the environment, not waste.
-      - name: Install Playwright Chromium (webview tests)
-        if: steps.filter.outputs.code == 'true' && matrix.pkg == 'webview'
-        run: pnpm -F wave-webview exec playwright install --with-deps chromium
-
       - name: Tests (shard ${{ matrix.shard }}/2)
         if: steps.filter.outputs.code == 'true'
         run: pnpm -F wave-${{ matrix.pkg }} test --shard=${{ matrix.shard }}/2
+
+  check-webview:
+    runs-on: ubuntu-latest
+    # wave-webview's unit suite runs in a real Chromium (vitest browser mode):
+    # jsdom does no layout, and the components under test measure their own
+    # geometry. Split out of `check` because it needs a browser *and* CJK
+    # fonts, and the Playwright image carries both.
+    #
+    # Why an image instead of `playwright install --with-deps`: that command
+    # fetches ~21.9 MB of font packages from whichever apt mirror the runner
+    # picked, and the mirror is not stable — across 21 measured jobs, 30% got
+    # `us-east-2.ec2.archive.ubuntu.com` at ~110 kB/s (3m19s to 7m29s in the
+    # step) while the rest got `azure.archive.ubuntu.com` (8-19s). The image is
+    # a flat 15.5-16.5s pull (0.91 GB, three runners measured) and it also
+    # replaces the 261 MB browser cache restore, so it is never slower and it
+    # has no tail. Pinning a mirror is not the fix — `actions/runner-images`
+    # #14596 and #15142 show every mirror has bad days.
+    #
+    # The tag must match the `playwright` version resolved in pnpm-lock.yaml:
+    # the image ships browsers for exactly one release (1.61.1 -> chromium-1228).
+    # The guard step below fails loudly on drift instead of quietly letting
+    # Playwright download its own browser again.
+    container:
+      image: mcr.microsoft.com/playwright:v1.61.1-noble
+    if: github.event_name != 'push'
+
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Detect code changes
+        uses: dorny/paths-filter@v4
+        id: filter
+        with:
+          filters: |
+            code:
+              - '!**/*.md'
+              - '!**/*.txt'
+              - '!docs/**'
+              - '!scripts/**'
+              - '!packages/webview/e2e/**'
+              - '!packages/webview/demo/**'
+              - '!LICENSE'
+
+      # Same pnpm cache as the other jobs: what gets rate limited is the action
+      # tarball from codeload (pnpm/action-setup#177), not the store.
+      - name: Cache pnpm install
+        if: steps.filter.outputs.code == 'true'
+        id: pnpm-cache
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/setup-pnpm
+          key: pnpm-setup-v5-${{ runner.os }}-${{ runner.arch }}-12.18.0
+
+      - name: Add cached pnpm to PATH
+        if: steps.filter.outputs.code == 'true' && steps.pnpm-cache.outputs.cache-hit == 'true'
+        shell: bash
+        run: |
+          PNPM_HOME="${USERPROFILE:-$HOME}/.cache/setup-pnpm/node_modules/.bin"
+          PNPM_BIN="$PNPM_HOME/bin"
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            PNPM_HOME="${PNPM_HOME//\//\\}"
+            PNPM_BIN="${PNPM_BIN//\//\\}"
+          fi
+          echo "$PNPM_HOME" >> "$GITHUB_PATH"
+          echo "$PNPM_BIN" >> "$GITHUB_PATH"
+          echo "PNPM_HOME=$PNPM_HOME" >> "$GITHUB_ENV"
+
+      - name: Setup pnpm (cache miss)
+        if: steps.filter.outputs.code == 'true' && steps.pnpm-cache.outputs.cache-hit != 'true'
+        uses: pnpm/action-setup@v5
+        with:
+          version: 12.18.0
+          dest: ~/.cache/setup-pnpm
+          run_install: false
+
+      - name: Setup Node.js
+        if: steps.filter.outputs.code == 'true'
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: "pnpm"
+
+      - name: Install dependencies
+        if: steps.filter.outputs.code == 'true'
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        if: steps.filter.outputs.code == 'true'
+        run: pnpm build
+
+      # An image is only worth its 16s if it really carries the browser this
+      # lockfile expects. A version drift would silently re-enable the download
+      # path — and without --with-deps it would lose the fonts too, which is a
+      # deterministic fake red in the virtual-scroll geometry assertions.
+      - name: Guard - image ships the browser the lockfile expects
+        if: steps.filter.outputs.code == 'true'
+        run: |
+          expected="1.61.1"
+          installed="$(pnpm -F wave-webview exec playwright --version | awk '{print $NF}')"
+          if [ "$installed" != "$expected" ]; then
+            echo "::error::pnpm-lock.yaml resolves playwright $installed, but the container image is v$expected-noble. Bump the image tag and this guard together."
+            exit 1
+          fi
+          location="$(pnpm -F wave-webview exec playwright install --dry-run chromium \
+            | sed -e 's/\x1b\[[0-9;]*m//g' \
+            | sed -n 's/.*Install location: *//p' | head -1 | tr -d '[:space:]')"
+          if [ ! -d "$location" ]; then
+            echo "::error::no preinstalled Chromium at '$location' — the image and the lockfile disagree"
+            exit 1
+          fi
+          echo "playwright $installed will run $location, straight from the image"
+
+      - name: Tests (shard ${{ matrix.shard }}/2)
+        if: steps.filter.outputs.code == 'true'
+        run: pnpm -F wave-webview test --shard=${{ matrix.shard }}/2
 
   check-extras:
     runs-on: ubuntu-latest
@@ -369,6 +458,15 @@ jobs:
     # Unlike the other jobs, e2e test file changes must trigger this job, so
     # webview/e2e is not excluded from the paths filter.
     if: github.event_name != 'push'
+    #
+    # Runs inside the Playwright image for the same reason as `check-webview`:
+    # it carries the browser and the CJK fonts, so neither the 261 MB cache
+    # restore nor `playwright install --with-deps` is needed, and the ~16s pull
+    # replaces an apt step that took 8s to 7m29s depending on the mirror the
+    # runner drew. Keep this tag equal to the `playwright` version in
+    # pnpm-lock.yaml; the guard below enforces it.
+    container:
+      image: mcr.microsoft.com/playwright:v1.61.1-noble
 
     strategy:
       matrix:
@@ -459,25 +557,27 @@ jobs:
           pnpm -F wave-webview run compile -- --production
           pnpm -r --filter '!wave-webview' --workspace-concurrency=1 build
 
-      # Same key as the PR-tier `check` job, and therefore as `pages.yml` on
-      # `main`, which is the only side that can hand out a restore — see the
-      # note there for why the scope forces this.
-      - name: Cache Playwright browsers
+      # Both the browser and the CJK fonts come from the image, so the browser
+      # cache and `--with-deps` are gone. The guard keeps the two in sync: a
+      # lockfile bump without an image bump would silently re-enable the
+      # download path (and, with no --with-deps, lose the fonts with it).
+      - name: Guard - image ships the browser the lockfile expects
         if: steps.filter.outputs.code == 'true'
-        uses: actions/cache@v6
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-chromium-${{ runner.os }}-${{ hashFiles('**/pnpm-lock.yaml') }}
-          restore-keys: |
-            playwright-chromium-${{ runner.os }}-
-
-      # `--with-deps` on every run, cache hit included — see the long note in the
-      # `check` job: this is what puts Chinese fonts on the runner, and without
-      # them the virtual-scroll geometry assertions go red for a reason no real
-      # user ever hits. The 19s it costs is the price of the environment.
-      - name: Install Playwright Chromium
-        if: steps.filter.outputs.code == 'true'
-        run: pnpm -F wave-webview exec playwright install --with-deps chromium
+        run: |
+          expected="1.61.1"
+          installed="$(pnpm -F wave-webview exec playwright --version | awk '{print $NF}')"
+          if [ "$installed" != "$expected" ]; then
+            echo "::error::pnpm-lock.yaml resolves playwright $installed, but the container image is v$expected-noble. Bump the image tag and this guard together."
+            exit 1
+          fi
+          location="$(pnpm -F wave-webview exec playwright install --dry-run chromium \
+            | sed -e 's/\x1b\[[0-9;]*m//g' \
+            | sed -n 's/.*Install location: *//p' | head -1 | tr -d '[:space:]')"
+          if [ ! -d "$location" ]; then
+            echo "::error::no preinstalled Chromium at '$location' — the image and the lockfile disagree"
+            exit 1
+          fi
+          echo "playwright $installed will run $location, straight from the image"
 
       - name: Real-browser e2e tests
         if: steps.filter.outputs.code == 'true'
