@@ -26,6 +26,7 @@ import {
   __resetWebSearchAvailabilityForTesting,
   isWebSearchAvailable,
 } from "../../src/services/webSearchAvailability.js";
+import { logger } from "../../src/utils/globalLogger.js";
 import { webSearchTool } from "../../src/tools/webSearchTool.js";
 import { renderToolResultData } from "../../src/tools/resultData/index.js";
 import type { ToolContext } from "../../src/tools/types.js";
@@ -316,7 +317,7 @@ describe("WebSearch 拼给模型的文本", () => {
 });
 
 describe("WebSearch 的失败分档", () => {
-  it("429：说清本小时额度用完，不当成没搜到", async () => {
+  it("429：文本是 CC 同形的 `Web search error: <code>`，不当成没搜到", async () => {
     stubFetch(
       jsonResponse(429, {
         error: {
@@ -331,12 +332,12 @@ describe("WebSearch 的失败分档", () => {
     );
 
     expect(result.success).toBe(false);
-    expect(result.content).toContain("quota is used up");
-    expect(result.content).toContain("WEB_SEARCH_RATE_LIMITED");
+    // 逐字照 CC（`:2275`）：冒号后只有错误码，没有散文、没有服务端 message。
+    expect(result.content).toBe("Web search error: WEB_SEARCH_RATE_LIMITED");
     expect(result.content).not.toContain("No links found.");
   });
 
-  it("504：说清超时，且不重试", async () => {
+  it("504：文本是 CC 同形的错误码，且不重试", async () => {
     const fetchMock = stubFetch(
       jsonResponse(504, { error: { code: "WEB_SEARCH_TIMEOUT" } }),
     );
@@ -346,11 +347,11 @@ describe("WebSearch 的失败分档", () => {
     );
 
     expect(result.success).toBe(false);
-    expect(result.content).toContain("timed out");
+    expect(result.content).toBe("Web search error: WEB_SEARCH_TIMEOUT");
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("400：带上错误码让模型改参数，且不重试", async () => {
+  it("400：只回错误码让模型改参数，且不重试", async () => {
     const fetchMock = stubFetch(
       jsonResponse(400, {
         error: { code: "WEB_SEARCH_INVALID_QUERY", message: "query too long" },
@@ -362,12 +363,39 @@ describe("WebSearch 的失败分档", () => {
     );
 
     expect(result.success).toBe(false);
-    expect(result.content).toContain("WEB_SEARCH_INVALID_QUERY");
-    expect(result.content).toContain("query too long");
+    expect(result.content).toBe("Web search error: WEB_SEARCH_INVALID_QUERY");
+    // 服务端 message 只进日志：模型可见文本只有 code。
+    expect(result.content).not.toContain("query too long");
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const data = result.data as { status: string; errorCode?: string };
     expect(data.status).toBe("error");
     expect(data.errorCode).toBe("WEB_SEARCH_INVALID_QUERY");
+  });
+
+  it("服务端 message 是中文时不进模型可见文本，只进日志", async () => {
+    stubFetch(
+      jsonResponse(400, {
+        error: {
+          code: "WEB_SEARCH_INVALID_QUERY",
+          message: "query 长度必须是 2~128 个字符（当前 1 个）",
+        },
+      }),
+    );
+    const result = await webSearchTool.execute({ query: "a" }, makeContext());
+
+    expect(result.success).toBe(false);
+    // 冒号后只有 code：服务端中文 message 一个字都不出现（否则就是中英混排）。
+    expect(result.content).toBe("Web search error: WEB_SEARCH_INVALID_QUERY");
+    expect(result.content).not.toMatch(/[\u4e00-\u9fff]/);
+    // 运维照样能从日志里读到那句中文。
+    expect(logger.warn).toHaveBeenCalledWith(
+      "Web search rejected",
+      expect.objectContaining({
+        status: 400,
+        code: "WEB_SEARCH_INVALID_QUERY",
+        serverMessage: "query 长度必须是 2~128 个字符（当前 1 个）",
+      }),
+    );
   });
 
   it("503：按仓内既有口径重试 1 次，仍失败则报暂时不可用", async () => {
@@ -382,7 +410,7 @@ describe("WebSearch 的失败分档", () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(result.success).toBe(false);
-    expect(result.content).toContain("temporarily unavailable");
+    expect(result.content).toBe("Web search error: WEB_SEARCH_UNAVAILABLE");
   });
 
   it("401 / 403：指向登录与企业授权，而不是重试", async () => {

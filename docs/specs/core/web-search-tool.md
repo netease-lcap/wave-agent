@@ -16,7 +16,8 @@ order: 31
 >
 > **对齐基准**：Claude Code `2.1.331` 的 `WebSearch`——入参 schema 见
 > `1022-211817B-D3o.js:2221-2223`，拼给模型的回执见 `:2770-2813`（`mapToolResultToToolResultBlockParam`），
-> `leftOut` 那句话见 `:2526`（"N results left out by allowed_domains or blocked_domains."）。
+> `leftOut` 那句话见 `:2526`（"N results left out by allowed_domains or blocked_domains."），
+> 服务端失败的文本见 `:2275`（`Web search error: ${error_code}`——只有 code，没有散文）。
 
 ## 用户场景与测试 _（必填）_
 
@@ -67,13 +68,14 @@ order: 31
 
 **验收场景**：
 
-1. **假设** 服务端 `429 WEB_SEARCH_RATE_LIMITED`，**当** 调用，**则** 文本说明「本小时搜索次数已用完，稍后再试」
-2. **假设** 服务端 `504 WEB_SEARCH_TIMEOUT`，**当** 调用，**则** 文本说明「搜索超时」，且**不重试**（超时无法证明上游没执行）
-3. **假设** 服务端 `400 WEB_SEARCH_INVALID_QUERY` / `WEB_SEARCH_INVALID_DOMAINS` / `WEB_SEARCH_DOMAIN_CONFLICT`，**当** 调用，**则** 文本带上错误码（模型据此改参数），且**不重试**
+1. **假设** 服务端 `429 WEB_SEARCH_RATE_LIMITED`，**当** 调用，**则** 模型可见文本逐字为 `Web search error: WEB_SEARCH_RATE_LIMITED`（与 CC `:2275` 同形：冒号后只有 code），**不是** `No links found.`
+2. **假设** 服务端 `504 WEB_SEARCH_TIMEOUT`，**当** 调用，**则** 文本为 `Web search error: WEB_SEARCH_TIMEOUT`，且**不重试**（超时无法证明上游没执行）
+3. **假设** 服务端 `400 WEB_SEARCH_INVALID_QUERY` / `WEB_SEARCH_INVALID_DOMAINS` / `WEB_SEARCH_DOMAIN_CONFLICT`，**当** 调用，**则** 文本为 `Web search error: <code>`（模型据此改参数），且**不重试**
 4. **假设** `401` / `403`，**当** 调用，**则** 文本说明要登录 / 需要企业成员或授权（私有化还包括 license 闸门）
-5. **假设** 服务端 `503`，**当** 调用，**则** 按仓内既有口径（`knowledgeBaseApi` 的同款）重试 1 次，仍失败则报「暂时不可用」
-6. **假设** 客户端侧 15 秒内没拿到响应，**当** 超时，**则** 按超时报错（客户端超时宽于服务端 10 秒）
-7. **假设** 200 但 `results` 不是数组，**当** 解析，**则** 报「响应畸形」，**不当** 空结果
+5. **假设** 服务端 `503`，**当** 调用，**则** 按仓内既有口径（`knowledgeBaseApi` 的同款）重试 1 次，仍失败则文本为 `Web search error: WEB_SEARCH_UNAVAILABLE`
+6. **假设** 客户端侧 15 秒内没拿到响应，**当** 超时，**则** 报超时（客户端超时宽于服务端 10 秒；这是本地失败，冒号后是一句英文说明）
+7. **假设** 200 但 `results` 不是数组，**当** 解析，**则** 报「响应畸形」（文本以 `Web search error:` 开头并说明响应畸形），**不当** 空结果
+8. **假设** 服务端 `error.message` 是中文（codechat 侧面向运维的文案），**当** 调用失败，**则** 模型可见文本仍是 `Web search error: <code>`（**不含**服务端 message、不含任何中文）；服务端 message 截断后进 `logger.warn`，供排障时读
 
 ## 实现约束 _（必填）_
 
@@ -81,7 +83,10 @@ order: 31
 - **入参 schema 逐字照 CC**：`query`（string，`minLength: 2`，"The search query to use"）、`allowed_domains`（string[]，"Only include search results from these domains"）、`blocked_domains`（string[]，"Never include search results from these domains"），`required: ["query"]`。
 - **鉴权**：只用 `createAuthAwareFetch`（登录态 + 惰性刷新），不新建凭证类型、不加配置项。
 - **回执文本**：由 `tools/resultData/webSearch.ts` 从 `data` 现场渲染（issue #3055 的分工），逐字照 CC——包括 CC 在 `Links` 块与 `REMINDER` 之间实际输出的两个空行（`Links: …\n\n` 加 reminder 自带的前导换行）。
-- **错误文本**与回执同一种语气（英文），逐码一句；工具 `content` 与渲染器输出同一份，`data` 里留 `status` / `reason` / `errorCode` 供宿主与脚本读。`shortResult` 是给折叠行看的中文短语。
+- **服务端失败的文本逐字照 CC**：`Web search error: <code>`（`1022-211817B-D3o.js:2275`），冒号后**只有 code**，不附散文、不附服务端 message。服务端答了非 2xx 但没给 `{error:{code}}` 时用 HTTP 状态兜底（CC 那里会打印 `undefined`，我们不复刻这个缺陷）。**本地失败**（网络错误 / 客户端超时 / 200 畸形）没有服务端 code，冒号后落一句英文说明——CC 没有对应物。
+- **401 / 403 保留行动指引**（去登录 / 看 license / 看企业成员）：那对应 CC 的 API 层错误提示，不是「服务端工具结果」那一档，所以不走 `Web search error: <code>` 模板。
+- **服务端 `message` 不进模型可见文本**：它面向运维、在 codechat 侧是中文，拼进文本就是中英混排。服务端 message 截断（≤300 字符）后进 `logger.warn`（`Web search rejected` / `Web search was not authorized` 的 `serverMessage` 字段）。
+- **工具 `content` 与渲染器输出同一份**，`data` 里留 `status` / `reason` / `errorCode` 供宿主与脚本读（`reason` 在服务端失败时就是 code，本地失败时是一句英文）。`shortResult` 是给折叠行看的中文短语。
 - **能力探测**：`services/webSearchAvailability.ts` 在**内存里**按 `serverUrl` 记 404 判定（不落盘）；注册门（`ToolManager.initializeBuiltInTools` / `reloadFeatureGatedTools`）与 `execute` 入口都读它。
 - **超时**：15 000 ms（服务端 10 秒 + 余量）；**重试**：网络错误与 `503` 各重试 1 次、间隔 300 ms（照 `knowledgeBaseApi` 的既有口径），`400/429/502/504/404` 不重试。
 - **遥测**：仓内没有通用「每工具耗时/错误」上报（`telemetry/metrics.ts` 只有 commit / PR / 编辑行数等专用计数器），故只 `logger.warn` 失败与能力判定，不新造计数器。
