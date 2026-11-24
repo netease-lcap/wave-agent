@@ -1573,6 +1573,7 @@ To write a mod — the \`$\` surface, the event set, element types and limits �
 
 ### 11. Feature Toggles
 - \`enableArtifact\`: Enable the Artifact tools — \`Artifact\` (publish local \`.html\`/\`.md\` files as shareable, default-private web pages; read/list them; manage their assets) and \`ArtifactComments\` (read and answer the review comments people leave on a published page; deferred, so it reaches the model through the on-demand pool rather than the flat tool list) — and makes WebFetch read artifact URLs through its own channel. Defaults to \`true\` for a signed-in account and \`false\` when nobody is signed in (every Artifact request carries the SSO token); set \`true\` to register the tools even without an account, or \`false\` to turn them off. Toggling it hot-reloads the tool registry, and signing in/out re-evaluates it too.
+- \`enableWebSearch\`: Whether the \`WebSearch\` tool is registered. Default \`false\` — private deployments ship without web search and they are the many, so the opt-in side is the default; set \`true\` to turn it on for a workspace (or a whole deployment, from the server). A managed value wins over local files, and a deployment whose search endpoint answers \`404\` keeps the tool hidden even when this is \`true\`.
 - \`enableRepl\`: Whether the REPL tool is registered — one long-lived JavaScript context the model uses to orchestrate the tools that are not declared directly to it. Default \`true\`; setting \`false\` declares the pooled tools flat again (the old key \`enableExec\` is still accepted, locally and from the server).
 - \`enableReplCoreTools\`: Whether \`Read\` / \`Glob\` / \`Grep\` / \`Bash\` / \`PowerShell\` / \`Write\` / \`Edit\` are pooled into the REPL too, instead of being declared directly to the model. Default \`false\`; it has no effect when \`enableRepl\` is \`false\`.
 - \`enableKnowledgeBase\`: Whether the three enterprise knowledge-base tools (\`kb_search\` / \`kb_get_doc\` / \`kb_suggest\`) are registered. Default \`false\` — they widen what every conversation can pull into context. A managed value wins over local files.
@@ -1587,7 +1588,7 @@ To write a mod — the \`$\` surface, the event set, element types and limits �
 \`\`\`json
 {
   "enableArtifact": true,
-  "enableWebSearch": true,
+  "enableWebSearch": false,
   "enableKnowledgeBase": false,
   "completionEnabled": true,
   "leanPrompt": true

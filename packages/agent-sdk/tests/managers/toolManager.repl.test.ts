@@ -30,6 +30,16 @@ vi.mock("../../src/services/taskToolsAvailability.js", () => ({
   isTaskToolsEnabled: () => true,
 }));
 
+// WebSearch ships switched off (`enableWebSearch` defaults to false). These
+// tests are about the deferral shape, so pin the switch on rather than depend
+// on the code default.
+vi.mock("../../src/services/webSearchAvailability.js", () => ({
+  WEB_SEARCH_DEFAULT_ENABLED: true,
+  isWebSearchEnabledBySettings: () => true,
+  isWebSearchAvailable: () => true,
+  markWebSearchUnsupported: () => {},
+}));
+
 /**
  * The deferred built-ins, i.e. everything the pool holds with no MCP server
  * connected. Chosen by frequency rather than by size: the ones that come up once
