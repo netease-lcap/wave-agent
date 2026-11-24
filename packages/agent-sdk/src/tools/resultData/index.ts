@@ -50,6 +50,7 @@ import {
   TASK_STOP_TOOL_NAME,
   TASK_UPDATE_TOOL_NAME,
   WEB_FETCH_TOOL_NAME,
+  WEB_SEARCH_TOOL_NAME,
   WORKFLOW_TOOL_NAME,
   WRITE_TOOL_NAME,
 } from "../../constants/tools.js";
@@ -144,6 +145,10 @@ import {
   renderWebFetchResultData,
   type WebFetchResultData,
 } from "./webFetch.js";
+import {
+  renderWebSearchResultData,
+  type WebSearchResultData,
+} from "./webSearch.js";
 import { renderWriteResultData, type WriteResultData } from "./write.js";
 import {
   renderWorkflowResultData,
@@ -206,6 +211,8 @@ const RENDERERS: Record<string, ToolResultRenderer> = {
     renderTaskUpdateResultData(data as TaskUpdateResultData),
   [WEB_FETCH_TOOL_NAME]: (data) =>
     renderWebFetchResultData(data as WebFetchResultData),
+  [WEB_SEARCH_TOOL_NAME]: (data) =>
+    renderWebSearchResultData(data as WebSearchResultData),
   [WORKFLOW_TOOL_NAME]: (data) =>
     renderWorkflowResultData(data as WorkflowResultData),
   [WRITE_TOOL_NAME]: (data) => renderWriteResultData(data as WriteResultData),
