@@ -26,7 +26,7 @@ import { logger } from "../utils/globalLogger.js";
 const WEB_SEARCH_TIMEOUT_MS = 15_000;
 /** One retry, matching `knowledgeBaseApi`'s `KB_RETRY_DELAY_MS`. */
 const RETRY_DELAY_MS = 300;
-/** Server messages are quoted back to the model; keep one from flooding the context. */
+/** Server messages go to the log only; cap them so one log line stays one line. */
 const MAX_SERVER_MESSAGE_CHARS = 300;
 
 /** One hit as the model may use it: a link, plus a snippet it never sees (see the tool). */
@@ -80,66 +80,45 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
     : undefined;
 }
 
-/** `: <server message>` — the server's own wording, when it sent one. */
-function quoted(message: string): string {
-  if (!message) return "";
-  const body =
-    message.length > MAX_SERVER_MESSAGE_CHARS
-      ? `${message.slice(0, MAX_SERVER_MESSAGE_CHARS)}…`
-      : message;
-  return `: ${body}`;
+/**
+ * The server's own `message`, for the log only.
+ *
+ * codechat's backend writes these in Chinese (they are operator-facing), while this
+ * tool's result text is English end to end — appending one to the other produced
+ * `Web search error: WEB_SEARCH_INVALID_QUERY: query 长度必须是 2~128 个字符（当前 1 个）`.
+ * So the message never reaches the model: the model gets the code alone (CC's shape,
+ * `:2275`), and the message is what an operator reads in the log.
+ */
+function truncateForLog(message: string): string | undefined {
+  if (!message) return undefined;
+  return message.length > MAX_SERVER_MESSAGE_CHARS
+    ? `${message.slice(0, MAX_SERVER_MESSAGE_CHARS)}…`
+    : message;
 }
 
 /**
- * One sentence per contract error code, in the same voice as the success text
- * (Claude Code's `WebSearch` result is English too). Each says what to do next,
- * because "search failed" leaves the model guessing between "rephrase" and "give
- * up"; the codes that mean "do not retry" say so explicitly.
+ * A server-side failure's model-facing text: the code, nothing else.
+ *
+ * CC renders `web_search_tool_result` failures as `Web search error: ${error_code}`
+ * (`1022-211817B-D3o.js:2275`) — a code is the whole payload, no prose of its own and
+ * certainly no server-written sentence. Ours matches: the renderer wraps whatever this
+ * returns after `Web search error: `. When the server answered without a code (a
+ * 4xx/5xx whose body is not our `{error:{code}}` shape), the HTTP status is the only
+ * fact left, so it stands in — CC would literally print `undefined` there.
  */
-function describeServerError(
-  status: number,
-  code: string | undefined,
-  message: string,
-): string {
-  const tail = quoted(message);
-  switch (code) {
-    case "WEB_SEARCH_INVALID_QUERY":
-      return `the search query was rejected (${code})${tail} — rephrase it before searching again; retrying it unchanged fails the same way.`;
-    case "WEB_SEARCH_INVALID_DOMAINS":
-      return `the domain list was rejected (${code})${tail} — pass plain hostnames such as "example.com" (no scheme, no spaces) before searching again.`;
-    case "WEB_SEARCH_DOMAIN_CONFLICT":
-      return `allowed_domains and blocked_domains cannot be used in the same request (${code})${tail}.`;
-    case "WEB_SEARCH_RATE_LIMITED":
-      return `this hour's web-search quota is used up (${code})${tail} — tell the user to try again later this hour instead of retrying now.`;
-    case "WEB_SEARCH_UPSTREAM_REJECTED":
-      return `the search provider rejected this request (${code})${tail} — rephrasing the query may help.`;
-    case "UPSTREAM_BODY_MALFORMED":
-      return `the search provider returned a malformed response (${code})${tail} — the results cannot be trusted, so search again later rather than answering from them.`;
-    case "WEB_SEARCH_UNAVAILABLE":
-      return `web search is temporarily unavailable on this server (${code})${tail} — try again later.`;
-    case "WEB_SEARCH_UPSTREAM_BUSY":
-      return `the search provider is busy right now (${code})${tail} — try again shortly.`;
-    case "WEB_SEARCH_TIMEOUT":
-      return `the search timed out (${code})${tail} — a narrower query, or a retry later, may succeed.`;
-    default:
-      return `web search failed (HTTP ${status}${code ? ` ${code}` : ""})${tail}.`;
-  }
+function describeServerError(status: number, code: string | undefined): string {
+  return code ?? `HTTP ${status}`;
 }
 
 /** 401 / 403's one-liner: the account half (the license half for private deployments). */
-function describeAuthError(
-  status: number,
-  code: string | undefined,
-  message: string,
-): string {
-  const tail = quoted(message);
+function describeAuthError(status: number, code: string | undefined): string {
   if (status === 401) {
-    return `the account is not signed in, or the session expired${tail} — ask the user to run /login, then search again.`;
+    return "the account is not signed in, or the session expired — ask the user to run /login, then search again.";
   }
   if (code?.startsWith("LICENSE_")) {
-    return `this deployment's license does not allow web search (${code})${tail} — this is for an administrator, not something a retry can fix.`;
+    return `this deployment's license does not allow web search (${code}) — this is for an administrator, not something a retry can fix.`;
   }
-  return `this account may not use web search (${code ? `${code}` : `HTTP ${status}`})${tail} — enterprise membership, or an admin switch, is missing.`;
+  return `this account may not use web search (${code ? `${code}` : `HTTP ${status}`}) — enterprise membership, or an admin switch, is missing.`;
 }
 
 /** `{ error: { code, message } }` → its two fields, tolerantly. */
@@ -298,9 +277,15 @@ export async function searchWeb(
   }
   if (res.status === 401 || res.status === 403) {
     const failure = readErrorBody(await res.json().catch(() => null));
+    logger?.warn("Web search was not authorized", {
+      status: res.status,
+      code: failure.code,
+      serverMessage: truncateForLog(failure.message),
+      queryLength: args.query.length,
+    });
     return {
       kind: "unauthorized",
-      reason: describeAuthError(res.status, failure.code, failure.message),
+      reason: describeAuthError(res.status, failure.code),
       errorCode: failure.code,
     };
   }
@@ -310,12 +295,13 @@ export async function searchWeb(
     logger?.warn("Web search rejected", {
       status: res.status,
       code: failure.code,
+      serverMessage: truncateForLog(failure.message),
       queryLength: args.query.length,
     });
     return {
       kind: "error",
       errorCode: failure.code,
-      reason: describeServerError(res.status, failure.code, failure.message),
+      reason: describeServerError(res.status, failure.code),
     };
   }
 

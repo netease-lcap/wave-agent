@@ -92,7 +92,10 @@ export function renderWebSearchResultData(data: WebSearchResultData): string {
     case "unauthorized":
       return `Web search needs a signed-in enterprise account: ${data.reason}`;
     case "error":
-      return `Web search failed: ${data.reason}`;
+      // 失败文本逐字照 CC 的模板（`1022-211817B-D3o.js:2275`：`Web search error: ${error_code}`）。
+      // 服务端失败时 `reason` 就是 code（`webSearchApi.describeServerError`）；
+      // 本地失败（网络 / 超时 / 200 畸形）没有服务端 code，冒号后落一句英文说明。
+      return `Web search error: ${data.reason}`;
   }
 }
 
@@ -149,7 +152,7 @@ export const webSearchOutputSchema: Record<string, unknown> = {
     reason: {
       type: "string",
       description:
-        "One model-facing sentence describing the failure (only for unauthorized / error).",
+        'For "error": the server code alone when the server sent one (the shape CC uses), otherwise one English sentence for a local failure (network / timeout / malformed body). For "unauthorized": one English sentence with the fix.',
     },
     errorCode: {
       type: "string",
