@@ -56,7 +56,7 @@ describe("AskUserQuestion Integration", () => {
 
     expect(result.success).toBe(true);
     expect(result.content).toBe(
-      'User has answered your questions: "Choose approach"="JWT". You can now continue with the user\'s answers in mind.',
+      'Your questions have been answered: "Choose approach"="JWT". You can now continue with these answers in mind.',
     );
     expect(permissionManager.checkPermission).toHaveBeenCalled();
   });
@@ -110,7 +110,7 @@ describe("AskUserQuestion Integration", () => {
 
     expect(result.success).toBe(true);
     expect(result.content).toBe(
-      'User has answered your questions: "Confirm?"="Yes". You can now continue with the user\'s answers in mind.',
+      'Your questions have been answered: "Confirm?"="Yes". You can now continue with these answers in mind.',
     );
   });
 });

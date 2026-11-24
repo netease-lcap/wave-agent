@@ -1,10 +1,12 @@
 import { ToolPlugin } from "./types.js";
 import {
+  AskUserQuestion,
   AskUserQuestionAnnotation,
   AskUserQuestionInput,
 } from "../types/tools.js";
 import { ASK_USER_QUESTION_TOOL_NAME } from "../constants/tools.js";
 import {
+  NOTES_ONLY_ANSWER,
   renderAskUserQuestionResultData,
   type AskUserQuestionResultData,
 } from "./resultData/askUserQuestion.js";
@@ -60,38 +62,253 @@ function normalizeAnswers(
 }
 
 /**
- * Split the confirmation payload into answers plus optional annotations.
+ * Read the confirmation payload, refusing anything a host may have made up.
  *
  * The current shape is `{ answers, annotations? }`. Hosts and the CLI used to
  * send the answers map on its own, so that shape is still accepted: an old
  * client that knows nothing about previews keeps working instead of having its
  * answers read as a single question literally named "answers".
  */
-function parseDecisionPayload(payload: unknown): {
+/** CC's ceilings for what an answer payload may carry
+ *  (`1005-20922B-mDn.js:73-76`): 32768 per answer, 8192 per notes block. */
+const MAX_ANSWER_CHARS = 32768;
+const MAX_NOTES_CHARS = 8192;
+
+/**
+ * A preview returned byte for byte is always the caller's own. Anything else
+ * has to survive CC's 2000-character window to be compared at all
+ * (`he()`, `1005-20922B-mDn.js:238`).
+ */
+const MAX_NORMALISED_PREVIEW_CHARS = 2000;
+
+/** `{ answers, annotations? }` is the only answer shape we accept. */
+const DECISION_PAYLOAD_KEYS = ["answers", "annotations"];
+/** An annotation may only carry what the user saw and what they typed. */
+const ANNOTATION_KEYS = ["preview", "notes"];
+
+/** Characters that render as nothing: zero-width joiners and spaces, bidi
+ *  marks, soft hyphens, the BOM. Dropping them is what lets a host return a
+ *  rewritten-but-identical preview. */
+const INVISIBLE_CHARACTERS =
+  /[\u00AD\u180E\u200B-\u200F\u202A-\u202E\u2060-\u206F\uFEFF]/g;
+
+interface ParsedDecisionPayload {
   answers: Record<string, string | string[]>;
   annotations?: Record<string, AskUserQuestionAnnotation>;
-} {
+}
+
+/**
+ * Is this the preview the model itself passed for that question?
+ *
+ * Byte-for-byte is always fine. Anything else means the client rewrote it (a
+ * whitespace pass, a display-time scrub); that is acceptable while the
+ * original is short enough for the comparison to mean something, so this
+ * mirrors CC's `he()`: drop invisible characters from both sides and compare.
+ */
+function previewIsCallersOwn(
+  question: AskUserQuestion,
+  preview: string,
+): boolean {
+  const previews = question.options
+    .map((option) => option?.preview)
+    .filter((value): value is string => typeof value === "string");
+  if (previews.includes(preview)) return true;
+  const normalized = preview.replace(INVISIBLE_CHARACTERS, "");
+  return previews.some(
+    (original) =>
+      original.length <= MAX_NORMALISED_PREVIEW_CHARS &&
+      original.replace(INVISIBLE_CHARACTERS, "") === normalized,
+  );
+}
+
+function parseDecisionPayload(
+  payload: unknown,
+  questions: AskUserQuestion[],
+): { ok: true; payload: ParsedDecisionPayload } | { ok: false; error: string } {
+  const refuse = (detail: string) => ({
+    ok: false as const,
+    error: `AskUserQuestion answer rejected: ${detail}`,
+  });
+
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
-    return { answers: {} };
+    // Nothing usable came back (an empty message body, say). No answers is a
+    // legitimate outcome; it is not a payload anyone mutated.
+    return { ok: true, payload: { answers: {} } };
   }
+
   const record = payload as Record<string, unknown>;
-  const answers = record.answers;
-  if (!answers || typeof answers !== "object" || Array.isArray(answers)) {
-    return { answers: record as Record<string, string | string[]> };
+  const questionTexts = new Set(
+    questions.map((question) => question?.question),
+  );
+  const legacyShape = !Object.prototype.hasOwnProperty.call(record, "answers");
+
+  if (!legacyShape) {
+    const extra = Object.keys(record).filter(
+      (key) => !DECISION_PAYLOAD_KEYS.includes(key),
+    );
+    if (extra.length > 0) {
+      return refuse(
+        `unexpected field(s) ${extra.map((key) => `"${key}"`).join(", ")} in the answer payload`,
+      );
+    }
   }
-  const rawAnnotations = record.annotations;
-  const annotations =
-    rawAnnotations &&
-    typeof rawAnnotations === "object" &&
-    !Array.isArray(rawAnnotations)
-      ? (rawAnnotations as Record<string, AskUserQuestionAnnotation>)
-      : undefined;
+
+  const rawAnswers = legacyShape ? record : record.answers;
+  if (
+    !rawAnswers ||
+    typeof rawAnswers !== "object" ||
+    Array.isArray(rawAnswers)
+  ) {
+    return refuse('"answers" must be an object keyed by question text');
+  }
+
+  const answers: Record<string, string | string[]> = Object.create(null);
+  for (const [questionText, rawAnswer] of Object.entries(
+    rawAnswers as Record<string, unknown>,
+  )) {
+    if (!questionTexts.has(questionText)) {
+      return refuse(`unknown question "${questionText}"`);
+    }
+    if (typeof rawAnswer === "string") {
+      if (rawAnswer.length > MAX_ANSWER_CHARS) {
+        return refuse(
+          `the answer to "${questionText}" is ${rawAnswer.length} characters, the limit is ${MAX_ANSWER_CHARS}`,
+        );
+      }
+      answers[questionText] = rawAnswer;
+      continue;
+    }
+    if (!Array.isArray(rawAnswer) || rawAnswer.length === 0) {
+      return refuse(
+        `the answer to "${questionText}" must be a string or a list of strings`,
+      );
+    }
+    const selected: string[] = [];
+    for (const entry of rawAnswer) {
+      if (typeof entry !== "string") {
+        return refuse(
+          `the answer to "${questionText}" must be a string or a list of strings`,
+        );
+      }
+      selected.push(entry);
+    }
+    const joined = selected.join(", ");
+    if (joined.length > MAX_ANSWER_CHARS) {
+      return refuse(
+        `the answer to "${questionText}" is ${joined.length} characters, the limit is ${MAX_ANSWER_CHARS}`,
+      );
+    }
+    answers[questionText] = selected;
+  }
+
+  const rawAnnotations = legacyShape ? undefined : record.annotations;
+  let annotations: Record<string, AskUserQuestionAnnotation> | undefined;
+  if (rawAnnotations !== undefined) {
+    if (
+      !rawAnnotations ||
+      typeof rawAnnotations !== "object" ||
+      Array.isArray(rawAnnotations)
+    ) {
+      return refuse('"annotations" must be an object keyed by question text');
+    }
+    const collected: Record<string, AskUserQuestionAnnotation> = {};
+    for (const [questionText, rawAnnotation] of Object.entries(
+      rawAnnotations as Record<string, unknown>,
+    )) {
+      const question = questions.find(
+        (candidate) => candidate?.question === questionText,
+      );
+      if (!question) {
+        return refuse(`unknown question "${questionText}" in "annotations"`);
+      }
+      if (
+        !rawAnnotation ||
+        typeof rawAnnotation !== "object" ||
+        Array.isArray(rawAnnotation)
+      ) {
+        return refuse(`"annotations" for "${questionText}" must be an object`);
+      }
+      const entry = rawAnnotation as Record<string, unknown>;
+      const extra = Object.keys(entry).filter(
+        (key) => !ANNOTATION_KEYS.includes(key),
+      );
+      if (extra.length > 0) {
+        return refuse(
+          `unexpected field(s) ${extra.map((key) => `"${key}"`).join(", ")} in "annotations" for "${questionText}"`,
+        );
+      }
+      const annotation: AskUserQuestionAnnotation = {};
+      const preview = entry.preview;
+      if (preview !== undefined) {
+        if (typeof preview !== "string") {
+          return refuse(
+            `"annotations" for "${questionText}" has a non-string "preview"`,
+          );
+        }
+        if (!previewIsCallersOwn(question, preview)) {
+          return refuse(
+            `the preview returned for "${questionText}" is not one this call passed for that question`,
+          );
+        }
+        annotation.preview = preview;
+      }
+      const notes = entry.notes;
+      if (notes !== undefined) {
+        if (typeof notes !== "string") {
+          return refuse(
+            `"annotations" for "${questionText}" has non-string "notes"`,
+          );
+        }
+        if (notes.length > MAX_NOTES_CHARS) {
+          return refuse(
+            `the notes for "${questionText}" are ${notes.length} characters, the limit is ${MAX_NOTES_CHARS}`,
+          );
+        }
+        annotation.notes = notes;
+      }
+      if (Object.keys(annotation).length > 0) {
+        collected[questionText] = annotation;
+      }
+    }
+    if (Object.keys(collected).length > 0) annotations = collected;
+  }
+
+  // `(notes only)` is a sentinel, not an answer: it only means anything next to
+  // the notes it stands for. Without them the question was not answered.
+  for (const [questionText, answer] of Object.entries(answers)) {
+    if (answer === NOTES_ONLY_ANSWER && !annotations?.[questionText]?.notes) {
+      delete answers[questionText];
+    }
+  }
+
   return {
-    answers: answers as Record<string, string | string[]>,
-    ...(annotations && Object.keys(annotations).length > 0
-      ? { annotations }
-      : {}),
+    ok: true,
+    payload: { answers, ...(annotations ? { annotations } : {}) },
   };
+}
+
+/**
+ * 这一题的回答是不是我们给出的某个选项？
+ *
+ * CC 用同一判据决定外层句子（`mapToolResultToToolResultBlockParam`，
+ * `1005-20922B-mDn.js:725`）：只要有一题的答案落在 `option.label` 之外（用户走
+ * 「其他」写了自定义答案），模型就得读仔细。多选是按 `", "` 连起来的串，拆回去
+ * 逐个比对。
+ */
+function answerIsOfferedLabel(
+  question: AskUserQuestion,
+  answer: string | string[],
+): boolean {
+  const labels = new Set(question.options.map((option) => option?.label));
+  if (Array.isArray(answer)) {
+    return answer.length > 0 && answer.every((entry) => labels.has(entry));
+  }
+  // 空串与 `(notes only)` 都不是「答案」，交给备注那条判据。
+  if (answer === "" || answer === NOTES_ONLY_ANSWER) return true;
+  if (labels.has(answer)) return true;
+  if (question.multiSelect !== true) return false;
+  const split = answer.split(", ");
+  return split.length > 0 && split.every((entry) => labels.has(entry));
 }
 
 export const askUserQuestionTool: ToolPlugin = {
@@ -290,21 +507,11 @@ In plan mode, use it to clarify requirements or choose between approaches before
 
     // The answers are expected to be returned in the decision message or a specialized field
     // For now, we assume the UI returns the answers as a JSON string in the message
+    // Parsing and admitting are separate steps: a payload the host mutated has
+    // to fail loudly with a reason, never be silently trimmed.
+    let rawPayload: unknown;
     try {
-      const payload = parseDecisionPayload(
-        JSON.parse(decision.message || "{}"),
-      );
-      // Text is rendered from `data`, never stored as a literal (CC's
-      // `mapToolResultToToolResultBlockParam`, `AskUserQuestionTool.tsx:224-244`).
-      const data: AskUserQuestionResultData = {
-        answers: normalizeAnswers(payload.answers),
-        ...(payload.annotations ? { annotations: payload.annotations } : {}),
-      };
-      return {
-        success: true,
-        content: renderAskUserQuestionResultData(data),
-        data,
-      };
+      rawPayload = JSON.parse(decision.message || "{}");
     } catch {
       return {
         success: false,
@@ -312,5 +519,29 @@ In plan mode, use it to clarify requirements or choose between approaches before
         error: "Failed to parse user answers",
       };
     }
+
+    const parsed = parseDecisionPayload(rawPayload, questions);
+    if (!parsed.ok) {
+      return { success: false, content: "", error: parsed.error };
+    }
+
+    // Text is rendered from `data`, never stored as a literal (CC's
+    // `mapToolResultToToolResultBlockParam`, `1005-20922B-mDn.js:671`).
+    const readCarefully = questions.some((question) => {
+      const answer = parsed.payload.answers[question?.question];
+      return answer !== undefined && !answerIsOfferedLabel(question, answer);
+    });
+    const data: AskUserQuestionResultData = {
+      answers: normalizeAnswers(parsed.payload.answers),
+    };
+    if (parsed.payload.annotations) {
+      data.annotations = parsed.payload.annotations;
+    }
+    if (readCarefully) data.readCarefully = true;
+    return {
+      success: true,
+      content: renderAskUserQuestionResultData(data),
+      data,
+    };
   },
 };

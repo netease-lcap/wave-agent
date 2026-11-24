@@ -41,7 +41,7 @@ describe("AskUserQuestion Tool", () => {
 
     expect(result.success).toBe(true);
     expect(result.content).toBe(
-      'User has answered your questions: "What is your name?"="Alice". You can now continue with the user\'s answers in mind.',
+      'Your questions have been answered: "What is your name?"="Alice". You can now continue with these answers in mind.',
     );
     expect(mockPermissionManager.checkPermission).toHaveBeenCalled();
   });
@@ -121,7 +121,7 @@ describe("AskUserQuestion Tool", () => {
 
     expect(result.success).toBe(true);
     expect(result.content).toBe(
-      'User has answered your questions: "Question 1"="Option A", "Question 2"="Option B, Option C". You can now continue with the user\'s answers in mind.',
+      'Your questions have been answered: "Question 1"="Option A", "Question 2"="Option B, Option C". You can now continue with these answers in mind.',
     );
   });
 
@@ -304,6 +304,9 @@ describe("AskUserQuestion Tool", () => {
     const schema = askUserQuestionTool.config.function
       .parameters as unknown as JsonSchema;
 
+    // 选项自带 preview，回执里的 preview 才算「模型自己写的」（准入校验）。
+    const PREVIEW = "```\n+-----+\n| A   |\n+-----+\n```";
+
     const runWith = async (payload: unknown) => {
       const mockPermissionManager = {
         createContext: vi.fn().mockReturnValue({}),
@@ -322,7 +325,7 @@ describe("AskUserQuestion Tool", () => {
           questions: [
             {
               question: "Which layout?",
-              options: [{ label: "A" }, { label: "B" }],
+              options: [{ label: "A", preview: PREVIEW }, { label: "B" }],
             },
           ],
         } as unknown as Record<string, unknown>,
@@ -358,7 +361,9 @@ describe("AskUserQuestion Tool", () => {
 
       expect(result.success).toBe(true);
       expect(result.content).toBe(
-        'User has answered your questions: "Which layout?"="A" selected preview:\n```\n+-----+\n| A   |\n+-----+\n``` user notes: wider columns please. You can now continue with the user\'s answers in mind.',
+        'The user answered: "Which layout?"="A" selected preview:\n' +
+          PREVIEW +
+          " notes: wider columns please. Read the answers carefully — they may request clarification, changes, or that you not proceed — and follow what they actually say.",
       );
     });
 
@@ -367,7 +372,7 @@ describe("AskUserQuestion Tool", () => {
 
       expect(result.success).toBe(true);
       expect(result.content).toBe(
-        'User has answered your questions: "Which layout?"="B". You can now continue with the user\'s answers in mind.',
+        'Your questions have been answered: "Which layout?"="B". You can now continue with these answers in mind.',
       );
     });
 
@@ -379,6 +384,112 @@ describe("AskUserQuestion Tool", () => {
 
       expect(result.success).toBe(true);
       expect(result.data).toEqual({ answers: { "Which layout?": "B" } });
+    });
+
+    it("accepts a preview the host only scrubbed of invisible characters", async () => {
+      const scrubbed = PREVIEW + "\u200B";
+      const result = await runWith({
+        answers: { "Which layout?": "A" },
+        annotations: { "Which layout?": { preview: scrubbed } },
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.data).toEqual({
+        answers: { "Which layout?": "A" },
+        annotations: { "Which layout?": { preview: scrubbed } },
+      });
+    });
+
+    it("refuses a preview this call never passed for that question", async () => {
+      const result = await runWith({
+        answers: { "Which layout?": "A" },
+        annotations: {
+          "Which layout?": { preview: PREVIEW.replace("| A   |", "| Z   |") },
+        },
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("AskUserQuestion answer rejected");
+      expect(result.error).toContain("not one this call passed");
+    });
+
+    it("refuses an answer keyed by a question this call never asked", async () => {
+      const result = await runWith({ answers: { "Which framework?": "A" } });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("unknown question");
+    });
+
+    it("refuses annotations for a question this call never asked", async () => {
+      const result = await runWith({
+        answers: { "Which layout?": "A" },
+        annotations: { "Which framework?": { notes: "hi" } },
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("unknown question");
+    });
+
+    it("refuses a payload field this call never returned", async () => {
+      const result = await runWith({
+        answers: { "Which layout?": "A" },
+        unanswered: [],
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("unexpected field");
+    });
+
+    it("refuses an annotation field that is neither preview nor notes", async () => {
+      const result = await runWith({
+        answers: { "Which layout?": "A" },
+        annotations: { "Which layout?": { label: "A" } },
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("unexpected field");
+    });
+
+    it("refuses an answer longer than the ceiling the caller was given", async () => {
+      const result = await runWith({
+        answers: { "Which layout?": "x".repeat(32769) },
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("32768");
+    });
+
+    it("refuses notes longer than the ceiling the caller was given", async () => {
+      const result = await runWith({
+        answers: { "Which layout?": "A" },
+        annotations: { "Which layout?": { notes: "x".repeat(8193) } },
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("8192");
+    });
+
+    it("treats the notes-only sentinel without its notes as unanswered", async () => {
+      const result = await runWith({
+        answers: { "Which layout?": "(notes only)" },
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.content).toBe("The user did not answer the questions.");
+      expect(result.data).toEqual({ answers: {} });
+    });
+
+    it("marks the result for a careful read when the answer is not an option", async () => {
+      const result = await runWith({
+        answers: { "Which layout?": "Neither, use C" },
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.data).toEqual({
+        answers: { "Which layout?": "Neither, use C" },
+        readCarefully: true,
+      });
+      expect(result.content).toContain("Read the answers carefully");
     });
   });
 });
