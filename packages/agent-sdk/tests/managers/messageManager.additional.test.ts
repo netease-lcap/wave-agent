@@ -4,6 +4,7 @@ import * as sessionService from "../../src/services/session.js";
 import { Container } from "../../src/utils/container.js";
 import { TextBlock } from "../../src/types/index.js";
 import { rewindCutOf } from "../helpers/transcriptScans.js";
+import { logger } from "../../src/utils/globalLogger.js";
 
 vi.mock("fs/promises", () => ({
   writeFile: vi.fn().mockResolvedValue(undefined),
@@ -150,13 +151,20 @@ describe("MessageManager additional coverage", () => {
     expect(sessionService.appendMessages).not.toHaveBeenCalled();
   });
 
-  it("should handle saveSession error", async () => {
+  it("should swallow a saveSession failure after reporting it", async () => {
+    const errorSpy = vi.spyOn(logger, "error").mockImplementation(() => {});
     vi.mocked(sessionService.createSession).mockRejectedValueOnce(
       new Error("Create failed"),
     );
     messageManager.addUserMessage({ content: "hello" });
-    await messageManager.saveSession();
-    // Should not throw
+
+    await expect(messageManager.saveSession()).resolves.toBeUndefined();
+    expect(errorSpy).toHaveBeenCalledWith(
+      "Failed to create session:",
+      expect.any(Error),
+    );
+
+    errorSpy.mockRestore();
   });
 
   it("should skip saveSession when all unsaved messages are meta (lazy materialization)", async () => {

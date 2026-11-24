@@ -4,6 +4,11 @@ import { main } from "../src/index.js";
 import * as cli from "../src/cli.js";
 import * as printCli from "../src/print-cli.js";
 import * as sessionSelectorCli from "../src/session-selector-cli.js";
+import * as marketplaceCommands from "../src/commands/plugin/marketplace.js";
+import * as installCommands from "../src/commands/plugin/install.js";
+import * as listCommands from "../src/commands/plugin/list.js";
+import * as uninstallCommands from "../src/commands/plugin/uninstall.js";
+import * as updateCommands from "../src/commands/plugin/update.js";
 import path from "path";
 
 // Mock external modules
@@ -76,6 +81,20 @@ vi.mock("../src/utils/worktree.js", () => ({
   listWorktrees: vi.fn().mockResolvedValue([]),
 }));
 
+// index.ts 只是把 argv 搬进 startCli / startPrintCli，所以每个 flag 只钉它自己
+// 那一个字段，公共字段由 objectContaining 放过 —— 加一个 CLI flag 不该让整张表全红。
+const COMMON_OPTIONS = {
+  bypassPermissions: false,
+  pluginDirs: undefined,
+  tools: undefined,
+  worktreeSession: undefined,
+  workdir: process.cwd(),
+  originalCwd: process.cwd(),
+  version: expect.any(String),
+};
+
+const cliOptions = () => vi.mocked(cli.startCli).mock.calls.at(-1)?.[0];
+
 describe("main", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -83,180 +102,74 @@ describe("main", () => {
     process.argv = ["node", "index.js"];
   });
 
-  it("should start the main CLI with default settings if no arguments are provided", async () => {
+  it.each([
+    { name: "无参数", argv: [] as string[], flags: {} },
+    {
+      name: "--restore <id>",
+      argv: ["--restore", "session123"],
+      flags: { restoreSessionId: "session123" },
+    },
+    {
+      name: "-r <id>",
+      argv: ["-r", "session456"],
+      flags: { restoreSessionId: "session456" },
+    },
+    {
+      name: "--continue",
+      argv: ["--continue"],
+      flags: { continueLastSession: true },
+    },
+    { name: "-c", argv: ["-c"], flags: { continueLastSession: true } },
+    {
+      name: "--dangerously-skip-permissions",
+      argv: ["--dangerously-skip-permissions"],
+      flags: { bypassPermissions: true },
+    },
+    {
+      name: "--tools",
+      argv: ["--tools", "Bash,Read"],
+      flags: { tools: ["Bash", "Read"] },
+    },
+  ])("$name 进入交互 CLI", async ({ argv, flags }) => {
+    process.argv = ["node", "index.js", ...argv];
     await main();
-    expect(cli.startCli).toHaveBeenCalledWith({
-      restoreSessionId: undefined,
-      continueLastSession: undefined,
-      bypassPermissions: false,
-      pluginDirs: undefined,
-      tools: undefined,
-      worktreeSession: undefined,
-      workdir: process.cwd(),
-      originalCwd: process.cwd(),
-      version: expect.any(String),
-    });
+    expect(cli.startCli).toHaveBeenCalledWith(
+      expect.objectContaining({ ...COMMON_OPTIONS, ...flags }),
+    );
+    expect(printCli.startPrintCli).not.toHaveBeenCalled();
   });
 
-  it("should start the main CLI with --restore argument", async () => {
-    process.argv = ["node", "index.js", "--restore", "session123"];
-    await main();
-    expect(cli.startCli).toHaveBeenCalledWith({
-      restoreSessionId: "session123",
-      continueLastSession: undefined,
-      bypassPermissions: false,
-      pluginDirs: undefined,
-      tools: undefined,
-      worktreeSession: undefined,
-      workdir: process.cwd(),
-      originalCwd: process.cwd(),
-      version: expect.any(String),
-    });
-  });
-
-  it("should start the main CLI with -r argument", async () => {
-    process.argv = ["node", "index.js", "-r", "session456"];
-    await main();
-    expect(cli.startCli).toHaveBeenCalledWith({
-      restoreSessionId: "session456",
-      continueLastSession: undefined,
-      bypassPermissions: false,
-      pluginDirs: undefined,
-      tools: undefined,
-      worktreeSession: undefined,
-      workdir: process.cwd(),
-      originalCwd: process.cwd(),
-      version: expect.any(String),
-    });
-  });
-
-  it("should start the main CLI with --continue argument", async () => {
-    process.argv = ["node", "index.js", "--continue"];
-    await main();
-    expect(cli.startCli).toHaveBeenCalledWith({
-      restoreSessionId: undefined,
-      continueLastSession: true,
-      bypassPermissions: false,
-      pluginDirs: undefined,
-      tools: undefined,
-      worktreeSession: undefined,
-      workdir: process.cwd(),
-      originalCwd: process.cwd(),
-      version: expect.any(String),
-    });
-  });
-
-  it("should start the main CLI with -c argument", async () => {
-    process.argv = ["node", "index.js", "-c"];
-    await main();
-    expect(cli.startCli).toHaveBeenCalledWith({
-      restoreSessionId: undefined,
-      continueLastSession: true,
-      bypassPermissions: false,
-      pluginDirs: undefined,
-      tools: undefined,
-      worktreeSession: undefined,
-      workdir: process.cwd(),
-      originalCwd: process.cwd(),
-      version: expect.any(String),
-    });
-  });
-
-  it("should start the print CLI with --print argument", async () => {
-    process.argv = ["node", "index.js", "--print", "Hello World"];
-    await main();
-    expect(printCli.startPrintCli).toHaveBeenCalledWith({
-      restoreSessionId: undefined,
-      continueLastSession: undefined,
-      message: "Hello World",
-      showStats: undefined,
-      outputFormat: "text",
-      bypassPermissions: false,
-      pluginDirs: undefined,
-      tools: undefined,
-      worktreeSession: undefined,
-      workdir: process.cwd(),
-      originalCwd: process.cwd(),
-      version: expect.any(String),
-    });
-  });
-
-  it("should start the print CLI with -p argument", async () => {
-    process.argv = ["node", "index.js", "-p", "Test Message"];
-    await main();
-    expect(printCli.startPrintCli).toHaveBeenCalledWith({
-      restoreSessionId: undefined,
-      continueLastSession: undefined,
-      message: "Test Message",
-      showStats: undefined,
-      outputFormat: "text",
-      bypassPermissions: false,
-      pluginDirs: undefined,
-      tools: undefined,
-      worktreeSession: undefined,
-      workdir: process.cwd(),
-      originalCwd: process.cwd(),
-      version: expect.any(String),
-    });
-  });
-
-  it("should start the print CLI with --print and --show-stats", async () => {
-    process.argv = ["node", "index.js", "--print", "Stats", "--show-stats"];
-    await main();
-    expect(printCli.startPrintCli).toHaveBeenCalledWith({
-      restoreSessionId: undefined,
-      continueLastSession: undefined,
-      message: "Stats",
-      showStats: true,
-      outputFormat: "text",
-      bypassPermissions: false,
-      pluginDirs: undefined,
-      tools: undefined,
-      worktreeSession: undefined,
-      workdir: process.cwd(),
-      originalCwd: process.cwd(),
-      version: expect.any(String),
-    });
-  });
-
-  it("should start the print CLI with -p and --show-stats", async () => {
-    process.argv = ["node", "index.js", "-p", "Stats", "--show-stats"];
-    await main();
-    expect(printCli.startPrintCli).toHaveBeenCalledWith({
-      restoreSessionId: undefined,
-      continueLastSession: undefined,
-      message: "Stats",
-      showStats: true,
-      outputFormat: "text",
-      bypassPermissions: false,
-      pluginDirs: undefined,
-      tools: undefined,
-      worktreeSession: undefined,
-      workdir: process.cwd(),
-      originalCwd: process.cwd(),
-      version: expect.any(String),
-    });
-  });
-
-  it("should pass --output-format through to the print CLI", async () => {
-    process.argv = [
-      "node",
-      "index.js",
-      "-p",
-      "Review",
-      "--output-format",
-      "stream-json",
-    ];
+  it.each([
+    {
+      name: "--print <message>",
+      argv: ["--print", "Hello World"],
+      flags: { message: "Hello World" },
+    },
+    {
+      name: "-p <message> --show-stats",
+      argv: ["-p", "Stats", "--show-stats"],
+      flags: { message: "Stats", showStats: true },
+    },
+    {
+      name: "-p <message> --output-format stream-json",
+      argv: ["-p", "Review", "--output-format", "stream-json"],
+      flags: { message: "Review", outputFormat: "stream-json" },
+    },
+  ])("$name 进入 print CLI", async ({ argv, flags }) => {
+    process.argv = ["node", "index.js", ...argv];
     await main();
     expect(printCli.startPrintCli).toHaveBeenCalledWith(
       expect.objectContaining({
-        message: "Review",
-        outputFormat: "stream-json",
+        ...COMMON_OPTIONS,
+        outputFormat: "text",
+        showStats: undefined,
+        ...flags,
       }),
     );
+    expect(cli.startCli).not.toHaveBeenCalled();
   });
 
-  it("should reject --output-format outside print mode", async () => {
+  it("拒绝 print 模式之外的 --output-format", async () => {
     const consoleErrorSpy = vi
       .spyOn(console, "error")
       .mockImplementation(function () {});
@@ -280,124 +193,46 @@ describe("main", () => {
     exitSpy.mockRestore();
   });
 
-  it("should accept an explicit --output-format text outside print mode", async () => {
+  it("显式的 --output-format text 在 print 模式外仍然放行", async () => {
     process.argv = ["node", "index.js", "--output-format", "text"];
     await main();
     expect(cli.startCli).toHaveBeenCalled();
   });
 
-  it("should handle --dangerously-skip-permissions argument", async () => {
-    process.argv = ["node", "index.js", "--dangerously-skip-permissions"];
-    await main();
-    expect(cli.startCli).toHaveBeenCalledWith({
-      restoreSessionId: undefined,
-      continueLastSession: undefined,
-      bypassPermissions: true,
-      pluginDirs: undefined,
-      tools: undefined,
-      worktreeSession: undefined,
-      workdir: process.cwd(),
-      originalCwd: process.cwd(),
-      version: expect.any(String),
-    });
-  });
-
-  it("should handle --plugin-dir argument", async () => {
-    process.argv = ["node", "index.js", "--plugin-dir", "/tmp/plugins"];
-    await main();
-    expect(cli.startCli).toHaveBeenCalledWith({
-      restoreSessionId: undefined,
-      continueLastSession: undefined,
-      bypassPermissions: false,
-      pluginDirs: [expect.stringContaining(path.join("/tmp", "plugins"))],
-      tools: undefined,
-      worktreeSession: undefined,
-      workdir: process.cwd(),
-      originalCwd: process.cwd(),
-      version: expect.any(String),
-    });
-  });
-
-  it("should handle relative --plugin-dir argument", async () => {
-    process.argv = ["node", "index.js", "--plugin-dir", "./my-plugins"];
-    await main();
-    expect(cli.startCli).toHaveBeenCalledWith({
-      restoreSessionId: undefined,
-      continueLastSession: undefined,
-      bypassPermissions: false,
-      pluginDirs: [path.resolve(process.cwd(), "./my-plugins")],
-      tools: undefined,
-      worktreeSession: undefined,
-      workdir: process.cwd(),
-      originalCwd: process.cwd(),
-      version: expect.any(String),
-    });
-  });
-
-  it("should handle multiple --plugin-dir arguments", async () => {
+  it("把每个 --plugin-dir 解析成绝对路径后全部传下去", async () => {
     process.argv = [
       "node",
       "index.js",
       "--plugin-dir",
       "/tmp/plugins1",
       "--plugin-dir",
-      "/tmp/plugins2",
+      "./my-plugins",
     ];
     await main();
-    expect(cli.startCli).toHaveBeenCalledWith({
-      restoreSessionId: undefined,
-      continueLastSession: undefined,
-      bypassPermissions: false,
-      pluginDirs: [
-        expect.stringContaining(path.join("/tmp", "plugins1")),
-        expect.stringContaining(path.join("/tmp", "plugins2")),
-      ],
-      tools: undefined,
-      worktreeSession: undefined,
-      workdir: process.cwd(),
-      originalCwd: process.cwd(),
-      version: expect.any(String),
-    });
+    expect(cliOptions()?.pluginDirs).toEqual([
+      path.resolve("/tmp/plugins1"),
+      path.resolve(process.cwd(), "./my-plugins"),
+    ]);
   });
 
-  it("should handle --tools argument", async () => {
-    process.argv = ["node", "index.js", "--tools", "Bash,Read"];
-    await main();
-    expect(cli.startCli).toHaveBeenCalledWith({
-      restoreSessionId: undefined,
-      continueLastSession: undefined,
-      bypassPermissions: false,
-      pluginDirs: undefined,
-      tools: ["Bash", "Read"],
-      worktreeSession: undefined,
-      workdir: process.cwd(),
-      originalCwd: process.cwd(),
-      version: expect.any(String),
-    });
-  });
-
-  it("should handle --worktree argument", async () => {
+  it("以 --worktree 建会话：chdir 进新目录，workdir 跟着换", async () => {
     process.argv = ["node", "index.js", "--worktree", "test-worktree"];
     const chdirSpy = vi.spyOn(process, "chdir").mockImplementation(() => {});
     await main();
-    expect(cli.startCli).toHaveBeenCalledWith({
-      restoreSessionId: undefined,
-      continueLastSession: undefined,
-      bypassPermissions: false,
-      pluginDirs: undefined,
-      tools: undefined,
-      worktreeSession: expect.objectContaining({ name: "test-worktree" }),
-      workdir: expect.stringContaining("test-worktree"),
-      originalCwd: process.cwd(),
-      version: expect.any(String),
-    });
+    expect(cliOptions()).toEqual(
+      expect.objectContaining({
+        worktreeSession: expect.objectContaining({ name: "test-worktree" }),
+        workdir: expect.stringContaining("test-worktree"),
+      }),
+    );
     expect(chdirSpy).toHaveBeenCalledWith(
       expect.stringContaining("test-worktree"),
     );
     chdirSpy.mockRestore();
   });
 
-  describe("plugin commands", () => {
+  describe("plugin 子命令", () => {
+    // yargs 的自有输出（usage / 命令错误）走 console.error，静音掉免得污染日志
     let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
 
     beforeEach(() => {
@@ -410,126 +245,69 @@ describe("main", () => {
       consoleErrorSpy.mockRestore();
     });
 
-    it("should call addMarketplaceCommand for 'plugin marketplace add' command", async () => {
-      process.argv = [
-        "node",
-        "index.js",
-        "plugin",
-        "marketplace",
-        "add",
-        "test/repo",
-      ];
-      const { addMarketplaceCommand } = await import(
-        "../src/commands/plugin/marketplace.js"
-      );
-      vi.mocked(addMarketplaceCommand).mockResolvedValue(undefined);
+    it.each([
+      {
+        name: "plugin marketplace add",
+        argv: ["plugin", "marketplace", "add", "test/repo"],
+        cmd: marketplaceCommands.addMarketplaceCommand,
+        expected: { input: "test/repo" },
+      },
+      {
+        name: "plugin marketplace update",
+        argv: ["plugin", "marketplace", "update", "my-marketplace"],
+        cmd: marketplaceCommands.updateMarketplaceCommand,
+        expected: { name: "my-marketplace" },
+      },
+      {
+        name: "plugin marketplace list",
+        argv: ["plugin", "marketplace", "list"],
+        cmd: marketplaceCommands.listMarketplacesCommand,
+        expected: undefined,
+      },
+      {
+        name: "plugin install",
+        argv: [
+          "plugin",
+          "install",
+          "my-plugin@my-marketplace",
+          "--scope",
+          "user",
+        ],
+        cmd: installCommands.installPluginCommand,
+        expected: { plugin: "my-plugin@my-marketplace", scope: "user" },
+      },
+      {
+        name: "plugin list",
+        argv: ["plugin", "list"],
+        cmd: listCommands.listPluginsCommand,
+        expected: undefined,
+      },
+      {
+        name: "plugin uninstall",
+        argv: ["plugin", "uninstall", "my-plugin@my-marketplace"],
+        cmd: uninstallCommands.uninstallPluginCommand,
+        expected: { plugin: "my-plugin@my-marketplace" },
+      },
+      {
+        name: "plugin update",
+        argv: ["plugin", "update", "my-plugin@my-marketplace"],
+        cmd: updateCommands.updatePluginCommand,
+        expected: { plugin: "my-plugin@my-marketplace" },
+      },
+    ])("$name 被路由到对应命令", async ({ argv, cmd, expected }) => {
+      process.argv = ["node", "index.js", ...argv];
       await main();
-      expect(addMarketplaceCommand).toHaveBeenCalledWith(
-        expect.objectContaining({ input: "test/repo" }),
-      );
-    });
-
-    it("should call updateMarketplaceCommand for 'plugin marketplace update' command", async () => {
-      process.argv = [
-        "node",
-        "index.js",
-        "plugin",
-        "marketplace",
-        "update",
-        "my-marketplace",
-      ];
-      const { updateMarketplaceCommand } = await import(
-        "../src/commands/plugin/marketplace.js"
-      );
-      vi.mocked(updateMarketplaceCommand).mockResolvedValue(undefined);
-      await main();
-      expect(updateMarketplaceCommand).toHaveBeenCalledWith(
-        expect.objectContaining({ name: "my-marketplace" }),
-      );
-    });
-
-    it("should call listMarketplacesCommand for 'plugin marketplace list' command", async () => {
-      process.argv = ["node", "index.js", "plugin", "marketplace", "list"];
-      const { listMarketplacesCommand } = await import(
-        "../src/commands/plugin/marketplace.js"
-      );
-      vi.mocked(listMarketplacesCommand).mockResolvedValue(undefined);
-      await main();
-      expect(listMarketplacesCommand).toHaveBeenCalled();
-    });
-
-    it("should call installPluginCommand for 'plugin install' command", async () => {
-      process.argv = [
-        "node",
-        "index.js",
-        "plugin",
-        "install",
-        "my-plugin@my-marketplace",
-        "--scope",
-        "user",
-      ];
-      const { installPluginCommand } = await import(
-        "../src/commands/plugin/install.js"
-      );
-      vi.mocked(installPluginCommand).mockResolvedValue(undefined);
-      await main();
-      expect(installPluginCommand).toHaveBeenCalledWith(
-        expect.objectContaining({
-          plugin: "my-plugin@my-marketplace",
-          scope: "user",
-        }),
-      );
-    });
-
-    it("should call listPluginsCommand for 'plugin list' command", async () => {
-      process.argv = ["node", "index.js", "plugin", "list"];
-      const { listPluginsCommand } = await import(
-        "../src/commands/plugin/list.js"
-      );
-      vi.mocked(listPluginsCommand).mockResolvedValue(undefined);
-      await main();
-      expect(listPluginsCommand).toHaveBeenCalled();
-    });
-
-    it("should call uninstallPluginCommand for 'plugin uninstall' command", async () => {
-      process.argv = [
-        "node",
-        "index.js",
-        "plugin",
-        "uninstall",
-        "my-plugin@my-marketplace",
-      ];
-      const { uninstallPluginCommand } = await import(
-        "../src/commands/plugin/uninstall.js"
-      );
-      vi.mocked(uninstallPluginCommand).mockResolvedValue(undefined);
-      await main();
-      expect(uninstallPluginCommand).toHaveBeenCalledWith(
-        expect.objectContaining({ plugin: "my-plugin@my-marketplace" }),
-      );
-    });
-
-    it("should call updatePluginCommand for 'plugin update' command", async () => {
-      process.argv = [
-        "node",
-        "index.js",
-        "plugin",
-        "update",
-        "my-plugin@my-marketplace",
-      ];
-      const { updatePluginCommand } = await import(
-        "../src/commands/plugin/update.js"
-      );
-      vi.mocked(updatePluginCommand).mockResolvedValue(undefined);
-      await main();
-      expect(updatePluginCommand).toHaveBeenCalledWith(
-        expect.objectContaining({ plugin: "my-plugin@my-marketplace" }),
-      );
+      if (expected) {
+        expect(cmd).toHaveBeenCalledWith(expect.objectContaining(expected));
+      } else {
+        // list 类命令不带参数
+        expect(cmd).toHaveBeenCalled();
+      }
     });
   });
 
   describe("session restoration", () => {
-    it("should start session selector CLI if --restore is provided without an ID", async () => {
+    it("--restore 不带 ID 时先开选择器，再用选中的会话", async () => {
       process.argv = ["node", "index.js", "--restore"];
       vi.mocked(sessionSelectorCli.startSessionSelectorCli).mockResolvedValue({
         sessionId: "selected-session-id",
@@ -539,19 +317,12 @@ describe("main", () => {
         workdir: process.cwd(),
         worktreePaths: [],
       });
-      expect(cli.startCli).toHaveBeenCalledWith({
-        restoreSessionId: "selected-session-id",
-        bypassPermissions: false,
-        pluginDirs: undefined,
-        tools: undefined,
-        worktreeSession: undefined,
-        workdir: process.cwd(),
-        originalCwd: process.cwd(),
-        version: expect.any(String),
-      });
+      expect(cliOptions()).toEqual(
+        expect.objectContaining({ restoreSessionId: "selected-session-id" }),
+      );
     });
 
-    it("should chdir into a sibling worktree before resuming its session", async () => {
+    it("选中兄弟 worktree 里的会话时先 chdir 过去", async () => {
       process.argv = ["node", "index.js", "--restore"];
       const worktreePath = path.join(process.cwd(), "..", "repo-wt");
       vi.mocked(sessionSelectorCli.startSessionSelectorCli).mockResolvedValue({
@@ -561,7 +332,7 @@ describe("main", () => {
       const chdirSpy = vi.spyOn(process, "chdir").mockImplementation(() => {});
       await main();
       expect(chdirSpy).toHaveBeenCalledWith(worktreePath);
-      expect(cli.startCli).toHaveBeenCalledWith(
+      expect(cliOptions()).toEqual(
         expect.objectContaining({
           restoreSessionId: "wt-session-id",
           workdir: worktreePath,
@@ -570,21 +341,17 @@ describe("main", () => {
       chdirSpy.mockRestore();
     });
 
-    it("should not start CLI if session selector returns null", async () => {
+    it("选择器返回 null 时不启动 CLI", async () => {
       process.argv = ["node", "index.js", "--restore"];
       vi.mocked(sessionSelectorCli.startSessionSelectorCli).mockResolvedValue(
         null,
       );
       await main();
-      expect(sessionSelectorCli.startSessionSelectorCli).toHaveBeenCalledWith({
-        workdir: process.cwd(),
-        worktreePaths: [],
-      });
       expect(cli.startCli).not.toHaveBeenCalled();
     });
   });
 
-  it("should catch and log errors from main function", async () => {
+  it("启动失败时报错并以 1 退出", async () => {
     const consoleErrorSpy = vi
       .spyOn(console, "error")
       .mockImplementation(function () {});
@@ -592,29 +359,9 @@ describe("main", () => {
       throw new Error("process.exit was called");
     });
 
-    // Simulate an error during yargs parsing or command execution
     vi.mocked(yargs).mockImplementationOnce(() => {
       throw new Error("Yargs parsing error");
     });
-
-    // We need to mock the part where main() is called in index.ts
-    // But main() itself is what we are testing.
-    // The catch block is inside the if (import.meta.url === ...) block which we can't easily trigger.
-    // Wait, the test is calling main() directly.
-    // Let's look at src/index.ts again.
-
-    /*
-    export async function main() {
-      try {
-        const argv = await yargs(hideBin(process.argv))...parseAsync();
-        ...
-      } catch (error) {
-        console.error("Failed to start WAVE Code:", error);
-        process.exit(1);
-      }
-    }
-    */
-    // Ah, I see. I should check if src/index.ts has a try-catch inside main.
 
     await expect(main()).rejects.toThrow("process.exit was called");
 

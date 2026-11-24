@@ -1,8 +1,8 @@
 /**
- * LiveConfigManager Validation Tests
+ * LiveConfigManager 如何消费 ConfigurationService 的加载结果。
  *
- * These tests verify that LiveConfigManager correctly validates configuration,
- * specifically the permissionMode property.
+ * 校验本身（哪个 permissionMode 合法）在 ConfigurationService 里，这里被 mock
+ * 掉了 —— 所以这些用例只钉「成功就用返回的配置、失败就回落空配置并记日志」。
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
@@ -93,7 +93,7 @@ describe("LiveConfigManager - Validation", () => {
     vi.resetAllMocks();
   });
 
-  describe("permissionMode validation", () => {
+  describe("loadMergedConfiguration 的结果怎么落到当前配置", () => {
     const testValidation = async (
       permissionMode: unknown,
       expectedValid: boolean,
@@ -137,32 +137,14 @@ describe("LiveConfigManager - Validation", () => {
       }
     };
 
-    it('should accept "default" as a valid permissionMode', async () => {
-      await testValidation("default", true);
-    });
-
-    it('should accept "bypassPermissions" as a valid permissionMode', async () => {
-      await testValidation("bypassPermissions", true);
-    });
-
-    it('should accept "acceptEdits" as a valid permissionMode', async () => {
-      await testValidation("acceptEdits", true);
-    });
-
-    it('should accept "plan" as a valid permissionMode', async () => {
+    // 每个合法值都只走「成功 → 用返回的配置」这一条分支，取一个代表即可；
+    // 值到底合不合法是 ConfigurationService 的判定，那边没被 mock 掉时才有意义。
+    it("成功时用 loadMergedConfiguration 返回的配置", async () => {
       await testValidation("plan", true);
     });
 
-    it("should reject invalid permissionMode values", async () => {
+    it("失败时回落到空配置并记下失败原因", async () => {
       await testValidation("invalidMode", false);
-    });
-
-    it("should reject numeric permissionMode values", async () => {
-      await testValidation(123, false);
-    });
-
-    it("should reject boolean permissionMode values", async () => {
-      await testValidation(true, false);
     });
   });
 });

@@ -103,30 +103,18 @@ describe("BackgroundTaskManager - Message Queue", () => {
     expect(messageQueue.hasNotifications()).toBe(false);
   });
 
-  it("should not enqueue notification when MessageQueue is not available", () => {
-    const noNotifyContainer = new Container();
-    const noNotifyManager = new BackgroundTaskManager(noNotifyContainer, {
-      workdir: "/test/workdir",
-    });
-
-    // Should not throw
-    noNotifyManager.startShell("echo test");
-  });
-
-  it("should handle task completion without MessageQueue", () => {
+  it("should run and complete a shell task when MessageQueue is not available", () => {
     const noNotifyContainer = new Container();
     const noNotifyManager = new BackgroundTaskManager(noNotifyContainer, {
       workdir: "/test/workdir",
     });
 
     noNotifyManager.startShell("echo test");
+    expect(noNotifyManager.getAllTasks()).toHaveLength(1);
 
-    // Simulate task exit - should not throw
-    const exitHandler = handlers.get("exit");
-    exitHandler?.(0);
+    handlers.get("exit")?.(0);
 
-    const tasks = noNotifyManager.getAllTasks();
-    expect(tasks[0].status).toBe("completed");
+    expect(noNotifyManager.getAllTasks()[0].status).toBe("completed");
   });
 
   it("should handle task error without MessageQueue", () => {
