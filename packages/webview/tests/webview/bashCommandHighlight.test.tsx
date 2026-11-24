@@ -71,8 +71,10 @@ describe("bash command syntax highlighting", () => {
       stage: "running",
     });
 
-    // 无输出形态：只有命令块，没有统一的输入/输出外框
-    expect(container.querySelector(".bash-command-unified")).toBeNull();
+    // 无输出形态：同一张卡片、只是缺下半截——外壳必须在，输出区不在。
+    // 外壳承担桌面端的卡片配色与内边距，裸输入行会在输出到达那一刻换底色。
+    expect(container.querySelector(".bash-command-unified")).not.toBeNull();
+    expect(container.querySelector(".bash-command-output")).toBeNull();
     expect(input?.textContent).toBe(command);
     expect(tokens().length).toBeGreaterThan(0);
   });
