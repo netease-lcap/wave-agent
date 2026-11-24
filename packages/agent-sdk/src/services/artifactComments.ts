@@ -285,8 +285,7 @@ export async function fetchComments(
   // `nextCursor` to an incremental caller would silently skip rows, so the
   // tail is the incremental cursor and nothing else. An older server sent
   // neither consistently; the caller then falls back to the head it saw before
-  // the read (see PageWatchManager — at worst it re-reads a row, never loses
-  // one).
+  // the read (at worst it re-reads a row, never loses one).
   const tailCursor = str(data.cursor).trim() || undefined;
 
   return {

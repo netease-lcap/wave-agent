@@ -7,7 +7,6 @@ import { McpManager } from "./managers/mcpManager.js";
 import { LspManager } from "./managers/lspManager.js";
 import { BashModeManager } from "./managers/bashModeManager.js";
 import { CronManager } from "./managers/cronManager.js";
-import { PageWatchManager } from "./managers/pageWatchManager.js";
 import { BackgroundTaskManager } from "./managers/backgroundTaskManager.js";
 import { ShellProcessReaper } from "./managers/shellProcessReaper.js";
 import { MessageQueue, type QueuedMessage } from "./managers/messageQueue.js";
@@ -173,7 +172,6 @@ export class Agent {
   private modManager: ModManager;
   private skillManager: SkillManager; // Add skill manager instance
   private cronManager: CronManager; // Add cron manager instance
-  private pageWatchManager: PageWatchManager; // Artifact comment stream watcher (per-agent)
   private hookManager: HookManager; // Add hooks manager instance
   private reversionManager: ReversionManager;
   private messageQueue: MessageQueue; // Unified queue for messages, bang commands, and notifications
@@ -965,7 +963,6 @@ export class Agent {
     this.modManager = this.container.get("ModManager")!;
     this.bashModeManager = this.container.get("BashModeManager")!;
     this.cronManager = this.container.get("CronManager")!;
-    this.pageWatchManager = this.container.get("PageWatchManager")!;
     this.messageQueue = this.container.get("MessageQueue")!;
     this.asyncWorkRegistry = this.container.get("AsyncWorkRegistry")!;
 
@@ -2230,9 +2227,6 @@ export class Agent {
     this.abortBashCommand();
     this.abortSlashCommand();
     this.cronManager.stop();
-    // Abort every comment stream: the streams hold process handles, and the
-    // server treats a closed connection as the unsubscribe.
-    this.pageWatchManager.stop();
     // Cleanup background task manager
     this.backgroundTaskManager.cleanup();
     // 会话销毁即回收：shell 退出时只入账、不动手（`nohup npm run dev &` 是正当

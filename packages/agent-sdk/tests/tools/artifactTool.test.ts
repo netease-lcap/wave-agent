@@ -175,8 +175,6 @@ describe("artifactTool", () => {
           "comments",
           "reply",
           "resolve",
-          "watch",
-          "unwatch",
         ]),
       );
       expect(properties.prompt).toBeDefined();
@@ -377,9 +375,6 @@ describe("artifactTool", () => {
       expect(result.content).toContain(
         "You cannot change sharing; that is done from the page's Share menu.",
       );
-      // Watching is opt-in (publish never auto-subscribes), so the result has
-      // to tell the model how to ask for comment notifications.
-      expect(result.content).toContain('use action "watch"');
       expect(result.shortResult).toBe(
         "Published doc.md → https://server.test/code/artifact/abc",
       );

@@ -4,7 +4,6 @@ import * as sessionService from "@/services/session.js";
 import { createMockToolManager } from "../helpers/mockFactories.js";
 import * as fs from "fs/promises";
 import { taskNotificationToXml } from "@/utils/notificationXml.js";
-import { pageCommentEventToXml } from "@/utils/pageCommentEventXml.js";
 
 // Mock dependencies
 vi.mock("@/services/aiService", () => ({
@@ -202,63 +201,6 @@ describe("Agent additional coverage", () => {
           );
         },
         { timeout: 5000 },
-      );
-
-      await agent2.destroy();
-    });
-
-    it("wakes an idle agent on a page-comment event, as hidden user text", async () => {
-      // The comment event is a signal, not a task: it has no taskId and no
-      // terminal state, so it must not be dressed up as a task notification.
-      // It reaches the model as a meta user message (UI hides it, the model
-      // sees it, the transcript keeps it) and starts a turn on its own.
-      const agent2 = await Agent.create({
-        apiKey: "test-key",
-        workdir: "/tmp/test-coverage-page-comment",
-      });
-
-      const messageQueue = (
-        agent2 as unknown as {
-          messageQueue: { enqueueNotification: (xml: string) => void };
-        }
-      ).messageQueue;
-
-      const xml = pageCommentEventToXml({
-        url: "https://server.test/code/artifact/abc",
-        slug: "abc",
-        count: 1,
-        threadIds: ["t1"],
-      });
-      messageQueue.enqueueNotification(xml);
-
-      await vi.waitFor(
-        () => {
-          // 只数这条事件落地的那条：同一轮里还会有其它 `isMeta` 的用户消息
-          // （子代理清单之类的注入），它们不是这次唤醒的产物。
-          const meta = agent2.messages.filter(
-            (message) =>
-              message.role === "user" &&
-              message.isMeta &&
-              message.blocks.some(
-                (block) =>
-                  block.type === "text" &&
-                  block.content.includes("<page-comment-event>"),
-              ),
-          );
-          expect(meta).toHaveLength(1);
-          const text = meta[0].blocks
-            .map((block) => (block.type === "text" ? block.content : ""))
-            .join("\n");
-          expect(text).toContain("<slug>abc</slug>");
-          // No comment text, and no task-notification wording.
-          expect(text).not.toContain("task-notification");
-        },
-        { timeout: 5000 },
-      );
-
-      const blocks = agent2.messages.flatMap((message) => message.blocks ?? []);
-      expect(blocks.some((block) => block.type === "task_notification")).toBe(
-        false,
       );
 
       await agent2.destroy();

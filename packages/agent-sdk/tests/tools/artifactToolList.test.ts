@@ -125,9 +125,6 @@ describe("artifactTool list action", () => {
         "comments",
         "reply",
         "resolve",
-        "watch",
-        "unwatch",
-        "status",
       ]);
     });
 
@@ -170,8 +167,6 @@ describe("artifactTool list action", () => {
       expect(
         compact({ action: "resolve", url, thread_id: "t1", resolved: false }),
       ).toBe(`reopen t1 on ${url}`);
-      expect(compact({ action: "watch", url })).toBe(`watch ${url}`);
-      expect(compact({ action: "unwatch", url })).toBe(`unwatch ${url}`);
       expect(compact({ file_path: "a.md", url })).toBe(`a.md → ${url}`);
     });
   });
