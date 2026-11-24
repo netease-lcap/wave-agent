@@ -796,18 +796,13 @@ button.reasoning-header {
    （一段脚本常有几十行，120px 只够看开头），返回值单独占一行、带一枚 `=>`
    前缀好和 `self.log` 的输出分开。 */
 .repl-block .bash-command-input {
-  max-height: 320px;
-  overflow-x: auto;
+  max-height: 240px;
 }
 
-/* 脚本是代码：长行横滚，不折行（与消息里的围栏代码块同形）。Bash 那套
-   `pre-wrap` 对「一条命令偶尔超长」是对的，但一段代码每行都可能超宽，折行会把
-   40 行脚本变成 80+ 视觉行、把纵向的上限耗光。输出区不跟：终端输出折行才是对的。 */
-.repl-block .bash-command {
-  flex: 1 0 auto;
-  white-space: pre;
-  word-break: normal;
-}
+/* 脚本长行照 Bash 那条折行（`pre-wrap` + `word-break: break-word`），不另立横滚：
+   模型写的脚本常常整段就是一行（`A(); B(); C();` 全塞在一行里），横滚等于让用户
+   一路横向拖。折行后超宽行按宽度软折，纵向由上面 240px 上限 + 滚动兜住（仍是
+   Bash 命令区 120px 的两倍，一段脚本几十行时多看十来行）。 */
 
 .repl-result {
   margin-top: 2px;
