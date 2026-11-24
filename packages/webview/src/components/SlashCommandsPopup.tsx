@@ -163,9 +163,12 @@ export const SlashCommandsPopup: React.FC<SlashCommandsPopupProps> = ({
 
   // 弹层关掉时必须清掉它：DOM 一卸载，`mouseleave` 就没机会补发，残留一个非空的
   // `hoveredId` 会让下次打开时选中项的气泡被「有项被悬停」这条规则压住。
-  useEffect(() => {
+  // 清在 render 期（isVisible 翻转的同一帧）：不必等一次 effect 提交。
+  const [wasVisible, setWasVisible] = useState(isVisible);
+  if (wasVisible !== isVisible) {
+    setWasVisible(isVisible);
     if (!isVisible) setHoveredId(null);
-  }, [isVisible]);
+  }
 
   // Handle clicks outside to close popup (listener registered one tick later
   // inside useClickOutside, so a mousedown that opens a nested popup — e.g.

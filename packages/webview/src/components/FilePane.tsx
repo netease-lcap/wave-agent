@@ -626,19 +626,49 @@ export const FilePane: React.FC<FilePaneProps> = ({
 
   // Opening a file keeps the tree honest without a click: its ancestors are
   // expanded (and listed) so the row shows up selected (scenario 6's first half).
+  //
+  // 展开只对**每一份新打开的 path** 做一次（树重新显示时也重来一次，与原来按
+  // `treeVisible` 依赖重跑等价）：之后用户手动收起其中一层必须生效，所以每帧
+  // 都把祖先并进 `expanded` 是不行的（那会让祖先收不起来）。用「已经为哪份
+  // path 展开过」的标记在渲染期做这一次调整（React 的「props 变了就调整自己的
+  // state」），比 effect 早一帧。
+  const openedPath = fileView?.path;
+  const revealTarget =
+    openedPath && treeRoot && treeVisible && isUnder(openedPath, treeRoot)
+      ? { path: openedPath, root: treeRoot }
+      : null;
+  const [revealApplied, setRevealApplied] = useState<{
+    path: string;
+    root: string;
+  } | null>(null);
+  // 标记为 null（没打开文件 / 树没显示 / 文件在树外）时清空，所以树重新显示、
+  // 同一份文件再次进入视野时也会重来一次 —— 与原来依赖 `treeVisible` 重跑等价。
+  if (
+    revealTarget === null
+      ? revealApplied !== null
+      : !revealApplied ||
+        revealApplied.path !== revealTarget.path ||
+        revealApplied.root !== revealTarget.root
+  ) {
+    setRevealApplied(revealTarget);
+    if (revealTarget) {
+      const ancestors = ancestorsWithin(revealTarget.path, revealTarget.root);
+      setExpanded((prev) => {
+        const missing = ancestors.filter((d) => !prev.has(d));
+        if (missing.length === 0) return prev;
+        const next = new Set(prev);
+        for (const dir of ancestors) next.add(dir);
+        return next;
+      });
+    }
+  }
+
+  /** 祖先目录要列出来才有内容可展开（列表请求与展开分开：前者是外部系统同步）。 */
   useEffect(() => {
     const path = fileView?.path;
     if (!path || !treeRoot || !treeVisible) return;
     if (!isUnder(path, treeRoot)) return;
-    const ancestors = ancestorsWithin(path, treeRoot);
-    setExpanded((prev) => {
-      const missing = ancestors.filter((d) => !prev.has(d));
-      if (missing.length === 0) return prev;
-      const next = new Set(prev);
-      for (const dir of ancestors) next.add(dir);
-      return next;
-    });
-    for (const dir of ancestors) requestDir(dir);
+    for (const dir of ancestorsWithin(path, treeRoot)) requestDir(dir);
   }, [fileView?.path, treeRoot, treeVisible, requestDir]);
 
   // Splitter drag: local mirror while dragging, persisted on release. Dragging
@@ -949,12 +979,15 @@ export const FilePane: React.FC<FilePaneProps> = ({
     findInputRef.current?.select();
   }, [find.open]);
 
-  // 换文件 / 换标签时重新计数，高亮不残留（场景 9）。
-  useEffect(() => {
+  // 换文件 / 换标签时重新计数，高亮不残留（场景 9）。在读到新 path 的那一次
+  // 渲染里就复位，省掉「先画一帧旧计数、再把 effect 跑一遍」的中间态。
+  const [findSourcePath, setFindSourcePath] = useState(fileView?.path);
+  if (findSourcePath !== fileView?.path) {
+    setFindSourcePath(fileView?.path);
     setFind((prev) => (prev.open ? { ...prev, current: 1 } : prev));
     setGotoValue("");
     setGotoError(undefined);
-  }, [fileView?.path]);
+  }
 
   const handleGoto = useCallback(() => {
     const total = contentLines?.length ?? 0;
@@ -1185,12 +1218,30 @@ export const FilePane: React.FC<FilePaneProps> = ({
 
   // A different file — or a fresh read of the same one — invalidates both the
   // open box and its draft: the line it pointed at may no longer be there
-  // (spec「文件面板行评论」场景 5). Same for the markdown block anchor.
-  useEffect(() => {
-    closeComment();
-    closeMdComment();
+  // (spec「文件面板行评论」场景 5). Same for the markdown block anchor. Reset in the
+  // render pass that sees the new content, so no frame shows the stale box.
+  const [commentSource, setCommentSource] = useState({
+    path: fileView?.path,
+    content: fileView?.content,
+  });
+  if (
+    commentSource.path !== fileView?.path ||
+    commentSource.content !== fileView?.content
+  ) {
+    setCommentSource({ path: fileView?.path, content: fileView?.content });
+    setCommentRange(null);
+    setCommentDraft("");
+    setMdComment(null);
     setMdHover(null);
-  }, [fileView?.path, fileView?.content, closeComment, closeMdComment]);
+  }
+
+  // The holder is spliced into the document by hand, so React dropping the portal
+  // does not take it out: detach it whenever the box goes away.
+  useEffect(() => {
+    if (mdComment) return;
+    mdHolderRef.current?.remove();
+    mdHolderRef.current = null;
+  }, [mdComment]);
 
   /**
    * Track which block the pointer is over. The outermost commentable block

@@ -38,8 +38,17 @@ export const SessionListPopup: React.FC<SessionListPopupProps> = ({
   sessionStatus,
 }) => {
   const [query, setQuery] = useState("");
-  // Keyboard selection index into the filtered list; 0 = first item.
-  const [selectedIndex, setSelectedIndex] = useState(0);
+  // Keyboard selection index into the filtered list, remembered together with
+  // the (query, list) it was made on: a new query or a fresh list starts over at
+  // the first match by derivation, instead of resetting the index in an effect
+  // (which painted the old index on the new list for a frame).
+  const [nav, setNav] = useState<{
+    index: number;
+    query: string;
+    sessions: SessionMetadata[];
+  } | null>(null);
+  const selectedIndex =
+    nav && nav.query === query && nav.sessions === sessions ? nav.index : 0;
   const inputRef = useRef<HTMLInputElement>(null);
   const popupRef = useRef<HTMLDivElement>(null);
 
@@ -71,12 +80,6 @@ export const SessionListPopup: React.FC<SessionListPopupProps> = ({
     );
   }, [sessions, query]);
 
-  // A new query or session list resets the keyboard selection to the first
-  // match, and the index is clamped so Enter always picks a real item.
-  useEffect(() => {
-    setSelectedIndex(0);
-  }, [query, sessions]);
-
   const handleSelect = (sessionId: string) => {
     onSessionSelect(sessionId);
     onClose();
@@ -86,11 +89,15 @@ export const SessionListPopup: React.FC<SessionListPopupProps> = ({
     if (e.key === "ArrowDown") {
       e.preventDefault();
       if (filteredSessions.length > 0) {
-        setSelectedIndex((i) => Math.min(i + 1, filteredSessions.length - 1));
+        setNav({
+          index: Math.min(selectedIndex + 1, filteredSessions.length - 1),
+          query,
+          sessions,
+        });
       }
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
-      setSelectedIndex((i) => Math.max(i - 1, 0));
+      setNav({ index: Math.max(selectedIndex - 1, 0), query, sessions });
     } else if (e.key === "Enter") {
       e.preventDefault();
       const session = filteredSessions[selectedIndex];
@@ -123,7 +130,8 @@ export const SessionListPopup: React.FC<SessionListPopupProps> = ({
           value={query}
           onChange={(e) => {
             setQuery(e.target.value);
-            setSelectedIndex(0);
+            // 换关键词先把「上一份结果上的选中」丢掉（派生值随即回到第一条）。
+            setNav(null);
           }}
           onKeyDown={handleSearchKeyDown}
         />

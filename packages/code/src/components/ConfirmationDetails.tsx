@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import { Box, Text, useInput } from "ink";
 import { useTerminalSize } from "../contexts/useTerminalSize.js";
 import {
@@ -178,10 +178,19 @@ export const ConfirmationDetails: React.FC<ConfirmationDetailsProps> = ({
   const [contentRows, setContentRows] = useState(0);
   const [scrollOffset, setScrollOffset] = useState(0);
 
-  // Reset scrolling when a new confirmation appears.
-  useEffect(() => {
+  // Reset scrolling when a new confirmation appears. The identity of what is
+  // shown is compared during render (same `Object.is` an effect's dependency
+  // list would do) so the first frame of the new confirmation is already at the
+  // top — an effect would commit that frame scrolled to the old offset.
+  const [shown, setShown] = useState({ toolName, toolInput, planContent });
+  if (
+    shown.toolName !== toolName ||
+    shown.toolInput !== toolInput ||
+    shown.planContent !== planContent
+  ) {
+    setShown({ toolName, toolInput, planContent });
     setScrollOffset(0);
-  }, [toolName, toolInput, planContent]);
+  }
 
   const maxScroll = Math.max(0, contentRows - visibleCount);
 

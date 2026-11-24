@@ -20,7 +20,9 @@ export const QueuedMessageList: React.FC<QueuedMessageListProps> = ({
   editingQueuedId,
 }) => {
   const listRef = useRef<HTMLDivElement>(null);
-  const [showScrim, setShowScrim] = useState(false);
+  // 量出来的「列表还能往下滚」。收起时列表高度归零（没有可滚动内容），压条由
+  // 下面的 showScrim 派生收掉——不必在 effect 里把状态清成 false。
+  const [overflowScrim, setOverflowScrim] = useState(false);
   // 指针是否停在操作按钮组上：用于暂时压掉「整条 hover 显示完整文案」的那条提示，
   // 否则悬停按钮会同时冒出文案提示 + 按钮提示两条（设计师 0917：hover 要有提示说明
   // 这个按钮是做什么的）。仅桌面端参与（插件端不加按钮提示）。
@@ -67,14 +69,11 @@ export const QueuedMessageList: React.FC<QueuedMessageListProps> = ({
 
   // Show bottom scrim only when expanded and the list overflows / can scroll.
   useEffect(() => {
-    if (isCollapsed) {
-      setShowScrim(false);
-      return;
-    }
+    if (isCollapsed) return;
     const el = listRef.current;
     if (!el) return;
     const update = () => {
-      setShowScrim(
+      setOverflowScrim(
         el.scrollHeight > el.clientHeight &&
           el.scrollTop + el.clientHeight < el.scrollHeight - 1,
       );
@@ -83,6 +82,9 @@ export const QueuedMessageList: React.FC<QueuedMessageListProps> = ({
     el.addEventListener("scroll", update);
     return () => el.removeEventListener("scroll", update);
   }, [isCollapsed, queuedMessages]);
+
+  // 压条只在展开、且列表确实还能往下滚时画。
+  const showScrim = !isCollapsed && overflowScrim;
 
   if (queuedMessages.length === 0) {
     return null;

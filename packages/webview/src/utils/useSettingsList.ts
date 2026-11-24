@@ -46,10 +46,17 @@ export function useSettingsList<TList, TItem>(
   latest.current = options;
   const { fetchKey } = options;
 
-  useEffect(() => {
-    // fetchKey 变化（切来源 Tab）时顺手收起未确认的删除框
-    setPendingDelete(null);
+  // fetchKey 变化（切来源 Tab）= 换一份列表：重新置 loading 并收起未确认的删除框。
+  // 两处复位都在 render 期做（与 props 变化的同一帧），effect 里只剩「发请求」这个
+  // 外部动作——既不会多一次「先画旧列表、再进 loading」的提交，也不丢语义。
+  const [loadedFor, setLoadedFor] = useState(fetchKey);
+  if (loadedFor !== fetchKey) {
+    setLoadedFor(fetchKey);
     setLoading(true);
+    setPendingDelete(null);
+  }
+
+  useEffect(() => {
     latest.current.fetchRequest();
   }, [fetchKey]);
 

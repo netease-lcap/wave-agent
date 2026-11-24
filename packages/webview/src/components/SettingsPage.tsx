@@ -373,10 +373,13 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
 
   // 插件端标签页场景：设置页常驻挂载，/agents、/skills 再次唤起时 host 通过
   // settingsState 下发新的 nav，此处同步选中项（desktop 每次打开会重挂载，
-  // 初始值已覆盖，本 effect 为幂等）。
-  useEffect(() => {
+  // 初始值已覆盖，本同步为幂等）。同步在 render 期做：不留「先画上一个 tab、
+  // 下一帧才切过去」的中间帧。
+  const [syncedNav, setSyncedNav] = useState(initialNav);
+  if (initialNav !== syncedNav) {
+    setSyncedNav(initialNav);
     if (initialNav) setActiveNav(initialNav);
-  }, [initialNav]);
+  }
 
   // 用户偏好草稿（configurationData 回填后同步）。`""` = 未设置（settings.json
   // 里没有该键）——此时控件显示系统默认（占位符 /「未设置（默认：中文）」项），
@@ -403,17 +406,24 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
   // 前提。三处用法都必须过这个判据——渲染、进视图拉候选、提交载荷——否则会出现
   // 「看不见的行也在写键」。
   const completionsSupported = !isDesktopHost() && !isRemotePageHost();
-  // 主题偏好（仅桌面端有值）：选择即生效（onThemeChange 已即时上送 host），
-  // 此处本地 state 保持选中态直到 host 广播 desktopThemeSource 回写。
-  const [theme, setTheme] = useState<ThemeSource>(themeSource ?? "system");
-  // 更新通道（仅桌面端有值）：切换即生效（onUpdateChannelChange 已即时上送
-  // host），此处本地 state 保持选中态直到 host 广播 desktopUpdateChannel 回写。
-  const [channel, setChannel] = useState<UpdateChannel>(
-    updateChannel ?? "stable",
-  );
+  // 主题偏好（仅桌面端有值）：选择即生效（onThemeChange 已即时上送 host）。
+  // 这里只存**用户的改动**，显示值在 render 期取「改动 ?? host 当前值」——host
+  // 广播 desktopThemeSource 回同一个值时无需任何同步动作。
+  const [draftTheme, setDraftTheme] = useState<ThemeSource | null>(null);
+  const theme = draftTheme ?? themeSource ?? "system";
+  // 更新通道（仅桌面端有值）：同上，见 desktopUpdateChannel 广播。
+  const [draftChannel, setDraftChannel] = useState<UpdateChannel | null>(null);
+  const channel = draftChannel ?? updateChannel ?? "stable";
 
-  // 项目设置（SDD 开关）：切换中标记，防止重复请求
-  const [pluginToggling, setPluginToggling] = useState(false);
+  // 项目设置（SDD 开关）切换中标记：记下点击那一刻的 projectSettings 快照，
+  // 「切换中」= 快照仍是当前这一份。host 回发新的 projectSettings（对象身份变化）
+  // 就是切换结果到达，禁用随之解除——不需要任何同步用的 effect。快照同时防重复
+  // 请求（置灰点不动）。
+  const [toggleBase, setToggleBase] = useState<{
+    settings: SettingsPageProps["projectSettings"];
+  } | null>(null);
+  const pluginToggling =
+    toggleBase !== null && toggleBase.settings === projectSettings;
 
   // AGENTS.md 编辑器（三档各一份草稿：切 tab 只换绑定，不触发保存）
   const [activeScope, setActiveScope] = useState<AgentsScope>("user");
@@ -603,16 +613,6 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
     committedValuesRef.current.clear();
     hydrateDrafts(configurationData, true);
   }, [configurationError, configurationData, hydrateDrafts]);
-
-  // 窗口级广播 desktopThemeSource 同步主题选中态（启动时 host 推一次 + 用户切换时）
-  useEffect(() => {
-    if (themeSource) setTheme(themeSource);
-  }, [themeSource]);
-
-  // 窗口级广播 desktopUpdateChannel 同步开关选中态（同上）
-  useEffect(() => {
-    if (updateChannel) setChannel(updateChannel);
-  }, [updateChannel]);
 
   // AGENTS.md 内容回填后同步 textarea 草稿。
   //
@@ -905,14 +905,9 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
 
   const handleToggleSdd = () => {
     if (!onToggleBuiltinPlugin || pluginToggling) return;
-    setPluginToggling(true);
+    setToggleBase({ settings: projectSettings });
     onToggleBuiltinPlugin("sdd@builtin", !sddEnabled);
   };
-
-  // 切换结果（projectSettings 消息）到达后解除禁用
-  useEffect(() => {
-    setPluginToggling(false);
-  }, [projectSettings]);
 
   // 返回按钮：mac 真机位于窗口让位行下方单独一行；其余宿主保持左导航首行原布局。
   const backButton = (
@@ -1239,7 +1234,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                             options={THEME_OPTIONS}
                             onChange={(next) => {
                               const source = next as ThemeSource;
-                              setTheme(source);
+                              setDraftTheme(source);
                               onThemeChange?.(source);
                             }}
                           />
@@ -1270,7 +1265,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                               const next: UpdateChannel = e.target.checked
                                 ? "beta"
                                 : "stable";
-                              setChannel(next);
+                              setDraftChannel(next);
                               onUpdateChannelChange?.(next);
                             }}
                           />

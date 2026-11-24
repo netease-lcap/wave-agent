@@ -11,6 +11,96 @@ import {
   PluginManagerContextType,
 } from "../components/PluginManagerTypes.js";
 
+/** 列表落地后的状态迁移。挂载路径与事件路径共用这一份，两处只负责发起。 */
+const listsSettled = (prev: PluginManagerState): PluginManagerState => ({
+  ...prev,
+  isLoading: false,
+});
+
+const listsFailed = (
+  prev: PluginManagerState,
+  error: unknown,
+): PluginManagerState => ({
+  ...prev,
+  isLoading: false,
+  error: error instanceof Error ? error.message : String(error),
+});
+
+type DiscoverablePlugin = MarketplacePluginEntry & {
+  marketplace: string;
+  installed: boolean;
+  version?: string;
+};
+
+type ListsSnapshot = {
+  marketplaces: KnownMarketplace[];
+  installed: (InstalledPlugin & { enabled: boolean })[];
+  discoverable: DiscoverablePlugin[];
+};
+
+/** 读三份列表（市场清单 / 已安装 / 可发现）。**纯数据**：不碰 state —— 落地交给
+ *  `applyLists`。这样挂载那次可以在异步续体里落地，不必在 effect 同步段写 state。 */
+async function readLists(pluginCore: PluginCore): Promise<ListsSnapshot> {
+  const [mks, installed, enabledMap] = await Promise.all([
+    pluginCore.listMarketplaces(),
+    pluginCore.getInstalledPlugins(),
+    Promise.resolve(pluginCore.getMergedEnabledPlugins()),
+  ]);
+
+  // 同一插件在本机可能有多条安装记录（各作用域/各项目一条，spec plugin A-015）；
+  // 「已安装」列表按插件去重，否则同一个插件会重复成行。
+  const listedPlugins = new Set<string>();
+  const allInstalledWithEnabled = installed.plugins
+    .filter((p) => {
+      const pluginId = `${p.name}@${p.marketplace}`;
+      if (listedPlugins.has(pluginId)) return false;
+      listedPlugins.add(pluginId);
+      return true;
+    })
+    .map((p) => {
+      const pluginId = `${p.name}@${p.marketplace}`;
+      return {
+        ...p,
+        enabled: !!enabledMap[pluginId],
+        scope: pluginCore.findPluginScope(pluginId) || undefined,
+      };
+    });
+
+  const allDiscoverable: DiscoverablePlugin[] = [];
+  for (const mk of mks) {
+    try {
+      const manifest = await pluginCore.loadMarketplaceManifest(
+        pluginCore.getMarketplacePath(mk),
+      );
+      manifest.plugins.forEach((p) => {
+        const pluginId = `${p.name}@${mk.name}`;
+        const isInstalled = installed.plugins.find(
+          (ip) => ip.name === p.name && ip.marketplace === mk.name,
+        );
+        const isEnabled = !!enabledMap[pluginId];
+
+        // Show in Discover if not installed OR if installed but not enabled in current scope
+        if (!isInstalled || !isEnabled) {
+          allDiscoverable.push({
+            ...p,
+            marketplace: mk.name,
+            installed: !!isInstalled,
+          });
+        }
+      });
+    } catch {
+      // Skip marketplaces that fail to load
+    }
+  }
+
+  return {
+    marketplaces: mks,
+    // Only show enabled plugins in the "Installed" view
+    installed: allInstalledWithEnabled.filter((p) => p.enabled),
+    discoverable: allDiscoverable,
+  };
+}
+
 export function usePluginManager(options?: {
   /**
    * 插件变更落盘后的回调：宿主据此置「待应用」信号并提示一次，**不重建会话**
@@ -28,7 +118,12 @@ export function usePluginManager(options?: {
   });
 
   const [marketplaces, setMarketplaces] = useState<KnownMarketplace[]>([]);
-  const [checkingForUpdates, setCheckingForUpdates] = useState(false);
+  // 打开插件管理器时的后台刷新是否还在跑。初值就是 `true`：那段刷新在挂载时
+  // 必然开始（下面那个 effect 的依赖 `pluginCore` / `loadLists` 都是稳定引用，
+  // 一个实例只跑一次），所以不必在 effect 里再 set 一次 —— 那会先提交一帧
+  // 「没在检查」。它是**独立的一轴**，并不进 `state.isLoading`：列表加载与后台
+  // 刷新是并行的两条，混成一档会让界面在刷新期间被当成「还没加载完」。
+  const [checkingForUpdates, setCheckingForUpdates] = useState(true);
   const [installedPlugins, setInstalledPlugins] = useState<
     (InstalledPlugin & { enabled: boolean })[]
   >([]);
@@ -68,98 +163,67 @@ export function usePluginManager(options?: {
     [setState],
   );
 
-  /** 读取市场清单 + 已安装插件 + 可发现插件（不碰 isLoading，供后台刷新后重读）。 */
+  /** 把读到的三份列表落地。 */
+  const applyLists = useCallback((snapshot: ListsSnapshot) => {
+    setMarketplaces(snapshot.marketplaces);
+    setInstalledPlugins(snapshot.installed);
+    setDiscoverablePlugins(snapshot.discoverable);
+  }, []);
+
+  /** 读取并落地三份列表（不碰 isLoading，供后台刷新后重读）。 */
   const loadLists = useCallback(async () => {
-    const [mks, installed, enabledMap] = await Promise.all([
-      pluginCore.listMarketplaces(),
-      pluginCore.getInstalledPlugins(),
-      Promise.resolve(pluginCore.getMergedEnabledPlugins()),
-    ]);
+    applyLists(await readLists(pluginCore));
+  }, [applyLists, pluginCore]);
 
-    setMarketplaces(mks);
-    // 同一插件在本机可能有多条安装记录（各作用域/各项目一条，spec plugin A-015）；
-    // 「已安装」列表按插件去重，否则同一个插件会重复成行。
-    const listedPlugins = new Set<string>();
-    const allInstalledWithEnabled = installed.plugins
-      .filter((p) => {
-        const pluginId = `${p.name}@${p.marketplace}`;
-        if (listedPlugins.has(pluginId)) return false;
-        listedPlugins.add(pluginId);
-        return true;
-      })
-      .map((p) => {
-        const pluginId = `${p.name}@${p.marketplace}`;
-        return {
-          ...p,
-          enabled: !!enabledMap[pluginId],
-          scope: pluginCore.findPluginScope(pluginId) || undefined,
-        };
-      });
-
-    // Only show enabled plugins in the "Installed" view
-    setInstalledPlugins(allInstalledWithEnabled.filter((p) => p.enabled));
-
-    const allDiscoverable: (MarketplacePluginEntry & {
-      marketplace: string;
-      installed: boolean;
-      version?: string;
-    })[] = [];
-    for (const mk of mks) {
-      try {
-        const manifest = await pluginCore.loadMarketplaceManifest(
-          pluginCore.getMarketplacePath(mk),
-        );
-        manifest.plugins.forEach((p) => {
-          const pluginId = `${p.name}@${mk.name}`;
-          const isInstalled = installed.plugins.find(
-            (ip) => ip.name === p.name && ip.marketplace === mk.name,
-          );
-          const isEnabled = !!enabledMap[pluginId];
-
-          // Show in Discover if not installed OR if installed but not enabled in current scope
-          if (!isInstalled || !isEnabled) {
-            allDiscoverable.push({
-              ...p,
-              marketplace: mk.name,
-              installed: !!isInstalled,
-            });
-          }
-        });
-      } catch {
-        // Skip marketplaces that fail to load
-      }
+  /** 拉一次列表并落地 isLoading。**开头不置 loading**：挂载那次的「正在加载」由
+   *  state 初值（isLoading: true）承担 —— 挂载路径上因此不写 state，也就不会先提交
+   *  一帧「加载完了」再回到加载中。 */
+  const fetchLists = useCallback(async () => {
+    try {
+      await loadLists();
+      setState(listsSettled);
+    } catch (error) {
+      setState((prev: PluginManagerState) => listsFailed(prev, error));
     }
-    setDiscoverablePlugins(allDiscoverable);
-  }, [pluginCore]);
+  }, [loadLists]);
 
+  /** 用户 / 变更动作发起的重新加载：先置 loading（调用方是事件处理器）再拉。 */
   const refresh = useCallback(async () => {
     clearPluginFeedback();
     setState((prev: PluginManagerState) => ({
       ...prev,
       isLoading: true,
     }));
-    try {
-      await loadLists();
-      setState((prev: PluginManagerState) => ({ ...prev, isLoading: false }));
-    } catch (error) {
-      setState((prev: PluginManagerState) => ({
-        ...prev,
-        isLoading: false,
-        error: error instanceof Error ? error.message : String(error),
-      }));
-    }
-  }, [loadLists, clearPluginFeedback]);
+    await fetchLists();
+  }, [fetchLists, clearPluginFeedback]);
 
+  // 挂载时拉一次列表。落地写在 effect 自己那条异步链的续体里（不是 effect 的
+  // 同步段），并带 `ignore` 守卫：卸载后到达的回包不再写 state。`readLists` 只取
+  // 数据、不碰 state，所以 effect 的同步段里没有任何 setState。
   useEffect(() => {
-    void refresh();
-  }, [refresh]);
+    let ignore = false;
+    readLists(pluginCore).then(
+      (snapshot) => {
+        if (ignore) return;
+        applyLists(snapshot);
+        setState(listsSettled);
+      },
+      (error: unknown) => {
+        if (!ignore) {
+          setState((prev: PluginManagerState) => listsFailed(prev, error));
+        }
+      },
+    );
+    return () => {
+      ignore = true;
+    };
+  }, [applyLists, pluginCore]);
 
   // 打开插件管理器即后台刷新各市场检出（只拉清单、不升级任何插件；spec
   // ecosystem/plugin 场景 5/11）：刷新与列表加载并行、不阻塞界面，完成后重读
   // 列表呈现最新清单（场景 12）。失败静默——界面仍以刷新前的清单展示（场景 9）。
   useEffect(() => {
     let cancelled = false;
-    setCheckingForUpdates(true);
     pluginCore
       .refreshMarketplaces()
       .catch(() => {})

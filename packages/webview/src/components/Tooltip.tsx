@@ -204,17 +204,25 @@ export const Tooltip: React.FC<TooltipProps> = ({
     setTooltipStyle({ left, top });
   }, [position, gap, anchorRef, rightEdgeRef]);
 
-  // 气泡的显示条件：hover 自动显示，或受控（`forceVisible`）显示；两者都受 `hover:
-  // hover` 门控（触屏上气泡出来就收不掉）。
-  const shown = canHover && (isVisible || forceVisible);
-
-  // disabled 期间 wrapper 整个不渲染，气泡也就收不到 mouseleave：若这里不主动复位，
+  // disabled 期间 wrapper 整个不渲染，气泡也就收不到 mouseleave：若不复位，
   // 「hover 出气泡 → 打开某个浮层（触发方把 disabled 置 true）→ 关掉浮层」之后，
   // 气泡会带着旧的 isVisible=true 重新挂回来——此时指针早已离开，再没有 mouseleave
   // 能收掉它，就成了一条挂在空中、点哪都不消失的提示（账户卡片用量按钮踩过）。
-  useEffect(() => {
-    if (disabled) setIsVisible(false);
-  }, [disabled]);
+  //
+  // 翻转的这一次渲染里直接按「显示作废」出图，不等 setState 落地：渲染期派发的更新在
+  // 并发渲染下会被更急的更新打断重来，光靠派发就会偶发回归（实测 15 次里红 4 次）。
+  // 派发那份只负责把 state 归一（供下一次翻转比较），判定取同一帧派生的
+  // `disabledToggled`。
+  const [wasDisabled, setWasDisabled] = useState(disabled);
+  const disabledToggled = wasDisabled !== disabled;
+  if (disabledToggled) {
+    setWasDisabled(disabled);
+    setIsVisible(false);
+  }
+
+  // 气泡的显示条件：hover 自动显示，或受控（`forceVisible`）显示；两者都受 `hover:
+  // hover` 门控（触屏上气泡出来就收不掉）。
+  const shown = canHover && !disabledToggled && (isVisible || forceVisible);
 
   // 受控显示（`forceVisible`）翻转时的定位：hover 那条路径在 handleShow 里量，受控
   // 翻转发生在组件之外，这里补一次。气泡是常驻渲染的（隐藏态只是 opacity 0 +

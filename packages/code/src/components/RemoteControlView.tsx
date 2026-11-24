@@ -74,10 +74,7 @@ export const RemoteControlView: React.FC<RemoteControlViewProps> = ({
   // The QR is folded away by default: it is ~35 rows tall, and the panel also
   // has to stay readable when all the user wants is the state.
   useEffect(() => {
-    if (!showQr || !pageUrl) {
-      setQrText("");
-      return;
-    }
+    if (!showQr || !pageUrl) return;
     let cancelled = false;
     qrToString(pageUrl, { type: "utf8", errorCorrectionLevel: "L" })
       .then((text) => {
@@ -90,6 +87,10 @@ export const RemoteControlView: React.FC<RemoteControlViewProps> = ({
       cancelled = true;
     };
   }, [showQr, pageUrl]);
+
+  // 收起 QR（或还没有地址）时显示为空，就地算出来：在 effect 的清理分支里再
+  // set 一次只会先提交一帧旧二维码。
+  const shownQr = showQr && pageUrl ? qrText : "";
 
   const serving = status.state === "connecting" || status.state === "online";
 
@@ -150,9 +151,9 @@ export const RemoteControlView: React.FC<RemoteControlViewProps> = ({
 
       {pageUrl ? row("Phone page:", pageUrl) : null}
 
-      {showQr && qrText ? (
+      {shownQr ? (
         <Box flexDirection="column" marginTop={1}>
-          {qrText
+          {shownQr
             .split("\n")
             .filter((line) => line.length > 0)
             .map((line, index) => (

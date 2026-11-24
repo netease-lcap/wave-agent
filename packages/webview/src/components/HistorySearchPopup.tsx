@@ -41,23 +41,28 @@ export const HistorySearchPopup: React.FC<HistorySearchPopupProps> = ({
     onClickOutside: onClose,
   });
 
+  /** 取完整历史（打开弹层、或把关键词删空时）：立刻进 loading 再发请求。 */
+  const requestFullHistory = useCallback(() => {
+    setIsLoading(true);
+    requestIdRef.current = Date.now().toString();
+    vscode.postMessage({
+      command: "requestHistory",
+      requestId: requestIdRef.current,
+    });
+  }, [vscode]);
+
   // Focus input when popup opens
   useEffect(() => {
     if (isVisible && inputRef.current) {
       inputRef.current.focus();
       // Request initial history
-      setIsLoading(true);
-      requestIdRef.current = Date.now().toString();
-      vscode.postMessage({
-        command: "requestHistory",
-        requestId: requestIdRef.current,
-      });
+      requestFullHistory();
     } else {
       setQuery("");
       setItems([]);
       setSelectedIndex(0);
     }
-  }, [isVisible, vscode]);
+  }, [isVisible, requestFullHistory]);
 
   // Handle messages from extension
   useHostMessage((data) => {
@@ -84,27 +89,20 @@ export const HistorySearchPopup: React.FC<HistorySearchPopupProps> = ({
     }
   }, [selectedIndex]);
 
-  // Debounced search
+  // Debounced search（只处理有关键词的查询；删空关键词走 onChange 里的
+  // requestFullHistory，与「输入引发变化」同一个事件，少一帧旧结果）。
   useEffect(() => {
-    if (isVisible && query.trim()) {
-      const timer = setTimeout(() => {
-        setIsLoading(true);
-        requestIdRef.current = Date.now().toString();
-        vscode.postMessage({
-          command: "searchHistory",
-          query,
-          requestId: requestIdRef.current,
-        });
-      }, 300);
-      return () => clearTimeout(timer);
-    } else if (isVisible && !query.trim()) {
+    if (!isVisible || !query.trim()) return;
+    const timer = setTimeout(() => {
       setIsLoading(true);
       requestIdRef.current = Date.now().toString();
       vscode.postMessage({
-        command: "requestHistory",
+        command: "searchHistory",
+        query,
         requestId: requestIdRef.current,
       });
-    }
+    }, 300);
+    return () => clearTimeout(timer);
   }, [query, isVisible, vscode]);
 
   const handleKeyDown = useCallback(
@@ -159,7 +157,13 @@ export const HistorySearchPopup: React.FC<HistorySearchPopupProps> = ({
           className="history-search-input"
           placeholder="搜索历史提示词..."
           value={query}
-          onChange={(e) => setQuery(e.target.value)}
+          onChange={(e) => {
+            const value = e.target.value;
+            setQuery(value);
+            // 关键词删空 = 回到完整历史：与「输入」同一个事件里进 loading 并重取，
+            // 屏幕上不会先挂一帧上一次的搜索结果。
+            if (!value.trim()) requestFullHistory();
+          }}
           onKeyDown={handleKeyDown}
         />
       </div>

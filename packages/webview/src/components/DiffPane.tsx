@@ -158,7 +158,6 @@ export const DiffPane: React.FC<DiffPaneProps> = ({
   selection,
   onSelectionChange,
 }) => {
-  const [state, setState] = useState<DiffState>({ kind: "loading" });
   // Mutual-exclusion accordion: at most one file is expanded at a time, so the
   // DOM holds every file header but only one file's hunks (bounded rendering
   // for large workspace diffs — data is still loaded once for all files).
@@ -168,14 +167,29 @@ export const DiffPane: React.FC<DiffPaneProps> = ({
     undefined,
   );
   const [viewMode, setViewMode] = useState<DiffViewMode>("unified");
-  // True while a refresh request is in flight; drives the toolbar spinner.
-  const [refreshing, setRefreshing] = useState(false);
+  // The diff on screen. 上下文（会话 / 工作目录）换了以后它属于上一版 —— 见下面
+  // 的 `stateContextKey` 派生。
+  const [loadedState, setLoadedState] = useState<DiffState>({
+    kind: "loading",
+  });
   const [narrow, setNarrow] = useState(false);
-  // Monotonic request id: a range switch and a refresh can be in flight at the
-  // same time, and the late reply of the previous range must never be painted.
-  const requestIdRef = useRef(0);
-  /** Range the last request asked for — see the selection-change effect below. */
+  // 请求身份：每发一次请求单调 +1，回包按它认定（换范围与刷新可以同时在途，
+  // 上一版的迟到回包绝不能落屏）。「正在刷新」由「已发出的 id > 已回包的 id」
+  // 派生，不再是一个在发请求时置 true 的布尔。
+  const [request, setRequest] = useState<{
+    id: number;
+    selection: DiffSelection;
+    /** 发出这一版请求时的上下文键：回包落地时连它一起写回。 */
+    contextKey: string;
+  } | null>(null);
+  const [answeredId, setAnsweredId] = useState(0);
+  const refreshing = request !== null && request.id > answeredId;
+  /** Range the last request asked for — see the trigger settlement below. */
   const requestedKeyRef = useRef(diffSelectionKey(selection));
+  // 手里这份差异属于哪个上下文。与当前上下文不一致 ⇒ 它是上一版的，回包到达前
+  // 先显示 loading 占位（原来靠发请求时 setState 清内容）。
+  const contextKey = `${sessionId ?? ""}\u0000${workdir ?? ""}`;
+  const [stateContextKey, setStateContextKey] = useState(contextKey);
 
   // Inline diff-line comment box: right-clicking a line (or selecting several
   // and using the button that follows the selection) opens a box under that line
@@ -198,6 +212,17 @@ export const DiffPane: React.FC<DiffPaneProps> = ({
     setCommentDraft("");
   }, []);
 
+  // 发出去的请求换了一版（换范围 / 重新加载）⇒ 上一版的行评论框与草稿都作废
+  // （spec「行评论」场景 4）。复位在 render 期与请求同帧完成，且带守卫：只有真的
+  // 还开着才写，至多两轮收敛 —— 不再由发请求的那个函数顺手 setState 清掉。
+  const [commentEpoch, setCommentEpoch] = useState(0);
+  const requestEpoch = request?.id ?? 0;
+  if (commentEpoch !== requestEpoch) {
+    setCommentEpoch(requestEpoch);
+    if (commentTarget !== null) setCommentTarget(null);
+    if (commentDraft !== "") setCommentDraft("");
+  }
+
   const submitComment = useCallback(() => {
     const target = commentTarget;
     const comment = commentDraft.trim();
@@ -214,28 +239,65 @@ export const DiffPane: React.FC<DiffPaneProps> = ({
     closeComment();
   }, [commentTarget, commentDraft, expandedPath, closeComment]);
 
-  // Hard refresh clears current content to the loading placeholder (used when
-  // the session/workdir context changes); soft refresh keeps showing the old
-  // content until the new diff arrives, so auto-refreshes don't flicker.
-  const refresh = useCallback(
-    (hard = false, next: DiffSelection = selection) => {
-      if (hard) setState({ kind: "loading" });
-      setRefreshing(true);
-      // A new result rewrites the hunks, so any open comment box + draft is
-      // stale (spec「行评论」场景 4).
-      closeComment();
-      requestIdRef.current += 1;
-      requestedKeyRef.current = diffSelectionKey(next);
-      vscode.postMessage({
-        command: "desktopGetWorkspaceDiff",
-        ...(paneId ? { paneId } : {}),
-        requestId: requestIdRef.current,
-        ...(next.kind === "commit" ? { commit: next.sha } : {}),
-        ...(next.kind === "uncommitted" ? { scope: "uncommitted" } : {}),
-      });
-    },
-    [vscode, paneId, selection, closeComment],
-  );
+  /** 打一次差异请求：推进请求身份并记下这次要的范围。唯一入口 —— 事件处理器与
+   *  下面的 render 期触发结算共用；消息由那个 effect 发出，它只发消息、不写任何
+   *  state，所以「转圈」不晚一帧。 */
+  const issueRequest = (next: DiffSelection = selection) => {
+    requestedKeyRef.current = diffSelectionKey(next);
+    setRequest((prev) => ({
+      id: (prev?.id ?? 0) + 1,
+      selection: next,
+      contextKey,
+    }));
+  };
+
+  /** 请求身份变了才发一次：这个 effect 只做「发消息」这一件外部动作，不写任何
+   *  state（转圈与评论框复位都已由上面的派生 / render 期复位完成）。 */
+  const sentRequestIdRef = useRef(0);
+  useEffect(() => {
+    if (request === null || request.id === sentRequestIdRef.current) return;
+    sentRequestIdRef.current = request.id;
+    vscode.postMessage({
+      command: "desktopGetWorkspaceDiff",
+      ...(paneId ? { paneId } : {}),
+      requestId: request.id,
+      ...(request.selection.kind === "commit"
+        ? { commit: request.selection.sha }
+        : {}),
+      ...(request.selection.kind === "uncommitted"
+        ? { scope: "uncommitted" }
+        : {}),
+    });
+  }, [request, vscode, paneId]);
+
+  // 触发结算（render 期，与可见性同一帧）：首次挂载、重新显示、会话 / 工作目录
+  // 变化、生成结束、面板被要求换一个范围 —— 与改造前那两个 effect 逐条对应。
+  // 快照存 state 并做值比较（同值不写，至多两轮收敛）：这一帧该发请求就顺手推进
+  // 请求身份，于是「转圈 / loading 占位」与触发同帧，不会晚一帧提交。
+  const selectionKey = diffSelectionKey(selection);
+  const triggerKey = `${visible ? 1 : 0}|${sessionId ?? ""}|${workdir ?? ""}|${
+    isStreaming ? 1 : 0
+  }|${selectionKey}`;
+  const [trigger, setTrigger] = useState<{
+    key: string;
+    visible: boolean;
+    sessionId?: string;
+    workdir?: string;
+    isStreaming: boolean;
+  } | null>(null);
+  if (trigger?.key !== triggerKey) {
+    // 首次渲染的「上一帧」与改造前 prevRef 的初值一致：不可见、上下文已是当前值。
+    const prev = trigger ?? { visible: false, sessionId, workdir, isStreaming };
+    setTrigger({ key: triggerKey, visible, sessionId, workdir, isStreaming });
+    const contextChanged =
+      visible && (prev.sessionId !== sessionId || prev.workdir !== workdir);
+    const becameVisible = visible && !prev.visible;
+    const generationEnded = visible && prev.isStreaming && !isStreaming;
+    const rangeChanged = visible && requestedKeyRef.current !== selectionKey;
+    if (contextChanged || becameVisible || generationEnded || rangeChanged) {
+      issueRequest(selection);
+    }
+  }
 
   // Switching the range re-points the accordion at a different file list.
   const pickSelection = (next: DiffSelection) => {
@@ -243,7 +305,7 @@ export const DiffPane: React.FC<DiffPaneProps> = ({
     // back by the parent, so a double click would otherwise fire twice.
     if (diffSelectionKey(next) === requestedKeyRef.current) return;
     onSelectionChange(next);
-    refresh(false, next);
+    issueRequest(next);
   };
 
   // Layout-only switch: no request, no re-pairing of the hunks (both views read
@@ -263,15 +325,19 @@ export const DiffPane: React.FC<DiffPaneProps> = ({
       // is echoed back), which otherwise paints a stale range over the fresh
       // one. Replies without an id are pre-request-id hosts — accept them.
       const requestId = message.requestId as number | undefined;
-      if (requestId !== undefined && requestId !== requestIdRef.current) return;
+      if (request === null) return;
+      if (requestId !== undefined && requestId !== request.id) return;
       const result = message.result;
-      setRefreshing(false);
+      // 这一版的回包到了：请求身份落成「已回包」，内容连同它所属的上下文键一起
+      // 落地（回包之前上下文就换掉的那些，早在发送侧被判成上一版了）。
+      setAnsweredId(request.id);
+      setStateContextKey(request.contextKey);
       if (result?.kind === "transient") {
-        setState({ kind: "transient", operation: result.operation });
+        setLoadedState({ kind: "transient", operation: result.operation });
         return;
       }
       if (result?.kind !== "ok") {
-        setState({ kind: "not-a-repo" });
+        setLoadedState({ kind: "not-a-repo" });
         return;
       }
       // Sort by path here so the file tree, the accordion and the "first file"
@@ -280,7 +346,7 @@ export const DiffPane: React.FC<DiffPaneProps> = ({
         (a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0),
       );
       const collapseAll = totalChangedLines(files) > DIFF_COLLAPSE_THRESHOLD;
-      setState({
+      setLoadedState({
         kind: "ok",
         base: result.base,
         scope: result.scope,
@@ -306,34 +372,6 @@ export const DiffPane: React.FC<DiffPaneProps> = ({
     },
     { paneId },
   );
-
-  // Refresh triggers: first mount (prev.visible starts false), re-show,
-  // session/workdir change while visible, generation end while visible.
-  const prevRef = useRef({ visible: false, sessionId, workdir, isStreaming });
-  useEffect(() => {
-    const prev = prevRef.current;
-    prevRef.current = { visible, sessionId, workdir, isStreaming };
-    const becameVisible = visible && !prev.visible;
-    const contextChanged =
-      visible && (prev.sessionId !== sessionId || prev.workdir !== workdir);
-    const generationEnded = visible && prev.isStreaming && !isStreaming;
-    if (contextChanged) refresh(true);
-    else if (becameVisible || generationEnded) refresh();
-  }, [visible, sessionId, workdir, isStreaming, refresh]);
-
-  // The selected range is per-session state owned by the parent, which restores
-  // it one render AFTER this pane first sees the new session (child effects run
-  // before the parent's swap effect) — so the context-change trigger above fires
-  // with the OUTGOING session's range. Re-issue whenever the range the panel is
-  // told to show differs from the one it last asked for; the requestId guard
-  // then drops the stale reply.
-  useEffect(() => {
-    const key = diffSelectionKey(selection);
-    if (requestedKeyRef.current === key) return;
-    requestedKeyRef.current = key;
-    if (!visible) return;
-    refresh(false, selection);
-  }, [selection, visible, refresh]);
 
   // Auto-hide the sidebar when the panel leaves too little room for the diff
   // itself (spec「文件树与导航」场景 5). Only the layout degrades — the
@@ -375,6 +413,11 @@ export const DiffPane: React.FC<DiffPaneProps> = ({
     if (el && typeof el.scrollIntoView === "function")
       el.scrollIntoView({ block: "start" });
   }, [expandedPath]);
+
+  // 上下文换了 ⇒ 手里这份内容属于上一版：回包到达前显示 loading 占位（原来靠
+  // 发请求时 setState 清内容），下游一律读这个派生值，state 本身只由回包写。
+  const state: DiffState =
+    stateContextKey === contextKey ? loadedState : { kind: "loading" };
 
   const files = state.kind === "ok" ? state.files : [];
   const scope = state.kind === "ok" ? state.scope : undefined;
@@ -584,7 +627,7 @@ export const DiffPane: React.FC<DiffPaneProps> = ({
                 className="preview-pane-button"
                 aria-label="刷新"
                 data-testid="diff-refresh"
-                onClick={() => refresh()}
+                onClick={() => issueRequest()}
               >
                 <RefreshIcon
                   className={`preview-pane-icon${refreshing ? " is-spinning" : ""}`}

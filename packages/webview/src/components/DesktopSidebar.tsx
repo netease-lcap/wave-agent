@@ -66,16 +66,45 @@ export const WORKTREE_CHANGES_TIMEOUT_MS = 8000;
 export const CONTENT_SEARCH_MIN_CHARS = 2;
 export const CONTENT_SEARCH_DEBOUNCE_MS = 300;
 
-/** 「内容命中」区的四种状态 + 命中数据（spec 场景 5/6/8）。 */
+/** 「内容命中」区要渲染的东西（spec 场景 5/6/8），渲染期由回包派生，不单独存。 */
 interface ContentSearchState {
-  /** 这次结果属于哪个关键词：回包只回填关键词语义相同的那一次。 */
-  query: string;
   matches: SessionContentMatch[];
   searching: boolean;
   /** 搜索失败（宿主从没回包 / 读了盘但整次失败）——显示「重试」，不显示「无结果」。 */
   failed: boolean;
   /** 触顶（会话数或片段数上限）时提示「结果过多」。 */
   truncated: boolean;
+}
+
+/**
+ * 宿主回过的那一份结果，连同它属于「哪个关键词 + 哪一组会话」。
+ *
+ * 这份身份就是「搜索中」的判据：这个词在这组会话上还没有回包 ⇒ 正在搜索。用
+ * 身份而不是一个布尔标志，effect 里就不必再同步 setState 去「先切到搜索中」。
+ */
+interface ContentSearchResult extends Omit<ContentSearchState, "searching"> {
+  query: string;
+  sessionKey: string;
+}
+
+/**
+ * 由「最后一次回包」派生这一帧显示的东西。关键词变了或会话集合变了，那份回包即
+ * 过期：命中数据只当底片留着（改词时界面本来就是「正在搜索」，看不见它），状态
+ * 一律回到 searching，失败态也不带过来。
+ */
+function deriveContentSearch(
+  result: ContentSearchResult | null,
+  query: string,
+  sessionKey: string,
+): ContentSearchState {
+  const sameQuery = result !== null && result.query === query;
+  const settled = sameQuery && result.sessionKey === sessionKey;
+  return {
+    matches: sameQuery ? result.matches : [],
+    truncated: sameQuery ? result.truncated : false,
+    searching: !settled,
+    failed: settled ? result.failed : false,
+  };
 }
 
 /** 会话状态看板入口图标（对齐原型 figma/activity.svg）。常态跟随文本色，
@@ -149,7 +178,7 @@ const SessionItemMenu: React.FC<{
   // 触发按钮的左沿（`anchorRect` 就是那颗 24×24 的「⋯」按钮盒），菜单从按钮处向右
   // 展开、允许越过侧栏右沿——这是她看图后点的档（候选 A2，左侧对齐按钮盒左沿）。
   // 纵向仍是「下 → 翻上 → 夹取并内部滚动」，横向超出视口右沿时照旧夹回（viewport 兜底）。
-  const menuStyle = useAnchoredMenuStyle(
+  const { style: menuStyle, attachRef: menuAttachRef } = useAnchoredMenuStyle(
     menuRef,
     anchorRect,
     menuWidth,
@@ -157,7 +186,7 @@ const SessionItemMenu: React.FC<{
   );
   return (
     <div
-      ref={menuRef}
+      ref={menuAttachRef}
       className="desktop-session-menu"
       role="menu"
       style={menuStyle}
@@ -414,13 +443,6 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
   // 标题过滤是即时的、本地算；正文搜索要读磁盘上的转录，必须防抖 + 走宿主。
   const contentQuery = searchQuery.trim();
   const contentSearchEnabled = contentQuery.length >= CONTENT_SEARCH_MIN_CHARS;
-  const [contentSearch, setContentSearch] = useState<ContentSearchState | null>(
-    null,
-  );
-  // 在途请求的 requestId。清空关键词 / 改词都让旧的作废：迟到的回包不得回填
-  // （场景 8）。序号自己发、自己比，不复用别的请求命名空间。
-  const contentRequestSeqRef = useRef(0);
-  const contentRequestIdRef = useRef<string | null>(null);
   // 参与正文搜索的会话：标题/筛选取交集之后仍在树上的本机会话。远端会话的转录
   // 在远端 daemon 上，宿主读不到，因此不参与也不报错（场景 7/10）。
   const contentSessionIds = useMemo(() => {
@@ -437,28 +459,44 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
   const contentSessionIdsRef = useRef<string[]>(contentSessionIds);
   contentSessionIdsRef.current = contentSessionIds;
 
+  // **只存回包**：宿主的应答（连同它属于哪个词、哪一组会话）。「正在搜索」不是
+  // 一个布尔标志，而是「这个词在这组会话上还没有回包」——渲染期直接派生。于是
+  // 关键词一变、防抖那 300ms 里界面就已经是「正在搜索」，不会把上一次关键词的
+  // 结果挂在屏幕上（场景 5），也不必在 effect 里 setState。
+  const [contentSearchResult, setContentSearchResult] =
+    useState<ContentSearchResult | null>(null);
+  // 词不够长（或已清空）时结果区整体消失（场景 8）：只是不显示，不必清成 null。
+  const contentSearch = contentSearchEnabled
+    ? deriveContentSearch(contentSearchResult, contentQuery, contentSessionKey)
+    : null;
+  // 在途请求的 requestId。清空关键词 / 改词都让旧的作废：迟到的回包不得回填
+  // （场景 8）。序号自己发、自己比，不复用别的请求命名空间。
+  const contentRequestSeqRef = useRef(0);
+  const contentRequestIdRef = useRef<string | null>(null);
+  // 这一笔请求是在哪一组会话上发的：回包只有 requestId/query，没有会话集合，
+  // 认领时补上，渲染期才能判断结果有没有因为会话增减而过期。
+  const contentRequestSessionKeyRef = useRef("");
+
+  // 关键词清到不足下限时，把上一份回包也丢掉：之后再输入同一个词是一次**新的**
+  // 搜索，界面照旧从「正在搜索」开始（与改动前一致 —— 那时每进一次搜索都会把
+  // 状态改成 searching）。这是用户按键那一刻，写在事件处理器里，不需要也不许在
+  // effect 里 setState。
+  const handleSearchQueryChange = (value: string) => {
+    setSearchQuery(value);
+    if (value.trim().length < CONTENT_SEARCH_MIN_CHARS) {
+      setContentSearchResult(null);
+    }
+  };
+
   useEffect(() => {
-    // 词不够长或已清空：结果区整体消失，在途请求一并作废（场景 8）。
+    // 词不够长或已清空：在途请求一并作废（结果区本身由上面的派生值收掉，场景 8）。
     if (!contentSearchEnabled) {
       contentRequestIdRef.current = null;
-      setContentSearch(null);
       return;
     }
-    // 立刻进入「正在搜索」而不是等着防抖：否则停手的那一刻屏幕上还挂着上一次
-    // 关键词的结果，看起来像是搜到了不该有的东西（场景 5）。
-    setContentSearch((prev) =>
-      prev && prev.query === contentQuery
-        ? { ...prev, searching: true, failed: false }
-        : {
-            query: contentQuery,
-            matches: [],
-            searching: true,
-            failed: false,
-            truncated: false,
-          },
-    );
     const requestId = String(++contentRequestSeqRef.current);
     contentRequestIdRef.current = requestId;
+    contentRequestSessionKeyRef.current = contentSessionKey;
     const timer = setTimeout(() => {
       onSearchSessionContents(
         contentQuery,
@@ -478,27 +516,24 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
   useHostMessage((message) => {
     if (message.command !== "desktopSessionContentMatches") return;
     if (String(message.requestId) !== contentRequestIdRef.current) return;
-    setContentSearch((prev) =>
-      prev && prev.query === message.query
-        ? {
-            ...prev,
-            matches: message.matches ?? [],
-            truncated: message.truncated === true,
-            searching: false,
-            // 宿主整次失败时给的是「暂不可用 + 重试」，不能显示成「无内容命中」。
-            failed: message.failed === true,
-          }
-        : prev,
-    );
+    setContentSearchResult({
+      query: message.query,
+      sessionKey: contentRequestSessionKeyRef.current,
+      matches: message.matches ?? [],
+      truncated: message.truncated === true,
+      // 宿主整次失败时给的是「暂不可用 + 重试」，不能显示成「无内容命中」。
+      failed: message.failed === true,
+    });
   });
 
   const retryContentSearch = () => {
     if (!contentSearchEnabled) return;
     const requestId = String(++contentRequestSeqRef.current);
     contentRequestIdRef.current = requestId;
-    setContentSearch((prev) =>
-      prev ? { ...prev, searching: true, failed: false } : prev,
-    );
+    contentRequestSessionKeyRef.current = contentSessionKey;
+    // 丢掉上一份回包，结果区立刻回到「正在搜索」（点击是事件处理器，不受那条
+    // 规则约束）；新回包到了再由它决定显示什么。
+    setContentSearchResult(null);
     onSearchSessionContents(
       contentQuery,
       requestId,
@@ -1020,7 +1055,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
       </div>
       <SidebarSessionSearch
         query={searchQuery}
-        onQueryChange={setSearchQuery}
+        onQueryChange={handleSearchQueryChange}
         filter={sessionFilter}
         onApplyFilter={setSessionFilter}
       />

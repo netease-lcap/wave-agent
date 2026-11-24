@@ -12,6 +12,7 @@ import type {
   ModPanelScrollRequest,
   ModPaneLayout,
   ModPanelTree,
+  ModTreeNode,
 } from "wave-agent-sdk/types";
 import { useTerminalSize } from "../../contexts/useTerminalSize.js";
 import { ModTreeView, collectFocusKeys } from "./ModTreeView.js";
@@ -86,7 +87,12 @@ export const ModPane: React.FC<ModPaneProps> = ({
   onDismiss,
 }) => {
   const [tree, setTree] = useState<ModPanelTree | null>(null);
-  const [error, setError] = useState<string | undefined>(panel.error);
+  // 拉回来的错误（连同它是为哪一条推送拉的）：错误条由它与 `panel.error` 在
+  // render 期合成，不各存一份 state（见下面的 `error`）。
+  const [pulled, setPulled] = useState<{
+    panel: ModPanelUpdatePayload;
+    error?: string;
+  } | null>(null);
   const [focusIndex, setFocusIndex] = useState(0);
   const [draft, setDraft] = useState("");
   const [openSelect, setOpenSelect] = useState<OpenSelect | null>(null);
@@ -125,7 +131,7 @@ export const ModPane: React.FC<ModPaneProps> = ({
       const result = await renderTree(panel.modId, panel.paneId, layout);
       if (cancelled || seq !== pullSeq.current) return;
       setTree(result.tree);
-      setError(result.error);
+      setPulled({ panel, error: result.error });
       // 面板长出来的第一棵树：焦点落到标了 `autoFocus` 的那个控件上（spec
       // 「元素表」：一个站点里多个只认第一个）。只播种一次 —— 之后换焦点归用户，
       // mod 重画一帧不该把焦点拽回去。桌面端同一语义（Node 的 `autoFocus`）。
@@ -154,10 +160,11 @@ export const ModPane: React.FC<ModPaneProps> = ({
     // 变了它得按新窗口重画（`layout` 自己是 memo，值一样时引用也不变）。
   }, [panel, pullToken, renderTree, layout]);
 
-  useEffect(() => {
-    if (panel.error !== undefined) setError(panel.error);
-  }, [panel.error]);
-
+  // 错误条：这一帧已经拉过就用拉回来的结果（这一端亲眼看到的，比推送里那份元
+  // 信息新），还没拉回来就先用推送带下来的 `panel.error` 顶上 —— 推送一到就画
+  // 错误条，不必等一次往返。
+  const error =
+    pulled !== null && pulled.panel === panel ? pulled.error : panel.error;
   const focusKeys = useMemo(
     () => (tree === null ? [] : collectFocusKeys(tree)),
     [tree],
@@ -183,18 +190,33 @@ export const ModPane: React.FC<ModPaneProps> = ({
 
   // 焦点换到一个 `Input` 时把草稿初始化成它的 `value`：终端没有 `onChange`，
   // 用户打的字先进本地缓冲，回车才提交给 mod。
-  useEffect(() => {
+  //
+  // 在 render 期比较上一次的焦点节点（同一个节点在同一棵树里是同一个对象，换树
+  // 或换焦点才变），不放进 effect：effect 会先提交一帧「焦点已经在新输入框、
+  // 草稿还是上一个的」。
+  const [draftNode, setDraftNode] = useState<ModTreeNode | undefined>(
+    undefined,
+  );
+  if (draftNode !== activeNode) {
+    setDraftNode(activeNode);
     if (activeNode?.type === "Input") {
       const value = activeNode.props.value;
       setDraft(typeof value === "string" ? value : "");
     }
-  }, [activeNode]);
+  }
 
   // 滚动位置与焦点无关（`↑`/`↓` 滚正文、`Tab` 换焦点），所以换焦点不重置它。
   // 渲染前按实测行数再夹一次：内容变短或终端变高时，不会停在一个已被裁掉的偏移上。
   // 换了一帧（mod 改了内容 / 换了文件）就回到顶部 —— 新内容停在旧偏移上等于
-  // 从一个随机的中间开始读。判据与拉树同一个：一条推送 = mod 说内容变了。
-  useEffect(() => setOffset(0), [panel]);
+  // 从一个随机的中间开始读。判据与拉树同一个：一条推送 = mod 说内容变了，所以
+  // 比的是 `panel` 的引用。归零在 render 期做：放进 effect 会先提交一帧「新内容
+  // 停在旧偏移上」。整个 `ModPane` 不能改用 `key` 重挂载 —— 那会连拉树的 effect
+  // 一起重跑，多一次 RPC。
+  const [scrolledPanel, setScrolledPanel] = useState(panel);
+  if (scrolledPanel !== panel) {
+    setScrolledPanel(panel);
+    setOffset(0);
+  }
   const maxOffset = Math.max(0, totalRows - maxRows);
   const scrollOffset = Math.min(offset, maxOffset);
 

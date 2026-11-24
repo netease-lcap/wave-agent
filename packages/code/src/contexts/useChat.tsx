@@ -2,6 +2,8 @@ import React, {
   createContext,
   useContext,
   useCallback,
+  useMemo,
+  useReducer,
   useRef,
   useEffect,
   useState,
@@ -76,6 +78,71 @@ export interface PlanViewData {
 export interface ExportDialogData {
   defaultFilename: string;
   stats: TranscriptExportStats;
+}
+
+/** 一条待确认的权限请求（`showConfirmation` 入队的形状）。 */
+interface PendingConfirmation {
+  requestId: string;
+  toolName: string;
+  toolInput?: Record<string, unknown>;
+  suggestedPrefix?: string;
+  hidePersistentOption?: boolean;
+  outsideSafeZoneDirectory?: string;
+  planContent?: string;
+  permissionMode?: PermissionMode;
+  warning?: string;
+  resolver: (decision: PermissionDecision) => void;
+  reject: () => void;
+}
+
+/** 确认对话框的队列：`current` 是屏幕上那一条，`queue` 是等着的一条条。 */
+interface ConfirmationQueueState {
+  current: PendingConfirmation | null;
+  queue: PendingConfirmation[];
+}
+
+type ConfirmationQueueAction =
+  | { type: "enqueue"; item: PendingConfirmation }
+  /** 当前这条答完了（或用户关掉了）：丢掉它，队列里还有就直接顶上。 */
+  | { type: "settle" };
+
+const EMPTY_CONFIRMATION_QUEUE: ConfirmationQueueState = {
+  current: null,
+  queue: [],
+};
+
+/** 没有在显示的那一条时，从队头补上（队列空则保持不变）。 */
+function withCurrentFilled(
+  state: ConfirmationQueueState,
+): ConfirmationQueueState {
+  if (state.current || state.queue.length === 0) return state;
+  const [next, ...rest] = state.queue;
+  return { current: next, queue: rest };
+}
+
+/**
+ * 谁该在屏幕上只有这一个判据：`current` 非空就是它，空了就从队头取下一个。
+ *
+ * 推进放在 reducer 里（纯函数、一次提交）：以前是「hide 把三个 state 置空 →
+ * effect 里再 setState 开下一条」，两次提交之间有一帧一个对话框都没有，而且那
+ * 个 effect 每次渲染都会重跑一遍（`processNextConfirmation` 的依赖一直在变）。
+ */
+function confirmationQueueReducer(
+  state: ConfirmationQueueState,
+  action: ConfirmationQueueAction,
+): ConfirmationQueueState {
+  switch (action.type) {
+    case "enqueue":
+      // 屏幕上那条还没答完就先排队；没有在显示的，这一条立刻顶上去。
+      return withCurrentFilled({
+        current: state.current,
+        queue: [...state.queue, action.item],
+      });
+    case "settle":
+      // 没有在显示的确认时无事可做（重复 settle 不该换出一个新对象）。
+      if (!state.current) return state;
+      return withCurrentFilled({ current: null, queue: state.queue });
+  }
 }
 
 export interface ChatContextType {
@@ -600,48 +667,36 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   const exportContentRef = useRef("");
 
   // Confirmation state with queue-based architecture
-  const [isConfirmationVisible, setIsConfirmationVisible] = useState(false);
-  const [confirmingTool, setConfirmingTool] = useState<
-    | {
-        name: string;
-        input?: Record<string, unknown>;
-        suggestedPrefix?: string;
-        hidePersistentOption?: boolean;
-        outsideSafeZoneDirectory?: string;
-        planContent?: string;
-        permissionMode?: PermissionMode;
-        warning?: string;
-      }
-    | undefined
-  >();
-  const [confirmationQueue, setConfirmationQueue] = useState<
-    Array<{
-      requestId: string;
-      toolName: string;
-      toolInput?: Record<string, unknown>;
-      suggestedPrefix?: string;
-      hidePersistentOption?: boolean;
-      outsideSafeZoneDirectory?: string;
-      planContent?: string;
-      permissionMode?: PermissionMode;
-      warning?: string;
-      resolver: (decision: PermissionDecision) => void;
-      reject: () => void;
-    }>
-  >([]);
-  const [currentConfirmation, setCurrentConfirmation] = useState<{
-    requestId: string;
-    toolName: string;
-    toolInput?: Record<string, unknown>;
-    suggestedPrefix?: string;
-    hidePersistentOption?: boolean;
-    outsideSafeZoneDirectory?: string;
-    planContent?: string;
-    permissionMode?: PermissionMode;
-    warning?: string;
-    resolver: (decision: PermissionDecision) => void;
-    reject: () => void;
-  } | null>(null);
+  //
+  // 「屏幕上哪一条」和「还排着什么」是同一个纯规则的两半，所以整组收进一个
+  // `useReducer`（见文件头的 `confirmationQueueReducer`），入队与答完各只提交一次。
+  const [
+    { current: currentConfirmation, queue: confirmationQueue },
+    dispatchConfirmation,
+  ] = useReducer(confirmationQueueReducer, EMPTY_CONFIRMATION_QUEUE);
+  // 有没有对话框 = 有没有 current：这两个以前永远同步写，不可能分叉，因此不再
+  // 单独存一个布尔（外面对外的仍叫 `isConfirmationVisible`，名字不变）。
+  const isConfirmationVisible = currentConfirmation !== null;
+  // 选择器要的字段是 current 的逐字段映射 —— 它是视图、不是状态，算出来即可。
+  // 字段名沿用入队前那个 state 的形状，消费侧（ChatInterface / ConfirmationSelector）
+  // 一个字都不用改。
+  const confirmingTool = useMemo(
+    () =>
+      currentConfirmation
+        ? {
+            name: currentConfirmation.toolName,
+            input: currentConfirmation.toolInput,
+            suggestedPrefix: currentConfirmation.suggestedPrefix,
+            hidePersistentOption: currentConfirmation.hidePersistentOption,
+            outsideSafeZoneDirectory:
+              currentConfirmation.outsideSafeZoneDirectory,
+            planContent: currentConfirmation.planContent,
+            permissionMode: currentConfirmation.permissionMode,
+            warning: currentConfirmation.warning,
+          }
+        : undefined,
+    [currentConfirmation],
+  );
 
   /**
    * The same approvals, keyed by id, so a phone can answer them.
@@ -790,8 +845,8 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
           reject: cancel,
         };
 
-        setConfirmationQueue((prev) => [...prev, queueItem]);
-        // processNextConfirmation will be called via useEffect
+        // 入队即推进：没有在显示的确认时这一条直接成为「屏幕上那一条」。
+        dispatchConfirmation({ type: "enqueue", item: queueItem });
       });
     },
     [syncRemotePending],
@@ -1795,35 +1850,10 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     return agentRef.current.hasSlashCommand(commandId);
   }, []);
 
-  // Queue processing helper
-  const processNextConfirmation = useCallback(() => {
-    if (confirmationQueue.length > 0 && !isConfirmationVisible) {
-      const next = confirmationQueue[0];
-      setCurrentConfirmation(next);
-      setConfirmingTool({
-        name: next.toolName,
-        input: next.toolInput,
-        suggestedPrefix: next.suggestedPrefix,
-        hidePersistentOption: next.hidePersistentOption,
-        outsideSafeZoneDirectory: next.outsideSafeZoneDirectory,
-        planContent: next.planContent,
-        permissionMode: next.permissionMode,
-        warning: next.warning,
-      });
-      setIsConfirmationVisible(true);
-      setConfirmationQueue((prev) => prev.slice(1));
-    }
-  }, [confirmationQueue, isConfirmationVisible]);
-
-  // Process queue when queue changes or confirmation is hidden
-  useEffect(() => {
-    processNextConfirmation();
-  }, [processNextConfirmation]);
-
+  // 关掉当前这条；队列里还有就直接顶上下一条（reducer 里一次提交完成，不再像
+  // 以前那样先置空、等一个 effect 再开下一条）。
   const hideConfirmation = useCallback(() => {
-    setIsConfirmationVisible(false);
-    setConfirmingTool(undefined);
-    setCurrentConfirmation(null);
+    dispatchConfirmation({ type: "settle" });
   }, []);
 
   const handleConfirmationDecision = useCallback(

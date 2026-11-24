@@ -81,9 +81,22 @@ export function useBackgroundTaskDetail({
   focus,
   onFocusConsumed,
 }: UseBackgroundTaskDetailOptions): BackgroundTaskDetailState {
-  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
-  const [output, setOutput] = useState<BackgroundTaskOutput | null>(null);
-  const [loadingOutput, setLoadingOutput] = useState(false);
+  // 当前选中 = 任务 id + 「它是被哪个 focus 请求落下来的」（`from`）。带着
+  // `from` 就能在 render 期采纳新到的 focus 请求（见下面那段调整）：owner 在
+  // `onFocusConsumed` 里把 focus 丢掉之后，选中不会跟着回退成列表。用户自己
+  // 点出来的选中沿用同一个 `from`，所以同一次请求不会被重复采纳。
+  const [selection, setSelection] = useState<{
+    id: string | null;
+    from: { taskId: string } | null;
+  }>({ id: null, from: null });
+  // 输出只记「哪条任务、哪个状态」的那一次回执；渲染期按当前选中派生成
+  // `output` / `loadingOutput`（换任务、状态变了要不要重取，全从这次比较里
+  // 出来），不必在 effect 里先清空再置 loading。
+  const [outputReply, setOutputReply] = useState<{
+    taskId: string;
+    status: string;
+    output: BackgroundTaskOutput | null;
+  } | null>(null);
   const [stoppingId, setStoppingId] = useState<string | null>(null);
   // The (taskId, status) we last requested output for. The refetch below is
   // keyed on this rather than on `output === null`: the host always answers
@@ -94,16 +107,35 @@ export function useBackgroundTaskDetail({
     status: string;
   } | null>(null);
 
+  const selectedTaskId = selection.id;
   const selectedTask = tasks.find((t) => t.id === selectedTaskId) || null;
+  const output =
+    selectedTaskId && outputReply?.taskId === selectedTaskId
+      ? outputReply.output
+      : null;
+  // 命中「这条任务 + 这个状态」的回执之前都算加载中：与原实现的
+  // `setLoadingOutput(true)`（发请求时）/ `false`（回执到达时）一一对应。
+  const loadingOutput =
+    !!selectedTask &&
+    !(
+      outputReply &&
+      outputReply.taskId === selectedTaskId &&
+      outputReply.status === selectedTask.status
+    );
 
   // Apply an incoming focus request once per request object. `onFocusConsumed`
   // is held in a ref so a parent that passes a fresh inline callback each
   // render cannot re-run the effect and undo the user's "back to list".
   const onFocusConsumedRef = useRef(onFocusConsumed);
   onFocusConsumedRef.current = onFocusConsumed;
+  // 新到的 focus 请求在 render 期就落成本地选中（React 的「props 变了就调整
+  // 自己的 state」，比 effect 早一帧）；「同一个请求只采纳一次」由 `from` 记着，
+  // 而 `onFocusConsumed` 是给 owner 的副作用，仍旧留在 effect 里。
+  if (focus && selection.from !== focus) {
+    setSelection({ id: focus.taskId, from: focus });
+  }
   useEffect(() => {
     if (!focus) return;
-    setSelectedTaskId(focus.taskId);
     onFocusConsumedRef.current?.();
   }, [focus]);
 
@@ -129,7 +161,6 @@ export function useBackgroundTaskDetail({
   // missed by a detail view opened while the task was still running.
   useEffect(() => {
     if (!selectedTaskId) {
-      setOutput(null);
       lastOutputRequestRef.current = null;
       return;
     }
@@ -148,7 +179,6 @@ export function useBackgroundTaskDetail({
       taskId: selectedTaskId,
       status: selectedTask.status,
     };
-    setLoadingOutput(true);
     vscode.postMessage({
       command: "getBackgroundTaskOutput",
       taskId: selectedTaskId,
@@ -176,8 +206,12 @@ export function useBackgroundTaskDetail({
     switch (message.command) {
       case "backgroundTaskOutput":
         if (message.taskId === selectedTaskId) {
-          setOutput(message.output || null);
-          setLoadingOutput(false);
+          setOutputReply({
+            taskId: message.taskId,
+            // 回执对应的那份任务状态：上面对「回执是否已经过期」的比较就用它。
+            status: selectedTask?.status ?? "",
+            output: message.output || null,
+          });
         }
         break;
       case "backgroundTaskStopped":
@@ -195,11 +229,14 @@ export function useBackgroundTaskDetail({
   );
 
   const selectTask = useCallback((taskId: string) => {
-    setSelectedTaskId(taskId);
+    setSelection((prev) => ({ id: taskId, from: prev.from }));
   }, []);
 
   const backToList = useCallback(() => {
-    setSelectedTaskId(null);
+    setSelection((prev) => ({ id: null, from: prev.from }));
+    // 回到列表就丢掉详情输出（原来是 effect 的清理分支；现在这是个用户动作，
+    // 顺手在事件里清，重新进同一条任务时不会先闪一眼上一次的输出）。
+    setOutputReply(null);
   }, []);
 
   return {

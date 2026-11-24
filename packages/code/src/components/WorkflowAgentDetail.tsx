@@ -53,17 +53,22 @@ const WorkflowAgentDetail: React.FC<{
   agent: WorkflowAgentState;
 }> = ({ runId, agent }) => {
   const { getWorkflowAgentActivity } = useChat();
-  const [activity, setActivity] = useState("");
   const running = agent.status === "running";
 
-  // One read per (run, agent) and a fixed cadence while it runs. A terminal
-  // agent never logs again, so polling it would only repaint the same tail; a
-  // replayed (`cached`) agent never ran here at all, so its file cannot exist —
+  // 首帧的尾巴直接在初始化器里读：它就是这一帧要说的事实，放进 effect 会先画
+  // 一帧「暂无活动」再填上。换 run / 换 agent / 它换了状态时由调用方的 `key`
+  // 重挂载这个卡片，于是每个 (run, agent, status) 都恰好读一次。
+  //
+  // A replayed (`cached`) agent never ran here at all, so its file cannot exist —
   // reading it would be one pointless cross-process call per card.
+  const [activity, setActivity] = useState(() =>
+    agent.cached ? "" : getWorkflowAgentActivity(runId, agent.index),
+  );
+
+  // While it runs, a fixed cadence keeps the tail current. A terminal agent never
+  // logs again, so polling it would only repaint the same tail.
   useEffect(() => {
-    if (agent.cached) return;
-    setActivity(getWorkflowAgentActivity(runId, agent.index));
-    if (!running) return;
+    if (agent.cached || !running) return;
     const timer = setInterval(() => {
       setActivity(getWorkflowAgentActivity(runId, agent.index));
     }, AGENT_ACTIVITY_POLL_MS);

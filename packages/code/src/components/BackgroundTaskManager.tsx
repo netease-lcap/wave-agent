@@ -345,7 +345,15 @@ export const BackgroundTaskManager: React.FC<BackgroundTaskManagerProps> = ({
         </Box>
 
         {openAgent && selectedRun ? (
-          <WorkflowAgentDetail runId={selectedRun.runId} agent={openAgent} />
+          // 每次换 agent / 换 run / 它换状态都重挂载：卡片首帧的日志尾巴是在
+          // `useState` 初始化器里读的，重挂载就是「重读一次」—— 与原先那个
+          // effect 在同样的三种变化上重跑等价（也保住了 agent 停下时补读一次
+          // 最终那段日志）。
+          <WorkflowAgentDetail
+            key={`${selectedRun.runId}\u0000${openAgent.index}\u0000${openAgent.status}`}
+            runId={selectedRun.runId}
+            agent={openAgent}
+          />
         ) : selectedRun ? (
           <WorkflowRunDetail
             run={selectedRun}

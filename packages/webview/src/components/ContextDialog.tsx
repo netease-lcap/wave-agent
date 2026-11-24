@@ -128,20 +128,20 @@ const ContextDialog: React.FC<
   const requestIdRef = useRef("");
   const [breakdown, setBreakdown] = useState<ContextBreakdown | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
   const [loadedAt, setLoadedAt] = useState<Date | null>(null);
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
 
   const request = useCallback(() => {
     // 刷新时保留上一份数字，避免面板闪成空白（只有首帧没有数据才显示加载态）。
-    setError(null);
+    // 这里不清 error：error 只在回包里写、在成功回包里清（错误提示留到新结果到达
+    // 那一刻才消失）。点「重试」是用户按下的那一刻就要回到取数态，那个清在
+    // `retry`（事件处理器）里做。
     const requestId = String(++nextRequestId);
     requestIdRef.current = requestId;
     vscode?.postMessage({ command: "getContextBreakdown", requestId });
   }, [vscode]);
 
   useEffect(() => {
-    setLoading(true);
     request();
   }, [request]);
 
@@ -149,14 +149,21 @@ const ContextDialog: React.FC<
     if (message.command !== "contextBreakdownResponse") return;
     // 晚到的旧回复即弃：面板可反复开关，每次打开都重新取数。
     if (message.requestId !== requestIdRef.current) return;
-    setLoading(false);
     if (message.error || !message.breakdown) {
       setError(message.error || "Failed to read context usage.");
       return;
     }
+    setError(null);
     setBreakdown(message.breakdown);
     setLoadedAt(new Date());
   });
+
+  // 「重试」是事件处理器（不在 effect 里）：按下那一刻清掉错误提示，与改动前
+  // 一致地回到取数态，不必等新回包。
+  const retry = useCallback(() => {
+    setError(null);
+    request();
+  }, [request]);
 
   // 本轮结束后取一次新数字：面板打开时若正在跑，报告必然落后于这一轮。
   const wasBusyRef = useRef(busy);
@@ -224,12 +231,13 @@ const ContextDialog: React.FC<
   // 定位：锚点矩形缺失（环没渲染 / 首帧还没量到布局）时用右下角兜底。
   // 左对齐输入框左缘（`align: "left"`），与 `.rewind-popup` / `.btw-panel` /
   // `.model-picker-menu` 这几个输入框上方的浮层同一族 —— 右对齐会悬在中间。
-  const popoverStyle = useAnchoredMenuStyle(
-    dialogRef,
-    anchorRect ?? fallbackAnchorRect(),
-    popoverWidth,
-    "left",
-  );
+  const { style: popoverStyle, attachRef: popoverAttachRef } =
+    useAnchoredMenuStyle(
+      dialogRef,
+      anchorRect ?? fallbackAnchorRect(),
+      popoverWidth,
+      "left",
+    );
 
   const renderGroup = (
     id: string,
@@ -270,16 +278,11 @@ const ContextDialog: React.FC<
   };
 
   const renderBody = () => {
-    if (loading && !breakdown) {
-      return (
-        <div className="context-placeholder">Loading context breakdown…</div>
-      );
-    }
     if (error) {
       return (
         <div className="context-placeholder context-error" role="alert">
           {error}
-          <button type="button" className="context-retry" onClick={request}>
+          <button type="button" className="context-retry" onClick={retry}>
             重试
           </button>
         </div>
@@ -397,7 +400,7 @@ const ContextDialog: React.FC<
 
   return (
     <div
-      ref={dialogRef}
+      ref={popoverAttachRef}
       className="context-popover"
       role="dialog"
       aria-label="Context window"

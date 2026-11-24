@@ -48,19 +48,32 @@ export function useWorkflowAgentActivity({
   running,
   vscode,
 }: UseWorkflowAgentActivityOptions): string {
-  const [activity, setActivity] = useState("");
-  // The newest request this panel issued. Any reply carrying an older id
-  // describes an agent the user has already left.
-  const pendingRef = useRef<string | null>(null);
+  // The last reply we accepted, tagged with the agent it belongs to: the panel
+  // re-renders for the NEXT agent before its read comes back, so "is this text
+  // even about the agent on screen?" has to be answerable during render — that
+  // is what keeps the previous agent's lines off the panel (previously an
+  // effect blanked the state one frame later).
+  const [activity, setActivity] = useState<{
+    runId: string;
+    agentIndex: number;
+    lines: string;
+  } | null>(null);
+  // The newest request this panel issued, with the agent it asked about. Any
+  // reply carrying an older id describes an agent the user has already left.
+  const pendingRef = useRef<{
+    requestId: string;
+    runId: string;
+    agentIndex: number;
+  } | null>(null);
 
   // Kept in a ref so the read never changes identity: the effect below is keyed
-  // on (runId, agentIndex) only, and a re-created callback would re-clear the
-  // panel on every render.
+  // on (runId, agentIndex) only, and a re-created callback would restart the
+  // read (and the poll) on every render.
   const readRef = useRef<() => void>(() => {});
   readRef.current = () => {
     requestSeq += 1;
     const requestId = `workflow-agent-${requestSeq}`;
-    pendingRef.current = requestId;
+    pendingRef.current = { requestId, runId, agentIndex };
     vscode.postMessage({
       command: "getWorkflowAgentActivity",
       requestId,
@@ -70,9 +83,9 @@ export function useWorkflowAgentActivity({
   };
 
   useEffect(() => {
-    // Selection changed: never show the previous agent's lines while the new
-    // read is in flight.
-    setActivity("");
+    // Selection changed: the stored lines belong to another (runId, agentIndex),
+    // so the returned value below already reads as empty until the new read
+    // lands — all this effect has to do is start that read.
     readRef.current();
   }, [runId, agentIndex]);
 
@@ -87,10 +100,20 @@ export function useWorkflowAgentActivity({
 
   useHostMessage((message) => {
     if (message.command !== "workflowAgentActivity") return;
-    if (!pendingRef.current || message.requestId !== pendingRef.current) return;
+    const pending = pendingRef.current;
+    if (!pending || message.requestId !== pending.requestId) return;
     pendingRef.current = null;
-    setActivity(typeof message.activity === "string" ? message.activity : "");
+    setActivity({
+      runId: pending.runId,
+      agentIndex: pending.agentIndex,
+      lines: typeof message.activity === "string" ? message.activity : "",
+    });
   });
 
-  return activity;
+  // Lines are shown only while they belong to the agent on screen.
+  return activity &&
+    activity.runId === runId &&
+    activity.agentIndex === agentIndex
+    ? activity.lines
+    : "";
 }

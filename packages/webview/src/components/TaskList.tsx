@@ -102,11 +102,17 @@ export const TaskList: React.FC<TaskListProps> = ({
   const allCompleted =
     visibleTasks.length > 0 &&
     visibleTasks.every((t) => t.status === "completed");
-  const [autoHidden, setAutoHidden] = useState(false);
   const itemsRef = useRef<HTMLDivElement>(null);
   const prevTasksRef = useRef<Task[]>(tasks);
   // 是否在当前展示期间观察到过未完成任务；用于区分“任务在眼前完成”与“加载时已全部完成”
   const hadIncompleteRef = useRef(false);
+  // 当前这段「全部完成」的编号（0 = 现在不在计时段里）与它的自增源：宽限计时器
+  // 按编号认「要收起的是不是这一段」，同一段里任务再怎么增减都不会重新冒出来。
+  // 只在 effect 里写，渲染期只读。
+  const streakSeqRef = useRef(0);
+  const streakIdRef = useRef(0);
+  // 已经跑完 5 秒宽限的那一段编号（0 = 还没有）。
+  const [expiredStreakId, setExpiredStreakId] = useState(0);
 
   useEffect(() => {
     const prev = prevTasksRef.current;
@@ -134,26 +140,34 @@ export const TaskList: React.FC<TaskListProps> = ({
   useEffect(() => {
     if (visibleTasks.length === 0) {
       hadIncompleteRef.current = false;
+      streakIdRef.current = 0;
       return;
     }
     if (!allCompleted) {
       hadIncompleteRef.current = true;
-      setAutoHidden(false);
+      streakIdRef.current = 0;
       return;
     }
-    if (!hadIncompleteRef.current) {
-      setAutoHidden(true);
-      return;
+    // 一上来就全部完成（加载 / 切会话）：不宽限，直接隐藏（见下面的派生式）。
+    if (!hadIncompleteRef.current) return;
+    if (streakIdRef.current === 0) {
+      streakSeqRef.current += 1;
+      streakIdRef.current = streakSeqRef.current;
     }
-    const timer = setTimeout(() => setAutoHidden(true), 5000);
+    const streakId = streakIdRef.current;
+    const timer = setTimeout(() => setExpiredStreakId(streakId), 5000);
     return () => clearTimeout(timer);
   }, [allCompleted, visibleTasks.length]);
 
-  if (
-    visibleTasks.length === 0 ||
-    autoHidden ||
-    (allCompleted && !hadIncompleteRef.current)
-  ) {
+  // 是否自动收起是**派生量**（不再是 effect 里来回改写的 state）：一上来就全部
+  // 完成的会话恒收起；「眼前才完成」的那段先留 5 秒宽限，宽限跑完就一直收着 ——
+  // 同一段里任务再怎么增减都不会重新冒出来（身份是这段开始时的 tasks）。
+  const graceExpired =
+    streakIdRef.current !== 0 && expiredStreakId === streakIdRef.current;
+  const autoHidden =
+    allCompleted && (!hadIncompleteRef.current || graceExpired);
+
+  if (visibleTasks.length === 0 || autoHidden) {
     return null;
   }
 
