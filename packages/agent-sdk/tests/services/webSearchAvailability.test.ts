@@ -75,9 +75,9 @@ describe("web search availability", () => {
 });
 
 describe("the enableWebSearch switch", () => {
-  it("defaults to on — a missing key must not withdraw a shipped capability", () => {
-    expect(WEB_SEARCH_DEFAULT_ENABLED).toBe(true);
-    expect(isWebSearchEnabledBySettings("/test/workdir")).toBe(true);
+  it("defaults to off — the deployments that want it opt in", () => {
+    expect(WEB_SEARCH_DEFAULT_ENABLED).toBe(false);
+    expect(isWebSearchEnabledBySettings("/test/workdir")).toBe(false);
   });
 
   it("takes a managed false from the server", () => {
@@ -104,19 +104,21 @@ describe("the enableWebSearch switch", () => {
     // A hand-edited or older/newer payload must not be able to flip the switch.
     layers.remote = { enableWebSearch: "true" };
     layers.local = { enableWebSearch: 1 };
-    expect(isWebSearchEnabledBySettings("/test/workdir")).toBe(true);
+    // A coercion would read the string as on; saying nothing lands on the
+    // code default instead.
+    expect(isWebSearchEnabledBySettings("/test/workdir")).toBe(false);
   });
 
-  it("keeps the default when the settings file cannot be read", () => {
+  it("falls back to the default when the settings file cannot be read", () => {
     layers.localThrows = true;
     expect(() => isWebSearchEnabledBySettings("/test/workdir")).not.toThrow();
-    expect(isWebSearchEnabledBySettings("/test/workdir")).toBe(true);
+    expect(isWebSearchEnabledBySettings("/test/workdir")).toBe(false);
   });
 
   it("still honours the managed layer when no workdir was handed in", () => {
     layers.remote = { enableWebSearch: false };
     expect(isWebSearchEnabledBySettings()).toBe(false);
     layers.remote = null;
-    expect(isWebSearchEnabledBySettings()).toBe(true);
+    expect(isWebSearchEnabledBySettings()).toBe(false);
   });
 });

@@ -56,14 +56,24 @@ export function markWebSearchUnsupported(): void {
   logger?.info("Web search is not available on this server", { serverUrl });
 }
 
-/** Code default for the explicit switch: on, unless someone says otherwise. */
-export const WEB_SEARCH_DEFAULT_ENABLED = true;
+/**
+ * Code default for the explicit switch: **off**.
+ *
+ * The switch is resolved per deployment, and the deployments are not
+ * interchangeable in count: private installations each ship without web search
+ * (many of them), the SaaS service is a single one. Defaulting on would make
+ * every private deployment write `false`; defaulting off makes the one SaaS
+ * write `true`. It also settles the case nobody configures — a local CLI with
+ * no managed settings — on the side that fails quietly instead of reaching the
+ * network behind the operator's back.
+ */
+export const WEB_SEARCH_DEFAULT_ENABLED = false;
 
 /**
  * Whether configuration allows `WebSearch` for `workdir`.
  *
  * Resolution order, highest first: remote managed `enableWebSearch` → local
- * merged `enableWebSearch` → code default (on). A managed value wins in both
+ * merged `enableWebSearch` → code default (off). A managed value wins in both
  * directions — that is what makes it an operator control rather than a hint.
  *
  * `workdir` is the session's opening directory (`SessionWorkdir`), never the
@@ -72,8 +82,8 @@ export const WEB_SEARCH_DEFAULT_ENABLED = true;
  *
  * A non-boolean value at a layer reads as "that layer says nothing" rather than
  * being coerced — a malformed push must not be able to flip a switch. A settings
- * read that throws falls back to the default for the same reason: with the
- * default on, an unreadable file must not withdraw the capability.
+ * read that throws falls back to the default for the same reason, in both
+ * directions: an unreadable file must not conjure the capability up either.
  */
 export function isWebSearchEnabledBySettings(workdir?: string): boolean {
   const managed = readBooleanFlag(getRemoteSettingsSync()?.enableWebSearch);

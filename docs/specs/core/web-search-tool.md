@@ -107,7 +107,7 @@ order: 31
 - **401 / 403 保留行动指引**（去登录 / 看 license / 看企业成员）：那对应 CC 的 API 层错误提示，不是「服务端工具结果」那一档，所以不走 `Web search error: <code>` 模板。
 - **服务端 `message` 不进模型可见文本**：它面向运维、在 codechat 侧是中文，拼进文本就是中英混排。服务端 message 截断（≤300 字符）后进 `logger.warn`（`Web search rejected` / `Web search was not authorized` 的 `serverMessage` 字段）。
 - **工具 `content` 与渲染器输出同一份**，`data` 里留 `status` / `reason` / `errorCode` 供宿主与脚本读（`reason` 在服务端失败时就是 code，本地失败时是一句英文）。`shortResult` 是给折叠行看的中文短语。
-- **开关**：`enableWebSearch`（`WaveConfiguration` 顶层键，与 `enableArtifact` / `enableRepl` / `enableKnowledgeBase` 同一家族）。解析顺序：远端托管（`GET /api/wave/settings`，管理员下发）→ 本地合并 `settings.json` → 代码默认 `WEB_SEARCH_DEFAULT_ENABLED = true`。非布尔值视为该层未表态（同 `readBooleanFlag` 口径），不强制转换。判定读 `SessionWorkdir`——与 `enableKnowledgeBase` 同理，`cd` 不得改变由哪个 settings 文件决定。判定函数与 404 判定同住 `services/webSearchAvailability.ts`；注册门把两者串起来（开关为开**且**没有 404 判定才注册），`execute` 入口按同一顺序复判——配置关回 `status: "disabled"`，404 回 `status: "unsupported"`。`execute` 取目录走 `ToolManager.getSessionWorkdir()`（同一个 `SessionWorkdir`），不回落到 `context.workdir`。
+- **开关**：`enableWebSearch`（`WaveConfiguration` 顶层键，与 `enableArtifact` / `enableRepl` / `enableKnowledgeBase` 同一家族）。解析顺序：远端托管（`GET /api/wave/settings`，管理员下发）→ 本地合并 `settings.json` → 代码默认 `WEB_SEARCH_DEFAULT_ENABLED = false`。非布尔值视为该层未表态（同 `readBooleanFlag` 口径），不强制转换。判定读 `SessionWorkdir`——与 `enableKnowledgeBase` 同理，`cd` 不得改变由哪个 settings 文件决定。判定函数与 404 判定同住 `services/webSearchAvailability.ts`；注册门把两者串起来（开关为开**且**没有 404 判定才注册），`execute` 入口按同一顺序复判——配置关回 `status: "disabled"`，404 回 `status: "unsupported"`。`execute` 取目录走 `ToolManager.getSessionWorkdir()`（同一个 `SessionWorkdir`），不回落到 `context.workdir`。
 - **能力探测**：`services/webSearchAvailability.ts` 在**内存里**按 `serverUrl` 记 404 判定（不落盘）；注册门（`ToolManager.initializeBuiltInTools` / `reloadFeatureGatedTools`）与 `execute` 入口都读它。
 - **超时**：15 000 ms（服务端 10 秒 + 余量）；**重试**：网络错误与 `503` 各重试 1 次、间隔 300 ms（照 `knowledgeBaseApi` 的既有口径），`400/429/502/504/404` 不重试。
 - **遥测**：仓内没有通用「每工具耗时/错误」上报（`telemetry/metrics.ts` 只有 commit / PR / 编辑行数等专用计数器），故只 `logger.warn` 失败与能力判定，不新造计数器。
@@ -115,7 +115,7 @@ order: 31
 
 ## 边界情况
 
-- **为什么默认开**：CC 的 `WebSearch` 除 provider 不支持外默认可用，本工具上线时也是「注册即有、404 才关」；把默认改成关等于悄悄收回一个已发布的能力。要收紧的部署显式下发 `false`。
+- **为什么默认关**：默认值该落在「要改的配置更少」的一侧。私有化环境有很多套、且都不带联网搜索（服务端 `WEB_SEARCH_ENABLED` 默认关），SaaS 只有一套：默认开就得每套私有化各写一个 `false`，默认关只要 SaaS 写一个 `true`。它同时决定了「没人配置」的那半边——本地 CLI、未接托管的部署——落在不出网的一侧，这比静默联网更好解释。**这是对 CC 的主动偏离**（CC 除 provider 不支持外默认可用）：依据是本产品的部署形态与 CC 不同，不是疏忽；代价是升级后没有显式配置的部署会失去 `WebSearch`。
 - **开关与 404 是两件事**：开关是「配置说不要」，404 是「服务端说没有」。前者回执 `status: "disabled"`，后者 `status: "unsupported"`，不混用——把配置关闭报成「本部署未开通」会把人支去查服务端的 `WEB_SEARCH_ENABLED`。
 - **`results` 恒为 1 个元素**：契约里它是「一次服务端工具调用的产出块」，本接口一次调用只打一次上游；`content: []` 是「搜了但没命中」。客户端按块 `flatMap` 出命中，多于 1 块也照样拼。
 - **`snippet` 为什么不给模型看**：CC 的语义是模型只看 `title` + `url`（snippet 只进 PostToolUse hooks；非 citations 时被 `Qr()` 剥掉）。给模型摘要会诱导它拿 200 字的摘要硬答，而正文应该走 `WebFetch`。所以 `snippet` 留在 `data`（宿主 UI / hook 可读）、不进回执文本。
