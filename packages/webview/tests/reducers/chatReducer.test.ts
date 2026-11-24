@@ -474,6 +474,71 @@ describe("chatReducer", () => {
       expect(newState).toBe(state);
     });
 
+    it("携带 data 的更新帧把 data 原样落到块上（阶段 2 之后的新转录）", () => {
+      const toolBlock: ToolBlock = {
+        type: "tool",
+        id: "tool-1",
+        name: "Bash",
+        stage: "running",
+        parameters: '{"command":"echo hi"}',
+        success: false,
+      };
+      const message: Message = {
+        id: "msg-1",
+        role: "assistant",
+        timestamp: "0",
+        blocks: [toolBlock],
+      };
+      const state = { ...initialState, messages: [message] };
+      const data = { stdout: "hi", exitCode: 0, interrupted: false };
+
+      const newState = chatReducer(state, {
+        type: "UPDATE_TOOL_BLOCK",
+        payload: {
+          messageId: "msg-1",
+          id: "tool-1",
+          name: "Bash",
+          stage: "end",
+          success: true,
+          data,
+        },
+      });
+
+      const updatedBlock = newState.messages[0].blocks[0] as ToolBlock;
+      // reducer 不是字段白名单：data 必须原样留在块上，否则 webview 永远看不到它。
+      expect(updatedBlock.data).toEqual(data);
+      expect(updatedBlock.stage).toBe("end");
+    });
+
+    it("新建块时同样保留 data（result 留空串仍走既有的空结果分支）", () => {
+      const message: Message = {
+        id: "msg-1",
+        role: "assistant",
+        timestamp: "0",
+        blocks: [],
+      };
+      const state = { ...initialState, messages: [message] };
+      const data = { stdout: "hi", exitCode: 0, interrupted: false };
+
+      const newState = chatReducer(state, {
+        type: "UPDATE_TOOL_BLOCK",
+        payload: {
+          messageId: "msg-1",
+          id: "tool-new",
+          name: "Bash",
+          stage: "end",
+          success: true,
+          data,
+        },
+      });
+
+      const newBlock = newState.messages[0].blocks[0] as ToolBlock;
+      expect(newBlock.data).toEqual(data);
+      // 只有 data 时 result 就是那个空串占位（与老转录相比没有文本可显示），
+      // UI 照旧走空结果分支；渲染器渲不出文本的工具也一样。
+      expect(newBlock.result).toBe("");
+    });
+
     it("should add new tool block if not found (incremental callback scenario)", () => {
       const message: Message = {
         id: "msg-1",

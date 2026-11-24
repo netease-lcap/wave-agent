@@ -10,11 +10,17 @@ import {
 } from "../services/artifactSession.js";
 import {
   COMMENT_TEXT_MAX_BYTES,
+  commentThreadsData,
   fetchComments,
-  formatCommentThreads,
   postReply,
   postResolve,
 } from "../services/artifactComments.js";
+import {
+  artifactCommentsShortResult,
+  renderArtifactCommentsResultData,
+  type ArtifactCommentsReplyResultData,
+  type ArtifactCommentsResolveResultData,
+} from "./resultData/artifactComments.js";
 import {
   authErrorFor,
   confirmScopedWrite,
@@ -112,14 +118,18 @@ async function commentsAction(
   if (outcome.kind === "error") return commentError(outcome.error);
 
   const url = typeof args.url === "string" ? args.url.trim() : slug;
-  const rendered = formatCommentThreads(outcome.value, {
-    url,
-    ...(cursor ? { cursor } : {}),
-  });
+  const data = {
+    action: "read" as const,
+    ...commentThreadsData(outcome.value, {
+      url,
+      ...(cursor ? { cursor } : {}),
+    }),
+  };
   return {
     success: true,
-    content: rendered.content,
-    shortResult: rendered.shortResult,
+    content: renderArtifactCommentsResultData(data),
+    shortResult: artifactCommentsShortResult(data),
+    data,
   };
 }
 
@@ -188,29 +198,34 @@ async function replyAction(
     // already has an agent answer. The target is `continues_reply_id` (the
     // thread root when it was omitted) — so the receipt names the target and,
     // when it was defaulted, hands back the one-step self-fix.
-    const standing = reply.standingReplyId
-      ? ` (id=${reply.standingReplyId})`
-      : "";
-    const target = continuesReplyId
-      ? `Comment ${continuesReplyId}`
-      : `The thread root ${reply.threadId}`;
-    const fix = continuesReplyId
-      ? ""
-      : ` The duplicate check is per comment, so this only blocks answering the root itself — ` +
-        `if you meant to answer a comment flagged AWAITING YOUR REPLY, re-read action "read" ` +
-        `and re-send with "continues_reply_id" set to that comment's id.`;
+    const data: ArtifactCommentsReplyResultData = {
+      action: "reply",
+      thread_id: reply.threadId,
+      replied: false,
+      ...(reply.standingReplyId
+        ? { standing_reply_id: reply.standingReplyId }
+        : {}),
+      ...(continuesReplyId ? { continues_reply_id: continuesReplyId } : {}),
+    };
     return {
       success: true,
-      content:
-        `${target} already has an agent reply standing${standing} — do not answer it again.${fix} ` +
-        `Only re-send with "acknowledge_duplicate": true if you have genuinely new content to add.`,
+      content: renderArtifactCommentsResultData(data),
       shortResult: `Skipped duplicate reply on ${reply.threadId}`,
+      data,
     };
   }
+  const data: ArtifactCommentsReplyResultData = {
+    action: "reply",
+    thread_id: reply.threadId,
+    replied: true,
+    ...(reply.commentId ? { comment_id: reply.commentId } : {}),
+    ...(continuesReplyId ? { continues_reply_id: continuesReplyId } : {}),
+  };
   return {
     success: true,
-    content: `Replied to thread ${reply.threadId}${reply.commentId ? ` (comment id=${reply.commentId})` : ""}. Everyone who can see this page's comments will see it.`,
+    content: renderArtifactCommentsResultData(data),
     shortResult: `Replied to ${reply.threadId}`,
+    data,
   };
 }
 
@@ -290,12 +305,16 @@ async function resolveAction(
   }
   if (outcome.kind === "error") return commentError(outcome.error);
 
+  const data: ArtifactCommentsResolveResultData = {
+    action: "resolve",
+    thread_id: threadId,
+    thread_resolved: outcome.resolved,
+  };
   return {
     success: true,
-    content: outcome.resolved
-      ? `Resolved thread ${threadId}. No comments are deleted.`
-      : `Reopened thread ${threadId}.`,
+    content: renderArtifactCommentsResultData(data),
     shortResult: `${outcome.resolved ? "Resolved" : "Reopened"} ${threadId}`,
+    data,
   };
 }
 

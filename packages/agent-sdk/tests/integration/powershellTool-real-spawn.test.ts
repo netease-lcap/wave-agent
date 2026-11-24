@@ -33,8 +33,10 @@ function makeContext(
   };
 }
 
-function exitCodeOf(result: { metadata?: unknown }): number | undefined {
-  return (result.metadata as { exitCode?: number } | undefined)?.exitCode;
+// The exit code rides `data.exitCode` since issue #3055 阶段 2 (it used to be
+// `ToolResult.metadata.exitCode`).
+function exitCodeOf(result: { data?: unknown }): number | undefined {
+  return (result.data as { exitCode?: number } | undefined)?.exitCode;
 }
 
 describe.skipIf(!isWindows)("PowerShell tool with real shell spawn", () => {

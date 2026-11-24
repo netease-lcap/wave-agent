@@ -113,7 +113,10 @@ describe("exitPlanModeTool", () => {
     const result = await exitPlanModeTool.execute({}, mockContext);
 
     expect(result.success).toBe(true);
-    expect(result.content).toBe("Plan approved. Exiting plan mode.");
+    // 文本口径改成 CC 的（issue #3055 阶段 1），只是不再回声计划正文。
+    expect(result.content).toBe(
+      `User has approved your plan. You can now start coding. Start with updating your todo list if applicable\n\nYour plan has been saved to: /test/plan.md\nYou can refer back to it if needed during implementation.`,
+    );
     expect(mockPermissionManager.createContext).toHaveBeenCalledWith(
       "ExitPlanMode",
       "plan",

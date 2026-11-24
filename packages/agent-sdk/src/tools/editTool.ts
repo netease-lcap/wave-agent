@@ -6,15 +6,10 @@ import type { ToolPlugin, ToolResult, ToolContext } from "./types.js";
 import { resolvePath, getDisplayPath } from "../utils/path.js";
 import { escapeRegExp, analyzeEditMismatch } from "../utils/editUtils.js";
 import { EDIT_TOOL_NAME, READ_TOOL_NAME } from "../constants/tools.js";
-
-/**
- * Prepended to the result of an edit that applied to a file which changed on
- * disk after this session read it (`staleRecovered`). The edit itself was
- * clean, but everything else in the file may now differ from what the model
- * holds in context — wording follows Claude Code's note.
- */
-const STALE_RECOVERED_NOTE =
-  "Note: the file had been modified on disk since you last read it — the edit applied cleanly, but the file contains other changes not in your context. Read it before edits that depend on surrounding content.";
+import {
+  renderEditResultData,
+  type EditResultData,
+} from "./resultData/edit.js";
 
 /**
  * Format compact parameter display
@@ -322,19 +317,28 @@ Usage:
       logger.debug(`Edit tool: ${shortResult}`);
 
       // Line delta for the `wave.lines.changed` metric: the replaced text's own
-      // line count, times the number of occurrences for a replace-all.
+      // line count, times the number of occurrences for a replace-all. It rides
+      // `data` (toolManager and the host's `+N −M` read it there), so the result
+      // shape carries it instead of `ToolResult.metadata`.
+      const linesAdded = newString.split("\n").length * replacementCount;
+      const linesRemoved =
+        matchedOldString.split("\n").length * replacementCount;
+      const data: EditResultData = {
+        filePath: resolvedPath,
+        userModified: false,
+        replaceAll,
+        staleRecovered,
+        linesAdded,
+        linesRemoved,
+      };
+
       return {
         success: true,
-        content: staleRecovered
-          ? `${STALE_RECOVERED_NOTE}\n\n${shortResult}`
-          : shortResult,
+        data,
+        content: renderEditResultData(data),
         shortResult,
         filePath: resolvedPath,
         startLineNumber,
-        metadata: {
-          linesAdded: newString.split("\n").length * replacementCount,
-          linesRemoved: matchedOldString.split("\n").length * replacementCount,
-        },
       };
     } catch (error) {
       const errorMessage =

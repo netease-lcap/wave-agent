@@ -35,7 +35,6 @@ import {
   ARTIFACT_SCOPES,
   fetchArtifactList,
   isArtifactScope,
-  type ArtifactListRow,
   type ArtifactScope,
 } from "../services/artifactList.js";
 import {
@@ -55,6 +54,25 @@ import {
   uploadAsset,
 } from "../services/artifactAssets.js";
 import { formatSize } from "../services/contentSummarizer.js";
+import {
+  composeArtifactReadAssetText,
+  composeArtifactReadText,
+  renderArtifactCopyFromResultData,
+  renderArtifactDeleteAssetResultData,
+  renderArtifactListAssetsResultData,
+  renderArtifactListResultData,
+  renderArtifactPublishResultData,
+  renderArtifactReadAssetFileText,
+  renderArtifactUploadAssetResultData,
+  type ArtifactCopyFromResultData,
+  type ArtifactDeleteAssetResultData,
+  type ArtifactListAssetsResultData,
+  type ArtifactListResultData,
+  type ArtifactPublishResultData,
+  type ArtifactReadAssetResultData,
+  type ArtifactReadResultData,
+  type ArtifactUploadAssetResultData,
+} from "./resultData/artifact.js";
 
 // --- Limits ---
 const DEPLOY_TIMEOUT_MS = 30_000;
@@ -301,12 +319,6 @@ function confirmAssetWrite(
 
 // --- List action ---
 
-function formatListRow(row: ArtifactListRow, host: string): string {
-  const favicon = row.favicon ? `${row.favicon} ` : "";
-  const updated = row.updatedAt ? ` (updated ${row.updatedAt})` : "";
-  return `- ${favicon}${row.title} — ${host}/code/artifact/${encodeURIComponent(row.slug)}${updated}`;
-}
-
 /**
  * Enumerate the account's artifacts, grouped by how they relate to it. Scoping
  * and truncation are client-side because the server returns one fixed page.
@@ -368,27 +380,24 @@ async function listArtifacts(
 
   const { rows, truncated } = outcome;
   const host = authService.getServerUrl();
-  const lines = [`Artifacts (scope: ${scope}) — ${rows.length} listed`];
-  if (rows.length === 0) {
-    lines.push("", "No artifacts matched.");
-  } else {
-    for (const rel of ["mine", "shared"] as const) {
-      const group = rows.filter((row) => row.rel === rel);
-      if (group.length === 0) continue;
-      lines.push("", `(${rel})`);
-      for (const row of group) lines.push(formatListRow(row, host));
-    }
-  }
-  if (truncated) {
-    lines.push(
-      "",
-      `More matches exist — raise "limit" (max ${ARTIFACT_LIST_MAX_LIMIT}) or narrow "scope".`,
-    );
-  }
+  const resultData: ArtifactListResultData = {
+    action: LIST_ACTION,
+    scope,
+    artifacts: rows.map((row) => ({
+      title: row.title,
+      url: `${host}/code/artifact/${encodeURIComponent(row.slug)}`,
+      rel: row.rel,
+      ...(row.favicon ? { favicon: row.favicon } : {}),
+      ...(row.updatedAt ? { updatedAt: row.updatedAt } : {}),
+    })),
+    truncated,
+    maxLimit: ARTIFACT_LIST_MAX_LIMIT,
+  };
 
   return {
     success: true,
-    content: lines.join("\n"),
+    data: resultData,
+    content: renderArtifactListResultData(resultData),
     shortResult: `Listed ${rows.length} artifact${rows.length === 1 ? "" : "s"} (scope: ${scope})`,
   };
 }
@@ -484,16 +493,42 @@ async function readArtifact(
       }
       if (sessionId) markArtifactReadApproved(sessionId, slug);
     }
-    return summarizeArtifactAsReader(pageUrl, prompt, artifact, context);
+    const summary = await summarizeArtifactAsReader(
+      pageUrl,
+      prompt,
+      artifact,
+      context,
+    );
+    // reader 档的正文是快速模型对他人页面的摘要（模型产出，可能很长），现在搬进
+    // `data.body`。这段文本自己已经带了 sharing 头与落盘说明（见
+    // `services/artifactContent.ts:414-426`），所以渲染器对 reader 档原样返回它。
+    const data: ArtifactReadResultData = {
+      action: READ_ACTION,
+      url: pageUrl,
+      ownership: "reader",
+      body: summary.content,
+      ...(artifact.version ? { version: artifact.version } : {}),
+      ...(artifact.sharingNotice ? { sharing: artifact.sharingNotice } : {}),
+    };
+    return summary.success ? { ...summary, data } : summary;
   }
 
-  const lines = [`Artifact: ${pageUrl}`];
-  if (artifact.version) lines.push(`Version: ${artifact.version}`);
-  if (artifact.sharingNotice) lines.push(artifact.sharingNotice);
   const persisted = persistArtifactContent(artifact.html);
+  const resultData: ArtifactReadResultData = {
+    action: READ_ACTION,
+    url: pageUrl,
+    ownership: "owner",
+    bytes: artifact.bytes,
+    // owner 档的正文是读回来的页面 HTML（大字段），搬进 `data.body`；头部几行由
+    // `composeArtifactReadText` 从 `data` 拼，所以措辞仍然只有一份。
+    body: persisted ?? artifact.html,
+    ...(artifact.version ? { version: artifact.version } : {}),
+    ...(artifact.sharingNotice ? { sharing: artifact.sharingNotice } : {}),
+  };
   return {
     success: true,
-    content: `${lines.join("\n")}\n\n${persisted ?? artifact.html}`,
+    data: resultData,
+    content: composeArtifactReadText(resultData),
     shortResult: `Read artifact ${slug}${artifact.version ? ` (v${artifact.version})` : ""} — ${formatSize(artifact.bytes)} of HTML`,
   };
 }
@@ -722,10 +757,6 @@ async function publishArtifact(
       slug: deploy.slug,
       version: String(deploy.version),
     });
-    const lines = [`Artifact published: ${deploy.url}`];
-    if (deploy.path) lines.push(`Path: ${deploy.path}`);
-    if (deploy.title) lines.push(`Title: ${deploy.title}`);
-    lines.push(`Version: ${deploy.version}`);
     // A 201 can only come from a writer, so the role is known even when the
     // probe was skipped (first publish) or the metadata omitted `role`. A brand
     // new artifact is private server-side, hence the synthesized owner probe.
@@ -733,19 +764,22 @@ async function publishArtifact(
       probedMeta ?? { perm: { mode: "owner" } },
       { role: "owner" },
     );
-    if (sharing) lines.push(sharing);
+    const resultData: ArtifactPublishResultData = {
+      action: PUBLISH_ACTION,
+      url: deploy.url,
+      version: String(deploy.version),
+      ...(deploy.path ? { path: deploy.path } : {}),
+      ...(deploy.title ? { title: deploy.title } : {}),
+      // 宿主卡片用（原来走 `ToolResult.metadata.artifactTitle`）：发布卡片上显示的
+      // 名字，回退链与服务端无关，所以与正文的 `title` 分开一个键。
+      artifactTitle: deploy.title || label || path.basename(filePath),
+      ...(sharing ? { sharing } : {}),
+    };
     return {
       success: true,
-      content: lines.join("\n"),
+      data: resultData,
+      content: renderArtifactPublishResultData(resultData),
       shortResult: `Published ${filePath} → ${deploy.url}`,
-      // Hosts render this as a card with a single 「在浏览器中打开」 action: an
-      // artifact has only a URL, so there is no local file to open (PM
-      // 3500358560332032). Every key is optional on the host side.
-      metadata: {
-        artifactUrl: deploy.url,
-        artifactTitle: deploy.title || label || path.basename(filePath),
-        artifactVersion: String(deploy.version),
-      },
     };
   }
 
@@ -1008,16 +1042,17 @@ async function uploadAssetAction(
   if (outcome.kind === "error") return assetError(outcome.error);
 
   const asset = outcome.value;
-  const lines = [
-    `Asset uploaded: ${asset.asset_id}`,
-    `Reference it in the page as: _blob/${asset.asset_id}`,
-    `Type: ${asset.content_type || local.contentType}`,
-    `Size: ${formatSize(asset.size_bytes)}`,
-  ];
-  if (asset.sha256) lines.push(`sha256: ${asset.sha256}`);
+  const resultData: ArtifactUploadAssetResultData = {
+    action: UPLOAD_ASSET_ACTION,
+    id: asset.asset_id,
+    content_type: asset.content_type || local.contentType,
+    size_bytes: asset.size_bytes,
+    ...(asset.sha256 ? { sha256: asset.sha256 } : {}),
+  };
   return {
     success: true,
-    content: lines.join("\n"),
+    data: resultData,
+    content: renderArtifactUploadAssetResultData(resultData),
     shortResult: `Uploaded ${filePath} → asset ${asset.asset_id}`,
   };
 }
@@ -1040,27 +1075,23 @@ async function listAssetsAction(
   if (outcome.kind === "error") return assetError(outcome.error);
 
   const { assets, usage, next } = outcome.value;
-  const lines = [
-    `Assets of ${String(args.url)} — ${usage.files}/${usage.max_files} file(s), ${formatSize(usage.bytes)} of ${formatMiB(usage.max_bytes)}`,
-  ];
-  if (assets.length === 0) {
-    lines.push("", "No assets.");
-  } else {
-    lines.push("");
-    for (const asset of assets) {
-      const created = asset.created_at ? `  ${asset.created_at}` : "";
-      lines.push(
-        `- ${asset.asset_id}  ${asset.content_type || "unknown"}  ${formatSize(asset.size_bytes)}${created}`,
-      );
-    }
-  }
-  if (next) {
-    lines.push("", `More assets — call again with "after": "${next}"`);
-  }
+  const resultData: ArtifactListAssetsResultData = {
+    action: LIST_ASSETS_ACTION,
+    url: String(args.url),
+    assets: assets.map((asset) => ({
+      id: asset.asset_id,
+      size_bytes: asset.size_bytes,
+      ...(asset.content_type ? { content_type: asset.content_type } : {}),
+      ...(asset.created_at ? { created_at: asset.created_at } : {}),
+    })),
+    usage,
+    ...(next ? { next } : {}),
+  };
 
   return {
     success: true,
-    content: lines.join("\n"),
+    data: resultData,
+    content: renderArtifactListAssetsResultData(resultData),
     shortResult: `Listed ${assets.length} asset(s) of ${slug}`,
   };
 }
@@ -1111,13 +1142,23 @@ async function readAssetAction(
     if (sessionId) markArtifactReadApproved(sessionId, slug);
   }
 
-  const described = `${contentType || "application/octet-stream"}, ${formatSize(bytes.byteLength)}`;
+  const resultData: ArtifactReadAssetResultData = {
+    action: READ_ASSET_ACTION,
+    id: assetId,
+    size_bytes: bytes.byteLength,
+    ...(contentType ? { content_type: contentType } : {}),
+  };
   if (isTextContentType(contentType)) {
     const text = bytes.toString("utf-8");
     const persisted = persistArtifactContent(text);
+    // 资产原文（大字段）搬进 `data.body`；那一行描述由
+    // `composeArtifactReadAssetText` 从 `data` 拼，措辞仍然只有一份。
+    const body = persisted ?? text;
+    const textData: ArtifactReadAssetResultData = { ...resultData, body };
     return {
       success: true,
-      content: `Asset ${assetId} (${described})\n\n${persisted ?? text}`,
+      data: textData,
+      content: composeArtifactReadAssetText({ ...textData, body }),
       shortResult: `Read asset ${assetId} (${contentType || "text"})`,
     };
   }
@@ -1132,7 +1173,8 @@ async function readAssetAction(
   }
   return {
     success: true,
-    content: `Asset ${assetId} (${described}) written to ${written}\nUse Read to view it.`,
+    data: { ...resultData, path: written },
+    content: renderArtifactReadAssetFileText({ ...resultData, path: written }),
     shortResult: `Read asset ${assetId} (${contentType || "binary"})`,
   };
 }
@@ -1163,11 +1205,16 @@ async function deleteAssetAction(
   });
   if (outcome.kind === "error") return assetError(outcome.error);
 
+  const resultData: ArtifactDeleteAssetResultData = {
+    action: DELETE_ASSET_ACTION,
+    id: assetId,
+    url: String(args.url),
+    deleted: outcome.value.deleted,
+  };
   return {
     success: true,
-    content: outcome.value.deleted
-      ? `Deleted asset ${assetId} from ${String(args.url)}.`
-      : `Asset ${assetId} was already gone — nothing was deleted.`,
+    data: resultData,
+    content: renderArtifactDeleteAssetResultData(resultData),
     shortResult: outcome.value.deleted
       ? `Deleted asset ${assetId}`
       : `Asset ${assetId} already gone`,
@@ -1245,24 +1292,25 @@ async function copyFromAction(
   if (outcome.kind === "error") return assetError(outcome.error);
 
   const copies = outcome.value;
-  const lines = [
-    `Copied ${copies.length} asset(s) from ${fromSlug} into ${String(args.url)}:`,
-  ];
-  for (const copy of copies) {
-    lines.push(
-      `- ${copy.from_id ?? "?"} → ${copy.asset_id}  ${copy.content_type || "unknown"}  ${formatSize(copy.size_bytes)}`,
-    );
-  }
-  if (copies.length !== assetIds.length) {
-    lines.push(
-      "",
-      `Only ${copies.length} of ${assetIds.length} were confirmed — run list_assets on the target to check.`,
-    );
-  }
+  const resultData: ArtifactCopyFromResultData = {
+    action: COPY_FROM_ACTION,
+    from: fromSlug,
+    url: String(args.url),
+    assets: copies.map((copy) => ({
+      id: copy.asset_id,
+      size_bytes: copy.size_bytes,
+      ...(copy.from_id !== undefined ? { from_id: copy.from_id } : {}),
+      ...(copy.content_type !== undefined
+        ? { content_type: copy.content_type }
+        : {}),
+    })),
+    requested: assetIds.length,
+  };
 
   return {
     success: true,
-    content: lines.join("\n"),
+    data: resultData,
+    content: renderArtifactCopyFromResultData(resultData),
     shortResult: `Copied ${copies.length} asset(s) into ${slug}`,
   };
 }

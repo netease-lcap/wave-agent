@@ -172,7 +172,18 @@ describe("skillTool fork", () => {
     );
 
     expect(result.success).toBe(true);
-    expect(result.content).toBe("Subagent execution result");
+    // 模型侧文本照 CC 的包装句（`SkillTool.ts:852`），子代理答复落在 `Result:` 段
+    // 下面；`data` 跟它一一对应（issue #3055 阶段 1）。
+    expect(result.content).toBe(
+      'Skill "fork-skill" completed (forked execution).\n\nResult:\nSubagent execution result',
+    );
+    expect(result.data).toStrictEqual({
+      success: true,
+      commandName: "fork-skill",
+      status: "forked",
+      agentId: "subagent-123",
+      result: "Subagent execution result",
+    });
     expect(result.shortResult).toContain("Invoked skill: fork-skill");
     expect(result.shortResult).not.toContain("(forked to general-purpose)");
     expect(mockSubagentManager.findSubagent).toHaveBeenCalledWith(

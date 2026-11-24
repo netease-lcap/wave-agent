@@ -3,6 +3,7 @@ import type { ThinkingBlockData } from "../types/anthropicMessages.js";
 import { imageFileCacheKey, planOutboundImage } from "./imageRewrite.js";
 import { convertImageToBase64 } from "./messageOperations.js";
 import { taskNotificationToXml } from "./notificationXml.js";
+import { toolBlockText } from "./toolBlockText.js";
 import { ChatCompletionMessageToolCall } from "openai/resources";
 import { recoverTruncatedJson, stripAnsiColors } from "./stringUtils.js";
 import {
@@ -169,10 +170,13 @@ export async function convertMessagesForAPI(
             // Always add a proper tool message to satisfy tool_call_id pairing.
             // 工具结果原样交给模型（不剥 ANSI，与转录、UI 同一份文本）——完全
             // 对齐 Claude Code，见 specs/core/bash-tools.md「ANSI 颜色代码」。
+            //
+            // 新转录里没有 `result`，这段文本由 `toolBlockText` 用工具的渲染器从
+            // `data` 现场重建（issue #3055 阶段 2）；老转录与表外工具仍有 `result`。
             recentMessages.unshift({
               tool_call_id: toolBlock.id,
               role: "tool",
-              content: toolBlock.result || "",
+              content: toolBlockText(toolBlock) || "",
             });
 
             // If there are images, also prepare a user message with image content
@@ -484,10 +488,11 @@ export async function convertMessagesForAPI(
         }
 
         // If there is a tool block in user message, add its result
-        if (block.type === "tool" && block.stage === "end" && block.result) {
+        const userToolText = block.type === "tool" ? toolBlockText(block) : "";
+        if (block.type === "tool" && block.stage === "end" && userToolText) {
           contentParts.push({
             type: "text",
-            text: `<local-command-stdout>\n${stripAnsiColors(block.result)}\n</local-command-stdout>`,
+            text: `<local-command-stdout>\n${stripAnsiColors(userToolText)}\n</local-command-stdout>`,
           });
         }
 

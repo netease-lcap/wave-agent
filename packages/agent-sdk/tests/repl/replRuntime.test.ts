@@ -427,7 +427,7 @@ describe("$ — the shell template", () => {
     const h = harness(() => ({
       success: true,
       content: "hi\n",
-      metadata: { exitCode: 0 },
+      data: { exitCode: 0 },
     }));
 
     const result = await runRepl(
@@ -457,7 +457,7 @@ describe("$ — the shell template", () => {
       success: false,
       content: "boom",
       error: "Command failed with exit code: 2",
-      metadata: { exitCode: 2 },
+      data: { exitCode: 2 },
     }));
 
     const result = await runRepl(
@@ -476,6 +476,28 @@ describe("$ — the shell template", () => {
     expect(result.ok).toBe(true);
     expect(result.value).toBe("after");
     expect(result.logs).toEqual(["ShellError 2"]);
+  });
+
+  it("still reads the exit code off metadata for a pre-phase-2 shape", async () => {
+    // `data.exitCode` is the authority since issue #3055 阶段 2; `metadata` is
+    // only the forward-compat fallback for a result recorded before that move.
+    const h = harness(() => ({
+      success: false,
+      content: "old shape",
+      error: "Command failed with exit code: 7",
+      metadata: { exitCode: 7 },
+    }));
+
+    const result = await runRepl(
+      h,
+      `
+      try { await $\`false\`; } catch (e) { self.log(String(e.exitCode)); }
+      return "after";
+    `,
+    );
+
+    expect(result.ok).toBe(true);
+    expect(result.logs).toEqual(["7"]);
   });
 
   it("hands a command that outlived its wait back as a running task", async () => {
@@ -517,7 +539,7 @@ describe("$ — the shell template", () => {
     const h = harness(() => ({
       success: true,
       content: '{"a":1}',
-      metadata: { exitCode: 0 },
+      data: { exitCode: 0 },
     }));
 
     const result = await runRepl(
@@ -540,7 +562,7 @@ describe("$ — the shell template", () => {
     const h = harness(() => ({
       success: true,
       content: "not json, a log line",
-      metadata: { exitCode: 0 },
+      data: { exitCode: 0 },
     }));
 
     const result = await runRepl(
@@ -565,7 +587,7 @@ describe("$ — the shell template", () => {
       success: false,
       content: "boom",
       error: "Command failed with exit code: 2",
-      metadata: { exitCode: 2 },
+      data: { exitCode: 2 },
     }));
 
     const result = await runRepl(
@@ -585,7 +607,7 @@ describe("$ — the shell template", () => {
     const h = harness(() => ({
       success: true,
       content: "Command executed with exit code: 0",
-      metadata: { exitCode: 0 },
+      data: { exitCode: 0 },
     }));
 
     const result = await runRepl(
@@ -606,7 +628,7 @@ describe("$ — the shell template", () => {
     const h = harness(() => ({
       success: true,
       content: "first line\nCommand executed with exit code: 0",
-      metadata: { exitCode: 0 },
+      data: { exitCode: 0 },
     }));
 
     const result = await runRepl(
@@ -626,7 +648,7 @@ describe("$ — the shell template", () => {
       success: true,
       content: "Command executed with exit code: 0",
       shortResult: "Command executed with exit code: 0",
-      metadata: { exitCode: 0 },
+      data: { exitCode: 0 },
     }));
 
     const result = await runRepl(
@@ -653,7 +675,7 @@ describe("$ — the shell template", () => {
         content:
           `Shell working directory changed to ${target}\n` +
           "Command executed with exit code: 0",
-        metadata: { exitCode: 0 },
+        data: { exitCode: 0 },
       };
     });
     h.context.onCwdChange = () => {};
@@ -680,7 +702,7 @@ describe("$ — the shell template", () => {
       return {
         success: true,
         content: `Shell cwd was reset to ${target}\nCommand executed with exit code: 0`,
-        metadata: { exitCode: 0 },
+        data: { exitCode: 0 },
       };
     });
     h.context.onCwdChange = () => {};
@@ -705,7 +727,7 @@ describe("$ — the shell template", () => {
         success: true,
         content: `Shell working directory changed to ${target}\n${printed}`,
         shortResult: "line one\n  line two",
-        metadata: { exitCode: 0 },
+        data: { exitCode: 0 },
       };
     });
     h.context.onCwdChange = () => {};
@@ -730,7 +752,7 @@ describe("$ — the shell template", () => {
       success: true,
       content: printed,
       shortResult: printed,
-      metadata: { exitCode: 0 },
+      data: { exitCode: 0 },
     }));
 
     const result = await runRepl(
@@ -748,7 +770,7 @@ describe("$ — the shell template", () => {
       return {
         success: true,
         content: `Shell working directory changed to ${target}\nCommand executed with exit code: 0`,
-        metadata: { exitCode: 0 },
+        data: { exitCode: 0 },
       };
     });
     h.context.onCwdChange = () => {};
@@ -776,7 +798,7 @@ describe("$ — the shell template", () => {
     const h = harness(() => ({
       success: true,
       content: wrapper,
-      metadata: { exitCode: 0 },
+      data: { exitCode: 0 },
     }));
 
     const result = await runRepl(
@@ -800,7 +822,7 @@ describe("$ — the shell template", () => {
     const h = harness(() => ({
       success: true,
       content: "small",
-      metadata: { exitCode: 0 },
+      data: { exitCode: 0 },
     }));
 
     const result = await runRepl(
@@ -816,7 +838,7 @@ describe("$ — the shell template", () => {
       success: false,
       content: "",
       error: "Command failed with exit code: 1",
-      metadata: { exitCode: 1 },
+      data: { exitCode: 1 },
     }));
 
     const result = await runRepl(
@@ -840,7 +862,7 @@ describe("$ — the shell template", () => {
       success: false,
       content: "",
       error: "Command failed with exit code: 1",
-      metadata: { exitCode: 1 },
+      data: { exitCode: 1 },
     }));
 
     const one = await runRepl(
@@ -859,7 +881,7 @@ describe("$ — the shell template", () => {
       success: false,
       content: "",
       error: "Command failed with exit code: 2",
-      metadata: { exitCode: 2 },
+      data: { exitCode: 2 },
     }));
 
     const two = await runRepl(
@@ -880,7 +902,7 @@ describe("$ — the shell template", () => {
       success: false,
       content: "",
       error: "Command failed with exit code: 1",
-      metadata: { exitCode: 1 },
+      data: { exitCode: 1 },
     }));
 
     const result = await runRepl(
@@ -922,7 +944,7 @@ describe("$ — the shell template", () => {
       success: false,
       content: "",
       error: "Command failed with exit code: 1",
-      metadata: { exitCode: 1 },
+      data: { exitCode: 1 },
     }));
 
     const result = await runRepl(
@@ -1046,7 +1068,7 @@ describe("$ — the shell template", () => {
       success: false,
       content: "partial\n\nCommand timed out",
       error: "Command timed out",
-      metadata: { exitCode: 130 },
+      data: { exitCode: 130 },
     }));
 
     const result = await runRepl(
@@ -1093,7 +1115,7 @@ describe("the call limit", () => {
     const result = await run;
 
     expect(result.ok).toBe(true);
-    expect(result.dispatched).toBe(result.evalId);
+    expect(result.asyncDispatched).toBe(true);
     expect(h.dispatched).toHaveLength(2);
     expect(result.toolCalls).toBe(3);
     expect(result.toolsUsed).toEqual(["Echo", "Echo"]);
@@ -1327,7 +1349,7 @@ describe("the async lane", () => {
     const result = await run;
 
     expect(result.ok).toBe(true);
-    expect(result.dispatched).toBe(result.evalId);
+    expect(result.asyncDispatched).toBe(true);
     expect(result.value).toBeUndefined();
     // The receipt carries no logs: everything the script collects travels with
     // the event, which is the only place the result will appear.
@@ -1337,7 +1359,7 @@ describe("the async lane", () => {
     // running rather than as settled.
     const running = listRunningReplScripts();
     expect(running).toHaveLength(1);
-    expect(running[0].id).toBe(result.dispatched);
+    expect(running[0].id).toBe(result.evalId);
     expect(running[0].snippet).toContain("await Slow");
     expect(running[0].ageMs).toBeGreaterThanOrEqual(0);
     expect(running[0].state).toBe("waiting");
@@ -1349,7 +1371,7 @@ describe("the async lane", () => {
 
     const events = drainReplEvents();
     expect(events).toHaveLength(1);
-    expect(events[0].evalId).toBe(result.dispatched);
+    expect(events[0].evalId).toBe(result.evalId);
     expect(events[0].result.ok).toBe(true);
     expect(events[0].result.value).toBe("value:slow");
     // Drained: nothing is left to poll.
@@ -1377,7 +1399,7 @@ describe("the async lane", () => {
     expect(settled).toBe(false);
 
     await vi.advanceTimersByTimeAsync(1);
-    expect((await run).dispatched).toBeTypeOf("number");
+    expect((await run).asyncDispatched).toBe(true);
   });
 
   it("does not let a small `timeout` cut the window short", async () => {
@@ -1405,7 +1427,7 @@ describe("the async lane", () => {
     expect(settled).toBe(false);
 
     await vi.advanceTimersByTimeAsync(REPL_SYNC_WAIT_MS - 1000);
-    expect((await run).dispatched).toBeTypeOf("number");
+    expect((await run).asyncDispatched).toBe(true);
   });
 
   it("wakes a waiting poll as soon as a script settles", async () => {
@@ -1431,7 +1453,7 @@ describe("the async lane", () => {
     // `timeout: 1000` does not shorten the window: only the fixed one dispatches.
     await vi.advanceTimersByTimeAsync(REPL_SYNC_WAIT_MS);
     const receipt = await run;
-    expect(receipt.dispatched).toBeTypeOf("number");
+    expect(receipt.asyncDispatched).toBe(true);
 
     // Nothing has settled yet, so the poll parks instead of answering empty.
     const waiting = waitForReplEvents(5_000);
@@ -1440,7 +1462,7 @@ describe("the async lane", () => {
 
     const events = await waiting;
     expect(events).toHaveLength(1);
-    expect(events[0].evalId).toBe(receipt.dispatched);
+    expect(events[0].evalId).toBe(receipt.evalId);
     expect(events[0].elapsedMs).toBeGreaterThanOrEqual(0);
     expect(events[0].result.value).toBe("value:slow");
   });
@@ -1523,7 +1545,8 @@ describe("the async lane", () => {
 
     // Answered before the tool answered: the script was dispatched, not run.
     expect(result.ok).toBe(true);
-    expect(result.dispatched).toBeTypeOf("number");
+    expect(result.asyncDispatched).toBe(true);
+    expect(result.evalId).toBeTypeOf("number");
     expect(listRunningReplScripts()).toHaveLength(1);
 
     release?.(ok("slow"));
@@ -1531,7 +1554,7 @@ describe("the async lane", () => {
 
     const events = drainReplEvents();
     expect(events).toHaveLength(1);
-    expect(events[0].evalId).toBe(result.dispatched);
+    expect(events[0].evalId).toBe(result.evalId);
     expect(events[0].result.value).toBe("value:slow");
   });
 
@@ -1562,9 +1585,9 @@ describe("the async lane", () => {
 
     const events = drainReplEvents();
     expect(events).toHaveLength(1);
-    expect(events[0].evalId).toBe(second.dispatched);
+    expect(events[0].evalId).toBe(second.evalId);
     expect(JSON.parse(events[0].result.logs[0])).toEqual([false, true]);
-    expect(first.dispatched).not.toBe(second.dispatched);
+    expect(first.evalId).not.toBe(second.evalId);
   });
 
   it("terminates a background script at the 2 hour ceiling", async () => {
@@ -1581,7 +1604,7 @@ describe("the async lane", () => {
     const events = drainReplEvents();
 
     expect(events).toHaveLength(1);
-    expect(events[0].evalId).toBe(result.dispatched);
+    expect(events[0].evalId).toBe(result.evalId);
     expect(events[0].result.ok).toBe(false);
     expect(events[0].result.error).toContain("background ceiling");
     // What the script logged before the axe fell is still reported.
@@ -1616,10 +1639,11 @@ describe("the async lane", () => {
     expect(refused.error).toContain("已达并发上限，先用 Poll 等它们 settle");
     expect(refused.error).toContain("This script was not started");
     // A refusal keeps the receipt shape, so the model reads it as an answer from
-    // the async lane rather than as a script that ran and failed.
-    expect(refused.dispatched).toBe(refused.evalId);
-    const usedIds = receipts.map((receipt) => receipt.dispatched);
-    expect(usedIds).not.toContain(refused.dispatched);
+    // the async lane rather than as a script that ran and failed...
+    expect(refused.asyncDispatched).toBe(true);
+    // ...but without an id: nothing was started, so there is nothing to wait on
+    // with `Poll` and no number is consumed by the refusal.
+    expect(refused.evalId).toBeUndefined();
     // Nothing was started: the pool never saw a call for it.
     expect(listRunningReplScripts()).toHaveLength(REPL_ASYNC_CONCURRENCY_LIMIT);
   });
@@ -1641,7 +1665,7 @@ describe("the async lane", () => {
     });
 
     expect(first.ok && second.ok).toBe(true);
-    expect(first.dispatched).not.toBe(second.dispatched);
+    expect(first.evalId).not.toBe(second.evalId);
     expect(listRunningReplScripts()).toHaveLength(2);
   });
 
@@ -1660,7 +1684,7 @@ describe("the async lane", () => {
 
     const events = drainReplEvents();
     expect(events).toHaveLength(1);
-    expect(events[0].evalId).toBe(receipt.dispatched);
+    expect(events[0].evalId).toBe(receipt.evalId);
     expect(events[0].result.ok).toBe(false);
     expect(events[0].result.error).toContain("aborted");
   });
@@ -1688,7 +1712,7 @@ describe("the async lane", () => {
 
     await vi.advanceTimersByTimeAsync(REPL_SYNC_WAIT_MS);
     const receipt = await run;
-    expect(receipt.dispatched).toBeTypeOf("number");
+    expect(receipt.asyncDispatched).toBe(true);
     expect(reported).toEqual(["Echo"]);
 
     // The script carries on past the window. Its later calls still reach the
@@ -1699,7 +1723,7 @@ describe("the async lane", () => {
 
     const events = drainReplEvents();
     expect(events).toHaveLength(1);
-    expect(events[0].evalId).toBe(receipt.dispatched);
+    expect(events[0].evalId).toBe(receipt.evalId);
     expect(events[0].result.ok).toBe(true);
     expect(events[0].result.value).toBe("done");
     // The model-facing record kept counting calls made after the receipt.

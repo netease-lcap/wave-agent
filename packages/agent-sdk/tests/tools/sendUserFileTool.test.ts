@@ -14,8 +14,8 @@ const WORKDIR = resolve("/fake/project");
 
 type StatResult = Awaited<ReturnType<typeof stat>>;
 
-function asFile(): StatResult {
-  return { isFile: () => true } as unknown as StatResult;
+function asFile(size = 1024): StatResult {
+  return { isFile: () => true, size } as unknown as StatResult;
 }
 
 function asDirectory(): StatResult {
@@ -52,7 +52,7 @@ describe("SendUserFile Tool", () => {
     expect(sendUserFileTool.defer).toBeUndefined();
   });
 
-  it("delivers an absolute path with the structured metadata the webview renders", async () => {
+  it("delivers an absolute path with the CC-shaped data the webview renders", async () => {
     const file = join(WORKDIR, "report.md");
 
     const result = await sendUserFileTool.execute(
@@ -61,11 +61,27 @@ describe("SendUserFile Tool", () => {
     );
 
     expect(result.success).toBe(true);
-    expect(result.metadata).toEqual({
-      files: [{ path: file, name: "report.md", kind: "text" }],
+    // CC `SendUserFile` 的 outputSchema（`2045-20663B-SendUserFileTool.js:275`）：
+    // `caption` + `attachments[]`，每项带 `path` / `size` / `isImage`；`name` /
+    // `kind` 是我方扩展（卡片标签与点击路由）。
+    expect(result.data).toEqual({
       caption: "the finished report",
+      attachments: [
+        {
+          path: file,
+          size: 1024,
+          isImage: false,
+          name: "report.md",
+          kind: "text",
+        },
+      ],
     });
     expect(result.shortResult).toBe("report.md");
+    // 正文照 CC 那一档：一句回执 + 「用文件名指代」的卡片位置提示，不逐条列路径。
+    expect(result.content).toContain("1 file delivered to user.");
+    expect(result.content).toContain("refer to a file by its name");
+    expect(result.content).toContain("Caption: the finished report");
+    expect(result.content).not.toContain(file);
   });
 
   it("resolves relative paths against the session workdir", async () => {
@@ -77,11 +93,12 @@ describe("SendUserFile Tool", () => {
     );
 
     expect(result.success).toBe(true);
-    const metadata = result.metadata as {
-      files: Array<{ path: string; kind: string }>;
+    const data = result.data as {
+      attachments: Array<{ path: string; kind: string; isImage: boolean }>;
     };
-    expect(metadata.files[0].path).toBe(expected);
-    expect(metadata.files[0].kind).toBe("image");
+    expect(data.attachments[0].path).toBe(expected);
+    expect(data.attachments[0].kind).toBe("image");
+    expect(data.attachments[0].isImage).toBe(true);
   });
 
   it("accepts a bare string and de-duplicates repeated paths", async () => {
@@ -95,8 +112,8 @@ describe("SendUserFile Tool", () => {
       { files: [file, file] },
       context,
     );
-    const metadata = duplicated.metadata as { files: unknown[] };
-    expect(metadata.files).toHaveLength(1);
+    const data = duplicated.data as { attachments: unknown[] };
+    expect(data.attachments).toHaveLength(1);
   });
 
   it("fails the whole call when any path is missing", async () => {
@@ -111,7 +128,7 @@ describe("SendUserFile Tool", () => {
 
     expect(result.success).toBe(false);
     expect(result.error).toContain("nope.md");
-    expect(result.metadata).toBeUndefined();
+    expect(result.data).toBeUndefined();
   });
 
   it("rejects directories", async () => {
@@ -137,12 +154,12 @@ describe("SendUserFile Tool", () => {
     const result = await sendUserFileTool.execute({ files: [file] }, context);
 
     expect(result.success).toBe(true);
-    const metadata = result.metadata as {
-      files: Array<{ kind: string }>;
+    const data = result.data as {
+      attachments: Array<{ kind: string }>;
     };
     // No separate "blocked" kind: the UI classifies it as a plain file and the
     // host's opener is what refuses to launch it.
-    expect(metadata.files[0].kind).toBe("other");
+    expect(data.attachments[0].kind).toBe("other");
     // The model is still told it will not open, so it does not retry.
     expect(result.content).toContain("never opened");
   });

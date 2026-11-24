@@ -9,8 +9,9 @@
  * decides what the model reads — that is the tools.
  *
  * Response fields stay untyped on purpose: `hit`/`doc` objects are handed on to
- * `metadata.citations` (the webview's citation card) without a rewrite, so the
- * tools read the fields they need tolerantly and unknown extras survive.
+ * `kb_search`'s `data.citations` (the webview's citation card) without a
+ * rewrite, so the tools read the fields they need tolerantly and unknown extras
+ * survive.
  */
 import { authService, createAuthAwareFetch } from "./authService.js";
 import { logger } from "../utils/globalLogger.js";

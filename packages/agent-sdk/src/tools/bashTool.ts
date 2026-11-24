@@ -6,15 +6,13 @@ import { logger } from "../utils/globalLogger.js";
 import {
   resolveTempDir,
   probeTempDir,
-  describeTempDirFailure,
-  describeDiskPressure,
   readDiskPressure,
 } from "../utils/tempDir.js";
 import { getShellProvider } from "../utils/shell/resolveProvider.js";
 import { toWindowsPath } from "../utils/path.js";
 import { WindowsStreamDecoder } from "../utils/encoding.js";
 import { terminateChildProcessTree } from "../utils/terminateProcessTree.js";
-import { processToolResult } from "../utils/toolResultStorage.js";
+import { persistToolResult } from "../utils/toolResultStorage.js";
 import { BASH_MAX_OUTPUT_CHARS } from "../constants/toolLimits.js";
 import type {
   ToolPlugin,
@@ -22,6 +20,13 @@ import type {
   ToolContext,
   ToolPromptArgs,
 } from "./types.js";
+import {
+  composeBashResultText,
+  cwdRecoveryNote,
+  emptyOutputSentence,
+  renderBashResultData,
+  type BashResultData,
+} from "./resultData/bash.js";
 import {
   BASH_TOOL_NAME,
   GLOB_TOOL_NAME,
@@ -126,6 +131,22 @@ function isAutobackgroundingAllowed(command: string): boolean {
  */
 function oneLineLabel(text: string): string {
   return text.replace(/\s+/g, " ").trim();
+}
+
+/**
+ * 长输出落盘：照 CC 的做法先把整段写进 tool-results 目录，正文随即换成
+ * `<persisted-output>` 包装（CC 的 `persistedOutputPath` / `persistedOutputSize`
+ * 段，`BashTool.tsx:730-756`）。`data.stdout` 只留能算出预览的那一段——预览只要
+ * 前 2048 字符，全文在落盘文件里。
+ */
+function stashLongOutput(data: BashResultData): void {
+  const body = composeBashResultText(data);
+  if (body.length <= BASH_MAX_OUTPUT_CHARS) return;
+  const filePath = persistToolResult(body, "bash");
+  if (!filePath) return;
+  data.persistedOutputPath = filePath;
+  data.persistedOutputSize = body.length;
+  data.stdout = data.stdout.slice(0, BASH_MAX_OUTPUT_CHARS);
 }
 
 /**
@@ -274,10 +295,9 @@ The working directory persists between commands, but shell state (environment va
     // If the session cwd was auto-recovered (e.g. the previous worktree
     // directory was removed manually via `git worktree remove`), surface
     // the notice in this tool's result so the model is aware of the switch.
-    const cwdRecovery = context.aiManager?.consumeCwdRecovery?.();
-    const recoveryNotice = cwdRecovery
-      ? `Note: working directory ${cwdRecovery.from} no longer exists; session working directory recovered to ${cwdRecovery.to}.\n`
-      : "";
+    // 提示文案不在这里拼：`cwdRecovery` 原样进 `data`，由 resultData/bash.ts 的
+    // 渲染器重建同一句话（issue #3055 阶段 1）。
+    const cwdRecovery = context.aiManager?.consumeCwdRecovery?.() ?? undefined;
 
     // Resolve the shell provider: on Windows, Git Bash; on macOS/Linux, bash or zsh
     const provider = getShellProvider("bash");
@@ -435,12 +455,17 @@ The working directory persists between commands, but shell state (environment va
       );
       const task = backgroundTaskManager.getTask(taskId);
       const outputPath = task?.outputPath;
-      const backgroundMsg = outputPath
-        ? `Command running in background with ID: ${taskId}. Output is being written to: ${outputPath}`
-        : `Command running in background with ID: ${taskId}. Use ${READ_TOOL_NAME} tool with task_id="${taskId}" to read the output.`;
+      const data: BashResultData = {
+        stdout: "",
+        interrupted: false,
+        cwdRecovery,
+        backgroundTaskId: taskId,
+        backgroundOutputPath: outputPath,
+      };
       return {
         success: true,
-        content: recoveryNotice + backgroundMsg,
+        data,
+        content: renderBashResultData(data),
         shortResult: `Background process ${taskId} started${outputPath ? ` → ${outputPath}` : ""}`,
         backgroundTaskId: taskId,
       };
@@ -465,10 +490,6 @@ The working directory persists between commands, but shell state (environment va
     // it is unusable, and say why (see utils/tempDir.ts). The sandbox has its
     // own temp dir, prepared by the wrapper, so it is probed there.
     const tempDirProbe = sandboxed ? undefined : probeTempDir(tempDir);
-    const tempDirNotice =
-      tempDirProbe && !tempDirProbe.writable
-        ? describeTempDirFailure(resolveTempDir(), tempDirProbe.code) + "\n"
-        : "";
     const cwdTrackingEnabled = !tempDirProbe || tempDirProbe.writable;
 
     // The sandbox has its own temp dir; inside it the CWD file must live there,
@@ -561,9 +582,17 @@ The working directory persists between commands, but shell state (environment va
               );
               const task = backgroundTaskManager.getTask(taskId);
               const outputPath = task?.outputPath;
+              const data: BashResultData = {
+                stdout: "",
+                interrupted: false,
+                backgroundTaskId: taskId,
+                backgroundedByUser: true,
+                backgroundOutputPath: outputPath,
+              };
               resolve({
                 success: true,
-                content: `Command was manually backgrounded by user with ID: ${taskId}.${outputPath ? ` Output is being written to: ${outputPath}` : ""}`,
+                data,
+                content: renderBashResultData(data),
                 shortResult: `Process ${taskId} backgrounded`,
                 backgroundedByUser: true,
                 backgroundTaskId: taskId,
@@ -610,9 +639,18 @@ The working directory persists between commands, but shell state (environment va
               logger.info(
                 `[Bash] Command timed out after ${timeout}ms, auto-backgrounded as ${taskId}`,
               );
+              const data: BashResultData = {
+                stdout: "",
+                interrupted: false,
+                backgroundTaskId: taskId,
+                assistantAutoBackgrounded: true,
+                backgroundOutputPath: outputPath,
+                timeoutMs: timeout,
+              };
               resolve({
                 success: true,
-                content: `Command exceeded the timeout (${timeout / 1000}s) and was moved to the background with ID: ${taskId}. It is still running — you will be notified when it completes.${outputPath ? ` Output is being written to: ${outputPath}` : ""}`,
+                data,
+                content: renderBashResultData(data),
                 shortResult: `Process ${taskId} auto-backgrounded`,
                 assistantAutoBackgrounded: true,
                 backgroundTaskId: taskId,
@@ -642,20 +680,20 @@ The working directory persists between commands, but shell state (environment va
           cleanupTempFile();
           if (sandboxed && sandbox) sandbox.cleanup();
 
-          const processedOutput = processToolResult(
-            outputBuffer + (errorBuffer ? "\n" + errorBuffer : ""),
-            BASH_MAX_OUTPUT_CHARS,
-            "bash",
-          );
+          const data: BashResultData = {
+            stdout: outputBuffer + (errorBuffer ? "\n" + errorBuffer : ""),
+            interrupted: true,
+            interruptedReason: reason,
+            cwdRecovery,
+            // 中断档的退出码，宿主卡片与 `$` 的出口码判定读它。
+            exitCode: 130,
+          };
+          stashLongOutput(data);
           resolve({
             success: false,
-            content: recoveryNotice
-              ? recoveryNotice + (processedOutput || reason)
-              : processedOutput
-                ? `${processedOutput}\n\n${reason}`
-                : reason,
+            data,
+            content: renderBashResultData(data),
             error: reason,
-            metadata: { exitCode: 130 },
           });
         }
       };
@@ -821,26 +859,37 @@ The working directory persists between commands, but shell state (environment va
           sandbox.cleanup();
         }
 
+        // 正文由 `data` 现场渲染（resultData/bash.ts）：三处提示只把「输入」交给
+        // 渲染器——临时目录的 errno、`cd` 的落点、临时卷的余量，措辞在渲染器里用
+        // 同一个 describe* 函数重建，不在这里手写文本。
+        //
         // A failure while the temp volume is nearly out of space or inodes is
-        // very likely caused by that; say so instead of leaving the model to
-        // read it as an unrelated shell error.
-        const pressureNote =
-          exitCode !== 0 && !sandboxed
-            ? describeDiskPressure(tempDir, readDiskPressure(tempDir))
-            : undefined;
-
-        // Prepend CWD change message to output if present
-        const finalOutput =
-          recoveryNotice +
-          tempDirNotice +
-          (cwdMessage ? cwdMessage + "\n" : "") +
-          (combinedOutput || `Command executed with exit code: ${exitCode}`) +
-          (pressureNote ? "\n\n" + pressureNote : "");
-        const content = processToolResult(
-          finalOutput,
-          BASH_MAX_OUTPUT_CHARS,
-          "bash",
-        );
+        // very likely caused by that; the renderer says so instead of leaving
+        // the model to read it as an unrelated shell error. Only an actual
+        // reading goes into `data` — with nothing measured there is nothing to
+        // say, and the field itself is the signal that we looked.
+        const pressure =
+          exitCode !== 0 && !sandboxed ? readDiskPressure(tempDir) : undefined;
+        const pressureField =
+          pressure &&
+          (pressure.freeBytes !== undefined ||
+            pressure.freeInodes !== undefined)
+            ? { diskPressure: { path: tempDir, ...pressure } }
+            : {};
+        const data: BashResultData = {
+          stdout: combinedOutput || emptyOutputSentence(exitCode),
+          interrupted: false,
+          cwdRecovery,
+          // 退出码只进 `data`（正文不读它）：宿主的退出码卡片与 `$` 的 exit-1 家族
+          // 判定都从这里来，原来是 `ToolResult.metadata.exitCode`。
+          exitCode,
+          ...(tempDirProbe && !tempDirProbe.writable
+            ? { tempDir: { path: tempDir, code: tempDirProbe.code } }
+            : {}),
+          ...(cwdMessage ? { stderr: cwdMessage } : {}),
+          ...pressureField,
+        };
+        stashLongOutput(data);
 
         const lines = combinedOutput.trim().split("\n");
         const shortResult =
@@ -850,13 +899,13 @@ The working directory persists between commands, but shell state (environment va
 
         resolve({
           success: exitCode === 0,
-          content,
+          data,
+          content: renderBashResultData(data),
           shortResult: shortResult || undefined,
           error:
             exitCode !== 0
               ? `Command failed with exit code: ${exitCode}`
               : undefined,
-          metadata: { exitCode },
         });
       };
 
@@ -905,8 +954,9 @@ The working directory persists between commands, but shell state (environment va
           resolve({
             success: false,
             content: "",
+            // 这条分支的 `content` 是空串、提示只能跟 `error` 走，所以单独取那一句。
             error:
-              `${recoveryNotice}Failed to execute command: ${error.message}`.trim(),
+              `${cwdRecovery ? cwdRecoveryNote(cwdRecovery) : ""}Failed to execute command: ${error.message}`.trim(),
           });
         }
       });

@@ -110,7 +110,9 @@ describe("writeTool", () => {
     );
 
     expect(result.success).toBe(true);
-    expect(result.content).toContain("File created");
+    expect(result.content).toBe(
+      `File created successfully at: ${path.resolve("/test/newfile.js")}`,
+    );
     expect(result.shortResult).toBe("File created");
     expect(result.filePath).toBe(path.resolve("/test/newfile.js"));
 
@@ -142,7 +144,9 @@ describe("writeTool", () => {
     );
 
     expect(result.success).toBe(true);
-    expect(result.content).toContain("File overwritten");
+    expect(result.content).toBe(
+      `The file ${path.resolve("/test/file.js")} has been updated successfully.`,
+    );
     expect(result.shortResult).toBe("File overwritten");
     expect(result.filePath).toBe(path.resolve("/test/file.js"));
 
@@ -190,7 +194,9 @@ describe("writeTool", () => {
     );
 
     expect(result.success).toBe(true);
-    expect(result.content).toContain("already has the same content");
+    expect(result.content).toBe(
+      `The file ${path.resolve("/test/file.js")} has been updated successfully.`,
+    );
     expect(result.shortResult).toBe("No changes needed");
     // No diff result since file content is the same
 
@@ -287,10 +293,12 @@ describe("writeTool", () => {
     );
 
     expect(result.success).toBe(true);
-    expect(result.content).toContain("File created");
+    expect(result.content).toBe(
+      `File created successfully at: ${path.resolve("/test/file.js")}`,
+    );
   });
 
-  it("should provide detailed content information", async () => {
+  it("carries the line delta in data for the host's +N −M", async () => {
     const content = "line 1\nline 2\nline 3";
 
     vi.mocked(readFile).mockRejectedValue(new Error("File not found"));
@@ -306,7 +314,18 @@ describe("writeTool", () => {
     );
 
     expect(result.success).toBe(true);
-    expect(result.content).toContain("File created (3 lines, 20 characters)");
+    // CC's outputSchema also carries `content` / `originalFile` /
+    // `structuredPatch`; we persist none of them, so the shape stays this
+    // small. `linesAdded` / `linesRemoved` are ours (CC has no counters): they
+    // used to ride `metadata`, and the `wave.lines.changed` metric plus the
+    // host's `+N −M` read them from `data` since issue #3055 阶段 2.
+    expect(result.data).toEqual({
+      type: "create",
+      filePath: path.resolve("/test/file.txt"),
+      linesAdded: 3,
+      linesRemoved: 0,
+    });
+    expect(result.metadata).toBeUndefined();
   });
 
   it("should handle empty content", async () => {
@@ -325,7 +344,9 @@ describe("writeTool", () => {
     );
 
     expect(result.success).toBe(true);
-    expect(result.content).toContain("File created (1 lines, 0 characters)");
+    expect(result.content).toBe(
+      `File created successfully at: ${path.resolve("/test/empty.txt")}`,
+    );
   });
 
   it("should handle content with special characters", async () => {
@@ -596,7 +617,9 @@ describe("writeTool", () => {
       );
 
       expect(result.success).toBe(true);
-      expect(result.content).toContain("File overwritten");
+      expect(result.content).toBe(
+        `The file ${path.resolve("/test/file.js")} has been updated successfully.`,
+      );
       expect(writeFile).toHaveBeenCalledWith(
         path.resolve("/test/file.js"),
         "new content",

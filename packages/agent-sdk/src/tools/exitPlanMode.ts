@@ -3,6 +3,10 @@ import { logger } from "../utils/globalLogger.js";
 import type { ToolPlugin, ToolResult, ToolContext } from "./types.js";
 import { EXIT_PLAN_MODE_TOOL_NAME } from "../constants/tools.js";
 import { OPERATION_CANCELLED_BY_USER } from "../types/permissions.js";
+import {
+  renderExitPlanModeResultData,
+  type ExitPlanModeResultData,
+} from "./resultData/exitPlanMode.js";
 
 // Rejection feedback format aligned with Claude Code (messages.ts):
 // the model reads the fixed prefix + the user's verbatim feedback, without
@@ -141,9 +145,14 @@ Only for tasks that require planning implementation steps; for research or codeb
       context.permissionManager.setHasExitedPlanMode(true);
       context.permissionManager.setNeedsPlanModeExitAttachment(true);
 
+      // 计划正文不落盘（见 `resultData/exitPlanMode.ts` 的文件头），`data` 只留
+      // 计划文件路径；文本由渲染器拼。
+      const data: ExitPlanModeResultData = { filePath: planFilePath };
+
       return {
         success: true,
-        content: "Plan approved. Exiting plan mode.",
+        data,
+        content: renderExitPlanModeResultData(data),
         shortResult: "Plan approved",
       };
     } catch (error) {

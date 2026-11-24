@@ -80,7 +80,10 @@ describe("enterPlanModeTool", () => {
     const result = await enterPlanModeTool.execute({}, mockContext);
 
     expect(result.success).toBe(true);
-    expect(result.content).toContain("Plan mode entered successfully");
+    // 文本口径改成 CC 的（issue #3055 阶段 1）：确认句 + 6 步指令。
+    expect(result.content).toContain(
+      "Entered plan mode. You should now focus on exploring the codebase and designing an implementation approach.",
+    );
     expect(mockPermissionManager.createContext).toHaveBeenCalledWith(
       "EnterPlanMode",
       "default",

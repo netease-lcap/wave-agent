@@ -5,9 +5,14 @@ import type {
   ToolContext,
   ToolPromptArgs,
 } from "./types.js";
-import { WORKFLOW_TOOL_NAME, TASK_STOP_TOOL_NAME } from "../constants/tools.js";
+import { WORKFLOW_TOOL_NAME } from "../constants/tools.js";
 import { WORKFLOW_AGENT_CALL_CAP } from "../workflow/workflowErrors.js";
 import { parseScript } from "../workflow/scriptRuntime.js";
+import {
+  renderWorkflowResultData,
+  type WorkflowFailedResultData,
+  type WorkflowLaunchedResultData,
+} from "./resultData/workflow.js";
 import { logger } from "../utils/globalLogger.js";
 // Single source of truth for the authoring reference: the same string is the body of
 // the built-in skill, so the on-demand copy and the inlined fallback cannot drift.
@@ -283,28 +288,30 @@ export const workflowTool: ToolPlugin = {
       // state the cost envelope to the user while it is still cheap to change
       // (spec「预算与规模硬上限」场景 8).
       const tokenTarget = workflowManager.getTurnTokenTarget();
+      const phaseTitles = run.meta.phases?.length
+        ? run.meta.phases.map((phase) => phase.title)
+        : undefined;
+
+      // 先组 data，再由 `renderWorkflowResultData` 渲出正文（issue #3055 阶段 1）：
+      // 正文里的每个值都来自 data，两边不会各写一遍。
+      const data: WorkflowLaunchedResultData = {
+        status: "async_launched",
+        // 我方 run 就是那个后台任务，两个 id 同值（end 处的 `backgroundTaskId`）
+        taskId: run.runId,
+        taskType: "local_workflow",
+        workflowName: run.meta.name,
+        runId: run.runId,
+        summary: run.meta.description,
+        scriptPath: run.scriptPath,
+        agentCallCap: WORKFLOW_AGENT_CALL_CAP,
+        ...(phaseTitles ? { phaseTitles } : {}),
+        ...(tokenTarget === null ? {} : { turnTokenTarget: tokenTarget }),
+      };
 
       return {
         success: true,
-        content: [
-          `Workflow started with run ID: ${run.runId}`,
-          `Name: ${run.meta.name}`,
-          `Description: ${run.meta.description}`,
-          run.meta.phases?.length
-            ? `Phases: ${run.meta.phases.map((p) => p.title).join(" → ")}`
-            : "",
-          `Limits: ${WORKFLOW_AGENT_CALL_CAP} agents maximum for this run, and ${
-            tokenTarget === null
-              ? 'no token target set for this turn (the user can set one, e.g. "+500k")'
-              : `${tokenTarget} output tokens for this turn`
-          }.`,
-          `The workflow is running in the background. You will be notified automatically when it completes.`,
-          `To stop it, use ${TASK_STOP_TOOL_NAME} with task_id "${run.runId}".`,
-          `Use /workflows to watch live progress.`,
-          `Script saved to: ${run.scriptPath}`,
-        ]
-          .filter(Boolean)
-          .join("\n"),
+        data,
+        content: renderWorkflowResultData(data),
         shortResult: `Workflow started: ${run.meta.name} (${run.runId})`,
         // The run IS a background task, and its task id IS the runId (see
         // `workflowManager.startRun`). Handing the id out here is what lets the
@@ -316,9 +323,11 @@ export const workflowTool: ToolPlugin = {
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
       logger.error(`[Workflow Tool] execution failed: ${msg}`);
+      const data: WorkflowFailedResultData = { status: "failed", error: msg };
       return {
         success: false,
-        content: `Workflow failed: ${msg}. Fix the error and try again.`,
+        data,
+        content: renderWorkflowResultData(data),
         error: `Workflow execution failed: ${msg}`,
         shortResult: "Workflow execution failed",
       };

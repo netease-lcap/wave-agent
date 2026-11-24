@@ -25,6 +25,10 @@ import type {
 } from "../types/index.js";
 import type { ThinkingBlockData } from "../types/anthropicMessages.js";
 import { getLastApiRounds } from "../utils/groupMessagesByApiRound.js";
+import {
+  toolBlockText,
+  toolBlockUpdateForHost,
+} from "../utils/toolBlockText.js";
 import { join, isAbsolute, relative, resolve } from "path";
 import {
   appendMessages,
@@ -1060,9 +1064,21 @@ export class MessageManager {
         this.messages[this.messages.length - 1]?.id ||
         "",
     };
-    this.callbacks.onToolBlockUpdated?.(callbackParams);
+    this.emitToolBlockUpdated(callbackParams);
 
     // Note: Subagent-specific callbacks are now handled by SubagentManager
+  }
+
+  /**
+   * 把工具块更新推给宿主（CLI / stdio 宿主 / 远控页都从这里拿帧）。
+   *
+   * 会话数据离开 agent 进程之前补上文本：新转录的块只有 `data`，而宿主只读
+   * `ToolBlock.result`（issue #3055 阶段 2 · C，见 `utils/toolBlockText.ts` 的
+   * `toolBlockUpdateForHost`）。这里是**唯一**的推送出口——主代理与子代理各有一个
+   * MessageManager，同一个类，所以两边的帧都过这一处。
+   */
+  private emitToolBlockUpdated(params: ToolBlockUpdateCallbackParams): void {
+    this.callbacks.onToolBlockUpdated?.(toolBlockUpdateForHost(params));
   }
 
   /**
@@ -1077,7 +1093,7 @@ export class MessageManager {
     const { messages: newMessages, toolBlockId } =
       addToolBlockToMessageInMessages(this.messages, messageId, params);
     this.setMessages(newMessages);
-    this.callbacks.onToolBlockUpdated?.({
+    this.emitToolBlockUpdated({
       ...params,
       id: toolBlockId,
       messageId,
@@ -1572,7 +1588,7 @@ export class MessageManager {
       };
       finalized = true;
 
-      this.callbacks.onToolBlockUpdated?.({
+      this.emitToolBlockUpdated({
         id: block.id ?? "",
         messageId: lastMessage.id ?? "",
         name: block.name,
@@ -1950,13 +1966,15 @@ export class MessageManager {
    */
   private extractFileReadsFromMessage(message: Message): void {
     for (const block of message.blocks) {
-      if (
+      // 文本走 `toolBlockText`：阶段 2 起新转录只有 `data`，`Read` 的正文由渲染器
+      // 现场重建（老转录仍是 `result`）。
+      const text =
         block.type === "tool" &&
         block.name === READ_TOOL_NAME &&
-        block.stage === "end" &&
-        block.result &&
-        block.parameters
-      ) {
+        block.stage === "end"
+          ? toolBlockText(block)
+          : undefined;
+      if (text && block.type === "tool" && block.parameters) {
         let filePath: string | undefined;
         try {
           const params = JSON.parse(block.parameters) as Record<
@@ -1969,7 +1987,7 @@ export class MessageManager {
         }
         if (filePath) {
           this.recentFileReads.set(filePath, {
-            content: block.result,
+            content: text,
             timestamp: Date.now(),
           });
           this.trimRecentFileReads();
@@ -2062,7 +2080,8 @@ export class MessageManager {
               // 模型当时实际看到的那份正文（已替换 ${WAVE_SKILL_DIR} 等占位符、
               // 首行带 `Base directory for this skill:`）——压缩后回灌直接复用它，
               // 不能重新读文件原文（spec core/message-compact 场景 4）。
-              content: block.result,
+              // 阶段 2 起正文在 `data.content` 里，由 `toolBlockText` 现渲。
+              content: toolBlockText(block),
             });
           }
         } catch {

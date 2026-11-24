@@ -598,9 +598,9 @@ describe("replTool execution", () => {
       REPL_DEFAULT_MAX_RESULT_CHARS,
     );
     expect(result.content).not.toContain("</repl-output>");
-    expect(
-      result.content.startsWith('<repl-output ms="0">\n<tools>tool_0_'),
-    ).toBe(true);
+    // The elapsed ms is real wall clock: under a loaded machine it is 1, not 0, so
+    // the attribute is matched as a number rather than pinned to a value.
+    expect(result.content).toMatch(/^<repl-output ms="\d+">\n<tools>tool_0_/);
     // The note is the last thing in the answer, so the cut cannot be mistaken for
     // the end of the output.
     expect(result.content.split("\n").at(-1)).toMatch(
@@ -622,7 +622,9 @@ describe("replTool execution", () => {
   });
 
   it("answers a dispatched script with a receipt instead of a result", async () => {
-    runReplScript.mockResolvedValue(runResult({ dispatched: 4 }));
+    runReplScript.mockResolvedValue(
+      runResult({ asyncDispatched: true, evalId: 4 }),
+    );
 
     const result = await replTool.execute({ code: "return 1;" }, contextWith());
 
@@ -634,11 +636,13 @@ describe("replTool execution", () => {
     expect(result.content).not.toContain("<repl-output");
   });
 
-  it("keeps the receipt shape for a refused dispatch", async () => {
+  it("keeps the receipt shape for a refused dispatch, without a number", async () => {
+    // CC's refusal carries `asyncDispatched: true` and no `evalId`, so the receipt
+    // is the reason alone: there is no id to answer with `Poll`.
     runReplScript.mockResolvedValue(
       runResult({
         ok: false,
-        dispatched: 9,
+        asyncDispatched: true,
         error: "REPL concurrency limit reached (8). Wait with `Poll`.",
       }),
     );
@@ -646,7 +650,7 @@ describe("replTool execution", () => {
     const result = await replTool.execute({ code: "return 1;" }, contextWith());
 
     expect(result.success).toBe(false);
-    expect(result.content.split("\n")[0]).toBe("(dispatched #9)");
+    expect(result.content).not.toContain("(dispatched #");
     expect(result.content).toContain("concurrency limit");
     expect(result.error).toContain("concurrency limit");
   });

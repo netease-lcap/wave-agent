@@ -55,9 +55,9 @@ describe("AskUserQuestion Integration", () => {
     const result = await toolManager.execute("AskUserQuestion", args, context);
 
     expect(result.success).toBe(true);
-    expect(JSON.parse(result.content)).toEqual({
-      answers: { "Choose approach": "JWT" },
-    });
+    expect(result.content).toBe(
+      'User has answered your questions: "Choose approach"="JWT". You can now continue with the user\'s answers in mind.',
+    );
     expect(permissionManager.checkPermission).toHaveBeenCalled();
   });
 
@@ -109,8 +109,8 @@ describe("AskUserQuestion Integration", () => {
     const result = await toolManager.execute("AskUserQuestion", args, context);
 
     expect(result.success).toBe(true);
-    expect(JSON.parse(result.content)).toEqual({
-      answers: { "Confirm?": "Yes" },
-    });
+    expect(result.content).toBe(
+      'User has answered your questions: "Confirm?"="Yes". You can now continue with the user\'s answers in mind.',
+    );
   });
 });

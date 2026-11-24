@@ -58,6 +58,9 @@ import {
   listRunningReplScripts,
 } from "../repl/replRuntime.js";
 import { renderReplEvent, renderReplStatus } from "../tools/pollTool.js";
+// 只依赖 `resultData/` 的纯模块与 `constants/`（零 import 副作用），可以安全地进
+// 这条读路径：模型侧 tool_result 的文本由这里现渲，不再由工具预存。
+import { renderToolResultData } from "../tools/resultData/index.js";
 import { allocateAgentSlot, replSessionKey } from "../repl/sessionKey.js";
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
@@ -4348,20 +4351,37 @@ ${question}`;
         toolImages = await applyToolImageBudget(toolImages);
       }
 
-      // Build result content, adding truncation warning if JSON was recovered
+      // 模型这次读到的 tool_result 文本（issue #3055 阶段 2）：`data` 是唯一真相，
+      // 由 `tools/resultData/` 的渲染器现场生成；渲不出这段文本时才退回工具当场的
+      // `content`（表外工具、以及 `Read` 的图片 / pdf / 二进制这些没有文本形态的
+      // 结果），content 也空且带 error 时仍给一句 `Error: …`。
+      const renderedText = renderToolResultData(toolName, toolResult.data);
       let toolResultContent =
-        toolResult.content ||
-        (toolResult.error ? `Error: ${toolResult.error}` : "");
+        renderedText ??
+        (toolResult.content ||
+          (toolResult.error ? `Error: ${toolResult.error}` : ""));
       if (jsonRecovered) {
         toolResultContent +=
           "\n\nTool arguments were truncated (likely exceeded max output tokens). Please reduce your output or split into multiple tool calls.";
       }
 
+      // 落盘口径：`data` 能重建出这段文本时**只写 `data`**，文本留给读路径现渲
+      // （`utils/toolBlockText.ts`），转录里不再存两份。两种例外必须继续写 `result`：
+      //
+      // 1. 表外工具 —— MCP、插件工具、任何 `hasToolResultRenderer(name)` 为 false 的
+      //    名字都没有渲染器，丢了这个键，历史会话里那段结果就没了；
+      // 2. `jsonRecovered` —— 上面那半句截断提示是 aiManager 事后追加的，`data`
+      //    里没有，重建不出来。
+      const textIsRebuildable = renderedText !== undefined && !jsonRecovered;
+
       // Update message state - tool execution completed
       this.messageManager.updateToolBlock({
         id: toolId,
         parameters: argsString,
-        result: toolResultContent,
+        // 两者互斥出现：能重建就只留 `data`，否则留 `result`（见上）。
+        ...(textIsRebuildable
+          ? { data: toolResult.data }
+          : { result: toolResultContent }),
         success: toolResult.success,
         error: toolResult.error,
         stage: "end",

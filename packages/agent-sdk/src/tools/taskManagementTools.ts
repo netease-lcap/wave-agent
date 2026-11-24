@@ -6,6 +6,22 @@ import {
   TASK_UPDATE_TOOL_NAME,
   TASK_LIST_TOOL_NAME,
 } from "../constants/tools.js";
+import {
+  renderTaskCreateResultData,
+  type TaskCreateResultData,
+} from "./resultData/taskCreate.js";
+import {
+  renderTaskGetResultData,
+  type TaskGetResultData,
+} from "./resultData/taskGet.js";
+import {
+  renderTaskUpdateResultData,
+  type TaskUpdateResultData,
+} from "./resultData/taskUpdate.js";
+import {
+  renderTaskListResultData,
+  type TaskListResultData,
+} from "./resultData/taskList.js";
 
 /**
  * The four task-list tools are deferred, matching Claude Code (`shouldDefer: true`
@@ -148,9 +164,14 @@ NOTE that you should not use this tool if there is only one trivial task to do. 
     const taskId = await taskManager.createTask(task);
     await recordSnapshot(context, taskManager, taskId, "create");
 
+    const data: TaskCreateResultData = {
+      task: { id: taskId, subject: task.subject },
+    };
+
     return {
       success: true,
-      content: `Task #${taskId} created successfully: ${task.subject}`,
+      data,
+      content: renderTaskCreateResultData(data),
       shortResult: `Created task ${taskId}: ${task.subject}`,
     };
   },
@@ -205,30 +226,29 @@ Returns full task details:
 
     const task = await taskManager.getTask(taskId);
     if (!task) {
+      const data: TaskGetResultData = { task: null };
       return {
         success: false,
-        content: `Task not found`,
+        data,
+        content: renderTaskGetResultData(data),
       };
     }
 
-    // Format like Claude Code: structured text instead of raw JSON
-    const lines = [
-      `Task #${task.id}: ${task.subject}`,
-      `Status: ${task.status}`,
-      `Description: ${task.description}`,
-    ];
-    if (task.blockedBy.length > 0) {
-      lines.push(
-        `Blocked by: ${task.blockedBy.map((id) => `#${id}`).join(", ")}`,
-      );
-    }
-    if (task.blocks.length > 0) {
-      lines.push(`Blocks: ${task.blocks.map((id) => `#${id}`).join(", ")}`);
-    }
+    const data: TaskGetResultData = {
+      task: {
+        id: task.id,
+        subject: task.subject,
+        description: task.description,
+        status: task.status,
+        blocks: task.blocks,
+        blockedBy: task.blockedBy,
+      },
+    };
 
     return {
       success: true,
-      content: lines.join("\n"),
+      data,
+      content: renderTaskGetResultData(data),
     };
   },
 };
@@ -375,9 +395,18 @@ Set up task dependencies:
 
     const existingTask = await taskManager.getTask(taskId);
     if (!existingTask) {
+      // CC 把这个失败也放进 `data`（`TaskUpdateTool.ts:147-156`），文本由渲染器
+      // 从 `error` 取；我方的 `success: false` 是既有语义，保持不动。
+      const data: TaskUpdateResultData = {
+        success: false,
+        taskId,
+        updatedFields: [],
+        error: "Task not found",
+      };
       return {
         success: false,
-        content: `Task #${taskId} not found`,
+        data,
+        content: renderTaskUpdateResultData(data),
       };
     }
 
@@ -386,9 +415,19 @@ Set up task dependencies:
       await recordSnapshot(context, taskManager, taskId, "delete");
       await taskManager.deleteTask(taskId);
 
+      // 删除在 CC 里就是一次状态变更（`TaskUpdateTool.ts:212-227`），文本因此是
+      // `Updated task #1 deleted`。
+      const data: TaskUpdateResultData = {
+        success: true,
+        taskId,
+        updatedFields: ["deleted"],
+        statusChange: { from: existingTask.status, to: "deleted" },
+      };
+
       return {
         success: true,
-        content: `Task #${taskId} deleted`,
+        data,
+        content: renderTaskUpdateResultData(data),
         shortResult: `Deleted task ${taskId}`,
       };
     }
@@ -508,14 +547,20 @@ Set up task dependencies:
       }
     }
 
-    let content = `Updated task #${taskId} ${updatedFields.join(", ")}`;
-    if (updates.status === "completed") {
-      content += `\n\nTask completed. Call TaskList now to find your next available task or see if your work unblocked others.`;
-    }
+    const data: TaskUpdateResultData = {
+      success: true,
+      taskId,
+      updatedFields,
+      statusChange:
+        updates.status !== undefined
+          ? { from: existingTask.status, to: updates.status }
+          : undefined,
+    };
 
     return {
       success: true,
-      content,
+      data,
+      content: renderTaskUpdateResultData(data),
       shortResult: `Updated task ${taskId}`,
     };
   },
@@ -566,9 +611,11 @@ Use TaskGet with a specific task ID to view full details including description a
     );
 
     if (allTasks.length === 0) {
+      const data: TaskListResultData = { tasks: [] };
       return {
         success: true,
-        content: "No tasks found",
+        data,
+        content: renderTaskListResultData(data),
       };
     }
 
@@ -580,21 +627,22 @@ Use TaskGet with a specific task ID to view full details including description a
       allTasks.filter((t) => t.status === "completed").map((t) => t.id),
     );
 
-    const content = allTasks
-      .map((t) => {
-        const blockedBy = t.blockedBy.filter((id) => !completedIds.has(id));
-        const owner = t.owner ? ` (${t.owner})` : "";
-        const blocked =
-          blockedBy.length > 0
-            ? ` [blocked by ${blockedBy.map((id) => `#${id}`).join(", ")}]`
-            : "";
-        return `#${t.id} [${t.status}] ${t.subject}${owner}${blocked}`;
-      })
-      .join("\n");
+    // 已完成的前置项在这里就剔掉，和 CC 的 `call` 一致（TaskListTool.ts:72-83）：
+    // `data` 里存的是「还卡着它的」那几个 id，渲染器不再二次过滤。
+    const data: TaskListResultData = {
+      tasks: allTasks.map((t) => ({
+        id: t.id,
+        subject: t.subject,
+        status: t.status,
+        owner: t.owner,
+        blockedBy: t.blockedBy.filter((id) => !completedIds.has(id)),
+      })),
+    };
 
     return {
       success: true,
-      content,
+      data,
+      content: renderTaskListResultData(data),
     };
   },
 };

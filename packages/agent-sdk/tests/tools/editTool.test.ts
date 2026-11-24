@@ -122,7 +122,9 @@ describe("editTool", () => {
     );
 
     expect(result.success).toBe(true);
-    expect(result.content).toContain("Text replaced successfully");
+    expect(result.content).toBe(
+      `The file ${r("/test/file.js")} has been updated successfully.`,
+    );
     expect(result.filePath).toBe(r("/test/file.js"));
 
     expect(readFile).toHaveBeenCalledWith(r("/test/file.js"), "utf-8");
@@ -156,7 +158,9 @@ describe("editTool", () => {
     );
 
     expect(result.success).toBe(true);
-    expect(result.content).toContain("Replaced 3 instances");
+    expect(result.content).toBe(
+      `The file ${r("/test/file.js")} has been updated. All occurrences were successfully replaced.`,
+    );
 
     expect(writeFile).toHaveBeenCalledWith(
       r("/test/file.js"),
@@ -235,7 +239,9 @@ describe("editTool", () => {
     );
 
     expect(result.success).toBe(true);
-    expect(result.content).toContain("Replaced 2 instances");
+    expect(result.content).toBe(
+      `The file ${r("/test/file.js")} has been updated. All occurrences were successfully replaced.`,
+    );
     expect(writeFile).toHaveBeenCalledWith(
       r("/test/file.js"),
       expectedContent,

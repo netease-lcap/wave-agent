@@ -40,9 +40,9 @@ describe("AskUserQuestion Tool", () => {
     );
 
     expect(result.success).toBe(true);
-    expect(JSON.parse(result.content)).toEqual({
-      answers: { "What is your name?": "Alice" },
-    });
+    expect(result.content).toBe(
+      'User has answered your questions: "What is your name?"="Alice". You can now continue with the user\'s answers in mind.',
+    );
     expect(mockPermissionManager.checkPermission).toHaveBeenCalled();
   });
 
@@ -120,12 +120,9 @@ describe("AskUserQuestion Tool", () => {
     );
 
     expect(result.success).toBe(true);
-    expect(JSON.parse(result.content)).toEqual({
-      answers: {
-        "Question 1": "Option A",
-        "Question 2": "Option B, Option C",
-      },
-    });
+    expect(result.content).toBe(
+      'User has answered your questions: "Question 1"="Option A", "Question 2"="Option B, Option C". You can now continue with the user\'s answers in mind.',
+    );
   });
 
   it("should return error when questions parameter is missing or empty", async () => {
@@ -360,24 +357,18 @@ describe("AskUserQuestion Tool", () => {
       });
 
       expect(result.success).toBe(true);
-      expect(JSON.parse(result.content)).toEqual({
-        answers: { "Which layout?": "A" },
-        annotations: {
-          "Which layout?": {
-            preview: "```\n+-----+\n| A   |\n+-----+\n```",
-            notes: "wider columns please",
-          },
-        },
-      });
+      expect(result.content).toBe(
+        'User has answered your questions: "Which layout?"="A" selected preview:\n```\n+-----+\n| A   |\n+-----+\n``` user notes: wider columns please. You can now continue with the user\'s answers in mind.',
+      );
     });
 
     it("still accepts a bare answers map from an older client", async () => {
       const result = await runWith({ "Which layout?": "B" });
 
       expect(result.success).toBe(true);
-      expect(JSON.parse(result.content)).toEqual({
-        answers: { "Which layout?": "B" },
-      });
+      expect(result.content).toBe(
+        'User has answered your questions: "Which layout?"="B". You can now continue with the user\'s answers in mind.',
+      );
     });
 
     it("drops an empty annotations object instead of echoing it", async () => {
@@ -387,9 +378,7 @@ describe("AskUserQuestion Tool", () => {
       });
 
       expect(result.success).toBe(true);
-      expect(JSON.parse(result.content)).toEqual({
-        answers: { "Which layout?": "B" },
-      });
+      expect(result.data).toEqual({ answers: { "Which layout?": "B" } });
     });
   });
 });

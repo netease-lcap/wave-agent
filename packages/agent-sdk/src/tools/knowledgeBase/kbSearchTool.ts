@@ -6,14 +6,12 @@ import {
   searchKnowledgeBase,
   type KbHit,
 } from "../../services/knowledgeBaseApi.js";
+import { countDocuments } from "./kbFormatting.js";
 import {
-  KB_UNAUTHORIZED,
-  collapseWhitespace,
-  countDocuments,
-  formatDegraded,
-  formatLocation,
-  readText,
-} from "./kbFormatting.js";
+  renderKbSearchResultData,
+  type KbSearchHitData,
+  type KbSearchResultData,
+} from "../resultData/kbSearch.js";
 
 const KB_SEARCH_DESCRIPTION =
   "Search the enterprise knowledge base — the documents your organization uploaded (handbooks, policies, process docs). " +
@@ -44,28 +42,22 @@ function readTopK(raw: unknown): number | string {
 }
 
 /**
- * One hit, as the model and the user read it:
- *
- * `[1] 员工手册 · 假期制度 > 婚假（第 3 页）  chunk_id=…`
- * `婚假申请流程：提前三个工作日提交…`
- *
- * The chunk id rides on the location line because it is the only handle
- * `kb_get_doc` accepts — without it the "read the full text" step would be
- * impossible from a search result alone.
+ * The fields that go into `data`; the rest of the server's hit stays out of it
+ * (see `resultData/kbSearch.ts` for each field's reason). Copied verbatim, with
+ * no trimming: the renderer reads every one of them through `readText`, exactly
+ * as this file used to.
  */
-function formatHitBlock(hit: KbHit, index: number): string {
-  const header = `[${index + 1}] ${formatLocation(hit)}`;
-  const extras = [
-    readText(hit.chunkId) ? `chunk_id=${readText(hit.chunkId)}` : "",
-    formatDegraded(hit.degraded),
-  ].filter(Boolean);
-  const snippet = collapseWhitespace(readText(hit.snippet));
-  return [
-    extras.length > 0 ? `${header}  ${extras.join("  ")}` : header,
-    snippet,
-  ]
-    .filter(Boolean)
-    .join("\n");
+function toSearchHitData(hit: KbHit): KbSearchHitData {
+  return {
+    chunkId: hit.chunkId,
+    docId: hit.docId,
+    title: hit.title,
+    sectionPath: hit.sectionPath,
+    page: hit.page,
+    score: hit.score,
+    degraded: hit.degraded,
+    snippet: hit.snippet,
+  };
 }
 
 export const kbSearchTool: ToolPlugin = {
@@ -126,39 +118,47 @@ export const kbSearchTool: ToolPlugin = {
       abortSignal: context.abortSignal,
     });
     if (outcome.kind === "unauthorized") {
-      return { success: false, content: KB_UNAUTHORIZED };
+      const data: KbSearchResultData = { status: "unauthorized" };
+      return { success: false, data, content: renderKbSearchResultData(data) };
     }
     if (outcome.kind === "not_found") {
       // Search has no 404 of its own; a routed 404 means the endpoint is not
       // deployed for this server, which is a failure, not an empty library.
-      return {
-        success: false,
-        content: "知识库检索接口不可用，请确认服务端已部署知识库",
-      };
+      const data: KbSearchResultData = { status: "unavailable" };
+      return { success: false, data, content: renderKbSearchResultData(data) };
     }
     if (outcome.kind === "error") {
-      return { success: false, content: `知识库检索失败：${outcome.error}` };
+      const data: KbSearchResultData = {
+        status: "error",
+        error: outcome.error,
+      };
+      return { success: false, data, content: renderKbSearchResultData(data) };
     }
 
     const hits = outcome.value.hits;
+    // 原始命中与归一化的 `hits` 一起进 `data`：宿主引用卡读前者（阶段 2 之前
+    // 它是 `ToolResult.metadata.citations`），正文只读后者。
+    const data: KbSearchResultData = {
+      status: "ok",
+      hits: hits.map(toSearchHitData),
+      citations: hits,
+    };
     if (hits.length === 0) {
       // Not an error: "the documents do not say" is exactly what the model is
       // supposed to be able to conclude (spec 企业知识库·场景 4).
       return {
         success: true,
-        content: "没有检索到相关内容",
+        data,
+        content: renderKbSearchResultData(data),
         shortResult: "未命中",
-        metadata: { citations: hits },
       };
     }
 
     return {
       success: true,
-      content: hits.map(formatHitBlock).join("\n\n"),
+      data,
+      content: renderKbSearchResultData(data),
       shortResult: `命中 ${hits.length} 条 · ${countDocuments(hits)} 个文档`,
-      // The raw hits, untouched: the webview's citation card reads title / page
-      // / sectionPath off them (spec 企业知识库·工具调用在对话里可读).
-      metadata: { citations: hits },
     };
   },
 };

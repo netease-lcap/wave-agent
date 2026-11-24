@@ -115,6 +115,16 @@ export interface ToolPlugin {
 
 export interface ToolResult {
   success: boolean;
+  /**
+   * 工具结果唯一的结构化载荷，形状由各工具在 `tools/resultData/` 里声明，文本由
+   * 那里的渲染器从它现场生成（对齐 CC 的「一个 `data` + 每工具渲染器」）。
+   *
+   * issue #3055 阶段 2 起正文也在里面（子代理报告、技能正文、artifact 全文、知识库
+   * 全文），`data` 是唯一真相；`content` 是同一份文本的当场副本，只为老调用方保留。
+   * 宿主渲染卡片要的短标量（退出码、改动行数、artifact title …）同样在 `data` 里，
+   * 与正文同级、不再另开 `metadata` 子对象（CC 的 `data` 也是平的）。
+   */
+  data?: unknown;
   content: string;
   error?: string;
   // Short output, used to display summary information in collapsed state
@@ -139,7 +149,11 @@ export interface ToolResult {
   // kept. Host-side only, and the only trace a deferred tool's call leaves — see
   // `ToolBlock.nestedToolCalls`.
   nestedToolCalls?: string[];
-  // Optional metadata for the tool result
+  /**
+   * 向前兼容字段：**工具不再填它**。阶段 2 之前宿主渲染卡片的短标量
+   * （`artifactUrl` / `exitCode` / `linesAdded` …）走这里，现在都在 `data` 里。
+   * 留着只为读老转录 —— `ToolBlock.metadata` 由转录里的这一段回填。
+   */
   metadata?: Record<string, unknown>;
 }
 

@@ -675,3 +675,56 @@ export const fixtureConfig = (
   language: "zh",
   ...overrides,
 });
+
+/**
+ * 一条工具结果消息的**老形态**：文本在 `ToolBlock.result` 里，块上没有 `data`。
+ *
+ * 阶段 2 之前写下的转录长这样，webview 的 `toolBlock.result` 读路径就是为它留的。
+ */
+export const fixtureToolBlockMessage = (
+  overrides: Partial<Message> = {},
+): Message => ({
+  id: "assistant-tool-legacy",
+  role: "assistant",
+  timestamp: "2026-01-01T00:00:00.000Z",
+  blocks: [
+    {
+      type: "tool",
+      id: "tool-legacy",
+      name: "Bash",
+      parameters: '{"command":"echo hi"}',
+      stage: "end",
+      success: true,
+      result: "hi",
+      shortResult: "hi",
+    },
+  ],
+  ...overrides,
+});
+
+/**
+ * 同一条工具结果消息的**新形态**（issue #3055 阶段 2 · C）：块上只有 `data`，
+ * 没有 `result`。
+ *
+ * 宿主在把会话数据交给 webview 之前用渲染器把文本补回去（`agent-sdk` 的
+ * `utils/toolBlockText.ts` → `toolBlockForHost`），所以契约的两面都要有样例：
+ * 上面那条代表老转录，这条代表新转录。
+ */
+export const fixtureDataOnlyToolBlockMessage = (
+  overrides: Partial<Message> = {},
+): Message => ({
+  ...fixtureToolBlockMessage(),
+  id: "assistant-tool-data",
+  blocks: [
+    {
+      type: "tool",
+      id: "tool-data",
+      name: "Bash",
+      parameters: '{"command":"echo hi"}',
+      stage: "end",
+      success: true,
+      data: { stdout: "hi", exitCode: 0, interrupted: false },
+    },
+  ],
+  ...overrides,
+});

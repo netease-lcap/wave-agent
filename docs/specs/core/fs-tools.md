@@ -21,12 +21,13 @@ order: 10
 
 **验收场景**：
 
-1. **假设** 文本文件存在，**当** 代理调用 `Read` 时，**则** 它必须接收到带有行号和结构化元数据的内容。
+1. **假设** 文本文件存在，**当** 代理调用 `Read` 时，**则** 它必须接收到 `cat -n` 形态的正文（`行号<TAB>正文`，行号从文件的真实行号起算）——不带 `File:` / `Total lines:` 页眉、不带分隔线、也不带「还剩 N 行未显示」的尾巴，与 Claude Code 的渲染一致。
 2. **假设** 文件较大，**当** 代理使用 `offset` 和 `limit` 时，**则** 它必须仅接收到指定的块。
 3. **假设** 是图片文件，**当** 代理调用 `Read` 时，**则** 它必须接收到适合多模态分析的图像数据和结构化元数据。
 4. **假设** 文件自上次读取以来未发生变化，**当** 代理再次调用 `Read` 时，**则** 它必须像首次一样收到文件内容，不得只回一句「未变更，请参考上次结果」的占位（占位会让模型认为 `Read` 拿不到内容，从而改用 Bash 的 `sed` / `cat`）。
-5. **假设** 文件内容超出令牌窗口，**当** 代理不提供 `offset` / `limit` 直接读取时，**则** 工具必须截断到能放下的第一页并照常返回内容，在结果开头以 `<system-reminder>[Truncated: PARTIAL view — …]` 说明显示了多少行、总量多少、下一页怎么取，不得让整次调用直接失败。
-6. **假设** 代理显式提供了 `offset` / `limit` 而这一页仍然超出令牌上限，**当** 工具判定时，**则** 返回错误，文案只引导用 `offset` / `limit` 分页或按内容搜索，**不得**把模型引向 Bash 里的 `sed` / `grep`。
+5. **假设** 文件超过 256KB 且代理没有给 `limit`，**当** 工具判定时，**则** 返回错误（`File content (…) exceeds maximum allowed size (…). Use offset and limit parameters …`），不得只交出一个文件头部的切片让模型误以为读到了全文；补上 `offset` / `limit` 后即可按页读取。
+6. **假设** 这一页的估计令牌超过 `maxTokens`，**当** 工具判定时，**则** 返回错误，文案只引导用 `offset` / `limit` 分页或按内容搜索，**不得**把模型引向 Bash 里的 `sed` / `grep`；也不得截断后照常返回——`Read` 不产出 PARTIAL 视图。
+7. **假设** 文件存在但为空，或 `offset` 越过文件尾，**当** 代理调用 `Read` 时，**则** 返回成功并以 `<system-reminder>Warning: …</system-reminder>` 说明原因（空文件 / 文件实际有多少行），不得用错误码表达。
 
 ---
 
@@ -94,7 +95,7 @@ order: 10
 
 ### 边界情况
 
-- **大文件**：读取超出内存限制或令牌窗口的文件。超出 256KB 且调用方没有显式给 `offset` / `limit` 时，工具不再报错：只读取文件头部（上限即该字节上限），把这一页按行截断，结果开头以 `<system-reminder>[Truncated: PARTIAL view — …]` 标注「显示前 N 行 / 文件超过读取上限」，后续用 `offset` + `limit` 继续分页；这类读取不写 `readFileState`（拿到的不是全文，写不进哈希与 diff 基线）。估计令牌超过 `maxTokens` 时同样截断到能放下的行数（约 85% 预算），只有「调用方显式分页、这一页本身放不下」才报错，文案对齐 Claude Code 的 `Use offset and limit parameters to read specific portions of the file, or search for specific content instead of reading the whole file.`——**不得**写成「用 Bash 的 grep/jq」，那条指引会让模型学会绕过 `Read`。截断结果的元数据必须带 `truncatedByTokenCap`，供渲染与后续判断区分「这是一页」与「这是全文」。
+- **大文件**：读取超出内存限制或令牌窗口的文件。超出 256KB 且调用方没有给 `limit` 时，工具**报错**而不是交出头部切片（切片会让模型当成全文，是 `Read` 误用的主要来源）：文案为 `File content (<size>) exceeds maximum allowed size (<cap>). Use offset and limit parameters to read specific portions of the file, or search for specific content instead of reading the whole file.`。估计令牌超过 `maxTokens` 时同样报错，只有「分页」这一条出路；文案对齐 Claude Code 的同名错误，**不得**写成「用 Bash 的 grep/jq」，那条指引会让模型学会绕过 `Read`。`Read` 因此没有任何「截断视图」形态，`data` 里也不需要预算字段。
 - **二进制文档**：尝试读取 PDF、DOCX 或其他不支持的二进制格式。工具必须阻止此操作并返回错误。
 - **不匹配分析**：当未找到 `old_string` 时，`Edit` 工具必须提供详细的不匹配报告，包括尝试的字符串（截断为 200 个字符）以帮助模型自我纠正。
 - **不要求先读取**：`Edit` 与 `Write` 不再检查目标文件是否在当前对话中读取过——仅 `Grep` 扫到过的文件可以直接 `Edit`，已存在但从未读过的文件也可以直接覆盖。对齐 Claude Code 2.1.285 对新模型的运行时语义：读前守卫只在「该路径的读取需要询问或已被拒绝」时才生效，而 wave 的 `Read` 不是受限工具（默认自动允许），该条件恒成立，守卫等价于不存在。防呆由下述陈旧检测与 `old_string` 匹配失败承担。

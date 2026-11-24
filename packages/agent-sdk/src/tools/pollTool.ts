@@ -30,34 +30,44 @@ import {
 } from "../repl/replRuntime.js";
 import type { ReplEvent } from "../repl/replRuntime.js";
 import { POLL_TOOL_NAME } from "../constants/tools.js";
-import { formatReplRun } from "./replTool.js";
+import {
+  pollEventDataOf,
+  pollRunningDataOf,
+  renderPollResultData,
+} from "./resultData/poll.js";
+import type { PollResultData } from "./resultData/poll.js";
 import type { ToolPlugin, ToolResult } from "./types.js";
 
 export { POLL_TOOL_NAME };
 
 /** The shell a background outcome arrives in, whether here or in a turn's messages. */
 export function renderReplEvent(event: ReplEvent): string {
-  const run = formatReplRun(
-    event.result,
-    event.result.toolsUsed ?? [],
-    event.elapsedMs,
-  );
-  return `<event kind="repl-eval" eval="${event.evalId}">\n${run.content}\n</event>`;
+  // The text is rendered from the same `data` the script's own result carries
+  // (`resultData/repl.ts`): one renderer, so a background settle cannot read
+  // differently from the result a script that stayed inside the wait window got.
+  return renderPollResultData({
+    events: [pollEventDataOf(event)],
+    remaining: 0,
+  });
+}
+
+/**
+ * The status answer of this moment: what is still running, and what is queued.
+ *
+ * The running list is snapshotted into `data` rather than left to be re-read: a
+ * transcript's `data` is all stage 2 has, and by then the runtime is gone.
+ */
+function statusData(): PollResultData {
+  return {
+    events: [],
+    remaining: replPendingEventCount(),
+    running: pollRunningDataOf(listRunningReplScripts()),
+  };
 }
 
 /** The status shell: what is still running, when nothing has settled yet. */
 export function renderReplStatus(): string {
-  const running = listRunningReplScripts();
-  const lines = [`<event kind="repl-status" pending="${running.length}"/>`];
-  for (const script of running) {
-    lines.push(
-      `#${script.id} ${script.state} ${script.ageMs}ms — ${script.snippet}`,
-    );
-  }
-  if (running.length === 0) {
-    lines.push("No REPL script is running in this context.");
-  }
-  return lines.join("\n");
+  return renderPollResultData(statusData());
 }
 
 const POLL_DESCRIPTION = `Wait for background REPL scripts to finish and read their results.
@@ -110,26 +120,27 @@ export const pollTool: ToolPlugin = {
       : waitForReplEvents(waitMs, REPL_POLL_MAX_EVENTS));
 
     if (settled.length === 0) {
+      const data = statusData();
       return {
         success: true,
-        content: renderReplStatus(),
+        content: renderPollResultData(data),
+        data,
         shortResult:
-          listRunningReplScripts().length === 0 ? "idle" : "still running",
+          (data.running?.length ?? 0) === 0 ? "idle" : "still running",
       };
     }
 
-    const lines = settled.map(renderReplEvent);
-    const remaining = replPendingEventCount();
-    if (remaining > 0) {
-      lines.push(`(${remaining} more settled — read them with another poll)`);
-    }
+    const ok = settled.every((event) => event.result.ok);
+    const data: PollResultData = {
+      events: settled.map(pollEventDataOf),
+      remaining: replPendingEventCount(),
+    };
     return {
-      success: settled.every((event) => event.result.ok),
-      content: lines.join("\n"),
+      success: ok,
+      content: renderPollResultData(data),
+      data,
       shortResult: `${settled.length} result${settled.length === 1 ? "" : "s"}`,
-      ...(settled.every((event) => event.result.ok)
-        ? {}
-        : { error: "A background REPL script failed." }),
+      ...(ok ? {} : { error: "A background REPL script failed." }),
     };
   },
 };

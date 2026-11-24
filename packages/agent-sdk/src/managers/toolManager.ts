@@ -202,26 +202,38 @@ function toToolResult(value: unknown): ToolResult {
 /**
  * Feed an edit tool's line delta into the `wave.lines.changed` counter.
  *
- * Editing tools report `linesAdded` / `linesRemoved` in `result.metadata`;
- * every other tool carries no metadata and contributes nothing. A failed call
- * changed no file, so nothing is recorded.
+ * Editing tools report `linesAdded` / `linesRemoved` in `result.data`; every
+ * other tool carries neither and contributes nothing. A failed call changed no
+ * file, so nothing is recorded. `metadata` is the fallback for a result recorded
+ * before issue #3055 phase 2 moved these scalars into `data`.
  */
 function recordLinesChangedFromResult(
   result: ToolResult,
   context: { sessionId?: string; workdir?: string },
   container: Container,
 ): void {
-  const metadata = result.metadata;
-  if (!result.success || !metadata) return;
-  const added = Number(metadata.linesAdded);
-  const removed = Number(metadata.linesRemoved);
-  recordLinesChanged(
-    {
-      added: Number.isFinite(added) ? added : undefined,
-      removed: Number.isFinite(removed) ? removed : undefined,
-    },
-    recordContextOf(context, container),
+  if (!result.success) return;
+  const data = result.data as
+    | { linesAdded?: unknown; linesRemoved?: unknown }
+    | undefined;
+  const metadata = result.metadata as
+    | { linesAdded?: unknown; linesRemoved?: unknown }
+    | undefined;
+  const added = numberOrUndefined(data?.linesAdded ?? metadata?.linesAdded);
+  const removed = numberOrUndefined(
+    data?.linesRemoved ?? metadata?.linesRemoved,
   );
+  // Neither counter present == not an editing tool (the old gate was "has
+  // metadata at all", which no longer says anything now every tool writes data).
+  if (added === undefined && removed === undefined) return;
+  recordLinesChanged({ added, removed }, recordContextOf(context, container));
+}
+
+/** A line count, or `undefined` when the field is absent / not a number. */
+function numberOrUndefined(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value)
+    ? value
+    : undefined;
 }
 
 /**

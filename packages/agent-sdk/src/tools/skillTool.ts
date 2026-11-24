@@ -6,6 +6,11 @@ import {
   countToolBlocks,
   formatToolTokenSummary,
 } from "../utils/messageOperations.js";
+import {
+  renderSkillResultData,
+  type SkillForkedResultData,
+  type SkillInlineResultData,
+} from "./resultData/skill.js";
 
 /**
  * Skill tool plugin for invoking Wave skills
@@ -186,9 +191,18 @@ export const skillTool: ToolPlugin = {
           const toolCount = countToolBlocks(messages);
           const summary = formatToolTokenSummary(toolCount, tokens);
 
+          const data: SkillForkedResultData = {
+            success: true,
+            commandName: skillName,
+            status: "forked",
+            agentId: instance.subagentId,
+            result,
+          };
+
           return {
             success: true,
-            content: result,
+            data,
+            content: renderSkillResultData(data),
             shortResult: `Invoked skill: ${skillName}${summary ? ` ${summary}` : ""}`,
           };
         } catch (error) {
@@ -220,9 +234,25 @@ export const skillTool: ToolPlugin = {
         );
       }
 
+      const data: SkillInlineResultData = {
+        success: true,
+        commandName: skillName,
+        // 技能正文（SKILL.md 的内容）只在这里：CC 把正文当 `newMessages` 另起一条
+        // user 消息注入、tool_result 里只有 `Launching skill:` 一行，我方 SDK 没有
+        // 那条通道（ToolResult 没有 newMessages），正文只能由 tool_result 承载——
+        // 所以 `content` 就是渲染这份 `data.content` 得到的同一段文本（详见
+        // resultData/skill.ts）。
+        content: result.content,
+        ...(result.allowedTools && result.allowedTools.length > 0
+          ? { allowedTools: result.allowedTools }
+          : {}),
+        ...(skillMetadata?.model ? { model: skillMetadata.model } : {}),
+      };
+
       return {
         success: true,
-        content: result.content,
+        data,
+        content: renderSkillResultData(data),
         shortResult: `Invoked skill: ${skillName}`,
       };
     } catch (error) {

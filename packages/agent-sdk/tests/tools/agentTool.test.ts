@@ -89,8 +89,9 @@ describe("Agent Tool Background Execution", () => {
     );
 
     expect(result.success).toBe(true);
-    expect(result.content).toContain("Agent started in background");
-    expect(result.content).toContain("task_12345");
+    // 后台档的措辞与形状对齐 CC（`AgentTool.tsx:1327-1338`）。
+    expect(result.content).toContain("Async agent launched successfully.");
+    expect(result.content).toContain("agentId: task_12345");
     expect(result.shortResult).toBe("Agent started in background: task_12345");
     // 工具行尾的「查看实时输出」入口靠这颗 id 显隐（与后台 shell / Workflow 同形）。
     expect(result.backgroundTaskId).toBe("task_12345");
@@ -652,9 +653,12 @@ describe("Agent Tool Background Execution", () => {
     );
 
     // An assistant message exists → normal completion, and the error notice
-    // stays out of the result the parent reads.
+    // stays out of the result the parent reads. Nothing came back as text, so
+    // the body is CC's no-output marker followed by the usage trailer.
     expect(result.success).toBe(true);
-    expect(result.content).toBe("");
+    expect(result.content).toMatch(
+      /^\(Subagent completed but returned no output\.\)\nagentId: gp-test-id\n<usage>total_tokens: 0\ntool_uses: 0\nduration_ms: \d+<\/usage>$/,
+    );
   });
 
   it("should pass only the text of a failed run back to the parent", async () => {
@@ -698,7 +702,10 @@ describe("Agent Tool Background Execution", () => {
     );
 
     expect(result.success).toBe(true);
-    expect(result.content).toBe("I found 3 files.");
+    // The report is the body; the agentId/usage trailer follows it.
+    expect(result.content).toMatch(
+      /^I found 3 files\.\nagentId: gp-test-id\n<usage>total_tokens: 0\ntool_uses: 0\nduration_ms: \d+<\/usage>$/,
+    );
   });
 
   it("should report an interrupted run as failed even when it produced text", async () => {

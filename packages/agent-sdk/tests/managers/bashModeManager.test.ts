@@ -81,7 +81,7 @@ describe("BashModeManager", () => {
       mockExecute.mockResolvedValue({
         success: true,
         content: "hello world\n",
-        metadata: { exitCode: 0 },
+        data: { exitCode: 0 },
       } as never);
 
       const exitCode = await bashModeManager.executeCommand(command);
@@ -124,7 +124,7 @@ describe("BashModeManager", () => {
       mockExecute.mockResolvedValue({
         success: true,
         content: "line 1\nline 2\n",
-        metadata: { exitCode: 0 },
+        data: { exitCode: 0 },
       } as never);
 
       await bashModeManager.executeCommand("sleep 1");
@@ -150,7 +150,7 @@ describe("BashModeManager", () => {
       mockExecute.mockResolvedValue({
         success: false,
         content: "ls: /nonexistent: No such file or directory",
-        metadata: { exitCode: 1 },
+        data: { exitCode: 1 },
       } as never);
 
       const exitCode = await bashModeManager.executeCommand(command);
@@ -165,7 +165,7 @@ describe("BashModeManager", () => {
       expect(exitCode).toBe(1);
     });
 
-    it("should fall back to exit code 1 when metadata has no exitCode on failure", async () => {
+    it("should fall back to exit code 1 when the result carries no exitCode on failure", async () => {
       mockExecute.mockResolvedValue({
         success: false,
         content: "Command not found",
@@ -182,11 +182,25 @@ describe("BashModeManager", () => {
       );
     });
 
-    it("should handle abort metadata (exit 130)", async () => {
+    it("should still read the exit code off metadata for a pre-phase-2 shape", async () => {
+      // `data.exitCode` is the authority since issue #3055 阶段 2; `metadata` is
+      // only the forward-compat fallback for a result recorded before that move.
+      mockExecute.mockResolvedValue({
+        success: false,
+        content: "old shape",
+        metadata: { exitCode: 42 },
+      } as never);
+
+      const exitCode = await bashModeManager.executeCommand("legacy");
+
+      expect(exitCode).toBe(42);
+    });
+
+    it("should pass an aborted command's 130 through", async () => {
       mockExecute.mockResolvedValue({
         success: false,
         content: "",
-        metadata: { exitCode: 130 },
+        data: { exitCode: 130 },
       } as never);
 
       const exitCode = await bashModeManager.executeCommand("long_running");
@@ -218,7 +232,7 @@ describe("BashModeManager", () => {
       resolveExecute!({
         success: true,
         content: "",
-        metadata: { exitCode: 0 },
+        data: { exitCode: 0 },
       });
       await first;
     });
@@ -230,7 +244,7 @@ describe("BashModeManager", () => {
       mockPowerShellExecute.mockResolvedValue({
         success: true,
         content: "ps output\n",
-        metadata: { exitCode: 0 },
+        data: { exitCode: 0 },
       } as never);
 
       const exitCode = await bashModeManager.executeCommand("Get-ChildItem");
@@ -257,7 +271,7 @@ describe("BashModeManager", () => {
       mockExecute.mockResolvedValue({
         success: true,
         content: "",
-        metadata: { exitCode: 0 },
+        data: { exitCode: 0 },
       } as never);
 
       await bashModeManager.executeCommand("ls");
@@ -283,7 +297,7 @@ describe("BashModeManager", () => {
               resolve({
                 success: false,
                 content: "",
-                metadata: { exitCode: 130 },
+                data: { exitCode: 130 },
               });
             });
           }) as never,
@@ -326,7 +340,7 @@ describe("BashModeManager", () => {
       resolveExecute!({
         success: true,
         content: "",
-        metadata: { exitCode: 0 },
+        data: { exitCode: 0 },
       });
       await executePromise;
 

@@ -656,9 +656,11 @@ describe("bashTool", () => {
       expect(result.content).toContain("<persisted-output>");
       expect(result.content).toContain("Full output saved to:");
       expect(result.content).toContain("</persisted-output>");
+      // 落盘的是**整段正文**（输出 + 中断原因），不只是命令输出：正文现在由
+      // data 统一渲染，落盘与渲染走同一条拼装路径。
       expect(fs.writeFileSync).toHaveBeenCalledWith(
         expect.stringContaining("wave-tool-results"),
-        largeOutput,
+        `${largeOutput}\n\nCommand execution was aborted`,
         "utf8",
       );
     });
@@ -1371,7 +1373,11 @@ EOF
       );
 
       expect(stopResult.success).toBe(true);
-      expect(stopResult.content).toBe(`Task ${taskId} has been stopped`);
+      // TaskStop 的模型侧文本是 output 的紧凑 JSON（对齐 CC 的
+      // mapToolResultToToolResultBlockParam → jsonStringify，issue #3055 阶段 1）。
+      expect(stopResult.content).toBe(
+        `{"message":"Successfully stopped task: ${taskId} (sleep 100)","task_id":"${taskId}","task_type":"shell","command":"sleep 100"}`,
+      );
     });
 
     it("should handle non-existent task ID", async () => {

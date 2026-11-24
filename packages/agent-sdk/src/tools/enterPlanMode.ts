@@ -2,6 +2,10 @@ import { logger } from "../utils/globalLogger.js";
 import type { ToolPlugin, ToolResult, ToolContext } from "./types.js";
 import { ENTER_PLAN_MODE_TOOL_NAME } from "../constants/tools.js";
 import { OPERATION_CANCELLED_BY_USER } from "../types/permissions.js";
+import {
+  renderEnterPlanModeResultData,
+  type EnterPlanModeResultData,
+} from "./resultData/enterPlanMode.js";
 
 /**
  * Enter Plan Mode Tool Plugin
@@ -115,10 +119,17 @@ Good fits: multi-file changes or refactors that need architectural decisions, ne
         context.toolManager.requestPermissionModeChange("plan");
       }
 
+      // CC 把这句话放在 `data.message` 里（`EnterPlanModeTool.ts:96-101`），
+      // 后面那段固定指令由渲染器现场拼（`:103-125`）。
+      const data: EnterPlanModeResultData = {
+        message:
+          "Entered plan mode. You should now focus on exploring the codebase and designing an implementation approach.",
+      };
+
       return {
         success: true,
-        content:
-          "Plan mode entered successfully. Please write your plan to the plan file and use ExitPlanMode when ready for approval.",
+        data,
+        content: renderEnterPlanModeResultData(data),
         shortResult: "Plan mode entered",
       };
     } catch (error) {

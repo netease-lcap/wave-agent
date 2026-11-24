@@ -124,9 +124,22 @@ describe("webFetchTool artifact interception", () => {
 
     expect(result.success).toBe(true);
     expect(result.content).toBe("This is a summary of the artifact.");
-    expect(result.metadata).toEqual({
+    // The artifact channel has no public HTTP status, so the result reports the
+    // 200/OK the shared reader used; `bytes` is the artifact HTML's own size,
+    // not the summary's. `artifactRead` marks the channel (it used to live in
+    // `metadata`).
+    expect(result.data).toEqual({
+      bytes: Buffer.byteLength(
+        "<html><body><h1>Artifact Title</h1><p>Body text</p></body></html>",
+      ),
+      code: 200,
+      codeText: "OK",
+      result: "This is a summary of the artifact.",
+      durationMs: expect.any(Number),
+      url: ARTIFACT_URL,
       artifactRead: { slug: "abc", ver: "v3" },
     });
+    expect(result.metadata).toBeUndefined();
     // Metadata probe goes through via=model_read, content through the Bearer URL.
     expect(fetchMock).toHaveBeenCalledWith(
       `${SERVER_URL}/api/frame/abc?via=model_read`,
@@ -223,9 +236,18 @@ describe("webFetchTool artifact interception", () => {
         content: expect.stringContaining("<persisted-output>"),
       }),
     );
-    expect(result.metadata).toEqual({
+    // The persisted-output note is part of the model-facing text, so it rides
+    // `data.result` verbatim — `content` is only a rendering of that same text.
+    expect(result.data).toMatchObject({
+      bytes: Buffer.byteLength(largeHtml),
+      code: 200,
+      codeText: "OK",
+      result: expect.stringContaining("<persisted-output>"),
+      url: ARTIFACT_URL,
       artifactRead: { slug: "abc", ver: "v1" },
     });
+    expect((result.data as { result: string }).result).toBe(result.content);
+    expect(result.metadata).toBeUndefined();
   });
 
   it("should NOT intercept artifact URLs when the feature is disabled", async () => {

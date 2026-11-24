@@ -6,10 +6,83 @@ import { runCommand } from "../utils/runCommand.js";
 import { VCS_DIRECTORIES } from "../utils/vcsDirectories.js";
 import { logger } from "../utils/globalLogger.js";
 import {
+  cwdRecoveryNote,
+  renderGrepResultData,
+  type CwdRecovery,
+  type GrepOutputMode,
+  type GrepResultData,
+} from "./resultData/grep.js";
+import {
   GREP_TOOL_NAME,
   BASH_TOOL_NAME,
   AGENT_TOOL_NAME,
 } from "../constants/tools.js";
+
+/**
+ * `count` 模式的合计（CC 在 `GrepTool.ts:500-512` 现算）：每行 `路径:计数`，行数
+ * 即文件数、计数相加即匹配总数。算的是**当前页**——CC 也是在 head_limit / offset
+ * 之后才统计，摘要里的数字必须与正文列出的行对得上。
+ */
+function countTotals(lines: string[]): {
+  numMatches: number;
+  numFiles: number;
+} {
+  let numMatches = 0;
+  let numFiles = 0;
+  for (const line of lines) {
+    // 只认最后一个冒号：Windows 盘符 `C:\...` 里也有冒号。
+    const colon = line.lastIndexOf(":");
+    if (colon <= 0) continue;
+    const count = Number.parseInt(line.slice(colon + 1), 10);
+    if (Number.isNaN(count)) continue;
+    numMatches += count;
+    numFiles += 1;
+  }
+  return { numMatches, numFiles };
+}
+
+/**
+ * 把 ripgrep 的输出折成 `Grep` 的 `data`（形状见 `resultData/grep.ts`）。三个模式
+ * 的空壳字段照 CC 填：`content` 模式 `numFiles: 0` + `filenames: []`，`count` 模式
+ * `filenames: []`。
+ */
+function buildResultData(
+  mode: GrepOutputMode,
+  lines: string[],
+  /** 只在这一页真的被 head_limit 截短时才给（CC 的 `applyHeadLimit`）。 */
+  appliedLimit: number | undefined,
+  /** 0 表示没跳过；渲染器同样按真假判。 */
+  appliedOffset: number,
+  cwdRecovery: CwdRecovery | null | undefined,
+): GrepResultData {
+  let data: GrepResultData;
+  if (mode === "files_with_matches") {
+    data = { mode, numFiles: lines.length, filenames: lines };
+  } else if (mode === "count") {
+    const totals = countTotals(lines);
+    data = {
+      mode,
+      numFiles: totals.numFiles,
+      filenames: [],
+      content: lines.join("\n"),
+      numMatches: totals.numMatches,
+    };
+  } else {
+    data = {
+      mode,
+      numFiles: 0,
+      filenames: [],
+      content: lines.join("\n"),
+      numLines: lines.length,
+    };
+  }
+
+  // 分页字段只在真的生效时出现，否则模型会以为还有下一页可翻。
+  if (appliedLimit !== undefined) data.appliedLimit = appliedLimit;
+  if (appliedOffset > 0) data.appliedOffset = appliedOffset;
+  if (cwdRecovery) data.cwdRecovery = cwdRecovery;
+  return data;
+}
 
 /**
  * Grep tool plugin - powerful search tool based on ripgrep
@@ -124,7 +197,12 @@ export const grepTool: ToolPlugin = {
     const pattern = args.pattern as string;
     const searchPath = args.path as string;
     const globPattern = args.glob as string;
-    const outputMode = (args.output_mode as string) || "files_with_matches";
+    // 三档模式的类型化版本：缺省与非法值都落到 `files_with_matches`（原来的
+    // `|| "files_with_matches"`），这样 rg 参数与 `data.mode` 不会各说一套。
+    const outputMode: GrepOutputMode =
+      args.output_mode === "content" || args.output_mode === "count"
+        ? args.output_mode
+        : "files_with_matches";
     const contextBefore = args["-B"] as number;
     const contextAfter = args["-A"] as number;
     const contextAround = args["-C"] as number;
@@ -165,9 +243,6 @@ export const grepTool: ToolPlugin = {
       // directory was removed manually via `git worktree remove`), surface
       // the notice in this tool's result so the model is aware of the switch.
       const cwdRecovery = context.aiManager?.consumeCwdRecovery?.();
-      const recoveryNotice = cwdRecovery
-        ? `Note: working directory ${cwdRecovery.from} no longer exists; session working directory recovered to ${cwdRecovery.to}.\n`
-        : "";
       const rgArgs: string[] = [
         "--color=never",
         "--max-columns=500",
@@ -254,7 +329,8 @@ export const grepTool: ToolPlugin = {
         return {
           success: false,
           content: "",
-          error: `${recoveryNotice}ripgrep failed: ${result.stderr}`.trim(),
+          error:
+            `${cwdRecoveryNote(cwdRecovery)}ripgrep failed: ${result.stderr}`.trim(),
         };
       }
 
@@ -266,15 +342,18 @@ export const grepTool: ToolPlugin = {
 
       const output = result.stdout.trim();
       if (!output) {
+        // Nothing matched is not an error: the renderer answers with CC's own
+        // sentence for this mode ("No files found" / "No matches found" / the
+        // "Found 0 total occurrences across 0 files." summary).
+        const page = buildResultData(outputMode, [], undefined, 0, cwdRecovery);
+        // `numMatches` 是短结果与宿主卡片用的匹配数（原来是
+        // `ToolResult.metadata.numMatches`），一条都没命中就是 0。
+        const data: GrepResultData = { ...page, numMatches: 0 };
         return {
           success: true,
-          content:
-            recoveryNotice +
-            "No matches found. Suggestion: specify the 'path' field to search in ignored or other directories (e.g., 'node_modules'), as the default search path is the current working directory and respects .gitignore.",
+          data,
+          content: renderGrepResultData(data),
           shortResult: "No matches found",
-          metadata: {
-            numMatches: 0,
-          },
         };
       }
 
@@ -295,8 +374,6 @@ export const grepTool: ToolPlugin = {
         truncated = true;
       }
 
-      const finalOutput = lines.join("\n");
-
       // Generate short result
       let shortResult: string;
       const numMatches = lines.length;
@@ -313,16 +390,27 @@ export const grepTool: ToolPlugin = {
         shortResult += ` (showing ${numMatches} of ${totalMatches})`;
       }
 
+      const page = buildResultData(
+        outputMode,
+        lines,
+        truncated ? effectiveHeadLimit : undefined,
+        effectiveOffset,
+        cwdRecovery,
+      );
+      // 短结果与宿主卡片用的匹配数与截断标记（原来是
+      // `ToolResult.metadata.numMatches` / `.truncated`）；`appliedLimit` 与
+      // `appliedOffset` 本来就在 `data` 里，不重复。`count` 模式的
+      // `data.numMatches` 是各文件计数之和，不能被这里的行数盖掉。
+      const data: GrepResultData =
+        outputMode === "count"
+          ? { ...page, truncated }
+          : { ...page, numMatches: totalMatches, truncated };
+
       return {
         success: true,
-        content: recoveryNotice + finalOutput,
+        data,
+        content: renderGrepResultData(data),
         shortResult,
-        metadata: {
-          numMatches: totalMatches,
-          truncated,
-          appliedLimit: effectiveHeadLimit,
-          appliedOffset: effectiveOffset,
-        },
       };
     } catch (error) {
       return {

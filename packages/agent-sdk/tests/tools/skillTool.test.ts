@@ -130,6 +130,13 @@ describe("skillTool", () => {
     );
 
     expect(result.success).toBe(true);
+    // inline 分支：CC 的标量字段 + 技能正文（`content`，与 CC 的一处偏差，见
+    // `tools/resultData/skill.ts` 文件头）。
+    expect(result.data).toStrictEqual({
+      success: true,
+      commandName: "test-skill",
+      content: "Test result",
+    });
     expect(result.content).toBe("Test result");
     expect(result.shortResult).toBe("Invoked skill: test-skill");
   });
@@ -161,6 +168,12 @@ describe("skillTool", () => {
     );
 
     expect(result.success).toBe(true);
+    expect(result.data).toStrictEqual({
+      success: true,
+      commandName: "test-skill",
+      content: "Test result",
+      allowedTools: ["tool1", "tool2"],
+    });
     expect(mockPermissionManager.addTemporaryRules).toHaveBeenCalledWith([
       "tool1",
       "tool2",
